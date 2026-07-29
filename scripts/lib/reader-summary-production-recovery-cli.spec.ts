@@ -1,9 +1,14 @@
 import type {
+  ReaderSummaryArtifactRepositoryPort,
+  ReaderSummaryJobRepositoryPort,
   ReaderSummaryProductionRecoveryAuthorityBinding,
   ReaderSummaryProductionRecoveryAuthorityHandle,
   ReaderSummaryProductionRecoveryAuthorityPort,
 } from "@social-monitor/summary/ports";
 import { productionRecoveryBinding } from "../../libs/summary/adapters/persistence/prisma/prisma-reader-summary-production-recovery-authority.spec-support";
+import { ReaderSummaryJob } from "@social-monitor/summary/domain";
+import { ExecuteReaderSummaryJobUseCase } from "@social-monitor/summary/features/execute-reader-summary-job/execute-reader-summary-job.use-case";
+import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 
 import {
   configureProductionRecoverySession,
@@ -12,13 +17,22 @@ import {
   resolveReaderSummaryProductionRecoverySourceDatabaseUrl,
 } from "../recover-reader-summary-production";
 import {
+  executeProductionRecoveryDay,
   readerSummaryProductionRecoveryDayIds,
   runReaderSummaryProductionRecovery,
   type ReaderSummaryProductionRecoveryExecutionGuard,
 } from "./reader-summary-production-recovery-cli";
+import {
+  dayAuthority,
+  periodForRecoveryDate,
+} from "./reader-summary-production-recovery-data";
 import { PrismaReaderSummaryProductionRecoveryExecutionGuard } from "./reader-summary-production-recovery-replay-guard";
 
 describe("reader summary production recovery", () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
   it("requires apply before authority preparation", async () => {
     const authority = fakeAuthority("prepared");
     await expect(
@@ -264,6 +278,106 @@ describe("reader summary production recovery", () => {
     expect(calls[2]).toContain(
       "transaction_timestamp(), transaction_timestamp()",
     );
+  });
+
+  it("adopts the durable RUNNING claim and wires durable artifact persistence", async () => {
+    const binding = productionRecoveryBinding();
+    const requestedUtcDate = "2026-07-24";
+    const ids = readerSummaryProductionRecoveryDayIds(
+      binding,
+      requestedUtcDate,
+    );
+    const day = dayAuthority(binding, requestedUtcDate);
+    const claimedAt = new Date(binding.lease.consumedAt);
+    const durableJob = ReaderSummaryJob.request({
+      id: ids.readerSummaryJobId,
+      tenantId: tenantId(binding.tenantId),
+      workspaceId: workspaceId(binding.workspaceId),
+      scope: { type: "workspace" },
+      period: periodForRecoveryDate(requestedUtcDate),
+      idempotencyKey: `reader-summary-production-recovery:${requestedUtcDate}:${day.canonicalSha256}`,
+      requestedAt: claimedAt,
+    }).start({ startedAt: claimedAt });
+    const durableJobs = {
+      save: jest.fn(async () => undefined),
+      findById: jest.fn(async () => durableJob),
+      findByIdempotencyKey: jest.fn(async () => null),
+      findRequested: jest.fn(async () => []),
+      claimForExecution: jest.fn(async () => {
+        throw new Error("the durable lease must not be claimed twice");
+      }),
+    } satisfies ReaderSummaryJobRepositoryPort;
+    const durableArtifacts = {
+      save: jest.fn(async () => undefined),
+      list: jest.fn(async () => ({ items: [] })),
+      listPeriodSummaries: jest.fn(async () => ({ items: [] })),
+      findById: jest.fn(async () => null),
+      findRejectedDebugById: jest.fn(async () => null),
+    } satisfies ReaderSummaryArtifactRepositoryPort;
+
+    jest
+      .spyOn(ExecuteReaderSummaryJobUseCase.prototype, "execute")
+      .mockImplementation(async function (command) {
+        const repositories = this as unknown as {
+          readonly readerSummaryJobs: ReaderSummaryJobRepositoryPort;
+          readonly readerSummaryArtifacts: ReaderSummaryArtifactRepositoryPort;
+        };
+        expect(repositories.readerSummaryArtifacts).toBe(durableArtifacts);
+        const staged = await repositories.readerSummaryJobs.findById({
+          tenantId: command.tenantId,
+          workspaceId: command.workspaceId,
+          readerSummaryJobId: command.readerSummaryJobId,
+        });
+        expect(staged?.toSnapshot().status).toBe("requested");
+
+        const running = await repositories.readerSummaryJobs.claimForExecution({
+          tenantId: command.tenantId,
+          workspaceId: command.workspaceId,
+          readerSummaryJobId: command.readerSummaryJobId,
+          requestedAt: claimedAt,
+          startedAt: claimedAt,
+        });
+        expect(running?.toSnapshot().status).toBe("running");
+        expect(durableJobs.claimForExecution).not.toHaveBeenCalled();
+        await repositories.readerSummaryJobs.save(
+          running!.fail({
+            failedAt: claimedAt,
+            failureReason: "durable failure fixture",
+          }),
+        );
+
+        return {
+          ok: true,
+          value: {
+            readerSummaryJobId: ids.readerSummaryJobId,
+            readerSummaryId: ids.readerSummaryId,
+            status: "completed",
+          },
+        };
+      });
+
+    await expect(
+      executeProductionRecoveryDay({
+        binding,
+        requestedUtcDate,
+        model: {} as never,
+        finalization: {} as never,
+        durableJobs,
+        durableArtifacts,
+        feedItems: {} as never,
+        githubProjectionReader: {} as never,
+        ids: { generate: () => "unused-id" },
+        clock: { now: () => claimedAt },
+      }),
+    ).resolves.toMatchObject({
+      outcome: "published",
+      readerSummaryJobId: ids.readerSummaryJobId,
+      readerSummaryId: ids.readerSummaryId,
+    });
+    expect(durableJobs.findById).toHaveBeenCalledTimes(1);
+    expect(
+      durableJobs.save.mock.calls[0]?.[0].toSnapshot().status,
+    ).toBe("failed");
   });
 });
 

@@ -592,7 +592,7 @@ async function main(): Promise<void> {
             githubProjectionReader: sourceSnapshot.githubProjectionReader,
             ids: new CryptoIdGenerator(),
             clock,
-          }),
+          }, productionSummaryConnection),
         }),
       );
     },

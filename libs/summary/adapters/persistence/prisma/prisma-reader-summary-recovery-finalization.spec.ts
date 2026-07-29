@@ -109,6 +109,27 @@ describe("PrismaReaderSummaryRecoveryFinalization", () => {
     expect(queryRaw).toHaveBeenCalledTimes(1);
   });
 
+  it("fails closed when the durable artifact authority is absent", async () => {
+    const fixture = createFixture();
+    mockPublicationPayload(fixture.publicationPayload);
+    const queryRaw = jest.fn(async () => {
+      throw new Error(
+        "reader summary publication artifact authority is invalid",
+      );
+    });
+    const finalization = new PrismaReaderSummaryRecoveryFinalization(
+      prismaClient(recoveryFinalizationTransaction(queryRaw), queryRaw),
+    );
+
+    await expect(finalization.finalize(fixture.command)).rejects.toThrow(
+      "publication artifact authority is invalid",
+    );
+    expect(queryRaw).toHaveBeenCalledTimes(1);
+    expect(String(queryRaw.mock.calls[0]?.[0])).toContain(
+      "finalize_reader_summary_recovery",
+    );
+  });
+
   it("rolls back publication state when receipt persistence fails", async () => {
     const fixture = createFixture();
     mockPublicationPayload(fixture.publicationPayload);

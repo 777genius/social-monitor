@@ -1,18 +1,13 @@
 import { createHash } from "node:crypto";
 
 import type { FeedItemReadRepositoryPort } from "@social-monitor/feed/ports";
-import {
-  ReaderSummaryJob,
-  type ReaderSummaryArtifact,
-  type ReaderSummaryGitHubProjectionAudit,
-  type ReaderSummaryPublicationDecision,
-} from "@social-monitor/summary/domain";
+import { ReaderSummaryJob } from "@social-monitor/summary/domain";
+import { PrismaReaderSummaryArtifactRepository } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-artifact.repository";
+import { PrismaReaderSummaryJobRepository } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-job.repository";
+import type { PrismaSummaryClient } from "@social-monitor/summary/adapters/persistence/prisma/prisma-summary-client";
 import { ExecuteReaderSummaryJobUseCase } from "@social-monitor/summary/features/execute-reader-summary-job/execute-reader-summary-job.use-case";
 import { BuildReaderSummaryTopicMapUseCase } from "@social-monitor/summary/features/build-reader-summary-topic-map/build-reader-summary-topic-map.use-case";
 import type {
-  ListReaderSummaryArtifactsQuery,
-  ListReaderSummaryArtifactsResult,
-  ListReaderSummaryPeriodSummariesResult,
   ReaderSummaryArtifactRepositoryPort,
   ReaderSummaryEvidenceSelectorPort,
   ReaderSummaryGitHubProjectionReaderPort,
@@ -23,7 +18,6 @@ import type {
   ReaderSummaryProductionRecoveryAuthorityBinding,
   ReaderSummaryProductionRecoveryAuthorityPort,
   ReaderSummaryRecoveryFinalizationPort,
-  ReaderSummaryRejectedArtifactDebug,
 } from "@social-monitor/summary/ports";
 import {
   type Clock,
@@ -138,6 +132,8 @@ export const readerSummaryProductionRecoveryDayIds = (
 export type ProductionRecoveryDayExecutorDependencies = Readonly<{
   model: ReaderSummaryModelPort;
   finalization: ReaderSummaryRecoveryFinalizationPort;
+  durableJobs: ReaderSummaryJobRepositoryPort;
+  durableArtifacts: ReaderSummaryArtifactRepositoryPort;
   feedItems: FeedItemReadRepositoryPort;
   githubProjectionReader: ReaderSummaryGitHubProjectionReaderPort;
   ids: IdGenerator;
@@ -147,11 +143,19 @@ export type ProductionRecoveryDayExecutorDependencies = Readonly<{
 
 export const createProductionRecoveryDayExecutor =
   (
-    dependencies: ProductionRecoveryDayExecutorDependencies,
+    dependencies: Omit<
+      ProductionRecoveryDayExecutorDependencies,
+      "durableJobs" | "durableArtifacts"
+    >,
+    persistence: PrismaSummaryClient,
   ): ReaderSummaryProductionRecoveryDayExecutor =>
   async ({ binding, requestedUtcDate }) =>
     executeProductionRecoveryDay({
       ...dependencies,
+      durableJobs: new PrismaReaderSummaryJobRepository(persistence),
+      durableArtifacts: new PrismaReaderSummaryArtifactRepository(
+        persistence,
+      ),
       binding,
       requestedUtcDate,
     });
@@ -171,18 +175,19 @@ export const executeProductionRecoveryDay = async (
   );
   const jobId = ids.readerSummaryJobId;
   const readerSummaryId = ids.readerSummaryId;
-  const jobs = new InMemoryRecoveryJobRepository([
-    ReaderSummaryJob.request({
-      id: jobId,
-      tenantId: tenantId(params.binding.tenantId),
-      workspaceId: workspaceId(params.binding.workspaceId),
-      scope: { type: "workspace" },
-      period,
-      idempotencyKey: `reader-summary-production-recovery:${params.requestedUtcDate}:${day.canonicalSha256}`,
-      requestedAt: params.clock.now(),
-    }),
-  ]);
-  const artifacts = new InMemoryRecoveryArtifactRepository();
+  const expectedJob = ReaderSummaryJob.request({
+    id: jobId,
+    tenantId: tenantId(params.binding.tenantId),
+    workspaceId: workspaceId(params.binding.workspaceId),
+    scope: { type: "workspace" },
+    period,
+    idempotencyKey: `reader-summary-production-recovery:${params.requestedUtcDate}:${day.canonicalSha256}`,
+    requestedAt: params.clock.now(),
+  });
+  const jobs = new PreclaimedRecoveryJobRepository(
+    expectedJob,
+    params.durableJobs,
+  );
   const evidenceSelector = new ProductionRecoveryEvidenceSelector({
     binding: params.binding,
     requestedUtcDate: params.requestedUtcDate,
@@ -197,7 +202,7 @@ export const executeProductionRecoveryDay = async (
   });
   const execute = new ExecuteReaderSummaryJobUseCase(
     jobs,
-    artifacts,
+    params.durableArtifacts,
     new EmptyRecoveryPolicyRepository(),
     evidenceSelector,
     params.model,
@@ -293,133 +298,105 @@ class FirstIdRecoveryGenerator implements IdGenerator {
   }
 }
 
-class InMemoryRecoveryJobRepository implements ReaderSummaryJobRepositoryPort {
-  private readonly jobs = new Map<string, ReaderSummaryJob>();
+class PreclaimedRecoveryJobRepository
+  implements ReaderSummaryJobRepositoryPort
+{
+  private claimAccepted = false;
 
-  constructor(initialJobs: readonly ReaderSummaryJob[]) {
-    for (const job of initialJobs) {
-      this.jobs.set(job.toSnapshot().id, job);
-    }
-  }
+  constructor(
+    private readonly expectedJob: ReaderSummaryJob,
+    private readonly durableJobs: ReaderSummaryJobRepositoryPort,
+  ) {}
 
   async save(job: ReaderSummaryJob): Promise<void> {
-    this.jobs.set(job.toSnapshot().id, job);
+    await this.durableJobs.save(job);
   }
 
-  async findById(params: {
+  async findById(
+    params: Parameters<ReaderSummaryJobRepositoryPort["findById"]>[0],
+  ): Promise<ReaderSummaryJob | null> {
+    if (!this.claimAccepted && this.matchesExpectedLocator(params)) {
+      return this.expectedJob;
+    }
+    return this.durableJobs.findById(params);
+  }
+
+  async findByIdempotencyKey(
+    params: Parameters<
+      ReaderSummaryJobRepositoryPort["findByIdempotencyKey"]
+    >[0],
+  ): Promise<ReaderSummaryJob | null> {
+    return this.durableJobs.findByIdempotencyKey(params);
+  }
+
+  async findRequested(
+    params: Parameters<ReaderSummaryJobRepositoryPort["findRequested"]>[0],
+  ): Promise<readonly ReaderSummaryJob[]> {
+    return this.durableJobs.findRequested(params);
+  }
+
+  async claimForExecution(
+    params: Parameters<
+      ReaderSummaryJobRepositoryPort["claimForExecution"]
+    >[0],
+  ): Promise<ReaderSummaryJob | null> {
+    if (this.claimAccepted || !this.matchesExpectedLocator(params)) {
+      return null;
+    }
+    const durableJob = await this.durableJobs.findById(params);
+    if (
+      durableJob === null ||
+      !isExactPreclaimedRecoveryJob(durableJob, this.expectedJob)
+    ) {
+      throw new Error(
+        "Reader summary production recovery durable pre-model job authority is invalid",
+      );
+    }
+    this.claimAccepted = true;
+    return durableJob;
+  }
+
+  private matchesExpectedLocator(params: {
     readonly tenantId: string;
     readonly workspaceId: string;
     readonly readerSummaryJobId: string;
-  }): Promise<ReaderSummaryJob | null> {
-    const job = this.jobs.get(params.readerSummaryJobId);
-    const snapshot = job?.toSnapshot();
-    return snapshot?.tenantId === params.tenantId &&
-      snapshot.workspaceId === params.workspaceId
-      ? job ?? null
-      : null;
-  }
-
-  async findByIdempotencyKey(params: {
-    readonly tenantId: string;
-    readonly workspaceId: string;
-    readonly idempotencyKey: string;
-  }): Promise<ReaderSummaryJob | null> {
-    for (const job of this.jobs.values()) {
-      const snapshot = job.toSnapshot();
-      if (
-        snapshot.tenantId === params.tenantId &&
-        snapshot.workspaceId === params.workspaceId &&
-        snapshot.idempotencyKey === params.idempotencyKey
-      ) {
-        return job;
-      }
-    }
-    return null;
-  }
-
-  async findRequested(params: {
-    readonly tenantId?: string;
-    readonly workspaceId?: string;
-    readonly limit: number;
-  }): Promise<readonly ReaderSummaryJob[]> {
-    return [...this.jobs.values()]
-      .filter((job) => {
-        const snapshot = job.toSnapshot();
-        return (
-          snapshot.status === "requested" &&
-          (params.tenantId === undefined || snapshot.tenantId === params.tenantId) &&
-          (params.workspaceId === undefined ||
-            snapshot.workspaceId === params.workspaceId)
-        );
-      })
-      .slice(0, params.limit);
-  }
-
-  async claimForExecution(params: {
-    readonly tenantId: string;
-    readonly workspaceId: string;
-    readonly readerSummaryJobId: string;
-    readonly startedAt: Date;
-  }): Promise<ReaderSummaryJob | null> {
-    const job = await this.findById(params);
-    if (job === null) {
-      return null;
-    }
-    const snapshot = job.toSnapshot();
-    if (snapshot.status !== "requested" && snapshot.status !== "failed") {
-      return null;
-    }
-    const running =
-      snapshot.status === "failed"
-        ? job.retry({ requestedAt: params.startedAt }).start({
-            startedAt: params.startedAt,
-          })
-        : job.start({ startedAt: params.startedAt });
-    await this.save(running);
-    return running;
+  }): boolean {
+    const expected = this.expectedJob.toSnapshot();
+    return (
+      params.tenantId === expected.tenantId &&
+      params.workspaceId === expected.workspaceId &&
+      params.readerSummaryJobId === expected.id
+    );
   }
 }
 
-class InMemoryRecoveryArtifactRepository
-  implements ReaderSummaryArtifactRepositoryPort
-{
-  private readonly artifacts = new Map<string, ReaderSummaryArtifact>();
-
-  async save(
-    artifact: ReaderSummaryArtifact,
-    _options?: {
-      readonly publicationDecision?: ReaderSummaryPublicationDecision;
-      readonly githubProjectionAudit?: ReaderSummaryGitHubProjectionAudit;
-    },
-  ): Promise<void> {
-    void _options;
-    this.artifacts.set(artifact.toSnapshot().readerSummaryId, artifact);
-  }
-
-  async list(
-    _query: ListReaderSummaryArtifactsQuery,
-  ): Promise<ListReaderSummaryArtifactsResult> {
-    void _query;
-    return { items: [] };
-  }
-
-  async listPeriodSummaries(
-    _query: ListReaderSummaryArtifactsQuery,
-  ): Promise<ListReaderSummaryPeriodSummariesResult> {
-    void _query;
-    return { items: [] };
-  }
-
-  async findById(params: {
-    readonly readerSummaryId: string;
-  }): Promise<ReaderSummaryArtifact | null> {
-    return this.artifacts.get(params.readerSummaryId) ?? null;
-  }
-
-  async findRejectedDebugById(): Promise<ReaderSummaryRejectedArtifactDebug | null> {
-    return null;
-  }
-}
+const isExactPreclaimedRecoveryJob = (
+  durableJob: ReaderSummaryJob,
+  expectedJob: ReaderSummaryJob,
+): boolean => {
+  const durable = durableJob.toSnapshot();
+  const expected = expectedJob.toSnapshot();
+  return (
+    durable.id === expected.id &&
+    durable.tenantId === expected.tenantId &&
+    durable.workspaceId === expected.workspaceId &&
+    durable.scope.type === "workspace" &&
+    durable.period.cadence === expected.period.cadence &&
+    durable.period.startedAt.getTime() === expected.period.startedAt.getTime() &&
+    durable.period.endedAt.getTime() === expected.period.endedAt.getTime() &&
+    durable.period.timezone === expected.period.timezone &&
+    durable.period.periodKey === expected.period.periodKey &&
+    durable.idempotencyKey === expected.idempotencyKey &&
+    durable.userId === undefined &&
+    durable.subscriptionId === undefined &&
+    durable.status === "running" &&
+    durable.startedAt !== undefined &&
+    durable.completedAt === undefined &&
+    durable.failedAt === undefined &&
+    durable.readerSummaryId === undefined &&
+    durable.failureReason === undefined
+  );
+};
 
 class EmptyRecoveryPolicyRepository implements ReaderSummaryPolicyRepositoryPort {
   async save(): Promise<void> {}

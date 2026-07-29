@@ -541,7 +541,10 @@ export const assertReaderSummaryProductionRecoveryPostgresContract =
     assert(
       afterClaim.authorities === beforeClaim.authorities &&
         afterClaim.claims === beforeClaim.claims + 1 &&
-        afterClaim.jobs === beforeClaim.jobs + 1,
+        afterClaim.jobs === beforeClaim.jobs + 1 &&
+        afterClaim.artifacts === beforeClaim.artifacts &&
+        afterClaim.publications === beforeClaim.publications &&
+        afterClaim.receipts === beforeClaim.receipts,
       "pre-model authority/claim/job writes were not exact",
     );
     assert(
@@ -778,14 +781,20 @@ class PgPrismaClient {
 const recoveryWriteCounts = async (
   client: RecoveryPostgresClient,
 ): Promise<{
+  readonly artifacts: number;
   readonly authorities: number;
   readonly claims: number;
   readonly jobs: number;
+  readonly publications: number;
+  readonly receipts: number;
 }> => {
   const result = await client.query<{
+    artifacts: number;
     authorities: number;
     claims: number;
     jobs: number;
+    publications: number;
+    receipts: number;
   }>(`
     SELECT
       (
@@ -807,7 +816,25 @@ const recoveryWriteCounts = async (
           AND job.workspace_id = '${workspaceId}'
           AND job.idempotency_key LIKE
             'reader-summary-production-recovery:%'
-      ) AS jobs
+      ) AS jobs,
+      (
+        SELECT count(*)::INTEGER
+        FROM reader_summary_artifacts AS artifact
+        WHERE artifact.tenant_id = '${tenantId}'
+          AND artifact.workspace_id = '${workspaceId}'
+      ) AS artifacts,
+      (
+        SELECT count(*)::INTEGER
+        FROM reader_summary_publications AS publication
+        WHERE publication.tenant_id = '${tenantId}'
+          AND publication.workspace_id = '${workspaceId}'
+      ) AS publications,
+      (
+        SELECT count(*)::INTEGER
+        FROM reader_summary_recovery_receipts AS receipt
+        WHERE receipt.tenant_id = '${tenantId}'
+          AND receipt.workspace_id = '${workspaceId}'
+      ) AS receipts
     FROM idempotency_keys AS key
     WHERE key.tenant_id = '${tenantId}'
       AND key.workspace_id = '${workspaceId}'
@@ -817,9 +844,12 @@ const recoveryWriteCounts = async (
     throw new Error("Recovery write counts were unavailable");
   }
   return {
+    artifacts: Number(row.artifacts),
     authorities: Number(row.authorities),
     claims: Number(row.claims),
     jobs: Number(row.jobs),
+    publications: Number(row.publications),
+    receipts: Number(row.receipts),
   };
 };
 
