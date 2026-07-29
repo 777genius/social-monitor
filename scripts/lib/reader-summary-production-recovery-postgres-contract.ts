@@ -9,9 +9,7 @@ import {
   readerSummaryProductionRecoveryTenantId,
   readerSummaryProductionRecoveryWorkspaceId,
 } from "@social-monitor/summary/ports";
-import {
-  assertReaderSummaryProductionRecoveryCanonicalBounds,
-} from "./reader-summary-production-recovery-canonical-bounds-postgres-contract";
+import { assertReaderSummaryProductionRecoveryCanonicalBounds } from "./reader-summary-production-recovery-canonical-bounds-postgres-contract";
 type RecoveryExecutionGuardModule = Readonly<{
   PrismaReaderSummaryProductionRecoveryExecutionGuard: new (
     client: unknown,
@@ -72,6 +70,7 @@ export const readerSummaryProductionRecoveryFixtureScope = {
   workspaceId: readerSummaryProductionRecoveryWorkspaceId,
 } as const;
 const { tenantId, workspaceId } = readerSummaryProductionRecoveryFixtureScope;
+const legacyJul23CanonicalBoundsWrapper = "Invalid `prisma.$queryRaw()` invocation:\n\n\nRaw query failed. Code: `P0001`. Message: `weekly canonical JSON exceeds structural bounds`";
 const expectedRecoveryProviderCounts = [
   ["2026-07-23", "github-trending-page", 0, "historical_unavailable"],
   ["2026-07-23", "hacker-news", 100, "verified_existing"],
@@ -543,14 +542,14 @@ export const assertReaderSummaryProductionRecoveryPostgresContract =
     );
     const firstClaim = await firstGuard.claim({
       binding: leftBinding,
-      requestedUtcDate: "2026-07-24",
+      requestedUtcDate: "2026-07-23",
     });
     const afterClaim = await recoveryWriteCounts(params.auditor);
-    const remediationIds = readerSummaryProductionRecoveryQualityRemediationDayIds(leftBinding, "2026-07-24");
+    const remediationIds = readerSummaryProductionRecoveryQualityRemediationDayIds(leftBinding, "2026-07-23");
     const failed = await firstClient.$queryRaw<readonly { id: string }[]>`
       UPDATE reader_summary_jobs
       SET status = 'FAILED', failed_at = transaction_timestamp(),
-          failure_reason = 'weekly canonical JSON exceeds structural bounds',
+          failure_reason = ${legacyJul23CanonicalBoundsWrapper},
           updated_at = transaction_timestamp()
       WHERE id = ${remediationIds.readerSummaryJobId}::uuid
         AND status = 'RUNNING' AND reader_summary_artifact_id IS NULL
@@ -558,14 +557,14 @@ export const assertReaderSummaryProductionRecoveryPostgresContract =
     `;
     assert(failed.length === 1, "quality remediation failure fixture diverged");
     const resumedClaim = await secondGuard.claim(
-      { binding: rightBinding, requestedUtcDate: "2026-07-24" },
+      { binding: rightBinding, requestedUtcDate: "2026-07-23" },
     );
     const afterResume = await recoveryWriteCounts(params.auditor);
     let repeatedClaimError: unknown;
     try {
       await firstGuard.claim({
         binding: rightBinding,
-        requestedUtcDate: "2026-07-24",
+        requestedUtcDate: "2026-07-23",
       });
     } catch (error) {
       repeatedClaimError = error;
@@ -603,7 +602,7 @@ const seedLegacyRejectedModelClaim = async (
   client: PgPrismaClient,
   binding: ReaderSummaryProductionRecoveryAuthorityBinding,
 ): Promise<void> => {
-  const requestedUtcDate = "2026-07-24";
+  const requestedUtcDate = "2026-07-23";
   const day = binding.days.find(
     (candidate) => candidate.requestedUtcDate === requestedUtcDate,
   );
@@ -637,8 +636,8 @@ const seedLegacyRejectedModelClaim = async (
         artifact_payload, citations, quality_signals, created_at, updated_at
       ) VALUES (
         ${ids.readerSummaryId}::uuid, ${binding.tenantId}::uuid, ${binding.workspaceId}::uuid,
-        'workspace', 'workspace', 'daily', '2026-07-24T00:00:00Z'::timestamptz, '2026-07-25T00:00:00Z'::timestamptz,
-        'UTC', 'daily:2026-07-24T00:00:00.000Z:2026-07-25T00:00:00.000Z:UTC',
+        'workspace', 'workspace', 'daily', '2026-07-23T00:00:00Z'::timestamptz, '2026-07-24T00:00:00Z'::timestamptz,
+        'UTC', 'daily:2026-07-23T00:00:00.000Z:2026-07-24T00:00:00.000Z:UTC',
         'REJECTED', 1, 'quality-gate-fixture', 'quality-gate-fixture', 'Quality gate evidence',
         NULL, '{}'::jsonb, '[]'::jsonb, '{}'::jsonb, ${binding.lease.consumedAt}::timestamptz, ${binding.lease.consumedAt}::timestamptz
       )
@@ -652,9 +651,9 @@ const seedLegacyRejectedModelClaim = async (
       ) VALUES (
         ${ids.readerSummaryJobId}::uuid, ${binding.tenantId}::uuid,
         ${binding.workspaceId}::uuid, 'workspace', 'workspace', NULL,
-        'daily', '2026-07-24T00:00:00Z'::timestamptz,
-        '2026-07-25T00:00:00Z'::timestamptz, 'UTC',
-        'daily:2026-07-24T00:00:00.000Z:2026-07-25T00:00:00.000Z:UTC',
+        'daily', '2026-07-23T00:00:00Z'::timestamptz,
+        '2026-07-24T00:00:00Z'::timestamptz, 'UTC',
+        'daily:2026-07-23T00:00:00.000Z:2026-07-24T00:00:00.000Z:UTC',
         NULL, NULL, 'REJECTED',
         ${`reader-summary-production-recovery:${requestedUtcDate}:${day.canonicalSha256}`},
         ${binding.lease.consumedAt}::timestamptz,

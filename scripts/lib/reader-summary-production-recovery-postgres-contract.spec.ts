@@ -36,6 +36,11 @@ describe("reader summary production recovery PostgreSQL contract", () => {
       "scripts/lib/reader-summary-production-recovery-postgres-contract.ts"),
     "utf8",
   );
+  const replayGuard = readFileSync(
+    join(process.cwd(),
+      "scripts/lib/reader-summary-production-recovery-replay-guard.ts"),
+    "utf8",
+  );
 
   it("exports the real DB fixture and concurrency contract", () => {
     expect(seedReaderSummaryProductionRecoveryFixture).toBeInstanceOf(
@@ -45,15 +50,21 @@ describe("reader summary production recovery PostgreSQL contract", () => {
       .toBeInstanceOf(Function);
   });
 
-  it("contracts a fresh quality remediation canonical-bounds resume", () => {
+  it("contracts the exact Jul23 legacy-wrapper quality remediation resume", () => {
     expect(postgresContract).toContain(
       "reader-summary-production-recovery-model-quality-remediation-resume-v1",
+    );
+    expect(postgresContract).toContain(
+      "Invalid `prisma.$queryRaw()` invocation:\\n\\n\\nRaw query failed.",
     );
     expect(postgresContract).toContain(
       'resumedClaim === "resume-quality"',
     );
     expect(postgresContract).toContain(
       "quality-remediation-resume-v1 lease was already consumed",
+    );
+    expect(replayGuard).toContain(
+      "17318e621367dde799a0f55d635744baef8f7258041972b73c59b1f4584e4290",
     );
   });
 

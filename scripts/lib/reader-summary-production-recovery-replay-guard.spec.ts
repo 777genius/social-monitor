@@ -19,6 +19,9 @@ import {
 } from "./reader-summary-production-recovery-data";
 import { PrismaReaderSummaryProductionRecoveryExecutionGuard } from "./reader-summary-production-recovery-replay-guard";
 
+const legacyJul23CanonicalBoundsWrapper =
+  "Invalid `prisma.$queryRaw()` invocation:\n\n\nRaw query failed. Code: `P0001`. Message: `weekly canonical JSON exceeds structural bounds`";
+
 describe("PrismaReaderSummaryProductionRecoveryExecutionGuard", () => {
   it("reports replay only when the exact final receipt exists", async () => {
     const fixture = guardFixture([[{ replayed: true }]]);
@@ -199,6 +202,67 @@ describe("PrismaReaderSummaryProductionRecoveryExecutionGuard", () => {
       ),
     );
   });
+
+  it("resumes Jul23 quality remediation for the exact known legacy wrapper hash", async () => {
+    const requestedUtcDate = "2026-07-23";
+    expect(sha256(legacyJul23CanonicalBoundsWrapper)).toBe(
+      "17318e621367dde799a0f55d635744baef8f7258041972b73c59b1f4584e4290",
+    );
+    const fixture = guardFixture([
+      [{ replayed: false }],
+      [retryClaimRow(requestedUtcDate, "REJECTED")],
+      [
+        qualityRemediationClaimRow(
+          requestedUtcDate,
+          "FAILED",
+          legacyJul23CanonicalBoundsWrapper,
+        ),
+      ],
+      [],
+      [claimOutcome()],
+    ]);
+
+    await expect(claim(fixture.guard, requestedUtcDate)).resolves.toBe(
+      "resume-quality",
+    );
+    expect(fixture.queries.at(-1)).not.toContain(
+      "reader_summary_artifacts",
+    );
+    expect(fixture.queries.at(-1)).not.toContain("source_items");
+    expect(JSON.stringify(fixture.values.at(-1))).toContain(
+      "17318e621367dde799a0f55d635744baef8f7258041972b73c59b1f4584e4290",
+    );
+    expect(JSON.stringify(fixture.values.at(-1))).not.toContain(
+      legacyJul23CanonicalBoundsWrapper,
+    );
+  });
+
+  it.each([
+    ["2026-07-24", legacyJul23CanonicalBoundsWrapper],
+    ["2026-07-23", `${legacyJul23CanonicalBoundsWrapper}\n`],
+  ] as const)(
+    "rejects legacy wrapper reuse outside the exact Jul23 hash (%s)",
+    async (requestedUtcDate, failureReason) => {
+      const fixture = guardFixture([
+        [{ replayed: false }],
+        [retryClaimRow(requestedUtcDate, "REJECTED")],
+        [
+          qualityRemediationClaimRow(
+            requestedUtcDate,
+            "FAILED",
+            failureReason,
+          ),
+        ],
+      ]);
+
+      await expect(claim(fixture.guard, requestedUtcDate)).rejects.toThrow(
+        "quality-remediation-v1 lease was already consumed without final receipt",
+      );
+      expect(fixture.queries.every((sql) => !sql.includes("INSERT"))).toBe(
+        true,
+      );
+    },
+  );
 
   it("does not resume noncanonical or rejected quality remediation", async () => {
     const requestedUtcDate = "2026-07-23";

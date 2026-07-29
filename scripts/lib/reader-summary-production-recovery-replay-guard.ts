@@ -35,7 +35,6 @@ type QueryClient = Pick<PrismaSummaryClient, "$queryRaw">;
 export type ReaderSummaryProductionRecoveryExecutionGuardClient =
   QueryClient &
     Partial<Pick<PrismaTransactionalSummaryClient, "$transaction">>;
-
 type ExistingClaimRow = Readonly<{
   requestHash: string;
   responseStatus: number | null;
@@ -153,14 +152,12 @@ const recoveryModelClaimBoundaries: RecoveryModelClaimBoundaries =
     recollectionPerformed: false,
     providerWritePerformed: false,
   });
-
 export class PrismaReaderSummaryProductionRecoveryExecutionGuard
   implements ReaderSummaryProductionRecoveryExecutionGuard
 {
   constructor(
     private readonly client: ReaderSummaryProductionRecoveryExecutionGuardClient,
   ) {}
-
   async claim(params: {
     readonly binding: ReaderSummaryProductionRecoveryAuthorityBinding;
     readonly requestedUtcDate: ReaderSummaryProductionRecoveryDate;
@@ -474,7 +471,11 @@ const claimQualityRemediation = async (
         input.params.requestedUtcDate, input.day.canonicalSha256));
     if (
       status !== "FAILED" ||
-      !isCanonicalBoundsInfrastructureFailure(existing.jobFailureReason)
+      (!isCanonicalBoundsInfrastructureFailure(existing.jobFailureReason) &&
+        !isKnownLegacyQualityRemediationBoundsFailure(
+          input.params.requestedUtcDate,
+          existing.jobFailureReason,
+        ))
     ) {
       throw consumedLeaseError(
         input.params.requestedUtcDate,
@@ -827,13 +828,16 @@ const isQualityRejectedClaim = (
   row.artifactStatus === "REJECTED" &&
   (row.jobFailureReason ?? "").trim().length > 0;
 
-const isCanonicalBoundsInfrastructureFailure = (
+const isCanonicalBoundsInfrastructureFailure = (failureReason: string | null): boolean =>
+  failureReason?.trim() === "weekly canonical JSON exceeds structural bounds" ||
+  failureReason?.trim() === "weekly canonical JSON exceeds byte bounds";
+const isKnownLegacyQualityRemediationBoundsFailure = (
+  requestedUtcDate: ReaderSummaryProductionRecoveryDate,
   failureReason: string | null,
 ): boolean =>
-  failureReason?.trim() ===
-    "weekly canonical JSON exceeds structural bounds" ||
-  failureReason?.trim() === "weekly canonical JSON exceeds byte bounds";
-
+  requestedUtcDate === "2026-07-23" &&
+  sha256(failureReason ?? "") ===
+    "17318e621367dde799a0f55d635744baef8f7258041972b73c59b1f4584e4290";
 const consumedLeaseError = (
   requestedUtcDate: ReaderSummaryProductionRecoveryDate,
   identity:
