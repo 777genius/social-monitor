@@ -782,6 +782,14 @@ const assertRecoveryPersistenceFunctionDefinition = async (
       ) &&
       normalizedDefinition.includes(
         "jsonb_array_length(binding->'days') <> 6",
+      ) &&
+      (
+        normalizedDefinition.match(
+          /reader_summary_production_recovery_canonical_json"?\(v_evidence\)/gu,
+        ) ?? []
+      ).length === 2 &&
+      normalizedDefinition.includes(
+        '"reader_summary_weekly_canonical_json"(v_identity_body)',
       ),
     "production recovery persistence function is not the canonical six-day definition",
   );
@@ -793,6 +801,7 @@ const assertRecoveryAuthorityRuntimePrivileges = async (
   const result = await client.query<{
     readonly exact_function_execute: boolean;
     readonly least_privilege_tables: boolean;
+    readonly recovery_helper_is_private: boolean;
   }>(`
     SELECT
       has_function_privilege(
@@ -805,6 +814,11 @@ const assertRecoveryAuthorityRuntimePrivileges = async (
         'reader_summary_production_recovery_expected_counts_v2(date)',
         'EXECUTE'
       ) AS exact_function_execute,
+      NOT has_function_privilege(
+        current_user,
+        'reader_summary_production_recovery_canonical_json(jsonb)',
+        'EXECUTE'
+      ) AS recovery_helper_is_private,
       bool_and(
         has_any_column_privilege(current_user, authority_table, 'SELECT')
         AND NOT has_table_privilege(
@@ -838,6 +852,10 @@ const assertRecoveryAuthorityRuntimePrivileges = async (
   assert(
     privileges?.exact_function_execute === true,
     "production recovery runtime function ACL diverged",
+  );
+  assert(
+    privileges.recovery_helper_is_private === true,
+    "production recovery canonical helper ACL diverged",
   );
   assert(
     privileges.least_privilege_tables === true,
