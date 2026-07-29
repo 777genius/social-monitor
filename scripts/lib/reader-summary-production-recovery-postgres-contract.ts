@@ -59,6 +59,39 @@ export const readerSummaryProductionRecoveryFixtureScope = {
 const { tenantId, workspaceId } =
   readerSummaryProductionRecoveryFixtureScope;
 
+const expectedRecoveryProviderCounts = [
+  ["2026-07-23", "github-trending-page", 0, "historical_unavailable"],
+  ["2026-07-23", "hacker-news", 100, "verified_existing"],
+  ["2026-07-23", "reddit", 100, "verified_existing"],
+  ["2026-07-23", "rss", 78, "verified_existing"],
+  ["2026-07-23", "x-twitter", 67, "verified_existing"],
+  ["2026-07-24", "github-trending-page", 10, "verified_existing"],
+  ["2026-07-24", "hacker-news", 100, "verified_existing"],
+  ["2026-07-24", "reddit", 100, "verified_existing"],
+  ["2026-07-24", "rss", 68, "verified_existing"],
+  ["2026-07-24", "x-twitter", 73, "verified_existing"],
+  ["2026-07-25", "github-trending-page", 10, "verified_existing"],
+  ["2026-07-25", "hacker-news", 100, "verified_existing"],
+  ["2026-07-25", "reddit", 100, "verified_existing"],
+  ["2026-07-25", "rss", 63, "verified_existing"],
+  ["2026-07-25", "x-twitter", 96, "verified_existing"],
+  ["2026-07-26", "github-trending-page", 10, "verified_existing"],
+  ["2026-07-26", "hacker-news", 78, "verified_existing"],
+  ["2026-07-26", "reddit", 100, "verified_existing"],
+  ["2026-07-26", "rss", 62, "verified_existing"],
+  ["2026-07-26", "x-twitter", 94, "verified_existing"],
+  ["2026-07-27", "github-trending-page", 10, "verified_existing"],
+  ["2026-07-27", "hacker-news", 87, "verified_existing"],
+  ["2026-07-27", "reddit", 99, "verified_existing"],
+  ["2026-07-27", "rss", 47, "verified_existing"],
+  ["2026-07-27", "x-twitter", 58, "verified_existing"],
+  ["2026-07-28", "github-trending-page", 0, "historical_unavailable"],
+  ["2026-07-28", "hacker-news", 0, "historical_unavailable"],
+  ["2026-07-28", "reddit", 0, "historical_unavailable"],
+  ["2026-07-28", "rss", 31, "partial_existing"],
+  ["2026-07-28", "x-twitter", 27, "partial_existing"],
+] as const;
+
 export const seedReaderSummaryProductionRecoveryFixture = async (
   client: RecoveryPostgresClient,
 ): Promise<void> => {
@@ -233,7 +266,7 @@ export const seedReaderSummaryProductionRecoveryFixture = async (
           WHEN DATE '2026-07-25' THEN 63
           WHEN DATE '2026-07-26' THEN 62
           WHEN DATE '2026-07-27' THEN 47
-          ELSE 29
+          ELSE 31
         END
       ),
       (
@@ -388,6 +421,7 @@ export const assertReaderSummaryProductionRecoveryPostgresContract =
     first: RecoveryPostgresClient;
     second: RecoveryPostgresClient;
   }>): Promise<void> => {
+    await assertRecoveryExpectedCountsFunctionDefinition(params.auditor);
     await assertRecoveryPersistenceFunctionDefinition(params.first);
     await assertRecoveryAuthorityRuntimePrivileges(params.first);
     const firstClient = new PgPrismaClient(params.first);
@@ -457,7 +491,7 @@ export const assertReaderSummaryProductionRecoveryPostgresContract =
           ["2026-07-25", 369, "verified_existing"],
           ["2026-07-26", 344, "verified_existing"],
           ["2026-07-27", 301, "verified_existing"],
-          ["2026-07-28", 56, "historical_unavailable"],
+          ["2026-07-28", 58, "historical_unavailable"],
         ]),
       "production recovery immutable daily counts diverged",
     );
@@ -514,6 +548,80 @@ export const assertReaderSummaryProductionRecoveryPostgresContract =
       "claim replay performed a write",
     );
   };
+
+const assertRecoveryExpectedCountsFunctionDefinition = async (
+  client: RecoveryPostgresClient,
+): Promise<void> => {
+  const result = await client.query<{
+    readonly bounds_are_closed: boolean;
+    readonly definition: string;
+    readonly expected_counts: unknown;
+    readonly is_immutable: boolean;
+    readonly is_invoker: boolean;
+    readonly is_parallel_safe: boolean;
+    readonly is_strict: boolean;
+  }>(`
+    SELECT
+      pg_get_functiondef(authority.oid) AS definition,
+      authority.provolatile = 'i' AS is_immutable,
+      authority.proisstrict AS is_strict,
+      authority.proparallel = 's' AS is_parallel_safe,
+      NOT authority.prosecdef AS is_invoker,
+      "reader_summary_production_recovery_expected_counts_v2"(
+        DATE '2026-07-22'
+      ) IS NULL
+      AND "reader_summary_production_recovery_expected_counts_v2"(
+        DATE '2026-07-29'
+      ) IS NULL AS bounds_are_closed,
+      (
+        SELECT jsonb_agg(
+          jsonb_build_array(
+            day.requested_utc_date,
+            provider.entry->>'providerKey',
+            (provider.entry->>'count')::INTEGER,
+            provider.entry->>'evidenceState'
+          )
+          ORDER BY day.requested_utc_date, provider.ordinal
+        )
+        FROM unnest(ARRAY[
+          DATE '2026-07-23',
+          DATE '2026-07-24',
+          DATE '2026-07-25',
+          DATE '2026-07-26',
+          DATE '2026-07-27',
+          DATE '2026-07-28'
+        ]) AS day(requested_utc_date)
+        CROSS JOIN LATERAL jsonb_array_elements(
+          "reader_summary_production_recovery_expected_counts_v2"(
+            day.requested_utc_date
+          )
+        ) WITH ORDINALITY AS provider(entry, ordinal)
+      ) AS expected_counts
+    FROM pg_proc AS authority
+    WHERE authority.oid =
+      'reader_summary_production_recovery_expected_counts_v2(date)'
+        ::regprocedure
+  `);
+  const authority = result.rows[0];
+  const normalizedDefinition = authority?.definition.replace(/\s+/gu, " ");
+  const definitionHasExactDates =
+    normalizedDefinition !== undefined &&
+    readerSummaryProductionRecoveryRequestedUtcDates.every((date) =>
+      normalizedDefinition.includes(`'${date}'::date`),
+    );
+  assert(
+    authority?.is_immutable === true &&
+      authority.is_strict === true &&
+      authority.is_parallel_safe === true &&
+      authority.is_invoker === true &&
+      authority.bounds_are_closed === true &&
+      definitionHasExactDates &&
+      normalizedDefinition?.includes("feed_items") === false &&
+      JSON.stringify(authority.expected_counts) ===
+        JSON.stringify(expectedRecoveryProviderCounts),
+    "production recovery expected-counts function is not the exact six-day DB authority",
+  );
+};
 
 const assertRecoveryPersistenceFunctionDefinition = async (
   client: RecoveryPostgresClient,
