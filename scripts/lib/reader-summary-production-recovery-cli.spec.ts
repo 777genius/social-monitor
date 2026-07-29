@@ -6,7 +6,10 @@ import type {
   ReaderSummaryProductionRecoveryAuthorityPort,
 } from "@social-monitor/summary/ports";
 import { productionRecoveryBinding } from "../../libs/summary/adapters/persistence/prisma/prisma-reader-summary-production-recovery-authority.spec-support";
-import { ReaderSummaryJob } from "@social-monitor/summary/domain";
+import {
+  ReaderSummaryJob,
+  ReaderSummaryPublicationPolicy,
+} from "@social-monitor/summary/domain";
 import { ExecuteReaderSummaryJobUseCase } from "@social-monitor/summary/features/execute-reader-summary-job/execute-reader-summary-job.use-case";
 import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 
@@ -18,10 +21,14 @@ import {
 } from "../recover-reader-summary-production";
 import {
   executeProductionRecoveryDay,
+  historicalGitHubOmissionForRecoveryDay,
   readerSummaryProductionRecoveryDayIds,
   readerSummaryProductionRecoveryJobIdempotencyKey,
+  readerSummaryProductionRecoveryResumeDayIds,
+  readerSummaryProductionRecoveryResumeJobIdempotencyKey,
   runReaderSummaryProductionRecovery,
   type ReaderSummaryProductionRecoveryExecutionGuard,
+  type ReaderSummaryProductionRecoverySkipEvidence,
 } from "./reader-summary-production-recovery-cli";
 import {
   dayAuthority,
@@ -132,6 +139,82 @@ describe("reader summary production recovery", () => {
       "2026-07-28",
     ]);
     expect(result.dayResults[1]?.outcome).toBe("replayed");
+  });
+
+  it("executes only the narrow resume identity and reports rejected evidence", async () => {
+    const binding = productionRecoveryBinding();
+    const rejectedIds = readerSummaryProductionRecoveryDayIds(
+      binding,
+      "2026-07-23",
+    );
+    const rejected: ReaderSummaryProductionRecoverySkipEvidence = {
+      reason: "existing_quality_rejection",
+      terminalStatus: "REJECTED",
+      readerSummaryJobId: rejectedIds.readerSummaryJobId,
+      readerSummaryId: rejectedIds.readerSummaryId,
+      failureReason: "quality gate fixture",
+    };
+    const identities: string[] = [];
+    const result = await runReaderSummaryProductionRecovery({
+      apply: true,
+      authority: fakeAuthority("prepared"),
+      executionGuard: guard((date) =>
+        date === "2026-07-23"
+          ? rejected
+          : date === "2026-07-24"
+            ? "resume"
+            : "replayed",
+      ),
+      executeDay: async ({ requestedUtcDate, executionIdentity }) => {
+        identities.push(executionIdentity);
+        return { requestedUtcDate, outcome: "published" };
+      },
+    });
+
+    expect(identities).toEqual(["resume-v1"]);
+    expect(result.dayResults[0]).toMatchObject({
+      outcome: "skipped",
+      skipEvidence: rejected,
+    });
+  });
+
+  it("authorizes historical GitHub omission only from exact DB authority", () => {
+    const binding = productionRecoveryBinding();
+    expect(
+      historicalGitHubOmissionForRecoveryDay(binding, "2026-07-23"),
+    ).toEqual({
+      reason:
+        binding.days[0].githubEvidence.mode === "historical_unavailable"
+          ? binding.days[0].githubEvidence.authorization.reason
+          : "",
+      authorizedAt: new Date(binding.lease.issuedAt),
+    });
+    expect(
+      historicalGitHubOmissionForRecoveryDay(binding, "2026-07-24"),
+    ).toBeUndefined();
+    const day = binding.days[0];
+    const forged = {
+      ...binding,
+      days: [
+        {
+          ...day,
+          githubEvidence: day.githubEvidence.mode === "historical_unavailable"
+            ? {
+                ...day.githubEvidence,
+                authorization: {
+                  ...day.githubEvidence.authorization,
+                  authorizationId:
+                    "reader_summary.production_recovery.github.2026-07-28.v2",
+                },
+              }
+            : day.githubEvidence,
+        },
+        ...binding.days.slice(1),
+      ],
+    } as unknown as ReaderSummaryProductionRecoveryAuthorityBinding;
+    expect(() =>
+      historicalGitHubOmissionForRecoveryDay(forged, "2026-07-23"),
+    ).toThrow("historical GitHub omission authority is not exact");
   });
 
   it("discovers only the canonical Jul23-Jul28 DB-owned scope", async () => {
@@ -341,8 +424,10 @@ describe("reader summary production recovery", () => {
         const repositories = this as unknown as {
           readonly readerSummaryJobs: ReaderSummaryJobRepositoryPort;
           readonly readerSummaryArtifacts: ReaderSummaryArtifactRepositoryPort;
+          readonly historicalGitHubOmission: unknown;
         };
         expect(repositories.readerSummaryArtifacts).toBe(durableArtifacts);
+        expect(repositories.historicalGitHubOmission).toBeUndefined();
         const staged = await repositories.readerSummaryJobs.findById({
           tenantId: command.tenantId,
           workspaceId: command.workspaceId,
@@ -397,6 +482,104 @@ describe("reader summary production recovery", () => {
     expect(durableJobs.findById).toHaveBeenCalledTimes(1);
     expect(savedJobs[0]?.toSnapshot().status).toBe("failed");
   });
+
+  it("wires exact historical omission while leaving publication policy intact", async () => {
+    const binding = productionRecoveryBinding();
+    const requestedUtcDate = "2026-07-23";
+    const ids = readerSummaryProductionRecoveryDayIds(
+      binding,
+      requestedUtcDate,
+    );
+    jest
+      .spyOn(ExecuteReaderSummaryJobUseCase.prototype, "execute")
+      .mockImplementation(async function () {
+        const configured = this as unknown as {
+          readonly historicalGitHubOmission: unknown;
+          readonly publicationPolicy: unknown;
+        };
+        expect(configured.historicalGitHubOmission).toEqual(
+          historicalGitHubOmissionForRecoveryDay(
+            binding,
+            requestedUtcDate,
+          ),
+        );
+        expect(configured.publicationPolicy).toBeInstanceOf(
+          ReaderSummaryPublicationPolicy,
+        );
+        return {
+          ok: true,
+          value: {
+            readerSummaryJobId: ids.readerSummaryJobId,
+            readerSummaryId: ids.readerSummaryId,
+            status: "completed",
+          },
+        };
+      });
+
+    await expect(
+      executeProductionRecoveryDay({
+        binding,
+        requestedUtcDate,
+        model: {} as never,
+        finalization: {} as never,
+        durableJobs: {} as never,
+        durableArtifacts: {} as never,
+        feedItems: {} as never,
+        githubProjectionReader: {} as never,
+        ids: { generate: () => "unused-id" },
+        clock: { now: () => new Date(binding.lease.consumedAt) },
+      }),
+    ).resolves.toMatchObject({ readerSummaryId: ids.readerSummaryId });
+  });
+
+  it("uses separate IDs and idempotency only when resume is explicit", async () => {
+    const binding = productionRecoveryBinding();
+    const requestedUtcDate = "2026-07-24";
+    const resumeIds = readerSummaryProductionRecoveryResumeDayIds(
+      binding,
+      requestedUtcDate,
+    );
+    const day = dayAuthority(binding, requestedUtcDate);
+    jest
+      .spyOn(ExecuteReaderSummaryJobUseCase.prototype, "execute")
+      .mockImplementation(async function (_command) {
+        const jobs = this as unknown as {
+          readonly readerSummaryJobs: ReaderSummaryJobRepositoryPort;
+        };
+        const staged = await jobs.readerSummaryJobs.findById({
+          tenantId: tenantId(binding.tenantId),
+          workspaceId: workspaceId(binding.workspaceId),
+          readerSummaryJobId: resumeIds.readerSummaryJobId,
+        });
+        expect(staged?.toSnapshot().idempotencyKey).toBe(
+          readerSummaryProductionRecoveryResumeJobIdempotencyKey(
+            requestedUtcDate,
+            day.canonicalSha256,
+          ),
+        );
+        return {
+          ok: true,
+          value: {
+            readerSummaryJobId: resumeIds.readerSummaryJobId,
+            readerSummaryId: resumeIds.readerSummaryId,
+            status: "completed",
+          },
+        };
+      });
+    await executeProductionRecoveryDay({
+      binding,
+      requestedUtcDate,
+      executionIdentity: "resume-v1",
+      model: {} as never,
+      finalization: {} as never,
+      durableJobs: {} as never,
+      durableArtifacts: {} as never,
+      feedItems: {} as never,
+      githubProjectionReader: {} as never,
+      ids: { generate: () => "unused-id" },
+      clock: { now: () => new Date(binding.lease.consumedAt) },
+    });
+  });
 });
 
 const fakeAuthority = (
@@ -425,10 +608,16 @@ const fakeAuthority = (
 const guard = (
   outcome:
     | "execute"
+    | "resume"
     | "replayed"
+    | ReaderSummaryProductionRecoverySkipEvidence
     | ((
         date: ReaderSummaryProductionRecoveryAuthorityBinding["requestedUtcDates"][number],
-      ) => "execute" | "replayed"),
+      ) =>
+        | "execute"
+        | "resume"
+        | "replayed"
+        | ReaderSummaryProductionRecoverySkipEvidence),
 ): ReaderSummaryProductionRecoveryExecutionGuard & { calls(): number } => {
   let callCount = 0;
   return {

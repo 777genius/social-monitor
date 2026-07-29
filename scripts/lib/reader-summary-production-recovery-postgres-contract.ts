@@ -1,6 +1,5 @@
 import { createRequire } from "node:module";
 import { join } from "node:path";
-
 import { PrismaReaderSummaryProductionRecoveryAuthority } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-production-recovery-authority";
 import type { PrismaSummaryClient } from "@social-monitor/summary/adapters/persistence/prisma/prisma-summary-client";
 import {
@@ -13,25 +12,27 @@ import {
 import {
   assertReaderSummaryProductionRecoveryCanonicalBounds,
 } from "./reader-summary-production-recovery-canonical-bounds-postgres-contract";
-
 type RecoveryExecutionGuardModule = Readonly<{
   PrismaReaderSummaryProductionRecoveryExecutionGuard: new (
     client: unknown,
   ) => Readonly<{
     claim(params: {
       readonly binding: ReaderSummaryProductionRecoveryAuthorityBinding;
-      readonly requestedUtcDate:
-        ReaderSummaryProductionRecoveryRequestedUtcDate;
-    }): Promise<"execute" | "replayed">;
+      readonly requestedUtcDate: ReaderSummaryProductionRecoveryRequestedUtcDate;
+    }): Promise<"execute" | "resume" | "replayed" | object>;
   }>;
 }>;
+type RecoveryIds = Readonly<{ readerSummaryJobId: string; readerSummaryId: string }>;
 type RecoveryCliModule = Readonly<{
+  readerSummaryProductionRecoveryDayIds(
+    binding: ReaderSummaryProductionRecoveryAuthorityBinding,
+    requestedUtcDate: ReaderSummaryProductionRecoveryRequestedUtcDate,
+  ): RecoveryIds;
   readerSummaryProductionRecoveryLegacyDayIds(
     binding: ReaderSummaryProductionRecoveryAuthorityBinding,
     requestedUtcDate: ReaderSummaryProductionRecoveryRequestedUtcDate,
-  ): Readonly<{ readerSummaryJobId: string; readerSummaryId: string }>;
+  ): RecoveryIds;
 }>;
-
 const runtimeRequire = createRequire(join(process.cwd(), "package.json"));
 (
   process as NodeJS.Process & {
@@ -51,10 +52,12 @@ const { PrismaReaderSummaryProductionRecoveryExecutionGuard } =
   runtimeRequire(
     "./scripts/lib/reader-summary-production-recovery-replay-guard",
   ) as RecoveryExecutionGuardModule;
-const { readerSummaryProductionRecoveryLegacyDayIds } = runtimeRequire(
+const {
+  readerSummaryProductionRecoveryDayIds,
+  readerSummaryProductionRecoveryLegacyDayIds,
+} = runtimeRequire(
   "./scripts/lib/reader-summary-production-recovery-cli",
 ) as RecoveryCliModule;
-
 type QueryResult<TRow> = Readonly<{ rows: readonly TRow[] }>;
 export type RecoveryPostgresClient = Readonly<{
   query<TRow = Record<string, unknown>>(
@@ -67,10 +70,8 @@ export const readerSummaryProductionRecoveryFixtureScope = {
   tenantId: readerSummaryProductionRecoveryTenantId,
   workspaceId: readerSummaryProductionRecoveryWorkspaceId,
 } as const;
-
 const { tenantId, workspaceId } =
   readerSummaryProductionRecoveryFixtureScope;
-
 const expectedRecoveryProviderCounts = [
   ["2026-07-23", "github-trending-page", 0, "historical_unavailable"],
   ["2026-07-23", "hacker-news", 100, "verified_existing"],
@@ -103,7 +104,6 @@ const expectedRecoveryProviderCounts = [
   ["2026-07-28", "rss", 31, "partial_existing"],
   ["2026-07-28", "x-twitter", 107, "partial_existing"],
 ] as const;
-
 export const seedReaderSummaryProductionRecoveryFixture = async (
   client: RecoveryPostgresClient,
 ): Promise<void> => {
@@ -536,36 +536,51 @@ export const assertReaderSummaryProductionRecoveryPostgresContract =
     );
     await seedLegacyFailedModelClaim(firstClient, leftBinding);
     const beforeClaim = await recoveryWriteCounts(params.auditor);
-    const firstGuard =
-      new PrismaReaderSummaryProductionRecoveryExecutionGuard(
-        firstClient as never,
-      );
-    const secondGuard =
-      new PrismaReaderSummaryProductionRecoveryExecutionGuard(
-        secondClient as never,
-      );
+    const firstGuard = new PrismaReaderSummaryProductionRecoveryExecutionGuard(
+      firstClient as never,
+    );
+    const secondGuard = new PrismaReaderSummaryProductionRecoveryExecutionGuard(
+      secondClient as never,
+    );
     const firstClaim = await firstGuard.claim({
       binding: leftBinding,
       requestedUtcDate: "2026-07-24",
     });
     const afterClaim = await recoveryWriteCounts(params.auditor);
+    const retryIds =
+      readerSummaryProductionRecoveryDayIds(leftBinding, "2026-07-24");
+    const failed = await firstClient.$queryRaw<readonly { id: string }[]>`
+      UPDATE reader_summary_jobs
+      SET status = 'FAILED', failed_at = transaction_timestamp(),
+          failure_reason = 'weekly canonical JSON exceeds structural bounds',
+          updated_at = transaction_timestamp()
+      WHERE id = ${retryIds.readerSummaryJobId}::uuid
+        AND status = 'RUNNING' AND reader_summary_artifact_id IS NULL
+      RETURNING id::TEXT
+    `;
+    assert(failed.length === 1, "retry infra failure fixture diverged");
+    const resumedClaim = await secondGuard.claim(
+      { binding: rightBinding, requestedUtcDate: "2026-07-24" },
+    );
+    const afterResume = await recoveryWriteCounts(params.auditor);
     let repeatedClaimError: unknown;
     try {
-      await secondGuard.claim({
+      await firstGuard.claim({
         binding: rightBinding,
         requestedUtcDate: "2026-07-24",
       });
     } catch (error) {
       repeatedClaimError = error;
     }
-    const afterResume = await recoveryWriteCounts(params.auditor);
+    const afterReplay = await recoveryWriteCounts(params.auditor);
     assert(firstClaim === "execute", "first model claim did not win");
+    assert(resumedClaim === "resume", "failed retry did not resume narrowly");
     assert(
       repeatedClaimError instanceof Error &&
         repeatedClaimError.message.includes(
-          "retry lease was already consumed without final receipt",
+          "resume lease was already consumed without final receipt",
         ),
-      "consumed retry lease allowed a second model execution",
+      "consumed resume lease allowed another model execution",
     );
     assert(
       afterClaim.authorities === beforeClaim.authorities &&
@@ -577,9 +592,15 @@ export const assertReaderSummaryProductionRecoveryPostgresContract =
       "pre-model authority/claim/job writes were not exact",
     );
     assert(
-      JSON.stringify(afterResume) === JSON.stringify(afterClaim),
-      "claim resume performed a write",
+      afterResume.claims === afterClaim.claims + 1 &&
+        afterResume.jobs === afterClaim.jobs + 1 &&
+        afterResume.artifacts === afterClaim.artifacts &&
+        afterResume.publications === afterClaim.publications &&
+        afterResume.receipts === afterClaim.receipts,
+      "narrow resume claim/job writes were not exact",
     );
+    assert(JSON.stringify(afterReplay) === JSON.stringify(afterResume),
+      "consumed resume replay performed a write");
   };
 
 const seedLegacyFailedModelClaim = async (
@@ -923,7 +944,8 @@ const recoveryWriteCounts = async (
       count(*) FILTER (
         WHERE key."scope" IN (
           'reader-summary-production-recovery-model-v2',
-          'reader-summary-production-recovery-model-retry-v1'
+          'reader-summary-production-recovery-model-retry-v1',
+          'reader-summary-production-recovery-model-resume-v1'
         )
       )::INTEGER AS claims,
       (

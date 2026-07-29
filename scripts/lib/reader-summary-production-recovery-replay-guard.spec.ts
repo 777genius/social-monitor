@@ -4,6 +4,7 @@ import {
   readerSummaryProductionRecoveryDayIds,
   readerSummaryProductionRecoveryJobIdempotencyKey,
   readerSummaryProductionRecoveryLegacyDayIds,
+  readerSummaryProductionRecoveryResumeDayIds,
 } from "./reader-summary-production-recovery-cli";
 import {
   dayAuthority,
@@ -41,7 +42,7 @@ describe("PrismaReaderSummaryProductionRecoveryExecutionGuard", () => {
     expect(fixture.queries[3]).toContain('INSERT INTO "reader_summary_jobs"');
   });
 
-  it.each(["RUNNING", "FAILED", "REJECTED"] as const)(
+  it.each(["RUNNING", "FAILED"] as const)(
     "atomically supersedes a legacy %s attempt and creates one retry",
     async (jobStatus) => {
       const requestedUtcDate = "2026-07-25";
@@ -52,7 +53,6 @@ describe("PrismaReaderSummaryProductionRecoveryExecutionGuard", () => {
         [
           claimOutcome({
             staleJobSuperseded: jobStatus === "RUNNING",
-            rejectedArtifactSuperseded: jobStatus === "REJECTED",
           }),
         ],
       ]);
@@ -65,15 +65,62 @@ describe("PrismaReaderSummaryProductionRecoveryExecutionGuard", () => {
       expect(fixture.queries[3]).toContain(
         'RETURNING "reader_summary_jobs"."id"',
       );
-      expect(fixture.queries[3]).toContain("rejected_artifact AS");
-      expect(fixture.queries[3]).toContain(
-        'RETURNING "reader_summary_artifacts"."id"',
-      );
+      expect(fixture.queries[3]).not.toContain("reader_summary_artifacts");
       expect(fixture.queries[3]).not.toContain("source_items");
     },
   );
 
-  it("does not re-consume an existing retry lease without a receipt", async () => {
+  it("resumes only a consumed retry that failed on predecessor canonical bounds", async () => {
+    const requestedUtcDate = "2026-07-24";
+    const fixture = guardFixture([
+      [{ replayed: false }],
+      [retryClaimRow(requestedUtcDate, "FAILED")],
+      [],
+      [claimOutcome()],
+    ]);
+
+    await expect(claim(fixture.guard, requestedUtcDate)).resolves.toBe(
+      "resume",
+    );
+    expect(fixture.queries[3]).toContain('INSERT INTO "idempotency_keys"');
+    expect(fixture.queries[3]).toContain('INSERT INTO "reader_summary_jobs"');
+    expect(fixture.queries[3]).not.toContain("reader_summary_artifacts");
+  });
+
+  it.each(["legacy", "retry"] as const)(
+    "skips an existing %s rejected artifact without writes",
+    async (claimKind) => {
+      const requestedUtcDate = "2026-07-23";
+      const fixture = guardFixture([
+        [{ replayed: false }],
+        ...(claimKind === "retry"
+          ? [[retryClaimRow(requestedUtcDate, "REJECTED")]]
+          : [[], [legacyClaimRow(requestedUtcDate, "REJECTED")]]),
+      ]);
+
+      await expect(claim(fixture.guard, requestedUtcDate)).resolves.toEqual(
+        expect.objectContaining({
+          reason: "existing_quality_rejection",
+          terminalStatus: "REJECTED",
+          readerSummaryId:
+            claimKind === "retry"
+              ? readerSummaryProductionRecoveryDayIds(
+                  productionRecoveryBinding(),
+                  requestedUtcDate,
+                ).readerSummaryId
+              : readerSummaryProductionRecoveryLegacyDayIds(
+                  productionRecoveryBinding(),
+                  requestedUtcDate,
+                ).readerSummaryId,
+        }),
+      );
+      expect(fixture.queries.every((sql) => !sql.includes("INSERT"))).toBe(
+        true,
+      );
+    },
+  );
+
+  it("does not re-consume an existing running retry lease without a receipt", async () => {
     const requestedUtcDate = "2026-07-26";
     const fixture = guardFixture([
       [{ replayed: false }],
@@ -87,6 +134,53 @@ describe("PrismaReaderSummaryProductionRecoveryExecutionGuard", () => {
     expect(fixture.queries.every((sql) => !sql.includes("INSERT"))).toBe(
       true,
     );
+  });
+
+  it("rejects a failed retry outside the exact infrastructure allowlist", async () => {
+    const requestedUtcDate = "2026-07-24";
+    const fixture = guardFixture([
+      [{ replayed: false }],
+      [
+        retryClaimRow(
+          requestedUtcDate,
+          "FAILED",
+          "provider response was unavailable",
+        ),
+      ],
+    ]);
+
+    await expect(claim(fixture.guard, requestedUtcDate)).rejects.toThrow(
+      "retry lease was already consumed without final receipt",
+    );
+    expect(fixture.queries).toHaveLength(2);
+  });
+
+  it("keeps canonical retry-v1 unchanged and resume identity distinct", () => {
+    const binding = productionRecoveryBinding();
+    const requestedUtcDate = "2026-07-24";
+    const retryIds = readerSummaryProductionRecoveryDayIds(
+      binding,
+      requestedUtcDate,
+    );
+    expect(retryIds).toEqual({
+      readerSummaryJobId: "3f47d8c2-1d8b-494d-a102-0f754b74f758",
+      readerSummaryId: "20508fb3-dfc5-4451-a13b-033f473819ff",
+    });
+    expect(
+      readerSummaryProductionRecoveryJobIdempotencyKey(
+        requestedUtcDate,
+        dayAuthority(binding, requestedUtcDate).canonicalSha256,
+      ),
+    ).toBe(
+      "reader-summary-production-recovery-retry-v1:2026-07-24:" +
+        "da2c96da4b6ff19024b34eafce517a846fced2cf93d6fe876d27a3f2c30f0935",
+    );
+    expect(
+      readerSummaryProductionRecoveryResumeDayIds(
+        binding,
+        requestedUtcDate,
+      ),
+    ).not.toEqual(retryIds);
   });
 
   it("fails closed when legacy terminal authority is not exact", async () => {
@@ -150,12 +244,10 @@ const claimOutcome = (
   overrides: Partial<{
     claimed: boolean;
     staleJobSuperseded: boolean;
-    rejectedArtifactSuperseded: boolean;
   }> = {},
 ) => ({
   claimed: true,
   staleJobSuperseded: false,
-  rejectedArtifactSuperseded: false,
   ...overrides,
 });
 
@@ -197,6 +289,7 @@ const legacyClaimRow = (
 const retryClaimRow = (
   requestedUtcDate: ReaderSummaryProductionRecoveryDate,
   jobStatus: "RUNNING" | "REJECTED" | "FAILED",
+  failureReason?: string,
 ) => {
   const binding = productionRecoveryBinding();
   const day = dayAuthority(binding, requestedUtcDate);
@@ -213,6 +306,7 @@ const retryClaimRow = (
         requestedUtcDate,
         day.canonicalSha256,
       ),
+    failureReason,
     responsePayload: {
       schemaVersion:
         "reader_summary.production_recovery_model_retry_claim.v1",
@@ -242,6 +336,7 @@ const claimRow = (params: {
   jobStatus: "RUNNING" | "REJECTED" | "FAILED";
   jobIdempotencyKey: string;
   responsePayload: unknown;
+  failureReason?: string;
 }) => {
   const binding = productionRecoveryBinding();
   const day = dayAuthority(binding, params.requestedUtcDate);
@@ -269,6 +364,14 @@ const claimRow = (params: {
     jobFailedAt: terminal ? new Date(binding.lease.consumedAt) : null,
     jobReaderSummaryArtifactId:
       params.jobStatus === "REJECTED" ? params.ids.readerSummaryId : null,
-    jobFailureReason: terminal ? "terminal fixture" : null,
+    jobFailureReason: terminal
+      ? params.failureReason ??
+        (params.jobStatus === "FAILED"
+          ? "weekly canonical JSON exceeds structural bounds"
+          : "quality rejection fixture")
+      : null,
+    artifactId:
+      params.jobStatus === "REJECTED" ? params.ids.readerSummaryId : null,
+    artifactStatus: params.jobStatus === "REJECTED" ? "REJECTED" : null,
   };
 };

@@ -48,18 +48,34 @@ export type ReaderSummaryProductionRecoveryDayResult = Readonly<{
   outcome: "published" | "replayed" | "skipped";
   readerSummaryJobId?: string;
   readerSummaryId?: string;
+  skipEvidence?: ReaderSummaryProductionRecoverySkipEvidence;
+}>;
+
+export type ReaderSummaryProductionRecoveryExecutionIdentity =
+  | "retry-v1"
+  | "resume-v1";
+
+export type ReaderSummaryProductionRecoverySkipEvidence = Readonly<{
+  reason: "existing_quality_rejection";
+  terminalStatus: "REJECTED";
+  readerSummaryJobId: string;
+  readerSummaryId: string;
+  failureReason: string;
 }>;
 
 export type ReaderSummaryProductionRecoveryDayExecutor = (params: {
   readonly binding: ReaderSummaryProductionRecoveryAuthorityBinding;
   readonly requestedUtcDate: ReaderSummaryProductionRecoveryDate;
+  readonly executionIdentity: ReaderSummaryProductionRecoveryExecutionIdentity;
 }) => Promise<ReaderSummaryProductionRecoveryDayResult>;
 
 export type ReaderSummaryProductionRecoveryExecutionGuard = Readonly<{
   claim(params: {
     readonly binding: ReaderSummaryProductionRecoveryAuthorityBinding;
     readonly requestedUtcDate: ReaderSummaryProductionRecoveryDate;
-  }): Promise<"execute" | "replayed">;
+  }): Promise<
+    "execute" | "resume" | "replayed" | ReaderSummaryProductionRecoverySkipEvidence
+  >;
 }>;
 
 export type ReaderSummaryProductionRecoveryRunOptions = Readonly<{
@@ -91,25 +107,32 @@ export const runReaderSummaryProductionRecovery = async (
   }
   const dayResults: ReaderSummaryProductionRecoveryDayResult[] = [];
   for (const requestedUtcDate of readerSummaryProductionRecoveryDates) {
-    if (
-      (await options.executionGuard.claim({
-        binding,
-        requestedUtcDate,
-      })) === "replayed"
-    ) {
-      const ids = readerSummaryProductionRecoveryDayIds(
-        binding,
-        requestedUtcDate,
-      );
+    const claim = await options.executionGuard.claim({
+      binding,
+      requestedUtcDate,
+    });
+    if (claim === "replayed") {
       dayResults.push({
         requestedUtcDate,
         outcome: "replayed",
-        readerSummaryJobId: ids.readerSummaryJobId,
-        readerSummaryId: ids.readerSummaryId,
       });
       continue;
     }
-    dayResults.push(await options.executeDay({ binding, requestedUtcDate }));
+    if (typeof claim === "object") {
+      dayResults.push({
+        requestedUtcDate,
+        outcome: "skipped",
+        readerSummaryJobId: claim.readerSummaryJobId,
+        readerSummaryId: claim.readerSummaryId,
+        skipEvidence: claim,
+      });
+      continue;
+    }
+    dayResults.push(await options.executeDay({
+      binding,
+      requestedUtcDate,
+      executionIdentity: claim === "resume" ? "resume-v1" : "retry-v1",
+    }));
   }
   return { outcome: "applied", plan, dayResults };
 };
@@ -150,6 +173,24 @@ export const readerSummaryProductionRecoveryJobIdempotencyKey = (
 ): string =>
   `reader-summary-production-recovery-retry-v1:${requestedUtcDate}:${planSha256}`;
 
+export const readerSummaryProductionRecoveryResumeDayIds = (
+  binding: ReaderSummaryProductionRecoveryAuthorityBinding,
+  requestedUtcDate: ReaderSummaryProductionRecoveryDate,
+): Readonly<{ readerSummaryJobId: string; readerSummaryId: string }> => ({
+  readerSummaryJobId: deterministicUuid(
+    `reader-summary-production-recovery-resume-v1-job:${binding.recoveryId}:${requestedUtcDate}`,
+  ),
+  readerSummaryId: deterministicUuid(
+    `reader-summary-production-recovery-resume-v1-artifact:${binding.recoveryId}:${requestedUtcDate}`,
+  ),
+});
+
+export const readerSummaryProductionRecoveryResumeJobIdempotencyKey = (
+  requestedUtcDate: ReaderSummaryProductionRecoveryDate,
+  planSha256: string,
+): string =>
+  `reader-summary-production-recovery-resume-v1:${requestedUtcDate}:${planSha256}`;
+
 export type ProductionRecoveryDayExecutorDependencies = Readonly<{
   model: ReaderSummaryModelPort;
   finalization: ReaderSummaryRecoveryFinalizationPort;
@@ -170,7 +211,7 @@ export const createProductionRecoveryDayExecutor =
     >,
     persistence: PrismaSummaryClient,
   ): ReaderSummaryProductionRecoveryDayExecutor =>
-  async ({ binding, requestedUtcDate }) =>
+  async ({ binding, requestedUtcDate, executionIdentity }) =>
     executeProductionRecoveryDay({
       ...dependencies,
       durableJobs: new PrismaReaderSummaryJobRepository(persistence),
@@ -179,6 +220,7 @@ export const createProductionRecoveryDayExecutor =
       ),
       binding,
       requestedUtcDate,
+      executionIdentity,
     });
 
 export const executeProductionRecoveryDay = async (
@@ -186,14 +228,21 @@ export const executeProductionRecoveryDay = async (
     Readonly<{
       binding: ReaderSummaryProductionRecoveryAuthorityBinding;
       requestedUtcDate: ReaderSummaryProductionRecoveryDate;
+      executionIdentity?: ReaderSummaryProductionRecoveryExecutionIdentity;
     }>,
 ): Promise<ReaderSummaryProductionRecoveryDayResult> => {
   const day = dayAuthority(params.binding, params.requestedUtcDate);
   const period = periodForRecoveryDate(params.requestedUtcDate);
-  const ids = readerSummaryProductionRecoveryDayIds(
-    params.binding,
-    params.requestedUtcDate,
-  );
+  const resume = params.executionIdentity === "resume-v1";
+  const ids = resume
+    ? readerSummaryProductionRecoveryResumeDayIds(
+        params.binding,
+        params.requestedUtcDate,
+      )
+    : readerSummaryProductionRecoveryDayIds(
+        params.binding,
+        params.requestedUtcDate,
+      );
   const jobId = ids.readerSummaryJobId;
   const readerSummaryId = ids.readerSummaryId;
   const expectedJob = ReaderSummaryJob.request({
@@ -202,10 +251,15 @@ export const executeProductionRecoveryDay = async (
     workspaceId: workspaceId(params.binding.workspaceId),
     scope: { type: "workspace" },
     period,
-    idempotencyKey: readerSummaryProductionRecoveryJobIdempotencyKey(
-      params.requestedUtcDate,
-      day.canonicalSha256,
-    ),
+    idempotencyKey: resume
+      ? readerSummaryProductionRecoveryResumeJobIdempotencyKey(
+          params.requestedUtcDate,
+          day.canonicalSha256,
+        )
+      : readerSummaryProductionRecoveryJobIdempotencyKey(
+          params.requestedUtcDate,
+          day.canonicalSha256,
+        ),
     requestedAt: params.clock.now(),
   });
   const jobs = new PreclaimedRecoveryJobRepository(
@@ -238,7 +292,10 @@ export const executeProductionRecoveryDay = async (
     new BuildReaderSummaryTopicMapUseCase(),
     undefined,
     params.githubProjectionReader,
-    undefined,
+    historicalGitHubOmissionForRecoveryDay(
+      params.binding,
+      params.requestedUtcDate,
+    ),
   );
   const result = await execute.execute({
     tenantId: tenantId(params.binding.tenantId),
@@ -255,6 +312,49 @@ export const executeProductionRecoveryDay = async (
     readerSummaryJobId: result.value.readerSummaryJobId,
     readerSummaryId: result.value.readerSummaryId,
   };
+};
+
+export const historicalGitHubOmissionForRecoveryDay = (
+  binding: ReaderSummaryProductionRecoveryAuthorityBinding,
+  requestedUtcDate: ReaderSummaryProductionRecoveryDate,
+): Readonly<{ reason: string; authorizedAt: Date }> | undefined => {
+  const day = dayAuthority(binding, requestedUtcDate);
+  if (day.githubEvidence.mode === "verified_existing") {
+    return undefined;
+  }
+  const authorization = day.githubEvidence.authorization;
+  const githubCounts = day.providerCounts.filter(
+    (count) => count.providerKey === "github-trending-page",
+  );
+  const githubCount = githubCounts[0];
+  const authorizedAt = new Date(authorization.authorizedAt);
+  const period = periodForRecoveryDate(requestedUtcDate);
+  if (
+    day.githubEvidence.schemaVersion !==
+      "reader_summary.production_recovery_github_evidence.v2" ||
+    day.githubEvidence.providerKey !== "github-trending-page" ||
+    day.githubEvidence.requestedUtcDate !== requestedUtcDate ||
+    day.githubEvidence.evidenceCount !== 0 ||
+    day.providerEvidence["github-trending-page"].length !== 0 ||
+    githubCounts.length !== 1 ||
+    githubCount?.count !== 0 ||
+    githubCount.evidenceState !== "historical_unavailable" ||
+    day.period.startedAt !== period.startedAt.toISOString() ||
+    day.period.endedAt !== period.endedAt.toISOString() ||
+    day.period.timezone !== "UTC" ||
+    authorization.authorizationId !==
+      `reader_summary.production_recovery.github.${requestedUtcDate}.v2` ||
+    authorization.authorizedAt !== binding.lease.issuedAt ||
+    authorization.authorizedAt !== binding.lease.consumedAt ||
+    !Number.isFinite(authorizedAt.getTime()) ||
+    authorizedAt.getTime() < period.endedAt.getTime() ||
+    authorization.reason.trim().length === 0
+  ) {
+    throw new Error(
+      `Reader summary production recovery ${requestedUtcDate} historical GitHub omission authority is not exact`,
+    );
+  }
+  return { reason: authorization.reason.trim(), authorizedAt };
 };
 
 class ProductionRecoveryEvidenceSelector

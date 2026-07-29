@@ -606,11 +606,11 @@ async function main(): Promise<void> {
         `date=${day.requestedUtcDate}`,
         `outcome=${day.outcome}`,
         day.readerSummaryJobId === undefined
-          ? undefined
-          : `job=${day.readerSummaryJobId}`,
+          ? undefined : `job=${day.readerSummaryJobId}`,
         day.readerSummaryId === undefined
-          ? undefined
-          : `artifact=${day.readerSummaryId}`,
+          ? undefined : `artifact=${day.readerSummaryId}`,
+        day.skipEvidence === undefined ? undefined
+          : `evidence=${day.skipEvidence.reason}:${day.skipEvidence.terminalStatus}`,
       ]
         .filter((part): part is string => part !== undefined)
         .join(" "),

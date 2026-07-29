@@ -16,7 +16,10 @@ import {
   readerSummaryProductionRecoveryDayIds,
   readerSummaryProductionRecoveryJobIdempotencyKey,
   readerSummaryProductionRecoveryLegacyDayIds,
+  readerSummaryProductionRecoveryResumeDayIds,
+  readerSummaryProductionRecoveryResumeJobIdempotencyKey,
   type ReaderSummaryProductionRecoveryExecutionGuard,
+  type ReaderSummaryProductionRecoverySkipEvidence,
 } from "./reader-summary-production-recovery-cli";
 import {
   dayAuthority,
@@ -52,12 +55,13 @@ type ExistingClaimRow = Readonly<{
   jobFailedAt: Date | null;
   jobReaderSummaryArtifactId: string | null;
   jobFailureReason: string | null;
+  artifactId: string | null;
+  artifactStatus: string | null;
 }>;
 type ReceiptRow = Readonly<{ replayed: boolean }>;
 type ClaimRow = Readonly<{
   claimed: boolean;
   staleJobSuperseded: boolean;
-  rejectedArtifactSuperseded: boolean;
 }>;
 type LegacyRecoveryModelClaimPayload = Readonly<{
   schemaVersion: "reader_summary.production_recovery_model_claim.v1";
@@ -98,9 +102,29 @@ type RetryRecoveryModelClaimPayload = Readonly<{
     providerWritePerformed: false;
   }>;
 }>;
+type ResumeRecoveryModelClaimPayload = Readonly<{
+  schemaVersion: "reader_summary.production_recovery_model_resume_claim.v1";
+  recoveryId: string;
+  tenantId: string;
+  workspaceId: string;
+  requestedUtcDate: ReaderSummaryProductionRecoveryDate;
+  readerSummaryJobId: string;
+  readerSummaryArtifactId: string;
+  planSha256s: readonly [string, string];
+  providerEvidenceSha256: string;
+  supersedes: Readonly<{
+    readerSummaryJobId: string;
+    readerSummaryArtifactId: null;
+    terminalStatus: "FAILED";
+    infrastructureFailure: "postgres_canonical_bounds";
+    failureReasonSha256: string;
+  }>;
+  boundaries: RetryRecoveryModelClaimPayload["boundaries"];
+}>;
 
 const legacyClaimScope = "reader-summary-production-recovery-model-v2";
 const retryClaimScope = "reader-summary-production-recovery-model-retry-v1";
+const resumeClaimScope = "reader-summary-production-recovery-model-resume-v1";
 const transactionOptions: PrismaSummaryTransactionOptions = Object.freeze({
   maxWait: 30_000,
   timeout: 300_000,
@@ -116,7 +140,7 @@ export class PrismaReaderSummaryProductionRecoveryExecutionGuard
   async claim(params: {
     readonly binding: ReaderSummaryProductionRecoveryAuthorityBinding;
     readonly requestedUtcDate: ReaderSummaryProductionRecoveryDate;
-  }): Promise<"execute" | "replayed"> {
+  }): ReturnType<ReaderSummaryProductionRecoveryExecutionGuard["claim"]> {
     return withPrismaWriteRetry(() =>
       runSerializableReaderSummaryTransaction(
         this.client as PrismaSummaryClient,
@@ -148,154 +172,110 @@ export class PrismaReaderSummaryProductionRecoveryExecutionGuard
           );
           if (existingRetry !== undefined) {
             assertConsumedRetryClaim(existingRetry, params, ids, day);
-            throw new Error(
-              "Reader summary production recovery retry lease was already consumed without final receipt",
+            const retryStatus = assertExactClaimedJob(
+              existingRetry,
+              params,
+              ids,
+              readerSummaryProductionRecoveryJobIdempotencyKey(
+                params.requestedUtcDate,
+                day.canonicalSha256,
+              ),
             );
+            if (retryStatus === "REJECTED") {
+              return qualityRejectionSkip(existingRetry);
+            }
+            if (
+              retryStatus !== "FAILED" ||
+              !isCanonicalBoundsInfrastructureFailure(
+                existingRetry.jobFailureReason,
+              )
+            ) {
+              throw new Error(
+                "Reader summary production recovery retry lease was already consumed without final receipt",
+              );
+            }
+            const resumeIds = readerSummaryProductionRecoveryResumeDayIds(
+              params.binding,
+              params.requestedUtcDate,
+            );
+            const existingResume = await readClaim(
+              prisma,
+              params,
+              resumeClaimScope,
+              resumeIds,
+            );
+            if (existingResume !== undefined) {
+              const resumePayload = resumeRecoveryModelClaimPayload(
+                params,
+                resumeIds,
+                day,
+                existingRetry,
+              );
+              assertExactClaim(
+                existingResume,
+                resumePayload,
+                day.canonicalSha256,
+              );
+              const resumeStatus = assertExactClaimedJob(
+                existingResume,
+                params,
+                resumeIds,
+                readerSummaryProductionRecoveryResumeJobIdempotencyKey(
+                  params.requestedUtcDate,
+                  day.canonicalSha256,
+                ),
+              );
+              if (resumeStatus === "REJECTED") {
+                return qualityRejectionSkip(existingResume);
+              }
+              throw new Error(
+                "Reader summary production recovery resume lease was already consumed without final receipt",
+              );
+            }
+            await persistModelClaim(prisma, {
+              params,
+              day,
+              ids: resumeIds,
+              scope: resumeClaimScope,
+              payload: resumeRecoveryModelClaimPayload(
+                params,
+                resumeIds,
+                day,
+                existingRetry,
+              ),
+              jobIdempotencyKey:
+                readerSummaryProductionRecoveryResumeJobIdempotencyKey(
+                  params.requestedUtcDate,
+                  day.canonicalSha256,
+                ),
+              staleJobId: null,
+            });
+            return "resume";
+          }
+          const legacy = await readAndVerifyLegacyClaim(prisma, params, day);
+          if (legacy?.jobStatus === "REJECTED") {
+            return qualityRejectionSkip(legacy);
           }
           const retryClaim = retryRecoveryModelClaimPayload(
             params,
             ids,
             day,
-            await readAndVerifyLegacyClaim(prisma, params, day),
+            legacy,
           );
-          const period = periodForRecoveryDate(params.requestedUtcDate);
-          const serializedClaim = JSON.stringify(retryClaim);
-          const claimId = deterministicClaimUuid(
-            params.binding.recoveryId,
-            params.requestedUtcDate,
-          );
-          const jobIdempotencyKey =
-            readerSummaryProductionRecoveryJobIdempotencyKey(
-              params.requestedUtcDate,
-              day.canonicalSha256,
-            );
-          const supersededJobId =
-            retryClaim.supersedes?.readerSummaryJobId ?? null;
-          const supersededArtifactId =
-            retryClaim.supersedes?.readerSummaryArtifactId ?? null;
-          const supersededStatus =
-            retryClaim.supersedes?.terminalStatus ?? null;
-          const rows = await prisma.$queryRaw<readonly ClaimRow[]>`
-            WITH claimed AS (
-              INSERT INTO "idempotency_keys" (
-                "id", "tenant_id", "workspace_id", "scope", "key",
-                "request_hash", "response_status", "response_payload",
-                "expires_at", "created_at"
-              ) VALUES (
-                ${claimId}::uuid,
-                ${params.binding.tenantId}::uuid,
-                ${params.binding.workspaceId}::uuid,
-                ${retryClaimScope},
-                ${params.requestedUtcDate},
-                ${day.canonicalSha256},
-                102,
-                ${serializedClaim}::jsonb,
-                NULL,
-                transaction_timestamp()
-              )
-              ON CONFLICT ("tenant_id", "workspace_id", "scope", "key")
-              DO NOTHING
-              RETURNING "id"
-            ),
-            stale_job AS (
-              UPDATE "reader_summary_jobs"
-              SET "status" = 'FAILED',
-                  "failed_at" = transaction_timestamp(),
-                  "failure_reason" =
-                    'Superseded stale production recovery model execution',
-                  "updated_at" = transaction_timestamp()
-              FROM claimed
-              WHERE ${supersededStatus}::TEXT = 'RUNNING'
-                AND "reader_summary_jobs"."id" =
-                  ${supersededJobId}::uuid
-                AND "reader_summary_jobs"."tenant_id" =
-                  ${params.binding.tenantId}::uuid
-                AND "reader_summary_jobs"."workspace_id" =
-                  ${params.binding.workspaceId}::uuid
-                AND "reader_summary_jobs"."status" = 'RUNNING'
-                AND "reader_summary_jobs"."started_at" <=
-                  transaction_timestamp() - INTERVAL '1 hour'
-                AND "reader_summary_jobs"."completed_at" IS NULL
-                AND "reader_summary_jobs"."failed_at" IS NULL
-                AND "reader_summary_jobs"."reader_summary_artifact_id" IS NULL
-              RETURNING "reader_summary_jobs"."id"
-            ),
-            rejected_artifact AS (
-              UPDATE "reader_summary_artifacts"
-              SET "status" = 'SUPERSEDED',
-                  "updated_at" = transaction_timestamp()
-              FROM claimed
-              WHERE ${supersededStatus}::TEXT = 'REJECTED'
-                AND "reader_summary_artifacts"."id" =
-                  ${supersededArtifactId}::uuid
-                AND "reader_summary_artifacts"."tenant_id" =
-                  ${params.binding.tenantId}::uuid
-                AND "reader_summary_artifacts"."workspace_id" =
-                  ${params.binding.workspaceId}::uuid
-                AND "reader_summary_artifacts"."status" = 'REJECTED'
-              RETURNING "reader_summary_artifacts"."id"
-            ),
-            job AS (
-              INSERT INTO "reader_summary_jobs" (
-                "id", "tenant_id", "workspace_id", "scope_type",
-                "scope_key", "interest_id", "cadence",
-                "period_started_at", "period_ended_at", "period_timezone",
-                "period_key", "user_id", "subscription_id", "status",
-                "idempotency_key", "requested_at", "started_at",
-                "completed_at", "failed_at", "reader_summary_artifact_id",
-                "failure_reason", "created_at", "updated_at"
-              )
-              SELECT
-                ${ids.readerSummaryJobId}::uuid,
-                ${params.binding.tenantId}::uuid,
-                ${params.binding.workspaceId}::uuid,
-                'workspace',
-                'workspace',
-                NULL,
-                'daily',
-                ${period.startedAt},
-                ${period.endedAt},
-                'UTC',
-                ${period.periodKey},
-                NULL,
-                NULL,
-                'RUNNING',
-                ${jobIdempotencyKey},
-                transaction_timestamp(),
-                transaction_timestamp(),
-                NULL,
-                NULL,
-                NULL,
-                NULL,
-                transaction_timestamp(),
-                transaction_timestamp()
-              FROM claimed
-              RETURNING "id"
-            )
-            SELECT
-              (SELECT count(*) FROM claimed) = 1
-              AND (SELECT count(*) FROM job) = 1 AS "claimed",
-              (SELECT count(*) FROM stale_job) = 1
-                AS "staleJobSuperseded",
-              (SELECT count(*) FROM rejected_artifact) = 1
-                AS "rejectedArtifactSuperseded"
-          `;
-          const claimed = rows[0];
-          if (
-            rows.length !== 1 ||
-            claimed?.claimed !== true ||
-            claimed.staleJobSuperseded !==
-              (supersededStatus === "RUNNING") ||
-            claimed.rejectedArtifactSuperseded !==
-              (supersededStatus === "REJECTED")
-          ) {
-            throw Object.assign(
-              new Error(
-                "Reader summary production recovery concurrent model claim requires a fresh snapshot",
+          await persistModelClaim(prisma, {
+            params,
+            day,
+            ids,
+            scope: retryClaimScope,
+            payload: retryClaim,
+            jobIdempotencyKey:
+              readerSummaryProductionRecoveryJobIdempotencyKey(
+                params.requestedUtcDate,
+                day.canonicalSha256,
               ),
-              { code: "40001" },
-            );
-          }
+            staleJobId:
+              legacy?.jobStatus === "RUNNING" ? legacy.jobId : null,
+          });
           return "execute";
         },
         transactionOptions,
@@ -303,6 +283,116 @@ export class PrismaReaderSummaryProductionRecoveryExecutionGuard
     );
   }
 }
+
+const persistModelClaim = async (
+  prisma: QueryClient,
+  input: Readonly<{
+    params: {
+      readonly binding: ReaderSummaryProductionRecoveryAuthorityBinding;
+      readonly requestedUtcDate: ReaderSummaryProductionRecoveryDate;
+    };
+    day: ReturnType<typeof dayAuthority>;
+    ids: Readonly<{ readerSummaryJobId: string; readerSummaryId: string }>;
+    scope: string;
+    payload: RetryRecoveryModelClaimPayload | ResumeRecoveryModelClaimPayload;
+    jobIdempotencyKey: string;
+    staleJobId: string | null;
+  }>,
+): Promise<void> => {
+  const period = periodForRecoveryDate(input.params.requestedUtcDate);
+  const serializedClaim = JSON.stringify(input.payload);
+  const claimId = deterministicClaimUuid(
+    input.scope,
+    input.params.binding.recoveryId,
+    input.params.requestedUtcDate,
+  );
+  const rows = await prisma.$queryRaw<readonly ClaimRow[]>`
+    WITH claimed AS (
+      INSERT INTO "idempotency_keys" (
+        "id", "tenant_id", "workspace_id", "scope", "key",
+        "request_hash", "response_status", "response_payload",
+        "expires_at", "created_at"
+      ) VALUES (
+        ${claimId}::uuid,
+        ${input.params.binding.tenantId}::uuid,
+        ${input.params.binding.workspaceId}::uuid,
+        ${input.scope},
+        ${input.params.requestedUtcDate},
+        ${input.day.canonicalSha256},
+        102,
+        ${serializedClaim}::jsonb,
+        NULL,
+        transaction_timestamp()
+      )
+      ON CONFLICT ("tenant_id", "workspace_id", "scope", "key")
+      DO NOTHING
+      RETURNING "id"
+    ),
+    stale_job AS (
+      UPDATE "reader_summary_jobs"
+      SET "status" = 'FAILED',
+          "failed_at" = transaction_timestamp(),
+          "failure_reason" =
+            'Superseded stale production recovery model execution',
+          "updated_at" = transaction_timestamp()
+      FROM claimed
+      WHERE ${input.staleJobId}::uuid IS NOT NULL
+        AND "reader_summary_jobs"."id" = ${input.staleJobId}::uuid
+        AND "reader_summary_jobs"."tenant_id" =
+          ${input.params.binding.tenantId}::uuid
+        AND "reader_summary_jobs"."workspace_id" =
+          ${input.params.binding.workspaceId}::uuid
+        AND "reader_summary_jobs"."status" = 'RUNNING'
+        AND "reader_summary_jobs"."started_at" <=
+          transaction_timestamp() - INTERVAL '1 hour'
+        AND "reader_summary_jobs"."completed_at" IS NULL
+        AND "reader_summary_jobs"."failed_at" IS NULL
+        AND "reader_summary_jobs"."reader_summary_artifact_id" IS NULL
+      RETURNING "reader_summary_jobs"."id"
+    ),
+    job AS (
+      INSERT INTO "reader_summary_jobs" (
+        "id", "tenant_id", "workspace_id", "scope_type",
+        "scope_key", "interest_id", "cadence",
+        "period_started_at", "period_ended_at", "period_timezone",
+        "period_key", "user_id", "subscription_id", "status",
+        "idempotency_key", "requested_at", "started_at",
+        "completed_at", "failed_at", "reader_summary_artifact_id",
+        "failure_reason", "created_at", "updated_at"
+      )
+      SELECT
+        ${input.ids.readerSummaryJobId}::uuid,
+        ${input.params.binding.tenantId}::uuid,
+        ${input.params.binding.workspaceId}::uuid,
+        'workspace', 'workspace', NULL, 'daily',
+        ${period.startedAt}, ${period.endedAt}, 'UTC',
+        ${period.periodKey}, NULL, NULL, 'RUNNING',
+        ${input.jobIdempotencyKey},
+        transaction_timestamp(), transaction_timestamp(),
+        NULL, NULL, NULL, NULL,
+        transaction_timestamp(), transaction_timestamp()
+      FROM claimed
+      RETURNING "id"
+    )
+    SELECT
+      (SELECT count(*) FROM claimed) = 1
+      AND (SELECT count(*) FROM job) = 1 AS "claimed",
+      (SELECT count(*) FROM stale_job) = 1 AS "staleJobSuperseded"
+  `;
+  const claimed = rows[0];
+  if (
+    rows.length !== 1 ||
+    claimed?.claimed !== true ||
+    claimed.staleJobSuperseded !== (input.staleJobId !== null)
+  ) {
+    throw Object.assign(
+      new Error(
+        "Reader summary production recovery concurrent model claim requires a fresh snapshot",
+      ),
+      { code: "40001" },
+    );
+  }
+};
 
 const hasFinalReceipt = async (
   prisma: QueryClient,
@@ -370,12 +460,18 @@ const readClaim = async (
       job."failed_at" AS "jobFailedAt",
       job."reader_summary_artifact_id"::TEXT AS
         "jobReaderSummaryArtifactId",
-      job."failure_reason" AS "jobFailureReason"
+      job."failure_reason" AS "jobFailureReason",
+      artifact."id"::TEXT AS "artifactId",
+      artifact."status"::TEXT AS "artifactStatus"
     FROM "idempotency_keys" AS claim
     LEFT JOIN "reader_summary_jobs" AS job
       ON job."id" = ${ids.readerSummaryJobId}::uuid
       AND job."tenant_id" = claim."tenant_id"
       AND job."workspace_id" = claim."workspace_id"
+    LEFT JOIN "reader_summary_artifacts" AS artifact
+      ON artifact."id" = job."reader_summary_artifact_id"
+      AND artifact."tenant_id" = job."tenant_id"
+      AND artifact."workspace_id" = job."workspace_id"
     WHERE claim."tenant_id" = ${params.binding.tenantId}::uuid
       AND claim."workspace_id" = ${params.binding.workspaceId}::uuid
       AND claim."scope" = ${scope}
@@ -394,7 +490,8 @@ const assertExactClaim = (
   row: ExistingClaimRow,
   exactClaim:
     | LegacyRecoveryModelClaimPayload
-    | RetryRecoveryModelClaimPayload,
+    | RetryRecoveryModelClaimPayload
+    | ResumeRecoveryModelClaimPayload,
   planSha256: string,
 ): void => {
   if (
@@ -451,14 +548,20 @@ const readAndVerifyLegacyClaim = async (
     (row.jobStatus === "RUNNING" &&
       (row.jobFailedAt !== null ||
         row.jobReaderSummaryArtifactId !== null ||
-        row.jobFailureReason !== null)) ||
+        row.jobFailureReason !== null ||
+        row.artifactId !== null ||
+        row.artifactStatus !== null)) ||
     (row.jobStatus === "FAILED" &&
       (row.jobFailedAt === null ||
         row.jobReaderSummaryArtifactId !== null ||
-        (row.jobFailureReason ?? "").trim().length === 0)) ||
+        (row.jobFailureReason ?? "").trim().length === 0 ||
+        row.artifactId !== null ||
+        row.artifactStatus !== null)) ||
     (row.jobStatus === "REJECTED" &&
       (row.jobFailedAt === null ||
         row.jobReaderSummaryArtifactId !== ids.readerSummaryId ||
+        row.artifactId !== ids.readerSummaryId ||
+        row.artifactStatus !== "REJECTED" ||
         (row.jobFailureReason ?? "").trim().length === 0)) ||
     !["RUNNING", "FAILED", "REJECTED"].includes(row.jobStatus ?? "");
   if (commonInvalid || statusInvalid) {
@@ -526,6 +629,76 @@ const assertConsumedRetryClaim = (
   );
 };
 
+const assertExactClaimedJob = (
+  row: ExistingClaimRow,
+  params: {
+    readonly binding: ReaderSummaryProductionRecoveryAuthorityBinding;
+    readonly requestedUtcDate: ReaderSummaryProductionRecoveryDate;
+  },
+  ids: Readonly<{ readerSummaryJobId: string; readerSummaryId: string }>,
+  jobIdempotencyKey: string,
+): "RUNNING" | "FAILED" | "REJECTED" => {
+  const period = periodForRecoveryDate(params.requestedUtcDate);
+  const commonInvalid =
+    row.jobId !== ids.readerSummaryJobId ||
+    row.jobScopeType !== "workspace" ||
+    row.jobScopeKey !== "workspace" ||
+    row.jobInterestId !== null ||
+    row.jobCadence !== "daily" ||
+    row.jobPeriodStartedAt?.getTime() !== period.startedAt.getTime() ||
+    row.jobPeriodEndedAt?.getTime() !== period.endedAt.getTime() ||
+    row.jobPeriodTimezone !== "UTC" ||
+    row.jobPeriodKey !== period.periodKey ||
+    row.jobUserId !== null ||
+    row.jobSubscriptionId !== null ||
+    row.jobIdempotencyKey !== jobIdempotencyKey ||
+    row.jobStartedAt === null ||
+    row.jobCompletedAt !== null;
+  const statusInvalid =
+    (row.jobStatus === "RUNNING" &&
+      (row.jobFailedAt !== null ||
+        row.jobReaderSummaryArtifactId !== null ||
+        row.jobFailureReason !== null ||
+        row.artifactId !== null ||
+        row.artifactStatus !== null)) ||
+    (row.jobStatus === "FAILED" &&
+      (row.jobFailedAt === null ||
+        row.jobReaderSummaryArtifactId !== null ||
+        (row.jobFailureReason ?? "").trim().length === 0 ||
+        row.artifactId !== null ||
+        row.artifactStatus !== null)) ||
+    (row.jobStatus === "REJECTED" &&
+      (row.jobFailedAt === null ||
+        row.jobReaderSummaryArtifactId !== ids.readerSummaryId ||
+        row.artifactId !== ids.readerSummaryId ||
+        row.artifactStatus !== "REJECTED" ||
+        (row.jobFailureReason ?? "").trim().length === 0)) ||
+    !["RUNNING", "FAILED", "REJECTED"].includes(row.jobStatus ?? "");
+  if (commonInvalid || statusInvalid) {
+    throw new Error(
+      "Reader summary production recovery existing model claim job diverged",
+    );
+  }
+  return row.jobStatus as "RUNNING" | "FAILED" | "REJECTED";
+};
+
+const qualityRejectionSkip = (
+  row: ExistingClaimRow,
+): ReaderSummaryProductionRecoverySkipEvidence => ({
+  reason: "existing_quality_rejection",
+  terminalStatus: "REJECTED",
+  readerSummaryJobId: row.jobId!,
+  readerSummaryId: row.jobReaderSummaryArtifactId!,
+  failureReason: row.jobFailureReason!,
+});
+
+const isCanonicalBoundsInfrastructureFailure = (
+  failureReason: string | null,
+): boolean =>
+  failureReason?.trim() ===
+    "weekly canonical JSON exceeds structural bounds" ||
+  failureReason?.trim() === "weekly canonical JSON exceeds byte bounds";
+
 const legacyRecoveryModelClaimPayload = (
   params: {
     readonly binding: ReaderSummaryProductionRecoveryAuthorityBinding;
@@ -588,14 +761,49 @@ const retryRecoveryModelClaimPayload = (
   },
 });
 
+const resumeRecoveryModelClaimPayload = (
+  params: {
+    readonly binding: ReaderSummaryProductionRecoveryAuthorityBinding;
+    readonly requestedUtcDate: ReaderSummaryProductionRecoveryDate;
+  },
+  ids: ReturnType<typeof readerSummaryProductionRecoveryResumeDayIds>,
+  day: ReturnType<typeof dayAuthority>,
+  retry: ExistingClaimRow,
+): ResumeRecoveryModelClaimPayload => ({
+  schemaVersion: "reader_summary.production_recovery_model_resume_claim.v1",
+  recoveryId: params.binding.recoveryId,
+  tenantId: params.binding.tenantId,
+  workspaceId: params.binding.workspaceId,
+  requestedUtcDate: params.requestedUtcDate,
+  readerSummaryJobId: ids.readerSummaryJobId,
+  readerSummaryArtifactId: ids.readerSummaryId,
+  planSha256s: day.planSha256s,
+  providerEvidenceSha256: day.providerEvidenceSha256,
+  supersedes: {
+    readerSummaryJobId: retry.jobId!,
+    readerSummaryArtifactId: null,
+    terminalStatus: "FAILED",
+    infrastructureFailure: "postgres_canonical_bounds",
+    failureReasonSha256: createHash("sha256")
+      .update(retry.jobFailureReason!.trim())
+      .digest("hex"),
+  },
+  boundaries: {
+    stage: "pre_model",
+    leaseConsumed: true,
+    modelCallPerformed: false,
+    recollectionPerformed: false,
+    providerWritePerformed: false,
+  },
+});
+
 const deterministicClaimUuid = (
+  scope: string,
   recoveryId: string,
   date: string,
 ): string => {
   const hash = createHash("sha256")
-    .update(
-      `reader-summary-production-recovery-retry-v1-claim:${recoveryId}:${date}`,
-    )
+    .update(`${scope}-claim:${recoveryId}:${date}`)
     .digest("hex");
   return `${hash.slice(0, 8)}-${hash.slice(8, 12)}-5${hash.slice(13, 16)}-8${hash.slice(17, 20)}-${hash.slice(20, 32)}`;
 };
