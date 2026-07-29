@@ -6,6 +6,7 @@ import type { PrismaSummaryClient } from "@social-monitor/summary/adapters/persi
 import {
   type ReaderSummaryProductionRecoveryAuthorityBinding,
   type ReaderSummaryProductionRecoveryRequestedUtcDate,
+  readerSummaryProductionRecoveryRequestedUtcDates,
   readerSummaryProductionRecoveryTenantId,
   readerSummaryProductionRecoveryWorkspaceId,
 } from "@social-monitor/summary/ports";
@@ -387,6 +388,7 @@ export const assertReaderSummaryProductionRecoveryPostgresContract =
     first: RecoveryPostgresClient;
     second: RecoveryPostgresClient;
   }>): Promise<void> => {
+    await assertRecoveryPersistenceFunctionDefinition(params.first);
     await assertRecoveryAuthorityRuntimePrivileges(params.first);
     const firstClient = new PgPrismaClient(params.first);
     const secondClient = new PgPrismaClient(params.second);
@@ -403,6 +405,31 @@ export const assertReaderSummaryProductionRecoveryPostgresContract =
     ]);
     const leftBinding = firstAuthority.readVerifiedBinding(left.authority);
     const rightBinding = secondAuthority.readVerifiedBinding(right.authority);
+    assert(
+      JSON.stringify(Object.keys(leftBinding).sort()) ===
+        JSON.stringify(
+          [
+            "boundaries",
+            "canonicalSha256",
+            "days",
+            "dryRunCanonicalSha256s",
+            "identity",
+            "lease",
+            "recoveryId",
+            "requestedUtcDates",
+            "schemaVersion",
+            "tenantId",
+            "workspaceId",
+          ].sort(),
+        ) &&
+        JSON.stringify(leftBinding.requestedUtcDates) ===
+          JSON.stringify(
+            readerSummaryProductionRecoveryRequestedUtcDates,
+          ) &&
+        leftBinding.days.length ===
+          readerSummaryProductionRecoveryRequestedUtcDates.length,
+      "production recovery canonical six-day binding shape diverged",
+    );
     assert(
       leftBinding.canonicalSha256 === rightBinding.canonicalSha256,
       "concurrent authority callers diverged",
@@ -487,6 +514,36 @@ export const assertReaderSummaryProductionRecoveryPostgresContract =
       "claim replay performed a write",
     );
   };
+
+const assertRecoveryPersistenceFunctionDefinition = async (
+  client: RecoveryPostgresClient,
+): Promise<void> => {
+  const result = await client.query<{ readonly definition: string }>(`
+    SELECT pg_get_functiondef(
+      'persist_reader_summary_production_recovery_v2(jsonb)'::regprocedure
+    ) AS definition
+  `);
+  const normalizedDefinition = result.rows[0]?.definition.replace(
+    /\s+/gu,
+    " ",
+  );
+  const requestedDates = readerSummaryProductionRecoveryRequestedUtcDates
+    .map((date) => `'${date}'`)
+    .join(", ");
+  assert(
+    normalizedDefinition?.includes(
+      "jsonb_object_length(binding) <> 11",
+    ) === true &&
+      normalizedDefinition.includes(
+        "binding->'requestedUtcDates' IS DISTINCT FROM " +
+          `jsonb_build_array( ${requestedDates} )`,
+      ) &&
+      normalizedDefinition.includes(
+        "jsonb_array_length(binding->'days') <> 6",
+      ),
+    "production recovery persistence function is not the canonical six-day definition",
+  );
+};
 
 const assertRecoveryAuthorityRuntimePrivileges = async (
   client: RecoveryPostgresClient,
