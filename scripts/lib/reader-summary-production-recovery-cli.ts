@@ -122,12 +122,33 @@ export const readerSummaryProductionRecoveryDayIds = (
   readerSummaryId: string;
 }> => ({
   readerSummaryJobId: deterministicUuid(
+    `reader-summary-production-recovery-retry-v1-job:${binding.recoveryId}:${requestedUtcDate}`,
+  ),
+  readerSummaryId: deterministicUuid(
+    `reader-summary-production-recovery-retry-v1-artifact:${binding.recoveryId}:${requestedUtcDate}`,
+  ),
+});
+
+export const readerSummaryProductionRecoveryLegacyDayIds = (
+  binding: ReaderSummaryProductionRecoveryAuthorityBinding,
+  requestedUtcDate: ReaderSummaryProductionRecoveryDate,
+): Readonly<{
+  readerSummaryJobId: string;
+  readerSummaryId: string;
+}> => ({
+  readerSummaryJobId: deterministicUuid(
     `reader-summary-production-recovery-job:${binding.recoveryId}:${requestedUtcDate}`,
   ),
   readerSummaryId: deterministicUuid(
     `reader-summary-production-recovery-artifact:${binding.recoveryId}:${requestedUtcDate}`,
   ),
 });
+
+export const readerSummaryProductionRecoveryJobIdempotencyKey = (
+  requestedUtcDate: ReaderSummaryProductionRecoveryDate,
+  planSha256: string,
+): string =>
+  `reader-summary-production-recovery-retry-v1:${requestedUtcDate}:${planSha256}`;
 
 export type ProductionRecoveryDayExecutorDependencies = Readonly<{
   model: ReaderSummaryModelPort;
@@ -181,7 +202,10 @@ export const executeProductionRecoveryDay = async (
     workspaceId: workspaceId(params.binding.workspaceId),
     scope: { type: "workspace" },
     period,
-    idempotencyKey: `reader-summary-production-recovery:${params.requestedUtcDate}:${day.canonicalSha256}`,
+    idempotencyKey: readerSummaryProductionRecoveryJobIdempotencyKey(
+      params.requestedUtcDate,
+      day.canonicalSha256,
+    ),
     requestedAt: params.clock.now(),
   });
   const jobs = new PreclaimedRecoveryJobRepository(

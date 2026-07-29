@@ -19,6 +19,7 @@ import {
 import {
   executeProductionRecoveryDay,
   readerSummaryProductionRecoveryDayIds,
+  readerSummaryProductionRecoveryJobIdempotencyKey,
   runReaderSummaryProductionRecovery,
   type ReaderSummaryProductionRecoveryExecutionGuard,
 } from "./reader-summary-production-recovery-cli";
@@ -168,7 +169,7 @@ describe("reader summary production recovery", () => {
   });
 
   it("sets exact tenant session scope and requires one runtime database", async () => {
-    const values: readonly unknown[][] = [];
+    const values: Array<readonly unknown[]> = [];
     await configureProductionRecoverySession(
       {
         $queryRaw: async <T>(
@@ -199,7 +200,9 @@ describe("reader summary production recovery", () => {
         env: {},
         sourceDatabaseUrl: "postgres://other",
         resolveRuntimePoolConfig: () => ({
+          processId: "admin-tool",
           connectionString: "postgres://same",
+          min: 0,
           max: 1,
           connectionTimeoutMillis: 1,
           idleTimeoutMillis: 1,
@@ -253,7 +256,13 @@ describe("reader summary production recovery", () => {
           return [] as T;
         }
         if (sql.includes("WITH claimed AS")) {
-          return [{ claimed: true }] as T;
+          return [
+            {
+              claimed: true,
+              staleJobSuperseded: false,
+              rejectedArtifactSuperseded: false,
+            },
+          ] as T;
         }
         throw new Error(`Unexpected claim SQL: ${sql}`);
       },
@@ -272,10 +281,10 @@ describe("reader summary production recovery", () => {
         requestedUtcDate: "2026-07-26",
       }),
     ).resolves.toBe("execute");
-    expect(calls[2]).toContain('INSERT INTO "idempotency_keys"');
-    expect(calls[2]).toContain('INSERT INTO "reader_summary_jobs"');
-    expect(calls[2]).toContain("'RUNNING'");
-    expect(calls[2]).toContain(
+    expect(calls[3]).toContain('INSERT INTO "idempotency_keys"');
+    expect(calls[3]).toContain('INSERT INTO "reader_summary_jobs"');
+    expect(calls[3]).toContain("'RUNNING'");
+    expect(calls[3]).toContain(
       "transaction_timestamp(), transaction_timestamp()",
     );
   });
@@ -295,11 +304,19 @@ describe("reader summary production recovery", () => {
       workspaceId: workspaceId(binding.workspaceId),
       scope: { type: "workspace" },
       period: periodForRecoveryDate(requestedUtcDate),
-      idempotencyKey: `reader-summary-production-recovery:${requestedUtcDate}:${day.canonicalSha256}`,
+      idempotencyKey: readerSummaryProductionRecoveryJobIdempotencyKey(
+        requestedUtcDate,
+        day.canonicalSha256,
+      ),
       requestedAt: claimedAt,
     }).start({ startedAt: claimedAt });
+    const savedJobs: Array<
+      Parameters<ReaderSummaryJobRepositoryPort["save"]>[0]
+    > = [];
     const durableJobs = {
-      save: jest.fn(async () => undefined),
+      save: jest.fn(async (job: (typeof savedJobs)[number]) => {
+        savedJobs.push(job);
+      }),
       findById: jest.fn(async () => durableJob),
       findByIdempotencyKey: jest.fn(async () => null),
       findRequested: jest.fn(async () => []),
@@ -317,7 +334,10 @@ describe("reader summary production recovery", () => {
 
     jest
       .spyOn(ExecuteReaderSummaryJobUseCase.prototype, "execute")
-      .mockImplementation(async function (command) {
+      .mockImplementation(async function (
+        this: ExecuteReaderSummaryJobUseCase,
+        command,
+      ) {
         const repositories = this as unknown as {
           readonly readerSummaryJobs: ReaderSummaryJobRepositoryPort;
           readonly readerSummaryArtifacts: ReaderSummaryArtifactRepositoryPort;
@@ -375,9 +395,7 @@ describe("reader summary production recovery", () => {
       readerSummaryId: ids.readerSummaryId,
     });
     expect(durableJobs.findById).toHaveBeenCalledTimes(1);
-    expect(
-      durableJobs.save.mock.calls[0]?.[0].toSnapshot().status,
-    ).toBe("failed");
+    expect(savedJobs[0]?.toSnapshot().status).toBe("failed");
   });
 });
 

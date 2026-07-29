@@ -25,6 +25,12 @@ type RecoveryExecutionGuardModule = Readonly<{
     }): Promise<"execute" | "replayed">;
   }>;
 }>;
+type RecoveryCliModule = Readonly<{
+  readerSummaryProductionRecoveryLegacyDayIds(
+    binding: ReaderSummaryProductionRecoveryAuthorityBinding,
+    requestedUtcDate: ReaderSummaryProductionRecoveryRequestedUtcDate,
+  ): Readonly<{ readerSummaryJobId: string; readerSummaryId: string }>;
+}>;
 
 const runtimeRequire = createRequire(join(process.cwd(), "package.json"));
 (
@@ -45,6 +51,9 @@ const { PrismaReaderSummaryProductionRecoveryExecutionGuard } =
   runtimeRequire(
     "./scripts/lib/reader-summary-production-recovery-replay-guard",
   ) as RecoveryExecutionGuardModule;
+const { readerSummaryProductionRecoveryLegacyDayIds } = runtimeRequire(
+  "./scripts/lib/reader-summary-production-recovery-cli",
+) as RecoveryCliModule;
 
 type QueryResult<TRow> = Readonly<{ rows: readonly TRow[] }>;
 export type RecoveryPostgresClient = Readonly<{
@@ -525,6 +534,7 @@ export const assertReaderSummaryProductionRecoveryPostgresContract =
       ),
       "daily two-pass plan hashes diverged",
     );
+    await seedLegacyFailedModelClaim(firstClient, leftBinding);
     const beforeClaim = await recoveryWriteCounts(params.auditor);
     const firstGuard =
       new PrismaReaderSummaryProductionRecoveryExecutionGuard(
@@ -539,15 +549,23 @@ export const assertReaderSummaryProductionRecoveryPostgresContract =
       requestedUtcDate: "2026-07-24",
     });
     const afterClaim = await recoveryWriteCounts(params.auditor);
-    const resumedClaim = await secondGuard.claim({
-      binding: rightBinding,
-      requestedUtcDate: "2026-07-24",
-    });
+    let repeatedClaimError: unknown;
+    try {
+      await secondGuard.claim({
+        binding: rightBinding,
+        requestedUtcDate: "2026-07-24",
+      });
+    } catch (error) {
+      repeatedClaimError = error;
+    }
     const afterResume = await recoveryWriteCounts(params.auditor);
     assert(firstClaim === "execute", "first model claim did not win");
     assert(
-      resumedClaim === "execute",
-      "exact unfinished model claim was not resumable",
+      repeatedClaimError instanceof Error &&
+        repeatedClaimError.message.includes(
+          "retry lease was already consumed without final receipt",
+        ),
+      "consumed retry lease allowed a second model execution",
     );
     assert(
       afterClaim.authorities === beforeClaim.authorities &&
@@ -563,6 +581,74 @@ export const assertReaderSummaryProductionRecoveryPostgresContract =
       "claim resume performed a write",
     );
   };
+
+const seedLegacyFailedModelClaim = async (
+  client: PgPrismaClient,
+  binding: ReaderSummaryProductionRecoveryAuthorityBinding,
+): Promise<void> => {
+  const requestedUtcDate = "2026-07-24";
+  const day = binding.days.find(
+    (candidate) => candidate.requestedUtcDate === requestedUtcDate,
+  );
+  assert(day !== undefined, "legacy model claim day authority is absent");
+  const ids = readerSummaryProductionRecoveryLegacyDayIds(
+    binding,
+    requestedUtcDate,
+  );
+  const payload = JSON.stringify({
+    schemaVersion: "reader_summary.production_recovery_model_claim.v1",
+    recoveryId: binding.recoveryId,
+    tenantId: binding.tenantId,
+    workspaceId: binding.workspaceId,
+    requestedUtcDate,
+    readerSummaryJobId: ids.readerSummaryJobId,
+    readerSummaryArtifactId: ids.readerSummaryId,
+    planSha256s: day.planSha256s,
+    providerEvidenceSha256: day.providerEvidenceSha256,
+    boundaries: {
+      stage: "pre_model",
+      modelCallPerformed: false,
+      recollectionPerformed: false,
+    },
+  });
+  await client.$queryRaw`
+    WITH job AS (
+      INSERT INTO reader_summary_jobs (
+        id, tenant_id, workspace_id, scope_type, scope_key, interest_id,
+        cadence, period_started_at, period_ended_at, period_timezone,
+        period_key, user_id, subscription_id, status, idempotency_key,
+        requested_at, started_at, completed_at, failed_at,
+        reader_summary_artifact_id, failure_reason, created_at, updated_at
+      ) VALUES (
+        ${ids.readerSummaryJobId}::uuid, ${binding.tenantId}::uuid,
+        ${binding.workspaceId}::uuid, 'workspace', 'workspace', NULL,
+        'daily', '2026-07-24T00:00:00Z'::timestamptz,
+        '2026-07-25T00:00:00Z'::timestamptz, 'UTC',
+        'daily:2026-07-24T00:00:00.000Z:2026-07-25T00:00:00.000Z:UTC',
+        NULL, NULL, 'FAILED',
+        ${`reader-summary-production-recovery:${requestedUtcDate}:${day.canonicalSha256}`},
+        ${binding.lease.consumedAt}::timestamptz,
+        ${binding.lease.consumedAt}::timestamptz, NULL,
+        ${binding.lease.consumedAt}::timestamptz, NULL,
+        'legacy model bound failure fixture',
+        ${binding.lease.consumedAt}::timestamptz,
+        ${binding.lease.consumedAt}::timestamptz
+      )
+      RETURNING id
+    )
+    INSERT INTO idempotency_keys (
+      id, tenant_id, workspace_id, scope, key, request_hash,
+      response_status, response_payload, expires_at, created_at
+    )
+    SELECT
+      '80000000-0000-4000-8000-000000000124'::uuid,
+      ${binding.tenantId}::uuid, ${binding.workspaceId}::uuid,
+      'reader-summary-production-recovery-model-v2',
+      ${requestedUtcDate}, ${day.canonicalSha256}, 102, ${payload}::jsonb,
+      NULL, ${binding.lease.consumedAt}::timestamptz
+    FROM job
+  `;
+};
 
 const assertRecoveryDaysDateConstraintDefinition = async (
   client: RecoveryPostgresClient,
@@ -817,8 +903,10 @@ const recoveryWriteCounts = async (
             'reader_summary.production_recovery_authority.v2'
       ) AS authorities,
       count(*) FILTER (
-        WHERE key."scope" =
-          'reader-summary-production-recovery-model-v2'
+        WHERE key."scope" IN (
+          'reader-summary-production-recovery-model-v2',
+          'reader-summary-production-recovery-model-retry-v1'
+        )
       )::INTEGER AS claims,
       (
         SELECT count(*)::INTEGER
@@ -826,7 +914,7 @@ const recoveryWriteCounts = async (
         WHERE job.tenant_id = '${tenantId}'
           AND job.workspace_id = '${workspaceId}'
           AND job.idempotency_key LIKE
-            'reader-summary-production-recovery:%'
+            'reader-summary-production-recovery%'
       ) AS jobs,
       (
         SELECT count(*)::INTEGER
