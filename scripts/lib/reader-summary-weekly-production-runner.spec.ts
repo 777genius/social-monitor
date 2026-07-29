@@ -377,6 +377,7 @@ function certificationFor(
 }
 
 function providerEvidence(date: string, providerKey: string, index: number) {
+  const isDurableRssStory = providerKey === "rss";
   return Object.freeze({
     citationId: `citation:${date}:${providerKey}`,
     citationField: "title" as const,
@@ -385,8 +386,12 @@ function providerEvidence(date: string, providerKey: string, index: number) {
     sourceBindingId: `binding:${date}:${index}`,
     providerKey,
     providerItemId: `provider-item:${date}:${index}`,
-    canonicalUrl: `https://example.com/${providerKey}/${date}/${index}`,
-    title: `Durable evidence ${providerKey} ${date}`,
+    canonicalUrl: isDurableRssStory
+      ? "https://example.com/rss/durable-story"
+      : `https://example.com/${providerKey}/${date}/${index}`,
+    title: isDurableRssStory
+      ? "One durable reader story"
+      : `Durable evidence ${providerKey} ${date}`,
     sourceText:
       `Stable source text for ${providerKey} on ${date} with enough weekly context to cite.`,
     publishedAt: `${date}T08:00:00.000Z`,
@@ -419,7 +424,10 @@ function outputFor(
     };
   });
   const leadCitationIds = citations.slice(0, 12).sort();
-  const firstStoryCitationIds = stories[0]!.citationIds;
+  const leadStory = stories.find((story) => story.citationIds.length >= 2);
+  if (leadStory === undefined) {
+    throw new Error("Positive weekly fixture requires one cross-day story");
+  }
   return {
     schemaVersion: readerSummaryWeeklyModelOutputSchemaVersion,
     sealId: input.sealId,
@@ -438,15 +446,15 @@ function outputFor(
     sections: [
       {
         sectionId: "section:lead",
-        storyId: stories[0]!.storyId,
+        storyId: leadStory.storyId,
         kind: "lead" as const,
         claimType: "snapshot" as const,
         heading: "Steady certified reader signal",
         text:
           "The lead item gives readers a grounded snapshot of the certified week, connecting developer and feed context without adding claims beyond the cited records.",
-        observedFrom: stories[0]!.observedFrom,
-        observedThrough: stories[0]!.observedThrough,
-        citationIds: [...firstStoryCitationIds],
+        observedFrom: leadStory.observedFrom,
+        observedThrough: leadStory.observedThrough,
+        citationIds: [...leadStory.citationIds],
       },
     ],
   };
