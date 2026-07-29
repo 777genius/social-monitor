@@ -218,7 +218,7 @@ export class PrismaReaderSummaryProductionRecoveryExecutionGuard
                 AND "reader_summary_jobs"."completed_at" IS NULL
                 AND "reader_summary_jobs"."failed_at" IS NULL
                 AND "reader_summary_jobs"."reader_summary_artifact_id" IS NULL
-              RETURNING "id"
+              RETURNING "reader_summary_jobs"."id"
             ),
             rejected_artifact AS (
               UPDATE "reader_summary_artifacts"
@@ -233,7 +233,7 @@ export class PrismaReaderSummaryProductionRecoveryExecutionGuard
                 AND "reader_summary_artifacts"."workspace_id" =
                   ${params.binding.workspaceId}::uuid
                 AND "reader_summary_artifacts"."status" = 'REJECTED'
-              RETURNING "id"
+              RETURNING "reader_summary_artifacts"."id"
             ),
             job AS (
               INSERT INTO "reader_summary_jobs" (

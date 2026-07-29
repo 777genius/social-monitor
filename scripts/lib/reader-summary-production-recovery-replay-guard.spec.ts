@@ -62,7 +62,13 @@ describe("PrismaReaderSummaryProductionRecoveryExecutionGuard", () => {
       );
       expect(fixture.queries[3]).toContain("stale_job AS");
       expect(fixture.queries[3]).toContain("INTERVAL '1 hour'");
+      expect(fixture.queries[3]).toContain(
+        'RETURNING "reader_summary_jobs"."id"',
+      );
       expect(fixture.queries[3]).toContain("rejected_artifact AS");
+      expect(fixture.queries[3]).toContain(
+        'RETURNING "reader_summary_artifacts"."id"',
+      );
       expect(fixture.queries[3]).not.toContain("source_items");
     },
   );
