@@ -43,6 +43,7 @@ const readiness = (
   status: ProductionDayProviderReadiness["status"],
 ): ProductionDayProviderReadiness => ({
   status,
+  summaryPolicy: status === "complete" ? "allowed" : "blocked",
   collectionDate: "2026-07-27",
   diagnosticsOwner: "postgres_feed_items_published_window",
   providers: [

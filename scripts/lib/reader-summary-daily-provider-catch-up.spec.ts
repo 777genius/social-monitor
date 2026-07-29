@@ -18,6 +18,7 @@ describe("daily reader-summary provider catch-up", () => {
         collectionDate: "2026-07-27",
         evaluatedAt,
         existingReport: null,
+        databaseProviderCounts: {},
       }).providerKeysToCollect,
     ).toEqual(defaultCleanRealDayCollectionProviderKeys);
   });
@@ -34,6 +35,7 @@ describe("daily reader-summary provider catch-up", () => {
       collectionDate: "2026-07-27",
       evaluatedAt,
       existingReport,
+      databaseProviderCounts: existingReport.targetWindow.providerCounts,
     });
 
     expect(plan.completedProviderKeys).toEqual([
@@ -56,6 +58,7 @@ describe("daily reader-summary provider catch-up", () => {
         collectionDate: "2026-07-27",
         evaluatedAt,
         existingReport,
+        databaseProviderCounts: {},
       }).providerKeysToCollect,
     ).toEqual(defaultCleanRealDayCollectionProviderKeys);
   });
@@ -80,6 +83,7 @@ describe("daily reader-summary provider catch-up", () => {
         collectionDate: "2026-07-27",
         evaluatedAt,
         existingReport,
+        databaseProviderCounts: existingReport.targetWindow.providerCounts,
       }),
     ).toThrow("unsupported format or day window");
   });
@@ -96,6 +100,7 @@ describe("daily reader-summary provider catch-up", () => {
       collectionDate: "2026-07-27",
       evaluatedAt,
       existingReport: previous,
+      databaseProviderCounts: previous.targetWindow.providerCounts,
     });
     const replacement = readyScan("x-twitter");
     const merged = mergeDailyProviderCatchUpEvidence({
@@ -121,6 +126,7 @@ describe("daily reader-summary provider catch-up", () => {
       collectionDate: "2026-07-27",
       evaluatedAt,
       existingReport: previous,
+      databaseProviderCounts: previous.targetWindow.providerCounts,
     });
 
     expect(() =>
@@ -143,6 +149,13 @@ describe("daily reader-summary provider catch-up", () => {
         readyScan("rss"),
         failedScan("x-twitter"),
       ]),
+      databaseProviderCounts: providerCounts([
+        "github-trending-page",
+        "hacker-news",
+        "reddit",
+        "rss",
+        "x-twitter",
+      ]),
     });
     const blockingProviders = planDailyProviderCatchUp({
       collectionDate: "2026-07-27",
@@ -153,6 +166,13 @@ describe("daily reader-summary provider catch-up", () => {
         failedScan("reddit"),
         readyScan("rss"),
         failedScan("x-twitter"),
+      ]),
+      databaseProviderCounts: providerCounts([
+        "github-trending-page",
+        "hacker-news",
+        "reddit",
+        "rss",
+        "x-twitter",
       ]),
     });
 
@@ -173,6 +193,7 @@ describe("daily reader-summary provider catch-up", () => {
       collectionDate: "2026-07-27",
       evaluatedAt: new Date("2026-07-28T01:00:00.000Z"),
       existingReport,
+      databaseProviderCounts: existingReport.targetWindow.providerCounts,
     });
 
     expect(plan.providerKeysToCollect).toEqual([]);
@@ -181,6 +202,71 @@ describe("daily reader-summary provider catch-up", () => {
       state: "unavailable",
       evidence: "explicit_unavailable",
       policy: "accepted",
+    });
+  });
+
+  it("blocks historical recollection unless the collection policy explicitly permits it", () => {
+    const blocked = planDailyProviderCatchUp({
+      collectionDate: "2026-07-27",
+      evaluatedAt: new Date("2026-07-29T01:00:00.000Z"),
+      existingReport: null,
+      databaseProviderCounts: {},
+    });
+    const allowed = planDailyProviderCatchUp({
+      collectionDate: "2026-07-27",
+      evaluatedAt: new Date("2026-07-29T01:00:00.000Z"),
+      existingReport: null,
+      databaseProviderCounts: {},
+      allowHistoricalCollection: true,
+    });
+
+    expect(blocked).toMatchObject({
+      collectionPolicy: "historical_blocked",
+      collectionAllowed: false,
+      providerKeysToCollect: [],
+    });
+    expect(blocked.providerKeysRequiringCollection).toEqual(
+      defaultCleanRealDayCollectionProviderKeys,
+    );
+    expect(allowed).toMatchObject({
+      collectionPolicy: "historical_explicit",
+      collectionAllowed: true,
+    });
+    expect(allowed.providerKeysToCollect).toEqual(
+      defaultCleanRealDayCollectionProviderKeys,
+    );
+  });
+
+  it("blocks unsafe recollection when DB rows have no exact collection evidence", () => {
+    const plan = planDailyProviderCatchUp({
+      collectionDate: "2026-07-27",
+      evaluatedAt,
+      existingReport: null,
+      databaseProviderCounts: { reddit: 12 },
+    });
+
+    expect(plan.providerKeysToCollect).toEqual([]);
+    expect(plan.providerStates[2]).toMatchObject({
+      providerKey: "reddit",
+      state: "invalid",
+      reasonCodes: ["database_rows_without_collection_evidence"],
+    });
+    expect(plan.barrierMessage).toContain("DB/artifact evidence is unsafe");
+  });
+
+  it("blocks future-dated collection even with historical permission", () => {
+    const plan = planDailyProviderCatchUp({
+      collectionDate: "2026-07-28",
+      evaluatedAt,
+      existingReport: null,
+      databaseProviderCounts: {},
+      allowHistoricalCollection: true,
+    });
+
+    expect(plan).toMatchObject({
+      collectionPolicy: "future_blocked",
+      collectionAllowed: false,
+      providerKeysToCollect: [],
     });
   });
 });
@@ -353,4 +439,12 @@ function windowProof(
     sourceQueryLaneCoverage: 1,
     distinctSourceQueryLaneCount: 0,
   };
+}
+
+function providerCounts(
+  providerKeys: readonly CleanRealDayCollectionProviderKey[],
+): Readonly<Record<CleanRealDayCollectionProviderKey, number>> {
+  return Object.fromEntries(
+    providerKeys.map((providerKey) => [providerKey, 10]),
+  ) as Record<CleanRealDayCollectionProviderKey, number>;
 }

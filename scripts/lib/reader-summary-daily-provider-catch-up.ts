@@ -16,7 +16,16 @@ export type DailyProviderCatchUpPlan = {
   readonly requiredProviderKeys: readonly CleanRealDayCollectionProviderKey[];
   readonly providerStates: readonly DailyProviderCatchUpState[];
   readonly completedProviderKeys: readonly CleanRealDayCollectionProviderKey[];
+  readonly providerKeysRequiringCollection: readonly CleanRealDayCollectionProviderKey[];
   readonly providerKeysToCollect: readonly CleanRealDayCollectionProviderKey[];
+  readonly collectionPolicy:
+    | "current_day"
+    | "previous_day"
+    | "historical_explicit"
+    | "historical_blocked"
+    | "future_blocked";
+  readonly collectionAllowed: boolean;
+  readonly barrierMessage: string | null;
   readonly previousReport: CleanRealDayCollectionReport | null;
 };
 
@@ -35,6 +44,10 @@ export const planDailyProviderCatchUp = (params: {
   readonly collectionDate: string;
   readonly evaluatedAt: Date;
   readonly existingReport: CleanRealDayCollectionReport | null;
+  readonly databaseProviderCounts: Readonly<
+    Partial<Record<CleanRealDayCollectionProviderKey, number>>
+  >;
+  readonly allowHistoricalCollection?: boolean;
   readonly requiredProviderKeys?: readonly CleanRealDayCollectionProviderKey[];
 }): DailyProviderCatchUpPlan => {
   if (!Number.isFinite(params.evaluatedAt.getTime())) {
@@ -64,27 +77,49 @@ export const planDailyProviderCatchUp = (params: {
   const closedRequestedUtcDay =
     params.evaluatedAt.getTime() >=
     new Date(nextUtcDate(params.collectionDate)).getTime();
+  const collectionPolicy = resolveCollectionPolicy({
+    collectionDate: params.collectionDate,
+    evaluatedAt: params.evaluatedAt,
+    allowHistoricalCollection: params.allowHistoricalCollection === true,
+  });
   const providerStates = requiredProviderKeys.map((providerKey) =>
     catchUpState({
       providerKey,
       collectionDate: params.collectionDate,
       closedRequestedUtcDay,
       previousReport,
+      databaseFeedItemCount:
+        params.databaseProviderCounts[providerKey] ?? 0,
     }),
   );
   const completedProviderKeys = providerStates
     .filter((state) => state.policy === "accepted")
     .map((state) => state.providerKey);
   const completed = new Set(completedProviderKeys);
+  const unsafeProviderKeys = providerStates
+    .filter((state) => state.state === "invalid")
+    .map((state) => state.providerKey);
+  const providerKeysRequiringCollection = requiredProviderKeys.filter(
+    (providerKey) => !completed.has(providerKey),
+  );
+  const barrierMessage =
+    unsafeProviderKeys.length > 0
+      ? `Provider catch-up DB/artifact evidence is unsafe for ${unsafeProviderKeys.join(",")}`
+      : !collectionPolicy.collectionAllowed &&
+          providerKeysRequiringCollection.length > 0
+        ? `Provider catch-up collection is blocked by ${collectionPolicy.collectionPolicy}`
+        : null;
 
   return {
     collectionDate: params.collectionDate,
     requiredProviderKeys,
     providerStates,
     completedProviderKeys,
-    providerKeysToCollect: requiredProviderKeys.filter(
-      (providerKey) => !completed.has(providerKey),
-    ),
+    providerKeysRequiringCollection,
+    providerKeysToCollect:
+      barrierMessage === null ? providerKeysRequiringCollection : [],
+    ...collectionPolicy,
+    barrierMessage,
     previousReport,
   };
 };
@@ -159,7 +194,14 @@ const catchUpState = (params: {
   readonly collectionDate: string;
   readonly closedRequestedUtcDay: boolean;
   readonly previousReport: CleanRealDayCollectionReport | null;
+  readonly databaseFeedItemCount: number;
 }): DailyProviderCatchUpState => {
+  if (
+    !Number.isInteger(params.databaseFeedItemCount) ||
+    params.databaseFeedItemCount < 0
+  ) {
+    return invalidState(params.providerKey, "database_provider_count_invalid");
+  }
   const scans =
     params.previousReport?.scans.filter(
       (scan) => scan.providerKey === params.providerKey,
@@ -169,6 +211,16 @@ const catchUpState = (params: {
       (target) => target.providerKey === params.providerKey,
     ) ?? [];
   if (scans.length !== 1 || targets.length !== 1) {
+    if (
+      params.databaseFeedItemCount > 0 &&
+      scans.length === 0 &&
+      targets.length <= 1
+    ) {
+      return invalidState(
+        params.providerKey,
+        "database_rows_without_collection_evidence",
+      );
+    }
     return {
       providerKey: params.providerKey,
       state:
@@ -190,6 +242,17 @@ const catchUpState = (params: {
       retryDisposition: "immediate",
     };
   }
+  const collectionFeedItemCount =
+    params.previousReport?.targetWindow.providerCounts[params.providerKey];
+  if (
+    !Number.isInteger(collectionFeedItemCount) ||
+    collectionFeedItemCount !== params.databaseFeedItemCount
+  ) {
+    return invalidState(
+      params.providerKey,
+      "database_collection_count_mismatch",
+    );
+  }
 
   return {
     providerKey: params.providerKey,
@@ -197,12 +260,60 @@ const catchUpState = (params: {
       collectionDate: params.collectionDate,
       closedRequestedUtcDay: params.closedRequestedUtcDay,
       scan: scans[0]!,
-      targetWindowItemCount:
-        params.previousReport?.targetWindow.providerCounts[
-          params.providerKey
-        ] ?? 0,
+      targetWindowItemCount: params.databaseFeedItemCount,
     }),
   };
+};
+
+const invalidState = (
+  providerKey: CleanRealDayCollectionProviderKey,
+  reasonCode: string,
+): DailyProviderCatchUpState => ({
+  providerKey,
+  state: "invalid",
+  evidence: "invalid",
+  policy: "blocking",
+  reasonCodes: [reasonCode],
+  retryDisposition: "deferred",
+});
+
+const resolveCollectionPolicy = (params: {
+  readonly collectionDate: string;
+  readonly evaluatedAt: Date;
+  readonly allowHistoricalCollection: boolean;
+}): Pick<
+  DailyProviderCatchUpPlan,
+  "collectionPolicy" | "collectionAllowed"
+> => {
+  const evaluatedDate = params.evaluatedAt.toISOString().slice(0, 10);
+  const previousDate = previousUtcDate(evaluatedDate);
+  if (params.collectionDate > evaluatedDate) {
+    return {
+      collectionPolicy: "future_blocked",
+      collectionAllowed: false,
+    };
+  }
+  if (params.collectionDate === evaluatedDate) {
+    return {
+      collectionPolicy: "current_day",
+      collectionAllowed: true,
+    };
+  }
+  if (params.collectionDate === previousDate) {
+    return {
+      collectionPolicy: "previous_day",
+      collectionAllowed: true,
+    };
+  }
+  return params.allowHistoricalCollection
+    ? {
+        collectionPolicy: "historical_explicit",
+        collectionAllowed: true,
+      }
+    : {
+        collectionPolicy: "historical_blocked",
+        collectionAllowed: false,
+      };
 };
 
 const assertExactlyPlannedProviders = (
@@ -255,4 +366,10 @@ const nextUtcDate = (collectionDate: string): string => {
   const value = new Date(`${collectionDate}T00:00:00.000Z`);
   value.setUTCDate(value.getUTCDate() + 1);
   return value.toISOString();
+};
+
+const previousUtcDate = (collectionDate: string): string => {
+  const value = new Date(`${collectionDate}T00:00:00.000Z`);
+  value.setUTCDate(value.getUTCDate() - 1);
+  return value.toISOString().slice(0, 10);
 };

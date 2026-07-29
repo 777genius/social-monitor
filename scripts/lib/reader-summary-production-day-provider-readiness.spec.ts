@@ -43,6 +43,7 @@ describe("production-day provider readiness admission", () => {
     });
 
     expect(result.status).toBe("complete");
+    expect(result.summaryPolicy).toBe("allowed");
     expect(result.diagnosticsOwner).toBe(
       "postgres_feed_items_published_window",
     );
@@ -65,6 +66,7 @@ describe("production-day provider readiness admission", () => {
     });
 
     expect(result.status).toBe("partial");
+    expect(result.summaryPolicy).toBe("blocked");
     expect(result.readiness.policy).toBe("blocked");
     expect(result.providers).toEqual(
       expect.arrayContaining([
@@ -109,6 +111,7 @@ describe("production-day provider readiness admission", () => {
     });
 
     expect(result.status).toBe("unavailable");
+    expect(result.summaryPolicy).toBe("blocked");
     expect(result.providers).toEqual(
       expect.arrayContaining([
         expect.objectContaining({

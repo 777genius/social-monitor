@@ -1,5 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 
 import type {
   SourceQuery,
@@ -44,7 +43,13 @@ import {
   catchUpCanSpendXReadinessBudget,
   mergeDailyProviderCatchUpEvidence,
   planDailyProviderCatchUp,
+  type DailyProviderCatchUpPlan,
 } from "./lib/reader-summary-daily-provider-catch-up";
+import {
+  collectionArtifactPassesBlockingValidation,
+  readExactDayCollectionArtifact,
+  writeCollectionArtifactAtomically,
+} from "./lib/reader-summary-clean-real-day-collection-artifact";
 import {
   executeCleanRealDayProviderAcquisition,
   type CleanRealDaySourceBindingTarget as SourceBindingTarget,
@@ -94,25 +99,17 @@ const artifactOnly = process.argv.includes("--artifact-only");
 const recalculateExisting = process.argv.includes("--recalculate-existing");
 const waitForXReadiness = process.argv.includes("--wait-for-x-readiness");
 const providerCatchUp = process.argv.includes("--provider-catch-up");
+const allowHistoricalProviderCollection = process.argv.includes(
+  "--allow-historical-provider-collection",
+);
+const collectionPolicyEvaluatedAt = new Date();
 const { collectionDate: targetCollectionDate } = collectionDateOptionOrDefault(
-  dateOnly(new Date()),
+  dateOnly(collectionPolicyEvaluatedAt),
 );
 const requestedProviderKeys = readProviderKeys();
 if (providerCatchUp && process.argv.includes("--providers")) {
   throw new Error("--provider-catch-up cannot be combined with --providers");
 }
-const providerCatchUpPlan = planDailyProviderCatchUp({
-  collectionDate: targetCollectionDate,
-  evaluatedAt: new Date(),
-  existingReport: providerCatchUp ? readExistingCollectionReport() : null,
-  requiredProviderKeys: providerCatchUp
-    ? defaultCleanRealDayCollectionProviderKeys
-    : requestedProviderKeys,
-});
-const providerKeys = providerCatchUpPlan.providerKeysToCollect;
-const spendXReadinessBudget =
-  waitForXReadiness &&
-  catchUpCanSpendXReadinessBudget(providerCatchUpPlan);
 const targetPublishedWindow = {
   startInclusive: `${targetCollectionDate}T00:00:00.000Z`,
   endExclusive: nextDate(targetCollectionDate),
@@ -135,35 +132,33 @@ async function main(): Promise<void> {
     validateExistingReport();
     return;
   }
-  if (providerKeys.length === 0) {
-    validateExistingReport();
-    console.log(
-      `All required providers have terminal policy evidence for ${targetCollectionDate}; no collection was started`,
-    );
-    return;
-  }
-
   loadDotenvIfPresent(".env");
   loadDotenvIfPresent(
     process.env.SOCIAL_MONITOR_REDDIT_APP_ENV_PATH ??
       `${process.env.HOME ?? ""}/.config/social-monitor/reddit-app-oauth.env`,
   );
 
-  const report = await tryRunCollection();
-  if (report === undefined) {
+  const attempt = await tryRunCollection();
+  if (attempt === undefined) {
     validateExistingReport();
     return;
   }
+  if (attempt.kind === "no_collection") {
+    validateExistingReport();
+    console.log(
+      `All required providers have terminal policy evidence for ${targetCollectionDate}; no collection was started`,
+    );
+    return;
+  }
+  const { report, plan } = attempt;
 
-  const serialized = `${JSON.stringify(report, null, 2)}\n`;
   if (update) {
-    mkdirSync(dirname(outputPath), { recursive: true });
-    writeFileSync(outputPath, serialized);
+    writeCollectionArtifactAtomically({ path: outputPath, report });
     console.log(`Updated ${outputPath}`);
   }
 
   if (!report.blockingPassed) {
-    const blockingProviders = providerCatchUpPlan.requiredProviderKeys.filter(
+    const blockingProviders = plan.requiredProviderKeys.filter(
       (providerKey) => {
         const scan = report.scans.find(
           (candidate) => candidate.providerKey === providerKey,
@@ -214,7 +209,13 @@ function recalculateExistingReport(): void {
 }
 
 async function tryRunCollection(): Promise<
-  CleanRealDayCollectionReport | undefined
+  | {
+      readonly kind: "collected";
+      readonly report: CleanRealDayCollectionReport;
+      readonly plan: DailyProviderCatchUpPlan;
+    }
+  | { readonly kind: "no_collection" }
+  | undefined
 > {
   const startedAt = new Date();
   const pool = new Pool({
@@ -238,11 +239,46 @@ async function tryRunCollection(): Promise<
     targetDiscovery = targetDiscoveryConnection;
     connection =
       await PrismaIngestionWorkerConnection.create(runtimeConfig);
-    const targets = await discoverSingleScopeCleanRealDayTargets(() =>
-      readTargets(targetDiscoveryConnection.client),
+    const requiredProviderKeys = providerCatchUp
+      ? defaultCleanRealDayCollectionProviderKeys
+      : requestedProviderKeys;
+    const allTargets = await discoverSingleScopeCleanRealDayTargets(() =>
+      readTargets(targetDiscoveryConnection.client, requiredProviderKeys),
     );
-    const targetScope = targets[0]!;
+    const targetScope = allTargets[0]!;
     const tenantDatabase = createTenantScopedPgQuery(pool, targetScope);
+    const existingReport = providerCatchUp
+      ? readExactDayCollectionArtifact({
+          path: outputPath,
+          collectionDate: targetCollectionDate,
+        })
+      : null;
+    const databaseWindow = await readTargetWindowProof(
+      tenantDatabase,
+      requiredProviderKeys,
+    );
+    const plan = planDailyProviderCatchUp({
+      collectionDate: targetCollectionDate,
+      evaluatedAt: collectionPolicyEvaluatedAt,
+      existingReport,
+      databaseProviderCounts: providerCatchUp
+        ? databaseWindow.providerCounts
+        : {},
+      allowHistoricalCollection: allowHistoricalProviderCollection,
+      requiredProviderKeys,
+    });
+    if (plan.barrierMessage !== null) {
+      throw new Error(plan.barrierMessage);
+    }
+    if (plan.providerKeysToCollect.length === 0) {
+      return { kind: "no_collection" };
+    }
+    const providerKeys = plan.providerKeysToCollect;
+    const targets = allTargets.filter((target) =>
+      providerKeys.includes(target.providerKey),
+    );
+    const spendXReadinessBudget =
+      waitForXReadiness && catchUpCanSpendXReadinessBudget(plan);
     const scanResults = await executeCleanRealDayProviderAcquisition({
       targets,
       connection,
@@ -255,15 +291,20 @@ async function tryRunCollection(): Promise<
       waitForXReadiness: spendXReadinessBudget,
     });
     const completedAt = new Date();
-    const freshWindow = await readFreshWindowProof(tenantDatabase, {
-      startedAt,
-      completedAt,
-    });
+    const freshWindow = await readFreshWindowProof(
+      tenantDatabase,
+      {
+        startedAt,
+        completedAt,
+      },
+      providerKeys,
+    );
     const targetWindow = await readTargetWindowProof(
       tenantDatabase,
-      providerCatchUpPlan.requiredProviderKeys,
+      plan.requiredProviderKeys,
     );
     const reportWithoutSecretGate = buildReport({
+      plan,
       targets,
       scanResults,
       startedAt,
@@ -277,9 +318,13 @@ async function tryRunCollection(): Promise<
     };
 
     return {
-      ...reportWithoutSecretGate,
-      qualityGates,
-      blockingPassed: Object.values(qualityGates).every(Boolean),
+      kind: "collected",
+      plan,
+      report: {
+        ...reportWithoutSecretGate,
+        qualityGates,
+        blockingPassed: Object.values(qualityGates).every(Boolean),
+      },
     };
   } catch (error) {
     if (!isLocalDataSourceUnavailable(error)) {
@@ -371,6 +416,7 @@ export async function discoverSingleScopeCleanRealDayTargets<
 
 async function readTargets(
   client: TargetDiscoveryClient,
+  providerKeys: readonly ProviderKey[],
 ): Promise<readonly SourceBindingTarget[]> {
   const rows = await client.$queryRawUnsafe<readonly {
     readonly tenantId: string;
@@ -440,6 +486,7 @@ async function readFreshWindowProof(
     readonly startedAt: Date;
     readonly completedAt: Date;
   },
+  providerKeys: readonly ProviderKey[],
 ): Promise<CleanRealDayCollectionReport["freshWindow"]> {
   return readFeedWindowProof(database, {
     startInclusive: params.startedAt,
@@ -589,6 +636,7 @@ async function readFeedWindowProof(
 }
 
 function buildReport(params: {
+  readonly plan: DailyProviderCatchUpPlan;
   readonly targets: readonly SourceBindingTarget[];
   readonly scanResults: CleanRealDayCollectionReport["scans"];
   readonly startedAt: Date;
@@ -630,13 +678,13 @@ function buildReport(params: {
     };
   });
   const mergedEvidence = mergeDailyProviderCatchUpEvidence({
-    plan: providerCatchUpPlan,
+    plan: params.plan,
     collectedTargets,
     collectedScans: collectedScanResults,
   });
   const finalScanResults = mergedEvidence.scans;
   const finalTargets = mergedEvidence.targets;
-  const requiredProviderKeys = providerCatchUpPlan.requiredProviderKeys;
+  const requiredProviderKeys = params.plan.requiredProviderKeys;
   const succeededProviders = new Set(
     finalScanResults
       .filter((scan) => scan.status === "succeeded")
@@ -851,22 +899,6 @@ function readProviderKeys(): readonly ProviderKey[] {
   });
 }
 
-function readExistingCollectionReport(): CleanRealDayCollectionReport | null {
-  if (!existsSync(outputPath)) {
-    return null;
-  }
-
-  try {
-    return JSON.parse(
-      readFileSync(outputPath, "utf8"),
-    ) as CleanRealDayCollectionReport;
-  } catch {
-    throw new Error(
-      `${outputPath} is unreadable; refusing a full provider recollection`,
-    );
-  }
-}
-
 function readOption(name: string): string | undefined {
   const index = process.argv.indexOf(name);
   if (index < 0) {
@@ -889,33 +921,7 @@ function validateExistingReport(): void {
   const report = JSON.parse(
     readFileSync(outputPath, "utf8"),
   ) as CleanRealDayCollectionReport;
-  const valid =
-    report.schemaVersion === 1 &&
-    report.artifactFormat === "reader-summary-clean-real-day-collection-v1" &&
-    report.generatedBy ===
-      "npm run run:reader-summary-clean-real-day-collection" &&
-    report.model.rawProviderPayloadPersistedInReport === false &&
-    report.model.rawPostTextPersistedInReport === false &&
-    report.model.rawProviderConfigPersistedInReport === false &&
-    report.qualityGates.everyRequestedProviderMeetsBlockingCoveragePolicy ===
-      true &&
-    report.qualityGates.providerRetriesAreBounded === true &&
-    report.scans.every(
-      (scan) =>
-        scan.attemptCount >= 1 &&
-        scan.attemptCount <= 3,
-    ) &&
-    (report.scans.every(providerMeetsProductionBlockingPolicy) ||
-      explicitGitHubUnavailableIsTransparentPartialDailyInput({
-        requestedProviderKeys: report.inputs.providerKeys,
-        scans: report.scans,
-        targetWindowProviderCounts: report.targetWindow.providerCounts,
-      })) &&
-    report.qualityGates.noRawSecretFragments === true &&
-    report.blockingPassed === true &&
-    noRawSecretFragments(report);
-
-  if (!valid) {
+  if (!collectionArtifactPassesBlockingValidation(report)) {
     throw new Error(`${outputPath} failed existing artifact validation`);
   }
 

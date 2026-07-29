@@ -44,6 +44,7 @@ export type ProductionDayProviderDiagnostic = {
 
 export type ProductionDayProviderReadiness = {
   readonly status: ProductionDayProviderReadinessStatus;
+  readonly summaryPolicy: "allowed" | "blocked";
   readonly collectionDate: string;
   readonly diagnosticsOwner: "postgres_feed_items_published_window";
   readonly providers: readonly ProductionDayProviderDiagnostic[];
@@ -114,6 +115,7 @@ export const resolveProductionDayProviderReadiness = (params: {
   });
   return {
     status,
+    summaryPolicy: status === "complete" ? "allowed" : "blocked",
     collectionDate: params.collectionDate,
     diagnosticsOwner: "postgres_feed_items_published_window",
     providers,
@@ -384,6 +386,7 @@ const blockedReadiness = (
   barrierMessage: string,
 ): ProductionDayProviderReadiness => ({
   status: "blocked",
+  summaryPolicy: "blocked",
   collectionDate: readiness.collectionDate,
   diagnosticsOwner: "postgres_feed_items_published_window",
   providers: [],

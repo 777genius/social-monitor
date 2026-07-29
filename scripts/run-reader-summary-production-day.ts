@@ -84,6 +84,8 @@ const reuseExistingArtifacts = executionRequest.mode === "historical-reuse";
 const skipLiveCollection = executionRequest.mode !== "live-production";
 const allowDegraded = process.argv.includes("--allow-degraded");
 const allowHistorical = process.argv.includes("--allow-historical");
+const allowHistoricalProviderCollection =
+  allowHistorical && executionRequest.mode === "live-production";
 const qualityDateArgs = productionDayQualityDateArgs({
   executionMode: executionRequest.mode,
   allowHistorical,
@@ -213,6 +215,9 @@ async function main(): Promise<void> {
           "--date",
           collectionDate,
           "--provider-catch-up",
+          ...(allowHistoricalProviderCollection
+            ? ["--allow-historical-provider-collection"]
+            : []),
           ...(allowHistorical ? [] : ["--wait-for-x-readiness"]),
         ]);
   steps.push(collectionStep);
@@ -267,7 +272,7 @@ async function main(): Promise<void> {
       : null;
   const providerReadiness = providerAdmission?.readiness ?? null;
   const requiredProvidersReady =
-    providerAdmission?.status === "complete" ||
+    providerAdmission?.summaryPolicy === "allowed" ||
     executionRequest.mode !== "live-production";
   if (
     executionRequest.mode === "live-production" &&
