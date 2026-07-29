@@ -57,5 +57,9 @@ describe("reader summary production recovery PostgreSQL contract", () => {
     expect(validationMigration).not.toMatch(
       /\b(?:WHERE|AND|OR|ORDER BY)\s+"(?:id|recovery_id|tenant_id|workspace_id)"/iu,
     );
+    expect(validationMigration).not.toMatch(/\bOR\s+CASE\b/iu);
+    expect(
+      validationMigration.match(/\bOR\s+\(\s*CASE\b[\s\S]*?\bEND\s*\)/giu),
+    ).toHaveLength(2);
   });
 });

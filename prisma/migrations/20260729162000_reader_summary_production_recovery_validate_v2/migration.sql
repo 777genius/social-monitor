@@ -91,11 +91,13 @@ BEGIN
       IS DISTINCT FROM v_requested_dates
     OR jsonb_typeof(v_lease."canonical_record"->'days')
       IS DISTINCT FROM 'array'
-    OR CASE
-      WHEN jsonb_typeof(v_lease."canonical_record"->'days') = 'array'
-      THEN jsonb_array_length(v_lease."canonical_record"->'days') <> 6
-      ELSE TRUE
-    END
+    OR (
+      CASE
+        WHEN jsonb_typeof(v_lease."canonical_record"->'days') = 'array'
+        THEN jsonb_array_length(v_lease."canonical_record"->'days') <> 6
+        ELSE TRUE
+      END
+    )
     OR v_lease."canonical_record"->'boundaries'
       IS DISTINCT FROM jsonb_build_object(
         'stage', 'pre_model',
@@ -228,11 +230,13 @@ BEGIN
       FROM jsonb_array_elements(v_expected) AS expected(entry)
       WHERE expected.entry->>'providerKey' = v_provider;
       IF jsonb_typeof(v_evidence) IS DISTINCT FROM 'array'
-        OR CASE
-          WHEN jsonb_typeof(v_evidence) = 'array'
-          THEN jsonb_array_length(v_evidence) <> v_expected_count
-          ELSE TRUE
-        END
+        OR (
+          CASE
+            WHEN jsonb_typeof(v_evidence) = 'array'
+            THEN jsonb_array_length(v_evidence) <> v_expected_count
+            ELSE TRUE
+          END
+        )
         OR EXISTS (
           SELECT 1
           FROM jsonb_array_elements(v_evidence) AS evidence(entry)
