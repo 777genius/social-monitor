@@ -2,12 +2,22 @@ import {
   canonicalizeReaderSummaryWeeklyJson,
 } from "../../../domain/value-objects/reader-summary-weekly-canonical-json";
 import {
-  readerSummaryProductionRecoveryExpectedProviderCounts,
+  readerSummaryProductionRecoveryTenantId,
+  readerSummaryProductionRecoveryWorkspaceId,
   readerSummaryProductionRecoveryRequestedUtcDates,
 } from "../../../ports/reader-summary-production-recovery-authority.port";
 
-export const productionRecoveryExpectedCounts =
-  readerSummaryProductionRecoveryExpectedProviderCounts;
+export const assertProductionRecoveryScope = (
+  tenantId: string,
+  workspaceId: string,
+): void => {
+  if (
+    tenantId !== readerSummaryProductionRecoveryTenantId ||
+    workspaceId !== readerSummaryProductionRecoveryWorkspaceId
+  ) {
+    failProductionRecovery("tenant/workspace authority diverged");
+  }
+};
 
 export const canonicalProductionRecoveryTimestamp = (
   input: unknown,

@@ -55,6 +55,7 @@ describe("reader summary production recovery", () => {
       "skipped",
       "skipped",
       "skipped",
+      "skipped",
     ]);
     expect(executionGuard.calls()).toBe(0);
     expect(modelCalls).toBe(0);
@@ -88,6 +89,7 @@ describe("reader summary production recovery", () => {
       "2026-07-25",
       "2026-07-26",
       "2026-07-27",
+      "2026-07-28",
     ]);
   });
 
@@ -112,30 +114,42 @@ describe("reader summary production recovery", () => {
       "2026-07-25",
       "2026-07-26",
       "2026-07-27",
+      "2026-07-28",
     ]);
     expect(result.dayResults[1]?.outcome).toBe("replayed");
   });
 
-  it("discovers only a complete Jul23-Jul27 visible scope", async () => {
+  it("discovers only the canonical Jul23-Jul28 DB-owned scope", async () => {
     let sql = "";
+    let values: readonly unknown[] = [];
     const scope = await discoverReaderSummaryProductionRecoveryScope({
-      $queryRaw: async <T>(strings: TemplateStringsArray): Promise<T> => {
+      $queryRaw: async <T>(
+        strings: TemplateStringsArray,
+        ...queryValues: readonly unknown[]
+      ): Promise<T> => {
         sql = strings.join("?").replace(/\s+/gu, " ").toLowerCase();
+        values = queryValues;
         return [
           {
-            tenantId: "10000000-0000-4000-8000-000000000001",
-            workspaceId: "20000000-0000-4000-8000-000000000002",
+            tenantId: "00000000-0000-7000-8000-000000000901",
+            workspaceId: "00000000-0000-7000-8000-000000000902",
           },
         ] as T;
       },
     });
 
-    expect(scope.tenantId).toContain("10000000");
+    expect(scope.tenantId).toBe(
+      "00000000-0000-7000-8000-000000000901",
+    );
+    expect(values).toEqual([
+      "00000000-0000-7000-8000-000000000901",
+      "00000000-0000-7000-8000-000000000902",
+    ]);
     expect(sql).toContain("date '2026-07-23'");
-    expect(sql).toContain("date '2026-07-26'");
-    expect(sql).toContain("date '2026-07-27'");
-    expect(sql).toContain("'hacker-news', 100");
-    expect(sql).toContain("'hacker-news', 91");
+    expect(sql).toContain("date '2026-07-28'");
+    expect(sql).toContain("historical_unavailable");
+    expect(sql).toContain("partial_existing");
+    expect(sql).not.toContain("expectedcount");
     expect(sql).not.toContain("source_items");
   });
 

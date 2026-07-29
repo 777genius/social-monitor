@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { withPrismaWriteRetry } from "@social-monitor/platform-persistence";
+import { withPrismaWriteRetry } from "../../../../platform/persistence/src/write-retry";
 
 import {
   type PrepareReaderSummaryProductionRecoveryResult,
@@ -182,6 +182,15 @@ const readPersistedAuthority = async (
           current_setting('social_monitor.workspace_id')::uuid
         AND lease."canonical_record"->>'schemaVersion' =
           'reader_summary.production_recovery_authority.v2'
+        AND lease."canonical_record"->'requestedUtcDates' =
+          '[
+            "2026-07-23",
+            "2026-07-24",
+            "2026-07-25",
+            "2026-07-26",
+            "2026-07-27",
+            "2026-07-28"
+          ]'::jsonb
       ORDER BY lease."id"
     )
     SELECT
@@ -373,7 +382,7 @@ const readEvidence = (
       AND feed."published_at" >=
         (DATE '2026-07-23'::TIMESTAMP AT TIME ZONE 'UTC')
       AND feed."published_at" <
-        (DATE '2026-07-28'::TIMESTAMP AT TIME ZONE 'UTC')
+        (DATE '2026-07-29'::TIMESTAMP AT TIME ZONE 'UTC')
       AND source."content_hash" ~ '^[0-9a-f]{64}$'
       AND (
         source."provider_content_hash" IS NULL

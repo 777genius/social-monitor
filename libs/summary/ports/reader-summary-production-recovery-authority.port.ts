@@ -6,12 +6,18 @@ export const readerSummaryProductionRecoveryProviderKeys = [
   "x-twitter",
 ] as const;
 
+export const readerSummaryProductionRecoveryTenantId =
+  "00000000-0000-7000-8000-000000000901";
+export const readerSummaryProductionRecoveryWorkspaceId =
+  "00000000-0000-7000-8000-000000000902";
+
 export const readerSummaryProductionRecoveryRequestedUtcDates = [
   "2026-07-23",
   "2026-07-24",
   "2026-07-25",
   "2026-07-26",
   "2026-07-27",
+  "2026-07-28",
 ] as const;
 
 export type ReaderSummaryProductionRecoveryProviderKey =
@@ -20,53 +26,37 @@ export type ReaderSummaryProductionRecoveryProviderKey =
 export type ReaderSummaryProductionRecoveryRequestedUtcDate =
   (typeof readerSummaryProductionRecoveryRequestedUtcDates)[number];
 
-export const readerSummaryProductionRecoveryExpectedProviderCounts =
-  Object.freeze({
-    "2026-07-23": Object.freeze({
-      "github-trending-page": 0,
-      "hacker-news": 100,
-      reddit: 100,
-      rss: 75,
-      "x-twitter": 67,
-    }),
-    "2026-07-24": Object.freeze({
-      "github-trending-page": 10,
-      "hacker-news": 100,
-      reddit: 100,
-      rss: 67,
-      "x-twitter": 73,
-    }),
-    "2026-07-25": Object.freeze({
-      "github-trending-page": 10,
-      "hacker-news": 100,
-      reddit: 100,
-      rss: 62,
-      "x-twitter": 96,
-    }),
-    "2026-07-26": Object.freeze({
-      "github-trending-page": 10,
-      "hacker-news": 78,
-      reddit: 100,
-      rss: 59,
-      "x-twitter": 94,
-    }),
-    "2026-07-27": Object.freeze({
-      "github-trending-page": 0,
-      "hacker-news": 91,
-      reddit: 125,
-      rss: 38,
-      "x-twitter": 89,
-    }),
-  }) satisfies Readonly<
-    Record<
-      ReaderSummaryProductionRecoveryRequestedUtcDate,
-      Readonly<Record<ReaderSummaryProductionRecoveryProviderKey, number>>
-    >
-  >;
+export type ReaderSummaryProductionRecoveryEvidenceState =
+  | "verified_existing"
+  | "partial_existing"
+  | "historical_unavailable";
+
+export const readerSummaryProductionRecoveryEvidenceState = (
+  date: ReaderSummaryProductionRecoveryRequestedUtcDate,
+  providerKey: ReaderSummaryProductionRecoveryProviderKey,
+): ReaderSummaryProductionRecoveryEvidenceState => {
+  if (
+    (date === "2026-07-23" && providerKey === "github-trending-page") ||
+    (date === "2026-07-28" &&
+      (providerKey === "github-trending-page" ||
+        providerKey === "hacker-news" ||
+        providerKey === "reddit"))
+  ) {
+    return "historical_unavailable";
+  }
+  if (
+    date === "2026-07-28" &&
+    (providerKey === "rss" || providerKey === "x-twitter")
+  ) {
+    return "partial_existing";
+  }
+  return "verified_existing";
+};
 
 export type ReaderSummaryProductionRecoveryProviderCount = Readonly<{
   providerKey: ReaderSummaryProductionRecoveryProviderKey;
   count: number;
+  evidenceState: ReaderSummaryProductionRecoveryEvidenceState;
 }>;
 
 export type ReaderSummaryProductionRecoveryEvidence = Readonly<{
@@ -100,12 +90,12 @@ export type ReaderSummaryProductionRecoveryGitHubEvidence =
       schemaVersion: "reader_summary.production_recovery_github_evidence.v2";
       mode: "historical_unavailable";
       providerKey: "github-trending-page";
-      requestedUtcDate: "2026-07-23" | "2026-07-27";
+      requestedUtcDate: "2026-07-23" | "2026-07-28";
       evidenceCount: 0;
       authorization: Readonly<{
         authorizationId:
           | "reader_summary.production_recovery.github.2026-07-23.v2"
-          | "reader_summary.production_recovery.github.2026-07-27.v2";
+          | "reader_summary.production_recovery.github.2026-07-28.v2";
         authorizedAt: string;
         reason: string;
       }>;
@@ -116,9 +106,9 @@ export type ReaderSummaryProductionRecoveryGitHubEvidence =
       providerKey: "github-trending-page";
       requestedUtcDate: Exclude<
         ReaderSummaryProductionRecoveryRequestedUtcDate,
-        "2026-07-23" | "2026-07-27"
+        "2026-07-23" | "2026-07-28"
       >;
-      evidenceCount: 10;
+      evidenceCount: number;
       evidenceSha256: string;
       scanJobIds: readonly string[];
     }>;
@@ -166,6 +156,7 @@ export type ReaderSummaryProductionRecoveryAuthorityBinding = Readonly<{
     recollectionPerformed: false;
   }>;
   days: readonly [
+    ReaderSummaryProductionRecoveryDayAuthority,
     ReaderSummaryProductionRecoveryDayAuthority,
     ReaderSummaryProductionRecoveryDayAuthority,
     ReaderSummaryProductionRecoveryDayAuthority,

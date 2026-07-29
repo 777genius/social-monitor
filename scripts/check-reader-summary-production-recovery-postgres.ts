@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
-import { Pool } from "pg";
+import { createRequire } from "node:module";
+import { join } from "node:path";
 
 import {
   provisionReaderSummaryPublicationFixtureScope,
@@ -17,9 +18,97 @@ import {
 } from "./lib/reader-summary-publication-postgres-migrations";
 import {
   assertReaderSummaryProductionRecoveryPostgresContract,
+  type RecoveryPostgresClient,
+  readerSummaryProductionRecoveryFixtureScope,
   seedReaderSummaryProductionRecoveryFixture,
 } from "./lib/reader-summary-production-recovery-postgres-contract";
-import {
+
+type RecoveryPoolClient = RecoveryPostgresClient &
+  Readonly<{ release(): void }>;
+type RecoveryPool = RecoveryPostgresClient &
+  Readonly<{
+    connect(): Promise<RecoveryPoolClient>;
+    end(): Promise<void>;
+  }>;
+type PostgresRuntimeModule = Readonly<{
+  Pool: new (config: {
+    readonly connectionString: string;
+    readonly max: number;
+  }) => RecoveryPool;
+}>;
+type PublicationPrivilegesModule = Readonly<{
+  publicationProtectedRolePresence(pool: RecoveryPool): Promise<{
+    readonly capability: boolean;
+    readonly owner: boolean;
+    readonly schemaOwner: boolean;
+    readonly tenantSystemCapability: boolean;
+  }>;
+  publicationDatabaseUrl(
+    serverAdminDatabaseUrl: string,
+    databaseName: string,
+  ): string;
+  publicationRuntimeDatabaseUrl(
+    databaseUrl: string,
+    role: string,
+    password: string,
+  ): string;
+  quotePostgresIdentifier(value: string): string;
+  quotePostgresLiteral(value: string): string;
+  createPublicationFixtureRuntimeRole(params: {
+    readonly databaseName: string;
+    readonly migrationAdminRole: string;
+    readonly runtimePassword: string;
+    readonly runtimeRole: string;
+    readonly serverAdminDatabaseUrl: string;
+  }): Promise<void>;
+  makePublicationFixtureRuntimeDatabaseOwner(params: {
+    readonly databaseName: string;
+    readonly migrationAdminDatabaseUrl: string;
+    readonly migrationAdminRole: string;
+    readonly runtimeRole: string;
+    readonly targetDatabaseUrl: string;
+  }): Promise<void>;
+  grantLegacyMigrationOwnership(
+    adminDatabaseUrl: string,
+    runtimeRole: string,
+  ): Promise<void>;
+  runReaderSummaryPublicationBootstrapSql(
+    phase: "pre" | "post",
+    adminDatabaseUrl: string,
+    runtimeRole: string,
+  ): Promise<void>;
+  dropPublicationFixtureDatabaseAndRoles(params: {
+    readonly serverAdmin: RecoveryPool;
+    readonly databaseName: string;
+    readonly migrationAdminRole: string;
+    readonly runtimeRole: string;
+    readonly ownerRolePreexisting: boolean;
+    readonly capabilityRolePreexisting: boolean;
+    readonly schemaOwnerRolePreexisting: boolean;
+    readonly tenantSystemCapabilityRolePreexisting: boolean;
+    readonly fixtureDatabaseCreated: boolean;
+    readonly fixtureMigrationAdminRoleCreated: boolean;
+    readonly fixtureRuntimeRoleCreated: boolean;
+  }): Promise<void>;
+}>;
+
+const runtimeRequire = createRequire(join(process.cwd(), "package.json"));
+const { Pool } = runtimeRequire("pg") as PostgresRuntimeModule;
+(
+  process as NodeJS.Process & {
+    [key: symbol]: Readonly<{ enabled(value: boolean): boolean }> | undefined;
+  }
+)[Symbol.for("ts-node.register.instance")]?.enabled(false);
+(runtimeRequire("ts-node") as {
+  register(options: {
+    readonly transpileOnly: boolean;
+    readonly compilerOptions: Readonly<{ rootDir: string }>;
+  }): unknown;
+}).register({
+  transpileOnly: true,
+  compilerOptions: { rootDir: process.cwd() },
+});
+const {
   createPublicationFixtureRuntimeRole,
   dropPublicationFixtureDatabaseAndRoles,
   grantLegacyMigrationOwnership,
@@ -30,8 +119,9 @@ import {
   quotePostgresIdentifier,
   quotePostgresLiteral,
   runReaderSummaryPublicationBootstrapSql,
-} from "./reader-summary-publication-postgres-privileges";
-
+} = runtimeRequire(
+  "./scripts/reader-summary-publication-postgres-privileges",
+) as PublicationPrivilegesModule;
 const serverAdminDatabaseUrl =
   requiredReaderSummaryPublicationAdminDatabaseUrl(process.env);
 const suffix = randomBytes(10).toString("hex");
@@ -145,11 +235,20 @@ const main = async (): Promise<void> => {
       const first = await runtimePool.connect();
       const second = await runtimePool.connect();
       try {
-        await provisionReaderSummaryPublicationFixtureScope(auditor);
+        await provisionReaderSummaryPublicationFixtureScope(
+          auditor,
+          readerSummaryProductionRecoveryFixtureScope,
+        );
         await seedReaderSummaryProductionRecoveryFixture(auditor);
         await Promise.all([
-          setReaderSummaryPublicationSessionScope(first),
-          setReaderSummaryPublicationSessionScope(second),
+          setReaderSummaryPublicationSessionScope(
+            first,
+            readerSummaryProductionRecoveryFixtureScope,
+          ),
+          setReaderSummaryPublicationSessionScope(
+            second,
+            readerSummaryProductionRecoveryFixtureScope,
+          ),
         ]);
         const [firstPid, secondPid] = await Promise.all([
           readerSummaryPublicationBackendPid(first),

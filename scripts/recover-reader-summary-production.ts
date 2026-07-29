@@ -4,14 +4,16 @@ import type {
   ListFeedItemsQuery,
   ListFeedItemsResult,
 } from "@social-monitor/feed/ports";
-import type {
-  PrepareReaderSummaryProductionRecoveryResult,
-  ReaderSummaryGitHubProjectionReaderPort,
-  ReaderSummaryProductionRecoveryAuthorityBinding,
-  ReaderSummaryProductionRecoveryAuthorityHandle,
-  ReaderSummaryProductionRecoveryAuthorityPort,
-  ReadReaderSummaryGitHubProjectionQuery,
-  ReadReaderSummaryGitHubProjectionResult,
+import {
+  readerSummaryProductionRecoveryTenantId,
+  readerSummaryProductionRecoveryWorkspaceId,
+  type PrepareReaderSummaryProductionRecoveryResult,
+  type ReaderSummaryGitHubProjectionReaderPort,
+  type ReaderSummaryProductionRecoveryAuthorityBinding,
+  type ReaderSummaryProductionRecoveryAuthorityHandle,
+  type ReaderSummaryProductionRecoveryAuthorityPort,
+  type ReadReaderSummaryGitHubProjectionQuery,
+  type ReadReaderSummaryGitHubProjectionResult,
 } from "@social-monitor/summary/ports";
 import type { ReaderSummaryGitHubProjectionItem } from "@social-monitor/summary/domain";
 import type { PostgresRuntimePoolConfig } from "@social-monitor/platform-persistence";
@@ -139,10 +141,18 @@ export const resolveReaderSummaryProductionRecoveryScope = async (params: {
 }): Promise<ReaderSummaryProductionRecoveryScope> => {
   const tenantId = readEnvValue(params.env, tenantScopeEnvName);
   const workspaceId = readEnvValue(params.env, workspaceScopeEnvName);
+  if ((tenantId === undefined) !== (workspaceId === undefined)) {
+    throw new Error(
+      "Reader summary production recovery tenant/workspace scope must be supplied together",
+    );
+  }
   if (tenantId !== undefined && workspaceId !== undefined) {
+    assertCanonicalProductionRecoveryScope({ tenantId, workspaceId });
     return { tenantId, workspaceId };
   }
-  return params.discover();
+  const discovered = await params.discover();
+  assertCanonicalProductionRecoveryScope(discovered);
+  return discovered;
 };
 
 export const resolveReaderSummaryProductionRecoverySourceDatabaseUrl = (
@@ -178,49 +188,53 @@ export const discoverReaderSummaryProductionRecoveryScope = async (
   client: ReaderSummaryProductionRecoveryScopeDiscoveryClient,
 ): Promise<ReaderSummaryProductionRecoveryScope> => {
   const rows = await client.$queryRaw<readonly ScopeDiscoveryRow[]>`
-    WITH expected("utcDate", "providerKey", "expectedCount") AS (
+    WITH recovery_dates("utcDate") AS (
       VALUES
-        (DATE '2026-07-23', 'github-trending-page', 0),
-        (DATE '2026-07-23', 'hacker-news', 100),
-        (DATE '2026-07-23', 'reddit', 100),
-        (DATE '2026-07-23', 'rss', 75),
-        (DATE '2026-07-23', 'x-twitter', 67),
-        (DATE '2026-07-24', 'github-trending-page', 10),
-        (DATE '2026-07-24', 'hacker-news', 100),
-        (DATE '2026-07-24', 'reddit', 100),
-        (DATE '2026-07-24', 'rss', 67),
-        (DATE '2026-07-24', 'x-twitter', 73),
-        (DATE '2026-07-25', 'github-trending-page', 10),
-        (DATE '2026-07-25', 'hacker-news', 100),
-        (DATE '2026-07-25', 'reddit', 100),
-        (DATE '2026-07-25', 'rss', 62),
-        (DATE '2026-07-25', 'x-twitter', 96),
-        (DATE '2026-07-26', 'github-trending-page', 10),
-        (DATE '2026-07-26', 'hacker-news', 78),
-        (DATE '2026-07-26', 'reddit', 100),
-        (DATE '2026-07-26', 'rss', 59),
-        (DATE '2026-07-26', 'x-twitter', 94),
-        (DATE '2026-07-27', 'github-trending-page', 0),
-        (DATE '2026-07-27', 'hacker-news', 91),
-        (DATE '2026-07-27', 'reddit', 125),
-        (DATE '2026-07-27', 'rss', 38),
-        (DATE '2026-07-27', 'x-twitter', 89)
+        (DATE '2026-07-23'),
+        (DATE '2026-07-24'),
+        (DATE '2026-07-25'),
+        (DATE '2026-07-26'),
+        (DATE '2026-07-27'),
+        (DATE '2026-07-28')
     ),
-    scopes AS (
-      SELECT DISTINCT feed."tenant_id", feed."workspace_id"
-      FROM "feed_items" AS feed
-      WHERE upper(feed."status"::TEXT) = 'VISIBLE'
-        AND feed."published_at" >=
-          (DATE '2026-07-23'::TIMESTAMP AT TIME ZONE 'UTC')
-        AND feed."published_at" <
-          (DATE '2026-07-28'::TIMESTAMP AT TIME ZONE 'UTC')
-        AND feed."provider_key" = ANY(ARRAY[
-          'github-trending-page',
-          'hacker-news',
-          'reddit',
-          'rss',
-          'x-twitter'
-        ])
+    recovery_providers("providerKey") AS (
+      VALUES
+        ('github-trending-page'),
+        ('hacker-news'),
+        ('reddit'),
+        ('rss'),
+        ('x-twitter')
+    ),
+    expected AS (
+      SELECT
+        recovery_dates."utcDate",
+        recovery_providers."providerKey",
+        CASE
+          WHEN recovery_dates."utcDate" = DATE '2026-07-23'
+            AND recovery_providers."providerKey" = 'github-trending-page'
+            THEN 'historical_unavailable'
+          WHEN recovery_dates."utcDate" = DATE '2026-07-28'
+            AND recovery_providers."providerKey" IN (
+              'github-trending-page', 'hacker-news', 'reddit'
+            ) THEN 'historical_unavailable'
+          WHEN recovery_dates."utcDate" = DATE '2026-07-28'
+            THEN 'partial_existing'
+          ELSE 'verified_existing'
+        END AS "evidenceState"
+      FROM recovery_dates
+      CROSS JOIN recovery_providers
+    ),
+    scope AS (
+      SELECT workspace."tenant_id", workspace."id" AS "workspace_id"
+      FROM "workspaces" AS workspace
+      JOIN "tenants" AS tenant
+        ON tenant."id" = workspace."tenant_id"
+        AND tenant."deleted_at" IS NULL
+      WHERE workspace."tenant_id" =
+          ${readerSummaryProductionRecoveryTenantId}::uuid
+        AND workspace."id" =
+          ${readerSummaryProductionRecoveryWorkspaceId}::uuid
+        AND workspace."deleted_at" IS NULL
     ),
     exact_counts AS (
       SELECT
@@ -228,7 +242,7 @@ export const discoverReaderSummaryProductionRecoveryScope = async (
         scope."workspace_id",
         expected."utcDate",
         expected."providerKey"
-      FROM scopes AS scope
+      FROM scope
       CROSS JOIN expected
       LEFT JOIN "feed_items" AS feed
         ON feed."tenant_id" = scope."tenant_id"
@@ -242,15 +256,18 @@ export const discoverReaderSummaryProductionRecoveryScope = async (
         scope."workspace_id",
         expected."utcDate",
         expected."providerKey",
-        expected."expectedCount"
-      HAVING count(feed."id") = expected."expectedCount"
+        expected."evidenceState"
+      HAVING CASE expected."evidenceState"
+        WHEN 'historical_unavailable' THEN count(feed."id") = 0
+        ELSE count(feed."id") > 0
+      END
     )
     SELECT
       exact."tenant_id"::TEXT AS "tenantId",
       exact."workspace_id"::TEXT AS "workspaceId"
     FROM exact_counts AS exact
     GROUP BY exact."tenant_id", exact."workspace_id"
-    HAVING count(*) = 25
+    HAVING count(*) = 30
     ORDER BY "tenantId", "workspaceId"
   `;
   if (rows.length !== 1 || rows[0] === undefined) {
@@ -270,10 +287,24 @@ export const discoverReaderSummaryProductionRecoveryScope = async (
       })}`,
     );
   }
-  return {
+  const scope = {
     tenantId: rows[0].tenantId,
     workspaceId: rows[0].workspaceId,
   };
+  assertCanonicalProductionRecoveryScope(scope);
+  return scope;
+};
+
+const assertCanonicalProductionRecoveryScope = (
+  scope: ReaderSummaryProductionRecoveryScope,
+): void => {
+  if (scope.tenantId !== readerSummaryProductionRecoveryTenantId ||
+    scope.workspaceId !== readerSummaryProductionRecoveryWorkspaceId
+  ) {
+    throw new Error(
+      "Reader summary production recovery tenant/workspace authority diverged",
+    );
+  }
 };
 
 const readReaderSummaryProductionRecoveryScopeDiagnostics = (
@@ -298,7 +329,7 @@ const readReaderSummaryProductionRecoveryScopeDiagnostics = (
         count(*)::INTEGER AS "count"
       FROM "feed_items" AS feed
       WHERE feed."observed_at" >= (DATE '2026-07-23'::TIMESTAMP AT TIME ZONE 'UTC')
-        AND feed."observed_at" < (DATE '2026-07-28'::TIMESTAMP AT TIME ZONE 'UTC')
+        AND feed."observed_at" < (DATE '2026-07-29'::TIMESTAMP AT TIME ZONE 'UTC')
         AND feed."provider_key" = ANY(ARRAY['github-trending-page','hacker-news','reddit','rss','x-twitter'])
       GROUP BY 1, 2, 3, 4, 5, 6
       UNION ALL
@@ -311,7 +342,7 @@ const readReaderSummaryProductionRecoveryScopeDiagnostics = (
         count(*)::INTEGER AS "count"
       FROM "feed_items" AS feed
       WHERE feed."created_at" >= (DATE '2026-07-23'::TIMESTAMP AT TIME ZONE 'UTC')
-        AND feed."created_at" < (DATE '2026-07-28'::TIMESTAMP AT TIME ZONE 'UTC')
+        AND feed."created_at" < (DATE '2026-07-29'::TIMESTAMP AT TIME ZONE 'UTC')
         AND feed."provider_key" = ANY(ARRAY['github-trending-page','hacker-news','reddit','rss','x-twitter'])
       GROUP BY 1, 2, 3, 4, 5, 6
       UNION ALL
@@ -324,7 +355,7 @@ const readReaderSummaryProductionRecoveryScopeDiagnostics = (
         count(*)::INTEGER AS "count"
       FROM "feed_items" AS feed
       WHERE feed."published_at" >= (DATE '2026-07-23'::TIMESTAMP AT TIME ZONE 'UTC')
-        AND feed."published_at" < (DATE '2026-07-28'::TIMESTAMP AT TIME ZONE 'UTC')
+        AND feed."published_at" < (DATE '2026-07-29'::TIMESTAMP AT TIME ZONE 'UTC')
         AND feed."provider_key" = ANY(ARRAY['github-trending-page','hacker-news','reddit','rss','x-twitter'])
       GROUP BY 1, 2, 3, 4, 5, 6
     ) AS diagnostics
@@ -444,7 +475,7 @@ async function main(): Promise<void> {
   loadDotenvIfPresent(".env");
 
   if (!process.argv.slice(2).includes("--apply")) {
-    throw new Error("Pass --apply to run Jul23-Jul27 production recovery");
+    throw new Error("Pass --apply to run Jul23-Jul28 production recovery");
   }
   const productionDatabaseUrl = requiredEnv("DATABASE_URL");
   const sourceDatabaseUrl =

@@ -1,8 +1,18 @@
 -- @social-monitor-forward-migration
--- Extend the exact DB-derived production recovery authority through Jul27.
+-- Extend the exact DB-derived production recovery authority through Jul28.
 BEGIN;
 
 SET LOCAL ROLE "social_monitor_public_schema_owner";
+GRANT SELECT (
+  "id",
+  "tenant_id",
+  "workspace_id",
+  "interest_id",
+  "source_catalog_entry_id",
+  "status",
+  "deleted_at"
+) ON "source_bindings"
+TO "social_monitor_reader_summary_publication_owner";
 GRANT USAGE, CREATE ON SCHEMA public
 TO "social_monitor_reader_summary_publication_owner";
 RESET ROLE;
@@ -18,7 +28,8 @@ ALTER TABLE "reader_summary_production_recovery_days"
     DATE '2026-07-24',
     DATE '2026-07-25',
     DATE '2026-07-26',
-    DATE '2026-07-27'
+    DATE '2026-07-27',
+    DATE '2026-07-28'
   ));
 
 CREATE OR REPLACE FUNCTION
@@ -26,47 +37,84 @@ CREATE OR REPLACE FUNCTION
   target_date DATE
 ) RETURNS JSONB
 LANGUAGE SQL
-IMMUTABLE
+STABLE
 STRICT
-PARALLEL SAFE
 SET search_path = pg_catalog, public, pg_temp
-RETURN CASE target_date
-  WHEN DATE '2026-07-23' THEN jsonb_build_array(
-    jsonb_build_object('providerKey', 'github-trending-page', 'count', 0),
-    jsonb_build_object('providerKey', 'hacker-news', 'count', 100),
-    jsonb_build_object('providerKey', 'reddit', 'count', 100),
-    jsonb_build_object('providerKey', 'rss', 'count', 75),
-    jsonb_build_object('providerKey', 'x-twitter', 'count', 67)
+RETURN CASE
+  WHEN target_date < DATE '2026-07-23'
+    OR target_date > DATE '2026-07-28' THEN NULL
+  ELSE (
+    SELECT jsonb_agg(
+      jsonb_build_object(
+        'providerKey', provider.provider_key,
+        'count', observed.row_count,
+        'evidenceState', CASE
+          WHEN target_date = DATE '2026-07-23'
+            AND provider.provider_key = 'github-trending-page'
+            THEN 'historical_unavailable'
+          WHEN target_date = DATE '2026-07-28'
+            AND provider.provider_key IN (
+              'github-trending-page',
+              'hacker-news',
+              'reddit'
+            ) THEN 'historical_unavailable'
+          WHEN target_date = DATE '2026-07-28'
+            THEN 'partial_existing'
+          ELSE 'verified_existing'
+        END
+      )
+      ORDER BY provider.ordinal
+    )
+    FROM (VALUES
+      (1, 'github-trending-page'),
+      (2, 'hacker-news'),
+      (3, 'reddit'),
+      (4, 'rss'),
+      (5, 'x-twitter')
+    ) AS provider(ordinal, provider_key)
+    CROSS JOIN LATERAL (
+      SELECT count(*)::INTEGER AS row_count
+      FROM "feed_items" AS feed
+      JOIN "source_items" AS source
+        ON source."id" = feed."source_item_id"
+        AND source."tenant_id" = feed."tenant_id"
+        AND source."workspace_id" = feed."workspace_id"
+        AND source."source_binding_id" = feed."source_binding_id"
+        AND source."provider_key" = feed."provider_key"
+        AND source."canonical_url" = feed."canonical_url"
+      JOIN "source_bindings" AS binding
+        ON binding."id" = source."source_binding_id"
+        AND binding."tenant_id" = source."tenant_id"
+        AND binding."workspace_id" = source."workspace_id"
+        AND binding."interest_id" = feed."interest_id"
+        AND binding."status" = 'ENABLED'
+        AND binding."deleted_at" IS NULL
+      JOIN "source_catalog_entries" AS catalog
+        ON catalog."id" = binding."source_catalog_entry_id"
+        AND catalog."provider_key" = feed."provider_key"
+      JOIN "interests" AS interest
+        ON interest."id" = binding."interest_id"
+        AND interest."tenant_id" = binding."tenant_id"
+        AND interest."workspace_id" = binding."workspace_id"
+        AND interest."status" = 'ENABLED'
+        AND interest."deleted_at" IS NULL
+      WHERE feed."tenant_id" =
+          current_setting('social_monitor.tenant_id')::UUID
+        AND feed."workspace_id" =
+          current_setting('social_monitor.workspace_id')::UUID
+        AND feed."status" = 'VISIBLE'
+        AND feed."provider_key" = provider.provider_key
+        AND feed."published_at" >=
+          (target_date::TIMESTAMP AT TIME ZONE 'UTC')
+        AND feed."published_at" <
+          ((target_date + 1)::TIMESTAMP AT TIME ZONE 'UTC')
+        AND source."content_hash" ~ '^[0-9a-f]{64}$'
+        AND (
+          source."provider_content_hash" IS NULL
+          OR source."provider_content_hash" ~ '^[0-9a-f]{64}$'
+        )
+    ) AS observed
   )
-  WHEN DATE '2026-07-24' THEN jsonb_build_array(
-    jsonb_build_object('providerKey', 'github-trending-page', 'count', 10),
-    jsonb_build_object('providerKey', 'hacker-news', 'count', 100),
-    jsonb_build_object('providerKey', 'reddit', 'count', 100),
-    jsonb_build_object('providerKey', 'rss', 'count', 67),
-    jsonb_build_object('providerKey', 'x-twitter', 'count', 73)
-  )
-  WHEN DATE '2026-07-25' THEN jsonb_build_array(
-    jsonb_build_object('providerKey', 'github-trending-page', 'count', 10),
-    jsonb_build_object('providerKey', 'hacker-news', 'count', 100),
-    jsonb_build_object('providerKey', 'reddit', 'count', 100),
-    jsonb_build_object('providerKey', 'rss', 'count', 62),
-    jsonb_build_object('providerKey', 'x-twitter', 'count', 96)
-  )
-  WHEN DATE '2026-07-26' THEN jsonb_build_array(
-    jsonb_build_object('providerKey', 'github-trending-page', 'count', 10),
-    jsonb_build_object('providerKey', 'hacker-news', 'count', 78),
-    jsonb_build_object('providerKey', 'reddit', 'count', 100),
-    jsonb_build_object('providerKey', 'rss', 'count', 59),
-    jsonb_build_object('providerKey', 'x-twitter', 'count', 94)
-  )
-  WHEN DATE '2026-07-27' THEN jsonb_build_array(
-    jsonb_build_object('providerKey', 'github-trending-page', 'count', 0),
-    jsonb_build_object('providerKey', 'hacker-news', 'count', 91),
-    jsonb_build_object('providerKey', 'reddit', 'count', 125),
-    jsonb_build_object('providerKey', 'rss', 'count', 38),
-    jsonb_build_object('providerKey', 'x-twitter', 'count', 89)
-  )
-  ELSE NULL
 END;
 
 CREATE OR REPLACE FUNCTION
@@ -122,9 +170,10 @@ BEGIN
       '2026-07-24',
       '2026-07-25',
       '2026-07-26',
-      '2026-07-27'
+      '2026-07-27',
+      '2026-07-28'
     )
-    OR jsonb_array_length(binding->'days') <> 5
+    OR jsonb_array_length(binding->'days') <> 6
     OR binding->'boundaries' IS DISTINCT FROM jsonb_build_object(
       'stage', 'pre_model',
       'modelCallPerformed', FALSE,
@@ -152,6 +201,10 @@ BEGIN
       NULLIF(current_setting('social_monitor.tenant_id', TRUE), '')::UUID
     OR v_workspace_id IS DISTINCT FROM
       NULLIF(current_setting('social_monitor.workspace_id', TRUE), '')::UUID
+    OR v_tenant_id IS DISTINCT FROM
+      '00000000-0000-7000-8000-000000000901'::UUID
+    OR v_workspace_id IS DISTINCT FROM
+      '00000000-0000-7000-8000-000000000902'::UUID
     OR v_issued_at IS DISTINCT FROM
       date_trunc('milliseconds', transaction_timestamp()) THEN
     RAISE EXCEPTION
@@ -276,7 +329,7 @@ BEGIN
     END IF;
 
     v_github := v_day->'githubEvidence';
-    IF v_date IN (DATE '2026-07-23', DATE '2026-07-27') THEN
+    IF v_date IN (DATE '2026-07-23', DATE '2026-07-28') THEN
       IF v_github->>'mode' IS DISTINCT FROM 'historical_unavailable'
         OR (v_github->>'evidenceCount')::INTEGER <> 0
         OR v_github->'authorization'->>'authorizedAt' IS DISTINCT FROM
@@ -285,7 +338,8 @@ BEGIN
           'production recovery v2 historical GitHub proof diverged';
       END IF;
     ELSIF v_github->>'mode' IS DISTINCT FROM 'verified_existing'
-      OR (v_github->>'evidenceCount')::INTEGER <> 10
+      OR (v_github->>'evidenceCount')::INTEGER <>
+        (v_digests->0->>'count')::INTEGER
       OR v_github->>'evidenceSha256' IS DISTINCT FROM
         v_digests->0->>'sha256' THEN
       RAISE EXCEPTION
@@ -324,9 +378,9 @@ BEGIN
       'planSha256s', v_day->'planSha256s'
     ));
   END LOOP;
-  IF v_day_count <> 5 THEN
+  IF v_day_count <> 6 THEN
     RAISE EXCEPTION
-      'production recovery v2 requires exactly five days';
+      'production recovery v2 requires exactly six days';
   END IF;
 
   v_authority_record := jsonb_build_object(
@@ -518,6 +572,14 @@ BEGIN
   RETURN TRUE;
 END;
 $$;
+
+REVOKE ALL PRIVILEGES ON FUNCTION
+  "reader_summary_production_recovery_expected_counts_v2"(DATE),
+  "persist_reader_summary_production_recovery_v2"(JSONB)
+FROM PUBLIC, "social_monitor_reader_summary_publication_runtime";
+GRANT EXECUTE ON FUNCTION
+  "persist_reader_summary_production_recovery_v2"(JSONB)
+TO "social_monitor_reader_summary_publication_runtime";
 
 RESET ROLE;
 SET LOCAL ROLE "social_monitor_public_schema_owner";

@@ -9,7 +9,7 @@ import {
 } from "./reader-summary-production-recovery-data";
 
 describe("reader summary production recovery data", () => {
-  it("binds only Jul23-Jul27 with immutable counts and two hashes per date", () => {
+  it("binds Jul23-Jul28 DB counts and two hashes per date", () => {
     const binding = productionRecoveryBinding();
     const plan = buildReaderSummaryProductionRecoveryPlan(binding);
 
@@ -19,8 +19,9 @@ describe("reader summary production recovery data", () => {
       "2026-07-25",
       "2026-07-26",
       "2026-07-27",
+      "2026-07-28",
     ]);
-    expect(plan.days).toHaveLength(5);
+    expect(plan.days).toHaveLength(6);
     expect(
       binding.days.every(
         (day) =>
@@ -37,27 +38,32 @@ describe("reader summary production recovery data", () => {
     ).toEqual([
       {
         date: "2026-07-23",
-        total: 342,
+        total: 345,
         githubMode: "historical_unavailable",
       },
       {
         date: "2026-07-24",
-        total: 350,
+        total: 351,
         githubMode: "verified_existing",
       },
       {
         date: "2026-07-25",
-        total: 368,
+        total: 369,
         githubMode: "verified_existing",
       },
       {
         date: "2026-07-26",
-        total: 341,
+        total: 344,
         githubMode: "verified_existing",
       },
       {
         date: "2026-07-27",
-        total: 343,
+        total: 301,
+        githubMode: "verified_existing",
+      },
+      {
+        date: "2026-07-28",
+        total: 56,
         githubMode: "historical_unavailable",
       },
     ]);

@@ -15,7 +15,7 @@ import {
 import type { PrismaSummaryClient } from "./prisma-summary-client";
 
 describe("PrismaReaderSummaryProductionRecoveryAuthority", () => {
-  it("persists a DB-derived Jul23-Jul27 authority with two hashes per day", async () => {
+  it("persists a DB-derived Jul23-Jul28 authority with two hashes per day", async () => {
     const prisma = new FakeProductionRecoveryPrisma();
     const adapter = new PrismaReaderSummaryProductionRecoveryAuthority(
       prisma as unknown as PrismaSummaryClient,
@@ -31,6 +31,7 @@ describe("PrismaReaderSummaryProductionRecoveryAuthority", () => {
       "2026-07-25",
       "2026-07-26",
       "2026-07-27",
+      "2026-07-28",
     ]);
     expect(
       binding.days.every(
@@ -51,12 +52,15 @@ describe("PrismaReaderSummaryProductionRecoveryAuthority", () => {
         ),
       ),
     ).toHaveLength(1);
+    expect(
+      prisma.calls.some((call) => /\bLOCK\s+TABLE\b/iu.test(call.sql)),
+    ).toBe(false);
   });
 
-  it("replays with reads only after all five final receipts exist", async () => {
+  it("replays with reads only after all six final receipts exist", async () => {
     const prisma = new FakeProductionRecoveryPrisma(
       productionRecoveryEvidenceRows(),
-      5,
+      6,
       true,
     );
     const adapter = new PrismaReaderSummaryProductionRecoveryAuthority(
@@ -99,8 +103,8 @@ describe("PrismaReaderSummaryProductionRecoveryAuthority", () => {
 
     expect(binding.lease).toEqual({
       state: "CONSUMED",
-      issuedAt: "2026-07-28T12:00:00.000Z",
-      consumedAt: "2026-07-28T12:00:00.000Z",
+      issuedAt: "2026-07-29T12:00:00.000Z",
+      consumedAt: "2026-07-29T12:00:00.000Z",
     });
     expect(
       prisma.calls.some(
@@ -111,10 +115,10 @@ describe("PrismaReaderSummaryProductionRecoveryAuthority", () => {
     ).toBe(true);
   });
 
-  it("fails closed for the rejected Jul24 RSS68 count before persisting", async () => {
+  it("fails closed when unavailable Jul28 Reddit has DB evidence", async () => {
     const prisma = new FakeProductionRecoveryPrisma(
       productionRecoveryEvidenceRows({
-        jul24RssCount: 68,
+        jul28RedditCount: 1,
       }),
     );
     const adapter = new PrismaReaderSummaryProductionRecoveryAuthority(
@@ -122,9 +126,21 @@ describe("PrismaReaderSummaryProductionRecoveryAuthority", () => {
     );
 
     await expect(adapter.prepare()).rejects.toThrow(
-      "2026-07-24 rss requires 67 DB rows (found 68)",
+      "2026-07-28 reddit DB evidence diverged from historical_unavailable",
     );
     expect(prisma.persisted).toBeUndefined();
+  });
+
+  it("fails closed when tenant/workspace authority diverges", () => {
+    expect(() =>
+      buildProductionRecoveryAuthorityBinding({
+        scope: {
+          ...fixtureScope,
+          workspaceId: "00000000-0000-7000-8000-000000000002",
+        },
+        rows: productionRecoveryEvidenceRows(),
+      }),
+    ).toThrow("tenant/workspace authority diverged");
   });
 
   it("rejects duplicate evidence and a tampered persisted seal", () => {

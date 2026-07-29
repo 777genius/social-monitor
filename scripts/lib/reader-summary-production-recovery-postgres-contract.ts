@@ -1,8 +1,46 @@
+import { createRequire } from "node:module";
+import { join } from "node:path";
+
 import { PrismaReaderSummaryProductionRecoveryAuthority } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-production-recovery-authority";
 import type { PrismaSummaryClient } from "@social-monitor/summary/adapters/persistence/prisma/prisma-summary-client";
+import {
+  type ReaderSummaryProductionRecoveryAuthorityBinding,
+  type ReaderSummaryProductionRecoveryRequestedUtcDate,
+  readerSummaryProductionRecoveryTenantId,
+  readerSummaryProductionRecoveryWorkspaceId,
+} from "@social-monitor/summary/ports";
 
-import { PrismaReaderSummaryProductionRecoveryExecutionGuard } from "./reader-summary-production-recovery-replay-guard";
-import { readerSummaryPublicationFixtureScope } from "./reader-summary-publication-postgres-fixture-scope";
+type RecoveryExecutionGuardModule = Readonly<{
+  PrismaReaderSummaryProductionRecoveryExecutionGuard: new (
+    client: unknown,
+  ) => Readonly<{
+    claim(params: {
+      readonly binding: ReaderSummaryProductionRecoveryAuthorityBinding;
+      readonly requestedUtcDate:
+        ReaderSummaryProductionRecoveryRequestedUtcDate;
+    }): Promise<"execute" | "replayed">;
+  }>;
+}>;
+
+const runtimeRequire = createRequire(join(process.cwd(), "package.json"));
+(
+  process as NodeJS.Process & {
+    [key: symbol]: Readonly<{ enabled(value: boolean): boolean }> | undefined;
+  }
+)[Symbol.for("ts-node.register.instance")]?.enabled(false);
+(runtimeRequire("ts-node") as {
+  register(options: {
+    readonly transpileOnly: boolean;
+    readonly compilerOptions: Readonly<{ rootDir: string }>;
+  }): unknown;
+}).register({
+  transpileOnly: true,
+  compilerOptions: { rootDir: process.cwd() },
+});
+const { PrismaReaderSummaryProductionRecoveryExecutionGuard } =
+  runtimeRequire(
+    "./scripts/lib/reader-summary-production-recovery-replay-guard",
+  ) as RecoveryExecutionGuardModule;
 
 type QueryResult<TRow> = Readonly<{ rows: readonly TRow[] }>;
 export type RecoveryPostgresClient = Readonly<{
@@ -12,7 +50,13 @@ export type RecoveryPostgresClient = Readonly<{
   ): Promise<QueryResult<TRow>>;
 }>;
 
-const { tenantId, workspaceId } = readerSummaryPublicationFixtureScope;
+export const readerSummaryProductionRecoveryFixtureScope = {
+  tenantId: readerSummaryProductionRecoveryTenantId,
+  workspaceId: readerSummaryProductionRecoveryWorkspaceId,
+} as const;
+
+const { tenantId, workspaceId } =
+  readerSummaryProductionRecoveryFixtureScope;
 
 export const seedReaderSummaryProductionRecoveryFixture = async (
   client: RecoveryPostgresClient,
@@ -91,7 +135,7 @@ export const seedReaderSummaryProductionRecoveryFixture = async (
       row_number() OVER (ORDER BY day)::INTEGER AS day_number
     FROM generate_series(
       DATE '2026-07-23',
-      DATE '2026-07-27',
+      DATE '2026-07-28',
       INTERVAL '1 day'
     ) AS days(day);
 
@@ -116,7 +160,7 @@ export const seedReaderSummaryProductionRecoveryFixture = async (
       requested_date::TIMESTAMP AT TIME ZONE 'UTC' + INTERVAL '12 hours'
     FROM recovery_days
     WHERE requested_date > DATE '2026-07-23'
-      AND requested_date < DATE '2026-07-27';
+      AND requested_date < DATE '2026-07-28';
 
     INSERT INTO scan_attempts (
       scan_job_id, tenant_id, workspace_id, source_binding_id,
@@ -135,7 +179,7 @@ export const seedReaderSummaryProductionRecoveryFixture = async (
       requested_date::TIMESTAMP AT TIME ZONE 'UTC' + INTERVAL '12 hours'
     FROM recovery_days
     WHERE requested_date > DATE '2026-07-23'
-      AND requested_date < DATE '2026-07-27';
+      AND requested_date < DATE '2026-07-28';
 
     CREATE TEMP TABLE recovery_items ON COMMIT DROP AS
     SELECT
@@ -155,7 +199,7 @@ export const seedReaderSummaryProductionRecoveryFixture = async (
         CASE
           WHEN day.requested_date IN (
             DATE '2026-07-23',
-            DATE '2026-07-27'
+            DATE '2026-07-28'
           ) THEN 0
           ELSE 10
         END
@@ -165,24 +209,30 @@ export const seedReaderSummaryProductionRecoveryFixture = async (
         'hacker-news',
         CASE day.requested_date
           WHEN DATE '2026-07-26' THEN 78
-          WHEN DATE '2026-07-27' THEN 91
+          WHEN DATE '2026-07-27' THEN 87
+          WHEN DATE '2026-07-28' THEN 0
           ELSE 100
         END
       ),
       (
         3,
         'reddit',
-        CASE WHEN day.requested_date = DATE '2026-07-27' THEN 125 ELSE 100 END
+        CASE day.requested_date
+          WHEN DATE '2026-07-27' THEN 99
+          WHEN DATE '2026-07-28' THEN 0
+          ELSE 100
+        END
       ),
       (
         4,
         'rss',
         CASE day.requested_date
-          WHEN DATE '2026-07-23' THEN 75
-          WHEN DATE '2026-07-24' THEN 67
-          WHEN DATE '2026-07-25' THEN 62
-          WHEN DATE '2026-07-26' THEN 59
-          ELSE 38
+          WHEN DATE '2026-07-23' THEN 78
+          WHEN DATE '2026-07-24' THEN 68
+          WHEN DATE '2026-07-25' THEN 63
+          WHEN DATE '2026-07-26' THEN 62
+          WHEN DATE '2026-07-27' THEN 47
+          ELSE 29
         END
       ),
       (
@@ -193,7 +243,8 @@ export const seedReaderSummaryProductionRecoveryFixture = async (
           WHEN DATE '2026-07-24' THEN 73
           WHEN DATE '2026-07-25' THEN 96
           WHEN DATE '2026-07-26' THEN 94
-          ELSE 89
+          WHEN DATE '2026-07-27' THEN 58
+          ELSE 27
         END
       )
     ) AS provider(ordinal, provider_key, item_count)
@@ -362,11 +413,12 @@ export const assertReaderSummaryProductionRecoveryPostgresContract =
         ]),
       ) ===
         JSON.stringify([
-          ["2026-07-23", 342, "historical_unavailable"],
-          ["2026-07-24", 350, "verified_existing"],
-          ["2026-07-25", 368, "verified_existing"],
-          ["2026-07-26", 341, "verified_existing"],
-          ["2026-07-27", 343, "historical_unavailable"],
+          ["2026-07-23", 345, "historical_unavailable"],
+          ["2026-07-24", 351, "verified_existing"],
+          ["2026-07-25", 369, "verified_existing"],
+          ["2026-07-26", 344, "verified_existing"],
+          ["2026-07-27", 301, "verified_existing"],
+          ["2026-07-28", 56, "historical_unavailable"],
         ]),
       "production recovery immutable daily counts diverged",
     );

@@ -16,7 +16,7 @@ import type {
   ReaderSummaryProductionRecoveryRequestedUtcDate,
 } from "@social-monitor/summary/ports";
 import {
-  readerSummaryProductionRecoveryExpectedProviderCounts,
+  readerSummaryProductionRecoveryEvidenceState,
   readerSummaryProductionRecoveryProviderKeys,
   readerSummaryProductionRecoveryRequestedUtcDates,
 } from "@social-monitor/summary/ports";
@@ -209,10 +209,10 @@ const assertAuthorityBinding = (
     binding.lease.state !== "CONSUMED" ||
     binding.dryRunCanonicalSha256s[0] !== binding.canonicalSha256 ||
     binding.dryRunCanonicalSha256s[1] !== binding.canonicalSha256 ||
-    binding.days.length !== 5
+    binding.days.length !== 6
   ) {
     throw new Error(
-      "Reader summary production recovery authority is not exact pre-model Jul23-Jul27 scope",
+      "Reader summary production recovery authority is not exact pre-model Jul23-Jul28 scope",
     );
   }
   for (const expectedDate of readerSummaryProductionRecoveryDates) {
@@ -226,21 +226,30 @@ const dayPlan = (
   const providerCounts = Object.fromEntries(
     day.providerCounts.map((count) => [count.providerKey, count.count]),
   ) as Record<ReaderSummaryProductionRecoveryProviderKey, number>;
+  const evidenceStates = Object.fromEntries(
+    day.providerCounts.map((count) => [
+      count.providerKey,
+      count.evidenceState,
+    ]),
+  );
   const allRows = readerSummaryProductionRecoveryProviderKeys.flatMap(
     (providerKey) => day.providerEvidence[providerKey],
   );
-  const expectedCounts =
-    readerSummaryProductionRecoveryExpectedProviderCounts[
-      day.requestedUtcDate
-    ];
   for (const providerKey of readerSummaryProductionRecoveryProviderKeys) {
     if (
       providerCounts[providerKey] !==
         day.providerEvidence[providerKey].length ||
-      providerCounts[providerKey] !== expectedCounts[providerKey]
+      evidenceStates[providerKey] !==
+        readerSummaryProductionRecoveryEvidenceState(
+          day.requestedUtcDate,
+          providerKey,
+        ) ||
+      (evidenceStates[providerKey] === "historical_unavailable"
+        ? providerCounts[providerKey] !== 0
+        : providerCounts[providerKey] < 1)
     ) {
       throw new Error(
-        `Reader summary production recovery ${day.requestedUtcDate} provider counts are not exact`,
+        `Reader summary production recovery ${day.requestedUtcDate} provider DB authority is not exact`,
       );
     }
   }
@@ -251,7 +260,7 @@ const dayPlan = (
     day.planSha256s[1] !== day.canonicalSha256 ||
     githubRows.some((row) => row.github === undefined) ||
     (day.requestedUtcDate === "2026-07-23" ||
-    day.requestedUtcDate === "2026-07-27"
+    day.requestedUtcDate === "2026-07-28"
       ? day.githubEvidence.mode !== "historical_unavailable"
       : day.githubEvidence.mode !== "verified_existing")
   ) {

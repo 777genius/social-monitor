@@ -3,6 +3,7 @@ import {
   deepFreezeReaderSummaryWeekly,
 } from "../../../domain/value-objects/reader-summary-weekly-canonical-json";
 import {
+  readerSummaryProductionRecoveryEvidenceState,
   readerSummaryProductionRecoveryProviderKeys,
   readerSummaryProductionRecoveryRequestedUtcDates,
   type ReaderSummaryProductionRecoveryAuthorityBinding,
@@ -12,6 +13,7 @@ import {
   type ReaderSummaryProductionRecoveryRequestedUtcDate,
 } from "../../../ports/reader-summary-production-recovery-authority.port";
 import {
+  assertProductionRecoveryScope,
   canonicalProductionRecoveryTimestamp,
   exactRecoveryIdentity,
   exactRecoveryPositiveInteger,
@@ -20,7 +22,6 @@ import {
   exactRecoveryText,
   exactRecoveryUuid,
   failProductionRecovery,
-  productionRecoveryExpectedCounts,
   productionRecoveryIdentity,
 } from "./prisma-reader-summary-production-recovery-authority-row-primitives";
 
@@ -71,6 +72,7 @@ export const buildProductionRecoveryAuthorityBinding = (params: {
     params.scope.workspaceId,
     "workspace id",
   );
+  assertProductionRecoveryScope(tenantId, workspaceId);
   const issuedAt = canonicalProductionRecoveryTimestamp(
     params.scope.issuedAt,
     "authority timestamp",
@@ -106,7 +108,7 @@ export const buildProductionRecoveryAuthorityBinding = (params: {
     )
   ) {
     failProductionRecovery(
-      "contains evidence outside the exact Jul23-Jul27 scope",
+      "contains evidence outside the exact Jul23-Jul28 scope",
     );
   }
   const canonicalRecord = {
@@ -168,7 +170,7 @@ export const verifyPersistedProductionRecoveryAuthority = (
     binding.boundaries.recollectionPerformed !== false ||
     JSON.stringify(binding.requestedUtcDates) !==
       JSON.stringify(readerSummaryProductionRecoveryRequestedUtcDates) ||
-    binding.days?.length !== 5
+    binding.days?.length !== 6
   ) {
     failProductionRecovery("persisted authority diverged");
   }
@@ -265,14 +267,21 @@ const buildDay = (params: {
     (providerKey) => ({
       providerKey,
       count: providerEvidence[providerKey].length,
+      evidenceState: readerSummaryProductionRecoveryEvidenceState(
+        params.date,
+        providerKey,
+      ),
     }),
   );
-  const expectedCounts = productionRecoveryExpectedCounts[params.date];
   for (const provider of providerCounts) {
-    const expected = expectedCounts[provider.providerKey];
-    if (provider.count !== expected) {
+    if (
+      (provider.evidenceState === "historical_unavailable" &&
+        provider.count !== 0) ||
+      (provider.evidenceState !== "historical_unavailable" &&
+        provider.count < 1)
+    ) {
       failProductionRecovery(
-        `${params.date} ${provider.providerKey} requires ${expected} DB rows (found ${provider.count})`,
+        `${params.date} ${provider.providerKey} DB evidence diverged from ${provider.evidenceState}`,
       );
     }
   }
@@ -288,20 +297,20 @@ const buildDay = (params: {
   const providerEvidenceSha256 =
     canonicalizeReaderSummaryWeeklyJson(evidenceDigests).sha256;
   const githubRows = providerEvidence["github-trending-page"];
+  const githubState = providerCounts[0]!.evidenceState;
   const githubEvidence =
-    params.date === "2026-07-23" || params.date === "2026-07-27"
+    githubState === "historical_unavailable"
       ? {
           schemaVersion:
             "reader_summary.production_recovery_github_evidence.v2" as const,
           mode: "historical_unavailable" as const,
           providerKey: "github-trending-page" as const,
-          requestedUtcDate: params.date,
+          requestedUtcDate: params.date as "2026-07-23" | "2026-07-28",
           evidenceCount: 0 as const,
           authorization: {
-            authorizationId:
-              `reader_summary.production_recovery.github.${params.date}.v2` as
-                | "reader_summary.production_recovery.github.2026-07-23.v2"
-                | "reader_summary.production_recovery.github.2026-07-27.v2",
+            authorizationId: `reader_summary.production_recovery.github.${params.date}.v2` as
+              | "reader_summary.production_recovery.github.2026-07-23.v2"
+              | "reader_summary.production_recovery.github.2026-07-28.v2",
             authorizedAt: canonicalProductionRecoveryTimestamp(
               params.issuedAt,
               "authority timestamp",
@@ -315,8 +324,9 @@ const buildDay = (params: {
             "reader_summary.production_recovery_github_evidence.v2" as const,
           mode: "verified_existing" as const,
           providerKey: "github-trending-page" as const,
-          requestedUtcDate: params.date,
-          evidenceCount: 10 as const,
+          requestedUtcDate: params.date as Exclude<
+            ReaderSummaryProductionRecoveryRequestedUtcDate, "2026-07-23" | "2026-07-28">,
+          evidenceCount: githubRows.length,
           evidenceSha256: evidenceDigests[0]!.sha256,
           scanJobIds: [
             ...new Set(githubRows.map((row) => row.github!.scanJobId)),

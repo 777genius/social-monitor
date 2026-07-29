@@ -4,63 +4,28 @@ import {
   type ProductionRecoveryScopeRow,
 } from "./prisma-reader-summary-production-recovery-authority-row";
 import {
-  productionRecoveryExpectedCounts,
-} from "./prisma-reader-summary-production-recovery-authority-row-primitives";
+  readerSummaryProductionRecoveryTenantId,
+  readerSummaryProductionRecoveryWorkspaceId,
+} from "../../../ports/reader-summary-production-recovery-authority.port";
 
 export const fixtureScope: ProductionRecoveryScopeRow = {
-  tenantId: "10000000-0000-4000-8000-000000000001",
-  workspaceId: "20000000-0000-4000-8000-000000000002",
-  issuedAt: new Date("2026-07-28T12:00:00.000Z"),
+  tenantId: readerSummaryProductionRecoveryTenantId,
+  workspaceId: readerSummaryProductionRecoveryWorkspaceId,
+  issuedAt: new Date("2026-07-29T12:00:00.000Z"),
 };
 
 export const productionRecoveryEvidenceRows = (params?: {
-  readonly jul24RssCount?: number;
+  readonly jul28RedditCount?: number;
 }): readonly ProductionRecoveryEvidenceRow[] => {
   let ordinal = 0;
-  return [
-    "2026-07-23",
-    "2026-07-24",
-    "2026-07-25",
-    "2026-07-26",
-    "2026-07-27",
-  ]
-    .flatMap((date) =>
-      [
-        [
-          "github-trending-page",
-          productionRecoveryExpectedCounts[
-            date as keyof typeof productionRecoveryExpectedCounts
-          ]["github-trending-page"],
-        ],
-        [
-          "hacker-news",
-          productionRecoveryExpectedCounts[
-            date as keyof typeof productionRecoveryExpectedCounts
-          ]["hacker-news"],
-        ],
-        [
-          "reddit",
-          productionRecoveryExpectedCounts[
-            date as keyof typeof productionRecoveryExpectedCounts
-          ].reddit,
-        ],
-        [
-          "rss",
-          date === "2026-07-24"
-            ? (params?.jul24RssCount ??
-              productionRecoveryExpectedCounts["2026-07-24"].rss)
-            : productionRecoveryExpectedCounts[
-                date as keyof typeof productionRecoveryExpectedCounts
-              ].rss,
-        ],
-        [
-          "x-twitter",
-          productionRecoveryExpectedCounts[
-            date as keyof typeof productionRecoveryExpectedCounts
-          ]["x-twitter"],
-        ],
-      ].flatMap(([providerKey, count]) =>
-        Array.from({ length: Number(count) }, (_, index) => {
+  return Object.entries(productionRecoveryFixtureCounts).flatMap(
+    ([date, providerCounts]) =>
+      Object.entries(providerCounts).flatMap(([providerKey, fixtureCount]) => {
+        const count =
+          date === "2026-07-28" && providerKey === "reddit"
+            ? (params?.jul28RedditCount ?? fixtureCount)
+            : fixtureCount;
+        return Array.from({ length: count }, (_, index) => {
           ordinal += 1;
           return evidenceRow({
             ordinal,
@@ -68,10 +33,55 @@ export const productionRecoveryEvidenceRows = (params?: {
             providerKey: String(providerKey),
             providerIndex: index,
           });
-        }),
-      ),
-    );
+        });
+      }),
+  );
 };
+
+const productionRecoveryFixtureCounts = Object.freeze({
+  "2026-07-23": Object.freeze({
+    "github-trending-page": 0,
+    "hacker-news": 100,
+    reddit: 100,
+    rss: 78,
+    "x-twitter": 67,
+  }),
+  "2026-07-24": Object.freeze({
+    "github-trending-page": 10,
+    "hacker-news": 100,
+    reddit: 100,
+    rss: 68,
+    "x-twitter": 73,
+  }),
+  "2026-07-25": Object.freeze({
+    "github-trending-page": 10,
+    "hacker-news": 100,
+    reddit: 100,
+    rss: 63,
+    "x-twitter": 96,
+  }),
+  "2026-07-26": Object.freeze({
+    "github-trending-page": 10,
+    "hacker-news": 78,
+    reddit: 100,
+    rss: 62,
+    "x-twitter": 94,
+  }),
+  "2026-07-27": Object.freeze({
+    "github-trending-page": 10,
+    "hacker-news": 87,
+    reddit: 99,
+    rss: 47,
+    "x-twitter": 58,
+  }),
+  "2026-07-28": Object.freeze({
+    "github-trending-page": 0,
+    "hacker-news": 0,
+    reddit: 0,
+    rss: 29,
+    "x-twitter": 27,
+  }),
+});
 
 export const productionRecoveryBinding = () =>
   buildProductionRecoveryAuthorityBinding({
