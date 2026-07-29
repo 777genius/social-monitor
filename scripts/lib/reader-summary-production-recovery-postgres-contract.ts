@@ -815,8 +815,9 @@ const assertRecoveryPersistenceFunctionDefinition = async (
         ) ?? []
       ).length === 2 &&
       normalizedDefinition.includes(
-        '"reader_summary_weekly_canonical_json"(v_identity_body)',
-      ),
+        '"reader_summary_production_recovery_canonical_json"(v_identity_body)',
+      ) &&
+      !normalizedDefinition.includes('"reader_summary_weekly_canonical_json"(v_identity_body)'),
     "production recovery persistence function is not the canonical six-day definition",
   );
 };

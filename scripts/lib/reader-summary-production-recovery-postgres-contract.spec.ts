@@ -31,6 +31,15 @@ describe("reader summary production recovery PostgreSQL contract", () => {
     ),
     "utf8",
   );
+  const identityCanonicalBoundsMigration = readFileSync(
+    join(
+      process.cwd(),
+      "prisma/migrations/" +
+        "20260729210500_reader_summary_production_recovery_" +
+        "identity_canonical_bounds/migration.sql",
+    ),
+    "utf8",
+  );
   const postgresContract = readFileSync(
     join(process.cwd(),
       "scripts/lib/reader-summary-production-recovery-postgres-contract.ts"),
@@ -156,6 +165,30 @@ describe("reader summary production recovery PostgreSQL contract", () => {
       "v_definition,\n    v_shared_call,\n    v_recovery_call",
     );
     expect(canonicalBoundsMigration).not.toContain(
+      "CREATE OR REPLACE FUNCTION public.reader_summary_weekly_canonical_json",
+    );
+  });
+
+  it("uses recovery bounds only for the six-day idempotency identity", () => {
+    expect(identityCanonicalBoundsMigration).toContain(
+      `'"reader_summary_weekly_canonical_json"(v_identity_body)'`,
+    );
+    expect(identityCanonicalBoundsMigration).toContain(
+      `'"reader_summary_production_recovery_canonical_json"(v_identity_body)'`,
+    );
+    expect(identityCanonicalBoundsMigration).toContain(
+      "v_shared_identity_call,\n    v_recovery_identity_call",
+    );
+    expect(identityCanonicalBoundsMigration).toContain(
+      "authority.proacl IS DISTINCT FROM v_acl",
+    );
+    expect(identityCanonicalBoundsMigration).toContain(
+      "authority.proconfig IS DISTINCT FROM v_config",
+    );
+    expect(identityCanonicalBoundsMigration).toContain(
+      "authority.prosecdef IS DISTINCT FROM v_security_definer",
+    );
+    expect(identityCanonicalBoundsMigration).not.toContain(
       "CREATE OR REPLACE FUNCTION public.reader_summary_weekly_canonical_json",
     );
   });

@@ -4,6 +4,7 @@ import {
   readerSummaryProductionRecoveryCanonicalJsonLimits,
   readerSummaryWeeklyCanonicalJsonLimits,
 } from "@social-monitor/summary/domain/value-objects/reader-summary-weekly-canonical-json";
+import { readerSummaryProductionRecoveryRequestedUtcDates } from "@social-monitor/summary/ports";
 
 type CanonicalBoundsPostgresClient = Readonly<{
   query<TRow = Record<string, unknown>>(
@@ -124,6 +125,36 @@ export const assertReaderSummaryProductionRecoveryCanonicalBounds = async (
     artifact.artifact_payload,
     "weekly canonical JSON exceeds structural bounds",
     "PostgreSQL shared weekly bounds unexpectedly admitted recovery evidence",
+  );
+
+  const identityBody = {
+    schemaVersion: "reader_summary.production_recovery_identity.v2",
+    tenantId: params.tenantId,
+    workspaceId: params.workspaceId,
+    requestedUtcDates: readerSummaryProductionRecoveryRequestedUtcDates,
+  };
+  const identityCanonical = await params.client.query<{
+    readonly recovery_canonical: string;
+    readonly weekly_canonical: string;
+  }>(
+    `
+      SELECT
+        reader_summary_production_recovery_canonical_json($1::jsonb)
+          AS recovery_canonical,
+        reader_summary_weekly_canonical_json($1::jsonb)
+          AS weekly_canonical
+    `,
+    [JSON.stringify(identityBody)],
+  );
+  const identity = identityCanonical.rows[0];
+  const jsRecoveryIdentity =
+    canonicalizeReaderSummaryProductionRecoveryJson(identityBody);
+  const jsWeeklyIdentity = canonicalizeReaderSummaryWeeklyJson(identityBody);
+  assert(
+    identity?.recovery_canonical === jsRecoveryIdentity.json &&
+      identity.weekly_canonical === jsWeeklyIdentity.json &&
+      jsRecoveryIdentity.sha256 === jsWeeklyIdentity.sha256,
+    "production recovery identity canonical hash drifted across bounds",
   );
 
   const atRecoveryKeyLimit = totalObjectKeyFixture(
