@@ -4,6 +4,8 @@ import {
   readerSummaryProductionRecoveryDayIds,
   readerSummaryProductionRecoveryJobIdempotencyKey,
   readerSummaryProductionRecoveryLegacyDayIds,
+  readerSummaryProductionRecoveryQualityRemediationDayIds,
+  readerSummaryProductionRecoveryQualityRemediationJobIdempotencyKey,
   readerSummaryProductionRecoveryResumeDayIds,
 } from "./reader-summary-production-recovery-cli";
 import {
@@ -70,25 +72,27 @@ describe("PrismaReaderSummaryProductionRecoveryExecutionGuard", () => {
     },
   );
 
-  it("resumes only a consumed retry that failed on predecessor canonical bounds", async () => {
-    const requestedUtcDate = "2026-07-24";
-    const fixture = guardFixture([
-      [{ replayed: false }],
-      [retryClaimRow(requestedUtcDate, "FAILED")],
-      [],
-      [claimOutcome()],
-    ]);
+  it.each(["2026-07-24", "2026-07-26"] as const)(
+    "resumes only a consumed %s retry that failed on predecessor canonical bounds",
+    async (requestedUtcDate) => {
+      const fixture = guardFixture([
+        [{ replayed: false }],
+        [retryClaimRow(requestedUtcDate, "FAILED")],
+        [],
+        [claimOutcome()],
+      ]);
 
-    await expect(claim(fixture.guard, requestedUtcDate)).resolves.toBe(
-      "resume",
-    );
-    expect(fixture.queries[3]).toContain('INSERT INTO "idempotency_keys"');
-    expect(fixture.queries[3]).toContain('INSERT INTO "reader_summary_jobs"');
-    expect(fixture.queries[3]).not.toContain("reader_summary_artifacts");
-  });
+      await expect(claim(fixture.guard, requestedUtcDate)).resolves.toBe(
+        "resume",
+      );
+      expect(fixture.queries[3]).toContain('INSERT INTO "idempotency_keys"');
+      expect(fixture.queries[3]).toContain('INSERT INTO "reader_summary_jobs"');
+      expect(fixture.queries[3]).not.toContain("reader_summary_artifacts");
+    },
+  );
 
   it.each(["legacy", "retry"] as const)(
-    "skips an existing %s rejected artifact without writes",
+    "creates one quality remediation lease for an existing %s rejected artifact",
     async (claimKind) => {
       const requestedUtcDate = "2026-07-23";
       const fixture = guardFixture([
@@ -96,29 +100,60 @@ describe("PrismaReaderSummaryProductionRecoveryExecutionGuard", () => {
         ...(claimKind === "retry"
           ? [[retryClaimRow(requestedUtcDate, "REJECTED")]]
           : [[], [legacyClaimRow(requestedUtcDate, "REJECTED")]]),
+        [],
+        [claimOutcome()],
       ]);
 
-      await expect(claim(fixture.guard, requestedUtcDate)).resolves.toEqual(
-        expect.objectContaining({
-          reason: "existing_quality_rejection",
-          terminalStatus: "REJECTED",
-          readerSummaryId:
-            claimKind === "retry"
-              ? readerSummaryProductionRecoveryDayIds(
-                  productionRecoveryBinding(),
-                  requestedUtcDate,
-                ).readerSummaryId
-              : readerSummaryProductionRecoveryLegacyDayIds(
-                  productionRecoveryBinding(),
-                  requestedUtcDate,
-                ).readerSummaryId,
-        }),
+      await expect(claim(fixture.guard, requestedUtcDate)).resolves.toBe(
+        "remediate-quality",
       );
-      expect(fixture.queries.every((sql) => !sql.includes("INSERT"))).toBe(
-        true,
+      const persisted = fixture.queries.at(-1)!;
+      expect(persisted).toContain('INSERT INTO "idempotency_keys"');
+      expect(persisted).toContain('INSERT INTO "reader_summary_jobs"');
+      expect(persisted).not.toContain("reader_summary_artifacts");
+      expect(persisted).not.toContain("source_items");
+      expect(JSON.stringify(fixture.values.at(-1))).toContain(
+        "rejectionEvidenceSha256",
+      );
+      expect(JSON.stringify(fixture.values.at(-1))).not.toContain(
+        "quality rejection fixture",
+      );
+      expect(
+        readerSummaryProductionRecoveryQualityRemediationDayIds(
+          productionRecoveryBinding(),
+          requestedUtcDate,
+        ),
+      ).not.toEqual(
+        claimKind === "retry"
+          ? readerSummaryProductionRecoveryDayIds(
+              productionRecoveryBinding(),
+              requestedUtcDate,
+            )
+          : readerSummaryProductionRecoveryLegacyDayIds(
+              productionRecoveryBinding(),
+              requestedUtcDate,
+            ),
       );
     },
   );
+
+  it("remediates the legacy FAILED job shape only when its linked artifact is REJECTED", async () => {
+    const requestedUtcDate = "2026-07-27";
+    const rejected = retryClaimRow(requestedUtcDate, "REJECTED");
+    const fixture = guardFixture([
+      [{ replayed: false }],
+      [{ ...rejected, jobStatus: "FAILED" }],
+      [],
+      [claimOutcome()],
+    ]);
+
+    await expect(claim(fixture.guard, requestedUtcDate)).resolves.toBe(
+      "remediate-quality",
+    );
+    expect(fixture.queries.at(-1)).not.toContain(
+      "reader_summary_artifacts",
+    );
+  });
 
   it("does not re-consume an existing running retry lease without a receipt", async () => {
     const requestedUtcDate = "2026-07-26";
@@ -128,7 +163,7 @@ describe("PrismaReaderSummaryProductionRecoveryExecutionGuard", () => {
     ]);
 
     await expect(claim(fixture.guard, requestedUtcDate)).rejects.toThrow(
-      "retry lease was already consumed without final receipt",
+      "2026-07-26 retry-v1 lease was already consumed without final receipt",
     );
     expect(fixture.queries).toHaveLength(2);
     expect(fixture.queries.every((sql) => !sql.includes("INSERT"))).toBe(
@@ -150,9 +185,31 @@ describe("PrismaReaderSummaryProductionRecoveryExecutionGuard", () => {
     ]);
 
     await expect(claim(fixture.guard, requestedUtcDate)).rejects.toThrow(
-      "retry lease was already consumed without final receipt",
+      "2026-07-24 retry-v1 lease was already consumed without final receipt",
     );
     expect(fixture.queries).toHaveLength(2);
+  });
+
+  it("fails closed with redacted date evidence for a non-canonical legacy failure", async () => {
+    const requestedUtcDate = "2026-07-25";
+    const fixture = guardFixture([
+      [{ replayed: false }],
+      [],
+      [
+        {
+          ...legacyClaimRow(requestedUtcDate, "FAILED"),
+          jobFailureReason: "provider response was unavailable",
+        },
+      ],
+    ]);
+
+    await expect(claim(fixture.guard, requestedUtcDate)).rejects.toThrow(
+      "2026-07-25 legacy-v2 lease was already consumed without final receipt; failure_reason_sha256=",
+    );
+    expect(fixture.queries).toHaveLength(3);
+    expect(fixture.queries.every((sql) => !sql.includes("INSERT"))).toBe(
+      true,
+    );
   });
 
   it("keeps canonical retry-v1 unchanged and resume identity distinct", () => {
@@ -181,6 +238,14 @@ describe("PrismaReaderSummaryProductionRecoveryExecutionGuard", () => {
         requestedUtcDate,
       ),
     ).not.toEqual(retryIds);
+    expect(
+      readerSummaryProductionRecoveryQualityRemediationJobIdempotencyKey(
+        requestedUtcDate,
+        dayAuthority(binding, requestedUtcDate).canonicalSha256,
+      ),
+    ).toContain(
+      "reader-summary-production-recovery-quality-remediation-v1:",
+    );
   });
 
   it("fails closed when legacy terminal authority is not exact", async () => {
@@ -215,12 +280,17 @@ const claim = (
 
 const guardFixture = (
   responses: readonly (readonly unknown[])[],
-): Readonly<{ guard: Guard; queries: string[] }> => {
+): Readonly<{ guard: Guard; queries: string[]; values: unknown[][] }> => {
   const queries: string[] = [];
+  const values: unknown[][] = [];
   let invocation = 0;
   const client = {
-    $queryRaw: async <T>(strings: TemplateStringsArray): Promise<T> => {
+    $queryRaw: async <T>(
+      strings: TemplateStringsArray,
+      ...queryValues: unknown[]
+    ): Promise<T> => {
       queries.push(strings.join("?").replace(/\s+/gu, " "));
+      values.push(queryValues);
       const response = responses[invocation];
       invocation += 1;
       if (response === undefined) {
@@ -237,6 +307,7 @@ const guardFixture = (
       client as never,
     ),
     queries,
+    values,
   };
 };
 

@@ -53,7 +53,8 @@ export type ReaderSummaryProductionRecoveryDayResult = Readonly<{
 
 export type ReaderSummaryProductionRecoveryExecutionIdentity =
   | "retry-v1"
-  | "resume-v1";
+  | "resume-v1"
+  | "quality-remediation-v1";
 
 export type ReaderSummaryProductionRecoverySkipEvidence = Readonly<{
   reason: "existing_quality_rejection";
@@ -74,7 +75,11 @@ export type ReaderSummaryProductionRecoveryExecutionGuard = Readonly<{
     readonly binding: ReaderSummaryProductionRecoveryAuthorityBinding;
     readonly requestedUtcDate: ReaderSummaryProductionRecoveryDate;
   }): Promise<
-    "execute" | "resume" | "replayed" | ReaderSummaryProductionRecoverySkipEvidence
+    | "execute"
+    | "resume"
+    | "remediate-quality"
+    | "replayed"
+    | ReaderSummaryProductionRecoverySkipEvidence
   >;
 }>;
 
@@ -131,7 +136,12 @@ export const runReaderSummaryProductionRecovery = async (
     dayResults.push(await options.executeDay({
       binding,
       requestedUtcDate,
-      executionIdentity: claim === "resume" ? "resume-v1" : "retry-v1",
+      executionIdentity:
+        claim === "resume"
+          ? "resume-v1"
+          : claim === "remediate-quality"
+            ? "quality-remediation-v1"
+            : "retry-v1",
     }));
   }
   return { outcome: "applied", plan, dayResults };
@@ -191,6 +201,27 @@ export const readerSummaryProductionRecoveryResumeJobIdempotencyKey = (
 ): string =>
   `reader-summary-production-recovery-resume-v1:${requestedUtcDate}:${planSha256}`;
 
+export const readerSummaryProductionRecoveryQualityRemediationDayIds = (
+  binding: ReaderSummaryProductionRecoveryAuthorityBinding,
+  requestedUtcDate: ReaderSummaryProductionRecoveryDate,
+): Readonly<{ readerSummaryJobId: string; readerSummaryId: string }> => {
+  const evidenceSha256 = dayAuthority(binding, requestedUtcDate).canonicalSha256;
+  return {
+    readerSummaryJobId: deterministicUuid(
+      `reader-summary-production-recovery-quality-remediation-v1-job:${binding.recoveryId}:${requestedUtcDate}:${evidenceSha256}`,
+    ),
+    readerSummaryId: deterministicUuid(
+      `reader-summary-production-recovery-quality-remediation-v1-artifact:${binding.recoveryId}:${requestedUtcDate}:${evidenceSha256}`,
+    ),
+  };
+};
+
+export const readerSummaryProductionRecoveryQualityRemediationJobIdempotencyKey = (
+  requestedUtcDate: ReaderSummaryProductionRecoveryDate,
+  planSha256: string,
+): string =>
+  `reader-summary-production-recovery-quality-remediation-v1:${requestedUtcDate}:${planSha256}`;
+
 export type ProductionRecoveryDayExecutorDependencies = Readonly<{
   model: ReaderSummaryModelPort;
   finalization: ReaderSummaryRecoveryFinalizationPort;
@@ -233,16 +264,22 @@ export const executeProductionRecoveryDay = async (
 ): Promise<ReaderSummaryProductionRecoveryDayResult> => {
   const day = dayAuthority(params.binding, params.requestedUtcDate);
   const period = periodForRecoveryDate(params.requestedUtcDate);
-  const resume = params.executionIdentity === "resume-v1";
-  const ids = resume
-    ? readerSummaryProductionRecoveryResumeDayIds(
-        params.binding,
-        params.requestedUtcDate,
-      )
-    : readerSummaryProductionRecoveryDayIds(
-        params.binding,
-        params.requestedUtcDate,
-      );
+  const identity = params.executionIdentity ?? "retry-v1";
+  const ids =
+    identity === "resume-v1"
+      ? readerSummaryProductionRecoveryResumeDayIds(
+          params.binding,
+          params.requestedUtcDate,
+        )
+      : identity === "quality-remediation-v1"
+        ? readerSummaryProductionRecoveryQualityRemediationDayIds(
+            params.binding,
+            params.requestedUtcDate,
+          )
+        : readerSummaryProductionRecoveryDayIds(
+            params.binding,
+            params.requestedUtcDate,
+          );
   const jobId = ids.readerSummaryJobId;
   const readerSummaryId = ids.readerSummaryId;
   const expectedJob = ReaderSummaryJob.request({
@@ -251,11 +288,16 @@ export const executeProductionRecoveryDay = async (
     workspaceId: workspaceId(params.binding.workspaceId),
     scope: { type: "workspace" },
     period,
-    idempotencyKey: resume
+    idempotencyKey: identity === "resume-v1"
       ? readerSummaryProductionRecoveryResumeJobIdempotencyKey(
           params.requestedUtcDate,
           day.canonicalSha256,
         )
+      : identity === "quality-remediation-v1"
+        ? readerSummaryProductionRecoveryQualityRemediationJobIdempotencyKey(
+            params.requestedUtcDate,
+            day.canonicalSha256,
+          )
       : readerSummaryProductionRecoveryJobIdempotencyKey(
           params.requestedUtcDate,
           day.canonicalSha256,
@@ -305,6 +347,14 @@ export const executeProductionRecoveryDay = async (
   });
   if (!result.ok) {
     throw result.error;
+  }
+  if (result.value.status === "quality_rejected") {
+    return {
+      requestedUtcDate: params.requestedUtcDate,
+      outcome: "skipped",
+      readerSummaryJobId: result.value.readerSummaryJobId,
+      readerSummaryId: result.value.readerSummaryId,
+    };
   }
   return {
     requestedUtcDate: params.requestedUtcDate,

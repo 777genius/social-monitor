@@ -19,7 +19,7 @@ type RecoveryExecutionGuardModule = Readonly<{
     claim(params: {
       readonly binding: ReaderSummaryProductionRecoveryAuthorityBinding;
       readonly requestedUtcDate: ReaderSummaryProductionRecoveryRequestedUtcDate;
-    }): Promise<"execute" | "resume" | "replayed" | object>;
+    }): Promise<"execute" | "resume" | "remediate-quality" | "replayed" | object>;
   }>;
 }>;
 type RecoveryIds = Readonly<{ readerSummaryJobId: string; readerSummaryId: string }>;
@@ -65,7 +65,6 @@ export type RecoveryPostgresClient = Readonly<{
     values?: readonly unknown[],
   ): Promise<QueryResult<TRow>>;
 }>;
-
 export const readerSummaryProductionRecoveryFixtureScope = {
   tenantId: readerSummaryProductionRecoveryTenantId,
   workspaceId: readerSummaryProductionRecoveryWorkspaceId,
@@ -945,7 +944,8 @@ const recoveryWriteCounts = async (
         WHERE key."scope" IN (
           'reader-summary-production-recovery-model-v2',
           'reader-summary-production-recovery-model-retry-v1',
-          'reader-summary-production-recovery-model-resume-v1'
+          'reader-summary-production-recovery-model-resume-v1',
+          'reader-summary-production-recovery-model-quality-remediation-v1'
         )
       )::INTEGER AS claims,
       (

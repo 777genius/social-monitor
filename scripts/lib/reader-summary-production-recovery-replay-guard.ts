@@ -16,10 +16,11 @@ import {
   readerSummaryProductionRecoveryDayIds,
   readerSummaryProductionRecoveryJobIdempotencyKey,
   readerSummaryProductionRecoveryLegacyDayIds,
+  readerSummaryProductionRecoveryQualityRemediationDayIds,
+  readerSummaryProductionRecoveryQualityRemediationJobIdempotencyKey,
   readerSummaryProductionRecoveryResumeDayIds,
   readerSummaryProductionRecoveryResumeJobIdempotencyKey,
   type ReaderSummaryProductionRecoveryExecutionGuard,
-  type ReaderSummaryProductionRecoverySkipEvidence,
 } from "./reader-summary-production-recovery-cli";
 import {
   dayAuthority,
@@ -121,10 +122,39 @@ type ResumeRecoveryModelClaimPayload = Readonly<{
   }>;
   boundaries: RetryRecoveryModelClaimPayload["boundaries"];
 }>;
+type QualityRemediationModelClaimPayload = Readonly<{
+  schemaVersion: "reader_summary.production_recovery_model_quality_remediation_claim.v1";
+  recoveryId: string;
+  tenantId: string;
+  workspaceId: string;
+  requestedUtcDate: ReaderSummaryProductionRecoveryDate;
+  readerSummaryJobId: string;
+  readerSummaryArtifactId: string;
+  planSha256s: readonly [string, string];
+  providerEvidenceSha256: string;
+  supersedes: Readonly<{
+    claimScope: typeof legacyClaimScope | typeof retryClaimScope | typeof resumeClaimScope;
+    readerSummaryJobId: string;
+    readerSummaryArtifactId: string;
+    terminalStatus: "REJECTED";
+    rejectionEvidenceSha256: string;
+  }>;
+  boundaries: RetryRecoveryModelClaimPayload["boundaries"];
+}>;
 
 const legacyClaimScope = "reader-summary-production-recovery-model-v2";
 const retryClaimScope = "reader-summary-production-recovery-model-retry-v1";
 const resumeClaimScope = "reader-summary-production-recovery-model-resume-v1";
+const qualityRemediationClaimScope = "reader-summary-production-recovery-model-quality-remediation-v1";
+type QualityRemediationClaimInput = Readonly<{
+  params: {
+    readonly binding: ReaderSummaryProductionRecoveryAuthorityBinding;
+    readonly requestedUtcDate: ReaderSummaryProductionRecoveryDate;
+  };
+  day: ReturnType<typeof dayAuthority>;
+  rejected: ExistingClaimRow;
+  rejectedClaimScope: typeof legacyClaimScope | typeof retryClaimScope | typeof resumeClaimScope;
+}>;
 const transactionOptions: PrismaSummaryTransactionOptions = Object.freeze({
   maxWait: 30_000,
   timeout: 300_000,
@@ -182,7 +212,12 @@ export class PrismaReaderSummaryProductionRecoveryExecutionGuard
               ),
             );
             if (retryStatus === "REJECTED") {
-              return qualityRejectionSkip(existingRetry);
+              return claimQualityRemediation(prisma, {
+                params,
+                day,
+                rejected: existingRetry,
+                rejectedClaimScope: retryClaimScope,
+              });
             }
             if (
               retryStatus !== "FAILED" ||
@@ -190,8 +225,10 @@ export class PrismaReaderSummaryProductionRecoveryExecutionGuard
                 existingRetry.jobFailureReason,
               )
             ) {
-              throw new Error(
-                "Reader summary production recovery retry lease was already consumed without final receipt",
+              throw consumedLeaseError(
+                params.requestedUtcDate,
+                "retry-v1",
+                existingRetry.jobFailureReason,
               );
             }
             const resumeIds = readerSummaryProductionRecoveryResumeDayIds(
@@ -226,10 +263,17 @@ export class PrismaReaderSummaryProductionRecoveryExecutionGuard
                 ),
               );
               if (resumeStatus === "REJECTED") {
-                return qualityRejectionSkip(existingResume);
+                return claimQualityRemediation(prisma, {
+                  params,
+                  day,
+                  rejected: existingResume,
+                  rejectedClaimScope: resumeClaimScope,
+                });
               }
-              throw new Error(
-                "Reader summary production recovery resume lease was already consumed without final receipt",
+              throw consumedLeaseError(
+                params.requestedUtcDate,
+                "resume-v1",
+                existingResume.jobFailureReason,
               );
             }
             await persistModelClaim(prisma, {
@@ -253,8 +297,34 @@ export class PrismaReaderSummaryProductionRecoveryExecutionGuard
             return "resume";
           }
           const legacy = await readAndVerifyLegacyClaim(prisma, params, day);
-          if (legacy?.jobStatus === "REJECTED") {
-            return qualityRejectionSkip(legacy);
+          if (
+            legacy !== undefined &&
+            isQualityRejectedClaim(
+              legacy,
+              readerSummaryProductionRecoveryLegacyDayIds(
+                params.binding,
+                params.requestedUtcDate,
+              ),
+            )
+          ) {
+            return claimQualityRemediation(prisma, {
+              params,
+              day,
+              rejected: legacy,
+              rejectedClaimScope: legacyClaimScope,
+            });
+          }
+          if (
+            legacy?.jobStatus === "FAILED" &&
+            !isCanonicalBoundsInfrastructureFailure(
+              legacy.jobFailureReason,
+            )
+          ) {
+            throw consumedLeaseError(
+              params.requestedUtcDate,
+              "legacy-v2",
+              legacy.jobFailureReason,
+            );
           }
           const retryClaim = retryRecoveryModelClaimPayload(
             params,
@@ -294,7 +364,10 @@ const persistModelClaim = async (
     day: ReturnType<typeof dayAuthority>;
     ids: Readonly<{ readerSummaryJobId: string; readerSummaryId: string }>;
     scope: string;
-    payload: RetryRecoveryModelClaimPayload | ResumeRecoveryModelClaimPayload;
+    payload:
+      | RetryRecoveryModelClaimPayload
+      | ResumeRecoveryModelClaimPayload
+      | QualityRemediationModelClaimPayload;
     jobIdempotencyKey: string;
     staleJobId: string | null;
   }>,
@@ -394,6 +467,54 @@ const persistModelClaim = async (
   }
 };
 
+const claimQualityRemediation = async (
+  prisma: QueryClient,
+  input: QualityRemediationClaimInput,
+): Promise<"remediate-quality"> => {
+  const ids = readerSummaryProductionRecoveryQualityRemediationDayIds(
+    input.params.binding,
+    input.params.requestedUtcDate,
+  );
+  const payload = qualityRemediationModelClaimPayload(input, ids);
+  const existing = await readClaim(
+    prisma,
+    input.params,
+    qualityRemediationClaimScope,
+    ids,
+  );
+  if (existing !== undefined) {
+    assertExactClaim(existing, payload, input.day.canonicalSha256);
+    assertExactClaimedJob(
+      existing,
+      input.params,
+      ids,
+      readerSummaryProductionRecoveryQualityRemediationJobIdempotencyKey(
+        input.params.requestedUtcDate,
+        input.day.canonicalSha256,
+      ),
+    );
+    throw consumedLeaseError(
+      input.params.requestedUtcDate,
+      "quality-remediation-v1",
+      existing.jobFailureReason,
+    );
+  }
+  await persistModelClaim(prisma, {
+    params: input.params,
+    day: input.day,
+    ids,
+    scope: qualityRemediationClaimScope,
+    payload,
+    jobIdempotencyKey:
+      readerSummaryProductionRecoveryQualityRemediationJobIdempotencyKey(
+        input.params.requestedUtcDate,
+        input.day.canonicalSha256,
+      ),
+    staleJobId: null,
+  });
+  return "remediate-quality";
+};
+
 const hasFinalReceipt = async (
   prisma: QueryClient,
   params: {
@@ -491,7 +612,8 @@ const assertExactClaim = (
   exactClaim:
     | LegacyRecoveryModelClaimPayload
     | RetryRecoveryModelClaimPayload
-    | ResumeRecoveryModelClaimPayload,
+    | ResumeRecoveryModelClaimPayload
+    | QualityRemediationModelClaimPayload,
   planSha256: string,
 ): void => {
   if (
@@ -544,6 +666,7 @@ const readAndVerifyLegacyClaim = async (
       `reader-summary-production-recovery:${params.requestedUtcDate}:${day.canonicalSha256}` ||
     row.jobStartedAt === null ||
     row.jobCompletedAt !== null;
+  const qualityRejected = isQualityRejectedClaim(row, ids);
   const statusInvalid =
     (row.jobStatus === "RUNNING" &&
       (row.jobFailedAt !== null ||
@@ -552,6 +675,7 @@ const readAndVerifyLegacyClaim = async (
         row.artifactId !== null ||
         row.artifactStatus !== null)) ||
     (row.jobStatus === "FAILED" &&
+      !qualityRejected &&
       (row.jobFailedAt === null ||
         row.jobReaderSummaryArtifactId !== null ||
         (row.jobFailureReason ?? "").trim().length === 0 ||
@@ -654,6 +778,7 @@ const assertExactClaimedJob = (
     row.jobIdempotencyKey !== jobIdempotencyKey ||
     row.jobStartedAt === null ||
     row.jobCompletedAt !== null;
+  const qualityRejected = isQualityRejectedClaim(row, ids);
   const statusInvalid =
     (row.jobStatus === "RUNNING" &&
       (row.jobFailedAt !== null ||
@@ -662,6 +787,7 @@ const assertExactClaimedJob = (
         row.artifactId !== null ||
         row.artifactStatus !== null)) ||
     (row.jobStatus === "FAILED" &&
+      !qualityRejected &&
       (row.jobFailedAt === null ||
         row.jobReaderSummaryArtifactId !== null ||
         (row.jobFailureReason ?? "").trim().length === 0 ||
@@ -679,18 +805,21 @@ const assertExactClaimedJob = (
       "Reader summary production recovery existing model claim job diverged",
     );
   }
-  return row.jobStatus as "RUNNING" | "FAILED" | "REJECTED";
+  return qualityRejected
+    ? "REJECTED"
+    : row.jobStatus as "RUNNING" | "FAILED" | "REJECTED";
 };
 
-const qualityRejectionSkip = (
+const isQualityRejectedClaim = (
   row: ExistingClaimRow,
-): ReaderSummaryProductionRecoverySkipEvidence => ({
-  reason: "existing_quality_rejection",
-  terminalStatus: "REJECTED",
-  readerSummaryJobId: row.jobId!,
-  readerSummaryId: row.jobReaderSummaryArtifactId!,
-  failureReason: row.jobFailureReason!,
-});
+  ids: Readonly<{ readerSummaryId: string }>,
+): boolean =>
+  (row.jobStatus === "REJECTED" || row.jobStatus === "FAILED") &&
+  row.jobFailedAt !== null &&
+  row.jobReaderSummaryArtifactId === ids.readerSummaryId &&
+  row.artifactId === ids.readerSummaryId &&
+  row.artifactStatus === "REJECTED" &&
+  (row.jobFailureReason ?? "").trim().length > 0;
 
 const isCanonicalBoundsInfrastructureFailure = (
   failureReason: string | null,
@@ -698,6 +827,15 @@ const isCanonicalBoundsInfrastructureFailure = (
   failureReason?.trim() ===
     "weekly canonical JSON exceeds structural bounds" ||
   failureReason?.trim() === "weekly canonical JSON exceeds byte bounds";
+
+const consumedLeaseError = (
+  requestedUtcDate: ReaderSummaryProductionRecoveryDate,
+  identity: "legacy-v2" | "retry-v1" | "resume-v1" | "quality-remediation-v1",
+  failureReason: string | null,
+): Error =>
+  new Error(
+    `Reader summary production recovery ${requestedUtcDate} ${identity} lease was already consumed without final receipt; failure_reason_sha256=${sha256(failureReason?.trim() ?? "")}`,
+  );
 
 const legacyRecoveryModelClaimPayload = (
   params: {
@@ -796,6 +934,51 @@ const resumeRecoveryModelClaimPayload = (
     providerWritePerformed: false,
   },
 });
+
+const qualityRemediationModelClaimPayload = (
+  input: QualityRemediationClaimInput,
+  ids: ReturnType<typeof readerSummaryProductionRecoveryQualityRemediationDayIds>,
+): QualityRemediationModelClaimPayload => {
+  const rejectionEvidenceSha256 = sha256(
+    JSON.stringify({
+      claimScope: input.rejectedClaimScope,
+      readerSummaryJobId: input.rejected.jobId,
+      readerSummaryArtifactId: input.rejected.jobReaderSummaryArtifactId,
+      terminalStatus: "REJECTED",
+      failureReasonSha256: sha256(input.rejected.jobFailureReason!.trim()),
+      planSha256: input.day.canonicalSha256,
+    }),
+  );
+  return {
+    schemaVersion:
+      "reader_summary.production_recovery_model_quality_remediation_claim.v1",
+    recoveryId: input.params.binding.recoveryId,
+    tenantId: input.params.binding.tenantId,
+    workspaceId: input.params.binding.workspaceId,
+    requestedUtcDate: input.params.requestedUtcDate,
+    readerSummaryJobId: ids.readerSummaryJobId,
+    readerSummaryArtifactId: ids.readerSummaryId,
+    planSha256s: input.day.planSha256s,
+    providerEvidenceSha256: input.day.providerEvidenceSha256,
+    supersedes: {
+      claimScope: input.rejectedClaimScope,
+      readerSummaryJobId: input.rejected.jobId!,
+      readerSummaryArtifactId: input.rejected.jobReaderSummaryArtifactId!,
+      terminalStatus: "REJECTED",
+      rejectionEvidenceSha256,
+    },
+    boundaries: {
+      stage: "pre_model",
+      leaseConsumed: true,
+      modelCallPerformed: false,
+      recollectionPerformed: false,
+      providerWritePerformed: false,
+    },
+  };
+};
+
+const sha256 = (value: string): string =>
+  createHash("sha256").update(value).digest("hex");
 
 const deterministicClaimUuid = (
   scope: string,

@@ -24,6 +24,8 @@ import {
   historicalGitHubOmissionForRecoveryDay,
   readerSummaryProductionRecoveryDayIds,
   readerSummaryProductionRecoveryJobIdempotencyKey,
+  readerSummaryProductionRecoveryQualityRemediationDayIds,
+  readerSummaryProductionRecoveryQualityRemediationJobIdempotencyKey,
   readerSummaryProductionRecoveryResumeDayIds,
   readerSummaryProductionRecoveryResumeJobIdempotencyKey,
   runReaderSummaryProductionRecovery,
@@ -141,26 +143,14 @@ describe("reader summary production recovery", () => {
     expect(result.dayResults[1]?.outcome).toBe("replayed");
   });
 
-  it("executes only the narrow resume identity and reports rejected evidence", async () => {
-    const binding = productionRecoveryBinding();
-    const rejectedIds = readerSummaryProductionRecoveryDayIds(
-      binding,
-      "2026-07-23",
-    );
-    const rejected: ReaderSummaryProductionRecoverySkipEvidence = {
-      reason: "existing_quality_rejection",
-      terminalStatus: "REJECTED",
-      readerSummaryJobId: rejectedIds.readerSummaryJobId,
-      readerSummaryId: rejectedIds.readerSummaryId,
-      failureReason: "quality gate fixture",
-    };
+  it("executes only the narrow resume and quality remediation identities", async () => {
     const identities: string[] = [];
     const result = await runReaderSummaryProductionRecovery({
       apply: true,
       authority: fakeAuthority("prepared"),
       executionGuard: guard((date) =>
         date === "2026-07-23"
-          ? rejected
+          ? "remediate-quality"
           : date === "2026-07-24"
             ? "resume"
             : "replayed",
@@ -171,11 +161,11 @@ describe("reader summary production recovery", () => {
       },
     });
 
-    expect(identities).toEqual(["resume-v1"]);
-    expect(result.dayResults[0]).toMatchObject({
-      outcome: "skipped",
-      skipEvidence: rejected,
-    });
+    expect(identities).toEqual([
+      "quality-remediation-v1",
+      "resume-v1",
+    ]);
+    expect(result.dayResults[0]?.outcome).toBe("published");
   });
 
   it("authorizes historical GitHub omission only from exact DB authority", () => {
@@ -492,7 +482,9 @@ describe("reader summary production recovery", () => {
     );
     jest
       .spyOn(ExecuteReaderSummaryJobUseCase.prototype, "execute")
-      .mockImplementation(async function () {
+      .mockImplementation(async function (
+        this: ExecuteReaderSummaryJobUseCase,
+      ) {
         const configured = this as unknown as {
           readonly historicalGitHubOmission: unknown;
           readonly publicationPolicy: unknown;
@@ -542,7 +534,9 @@ describe("reader summary production recovery", () => {
     const day = dayAuthority(binding, requestedUtcDate);
     jest
       .spyOn(ExecuteReaderSummaryJobUseCase.prototype, "execute")
-      .mockImplementation(async function (_command) {
+      .mockImplementation(async function (
+        this: ExecuteReaderSummaryJobUseCase,
+      ) {
         const jobs = this as unknown as {
           readonly readerSummaryJobs: ReaderSummaryJobRepositoryPort;
         };
@@ -578,6 +572,64 @@ describe("reader summary production recovery", () => {
       githubProjectionReader: {} as never,
       ids: { generate: () => "unused-id" },
       clock: { now: () => new Date(binding.lease.consumedAt) },
+    });
+  });
+
+  it("uses fresh quality remediation IDs and never reports rejected text as published", async () => {
+    const binding = productionRecoveryBinding();
+    const requestedUtcDate = "2026-07-23";
+    const remediationIds =
+      readerSummaryProductionRecoveryQualityRemediationDayIds(
+        binding,
+        requestedUtcDate,
+      );
+    const day = dayAuthority(binding, requestedUtcDate);
+    jest
+      .spyOn(ExecuteReaderSummaryJobUseCase.prototype, "execute")
+      .mockImplementation(async function (
+        this: ExecuteReaderSummaryJobUseCase,
+      ) {
+        const jobs = this as unknown as {
+          readonly readerSummaryJobs: ReaderSummaryJobRepositoryPort;
+        };
+        const staged = await jobs.readerSummaryJobs.findById({
+          tenantId: tenantId(binding.tenantId),
+          workspaceId: workspaceId(binding.workspaceId),
+          readerSummaryJobId: remediationIds.readerSummaryJobId,
+        });
+        expect(staged?.toSnapshot().idempotencyKey).toBe(
+          readerSummaryProductionRecoveryQualityRemediationJobIdempotencyKey(
+            requestedUtcDate,
+            day.canonicalSha256,
+          ),
+        );
+        return {
+          ok: true,
+          value: {
+            readerSummaryJobId: remediationIds.readerSummaryJobId,
+            readerSummaryId: remediationIds.readerSummaryId,
+            status: "quality_rejected",
+          },
+        };
+      });
+    await expect(
+      executeProductionRecoveryDay({
+        binding,
+        requestedUtcDate,
+        executionIdentity: "quality-remediation-v1",
+        model: {} as never,
+        finalization: {} as never,
+        durableJobs: {} as never,
+        durableArtifacts: {} as never,
+        feedItems: {} as never,
+        githubProjectionReader: {} as never,
+        ids: { generate: () => "unused-id" },
+        clock: { now: () => new Date(binding.lease.consumedAt) },
+      }),
+    ).resolves.toMatchObject({
+      outcome: "skipped",
+      readerSummaryJobId: remediationIds.readerSummaryJobId,
+      readerSummaryId: remediationIds.readerSummaryId,
     });
   });
 });
