@@ -4,6 +4,7 @@ import { backfillReaderSummaryWeeklyDailyCertifications } from "./lib/reader-sum
 import {
   assertReaderSummaryWeeklyProductionPostgresContract,
   resolveReaderSummaryWeeklyProductionWindow,
+  withReaderSummaryWeeklyProductionDatabaseAccess,
   type ReaderSummaryWeeklyProductionScope,
 } from "./lib/reader-summary-weekly-production-postgres-contract";
 
@@ -20,11 +21,23 @@ async function main(): Promise<void> {
     connectionTimeoutMillis: 5_000,
   });
   try {
-    await assertReaderSummaryWeeklyProductionPostgresContract(pool);
-    const rows = await backfillReaderSummaryWeeklyDailyCertifications(
+    const scope = readScope();
+    const window = resolveReaderSummaryWeeklyProductionWindow("2026-07-20");
+    const rows = await withReaderSummaryWeeklyProductionDatabaseAccess(
       pool,
-      readScope(),
-      resolveReaderSummaryWeeklyProductionWindow("2026-07-20"),
+      {
+        kind: "tenant",
+        tenantId: scope.tenantId,
+        workspaceId: scope.workspaceId,
+      },
+      async (client) => {
+        await assertReaderSummaryWeeklyProductionPostgresContract(client);
+        return backfillReaderSummaryWeeklyDailyCertifications(
+          client,
+          scope,
+          window,
+        );
+      },
     );
     console.log(
       [

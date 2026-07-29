@@ -14,6 +14,7 @@ import {
   loadReaderSummaryWeeklyProductionDbState,
   previousCompletedReaderSummaryWeeklyProductionWindow,
   resolveReaderSummaryWeeklyProductionWindow,
+  withReaderSummaryWeeklyProductionDatabaseAccess,
   type ReaderSummaryWeeklyProductionScope,
 } from "./lib/reader-summary-weekly-production-postgres-contract";
 
@@ -33,15 +34,22 @@ async function main(): Promise<void> {
     connectionTimeoutMillis: 5_000,
   });
   try {
-    await assertReaderSummaryWeeklyProductionPostgresContract(pool);
+    const scope = readScope();
     const window =
       options.weekStartedOn === undefined
         ? previousCompletedReaderSummaryWeeklyProductionWindow(new Date())
         : resolveReaderSummaryWeeklyProductionWindow(options.weekStartedOn);
-    const dbState = await loadReaderSummaryWeeklyProductionDbState(
+    const dbState = await withReaderSummaryWeeklyProductionDatabaseAccess(
       pool,
-      readScope(),
-      window,
+      {
+        kind: "tenant",
+        tenantId: scope.tenantId,
+        workspaceId: scope.workspaceId,
+      },
+      async (client) => {
+        await assertReaderSummaryWeeklyProductionPostgresContract(client);
+        return loadReaderSummaryWeeklyProductionDbState(client, scope, window);
+      },
     );
     const model = new AgentRuntimeReaderSummaryWeeklyTextModel({
       client: GrpcAgentRuntimeClient.connect({

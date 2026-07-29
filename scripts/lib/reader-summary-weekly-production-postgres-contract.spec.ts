@@ -9,6 +9,8 @@ import {
   assertReaderSummaryWeeklyProductionPostgresContract,
   loadReaderSummaryWeeklyProductionDbState,
   resolveReaderSummaryWeeklyProductionWindow,
+  withReaderSummaryWeeklyProductionDatabaseAccess,
+  type ReaderSummaryWeeklyProductionPostgresConnection,
   type ReaderSummaryWeeklyProductionPostgresClient,
 } from "./reader-summary-weekly-production-postgres-contract";
 
@@ -104,9 +106,90 @@ describe("reader summary weekly production postgres contract", () => {
       ),
     ).rejects.toThrow("Reader summary weekly tenant id must be a UUID");
   });
+
+  it("sets transaction-local tenant RLS context around weekly reads", async () => {
+    const queries: QueryCall[] = [];
+    const connection = transactionConnection(queries);
+
+    await expect(
+      withReaderSummaryWeeklyProductionDatabaseAccess(
+        {
+          async connect() {
+            return connection;
+          },
+        },
+        { kind: "tenant", tenantId, workspaceId },
+        async (client) => {
+          await client.query("SELECT weekly_evidence");
+          return "complete";
+        },
+      ),
+    ).resolves.toBe("complete");
+
+    expect(queries.map((query) => query.sql)).toEqual([
+      "BEGIN",
+      expect.stringContaining(
+        "set_config('social_monitor.tenant_id', $1, true)",
+      ),
+      "SELECT weekly_evidence",
+      "COMMIT",
+    ]);
+    expect(queries[1]?.values).toEqual([tenantId, workspaceId, "false"]);
+    expect(connection.release).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses explicit system context for unscoped capability checks", async () => {
+    const queries: QueryCall[] = [];
+    const connection = transactionConnection(queries);
+
+    await withReaderSummaryWeeklyProductionDatabaseAccess(
+      {
+        async connect() {
+          return connection;
+        },
+      },
+      { kind: "system" },
+      async () => undefined,
+    );
+
+    expect(queries[1]?.values).toEqual(["", "", "true"]);
+  });
+
+  it("rolls back and releases a failed weekly database operation", async () => {
+    const queries: QueryCall[] = [];
+    const connection = transactionConnection(queries);
+
+    await expect(
+      withReaderSummaryWeeklyProductionDatabaseAccess(
+        {
+          async connect() {
+            return connection;
+          },
+        },
+        { kind: "tenant", tenantId, workspaceId },
+        async () => {
+          throw new Error("daily publications unavailable");
+        },
+      ),
+    ).rejects.toThrow("daily publications unavailable");
+
+    expect(queries.at(-1)?.sql).toBe("ROLLBACK");
+    expect(connection.release).toHaveBeenCalledTimes(1);
+  });
 });
 
 type FakeRow = ReturnType<typeof rowForDate>;
+type QueryCall = Readonly<{ sql: string; values?: readonly unknown[] }>;
+
+const transactionConnection = (
+  queries: QueryCall[],
+): ReaderSummaryWeeklyProductionPostgresConnection => ({
+  release: jest.fn(),
+  async query(sql, values) {
+    queries.push({ sql, ...(values === undefined ? {} : { values }) });
+    return { rows: [] };
+  },
+});
 
 const fakeClient = (
   rows: readonly FakeRow[],

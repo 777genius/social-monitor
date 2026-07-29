@@ -6,6 +6,7 @@ import {
   loadReaderSummaryWeeklyProductionDbState,
   previousCompletedReaderSummaryWeeklyProductionWindow,
   resolveReaderSummaryWeeklyProductionWindow,
+  withReaderSummaryWeeklyProductionDatabaseAccess,
   type ReaderSummaryWeeklyProductionScope,
 } from "./lib/reader-summary-weekly-production-postgres-contract";
 
@@ -24,9 +25,13 @@ async function main(): Promise<void> {
     connectionTimeoutMillis: 5_000,
   });
   try {
-    await assertReaderSummaryWeeklyProductionPostgresContract(pool);
     const scope = readOptionalScope();
     if (scope === null) {
+      await withReaderSummaryWeeklyProductionDatabaseAccess(
+        pool,
+        { kind: "system" },
+        assertReaderSummaryWeeklyProductionPostgresContract,
+      );
       console.log("weekly_postgres_contract=ok status=unscoped");
       return;
     }
@@ -35,10 +40,17 @@ async function main(): Promise<void> {
       weekStartedOn === null
         ? previousCompletedReaderSummaryWeeklyProductionWindow(new Date())
         : resolveReaderSummaryWeeklyProductionWindow(weekStartedOn);
-    const state = await loadReaderSummaryWeeklyProductionDbState(
+    const state = await withReaderSummaryWeeklyProductionDatabaseAccess(
       pool,
-      scope,
-      window,
+      {
+        kind: "tenant",
+        tenantId: scope.tenantId,
+        workspaceId: scope.workspaceId,
+      },
+      async (client) => {
+        await assertReaderSummaryWeeklyProductionPostgresContract(client);
+        return loadReaderSummaryWeeklyProductionDbState(client, scope, window);
+      },
     );
     console.log(
       [

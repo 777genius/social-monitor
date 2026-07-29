@@ -20,6 +20,23 @@ export type ReaderSummaryWeeklyProductionPostgresClient = {
   ): Promise<{ readonly rows: readonly TRow[] }>;
 };
 
+export type ReaderSummaryWeeklyProductionPostgresConnection =
+  ReaderSummaryWeeklyProductionPostgresClient & {
+    release(): void;
+  };
+
+export type ReaderSummaryWeeklyProductionPostgresPool = {
+  connect(): Promise<ReaderSummaryWeeklyProductionPostgresConnection>;
+};
+
+export type ReaderSummaryWeeklyProductionDatabaseAccess =
+  | Readonly<{
+      kind: "tenant";
+      tenantId: string;
+      workspaceId: string;
+    }>
+  | Readonly<{ kind: "system" }>;
+
 export type ReaderSummaryWeeklyProductionWindow = Readonly<{
   weekStartedOn: string;
   weekEndedOn: string;
@@ -121,6 +138,39 @@ type ContractRow = Readonly<{
 }>;
 
 const dayMs = 86_400_000;
+
+export const withReaderSummaryWeeklyProductionDatabaseAccess = async <T>(
+  pool: ReaderSummaryWeeklyProductionPostgresPool,
+  access: ReaderSummaryWeeklyProductionDatabaseAccess,
+  operation: (
+    client: ReaderSummaryWeeklyProductionPostgresClient,
+  ) => Promise<T>,
+): Promise<T> => {
+  const connection = await pool.connect();
+  try {
+    await connection.query("BEGIN");
+    const tenantId = access.kind === "tenant" ? access.tenantId : "";
+    const workspaceId = access.kind === "tenant" ? access.workspaceId : "";
+    await connection.query(
+      `SELECT set_config('social_monitor.tenant_id', $1, true),
+              set_config('social_monitor.workspace_id', $2, true),
+              set_config('social_monitor.system_access', $3, true)`,
+      [
+        tenantId,
+        workspaceId,
+        access.kind === "system" ? "true" : "false",
+      ],
+    );
+    const result = await operation(connection);
+    await connection.query("COMMIT");
+    return result;
+  } catch (error: unknown) {
+    await connection.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  } finally {
+    connection.release();
+  }
+};
 
 export const resolveReaderSummaryWeeklyProductionWindow = (
   weekStartedOn: string,
