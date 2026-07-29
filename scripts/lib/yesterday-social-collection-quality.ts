@@ -226,10 +226,9 @@ const providerState = (params: {
     scan: scans[0]!,
     targetWindowItemCount: feedItemCount,
   });
-  const unavailableAccepted =
-    collectionState.policy === "accepted" &&
+  const explicitlyUnavailable =
     collectionState.evidence === "explicit_unavailable";
-  const qualityEvidenceMatches = unavailableAccepted
+  const qualityEvidenceMatches = explicitlyUnavailable
     ? params.qualityReports.length === 0
     : params.qualityReports.length === 1 &&
       Number.isFinite(params.qualityReports[0]!.feedItemCount) &&

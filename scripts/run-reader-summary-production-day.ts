@@ -51,12 +51,16 @@ import {
   resolveProductionDayExecutionRequest,
 } from "./lib/reader-summary-production-day-reuse-provenance";
 import { loadHistoricalRegeneration } from "./lib/reader-summary-production-day-regeneration";
+import { buildProductionDayTerminalOutcome } from "./lib/reader-summary-production-day-outcome";
+import {
+  resolveProductionDayProviderReadiness,
+  type ProductionDayDatabaseQualityReport,
+  type ProductionDayProviderReadiness,
+} from "./lib/reader-summary-production-day-provider-readiness";
 import { productionDayQualityDateArgs } from "./lib/reader-summary-production-day-quality-date";
 import { collectionQualityRegenerationFreshnessArgs } from "./lib/yesterday-social-collection-quality-regeneration";
 import type { CleanRealDayCollectionReport } from "./lib/clean-real-day-collection-report";
 import {
-  evaluateYesterdaySocialProviderReadiness,
-  type YesterdaySocialCollectionQualityInput,
   type YesterdaySocialProviderReadiness,
 } from "./lib/yesterday-social-collection-quality";
 import { readProductionDayScope } from "./lib/reader-summary-production-day-scope";
@@ -130,6 +134,8 @@ const nextRuntimeIdentityPath = runtimeIdentityPath.replace(
   ".next.json",
 );
 const datedOutputPath = `ops/evals/reader-summary-production-day-run.${collectionDate}.v1.json`;
+const terminalOutcomePath =
+  `ops/evals/reader-summary-production-day-outcome.${collectionDate}.v1.json`;
 let liveCaptureExecution: ProductionDayCaptureExecution | null = null;
 
 void main().catch((error) => {
@@ -243,34 +249,67 @@ async function main(): Promise<void> {
     ...(allowHistorical ? ["--allow-historical"] : []),
   ]);
   const collectionQualityReport =
-    readJsonIfExists<YesterdaySocialCollectionQualityInput>(
+    readJsonIfExists<ProductionDayDatabaseQualityReport>(
       "ops/evals/yesterday-social-collection-quality-report.v1.json",
     );
-  const providerReadiness =
+  const collectionReport =
+    readJsonIfExists<CleanRealDayCollectionReport>(
+      "ops/evals/reader-summary-clean-real-day-collection.v1.json",
+    );
+  const providerAdmission =
     executionRequest.mode === "live-production"
-      ? evaluateYesterdaySocialProviderReadiness({
-          expectedCollectionDate: collectionDate,
+      ? resolveProductionDayProviderReadiness({
+          collectionDate,
           evaluatedAt: new Date(),
-          report: collectionQualityReport,
-          collectionReport:
-            readJsonIfExists<CleanRealDayCollectionReport>(
-              "ops/evals/reader-summary-clean-real-day-collection.v1.json",
-            ),
+          qualityReport: collectionQualityReport,
+          collectionReport,
         })
       : null;
-  const requiredProvidersReady = providerReadiness?.ready ?? true;
+  const providerReadiness = providerAdmission?.readiness ?? null;
+  const requiredProvidersReady =
+    providerAdmission?.status === "complete" ||
+    executionRequest.mode !== "live-production";
   if (
     executionRequest.mode === "live-production" &&
-    providerReadiness?.ready !== true
+    providerAdmission?.status !== "complete"
   ) {
     collectionQualityStep = {
       ...collectionQualityStep,
-      command: `${collectionQualityStep.command} -- ${providerReadiness?.barrierMessage ?? "provider readiness evidence is missing"}`,
+      command:
+        `${collectionQualityStep.command} -- ` +
+        (providerAdmission?.barrierMessage ??
+          `verified provider outcome=${providerAdmission?.status ?? "missing"}`),
       status: "failed",
       exitCode: 1,
     };
   }
   steps.push(collectionQualityStep);
+  if (
+    providerAdmission?.status === "partial" ||
+    providerAdmission?.status === "unavailable"
+  ) {
+    const safeMessage =
+      `Production provider evidence for ${collectionDate} is ` +
+      `${providerAdmission.status}; AI summary and publication were not started`;
+    steps.push(...blockedProductionDaySteps(safeMessage));
+    persistProductionDayReport({
+      startedAt,
+      completedAt: new Date(),
+      steps,
+      scope,
+      providerReadiness,
+      includeSummaryEvidence: false,
+      failure: {
+        code: "collection_quality_failed",
+        safeMessage,
+      },
+      historicalReuseProvenance: historicalReuse?.provenance ?? null,
+      historicalRegenerationProvenance:
+        historicalRegeneration?.provenance ?? null,
+    });
+    persistTerminalOutcome(providerAdmission);
+    return;
+  }
   if (
     !collectionIsReadyForProductionSummary({
       liveCollection: !skipLiveCollection,
@@ -493,6 +532,21 @@ async function main(): Promise<void> {
   if (!report.blockingPassed) {
     throw new Error("Reader summary production day run gates failed");
   }
+}
+
+function persistTerminalOutcome(
+  providerReadiness: ProductionDayProviderReadiness,
+): void {
+  const outcome = buildProductionDayTerminalOutcome({
+    generatedAt: new Date(),
+    providerReadiness,
+  });
+  if (!noRawSecretFragments(outcome)) {
+    throw new Error("Terminal provider outcome contains a secret fragment");
+  }
+  mkdirSync(dirname(terminalOutcomePath), { recursive: true });
+  writeFileSync(terminalOutcomePath, `${JSON.stringify(outcome, null, 2)}\n`);
+  console.log(`Updated ${terminalOutcomePath}`);
 }
 
 function persistProductionDayReport(params: {
