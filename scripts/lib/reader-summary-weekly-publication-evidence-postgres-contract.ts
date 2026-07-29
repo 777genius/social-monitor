@@ -868,7 +868,7 @@ const assertCanonicalJsonParityAndBounds = async (
     (value) => [value],
     null,
   );
-  const tooManyArrayItems = Array.from({ length: 257 }, () => null); const tooManyObjectKeys = Object.fromEntries(
+  const tooManyArrayItems = Array.from({ length: 513 }, () => null); const tooManyObjectKeys = Object.fromEntries(
     Array.from({ length: 65 }, (_, index) => [`key-${index}`, null]));
   const tooLongString = "x".repeat(16_385);
   const tooManyBytes = Array.from({ length: 64 }, () =>

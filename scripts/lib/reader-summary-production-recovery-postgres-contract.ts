@@ -10,6 +10,9 @@ import {
   readerSummaryProductionRecoveryTenantId,
   readerSummaryProductionRecoveryWorkspaceId,
 } from "@social-monitor/summary/ports";
+import {
+  assertReaderSummaryProductionRecoveryCanonicalBounds,
+} from "./reader-summary-production-recovery-canonical-bounds-postgres-contract";
 
 type RecoveryExecutionGuardModule = Readonly<{
   PrismaReaderSummaryProductionRecoveryExecutionGuard: new (
@@ -421,6 +424,11 @@ export const assertReaderSummaryProductionRecoveryPostgresContract =
     first: RecoveryPostgresClient;
     second: RecoveryPostgresClient;
   }>): Promise<void> => {
+    await assertReaderSummaryProductionRecoveryCanonicalBounds({
+      client: params.auditor,
+      tenantId,
+      workspaceId,
+    });
     await assertRecoveryDaysDateConstraintDefinition(params.auditor);
     await assertRecoveryExpectedCountsFunctionDefinition(params.auditor);
     await assertRecoveryPersistenceFunctionDefinition(params.first);

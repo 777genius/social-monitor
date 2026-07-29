@@ -158,6 +158,18 @@ describe("reader summary weekly canonical JSON", () => {
     );
   });
 
+  it("accepts 512 array elements and rejects 513", () => {
+    expect(readerSummaryWeeklyCanonicalJsonLimits.maxArrayElements).toBe(512);
+    const atLimit = Array.from({ length: 512 }, (_, index) => index);
+
+    expect(
+      JSON.parse(canonicalizeReaderSummaryWeeklyJson(atLimit).json),
+    ).toHaveLength(512);
+    expect(() =>
+      canonicalizeReaderSummaryWeeklyJson([...atLimit, 512]),
+    ).toThrow("array element limit");
+  });
+
   it("enforces total key, total array, node and byte limits", () => {
     const totalKeys = Array.from({ length: 65 }, (_, objectIndex) =>
       Object.fromEntries(
@@ -167,8 +179,22 @@ describe("reader summary weekly canonical JSON", () => {
         ]),
       ),
     );
-    const totalArrayElements = Array.from({ length: 17 }, () =>
-      Array.from({ length: 256 }, () => null),
+    const totalArrayElements = Array.from(
+      {
+        length:
+          Math.floor(
+            readerSummaryWeeklyCanonicalJsonLimits.maxTotalArrayElements /
+              readerSummaryWeeklyCanonicalJsonLimits.maxArrayElements,
+          ) + 1,
+      },
+      () =>
+        Array.from(
+          {
+            length:
+              readerSummaryWeeklyCanonicalJsonLimits.maxArrayElements,
+          },
+          () => null,
+        ),
     );
     const tooManyNodes = Array.from({ length: 64 }, (_, objectIndex) =>
       Object.fromEntries(

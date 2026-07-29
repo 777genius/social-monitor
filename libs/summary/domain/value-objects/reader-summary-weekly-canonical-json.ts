@@ -14,7 +14,7 @@ export const readerSummaryWeeklyCanonicalJsonLimits = Object.freeze({
   maxBytes: 1_048_576,
   maxObjectKeys: 64,
   maxTotalObjectKeys: 4_096,
-  maxArrayElements: 256,
+  maxArrayElements: 512,
   maxTotalArrayElements: 4_096,
   maxStringLength: 16_384,
   maxNodes: 6_000,
