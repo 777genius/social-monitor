@@ -10,6 +10,7 @@ maintenance_lib=$SCRIPT_DIR/reader-summary-recovery-maintenance-lib.sh
 deploy_lib=$SCRIPT_DIR/postgres-runtime-deploy-lib.sh
 deploy_entrypoint=$SCRIPT_DIR/social-monitor-production-deploy.sh
 package_json=$REPO/package.json
+production_workflow=$REPO/.github/workflows/production-deploy.yml
 
 [[ -f $service ]]
 [[ -f $timer ]]
@@ -37,6 +38,8 @@ grep -F 'check:reader-summary-weekly-production-postgres' \
   "$package_json" >/dev/null
 grep -F 'check:reader-summary-weekly-production-runner' "$package_json" \
   >/dev/null
+grep -F 'npm run check:reader-summary-weekly-production-runner' \
+  "$production_workflow" >/dev/null
 
 grep -F 'DAILY_SINGLETON_LOCK' "$maintenance_lib" >/dev/null
 grep -F 'POSTGRES_ADMISSION_LOCK' "$maintenance_lib" >/dev/null

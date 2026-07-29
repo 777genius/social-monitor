@@ -233,6 +233,7 @@ jobs:
           npm ci
           npm run check:architecture
           npm run check:source-line-cap
+          npm run check:reader-summary-weekly-production-runner
           npm run check:secrets
           npm run check:dependencies
           npm run check:container

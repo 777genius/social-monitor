@@ -1,8 +1,10 @@
 import {
+  chmodSync,
   existsSync,
   mkdtempSync,
   readFileSync,
   statSync,
+  writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -205,6 +207,42 @@ describe("reader summary weekly production runner", () => {
       "replay requested but weekly artifact/proof is missing",
     ]);
     expect(model.calls).toBe(0);
+  });
+
+  it("rejects a canonical proof whose sealed daily evidence is divergent", async () => {
+    const outputDirectory = tempDir();
+    await runReaderSummaryWeeklyProduction({
+      dbState: completeDbState(),
+      outputDirectory,
+      model: new FakeWeeklyModel((input) => outputFor(input)),
+      replay: false,
+      generatedAt: new Date("2026-07-27T06:30:00.000Z"),
+    });
+    const proofPath = join(
+      outputDirectory,
+      "reader-summary-weekly-production.2026-07-20.proof.v1.json",
+    );
+    const proof = JSON.parse(readFileSync(proofPath, "utf8")) as {
+      dailyCertificationIds: string[];
+    };
+    proof.dailyCertificationIds[0] = "divergent-certification";
+    chmodSync(proofPath, 0o644);
+    writeFileSync(
+      proofPath,
+      canonicalizeReaderSummaryWeeklyJson(proof).toBytes(),
+    );
+    const replayModel = new FakeWeeklyModel((input) => outputFor(input));
+
+    await expect(
+      runReaderSummaryWeeklyProduction({
+        dbState: completeDbState(),
+        outputDirectory,
+        model: replayModel,
+        replay: true,
+        generatedAt: new Date("2026-07-27T07:00:00.000Z"),
+      }),
+    ).rejects.toThrow(/does not match DB input/u);
+    expect(replayModel.calls).toBe(0);
   });
 
   it("rejects seven daily summaries stitched into a weekly output", async () => {

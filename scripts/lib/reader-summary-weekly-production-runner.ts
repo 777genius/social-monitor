@@ -1,13 +1,5 @@
-import { createHash, randomUUID } from "node:crypto";
-import {
-  existsSync,
-  linkSync,
-  mkdirSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import { basename, join } from "node:path";
+import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
 
 import {
   tenantId,
@@ -45,6 +37,13 @@ import type {
   AgentRuntimeProvider,
   AgentRuntimeTaskCommand,
 } from "../../libs/summary/ports/agent-runtime-client.port";
+import {
+  commitReaderSummaryWeeklyArtifactPair,
+  inspectOrRecoverReaderSummaryWeeklyArtifactPair,
+  readerSummaryWeeklyArtifactPairPaths,
+  type ReaderSummaryWeeklyArtifactPairPaths,
+  type ReaderSummaryWeeklyArtifactPairValidation,
+} from "./reader-summary-weekly-production-artifact-pair";
 import {
   type ReaderSummaryWeeklyProductionCertification,
   type ReaderSummaryWeeklyProductionDbState,
@@ -84,16 +83,6 @@ export type ReaderSummaryWeeklyAgentRuntimeModelParams = Readonly<{
   timeoutMs?: number;
   maxOutputTokens?: number;
 }>;
-
-type ExistingArtifactState =
-  | Readonly<{ status: "missing" }>
-  | Readonly<{
-      status: "valid";
-      artifactPath: string;
-      proofPath: string;
-      artifactSha256: string;
-      proofSha256: string;
-    }>;
 
 type ArtifactEnvelope = Readonly<{
   schemaVersion: "reader_summary.weekly_production_artifact.v1";
@@ -283,7 +272,11 @@ export const runReaderSummaryWeeklyProduction = async (
     );
   }
   const input = evidence.input;
-  const existing = readExistingArtifact(paths, input);
+  const existing = inspectOrRecoverReaderSummaryWeeklyArtifactPair({
+    paths,
+    validate: (artifact, proof, validation) =>
+      validateArtifactPair(artifact, proof, validation, input),
+  });
   if (existing.status === "valid") {
     const replayCanaryWritePerformed = params.replay
       ? writeReaderSummaryWeeklyProductionReplayCanary({
@@ -363,7 +356,13 @@ export const runReaderSummaryWeeklyProduction = async (
     canarySha256,
     generatedBy,
   });
-  writeArtifactPair(paths, artifactEnvelope, proofEnvelope, input);
+  commitReaderSummaryWeeklyArtifactPair({
+    paths,
+    artifact: artifactEnvelope,
+    proof: proofEnvelope,
+    validate: (artifactValue, proofValue, validation) =>
+      validateArtifactPair(artifactValue, proofValue, validation, input),
+  });
   return result(params, "complete", true, true, false, false, []);
 };
 
@@ -604,25 +603,14 @@ const proofFor = (input: {
   zeroProviderCalls: true,
 });
 
-const readExistingArtifact = (
-  paths: ReturnType<typeof artifactPaths>,
+const validateArtifactPair = (
+  artifact: unknown,
+  proofValue: unknown,
+  validation: ReaderSummaryWeeklyArtifactPairValidation,
   input: ReaderSummaryWeeklyModelInput,
-): ExistingArtifactState => {
-  const artifactExists = existsSync(paths.artifactPath);
-  const proofExists = existsSync(paths.proofPath);
-  if (!artifactExists && !proofExists) {
-    return { status: "missing" };
-  }
-  if (!artifactExists || !proofExists) {
-    throw new Error("Reader summary weekly artifact/proof pair is incomplete");
-  }
-  const artifact = JSON.parse(readFileSync(paths.artifactPath, "utf8")) as unknown;
-  const proof = JSON.parse(readFileSync(paths.proofPath, "utf8")) as ProofEnvelope;
+): void => {
+  const proof = proofValue as ProofEnvelope;
   const artifactEnvelope = artifact as ArtifactEnvelope;
-  const artifactSha256 = canonicalizeReaderSummaryWeeklyJson(
-    artifact,
-    "existing weekly production artifact",
-  ).sha256;
   const qualityGateSha256 = canonicalizeReaderSummaryWeeklyJson(
     artifactEnvelope.qualityGate,
     "existing weekly production quality gate",
@@ -631,9 +619,21 @@ const readExistingArtifact = (
     artifactEnvelope.canary,
     "existing weekly production canary",
   ).sha256;
-  const proofSha256 = canonicalizeReaderSummaryWeeklyJson(
-    proof,
-    "existing weekly production proof",
+  const artifactScopeSha256 = canonicalizeReaderSummaryWeeklyJson(
+    artifactEnvelope.scope,
+    "existing weekly production artifact scope",
+  ).sha256;
+  const inputScopeSha256 = canonicalizeReaderSummaryWeeklyJson(
+    input.scope,
+    "weekly production model input scope",
+  ).sha256;
+  const artifactModelInputSha256 = canonicalizeReaderSummaryWeeklyJson(
+    artifactEnvelope.modelInput,
+    "existing weekly production artifact model input",
+  ).sha256;
+  const inputSha256 = canonicalizeReaderSummaryWeeklyJson(
+    input,
+    "weekly production expected model input",
   ).sha256;
   if (
     artifactEnvelope.schemaVersion !==
@@ -641,17 +641,31 @@ const readExistingArtifact = (
     artifactEnvelope.status !== "complete" ||
     artifactEnvelope.tenantId !== input.tenantId ||
     artifactEnvelope.workspaceId !== input.workspaceId ||
+    artifactScopeSha256 !== inputScopeSha256 ||
     artifactEnvelope.weekStartedOn !== input.weekStartedOn ||
     artifactEnvelope.weekEndedOn !== input.weekEndedOn ||
     artifactEnvelope.modelInput?.sealId !== input.sealId ||
     artifactEnvelope.modelInput?.sealSha !== input.sealSha ||
+    artifactModelInputSha256 !== inputSha256 ||
     proof.schemaVersion !== "reader_summary.weekly_production_proof.v1" ||
+    proof.generatedBy !== artifactEnvelope.generatedBy ||
     proof.status !== "complete" ||
     proof.tenantId !== input.tenantId ||
     proof.workspaceId !== input.workspaceId ||
     proof.scopeKey !== readerSummaryWeeklyScopeKey(input.scope) ||
     proof.weekStartedOn !== input.weekStartedOn ||
     proof.weekEndedOn !== input.weekEndedOn ||
+    proof.certificationCount !== 7 ||
+    !sameStrings(
+      proof.dailyCertificationIds,
+      input.days.map((day) => day.dailyCertificationId),
+    ) ||
+    !sameStrings(
+      proof.dailyCertificationSha256s,
+      input.days.map((day) => day.dailyCertificationSha),
+    ) ||
+    proof.manifestSealId !== input.manifestSealId ||
+    proof.manifestSealSha !== input.manifestSealSha ||
     proof.modelInputSealSha !== input.sealSha ||
     proof.modelInputSealId !== input.sealId ||
     artifactEnvelope.qualityGate?.evaluator !== "deterministic" ||
@@ -662,66 +676,26 @@ const readExistingArtifact = (
     artifactEnvelope.canary?.qualityGateSha256 !== qualityGateSha256 ||
     proof.qualityGateSha256 !== qualityGateSha256 ||
     proof.canarySha256 !== canarySha256 ||
-    proof.artifactSha256 !== artifactSha256
+    proof.artifactSha256 !== validation.artifactSha256 ||
+    proof.model?.provider !== "agent-runtime" ||
+    proof.model?.agentProvider !== "codex" ||
+    proof.model?.model !== "gpt-5.5" ||
+    proof.model?.reasoningEffort !== "xhigh" ||
+    proof.model?.runtimeOutput !== "text" ||
+    proof.zeroProviderCalls !== true
   ) {
     throw new Error("Reader summary weekly artifact/proof does not match DB input");
-  }
-  return {
-    status: "valid",
-    artifactPath: paths.artifactPath,
-    proofPath: paths.proofPath,
-    artifactSha256,
-    proofSha256,
-  };
-};
-
-const writeArtifactPair = (
-  paths: ReturnType<typeof artifactPaths>,
-  artifact: ArtifactEnvelope,
-  proof: ProofEnvelope,
-  input: ReaderSummaryWeeklyModelInput,
-): void => {
-  mkdirSync(paths.outputDirectory, { recursive: true });
-  const artifactText = `${JSON.stringify(artifact, null, 2)}\n`;
-  const proofText = `${JSON.stringify(proof, null, 2)}\n`;
-  const artifactTemp = join(
-    paths.outputDirectory,
-    `.${basename(paths.artifactPath)}.${randomUUID()}.tmp`,
-  );
-  const proofTemp = join(
-    paths.outputDirectory,
-    `.${basename(paths.proofPath)}.${randomUUID()}.tmp`,
-  );
-  try {
-    writeFileSync(artifactTemp, artifactText, { flag: "wx", mode: 0o444 });
-    writeFileSync(proofTemp, proofText, { flag: "wx", mode: 0o444 });
-    if (readExistingArtifact(paths, input).status === "valid") {
-      return;
-    }
-    linkSync(artifactTemp, paths.artifactPath);
-    linkSync(proofTemp, paths.proofPath);
-    readExistingArtifact(paths, input);
-  } finally {
-    rmSync(artifactTemp, { force: true });
-    rmSync(proofTemp, { force: true });
   }
 };
 
 const artifactPaths = (
   outputDirectory: string,
   dbState: ReaderSummaryWeeklyProductionDbState,
-) => {
-  const prefix = `reader-summary-weekly-production.${dbState.window.weekStartedOn}`;
-  return {
+): ReaderSummaryWeeklyArtifactPairPaths =>
+  readerSummaryWeeklyArtifactPairPaths(
     outputDirectory,
-    artifactPath: join(outputDirectory, `${prefix}.artifact.v1.json`),
-    proofPath: join(outputDirectory, `${prefix}.proof.v1.json`),
-    replayCanaryPath: join(
-      outputDirectory,
-      `${prefix}.replay-canary.v1.json`,
-    ),
-  };
-};
+    dbState.window.weekStartedOn,
+  );
 
 const result = (
   params: ReaderSummaryWeeklyProductionRunnerParams,
@@ -904,3 +878,11 @@ const by = <TKey extends string>(key: TKey) =>
     left: TValue,
     right: TValue,
   ): number => left[key].localeCompare(right[key]);
+
+const sameStrings = (
+  left: readonly string[] | undefined,
+  right: readonly string[],
+): boolean =>
+  left !== undefined &&
+  left.length === right.length &&
+  left.every((value, index) => value === right[index]);
