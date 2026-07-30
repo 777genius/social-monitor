@@ -913,56 +913,40 @@ BEGIN
     RAISE EXCEPTION 'publication-owned table has an unexpected owner';
   END IF;
 
-  IF NOT has_table_privilege(
-    'social_monitor_reader_summary_publication_runtime',
-    'public.reader_summary_artifacts',
-    'SELECT'
-  ) OR NOT has_table_privilege(
-    'social_monitor_reader_summary_publication_runtime',
-    'public.reader_summary_artifacts',
-    'INSERT'
-  ) OR NOT has_table_privilege(
-    'social_monitor_reader_summary_publication_runtime',
-    'public.reader_summary_artifacts',
-    'UPDATE'
-  ) OR has_table_privilege(
-    'social_monitor_reader_summary_publication_runtime',
-    'public.reader_summary_artifacts',
-    'DELETE'
-  ) OR has_table_privilege(
-    'social_monitor_reader_summary_publication_runtime',
-    'public.reader_summary_artifacts',
-    'TRUNCATE'
-  ) OR has_table_privilege(
-    'social_monitor_reader_summary_publication_runtime',
-    'public.reader_summary_artifacts',
-    'REFERENCES'
-  ) OR has_table_privilege(
-    'social_monitor_reader_summary_publication_runtime',
-    'public.reader_summary_artifacts',
-    'TRIGGER'
+  IF to_regprocedure(
+    'public.claim_reader_summary_daily_terminal(uuid,uuid,uuid,text)'
+  ) IS NULL THEN
+    IF EXISTS (
+      SELECT 1
+      FROM unnest(ARRAY[
+        'social_monitor_reader_summary_publication_runtime'::NAME,
+        v_runtime_role
+      ]) AS artifact_role(name)
+      WHERE NOT has_table_privilege(
+        artifact_role.name, 'public.reader_summary_artifacts', 'SELECT'
+      ) OR NOT has_table_privilege(
+        artifact_role.name, 'public.reader_summary_artifacts', 'INSERT'
+      ) OR NOT has_table_privilege(
+        artifact_role.name, 'public.reader_summary_artifacts', 'UPDATE'
+      ) OR has_table_privilege(
+        artifact_role.name, 'public.reader_summary_artifacts',
+        'DELETE,TRUNCATE,REFERENCES,TRIGGER'
+      )
+    ) THEN
+      RAISE EXCEPTION 'legacy artifact continuity grants are unsafe';
+    END IF;
+  ELSIF EXISTS (
+    SELECT 1
+    FROM unnest(ARRAY[
+      'social_monitor_reader_summary_publication_runtime'::NAME,
+      v_runtime_role
+    ]) AS artifact_role(name)
+    WHERE has_table_privilege(
+      artifact_role.name, 'public.reader_summary_artifacts',
+      'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
+    )
   ) THEN
-    RAISE EXCEPTION
-      'pre-migration publication capability artifact grants are unsafe';
-  END IF;
-
-  IF NOT has_table_privilege(
-    v_runtime_role, 'public.reader_summary_artifacts', 'SELECT'
-  ) OR NOT has_table_privilege(
-    v_runtime_role, 'public.reader_summary_artifacts', 'INSERT'
-  ) OR NOT has_table_privilege(
-    v_runtime_role, 'public.reader_summary_artifacts', 'UPDATE'
-  ) OR has_table_privilege(
-    v_runtime_role, 'public.reader_summary_artifacts', 'DELETE'
-  ) OR has_table_privilege(
-    v_runtime_role, 'public.reader_summary_artifacts', 'TRUNCATE'
-  ) OR has_table_privilege(
-    v_runtime_role, 'public.reader_summary_artifacts', 'REFERENCES'
-  ) OR has_table_privilege(
-    v_runtime_role, 'public.reader_summary_artifacts', 'TRIGGER'
-  ) THEN
-    RAISE EXCEPTION
-      'pre-migration runtime artifact continuity grants are unsafe';
+    RAISE EXCEPTION 'daily terminal artifact authority is not exclusive';
   END IF;
 
   IF pg_has_role(

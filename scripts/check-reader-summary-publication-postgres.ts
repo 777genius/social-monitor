@@ -1,4 +1,6 @@
 import { randomBytes, randomUUID } from "node:crypto";
+import { rmSync } from "node:fs";
+import { join } from "node:path";
 import { Pool, type PoolClient } from "pg";
 import {
   provisionReaderSummaryPublicationFixtureScope,
@@ -61,6 +63,8 @@ import { assertReaderSummaryPublicationRuntimeGuard } from "./reader-summary-pub
 const serverAdminDatabaseUrl = requiredReaderSummaryPublicationAdminDatabaseUrl(
   process.env,
 );
+const dailyTerminalMigration =
+  "20260730120000_reader_summary_daily_terminal_authority";
 const fixtureSuffix = randomBytes(10).toString("hex");
 const databaseName = `reader_summary_publication_test_${fixtureSuffix}`;
 const migrationAdminRole = `social_monitor_publication_admin_${fixtureSuffix}`;
@@ -157,6 +161,10 @@ async function main(): Promise<void> {
       runtimeRole,
     );
     installPublicationAndFollowingMigrations(migrationWorkspace);
+    rmSync(
+      join(migrationWorkspace.directory, "migrations", dailyTerminalMigration),
+      { recursive: true },
+    );
     applyOrderedReaderSummaryMigrations(adminDatabaseUrl, migrationWorkspace);
     // Recovery after Prisma committed but before the post hardening phase.
     await runReaderSummaryPublicationBootstrapSql(
@@ -315,7 +323,9 @@ async function main(): Promise<void> {
   );
 }
 const assertOrderedUpgrade = async (client: PoolClient): Promise<void> => {
-  const expected = readerSummaryMigrationNames();
+  const expected = readerSummaryMigrationNames().filter(
+    (migration) => migration < dailyTerminalMigration,
+  );
   const applied = await client.query<{ readonly migration_name: string }>(
     `SELECT migration_name
        FROM "_prisma_migrations"

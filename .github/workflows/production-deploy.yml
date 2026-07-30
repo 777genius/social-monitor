@@ -164,6 +164,7 @@ jobs:
           npm ci
           npm run prisma:generate
           npm run check:reader-summary-publication-postgres
+          npm run check:reader-summary-daily-terminal-authority-postgres
           npm run check:reader-summary-publication-signal-regression
 
   verify_backend:
