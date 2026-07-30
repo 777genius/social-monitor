@@ -74,9 +74,7 @@ const claimSql = `SELECT * FROM claim_reader_summary_daily_terminal(
 const finalizeSql = `SELECT * FROM finalize_reader_summary_daily_terminal(
   $1::UUID, $2::UUID, $3::DATE, $4::TEXT, $5::TEXT, $6::TEXT, $7::BIGINT
 )`;
-const readOnlyTables = ["reader_summary_publications", "reader_summary_publication_slots", "reader_summary_weekly_publication_evidence"] as const;
-const directAccessDeniedTables = ["reader_summary_artifacts", "reader_summary_jobs", "reader_summary_production_recovery_leases", "reader_summary_production_recovery_days", "reader_summary_production_recovery_dry_runs"] as const;
-const dailyTerminalMigration = "20260730120000_reader_summary_daily_terminal_authority";
+const readOnlyTables = ["reader_summary_publications", "reader_summary_publication_slots", "reader_summary_weekly_publication_evidence"] as const, directAccessDeniedTables = ["reader_summary_jobs", "reader_summary_production_recovery_leases", "reader_summary_production_recovery_days", "reader_summary_production_recovery_dry_runs"] as const, dailyTerminalMigration = "20260730120000_reader_summary_daily_terminal_authority";
 const canonicalJson = (value: unknown): string => {
   if (value === null || typeof value !== "object") {
     return JSON.stringify(value);
@@ -542,51 +540,48 @@ const assertMetadata = async (auditor: Client): Promise<void> => {
       !migration.includes("existingModelReceipt"),
     "migration must not contain synthetic facts, self-hash, or receipts",);
   const metadata = await auditor.query<{
-    readonly secure: boolean; readonly fixed_path: boolean;
-    readonly public_execute: boolean; readonly runtime_execute: boolean;
-    readonly internal_runtime_execute: boolean; readonly weekly_runtime_execute: boolean;
-    readonly runtime_read_access: boolean; readonly runtime_write_access: boolean;
-    readonly runtime_denied_table_access: boolean; readonly has_table_lock: boolean;
-    readonly has_row_locks: boolean
+    readonly secure: boolean; readonly fixed_path: boolean; readonly public_execute: boolean;
+    readonly runtime_execute: boolean; readonly internal_runtime_execute: boolean; readonly weekly_runtime_execute: boolean;
+    readonly runtime_artifact_read_access: boolean; readonly runtime_artifact_write_access: boolean; readonly capability_artifact_access: boolean;
+    readonly runtime_read_access: boolean; readonly runtime_write_access: boolean; readonly runtime_denied_state_access: boolean; readonly has_table_lock: boolean; readonly has_row_locks: boolean
   }>(`
     SELECT
       bool_and(proc.prosecdef) AS secure,
-      bool_and(proc.proconfig =
-        ARRAY['search_path=pg_catalog, public']::TEXT[]) AS fixed_path,
+      bool_and(proc.proconfig = ARRAY['search_path=pg_catalog, public']::TEXT[]) AS fixed_path,
       bool_or(has_function_privilege('public', proc.oid, 'EXECUTE'))
         AS public_execute,
-      bool_and(has_function_privilege(
-        current_user,
-        proc.oid, 'EXECUTE'
-      )) AS runtime_execute,
-      has_function_privilege(
-        current_user,
-        'reader_summary_daily_terminal_authority(uuid,uuid,date)',
-        'EXECUTE'
-      ) AS internal_runtime_execute,
-      has_function_privilege(
-        current_user,
-        'publish_reader_summary(jsonb)', 'EXECUTE'
-      ) AS weekly_runtime_execute,
+      bool_and(has_function_privilege(current_user, proc.oid, 'EXECUTE'))
+        AS runtime_execute,
+      has_function_privilege(current_user,
+        'reader_summary_daily_terminal_authority(uuid,uuid,date)', 'EXECUTE')
+        AS internal_runtime_execute,
+      has_function_privilege(current_user, 'publish_reader_summary(jsonb)',
+        'EXECUTE') AS weekly_runtime_execute,
+      has_table_privilege(current_user, 'reader_summary_artifacts', 'SELECT')
+        AS runtime_artifact_read_access,
+      has_table_privilege(current_user, 'reader_summary_artifacts',
+        'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
+      ) AS runtime_artifact_write_access,
+      has_table_privilege('social_monitor_reader_summary_publication_runtime',
+        'reader_summary_artifacts',
+        'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
+      ) AS capability_artifact_access,
       (SELECT bool_and(has_table_privilege(current_user, name, 'SELECT'))
         FROM unnest('{reader_summary_publications,reader_summary_publication_slots,reader_summary_weekly_publication_evidence}'::TEXT[]) AS read_only_table(name)) AS runtime_read_access,
       EXISTS (
         SELECT 1
         FROM unnest('{reader_summary_publications,reader_summary_publication_slots,reader_summary_weekly_publication_evidence}'::TEXT[]) AS read_only_table(name)
-        CROSS JOIN unnest(ARRAY[
-          'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER'
-        ]) AS table_privilege(privilege)
+        CROSS JOIN unnest(ARRAY['INSERT', 'UPDATE', 'DELETE', 'TRUNCATE',
+          'REFERENCES', 'TRIGGER']) AS table_privilege(privilege)
         WHERE has_table_privilege(current_user, read_only_table.name, privilege)
       ) AS runtime_write_access,
       EXISTS (
         SELECT 1
-        FROM unnest('{reader_summary_artifacts,reader_summary_jobs,reader_summary_production_recovery_leases,reader_summary_production_recovery_days,reader_summary_production_recovery_dry_runs}'::TEXT[]) AS protected_table(name)
-        CROSS JOIN unnest(ARRAY[
-          'SELECT', 'INSERT', 'UPDATE', 'DELETE',
-          'TRUNCATE', 'REFERENCES', 'TRIGGER'
-        ]) AS table_privilege(privilege)
+        FROM unnest('{reader_summary_jobs,reader_summary_production_recovery_leases,reader_summary_production_recovery_days,reader_summary_production_recovery_dry_runs}'::TEXT[]) AS protected_table(name)
+        CROSS JOIN unnest(ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE',
+          'TRUNCATE', 'REFERENCES', 'TRIGGER']) AS table_privilege(privilege)
         WHERE has_table_privilege(current_user, protected_table.name, privilege)
-      ) AS runtime_denied_table_access,
+      ) AS runtime_denied_state_access,
       bool_or(pg_get_functiondef(proc.oid) ~* 'LOCK[[:space:]]+TABLE')
         AS has_table_lock,
       bool_and(pg_get_functiondef(proc.oid) ~*
@@ -597,7 +592,7 @@ const assertMetadata = async (auditor: Client): Promise<void> => {
       'finalize_reader_summary_daily_terminal(uuid,uuid,date,text,text,text,bigint)'
         ::regprocedure
     )
-    GROUP BY 5, 6, 7, 8, 9
+    GROUP BY 5, 6, 7, 8, 9, 10, 11, 12
   `);
   const row = metadata.rows[0];
   assert(row?.secure === true, "terminal functions must be SECURITY DEFINER");
@@ -607,9 +602,12 @@ const assertMetadata = async (auditor: Client): Promise<void> => {
   assert(row.internal_runtime_execute === false,
     "runtime must not execute the internal authority loader",);
   assert(row.weekly_runtime_execute === true, "weekly execute must remain admitted");
+  assert(row.runtime_artifact_read_access === true, "runtime artifact SELECT must remain admitted");
+  assert(row.runtime_artifact_write_access === false, "runtime artifact writes must be denied");
+  assert(row.capability_artifact_access === false, "capability artifact access must be denied");
   assert(row.runtime_read_access === true, "runtime SELECT must remain admitted");
   assert(row.runtime_write_access === false, "runtime evidence access must be read-only");
-  assert(row.runtime_denied_table_access === false, "runtime state access must be denied");
+  assert(row.runtime_denied_state_access === false, "runtime state access must be denied");
   assert(row.has_table_lock === false, "terminal functions must not table-lock");
   assert(row.has_row_locks === true, "terminal functions need ordered row locks");
 };
@@ -701,10 +699,12 @@ const assertAuthority = async (
   await auditor.query("ROLLBACK");
   await Promise.all(readOnlyTables.map((table) =>
     first.query(`SELECT * FROM ${table} LIMIT 0`)));
+  await first.query("SELECT * FROM reader_summary_artifacts LIMIT 0");
   for (const table of directAccessDeniedTables) {
-    await expectFailure(
-      () => first.query(`SELECT * FROM ${table} LIMIT 0`),
-      "permission denied",);
+    await expectFailure(() => first.query(`SELECT * FROM ${table} LIMIT 0`), "permission denied");
+  }
+  for (const table of ["reader_summary_artifacts", ...directAccessDeniedTables]) {
+    await expectFailure(() => first.query(`DELETE FROM ${table} WHERE FALSE`), "permission denied");
   }
   const attempt = randomUUID();
   await first.query("BEGIN ISOLATION LEVEL SERIALIZABLE");
@@ -949,6 +949,7 @@ const main = async (): Promise<void> => {
     await privileges.runReaderSummaryPublicationBootstrapSql(
       "post", adminDatabaseUrl, runtimeRole,);
     cpSync(join("prisma/migrations", dailyTerminalMigration), join(workspace.directory, "migrations", dailyTerminalMigration), { recursive: true }); applyOrderedReaderSummaryMigrations(adminDatabaseUrl, workspace);
+    await privileges.runReaderSummaryPublicationBootstrapSql("pre", adminDatabaseUrl, runtimeRole); await privileges.runReaderSummaryPublicationBootstrapSql("post", adminDatabaseUrl, runtimeRole);
     assertReaderSummaryMigrationDatabaseMatchesSchema(targetDatabaseUrl);
     const auditorPool = new Pool({ connectionString: targetDatabaseUrl, max: 1 });
     const runtimePool = new Pool({ connectionString: runtimeDatabaseUrl, max: 2 });
@@ -994,6 +995,5 @@ function assert(condition: unknown, message: string): asserts condition {
   }
 }
 void main().catch((error: unknown) => {
-  console.error(error);
-  process.exitCode = 1;
+  console.error(error); process.exitCode = 1;
 });

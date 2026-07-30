@@ -65,6 +65,24 @@ REVOKE ALL PRIVILEGES ON TABLE
   public.reader_summary_artifacts,
   public.reader_summary_weekly_publication_evidence
 FROM :"runtime_role";
+DO $daily_terminal_artifact_acl$
+DECLARE
+  v_runtime_role NAME := current_setting(
+    'social_monitor.bootstrap_runtime_role'
+  )::NAME;
+BEGIN
+  IF to_regprocedure(
+    'public.claim_reader_summary_daily_terminal(uuid,uuid,uuid,text)'
+  ) IS NOT NULL THEN
+    REVOKE ALL PRIVILEGES ON TABLE public.reader_summary_artifacts
+    FROM social_monitor_reader_summary_publication_runtime;
+    EXECUTE format(
+      'GRANT SELECT ON TABLE public.reader_summary_artifacts TO %I',
+      v_runtime_role
+    );
+  END IF;
+END
+$daily_terminal_artifact_acl$;
 REVOKE ALL PRIVILEGES ON FUNCTION
   public.reader_summary_model_authority_rank(text),
   public.publish_reader_summary(jsonb),
@@ -83,6 +101,27 @@ REVOKE ALL PRIVILEGES ON FUNCTION
   public.guard_reader_summary_active_slot_update()
 FROM :"runtime_role";
 RESET ROLE;
+
+DO $daily_terminal_job_acl$
+DECLARE
+  v_runtime_role NAME := current_setting(
+    'social_monitor.bootstrap_runtime_role'
+  )::NAME;
+BEGIN
+  IF to_regprocedure(
+    'public.claim_reader_summary_daily_terminal(uuid,uuid,uuid,text)'
+  ) IS NOT NULL THEN
+    SET LOCAL ROLE social_monitor_public_schema_owner;
+    EXECUTE format(
+      'REVOKE ALL PRIVILEGES ON TABLE public.reader_summary_jobs FROM %I',
+      v_runtime_role
+    );
+    REVOKE ALL PRIVILEGES ON TABLE public.reader_summary_jobs
+    FROM social_monitor_reader_summary_publication_runtime;
+    RESET ROLE;
+  END IF;
+END
+$daily_terminal_job_acl$;
 
 DO $bootstrap$
 DECLARE
@@ -538,18 +577,39 @@ BEGIN
     ) THEN
       RAISE EXCEPTION 'legacy artifact continuity grants are unsafe';
     END IF;
-  ELSIF EXISTS (
+  ELSIF has_table_privilege(
+    'social_monitor_reader_summary_publication_runtime',
+    'public.reader_summary_artifacts',
+    'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
+  ) OR NOT has_table_privilege(
+    v_runtime_role, 'public.reader_summary_artifacts', 'SELECT'
+  ) OR has_table_privilege(
+    v_runtime_role, 'public.reader_summary_artifacts',
+    'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
+  ) THEN
+    RAISE EXCEPTION 'daily terminal artifact authority is not exclusive';
+  END IF;
+
+  IF to_regprocedure(
+    'public.claim_reader_summary_daily_terminal(uuid,uuid,uuid,text)'
+  ) IS NOT NULL AND EXISTS (
     SELECT 1
     FROM unnest(ARRAY[
       'social_monitor_reader_summary_publication_runtime'::NAME,
       v_runtime_role
-    ]) AS artifact_role(name)
+    ]) AS state_role(name)
+    CROSS JOIN unnest(ARRAY[
+      'reader_summary_jobs',
+      'reader_summary_production_recovery_leases',
+      'reader_summary_production_recovery_days',
+      'reader_summary_production_recovery_dry_runs'
+    ]) AS state_table(name)
     WHERE has_table_privilege(
-      artifact_role.name, 'public.reader_summary_artifacts',
+      state_role.name, 'public.' || state_table.name,
       'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
     )
   ) THEN
-    RAISE EXCEPTION 'daily terminal artifact authority is not exclusive';
+    RAISE EXCEPTION 'daily terminal runtime state authority is unsafe';
   END IF;
 
   IF NOT has_table_privilege(

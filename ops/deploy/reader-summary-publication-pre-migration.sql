@@ -883,12 +883,27 @@ BEGIN
   EXECUTE 'RESET ROLE';
 END
 $tenant_table_ownership_transfer$;
-
+-- Daily terminal repair restores artifact reads without restoring job state.
+DO $daily_terminal_runtime_acl$
+DECLARE v_runtime_role NAME := current_setting('social_monitor.bootstrap_runtime_role')::NAME;
+BEGIN
+  IF to_regprocedure('public.claim_reader_summary_daily_terminal(uuid,uuid,uuid,text)') IS NULL THEN
+    RETURN;
+  END IF;
+  SET LOCAL ROLE social_monitor_reader_summary_publication_owner;
+  EXECUTE format('REVOKE ALL PRIVILEGES ON TABLE public.reader_summary_artifacts FROM %I', v_runtime_role);
+  REVOKE ALL PRIVILEGES ON TABLE public.reader_summary_artifacts FROM social_monitor_reader_summary_publication_runtime;
+  EXECUTE format('GRANT SELECT ON TABLE public.reader_summary_artifacts TO %I', v_runtime_role);
+  RESET ROLE;
+  SET LOCAL ROLE social_monitor_public_schema_owner;
+  EXECUTE format('REVOKE ALL PRIVILEGES ON TABLE public.reader_summary_jobs FROM %I', v_runtime_role);
+  REVOKE ALL PRIVILEGES ON TABLE public.reader_summary_jobs FROM social_monitor_reader_summary_publication_runtime;
+  RESET ROLE;
+END
+$daily_terminal_runtime_acl$;
 DO $ownership_transfer_audit$
-DECLARE
-  v_runtime_role NAME := current_setting(
-    'social_monitor.bootstrap_runtime_role'
-  )::NAME;
+DECLARE v_runtime_role NAME :=
+  current_setting('social_monitor.bootstrap_runtime_role')::NAME;
 BEGIN
   IF EXISTS (
     SELECT 1
@@ -912,10 +927,7 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'publication-owned table has an unexpected owner';
   END IF;
-
-  IF to_regprocedure(
-    'public.claim_reader_summary_daily_terminal(uuid,uuid,uuid,text)'
-  ) IS NULL THEN
+  IF to_regprocedure('public.claim_reader_summary_daily_terminal(uuid,uuid,uuid,text)') IS NULL THEN
     IF EXISTS (
       SELECT 1
       FROM unnest(ARRAY[
@@ -935,20 +947,35 @@ BEGIN
     ) THEN
       RAISE EXCEPTION 'legacy artifact continuity grants are unsafe';
     END IF;
-  ELSIF EXISTS (
-    SELECT 1
-    FROM unnest(ARRAY[
-      'social_monitor_reader_summary_publication_runtime'::NAME,
-      v_runtime_role
-    ]) AS artifact_role(name)
-    WHERE has_table_privilege(
-      artifact_role.name, 'public.reader_summary_artifacts',
-      'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
-    )
+  ELSIF has_table_privilege(
+    'social_monitor_reader_summary_publication_runtime',
+    'public.reader_summary_artifacts',
+    'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
+  ) OR NOT has_table_privilege(
+    v_runtime_role, 'public.reader_summary_artifacts', 'SELECT'
+  ) OR has_table_privilege(
+    v_runtime_role, 'public.reader_summary_artifacts',
+    'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
   ) THEN
     RAISE EXCEPTION 'daily terminal artifact authority is not exclusive';
   END IF;
-
+  IF to_regprocedure('public.claim_reader_summary_daily_terminal(uuid,uuid,uuid,text)') IS NOT NULL AND EXISTS (
+    SELECT 1
+    FROM unnest(ARRAY[
+      'social_monitor_reader_summary_publication_runtime'::NAME, v_runtime_role
+    ]) AS state_role(name)
+    CROSS JOIN unnest(ARRAY[
+      'reader_summary_jobs', 'reader_summary_production_recovery_leases',
+      'reader_summary_production_recovery_days',
+      'reader_summary_production_recovery_dry_runs'
+    ]) AS state_table(name)
+    WHERE has_table_privilege(
+      state_role.name, 'public.' || state_table.name,
+      'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
+    )
+  ) THEN
+    RAISE EXCEPTION 'daily terminal runtime state authority is unsafe';
+  END IF;
   IF pg_has_role(
     v_runtime_role,
     'social_monitor_public_schema_owner',
@@ -960,7 +987,6 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'runtime retained temporary public schema ownership';
   END IF;
-
   IF pg_has_role(
     v_runtime_role,
     'social_monitor_reader_summary_publication_owner',
@@ -970,5 +996,4 @@ BEGIN
   END IF;
 END
 $ownership_transfer_audit$;
-
 COMMIT;
