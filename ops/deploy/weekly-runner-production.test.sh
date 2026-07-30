@@ -25,7 +25,9 @@ grep -Fx 'Persistent=true' "$timer" >/dev/null
 grep -Fx 'Unit=social-monitor-weekly.service' "$timer" >/dev/null
 grep -F 'OnCalendar=Mon ' "$timer" >/dev/null
 ! grep -Eq '^(OnBootSec|OnActiveSec|OnUnitActiveSec)=' "$timer"
-! grep -Eq 'systemctl[[:space:]]+(enable|start|restart)[[:space:]]+social-monitor-weekly' "$deploy_lib"
+grep -F 'systemctl enable "$timer"' "$deploy_lib" >/dev/null
+grep -F 'systemctl start "$timer"' "$deploy_lib" >/dev/null
+grep -F 'NextElapseUSecRealtime' "$deploy_lib" >/dev/null
 ! grep -Eq 'systemctl[[:space:]]+(enable|start|restart)[[:space:]]+social-monitor-weekly' "$deploy_entrypoint"
 grep -F 'social-monitor-weekly.service' "$deploy_lib" >/dev/null
 grep -F 'social-monitor-weekly.timer' "$deploy_lib" >/dev/null

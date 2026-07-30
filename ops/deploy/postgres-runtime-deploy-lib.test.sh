@@ -48,11 +48,20 @@ ROLLBACK_FAILURE_SHA=3333333333333333333333333333333333333333
 INVALID_MARKER_SHA=4444444444444444444444444444444444444444
 MASKED_TIMER_SHA=5555555555555555555555555555555555555555
 TAMPERED_RELEASE_SHA=6666666666666666666666666666666666666666
+WEEKLY_ENABLE_FAILURE_SHA=7777777777777777777777777777777777777777
+WEEKLY_START_FAILURE_SHA=8888888888888888888888888888888888888888
+WEEKLY_PROOF_FAILURE_SHA=9999999999999999999999999999999999999999
+WEEKLY_ROLLBACK_FAILURE_SHA=abababababababababababababababababababab
 REJECT_DROPIN=false
 TIMER_UNIT_FILE_STATE=disabled
 TIMER_ACTIVE_STATE=inactive
 SERVICE_ACTIVE_STATE=inactive
 DAEMON_RELOAD_STATUS=0
+WEEKLY_TIMER_NEXT_TRIGGER='Mon 2026-08-03 06:30:00 UTC'
+WEEKLY_TIMER_ENABLE_STATUS=0
+WEEKLY_TIMER_START_STATUS=0
+WEEKLY_TIMER_DISABLE_STATUS=0
+WEEKLY_TIMER_STOP_STATUS=0
 LEGACY_DAILY_TIMER_ENABLED=true
 V6_DAILY_TIMER_ENABLED=false
 DAILY_TIMER_ACTIVE_STATE=active
@@ -60,7 +69,11 @@ DAILY_TIMER_ACTIVE_STATE_AFTER_START=active
 DAILY_TIMER_NEXT_TRIGGER='Thu 2026-07-30 00:00:00 UTC'
 DAILY_TIMER_START_STATUS=0
 SYSTEMCTL_EVENTS=$FIXTURE/systemctl-events
+WEEKLY_TIMER_UNIT_FILE_STATE=$FIXTURE/weekly-timer-unit-file-state
+WEEKLY_TIMER_ACTIVE_STATE=$FIXTURE/weekly-timer-active-state
 FAKE_SYSTEMCTL=$SCRIPT_DIR/fixtures/github-premidnight-capture-fake-systemctl.sh
+printf 'disabled\n' > "$WEEKLY_TIMER_UNIT_FILE_STATE"
+printf 'inactive\n' > "$WEEKLY_TIMER_ACTIVE_STATE"
 install -d "$STATE" "$SYSTEMD_UNIT_DIR" "$CONTROL/old-runtime" \
   "$REPO/ops/deploy"
 cp -a "$SOURCE_REPO/ops/deploy/production-runtime" \
@@ -103,6 +116,45 @@ fail() {
 
 systemctl() {
   case "$*" in
+    'show --property=UnitFileState --value social-monitor-weekly.timer')
+      printf '%s\n' "$*" >> "$SYSTEMCTL_EVENTS"
+      cat "$WEEKLY_TIMER_UNIT_FILE_STATE"
+      return
+      ;;
+    'show --property=ActiveState --value social-monitor-weekly.timer')
+      printf '%s\n' "$*" >> "$SYSTEMCTL_EVENTS"
+      cat "$WEEKLY_TIMER_ACTIVE_STATE"
+      return
+      ;;
+    'show --property=NextElapseUSecRealtime --value social-monitor-weekly.timer')
+      printf '%s\n' "$*" >> "$SYSTEMCTL_EVENTS"
+      printf '%s\n' "$WEEKLY_TIMER_NEXT_TRIGGER"
+      return
+      ;;
+    'enable social-monitor-weekly.timer')
+      printf '%s\n' "$*" >> "$SYSTEMCTL_EVENTS"
+      ((WEEKLY_TIMER_ENABLE_STATUS == 0)) || return "$WEEKLY_TIMER_ENABLE_STATUS"
+      printf 'enabled\n' > "$WEEKLY_TIMER_UNIT_FILE_STATE"
+      return 0
+      ;;
+    'start social-monitor-weekly.timer')
+      printf '%s\n' "$*" >> "$SYSTEMCTL_EVENTS"
+      ((WEEKLY_TIMER_START_STATUS == 0)) || return "$WEEKLY_TIMER_START_STATUS"
+      printf 'active\n' > "$WEEKLY_TIMER_ACTIVE_STATE"
+      return 0
+      ;;
+    'disable social-monitor-weekly.timer')
+      printf '%s\n' "$*" >> "$SYSTEMCTL_EVENTS"
+      ((WEEKLY_TIMER_DISABLE_STATUS == 0)) || return "$WEEKLY_TIMER_DISABLE_STATUS"
+      printf 'disabled\n' > "$WEEKLY_TIMER_UNIT_FILE_STATE"
+      return 0
+      ;;
+    'stop social-monitor-weekly.timer')
+      printf '%s\n' "$*" >> "$SYSTEMCTL_EVENTS"
+      ((WEEKLY_TIMER_STOP_STATUS == 0)) || return "$WEEKLY_TIMER_STOP_STATUS"
+      printf 'inactive\n' > "$WEEKLY_TIMER_ACTIVE_STATE"
+      return 0
+      ;;
     'is-enabled --quiet social-monitor-daily.timer')
       printf '%s\n' "$*" >> "$SYSTEMCTL_EVENTS"
       [[ $LEGACY_DAILY_TIMER_ENABLED == true ]]
@@ -193,6 +245,7 @@ for unit in "${base_units[@]}"; do
   base_unit_inodes[$unit]=$(stat -c '%i' "$SYSTEMD_UNIT_DIR/$unit")
 done
 
+: > "$SYSTEMCTL_EVENTS"
 rollback_snapshot=$(snapshot_postgres_runtime_control "$SHA")
 activate_postgres_runtime_control "$SHA"
 
@@ -232,11 +285,13 @@ done
   "$unrelated_service_inode" ]]
 [[ $(stat -c '%i' "$SYSTEMD_UNIT_DIR/unrelated.timer") == \
   "$unrelated_timer_inode" ]]
-if grep -Eq '(^| )(enable|disable|start|stop|restart)( |$)' \
-  "$SYSTEMCTL_EVENTS"; then
-  echo 'runtime deployment mutated a systemd unit state' >&2
-  exit 1
-fi
+[[ $(grep -E '(^| )(enable|disable|start|stop|restart)( |$)' \
+  "$SYSTEMCTL_EVENTS") == $'enable social-monitor-weekly.timer\nstart social-monitor-weekly.timer' ]]
+[[ $(<"$WEEKLY_TIMER_UNIT_FILE_STATE") == enabled ]]
+[[ $(<"$WEEKLY_TIMER_ACTIVE_STATE") == active ]]
+grep -Fx \
+  'show --property=NextElapseUSecRealtime --value social-monitor-weekly.timer' \
+  "$SYSTEMCTL_EVENTS" >/dev/null
 grep -Fx \
   'show --property=UnitFileState --value social-monitor-github-premidnight-capture-v1.timer' \
   "$SYSTEMCTL_EVENTS" >/dev/null
@@ -249,6 +304,8 @@ grep -Fx \
 
 restore_postgres_runtime_control "$rollback_snapshot"
 [[ $(readlink -f "$POSTGRES_RUNTIME_CURRENT") == "$CONTROL/old-runtime" ]]
+[[ $(<"$WEEKLY_TIMER_UNIT_FILE_STATE") == disabled ]]
+[[ $(<"$WEEKLY_TIMER_ACTIVE_STATE") == inactive ]]
 for unit in "${units[@]}"; do
   if [[ $unit == social-monitor-github-premidnight-capture-v1.* ]]; then
     [[ $(cat "$SYSTEMD_UNIT_DIR/$unit") == "old-$unit" ]]
@@ -386,13 +443,91 @@ mapfile -t retained_backups < <(
 DAEMON_RELOAD_STATUS=0
 restore_postgres_runtime_control "${retained_backups[0]}"
 [[ ! -e ${retained_backups[0]} ]]
-if grep -Eq '(^| )(enable|disable|start|stop|restart)( |$)' \
-  "$SYSTEMCTL_EVENTS"; then
-  echo 'runtime rollback mutated a systemd unit state' >&2
+if grep -E '(^| )(enable|disable|start|stop|restart)( |$)' \
+  "$SYSTEMCTL_EVENTS" | grep -Fv 'social-monitor-weekly.timer' >/dev/null; then
+  echo 'runtime rollback mutated a non-weekly systemd unit state' >&2
   exit 1
 fi
 [[ $(<"$SYSTEMD_UNIT_DIR/unrelated.service") == unrelated-service ]]
 [[ $(<"$SYSTEMD_UNIT_DIR/unrelated.timer") == unrelated-timer ]]
+
+reset_weekly_reconciliation_fixture() {
+  printf 'disabled\n' > "$WEEKLY_TIMER_UNIT_FILE_STATE"
+  printf 'inactive\n' > "$WEEKLY_TIMER_ACTIVE_STATE"
+  WEEKLY_TIMER_NEXT_TRIGGER='Mon 2026-08-03 06:30:00 UTC'
+  WEEKLY_TIMER_ENABLE_STATUS=0
+  WEEKLY_TIMER_START_STATUS=0
+  WEEKLY_TIMER_DISABLE_STATUS=0
+  WEEKLY_TIMER_STOP_STATUS=0
+  : > "$SYSTEMCTL_EVENTS"
+}
+
+reset_weekly_reconciliation_fixture
+WEEKLY_TIMER_ENABLE_STATUS=41
+set +e
+activate_postgres_runtime_control "$WEEKLY_ENABLE_FAILURE_SHA" >/dev/null 2>&1
+weekly_failure_status=$?
+set -e
+if ((weekly_failure_status == 0)); then
+  echo 'weekly timer enable failure was accepted' >&2
+  exit 1
+fi
+[[ $(<"$WEEKLY_TIMER_UNIT_FILE_STATE") == disabled ]]
+[[ $(<"$WEEKLY_TIMER_ACTIVE_STATE") == inactive ]]
+[[ $(grep -Fxc 'enable social-monitor-weekly.timer' "$SYSTEMCTL_EVENTS") == 1 ]]
+
+reset_weekly_reconciliation_fixture
+WEEKLY_TIMER_START_STATUS=42
+set +e
+activate_postgres_runtime_control "$WEEKLY_START_FAILURE_SHA" >/dev/null 2>&1
+weekly_failure_status=$?
+set -e
+if ((weekly_failure_status == 0)); then
+  echo 'weekly timer start failure was accepted' >&2
+  exit 1
+fi
+[[ $(<"$WEEKLY_TIMER_UNIT_FILE_STATE") == disabled ]]
+[[ $(<"$WEEKLY_TIMER_ACTIVE_STATE") == inactive ]]
+[[ $(grep -Fxc 'disable social-monitor-weekly.timer' "$SYSTEMCTL_EVENTS") == 1 ]]
+
+reset_weekly_reconciliation_fixture
+WEEKLY_TIMER_NEXT_TRIGGER=
+set +e
+activate_postgres_runtime_control "$WEEKLY_PROOF_FAILURE_SHA" >/dev/null 2>&1
+weekly_failure_status=$?
+set -e
+if ((weekly_failure_status == 0)); then
+  echo 'weekly timer missing next trigger was accepted' >&2
+  exit 1
+fi
+[[ $(<"$WEEKLY_TIMER_UNIT_FILE_STATE") == disabled ]]
+[[ $(<"$WEEKLY_TIMER_ACTIVE_STATE") == inactive ]]
+[[ $(grep -Fxc 'stop social-monitor-weekly.timer' "$SYSTEMCTL_EVENTS") == 1 ]]
+
+reset_weekly_reconciliation_fixture
+WEEKLY_TIMER_NEXT_TRIGGER=
+WEEKLY_TIMER_STOP_STATUS=43
+set +e
+activate_postgres_runtime_control "$WEEKLY_ROLLBACK_FAILURE_SHA" >/dev/null 2>&1
+weekly_failure_status=$?
+set -e
+if ((weekly_failure_status == 0)); then
+  echo 'weekly timer rollback failure was accepted' >&2
+  exit 1
+fi
+mapfile -t weekly_retained_backups < <(
+  find "$STATE" -maxdepth 1 -type d \
+    -name 'postgres-runtime-control-backup.*'
+)
+[[ ${#weekly_retained_backups[@]} == 1 ]]
+[[ $(<"$WEEKLY_TIMER_UNIT_FILE_STATE") == enabled ]]
+[[ $(<"$WEEKLY_TIMER_ACTIVE_STATE") == active ]]
+WEEKLY_TIMER_STOP_STATUS=0
+restore_postgres_runtime_control "${weekly_retained_backups[0]}"
+[[ $(<"$WEEKLY_TIMER_UNIT_FILE_STATE") == disabled ]]
+[[ $(<"$WEEKLY_TIMER_ACTIVE_STATE") == inactive ]]
+[[ ! -e ${weekly_retained_backups[0]} ]]
+reset_weekly_reconciliation_fixture
 
 daily_reconciliation_inode_snapshot=$(
   stat -c '%n:%i' \

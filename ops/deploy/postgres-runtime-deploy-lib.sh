@@ -129,6 +129,27 @@ require_postgres_runtime_safe_mutation_target() {
   fi
 }
 
+snapshot_postgres_runtime_weekly_timer() {
+  local backup=$1 unit_state active_state
+  unit_state=$(systemctl show --property=UnitFileState --value social-monitor-weekly.timer) ||
+    { fail 'systemd weekly timer enablement is unavailable'; return 1; }
+  active_state=$(systemctl show --property=ActiveState --value social-monitor-weekly.timer) ||
+    { fail 'systemd weekly timer active state is unavailable'; return 1; }
+  [[ "$unit_state $active_state" =~ ^(enabled\ active|disabled\ inactive)$ ]] ||
+    { fail "systemd weekly timer state is not rollback-safe: $unit_state/$active_state"; return 1; }
+  printf '%s %s\n' "$unit_state" "$active_state" > "$backup/weekly-timer-state"
+}
+
+restore_postgres_runtime_weekly_timer() {
+  local backup=$1 unit_state active_state
+  read -r unit_state active_state < "$backup/weekly-timer-state" || return 1
+  [[ "$unit_state $active_state" =~ ^(enabled\ active|disabled\ inactive)$ ]] || return 1
+  case "$unit_state/$active_state" in
+    enabled/active) systemctl enable social-monitor-weekly.timer && systemctl start social-monitor-weekly.timer || return 1 ;;
+    disabled/inactive) systemctl stop social-monitor-weekly.timer && systemctl disable social-monitor-weekly.timer || return 1 ;;
+  esac
+  [[ $(systemctl show --property=UnitFileState --value social-monitor-weekly.timer) == "$unit_state" && $(systemctl show --property=ActiveState --value social-monitor-weekly.timer) == "$active_state" ]]
+}
 activate_postgres_runtime_control() {
   local sha=$1
   local compatible_backend_sha=${2:-$sha}
@@ -207,6 +228,8 @@ rollback_postgres_runtime_control_activation() {
   if ((EUID == 0)) && [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} != 1 ]]; then
     systemctl daemon-reload || rollback_status=1
   fi
+  [[ ! -f $backup/weekly-timer-state ]] ||
+    restore_postgres_runtime_weekly_timer "$backup" || rollback_status=1
   if ((rollback_status == 0)); then
     rm -rf "$backup" || rollback_status=1
   else
@@ -280,6 +303,9 @@ activate_postgres_runtime_control_transaction() (
   previous_target=$(readlink "$POSTGRES_RUNTIME_CURRENT" 2>/dev/null || true)
   install -d -m 0700 "$backup"
   printf '%s\n' "$scope" > "$backup/mutation-scope"
+  if ((EUID == 0)) && [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} != 1 ]]; then
+    snapshot_postgres_runtime_weekly_timer "$backup"
+  fi
   if [[ -n $previous_target ]]; then
     printf '%s\n' "$previous_target" > "$backup/current-target"
   elif [[ -e $POSTGRES_RUNTIME_CURRENT || -L $POSTGRES_RUNTIME_CURRENT ]]; then
@@ -463,6 +489,7 @@ verify_installed_postgres_runtime_control() {
         fail 'GitHub pre-midnight service must remain inactive'
     fi
     verify_effective_postgres_daily_topology
+    reconcile_postgres_runtime_weekly_timer
   fi
 }
 
@@ -479,6 +506,9 @@ snapshot_postgres_runtime_control() {
   )
   install -d -m 0700 "$backup"
   printf '%s\n' "$scope" > "$backup/mutation-scope"
+  if ((EUID == 0)) && [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} != 1 ]]; then
+    snapshot_postgres_runtime_weekly_timer "$backup"
+  fi
   target=$(readlink "$POSTGRES_RUNTIME_CURRENT" 2>/dev/null || true)
   if [[ -n $target ]]; then
     printf '%s\n' "$target" > "$backup/current-target"
@@ -569,51 +599,56 @@ restore_postgres_runtime_control() {
   if ((EUID == 0)) && [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} != 1 ]]; then
     systemctl daemon-reload || return 1
   fi
+  [[ ! -f $backup/weekly-timer-state ]] ||
+    restore_postgres_runtime_weekly_timer "$backup" || return 1
   rm -rf "$backup"
+}
+
+reconcile_postgres_runtime_weekly_timer() {
+  local timer=social-monitor-weekly.timer unit_state active_state next_trigger
+  unit_state=$(systemctl show --property=UnitFileState --value "$timer") ||
+    { fail 'systemd weekly timer enablement is unavailable'; return 1; }
+  case $unit_state in
+    enabled) ;;
+    disabled) systemctl enable "$timer" ||
+      { fail 'systemd weekly timer could not be enabled'; return 1; } ;;
+    *) fail "systemd weekly timer enablement is not reconcilable: $unit_state"; return 1 ;;
+  esac
+  active_state=$(systemctl show --property=ActiveState --value "$timer") ||
+    { fail 'systemd weekly timer active state is unavailable'; return 1; }
+  case $active_state in
+    active) ;;
+    inactive) systemctl start "$timer" || {
+      fail 'systemd weekly timer could not be started'; return 1; } ;;
+    *) fail "systemd weekly timer active state is not reconcilable: $active_state"; return 1 ;;
+  esac
+  unit_state=$(systemctl show --property=UnitFileState --value "$timer") &&
+    active_state=$(systemctl show --property=ActiveState --value "$timer") &&
+    next_trigger=$(systemctl show --property=NextElapseUSecRealtime --value "$timer") ||
+    { fail 'systemd weekly timer proof is unavailable'; return 1; }
+  [[ $unit_state == enabled && $active_state == active && -n $next_trigger ]] ||
+    { fail "systemd weekly timer proof is invalid: $unit_state/$active_state"; return 1; }
 }
 
 reconcile_effective_postgres_daily_timer() {
   local timer=$1 active_state next_trigger
-
-  if ! active_state=$(
-    systemctl show --property=ActiveState --value "$timer"
-  ); then
-    fail "systemd daily timer active state is unavailable: $timer"
-    return 1
-  fi
+  active_state=$(systemctl show --property=ActiveState --value "$timer") ||
+    { fail "systemd daily timer active state is unavailable: $timer"; return 1; }
   case $active_state in
     active) ;;
-    inactive)
-      if ! systemctl start "$timer"; then
-        fail "systemd daily timer could not be started: $timer"
-        return 1
-      fi
-      ;;
-    *)
-      fail "systemd daily timer active state is not reconcilable: $timer ($active_state)"
-      return 1
-      ;;
+    inactive) systemctl start "$timer" ||
+      { fail "systemd daily timer could not be started: $timer"; return 1; } ;;
+    *) fail "systemd daily timer active state is not reconcilable: $timer ($active_state)"
+      return 1 ;;
   esac
-  if ! active_state=$(
-    systemctl show --property=ActiveState --value "$timer"
-  ); then
-    fail "systemd daily timer active state is unavailable after reconciliation: $timer"
-    return 1
-  fi
-  [[ $active_state == active ]] || {
-    fail "systemd daily timer is not active after reconciliation: $timer"
-    return 1
-  }
-  if ! next_trigger=$(
-    systemctl show --property=NextElapseUSecRealtime --value "$timer"
-  ); then
-    fail "systemd daily timer next trigger is unavailable: $timer"
-    return 1
-  fi
-  [[ -n $next_trigger ]] || {
-    fail "systemd daily timer has no next trigger: $timer"
-    return 1
-  }
+  active_state=$(systemctl show --property=ActiveState --value "$timer") ||
+    { fail "systemd daily timer active state is unavailable after reconciliation: $timer"; return 1; }
+  [[ $active_state == active ]] ||
+    { fail "systemd daily timer is not active after reconciliation: $timer"; return 1; }
+  next_trigger=$(systemctl show --property=NextElapseUSecRealtime --value "$timer") ||
+    { fail "systemd daily timer next trigger is unavailable: $timer"; return 1; }
+  [[ -n $next_trigger ]] ||
+    { fail "systemd daily timer has no next trigger: $timer"; return 1; }
 }
 
 verify_effective_postgres_daily_topology() (
