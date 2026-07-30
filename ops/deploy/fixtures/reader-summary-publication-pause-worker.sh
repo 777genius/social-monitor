@@ -5,15 +5,16 @@ date_flag=${1:?date flag is required}
 report_dir=${READER_SUMMARY_DAILY_RUN_REPORT_DIR:?report directory is required}
 expected_date=${READER_SUMMARY_DAILY_RUN_EXPECTED_DATE:?expected date is required}
 ready=${READER_SUMMARY_DAILY_RUN_READY_FILE:?ready file is required}
+worker_mode=${READER_SUMMARY_DAILY_RUN_WORKER_MODE:-pause}
 
 [[ $date_flag == --today || $date_flag == --yesterday ]]
 mkdir -p "$report_dir" "$(dirname "$ready")"
-node - "$report_dir" "$expected_date" <<'NODE'
+node - "$report_dir" "$expected_date" "$worker_mode" <<'NODE'
 const { createHash } = require('node:crypto');
 const { writeFileSync } = require('node:fs');
 const { join } = require('node:path');
 
-const [reportDir, collectionDate] = process.argv.slice(2);
+const [reportDir, collectionDate, workerMode] = process.argv.slice(2);
 const startedAt = `${collectionDate}T00:00:00.000Z`;
 const end = new Date(startedAt);
 end.setUTCDate(end.getUTCDate() + 1);
@@ -25,6 +26,70 @@ const period = {
   timezone: 'UTC',
   periodKey: `daily:${startedAt}:${endedAt}:UTC`,
 };
+if (workerMode === 'partial' || workerMode === 'unavailable') {
+  const unavailable = workerMode === 'unavailable';
+  const boundaries = {
+    summaryModelCalled: false,
+    topicModelCalled: false,
+    summaryPublished: false,
+    recollectionPerformedByOutcome: false,
+  };
+  const provider = {
+    providerKey: 'reddit',
+    state: workerMode,
+    evidence: unavailable ? 'explicit_unavailable' : 'live_collection',
+    databaseFeedItemCount: unavailable ? 0 : 45,
+    collectionFeedItemCount: unavailable ? 0 : 45,
+    minimumFeedItemCount: 50,
+    reasonCodes: [
+      unavailable ? 'provider_unavailable' : 'target_shortfall',
+    ],
+  };
+  const outcome = {
+    schemaVersion: 1,
+    artifactFormat: 'reader-summary-production-day-outcome-v1',
+    generatedBy: 'npm run run:reader-summary-production-day',
+    generatedAt: `${collectionDate}T01:01:00.000Z`,
+    requestedDate: collectionDate,
+    outcome: workerMode,
+    terminal: true,
+    reason: unavailable
+      ? 'verified_provider_unavailability'
+      : 'bounded_provider_shortfall',
+    boundaries,
+    providerReadiness: {
+      diagnosticsOwner: 'postgres_feed_items_published_window',
+      providers: [provider],
+    },
+  };
+  const report = {
+    schemaVersion: 1,
+    artifactFormat: 'reader-summary-production-day-run-v1',
+    generatedBy: 'npm run run:reader-summary-production-day',
+    requestedDate: collectionDate,
+    collectionDate,
+    failure: {
+      code: 'collection_quality_failed',
+      safeMessage: `Verified terminal provider outcome: ${workerMode}`,
+    },
+    model: boundaries,
+    blockingPassed: false,
+  };
+  const reportBytes = `${JSON.stringify(report, null, 2)}\n`;
+  writeFileSync(
+    join(reportDir, `reader-summary-production-day-outcome.${collectionDate}.v1.json`),
+    `${JSON.stringify(outcome, null, 2)}\n`,
+  );
+  writeFileSync(
+    join(reportDir, 'reader-summary-production-day-run.v1.json'),
+    reportBytes,
+  );
+  writeFileSync(
+    join(reportDir, `reader-summary-production-day-run.${collectionDate}.v1.json`),
+    reportBytes,
+  );
+  process.exit(0);
+}
 const readerSummaryId = '11111111-1111-4111-8111-111111111111';
 const readerSummaryJobId = '22222222-2222-4222-8222-222222222222';
 const evidenceArtifactId = 'durable-reader-summary-postgres-evidence-v1';
@@ -353,8 +418,8 @@ NODE
 
 printf '%s\n' "$$" > "$ready"
 
-case ${READER_SUMMARY_DAILY_RUN_WORKER_MODE:-pause} in
-  success)
+case $worker_mode in
+  success|partial|unavailable)
     exit 0
     ;;
   invalid)
