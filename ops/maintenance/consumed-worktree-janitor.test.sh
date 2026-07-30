@@ -78,6 +78,14 @@ write_ledger() {
     "$root/control/consumed-output-ledger/items/$job_id--$attempt_id.json"
 }
 
+write_registry_binding() {
+  local root=$1 job_id=$2 workspace=$3 registry=${4:-registry-v2}
+  local binding_root=$root/worker-jobs/$registry/$job_id
+  mkdir -p "$binding_root"
+  jq -n --arg jobId "$job_id" --arg workspacePath "$workspace" \
+    '{jobId:$jobId,workspacePath:$workspacePath}' >"$binding_root/job.json"
+}
+
 run_janitor() {
   local root=$1
   shift
@@ -106,6 +114,58 @@ output=$(run_janitor "$root")
 [[ ! -e $root/control/consumed-worktree-janitor.audit.jsonl ]] ||
   fail 'default dry-run wrote an audit log'
 
+root=$(new_fixture legacy-registry-bound)
+alias_job=social-monitor-legacy-alias-worker
+alias_target=$(add_worktree "$root" "$alias_job" \
+  "$root/worktrees/social-monitor-consumed-alias")
+write_ledger "$root" "$alias_job" attempt-1 "$alias_target" rejected
+write_registry_binding "$root" "$alias_job" "$alias_target"
+normal_job=social-monitor-normal-candidate-worker
+normal_target=$(add_worktree "$root" "$normal_job")
+write_ledger "$root" "$normal_job" attempt-1 "$normal_target" rejected
+output=$(run_janitor "$root")
+[[ $output == *"excluded reason=legacy-registry-bound ledger=$alias_job--attempt-1 worktree=$alias_target"* &&
+  $output == *"would-remove ledger=$normal_job--attempt-1 worktree=$normal_target"* &&
+  $output == *'eligible=1'* ]] ||
+  fail 'trusted legacy alias was not excluded beside a normal candidate'
+output=$(run_janitor "$root" --apply)
+[[ -d $alias_target && ! -e $normal_target &&
+  $output == *"excluded reason=legacy-registry-bound ledger=$alias_job--attempt-1"* ]] ||
+  fail 'apply did not preserve the trusted legacy alias'
+jq -e -s --arg ledger "$normal_job--attempt-1" \
+  'length == 1 and .[0].ledgerId == $ledger' \
+  "$root/control/consumed-worktree-janitor.audit.jsonl" >/dev/null ||
+  fail 'apply wrote a receipt for the preserved legacy alias'
+
+root=$(new_fixture legacy-binding-absent)
+job=social-monitor-legacy-binding-absent-worker
+target=$(add_worktree "$root" "$job" "$root/worktrees/social-monitor-absent-alias")
+write_ledger "$root" "$job" attempt-1 "$target" rejected
+assert_apply_rejected "$root" "$target"
+
+root=$(new_fixture legacy-binding-mismatch)
+job=social-monitor-legacy-binding-mismatch-worker
+target=$(add_worktree "$root" "$job" "$root/worktrees/social-monitor-mismatch-alias")
+write_ledger "$root" "$job" attempt-1 "$target" rejected
+write_registry_binding "$root" "$job" "$root/worktrees/social-monitor-other-alias"
+assert_apply_rejected "$root" "$target"
+
+root=$(new_fixture legacy-binding-malformed)
+job=social-monitor-legacy-binding-malformed-worker
+target=$(add_worktree "$root" "$job" "$root/worktrees/social-monitor-malformed-alias")
+write_ledger "$root" "$job" attempt-1 "$target" rejected
+write_registry_binding "$root" "$job" "$target"
+printf '{not-json\n' >"$root/worker-jobs/registry-v2/$job/job.json"
+assert_apply_rejected "$root" "$target"
+
+root=$(new_fixture legacy-binding-duplicate)
+job=social-monitor-legacy-binding-duplicate-worker
+target=$(add_worktree "$root" "$job" "$root/worktrees/social-monitor-duplicate-alias")
+write_ledger "$root" "$job" attempt-1 "$target" rejected
+write_registry_binding "$root" "$job" "$target" registry-v1
+write_registry_binding "$root" "$job" "$target" registry-v2
+assert_apply_rejected "$root" "$target"
+
 root=$(new_fixture terminal-statuses)
 for status in archived superseded; do
   job=social-monitor-$status-worker
@@ -124,15 +184,17 @@ nested_job=social-monitor-volume2-nested-worker
 nested_target=$(add_worktree "$root" "$nested_job" \
   "$root/worktrees/.volume2/$nested_job/worktree")
 write_ledger "$root" "$nested_job" attempt-1 "$nested_target" rejected
+write_registry_binding "$root" "$nested_job" "$nested_target"
 legacy_job=social-monitor-volume2-legacy-worker
 legacy_target=$(add_worktree "$root" "$legacy_job" \
   "$root/worktrees/.volume2/$legacy_job/legacy/worktree")
 write_ledger "$root" "$legacy_job" attempt-1 "$legacy_target" rejected
+write_registry_binding "$root" "$legacy_job" "$legacy_target"
 output=$(run_janitor "$root")
 [[ $output == *"would-remove ledger=$direct_job--attempt-1 worktree=$direct_target"* &&
-  $output == *"would-remove ledger=$nested_job--attempt-1 worktree=$nested_target"* &&
-  $output == *"excluded reason=unsupported-volume2-layout ledger=$legacy_job--attempt-1"* &&
-  $output == *'eligible=2'* ]] ||
+  $output == *"excluded reason=legacy-registry-bound ledger=$nested_job--attempt-1"* &&
+  $output == *"excluded reason=legacy-registry-bound ledger=$legacy_job--attempt-1"* &&
+  $output == *'eligible=1'* ]] ||
   fail 'volume2 dry-run discovery was not strict and complete'
 [[ -d $direct_target && -d $nested_target && -d $legacy_target ]] ||
   fail 'volume2 dry run changed a fixture target'
@@ -140,8 +202,8 @@ output=$(run_janitor "$root")
   fail 'volume2 dry run wrote an audit receipt'
 output=$(run_janitor "$root" --apply)
 [[ $output == *"excluded reason=volume2-dry-run-only ledger=$direct_job--attempt-1"* &&
-  $output == *"excluded reason=volume2-dry-run-only ledger=$nested_job--attempt-1"* &&
-  $output == *"excluded reason=unsupported-volume2-layout ledger=$legacy_job--attempt-1"* &&
+  $output == *"excluded reason=legacy-registry-bound ledger=$nested_job--attempt-1"* &&
+  $output == *"excluded reason=legacy-registry-bound ledger=$legacy_job--attempt-1"* &&
   $output != *'would-remove'* && $output == *'eligible=0'* &&
   $output == *'removed=0'* ]] ||
   fail 'volume2 apply did not explicitly exclude every fixture target'

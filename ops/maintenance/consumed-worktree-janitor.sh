@@ -137,6 +137,29 @@ canonical_declared_path() {
   printf '%s\n' "$result"
 }
 
+validate_legacy_registry_binding() {
+  local job_id=$1 workspace=$2 manifest manifest_parent registry_root canonical
+  local manifests=("$WORKER_JOBS"/registry*/"$job_id"/job.json)
+  ((${#manifests[@]} == 1)) ||
+    fail "legacy workspace requires exactly one registry binding: $job_id"
+  manifest=${manifests[0]}
+  manifest_parent=${manifest%/*}
+  registry_root=${manifest_parent%/*}
+  for canonical in "$registry_root" "$manifest_parent"; do
+    [[ -d $canonical && ! -L $canonical ]] ||
+      fail "legacy registry binding directory is unsafe: $canonical"
+    [[ $("$REALPATH" -e -- "$canonical") == "$canonical" ]] ||
+      fail "legacy registry binding directory is not canonical: $canonical"
+  done
+  [[ -f $manifest && ! -L $manifest && -r $manifest ]] ||
+    fail "legacy registry binding is unsafe: $manifest"
+  [[ $("$REALPATH" -e -- "$manifest") == "$manifest" ]] ||
+    fail "legacy registry binding is not canonical: $manifest"
+  "$JQ" -e --arg job_id "$job_id" --arg workspace "$workspace" \
+    'type == "object" and .jobId == $job_id and .workspacePath == $workspace' \
+    "$manifest" >/dev/null ||
+    fail "legacy registry binding is malformed or conflicting: $manifest"
+}
 is_terminal_ledger_status() {
   case $1 in
     integrated | rejected | archived | superseded) return 0 ;;
@@ -172,6 +195,7 @@ declare -A latest_status_hash=()
 declare -A latest_status_file=()
 declare -A latest_time=()
 declare -A latest_workspace_kind=()
+declare -A latest_legacy_registry_bound=()
 
 shopt -s nullglob
 ledger_files=("$LEDGER_ITEMS"/*.json)
@@ -228,6 +252,7 @@ for item in "${ledger_files[@]}"; do
     fail "ledger filename conflicts with its IDs: $item"
 
   workspace=$(canonical_declared_path "$workspace" 'ledger workspace')
+  legacy_registry_bound=0
   archive=$(canonical_declared_path "$archive" 'ledger archive')
   status_file=$(canonical_declared_path "$status_file" 'status evidence')
   patch_file=$(canonical_declared_path "$patch_file" 'patch evidence')
@@ -250,9 +275,13 @@ for item in "${ledger_files[@]}"; do
       [[ ${workspace%/*} == "$WORKTREES" &&
         ${workspace##*/} =~ ^[A-Za-z0-9._-]+$ ]] ||
         fail "ledger workspace is not a direct Social Monitor worktree: $workspace"
-      fail "ledger workspace conflicts with its job ID: $workspace"
+      workspace_kind=canonical
       ;;
   esac
+  if [[ ${workspace##*/} != "$job_id" ]]; then
+    validate_legacy_registry_binding "$job_id" "$workspace"
+    legacy_registry_bound=1
+  fi
   case ${archive%/*} in
     "$WORKER_JOBS/$job_id/archives" | "$CONTROLLER/archives") ;;
     *) fail "ledger archive conflicts with its Social Monitor job: $archive" ;;
@@ -301,6 +330,7 @@ for item in "${ledger_files[@]}"; do
   latest_status_file["$workspace"]=$status_file
   latest_time["$workspace"]=$consumed_at
   latest_workspace_kind["$workspace"]=$workspace_kind
+  latest_legacy_registry_bound["$workspace"]=$legacy_registry_bound
   if is_terminal_ledger_status "$status"; then
     latest_numstat_hash["$workspace"]=${ledger_numstat_hash_by_id[$ledger_id]}
     latest_patch_hash["$workspace"]=${ledger_patch_hash_by_id[$ledger_id]}
@@ -750,11 +780,17 @@ snapshot_process_evidence
 
 for workspace in "${!latest_time[@]}"; do
   status=${latest_status[$workspace]}
+  ledger_id=${latest_ledger[$workspace]}
+  if [[ ${latest_legacy_registry_bound[$workspace]} == 1 ]]; then
+    printf 'excluded reason=legacy-registry-bound ledger=%s worktree=%s\n' \
+      "$ledger_id" "$workspace"
+    excluded=$((excluded + 1))
+    continue
+  fi
   is_terminal_ledger_status "$status" || {
     excluded=$((excluded + 1))
     continue
   }
-  ledger_id=${latest_ledger[$workspace]}
   workspace_kind=${latest_workspace_kind[$workspace]}
   if [[ $workspace_kind == volume2-unsupported ]]; then
     printf 'excluded reason=unsupported-volume2-layout ledger=%s worktree=%s\n' \
