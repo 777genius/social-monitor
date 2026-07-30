@@ -78,6 +78,23 @@ write_ledger() {
     "$root/control/consumed-output-ledger/items/$job_id--$attempt_id.json"
 }
 
+write_reviewed_output() {
+  local root=$1 reviewed_id=$2 job_id=$3 workspace=$4 archived_patch=$5
+  local output_root=$root/worker-jobs/reviewed-worker-outputs/$reviewed_id
+  local output_patch=$output_root/output.patch patch_hash
+  mkdir -p "$output_root"
+  cp "$archived_patch" "$output_patch"
+  patch_hash=$(sha256sum "$output_patch")
+  patch_hash=${patch_hash%%[[:space:]]*}
+  # shellcheck disable=SC2016 # The dollar-prefixed names are jq variables.
+  jq -n --arg id "$reviewed_id" --arg job "$job_id" \
+    --arg workspace "$workspace" --arg patch "$output_patch" --arg hash "$patch_hash" \
+    '{format:"reviewed-worker-output",formatRevision:1,projectId:"social-monitor",
+      reviewedOutputId:$id,workerJobId:$job,sourceWorkspacePath:$workspace,
+      patchPath:$patch,patchSha256:$hash,reviewDecision:{decision:"rejected"}}' \
+    >"$output_root/manifest.json"
+}
+
 write_registry_binding() {
   local root=$1 job_id=$2 workspace=$3 registry=${4:-registry-v2}
   local binding_root=$root/worker-jobs/$registry/$job_id
@@ -113,6 +130,32 @@ output=$(run_janitor "$root")
   fail 'default dry-run did not report its plan'
 [[ ! -e $root/control/consumed-worktree-janitor.audit.jsonl ]] ||
   fail 'default dry-run wrote an audit log'
+
+root=$(new_fixture legacy-terminal-archive-forms)
+job=social-monitor-uncaptured-archive-worker
+target=$(add_worktree "$root" "$job")
+printf 'uncaptured patch\n' >>"$target/fixture.txt"
+hash=$(git -C "$target" diff --no-ext-diff --binary HEAD -- | sha256sum)
+hash=${hash%%[[:space:]]*}
+attempt=uncaptured-rejection-$hash
+archive=$root/worker-jobs/$job/archives/$job-rejected-uncaptured-$hash
+write_ledger "$root" "$job" "$attempt" "$target" rejected "$archive"
+job=social-monitor-reviewed-archive-worker
+target=$(add_worktree "$root" "$job")
+printf 'reviewed patch\n' >>"$target/fixture.txt"
+reviewed_id=$(printf 'reviewed fixture\n' | sha256sum)
+reviewed_id=${reviewed_id%%[[:space:]]*}
+archive=$root/worker-jobs/$job/archives/$job-rejected-reviewed-$reviewed_id
+write_ledger "$root" "$job" "$reviewed_id" "$target" rejected "$archive"
+write_reviewed_output "$root" "$reviewed_id" "$job" "$target" "$archive/tracked.diff"
+job=social-monitor-integrated-archive-worker
+target=$(add_worktree "$root" "$job")
+commit=$(git -C "$root/integration" rev-parse HEAD)
+archive=$root/worker-jobs/$job/archives/$job-integrated-${commit:0:12}-attempt-1
+write_ledger "$root" "$job" attempt-1 "$target" integrated "$archive"
+output=$(run_janitor "$root")
+[[ $output == *'eligible=3'* ]] ||
+  fail 'three bound legacy terminal archive forms were not eligible'
 
 root=$(new_fixture legacy-registry-bound)
 alias_job=social-monitor-legacy-alias-worker
@@ -262,7 +305,72 @@ root=$(new_fixture mismatched-archive-name)
 job=social-monitor-archive-binding-worker
 target=$(add_worktree "$root" "$job")
 write_ledger "$root" "$job" attempt-1 "$target" rejected \
-  "$root/worker-jobs/$job/archives/borrowed-terminal-evidence"
+  "$root/worker-jobs/$job/archives/$job-rejected-unknown-attempt-1"
+assert_apply_rejected "$root" "$target"
+
+root=$(new_fixture uncaptured-hash-mismatch)
+job=social-monitor-uncaptured-hash-mismatch-worker
+target=$(add_worktree "$root" "$job")
+hash=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+attempt=uncaptured-rejection-$hash
+archive=$root/worker-jobs/$job/archives/$job-rejected-uncaptured-$hash
+write_ledger "$root" "$job" "$attempt" "$target" rejected "$archive"
+assert_apply_rejected "$root" "$target"
+
+root=$(new_fixture reviewed-output-absent)
+job=social-monitor-reviewed-output-absent-worker
+target=$(add_worktree "$root" "$job")
+reviewed_id=1123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+archive=$root/worker-jobs/$job/archives/$job-rejected-reviewed-$reviewed_id
+write_ledger "$root" "$job" "$reviewed_id" "$target" rejected "$archive"
+assert_apply_rejected "$root" "$target"
+
+for conflict in job workspace; do
+  root=$(new_fixture reviewed-output-wrong-$conflict)
+  job=social-monitor-reviewed-output-wrong-$conflict-worker
+  target=$(add_worktree "$root" "$job")
+  reviewed_id=$(printf 'wrong %s\n' "$conflict" | sha256sum)
+  reviewed_id=${reviewed_id%%[[:space:]]*}
+  archive=$root/worker-jobs/$job/archives/$job-rejected-reviewed-$reviewed_id
+  write_ledger "$root" "$job" "$reviewed_id" "$target" rejected "$archive"
+  write_reviewed_output "$root" "$reviewed_id" "$job" "$target" "$archive/tracked.diff"
+  manifest=$root/worker-jobs/reviewed-worker-outputs/$reviewed_id/manifest.json
+  jq ".$conflict = \"borrowed\"" "$manifest" >"$root/conflict.json"
+  if [[ $conflict == job ]]; then
+    jq '.workerJobId = .job | del(.job)' "$root/conflict.json" >"$manifest"
+  else
+    jq '.sourceWorkspacePath = .workspace | del(.workspace)' "$root/conflict.json" >"$manifest"
+  fi
+  assert_apply_rejected "$root" "$target"
+done
+
+root=$(new_fixture reviewed-output-borrowed)
+job=social-monitor-reviewed-output-borrowed-worker
+target=$(add_worktree "$root" "$job")
+reviewed_id=2123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+archive=$root/worker-jobs/$job/archives/$job-rejected-reviewed-$reviewed_id
+write_ledger "$root" "$job" "$reviewed_id" "$target" rejected "$archive"
+write_reviewed_output "$root" "$reviewed_id" "$job" "$target" "$archive/tracked.diff"
+manifest=$root/worker-jobs/reviewed-worker-outputs/$reviewed_id/manifest.json
+jq '.patchPath = (.patchPath + ".borrowed")' "$manifest" >"$root/borrowed.json"
+mv "$root/borrowed.json" "$manifest"
+assert_apply_rejected "$root" "$target"
+
+root=$(new_fixture reviewed-output-mutated-patch)
+job=social-monitor-reviewed-output-mutated-patch-worker
+target=$(add_worktree "$root" "$job")
+reviewed_id=3123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+archive=$root/worker-jobs/$job/archives/$job-rejected-reviewed-$reviewed_id
+write_ledger "$root" "$job" "$reviewed_id" "$target" rejected "$archive"
+write_reviewed_output "$root" "$reviewed_id" "$job" "$target" "$archive/tracked.diff"
+printf 'mutated\n' >>"$root/worker-jobs/reviewed-worker-outputs/$reviewed_id/output.patch"
+assert_apply_rejected "$root" "$target"
+
+root=$(new_fixture integrated-wrong-commit-prefix)
+job=social-monitor-integrated-wrong-prefix-worker
+target=$(add_worktree "$root" "$job")
+archive=$root/worker-jobs/$job/archives/$job-integrated-deadbeefdead-attempt-1
+write_ledger "$root" "$job" attempt-1 "$target" integrated "$archive"
 assert_apply_rejected "$root" "$target"
 
 root=$(new_fixture unavailable-integrated-commit)
@@ -274,6 +382,19 @@ jq '.commitSha = "0123456789abcdef0123456789abcdef01234567" |
   .integratedCommitSha = .commitSha | .commit = .commitSha' "$item" >"$root/invalid.json"
 mv "$root/invalid.json" "$item"
 assert_apply_rejected "$root" "$target"
+
+root=$(new_fixture nonterminal-archive-name-mismatch)
+job=social-monitor-nonterminal-name-mismatch-worker
+target=$(add_worktree "$root" "$job")
+write_ledger "$root" "$job" attempt-1 "$target" running \
+  "$root/worker-jobs/$job/archives/$job-running-unknown-attempt-1"
+terminal_job=social-monitor-nonterminal-neighbor-worker
+terminal_target=$(add_worktree "$root" "$terminal_job")
+write_ledger "$root" "$terminal_job" attempt-1 "$terminal_target" rejected
+output=$(run_janitor "$root")
+[[ $output == *"would-remove ledger=$terminal_job--attempt-1"* &&
+  $output == *'eligible=1'* && $output == *'excluded=1'* ]] ||
+  fail 'nonterminal archive mismatch aborted or became eligible'
 
 root=$(new_fixture changed-after-terminal-evidence)
 job=social-monitor-changed-after-terminal-worker
