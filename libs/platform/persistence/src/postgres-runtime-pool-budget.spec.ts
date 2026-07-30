@@ -285,6 +285,7 @@ describe('deployment PostgreSQL budget', () => {
 
 describe('production PostgreSQL construction and entrypoint inventory', () => {
   const publicationPostgresTestOnlyFiles = new Set([
+    'scripts/check-reader-summary-daily-terminal-authority-postgres.ts',
     'scripts/check-reader-summary-production-recovery-postgres.ts',
     'scripts/check-reader-summary-publication-postgres.ts',
     'scripts/check-tenant-rls-postgres.ts',
