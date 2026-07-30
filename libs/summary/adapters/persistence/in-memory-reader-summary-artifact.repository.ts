@@ -7,9 +7,14 @@ import type {
   ListReaderSummaryArtifactsQuery,
   ListReaderSummaryArtifactsResult,
   ListReaderSummaryPeriodSummariesResult,
+  FindReaderSummaryWeeklyArtifactQuery,
   ReaderSummaryArtifactRepositoryPort,
   ReaderSummaryRejectedArtifactDebug,
+  ReaderSummaryWeeklyArtifactRepositoryPort,
+  PersistedReaderSummaryWeeklyArtifact,
+  SaveReaderSummaryWeeklyArtifactCommand,
 } from "../../ports";
+import { buildReaderSummaryWeeklyPublicationPersistencePayload } from "./reader-summary-publication-proof";
 
 type ReaderSummaryPublicationDecisionForPersistence = NonNullable<
   NonNullable<
@@ -17,7 +22,11 @@ type ReaderSummaryPublicationDecisionForPersistence = NonNullable<
   >["publicationDecision"]
 >;
 
-export class InMemoryReaderSummaryArtifactRepository implements ReaderSummaryArtifactRepositoryPort {
+export class InMemoryReaderSummaryArtifactRepository
+  implements
+    ReaderSummaryArtifactRepositoryPort,
+    ReaderSummaryWeeklyArtifactRepositoryPort
+{
   private readonly artifactsById = new Map<string, ReaderSummaryArtifact>();
   private readonly statusesById = new Map<
     string,
@@ -27,6 +36,11 @@ export class InMemoryReaderSummaryArtifactRepository implements ReaderSummaryArt
     string,
     ReaderSummaryPublicationDecisionForPersistence
   >();
+  private readonly weeklyArtifactsById = new Map<
+    string,
+    PersistedReaderSummaryWeeklyArtifact
+  >();
+  private readonly usedWeeklyAuthorizationIds = new Set<string>();
 
   async save(
     artifact: ReaderSummaryArtifact,
@@ -153,6 +167,44 @@ export class InMemoryReaderSummaryArtifactRepository implements ReaderSummaryArt
       artifact,
       this.publicationDecisionsById.get(key),
     );
+  }
+
+  async saveWeekly(
+    command: SaveReaderSummaryWeeklyArtifactCommand,
+  ): Promise<void> {
+    const payload =
+      buildReaderSummaryWeeklyPublicationPersistencePayload(command);
+    const key =
+      `${payload.tenantId}:${payload.workspaceId}:${payload.artifactId}`;
+    if (
+      this.weeklyArtifactsById.has(key) ||
+      this.usedWeeklyAuthorizationIds.has(payload.proof.authorizationId)
+    ) {
+      throw new Error(
+        "Reader summary weekly publication authorization was replayed",
+      );
+    }
+    this.weeklyArtifactsById.set(key, {
+      kind: "weekly",
+      artifactId: payload.artifactId,
+      tenantId: payload.tenantId,
+      workspaceId: payload.workspaceId,
+      artifact: {
+        output: payload.artifactPayload.output,
+        editorialQuality: payload.qualitySignals.editorialQuality,
+      },
+      qualitySignals: payload.qualitySignals,
+      proof: payload.proof,
+    });
+    this.usedWeeklyAuthorizationIds.add(payload.proof.authorizationId);
+  }
+
+  async findWeeklyById(
+    params: FindReaderSummaryWeeklyArtifactQuery,
+  ): Promise<PersistedReaderSummaryWeeklyArtifact | null> {
+    const key =
+      `${params.tenantId}:${params.workspaceId}:${params.artifactId}`;
+    return this.weeklyArtifactsById.get(key) ?? null;
   }
 
   all(): readonly ReaderSummaryArtifact[] {

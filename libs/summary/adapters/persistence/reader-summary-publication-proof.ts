@@ -4,9 +4,17 @@ import {
   readerSummaryHasVerifiedGitHubProjection,
   readerSummaryScopeKey,
 } from "../../domain";
+import {
+  readReaderSummaryWeeklyPublicationAuthorization,
+  type ReaderSummaryWeeklyPublicationProof,
+  type ReaderSummaryWeeklyPublicationQualitySignals,
+} from "../../domain/policies/reader-summary-weekly-publication-authorization";
+import type { ReaderSummaryWeeklyArtifactSnapshot } from "../../domain/entities/reader-summary-weekly-artifact";
 import type {
+  ReaderSummaryAuthorizedPublication,
   ReaderSummaryPublicationCommand,
   ReaderSummaryPublicationOutcome,
+  SaveReaderSummaryWeeklyArtifactCommand,
 } from "../../ports";
 
 export type ReaderSummaryPublicationPayload = Readonly<{
@@ -45,6 +53,97 @@ export type ReaderSummaryPublicationSqlRow = Readonly<{
   report_sha256: string;
   proof_sha256: string;
 }>;
+
+export type ReaderSummaryWeeklyPublicationPersistencePayload = Readonly<{
+  schemaVersion: "reader_summary.weekly_artifact_persistence.v1";
+  artifactId: string;
+  tenantId: string;
+  workspaceId: string;
+  scope: Readonly<
+    | { type: "workspace" }
+    | { type: "interest"; interestId: string }
+  >;
+  cadence: "weekly";
+  periodStartedAt: string;
+  periodEndedAt: string;
+  periodTimezone: "UTC";
+  periodKey: string;
+  headline: string;
+  summaryText: string;
+  modelVersion: string;
+  promptVersion: string;
+  artifactPayload: Readonly<{
+    schemaVersion: "reader_summary.weekly_persisted_artifact.v1";
+    output: ReaderSummaryWeeklyArtifactSnapshot["output"];
+    publicationProof: ReaderSummaryWeeklyPublicationProof;
+  }>;
+  citations: readonly Readonly<Record<string, unknown>>[];
+  qualitySignals: ReaderSummaryWeeklyPublicationQualitySignals;
+  proof: ReaderSummaryWeeklyPublicationProof;
+}>;
+
+export const buildReaderSummaryAuthorizedPublicationProof = (
+  publication: ReaderSummaryAuthorizedPublication,
+):
+  | ReaderSummaryPublicationPayload
+  | ReaderSummaryWeeklyPublicationPersistencePayload =>
+  publication.kind === "daily"
+    ? buildReaderSummaryPublicationPayload(publication.command)
+    : buildReaderSummaryWeeklyPublicationPersistencePayload({
+        kind: "weekly",
+        artifactId: publication.artifactId,
+        authorization: publication.authorization,
+      });
+
+export const buildReaderSummaryWeeklyPublicationPersistencePayload = (
+  command: SaveReaderSummaryWeeklyArtifactCommand,
+): ReaderSummaryWeeklyPublicationPersistencePayload => {
+  if (command.kind !== "weekly") {
+    throw new Error(
+      "Reader summary weekly persistence requires a weekly authorization",
+    );
+  }
+  const details = readReaderSummaryWeeklyPublicationAuthorization(
+    command.authorization,
+  );
+  if (details.artifactId !== command.artifactId) {
+    throw new Error(
+      "Reader summary weekly authorization is bound to another artifact",
+    );
+  }
+  const { artifact, proof } = details;
+  const periodStartedAt = `${proof.weekStartedOn}T00:00:00.000Z`;
+  const periodEndedAt = new Date(
+    Date.parse(`${proof.weekEndedOn}T00:00:00.000Z`) + 86_400_000,
+  ).toISOString();
+  return {
+    schemaVersion: "reader_summary.weekly_artifact_persistence.v1",
+    artifactId: details.artifactId,
+    tenantId: proof.tenantId,
+    workspaceId: proof.workspaceId,
+    scope: proof.scope,
+    cadence: "weekly",
+    periodStartedAt,
+    periodEndedAt,
+    periodTimezone: "UTC",
+    periodKey:
+      `weekly:${periodStartedAt}:${periodEndedAt}:UTC`,
+    headline: artifact.output.headline,
+    summaryText: artifact.output.synthesis,
+    modelVersion: artifact.output.schemaVersion,
+    promptVersion: artifact.editorialQuality.policyVersion,
+    artifactPayload: {
+      schemaVersion: "reader_summary.weekly_persisted_artifact.v1",
+      output: artifact.output,
+      publicationProof: proof,
+    },
+    citations: proof.citations.map((citation) =>
+      publicationJsonObject(citation),
+    ),
+    qualitySignals: details.qualitySignals,
+    proof,
+  };
+};
 
 export const buildReaderSummaryPublicationPayload = (
   command: ReaderSummaryPublicationCommand,

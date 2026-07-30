@@ -13,9 +13,24 @@ import {
   type ReaderSummaryPeriod,
 } from "../../domain";
 import type { ReaderSummaryPublicationCommand } from "../../ports";
+import {
+  buildReaderSummaryAuthorizedPublicationProof,
+  buildReaderSummaryPublicationPayload,
+} from "./reader-summary-publication-proof";
 import { buildReaderSummaryPublicationRequestV2 } from "./reader-summary-weekly-publication-evidence";
 
 describe("reader summary publication DB request", () => {
+  it("keeps the discriminated daily proof byte-compatible", () => {
+    const command = publicationCommand(dailyPeriod());
+    const existing = buildReaderSummaryPublicationPayload(command);
+    const discriminated = buildReaderSummaryAuthorizedPublicationProof({
+      kind: "daily",
+      command,
+    });
+
+    expect(JSON.stringify(discriminated)).toBe(JSON.stringify(existing));
+  });
+
   it("sends only DB locators even when caller-owned presentation text differs", () => {
     const command = publicationCommand(dailyPeriod());
 

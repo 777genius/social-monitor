@@ -5,6 +5,7 @@ import type {
   ReaderSummaryPublicationDecision,
   ReaderSummaryReadyEvent,
 } from "../domain";
+import type { ReaderSummaryWeeklyPublicationAuthorization } from "../domain/policies/reader-summary-weekly-publication-authorization";
 
 export type PublishableReaderSummaryPublicationDecision = Extract<
   ReaderSummaryPublicationDecision,
@@ -23,6 +24,17 @@ export type ReaderSummaryPublicationCommand = {
   readonly githubProjectionAudit: ReaderSummaryGitHubProjectionAudit;
   readonly readyEvent: ReaderSummaryReadyEvent;
 };
+
+export type ReaderSummaryAuthorizedPublication =
+  | Readonly<{
+      kind: "daily";
+      command: ReaderSummaryPublicationCommand;
+    }>
+  | Readonly<{
+      kind: "weekly";
+      artifactId: string;
+      authorization: ReaderSummaryWeeklyPublicationAuthorization;
+    }>;
 
 export interface ReaderSummaryPublicationPort {
   publish(

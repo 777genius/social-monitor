@@ -8,6 +8,14 @@ import type {
   ReaderSummaryPublicationDecision,
   ReaderSummaryScope,
 } from "../domain";
+import type {
+  ReaderSummaryWeeklyArtifactSnapshot,
+} from "../domain/entities/reader-summary-weekly-artifact";
+import type {
+  ReaderSummaryWeeklyPublicationAuthorization,
+  ReaderSummaryWeeklyPublicationProof,
+  ReaderSummaryWeeklyPublicationQualitySignals,
+} from "../domain/policies/reader-summary-weekly-publication-authorization";
 
 export type ListReaderSummaryArtifactsQuery = {
   readonly tenantId: TenantId;
@@ -114,3 +122,29 @@ export interface ReaderSummaryArtifactRepositoryPort {
     readonly readerSummaryId: string;
   }): Promise<ReaderSummaryRejectedArtifactDebug | null>;
 }
+
+export type SaveReaderSummaryWeeklyArtifactCommand = Readonly<{
+  kind: "weekly";
+  artifactId: string;
+  authorization: ReaderSummaryWeeklyPublicationAuthorization;
+}>;
+
+export type PersistedReaderSummaryWeeklyArtifact = Readonly<{
+  kind: "weekly";
+  artifactId: string;
+  tenantId: string;
+  workspaceId: string;
+  artifact: ReaderSummaryWeeklyArtifactSnapshot;
+  qualitySignals: ReaderSummaryWeeklyPublicationQualitySignals;
+  proof: ReaderSummaryWeeklyPublicationProof;
+}>;
+
+export interface ReaderSummaryWeeklyArtifactRepositoryPort {
+  saveWeekly(command: SaveReaderSummaryWeeklyArtifactCommand): Promise<void>;
+}
+
+export type FindReaderSummaryWeeklyArtifactQuery = Readonly<{
+  tenantId: TenantId;
+  workspaceId: WorkspaceId;
+  artifactId: string;
+}>;

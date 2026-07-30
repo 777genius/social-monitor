@@ -15,8 +15,12 @@ import type {
   ReaderSummaryPeriodSummary,
   ReaderSummaryArtifactRepositoryPort,
   ReaderSummaryRejectedArtifactDebug,
+  ReaderSummaryWeeklyArtifactRepositoryPort,
+  SaveReaderSummaryWeeklyArtifactCommand,
 } from "../../../ports";
+import { buildReaderSummaryWeeklyPublicationPersistencePayload } from "../reader-summary-publication-proof";
 import type { PrismaSummaryClient } from "./prisma-summary-client";
+import type { PrismaReaderSummaryArtifactCreate } from "./prisma-reader-summary-client";
 import {
   readerSummaryArtifactFromPrisma,
   readerSummaryCitationsToPrisma,
@@ -45,7 +49,8 @@ type ReaderSummaryPublicationDecisionForPersistence = NonNullable<
   >["publicationDecision"]
 >;
 
-export class PrismaReaderSummaryArtifactRepository implements ReaderSummaryArtifactRepositoryPort {
+export class PrismaReaderSummaryArtifactRepository implements
+  ReaderSummaryArtifactRepositoryPort, ReaderSummaryWeeklyArtifactRepositoryPort {
   constructor(private readonly prisma: PrismaSummaryClient) {}
 
   async save(
@@ -237,7 +242,44 @@ export class PrismaReaderSummaryArtifactRepository implements ReaderSummaryArtif
 
     return record === null ? null : rejectedDebugFromPrisma(record);
   }
+  async saveWeekly(command: SaveReaderSummaryWeeklyArtifactCommand): Promise<void> {
+    const payload = buildReaderSummaryWeeklyPublicationPersistencePayload(command);
+    const existing = await this.prisma.readerSummaryArtifact.findFirst({
+      where: { id: payload.artifactId, tenantId: payload.tenantId,
+        workspaceId: payload.workspaceId },
+    });
+    if (existing !== null) throw weeklyAuthorizationReplay();
+    const data: PrismaReaderSummaryArtifactCreate = {
+      id: payload.artifactId, tenantId: payload.tenantId,
+      workspaceId: payload.workspaceId, schemaVersion: 1,
+      ...readerSummaryScopeToPrisma(payload.scope), cadence: "weekly",
+      periodStartedAt: new Date(payload.periodStartedAt),
+      periodEndedAt: new Date(payload.periodEndedAt), periodTimezone: "UTC",
+      periodKey: payload.periodKey, status: "RUNNING", userId: null,
+      subscriptionId: null, modelVersion: payload.modelVersion,
+      promptVersion: payload.promptVersion, headline: payload.headline,
+      summaryText: payload.summaryText, artifactPayload: payload.artifactPayload,
+      citations: payload.citations, qualitySignals: {
+        ...payload.qualitySignals, weeklyPublicationProof: payload.proof,
+      },
+    };
+    try {
+      const creator = this.prisma.readerSummaryArtifact as unknown as {
+        create(args: { readonly data: PrismaReaderSummaryArtifactCreate }): Promise<PrismaReaderSummaryArtifactRecord>;
+      };
+      await withPrismaWriteRetry(() => creator.create({ data }));
+    } catch (error: unknown) {
+      if (isPrismaUniqueConstraint(error)) throw weeklyAuthorizationReplay();
+      throw error;
+    }
+  }
 }
+
+const isPrismaUniqueConstraint = (error: unknown): boolean =>
+  typeof error === "object" && error !== null && "code" in error &&
+  error.code === "P2002";
+const weeklyAuthorizationReplay = (): Error => new Error(
+  "Reader summary weekly publication authorization was replayed");
 
 const readerSummaryArtifactWhere = (
   query: ListReaderSummaryArtifactsQuery,
@@ -433,7 +475,6 @@ const shadowReportFromDecision = (
     signals: shadow?.signals ?? [],
   };
 };
-
 const periodStartedAtWhere = (query: ListReaderSummaryArtifactsQuery) => {
   if (
     query.periodStartedAt === undefined &&

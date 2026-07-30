@@ -4,6 +4,8 @@ import {
   ReaderSummaryArtifact,
   type ReaderSummaryGitHubProjectionAudit,
 } from "../../../domain";
+import type { ReaderSummaryWeeklyPublicationAuthorization } from "../../../domain/policies/reader-summary-weekly-publication-authorization";
+import * as weeklyAuthorizationPolicy from "../../../domain/policies/reader-summary-weekly-publication-authorization";
 import { emptyReaderSummaryReliabilityReport } from "../../../domain/entities/reader-summary-reliability";
 import { PrismaReaderSummaryArtifactRepository } from "./prisma-reader-summary-artifact.repository";
 import type { PrismaReaderSummaryArtifactRecord } from "./prisma-reader-summary-records";
@@ -152,7 +154,86 @@ describe("PrismaReaderSummaryArtifactRepository", () => {
       "REJECTED",
     );
   });
+
+  it("persists discriminated weekly quality and proof without a daily decision", async () => {
+    const authorization =
+      Object.freeze({}) as ReaderSummaryWeeklyPublicationAuthorization;
+    const readAuthorization = jest
+      .spyOn(
+        weeklyAuthorizationPolicy,
+        "readReaderSummaryWeeklyPublicationAuthorization",
+      )
+      .mockReturnValue(weeklyAuthorizationDetails());
+    const prisma = new FakeReaderSummaryPrisma();
+    const repository = new PrismaReaderSummaryArtifactRepository(prisma.client);
+    const command = {
+      kind: "weekly" as const,
+      artifactId: "weekly-artifact-prisma",
+      authorization,
+    };
+
+    try {
+      await repository.saveWeekly(command);
+
+      expect(prisma.statusFor(command.artifactId)).toBe("RUNNING");
+      expect(prisma.qualitySignalsFor(command.artifactId)).toMatchObject({
+        kind: "weekly",
+        editorialQuality: {
+          policyVersion: "reader_summary.weekly_editorial_quality.v2",
+          publicationDecision: "allow",
+        },
+        weeklyPublicationProof: {
+          authorizationId: "weekly-authorization-prisma",
+        },
+      });
+      expect(
+        JSON.stringify(prisma.qualitySignalsFor(command.artifactId)),
+      ).not.toContain("canonicalScore");
+      await expect(repository.saveWeekly(command)).rejects.toThrow("replayed");
+    } finally {
+      readAuthorization.mockRestore();
+    }
+  });
 });
+
+const weeklyAuthorizationDetails = (): ReturnType<
+  typeof weeklyAuthorizationPolicy.readReaderSummaryWeeklyPublicationAuthorization
+> =>
+  ({
+    artifactId: "weekly-artifact-prisma",
+    artifact: {
+      output: {
+        schemaVersion: "reader_summary.weekly_model_output.v1",
+        headline: "Truthful weekly headline",
+        synthesis: "Truthful weekly synthesis",
+      },
+      editorialQuality: {
+        policyVersion: "reader_summary.weekly_editorial_quality.v2",
+        publicationDecision: "allow",
+        blockingPassed: true,
+      },
+    },
+    qualitySignals: {
+      kind: "weekly",
+      editorialQuality: {
+        policyVersion: "reader_summary.weekly_editorial_quality.v2",
+        publicationDecision: "allow",
+        blockingPassed: true,
+      },
+    },
+    proof: {
+      artifactId: "weekly-artifact-prisma",
+      tenantId: tenant,
+      workspaceId: workspace,
+      scope: { type: "workspace" },
+      weekStartedOn: "2026-07-20",
+      weekEndedOn: "2026-07-26",
+      authorizationId: "weekly-authorization-prisma",
+      citations: [],
+    },
+  }) as ReturnType<
+    typeof weeklyAuthorizationPolicy.readReaderSummaryWeeklyPublicationAuthorization
+  >;
 
 type ReaderSummarySaveOptions = NonNullable<
   Parameters<PrismaReaderSummaryArtifactRepository["save"]>[1]
@@ -539,6 +620,24 @@ class FakeReaderSummaryPrisma {
 
   readonly client = {
     readerSummaryArtifact: {
+      create: async (args: {
+        readonly data: Omit<
+          PrismaReaderSummaryArtifactRecord,
+          "createdAt" | "updatedAt"
+        >;
+      }) => {
+        if (this.records.has(args.data.id)) {
+          throw Object.assign(new Error("unique"), { code: "P2002" });
+        }
+        const now = this.nextDate();
+        const record = {
+          ...args.data,
+          createdAt: now,
+          updatedAt: now,
+        };
+        this.records.set(record.id, record);
+        return record;
+      },
       upsert: async (args: {
         readonly where: { readonly id: string };
         readonly update: Partial<PrismaReaderSummaryArtifactRecord>;

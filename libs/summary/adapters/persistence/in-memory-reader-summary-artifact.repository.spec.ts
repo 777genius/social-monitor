@@ -4,6 +4,8 @@ import {
   ReaderSummaryArtifact,
   type ReaderSummaryGitHubProjectionAudit,
 } from "../../domain";
+import type { ReaderSummaryWeeklyPublicationAuthorization } from "../../domain/policies/reader-summary-weekly-publication-authorization";
+import * as weeklyAuthorizationPolicy from "../../domain/policies/reader-summary-weekly-publication-authorization";
 import { emptyReaderSummaryReliabilityReport } from "../../domain/entities/reader-summary-reliability";
 import { InMemoryReaderSummaryArtifactRepository } from "./in-memory-reader-summary-artifact.repository";
 
@@ -183,7 +185,87 @@ describe("InMemoryReaderSummaryArtifactRepository", () => {
       "verified staged candidate",
     );
   });
+
+  it("persists weekly quality signals and proof and rejects authorization replay", async () => {
+    const authorization =
+      Object.freeze({}) as ReaderSummaryWeeklyPublicationAuthorization;
+    const readAuthorization = jest
+      .spyOn(
+        weeklyAuthorizationPolicy,
+        "readReaderSummaryWeeklyPublicationAuthorization",
+      )
+      .mockReturnValue(weeklyAuthorizationDetails());
+    const repository = new InMemoryReaderSummaryArtifactRepository();
+    const command = {
+      kind: "weekly" as const,
+      artifactId: "weekly-artifact-memory",
+      authorization,
+    };
+
+    try {
+      await repository.saveWeekly(command);
+
+      await expect(
+        repository.findWeeklyById({
+          tenantId: tenant,
+          workspaceId: workspace,
+          artifactId: command.artifactId,
+        }),
+      ).resolves.toMatchObject({
+        kind: "weekly",
+        qualitySignals: {
+          kind: "weekly",
+          editorialQuality: { publicationDecision: "allow" },
+        },
+        proof: { authorizationId: "weekly-authorization-memory" },
+      });
+      await expect(repository.saveWeekly(command)).rejects.toThrow(
+        "replayed",
+      );
+    } finally {
+      readAuthorization.mockRestore();
+    }
+  });
 });
+
+const weeklyAuthorizationDetails = (): ReturnType<
+  typeof weeklyAuthorizationPolicy.readReaderSummaryWeeklyPublicationAuthorization
+> =>
+  ({
+    artifactId: "weekly-artifact-memory",
+    artifact: {
+      output: {
+        schemaVersion: "reader_summary.weekly_model_output.v1",
+        headline: "Truthful weekly headline",
+        synthesis: "Truthful weekly synthesis",
+      },
+      editorialQuality: {
+        policyVersion: "reader_summary.weekly_editorial_quality.v2",
+        publicationDecision: "allow",
+        blockingPassed: true,
+      },
+    },
+    qualitySignals: {
+      kind: "weekly",
+      editorialQuality: {
+        policyVersion: "reader_summary.weekly_editorial_quality.v2",
+        publicationDecision: "allow",
+        blockingPassed: true,
+      },
+    },
+    proof: {
+      artifactId: "weekly-artifact-memory",
+      tenantId: tenant,
+      workspaceId: workspace,
+      scope: { type: "workspace" },
+      weekStartedOn: "2026-07-20",
+      weekEndedOn: "2026-07-26",
+      authorizationId: "weekly-authorization-memory",
+      citations: [],
+    },
+  }) as ReturnType<
+    typeof weeklyAuthorizationPolicy.readReaderSummaryWeeklyPublicationAuthorization
+  >;
 
 type ReaderSummarySaveOptions = NonNullable<
   Parameters<InMemoryReaderSummaryArtifactRepository["save"]>[1]
