@@ -3,8 +3,9 @@ import { join } from "node:path";
 
 import {
   backfillReaderSummaryWeeklyDailyCertifications,
-  readerSummaryWeeklyDailyCertificationBackfillDates,
+  resolveReaderSummaryWeeklyDailyCertificationBackfillWindow,
 } from "./reader-summary-weekly-daily-certification-backfill";
+import { parseReaderSummaryWeeklyDailyCertificationBackfillArgs } from "./reader-summary-weekly-daily-certification-backfill-cli";
 import {
   resolveReaderSummaryWeeklyProductionWindow,
   type ReaderSummaryWeeklyProductionPostgresClient,
@@ -32,9 +33,7 @@ describe("reader summary weekly daily certification backfill", () => {
     );
 
     expect(result).toHaveLength(7);
-    expect(result.map((row) => row.requestedUtcDate)).toEqual(
-      readerSummaryWeeklyDailyCertificationBackfillDates,
-    );
+    expect(result.map((row) => row.requestedUtcDate)).toEqual(window.dates);
     expect(queries[0]?.sql).toContain(
       "backfill_reader_summary_weekly_daily_certifications",
     );
@@ -49,7 +48,7 @@ describe("reader summary weekly daily certification backfill", () => {
 
   it("accepts idempotent replay outcomes", async () => {
     const result = await backfillReaderSummaryWeeklyDailyCertifications(
-      fakeClient(rows("replayed")),
+      fakeClient(rows(window, "replayed")),
       scope,
       window,
     );
@@ -98,6 +97,18 @@ describe("reader summary weekly daily certification backfill", () => {
     ).rejects.toThrow("did not return exact Monday-Sunday authority");
   });
 
+  it("rejects an internally partial or divergent window before querying", async () => {
+    const queries: { sql: string; values?: readonly unknown[] }[] = [];
+    await expect(
+      backfillReaderSummaryWeeklyDailyCertifications(
+        fakeClient(rows().slice(0, 6), queries),
+        scope,
+        { ...window, dates: window.dates.slice(0, 6) },
+      ),
+    ).rejects.toThrow("must be exact Monday-Sunday UTC");
+    expect(queries).toEqual([]);
+  });
+
   it("fails closed on an unknown outcome or divergent seal", async () => {
     const unknown = [...rows()];
     unknown[0] = { ...unknown[0]!, outcome: "updated" };
@@ -120,28 +131,101 @@ describe("reader summary weekly daily certification backfill", () => {
     ).rejects.toThrow("backfill seal is invalid");
   });
 
-  it("rejects every window outside the owned production week", async () => {
-    await expect(
-      backfillReaderSummaryWeeklyDailyCertifications(
-        fakeClient(rows()),
-        scope,
-        resolveReaderSummaryWeeklyProductionWindow("2026-07-13"),
-      ),
-    ).rejects.toThrow("only supports 2026-07-20..2026-07-26");
+  it("supports an arbitrary completed future Monday-Sunday week", async () => {
+    const futureWindow =
+      resolveReaderSummaryWeeklyDailyCertificationBackfillWindow(
+        "2027-02-01",
+        new Date("2027-02-08T06:00:00.000Z"),
+      );
+    const result = await backfillReaderSummaryWeeklyDailyCertifications(
+      fakeClient(rows(futureWindow)),
+      scope,
+      futureWindow,
+    );
+
+    expect(result.map((row) => row.requestedUtcDate)).toEqual(
+      futureWindow.dates,
+    );
   });
 
-  it("keeps the migration fixed-path, append-only, and delegated to the recorder", () => {
+  it("defaults to the same previous completed week as the generation runner", () => {
+    const now = new Date("2027-02-10T18:30:00.000Z");
+
+    expect(
+      resolveReaderSummaryWeeklyDailyCertificationBackfillWindow(
+        undefined,
+        now,
+      ),
+    ).toEqual(resolveReaderSummaryWeeklyProductionWindow("2027-02-01"));
+  });
+
+  it("rejects current, non-Monday, malformed, and ambiguous CLI windows", () => {
+    expect(() =>
+      resolveReaderSummaryWeeklyDailyCertificationBackfillWindow(
+        "2027-02-08",
+        new Date("2027-02-10T18:30:00.000Z"),
+      ),
+    ).toThrow("window must be completed");
+    expect(() =>
+      resolveReaderSummaryWeeklyDailyCertificationBackfillWindow(
+        "2027-02-02",
+        new Date("2027-02-10T18:30:00.000Z"),
+      ),
+    ).toThrow("must start Monday");
+    expect(() =>
+      parseReaderSummaryWeeklyDailyCertificationBackfillArgs([
+        "--week-start",
+      ]),
+    ).toThrow("Missing value");
+    expect(() =>
+      parseReaderSummaryWeeklyDailyCertificationBackfillArgs([
+        "--week-start",
+        "2027-02-01",
+        "--week-start",
+        "2027-02-08",
+      ]),
+    ).toThrow("only once");
+    expect(() =>
+      parseReaderSummaryWeeklyDailyCertificationBackfillArgs(["--replay"]),
+    ).toThrow("Unknown");
+  });
+
+  it("keeps the forward migration ordered, append-only, and delegated to the recorder", () => {
     const migration = readFileSync(
       join(
         process.cwd(),
-        "prisma/migrations/20260728180500_reader_summary_weekly_daily_certification_backfill/migration.sql",
+        "prisma/migrations/20260730010000_reader_summary_weekly_window_generalization/migration.sql",
       ),
       "utf8",
     );
 
     expect(migration).toContain("SET search_path = pg_catalog, public, pg_temp");
-    expect(migration).toContain("DATE '2026-07-20'");
-    expect(migration).toContain("DATE '2026-07-26'");
+    expect(migration).toContain("CURRENT_TIMESTAMP AT TIME ZONE 'UTC'");
+    expect(migration).toContain(
+      "current_setting('transaction_isolation') <> 'serializable'",
+    );
+    expect(migration).toContain(
+      "weekly daily certification backfill session scope diverged",
+    );
+    expect(migration).toContain(
+      ") IS DISTINCT FROM target_tenant_id::TEXT",
+    );
+    expect(migration).toContain(
+      ") IS DISTINCT FROM target_workspace_id::TEXT",
+    );
+    expect(migration).toContain(
+      "'social_monitor_reader_summary_publication_runtime'",
+    );
+    expect(migration).toContain("ORDER BY slot.\"period_started_at\"");
+    expect(migration).toContain("FOR UPDATE");
+    expect(migration).not.toMatch(/\bLOCK\s+TABLE\b/u);
+    expect(migration).toContain("jsonb_object_length(provider.value) <> 13");
+    expect(migration).toContain(
+      "length(provider.value->>'sourceText') > 16384",
+    );
+    expect(migration).toContain("DATE '2026-07-23'");
+    expect(migration).not.toContain("DATE '2026-07-20'");
+    expect(migration).not.toContain("DATE '2026-07-26'");
     expect(migration).toContain(
       'PERFORM "record_reader_summary_weekly_publication_evidence"',
     );
@@ -159,10 +243,11 @@ describe("reader summary weekly daily certification backfill", () => {
 
 type Row = ReturnType<typeof row>;
 
-function rows(outcome: "inserted" | "replayed" = "inserted"): Row[] {
-  return readerSummaryWeeklyDailyCertificationBackfillDates.map((date) =>
-    row(date, outcome),
-  );
+function rows(
+  targetWindow = window,
+  outcome: "inserted" | "replayed" = "inserted",
+): Row[] {
+  return targetWindow.dates.map((date) => row(date, outcome));
 }
 
 function row(date: string, outcome: string) {
@@ -180,9 +265,12 @@ function fakeClient(
   queries: { sql: string; values?: readonly unknown[] }[] = [],
 ): ReaderSummaryWeeklyProductionPostgresClient {
   return {
-    async query(sql, values) {
+    async query<TRow extends Record<string, unknown>>(
+      sql: string,
+      values?: readonly unknown[],
+    ) {
       queries.push({ sql, ...(values === undefined ? {} : { values }) });
-      return { rows: resultRows };
+      return { rows: resultRows as unknown as readonly TRow[] };
     },
   };
 }

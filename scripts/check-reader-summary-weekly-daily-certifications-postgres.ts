@@ -3,10 +3,13 @@ import { Pool } from "pg";
 import {
   assertReaderSummaryWeeklyProductionPostgresContract,
   loadReaderSummaryWeeklyProductionDbState,
-  resolveReaderSummaryWeeklyProductionWindow,
   withReaderSummaryWeeklyProductionDatabaseAccess,
   type ReaderSummaryWeeklyProductionScope,
 } from "./lib/reader-summary-weekly-production-postgres-contract";
+import {
+  resolveReaderSummaryWeeklyDailyCertificationBackfillWindow,
+} from "./lib/reader-summary-weekly-daily-certification-backfill";
+import { parseReaderSummaryWeeklyDailyCertificationBackfillArgs } from "./lib/reader-summary-weekly-daily-certification-backfill-cli";
 
 void main().catch((error) => {
   console.error(error);
@@ -14,6 +17,9 @@ void main().catch((error) => {
 });
 
 async function main(): Promise<void> {
+  const options = parseReaderSummaryWeeklyDailyCertificationBackfillArgs(
+    process.argv.slice(2),
+  );
   const pool = new Pool({
     connectionString: requireEnv("DATABASE_URL"),
     min: 0,
@@ -22,7 +28,11 @@ async function main(): Promise<void> {
   });
   try {
     const scope = readScope();
-    const window = resolveReaderSummaryWeeklyProductionWindow("2026-07-20");
+    const window =
+      resolveReaderSummaryWeeklyDailyCertificationBackfillWindow(
+        options.weekStartedOn,
+        new Date(),
+      );
     const state = await withReaderSummaryWeeklyProductionDatabaseAccess(
       pool,
       {
@@ -46,7 +56,7 @@ async function main(): Promise<void> {
       );
     }
     console.log(
-      "weekly_daily_certifications=ok week=2026-07-20..2026-07-26 certifications=7",
+      `weekly_daily_certifications=ok week=${window.weekStartedOn}..${window.weekEndedOn} certifications=7`,
     );
   } finally {
     await pool.end().catch(() => undefined);

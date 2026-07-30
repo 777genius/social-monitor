@@ -1,20 +1,14 @@
 import { readerSummaryWeeklyScopeKey } from "../../libs/summary/domain/value-objects/reader-summary-weekly-canonical-json";
+import {
+  assertReaderSummaryWeeklyProductionWindow,
+  previousCompletedReaderSummaryWeeklyProductionWindow,
+  resolveCompletedReaderSummaryWeeklyProductionWindow,
+  type ReaderSummaryWeeklyProductionWindow,
+} from "./reader-summary-weekly-production-postgres-contract";
 import type {
   ReaderSummaryWeeklyProductionPostgresClient,
   ReaderSummaryWeeklyProductionScope,
-  ReaderSummaryWeeklyProductionWindow,
 } from "./reader-summary-weekly-production-postgres-contract";
-
-export const readerSummaryWeeklyDailyCertificationBackfillDates =
-  Object.freeze([
-    "2026-07-20",
-    "2026-07-21",
-    "2026-07-22",
-    "2026-07-23",
-    "2026-07-24",
-    "2026-07-25",
-    "2026-07-26",
-  ] as const);
 
 export type ReaderSummaryWeeklyDailyCertificationBackfillOutcome = Readonly<{
   requestedUtcDate: string;
@@ -37,7 +31,7 @@ export const backfillReaderSummaryWeeklyDailyCertifications = async (
   scope: ReaderSummaryWeeklyProductionScope,
   window: ReaderSummaryWeeklyProductionWindow,
 ): Promise<readonly ReaderSummaryWeeklyDailyCertificationBackfillOutcome[]> => {
-  assertSupportedWindow(window);
+  assertReaderSummaryWeeklyProductionWindow(window);
   const scopeKey = readerSummaryWeeklyScopeKey(scope.scope);
   const result = await client.query<BackfillRow>(
     `
@@ -66,11 +60,10 @@ export const backfillReaderSummaryWeeklyDailyCertifications = async (
   );
   const rows = result.rows.map(rowFromDb);
   if (
-    rows.length !== readerSummaryWeeklyDailyCertificationBackfillDates.length ||
+    rows.length !== window.dates.length ||
     rows.some(
       (row, index) =>
-        row.requestedUtcDate !==
-        readerSummaryWeeklyDailyCertificationBackfillDates[index],
+        row.requestedUtcDate !== window.dates[index],
     )
   ) {
     throw new Error(
@@ -80,26 +73,13 @@ export const backfillReaderSummaryWeeklyDailyCertifications = async (
   return Object.freeze(rows);
 };
 
-const assertSupportedWindow = (
-  window: ReaderSummaryWeeklyProductionWindow,
-): void => {
-  if (
-    window.weekStartedOn !==
-      readerSummaryWeeklyDailyCertificationBackfillDates[0] ||
-    window.weekEndedOn !==
-      readerSummaryWeeklyDailyCertificationBackfillDates[6] ||
-    window.dates.length !==
-      readerSummaryWeeklyDailyCertificationBackfillDates.length ||
-    window.dates.some(
-      (date, index) =>
-        date !== readerSummaryWeeklyDailyCertificationBackfillDates[index],
-    )
-  ) {
-    throw new Error(
-      "Reader summary weekly daily certification backfill only supports 2026-07-20..2026-07-26",
-    );
-  }
-};
+export const resolveReaderSummaryWeeklyDailyCertificationBackfillWindow = (
+  weekStartedOn: string | undefined,
+  now: Date,
+): ReaderSummaryWeeklyProductionWindow =>
+  weekStartedOn === undefined
+    ? previousCompletedReaderSummaryWeeklyProductionWindow(now)
+    : resolveCompletedReaderSummaryWeeklyProductionWindow(weekStartedOn, now);
 
 const rowFromDb = (
   row: BackfillRow,

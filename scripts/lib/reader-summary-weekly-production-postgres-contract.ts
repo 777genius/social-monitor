@@ -6,7 +6,15 @@ import {
 import { readerSummaryWeeklyCanonicalProviderKeys } from "../../libs/summary/domain/value-objects/reader-summary-weekly-daily-certification";
 import type { ReaderSummaryWeeklyCanonicalProviderKey } from "../../libs/summary/domain/value-objects/reader-summary-weekly-daily-certification";
 import { readerSummaryWeeklyPublicationEvidenceSchemaVersion } from "../../libs/summary/domain/value-objects/reader-summary-weekly-publication-evidence";
-import { readerSummaryWeeklyPublicationGitHubEvidenceSchemaVersion } from "../../libs/summary/domain/value-objects/reader-summary-weekly-publication-github-evidence";
+import {
+  assertReaderSummaryWeeklyPublicationGitHubEvidence,
+  type ReaderSummaryWeeklyPublicationGitHubEvidence,
+} from "../../libs/summary/domain/value-objects/reader-summary-weekly-publication-github-evidence";
+import {
+  assertGitHubProviderBinding,
+  assertPublicationEvidenceSemantics,
+  canonicalProviderEvidence,
+} from "../../libs/summary/domain/value-objects/reader-summary-weekly-publication-evidence-validation";
 
 export type ReaderSummaryWeeklyProductionStatus =
   | "complete"
@@ -85,7 +93,7 @@ export type ReaderSummaryWeeklyProductionProviderEvidence = Readonly<{
   feedItemId: string;
   sourceItemId: string;
   sourceBindingId: string;
-  providerKey: string;
+  providerKey: ReaderSummaryWeeklyCanonicalProviderKey;
   providerItemId: string;
   canonicalUrl: string;
   title: string;
@@ -134,10 +142,16 @@ type ContractRow = Readonly<{
   evidence_table: string | null;
   publish_function: string | null;
   backfill_function: string | null;
+  backfill_fixed_search_path: boolean;
+  backfill_owner: string | null;
+  backfill_public_execute: boolean;
+  backfill_runtime_execute: boolean;
+  backfill_security_definer: boolean;
   column_count: string;
 }>;
 
 const dayMs = 86_400_000;
+const weeklyDatabaseTransactionAttempts = 3;
 
 export const withReaderSummaryWeeklyProductionDatabaseAccess = async <T>(
   pool: ReaderSummaryWeeklyProductionPostgresPool,
@@ -146,30 +160,44 @@ export const withReaderSummaryWeeklyProductionDatabaseAccess = async <T>(
     client: ReaderSummaryWeeklyProductionPostgresClient,
   ) => Promise<T>,
 ): Promise<T> => {
-  const connection = await pool.connect();
-  try {
-    await connection.query("BEGIN");
-    const tenantId = access.kind === "tenant" ? access.tenantId : "";
-    const workspaceId = access.kind === "tenant" ? access.workspaceId : "";
-    await connection.query(
-      `SELECT set_config('social_monitor.tenant_id', $1, true),
-              set_config('social_monitor.workspace_id', $2, true),
-              set_config('social_monitor.system_access', $3, true)`,
-      [
-        tenantId,
-        workspaceId,
-        access.kind === "system" ? "true" : "false",
-      ],
-    );
-    const result = await operation(connection);
-    await connection.query("COMMIT");
-    return result;
-  } catch (error: unknown) {
-    await connection.query("ROLLBACK").catch(() => undefined);
-    throw error;
-  } finally {
-    connection.release();
+  for (
+    let attempt = 1;
+    attempt <= weeklyDatabaseTransactionAttempts;
+    attempt += 1
+  ) {
+    const connection = await pool.connect();
+    try {
+      await connection.query(
+        "BEGIN ISOLATION LEVEL SERIALIZABLE READ WRITE",
+      );
+      const tenantId = access.kind === "tenant" ? access.tenantId : "";
+      const workspaceId = access.kind === "tenant" ? access.workspaceId : "";
+      await connection.query(
+        `SELECT set_config('social_monitor.tenant_id', $1, true),
+                set_config('social_monitor.workspace_id', $2, true),
+                set_config('social_monitor.system_access', $3, true)`,
+        [
+          tenantId,
+          workspaceId,
+          access.kind === "system" ? "true" : "false",
+        ],
+      );
+      const result = await operation(connection);
+      await connection.query("COMMIT");
+      return result;
+    } catch (error: unknown) {
+      await connection.query("ROLLBACK").catch(() => undefined);
+      if (
+        attempt === weeklyDatabaseTransactionAttempts ||
+        !isRetryableWeeklyDatabaseConflict(error)
+      ) {
+        throw error;
+      }
+    } finally {
+      connection.release();
+    }
   }
+  throw new Error("Reader summary weekly database retry invariant failed");
 };
 
 export const resolveReaderSummaryWeeklyProductionWindow = (
@@ -208,11 +236,64 @@ export const previousCompletedReaderSummaryWeeklyProductionWindow = (
   );
 };
 
+export const resolveCompletedReaderSummaryWeeklyProductionWindow = (
+  weekStartedOn: string,
+  now: Date,
+): ReaderSummaryWeeklyProductionWindow => {
+  const window = resolveReaderSummaryWeeklyProductionWindow(weekStartedOn);
+  if (!Number.isFinite(now.getTime())) {
+    throw new Error("Reader summary weekly production now is invalid");
+  }
+  const today = Date.UTC(
+    now.getUTCFullYear(),
+    now.getUTCMonth(),
+    now.getUTCDate(),
+  );
+  if (
+    Date.parse(`${window.weekEndedOn}T00:00:00.000Z`) >= today
+  ) {
+    throw new Error(
+      "Reader summary weekly production window must be completed",
+    );
+  }
+  return window;
+};
+
+export const assertReaderSummaryWeeklyProductionWindow = (
+  window: ReaderSummaryWeeklyProductionWindow,
+): void => {
+  const expected = resolveReaderSummaryWeeklyProductionWindow(
+    window.weekStartedOn,
+  );
+  if (
+    window.weekEndedOn !== expected.weekEndedOn ||
+    !Array.isArray(window.dates) ||
+    window.dates.length !== expected.dates.length ||
+    window.dates.some((date, index) => date !== expected.dates[index])
+  ) {
+    throw new Error(
+      "Reader summary weekly production window must be exact Monday-Sunday UTC",
+    );
+  }
+};
+
 export const assertReaderSummaryWeeklyProductionPostgresContract = async (
   client: ReaderSummaryWeeklyProductionPostgresClient,
 ): Promise<void> => {
   const result = await client.query<ContractRow>(
     `
+      WITH backfill AS (
+        SELECT
+          procedure.prosecdef,
+          procedure.proconfig,
+          procedure.proowner,
+          procedure.proacl,
+          procedure.oid
+        FROM pg_catalog.pg_proc AS procedure
+        WHERE procedure.oid = pg_catalog.to_regprocedure(
+          'public.backfill_reader_summary_weekly_daily_certifications(uuid,uuid,text,text,date)'
+        )
+      )
       SELECT
         to_regclass('public.reader_summary_weekly_publication_evidence')::text
           AS evidence_table,
@@ -221,6 +302,27 @@ export const assertReaderSummaryWeeklyProductionPostgresContract = async (
         to_regprocedure(
           'public.backfill_reader_summary_weekly_daily_certifications(uuid,uuid,text,text,date)'
         )::text AS backfill_function,
+        backfill.prosecdef AS backfill_security_definer,
+        backfill.proconfig = ARRAY[
+          'search_path=pg_catalog, public, pg_temp'
+        ]::text[] AS backfill_fixed_search_path,
+        pg_catalog.pg_get_userbyid(backfill.proowner) AS backfill_owner,
+        pg_catalog.has_function_privilege(
+          'social_monitor_reader_summary_publication_runtime',
+          backfill.oid,
+          'EXECUTE'
+        ) AS backfill_runtime_execute,
+        EXISTS (
+          SELECT 1
+          FROM pg_catalog.aclexplode(
+            COALESCE(
+              backfill.proacl,
+              pg_catalog.acldefault('f', backfill.proowner)
+            )
+          ) AS privilege
+          WHERE privilege.grantee = 0
+            AND privilege.privilege_type = 'EXECUTE'
+        ) AS backfill_public_execute,
         (
           SELECT count(*)::text
           FROM information_schema.columns
@@ -228,6 +330,7 @@ export const assertReaderSummaryWeeklyProductionPostgresContract = async (
             AND table_name = 'reader_summary_weekly_publication_evidence'
             AND column_name = ANY($1::text[])
         ) AS column_count
+      FROM backfill
     `,
     [weeklyEvidenceColumns],
   );
@@ -237,6 +340,12 @@ export const assertReaderSummaryWeeklyProductionPostgresContract = async (
     row.publish_function !== "publish_reader_summary(jsonb)" ||
     row.backfill_function !==
       "backfill_reader_summary_weekly_daily_certifications(uuid,uuid,text,text,date)" ||
+    row.backfill_security_definer !== true ||
+    row.backfill_fixed_search_path !== true ||
+    row.backfill_owner !==
+      "social_monitor_reader_summary_publication_owner" ||
+    row.backfill_runtime_execute !== true ||
+    row.backfill_public_execute !== false ||
     row.column_count !== String(weeklyEvidenceColumns.length)
   ) {
     throw new Error(
@@ -250,6 +359,7 @@ export const loadReaderSummaryWeeklyProductionDbState = async (
   scope: ReaderSummaryWeeklyProductionScope,
   window: ReaderSummaryWeeklyProductionWindow,
 ): Promise<ReaderSummaryWeeklyProductionDbState> => {
+  assertReaderSummaryWeeklyProductionWindow(window);
   const exactScope = normalizeScope(scope);
   const scopeKey = readerSummaryWeeklyScopeKey(exactScope.scope);
   const result = await client.query<WeeklyEvidenceRow>(
@@ -343,6 +453,36 @@ const certificationFromRow = (
   if (recordDate !== date) {
     throw new Error("Reader summary weekly DB certification date diverged");
   }
+  if (
+    canonicalRecord.semanticStatus !== row.semantic_status ||
+    canonicalizeReaderSummaryWeeklyJson(
+      canonicalRecord.githubEvidence,
+    ).json !== canonicalizeReaderSummaryWeeklyJson(row.github_evidence).json ||
+    canonicalizeReaderSummaryWeeklyJson(
+      canonicalRecord.providerEvidence,
+    ).json !== canonicalizeReaderSummaryWeeklyJson(row.provider_evidence).json
+  ) {
+    throw new Error(
+      "Reader summary weekly DB certification authority diverged",
+    );
+  }
+  const githubEvidence = row.github_evidence;
+  assertReaderSummaryWeeklyPublicationGitHubEvidence(githubEvidence);
+  if (githubEvidence.requestedUtcDay !== date) {
+    throw new Error(
+      "Reader summary weekly DB certification GitHub date diverged",
+    );
+  }
+  const semanticStatus = exactSemanticStatus(row.semantic_status);
+  const providerEvidence = providerEvidenceFromRow(row.provider_evidence);
+  const providerCounts = providerCountsFromCanonical(canonicalRecord);
+  assertGitHubProviderBinding(providerEvidence, githubEvidence);
+  assertPublicationEvidenceSemantics(
+    semanticStatus,
+    providerEvidence,
+    providerCounts,
+    githubEvidence,
+  );
   const scopeKey = readerSummaryWeeklyScopeKey(scope.scope);
   if (
     row.tenant_id !== scope.tenantId ||
@@ -369,12 +509,12 @@ const certificationFromRow = (
     jobId: exactText(row.reader_summary_job_id, "job id"),
     reportId: exactText(row.report_id, "report id"),
     proofId: exactText(row.proof_id, "proof id"),
-    semanticStatus: exactSemanticStatus(row.semantic_status),
+    semanticStatus,
     periodStartedAt: row.period_started_at,
     periodEndedAt: row.period_ended_at,
-    providerCounts: providerCountsFromCanonical(canonicalRecord),
-    githubEvidence: asRecord(row.github_evidence, "GitHub evidence"),
-    providerEvidence: providerEvidenceFromRow(row.provider_evidence),
+    providerCounts,
+    githubEvidence,
+    providerEvidence,
     report: asRecord(row.report, "report"),
     exactProof: asRecord(row.exact_proof, "exact proof"),
     canonicalRecord,
@@ -388,31 +528,48 @@ const certificationBlockingReasons = (
   certification: ReaderSummaryWeeklyProductionCertification,
 ): readonly string[] => {
   const reasons: string[] = [];
-  const github = certification.githubEvidence;
-  if (certification.semanticStatus !== "COMPLETED") {
-    reasons.push(`${certification.requestedUtcDate} is not completed`);
-  }
-  if (
-    github.schemaVersion !==
-      readerSummaryWeeklyPublicationGitHubEvidenceSchemaVersion ||
-    github.mode !== "verified" ||
-    github.evidenceCount !== 10 ||
-    !Array.isArray(github.repositories) ||
-    github.repositories.length !== 10 ||
-    typeof github.sha256 !== "string" ||
-    !/^[0-9a-f]{64}$/u.test(github.sha256)
-  ) {
-    reasons.push(
-      `${certification.requestedUtcDate} lacks verified GitHub DB evidence`,
-    );
-  }
+  const github =
+    certification.githubEvidence as ReaderSummaryWeeklyPublicationGitHubEvidence;
   const githubCount =
     certification.providerCounts.find(
       (entry) => entry.providerKey === "github-trending-page",
     )?.count ?? 0;
-  if (githubCount !== 10) {
+  const providerCountsMatch = certification.providerCounts.every(
+    ({ providerKey, count }) =>
+      certification.providerEvidence.filter(
+        (evidence) => evidence.providerKey === providerKey,
+      ).length === count,
+  );
+  if (!providerCountsMatch) {
     reasons.push(
-      `${certification.requestedUtcDate} lacks exact GitHub provider count`,
+      `${certification.requestedUtcDate} has divergent DB provider counts`,
+    );
+  }
+
+  if (certification.semanticStatus === "NO_SIGNAL") {
+    if (
+      github.mode !== "ordinary_not_required" ||
+      githubCount !== 0 ||
+      certification.providerEvidence.length !== 0 ||
+      certification.providerCounts.some(({ count }) => count !== 0)
+    ) {
+      reasons.push(
+        `${certification.requestedUtcDate} lacks ordinary NO_SIGNAL DB evidence`,
+      );
+    }
+    return reasons;
+  }
+
+  const historicalJul23 =
+    certification.requestedUtcDate === "2026-07-23" &&
+    github.mode === "historical_unavailable" &&
+    githubCount === 0;
+  if (
+    !historicalJul23 &&
+    (github.mode !== "verified" || githubCount !== 10)
+  ) {
+    reasons.push(
+      `${certification.requestedUtcDate} lacks verified GitHub DB evidence`,
     );
   }
   return reasons;
@@ -447,34 +604,21 @@ const providerCountsFromCanonical = (
 
 const providerEvidenceFromRow = (
   value: unknown,
-): readonly ReaderSummaryWeeklyProductionProviderEvidence[] =>
-  Object.freeze(
-    asArray(value, "provider evidence").map((entry) => {
-      const row = asRecord(entry, "provider evidence");
-      return Object.freeze({
-        citationId: exactTextField(row, "citationId", "citation id"),
-        citationField: exactCitationField(row.citationField),
-        feedItemId: exactTextField(row, "feedItemId", "feed item id"),
-        sourceItemId: exactTextField(row, "sourceItemId", "source item id"),
-        sourceBindingId: exactTextField(
-          row,
-          "sourceBindingId",
-          "source binding id",
-        ),
-        providerKey: exactTextField(row, "providerKey", "provider key"),
-        providerItemId: exactTextField(row, "providerItemId", "provider item id"),
-        canonicalUrl: exactTextField(row, "canonicalUrl", "canonical URL"),
-        title: exactTextField(row, "title", "title"),
-        sourceText: exactTextField(row, "sourceText", "source text"),
-        publishedAt: exactTimestampField(row, "publishedAt", "published at"),
-        observedAt: exactTimestampField(row, "observedAt", "observed at"),
-        sourceContentHash: exactSha(
-          row.sourceContentHash,
-          "source content hash",
-        ),
-      });
-    }),
+): readonly ReaderSummaryWeeklyProductionProviderEvidence[] => {
+  const rawEvidence = asArray(value, "provider evidence");
+  const evidence = canonicalProviderEvidence(
+    rawEvidence as readonly ReaderSummaryWeeklyProductionProviderEvidence[],
   );
+  if (
+    canonicalizeReaderSummaryWeeklyJson(rawEvidence).json !==
+    canonicalizeReaderSummaryWeeklyJson(evidence).json
+  ) {
+    throw new Error(
+      "Reader summary weekly DB provider evidence order diverged",
+    );
+  }
+  return evidence;
+};
 
 const normalizeScope = (
   scope: ReaderSummaryWeeklyProductionScope,
@@ -555,12 +699,6 @@ const exactTextField = (
   label: string,
 ): string => exactText(row[key], label);
 
-const exactTimestampField = (
-  row: Readonly<Record<string, unknown>>,
-  key: string,
-  label: string,
-): string => exactTimestamp(row[key], label);
-
 const exactTimestamp = (value: unknown, label: string): string => {
   const text = exactText(value, label);
   if (new Date(text).toISOString() !== text) {
@@ -595,13 +733,12 @@ const exactSemanticStatus = (value: unknown): "COMPLETED" | "NO_SIGNAL" => {
   throw new Error("Reader summary weekly semantic status is invalid");
 };
 
-const exactCitationField = (
-  value: unknown,
-): "title" | "bodyPreview" | "canonicalUrl" => {
-  if (value === "title" || value === "bodyPreview" || value === "canonicalUrl") {
-    return value;
+const isRetryableWeeklyDatabaseConflict = (error: unknown): boolean => {
+  if (typeof error !== "object" || error === null || !("code" in error)) {
+    return false;
   }
-  throw new Error("Reader summary weekly citation field is invalid");
+  const code = (error as Readonly<{ code?: unknown }>).code;
+  return code === "40001" || code === "40P01";
 };
 
 const weeklyEvidenceColumns = Object.freeze([

@@ -13,7 +13,7 @@ import {
   assertReaderSummaryWeeklyProductionPostgresContract,
   loadReaderSummaryWeeklyProductionDbState,
   previousCompletedReaderSummaryWeeklyProductionWindow,
-  resolveReaderSummaryWeeklyProductionWindow,
+  resolveCompletedReaderSummaryWeeklyProductionWindow,
   withReaderSummaryWeeklyProductionDatabaseAccess,
   type ReaderSummaryWeeklyProductionScope,
 } from "./lib/reader-summary-weekly-production-postgres-contract";
@@ -35,10 +35,14 @@ async function main(): Promise<void> {
   });
   try {
     const scope = readScope();
+    const now = new Date();
     const window =
       options.weekStartedOn === undefined
-        ? previousCompletedReaderSummaryWeeklyProductionWindow(new Date())
-        : resolveReaderSummaryWeeklyProductionWindow(options.weekStartedOn);
+        ? previousCompletedReaderSummaryWeeklyProductionWindow(now)
+        : resolveCompletedReaderSummaryWeeklyProductionWindow(
+            options.weekStartedOn,
+            now,
+          );
     const dbState = await withReaderSummaryWeeklyProductionDatabaseAccess(
       pool,
       {

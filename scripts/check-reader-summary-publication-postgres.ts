@@ -17,7 +17,14 @@ import {
   readerSummaryPublicationMigration,
   removeReaderSummaryPublicationMigrationWorkspace,
 } from "./lib/reader-summary-publication-postgres-migrations";
+import {
+  assertPostgres as assert,
+  assertPostgresDeepEqual as assertDeepEqual,
+  assertPostgresRejects as assertRejects,
+  assertPostgresRejectsContaining as assertRejectsContaining,
+} from "./lib/reader-summary-publication-postgres-assertions";
 import { assertReaderSummaryRecoveryPostgresContract } from "./lib/reader-summary-recovery-postgres-contract";
+import { assertReaderSummaryWeeklyDailyCertificationBackfillPostgresContract } from "./lib/reader-summary-weekly-daily-certification-backfill-postgres-contract";
 import {
   assertReaderSummaryWeeklyPublicationEvidencePostgresContract,
   assertReaderSummaryWeeklyPublicationEvidenceRow,
@@ -218,6 +225,16 @@ async function main(): Promise<void> {
           publish: (payload) => publish(first, payload),
           assertNoPublication: (fixture) =>
             assertNoPublication(first, fixture),
+        });
+        await assertReaderSummaryWeeklyDailyCertificationBackfillPostgresContract({
+          canonicalJsonAuditor: auditor,
+          client: first,
+          concurrentClient: second,
+          tenantId: readerSummaryPublicationFixtureScope.tenantId,
+          workspaceId: readerSummaryPublicationFixtureScope.workspaceId,
+          createFixture: (status, date, overrides) =>
+            createRunningFixture(first, status, date, overrides),
+          publish: (payload) => publish(first, payload),
         });
         const privilegeFixture = await createRunningFixture(
           first,
@@ -636,7 +653,7 @@ type Fixture = ReaderSummaryPublicationEvidenceFixture;
 const createRunningFixture = async (
   client: PoolClient,
   status: "COMPLETED" | "NO_SIGNAL",
-  day: number,
+  day: number | string,
   overrides: {
     readonly requestedAt?: string;
     readonly modelVersion?: string;
@@ -926,64 +943,22 @@ const publish = async (
   assert(outcome !== undefined, "publication function returned no outcome");
   return outcome;
 };
-const periodStart = (day: number): string => utc(day, 0);
-const periodEnd = (day: number): string => utc(day + 1, 0);
-const utc = (day: number, hour: number): string =>
-  new Date(Date.UTC(2026, 5, day, hour)).toISOString();
+const periodStart = (day: number | string): string => utc(day, 0);
+const periodEnd = (day: number | string): string =>
+  new Date(Date.parse(periodStart(day)) + 86_400_000).toISOString();
+const utc = (day: number | string, hour: number): string => {
+  const date =
+    typeof day === "number"
+      ? new Date(Date.UTC(2026, 5, day)).toISOString().slice(0, 10)
+      : day;
+  return new Date(
+    Date.parse(`${date}T00:00:00.000Z`) + hour * 3_600_000,
+  ).toISOString();
+};
 const reverseObject = (
   value: Readonly<Record<string, unknown>>,
 ): Readonly<Record<string, unknown>> =>
   Object.fromEntries(Object.entries(value).reverse());
-
-const assertRejects = async (
-  operation: () => Promise<unknown>,
-  message: string,
-): Promise<void> => {
-  try {
-    await operation();
-  } catch {
-    return;
-  }
-  throw new Error(message);
-};
-
-const assertRejectsContaining = async (
-  operation: () => Promise<unknown>,
-  expectedMessage: string,
-  assertionMessage: string,
-): Promise<void> => {
-  try {
-    await operation();
-  } catch (error: unknown) {
-    assert(
-      error instanceof Error && error.message.includes(expectedMessage),
-      assertionMessage,
-    );
-    return;
-  }
-  throw new Error(assertionMessage);
-};
-
-const assertDeepEqual = (
-  actual: unknown,
-  expected: unknown,
-  message: string,
-): void => {
-  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
-    throw new Error(
-      `${message}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`,
-    );
-  }
-};
-
-const assert: (condition: boolean, message: string) => asserts condition = (
-  condition,
-  message,
-) => {
-  if (!condition) {
-    throw new Error(message);
-  }
-};
 
 void main()
   .catch((error: unknown) => {
