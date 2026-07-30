@@ -17,7 +17,15 @@ import {
   type ReaderSummaryWeeklyModelOutput,
   type ReaderSummaryWeeklyModelPort,
 } from "../../libs/summary/ports/reader-summary-weekly-model.port";
+import type {
+  AgentRuntimeClientPort,
+  AgentRuntimeExecutionAttestation,
+  AgentRuntimeHealthResult,
+  AgentRuntimeTaskCommand,
+  AgentRuntimeTaskResult,
+} from "../../libs/summary/ports/agent-runtime-client.port";
 import {
+  AgentRuntimeReaderSummaryWeeklyTextModel,
   buildModelInputFromDbState,
   runReaderSummaryWeeklyProduction,
 } from "./reader-summary-weekly-production-runner";
@@ -30,6 +38,90 @@ import {
 const tenantId = "11111111-1111-4111-8111-111111111111";
 const workspaceId = "22222222-2222-4222-8222-222222222222";
 const window = resolveReaderSummaryWeeklyProductionWindow("2026-07-20");
+
+describe("agent-runtime reader summary weekly text model", () => {
+  it("accepts exact gpt-5.6-sol xhigh output_text runtime execution", async () => {
+    const input = completeModelInput();
+    const outputText = JSON.stringify(outputFor(input));
+    const client = new FakeAgentRuntimeClient({
+      status: "completed",
+      outputText,
+      warnings: [],
+      executionAttestation: productionExecutionAttestation(),
+    });
+
+    const output = await new AgentRuntimeReaderSummaryWeeklyTextModel({
+      client,
+    }).generate(input);
+
+    expect(output).toEqual(outputFor(input));
+    expect(client.commands).toHaveLength(1);
+    expect(client.commands[0]).toMatchObject({
+      provider: "codex",
+      controls: { model: "gpt-5.6-sol" },
+      metadata: {
+        reasoningEffort: "xhigh",
+        runtimeOutput: "output_text",
+      },
+    });
+  });
+
+  it("fails when execution attestation is missing", async () => {
+    const input = completeModelInput();
+    const client = new FakeAgentRuntimeClient({
+      status: "completed",
+      outputText: JSON.stringify(outputFor(input)),
+      warnings: [],
+    });
+
+    await expect(
+      new AgentRuntimeReaderSummaryWeeklyTextModel({ client }).generate(input),
+    ).rejects.toThrow(/attestation must prove codex gpt-5\.6-sol xhigh output_text/u);
+  });
+
+  it.each([
+    ["provider", { provider: "claude" as const }],
+    ["model", { model: "gpt-5.5" }],
+    ["reasoning effort", { reasoningEffort: "high" }],
+    [
+      "selected output kind",
+      { selectedOutputKind: "structured_output" as const },
+    ],
+  ])(
+    "fails when execution attestation has the wrong %s",
+    async (_label, override) => {
+      const input = completeModelInput();
+      const client = new FakeAgentRuntimeClient({
+        status: "completed",
+        outputText: JSON.stringify(outputFor(input)),
+        warnings: [],
+        executionAttestation: productionExecutionAttestation(override),
+      });
+
+      await expect(
+        new AgentRuntimeReaderSummaryWeeklyTextModel({ client }).generate(input),
+      ).rejects.toThrow(
+        /attestation must prove codex gpt-5\.6-sol xhigh output_text/u,
+      );
+    },
+  );
+
+  it("rejects structured-only output without falling back", async () => {
+    const input = completeModelInput();
+    const client = new FakeAgentRuntimeClient({
+      status: "completed",
+      structuredOutput: { ...outputFor(input) },
+      warnings: [],
+      executionAttestation: productionExecutionAttestation({
+        selectedOutputKind: "structured_output",
+      }),
+    });
+
+    await expect(
+      new AgentRuntimeReaderSummaryWeeklyTextModel({ client }).generate(input),
+    ).rejects.toThrow(/returned no text/u);
+  });
+});
 
 describe("reader summary weekly production runner", () => {
   it("writes a complete weekly artifact and proof from certified DB evidence", async () => {
@@ -100,9 +192,9 @@ describe("reader summary weekly production runner", () => {
     expect(proof.model).toEqual({
       provider: "agent-runtime",
       agentProvider: "codex",
-      model: "gpt-5.5",
+      model: "gpt-5.6-sol",
       reasoningEffort: "xhigh",
-      runtimeOutput: "text",
+      runtimeOutput: "output_text",
     });
     expect(proof.zeroProviderCalls).toBe(true);
   });
@@ -342,6 +434,56 @@ class FakeWeeklyModel implements ReaderSummaryWeeklyModelPort {
     this.calls += 1;
     return this.build(input);
   }
+}
+
+class FakeAgentRuntimeClient implements AgentRuntimeClientPort {
+  readonly commands: AgentRuntimeTaskCommand[] = [];
+
+  constructor(private readonly result: AgentRuntimeTaskResult) {}
+
+  async runTask(
+    command: AgentRuntimeTaskCommand,
+  ): Promise<AgentRuntimeTaskResult> {
+    this.commands.push(command);
+    return this.result;
+  }
+
+  async checkHealth(): Promise<AgentRuntimeHealthResult> {
+    return {
+      status: "serving",
+      runtimeEngine: "subscription-runtime-cli",
+      runtimeVersion: "1.0.0",
+      warnings: [],
+    };
+  }
+}
+
+function productionExecutionAttestation(
+  overrides: Partial<AgentRuntimeExecutionAttestation> = {},
+): AgentRuntimeExecutionAttestation {
+  return {
+    schemaVersion: 1,
+    requestId: "reader-summary-weekly:test",
+    purpose: "social_monitor.reader_summary.weekly.generate",
+    canonicalRequestSha256: sha("canonical-request"),
+    provider: "codex",
+    model: "gpt-5.6-sol",
+    reasoningEffort: "xhigh",
+    runtimeEngine: "subscription-runtime-cli",
+    runtimePackageVersion: "1.0.0",
+    launcherSha256: sha("launcher"),
+    selectedOutputKind: "output_text",
+    selectedOutputSha256: sha("output-text"),
+    ...overrides,
+  };
+}
+
+function completeModelInput(): ReaderSummaryWeeklyModelInput {
+  const built = buildModelInputFromDbState(completeDbState());
+  if (built.status !== "complete") {
+    throw new Error(built.reasons.join("; "));
+  }
+  return built.input;
 }
 
 function completeDbState(): ReaderSummaryWeeklyProductionDbState {

@@ -65,7 +65,7 @@ async function main(): Promise<void> {
         },
       }),
       provider: "codex",
-      model: "gpt-5.5",
+      model: "gpt-5.6-sol",
       reasoningEffort: "xhigh",
       timeoutMs: options.modelTimeoutMs,
     });

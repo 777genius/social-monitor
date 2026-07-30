@@ -122,9 +122,9 @@ type ProofEnvelope = Readonly<{
   model: {
     provider: "agent-runtime";
     agentProvider: "codex";
-    model: "gpt-5.5";
+    model: "gpt-5.6-sol";
     reasoningEffort: "xhigh";
-    runtimeOutput: "text";
+    runtimeOutput: "output_text";
   };
   zeroProviderCalls: true;
 }>;
@@ -159,6 +159,7 @@ type WeeklyProductionCanary = Readonly<{
 }>;
 
 const generatedByDefault = "npm run run:reader-summary-weekly-production";
+const productionModel = "gpt-5.6-sol";
 const maxEvidencePerWeek = 12;
 const maximumDominantCitationShare = 2 / 3;
 
@@ -173,7 +174,7 @@ export class AgentRuntimeReaderSummaryWeeklyTextModel
 
   constructor(private readonly params: ReaderSummaryWeeklyAgentRuntimeModelParams) {
     this.provider = params.provider ?? "codex";
-    this.model = params.model ?? "gpt-5.5";
+    this.model = params.model ?? productionModel;
     this.reasoningEffort = params.reasoningEffort ?? "xhigh";
     this.timeoutMs = params.timeoutMs ?? 600_000;
     this.maxOutputTokens = params.maxOutputTokens ?? 16_000;
@@ -190,23 +191,19 @@ export class AgentRuntimeReaderSummaryWeeklyTextModel
           "Reader summary weekly agent-runtime task did not complete",
       );
     }
-    const outputText =
-      result.outputText ??
-      (result.structuredOutput === undefined
-        ? undefined
-        : JSON.stringify(result.structuredOutput));
+    const outputText = result.outputText;
     if (outputText === undefined || outputText.trim().length === 0) {
       throw new Error("Reader summary weekly agent-runtime returned no text");
     }
     if (
-      result.executionAttestation !== undefined &&
-      (result.executionAttestation.provider !== "codex" ||
-        result.executionAttestation.model !== "gpt-5.5" ||
-        result.executionAttestation.reasoningEffort !== "xhigh" ||
-        result.executionAttestation.selectedOutputKind !== "output_text")
+      result.executionAttestation === undefined ||
+      result.executionAttestation.provider !== "codex" ||
+      result.executionAttestation.model !== productionModel ||
+      result.executionAttestation.reasoningEffort !== "xhigh" ||
+      result.executionAttestation.selectedOutputKind !== "output_text"
     ) {
       throw new Error(
-        "Reader summary weekly agent-runtime attestation is not runtime-only text output",
+        "Reader summary weekly agent-runtime attestation must prove codex gpt-5.6-sol xhigh output_text",
       );
     }
     return parseOpenAiReaderSummaryWeeklyResponse(input, outputText);
@@ -242,7 +239,7 @@ export class AgentRuntimeReaderSummaryWeeklyTextModel
         adapter: "agent-runtime-reader-summary-weekly-production",
         promptVersion: currentReaderSummaryWeeklyPromptRelease.id,
         reasoningEffort: this.reasoningEffort,
-        runtimeOutput: "text",
+        runtimeOutput: "output_text",
       },
     };
   }
@@ -596,9 +593,9 @@ const proofFor = (input: {
   model: Object.freeze({
     provider: "agent-runtime",
     agentProvider: "codex",
-    model: "gpt-5.5",
+    model: productionModel,
     reasoningEffort: "xhigh",
-    runtimeOutput: "text",
+    runtimeOutput: "output_text",
   }),
   zeroProviderCalls: true,
 });
@@ -679,9 +676,9 @@ const validateArtifactPair = (
     proof.artifactSha256 !== validation.artifactSha256 ||
     proof.model?.provider !== "agent-runtime" ||
     proof.model?.agentProvider !== "codex" ||
-    proof.model?.model !== "gpt-5.5" ||
+    proof.model?.model !== productionModel ||
     proof.model?.reasoningEffort !== "xhigh" ||
-    proof.model?.runtimeOutput !== "text" ||
+    proof.model?.runtimeOutput !== "output_text" ||
     proof.zeroProviderCalls !== true
   ) {
     throw new Error("Reader summary weekly artifact/proof does not match DB input");
