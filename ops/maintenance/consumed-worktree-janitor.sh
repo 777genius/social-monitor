@@ -14,6 +14,7 @@ readonly CP=/usr/bin/cp
 readonly MV=/usr/bin/mv
 readonly UNLINK=/usr/bin/unlink
 readonly CMP=/usr/bin/cmp
+readonly PROCESS_SNAPSHOT_LIMIT=65536
 
 MODE=dry-run
 MODE_SEEN=0
@@ -170,6 +171,7 @@ declare -A latest_status=()
 declare -A latest_status_hash=()
 declare -A latest_status_file=()
 declare -A latest_time=()
+declare -A latest_workspace_kind=()
 
 shopt -s nullglob
 ledger_files=("$LEDGER_ITEMS"/*.json)
@@ -231,10 +233,26 @@ for item in "${ledger_files[@]}"; do
   patch_file=$(canonical_declared_path "$patch_file" 'patch evidence')
   numstat_file=$(canonical_declared_path "$numstat_file" 'numstat evidence')
 
-  [[ ${workspace%/*} == "$WORKTREES" && ${workspace##*/} =~ ^[A-Za-z0-9._-]+$ ]] ||
-    fail "ledger workspace is not a direct Social Monitor worktree: $workspace"
-  [[ ${workspace##*/} == "$job_id" ]] ||
-    fail "ledger workspace conflicts with its job ID: $workspace"
+  case $workspace in
+    "$WORKTREES/$job_id")
+      workspace_kind=canonical
+      ;;
+    "$WORKTREES/.volume2/$job_id")
+      workspace_kind=volume2-direct
+      ;;
+    "$WORKTREES/.volume2/$job_id/worktree")
+      workspace_kind=volume2-nested
+      ;;
+    "$WORKTREES/.volume2" | "$WORKTREES/.volume2/"*)
+      workspace_kind=volume2-unsupported
+      ;;
+    *)
+      [[ ${workspace%/*} == "$WORKTREES" &&
+        ${workspace##*/} =~ ^[A-Za-z0-9._-]+$ ]] ||
+        fail "ledger workspace is not a direct Social Monitor worktree: $workspace"
+      fail "ledger workspace conflicts with its job ID: $workspace"
+      ;;
+  esac
   case ${archive%/*} in
     "$WORKER_JOBS/$job_id/archives" | "$CONTROLLER/archives") ;;
     *) fail "ledger archive conflicts with its Social Monitor job: $archive" ;;
@@ -282,6 +300,7 @@ for item in "${ledger_files[@]}"; do
   latest_status["$workspace"]=$status
   latest_status_file["$workspace"]=$status_file
   latest_time["$workspace"]=$consumed_at
+  latest_workspace_kind["$workspace"]=$workspace_kind
   if is_terminal_ledger_status "$status"; then
     latest_numstat_hash["$workspace"]=${ledger_numstat_hash_by_id[$ledger_id]}
     latest_patch_hash["$workspace"]=${ledger_patch_hash_by_id[$ledger_id]}
@@ -544,40 +563,112 @@ job_has_active_state() {
 }
 
 PROCESS_SCAN_INCOMPLETE=0
-process_uses_worktree() {
-  local target=$1
-  local process_dir link_path raw_link resolved
+declare -a PLANNING_PROCESS_PATHS=()
+
+inspect_process_path() {
+  local raw_path=$1
+  local scan_mode=$2
+  local target=${3:-}
+  local resolved
+  [[ $raw_path == /* ]] || return 1
+  raw_path=${raw_path% (deleted)}
+  resolved=$("$REALPATH" -m -- "$raw_path") || {
+    PROCESS_SCAN_INCOMPLETE=1
+    return 1
+  }
+  if [[ $scan_mode == snapshot ]]; then
+    ((${#PLANNING_PROCESS_PATHS[@]} < PROCESS_SNAPSHOT_LIMIT)) ||
+      fail "process-use snapshot exceeded $PROCESS_SNAPSHOT_LIMIT paths"
+    PLANNING_PROCESS_PATHS+=("$resolved")
+    return 1
+  fi
+  case $resolved in
+    "$target" | "$target"/*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+scan_synthetic_process_evidence() {
+  local scan_mode=$1
+  local target=${2:-}
+  local evidence=$PROJECT_ROOT/.social-monitor-janitor-test-process-paths
+  local canonical_evidence raw_path resolved
+  [[ -e $evidence || -L $evidence ]] || return 1
+  [[ -f $evidence && ! -L $evidence && -r $evidence ]] ||
+    fail 'synthetic process evidence is unsafe'
+  canonical_evidence=$("$REALPATH" -e -- "$evidence") ||
+    fail 'cannot canonicalize synthetic process evidence'
+  [[ $canonical_evidence == "$evidence" ]] ||
+    fail 'synthetic process evidence escaped its fixture'
+  while IFS= read -r raw_path || [[ -n $raw_path ]]; do
+    [[ -n $raw_path ]] || continue
+    resolved=$(canonical_declared_path "$raw_path" 'synthetic process path')
+    case $resolved in
+      "$PROJECT_ROOT" | "$PROJECT_ROOT"/*) ;;
+      *) fail 'synthetic process path escaped its fixture' ;;
+    esac
+    inspect_process_path "$resolved" "$scan_mode" "$target" && return 0
+  done <"$evidence"
+  return 1
+}
+
+scan_proc_process_evidence() {
+  local scan_mode=$1
+  local target=${2:-}
+  local process_dir link_path raw_link
   for process_dir in /proc/[0-9]*; do
     [[ -d $process_dir ]] || continue
     for link_path in "$process_dir/cwd" "$process_dir/root" "$process_dir/exe"; do
       [[ -L $link_path ]] || continue
       if ! raw_link=$("$READLINK" -- "$link_path" 2>/dev/null); then
-        if [[ -z $TEST_ROOT && -e $process_dir/status ]]; then
-          PROCESS_SCAN_INCOMPLETE=1
-        fi
+        [[ -e $process_dir/status ]] && PROCESS_SCAN_INCOMPLETE=1
         continue
       fi
-      [[ $raw_link == /* ]] || continue
-      raw_link=${raw_link% (deleted)}
-      resolved=$("$REALPATH" -m -- "$raw_link") || {
-        [[ -n $TEST_ROOT ]] || PROCESS_SCAN_INCOMPLETE=1
-        continue
-      }
-      case $resolved in
-        "$target" | "$target"/*) return 0 ;;
-      esac
+      inspect_process_path "$raw_link" "$scan_mode" "$target" && return 0
     done
     for link_path in "$process_dir"/fd/*; do
       [[ -L $link_path ]] || continue
       raw_link=$("$READLINK" -- "$link_path" 2>/dev/null) || continue
-      [[ $raw_link == /* ]] || continue
-      raw_link=${raw_link% (deleted)}
-      resolved=$("$REALPATH" -m -- "$raw_link") || continue
-      case $resolved in
-        "$target" | "$target"/*) return 0 ;;
-      esac
+      inspect_process_path "$raw_link" "$scan_mode" "$target" && return 0
     done
   done
+  return 1
+}
+
+scan_process_evidence() {
+  local scan_mode=$1
+  local target=${2:-}
+  if [[ -n $TEST_ROOT ]]; then
+    scan_synthetic_process_evidence "$scan_mode" "$target"
+  else
+    scan_proc_process_evidence "$scan_mode" "$target"
+  fi
+}
+
+snapshot_process_evidence() {
+  PROCESS_SCAN_INCOMPLETE=0
+  PLANNING_PROCESS_PATHS=()
+  scan_process_evidence snapshot || true
+  ((PROCESS_SCAN_INCOMPLETE == 0)) ||
+    fail 'process-use snapshot was incomplete; refusing to proceed'
+}
+
+planning_process_uses_worktree() {
+  local target=$1
+  local process_path
+  for process_path in "${PLANNING_PROCESS_PATHS[@]}"; do
+    case $process_path in
+      "$target" | "$target"/*) return 0 ;;
+    esac
+  done
+  return 1
+}
+
+live_process_uses_worktree() {
+  local target=$1
+  PROCESS_SCAN_INCOMPLETE=0
+  scan_process_evidence live "$target" && return 0
+  ((PROCESS_SCAN_INCOMPLETE == 0)) || fail 'process-use recheck was incomplete'
   return 1
 }
 
@@ -655,6 +746,8 @@ eligible=0
 excluded=0
 replayed=0
 
+snapshot_process_evidence
+
 for workspace in "${!latest_time[@]}"; do
   status=${latest_status[$workspace]}
   is_terminal_ledger_status "$status" || {
@@ -662,6 +755,19 @@ for workspace in "${!latest_time[@]}"; do
     continue
   }
   ledger_id=${latest_ledger[$workspace]}
+  workspace_kind=${latest_workspace_kind[$workspace]}
+  if [[ $workspace_kind == volume2-unsupported ]]; then
+    printf 'excluded reason=unsupported-volume2-layout ledger=%s worktree=%s\n' \
+      "$ledger_id" "$workspace"
+    excluded=$((excluded + 1))
+    continue
+  fi
+  if [[ $MODE == apply && $workspace_kind == volume2-* ]]; then
+    printf 'excluded reason=volume2-dry-run-only ledger=%s worktree=%s\n' \
+      "$ledger_id" "$workspace"
+    excluded=$((excluded + 1))
+    continue
+  fi
   if [[ -n ${audited_workspace[$ledger_id]:-} ]]; then
     if [[ -e $workspace || -L $workspace || -n ${registered[$workspace]:-} ]]; then
       fail "audit receipt conflicts with an existing or registered worktree: $ledger_id"
@@ -727,7 +833,7 @@ for workspace in "${!latest_time[@]}"; do
     excluded=$((excluded + 1))
     continue
   fi
-  if process_uses_worktree "$workspace"; then
+  if planning_process_uses_worktree "$workspace"; then
     printf 'excluded reason=active-process ledger=%s worktree=%s\n' "$ledger_id" "$workspace"
     excluded=$((excluded + 1))
     continue
@@ -746,8 +852,6 @@ for workspace in "${!latest_time[@]}"; do
   plan_bytes+=("$before_bytes")
   eligible=$((eligible + 1))
 done
-
-((PROCESS_SCAN_INCOMPLETE == 0)) || fail 'process-use scan was incomplete; refusing to proceed'
 
 append_audit_receipt() {
   local receipt=$1
@@ -811,8 +915,8 @@ else
     if job_has_active_state "$WORKER_JOBS/$job_id"; then
       fail "job became active before apply: $job_id"
     fi
-    process_uses_worktree "$target" && fail "process entered worktree before apply: $target"
-    ((PROCESS_SCAN_INCOMPLETE == 0)) || fail 'process-use recheck was incomplete'
+    live_process_uses_worktree "$target" &&
+      fail "process entered worktree before apply: $target"
 
     byte_record=$("$DU" -sb --apparent-size -- "$target") ||
       fail "cannot remeasure worktree bytes: $target"

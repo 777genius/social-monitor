@@ -115,6 +115,41 @@ done
 output=$(run_janitor "$root")
 [[ $output == *'eligible=2'* ]] || fail 'archived and superseded ledgers were not eligible'
 
+root=$(new_fixture volume2-dry-run-only)
+direct_job=social-monitor-volume2-direct-worker
+direct_target=$(add_worktree "$root" "$direct_job" \
+  "$root/worktrees/.volume2/$direct_job")
+write_ledger "$root" "$direct_job" attempt-1 "$direct_target" rejected
+nested_job=social-monitor-volume2-nested-worker
+nested_target=$(add_worktree "$root" "$nested_job" \
+  "$root/worktrees/.volume2/$nested_job/worktree")
+write_ledger "$root" "$nested_job" attempt-1 "$nested_target" rejected
+legacy_job=social-monitor-volume2-legacy-worker
+legacy_target=$(add_worktree "$root" "$legacy_job" \
+  "$root/worktrees/.volume2/$legacy_job/legacy/worktree")
+write_ledger "$root" "$legacy_job" attempt-1 "$legacy_target" rejected
+output=$(run_janitor "$root")
+[[ $output == *"would-remove ledger=$direct_job--attempt-1 worktree=$direct_target"* &&
+  $output == *"would-remove ledger=$nested_job--attempt-1 worktree=$nested_target"* &&
+  $output == *"excluded reason=unsupported-volume2-layout ledger=$legacy_job--attempt-1"* &&
+  $output == *'eligible=2'* ]] ||
+  fail 'volume2 dry-run discovery was not strict and complete'
+[[ -d $direct_target && -d $nested_target && -d $legacy_target ]] ||
+  fail 'volume2 dry run changed a fixture target'
+[[ ! -e $root/control/consumed-worktree-janitor.audit.jsonl ]] ||
+  fail 'volume2 dry run wrote an audit receipt'
+output=$(run_janitor "$root" --apply)
+[[ $output == *"excluded reason=volume2-dry-run-only ledger=$direct_job--attempt-1"* &&
+  $output == *"excluded reason=volume2-dry-run-only ledger=$nested_job--attempt-1"* &&
+  $output == *"excluded reason=unsupported-volume2-layout ledger=$legacy_job--attempt-1"* &&
+  $output != *'would-remove'* && $output == *'eligible=0'* &&
+  $output == *'removed=0'* ]] ||
+  fail 'volume2 apply did not explicitly exclude every fixture target'
+[[ -d $direct_target && -d $nested_target && -d $legacy_target ]] ||
+  fail 'volume2 apply removed a fixture target'
+[[ ! -e $root/control/consumed-worktree-janitor.audit.jsonl ]] ||
+  fail 'volume2 apply wrote an audit receipt'
+
 root=$(new_fixture unregistered)
 job=social-monitor-unregistered-worker
 target=$root/worktrees/$job
@@ -206,18 +241,11 @@ root=$(new_fixture active-process)
 job=social-monitor-active-process-worker
 target=$(add_worktree "$root" "$job")
 write_ledger "$root" "$job" attempt-1 "$target"
-# shellcheck disable=SC2016 # The positional parameter belongs to the child shell.
-bash -c 'cd "$1" && exec sleep 30' _ "$target" &
-active_pid=$!
-for _ in 1 2 3 4 5 6 7 8 9 10; do
-  [[ $(readlink -e "/proc/$active_pid/cwd" 2>/dev/null || true) == "$target" ]] && break
-  sleep 0.05
-done
+printf '%s\n' "$target/held-open.txt" > \
+  "$root/.social-monitor-janitor-test-process-paths"
 output=$(run_janitor "$root" --apply)
-kill "$active_pid"
-wait "$active_pid" 2>/dev/null || true
 [[ -d $target && $output == *'reason=active-process'* ]] ||
-  fail 'active process was not excluded'
+  fail 'synthetic active process was not excluded'
 
 root=$(new_fixture active-tmux)
 job=social-monitor-active-tmux-worker
