@@ -26,11 +26,21 @@ import {
 } from "./reader-summary-weekly-github-audit";
 import {
   assertReaderSummaryWeeklySealedInputManifest,
+  readerSummaryWeeklyHistoricalGitHubAuthorizationIdentity,
   readerSummaryWeeklyInputManifestSchemaVersion,
   sealReaderSummaryWeeklyInputManifest,
+  type ReaderSummaryWeeklyHistoricalDailyCertification,
   type ReaderSummaryWeeklyInputDayEvidence,
   type ReaderSummaryWeeklyInputManifestEvidence,
+  type ReaderSummaryWeeklyPersistedPublicationEvidence,
 } from "./reader-summary-weekly-input-manifest";
+import {
+  deriveReaderSummaryWeeklyPublicationEvidence,
+} from "./reader-summary-weekly-publication-evidence";
+import {
+  readerSummaryWeeklyPublicationGitHubEvidenceSchemaVersion,
+  type ReaderSummaryWeeklyPublicationGitHubEvidence,
+} from "./reader-summary-weekly-publication-github-evidence";
 
 const monday = "2026-07-20";
 const weekDays = Array.from({ length: 7 }, (_, index) =>
@@ -225,6 +235,161 @@ const manifestEvidence = (
   ),
 });
 
+const historicalPublicationEvidence = (
+  date = "2026-07-23",
+): ReaderSummaryWeeklyPersistedPublicationEvidence => {
+  const githubBody = {
+    schemaVersion: readerSummaryWeeklyPublicationGitHubEvidenceSchemaVersion,
+    mode: "historical_unavailable" as const,
+    requestedUtcDay: date,
+    providerKey: "github-trending-page" as const,
+    scanJobId: null,
+    sourceBindingId: null,
+    evidenceCount: 0,
+    historicalUnavailableReason:
+      "Persisted recovery records that GitHub evidence is unavailable.",
+    authorizedAt: "2026-07-29T12:00:00.000Z",
+    sourceProviderContentHash: null,
+    repositories: [],
+  };
+  const githubEvidence: ReaderSummaryWeeklyPublicationGitHubEvidence = {
+    ...githubBody,
+    sha256: canonicalizeReaderSummaryWeeklyJson(githubBody).sha256,
+  };
+  const publicationId = `publication-${date}`;
+  const evidence = deriveReaderSummaryWeeklyPublicationEvidence({
+    tenantId: "tenant-a",
+    workspaceId: "workspace-a",
+    scope: { type: "workspace" },
+    period: readerSummaryWeeklyDailyPeriod(date),
+    requestedUtcDate: date,
+    publicationId,
+    artifactId: publicationId,
+    jobId: `job-${date}`,
+    semanticStatus: "COMPLETED",
+    report: { status: "COMPLETED" },
+    exactProof: { status: "exact" },
+    artifactPayload: { qualityFlags: [] },
+    providerEvidence: [{
+      citationId: `citation-${date}`,
+      citationField: "canonicalUrl",
+      feedItemId: `feed-${date}`,
+      sourceItemId: `source-${date}`,
+      sourceBindingId: `hacker-news-binding-${date}`,
+      providerKey: "hacker-news",
+      providerItemId: `hacker-news-${date}`,
+      canonicalUrl: `https://example.test/${date}`,
+      title: "Historical source",
+      sourceText: "Persisted non-GitHub evidence.",
+      publishedAt: `${date}T12:00:00.000Z`,
+      observedAt: `${date}T13:00:00.000Z`,
+      sourceContentHash: sha(700),
+    }],
+    githubEvidence,
+    publishedAt: "2026-07-29T12:05:00.000Z",
+  });
+  const {
+    canonicalJson: _canonicalJson,
+    byteLength: _byteLength,
+    toBytes: _toBytes,
+    ...persisted
+  } = evidence;
+  void _canonicalJson;
+  void _byteLength;
+  void _toBytes;
+  return persisted;
+};
+
+const manifestWithHistoricalGitHub = (
+  publicationEvidence = historicalPublicationEvidence(),
+  dailyCertification = historicalDailyCertification(publicationEvidence),
+): ReaderSummaryWeeklyInputManifestEvidence => {
+  const input = manifestEvidence();
+  const days = [...input.days];
+  days[3] = {
+    historicalPublicationEvidence: publicationEvidence,
+    historicalDailyCertification: dailyCertification,
+    authorizationIdentity:
+      readerSummaryWeeklyHistoricalGitHubAuthorizationIdentity,
+  };
+  return { ...input, days };
+};
+
+const historicalDailyCertification = (
+  authority: ReaderSummaryWeeklyPersistedPublicationEvidence,
+): ReaderSummaryWeeklyHistoricalDailyCertification => {
+  const body = {
+    schemaVersion: readerSummaryWeeklyDailyCertificationSchemaVersion,
+    status: "certified" as const,
+    blockingPassed: true as const,
+    requestedUtcDate: "2026-07-23" as const,
+    tenantId: authority.tenantId,
+    workspaceId: authority.workspaceId,
+    scope: JSON.parse(canonicalizeReaderSummaryWeeklyJson(authority.scope).json),
+    publicationId: authority.publicationId,
+    artifactId: authority.artifactId,
+    jobId: authority.jobId,
+    reportId: authority.reportId,
+    proofId: authority.proofId,
+    reportSha256: authority.reportSha256,
+    exactProofSha256: authority.proofSha256,
+    artifactPayloadSha256: authority.artifactPayloadSha256,
+    providerCounts: JSON.parse(
+      canonicalizeReaderSummaryWeeklyJson(authority.providerCounts).json,
+    ),
+    githubAuditSha256: authority.githubEvidence.sha256,
+  };
+  const sha256 = canonicalizeReaderSummaryWeeklyJson(body).sha256;
+  return {
+    ...body,
+    identity: `${readerSummaryWeeklyDailyCertificationSchemaVersion}:${sha256}`,
+    sha256,
+  };
+};
+
+const resealHistoricalCertification = (
+  certification: ReaderSummaryWeeklyHistoricalDailyCertification,
+  mutate: (body: Record<string, unknown>) => void,
+): ReaderSummaryWeeklyHistoricalDailyCertification => {
+  const { identity: _identity, sha256: _sha256, ...sourceBody } = certification;
+  void _identity;
+  void _sha256;
+  const body = JSON.parse(
+    canonicalizeReaderSummaryWeeklyJson(sourceBody).json,
+  ) as Record<string, unknown>;
+  mutate(body);
+  const sha256 = canonicalizeReaderSummaryWeeklyJson(body).sha256;
+  return {
+    ...body,
+    identity: `${readerSummaryWeeklyDailyCertificationSchemaVersion}:${sha256}`,
+    sha256,
+  } as ReaderSummaryWeeklyHistoricalDailyCertification;
+};
+
+const resealHistoricalPublication = (
+  evidence: ReaderSummaryWeeklyPersistedPublicationEvidence,
+  mutate: (body: Record<string, unknown>) => void,
+): ReaderSummaryWeeklyPersistedPublicationEvidence => {
+  const { identity: _identity, sha256: _sha256, ...sourceBody } = evidence;
+  void _identity;
+  void _sha256;
+  const body = JSON.parse(
+    canonicalizeReaderSummaryWeeklyJson(sourceBody).json,
+  ) as Record<string, unknown>;
+  mutate(body);
+  const github = body.githubEvidence as Record<string, unknown>;
+  const { sha256: _githubSha, ...githubBody } = github;
+  void _githubSha;
+  github.sha256 = canonicalizeReaderSummaryWeeklyJson(githubBody).sha256;
+  const canonical = canonicalizeReaderSummaryWeeklyJson(body);
+  return {
+    ...body,
+    identity:
+      `reader_summary.weekly_publication_evidence.v1:${canonical.sha256}`,
+    sha256: canonical.sha256,
+  } as ReaderSummaryWeeklyPersistedPublicationEvidence;
+};
+
 describe("reader summary weekly input manifest", () => {
   it("seals an exact immutable deterministic Monday-Sunday 7/7 manifest", () => {
     const input = manifestEvidence();
@@ -233,6 +398,9 @@ describe("reader summary weekly input manifest", () => {
 
     expect(manifest.canonicalJson).toBe(repeated.canonicalJson);
     expect(manifest.sha256).toBe(repeated.sha256);
+    expect(manifest.sha256).toBe(
+      "187979593610ae5fbfd17cab1beeed7d273feafea33147ecb325f781f7848539",
+    );
     expect(manifest.days).toEqual(repeated.days);
     expect(manifest.schemaVersion).toBe(
       readerSummaryWeeklyInputManifestSchemaVersion,
@@ -245,10 +413,15 @@ describe("reader summary weekly input manifest", () => {
       weekDays,
     );
     expect(manifest.days).toHaveLength(7);
+    expect(
+      manifest.days.every((entry) => !("historicalAuthority" in entry)),
+    ).toBe(true);
+    expect(manifest.canonicalJson).not.toContain('"historicalAuthority":null');
     expect(manifest.days.every(
       (entry) =>
+        entry.githubAudit.status === "verified" &&
         entry.githubAudit.observedAt >
-        `${entry.requestedUtcDate}T23:59:59.999Z`,
+          `${entry.requestedUtcDate}T23:59:59.999Z`,
     )).toBe(true);
     expect(readerSummaryWeeklySha256(manifest.toBytes())).toBe(manifest.sha256);
     expect(Buffer.from(manifest.toBytes()).toString("utf8")).toBe(
@@ -270,26 +443,161 @@ describe("reader summary weekly input manifest", () => {
     const bytes = manifest.toBytes();
     bytes[0] = 0;
     mutable(input).tenantId = "mutated";
+    const inputDay = input.days[0]!;
+    if (!("githubAuditEvidence" in inputDay)) {
+      throw new Error("verified input fixture is invalid");
+    }
     mutable(
-      input.days[0]!.githubAuditEvidence.repositories[0]!.sourceEvidence,
+      inputDay.githubAuditEvidence.repositories[0]!.sourceEvidence,
     ).description = "Caller mutation";
 
     expect(manifest.toBytes()[0]).toBe("{".charCodeAt(0));
     expect(manifest.tenantId).toBe("tenant-a");
+    const manifestAudit = manifest.days[0]!.githubAudit;
+    if (manifestAudit.status !== "verified") {
+      throw new Error("verified manifest fixture is invalid");
+    }
     expect(
-      manifest.days[0]!.githubAudit.repositories[0]!.sourceEvidence.description,
+      manifestAudit.repositories[0]!.sourceEvidence.description,
     ).toBe("Day 0 repository 1 evidence");
     expect(() => {
       mutable(manifest.days[0]!.dailyCertification).publicationId = "mutated";
     }).toThrow(TypeError);
     expect(() => {
       mutable(
-        manifest.days[0]!.githubAudit.repositories[0]!.sourceEvidence,
+        manifestAudit.repositories[0]!.sourceEvidence,
       ).description = "Nested post-construction mutation";
     }).toThrow(TypeError);
     expect(manifest.sha256).toBe(sealedHash);
     expect(manifest.canonicalJson).toBe(sealedJson);
     expect(readerSummaryWeeklySha256(manifest.toBytes())).toBe(sealedHash);
+  });
+
+  it("admits only the sealed July 23 persisted GitHub-zero authority", () => {
+    const persistedCertification = historicalDailyCertification(
+      historicalPublicationEvidence(),
+    );
+    const manifest = sealReaderSummaryWeeklyInputManifest(
+      manifestWithHistoricalGitHub(
+        historicalPublicationEvidence(),
+        persistedCertification,
+      ),
+    );
+    const day = manifest.days[3]!;
+
+    expect(day.githubAudit).toMatchObject({
+      status: "historical_unavailable",
+      requestedUtcDay: "2026-07-23",
+      scanJobId: null,
+      sourceBindingId: null,
+      evidenceCount: 0,
+      repositories: [],
+      authorizationIdentity:
+        readerSummaryWeeklyHistoricalGitHubAuthorizationIdentity,
+    });
+    expect(day.dailyCertification.providerCounts[0]).toEqual({
+      providerKey: "github-trending-page",
+      count: 0,
+    });
+    expect(day.dailyCertification).toMatchObject({
+      schemaVersion: readerSummaryWeeklyDailyCertificationSchemaVersion,
+      identity: persistedCertification.identity,
+      sha256: persistedCertification.sha256,
+    });
+    expect(() =>
+      assertReaderSummaryWeeklySealedInputManifest(manifest),
+    ).not.toThrow();
+  });
+
+  it("rejects absent, altered, rehashed and foreign daily certification seals", () => {
+    const authority = historicalPublicationEvidence();
+    const certification = historicalDailyCertification(authority);
+    const absent = manifestWithHistoricalGitHub(authority, certification);
+    delete mutable(absent.days[3]).historicalDailyCertification;
+    const altered = {
+      ...certification,
+      sha256: sha(998),
+    } as ReaderSummaryWeeklyHistoricalDailyCertification;
+    const rehashed = resealHistoricalCertification(
+      certification,
+      (body) => {
+        body.reportSha256 = sha(997);
+      },
+    );
+    const wrongDate = resealHistoricalCertification(
+      certification,
+      (body) => {
+        body.requestedUtcDate = "2026-07-22";
+      },
+    );
+    const foreignWorkspace = resealHistoricalCertification(
+      certification,
+      (body) => {
+        body.workspaceId = "workspace-foreign";
+      },
+    );
+
+    for (const input of [
+      absent,
+      manifestWithHistoricalGitHub(authority, altered),
+      manifestWithHistoricalGitHub(authority, rehashed),
+      manifestWithHistoricalGitHub(authority, wrongDate),
+      manifestWithHistoricalGitHub(authority, foreignWorkspace),
+    ]) {
+      expect(() => sealReaderSummaryWeeklyInputManifest(input)).toThrow();
+    }
+  });
+
+  it("rejects historical authority forgery, another date and GitHub content", () => {
+    const wrongDate = historicalPublicationEvidence("2026-07-22");
+    const forgedSha = {
+      ...historicalPublicationEvidence(),
+      sha256: sha(999),
+    };
+    const wrongAuthorization = manifestWithHistoricalGitHub();
+    mutable(wrongAuthorization.days[3]).authorizationIdentity =
+      "reader_summary.production_recovery.github.2026-07-23.v1";
+    const historical = historicalPublicationEvidence();
+    const nonzeroCount = resealHistoricalPublication(
+      historical,
+      (body) => {
+        const github = body.githubEvidence as Record<string, unknown>;
+        github.evidenceCount = 1;
+      },
+    );
+    const nonemptyRepositories = resealHistoricalPublication(
+      historical,
+      (body) => {
+        const github = body.githubEvidence as Record<string, unknown>;
+        github.repositories = [{ rank: 1 }];
+      },
+    );
+    const withGitHubCitation = {
+      ...historical,
+      providerEvidence: [
+      ...historical.providerEvidence,
+      {
+        ...historical.providerEvidence[0]!,
+        citationId: "forged-github-citation",
+        feedItemId: "forged-github-feed",
+        sourceItemId: "forged-github-source",
+        providerKey: "github-trending-page",
+      },
+      ],
+    } as ReaderSummaryWeeklyPersistedPublicationEvidence;
+
+    for (const input of [
+      manifestWithHistoricalGitHub(wrongDate),
+      manifestWithHistoricalGitHub(
+        forgedSha as ReaderSummaryWeeklyPersistedPublicationEvidence,
+      ),
+      wrongAuthorization,
+      manifestWithHistoricalGitHub(nonzeroCount),
+      manifestWithHistoricalGitHub(nonemptyRepositories),
+      manifestWithHistoricalGitHub(withGitHubCitation),
+    ]) {
+      expect(() => sealReaderSummaryWeeklyInputManifest(input)).toThrow();
+    }
   });
 
   it("rejects non-Monday, incomplete, excessive and out-of-order weeks", () => {
@@ -352,7 +660,11 @@ describe("reader summary weekly input manifest", () => {
     const repeated = manifestEvidence();
     const sharedScope = { type: "workspace" as const };
     mutable(repeated).scope = sharedScope;
-    mutable(repeated.days[0]!.dailyCertificationEvidence).scope = sharedScope;
+    const repeatedDay = repeated.days[0]!;
+    if (!("dailyCertificationEvidence" in repeatedDay)) {
+      throw new Error("verified input fixture is invalid");
+    }
+    mutable(repeatedDay.dailyCertificationEvidence).scope = sharedScope;
 
     for (const input of [
       unknown,

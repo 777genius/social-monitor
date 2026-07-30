@@ -20,17 +20,40 @@ import {
 import {
   assertReaderSummaryWeeklyCanonicalGitHubAudit,
   certifyReaderSummaryWeeklyGitHubAudit,
+  readerSummaryWeeklyGitHubProviderKey,
   type ReaderSummaryWeeklyCanonicalGitHubAudit,
   type ReaderSummaryWeeklyGitHubAuditEvidenceInput,
 } from "./reader-summary-weekly-github-audit";
+import {
+  assertReaderSummaryWeeklyCanonicalPublicationEvidence,
+  readerSummaryWeeklyPublicationEvidenceSchemaVersion,
+  type ReaderSummaryWeeklyCanonicalPublicationEvidence,
+} from "./reader-summary-weekly-publication-evidence";
+import {
+  assertReaderSummaryWeeklyPublicationGitHubEvidence,
+  readerSummaryWeeklyPublicationGitHubEvidenceSchemaVersion,
+  type ReaderSummaryWeeklyPublicationGitHubEvidence,
+} from "./reader-summary-weekly-publication-github-evidence";
 
 export const readerSummaryWeeklyInputManifestSchemaVersion =
   "reader_summary.weekly_input_manifest.v1" as const;
+export const readerSummaryWeeklyHistoricalGitHubDate = "2026-07-23" as const;
+export const readerSummaryWeeklyHistoricalGitHubAuthorizationIdentity =
+  "reader_summary.production_recovery.github.2026-07-23.v2" as const;
 
-export type ReaderSummaryWeeklyInputDayEvidence = Readonly<{
+type ReaderSummaryWeeklyVerifiedInputDayEvidence = Readonly<{
   githubAuditEvidence: ReaderSummaryWeeklyGitHubAuditEvidenceInput;
   dailyCertificationEvidence: ReaderSummaryWeeklyDailyCertificationEvidenceInput;
 }>;
+type ReaderSummaryWeeklyHistoricalInputDayEvidence = Readonly<{
+  historicalPublicationEvidence: ReaderSummaryWeeklyPersistedPublicationEvidence;
+  historicalDailyCertification: ReaderSummaryWeeklyHistoricalDailyCertification;
+  authorizationIdentity:
+    typeof readerSummaryWeeklyHistoricalGitHubAuthorizationIdentity;
+}>;
+export type ReaderSummaryWeeklyInputDayEvidence =
+  | ReaderSummaryWeeklyVerifiedInputDayEvidence
+  | ReaderSummaryWeeklyHistoricalInputDayEvidence;
 export type ReaderSummaryWeeklyInputManifestEvidence = Readonly<{
   weekStartedUtcDate: string;
   tenantId: string;
@@ -38,11 +61,43 @@ export type ReaderSummaryWeeklyInputManifestEvidence = Readonly<{
   scope: ReaderSummaryWeeklyManifestScope;
   days: readonly ReaderSummaryWeeklyInputDayEvidence[];
 }>;
-export type ReaderSummaryWeeklyCanonicalInputDay = Readonly<{
+export type ReaderSummaryWeeklyHistoricalGitHubAudit =
+  ReaderSummaryWeeklyPublicationGitHubEvidence &
+    Readonly<{
+      status: "historical_unavailable";
+      authorizationIdentity:
+        typeof readerSummaryWeeklyHistoricalGitHubAuthorizationIdentity;
+      identity: string;
+    }>;
+export type ReaderSummaryWeeklyHistoricalDailyCertification =
+  ReaderSummaryWeeklyCanonicalDailyCertification &
+    Readonly<{
+      requestedUtcDate: typeof readerSummaryWeeklyHistoricalGitHubDate;
+    }>;
+export type ReaderSummaryWeeklyPersistedPublicationEvidence = Omit<
+  ReaderSummaryWeeklyCanonicalPublicationEvidence,
+  "canonicalJson" | "byteLength" | "toBytes"
+>;
+export type ReaderSummaryWeeklyHistoricalPublicationAuthority =
+  ReaderSummaryWeeklyPersistedPublicationEvidence &
+  Readonly<{
+    authorizationIdentity:
+      typeof readerSummaryWeeklyHistoricalGitHubAuthorizationIdentity;
+  }>;
+type ReaderSummaryWeeklyCanonicalVerifiedInputDay = Readonly<{
   requestedUtcDate: string;
   githubAudit: ReaderSummaryWeeklyCanonicalGitHubAudit;
   dailyCertification: ReaderSummaryWeeklyCanonicalDailyCertification;
 }>;
+type ReaderSummaryWeeklyCanonicalHistoricalInputDay = Readonly<{
+  requestedUtcDate: typeof readerSummaryWeeklyHistoricalGitHubDate;
+  githubAudit: ReaderSummaryWeeklyHistoricalGitHubAudit;
+  dailyCertification: ReaderSummaryWeeklyHistoricalDailyCertification;
+  historicalAuthority: ReaderSummaryWeeklyHistoricalPublicationAuthority;
+}>;
+export type ReaderSummaryWeeklyCanonicalInputDay =
+  | ReaderSummaryWeeklyCanonicalVerifiedInputDay
+  | ReaderSummaryWeeklyCanonicalHistoricalInputDay;
 export type ReaderSummaryWeeklySealedInputManifest = Readonly<{
   schemaVersion: typeof readerSummaryWeeklyInputManifestSchemaVersion;
   status: "sealed";
@@ -68,6 +123,11 @@ const manifestKeys = [
   "days",
 ] as const;
 const dayKeys = ["githubAuditEvidence", "dailyCertificationEvidence"] as const;
+const historicalDayKeys = [
+  "historicalPublicationEvidence",
+  "historicalDailyCertification",
+  "authorizationIdentity",
+] as const;
 const sealedManifestBodyKeys = [
   "schemaVersion",
   "status",
@@ -91,6 +151,10 @@ const canonicalDayKeys = [
   "requestedUtcDate",
   "githubAudit",
   "dailyCertification",
+] as const;
+const historicalCanonicalDayKeys = [
+  ...canonicalDayKeys,
+  "historicalAuthority",
 ] as const;
 const dailyCertificationKeys = [
   "schemaVersion",
@@ -120,6 +184,19 @@ const uniqueDailyIdentityFields = [
   "reportId",
   "proofId",
 ] as const;
+const historicalAuthorityBodyKeys = [
+  "schemaVersion", "tenantId", "workspaceId", "scope", "period",
+  "requestedUtcDate", "publicationId", "artifactId", "jobId", "reportId",
+  "proofId", "semanticStatus", "reportSha256", "proofSha256",
+  "artifactPayloadSha256", "providerEvidenceSha256", "providerEvidence",
+  "providerCounts", "githubEvidence", "publishedAt",
+] as const;
+const historicalAuthorityKeys = [
+  ...historicalAuthorityBodyKeys,
+  "identity",
+  "sha256",
+  "authorizationIdentity",
+] as const;
 
 export const sealReaderSummaryWeeklyInputManifest = (
   input: ReaderSummaryWeeklyInputManifestEvidence,
@@ -144,8 +221,38 @@ export const sealReaderSummaryWeeklyInputManifest = (
   }
 
   const days = input.days.map((day, index) => {
-    assertReaderSummaryWeeklyExactObject(day, dayKeys, `input day ${index + 1}`);
     const requestedUtcDate = utcDayAfter(weekStartedUtcDate, index);
+    if ("historicalPublicationEvidence" in day) {
+      assertReaderSummaryWeeklyExactObject(
+        day,
+        historicalDayKeys,
+        `historical input day ${index + 1}`,
+      );
+      const historicalAuthority = canonicalHistoricalAuthority(
+        day.historicalPublicationEvidence,
+        day.authorizationIdentity,
+      );
+      assertHistoricalSharedAuthority(historicalAuthority, {
+        requestedUtcDate,
+        tenantId,
+        workspaceId,
+        scope,
+      });
+      const githubAudit = historicalGitHubAudit(historicalAuthority);
+      const dailyCertification = canonicalHistoricalDailyCertification(
+        day.historicalDailyCertification,
+        historicalAuthority,
+        githubAudit,
+        { requestedUtcDate, tenantId, workspaceId, scope },
+      );
+      return deepFreezeReaderSummaryWeekly({
+        requestedUtcDate: readerSummaryWeeklyHistoricalGitHubDate,
+        githubAudit,
+        dailyCertification,
+        historicalAuthority,
+      });
+    }
+    assertReaderSummaryWeeklyExactObject(day, dayKeys, `input day ${index + 1}`);
     const githubAudit = certifyReaderSummaryWeeklyGitHubAudit(
       day.githubAuditEvidence,
     );
@@ -304,11 +411,6 @@ const assertCanonicalInputDay = (
     scope: ReaderSummaryWeeklyManifestScope;
   }>,
 ): void => {
-  assertReaderSummaryWeeklyExactObject(
-    day,
-    canonicalDayKeys,
-    `sealed input day ${requestedUtcDate}`,
-  );
   if (
     exactReaderSummaryWeeklyUtcDay(day.requestedUtcDate) !== requestedUtcDate
   ) {
@@ -316,6 +418,39 @@ const assertCanonicalInputDay = (
       `Reader summary weekly sealed input day does not bind ${requestedUtcDate}`,
     );
   }
+  if ("historicalAuthority" in day) {
+    assertReaderSummaryWeeklyExactObject(
+      day,
+      historicalCanonicalDayKeys,
+      `sealed input day ${requestedUtcDate}`,
+    );
+    const historicalAuthority = assertHistoricalAuthority(
+      day.historicalAuthority,
+    );
+    assertHistoricalSharedAuthority(historicalAuthority, {
+      requestedUtcDate,
+      ...authority,
+    });
+    const githubAudit = historicalGitHubAudit(historicalAuthority);
+    if (canonicalizeReaderSummaryWeeklyJson(day.githubAudit).json !==
+        canonicalizeReaderSummaryWeeklyJson(githubAudit).json) {
+      throw new Error(
+        "Reader summary weekly historical GitHub authority binding is invalid",
+      );
+    }
+    canonicalHistoricalDailyCertification(
+      day.dailyCertification,
+      historicalAuthority,
+      githubAudit,
+      { requestedUtcDate, ...authority },
+    );
+    return;
+  }
+  assertReaderSummaryWeeklyExactObject(
+    day,
+    canonicalDayKeys,
+    `sealed input day ${requestedUtcDate}`,
+  );
   assertReaderSummaryWeeklyCanonicalGitHubAudit(day.githubAudit);
   if (day.githubAudit.requestedUtcDay !== requestedUtcDate) {
     throw new Error(
@@ -329,9 +464,155 @@ const assertCanonicalInputDay = (
   );
 };
 
+const canonicalHistoricalAuthority = (
+  evidence: ReaderSummaryWeeklyPersistedPublicationEvidence,
+  authorizationIdentity:
+    typeof readerSummaryWeeklyHistoricalGitHubAuthorizationIdentity,
+): ReaderSummaryWeeklyHistoricalPublicationAuthority => {
+  return assertHistoricalAuthority({
+    ...evidence,
+    authorizationIdentity,
+  });
+};
+
+const assertHistoricalAuthority = (
+  input: ReaderSummaryWeeklyHistoricalPublicationAuthority,
+): ReaderSummaryWeeklyHistoricalPublicationAuthority => {
+  assertReaderSummaryWeeklyExactObject(
+    input,
+    historicalAuthorityKeys,
+    "historical publication authority",
+    { allowAuthoritativeHashes: true },
+  );
+  const body = Object.fromEntries(
+    historicalAuthorityBodyKeys.map((key) => [key, input[key]]),
+  );
+  const canonical = canonicalizeReaderSummaryWeeklyJson(
+    body,
+    "historical publication authority body",
+  );
+  assertReaderSummaryWeeklyCanonicalPublicationEvidence({
+    ...body,
+    identity: input.identity,
+    sha256: input.sha256,
+    canonicalJson: canonical.json,
+    byteLength: canonical.byteLength,
+    toBytes: (): Uint8Array => canonical.toBytes(),
+  });
+  const github = input.githubEvidence;
+  assertReaderSummaryWeeklyPublicationGitHubEvidence(github);
+  const githubCount = input.providerCounts.find(
+    (entry) => entry.providerKey === readerSummaryWeeklyGitHubProviderKey,
+  )?.count;
+  if (
+    input.schemaVersion !== readerSummaryWeeklyPublicationEvidenceSchemaVersion ||
+    input.authorizationIdentity !==
+      readerSummaryWeeklyHistoricalGitHubAuthorizationIdentity ||
+    input.requestedUtcDate !== readerSummaryWeeklyHistoricalGitHubDate ||
+    input.semanticStatus !== "COMPLETED" ||
+    github.schemaVersion !==
+      readerSummaryWeeklyPublicationGitHubEvidenceSchemaVersion ||
+    github.mode !== "historical_unavailable" ||
+    github.providerKey !== readerSummaryWeeklyGitHubProviderKey ||
+    github.requestedUtcDay !== readerSummaryWeeklyHistoricalGitHubDate ||
+    github.evidenceCount !== 0 ||
+    github.scanJobId !== null ||
+    github.sourceBindingId !== null ||
+    github.sourceProviderContentHash !== null ||
+    github.repositories.length !== 0 ||
+    githubCount !== 0 ||
+    input.providerEvidence.some(
+      (entry) => entry.providerKey === readerSummaryWeeklyGitHubProviderKey,
+    ) ||
+    input.identity !==
+      `${readerSummaryWeeklyPublicationEvidenceSchemaVersion}:${input.sha256}` ||
+    exactReaderSummaryWeeklySha256(
+      input.sha256,
+      "historical publication authority hash",
+    ) !== canonical.sha256
+  ) {
+    throw new Error(
+      "Reader summary weekly historical GitHub recovery authority is invalid",
+    );
+  }
+  return deepFreezeReaderSummaryWeekly(input);
+};
+
+const historicalGitHubAudit = (
+  authority: ReaderSummaryWeeklyHistoricalPublicationAuthority,
+): ReaderSummaryWeeklyHistoricalGitHubAudit => {
+  const githubEvidence = canonicalClone(authority.githubEvidence);
+  return deepFreezeReaderSummaryWeekly({
+    ...githubEvidence,
+    status: "historical_unavailable" as const,
+    authorizationIdentity: authority.authorizationIdentity,
+    identity:
+      `${authority.githubEvidence.schemaVersion}:${authority.githubEvidence.sha256}`,
+  });
+};
+
+const canonicalHistoricalDailyCertification = (
+  input: ReaderSummaryWeeklyHistoricalDailyCertification,
+  authority: ReaderSummaryWeeklyHistoricalPublicationAuthority,
+  githubAudit: ReaderSummaryWeeklyHistoricalGitHubAudit,
+  expected: Readonly<{
+    requestedUtcDate: string;
+    tenantId: string;
+    workspaceId: string;
+    scope: ReaderSummaryWeeklyManifestScope;
+  }>,
+): ReaderSummaryWeeklyHistoricalDailyCertification => {
+  const certification = canonicalClone(input);
+  assertCanonicalDailyCertification(certification, githubAudit, expected);
+  if (
+    certification.requestedUtcDate !==
+      readerSummaryWeeklyHistoricalGitHubDate ||
+    certification.publicationId !== authority.publicationId ||
+    certification.artifactId !== authority.artifactId ||
+    certification.jobId !== authority.jobId ||
+    certification.reportId !== authority.reportId ||
+    certification.proofId !== authority.proofId ||
+    certification.reportSha256 !== authority.reportSha256 ||
+    certification.exactProofSha256 !== authority.proofSha256 ||
+    certification.artifactPayloadSha256 !== authority.artifactPayloadSha256 ||
+    canonicalizeReaderSummaryWeeklyJson(certification.providerCounts).json !==
+      canonicalizeReaderSummaryWeeklyJson(authority.providerCounts).json
+  ) {
+    throw new Error(
+      "Reader summary weekly historical daily certification authority is invalid",
+    );
+  }
+  return deepFreezeReaderSummaryWeekly(certification);
+};
+
+const canonicalClone = <T>(value: T): T =>
+  JSON.parse(canonicalizeReaderSummaryWeeklyJson(value).json) as T;
+
+const assertHistoricalSharedAuthority = (
+  authority: ReaderSummaryWeeklyHistoricalPublicationAuthority,
+  expected: Readonly<{
+    requestedUtcDate: string;
+    tenantId: string;
+    workspaceId: string;
+    scope: ReaderSummaryWeeklyManifestScope;
+  }>,
+): void => {
+  if (
+    authority.requestedUtcDate !== expected.requestedUtcDate ||
+    authority.tenantId !== expected.tenantId ||
+    authority.workspaceId !== expected.workspaceId ||
+    readerSummaryWeeklyScopeKey(authority.scope) !==
+      readerSummaryWeeklyScopeKey(expected.scope)
+  ) {
+    throw new Error(
+      `Reader summary weekly day ${expected.requestedUtcDate} has mixed authority`,
+    );
+  }
+};
+
 const assertCanonicalDailyCertification = (
   certification: ReaderSummaryWeeklyCanonicalDailyCertification,
-  githubAudit: ReaderSummaryWeeklyCanonicalGitHubAudit,
+  githubAudit: ReaderSummaryWeeklyCanonicalInputDay["githubAudit"],
   expected: Readonly<{
     requestedUtcDate: string;
     tenantId: string;
@@ -478,7 +759,7 @@ const assertUniqueCrossDayAuthorities = (
   }
 };
 
-const assertUnique = (values: readonly string[], label: string): void => {
+const assertUnique = (values: readonly unknown[], label: string): void => {
   if (new Set(values).size !== values.length) {
     throw new Error(`Reader summary weekly input manifest has duplicate ${label}`);
   }

@@ -15,9 +15,14 @@ import {
 } from "../domain/value-objects/reader-summary-weekly-daily-certification";
 import {
   assertReaderSummaryWeeklySealedInputManifest,
+  readerSummaryWeeklyHistoricalGitHubAuthorizationIdentity,
+  readerSummaryWeeklyHistoricalGitHubDate,
   readerSummaryWeeklyInputManifestSchemaVersion,
   type ReaderSummaryWeeklySealedInputManifest,
 } from "../domain/value-objects/reader-summary-weekly-input-manifest";
+import {
+  readerSummaryWeeklyPublicationGitHubEvidenceSchemaVersion,
+} from "../domain/value-objects/reader-summary-weekly-publication-github-evidence";
 export const readerSummaryWeeklyModelInputSchemaVersion =
   "reader_summary.weekly_model_input.v1" as const;
 export const readerSummaryWeeklyModelOutputSchemaVersion =
@@ -59,12 +64,24 @@ export type ReaderSummaryWeeklyModelEvidenceInput = Readonly<{
 export type ReaderSummaryWeeklyModelProviderCount = Readonly<{
   providerKey: ReaderSummaryWeeklyCanonicalProviderKey; count: number;
 }>;
-export type ReaderSummaryWeeklyModelDay = Readonly<{
+type ReaderSummaryWeeklyVerifiedModelDay = Readonly<{
   date: string; dailyCertificationId: string; dailyCertificationSha: string;
   dailyCertificationStatus: "certified"; githubBoardId: string;
   githubBoardSha: string; githubBoardStatus: "verified";
   providerCounts: readonly ReaderSummaryWeeklyModelProviderCount[];
 }>;
+type ReaderSummaryWeeklyHistoricalModelDay = Readonly<{
+  date: typeof readerSummaryWeeklyHistoricalGitHubDate;
+  dailyCertificationId: string; dailyCertificationSha: string;
+  dailyCertificationStatus: "certified"; githubBoardId: string;
+  githubBoardSha: string; githubBoardStatus: "historical_unavailable";
+  githubAuthorizationIdentity:
+    typeof readerSummaryWeeklyHistoricalGitHubAuthorizationIdentity;
+  providerCounts: readonly ReaderSummaryWeeklyModelProviderCount[];
+}>;
+export type ReaderSummaryWeeklyModelDay =
+  | ReaderSummaryWeeklyVerifiedModelDay
+  | ReaderSummaryWeeklyHistoricalModelDay;
 export type ReaderSummaryWeeklyModelStory =
   ReaderSummaryWeeklyModelStoryEvidence;
 export type ReaderSummaryWeeklyModelObservation =
@@ -113,7 +130,13 @@ const modelInputBodyKeys = modelInputKeys.filter((key) =>
 ) as readonly Exclude<(typeof modelInputKeys)[number], "sealId" | "sealSha">[];
 const dayKeys = ["date", "dailyCertificationId", "dailyCertificationSha",
   "dailyCertificationStatus", "githubBoardId", "githubBoardSha",
-  "githubBoardStatus", "providerCounts"] as const;
+  "githubBoardStatus",
+  "providerCounts"] as const;
+const historicalDayKeys = [
+  "date", "dailyCertificationId", "dailyCertificationSha",
+  "dailyCertificationStatus", "githubBoardId", "githubBoardSha",
+  "githubBoardStatus", "githubAuthorizationIdentity", "providerCounts",
+] as const;
 const storyKeys = ["storyId", "label"] as const;
 const observationKeys = ["observationId", "storyId", "observedOn",
   "providerKey", "text", "claimSupport", "citationIds",
@@ -329,16 +352,30 @@ const sameEvidenceAuthority = (
 const modelDays = (
   manifest: ReaderSummaryWeeklySealedInputManifest,
 ): readonly ReaderSummaryWeeklyModelDay[] =>
-  deepFreezeReaderSummaryWeekly(manifest.days.map((entry) => ({
-    date: entry.requestedUtcDate,
-    dailyCertificationId: entry.dailyCertification.identity,
-    dailyCertificationSha: entry.dailyCertification.sha256,
-    dailyCertificationStatus: entry.dailyCertification.status,
-    githubBoardId: entry.githubAudit.identity,
-    githubBoardSha: entry.githubAudit.sha256,
-    githubBoardStatus: entry.githubAudit.status,
-    providerCounts: entry.dailyCertification.providerCounts,
-  })));
+  deepFreezeReaderSummaryWeekly(manifest.days.map((entry) => {
+    const day = {
+      date: entry.requestedUtcDate,
+      dailyCertificationId: entry.dailyCertification.identity,
+      dailyCertificationSha: entry.dailyCertification.sha256,
+      dailyCertificationStatus: entry.dailyCertification.status,
+      githubBoardId: entry.githubAudit.identity,
+      githubBoardSha: entry.githubAudit.sha256,
+      githubBoardStatus: entry.githubAudit.status,
+      providerCounts: entry.dailyCertification.providerCounts,
+    };
+    return entry.githubAudit.status === "historical_unavailable"
+      ? {
+          ...day,
+          date: readerSummaryWeeklyHistoricalGitHubDate,
+          githubBoardStatus: "historical_unavailable" as const,
+          githubAuthorizationIdentity:
+            entry.githubAudit.authorizationIdentity,
+        }
+      : {
+          ...day,
+          githubBoardStatus: "verified" as const,
+        };
+  }));
 const assertModelDays = (
   input: readonly ReaderSummaryWeeklyModelDay[],
   weekStartedOn: string,
@@ -348,20 +385,53 @@ const assertModelDays = (
     throw new Error("Reader summary weekly model input requires 7/7 days");
   }
   input.forEach((day, index) => {
-    assertReaderSummaryWeeklyExactObject(day, dayKeys,
-      `weekly model day ${index + 1}`, { allowAuthoritativeHashes: true });
     if (day.date !== utcDayAfter(weekStartedOn, index) ||
-        day.dailyCertificationStatus !== "certified" ||
-        day.githubBoardStatus !== "verified") {
+        day.dailyCertificationStatus !== "certified") {
       throw new Error("Reader summary weekly model day is not certified");
     }
     exactReaderSummaryWeeklyIdentity(
       day.dailyCertificationId, "daily certification id");
     exactReaderSummaryWeeklySha256(
       day.dailyCertificationSha, "daily certification hash");
-    exactReaderSummaryWeeklyIdentity(day.githubBoardId, "GitHub board id");
-    exactReaderSummaryWeeklySha256(day.githubBoardSha, "GitHub board hash");
-    canonicalProviderCounts(day.providerCounts);
+    const githubBoardSha = exactReaderSummaryWeeklySha256(
+      day.githubBoardSha,
+      "GitHub board hash",
+    );
+    const githubBoardStatus: unknown = day.githubBoardStatus;
+    if (githubBoardStatus === "historical_unavailable") {
+      assertReaderSummaryWeeklyExactObject(
+        day,
+        historicalDayKeys,
+        `weekly model day ${index + 1}`,
+        { allowAuthoritativeHashes: true },
+      );
+      if (
+        !("githubAuthorizationIdentity" in day) ||
+        day.date !== readerSummaryWeeklyHistoricalGitHubDate ||
+        day.githubAuthorizationIdentity !==
+          readerSummaryWeeklyHistoricalGitHubAuthorizationIdentity ||
+        day.githubBoardId !==
+          `${readerSummaryWeeklyPublicationGitHubEvidenceSchemaVersion}:${githubBoardSha}`
+      ) {
+        throw new Error(
+          "Reader summary weekly model GitHub authority is invalid",
+        );
+      }
+    } else if (githubBoardStatus === "verified") {
+      assertReaderSummaryWeeklyExactObject(
+        day,
+        dayKeys,
+        `weekly model day ${index + 1}`,
+        { allowAuthoritativeHashes: true },
+      );
+      exactReaderSummaryWeeklyIdentity(day.githubBoardId, "GitHub board id");
+    } else {
+      throw new Error("Reader summary weekly model day is not certified");
+    }
+    canonicalProviderCounts(
+      day.providerCounts,
+      githubBoardStatus,
+    );
   });
   assertUnique(input.map((day) => day.date), "model days");
   assertUnique(input.map((day) => day.dailyCertificationId),
@@ -371,6 +441,7 @@ const assertModelDays = (
 };
 const canonicalProviderCounts = (
   input: readonly ReaderSummaryWeeklyModelProviderCount[],
+  githubBoardStatus: ReaderSummaryWeeklyModelDay["githubBoardStatus"],
 ): void => {
   assertReaderSummaryWeeklyDenseArray(input, "model day provider counts");
   if (input.length !== readerSummaryWeeklyCanonicalProviderKeys.length) {
@@ -386,9 +457,11 @@ const canonicalProviderCounts = (
       throw new Error("Reader summary weekly provider count is invalid");
     }
   });
-  if (input[0]?.count !== 10) {
+  const expectedGitHubCount =
+    githubBoardStatus === "verified" ? 10 : 0;
+  if (input[0]?.count !== expectedGitHubCount) {
     throw new Error(
-      "Reader summary weekly day does not bind a verified GitHub board");
+      "Reader summary weekly day does not bind truthful GitHub evidence");
   }
 };
 const boundDay = (

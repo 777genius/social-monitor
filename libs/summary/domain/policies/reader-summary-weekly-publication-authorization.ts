@@ -283,6 +283,46 @@ const assertManifestBinding = (
   ) {
     throw new Error("Reader summary weekly publication has a mismatched sealed manifest");
   }
+  assertModelDayBindings(manifest, modelInput);
+};
+
+const assertModelDayBindings = (
+  manifest: ReaderSummaryWeeklySealedInputManifest,
+  modelInput: ReaderSummaryWeeklyArtifactProps["input"],
+): void => {
+  if (modelInput.days.length !== manifest.days.length) {
+    throw new Error(
+      "Reader summary weekly publication model days do not match the manifest",
+    );
+  }
+  manifest.days.forEach((manifestDay, index) => {
+    const modelDay = modelInput.days[index];
+    const expected = {
+      date: manifestDay.requestedUtcDate,
+      dailyCertificationId: manifestDay.dailyCertification.identity,
+      dailyCertificationSha: manifestDay.dailyCertification.sha256,
+      dailyCertificationStatus: manifestDay.dailyCertification.status,
+      githubBoardId: manifestDay.githubAudit.identity,
+      githubBoardSha: manifestDay.githubAudit.sha256,
+      githubBoardStatus: manifestDay.githubAudit.status,
+      ...(manifestDay.githubAudit.status === "historical_unavailable"
+        ? {
+            githubAuthorizationIdentity:
+              manifestDay.githubAudit.authorizationIdentity,
+          }
+        : {}),
+      providerCounts: manifestDay.dailyCertification.providerCounts,
+    };
+    if (
+      modelDay === undefined ||
+      canonicalizeReaderSummaryWeeklyJson(modelDay).json !==
+        canonicalizeReaderSummaryWeeklyJson(expected).json
+    ) {
+      throw new Error(
+        `Reader summary weekly publication model day does not match the manifest for ${manifestDay.requestedUtcDate}`,
+      );
+    }
+  });
 };
 
 const exactAuthorities = (
@@ -342,6 +382,19 @@ const assertAuthorityBinding = (
       `Reader summary weekly publication DB authority does not match the sealed manifest for ${day.requestedUtcDate}`,
     );
   }
+  if (
+    "historicalAuthority" in day &&
+    (authority.publicationEvidenceIdentity !==
+      day.historicalAuthority.identity ||
+      authority.publicationEvidenceSha256 !==
+        day.historicalAuthority.sha256 ||
+      authority.providerEvidenceSha256 !==
+        day.historicalAuthority.providerEvidenceSha256)
+  ) {
+    throw new Error(
+      `Reader summary weekly publication historical authority does not match ${day.requestedUtcDate}`,
+    );
+  }
   const actualCounts = certification.providerCounts.map((entry) => ({
     providerKey: entry.providerKey,
     count: authority.evidence.filter(
@@ -367,6 +420,23 @@ const assertStrictGitHubBoard = (
   const github = authority.evidence.filter(
     (item) => item.providerKey === "github-trending-page",
   );
+  if (board.status === "historical_unavailable") {
+    if (
+      !("historicalAuthority" in day) ||
+      github.length !== 0 ||
+      board.mode !== "historical_unavailable" ||
+      board.evidenceCount !== 0 ||
+      board.repositories.length !== 0 ||
+      board.scanJobId !== null ||
+      board.sourceBindingId !== null ||
+      authority.githubEvidenceSha256 !== board.sha256
+    ) {
+      throw new Error(
+        `Reader summary weekly publication has invalid historical GitHub authority for ${day.requestedUtcDate}`,
+      );
+    }
+    return;
+  }
   const repositories = board.repositories.map((repository) => {
     const matching = github.filter(
       (item) =>
@@ -447,7 +517,9 @@ const exactCitationCoverage = (
       day === undefined ||
       authority === undefined ||
       citation.dailyCertificationId !== day.dailyCertification.identity ||
-      citation.dailyCertificationSha !== day.dailyCertification.sha256
+      citation.dailyCertificationSha !== day.dailyCertification.sha256 ||
+      (citation.providerKey === "github-trending-page" &&
+        day.githubAudit.status === "historical_unavailable")
     ) {
       throw new Error(
         `Reader summary weekly citation ${citation.citationId} is outside the sealed week`,
