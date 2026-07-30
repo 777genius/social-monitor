@@ -622,9 +622,11 @@ reconcile_postgres_runtime_weekly_timer() {
       fail 'systemd weekly timer could not be started'; return 1; } ;;
     *) fail "systemd weekly timer active state is not reconcilable: $active_state"; return 1 ;;
   esac
-  unit_state=$(systemctl show --property=UnitFileState --value "$timer") &&
-    active_state=$(systemctl show --property=ActiveState --value "$timer") &&
-    next_trigger=$(systemctl show --property=NextElapseUSecRealtime --value "$timer") ||
+  unit_state=$(systemctl show --property=UnitFileState --value "$timer") ||
+    { fail 'systemd weekly timer proof is unavailable'; return 1; }
+  active_state=$(systemctl show --property=ActiveState --value "$timer") ||
+    { fail 'systemd weekly timer proof is unavailable'; return 1; }
+  next_trigger=$(systemctl show --property=NextElapseUSecRealtime --value "$timer") ||
     { fail 'systemd weekly timer proof is unavailable'; return 1; }
   [[ $unit_state == enabled && $active_state == active && -n $next_trigger ]] ||
     { fail "systemd weekly timer proof is invalid: $unit_state/$active_state"; return 1; }
