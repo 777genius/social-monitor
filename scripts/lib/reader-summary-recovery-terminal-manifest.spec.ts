@@ -188,7 +188,7 @@ describe("reader summary recovery terminal manifest", () => {
   });
 
   it("rejects divergent replay and dump mutation during extraction", async () => {
-    const fixture = filesystemFixture();
+    const fixture = filesystemFixture(0o600);
     const firstClient = fakeClient(databaseRow, [evidenceRow("reddit", 1)]);
     const params = extractionParams(fixture, firstClient);
     await extractReaderSummaryRecoveryTerminalManifest(params);
@@ -217,11 +217,11 @@ describe("reader summary recovery terminal manifest", () => {
     ).rejects.toThrow("source dump changed");
   });
 
-  function filesystemFixture() {
+  function filesystemFixture(mode = 0o400) {
     directory = mkdtempSync(join(tmpdir(), "terminal-manifest-core-"));
     const dumpPath = join(directory, "source.dump");
-    writeFileSync(dumpPath, "restored scratch dump bytes\n", { mode: 0o400 });
-    chmodSync(dumpPath, 0o400);
+    writeFileSync(dumpPath, "restored scratch dump bytes\n", { mode });
+    chmodSync(dumpPath, mode);
     return {
       dumpPath,
       outputPath: join(directory, "manifest.json"),

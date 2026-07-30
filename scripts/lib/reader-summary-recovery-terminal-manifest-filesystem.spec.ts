@@ -112,8 +112,8 @@ describe("recovery terminal manifest trusted filesystem", () => {
   it("holds and rechecks the exact dump path against mutation", () => {
     directory = mkdtempSync(join(tmpdir(), "terminal-fs-source-"));
     const dumpPath = join(directory, "restored.dump");
-    writeFileSync(dumpPath, "exact dump\n", { mode: 0o400 });
-    chmodSync(dumpPath, 0o400);
+    writeFileSync(dumpPath, "exact dump\n", { mode: 0o600 });
+    chmodSync(dumpPath, 0o600);
     const expectedSha256 = createHash("sha256")
       .update(readFileSync(dumpPath))
       .digest("hex");
