@@ -117,8 +117,11 @@ write_registry_binding() {
 }
 write_fake_process() {
   local root=$1 pid=$2 state=$3 kthread=$4 starttime=$5 resources=$6
-  local recheck_starttime=${7:-} process_dir=$root/.social-monitor-janitor-test-proc/$pid
+  local recheck_starttime=${7:-} scan_sequence=${8:-} held_path=${9:-$root/control}
+  local process_root=$root/.social-monitor-janitor-test-proc process_dir
   local stat_tail=S field
+  [[ -z $scan_sequence ]] || process_root=$process_root/.scan-$scan_sequence
+  process_dir=$process_root/$pid
   mkdir -p "$process_dir/fd"
   for ((field = 4; field <= 21; field++)); do stat_tail+=' 0'; done
   printf '%s (fixture) %s %s\n' "$pid" "$stat_tail" "$starttime" >"$process_dir/stat"
@@ -129,7 +132,7 @@ write_fake_process() {
   printf 'Name:\tfixture\nState:\t%s\nKthread:\t%s\n' "$state" "$kthread" \
     >"$process_dir/status"
   if [[ $resources == yes ]]; then
-    ln -s "$root/control" "$process_dir/cwd"
+    ln -s "$held_path" "$process_dir/cwd"
     ln -s / "$process_dir/root"
     ln -s /usr/bin/bash "$process_dir/exe"
   fi
@@ -648,6 +651,47 @@ if run_janitor "$root" >"$root/live-unreadable.out" 2>"$root/live-unreadable.err
 fi
 [[ $(<"$root/live-unreadable.err") == *'process-use snapshot was incomplete'* ]] ||
   fail 'stable live unreadable process reported the wrong blocker'
+
+root=$(new_fixture transient-live-process-recheck)
+job=social-monitor-transient-live-process-recheck-worker
+target=$(add_worktree "$root" "$job")
+write_ledger "$root" "$job" attempt-1 "$target" rejected
+mkdir -p "$root/.social-monitor-janitor-test-proc/.scan-1" \
+  "$root/.social-monitor-janitor-test-proc/.scan-3"
+write_fake_process "$root" 211 'S (sleeping)' 0 310 no "" 2
+output=$(run_janitor "$root" --apply)
+[[ ! -e $target && $output == *"removed ledger=$job--attempt-1 worktree=$target"* ]] ||
+  fail 'transient incomplete live process recheck did not retry and apply'
+
+root=$(new_fixture persistent-live-process-recheck)
+job=social-monitor-persistent-live-process-recheck-worker
+target=$(add_worktree "$root" "$job")
+write_ledger "$root" "$job" attempt-1 "$target" rejected
+mkdir -p "$root/.social-monitor-janitor-test-proc/.scan-1"
+for scan_sequence in 2 3 4; do
+  write_fake_process "$root" $((220 + scan_sequence)) 'S (sleeping)' 0 \
+    $((320 + scan_sequence)) no "" "$scan_sequence"
+done
+if run_janitor "$root" --apply >"$root/persistent-recheck.out" \
+  2>"$root/persistent-recheck.err"; then
+  fail 'persistent incomplete live process recheck did not fail closed'
+fi
+[[ -d $target && $(<"$root/persistent-recheck.err") == *'process-use recheck was incomplete'* ]] ||
+  fail 'persistent incomplete live process recheck changed the target or blocker'
+
+root=$(new_fixture active-during-live-process-retry)
+job=social-monitor-active-during-live-process-retry-worker
+target=$(add_worktree "$root" "$job")
+write_ledger "$root" "$job" attempt-1 "$target" rejected
+mkdir -p "$root/.social-monitor-janitor-test-proc/.scan-1" \
+  "$root/.social-monitor-janitor-test-proc/.scan-4"
+write_fake_process "$root" 231 'S (sleeping)' 0 331 no "" 2
+write_fake_process "$root" 232 'S (sleeping)' 0 332 yes "" 3 "$target"
+if run_janitor "$root" --apply >"$root/active-retry.out" 2>"$root/active-retry.err"; then
+  fail 'active process discovered during retry did not block immediately'
+fi
+[[ -d $target && $(<"$root/active-retry.err") == *"process entered worktree before apply: $target"* ]] ||
+  fail 'active process discovered during retry changed the target or blocker'
 
 root=$(new_fixture reused-process-id)
 job=social-monitor-reused-process-id-worker

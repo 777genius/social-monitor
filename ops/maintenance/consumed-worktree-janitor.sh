@@ -4,7 +4,7 @@ export GIT_OPTIONAL_LOCKS=0
 readonly GIT=/usr/bin/git JQ=/usr/bin/jq REALPATH=/usr/bin/realpath FLOCK=/usr/bin/flock DU=/usr/bin/du READLINK=/usr/bin/readlink
 readonly SHA256SUM=/usr/bin/sha256sum DATE=/usr/bin/date MKTEMP=/usr/bin/mktemp CP=/usr/bin/cp MV=/usr/bin/mv UNLINK=/usr/bin/unlink
 readonly CMP=/usr/bin/cmp STAT=/usr/bin/stat SORT=/usr/bin/sort
-readonly SYNC=/usr/bin/sync SLEEP=/usr/bin/sleep PROCESS_SNAPSHOT_LIMIT=65536
+readonly SYNC=/usr/bin/sync SLEEP=/usr/bin/sleep PROCESS_SNAPSHOT_LIMIT=65536 PROCESS_RECHECK_ATTEMPTS=3 PROCESS_RECHECK_DELAY_SECONDS=0.05
 MODE=dry-run MODE_SEEN=0 TEST_ROOT= AUDIT_TMP= EXPECTED_PLAN_SHA256=
 FAST_RELOCATED=${FAST_RELOCATED:-${SOCIAL_MONITOR_JANITOR_FAST_RELOCATED:-0}}
 fail() { printf 'consumed-worktree-janitor: %s\n' "$*" >&2; exit 1; }
@@ -588,8 +588,7 @@ job_has_active_state() {
   done
   return 1
 }
-PROCESS_SCAN_INCOMPLETE=0
-declare -a PLANNING_PROCESS_PATHS=()
+PROCESS_SCAN_INCOMPLETE=0 PROCESS_SCAN_SEQUENCE=0; declare -a PLANNING_PROCESS_PATHS=()
 process_entry_vanished() { [[ ! -e $1 && ! -L $1 ]]; }
 inspect_process_path() {
   local raw_path=$1 scan_mode=$2 target=${3:-}
@@ -700,31 +699,32 @@ scan_proc_process_evidence() { local proc_root=$1 scan_mode=$2 target=${3:-}
     done
   done; return 1
 }
-scan_process_evidence() { local scan_mode=$1 target=${2:-} test_proc=$PROJECT_ROOT/.social-monitor-janitor-test-proc
+scan_process_evidence() { local scan_mode=$1 target=${2:-} test_proc=$PROJECT_ROOT/.social-monitor-janitor-test-proc staged_proc
   if [[ -n $TEST_ROOT ]]; then
     scan_synthetic_process_evidence "$scan_mode" "$target" && return 0
     [[ -d $test_proc && ! -L $test_proc ]] || return 1
+    PROCESS_SCAN_SEQUENCE=$((PROCESS_SCAN_SEQUENCE + 1)); staged_proc=$test_proc/.scan-$PROCESS_SCAN_SEQUENCE
+    [[ ! -e $staged_proc && ! -L $staged_proc ]] || { [[ -d $staged_proc && ! -L $staged_proc ]] || fail 'staged synthetic process evidence is unsafe'; test_proc=$staged_proc; }
     scan_proc_process_evidence "$test_proc" "$scan_mode" "$target"
   else scan_proc_process_evidence /proc "$scan_mode" "$target"; fi
 }
-snapshot_process_evidence() { PROCESS_SCAN_INCOMPLETE=0
-  PLANNING_PROCESS_PATHS=()
+snapshot_process_evidence() { PROCESS_SCAN_INCOMPLETE=0; PLANNING_PROCESS_PATHS=()
   scan_process_evidence snapshot || true
   ((PROCESS_SCAN_INCOMPLETE == 0)) || fail 'process-use snapshot was incomplete; refusing to proceed'
 }
 planning_process_uses_worktree() { local target=$1 process_path
   for process_path in "${PLANNING_PROCESS_PATHS[@]}"; do
-    case $process_path in
-      "$target" | "$target"/*) return 0 ;;
-    esac
+    case $process_path in "$target" | "$target"/*) return 0 ;; esac
   done
   return 1
 }
-live_process_uses_worktree() { local target=$1
-  PROCESS_SCAN_INCOMPLETE=0
-  scan_process_evidence live "$target" && return 0
-  ((PROCESS_SCAN_INCOMPLETE == 0)) || fail 'process-use recheck was incomplete'
-  return 1
+live_process_uses_worktree() { local target=$1 attempt
+  for ((attempt = 1; attempt <= PROCESS_RECHECK_ATTEMPTS; attempt++)); do
+    PROCESS_SCAN_INCOMPLETE=0; scan_process_evidence live "$target" && return 0
+    ((PROCESS_SCAN_INCOMPLETE != 0)) || return 1
+    ((attempt < PROCESS_RECHECK_ATTEMPTS)) || fail 'process-use recheck was incomplete'
+    "$SLEEP" "$PROCESS_RECHECK_DELAY_SECONDS"
+  done
 }
 is_registered_now() {
   local target=$1 listing line path
