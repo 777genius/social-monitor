@@ -37,6 +37,50 @@ wait_volume2_checkpoint() {
   fail "volume2 race did not reach checkpoint: $checkpoint"
 }
 
+root=$(new_fixture volume2-nonterminal-history)
+job=social-monitor-volume2-nonterminal-history
+target=$(add_volume2_worktree "$root" "$job" direct)
+mkdir -p "$root/worker-jobs/$job"
+jq -n --arg job "$job" --arg workspace "$target" \
+  '{schemaVersion:1,jobId:$job,attemptId:"controller:run",status:"completed",
+    closedAt:"2026-07-22T00:00:00.000Z",consumedAt:"2026-07-22T00:00:00.000Z",
+    archivePath:"/historical/terminal.json",backup:{workspace:$workspace,
+    statusPath:"/historical/status",patchPath:"/historical/patch",numstatPath:"/historical/numstat"},
+    notes:[{status:"completed",text:"historical terminal state"}]}' \
+  >"$root/control/consumed-output-ledger/items/$job--controller_run.json"
+output=$(run_janitor "$root" --dry-run-volume2)
+[[ $output != *"would-remove ledger=$job--controller_run"* && -d $target ]] ||
+  fail 'historical nonterminal JSON became a volume2 deletion candidate'
+
+for controller_version in controller-v3 controller-v4; do
+  root=$(new_fixture volume2-$controller_version-liveness)
+  job=social-monitor-volume2-$controller_version-liveness
+  target=$(add_volume2_worktree "$root" "$job" direct)
+  write_ledger "$root" "$job" attempt-1 "$target" rejected
+  operation=$root/worker-jobs/$controller_version/project-control-operations/op-1
+  mkdir -p "$operation"
+  jq -n --arg workspace "$target" '{status:"running",workspacePath:$workspace}' \
+    >"$operation/operation.json"
+  if run_janitor "$root" --dry-run-volume2 >"$root/liveness.out" 2>"$root/liveness.err"; then
+    fail "$controller_version liveness was not fail-closed"
+  fi
+  [[ -d $target ]] || fail "$controller_version liveness removed its target"
+done
+
+root=$(new_fixture volume2-link-safety)
+job=social-monitor-volume2-link-safety
+target=$(add_volume2_worktree "$root" "$job" direct)
+outside=$root/outside-sentinel
+printf 'outside\n' >"$outside"
+ln -s "$outside" "$target/symlink-entry"
+ln "$outside" "$target/hardlink-entry"
+write_ledger "$root" "$job" attempt-1 "$target" rejected
+output=$(run_janitor "$root" --dry-run-volume2)
+plan=$(volume2_plan_sha "$output")
+run_janitor "$root" --apply-volume2 --expected-plan-sha256 "$plan" >/dev/null
+[[ ! -e $target && -f $outside && $(<"$outside") == 'outside' ]] ||
+  fail 'descriptor-relative purge followed a symlink or hardlink'
+
 root=$(new_fixture volume2-dedicated-dry-run)
 direct_job=social-monitor-volume2-dedicated-direct
 direct_target=$(add_volume2_worktree "$root" "$direct_job" direct)
@@ -82,8 +126,9 @@ output=$(run_janitor "$root" --apply-volume2 --expected-plan-sha256 "$plan")
   ! -e $root/worktrees/.volume2/social-monitor-volume2-success-direct &&
   ! -e $root/worktrees/.volume2/social-monitor-volume2-success-nested/worktree ]] ||
   fail 'volume2 apply did not remove both exact targets'
-jq -e -s 'length == 4 and
+jq -e -s 'length == 6 and
   ([.[] | select(.status == "prepared")] | length) == 2 and
+  ([.[] | select(.status == "purged")] | length) == 2 and
   ([.[] | select(.status == "removed")] | length) == 2 and
   all(.[]; (.targetIdentity | test("^[0-9]+:[0-9]+:[0-9]+:[0-9]+:[0-7]+$")) and
     (.volumeMountIdentity | test("^/[^|]*\\|[0-9]+:[0-9]+:[0-9]+:[0-9]+:[0-7]+\\|[0-9]+:[0-9]+:[0-9]+:[0-9]+:[0-7]+$")) and
@@ -93,7 +138,7 @@ jq -e -s 'length == 4 and
   fail 'volume2 apply receipts did not bind identity and accounting evidence'
 output=$(run_janitor "$root" --apply-volume2 --expected-plan-sha256 "$plan")
 [[ $output == *'replayed=2'* ]] || fail 'completed volume2 receipts did not replay'
-jq -e -s 'length == 4' "$root/control/consumed-worktree-janitor-volume2.audit.jsonl" >/dev/null ||
+jq -e -s 'length == 6' "$root/control/consumed-worktree-janitor-volume2.audit.jsonl" >/dev/null ||
   fail 'completed volume2 replay duplicated receipts'
 
 root=$(new_fixture volume2-foreign-sibling)
@@ -151,7 +196,7 @@ for unsafe_case in target-symlink parent-symlink; do
   assert_volume2_rejected "$root" "$preserved" "$plan" "$unsafe_case"
 done
 
-for race_case in mount stat nested-parent; do
+for race_case in mount stat nested-parent root-swap; do
   root=$(new_fixture volume2-race-$race_case)
   job=social-monitor-volume2-race-$race_case
   kind=direct; [[ $race_case != nested-parent ]] || kind=nested
@@ -167,10 +212,22 @@ for race_case in mount stat nested-parent; do
     mount) changed=$root/worktrees/.volume2 ;;
     stat) changed=$target ;;
     nested-parent) changed=${target%/*} ;;
+    root-swap)
+      mv "$root/worktrees/.volume2" "$root/worktrees/.volume2.original"
+      mkdir "$root/worktrees/.volume2"
+      chmod 755 "$root/worktrees/.volume2"
+      changed=$root/worktrees/.volume2
+      ;;
   esac
-  chmod 700 "$changed"; : >"$checkpoint.continue"
+  [[ $race_case == root-swap ]] || chmod 700 "$changed"
+  : >"$checkpoint.continue"
   if wait "$race_pid"; then fail "volume2 $race_case identity race unexpectedly applied"; fi
-  chmod 755 "$changed"
+  if [[ $race_case == root-swap ]]; then
+    rmdir "$root/worktrees/.volume2"
+    mv "$root/worktrees/.volume2.original" "$root/worktrees/.volume2"
+  else
+    chmod 755 "$changed"
+  fi
   [[ -d $target ]] || fail "volume2 $race_case identity race removed its target"
 done
 
@@ -211,13 +268,24 @@ assert_volume2_rejected "$root" "$target" "$plan" stale-plan
 [[ ! -e $root/control/consumed-worktree-janitor-volume2.audit.jsonl ]] ||
   fail 'stale volume2 plan wrote a receipt'
 
+root=$(new_fixture volume2-lifecycle-lock-swap)
+job=social-monitor-volume2-lifecycle-lock-swap
+target=$(add_volume2_worktree "$root" "$job" direct)
+write_ledger "$root" "$job" attempt-1 "$target" rejected
+plan=$(volume2_plan_sha "$(run_janitor "$root" --dry-run-volume2)")
+mv "$root/control/worktree-cleanup.lock" "$root/control/worktree-cleanup.lock.old"
+: >"$root/control/worktree-cleanup.lock"
+assert_volume2_rejected "$root" "$target" "$plan" lifecycle-lock-swap
+[[ ! -e $root/control/consumed-worktree-janitor-volume2.audit.jsonl ]] ||
+  fail 'lifecycle lock swap wrote a receipt'
+
 root=$(new_fixture volume2-receipt-tamper)
 job=social-monitor-volume2-receipt-tamper
 target=$(add_volume2_worktree "$root" "$job" direct)
 write_ledger "$root" "$job" attempt-1 "$target" rejected
 plan=$(volume2_plan_sha "$(run_janitor "$root" --dry-run-volume2)")
 run_janitor "$root" --apply-volume2 --expected-plan-sha256 "$plan" >/dev/null
-jq -s '.[1].targetIdentity = "1:1:1:1:755" | .[]' \
+jq -s '.[0].unexpected = true | .[1].targetIdentity = "1:1:1:1:755" | .[]' \
   "$root/control/consumed-worktree-janitor-volume2.audit.jsonl" >"$root/tampered.jsonl"
 mv "$root/tampered.jsonl" "$root/control/consumed-worktree-janitor-volume2.audit.jsonl"
 if run_janitor "$root" --apply-volume2 --expected-plan-sha256 "$plan" \
@@ -225,7 +293,7 @@ if run_janitor "$root" --apply-volume2 --expected-plan-sha256 "$plan" \
   fail 'tampered volume2 removed receipt replayed'
 fi
 
-for crash_phase in volume2-after-prepared volume2-after-git-remove; do
+for crash_phase in volume2-after-prepared volume2-after-purge-before-purged-receipt volume2-after-purged-receipt-before-unregister volume2-after-git-remove; do
   root=$(new_fixture volume2-crash-$crash_phase)
   job=social-monitor-volume2-crash-${crash_phase#volume2-}
   target=$(add_volume2_worktree "$root" "$job" nested)
@@ -236,14 +304,24 @@ for crash_phase in volume2-after-prepared volume2-after-git-remove; do
       >"$root/crash.out" 2>"$root/crash.err"; then
     fail "injected volume2 crash unexpectedly completed: $crash_phase"
   fi
-  jq -e -s 'length == 1 and .[0].status == "prepared"' \
-    "$root/control/consumed-worktree-janitor-volume2.audit.jsonl" >/dev/null ||
-    fail "$crash_phase did not durably publish a prepared receipt"
+  if [[ $crash_phase == volume2-after-purged-receipt-before-unregister ||
+    $crash_phase == volume2-after-git-remove ]]; then
+    jq -e -s 'length == 2 and .[0].status == "prepared" and .[1].status == "purged"' \
+      "$root/control/consumed-worktree-janitor-volume2.audit.jsonl" >/dev/null ||
+      fail "$crash_phase did not durably publish the post-purge receipt"
+  else
+    jq -e -s 'length == 1 and .[0].status == "prepared"' \
+      "$root/control/consumed-worktree-janitor-volume2.audit.jsonl" >/dev/null ||
+      fail "$crash_phase did not leave the expected prepared receipt"
+  fi
   output=$(run_janitor "$root" --apply-volume2 --expected-plan-sha256 "$plan")
   [[ ! -e $target && $output == *'removed-volume2'* ]] ||
     fail "$crash_phase did not recover its exact target"
-  jq -e -s 'length == 2 and .[0].status == "prepared" and .[1].status == "removed" and
-    .[0].planSha256 == .[1].planSha256' \
+  jq -e -s '
+    .[0].planSha256 as $plan |
+    length == 3 and .[0].status == "prepared" and .[1].status == "purged" and
+    .[2].status == "removed" and .[1].purgedAt == .[2].purgedAt and
+    all(.[]; .planSha256 == $plan)' \
     "$root/control/consumed-worktree-janitor-volume2.audit.jsonl" >/dev/null ||
     fail "$crash_phase recovery receipt sequence was invalid"
 done
@@ -254,4 +332,4 @@ volume2_runtime_source=$(<"$SCRIPT_DIR/consumed-worktree-janitor-volume2-apply.s
   fail 'volume2 runtime contains a forbidden rm/prune deletion path'
 [[ $(grep -Fc '"$GIT" -C "$INTEGRATION" worktree remove --force -- "$target"' \
   "$SCRIPT_DIR/consumed-worktree-janitor-volume2-apply.sh") == 1 ]] ||
-  fail 'volume2 runtime does not have exactly one exact deletion command'
+  fail 'volume2 runtime does not have exactly one exact unregister command'

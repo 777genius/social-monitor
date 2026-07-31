@@ -5,12 +5,250 @@ declare -A volume2_workspace_by_parent=() volume2_receipt_kind=() volume2_receip
 declare -A volume2_receipt_item_path=() volume2_receipt_item_sha=() volume2_receipt_status_path=() volume2_receipt_status_sha=() volume2_receipt_patch_path=() volume2_receipt_patch_sha=()
 declare -A volume2_receipt_numstat_path=() volume2_receipt_numstat_sha=() volume2_receipt_registry_path=() volume2_receipt_registry_sha=() volume2_receipt_integrated=()
 declare -A volume2_receipt_target_identity=() volume2_receipt_parent_identity=() volume2_receipt_mount_identity=() volume2_receipt_registration_sha=() volume2_receipt_bytes=() volume2_receipt_inodes=()
-declare -A volume2_receipt_prepared_at=() volume2_receipt_removed=() volume2_receipt_replayed=()
+declare -A volume2_receipt_lock_identity=() volume2_receipt_prepared_at=() volume2_receipt_purged_at=() volume2_receipt_removed=() volume2_receipt_purged=() volume2_receipt_replayed=()
 VOLUME2_CANDIDATE_TARGET_IDENTITY=- VOLUME2_CANDIDATE_PARENT_IDENTITY=-
 VOLUME2_CANDIDATE_MOUNT_IDENTITY=- VOLUME2_CANDIDATE_REGISTRATION_SHA=-
 VOLUME2_RECEIPT_RECOVERY=0
+
+# Volume2 worktrees are removed only after the directory has been opened without
+# following a symlink and its inode/device identity has been checked.  Git still
+# owns registry bookkeeping, but it must never be the recursive pathname purge.
+readonly VOLUME2_PURGE=/usr/bin/python3
+validate_trusted_path "$PROJECT_LOCK" file 'volume2 lifecycle lock'
+VOLUME2_LIFECYCLE_LOCK_IDENTITY=$(path_identity "$PROJECT_LOCK")
+readonly VOLUME2_LIFECYCLE_LOCK_IDENTITY
+
+assert_volume2_lifecycle_lock() {
+  local path_identity_now fd_identity_now
+  validate_trusted_path "$PROJECT_LOCK" file 'volume2 lifecycle lock'
+  path_identity_now=$(path_identity "$PROJECT_LOCK")
+  fd_identity_now=$("$STAT" -Lc '%d:%i:%u:%g:%a' -- "/proc/$$/fd/$LOCK_FD") ||
+    fail 'cannot inspect held volume2 lifecycle lock'
+  [[ $path_identity_now == "$VOLUME2_LIFECYCLE_LOCK_IDENTITY" &&
+    $fd_identity_now == "$VOLUME2_LIFECYCLE_LOCK_IDENTITY" ]] ||
+    fail 'volume2 lifecycle lock identity changed or detached'
+}
+
+volume2_validate_identity() {
+  local value=$1 label=$2
+  [[ $value =~ ^[0-9]+:[0-9]+:[0-9]+:[0-9]+:[0-7]{3,4}$ ]] ||
+    fail "invalid $label identity"
+}
+
+purge_volume2_from_bound_fds() {
+  local kind=$1 target=$2 target_identity=$3 mount_identity=$4 parent_identity=$5
+  volume2_validate_identity "$target_identity" 'volume2 target'
+  [[ $mount_identity =~ ^/[^|]*\|([^|]+)\|([^|]+)$ ]] || fail 'invalid volume2 mount identity'
+  local mount_path=${mount_identity%%|*} root_identity=${BASH_REMATCH[1]} node_identity=${BASH_REMATCH[2]}
+  volume2_validate_identity "$root_identity" 'volume2 mount root'
+  volume2_validate_identity "$node_identity" 'volume2 mount node'
+  [[ $kind == volume2-direct ]] || volume2_validate_identity "$parent_identity" 'volume2 parent'
+  [[ -x $VOLUME2_PURGE ]] || fail 'descriptor-relative volume2 purge is unavailable'
+  "$VOLUME2_PURGE" - "$kind" "$mount_path" "$WORKTREES/.volume2" "$target" \
+    "$target_identity" "$root_identity" "$node_identity" "${parent_identity:--}" <<'PY'
+import os
+import stat
+import sys
+
+kind, mount_path, root_path, target_path, target_id, root_id, node_id, parent_id = sys.argv[1:]
+
+def identity(st):
+    return f"{st.st_dev}:{st.st_ino}:{st.st_uid}:{st.st_gid}:{stat.S_IMODE(st.st_mode):03o}"
+
+def open_dir_at(parent_fd, name):
+    return os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent_fd)
+
+def decode_mountinfo_path(value):
+    # mountinfo uses octal escapes for whitespace, backslashes, and tabs.
+    out = []
+    i = 0
+    while i < len(value):
+        if value[i] == "\\" and i + 3 < len(value) and value[i + 1:i + 4].isdigit():
+            try:
+                out.append(chr(int(value[i + 1:i + 4], 8)))
+                i += 4
+                continue
+            except ValueError:
+                pass
+        out.append(value[i])
+        i += 1
+    return "".join(out)
+
+def mountpoints():
+    result = set()
+    try:
+        with open("/proc/self/mountinfo", "r", encoding="ascii") as stream:
+            for line in stream:
+                left = line.split(" - ", 1)[0].split()
+                if len(left) > 4:
+                    result.add(os.path.normpath(decode_mountinfo_path(left[4])))
+    except (OSError, UnicodeError):
+        # An unreadable mount table is not evidence of safety.
+        raise RuntimeError("cannot inspect the process mount table")
+    return result
+
+def is_mountpoint(path, known_mountpoints):
+    normalized = os.path.normpath(path)
+    return normalized in known_mountpoints
+
+def purge(fd, expected_device, directory_path, known_mountpoints):
+    for name in os.listdir(fd):
+        st = os.stat(name, dir_fd=fd, follow_symlinks=False)
+        child_path = os.path.join(directory_path, name)
+        if is_mountpoint(child_path, known_mountpoints):
+            raise RuntimeError("volume2 purge encountered a nested mount")
+        if st.st_dev != expected_device:
+            raise RuntimeError("volume2 purge encountered a foreign filesystem")
+        if stat.S_ISDIR(st.st_mode):
+            child = open_dir_at(fd, name)
+            try:
+                # Re-read mountinfo after opening the descriptor.  A bind
+                # mount can be attached between the directory listing and
+                # open; never recurse into a path that became a mountpoint.
+                if is_mountpoint(child_path, mountpoints()):
+                    raise RuntimeError("volume2 purge encountered a raced nested mount")
+                child_st = os.fstat(child)
+                if (child_st.st_dev, child_st.st_ino) != (st.st_dev, st.st_ino):
+                    raise RuntimeError("volume2 child identity changed")
+                if child_st.st_dev != expected_device:
+                    raise RuntimeError("volume2 purge encountered a foreign mount")
+                purge(child, expected_device, child_path, known_mountpoints)
+            finally:
+                os.close(child)
+            os.rmdir(name, dir_fd=fd)
+        else:
+            os.unlink(name, dir_fd=fd)
+
+mount_fd = os.open(mount_path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+try:
+    root_st = os.fstat(mount_fd)
+    if identity(root_st) != root_id:
+        raise RuntimeError("volume2 mount root identity changed")
+finally:
+    os.close(mount_fd)
+
+root_fd = os.open(root_path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+try:
+    if identity(os.fstat(root_fd)) != node_id:
+        raise RuntimeError("volume2 mount node identity changed")
+    relative = os.path.relpath(target_path, root_path)
+    parts = relative.split(os.sep)
+    if kind == "volume2-direct":
+        if len(parts) != 1:
+            raise RuntimeError("direct target escaped volume2 root")
+        parent_fd = root_fd
+        close_parent = False
+        target_name = parts[0]
+    elif kind == "volume2-nested":
+        if len(parts) != 2:
+            raise RuntimeError("nested target escaped volume2 root")
+        parent_fd = open_dir_at(root_fd, parts[0])
+        close_parent = True
+        try:
+            if identity(os.fstat(parent_fd)) != parent_id:
+                raise RuntimeError("volume2 parent identity changed")
+            target_name = parts[1]
+        except Exception:
+            os.close(parent_fd)
+            raise
+    else:
+        raise RuntimeError("unsupported volume2 layout")
+    try:
+        target_fd = open_dir_at(parent_fd, target_name)
+        try:
+            if identity(os.fstat(target_fd)) != target_id:
+                raise RuntimeError("volume2 target identity changed")
+            known_mountpoints = mountpoints()
+            if is_mountpoint(target_path, known_mountpoints) or is_mountpoint(target_path, mountpoints()):
+                raise RuntimeError("volume2 target is a mountpoint")
+            purge(target_fd, os.fstat(target_fd).st_dev, target_path, known_mountpoints)
+        finally:
+            os.close(target_fd)
+        os.rmdir(target_name, dir_fd=parent_fd)
+    finally:
+        if close_parent:
+            os.close(parent_fd)
+finally:
+    os.close(root_fd)
+PY
+}
+
+# v3/v4 controllers use the same operation manifest contract as the current
+# controller, but live under versioned roots.  Keep these paths fail-closed and
+# bind every active manifest to the candidate before planning or replay.
+scan_volume2_versioned_controller_liveness() {
+  local controller_root descriptor relative_root manifest_root manifest_parent manifest status path canonical_path
+  local -a descriptors=(
+    'project-control-operations|operation.json'
+    'project-integration/integration-attempts|attempt.json'
+    'dependency-bootstrap-operations|operation.json'
+    'project-bootstrap/bootstrap-attempts|attempt.json'
+  )
+  for controller_root in "$WORKER_JOBS/controller-v3" "$CONTROLLER_V4"; do
+    [[ -e $controller_root || -L $controller_root ]] || continue
+    [[ -d $controller_root && ! -L $controller_root ]] || fail "versioned controller root is unsafe: $controller_root"
+    [[ $($REALPATH -e -- "$controller_root") == "$controller_root" ]] || fail "versioned controller root escaped: $controller_root"
+    for descriptor in "${descriptors[@]}"; do
+      relative_root=${descriptor%%|*}; manifest=${descriptor#*|}
+      manifest_root=$controller_root/$relative_root
+      [[ -e $manifest_root || -L $manifest_root ]] || continue
+      [[ -d $manifest_root && ! -L $manifest_root ]] || fail "versioned activity root is unsafe: $manifest_root"
+      [[ $($REALPATH -e -- "$manifest_root") == "$manifest_root" ]] || fail "versioned activity root escaped: $manifest_root"
+      local manifests=("$manifest_root"/*/"$manifest")
+      for path in "${manifests[@]}"; do
+        [[ -e $path || -L $path ]] || continue
+        manifest_parent=${path%/*}
+        [[ -d $manifest_parent && ! -L $manifest_parent && $($REALPATH -e -- "$manifest_parent") == "$manifest_parent" ]] ||
+          fail "versioned activity manifest parent is unsafe: $manifest_parent"
+        [[ -f $path && ! -L $path && -r $path && $($REALPATH -e -- "$path") == "$path" ]] ||
+          fail "versioned activity manifest is unsafe: $path"
+        "$JQ" -e 'type == "object" and (.status | type == "string")' "$path" >/dev/null ||
+          fail "versioned activity manifest is malformed: $path"
+        status=$($JQ -r '.status' "$path")
+        is_terminal_activity_status_for_schema "$relative_root" "$status" && continue
+        protect_manifest_paths "$path" "active-$status"
+      done
+    done
+  done
+}
+
+# The base janitor validates only the unversioned worker-job root.  Add the
+# versioned controller liveness scan at the same lifecycle boundary so it is
+# present during dry-run planning and every apply revalidation.
+validate_job_root() {
+  local job_root=$1 canonical_job_root job candidate
+  [[ -d $job_root && ! -L $job_root ]] || fail "job root is unsafe: $job_root"
+  canonical_job_root=$($REALPATH -e -- "$job_root") || fail "cannot canonicalize job root: $job_root"
+  [[ $canonical_job_root == "$job_root" ]] || fail "job root escaped: $job_root"
+  scan_volume2_versioned_controller_liveness
+  job=${job_root##*/}
+  for candidate in "$WORKTREES/.volume2/$job" "$WORKTREES/.volume2/$job/worktree"; do
+    [[ -z ${activity_protected[$candidate]:-} ]] ||
+      fail "versioned controller activity appeared during volume2 planning: $candidate"
+  done
+}
 is_terminal_ledger_status() { case $1 in integrated | rejected | archived | superseded) return 0 ;; *) return 1 ;; esac; }
-is_terminal_activity_status() { case $1 in archived | blocked | canceled | cancelled | completed | done | failed | integrated | partial | pushed | rejected | rolled_back | stopped | superseded) return 0 ;; *) return 1 ;; esac; }
+is_terminal_activity_status() {
+  # The legacy controller records a plain status string.  Unknown values stay
+  # live so a new state cannot accidentally authorize cleanup.
+  case $1 in archived | canceled | cancelled | completed | done | failed | integrated | rejected | rolled_back | stopped | superseded) return 0 ;; *) return 1 ;; esac
+}
+is_terminal_activity_status_for_schema() {
+  local schema=$1 status=$2
+  # Versioned controller manifests have different state vocabularies. Keep
+  # their terminal allowlists explicit and conservative; an unrecognised state
+  # is active (and therefore protects the candidate).
+  case $schema in
+    project-control-operations)
+      case $status in archived | canceled | cancelled | completed | done | failed | rejected | stopped | superseded) return 0 ;; esac ;;
+    project-integration/integration-attempts)
+      case $status in archived | canceled | cancelled | completed | failed | integrated | rejected | stopped | superseded) return 0 ;; esac ;;
+    dependency-bootstrap-operations|project-bootstrap/bootstrap-attempts)
+      case $status in archived | canceled | cancelled | completed | done | failed | rejected | stopped | superseded) return 0 ;; esac ;;
+    *) is_terminal_activity_status "$status"; return $? ;;
+  esac
+  return 1
+}
 integrated_commit_state() { local commit=$1 main=$2 result
   "$GIT" -C "$INTEGRATION" cat-file -e "$commit^{commit}" 2>/dev/null || return 2
   if "$GIT" -C "$INTEGRATION" merge-base --is-ancestor "$commit" "$main"; then return 0; else result=$?; fi
@@ -56,13 +294,22 @@ load_volume2_receipts() {
   "$JQ" -e -s '
     def sha256: type == "string" and test("^[0-9a-f]{64}$");
     def sha1_or_dash: type == "string" and (. == "-" or test("^[0-9a-f]{40}$"));
-    def absolute: type == "string" and startswith("/") and length > 1;
+    def absolute: type == "string" and startswith("/") and length > 1 and (explode | all(. >= 32));
     def ledger: type == "string" and test("^[A-Za-z0-9._-]+--[A-Za-z0-9._-]+$");
     def identity: type == "string" and test("^[0-9]+:[0-9]+:[0-9]+:[0-9]+:[0-7]{3,4}$");
     def whole: type == "number" and . >= 0 and floor == .;
+    def timestamp: type == "string" and test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$");
+    def commonKeys: ["afterBytes","beforeBytes","candidateKind","gitRegistrationSha256","integratedCommitSha","lifecycleLockIdentity",
+      "ledgerId","ledgerItemPath","ledgerItemSha256","mainCommit","mode","nestedParentIdentity",
+      "numstatEvidencePath","numstatEvidenceSha256","patchEvidencePath","patchEvidenceSha256","planSha256",
+      "preparedAt","purgedAt","registryPath","registrySha256","removedAt","schemaVersion","status","statusEvidencePath",
+      "statusEvidenceSha256","targetIdentity","targetInodes","targetWorktreePath","volumeMountIdentity"];
+    def preparedKeys: (commonKeys - ["afterBytes","purgedAt","removedAt"]) | sort;
+    def purgedKeys: (commonKeys - ["afterBytes","removedAt"]) | sort;
+    def removedKeys: commonKeys | sort;
     def common:
       type == "object" and .schemaVersion == 1 and .mode == "apply-volume2" and
-      (.status == "prepared" or .status == "removed") and
+      (.status == "prepared" or .status == "purged" or .status == "removed") and
       (.ledgerId | ledger) and (.planSha256 | sha256) and (.mainCommit | test("^[0-9a-f]{40}$")) and
       (.candidateKind == "volume2-direct" or .candidateKind == "volume2-nested") and
       (.targetWorktreePath | absolute) and (.targetIdentity | identity) and
@@ -75,27 +322,36 @@ load_volume2_receipts() {
       (.numstatEvidencePath | absolute) and (.numstatEvidenceSha256 | sha256) and
       (.registryPath | absolute) and (.registrySha256 | sha256) and
       (.gitRegistrationSha256 | sha256) and (.beforeBytes | whole) and
-      (.targetInodes | whole) and (.integratedCommitSha | sha1_or_dash) and
-      (.preparedAt | type == "string" and length > 0) and
+      (.targetInodes | whole) and (.integratedCommitSha | sha1_or_dash) and (.lifecycleLockIdentity | identity) and
+      (.preparedAt | timestamp) and
       (if .status == "removed" then
-         (.removedAt | type == "string" and length > 0) and .afterBytes == 0
-       else (has("removedAt") or has("afterBytes")) | not end);
+         (.removedAt | timestamp) and .afterBytes == 0 and (keys_unsorted | sort) == removedKeys
+       elif .status == "purged" then
+         (.purgedAt | timestamp) and (keys_unsorted | sort) == purgedKeys
+       else (keys_unsorted | sort) == preparedKeys end);
     def binding: [.schemaVersion,.mode,.ledgerId,.planSha256,.mainCommit,
       .candidateKind,.targetWorktreePath,.targetIdentity,.volumeMountIdentity,.nestedParentIdentity,
       .ledgerItemPath,.ledgerItemSha256,.statusEvidencePath,.statusEvidenceSha256,
       .patchEvidencePath,.patchEvidenceSha256,.numstatEvidencePath,.numstatEvidenceSha256,
-      .registryPath,.registrySha256,.gitRegistrationSha256,.beforeBytes,.targetInodes,.integratedCommitSha,.preparedAt];
+      .registryPath,.registrySha256,.gitRegistrationSha256,.beforeBytes,.targetInodes,.integratedCommitSha,
+      .lifecycleLockIdentity,.preparedAt];
     all(.[]; common) and (group_by(.ledgerId) | all(.[];
-      (length == 1 or length == 2) and .[0].status == "prepared" and
-      (if length == 2 then .[1].status == "removed" and
-        (.[0] | binding) == (.[1] | binding) else true end)))
+      (length >= 1 and length <= 3) and .[0].status == "prepared" and
+      (if length == 1 then true
+       elif length == 2 then
+         ((.[1].status == "purged" or .[1].status == "removed") and
+          (.[0] | binding) == (.[1] | binding))
+       else .[1].status == "purged" and .[2].status == "removed" and
+         (.[0] | binding) == (.[1] | binding) and
+         (.[1] | binding) == (.[2] | binding) and .[1].purgedAt == .[2].purgedAt
+       end)))
   ' "$VOLUME2_AUDIT_LOG" >/dev/null || fail 'volume2 audit log is malformed, conflicting, or tampered'
-  local row id
+  local row id lock_identity
   while IFS= read -r row; do
     [[ -n $row ]] || continue
     IFS=$'\x1f' read -r id kind target plan main item item_sha status_path status_sha \
       patch_path patch_sha numstat_path numstat_sha registry registry_sha target_identity \
-      parent_identity mount_identity registration bytes inodes integrated prepared_at <<<"$row"
+      parent_identity mount_identity registration bytes inodes integrated lock_identity status purged_at prepared_at <<<"$row"
     volume2_receipt_kind["$id"]=$kind; volume2_receipt_target["$id"]=$target
     volume2_receipt_plan["$id"]=$plan; volume2_receipt_main["$id"]=$main
     volume2_receipt_item_path["$id"]=$item; volume2_receipt_item_sha["$id"]=$item_sha
@@ -106,13 +362,16 @@ load_volume2_receipts() {
     volume2_receipt_target_identity["$id"]=$target_identity; volume2_receipt_parent_identity["$id"]=$parent_identity
     volume2_receipt_mount_identity["$id"]=$mount_identity; volume2_receipt_registration_sha["$id"]=$registration
     volume2_receipt_bytes["$id"]=$bytes; volume2_receipt_inodes["$id"]=$inodes
+    volume2_receipt_lock_identity["$id"]=$lock_identity
     volume2_receipt_integrated["$id"]=$integrated; volume2_receipt_prepared_at["$id"]=$prepared_at
-  done < <("$JQ" -r -j 'select(.status == "prepared") |
+    if [[ $status == purged ]]; then volume2_receipt_purged["$id"]=1; fi
+    volume2_receipt_purged_at["$id"]=$purged_at
+  done < <("$JQ" -r -j 'select(.status == "prepared" or .status == "purged") |
     [.ledgerId,.candidateKind,.targetWorktreePath,.planSha256,.mainCommit,.ledgerItemPath,.ledgerItemSha256,
      .statusEvidencePath,.statusEvidenceSha256,.patchEvidencePath,.patchEvidenceSha256,
      .numstatEvidencePath,.numstatEvidenceSha256,.registryPath,.registrySha256,.targetIdentity,
      .nestedParentIdentity,.volumeMountIdentity,.gitRegistrationSha256,(.beforeBytes|tostring),
-     (.targetInodes|tostring),.integratedCommitSha,.preparedAt] | join("\u001f") + "\n"' \
+     (.targetInodes|tostring),.integratedCommitSha,.lifecycleLockIdentity,.status,(.purgedAt // ""),.preparedAt] | join("\u001f") + "\n"' \
     "$VOLUME2_AUDIT_LOG")
   while IFS= read -r id; do [[ -z $id ]] || volume2_receipt_removed["$id"]=1; done \
     < <("$JQ" -r 'select(.status == "removed") | .ledgerId' "$VOLUME2_AUDIT_LOG")
@@ -198,6 +457,7 @@ validate_volume2_receipt_bindings() {
       ${ledger_numstat_hash_by_id[$id]:-} == "${volume2_receipt_numstat_sha[$id]}" &&
       ${ledger_registry_path_by_id[$id]:-} == "${volume2_receipt_registry_path[$id]}" &&
       ${ledger_registry_hash_by_id[$id]:-} == "${volume2_receipt_registry_sha[$id]}" &&
+      ${volume2_receipt_lock_identity[$id]} == "$VOLUME2_LIFECYCLE_LOCK_IDENTITY" &&
       ${ledger_integrated_commit_by_id[$id]:--} == "${volume2_receipt_integrated[$id]}" ]] || fail "volume2 receipt conflicts with ledger, evidence, registry, or commit: $id"
   done
 }
@@ -242,8 +502,17 @@ validate_volume2_absent_layout() {
 }
 validate_volume2_candidate_state() {
   local id=$1 kind=$2 target=$3 job=${ledger_job_by_id[$1]}
-  if [[ -d $target && ! -L $target ]]; then validate_volume2_layout "$kind" "$target" "$job"
-  else validate_volume2_absent_layout "$kind" "$target" "$job"; fi
+  if [[ -d $target && ! -L $target ]]; then
+    validate_volume2_layout "$kind" "$target" "$job"
+  else
+    validate_volume2_absent_layout "$kind" "$target" "$job"
+    if is_registered_now "$target"; then
+      capture_exact_purged_git_registration "$target"
+      [[ $(sha256_text "$CAPTURED_PURGED_GIT_REGISTRATION") == "${volume2_receipt_registration_sha[$id]}" ]] ||
+        fail "volume2 crash recovery registration changed: $id"
+      registered_count["$target"]=0
+    fi
+  fi
   [[ ${volume2_receipt_target[$id]} == "$target" ]] || fail "volume2 replay target changed: $id"
 }
 classify_completed_volume2_receipts() {
@@ -263,6 +532,7 @@ classify_completed_volume2_receipts() {
 }
 prepare_volume2_candidate() {
   local id=$1 kind=$2 target=$3 job=$4 registration_count=$5 byte_record inode_record
+  assert_volume2_lifecycle_lock
   VOLUME2_CANDIDATE_TARGET_IDENTITY=- VOLUME2_CANDIDATE_PARENT_IDENTITY=- VOLUME2_CANDIDATE_MOUNT_IDENTITY=- VOLUME2_CANDIDATE_REGISTRATION_SHA=-
   if ((registration_count == 1)); then
     validate_volume2_layout "$kind" "$target" "$job"
@@ -296,7 +566,8 @@ compute_volume2_plan_sha256() {
   local -a ids=()
   mapfile -t ids < <(printf '%s\n' "${!ledger_item_hash_by_id[@]}" | LC_ALL=C "$SORT")
   {
-    printf 'schemaVersion\t1\nmode\tapply-volume2\nmainCommit\t%s\n' "$MAIN_COMMIT"
+    printf 'schemaVersion\t1\nmode\tapply-volume2\nmainCommit\t%s\nlifecycleLockIdentity\t%s\n' \
+      "$MAIN_COMMIT" "$VOLUME2_LIFECYCLE_LOCK_IDENTITY"
     for ledger_id in "${ids[@]}"; do
       printf 'ledger\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$ledger_id" \
         "$LEDGER_ITEMS/$ledger_id.json" "${ledger_item_hash_by_id[$ledger_id]}" \
@@ -367,12 +638,38 @@ assert_volume2_receipt_binding() {
     ${volume2_receipt_registration_sha[$id]} == "${plan_git_registration_hashes[$index]}" &&
     ${volume2_receipt_bytes[$id]} == "${plan_bytes[$index]}" &&
     ${volume2_receipt_inodes[$id]} == "${plan_target_inodes[$index]}" &&
+    ${volume2_receipt_lock_identity[$id]} == "$VOLUME2_LIFECYCLE_LOCK_IDENTITY" &&
     ${volume2_receipt_integrated[$id]} == "${plan_integrated_commits[$index]}" ]] ||
     fail "prepared volume2 receipt no longer matches its exact plan: $id"
+}
+CAPTURED_PURGED_GIT_REGISTRATION=
+capture_exact_purged_git_registration() {
+  local target=$1 listing line block= path= count=0 match= normalized=
+  listing=$("$GIT" -C "$INTEGRATION" worktree list --porcelain) ||
+    fail 'cannot enumerate purged Git worktree registrations'
+  while IFS= read -r line; do
+    if [[ $line == worktree\ * ]]; then
+      if [[ -n $block && $path == "$target" ]]; then match=$block; count=$((count + 1)); fi
+      block=$line$'\n'
+      path=$("$REALPATH" -m -- "${line#worktree }") ||
+        fail 'cannot canonicalize purged Git worktree registration'
+    elif [[ -n $block && -n $line ]]; then
+      block+=$line$'\n'
+    fi
+  done <<<"$listing"
+  if [[ -n $block && $path == "$target" ]]; then match=$block; count=$((count + 1)); fi
+  ((count == 1)) || fail "purged target requires one exact Git registration: $target"
+  [[ $match != *$'\nlocked'* ]] || fail "purged target registration became locked: $target"
+  while IFS= read -r line; do
+    [[ $line == prunable || $line == prunable\ * ]] && continue
+    normalized+=$line$'\n'
+  done <<<"${match%$'\n'}"
+  CAPTURED_PURGED_GIT_REGISTRATION=${normalized%$'\n'}
 }
 revalidate_volume2_candidate() {
   local index=$1 state=$2 id=${plan_ledgers[$1]} target=${plan_targets[$1]}
   local job=${plan_jobs[$1]} current_main registration byte_record inode_record
+  assert_volume2_lifecycle_lock
   current_main=$("$GIT" -C "$INTEGRATION" rev-parse --verify refs/heads/main^{commit}) ||
     fail 'integration main disappeared during volume2 apply'
   [[ $current_main == "$MAIN_COMMIT" ]] || fail 'integration main changed after volume2 plan'
@@ -418,13 +715,34 @@ revalidate_volume2_candidate() {
     [[ ${byte_record%%[[:space:]]*} == "${plan_bytes[$index]}" &&
       ${inode_record%%[[:space:]]*} == "${plan_target_inodes[$index]}" ]] ||
       fail "volume2 accounting changed after plan: $target"
+  elif [[ $state == purged ]]; then
+    validate_volume2_absent_layout "${plan_kinds[$index]}" "$target" "$job"
+    if is_registered_now "$target"; then
+      capture_exact_purged_git_registration "$target"
+      [[ $(sha256_text "$CAPTURED_PURGED_GIT_REGISTRATION") == "${plan_git_registration_hashes[$index]}" ]] ||
+        fail "volume2 Git registration changed after purge: $target"
+    fi
   else
     validate_volume2_absent_layout "${plan_kinds[$index]}" "$target" "$job"
     is_registered_now "$target" && fail "removed volume2 target remains registered: $target"
   fi; return 0
 }
+unregister_volume2_metadata_only() {
+  local index=$1 target=${plan_targets[$1]}
+  assert_volume2_lifecycle_lock
+  [[ ! -e $target && ! -L $target ]] || fail "volume2 metadata-only unregister target reappeared: $target"
+  if is_registered_now "$target"; then
+    capture_exact_purged_git_registration "$target"
+    [[ $(sha256_text "$CAPTURED_PURGED_GIT_REGISTRATION") == "${plan_git_registration_hashes[$index]}" ]] ||
+      fail "volume2 metadata-only unregister registration changed: $target"
+    "$GIT" -C "$INTEGRATION" worktree remove --force -- "$target"
+  fi
+  [[ ! -e $target && ! -L $target ]] || fail "volume2 metadata-only unregister recreated target: $target"
+  is_registered_now "$target" && fail "volume2 target remains registered after metadata-only unregister: $target"
+  return 0
+}
 build_volume2_receipt() {
-  local index=$1 status=$2 prepared_at=$3 removed_at=${4:-}
+  local index=$1 status=$2 prepared_at=$3 purged_at=${4:-} removed_at=${5:-}
   local id=${plan_ledgers[$index]} receipt_plan=$VOLUME2_PLAN_SHA256 receipt_main=$MAIN_COMMIT
   if [[ -n ${volume2_receipt_target[$id]:-} ]]; then
     receipt_plan=${volume2_receipt_plan[$id]}; receipt_main=${volume2_receipt_main[$id]}
@@ -441,8 +759,9 @@ build_volume2_receipt() {
     --arg numstatPath "${plan_numstat_files[$index]}" --arg numstatSha "${plan_numstat_hashes[$index]}" \
     --arg registry "${plan_registry_paths[$index]}" --arg registrySha "${plan_registry_hashes[$index]}" \
     --arg registrationSha "${plan_git_registration_hashes[$index]}" \
+    --arg lockIdentity "$VOLUME2_LIFECYCLE_LOCK_IDENTITY" \
     --arg integrated "${plan_integrated_commits[$index]}" --arg preparedAt "$prepared_at" \
-    --arg removedAt "$removed_at" --argjson beforeBytes "${plan_bytes[$index]}" \
+    --arg purgedAt "$purged_at" --arg removedAt "$removed_at" --argjson beforeBytes "${plan_bytes[$index]}" \
     --argjson targetInodes "${plan_target_inodes[$index]}" '
       {schemaVersion:1,mode:"apply-volume2",status:$status,planSha256:$plan,
        mainCommit:$main,ledgerId:$ledger,candidateKind:$kind,targetWorktreePath:$target,
@@ -453,11 +772,13 @@ build_volume2_receipt() {
        numstatEvidencePath:$numstatPath,numstatEvidenceSha256:$numstatSha,
        registryPath:$registry,registrySha256:$registrySha,
        gitRegistrationSha256:$registrationSha,beforeBytes:$beforeBytes,
-       targetInodes:$targetInodes,integratedCommitSha:$integrated,preparedAt:$preparedAt}
-      + (if $status == "removed" then {removedAt:$removedAt,afterBytes:0} else {} end)'
+       targetInodes:$targetInodes,integratedCommitSha:$integrated,
+       lifecycleLockIdentity:$lockIdentity,preparedAt:$preparedAt}
+      + (if $status == "purged" then {purgedAt:$purgedAt}
+         elif $status == "removed" then {purgedAt:$purgedAt,removedAt:$removedAt,afterBytes:0} else {} end)'
 }
 apply_volume2_plan() {
-  local index id target prepared_at removed_at receipt
+  local index id target prepared_at purged_at removed_at receipt
   for index in "${!plan_targets[@]}"; do
     [[ ${plan_kinds[$index]} == volume2-direct || ${plan_kinds[$index]} == volume2-nested ]] || continue
     id=${plan_ledgers[$index]}; target=${plan_targets[$index]}
@@ -475,21 +796,38 @@ apply_volume2_plan() {
     else
       assert_volume2_receipt_binding "$index"
       prepared_at=${volume2_receipt_prepared_at[$id]}
+      purged_at=${volume2_receipt_purged_at[$id]:-}
     fi
     janitor_test_checkpoint volume2-after-prepared
     if [[ -d $target && ! -L $target ]]; then
       janitor_test_checkpoint volume2-before-git-remove
       revalidate_volume2_candidate "$index" present
-      "$GIT" -C "$INTEGRATION" worktree remove --force -- "$target"
+      purge_volume2_from_bound_fds "${plan_kinds[$index]}" "$target" \
+        "${plan_target_identities[$index]}" "${plan_volume2_mount_identities[$index]}" \
+        "${plan_volume2_parent_identities[$index]}"
+      janitor_test_checkpoint volume2-after-purge-before-purged-receipt
+      purged_at=$("$DATE" -u +'%Y-%m-%dT%H:%M:%S.%3NZ')
+      receipt=$(build_volume2_receipt "$index" purged "$prepared_at" "$purged_at") ||
+        fail "cannot construct purged volume2 receipt: $id"
+      append_volume2_receipt "$receipt"
+      volume2_receipt_purged["$id"]=1; volume2_receipt_purged_at["$id"]=$purged_at
     else
-      validate_volume2_absent_layout "${plan_kinds[$index]}" "$target" "${plan_jobs[$index]}"
+      revalidate_volume2_candidate "$index" purged
+      purged_at=${volume2_receipt_purged_at[$id]:-}
+      if [[ -z $purged_at ]]; then
+        purged_at=$prepared_at
+        receipt=$(build_volume2_receipt "$index" purged "$prepared_at" "$purged_at") ||
+          fail "cannot recover purged volume2 receipt: $id"
+        append_volume2_receipt "$receipt"
+        volume2_receipt_purged["$id"]=1; volume2_receipt_purged_at["$id"]=$purged_at
+      fi
     fi
-    [[ ! -e $target && ! -L $target ]] || fail "Git did not remove volume2 target: $target"
-    is_registered_now "$target" && fail "volume2 target remains registered: $target"
+    janitor_test_checkpoint volume2-after-purged-receipt-before-unregister
+    unregister_volume2_metadata_only "$index"
     janitor_test_checkpoint volume2-after-git-remove
     revalidate_volume2_candidate "$index" absent
     removed_at=$("$DATE" -u +'%Y-%m-%dT%H:%M:%S.%3NZ')
-    receipt=$(build_volume2_receipt "$index" removed "$prepared_at" "$removed_at") ||
+    receipt=$(build_volume2_receipt "$index" removed "$prepared_at" "$purged_at" "$removed_at") ||
       fail "cannot construct removed volume2 receipt: $id"
     append_volume2_receipt "$receipt"
     printf 'removed-volume2 ledger=%s kind=%s target=%s beforeBytes=%s afterBytes=0\n' \

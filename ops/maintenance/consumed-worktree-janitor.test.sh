@@ -941,10 +941,6 @@ volume2_source=$(<"$SCRIPT_DIR/consumed-worktree-janitor-volume2-apply.sh")
   fail 'production project scope changed'
 [[ $SUITE_ROOT == "$SCRIPT_DIR"/.consumed-worktree-janitor-test.* ]] ||
   fail 'destructive fixtures escaped the current worktree'
-[[ $implementation_source == *'"$GIT" -C "$INTEGRATION" worktree remove --force -- "$target"'* ]] ||
-  fail 'exact Git worktree removal command changed'
-[[ $volume2_source == *'"$GIT" -C "$INTEGRATION" worktree remove --force -- "$target"'* ]] ||
-  fail 'exact volume2 Git worktree removal command changed'
 [[ $entrypoint_source != *'worktree prune'* && $implementation_source != *'worktree prune'* &&
   $volume2_source != *'worktree prune'* ]] ||
   fail 'Git worktree prune is forbidden in the janitor'
