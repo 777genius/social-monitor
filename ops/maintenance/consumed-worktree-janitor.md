@@ -6,7 +6,8 @@ project `worktree-cleanup.lock` serializes dry-runs and applies with other
 project worktree maintenance.
 
 The janitor validates the complete item ledger before planning any mutation. It
-requires canonical direct children of `/var/data/social-monitor/worktrees`, Git
+requires ordinary candidates to be canonical direct children of
+`/var/data/social-monitor/worktrees`, with Git
 worktree registration, terminal consumption, a retained integration commit for
 integrated records, immutable archive/status/patch evidence that still exactly
 matches the worktree, and no live job, controller operation, integration,
@@ -15,6 +16,29 @@ and never writes worker registries or handoffs.
 The dry-run unit intentionally retains host `/tmp` visibility because tmux
 server sockets normally live there; process and tmux liveness must not be
 hidden by a private temporary-filesystem namespace.
+Process enumeration binds each PID to its `/proc/<pid>/stat` starttime before
+and after reading resource links. It skips resource inspection only when
+`/proc/<pid>/status` explicitly reports `Kthread: 1` or `State: Z`; a vanished
+or reused PID is ignored, while other live unreadable evidence fails closed.
+
+Dry-run also recognizes one fixed relocation layout. A ledger may declare a
+logical direct child of `/var/data/social-monitor/worktrees` that is a
+root-owned symlink to the same basename directly below
+`/var/data/social-monitor/worktrees/.volume2/root-worktree-archive-20260727`.
+The symlink is classified before ordinary canonical-path validation. The
+janitor requires an absolute one-hop binding, real root-owned non-writable
+parents and target, exactly one registry binding to the logical path, and
+exactly one Git registration resolving to the archive target. Other symlinks,
+archive roots, nested layouts, basename mismatches, broken targets and
+ambiguous bindings fail closed.
+
+Relocated candidates are planning evidence only. Dry-run checks Git state,
+terminal evidence and all activity against the validated target, reports the
+logical and target paths, and snapshots target apparent bytes and target inode
+count. It reports the logical symlink as one additional inode separately so
+target and combined totals remain auditable. Candidate lines are sorted by
+logical path. `--apply` emits `relocation-dry-run-only` and removes neither the
+logical symlink nor the archive target.
 
 For every terminal ledger item, the worktree basename must equal `jobId`, the
 archive basename must be `<jobId>-<status>-<attemptId>`, and the three evidence

@@ -1,36 +1,22 @@
 #!/usr/bin/env bash
 set -euo pipefail
-readonly GIT=/usr/bin/git JQ=/usr/bin/jq REALPATH=/usr/bin/realpath FLOCK=/usr/bin/flock
-readonly DU=/usr/bin/du READLINK=/usr/bin/readlink SHA256SUM=/usr/bin/sha256sum DATE=/usr/bin/date
-readonly MKTEMP=/usr/bin/mktemp CP=/usr/bin/cp MV=/usr/bin/mv UNLINK=/usr/bin/unlink CMP=/usr/bin/cmp STAT=/usr/bin/stat
-readonly PROCESS_SNAPSHOT_LIMIT=65536
-MODE=dry-run MODE_SEEN=0 TEST_ROOT= AUDIT_TMP=
-fail() {
-  printf 'consumed-worktree-janitor: %s\n' "$*" >&2
-  exit 1
-}
-cleanup() {
-  if [[ -n $AUDIT_TMP && -f $AUDIT_TMP && ! -L $AUDIT_TMP ]]; then
-    "$UNLINK" -- "$AUDIT_TMP"
-  fi
-}
+readonly GIT=/usr/bin/git JQ=/usr/bin/jq REALPATH=/usr/bin/realpath FLOCK=/usr/bin/flock DU=/usr/bin/du
+readonly READLINK=/usr/bin/readlink SHA256SUM=/usr/bin/sha256sum DATE=/usr/bin/date MKTEMP=/usr/bin/mktemp
+readonly CP=/usr/bin/cp MV=/usr/bin/mv UNLINK=/usr/bin/unlink CMP=/usr/bin/cmp STAT=/usr/bin/stat SORT=/usr/bin/sort
+readonly PROCESS_SNAPSHOT_LIMIT=65536; MODE=dry-run MODE_SEEN=0 TEST_ROOT= AUDIT_TMP=
+fail() { printf 'consumed-worktree-janitor: %s\n' "$*" >&2; exit 1; }
+cleanup() { [[ -z $AUDIT_TMP || ! -f $AUDIT_TMP || -L $AUDIT_TMP ]] || "$UNLINK" -- "$AUDIT_TMP"; }
 trap cleanup EXIT
-usage() {
-  printf '%s\n' \
-    'usage: consumed-worktree-janitor.sh [--dry-run | --apply]' \
-    '       consumed-worktree-janitor.sh [--dry-run | --apply] --test-root PATH'
-}
+usage() { printf '%s\n' 'usage: consumed-worktree-janitor.sh [--dry-run | --apply]' '       consumed-worktree-janitor.sh [--dry-run | --apply] --test-root PATH'; }
 while (($# > 0)); do
   case $1 in
     --dry-run)
       ((MODE_SEEN == 0)) || fail 'choose exactly one execution mode'
-      MODE=dry-run
-      MODE_SEEN=1
+      MODE=dry-run MODE_SEEN=1
       ;;
     --apply)
       ((MODE_SEEN == 0)) || fail 'choose exactly one execution mode'
-      MODE=apply
-      MODE_SEEN=1
+      MODE=apply MODE_SEEN=1
       ;;
     --test-root)
       shift
@@ -39,8 +25,7 @@ while (($# > 0)); do
       TEST_ROOT=$1
       ;;
     --help)
-      usage
-      exit 0
+      usage; exit 0
       ;;
     *)
       fail "unknown argument: $1"
@@ -48,30 +33,21 @@ while (($# > 0)); do
   esac
   shift
 done
-for tool in "$GIT" "$JQ" "$REALPATH" "$FLOCK" "$DU" "$READLINK" \
-  "$SHA256SUM" "$DATE" "$MKTEMP" "$CP" "$MV" "$UNLINK" "$CMP" "$STAT"; do
+for tool in "$GIT" "$JQ" "$REALPATH" "$FLOCK" "$DU" "$READLINK" "$SHA256SUM" "$DATE" "$MKTEMP" "$CP" "$MV" "$UNLINK" "$CMP" "$STAT" "$SORT"; do
   [[ -x $tool ]] || fail "required tool is unavailable: $tool"
 done
 SCRIPT_PATH=$("$REALPATH" -e -- "${BASH_SOURCE[0]}") || fail 'cannot canonicalize script path'
 readonly SCRIPT_PATH SCRIPT_DIRECTORY=${SCRIPT_PATH%/*}
 if [[ -n $TEST_ROOT ]]; then
-  [[ ${SOCIAL_MONITOR_JANITOR_ALLOW_TEST_ROOT:-} == 1 ]] ||
-    fail '--test-root is restricted to the hermetic test harness'
-  [[ -n ${SOCIAL_MONITOR_JANITOR_TEST_PARENT:-} ]] ||
-    fail 'the hermetic test parent is required'
+  [[ ${SOCIAL_MONITOR_JANITOR_ALLOW_TEST_ROOT:-} == 1 ]] || fail '--test-root is restricted to the hermetic test harness'
+  [[ -n ${SOCIAL_MONITOR_JANITOR_TEST_PARENT:-} ]] || fail 'the hermetic test parent is required'
   [[ -d $TEST_ROOT && ! -L $TEST_ROOT ]] || fail 'test root must be a real directory'
   PROJECT_ROOT=$("$REALPATH" -e -- "$TEST_ROOT") || fail 'cannot canonicalize test root'
-  TEST_PARENT=$("$REALPATH" -e -- "$SOCIAL_MONITOR_JANITOR_TEST_PARENT") ||
-    fail 'cannot canonicalize the hermetic test parent'
+  TEST_PARENT=$("$REALPATH" -e -- "$SOCIAL_MONITOR_JANITOR_TEST_PARENT") || fail 'cannot canonicalize the hermetic test parent'
   [[ -d $TEST_PARENT && ! -L $TEST_PARENT && ${TEST_PARENT%/*} == "$SCRIPT_DIRECTORY" &&
-    ${TEST_PARENT##*/} == .consumed-worktree-janitor-test.* ]] ||
-    fail 'test parent must be an isolated fixture beside the janitor'
-  [[ ${PROJECT_ROOT%/*} == "$TEST_PARENT" &&
-    ${PROJECT_ROOT##*/} =~ ^[A-Za-z0-9._-]+$ ]] ||
-    fail 'test root must be a direct child of the isolated test parent'
-  [[ -f $PROJECT_ROOT/.social-monitor-janitor-test-root && \
-    ! -L $PROJECT_ROOT/.social-monitor-janitor-test-root ]] ||
-    fail 'test root marker is missing or unsafe'
+    ${TEST_PARENT##*/} == .consumed-worktree-janitor-test.* ]] || fail 'test parent must be an isolated fixture beside the janitor'
+  [[ ${PROJECT_ROOT%/*} == "$TEST_PARENT" && ${PROJECT_ROOT##*/} =~ ^[A-Za-z0-9._-]+$ ]] || fail 'test root must be a direct child of the isolated test parent'
+  [[ -f $PROJECT_ROOT/.social-monitor-janitor-test-root && ! -L $PROJECT_ROOT/.social-monitor-janitor-test-root ]] || fail 'test root marker is missing or unsafe'
   TRUSTED_OWNER_ID=$EUID
 else
   PROJECT_ROOT=/var/data/social-monitor
@@ -79,18 +55,16 @@ else
   TRUSTED_OWNER_ID=0
 fi
 readonly PROJECT_ROOT TRUSTED_OWNER_ID CONTROL=$PROJECT_ROOT/control INTEGRATION=$PROJECT_ROOT/integration
-readonly WORKTREES=$PROJECT_ROOT/worktrees WORKER_JOBS=$PROJECT_ROOT/worker-jobs
-readonly CONTROLLER=$WORKER_JOBS/controller CONTROLLER_V4=$WORKER_JOBS/controller-v4
+readonly WORKTREES=$PROJECT_ROOT/worktrees WORKER_JOBS=$PROJECT_ROOT/worker-jobs CONTROLLER=$PROJECT_ROOT/worker-jobs/controller
+readonly CONTROLLER_V4=$WORKER_JOBS/controller-v4 RELOCATION_ARCHIVE_ROOT=$WORKTREES/.volume2/root-worktree-archive-20260727
 if [[ -n $TEST_ROOT ]]; then
   LEGACY_V2_ARCHIVES=$PROJECT_ROOT/.subscription-runtime/social-monitor-project-controller-v2/archives
 else
   LEGACY_V2_ARCHIVES=/root/.cache/subscription-runtime/social-monitor-project-controller-v2/archives
 fi
 readonly LEGACY_V2_ARCHIVES
-readonly LEDGER_ITEMS=$CONTROL/consumed-output-ledger/items PROJECT_LOCK=$CONTROL/worktree-cleanup.lock
-readonly AUDIT_LOG=$CONTROL/consumed-worktree-janitor.audit.jsonl
-for directory in "$PROJECT_ROOT" "$CONTROL" "$INTEGRATION" "$WORKTREES" \
-  "$WORKER_JOBS" "$CONTROLLER" "$LEDGER_ITEMS"; do
+readonly LEDGER_ITEMS=$CONTROL/consumed-output-ledger/items PROJECT_LOCK=$CONTROL/worktree-cleanup.lock AUDIT_LOG=$CONTROL/consumed-worktree-janitor.audit.jsonl
+for directory in "$PROJECT_ROOT" "$CONTROL" "$INTEGRATION" "$WORKTREES" "$WORKER_JOBS" "$CONTROLLER" "$LEDGER_ITEMS"; do
   [[ -d $directory && ! -L $directory ]] || fail "unsafe or missing directory: $directory"
   canonical=$("$REALPATH" -e -- "$directory") || fail "cannot canonicalize: $directory"
   [[ $canonical == "$directory" ]] || fail "non-canonical project directory: $directory"
@@ -98,90 +72,88 @@ done
 [[ -f $PROJECT_LOCK && ! -L $PROJECT_LOCK ]] || fail 'project lock is missing or unsafe'
 exec {LOCK_FD}<"$PROJECT_LOCK"
 "$FLOCK" -n "$LOCK_FD" || fail 'project worktree-cleanup lock is already held'
-repo_root=$("$GIT" -C "$INTEGRATION" rev-parse --show-toplevel) ||
-  fail 'integration is not a readable Git worktree'
+repo_root=$("$GIT" -C "$INTEGRATION" rev-parse --show-toplevel) || fail 'integration is not a readable Git worktree'
 repo_root=$("$REALPATH" -e -- "$repo_root") || fail 'cannot canonicalize integration Git root'
 [[ $repo_root == "$INTEGRATION" ]] || fail 'integration Git root conflicts with project layout'
 MAIN_COMMIT=$("$GIT" -C "$INTEGRATION" rev-parse --verify refs/heads/main^{commit}) || fail 'integration main is not a readable commit'
 readonly MAIN_COMMIT
-canonical_declared_path() {
-  local declared=$1
-  local label=$2
-  local result
-  [[ $declared == /* && $declared != *$'\n'* && $declared != *$'\r'* && \
-    $declared != *$'\t'* ]] || fail "$label is not a safe absolute path"
+canonical_declared_path() { local declared=$1 label=$2 result
+  [[ $declared == /* && $declared != *$'\n'* && $declared != *$'\r'* && $declared != *$'\t'* ]] || fail "$label is not a safe absolute path"
   result=$("$REALPATH" -m -- "$declared") || fail "cannot canonicalize $label"
   [[ $result == "$declared" ]] || fail "$label is not canonical"
   printf '%s\n' "$result"
 }
-validate_reviewed_output() {
-  local reviewed_id=$1 job_id=$2 workspace=$3 patch_hash=$4
-  local reviewed_root=$WORKER_JOBS/reviewed-worker-outputs
-  local output_root=$reviewed_root/$reviewed_id
-  local manifest=$output_root/manifest.json output_patch=$output_root/output.patch
-  local path output_hash manifest_hash
+lexical_declared_path() { local declared=$1 label=$2 result
+  [[ $declared == /* && $declared != *$'\n'* && $declared != *$'\r'* && $declared != *$'\t'* ]] || fail "$label is not a safe absolute path"
+  result=$("$REALPATH" -ms -- "$declared") || fail "cannot normalize $label"
+  [[ $result == "$declared" ]] || fail "$label is not canonical"
+  printf '%s\n' "$result"
+}
+validate_reviewed_output() { local reviewed_id=$1 job_id=$2 workspace=$3 patch_hash=$4
+  local reviewed_root=$WORKER_JOBS/reviewed-worker-outputs output_root
+  output_root=$reviewed_root/$reviewed_id
+  local manifest=$output_root/manifest.json output_patch=$output_root/output.patch path output_hash manifest_hash
   for path in "$reviewed_root" "$output_root"; do
-    [[ -d $path && ! -L $path && $("$REALPATH" -e -- "$path") == "$path" ]] \
-      || fail "reviewed output directory is missing or unsafe: $path"
+    [[ -d $path && ! -L $path && $("$REALPATH" -e -- "$path") == "$path" ]] || fail "reviewed output directory is missing or unsafe: $path"
   done
   for path in "$manifest" "$output_patch"; do
-    [[ -f $path && ! -L $path && -r $path && $("$REALPATH" -e -- "$path") == "$path" ]] \
-      || fail "reviewed output evidence is missing or unsafe: $path"
+    [[ -f $path && ! -L $path && -r $path && $("$REALPATH" -e -- "$path") == "$path" ]] || fail "reviewed output evidence is missing or unsafe: $path"
   done
   # shellcheck disable=SC2016 # The dollar-prefixed names are jq variables.
-  "$JQ" -e --arg id "$reviewed_id" --arg job "$job_id" \
-    --arg workspace "$workspace" --arg patch "$output_patch" '
+  "$JQ" -e --arg id "$reviewed_id" --arg job "$job_id" --arg workspace "$workspace" --arg patch "$output_patch" '
     type == "object" and .format == "reviewed-worker-output" and .formatRevision == 1 and
     .projectId == "social-monitor" and .reviewedOutputId == $id and .workerJobId == $job and
     .sourceWorkspacePath == $workspace and .patchPath == $patch and
     (.patchSha256 | type == "string" and test("^[0-9a-f]{64}$")) and
     .reviewDecision.decision == "rejected"
   ' "$manifest" >/dev/null || fail "reviewed output manifest is conflicting: $manifest"
-  output_hash=$("$SHA256SUM" -- "$output_patch") \
-    || fail "cannot hash reviewed output patch: $output_patch"
+  output_hash=$("$SHA256SUM" -- "$output_patch") || fail "cannot hash reviewed output patch: $output_patch"
   output_hash=${output_hash%%[[:space:]]*}
   manifest_hash=$("$JQ" -r '.patchSha256' "$manifest")
-  [[ $manifest_hash == "$patch_hash" && $output_hash == "$patch_hash" ]] \
-    || fail "reviewed output patch hash conflicts with terminal archive: $reviewed_id"
+  [[ $manifest_hash == "$patch_hash" && $output_hash == "$patch_hash" ]] || fail "reviewed output patch hash conflicts with terminal archive: $reviewed_id"
 }
-validate_terminal_archive_name() {
-  local job_id=$1 attempt_id=$2 status=$3 archive=$4 workspace=$5
+validate_terminal_archive_name() { local job_id=$1 attempt_id=$2 status=$3 archive=$4 workspace=$5
   local patch_hash=$6 integrated_commit=$7 name=${archive##*/} bound_hash
   if [[ $status == rejected && $attempt_id == uncaptured-rejection-* ]]; then
     bound_hash=${attempt_id#uncaptured-rejection-}
-    [[ $bound_hash =~ ^[0-9a-f]{64}$ && $patch_hash == "$bound_hash" &&
-      $name == "$job_id-rejected-uncaptured-$bound_hash" ]] \
-      || fail "uncaptured rejection archive binding is conflicting: $archive"
+    [[ $bound_hash =~ ^[0-9a-f]{64}$ && $patch_hash == "$bound_hash" && $name == "$job_id-rejected-uncaptured-$bound_hash" ]] || fail "uncaptured rejection archive binding is conflicting: $archive"
     return
   fi
   if [[ $name == "$job_id-rejected-reviewed-"* ]]; then
-    [[ $status == rejected && $attempt_id =~ ^[0-9a-f]{64}$ &&
-      $name == "$job_id-rejected-reviewed-$attempt_id" ]] \
-      || fail "reviewed rejection archive binding is conflicting: $archive"
+    [[ $status == rejected && $attempt_id =~ ^[0-9a-f]{64}$ && $name == "$job_id-rejected-reviewed-$attempt_id" ]] || fail "reviewed rejection archive binding is conflicting: $archive"
     validate_reviewed_output "$attempt_id" "$job_id" "$workspace" "$patch_hash"
     return
   fi
-  [[ $name == "$job_id-$status-$attempt_id" || ($status == integrated &&
-    $name == "$job_id-integrated-${integrated_commit:0:12}-$attempt_id") ]] \
-    || fail "ledger archive name conflicts with its terminal record: $archive"
+  [[ $name == "$job_id-$status-$attempt_id" || ($status == integrated && $name == "$job_id-integrated-${integrated_commit:0:12}-$attempt_id") ]] || fail "ledger archive name conflicts with its terminal record: $archive"
 }
-validate_trusted_path() {
-  local path=$1 kind=$2 label=$3 canonical metadata owner mode
-  if [[ $kind == directory ]]; then [[ -d $path && ! -L $path ]] ||
-    fail "$label is missing or unsafe: $path"; else [[ -f $path && ! -L $path && -r $path ]] ||
-    fail "$label is missing or unsafe: $path"; fi
+validate_trusted_path() { local path=$1 kind=$2 label=$3 canonical metadata owner mode
+  if [[ $kind == directory ]]; then [[ -d $path && ! -L $path ]] || fail "$label is missing or unsafe: $path"
+  else [[ -f $path && ! -L $path && -r $path ]] || fail "$label is missing or unsafe: $path"; fi
   canonical=$("$REALPATH" -e -- "$path") || fail "cannot canonicalize $label: $path"
   [[ $canonical == "$path" ]] || fail "$label is not canonical: $path"
   metadata=$("$STAT" -c '%u %a' -- "$path") || fail "cannot stat $label: $path"
   owner=${metadata%% *}; mode=${metadata##* }
-  [[ -z $TEST_ROOT || ${SOCIAL_MONITOR_JANITOR_TEST_WRONG_OWNER_PATH:-} != "$path" ]] ||
-    owner=$((TRUSTED_OWNER_ID == 0 ? 1 : 0))
-  [[ $owner == "$TRUSTED_OWNER_ID" && $mode =~ ^[0-7]{3,4}$ ]] ||
-    fail "$label has the wrong owner: $path"
+  [[ -z $TEST_ROOT || ${SOCIAL_MONITOR_JANITOR_TEST_WRONG_OWNER_PATH:-} != "$path" ]] || owner=$((TRUSTED_OWNER_ID == 0 ? 1 : 0))
+  [[ $owner == "$TRUSTED_OWNER_ID" && $mode =~ ^[0-7]{3,4}$ ]] || fail "$label has the wrong owner: $path"
   (((8#$mode & 0022) == 0)) || fail "$label is group/world writable: $path"
 }
-validate_registry_binding() {
-  local job_id=$1 workspace=$2 registry manifest manifest_parent registry_root
+validate_relocated_workspace() { local logical=$1 expected target metadata owner
+  [[ ${logical%/*} == "$WORKTREES" && ${logical##*/} =~ ^[A-Za-z0-9._-]+$ && -L $logical ]] || fail "relocated workspace is not a direct logical symlink: $logical"
+  metadata=$("$STAT" -c '%u %a' -- "$logical") || fail "cannot lstat relocated logical symlink: $logical"
+  owner=${metadata%% *}
+  [[ -z $TEST_ROOT || ${SOCIAL_MONITOR_JANITOR_TEST_WRONG_OWNER_PATH:-} != "$logical" ]] || owner=$((TRUSTED_OWNER_ID == 0 ? 1 : 0))
+  [[ $owner == "$TRUSTED_OWNER_ID" ]] || fail "relocated logical symlink has the wrong owner: $logical"
+  expected=$RELOCATION_ARCHIVE_ROOT/${logical##*/}
+  target=$("$READLINK" -- "$logical") || fail "cannot read relocated logical symlink: $logical"
+  [[ $target == "$expected" ]] || fail "relocated logical symlink has a foreign, chained, or mismatched target: $logical"
+  validate_trusted_path "$WORKTREES" directory 'relocation logical parent'
+  validate_trusted_path "$WORKTREES/.volume2" directory 'relocation volume parent'
+  validate_trusted_path "$RELOCATION_ARCHIVE_ROOT" directory 'relocation archive root'
+  validate_trusted_path "$target" directory 'relocation archive target'
+  [[ ${target%/*} == "$RELOCATION_ARCHIVE_ROOT" && ${target##*/} == "${logical##*/}" ]] || fail "relocation target is not an exact basename-bound archive child: $target"
+  printf '%s\n' "$target"
+}
+validate_registry_binding() { local job_id=$1 workspace=$2 registry manifest manifest_parent registry_root
   local manifests=()
   for registry in registry registry-v2 registry-v3 registry-v4; do
     manifest=$WORKER_JOBS/$registry/$job_id/job.json
@@ -192,16 +164,12 @@ validate_registry_binding() {
   validate_trusted_path "$registry_root" directory 'registry root'
   validate_trusted_path "$manifest_parent" directory 'registry job directory'
   validate_trusted_path "$manifest" file 'registry binding'
-  "$JQ" -e --arg job_id "$job_id" --arg workspace "$workspace" \
-    'type == "object" and .jobId == $job_id and .workspacePath == $workspace' \
-    "$manifest" >/dev/null || fail "registry binding is malformed or conflicting: $manifest"
+  "$JQ" -e --arg job_id "$job_id" --arg workspace "$workspace" 'type == "object" and .jobId == $job_id and .workspacePath == $workspace' "$manifest" >/dev/null || fail "registry binding is malformed or conflicting: $manifest"
 }
-validate_archive_location() {
-  local job_id=$1 workspace=$2 archive=$3 archive_root=${archive%/*} archive_parent
+validate_archive_location() { local job_id=$1 workspace=$2 archive=$3 archive_root=${archive%/*} archive_parent
   archive_parent=${archive_root%/*}
   case $archive_root in
-    "$LEGACY_V2_ARCHIVES" | "$CONTROLLER_V4/archives" | "$CONTROLLER/archives" | \
-      "$WORKER_JOBS/$job_id/archives") ;;
+    "$LEGACY_V2_ARCHIVES" | "$CONTROLLER_V4/archives" | "$CONTROLLER/archives" | "$WORKER_JOBS/$job_id/archives") ;;
     *) fail "ledger archive conflicts with its Social Monitor job or root: $archive" ;;
   esac
   validate_trusted_path "$archive_parent" directory 'archive parent'
@@ -209,35 +177,23 @@ validate_archive_location() {
   validate_trusted_path "$archive" directory 'terminal archive'
   validate_registry_binding "$job_id" "$workspace"
 }
-is_terminal_ledger_status() {
-  case $1 in
-    integrated | rejected | archived | superseded) return 0 ;;
-    *) return 1 ;;
-  esac
-}
+is_terminal_ledger_status() { case $1 in integrated | rejected | archived | superseded) return 0 ;; *) return 1 ;; esac; }
 is_terminal_activity_status() {
-  case $1 in
-    archived | blocked | canceled | cancelled | completed | done | failed | integrated | \
-      partial | pushed | rejected | rolled_back | stopped | superseded)
-      return 0
-      ;;
-    *) return 1 ;;
-  esac
+  case $1 in archived | blocked | canceled | cancelled | completed | done | failed | integrated | partial | pushed | rejected | rolled_back | stopped | superseded) return 0 ;; *) return 1 ;; esac
 }
-integrated_commit_state() {
-  local commit=$1 main=$2 result
+integrated_commit_state() { local commit=$1 main=$2 result
   "$GIT" -C "$INTEGRATION" cat-file -e "$commit^{commit}" 2>/dev/null || return 2
   if "$GIT" -C "$INTEGRATION" merge-base --is-ancestor "$commit" "$main"; then return 0
   else result=$?; fi
   ((result == 1)) || fail 'cannot compare integrated ledger commit with main'
   return 1
 }
-declare -A ledger_workspace_by_id=() ledger_numstat_hash_by_id=()
+declare -A ledger_workspace_by_id=() ledger_target_by_id=() ledger_numstat_hash_by_id=()
 declare -A ledger_patch_hash_by_id=() ledger_status_hash_by_id=()
 declare -A latest_item=() latest_item_hash=() latest_integrated_commit=() latest_job=() latest_ledger=()
 declare -A latest_numstat=() latest_numstat_hash=() latest_patch=() latest_patch_hash=() latest_status=()
 declare -A latest_status_file=() latest_status_hash=() latest_time=() latest_workspace_kind=()
-declare -A latest_legacy_registry_bound=()
+declare -A latest_legacy_registry_bound=() latest_target=() relocated_logical_by_target=()
 shopt -s nullglob
 ledger_files=("$LEDGER_ITEMS"/*.json)
 ((${#ledger_files[@]} > 0)) || fail 'consumed-output ledger contains no item JSON files'
@@ -254,7 +210,7 @@ for item in "${ledger_files[@]}"; do
     def safe_social_job:
       type == "string" and test("^social-monitor-[A-Za-z0-9._-]+$");
     def safe_attempt:
-      type == "string" and test("^[A-Za-z0-9._-]+$");
+      type == "string" and test("^[A-Za-z0-9._:-]+$");
     def timestamp:
       type == "string" and
       test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$");
@@ -282,44 +238,56 @@ for item in "${ledger_files[@]}"; do
   record=$("$JQ" -er '[.jobId,.attemptId,.status,.consumedAt,.archivePath,
     .backup.workspace,.backup.statusPath,.backup.patchPath,.backup.numstatPath] | @tsv' "$item") ||
     fail "cannot read ledger fields: $item"
-  IFS=$'\t' read -r job_id attempt_id status consumed_at archive workspace \
-    status_file patch_file numstat_file <<<"$record"
+  IFS=$'\t' read -r job_id attempt_id status consumed_at archive workspace status_file patch_file numstat_file <<<"$record"
   integrated_commit=$("$JQ" -r '.integratedCommitSha // empty' "$item")
   ledger_id=${item##*/}
   ledger_id=${ledger_id%.json}
-  [[ ${item##*/} == "$job_id--$attempt_id.json" ]] ||
+  attempt_filename=$attempt_id
+  if [[ ! $attempt_id =~ ^[A-Za-z0-9._-]+$ ]]; then
+    is_terminal_ledger_status "$status" && fail "terminal attempt ID is unsafe: $item"
+    [[ $attempt_id =~ ^[A-Za-z0-9._-]+:[A-Za-z0-9._-]+$ ]] ||
+      fail "nonterminal attempt ID is unsafe or unbound: $item"
+    attempt_filename=${attempt_id/:/_}
+  fi
+  [[ ${item##*/} == "$job_id--$attempt_filename.json" ]] ||
     fail "ledger filename conflicts with its IDs: $item"
-  workspace=$(canonical_declared_path "$workspace" 'ledger workspace')
+  workspace=$(lexical_declared_path "$workspace" 'ledger workspace')
   legacy_registry_bound=0
-  case $workspace in
-    "$WORKTREES/$job_id")
+  if [[ -L $workspace && ${workspace%/*} == "$WORKTREES" ]]; then
+    target=$(validate_relocated_workspace "$workspace")
+    workspace_kind=relocated
+    relocated_logical_by_target["$target"]=$workspace
+  else
+    workspace=$(canonical_declared_path "$workspace" 'ledger workspace')
+    target=$workspace
+    case $workspace in
+      "$WORKTREES/$job_id")
       workspace_kind=canonical
       ;;
-    "$WORKTREES/.volume2/$job_id")
+      "$WORKTREES/.volume2/$job_id")
       workspace_kind=volume2-direct
       ;;
-    "$WORKTREES/.volume2/$job_id/worktree")
+      "$WORKTREES/.volume2/$job_id/worktree")
       workspace_kind=volume2-nested
       ;;
-    "$WORKTREES/.volume2" | "$WORKTREES/.volume2/"*)
+      "$WORKTREES/.volume2" | "$WORKTREES/.volume2/"*)
       workspace_kind=volume2-unsupported
       ;;
-    *)
+      *)
       [[ ${workspace%/*} == "$WORKTREES" &&
         ${workspace##*/} =~ ^[A-Za-z0-9._-]+$ ]] ||
         fail "ledger workspace is not a direct Social Monitor worktree: $workspace"
       workspace_kind=canonical
       ;;
-  esac
-  [[ ${workspace##*/} == "$job_id" ]] || legacy_registry_bound=1
+    esac
+    [[ ${workspace##*/} == "$job_id" ]] || legacy_registry_bound=1
+  fi
   if is_terminal_ledger_status "$status"; then
     archive=$(canonical_declared_path "$archive" 'ledger archive')
     status_file=$(canonical_declared_path "$status_file" 'status evidence')
     patch_file=$(canonical_declared_path "$patch_file" 'patch evidence')
     numstat_file=$(canonical_declared_path "$numstat_file" 'numstat evidence')
-    [[ $status_file == "$archive/git-status.txt" && \
-      $patch_file == "$archive/tracked.diff" && \
-      $numstat_file == "$archive/tracked.numstat" ]] ||
+    [[ $status_file == "$archive/git-status.txt" && $patch_file == "$archive/tracked.diff" && $numstat_file == "$archive/tracked.numstat" ]] ||
       fail "ledger evidence paths conflict with the archive: $item"
     validate_archive_location "$job_id" "$workspace" "$archive"
     for evidence in "$status_file" "$patch_file" "$numstat_file"; do
@@ -331,15 +299,14 @@ for item in "${ledger_files[@]}"; do
     ledger_patch_hash_by_id["$ledger_id"]=${ledger_patch_hash_by_id[$ledger_id]%%[[:space:]]*}
     ledger_status_hash_by_id["$ledger_id"]=$("$SHA256SUM" -- "$status_file")
     ledger_status_hash_by_id["$ledger_id"]=${ledger_status_hash_by_id[$ledger_id]%%[[:space:]]*}
-    validate_terminal_archive_name "$job_id" "$attempt_id" "$status" "$archive" \
-      "$workspace" "${ledger_patch_hash_by_id[$ledger_id]}" "$integrated_commit"
+    validate_terminal_archive_name "$job_id" "$attempt_id" "$status" "$archive" "$workspace" "${ledger_patch_hash_by_id[$ledger_id]}" "$integrated_commit"
   fi
   ledger_workspace_by_id["$ledger_id"]=$workspace
+  ledger_target_by_id["$ledger_id"]=$target
   item_hash=$({ "$SHA256SUM" -- "$item" || fail "cannot hash ledger item: $item"; })
   item_hash=${item_hash%%[[:space:]]*}
   if [[ -n ${latest_time[$workspace]:-} ]]; then
-    if [[ ${latest_time[$workspace]} == "$consumed_at" && \
-      ${latest_ledger[$workspace]} != "$ledger_id" ]]; then
+    if [[ ${latest_time[$workspace]} == "$consumed_at" && ${latest_ledger[$workspace]} != "$ledger_id" ]]; then
       fail "conflicting ledger items have the same terminal ordering time: $workspace"
     fi
     [[ $consumed_at > ${latest_time[$workspace]} ]] || continue
@@ -354,6 +321,7 @@ for item in "${ledger_files[@]}"; do
   latest_status["$workspace"]=$status
   latest_status_file["$workspace"]=$status_file
   latest_time["$workspace"]=$consumed_at
+  latest_target["$workspace"]=$target
   latest_workspace_kind["$workspace"]=$workspace_kind
   latest_legacy_registry_bound["$workspace"]=$legacy_registry_bound
   if is_terminal_ledger_status "$status"; then
@@ -382,15 +350,13 @@ if [[ -e $AUDIT_LOG || -L $AUDIT_LOG ]]; then
       (.removedAt | type == "string")) and
     (group_by(.ledgerId) | all(.[]; length == 1))
   ' "$AUDIT_LOG" >/dev/null || fail 'audit log is malformed or contains duplicate receipts'
-  while IFS=$'\t' read -r receipt_id receipt_workspace receipt_item receipt_hash \
-    receipt_status_hash receipt_patch_hash receipt_numstat_hash; do
+  while IFS=$'\t' read -r receipt_id receipt_workspace receipt_item receipt_hash receipt_status_hash receipt_patch_hash receipt_numstat_hash; do
     receipt_workspace=$(canonical_declared_path "$receipt_workspace" 'audit worktree')
     receipt_item=$(canonical_declared_path "$receipt_item" 'audit ledger item')
-    [[ -n ${ledger_workspace_by_id[$receipt_id]:-} && \
+    [[ -n ${ledger_workspace_by_id[$receipt_id]:-} &&
       ${ledger_workspace_by_id[$receipt_id]} == "$receipt_workspace" ]] ||
       fail "audit receipt conflicts with consumed ledger: $receipt_id"
-    [[ $receipt_item == "$LEDGER_ITEMS/$receipt_id.json" && -f $receipt_item && \
-      ! -L $receipt_item ]] ||
+    [[ $receipt_item == "$LEDGER_ITEMS/$receipt_id.json" && -f $receipt_item && ! -L $receipt_item ]] ||
       fail "audit receipt ledger item is missing or unsafe: $receipt_id"
     current_hash=$({ "$SHA256SUM" -- "$receipt_item" ||
       fail "cannot hash audit ledger item: $receipt_id"; })
@@ -403,20 +369,19 @@ if [[ -e $AUDIT_LOG || -L $AUDIT_LOG ]]; then
       ${ledger_numstat_hash_by_id[$receipt_id]} == "$receipt_numstat_hash" ]] ||
       fail "audit receipt evidence hashes conflict with consumed ledger: $receipt_id"
     audited_workspace["$receipt_id"]=$receipt_workspace
-  done < <("$JQ" -r \
-    '[.ledgerId,.worktreePath,.ledgerItemPath,.ledgerItemSha256,
+  done < <("$JQ" -r '[.ledgerId,.worktreePath,.ledgerItemPath,.ledgerItemSha256,
       .statusEvidenceSha256,.patchEvidenceSha256,.numstatEvidenceSha256] | @tsv' "$AUDIT_LOG")
 fi
 worktree_porcelain=$("$GIT" -C "$INTEGRATION" worktree list --porcelain) ||
   fail 'cannot enumerate registered Git worktrees'
-declare -A registered=() registered_locked=()
+declare -A registered_count=() registered_locked=()
 registered_path=
 while IFS= read -r line; do
   if [[ $line == worktree\ * ]]; then
     registered_path=${line#worktree }
     registered_path=$("$REALPATH" -m -- "$registered_path") ||
       fail 'cannot canonicalize registered Git worktree'
-    registered["$registered_path"]=1
+    registered_count["$registered_path"]=$(( ${registered_count[$registered_path]:-0} + 1 ))
   elif [[ $line == locked || $line == locked\ * ]]; then
     [[ -n $registered_path ]] || fail 'Git reported an unbound worktree lock'
     registered_locked["$registered_path"]=1
@@ -424,9 +389,18 @@ while IFS= read -r line; do
 done <<<"$worktree_porcelain"
 declare -A activity_protected=()
 protect_worktree_for_path() {
-  local path=$1
-  local reason=$2
-  local relative worktree_root
+  local path=$1 reason=$2
+  local relative worktree_root relocated_target
+  case $path in
+    "$RELOCATION_ARCHIVE_ROOT"/*)
+      relative=${path#"$RELOCATION_ARCHIVE_ROOT"/}
+      relocated_target=$RELOCATION_ARCHIVE_ROOT/${relative%%/*}
+      if [[ -n ${relocated_logical_by_target[$relocated_target]:-} ]]; then
+        activity_protected["${relocated_logical_by_target[$relocated_target]}"]=$reason
+        return
+      fi
+      ;;
+  esac
   case $path in
     "$WORKTREES"/*)
       relative=${path#"$WORKTREES"/}
@@ -436,8 +410,7 @@ protect_worktree_for_path() {
   esac
 }
 protect_manifest_paths() {
-  local manifest=$1
-  local reason=$2
+  local manifest=$1 reason=$2
   local paths path canonical_path
   local saw_path=0
   paths=$("$JQ" -er '
@@ -452,7 +425,12 @@ protect_manifest_paths() {
   while IFS= read -r path; do
     [[ -n $path ]] || continue
     saw_path=1
-    canonical_path=$(canonical_declared_path "$path" 'active workspace evidence')
+    canonical_path=$(lexical_declared_path "$path" 'active workspace evidence')
+    if [[ -L $canonical_path && ${canonical_path%/*} == "$WORKTREES" ]]; then
+      canonical_path=$(validate_relocated_workspace "$canonical_path")
+    else
+      canonical_path=$(canonical_declared_path "$canonical_path" 'active workspace evidence')
+    fi
     case $canonical_path in
       "$WORKTREES"/*) protect_worktree_for_path "$canonical_path" "$reason" ;;
       "$INTEGRATION" | "$INTEGRATION"/*) ;;
@@ -511,15 +489,18 @@ scan_controller_job() {
     fail 'cannot canonicalize controller job evidence'
   [[ $controller_job_path == "$CONTROL/controller-job.json" ]] ||
     fail 'controller job evidence escaped the control root'
-  controller_workspace=$("$JQ" -er \
-    'select(type == "object" and
-      (.workspacePath | type == "string" and startswith("/"))) | .workspacePath' \
-    "$CONTROL/controller-job.json") ||
+  controller_workspace=$("$JQ" -er 'select(type == "object" and
+      (.workspacePath | type == "string" and startswith("/"))) | .workspacePath' "$CONTROL/controller-job.json") ||
     fail 'controller job evidence is malformed or unbound'
-  controller_workspace=$(canonical_declared_path "$controller_workspace" 'controller workspace')
+  controller_workspace=$(lexical_declared_path "$controller_workspace" 'controller workspace')
+  if [[ -L $controller_workspace && ${controller_workspace%/*} == "$WORKTREES" ]]; then
+    controller_workspace=$(validate_relocated_workspace "$controller_workspace")
+  else
+    controller_workspace=$(canonical_declared_path "$controller_workspace" 'controller workspace')
+  fi
   case $controller_workspace in
     "$WORKTREES"/*) protect_worktree_for_path "$controller_workspace" 'controller-workspace' ;;
-    "$INTEGRATION") ;;
+    "$CONTROL" | "$INTEGRATION") ;;
     *) fail 'controller workspace escaped the Social Monitor worktree root' ;;
   esac
 }
@@ -561,10 +542,8 @@ scan_tmux_panes() {
 }
 scan_tmux_panes
 job_has_active_state() {
-  local job_root=$1
-  local state_file status tmux_alive result_status
-  local progress_files=("$job_root"/*.progress.json)
-  local result_files=("$job_root"/*.latest-result.json)
+  local job_root=$1 state_file status tmux_alive result_status
+  local progress_files=("$job_root"/*.progress.json) result_files=("$job_root"/*.latest-result.json)
   local review_files=("$job_root"/*.review.json)
   for state_file in "${progress_files[@]}"; do
     [[ -f $state_file && ! -L $state_file && -r $state_file ]] ||
@@ -597,11 +576,10 @@ job_has_active_state() {
       (.status.progressStatus == null or (.status.progressStatus | type == "string"))
     ' "$state_file" >/dev/null ||
       fail "review evidence is malformed: $state_file"
-    tmux_alive=$("$JQ" -er '.status.tmuxAlive // false | booleans' "$state_file") ||
+    tmux_alive=$("$JQ" -er '.status.tmuxAlive // false | booleans | tostring' "$state_file") ||
       fail "cannot read review tmux liveness: $state_file"
     [[ $tmux_alive == true ]] && return 0
-    result_status=$("$JQ" -r \
-      '.status.resultStatus // .status.progressStatus // empty | strings' "$state_file") ||
+    result_status=$("$JQ" -r '.status.resultStatus // .status.progressStatus // empty | strings' "$state_file") ||
       fail "cannot read review result liveness: $state_file"
     [[ -z $result_status ]] || is_terminal_activity_status "$result_status" || return 0
   done
@@ -610,9 +588,7 @@ job_has_active_state() {
 PROCESS_SCAN_INCOMPLETE=0
 declare -a PLANNING_PROCESS_PATHS=()
 inspect_process_path() {
-  local raw_path=$1
-  local scan_mode=$2
-  local target=${3:-}
+  local raw_path=$1 scan_mode=$2 target=${3:-}
   local resolved
   [[ $raw_path == /* ]] || return 1
   raw_path=${raw_path% (deleted)}
@@ -632,8 +608,7 @@ inspect_process_path() {
   esac
 }
 scan_synthetic_process_evidence() {
-  local scan_mode=$1
-  local target=${2:-}
+  local scan_mode=$1 target=${2:-}
   local evidence=$PROJECT_ROOT/.social-monitor-janitor-test-process-paths
   local canonical_evidence raw_path resolved
   [[ -e $evidence || -L $evidence ]] || return 1
@@ -654,47 +629,75 @@ scan_synthetic_process_evidence() {
   done <"$evidence"
   return 1
 }
-scan_proc_process_evidence() {
-  local scan_mode=$1
-  local target=${2:-}
-  local process_dir link_path raw_link
-  for process_dir in /proc/[0-9]*; do
+read_process_identity() { local process_dir=$1 phase=$2 stat_file=$process_dir/stat stat_line stat_tail pid; local -a stat_fields=()
+  pid=${process_dir##*/}
+  [[ -z $TEST_ROOT || $phase != recheck || ! -f $process_dir/stat.recheck ||
+    -L $process_dir/stat.recheck ]] || stat_file=$process_dir/stat.recheck
+  [[ $pid =~ ^[0-9]+$ && -f $stat_file && ! -L $stat_file && -r $stat_file ]] || return 1
+  stat_line=$(<"$stat_file") || return 1; [[ $stat_line == "$pid ("* ]] || return 1; stat_tail=${stat_line##*) }
+  [[ $stat_tail != "$stat_line" ]] || return 1; read -r -a stat_fields <<<"$stat_tail"
+  ((${#stat_fields[@]} >= 20)) && [[ ${stat_fields[19]} =~ ^[0-9]+$ ]] || return 1
+  printf '%s:%s\n' "$pid" "${stat_fields[19]}"
+}
+recheck_process_identity() { local process_dir=$1 expected=$2 current
+  [[ -d $process_dir ]] || return 1
+  current=$(read_process_identity "$process_dir" recheck) || { [[ -d $process_dir ]] || return 1; return 2; }
+  [[ $current == "$expected" ]] || return 1
+}
+status_has_no_process_resources() { local status=$1 line
+  while IFS= read -r line; do
+    [[ $line =~ ^Kthread:[[:space:]]*1[[:space:]]*$ ||
+      $line =~ ^State:[[:space:]]*Z([[:space:]]|$) ]] && return 0
+  done <<<"$status"; return 1
+}
+scan_proc_process_evidence() { local proc_root=$1 scan_mode=$2 target=${3:-}
+  local process_dir link_path raw_link identity status recheck_result unreadable; local -a raw_paths=()
+  for process_dir in "$proc_root"/[0-9]*; do
     [[ -d $process_dir ]] || continue
+    if ! identity=$(read_process_identity "$process_dir" initial); then
+      [[ -d $process_dir ]] && PROCESS_SCAN_INCOMPLETE=1; continue
+    fi
+    if [[ ! -f $process_dir/status || -L $process_dir/status ||
+      ! -r $process_dir/status ]] || ! status=$(<"$process_dir/status"); then
+      if recheck_process_identity "$process_dir" "$identity"; then PROCESS_SCAN_INCOMPLETE=1
+      else recheck_result=$?; ((recheck_result == 1)) || PROCESS_SCAN_INCOMPLETE=1; fi
+      continue
+    fi
+    if status_has_no_process_resources "$status"; then
+      recheck_process_identity "$process_dir" "$identity" || {
+        recheck_result=$?; ((recheck_result == 1)) || PROCESS_SCAN_INCOMPLETE=1; }; continue
+    fi
+    unreadable=0; raw_paths=()
     for link_path in "$process_dir/cwd" "$process_dir/root" "$process_dir/exe"; do
-      [[ -L $link_path ]] || continue
-      if ! raw_link=$("$READLINK" -- "$link_path" 2>/dev/null); then
-        [[ -e $process_dir/status ]] && PROCESS_SCAN_INCOMPLETE=1
-        continue
-      fi
-      inspect_process_path "$raw_link" "$scan_mode" "$target" && return 0
+      if [[ -L $link_path ]] && raw_link=$("$READLINK" -- "$link_path" 2>/dev/null); then raw_paths+=("$raw_link"); else unreadable=1; fi
     done
     for link_path in "$process_dir"/fd/*; do
       [[ -L $link_path ]] || continue
-      raw_link=$("$READLINK" -- "$link_path" 2>/dev/null) || continue
+      if raw_link=$("$READLINK" -- "$link_path" 2>/dev/null); then raw_paths+=("$raw_link"); else unreadable=1; fi
+    done
+    if recheck_process_identity "$process_dir" "$identity"; then :
+    else
+      recheck_result=$?; ((recheck_result == 1)) || PROCESS_SCAN_INCOMPLETE=1; continue
+    fi
+    ((unreadable == 0)) || { PROCESS_SCAN_INCOMPLETE=1; continue; }
+    for raw_link in "${raw_paths[@]}"; do
       inspect_process_path "$raw_link" "$scan_mode" "$target" && return 0
     done
-  done
-  return 1
+  done; return 1
 }
-scan_process_evidence() {
-  local scan_mode=$1
-  local target=${2:-}
+scan_process_evidence() { local scan_mode=$1 target=${2:-} test_proc=$PROJECT_ROOT/.social-monitor-janitor-test-proc
   if [[ -n $TEST_ROOT ]]; then
-    scan_synthetic_process_evidence "$scan_mode" "$target"
-  else
-    scan_proc_process_evidence "$scan_mode" "$target"
-  fi
+    scan_synthetic_process_evidence "$scan_mode" "$target" && return 0
+    [[ -d $test_proc && ! -L $test_proc ]] || return 1
+    scan_proc_process_evidence "$test_proc" "$scan_mode" "$target"
+  else scan_proc_process_evidence /proc "$scan_mode" "$target"; fi
 }
-snapshot_process_evidence() {
-  PROCESS_SCAN_INCOMPLETE=0
+snapshot_process_evidence() { PROCESS_SCAN_INCOMPLETE=0
   PLANNING_PROCESS_PATHS=()
   scan_process_evidence snapshot || true
-  ((PROCESS_SCAN_INCOMPLETE == 0)) ||
-    fail 'process-use snapshot was incomplete; refusing to proceed'
+  ((PROCESS_SCAN_INCOMPLETE == 0)) || fail 'process-use snapshot was incomplete; refusing to proceed'
 }
-planning_process_uses_worktree() {
-  local target=$1
-  local process_path
+planning_process_uses_worktree() { local target=$1 process_path
   for process_path in "${PLANNING_PROCESS_PATHS[@]}"; do
     case $process_path in
       "$target" | "$target"/*) return 0 ;;
@@ -702,16 +705,14 @@ planning_process_uses_worktree() {
   done
   return 1
 }
-live_process_uses_worktree() {
-  local target=$1
+live_process_uses_worktree() { local target=$1
   PROCESS_SCAN_INCOMPLETE=0
   scan_process_evidence live "$target" && return 0
   ((PROCESS_SCAN_INCOMPLETE == 0)) || fail 'process-use recheck was incomplete'
   return 1
 }
 is_registered_now() {
-  local target=$1
-  local listing line path
+  local target=$1 listing line path
   listing=$("$GIT" -C "$INTEGRATION" worktree list --porcelain) ||
     fail 'cannot re-enumerate registered Git worktrees'
   while IFS= read -r line; do
@@ -723,8 +724,7 @@ is_registered_now() {
   return 1
 }
 is_locked_now() {
-  local target=$1
-  local listing line path current_path=
+  local target=$1 listing line path current_path=
   listing=$("$GIT" -C "$INTEGRATION" worktree list --porcelain) ||
     fail 'cannot re-enumerate Git worktree locks'
   while IFS= read -r line; do
@@ -739,8 +739,7 @@ is_locked_now() {
   return 1
 }
 validate_job_root() {
-  local job_root=$1
-  local canonical_job_root
+  local job_root=$1 canonical_job_root
   [[ -d $job_root && ! -L $job_root ]] || fail "job root is unsafe: $job_root"
   canonical_job_root=$("$REALPATH" -e -- "$job_root") ||
     fail "cannot canonicalize job root: $job_root"
@@ -753,10 +752,7 @@ validate_terminal_evidence_paths() {
   done
 }
 worktree_matches_terminal_evidence() {
-  local target=$1
-  local status_file=$2
-  local patch_file=$3
-  local numstat_file=$4
+  local target=$1 status_file=$2 patch_file=$3 numstat_file=$4
   "$GIT" -c status.showUntrackedFiles=all -C "$target" status --short |
     "$CMP" -s -- "$status_file" - || return 1
   "$GIT" -C "$target" diff --no-ext-diff --binary HEAD -- |
@@ -765,14 +761,16 @@ worktree_matches_terminal_evidence() {
     "$CMP" -s -- "$numstat_file" - || return 1
 }
 current_directory=$("$REALPATH" -m -- "$PWD") || fail 'cannot canonicalize current directory'
-declare -a plan_items=() plan_jobs=() plan_ledgers=() plan_targets=() plan_bytes=()
-eligible=0
-excluded=0
-replayed=0
+declare -a plan_items=() plan_jobs=() plan_ledgers=() plan_workspaces=() plan_targets=()
+declare -a plan_bytes=() plan_target_inodes=() plan_link_inodes=()
+eligible=0 excluded=0 replayed=0 total_apparent_bytes=0 total_target_inodes=0
+total_logical_symlink_inodes=0
 snapshot_process_evidence
-for workspace in "${!latest_time[@]}"; do
+mapfile -t sorted_workspaces < <(printf '%s\n' "${!latest_time[@]}" | LC_ALL=C "$SORT")
+for workspace in "${sorted_workspaces[@]}"; do
   status=${latest_status[$workspace]}
   ledger_id=${latest_ledger[$workspace]}
+  target=${latest_target[$workspace]}
   is_terminal_ledger_status "$status" || {
     excluded=$((excluded + 1))
     continue
@@ -791,65 +789,72 @@ for workspace in "${!latest_time[@]}"; do
     fi
   fi
   if [[ ${latest_legacy_registry_bound[$workspace]} == 1 ]]; then
-    printf 'excluded reason=legacy-registry-bound ledger=%s worktree=%s\n' \
-      "$ledger_id" "$workspace"
+    printf 'excluded reason=legacy-registry-bound ledger=%s worktree=%s\n' "$ledger_id" "$workspace"
     excluded=$((excluded + 1))
     continue
   fi
   workspace_kind=${latest_workspace_kind[$workspace]}
   if [[ $workspace_kind == volume2-unsupported ]]; then
-    printf 'excluded reason=unsupported-volume2-layout ledger=%s worktree=%s\n' \
-      "$ledger_id" "$workspace"
+    printf 'excluded reason=unsupported-volume2-layout ledger=%s worktree=%s\n' "$ledger_id" "$workspace"
     excluded=$((excluded + 1))
     continue
   fi
-  if [[ $MODE == apply && $workspace_kind == volume2-* ]]; then
-    printf 'excluded reason=volume2-dry-run-only ledger=%s worktree=%s\n' \
-      "$ledger_id" "$workspace"
+  if [[ $MODE == apply && $workspace_kind == relocated ]]; then
+    printf 'excluded reason=relocation-dry-run-only ledger=%s worktree=%s target=%s\n' "$ledger_id" "$workspace" "$target"
+    excluded=$((excluded + 1))
+    continue
+  elif [[ $MODE == apply && $workspace_kind == volume2-* ]]; then
+    printf 'excluded reason=volume2-dry-run-only ledger=%s worktree=%s\n' "$ledger_id" "$workspace"
     excluded=$((excluded + 1))
     continue
   fi
   if [[ -n ${audited_workspace[$ledger_id]:-} ]]; then
-    if [[ -e $workspace || -L $workspace || -n ${registered[$workspace]:-} ]]; then
+    if [[ -e $workspace || -L $workspace ||
+      ${registered_count[${ledger_target_by_id[$ledger_id]}]:-0} != 0 ]]; then
       fail "audit receipt conflicts with an existing or registered worktree: $ledger_id"
     fi
     replayed=$((replayed + 1))
     continue
   fi
-  [[ -d $workspace && ! -L $workspace ]] || {
+  if [[ $workspace_kind == relocated ]]; then
+    current_target=$(validate_relocated_workspace "$workspace")
+    [[ $current_target == "$target" ]] ||
+      fail "relocation target changed during preflight: $workspace"
+  else
+    [[ -d $workspace && ! -L $workspace ]] || {
+      excluded=$((excluded + 1))
+      continue
+    }
+  fi
+  [[ ${registered_count[$target]:-0} == 1 ]] || {
+    printf 'excluded reason=git-registration-count ledger=%s worktree=%s target=%s count=%s\n' "$ledger_id" "$workspace" "$target" "${registered_count[$target]:-0}"
     excluded=$((excluded + 1))
     continue
   }
-  [[ -n ${registered[$workspace]:-} ]] || {
-    excluded=$((excluded + 1))
-    continue
-  }
-  if [[ -n ${registered_locked[$workspace]:-} ]]; then
-    printf 'excluded reason=git-worktree-locked ledger=%s worktree=%s\n' \
-      "$ledger_id" "$workspace"
+  if [[ -n ${registered_locked[$target]:-} ]]; then
+    printf 'excluded reason=git-worktree-locked ledger=%s worktree=%s\n' "$ledger_id" "$workspace"
     excluded=$((excluded + 1))
     continue
   fi
-  target_root=$("$GIT" -C "$workspace" rev-parse --show-toplevel 2>/dev/null) ||
-    fail "registered target is not a readable Git worktree: $workspace"
+  target_root=$("$GIT" -C "$target" rev-parse --show-toplevel 2>/dev/null) ||
+    fail "registered target is not a readable Git worktree: $target"
   target_root=$("$REALPATH" -e -- "$target_root") || fail 'cannot canonicalize target Git root'
-  [[ $target_root == "$workspace" ]] || fail "target Git root conflicts with ledger: $workspace"
+  [[ $target_root == "$target" ]] || fail "target Git root conflicts with ledger: $workspace"
   case ${workspace##*/} in
-    artifacts | auth | backups | controller | handoffs | integration | registries | registry | \
-      toolchain | toolchains)
+    artifacts | auth | backups | controller | handoffs | integration | registries | registry | toolchain | toolchains)
       excluded=$((excluded + 1))
       continue
       ;;
   esac
   if [[ $current_directory == "$workspace" || $current_directory == "$workspace"/* ||
-    $SCRIPT_PATH == "$workspace"/* ]]; then
+    $current_directory == "$target" || $current_directory == "$target"/* ||
+    $SCRIPT_PATH == "$workspace"/* || $SCRIPT_PATH == "$target"/* ]]; then
     printf 'excluded reason=current-worktree ledger=%s worktree=%s\n' "$ledger_id" "$workspace"
     excluded=$((excluded + 1))
     continue
   fi
   if [[ -n ${activity_protected[$workspace]:-} ]]; then
-    printf 'excluded reason=%s ledger=%s worktree=%s\n' \
-      "${activity_protected[$workspace]}" "$ledger_id" "$workspace"
+    printf 'excluded reason=%s ledger=%s worktree=%s\n' "${activity_protected[$workspace]}" "$ledger_id" "$workspace"
     excluded=$((excluded + 1))
     continue
   fi
@@ -866,23 +871,33 @@ for workspace in "${!latest_time[@]}"; do
     excluded=$((excluded + 1))
     continue
   fi
-  if planning_process_uses_worktree "$workspace"; then
+  if planning_process_uses_worktree "$target"; then
     printf 'excluded reason=active-process ledger=%s worktree=%s\n' "$ledger_id" "$workspace"
     excluded=$((excluded + 1))
     continue
   fi
-  worktree_matches_terminal_evidence "$workspace" "${latest_status_file[$workspace]}" \
-    "${latest_patch[$workspace]}" "${latest_numstat[$workspace]}" ||
-    fail "worktree state conflicts with terminal archive evidence: $ledger_id"
-  byte_record=$("$DU" -sb --apparent-size -- "$workspace") ||
-    fail "cannot measure worktree bytes: $workspace"
+  worktree_matches_terminal_evidence "$target" "${latest_status_file[$workspace]}" "${latest_patch[$workspace]}" "${latest_numstat[$workspace]}" || { printf 'excluded reason=terminal-evidence-conflict ledger=%s worktree=%s target=%s\n' "$ledger_id" "$workspace" "$target"; excluded=$((excluded + 1)); continue; }
+  byte_record=$("$DU" -sb --apparent-size -- "$target") ||
+    fail "cannot measure worktree bytes: $target"
   before_bytes=${byte_record%%[[:space:]]*}
-  [[ $before_bytes =~ ^[0-9]+$ ]] || fail "invalid worktree byte count: $workspace"
+  inode_record=$("$DU" -s --inodes -- "$target") ||
+    fail "cannot measure worktree inodes: $target"
+  target_inodes=${inode_record%%[[:space:]]*}
+  [[ $before_bytes =~ ^[0-9]+$ && $target_inodes =~ ^[0-9]+$ ]] ||
+    fail "invalid worktree accounting snapshot: $target"
+  logical_symlink_inodes=0
+  [[ $workspace_kind == relocated ]] && logical_symlink_inodes=1
   plan_items+=("${latest_item[$workspace]}")
   plan_jobs+=("${latest_job[$workspace]}")
   plan_ledgers+=("$ledger_id")
-  plan_targets+=("$workspace")
+  plan_workspaces+=("$workspace")
+  plan_targets+=("$target")
   plan_bytes+=("$before_bytes")
+  plan_target_inodes+=("$target_inodes")
+  plan_link_inodes+=("$logical_symlink_inodes")
+  total_apparent_bytes=$((total_apparent_bytes + before_bytes))
+  total_target_inodes=$((total_target_inodes + target_inodes))
+  total_logical_symlink_inodes=$((total_logical_symlink_inodes + logical_symlink_inodes))
   eligible=$((eligible + 1))
 done
 append_audit_receipt() {
@@ -903,8 +918,8 @@ append_audit_receipt() {
 removed=0
 if [[ $MODE == dry-run ]]; then
   for index in "${!plan_targets[@]}"; do
-    printf 'would-remove ledger=%s worktree=%s beforeBytes=%s afterBytes=0\n' \
-      "${plan_ledgers[$index]}" "${plan_targets[$index]}" "${plan_bytes[$index]}"
+    total_inodes=$((plan_target_inodes[index] + plan_link_inodes[index]))
+    printf 'would-remove ledger=%s worktree=%s target=%s beforeBytes=%s apparentBytes=%s targetInodes=%s logicalSymlinkInodes=%s totalInodes=%s afterBytes=0\n' "${plan_ledgers[$index]}" "${plan_workspaces[$index]}" "${plan_targets[$index]}" "${plan_bytes[$index]}" "${plan_bytes[$index]}" "${plan_target_inodes[$index]}" "${plan_link_inodes[$index]}" "$total_inodes"
   done
 else
   for index in "${!plan_targets[@]}"; do
@@ -917,10 +932,8 @@ else
     scan_tmux_panes
     [[ -z ${activity_protected[$target]:-} ]] ||
       fail "controller or tmux activity appeared before apply: $target"
-    validate_archive_location "$job_id" "$target" \
-      "${latest_status_file[$target]%/git-status.txt}"
-    validate_terminal_evidence_paths "${latest_status_file[$target]}" \
-      "${latest_patch[$target]}" "${latest_numstat[$target]}"
+    validate_archive_location "$job_id" "$target" "${latest_status_file[$target]%/git-status.txt}"
+    validate_terminal_evidence_paths "${latest_status_file[$target]}" "${latest_patch[$target]}" "${latest_numstat[$target]}"
     status_sha=$("$SHA256SUM" -- "${latest_status_file[$target]}") ||
       fail "cannot rehash status evidence: $ledger_id"
     patch_sha=$("$SHA256SUM" -- "${latest_patch[$target]}") ||
@@ -931,8 +944,7 @@ else
       ${patch_sha%%[[:space:]]*} == "${latest_patch_hash[$target]}" &&
       ${numstat_sha%%[[:space:]]*} == "${latest_numstat_hash[$target]}" ]] ||
       fail "archive evidence content changed before apply: $ledger_id"
-    worktree_matches_terminal_evidence "$target" "${latest_status_file[$target]}" \
-      "${latest_patch[$target]}" "${latest_numstat[$target]}" ||
+    worktree_matches_terminal_evidence "$target" "${latest_status_file[$target]}" "${latest_patch[$target]}" "${latest_numstat[$target]}" ||
       fail "worktree state changed after terminal evidence preflight: $ledger_id"
     if [[ ${latest_status[$target]} == integrated ]]; then
       integrated_commit=${latest_integrated_commit[$target]}
@@ -969,17 +981,7 @@ else
     [[ ! -e $target && ! -L $target ]] || fail "Git did not remove worktree: $target"
     is_registered_now "$target" && fail "Git worktree remains registered: $target"
     # shellcheck disable=SC2016 # The dollar-prefixed names are jq variables.
-    receipt=$("$JQ" -cn \
-      --arg ledgerId "$ledger_id" \
-      --arg ledgerItemPath "$item" \
-      --arg ledgerItemSha256 "$ledger_sha" \
-      --arg statusEvidenceSha256 "${latest_status_hash[$target]}" \
-      --arg patchEvidenceSha256 "${latest_patch_hash[$target]}" \
-      --arg numstatEvidenceSha256 "${latest_numstat_hash[$target]}" \
-      --arg worktreePath "$target" \
-      --arg removedAt "$removed_at" \
-      --argjson beforeBytes "$before_bytes" \
-      '{schemaVersion:1,status:"removed",ledgerId:$ledgerId,
+    receipt=$("$JQ" -cn --arg ledgerId "$ledger_id" --arg ledgerItemPath "$item" --arg ledgerItemSha256 "$ledger_sha" --arg statusEvidenceSha256 "${latest_status_hash[$target]}" --arg patchEvidenceSha256 "${latest_patch_hash[$target]}" --arg numstatEvidenceSha256 "${latest_numstat_hash[$target]}" --arg worktreePath "$target" --arg removedAt "$removed_at" --argjson beforeBytes "$before_bytes" '{schemaVersion:1,status:"removed",ledgerId:$ledgerId,
        ledgerItemPath:$ledgerItemPath,ledgerItemSha256:$ledgerItemSha256,
        statusEvidenceSha256:$statusEvidenceSha256,
        patchEvidenceSha256:$patchEvidenceSha256,
@@ -987,13 +989,11 @@ else
        worktreePath:$worktreePath,beforeBytes:$beforeBytes,afterBytes:0,
        removedAt:$removedAt}') || fail 'cannot construct audit receipt'
     append_audit_receipt "$receipt"
-    printf 'removed ledger=%s worktree=%s beforeBytes=%s afterBytes=0\n' \
-      "$ledger_id" "$target" "$before_bytes"
+    printf 'removed ledger=%s worktree=%s beforeBytes=%s afterBytes=0\n' "$ledger_id" "$target" "$before_bytes"
     removed=$((removed + 1))
   done
   if ((removed > 0)); then
     "$GIT" -C "$INTEGRATION" worktree prune --expire now
   fi
 fi
-printf 'consumed-worktree-janitor mode=%s eligible=%s removed=%s replayed=%s excluded=%s\n' \
-  "$MODE" "$eligible" "$removed" "$replayed" "$excluded"
+printf 'consumed-worktree-janitor mode=%s eligible=%s removed=%s replayed=%s excluded=%s apparentBytes=%s targetInodes=%s logicalSymlinkInodes=%s totalInodes=%s\n' "$MODE" "$eligible" "$removed" "$replayed" "$excluded" "$total_apparent_bytes" "$total_target_inodes" "$total_logical_symlink_inodes" "$((total_target_inodes + total_logical_symlink_inodes))"

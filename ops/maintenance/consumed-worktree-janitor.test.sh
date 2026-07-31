@@ -44,6 +44,15 @@ add_worktree() {
   printf '%s\n' "$target"
 }
 
+add_relocated_worktree() {
+  local root=$1 name=$2
+  local logical=$root/worktrees/$name
+  local target=$root/worktrees/.volume2/root-worktree-archive-20260727/$name
+  add_worktree "$root" "$name" "$target" >/dev/null
+  ln -s "$target" "$logical"
+  printf '%s\t%s\n' "$logical" "$target"
+}
+
 write_ledger() {
   local root=$1
   local job_id=$2
@@ -105,6 +114,25 @@ write_registry_binding() {
   mkdir -p "$binding_root"
   jq -n --arg jobId "$job_id" --arg workspacePath "$workspace" \
     '{jobId:$jobId,workspacePath:$workspacePath}' >"$binding_root/job.json"
+}
+write_fake_process() {
+  local root=$1 pid=$2 state=$3 kthread=$4 starttime=$5 resources=$6
+  local recheck_starttime=${7:-} process_dir=$root/.social-monitor-janitor-test-proc/$pid
+  local stat_tail=S field
+  mkdir -p "$process_dir/fd"
+  for ((field = 4; field <= 21; field++)); do stat_tail+=' 0'; done
+  printf '%s (fixture) %s %s\n' "$pid" "$stat_tail" "$starttime" >"$process_dir/stat"
+  if [[ -n $recheck_starttime ]]; then
+    printf '%s (fixture) %s %s\n' "$pid" "$stat_tail" "$recheck_starttime" \
+      >"$process_dir/stat.recheck"
+  fi
+  printf 'Name:\tfixture\nState:\t%s\nKthread:\t%s\n' "$state" "$kthread" \
+    >"$process_dir/status"
+  if [[ $resources == yes ]]; then
+    ln -s "$root/control" "$process_dir/cwd"
+    ln -s / "$process_dir/root"
+    ln -s /usr/bin/bash "$process_dir/exe"
+  fi
 }
 
 run_janitor() {
@@ -286,6 +314,155 @@ output=$(run_janitor "$root" --apply)
   fail 'volume2 apply removed a fixture target'
 [[ ! -e $root/control/consumed-worktree-janitor.audit.jsonl ]] ||
   fail 'volume2 apply wrote an audit receipt'
+
+root=$(new_fixture relocated-deterministic-accounting)
+for suffix in zeta alpha; do
+  job=social-monitor-relocated-$suffix
+  IFS=$'\t' read -r logical target < <(add_relocated_worktree "$root" "$job")
+  printf '%s payload\n' "$suffix" >"$target/$suffix.txt"
+  write_ledger "$root" "$job" attempt-1 "$logical" rejected
+done
+alpha_logical=$root/worktrees/social-monitor-relocated-alpha
+alpha_target=$root/worktrees/.volume2/root-worktree-archive-20260727/social-monitor-relocated-alpha
+zeta_logical=$root/worktrees/social-monitor-relocated-zeta
+zeta_target=$root/worktrees/.volume2/root-worktree-archive-20260727/social-monitor-relocated-zeta
+alpha_bytes=$(du -sb --apparent-size -- "$alpha_target"); alpha_bytes=${alpha_bytes%%[[:space:]]*}
+zeta_bytes=$(du -sb --apparent-size -- "$zeta_target"); zeta_bytes=${zeta_bytes%%[[:space:]]*}
+alpha_inodes=$(du -s --inodes -- "$alpha_target"); alpha_inodes=${alpha_inodes%%[[:space:]]*}
+zeta_inodes=$(du -s --inodes -- "$zeta_target"); zeta_inodes=${zeta_inodes%%[[:space:]]*}
+output=$(run_janitor "$root")
+alpha_line=$(printf '%s\n' "$output" | grep -n "would-remove ledger=social-monitor-relocated-alpha--")
+zeta_line=$(printf '%s\n' "$output" | grep -n "would-remove ledger=social-monitor-relocated-zeta--")
+[[ ${alpha_line%%:*} -lt ${zeta_line%%:*} &&
+  $alpha_line == *"worktree=$alpha_logical target=$alpha_target"* &&
+  $alpha_line == *"apparentBytes=$alpha_bytes targetInodes=$alpha_inodes logicalSymlinkInodes=1"* &&
+  $output == *"apparentBytes=$((alpha_bytes + zeta_bytes)) targetInodes=$((alpha_inodes + zeta_inodes)) logicalSymlinkInodes=2 totalInodes=$((alpha_inodes + zeta_inodes + 2))"* ]] ||
+  fail 'relocated dry-run order or byte/inode accounting was not exact'
+[[ -L $alpha_logical && -d $alpha_target && -L $zeta_logical && -d $zeta_target &&
+  ! -e $root/control/consumed-worktree-janitor.audit.jsonl ]] ||
+  fail 'relocated dry-run changed a candidate or wrote an audit receipt'
+[[ $(run_janitor "$root") == "$output" ]] || fail 'relocated dry-run output was not deterministic'
+output=$(run_janitor "$root" --apply)
+[[ $output == *"reason=relocation-dry-run-only ledger=social-monitor-relocated-alpha--attempt-1"* &&
+  $output == *"reason=relocation-dry-run-only ledger=social-monitor-relocated-zeta--attempt-1"* &&
+  $output == *'eligible=0 removed=0'* && -L $alpha_logical && -d $alpha_target &&
+  -L $zeta_logical && -d $zeta_target &&
+  ! -e $root/control/consumed-worktree-janitor.audit.jsonl ]] ||
+  fail 'relocated apply did not explicitly preserve every logical symlink and target'
+
+root=$(new_fixture relocated-logical-alias)
+job=social-monitor-relocated-alias-owner
+alias_name=social-monitor-relocated-logical-alias
+IFS=$'\t' read -r logical target < <(add_relocated_worktree "$root" "$alias_name")
+write_ledger "$root" "$job" attempt-1 "$logical" rejected
+output=$(run_janitor "$root")
+[[ $output == *"would-remove ledger=$job--attempt-1 worktree=$logical target=$target"* &&
+  $output == *'eligible=1'* && -L $logical && -d $target ]] ||
+  fail 'valid relocated logical alias did not bind through its registry and Git target'
+
+for unsafe_case in logical-chain target-chain basename-mismatch foreign-root broken-target \
+  writable-volume-parent writable-archive-root writable-target wrong-owner; do
+  JANITOR_WRONG_OWNER_PATH=
+  root=$(new_fixture relocated-unsafe-$unsafe_case)
+  job=social-monitor-relocated-unsafe-$unsafe_case
+  IFS=$'\t' read -r logical target < <(add_relocated_worktree "$root" "$job")
+  write_ledger "$root" "$job" attempt-1 "$logical" rejected
+  preserved=$target
+  case $unsafe_case in
+    logical-chain)
+      mv "$logical" "$logical.direct"
+      ln -s "$logical.direct" "$logical"
+      ;;
+    target-chain)
+      mv "$target" "$target.real"
+      ln -s "$target.real" "$target"
+      preserved=$target.real
+      ;;
+    basename-mismatch)
+      mv "$target" "$target-other"
+      ln -sfn "$target-other" "$logical"
+      preserved=$target-other
+      ;;
+    foreign-root)
+      mkdir "$root/foreign-archive"
+      mv "$target" "$root/foreign-archive/$job"
+      ln -sfn "$root/foreign-archive/$job" "$logical"
+      preserved=$root/foreign-archive/$job
+      ;;
+    broken-target) mv "$target" "$target.missing"; preserved=$target.missing ;;
+    writable-volume-parent) chmod g+w "$root/worktrees/.volume2" ;;
+    writable-archive-root) chmod g+w "${target%/*}" ;;
+    writable-target) chmod g+w "$target" ;;
+    wrong-owner) JANITOR_WRONG_OWNER_PATH=$logical ;;
+  esac
+  assert_apply_rejected "$root" "$preserved"
+done
+unset JANITOR_WRONG_OWNER_PATH
+
+root=$(new_fixture relocated-duplicate-registry)
+job=social-monitor-relocated-duplicate-registry
+IFS=$'\t' read -r logical target < <(add_relocated_worktree "$root" "$job")
+write_ledger "$root" "$job" attempt-1 "$logical" rejected
+write_registry_binding "$root" "$job" "$logical" registry-v3
+assert_apply_rejected "$root" "$target"
+
+root=$(new_fixture relocated-unbound)
+job=social-monitor-relocated-unbound
+IFS=$'\t' read -r logical target < <(add_relocated_worktree "$root" "$job")
+write_ledger "$root" "$job" attempt-1 "$logical" rejected "" "" none
+assert_apply_rejected "$root" "$target"
+
+root=$(new_fixture relocated-duplicate-git-registration)
+job=social-monitor-relocated-duplicate-git-registration
+IFS=$'\t' read -r logical target < <(add_relocated_worktree "$root" "$job")
+write_ledger "$root" "$job" attempt-1 "$logical" rejected
+metadata=${target##*/}; metadata=$root/integration/.git/worktrees/$metadata
+cp -a "$metadata" "$metadata-copy"
+output=$(run_janitor "$root")
+[[ $output == *'reason=git-registration-count'* && $output == *'count=2'* &&
+  $output != *'would-remove'* && -L $logical && -d $target ]] ||
+  fail 'duplicate Git registration resolving to a relocated target was not excluded'
+
+root=$(new_fixture relocated-failed-no-output)
+job=social-monitor-relocated-failed-no-output
+IFS=$'\t' read -r logical target < <(add_relocated_worktree "$root" "$job")
+attempt=workspace:synthetic-id
+write_ledger "$root" "$job" "$attempt" "$logical" failed_no_output
+mv "$root/control/consumed-output-ledger/items/$job--$attempt.json" \
+  "$root/control/consumed-output-ledger/items/$job--${attempt/:/_}.json"
+find "$root/worker-jobs/$job/archives" -depth -delete
+output=$(run_janitor "$root")
+[[ $output != *'would-remove'* && $output == *'eligible=0'* && -L $logical && -d $target ]] ||
+  fail 'relocated failed_no_output record was not excluded'
+
+for active_case in process lock activity; do
+  root=$(new_fixture relocated-active-$active_case)
+  job=social-monitor-relocated-active-$active_case
+  IFS=$'\t' read -r logical target < <(add_relocated_worktree "$root" "$job")
+  write_ledger "$root" "$job" attempt-1 "$logical" rejected
+  case $active_case in
+    process) printf '%s\n' "$target/held-open" >"$root/.social-monitor-janitor-test-process-paths" ;;
+    lock) git -C "$root/integration" worktree lock --reason fixture "$target" ;;
+    activity)
+      operation=$root/worker-jobs/controller/project-control-operations/op-1
+      mkdir -p "$operation"
+      jq -n --arg workspacePath "$logical" \
+        '{status:"running",workspacePath:$workspacePath}' >"$operation/operation.json"
+      ;;
+  esac
+  output=$(run_janitor "$root")
+  [[ $output != *'would-remove'* && -L $logical && -d $target ]] ||
+    fail "relocated $active_case activity was not excluded"
+done
+
+root=$(new_fixture relocated-state-mismatch)
+job=social-monitor-relocated-state-mismatch
+IFS=$'\t' read -r logical target < <(add_relocated_worktree "$root" "$job")
+write_ledger "$root" "$job" attempt-1 "$logical" rejected
+printf 'later state\n' >>"$target/fixture.txt"
+output=$(run_janitor "$root")
+[[ $output == *"excluded reason=terminal-evidence-conflict ledger=$job--attempt-1 worktree=$logical target=$target"* &&
+  $output == *'eligible=0 removed=0 replayed=0 excluded=1'* && -L $logical && -d $target ]] || fail 'relocated state mismatch was not safely excluded'
 
 root=$(new_fixture unregistered)
 job=social-monitor-unregistered-worker
@@ -536,12 +713,17 @@ output=$(run_janitor "$root")
   fail 'nonterminal missing/bad archive aborted or became eligible'
 
 root=$(new_fixture changed-after-terminal-evidence)
-job=social-monitor-changed-after-terminal-worker
-target=$(add_worktree "$root" "$job")
-printf 'first terminal state\n' >>"$target/fixture.txt"
-write_ledger "$root" "$job" attempt-1 "$target" rejected
-printf 'unconsumed later state\n' >>"$target/fixture.txt"
-assert_apply_rejected "$root" "$target"
+conflict_job=social-monitor-changed-after-terminal-worker safe_job=social-monitor-independent-unchanged-worker
+conflict_target=$(add_worktree "$root" "$conflict_job")
+printf 'first terminal state\n' >>"$conflict_target/fixture.txt"
+write_ledger "$root" "$conflict_job" attempt-1 "$conflict_target" rejected
+printf 'unconsumed later state\n' >>"$conflict_target/fixture.txt"
+safe_target=$(add_worktree "$root" "$safe_job")
+write_ledger "$root" "$safe_job" attempt-1 "$safe_target" rejected
+output=$(run_janitor "$root" --apply)
+[[ $output == *"excluded reason=terminal-evidence-conflict ledger=$conflict_job--attempt-1 worktree=$conflict_target target=$conflict_target"* &&
+  $output == *"removed ledger=$safe_job--attempt-1 worktree=$safe_target"* &&
+  $output == *'eligible=1 removed=1 replayed=0 excluded=1'* && -d $conflict_target && ! -e $safe_target ]] || fail 'mixed terminal evidence conflict did not exclude only the changed target'
 
 root=$(new_fixture symlink)
 job=social-monitor-symlink-worker
@@ -559,6 +741,16 @@ printf '{"schemaVersion":1,"status":"running"}\n' > \
 output=$(run_janitor "$root" --apply)
 [[ -d $target && $output == *'reason=active-job'* ]] || fail 'active job was not excluded'
 
+root=$(new_fixture terminal-review-tmux-false)
+job=social-monitor-terminal-review-tmux-false-worker
+target=$(add_worktree "$root" "$job")
+write_ledger "$root" "$job" attempt-1 "$target" rejected
+printf '{"status":{"tmuxAlive":false,"resultStatus":"rejected"}}\n' > \
+  "$root/worker-jobs/$job/$job.review.json"
+output=$(run_janitor "$root")
+[[ $output == *"would-remove ledger=$job--attempt-1"* && $output == *'eligible=1'* ]] ||
+  fail 'terminal review evidence with tmuxAlive=false was not admitted'
+
 root=$(new_fixture active-process)
 job=social-monitor-active-process-worker
 target=$(add_worktree "$root" "$job")
@@ -568,6 +760,45 @@ printf '%s\n' "$target/held-open.txt" > \
 output=$(run_janitor "$root" --apply)
 [[ -d $target && $output == *'reason=active-process'* ]] ||
   fail 'synthetic active process was not excluded'
+
+root=$(new_fixture resource-less-processes)
+job=social-monitor-resource-less-processes-worker
+target=$(add_worktree "$root" "$job")
+write_ledger "$root" "$job" attempt-1 "$target"
+write_fake_process "$root" 101 'S (sleeping)' 1 100 no
+write_fake_process "$root" 102 'Z (zombie)' 0 200 no
+output=$(run_janitor "$root")
+[[ $output == *"would-remove ledger=$job--attempt-1"* ]] ||
+  fail 'explicit kernel thread and zombie statuses did not skip resource checks'
+
+root=$(new_fixture live-process-unreadable)
+job=social-monitor-live-process-unreadable-worker
+target=$(add_worktree "$root" "$job")
+write_ledger "$root" "$job" attempt-1 "$target"
+write_fake_process "$root" 201 'S (sleeping)' 0 300 no
+if run_janitor "$root" >"$root/live-unreadable.out" 2>"$root/live-unreadable.err"; then
+  fail 'stable live process with unreadable resources did not fail closed'
+fi
+[[ $(<"$root/live-unreadable.err") == *'process-use snapshot was incomplete'* ]] ||
+  fail 'stable live unreadable process reported the wrong blocker'
+
+root=$(new_fixture reused-process-id)
+job=social-monitor-reused-process-id-worker
+target=$(add_worktree "$root" "$job")
+write_ledger "$root" "$job" attempt-1 "$target"
+write_fake_process "$root" 301 'S (sleeping)' 0 400 no 401
+output=$(run_janitor "$root")
+[[ $output == *"would-remove ledger=$job--attempt-1"* ]] ||
+  fail 'changed process starttime was not treated as a PID reuse race'
+
+root=$(new_fixture nonexplicit-resource-less-status)
+job=social-monitor-nonexplicit-resource-less-status-worker
+target=$(add_worktree "$root" "$job")
+write_ledger "$root" "$job" attempt-1 "$target"
+write_fake_process "$root" 401 'X (unknown)' 0 500 no
+if run_janitor "$root" >"$root/nonexplicit.out" 2>"$root/nonexplicit.err"; then
+  fail 'non-explicit process status bypassed fail-closed resource checks'
+fi
 
 root=$(new_fixture active-tmux)
 job=social-monitor-active-tmux-worker
@@ -600,6 +831,16 @@ jq -n --arg workspacePath "$target" '{workspacePath:$workspacePath}' > \
 output=$(run_janitor "$root" --apply)
 [[ -d $target && $output == *'reason=controller-workspace'* ]] ||
   fail 'active controller job was not excluded'
+
+root=$(new_fixture controller-control-context)
+job=social-monitor-controller-control-context-worker
+target=$(add_worktree "$root" "$job")
+write_ledger "$root" "$job" attempt-1 "$target"
+jq -n --arg workspacePath "$root/control" '{workspacePath:$workspacePath}' > \
+  "$root/control/controller-job.json"
+output=$(run_janitor "$root")
+[[ $output == *"would-remove ledger=$job--attempt-1"* ]] ||
+  fail 'exact controller control-root context blocked an unrelated candidate'
 
 root=$(new_fixture active-integration)
 job=social-monitor-active-integration-worker
