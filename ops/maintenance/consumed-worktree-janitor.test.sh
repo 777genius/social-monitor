@@ -153,6 +153,18 @@ assert_apply_rejected() {
   [[ -d $target ]] || fail "rejected fixture removed its target: ${root##*/}"
 }
 
+relocated_plan_sha() {
+  local output=$1 line
+  while IFS= read -r line; do
+    if [[ $line == relocated-plan\ schemaVersion=2\ sha256=* ]]; then
+      line=${line#*sha256=}
+      printf '%s\n' "${line%% *}"
+      return 0
+    fi
+  done <<<"$output"
+  return 1
+}
+
 root=$(new_fixture dry-run-default)
 job=social-monitor-dry-run-worker
 target=$(add_worktree "$root" "$job")
@@ -315,154 +327,9 @@ output=$(run_janitor "$root" --apply)
 [[ ! -e $root/control/consumed-worktree-janitor.audit.jsonl ]] ||
   fail 'volume2 apply wrote an audit receipt'
 
-root=$(new_fixture relocated-deterministic-accounting)
-for suffix in zeta alpha; do
-  job=social-monitor-relocated-$suffix
-  IFS=$'\t' read -r logical target < <(add_relocated_worktree "$root" "$job")
-  printf '%s payload\n' "$suffix" >"$target/$suffix.txt"
-  write_ledger "$root" "$job" attempt-1 "$logical" rejected
-done
-alpha_logical=$root/worktrees/social-monitor-relocated-alpha
-alpha_target=$root/worktrees/.volume2/root-worktree-archive-20260727/social-monitor-relocated-alpha
-zeta_logical=$root/worktrees/social-monitor-relocated-zeta
-zeta_target=$root/worktrees/.volume2/root-worktree-archive-20260727/social-monitor-relocated-zeta
-alpha_bytes=$(du -sb --apparent-size -- "$alpha_target"); alpha_bytes=${alpha_bytes%%[[:space:]]*}
-zeta_bytes=$(du -sb --apparent-size -- "$zeta_target"); zeta_bytes=${zeta_bytes%%[[:space:]]*}
-alpha_inodes=$(du -s --inodes -- "$alpha_target"); alpha_inodes=${alpha_inodes%%[[:space:]]*}
-zeta_inodes=$(du -s --inodes -- "$zeta_target"); zeta_inodes=${zeta_inodes%%[[:space:]]*}
-output=$(run_janitor "$root")
-alpha_line=$(printf '%s\n' "$output" | grep -n "would-remove ledger=social-monitor-relocated-alpha--")
-zeta_line=$(printf '%s\n' "$output" | grep -n "would-remove ledger=social-monitor-relocated-zeta--")
-[[ ${alpha_line%%:*} -lt ${zeta_line%%:*} &&
-  $alpha_line == *"worktree=$alpha_logical target=$alpha_target"* &&
-  $alpha_line == *"apparentBytes=$alpha_bytes targetInodes=$alpha_inodes logicalSymlinkInodes=1"* &&
-  $output == *"apparentBytes=$((alpha_bytes + zeta_bytes)) targetInodes=$((alpha_inodes + zeta_inodes)) logicalSymlinkInodes=2 totalInodes=$((alpha_inodes + zeta_inodes + 2))"* ]] ||
-  fail 'relocated dry-run order or byte/inode accounting was not exact'
-[[ -L $alpha_logical && -d $alpha_target && -L $zeta_logical && -d $zeta_target &&
-  ! -e $root/control/consumed-worktree-janitor.audit.jsonl ]] ||
-  fail 'relocated dry-run changed a candidate or wrote an audit receipt'
-[[ $(run_janitor "$root") == "$output" ]] || fail 'relocated dry-run output was not deterministic'
-output=$(run_janitor "$root" --apply)
-[[ $output == *"reason=relocation-dry-run-only ledger=social-monitor-relocated-alpha--attempt-1"* &&
-  $output == *"reason=relocation-dry-run-only ledger=social-monitor-relocated-zeta--attempt-1"* &&
-  $output == *'eligible=0 removed=0'* && -L $alpha_logical && -d $alpha_target &&
-  -L $zeta_logical && -d $zeta_target &&
-  ! -e $root/control/consumed-worktree-janitor.audit.jsonl ]] ||
-  fail 'relocated apply did not explicitly preserve every logical symlink and target'
-
-root=$(new_fixture relocated-logical-alias)
-job=social-monitor-relocated-alias-owner
-alias_name=social-monitor-relocated-logical-alias
-IFS=$'\t' read -r logical target < <(add_relocated_worktree "$root" "$alias_name")
-write_ledger "$root" "$job" attempt-1 "$logical" rejected
-output=$(run_janitor "$root")
-[[ $output == *"would-remove ledger=$job--attempt-1 worktree=$logical target=$target"* &&
-  $output == *'eligible=1'* && -L $logical && -d $target ]] ||
-  fail 'valid relocated logical alias did not bind through its registry and Git target'
-
-for unsafe_case in logical-chain target-chain basename-mismatch foreign-root broken-target \
-  writable-volume-parent writable-archive-root writable-target wrong-owner; do
-  JANITOR_WRONG_OWNER_PATH=
-  root=$(new_fixture relocated-unsafe-$unsafe_case)
-  job=social-monitor-relocated-unsafe-$unsafe_case
-  IFS=$'\t' read -r logical target < <(add_relocated_worktree "$root" "$job")
-  write_ledger "$root" "$job" attempt-1 "$logical" rejected
-  preserved=$target
-  case $unsafe_case in
-    logical-chain)
-      mv "$logical" "$logical.direct"
-      ln -s "$logical.direct" "$logical"
-      ;;
-    target-chain)
-      mv "$target" "$target.real"
-      ln -s "$target.real" "$target"
-      preserved=$target.real
-      ;;
-    basename-mismatch)
-      mv "$target" "$target-other"
-      ln -sfn "$target-other" "$logical"
-      preserved=$target-other
-      ;;
-    foreign-root)
-      mkdir "$root/foreign-archive"
-      mv "$target" "$root/foreign-archive/$job"
-      ln -sfn "$root/foreign-archive/$job" "$logical"
-      preserved=$root/foreign-archive/$job
-      ;;
-    broken-target) mv "$target" "$target.missing"; preserved=$target.missing ;;
-    writable-volume-parent) chmod g+w "$root/worktrees/.volume2" ;;
-    writable-archive-root) chmod g+w "${target%/*}" ;;
-    writable-target) chmod g+w "$target" ;;
-    wrong-owner) JANITOR_WRONG_OWNER_PATH=$logical ;;
-  esac
-  assert_apply_rejected "$root" "$preserved"
-done
-unset JANITOR_WRONG_OWNER_PATH
-
-root=$(new_fixture relocated-duplicate-registry)
-job=social-monitor-relocated-duplicate-registry
-IFS=$'\t' read -r logical target < <(add_relocated_worktree "$root" "$job")
-write_ledger "$root" "$job" attempt-1 "$logical" rejected
-write_registry_binding "$root" "$job" "$logical" registry-v3
-assert_apply_rejected "$root" "$target"
-
-root=$(new_fixture relocated-unbound)
-job=social-monitor-relocated-unbound
-IFS=$'\t' read -r logical target < <(add_relocated_worktree "$root" "$job")
-write_ledger "$root" "$job" attempt-1 "$logical" rejected "" "" none
-assert_apply_rejected "$root" "$target"
-
-root=$(new_fixture relocated-duplicate-git-registration)
-job=social-monitor-relocated-duplicate-git-registration
-IFS=$'\t' read -r logical target < <(add_relocated_worktree "$root" "$job")
-write_ledger "$root" "$job" attempt-1 "$logical" rejected
-metadata=${target##*/}; metadata=$root/integration/.git/worktrees/$metadata
-cp -a "$metadata" "$metadata-copy"
-output=$(run_janitor "$root")
-[[ $output == *'reason=git-registration-count'* && $output == *'count=2'* &&
-  $output != *'would-remove'* && -L $logical && -d $target ]] ||
-  fail 'duplicate Git registration resolving to a relocated target was not excluded'
-
-root=$(new_fixture relocated-failed-no-output)
-job=social-monitor-relocated-failed-no-output
-IFS=$'\t' read -r logical target < <(add_relocated_worktree "$root" "$job")
-attempt=workspace:synthetic-id
-write_ledger "$root" "$job" "$attempt" "$logical" failed_no_output
-mv "$root/control/consumed-output-ledger/items/$job--$attempt.json" \
-  "$root/control/consumed-output-ledger/items/$job--${attempt/:/_}.json"
-find "$root/worker-jobs/$job/archives" -depth -delete
-output=$(run_janitor "$root")
-[[ $output != *'would-remove'* && $output == *'eligible=0'* && -L $logical && -d $target ]] ||
-  fail 'relocated failed_no_output record was not excluded'
-
-for active_case in process lock activity; do
-  root=$(new_fixture relocated-active-$active_case)
-  job=social-monitor-relocated-active-$active_case
-  IFS=$'\t' read -r logical target < <(add_relocated_worktree "$root" "$job")
-  write_ledger "$root" "$job" attempt-1 "$logical" rejected
-  case $active_case in
-    process) printf '%s\n' "$target/held-open" >"$root/.social-monitor-janitor-test-process-paths" ;;
-    lock) git -C "$root/integration" worktree lock --reason fixture "$target" ;;
-    activity)
-      operation=$root/worker-jobs/controller/project-control-operations/op-1
-      mkdir -p "$operation"
-      jq -n --arg workspacePath "$logical" \
-        '{status:"running",workspacePath:$workspacePath}' >"$operation/operation.json"
-      ;;
-  esac
-  output=$(run_janitor "$root")
-  [[ $output != *'would-remove'* && -L $logical && -d $target ]] ||
-    fail "relocated $active_case activity was not excluded"
-done
-
-root=$(new_fixture relocated-state-mismatch)
-job=social-monitor-relocated-state-mismatch
-IFS=$'\t' read -r logical target < <(add_relocated_worktree "$root" "$job")
-write_ledger "$root" "$job" attempt-1 "$logical" rejected
-printf 'later state\n' >>"$target/fixture.txt"
-output=$(run_janitor "$root")
-[[ $output == *"excluded reason=terminal-evidence-conflict ledger=$job--attempt-1 worktree=$logical target=$target"* &&
-  $output == *'eligible=0 removed=0 replayed=0 excluded=1'* && -L $logical && -d $target ]] || fail 'relocated state mismatch was not safely excluded'
+readonly RELOCATED_CASES=$SCRIPT_DIR/consumed-worktree-janitor-relocated.test-cases.sh
+# shellcheck source=consumed-worktree-janitor-relocated.test-cases.sh
+source "$RELOCATED_CASES"
 
 root=$(new_fixture unregistered)
 job=social-monitor-unregistered-worker
@@ -975,6 +842,7 @@ write_ledger "$root" "$job" attempt-1 "$target"
 service_source=$(<"$SERVICE")
 timer_source=$(<"$TIMER")
 entrypoint_source=$(<"$ENTRYPOINT")
+implementation_source=$(<"$SCRIPT_DIR/consumed-worktree-janitor-relocated-apply.sh")
 [[ $service_source == *'ExecStart='* && $service_source != *'--apply'* ]] ||
   fail 'service is not safe dry-run by default'
 [[ $service_source == *'ReadOnlyPaths=/var/data/social-monitor'* &&
@@ -987,14 +855,14 @@ entrypoint_source=$(<"$ENTRYPOINT")
   fail 'production project scope changed'
 [[ $SUITE_ROOT == "$SCRIPT_DIR"/.consumed-worktree-janitor-test.* ]] ||
   fail 'destructive fixtures escaped the current worktree'
-[[ $entrypoint_source == *'"$GIT" -C "$INTEGRATION" worktree remove --force -- "$target"'* ]] ||
+[[ $implementation_source == *'"$GIT" -C "$INTEGRATION" worktree remove --force -- "$target"'* ]] ||
   fail 'exact Git worktree removal command changed'
-[[ $entrypoint_source == *'"$GIT" -C "$INTEGRATION" worktree prune --expire now'* ]] ||
-  fail 'scoped Git worktree prune command changed'
+[[ $entrypoint_source != *'worktree prune'* && $implementation_source != *'worktree prune'* ]] ||
+  fail 'Git worktree prune is forbidden in the janitor'
 recursive_remove='rm -'rf
 recursive_remove_alt='rm -'fr
-[[ $entrypoint_source != *"$recursive_remove"* && \
-  $entrypoint_source != *"$recursive_remove_alt"* ]] ||
+runtime_source=$entrypoint_source$implementation_source
+[[ $runtime_source != *"$recursive_remove"* && $runtime_source != *"$recursive_remove_alt"* ]] ||
   fail 'recursive rm is forbidden in the janitor'
 
 printf 'Consumed worktree janitor hermetic tests passed\n'
