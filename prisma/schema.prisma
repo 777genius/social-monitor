@@ -1039,6 +1039,25 @@ model ReaderSummaryWeeklyPublicationEvidence {
   @@map("reader_summary_weekly_publication_evidence")
 }
 
+model ReaderSummaryWeeklyCertificationSeal {
+  sealId          String   @id(map: "reader_summary_weekly_certification_seals_pkey") @map("seal_id")
+  sealSha256      String   @unique(map: "reader_summary_weekly_certification_seals_sha_key") @map("seal_sha256") @db.Char(64)
+  tenantId        String   @map("tenant_id") @db.Uuid
+  workspaceId     String   @map("workspace_id") @db.Uuid
+  scopeType       String   @map("scope_type")
+  scopeKey        String   @map("scope_key")
+  weekStartedOn   DateTime @map("week_started_on") @db.Date
+  weekEndedOn     DateTime @map("week_ended_on") @db.Date
+  days            Json
+  canonicalRecord Json     @map("canonical_record")
+  canonicalBytes  Bytes    @map("canonical_bytes")
+  recordedAt      DateTime @default(now()) @map("recorded_at") @db.Timestamptz(6)
+
+  @@unique([tenantId, workspaceId, scopeType, scopeKey, weekStartedOn], map: "reader_summary_weekly_certification_seals_scope_week_key")
+  @@index([tenantId, workspaceId, weekStartedOn], map: "reader_summary_weekly_certification_seals_tenant_week_idx")
+  @@map("reader_summary_weekly_certification_seals")
+}
+
 model ReaderSummaryRecoveryReceipt {
   publicationId           String                   @id(map: "reader_summary_recovery_receipts_pkey") @map("publication_id") @db.Uuid
   tenantId                String                   @map("tenant_id") @db.Uuid

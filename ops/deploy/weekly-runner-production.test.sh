@@ -11,6 +11,9 @@ deploy_lib=$SCRIPT_DIR/postgres-runtime-deploy-lib.sh
 deploy_entrypoint=$SCRIPT_DIR/social-monitor-production-deploy.sh
 package_json=$REPO/package.json
 production_workflow=$REPO/.github/workflows/production-deploy.yml
+weekly_seal_migration=$REPO/prisma/migrations/20260731120000_reader_summary_weekly_certification_seal/migration.sql
+weekly_seal_contract=$REPO/scripts/lib/reader-summary-weekly-certification-seal-postgres-contract.ts
+publication_pre_migration=$REPO/ops/deploy/reader-summary-publication-pre-migration.sql
 
 [[ -f $service ]]
 [[ -f $timer ]]
@@ -40,8 +43,27 @@ grep -F 'check:reader-summary-weekly-production-postgres' \
   "$package_json" >/dev/null
 grep -F 'check:reader-summary-weekly-production-runner' "$package_json" \
   >/dev/null
+grep -F 'check:reader-summary-weekly-certification-seal-postgres' \
+  "$package_json" >/dev/null
 grep -F 'npm run check:reader-summary-weekly-production-runner' \
   "$production_workflow" >/dev/null
+grep -F 'npm run check:reader-summary-weekly-certification-seal-postgres' \
+  "$production_workflow" >/dev/null
+
+grep -F 'FORCE ROW LEVEL SECURITY' "$weekly_seal_migration" >/dev/null
+grep -F "current_setting('transaction_isolation') <> 'serializable'" \
+  "$weekly_seal_migration" >/dev/null
+grep -F 'FOR SHARE OF slot, publication, evidence' \
+  "$weekly_seal_migration" >/dev/null
+! grep -Eq '\bLOCK[[:space:]]+TABLE\b' "$weekly_seal_migration"
+grep -F 'capability_table_acl_count === "0"' "$weekly_seal_contract" \
+  >/dev/null
+grep -F 'function_capability_acl_count === "0"' "$weekly_seal_contract" \
+  >/dev/null
+grep -F "'reader_summary_weekly_certification_seals'" \
+  "$publication_pre_migration" >/dev/null
+! grep -Eq '(GRANT|REVOKE).+reader_summary_weekly_certification_seals' \
+  "$weekly_seal_contract"
 
 grep -F 'DAILY_SINGLETON_LOCK' "$maintenance_lib" >/dev/null
 grep -F 'POSTGRES_ADMISSION_LOCK' "$maintenance_lib" >/dev/null

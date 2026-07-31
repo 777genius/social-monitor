@@ -868,6 +868,7 @@ BEGIN
     WHERE namespace.nspname = 'public'
       AND relation.relkind IN ('r', 'p')
       AND relation.relname <> '_prisma_migrations'
+      AND relation.relname <> 'reader_summary_weekly_certification_seals'
       AND relation.relowner = (
         SELECT oid FROM pg_roles
         WHERE rolname = 'social_monitor_public_schema_owner'

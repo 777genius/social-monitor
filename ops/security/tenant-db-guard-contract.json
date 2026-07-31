@@ -6,7 +6,8 @@
   "rlsMigrationPaths": [
     "prisma/migrations/20260723153000_tenant_row_level_security/migration.sql",
     "prisma/migrations/20260726120000_tenant_secret_scope_and_weekly_evidence_rls/migration.sql",
-    "prisma/migrations/20260726170000_reader_summary_production_recovery_authority/migration.sql"
+    "prisma/migrations/20260726170000_reader_summary_production_recovery_authority/migration.sql",
+    "prisma/migrations/20260731120000_reader_summary_weekly_certification_seal/migration.sql"
   ],
   "forwardRlsCoverage": [
     {
@@ -30,6 +31,11 @@
       "ownerRole": "social_monitor_reader_summary_publication_owner"
     },
     {
+      "table": "reader_summary_weekly_certification_seals",
+      "migrationPath": "prisma/migrations/20260731120000_reader_summary_weekly_certification_seal/migration.sql",
+      "ownerRole": "social_monitor_public_schema_owner"
+    },
+    {
       "table": "webhook_secrets",
       "migrationPath": "prisma/migrations/20260726120000_tenant_secret_scope_and_weekly_evidence_rls/migration.sql",
       "ownerRole": "social_monitor_public_schema_owner"
@@ -51,6 +57,7 @@
     "reader_summary_publications",
     "reader_summary_publication_slots",
     "reader_summary_recovery_receipts",
+    "reader_summary_weekly_certification_seals",
     "reader_summary_weekly_publication_evidence",
     "reader_summary_topic_recommendation_decisions",
     "cursor_checkpoints",
