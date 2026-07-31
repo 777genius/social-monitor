@@ -1,23 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
-readonly GIT=/usr/bin/git
-readonly JQ=/usr/bin/jq
-readonly REALPATH=/usr/bin/realpath
-readonly FLOCK=/usr/bin/flock
-readonly DU=/usr/bin/du
-readonly READLINK=/usr/bin/readlink
-readonly SHA256SUM=/usr/bin/sha256sum
-readonly DATE=/usr/bin/date
-readonly MKTEMP=/usr/bin/mktemp
-readonly CP=/usr/bin/cp
-readonly MV=/usr/bin/mv
-readonly UNLINK=/usr/bin/unlink
-readonly CMP=/usr/bin/cmp
+readonly GIT=/usr/bin/git JQ=/usr/bin/jq REALPATH=/usr/bin/realpath FLOCK=/usr/bin/flock
+readonly DU=/usr/bin/du READLINK=/usr/bin/readlink SHA256SUM=/usr/bin/sha256sum DATE=/usr/bin/date
+readonly MKTEMP=/usr/bin/mktemp CP=/usr/bin/cp MV=/usr/bin/mv UNLINK=/usr/bin/unlink CMP=/usr/bin/cmp STAT=/usr/bin/stat
 readonly PROCESS_SNAPSHOT_LIMIT=65536
-MODE=dry-run
-MODE_SEEN=0
-TEST_ROOT=
-AUDIT_TMP=
+MODE=dry-run MODE_SEEN=0 TEST_ROOT= AUDIT_TMP=
 fail() {
   printf 'consumed-worktree-janitor: %s\n' "$*" >&2
   exit 1
@@ -62,12 +49,11 @@ while (($# > 0)); do
   shift
 done
 for tool in "$GIT" "$JQ" "$REALPATH" "$FLOCK" "$DU" "$READLINK" \
-  "$SHA256SUM" "$DATE" "$MKTEMP" "$CP" "$MV" "$UNLINK" "$CMP"; do
+  "$SHA256SUM" "$DATE" "$MKTEMP" "$CP" "$MV" "$UNLINK" "$CMP" "$STAT"; do
   [[ -x $tool ]] || fail "required tool is unavailable: $tool"
 done
 SCRIPT_PATH=$("$REALPATH" -e -- "${BASH_SOURCE[0]}") || fail 'cannot canonicalize script path'
-readonly SCRIPT_PATH
-readonly SCRIPT_DIRECTORY=${SCRIPT_PATH%/*}
+readonly SCRIPT_PATH SCRIPT_DIRECTORY=${SCRIPT_PATH%/*}
 if [[ -n $TEST_ROOT ]]; then
   [[ ${SOCIAL_MONITOR_JANITOR_ALLOW_TEST_ROOT:-} == 1 ]] ||
     fail '--test-root is restricted to the hermetic test harness'
@@ -86,18 +72,22 @@ if [[ -n $TEST_ROOT ]]; then
   [[ -f $PROJECT_ROOT/.social-monitor-janitor-test-root && \
     ! -L $PROJECT_ROOT/.social-monitor-janitor-test-root ]] ||
     fail 'test root marker is missing or unsafe'
+  TRUSTED_OWNER_ID=$EUID
 else
   PROJECT_ROOT=/var/data/social-monitor
   ((EUID == 0)) || fail 'production runs require root so process-use checks are complete'
+  TRUSTED_OWNER_ID=0
 fi
-readonly PROJECT_ROOT
-readonly CONTROL=$PROJECT_ROOT/control
-readonly INTEGRATION=$PROJECT_ROOT/integration
-readonly WORKTREES=$PROJECT_ROOT/worktrees
-readonly WORKER_JOBS=$PROJECT_ROOT/worker-jobs
-readonly CONTROLLER=$WORKER_JOBS/controller
-readonly LEDGER_ITEMS=$CONTROL/consumed-output-ledger/items
-readonly PROJECT_LOCK=$CONTROL/worktree-cleanup.lock
+readonly PROJECT_ROOT TRUSTED_OWNER_ID CONTROL=$PROJECT_ROOT/control INTEGRATION=$PROJECT_ROOT/integration
+readonly WORKTREES=$PROJECT_ROOT/worktrees WORKER_JOBS=$PROJECT_ROOT/worker-jobs
+readonly CONTROLLER=$WORKER_JOBS/controller CONTROLLER_V4=$WORKER_JOBS/controller-v4
+if [[ -n $TEST_ROOT ]]; then
+  LEGACY_V2_ARCHIVES=$PROJECT_ROOT/.subscription-runtime/social-monitor-project-controller-v2/archives
+else
+  LEGACY_V2_ARCHIVES=/root/.cache/subscription-runtime/social-monitor-project-controller-v2/archives
+fi
+readonly LEGACY_V2_ARCHIVES
+readonly LEDGER_ITEMS=$CONTROL/consumed-output-ledger/items PROJECT_LOCK=$CONTROL/worktree-cleanup.lock
 readonly AUDIT_LOG=$CONTROL/consumed-worktree-janitor.audit.jsonl
 for directory in "$PROJECT_ROOT" "$CONTROL" "$INTEGRATION" "$WORKTREES" \
   "$WORKER_JOBS" "$CONTROLLER" "$LEDGER_ITEMS"; do
@@ -112,6 +102,8 @@ repo_root=$("$GIT" -C "$INTEGRATION" rev-parse --show-toplevel) ||
   fail 'integration is not a readable Git worktree'
 repo_root=$("$REALPATH" -e -- "$repo_root") || fail 'cannot canonicalize integration Git root'
 [[ $repo_root == "$INTEGRATION" ]] || fail 'integration Git root conflicts with project layout'
+MAIN_COMMIT=$("$GIT" -C "$INTEGRATION" rev-parse --verify refs/heads/main^{commit}) || fail 'integration main is not a readable commit'
+readonly MAIN_COMMIT
 canonical_declared_path() {
   local declared=$1
   local label=$2
@@ -173,28 +165,49 @@ validate_terminal_archive_name() {
     $name == "$job_id-integrated-${integrated_commit:0:12}-$attempt_id") ]] \
     || fail "ledger archive name conflicts with its terminal record: $archive"
 }
-validate_legacy_registry_binding() {
-  local job_id=$1 workspace=$2 manifest manifest_parent registry_root canonical
-  local manifests=("$WORKER_JOBS"/registry*/"$job_id"/job.json)
-  ((${#manifests[@]} == 1)) ||
-    fail "legacy workspace requires exactly one registry binding: $job_id"
-  manifest=${manifests[0]}
-  manifest_parent=${manifest%/*}
-  registry_root=${manifest_parent%/*}
-  for canonical in "$registry_root" "$manifest_parent"; do
-    [[ -d $canonical && ! -L $canonical ]] ||
-      fail "legacy registry binding directory is unsafe: $canonical"
-    [[ $("$REALPATH" -e -- "$canonical") == "$canonical" ]] ||
-      fail "legacy registry binding directory is not canonical: $canonical"
+validate_trusted_path() {
+  local path=$1 kind=$2 label=$3 canonical metadata owner mode
+  if [[ $kind == directory ]]; then [[ -d $path && ! -L $path ]] ||
+    fail "$label is missing or unsafe: $path"; else [[ -f $path && ! -L $path && -r $path ]] ||
+    fail "$label is missing or unsafe: $path"; fi
+  canonical=$("$REALPATH" -e -- "$path") || fail "cannot canonicalize $label: $path"
+  [[ $canonical == "$path" ]] || fail "$label is not canonical: $path"
+  metadata=$("$STAT" -c '%u %a' -- "$path") || fail "cannot stat $label: $path"
+  owner=${metadata%% *}; mode=${metadata##* }
+  [[ -z $TEST_ROOT || ${SOCIAL_MONITOR_JANITOR_TEST_WRONG_OWNER_PATH:-} != "$path" ]] ||
+    owner=$((TRUSTED_OWNER_ID == 0 ? 1 : 0))
+  [[ $owner == "$TRUSTED_OWNER_ID" && $mode =~ ^[0-7]{3,4}$ ]] ||
+    fail "$label has the wrong owner: $path"
+  (((8#$mode & 0022) == 0)) || fail "$label is group/world writable: $path"
+}
+validate_registry_binding() {
+  local job_id=$1 workspace=$2 registry manifest manifest_parent registry_root
+  local manifests=()
+  for registry in registry registry-v2 registry-v3 registry-v4; do
+    manifest=$WORKER_JOBS/$registry/$job_id/job.json
+    [[ -e $manifest || -L $manifest ]] && manifests+=("$manifest")
   done
-  [[ -f $manifest && ! -L $manifest && -r $manifest ]] ||
-    fail "legacy registry binding is unsafe: $manifest"
-  [[ $("$REALPATH" -e -- "$manifest") == "$manifest" ]] ||
-    fail "legacy registry binding is not canonical: $manifest"
+  ((${#manifests[@]} == 1)) || fail "terminal archive requires exactly one registry binding: $job_id"
+  manifest=${manifests[0]}; manifest_parent=${manifest%/*}; registry_root=${manifest_parent%/*}
+  validate_trusted_path "$registry_root" directory 'registry root'
+  validate_trusted_path "$manifest_parent" directory 'registry job directory'
+  validate_trusted_path "$manifest" file 'registry binding'
   "$JQ" -e --arg job_id "$job_id" --arg workspace "$workspace" \
     'type == "object" and .jobId == $job_id and .workspacePath == $workspace' \
-    "$manifest" >/dev/null ||
-    fail "legacy registry binding is malformed or conflicting: $manifest"
+    "$manifest" >/dev/null || fail "registry binding is malformed or conflicting: $manifest"
+}
+validate_archive_location() {
+  local job_id=$1 workspace=$2 archive=$3 archive_root=${archive%/*} archive_parent
+  archive_parent=${archive_root%/*}
+  case $archive_root in
+    "$LEGACY_V2_ARCHIVES" | "$CONTROLLER_V4/archives" | "$CONTROLLER/archives" | \
+      "$WORKER_JOBS/$job_id/archives") ;;
+    *) fail "ledger archive conflicts with its Social Monitor job or root: $archive" ;;
+  esac
+  validate_trusted_path "$archive_parent" directory 'archive parent'
+  validate_trusted_path "$archive_root" directory 'archive root'
+  validate_trusted_path "$archive" directory 'terminal archive'
+  validate_registry_binding "$job_id" "$workspace"
 }
 is_terminal_ledger_status() {
   case $1 in
@@ -211,24 +224,19 @@ is_terminal_activity_status() {
     *) return 1 ;;
   esac
 }
-declare -A ledger_workspace_by_id=()
-declare -A ledger_numstat_hash_by_id=()
-declare -A ledger_patch_hash_by_id=()
-declare -A ledger_status_hash_by_id=()
-declare -A latest_item=()
-declare -A latest_item_hash=()
-declare -A latest_integrated_commit=()
-declare -A latest_numstat_hash=()
-declare -A latest_job=()
-declare -A latest_ledger=()
-declare -A latest_numstat=()
-declare -A latest_patch_hash=()
-declare -A latest_patch=()
-declare -A latest_status=()
-declare -A latest_status_hash=()
-declare -A latest_status_file=()
-declare -A latest_time=()
-declare -A latest_workspace_kind=()
+integrated_commit_state() {
+  local commit=$1 main=$2 result
+  "$GIT" -C "$INTEGRATION" cat-file -e "$commit^{commit}" 2>/dev/null || return 2
+  if "$GIT" -C "$INTEGRATION" merge-base --is-ancestor "$commit" "$main"; then return 0
+  else result=$?; fi
+  ((result == 1)) || fail 'cannot compare integrated ledger commit with main'
+  return 1
+}
+declare -A ledger_workspace_by_id=() ledger_numstat_hash_by_id=()
+declare -A ledger_patch_hash_by_id=() ledger_status_hash_by_id=()
+declare -A latest_item=() latest_item_hash=() latest_integrated_commit=() latest_job=() latest_ledger=()
+declare -A latest_numstat=() latest_numstat_hash=() latest_patch=() latest_patch_hash=() latest_status=()
+declare -A latest_status_file=() latest_status_hash=() latest_time=() latest_workspace_kind=()
 declare -A latest_legacy_registry_bound=()
 shopt -s nullglob
 ledger_files=("$LEDGER_ITEMS"/*.json)
@@ -283,10 +291,6 @@ for item in "${ledger_files[@]}"; do
     fail "ledger filename conflicts with its IDs: $item"
   workspace=$(canonical_declared_path "$workspace" 'ledger workspace')
   legacy_registry_bound=0
-  archive=$(canonical_declared_path "$archive" 'ledger archive')
-  status_file=$(canonical_declared_path "$status_file" 'status evidence')
-  patch_file=$(canonical_declared_path "$patch_file" 'patch evidence')
-  numstat_file=$(canonical_declared_path "$numstat_file" 'numstat evidence')
   case $workspace in
     "$WORKTREES/$job_id")
       workspace_kind=canonical
@@ -307,23 +311,19 @@ for item in "${ledger_files[@]}"; do
       workspace_kind=canonical
       ;;
   esac
-  if [[ ${workspace##*/} != "$job_id" ]]; then
-    validate_legacy_registry_binding "$job_id" "$workspace"
-    legacy_registry_bound=1
-  fi
-  case ${archive%/*} in
-    "$WORKER_JOBS/$job_id/archives" | "$CONTROLLER/archives") ;;
-    *) fail "ledger archive conflicts with its Social Monitor job: $archive" ;;
-  esac
-  [[ $status_file == "$archive/git-status.txt" && \
-    $patch_file == "$archive/tracked.diff" && \
-    $numstat_file == "$archive/tracked.numstat" ]] ||
-    fail "ledger evidence paths conflict with the archive: $item"
+  [[ ${workspace##*/} == "$job_id" ]] || legacy_registry_bound=1
   if is_terminal_ledger_status "$status"; then
-    [[ -d $archive && ! -L $archive ]] || fail "terminal ledger archive is missing: $archive"
+    archive=$(canonical_declared_path "$archive" 'ledger archive')
+    status_file=$(canonical_declared_path "$status_file" 'status evidence')
+    patch_file=$(canonical_declared_path "$patch_file" 'patch evidence')
+    numstat_file=$(canonical_declared_path "$numstat_file" 'numstat evidence')
+    [[ $status_file == "$archive/git-status.txt" && \
+      $patch_file == "$archive/tracked.diff" && \
+      $numstat_file == "$archive/tracked.numstat" ]] ||
+      fail "ledger evidence paths conflict with the archive: $item"
+    validate_archive_location "$job_id" "$workspace" "$archive"
     for evidence in "$status_file" "$patch_file" "$numstat_file"; do
-      [[ -f $evidence && ! -L $evidence && -r $evidence ]] ||
-        fail "terminal ledger evidence is missing or unsafe: $evidence"
+      validate_trusted_path "$evidence" file 'terminal evidence'
     done
     ledger_numstat_hash_by_id["$ledger_id"]=$("$SHA256SUM" -- "$numstat_file")
     ledger_numstat_hash_by_id["$ledger_id"]=${ledger_numstat_hash_by_id[$ledger_id]%%[[:space:]]*}
@@ -409,8 +409,7 @@ if [[ -e $AUDIT_LOG || -L $AUDIT_LOG ]]; then
 fi
 worktree_porcelain=$("$GIT" -C "$INTEGRATION" worktree list --porcelain) ||
   fail 'cannot enumerate registered Git worktrees'
-declare -A registered=()
-declare -A registered_locked=()
+declare -A registered=() registered_locked=()
 registered_path=
 while IFS= read -r line; do
   if [[ $line == worktree\ * ]]; then
@@ -748,13 +747,9 @@ validate_job_root() {
   [[ $canonical_job_root == "$job_root" ]] || fail "job root escaped: $job_root"
 }
 validate_terminal_evidence_paths() {
-  local evidence canonical_evidence
+  local evidence
   for evidence in "$@"; do
-    [[ -f $evidence && ! -L $evidence && -r $evidence ]] ||
-      fail "terminal evidence is missing or unsafe: $evidence"
-    canonical_evidence=$("$REALPATH" -e -- "$evidence") ||
-      fail "cannot canonicalize terminal evidence: $evidence"
-    [[ $canonical_evidence == "$evidence" ]] || fail "terminal evidence escaped: $evidence"
+    validate_trusted_path "$evidence" file 'terminal evidence'
   done
 }
 worktree_matches_terminal_evidence() {
@@ -770,11 +765,7 @@ worktree_matches_terminal_evidence() {
     "$CMP" -s -- "$numstat_file" - || return 1
 }
 current_directory=$("$REALPATH" -m -- "$PWD") || fail 'cannot canonicalize current directory'
-declare -a plan_items=()
-declare -a plan_jobs=()
-declare -a plan_ledgers=()
-declare -a plan_targets=()
-declare -a plan_bytes=()
+declare -a plan_items=() plan_jobs=() plan_ledgers=() plan_targets=() plan_bytes=()
 eligible=0
 excluded=0
 replayed=0
@@ -782,16 +773,29 @@ snapshot_process_evidence
 for workspace in "${!latest_time[@]}"; do
   status=${latest_status[$workspace]}
   ledger_id=${latest_ledger[$workspace]}
+  is_terminal_ledger_status "$status" || {
+    excluded=$((excluded + 1))
+    continue
+  }
+  if [[ $status == integrated ]]; then
+    integrated_commit=${latest_integrated_commit[$workspace]}
+    if integrated_commit_state "$integrated_commit" "$MAIN_COMMIT"; then
+      :
+    else
+      commit_state=$?
+      ((commit_state == 1)) && reason=integrated-commit-not-retained ||
+        reason=integrated-commit-unavailable
+      printf 'excluded reason=%s ledger=%s worktree=%s\n' "$reason" "$ledger_id" "$workspace"
+      excluded=$((excluded + 1))
+      continue
+    fi
+  fi
   if [[ ${latest_legacy_registry_bound[$workspace]} == 1 ]]; then
     printf 'excluded reason=legacy-registry-bound ledger=%s worktree=%s\n' \
       "$ledger_id" "$workspace"
     excluded=$((excluded + 1))
     continue
   fi
-  is_terminal_ledger_status "$status" || {
-    excluded=$((excluded + 1))
-    continue
-  }
   workspace_kind=${latest_workspace_kind[$workspace]}
   if [[ $workspace_kind == volume2-unsupported ]]; then
     printf 'excluded reason=unsupported-volume2-layout ledger=%s worktree=%s\n' \
@@ -830,13 +834,6 @@ for workspace in "${!latest_time[@]}"; do
     fail "registered target is not a readable Git worktree: $workspace"
   target_root=$("$REALPATH" -e -- "$target_root") || fail 'cannot canonicalize target Git root'
   [[ $target_root == "$workspace" ]] || fail "target Git root conflicts with ledger: $workspace"
-  if [[ $status == integrated ]]; then
-    integrated_commit=${latest_integrated_commit[$workspace]}
-    "$GIT" -C "$INTEGRATION" cat-file -e "$integrated_commit^{commit}" 2>/dev/null ||
-      fail "integrated ledger commit is unavailable: $ledger_id"
-    "$GIT" -C "$INTEGRATION" merge-base --is-ancestor "$integrated_commit" HEAD ||
-      fail "integrated ledger commit is not retained by integration HEAD: $ledger_id"
-  fi
   case ${workspace##*/} in
     artifacts | auth | backups | controller | handoffs | integration | registries | registry | \
       toolchain | toolchains)
@@ -888,7 +885,6 @@ for workspace in "${!latest_time[@]}"; do
   plan_bytes+=("$before_bytes")
   eligible=$((eligible + 1))
 done
-
 append_audit_receipt() {
   local receipt=$1
   AUDIT_TMP=$("$MKTEMP" "$CONTROL/.consumed-worktree-janitor.audit.XXXXXX") ||
@@ -904,7 +900,6 @@ append_audit_receipt() {
   "$MV" -f -- "$AUDIT_TMP" "$AUDIT_LOG" || fail 'cannot atomically publish audit receipt'
   AUDIT_TMP=
 }
-
 removed=0
 if [[ $MODE == dry-run ]]; then
   for index in "${!plan_targets[@]}"; do
@@ -913,10 +908,7 @@ if [[ $MODE == dry-run ]]; then
   done
 else
   for index in "${!plan_targets[@]}"; do
-    target=${plan_targets[$index]}
-    item=${plan_items[$index]}
-    ledger_id=${plan_ledgers[$index]}
-    job_id=${plan_jobs[$index]}
+    target=${plan_targets[$index]}; item=${plan_items[$index]}; ledger_id=${plan_ledgers[$index]}; job_id=${plan_jobs[$index]}
     [[ -d $target && ! -L $target ]] || fail "worktree changed before apply: $target"
     is_registered_now "$target" || fail "worktree registration changed before apply: $target"
     is_locked_now "$target" && fail "Git worktree became locked before apply: $target"
@@ -925,6 +917,8 @@ else
     scan_tmux_panes
     [[ -z ${activity_protected[$target]:-} ]] ||
       fail "controller or tmux activity appeared before apply: $target"
+    validate_archive_location "$job_id" "$target" \
+      "${latest_status_file[$target]%/git-status.txt}"
     validate_terminal_evidence_paths "${latest_status_file[$target]}" \
       "${latest_patch[$target]}" "${latest_numstat[$target]}"
     status_sha=$("$SHA256SUM" -- "${latest_status_file[$target]}") ||
@@ -942,10 +936,19 @@ else
       fail "worktree state changed after terminal evidence preflight: $ledger_id"
     if [[ ${latest_status[$target]} == integrated ]]; then
       integrated_commit=${latest_integrated_commit[$target]}
-      "$GIT" -C "$INTEGRATION" cat-file -e "$integrated_commit^{commit}" 2>/dev/null ||
-        fail "integrated ledger commit disappeared before apply: $ledger_id"
-      "$GIT" -C "$INTEGRATION" merge-base --is-ancestor "$integrated_commit" HEAD ||
-        fail "integration HEAD stopped retaining the ledger commit: $ledger_id"
+      current_main=$("$GIT" -C "$INTEGRATION" rev-parse --verify refs/heads/main^{commit}) ||
+        fail 'integration main disappeared before apply'
+      if integrated_commit_state "$integrated_commit" "$current_main"; then
+        :
+      else
+        commit_state=$?
+        ((commit_state == 1)) && reason=integrated-commit-not-retained ||
+          reason=integrated-commit-unavailable
+        printf 'excluded reason=%s ledger=%s worktree=%s\n' "$reason" "$ledger_id" "$target"
+        eligible=$((eligible - 1))
+        excluded=$((excluded + 1))
+        continue
+      fi
     fi
     validate_job_root "$WORKER_JOBS/$job_id"
     if job_has_active_state "$WORKER_JOBS/$job_id"; then
@@ -953,7 +956,6 @@ else
     fi
     live_process_uses_worktree "$target" &&
       fail "process entered worktree before apply: $target"
-
     byte_record=$("$DU" -sb --apparent-size -- "$target") ||
       fail "cannot remeasure worktree bytes: $target"
     before_bytes=${byte_record%%[[:space:]]*}
@@ -963,11 +965,9 @@ else
     [[ $ledger_sha == "${latest_item_hash[$target]}" ]] ||
       fail "ledger item changed after preflight: $ledger_id"
     removed_at=$("$DATE" -u +'%Y-%m-%dT%H:%M:%S.%3NZ')
-
     "$GIT" -C "$INTEGRATION" worktree remove --force -- "$target"
     [[ ! -e $target && ! -L $target ]] || fail "Git did not remove worktree: $target"
     is_registered_now "$target" && fail "Git worktree remains registered: $target"
-
     # shellcheck disable=SC2016 # The dollar-prefixed names are jq variables.
     receipt=$("$JQ" -cn \
       --arg ledgerId "$ledger_id" \
@@ -995,6 +995,5 @@ else
     "$GIT" -C "$INTEGRATION" worktree prune --expire now
   fi
 fi
-
 printf 'consumed-worktree-janitor mode=%s eligible=%s removed=%s replayed=%s excluded=%s\n' \
   "$MODE" "$eligible" "$removed" "$replayed" "$excluded"

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+umask 022
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 ENTRYPOINT=$SCRIPT_DIR/consumed-worktree-janitor.sh
@@ -26,7 +27,7 @@ new_fixture() {
     "$root/worktrees"
   : >"$root/.social-monitor-janitor-test-root"
   : >"$root/control/worktree-cleanup.lock"
-  git init -q "$root/integration"
+  git init -q -b main "$root/integration"
   git -C "$root/integration" config user.name 'Janitor Test'
   git -C "$root/integration" config user.email 'janitor-test@example.invalid'
   printf 'fixture\n' >"$root/integration/fixture.txt"
@@ -50,13 +51,15 @@ write_ledger() {
   local workspace=$4
   local status=${5:-integrated}
   local archive=${6:-$root/worker-jobs/$job_id/archives/$job_id-$status-$attempt_id}
-  local integrated_commit
+  local integrated_commit=${7:-}
+  local registry=${8:-registry-v4}
   mkdir -p "$archive"
   git -c status.showUntrackedFiles=all -C "$workspace" status --short > \
     "$archive/git-status.txt"
   git -C "$workspace" diff --no-ext-diff --binary HEAD -- >"$archive/tracked.diff"
   git -C "$workspace" diff --no-ext-diff --numstat HEAD -- >"$archive/tracked.numstat"
-  integrated_commit=$(git -C "$root/integration" rev-parse HEAD)
+  [[ -n $integrated_commit ]] ||
+    integrated_commit=$(git -C "$root/integration" rev-parse refs/heads/main)
   mkdir -p "$root/worker-jobs/$job_id"
   # shellcheck disable=SC2016 # The dollar-prefixed names are jq variables.
   jq -n \
@@ -76,6 +79,7 @@ write_ledger() {
            commit:$integratedCommit}
         else {} end)' > \
     "$root/control/consumed-output-ledger/items/$job_id--$attempt_id.json"
+  [[ $registry == none ]] || write_registry_binding "$root" "$job_id" "$workspace" "$registry"
 }
 
 write_reviewed_output() {
@@ -108,6 +112,7 @@ run_janitor() {
   shift
   SOCIAL_MONITOR_JANITOR_ALLOW_TEST_ROOT=1 \
     SOCIAL_MONITOR_JANITOR_TEST_PARENT="$SUITE_ROOT" \
+    SOCIAL_MONITOR_JANITOR_TEST_WRONG_OWNER_PATH="${JANITOR_WRONG_OWNER_PATH:-}" \
     bash "$ENTRYPOINT" --test-root "$root" "$@"
 }
 
@@ -131,38 +136,41 @@ output=$(run_janitor "$root")
 [[ ! -e $root/control/consumed-worktree-janitor.audit.jsonl ]] ||
   fail 'default dry-run wrote an audit log'
 
-root=$(new_fixture legacy-terminal-archive-forms)
+root=$(new_fixture exact-roots-and-terminal-archive-forms)
+job=social-monitor-standard-archive-worker
+target=$(add_worktree "$root" "$job")
+archive=$root/.subscription-runtime/social-monitor-project-controller-v2/archives/$job-rejected-attempt-1
+write_ledger "$root" "$job" attempt-1 "$target" rejected "$archive" "" registry
 job=social-monitor-uncaptured-archive-worker
 target=$(add_worktree "$root" "$job")
 printf 'uncaptured patch\n' >>"$target/fixture.txt"
 hash=$(git -C "$target" diff --no-ext-diff --binary HEAD -- | sha256sum)
 hash=${hash%%[[:space:]]*}
 attempt=uncaptured-rejection-$hash
-archive=$root/worker-jobs/$job/archives/$job-rejected-uncaptured-$hash
-write_ledger "$root" "$job" "$attempt" "$target" rejected "$archive"
+archive=$root/worker-jobs/controller-v4/archives/$job-rejected-uncaptured-$hash
+write_ledger "$root" "$job" "$attempt" "$target" rejected "$archive" "" registry-v2
 job=social-monitor-reviewed-archive-worker
 target=$(add_worktree "$root" "$job")
 printf 'reviewed patch\n' >>"$target/fixture.txt"
 reviewed_id=$(printf 'reviewed fixture\n' | sha256sum)
 reviewed_id=${reviewed_id%%[[:space:]]*}
-archive=$root/worker-jobs/$job/archives/$job-rejected-reviewed-$reviewed_id
-write_ledger "$root" "$job" "$reviewed_id" "$target" rejected "$archive"
+archive=$root/worker-jobs/controller/archives/$job-rejected-reviewed-$reviewed_id
+write_ledger "$root" "$job" "$reviewed_id" "$target" rejected "$archive" "" registry-v3
 write_reviewed_output "$root" "$reviewed_id" "$job" "$target" "$archive/tracked.diff"
 job=social-monitor-integrated-archive-worker
 target=$(add_worktree "$root" "$job")
-commit=$(git -C "$root/integration" rev-parse HEAD)
+commit=$(git -C "$root/integration" rev-parse refs/heads/main)
 archive=$root/worker-jobs/$job/archives/$job-integrated-${commit:0:12}-attempt-1
-write_ledger "$root" "$job" attempt-1 "$target" integrated "$archive"
+write_ledger "$root" "$job" attempt-1 "$target" integrated "$archive" "$commit" registry-v4
 output=$(run_janitor "$root")
-[[ $output == *'eligible=3'* ]] ||
-  fail 'three bound legacy terminal archive forms were not eligible'
+[[ $output == *'eligible=4'* ]] ||
+  fail 'four exact archive root/name forms were not eligible'
 
 root=$(new_fixture legacy-registry-bound)
 alias_job=social-monitor-legacy-alias-worker
 alias_target=$(add_worktree "$root" "$alias_job" \
   "$root/worktrees/social-monitor-consumed-alias")
 write_ledger "$root" "$alias_job" attempt-1 "$alias_target" rejected
-write_registry_binding "$root" "$alias_job" "$alias_target"
 normal_job=social-monitor-normal-candidate-worker
 normal_target=$(add_worktree "$root" "$normal_job")
 write_ledger "$root" "$normal_job" attempt-1 "$normal_target" rejected
@@ -183,20 +191,20 @@ jq -e -s --arg ledger "$normal_job--attempt-1" \
 root=$(new_fixture legacy-binding-absent)
 job=social-monitor-legacy-binding-absent-worker
 target=$(add_worktree "$root" "$job" "$root/worktrees/social-monitor-absent-alias")
-write_ledger "$root" "$job" attempt-1 "$target" rejected
+write_ledger "$root" "$job" attempt-1 "$target" rejected "" "" none
 assert_apply_rejected "$root" "$target"
 
 root=$(new_fixture legacy-binding-mismatch)
 job=social-monitor-legacy-binding-mismatch-worker
 target=$(add_worktree "$root" "$job" "$root/worktrees/social-monitor-mismatch-alias")
-write_ledger "$root" "$job" attempt-1 "$target" rejected
+write_ledger "$root" "$job" attempt-1 "$target" rejected "" "" none
 write_registry_binding "$root" "$job" "$root/worktrees/social-monitor-other-alias"
 assert_apply_rejected "$root" "$target"
 
 root=$(new_fixture legacy-binding-malformed)
 job=social-monitor-legacy-binding-malformed-worker
 target=$(add_worktree "$root" "$job" "$root/worktrees/social-monitor-malformed-alias")
-write_ledger "$root" "$job" attempt-1 "$target" rejected
+write_ledger "$root" "$job" attempt-1 "$target" rejected "" "" none
 write_registry_binding "$root" "$job" "$target"
 printf '{not-json\n' >"$root/worker-jobs/registry-v2/$job/job.json"
 assert_apply_rejected "$root" "$target"
@@ -204,10 +212,36 @@ assert_apply_rejected "$root" "$target"
 root=$(new_fixture legacy-binding-duplicate)
 job=social-monitor-legacy-binding-duplicate-worker
 target=$(add_worktree "$root" "$job" "$root/worktrees/social-monitor-duplicate-alias")
-write_ledger "$root" "$job" attempt-1 "$target" rejected
-write_registry_binding "$root" "$job" "$target" registry-v1
-write_registry_binding "$root" "$job" "$target" registry-v2
+write_ledger "$root" "$job" attempt-1 "$target" rejected "" "" none
+write_registry_binding "$root" "$job" "$target" registry-v3
+write_registry_binding "$root" "$job" "$target" registry-v4
 assert_apply_rejected "$root" "$target"
+
+root=$(new_fixture sibling-registry-not-globbed)
+job=social-monitor-sibling-registry-worker
+target=$(add_worktree "$root" "$job")
+write_ledger "$root" "$job" attempt-1 "$target" rejected "" "" none
+write_registry_binding "$root" "$job" "$target" registry-v5
+assert_apply_rejected "$root" "$target"
+
+for binding_case in symlink writable wrong-owner; do
+  JANITOR_WRONG_OWNER_PATH=
+  root=$(new_fixture unsafe-registry-binding-$binding_case)
+  job=social-monitor-unsafe-registry-binding-$binding_case-worker
+  target=$(add_worktree "$root" "$job")
+  write_ledger "$root" "$job" attempt-1 "$target" rejected
+  binding=$root/worker-jobs/registry-v4/$job/job.json
+  case $binding_case in
+    symlink)
+      mv "$binding" "$binding.real"
+      ln -s "$binding.real" "$binding"
+      ;;
+    writable) chmod g+w "${binding%/*}" ;;
+    wrong-owner) JANITOR_WRONG_OWNER_PATH=$binding ;;
+  esac
+  assert_apply_rejected "$root" "$target"
+done
+unset JANITOR_WRONG_OWNER_PATH
 
 root=$(new_fixture terminal-statuses)
 for status in archived superseded; do
@@ -227,12 +261,10 @@ nested_job=social-monitor-volume2-nested-worker
 nested_target=$(add_worktree "$root" "$nested_job" \
   "$root/worktrees/.volume2/$nested_job/worktree")
 write_ledger "$root" "$nested_job" attempt-1 "$nested_target" rejected
-write_registry_binding "$root" "$nested_job" "$nested_target"
 legacy_job=social-monitor-volume2-legacy-worker
 legacy_target=$(add_worktree "$root" "$legacy_job" \
   "$root/worktrees/.volume2/$legacy_job/legacy/worktree")
 write_ledger "$root" "$legacy_job" attempt-1 "$legacy_target" rejected
-write_registry_binding "$root" "$legacy_job" "$legacy_target"
 output=$(run_janitor "$root")
 [[ $output == *"would-remove ledger=$direct_job--attempt-1 worktree=$direct_target"* &&
   $output == *"excluded reason=legacy-registry-bound ledger=$nested_job--attempt-1"* &&
@@ -298,7 +330,11 @@ assert_apply_rejected "$root" "$target"
 root=$(new_fixture mismatched-workspace-job)
 job=social-monitor-ledger-owner-worker
 target=$(add_worktree "$root" social-monitor-different-worker)
-write_ledger "$root" "$job" attempt-1 "$target"
+write_ledger "$root" "$job" attempt-1 "$target" integrated "" "" none
+write_registry_binding "$root" "$job" "$target" registry-v4
+binding=$root/worker-jobs/registry-v4/$job/job.json
+jq '.jobId = "social-monitor-different-worker"' "$binding" >"$root/wrong-job.json"
+mv "$root/wrong-job.json" "$binding"
 assert_apply_rejected "$root" "$target"
 
 root=$(new_fixture mismatched-archive-name)
@@ -307,6 +343,81 @@ target=$(add_worktree "$root" "$job")
 write_ledger "$root" "$job" attempt-1 "$target" rejected \
   "$root/worker-jobs/$job/archives/$job-rejected-unknown-attempt-1"
 assert_apply_rejected "$root" "$target"
+
+for root_case in unknown external-sibling controller-sibling wrong-job noncanonical; do
+  root=$(new_fixture archive-root-$root_case)
+  job=social-monitor-archive-root-$root_case-worker
+  target=$(add_worktree "$root" "$job")
+  name=$job-rejected-attempt-1
+  case $root_case in
+    unknown) archive=$root/unlisted/archives/$name ;;
+    external-sibling)
+      archive=$root/.subscription-runtime/social-monitor-project-controller-v3/archives/$name
+      ;;
+    controller-sibling) archive=$root/worker-jobs/controller-v5/archives/$name ;;
+    wrong-job)
+      archive=$root/worker-jobs/social-monitor-different-job/archives/$name
+      ;;
+    noncanonical)
+      archive=$root/worker-jobs/$job/archives/../archives/$name
+      ;;
+  esac
+  write_ledger "$root" "$job" attempt-1 "$target" rejected "$archive"
+  assert_apply_rejected "$root" "$target"
+done
+
+for unsafe_case in symlink-parent symlink-root symlink-archive \
+  writable-parent writable-root writable-archive wrong-owner; do
+  JANITOR_WRONG_OWNER_PATH=
+  root=$(new_fixture unsafe-archive-$unsafe_case)
+  job=social-monitor-unsafe-archive-$unsafe_case-worker
+  target=$(add_worktree "$root" "$job")
+  archive_parent=$root/worker-jobs/controller-v4
+  archive_root=$archive_parent/archives
+  archive=$archive_root/$job-rejected-attempt-1
+  write_ledger "$root" "$job" attempt-1 "$target" rejected "$archive"
+  case $unsafe_case in
+    symlink-parent)
+      mv "$archive_parent" "$archive_parent.real"
+      ln -s "$archive_parent.real" "$archive_parent"
+      ;;
+    symlink-root)
+      mv "$archive_root" "$archive_root.real"
+      ln -s "$archive_root.real" "$archive_root"
+      ;;
+    symlink-archive)
+      mv "$archive" "$archive.real"
+      ln -s "$archive.real" "$archive"
+      ;;
+    writable-parent) chmod g+w "$archive_parent" ;;
+    writable-root) chmod g+w "$archive_root" ;;
+    writable-archive) chmod g+w "$archive" ;;
+    wrong-owner) JANITOR_WRONG_OWNER_PATH=$archive ;;
+  esac
+  assert_apply_rejected "$root" "$target"
+done
+unset JANITOR_WRONG_OWNER_PATH
+
+for evidence_name in git-status.txt tracked.diff tracked.numstat; do
+  for evidence_case in symlink wrong-owner writable; do
+    JANITOR_WRONG_OWNER_PATH=
+    root=$(new_fixture unsafe-terminal-evidence-${evidence_name//./-}-$evidence_case)
+    job=social-monitor-unsafe-terminal-evidence-${evidence_name//./-}-$evidence_case-worker
+    target=$(add_worktree "$root" "$job")
+    write_ledger "$root" "$job" attempt-1 "$target" rejected
+    evidence=$root/worker-jobs/$job/archives/$job-rejected-attempt-1/$evidence_name
+    case $evidence_case in
+      symlink)
+        mv "$evidence" "$evidence.real"
+        ln -s "$evidence.real" "$evidence"
+        ;;
+      wrong-owner) JANITOR_WRONG_OWNER_PATH=$evidence ;;
+      writable) chmod g+w "$evidence" ;;
+    esac
+    assert_apply_rejected "$root" "$target"
+  done
+done
+unset JANITOR_WRONG_OWNER_PATH
 
 root=$(new_fixture uncaptured-hash-mismatch)
 job=social-monitor-uncaptured-hash-mismatch-worker
@@ -381,20 +492,48 @@ item=$root/control/consumed-output-ledger/items/$job--attempt-1.json
 jq '.commitSha = "0123456789abcdef0123456789abcdef01234567" |
   .integratedCommitSha = .commitSha | .commit = .commitSha' "$item" >"$root/invalid.json"
 mv "$root/invalid.json" "$item"
-assert_apply_rejected "$root" "$target"
+output=$(run_janitor "$root" --apply)
+[[ -d $target && $output == *'reason=integrated-commit-unavailable'* &&
+  $output == *'eligible=0'* && $output == *'removed=0'* ]] ||
+  fail 'unavailable integrated commit was not excluded'
+
+root=$(new_fixture historical-integrated-commits-not-retained)
+for number in {01..26}; do
+  job=social-monitor-historical-not-retained-$number
+  target=$(add_worktree "$root" "$job")
+  printf '%s\n' "$number" >"$target/historical-$number.txt"
+  git -C "$target" add "historical-$number.txt"
+  git -C "$target" commit -qm "historical unretained $number"
+  commit=$(git -C "$target" rev-parse HEAD)
+  archive=$root/worker-jobs/$job/archives/$job-integrated-${commit:0:12}-attempt-1
+  write_ledger "$root" "$job" attempt-1 "$target" integrated "$archive" "$commit"
+done
+output=$(run_janitor "$root" --apply)
+[[ $output != *'would-remove'* && $output == *'eligible=0'* &&
+  $output == *'removed=0'* && $output == *'excluded=26'* ]] ||
+  fail 'the 26 historical non-retained commits were not all excluded'
+for number in {01..26}; do
+  job=social-monitor-historical-not-retained-$number
+  [[ -d $root/worktrees/$job &&
+    $output == *"reason=integrated-commit-not-retained ledger=$job--attempt-1"* ]] ||
+    fail "historical non-retained commit was not preserved: $number"
+done
+[[ ! -e $root/control/consumed-worktree-janitor.audit.jsonl ]] ||
+  fail 'non-retained integrated commits wrote an audit receipt'
 
 root=$(new_fixture nonterminal-archive-name-mismatch)
 job=social-monitor-nonterminal-name-mismatch-worker
 target=$(add_worktree "$root" "$job")
 write_ledger "$root" "$job" attempt-1 "$target" running \
   "$root/worker-jobs/$job/archives/$job-running-unknown-attempt-1"
+find "$root/worker-jobs/$job/archives" -depth -delete
 terminal_job=social-monitor-nonterminal-neighbor-worker
 terminal_target=$(add_worktree "$root" "$terminal_job")
 write_ledger "$root" "$terminal_job" attempt-1 "$terminal_target" rejected
 output=$(run_janitor "$root")
 [[ $output == *"would-remove ledger=$terminal_job--attempt-1"* &&
   $output == *'eligible=1'* && $output == *'excluded=1'* ]] ||
-  fail 'nonterminal archive mismatch aborted or became eligible'
+  fail 'nonterminal missing/bad archive aborted or became eligible'
 
 root=$(new_fixture changed-after-terminal-evidence)
 job=social-monitor-changed-after-terminal-worker
@@ -555,6 +694,7 @@ jq -n --arg jobId "$job" --arg workspace "$target" --arg archive "$archive" \
     consumedAt:"2026-07-22T00:00:00.000Z",
     notes:[{status:"rejected",text:"missing archive"}]}' > \
   "$root/control/consumed-output-ledger/items/$job--attempt-1.json"
+write_registry_binding "$root" "$job" "$target" registry-v4
 assert_apply_rejected "$root" "$target"
 
 root=$(new_fixture wrong-project)
