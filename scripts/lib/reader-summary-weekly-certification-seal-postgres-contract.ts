@@ -38,7 +38,6 @@ const publicationOwner =
   "social_monitor_reader_summary_publication_owner";
 const publicationCapability =
   "social_monitor_reader_summary_publication_runtime";
-const schemaOwner = "social_monitor_public_schema_owner";
 const weekStartedOn = "2026-06-01";
 const weekDates = [
   "2026-06-01",
@@ -284,7 +283,7 @@ const assertSealCatalogContract = async (
   const row = result.rows[0];
   assert(row !== undefined, "weekly seal catalog contract returned no row");
   assert(
-    row.table_owner === schemaOwner &&
+    row.table_owner === publicationOwner &&
       row.force_rls &&
       row.function_owner === publicationOwner &&
       row.security_definer &&
@@ -304,9 +303,9 @@ const assertSealCatalogContract = async (
       row.owner_select &&
       row.owner_insert &&
       row.owner_update &&
-      !row.owner_delete &&
-      !row.owner_truncate &&
-      !row.owner_trigger &&
+      row.owner_delete &&
+      row.owner_truncate &&
+      row.owner_trigger &&
       row.policy_count === "1" &&
       row.trigger_count === "1",
     "weekly seal ownership, ACL, RLS, trigger, or function contract diverged",

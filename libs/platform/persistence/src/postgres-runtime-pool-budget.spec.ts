@@ -437,11 +437,13 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/lib/reader-summary-current-publication-bindings.ts
       scripts/lib/reader-summary-production-day-scope.spec.ts
       scripts/lib/reader-summary-production-day-scope.ts
+      scripts/lib/reader-summary-publication-postgres-running-fixture.ts
       scripts/lib/reader-summary-quality-dashboard-published-window.spec.ts
       scripts/lib/reader-summary-quality-dashboard-published-window.ts
       scripts/lib/reader-summary-quality-eval-support.spec.ts
       scripts/lib/reader-summary-quality-eval-support.ts
       scripts/lib/reader-summary-recovery-postgres-contract.ts
+      scripts/lib/reader-summary-weekly-certification-seal-postgres-contract.ts
       scripts/lib/reader-summary-weekly-daily-certification-backfill-postgres-contract.ts
       scripts/lib/reader-summary-weekly-publication-evidence-postgres-contract.ts
       scripts/lib/yesterday-reader-summary-artifact-quality-store.spec.ts
