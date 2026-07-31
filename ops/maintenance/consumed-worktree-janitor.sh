@@ -708,9 +708,9 @@ scan_process_evidence() { local scan_mode=$1 target=${2:-} test_proc=$PROJECT_RO
     scan_proc_process_evidence "$test_proc" "$scan_mode" "$target"
   else scan_proc_process_evidence /proc "$scan_mode" "$target"; fi
 }
-snapshot_process_evidence() { PROCESS_SCAN_INCOMPLETE=0; PLANNING_PROCESS_PATHS=()
-  scan_process_evidence snapshot || true
-  ((PROCESS_SCAN_INCOMPLETE == 0)) || fail 'process-use snapshot was incomplete; refusing to proceed'
+snapshot_process_evidence() { local attempt; for ((attempt = 1; attempt <= PROCESS_RECHECK_ATTEMPTS; attempt++)); do PROCESS_SCAN_INCOMPLETE=0; PLANNING_PROCESS_PATHS=(); scan_process_evidence snapshot || true
+    ((PROCESS_SCAN_INCOMPLETE != 0)) || return 0; ((attempt < PROCESS_RECHECK_ATTEMPTS)) || fail 'process-use snapshot was incomplete; refusing to proceed'
+    "$SLEEP" "$PROCESS_RECHECK_DELAY_SECONDS"; done
 }
 planning_process_uses_worktree() { local target=$1 process_path
   for process_path in "${PLANNING_PROCESS_PATHS[@]}"; do

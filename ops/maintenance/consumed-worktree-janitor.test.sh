@@ -652,6 +652,43 @@ fi
 [[ $(<"$root/live-unreadable.err") == *'process-use snapshot was incomplete'* ]] ||
   fail 'stable live unreadable process reported the wrong blocker'
 
+root=$(new_fixture transient-process-snapshot-reset)
+job=social-monitor-transient-process-snapshot-reset-worker
+target=$(add_worktree "$root" "$job")
+write_ledger "$root" "$job" attempt-1 "$target" rejected
+write_fake_process "$root" 202 'S (sleeping)' 0 302 yes "" 1 "$target"
+write_fake_process "$root" 203 'S (sleeping)' 0 303 no "" 1
+mkdir -p "$root/.social-monitor-janitor-test-proc/.scan-2"
+output=$(run_janitor "$root")
+[[ -d $target && $output == *"would-remove ledger=$job--attempt-1 worktree=$target"* ]] ||
+  fail 'transient process snapshot retained incomplete-attempt evidence'
+
+root=$(new_fixture persistent-incomplete-process-snapshot)
+job=social-monitor-persistent-incomplete-process-snapshot-worker
+target=$(add_worktree "$root" "$job")
+write_ledger "$root" "$job" attempt-1 "$target" rejected
+for scan_sequence in 1 2 3; do
+  write_fake_process "$root" $((203 + scan_sequence)) 'S (sleeping)' 0 \
+    $((303 + scan_sequence)) no "" "$scan_sequence"
+done
+if run_janitor "$root" --apply >"$root/persistent-snapshot.out" \
+  2>"$root/persistent-snapshot.err"; then
+  fail 'persistent incomplete process snapshot did not fail closed'
+fi
+[[ -d $target && $(<"$root/persistent-snapshot.err") == \
+  *'process-use snapshot was incomplete; refusing to proceed'* ]] ||
+  fail 'persistent incomplete process snapshot changed the target or blocker'
+
+root=$(new_fixture active-process-on-snapshot-retry)
+job=social-monitor-active-process-on-snapshot-retry-worker
+target=$(add_worktree "$root" "$job")
+write_ledger "$root" "$job" attempt-1 "$target" rejected
+write_fake_process "$root" 207 'S (sleeping)' 0 307 no "" 1
+write_fake_process "$root" 208 'S (sleeping)' 0 308 yes "" 2 "$target"
+output=$(run_janitor "$root" --apply)
+[[ -d $target && $output == *"excluded reason=active-process ledger=$job--attempt-1"* ]] ||
+  fail 'active process discovered during snapshot retry was not excluded'
+
 root=$(new_fixture transient-live-process-recheck)
 job=social-monitor-transient-live-process-recheck-worker
 target=$(add_worktree "$root" "$job")
