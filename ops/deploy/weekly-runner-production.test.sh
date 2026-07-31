@@ -75,6 +75,57 @@ grep -F 'function_capability_acl_count === "0"' "$weekly_seal_contract" \
   in_owner_list && /^      \)/ { in_owner_list = 0 }
   END { print count + 0 }
 ' "$publication_pre_migration") -eq 1 ]]
+awk '
+  /^DO \$weekly_certification_seal_ownership_transfer\$/ {
+    in_transfer = 1
+    transfer = NR
+  }
+  in_transfer && /IF v_seal_relation_kind NOT IN .*v_seal_owner NOT IN \(/ {
+    owner_guard = NR
+    in_safe_owners = 1
+    next
+  }
+  in_safe_owners && /social_monitor_public_schema_owner/ {
+    schema_owner++
+    safe_owner_count++
+  }
+  in_safe_owners && /social_monitor_reader_summary_publication_owner/ {
+    publication_owner++
+    safe_owner_count++
+  }
+  in_safe_owners && /^  \) THEN/ { in_safe_owners = 0 }
+  in_transfer && /weekly certification seal has an unexpected owner/ {
+    unsafe_rejection = NR
+  }
+  in_transfer && /^  GRANT social_monitor_reader_summary_publication_owner$/ {
+    temporary_grant = NR
+  }
+  in_transfer && /^  SET LOCAL ROLE social_monitor_public_schema_owner;/ {
+    set_role = NR
+  }
+  in_transfer && /^  ALTER TABLE public\.reader_summary_weekly_certification_seals$/ {
+    transfer_owner = NR
+  }
+  in_transfer && /^  RESET ROLE;/ { reset_role = NR }
+  in_transfer && /^  REVOKE social_monitor_reader_summary_publication_owner$/ {
+    temporary_revoke = NR
+  }
+  /^\$weekly_certification_seal_ownership_transfer\$;/ {
+    transfer_end = NR
+    in_transfer = 0
+  }
+  /^DO \$ownership_transfer_audit\$/ { audit = NR }
+  END {
+    valid_safe_owners = schema_owner == 1 && publication_owner == 1 &&
+      safe_owner_count == 2
+    valid_order = transfer < owner_guard && owner_guard < unsafe_rejection &&
+      unsafe_rejection < temporary_grant && temporary_grant < set_role &&
+      set_role < transfer_owner && transfer_owner < reset_role &&
+      reset_role < temporary_revoke && temporary_revoke < transfer_end &&
+      transfer_end < audit
+    exit !(valid_safe_owners && valid_order)
+  }
+' "$publication_pre_migration"
 ! grep -Eq '(GRANT|REVOKE).+reader_summary_weekly_certification_seals' \
   "$weekly_seal_contract"
 

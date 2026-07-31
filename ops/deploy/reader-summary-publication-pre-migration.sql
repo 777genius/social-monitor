@@ -2,25 +2,13 @@
 
 BEGIN;
 
-SELECT set_config(
-  'social_monitor.bootstrap_runtime_role',
-  :'runtime_role',
-  false
-);
-SELECT set_config(
-  'social_monitor.bootstrap_system_runtime_role',
-  :'system_runtime_role',
-  false
-);
+SELECT set_config('social_monitor.bootstrap_runtime_role', :'runtime_role', false);
+SELECT set_config('social_monitor.bootstrap_system_runtime_role', :'system_runtime_role', false);
 
 DO $bootstrap$
 DECLARE
-  v_runtime_role NAME := current_setting(
-    'social_monitor.bootstrap_runtime_role'
-  )::NAME;
-  v_system_runtime_role NAME := current_setting(
-    'social_monitor.bootstrap_system_runtime_role'
-  )::NAME;
+  v_runtime_role NAME := current_setting('social_monitor.bootstrap_runtime_role')::NAME;
+  v_system_runtime_role NAME := current_setting('social_monitor.bootstrap_system_runtime_role')::NAME;
   v_admin_role RECORD;
   v_role RECORD;
 BEGIN
@@ -50,29 +38,24 @@ BEGIN
 
   SELECT * INTO v_admin_role FROM pg_roles WHERE rolname = current_user;
   IF NOT v_admin_role.rolsuper AND NOT v_admin_role.rolcreaterole THEN
-    RAISE EXCEPTION
-      'reader summary bootstrap requires a separate CREATEROLE admin';
+    RAISE EXCEPTION 'reader summary bootstrap requires a separate CREATEROLE admin';
   END IF;
   IF NOT v_admin_role.rolsuper AND NOT v_admin_role.rolinherit THEN
-    RAISE EXCEPTION
-      'reader summary migration admin must inherit protected ownership';
+    RAISE EXCEPTION 'reader summary migration admin must inherit protected ownership';
   END IF;
 
   SELECT * INTO v_role FROM pg_roles WHERE rolname = v_runtime_role;
   IF NOT FOUND THEN
-    RAISE EXCEPTION 'reader summary runtime role % does not exist',
-      v_runtime_role;
+    RAISE EXCEPTION 'reader summary runtime role % does not exist', v_runtime_role;
   END IF;
   IF NOT v_role.rolcanlogin OR v_role.rolsuper OR v_role.rolcreatedb OR v_role.rolcreaterole
     OR v_role.rolreplication OR v_role.rolbypassrls THEN
     RAISE EXCEPTION 'reader summary runtime role has unsafe privileges';
   END IF;
 
-  SELECT * INTO v_role FROM pg_roles
-  WHERE rolname = v_system_runtime_role;
+  SELECT * INTO v_role FROM pg_roles WHERE rolname = v_system_runtime_role;
   IF NOT FOUND THEN
-    RAISE EXCEPTION 'tenant system runtime role % does not exist',
-      v_system_runtime_role;
+    RAISE EXCEPTION 'tenant system runtime role % does not exist', v_system_runtime_role;
   END IF;
   IF NOT v_role.rolcanlogin OR v_role.rolsuper OR v_role.rolcreatedb
     OR v_role.rolcreaterole OR v_role.rolreplication
@@ -80,78 +63,59 @@ BEGIN
     RAISE EXCEPTION 'tenant system runtime role has unsafe privileges';
   END IF;
 
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_roles
-    WHERE rolname = 'social_monitor_public_schema_owner'
-  ) THEN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'social_monitor_public_schema_owner') THEN
     PERFORM pg_catalog.set_config('createrole_self_grant', 'set', true);
     EXECUTE 'CREATE ROLE social_monitor_public_schema_owner '
       'NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT '
       'NOREPLICATION NOBYPASSRLS';
   END IF;
   PERFORM pg_catalog.set_config('createrole_self_grant', '', true);
-  SELECT * INTO v_role FROM pg_roles
-  WHERE rolname = 'social_monitor_public_schema_owner';
+  SELECT * INTO v_role FROM pg_roles WHERE rolname = 'social_monitor_public_schema_owner';
   IF v_role.rolcanlogin OR v_role.rolsuper OR v_role.rolcreatedb
     OR v_role.rolcreaterole OR v_role.rolinherit OR v_role.rolreplication
     OR v_role.rolbypassrls THEN
     RAISE EXCEPTION 'public schema owner role is unsafe';
   END IF;
 
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_roles
-    WHERE rolname = 'social_monitor_reader_summary_publication_owner'
-  ) THEN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'social_monitor_reader_summary_publication_owner') THEN
     PERFORM pg_catalog.set_config('createrole_self_grant', 'set', true);
     EXECUTE 'CREATE ROLE social_monitor_reader_summary_publication_owner '
       'NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT '
       'NOREPLICATION NOBYPASSRLS';
   END IF;
   PERFORM pg_catalog.set_config('createrole_self_grant', '', true);
-  SELECT * INTO v_role FROM pg_roles
-  WHERE rolname = 'social_monitor_reader_summary_publication_owner';
+  SELECT * INTO v_role FROM pg_roles WHERE rolname = 'social_monitor_reader_summary_publication_owner';
   IF v_role.rolcanlogin OR v_role.rolsuper OR v_role.rolcreatedb
     OR v_role.rolcreaterole OR v_role.rolinherit OR v_role.rolreplication
     OR v_role.rolbypassrls THEN
     RAISE EXCEPTION 'reader summary publication owner role is unsafe';
   END IF;
 
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_roles
-    WHERE rolname = 'social_monitor_reader_summary_publication_runtime'
-  ) THEN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'social_monitor_reader_summary_publication_runtime') THEN
     EXECUTE 'CREATE ROLE social_monitor_reader_summary_publication_runtime '
       'NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT '
       'NOREPLICATION NOBYPASSRLS';
   END IF;
-  SELECT * INTO v_role FROM pg_roles
-  WHERE rolname = 'social_monitor_reader_summary_publication_runtime';
+  SELECT * INTO v_role FROM pg_roles WHERE rolname = 'social_monitor_reader_summary_publication_runtime';
   IF v_role.rolcanlogin OR v_role.rolsuper OR v_role.rolcreatedb
     OR v_role.rolcreaterole OR v_role.rolinherit OR v_role.rolreplication
     OR v_role.rolbypassrls THEN
     RAISE EXCEPTION 'reader summary publication runtime role is unsafe';
   END IF;
 
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_roles
-    WHERE rolname = 'social_monitor_tenant_system_runtime'
-  ) THEN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'social_monitor_tenant_system_runtime') THEN
     EXECUTE 'CREATE ROLE social_monitor_tenant_system_runtime '
       'NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT '
       'NOREPLICATION NOBYPASSRLS';
   END IF;
-  SELECT * INTO v_role FROM pg_roles
-  WHERE rolname = 'social_monitor_tenant_system_runtime';
+  SELECT * INTO v_role FROM pg_roles WHERE rolname = 'social_monitor_tenant_system_runtime';
   IF v_role.rolcanlogin OR v_role.rolsuper OR v_role.rolcreatedb
     OR v_role.rolcreaterole OR v_role.rolinherit OR v_role.rolreplication
     OR v_role.rolbypassrls THEN
     RAISE EXCEPTION 'tenant system capability role is unsafe';
   END IF;
 
-  EXECUTE format(
-    'GRANT USAGE, CREATE ON SCHEMA public TO %I',
-    current_user
-  );
+  EXECUTE format('GRANT USAGE, CREATE ON SCHEMA public TO %I', current_user);
   IF EXISTS (
     SELECT 1
     FROM pg_auth_members membership
@@ -162,11 +126,7 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'public schema owner has an unreviewed member';
   END IF;
-  IF pg_has_role(
-    v_runtime_role,
-    'social_monitor_public_schema_owner',
-    'MEMBER'
-  ) THEN
+  IF pg_has_role(v_runtime_role, 'social_monitor_public_schema_owner', 'MEMBER') THEN
     RAISE EXCEPTION 'runtime role can assume public schema ownership';
   END IF;
   IF EXISTS (
@@ -180,11 +140,7 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'publication owner has an unreviewed member';
   END IF;
-  IF pg_has_role(
-    v_runtime_role,
-    'social_monitor_reader_summary_publication_owner',
-    'MEMBER'
-  ) THEN
+  IF pg_has_role(v_runtime_role, 'social_monitor_reader_summary_publication_owner', 'MEMBER') THEN
     RAISE EXCEPTION 'runtime role can assume publication ownership';
   END IF;
   IF pg_has_role(
@@ -902,6 +858,48 @@ BEGIN
   RESET ROLE;
 END
 $daily_terminal_runtime_acl$;
+-- The weekly-seal migration runs as schema owner. Repair only that reviewed
+-- intermediate state before the publication-owner audit.
+DO $weekly_certification_seal_ownership_transfer$
+DECLARE
+  v_seal_owner NAME;
+  v_seal_relation_kind "char";
+BEGIN
+  SELECT pg_get_userbyid(relation.relowner), relation.relkind
+  INTO v_seal_owner, v_seal_relation_kind
+  FROM pg_class relation
+  WHERE relation.oid =
+    to_regclass('public.reader_summary_weekly_certification_seals');
+
+  IF NOT FOUND THEN
+    RETURN;
+  END IF;
+  IF v_seal_relation_kind NOT IN ('r', 'p') OR v_seal_owner NOT IN (
+    'social_monitor_public_schema_owner',
+    'social_monitor_reader_summary_publication_owner'
+  ) THEN
+    RAISE EXCEPTION
+      'weekly certification seal has an unexpected owner or relation kind '
+        '(owner=%, kind=%)',
+      v_seal_owner,
+      v_seal_relation_kind;
+  END IF;
+  IF v_seal_owner =
+    'social_monitor_reader_summary_publication_owner' THEN
+    RETURN;
+  END IF;
+
+  GRANT social_monitor_reader_summary_publication_owner
+  TO social_monitor_public_schema_owner
+  WITH ADMIN FALSE, INHERIT FALSE, SET TRUE GRANTED BY CURRENT_USER;
+  SET LOCAL ROLE social_monitor_public_schema_owner;
+  ALTER TABLE public.reader_summary_weekly_certification_seals
+    OWNER TO social_monitor_reader_summary_publication_owner;
+  RESET ROLE;
+  REVOKE social_monitor_reader_summary_publication_owner
+  FROM social_monitor_public_schema_owner GRANTED BY CURRENT_USER;
+END
+$weekly_certification_seal_ownership_transfer$;
 DO $ownership_transfer_audit$
 DECLARE v_runtime_role NAME :=
   current_setting('social_monitor.bootstrap_runtime_role')::NAME;
