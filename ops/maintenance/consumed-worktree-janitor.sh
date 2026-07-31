@@ -6,6 +6,7 @@ readonly SHA256SUM=/usr/bin/sha256sum DATE=/usr/bin/date MKTEMP=/usr/bin/mktemp 
 readonly CMP=/usr/bin/cmp STAT=/usr/bin/stat SORT=/usr/bin/sort
 readonly SYNC=/usr/bin/sync SLEEP=/usr/bin/sleep PROCESS_SNAPSHOT_LIMIT=65536
 MODE=dry-run MODE_SEEN=0 TEST_ROOT= AUDIT_TMP= EXPECTED_PLAN_SHA256=
+FAST_RELOCATED=${FAST_RELOCATED:-${SOCIAL_MONITOR_JANITOR_FAST_RELOCATED:-0}}
 fail() { printf 'consumed-worktree-janitor: %s\n' "$*" >&2; exit 1; }
 cleanup() { [[ -z $AUDIT_TMP || ! -f $AUDIT_TMP || -L $AUDIT_TMP ]] || "$UNLINK" -- "$AUDIT_TMP"; }
 trap cleanup EXIT
@@ -52,6 +53,7 @@ if [[ $MODE == apply-relocated ]]; then
 else
   [[ -z $EXPECTED_PLAN_SHA256 ]] || fail '--expected-plan-sha256 is valid only with --apply-relocated'
 fi
+[[ $FAST_RELOCATED == 0 || $FAST_RELOCATED == 1 ]] || fail 'FAST_RELOCATED must be 0 or 1'
 for tool in "$GIT" "$JQ" "$REALPATH" "$FLOCK" "$DU" "$READLINK" "$SHA256SUM" "$DATE" "$MKTEMP" "$CP" "$MV" "$UNLINK" "$CMP" "$STAT" "$SORT" "$SYNC" "$SLEEP"; do
   [[ -x $tool ]] || fail "required tool is unavailable: $tool"
 done
@@ -73,6 +75,7 @@ else
   ((EUID == 0)) || fail 'production runs require root so process-use checks are complete'
   TRUSTED_OWNER_ID=0
 fi
+[[ $FAST_RELOCATED == 0 || -n $TEST_ROOT ]] || fail 'FAST_RELOCATED is restricted to hermetic test roots'
 readonly PROJECT_ROOT TRUSTED_OWNER_ID CONTROL=$PROJECT_ROOT/control INTEGRATION=$PROJECT_ROOT/integration
 readonly WORKTREES=$PROJECT_ROOT/worktrees WORKER_JOBS=$PROJECT_ROOT/worker-jobs CONTROLLER=$PROJECT_ROOT/worker-jobs/controller
 readonly CONTROLLER_V4=$WORKER_JOBS/controller-v4 RELOCATION_ARCHIVE_ROOT=$WORKTREES/.volume2/root-worktree-archive-20260727
@@ -386,19 +389,7 @@ bind_prepared_receipts_as_recovery_candidates
 validate_audit_bindings_after_ledger
 worktree_porcelain=$("$GIT" -C "$INTEGRATION" worktree list --porcelain) ||
   fail 'cannot enumerate registered Git worktrees'
-declare -A registered_count=() registered_locked=()
-registered_path=
-while IFS= read -r line; do
-  if [[ $line == worktree\ * ]]; then
-    registered_path=${line#worktree }
-    registered_path=$("$REALPATH" -m -- "$registered_path") ||
-      fail 'cannot canonicalize registered Git worktree'
-    registered_count["$registered_path"]=$(( ${registered_count[$registered_path]:-0} + 1 ))
-  elif [[ $line == locked || $line == locked\ * ]]; then
-    [[ -n $registered_path ]] || fail 'Git reported an unbound worktree lock'
-    registered_locked["$registered_path"]=1
-  fi
-done <<<"$worktree_porcelain"
+snapshot_git_registrations "$worktree_porcelain"
 declare -A activity_protected=()
 protect_worktree_for_path() {
   local path=$1 reason=$2
@@ -599,6 +590,7 @@ job_has_active_state() {
 }
 PROCESS_SCAN_INCOMPLETE=0
 declare -a PLANNING_PROCESS_PATHS=()
+process_entry_vanished() { [[ ! -e $1 && ! -L $1 ]]; }
 inspect_process_path() {
   local raw_path=$1 scan_mode=$2 target=${3:-}
   local resolved
@@ -664,11 +656,12 @@ status_has_no_process_resources() { local status=$1 line
   done <<<"$status"; return 1
 }
 scan_proc_process_evidence() { local proc_root=$1 scan_mode=$2 target=${3:-}
-  local process_dir link_path raw_link identity status recheck_result unreadable; local -a raw_paths=()
+  local process_dir link_path raw_link identity status recheck_result unreadable fd_root; local -a raw_paths=()
   for process_dir in "$proc_root"/[0-9]*; do
     [[ -d $process_dir ]] || continue
     if ! identity=$(read_process_identity "$process_dir" initial); then
-      [[ -d $process_dir ]] && PROCESS_SCAN_INCOMPLETE=1; continue
+      process_entry_vanished "$process_dir" || PROCESS_SCAN_INCOMPLETE=1
+      continue
     fi
     if [[ ! -f $process_dir/status || -L $process_dir/status ||
       ! -r $process_dir/status ]] || ! status=$(<"$process_dir/status"); then
@@ -684,10 +677,19 @@ scan_proc_process_evidence() { local proc_root=$1 scan_mode=$2 target=${3:-}
     for link_path in "$process_dir/cwd" "$process_dir/root" "$process_dir/exe"; do
       if [[ -L $link_path ]] && raw_link=$("$READLINK" -- "$link_path" 2>/dev/null); then raw_paths+=("$raw_link"); else unreadable=1; fi
     done
-    for link_path in "$process_dir"/fd/*; do
-      [[ -L $link_path ]] || continue
-      if raw_link=$("$READLINK" -- "$link_path" 2>/dev/null); then raw_paths+=("$raw_link"); else unreadable=1; fi
-    done
+    fd_root=$process_dir/fd
+    if [[ -d $fd_root && ! -L $fd_root && -r $fd_root ]]; then
+      for link_path in "$fd_root"/*; do
+        [[ ! -e $link_path && ! -L $link_path ]] && continue
+        if [[ -L $link_path ]] && raw_link=$("$READLINK" -- "$link_path" 2>/dev/null); then
+          raw_paths+=("$raw_link")
+        elif ! process_entry_vanished "$link_path"; then
+          unreadable=1
+        fi
+      done
+    elif ! process_entry_vanished "$fd_root"; then
+      unreadable=1
+    fi
     if recheck_process_identity "$process_dir" "$identity"; then :
     else
       recheck_result=$?; ((recheck_result == 1)) || PROCESS_SCAN_INCOMPLETE=1; continue
@@ -934,15 +936,15 @@ for workspace in "${sorted_workspaces[@]}"; do
       if ((expected_registration_count == 1)); then
         [[ $(path_identity "$target") == "$target_identity" ]] ||
           fail "schema-v2 replay target identity changed: $ledger_id"
-        capture_exact_unlocked_git_registration "$target"
-        [[ $(sha256_text "$CAPTURED_GIT_REGISTRATION") == "$git_registration_hash" ]] ||
+        [[ ${registered_registration_sha[$target]:-} == "$git_registration_hash" ]] ||
           fail "schema-v2 replay Git registration changed: $ledger_id"
       fi
     else
       logical_identity=$(path_identity "$workspace")
       target_identity=$(path_identity "$target")
-      capture_exact_unlocked_git_registration "$target"
-      git_registration_hash=$(sha256_text "$CAPTURED_GIT_REGISTRATION")
+      git_registration_hash=${registered_registration_sha[$target]:-}
+      [[ -n $git_registration_hash ]] ||
+        fail "cannot resolve planned Git registration: $target"
     fi
   else
     logical_identity=- target_identity=- git_registration_hash=-

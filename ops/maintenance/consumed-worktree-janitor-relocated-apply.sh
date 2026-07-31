@@ -297,6 +297,34 @@ sha256_text() {
   printf '%s\n' "${digest%%[[:space:]]*}"
 }
 
+snapshot_git_registrations() {
+  local worktree_porcelain=$1 line digest
+  local registered_path= registered_block=
+  declare -gA registered_count=() registered_locked=() registered_registration_sha=()
+  finalize_registered_block() {
+    [[ -n $registered_path ]] || return 0
+    digest=$(sha256_text "${registered_block%$'\n'}")
+    registered_registration_sha["$registered_path"]=$digest
+  }
+  while IFS= read -r line; do
+    if [[ $line == worktree\ * ]]; then
+      finalize_registered_block
+      registered_path=${line#worktree }
+      registered_path=$("$REALPATH" -m -- "$registered_path") ||
+        fail 'cannot canonicalize registered Git worktree'
+      registered_count["$registered_path"]=$(( ${registered_count[$registered_path]:-0} + 1 ))
+      registered_block=$line$'\n'
+    elif [[ $line == locked || $line == locked\ * ]]; then
+      [[ -n $registered_path ]] || fail 'Git reported an unbound worktree lock'
+      registered_locked["$registered_path"]=1
+      registered_block+=$line$'\n'
+    elif [[ -n $registered_path && -n $line ]]; then
+      registered_block+=$line$'\n'
+    fi
+  done <<<"$worktree_porcelain"
+  finalize_registered_block
+}
+
 janitor_test_checkpoint() {
   local phase=$1 marker count=0
   [[ -n $TEST_ROOT ]] || return 0
@@ -428,10 +456,12 @@ revalidate_relocated_candidate() {
     current_identity=$(path_identity "$target")
     [[ $current_identity == "${plan_target_identities[$index]}" ]] ||
       fail "relocated target identity changed during apply: $target"
-    capture_exact_unlocked_git_registration "$target"
-    registration_sha=$(sha256_text "$CAPTURED_GIT_REGISTRATION")
-    [[ $registration_sha == "${plan_git_registration_hashes[$index]}" ]] ||
-      fail "Git registration changed during relocated apply: $target"
+    if [[ $FAST_RELOCATED != 1 ]]; then
+      capture_exact_unlocked_git_registration "$target"
+      registration_sha=$(sha256_text "$CAPTURED_GIT_REGISTRATION")
+      [[ $registration_sha == "${plan_git_registration_hashes[$index]}" ]] ||
+        fail "Git registration changed during relocated apply: $target"
+    fi
     worktree_matches_terminal_evidence "$target" "${plan_status_files[$index]}" \
       "${plan_patch_files[$index]}" "${plan_numstat_files[$index]}" ||
       fail "worktree state changed during relocated apply: ${plan_ledgers[$index]}"
@@ -448,7 +478,9 @@ revalidate_relocated_candidate() {
     validate_trusted_path "$RELOCATION_ARCHIVE_ROOT" directory 'relocation archive root'
     [[ ! -e $target && ! -L $target ]] ||
       fail "relocated target reappeared during replay: $target"
-    is_registered_now "$target" && fail "removed relocated target is still registered: $target"
+    if [[ $FAST_RELOCATED != 1 ]] && is_registered_now "$target"; then
+      fail "removed relocated target is still registered: $target"
+    fi
   fi
   return 0
 }
@@ -559,7 +591,9 @@ apply_relocated_plan() {
         fail "relocated target entered an unsupported replay state: $target"
     fi
     [[ ! -e $target && ! -L $target ]] || fail "Git did not remove relocated target: $target"
-    is_registered_now "$target" && fail "relocated target remains registered: $target"
+    if [[ $FAST_RELOCATED != 1 ]] && is_registered_now "$target"; then
+      fail "relocated target remains registered: $target"
+    fi
     janitor_test_checkpoint after-git-remove
     janitor_test_checkpoint before-removed
     revalidate_relocated_candidate "$index" absent absent
@@ -571,6 +605,23 @@ apply_relocated_plan() {
       "$id" "$logical" "$target" "${plan_bytes[$index]}"
     removed=$((removed + 1))
   done
+  if [[ $FAST_RELOCATED == 1 ]]; then
+    local listing line path
+    declare -A removed_targets=()
+    for index in "${!plan_targets[@]}"; do
+      [[ ${plan_kinds[$index]} == relocated ]] || continue
+      removed_targets["${plan_targets[$index]}"]=1
+    done
+    listing=$("$GIT" -C "$INTEGRATION" worktree list --porcelain) ||
+      fail 'cannot enumerate Git worktrees for final relocated absence check'
+    while IFS= read -r line; do
+      [[ $line == worktree\ * ]] || continue
+      path=$("$REALPATH" -m -- "${line#worktree }") ||
+        fail 'cannot canonicalize final relocated registration'
+      [[ -z ${removed_targets[$path]:-} ]] ||
+        fail "relocated target remains registered after batch apply: $path"
+    done <<<"$listing"
+  fi
 }
 
 apply_ordinary_plan() {
