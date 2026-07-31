@@ -48,6 +48,7 @@
     "reader_summary_publications",
     "reader_summary_publication_slots",
     "reader_summary_recovery_receipts",
+    "reader_summary_weekly_certification_seals",
     "reader_summary_weekly_publication_evidence",
     "reader_summary_policies",
     "reader_summary_topic_recommendation_decisions",
