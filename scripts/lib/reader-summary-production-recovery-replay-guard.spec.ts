@@ -1,424 +1,256 @@
 import { createHash } from "node:crypto";
 
+import { stablePublicationJson } from "@social-monitor/summary/adapters/persistence/reader-summary-publication-proof";
+
 import { productionRecoveryBinding } from "../../libs/summary/adapters/persistence/prisma/prisma-reader-summary-production-recovery-authority.spec-support";
-
 import {
-  readerSummaryProductionRecoveryDayIds,
-  readerSummaryProductionRecoveryJobIdempotencyKey,
-  readerSummaryProductionRecoveryLegacyDayIds,
-  readerSummaryProductionRecoveryQualityRemediationDayIds,
-  readerSummaryProductionRecoveryQualityRemediationJobIdempotencyKey,
-  readerSummaryProductionRecoveryQualityRemediationResumeDayIds,
-  readerSummaryProductionRecoveryQualityRemediationResumeJobIdempotencyKey,
-  readerSummaryProductionRecoveryResumeDayIds,
+  buildReaderSummaryProductionRecoveryModelClaim,
+} from "./reader-summary-production-recovery-claim-verifier";
+import {
+  readerSummaryProductionRecoveryClaimExpectation,
+  readerSummaryProductionRecoveryHistoricClaimExpectation,
 } from "./reader-summary-production-recovery-cli";
+import { recoveryProvenanceForDay } from "./reader-summary-production-recovery-data";
 import {
-  dayAuthority,
-  periodForRecoveryDate,
-  type ReaderSummaryProductionRecoveryDate,
-} from "./reader-summary-production-recovery-data";
-import { PrismaReaderSummaryProductionRecoveryExecutionGuard } from "./reader-summary-production-recovery-replay-guard";
+  PrismaReaderSummaryProductionRecoveryExecutionGuard,
+} from "./reader-summary-production-recovery-replay-guard";
 
-const legacyJul23CanonicalBoundsWrapper =
-  "Invalid `prisma.$queryRaw()` invocation:\n\n\nRaw query failed. Code: `P0001`. Message: `weekly canonical JSON exceeds structural bounds`";
+const requestedUtcDate = "2026-07-24" as const;
+const generationProfile = {
+  modelVersion: "codex:gpt-5.5:xhigh",
+  promptVersion: "reader_summary.prompt.2026-07-14.daily_synthesis",
+  rankingPolicyVersion: "story_ranking_v10",
+} as const;
 
 describe("PrismaReaderSummaryProductionRecoveryExecutionGuard", () => {
-  it("reports replay only when the exact final receipt exists", async () => {
-    const fixture = guardFixture([[{ replayed: true }]]);
-
-    await expect(claim(fixture.guard, "2026-07-23")).resolves.toBe(
-      "replayed",
-    );
-    expect(fixture.queries).toHaveLength(1);
-    expect(fixture.queries[0]).toContain(
-      "reader_summary_recovery_receipts",
-    );
-    expect(fixture.queries[0]).not.toContain("idempotency_keys");
-  });
-
-  it("creates one consumed retry lease and RUNNING job for a fresh date", async () => {
+  it("atomically persists one deterministic pre-model lease and job", async () => {
     const fixture = guardFixture([
-      [{ replayed: false }],
       [],
-      [],
-      [claimOutcome()],
+      [{ claimed: true, jobClaimed: true }],
     ]);
 
-    await expect(claim(fixture.guard, "2026-07-24")).resolves.toBe(
-      "execute",
-    );
-    expect(fixture.queries[3]).toContain('INSERT INTO "idempotency_keys"');
-    expect(fixture.queries[3]).toContain('INSERT INTO "reader_summary_jobs"');
-  });
-
-  it.each(["RUNNING", "FAILED"] as const)(
-    "atomically supersedes a legacy %s attempt and creates one retry",
-    async (jobStatus) => {
-      const requestedUtcDate = "2026-07-25";
-      const fixture = guardFixture([
-        [{ replayed: false }],
-        [],
-        [legacyClaimRow(requestedUtcDate, jobStatus)],
-        [
-          claimOutcome({
-            staleJobSuperseded: jobStatus === "RUNNING",
-          }),
-        ],
-      ]);
-
-      await expect(claim(fixture.guard, requestedUtcDate)).resolves.toBe(
-        "execute",
-      );
-      expect(fixture.queries[3]).toContain("stale_job AS");
-      expect(fixture.queries[3]).toContain("INTERVAL '1 hour'");
-      expect(fixture.queries[3]).toContain(
-        'RETURNING "reader_summary_jobs"."id"',
-      );
-      expect(fixture.queries[3]).not.toContain("reader_summary_artifacts");
-      expect(fixture.queries[3]).not.toContain("source_items");
-    },
-  );
-
-  it.each(["2026-07-24", "2026-07-26"] as const)(
-    "resumes only a consumed %s retry that failed on predecessor canonical bounds",
-    async (requestedUtcDate) => {
-      const fixture = guardFixture([
-        [{ replayed: false }],
-        [retryClaimRow(requestedUtcDate, "FAILED")],
-        [],
-        [claimOutcome()],
-      ]);
-
-      await expect(claim(fixture.guard, requestedUtcDate)).resolves.toBe(
-        "resume",
-      );
-      expect(fixture.queries[3]).toContain('INSERT INTO "idempotency_keys"');
-      expect(fixture.queries[3]).toContain('INSERT INTO "reader_summary_jobs"');
-      expect(fixture.queries[3]).not.toContain("reader_summary_artifacts");
-    },
-  );
-
-  it.each(["legacy", "retry"] as const)(
-    "creates one quality remediation lease for an existing %s rejected artifact",
-    async (claimKind) => {
-      const requestedUtcDate = "2026-07-23";
-      const fixture = guardFixture([
-        [{ replayed: false }],
-        ...(claimKind === "retry"
-          ? [[retryClaimRow(requestedUtcDate, "REJECTED")]]
-          : [[], [legacyClaimRow(requestedUtcDate, "REJECTED")]]),
-        [],
-        [claimOutcome()],
-      ]);
-
-      await expect(claim(fixture.guard, requestedUtcDate)).resolves.toBe(
-        "remediate-quality",
-      );
-      const persisted = fixture.queries.at(-1)!;
-      expect(persisted).toContain('INSERT INTO "idempotency_keys"');
-      expect(persisted).toContain('INSERT INTO "reader_summary_jobs"');
-      expect(persisted).not.toContain("reader_summary_artifacts");
-      expect(persisted).not.toContain("source_items");
-      expect(JSON.stringify(fixture.values.at(-1))).toContain(
-        "rejectionEvidenceSha256",
-      );
-      expect(JSON.stringify(fixture.values.at(-1))).not.toContain(
-        "quality rejection fixture",
-      );
-      expect(
-        readerSummaryProductionRecoveryQualityRemediationDayIds(
-          productionRecoveryBinding(),
-          requestedUtcDate,
-        ),
-      ).not.toEqual(
-        claimKind === "retry"
-          ? readerSummaryProductionRecoveryDayIds(
-              productionRecoveryBinding(),
-              requestedUtcDate,
-            )
-          : readerSummaryProductionRecoveryLegacyDayIds(
-              productionRecoveryBinding(),
-              requestedUtcDate,
-            ),
-      );
-    },
-  );
-
-  it("remediates the legacy FAILED job shape only when its linked artifact is REJECTED", async () => {
-    const requestedUtcDate = "2026-07-27";
-    const rejected = retryClaimRow(requestedUtcDate, "REJECTED");
-    const fixture = guardFixture([
-      [{ replayed: false }],
-      [{ ...rejected, jobStatus: "FAILED" }],
-      [],
-      [claimOutcome()],
-    ]);
-
-    await expect(claim(fixture.guard, requestedUtcDate)).resolves.toBe(
-      "remediate-quality",
-    );
-    expect(fixture.queries.at(-1)).not.toContain(
-      "reader_summary_artifacts",
-    );
-  });
-
-  it.each([
-    "weekly canonical JSON exceeds structural bounds",
-    "weekly canonical JSON exceeds byte bounds",
-  ])("resumes only quality remediation that failed with %s", async (failureReason) => {
-    const requestedUtcDate = "2026-07-23";
-    const fixture = guardFixture([
-      [{ replayed: false }],
-      [retryClaimRow(requestedUtcDate, "REJECTED")],
-      [qualityRemediationClaimRow(requestedUtcDate, "FAILED", failureReason)],
-      [],
-      [claimOutcome()],
-    ]);
-
-    await expect(claim(fixture.guard, requestedUtcDate)).resolves.toBe(
-      "resume-quality",
-    );
-    const persisted = fixture.queries.at(-1)!;
-    expect(persisted).toContain('INSERT INTO "idempotency_keys"');
-    expect(persisted).toContain('INSERT INTO "reader_summary_jobs"');
-    expect(persisted).not.toContain("reader_summary_artifacts");
-    expect(persisted).not.toContain("source_items");
-    expect(JSON.stringify(fixture.values.at(-1))).toContain(
-      "rejectionEvidenceSha256",
-    );
-    expect(JSON.stringify(fixture.values.at(-1))).not.toContain(
-      failureReason,
-    );
-    const binding = productionRecoveryBinding();
-    expect(
-      readerSummaryProductionRecoveryQualityRemediationResumeDayIds(
-        binding,
-        requestedUtcDate,
-      ),
-    ).not.toEqual(
-      readerSummaryProductionRecoveryQualityRemediationDayIds(
-        binding,
-        requestedUtcDate,
-      ),
-    );
-  });
-
-  it("resumes Jul23 quality remediation for the exact known legacy wrapper hash", async () => {
-    const requestedUtcDate = "2026-07-23";
-    expect(sha256(legacyJul23CanonicalBoundsWrapper)).toBe(
-      "17318e621367dde799a0f55d635744baef8f7258041972b73c59b1f4584e4290",
-    );
-    const fixture = guardFixture([
-      [{ replayed: false }],
-      [retryClaimRow(requestedUtcDate, "REJECTED")],
-      [
-        qualityRemediationClaimRow(
-          requestedUtcDate,
-          "FAILED",
-          legacyJul23CanonicalBoundsWrapper,
-        ),
-      ],
-      [],
-      [claimOutcome()],
-    ]);
-
-    await expect(claim(fixture.guard, requestedUtcDate)).resolves.toBe(
-      "resume-quality",
-    );
-    expect(fixture.queries.at(-1)).not.toContain(
-      "reader_summary_artifacts",
-    );
-    expect(fixture.queries.at(-1)).not.toContain("source_items");
-    expect(JSON.stringify(fixture.values.at(-1))).toContain(
-      "17318e621367dde799a0f55d635744baef8f7258041972b73c59b1f4584e4290",
-    );
-    expect(JSON.stringify(fixture.values.at(-1))).not.toContain(
-      legacyJul23CanonicalBoundsWrapper,
-    );
-  });
-
-  it.each([
-    ["2026-07-24", legacyJul23CanonicalBoundsWrapper],
-    ["2026-07-23", `${legacyJul23CanonicalBoundsWrapper}\n`],
-  ] as const)(
-    "rejects legacy wrapper reuse outside the exact Jul23 hash (%s)",
-    async (requestedUtcDate, failureReason) => {
-      const fixture = guardFixture([
-        [{ replayed: false }],
-        [retryClaimRow(requestedUtcDate, "REJECTED")],
-        [
-          qualityRemediationClaimRow(
-            requestedUtcDate,
-            "FAILED",
-            failureReason,
-          ),
-        ],
-      ]);
-
-      await expect(claim(fixture.guard, requestedUtcDate)).rejects.toThrow(
-        "quality-remediation-v1 lease was already consumed without final receipt",
-      );
-      expect(fixture.queries.every((sql) => !sql.includes("INSERT"))).toBe(
-        true,
-      );
-    },
-  );
-
-  it("does not resume noncanonical or rejected quality remediation", async () => {
-    const requestedUtcDate = "2026-07-23";
-    for (const quality of [
-      qualityRemediationClaimRow(
-        requestedUtcDate,
-        "FAILED",
-        "provider response was unavailable",
-      ),
-      qualityRemediationClaimRow(requestedUtcDate, "REJECTED"),
-    ]) {
-      const fixture = guardFixture([
-        [{ replayed: false }],
-        [retryClaimRow(requestedUtcDate, "REJECTED")],
-        [quality],
-      ]);
-      await expect(claim(fixture.guard, requestedUtcDate)).rejects.toThrow(
-        "quality-remediation-v1 lease was already consumed without final receipt",
-      );
-      expect(fixture.queries).toHaveLength(3);
-      expect(fixture.queries.every((sql) => !sql.includes("INSERT"))).toBe(
-        true,
-      );
-    }
-  });
-
-  it("does not re-consume an existing running retry lease without a receipt", async () => {
-    const requestedUtcDate = "2026-07-26";
-    const fixture = guardFixture([
-      [{ replayed: false }],
-      [retryClaimRow(requestedUtcDate, "RUNNING")],
-    ]);
-
-    await expect(claim(fixture.guard, requestedUtcDate)).rejects.toThrow(
-      "2026-07-26 retry-v1 lease was already consumed without final receipt",
-    );
+    await expect(claim(fixture.guard)).resolves.toBe("execute");
     expect(fixture.queries).toHaveLength(2);
-    expect(fixture.queries.every((sql) => !sql.includes("INSERT"))).toBe(
+    expect(fixture.queries[0]).toContain("FOR UPDATE OF claim");
+    expect(fixture.queries[0]).not.toContain("LOCK TABLE");
+    expect(fixture.queries[1]).toContain(
+      'INSERT INTO "idempotency_keys"',
+    );
+    expect(fixture.queries[1]).toContain(
+      'INSERT INTO "reader_summary_jobs"',
+    );
+    expect(fixture.queries[1]).not.toContain("source_items");
+    expect(fixture.queries[1]).not.toContain(
+      "reader_summary_artifacts",
+    );
+    expect(JSON.stringify(fixture.values[1])).toContain(
+      "generationProfile",
+    );
+  });
+
+  it("rejects duplicate and concurrent claims without another model lease", async () => {
+    const concurrent = guardFixture([
+      [],
+      [{ claimed: false, jobClaimed: false }],
+    ]);
+    await expect(claim(concurrent.guard)).rejects.toThrow(
+      "concurrent model claim was rejected",
+    );
+
+    const consumed = guardFixture([[claimRow("RUNNING")]]);
+    await expect(claim(consumed.guard)).rejects.toThrow(
+      "durable pre-model lease was consumed without an exact final receipt",
+    );
+    expect(consumed.queries).toHaveLength(1);
+    expect(consumed.queries.every((sql) => !sql.includes("INSERT"))).toBe(
       true,
     );
   });
 
-  it("rejects a failed retry outside the exact infrastructure allowlist", async () => {
-    const requestedUtcDate = "2026-07-24";
-    const fixture = guardFixture([
-      [{ replayed: false }],
-      [
-        retryClaimRow(
-          requestedUtcDate,
-          "FAILED",
-          "provider response was unavailable",
-        ),
-      ],
-    ]);
+  it("fails closed after a crash with a consumed lease", async () => {
+    const crashed = guardFixture([[claimRow("FAILED")]]);
 
-    await expect(claim(fixture.guard, requestedUtcDate)).rejects.toThrow(
-      "2026-07-24 retry-v1 lease was already consumed without final receipt",
+    await expect(claim(crashed.guard)).rejects.toThrow(
+      "consumed without an exact final receipt",
     );
-    expect(fixture.queries).toHaveLength(2);
+    expect(crashed.queries).toHaveLength(1);
+    expect(crashed.queries[0]).not.toContain("INSERT");
   });
 
-  it("fails closed with redacted date evidence for a non-canonical legacy failure", async () => {
-    const requestedUtcDate = "2026-07-25";
+  it("keeps a historic claim without generationProfile readable but never executable", async () => {
+    const expectation = historicExpected(
+      "reader_summary.production_recovery_model_retry_claim.v1",
+    );
+    const row = claimRow("RUNNING", {}, expectation);
+    const historicPayload = {
+      schemaVersion:
+        "reader_summary.production_recovery_model_retry_claim.v1",
+      recoveryId: expectation.recoveryId,
+      tenantId: expectation.tenantId,
+      workspaceId: expectation.workspaceId,
+      requestedUtcDate: expectation.requestedUtcDate,
+      readerSummaryJobId: expectation.readerSummaryJobId,
+      readerSummaryArtifactId: expectation.readerSummaryArtifactId,
+      planSha256s: expectation.dryRunCanonicalSha256s,
+      providerEvidenceSha256: expectation.providerEvidenceSha256,
+      supersedes: null,
+      boundaries: {
+        stage: "pre_model",
+        leaseConsumed: true,
+        modelCallPerformed: false,
+        recollectionPerformed: false,
+        providerWritePerformed: false,
+      },
+    };
     const fixture = guardFixture([
-      [{ replayed: false }],
-      [],
       [
         {
-          ...legacyClaimRow(requestedUtcDate, "FAILED"),
-          jobFailureReason: "provider response was unavailable",
+          ...row,
+          claimScope:
+            "reader-summary-production-recovery-model-retry-v1",
+          responsePayload: historicPayload,
+          jobId: expectation.readerSummaryJobId,
+          jobIdempotencyKey:
+            `reader-summary-production-recovery-retry-v1:${requestedUtcDate}:` +
+            expectation.planCanonicalSha256,
         },
       ],
     ]);
 
-    await expect(claim(fixture.guard, requestedUtcDate)).rejects.toThrow(
-      "2026-07-25 legacy-v2 lease was already consumed without final receipt; failure_reason_sha256=",
+    await expect(claim(fixture.guard)).rejects.toThrow(
+      "consumed without an exact final receipt",
     );
-    expect(fixture.queries).toHaveLength(3);
-    expect(fixture.queries.every((sql) => !sql.includes("INSERT"))).toBe(
-      true,
-    );
+    expect(fixture.queries).toHaveLength(1);
   });
 
-  it("keeps canonical retry-v1 unchanged and resume identity distinct", () => {
-    const binding = productionRecoveryBinding();
-    const requestedUtcDate = "2026-07-24";
-    const retryIds = readerSummaryProductionRecoveryDayIds(
-      binding,
-      requestedUtcDate,
+  it("never replaces trusted historic job and artifact ids from a forged claim payload", async () => {
+    const expectation = historicExpected(
+      "reader_summary.production_recovery_model_retry_claim.v1",
     );
-    expect(retryIds).toEqual({
-      readerSummaryJobId: "3f47d8c2-1d8b-494d-a102-0f754b74f758",
-      readerSummaryId: "20508fb3-dfc5-4451-a13b-033f473819ff",
-    });
-    expect(
-      readerSummaryProductionRecoveryJobIdempotencyKey(
-        requestedUtcDate,
-        dayAuthority(binding, requestedUtcDate).canonicalSha256,
-      ),
-    ).toBe(
-      "reader-summary-production-recovery-retry-v1:2026-07-24:" +
-        "da2c96da4b6ff19024b34eafce517a846fced2cf93d6fe876d27a3f2c30f0935",
-    );
-    expect(
-      readerSummaryProductionRecoveryResumeDayIds(
-        binding,
-        requestedUtcDate,
-      ),
-    ).not.toEqual(retryIds);
-    expect(
-      readerSummaryProductionRecoveryQualityRemediationJobIdempotencyKey(
-        requestedUtcDate,
-        dayAuthority(binding, requestedUtcDate).canonicalSha256,
-      ),
-    ).toContain(
-      "reader-summary-production-recovery-quality-remediation-v1:",
-    );
-    expect(
-      readerSummaryProductionRecoveryQualityRemediationResumeJobIdempotencyKey(
-        requestedUtcDate,
-        dayAuthority(binding, requestedUtcDate).canonicalSha256,
-      ),
-    ).toContain(
-      "reader-summary-production-recovery-quality-remediation-resume-v1:",
-    );
-  });
-
-  it("fails closed when legacy terminal authority is not exact", async () => {
-    const requestedUtcDate = "2026-07-27";
-    const forged = {
-      ...legacyClaimRow(requestedUtcDate, "FAILED"),
-      jobFailureReason: null,
-    };
+    const payload = historicRetryPayload(expectation);
     const fixture = guardFixture([
-      [{ replayed: false }],
-      [],
-      [forged],
+      [
+        claimRow(
+          "RUNNING",
+          {
+            claimScope:
+              "reader-summary-production-recovery-model-retry-v1",
+            responsePayload: {
+              ...payload,
+              readerSummaryJobId: expected().readerSummaryJobId,
+              readerSummaryArtifactId:
+                expected().readerSummaryArtifactId,
+            },
+          },
+          expectation,
+        ),
+      ],
     ]);
 
-    await expect(claim(fixture.guard, requestedUtcDate)).rejects.toThrow(
-      "legacy model claim cannot be safely superseded",
+    await expect(claim(fixture.guard)).rejects.toThrow(
+      "historic claim does not match its exact authority",
     );
-    expect(fixture.queries).toHaveLength(3);
+    expect(fixture.queries[0]).not.toContain(
+      "response_payload\"->>'readerSummaryJobId')::uuid",
+    );
+  });
+
+  it("accepts only the closed exact quality-rejection evidence contract", async () => {
+    const exact = guardFixture([
+      [
+        claimRow("REJECTED", {
+          jobFailureReason:
+            "Reader summary artifact failed pre-publish quality gate: insufficient coverage",
+        }),
+      ],
+    ]);
+    await expect(claim(exact.guard)).resolves.toMatchObject({
+      schemaVersion:
+        "reader_summary.production_recovery_rejection_evidence.v2",
+      reason: "pre_publish_quality_gate",
+      terminalStatus: "REJECTED",
+    });
+  });
+
+  it("verifies the claimed job idempotency key", async () => {
+    const fixture = guardFixture([
+      [
+        claimRow("RUNNING", {
+          jobIdempotencyKey: "forged-idempotency-key",
+        }),
+      ],
+    ]);
+
+    await expect(claim(fixture.guard)).rejects.toThrow(
+      "claimed job diverged",
+    );
+    expect(fixture.queries).toHaveLength(1);
+  });
+
+  it("replays an exact final receipt with one read and zero writes", async () => {
+    const fixture = guardFixture([[finalizedClaimRow()]]);
+
+    await expect(claim(fixture.guard)).resolves.toBe("replayed");
+    expect(fixture.queries).toHaveLength(1);
+    expect(fixture.queries[0]).toContain(
+      "reader_summary_recovery_receipts",
+    );
+    expect(fixture.queries[0]).not.toContain("INSERT");
+    expect(fixture.queries[0]).not.toContain('UPDATE "');
+    expect(fixture.queries[0]).not.toContain('DELETE FROM');
+  });
+
+  it("rejects a forged or partially matched superseded receipt", async () => {
+    const fixture = guardFixture(
+      historicFinalizedClaimRows(true),
+    );
+
+    await expect(claim(fixture.guard)).rejects.toThrow(
+      "superseded predecessor diverged",
+    );
+    expect(fixture.queries).toHaveLength(1);
+  });
+
+  it("accepts an exact historic superseded predecessor chain only as replay", async () => {
+    const fixture = guardFixture(
+      historicFinalizedClaimRows(false),
+    );
+
+    await expect(claim(fixture.guard)).resolves.toBe("replayed");
+    expect(fixture.queries).toHaveLength(1);
+    expect(fixture.queries[0]).not.toContain("INSERT");
   });
 });
 
 type Guard = PrismaReaderSummaryProductionRecoveryExecutionGuard;
 
-const claim = (
-  guard: Guard,
-  requestedUtcDate: ReaderSummaryProductionRecoveryDate,
-) =>
+const claim = (guard: Guard) =>
   guard.claim({
     binding: productionRecoveryBinding(),
     requestedUtcDate,
+    generationProfile,
   });
+
+const expected = () =>
+  readerSummaryProductionRecoveryClaimExpectation({
+    binding: productionRecoveryBinding(),
+    requestedUtcDate,
+    generationProfile,
+  });
+
+const historicExpected = (
+  schema: Parameters<
+    typeof readerSummaryProductionRecoveryHistoricClaimExpectation
+  >[1],
+) =>
+  readerSummaryProductionRecoveryHistoricClaimExpectation(
+    {
+      binding: productionRecoveryBinding(),
+      requestedUtcDate,
+      generationProfile,
+    },
+    schema,
+  );
 
 const guardFixture = (
   responses: readonly (readonly unknown[])[],
@@ -453,200 +285,223 @@ const guardFixture = (
   };
 };
 
-const claimOutcome = (
-  overrides: Partial<{
-    claimed: boolean;
-    staleJobSuperseded: boolean;
-  }> = {},
-) => ({
-  claimed: true,
-  staleJobSuperseded: false,
-  ...overrides,
-});
-
-const legacyClaimRow = (
-  requestedUtcDate: ReaderSummaryProductionRecoveryDate,
-  jobStatus: "RUNNING" | "REJECTED" | "FAILED",
+const claimRow = (
+  status: "RUNNING" | "FAILED" | "REJECTED" | "COMPLETED",
+  overrides: Readonly<Record<string, unknown>> = {},
+  expectation = expected(),
 ) => {
-  const binding = productionRecoveryBinding();
-  const day = dayAuthority(binding, requestedUtcDate);
-  const ids = readerSummaryProductionRecoveryLegacyDayIds(
-    binding,
-    requestedUtcDate,
-  );
-  return claimRow({
-    requestedUtcDate,
-    ids,
-    jobStatus,
-    jobIdempotencyKey:
-      `reader-summary-production-recovery:${requestedUtcDate}:${day.canonicalSha256}`,
-    responsePayload: {
-      schemaVersion: "reader_summary.production_recovery_model_claim.v1",
-      recoveryId: binding.recoveryId,
-      tenantId: binding.tenantId,
-      workspaceId: binding.workspaceId,
-      requestedUtcDate,
-      readerSummaryJobId: ids.readerSummaryJobId,
-      readerSummaryArtifactId: ids.readerSummaryId,
-      planSha256s: day.planSha256s,
-      providerEvidenceSha256: day.providerEvidenceSha256,
-      boundaries: {
-        stage: "pre_model",
-        modelCallPerformed: false,
-        recollectionPerformed: false,
-      },
-    },
-  });
-};
-
-const retryClaimRow = (
-  requestedUtcDate: ReaderSummaryProductionRecoveryDate,
-  jobStatus: "RUNNING" | "REJECTED" | "FAILED",
-  failureReason?: string,
-) => {
-  const binding = productionRecoveryBinding();
-  const day = dayAuthority(binding, requestedUtcDate);
-  const ids = readerSummaryProductionRecoveryDayIds(
-    binding,
-    requestedUtcDate,
-  );
-  return claimRow({
-    requestedUtcDate,
-    ids,
-    jobStatus,
-    jobIdempotencyKey:
-      readerSummaryProductionRecoveryJobIdempotencyKey(
-        requestedUtcDate,
-        day.canonicalSha256,
-      ),
-    failureReason,
-    responsePayload: {
-      schemaVersion:
-        "reader_summary.production_recovery_model_retry_claim.v1",
-      recoveryId: binding.recoveryId,
-      tenantId: binding.tenantId,
-      workspaceId: binding.workspaceId,
-      requestedUtcDate,
-      readerSummaryJobId: ids.readerSummaryJobId,
-      readerSummaryArtifactId: ids.readerSummaryId,
-      planSha256s: day.planSha256s,
-      providerEvidenceSha256: day.providerEvidenceSha256,
-      supersedes: null,
-      boundaries: {
-        stage: "pre_model",
-        leaseConsumed: true,
-        modelCallPerformed: false,
-        recollectionPerformed: false,
-        providerWritePerformed: false,
-      },
-    },
-  });
-};
-
-const qualityRemediationClaimRow = (
-  requestedUtcDate: ReaderSummaryProductionRecoveryDate,
-  jobStatus: "RUNNING" | "REJECTED" | "FAILED",
-  failureReason?: string,
-) => {
-  const binding = productionRecoveryBinding();
-  const day = dayAuthority(binding, requestedUtcDate);
-  const rejected = retryClaimRow(requestedUtcDate, "REJECTED");
-  const ids = readerSummaryProductionRecoveryQualityRemediationDayIds(
-    binding,
-    requestedUtcDate,
-  );
-  const rejectionEvidenceSha256 = sha256(JSON.stringify({
-    claimScope: "reader-summary-production-recovery-model-retry-v1",
-    readerSummaryJobId: rejected.jobId,
-    readerSummaryArtifactId: rejected.jobReaderSummaryArtifactId,
-    terminalStatus: "REJECTED",
-    failureReasonSha256: sha256(rejected.jobFailureReason),
-    planSha256: day.canonicalSha256,
-  }));
-  return claimRow({
-    requestedUtcDate,
-    ids,
-    jobStatus,
-    jobIdempotencyKey:
-      readerSummaryProductionRecoveryQualityRemediationJobIdempotencyKey(
-        requestedUtcDate,
-        day.canonicalSha256,
-      ),
-    failureReason,
-    responsePayload: {
-      schemaVersion:
-        "reader_summary.production_recovery_model_quality_remediation_claim.v1",
-      recoveryId: binding.recoveryId,
-      tenantId: binding.tenantId,
-      workspaceId: binding.workspaceId,
-      requestedUtcDate,
-      readerSummaryJobId: ids.readerSummaryJobId,
-      readerSummaryArtifactId: ids.readerSummaryId,
-      planSha256s: day.planSha256s,
-      providerEvidenceSha256: day.providerEvidenceSha256,
-      supersedes: {
-        claimScope: "reader-summary-production-recovery-model-retry-v1",
-        readerSummaryJobId: rejected.jobId,
-        readerSummaryArtifactId: rejected.jobReaderSummaryArtifactId,
-        terminalStatus: "REJECTED",
-        rejectionEvidenceSha256,
-      },
-      boundaries: {
-        stage: "pre_model",
-        leaseConsumed: true,
-        modelCallPerformed: false,
-        recollectionPerformed: false,
-        providerWritePerformed: false,
-      },
-    },
-  });
-};
-
-const sha256 = (value: string | null): string =>
-  createHash("sha256").update(value ?? "").digest("hex");
-
-const claimRow = (params: {
-  requestedUtcDate: ReaderSummaryProductionRecoveryDate;
-  ids: Readonly<{ readerSummaryJobId: string; readerSummaryId: string }>;
-  jobStatus: "RUNNING" | "REJECTED" | "FAILED";
-  jobIdempotencyKey: string;
-  responsePayload: unknown;
-  failureReason?: string;
-}) => {
-  const binding = productionRecoveryBinding();
-  const day = dayAuthority(binding, params.requestedUtcDate);
-  const period = periodForRecoveryDate(params.requestedUtcDate);
-  const terminal = params.jobStatus !== "RUNNING";
+  const startedAt = new Date("2026-07-30T10:00:00.000Z");
+  const rejected = status === "REJECTED";
+  const terminal = status !== "RUNNING";
   return {
-    requestHash: day.canonicalSha256,
+    claimScope: "reader-summary-production-recovery-model-v2",
+    requestHash: expectation.planCanonicalSha256,
     responseStatus: 102,
-    responsePayload: params.responsePayload,
-    jobId: params.ids.readerSummaryJobId,
+    responsePayload:
+      buildReaderSummaryProductionRecoveryModelClaim(expectation),
+    jobId: expectation.readerSummaryJobId,
     jobScopeType: "workspace",
     jobScopeKey: "workspace",
     jobInterestId: null,
     jobCadence: "daily",
-    jobPeriodStartedAt: period.startedAt,
-    jobPeriodEndedAt: period.endedAt,
+    jobPeriodStartedAt: new Date("2026-07-24T00:00:00.000Z"),
+    jobPeriodEndedAt: new Date("2026-07-25T00:00:00.000Z"),
     jobPeriodTimezone: "UTC",
-    jobPeriodKey: period.periodKey,
+    jobPeriodKey:
+      "daily:2026-07-24T00:00:00.000Z:2026-07-25T00:00:00.000Z:UTC",
     jobUserId: null,
     jobSubscriptionId: null,
-    jobStatus: params.jobStatus,
-    jobIdempotencyKey: params.jobIdempotencyKey,
-    jobStartedAt: new Date(binding.lease.consumedAt),
-    jobCompletedAt: null,
-    jobFailedAt: terminal ? new Date(binding.lease.consumedAt) : null,
+    jobStatus: status,
+    jobIdempotencyKey: expectation.recoveryIdentity,
+    jobStartedAt: startedAt,
+    jobCompletedAt: status === "COMPLETED" ? startedAt : null,
+    jobFailedAt: terminal && status !== "COMPLETED" ? startedAt : null,
     jobReaderSummaryArtifactId:
-      params.jobStatus === "REJECTED" ? params.ids.readerSummaryId : null,
-    jobFailureReason: terminal
-      ? params.failureReason ??
-        (params.jobStatus === "FAILED"
-          ? "weekly canonical JSON exceeds structural bounds"
-          : "quality rejection fixture")
-      : null,
+      rejected || status === "COMPLETED"
+        ? expectation.readerSummaryArtifactId
+        : null,
+    jobFailureReason: rejected
+      ? "Reader summary artifact failed pre-publish quality gate: quality fixture"
+      : status === "FAILED"
+        ? "model process terminated after lease consumption"
+        : null,
     artifactId:
-      params.jobStatus === "REJECTED" ? params.ids.readerSummaryId : null,
-    artifactStatus: params.jobStatus === "REJECTED" ? "REJECTED" : null,
+      rejected || status === "COMPLETED"
+        ? expectation.readerSummaryArtifactId
+        : null,
+    artifactStatus: rejected
+      ? "REJECTED"
+      : status === "COMPLETED"
+        ? "READY"
+        : null,
+    receiptTenantId: null,
+    receiptWorkspaceId: null,
+    receiptPublicationId: null,
+    receiptJobId: null,
+    receiptArtifactId: null,
+    receiptRecoveryKind: null,
+    receiptProvenance: null,
+    receiptProvenanceSha256: null,
+    receiptExact: null,
+    receiptSha256: null,
+    receiptRecordedAt: null,
+    publicationReportSha256: null,
+    publicationProofSha256: null,
+    publicationPublishedAt: null,
+    ...overrides,
   };
 };
+
+const finalizedClaimRow = () => {
+  const expectation = expected();
+  const binding = productionRecoveryBinding();
+  const provenance = recoveryProvenanceForDay(
+    binding,
+    requestedUtcDate,
+  );
+  const recordedAt = new Date("2026-07-30T12:00:00.000Z");
+  const reportSha256 = "a".repeat(64);
+  const proofSha256 = "b".repeat(64);
+  const provenanceSha256 = sha256(stablePublicationJson(provenance));
+  const receiptExact = {
+    schemaVersion: "reader_summary.recovery_receipt.v1",
+    recoveryKind: "SUMMARY_ONLY",
+    tenantId: expectation.tenantId,
+    workspaceId: expectation.workspaceId,
+    publicationId: expectation.readerSummaryArtifactId,
+    readerSummaryJobId: expectation.readerSummaryJobId,
+    readerSummaryArtifactId: expectation.readerSummaryArtifactId,
+    reportSha256,
+    proofSha256,
+    recordedAt: recordedAt.toISOString(),
+    provenance,
+    provenanceSha256,
+  };
+  return claimRow("COMPLETED", {
+    receiptTenantId: expectation.tenantId,
+    receiptWorkspaceId: expectation.workspaceId,
+    receiptPublicationId: expectation.readerSummaryArtifactId,
+    receiptJobId: expectation.readerSummaryJobId,
+    receiptArtifactId: expectation.readerSummaryArtifactId,
+    receiptRecoveryKind: "SUMMARY_ONLY",
+    receiptProvenance: provenance,
+    receiptProvenanceSha256: provenanceSha256,
+    receiptExact,
+    receiptSha256: sha256(stablePublicationJson(receiptExact)),
+    receiptRecordedAt: recordedAt,
+    publicationReportSha256: reportSha256,
+    publicationProofSha256: proofSha256,
+    publicationPublishedAt: recordedAt,
+  });
+};
+
+const historicRetryPayload = (
+  expectation: ReturnType<typeof historicExpected>,
+) => ({
+  schemaVersion:
+    "reader_summary.production_recovery_model_retry_claim.v1",
+  recoveryId: expectation.recoveryId,
+  tenantId: expectation.tenantId,
+  workspaceId: expectation.workspaceId,
+  requestedUtcDate: expectation.requestedUtcDate,
+  readerSummaryJobId: expectation.readerSummaryJobId,
+  readerSummaryArtifactId: expectation.readerSummaryArtifactId,
+  planSha256s: expectation.dryRunCanonicalSha256s,
+  providerEvidenceSha256: expectation.providerEvidenceSha256,
+  supersedes: null,
+  boundaries: {
+    stage: "pre_model",
+    leaseConsumed: true,
+    modelCallPerformed: false,
+    recollectionPerformed: false,
+    providerWritePerformed: false,
+  },
+});
+
+const historicFinalizedClaimRows = (
+  forged: boolean,
+): readonly (readonly unknown[])[] => {
+  const retry = historicExpected(
+    "reader_summary.production_recovery_model_retry_claim.v1",
+  );
+  const resume = historicExpected(
+    "reader_summary.production_recovery_model_resume_claim.v1",
+  );
+  const failureReason = "weekly canonical JSON exceeds byte bounds";
+  const resumePayload = {
+    schemaVersion:
+      "reader_summary.production_recovery_model_resume_claim.v1",
+    recoveryId: resume.recoveryId,
+    tenantId: resume.tenantId,
+    workspaceId: resume.workspaceId,
+    requestedUtcDate: resume.requestedUtcDate,
+    readerSummaryJobId: resume.readerSummaryJobId,
+    readerSummaryArtifactId: resume.readerSummaryArtifactId,
+    planSha256s: resume.dryRunCanonicalSha256s,
+    providerEvidenceSha256: resume.providerEvidenceSha256,
+    supersedes: {
+      readerSummaryJobId: retry.readerSummaryJobId,
+      readerSummaryArtifactId: null,
+      terminalStatus: "FAILED",
+      infrastructureFailure: "postgres_canonical_bounds",
+      failureReasonSha256: forged
+        ? "f".repeat(64)
+        : sha256(failureReason),
+    },
+    boundaries: {
+      stage: "pre_model",
+      leaseConsumed: true,
+      modelCallPerformed: false,
+      recollectionPerformed: false,
+      providerWritePerformed: false,
+    },
+  };
+  const predecessor = claimRow(
+    "FAILED",
+    {
+      claimScope:
+        "reader-summary-production-recovery-model-retry-v1",
+      responsePayload: historicRetryPayload(retry),
+      jobIdempotencyKey:
+        `reader-summary-production-recovery-retry-v1:${requestedUtcDate}:` +
+        retry.planCanonicalSha256,
+      jobFailureReason: failureReason,
+    },
+    retry,
+  );
+  const finalized = finalizedHistoricClaimRow(resume, resumePayload);
+  return [[predecessor, finalized]];
+};
+
+const finalizedHistoricClaimRow = (
+  expectation: ReturnType<typeof historicExpected>,
+  responsePayload: Readonly<Record<string, unknown>>,
+) => {
+  const current = finalizedClaimRow();
+  const receiptExact = {
+    ...(current.receiptExact as Record<string, unknown>),
+    publicationId: expectation.readerSummaryArtifactId,
+    readerSummaryJobId: expectation.readerSummaryJobId,
+    readerSummaryArtifactId: expectation.readerSummaryArtifactId,
+  };
+  return {
+    ...current,
+    claimScope:
+      "reader-summary-production-recovery-model-resume-v1",
+    responsePayload,
+    jobId: expectation.readerSummaryJobId,
+    jobIdempotencyKey:
+      `reader-summary-production-recovery-resume-v1:${requestedUtcDate}:` +
+      expectation.planCanonicalSha256,
+    jobReaderSummaryArtifactId: expectation.readerSummaryArtifactId,
+    artifactId: expectation.readerSummaryArtifactId,
+    receiptPublicationId: expectation.readerSummaryArtifactId,
+    receiptJobId: expectation.readerSummaryJobId,
+    receiptArtifactId: expectation.readerSummaryArtifactId,
+    receiptExact,
+    receiptSha256: sha256(stablePublicationJson(receiptExact)),
+  };
+};
+
+const sha256 = (value: string): string =>
+  createHash("sha256").update(value).digest("hex");

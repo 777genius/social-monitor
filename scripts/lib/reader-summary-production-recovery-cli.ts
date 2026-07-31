@@ -5,8 +5,8 @@ import { ReaderSummaryJob } from "@social-monitor/summary/domain";
 import { PrismaReaderSummaryArtifactRepository } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-artifact.repository";
 import { PrismaReaderSummaryJobRepository } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-job.repository";
 import type { PrismaSummaryClient } from "@social-monitor/summary/adapters/persistence/prisma/prisma-summary-client";
-import { ExecuteReaderSummaryJobUseCase } from "@social-monitor/summary/features/execute-reader-summary-job/execute-reader-summary-job.use-case";
 import { BuildReaderSummaryTopicMapUseCase } from "@social-monitor/summary/features/build-reader-summary-topic-map/build-reader-summary-topic-map.use-case";
+import { ExecuteReaderSummaryJobUseCase } from "@social-monitor/summary/features/execute-reader-summary-job/execute-reader-summary-job.use-case";
 import type {
   ReaderSummaryArtifactRepositoryPort,
   ReaderSummaryEvidenceSelectorPort,
@@ -14,9 +14,8 @@ import type {
   ReaderSummaryJobRepositoryPort,
   ReaderSummaryModelPort,
   ReaderSummaryPolicyRepositoryPort,
-  ReaderSummaryPublicationPort,
   ReaderSummaryProductionRecoveryAuthorityBinding,
-  ReaderSummaryProductionRecoveryAuthorityPort,
+  ReaderSummaryPublicationPort,
   ReaderSummaryRecoveryFinalizationPort,
 } from "@social-monitor/summary/ports";
 import {
@@ -31,11 +30,105 @@ import {
   buildRecoveryEvidenceSelection,
   dayAuthority,
   periodForRecoveryDate,
-  readerSummaryProductionRecoveryDates,
   recoveryProvenanceForDay,
-  type ReaderSummaryProductionRecoveryDate,
+  type ReaderSummaryProductionRecoveryDate as PersistedRecoveryDate,
   type ReaderSummaryProductionRecoveryPlan,
 } from "./reader-summary-production-recovery-data";
+import {
+  buildReaderSummaryProductionRecoveryRejectionEvidence,
+  type ReaderSummaryProductionRecoveryClaimExpectation,
+  type ReaderSummaryProductionRecoveryGenerationProfile,
+  type ReaderSummaryProductionRecoveryHistoricClaimSchema,
+  type ReaderSummaryProductionRecoveryRejectionEvidence,
+} from "./reader-summary-production-recovery-claim-verifier";
+
+export const readerSummaryProductionRecoveryHistoricalDates = [
+  "2026-07-23",
+  "2026-07-24",
+  "2026-07-25",
+  "2026-07-26",
+  "2026-07-27",
+  "2026-07-28",
+] as const;
+
+export type ReaderSummaryProductionRecoveryDate =
+  (typeof readerSummaryProductionRecoveryHistoricalDates)[number];
+
+export type ReaderSummaryProductionRecoveryCliArguments = Readonly<{
+  apply: true;
+  dates: readonly ReaderSummaryProductionRecoveryDate[];
+}>;
+
+export const parseReaderSummaryProductionRecoveryCliArguments = (
+  argv: readonly string[],
+): ReaderSummaryProductionRecoveryCliArguments => {
+  let apply = false;
+  let datesValue: string | undefined;
+  for (let index = 0; index < argv.length; index += 1) {
+    const argument = argv[index]!;
+    if (argument === "--apply") {
+      if (apply) {
+        throw cliArgumentError("--apply may be supplied only once");
+      }
+      apply = true;
+      continue;
+    }
+    if (argument === "--dates") {
+      if (datesValue !== undefined) {
+        throw cliArgumentError("--dates may be supplied only once");
+      }
+      datesValue = argv[index + 1];
+      index += 1;
+      continue;
+    }
+    if (argument.startsWith("--dates=")) {
+      if (datesValue !== undefined) {
+        throw cliArgumentError("--dates may be supplied only once");
+      }
+      datesValue = argument.slice("--dates=".length);
+      continue;
+    }
+    throw cliArgumentError(`unknown argument ${argument}`);
+  }
+  if (!apply) {
+    throw cliArgumentError("--apply is required");
+  }
+  if (datesValue === undefined || datesValue.length === 0) {
+    throw cliArgumentError("--dates requires an explicit non-empty subset");
+  }
+  const rawDates = datesValue.split(",");
+  if (
+    rawDates.some((date) => date.length === 0 || date !== date.trim())
+  ) {
+    throw cliArgumentError("--dates must be a comma-separated date list");
+  }
+  if (new Set(rawDates).size !== rawDates.length) {
+    throw cliArgumentError("--dates must not contain duplicates");
+  }
+  const allowed = new Set<string>(
+    readerSummaryProductionRecoveryHistoricalDates,
+  );
+  if (rawDates.some((date) => !allowed.has(date))) {
+    throw cliArgumentError(
+      "--dates accepts only 2026-07-23 through 2026-07-28",
+    );
+  }
+  const selected = new Set(rawDates);
+  return {
+    apply: true,
+    dates: readerSummaryProductionRecoveryHistoricalDates.filter((date) =>
+      selected.has(date),
+    ),
+  };
+};
+
+export type ReaderSummaryProductionRecoveryDayResult = Readonly<{
+  requestedUtcDate: ReaderSummaryProductionRecoveryDate;
+  outcome: "published" | "replayed" | "skipped";
+  readerSummaryJobId?: string;
+  readerSummaryId?: string;
+  rejectionEvidence?: ReaderSummaryProductionRecoveryRejectionEvidence;
+}>;
 
 export type ReaderSummaryProductionRecoveryRunResult = Readonly<{
   outcome: "applied" | "replayed";
@@ -43,53 +136,30 @@ export type ReaderSummaryProductionRecoveryRunResult = Readonly<{
   dayResults: readonly ReaderSummaryProductionRecoveryDayResult[];
 }>;
 
-export type ReaderSummaryProductionRecoveryDayResult = Readonly<{
-  requestedUtcDate: ReaderSummaryProductionRecoveryDate;
-  outcome: "published" | "replayed" | "skipped";
-  readerSummaryJobId?: string;
-  readerSummaryId?: string;
-  skipEvidence?: ReaderSummaryProductionRecoverySkipEvidence;
-}>;
-
-export type ReaderSummaryProductionRecoveryExecutionIdentity =
-  | "retry-v1"
-  | "resume-v1"
-  | "quality-remediation-v1"
-  | "quality-remediation-resume-v1";
-
-export type ReaderSummaryProductionRecoverySkipEvidence = Readonly<{
-  reason: "existing_quality_rejection";
-  terminalStatus: "REJECTED";
-  readerSummaryJobId: string;
-  readerSummaryId: string;
-  failureReason: string;
-}>;
-
 export type ReaderSummaryProductionRecoveryDayExecutor = (params: {
-  readonly binding: ReaderSummaryProductionRecoveryAuthorityBinding;
-  readonly requestedUtcDate: ReaderSummaryProductionRecoveryDate;
-  readonly executionIdentity: ReaderSummaryProductionRecoveryExecutionIdentity;
+  binding: ReaderSummaryProductionRecoveryAuthorityBinding;
+  requestedUtcDate: ReaderSummaryProductionRecoveryDate;
 }) => Promise<ReaderSummaryProductionRecoveryDayResult>;
 
 export type ReaderSummaryProductionRecoveryExecutionGuard = Readonly<{
   claim(params: {
-    readonly binding: ReaderSummaryProductionRecoveryAuthorityBinding;
-    readonly requestedUtcDate: ReaderSummaryProductionRecoveryDate;
+    binding: ReaderSummaryProductionRecoveryAuthorityBinding;
+    requestedUtcDate: ReaderSummaryProductionRecoveryDate;
+    generationProfile: ReaderSummaryProductionRecoveryGenerationProfile;
   }): Promise<
     | "execute"
-    | "resume"
-    | "remediate-quality"
-    | "resume-quality"
     | "replayed"
-    | ReaderSummaryProductionRecoverySkipEvidence
+    | ReaderSummaryProductionRecoveryRejectionEvidence
   >;
 }>;
 
 export type ReaderSummaryProductionRecoveryRunOptions = Readonly<{
   apply: boolean;
-  authority: ReaderSummaryProductionRecoveryAuthorityPort;
-  executeDay: ReaderSummaryProductionRecoveryDayExecutor;
+  dates: readonly ReaderSummaryProductionRecoveryDate[];
+  generationProfile: ReaderSummaryProductionRecoveryGenerationProfile;
+  binding: ReaderSummaryProductionRecoveryAuthorityBinding;
   executionGuard: ReaderSummaryProductionRecoveryExecutionGuard;
+  executeDay: ReaderSummaryProductionRecoveryDayExecutor;
 }>;
 
 export const runReaderSummaryProductionRecovery = async (
@@ -97,158 +167,240 @@ export const runReaderSummaryProductionRecovery = async (
 ): Promise<ReaderSummaryProductionRecoveryRunResult> => {
   if (!options.apply) {
     throw new Error(
-      "Reader summary production recovery requires --apply before preparing durable authority",
+      "Reader summary production recovery requires --apply before persisted binding access",
     );
   }
-  const prepared = await options.authority.prepare();
-  const binding = options.authority.readVerifiedBinding(prepared.authority);
-  const plan = buildReaderSummaryProductionRecoveryPlan(binding);
-  if (prepared.outcome === "replayed") {
-    return {
-      outcome: "replayed",
-      plan,
-      dayResults: readerSummaryProductionRecoveryDates.map(
-        (requestedUtcDate) => ({ requestedUtcDate, outcome: "skipped" }),
-      ),
-    };
+  assertSelectedDates(options.dates);
+  const binding = options.binding;
+  const fullPlan = buildReaderSummaryProductionRecoveryPlan(binding);
+  const selected = new Set<string>(options.dates);
+  const plan = {
+    ...fullPlan,
+    days: fullPlan.days.filter((day) =>
+      selected.has(day.requestedUtcDate),
+    ),
+  };
+  if (plan.days.length !== options.dates.length) {
+    throw new Error(
+      "Reader summary production recovery persisted authority lacks a selected date",
+    );
   }
   const dayResults: ReaderSummaryProductionRecoveryDayResult[] = [];
-  for (const requestedUtcDate of readerSummaryProductionRecoveryDates) {
+  for (const requestedUtcDate of options.dates) {
     const claim = await options.executionGuard.claim({
       binding,
       requestedUtcDate,
+      generationProfile: options.generationProfile,
     });
     if (claim === "replayed") {
-      dayResults.push({
-        requestedUtcDate,
-        outcome: "replayed",
-      });
-      continue;
-    }
-    if (typeof claim === "object") {
+      dayResults.push({ requestedUtcDate, outcome: "replayed" });
+    } else if (typeof claim === "object") {
       dayResults.push({
         requestedUtcDate,
         outcome: "skipped",
         readerSummaryJobId: claim.readerSummaryJobId,
-        readerSummaryId: claim.readerSummaryId,
-        skipEvidence: claim,
+        readerSummaryId: claim.readerSummaryArtifactId,
+        rejectionEvidence: claim,
       });
-      continue;
+    } else {
+      dayResults.push(
+        await options.executeDay({ binding, requestedUtcDate }),
+      );
     }
-    dayResults.push(await options.executeDay({
-      binding,
-      requestedUtcDate,
-      executionIdentity:
-        claim === "resume"
-          ? "resume-v1"
-          : claim === "resume-quality"
-            ? "quality-remediation-resume-v1"
-          : claim === "remediate-quality"
-            ? "quality-remediation-v1"
-            : "retry-v1",
-    }));
   }
-  return { outcome: "applied", plan, dayResults };
+  return {
+    outcome: dayResults.every((day) => day.outcome === "replayed")
+      ? "replayed"
+      : "applied",
+    plan,
+    dayResults,
+  };
+};
+
+export const readerSummaryProductionRecoveryIdentity = (
+  binding: ReaderSummaryProductionRecoveryAuthorityBinding,
+  requestedUtcDate: ReaderSummaryProductionRecoveryDate,
+): string => {
+  const day = authorityDay(binding, requestedUtcDate);
+  return `reader_summary.production_recovery.generate.v2:${sha256(
+    [
+      binding.recoveryId,
+      requestedUtcDate,
+      day.canonicalSha256,
+      day.providerEvidenceSha256,
+    ].join(":"),
+  )}`;
 };
 
 export const readerSummaryProductionRecoveryDayIds = (
   binding: ReaderSummaryProductionRecoveryAuthorityBinding,
   requestedUtcDate: ReaderSummaryProductionRecoveryDate,
-): Readonly<{
-  readerSummaryJobId: string;
-  readerSummaryId: string;
-}> => ({
-  readerSummaryJobId: deterministicUuid(
-    `reader-summary-production-recovery-retry-v1-job:${binding.recoveryId}:${requestedUtcDate}`,
-  ),
-  readerSummaryId: deterministicUuid(
-    `reader-summary-production-recovery-retry-v1-artifact:${binding.recoveryId}:${requestedUtcDate}`,
-  ),
-});
+): Readonly<{ readerSummaryJobId: string; readerSummaryId: string }> => {
+  const identity = readerSummaryProductionRecoveryIdentity(
+    binding,
+    requestedUtcDate,
+  );
+  return {
+    readerSummaryJobId: deterministicUuid(`${identity}:job`),
+    readerSummaryId: deterministicUuid(`${identity}:artifact`),
+  };
+};
 
+/**
+ * Read-only compatibility identities for inspecting claims persisted by the
+ * rejected v1f flow. The production execution path never creates these.
+ */
 export const readerSummaryProductionRecoveryLegacyDayIds = (
   binding: ReaderSummaryProductionRecoveryAuthorityBinding,
   requestedUtcDate: ReaderSummaryProductionRecoveryDate,
-): Readonly<{
-  readerSummaryJobId: string;
-  readerSummaryId: string;
-}> => ({
-  readerSummaryJobId: deterministicUuid(
+): Readonly<{ readerSummaryJobId: string; readerSummaryId: string }> => ({
+  readerSummaryJobId: deterministicLegacyUuid(
     `reader-summary-production-recovery-job:${binding.recoveryId}:${requestedUtcDate}`,
   ),
-  readerSummaryId: deterministicUuid(
+  readerSummaryId: deterministicLegacyUuid(
     `reader-summary-production-recovery-artifact:${binding.recoveryId}:${requestedUtcDate}`,
   ),
 });
 
-export const readerSummaryProductionRecoveryJobIdempotencyKey = (
+export const readerSummaryProductionRecoveryRetryDayIds = (
+  binding: ReaderSummaryProductionRecoveryAuthorityBinding,
   requestedUtcDate: ReaderSummaryProductionRecoveryDate,
-  planSha256: string,
-): string =>
-  `reader-summary-production-recovery-retry-v1:${requestedUtcDate}:${planSha256}`;
+): Readonly<{ readerSummaryJobId: string; readerSummaryId: string }> => ({
+  readerSummaryJobId: deterministicLegacyUuid(
+    `reader-summary-production-recovery-retry-v1-job:${binding.recoveryId}:${requestedUtcDate}`,
+  ),
+  readerSummaryId: deterministicLegacyUuid(
+    `reader-summary-production-recovery-retry-v1-artifact:${binding.recoveryId}:${requestedUtcDate}`,
+  ),
+});
 
 export const readerSummaryProductionRecoveryResumeDayIds = (
   binding: ReaderSummaryProductionRecoveryAuthorityBinding,
   requestedUtcDate: ReaderSummaryProductionRecoveryDate,
 ): Readonly<{ readerSummaryJobId: string; readerSummaryId: string }> => ({
-  readerSummaryJobId: deterministicUuid(
+  readerSummaryJobId: deterministicLegacyUuid(
     `reader-summary-production-recovery-resume-v1-job:${binding.recoveryId}:${requestedUtcDate}`,
   ),
-  readerSummaryId: deterministicUuid(
+  readerSummaryId: deterministicLegacyUuid(
     `reader-summary-production-recovery-resume-v1-artifact:${binding.recoveryId}:${requestedUtcDate}`,
   ),
 });
-
-export const readerSummaryProductionRecoveryResumeJobIdempotencyKey = (
-  requestedUtcDate: ReaderSummaryProductionRecoveryDate,
-  planSha256: string,
-): string =>
-  `reader-summary-production-recovery-resume-v1:${requestedUtcDate}:${planSha256}`;
 
 export const readerSummaryProductionRecoveryQualityRemediationDayIds = (
   binding: ReaderSummaryProductionRecoveryAuthorityBinding,
   requestedUtcDate: ReaderSummaryProductionRecoveryDate,
 ): Readonly<{ readerSummaryJobId: string; readerSummaryId: string }> => {
-  const evidenceSha256 = dayAuthority(binding, requestedUtcDate).canonicalSha256;
+  const evidenceSha256 = authorityDay(
+    binding,
+    requestedUtcDate,
+  ).canonicalSha256;
   return {
-    readerSummaryJobId: deterministicUuid(
+    readerSummaryJobId: deterministicLegacyUuid(
       `reader-summary-production-recovery-quality-remediation-v1-job:${binding.recoveryId}:${requestedUtcDate}:${evidenceSha256}`,
     ),
-    readerSummaryId: deterministicUuid(
+    readerSummaryId: deterministicLegacyUuid(
       `reader-summary-production-recovery-quality-remediation-v1-artifact:${binding.recoveryId}:${requestedUtcDate}:${evidenceSha256}`,
     ),
   };
 };
 
-export const readerSummaryProductionRecoveryQualityRemediationJobIdempotencyKey = (
-  requestedUtcDate: ReaderSummaryProductionRecoveryDate,
-  planSha256: string,
-): string =>
-  `reader-summary-production-recovery-quality-remediation-v1:${requestedUtcDate}:${planSha256}`;
+export const readerSummaryProductionRecoveryQualityRemediationResumeDayIds =
+  (
+    binding: ReaderSummaryProductionRecoveryAuthorityBinding,
+    requestedUtcDate: ReaderSummaryProductionRecoveryDate,
+  ): Readonly<{
+    readerSummaryJobId: string;
+    readerSummaryId: string;
+  }> => ({
+    readerSummaryJobId: deterministicLegacyUuid(
+      `reader-summary-production-recovery-quality-remediation-resume-v1-job:${binding.recoveryId}:${requestedUtcDate}`,
+    ),
+    readerSummaryId: deterministicLegacyUuid(
+      `reader-summary-production-recovery-quality-remediation-resume-v1-artifact:${binding.recoveryId}:${requestedUtcDate}`,
+    ),
+  });
 
-export const readerSummaryProductionRecoveryQualityRemediationResumeDayIds = (
-  binding: ReaderSummaryProductionRecoveryAuthorityBinding,
-  requestedUtcDate: ReaderSummaryProductionRecoveryDate,
-): Readonly<{ readerSummaryJobId: string; readerSummaryId: string }> => ({
-  readerSummaryJobId: deterministicUuid(
-    `reader-summary-production-recovery-quality-remediation-resume-v1-job:${binding.recoveryId}:${requestedUtcDate}`,
-  ),
-  readerSummaryId: deterministicUuid(
-    `reader-summary-production-recovery-quality-remediation-resume-v1-artifact:${binding.recoveryId}:${requestedUtcDate}`,
-  ),
-});
+export const readerSummaryProductionRecoveryJobIdempotencyKey = (
+  recoveryIdentity: string,
+): string => recoveryIdentity;
 
-export const readerSummaryProductionRecoveryQualityRemediationResumeJobIdempotencyKey = (
-  requestedUtcDate: ReaderSummaryProductionRecoveryDate,
-  planSha256: string,
-): string =>
-  `reader-summary-production-recovery-quality-remediation-resume-v1:${requestedUtcDate}:${planSha256}`;
+export const readerSummaryProductionRecoveryClaimExpectation = (
+  params: Readonly<{
+    binding: ReaderSummaryProductionRecoveryAuthorityBinding;
+    requestedUtcDate: ReaderSummaryProductionRecoveryDate;
+    generationProfile: ReaderSummaryProductionRecoveryGenerationProfile;
+  }>,
+): ReaderSummaryProductionRecoveryClaimExpectation => {
+  const day = authorityDay(params.binding, params.requestedUtcDate);
+  const ids = readerSummaryProductionRecoveryDayIds(
+    params.binding,
+    params.requestedUtcDate,
+  );
+  return {
+    recoveryIdentity: readerSummaryProductionRecoveryIdentity(
+      params.binding,
+      params.requestedUtcDate,
+    ),
+    recoveryId: params.binding.recoveryId,
+    tenantId: params.binding.tenantId,
+    workspaceId: params.binding.workspaceId,
+    requestedUtcDate: params.requestedUtcDate,
+    readerSummaryJobId: ids.readerSummaryJobId,
+    readerSummaryArtifactId: ids.readerSummaryId,
+    planCanonicalSha256: day.canonicalSha256,
+    dryRunCanonicalSha256s: day.planSha256s,
+    providerEvidenceSha256: day.providerEvidenceSha256,
+    generationProfile: params.generationProfile,
+  };
+};
+
+export const readerSummaryProductionRecoveryHistoricClaimExpectation = (
+  params: Readonly<{
+    binding: ReaderSummaryProductionRecoveryAuthorityBinding;
+    requestedUtcDate: ReaderSummaryProductionRecoveryDate;
+    generationProfile: ReaderSummaryProductionRecoveryGenerationProfile;
+  }>,
+  schema: ReaderSummaryProductionRecoveryHistoricClaimSchema,
+): ReaderSummaryProductionRecoveryClaimExpectation => {
+  const current = readerSummaryProductionRecoveryClaimExpectation(params);
+  const ids =
+    schema === "reader_summary.production_recovery_model_claim.v1"
+      ? readerSummaryProductionRecoveryLegacyDayIds(
+          params.binding,
+          params.requestedUtcDate,
+        )
+      : schema ===
+          "reader_summary.production_recovery_model_retry_claim.v1"
+        ? readerSummaryProductionRecoveryRetryDayIds(
+            params.binding,
+            params.requestedUtcDate,
+          )
+        : schema ===
+            "reader_summary.production_recovery_model_resume_claim.v1"
+          ? readerSummaryProductionRecoveryResumeDayIds(
+              params.binding,
+              params.requestedUtcDate,
+            )
+          : schema ===
+              "reader_summary.production_recovery_model_quality_remediation_claim.v1"
+            ? readerSummaryProductionRecoveryQualityRemediationDayIds(
+                params.binding,
+                params.requestedUtcDate,
+              )
+            : readerSummaryProductionRecoveryQualityRemediationResumeDayIds(
+                params.binding,
+                params.requestedUtcDate,
+              );
+  return {
+    ...current,
+    readerSummaryJobId: ids.readerSummaryJobId,
+    readerSummaryArtifactId: ids.readerSummaryId,
+  };
+};
 
 export type ProductionRecoveryDayExecutorDependencies = Readonly<{
   model: ReaderSummaryModelPort;
   finalization: ReaderSummaryRecoveryFinalizationPort;
-  durableJobs: ReaderSummaryJobRepositoryPort;
-  durableArtifacts: ReaderSummaryArtifactRepositoryPort;
   feedItems: FeedItemReadRepositoryPort;
   githubProjectionReader: ReaderSummaryGitHubProjectionReaderPort;
   ids: IdGenerator;
@@ -258,13 +410,10 @@ export type ProductionRecoveryDayExecutorDependencies = Readonly<{
 
 export const createProductionRecoveryDayExecutor =
   (
-    dependencies: Omit<
-      ProductionRecoveryDayExecutorDependencies,
-      "durableJobs" | "durableArtifacts"
-    >,
+    dependencies: ProductionRecoveryDayExecutorDependencies,
     persistence: PrismaSummaryClient,
   ): ReaderSummaryProductionRecoveryDayExecutor =>
-  async ({ binding, requestedUtcDate, executionIdentity }) =>
+  async ({ binding, requestedUtcDate }) =>
     executeProductionRecoveryDay({
       ...dependencies,
       durableJobs: new PrismaReaderSummaryJobRepository(persistence),
@@ -273,93 +422,59 @@ export const createProductionRecoveryDayExecutor =
       ),
       binding,
       requestedUtcDate,
-      executionIdentity,
     });
 
 export const executeProductionRecoveryDay = async (
   params: ProductionRecoveryDayExecutorDependencies &
     Readonly<{
+      durableJobs: ReaderSummaryJobRepositoryPort;
+      durableArtifacts: ReaderSummaryArtifactRepositoryPort;
       binding: ReaderSummaryProductionRecoveryAuthorityBinding;
       requestedUtcDate: ReaderSummaryProductionRecoveryDate;
-      executionIdentity?: ReaderSummaryProductionRecoveryExecutionIdentity;
     }>,
 ): Promise<ReaderSummaryProductionRecoveryDayResult> => {
-  const day = dayAuthority(params.binding, params.requestedUtcDate);
-  const period = periodForRecoveryDate(params.requestedUtcDate);
-  const identity = params.executionIdentity ?? "retry-v1";
-  const ids =
-    identity === "resume-v1"
-      ? readerSummaryProductionRecoveryResumeDayIds(
-          params.binding,
-          params.requestedUtcDate,
-        )
-      : identity === "quality-remediation-resume-v1"
-        ? readerSummaryProductionRecoveryQualityRemediationResumeDayIds(
-            params.binding,
-            params.requestedUtcDate,
-          )
-      : identity === "quality-remediation-v1"
-        ? readerSummaryProductionRecoveryQualityRemediationDayIds(
-            params.binding,
-            params.requestedUtcDate,
-          )
-        : readerSummaryProductionRecoveryDayIds(
-            params.binding,
-            params.requestedUtcDate,
-          );
-  const jobId = ids.readerSummaryJobId;
-  const readerSummaryId = ids.readerSummaryId;
+  const persistedDate = params.requestedUtcDate as PersistedRecoveryDate;
+  const period = periodForRecoveryDate(persistedDate);
+  const ids = readerSummaryProductionRecoveryDayIds(
+    params.binding,
+    params.requestedUtcDate,
+  );
+  const recoveryIdentity = readerSummaryProductionRecoveryIdentity(
+    params.binding,
+    params.requestedUtcDate,
+  );
   const expectedJob = ReaderSummaryJob.request({
-    id: jobId,
+    id: ids.readerSummaryJobId,
     tenantId: tenantId(params.binding.tenantId),
     workspaceId: workspaceId(params.binding.workspaceId),
     scope: { type: "workspace" },
     period,
-    idempotencyKey: identity === "resume-v1"
-      ? readerSummaryProductionRecoveryResumeJobIdempotencyKey(
-          params.requestedUtcDate,
-          day.canonicalSha256,
-        )
-      : identity === "quality-remediation-resume-v1"
-        ? readerSummaryProductionRecoveryQualityRemediationResumeJobIdempotencyKey(
-            params.requestedUtcDate,
-            day.canonicalSha256,
-          )
-      : identity === "quality-remediation-v1"
-        ? readerSummaryProductionRecoveryQualityRemediationJobIdempotencyKey(
-            params.requestedUtcDate,
-            day.canonicalSha256,
-          )
-      : readerSummaryProductionRecoveryJobIdempotencyKey(
-          params.requestedUtcDate,
-          day.canonicalSha256,
-        ),
+    idempotencyKey:
+      readerSummaryProductionRecoveryJobIdempotencyKey(recoveryIdentity),
     requestedAt: params.clock.now(),
-  });
-  const jobs = new PreclaimedRecoveryJobRepository(
-    expectedJob,
-    params.durableJobs,
-  );
-  const evidenceSelector = new ProductionRecoveryEvidenceSelector({
-    binding: params.binding,
-    requestedUtcDate: params.requestedUtcDate,
-    maxPrimaryEvidenceItems: params.maxPrimaryEvidenceItems ?? 120,
-    feedItems: params.feedItems,
-    githubProjectionReader: params.githubProjectionReader,
-    clock: params.clock,
   });
   const publications = new RecoveryFinalizationPublicationPort({
     finalization: params.finalization,
-    provenance: recoveryProvenanceForDay(params.binding, params.requestedUtcDate),
+    provenance: recoveryProvenanceForDay(
+      params.binding,
+      persistedDate,
+    ),
   });
   const execute = new ExecuteReaderSummaryJobUseCase(
-    jobs,
+    new PreclaimedRecoveryJobRepository(expectedJob, params.durableJobs),
     params.durableArtifacts,
     new EmptyRecoveryPolicyRepository(),
-    evidenceSelector,
+    new ProductionRecoveryEvidenceSelector({
+      binding: params.binding,
+      requestedUtcDate: persistedDate,
+      maxPrimaryEvidenceItems: params.maxPrimaryEvidenceItems ?? 120,
+      feedItems: params.feedItems,
+      githubProjectionReader: params.githubProjectionReader,
+      clock: params.clock,
+    }),
     params.model,
     publications,
-    new FirstIdRecoveryGenerator(readerSummaryId, params.ids),
+    new FirstIdRecoveryGenerator(ids.readerSummaryId, params.ids),
     params.clock,
     undefined,
     undefined,
@@ -368,24 +483,49 @@ export const executeProductionRecoveryDay = async (
     params.githubProjectionReader,
     historicalGitHubOmissionForRecoveryDay(
       params.binding,
-      params.requestedUtcDate,
+      persistedDate,
     ),
   );
   const result = await execute.execute({
     tenantId: tenantId(params.binding.tenantId),
     workspaceId: workspaceId(params.binding.workspaceId),
-    readerSummaryJobId: jobId,
+    readerSummaryJobId: ids.readerSummaryJobId,
     maxEvidenceItems: params.maxPrimaryEvidenceItems ?? 120,
   });
   if (!result.ok) {
     throw result.error;
   }
   if (result.value.status === "quality_rejected") {
+    const rejectedJob = await params.durableJobs.findById({
+      tenantId: tenantId(params.binding.tenantId),
+      workspaceId: workspaceId(params.binding.workspaceId),
+      readerSummaryJobId: ids.readerSummaryJobId,
+    });
+    const rejected = rejectedJob?.toSnapshot();
+    if (
+      rejected?.status !== "quality_rejected" ||
+      rejected.readerSummaryId !== ids.readerSummaryId ||
+      rejected.failureReason === undefined
+    ) {
+      throw new Error(
+        "Reader summary production recovery quality rejection is not durably exact",
+      );
+    }
     return {
       requestedUtcDate: params.requestedUtcDate,
       outcome: "skipped",
       readerSummaryJobId: result.value.readerSummaryJobId,
       readerSummaryId: result.value.readerSummaryId,
+      rejectionEvidence:
+        buildReaderSummaryProductionRecoveryRejectionEvidence({
+          reason: "pre_publish_quality_gate",
+          readerSummaryJobId: ids.readerSummaryJobId,
+          readerSummaryArtifactId: ids.readerSummaryId,
+          planCanonicalSha256: authorityDay(
+            params.binding,
+            params.requestedUtcDate,
+          ).canonicalSha256,
+        }),
     };
   }
   return {
@@ -398,51 +538,35 @@ export const executeProductionRecoveryDay = async (
 
 export const historicalGitHubOmissionForRecoveryDay = (
   binding: ReaderSummaryProductionRecoveryAuthorityBinding,
-  requestedUtcDate: ReaderSummaryProductionRecoveryDate,
+  requestedUtcDate: PersistedRecoveryDate,
 ): Readonly<{ reason: string; authorizedAt: Date }> | undefined => {
   const day = dayAuthority(binding, requestedUtcDate);
   if (day.githubEvidence.mode === "verified_existing") {
     return undefined;
   }
   const authorization = day.githubEvidence.authorization;
-  const githubCounts = day.providerCounts.filter(
-    (count) => count.providerKey === "github-trending-page",
-  );
-  const githubCount = githubCounts[0];
   const authorizedAt = new Date(authorization.authorizedAt);
-  const period = periodForRecoveryDate(requestedUtcDate);
   if (
-    day.githubEvidence.schemaVersion !==
-      "reader_summary.production_recovery_github_evidence.v2" ||
-    day.githubEvidence.providerKey !== "github-trending-page" ||
-    day.githubEvidence.requestedUtcDate !== requestedUtcDate ||
-    day.githubEvidence.evidenceCount !== 0 ||
-    day.providerEvidence["github-trending-page"].length !== 0 ||
-    githubCounts.length !== 1 ||
-    githubCount?.count !== 0 ||
-    githubCount.evidenceState !== "historical_unavailable" ||
-    day.period.startedAt !== period.startedAt.toISOString() ||
-    day.period.endedAt !== period.endedAt.toISOString() ||
-    day.period.timezone !== "UTC" ||
-    authorization.authorizationId !==
-      `reader_summary.production_recovery.github.${requestedUtcDate}.v2` ||
     authorization.authorizedAt !== binding.lease.issuedAt ||
     authorization.authorizedAt !== binding.lease.consumedAt ||
     !Number.isFinite(authorizedAt.getTime()) ||
-    authorizedAt.getTime() < period.endedAt.getTime() ||
     authorization.reason.trim().length === 0
   ) {
     throw new Error(
       `Reader summary production recovery ${requestedUtcDate} historical GitHub omission authority is not exact`,
     );
   }
-  return { reason: authorization.reason.trim(), authorizedAt };
+  return { reason: authorization.reason, authorizedAt };
 };
 
 class ProductionRecoveryEvidenceSelector
   implements ReaderSummaryEvidenceSelectorPort
 {
-  constructor(private readonly input: Parameters<typeof buildRecoveryEvidenceSelection>[0]) {}
+  constructor(
+    private readonly input: Parameters<
+      typeof buildRecoveryEvidenceSelection
+    >[0],
+  ) {}
 
   async select(
     params: Parameters<ReaderSummaryEvidenceSelectorPort["select"]>[0],
@@ -462,28 +586,27 @@ class ProductionRecoveryEvidenceSelector
   }
 }
 
-class RecoveryFinalizationPublicationPort implements ReaderSummaryPublicationPort {
-  private outcome: "published" | "replayed" | undefined;
+class RecoveryFinalizationPublicationPort
+  implements ReaderSummaryPublicationPort
+{
+  lastOutcome: "published" | "replayed" | undefined;
 
   constructor(
-    private readonly params: Readonly<{
+    private readonly input: Readonly<{
       finalization: ReaderSummaryRecoveryFinalizationPort;
-      provenance: Parameters<ReaderSummaryRecoveryFinalizationPort["finalize"]>[0]["provenance"];
+      provenance: ReturnType<typeof recoveryProvenanceForDay>;
     }>,
   ) {}
 
   async publish(
-    publication: Parameters<ReaderSummaryPublicationPort["publish"]>[0],
+    command: Parameters<ReaderSummaryPublicationPort["publish"]>[0],
   ) {
-    this.outcome = await this.params.finalization.finalize({
-      publication,
-      provenance: this.params.provenance,
+    const outcome = await this.input.finalization.finalize({
+      publication: command,
+      provenance: this.input.provenance,
     });
-    return this.outcome;
-  }
-
-  get lastOutcome(): "published" | "replayed" | undefined {
-    return this.outcome;
+    this.lastOutcome = outcome;
+    return outcome;
   }
 }
 
@@ -521,7 +644,7 @@ class PreclaimedRecoveryJobRepository
   async findById(
     params: Parameters<ReaderSummaryJobRepositoryPort["findById"]>[0],
   ): Promise<ReaderSummaryJob | null> {
-    if (!this.claimAccepted && this.matchesExpectedLocator(params)) {
+    if (!this.claimAccepted && this.matches(params)) {
       return this.expectedJob;
     }
     return this.durableJobs.findById(params);
@@ -546,26 +669,26 @@ class PreclaimedRecoveryJobRepository
       ReaderSummaryJobRepositoryPort["claimForExecution"]
     >[0],
   ): Promise<ReaderSummaryJob | null> {
-    if (this.claimAccepted || !this.matchesExpectedLocator(params)) {
+    if (this.claimAccepted || !this.matches(params)) {
       return null;
     }
-    const durableJob = await this.durableJobs.findById(params);
+    const durable = await this.durableJobs.findById(params);
     if (
-      durableJob === null ||
-      !isExactPreclaimedRecoveryJob(durableJob, this.expectedJob)
+      durable === null ||
+      !isExactPreclaimedRecoveryJob(durable, this.expectedJob)
     ) {
       throw new Error(
-        "Reader summary production recovery durable pre-model job authority is invalid",
+        "Reader summary production recovery durable pre-model lease is invalid",
       );
     }
     this.claimAccepted = true;
-    return durableJob;
+    return durable;
   }
 
-  private matchesExpectedLocator(params: {
-    readonly tenantId: string;
-    readonly workspaceId: string;
-    readonly readerSummaryJobId: string;
+  private matches(params: {
+    tenantId: string;
+    workspaceId: string;
+    readerSummaryJobId: string;
   }): boolean {
     const expected = this.expectedJob.toSnapshot();
     return (
@@ -587,14 +710,8 @@ const isExactPreclaimedRecoveryJob = (
     durable.tenantId === expected.tenantId &&
     durable.workspaceId === expected.workspaceId &&
     durable.scope.type === "workspace" &&
-    durable.period.cadence === expected.period.cadence &&
-    durable.period.startedAt.getTime() === expected.period.startedAt.getTime() &&
-    durable.period.endedAt.getTime() === expected.period.endedAt.getTime() &&
-    durable.period.timezone === expected.period.timezone &&
     durable.period.periodKey === expected.period.periodKey &&
     durable.idempotencyKey === expected.idempotencyKey &&
-    durable.userId === undefined &&
-    durable.subscriptionId === undefined &&
     durable.status === "running" &&
     durable.startedAt !== undefined &&
     durable.completedAt === undefined &&
@@ -604,7 +721,9 @@ const isExactPreclaimedRecoveryJob = (
   );
 };
 
-class EmptyRecoveryPolicyRepository implements ReaderSummaryPolicyRepositoryPort {
+class EmptyRecoveryPolicyRepository
+  implements ReaderSummaryPolicyRepositoryPort
+{
   async save(): Promise<void> {}
   async findByScope(): Promise<null> {
     return null;
@@ -614,16 +733,57 @@ class EmptyRecoveryPolicyRepository implements ReaderSummaryPolicyRepositoryPort
   }
 }
 
+const authorityDay = (
+  binding: ReaderSummaryProductionRecoveryAuthorityBinding,
+  requestedUtcDate: ReaderSummaryProductionRecoveryDate,
+) =>
+  dayAuthority(binding, requestedUtcDate as PersistedRecoveryDate);
+
+const assertSelectedDates = (
+  dates: readonly ReaderSummaryProductionRecoveryDate[],
+): void => {
+  if (
+    dates.length === 0 ||
+    new Set(dates).size !== dates.length ||
+    dates.some(
+      (date) =>
+        !readerSummaryProductionRecoveryHistoricalDates.includes(date),
+    )
+  ) {
+    throw new Error(
+      "Reader summary production recovery dates must be a unique explicit historical subset",
+    );
+  }
+};
+
 const deterministicUuid = (value: string): string => {
-  const bytes = Buffer.from(createHash("sha256").update(value).digest()).subarray(0, 16);
+  const bytes = Buffer.from(
+    createHash("sha256").update(value).digest(),
+  ).subarray(0, 16);
+  bytes[6] = (bytes[6]! & 0x0f) | 0x50;
+  bytes[8] = (bytes[8]! & 0x3f) | 0x80;
+  const hex = bytes.toString("hex");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(
+    12,
+    16,
+  )}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+};
+
+const deterministicLegacyUuid = (value: string): string => {
+  const bytes = Buffer.from(
+    createHash("sha256").update(value).digest(),
+  ).subarray(0, 16);
   bytes[6] = (bytes[6]! & 0x0f) | 0x40;
   bytes[8] = (bytes[8]! & 0x3f) | 0x80;
   const hex = bytes.toString("hex");
-  return [
-    hex.slice(0, 8),
-    hex.slice(8, 12),
-    hex.slice(12, 16),
-    hex.slice(16, 20),
-    hex.slice(20),
-  ].join("-");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(
+    12,
+    16,
+  )}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 };
+
+const sha256 = (value: string): string =>
+  createHash("sha256").update(value).digest("hex");
+
+const cliArgumentError = (reason: string): Error =>
+  new Error(`Reader summary production recovery CLI: ${reason}`);

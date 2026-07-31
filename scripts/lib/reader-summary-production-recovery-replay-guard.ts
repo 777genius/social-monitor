@@ -1,41 +1,46 @@
-import { createHash } from "node:crypto";
-import { isDeepStrictEqual } from "node:util";
-
-import type {
-  ReaderSummaryProductionRecoveryAuthorityBinding,
-} from "@social-monitor/summary/ports";
 import type { PrismaSummaryClient } from "@social-monitor/summary/adapters/persistence/prisma/prisma-summary-client";
 import {
   runSerializableReaderSummaryTransaction,
   type PrismaSummaryTransactionOptions,
   type PrismaTransactionalSummaryClient,
 } from "@social-monitor/summary/adapters/persistence/prisma/prisma-summary-transaction";
+import type {
+  ReaderSummaryProductionRecoveryAuthorityBinding,
+} from "@social-monitor/summary/ports";
 import { withPrismaWriteRetry } from "@social-monitor/platform-persistence";
 
 import {
-  readerSummaryProductionRecoveryDayIds,
-  readerSummaryProductionRecoveryJobIdempotencyKey,
-  readerSummaryProductionRecoveryLegacyDayIds,
-  readerSummaryProductionRecoveryQualityRemediationDayIds,
-  readerSummaryProductionRecoveryQualityRemediationJobIdempotencyKey,
-  readerSummaryProductionRecoveryQualityRemediationResumeDayIds,
-  readerSummaryProductionRecoveryQualityRemediationResumeJobIdempotencyKey,
-  readerSummaryProductionRecoveryResumeDayIds,
-  readerSummaryProductionRecoveryResumeJobIdempotencyKey,
+  buildReaderSummaryProductionRecoveryModelClaim,
+  buildReaderSummaryProductionRecoveryRejectionEvidence,
+  readerSummaryProductionRecoveryHistoricClaimSchemas,
+  verifyReaderSummaryProductionRecoveryClaim,
+  verifyReaderSummaryProductionRecoveryFinalReceipt,
+  verifyReaderSummaryProductionRecoverySupersededPredecessor,
+  type ReaderSummaryProductionRecoveryClaimExpectation,
+  type ReaderSummaryProductionRecoveryFinalReceiptRow,
+  type ReaderSummaryProductionRecoveryGenerationProfile,
+  type ReaderSummaryProductionRecoveryHistoricClaimSchema,
+} from "./reader-summary-production-recovery-claim-verifier";
+import {
+  readerSummaryProductionRecoveryClaimExpectation,
+  readerSummaryProductionRecoveryHistoricClaimExpectation,
+  type ReaderSummaryProductionRecoveryDate,
   type ReaderSummaryProductionRecoveryExecutionGuard,
 } from "./reader-summary-production-recovery-cli";
 import {
-  dayAuthority,
   periodForRecoveryDate,
   recoveryProvenanceForDay,
-  type ReaderSummaryProductionRecoveryDate,
+  type ReaderSummaryProductionRecoveryDate as PersistedRecoveryDate,
 } from "./reader-summary-production-recovery-data";
 
 type QueryClient = Pick<PrismaSummaryClient, "$queryRaw">;
+
 export type ReaderSummaryProductionRecoveryExecutionGuardClient =
   QueryClient &
     Partial<Pick<PrismaTransactionalSummaryClient, "$transaction">>;
-type ExistingClaimRow = Readonly<{
+
+type ClaimStateRow = Readonly<{
+  claimScope: string;
   requestHash: string;
   responseStatus: number | null;
   responsePayload: unknown;
@@ -59,284 +64,84 @@ type ExistingClaimRow = Readonly<{
   jobFailureReason: string | null;
   artifactId: string | null;
   artifactStatus: string | null;
-}>;
-type ReceiptRow = Readonly<{ replayed: boolean }>;
-type ClaimRow = Readonly<{
-  claimed: boolean;
-  staleJobSuperseded: boolean;
-}>;
-type RecoveryModelClaimCore = Readonly<{
-  recoveryId: string; tenantId: string; workspaceId: string;
-  requestedUtcDate: ReaderSummaryProductionRecoveryDate;
-  readerSummaryJobId: string; readerSummaryArtifactId: string;
-  planSha256s: readonly [string, string];
-  providerEvidenceSha256: string;
-}>;
-type RecoveryModelClaimBoundaries = Readonly<{
-  stage: "pre_model"; leaseConsumed: true; modelCallPerformed: false;
-  recollectionPerformed: false; providerWritePerformed: false;
-}>;
-type FailedCanonicalBoundsSupersedes = Readonly<{
-  readerSummaryJobId: string; readerSummaryArtifactId: null;
-  terminalStatus: "FAILED"; infrastructureFailure: "postgres_canonical_bounds";
-  failureReasonSha256: string;
-}>;
-type LegacyRecoveryModelClaimPayload = RecoveryModelClaimCore & Readonly<{
-  schemaVersion: "reader_summary.production_recovery_model_claim.v1";
-  boundaries: Readonly<{
-    stage: "pre_model"; modelCallPerformed: false;
-    recollectionPerformed: false;
-  }>;
-}>;
-type RetryRecoveryModelClaimPayload = RecoveryModelClaimCore & Readonly<{
-  schemaVersion: "reader_summary.production_recovery_model_retry_claim.v1";
-  supersedes: null | Readonly<{
-    readerSummaryJobId: string; readerSummaryArtifactId: string | null;
-    terminalStatus: "RUNNING" | "FAILED" | "REJECTED";
-  }>;
-  boundaries: RecoveryModelClaimBoundaries;
-}>;
-type ResumeRecoveryModelClaimPayload = RecoveryModelClaimCore & Readonly<{
-  schemaVersion: "reader_summary.production_recovery_model_resume_claim.v1";
-  supersedes: FailedCanonicalBoundsSupersedes;
-  boundaries: RecoveryModelClaimBoundaries;
-}>;
-type QualityRemediationModelClaimPayload = RecoveryModelClaimCore & Readonly<{
-  schemaVersion: "reader_summary.production_recovery_model_quality_remediation_claim.v1";
-  supersedes: Readonly<{
-    claimScope: typeof legacyClaimScope | typeof retryClaimScope | typeof resumeClaimScope;
-    readerSummaryJobId: string; readerSummaryArtifactId: string;
-    terminalStatus: "REJECTED"; rejectionEvidenceSha256: string;
-  }>;
-  boundaries: RecoveryModelClaimBoundaries;
-}>;
-type QualityRemediationResumeModelClaimPayload =
-  RecoveryModelClaimCore & Readonly<{
-  schemaVersion: "reader_summary.production_recovery_model_quality_remediation_resume_claim.v1";
-  supersedes: FailedCanonicalBoundsSupersedes & Readonly<{
-    claimScope: typeof qualityRemediationClaimScope;
-    rejectionEvidenceSha256: string;
-  }>;
-  boundaries: RecoveryModelClaimBoundaries;
+  receiptTenantId: string | null;
+  receiptWorkspaceId: string | null;
+  receiptPublicationId: string | null;
+  receiptJobId: string | null;
+  receiptArtifactId: string | null;
+  receiptRecoveryKind: string | null;
+  receiptProvenance: unknown;
+  receiptProvenanceSha256: string | null;
+  receiptExact: unknown;
+  receiptSha256: string | null;
+  receiptRecordedAt: Date | null;
+  publicationReportSha256: string | null;
+  publicationProofSha256: string | null;
+  publicationPublishedAt: Date | null;
 }>;
 
-const legacyClaimScope = "reader-summary-production-recovery-model-v2";
-const retryClaimScope = "reader-summary-production-recovery-model-retry-v1";
-const resumeClaimScope = "reader-summary-production-recovery-model-resume-v1";
-const qualityRemediationClaimScope = "reader-summary-production-recovery-model-quality-remediation-v1";
-const qualityRemediationResumeClaimScope = "reader-summary-production-recovery-model-quality-remediation-resume-v1";
-type RecoveryClaimPayload =
-  | LegacyRecoveryModelClaimPayload
-  | RetryRecoveryModelClaimPayload
-  | ResumeRecoveryModelClaimPayload
-  | QualityRemediationModelClaimPayload
-  | QualityRemediationResumeModelClaimPayload;
-type QualityRemediationClaimInput = Readonly<{
-  params: {
-    readonly binding: ReaderSummaryProductionRecoveryAuthorityBinding;
-    readonly requestedUtcDate: ReaderSummaryProductionRecoveryDate;
-  };
-  day: ReturnType<typeof dayAuthority>;
-  rejected: ExistingClaimRow;
-  rejectedClaimScope: typeof legacyClaimScope | typeof retryClaimScope | typeof resumeClaimScope;
+type ClaimInsertRow = Readonly<{
+  claimed: boolean;
+  jobClaimed: boolean;
 }>;
+
+const claimScope = "reader-summary-production-recovery-model-v2";
+const readableClaimScopes = [
+  claimScope,
+  "reader-summary-production-recovery-model-retry-v1",
+  "reader-summary-production-recovery-model-resume-v1",
+  "reader-summary-production-recovery-model-quality-remediation-v1",
+  "reader-summary-production-recovery-model-quality-remediation-resume-v1",
+] as const;
+
 const transactionOptions: PrismaSummaryTransactionOptions = Object.freeze({
   maxWait: 30_000,
   timeout: 300_000,
 });
-const recoveryModelClaimBoundaries: RecoveryModelClaimBoundaries =
-  Object.freeze({
-    stage: "pre_model",
-    leaseConsumed: true,
-    modelCallPerformed: false,
-    recollectionPerformed: false,
-    providerWritePerformed: false,
-  });
+
 export class PrismaReaderSummaryProductionRecoveryExecutionGuard
   implements ReaderSummaryProductionRecoveryExecutionGuard
 {
   constructor(
     private readonly client: ReaderSummaryProductionRecoveryExecutionGuardClient,
   ) {}
+
   async claim(params: {
-    readonly binding: ReaderSummaryProductionRecoveryAuthorityBinding;
-    readonly requestedUtcDate: ReaderSummaryProductionRecoveryDate;
+    binding: ReaderSummaryProductionRecoveryAuthorityBinding;
+    requestedUtcDate: ReaderSummaryProductionRecoveryDate;
+    generationProfile: ReaderSummaryProductionRecoveryGenerationProfile;
   }): ReturnType<ReaderSummaryProductionRecoveryExecutionGuard["claim"]> {
     return withPrismaWriteRetry(() =>
       runSerializableReaderSummaryTransaction(
         this.client as PrismaSummaryClient,
         async (prisma) => {
-          const day = dayAuthority(
-            params.binding,
-            params.requestedUtcDate,
-          );
-          if (await hasFinalReceipt(prisma, params)) {
+          const expectation =
+            readerSummaryProductionRecoveryClaimExpectation(params);
+          const rows = await readClaimStates(prisma, params);
+          const receipts = rows.filter(hasReceipt);
+          if (receipts.length > 0) {
+            if (receipts.length !== 1) {
+              throw new Error(
+                "Reader summary production recovery final receipt is ambiguous",
+              );
+            }
+            verifyReplay(receipts[0]!, expectation, params, rows);
             return "replayed";
           }
-          if (
-            day.planSha256s[0] !== day.canonicalSha256 ||
-            day.planSha256s[1] !== day.canonicalSha256
-          ) {
-            throw new Error(
-              "Reader summary production recovery two-pass plan hashes diverged",
-            );
-          }
-          const ids = readerSummaryProductionRecoveryDayIds(
-            params.binding,
-            params.requestedUtcDate,
-          );
-          const existingRetry = await readClaim(
-            prisma,
-            params,
-            retryClaimScope,
-            ids,
-          );
-          if (existingRetry !== undefined) {
-            assertConsumedRetryClaim(existingRetry, params, ids, day);
-            const retryStatus = assertExactClaimedJob(
-              existingRetry,
-              params,
-              ids,
-              readerSummaryProductionRecoveryJobIdempotencyKey(
-                params.requestedUtcDate,
-                day.canonicalSha256,
-              ),
-            );
-            if (retryStatus === "REJECTED") {
-              return claimQualityRemediation(prisma, {
-                params,
-                day,
-                rejected: existingRetry,
-                rejectedClaimScope: retryClaimScope,
-              });
-            }
-            if (
-              retryStatus !== "FAILED" ||
-              !isCanonicalBoundsInfrastructureFailure(
-                existingRetry.jobFailureReason,
-              )
-            ) {
-              throw consumedLeaseError(
-                params.requestedUtcDate,
-                "retry-v1",
-                existingRetry.jobFailureReason,
+          if (rows.length > 0) {
+            if (rows.length !== 1) {
+              throw new Error(
+                "Reader summary production recovery model claim is ambiguous",
               );
             }
-            const resumeIds = readerSummaryProductionRecoveryResumeDayIds(
-              params.binding,
-              params.requestedUtcDate,
-            );
-            const existingResume = await readClaim(
-              prisma,
+            return verifyConsumedClaim(
+              rows[0]!,
+              expectation,
               params,
-              resumeClaimScope,
-              resumeIds,
-            );
-            if (existingResume !== undefined) {
-              const resumePayload = resumeRecoveryModelClaimPayload(
-                params,
-                resumeIds,
-                day,
-                existingRetry,
-              );
-              assertExactClaim(
-                existingResume,
-                resumePayload,
-                day.canonicalSha256,
-              );
-              const resumeStatus = assertExactClaimedJob(
-                existingResume,
-                params,
-                resumeIds,
-                readerSummaryProductionRecoveryResumeJobIdempotencyKey(
-                  params.requestedUtcDate,
-                  day.canonicalSha256,
-                ),
-              );
-              if (resumeStatus === "REJECTED") {
-                return claimQualityRemediation(prisma, {
-                  params,
-                  day,
-                  rejected: existingResume,
-                  rejectedClaimScope: resumeClaimScope,
-                });
-              }
-              throw consumedLeaseError(
-                params.requestedUtcDate,
-                "resume-v1",
-                existingResume.jobFailureReason,
-              );
-            }
-            await persistModelClaim(prisma, {
-              params,
-              day,
-              ids: resumeIds,
-              scope: resumeClaimScope,
-              payload: resumeRecoveryModelClaimPayload(
-                params,
-                resumeIds,
-                day,
-                existingRetry,
-              ),
-              jobIdempotencyKey:
-                readerSummaryProductionRecoveryResumeJobIdempotencyKey(
-                  params.requestedUtcDate,
-                  day.canonicalSha256,
-                ),
-              staleJobId: null,
-            });
-            return "resume";
-          }
-          const legacy = await readAndVerifyLegacyClaim(prisma, params, day);
-          if (
-            legacy !== undefined &&
-            isQualityRejectedClaim(
-              legacy,
-              readerSummaryProductionRecoveryLegacyDayIds(
-                params.binding,
-                params.requestedUtcDate,
-              ),
-            )
-          ) {
-            return claimQualityRemediation(prisma, {
-              params,
-              day,
-              rejected: legacy,
-              rejectedClaimScope: legacyClaimScope,
-            });
-          }
-          if (
-            legacy?.jobStatus === "FAILED" &&
-            !isCanonicalBoundsInfrastructureFailure(
-              legacy.jobFailureReason,
-            )
-          ) {
-            throw consumedLeaseError(
-              params.requestedUtcDate,
-              "legacy-v2",
-              legacy.jobFailureReason,
+              rows,
             );
           }
-          const retryClaim = retryRecoveryModelClaimPayload(
-            params,
-            ids,
-            day,
-            legacy,
-          );
-          await persistModelClaim(prisma, {
-            params,
-            day,
-            ids,
-            scope: retryClaimScope,
-            payload: retryClaim,
-            jobIdempotencyKey:
-              readerSummaryProductionRecoveryJobIdempotencyKey(
-                params.requestedUtcDate,
-                day.canonicalSha256,
-              ),
-            staleJobId:
-              legacy?.jobStatus === "RUNNING" ? legacy.jobId : null,
-          });
+          await persistFreshClaim(prisma, expectation);
           return "execute";
         },
         transactionOptions,
@@ -345,232 +150,32 @@ export class PrismaReaderSummaryProductionRecoveryExecutionGuard
   }
 }
 
-const persistModelClaim = async (
+const readClaimStates = async (
   prisma: QueryClient,
-  input: Readonly<{
-    params: {
-      readonly binding: ReaderSummaryProductionRecoveryAuthorityBinding;
-      readonly requestedUtcDate: ReaderSummaryProductionRecoveryDate;
-    };
-    day: ReturnType<typeof dayAuthority>;
-    ids: Readonly<{ readerSummaryJobId: string; readerSummaryId: string }>;
-    scope: string;
-    payload: Exclude<RecoveryClaimPayload, LegacyRecoveryModelClaimPayload>;
-    jobIdempotencyKey: string;
-    staleJobId: string | null;
+  params: Readonly<{
+    binding: ReaderSummaryProductionRecoveryAuthorityBinding;
+    requestedUtcDate: ReaderSummaryProductionRecoveryDate;
+    generationProfile: ReaderSummaryProductionRecoveryGenerationProfile;
   }>,
-): Promise<void> => {
-  const period = periodForRecoveryDate(input.params.requestedUtcDate);
-  const serializedClaim = JSON.stringify(input.payload);
-  const claimId = deterministicClaimUuid(
-    input.scope,
-    input.params.binding.recoveryId,
-    input.params.requestedUtcDate,
-  );
-  const rows = await prisma.$queryRaw<readonly ClaimRow[]>`
-    WITH claimed AS (
-      INSERT INTO "idempotency_keys" (
-        "id", "tenant_id", "workspace_id", "scope", "key",
-        "request_hash", "response_status", "response_payload",
-        "expires_at", "created_at"
-      ) VALUES (
-        ${claimId}::uuid,
-        ${input.params.binding.tenantId}::uuid,
-        ${input.params.binding.workspaceId}::uuid,
-        ${input.scope},
-        ${input.params.requestedUtcDate},
-        ${input.day.canonicalSha256},
-        102,
-        ${serializedClaim}::jsonb,
-        NULL,
-        transaction_timestamp()
-      )
-      ON CONFLICT ("tenant_id", "workspace_id", "scope", "key")
-      DO NOTHING
-      RETURNING "id"
-    ),
-    stale_job AS (
-      UPDATE "reader_summary_jobs"
-      SET "status" = 'FAILED',
-          "failed_at" = transaction_timestamp(),
-          "failure_reason" =
-            'Superseded stale production recovery model execution',
-          "updated_at" = transaction_timestamp()
-      FROM claimed
-      WHERE ${input.staleJobId}::uuid IS NOT NULL
-        AND "reader_summary_jobs"."id" = ${input.staleJobId}::uuid
-        AND "reader_summary_jobs"."tenant_id" =
-          ${input.params.binding.tenantId}::uuid
-        AND "reader_summary_jobs"."workspace_id" =
-          ${input.params.binding.workspaceId}::uuid
-        AND "reader_summary_jobs"."status" = 'RUNNING'
-        AND "reader_summary_jobs"."started_at" <=
-          transaction_timestamp() - INTERVAL '1 hour'
-        AND "reader_summary_jobs"."completed_at" IS NULL
-        AND "reader_summary_jobs"."failed_at" IS NULL
-        AND "reader_summary_jobs"."reader_summary_artifact_id" IS NULL
-      RETURNING "reader_summary_jobs"."id"
-    ),
-    job AS (
-      INSERT INTO "reader_summary_jobs" (
-        "id", "tenant_id", "workspace_id", "scope_type",
-        "scope_key", "interest_id", "cadence",
-        "period_started_at", "period_ended_at", "period_timezone",
-        "period_key", "user_id", "subscription_id", "status",
-        "idempotency_key", "requested_at", "started_at",
-        "completed_at", "failed_at", "reader_summary_artifact_id",
-        "failure_reason", "created_at", "updated_at"
-      )
-      SELECT
-        ${input.ids.readerSummaryJobId}::uuid,
-        ${input.params.binding.tenantId}::uuid,
-        ${input.params.binding.workspaceId}::uuid,
-        'workspace', 'workspace', NULL, 'daily',
-        ${period.startedAt}, ${period.endedAt}, 'UTC',
-        ${period.periodKey}, NULL, NULL, 'RUNNING',
-        ${input.jobIdempotencyKey},
-        transaction_timestamp(), transaction_timestamp(),
-        NULL, NULL, NULL, NULL,
-        transaction_timestamp(), transaction_timestamp()
-      FROM claimed
-      RETURNING "id"
-    )
-    SELECT
-      (SELECT count(*) FROM claimed) = 1
-      AND (SELECT count(*) FROM job) = 1 AS "claimed",
-      (SELECT count(*) FROM stale_job) = 1 AS "staleJobSuperseded"
-  `;
-  const claimed = rows[0];
-  if (
-    rows.length !== 1 ||
-    claimed?.claimed !== true ||
-    claimed.staleJobSuperseded !== (input.staleJobId !== null)
-  ) {
-    throw Object.assign(
-      new Error(
-        "Reader summary production recovery concurrent model claim requires a fresh snapshot",
+): Promise<readonly ClaimStateRow[]> => {
+  const current = readerSummaryProductionRecoveryClaimExpectation(params);
+  const historic = Object.fromEntries(
+    readerSummaryProductionRecoveryHistoricClaimSchemas.map((schema) => [
+      schema,
+      readerSummaryProductionRecoveryHistoricClaimExpectation(
+        params,
+        schema,
       ),
-      { code: "40001" },
-    );
-  }
-};
-
-const claimQualityRemediation = async (
-  prisma: QueryClient,
-  input: QualityRemediationClaimInput,
-): Promise<"remediate-quality" | "resume-quality"> => {
-  const ids = readerSummaryProductionRecoveryQualityRemediationDayIds(
-    input.params.binding, input.params.requestedUtcDate);
-  const payload = qualityRemediationModelClaimPayload(input, ids);
-  const existing = await readClaim(prisma, input.params,
-    qualityRemediationClaimScope, ids);
-  if (existing !== undefined) {
-    assertExactClaim(existing, payload, input.day.canonicalSha256);
-    const status = assertExactClaimedJob(existing, input.params, ids,
-      readerSummaryProductionRecoveryQualityRemediationJobIdempotencyKey(
-        input.params.requestedUtcDate, input.day.canonicalSha256));
-    if (
-      status !== "FAILED" ||
-      (!isCanonicalBoundsInfrastructureFailure(existing.jobFailureReason) &&
-        !isKnownLegacyQualityRemediationBoundsFailure(
-          input.params.requestedUtcDate,
-          existing.jobFailureReason,
-        ))
-    ) {
-      throw consumedLeaseError(
-        input.params.requestedUtcDate,
-        "quality-remediation-v1",
-        existing.jobFailureReason,
-      );
-    }
-    const resumeIds = readerSummaryProductionRecoveryQualityRemediationResumeDayIds(
-      input.params.binding, input.params.requestedUtcDate);
-    const resumePayload = qualityRemediationResumeModelClaimPayload(
-      input, resumeIds, existing, payload);
-    const existingResume = await readClaim(prisma, input.params,
-      qualityRemediationResumeClaimScope, resumeIds);
-    if (existingResume !== undefined) {
-      assertExactClaim(existingResume, resumePayload, input.day.canonicalSha256);
-      assertExactClaimedJob(existingResume, input.params, resumeIds,
-        readerSummaryProductionRecoveryQualityRemediationResumeJobIdempotencyKey(
-          input.params.requestedUtcDate, input.day.canonicalSha256));
-      throw consumedLeaseError(
-        input.params.requestedUtcDate, "quality-remediation-resume-v1",
-        existingResume.jobFailureReason,
-      );
-    }
-    await persistModelClaim(prisma, {
-      params: input.params,
-      day: input.day,
-      ids: resumeIds,
-      scope: qualityRemediationResumeClaimScope,
-      payload: resumePayload,
-      jobIdempotencyKey:
-        readerSummaryProductionRecoveryQualityRemediationResumeJobIdempotencyKey(
-          input.params.requestedUtcDate, input.day.canonicalSha256),
-      staleJobId: null,
-    });
-    return "resume-quality";
-  }
-  await persistModelClaim(prisma, {
-    params: input.params,
-    day: input.day,
-    ids,
-    scope: qualityRemediationClaimScope,
-    payload,
-    jobIdempotencyKey:
-      readerSummaryProductionRecoveryQualityRemediationJobIdempotencyKey(
-        input.params.requestedUtcDate, input.day.canonicalSha256),
-    staleJobId: null,
-  });
-  return "remediate-quality";
-};
-
-const hasFinalReceipt = async (
-  prisma: QueryClient,
-  params: {
-    readonly binding: ReaderSummaryProductionRecoveryAuthorityBinding;
-    readonly requestedUtcDate: ReaderSummaryProductionRecoveryDate;
-  },
-): Promise<boolean> => {
-  const provenance = JSON.stringify(
-    recoveryProvenanceForDay(
-      params.binding,
-      params.requestedUtcDate,
-    ),
-  );
-  const rows = await prisma.$queryRaw<readonly ReceiptRow[]>`
-    SELECT EXISTS (
-      SELECT 1
-      FROM "reader_summary_recovery_receipts" AS receipt
-      JOIN "reader_summary_publications" AS publication
-        ON publication."id" = receipt."publication_id"
-        AND publication."reader_summary_job_id" =
-          receipt."reader_summary_job_id"
-        AND publication."reader_summary_artifact_id" =
-          receipt."reader_summary_artifact_id"
-      WHERE receipt."tenant_id" = ${params.binding.tenantId}::uuid
-        AND receipt."workspace_id" = ${params.binding.workspaceId}::uuid
-        AND receipt."recovery_kind" = 'SUMMARY_ONLY'
-        AND receipt."provenance" = ${provenance}::jsonb
-    ) AS "replayed"
-  `;
-  return rows[0]?.replayed === true;
-};
-
-const readClaim = async (
-  prisma: QueryClient,
-  params: {
-    readonly binding: ReaderSummaryProductionRecoveryAuthorityBinding;
-    readonly requestedUtcDate: ReaderSummaryProductionRecoveryDate;
-  },
-  scope: string,
-  ids: Readonly<{
-    readerSummaryJobId: string;
-  }>,
-): Promise<ExistingClaimRow | undefined> => {
-  const rows = await prisma.$queryRaw<readonly ExistingClaimRow[]>`
+    ]),
+  ) as Readonly<
+    Record<
+      ReaderSummaryProductionRecoveryHistoricClaimSchema,
+      ReaderSummaryProductionRecoveryClaimExpectation
+    >
+  >;
+  return prisma.$queryRaw<readonly ClaimStateRow[]>`
     SELECT
+      claim."scope" AS "claimScope",
       claim."request_hash" AS "requestHash",
       claim."response_status" AS "responseStatus",
       claim."response_payload" AS "responsePayload",
@@ -594,71 +199,348 @@ const readClaim = async (
         "jobReaderSummaryArtifactId",
       job."failure_reason" AS "jobFailureReason",
       artifact."id"::TEXT AS "artifactId",
-      artifact."status"::TEXT AS "artifactStatus"
+      artifact."status"::TEXT AS "artifactStatus",
+      receipt."tenant_id"::TEXT AS "receiptTenantId",
+      receipt."workspace_id"::TEXT AS "receiptWorkspaceId",
+      receipt."publication_id"::TEXT AS "receiptPublicationId",
+      receipt."reader_summary_job_id"::TEXT AS "receiptJobId",
+      receipt."reader_summary_artifact_id"::TEXT AS "receiptArtifactId",
+      receipt."recovery_kind" AS "receiptRecoveryKind",
+      receipt."provenance" AS "receiptProvenance",
+      btrim(receipt."provenance_sha256") AS "receiptProvenanceSha256",
+      receipt."exact_receipt" AS "receiptExact",
+      btrim(receipt."receipt_sha256") AS "receiptSha256",
+      receipt."recorded_at" AS "receiptRecordedAt",
+      publication."report_sha256" AS "publicationReportSha256",
+      publication."proof_sha256" AS "publicationProofSha256",
+      publication."published_at" AS "publicationPublishedAt"
     FROM "idempotency_keys" AS claim
     LEFT JOIN "reader_summary_jobs" AS job
-      ON job."id" = ${ids.readerSummaryJobId}::uuid
+      ON job."id" = CASE
+        WHEN claim."response_payload"->>'schemaVersion' =
+          'reader_summary.production_recovery_model_claim.v2'
+          THEN ${current.readerSummaryJobId}::uuid
+        WHEN claim."response_payload"->>'schemaVersion' =
+          'reader_summary.production_recovery_model_claim.v1'
+          THEN ${historic[
+            "reader_summary.production_recovery_model_claim.v1"
+          ].readerSummaryJobId}::uuid
+        WHEN claim."response_payload"->>'schemaVersion' =
+          'reader_summary.production_recovery_model_retry_claim.v1'
+          THEN ${historic[
+            "reader_summary.production_recovery_model_retry_claim.v1"
+          ].readerSummaryJobId}::uuid
+        WHEN claim."response_payload"->>'schemaVersion' =
+          'reader_summary.production_recovery_model_resume_claim.v1'
+          THEN ${historic[
+            "reader_summary.production_recovery_model_resume_claim.v1"
+          ].readerSummaryJobId}::uuid
+        WHEN claim."response_payload"->>'schemaVersion' =
+          'reader_summary.production_recovery_model_quality_remediation_claim.v1'
+          THEN ${historic[
+            "reader_summary.production_recovery_model_quality_remediation_claim.v1"
+          ].readerSummaryJobId}::uuid
+        WHEN claim."response_payload"->>'schemaVersion' =
+          'reader_summary.production_recovery_model_quality_remediation_resume_claim.v1'
+          THEN ${historic[
+            "reader_summary.production_recovery_model_quality_remediation_resume_claim.v1"
+          ].readerSummaryJobId}::uuid
+        ELSE NULL
+      END
       AND job."tenant_id" = claim."tenant_id"
       AND job."workspace_id" = claim."workspace_id"
     LEFT JOIN "reader_summary_artifacts" AS artifact
       ON artifact."id" = job."reader_summary_artifact_id"
       AND artifact."tenant_id" = job."tenant_id"
       AND artifact."workspace_id" = job."workspace_id"
+    LEFT JOIN "reader_summary_recovery_receipts" AS receipt
+      ON receipt."reader_summary_job_id" = job."id"
+      AND receipt."tenant_id" = claim."tenant_id"
+      AND receipt."workspace_id" = claim."workspace_id"
+    LEFT JOIN "reader_summary_publications" AS publication
+      ON publication."id" = receipt."publication_id"
+      AND publication."reader_summary_job_id" =
+        receipt."reader_summary_job_id"
+      AND publication."reader_summary_artifact_id" =
+        receipt."reader_summary_artifact_id"
     WHERE claim."tenant_id" = ${params.binding.tenantId}::uuid
       AND claim."workspace_id" = ${params.binding.workspaceId}::uuid
-      AND claim."scope" = ${scope}
+      AND claim."scope" = ANY(${readableClaimScopes}::TEXT[])
       AND claim."key" = ${params.requestedUtcDate}
-    FOR SHARE OF claim
+    ORDER BY claim."created_at", claim."id"
+    FOR UPDATE OF claim
   `;
-  if (rows.length > 1) {
-    throw new Error(
-      "Reader summary production recovery model claim is ambiguous",
-    );
-  }
-  return rows[0];
 };
 
-const assertExactClaim = (
-  row: ExistingClaimRow,
-  exactClaim: RecoveryClaimPayload,
-  planSha256: string,
-): void => {
+const persistFreshClaim = async (
+  prisma: QueryClient,
+  expectation: ReaderSummaryProductionRecoveryClaimExpectation,
+): Promise<void> => {
+  const payload = buildReaderSummaryProductionRecoveryModelClaim(expectation);
+  const period = periodForRecoveryDate(
+    expectation.requestedUtcDate as PersistedRecoveryDate,
+  );
+  const rows = await prisma.$queryRaw<readonly ClaimInsertRow[]>`
+    WITH claimed AS (
+      INSERT INTO "idempotency_keys" (
+        "id", "tenant_id", "workspace_id", "scope", "key",
+        "request_hash", "response_status", "response_payload",
+        "expires_at", "created_at"
+      ) VALUES (
+        ${deterministicClaimUuid(expectation.recoveryIdentity)}::uuid,
+        ${expectation.tenantId}::uuid,
+        ${expectation.workspaceId}::uuid,
+        ${claimScope},
+        ${expectation.requestedUtcDate},
+        ${expectation.planCanonicalSha256},
+        102,
+        ${JSON.stringify(payload)}::jsonb,
+        NULL,
+        transaction_timestamp()
+      )
+      ON CONFLICT ("tenant_id", "workspace_id", "scope", "key")
+      DO NOTHING
+      RETURNING "id"
+    ),
+    job AS (
+      INSERT INTO "reader_summary_jobs" (
+        "id", "tenant_id", "workspace_id", "scope_type", "scope_key",
+        "interest_id", "cadence", "period_started_at", "period_ended_at",
+        "period_timezone", "period_key", "user_id", "subscription_id",
+        "status", "idempotency_key", "requested_at", "started_at",
+        "completed_at", "failed_at", "reader_summary_artifact_id",
+        "failure_reason", "created_at", "updated_at"
+      )
+      SELECT
+        ${expectation.readerSummaryJobId}::uuid,
+        ${expectation.tenantId}::uuid,
+        ${expectation.workspaceId}::uuid,
+        'workspace', 'workspace', NULL, 'daily',
+        ${period.startedAt}, ${period.endedAt}, 'UTC', ${period.periodKey},
+        NULL, NULL, 'RUNNING', ${expectation.recoveryIdentity},
+        transaction_timestamp(), transaction_timestamp(),
+        NULL, NULL, NULL, NULL,
+        transaction_timestamp(), transaction_timestamp()
+      FROM claimed
+      ON CONFLICT ("id") DO NOTHING
+      RETURNING "id"
+    )
+    SELECT
+      (SELECT count(*) FROM claimed) = 1 AS "claimed",
+      (SELECT count(*) FROM job) = 1 AS "jobClaimed"
+  `;
   if (
-    row.requestHash !== planSha256 ||
-    row.responseStatus !== 102 ||
-    row.jobId === null ||
-    !isDeepStrictEqual(row.responsePayload, exactClaim)
+    rows.length !== 1 ||
+    rows[0]?.claimed !== true ||
+    rows[0].jobClaimed !== true
   ) {
     throw new Error(
-      "Reader summary production recovery existing model claim diverged",
+      "Reader summary production recovery concurrent model claim was rejected",
     );
   }
 };
 
-const readAndVerifyLegacyClaim = async (
-  prisma: QueryClient,
-  params: {
-    readonly binding: ReaderSummaryProductionRecoveryAuthorityBinding;
-    readonly requestedUtcDate: ReaderSummaryProductionRecoveryDate;
-  },
-  day: ReturnType<typeof dayAuthority>,
-): Promise<ExistingClaimRow | undefined> => {
-  const ids = readerSummaryProductionRecoveryLegacyDayIds(
-    params.binding,
-    params.requestedUtcDate,
-  );
-  const row = await readClaim(prisma, params, legacyClaimScope, ids);
-  if (row === undefined) {
-    return undefined;
-  }
-  assertExactClaim(
+const verifyReplay = (
+  row: ClaimStateRow,
+  expectation: ReaderSummaryProductionRecoveryClaimExpectation,
+  params: Readonly<{
+    binding: ReaderSummaryProductionRecoveryAuthorityBinding;
+    requestedUtcDate: ReaderSummaryProductionRecoveryDate;
+    generationProfile: ReaderSummaryProductionRecoveryGenerationProfile;
+  }>,
+  rows: readonly ClaimStateRow[],
+): void => {
+  const verified = verifyClaimRow(row, expectation, params);
+  verifyExactJob(
     row,
-    legacyRecoveryModelClaimPayload(params, ids, day),
-    day.canonicalSha256,
+    verified.payload,
+    claimExpectationForRow(row, params),
+    true,
   );
-  const period = periodForRecoveryDate(params.requestedUtcDate);
-  const commonInvalid =
-    row.jobId !== ids.readerSummaryJobId ||
+  verifyReaderSummaryProductionRecoveryFinalReceipt(
+    finalReceiptRow(row),
+    {
+      claim: verified,
+      expectedProvenance: recoveryProvenanceForDay(
+        params.binding,
+        params.requestedUtcDate as PersistedRecoveryDate,
+      ),
+      predecessorStates: rows,
+    },
+  );
+};
+
+const verifyConsumedClaim = (
+  row: ClaimStateRow,
+  expectation: ReaderSummaryProductionRecoveryClaimExpectation,
+  params: Readonly<{
+    binding: ReaderSummaryProductionRecoveryAuthorityBinding;
+    requestedUtcDate: ReaderSummaryProductionRecoveryDate;
+    generationProfile: ReaderSummaryProductionRecoveryGenerationProfile;
+  }>,
+  rows: readonly ClaimStateRow[],
+):
+  | ReturnType<
+      typeof buildReaderSummaryProductionRecoveryRejectionEvidence
+    >
+  | never => {
+  const verified = verifyClaimRow(row, expectation, params);
+  const verifiedExpectation = claimExpectationForRow(row, params);
+  verifyReaderSummaryProductionRecoverySupersededPredecessor(
+    verified,
+    rows,
+  );
+  verifyExactJob(
+    row,
+    verified.payload,
+    verifiedExpectation,
+    false,
+  );
+  if (
+    row.jobStatus === "REJECTED" &&
+    row.jobReaderSummaryArtifactId === row.artifactId &&
+    row.artifactId === verified.payload.readerSummaryArtifactId &&
+    row.artifactStatus === "REJECTED" &&
+    row.jobFailedAt !== null &&
+    row.jobFailureReason !== null
+  ) {
+    return buildReaderSummaryProductionRecoveryRejectionEvidence({
+      reason: "pre_publish_quality_gate",
+      readerSummaryJobId: String(verified.payload.readerSummaryJobId),
+      readerSummaryArtifactId: String(
+        verified.payload.readerSummaryArtifactId,
+      ),
+      planCanonicalSha256: expectation.planCanonicalSha256,
+    });
+  }
+  throw new Error(
+    `Reader summary production recovery ${expectation.requestedUtcDate} durable pre-model lease was consumed without an exact final receipt`,
+  );
+};
+
+const verifyClaimRow = (
+  row: ClaimStateRow,
+  expectation: ReaderSummaryProductionRecoveryClaimExpectation,
+  params: Readonly<{
+    binding: ReaderSummaryProductionRecoveryAuthorityBinding;
+    requestedUtcDate: ReaderSummaryProductionRecoveryDate;
+    generationProfile: ReaderSummaryProductionRecoveryGenerationProfile;
+  }>,
+) => {
+  const payload = asRecord(row.responsePayload);
+  assertClaimScopeMatchesSchema(row.claimScope, payload.schemaVersion);
+  const rowExpectation = claimExpectationForSchema(
+    payload.schemaVersion,
+    params,
+  );
+  if (
+    row.requestHash !== expectation.planCanonicalSha256 ||
+    row.responseStatus !== 102
+  ) {
+    throw new Error(
+      "Reader summary production recovery model claim envelope diverged",
+    );
+  }
+  return verifyReaderSummaryProductionRecoveryClaim(
+    payload,
+    rowExpectation,
+  );
+};
+
+const claimExpectationForRow = (
+  row: ClaimStateRow,
+  params: Readonly<{
+    binding: ReaderSummaryProductionRecoveryAuthorityBinding;
+    requestedUtcDate: ReaderSummaryProductionRecoveryDate;
+    generationProfile: ReaderSummaryProductionRecoveryGenerationProfile;
+  }>,
+): ReaderSummaryProductionRecoveryClaimExpectation =>
+  claimExpectationForSchema(
+    asRecord(row.responsePayload).schemaVersion,
+    params,
+  );
+
+const claimExpectationForSchema = (
+  schema: unknown,
+  params: Readonly<{
+    binding: ReaderSummaryProductionRecoveryAuthorityBinding;
+    requestedUtcDate: ReaderSummaryProductionRecoveryDate;
+    generationProfile: ReaderSummaryProductionRecoveryGenerationProfile;
+  }>,
+): ReaderSummaryProductionRecoveryClaimExpectation => {
+  if (schema === "reader_summary.production_recovery_model_claim.v2") {
+    return readerSummaryProductionRecoveryClaimExpectation(params);
+  }
+  if (
+    typeof schema !== "string" ||
+    !(
+      readerSummaryProductionRecoveryHistoricClaimSchemas as readonly string[]
+    ).includes(schema)
+  ) {
+    throw new Error(
+      "Reader summary production recovery claim schema is not supported",
+    );
+  }
+  return readerSummaryProductionRecoveryHistoricClaimExpectation(
+    params,
+    schema as ReaderSummaryProductionRecoveryHistoricClaimSchema,
+  );
+};
+
+const assertClaimScopeMatchesSchema = (
+  scope: string,
+  schema: unknown,
+): void => {
+  const expectedScopes: Readonly<Record<string, string>> = {
+    "reader_summary.production_recovery_model_claim.v2": claimScope,
+    "reader_summary.production_recovery_model_claim.v1": claimScope,
+    "reader_summary.production_recovery_model_retry_claim.v1":
+      "reader-summary-production-recovery-model-retry-v1",
+    "reader_summary.production_recovery_model_resume_claim.v1":
+      "reader-summary-production-recovery-model-resume-v1",
+    "reader_summary.production_recovery_model_quality_remediation_claim.v1":
+      "reader-summary-production-recovery-model-quality-remediation-v1",
+    "reader_summary.production_recovery_model_quality_remediation_resume_claim.v1":
+      "reader-summary-production-recovery-model-quality-remediation-resume-v1",
+  };
+  if (
+    typeof schema !== "string" ||
+    expectedScopes[schema] !== scope
+  ) {
+    throw new Error(
+      "Reader summary production recovery claim scope diverged",
+    );
+  }
+};
+
+const verifyExactJob = (
+  row: ClaimStateRow,
+  claim: Readonly<Record<string, unknown>>,
+  expectation: ReaderSummaryProductionRecoveryClaimExpectation,
+  finalized: boolean,
+): void => {
+  const period = periodForRecoveryDate(
+    expectation.requestedUtcDate as PersistedRecoveryDate,
+  );
+  const statusIsSafe =
+    finalized
+      ? ["COMPLETED", "NO_SIGNAL"].includes(row.jobStatus ?? "")
+      : ["RUNNING", "FAILED", "REJECTED"].includes(
+          row.jobStatus ?? "",
+        );
+  const terminalStateIsSafe =
+    !finalized ||
+    (row.jobCompletedAt !== null &&
+      row.jobFailedAt === null &&
+      row.jobReaderSummaryArtifactId ===
+        expectation.readerSummaryArtifactId &&
+      row.artifactId === expectation.readerSummaryArtifactId &&
+      row.artifactStatus === "READY");
+  if (
+    row.jobId !== expectation.readerSummaryJobId ||
+    claim.readerSummaryJobId !== expectation.readerSummaryJobId ||
+    claim.readerSummaryArtifactId !==
+      expectation.readerSummaryArtifactId ||
     row.jobScopeType !== "workspace" ||
     row.jobScopeKey !== "workspace" ||
     row.jobInterestId !== null ||
@@ -670,329 +552,112 @@ const readAndVerifyLegacyClaim = async (
     row.jobUserId !== null ||
     row.jobSubscriptionId !== null ||
     row.jobIdempotencyKey !==
-      `reader-summary-production-recovery:${params.requestedUtcDate}:${day.canonicalSha256}` ||
+      expectedJobIdempotencyKey(claim, expectation) ||
     row.jobStartedAt === null ||
-    row.jobCompletedAt !== null;
-  const qualityRejected = isQualityRejectedClaim(row, ids);
-  const statusInvalid =
-    (row.jobStatus === "RUNNING" &&
-      (row.jobFailedAt !== null ||
-        row.jobReaderSummaryArtifactId !== null ||
-        row.jobFailureReason !== null ||
-        row.artifactId !== null ||
-        row.artifactStatus !== null)) ||
-    (row.jobStatus === "FAILED" &&
-      !qualityRejected &&
-      (row.jobFailedAt === null ||
-        row.jobReaderSummaryArtifactId !== null ||
-        (row.jobFailureReason ?? "").trim().length === 0 ||
-        row.artifactId !== null ||
-        row.artifactStatus !== null)) ||
-    (row.jobStatus === "REJECTED" &&
-      (row.jobFailedAt === null ||
-        row.jobReaderSummaryArtifactId !== ids.readerSummaryId ||
-        row.artifactId !== ids.readerSummaryId ||
-        row.artifactStatus !== "REJECTED" ||
-        (row.jobFailureReason ?? "").trim().length === 0)) ||
-    !["RUNNING", "FAILED", "REJECTED"].includes(row.jobStatus ?? "");
-  if (commonInvalid || statusInvalid) {
+    !statusIsSafe ||
+    !terminalStateIsSafe
+  ) {
     throw new Error(
-      "Reader summary production recovery legacy model claim cannot be safely superseded",
+      "Reader summary production recovery claimed job diverged",
     );
   }
-  return row;
 };
 
-const assertConsumedRetryClaim = (
-  row: ExistingClaimRow,
-  params: {
-    readonly binding: ReaderSummaryProductionRecoveryAuthorityBinding;
-    readonly requestedUtcDate: ReaderSummaryProductionRecoveryDate;
-  },
-  ids: ReturnType<typeof readerSummaryProductionRecoveryDayIds>,
-  day: ReturnType<typeof dayAuthority>,
-): void => {
-  const payload = row.responsePayload as
-    | Partial<RetryRecoveryModelClaimPayload>
-    | null;
-  const supersedes = payload?.supersedes;
-  const legacyIds = readerSummaryProductionRecoveryLegacyDayIds(
-    params.binding,
-    params.requestedUtcDate,
-  );
-  const supersedesValid =
-    supersedes === null ||
-    (typeof supersedes === "object" &&
-      supersedes.readerSummaryJobId === legacyIds.readerSummaryJobId &&
-      (supersedes.readerSummaryArtifactId === null ||
-        supersedes.readerSummaryArtifactId === legacyIds.readerSummaryId) &&
-      ["RUNNING", "FAILED", "REJECTED"].includes(
-        supersedes.terminalStatus,
-      ));
-  if (!supersedesValid) {
+const expectedJobIdempotencyKey = (
+  claim: Readonly<Record<string, unknown>>,
+  expectation: ReaderSummaryProductionRecoveryClaimExpectation,
+): string => {
+  const prefixBySchema: Readonly<Record<string, string>> = {
+    "reader_summary.production_recovery_model_claim.v1":
+      "reader-summary-production-recovery",
+    "reader_summary.production_recovery_model_retry_claim.v1":
+      "reader-summary-production-recovery-retry-v1",
+    "reader_summary.production_recovery_model_resume_claim.v1":
+      "reader-summary-production-recovery-resume-v1",
+    "reader_summary.production_recovery_model_quality_remediation_claim.v1":
+      "reader-summary-production-recovery-quality-remediation-v1",
+    "reader_summary.production_recovery_model_quality_remediation_resume_claim.v1":
+      "reader-summary-production-recovery-quality-remediation-resume-v1",
+  };
+  if (
+    claim.schemaVersion ===
+    "reader_summary.production_recovery_model_claim.v2"
+  ) {
+    return expectation.recoveryIdentity;
+  }
+  const prefix = prefixBySchema[String(claim.schemaVersion)];
+  if (prefix === undefined) {
     throw new Error(
-      "Reader summary production recovery existing model claim diverged",
+      "Reader summary production recovery claimed job schema diverged",
     );
   }
-  assertExactClaim(
-    row,
-    {
-      schemaVersion:
-        "reader_summary.production_recovery_model_retry_claim.v1",
-      recoveryId: params.binding.recoveryId,
-      tenantId: params.binding.tenantId,
-      workspaceId: params.binding.workspaceId,
-      requestedUtcDate: params.requestedUtcDate,
-      readerSummaryJobId: ids.readerSummaryJobId,
-      readerSummaryArtifactId: ids.readerSummaryId,
-      planSha256s: day.planSha256s,
-      providerEvidenceSha256: day.providerEvidenceSha256,
-      supersedes,
-      boundaries: {
-        stage: "pre_model",
-        leaseConsumed: true,
-        modelCallPerformed: false,
-        recollectionPerformed: false,
-        providerWritePerformed: false,
-      },
-    },
-    day.canonicalSha256,
-  );
+  return `${prefix}:${expectation.requestedUtcDate}:${expectation.planCanonicalSha256}`;
 };
 
-const assertExactClaimedJob = (
-  row: ExistingClaimRow,
-  params: {
-    readonly binding: ReaderSummaryProductionRecoveryAuthorityBinding;
-    readonly requestedUtcDate: ReaderSummaryProductionRecoveryDate;
-  },
-  ids: Readonly<{ readerSummaryJobId: string; readerSummaryId: string }>,
-  jobIdempotencyKey: string,
-): "RUNNING" | "FAILED" | "REJECTED" => {
-  const period = periodForRecoveryDate(params.requestedUtcDate);
-  const commonInvalid =
-    row.jobId !== ids.readerSummaryJobId ||
-    row.jobScopeType !== "workspace" ||
-    row.jobScopeKey !== "workspace" ||
-    row.jobInterestId !== null ||
-    row.jobCadence !== "daily" ||
-    row.jobPeriodStartedAt?.getTime() !== period.startedAt.getTime() ||
-    row.jobPeriodEndedAt?.getTime() !== period.endedAt.getTime() ||
-    row.jobPeriodTimezone !== "UTC" ||
-    row.jobPeriodKey !== period.periodKey ||
-    row.jobUserId !== null ||
-    row.jobSubscriptionId !== null ||
-    row.jobIdempotencyKey !== jobIdempotencyKey ||
-    row.jobStartedAt === null ||
-    row.jobCompletedAt !== null;
-  const qualityRejected = isQualityRejectedClaim(row, ids);
-  const statusInvalid =
-    (row.jobStatus === "RUNNING" &&
-      (row.jobFailedAt !== null ||
-        row.jobReaderSummaryArtifactId !== null ||
-        row.jobFailureReason !== null ||
-        row.artifactId !== null ||
-        row.artifactStatus !== null)) ||
-    (row.jobStatus === "FAILED" &&
-      !qualityRejected &&
-      (row.jobFailedAt === null ||
-        row.jobReaderSummaryArtifactId !== null ||
-        (row.jobFailureReason ?? "").trim().length === 0 ||
-        row.artifactId !== null ||
-        row.artifactStatus !== null)) ||
-    (row.jobStatus === "REJECTED" &&
-      (row.jobFailedAt === null ||
-        row.jobReaderSummaryArtifactId !== ids.readerSummaryId ||
-        row.artifactId !== ids.readerSummaryId ||
-        row.artifactStatus !== "REJECTED" ||
-        (row.jobFailureReason ?? "").trim().length === 0)) ||
-    !["RUNNING", "FAILED", "REJECTED"].includes(row.jobStatus ?? "");
-  if (commonInvalid || statusInvalid) {
+const hasReceipt = (
+  row: ClaimStateRow,
+): row is ClaimStateRow &
+  Readonly<{
+    receiptPublicationId: string;
+    receiptRecordedAt: Date;
+  }> => row.receiptPublicationId !== null && row.receiptRecordedAt !== null;
+
+const finalReceiptRow = (
+  row: ClaimStateRow,
+): ReaderSummaryProductionRecoveryFinalReceiptRow => {
+  if (
+    row.receiptTenantId === null ||
+    row.receiptWorkspaceId === null ||
+    row.receiptPublicationId === null ||
+    row.receiptJobId === null ||
+    row.receiptArtifactId === null ||
+    row.receiptRecoveryKind === null ||
+    row.receiptProvenanceSha256 === null ||
+    row.receiptSha256 === null ||
+    row.receiptRecordedAt === null ||
+    row.publicationReportSha256 === null ||
+    row.publicationProofSha256 === null ||
+    row.publicationPublishedAt === null
+  ) {
     throw new Error(
-      "Reader summary production recovery existing model claim job diverged",
+      "Reader summary production recovery final receipt is incomplete",
     );
   }
-  return qualityRejected
-    ? "REJECTED"
-    : row.jobStatus as "RUNNING" | "FAILED" | "REJECTED";
-};
-
-const isQualityRejectedClaim = (
-  row: ExistingClaimRow,
-  ids: Readonly<{ readerSummaryId: string }>,
-): boolean =>
-  (row.jobStatus === "REJECTED" || row.jobStatus === "FAILED") &&
-  row.jobFailedAt !== null &&
-  row.jobReaderSummaryArtifactId === ids.readerSummaryId &&
-  row.artifactId === ids.readerSummaryId &&
-  row.artifactStatus === "REJECTED" &&
-  (row.jobFailureReason ?? "").trim().length > 0;
-
-const isCanonicalBoundsInfrastructureFailure = (failureReason: string | null): boolean =>
-  failureReason?.trim() === "weekly canonical JSON exceeds structural bounds" ||
-  failureReason?.trim() === "weekly canonical JSON exceeds byte bounds";
-const isKnownLegacyQualityRemediationBoundsFailure = (
-  requestedUtcDate: ReaderSummaryProductionRecoveryDate,
-  failureReason: string | null,
-): boolean =>
-  requestedUtcDate === "2026-07-23" &&
-  sha256(failureReason ?? "") ===
-    "17318e621367dde799a0f55d635744baef8f7258041972b73c59b1f4584e4290";
-const consumedLeaseError = (
-  requestedUtcDate: ReaderSummaryProductionRecoveryDate,
-  identity:
-    | "legacy-v2"
-    | "retry-v1"
-    | "resume-v1"
-    | "quality-remediation-v1"
-    | "quality-remediation-resume-v1",
-  failureReason: string | null,
-): Error =>
-  new Error(
-    `Reader summary production recovery ${requestedUtcDate} ${identity} lease was already consumed without final receipt; failure_reason_sha256=${sha256(failureReason?.trim() ?? "")}`,
-  );
-
-const recoveryModelClaimCore = (
-  params: {
-    readonly binding: ReaderSummaryProductionRecoveryAuthorityBinding;
-    readonly requestedUtcDate: ReaderSummaryProductionRecoveryDate;
-  },
-  ids: Readonly<{ readerSummaryJobId: string; readerSummaryId: string }>,
-  day: ReturnType<typeof dayAuthority>,
-): RecoveryModelClaimCore => ({
-  recoveryId: params.binding.recoveryId,
-  tenantId: params.binding.tenantId,
-  workspaceId: params.binding.workspaceId,
-  requestedUtcDate: params.requestedUtcDate,
-  readerSummaryJobId: ids.readerSummaryJobId,
-  readerSummaryArtifactId: ids.readerSummaryId,
-  planSha256s: day.planSha256s,
-  providerEvidenceSha256: day.providerEvidenceSha256,
-});
-
-const legacyRecoveryModelClaimPayload = (
-  params: {
-    readonly binding: ReaderSummaryProductionRecoveryAuthorityBinding;
-    readonly requestedUtcDate: ReaderSummaryProductionRecoveryDate;
-  },
-  ids: ReturnType<typeof readerSummaryProductionRecoveryLegacyDayIds>,
-  day: ReturnType<typeof dayAuthority>,
-): LegacyRecoveryModelClaimPayload => ({
-  schemaVersion: "reader_summary.production_recovery_model_claim.v1",
-  ...recoveryModelClaimCore(params, ids, day),
-  boundaries: {
-    stage: "pre_model",
-    modelCallPerformed: false,
-    recollectionPerformed: false,
-  },
-});
-
-const retryRecoveryModelClaimPayload = (
-  params: {
-    readonly binding: ReaderSummaryProductionRecoveryAuthorityBinding;
-    readonly requestedUtcDate: ReaderSummaryProductionRecoveryDate;
-  },
-  ids: ReturnType<typeof readerSummaryProductionRecoveryDayIds>,
-  day: ReturnType<typeof dayAuthority>,
-  legacy: ExistingClaimRow | undefined,
-): RetryRecoveryModelClaimPayload => ({
-  schemaVersion: "reader_summary.production_recovery_model_retry_claim.v1",
-  ...recoveryModelClaimCore(params, ids, day),
-  supersedes:
-    legacy === undefined
-      ? null
-      : {
-          readerSummaryJobId: legacy.jobId!,
-          readerSummaryArtifactId: legacy.jobReaderSummaryArtifactId,
-          terminalStatus: legacy.jobStatus as
-            | "RUNNING"
-            | "FAILED"
-            | "REJECTED",
-  },
-  boundaries: recoveryModelClaimBoundaries,
-});
-
-const resumeRecoveryModelClaimPayload = (
-  params: {
-    readonly binding: ReaderSummaryProductionRecoveryAuthorityBinding;
-    readonly requestedUtcDate: ReaderSummaryProductionRecoveryDate;
-  },
-  ids: ReturnType<typeof readerSummaryProductionRecoveryResumeDayIds>,
-  day: ReturnType<typeof dayAuthority>,
-  retry: ExistingClaimRow,
-): ResumeRecoveryModelClaimPayload => ({
-  schemaVersion: "reader_summary.production_recovery_model_resume_claim.v1",
-  ...recoveryModelClaimCore(params, ids, day),
-  supersedes: {
-    readerSummaryJobId: retry.jobId!,
-    readerSummaryArtifactId: null,
-    terminalStatus: "FAILED",
-    infrastructureFailure: "postgres_canonical_bounds",
-    failureReasonSha256: createHash("sha256")
-      .update(retry.jobFailureReason!.trim())
-      .digest("hex"),
-  },
-  boundaries: recoveryModelClaimBoundaries,
-});
-
-const qualityRemediationModelClaimPayload = (
-  input: QualityRemediationClaimInput,
-  ids: ReturnType<typeof readerSummaryProductionRecoveryQualityRemediationDayIds>,
-): QualityRemediationModelClaimPayload => {
-  const rejectionEvidenceSha256 = sha256(
-    JSON.stringify({
-      claimScope: input.rejectedClaimScope,
-      readerSummaryJobId: input.rejected.jobId,
-      readerSummaryArtifactId: input.rejected.jobReaderSummaryArtifactId,
-      terminalStatus: "REJECTED",
-      failureReasonSha256: sha256(input.rejected.jobFailureReason!.trim()),
-      planSha256: input.day.canonicalSha256,
-    }),
-  );
   return {
-    schemaVersion:
-      "reader_summary.production_recovery_model_quality_remediation_claim.v1",
-    ...recoveryModelClaimCore(input.params, ids, input.day),
-    supersedes: {
-      claimScope: input.rejectedClaimScope,
-      readerSummaryJobId: input.rejected.jobId!,
-      readerSummaryArtifactId: input.rejected.jobReaderSummaryArtifactId!,
-      terminalStatus: "REJECTED",
-      rejectionEvidenceSha256,
-    },
-    boundaries: recoveryModelClaimBoundaries,
+    tenantId: row.receiptTenantId,
+    workspaceId: row.receiptWorkspaceId,
+    publicationId: row.receiptPublicationId,
+    readerSummaryJobId: row.receiptJobId,
+    readerSummaryArtifactId: row.receiptArtifactId,
+    recoveryKind: row.receiptRecoveryKind,
+    provenance: row.receiptProvenance,
+    provenanceSha256: row.receiptProvenanceSha256,
+    exactReceipt: row.receiptExact,
+    receiptSha256: row.receiptSha256,
+    recordedAt: row.receiptRecordedAt,
+    publicationReportSha256: row.publicationReportSha256,
+    publicationProofSha256: row.publicationProofSha256,
+    publicationPublishedAt: row.publicationPublishedAt,
   };
 };
 
-const qualityRemediationResumeModelClaimPayload = (
-  input: QualityRemediationClaimInput,
-  ids: ReturnType<typeof readerSummaryProductionRecoveryQualityRemediationResumeDayIds>,
-  failed: ExistingClaimRow,
-  remediation: QualityRemediationModelClaimPayload,
-): QualityRemediationResumeModelClaimPayload => ({
-  schemaVersion:
-    "reader_summary.production_recovery_model_quality_remediation_resume_claim.v1",
-  ...recoveryModelClaimCore(input.params, ids, input.day),
-  supersedes: {
-    claimScope: qualityRemediationClaimScope,
-    readerSummaryJobId: failed.jobId!, readerSummaryArtifactId: null,
-    terminalStatus: "FAILED", infrastructureFailure: "postgres_canonical_bounds",
-    failureReasonSha256: sha256(failed.jobFailureReason!.trim()),
-    rejectionEvidenceSha256: remediation.supersedes.rejectionEvidenceSha256,
-  },
-  boundaries: recoveryModelClaimBoundaries,
-});
+const asRecord = (value: unknown): Record<string, unknown> => {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    Array.isArray(value)
+  ) {
+    throw new Error(
+      "Reader summary production recovery claim payload is invalid",
+    );
+  }
+  return value as Record<string, unknown>;
+};
 
-const sha256 = (value: string): string =>
-  createHash("sha256").update(value).digest("hex");
-
-const deterministicClaimUuid = (
-  scope: string,
-  recoveryId: string,
-  date: string,
-): string => {
-  const hash = createHash("sha256")
-    .update(`${scope}-claim:${recoveryId}:${date}`)
-    .digest("hex");
-  return `${hash.slice(0, 8)}-${hash.slice(8, 12)}-5${hash.slice(13, 16)}-8${hash.slice(17, 20)}-${hash.slice(20, 32)}`;
+const deterministicClaimUuid = (recoveryIdentity: string): string => {
+  const hash = recoveryIdentity.slice(-64);
+  return `${hash.slice(0, 8)}-${hash.slice(8, 12)}-5${hash.slice(
+    13,
+    16,
+  )}-8${hash.slice(17, 20)}-${hash.slice(20, 32)}`;
 };

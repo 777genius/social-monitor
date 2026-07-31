@@ -1,517 +1,435 @@
 import type {
   FeedItemReadRepositoryPort,
-  FeedSourceContentItem,
   ListFeedItemsQuery,
   ListFeedItemsResult,
 } from "@social-monitor/feed/ports";
-import {
-  readerSummaryProductionRecoveryTenantId,
-  readerSummaryProductionRecoveryWorkspaceId,
-  type PrepareReaderSummaryProductionRecoveryResult,
-  type ReaderSummaryGitHubProjectionReaderPort,
-  type ReaderSummaryProductionRecoveryAuthorityBinding,
-  type ReaderSummaryProductionRecoveryAuthorityHandle,
-  type ReaderSummaryProductionRecoveryAuthorityPort,
-  type ReadReaderSummaryGitHubProjectionQuery,
-  type ReadReaderSummaryGitHubProjectionResult,
+import type {
+  ReaderSummaryGitHubProjectionReaderPort,
+  ReaderSummaryProductionRecoveryAuthorityBinding,
+  ReadReaderSummaryGitHubProjectionQuery,
+  ReadReaderSummaryGitHubProjectionResult,
 } from "@social-monitor/summary/ports";
 import type { ReaderSummaryGitHubProjectionItem } from "@social-monitor/summary/domain";
-import type { PostgresRuntimePoolConfig } from "@social-monitor/platform-persistence";
+import {
+  verifyPersistedProductionRecoveryAuthority,
+} from "../libs/summary/adapters/persistence/prisma/prisma-reader-summary-production-recovery-authority-row";
+
+import {
+  parseReaderSummaryProductionRecoveryCliArguments,
+  type ReaderSummaryProductionRecoveryDate,
+} from "./lib/reader-summary-production-recovery-cli";
+
+type QueryClient = Readonly<{
+  $queryRaw<T = unknown>(
+    strings: TemplateStringsArray,
+    ...values: readonly unknown[]
+  ): Promise<T>;
+}>;
+
+type PersistedAuthorityProofRow = Readonly<{
+  authorityCount: number;
+  selectedDayCount: number;
+  dryRunCount: number;
+  dryRunBytesEqual: boolean;
+  dryRunHashesEqual: boolean;
+  dryRunAuthorityHashesEqual: boolean;
+  dryRunBytesHashValid: boolean;
+  authorityBytesHashValid: boolean;
+}>;
+
+type PersistedAuthorityRow = Readonly<{
+  requestHash: string;
+  responsePayload: unknown;
+}>;
 
 export type ReaderSummaryProductionRecoveryScope = Readonly<{
   tenantId: string;
   workspaceId: string;
 }>;
 
-export type ReaderSummaryProductionRecoveryScopeDiscoveryClient = Readonly<{
-  $queryRaw: <T = unknown>(
-    query: TemplateStringsArray,
-    ...values: readonly unknown[]
-  ) => Promise<T>;
-}>;
+const canonicalTenantId = "00000000-0000-7000-8000-000000000901";
+const canonicalWorkspaceId = "00000000-0000-7000-8000-000000000902";
+const tenantScopeEnvName =
+  "READER_SUMMARY_PRODUCTION_RECOVERY_TENANT_ID";
+const workspaceScopeEnvName =
+  "READER_SUMMARY_PRODUCTION_RECOVERY_WORKSPACE_ID";
 
-export type ReaderSummaryProductionRecoverySessionConfigurationClient = Readonly<{
-  $queryRaw: <T = unknown>(
-    query: TemplateStringsArray,
-    ...values: readonly unknown[]
-  ) => Promise<T>;
-}>;
-
-type ScopeDiscoveryRow = Readonly<{
-  tenantId: string;
-  workspaceId: string;
-}>;
-
-type ScopeDiagnosticsRow = Readonly<{
-  timestamp_column: string;
-  tenant_sha256_12: string;
-  workspace_sha256_12: string;
-  utc_date: string;
-  provider_key: string;
-  normalized_status: string;
-  count: number;
-}>;
-
-type CloseableConnection = Readonly<{
-  close(): Promise<void>;
-}>;
-
-type ScopeEnv = Readonly<Record<string, string | undefined>>;
-type RuntimePoolConfigResolver = (
-  env: NodeJS.ProcessEnv,
-) => PostgresRuntimePoolConfig;
-
-const tenantScopeEnvName = "READER_SUMMARY_PRODUCTION_RECOVERY_TENANT_ID";
-const workspaceScopeEnvName = "READER_SUMMARY_PRODUCTION_RECOVERY_WORKSPACE_ID";
-const sourceDatabaseEnvName =
-  "READER_SUMMARY_PRODUCTION_RECOVERY_SOURCE_DATABASE_URL";
-const millisecondsPerUtcDay = 86_400_000;
-
-type SnapshotFeedItem = NonNullable<
-  Awaited<ReturnType<FeedItemReadRepositoryPort["findById"]>>
->;
-type FindFeedItemByIdQuery = Parameters<
-  FeedItemReadRepositoryPort["findById"]
->[0];
-type ReadSourceContentQuery = Parameters<
-  NonNullable<FeedItemReadRepositoryPort["readSourceContent"]>
->[0];
-
-type SourceSnapshotFeedItemReadRepositoryInput = Readonly<{
-  tenantId: string;
-  workspaceId: string;
-  feedItemsById: ReadonlyMap<string, SnapshotFeedItem>;
-  sourceContentByFeedItemId: ReadonlyMap<string, FeedSourceContentItem>;
-}>;
-
-type GitHubProjectionSnapshot = Readonly<{
-  tenantId: string;
-  workspaceId: string;
-  dayStartedAt: Date;
-  dayEndedAt: Date;
-  result: ReadReaderSummaryGitHubProjectionResult;
-}>;
-
-export type ReaderSummaryProductionRecoverySourceSnapshot = Readonly<{
-  scope: ReaderSummaryProductionRecoveryScope;
-  binding: ReaderSummaryProductionRecoveryAuthorityBinding;
-  authority: ReaderSummaryProductionRecoveryAuthorityPort;
-  feedItems: FeedItemReadRepositoryPort;
-  githubProjectionReader: ReaderSummaryGitHubProjectionReaderPort;
-}>;
-
-export type ReaderSummaryProductionRecoveryRuntimePoolConfigs = Readonly<{
-  productionRuntimePoolConfig: PostgresRuntimePoolConfig;
-  sourceRuntimePoolConfig: PostgresRuntimePoolConfig;
-}>;
-
-export type ReaderSummaryProductionRecoveryPhaseOptions<
-  SourceSummaryConnection extends ReaderSummaryProductionRecoveryScopeDiscoveryClient &
-    CloseableConnection,
-  SourceFeedConnection extends CloseableConnection,
-  ProductionSummaryConnection extends ReaderSummaryProductionRecoverySessionConfigurationClient &
-    CloseableConnection,
-  Result,
-> = Readonly<{
-  env: ScopeEnv;
-  createSourceSummaryConnection(): Promise<SourceSummaryConnection>;
-  createSourceFeedConnection(): Promise<SourceFeedConnection>;
-  createProductionSummaryConnection(): Promise<ProductionSummaryConnection>;
-  discoverScope(
-    sourceSummaryConnection: SourceSummaryConnection,
-  ): Promise<ReaderSummaryProductionRecoveryScope>;
-  createProductionAuthority(
-    productionSummaryConnection: ProductionSummaryConnection,
-  ): ReaderSummaryProductionRecoveryAuthorityPort;
-  createSourceFeedItems(
-    sourceFeedConnection: SourceFeedConnection,
-  ): FeedItemReadRepositoryPort;
-  createSourceGitHubProjectionReader(
-    sourceSummaryConnection: SourceSummaryConnection,
-  ): ReaderSummaryGitHubProjectionReaderPort;
-  runProduction(params: {
-    readonly sourceSnapshot: ReaderSummaryProductionRecoverySourceSnapshot;
-    readonly productionSummaryConnection: ProductionSummaryConnection;
-  }): Promise<Result>;
-}>;
-
-export const resolveReaderSummaryProductionRecoveryScope = async (params: {
-  readonly env: ScopeEnv;
-  readonly discover: () => Promise<ReaderSummaryProductionRecoveryScope>;
-}): Promise<ReaderSummaryProductionRecoveryScope> => {
-  const tenantId = readEnvValue(params.env, tenantScopeEnvName);
-  const workspaceId = readEnvValue(params.env, workspaceScopeEnvName);
+export const resolveReaderSummaryProductionRecoveryScope = (
+  env: Readonly<Record<string, string | undefined>>,
+): ReaderSummaryProductionRecoveryScope => {
+  const tenantId = readEnvValue(env, tenantScopeEnvName);
+  const workspaceId = readEnvValue(env, workspaceScopeEnvName);
   if ((tenantId === undefined) !== (workspaceId === undefined)) {
     throw new Error(
       "Reader summary production recovery tenant/workspace scope must be supplied together",
     );
   }
-  if (tenantId !== undefined && workspaceId !== undefined) {
-    assertCanonicalProductionRecoveryScope({ tenantId, workspaceId });
-    return { tenantId, workspaceId };
-  }
-  const discovered = await params.discover();
-  assertCanonicalProductionRecoveryScope(discovered);
-  return discovered;
-};
-
-export const resolveReaderSummaryProductionRecoverySourceDatabaseUrl = (
-  params: Readonly<{
-    env: ScopeEnv;
-    productionDatabaseUrl: string;
-  }>,
-): string =>
-  readEnvValue(params.env, sourceDatabaseEnvName) ?? params.productionDatabaseUrl;
-
-export const resolveReaderSummaryProductionRecoveryRuntimePoolConfigs = (
-  params: Readonly<{
-    env: NodeJS.ProcessEnv;
-    sourceDatabaseUrl: string;
-    resolveRuntimePoolConfig: RuntimePoolConfigResolver;
-  }>,
-): ReaderSummaryProductionRecoveryRuntimePoolConfigs => {
-  const productionRuntimePoolConfig = params.resolveRuntimePoolConfig(
-    params.env,
-  );
-  if (params.sourceDatabaseUrl !== productionRuntimePoolConfig.connectionString) {
-    throw new Error(
-      `${sourceDatabaseEnvName} must match DATABASE_URL when reader summary production recovery runs inside the shared PostgreSQL runtime pool process`,
-    );
-  }
-  return {
-    productionRuntimePoolConfig,
-    sourceRuntimePoolConfig: productionRuntimePoolConfig,
-  };
-};
-
-export const discoverReaderSummaryProductionRecoveryScope = async (
-  client: ReaderSummaryProductionRecoveryScopeDiscoveryClient,
-): Promise<ReaderSummaryProductionRecoveryScope> => {
-  const rows = await client.$queryRaw<readonly ScopeDiscoveryRow[]>`
-    WITH recovery_dates("utcDate") AS (
-      VALUES
-        (DATE '2026-07-23'),
-        (DATE '2026-07-24'),
-        (DATE '2026-07-25'),
-        (DATE '2026-07-26'),
-        (DATE '2026-07-27'),
-        (DATE '2026-07-28')
-    ),
-    recovery_providers("providerKey") AS (
-      VALUES
-        ('github-trending-page'),
-        ('hacker-news'),
-        ('reddit'),
-        ('rss'),
-        ('x-twitter')
-    ),
-    expected AS (
-      SELECT
-        recovery_dates."utcDate",
-        recovery_providers."providerKey",
-        CASE
-          WHEN recovery_dates."utcDate" = DATE '2026-07-23'
-            AND recovery_providers."providerKey" = 'github-trending-page'
-            THEN 'historical_unavailable'
-          WHEN recovery_dates."utcDate" = DATE '2026-07-28'
-            AND recovery_providers."providerKey" IN (
-              'github-trending-page', 'hacker-news', 'reddit'
-            ) THEN 'historical_unavailable'
-          WHEN recovery_dates."utcDate" = DATE '2026-07-28'
-            THEN 'partial_existing'
-          ELSE 'verified_existing'
-        END AS "evidenceState"
-      FROM recovery_dates
-      CROSS JOIN recovery_providers
-    ),
-    scope AS (
-      SELECT workspace."tenant_id", workspace."id" AS "workspace_id"
-      FROM "workspaces" AS workspace
-      JOIN "tenants" AS tenant
-        ON tenant."id" = workspace."tenant_id"
-        AND tenant."deleted_at" IS NULL
-      WHERE workspace."tenant_id" =
-          ${readerSummaryProductionRecoveryTenantId}::uuid
-        AND workspace."id" =
-          ${readerSummaryProductionRecoveryWorkspaceId}::uuid
-        AND workspace."deleted_at" IS NULL
-    ),
-    exact_counts AS (
-      SELECT
-        scope."tenant_id",
-        scope."workspace_id",
-        expected."utcDate",
-        expected."providerKey"
-      FROM scope
-      CROSS JOIN expected
-      LEFT JOIN "feed_items" AS feed
-        ON feed."tenant_id" = scope."tenant_id"
-        AND feed."workspace_id" = scope."workspace_id"
-        AND upper(feed."status"::TEXT) = 'VISIBLE'
-        AND feed."provider_key" = expected."providerKey"
-        AND (feed."published_at" AT TIME ZONE 'UTC')::DATE =
-          expected."utcDate"
-      GROUP BY
-        scope."tenant_id",
-        scope."workspace_id",
-        expected."utcDate",
-        expected."providerKey",
-        expected."evidenceState"
-      HAVING CASE expected."evidenceState"
-        WHEN 'historical_unavailable' THEN count(feed."id") = 0
-        ELSE count(feed."id") > 0
-      END
-    )
-    SELECT
-      exact."tenant_id"::TEXT AS "tenantId",
-      exact."workspace_id"::TEXT AS "workspaceId"
-    FROM exact_counts AS exact
-    GROUP BY exact."tenant_id", exact."workspace_id"
-    HAVING count(*) = 30
-    ORDER BY "tenantId", "workspaceId"
-  `;
-  if (rows.length !== 1 || rows[0] === undefined) {
-    const diagnostics =
-      await readReaderSummaryProductionRecoveryScopeDiagnostics(client);
-    throw new Error(
-      `Reader summary production recovery scope discovery expected exactly one scope, found ${rows.length}; ${JSON.stringify({
-        scope_diagnostics: diagnostics.map((row) => ({
-          timestamp_column: row.timestamp_column,
-          tenant_sha256_12: row.tenant_sha256_12,
-          workspace_sha256_12: row.workspace_sha256_12,
-          utc_date: row.utc_date,
-          provider_key: row.provider_key,
-          normalized_status: row.normalized_status,
-          count: Number(row.count),
-        })),
-      })}`,
-    );
-  }
   const scope = {
-    tenantId: rows[0].tenantId,
-    workspaceId: rows[0].workspaceId,
+    tenantId: tenantId ?? canonicalTenantId,
+    workspaceId: workspaceId ?? canonicalWorkspaceId,
   };
-  assertCanonicalProductionRecoveryScope(scope);
+  if (
+    scope.tenantId !== canonicalTenantId ||
+    scope.workspaceId !== canonicalWorkspaceId
+  ) {
+    throw new Error(
+      "Reader summary production recovery scope is not the reviewed production scope",
+    );
+  }
   return scope;
 };
 
-const assertCanonicalProductionRecoveryScope = (
-  scope: ReaderSummaryProductionRecoveryScope,
-): void => {
-  if (scope.tenantId !== readerSummaryProductionRecoveryTenantId ||
-    scope.workspaceId !== readerSummaryProductionRecoveryWorkspaceId
-  ) {
-    throw new Error(
-      "Reader summary production recovery tenant/workspace authority diverged",
-    );
-  }
-};
-
-const readReaderSummaryProductionRecoveryScopeDiagnostics = (
-  client: ReaderSummaryProductionRecoveryScopeDiscoveryClient,
-): Promise<readonly ScopeDiagnosticsRow[]> =>
-  client.$queryRaw<readonly ScopeDiagnosticsRow[]>`
-    SELECT
-      diagnostics."timestamp_column",
-      diagnostics."tenant_sha256_12",
-      diagnostics."workspace_sha256_12",
-      diagnostics."utc_date",
-      diagnostics."provider_key",
-      diagnostics."normalized_status",
-      diagnostics."count"
-    FROM (
-      SELECT 'observed_at'::TEXT AS "timestamp_column",
-        left(encode(sha256(convert_to(feed."tenant_id"::TEXT, 'UTF8')), 'hex'), 12) AS "tenant_sha256_12",
-        left(encode(sha256(convert_to(feed."workspace_id"::TEXT, 'UTF8')), 'hex'), 12) AS "workspace_sha256_12",
-        (feed."observed_at" AT TIME ZONE 'UTC')::DATE::TEXT AS "utc_date",
-        feed."provider_key"::TEXT AS "provider_key",
-        COALESCE(upper(feed."status"::TEXT), 'UNKNOWN') AS "normalized_status",
-        count(*)::INTEGER AS "count"
-      FROM "feed_items" AS feed
-      WHERE feed."observed_at" >= (DATE '2026-07-23'::TIMESTAMP AT TIME ZONE 'UTC')
-        AND feed."observed_at" < (DATE '2026-07-29'::TIMESTAMP AT TIME ZONE 'UTC')
-        AND feed."provider_key" = ANY(ARRAY['github-trending-page','hacker-news','reddit','rss','x-twitter'])
-      GROUP BY 1, 2, 3, 4, 5, 6
-      UNION ALL
-      SELECT 'created_at'::TEXT AS "timestamp_column",
-        left(encode(sha256(convert_to(feed."tenant_id"::TEXT, 'UTF8')), 'hex'), 12) AS "tenant_sha256_12",
-        left(encode(sha256(convert_to(feed."workspace_id"::TEXT, 'UTF8')), 'hex'), 12) AS "workspace_sha256_12",
-        (feed."created_at" AT TIME ZONE 'UTC')::DATE::TEXT AS "utc_date",
-        feed."provider_key"::TEXT AS "provider_key",
-        COALESCE(upper(feed."status"::TEXT), 'UNKNOWN') AS "normalized_status",
-        count(*)::INTEGER AS "count"
-      FROM "feed_items" AS feed
-      WHERE feed."created_at" >= (DATE '2026-07-23'::TIMESTAMP AT TIME ZONE 'UTC')
-        AND feed."created_at" < (DATE '2026-07-29'::TIMESTAMP AT TIME ZONE 'UTC')
-        AND feed."provider_key" = ANY(ARRAY['github-trending-page','hacker-news','reddit','rss','x-twitter'])
-      GROUP BY 1, 2, 3, 4, 5, 6
-      UNION ALL
-      SELECT 'published_at'::TEXT AS "timestamp_column",
-        left(encode(sha256(convert_to(feed."tenant_id"::TEXT, 'UTF8')), 'hex'), 12) AS "tenant_sha256_12",
-        left(encode(sha256(convert_to(feed."workspace_id"::TEXT, 'UTF8')), 'hex'), 12) AS "workspace_sha256_12",
-        (feed."published_at" AT TIME ZONE 'UTC')::DATE::TEXT AS "utc_date",
-        feed."provider_key"::TEXT AS "provider_key",
-        COALESCE(upper(feed."status"::TEXT), 'UNKNOWN') AS "normalized_status",
-        count(*)::INTEGER AS "count"
-      FROM "feed_items" AS feed
-      WHERE feed."published_at" >= (DATE '2026-07-23'::TIMESTAMP AT TIME ZONE 'UTC')
-        AND feed."published_at" < (DATE '2026-07-29'::TIMESTAMP AT TIME ZONE 'UTC')
-        AND feed."provider_key" = ANY(ARRAY['github-trending-page','hacker-news','reddit','rss','x-twitter'])
-      GROUP BY 1, 2, 3, 4, 5, 6
-    ) AS diagnostics
-    ORDER BY
-      diagnostics."timestamp_column",
-      diagnostics."tenant_sha256_12",
-      diagnostics."workspace_sha256_12",
-      diagnostics."utc_date",
-      diagnostics."provider_key",
-      diagnostics."normalized_status",
-      diagnostics."count"
-  `;
-
 export const configureProductionRecoverySession = async (
-  client: ReaderSummaryProductionRecoverySessionConfigurationClient,
+  client: QueryClient,
   scope: ReaderSummaryProductionRecoveryScope,
 ): Promise<void> => {
-  await client.$queryRaw<readonly unknown[]>`
+  const rows = await client.$queryRaw<
+    readonly { configured: boolean }[]
+  >`
     SELECT
-      set_config('social_monitor.tenant_id', ${scope.tenantId}, false),
-      set_config('social_monitor.workspace_id', ${scope.workspaceId}, false),
-      set_config('social_monitor.system_access', 'false', false)
+      set_config(
+        'social_monitor.tenant_id',
+        ${scope.tenantId},
+        false
+      ) = ${scope.tenantId}
+      AND set_config(
+        'social_monitor.workspace_id',
+        ${scope.workspaceId},
+        false
+      ) = ${scope.workspaceId}
+      AND set_config(
+        'social_monitor.database_access_mode',
+        'tenant',
+        false
+      ) = 'tenant' AS "configured"
   `;
-};
-
-export const runReaderSummaryProductionRecoveryPhases = async <
-  SourceSummaryConnection extends ReaderSummaryProductionRecoveryScopeDiscoveryClient &
-    CloseableConnection,
-  SourceFeedConnection extends CloseableConnection,
-  ProductionSummaryConnection extends ReaderSummaryProductionRecoverySessionConfigurationClient &
-    CloseableConnection,
-  Result,
->(
-  options: ReaderSummaryProductionRecoveryPhaseOptions<
-    SourceSummaryConnection,
-    SourceFeedConnection,
-    ProductionSummaryConnection,
-    Result
-  >,
-): Promise<Result> => {
-  const productionSummaryConnection =
-    await options.createProductionSummaryConnection();
-  let sourceSummaryConnection: SourceSummaryConnection | undefined;
-  try {
-    const recoveryScope = await resolveReaderSummaryProductionRecoveryScope({
-      env: options.env,
-      discover: async () => {
-        sourceSummaryConnection =
-          await options.createSourceSummaryConnection();
-        return options.discoverScope(sourceSummaryConnection);
-      },
-    });
-    await configureProductionRecoverySession(
-      productionSummaryConnection,
-      recoveryScope,
+  if (rows.length !== 1 || rows[0]?.configured !== true) {
+    throw new Error(
+      "Reader summary production recovery tenant session was not configured",
     );
-    const productionAuthority = options.createProductionAuthority(
-      productionSummaryConnection,
-    );
-    const prepared = await productionAuthority.prepare();
-    const binding = productionAuthority.readVerifiedBinding(
-      prepared.authority,
-    );
-    assertRecoveryScopeMatchesProductionAuthority(recoveryScope, binding);
-    const sourceSummaryConnectionForSnapshot = sourceSummaryConnection;
-    sourceSummaryConnection = undefined;
-    const sourceSnapshot =
-      await prepareReaderSummaryProductionRecoverySourceSnapshot(options, {
-        scope: recoveryScope,
-        prepared,
-        binding,
-        sourceSummaryConnection: sourceSummaryConnectionForSnapshot,
-      });
-    return await options.runProduction({
-      sourceSnapshot,
-      productionSummaryConnection,
-    });
-  } finally {
-    await sourceSummaryConnection?.close();
-    await productionSummaryConnection.close();
   }
 };
 
-export const createReaderSummaryProductionRecoveryGitHubProjectionSnapshot =
-  async (params: {
-    readonly binding: ReaderSummaryProductionRecoveryAuthorityBinding;
-    readonly sourceReader: ReaderSummaryGitHubProjectionReaderPort;
-  }): Promise<ReaderSummaryGitHubProjectionReaderPort> => {
-    const snapshots: GitHubProjectionSnapshot[] = [];
-    for (const day of params.binding.days) {
-      if (day.githubEvidence.mode !== "verified_existing") {
-        continue;
-      }
-      const query = githubProjectionQueryForRecoveryDay({
-        binding: params.binding,
-        dayStartedAt: new Date(day.period.startedAt),
-        dayEndedAt: new Date(day.period.endedAt),
-        observedThrough: new Date(params.binding.lease.consumedAt),
-      });
-      snapshots.push({
-        tenantId: params.binding.tenantId,
-        workspaceId: params.binding.workspaceId,
-        dayStartedAt: query.dayStartedAt,
-        dayEndedAt: query.dayEndedAt,
-        result: cloneGitHubProjectionResult(
-          await params.sourceReader.read(query),
-        ),
-      });
+export const assertPersistedReaderSummaryProductionRecoveryAuthority =
+  async (
+    client: QueryClient,
+    params: Readonly<{
+      scope: ReaderSummaryProductionRecoveryScope;
+      dates: readonly ReaderSummaryProductionRecoveryDate[];
+    }>,
+  ): Promise<void> => {
+    const rows = await client.$queryRaw<
+      readonly PersistedAuthorityProofRow[]
+    >`
+      WITH selected AS (
+        SELECT value::DATE AS "requestedUtcDate"
+        FROM jsonb_array_elements_text(
+          ${JSON.stringify(params.dates)}::jsonb
+        )
+      ),
+      authority AS (
+        SELECT lease.*
+        FROM "reader_summary_production_recovery_leases" AS lease
+        WHERE lease."tenant_id" = ${params.scope.tenantId}::uuid
+          AND lease."workspace_id" = ${params.scope.workspaceId}::uuid
+          AND lease."state" = 'CONSUMED'
+          AND lease."consumed_at" IS NOT NULL
+          AND lease."canonical_record"->>'schemaVersion' =
+            'reader_summary.production_recovery_authority.v2'
+          AND lease."canonical_record"->'requestedUtcDates' =
+            '[
+              "2026-07-23",
+              "2026-07-24",
+              "2026-07-25",
+              "2026-07-26",
+              "2026-07-27",
+              "2026-07-28"
+            ]'::jsonb
+          AND lease."canonical_record"->'boundaries' =
+            jsonb_build_object(
+              'stage', 'pre_model',
+              'modelCallPerformed', false,
+              'publicationPerformed', false,
+              'recollectionPerformed', false
+            )
+          AND NOT EXISTS (
+            SELECT 1
+            FROM selected
+            WHERE NOT (
+              lease."canonical_record"->'requestedUtcDates' @>
+                to_jsonb(ARRAY[selected."requestedUtcDate"::TEXT])
+            )
+          )
+        ORDER BY lease."id"
+      ),
+      selected_days AS (
+        SELECT day.*
+        FROM authority
+        JOIN "reader_summary_production_recovery_days" AS day
+          ON day."recovery_id" = authority."id"
+          AND day."tenant_id" = authority."tenant_id"
+          AND day."workspace_id" = authority."workspace_id"
+        JOIN selected
+          ON selected."requestedUtcDate" = day."requested_utc_date"
+      ),
+      dry_runs AS (
+        SELECT dry.*
+        FROM authority
+        JOIN "reader_summary_production_recovery_dry_runs" AS dry
+          ON dry."recovery_id" = authority."id"
+          AND dry."tenant_id" = authority."tenant_id"
+          AND dry."workspace_id" = authority."workspace_id"
+        WHERE dry."ordinal" IN (1, 2)
+      )
+      SELECT
+        (SELECT count(*)::INTEGER FROM authority) AS "authorityCount",
+        (SELECT count(*)::INTEGER FROM selected_days) AS
+          "selectedDayCount",
+        (SELECT count(*)::INTEGER FROM dry_runs) AS "dryRunCount",
+        (
+          SELECT count(DISTINCT encode("canonical_bytes", 'hex')) = 1
+          FROM dry_runs
+        ) AS "dryRunBytesEqual",
+        (
+          SELECT count(DISTINCT btrim("canonical_sha256")) = 1
+          FROM dry_runs
+        ) AS "dryRunHashesEqual",
+        (
+          SELECT bool_and(
+            btrim(dry_runs."canonical_sha256") =
+              btrim(authority."canonical_sha256")
+          )
+          FROM dry_runs
+          JOIN authority
+            ON authority."id" = dry_runs."recovery_id"
+        ) AS "dryRunAuthorityHashesEqual",
+        (
+          SELECT bool_and(
+            encode(sha256("canonical_bytes"), 'hex') =
+              btrim("canonical_sha256")
+          )
+          FROM dry_runs
+        ) AS "dryRunBytesHashValid",
+        (
+          SELECT bool_and(
+            encode(sha256("canonical_bytes"), 'hex') =
+              btrim("canonical_sha256")
+          )
+          FROM authority
+        ) AS "authorityBytesHashValid"
+    `;
+    const proof = rows[0];
+    if (
+      rows.length !== 1 ||
+      proof?.authorityCount !== 1 ||
+      proof.selectedDayCount !== params.dates.length ||
+      proof.dryRunCount !== 2 ||
+      !proof.dryRunBytesEqual ||
+      !proof.dryRunHashesEqual ||
+      !proof.dryRunAuthorityHashesEqual ||
+      !proof.dryRunBytesHashValid ||
+      !proof.authorityBytesHashValid
+    ) {
+      throw new Error(
+        "Reader summary production recovery requires two byte-identical persisted pre-AI dry-run plans for every selected date",
+      );
     }
-    return new ReaderSummaryProductionRecoveryGitHubProjectionSnapshotReader(
-      snapshots,
+  };
+
+export const loadPersistedReaderSummaryProductionRecoveryAuthority =
+  async (
+    client: QueryClient,
+    scope: ReaderSummaryProductionRecoveryScope,
+  ): Promise<ReaderSummaryProductionRecoveryAuthorityBinding> => {
+    const rows = await client.$queryRaw<
+      readonly PersistedAuthorityRow[]
+    >`
+      WITH target AS (
+        SELECT lease.*
+        FROM "reader_summary_production_recovery_leases" AS lease
+        WHERE lease."tenant_id" = ${scope.tenantId}::uuid
+          AND lease."workspace_id" = ${scope.workspaceId}::uuid
+          AND lease."canonical_record"->>'schemaVersion' =
+            'reader_summary.production_recovery_authority.v2'
+          AND lease."canonical_record"->'requestedUtcDates' =
+            '[
+              "2026-07-23",
+              "2026-07-24",
+              "2026-07-25",
+              "2026-07-26",
+              "2026-07-27",
+              "2026-07-28"
+            ]'::jsonb
+        ORDER BY lease."id"
+      )
+      SELECT
+        btrim(lease."canonical_sha256") AS "requestHash",
+        jsonb_build_object(
+          'schemaVersion',
+            'reader_summary.production_recovery_authority.v2',
+          'recoveryId', lease."id"::TEXT,
+          'identity', lease."identity",
+          'tenantId', lease."tenant_id"::TEXT,
+          'workspaceId', lease."workspace_id"::TEXT,
+          'requestedUtcDates',
+            lease."canonical_record"->'requestedUtcDates',
+          'canonicalSha256', btrim(lease."canonical_sha256"),
+          'dryRunCanonicalSha256s', (
+            SELECT jsonb_agg(
+              btrim(dry."canonical_sha256")
+              ORDER BY dry."ordinal"
+            )
+            FROM "reader_summary_production_recovery_dry_runs" AS dry
+            WHERE dry."recovery_id" = lease."id"
+              AND dry."tenant_id" = lease."tenant_id"
+              AND dry."workspace_id" = lease."workspace_id"
+          ),
+          'lease', jsonb_build_object(
+            'state', lease."state",
+            'issuedAt', to_char(
+              lease."issued_at" AT TIME ZONE 'UTC',
+              'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'
+            ),
+            'consumedAt', to_char(
+              lease."consumed_at" AT TIME ZONE 'UTC',
+              'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'
+            )
+          ),
+          'boundaries', lease."canonical_record"->'boundaries',
+          'days', (
+            SELECT jsonb_agg(
+              jsonb_build_object(
+                'schemaVersion',
+                  day."canonical_record"->>'schemaVersion',
+                'identity', day."identity",
+                'requestedUtcDate',
+                  to_char(day."requested_utc_date", 'YYYY-MM-DD'),
+                'period', day."canonical_record"->'period',
+                'providerCounts', day."provider_counts",
+                'providerEvidence', day."provider_evidence",
+                'providerEvidenceSha256',
+                  btrim(day."provider_evidence_sha256"),
+                'githubEvidence', day."github_evidence",
+                'canonicalSha256', btrim(day."canonical_sha256"),
+                'planSha256s', plan.entry->'planSha256s'
+              )
+              ORDER BY day."requested_utc_date"
+            )
+            FROM "reader_summary_production_recovery_days" AS day
+            JOIN LATERAL (
+              SELECT entry
+              FROM jsonb_array_elements(
+                lease."canonical_record"->'days'
+              ) AS planned(entry)
+              WHERE entry->>'requestedUtcDate' =
+                to_char(day."requested_utc_date", 'YYYY-MM-DD')
+            ) AS plan ON TRUE
+            WHERE day."recovery_id" = lease."id"
+              AND day."tenant_id" = lease."tenant_id"
+              AND day."workspace_id" = lease."workspace_id"
+          )
+        ) AS "responsePayload"
+      FROM target AS lease
+    `;
+    if (rows.length !== 1 || rows[0] === undefined) {
+      throw new Error(
+        "Reader summary production recovery persisted authority is absent or ambiguous",
+      );
+    }
+    return verifyPersistedProductionRecoveryAuthority(
+      rows[0].responsePayload,
+      rows[0].requestHash,
     );
   };
 
+export const createPersistedRecoveryGitHubProjectionReader = (
+  binding: ReaderSummaryProductionRecoveryAuthorityBinding,
+): ReaderSummaryGitHubProjectionReaderPort => {
+  const days = new Map<
+    string,
+    ReadReaderSummaryGitHubProjectionResult
+  >();
+  for (const day of binding.days) {
+    if (day.githubEvidence.mode !== "verified_existing") {
+      continue;
+    }
+    const rows =
+      day.providerEvidence["github-trending-page"].map(
+        authorityGitHubProjectionItem,
+      );
+    days.set(day.requestedUtcDate, {
+      eligibleBindingIds: [
+        ...new Set(rows.map((row) => row.sourceBindingId)),
+      ].sort(),
+      items: rows,
+      pageCount: rows.length === 0 ? 0 : 1,
+    });
+  }
+  return {
+    read: async (
+      query: ReadReaderSummaryGitHubProjectionQuery,
+    ): Promise<ReadReaderSummaryGitHubProjectionResult> => {
+      if (
+        query.tenantId !== binding.tenantId ||
+        query.workspaceId !== binding.workspaceId
+      ) {
+        return { eligibleBindingIds: [], items: [], pageCount: 0 };
+      }
+      const key = query.dayStartedAt.toISOString().slice(0, 10);
+      return cloneProjection(
+        days.get(key) ?? {
+          eligibleBindingIds: [],
+          items: [],
+          pageCount: 0,
+        },
+      );
+    },
+  };
+};
+
+class PersistedAuthorityFeedItems
+  implements FeedItemReadRepositoryPort
+{
+  async list(_query: ListFeedItemsQuery): Promise<ListFeedItemsResult> {
+    void _query;
+    throw new Error(
+      "Reader summary production recovery never recollects provider rows",
+    );
+  }
+
+  async findById(): Promise<null> {
+    return null;
+  }
+}
+
 async function main(): Promise<void> {
+  // This must remain the first operation: invalid dates cannot read env or DB.
+  const cli = parseReaderSummaryProductionRecoveryCliArguments(
+    process.argv.slice(2),
+  );
+
   const { loadDotenvIfPresent } = await import("./lib/env-file");
   loadDotenvIfPresent(".env");
-
-  if (!process.argv.slice(2).includes("--apply")) {
-    throw new Error("Pass --apply to run Jul23-Jul28 production recovery");
-  }
-  const productionDatabaseUrl = requiredEnv("DATABASE_URL");
-  const sourceDatabaseUrl =
-    resolveReaderSummaryProductionRecoverySourceDatabaseUrl({
-      env: process.env,
-      productionDatabaseUrl,
-    });
-  const agentRuntimeAddress = requiredEnv("AGENT_RUNTIME_GRPC_ADDRESS");
+  const databaseUrl = requiredEnv("DATABASE_URL");
+  const agentRuntimeAddress = requiredEnv(
+    "AGENT_RUNTIME_GRPC_ADDRESS",
+  );
+  const scope = resolveReaderSummaryProductionRecoveryScope(process.env);
   const {
     resolvePostgresRuntimePoolConfig,
-    runWithSystemDatabaseAccess,
     runWithTenantDatabaseAccess,
   } = await import("@social-monitor/platform-persistence");
-  const { PrismaFeedConnection } = await import(
-    "@social-monitor/feed/adapters/persistence/prisma/prisma-feed-connection"
+  const { PrismaSummaryConnection } = await import(
+    "@social-monitor/summary/adapters/persistence/prisma/prisma-summary-connection"
   );
-  const { PrismaFeedItemReadRepository } = await import(
-    "@social-monitor/feed/adapters/persistence/prisma/prisma-feed-item-read.repository"
+  const { PrismaReaderSummaryRecoveryFinalization } = await import(
+    "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-recovery-finalization"
   );
   const { AgentRuntimeReaderSummaryModelAdapter } = await import(
     "@social-monitor/summary/adapters/model/agent-runtime-reader-summary-model.adapter"
   );
   const { GrpcAgentRuntimeClient } = await import(
     "@social-monitor/summary/adapters/model/grpc-agent-runtime-client"
-  );
-  const { PrismaReaderSummaryGitHubProjectionReader } = await import(
-    "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-github-projection.reader"
-  );
-  const { PrismaReaderSummaryProductionRecoveryAuthority } = await import(
-    "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-production-recovery-authority"
-  );
-  const { PrismaReaderSummaryRecoveryFinalization } = await import(
-    "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-recovery-finalization"
-  );
-  const { PrismaSummaryConnection } = await import(
-    "@social-monitor/summary/adapters/persistence/prisma/prisma-summary-connection"
   );
   const { CryptoIdGenerator, SystemClock } = await import(
     "@social-monitor/shared-kernel"
@@ -522,473 +440,153 @@ async function main(): Promise<void> {
   const {
     createProductionRecoveryDayExecutor,
     runReaderSummaryProductionRecovery,
-  } = await import("./lib/reader-summary-production-recovery-cli");
+  } = await import(
+    "./lib/reader-summary-production-recovery-cli"
+  );
   const {
     PrismaReaderSummaryProductionRecoveryExecutionGuard,
-  } = await import("./lib/reader-summary-production-recovery-replay-guard");
-  const clock = new SystemClock();
-  const { productionRuntimePoolConfig, sourceRuntimePoolConfig } =
-    resolveReaderSummaryProductionRecoveryRuntimePoolConfigs({
-      env: process.env,
-      sourceDatabaseUrl,
-      resolveRuntimePoolConfig: resolvePostgresRuntimePoolConfig,
-    });
-
-  const result = await runReaderSummaryProductionRecoveryPhases({
-    env: process.env,
-    createSourceSummaryConnection: () =>
-      PrismaSummaryConnection.create(sourceRuntimePoolConfig),
-    createSourceFeedConnection: () =>
-      PrismaFeedConnection.create(sourceRuntimePoolConfig),
-    createProductionSummaryConnection: () =>
-      PrismaSummaryConnection.create(productionRuntimePoolConfig),
-    discoverScope: (sourceSummary) =>
-      runWithSystemDatabaseAccess(
-        "reader summary production recovery scope discovery",
-        () =>
-          discoverReaderSummaryProductionRecoveryScope(
-            sourceSummary,
-          ),
-      ),
-    createProductionAuthority: (productionSummary) =>
-      new PrismaReaderSummaryProductionRecoveryAuthority(productionSummary),
-    createSourceFeedItems: (feedConnection) =>
-      new PrismaFeedItemReadRepository(feedConnection),
-    createSourceGitHubProjectionReader: (sourceSummary) =>
-      new PrismaReaderSummaryGitHubProjectionReader(sourceSummary),
-    runProduction: async ({
-      sourceSnapshot,
-      productionSummaryConnection,
-    }) => {
-      const agentRuntimeClient = GrpcAgentRuntimeClient.connect({
+  } = await import(
+    "./lib/reader-summary-production-recovery-replay-guard"
+  );
+  const config = resolvePostgresRuntimePoolConfig({
+    ...process.env,
+    DATABASE_URL: databaseUrl,
+  });
+  const connection = await PrismaSummaryConnection.create(config);
+  try {
+    const result = await runWithTenantDatabaseAccess(scope, async () => {
+      await configureProductionRecoverySession(connection, scope);
+      await assertPersistedReaderSummaryProductionRecoveryAuthority(
+        connection,
+        { scope, dates: cli.dates },
+      );
+      const binding =
+        await loadPersistedReaderSummaryProductionRecoveryAuthority(
+          connection,
+          scope,
+        );
+      const githubProjectionReader =
+        createPersistedRecoveryGitHubProjectionReader(binding);
+      const clock = new SystemClock();
+      const runtimeClient = GrpcAgentRuntimeClient.connect({
         address: agentRuntimeAddress,
         clock,
         options: {
           timeoutMs:
             READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.summaryModelTimeoutMs,
-          serviceToken: readEnv("AGENT_RUNTIME_SERVICE_TOKEN"),
+          serviceToken: requiredEnv("AGENT_RUNTIME_SERVICE_TOKEN"),
         },
       });
-      return runWithTenantDatabaseAccess(sourceSnapshot.scope, () =>
-        runReaderSummaryProductionRecovery({
-          apply: true,
-          authority: sourceSnapshot.authority,
-          executionGuard: new PrismaReaderSummaryProductionRecoveryExecutionGuard(
-            productionSummaryConnection,
+      return runReaderSummaryProductionRecovery({
+        apply: true,
+        dates: cli.dates,
+        generationProfile: {
+          modelVersion: "codex:gpt-5.5:xhigh",
+          promptVersion:
+            "reader_summary.prompt.2026-07-14.daily_synthesis",
+          rankingPolicyVersion: "story_ranking_v10",
+        },
+        binding,
+        executionGuard:
+          new PrismaReaderSummaryProductionRecoveryExecutionGuard(
+            connection,
           ),
-          executeDay: createProductionRecoveryDayExecutor({
+        executeDay: createProductionRecoveryDayExecutor(
+          {
             model: new AgentRuntimeReaderSummaryModelAdapter({
-              client: agentRuntimeClient,
+              client: runtimeClient,
               agentProvider: "codex",
               model: "gpt-5.5",
               reasoningEffort: "xhigh",
               timeoutMs:
-                READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.summaryModelTimeoutMs,
+                READER_SUMMARY_PRODUCTION_RUNTIME_POLICY
+                  .summaryModelTimeoutMs,
             }),
             finalization: new PrismaReaderSummaryRecoveryFinalization(
-              productionSummaryConnection,
+              connection,
             ),
-            feedItems: sourceSnapshot.feedItems,
-            githubProjectionReader: sourceSnapshot.githubProjectionReader,
+            feedItems: new PersistedAuthorityFeedItems(),
+            githubProjectionReader,
             ids: new CryptoIdGenerator(),
             clock,
-          }, productionSummaryConnection),
-        }),
-      );
-    },
-  });
-
-  console.log(`outcome=${result.outcome}`);
-  console.log(`recovery=${result.plan.recoveryId}`);
-  for (const day of result.dayResults) {
-    console.log(
-      [
-        `date=${day.requestedUtcDate}`,
-        `outcome=${day.outcome}`,
-        day.readerSummaryJobId === undefined
-          ? undefined : `job=${day.readerSummaryJobId}`,
-        day.readerSummaryId === undefined
-          ? undefined : `artifact=${day.readerSummaryId}`,
-        day.skipEvidence === undefined ? undefined
-          : `evidence=${day.skipEvidence.reason}:${day.skipEvidence.terminalStatus}`,
-      ]
-        .filter((part): part is string => part !== undefined)
-        .join(" "),
-    );
-  }
-}
-
-const prepareReaderSummaryProductionRecoverySourceSnapshot = async <
-  SourceSummaryConnection extends ReaderSummaryProductionRecoveryScopeDiscoveryClient &
-    CloseableConnection,
-  SourceFeedConnection extends CloseableConnection,
-  ProductionSummaryConnection extends ReaderSummaryProductionRecoverySessionConfigurationClient &
-    CloseableConnection,
-  Result,
->(
-  options: ReaderSummaryProductionRecoveryPhaseOptions<
-    SourceSummaryConnection,
-    SourceFeedConnection,
-    ProductionSummaryConnection,
-    Result
-  >,
-  authority: Readonly<{
-    scope: ReaderSummaryProductionRecoveryScope;
-    prepared: PrepareReaderSummaryProductionRecoveryResult;
-    binding: ReaderSummaryProductionRecoveryAuthorityBinding;
-    sourceSummaryConnection: SourceSummaryConnection | undefined;
-  }>,
-): Promise<ReaderSummaryProductionRecoverySourceSnapshot> => {
-  const scope = authority.scope;
-  let sourceSummaryConnection = authority.sourceSummaryConnection;
-  let sourceFeedConnection: SourceFeedConnection | undefined;
-  if (authority.prepared.outcome === "replayed") {
-    try {
-      return sourceSnapshotFromPreparedAuthority({
-        scope,
-        prepared: authority.prepared,
-        binding: authority.binding,
-        feedItems: new UnavailableSourceSnapshotFeedItemReadRepository(),
-        githubProjectionReader:
-          new ReaderSummaryProductionRecoveryGitHubProjectionSnapshotReader([]),
-      });
-    } finally {
-      await sourceSummaryConnection?.close();
-    }
-  }
-  try {
-    sourceSummaryConnection ??=
-      await options.createSourceSummaryConnection();
-    sourceFeedConnection = await options.createSourceFeedConnection();
-    const feedItems = await createSourceSnapshotFeedItems({
-      binding: authority.binding,
-      sourceFeedItems: options.createSourceFeedItems(sourceFeedConnection),
-    });
-    const githubProjectionReader =
-      await createReaderSummaryProductionRecoveryGitHubProjectionSnapshot({
-        binding: authority.binding,
-        sourceReader:
-          options.createSourceGitHubProjectionReader(sourceSummaryConnection),
-      });
-    return sourceSnapshotFromPreparedAuthority({
-      scope,
-      prepared: authority.prepared,
-      binding: authority.binding,
-      feedItems,
-      githubProjectionReader,
-    });
-  } finally {
-    await sourceFeedConnection?.close();
-    await sourceSummaryConnection?.close();
-  }
-};
-
-const assertRecoveryScopeMatchesProductionAuthority = (
-  recoveryScope: ReaderSummaryProductionRecoveryScope,
-  binding: ReaderSummaryProductionRecoveryAuthorityBinding,
-): void => {
-  if (
-    recoveryScope.tenantId !== binding.tenantId ||
-    recoveryScope.workspaceId !== binding.workspaceId
-  ) {
-    throw new Error(
-      "Reader summary production recovery session scope diverged from production authority",
-    );
-  }
-};
-
-const sourceSnapshotFromPreparedAuthority = (params: {
-  readonly scope: ReaderSummaryProductionRecoveryScope;
-  readonly prepared: PrepareReaderSummaryProductionRecoveryResult;
-  readonly binding: ReaderSummaryProductionRecoveryAuthorityBinding;
-  readonly feedItems: FeedItemReadRepositoryPort;
-  readonly githubProjectionReader: ReaderSummaryGitHubProjectionReaderPort;
-}): ReaderSummaryProductionRecoverySourceSnapshot => ({
-  scope: params.scope,
-  binding: params.binding,
-  authority: new ReaderSummaryProductionRecoverySnapshotAuthority(
-    params.prepared.outcome,
-    params.binding,
-  ),
-  feedItems: params.feedItems,
-  githubProjectionReader: params.githubProjectionReader,
-});
-
-const createSourceSnapshotFeedItems = async (params: {
-  readonly binding: ReaderSummaryProductionRecoveryAuthorityBinding;
-  readonly sourceFeedItems: FeedItemReadRepositoryPort;
-}): Promise<FeedItemReadRepositoryPort> => {
-  const feedItemIds = [
-    ...new Set(
-      params.binding.days.flatMap((day) =>
-        Object.values(day.providerEvidence).flatMap((rows) =>
-          rows
-            .filter((row) => row.providerKey !== "github-trending-page")
-            .map((row) => row.feedItemId),
+          },
+          connection,
         ),
-      ),
-    ),
-  ].sort();
-  const sourceContent = await params.sourceFeedItems.readSourceContent?.({
-    tenantId: params.binding.tenantId as ReadSourceContentQuery["tenantId"],
-    workspaceId:
-      params.binding.workspaceId as ReadSourceContentQuery["workspaceId"],
-    feedItemIds,
-  });
-  const sourceContentByFeedItemId = new Map(
-    (sourceContent ?? []).map((item) => [item.feedItemId, item] as const),
-  );
-  const feedItemsById = new Map<string, SnapshotFeedItem>();
-  for (const feedItemId of feedItemIds) {
-    const feedItem = await params.sourceFeedItems.findById({
-      tenantId: params.binding.tenantId as FindFeedItemByIdQuery["tenantId"],
-      workspaceId:
-        params.binding.workspaceId as FindFeedItemByIdQuery["workspaceId"],
-      feedItemId,
+      });
     });
-    if (feedItem === null) {
-      throw new Error(
-        `Reader summary production recovery source snapshot missing feed item ${feedItemId}`,
+    console.log(`outcome=${result.outcome}`);
+    for (const day of result.dayResults) {
+      console.log(
+        `date=${day.requestedUtcDate} outcome=${day.outcome}`,
       );
     }
-    feedItemsById.set(feedItemId, feedItem);
+  } finally {
+    await connection.close();
   }
-  return new SourceSnapshotFeedItemReadRepository({
-    tenantId: params.binding.tenantId,
-    workspaceId: params.binding.workspaceId,
-    feedItemsById,
-    sourceContentByFeedItemId,
-  });
+}
+
+const authorityGitHubProjectionItem = (
+  row: ReaderSummaryProductionRecoveryAuthorityBinding["days"][number]["providerEvidence"]["github-trending-page"][number],
+): ReaderSummaryGitHubProjectionItem => {
+  if (row.github === undefined) {
+    throw new Error(
+      "Reader summary production recovery persisted GitHub authority is incomplete",
+    );
+  }
+  if (row.sourceProviderContentHash === null) {
+    throw new Error(
+      "Reader summary production recovery persisted GitHub provider hash is incomplete",
+    );
+  }
+  return {
+    feedItemId: row.feedItemId,
+    sourceItemId: row.sourceItemId,
+    sourceBindingId: row.sourceBindingId,
+    providerKey: row.providerKey,
+    metadataKind: "github_trending_page_repository",
+    scanJobId: row.github.scanJobId,
+    canonicalUrl: row.canonicalUrl,
+    repositoryFullName: row.github.repositoryIdentity,
+    rank: row.github.rank,
+    window: "daily",
+    checkedAt: new Date(row.github.checkedAt),
+    publishedAt: new Date(row.publishedAt),
+    observedAt: new Date(row.observedAt),
+    sourceContentHash: row.sourceContentHash,
+    sourceProviderContentHash: row.sourceProviderContentHash,
+  };
 };
 
-class ReaderSummaryProductionRecoverySnapshotAuthority
-  implements ReaderSummaryProductionRecoveryAuthorityPort
-{
-  private readonly handle =
-    {} as ReaderSummaryProductionRecoveryAuthorityHandle;
-
-  constructor(
-    private readonly outcome: PrepareReaderSummaryProductionRecoveryResult["outcome"],
-    private readonly binding: ReaderSummaryProductionRecoveryAuthorityBinding,
-  ) {}
-
-  async prepare(): Promise<PrepareReaderSummaryProductionRecoveryResult> {
-    return { outcome: this.outcome, authority: this.handle };
-  }
-
-  readVerifiedBinding(
-    authority: ReaderSummaryProductionRecoveryAuthorityHandle,
-  ): ReaderSummaryProductionRecoveryAuthorityBinding {
-    if (authority !== this.handle) {
-      throw new Error(
-        "Reader summary production recovery source snapshot authority handle diverged",
-      );
-    }
-    return this.binding;
-  }
-}
-
-class SourceSnapshotFeedItemReadRepository
-  implements FeedItemReadRepositoryPort
-{
-  constructor(private readonly input: SourceSnapshotFeedItemReadRepositoryInput) {}
-
-  async list(_query: ListFeedItemsQuery): Promise<ListFeedItemsResult> {
-    void _query;
-    throw new Error(
-      "Reader summary production recovery source snapshot does not support feed list queries",
-    );
-  }
-
-  async findById(
-    query: FindFeedItemByIdQuery,
-  ): Promise<SnapshotFeedItem | null> {
-    if (
-      query.tenantId !== this.input.tenantId ||
-      query.workspaceId !== this.input.workspaceId
-    ) {
-      return null;
-    }
-    const feedItem = this.input.feedItemsById.get(query.feedItemId);
-    if (feedItem === undefined) {
-      return null;
-    }
-    const observedAt = feedItem.toSnapshot().observedAt;
-    if (
-      query.observedBefore !== undefined &&
-      observedAt.getTime() >= query.observedBefore.getTime()
-    ) {
-      return null;
-    }
-    return feedItem;
-  }
-
-  async readSourceContent(
-    query: ReadSourceContentQuery,
-  ): Promise<readonly FeedSourceContentItem[]> {
-    if (
-      query.tenantId !== this.input.tenantId ||
-      query.workspaceId !== this.input.workspaceId
-    ) {
-      return [];
-    }
-    return query.feedItemIds.flatMap((feedItemId) => {
-      const feedItem = this.input.feedItemsById.get(feedItemId);
-      const sourceContent =
-        this.input.sourceContentByFeedItemId.get(feedItemId);
-      if (feedItem === undefined || sourceContent === undefined) {
-        return [];
-      }
-      const observedAt = feedItem.toSnapshot().observedAt;
-      if (
-        query.observedBefore !== undefined &&
-        observedAt.getTime() >= query.observedBefore.getTime()
-      ) {
-        return [];
-      }
-      return [sourceContent];
-    });
-  }
-}
-
-class UnavailableSourceSnapshotFeedItemReadRepository
-  implements FeedItemReadRepositoryPort
-{
-  async list(_query: ListFeedItemsQuery): Promise<ListFeedItemsResult> {
-    void _query;
-    return { items: [] };
-  }
-
-  async findById(): Promise<null> {
-    return null;
-  }
-}
-
-class ReaderSummaryProductionRecoveryGitHubProjectionSnapshotReader
-  implements ReaderSummaryGitHubProjectionReaderPort
-{
-  private readonly snapshotsByDay = new Map<string, GitHubProjectionSnapshot>();
-
-  constructor(snapshots: readonly GitHubProjectionSnapshot[]) {
-    for (const snapshot of snapshots) {
-      this.snapshotsByDay.set(
-        recoveryUtcDayKey(snapshot.dayStartedAt, snapshot.dayEndedAt),
-        snapshot,
-      );
-    }
-  }
-
-  async read(
-    query: ReadReaderSummaryGitHubProjectionQuery,
-  ): Promise<ReadReaderSummaryGitHubProjectionResult> {
-    const dayKey = recoveryUtcDayKey(query.dayStartedAt, query.dayEndedAt);
-    if (query.observedThrough.getTime() < query.dayEndedAt.getTime()) {
-      throw new Error(
-        "Reader summary production recovery GitHub projection snapshot requires observedThrough at or after UTC day end",
-      );
-    }
-    const snapshot = this.snapshotsByDay.get(dayKey);
-    if (
-      snapshot === undefined ||
-      query.tenantId !== snapshot.tenantId ||
-      query.workspaceId !== snapshot.workspaceId
-    ) {
-      return { eligibleBindingIds: [], items: [], pageCount: 0 };
-    }
-    return cloneGitHubProjectionResult(snapshot.result);
-  }
-}
-
-const githubProjectionQueryForRecoveryDay = (params: {
-  readonly binding: ReaderSummaryProductionRecoveryAuthorityBinding;
-  readonly dayStartedAt: Date;
-  readonly dayEndedAt: Date;
-  readonly observedThrough: Date;
-}): ReadReaderSummaryGitHubProjectionQuery => ({
-  tenantId: params.binding.tenantId as ReadReaderSummaryGitHubProjectionQuery["tenantId"],
-  workspaceId: params.binding.workspaceId as ReadReaderSummaryGitHubProjectionQuery["workspaceId"],
-  dayStartedAt: params.dayStartedAt,
-  dayEndedAt: params.dayEndedAt,
-  observedThrough: params.observedThrough,
-});
-
-const recoveryUtcDayKey = (dayStartedAt: Date, dayEndedAt: Date): string => {
-  if (
-    !Number.isFinite(dayStartedAt.getTime()) ||
-    !Number.isFinite(dayEndedAt.getTime())
-  ) {
-    throw new Error(
-      "Reader summary production recovery GitHub projection snapshot requires finite UTC day bounds",
-    );
-  }
-  const dayKey = dayStartedAt.toISOString().slice(0, 10);
-  const expectedStart = new Date(`${dayKey}T00:00:00.000Z`);
-  const expectedEnd = new Date(
-    expectedStart.getTime() + millisecondsPerUtcDay,
-  );
-  if (
-    dayStartedAt.getTime() !== expectedStart.getTime() ||
-    dayEndedAt.getTime() !== expectedEnd.getTime()
-  ) {
-    throw new Error(
-      "Reader summary production recovery GitHub projection snapshot requires an exact UTC day",
-    );
-  }
-  return dayKey;
-};
-
-const cloneGitHubProjectionResult = (
-  result: ReadReaderSummaryGitHubProjectionResult,
+const cloneProjection = (
+  value: ReadReaderSummaryGitHubProjectionResult,
 ): ReadReaderSummaryGitHubProjectionResult => ({
-  eligibleBindingIds: [...result.eligibleBindingIds],
-  items: result.items.map(cloneGitHubProjectionItem),
-  pageCount: result.pageCount,
+  eligibleBindingIds: [...value.eligibleBindingIds],
+  items: value.items.map((item) => ({
+    ...item,
+    publishedAt: new Date(item.publishedAt),
+    observedAt: new Date(item.observedAt),
+    ...(item.checkedAt === undefined
+      ? {}
+      : { checkedAt: new Date(item.checkedAt) }),
+  })),
+  pageCount: value.pageCount,
 });
 
-const cloneGitHubProjectionItem = (
-  item: ReaderSummaryGitHubProjectionItem,
-): ReaderSummaryGitHubProjectionItem => ({
-  feedItemId: item.feedItemId,
-  sourceItemId: item.sourceItemId,
-  sourceBindingId: item.sourceBindingId,
-  providerKey: item.providerKey,
-  ...(item.metadataKind === undefined ? {} : { metadataKind: item.metadataKind }),
-  ...(item.scanJobId === undefined ? {} : { scanJobId: item.scanJobId }),
-  canonicalUrl: item.canonicalUrl,
-  ...(item.repositoryFullName === undefined
-    ? {}
-    : { repositoryFullName: item.repositoryFullName }),
-  ...(item.rank === undefined ? {} : { rank: item.rank }),
-  ...(item.starsGained === undefined ? {} : { starsGained: item.starsGained }),
-  ...(item.window === undefined ? {} : { window: item.window }),
-  ...(item.fetchStartedAt === undefined
-    ? {}
-    : { fetchStartedAt: new Date(item.fetchStartedAt) }),
-  ...(item.checkedAt === undefined
-    ? {}
-    : { checkedAt: new Date(item.checkedAt) }),
-  publishedAt: new Date(item.publishedAt),
-  observedAt: new Date(item.observedAt),
-  sourceContentHash: item.sourceContentHash,
-  sourceProviderContentHash: item.sourceProviderContentHash,
-});
-
-function requiredEnv(name: string): string {
-  const value = readEnv(name);
+const requiredEnv = (name: string): string => {
+  const value = readEnvValue(process.env, name);
   if (value === undefined) {
     throw new Error(`${name} is required`);
   }
   return value;
-}
+};
 
-function readEnv(name: string): string | undefined {
-  return readEnvValue(process.env, name);
-}
-
-function readEnvValue(env: ScopeEnv, name: string): string | undefined {
+const readEnvValue = (
+  env: Readonly<Record<string, string | undefined>>,
+  name: string,
+): string | undefined => {
   const value = env[name]?.trim();
   return value === undefined || value.length === 0 ? undefined : value;
-}
+};
 
 if (require.main === module) {
   void main().catch((error) => {

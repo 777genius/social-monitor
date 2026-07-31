@@ -1,115 +1,57 @@
-import type {
-  ReaderSummaryArtifactRepositoryPort,
-  ReaderSummaryJobRepositoryPort,
-  ReaderSummaryProductionRecoveryAuthorityBinding,
-  ReaderSummaryProductionRecoveryAuthorityHandle,
-  ReaderSummaryProductionRecoveryAuthorityPort,
-} from "@social-monitor/summary/ports";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { productionRecoveryBinding } from "../../libs/summary/adapters/persistence/prisma/prisma-reader-summary-production-recovery-authority.spec-support";
 import {
-  ReaderSummaryJob,
-  ReaderSummaryPublicationPolicy,
-} from "@social-monitor/summary/domain";
-import { ExecuteReaderSummaryJobUseCase } from "@social-monitor/summary/features/execute-reader-summary-job/execute-reader-summary-job.use-case";
-import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
-
-import {
-  configureProductionRecoverySession,
-  discoverReaderSummaryProductionRecoveryScope,
-  resolveReaderSummaryProductionRecoveryRuntimePoolConfigs,
-  resolveReaderSummaryProductionRecoverySourceDatabaseUrl,
+  assertPersistedReaderSummaryProductionRecoveryAuthority,
+  loadPersistedReaderSummaryProductionRecoveryAuthority,
 } from "../recover-reader-summary-production";
 import {
-  executeProductionRecoveryDay,
-  historicalGitHubOmissionForRecoveryDay,
+  parseReaderSummaryProductionRecoveryCliArguments,
   readerSummaryProductionRecoveryDayIds,
-  readerSummaryProductionRecoveryJobIdempotencyKey,
-  readerSummaryProductionRecoveryQualityRemediationDayIds,
-  readerSummaryProductionRecoveryQualityRemediationJobIdempotencyKey,
-  readerSummaryProductionRecoveryQualityRemediationResumeDayIds,
-  readerSummaryProductionRecoveryQualityRemediationResumeJobIdempotencyKey,
-  readerSummaryProductionRecoveryResumeDayIds,
-  readerSummaryProductionRecoveryResumeJobIdempotencyKey,
+  readerSummaryProductionRecoveryHistoricalDates,
+  readerSummaryProductionRecoveryIdentity,
   runReaderSummaryProductionRecovery,
   type ReaderSummaryProductionRecoveryExecutionGuard,
-  type ReaderSummaryProductionRecoverySkipEvidence,
 } from "./reader-summary-production-recovery-cli";
-import {
-  dayAuthority,
-  periodForRecoveryDate,
-} from "./reader-summary-production-recovery-data";
-import { PrismaReaderSummaryProductionRecoveryExecutionGuard } from "./reader-summary-production-recovery-replay-guard";
 
-describe("reader summary production recovery", () => {
-  afterEach(() => {
-    jest.restoreAllMocks();
+const generationProfile = {
+  modelVersion: "codex:gpt-5.5:xhigh",
+  promptVersion: "reader_summary.prompt.2026-07-14.daily_synthesis",
+  rankingPolicyVersion: "story_ranking_v10",
+} as const;
+
+describe("reader summary production recovery CLI", () => {
+  it("validates --dates before dotenv, env reads, or database setup", () => {
+    const entrypoint = readFileSync(
+      join(process.cwd(), "scripts/recover-reader-summary-production.ts"),
+      "utf8",
+    );
+    const main = entrypoint.slice(entrypoint.indexOf("async function main"));
+    const parseAt = main.indexOf(
+      "parseReaderSummaryProductionRecoveryCliArguments",
+    );
+    expect(parseAt).toBeGreaterThan(0);
+    for (const laterOperation of [
+      'import("./lib/env-file")',
+      'requiredEnv("DATABASE_URL")',
+      "PrismaSummaryConnection.create",
+    ]) {
+      expect(main.indexOf(laterOperation)).toBeGreaterThan(parseAt);
+    }
   });
 
-  it("requires apply before authority preparation", async () => {
-    const authority = fakeAuthority("prepared");
-    await expect(
-      runReaderSummaryProductionRecovery({
-        apply: false,
-        authority,
-        executionGuard: guard("execute"),
-        executeDay: async () => {
-          throw new Error("must not execute");
-        },
-      }),
-    ).rejects.toThrow("requires --apply");
-    expect(authority.prepareCalls()).toBe(0);
-  });
-
-  it("full replay performs no claim or model execution", async () => {
-    const executionGuard = guard("execute");
-    let modelCalls = 0;
-
-    const result = await runReaderSummaryProductionRecovery({
+  it("parses a unique explicit historical subset before runtime work", () => {
+    expect(
+      parseReaderSummaryProductionRecoveryCliArguments([
+        "--dates=2026-07-28,2026-07-23",
+        "--apply",
+      ]),
+    ).toEqual({
       apply: true,
-      authority: fakeAuthority("replayed"),
-      executionGuard,
-      executeDay: async () => {
-        modelCalls += 1;
-        throw new Error("must not execute");
-      },
+      dates: ["2026-07-23", "2026-07-28"],
     });
-
-    expect(result.outcome).toBe("replayed");
-    expect(result.dayResults.map((day) => day.outcome)).toEqual([
-      "skipped",
-      "skipped",
-      "skipped",
-      "skipped",
-      "skipped",
-      "skipped",
-    ]);
-    expect(executionGuard.calls()).toBe(0);
-    expect(modelCalls).toBe(0);
-  });
-
-  it("claims before and executes each unclaimed date once", async () => {
-    const seen: string[] = [];
-    const result = await runReaderSummaryProductionRecovery({
-      apply: true,
-      authority: fakeAuthority("prepared"),
-      executionGuard: guard("execute"),
-      executeDay: async ({ binding, requestedUtcDate }) => {
-        seen.push(requestedUtcDate);
-        const ids = readerSummaryProductionRecoveryDayIds(
-          binding,
-          requestedUtcDate,
-        );
-        return {
-          requestedUtcDate,
-          outcome: "published",
-          readerSummaryJobId: ids.readerSummaryJobId,
-          readerSummaryId: ids.readerSummaryId,
-        };
-      },
-    });
-
-    expect(result.outcome).toBe("applied");
-    expect(seen).toEqual([
+    expect(readerSummaryProductionRecoveryHistoricalDates).toEqual([
       "2026-07-23",
       "2026-07-24",
       "2026-07-25",
@@ -117,628 +59,274 @@ describe("reader summary production recovery", () => {
       "2026-07-27",
       "2026-07-28",
     ]);
-  });
-
-  it("does not execute a date with an existing durable claim", async () => {
-    const executionGuard = guard((date) =>
-      date === "2026-07-24" ? "replayed" : "execute",
-    );
-    const executed: string[] = [];
-
-    const result = await runReaderSummaryProductionRecovery({
-      apply: true,
-      authority: fakeAuthority("prepared"),
-      executionGuard,
-      executeDay: async ({ requestedUtcDate }) => {
-        executed.push(requestedUtcDate);
-        return { requestedUtcDate, outcome: "published" };
-      },
-    });
-
-    expect(executed).toEqual([
-      "2026-07-23",
-      "2026-07-25",
-      "2026-07-26",
-      "2026-07-27",
-      "2026-07-28",
-    ]);
-    expect(result.dayResults[1]?.outcome).toBe("replayed");
-  });
-
-  it("executes only the narrow resume and quality remediation identities", async () => {
-    const identities: string[] = [];
-    const result = await runReaderSummaryProductionRecovery({
-      apply: true,
-      authority: fakeAuthority("prepared"),
-      executionGuard: guard((date) =>
-        date === "2026-07-23"
-          ? "remediate-quality"
-          : date === "2026-07-24"
-            ? "resume"
-            : date === "2026-07-25"
-              ? "resume-quality"
-            : "replayed",
-      ),
-      executeDay: async ({ requestedUtcDate, executionIdentity }) => {
-        identities.push(executionIdentity);
-        return { requestedUtcDate, outcome: "published" };
-      },
-    });
-
-    expect(identities).toEqual([
-      "quality-remediation-v1",
-      "resume-v1",
-      "quality-remediation-resume-v1",
-    ]);
-    expect(result.dayResults[0]?.outcome).toBe("published");
-  });
-
-  it("authorizes historical GitHub omission only from exact DB authority", () => {
-    const binding = productionRecoveryBinding();
-    expect(
-      historicalGitHubOmissionForRecoveryDay(binding, "2026-07-23"),
-    ).toEqual({
-      reason:
-        binding.days[0].githubEvidence.mode === "historical_unavailable"
-          ? binding.days[0].githubEvidence.authorization.reason
-          : "",
-      authorizedAt: new Date(binding.lease.issuedAt),
-    });
-    expect(
-      historicalGitHubOmissionForRecoveryDay(binding, "2026-07-24"),
-    ).toBeUndefined();
-    const day = binding.days[0];
-    const forged = {
-      ...binding,
-      days: [
-        {
-          ...day,
-          githubEvidence: day.githubEvidence.mode === "historical_unavailable"
-            ? {
-                ...day.githubEvidence,
-                authorization: {
-                  ...day.githubEvidence.authorization,
-                  authorizationId:
-                    "reader_summary.production_recovery.github.2026-07-28.v2",
-                },
-              }
-            : day.githubEvidence,
-        },
-        ...binding.days.slice(1),
-      ],
-    } as unknown as ReaderSummaryProductionRecoveryAuthorityBinding;
     expect(() =>
-      historicalGitHubOmissionForRecoveryDay(forged, "2026-07-23"),
-    ).toThrow("historical GitHub omission authority is not exact");
+      parseReaderSummaryProductionRecoveryCliArguments([
+        "--apply",
+        "--dates=2026-07-29",
+      ]),
+    ).toThrow(
+      "--dates accepts only 2026-07-23 through 2026-07-28",
+    );
+
+    for (const argv of [
+      ["--apply"],
+      ["--dates=2026-07-23"],
+      ["--apply", "--dates=2026-07-23,2026-07-23"],
+      ["--apply", "--dates=2026-07-22"],
+      ["--apply", "--dates=2026-07-30"],
+      ["--apply", "--dates="],
+      ["--apply", "--dates=2026-07-23", "--unknown"],
+    ]) {
+      expect(() =>
+        parseReaderSummaryProductionRecoveryCliArguments(argv),
+      ).toThrow("Reader summary production recovery CLI");
+    }
   });
 
-  it("discovers only the canonical Jul23-Jul28 DB-owned scope", async () => {
-    let sql = "";
-    let values: readonly unknown[] = [];
-    const scope = await discoverReaderSummaryProductionRecoveryScope({
+  it("does not read authority, claim, or execute without apply", async () => {
+    const claim = jest.fn();
+    const executeDay = jest.fn();
+
+    await expect(
+      runReaderSummaryProductionRecovery({
+        apply: false,
+        dates: ["2026-07-24"],
+        generationProfile,
+        binding: productionRecoveryBinding(),
+        executionGuard: { claim },
+        executeDay,
+      }),
+    ).rejects.toThrow("--apply before persisted binding access");
+    expect(claim).not.toHaveBeenCalled();
+    expect(executeDay).not.toHaveBeenCalled();
+  });
+
+  it("claims and executes only the selected dates", async () => {
+    const binding = productionRecoveryBinding();
+    const calls: string[] = [];
+    const result = await runReaderSummaryProductionRecovery({
+      apply: true,
+      dates: ["2026-07-24", "2026-07-27"],
+      generationProfile,
+      binding,
+      executionGuard: {
+        claim: async ({ requestedUtcDate, generationProfile: actual }) => {
+          expect(actual).toEqual(generationProfile);
+          calls.push(`claim:${requestedUtcDate}`);
+          return "execute";
+        },
+      },
+      executeDay: async ({ requestedUtcDate }) => {
+        calls.push(`model:${requestedUtcDate}`);
+        return { requestedUtcDate, outcome: "published" };
+      },
+    });
+
+    expect(calls).toEqual([
+      "claim:2026-07-24",
+      "model:2026-07-24",
+      "claim:2026-07-27",
+      "model:2026-07-27",
+    ]);
+    expect(result.plan.days.map((day) => day.requestedUtcDate)).toEqual([
+      "2026-07-24",
+      "2026-07-27",
+    ]);
+  });
+
+  it("fails closed before claim or model when selected DB authority is incomplete", async () => {
+    const binding = productionRecoveryBinding();
+    const claim = jest.fn();
+    const executeDay = jest.fn();
+
+    await expect(
+      runReaderSummaryProductionRecovery({
+        apply: true,
+        dates: ["2026-07-28"],
+        generationProfile,
+        binding: {
+          ...binding,
+          days: binding.days.filter(
+            (day) => day.requestedUtcDate !== "2026-07-28",
+          ),
+        },
+        executionGuard: { claim },
+        executeDay,
+      }),
+    ).rejects.toThrow(
+      "authority is not exact pre-model Jul23-Jul28 scope",
+    );
+    expect(claim).not.toHaveBeenCalled();
+    expect(executeDay).not.toHaveBeenCalled();
+  });
+
+  it("finalized replay performs zero model/provider calls and zero writes", async () => {
+    const binding = productionRecoveryBinding();
+    const claim = jest.fn<ReturnType<
+      ReaderSummaryProductionRecoveryExecutionGuard["claim"]
+    >, Parameters<
+      ReaderSummaryProductionRecoveryExecutionGuard["claim"]
+    >>().mockResolvedValue("replayed");
+    const executeDay = jest.fn();
+    const result = await runReaderSummaryProductionRecovery({
+      apply: true,
+      dates: ["2026-07-25"],
+      generationProfile,
+      binding,
+      executionGuard: { claim },
+      executeDay,
+    });
+
+    expect(result.outcome).toBe("replayed");
+    expect(claim).toHaveBeenCalledTimes(1);
+    expect(executeDay).not.toHaveBeenCalled();
+  });
+
+  it("uses one deterministic recovery identity per date", () => {
+    const binding = productionRecoveryBinding();
+    const first = readerSummaryProductionRecoveryDayIds(
+      binding,
+      "2026-07-24",
+    );
+    expect(
+      readerSummaryProductionRecoveryDayIds(binding, "2026-07-24"),
+    ).toEqual(first);
+    expect(
+      readerSummaryProductionRecoveryDayIds(binding, "2026-07-25"),
+    ).not.toEqual(first);
+    expect(
+      readerSummaryProductionRecoveryIdentity(binding, "2026-07-24"),
+    ).toMatch(/^reader_summary\.production_recovery\.generate\.v2:[0-9a-f]{64}$/u);
+  });
+
+  it("requires exactly two byte-identical persisted dry-run plans before claim", async () => {
+    const queries: string[] = [];
+    const client = {
       $queryRaw: async <T>(
         strings: TemplateStringsArray,
-        ...queryValues: readonly unknown[]
       ): Promise<T> => {
-        sql = strings.join("?").replace(/\s+/gu, " ").toLowerCase();
-        values = queryValues;
+        queries.push(strings.join("?").replace(/\s+/gu, " "));
         return [
           {
-            tenantId: "00000000-0000-7000-8000-000000000901",
-            workspaceId: "00000000-0000-7000-8000-000000000902",
+            authorityCount: 1,
+            selectedDayCount: 2,
+            dryRunCount: 2,
+            dryRunBytesEqual: true,
+            dryRunHashesEqual: true,
+            dryRunAuthorityHashesEqual: true,
+            dryRunBytesHashValid: true,
+            authorityBytesHashValid: true,
           },
         ] as T;
       },
-    });
+    };
 
-    expect(scope.tenantId).toBe(
-      "00000000-0000-7000-8000-000000000901",
-    );
-    expect(values).toEqual([
-      "00000000-0000-7000-8000-000000000901",
-      "00000000-0000-7000-8000-000000000902",
-    ]);
-    expect(sql).toContain("date '2026-07-23'");
-    expect(sql).toContain("date '2026-07-28'");
-    expect(sql).toContain("historical_unavailable");
-    expect(sql).toContain("partial_existing");
-    expect(sql).not.toContain("expectedcount");
-    expect(sql).not.toContain("source_items");
-  });
-
-  it("sets exact tenant session scope and requires one runtime database", async () => {
-    const values: Array<readonly unknown[]> = [];
-    await configureProductionRecoverySession(
-      {
-        $queryRaw: async <T>(
-          _strings: TemplateStringsArray,
-          ...queryValues: readonly unknown[]
-        ): Promise<T> => {
-          values.push(queryValues);
-          return [] as T;
+    await expect(
+      assertPersistedReaderSummaryProductionRecoveryAuthority(client, {
+        scope: {
+          tenantId: productionRecoveryBinding().tenantId,
+          workspaceId: productionRecoveryBinding().workspaceId,
         },
-      },
-      {
-        tenantId: "10000000-0000-4000-8000-000000000001",
-        workspaceId: "20000000-0000-4000-8000-000000000002",
-      },
+        dates: ["2026-07-24", "2026-07-25"],
+      }),
+    ).resolves.toBeUndefined();
+    expect(queries[0]).toContain(
+      '"reader_summary_production_recovery_dry_runs"',
     );
-    expect(values[0]).toEqual([
-      "10000000-0000-4000-8000-000000000001",
-      "20000000-0000-4000-8000-000000000002",
-    ]);
-    expect(
-      resolveReaderSummaryProductionRecoverySourceDatabaseUrl({
-        env: {},
-        productionDatabaseUrl: "postgres://same",
-      }),
-    ).toBe("postgres://same");
-    expect(() =>
-      resolveReaderSummaryProductionRecoveryRuntimePoolConfigs({
-        env: {},
-        sourceDatabaseUrl: "postgres://other",
-        resolveRuntimePoolConfig: () => ({
-          processId: "admin-tool",
-          connectionString: "postgres://same",
-          min: 0,
-          max: 1,
-          connectionTimeoutMillis: 1,
-          idleTimeoutMillis: 1,
-        }),
-      }),
-    ).toThrow("must match DATABASE_URL");
-  });
+    expect(queries[0]).toContain("canonical_bytes");
+    expect(queries[0]).toContain(
+      "2026-07-23",
+    );
+    expect(queries[0]).toContain(
+      "2026-07-28",
+    );
 
-  it("replays an exact final receipt with read-only SQL", async () => {
-    const binding = productionRecoveryBinding();
-    const calls: string[] = [];
-    const client = {
-      $queryRaw: async <T>(
-        strings: TemplateStringsArray,
-      ): Promise<T> => {
-        calls.push(strings.join("?"));
-        return [{ replayed: true }] as T;
-      },
-      $transaction: async <T>(
-        operation: (client: unknown) => Promise<T>,
-      ): Promise<T> => operation(client),
+    const diverged = {
+      $queryRaw: async <T>(): Promise<T> =>
+        [
+          {
+            authorityCount: 1,
+            selectedDayCount: 2,
+            dryRunCount: 2,
+            dryRunBytesEqual: false,
+            dryRunHashesEqual: true,
+            dryRunAuthorityHashesEqual: true,
+            dryRunBytesHashValid: true,
+            authorityBytesHashValid: true,
+          },
+        ] as unknown as T,
     };
-    const executionGuard =
-      new PrismaReaderSummaryProductionRecoveryExecutionGuard(
-        client as never,
-      );
-
     await expect(
-      executionGuard.claim({
-        binding,
-        requestedUtcDate: "2026-07-24",
-      }),
-    ).resolves.toBe("replayed");
-    expect(calls).toHaveLength(1);
-    expect(calls[0]).not.toContain("INSERT");
-  });
-
-  it("atomically persists the day claim and RUNNING job before execution", async () => {
-    const binding = productionRecoveryBinding();
-    const calls: string[] = [];
-    const client = {
-      $queryRaw: async <T>(
-        strings: TemplateStringsArray,
-      ): Promise<T> => {
-        const sql = strings.join("?").replace(/\s+/gu, " ");
-        calls.push(sql);
-        if (sql.includes("SELECT EXISTS")) {
-          return [{ replayed: false }] as T;
-        }
-        if (sql.includes('FROM "idempotency_keys" AS claim')) {
-          return [] as T;
-        }
-        if (sql.includes("WITH claimed AS")) {
-          return [
-            {
-              claimed: true,
-              staleJobSuperseded: false,
-              rejectedArtifactSuperseded: false,
-            },
-          ] as T;
-        }
-        throw new Error(`Unexpected claim SQL: ${sql}`);
-      },
-      $transaction: async <T>(
-        operation: (client: unknown) => Promise<T>,
-      ): Promise<T> => operation(client),
-    };
-    const executionGuard =
-      new PrismaReaderSummaryProductionRecoveryExecutionGuard(
-        client as never,
-      );
-
-    await expect(
-      executionGuard.claim({
-        binding,
-        requestedUtcDate: "2026-07-26",
-      }),
-    ).resolves.toBe("execute");
-    expect(calls[3]).toContain('INSERT INTO "idempotency_keys"');
-    expect(calls[3]).toContain('INSERT INTO "reader_summary_jobs"');
-    expect(calls[3]).toContain("'RUNNING'");
-    expect(calls[3]).toContain(
-      "transaction_timestamp(), transaction_timestamp()",
-    );
-  });
-
-  it("adopts the durable RUNNING claim and wires durable artifact persistence", async () => {
-    const binding = productionRecoveryBinding();
-    const requestedUtcDate = "2026-07-24";
-    const ids = readerSummaryProductionRecoveryDayIds(
-      binding,
-      requestedUtcDate,
-    );
-    const day = dayAuthority(binding, requestedUtcDate);
-    const claimedAt = new Date(binding.lease.consumedAt);
-    const durableJob = ReaderSummaryJob.request({
-      id: ids.readerSummaryJobId,
-      tenantId: tenantId(binding.tenantId),
-      workspaceId: workspaceId(binding.workspaceId),
-      scope: { type: "workspace" },
-      period: periodForRecoveryDate(requestedUtcDate),
-      idempotencyKey: readerSummaryProductionRecoveryJobIdempotencyKey(
-        requestedUtcDate,
-        day.canonicalSha256,
+      assertPersistedReaderSummaryProductionRecoveryAuthority(
+        diverged,
+        {
+          scope: {
+            tenantId: productionRecoveryBinding().tenantId,
+            workspaceId: productionRecoveryBinding().workspaceId,
+          },
+          dates: ["2026-07-24", "2026-07-25"],
+        },
       ),
-      requestedAt: claimedAt,
-    }).start({ startedAt: claimedAt });
-    const savedJobs: Array<
-      Parameters<ReaderSummaryJobRepositoryPort["save"]>[0]
-    > = [];
-    const durableJobs = {
-      save: jest.fn(async (job: (typeof savedJobs)[number]) => {
-        savedJobs.push(job);
-      }),
-      findById: jest.fn(async () => durableJob),
-      findByIdempotencyKey: jest.fn(async () => null),
-      findRequested: jest.fn(async () => []),
-      claimForExecution: jest.fn(async () => {
-        throw new Error("the durable lease must not be claimed twice");
-      }),
-    } satisfies ReaderSummaryJobRepositoryPort;
-    const durableArtifacts = {
-      save: jest.fn(async () => undefined),
-      list: jest.fn(async () => ({ items: [] })),
-      listPeriodSummaries: jest.fn(async () => ({ items: [] })),
-      findById: jest.fn(async () => null),
-      findRejectedDebugById: jest.fn(async () => null),
-    } satisfies ReaderSummaryArtifactRepositoryPort;
+    ).rejects.toThrow("byte-identical persisted pre-AI dry-run plans");
 
-    jest
-      .spyOn(ExecuteReaderSummaryJobUseCase.prototype, "execute")
-      .mockImplementation(async function (
-        this: ExecuteReaderSummaryJobUseCase,
-        command,
-      ) {
-        const repositories = this as unknown as {
-          readonly readerSummaryJobs: ReaderSummaryJobRepositoryPort;
-          readonly readerSummaryArtifacts: ReaderSummaryArtifactRepositoryPort;
-          readonly historicalGitHubOmission: unknown;
-        };
-        expect(repositories.readerSummaryArtifacts).toBe(durableArtifacts);
-        expect(repositories.historicalGitHubOmission).toBeUndefined();
-        const staged = await repositories.readerSummaryJobs.findById({
-          tenantId: command.tenantId,
-          workspaceId: command.workspaceId,
-          readerSummaryJobId: command.readerSummaryJobId,
-        });
-        expect(staged?.toSnapshot().status).toBe("requested");
-
-        const running = await repositories.readerSummaryJobs.claimForExecution({
-          tenantId: command.tenantId,
-          workspaceId: command.workspaceId,
-          readerSummaryJobId: command.readerSummaryJobId,
-          requestedAt: claimedAt,
-          startedAt: claimedAt,
-        });
-        expect(running?.toSnapshot().status).toBe("running");
-        expect(durableJobs.claimForExecution).not.toHaveBeenCalled();
-        await repositories.readerSummaryJobs.save(
-          running!.fail({
-            failedAt: claimedAt,
-            failureReason: "durable failure fixture",
-          }),
-        );
-
-        return {
-          ok: true,
-          value: {
-            readerSummaryJobId: ids.readerSummaryJobId,
-            readerSummaryId: ids.readerSummaryId,
-            status: "completed",
+    const absentSelectedDate = {
+      $queryRaw: async <T>(): Promise<T> =>
+        [
+          {
+            authorityCount: 0,
+            selectedDayCount: 0,
+            dryRunCount: 0,
+            dryRunBytesEqual: false,
+            dryRunHashesEqual: false,
+            dryRunAuthorityHashesEqual: false,
+            dryRunBytesHashValid: false,
+            authorityBytesHashValid: false,
           },
-        };
-      });
+        ] as unknown as T,
+    };
+    await expect(
+      assertPersistedReaderSummaryProductionRecoveryAuthority(
+        absentSelectedDate,
+        {
+          scope: {
+            tenantId: productionRecoveryBinding().tenantId,
+            workspaceId: productionRecoveryBinding().workspaceId,
+          },
+          dates: ["2026-07-28"],
+        },
+      ),
+    ).rejects.toThrow("byte-identical persisted pre-AI dry-run plans");
+  });
+
+  it("loads immutable DB authority without provider recollection or writes", async () => {
+    const binding = productionRecoveryBinding();
+    const queries: string[] = [];
+    const client = {
+      $queryRaw: async <T>(
+        strings: TemplateStringsArray,
+      ): Promise<T> => {
+        queries.push(strings.join("?").replace(/\s+/gu, " "));
+        return [
+          {
+            requestHash: binding.canonicalSha256,
+            responsePayload: binding,
+          },
+        ] as unknown as T;
+      },
+    };
 
     await expect(
-      executeProductionRecoveryDay({
-        binding,
-        requestedUtcDate,
-        model: {} as never,
-        finalization: {} as never,
-        durableJobs,
-        durableArtifacts,
-        feedItems: {} as never,
-        githubProjectionReader: {} as never,
-        ids: { generate: () => "unused-id" },
-        clock: { now: () => claimedAt },
+      loadPersistedReaderSummaryProductionRecoveryAuthority(client, {
+        tenantId: binding.tenantId,
+        workspaceId: binding.workspaceId,
       }),
-    ).resolves.toMatchObject({
-      outcome: "published",
-      readerSummaryJobId: ids.readerSummaryJobId,
-      readerSummaryId: ids.readerSummaryId,
-    });
-    expect(durableJobs.findById).toHaveBeenCalledTimes(1);
-    expect(savedJobs[0]?.toSnapshot().status).toBe("failed");
-  });
-
-  it("wires exact historical omission while leaving publication policy intact", async () => {
-    const binding = productionRecoveryBinding();
-    const requestedUtcDate = "2026-07-23";
-    const ids = readerSummaryProductionRecoveryDayIds(
-      binding,
-      requestedUtcDate,
+    ).resolves.toEqual(binding);
+    expect(queries).toHaveLength(1);
+    expect(queries[0]).toContain(
+      '"reader_summary_production_recovery_days"',
     );
-    jest
-      .spyOn(ExecuteReaderSummaryJobUseCase.prototype, "execute")
-      .mockImplementation(async function (
-        this: ExecuteReaderSummaryJobUseCase,
-      ) {
-        const configured = this as unknown as {
-          readonly historicalGitHubOmission: unknown;
-          readonly publicationPolicy: unknown;
-        };
-        expect(configured.historicalGitHubOmission).toEqual(
-          historicalGitHubOmissionForRecoveryDay(
-            binding,
-            requestedUtcDate,
-          ),
-        );
-        expect(configured.publicationPolicy).toBeInstanceOf(
-          ReaderSummaryPublicationPolicy,
-        );
-        return {
-          ok: true,
-          value: {
-            readerSummaryJobId: ids.readerSummaryJobId,
-            readerSummaryId: ids.readerSummaryId,
-            status: "completed",
-          },
-        };
-      });
-
-    await expect(
-      executeProductionRecoveryDay({
-        binding,
-        requestedUtcDate,
-        model: {} as never,
-        finalization: {} as never,
-        durableJobs: {} as never,
-        durableArtifacts: {} as never,
-        feedItems: {} as never,
-        githubProjectionReader: {} as never,
-        ids: { generate: () => "unused-id" },
-        clock: { now: () => new Date(binding.lease.consumedAt) },
-      }),
-    ).resolves.toMatchObject({ readerSummaryId: ids.readerSummaryId });
-  });
-
-  it("uses separate IDs and idempotency only when resume is explicit", async () => {
-    const binding = productionRecoveryBinding();
-    const requestedUtcDate = "2026-07-24";
-    const resumeIds = readerSummaryProductionRecoveryResumeDayIds(
-      binding,
-      requestedUtcDate,
-    );
-    const day = dayAuthority(binding, requestedUtcDate);
-    jest
-      .spyOn(ExecuteReaderSummaryJobUseCase.prototype, "execute")
-      .mockImplementation(async function (
-        this: ExecuteReaderSummaryJobUseCase,
-      ) {
-        const jobs = this as unknown as {
-          readonly readerSummaryJobs: ReaderSummaryJobRepositoryPort;
-        };
-        const staged = await jobs.readerSummaryJobs.findById({
-          tenantId: tenantId(binding.tenantId),
-          workspaceId: workspaceId(binding.workspaceId),
-          readerSummaryJobId: resumeIds.readerSummaryJobId,
-        });
-        expect(staged?.toSnapshot().idempotencyKey).toBe(
-          readerSummaryProductionRecoveryResumeJobIdempotencyKey(
-            requestedUtcDate,
-            day.canonicalSha256,
-          ),
-        );
-        return {
-          ok: true,
-          value: {
-            readerSummaryJobId: resumeIds.readerSummaryJobId,
-            readerSummaryId: resumeIds.readerSummaryId,
-            status: "completed",
-          },
-        };
-      });
-    await executeProductionRecoveryDay({
-      binding,
-      requestedUtcDate,
-      executionIdentity: "resume-v1",
-      model: {} as never,
-      finalization: {} as never,
-      durableJobs: {} as never,
-      durableArtifacts: {} as never,
-      feedItems: {} as never,
-      githubProjectionReader: {} as never,
-      ids: { generate: () => "unused-id" },
-      clock: { now: () => new Date(binding.lease.consumedAt) },
-    });
-  });
-
-  it("uses fresh quality remediation IDs and never reports rejected text as published", async () => {
-    const binding = productionRecoveryBinding();
-    const requestedUtcDate = "2026-07-23";
-    const remediationIds =
-      readerSummaryProductionRecoveryQualityRemediationDayIds(
-        binding,
-        requestedUtcDate,
-      );
-    const day = dayAuthority(binding, requestedUtcDate);
-    jest
-      .spyOn(ExecuteReaderSummaryJobUseCase.prototype, "execute")
-      .mockImplementation(async function (
-        this: ExecuteReaderSummaryJobUseCase,
-      ) {
-        const jobs = this as unknown as {
-          readonly readerSummaryJobs: ReaderSummaryJobRepositoryPort;
-        };
-        const staged = await jobs.readerSummaryJobs.findById({
-          tenantId: tenantId(binding.tenantId),
-          workspaceId: workspaceId(binding.workspaceId),
-          readerSummaryJobId: remediationIds.readerSummaryJobId,
-        });
-        expect(staged?.toSnapshot().idempotencyKey).toBe(
-          readerSummaryProductionRecoveryQualityRemediationJobIdempotencyKey(
-            requestedUtcDate,
-            day.canonicalSha256,
-          ),
-        );
-        return {
-          ok: true,
-          value: {
-            readerSummaryJobId: remediationIds.readerSummaryJobId,
-            readerSummaryId: remediationIds.readerSummaryId,
-            status: "quality_rejected",
-          },
-        };
-      });
-    await expect(
-      executeProductionRecoveryDay({
-        binding,
-        requestedUtcDate,
-        executionIdentity: "quality-remediation-v1",
-        model: {} as never,
-        finalization: {} as never,
-        durableJobs: {} as never,
-        durableArtifacts: {} as never,
-        feedItems: {} as never,
-        githubProjectionReader: {} as never,
-        ids: { generate: () => "unused-id" },
-        clock: { now: () => new Date(binding.lease.consumedAt) },
-      }),
-    ).resolves.toMatchObject({
-      outcome: "skipped",
-      readerSummaryJobId: remediationIds.readerSummaryJobId,
-      readerSummaryId: remediationIds.readerSummaryId,
-    });
-  });
-
-  it("uses fresh quality remediation resume IDs and idempotency", async () => {
-    const binding = productionRecoveryBinding();
-    const requestedUtcDate = "2026-07-23";
-    const ids = readerSummaryProductionRecoveryQualityRemediationResumeDayIds(
-      binding,
-      requestedUtcDate,
-    );
-    const day = dayAuthority(binding, requestedUtcDate);
-    jest
-      .spyOn(ExecuteReaderSummaryJobUseCase.prototype, "execute")
-      .mockImplementation(async function (
-        this: ExecuteReaderSummaryJobUseCase,
-      ) {
-        const jobs = this as unknown as {
-          readonly readerSummaryJobs: ReaderSummaryJobRepositoryPort;
-        };
-        const staged = await jobs.readerSummaryJobs.findById({
-          tenantId: tenantId(binding.tenantId),
-          workspaceId: workspaceId(binding.workspaceId),
-          readerSummaryJobId: ids.readerSummaryJobId,
-        });
-        expect(staged?.toSnapshot().idempotencyKey).toBe(
-          readerSummaryProductionRecoveryQualityRemediationResumeJobIdempotencyKey(
-            requestedUtcDate,
-            day.canonicalSha256,
-          ),
-        );
-        return {
-          ok: true,
-          value: {
-            readerSummaryJobId: ids.readerSummaryJobId,
-            readerSummaryId: ids.readerSummaryId,
-            status: "completed",
-          },
-        };
-      });
-    await executeProductionRecoveryDay({
-      binding,
-      requestedUtcDate,
-      executionIdentity: "quality-remediation-resume-v1",
-      model: {} as never,
-      finalization: {} as never,
-      durableJobs: {} as never,
-      durableArtifacts: {} as never,
-      feedItems: {} as never,
-      githubProjectionReader: {} as never,
-      ids: { generate: () => "unused-id" },
-      clock: { now: () => new Date(binding.lease.consumedAt) },
-    });
+    expect(queries[0]).not.toContain('"feed_items"');
+    expect(queries[0]).not.toContain("INSERT");
+    expect(queries[0]).not.toContain("UPDATE");
   });
 });
-
-const fakeAuthority = (
-  outcome: "prepared" | "replayed",
-): ReaderSummaryProductionRecoveryAuthorityPort & {
-  prepareCalls(): number;
-} => {
-  const binding = productionRecoveryBinding();
-  const handle = {} as ReaderSummaryProductionRecoveryAuthorityHandle;
-  let calls = 0;
-  return {
-    prepareCalls: () => calls,
-    prepare: async () => {
-      calls += 1;
-      return { outcome, authority: handle };
-    },
-    readVerifiedBinding: (candidate) => {
-      if (candidate !== handle) {
-        throw new Error("forged handle");
-      }
-      return binding;
-    },
-  };
-};
-
-const guard = (
-  outcome:
-    | "execute"
-    | "resume"
-    | "remediate-quality"
-    | "resume-quality"
-    | "replayed"
-    | ReaderSummaryProductionRecoverySkipEvidence
-    | ((
-        date: ReaderSummaryProductionRecoveryAuthorityBinding["requestedUtcDates"][number],
-      ) =>
-        | "execute"
-        | "resume"
-        | "remediate-quality"
-        | "resume-quality"
-        | "replayed"
-        | ReaderSummaryProductionRecoverySkipEvidence),
-): ReaderSummaryProductionRecoveryExecutionGuard & { calls(): number } => {
-  let callCount = 0;
-  return {
-    calls: () => callCount,
-    claim: async ({ requestedUtcDate }) => {
-      callCount += 1;
-      return typeof outcome === "function"
-        ? outcome(requestedUtcDate)
-        : outcome;
-    },
-  };
-};
