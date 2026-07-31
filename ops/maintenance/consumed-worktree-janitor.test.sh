@@ -310,9 +310,9 @@ legacy_target=$(add_worktree "$root" "$legacy_job" \
 write_ledger "$root" "$legacy_job" attempt-1 "$legacy_target" rejected
 output=$(run_janitor "$root")
 [[ $output == *"would-remove ledger=$direct_job--attempt-1 worktree=$direct_target"* &&
-  $output == *"excluded reason=legacy-registry-bound ledger=$nested_job--attempt-1"* &&
+  $output == *"would-remove ledger=$nested_job--attempt-1 worktree=$nested_target"* &&
   $output == *"excluded reason=legacy-registry-bound ledger=$legacy_job--attempt-1"* &&
-  $output == *'eligible=1'* ]] ||
+  $output == *'eligible=2'* ]] ||
   fail 'volume2 dry-run discovery was not strict and complete'
 [[ -d $direct_target && -d $nested_target && -d $legacy_target ]] ||
   fail 'volume2 dry run changed a fixture target'
@@ -320,7 +320,7 @@ output=$(run_janitor "$root")
   fail 'volume2 dry run wrote an audit receipt'
 output=$(run_janitor "$root" --apply)
 [[ $output == *"excluded reason=volume2-dry-run-only ledger=$direct_job--attempt-1"* &&
-  $output == *"excluded reason=legacy-registry-bound ledger=$nested_job--attempt-1"* &&
+  $output == *"excluded reason=volume2-dry-run-only ledger=$nested_job--attempt-1"* &&
   $output == *"excluded reason=legacy-registry-bound ledger=$legacy_job--attempt-1"* &&
   $output != *'would-remove'* && $output == *'eligible=0'* &&
   $output == *'removed=0'* ]] ||
@@ -333,6 +333,10 @@ output=$(run_janitor "$root" --apply)
 readonly RELOCATED_CASES=$SCRIPT_DIR/consumed-worktree-janitor-relocated.test-cases.sh
 # shellcheck source=consumed-worktree-janitor-relocated.test-cases.sh
 source "$RELOCATED_CASES"
+
+readonly VOLUME2_APPLY_CASES=$SCRIPT_DIR/consumed-worktree-janitor-volume2-apply.test.sh
+# shellcheck source=consumed-worktree-janitor-volume2-apply.test.sh
+source "$VOLUME2_APPLY_CASES"
 
 root=$(new_fixture unregistered)
 job=social-monitor-unregistered-worker
@@ -924,6 +928,7 @@ service_source=$(<"$SERVICE")
 timer_source=$(<"$TIMER")
 entrypoint_source=$(<"$ENTRYPOINT")
 implementation_source=$(<"$SCRIPT_DIR/consumed-worktree-janitor-relocated-apply.sh")
+volume2_source=$(<"$SCRIPT_DIR/consumed-worktree-janitor-volume2-apply.sh")
 [[ $service_source == *'ExecStart='* && $service_source != *'--apply'* ]] ||
   fail 'service is not safe dry-run by default'
 [[ $service_source == *'ReadOnlyPaths=/var/data/social-monitor'* &&
@@ -938,11 +943,14 @@ implementation_source=$(<"$SCRIPT_DIR/consumed-worktree-janitor-relocated-apply.
   fail 'destructive fixtures escaped the current worktree'
 [[ $implementation_source == *'"$GIT" -C "$INTEGRATION" worktree remove --force -- "$target"'* ]] ||
   fail 'exact Git worktree removal command changed'
-[[ $entrypoint_source != *'worktree prune'* && $implementation_source != *'worktree prune'* ]] ||
+[[ $volume2_source == *'"$GIT" -C "$INTEGRATION" worktree remove --force -- "$target"'* ]] ||
+  fail 'exact volume2 Git worktree removal command changed'
+[[ $entrypoint_source != *'worktree prune'* && $implementation_source != *'worktree prune'* &&
+  $volume2_source != *'worktree prune'* ]] ||
   fail 'Git worktree prune is forbidden in the janitor'
 recursive_remove='rm -'rf
 recursive_remove_alt='rm -'fr
-runtime_source=$entrypoint_source$implementation_source
+runtime_source=$entrypoint_source$implementation_source$volume2_source
 [[ $runtime_source != *"$recursive_remove"* && $runtime_source != *"$recursive_remove_alt"* ]] ||
   fail 'recursive rm is forbidden in the janitor'
 

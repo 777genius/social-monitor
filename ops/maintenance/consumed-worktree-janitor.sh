@@ -10,8 +10,9 @@ FAST_RELOCATED=${FAST_RELOCATED:-${SOCIAL_MONITOR_JANITOR_FAST_RELOCATED:-0}}
 fail() { printf 'consumed-worktree-janitor: %s\n' "$*" >&2; exit 1; }
 cleanup() { [[ -z $AUDIT_TMP || ! -f $AUDIT_TMP || -L $AUDIT_TMP ]] || "$UNLINK" -- "$AUDIT_TMP"; }
 trap cleanup EXIT
-usage() { printf '%s\n' 'usage: consumed-worktree-janitor.sh [--dry-run | --apply]' \
+usage() { printf '%s\n' 'usage: consumed-worktree-janitor.sh [--dry-run | --apply | --dry-run-volume2]' \
   '       consumed-worktree-janitor.sh --apply-relocated --expected-plan-sha256 SHA256' \
+  '       consumed-worktree-janitor.sh --apply-volume2 --expected-plan-sha256 SHA256' \
   '       consumed-worktree-janitor.sh [MODE] [--expected-plan-sha256 SHA256] --test-root PATH'; }
 while (($# > 0)); do
   case $1 in
@@ -27,6 +28,10 @@ while (($# > 0)); do
       ((MODE_SEEN == 0)) || fail 'choose exactly one execution mode'
       MODE=apply-relocated MODE_SEEN=1
       ;;
+    --dry-run-volume2)
+      ((MODE_SEEN == 0)) || fail 'choose exactly one execution mode'; MODE=dry-run-volume2 MODE_SEEN=1 ;;
+    --apply-volume2)
+      ((MODE_SEEN == 0)) || fail 'choose exactly one execution mode'; MODE=apply-volume2 MODE_SEEN=1 ;;
     --expected-plan-sha256)
       shift
       (($# > 0)) || fail '--expected-plan-sha256 requires a SHA-256 digest'
@@ -48,10 +53,10 @@ while (($# > 0)); do
   esac
   shift
 done
-if [[ $MODE == apply-relocated ]]; then
-  [[ $EXPECTED_PLAN_SHA256 =~ ^[0-9a-f]{64}$ ]] || fail '--apply-relocated requires --expected-plan-sha256 with a lowercase SHA-256 digest'
+if [[ $MODE == apply-relocated || $MODE == apply-volume2 ]]; then
+  [[ $EXPECTED_PLAN_SHA256 =~ ^[0-9a-f]{64}$ ]] || fail "--$MODE requires --expected-plan-sha256 with a lowercase SHA-256 digest"
 else
-  [[ -z $EXPECTED_PLAN_SHA256 ]] || fail '--expected-plan-sha256 is valid only with --apply-relocated'
+  [[ -z $EXPECTED_PLAN_SHA256 ]] || fail '--expected-plan-sha256 is valid only with an apply plan mode'
 fi
 [[ $FAST_RELOCATED == 0 || $FAST_RELOCATED == 1 ]] || fail 'FAST_RELOCATED must be 0 or 1'
 for tool in "$GIT" "$JQ" "$REALPATH" "$FLOCK" "$DU" "$READLINK" "$SHA256SUM" "$DATE" "$MKTEMP" "$CP" "$MV" "$UNLINK" "$CMP" "$STAT" "$SORT" "$SYNC" "$SLEEP"; do
@@ -99,18 +104,6 @@ repo_root=$("$REALPATH" -e -- "$repo_root") || fail 'cannot canonicalize integra
 [[ $repo_root == "$INTEGRATION" ]] || fail 'integration Git root conflicts with project layout'
 MAIN_COMMIT=$("$GIT" -C "$INTEGRATION" rev-parse --verify refs/heads/main^{commit}) || fail 'integration main is not a readable commit'
 readonly MAIN_COMMIT
-canonical_declared_path() { local declared=$1 label=$2 result
-  [[ $declared == /* && $declared != *$'\n'* && $declared != *$'\r'* && $declared != *$'\t'* ]] || fail "$label is not a safe absolute path"
-  result=$("$REALPATH" -m -- "$declared") || fail "cannot canonicalize $label"
-  [[ $result == "$declared" ]] || fail "$label is not canonical"
-  printf '%s\n' "$result"
-}
-lexical_declared_path() { local declared=$1 label=$2 result
-  [[ $declared == /* && $declared != *$'\n'* && $declared != *$'\r'* && $declared != *$'\t'* ]] || fail "$label is not a safe absolute path"
-  result=$("$REALPATH" -ms -- "$declared") || fail "cannot normalize $label"
-  [[ $result == "$declared" ]] || fail "$label is not canonical"
-  printf '%s\n' "$result"
-}
 validate_reviewed_output() { local reviewed_id=$1 job_id=$2 workspace=$3 patch_hash=$4
   local reviewed_root=$WORKER_JOBS/reviewed-worker-outputs output_root
   output_root=$reviewed_root/$reviewed_id
@@ -202,23 +195,15 @@ validate_archive_location() { local job_id=$1 workspace=$2 archive=$3 archive_ro
   validate_trusted_path "$archive" directory 'terminal archive'
   validate_registry_binding "$job_id" "$workspace"
 }
-is_terminal_ledger_status() { case $1 in integrated | rejected | archived | superseded) return 0 ;; *) return 1 ;; esac; }
-is_terminal_activity_status() {
-  case $1 in archived | blocked | canceled | cancelled | completed | done | failed | integrated | partial | pushed | rejected | rolled_back | stopped | superseded) return 0 ;; *) return 1 ;; esac
-}
-integrated_commit_state() { local commit=$1 main=$2 result
-  "$GIT" -C "$INTEGRATION" cat-file -e "$commit^{commit}" 2>/dev/null || return 2
-  if "$GIT" -C "$INTEGRATION" merge-base --is-ancestor "$commit" "$main"; then return 0
-  else result=$?; fi
-  ((result == 1)) || fail 'cannot compare integrated ledger commit with main'
-  return 1
-}
 readonly RELOCATED_APPLY_IMPLEMENTATION=$SCRIPT_DIRECTORY/consumed-worktree-janitor-relocated-apply.sh
 validate_trusted_path "$RELOCATED_APPLY_IMPLEMENTATION" file 'relocated apply implementation'
 # shellcheck source=consumed-worktree-janitor-relocated-apply.sh
 source "$RELOCATED_APPLY_IMPLEMENTATION"
 load_janitor_audit
 select_relocated_receipt_recovery
+readonly VOLUME2_APPLY_IMPLEMENTATION=$SCRIPT_DIRECTORY/consumed-worktree-janitor-volume2-apply.sh; validate_trusted_path "$VOLUME2_APPLY_IMPLEMENTATION" file 'volume2 apply implementation'
+# shellcheck source=consumed-worktree-janitor-volume2-apply.sh
+source "$VOLUME2_APPLY_IMPLEMENTATION"; load_volume2_receipts; select_volume2_receipt_recovery
 declare -A ledger_workspace_by_id=() ledger_target_by_id=() ledger_numstat_hash_by_id=() ledger_job_by_id=() ledger_status_by_id=() ledger_integrated_commit_by_id=()
 declare -A ledger_patch_hash_by_id=() ledger_status_hash_by_id=()
 declare -A ledger_numstat_path_by_id=() ledger_patch_path_by_id=() ledger_status_path_by_id=()
@@ -302,31 +287,22 @@ for item in "${ledger_files[@]}"; do
       fail "schema-v2 receipt target conflicts with relocation layout: $ledger_id"
     workspace_kind=relocated
     relocated_logical_by_target["$target"]=$workspace
+  elif [[ -n ${volume2_receipt_target[$ledger_id]:-} ]]; then
+    workspace=$(lexical_declared_path "$workspace" 'ledger workspace')
+    restore_volume2_receipt_layout "$ledger_id" "$job_id" "$workspace"
+    target=$workspace; workspace_kind=${volume2_receipt_kind[$ledger_id]}
   else
     workspace=$(canonical_declared_path "$workspace" 'ledger workspace')
     target=$workspace
-    case $workspace in
-      "$WORKTREES/$job_id")
-      workspace_kind=canonical
-      ;;
-      "$WORKTREES/.volume2/$job_id")
-      workspace_kind=volume2-direct
-      ;;
-      "$WORKTREES/.volume2/$job_id/worktree")
-      workspace_kind=volume2-nested
-      ;;
-      "$WORKTREES/.volume2" | "$WORKTREES/.volume2/"*)
-      workspace_kind=volume2-unsupported
-      ;;
-      *)
-      [[ ${workspace%/*} == "$WORKTREES" &&
-        ${workspace##*/} =~ ^[A-Za-z0-9._-]+$ ]] ||
+    if classify_volume2_workspace_layout "$workspace" "$job_id"; then
+      workspace_kind=$VOLUME2_CLASSIFIED_KIND; legacy_registry_bound=$VOLUME2_CLASSIFIED_LEGACY
+    else
+      [[ ${workspace%/*} == "$WORKTREES" && ${workspace##*/} =~ ^[A-Za-z0-9._-]+$ ]] ||
         fail "ledger workspace is not a direct Social Monitor worktree: $workspace"
-      workspace_kind=canonical
-      ;;
-    esac
-    [[ ${workspace##*/} == "$job_id" ]] || legacy_registry_bound=1
+      workspace_kind=canonical; [[ ${workspace##*/} == "$job_id" ]] || legacy_registry_bound=1
+    fi
   fi
+  [[ $workspace_kind != volume2-* ]] || register_volume2_workspace "$workspace_kind" "$workspace" "$job_id"
   if is_terminal_ledger_status "$status"; then
     archive=$(canonical_declared_path "$archive" 'ledger archive')
     status_file=$(canonical_declared_path "$status_file" 'status evidence')
@@ -387,6 +363,7 @@ for item in "${ledger_files[@]}"; do
 done
 bind_prepared_receipts_as_recovery_candidates
 validate_audit_bindings_after_ledger
+validate_volume2_receipt_bindings
 worktree_porcelain=$("$GIT" -C "$INTEGRATION" worktree list --porcelain) ||
   fail 'cannot enumerate registered Git worktrees'
 snapshot_git_registrations "$worktree_porcelain"
@@ -394,6 +371,7 @@ declare -A activity_protected=()
 protect_worktree_for_path() {
   local path=$1 reason=$2
   local relative worktree_root relocated_target
+  protect_volume2_activity_path "$path" "$reason" && return
   case $path in
     "$RELOCATION_ARCHIVE_ROOT"/*)
       relative=${path#"$RELOCATION_ARCHIVE_ROOT"/}
@@ -726,42 +704,16 @@ live_process_uses_worktree() { local target=$1 attempt
     "$SLEEP" "$PROCESS_RECHECK_DELAY_SECONDS"
   done
 }
-is_registered_now() {
-  local target=$1 listing line path
-  listing=$("$GIT" -C "$INTEGRATION" worktree list --porcelain) ||
-    fail 'cannot re-enumerate registered Git worktrees'
-  while IFS= read -r line; do
-    [[ $line == worktree\ * ]] || continue
-    path=$("$REALPATH" -m -- "${line#worktree }") ||
-      fail 'cannot canonicalize registered Git worktree'
-    [[ $path == "$target" ]] && return 0
-  done <<<"$listing"
-  return 1
-}
-is_locked_now() {
-  local target=$1 listing line path current_path=
-  listing=$("$GIT" -C "$INTEGRATION" worktree list --porcelain) ||
-    fail 'cannot re-enumerate Git worktree locks'
-  while IFS= read -r line; do
-    if [[ $line == worktree\ * ]]; then
-      path=$("$REALPATH" -m -- "${line#worktree }") ||
-        fail 'cannot canonicalize locked Git worktree'
-      current_path=$path
-    elif [[ $line == locked || $line == locked\ * ]]; then
-      [[ $current_path == "$target" ]] && return 0
-    fi
-  done <<<"$listing"
-  return 1
-}
 current_directory=$("$REALPATH" -m -- "$PWD") || fail 'cannot canonicalize current directory'
 declare -a plan_items=() plan_jobs=() plan_ledgers=() plan_workspaces=() plan_targets=()
 declare -a plan_bytes=() plan_target_inodes=() plan_link_inodes=()
 declare -a plan_kinds=() plan_item_hashes=() plan_status_files=() plan_status_hashes=() plan_patch_files=() plan_patch_hashes=()
 declare -a plan_numstat_files=() plan_numstat_hashes=() plan_logical_identities=() plan_target_identities=() plan_registry_paths=()
 declare -a plan_registry_hashes=() plan_git_registration_hashes=() plan_integrated_commits=()
-eligible=0 excluded=0 replayed=0 total_apparent_bytes=0 total_target_inodes=0
-total_logical_symlink_inodes=0
+declare -a plan_volume2_parent_identities=() plan_volume2_mount_identities=()
+eligible=0 excluded=0 replayed=0 total_apparent_bytes=0 total_target_inodes=0 total_logical_symlink_inodes=0
 classify_completed_v2_receipts
+classify_completed_volume2_receipts
 snapshot_process_evidence
 mapfile -t sorted_workspaces < <(printf '%s\n' "${!latest_time[@]}" | LC_ALL=C "$SORT")
 for workspace in "${sorted_workspaces[@]}"; do
@@ -772,6 +724,7 @@ for workspace in "${sorted_workspaces[@]}"; do
   has_v2=0
   [[ -n ${v2_logical[$ledger_id]:-} ]] && has_v2=1
   [[ -z ${v2_replayed[$ledger_id]:-} ]] || continue
+  [[ -z ${volume2_receipt_replayed[$ledger_id]:-} ]] || continue
   is_terminal_ledger_status "$status" || {
     excluded=$((excluded + 1))
     continue
@@ -805,6 +758,7 @@ for workspace in "${sorted_workspaces[@]}"; do
     excluded=$((excluded + 1))
     continue
   fi
+  volume2_mode_allows_candidate "$ledger_id" "$workspace_kind" "$workspace" "$target" || { excluded=$((excluded + 1)); continue; }
   if [[ $MODE == apply && $workspace_kind == relocated ]]; then
     printf 'excluded reason=relocation-dry-run-only ledger=%s worktree=%s target=%s\n' "$ledger_id" "$workspace" "$target"
     excluded=$((excluded + 1))
@@ -846,6 +800,8 @@ for workspace in "${sorted_workspaces[@]}"; do
           fail "schema-v2 replay target has an unsupported state: $ledger_id"
       fi
     fi
+  elif [[ $workspace_kind == volume2-* && -n ${volume2_receipt_target[$ledger_id]:-} ]]; then
+    validate_volume2_candidate_state "$ledger_id" "$workspace_kind" "$workspace"
   else
     [[ -d $workspace && ! -L $workspace ]] || {
       excluded=$((excluded + 1))
@@ -853,7 +809,8 @@ for workspace in "${sorted_workspaces[@]}"; do
     }
   fi
   expected_registration_count=1
-  if ((has_v2 == 1)) && [[ ! -e $target && ! -L $target ]]; then
+  if { ((has_v2 == 1)) || [[ -n ${volume2_receipt_target[$ledger_id]:-} ]]; } &&
+    [[ ! -e $target && ! -L $target ]]; then
     expected_registration_count=0
   fi
   [[ ${registered_count[$target]:-0} == "$expected_registration_count" ]] || {
@@ -916,6 +873,9 @@ for workspace in "${sorted_workspaces[@]}"; do
     inode_record=$("$DU" -s --inodes -- "$target") ||
       fail "cannot measure worktree inodes: $target"
     target_inodes=${inode_record%%[[:space:]]*}
+  elif [[ $workspace_kind == volume2-* && -n ${volume2_receipt_target[$ledger_id]:-} ]]; then
+    before_bytes=${volume2_receipt_bytes[$ledger_id]}
+    target_inodes=${volume2_receipt_inodes[$ledger_id]}
   else
     before_bytes=${v2_before_bytes[$ledger_id]}
     target_inodes=${v2_target_inodes[$ledger_id]}
@@ -926,6 +886,7 @@ for workspace in "${sorted_workspaces[@]}"; do
   [[ $workspace_kind == relocated ]] && logical_symlink_inodes=1
   integrated_plan_commit=${latest_integrated_commit[$workspace]:--}
   [[ -n $integrated_plan_commit ]] || integrated_plan_commit=-
+  reset_volume2_plan_fields
   if [[ $workspace_kind == relocated ]]; then
     if ((has_v2 == 1)); then
       logical_identity=${v2_logical_identity[$ledger_id]}
@@ -946,6 +907,8 @@ for workspace in "${sorted_workspaces[@]}"; do
       [[ -n $git_registration_hash ]] ||
         fail "cannot resolve planned Git registration: $target"
     fi
+  elif [[ $workspace_kind == volume2-direct || $workspace_kind == volume2-nested ]]; then
+    prepare_volume2_plan_fields "$ledger_id" "$workspace_kind" "$target" "$job_id" "$expected_registration_count"
   else
     logical_identity=- target_identity=- git_registration_hash=-
   fi
@@ -971,12 +934,15 @@ for workspace in "${sorted_workspaces[@]}"; do
   plan_registry_hashes+=("${latest_registry_hash[$workspace]}")
   plan_git_registration_hashes+=("$git_registration_hash")
   plan_integrated_commits+=("$integrated_plan_commit")
+  plan_volume2_parent_identities+=("${VOLUME2_CANDIDATE_PARENT_IDENTITY:--}")
+  plan_volume2_mount_identities+=("${VOLUME2_CANDIDATE_MOUNT_IDENTITY:--}")
   total_apparent_bytes=$((total_apparent_bytes + before_bytes))
   total_target_inodes=$((total_target_inodes + target_inodes))
   total_logical_symlink_inodes=$((total_logical_symlink_inodes + logical_symlink_inodes))
   eligible=$((eligible + 1))
 done
 RELOCATED_PLAN_SHA256=$(compute_relocated_plan_sha256) || fail 'cannot compute deterministic relocated plan digest'
+compute_volume2_plan
 relocated_plan_candidates=0
 for index in "${!plan_targets[@]}"; do
   [[ ${plan_kinds[$index]} == relocated ]] && relocated_plan_candidates=$((relocated_plan_candidates + 1))
@@ -985,15 +951,19 @@ if [[ $MODE == apply-relocated && $EXPECTED_PLAN_SHA256 != "$RELOCATED_PLAN_SHA2
   $RELOCATED_RECEIPT_RECOVERY == 0 ]]; then
   fail "relocated plan mismatch expected=$EXPECTED_PLAN_SHA256 actual=$RELOCATED_PLAN_SHA256"
 fi
+validate_volume2_plan
 printf 'relocated-plan schemaVersion=2 sha256=%s candidates=%s main=%s\n' "$RELOCATED_PLAN_SHA256" "$relocated_plan_candidates" "$MAIN_COMMIT"
+print_volume2_plan
 removed=0
-if [[ $MODE == dry-run ]]; then
+if [[ $MODE == dry-run || $MODE == dry-run-volume2 ]]; then
   for index in "${!plan_targets[@]}"; do
     total_inodes=$((plan_target_inodes[index] + plan_link_inodes[index]))
     printf 'would-remove ledger=%s worktree=%s target=%s beforeBytes=%s apparentBytes=%s targetInodes=%s logicalSymlinkInodes=%s totalInodes=%s afterBytes=0\n' "${plan_ledgers[$index]}" "${plan_workspaces[$index]}" "${plan_targets[$index]}" "${plan_bytes[$index]}" "${plan_bytes[$index]}" "${plan_target_inodes[$index]}" "${plan_link_inodes[$index]}" "$total_inodes"
   done
 elif [[ $MODE == apply ]]; then
   apply_ordinary_plan
+elif [[ $MODE == apply-volume2 ]]; then
+  apply_volume2_plan
 else
   apply_relocated_plan
 fi
