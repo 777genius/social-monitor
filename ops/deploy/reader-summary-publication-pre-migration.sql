@@ -893,8 +893,12 @@ BEGIN
   TO social_monitor_public_schema_owner
   WITH ADMIN FALSE, INHERIT FALSE, SET TRUE GRANTED BY CURRENT_USER;
   SET LOCAL ROLE social_monitor_public_schema_owner;
+  GRANT CREATE ON SCHEMA public
+  TO social_monitor_reader_summary_publication_owner;
   ALTER TABLE public.reader_summary_weekly_certification_seals
     OWNER TO social_monitor_reader_summary_publication_owner;
+  REVOKE CREATE ON SCHEMA public
+  FROM social_monitor_reader_summary_publication_owner;
   RESET ROLE;
   REVOKE social_monitor_reader_summary_publication_owner
   FROM social_monitor_public_schema_owner GRANTED BY CURRENT_USER;
