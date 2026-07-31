@@ -20,6 +20,22 @@ import type {
   ReaderSummaryEvidenceSelectorPort,
   ReaderSummaryTimestampPolicy,
 } from "../../ports";
+import {
+  inclusiveObservedBefore,
+  isHackerNewsCanonicalUrl,
+  isInsidePeriod,
+  normalizeProviderKey,
+  providerBalancedQuotaForLimit,
+  roundScore,
+} from "./relevance-reader-summary-evidence-normalization";
+
+export {
+  inclusiveObservedAfter,
+  inclusiveObservedBefore,
+  normalizeProviderKey,
+  providerBalancedQuotaForLimit,
+  roundScore,
+} from "./relevance-reader-summary-evidence-normalization";
 
 export const maxReaderSummaryEvidenceItems = 200;
 export const maxReaderSummaryCandidateItems = 200;
@@ -273,19 +289,6 @@ export const readerSummaryPeriodQuery = (
   };
 };
 
-const isInsidePeriod = (
-  date: Date,
-  period: Parameters<ReaderSummaryEvidenceSelectorPort["select"]>[0]["period"],
-): boolean =>
-  date.getTime() >= period.startedAt.getTime() &&
-  date.getTime() < period.endedAt.getTime();
-
-export const inclusiveObservedAfter = (startedAt: Date): Date =>
-  new Date(startedAt.getTime() - 1);
-
-export const inclusiveObservedBefore = (endedAt: Date): Date =>
-  new Date(endedAt.getTime() + 1);
-
 export const normalizeSelectionLimit = (limit: number): number => {
   if (!Number.isInteger(limit) || limit < 1) {
     return 1;
@@ -334,17 +337,6 @@ export const providerSupplementTargetForLimit = (limit: number): number => {
   return providerReserveForLimit(normalizedLimit);
 };
 
-export const providerBalancedQuotaForLimit = (params: {
-  readonly limit: number;
-  readonly activeProviderCount: number;
-}): number => {
-  if (params.activeProviderCount <= 0) {
-    return params.limit;
-  }
-
-  return Math.max(1, Math.floor(params.limit / params.activeProviderCount));
-};
-
 export const countItemsForProvider = (
   items: Iterable<SummaryEvidenceItem>,
   providerKey: string,
@@ -360,9 +352,6 @@ export const countItemsForProvider = (
 
   return count;
 };
-
-export const normalizeProviderKey = (providerKey: string): string =>
-  providerKey.trim().toLocaleLowerCase("en-US");
 
 export const mapSupplementFeedItem = (params: {
   readonly snapshot: ReturnType<FeedItem["toSnapshot"]>;
@@ -433,18 +422,6 @@ export const mapSupplementFeedItem = (params: {
   };
 };
 
-const isHackerNewsCanonicalUrl = (value: string | undefined): boolean => {
-  if (value === undefined) {
-    return false;
-  }
-
-  try {
-    return new URL(value).hostname.toLowerCase() === "news.ycombinator.com";
-  } catch {
-    return false;
-  }
-};
-
 export const supplementEvidenceScore = (params: {
   readonly snapshot: ReturnType<FeedItem["toSnapshot"]>;
   readonly contentQuality: SummaryEvidenceItem["contentQuality"];
@@ -503,6 +480,3 @@ export const supplementWhyImportant = (params: {
 
   return reasons;
 };
-
-export const roundScore = (value: number): number =>
-  Math.round(value * 1000) / 1000;
