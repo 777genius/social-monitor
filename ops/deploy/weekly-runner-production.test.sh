@@ -60,8 +60,21 @@ grep -F 'capability_table_acl_count === "0"' "$weekly_seal_contract" \
   >/dev/null
 grep -F 'function_capability_acl_count === "0"' "$weekly_seal_contract" \
   >/dev/null
-grep -F "'reader_summary_weekly_certification_seals'" \
-  "$publication_pre_migration" >/dev/null
+[[ $(grep -Fc "'reader_summary_weekly_certification_seals'" \
+  "$publication_pre_migration") -eq 5 ]]
+[[ $(awk '
+  /AND relation\.relname NOT IN \(/ { in_owner_exclusion = 1; next }
+  in_owner_exclusion && /reader_summary_weekly_certification_seals/ { count++ }
+  in_owner_exclusion && /^      \)/ { in_owner_exclusion = 0 }
+  END { print count + 0 }
+' "$publication_pre_migration") -eq 3 ]]
+[[ $(awk '
+  /^DO \$ownership_transfer_audit\$/ { in_owner_audit = 1 }
+  in_owner_audit && /AND relation\.relname IN \(/ { in_owner_list = 1; next }
+  in_owner_list && /reader_summary_weekly_certification_seals/ { count++ }
+  in_owner_list && /^      \)/ { in_owner_list = 0 }
+  END { print count + 0 }
+' "$publication_pre_migration") -eq 1 ]]
 ! grep -Eq '(GRANT|REVOKE).+reader_summary_weekly_certification_seals' \
   "$weekly_seal_contract"
 

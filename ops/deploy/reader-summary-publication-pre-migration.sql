@@ -732,7 +732,7 @@ BEGIN
         'reader_summary_production_recovery_days',
         'reader_summary_production_recovery_dry_runs',
         'reader_summary_production_recovery_leases',
-        'reader_summary_recovery_receipts',
+        'reader_summary_recovery_receipts', 'reader_summary_weekly_certification_seals',
         'reader_summary_weekly_publication_evidence'
       )
       AND owner.rolname NOT IN (
@@ -759,7 +759,7 @@ BEGIN
         'reader_summary_production_recovery_days',
         'reader_summary_production_recovery_dry_runs',
         'reader_summary_production_recovery_leases',
-        'reader_summary_recovery_receipts',
+        'reader_summary_recovery_receipts', 'reader_summary_weekly_certification_seals',
         'reader_summary_weekly_publication_evidence'
       )
       AND owner.rolname = v_runtime_role
@@ -794,7 +794,7 @@ BEGIN
         'reader_summary_production_recovery_days',
         'reader_summary_production_recovery_dry_runs',
         'reader_summary_production_recovery_leases',
-        'reader_summary_recovery_receipts',
+        'reader_summary_recovery_receipts', 'reader_summary_weekly_certification_seals',
         'reader_summary_weekly_publication_evidence'
       )
       AND owner.rolname IN (v_admin_role, v_runtime_role)
@@ -920,7 +920,7 @@ BEGIN
         'reader_summary_production_recovery_days',
         'reader_summary_production_recovery_dry_runs',
         'reader_summary_production_recovery_leases',
-        'reader_summary_recovery_receipts',
+        'reader_summary_recovery_receipts', 'reader_summary_weekly_certification_seals',
         'reader_summary_weekly_publication_evidence'
       )
       AND owner.rolname <>
