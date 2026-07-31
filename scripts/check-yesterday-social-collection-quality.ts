@@ -28,7 +28,7 @@ import {
   resolveCollectionQualityRegenerationFreshness,
   type CollectionQualityRegenerationFreshnessEvidence,
 } from "./lib/yesterday-social-collection-quality-regeneration";
-import { queryCollectionQualitySummaryCounts } from "./lib/yesterday-social-collection-quality-summary-counts";
+import { queryCollectionQualitySummaryEvidenceCounts } from "./lib/yesterday-social-collection-quality-summary-counts";
 import { isValidExistingYesterdaySocialCollectionQualityReport } from "./lib/yesterday-social-collection-quality-report-validation";
 import {
   average,
@@ -336,20 +336,10 @@ async function tryBuildReport(): Promise<Report | undefined> {
       scope,
     );
     const sourceItemCounts = await querySourceItemCounts(client, scope);
-    const summaryArtifacts = await queryCollectionQualitySummaryCounts(
+    const summaryEvidence = await queryCollectionQualitySummaryEvidenceCounts(
       client,
       scope,
       {
-        table: "reader_summary_artifacts",
-        startedAt: window.startInclusive,
-        endedAt: window.endExclusive,
-      },
-    );
-    const summaryJobs = await queryCollectionQualitySummaryCounts(
-      client,
-      scope,
-      {
-        table: "reader_summary_jobs",
         startedAt: window.startInclusive,
         endedAt: window.endExclusive,
       },
@@ -391,11 +381,11 @@ async function tryBuildReport(): Promise<Report | undefined> {
       collectionDate,
     });
     const summaryArtifactCoverage = {
-      artifactCount: sumCounts(summaryArtifacts),
-      jobCount: sumCounts(summaryJobs),
-      statusCounts: statusCounts(summaryArtifacts),
+      artifactCount: sumCounts(summaryEvidence),
+      jobCount: sumCounts(summaryEvidence),
+      statusCounts: statusCounts(summaryEvidence),
       verificationStatus:
-        sumCounts(summaryArtifacts) > 0
+        sumCounts(summaryEvidence) > 0
           ? "verified_from_summary_artifacts"
           : "not_verified_missing_summary_artifact",
     } as const;
