@@ -15,6 +15,16 @@ import {
   assertPublicationEvidenceSemantics,
   canonicalProviderEvidence,
 } from "../../libs/summary/domain/value-objects/reader-summary-weekly-publication-evidence-validation";
+import {
+  assertReaderSummaryWeeklyProductionCertificationSealBinding,
+  loadReaderSummaryWeeklyProductionCertificationSeal,
+  type ReaderSummaryWeeklyProductionCertificationSeal,
+} from "./reader-summary-weekly-production-certification-seal";
+
+export type {
+  ReaderSummaryWeeklyProductionCertificationSeal,
+  ReaderSummaryWeeklyProductionCertificationSealDay,
+} from "./reader-summary-weekly-production-certification-seal";
 
 export type ReaderSummaryWeeklyProductionStatus =
   | "complete"
@@ -107,6 +117,9 @@ export type ReaderSummaryWeeklyProductionDbState = Readonly<{
   status: ReaderSummaryWeeklyProductionStatus;
   scope: ReaderSummaryWeeklyProductionScope;
   window: ReaderSummaryWeeklyProductionWindow;
+  weeklyCertificationSeal:
+    | ReaderSummaryWeeklyProductionCertificationSeal
+    | null;
   certifications: readonly ReaderSummaryWeeklyProductionCertification[];
   missingDates: readonly string[];
   blockingReasons: readonly string[];
@@ -362,6 +375,12 @@ export const loadReaderSummaryWeeklyProductionDbState = async (
   assertReaderSummaryWeeklyProductionWindow(window);
   const exactScope = normalizeScope(scope);
   const scopeKey = readerSummaryWeeklyScopeKey(exactScope.scope);
+  const weeklyCertificationSeal =
+    await loadReaderSummaryWeeklyProductionCertificationSeal(
+      client,
+      exactScope,
+      window,
+    );
   const result = await client.query<WeeklyEvidenceRow>(
     `
       SELECT
@@ -404,7 +423,17 @@ export const loadReaderSummaryWeeklyProductionDbState = async (
   assertUniqueDates(certifications);
   const foundDates = new Set(certifications.map((row) => row.requestedUtcDate));
   const missingDates = window.dates.filter((date) => !foundDates.has(date));
+  if (weeklyCertificationSeal !== null) {
+    assertReaderSummaryWeeklyProductionCertificationSealBinding(
+      weeklyCertificationSeal,
+      certifications,
+      window,
+    );
+  }
   const blockingReasons = [
+    ...(weeklyCertificationSeal === null
+      ? ["missing persisted DB weekly certification seal"]
+      : []),
     ...missingDates.map((date) => `missing DB certification for ${date}`),
     ...certifications.flatMap(certificationBlockingReasons),
   ];
@@ -417,6 +446,7 @@ export const loadReaderSummaryWeeklyProductionDbState = async (
           : "partial",
     scope: exactScope,
     window,
+    weeklyCertificationSeal,
     certifications: Object.freeze(certifications),
     missingDates: Object.freeze(missingDates),
     blockingReasons: Object.freeze(blockingReasons),

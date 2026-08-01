@@ -20,9 +20,6 @@ import {
 import { parseOpenAiReaderSummaryWeeklyResponse } from "../../libs/summary/adapters/model/openai-responses-reader-summary-weekly-response-parser";
 import { buildOpenAiReaderSummaryWeeklyJsonSchema } from "../../libs/summary/adapters/model/openai-responses-reader-summary-weekly-schema";
 import {
-  readerSummaryWeeklyInputManifestSchemaVersion,
-} from "../../libs/summary/domain/value-objects/reader-summary-weekly-input-manifest";
-import {
   assertReaderSummaryWeeklyModelInput,
   readerSummaryWeeklyModelInputSchemaVersion,
   type ReaderSummaryWeeklyModelCitationEvidence,
@@ -371,6 +368,17 @@ export const buildModelInputFromDbState = (
   if (dbState.status !== "complete") {
     return { status: "partial", reasons: dbState.blockingReasons };
   }
+  const sealReasons = certificationSealBlockingReasons(dbState);
+  if (sealReasons.length > 0) {
+    return { status: "partial", reasons: sealReasons };
+  }
+  const weeklyCertificationSeal = dbState.weeklyCertificationSeal;
+  if (weeklyCertificationSeal === null) {
+    return {
+      status: "partial",
+      reasons: ["missing persisted DB weekly certification seal"],
+    };
+  }
   const selected = selectProviderEvidence(dbState.certifications);
   const selectedDates = new Set(selected.map((item) => item.cert.requestedUtcDate));
   const selectedProviders = new Set(selected.map((item) => item.evidence.providerKey));
@@ -399,30 +407,10 @@ export const buildModelInputFromDbState = (
       providerCounts: cert.providerCounts,
     };
   });
-  const manifestBody = {
-    schemaVersion: readerSummaryWeeklyInputManifestSchemaVersion,
-    status: "sealed",
-    blockingPassed: true,
-    weekStartedUtcDate: dbState.window.weekStartedOn,
-    weekEndedUtcDate: dbState.window.weekEndedOn,
-    tenantId: dbState.scope.tenantId,
-    workspaceId: dbState.scope.workspaceId,
-    scope: cloneScope(dbState.scope.scope),
-    days: dbState.certifications.map((cert) => ({
-      requestedUtcDate: cert.requestedUtcDate,
-      publicationEvidenceIdentity: cert.identity,
-      publicationEvidenceSha256: cert.canonicalSha256,
-      githubEvidenceSha256: exactGithubSha(cert),
-    })),
-  };
-  const manifestSealSha = canonicalizeReaderSummaryWeeklyJson(
-    manifestBody,
-    "weekly production manifest",
-  ).sha256;
   const body = {
     schemaVersion: readerSummaryWeeklyModelInputSchemaVersion,
-    manifestSealId: `${readerSummaryWeeklyInputManifestSchemaVersion}:${manifestSealSha}`,
-    manifestSealSha,
+    manifestSealId: weeklyCertificationSeal.sealId,
+    manifestSealSha: weeklyCertificationSeal.sealSha256,
     tenantId: dbState.scope.tenantId,
     workspaceId: dbState.scope.workspaceId,
     scope: cloneScope(dbState.scope.scope),
@@ -447,6 +435,64 @@ export const buildModelInputFromDbState = (
     status: "complete",
     input,
   };
+};
+
+const certificationSealBlockingReasons = (
+  dbState: ReaderSummaryWeeklyProductionDbState,
+): readonly string[] => {
+  const seal = dbState.weeklyCertificationSeal;
+  if (seal === null) {
+    return ["missing persisted DB weekly certification seal"];
+  }
+  const { sealId: ignoredId, sealSha: ignoredSha, ...canonicalBody } =
+    seal.canonicalRecord;
+  void ignoredId;
+  void ignoredSha;
+  const canonical = canonicalizeReaderSummaryWeeklyJson(
+    canonicalBody,
+    "weekly production persisted certification seal",
+  );
+  const scopeKey = readerSummaryWeeklyScopeKey(dbState.scope.scope);
+  const mismatched =
+    ignoredId !== seal.sealId ||
+    ignoredSha !== seal.sealSha256 ||
+    canonicalBody.schemaVersion !==
+      "reader_summary.weekly_certification_seal.v1" ||
+    canonicalBody.tenantId !== seal.tenantId ||
+    canonicalBody.workspaceId !== seal.workspaceId ||
+    canonicalBody.scopeType !== seal.scopeType ||
+    canonicalBody.scopeKey !== seal.scopeKey ||
+    canonicalBody.weekStartedOn !== seal.weekStartedOn ||
+    canonicalBody.weekEndedOn !== seal.weekEndedOn ||
+    seal.sealId !==
+      `reader_summary.weekly_certification_seal.v1:${seal.sealSha256}` ||
+    canonical.sha256 !== seal.sealSha256 ||
+    canonical.json !== seal.canonicalBytes ||
+    canonicalizeReaderSummaryWeeklyJson(canonicalBody.days).json !==
+      canonicalizeReaderSummaryWeeklyJson(seal.days).json ||
+    seal.tenantId !== dbState.scope.tenantId ||
+    seal.workspaceId !== dbState.scope.workspaceId ||
+    seal.scopeType !== dbState.scope.scope.type ||
+    seal.scopeKey !== scopeKey ||
+    seal.weekStartedOn !== dbState.window.weekStartedOn ||
+    seal.weekEndedOn !== dbState.window.weekEndedOn ||
+    seal.days.length !== 7 ||
+    dbState.certifications.length !== 7 ||
+    seal.days.some((day, index) => {
+      const certification = dbState.certifications[index];
+      return certification === undefined ||
+        day.requestedUtcDate !== dbState.window.dates[index] ||
+        day.requestedUtcDate !== certification.requestedUtcDate ||
+        day.publicationId !== certification.publicationId ||
+        day.artifactId !== certification.artifactId ||
+        day.jobId !== certification.jobId ||
+        day.semanticStatus !== certification.semanticStatus ||
+        day.publicationEvidenceIdentity !== certification.identity ||
+        day.publicationEvidenceSha256 !== certification.canonicalSha256;
+    });
+  return mismatched
+    ? ["persisted DB weekly certification seal is stale or mismatched"]
+    : [];
 };
 
 const selectProviderEvidence = (

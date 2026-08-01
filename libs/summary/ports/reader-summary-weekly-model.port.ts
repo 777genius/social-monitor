@@ -43,6 +43,12 @@ const modelInputKeys = ["schemaVersion", "sealId", "sealSha",
   "manifestSealId", "manifestSealSha", "tenantId", "workspaceId", "scope",
   "weekStartedOn", "weekEndedOn", "days", "stories", "observations",
   "citations"] as const;
+const readerSummaryWeeklyCertificationSealSchemaVersion =
+  "reader_summary.weekly_certification_seal.v1" as const;
+const acceptedManifestSealSchemaVersions = Object.freeze([
+  readerSummaryWeeklyInputManifestSchemaVersion,
+  readerSummaryWeeklyCertificationSealSchemaVersion,
+]);
 const modelInputBodyKeys = modelInputKeys.filter((key) =>
   key !== "sealId" && key !== "sealSha",
 ) as readonly Exclude<(typeof modelInputKeys)[number], "sealId" | "sealSha">[];
@@ -128,8 +134,10 @@ export function assertReaderSummaryWeeklyModelInput(
   canonicalReaderSummaryWeeklyScope(model.scope);
   const manifestSha =
     exactReaderSummaryWeeklySha256(model.manifestSealSha, "manifest seal");
-  if (model.manifestSealId !==
-      `${readerSummaryWeeklyInputManifestSchemaVersion}:${manifestSha}`) {
+  if (!acceptedManifestSealSchemaVersions.some(
+    (schemaVersion) =>
+      model.manifestSealId === `${schemaVersion}:${manifestSha}`,
+  )) {
     throw new Error("Reader summary weekly manifest seal is invalid");
   }
   const body = Object.fromEntries(

@@ -189,6 +189,15 @@ describe("reader summary weekly production runner", () => {
       canonicalizeReaderSummaryWeeklyJson(artifact.canary).sha256,
     );
     expect(proof.certificationCount).toBe(7);
+    expect(artifact.modelInput.manifestSealId).toBe(
+      completeDbState().weeklyCertificationSeal?.sealId,
+    );
+    expect(proof.manifestSealId).toBe(
+      completeDbState().weeklyCertificationSeal?.sealId,
+    );
+    expect(proof.manifestSealSha).toBe(
+      completeDbState().weeklyCertificationSeal?.sealSha256,
+    );
     expect(proof.model).toEqual({
       provider: "agent-runtime",
       agentProvider: "codex",
@@ -297,6 +306,57 @@ describe("reader summary weekly production runner", () => {
     expect(result.replayCanaryPath).toBeNull();
     expect(result.blockingReasons).toEqual([
       "replay requested but weekly artifact/proof is missing",
+    ]);
+    expect(model.calls).toBe(0);
+  });
+
+  it("fails closed before model or filesystem writes without the persisted seal", async () => {
+    const model = new FakeWeeklyModel((input) => outputFor(input));
+    const dbState = completeDbState();
+    const result = await runReaderSummaryWeeklyProduction({
+      dbState: Object.freeze({
+        ...dbState,
+        weeklyCertificationSeal: null,
+      }),
+      outputDirectory: tempDir(),
+      model,
+      replay: false,
+      generatedAt: new Date("2026-07-27T06:30:00.000Z"),
+    });
+
+    expect(result.status).toBe("partial");
+    expect(result.blockingReasons).toEqual([
+      "missing persisted DB weekly certification seal",
+    ]);
+    expect(result.modelCallPerformed).toBe(false);
+    expect(result.writePerformed).toBe(false);
+    expect(model.calls).toBe(0);
+  });
+
+  it("fails closed before model or filesystem writes for a stale seal", async () => {
+    const model = new FakeWeeklyModel((input) => outputFor(input));
+    const dbState = completeDbState();
+    const seal = dbState.weeklyCertificationSeal!;
+    const result = await runReaderSummaryWeeklyProduction({
+      dbState: Object.freeze({
+        ...dbState,
+        weeklyCertificationSeal: Object.freeze({
+          ...seal,
+          days: Object.freeze([
+            Object.freeze({ ...seal.days[0]!, publicationId: "stale" }),
+            ...seal.days.slice(1),
+          ]),
+        }),
+      }),
+      outputDirectory: tempDir(),
+      model,
+      replay: false,
+      generatedAt: new Date("2026-07-27T06:30:00.000Z"),
+    });
+
+    expect(result.status).toBe("partial");
+    expect(result.blockingReasons).toEqual([
+      "persisted DB weekly certification seal is stale or mismatched",
     ]);
     expect(model.calls).toBe(0);
   });
@@ -487,6 +547,7 @@ function completeModelInput(): ReaderSummaryWeeklyModelInput {
 }
 
 function completeDbState(): ReaderSummaryWeeklyProductionDbState {
+  const certifications = Object.freeze(window.dates.map(certificationFor));
   return Object.freeze({
     status: "complete" as const,
     scope: Object.freeze({
@@ -495,9 +556,54 @@ function completeDbState(): ReaderSummaryWeeklyProductionDbState {
       scope: Object.freeze({ type: "workspace" as const }),
     }),
     window,
-    certifications: Object.freeze(window.dates.map(certificationFor)),
+    weeklyCertificationSeal: certificationSealFor(certifications),
+    certifications,
     missingDates: Object.freeze([]),
     blockingReasons: Object.freeze([]),
+  });
+}
+
+function certificationSealFor(
+  certifications: readonly ReaderSummaryWeeklyProductionCertification[],
+) {
+  const body = {
+    schemaVersion: "reader_summary.weekly_certification_seal.v1",
+    tenantId,
+    workspaceId,
+    scopeType: "workspace",
+    scopeKey: "workspace",
+    weekStartedOn: window.weekStartedOn,
+    weekEndedOn: window.weekEndedOn,
+    days: certifications.map((certification) => ({
+      requestedUtcDate: certification.requestedUtcDate,
+      publicationId: certification.publicationId,
+      artifactId: certification.artifactId,
+      jobId: certification.jobId,
+      semanticStatus: certification.semanticStatus,
+      publicationEvidenceIdentity: certification.identity,
+      publicationEvidenceSha256: certification.canonicalSha256,
+    })),
+  };
+  const canonical = canonicalizeReaderSummaryWeeklyJson(body);
+  const sealId =
+    `reader_summary.weekly_certification_seal.v1:${canonical.sha256}`;
+  return Object.freeze({
+    sealId,
+    sealSha256: canonical.sha256,
+    tenantId,
+    workspaceId,
+    scopeType: "workspace" as const,
+    scopeKey: "workspace",
+    weekStartedOn: window.weekStartedOn,
+    weekEndedOn: window.weekEndedOn,
+    days: Object.freeze(body.days),
+    canonicalRecord: Object.freeze({
+      ...body,
+      sealId,
+      sealSha: canonical.sha256,
+    }),
+    canonicalBytes: canonical.json,
+    recordedAt: "2026-07-27T06:00:00.000Z",
   });
 }
 
