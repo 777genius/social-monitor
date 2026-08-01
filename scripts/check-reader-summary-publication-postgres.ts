@@ -35,6 +35,9 @@ import { assertReaderSummaryRecoveryPostgresContract } from "./lib/reader-summar
 import { assertReaderSummaryWeeklyDailyCertificationBackfillPostgresContract } from "./lib/reader-summary-weekly-daily-certification-backfill-postgres-contract";
 import { assertReaderSummaryWeeklyCertificationSealPostgresContract } from "./lib/reader-summary-weekly-certification-seal-postgres-contract";
 import {
+  assertReaderSummaryWeeklyProductionPostgresContract,
+} from "./lib/reader-summary-weekly-production-postgres-contract";
+import {
   assertReaderSummaryWeeklyPublicationEvidencePostgresContract,
   assertReaderSummaryWeeklyPublicationEvidenceRow,
   readerSummaryPublicationDbOwnedRequest,
@@ -249,6 +252,7 @@ export const runReaderSummaryPublicationPostgresContract = async (
               createRunningFixture(first, status, day),
             publish: (payload) => publish(first, payload),
           });
+          await assertReaderSummaryWeeklyProductionPostgresContract(first);
           return;
         }
         await assertReaderSummaryWeeklyPublicationEvidencePostgresContract({
