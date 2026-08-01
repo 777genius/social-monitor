@@ -7,6 +7,10 @@ import {
 import type { ReaderSummaryWeeklyPublicationAuthorization } from "../../../domain/policies/reader-summary-weekly-publication-authorization";
 import * as weeklyAuthorizationPolicy from "../../../domain/policies/reader-summary-weekly-publication-authorization";
 import { emptyReaderSummaryReliabilityReport } from "../../../domain/entities/reader-summary-reliability";
+import type {
+  ReaderSummaryWeeklyPublicationPersistencePayload,
+  ReaderSummaryWeeklyPublicationPersistenceSqlRow,
+} from "../reader-summary-weekly-publication-payload";
 import { PrismaReaderSummaryArtifactRepository } from "./prisma-reader-summary-artifact.repository";
 import type { PrismaReaderSummaryArtifactRecord } from "./prisma-reader-summary-records";
 import type { PrismaSummaryClient } from "./prisma-summary-client";
@@ -155,15 +159,16 @@ describe("PrismaReaderSummaryArtifactRepository", () => {
     );
   });
 
-  it("persists discriminated weekly quality and proof without a daily decision", async () => {
+  it("persists discriminated weekly quality and proof and accepts exact replay", async () => {
     const authorization =
       Object.freeze({}) as ReaderSummaryWeeklyPublicationAuthorization;
+    const authorizationDetails = weeklyAuthorizationDetails();
     const readAuthorization = jest
       .spyOn(
         weeklyAuthorizationPolicy,
         "readReaderSummaryWeeklyPublicationAuthorization",
       )
-      .mockReturnValue(weeklyAuthorizationDetails());
+      .mockReturnValue(authorizationDetails);
     const prisma = new FakeReaderSummaryPrisma();
     const repository = new PrismaReaderSummaryArtifactRepository(prisma.client);
     const command = {
@@ -175,21 +180,25 @@ describe("PrismaReaderSummaryArtifactRepository", () => {
     try {
       await repository.saveWeekly(command);
 
-      expect(prisma.statusFor(command.artifactId)).toBe("RUNNING");
-      expect(prisma.qualitySignalsFor(command.artifactId)).toMatchObject({
-        kind: "weekly",
-        editorialQuality: {
-          policyVersion: "reader_summary.weekly_editorial_quality.v2",
-          publicationDecision: "allow",
-        },
-        weeklyPublicationProof: {
-          authorizationId: "weekly-authorization-prisma",
-        },
+      const persistedPayload = prisma.weeklyRequests[0];
+      expect(persistedPayload?.qualitySignals).toEqual({
+        ...authorizationDetails.qualitySignals,
+        weeklyPublicationProof: authorizationDetails.proof,
       });
-      expect(
-        JSON.stringify(prisma.qualitySignalsFor(command.artifactId)),
-      ).not.toContain("canonicalScore");
-      await expect(repository.saveWeekly(command)).rejects.toThrow("replayed");
+      expect(persistedPayload?.artifactPayload).toEqual({
+        schemaVersion: "reader_summary.weekly_persisted_artifact.v1",
+        output: authorizationDetails.artifact.output,
+        publicationProof: authorizationDetails.proof,
+      });
+      expect(JSON.stringify(persistedPayload?.qualitySignals)).not.toContain(
+        "canonicalScore",
+      );
+      await expect(repository.saveWeekly(command)).resolves.toBeUndefined();
+      expect(prisma.weeklyOutcomes).toEqual(["persisted", "replayed"]);
+      expect(prisma.weeklyRequests).toEqual([
+        persistedPayload,
+        persistedPayload,
+      ]);
     } finally {
       readAuthorization.mockRestore();
     }
@@ -204,8 +213,18 @@ const weeklyAuthorizationDetails = (): ReturnType<
     artifact: {
       output: {
         schemaVersion: "reader_summary.weekly_model_output.v1",
+        sealId: `reader_summary.weekly_model_input.v1:${"a".repeat(64)}`,
+        sealSha: "a".repeat(64),
+        weekStartedOn: "2026-07-20",
+        weekEndedOn: "2026-07-26",
         headline: "Truthful weekly headline",
+        headlineCitationIds: [],
+        takeaway: "Truthful weekly takeaway",
+        takeawayCitationIds: [],
         synthesis: "Truthful weekly synthesis",
+        synthesisCitationIds: [],
+        stories: [],
+        sections: [],
       },
       editorialQuality: {
         policyVersion: "reader_summary.weekly_editorial_quality.v2",
@@ -222,18 +241,50 @@ const weeklyAuthorizationDetails = (): ReturnType<
       },
     },
     proof: {
+      schemaVersion: "reader_summary.weekly_publication_proof.v1",
       artifactId: "weekly-artifact-prisma",
       tenantId: tenant,
       workspaceId: workspace,
       scope: { type: "workspace" },
       weekStartedOn: "2026-07-20",
       weekEndedOn: "2026-07-26",
-      authorizationId: "weekly-authorization-prisma",
+      manifestSealId:
+        `reader_summary.weekly_input_manifest.v1:${"b".repeat(64)}`,
+      manifestSealSha256: "b".repeat(64),
+      modelInputSealId:
+        `reader_summary.weekly_model_input.v1:${"a".repeat(64)}`,
+      modelInputSealSha256: "a".repeat(64),
+      artifactSha256: "c".repeat(64),
+      editorialQualitySha256: "d".repeat(64),
+      authorities: weeklyAuthorityProofs(),
       citations: [],
+      authorizationId:
+        `reader_summary.weekly_publication_authorization.v1:${"e".repeat(64)}`,
+      sha256: "e".repeat(64),
     },
   }) as ReturnType<
     typeof weeklyAuthorizationPolicy.readReaderSummaryWeeklyPublicationAuthorization
   >;
+
+const weeklyAuthorityProofs = () =>
+  [
+    "2026-07-20",
+    "2026-07-21",
+    "2026-07-22",
+    "2026-07-23",
+    "2026-07-24",
+    "2026-07-25",
+    "2026-07-26",
+  ].map((requestedUtcDate, index) => ({
+    requestedUtcDate,
+    publicationId: `weekly-daily-publication-${index + 1}`,
+    publicationEvidenceIdentity: `weekly-publication-evidence-${index + 1}`,
+    publicationEvidenceSha256: "f".repeat(64),
+    storyAuthorityIdentity: `weekly-story-authority-${index + 1}`,
+    storyAuthoritySha256: "1".repeat(64),
+    githubBoardIdentity: `weekly-github-board-${index + 1}`,
+    githubBoardSha256: "2".repeat(64),
+  }));
 
 type ReaderSummarySaveOptions = NonNullable<
   Parameters<PrismaReaderSummaryArtifactRepository["save"]>[1]
@@ -616,9 +667,57 @@ class FakeReaderSummaryPrisma {
     string,
     PrismaReaderSummaryArtifactRecord
   >();
+  private readonly weeklyPayloadBySlot = new Map<string, string>();
   private nowMs = Date.parse("2026-07-05T10:00:00.000Z");
+  readonly weeklyRequests: ReaderSummaryWeeklyPublicationPersistencePayload[] =
+    [];
+  readonly weeklyOutcomes: ReaderSummaryWeeklyPublicationPersistenceSqlRow["outcome"][] =
+    [];
 
   readonly client = {
+    $queryRaw: async <T>(
+      _strings: TemplateStringsArray,
+      serialized: unknown,
+    ): Promise<T> => {
+      const payload = JSON.parse(
+        String(serialized),
+      ) as ReaderSummaryWeeklyPublicationPersistencePayload;
+      const slotKey = [
+        payload.tenantId,
+        payload.workspaceId,
+        payload.scopeKey,
+        payload.cadence,
+        payload.periodStartedAt,
+        payload.periodEndedAt,
+        payload.periodTimezone,
+      ].join(":");
+      const canonicalPayload = JSON.stringify(payload);
+      const existingPayload = this.weeklyPayloadBySlot.get(slotKey);
+      const outcome = existingPayload === undefined ? "persisted" : "replayed";
+      this.weeklyRequests.push(payload);
+
+      if (
+        existingPayload !== undefined &&
+        existingPayload !== canonicalPayload
+      ) {
+        throw new Error(
+          "weekly artifact persistence replay diverged from immutable sealId or sealSha",
+        );
+      }
+      if (outcome === "persisted") {
+        this.weeklyPayloadBySlot.set(slotKey, canonicalPayload);
+      }
+      this.weeklyOutcomes.push(outcome);
+
+      return [
+        {
+          outcome,
+          artifact_id: payload.artifactId,
+          artifact_payload_sha256: payload.artifactPayloadSha256,
+          proof_sha256: payload.proof.sha256,
+        },
+      ] as unknown as T;
+    },
     readerSummaryArtifact: {
       create: async (args: {
         readonly data: Omit<
