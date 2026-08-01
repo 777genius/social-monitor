@@ -14,17 +14,20 @@ import type {
 } from "./agent-runtime-executor.port";
 import {
   attachExecutorOwnedExecutionAttestation,
-  canonicalSubscriptionRuntimeRequest,
   invalidAttestationResult,
   parseSubscriptionRuntimeJsonObject,
-  productionAgentRuntimeModel,
-  productionAgentRuntimeReasoningEffort,
 } from "./subscription-runtime-execution-attestation";
 import {
   FileSubscriptionRuntimeInstallationInspector,
   type SubscriptionRuntimeInstallationInspector,
   type SubscriptionRuntimeInstallationIdentity,
 } from "./subscription-runtime-installation";
+import {
+  admitSubscriptionRuntimeRequest,
+  configuredSubscriptionRuntimeDefaultsAreSafe,
+  type AdmittedSubscriptionRuntimeRequest,
+  type SubscriptionRuntimePurposeProfile,
+} from "./subscription-runtime-purpose-model-policy";
 
 export type SubscriptionRuntimeCliExecutorOptions = {
   readonly command: string;
@@ -50,14 +53,13 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
   async execute(
     request: AgentRuntimeExecutionRequest,
   ): Promise<AgentRuntimeExecutionResult> {
-    if (
-      request.provider !== "codex" ||
-      (this.options.model ?? productionAgentRuntimeModel) !==
-        productionAgentRuntimeModel ||
-      (this.options.reasoningEffort ??
-        productionAgentRuntimeReasoningEffort) !==
-        productionAgentRuntimeReasoningEffort
-    ) {
+    let admission: AdmittedSubscriptionRuntimeRequest;
+    try {
+      if (!configuredSubscriptionRuntimeDefaultsAreSafe(this.options)) {
+        return invalidAttestationResult();
+      }
+      admission = admitSubscriptionRuntimeRequest(request);
+    } catch {
       return invalidAttestationResult();
     }
     let admittedInstallation: SubscriptionRuntimeInstallationIdentity;
@@ -72,24 +74,28 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
       join(tmpdir(), "social-monitor-agent-runtime-"),
     );
     const inputPath = join(tempDir, "request.json");
-
     try {
-      const canonicalRequest = canonicalSubscriptionRuntimeRequest(request);
-      await writeFile(inputPath, JSON.stringify(canonicalRequest), "utf8");
-
+      await writeFile(
+        inputPath,
+        JSON.stringify(admission.canonicalRequest),
+        "utf8",
+      );
       const startedAt = Date.now();
       const initialResult = cliExecutionResult(
         await runCli({
           command: admittedInstallation.executablePath,
-          args: this.buildArgs(request, inputPath),
-          env: this.executionEnvPatch(this.options.ephemeral),
+          args: this.buildArgs(request, inputPath, admission.profile),
+          env: this.executionEnvPatch(
+            this.options.ephemeral,
+            admission.profile,
+          ),
           timeoutMs: request.timeoutMs,
         }),
       );
       if (!shouldRetryWithEphemeral(initialResult, this.options)) {
         return this.attestCompletedResult(
           request,
-          canonicalRequest,
+          admission,
           initialResult,
           admittedInstallation,
         );
@@ -101,15 +107,14 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
       const recovered = cliExecutionResult(
         await runCli({
           command: admittedInstallation.executablePath,
-          args: this.buildArgs(request, inputPath, true),
-          env: this.executionEnvPatch(true),
+          args: this.buildArgs(request, inputPath, admission.profile, true),
+          env: this.executionEnvPatch(true, admission.profile),
           timeoutMs: remainingTimeoutMs,
         }),
       );
-
       return this.attestCompletedResult(
         request,
-        canonicalRequest,
+        admission,
         {
           ...recovered,
           warnings: [
@@ -142,7 +147,6 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
         ],
       };
     }
-
     try {
       const installation = await this.installationInspector.inspect(
         this.options.command,
@@ -156,7 +160,6 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
         !probe.timedOut &&
         (probe.exitCode === 0 ||
           isUsageProbeOutput(probe.stdout, probe.stderr));
-
       return {
         healthy,
         runtimeEngine: "subscription-runtime-cli",
@@ -188,18 +191,16 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
 
   private attestCompletedResult(
     request: AgentRuntimeExecutionRequest,
-    canonicalRequest: Record<string, unknown>,
+    admission: AdmittedSubscriptionRuntimeRequest,
     result: AgentRuntimeExecutionResult,
     admittedInstallation: SubscriptionRuntimeInstallationIdentity,
   ): Promise<AgentRuntimeExecutionResult> {
     return attachExecutorOwnedExecutionAttestation({
       command: admittedInstallation.executablePath,
       request,
-      canonicalRequest,
+      canonicalRequest: admission.canonicalRequest,
       result,
-      model: this.options.model ?? productionAgentRuntimeModel,
-      reasoningEffort:
-        this.options.reasoningEffort ?? productionAgentRuntimeReasoningEffort,
+      profile: admission.profile,
       installationInspector: this.installationInspector,
       admittedInstallation,
     });
@@ -208,6 +209,7 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
   private buildArgs(
     request: AgentRuntimeExecutionRequest,
     inputPath: string,
+    profile: SubscriptionRuntimePurposeProfile,
     ephemeral = this.options.ephemeral,
   ): readonly string[] {
     const args = [
@@ -220,7 +222,6 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
       "--timeout-ms",
       String(request.timeoutMs),
     ];
-
     if (this.options.stateRoot !== undefined) {
       args.push("--state-root", this.options.stateRoot);
     }
@@ -239,22 +240,20 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
     ) {
       args.push("--claude-token-env", this.options.claudeTokenEnv);
     }
-    args.push("--model", this.options.model ?? productionAgentRuntimeModel);
-
+    args.push("--model", profile.model);
     return args;
   }
 
   private executionEnvPatch(
     ephemeral: boolean,
+    profile: SubscriptionRuntimePurposeProfile,
   ): Readonly<Record<string, string>> {
     const patch: Record<string, string> = {};
     if (!ephemeral && this.options.localEncryptionKey !== undefined) {
       patch.SUBSCRIPTION_RUNTIME_LOCAL_ENCRYPTION_KEY =
         this.options.localEncryptionKey;
     }
-    patch.AGENT_RUNTIME_REASONING_EFFORT =
-      this.options.reasoningEffort ?? productionAgentRuntimeReasoningEffort;
-
+    patch.AGENT_RUNTIME_REASONING_EFFORT = profile.reasoningEffort;
     return patch;
   }
 }
@@ -360,7 +359,7 @@ const runCli = async (params: {
 }> =>
   new Promise((resolve, reject) => {
     const child = spawn(params.command, params.args, {
-      env: { ...runtimeChildBaseEnv(process.env), ...params.env },
+      env: { ...subscriptionRuntimeChildBaseEnv(process.env), ...params.env },
       stdio: ["ignore", "pipe", "pipe"],
     });
     const stdout: Buffer[] = [];
@@ -370,7 +369,6 @@ const runCli = async (params: {
       timedOut = true;
       child.kill("SIGTERM");
     }, params.timeoutMs);
-
     child.stdout.on("data", (chunk: Buffer) => stdout.push(chunk));
     child.stderr.on("data", (chunk: Buffer) => stderr.push(chunk));
     child.on("error", (error) => {
@@ -389,13 +387,15 @@ const runCli = async (params: {
     });
   });
 
-const runtimeChildBaseEnv = (
+const subscriptionRuntimeChildBaseEnv = (
   env: NodeJS.ProcessEnv,
 ): Readonly<Record<string, string>> =>
   Object.fromEntries(
     Object.entries(env).filter(
       ([key, value]) =>
-        value !== undefined && !runtimeSessionScopedEnvKeys.has(key),
+        value !== undefined &&
+        !runtimeSessionScopedEnvKeys.has(key) &&
+        !isApiKeyCredentialEnvKey(key),
     ),
   ) as Readonly<Record<string, string>>;
 
@@ -405,6 +405,9 @@ const runtimeSessionScopedEnvKeys = new Set([
   "CODEX_TURN_ID",
   "CODEX_SESSION_ID",
 ]);
+
+const isApiKeyCredentialEnvKey = (key: string): boolean =>
+  key.endsWith("_API_KEY") || key.endsWith("_API_KEY_FILE");
 
 const isUsageProbeOutput = (stdout: string, stderr: string): boolean =>
   `${stdout}\n${stderr}`.includes("subscription-runtime-run-agent-task");

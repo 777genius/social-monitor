@@ -25,9 +25,13 @@ apps/agent-runtime/bin/run-codex-subscription-runtime-agent-task.mjs --provider 
 ```
 
 The bridge delegates lifecycle, durable sessions and task execution to
-`@vioxen/subscription-runtime`, while enforcing `gpt-5.5` and `xhigh` reasoning
-before constructing the Codex worker. The CLI path can be overridden through
-`AGENT_RUNTIME_CLI_PATH`. Docker stores runtime session state in
+`@vioxen/subscription-runtime`, while enforcing the exact purpose route before
+constructing the Codex worker. Daily summary purposes use `gpt-5.5`, `xhigh`
+and structured JSON output. `social_monitor.reader_summary.weekly.generate`
+uses `gpt-5.6-sol`, `xhigh` and `output_text`. These admitted routes use Codex
+subscription-account auth from the configured auth JSON; API-key credentials
+are removed from the runtime child environment. The CLI path can be overridden
+through `AGENT_RUNTIME_CLI_PATH`. Docker stores runtime session state in
 `/var/lib/subscription-runtime` via `AGENT_RUNTIME_STATE_ROOT`.
 
 Important env:
