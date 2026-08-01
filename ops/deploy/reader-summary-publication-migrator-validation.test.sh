@@ -126,10 +126,18 @@ if [[ -n $query_file ]]; then
     [[ $PGAPPNAME == social-monitor/original-cutoff-pre || \
       $PGAPPNAME == social-monitor/original-cutoff-resolved || \
       $PGAPPNAME == social-monitor/original-cutoff-post ]]
-    [[ $query_payload == *'7383663a3a29d709f5bdfc27ebf7c237fb07c1c32b28af09bad1bf92f369e5af'* ]]
-    [[ $query_payload == *'2026-07-31 21:16:04.938573+00'* ]]
+    [[ $(grep -Ec "'[0-9a-f]{64}'" <<< "$query_payload") == 3 ]]
+    [[ $(grep -cF '8748c4e266d8c1838f29b1a6f59f4be056514de64fe95fe44f5c7bb3680b477d' <<< "$query_payload") == 2 ]]
+    [[ $(grep -cF '2026-07-31 21:16:04.938573+00' <<< "$query_payload") == 1 ]]
+    [[ $query_payload == *'finished_at IS NULL'* ]]
+    [[ $query_payload == *'applied_steps_count = 0'* ]]
     [[ $query_payload == *"id <> ''"* ]]
-    [[ $query_payload == *'logs IS NOT NULL'* ]]
+    [[ $(grep -cF 'AND logs IS NULL' <<< "$query_payload") == 2 &&
+      $query_payload != *'logs IS NOT NULL'* && $query_payload != *'logs LIKE'* ]]
+    [[ $query_payload == *"v_unfinished <> 1 OR v_target_rows <> 1"* &&
+      $query_payload == *"v_failed_rows <> 1 OR v_target_matches <> 1"* && $query_payload == *"v_unfinished <> 0 OR v_target_rows <> 1"* ]]
+    [[ $query_payload == *"AND rolled_back_at IS NULL"* &&
+      $query_payload == *"AND rolled_back_at IS NOT NULL"* && $query_payload == *"AND rolled_back_at >= started_at"* ]]
     [[ $query_payload == *'repair_reader_summary_production_recovery_original_cutoff_v2'* ]]
     [[ $query_payload == *'production_recovery_original_cutoff_write'* ]]
     [[ $query_payload == *'validate_reader_summary_production_recovery'* ]]
@@ -150,15 +158,7 @@ if [[ -n $query_file ]]; then
     [[ $query_payload == *'original-cutoff authority is mixed or partially repaired'* ]]
     ! grep -Eq '^[[:space:]]*(UPDATE|INSERT|DELETE|LOCK TABLE)[[:space:]]' \
       <<< "$query_payload"
-    [[ $query_payload == *'ROLLBACK;'* ]]
-    for fingerprint in \
-      'Database error code: 42601' \
-      'ERROR: syntax error at end of input' \
-      'code: SqlState(E42601)' \
-      'message: "syntax error at end of input"' \
-      'routine: Some("scanner_yyerror")'; do
-      [[ $query_payload == *"$fingerprint"* ]]
-    done
+    [[ $query_payload == *'BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;'* && $query_payload == *'ROLLBACK;'* ]]
     query_result=${TRANSPORT_QUERY_RESULT:-}
   elif [[ $query_payload == *'system_role.rolname'* ]]; then
     [[ $query_payload == *"WHERE system_role.rolname = :'system_runtime_role';"* ]]

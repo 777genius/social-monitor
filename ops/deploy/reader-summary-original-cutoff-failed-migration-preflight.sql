@@ -39,7 +39,7 @@ BEGIN
   SELECT
     count(*),
     count(*) FILTER (WHERE checksum =
-      '7383663a3a29d709f5bdfc27ebf7c237fb07c1c32b28af09bad1bf92f369e5af')
+      '8748c4e266d8c1838f29b1a6f59f4be056514de64fe95fe44f5c7bb3680b477d')
   INTO v_target_rows, v_failed_rows
   FROM public."_prisma_migrations"
   WHERE migration_name =
@@ -49,17 +49,12 @@ BEGIN
   WHERE migration_name =
       '20260731153000_reader_summary_production_recovery_original_cutoff_authority'
     AND checksum =
-      '7383663a3a29d709f5bdfc27ebf7c237fb07c1c32b28af09bad1bf92f369e5af'
+      '8748c4e266d8c1838f29b1a6f59f4be056514de64fe95fe44f5c7bb3680b477d'
     AND started_at = TIMESTAMPTZ '2026-07-31 21:16:04.938573+00'
     AND finished_at IS NULL
     AND applied_steps_count = 0
     AND id <> ''
-    AND logs IS NOT NULL
-    AND logs LIKE '%Database error code: 42601%'
-    AND logs LIKE '%ERROR: syntax error at end of input%'
-    AND logs LIKE '%code: SqlState(E42601)%'
-    AND logs LIKE '%message: "syntax error at end of input"%'
-    AND logs LIKE '%routine: Some("scanner_yyerror")%'
+    AND logs IS NULL
     AND (
       (v_phase = 'social-monitor/original-cutoff-pre'
         AND rolled_back_at IS NULL)
