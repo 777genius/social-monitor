@@ -1,6 +1,4 @@
 import { randomBytes, randomUUID } from "node:crypto";
-import { rmSync } from "node:fs";
-import { join } from "node:path";
 import { Pool, type PoolClient } from "pg";
 import {
   provisionReaderSummaryPublicationFixtureScope,
@@ -59,6 +57,7 @@ import {
   makePublicationFixtureRuntimeDatabaseOwner,
   publicationProtectedRolePresence,
   publicationDatabaseUrl,
+  provisionPublicationFixtureDailyTerminalRole,
   publicationRuntimeDatabaseUrl,
   quotePostgresIdentifier,
   quotePostgresLiteral,
@@ -68,14 +67,13 @@ import { assertReaderSummaryPublicationRuntimeGuard } from "./reader-summary-pub
 const serverAdminDatabaseUrl = requiredReaderSummaryPublicationAdminDatabaseUrl(
   process.env,
 );
-const dailyTerminalMigration =
-  "20260730120000_reader_summary_daily_terminal_authority";
 const fixtureSuffix = randomBytes(10).toString("hex");
 const databaseName = `reader_summary_publication_test_${fixtureSuffix}`;
 const migrationAdminRole = `social_monitor_publication_admin_${fixtureSuffix}`;
 const migrationAdminPassword = randomBytes(24).toString("base64url");
 const runtimeRole = `social_monitor_publication_test_${fixtureSuffix}`;
 const runtimePassword = randomBytes(24).toString("base64url");
+const dailyTerminalPassword = randomBytes(24).toString("base64url");
 const targetDatabaseUrl = publicationDatabaseUrl(
   serverAdminDatabaseUrl,
   databaseName,
@@ -102,6 +100,7 @@ let tenantSystemCapabilityRolePreexisting = false;
 let fixtureDatabaseCreated = false;
 let fixtureMigrationAdminRoleCreated = false;
 let fixtureRuntimeRoleCreated = false;
+let fixtureDailyTerminalRoleCreated = false;
 export type ReaderSummaryPublicationPostgresContract =
   | "publication"
   | "weekly-certification-seal"
@@ -147,6 +146,7 @@ export const runReaderSummaryPublicationPostgresContract = async (
       migrationAdminDatabaseUrl: adminDatabaseUrl,
       migrationAdminRole,
       runtimeRole,
+      systemRuntimeRole: runtimeRole,
       targetDatabaseUrl,
     });
 
@@ -177,11 +177,13 @@ export const runReaderSummaryPublicationPostgresContract = async (
       migrationAdminRole,
       runtimeRole,
     );
+    fixtureDailyTerminalRoleCreated =
+      await provisionPublicationFixtureDailyTerminalRole({
+        dailyTerminalPassword,
+        migrationAdminRole,
+        serverAdmin,
+      });
     installPublicationAndFollowingMigrations(migrationWorkspace);
-    rmSync(
-      join(migrationWorkspace.directory, "migrations", dailyTerminalMigration),
-      { recursive: true },
-    );
     applyOrderedReaderSummaryMigrations(adminDatabaseUrl, migrationWorkspace);
     // Recovery after Prisma committed but before the post hardening phase.
     await runReaderSummaryPublicationBootstrapSql(
@@ -360,6 +362,7 @@ export const runReaderSummaryPublicationPostgresContract = async (
       fixtureDatabaseCreated,
       fixtureMigrationAdminRoleCreated,
       fixtureRuntimeRoleCreated,
+      fixtureDailyTerminalRoleCreated,
     });
   }
   console.log(
@@ -367,9 +370,7 @@ export const runReaderSummaryPublicationPostgresContract = async (
   );
 };
 const assertOrderedUpgrade = async (client: PoolClient): Promise<void> => {
-  const expected = readerSummaryMigrationNames().filter(
-    (migration) => migration !== dailyTerminalMigration,
-  );
+  const expected = readerSummaryMigrationNames();
   const applied = await client.query<{ readonly migration_name: string }>(
     `SELECT migration_name
        FROM "_prisma_migrations"

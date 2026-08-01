@@ -17,7 +17,7 @@ type PrivilegesModule = Readonly<{
   makePublicationFixtureRuntimeDatabaseOwner(input: Readonly<{ databaseName: string; migrationAdminDatabaseUrl: string; migrationAdminRole: string; runtimeRole: string; systemRuntimeRole: string; targetDatabaseUrl: string }>): Promise<void>;
   grantLegacyMigrationOwnership(url: string, role: string): Promise<void>;
   runReaderSummaryPublicationBootstrapSql(phase: "pre" | "post", url: string, role: string, systemRuntimeRole?: string): Promise<void>;
-  dropPublicationFixtureDatabaseAndRoles(input: Readonly<{ serverAdmin: Pool; databaseName: string; migrationAdminRole: string; runtimeRole: string; ownerRolePreexisting: boolean; capabilityRolePreexisting: boolean; schemaOwnerRolePreexisting: boolean; tenantSystemCapabilityRolePreexisting: boolean; fixtureDatabaseCreated: boolean; fixtureMigrationAdminRoleCreated: boolean; fixtureRuntimeRoleCreated: boolean; systemRuntimeRole?: string; systemRuntimeRoleCreated?: boolean }>): Promise<void>;
+  dropPublicationFixtureDatabaseAndRoles(input: Readonly<{ serverAdmin: Pool; databaseName: string; migrationAdminRole: string; runtimeRole: string; ownerRolePreexisting: boolean; capabilityRolePreexisting: boolean; schemaOwnerRolePreexisting: boolean; tenantSystemCapabilityRolePreexisting: boolean; fixtureDatabaseCreated: boolean; fixtureMigrationAdminRoleCreated: boolean; fixtureRuntimeRoleCreated: boolean; fixtureDailyTerminalRoleCreated?: boolean; systemRuntimeRole?: string; systemRuntimeRoleCreated?: boolean }>): Promise<void>;
 }>;
 const runtimeRequire = createRequire(join(process.cwd(), "package.json"));
 const { Pool } = runtimeRequire("pg") as PgModule;
@@ -913,11 +913,12 @@ const main = async (): Promise<void> => {
     fixtureDatabaseCreated = true;
     await privileges.createPublicationFixtureRuntimeRole({ databaseName, migrationAdminRole, runtimePassword, runtimeRole, serverAdminDatabaseUrl });
     fixtureRuntimeRoleCreated = true;
-    const existingTerminal = await serverAdmin.query("SELECT 1 FROM pg_roles WHERE rolname = $1", [terminalRole]); assert(existingTerminal.rows.length === 0, "sandbox already contains the fixed daily terminal LOGIN");
+    const existingTerminal = await serverAdmin.query("SELECT 1 FROM pg_roles WHERE rolname = $1", [terminalRole]);
+    fixtureTerminalRoleCreated = existingTerminal.rows.length === 0;
     const bootstrapAdmin = new Pool({ connectionString: adminDatabaseUrl, max: 1 });
     try { await privileges.provisionPublicationFixtureProtectedRoles({ serverAdmin, migrationAdmin: bootstrapAdmin, migrationAdminRole });
       await applySystemDsnBootstrapHelper(bootstrapAdmin, join(workspace.directory, "system-dsn-bootstrap-create.sql"), runtimeRole, systemRuntimeRole, terminalPassword);
-      fixtureSystemRuntimeRoleCreated = true; fixtureTerminalRoleCreated = true;
+      fixtureSystemRuntimeRoleCreated = true;
       await bootstrapAdmin.query(`ALTER ROLE ${privileges.quotePostgresIdentifier(terminalRole)} NOLOGIN CREATEROLE INHERIT`);
       await applySystemDsnBootstrapHelper(bootstrapAdmin, join(workspace.directory, "system-dsn-bootstrap-repair.sql"), runtimeRole, systemRuntimeRole, terminalPassword);
       for (const attribute of ["SUPERUSER", "CREATEDB", "REPLICATION", "BYPASSRLS"]) {
@@ -983,12 +984,11 @@ const main = async (): Promise<void> => {
       ownerRolePreexisting, capabilityRolePreexisting,
       schemaOwnerRolePreexisting, tenantSystemCapabilityRolePreexisting,
       fixtureDatabaseCreated, fixtureMigrationAdminRoleCreated,
-      fixtureRuntimeRoleCreated, systemRuntimeRole,
+      fixtureRuntimeRoleCreated,
+      fixtureDailyTerminalRoleCreated: fixtureTerminalRoleCreated,
+      systemRuntimeRole,
       systemRuntimeRoleCreated: fixtureSystemRuntimeRoleCreated,
     });
-    if (fixtureTerminalRoleCreated) {
-      await serverAdmin.query(`DROP ROLE IF EXISTS ${privileges.quotePostgresIdentifier(terminalRole)}`);
-    }
     await serverAdmin.end();
   }
   console.log("Reader summary daily terminal PostgreSQL authority gate OK");

@@ -207,8 +207,9 @@ describe("PrismaReaderSummaryArtifactRepository", () => {
 
 const weeklyAuthorizationDetails = (): ReturnType<
   typeof weeklyAuthorizationPolicy.readReaderSummaryWeeklyPublicationAuthorization
-> =>
-  ({
+> => {
+  const citation = weeklyCitationProof();
+  return ({
     artifactId: "weekly-artifact-prisma",
     artifact: {
       output: {
@@ -218,17 +219,39 @@ const weeklyAuthorizationDetails = (): ReturnType<
         weekStartedOn: "2026-07-20",
         weekEndedOn: "2026-07-26",
         headline: "Truthful weekly headline",
-        headlineCitationIds: [],
+        headlineCitationIds: [citation.citationId],
         takeaway: "Truthful weekly takeaway",
-        takeawayCitationIds: [],
+        takeawayCitationIds: [citation.citationId],
         synthesis: "Truthful weekly synthesis",
-        synthesisCitationIds: [],
-        stories: [],
-        sections: [],
+        synthesisCitationIds: [citation.citationId],
+        stories: [{
+          storyId: "story:weekly-prisma-repository",
+          headline: "Certified weekly persistence stays atomic",
+          summary:
+            "The repository persists one evidence-bound artifact and accepts only its exact replay.",
+          status: "developing",
+          observedFrom: "2026-07-20",
+          observedThrough: "2026-07-20",
+          citationIds: [citation.citationId],
+        }],
+        sections: [{
+          sectionId: "section:weekly-prisma-repository-lead",
+          storyId: "story:weekly-prisma-repository",
+          kind: "lead",
+          claimType: "snapshot",
+          heading: "Persistence remains evidence-bound",
+          text: "The certified artifact retains its immutable citation proof.",
+          observedFrom: "2026-07-20",
+          observedThrough: "2026-07-20",
+          citationIds: [citation.citationId],
+        }],
       },
       editorialQuality: {
         policyVersion: "reader_summary.weekly_editorial_quality.v2",
         publicationDecision: "allow",
+        metrics: {},
+        qualityGates: {},
+        issues: [],
         blockingPassed: true,
       },
     },
@@ -237,6 +260,9 @@ const weeklyAuthorizationDetails = (): ReturnType<
       editorialQuality: {
         policyVersion: "reader_summary.weekly_editorial_quality.v2",
         publicationDecision: "allow",
+        metrics: {},
+        qualityGates: {},
+        issues: [],
         blockingPassed: true,
       },
     },
@@ -257,7 +283,7 @@ const weeklyAuthorizationDetails = (): ReturnType<
       artifactSha256: "c".repeat(64),
       editorialQualitySha256: "d".repeat(64),
       authorities: weeklyAuthorityProofs(),
-      citations: [],
+      citations: [citation],
       authorizationId:
         `reader_summary.weekly_publication_authorization.v1:${"e".repeat(64)}`,
       sha256: "e".repeat(64),
@@ -265,6 +291,21 @@ const weeklyAuthorizationDetails = (): ReturnType<
   }) as ReturnType<
     typeof weeklyAuthorizationPolicy.readReaderSummaryWeeklyPublicationAuthorization
   >;
+};
+
+const weeklyCitationProof = () => ({
+  citationId: "citation:weekly-prisma-repository-01",
+  requestedUtcDate: "2026-07-20",
+  publicationId: "weekly-daily-publication-1",
+  publicationEvidenceIdentity: "weekly-publication-evidence-1",
+  providerKey: "hacker-news" as const,
+  feedItemId: "weekly-feed-item-1",
+  sourceItemId: "weekly-source-item-1",
+  sourceBindingId: "weekly-source-binding-1",
+  providerItemId: "weekly-provider-item-1",
+  canonicalUrl: "https://example.test/weekly/repository",
+  sourceContentHash: "3".repeat(64),
+});
 
 const weeklyAuthorityProofs = () =>
   [

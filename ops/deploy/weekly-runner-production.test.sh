@@ -61,7 +61,7 @@ grep -F 'capability_table_acl_count === "0"' "$weekly_seal_contract" \
 grep -F 'function_capability_acl_count === "0"' "$weekly_seal_contract" \
   >/dev/null
 [[ $(grep -Fc "'reader_summary_weekly_certification_seals'" \
-  "$publication_pre_migration") -eq 5 ]]
+  "$publication_pre_migration") -eq 6 ]]
 [[ $(awk '
   /AND relation\.relname NOT IN \(/ { in_owner_exclusion = 1; next }
   in_owner_exclusion && /reader_summary_weekly_certification_seals/ { count++ }

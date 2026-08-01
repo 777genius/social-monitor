@@ -61,11 +61,17 @@ type PublicationPrivilegesModule = Readonly<{
     readonly runtimeRole: string;
     readonly serverAdminDatabaseUrl: string;
   }): Promise<void>;
+  provisionPublicationFixtureDailyTerminalRole(params: {
+    readonly dailyTerminalPassword: string;
+    readonly migrationAdminRole: string;
+    readonly serverAdmin: RecoveryPool;
+  }): Promise<boolean>;
   makePublicationFixtureRuntimeDatabaseOwner(params: {
     readonly databaseName: string;
     readonly migrationAdminDatabaseUrl: string;
     readonly migrationAdminRole: string;
     readonly runtimeRole: string;
+    readonly systemRuntimeRole: string;
     readonly targetDatabaseUrl: string;
   }): Promise<void>;
   grantLegacyMigrationOwnership(
@@ -89,6 +95,7 @@ type PublicationPrivilegesModule = Readonly<{
     readonly fixtureDatabaseCreated: boolean;
     readonly fixtureMigrationAdminRoleCreated: boolean;
     readonly fixtureRuntimeRoleCreated: boolean;
+    readonly fixtureDailyTerminalRoleCreated?: boolean;
   }): Promise<void>;
 }>;
 
@@ -115,6 +122,7 @@ const {
   makePublicationFixtureRuntimeDatabaseOwner,
   publicationDatabaseUrl,
   publicationProtectedRolePresence,
+  provisionPublicationFixtureDailyTerminalRole,
   publicationRuntimeDatabaseUrl,
   quotePostgresIdentifier,
   quotePostgresLiteral,
@@ -130,6 +138,7 @@ const migrationAdminRole = `social_monitor_recovery_admin_${suffix}`;
 const migrationAdminPassword = randomBytes(24).toString("base64url");
 const runtimeRole = `social_monitor_recovery_test_${suffix}`;
 const runtimePassword = randomBytes(24).toString("base64url");
+const dailyTerminalPassword = randomBytes(24).toString("base64url");
 const targetDatabaseUrl = publicationDatabaseUrl(
   serverAdminDatabaseUrl,
   databaseName,
@@ -157,6 +166,7 @@ let tenantSystemCapabilityRolePreexisting = false;
 let fixtureDatabaseCreated = false;
 let fixtureMigrationAdminRoleCreated = false;
 let fixtureRuntimeRoleCreated = false;
+let fixtureDailyTerminalRoleCreated = false;
 
 const main = async (): Promise<void> => {
   assert(
@@ -191,11 +201,18 @@ const main = async (): Promise<void> => {
       serverAdminDatabaseUrl,
     });
     fixtureRuntimeRoleCreated = true;
+    fixtureDailyTerminalRoleCreated =
+      await provisionPublicationFixtureDailyTerminalRole({
+        dailyTerminalPassword,
+        migrationAdminRole,
+        serverAdmin,
+      });
     await makePublicationFixtureRuntimeDatabaseOwner({
       databaseName,
       migrationAdminDatabaseUrl: adminDatabaseUrl,
       migrationAdminRole,
       runtimeRole,
+      systemRuntimeRole: runtimeRole,
       targetDatabaseUrl,
     });
 
@@ -286,6 +303,7 @@ const main = async (): Promise<void> => {
       fixtureDatabaseCreated,
       fixtureMigrationAdminRoleCreated,
       fixtureRuntimeRoleCreated,
+      fixtureDailyTerminalRoleCreated,
     });
   }
   console.log(

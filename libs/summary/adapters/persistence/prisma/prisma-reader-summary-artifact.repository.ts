@@ -9,19 +9,17 @@ import {
   type ReaderSummaryCadence,
 } from "../../../domain";
 import type {
+  FindReaderSummaryWeeklyArtifactQuery,
   ListReaderSummaryArtifactsQuery,
   ListReaderSummaryArtifactsResult,
   ListReaderSummaryPeriodSummariesResult,
+  PersistedReaderSummaryWeeklyArtifact,
   ReaderSummaryPeriodSummary,
   ReaderSummaryArtifactRepositoryPort,
   ReaderSummaryRejectedArtifactDebug,
   ReaderSummaryWeeklyArtifactRepositoryPort,
   SaveReaderSummaryWeeklyArtifactCommand,
 } from "../../../ports";
-import {
-  buildReaderSummaryWeeklyPublicationPersistencePayload,
-  type ReaderSummaryWeeklyPublicationPersistenceSqlRow,
-} from "../reader-summary-weekly-publication-payload";
 import type { PrismaSummaryClient } from "./prisma-summary-client";
 import {
   readerSummaryArtifactFromPrisma,
@@ -38,7 +36,10 @@ import {
   parseSummaryCursor,
   type PrismaSummaryStatus,
 } from "./prisma-summary-records";
-import { runSerializableReaderSummaryTransaction } from "./prisma-summary-transaction";
+import {
+  findReaderSummaryWeeklyArtifactById,
+  saveReaderSummaryWeeklyArtifact,
+} from "./prisma-reader-summary-weekly-artifact";
 
 const VISIBLE_READER_SUMMARY_STATUSES = ["COMPLETED"] as const;
 const PUBLISHED_READER_SUMMARY_STATUSES = [
@@ -246,30 +247,13 @@ export class PrismaReaderSummaryArtifactRepository implements
     return record === null ? null : rejectedDebugFromPrisma(record);
   }
   async saveWeekly(command: SaveReaderSummaryWeeklyArtifactCommand): Promise<void> {
-    const payload = buildReaderSummaryWeeklyPublicationPersistencePayload(command);
-    const serialized = JSON.stringify(payload);
-    const rows = await withPrismaWriteRetry(() =>
-      runSerializableReaderSummaryTransaction(this.prisma, (prisma) =>
-        prisma.$queryRaw<
-          readonly ReaderSummaryWeeklyPublicationPersistenceSqlRow[]
-        >`
-          SELECT *
-          FROM "persist_reader_summary_weekly_artifact"(${serialized}::jsonb)
-        `,
-      ),
-    );
-    const row = rows[0];
-    if (rows.length !== 1 || row === undefined) {
-      throw new Error("PostgreSQL weekly persistence returned no exact outcome");
-    }
-    if (
-      (row.outcome !== "persisted" && row.outcome !== "replayed") ||
-      row.artifact_id !== payload.artifactId ||
-      row.artifact_payload_sha256 !== payload.artifactPayloadSha256 ||
-      row.proof_sha256 !== payload.proof.sha256
-    ) {
-      throw new Error("PostgreSQL weekly persistence returned a mismatched proof");
-    }
+    await saveReaderSummaryWeeklyArtifact(this.prisma, command);
+  }
+
+  async findWeeklyById(
+    query: FindReaderSummaryWeeklyArtifactQuery,
+  ): Promise<PersistedReaderSummaryWeeklyArtifact | null> {
+    return findReaderSummaryWeeklyArtifactById(this.prisma, query);
   }
 }
 

@@ -19,7 +19,7 @@ describe("publish weekly certified artifact use case", () => {
     );
   });
 
-  it("performs no save or visibility read when the DB seal is missing", async () => {
+  it("performs no save or strict read when the DB seal is missing", async () => {
     const sealAuthority = {
       load: jest.fn(async () => null),
       readVerifiedBinding: jest.fn(),
@@ -29,12 +29,11 @@ describe("publish weekly certified artifact use case", () => {
       readVerifiedBinding: jest.fn(),
     } as unknown as ReaderSummaryWeeklyStoryAuthorityPort;
     const saveWeekly = jest.fn();
-    const findById = jest.fn();
+    const findWeeklyById = jest.fn();
     const useCase = new PublishReaderSummaryWeeklyCertifiedArtifactUseCase(
       sealAuthority,
       storyAuthority,
-      { saveWeekly },
-      { findById },
+      { saveWeekly, findWeeklyById },
     );
     const result = await useCase.execute({
       artifact: Object.freeze({}) as never,
@@ -49,10 +48,10 @@ describe("publish weekly certified artifact use case", () => {
     expect(!result.ok && result.error.code).toBe("resource.not_found");
     expect(storyAuthority.load).not.toHaveBeenCalled();
     expect(saveWeekly).not.toHaveBeenCalled();
-    expect(findById).not.toHaveBeenCalled();
+    expect(findWeeklyById).not.toHaveBeenCalled();
   });
 
-  it("loads all seven publication authorities, saves, and verifies visibility", async () => {
+  it("loads all seven authorities, saves, and verifies the strict weekly row", async () => {
     const seal = useCaseSeal();
     const sealHandle = Object.freeze({});
     const storyHandles = seal.days.map(() => Object.freeze({}));
@@ -75,12 +74,11 @@ describe("publish weekly certified artifact use case", () => {
       "authorizeReaderSummaryWeeklyCertifiedPublication",
     ).mockReturnValue(authorization);
     const saveWeekly = jest.fn(async () => undefined);
-    const findById = jest.fn(async () => Object.freeze({}));
+    const findWeeklyById = jest.fn(async () => Object.freeze({}));
     const useCase = new PublishReaderSummaryWeeklyCertifiedArtifactUseCase(
       sealAuthority,
       storyAuthority,
-      { saveWeekly },
-      { findById: findById as never },
+      { saveWeekly, findWeeklyById: findWeeklyById as never },
     );
 
     const result = await useCase.execute(useCaseCommand());
@@ -97,12 +95,51 @@ describe("publish weekly certified artifact use case", () => {
       artifactId: result.ok ? result.value.artifactId : "unreachable",
       authorization,
     });
-    expect(findById).toHaveBeenCalledWith(
+    expect(findWeeklyById).toHaveBeenCalledWith(
       expect.objectContaining({
-        readerSummaryId: result.ok ? result.value.artifactId : "unreachable",
+        artifactId: result.ok ? result.value.artifactId : "unreachable",
       }),
     );
     authorize.mockRestore();
+  });
+
+  it("fails closed when the strict weekly row is absent after save", async () => {
+    const seal = useCaseSeal();
+    const sealHandle = Object.freeze({});
+    const sealAuthority = {
+      load: jest.fn(async () => sealHandle),
+      readVerifiedBinding: jest.fn(() => seal),
+    } as unknown as ReaderSummaryWeeklyCertificationSealAuthorityPort;
+    const storyAuthority = {
+      load: jest.fn(async () => Object.freeze({})),
+      readVerifiedBinding: jest.fn(),
+    } as unknown as ReaderSummaryWeeklyStoryAuthorityPort;
+    const authorize = jest.spyOn(
+      publicationAuthorization,
+      "authorizeReaderSummaryWeeklyCertifiedPublication",
+    ).mockReturnValue(
+      Object.freeze({}) as ReaderSummaryWeeklyPublicationAuthorization,
+    );
+    const saveWeekly = jest.fn(async () => undefined);
+    const findWeeklyById = jest.fn(async () => null);
+    const useCase = new PublishReaderSummaryWeeklyCertifiedArtifactUseCase(
+      sealAuthority,
+      storyAuthority,
+      { saveWeekly, findWeeklyById },
+    );
+
+    try {
+      const result = await useCase.execute(useCaseCommand());
+
+      expect(result.ok).toBe(false);
+      expect(!result.ok && result.error.code).toBe(
+        "external.dependency_unavailable",
+      );
+      expect(saveWeekly).toHaveBeenCalledTimes(1);
+      expect(findWeeklyById).toHaveBeenCalledTimes(1);
+    } finally {
+      authorize.mockRestore();
+    }
   });
 
   it("performs no save when the loaded DB seal authority diverges", async () => {
@@ -116,8 +153,7 @@ describe("publish weekly certified artifact use case", () => {
     const useCase = new PublishReaderSummaryWeeklyCertifiedArtifactUseCase(
       sealAuthority,
       { load: jest.fn(), readVerifiedBinding: jest.fn() },
-      { saveWeekly },
-      { findById: jest.fn() },
+      { saveWeekly, findWeeklyById: jest.fn() },
     );
     const result = await useCase.execute({
       artifact: Object.freeze({}) as never,

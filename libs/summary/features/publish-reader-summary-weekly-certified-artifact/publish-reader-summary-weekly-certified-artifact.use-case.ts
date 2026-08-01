@@ -11,7 +11,6 @@ import type { ReaderSummaryWeeklyArtifact } from "../../domain/entities/reader-s
 import { authorizeReaderSummaryWeeklyCertifiedPublication } from "../../domain/policies/reader-summary-weekly-publication-authorization";
 import type { ReaderSummaryWeeklyModelInput } from "../../ports/reader-summary-weekly-model.port";
 import type {
-  ReaderSummaryArtifactRepositoryPort,
   ReaderSummaryWeeklyArtifactRepositoryPort,
 } from "../../ports/reader-summary-artifact-repository.port";
 import type { ReaderSummaryWeeklyCertificationSealAuthorityPort } from "../../ports/reader-summary-weekly-certification-seal-authority.port";
@@ -38,7 +37,6 @@ export class PublishReaderSummaryWeeklyCertifiedArtifactUseCase {
     private readonly sealAuthority: ReaderSummaryWeeklyCertificationSealAuthorityPort,
     private readonly storyAuthority: ReaderSummaryWeeklyStoryAuthorityPort,
     private readonly weeklyArtifacts: ReaderSummaryWeeklyArtifactRepositoryPort,
-    private readonly visibleArtifacts: Pick<ReaderSummaryArtifactRepositoryPort, "findById">,
   ) {}
 
   async execute(
@@ -92,15 +90,15 @@ export class PublishReaderSummaryWeeklyCertifiedArtifactUseCase {
       artifactId,
       authorization,
     });
-    const visible = await this.visibleArtifacts.findById({
+    const persisted = await this.weeklyArtifacts.findWeeklyById({
       tenantId: tenantId(input.tenantId),
       workspaceId: workspaceId(input.workspaceId),
-      readerSummaryId: artifactId,
+      artifactId,
     });
-    if (visible === null) {
+    if (persisted === null) {
       return err(new DomainError(
         "external.dependency_unavailable",
-        "Reader summary weekly certified artifact is not generically visible",
+        "Reader summary weekly certified artifact is not strictly persisted",
         { artifactId },
       ));
     }

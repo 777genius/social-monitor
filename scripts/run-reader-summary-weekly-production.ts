@@ -80,7 +80,6 @@ async function main(): Promise<void> {
       new PrismaReaderSummaryWeeklyCertificationSealAuthority(connection),
       new PrismaReaderSummaryWeeklyStoryAuthority(connection),
       repository,
-      repository,
     );
     const model = new AgentRuntimeReaderSummaryWeeklyTextModel({
       client: GrpcAgentRuntimeClient.connect({

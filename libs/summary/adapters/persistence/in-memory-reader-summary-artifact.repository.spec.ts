@@ -186,7 +186,7 @@ describe("InMemoryReaderSummaryArtifactRepository", () => {
     );
   });
 
-  it("persists weekly quality signals and proof and rejects authorization replay", async () => {
+  it("persists weekly proof and replays exact authorization without a write", async () => {
     const authorization =
       Object.freeze({}) as ReaderSummaryWeeklyPublicationAuthorization;
     const readAuthorization = jest
@@ -205,13 +205,13 @@ describe("InMemoryReaderSummaryArtifactRepository", () => {
     try {
       await repository.saveWeekly(command);
 
-      await expect(
-        repository.findWeeklyById({
-          tenantId: tenant,
-          workspaceId: workspace,
-          artifactId: command.artifactId,
-        }),
-      ).resolves.toMatchObject({
+      const query = {
+        tenantId: tenant,
+        workspaceId: workspace,
+        artifactId: command.artifactId,
+      };
+      const first = await repository.findWeeklyById(query);
+      expect(first).toMatchObject({
         kind: "weekly",
         qualitySignals: {
           kind: "weekly",
@@ -219,9 +219,8 @@ describe("InMemoryReaderSummaryArtifactRepository", () => {
         },
         proof: { authorizationId: "weekly-authorization-memory" },
       });
-      await expect(repository.saveWeekly(command)).rejects.toThrow(
-        "replayed",
-      );
+      await expect(repository.saveWeekly(command)).resolves.toBeUndefined();
+      await expect(repository.findWeeklyById(query)).resolves.toBe(first);
     } finally {
       readAuthorization.mockRestore();
     }
@@ -230,18 +229,63 @@ describe("InMemoryReaderSummaryArtifactRepository", () => {
 
 const weeklyAuthorizationDetails = (): ReturnType<
   typeof weeklyAuthorizationPolicy.readReaderSummaryWeeklyPublicationAuthorization
-> =>
-  ({
+> => {
+  const citation = {
+    citationId: "citation:weekly-memory-01",
+    requestedUtcDate: "2026-07-20",
+    publicationId: "weekly-memory-daily-publication-1",
+    publicationEvidenceIdentity: "weekly-memory-publication-evidence-1",
+    providerKey: "hacker-news" as const,
+    feedItemId: "weekly-memory-feed-1",
+    sourceItemId: "weekly-memory-source-1",
+    sourceBindingId: "weekly-memory-binding-1",
+    providerItemId: "weekly-memory-provider-1",
+    canonicalUrl: "https://example.test/weekly/memory",
+    sourceContentHash: "3".repeat(64),
+  };
+  return ({
     artifactId: "weekly-artifact-memory",
     artifact: {
       output: {
         schemaVersion: "reader_summary.weekly_model_output.v1",
+        sealId: `reader_summary.weekly_model_input.v1:${"a".repeat(64)}`,
+        sealSha: "a".repeat(64),
+        weekStartedOn: "2026-07-20",
+        weekEndedOn: "2026-07-26",
         headline: "Truthful weekly headline",
+        headlineCitationIds: [citation.citationId],
+        takeaway: "Truthful weekly takeaway",
+        takeawayCitationIds: [citation.citationId],
         synthesis: "Truthful weekly synthesis",
+        synthesisCitationIds: [citation.citationId],
+        stories: [{
+          storyId: "story:weekly-memory",
+          headline: "In-memory weekly persistence replays exactly",
+          summary:
+            "The in-memory contract retains one certified artifact for an exact authorization replay.",
+          status: "developing",
+          observedFrom: "2026-07-20",
+          observedThrough: "2026-07-20",
+          citationIds: [citation.citationId],
+        }],
+        sections: [{
+          sectionId: "section:weekly-memory-lead",
+          storyId: "story:weekly-memory",
+          kind: "lead",
+          claimType: "snapshot",
+          heading: "Exact replay keeps one artifact",
+          text: "The evidence-bound weekly artifact remains unchanged.",
+          observedFrom: "2026-07-20",
+          observedThrough: "2026-07-20",
+          citationIds: [citation.citationId],
+        }],
       },
       editorialQuality: {
         policyVersion: "reader_summary.weekly_editorial_quality.v2",
         publicationDecision: "allow",
+        metrics: {},
+        qualityGates: {},
+        issues: [],
         blockingPassed: true,
       },
     },
@@ -250,6 +294,9 @@ const weeklyAuthorizationDetails = (): ReturnType<
       editorialQuality: {
         policyVersion: "reader_summary.weekly_editorial_quality.v2",
         publicationDecision: "allow",
+        metrics: {},
+        qualityGates: {},
+        issues: [],
         blockingPassed: true,
       },
     },
@@ -261,11 +308,12 @@ const weeklyAuthorizationDetails = (): ReturnType<
       weekStartedOn: "2026-07-20",
       weekEndedOn: "2026-07-26",
       authorizationId: "weekly-authorization-memory",
-      citations: [],
+      citations: [citation],
     },
   }) as ReturnType<
     typeof weeklyAuthorizationPolicy.readReaderSummaryWeeklyPublicationAuthorization
   >;
+};
 
 type ReaderSummarySaveOptions = NonNullable<
   Parameters<InMemoryReaderSummaryArtifactRepository["save"]>[1]
