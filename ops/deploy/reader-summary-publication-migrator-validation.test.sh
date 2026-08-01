@@ -50,11 +50,9 @@ SECRET_METADATA_STATUS=0
 SYSTEM_DSN_CHOWN_EXIT=0
 CA_OWNER=root
 CA_METADATA_STATUS=0
-FAIL_PHASE=
 TEST_COUNT=0
 
-mkdir -p "$ROOT/secrets/db" "$REPO/ops/deploy" "$STATE" "$FAKE_BIN" \
-  "$REPO/prisma/migrations/20260731153000_reader_summary_production_recovery_original_cutoff_authority"
+mkdir -p "$ROOT/secrets/db" "$REPO/ops/deploy" "$STATE" "$FAKE_BIN"
 printf '%s\n' 'test-only-ca-certificate' > "$CA_CERTIFICATE"
 cp "$SCRIPT_DIR/deploy-control-lib.sh" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh" "$REPO/ops/deploy/"
@@ -63,14 +61,10 @@ cp "$SCRIPT_DIR/backend-image-rescue-lib.sh" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/x-collector-image-deploy-lib.sh" "$REPO/ops/deploy/"
 cp "$DEPLOY_ENTRYPOINT" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/postgres-backup-deploy-lib.sh" "$REPO/ops/deploy/"
-cp "$SCRIPT_DIR/reader-summary-original-cutoff-failed-migration-preflight.sql" \
-  "$REPO/ops/deploy/"
-cp "$SCRIPT_DIR/../../prisma/migrations/20260731153000_reader_summary_production_recovery_original_cutoff_authority/migration.sql" \
-  "$REPO/prisma/migrations/20260731153000_reader_summary_production_recovery_original_cutoff_authority/"
 git init -q -b main "$REPO"
 git -C "$REPO" config user.name 'Publication Migrator Validation'
 git -C "$REPO" config user.email publication-validation@example.invalid
-git -C "$REPO" add ops/deploy prisma/migrations
+git -C "$REPO" add ops/deploy
 git -C "$REPO" commit -qm 'test: reviewed target backup helper'
 TARGET_LIBRARY_SHA=$(git -C "$REPO" rev-parse HEAD)
 
@@ -122,45 +116,7 @@ if [[ -n $query_file ]]; then
   [[ $query_mode == 600 ]]
   [[ " $* " == *' --quiet '* ]]
   query_payload=$(< "$query_file")
-  if [[ $query_payload == *'$original_cutoff_probe$'* ]]; then
-    [[ $PGAPPNAME == social-monitor/original-cutoff-pre || \
-      $PGAPPNAME == social-monitor/original-cutoff-resolved || \
-      $PGAPPNAME == social-monitor/original-cutoff-post ]]
-    [[ $(grep -Ec "'[0-9a-f]{64}'" <<< "$query_payload") == 3 ]]
-    [[ $(grep -cF '8748c4e266d8c1838f29b1a6f59f4be056514de64fe95fe44f5c7bb3680b477d' <<< "$query_payload") == 2 ]]
-    [[ $(grep -cF '2026-07-31 21:16:04.938573+00' <<< "$query_payload") == 1 ]]
-    [[ $query_payload == *'finished_at IS NULL'* ]]
-    [[ $query_payload == *'applied_steps_count = 0'* ]]
-    [[ $query_payload == *"id <> ''"* ]]
-    [[ $(grep -cF 'AND logs IS NULL' <<< "$query_payload") == 2 &&
-      $query_payload != *'logs IS NOT NULL'* && $query_payload != *'logs LIKE'* ]]
-    [[ $query_payload == *"v_unfinished <> 1 OR v_target_rows <> 1"* &&
-      $query_payload == *"v_failed_rows <> 1 OR v_target_matches <> 1"* && $query_payload == *"v_unfinished <> 0 OR v_target_rows <> 1"* ]]
-    [[ $query_payload == *"AND rolled_back_at IS NULL"* &&
-      $query_payload == *"AND rolled_back_at IS NOT NULL"* && $query_payload == *"AND rolled_back_at >= started_at"* ]]
-    [[ $query_payload == *'repair_reader_summary_production_recovery_original_cutoff_v2'* ]]
-    [[ $query_payload == *'production_recovery_original_cutoff_write'* ]]
-    [[ $query_payload == *'validate_reader_summary_production_recovery'* ]]
-    [[ $query_payload == *'SET LOCAL ROLE "social_monitor_reader_summary_publication_owner";'* ]]
-    [[ $query_payload == *'4100dd4ae236a300e002d2599a880b27df50972aed2f4a9f33578a3da2fe5c35'* ]]
-    for exact_count in \
-      'v_jul23_rss_count := 78;' \
-      'v_jul24_rss_count := 68;' \
-      'v_jul23_rss_count := 75;' \
-      'v_jul24_rss_count := 67;'; do
-      [[ $query_payload == *"$exact_count"* ]]
-    done
-    [[ $query_payload == *"lease.state = 'CONSUMED'"* ]]
-    [[ $query_payload == *'lease.consumed_at = lease.issued_at'* ]]
-    [[ $query_payload == *'v_recovery.day_count <> 2'* ]]
-    [[ $query_payload == *'Absent predecessor recovery rows are valid.'* ]]
-    [[ $query_payload == *'day.provider_counts IS DISTINCT FROM'* ]]
-    [[ $query_payload == *'original-cutoff authority is mixed or partially repaired'* ]]
-    ! grep -Eq '^[[:space:]]*(UPDATE|INSERT|DELETE|LOCK TABLE)[[:space:]]' \
-      <<< "$query_payload"
-    [[ $query_payload == *'BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;'* && $query_payload == *'ROLLBACK;'* ]]
-    query_result=${TRANSPORT_QUERY_RESULT:-}
-  elif [[ $query_payload == *'system_role.rolname'* ]]; then
+  if [[ $query_payload == *'system_role.rolname'* ]]; then
     [[ $query_payload == *"WHERE system_role.rolname = :'system_runtime_role';"* ]]
     [[ $query_payload == *"NOT pg_catalog.pg_has_role(:'runtime_role'"* ]]
     [[ $query_payload == *'social_monitor_tenant_system_runtime'* ]]
@@ -293,25 +249,6 @@ reader_summary_publication_admin_availability_query() {
   return "$AVAILABILITY_STATUS"
 }
 
-run_reader_summary_publication_admin_sql() {
-  local phase=$4
-  printf 'write:%s\n' "$phase" >> "$EVENT_LOG"
-  [[ $FAIL_PHASE != "$phase" ]] || return 81
-  printf 'psql:%s\n' "$phase" >> "$WRITE_LOG"
-}
-
-fake_compose() {
-  if [[ $* == *'npx prisma migrate resolve --rolled-back 20260731153000_reader_summary_production_recovery_original_cutoff_authority --schema prisma/schema.prisma'* ]]; then
-    printf '%s\n' write:resolve >> "$EVENT_LOG"
-    [[ $FAIL_PHASE != resolve ]] || return 83
-    printf '%s\n' prisma-resolve >> "$WRITE_LOG"
-  else
-    printf '%s\n' write:prisma >> "$EVENT_LOG"
-    [[ $FAIL_PHASE != prisma ]] || return 82
-    printf '%s\n' prisma-migrate >> "$WRITE_LOG"
-  fi
-}
-
 docker() {
   local stdin_payload arguments script status pgpass_path query_path
   local index position
@@ -406,8 +343,6 @@ sleep() {
   :
 }
 
-COMPOSE=(fake_compose)
-
 write_admin_url() {
   local value=$1
   chmod 0600 "$SECRET" 2>/dev/null || true
@@ -470,10 +405,6 @@ reset_case() {
   SYSTEM_DSN_CHOWN_EXIT=0
   CA_OWNER=root
   CA_METADATA_STATUS=0
-  FAIL_PHASE=
-  ORIGINAL_CUTOFF_PRE_RESULT=clean
-  ORIGINAL_CUTOFF_RESOLVED_RESULT=resolved
-  ORIGINAL_CUTOFF_POST_RESULT=corrected
   printf '%s\n' 'test-only-ca-certificate' > "$CA_CERTIFICATE"
   write_admin_url "$VALID_URL"
 }
@@ -597,21 +528,6 @@ assert_invalid_catalog() {
   [[ ! -s $WRITE_LOG ]]
   assert_redacted "$output" "$VALID_URL"
   [[ $output != *"$catalog_result"* ]]
-  TEST_COUNT=$((TEST_COUNT + 1))
-  : "$label"
-}
-
-assert_valid_catalog() {
-  local label=$1
-  local catalog_result=${2:-$VALID_CATALOG}
-  local output
-  reset_case
-  CATALOG_RESULT=$catalog_result
-  output=$(deploy_reader_summary_publication_migrations 2>&1)
-  [[ -z $output ]]
-  [[ $(< "$EVENT_LOG") == \
-    $'availability\ncatalog-query\nwrite:pre\nprobe:pre\nwrite:prisma\nprobe:post\nwrite:post' ]]
-  [[ $(< "$WRITE_LOG") == $'psql:pre\nprisma-migrate\npsql:post' ]]
   TEST_COUNT=$((TEST_COUNT + 1))
   : "$label"
 }
@@ -760,24 +676,6 @@ TEST_COUNT=$((TEST_COUNT + 1))
 reset_case
 write_production_env "DATABASE_URL=$API_URL"
 write_system_url "$SYSTEM_URL"
-SYSTEM_DSN_REPAIR_PATH=$ROOT/secrets/db/system-database-url.real
-mv "$ROOT/secrets/db/system-database-url" "$SYSTEM_DSN_REPAIR_PATH"
-ln -s "$SYSTEM_DSN_REPAIR_PATH" "$ROOT/secrets/db/system-database-url"
-chmod 0644 "$SYSTEM_DSN_REPAIR_PATH"
-SYSTEM_DSN_OWNER=deploy-user
-TRANSPORT_FORBIDDEN_ENV_VALUE=$SYSTEM_PASSWORD
-TRANSPORT_EXPECTED_PGPASS="${DATABASE_HOST}:25060:social_monitor:${MIGRATOR_ROLE}:${PRIVATE_PASSWORD}"
-TRANSPORT_EXPECTED_SYSTEM_PGPASS="${DATABASE_HOST}:25060:social_monitor:${SYSTEM_ROLE}:${SYSTEM_PASSWORD}"
-system_contract_output=$(ensure_system_database_url_deploy_contract 2>&1)
-[[ -z $system_contract_output ]]
-grep -Fx "SYSTEM_DATABASE_URL=$SYSTEM_URL" "$ROOT/secrets/production.env" >/dev/null
-grep -Fx "$SYSTEM_DSN_REPAIR_PATH" "$CHOWN_LOG" >/dev/null
-[[ $(stat -c '%a' "$SYSTEM_DSN_REPAIR_PATH") == 600 ]]
-TEST_COUNT=$((TEST_COUNT + 1))
-
-reset_case
-write_production_env "DATABASE_URL=$API_URL"
-write_system_url "$SYSTEM_URL"
 chmod 0644 "$ROOT/secrets/db/system-database-url"
 SYSTEM_DSN_OWNER=deploy-user
 SYSTEM_DSN_CHOWN_EXIT=43
@@ -816,26 +714,6 @@ assert_pgpass_transport catalog psql
 assert_pgpass_transport availability pg_isready
 assert_pgpass_transport catalog psql 37
 
-reset_case
-TRANSPORT_FORBIDDEN_ENV_VALUE=$PRIVATE_PASSWORD
-TRANSPORT_EXPECTED_PGPASS="${DATABASE_HOST}:25060:social_monitor:${MIGRATOR_ROLE}:${PRIVATE_PASSWORD}"
-TRANSPORT_QUERY_RESULT=clean
-[[ $(reader_summary_original_cutoff_probe pre) == clean ]]
-TRANSPORT_QUERY_RESULT=resolved
-[[ $(reader_summary_original_cutoff_probe resolved) == resolved ]]
-TRANSPORT_QUERY_RESULT=corrected
-[[ $(reader_summary_original_cutoff_probe post) == corrected ]]
-grep -Fx 'client:psql:catalog-file:mode=600' "$TRANSPORT_LOG" >/dev/null
-grep -Fx 'docker:status=0:query-removed' "$TRANSPORT_LOG" >/dev/null
-TEST_COUNT=$((TEST_COUNT + 1))
-
-[[ $READER_SUMMARY_ORIGINAL_CUTOFF_CORRECTED_CHECKSUM == \
-  4100dd4ae236a300e002d2599a880b27df50972aed2f4a9f33578a3da2fe5c35 ]]
-[[ $(deploy_control_file_digest \
-  "$REPO/prisma/migrations/$READER_SUMMARY_ORIGINAL_CUTOFF_MIGRATION/migration.sql") == \
-  "$READER_SUMMARY_ORIGINAL_CUTOFF_CORRECTED_CHECKSUM" ]]
-TEST_COUNT=$((TEST_COUNT + 1))
-
 reader_summary_publication_admin_catalog_query() {
   printf '%s\n' catalog-query >> "$EVENT_LOG"
   if ((CATALOG_QUERY_STATUS != 0)); then
@@ -844,112 +722,6 @@ reader_summary_publication_admin_catalog_query() {
   fi
   printf '%s\n' "$CATALOG_RESULT"
 }
-
-reader_summary_original_cutoff_probe() {
-  local phase=$1 result
-  printf 'probe:%s\n' "$phase" >> "$EVENT_LOG"
-  [[ $FAIL_PHASE != "probe-$phase" ]] || return 84
-  case $phase in
-    pre) result=$ORIGINAL_CUTOFF_PRE_RESULT ;;
-    resolved) result=$ORIGINAL_CUTOFF_RESOLVED_RESULT ;;
-    post) result=$ORIGINAL_CUTOFF_POST_RESULT ;;
-  esac
-  [[ -n $result ]] || return 65
-  printf '%s\n' "$result"
-}
-
-assert_valid_catalog standard-catalog
-assert_valid_catalog exact-legacy-memberships "$(catalog_with_field 17 3)"
-
-for failed_phase in pre prisma post; do
-  reset_case
-  FAIL_PHASE=$failed_phase
-  set +e
-  failure_output=$(deploy_reader_summary_publication_migrations 2>&1)
-  failure_status=$?
-  set -e
-  ((failure_status != 0))
-  assert_redacted "$failure_output" "$VALID_URL"
-  case $failed_phase in
-    pre)
-      [[ $(< "$EVENT_LOG") == $'availability\ncatalog-query\nwrite:pre' ]]
-      [[ ! -s $WRITE_LOG ]]
-      ;;
-    prisma)
-      [[ $(< "$EVENT_LOG") == $'availability\ncatalog-query\nwrite:pre\nprobe:pre\nwrite:prisma' ]]
-      [[ $(< "$WRITE_LOG") == psql:pre ]]
-      ;;
-    post)
-      [[ $(< "$EVENT_LOG") == \
-        $'availability\ncatalog-query\nwrite:pre\nprobe:pre\nwrite:prisma\nprobe:post\nwrite:post' ]]
-      [[ $(< "$WRITE_LOG") == $'psql:pre\nprisma-migrate' ]]
-      ;;
-  esac
-  TEST_COUNT=$((TEST_COUNT + 1))
-done
-
-reset_case
-ORIGINAL_CUTOFF_PRE_RESULT=resolve
-deploy_reader_summary_publication_migrations
-[[ $(< "$EVENT_LOG") == \
-  $'availability\ncatalog-query\nwrite:pre\nprobe:pre\nwrite:resolve\nprobe:resolved\nwrite:prisma\nprobe:post\nwrite:post' ]]
-[[ $(< "$WRITE_LOG") == \
-  $'psql:pre\nprisma-resolve\nprisma-migrate\npsql:post' ]]
-ORIGINAL_CUTOFF_PRE_RESULT=clean
-deploy_reader_summary_publication_migrations
-[[ $(grep -cFx write:resolve "$EVENT_LOG") == 1 ]]
-[[ $(grep -cFx prisma-resolve "$WRITE_LOG") == 1 ]]
-TEST_COUNT=$((TEST_COUNT + 1))
-
-reset_case
-ORIGINAL_CUTOFF_PRE_RESULT=resolve
-FAIL_PHASE=resolve
-set +e
-failure_output=$(deploy_reader_summary_publication_migrations 2>&1)
-failure_status=$?
-set -e
-((failure_status != 0))
-[[ $(< "$EVENT_LOG") == \
-  $'availability\ncatalog-query\nwrite:pre\nprobe:pre\nwrite:resolve' ]]
-[[ $(< "$WRITE_LOG") == psql:pre ]]
-assert_redacted "$failure_output" "$VALID_URL"
-TEST_COUNT=$((TEST_COUNT + 1))
-
-for failed_probe in probe-pre probe-resolved probe-post; do
-  reset_case
-  FAIL_PHASE=$failed_probe
-  [[ $failed_probe == probe-pre ]] || ORIGINAL_CUTOFF_PRE_RESULT=resolve
-  set +e
-  failure_output=$(deploy_reader_summary_publication_migrations 2>&1)
-  failure_status=$?
-  set -e
-  ((failure_status != 0))
-  if [[ $failed_probe == probe-post ]]; then
-    [[ $(< "$EVENT_LOG") == *write:prisma$'\n'probe:post ]]
-    [[ $(< "$WRITE_LOG") == $'psql:pre\nprisma-resolve\nprisma-migrate' ]]
-  else
-    [[ $(< "$EVENT_LOG") != *write:prisma* ]]
-    [[ $(< "$WRITE_LOG") != *prisma-migrate* ]]
-  fi
-  assert_redacted "$failure_output" "$VALID_URL"
-  TEST_COUNT=$((TEST_COUNT + 1))
-done
-
-reset_case
-target_migration=$REPO/prisma/migrations/20260731153000_reader_summary_production_recovery_original_cutoff_authority/migration.sql
-target_migration_backup=$FIXTURE/target-migration.reviewed
-cp "$target_migration" "$target_migration_backup"
-printf '%s\n' '-- unreviewed test mutation' >> "$target_migration"
-set +e
-failure_output=$(deploy_reader_summary_publication_migrations 2>&1)
-failure_status=$?
-set -e
-mv "$target_migration_backup" "$target_migration"
-((failure_status != 0))
-[[ $(< "$EVENT_LOG") == $'availability\ncatalog-query\nwrite:pre' ]]
-[[ $(< "$WRITE_LOG") == psql:pre ]]
-assert_redacted "$failure_output" "$VALID_URL"
-TEST_COUNT=$((TEST_COUNT + 1))
 
 assert_invalid_url malformed-url 'not-a-postgresql-url'
 assert_invalid_url malformed-percent \

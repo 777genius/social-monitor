@@ -6,7 +6,7 @@
 READER_SUMMARY_ORIGINAL_CUTOFF_MIGRATION=20260731153000_reader_summary_production_recovery_original_cutoff_authority
 READER_SUMMARY_ORIGINAL_CUTOFF_CORRECTED_CHECKSUM=4100dd4ae236a300e002d2599a880b27df50972aed2f4a9f33578a3da2fe5c35
 READER_SUMMARY_ORIGINAL_CUTOFF_CORRECTION_MIGRATION=20260801130000_reader_summary_original_cutoff_consumed_state_correction
-READER_SUMMARY_ORIGINAL_CUTOFF_CORRECTION_CHECKSUM=da638eae2183abefb22addbfbb9228cad67050d2817809289a53e13eb5447fc5
+READER_SUMMARY_ORIGINAL_CUTOFF_CORRECTION_CHECKSUM=a378d07c649aa6de2e741be727d835ff591f3a08b308ab452eea48430f669ff1
 
 reader_summary_original_cutoff_target_has_correction() {
   local helper_relative=ops/deploy/reader-summary-original-cutoff-correction-lib.sh
@@ -70,24 +70,19 @@ reader_summary_original_cutoff_probe() {
   [[ $phase != resolved ]] || expected=resolved
   [[ $phase != post ]] || expected=corrected
   if [[ $result == "$expected" || ($phase == pre && \
-    ($result == resolve || $result == rollback || $result == apply)) ]]; then
+    ($result == rollback || $result == apply)) ]]; then
     printf '%s\n' "$result"
     return 0
   fi
   return 65
 }
 
-resolve_reader_summary_original_cutoff_failure() {
+run_reader_summary_original_cutoff_prisma_resolve() {
+  local resolution=$1
   local secret=$ROOT/secrets/db/reader-summary-publication-admin-url
   local ca_certificate=$ROOT/secrets/db/ca-certificate.crt
-  local action
 
-  verify_reader_summary_original_cutoff_target || return
-  action=$(reader_summary_original_cutoff_probe pre) || return
-  [[ $action == resolve || $action == rollback || $action == apply ]] ||
-    return 0
-
-  # resolve is retained only for the legacy deterministic deploy harness.
+  [[ $resolution == rolled-back || $resolution == applied ]] || return 64
   # shellcheck disable=SC2016 # Expansion occurs in the child shell.
   "${COMPOSE[@]}" --profile app run -T --rm --no-deps \
     --user 0:0 \
@@ -96,18 +91,34 @@ resolve_reader_summary_original_cutoff_failure() {
     migrate sh -c '
       set -eu
       set +x
-      action=$1
+      resolution=$1
       DATABASE_URL=$(cat /run/secrets/reader-summary-publication-admin-url)
       export DATABASE_URL
-      case $action in
-        resolve|rollback)
-          npx prisma migrate resolve --rolled-back 20260731153000_reader_summary_production_recovery_original_cutoff_authority --schema prisma/schema.prisma
-          ;;
-        apply) ;;
+      case $resolution in
+        rolled-back) flag=--rolled-back ;;
+        applied) flag=--applied ;;
         *) exit 64 ;;
       esac
-      exec npx prisma migrate resolve --applied 20260731153000_reader_summary_production_recovery_original_cutoff_authority --schema prisma/schema.prisma
-    ' _ "$action" || return
+      exec npx prisma migrate resolve "$flag" \
+        20260731153000_reader_summary_production_recovery_original_cutoff_authority \
+        --schema prisma/schema.prisma
+    ' _ "$resolution"
+}
+
+resolve_reader_summary_original_cutoff_failure() {
+  local action
+
+  verify_reader_summary_original_cutoff_target || return
+  action=$(reader_summary_original_cutoff_probe pre) || return
+  [[ $action == rollback || $action == apply ]] ||
+    return 0
+
+  if [[ $action == rollback ]]; then
+    run_reader_summary_original_cutoff_prisma_resolve rolled-back || return
+    action=$(reader_summary_original_cutoff_probe pre) || return
+    [[ $action == apply ]] || return 65
+  fi
+  run_reader_summary_original_cutoff_prisma_resolve applied || return
 
   [[ $(reader_summary_original_cutoff_probe resolved) == resolved ]]
 }

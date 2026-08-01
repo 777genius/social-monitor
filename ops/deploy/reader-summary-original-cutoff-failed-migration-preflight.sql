@@ -13,21 +13,23 @@ SET LOCAL social_monitor.workspace_id =
 DO $original_cutoff_probe$
 DECLARE
   v_alias_rows INTEGER;
-  v_applied_matches INTEGER;
-  v_applied_rows INTEGER;
+  v_correction_matches INTEGER;
+  v_correction_rows INTEGER;
+  v_current_applied INTEGER;
+  v_current_matches INTEGER;
+  v_current_rolled_back INTEGER;
+  v_current_rows INTEGER;
+  v_current_unfinished INTEGER;
   v_expected JSONB;
   v_guard OID;
   v_guard_name TEXT;
+  v_history_action TEXT;
   v_phase TEXT := current_setting('application_name');
   v_recovery RECORD;
-  v_failed_rows INTEGER;
   v_jul23_rss_count INTEGER;
   v_jul24_rss_count INTEGER;
-  v_new_matches INTEGER;
-  v_new_rows INTEGER;
-  v_reviewed_rolled_back INTEGER;
-  v_reviewed_unfinished INTEGER;
-  v_target_matches INTEGER;
+  v_legacy_matches INTEGER;
+  v_legacy_rows INTEGER;
   v_target_rows INTEGER;
   v_unfinished INTEGER;
 BEGIN
@@ -46,39 +48,46 @@ BEGIN
   FROM public."_prisma_migrations"
   WHERE finished_at IS NULL AND rolled_back_at IS NULL;
 
-  SELECT
-    count(*),
-    count(*) FILTER (WHERE checksum =
-      '8748c4e266d8c1838f29b1a6f59f4be056514de64fe95fe44f5c7bb3680b477d')
-  INTO v_target_rows, v_failed_rows
+  SELECT count(*) INTO v_target_rows
   FROM public."_prisma_migrations"
   WHERE migration_name =
       '20260731153000_reader_summary_production_recovery_original_cutoff_authority';
   SELECT
     count(*),
-    count(*) FILTER (WHERE rolled_back_at IS NULL),
     count(*) FILTER (
-      WHERE TRUE
+      WHERE started_at = TIMESTAMPTZ '2026-07-31 21:16:04.938573+00'
+        AND finished_at IS NULL
         AND rolled_back_at IS NOT NULL
         AND rolled_back_at >= started_at
+        AND applied_steps_count = 0
+        AND id <> ''
+        AND logs IS NULL
     )
-  INTO v_target_matches, v_reviewed_unfinished, v_reviewed_rolled_back
+  INTO v_legacy_rows, v_legacy_matches
   FROM public."_prisma_migrations"
   WHERE migration_name =
       '20260731153000_reader_summary_production_recovery_original_cutoff_authority'
     AND checksum =
-      '8748c4e266d8c1838f29b1a6f59f4be056514de64fe95fe44f5c7bb3680b477d'
-    AND started_at = TIMESTAMPTZ '2026-07-31 21:16:04.938573+00'
-    AND finished_at IS NULL
-    AND applied_steps_count = 0
-    AND id <> ''
-    AND logs IS NULL
-    AND (
-      rolled_back_at IS NULL
-      OR (rolled_back_at IS NOT NULL AND rolled_back_at >= started_at)
-    );
+      '8748c4e266d8c1838f29b1a6f59f4be056514de64fe95fe44f5c7bb3680b477d';
   SELECT
     count(*),
+    count(*) FILTER (
+      WHERE started_at IS NOT NULL
+        AND finished_at IS NULL
+        AND rolled_back_at IS NULL
+        AND applied_steps_count = 0
+        AND id <> ''
+        AND (logs IS NULL OR btrim(logs) <> '')
+    ),
+    count(*) FILTER (
+      WHERE started_at IS NOT NULL
+        AND finished_at IS NULL
+        AND rolled_back_at IS NOT NULL
+        AND rolled_back_at >= started_at
+        AND applied_steps_count = 0
+        AND id <> ''
+        AND (logs IS NULL OR btrim(logs) <> '')
+    ),
     count(*) FILTER (
       WHERE started_at IS NOT NULL
         AND finished_at IS NOT NULL
@@ -86,72 +95,112 @@ BEGIN
         AND rolled_back_at IS NULL
         AND applied_steps_count = 0
         AND id <> ''
-        AND logs IS NULL
+        AND (logs IS NULL OR btrim(logs) = '')
     )
-  INTO v_applied_rows, v_applied_matches
+  INTO v_current_rows, v_current_unfinished, v_current_rolled_back,
+    v_current_applied
   FROM public."_prisma_migrations"
   WHERE migration_name =
       '20260731153000_reader_summary_production_recovery_original_cutoff_authority'
     AND checksum =
       '4100dd4ae236a300e002d2599a880b27df50972aed2f4a9f33578a3da2fe5c35';
 
-  IF v_unfinished <> v_reviewed_unfinished
-    OR v_reviewed_unfinished > 1
-    OR v_reviewed_rolled_back > 1
-    OR v_failed_rows <> v_target_matches
-    OR v_failed_rows <> v_reviewed_unfinished + v_reviewed_rolled_back
-    OR v_failed_rows > 1
-    OR v_applied_rows <> v_applied_matches
-    OR v_applied_rows > 1
-    OR v_target_rows <> v_failed_rows + v_applied_rows THEN
+  v_current_matches := v_current_unfinished + v_current_rolled_back
+    + v_current_applied;
+  IF v_legacy_rows <> v_legacy_matches
+    OR v_legacy_rows > 1
+    OR v_current_rows <> v_current_matches
+    OR v_current_unfinished > 1
+    OR v_current_rolled_back > 1
+    OR v_current_applied > 1
+    OR v_target_rows <> v_legacy_rows + v_current_rows
+    OR v_unfinished <> v_current_unfinished
+    OR EXISTS (
+      SELECT 1
+      FROM public."_prisma_migrations" AS current_row
+      CROSS JOIN public."_prisma_migrations" AS legacy_row
+      WHERE current_row.migration_name =
+          '20260731153000_reader_summary_production_recovery_original_cutoff_authority'
+        AND current_row.checksum =
+          '4100dd4ae236a300e002d2599a880b27d' ||
+          'f50972aed2f4a9f33578a3da2fe5c35'
+        AND legacy_row.migration_name = current_row.migration_name
+        AND legacy_row.checksum =
+          '8748c4e266d8c1838f29b1a6f59f4be' ||
+          '056514de64fe95fe44f5c7bb3680b477d'
+        AND current_row.started_at < legacy_row.rolled_back_at
+    ) OR (v_current_rolled_back = 1 AND v_current_applied = 1
+      AND (
+        SELECT applied.started_at < failed.rolled_back_at
+        FROM public."_prisma_migrations" AS applied
+        CROSS JOIN public."_prisma_migrations" AS failed
+        WHERE applied.migration_name =
+            '20260731153000_reader_summary_production_recovery_original_cutoff_authority'
+          AND applied.checksum =
+            '4100dd4ae236a300e002d2599a880b27d' ||
+            'f50972aed2f4a9f33578a3da2fe5c35'
+          AND applied.finished_at IS NOT NULL
+          AND applied.rolled_back_at IS NULL
+          AND failed.migration_name = applied.migration_name
+          AND failed.checksum = applied.checksum
+          AND failed.finished_at IS NULL
+          AND failed.rolled_back_at IS NOT NULL
+      )) THEN
     RAISE EXCEPTION 'original-cutoff migration history is not reviewed';
   END IF;
 
-  IF v_phase = 'social-monitor/original-cutoff-pre' THEN
-    IF v_reviewed_unfinished = 1 AND (
-      v_unfinished <> 1 OR v_target_rows <> 1
-      OR v_failed_rows <> 1 OR v_target_matches <> 1
-      OR v_reviewed_rolled_back <> 0 OR v_applied_rows <> 0
-    ) THEN
-      RAISE EXCEPTION 'original-cutoff unfinished migration is not reviewed';
-    ELSIF v_reviewed_unfinished = 0 AND v_applied_rows = 0
-      AND v_target_rows <> v_reviewed_rolled_back THEN
-      RAISE EXCEPTION 'original-cutoff unapplied history diverged';
-    END IF;
+  IF v_legacy_rows = 0 AND v_current_rows = 0 THEN
+    v_history_action := 'clean';
+  ELSIF v_legacy_rows = 0 AND v_current_rows = 1
+    AND v_current_applied = 1 THEN
+    v_history_action := 'clean';
+  ELSIF v_legacy_rows = 1 AND v_current_rows = 1
+    AND v_current_unfinished = 1 THEN
+    v_history_action := 'rollback';
+  ELSIF v_legacy_rows = 1 AND v_current_rows = 1
+    AND v_current_rolled_back = 1 THEN
+    v_history_action := 'apply';
+  ELSIF v_legacy_rows = 1 AND v_current_rows = 1
+    AND v_current_applied = 1 THEN
+    v_history_action := 'clean';
+  ELSIF v_legacy_rows = 1 AND v_current_rows = 2
+    AND v_current_rolled_back = 1 AND v_current_applied = 1 THEN
+    v_history_action := 'clean';
   ELSE
-    IF v_unfinished <> 0 OR v_target_rows <> 1 THEN
-      IF v_unfinished <> 0 OR v_target_rows <>
-        v_reviewed_rolled_back + v_applied_rows THEN
-        RAISE EXCEPTION 'original-cutoff resolved history diverged';
-      END IF;
-    END IF;
-    IF v_reviewed_unfinished <> 0 OR v_applied_rows <> 1 THEN
-      RAISE EXCEPTION 'original-cutoff resolved history diverged';
-    END IF;
+    RAISE EXCEPTION 'original-cutoff migration history is not reviewed';
   END IF;
 
-  IF v_phase = 'social-monitor/original-cutoff-post' THEN
-    SELECT
-      count(*),
-      count(*) FILTER (
-        WHERE checksum =
-            'da638eae2183abefb22addbfbb9228cad' ||
-            '67050d2817809289a53e13eb5447fc5'
-          AND started_at IS NOT NULL
-          AND finished_at IS NOT NULL
-          AND finished_at >= started_at
-          AND rolled_back_at IS NULL
-          AND applied_steps_count = 1
-          AND id <> ''
-          AND (logs IS NULL) IS TRUE
-      )
-    INTO v_new_rows, v_new_matches
-    FROM public."_prisma_migrations"
-    WHERE migration_name =
+  SELECT
+    count(*),
+    count(*) FILTER (
+      WHERE checksum =
+          'a378d07c649aa6de2e741be727d835ff' ||
+          '591f3a08b308ab452eea48430f669ff1'
+        AND started_at IS NOT NULL
+        AND finished_at IS NOT NULL
+        AND finished_at >= started_at
+        AND rolled_back_at IS NULL
+        AND applied_steps_count = 1
+        AND id <> ''
+        AND logs IS NULL
+    )
+  INTO v_correction_rows, v_correction_matches
+  FROM public."_prisma_migrations"
+  WHERE migration_name =
       '20260801130000_reader_summary_original_cutoff_consumed_state_correction';
-    IF v_new_rows <> 1 OR v_new_matches <> 1 THEN
-      RAISE EXCEPTION 'original-cutoff correction migration row diverged';
-    END IF;
+
+  IF v_correction_rows <> v_correction_matches OR v_correction_rows > 1
+    OR (v_correction_rows = 1 AND v_history_action <> 'clean') THEN
+    RAISE EXCEPTION 'original-cutoff correction migration row diverged';
+  END IF;
+  IF v_phase = 'social-monitor/original-cutoff-resolved'
+    AND (v_history_action <> 'clean' OR v_current_applied <> 1
+      OR v_correction_rows <> 0) THEN
+    RAISE EXCEPTION 'original-cutoff resolved history diverged';
+  ELSIF v_phase = 'social-monitor/original-cutoff-post'
+    AND (v_history_action <> 'clean' OR v_current_applied <> 1
+      OR v_correction_rows <> 1) THEN
+    RAISE EXCEPTION 'original-cutoff correction migration row diverged';
   END IF;
 
   IF NOT pg_has_role(
@@ -176,9 +225,15 @@ BEGIN
     RAISE EXCEPTION 'original-cutoff predecessor authority is incomplete';
   END IF;
 
-  -- The skipped predecessor remains byte-for-byte at 78/68 in every phase.
-  v_jul23_rss_count := 78;
-  v_jul24_rss_count := 68;
+  -- A normal clean deploy executes the predecessor at 75/67. The reviewed
+  -- production path skips it and must retain its predecessor state at 78/68.
+  IF v_legacy_rows = 0 AND v_current_applied = 1 THEN
+    v_jul23_rss_count := 75;
+    v_jul24_rss_count := 67;
+  ELSE
+    v_jul23_rss_count := 78;
+    v_jul24_rss_count := 68;
+  END IF;
   v_expected := jsonb_build_array(
     jsonb_build_object('providerKey', 'github-trending-page', 'count', 0,
       'evidenceState', 'historical_unavailable'),
@@ -382,14 +437,28 @@ SELECT CASE current_setting('application_name')
       SELECT 1 FROM public."_prisma_migrations"
       WHERE migration_name =
           '20260731153000_reader_summary_production_recovery_original_cutoff_authority'
+        AND checksum =
+          '4100dd4ae236a300e002d2599a880b27d' ||
+          'f50972aed2f4a9f33578a3da2fe5c35'
         AND finished_at IS NULL AND rolled_back_at IS NULL
     ) THEN 'rollback'
     WHEN EXISTS (
       SELECT 1 FROM public."_prisma_migrations"
       WHERE migration_name =
           '20260731153000_reader_summary_production_recovery_original_cutoff_authority'
+        AND checksum =
+          '4100dd4ae236a300e002d2599a880b27d' ||
+          'f50972aed2f4a9f33578a3da2fe5c35'
+        AND finished_at IS NULL AND rolled_back_at IS NOT NULL
+    ) AND NOT EXISTS (
+      SELECT 1 FROM public."_prisma_migrations"
+      WHERE migration_name =
+          '20260731153000_reader_summary_production_recovery_original_cutoff_authority'
+        AND checksum =
+          '4100dd4ae236a300e002d2599a880b27d' ||
+          'f50972aed2f4a9f33578a3da2fe5c35'
         AND finished_at IS NOT NULL AND rolled_back_at IS NULL
-    ) THEN 'clean'
-    ELSE 'apply'
+    ) THEN 'apply'
+    ELSE 'clean'
   END
 END;
