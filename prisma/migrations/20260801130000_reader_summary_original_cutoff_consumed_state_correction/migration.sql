@@ -18,7 +18,7 @@ SET LOCAL social_monitor.workspace_id =
   '00000000-0000-7000-8000-000000000902';
 
 CREATE TABLE IF NOT EXISTS
-  "reader_summary_production_recovery_authority_corrections" (
+  public."reader_summary_production_recovery_authority_corrections" (
   "recovery_id" UUID NOT NULL,
   "tenant_id" UUID NOT NULL,
   "workspace_id" UUID NOT NULL,
@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS
     ),
   CONSTRAINT "reader_summary_production_recovery_authority_corrections_lease_fkey"
     FOREIGN KEY ("recovery_id", "tenant_id", "workspace_id")
-    REFERENCES "reader_summary_production_recovery_leases" (
+    REFERENCES public."reader_summary_production_recovery_leases" (
       "id", "tenant_id", "workspace_id"
     ) ON DELETE RESTRICT ON UPDATE RESTRICT,
   CONSTRAINT "reader_summary_production_recovery_authority_corrections_hashes_check"
@@ -58,9 +58,9 @@ CREATE TABLE IF NOT EXISTS
     )
 );
 
-ALTER TABLE "reader_summary_production_recovery_authority_corrections"
+ALTER TABLE public."reader_summary_production_recovery_authority_corrections"
   ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "reader_summary_production_recovery_authority_corrections"
+ALTER TABLE public."reader_summary_production_recovery_authority_corrections"
   FORCE ROW LEVEL SECURITY;
 
 DO $create_correction_policy$
@@ -75,7 +75,7 @@ BEGIN
   ) THEN
     EXECUTE $policy$
       CREATE POLICY "tenant_isolation"
-      ON "reader_summary_production_recovery_authority_corrections"
+      ON public."reader_summary_production_recovery_authority_corrections"
       USING (public.social_monitor_rls_workspace_match(
         "tenant_id", "workspace_id"
       ))
@@ -88,7 +88,7 @@ END;
 $create_correction_policy$;
 
 REVOKE ALL PRIVILEGES ON TABLE
-  "reader_summary_production_recovery_authority_corrections"
+  public."reader_summary_production_recovery_authority_corrections"
 FROM PUBLIC, "social_monitor_reader_summary_publication_runtime";
 GRANT SELECT (
   "recovery_id", "tenant_id", "workspace_id",
@@ -96,7 +96,7 @@ GRANT SELECT (
   "corrected_canonical_bytes", "corrected_canonical_sha256",
   "correction_manifest", "correction_manifest_bytes",
   "correction_manifest_sha256"
-) ON "reader_summary_production_recovery_authority_corrections"
+) ON public."reader_summary_production_recovery_authority_corrections"
 TO "social_monitor_reader_summary_publication_runtime";
 
 DO $validate_correction_boundary$
@@ -615,14 +615,14 @@ BEGIN
       OR jsonb_object_length(v_day."provider_evidence") <> 5
       OR jsonb_typeof(v_day."provider_evidence"->'rss') <> 'array'
       OR jsonb_array_length(v_day."provider_evidence"->'rss') <>
-        CASE WHEN v_date = DATE '2026-07-23' THEN 78 ELSE 68 END
+        (CASE WHEN v_date = DATE '2026-07-23' THEN 78 ELSE 68 END)
       OR btrim(v_day."provider_evidence_sha256") <>
         v_expected_evidence_sha
       OR btrim(v_day."canonical_sha256") <> v_expected_day_sha
       OR (SELECT (entry->>'count')::INTEGER
         FROM jsonb_array_elements(v_day."provider_counts") AS count(entry)
         WHERE entry->>'providerKey' = 'rss') <>
-        CASE WHEN v_date = DATE '2026-07-23' THEN 78 ELSE 68 END THEN
+        (CASE WHEN v_date = DATE '2026-07-23' THEN 78 ELSE 68 END) THEN
       RAISE EXCEPTION 'original-cutoff legacy day authority diverged';
     END IF;
 
@@ -897,9 +897,9 @@ BEGIN
       CREATE TRIGGER
         "reader_summary_production_recovery_authority_corrections_immutable"
       BEFORE INSERT OR UPDATE OR DELETE
-      ON "reader_summary_production_recovery_authority_corrections"
+      ON public."reader_summary_production_recovery_authority_corrections"
       FOR EACH ROW EXECUTE FUNCTION
-        "guard_reader_summary_production_recovery_authority_correction"()
+        public."guard_reader_summary_production_recovery_authority_correction"()
     $trigger$;
   END IF;
 END;

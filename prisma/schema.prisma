@@ -1091,10 +1091,28 @@ model ReaderSummaryProductionRecoveryLease {
   consumedAt      DateTime?                               @map("consumed_at") @db.Timestamptz(6)
   days            ReaderSummaryProductionRecoveryDay[]
   dryRuns         ReaderSummaryProductionRecoveryDryRun[]
+  authorityCorrections ReaderSummaryProductionRecoveryAuthorityCorrection[]
 
   @@unique([id, tenantId, workspaceId], map: "reader_summary_production_recovery_leases_scope_key")
   @@index([tenantId, workspaceId, issuedAt], map: "reader_summary_production_recovery_leases_scope_idx")
   @@map("reader_summary_production_recovery_leases")
+}
+
+model ReaderSummaryProductionRecoveryAuthorityCorrection {
+  recoveryId               String                                  @id(map: "reader_summary_production_recovery_authority_corrections_pkey") @map("recovery_id") @db.Uuid
+  tenantId                 String                                  @map("tenant_id") @db.Uuid
+  workspaceId              String                                  @map("workspace_id") @db.Uuid
+  legacyCanonicalSha256    String                                  @map("legacy_canonical_sha256") @db.Char(64)
+  correctedCanonicalRecord Json                                    @map("corrected_canonical_record")
+  correctedCanonicalBytes  Bytes                                   @map("corrected_canonical_bytes")
+  correctedCanonicalSha256 String                                  @map("corrected_canonical_sha256") @db.Char(64)
+  correctionManifest       Json                                    @map("correction_manifest")
+  correctionManifestBytes  Bytes                                   @map("correction_manifest_bytes")
+  correctionManifestSha256 String                                  @map("correction_manifest_sha256") @db.Char(64)
+  recovery                 ReaderSummaryProductionRecoveryLease    @relation(fields: [recoveryId, tenantId, workspaceId], references: [id, tenantId, workspaceId], onDelete: Restrict, onUpdate: Restrict, map: "reader_summary_production_recovery_authority_corrections_lease_")
+
+  @@unique([recoveryId, tenantId, workspaceId, legacyCanonicalSha256, correctedCanonicalSha256], map: "reader_summary_production_recovery_authority_corrections_scope_")
+  @@map("reader_summary_production_recovery_authority_corrections")
 }
 
 model ReaderSummaryProductionRecoveryDay {
