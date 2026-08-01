@@ -54,6 +54,14 @@ describe("reader summary production recovery PostgreSQL contract", () => {
       "scripts/lib/reader-summary-production-recovery-postgres-contract.ts"),
     "utf8",
   );
+  const originalCutoffFixture = readFileSync(
+    join(
+      process.cwd(),
+      "scripts/lib/reader-summary-production-recovery-" +
+        "original-cutoff-postgres-fixture.ts",
+    ),
+    "utf8",
+  );
   const replayGuard = readFileSync(
     join(process.cwd(),
       "scripts/lib/reader-summary-production-recovery-replay-guard.ts"),
@@ -90,7 +98,28 @@ describe("reader summary production recovery PostgreSQL contract", () => {
       "'original-cutoff repair requires two identical persisted dry runs'",
     );
     expect(originalCutoffMigration).toContain(
+      "(item.entry->>'publishedAt')::TIMESTAMPTZ >= v_period_start",
+    );
+    expect(originalCutoffMigration).toContain(
+      "(item.entry->>'publishedAt')::TIMESTAMPTZ < v_period_end",
+    );
+    expect(originalCutoffMigration).not.toContain(
       "(item.entry->>'observedAt')::TIMESTAMPTZ <= v_lease.\"issued_at\"",
+    );
+    expect(originalCutoffMigration).toContain(
+      "original-cutoff RSS evidence has unknown, missing, or duplicate identity/hash",
+    );
+    expect(originalCutoffMigration).toContain(
+      "OR NOT item.entry ?& ARRAY[",
+    );
+    expect(originalCutoffMigration).toContain(
+      "OR item.entry - ARRAY[",
+    );
+    expect(originalCutoffMigration).toContain(
+      "count(DISTINCT item.entry->>'sourceContentHash')",
+    );
+    expect(originalCutoffMigration).toContain(
+      "original-cutoff non-RSS evidence bytes diverged",
     );
     expect(originalCutoffMigration).toContain(
       "WHEN v_date = DATE '2026-07-23' THEN 78 ELSE 68 END",
@@ -122,6 +151,39 @@ describe("reader summary production recovery PostgreSQL contract", () => {
     expect(originalCutoffMigration).toContain(
       'DROP FUNCTION public."repair_reader_summary_production_recovery_original_cutoff_v2"()',
     );
+    expect(originalCutoffFixture).toContain(
+      "TIMESTAMPTZ '2026-07-30T12:00:00Z'",
+    );
+    expect(originalCutoffFixture).toContain(
+      "original-cutoff-excluded:",
+    );
+    expect(originalCutoffFixture).toContain(
+      "original-cutoff migration replay performed an authority-row write",
+    );
+    for (const rejectedState of [
+      "unknown_identity",
+      "missing_hash",
+      "duplicate_identity",
+      "duplicate_hash",
+    ]) {
+      expect(originalCutoffFixture).toContain(`"${rejectedState}"`);
+    }
+    expect(originalCutoffFixture).toContain(
+      "original-cutoff migration wrote model/job/publication/receipt state",
+    );
+    expect(originalCutoffFixture).toContain(
+      "original-cutoff migration replay performed a non-authority write",
+    );
+    expect(originalCutoffFixture).toContain(
+      "CASE WHEN feed.author_handle IS NULL",
+    );
+    expect(originalCutoffFixture).toContain(
+      "ELSE jsonb_build_object('authorHandle', feed.author_handle)",
+    );
+    expect(originalCutoffFixture).not.toContain(
+      "'authorHandle', feed.author_handle,",
+    );
+    expect(originalCutoffFixture).not.toContain("jsonb_strip_nulls");
   });
 
   it("replaces only validation with the exact six-day v2 authority", () => {

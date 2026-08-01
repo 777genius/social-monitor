@@ -127,24 +127,25 @@ BEGIN
     AND current_setting(
       'social_monitor.production_recovery_original_cutoff_write', TRUE
     ) = 'on' THEN
-    IF TG_TABLE_NAME = 'reader_summary_production_recovery_days'
-      AND NEW."recovery_id" = OLD."recovery_id"
-      AND NEW."tenant_id" = OLD."tenant_id"
-      AND NEW."workspace_id" = OLD."workspace_id"
-      AND NEW."requested_utc_date" = OLD."requested_utc_date"
-      AND NEW."recorded_at" = OLD."recorded_at"
-      AND OLD."requested_utc_date" IN (
-        DATE '2026-07-23', DATE '2026-07-24'
-      ) THEN
-      RETURN NEW;
-    END IF;
-    IF TG_TABLE_NAME = 'reader_summary_production_recovery_dry_runs'
-      AND NEW."recovery_id" = OLD."recovery_id"
-      AND NEW."tenant_id" = OLD."tenant_id"
-      AND NEW."workspace_id" = OLD."workspace_id"
-      AND NEW."ordinal" = OLD."ordinal"
-      AND NEW."captured_at" = OLD."captured_at" THEN
-      RETURN NEW;
+    IF TG_TABLE_NAME = 'reader_summary_production_recovery_days' THEN
+      IF NEW."recovery_id" = OLD."recovery_id"
+        AND NEW."tenant_id" = OLD."tenant_id"
+        AND NEW."workspace_id" = OLD."workspace_id"
+        AND NEW."requested_utc_date" = OLD."requested_utc_date"
+        AND NEW."recorded_at" = OLD."recorded_at"
+        AND OLD."requested_utc_date" IN (
+          DATE '2026-07-23', DATE '2026-07-24'
+        ) THEN
+        RETURN NEW;
+      END IF;
+    ELSIF TG_TABLE_NAME = 'reader_summary_production_recovery_dry_runs' THEN
+      IF NEW."recovery_id" = OLD."recovery_id"
+        AND NEW."tenant_id" = OLD."tenant_id"
+        AND NEW."workspace_id" = OLD."workspace_id"
+        AND NEW."ordinal" = OLD."ordinal"
+        AND NEW."captured_at" = OLD."captured_at" THEN
+        RETURN NEW;
+      END IF;
     END IF;
   END IF;
   IF TG_OP = 'DELETE'
@@ -233,6 +234,9 @@ DECLARE
   v_legacy_count INTEGER;
   v_job_count INTEGER;
   v_legacy_expected JSONB;
+  v_non_rss_bytes BYTEA;
+  v_period_end TIMESTAMPTZ(6);
+  v_period_start TIMESTAMPTZ(6);
   v_plan_days JSONB;
   v_provider TEXT;
   v_publication_count INTEGER;
@@ -570,20 +574,74 @@ BEGIN
       IF EXISTS (
         SELECT 1
         FROM jsonb_array_elements(v_evidence->'rss') AS item(entry)
-        WHERE (item.entry->>'observedAt' ~
-          '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z$'
-        ) IS DISTINCT FROM TRUE
+        WHERE jsonb_typeof(item.entry) IS DISTINCT FROM 'object'
+          OR NOT item.entry ?& ARRAY[
+            'providerKey', 'feedItemId', 'sourceItemId', 'sourceBindingId',
+            'interestId', 'providerItemId', 'canonicalUrl',
+            'sourceContentHash', 'sourceProviderContentHash',
+            'publishedAt', 'observedAt'
+          ]
+          OR item.entry - ARRAY[
+            'providerKey', 'feedItemId', 'sourceItemId', 'sourceBindingId',
+            'interestId', 'providerItemId', 'canonicalUrl', 'title',
+            'bodyPreview', 'sourceText', 'authorHandle', 'sourceContentHash',
+            'sourceProviderContentHash', 'publishedAt', 'observedAt'
+          ] <> '{}'::JSONB
+          OR item.entry->>'providerKey' IS DISTINCT FROM 'rss'
+          OR (item.entry->>'feedItemId' ~
+            '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+          ) IS DISTINCT FROM TRUE
+          OR (item.entry->>'sourceItemId' ~
+            '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+          ) IS DISTINCT FROM TRUE
+          OR (item.entry->>'sourceBindingId' ~
+            '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+          ) IS DISTINCT FROM TRUE
+          OR (item.entry->>'interestId' ~
+            '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+          ) IS DISTINCT FROM TRUE
+          OR btrim(COALESCE(item.entry->>'providerItemId', '')) = ''
+          OR btrim(COALESCE(item.entry->>'canonicalUrl', '')) = ''
+          OR (item.entry->>'sourceContentHash' ~ '^[0-9a-f]{64}$')
+            IS DISTINCT FROM TRUE
+          OR (
+            item.entry->'sourceProviderContentHash' <> 'null'::JSONB
+            AND (item.entry->>'sourceProviderContentHash' ~
+              '^[0-9a-f]{64}$') IS DISTINCT FROM TRUE
+          )
+          OR (item.entry->>'publishedAt' ~
+            '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z$'
+          ) IS DISTINCT FROM TRUE
+          OR (item.entry->>'observedAt' ~
+            '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z$'
+          ) IS DISTINCT FROM TRUE
+      ) OR (
+        SELECT count(*) <> count(DISTINCT item.entry->>'feedItemId')
+          OR count(*) <> count(DISTINCT item.entry->>'sourceItemId')
+          OR count(*) <> count(DISTINCT item.entry->>'providerItemId')
+          OR count(*) <> count(DISTINCT item.entry->>'sourceContentHash')
+        FROM jsonb_array_elements(v_evidence->'rss') AS item(entry)
       ) THEN
         RAISE EXCEPTION
-          'original-cutoff RSS observation timestamp diverged';
+          'original-cutoff RSS evidence has unknown, missing, or duplicate identity/hash';
       END IF;
+      v_period_start :=
+        (v_day."canonical_record"->'period'->>'startedAt')::TIMESTAMPTZ;
+      v_period_end :=
+        (v_day."canonical_record"->'period'->>'endedAt')::TIMESTAMPTZ;
+      v_non_rss_bytes := convert_to(
+        "reader_summary_production_recovery_canonical_json"(
+          v_evidence - 'rss'
+        ), 'UTF8'
+      );
       SELECT COALESCE(jsonb_agg(item.entry ORDER BY item.ordinal), '[]'::JSONB)
       INTO v_rss
       FROM jsonb_array_elements(v_evidence->'rss')
         WITH ORDINALITY AS item(entry, ordinal)
-      WHERE item.entry->>'observedAt' ~
+      WHERE item.entry->>'publishedAt' ~
           '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z$'
-        AND (item.entry->>'observedAt')::TIMESTAMPTZ <= v_lease."issued_at";
+        AND (item.entry->>'publishedAt')::TIMESTAMPTZ >= v_period_start
+        AND (item.entry->>'publishedAt')::TIMESTAMPTZ < v_period_end;
       IF jsonb_array_length(v_evidence->'rss') NOT IN (
           (CASE WHEN v_date = DATE '2026-07-23' THEN 75 ELSE 67 END),
           (CASE WHEN v_date = DATE '2026-07-23' THEN 78 ELSE 68 END)
@@ -594,6 +652,13 @@ BEGIN
           'original-cutoff RSS evidence is not the reviewed exact set';
       END IF;
       v_evidence := jsonb_set(v_evidence, '{rss}', v_rss, FALSE);
+      IF convert_to(
+        "reader_summary_production_recovery_canonical_json"(
+          v_evidence - 'rss'
+        ), 'UTF8'
+      ) IS DISTINCT FROM v_non_rss_bytes THEN
+        RAISE EXCEPTION 'original-cutoff non-RSS evidence bytes diverged';
+      END IF;
       v_digests := '[]'::JSONB;
       FOREACH v_provider IN ARRAY ARRAY[
         'github-trending-page', 'hacker-news', 'reddit', 'rss', 'x-twitter'

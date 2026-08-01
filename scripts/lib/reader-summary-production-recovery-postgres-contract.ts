@@ -11,6 +11,11 @@ import {
   readerSummaryProductionRecoveryWorkspaceId,
 } from "@social-monitor/summary/ports";
 import { assertReaderSummaryProductionRecoveryCanonicalBounds } from "./reader-summary-production-recovery-canonical-bounds-postgres-contract";
+import {
+  assertOriginalCutoffPostgresRepair,
+  installLegacyOriginalCutoffAuthority,
+  seedOriginalCutoffOutsidePeriodRss,
+} from "./reader-summary-production-recovery-original-cutoff-postgres-fixture";
 type RecoveryExecutionGuardModule = Readonly<{ PrismaReaderSummaryProductionRecoveryExecutionGuard: new (
   client: unknown) => Readonly<{ claim(params: {
     readonly binding: ReaderSummaryProductionRecoveryAuthorityBinding;
@@ -314,6 +319,7 @@ export const seedReaderSummaryProductionRecoveryFixture = async (
       AND requested_date <> DATE '2026-07-24';
     COMMIT;
   `);
+  await seedOriginalCutoffOutsidePeriodRss(client, { tenantId, workspaceId });
 };
 export const assertReaderSummaryProductionRecoveryPostgresContract =
   async (params: Readonly<{
@@ -424,11 +430,16 @@ export const assertReaderSummaryProductionRecoveryPostgresContract =
       ),
       "daily two-pass plan hashes diverged",
     );
-    await seedLateRssAfterOriginalCutoff(params.auditor);
-    await assertOriginalCutoffReplay({
-      auditor: params.auditor,
+    await installLegacyOriginalCutoffAuthority(
+      params.auditor,
+      leftBinding.recoveryId,
+    );
+    await assertOriginalCutoffPostgresRepair({
       authority: firstAuthority,
       canonicalSha256: leftBinding.canonicalSha256,
+      client: params.auditor,
+      migrationSql: originalCutoffMigrationSql,
+      scope: { tenantId, workspaceId },
     });
     await seedLegacyRejectedModelClaim(auditorClient, leftBinding);
     await assertOriginalCutoffFailClosed(params.auditor);
@@ -461,77 +472,6 @@ export const assertReaderSummaryProductionRecoveryPostgresContract =
       "legacy rejection replay performed a write",
     );
   };
-const seedLateRssAfterOriginalCutoff = async (
-  client: RecoveryPostgresClient,
-): Promise<void> => {
-  await client.query(`
-    BEGIN;
-    CREATE TEMP TABLE late_recovery_rss ON COMMIT DROP AS
-    SELECT * FROM (VALUES
-      (1, DATE '2026-07-23', 76), (2, DATE '2026-07-23', 77),
-      (3, DATE '2026-07-23', 78), (4, DATE '2026-07-24', 68)
-    ) AS late(ordinal, requested_date, position);
-    INSERT INTO source_items (id, tenant_id, workspace_id,
-      source_binding_id, provider_key, provider_item_id, canonical_url, title,
-      body, author_handle, published_at, content_hash, provider_content_hash,
-      observed_at, last_observed_at, content_updated_at, raw_pointer, metadata,
-      schema_version, created_at) SELECT
-      ('91000000-0000-4000-8000-' || lpad(ordinal::TEXT, 12, '0'))::UUID,
-      '${tenantId}', '${workspaceId}', '30000000-0000-4000-8000-000000000004', 'rss',
-      'late-rss:' || requested_date || ':' || position,
-      'https://late.invalid/' || requested_date || '/' || position,
-      'Late RSS ' || ordinal, 'Excluded after persisted cutoff', NULL,
-      requested_date::TIMESTAMP AT TIME ZONE 'UTC' + INTERVAL '8 hours' + position * INTERVAL '1 millisecond',
-      encode(sha256(convert_to('late-rss:' || ordinal, 'UTF8')), 'hex'),
-      NULL, transaction_timestamp() + ordinal * INTERVAL '1 millisecond',
-      NULL, NULL, NULL, '{}'::JSONB, 1, transaction_timestamp()
-    FROM late_recovery_rss;
-    INSERT INTO feed_items (id, tenant_id, workspace_id, interest_id,
-      source_item_id, source_binding_id, provider_key, dedupe_key,
-      canonical_url, title, body_preview, author_handle, published_at,
-      observed_at, provider_metadata, status, created_at, updated_at) SELECT
-      ('92000000-0000-4000-8000-' || lpad(late.ordinal::TEXT, 12, '0'))::UUID,
-      '${tenantId}', '${workspaceId}', '50000000-0000-4000-8000-000000000001', source.id,
-      source.source_binding_id, 'rss',
-      'late-rss:' || late.requested_date || ':' || late.position,
-      source.canonical_url, source.title, source.body, NULL,
-      source.published_at, source.observed_at, NULL, 'VISIBLE',
-      transaction_timestamp(), transaction_timestamp()
-    FROM late_recovery_rss AS late JOIN source_items AS source ON source.id =
-      ('91000000-0000-4000-8000-' || lpad(late.ordinal::TEXT, 12, '0'))::UUID;
-    COMMIT;
-  `);
-};
-const assertOriginalCutoffReplay = async (params: Readonly<{
-  auditor: RecoveryPostgresClient;
-  authority: PrismaReaderSummaryProductionRecoveryAuthority;
-  canonicalSha256: string;
-}>): Promise<void> => {
-  const counts = await params.auditor.query<{
-    cutoff_count: number; requested_date: string; total_count: number;
-  }>(`
-    SELECT to_char(feed.published_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS requested_date,
-      count(*)::INTEGER AS total_count,
-      count(*) FILTER (WHERE feed.observed_at <= lease.issued_at)::INTEGER AS cutoff_count
-    FROM feed_items AS feed
-    CROSS JOIN reader_summary_production_recovery_leases AS lease
-    WHERE feed.tenant_id = '${tenantId}' AND feed.workspace_id = '${workspaceId}'
-      AND feed.provider_key = 'rss'
-      AND feed.published_at >= TIMESTAMPTZ '2026-07-23T00:00:00Z'
-      AND feed.published_at < TIMESTAMPTZ '2026-07-25T00:00:00Z'
-    GROUP BY requested_date ORDER BY requested_date
-  `);
-  assert(JSON.stringify(counts.rows) === JSON.stringify([
-    { requested_date: "2026-07-23", total_count: 78, cutoff_count: 75 },
-    { requested_date: "2026-07-24", total_count: 68, cutoff_count: 67 },
-  ]), "late RSS rows did not remain outside the original persisted cutoff");
-  await params.auditor.query(originalCutoffMigrationSql);
-  const replay = await params.authority.prepare();
-  const binding = params.authority.readVerifiedBinding(replay.authority);
-  assert(replay.outcome === "prepared" &&
-    binding.canonicalSha256 === params.canonicalSha256,
-  "original-cutoff migration replay changed the sealed authority");
-};
 const assertOriginalCutoffFailClosed = async (
   client: RecoveryPostgresClient,
 ): Promise<void> => {
