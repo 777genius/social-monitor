@@ -19,7 +19,7 @@ git -C "$REPO" config user.email deploy-contract@example.invalid
 git -C "$REPO" remote add origin "$ORIGIN"
 install -d "$REPO/apps/frontend" "$REPO/apps/api-gateway" \
   "$REPO/apps/x-collector" "$REPO/ops/deploy" "$REPO/ops/recovery" \
-  "$REPO/prisma/migrations/20260716170000_reader_summary_fail_closed_publication" \
+  "$REPO/prisma/migrations"/{20260716170000_reader_summary_fail_closed_publication,20260731153000_reader_summary_production_recovery_original_cutoff_authority} \
   "$STATE" "$STAGING"
 cp "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/deploy-control-lib.sh" "$REPO/ops/deploy/"
@@ -29,10 +29,7 @@ cp "$SCRIPT_DIR/docker-maintenance-lib.sh" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/daily-runner-image-bootstrap-lib.sh" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/x-collector-image-deploy-lib.sh" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/reader-summary-recovery-maintenance-lib.sh" "$REPO/ops/deploy/"
-cp "$SCRIPT_DIR/reader-summary-publication-deploy-lib.sh" \
-  "$SCRIPT_DIR/reader-summary-publication-system-dsn-bootstrap-lib.sh" \
-  "$SCRIPT_DIR/reader-summary-publication-pre-migration.sql" \
-  "$SCRIPT_DIR/reader-summary-publication-post-migration.sql" \
+cp "$SCRIPT_DIR"/{reader-summary-publication-deploy-lib.sh,reader-summary-publication-system-dsn-bootstrap-lib.sh,reader-summary-publication-pre-migration.sql,reader-summary-publication-post-migration.sql,reader-summary-original-cutoff-failed-migration-preflight.sql} \
   "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/verify-postgres-backup-coverage.sh" \
   "$SCRIPT_DIR/prune-pre-autodeploy-backups.sh" \
@@ -40,8 +37,9 @@ cp "$SCRIPT_DIR/verify-postgres-backup-coverage.sh" \
   "$REPO/ops/deploy/"
 cp "$ENTRYPOINT" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/social-monitor-production-ssh-wrapper.sh" "$REPO/ops/deploy/"
-cp "$SCRIPT_DIR/../../prisma/migrations/20260716170000_reader_summary_fail_closed_publication/migration.sql" \
-  "$REPO/prisma/migrations/20260716170000_reader_summary_fail_closed_publication/"
+for migration in 20260716170000_reader_summary_fail_closed_publication 20260731153000_reader_summary_production_recovery_original_cutoff_authority; do
+  cp "$SCRIPT_DIR/../../prisma/migrations/$migration/migration.sql" "$REPO/prisma/migrations/$migration/"
+done
 cp "$SCRIPT_DIR/verify-postgres-runtime-topology.py" "$REPO/ops/deploy/"
 cp -R "$SCRIPT_DIR/production-runtime" "$REPO/ops/deploy/"
 rm -f \
