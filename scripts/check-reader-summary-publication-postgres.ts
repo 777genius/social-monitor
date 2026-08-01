@@ -34,6 +34,7 @@ import {
 import { assertReaderSummaryRecoveryPostgresContract } from "./lib/reader-summary-recovery-postgres-contract";
 import { assertReaderSummaryWeeklyDailyCertificationBackfillPostgresContract } from "./lib/reader-summary-weekly-daily-certification-backfill-postgres-contract";
 import { assertReaderSummaryWeeklyCertificationSealPostgresContract } from "./lib/reader-summary-weekly-certification-seal-postgres-contract";
+import { assertReaderSummaryWeeklyAtomicPublicationPostgresContract } from "./lib/reader-summary-weekly-atomic-publication-postgres-contract";
 import {
   assertReaderSummaryWeeklyProductionPostgresContract,
 } from "./lib/reader-summary-weekly-production-postgres-contract";
@@ -103,7 +104,8 @@ let fixtureMigrationAdminRoleCreated = false;
 let fixtureRuntimeRoleCreated = false;
 export type ReaderSummaryPublicationPostgresContract =
   | "publication"
-  | "weekly-certification-seal";
+  | "weekly-certification-seal"
+  | "weekly-atomic-publication";
 
 export const closeReaderSummaryPublicationPostgresContract = async (
 ): Promise<void> => {
@@ -241,7 +243,10 @@ export const runReaderSummaryPublicationPostgresContract = async (
           readerSummaryPublicationMigration,
         );
         await assertLegacyRepositoryVisibility(runtimeDatabaseUrl);
-        if (contract === "weekly-certification-seal") {
+        if (
+          contract === "weekly-certification-seal" ||
+          contract === "weekly-atomic-publication"
+        ) {
           await assertReaderSummaryWeeklyCertificationSealPostgresContract({
             adminClient,
             auditorClient: auditor,
@@ -253,6 +258,14 @@ export const runReaderSummaryPublicationPostgresContract = async (
             publish: (payload) => publish(first, payload),
           });
           await assertReaderSummaryWeeklyProductionPostgresContract(first);
+          if (contract === "weekly-atomic-publication") {
+            await assertReaderSummaryWeeklyAtomicPublicationPostgresContract({
+              auditorClient: auditor,
+              concurrentRuntimeClient: second,
+              runtimeClient: first,
+              runtimeRole,
+            });
+          }
           return;
         }
         await assertReaderSummaryWeeklyPublicationEvidencePostgresContract({
