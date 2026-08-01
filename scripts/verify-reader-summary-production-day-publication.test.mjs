@@ -42,7 +42,7 @@ test("accepts a fully live report with all nine real steps", () => {
     assert.match(proof.evidenceArtifactSha256, /^[0-9a-f]{64}$/);
     assert.deepEqual(proof.model.topicLabeler, {
       mode: "agent-runtime",
-      physicalModel: "gpt-5.5",
+      physicalModel: "gpt-5.6-sol",
       provider: "codex",
       runtime: "subscription-runtime-cli",
       runtimeVersion: "0.1.0-main.2",
@@ -164,7 +164,7 @@ test("rejects modified frontend content with unchanged summary identities", () =
   withFixture(({ reportPath, proofPath, frontendPath }) => {
     const frontend = JSON.parse(readFileSync(frontendPath, "utf8"));
     frontend.readerSummaryArtifact.lineage.modelVersion =
-      "codex:gpt-5.5:xhigh-modified";
+      "codex:gpt-5.6-sol:xhigh-modified";
     writeFileSync(frontendPath, `${JSON.stringify(frontend)}\n`);
     const result = runVerifier(reportPath, proofPath, "--proof-out");
     assert.notEqual(result.status, 0);
@@ -200,7 +200,7 @@ for (const nonLive of [true, undefined, "false"]) {
 }
 
 for (const [field, value] of [
-  ["physicalModel", "gpt-4"],
+  ["physicalModel", "gpt-5.5"],
   ["provider", "claude"],
   ["runtime", "direct"],
   ["summaryModel", "deterministic"],
@@ -272,9 +272,10 @@ test("rejects historical regeneration whose dataset guard is not evidence-bound"
 });
 
 for (const options of [
-  { modelVersion: "claude:gpt-5.5:xhigh" },
-  { modelVersion: "codex:gpt-4:xhigh" },
-  { modelVersion: "codex:gpt-5.5:high" },
+  { modelVersion: "claude:gpt-5.6-sol:xhigh" },
+  { modelVersion: "codex:gpt-5.5:xhigh" },
+  { modelVersion: "codex:gpt-5.6-sol:high" },
+  { attestationOutputKind: "output_text" },
   { attestationRuntimeEngine: "direct" },
   { topicGeneratedBy: "deterministic" },
 ]) {
@@ -359,7 +360,7 @@ function buildFrontend(options) {
       readerSummaryId,
       period: utcPeriod(),
       lineage: {
-        modelVersion: options.modelVersion ?? "codex:gpt-5.5:xhigh",
+        modelVersion: options.modelVersion ?? "codex:gpt-5.6-sol:xhigh",
         providerVersion: options.providerVersion ?? "agent-runtime",
       },
       content: {
@@ -681,13 +682,14 @@ function buildExecutionAttestations(options) {
     schemaVersion: 1,
     canonicalRequestSha256: "a".repeat(64),
     provider: "codex",
-    model: "gpt-5.5",
+    model: "gpt-5.6-sol",
     reasoningEffort: "xhigh",
     runtimeEngine:
       options.attestationRuntimeEngine ?? "subscription-runtime-cli",
     runtimePackageVersion: "0.1.0-main.2",
     launcherSha256: "b".repeat(64),
-    selectedOutputKind: "structured_output",
+    selectedOutputKind:
+      options.attestationOutputKind ?? "structured_output",
     selectedOutputSha256: "c".repeat(64),
   };
   return [

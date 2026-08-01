@@ -1,6 +1,6 @@
 import type { AgentRuntimeExecutionRequest } from "./agent-runtime-executor.port";
 
-export const productionAgentRuntimeModel = "gpt-5.5";
+export const productionAgentRuntimeModel = "gpt-5.6-sol";
 export const productionAgentRuntimeReasoningEffort = "xhigh";
 
 export type SubscriptionRuntimeOutputKind =
@@ -9,7 +9,7 @@ export type SubscriptionRuntimeOutputKind =
 
 export type SubscriptionRuntimePurposeProfile = {
   readonly provider: "codex";
-  readonly model: "gpt-5.5" | "gpt-5.6-sol";
+  readonly model: "gpt-5.6-sol";
   readonly reasoningEffort: "xhigh";
   readonly outputKind: SubscriptionRuntimeOutputKind;
   readonly responseFormat: "json" | "text";

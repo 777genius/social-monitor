@@ -89,7 +89,7 @@ describe("SubscriptionRuntimeCliExecutor", () => {
       requestId: "request-1",
       purpose: "social_monitor.summary.generate",
       provider: "codex",
-      model: "gpt-5.5",
+      model: "gpt-5.6-sol",
       reasoningEffort: "xhigh",
       runtimeEngine: "subscription-runtime-cli",
       runtimePackageVersion: "0.1.0-main.2",
@@ -361,7 +361,7 @@ describe("SubscriptionRuntimeCliExecutor", () => {
     const executor = new SubscriptionRuntimeCliExecutor({
       command: "must-not-be-inspected",
       ephemeral: true,
-      model: "gpt-5.6-sol",
+      model: "gpt-5.5",
       installationInspector: {
         inspect: async () => {
           inspections += 1;

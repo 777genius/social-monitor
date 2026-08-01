@@ -347,7 +347,7 @@ async function main(): Promise<void> {
         {
           DATABASE_URL: yesterdaySocialQualityDatabaseUrl(),
           DURABLE_READER_SUMMARY_MODEL: summaryModel,
-          AGENT_RUNTIME_READER_SUMMARY_MODEL: "gpt-5.5",
+          AGENT_RUNTIME_READER_SUMMARY_MODEL: "gpt-5.6-sol",
           AGENT_RUNTIME_PROVIDER: "codex",
           AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT: "xhigh",
           AGENT_RUNTIME_READER_SUMMARY_TIMEOUT_MS: String(

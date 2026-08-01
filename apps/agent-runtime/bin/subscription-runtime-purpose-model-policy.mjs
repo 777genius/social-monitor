@@ -1,6 +1,6 @@
 const dailyStructuredProfile = Object.freeze({
   provider: "codex",
-  model: "gpt-5.5",
+  model: "gpt-5.6-sol",
   reasoningEffort: "xhigh",
   outputKind: "structured_output",
   responseFormat: "json",

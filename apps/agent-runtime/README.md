@@ -26,7 +26,7 @@ apps/agent-runtime/bin/run-codex-subscription-runtime-agent-task.mjs --provider 
 
 The bridge delegates lifecycle, durable sessions and task execution to
 `@vioxen/subscription-runtime`, while enforcing the exact purpose route before
-constructing the Codex worker. Daily summary purposes use `gpt-5.5`, `xhigh`
+constructing the Codex worker. Daily summary purposes use `gpt-5.6-sol`, `xhigh`
 and structured JSON output. `social_monitor.reader_summary.weekly.generate`
 uses `gpt-5.6-sol`, `xhigh` and `output_text`. These admitted routes use Codex
 subscription-account auth from the configured auth JSON; API-key credentials
@@ -43,7 +43,7 @@ Important env:
 - `AGENT_RUNTIME_LOCAL_ENCRYPTION_KEY_FILE`, local file containing the base64
   32-byte key used to decrypt durable subscription-runtime sessions
 - `AGENT_RUNTIME_PROVIDER`, `codex` or `claude`, selected by Social Monitor
-- `AGENT_RUNTIME_MODEL`, required production model (`gpt-5.5`)
+- `AGENT_RUNTIME_MODEL`, required production model (`gpt-5.6-sol`)
 - `AGENT_RUNTIME_REASONING_EFFORT`, required production effort (`xhigh`)
 - `AGENT_RUNTIME_TIMEOUT_MS`, generic Social Monitor task timeout fallback
 - `AGENT_RUNTIME_CODEX_AUTH_JSON_PATH`

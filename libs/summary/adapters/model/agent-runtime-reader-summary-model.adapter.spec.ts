@@ -41,7 +41,7 @@ describe("AgentRuntimeReaderSummaryModelAdapter", () => {
 
     await adapter.generate(input, route);
 
-    expect(route.model).toBe("codex:gpt-5.5:xhigh");
+    expect(route.model).toBe("codex:gpt-5.6-sol:xhigh");
     expect(route.promptVersion).toBe(currentReaderSummaryPromptRelease.id);
     expect(client.commands).toHaveLength(1);
     expect(adapter.estimate(input, route).outputTokens).toBe(3_200);
@@ -78,7 +78,9 @@ describe("AgentRuntimeReaderSummaryModelAdapter", () => {
     expect(client.commands[0]?.systemPrompt).toContain(
       "RSS is a delivery mechanism",
     );
-    expect(client.commands[0]?.controls).toMatchObject({ model: "gpt-5.5" });
+    expect(client.commands[0]?.controls).toMatchObject({
+      model: "gpt-5.6-sol",
+    });
     expect(client.commands[0]?.timeoutMs).toBe(600_000);
     expect(client.commands[0]?.metadata).toMatchObject({
       reasoningEffort: "xhigh",
@@ -156,7 +158,7 @@ describe("AgentRuntimeReaderSummaryModelAdapter", () => {
     const adapter = new AgentRuntimeReaderSummaryModelAdapter({
       client,
       agentProvider: "codex",
-      model: "gpt-5.5",
+      model: "gpt-5.6-sol",
     });
     const input = readerSummaryInput();
     const route = adapter.route(
@@ -175,10 +177,37 @@ describe("AgentRuntimeReaderSummaryModelAdapter", () => {
 
     await adapter.generate(input, route);
 
-    expect(route.model).toBe("codex:gpt-5.5:xhigh");
+    expect(route.model).toBe("codex:gpt-5.6-sol:xhigh");
     expect(client.commands[0]?.controls).toMatchObject({
-      model: "gpt-5.5",
+      model: "gpt-5.6-sol",
     });
+  });
+
+  it("rejects output-text attestations on the daily structured route", async () => {
+    const client = new CapturingAgentRuntimeClient({
+      status: "completed",
+      outputText: JSON.stringify(validReaderProviderDraft()),
+      warnings: [],
+    });
+    const adapter = new AgentRuntimeReaderSummaryModelAdapter({
+      client,
+      agentProvider: "codex",
+    });
+    const input = readerSummaryInput();
+    const route = adapter.route(
+      input,
+      {
+        preferredProvider: "agent-runtime",
+        maxInputTokens: 24_000,
+        maxOutputTokens: 16_000,
+        maxEstimatedCostUsd: 1,
+      },
+      { remainingTokens: 40_000, remainingCostUsd: 1 },
+    );
+
+    await expect(adapter.generate(input, route)).rejects.toThrow(
+      "Reader summary execution attestation is invalid",
+    );
   });
 
   it("promotes a cited main signal to lead without changing its evidence", async () => {

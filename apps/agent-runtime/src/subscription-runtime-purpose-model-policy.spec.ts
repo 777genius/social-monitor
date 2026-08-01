@@ -26,13 +26,13 @@ describe("subscription runtime purpose policy", () => {
 
       expect(admission.profile).toEqual({
         provider: "codex",
-        model: "gpt-5.5",
+        model: "gpt-5.6-sol",
         reasoningEffort: "xhigh",
         outputKind: "structured_output",
         responseFormat: "json",
       });
       expect(controls).toMatchObject({
-        model: "gpt-5.5",
+        model: "gpt-5.6-sol",
         reasoningEffort: "xhigh",
         responseFormat: "json",
         outputSchema: { type: "object" },
@@ -65,7 +65,7 @@ describe("subscription runtime purpose policy", () => {
   it.each([
     ["unknown purpose", { purpose: "social_monitor.reader_summary.unknown" }],
     ["provider", { provider: "claude" as const }],
-    ["model", { controlsJson: '{"model":"gpt-5.6-sol"}' }],
+    ["model", { controlsJson: '{"model":"gpt-5.5"}' }],
     ["effort", { metadata: { reasoningEffort: "high" } }],
     ["output kind", { metadata: { runtimeOutput: "output_text" } }],
     ["output format", { controlsJson: '{"responseFormat":"xml"}' }],
