@@ -4,7 +4,11 @@ import type {
   ReaderSummaryWeeklyArtifactProps,
 } from "../entities/reader-summary-weekly-artifact";
 import type { ReaderSummaryWeeklyStoryAuthorityBinding } from "../value-objects/reader-summary-weekly-story-authority";
+import type {
+  ReaderSummaryWeeklyCertificationSealBinding,
+} from "../value-objects/reader-summary-weekly-certification-seal";
 import type { ReaderSummaryWeeklySealedInputManifest } from "../value-objects/reader-summary-weekly-input-manifest";
+import { readerSummaryWeeklyPublicationGitHubEvidenceSchemaVersion } from "../value-objects/reader-summary-weekly-publication-github-evidence";
 import {
   canonicalizeReaderSummaryWeeklyJson,
   canonicalReaderSummaryWeeklyScope,
@@ -347,3 +351,146 @@ export const authorityProof = (
 
 export const invalidAuthorization = (): Error => new Error(
   "Reader summary weekly publication authorization is forged or unavailable");
+
+export const assertCertifiedSealBinding = (
+  seal: ReaderSummaryWeeklyCertificationSealBinding,
+  modelInput: ReaderSummaryWeeklyArtifactProps["input"],
+  artifact: ReaderSummaryWeeklyArtifactSnapshot,
+): void => {
+  if (
+    modelInput.manifestSealId !== seal.sealId ||
+    modelInput.manifestSealSha !== seal.sealSha ||
+    modelInput.tenantId !== seal.tenantId ||
+    modelInput.workspaceId !== seal.workspaceId ||
+    readerSummaryWeeklyScopeKey(modelInput.scope) !== seal.scopeKey ||
+    modelInput.scope.type !== seal.scopeType ||
+    modelInput.weekStartedOn !== seal.weekStartedOn ||
+    modelInput.weekEndedOn !== seal.weekEndedOn ||
+    artifact.output.sealId !== modelInput.sealId ||
+    artifact.output.sealSha !== modelInput.sealSha ||
+    modelInput.days.length !== 7
+  ) {
+    throw new Error("Reader summary weekly certified publication has a mismatched DB seal");
+  }
+};
+
+export const exactCertifiedAuthorities = (
+  seal: ReaderSummaryWeeklyCertificationSealBinding,
+  modelInput: ReaderSummaryWeeklyArtifactProps["input"],
+  authorities: readonly ReaderSummaryWeeklyStoryAuthorityBinding[],
+): readonly ReaderSummaryWeeklyStoryAuthorityBinding[] => {
+  const byDate = new Map(authorities.map((authority) => [
+    authority.requestedUtcDate,
+    authority,
+  ]));
+  if (byDate.size !== 7 || authorities.length !== 7) {
+    throw new Error("Reader summary weekly certified publication requires seven unique DB stories");
+  }
+  const ordered = seal.days.map((day, index) => {
+    const authority = byDate.get(day.requestedUtcDate);
+    const modelDay = modelInput.days[index];
+    if (authority === undefined || modelDay === undefined) {
+      throw new Error(`Reader summary weekly certified publication is missing ${day.requestedUtcDate}`);
+    }
+    const providerCounts = modelDay.providerCounts.map((entry) => ({
+      providerKey: entry.providerKey,
+      count: authority.evidence.filter(
+        (evidence) => evidence.providerKey === entry.providerKey,
+      ).length,
+    }));
+    if (
+      authority.tenantId !== seal.tenantId ||
+      authority.workspaceId !== seal.workspaceId ||
+      readerSummaryWeeklyScopeKey(authority.scope) !== seal.scopeKey ||
+      authority.scope.type !== seal.scopeType ||
+      authority.requestedUtcDate !== day.requestedUtcDate ||
+      authority.publicationId !== day.publicationId ||
+      authority.artifactId !== day.artifactId ||
+      authority.jobId !== day.jobId ||
+      authority.semanticStatus !== day.semanticStatus ||
+      authority.publicationEvidenceIdentity !== day.publicationEvidenceIdentity ||
+      authority.publicationEvidenceSha256 !== day.publicationEvidenceSha256 ||
+      modelDay.date !== day.requestedUtcDate ||
+      modelDay.dailyCertificationId !== day.publicationEvidenceIdentity ||
+      modelDay.dailyCertificationSha !== day.publicationEvidenceSha256 ||
+      modelDay.dailyCertificationStatus !== "certified" ||
+      modelDay.githubBoardSha !== authority.githubEvidenceSha256 ||
+      modelDay.githubBoardId !==
+        `${readerSummaryWeeklyPublicationGitHubEvidenceSchemaVersion}:${authority.githubEvidenceSha256}` ||
+      modelDay.githubBoardStatus !== "verified" ||
+      canonicalizeReaderSummaryWeeklyJson(providerCounts).json !==
+        canonicalizeReaderSummaryWeeklyJson(modelDay.providerCounts).json
+    ) {
+      throw new Error(
+        `Reader summary weekly certified publication DB story diverged for ${day.requestedUtcDate}`,
+      );
+    }
+    return authority;
+  });
+  return deepFreezeReaderSummaryWeekly(ordered);
+};
+
+export const exactCertifiedCitationCoverage = (
+  modelInput: ReaderSummaryWeeklyArtifactProps["input"],
+  output: ReaderSummaryWeeklyArtifactSnapshot["output"],
+  seal: ReaderSummaryWeeklyCertificationSealBinding,
+  authorities: readonly ReaderSummaryWeeklyStoryAuthorityBinding[],
+) => {
+  const cited = new Set([
+    ...output.headlineCitationIds, ...output.takeawayCitationIds,
+    ...output.synthesisCitationIds,
+    ...output.stories.flatMap((story) => story.citationIds),
+    ...output.sections.flatMap((section) => section.citationIds),
+  ]);
+  if (cited.size !== modelInput.citations.length ||
+      modelInput.citations.some((citation) => !cited.has(citation.citationId))) {
+    throw new Error("Reader summary weekly certified publication requires 1:1 citation coverage");
+  }
+  return deepFreezeReaderSummaryWeekly(modelInput.citations.map((citation) => {
+    const index = seal.days.findIndex(
+      (day) => day.requestedUtcDate === citation.observedOn,
+    );
+    const day = seal.days[index];
+    const authority = authorities[index];
+    const evidence = authority?.evidence.filter((item) =>
+      item.citationId === citation.citationId &&
+      item.providerKey === citation.providerKey &&
+      item.canonicalUrl === citation.canonicalUrl &&
+      item.sourceContentHash === citation.sourceSha256);
+    if (day === undefined || authority === undefined || evidence?.length !== 1 ||
+        citation.dailyCertificationId !== day.publicationEvidenceIdentity ||
+        citation.dailyCertificationSha !== day.publicationEvidenceSha256) {
+      throw new Error(
+        `Reader summary weekly citation ${citation.citationId} lacks 1:1 certified DB authority`,
+      );
+    }
+    const source = evidence[0]!;
+    return {
+      citationId: citation.citationId,
+      requestedUtcDate: citation.observedOn,
+      publicationId: authority.publicationId,
+      publicationEvidenceIdentity: authority.publicationEvidenceIdentity,
+      providerKey: source.providerKey,
+      feedItemId: source.feedItemId,
+      sourceItemId: source.sourceItemId,
+      sourceBindingId: source.sourceBindingId,
+      providerItemId: source.providerItemId,
+      canonicalUrl: source.canonicalUrl,
+      sourceContentHash: source.sourceContentHash,
+    };
+  }));
+};
+
+export const certifiedAuthorityProof = (
+  authority: ReaderSummaryWeeklyStoryAuthorityBinding,
+  day: ReaderSummaryWeeklyArtifactProps["input"]["days"][number],
+) => ({
+  requestedUtcDate: authority.requestedUtcDate,
+  publicationId: authority.publicationId,
+  publicationEvidenceIdentity: authority.publicationEvidenceIdentity,
+  publicationEvidenceSha256: authority.publicationEvidenceSha256,
+  storyAuthorityIdentity: authority.identity,
+  storyAuthoritySha256: authority.sha256,
+  githubBoardIdentity: day.githubBoardId,
+  githubBoardSha256: day.githubBoardSha,
+});

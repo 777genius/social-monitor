@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 
 import {
   tenantId,
@@ -60,7 +60,15 @@ export type ReaderSummaryWeeklyProductionRunnerResult = Readonly<{
   writePerformed: boolean;
   replayCanaryWritePerformed: boolean;
   replayed: boolean;
+  databasePublicationVerified: boolean;
   blockingReasons: readonly string[];
+}>;
+
+export type ReaderSummaryWeeklyProductionPublisher = Readonly<{
+  publish(command: Readonly<{
+    artifact: ReaderSummaryWeeklyArtifact;
+    modelInput: ReaderSummaryWeeklyModelInput;
+  }>): Promise<Readonly<{ databasePublicationVerified: true }>>;
 }>;
 
 export type ReaderSummaryWeeklyProductionRunnerParams = Readonly<{
@@ -70,6 +78,7 @@ export type ReaderSummaryWeeklyProductionRunnerParams = Readonly<{
   replay: boolean;
   generatedAt: Date;
   generatedBy?: string;
+  publisher?: ReaderSummaryWeeklyProductionPublisher;
 }>;
 
 export type ReaderSummaryWeeklyAgentRuntimeModelParams = Readonly<{
@@ -272,6 +281,11 @@ export const runReaderSummaryWeeklyProduction = async (
       validateArtifactPair(artifact, proof, validation, input),
   });
   if (existing.status === "valid") {
+    const databasePublicationVerified = await publishExistingPair(
+      params.publisher,
+      paths.artifactPath,
+      input,
+    );
     const replayCanaryWritePerformed = params.replay
       ? writeReaderSummaryWeeklyProductionReplayCanary({
           outputDirectory: paths.outputDirectory,
@@ -292,6 +306,7 @@ export const runReaderSummaryWeeklyProduction = async (
       replayCanaryWritePerformed,
       true,
       [],
+      databasePublicationVerified,
     );
   }
   if (params.replay) {
@@ -357,8 +372,37 @@ export const runReaderSummaryWeeklyProduction = async (
     validate: (artifactValue, proofValue, validation) =>
       validateArtifactPair(artifactValue, proofValue, validation, input),
   });
-  return result(params, "complete", true, true, false, false, []);
+  const databasePublicationVerified = await publishArtifact(
+    params.publisher,
+    artifact,
+    input,
+  );
+  return result(
+    params, "complete", true, true, false, false, [], databasePublicationVerified,
+  );
 };
+
+const publishExistingPair = async (
+  publisher: ReaderSummaryWeeklyProductionPublisher | undefined,
+  artifactPath: string,
+  input: ReaderSummaryWeeklyModelInput,
+): Promise<boolean> => {
+  if (publisher === undefined) return false;
+  const envelope = JSON.parse(readFileSync(artifactPath, "utf8")) as ArtifactEnvelope;
+  return publishArtifact(
+    publisher,
+    ReaderSummaryWeeklyArtifact.create({ input, output: envelope.output }),
+    input,
+  );
+};
+
+const publishArtifact = async (
+  publisher: ReaderSummaryWeeklyProductionPublisher | undefined,
+  artifact: ReaderSummaryWeeklyArtifact,
+  modelInput: ReaderSummaryWeeklyModelInput,
+): Promise<boolean> => publisher === undefined
+  ? false
+  : (await publisher.publish({ artifact, modelInput })).databasePublicationVerified;
 
 export const buildModelInputFromDbState = (
   dbState: ReaderSummaryWeeklyProductionDbState,
@@ -748,6 +792,7 @@ const result = (
   replayCanaryWritePerformed: boolean,
   replayed: boolean,
   blockingReasons: readonly string[],
+  databasePublicationVerified = false,
 ): ReaderSummaryWeeklyProductionRunnerResult => {
   const paths = artifactPaths(params.outputDirectory, params.dbState);
   return Object.freeze({
@@ -764,6 +809,7 @@ const result = (
     writePerformed,
     replayCanaryWritePerformed,
     replayed,
+    databasePublicationVerified,
     blockingReasons: Object.freeze([...blockingReasons]),
   });
 };

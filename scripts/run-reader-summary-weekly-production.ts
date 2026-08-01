@@ -2,7 +2,17 @@ import { resolve } from "node:path";
 
 import { GrpcAgentRuntimeClient } from "@social-monitor/summary/adapters/model/grpc-agent-runtime-client";
 import { SystemClock } from "@social-monitor/shared-kernel";
+import {
+  defaultPostgresRuntimePoolConfig,
+  runWithTenantDatabaseAccess,
+} from "@social-monitor/platform-persistence";
 import { Pool } from "pg";
+
+import { PrismaReaderSummaryWeeklyCertificationSealAuthority } from "../libs/summary/adapters/persistence/prisma/prisma-reader-summary-weekly-certification-seal-authority";
+import { PrismaReaderSummaryWeeklyStoryAuthority } from "../libs/summary/adapters/persistence/prisma/prisma-reader-summary-weekly-story-authority";
+import { PrismaReaderSummaryArtifactRepository } from "../libs/summary/adapters/persistence/prisma/prisma-reader-summary-artifact.repository";
+import { PrismaSummaryConnection } from "../libs/summary/adapters/persistence/prisma/prisma-summary-connection";
+import { PublishReaderSummaryWeeklyCertifiedArtifactUseCase } from "../libs/summary/features/publish-reader-summary-weekly-certified-artifact/publish-reader-summary-weekly-certified-artifact.use-case";
 
 import { loadDotenvIfPresent } from "./lib/env-file";
 import {
@@ -27,33 +37,50 @@ void main().catch((error) => {
 
 async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
+  const databaseUrl = requireEnv("DATABASE_URL");
   const pool = new Pool({
-    connectionString: requireEnv("DATABASE_URL"),
+    connectionString: databaseUrl,
     min: 0,
     max: 1,
     connectionTimeoutMillis: 5_000,
   });
+  const scope = readScope();
+  const now = new Date();
+  const window =
+    options.weekStartedOn === undefined
+      ? previousCompletedReaderSummaryWeeklyProductionWindow(now)
+      : resolveCompletedReaderSummaryWeeklyProductionWindow(
+          options.weekStartedOn,
+          now,
+        );
+  const dbState = await (async () => {
+    try {
+      return await withReaderSummaryWeeklyProductionDatabaseAccess(
+        pool,
+        {
+          kind: "tenant",
+          tenantId: scope.tenantId,
+          workspaceId: scope.workspaceId,
+        },
+        async (client) => {
+          await assertReaderSummaryWeeklyProductionPostgresContract(client);
+          return loadReaderSummaryWeeklyProductionDbState(client, scope, window);
+        },
+      );
+    } finally {
+      await pool.end();
+    }
+  })();
+  const connection = await PrismaSummaryConnection.create(
+    defaultPostgresRuntimePoolConfig(databaseUrl, "daily-runner"),
+  );
   try {
-    const scope = readScope();
-    const now = new Date();
-    const window =
-      options.weekStartedOn === undefined
-        ? previousCompletedReaderSummaryWeeklyProductionWindow(now)
-        : resolveCompletedReaderSummaryWeeklyProductionWindow(
-            options.weekStartedOn,
-            now,
-          );
-    const dbState = await withReaderSummaryWeeklyProductionDatabaseAccess(
-      pool,
-      {
-        kind: "tenant",
-        tenantId: scope.tenantId,
-        workspaceId: scope.workspaceId,
-      },
-      async (client) => {
-        await assertReaderSummaryWeeklyProductionPostgresContract(client);
-        return loadReaderSummaryWeeklyProductionDbState(client, scope, window);
-      },
+    const repository = new PrismaReaderSummaryArtifactRepository(connection);
+    const publisherUseCase = new PublishReaderSummaryWeeklyCertifiedArtifactUseCase(
+      new PrismaReaderSummaryWeeklyCertificationSealAuthority(connection),
+      new PrismaReaderSummaryWeeklyStoryAuthority(connection),
+      repository,
+      repository,
     );
     const model = new AgentRuntimeReaderSummaryWeeklyTextModel({
       client: GrpcAgentRuntimeClient.connect({
@@ -69,19 +96,30 @@ async function main(): Promise<void> {
       reasoningEffort: "xhigh",
       timeoutMs: options.modelTimeoutMs,
     });
-    const result = await runReaderSummaryWeeklyProduction({
-      dbState,
-      outputDirectory: options.outputDirectory,
-      model,
-      replay: options.replay,
-      generatedAt: new Date(),
-    });
+    const result = await runWithTenantDatabaseAccess(scope, () =>
+      runReaderSummaryWeeklyProduction({
+        dbState,
+        outputDirectory: options.outputDirectory,
+        model,
+        replay: options.replay,
+        generatedAt: new Date(),
+        publisher: {
+          publish: async (command) => {
+            const published = await publisherUseCase.execute(command);
+            if (!published.ok) {
+              throw published.error;
+            }
+            return published.value;
+          },
+        },
+      }),
+    );
     printResult(result);
     if (result.status !== "complete") {
       process.exitCode = result.status === "unavailable" ? 78 : 75;
     }
   } finally {
-    await pool.end().catch(() => undefined);
+    await connection.close().catch(() => undefined);
   }
 }
 
@@ -161,6 +199,9 @@ function printResult(
         result.replayCanaryWritePerformed ? "true" : "false"
       }`,
       `replay=${result.replayed ? "true" : "false"}`,
+      `db_publication_verified=${
+        result.databasePublicationVerified ? "true" : "false"
+      }`,
     ].join(" "),
   );
   for (const reason of result.blockingReasons) {

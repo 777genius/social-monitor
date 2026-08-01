@@ -12,6 +12,10 @@ import {
   type ReaderSummaryWeeklySealedInputManifest,
 } from "../value-objects/reader-summary-weekly-input-manifest";
 import {
+  assertReaderSummaryWeeklyCertificationSealBinding,
+  readerSummaryWeeklyCertificationSealScope,
+} from "../value-objects/reader-summary-weekly-certification-seal";
+import {
   assertReaderSummaryWeeklyExactObject,
   canonicalizeReaderSummaryWeeklyJson,
   deepFreezeReaderSummaryWeekly,
@@ -22,10 +26,18 @@ import type {
   ReaderSummaryWeeklyStoryAuthorityHandle,
   ReaderSummaryWeeklyStoryAuthorityPort,
 } from "../../ports/reader-summary-weekly-story-authority.port";
+import type {
+  ReaderSummaryWeeklyCertificationSealAuthorityPort,
+  ReaderSummaryWeeklyCertificationSealHandle,
+} from "../../ports/reader-summary-weekly-certification-seal-authority.port";
 import {
+  assertCertifiedSealBinding,
   assertManifestBinding,
   authorityProof,
+  certifiedAuthorityProof,
   exactAuthorities,
+  exactCertifiedAuthorities,
+  exactCertifiedCitationCoverage,
   exactCitationCoverage,
   invalidAuthorization,
   verifiedArtifact,
@@ -84,6 +96,13 @@ export type AuthorizeReaderSummaryWeeklyPublicationCommand = Readonly<{
   artifactId: string; artifact: ReaderSummaryWeeklyArtifact;
   modelInput: ReaderSummaryWeeklyArtifactProps["input"];
   manifest: ReaderSummaryWeeklySealedInputManifest;
+  dailyAuthorityHandles: readonly ReaderSummaryWeeklyStoryAuthorityHandle[];
+}>;
+
+export type AuthorizeReaderSummaryWeeklyCertifiedPublicationCommand = Readonly<{
+  artifactId: string; artifact: ReaderSummaryWeeklyArtifact;
+  modelInput: ReaderSummaryWeeklyArtifactProps["input"];
+  certificationSealHandle: ReaderSummaryWeeklyCertificationSealHandle;
   dailyAuthorityHandles: readonly ReaderSummaryWeeklyStoryAuthorityHandle[];
 }>;
 
@@ -166,6 +185,105 @@ export const authorizeReaderSummaryWeeklyPublication = (
   const sha256 = canonicalizeReaderSummaryWeeklyJson(
     proofBody,
     "weekly publication proof",
+  ).sha256;
+  const proof = deepFreezeReaderSummaryWeekly({
+    ...proofBody,
+    authorizationId:
+      `${readerSummaryWeeklyPublicationAuthorizationSchemaVersion}:${sha256}`,
+    sha256,
+  });
+  const authorization = Object.freeze(
+    Object.create(null) as ReaderSummaryWeeklyPublicationAuthorization,
+  );
+  issuedAuthorizations.set(authorization, {
+    artifactId,
+    artifact,
+    qualitySignals: deepFreezeReaderSummaryWeekly({
+      kind: "weekly",
+      editorialQuality: artifact.editorialQuality,
+    }),
+    proof,
+  });
+  return authorization;
+};
+
+export const authorizeReaderSummaryWeeklyCertifiedPublication = (
+  command: AuthorizeReaderSummaryWeeklyCertifiedPublicationCommand,
+  sealAuthority: Pick<
+    ReaderSummaryWeeklyCertificationSealAuthorityPort,
+    "readVerifiedBinding"
+  >,
+  storyAuthority: Pick<
+    ReaderSummaryWeeklyStoryAuthorityPort,
+    "readVerifiedBinding"
+  >,
+): ReaderSummaryWeeklyPublicationAuthorization => {
+  assertReaderSummaryWeeklyExactObject(
+    command,
+    ["artifactId", "artifact", "modelInput", "certificationSealHandle",
+      "dailyAuthorityHandles"],
+    "weekly certified publication authorization command",
+  );
+  const seal = sealAuthority.readVerifiedBinding(command.certificationSealHandle);
+  assertReaderSummaryWeeklyCertificationSealBinding(seal);
+  const artifactId = exactReaderSummaryWeeklyIdentity(
+    command.artifactId,
+    "weekly certified publication artifact id",
+  );
+  const artifact = verifiedArtifact(command.artifact, command.modelInput);
+  assertCertifiedSealBinding(seal, command.modelInput, artifact);
+  if (!Array.isArray(command.dailyAuthorityHandles) ||
+      command.dailyAuthorityHandles.length !== 7) {
+    throw new Error(
+      "Reader summary weekly certified publication requires exact seven DB-owned daily authorities",
+    );
+  }
+  const authorities = command.dailyAuthorityHandles.map((handle) => {
+    const binding = storyAuthority.readVerifiedBinding(handle);
+    assertReaderSummaryWeeklyStoryAuthorityBinding(binding);
+    return binding;
+  });
+  const orderedAuthorities = exactCertifiedAuthorities(
+    seal,
+    command.modelInput,
+    authorities,
+  );
+  const citations = exactCertifiedCitationCoverage(
+    command.modelInput,
+    artifact.output,
+    seal,
+    orderedAuthorities,
+  );
+  const artifactSha256 = canonicalizeReaderSummaryWeeklyJson(
+    artifact.output,
+    "authorized weekly certified artifact",
+  ).sha256;
+  const editorialQualitySha256 = canonicalizeReaderSummaryWeeklyJson(
+    artifact.editorialQuality,
+    "authorized weekly certified editorial quality",
+  ).sha256;
+  const proofBody = deepFreezeReaderSummaryWeekly({
+    schemaVersion: readerSummaryWeeklyPublicationProofSchemaVersion,
+    artifactId,
+    tenantId: seal.tenantId,
+    workspaceId: seal.workspaceId,
+    scope: readerSummaryWeeklyCertificationSealScope(seal),
+    weekStartedOn: seal.weekStartedOn,
+    weekEndedOn: seal.weekEndedOn,
+    manifestSealId: seal.sealId,
+    manifestSealSha256: seal.sealSha,
+    modelInputSealId: command.modelInput.sealId,
+    modelInputSealSha256: command.modelInput.sealSha,
+    artifactSha256,
+    editorialQualitySha256,
+    authorities: orderedAuthorities.map((authority, index) =>
+      certifiedAuthorityProof(authority, command.modelInput.days[index]!),
+    ),
+    citations,
+  });
+  const sha256 = canonicalizeReaderSummaryWeeklyJson(
+    proofBody,
+    "weekly certified publication proof",
   ).sha256;
   const proof = deepFreezeReaderSummaryWeekly({
     ...proofBody,

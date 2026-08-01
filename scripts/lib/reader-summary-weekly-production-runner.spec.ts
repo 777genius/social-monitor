@@ -208,6 +208,52 @@ describe("reader summary weekly production runner", () => {
     expect(proof.zeroProviderCalls).toBe(true);
   });
 
+  it("keeps a valid pair on DB failure and republishes it with zero model calls", async () => {
+    const outputDirectory = tempDir();
+    const firstModel = new FakeWeeklyModel((input) => outputFor(input));
+    let firstPublisherCalls = 0;
+    await expect(runReaderSummaryWeeklyProduction({
+      dbState: completeDbState(),
+      outputDirectory,
+      model: firstModel,
+      replay: false,
+      generatedAt: new Date("2026-07-27T06:30:00.000Z"),
+      publisher: {
+        publish: async () => {
+          firstPublisherCalls += 1;
+          expect(productionArtifactExists(outputDirectory)).toBe(true);
+          throw new Error("database unavailable");
+        },
+      },
+    })).rejects.toThrow(/database unavailable/u);
+    expect(firstModel.calls).toBe(1);
+    expect(firstPublisherCalls).toBe(1);
+    expect(productionArtifactExists(outputDirectory)).toBe(true);
+
+    const retryModel = new FakeWeeklyModel((input) => outputFor(input));
+    let retryPublisherCalls = 0;
+    const retried = await runReaderSummaryWeeklyProduction({
+      dbState: completeDbState(),
+      outputDirectory,
+      model: retryModel,
+      replay: false,
+      generatedAt: new Date("2026-07-27T07:00:00.000Z"),
+      publisher: {
+        publish: async ({ artifact, modelInput }) => {
+          retryPublisherCalls += 1;
+          expect(artifact.toSnapshot().output.sealId).toBe(modelInput.sealId);
+          return { databasePublicationVerified: true };
+        },
+      },
+    });
+    expect(retried.databasePublicationVerified).toBe(true);
+    expect(retried.replayed).toBe(true);
+    expect(retried.modelCallPerformed).toBe(false);
+    expect(retried.writePerformed).toBe(false);
+    expect(retryModel.calls).toBe(0);
+    expect(retryPublisherCalls).toBe(1);
+  });
+
   it("replays existing evidence into one immutable canary without model calls", async () => {
     const outputDirectory = tempDir();
     await runReaderSummaryWeeklyProduction({
@@ -289,6 +335,7 @@ describe("reader summary weekly production runner", () => {
 
   it("does not call the model or write when replay is missing artifacts", async () => {
     const model = new FakeWeeklyModel((input) => outputFor(input));
+    const publisher = fakePublisher();
 
     const result = await runReaderSummaryWeeklyProduction({
       dbState: completeDbState(),
@@ -296,6 +343,7 @@ describe("reader summary weekly production runner", () => {
       model,
       replay: true,
       generatedAt: new Date("2026-07-27T07:00:00.000Z"),
+      publisher,
     });
 
     expect(result.status).toBe("partial");
@@ -308,10 +356,33 @@ describe("reader summary weekly production runner", () => {
       "replay requested but weekly artifact/proof is missing",
     ]);
     expect(model.calls).toBe(0);
+    expect(publisher.publish).not.toHaveBeenCalled();
+  });
+
+  it("never publishes unavailable DB state", async () => {
+    const model = new FakeWeeklyModel((input) => outputFor(input));
+    const publisher = fakePublisher();
+    const result = await runReaderSummaryWeeklyProduction({
+      dbState: Object.freeze({
+        ...completeDbState(),
+        status: "unavailable" as const,
+        blockingReasons: Object.freeze(["database unavailable"]),
+      }),
+      outputDirectory: tempDir(),
+      model,
+      replay: false,
+      generatedAt: new Date("2026-07-27T07:00:00.000Z"),
+      publisher,
+    });
+
+    expect(result.status).toBe("unavailable");
+    expect(model.calls).toBe(0);
+    expect(publisher.publish).not.toHaveBeenCalled();
   });
 
   it("fails closed before model or filesystem writes without the persisted seal", async () => {
     const model = new FakeWeeklyModel((input) => outputFor(input));
+    const publisher = fakePublisher();
     const dbState = completeDbState();
     const result = await runReaderSummaryWeeklyProduction({
       dbState: Object.freeze({
@@ -322,6 +393,7 @@ describe("reader summary weekly production runner", () => {
       model,
       replay: false,
       generatedAt: new Date("2026-07-27T06:30:00.000Z"),
+      publisher,
     });
 
     expect(result.status).toBe("partial");
@@ -331,6 +403,7 @@ describe("reader summary weekly production runner", () => {
     expect(result.modelCallPerformed).toBe(false);
     expect(result.writePerformed).toBe(false);
     expect(model.calls).toBe(0);
+    expect(publisher.publish).not.toHaveBeenCalled();
   });
 
   it("fails closed before model or filesystem writes for a stale seal", async () => {
@@ -545,6 +618,10 @@ function completeModelInput(): ReaderSummaryWeeklyModelInput {
   }
   return built.input;
 }
+
+const fakePublisher = () => ({
+  publish: jest.fn(async () => ({ databasePublicationVerified: true as const })),
+});
 
 function completeDbState(): ReaderSummaryWeeklyProductionDbState {
   const certifications = Object.freeze(window.dates.map(certificationFor));
