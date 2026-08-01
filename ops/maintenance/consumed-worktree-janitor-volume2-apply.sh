@@ -6,6 +6,7 @@ declare -A volume2_receipt_item_path=() volume2_receipt_item_sha=() volume2_rece
 declare -A volume2_receipt_numstat_path=() volume2_receipt_numstat_sha=() volume2_receipt_registry_path=() volume2_receipt_registry_sha=() volume2_receipt_integrated=()
 declare -A volume2_receipt_target_identity=() volume2_receipt_parent_identity=() volume2_receipt_mount_identity=() volume2_receipt_registration_sha=() volume2_receipt_bytes=() volume2_receipt_inodes=()
 declare -A volume2_receipt_lock_identity=() volume2_receipt_prepared_at=() volume2_receipt_purged_at=() volume2_receipt_removed=() volume2_receipt_purged=() volume2_receipt_replayed=()
+declare -A volume2_receipt_free_inodes_before=() volume2_receipt_free_inodes_after=() volume2_receipt_reclaimed_inodes=()
 VOLUME2_CANDIDATE_TARGET_IDENTITY=- VOLUME2_CANDIDATE_PARENT_IDENTITY=-
 VOLUME2_CANDIDATE_MOUNT_IDENTITY=- VOLUME2_CANDIDATE_REGISTRATION_SHA=-
 VOLUME2_RECEIPT_RECOVERY=0
@@ -299,13 +300,13 @@ load_volume2_receipts() {
     def identity: type == "string" and test("^[0-9]+:[0-9]+:[0-9]+:[0-9]+:[0-7]{3,4}$");
     def whole: type == "number" and . >= 0 and floor == .;
     def timestamp: type == "string" and test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$");
-    def commonKeys: ["afterBytes","beforeBytes","candidateKind","gitRegistrationSha256","integratedCommitSha","lifecycleLockIdentity",
+    def commonKeys: ["afterBytes","beforeBytes","candidateKind","filesystemFreeInodesAfter","filesystemFreeInodesBefore","gitRegistrationSha256","integratedCommitSha","lifecycleLockIdentity",
       "ledgerId","ledgerItemPath","ledgerItemSha256","mainCommit","mode","nestedParentIdentity",
       "numstatEvidencePath","numstatEvidenceSha256","patchEvidencePath","patchEvidenceSha256","planSha256",
-      "preparedAt","purgedAt","registryPath","registrySha256","removedAt","schemaVersion","status","statusEvidencePath",
+      "preparedAt","purgedAt","reclaimedInodes","registryPath","registrySha256","removedAt","schemaVersion","status","statusEvidencePath",
       "statusEvidenceSha256","targetIdentity","targetInodes","targetWorktreePath","volumeMountIdentity"];
-    def preparedKeys: (commonKeys - ["afterBytes","purgedAt","removedAt"]) | sort;
-    def purgedKeys: (commonKeys - ["afterBytes","removedAt"]) | sort;
+    def preparedKeys: (commonKeys - ["afterBytes","filesystemFreeInodesAfter","purgedAt","reclaimedInodes","removedAt"]) | sort;
+    def purgedKeys: (commonKeys - ["afterBytes","filesystemFreeInodesAfter","reclaimedInodes","removedAt"]) | sort;
     def removedKeys: commonKeys | sort;
     def common:
       type == "object" and .schemaVersion == 1 and .mode == "apply-volume2" and
@@ -320,12 +321,15 @@ load_volume2_receipts() {
       (.statusEvidencePath | absolute) and (.statusEvidenceSha256 | sha256) and
       (.patchEvidencePath | absolute) and (.patchEvidenceSha256 | sha256) and
       (.numstatEvidencePath | absolute) and (.numstatEvidenceSha256 | sha256) and
-      (.registryPath | absolute) and (.registrySha256 | sha256) and
+      (.registryPath | absolute) and (.registrySha256 | sha256) and (.filesystemFreeInodesBefore | whole) and
       (.gitRegistrationSha256 | sha256) and (.beforeBytes | whole) and
       (.targetInodes | whole) and (.integratedCommitSha | sha1_or_dash) and (.lifecycleLockIdentity | identity) and
       (.preparedAt | timestamp) and
       (if .status == "removed" then
-         (.removedAt | timestamp) and .afterBytes == 0 and (keys_unsorted | sort) == removedKeys
+         (.removedAt | timestamp) and .afterBytes == 0 and (.filesystemFreeInodesAfter | whole) and
+         (.reclaimedInodes | whole) and
+         .reclaimedInodes == ([.filesystemFreeInodesAfter - .filesystemFreeInodesBefore, 0] | max) and
+         (keys_unsorted | sort) == removedKeys
        elif .status == "purged" then
          (.purgedAt | timestamp) and (keys_unsorted | sort) == purgedKeys
        else (keys_unsorted | sort) == preparedKeys end);
@@ -334,7 +338,7 @@ load_volume2_receipts() {
       .ledgerItemPath,.ledgerItemSha256,.statusEvidencePath,.statusEvidenceSha256,
       .patchEvidencePath,.patchEvidenceSha256,.numstatEvidencePath,.numstatEvidenceSha256,
       .registryPath,.registrySha256,.gitRegistrationSha256,.beforeBytes,.targetInodes,.integratedCommitSha,
-      .lifecycleLockIdentity,.preparedAt];
+      .lifecycleLockIdentity,.preparedAt,.filesystemFreeInodesBefore];
     all(.[]; common) and (group_by(.ledgerId) | all(.[];
       (length >= 1 and length <= 3) and .[0].status == "prepared" and
       (if length == 1 then true
@@ -351,7 +355,7 @@ load_volume2_receipts() {
     [[ -n $row ]] || continue
     IFS=$'\x1f' read -r id kind target plan main item item_sha status_path status_sha \
       patch_path patch_sha numstat_path numstat_sha registry registry_sha target_identity \
-      parent_identity mount_identity registration bytes inodes integrated lock_identity status purged_at prepared_at <<<"$row"
+      parent_identity mount_identity registration bytes inodes integrated lock_identity status purged_at prepared_at free_before free_after reclaimed <<<"$row"
     volume2_receipt_kind["$id"]=$kind; volume2_receipt_target["$id"]=$target
     volume2_receipt_plan["$id"]=$plan; volume2_receipt_main["$id"]=$main
     volume2_receipt_item_path["$id"]=$item; volume2_receipt_item_sha["$id"]=$item_sha
@@ -364,6 +368,9 @@ load_volume2_receipts() {
     volume2_receipt_bytes["$id"]=$bytes; volume2_receipt_inodes["$id"]=$inodes
     volume2_receipt_lock_identity["$id"]=$lock_identity
     volume2_receipt_integrated["$id"]=$integrated; volume2_receipt_prepared_at["$id"]=$prepared_at
+    volume2_receipt_free_inodes_before["$id"]=$free_before
+    volume2_receipt_free_inodes_after["$id"]=$free_after
+    volume2_receipt_reclaimed_inodes["$id"]=$reclaimed
     if [[ $status == purged ]]; then volume2_receipt_purged["$id"]=1; fi
     volume2_receipt_purged_at["$id"]=$purged_at
   done < <("$JQ" -r -j 'select(.status == "prepared" or .status == "purged") |
@@ -371,7 +378,8 @@ load_volume2_receipts() {
      .statusEvidencePath,.statusEvidenceSha256,.patchEvidencePath,.patchEvidenceSha256,
      .numstatEvidencePath,.numstatEvidenceSha256,.registryPath,.registrySha256,.targetIdentity,
      .nestedParentIdentity,.volumeMountIdentity,.gitRegistrationSha256,(.beforeBytes|tostring),
-     (.targetInodes|tostring),.integratedCommitSha,.lifecycleLockIdentity,.status,(.purgedAt // ""),.preparedAt] | join("\u001f") + "\n"' \
+     (.targetInodes|tostring),.integratedCommitSha,.lifecycleLockIdentity,.status,(.purgedAt // ""),.preparedAt,
+     (.filesystemFreeInodesBefore|tostring),(.filesystemFreeInodesAfter // "" | tostring),(.reclaimedInodes // "" | tostring)] | join("\u001f") + "\n"' \
     "$VOLUME2_AUDIT_LOG")
   while IFS= read -r id; do [[ -z $id ]] || volume2_receipt_removed["$id"]=1; done \
     < <("$JQ" -r 'select(.status == "removed") | .ledgerId' "$VOLUME2_AUDIT_LOG")
@@ -469,6 +477,15 @@ volume2_mount_identity() {
   printf '%s|%s|%s\n' "$mount_root" "$(path_identity "$mount_root")" \
     "$(path_identity "$WORKTREES/.volume2")"
 }
+volume2_free_inodes() {
+  local output line= last_line=; local -a fields=()
+  output=$("$DF" -Pi -- "$WORKTREES/.volume2") || fail 'cannot read volume2 filesystem inode accounting'
+  while IFS= read -r line; do [[ -z $line ]] || last_line=$line; done <<<"$output"
+  read -r -a fields <<<"$last_line"
+  ((${#fields[@]} >= 6)) && [[ ${fields[3]} =~ ^[0-9]+$ ]] ||
+    fail 'volume2 filesystem inode accounting is malformed'
+  printf '%s\n' "${fields[3]}"
+}
 validate_volume2_layout() {
   local kind=$1 target=$2 job=$3 parent mount_identity mount_tail target_identity target_mount volume_mount
   case $kind in
@@ -561,55 +578,6 @@ prepare_volume2_plan_fields() {
   logical_identity=- target_identity=$VOLUME2_CANDIDATE_TARGET_IDENTITY
   git_registration_hash=$VOLUME2_CANDIDATE_REGISTRATION_SHA
 }
-compute_volume2_plan_sha256() {
-  local ledger_id index record digest
-  local -a ids=()
-  mapfile -t ids < <(printf '%s\n' "${!ledger_item_hash_by_id[@]}" | LC_ALL=C "$SORT")
-  {
-    printf 'schemaVersion\t1\nmode\tapply-volume2\nmainCommit\t%s\nlifecycleLockIdentity\t%s\n' \
-      "$MAIN_COMMIT" "$VOLUME2_LIFECYCLE_LOCK_IDENTITY"
-    for ledger_id in "${ids[@]}"; do
-      printf 'ledger\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$ledger_id" \
-        "$LEDGER_ITEMS/$ledger_id.json" "${ledger_item_hash_by_id[$ledger_id]}" \
-        "${ledger_status_path_by_id[$ledger_id]:--}" "${ledger_status_hash_by_id[$ledger_id]:--}" \
-        "${ledger_patch_hash_by_id[$ledger_id]:--}" "${ledger_numstat_hash_by_id[$ledger_id]:--}" \
-        "${ledger_workspace_by_id[$ledger_id]}"
-    done
-    for index in "${!plan_targets[@]}"; do
-      [[ ${plan_kinds[$index]} == volume2-direct || ${plan_kinds[$index]} == volume2-nested ]] || continue
-      record=$(printf '%s\t' "${plan_ledgers[$index]}" "${plan_kinds[$index]}" \
-        "${plan_targets[$index]}" "${plan_target_identities[$index]}" \
-        "${plan_volume2_mount_identities[$index]}" "${plan_volume2_parent_identities[$index]}" \
-        "${plan_items[$index]}" "${plan_item_hashes[$index]}" \
-        "${plan_status_files[$index]}" "${plan_status_hashes[$index]}" \
-        "${plan_patch_files[$index]}" "${plan_patch_hashes[$index]}" \
-        "${plan_numstat_files[$index]}" "${plan_numstat_hashes[$index]}" \
-        "${plan_registry_paths[$index]}" "${plan_registry_hashes[$index]}" \
-        "${plan_git_registration_hashes[$index]}" "${plan_bytes[$index]}" \
-        "${plan_target_inodes[$index]}" "${plan_integrated_commits[$index]}")
-      printf 'candidate\t%s\n' "${record%$'\t'}"
-    done
-  } | "$SHA256SUM" | { read -r digest _; printf '%s\n' "$digest"; }
-}
-count_volume2_plan_candidates() {
-  local index count=0
-  for index in "${!plan_targets[@]}"; do
-    [[ ${plan_kinds[$index]} != volume2-direct && ${plan_kinds[$index]} != volume2-nested ]] ||
-      count=$((count + 1))
-  done
-  printf '%s\n' "$count"
-}
-compute_volume2_plan() { VOLUME2_PLAN_SHA256=$(compute_volume2_plan_sha256) || fail 'cannot compute deterministic volume2 plan digest'; }
-validate_volume2_plan() {
-  if [[ $MODE == apply-volume2 && $EXPECTED_PLAN_SHA256 != "$VOLUME2_PLAN_SHA256" &&
-    $VOLUME2_RECEIPT_RECOVERY == 0 ]]; then
-    fail "volume2 plan mismatch expected=$EXPECTED_PLAN_SHA256 actual=$VOLUME2_PLAN_SHA256"
-  fi
-}
-print_volume2_plan() {
-  printf 'volume2-plan schemaVersion=1 sha256=%s candidates=%s main=%s\n' "$VOLUME2_PLAN_SHA256" \
-    "$(count_volume2_plan_candidates)" "$MAIN_COMMIT"
-}
 append_volume2_receipt() {
   local receipt=$1
   AUDIT_TMP=$("$MKTEMP" "$CONTROL/.consumed-worktree-janitor-volume2.audit.XXXXXX") ||
@@ -666,15 +634,25 @@ capture_exact_purged_git_registration() {
   done <<<"${match%$'\n'}"
   CAPTURED_PURGED_GIT_REGISTRATION=${normalized%$'\n'}
 }
-revalidate_volume2_candidate() {
-  local index=$1 state=$2 id=${plan_ledgers[$1]} target=${plan_targets[$1]}
-  local job=${plan_jobs[$1]} current_main registration byte_record inode_record
+validate_volume2_manifest_candidate() {
+  local index=$1 id=${plan_ledgers[$1]} target=${plan_targets[$1]} job=${plan_jobs[$1]}
+  local allow_inflight_absent=${2:-0}
+  local item=${plan_items[$1]} archive=${plan_status_files[$1]%/git-status.txt} current_main
   assert_volume2_lifecycle_lock
   current_main=$("$GIT" -C "$INTEGRATION" rev-parse --verify refs/heads/main^{commit}) ||
     fail 'integration main disappeared during volume2 apply'
   [[ $current_main == "$MAIN_COMMIT" ]] || fail 'integration main changed after volume2 plan'
-  rehash_matches "${plan_items[$index]}" "${plan_item_hashes[$index]}" 'ledger item'
-  validate_archive_location "$job" "$target" "${plan_status_files[$index]%/git-status.txt}"
+  validate_trusted_path "$item" file 'ledger item'
+  [[ $item == "$LEDGER_ITEMS/$id.json" ]] || fail "volume2 ledger path changed after plan: $id"
+  rehash_matches "$item" "${plan_item_hashes[$index]}" 'ledger item'
+  "$JQ" -e --arg job "$job" --arg target "$target" --arg statusPath "${plan_status_files[$index]}" \
+    --arg patchPath "${plan_patch_files[$index]}" --arg numstatPath "${plan_numstat_files[$index]}" '
+      type == "object" and .jobId == $job and
+      (.status == "integrated" or .status == "rejected" or .status == "archived" or .status == "superseded") and
+      .backup.workspace == $target and .backup.statusPath == $statusPath and
+      .backup.patchPath == $patchPath and .backup.numstatPath == $numstatPath
+    ' "$item" >/dev/null || fail "volume2 ledger binding changed after plan: $id"
+  validate_archive_location "$job" "$target" "$archive"
   [[ $VALIDATED_REGISTRY_PATH == "${plan_registry_paths[$index]}" ]] ||
     fail "volume2 registry path changed after plan: $id"
   rehash_matches "$VALIDATED_REGISTRY_PATH" "${plan_registry_hashes[$index]}" 'registry binding'
@@ -687,34 +665,91 @@ revalidate_volume2_candidate() {
     integrated_commit_state "${plan_integrated_commits[$index]}" "$MAIN_COMMIT" ||
       fail "integrated commit is no longer retained: $id"
   fi
-  validate_job_root "$WORKER_JOBS/$job"
-  job_has_active_state "$WORKER_JOBS/$job" && fail "job became active during volume2 apply: $job"
-  activity_protected=(); scan_activity_manifests; scan_controller_job; scan_tmux_panes
-  [[ -z ${activity_protected[$target]:-} ]] ||
-    fail "controller or tmux activity appeared during volume2 apply: $target"
-  live_process_uses_worktree "$target" && fail "process entered volume2 worktree: $target"
   [[ $(volume2_mount_identity) == "${plan_volume2_mount_identities[$index]}" ]] ||
     fail "volume2 mount identity changed after plan: $target"
   if [[ ${plan_kinds[$index]} == volume2-nested ]]; then
     [[ $(path_identity "${target%/*}") == "${plan_volume2_parent_identities[$index]}" ]] ||
       fail "volume2 nested parent identity changed after plan: $target"
   fi
-  if [[ $state == present ]]; then
+  if [[ -d $target && ! -L $target ]]; then
     validate_volume2_layout "${plan_kinds[$index]}" "$target" "$job"
     [[ $(path_identity "$target") == "${plan_target_identities[$index]}" ]] ||
       fail "volume2 target stat identity changed after plan: $target"
+  else
+    [[ $allow_inflight_absent == 1 ||
+      ( -n ${volume2_receipt_target[$id]:-} && ${volume2_receipt_plan[$id]} == "$EXPECTED_PLAN_SHA256" ) ]] ||
+      fail "volume2 candidate disappeared without a receipt: $id"
+    validate_volume2_absent_layout "${plan_kinds[$index]}" "$target" "$job"
+  fi
+  [[ -z ${volume2_receipt_target[$id]:-} ]] || assert_volume2_receipt_binding "$index"
+}
+preflight_bound_volume2_plan() {
+  local index id target registered_path job_root current_dir; declare -A planned=()
+  assert_volume2_lifecycle_lock
+  for index in "${!plan_targets[@]}"; do
+    planned["${plan_targets[$index]}"]=$index
+  done
+  worktree_porcelain=$("$GIT" -C "$INTEGRATION" worktree list --porcelain) ||
+    fail 'cannot enumerate manifest-bound Git worktrees'
+  snapshot_git_registrations "$worktree_porcelain"
+  for registered_path in "${!registered_count[@]}"; do
+    case $registered_path in
+      "$RELOCATION_ARCHIVE_ROOT" | "$RELOCATION_ARCHIVE_ROOT/"*) continue ;;
+      "$WORKTREES/.volume2/"*)
+        [[ -n ${planned[$registered_path]:-} ]] ||
+          fail "foreign or expanded volume2 Git registration is outside the exact plan: $registered_path"
+        ;;
+    esac
+  done
+  activity_protected=(); scan_activity_manifests; scan_controller_job; scan_tmux_panes
+  scan_volume2_versioned_controller_liveness
+  snapshot_process_evidence
+  current_dir=$("$REALPATH" -m -- "$PWD") || fail 'cannot canonicalize apply directory'
+  for index in "${!plan_targets[@]}"; do
+    id=${plan_ledgers[$index]}; target=${plan_targets[$index]}
+    validate_volume2_manifest_candidate "$index"
+    if [[ -d $target && ! -L $target ]]; then
+      [[ ${registered_count[$target]:-0} == 1 && -z ${registered_locked[$target]:-} ]] ||
+        fail "volume2 target registration is absent, duplicated, or locked: $target"
+      [[ ${registered_registration_sha[$target]:-} == "${plan_git_registration_hashes[$index]}" ]] ||
+        fail "volume2 Git registration changed after plan: $target"
+    elif [[ -n ${volume2_receipt_removed[$id]:-} ]]; then
+      [[ ${registered_count[$target]:-0} == 0 ]] ||
+        fail "removed volume2 target remains registered: $target"
+    elif [[ ${registered_count[$target]:-0} == 1 ]]; then
+      capture_exact_purged_git_registration "$target"
+      [[ $(sha256_text "$CAPTURED_PURGED_GIT_REGISTRATION") == "${plan_git_registration_hashes[$index]}" ]] ||
+        fail "purged volume2 Git registration changed: $target"
+    else
+      [[ ${registered_count[$target]:-0} == 0 ]] ||
+        fail "purged volume2 target registration is duplicated: $target"
+    fi
+    case $current_dir in "$target" | "$target/"*) fail "apply process is inside volume2 target: $target" ;; esac
+    [[ -z ${activity_protected[$target]:-} ]] ||
+      fail "controller or tmux activity appeared after volume2 plan: $target"
+    job_root=$WORKER_JOBS/${plan_jobs[$index]}
+    validate_trusted_path "$job_root" directory 'volume2 job root'
+    job_has_active_state "$job_root" && fail "job became active after volume2 plan: ${plan_jobs[$index]}"
+    planning_process_uses_worktree "$target" && fail "process entered volume2 worktree after plan: $target"
+  done
+  return 0
+}
+revalidate_volume2_candidate() {
+  local index=$1 state=$2 id=${plan_ledgers[$1]} target=${plan_targets[$1]}
+  local job=${plan_jobs[$1]} registration
+  [[ $state == present ]] && validate_volume2_manifest_candidate "$index" ||
+    validate_volume2_manifest_candidate "$index" 1
+  activity_protected=(); scan_activity_manifests; scan_controller_job; scan_tmux_panes
+  scan_volume2_versioned_controller_liveness
+  [[ -z ${activity_protected[$target]:-} ]] ||
+    fail "controller or tmux activity appeared during volume2 apply: $target"
+  job_has_active_state "$WORKER_JOBS/$job" && fail "job became active during volume2 apply: $job"
+  live_process_uses_worktree "$target" && fail "process entered volume2 worktree: $target"
+  if [[ $state == present ]]; then
     capture_exact_unlocked_git_registration "$target"
     registration=$(sha256_text "$CAPTURED_GIT_REGISTRATION")
     [[ $registration == "${plan_git_registration_hashes[$index]}" ]] ||
       fail "volume2 Git registration changed after plan: $target"
-    worktree_matches_terminal_evidence "$target" "${plan_status_files[$index]}" \
-      "${plan_patch_files[$index]}" "${plan_numstat_files[$index]}" ||
-      fail "volume2 worktree became dirty or conflicted: $id"
-    byte_record=$("$DU" -sb --apparent-size -- "$target") || fail "cannot remeasure volume2 bytes: $target"
-    inode_record=$("$DU" -s --inodes -- "$target") || fail "cannot remeasure volume2 inodes: $target"
-    [[ ${byte_record%%[[:space:]]*} == "${plan_bytes[$index]}" &&
-      ${inode_record%%[[:space:]]*} == "${plan_target_inodes[$index]}" ]] ||
-      fail "volume2 accounting changed after plan: $target"
   elif [[ $state == purged ]]; then
     validate_volume2_absent_layout "${plan_kinds[$index]}" "$target" "$job"
     if is_registered_now "$target"; then
@@ -743,6 +778,7 @@ unregister_volume2_metadata_only() {
 }
 build_volume2_receipt() {
   local index=$1 status=$2 prepared_at=$3 purged_at=${4:-} removed_at=${5:-}
+  local free_before=$6 free_after=${7:-} reclaimed=${8:-}
   local id=${plan_ledgers[$index]} receipt_plan=$VOLUME2_PLAN_SHA256 receipt_main=$MAIN_COMMIT
   if [[ -n ${volume2_receipt_target[$id]:-} ]]; then
     receipt_plan=${volume2_receipt_plan[$id]}; receipt_main=${volume2_receipt_main[$id]}
@@ -762,6 +798,7 @@ build_volume2_receipt() {
     --arg lockIdentity "$VOLUME2_LIFECYCLE_LOCK_IDENTITY" \
     --arg integrated "${plan_integrated_commits[$index]}" --arg preparedAt "$prepared_at" \
     --arg purgedAt "$purged_at" --arg removedAt "$removed_at" --argjson beforeBytes "${plan_bytes[$index]}" \
+    --argjson freeBefore "$free_before" --argjson freeAfter "${free_after:-0}" --argjson reclaimed "${reclaimed:-0}" \
     --argjson targetInodes "${plan_target_inodes[$index]}" '
       {schemaVersion:1,mode:"apply-volume2",status:$status,planSha256:$plan,
        mainCommit:$main,ledgerId:$ledger,candidateKind:$kind,targetWorktreePath:$target,
@@ -773,30 +810,45 @@ build_volume2_receipt() {
        registryPath:$registry,registrySha256:$registrySha,
        gitRegistrationSha256:$registrationSha,beforeBytes:$beforeBytes,
        targetInodes:$targetInodes,integratedCommitSha:$integrated,
-       lifecycleLockIdentity:$lockIdentity,preparedAt:$preparedAt}
+       lifecycleLockIdentity:$lockIdentity,preparedAt:$preparedAt,
+       filesystemFreeInodesBefore:$freeBefore}
       + (if $status == "purged" then {purgedAt:$purgedAt}
-         elif $status == "removed" then {purgedAt:$purgedAt,removedAt:$removedAt,afterBytes:0} else {} end)'
+         elif $status == "removed" then {purgedAt:$purgedAt,removedAt:$removedAt,afterBytes:0,
+           filesystemFreeInodesAfter:$freeAfter,reclaimedInodes:$reclaimed} else {} end)'
 }
 apply_volume2_plan() {
-  local index id target prepared_at purged_at removed_at receipt
+  local index id target prepared_at purged_at removed_at receipt free_before free_after reclaimed
+  local processed=0 remaining=0 replayed_at_start=0; local -a pending=()
+  preflight_bound_volume2_plan
   for index in "${!plan_targets[@]}"; do
-    [[ ${plan_kinds[$index]} == volume2-direct || ${plan_kinds[$index]} == volume2-nested ]] || continue
     id=${plan_ledgers[$index]}; target=${plan_targets[$index]}
     if [[ -n ${volume2_receipt_removed[$id]:-} ]]; then
-      assert_volume2_receipt_binding "$index"; revalidate_volume2_candidate "$index" absent
-      replayed=$((replayed + 1)); continue
+      replayed=$((replayed + 1)); replayed_at_start=$((replayed_at_start + 1)); continue
     fi
+    [[ -z ${volume2_receipt_target[$id]:-} ]] || pending+=("$index")
+    remaining=$((remaining + 1))
+  done
+  for index in "${!plan_targets[@]}"; do
+    id=${plan_ledgers[$index]}
+    [[ -n ${volume2_receipt_removed[$id]:-} || -n ${volume2_receipt_target[$id]:-} ]] || pending+=("$index")
+  done
+  for index in "${pending[@]}"; do
+    ((processed < VOLUME2_MAX_CANDIDATES)) || break
+    id=${plan_ledgers[$index]}; target=${plan_targets[$index]}
     if [[ -z ${volume2_receipt_target[$id]:-} ]]; then
       janitor_test_checkpoint volume2-before-prepared
       revalidate_volume2_candidate "$index" present
+      free_before=$(volume2_free_inodes)
       prepared_at=$("$DATE" -u +'%Y-%m-%dT%H:%M:%S.%3NZ')
-      receipt=$(build_volume2_receipt "$index" prepared "$prepared_at") ||
+      receipt=$(build_volume2_receipt "$index" prepared "$prepared_at" '' '' "$free_before") ||
         fail "cannot construct prepared volume2 receipt: $id"
       append_volume2_receipt "$receipt"
+      volume2_receipt_free_inodes_before["$id"]=$free_before
     else
       assert_volume2_receipt_binding "$index"
       prepared_at=${volume2_receipt_prepared_at[$id]}
       purged_at=${volume2_receipt_purged_at[$id]:-}
+      free_before=${volume2_receipt_free_inodes_before[$id]}
     fi
     janitor_test_checkpoint volume2-after-prepared
     if [[ -d $target && ! -L $target ]]; then
@@ -807,7 +859,7 @@ apply_volume2_plan() {
         "${plan_volume2_parent_identities[$index]}"
       janitor_test_checkpoint volume2-after-purge-before-purged-receipt
       purged_at=$("$DATE" -u +'%Y-%m-%dT%H:%M:%S.%3NZ')
-      receipt=$(build_volume2_receipt "$index" purged "$prepared_at" "$purged_at") ||
+      receipt=$(build_volume2_receipt "$index" purged "$prepared_at" "$purged_at" '' "$free_before") ||
         fail "cannot construct purged volume2 receipt: $id"
       append_volume2_receipt "$receipt"
       volume2_receipt_purged["$id"]=1; volume2_receipt_purged_at["$id"]=$purged_at
@@ -816,7 +868,7 @@ apply_volume2_plan() {
       purged_at=${volume2_receipt_purged_at[$id]:-}
       if [[ -z $purged_at ]]; then
         purged_at=$prepared_at
-        receipt=$(build_volume2_receipt "$index" purged "$prepared_at" "$purged_at") ||
+        receipt=$(build_volume2_receipt "$index" purged "$prepared_at" "$purged_at" '' "$free_before") ||
           fail "cannot recover purged volume2 receipt: $id"
         append_volume2_receipt "$receipt"
         volume2_receipt_purged["$id"]=1; volume2_receipt_purged_at["$id"]=$purged_at
@@ -827,11 +879,16 @@ apply_volume2_plan() {
     janitor_test_checkpoint volume2-after-git-remove
     revalidate_volume2_candidate "$index" absent
     removed_at=$("$DATE" -u +'%Y-%m-%dT%H:%M:%S.%3NZ')
-    receipt=$(build_volume2_receipt "$index" removed "$prepared_at" "$purged_at" "$removed_at") ||
+    free_after=$(volume2_free_inodes)
+    ((free_after > free_before)) && reclaimed=$((free_after - free_before)) || reclaimed=0
+    receipt=$(build_volume2_receipt "$index" removed "$prepared_at" "$purged_at" "$removed_at" \
+      "$free_before" "$free_after" "$reclaimed") ||
       fail "cannot construct removed volume2 receipt: $id"
     append_volume2_receipt "$receipt"
-    printf 'removed-volume2 ledger=%s kind=%s target=%s beforeBytes=%s afterBytes=0\n' \
-      "$id" "${plan_kinds[$index]}" "$target" "${plan_bytes[$index]}"
-    removed=$((removed + 1))
+    printf 'removed-volume2 ledger=%s kind=%s target=%s beforeBytes=%s afterBytes=0 reclaimedInodes=%s\n' \
+      "$id" "${plan_kinds[$index]}" "$target" "${plan_bytes[$index]}" "$reclaimed"
+    removed=$((removed + 1)); processed=$((processed + 1)); remaining=$((remaining - 1))
   done
+  printf 'volume2-batch processed=%s remaining=%s replayed=%s removed=%s planned=%s maxCandidates=%s\n' \
+    "$processed" "$remaining" "$replayed_at_start" "$removed" "$VOLUME2_BOUND_CANDIDATES" "$VOLUME2_MAX_CANDIDATES"
 }

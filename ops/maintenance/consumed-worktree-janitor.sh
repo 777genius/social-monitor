@@ -3,16 +3,16 @@ set -euo pipefail
 export GIT_OPTIONAL_LOCKS=0
 readonly GIT=/usr/bin/git JQ=/usr/bin/jq REALPATH=/usr/bin/realpath FLOCK=/usr/bin/flock DU=/usr/bin/du READLINK=/usr/bin/readlink
 readonly SHA256SUM=/usr/bin/sha256sum DATE=/usr/bin/date MKTEMP=/usr/bin/mktemp CP=/usr/bin/cp MV=/usr/bin/mv UNLINK=/usr/bin/unlink
-readonly CMP=/usr/bin/cmp STAT=/usr/bin/stat SORT=/usr/bin/sort
+readonly CMP=/usr/bin/cmp STAT=/usr/bin/stat SORT=/usr/bin/sort DF=/usr/bin/df
 readonly SYNC=/usr/bin/sync SLEEP=/usr/bin/sleep PROCESS_SNAPSHOT_LIMIT=65536 PROCESS_RECHECK_ATTEMPTS=3 PROCESS_RECHECK_DELAY_SECONDS=0.05
-MODE=dry-run MODE_SEEN=0 TEST_ROOT= AUDIT_TMP= EXPECTED_PLAN_SHA256=
+MODE=dry-run MODE_SEEN=0 TEST_ROOT= AUDIT_TMP= EXPECTED_PLAN_SHA256= VOLUME2_MAX_CANDIDATES=1 VOLUME2_MAX_SEEN=0
 FAST_RELOCATED=${FAST_RELOCATED:-${SOCIAL_MONITOR_JANITOR_FAST_RELOCATED:-0}}
 fail() { printf 'consumed-worktree-janitor: %s\n' "$*" >&2; exit 1; }
 cleanup() { [[ -z $AUDIT_TMP || ! -f $AUDIT_TMP || -L $AUDIT_TMP ]] || "$UNLINK" -- "$AUDIT_TMP"; }
 trap cleanup EXIT
 usage() { printf '%s\n' 'usage: consumed-worktree-janitor.sh [--dry-run | --apply | --dry-run-volume2]' \
   '       consumed-worktree-janitor.sh --apply-relocated --expected-plan-sha256 SHA256' \
-  '       consumed-worktree-janitor.sh --apply-volume2 --expected-plan-sha256 SHA256' \
+  '       consumed-worktree-janitor.sh --apply-volume2 --expected-plan-sha256 SHA256 [--max-candidates 1..8]' \
   '       consumed-worktree-janitor.sh [MODE] [--expected-plan-sha256 SHA256] --test-root PATH'; }
 while (($# > 0)); do
   case $1 in
@@ -38,6 +38,12 @@ while (($# > 0)); do
       [[ -z $EXPECTED_PLAN_SHA256 ]] || fail '--expected-plan-sha256 may be specified only once'
       EXPECTED_PLAN_SHA256=$1
       ;;
+    --max-candidates)
+      shift
+      (($# > 0)) || fail '--max-candidates requires an integer from 1 through 8'
+      ((VOLUME2_MAX_SEEN == 0)) || fail '--max-candidates may be specified only once'
+      VOLUME2_MAX_CANDIDATES=$1 VOLUME2_MAX_SEEN=1
+      ;;
     --test-root)
       shift
       (($# > 0)) || fail '--test-root requires a path'
@@ -58,8 +64,10 @@ if [[ $MODE == apply-relocated || $MODE == apply-volume2 ]]; then
 else
   [[ -z $EXPECTED_PLAN_SHA256 ]] || fail '--expected-plan-sha256 is valid only with an apply plan mode'
 fi
+[[ $VOLUME2_MAX_CANDIDATES =~ ^[1-8]$ ]] || fail '--max-candidates requires an integer from 1 through 8'
+[[ $MODE == apply-volume2 || $VOLUME2_MAX_SEEN == 0 ]] || fail '--max-candidates is valid only with --apply-volume2'
 [[ $FAST_RELOCATED == 0 || $FAST_RELOCATED == 1 ]] || fail 'FAST_RELOCATED must be 0 or 1'
-for tool in "$GIT" "$JQ" "$REALPATH" "$FLOCK" "$DU" "$READLINK" "$SHA256SUM" "$DATE" "$MKTEMP" "$CP" "$MV" "$UNLINK" "$CMP" "$STAT" "$SORT" "$SYNC" "$SLEEP"; do
+for tool in "$GIT" "$JQ" "$REALPATH" "$FLOCK" "$DU" "$READLINK" "$SHA256SUM" "$DATE" "$MKTEMP" "$CP" "$MV" "$UNLINK" "$CMP" "$STAT" "$SORT" "$DF" "$SYNC" "$SLEEP"; do
   [[ -x $tool ]] || fail "required tool is unavailable: $tool"
 done
 SCRIPT_PATH=$("$REALPATH" -e -- "${BASH_SOURCE[0]}") || fail 'cannot canonicalize script path'
@@ -204,6 +212,9 @@ select_relocated_receipt_recovery
 readonly VOLUME2_APPLY_IMPLEMENTATION=$SCRIPT_DIRECTORY/consumed-worktree-janitor-volume2-apply.sh; validate_trusted_path "$VOLUME2_APPLY_IMPLEMENTATION" file 'volume2 apply implementation'
 # shellcheck source=consumed-worktree-janitor-volume2-apply.sh
 source "$VOLUME2_APPLY_IMPLEMENTATION"; load_volume2_receipts; select_volume2_receipt_recovery
+readonly VOLUME2_PLAN_IMPLEMENTATION=$SCRIPT_DIRECTORY/consumed-worktree-janitor-volume2-plan.sh; validate_trusted_path "$VOLUME2_PLAN_IMPLEMENTATION" file 'volume2 plan implementation'
+# shellcheck source=consumed-worktree-janitor-volume2-plan.sh
+source "$VOLUME2_PLAN_IMPLEMENTATION"; initialize_volume2_plan_contract
 declare -A ledger_workspace_by_id=() ledger_target_by_id=() ledger_numstat_hash_by_id=() ledger_job_by_id=() ledger_status_by_id=() ledger_integrated_commit_by_id=()
 declare -A ledger_patch_hash_by_id=() ledger_status_hash_by_id=()
 declare -A ledger_numstat_path_by_id=() ledger_patch_path_by_id=() ledger_status_path_by_id=()
@@ -215,6 +226,7 @@ declare -A latest_status_file=() latest_status_hash=() latest_time=() latest_wor
 declare -A latest_legacy_registry_bound=() latest_target=() relocated_logical_by_target=()
 declare -A latest_registry_path=() latest_registry_hash=()
 shopt -s nullglob
+if [[ $MODE != apply-volume2 ]]; then
 ledger_files=("$LEDGER_ITEMS"/*.json)
 ((${#ledger_files[@]} > 0)) || fail 'consumed-output ledger contains no item JSON files'
 for item in "${ledger_files[@]}"; do
@@ -367,6 +379,7 @@ validate_volume2_receipt_bindings
 worktree_porcelain=$("$GIT" -C "$INTEGRATION" worktree list --porcelain) ||
   fail 'cannot enumerate registered Git worktrees'
 snapshot_git_registrations "$worktree_porcelain"
+fi
 declare -A activity_protected=()
 protect_worktree_for_path() {
   local path=$1 reason=$2
@@ -460,7 +473,7 @@ scan_activity_manifests() {
     done
   done
 }
-scan_activity_manifests
+[[ $MODE == apply-volume2 ]] || scan_activity_manifests
 scan_controller_job() {
   local controller_job_path controller_workspace
   [[ -e $CONTROL/controller-job.json || -L $CONTROL/controller-job.json ]] || return 0
@@ -485,7 +498,7 @@ scan_controller_job() {
     *) fail 'controller workspace escaped the Social Monitor worktree root' ;;
   esac
 }
-scan_controller_job
+[[ $MODE == apply-volume2 ]] || scan_controller_job
 scan_tmux_panes() {
   local tmux_bin= tmux_panes= pane_path test_tmux_evidence canonical_path
   if [[ -n $TEST_ROOT ]]; then
@@ -521,7 +534,7 @@ scan_tmux_panes() {
     protect_worktree_for_path "$pane_path" 'active-tmux-pane'
   done <<<"$tmux_panes"
 }
-scan_tmux_panes
+[[ $MODE == apply-volume2 ]] || scan_tmux_panes
 job_has_active_state() {
   local job_root=$1 state_file status tmux_alive result_status
   local progress_files=("$job_root"/*.progress.json) result_files=("$job_root"/*.latest-result.json)
@@ -712,6 +725,9 @@ declare -a plan_numstat_files=() plan_numstat_hashes=() plan_logical_identities=
 declare -a plan_registry_hashes=() plan_git_registration_hashes=() plan_integrated_commits=()
 declare -a plan_volume2_parent_identities=() plan_volume2_mount_identities=()
 eligible=0 excluded=0 replayed=0 total_apparent_bytes=0 total_target_inodes=0 total_logical_symlink_inodes=0
+if [[ $MODE == apply-volume2 ]]; then
+  load_bound_volume2_apply_plan
+else
 classify_completed_v2_receipts
 classify_completed_volume2_receipts
 snapshot_process_evidence
@@ -867,12 +883,16 @@ for workspace in "${sorted_workspaces[@]}"; do
   fi
   if ((expected_registration_count == 1)); then
     worktree_matches_terminal_evidence "$target" "${latest_status_file[$workspace]}" "${latest_patch[$workspace]}" "${latest_numstat[$workspace]}" || { printf 'excluded reason=terminal-evidence-conflict ledger=%s worktree=%s target=%s\n' "$ledger_id" "$workspace" "$target"; excluded=$((excluded + 1)); continue; }
-    byte_record=$("$DU" -sb --apparent-size -- "$target") ||
-      fail "cannot measure worktree bytes: $target"
-    before_bytes=${byte_record%%[[:space:]]*}
-    inode_record=$("$DU" -s --inodes -- "$target") ||
-      fail "cannot measure worktree inodes: $target"
-    target_inodes=${inode_record%%[[:space:]]*}
+    if reuse_bound_volume2_measurement "$ledger_id" "$workspace_kind"; then
+      before_bytes=$VOLUME2_REUSED_BYTES; target_inodes=$VOLUME2_REUSED_INODES
+    else
+      byte_record=$("$DU" -sb --apparent-size -- "$target") ||
+        fail "cannot measure worktree bytes: $target"
+      before_bytes=${byte_record%%[[:space:]]*}
+      inode_record=$("$DU" -s --inodes -- "$target") ||
+        fail "cannot measure worktree inodes: $target"
+      target_inodes=${inode_record%%[[:space:]]*}
+    fi
   elif [[ $workspace_kind == volume2-* && -n ${volume2_receipt_target[$ledger_id]:-} ]]; then
     before_bytes=${volume2_receipt_bytes[$ledger_id]}
     target_inodes=${volume2_receipt_inodes[$ledger_id]}
@@ -941,30 +961,5 @@ for workspace in "${sorted_workspaces[@]}"; do
   total_logical_symlink_inodes=$((total_logical_symlink_inodes + logical_symlink_inodes))
   eligible=$((eligible + 1))
 done
-RELOCATED_PLAN_SHA256=$(compute_relocated_plan_sha256) || fail 'cannot compute deterministic relocated plan digest'
-compute_volume2_plan
-relocated_plan_candidates=0
-for index in "${!plan_targets[@]}"; do
-  [[ ${plan_kinds[$index]} == relocated ]] && relocated_plan_candidates=$((relocated_plan_candidates + 1))
-done
-if [[ $MODE == apply-relocated && $EXPECTED_PLAN_SHA256 != "$RELOCATED_PLAN_SHA256" &&
-  $RELOCATED_RECEIPT_RECOVERY == 0 ]]; then
-  fail "relocated plan mismatch expected=$EXPECTED_PLAN_SHA256 actual=$RELOCATED_PLAN_SHA256"
 fi
-validate_volume2_plan
-printf 'relocated-plan schemaVersion=2 sha256=%s candidates=%s main=%s\n' "$RELOCATED_PLAN_SHA256" "$relocated_plan_candidates" "$MAIN_COMMIT"
-print_volume2_plan
-removed=0
-if [[ $MODE == dry-run || $MODE == dry-run-volume2 ]]; then
-  for index in "${!plan_targets[@]}"; do
-    total_inodes=$((plan_target_inodes[index] + plan_link_inodes[index]))
-    printf 'would-remove ledger=%s worktree=%s target=%s beforeBytes=%s apparentBytes=%s targetInodes=%s logicalSymlinkInodes=%s totalInodes=%s afterBytes=0\n' "${plan_ledgers[$index]}" "${plan_workspaces[$index]}" "${plan_targets[$index]}" "${plan_bytes[$index]}" "${plan_bytes[$index]}" "${plan_target_inodes[$index]}" "${plan_link_inodes[$index]}" "$total_inodes"
-  done
-elif [[ $MODE == apply ]]; then
-  apply_ordinary_plan
-elif [[ $MODE == apply-volume2 ]]; then
-  apply_volume2_plan
-else
-  apply_relocated_plan
-fi
-printf 'consumed-worktree-janitor mode=%s eligible=%s removed=%s replayed=%s excluded=%s apparentBytes=%s targetInodes=%s logicalSymlinkInodes=%s totalInodes=%s\n' "$MODE" "$eligible" "$removed" "$replayed" "$excluded" "$total_apparent_bytes" "$total_target_inodes" "$total_logical_symlink_inodes" "$((total_target_inodes + total_logical_symlink_inodes))"
+complete_consumed_worktree_janitor

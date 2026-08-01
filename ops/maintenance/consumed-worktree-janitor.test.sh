@@ -929,6 +929,7 @@ timer_source=$(<"$TIMER")
 entrypoint_source=$(<"$ENTRYPOINT")
 implementation_source=$(<"$SCRIPT_DIR/consumed-worktree-janitor-relocated-apply.sh")
 volume2_source=$(<"$SCRIPT_DIR/consumed-worktree-janitor-volume2-apply.sh")
+volume2_plan_source=$(<"$SCRIPT_DIR/consumed-worktree-janitor-volume2-plan.sh")
 [[ $service_source == *'ExecStart='* && $service_source != *'--apply'* ]] ||
   fail 'service is not safe dry-run by default'
 [[ $service_source == *'ReadOnlyPaths=/var/data/social-monitor'* &&
@@ -942,12 +943,18 @@ volume2_source=$(<"$SCRIPT_DIR/consumed-worktree-janitor-volume2-apply.sh")
 [[ $SUITE_ROOT == "$SCRIPT_DIR"/.consumed-worktree-janitor-test.* ]] ||
   fail 'destructive fixtures escaped the current worktree'
 [[ $entrypoint_source != *'worktree prune'* && $implementation_source != *'worktree prune'* &&
-  $volume2_source != *'worktree prune'* ]] ||
+  $volume2_source != *'worktree prune'* && $volume2_plan_source != *'worktree prune'* ]] ||
   fail 'Git worktree prune is forbidden in the janitor'
 recursive_remove='rm -'rf
 recursive_remove_alt='rm -'fr
-runtime_source=$entrypoint_source$implementation_source$volume2_source
+runtime_source=$entrypoint_source$implementation_source$volume2_source$volume2_plan_source
 [[ $runtime_source != *"$recursive_remove"* && $runtime_source != *"$recursive_remove_alt"* ]] ||
   fail 'recursive rm is forbidden in the janitor'
+[[ $volume2_plan_source == *'volume2-plan-before-rename'* &&
+  $volume2_plan_source == *'volume2-plan-after-rename'* &&
+  $volume2_plan_source == *'"$SYNC" -f -- "$AUDIT_TMP"'* &&
+  $volume2_plan_source == *'"$SYNC" -f -- "$final"'* &&
+  $volume2_plan_source == *'"$SYNC" -f -- "$VOLUME2_PLAN_DIRECTORY"'* ]] ||
+  fail 'durable volume2 publication lost its staged/final/directory fsync contract'
 
 printf 'Consumed worktree janitor hermetic tests passed\n'
