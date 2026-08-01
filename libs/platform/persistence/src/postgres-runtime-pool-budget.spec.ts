@@ -443,6 +443,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/lib/reader-summary-quality-eval-support.spec.ts
       scripts/lib/reader-summary-quality-eval-support.ts
       scripts/lib/reader-summary-recovery-postgres-contract.ts
+      scripts/lib/reader-summary-weekly-atomic-publication-postgres-contract.ts
       scripts/lib/reader-summary-weekly-certification-seal-postgres-contract.ts
       scripts/lib/reader-summary-weekly-daily-certification-backfill-postgres-contract.ts
       scripts/lib/reader-summary-weekly-publication-evidence-postgres-contract.ts
