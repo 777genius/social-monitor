@@ -6,6 +6,11 @@ SELECT set_config(
   false
 );
 SELECT set_config(
+  'social_monitor.bootstrap_system_runtime_role',
+  :'system_runtime_role',
+  false
+);
+SELECT set_config(
   'social_monitor.bootstrap_migrator_role',
   current_user,
   false
@@ -70,16 +75,103 @@ DECLARE
   v_runtime_role NAME := current_setting(
     'social_monitor.bootstrap_runtime_role'
   )::NAME;
+  v_system_runtime_role NAME := current_setting(
+    'social_monitor.bootstrap_system_runtime_role'
+  )::NAME;
+  v_terminal RECORD;
 BEGIN
   IF to_regprocedure(
     'public.claim_reader_summary_daily_terminal(uuid,uuid,uuid,text)'
   ) IS NOT NULL THEN
-    REVOKE ALL PRIVILEGES ON TABLE public.reader_summary_artifacts
+    SELECT * INTO v_terminal FROM pg_roles
+    WHERE rolname = 'social_monitor_reader_summary_daily_terminal';
+    IF NOT FOUND OR NOT v_terminal.rolcanlogin OR v_terminal.rolinherit
+      OR v_terminal.rolsuper OR v_terminal.rolcreatedb
+      OR v_terminal.rolcreaterole OR v_terminal.rolreplication
+      OR v_terminal.rolbypassrls
+      OR v_terminal.rolconfig IS DISTINCT FROM
+        ARRAY['search_path=pg_catalog, public']::TEXT[]
+      OR (
+        SELECT count(*) > 1 OR count(*) <> count(*) FILTER (
+          WHERE member.rolname = session_user
+            AND grantor.rolsuper
+            AND membership.admin_option
+            AND NOT membership.inherit_option
+            AND NOT membership.set_option
+        )
+        FROM pg_auth_members membership
+        JOIN pg_roles member ON member.oid = membership.member
+        JOIN pg_roles grantor ON grantor.oid = membership.grantor
+        WHERE membership.roleid = v_terminal.oid
+      ) OR EXISTS (
+        SELECT 1 FROM pg_auth_members membership
+        WHERE membership.member = v_terminal.oid
+      ) OR EXISTS (
+        SELECT 1
+        FROM unnest(ARRAY[v_runtime_role, v_system_runtime_role]) ordinary(name)
+        CROSS JOIN unnest(ARRAY['MEMBER', 'USAGE', 'SET']) capability(name)
+        WHERE pg_has_role(ordinary.name, v_terminal.rolname, capability.name)
+      ) THEN
+      RAISE EXCEPTION 'daily terminal runtime LOGIN is missing or unsafe';
+    END IF;
+    REVOKE ALL PRIVILEGES ON TABLE
+      public.reader_summary_artifacts,
+      public.reader_summary_publications,
+      public.reader_summary_publication_slots,
+      public.reader_summary_weekly_publication_evidence
     FROM social_monitor_reader_summary_publication_runtime;
+    REVOKE ALL PRIVILEGES ON TABLE
+      public.reader_summary_artifacts,
+      public.reader_summary_publications,
+      public.reader_summary_publication_slots,
+      public.reader_summary_weekly_publication_evidence
+    FROM social_monitor_reader_summary_daily_terminal;
+    GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE
+      public.reader_summary_artifacts
+    TO social_monitor_reader_summary_publication_runtime;
+    GRANT SELECT ON TABLE
+      public.reader_summary_publications,
+      public.reader_summary_publication_slots,
+      public.reader_summary_weekly_publication_evidence
+    TO social_monitor_reader_summary_publication_runtime;
     EXECUTE format(
-      'GRANT SELECT ON TABLE public.reader_summary_artifacts TO %I',
+      'GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE '
+        'public.reader_summary_artifacts TO %I',
       v_runtime_role
     );
+    GRANT SELECT ON TABLE
+      public.reader_summary_artifacts,
+      public.reader_summary_publications,
+      public.reader_summary_publication_slots,
+      public.reader_summary_weekly_publication_evidence
+    TO social_monitor_reader_summary_daily_terminal;
+    REVOKE ALL PRIVILEGES ON FUNCTION
+      public.reader_summary_daily_terminal_authority(UUID, UUID, DATE),
+      public.publish_reader_summary(JSONB),
+      public.publish_reader_summary_legacy_v1(JSONB),
+      public.publish_reader_summary_pre_evidence(JSONB),
+      public.record_reader_summary_weekly_publication_evidence(UUID)
+    FROM social_monitor_reader_summary_daily_terminal;
+    REVOKE ALL PRIVILEGES ON FUNCTION
+      public.claim_reader_summary_daily_terminal(UUID, UUID, UUID, TEXT),
+      public.finalize_reader_summary_daily_terminal(
+        UUID, UUID, DATE, TEXT, TEXT, TEXT, BIGINT
+      )
+    FROM social_monitor_reader_summary_publication_runtime,
+      social_monitor_reader_summary_daily_terminal;
+    EXECUTE format(
+      'REVOKE ALL PRIVILEGES ON FUNCTION '
+        'public.claim_reader_summary_daily_terminal(UUID,UUID,UUID,TEXT), '
+        'public.finalize_reader_summary_daily_terminal('
+        'UUID,UUID,DATE,TEXT,TEXT,TEXT,BIGINT) FROM %I',
+      v_runtime_role
+    );
+    GRANT EXECUTE ON FUNCTION
+      public.claim_reader_summary_daily_terminal(UUID, UUID, UUID, TEXT),
+      public.finalize_reader_summary_daily_terminal(
+        UUID, UUID, DATE, TEXT, TEXT, TEXT, BIGINT
+      )
+    TO social_monitor_reader_summary_daily_terminal;
   END IF;
 END
 $daily_terminal_artifact_acl$;
@@ -118,6 +210,19 @@ BEGIN
     );
     REVOKE ALL PRIVILEGES ON TABLE public.reader_summary_jobs
     FROM social_monitor_reader_summary_publication_runtime;
+    REVOKE ALL PRIVILEGES ON TABLE public.reader_summary_jobs
+    FROM social_monitor_reader_summary_daily_terminal;
+    GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.reader_summary_jobs
+    TO social_monitor_reader_summary_publication_runtime;
+    EXECUTE format(
+      'GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE '
+        'public.reader_summary_jobs TO %I',
+      v_runtime_role
+    );
+    GRANT USAGE ON SCHEMA public
+    TO social_monitor_reader_summary_daily_terminal;
+    REVOKE CREATE ON SCHEMA public
+    FROM social_monitor_reader_summary_daily_terminal;
     RESET ROLE;
   END IF;
 END
@@ -577,39 +682,102 @@ BEGIN
     ) THEN
       RAISE EXCEPTION 'legacy artifact continuity grants are unsafe';
     END IF;
-  ELSIF has_table_privilege(
-    'social_monitor_reader_summary_publication_runtime',
-    'public.reader_summary_artifacts',
-    'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
-  ) OR NOT has_table_privilege(
-    v_runtime_role, 'public.reader_summary_artifacts', 'SELECT'
-  ) OR has_table_privilege(
-    v_runtime_role, 'public.reader_summary_artifacts',
-    'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
-  ) THEN
-    RAISE EXCEPTION 'daily terminal artifact authority is not exclusive';
-  END IF;
-
-  IF to_regprocedure(
-    'public.claim_reader_summary_daily_terminal(uuid,uuid,uuid,text)'
-  ) IS NOT NULL AND EXISTS (
+  ELSIF EXISTS (
     SELECT 1
     FROM unnest(ARRAY[
       'social_monitor_reader_summary_publication_runtime'::NAME,
       v_runtime_role
-    ]) AS state_role(name)
+    ]) ordinary_role(name)
     CROSS JOIN unnest(ARRAY[
-      'reader_summary_jobs',
-      'reader_summary_production_recovery_leases',
+      'reader_summary_jobs', 'reader_summary_artifacts'
+    ]) ordinary_table(name)
+    WHERE NOT has_table_privilege(
+      ordinary_role.name,
+      'public.' || ordinary_table.name,
+      'SELECT,INSERT,UPDATE,DELETE'
+    ) OR has_table_privilege(
+      ordinary_role.name,
+      'public.' || ordinary_table.name,
+      'TRUNCATE,REFERENCES,TRIGGER'
+    )
+  ) THEN
+    RAISE EXCEPTION 'daily ordinary runtime CRUD authority is unsafe';
+  ELSIF EXISTS (
+    SELECT 1
+    FROM unnest(ARRAY[
+      'reader_summary_publications',
+      'reader_summary_publication_slots',
+      'reader_summary_weekly_publication_evidence'
+    ]) ordinary_evidence_table(name)
+    WHERE NOT has_table_privilege(
+      'social_monitor_reader_summary_publication_runtime',
+      'public.' || ordinary_evidence_table.name,
+      'SELECT'
+    ) OR has_table_privilege(
+      'social_monitor_reader_summary_publication_runtime',
+      'public.' || ordinary_evidence_table.name,
+      'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
+    )
+  ) THEN
+    RAISE EXCEPTION 'daily ordinary runtime evidence reads are unsafe';
+  ELSIF EXISTS (
+    SELECT 1
+    FROM unnest(ARRAY[
+      'reader_summary_artifacts', 'reader_summary_publications',
+      'reader_summary_publication_slots',
+      'reader_summary_weekly_publication_evidence'
+    ]) evidence_table(name)
+    WHERE NOT has_table_privilege(
+      'social_monitor_reader_summary_daily_terminal',
+      'public.' || evidence_table.name,
+      'SELECT'
+    ) OR has_table_privilege(
+      'social_monitor_reader_summary_daily_terminal',
+      'public.' || evidence_table.name,
+      'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
+    )
+  ) OR EXISTS (
+    SELECT 1
+    FROM unnest(ARRAY[
+      'reader_summary_jobs', 'reader_summary_production_recovery_leases',
       'reader_summary_production_recovery_days',
-      'reader_summary_production_recovery_dry_runs'
-    ]) AS state_table(name)
+      'reader_summary_production_recovery_dry_runs',
+      'reader_summary_recovery_receipts',
+      'reader_summary_weekly_certification_seals'
+    ]) protected_table(name)
     WHERE has_table_privilege(
-      state_role.name, 'public.' || state_table.name,
+      'social_monitor_reader_summary_daily_terminal',
+      'public.' || protected_table.name,
       'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
     )
   ) THEN
-    RAISE EXCEPTION 'daily terminal runtime state authority is unsafe';
+    RAISE EXCEPTION 'daily terminal evidence authority is unsafe';
+  ELSIF has_function_privilege(
+    'social_monitor_reader_summary_publication_runtime',
+    'public.claim_reader_summary_daily_terminal(uuid,uuid,uuid,text)',
+    'EXECUTE'
+  ) OR has_function_privilege(
+    v_runtime_role,
+    'public.claim_reader_summary_daily_terminal(uuid,uuid,uuid,text)',
+    'EXECUTE'
+  ) OR NOT has_function_privilege(
+    'social_monitor_reader_summary_daily_terminal',
+    'public.claim_reader_summary_daily_terminal(uuid,uuid,uuid,text)',
+    'EXECUTE'
+  ) OR NOT has_function_privilege(
+    'social_monitor_reader_summary_daily_terminal',
+    'public.finalize_reader_summary_daily_terminal(uuid,uuid,date,text,text,text,bigint)',
+    'EXECUTE'
+  ) OR has_function_privilege(
+    'social_monitor_reader_summary_daily_terminal',
+    'public.reader_summary_daily_terminal_authority(uuid,uuid,date)',
+    'EXECUTE'
+  ) OR has_function_privilege(
+    'social_monitor_reader_summary_daily_terminal',
+    'public.publish_reader_summary(jsonb)',
+    'EXECUTE'
+  ) THEN
+    RAISE EXCEPTION 'daily terminal function authority is unsafe';
   END IF;
 
   IF NOT has_table_privilege(

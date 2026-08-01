@@ -1,46 +1,47 @@
 import { readFileSync } from "node:fs";
-
 import { Pool, type PoolClient } from "pg";
-
 import { assertPostgres18CreatorAndPsqlRegression } from "./reader-summary-publication-postgres18-regression";
 
 const protectedOwner = "social_monitor_reader_summary_publication_owner";
 const publicSchemaOwner = "social_monitor_public_schema_owner";
+const publicationCapability = "social_monitor_reader_summary_publication_runtime";
 const tenantSystemCapability = "social_monitor_tenant_system_runtime";
+const protectedFixtureRoles = [publicSchemaOwner, protectedOwner, publicationCapability, tenantSystemCapability] as const;
 
 export const publicationProtectedRolePresence = async (
   serverAdmin: Pool,
-): Promise<{
-  readonly capability: boolean;
-  readonly owner: boolean;
-  readonly schemaOwner: boolean;
-  readonly tenantSystemCapability: boolean;
-}> => {
-  const protectedRoles = await serverAdmin.query<{
-    readonly rolname: string;
-  }>(`SELECT rolname FROM pg_roles WHERE rolname = ANY($1::text[])`, [
-    [
-      publicSchemaOwner,
-      protectedOwner,
-      "social_monitor_reader_summary_publication_runtime",
-      tenantSystemCapability,
-    ],
-  ]);
+): Promise<{ readonly capability: boolean; readonly owner: boolean; readonly schemaOwner: boolean; readonly tenantSystemCapability: boolean }> => {
+  const protectedRoles = await serverAdmin.query<{ readonly rolname: string }>(
+    `SELECT rolname FROM pg_roles WHERE rolname = ANY($1::text[])`, [protectedFixtureRoles]);
   const hasRole = (role: string): boolean =>
     protectedRoles.rows.some((row) => row.rolname === role);
   return {
-    capability: hasRole("social_monitor_reader_summary_publication_runtime"),
-    owner: hasRole(protectedOwner),
-    schemaOwner: hasRole(publicSchemaOwner),
-    tenantSystemCapability: hasRole(tenantSystemCapability),
+    capability: hasRole(publicationCapability), owner: hasRole(protectedOwner),
+    schemaOwner: hasRole(publicSchemaOwner), tenantSystemCapability: hasRole(tenantSystemCapability),
   };
 };
-
+export const provisionPublicationFixtureProtectedRoles = async (params: {
+  readonly serverAdmin: Pool; readonly migrationAdmin: Pool; readonly migrationAdminRole: string;
+}): Promise<void> => {
+  for (const role of protectedFixtureRoles) {
+    await params.serverAdmin.query(`DO $fixture$ BEGIN IF NOT EXISTS
+      (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = ${quoteLiteral(role)}) THEN
+      CREATE ROLE ${quoteIdentifier(role)} NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE
+        NOINHERIT NOREPLICATION NOBYPASSRLS; END IF; END $fixture$`);
+    await params.serverAdmin.query(`GRANT ${quoteIdentifier(role)} TO ${quoteIdentifier(params.migrationAdminRole)}
+      WITH ADMIN TRUE, INHERIT FALSE, SET FALSE GRANTED BY CURRENT_USER`);
+  }
+  for (const role of [publicSchemaOwner, protectedOwner]) {
+    await params.migrationAdmin.query(`GRANT ${quoteIdentifier(role)} TO ${quoteIdentifier(params.migrationAdminRole)}
+      WITH ADMIN FALSE, INHERIT FALSE, SET TRUE GRANTED BY CURRENT_USER`);
+  }
+};
 export const makePublicationFixtureRuntimeDatabaseOwner = async (params: {
   readonly databaseName: string;
   readonly migrationAdminDatabaseUrl: string;
   readonly migrationAdminRole: string;
   readonly runtimeRole: string;
+  readonly systemRuntimeRole: string;
   readonly targetDatabaseUrl: string;
 }): Promise<void> => {
   const admin = new Pool({
@@ -71,6 +72,7 @@ export const makePublicationFixtureRuntimeDatabaseOwner = async (params: {
             "pre",
             params.migrationAdminDatabaseUrl,
             params.runtimeRole,
+            params.systemRuntimeRole,
           ),
         "public schema has an unreviewed CREATE grant",
         "bootstrap must reject an unreviewed public schema creator",

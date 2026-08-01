@@ -1,10 +1,8 @@
 \set ON_ERROR_STOP on
 
 BEGIN;
-
 SELECT set_config('social_monitor.bootstrap_runtime_role', :'runtime_role', false);
 SELECT set_config('social_monitor.bootstrap_system_runtime_role', :'system_runtime_role', false);
-
 DO $bootstrap$
 DECLARE
   v_runtime_role NAME := current_setting('social_monitor.bootstrap_runtime_role')::NAME;
@@ -114,7 +112,6 @@ BEGIN
     OR v_role.rolbypassrls THEN
     RAISE EXCEPTION 'tenant system capability role is unsafe';
   END IF;
-
   EXECUTE format('GRANT USAGE, CREATE ON SCHEMA public TO %I', current_user);
   IF EXISTS (
     SELECT 1
@@ -161,7 +158,6 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'tenant system capability can assume protected ownership';
   END IF;
-
   EXECUTE format(
     'GRANT social_monitor_reader_summary_publication_runtime TO %I '
       'WITH ADMIN FALSE GRANTED BY CURRENT_USER',
@@ -177,7 +173,6 @@ BEGIN
       'WITH SET FALSE GRANTED BY CURRENT_USER',
     v_runtime_role
   );
-
   IF v_system_runtime_role <> v_runtime_role THEN
     EXECUTE format(
       'GRANT %I TO %I WITH ADMIN FALSE GRANTED BY CURRENT_USER',
@@ -351,14 +346,12 @@ BEGIN
   END IF;
 END
 $bootstrap$;
-
 -- PostgreSQL requires the new owner to be able to create in the containing
 -- schema during ALTER ... OWNER. The forward migration revokes this temporary
 -- bootstrap authority after every protected object has changed owner.
 REVOKE CREATE ON SCHEMA public FROM PUBLIC;
 GRANT USAGE, CREATE ON SCHEMA public
 TO social_monitor_reader_summary_publication_owner;
-
 -- Managed PostgreSQL initially makes the application login the database owner,
 -- while public is owned by the dynamic pg_database_owner role. Direct REVOKE
 -- cannot remove an owner's implicit CREATE authority. Move public to a
@@ -684,7 +677,7 @@ BEGIN
         '_prisma_migrations',
         'reader_summary_artifacts',
         'reader_summary_publications',
-        'reader_summary_publication_slots',
+        'reader_summary_publication_slots', 'reader_summary_production_recovery_authority_corrections',
         'reader_summary_production_recovery_days',
         'reader_summary_production_recovery_dry_runs',
         'reader_summary_production_recovery_leases',
@@ -711,7 +704,7 @@ BEGIN
         '_prisma_migrations',
         'reader_summary_artifacts',
         'reader_summary_publications',
-        'reader_summary_publication_slots',
+        'reader_summary_publication_slots', 'reader_summary_production_recovery_authority_corrections',
         'reader_summary_production_recovery_days',
         'reader_summary_production_recovery_dry_runs',
         'reader_summary_production_recovery_leases',
@@ -746,7 +739,7 @@ BEGIN
         '_prisma_migrations',
         'reader_summary_artifacts',
         'reader_summary_publications',
-        'reader_summary_publication_slots',
+        'reader_summary_publication_slots', 'reader_summary_production_recovery_authority_corrections',
         'reader_summary_production_recovery_days',
         'reader_summary_production_recovery_dry_runs',
         'reader_summary_production_recovery_leases',
@@ -840,24 +833,35 @@ BEGIN
   EXECUTE 'RESET ROLE';
 END
 $tenant_table_ownership_transfer$;
--- Daily terminal repair restores artifact reads without restoring job state.
-DO $daily_terminal_runtime_acl$
-DECLARE v_runtime_role NAME := current_setting('social_monitor.bootstrap_runtime_role')::NAME;
+-- Repair the split ordinary/terminal capability before every migration pass.
+DO $daily_terminal_runtime_acl$ DECLARE v_runtime_role NAME := current_setting('social_monitor.bootstrap_runtime_role')::NAME; v_system_runtime_role NAME := current_setting('social_monitor.bootstrap_system_runtime_role')::NAME; v_terminal_role CONSTANT NAME := 'social_monitor_reader_summary_daily_terminal'; v_terminal RECORD;
 BEGIN
-  IF to_regprocedure('public.claim_reader_summary_daily_terminal(uuid,uuid,uuid,text)') IS NULL THEN
-    RETURN;
-  END IF;
+  IF to_regprocedure('public.claim_reader_summary_daily_terminal(uuid,uuid,uuid,text)') IS NULL THEN RETURN; END IF;
+  SELECT * INTO v_terminal FROM pg_roles WHERE rolname = v_terminal_role;
+  IF NOT FOUND OR NOT v_terminal.rolcanlogin OR v_terminal.rolinherit OR v_terminal.rolsuper
+    OR v_terminal.rolcreatedb OR v_terminal.rolcreaterole OR v_terminal.rolreplication
+    OR v_terminal.rolbypassrls OR v_terminal.rolconfig IS DISTINCT FROM ARRAY['search_path=pg_catalog, public']::TEXT[]
+    OR (SELECT count(*) > 1 OR count(*) <> count(*) FILTER (WHERE member.rolname = current_user AND grantor.rolsuper AND membership.admin_option AND NOT membership.inherit_option AND NOT membership.set_option) FROM pg_auth_members membership JOIN pg_roles member ON member.oid = membership.member JOIN pg_roles grantor ON grantor.oid = membership.grantor WHERE membership.roleid = v_terminal.oid)
+    OR EXISTS (SELECT 1 FROM pg_auth_members membership WHERE membership.member = v_terminal.oid)
+    OR EXISTS (SELECT 1 FROM unnest(ARRAY[v_runtime_role, v_system_runtime_role]) ordinary(name) CROSS JOIN unnest(ARRAY['MEMBER', 'USAGE', 'SET']) capability(name) WHERE pg_has_role(ordinary.name, v_terminal_role, capability.name)) THEN
+    RAISE EXCEPTION 'daily terminal runtime LOGIN is missing or unsafe'; END IF;
   SET LOCAL ROLE social_monitor_reader_summary_publication_owner;
   EXECUTE format('REVOKE ALL PRIVILEGES ON TABLE public.reader_summary_artifacts FROM %I', v_runtime_role);
   REVOKE ALL PRIVILEGES ON TABLE public.reader_summary_artifacts FROM social_monitor_reader_summary_publication_runtime;
-  EXECUTE format('GRANT SELECT ON TABLE public.reader_summary_artifacts TO %I', v_runtime_role);
-  RESET ROLE;
-  SET LOCAL ROLE social_monitor_public_schema_owner;
+  REVOKE ALL PRIVILEGES ON TABLE public.reader_summary_artifacts, public.reader_summary_publications, public.reader_summary_publication_slots, public.reader_summary_weekly_publication_evidence FROM social_monitor_reader_summary_daily_terminal;
+  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.reader_summary_artifacts TO social_monitor_reader_summary_publication_runtime;
+  EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.reader_summary_artifacts TO %I', v_runtime_role);
+  GRANT SELECT ON TABLE public.reader_summary_artifacts, public.reader_summary_publications, public.reader_summary_publication_slots, public.reader_summary_weekly_publication_evidence TO social_monitor_reader_summary_daily_terminal;
+  REVOKE ALL PRIVILEGES ON FUNCTION public.reader_summary_daily_terminal_authority(UUID, UUID, DATE), public.publish_reader_summary(JSONB), public.publish_reader_summary_legacy_v1(JSONB), public.publish_reader_summary_pre_evidence(JSONB), public.record_reader_summary_weekly_publication_evidence(UUID) FROM social_monitor_reader_summary_daily_terminal;
+  REVOKE ALL PRIVILEGES ON FUNCTION public.claim_reader_summary_daily_terminal(UUID, UUID, UUID, TEXT), public.finalize_reader_summary_daily_terminal(UUID, UUID, DATE, TEXT, TEXT, TEXT, BIGINT) FROM social_monitor_reader_summary_publication_runtime, social_monitor_reader_summary_daily_terminal;
+  EXECUTE format('REVOKE ALL PRIVILEGES ON FUNCTION public.claim_reader_summary_daily_terminal(UUID,UUID,UUID,TEXT), public.finalize_reader_summary_daily_terminal(UUID,UUID,DATE,TEXT,TEXT,TEXT,BIGINT) FROM %I', v_runtime_role);
+  GRANT EXECUTE ON FUNCTION public.claim_reader_summary_daily_terminal(UUID, UUID, UUID, TEXT), public.finalize_reader_summary_daily_terminal(UUID, UUID, DATE, TEXT, TEXT, TEXT, BIGINT) TO social_monitor_reader_summary_daily_terminal;
+  RESET ROLE; SET LOCAL ROLE social_monitor_public_schema_owner;
   EXECUTE format('REVOKE ALL PRIVILEGES ON TABLE public.reader_summary_jobs FROM %I', v_runtime_role);
-  REVOKE ALL PRIVILEGES ON TABLE public.reader_summary_jobs FROM social_monitor_reader_summary_publication_runtime;
-  RESET ROLE;
-END
-$daily_terminal_runtime_acl$;
+  REVOKE ALL PRIVILEGES ON TABLE public.reader_summary_jobs FROM social_monitor_reader_summary_publication_runtime; REVOKE ALL PRIVILEGES ON TABLE public.reader_summary_jobs FROM social_monitor_reader_summary_daily_terminal;
+  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.reader_summary_jobs TO social_monitor_reader_summary_publication_runtime; EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.reader_summary_jobs TO %I', v_runtime_role);
+  GRANT USAGE ON SCHEMA public TO social_monitor_reader_summary_daily_terminal; REVOKE CREATE ON SCHEMA public FROM social_monitor_reader_summary_daily_terminal;
+  RESET ROLE; END $daily_terminal_runtime_acl$;
 -- The weekly-seal migration runs as schema owner. Repair only that reviewed
 -- intermediate state before the publication-owner audit.
 DO $weekly_certification_seal_ownership_transfer$
@@ -918,7 +922,7 @@ BEGIN
       AND relation.relname IN (
         'reader_summary_artifacts',
         'reader_summary_publications',
-        'reader_summary_publication_slots',
+        'reader_summary_publication_slots', 'reader_summary_production_recovery_authority_corrections',
         'reader_summary_production_recovery_days',
         'reader_summary_production_recovery_dry_runs',
         'reader_summary_production_recovery_leases',
@@ -950,34 +954,23 @@ BEGIN
     ) THEN
       RAISE EXCEPTION 'legacy artifact continuity grants are unsafe';
     END IF;
-  ELSIF has_table_privilege(
-    'social_monitor_reader_summary_publication_runtime',
-    'public.reader_summary_artifacts',
-    'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
-  ) OR NOT has_table_privilege(
-    v_runtime_role, 'public.reader_summary_artifacts', 'SELECT'
-  ) OR has_table_privilege(
-    v_runtime_role, 'public.reader_summary_artifacts',
-    'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
-  ) THEN
-    RAISE EXCEPTION 'daily terminal artifact authority is not exclusive';
-  END IF;
-  IF to_regprocedure('public.claim_reader_summary_daily_terminal(uuid,uuid,uuid,text)') IS NOT NULL AND EXISTS (
-    SELECT 1
-    FROM unnest(ARRAY[
-      'social_monitor_reader_summary_publication_runtime'::NAME, v_runtime_role
-    ]) AS state_role(name)
-    CROSS JOIN unnest(ARRAY[
-      'reader_summary_jobs', 'reader_summary_production_recovery_leases',
-      'reader_summary_production_recovery_days',
-      'reader_summary_production_recovery_dry_runs'
-    ]) AS state_table(name)
-    WHERE has_table_privilege(
-      state_role.name, 'public.' || state_table.name,
-      'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
-    )
-  ) THEN
-    RAISE EXCEPTION 'daily terminal runtime state authority is unsafe';
+  ELSIF EXISTS (SELECT 1
+    FROM unnest(ARRAY['social_monitor_reader_summary_publication_runtime'::NAME, v_runtime_role]) ordinary_role(name)
+    CROSS JOIN unnest(ARRAY['reader_summary_jobs', 'reader_summary_artifacts']) ordinary_table(name)
+    WHERE NOT has_table_privilege(ordinary_role.name, 'public.' || ordinary_table.name, 'SELECT,INSERT,UPDATE,DELETE') OR has_table_privilege(ordinary_role.name, 'public.' || ordinary_table.name, 'TRUNCATE,REFERENCES,TRIGGER')
+  ) THEN RAISE EXCEPTION 'daily ordinary runtime CRUD authority is unsafe';
+  ELSIF EXISTS (SELECT 1
+    FROM unnest(ARRAY['reader_summary_artifacts', 'reader_summary_publications', 'reader_summary_publication_slots', 'reader_summary_weekly_publication_evidence']) evidence_table(name)
+    WHERE NOT has_table_privilege('social_monitor_reader_summary_daily_terminal', 'public.' || evidence_table.name, 'SELECT') OR has_table_privilege('social_monitor_reader_summary_daily_terminal', 'public.' || evidence_table.name, 'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
+  ) OR EXISTS (SELECT 1
+    FROM unnest(ARRAY['reader_summary_jobs', 'reader_summary_production_recovery_leases', 'reader_summary_production_recovery_days', 'reader_summary_production_recovery_dry_runs', 'reader_summary_recovery_receipts', 'reader_summary_weekly_certification_seals']) protected_table(name)
+    WHERE has_table_privilege('social_monitor_reader_summary_daily_terminal', 'public.' || protected_table.name, 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
+  ) THEN RAISE EXCEPTION 'daily terminal evidence authority is unsafe';
+  ELSIF has_function_privilege('social_monitor_reader_summary_publication_runtime', 'public.claim_reader_summary_daily_terminal(uuid,uuid,uuid,text)', 'EXECUTE')
+    OR has_function_privilege(v_runtime_role, 'public.claim_reader_summary_daily_terminal(uuid,uuid,uuid,text)', 'EXECUTE') OR NOT has_function_privilege('social_monitor_reader_summary_daily_terminal', 'public.claim_reader_summary_daily_terminal(uuid,uuid,uuid,text)', 'EXECUTE')
+    OR NOT has_function_privilege('social_monitor_reader_summary_daily_terminal', 'public.finalize_reader_summary_daily_terminal(uuid,uuid,date,text,text,text,bigint)', 'EXECUTE') OR has_function_privilege('social_monitor_reader_summary_daily_terminal', 'public.reader_summary_daily_terminal_authority(uuid,uuid,date)', 'EXECUTE')
+    OR has_function_privilege('social_monitor_reader_summary_daily_terminal', 'public.publish_reader_summary(jsonb)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'daily terminal function authority is unsafe';
   END IF;
   IF pg_has_role(
     v_runtime_role,
@@ -999,4 +992,9 @@ BEGIN
   END IF;
 END
 $ownership_transfer_audit$;
+-- Admit protected-owner DDL only for the ordered migration window.
+SET LOCAL ROLE social_monitor_public_schema_owner;
+GRANT CREATE ON SCHEMA public
+TO social_monitor_reader_summary_publication_owner;
+RESET ROLE;
 COMMIT;
