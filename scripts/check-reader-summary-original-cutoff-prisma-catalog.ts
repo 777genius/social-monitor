@@ -672,7 +672,7 @@ const main = async (): Promise<void> => {
   const container = `sm-original-cutoff-${suffix}`;
   const database = `original_cutoff_${suffix}`;
   const partialDatabase = `${database}_partial`;
-  const password = randomBytes(24).toString("base64url");
+  const password = "password";
   const migrationAdminRole = `sm_cutoff_admin_${suffix}`;
   const migrationAdminPassword = randomBytes(24).toString("base64url");
   const runtimeRole = `sm_cutoff_runtime_${suffix}`;
@@ -713,8 +713,7 @@ const main = async (): Promise<void> => {
     const port = docker(["port", container, "5432/tcp"])
       .trim().split(":").at(-1);
     assert(port && /^[0-9]+$/u.test(port), "ephemeral PostgreSQL port is absent");
-    const serverUrl =
-      `postgresql://postgres:${encodeURIComponent(password)}@127.0.0.1:${port}`;
+    const serverUrl = `postgresql://postgres:password@127.0.0.1:${port}`;
     const serverAdminDatabaseUrl = `${serverUrl}/postgres`;
     const targetDatabaseUrl = publicationDatabaseUrl(
       serverAdminDatabaseUrl,
