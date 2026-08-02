@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 
 import {
   tenantId,
@@ -34,8 +34,10 @@ import type {
   AgentRuntimeProvider,
   AgentRuntimeTaskCommand,
 } from "../../libs/summary/ports/agent-runtime-client.port";
+import { readerSummaryWeeklySubscriptionRuntimeFailureFromResult } from "./reader-summary-weekly-execution-receipt";
 import {
   commitReaderSummaryWeeklyArtifactPair,
+  inspectReaderSummaryWeeklyArtifactPairReadOnly,
   inspectOrRecoverReaderSummaryWeeklyArtifactPair,
   readerSummaryWeeklyArtifactPairPaths,
   type ReaderSummaryWeeklyArtifactPairPaths,
@@ -47,7 +49,6 @@ import {
   type ReaderSummaryWeeklyProductionProviderEvidence,
   type ReaderSummaryWeeklyProductionStatus,
 } from "./reader-summary-weekly-production-postgres-contract";
-import { writeReaderSummaryWeeklyProductionReplayCanary } from "./reader-summary-weekly-production-replay-canary";
 
 export type ReaderSummaryWeeklyProductionRunnerResult = Readonly<{
   status: ReaderSummaryWeeklyProductionStatus;
@@ -79,6 +80,9 @@ export type ReaderSummaryWeeklyProductionRunnerParams = Readonly<{
   generatedAt: Date;
   generatedBy?: string;
   publisher?: ReaderSummaryWeeklyProductionPublisher;
+  onDurableArtifactPair?: (
+    pair: Readonly<{ artifactSha256: string; proofSha256: string }>,
+  ) => Promise<void>;
 }>;
 
 export type ReaderSummaryWeeklyAgentRuntimeModelParams = Readonly<{
@@ -192,9 +196,9 @@ export class AgentRuntimeReaderSummaryWeeklyTextModel
     const command = this.command(input);
     const result = await this.params.client.runTask(command);
     if (result.status !== "completed") {
-      throw new Error(
-        result.failure?.safeMessage ??
-          "Reader summary weekly agent-runtime task did not complete",
+      throw readerSummaryWeeklySubscriptionRuntimeFailureFromResult(
+        result.failure,
+        result.status,
       );
     }
     const outputText = result.outputText;
@@ -275,35 +279,37 @@ export const runReaderSummaryWeeklyProduction = async (
     );
   }
   const input = evidence.input;
-  const existing = inspectOrRecoverReaderSummaryWeeklyArtifactPair({
+  const existing = (params.replay
+    ? inspectReaderSummaryWeeklyArtifactPairReadOnly
+    : inspectOrRecoverReaderSummaryWeeklyArtifactPair)({
     paths,
     validate: (artifact, proof, validation) =>
       validateArtifactPair(artifact, proof, validation, input),
   });
   if (existing.status === "valid") {
+    if (params.replay) {
+      return result(
+        params,
+        "complete",
+        false,
+        false,
+        false,
+        true,
+        [],
+      );
+    }
+    await params.onDurableArtifactPair?.(existing);
     const databasePublicationVerified = await publishExistingPair(
       params.publisher,
       paths.artifactPath,
       input,
     );
-    const replayCanaryWritePerformed = params.replay
-      ? writeReaderSummaryWeeklyProductionReplayCanary({
-          outputDirectory: paths.outputDirectory,
-          replayCanaryPath: paths.replayCanaryPath,
-          generatedBy,
-          generatedAt: params.generatedAt,
-          dbState: params.dbState,
-          input,
-          artifactSha256: existing.artifactSha256,
-          proofSha256: existing.proofSha256,
-        })
-      : false;
     return result(
       params,
       "complete",
       false,
       false,
-      replayCanaryWritePerformed,
+      false,
       true,
       [],
       databasePublicationVerified,
@@ -372,6 +378,15 @@ export const runReaderSummaryWeeklyProduction = async (
     validate: (artifactValue, proofValue, validation) =>
       validateArtifactPair(artifactValue, proofValue, validation, input),
   });
+  const durablePair = inspectOrRecoverReaderSummaryWeeklyArtifactPair({
+    paths,
+    validate: (artifactValue, proofValue, validation) =>
+      validateArtifactPair(artifactValue, proofValue, validation, input),
+  });
+  if (durablePair.status !== "valid") {
+    throw new Error("Reader summary weekly durable artifact pair is missing");
+  }
+  await params.onDurableArtifactPair?.(durablePair);
   const databasePublicationVerified = await publishArtifact(
     params.publisher,
     artifact,
@@ -801,10 +816,7 @@ const result = (
     weekEndedOn: params.dbState.window.weekEndedOn,
     artifactPath: status === "complete" ? paths.artifactPath : null,
     proofPath: status === "complete" ? paths.proofPath : null,
-    replayCanaryPath:
-      status === "complete" && existsSync(paths.replayCanaryPath)
-        ? paths.replayCanaryPath
-        : null,
+    replayCanaryPath: null,
     modelCallPerformed,
     writePerformed,
     replayCanaryWritePerformed,

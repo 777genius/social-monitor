@@ -66,7 +66,7 @@ grep -Fx -- "$recovery_command" \
 ! grep -F 'source-env=set' "$COMPOSE_LOG" >/dev/null
 ! grep -F 'READER_SUMMARY_PRODUCTION_RECOVERY_SOURCE_DATABASE_URL' \
   "$COMPOSE_LOG" >/dev/null
-grep -Fx -- '--profile daily run --rm --no-deps -e READER_SUMMARY_WEEKLY_PRODUCTION_TENANT_ID=00000000-0000-7000-8000-000000000901 -e READER_SUMMARY_WEEKLY_PRODUCTION_WORKSPACE_ID=00000000-0000-7000-8000-000000000902 -e READER_SUMMARY_WEEKLY_PRODUCTION_ARTIFACT_DIR=/var/lib/social-monitor/artifacts/reader-summary-weekly-production daily-runner sh -lc set -eu; npm run backfill:reader-summary-weekly-daily-certifications; npm run run:reader-summary-weekly-production; npm run run:reader-summary-weekly-production -- --replay' \
+grep -Fx -- '--profile daily run --rm --no-deps -e READER_SUMMARY_WEEKLY_PRODUCTION_TENANT_ID=00000000-0000-7000-8000-000000000901 -e READER_SUMMARY_WEEKLY_PRODUCTION_WORKSPACE_ID=00000000-0000-7000-8000-000000000902 -e READER_SUMMARY_WEEKLY_PRODUCTION_FIRST_WEEK_START=2026-07-20 -e READER_SUMMARY_WEEKLY_PRODUCTION_CATCH_UP_LIMIT=4 -e READER_SUMMARY_WEEKLY_PRODUCTION_ARTIFACT_DIR=/var/lib/social-monitor/artifacts/reader-summary-weekly-production daily-runner sh -lc set -eu; npm run backfill:reader-summary-weekly-daily-certifications; npm run run:reader-summary-weekly-production; npm run run:reader-summary-weekly-production -- --replay' \
   "$COMPOSE_LOG" >/dev/null
 ! grep -F 'postgresql://' "$COMPOSE_LOG" >/dev/null
 ! grep -F 'pg_restore' "$DOCKER_LOG" "$COMPOSE_LOG" >/dev/null

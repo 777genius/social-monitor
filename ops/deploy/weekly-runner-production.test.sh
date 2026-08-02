@@ -13,6 +13,10 @@ package_json=$REPO/package.json
 production_workflow=$REPO/.github/workflows/production-deploy.yml
 weekly_seal_migration=$REPO/prisma/migrations/20260731120000_reader_summary_weekly_certification_seal/migration.sql
 weekly_seal_contract=$REPO/scripts/lib/reader-summary-weekly-certification-seal-postgres-contract.ts
+weekly_receipt=$REPO/scripts/lib/reader-summary-weekly-execution-receipt.ts
+weekly_scheduler=$REPO/scripts/lib/reader-summary-weekly-production-scheduler.ts
+weekly_schedule=$REPO/scripts/lib/reader-summary-weekly-schedule-postgres.ts
+weekly_runner=$REPO/scripts/run-reader-summary-weekly-production.ts
 publication_pre_migration=$REPO/ops/deploy/reader-summary-publication-pre-migration.sql
 
 [[ -f $service ]]
@@ -43,9 +47,13 @@ grep -F 'check:reader-summary-weekly-production-postgres' \
   "$package_json" >/dev/null
 grep -F 'check:reader-summary-weekly-production-runner' "$package_json" \
   >/dev/null
+grep -F 'check:reader-summary-weekly-execution-receipt-postgres18' \
+  "$package_json" >/dev/null
 grep -F 'check:reader-summary-weekly-certification-seal-postgres' \
   "$package_json" >/dev/null
 grep -F 'npm run check:reader-summary-weekly-production-runner' \
+  "$production_workflow" >/dev/null
+grep -F 'npm run check:reader-summary-weekly-execution-receipt-postgres18' \
   "$production_workflow" >/dev/null
 grep -F 'npm run check:reader-summary-weekly-certification-seal-postgres' \
   "$production_workflow" >/dev/null
@@ -129,6 +137,36 @@ awk '
 ! grep -Eq '(GRANT|REVOKE).+reader_summary_weekly_certification_seals' \
   "$weekly_seal_contract"
 
+grep -F 'FOR UPDATE OF job' "$weekly_receipt" >/dev/null
+grep -F 'ON CONFLICT (tenant_id, idempotency_key) DO NOTHING' \
+  "$weekly_receipt" >/dev/null
+grep -F 'claimReaderSummaryWeeklyExecutionReceiptPair' "$weekly_receipt" >/dev/null
+grep -F 'releaseReaderSummaryWeeklyExecutionReceiptPair' "$weekly_receipt" >/dev/null
+! grep -Eq '\bLOCK[[:space:]]+TABLE\b' "$weekly_receipt"
+grep -F 'planReaderSummaryWeeklyCatchUp' "$weekly_scheduler" >/dev/null
+grep -F 'decideReaderSummaryWeeklyRetry' "$weekly_scheduler" >/dev/null
+grep -F 'terminalDiagnostics' "$weekly_scheduler" >/dev/null
+grep -F '$5::timestamptz' "$weekly_schedule" >/dev/null
+! grep -F '$5::date' "$weekly_schedule" >/dev/null
+grep -F 'onDurableArtifactPair' "$weekly_runner" >/dev/null
+grep -F 'ReaderSummaryWeeklySubscriptionRuntimeFailureError' "$weekly_runner" \
+  >/dev/null
+receipt_line=$(grep -n -m1 'acquireReaderSummaryWeeklyExecutionReceipt(client' \
+  "$weekly_runner" | cut -d: -f1)
+model_line=$(grep -n 'runReaderSummaryWeeklyProduction({' \
+  "$weekly_runner" | tail -n1 | cut -d: -f1)
+[[ $receipt_line =~ ^[0-9]+$ && $model_line =~ ^[0-9]+$ ]]
+(( receipt_line < model_line ))
+replay_branch_line=$(grep -n -m1 'if (options.replay)' \
+  "$weekly_runner" | cut -d: -f1)
+runtime_connect_line=$(grep -n -m1 'GrpcAgentRuntimeClient.connect' \
+  "$weekly_runner" | cut -d: -f1)
+[[ $replay_branch_line =~ ^[0-9]+$ && $runtime_connect_line =~ ^[0-9]+$ ]]
+(( replay_branch_line < runtime_connect_line ))
+grep -F 'model: "gpt-5.6-sol"' "$weekly_runner" >/dev/null
+grep -F 'reasoningEffort: "xhigh"' "$weekly_runner" >/dev/null
+! grep -Eq '(OPENAI|CODEX)_API_KEY' "$weekly_runner"
+
 grep -F 'DAILY_SINGLETON_LOCK' "$maintenance_lib" >/dev/null
 grep -F 'POSTGRES_ADMISSION_LOCK' "$maintenance_lib" >/dev/null
 grep -F 'npm run run:reader-summary-weekly-production' \
@@ -140,6 +178,10 @@ grep -F 'npm run backfill:reader-summary-weekly-daily-certifications' \
 grep -F -- '-e READER_SUMMARY_WEEKLY_PRODUCTION_TENANT_ID=00000000-0000-7000-8000-000000000901' \
   "$maintenance_lib" >/dev/null
 grep -F -- '-e READER_SUMMARY_WEEKLY_PRODUCTION_WORKSPACE_ID=00000000-0000-7000-8000-000000000902' \
+  "$maintenance_lib" >/dev/null
+grep -F -- '-e READER_SUMMARY_WEEKLY_PRODUCTION_FIRST_WEEK_START=2026-07-20' \
+  "$maintenance_lib" >/dev/null
+grep -F -- '-e READER_SUMMARY_WEEKLY_PRODUCTION_CATCH_UP_LIMIT=4' \
   "$maintenance_lib" >/dev/null
 grep -F 'READER_SUMMARY_WEEKLY_PRODUCTION_ARTIFACT_DIR=' \
   "$maintenance_lib" >/dev/null

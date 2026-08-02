@@ -29,6 +29,7 @@ import {
   buildModelInputFromDbState,
   runReaderSummaryWeeklyProduction,
 } from "./reader-summary-weekly-production-runner";
+import { ReaderSummaryWeeklySubscriptionRuntimeFailureError } from "./reader-summary-weekly-execution-receipt";
 import {
   resolveReaderSummaryWeeklyProductionWindow,
   type ReaderSummaryWeeklyProductionCertification,
@@ -121,6 +122,41 @@ describe("agent-runtime reader summary weekly text model", () => {
       new AgentRuntimeReaderSummaryWeeklyTextModel({ client }).generate(input),
     ).rejects.toThrow(/returned no text/u);
   });
+
+  it.each([
+    ["transient", true, "backend_unavailable", "runtime_backend"],
+    ["terminal", false, "permission_required", "subscription_auth"],
+  ])(
+    "preserves typed %s subscription-runtime failure metadata",
+    async (_label, retryable, code, causeCategory) => {
+      const client = new FakeAgentRuntimeClient({
+        status: "failed",
+        warnings: [],
+        failure: {
+          code,
+          safeMessage: "safe runtime failure",
+          retryable,
+          reconnectRequired: false,
+          causeCategory,
+          details: {},
+        },
+      });
+      let thrown: unknown;
+      try {
+        await new AgentRuntimeReaderSummaryWeeklyTextModel({ client }).generate(
+          completeModelInput(),
+        );
+      } catch (error: unknown) {
+        thrown = error;
+      }
+      expect(thrown).toBeInstanceOf(
+        ReaderSummaryWeeklySubscriptionRuntimeFailureError,
+      );
+      expect(
+        (thrown as ReaderSummaryWeeklySubscriptionRuntimeFailureError).failure,
+      ).toMatchObject({ retryable, code, causeCategory });
+    },
+  );
 });
 
 describe("reader summary weekly production runner", () => {
@@ -212,12 +248,14 @@ describe("reader summary weekly production runner", () => {
     const outputDirectory = tempDir();
     const firstModel = new FakeWeeklyModel((input) => outputFor(input));
     let firstPublisherCalls = 0;
+    const durablePairs: { artifactSha256: string; proofSha256: string }[] = [];
     await expect(runReaderSummaryWeeklyProduction({
       dbState: completeDbState(),
       outputDirectory,
       model: firstModel,
       replay: false,
       generatedAt: new Date("2026-07-27T06:30:00.000Z"),
+      onDurableArtifactPair: async (pair) => { durablePairs.push(pair); },
       publisher: {
         publish: async () => {
           firstPublisherCalls += 1;
@@ -238,6 +276,7 @@ describe("reader summary weekly production runner", () => {
       model: retryModel,
       replay: false,
       generatedAt: new Date("2026-07-27T07:00:00.000Z"),
+      onDurableArtifactPair: async (pair) => { durablePairs.push(pair); },
       publisher: {
         publish: async ({ artifact, modelInput }) => {
           retryPublisherCalls += 1;
@@ -252,9 +291,11 @@ describe("reader summary weekly production runner", () => {
     expect(retried.writePerformed).toBe(false);
     expect(retryModel.calls).toBe(0);
     expect(retryPublisherCalls).toBe(1);
+    expect(durablePairs).toHaveLength(2);
+    expect(durablePairs[1]).toEqual(durablePairs[0]);
   });
 
-  it("replays existing evidence into one immutable canary without model calls", async () => {
+  it("replays existing evidence with zero calls and zero writes", async () => {
     const outputDirectory = tempDir();
     await runReaderSummaryWeeklyProduction({
       dbState: completeDbState(),
@@ -271,13 +312,10 @@ describe("reader summary weekly production runner", () => {
       outputDirectory,
       "reader-summary-weekly-production.2026-07-20.proof.v1.json",
     );
-    const replayCanaryPath = join(
-      outputDirectory,
-      "reader-summary-weekly-production.2026-07-20.replay-canary.v1.json",
-    );
     const artifactMtime = statSync(artifactPath).mtimeMs;
     const proofMtime = statSync(proofPath).mtimeMs;
     const replayModel = new FakeWeeklyModel((input) => outputFor(input));
+    const replayPublisher = fakePublisher();
 
     const result = await runReaderSummaryWeeklyProduction({
       dbState: completeDbState(),
@@ -285,39 +323,19 @@ describe("reader summary weekly production runner", () => {
       model: replayModel,
       replay: true,
       generatedAt: new Date("2026-07-27T07:00:00.000Z"),
+      publisher: replayPublisher,
     });
 
     expect(result.status).toBe("complete");
     expect(result.replayed).toBe(true);
     expect(result.modelCallPerformed).toBe(false);
     expect(result.writePerformed).toBe(false);
-    expect(result.replayCanaryWritePerformed).toBe(true);
-    expect(result.replayCanaryPath).toBe(replayCanaryPath);
+    expect(result.replayCanaryWritePerformed).toBe(false);
+    expect(result.replayCanaryPath).toBeNull();
     expect(replayModel.calls).toBe(0);
+    expect(replayPublisher.publish).not.toHaveBeenCalled();
     expect(statSync(artifactPath).mtimeMs).toBe(artifactMtime);
     expect(statSync(proofPath).mtimeMs).toBe(proofMtime);
-    expect(statSync(replayCanaryPath).mode & 0o777).toBe(0o444);
-    const replayCanary = JSON.parse(readFileSync(replayCanaryPath, "utf8"));
-    expect(replayCanary).toMatchObject({
-      schemaVersion: "reader_summary.weekly_production_replay_canary.v1",
-      status: "passed",
-      weekStartedOn: "2026-07-20",
-      weekEndedOn: "2026-07-26",
-      zeroModelCalls: true,
-      zeroProviderCalls: true,
-      zeroArtifactWrites: true,
-    });
-    expect(replayCanary.artifactSha256).toBe(
-      canonicalizeReaderSummaryWeeklyJson(
-        JSON.parse(readFileSync(artifactPath, "utf8")),
-      ).sha256,
-    );
-    expect(replayCanary.proofSha256).toBe(
-      canonicalizeReaderSummaryWeeklyJson(
-        JSON.parse(readFileSync(proofPath, "utf8")),
-      ).sha256,
-    );
-    const replayCanaryMtime = statSync(replayCanaryPath).mtimeMs;
 
     const secondReplay = await runReaderSummaryWeeklyProduction({
       dbState: completeDbState(),
@@ -325,12 +343,14 @@ describe("reader summary weekly production runner", () => {
       model: replayModel,
       replay: true,
       generatedAt: new Date("2026-07-27T08:00:00.000Z"),
+      publisher: replayPublisher,
     });
 
     expect(secondReplay.status).toBe("complete");
     expect(secondReplay.replayCanaryWritePerformed).toBe(false);
-    expect(statSync(replayCanaryPath).mtimeMs).toBe(replayCanaryMtime);
+    expect(secondReplay.replayCanaryPath).toBeNull();
     expect(replayModel.calls).toBe(0);
+    expect(replayPublisher.publish).not.toHaveBeenCalled();
   });
 
   it("does not call the model or write when replay is missing artifacts", async () => {
@@ -456,6 +476,63 @@ describe("reader summary weekly production runner", () => {
       proofPath,
       canonicalizeReaderSummaryWeeklyJson(proof).toBytes(),
     );
+    const replayModel = new FakeWeeklyModel((input) => outputFor(input));
+
+    await expect(
+      runReaderSummaryWeeklyProduction({
+        dbState: completeDbState(),
+        outputDirectory,
+        model: replayModel,
+        replay: true,
+        generatedAt: new Date("2026-07-27T07:00:00.000Z"),
+      }),
+    ).rejects.toThrow(/does not match DB input/u);
+    expect(replayModel.calls).toBe(0);
+  });
+
+  it("rejects a valid-hash pair whose deterministic quality gate does not allow publication", async () => {
+    const outputDirectory = tempDir();
+    await runReaderSummaryWeeklyProduction({
+      dbState: completeDbState(),
+      outputDirectory,
+      model: new FakeWeeklyModel((input) => outputFor(input)),
+      replay: false,
+      generatedAt: new Date("2026-07-27T06:30:00.000Z"),
+    });
+    const artifactPath = join(
+      outputDirectory,
+      "reader-summary-weekly-production.2026-07-20.artifact.v1.json",
+    );
+    const proofPath = join(
+      outputDirectory,
+      "reader-summary-weekly-production.2026-07-20.proof.v1.json",
+    );
+    const artifact = JSON.parse(readFileSync(artifactPath, "utf8")) as {
+      qualityGate: { decision: string };
+      canary: { qualityGateSha256: string };
+    };
+    const proof = JSON.parse(readFileSync(proofPath, "utf8")) as {
+      qualityGateSha256: string;
+      canarySha256: string;
+      artifactSha256: string;
+    };
+    artifact.qualityGate.decision = "deny";
+    const qualityGateSha256 = canonicalizeReaderSummaryWeeklyJson(
+      artifact.qualityGate,
+    ).sha256;
+    artifact.canary.qualityGateSha256 = qualityGateSha256;
+    proof.qualityGateSha256 = qualityGateSha256;
+    proof.canarySha256 = canonicalizeReaderSummaryWeeklyJson(
+      artifact.canary,
+    ).sha256;
+    proof.artifactSha256 = canonicalizeReaderSummaryWeeklyJson(artifact).sha256;
+    chmodSync(artifactPath, 0o644);
+    chmodSync(proofPath, 0o644);
+    writeFileSync(
+      artifactPath,
+      canonicalizeReaderSummaryWeeklyJson(artifact).toBytes(),
+    );
+    writeFileSync(proofPath, canonicalizeReaderSummaryWeeklyJson(proof).toBytes());
     const replayModel = new FakeWeeklyModel((input) => outputFor(input));
 
     await expect(
