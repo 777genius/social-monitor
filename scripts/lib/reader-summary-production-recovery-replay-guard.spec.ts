@@ -4,20 +4,32 @@ import { stablePublicationJson } from "@social-monitor/summary/adapters/persiste
 
 import { productionRecoveryBinding } from "../../libs/summary/adapters/persistence/prisma/prisma-reader-summary-production-recovery-authority.spec-support";
 import {
+  buildReaderSummaryProductionRecoveryGapModelClaim,
   buildReaderSummaryProductionRecoveryModelClaim,
 } from "./reader-summary-production-recovery-claim-verifier";
 import {
   readerSummaryProductionRecoveryClaimExpectation,
+  readerSummaryProductionRecoveryGapClaimExpectation,
   readerSummaryProductionRecoveryHistoricClaimExpectation,
 } from "./reader-summary-production-recovery-cli";
-import { recoveryProvenanceForDay } from "./reader-summary-production-recovery-data";
+import {
+  recoveryGapProvenanceForDay,
+  recoveryProvenanceForDay,
+} from "./reader-summary-production-recovery-data";
+import type { ReaderSummaryProductionRecoveryGapAuthorityBinding } from "./reader-summary-production-recovery-gap-authority";
+import {
+  readerSummaryProductionRecoveryGenerationProfile,
+  readerSummaryProductionRecoveryModelContract,
+} from "./reader-summary-production-recovery-model-contract";
 import {
   PrismaReaderSummaryProductionRecoveryExecutionGuard,
+  PrismaReaderSummaryProductionRecoveryGapExecutionGuard,
 } from "./reader-summary-production-recovery-replay-guard";
 
+const actualDmlPattern = /^(?:\s*)(?:INSERT|UPDATE|DELETE)\b|\bINSERT\s+INTO\b|\bUPDATE\s+(?:"[^"]+"|[a-z_]\w*)(?:\s*\.\s*(?:"[^"]+"|[a-z_]\w*))?\s+SET\b|\bDELETE\s+FROM\b/iu;
 const requestedUtcDate = "2026-07-24" as const;
 const generationProfile = {
-  modelVersion: "codex:gpt-5.5:xhigh",
+  modelVersion: "codex:gpt-5.6-sol:xhigh",
   promptVersion: "reader_summary.prompt.2026-07-14.daily_synthesis",
   rankingPolicyVersion: "story_ranking_v10",
 } as const;
@@ -222,7 +234,49 @@ describe("PrismaReaderSummaryProductionRecoveryExecutionGuard", () => {
   });
 });
 
+describe("PrismaReaderSummaryProductionRecoveryGapExecutionGuard", () => {
+  it("durably claims one eligible day and rejects a second unresolved day", async () => {
+    const fresh = gapGuardFixture([
+      [],
+      [],
+      [{ claimed: true, jobClaimed: true }],
+    ]);
+    await expect(claimGap(fresh.guard)).resolves.toBe("execute");
+    expect(fresh.queries).toHaveLength(3);
+    expect(fresh.queries[1]).toContain('LEFT JOIN "reader_summary_jobs"');
+    expect(fresh.queries[1]).toContain("AND NOT COALESCE((");
+    expect(fresh.queries[1]).toContain("FOR UPDATE OF claim");
+    expect(fresh.queries[2]).toContain('INSERT INTO "idempotency_keys"');
+    expect(fresh.queries[2]).toContain('INSERT INTO "reader_summary_jobs"');
+
+    const unresolved = gapGuardFixture([[], [{ id: "claim-1" }]]);
+    await expect(claimGap(unresolved.guard)).rejects.toThrow(
+      "at most one unresolved day per run",
+    );
+    expect(unresolved.queries).toHaveLength(2);
+    expect(unresolved.queries.every((query) => !query.includes("INSERT"))).toBe(
+      true,
+    );
+  });
+
+  it("returns rejected and published terminal claims with zero writes", async () => {
+    const rejected = gapGuardFixture([[gapClaimRow("REJECTED")]]);
+    await expect(claimGap(rejected.guard)).resolves.toMatchObject({
+      reason: "pre_publish_quality_gate",
+      terminalStatus: "REJECTED",
+    });
+    expect(rejected.queries).toHaveLength(1);
+    expect(rejected.queries[0]).not.toMatch(actualDmlPattern);
+
+    const replayed = gapGuardFixture([[gapFinalizedClaimRow()]]);
+    await expect(claimGap(replayed.guard)).resolves.toBe("replayed");
+    expect(replayed.queries).toHaveLength(1);
+    expect(replayed.queries[0]).not.toMatch(actualDmlPattern);
+  });
+});
+
 type Guard = PrismaReaderSummaryProductionRecoveryExecutionGuard;
+type GapGuard = PrismaReaderSummaryProductionRecoveryGapExecutionGuard;
 
 const claim = (guard: Guard) =>
   guard.claim({
@@ -282,6 +336,182 @@ const guardFixture = (
     ),
     queries,
     values,
+  };
+};
+
+const gapGuardFixture = (
+  responses: readonly (readonly unknown[])[],
+): Readonly<{ guard: GapGuard; queries: string[]; values: unknown[][] }> => {
+  const queries: string[] = [];
+  const values: unknown[][] = [];
+  let invocation = 0;
+  const client = {
+    $queryRaw: async <T>(
+      strings: TemplateStringsArray,
+      ...queryValues: unknown[]
+    ): Promise<T> => {
+      queries.push(strings.join("?").replace(/\s+/gu, " "));
+      values.push(queryValues);
+      const response = responses[invocation++];
+      if (response === undefined) {
+        throw new Error(`Unexpected SQL invocation ${invocation}`);
+      }
+      return response as T;
+    },
+    $transaction: async <T>(
+      operation: (transaction: unknown) => Promise<T>,
+    ): Promise<T> => operation(client),
+  };
+  return {
+    guard: new PrismaReaderSummaryProductionRecoveryGapExecutionGuard(
+      client as never,
+    ),
+    queries,
+    values,
+  };
+};
+
+const claimGap = (guard: GapGuard) =>
+  guard.claim({
+    binding: gapBinding(),
+    requestedUtcDate: "2026-07-29",
+    generationProfile: readerSummaryProductionRecoveryGenerationProfile,
+    modelContract: readerSummaryProductionRecoveryModelContract,
+  });
+
+const gapExpected = () =>
+  readerSummaryProductionRecoveryGapClaimExpectation({
+    binding: gapBinding(),
+    requestedUtcDate: "2026-07-29",
+    generationProfile: readerSummaryProductionRecoveryGenerationProfile,
+    modelContract: readerSummaryProductionRecoveryModelContract,
+  });
+
+const gapBinding = (): ReaderSummaryProductionRecoveryGapAuthorityBinding =>
+  ({
+    schemaVersion: "reader_summary.production_recovery_gap_authority.v3",
+    recoveryId: "00000000-0000-7000-8000-000000000990",
+    identity: "reader_summary.production_recovery_gap_authority.v3:fixture",
+    tenantId: "00000000-0000-7000-8000-000000000901",
+    workspaceId: "00000000-0000-7000-8000-000000000902",
+    requestedUtcDates: ["2026-07-29", "2026-07-30", "2026-07-31"],
+    canonicalSha256: "a".repeat(64),
+    dryRunCanonicalSha256s: ["a".repeat(64), "a".repeat(64)],
+    lease: {
+      state: "CONSUMED",
+      issuedAt: "2026-08-01T21:30:00.000Z",
+      consumedAt: "2026-08-01T21:30:00.000Z",
+    },
+    boundaries: {
+      stage: "pre_model",
+      modelCallPerformed: false,
+      publicationPerformed: false,
+      recollectionPerformed: false,
+      providerWritePerformed: false,
+    },
+    modelContract: readerSummaryProductionRecoveryModelContract,
+    days: [{
+      requestedUtcDate: "2026-07-29",
+      period: {
+        startedAt: "2026-07-29T00:00:00.000Z",
+        endedAt: "2026-07-30T00:00:00.000Z",
+        timezone: "UTC",
+      },
+      canonicalSha256: "b".repeat(64),
+      planSha256s: ["b".repeat(64), "b".repeat(64)],
+      providerEvidenceSha256: "c".repeat(64),
+      modelEligibility: {
+        eligible: true,
+        reasons: [],
+        evaluatedAgainst: "immutable_db_evidence",
+      },
+      modelContract: readerSummaryProductionRecoveryModelContract,
+    }],
+  }) as unknown as ReaderSummaryProductionRecoveryGapAuthorityBinding;
+
+const gapClaimRow = (status: "REJECTED" | "COMPLETED") => {
+  const expectation = gapExpected();
+  const rejected = status === "REJECTED";
+  const timestamp = new Date("2026-08-01T22:00:00.000Z");
+  return {
+    claimScope: "reader-summary-production-recovery-model-v3",
+    requestHash: expectation.planCanonicalSha256,
+    responseStatus: 102,
+    responsePayload:
+      buildReaderSummaryProductionRecoveryGapModelClaim(expectation),
+    jobId: expectation.readerSummaryJobId,
+    jobScopeType: "workspace",
+    jobScopeKey: "workspace",
+    jobInterestId: null,
+    jobCadence: "daily",
+    jobPeriodStartedAt: new Date("2026-07-29T00:00:00.000Z"),
+    jobPeriodEndedAt: new Date("2026-07-30T00:00:00.000Z"),
+    jobPeriodTimezone: "UTC",
+    jobPeriodKey:
+      "daily:2026-07-29T00:00:00.000Z:2026-07-30T00:00:00.000Z:UTC",
+    jobUserId: null,
+    jobSubscriptionId: null,
+    jobStatus: status,
+    jobIdempotencyKey: expectation.recoveryIdentity,
+    jobStartedAt: timestamp,
+    jobCompletedAt: rejected ? null : timestamp,
+    jobFailedAt: rejected ? timestamp : null,
+    jobReaderSummaryArtifactId: expectation.readerSummaryArtifactId,
+    jobFailureReason: rejected ? "pre-publish quality gate" : null,
+    artifactId: expectation.readerSummaryArtifactId,
+    artifactStatus: rejected ? "REJECTED" : "READY",
+    receiptTenantId: null,
+    receiptWorkspaceId: null,
+    receiptPublicationId: null,
+    receiptJobId: null,
+    receiptArtifactId: null,
+    receiptRecoveryKind: null,
+    receiptProvenance: null,
+    receiptProvenanceSha256: null,
+    receiptExact: null,
+    receiptSha256: null,
+    receiptRecordedAt: null,
+    publicationReportSha256: null,
+    publicationProofSha256: null,
+    publicationPublishedAt: null,
+  };
+};
+
+const gapFinalizedClaimRow = () => {
+  const expectation = gapExpected();
+  const provenance = recoveryGapProvenanceForDay(gapBinding(), "2026-07-29");
+  const recordedAt = new Date("2026-08-01T22:00:00.000Z");
+  const provenanceSha256 = sha256(stablePublicationJson(provenance));
+  const receiptExact = {
+    schemaVersion: "reader_summary.recovery_receipt.v1",
+    recoveryKind: "SUMMARY_ONLY",
+    tenantId: expectation.tenantId,
+    workspaceId: expectation.workspaceId,
+    publicationId: expectation.readerSummaryArtifactId,
+    readerSummaryJobId: expectation.readerSummaryJobId,
+    readerSummaryArtifactId: expectation.readerSummaryArtifactId,
+    reportSha256: "d".repeat(64),
+    proofSha256: "e".repeat(64),
+    recordedAt: recordedAt.toISOString(),
+    provenance,
+    provenanceSha256,
+  };
+  return {
+    ...gapClaimRow("COMPLETED"),
+    receiptTenantId: expectation.tenantId,
+    receiptWorkspaceId: expectation.workspaceId,
+    receiptPublicationId: expectation.readerSummaryArtifactId,
+    receiptJobId: expectation.readerSummaryJobId,
+    receiptArtifactId: expectation.readerSummaryArtifactId,
+    receiptRecoveryKind: "SUMMARY_ONLY",
+    receiptProvenance: provenance,
+    receiptProvenanceSha256: provenanceSha256,
+    receiptExact,
+    receiptSha256: sha256(stablePublicationJson(receiptExact)),
+    receiptRecordedAt: recordedAt,
+    publicationReportSha256: "d".repeat(64),
+    publicationProofSha256: "e".repeat(64),
+    publicationPublishedAt: recordedAt,
   };
 };
 

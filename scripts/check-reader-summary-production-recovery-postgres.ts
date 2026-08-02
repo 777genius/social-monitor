@@ -22,6 +22,11 @@ import {
   readerSummaryProductionRecoveryFixtureScope,
   seedReaderSummaryProductionRecoveryFixture,
 } from "./lib/reader-summary-production-recovery-postgres-contract";
+import {
+  assertReaderSummaryProductionRecoveryGapPostgresContract,
+  removeOriginalCutoffGapFixtureCollision,
+  seedReaderSummaryProductionRecoveryGapFixture,
+} from "./lib/reader-summary-production-recovery-gap-postgres-contract";
 
 type RecoveryPoolClient = RecoveryPostgresClient &
   Readonly<{ release(): void }>;
@@ -276,6 +281,13 @@ const main = async (): Promise<void> => {
           "concurrency gate must use independent PostgreSQL connections",
         );
         await assertReaderSummaryProductionRecoveryPostgresContract({
+          auditor,
+          first,
+          second,
+        });
+        await removeOriginalCutoffGapFixtureCollision(auditor);
+        await seedReaderSummaryProductionRecoveryGapFixture(auditor);
+        await assertReaderSummaryProductionRecoveryGapPostgresContract({
           auditor,
           first,
           second,

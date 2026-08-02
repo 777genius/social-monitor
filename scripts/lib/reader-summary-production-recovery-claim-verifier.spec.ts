@@ -9,16 +9,19 @@ import {
 } from "./reader-summary-production-recovery-cli";
 import {
   buildReaderSummaryProductionRecoveryModelClaim,
+  buildReaderSummaryProductionRecoveryGapModelClaim,
   buildReaderSummaryProductionRecoveryRejectionEvidence,
   verifyReaderSummaryProductionRecoveryClaim,
+  verifyReaderSummaryProductionRecoveryGapClaim,
   verifyReaderSummaryProductionRecoveryFinalReceipt,
   verifyReaderSummaryProductionRecoveryRejectionEvidence,
   type ReaderSummaryProductionRecoveryFinalReceiptRow,
 } from "./reader-summary-production-recovery-claim-verifier";
+import { readerSummaryProductionRecoveryModelContract } from "./reader-summary-production-recovery-model-contract";
 import { recoveryProvenanceForDay } from "./reader-summary-production-recovery-data";
 
 const generationProfile = {
-  modelVersion: "codex:gpt-5.5:xhigh",
+  modelVersion: "codex:gpt-5.6-sol:xhigh",
   promptVersion: "reader_summary.prompt.2026-07-14.daily_synthesis",
   rankingPolicyVersion: "story_ranking_v10",
 } as const;
@@ -101,6 +104,41 @@ describe("reader summary production recovery claim verifier", () => {
         params,
       ),
     ).toThrow("rejection evidence is not exact");
+  });
+
+  it("binds eligible gap claims to the exact model contract", () => {
+    const expected = {
+      ...expectation(),
+      modelEligibility: {
+        eligible: true,
+        reasons: [],
+        evaluatedAgainst: "immutable_db_evidence" as const,
+      },
+      modelContract: readerSummaryProductionRecoveryModelContract,
+    };
+    const claim = buildReaderSummaryProductionRecoveryGapModelClaim(expected);
+    expect(
+      verifyReaderSummaryProductionRecoveryGapClaim(claim, expected),
+    ).toMatchObject({ historic: false, generationProfile });
+    expect(() =>
+      buildReaderSummaryProductionRecoveryGapModelClaim({
+        ...expected,
+        generationProfile: {
+          ...generationProfile,
+          modelVersion: "codex:gpt-5.5:xhigh",
+        },
+      }),
+    ).toThrow("gap claim is not model eligible");
+    expect(() =>
+      buildReaderSummaryProductionRecoveryGapModelClaim({
+        ...expected,
+        modelEligibility: {
+          ...expected.modelEligibility,
+          eligible: false,
+          reasons: ["provider_reddit_missing"],
+        },
+      }),
+    ).toThrow("gap claim is not model eligible");
   });
 
   it("carries and compares the exact full superseded predecessor through final receipt verification", () => {

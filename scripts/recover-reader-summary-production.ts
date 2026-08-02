@@ -4,6 +4,7 @@ import type {
   ListFeedItemsResult,
 } from "@social-monitor/feed/ports";
 import type {
+  AgentRuntimeClientPort,
   ReaderSummaryGitHubProjectionReaderPort,
   ReaderSummaryProductionRecoveryAuthorityBinding,
   ReadReaderSummaryGitHubProjectionQuery,
@@ -15,9 +16,15 @@ import {
 } from "../libs/summary/adapters/persistence/prisma/prisma-reader-summary-production-recovery-authority-row";
 
 import {
+  isReaderSummaryProductionRecoveryGapDate,
   parseReaderSummaryProductionRecoveryCliArguments,
   type ReaderSummaryProductionRecoveryDate,
+  type ReaderSummaryProductionRecoveryDayExecutor,
 } from "./lib/reader-summary-production-recovery-cli";
+import type {
+  ReaderSummaryProductionRecoveryGapAuthorityBinding,
+  ReaderSummaryProductionRecoveryGapDate,
+} from "./lib/reader-summary-production-recovery-gap-authority";
 
 type QueryClient = Readonly<{
   $queryRaw<T = unknown>(
@@ -25,6 +32,26 @@ type QueryClient = Readonly<{
     ...values: readonly unknown[]
   ): Promise<T>;
 }>;
+
+export const limitRecoveryAgentRuntimeToOneCall = (
+  client: AgentRuntimeClientPort,
+  enabled = true,
+): AgentRuntimeClientPort => {
+  if (!enabled) return client;
+  let called = false;
+  return {
+    runTask: async (command) => {
+      if (called) {
+        throw new Error(
+          "Reader summary production recovery gap permits one model call per date",
+        );
+      }
+      called = true;
+      return client.runTask(command);
+    },
+    checkHealth: client.checkHealth.bind(client),
+  };
+};
 
 type PersistedAuthorityProofRow = Readonly<{
   authorityCount: number;
@@ -343,7 +370,8 @@ export const loadPersistedReaderSummaryProductionRecoveryAuthority =
   };
 
 export const createPersistedRecoveryGitHubProjectionReader = (
-  binding: ReaderSummaryProductionRecoveryAuthorityBinding,
+  binding: ReaderSummaryProductionRecoveryAuthorityBinding |
+    ReaderSummaryProductionRecoveryGapAuthorityBinding,
 ): ReaderSummaryGitHubProjectionReaderPort => {
   const days = new Map<
     string,
@@ -411,9 +439,6 @@ async function main(): Promise<void> {
   const { loadDotenvIfPresent } = await import("./lib/env-file");
   loadDotenvIfPresent(".env");
   const databaseUrl = requiredEnv("DATABASE_URL");
-  const agentRuntimeAddress = requiredEnv(
-    "AGENT_RUNTIME_GRPC_ADDRESS",
-  );
   const scope = resolveReaderSummaryProductionRecoveryScope(process.env);
   const {
     resolvePostgresRuntimePoolConfig,
@@ -440,13 +465,26 @@ async function main(): Promise<void> {
   const {
     createProductionRecoveryDayExecutor,
     runReaderSummaryProductionRecovery,
+    runReaderSummaryProductionRecoveryGap,
   } = await import(
     "./lib/reader-summary-production-recovery-cli"
   );
   const {
     PrismaReaderSummaryProductionRecoveryExecutionGuard,
+    PrismaReaderSummaryProductionRecoveryGapExecutionGuard,
   } = await import(
     "./lib/reader-summary-production-recovery-replay-guard"
+  );
+  const { prepareReaderSummaryProductionRecoveryGapAuthority } = await import(
+    "./lib/reader-summary-production-recovery-gap-authority"
+  );
+  const {
+    assertReaderSummaryProductionRecoveryModelSelection,
+    requireReaderSummaryProductionRecoveryAttestation,
+    readerSummaryProductionRecoveryGenerationProfile,
+    readerSummaryProductionRecoveryModelContract,
+  } = await import(
+    "./lib/reader-summary-production-recovery-model-contract"
   );
   const config = resolvePostgresRuntimePoolConfig({
     ...process.env,
@@ -456,51 +494,50 @@ async function main(): Promise<void> {
   try {
     const result = await runWithTenantDatabaseAccess(scope, async () => {
       await configureProductionRecoverySession(connection, scope);
-      await assertPersistedReaderSummaryProductionRecoveryAuthority(
-        connection,
-        { scope, dates: cli.dates },
-      );
-      const binding =
-        await loadPersistedReaderSummaryProductionRecoveryAuthority(
-          connection,
-          scope,
-        );
+      const gapRun = cli.dates.every(isReaderSummaryProductionRecoveryGapDate);
+      const binding = gapRun
+        ? (await prepareReaderSummaryProductionRecoveryGapAuthority(
+            connection,
+            scope,
+          )).binding
+        : await loadLegacyRecoveryBinding(
+            connection,
+            scope,
+            cli.dates as readonly ReaderSummaryProductionRecoveryDate[],
+          );
       const githubProjectionReader =
         createPersistedRecoveryGitHubProjectionReader(binding);
       const clock = new SystemClock();
-      const runtimeClient = GrpcAgentRuntimeClient.connect({
-        address: agentRuntimeAddress,
-        clock,
-        options: {
-          timeoutMs:
-            READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.summaryModelTimeoutMs,
-          serviceToken: requiredEnv("AGENT_RUNTIME_SERVICE_TOKEN"),
-        },
+      const modelContract = assertReaderSummaryProductionRecoveryModelSelection({
+        provider: "codex",
+        model: "gpt-5.6-sol",
+        reasoningEffort: "xhigh",
+        runtimeEngine: "subscription-runtime-cli",
       });
-      return runReaderSummaryProductionRecovery({
-        apply: true,
-        dates: cli.dates,
-        generationProfile: {
-          modelVersion: "codex:gpt-5.5:xhigh",
-          promptVersion:
-            "reader_summary.prompt.2026-07-14.daily_synthesis",
-          rankingPolicyVersion: "story_ranking_v10",
-        },
-        binding,
-        executionGuard:
-          new PrismaReaderSummaryProductionRecoveryExecutionGuard(
-            connection,
-          ),
-        executeDay: createProductionRecoveryDayExecutor(
+      const executeDay: ReaderSummaryProductionRecoveryDayExecutor = (params) => {
+        const executor = createProductionRecoveryDayExecutor(
           {
             model: new AgentRuntimeReaderSummaryModelAdapter({
-              client: runtimeClient,
-              agentProvider: "codex",
-              model: "gpt-5.5",
-              reasoningEffort: "xhigh",
+              client: limitRecoveryAgentRuntimeToOneCall(
+                requireReaderSummaryProductionRecoveryAttestation(
+                  GrpcAgentRuntimeClient.connect({
+                  address: requiredEnv("AGENT_RUNTIME_GRPC_ADDRESS"),
+                  clock,
+                  options: {
+                    timeoutMs:
+                      READER_SUMMARY_PRODUCTION_RUNTIME_POLICY
+                        .summaryModelTimeoutMs,
+                    serviceToken: requiredEnv("AGENT_RUNTIME_SERVICE_TOKEN"),
+                  },
+                  }),
+                ),
+                gapRun,
+              ),
+              agentProvider: modelContract.provider,
+              model: modelContract.model,
+              reasoningEffort: modelContract.reasoningEffort,
               timeoutMs:
-                READER_SUMMARY_PRODUCTION_RUNTIME_POLICY
-                  .summaryModelTimeoutMs,
+                READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.summaryModelTimeoutMs,
             }),
             finalization: new PrismaReaderSummaryRecoveryFinalization(
               connection,
@@ -511,7 +548,41 @@ async function main(): Promise<void> {
             clock,
           },
           connection,
-        ),
+        );
+        return executor(params);
+      };
+      if (gapRun) {
+        const gapBinding =
+          binding as ReaderSummaryProductionRecoveryGapAuthorityBinding;
+        return runReaderSummaryProductionRecoveryGap({
+          apply: true,
+          dates: cli.dates as readonly ReaderSummaryProductionRecoveryGapDate[],
+          generationProfile: readerSummaryProductionRecoveryGenerationProfile,
+          modelContract: readerSummaryProductionRecoveryModelContract,
+          binding: gapBinding,
+          executionGuard:
+            new PrismaReaderSummaryProductionRecoveryGapExecutionGuard(
+              connection,
+            ),
+          executeDay: async ({ requestedUtcDate }) => {
+            const dayResult = await executeDay({
+              binding:
+                gapBinding as unknown as ReaderSummaryProductionRecoveryAuthorityBinding,
+              requestedUtcDate:
+                requestedUtcDate as unknown as ReaderSummaryProductionRecoveryDate,
+            });
+            return { ...dayResult, requestedUtcDate };
+          },
+        });
+      }
+      return runReaderSummaryProductionRecovery({
+        apply: true,
+        dates: cli.dates as readonly ReaderSummaryProductionRecoveryDate[],
+        generationProfile: readerSummaryProductionRecoveryGenerationProfile,
+        binding: binding as ReaderSummaryProductionRecoveryAuthorityBinding,
+        executionGuard:
+          new PrismaReaderSummaryProductionRecoveryExecutionGuard(connection),
+        executeDay,
       });
     });
     console.log(`outcome=${result.outcome}`);
@@ -525,8 +596,21 @@ async function main(): Promise<void> {
   }
 }
 
+const loadLegacyRecoveryBinding = async (
+  client: QueryClient,
+  scope: ReaderSummaryProductionRecoveryScope,
+  dates: readonly ReaderSummaryProductionRecoveryDate[],
+): Promise<ReaderSummaryProductionRecoveryAuthorityBinding> => {
+  await assertPersistedReaderSummaryProductionRecoveryAuthority(client, {
+    scope,
+    dates,
+  });
+  return loadPersistedReaderSummaryProductionRecoveryAuthority(client, scope);
+};
+
 const authorityGitHubProjectionItem = (
-  row: ReaderSummaryProductionRecoveryAuthorityBinding["days"][number]["providerEvidence"]["github-trending-page"][number],
+  row: (ReaderSummaryProductionRecoveryAuthorityBinding |
+    ReaderSummaryProductionRecoveryGapAuthorityBinding)["days"][number]["providerEvidence"]["github-trending-page"][number],
 ): ReaderSummaryGitHubProjectionItem => {
   if (row.github === undefined) {
     throw new Error(
