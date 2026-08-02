@@ -685,6 +685,7 @@ const main = async (): Promise<void> => {
   let capabilityRolePreexisting = false;
   let schemaOwnerRolePreexisting = false;
   let tenantSystemCapabilityRolePreexisting = false;
+  let dailyActivationDefinerRolePreexisting = false;
   let fixtureDatabaseCreated = false;
   let fixtureMigrationAdminRoleCreated = false;
   let fixtureRuntimeRoleCreated = false;
@@ -736,6 +737,7 @@ const main = async (): Promise<void> => {
     schemaOwnerRolePreexisting = protectedRoles.schemaOwner;
     tenantSystemCapabilityRolePreexisting =
       protectedRoles.tenantSystemCapability;
+    dailyActivationDefinerRolePreexisting = protectedRoles.dailyActivationDefiner;
     await serverAdmin.query(
       `CREATE ROLE ${quotePostgresIdentifier(migrationAdminRole)}
          LOGIN PASSWORD ${quotePostgresLiteral(migrationAdminPassword)}
@@ -948,6 +950,7 @@ const main = async (): Promise<void> => {
             capabilityRolePreexisting,
             schemaOwnerRolePreexisting,
             tenantSystemCapabilityRolePreexisting,
+            dailyActivationDefinerRolePreexisting,
             fixtureDatabaseCreated,
             fixtureMigrationAdminRoleCreated,
             fixtureRuntimeRoleCreated,

@@ -47,6 +47,7 @@ type PublicationPrivilegesModule = Readonly<{
     readonly owner: boolean;
     readonly schemaOwner: boolean;
     readonly tenantSystemCapability: boolean;
+    readonly dailyActivationDefiner: boolean;
   }>;
   publicationDatabaseUrl(
     serverAdminDatabaseUrl: string,
@@ -97,6 +98,7 @@ type PublicationPrivilegesModule = Readonly<{
     readonly capabilityRolePreexisting: boolean;
     readonly schemaOwnerRolePreexisting: boolean;
     readonly tenantSystemCapabilityRolePreexisting: boolean;
+    readonly dailyActivationDefinerRolePreexisting: boolean;
     readonly fixtureDatabaseCreated: boolean;
     readonly fixtureMigrationAdminRoleCreated: boolean;
     readonly fixtureRuntimeRoleCreated: boolean;
@@ -168,6 +170,7 @@ let ownerRolePreexisting = false;
 let capabilityRolePreexisting = false;
 let schemaOwnerRolePreexisting = false;
 let tenantSystemCapabilityRolePreexisting = false;
+let dailyActivationDefinerRolePreexisting = false;
 let fixtureDatabaseCreated = false;
 let fixtureMigrationAdminRoleCreated = false;
 let fixtureRuntimeRoleCreated = false;
@@ -184,6 +187,7 @@ const main = async (): Promise<void> => {
   schemaOwnerRolePreexisting = protectedRoles.schemaOwner;
   tenantSystemCapabilityRolePreexisting =
     protectedRoles.tenantSystemCapability;
+  dailyActivationDefinerRolePreexisting = protectedRoles.dailyActivationDefiner;
   try {
     await serverAdmin.query(
       `CREATE ROLE ${quotePostgresIdentifier(
@@ -312,6 +316,7 @@ const main = async (): Promise<void> => {
       capabilityRolePreexisting,
       schemaOwnerRolePreexisting,
       tenantSystemCapabilityRolePreexisting,
+      dailyActivationDefinerRolePreexisting,
       fixtureDatabaseCreated,
       fixtureMigrationAdminRoleCreated,
       fixtureRuntimeRoleCreated,

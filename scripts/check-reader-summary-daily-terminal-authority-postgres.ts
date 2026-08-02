@@ -3,21 +3,19 @@ import { spawnSync } from "node:child_process";
 import { cpSync, readFileSync, rmSync } from "node:fs"; import { createRequire } from "node:module";
 import { join } from "node:path";
 import { provisionReaderSummaryPublicationFixtureScope, readerSummaryPublicationBackendPid, readerSummaryPublicationFixtureScope, requiredReaderSummaryPublicationAdminDatabaseUrl, setReaderSummaryPublicationSessionScope } from "./lib/reader-summary-publication-postgres-fixture-scope";
-import { applyOrderedReaderSummaryMigrations, assertReaderSummaryMigrationDatabaseMatchesSchema, createReaderSummaryPublicationMigrationWorkspace, installPublicationAndFollowingMigrations, preparePrePublicationMigrations, removeReaderSummaryPublicationMigrationWorkspace } from "./lib/reader-summary-publication-postgres-migrations";
+import { applyOrderedReaderSummaryMigrations, assertDailyActivationIntermediateIsFailClosed, assertDailyActivationMigrationContract, assertDailyActivationRejectsNullishCompletionBindings, assertDailyActivationRejectsTemporaryForgeries, assertDailyActivationRuntimeSecurity, assertReaderSummaryMigrationDatabaseMatchesSchema, createReaderSummaryPublicationMigrationWorkspace, installDailyActivationMigration, installFailingDailyActivationAclMigration, installPublicationMigrationsBeforeDailyActivation, preparePrePublicationMigrations, readerSummaryDailyActivationAclMigration, readerSummaryDailyActivationMigration, removeInstalledReaderSummaryMigration, removeReaderSummaryPublicationMigrationWorkspace, resolveRolledBackReaderSummaryMigration, runOrderedReaderSummaryMigrations } from "./lib/reader-summary-publication-postgres-migrations";
 type Row = Readonly<Record<string, unknown>>; type QueryResult<T> = Readonly<{ rows: readonly T[] }>;
 type Client = Readonly<{ query<T = Record<string, unknown>>(sql: string, values?: readonly unknown[]): Promise<QueryResult<T>> }>;
 type PoolClient = Client & Readonly<{ release(): void }>; type Pool = Client & Readonly<{ connect(): Promise<PoolClient>; end(): Promise<void> }>;
 type PgModule = Readonly<{ Pool: new (config: Readonly<{ connectionString: string; max: number }>) => Pool }>;
 type PrivilegesModule = Readonly<{
-  publicationProtectedRolePresence(pool: Pool): Promise<Readonly<{ capability: boolean; owner: boolean; schemaOwner: boolean; tenantSystemCapability: boolean }>>;
-  publicationDatabaseUrl(adminUrl: string, database: string): string;
-  publicationRuntimeDatabaseUrl(url: string, role: string, password: string): string;
+  publicationProtectedRolePresence(pool: Pool): Promise<Readonly<{ capability: boolean; owner: boolean; schemaOwner: boolean; tenantSystemCapability: boolean; dailyActivationDefiner: boolean }>>;
+  publicationDatabaseUrl(adminUrl: string, database: string): string; publicationRuntimeDatabaseUrl(url: string, role: string, password: string): string;
   quotePostgresIdentifier(value: string): string; quotePostgresLiteral(value: string): string;
   createPublicationFixtureRuntimeRole(input: Readonly<{ databaseName: string; migrationAdminRole: string; runtimePassword: string; runtimeRole: string; serverAdminDatabaseUrl: string }>): Promise<void>; provisionPublicationFixtureProtectedRoles(input: Readonly<{ serverAdmin: Pool; migrationAdmin: Pool; migrationAdminRole: string }>): Promise<void>;
   makePublicationFixtureRuntimeDatabaseOwner(input: Readonly<{ databaseName: string; migrationAdminDatabaseUrl: string; migrationAdminRole: string; runtimeRole: string; systemRuntimeRole: string; targetDatabaseUrl: string }>): Promise<void>;
-  grantLegacyMigrationOwnership(url: string, role: string): Promise<void>;
-  runReaderSummaryPublicationBootstrapSql(phase: "pre" | "post", url: string, role: string, systemRuntimeRole?: string): Promise<void>;
-  dropPublicationFixtureDatabaseAndRoles(input: Readonly<{ serverAdmin: Pool; databaseName: string; migrationAdminRole: string; runtimeRole: string; ownerRolePreexisting: boolean; capabilityRolePreexisting: boolean; schemaOwnerRolePreexisting: boolean; tenantSystemCapabilityRolePreexisting: boolean; fixtureDatabaseCreated: boolean; fixtureMigrationAdminRoleCreated: boolean; fixtureRuntimeRoleCreated: boolean; fixtureDailyTerminalRoleCreated?: boolean; systemRuntimeRole?: string; systemRuntimeRoleCreated?: boolean }>): Promise<void>;
+  grantLegacyMigrationOwnership(url: string, role: string): Promise<void>; runReaderSummaryPublicationBootstrapSql(phase: "pre" | "post", url: string, role: string, systemRuntimeRole?: string): Promise<void>;
+  dropPublicationFixtureDatabaseAndRoles(input: Readonly<{ serverAdmin: Pool; databaseName: string; migrationAdminRole: string; runtimeRole: string; ownerRolePreexisting: boolean; capabilityRolePreexisting: boolean; schemaOwnerRolePreexisting: boolean; tenantSystemCapabilityRolePreexisting: boolean; dailyActivationDefinerRolePreexisting: boolean; fixtureDatabaseCreated: boolean; fixtureMigrationAdminRoleCreated: boolean; fixtureRuntimeRoleCreated: boolean; fixtureDailyTerminalRoleCreated?: boolean; systemRuntimeRole?: string; systemRuntimeRoleCreated?: boolean }>): Promise<void>;
 }>;
 const runtimeRequire = createRequire(join(process.cwd(), "package.json"));
 const { Pool } = runtimeRequire("pg") as PgModule;
@@ -85,7 +83,6 @@ const expectFailure = async (
   }
   throw new Error(`expected failure containing ${fragment}`);
 };
-const assertMigrationSchemaCreateWindow = async (databaseUrl: string, expected: boolean, deniedRoles: readonly string[]): Promise<void> => { const admin = new Pool({ connectionString: databaseUrl, max: 1 }); try { const access = await admin.query<{ readonly owner_create: boolean; readonly denied_create: boolean }>(`SELECT has_schema_privilege('social_monitor_reader_summary_publication_owner', 'public', 'CREATE') AS owner_create, EXISTS (SELECT 1 FROM unnest($1::TEXT[]) denied(name) WHERE has_schema_privilege(denied.name, 'public', 'CREATE')) AS denied_create`, [deniedRoles]); assert(access.rows[0]?.owner_create === expected, `publication owner CREATE must be ${expected ? "granted before" : "revoked after"} ordered migrations`); assert(access.rows[0]?.denied_create === false, "runtime and daily-terminal roles must not receive public schema CREATE"); } finally { await admin.end(); } };
 const applySystemDsnBootstrapHelper = async (
   admin: Client, output: string, runtimeRole: string, systemRuntimeRole: string,
   password: string,
@@ -139,24 +136,14 @@ const seedSourceAuthority = async (
       providerKey, count: rows.length, sha256: digest(canonicalBytes(rows)),
     }),);
   const providerEvidenceSha = digest(canonicalBytes(providerDigests));
-  const dayRecord = {
-    schemaVersion: "reader_summary.production_recovery_day.v2",
-    recoveryId,
-    tenantId: scope.tenantId,
-    workspaceId: scope.workspaceId,
-    requestedUtcDate: date,
-    providerCounts,
-    providerEvidenceDigests: providerDigests,
-    providerEvidenceSha256: providerEvidenceSha,
-  };
+  const dayRecord = { schemaVersion: "reader_summary.production_recovery_day.v2",
+    recoveryId, tenantId: scope.tenantId, workspaceId: scope.workspaceId,
+    requestedUtcDate: date, providerCounts, providerEvidenceDigests: providerDigests,
+    providerEvidenceSha256: providerEvidenceSha };
   const dayBytes = canonicalBytes(dayRecord);
-  const leaseRecord = {
-    schemaVersion: "reader_summary.production_recovery_authority.v2",
-    recoveryId,
-    tenantId: scope.tenantId,
-    workspaceId: scope.workspaceId,
-    requestedUtcDates: [date],
-  };
+  const leaseRecord = { schemaVersion: "reader_summary.production_recovery_authority.v2",
+    recoveryId, tenantId: scope.tenantId, workspaceId: scope.workspaceId,
+    requestedUtcDates: [date] };
   const leaseBytes = canonicalBytes(leaseRecord);
   await auditor.query("BEGIN");
   try {
@@ -176,15 +163,9 @@ const seedSourceAuthority = async (
        (id, tenant_id, workspace_id, identity, state, canonical_record,
         canonical_bytes, canonical_sha256, issued_at, consumed_at)
        VALUES ($1, $2, $3, $4, 'ISSUED', $5::JSONB, $6, $7, now(), NULL)`,
-      [
-        recoveryId,
-        scope.tenantId,
-        scope.workspaceId,
-        `fixture-source:${recoveryId}`,
-        JSON.stringify(leaseRecord),
-        leaseBytes,
-        digest(leaseBytes),
-      ],);
+      [recoveryId, scope.tenantId, scope.workspaceId,
+        `fixture-source:${recoveryId}`, JSON.stringify(leaseRecord), leaseBytes,
+        digest(leaseBytes)],);
     await auditor.query(
       `INSERT INTO reader_summary_production_recovery_days
        (recovery_id, tenant_id, workspace_id, requested_utc_date, identity,
@@ -193,19 +174,11 @@ const seedSourceAuthority = async (
         recorded_at)
        VALUES ($1, $2, $3, $4::DATE, $5, $6::JSONB, $7::JSONB, $8,
         '{}'::JSONB, $9::JSONB, $10, $11, now())`,
-      [
-        recoveryId,
-        scope.tenantId,
-        scope.workspaceId,
-        date,
-        `fixture-day:${recoveryId}`,
-        JSON.stringify(providerCounts),
-        JSON.stringify(providerEvidence),
-        providerEvidenceSha,
-        JSON.stringify(dayRecord),
-        validBytes ? dayBytes : Buffer.concat([dayBytes, Buffer.from(" ")]),
-        digest(dayBytes),
-      ],);
+      [recoveryId, scope.tenantId, scope.workspaceId, date,
+        `fixture-day:${recoveryId}`, JSON.stringify(providerCounts),
+        JSON.stringify(providerEvidence), providerEvidenceSha,
+        JSON.stringify(dayRecord), validBytes ? dayBytes : Buffer.concat(
+          [dayBytes, Buffer.from(" ")]), digest(dayBytes)],);
     await auditor.query(
       `UPDATE reader_summary_production_recovery_leases
        SET state = 'CONSUMED', consumed_at = now()
@@ -218,12 +191,16 @@ const seedSourceAuthority = async (
   }
   return { date, providerCounts, providerEvidence };
 };
+type DurablePublicationBinding = Readonly<{
+  artifactId: string; jobId: string; reportSha: string;
+  proofSha: string; weeklyEvidenceSha: string;
+}>;
 const seedDurablePublication = async (
   auditor: Client,
   source: SourceFixture,
   variant: "exact" | "provider" | "binding" | "multiplicity" | "quality"
     = "exact",
-): Promise<void> => {
+): Promise<DurablePublicationBinding> => {
   const artifactId = randomUUID();
   const jobId = randomUUID();
   const outboxId = randomUUID();
@@ -297,14 +274,8 @@ const seedDurablePublication = async (
         $5::JSONB, '[]'::JSONB, $6::JSONB,
         $4::DATE::TIMESTAMP AT TIME ZONE 'UTC' + INTERVAL '2 hours',
         $4::DATE::TIMESTAMP AT TIME ZONE 'UTC' + INTERVAL '2 hours')`,
-      [
-        artifactId,
-        scope.tenantId,
-        scope.workspaceId,
-        source.date,
-        JSON.stringify(artifactPayload),
-        JSON.stringify(qualitySignals),
-      ],);
+      [artifactId, scope.tenantId, scope.workspaceId, source.date,
+        JSON.stringify(artifactPayload), JSON.stringify(qualitySignals)],);
     await auditor.query("RESET ROLE");
     await auditor.query(
       `INSERT INTO reader_summary_jobs
@@ -321,14 +292,8 @@ const seedDurablePublication = async (
         $4::DATE::TIMESTAMP AT TIME ZONE 'UTC' + INTERVAL '2 hours',
         NULL, $6, NULL, $4::DATE::TIMESTAMP AT TIME ZONE 'UTC',
         $4::DATE::TIMESTAMP AT TIME ZONE 'UTC' + INTERVAL '2 hours')`,
-      [
-        jobId,
-        scope.tenantId,
-        scope.workspaceId,
-        source.date,
-        `fixture-job:${jobId}`,
-        artifactId,
-      ],);
+      [jobId, scope.tenantId, scope.workspaceId, source.date,
+        `fixture-job:${jobId}`, artifactId],);
     await auditor.query(
       `INSERT INTO outbox_events
        (id, tenant_id, workspace_id, event_type, schema_version, payload,
@@ -363,17 +328,8 @@ const seedDurablePublication = async (
         $4::DATE::TIMESTAMP AT TIME ZONE 'UTC', 'fixture-model', 2,
         $6, $7, $8::JSONB, $9,
         $4::DATE::TIMESTAMP AT TIME ZONE 'UTC' + INTERVAL '2 hours')`,
-      [
-        artifactId,
-        scope.tenantId,
-        scope.workspaceId,
-        source.date,
-        jobId,
-        reportSha,
-        proofSha,
-        JSON.stringify(exactProof),
-        outboxId,
-      ],);
+      [artifactId, scope.tenantId, scope.workspaceId, source.date, jobId,
+        reportSha, proofSha, JSON.stringify(exactProof), outboxId],);
     await auditor.query(
       `UPDATE reader_summary_publication_slots
        SET current_publication_id = $1
@@ -397,31 +353,68 @@ const seedDurablePublication = async (
         ($4::DATE + 1)::TIMESTAMP AT TIME ZONE 'UTC', 'UTC', $4, $5, $1,
         $6, $7, 'COMPLETED', $8::JSONB, $9, $10::JSONB, $11, $12,
         $13::JSONB, $14, $15::JSONB, $16::JSONB, $17, $18, $19, now())`,
-      [
-        artifactId,
-        scope.tenantId,
-        scope.workspaceId,
-        source.date,
-        jobId,
-        `fixture-report:${randomUUID()}`,
-        `fixture-proof:${randomUUID()}`,
-        JSON.stringify(report),
-        reportSha,
-        JSON.stringify(exactProof),
-        proofSha,
-        digest(canonicalBytes(artifactPayload)),
-        JSON.stringify(providerEvidence),
-        providerEvidenceSha,
-        JSON.stringify({ mode: "verified", evidenceCount: 0 }),
-        JSON.stringify(evidenceRecord),
-        evidenceBytes,
-        digest(evidenceBytes),
-        `fixture-evidence:${randomUUID()}`,
-      ],);
+      [artifactId, scope.tenantId, scope.workspaceId, source.date, jobId,
+        `fixture-report:${randomUUID()}`, `fixture-proof:${randomUUID()}`,
+        JSON.stringify(report), reportSha, JSON.stringify(exactProof), proofSha,
+        digest(canonicalBytes(artifactPayload)), JSON.stringify(providerEvidence),
+        providerEvidenceSha, JSON.stringify({ mode: "verified", evidenceCount: 0 }),
+        JSON.stringify(evidenceRecord), evidenceBytes, digest(evidenceBytes),
+        `fixture-evidence:${randomUUID()}`],);
     await auditor.query("COMMIT");
   } catch (error: unknown) {
     await auditor.query("ROLLBACK").catch(() => undefined);
     throw error;
+  }
+  return { artifactId, jobId, reportSha, proofSha,
+    weeklyEvidenceSha: digest(evidenceBytes) };
+};
+const assertDailyPublicationRejectsFrontendArtifactBindings = async (auditor: Client,
+  terminal: Client, date: string, publication: DurablePublicationBinding): Promise<void> => {
+  const worker = "activation-json-negative";
+  const claimed = await transaction<Row>(terminal, `SELECT * FROM
+    public.claim_reader_summary_daily_execution($1, $2, $3, $4::DATE,
+    pg_catalog.transaction_timestamp())`,
+    [scope.tenantId, scope.workspaceId, worker, date]);
+  const fencing = claimed.fencing_token;
+  await transaction(terminal, `SELECT public.mark_reader_summary_daily_model_job_running(
+      $1, $2, $3::DATE, $4, $5, pg_catalog.transaction_timestamp())`,
+    [scope.tenantId, scope.workspaceId, date, worker, fencing]);
+  const identity = (await auditor.query<{ readonly identity: string }>(
+    `SELECT identity FROM public.reader_summary_daily_model_jobs WHERE
+     tenant_id = $1 AND workspace_id = $2 AND requested_utc_date = $3::DATE`,
+    [scope.tenantId, scope.workspaceId, date])).rows[0]?.identity;
+  assert(identity !== undefined, "daily activation fixture job was not reserved");
+  const response = Buffer.from("activation-response", "utf8"), responseSha = digest(response);
+  await assertDailyActivationRejectsNullishCompletionBindings(terminal, auditor, {
+    tenantId: scope.tenantId, workspaceId: scope.workspaceId, date, worker, fencing, identity, response, responseSha });
+  const attestation = { provider: "codex", model: "gpt-5.6-sol",
+    reasoningEffort: "xhigh", runtimeEngine: "subscription-runtime-cli",
+    selectedOutputSha256: responseSha };
+  const attestationBytes = canonicalBytes(attestation), attestationSha = digest(attestationBytes);
+  const receiptBytes = canonicalBytes({ modelJobIdentity: identity,
+    responseSha256: responseSha, attestationSha256: attestationSha });
+  await transaction(terminal, `SELECT public.complete_reader_summary_daily_model_job(
+      $1, $2, $3::DATE, $4, $5, pg_catalog.transaction_timestamp(),
+      $6, $7, $8::JSONB, $9, $10, $11, $12)`,
+    [scope.tenantId, scope.workspaceId, date, worker, fencing, response,
+      responseSha, JSON.stringify(attestation), attestationBytes, attestationSha,
+      receiptBytes, digest(receiptBytes)]);
+  const evidenceBytes = canonicalBytes({ scope: { tenantId: scope.tenantId,
+    workspaceId: scope.workspaceId }, result: { readerSummaryJobId: publication.jobId,
+    readerSummaryId: publication.artifactId } });
+  for (const readerSummaryArtifact of [{}, { readerSummaryId: null },
+    { readerSummaryId: randomUUID() }]) {
+    const frontendBytes = canonicalBytes({ tenantId: scope.tenantId,
+      workspaceId: scope.workspaceId, readerSummaryArtifact });
+    await expectFailure(() => transaction(terminal, `SELECT
+      public.finalize_reader_summary_daily_publication(
+        $1, $2, $3::DATE, $4, $5, pg_catalog.transaction_timestamp(),
+        $6, $7, $7, $8, $9, $10, $11, $12, $13, $14)`,
+      [scope.tenantId, scope.workspaceId, date, worker, fencing,
+        publication.jobId, publication.artifactId, publication.reportSha,
+        publication.proofSha, publication.weeklyEvidenceSha, evidenceBytes,
+        digest(evidenceBytes), frontendBytes, digest(frontendBytes)]),
+    "daily public files do not bind the canonical publication");
   }
 };
 const insertExpiredClaim = async (
@@ -486,7 +479,7 @@ const insertExpiredClaim = async (
 };
 const assertMetadata = async (auditor: Client, migratorRole: string,
   ordinaryRoles: readonly string[]): Promise<void> => {
-  const migration = readFileSync("prisma/migrations/20260730120000_reader_summary_daily_terminal_authority/migration.sql", "utf8"), capabilityMigration = readFileSync(`prisma/migrations/${terminalCapabilityMigration}/migration.sql`, "utf8"); assert(/SET LOCAL ROLE "social_monitor_public_schema_owner";\s+GRANT CREATE ON SCHEMA public\s+TO "social_monitor_reader_summary_publication_owner";\s+SET LOCAL ROLE "social_monitor_reader_summary_publication_owner";[\s\S]*RESET ROLE;\s+SET LOCAL ROLE "social_monitor_public_schema_owner";\s+REVOKE CREATE ON SCHEMA public\s+FROM "social_monitor_reader_summary_publication_owner";/.test(capabilityMigration), "terminal capability migration must bound the four-site publication-owner CREATE correction");
+  const migration = readFileSync("prisma/migrations/20260730120000_reader_summary_daily_terminal_authority/migration.sql", "utf8");
   assert(
     !/\b20\d{2}-\d{2}-\d{2}\b/.test(migration) &&
       !/\b[0-9a-f]{8}-[0-9a-f-]{27,}\b/.test(migration) &&
@@ -652,6 +645,8 @@ const assertAuthority = async (
   ordinaryRoles: readonly string[],
 ): Promise<void> => {
   await assertMetadata(first, migratorRole, ordinaryRoles);
+  await assertDailyActivationRuntimeSecurity(auditor, ["public", "social_monitor_public_schema_owner", "social_monitor_reader_summary_publication_owner", "social_monitor_reader_summary_publication_runtime", "social_monitor_tenant_system_runtime", migratorRole, ...ordinaryRoles], migratorRole);
+  await assertDailyActivationRejectsTemporaryForgeries(first);
   const sources: SourceFixture[] = [];
   for (const [index, date] of fixtureDates.entries()) {
     sources.push(await seedSourceAuthority(
@@ -660,9 +655,13 @@ const assertAuthority = async (
   const variants = [
     "exact", "provider", "binding", "multiplicity", "quality", "exact",
   ] as const;
+  const publications: DurablePublicationBinding[] = [];
   for (const [index, variant] of variants.entries()) {
-    await seedDurablePublication(auditor, sources[index]!, variant);
+    publications.push(await seedDurablePublication(
+      auditor, sources[index]!, variant));
   }
+  await assertDailyPublicationRejectsFrontendArtifactBindings(
+    auditor, first, fixtureDates[5]!, publications[5]!);
   await expectFailure(
     () =>
       first.query(claimSql, [
@@ -882,6 +881,7 @@ const assertAuthority = async (
     "READ ONLY replay must perform zero writes",);
 };
 const main = async (): Promise<void> => {
+  assertDailyActivationMigrationContract();
   const serverAdminDatabaseUrl = requiredReaderSummaryPublicationAdminDatabaseUrl(process.env);
   const suffix = randomBytes(10).toString("hex");
   const databaseName = `reader_summary_daily_terminal_${suffix}`,
@@ -898,12 +898,12 @@ const main = async (): Promise<void> => {
   const serverAdmin = new Pool({ connectionString: serverAdminDatabaseUrl, max: 1 });
   const workspace = createReaderSummaryPublicationMigrationWorkspace();
   let ownerRolePreexisting = false, capabilityRolePreexisting = false, schemaOwnerRolePreexisting = false,
-    tenantSystemCapabilityRolePreexisting = false, fixtureDatabaseCreated = false, fixtureMigrationAdminRoleCreated = false,
+    tenantSystemCapabilityRolePreexisting = false, dailyActivationDefinerRolePreexisting = false, fixtureDatabaseCreated = false, fixtureMigrationAdminRoleCreated = false,
     fixtureRuntimeRoleCreated = false, fixtureSystemRuntimeRoleCreated = false, fixtureTerminalRoleCreated = false;
   try {
     const protectedRoles = await privileges.publicationProtectedRolePresence(serverAdmin);
     ownerRolePreexisting = protectedRoles.owner; capabilityRolePreexisting = protectedRoles.capability; schemaOwnerRolePreexisting = protectedRoles.schemaOwner;
-    tenantSystemCapabilityRolePreexisting = protectedRoles.tenantSystemCapability;
+    tenantSystemCapabilityRolePreexisting = protectedRoles.tenantSystemCapability; dailyActivationDefinerRolePreexisting = protectedRoles.dailyActivationDefiner;
     await serverAdmin.query(`CREATE ROLE ${privileges.quotePostgresIdentifier(migrationAdminRole)}
       LOGIN PASSWORD ${privileges.quotePostgresLiteral(migrationAdminPassword)}
       NOSUPERUSER NOCREATEDB CREATEROLE INHERIT NOREPLICATION NOBYPASSRLS`);
@@ -937,24 +937,24 @@ const main = async (): Promise<void> => {
     preparePrePublicationMigrations(workspace);
     await privileges.grantLegacyMigrationOwnership(adminDatabaseUrl, runtimeRole);
     applyOrderedReaderSummaryMigrations(runtimeDatabaseUrl, workspace);
-    const schemaCreateDeniedRoles = [runtimeRole, systemRuntimeRole, "social_monitor_reader_summary_publication_runtime", terminalRole]; await privileges.runReaderSummaryPublicationBootstrapSql("pre", adminDatabaseUrl, runtimeRole, systemRuntimeRole); await assertMigrationSchemaCreateWindow(adminDatabaseUrl, true, schemaCreateDeniedRoles);
-    installPublicationAndFollowingMigrations(workspace);
-    for (const migration of [dailyTerminalMigration, terminalCapabilityMigration]) {
-      rmSync(join(workspace.directory, "migrations", migration), { recursive: true });
-    }
+    await privileges.runReaderSummaryPublicationBootstrapSql("pre", adminDatabaseUrl, runtimeRole, systemRuntimeRole);
+    installPublicationMigrationsBeforeDailyActivation(workspace);
+    for (const migration of [dailyTerminalMigration, terminalCapabilityMigration]) rmSync(join(workspace.directory, "migrations", migration), { recursive: true });
     applyOrderedReaderSummaryMigrations(adminDatabaseUrl, workspace);
-    await privileges.runReaderSummaryPublicationBootstrapSql("post", adminDatabaseUrl, runtimeRole, systemRuntimeRole); await assertMigrationSchemaCreateWindow(adminDatabaseUrl, false, schemaCreateDeniedRoles);
-    for (const migration of [dailyTerminalMigration, terminalCapabilityMigration]) {
-      cpSync(join("prisma/migrations", migration), join(workspace.directory, "migrations", migration), { recursive: true });
-    }
-    await privileges.runReaderSummaryPublicationBootstrapSql("pre", adminDatabaseUrl, runtimeRole, systemRuntimeRole); await assertMigrationSchemaCreateWindow(adminDatabaseUrl, true, schemaCreateDeniedRoles); applyOrderedReaderSummaryMigrations(adminDatabaseUrl, workspace); await privileges.runReaderSummaryPublicationBootstrapSql("post", adminDatabaseUrl, runtimeRole, systemRuntimeRole); await assertMigrationSchemaCreateWindow(adminDatabaseUrl, false, schemaCreateDeniedRoles);
-    for (let replay = 0; replay < 2; replay += 1) {
-      await privileges.runReaderSummaryPublicationBootstrapSql("pre", adminDatabaseUrl, runtimeRole, systemRuntimeRole); await assertMigrationSchemaCreateWindow(adminDatabaseUrl, true, schemaCreateDeniedRoles);
-      await privileges.runReaderSummaryPublicationBootstrapSql("post", adminDatabaseUrl, runtimeRole, systemRuntimeRole); await assertMigrationSchemaCreateWindow(adminDatabaseUrl, false, schemaCreateDeniedRoles);
-    }
+    for (const migration of [dailyTerminalMigration, terminalCapabilityMigration]) cpSync(join("prisma/migrations", migration), join(workspace.directory, "migrations", migration), { recursive: true });
+    applyOrderedReaderSummaryMigrations(adminDatabaseUrl, workspace); const activationAdmin = new Pool({ connectionString: adminDatabaseUrl, max: 1 });
+    try { await activationAdmin.query(`SET ROLE social_monitor_public_schema_owner; REVOKE CREATE ON SCHEMA public FROM social_monitor_reader_summary_publication_owner; RESET ROLE`);
+      installDailyActivationMigration(workspace, readerSummaryDailyActivationMigration); applyOrderedReaderSummaryMigrations(adminDatabaseUrl, workspace);
+      await assertDailyActivationIntermediateIsFailClosed(activationAdmin); installFailingDailyActivationAclMigration(workspace);
+      const failed = runOrderedReaderSummaryMigrations(adminDatabaseUrl, workspace); const expectedChecksum = digest(readFileSync(join(workspace.directory, "migrations", readerSummaryDailyActivationAclMigration, "migration.sql"))); const failedMigration = await activationAdmin.query<{ readonly checksum: string; readonly logs: string | null }>(`SELECT checksum, logs FROM public."_prisma_migrations" WHERE migration_name = $1 AND finished_at IS NULL AND rolled_back_at IS NULL`, [readerSummaryDailyActivationAclMigration]); const failedRow = failedMigration.rows[0];
+      assert(failed.status !== 0 && failedMigration.rows.length === 1 && failedRow?.checksum === expectedChecksum && typeof failedRow?.logs === "string" && failedRow.logs.length > 0, `fixture ACL migration must retain one unfinished row with exact checksum and nonempty logs (status=${failed.status}; fixtureFailureSeen=${`${failed.stdout}${failed.stderr}`.includes("fixture daily activation ACL failure")}; rows=${failedMigration.rows.length}; checksumMatches=${failedRow?.checksum === expectedChecksum}; logsLength=${failedRow?.logs?.length ?? 0})`);
+      const blocked = runOrderedReaderSummaryMigrations(adminDatabaseUrl, workspace); assert(blocked.status !== 0 && `${blocked.stdout}${blocked.stderr}`.includes("P3009"), "unfinished ACL migration must block Prisma with P3009");
+      resolveRolledBackReaderSummaryMigration(adminDatabaseUrl, workspace, readerSummaryDailyActivationAclMigration);
+      removeInstalledReaderSummaryMigration(workspace, readerSummaryDailyActivationAclMigration); installDailyActivationMigration(workspace, readerSummaryDailyActivationAclMigration); applyOrderedReaderSummaryMigrations(adminDatabaseUrl, workspace);
+    } finally { await activationAdmin.end(); }
+    await privileges.runReaderSummaryPublicationBootstrapSql("post", adminDatabaseUrl, runtimeRole, systemRuntimeRole); for (let replay = 0; replay < 2; replay += 1) { await privileges.runReaderSummaryPublicationBootstrapSql("pre", adminDatabaseUrl, runtimeRole, systemRuntimeRole); await privileges.runReaderSummaryPublicationBootstrapSql("post", adminDatabaseUrl, runtimeRole, systemRuntimeRole); }
     assertReaderSummaryMigrationDatabaseMatchesSchema(targetDatabaseUrl);
-    const auditorPool = new Pool({ connectionString: targetDatabaseUrl, max: 1 });
-    const runtimePool = new Pool({ connectionString: runtimeDatabaseUrl, max: 1 });
+    const auditorPool = new Pool({ connectionString: targetDatabaseUrl, max: 1 }); const runtimePool = new Pool({ connectionString: runtimeDatabaseUrl, max: 1 });
     const terminalPool = new Pool({ connectionString: terminalDatabaseUrl, max: 2 });
     try {
       const auditor = await auditorPool.connect();
@@ -982,7 +982,7 @@ const main = async (): Promise<void> => {
     await privileges.dropPublicationFixtureDatabaseAndRoles({
       serverAdmin, databaseName, migrationAdminRole, runtimeRole,
       ownerRolePreexisting, capabilityRolePreexisting,
-      schemaOwnerRolePreexisting, tenantSystemCapabilityRolePreexisting,
+      schemaOwnerRolePreexisting, tenantSystemCapabilityRolePreexisting, dailyActivationDefinerRolePreexisting,
       fixtureDatabaseCreated, fixtureMigrationAdminRoleCreated,
       fixtureRuntimeRoleCreated,
       fixtureDailyTerminalRoleCreated: fixtureTerminalRoleCreated,

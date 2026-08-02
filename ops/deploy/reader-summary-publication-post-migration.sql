@@ -867,3 +867,130 @@ BEGIN
   END IF;
 END
 $bootstrap$;
+
+-- Ownership/bootstrap replay can replace direct table ACLs after the forward
+-- activation migration. Reissue the legacy SECURITY DEFINER body grants only
+-- after those owners are final, and only as the relations' current owner.
+DO $grant_legacy_daily_function_owner_acl$
+DECLARE
+  v_function_owner_oids OID[];
+  v_function_count BIGINT;
+  v_legacy_function_owner NAME;
+  v_daily_relation_owner_oids OID[];
+  v_daily_relation_count BIGINT;
+  v_daily_relation_owner NAME;
+BEGIN
+  SELECT ARRAY_AGG(DISTINCT proc.proowner), COUNT(*)
+  INTO STRICT v_function_owner_oids, v_function_count
+  FROM pg_catalog.pg_proc AS proc
+  WHERE proc.oid = ANY (ARRAY[
+    'public.claim_reader_summary_daily_execution(uuid,uuid,text,date,timestamptz)'::REGPROCEDURE,
+    'public.renew_reader_summary_daily_execution_lease(uuid,uuid,date,text,bigint,timestamptz)'::REGPROCEDURE,
+    'public.mark_reader_summary_daily_model_job_running(uuid,uuid,date,text,bigint,timestamptz)'::REGPROCEDURE
+  ]::OID[]);
+  IF v_function_count <> 3
+    OR pg_catalog.cardinality(v_function_owner_oids) <> 1 THEN
+    RAISE EXCEPTION
+      'legacy daily claim, renew, and running functions lack one common owner';
+  END IF;
+  v_legacy_function_owner := pg_catalog.pg_get_userbyid(
+    v_function_owner_oids[1]
+  );
+  IF v_legacy_function_owner IN (
+    'social_monitor_reader_summary_daily_terminal',
+    'social_monitor_reader_summary_publication_runtime',
+    'social_monitor_tenant_system_runtime',
+    'social_monitor_reader_summary_daily_publication_definer'
+  ) THEN
+    RAISE EXCEPTION
+      'legacy daily function owner is a terminal, capability, or definer role';
+  END IF;
+  SELECT ARRAY_AGG(DISTINCT relation.relowner), COUNT(*)
+  INTO STRICT v_daily_relation_owner_oids, v_daily_relation_count
+  FROM pg_catalog.pg_class AS relation
+  WHERE relation.oid = ANY (ARRAY[
+    'public.reader_summary_daily_execution_cursors'::REGCLASS,
+    'public.reader_summary_daily_model_jobs'::REGCLASS,
+    'public.reader_summary_daily_source_authorities'::REGCLASS
+  ]::OID[]);
+  IF v_daily_relation_count <> 3
+    OR pg_catalog.cardinality(v_daily_relation_owner_oids) <> 1 THEN
+    RAISE EXCEPTION
+      'daily cursor, model, and source authority relations lack one common owner';
+  END IF;
+  v_daily_relation_owner := pg_catalog.pg_get_userbyid(
+    v_daily_relation_owner_oids[1]
+  );
+  IF NOT pg_catalog.pg_has_role(
+    session_user, v_daily_relation_owner, 'SET'
+  ) THEN
+    RAISE EXCEPTION 'migration admin cannot SET the daily relation owner';
+  END IF;
+  EXECUTE pg_catalog.format('SET LOCAL ROLE %I', v_daily_relation_owner);
+  EXECUTE pg_catalog.format(
+    'GRANT SELECT, INSERT, UPDATE ON TABLE '
+      'public."reader_summary_daily_execution_cursors", '
+      'public."reader_summary_daily_model_jobs" TO %I',
+    v_legacy_function_owner
+  );
+  EXECUTE pg_catalog.format(
+    'GRANT SELECT, INSERT ON TABLE '
+      'public."reader_summary_daily_source_authorities" TO %I',
+    v_legacy_function_owner
+  );
+  EXECUTE 'RESET ROLE';
+  IF NOT pg_catalog.pg_has_role(
+    session_user, 'social_monitor_public_schema_owner', 'SET'
+  ) THEN
+    RAISE EXCEPTION 'migration admin cannot SET the public schema owner';
+  END IF;
+  EXECUTE 'SET LOCAL ROLE social_monitor_public_schema_owner';
+  EXECUTE pg_catalog.format(
+    'GRANT SELECT ON TABLE public."feed_items", public."source_items" TO %I',
+    v_legacy_function_owner
+  );
+  EXECUTE 'RESET ROLE';
+END
+$grant_legacy_daily_function_owner_acl$;
+
+-- PG18 invariant: bootstrap leaves exactly one upstream-superuser creator-admin
+-- edge for this migrator (ADMIN, NOINHERIT, NOSET). ACL migrations may create
+-- and revoke a self SET edge; GRANTED BY CURRENT_USER cannot remove the
+-- upstream edge, and no runtime, outgoing, or extra incoming edge may exist.
+DO $daily_activation_definer_audit$
+DECLARE
+  v_definer pg_catalog.pg_roles%ROWTYPE;
+BEGIN
+  SELECT * INTO v_definer FROM pg_catalog.pg_roles
+  WHERE rolname = 'social_monitor_reader_summary_daily_publication_definer';
+  IF NOT FOUND OR v_definer.rolcanlogin OR v_definer.rolsuper
+    OR v_definer.rolcreatedb OR v_definer.rolcreaterole
+    OR v_definer.rolinherit OR v_definer.rolreplication
+    OR v_definer.rolbypassrls OR v_definer.rolconfig IS NOT NULL
+    OR EXISTS (SELECT 1 FROM pg_catalog.pg_auth_members AS membership
+      WHERE membership.member = v_definer.oid)
+    OR (SELECT count(*) <> 1 OR count(*) FILTER (WHERE member.rolname = session_user
+      AND grantor.rolsuper AND membership.admin_option
+      AND NOT membership.inherit_option AND NOT membership.set_option) <> 1
+      FROM pg_catalog.pg_auth_members AS membership
+      JOIN pg_catalog.pg_roles AS member ON member.oid = membership.member
+      JOIN pg_catalog.pg_roles AS grantor ON grantor.oid = membership.grantor
+      WHERE membership.roleid = v_definer.oid)
+    OR EXISTS (
+      SELECT 1
+      FROM pg_catalog.unnest(ARRAY[
+        current_setting('social_monitor.bootstrap_runtime_role')::NAME,
+        current_setting('social_monitor.bootstrap_system_runtime_role')::NAME,
+        'social_monitor_reader_summary_publication_runtime'::NAME,
+        'social_monitor_tenant_system_runtime'::NAME,
+        'social_monitor_reader_summary_daily_terminal'::NAME
+      ]) AS ordinary(role_name)
+      CROSS JOIN pg_catalog.unnest(ARRAY['MEMBER', 'USAGE', 'SET']) AS capability(option_name)
+      WHERE pg_catalog.pg_has_role(
+        ordinary.role_name, v_definer.rolname, capability.option_name
+      )
+    ) THEN
+    RAISE EXCEPTION 'daily publication definer PG18 bootstrap membership is unsafe';
+  END IF;
+END
+$daily_activation_definer_audit$;
