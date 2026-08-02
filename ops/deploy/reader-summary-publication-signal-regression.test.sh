@@ -4,18 +4,30 @@ set -euo pipefail
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 PROJECT_ROOT=$(cd "$SCRIPT_DIR/../.." && pwd)
 DAILY_RUN=$SCRIPT_DIR/production-runtime/daily-run.sh
-WORKER=$SCRIPT_DIR/fixtures/reader-summary-publication-pause-worker.sh
+WORKER_SOURCE=$SCRIPT_DIR/fixtures/reader-summary-publication-pause-worker.sh
 FAKE_DOCKER=$SCRIPT_DIR/fixtures/reader-summary-publication-fake-docker.sh
 FAKE_FLOCK=$SCRIPT_DIR/fixtures/reader-summary-publication-fake-flock.sh
 FIXTURE=$(mktemp -d "/tmp/reader-summary-publication-signal.XXXXXX")
 trap 'rm -rf "$FIXTURE"' EXIT
+WORKER=$FIXTURE/reader-summary-publication-pause-worker.sh
+sed 's/gpt-5\.5/gpt-5.6-sol/g' "$WORKER_SOURCE" > "$WORKER"
+chmod 0755 "$WORKER"
 
 EXPECTED_DATE=2026-07-16
 RELEASE_SHA=0123456789abcdef0123456789abcdef01234567
 
-# The production worker receives the pinned catch-up date, rather than
-# recomputing yesterday after a provider-readiness failure crosses midnight.
-grep -F "      --date \"\$requested_date\" --update" "$DAILY_RUN" >/dev/null
+# Production keeps collection before the canonical terminal. The terminal
+# receives the pinned date and owns the only production publication path.
+grep -F 'npm run run:reader-summary-clean-real-day-collection' "$DAILY_RUN" >/dev/null
+grep -F 'READER_SUMMARY_DAILY_FIRST_UNRESOLVED_UTC_DATE="$requested_date"' \
+  "$DAILY_RUN" >/dev/null
+grep -F 'READER_SUMMARY_DAILY_PUBLIC_DIRECTORY="$public_dir"' \
+  "$DAILY_RUN" >/dev/null
+grep -F 'scripts/run-reader-summary-daily-terminal.ts' "$DAILY_RUN" >/dev/null
+if grep -F 'scripts/run-reader-summary-production-day.ts' "$DAILY_RUN" >/dev/null; then
+  echo 'noncanonical production-day generation remains publishable' >&2
+  exit 1
+fi
 grep -F 'latest-state.v1.json' "$DAILY_RUN" >/dev/null
 
 wait_for_ready() {
@@ -25,6 +37,9 @@ wait_for_ready() {
     attempts=$((attempts + 1))
     if ((attempts > 200)); then
       echo 'real daily-run path did not stage its candidate' >&2
+      if [[ -s ${ready%/*}/run.log ]]; then
+        tail -20 "${ready%/*}/run.log" >&2
+      fi
       return 1
     fi
     sleep 0.05

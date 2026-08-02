@@ -235,12 +235,20 @@ fi
       --timeout-ms "$timeout_ms" \
       -- bash "$READER_SUMMARY_DAILY_RUN_PAUSE_WORKER" '"$DATE_FLAG"'
   else
+    npm run migrate:deploy
+    npm run run:reader-summary-clean-real-day-collection -- \
+      --update \
+      --date "$requested_date" \
+      --provider-catch-up \
+      --wait-for-x-readiness
+    export READER_SUMMARY_DAILY_FIRST_UNRESOLVED_UTC_DATE="$requested_date"
+    export READER_SUMMARY_DAILY_PUBLIC_DIRECTORY="$public_dir"
     node scripts/run-with-timeout.mjs \
       --timeout-ms "$timeout_ms" \
       --node-options --max-old-space-size=1024 \
       -- ./node_modules/.bin/ts-node -r tsconfig-paths/register \
-      scripts/run-reader-summary-production-day.ts \
-      --date "$requested_date" --update
+      scripts/run-reader-summary-daily-terminal.ts
+    exit 0
   fi
 
   expected_date=$requested_date
