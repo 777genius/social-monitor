@@ -1,6 +1,9 @@
 import { readFileSync } from "node:fs";
 
-import { assertReaderSummaryDailyMigrationContract } from "./reader-summary-daily-execution-cursor-postgres-contract";
+import {
+  assertReaderSummaryDailyActivationMigrationContract,
+  assertReaderSummaryDailyMigrationContract,
+} from "./reader-summary-daily-execution-cursor-postgres-contract";
 
 const migrationPath =
   "prisma/migrations/20260802100000_reader_summary_daily_execution_cursor/migration.sql";
@@ -9,6 +12,14 @@ describe("reader summary daily execution cursor PostgreSQL contract", () => {
   it("pins serializable row-lock, lease, catch-up, and immutable source rules", () => {
     const sql = readFileSync(migrationPath, "utf8");
     expect(() => assertReaderSummaryDailyMigrationContract(sql)).not.toThrow();
+  });
+
+  it("separates the durable model receipt from canonical publication advance", () => {
+    const sql = readFileSync(
+      "prisma/migrations/20260802143000_reader_summary_daily_execution_publication_activation/migration.sql",
+      "utf8",
+    );
+    expect(() => assertReaderSummaryDailyActivationMigrationContract(sql)).not.toThrow();
   });
 
   it.each([

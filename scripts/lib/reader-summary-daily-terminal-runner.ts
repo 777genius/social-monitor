@@ -1,4 +1,5 @@
 import type {
+  ReaderSummaryDailyCanonicalPublication,
   ReaderSummaryDailyClaimResult,
   ReaderSummaryDailyExecutionCursorPort,
   ReaderSummaryDailyExecutionWork,
@@ -13,6 +14,8 @@ export const readerSummaryDailyAbsoluteRuntimeMs = 7 * 60 * 60 * 1_000;
 export interface ReaderSummaryDailySubscriptionRuntime {
   readonly runtimeEngine: "subscription-runtime-cli";
   run(input: {
+    readonly tenantId: string;
+    readonly workspaceId: string;
     readonly modelJobIdentity: string;
     readonly requestedUtcDate: string;
     readonly sourceAuthorityBytes: Buffer;
@@ -23,19 +26,35 @@ export interface ReaderSummaryDailySubscriptionRuntime {
   }>;
 }
 
+export interface ReaderSummaryDailyPublicationFinalizer {
+  publish(input: {
+    readonly work: ReaderSummaryDailyExecutionWork;
+    readonly responseBytes: Buffer;
+    readonly receiptBytes: Buffer;
+  }): Promise<ReaderSummaryDailyCanonicalPublication>;
+}
+
 export type ReaderSummaryDailyRenewalScheduler = (
   callback: () => void,
   intervalMs: number,
 ) => Readonly<{ stop(): void }>;
 
+type ReaderSummaryDailyCompletedResult = Readonly<{
+  kind: "completed" | "replayed";
+  requestedUtcDate: string;
+  responseBytes: Buffer;
+  receiptBytes: Buffer;
+}>;
+
 export type ReaderSummaryDailyTerminalResult =
-  | Readonly<{ kind: "completed" | "replayed"; requestedUtcDate: string; responseBytes: Buffer; receiptBytes: Buffer }>
+  | ReaderSummaryDailyCompletedResult
   | Exclude<ReaderSummaryDailyClaimResult, Readonly<{ kind: "claimed" }>>;
 
 export class ReaderSummaryDailyTerminalRunner {
   constructor(private readonly dependencies: {
     readonly cursor: ReaderSummaryDailyExecutionCursorPort;
     readonly runtime: ReaderSummaryDailySubscriptionRuntime;
+    readonly publication: ReaderSummaryDailyPublicationFinalizer;
     readonly now: () => Date;
     readonly schedule?: ReaderSummaryDailyRenewalScheduler;
   }) {
@@ -62,7 +81,11 @@ export class ReaderSummaryDailyTerminalRunner {
       requestedUtcDate: work.requestedUtcDate,
       authority: work.sourceAuthority,
     });
-    if (work.modelJobState === "COMPLETED") return completedReplay(work);
+    if (work.modelJobState === "COMPLETED") {
+      const replay = completedReplay(work);
+      await this.publishAndAdvance(work, replay.responseBytes, replay.receiptBytes);
+      return replay;
+    }
     if (work.modelJobState !== "RESERVED") {
       return { kind: "failed_ambiguous", requestedUtcDate: work.requestedUtcDate };
     }
@@ -95,12 +118,13 @@ export class ReaderSummaryDailyTerminalRunner {
 
     try {
       const execution = await this.dependencies.runtime.run({
+        tenantId: work.tenantId,
+        workspaceId: work.workspaceId,
         modelJobIdentity: work.modelJob.value,
         requestedUtcDate: work.requestedUtcDate,
         sourceAuthorityBytes: Buffer.from(work.sourceAuthority.canonicalBytes),
         signal: abort.signal,
       });
-      stopRenewals();
       await pendingRenewal;
       if (renewalFailure !== undefined) throw renewalFailure;
       assertWithinAbsoluteLease(work, this.dependencies.now());
@@ -120,6 +144,12 @@ export class ReaderSummaryDailyTerminalRunner {
         receiptBytes: receipt.receiptBytes,
         receiptSha256: receipt.receiptSha256,
       });
+      await this.publishAndAdvance(
+        work,
+        receipt.responseBytes,
+        receipt.receiptBytes,
+      );
+      stopRenewals();
       return {
         kind: "completed",
         requestedUtcDate: work.requestedUtcDate,
@@ -130,9 +160,33 @@ export class ReaderSummaryDailyTerminalRunner {
       stopRenewals();
     }
   }
+
+
+  private async publishAndAdvance(
+    work: ReaderSummaryDailyExecutionWork,
+    responseBytes: Buffer,
+    receiptBytes: Buffer,
+  ): Promise<void> {
+    const publication = await this.dependencies.publication.publish({
+      work,
+      responseBytes,
+      receiptBytes,
+    });
+    await this.dependencies.cursor.finalizePublication({
+      tenantId: work.tenantId,
+      workspaceId: work.workspaceId,
+      workerId: work.lease.owner,
+      requestedUtcDate: work.requestedUtcDate,
+      fencingToken: work.lease.fencingToken,
+      finalizedAt: this.dependencies.now().toISOString(),
+      publication,
+    });
+  }
 }
 
-const completedReplay = (work: ReaderSummaryDailyExecutionWork): ReaderSummaryDailyTerminalResult => {
+const completedReplay = (
+  work: ReaderSummaryDailyExecutionWork,
+): ReaderSummaryDailyCompletedResult => {
   if (work.completedResponseBytes === undefined || work.completedReceiptBytes === undefined) {
     throw new Error("Daily COMPLETED job is missing exact replay bytes");
   }

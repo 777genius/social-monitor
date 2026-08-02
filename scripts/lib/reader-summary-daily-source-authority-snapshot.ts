@@ -43,6 +43,10 @@ export const verifyReaderSummaryDailySourceAuthority = (input: {
     throw new Error("Daily source authority canonical bytes are not JSON");
   }
   const value = record(decoded, "source authority");
+  assertExactKeys(value, [
+    "schemaVersion", "tenantId", "workspaceId", "requestedUtcDate",
+    "ingestionCutoff", "items",
+  ], "source authority");
   if (
     value.schemaVersion !== 1 ||
     value.tenantId !== input.tenantId ||
@@ -73,6 +77,10 @@ export const verifyReaderSummaryDailySourceAuthority = (input: {
 
 const sourceItem = (input: unknown, index: number): ReaderSummaryDailySourceItem => {
   const value = record(input, `item ${index}`);
+  assertExactKeys(value, [
+    "feedItemId", "sourceItemId", "providerKey", "canonicalUrl", "title",
+    "bodyPreview", "authorHandle", "publishedAt", "observedAt", "contentHash",
+  ], `item ${index}`);
   if (value.authorHandle !== null && typeof value.authorHandle !== "string") {
     throw new Error(`Daily source authority item ${index} has invalid authorHandle`);
   }
@@ -133,4 +141,16 @@ const record = (value: unknown, label: string): Record<string, unknown> => {
     throw new Error(`Daily ${label} is not an object`);
   }
   return value as Record<string, unknown>;
+};
+const assertExactKeys = (
+  value: Record<string, unknown>,
+  expected: readonly string[],
+  label: string,
+): void => {
+  const actual = Object.keys(value).sort();
+  const canonical = [...expected].sort();
+  if (actual.length !== canonical.length ||
+      actual.some((key, index) => key !== canonical[index])) {
+    throw new Error(`Daily ${label} contains fields outside authority v1`);
+  }
 };

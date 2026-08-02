@@ -57,8 +57,11 @@ unset READER_SUMMARY_PRODUCTION_RECOVERY_SOURCE_DATABASE_URL
 run_reader_summary_daily_runner_maintenance reader-summary-recover-missing-days
 run_reader_summary_daily_runner_maintenance reader-summary-weekly-run
 
-grep -Fx -- '--profile daily run --rm --no-deps daily-runner sh -lc npm run recover:reader-summary-production -- --apply --dates=2026-07-23,2026-07-24,2026-07-25,2026-07-26,2026-07-27,2026-07-28' \
+recovery_command='--profile daily run --rm --no-deps daily-runner sh -lc set -eu; npm run recover:reader-summary-production -- --apply --dates=2026-07-23,2026-07-24,2026-07-25,2026-07-26,2026-07-27,2026-07-28; npm run recover:reader-summary-production -- --apply --dates=2026-07-29,2026-07-30,2026-07-31'
+grep -Fx -- "$recovery_command" \
   "$COMPOSE_LOG" >/dev/null
+[[ $recovery_command != *'2026-07-28,2026-07-29'* ]]
+[[ $recovery_command == *'--dates=2026-07-23,2026-07-24,2026-07-25,2026-07-26,2026-07-27,2026-07-28; npm run recover:reader-summary-production -- --apply --dates=2026-07-29,2026-07-30,2026-07-31' ]]
 [[ $(grep -Fc 'source-env=unset' "$COMPOSE_LOG") == 2 ]]
 ! grep -F 'source-env=set' "$COMPOSE_LOG" >/dev/null
 ! grep -F 'READER_SUMMARY_PRODUCTION_RECOVERY_SOURCE_DATABASE_URL' \

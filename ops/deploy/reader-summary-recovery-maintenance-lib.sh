@@ -29,7 +29,7 @@ run_reader_summary_daily_runner_maintenance() (
     reader-summary-recover-missing-days)
       "${COMPOSE[@]}" --profile daily run --rm --no-deps \
         daily-runner sh -lc \
-        'npm run recover:reader-summary-production -- --apply --dates=2026-07-23,2026-07-24,2026-07-25,2026-07-26,2026-07-27,2026-07-28'
+        'set -eu; npm run recover:reader-summary-production -- --apply --dates=2026-07-23,2026-07-24,2026-07-25,2026-07-26,2026-07-27,2026-07-28; npm run recover:reader-summary-production -- --apply --dates=2026-07-29,2026-07-30,2026-07-31'
       ;;
     reader-summary-weekly-run)
       "${COMPOSE[@]}" --profile daily run --rm --no-deps \

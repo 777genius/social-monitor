@@ -21,6 +21,7 @@ describe("ReaderSummaryDailyTerminalRunner", () => {
     const events: string[] = [];
     const cursor = fakeCursor(work(), events);
     const runtime = fakeRuntime(events);
+    const publication = fakePublication(events);
     let renewal: (() => void) | undefined;
     const schedule: ReaderSummaryDailyRenewalScheduler = (callback, intervalMs) => {
       expect(intervalMs).toBe(readerSummaryDailyLeaseRenewalMs);
@@ -29,8 +30,7 @@ describe("ReaderSummaryDailyTerminalRunner", () => {
       return { stop: () => events.push("stop") };
     };
     const runner = new ReaderSummaryDailyTerminalRunner({
-      cursor,
-      runtime,
+      cursor, runtime, publication,
       now: () => new Date("2026-08-01T01:00:00.000Z"),
       schedule,
     });
@@ -39,9 +39,18 @@ describe("ReaderSummaryDailyTerminalRunner", () => {
     expect(result).toMatchObject({ kind: "completed", requestedUtcDate: "2026-07-31" });
     expect(runtime.run).toHaveBeenCalledTimes(1);
     expect(events).toEqual([
-      "claim", "running", "runtime", "renew", "stop", "complete",
+      "claim", "running", "runtime", "renew", "complete", "publish",
+      "finalize", "stop",
     ]);
     expect(cursor.renewLease).toHaveBeenCalledTimes(1);
+    expect(cursor.complete).toHaveBeenCalledWith(expect.objectContaining({
+      completedAt: "2026-08-01T01:00:00.000Z",
+    }));
+    expect(cursor.finalizePublication).toHaveBeenCalledWith(
+      expect.objectContaining({
+        finalizedAt: "2026-08-01T01:00:00.000Z",
+      }),
+    );
     expect(renewal).toBeDefined();
   });
 
@@ -53,12 +62,16 @@ describe("ReaderSummaryDailyTerminalRunner", () => {
       completedReceiptBytes: Buffer.from("stored-receipt"),
     }), events);
     const runtime = fakeRuntime(events);
+    const publication = fakePublication(events);
     const result = await new ReaderSummaryDailyTerminalRunner({
-      cursor, runtime, now: () => new Date("2026-08-01T01:00:00.000Z"),
+      cursor, runtime, publication,
+      now: () => new Date("2026-08-01T01:00:00.000Z"),
     }).runOne(input());
     expect(result).toMatchObject({ kind: "replayed" });
     expect(runtime.run).not.toHaveBeenCalled();
     expect(cursor.markRunning).not.toHaveBeenCalled();
+    expect(publication.publish).toHaveBeenCalledTimes(1);
+    expect(cursor.finalizePublication).toHaveBeenCalledTimes(1);
   });
 
   it.each(["failed_ambiguous", "recovery_required", "leased"] as const)(
@@ -69,24 +82,70 @@ describe("ReaderSummaryDailyTerminalRunner", () => {
         ? { kind, nextUnresolvedUtcDate: "2026-07-20", eligibleThrough: "2026-07-31" }
         : { kind, requestedUtcDate: "2026-07-31" });
       const runtime = fakeRuntime([]);
+      const publication = fakePublication([]);
       const result = await new ReaderSummaryDailyTerminalRunner({
-        cursor, runtime, now: () => new Date("2026-08-01T01:00:00.000Z"),
+        cursor, runtime, publication,
+        now: () => new Date("2026-08-01T01:00:00.000Z"),
       }).runOne(input());
       expect(result.kind).toBe(kind);
       expect(runtime.run).not.toHaveBeenCalled();
+      expect(publication.publish).not.toHaveBeenCalled();
     },
   );
 
   it("never calls again after an ambiguous runtime failure", async () => {
     const cursor = fakeCursor(work(), []);
     const runtime = fakeRuntime([]);
+    const publication = fakePublication([]);
     runtime.run.mockRejectedValueOnce(new Error("outcome unknown"));
     const runner = new ReaderSummaryDailyTerminalRunner({
-      cursor, runtime, now: () => new Date("2026-08-01T01:00:00.000Z"),
+      cursor, runtime, publication,
+      now: () => new Date("2026-08-01T01:00:00.000Z"),
     });
     await expect(runner.runOne(input())).rejects.toThrow("outcome unknown");
     expect(runtime.run).toHaveBeenCalledTimes(1);
     expect(cursor.complete).not.toHaveBeenCalled();
+    cursor.claimNext.mockResolvedValueOnce({
+      kind: "failed_ambiguous",
+      requestedUtcDate: "2026-07-31",
+    });
+    await expect(runner.runOne(input())).resolves.toMatchObject({
+      kind: "failed_ambiguous",
+    });
+    expect(runtime.run).toHaveBeenCalledTimes(1);
+  });
+
+  it("replays a receipt after a publication crash with zero extra provider calls", async () => {
+    const events: string[] = [];
+    const cursor = fakeCursor(work(), events);
+    const runtime = fakeRuntime(events);
+    const publication = fakePublication(events);
+    publication.publish.mockRejectedValueOnce(new Error("publication crash"));
+    const runner = new ReaderSummaryDailyTerminalRunner({
+      cursor,
+      runtime,
+      publication,
+      now: () => new Date("2026-08-01T01:00:00.000Z"),
+    });
+
+    await expect(runner.runOne(input())).rejects.toThrow("publication crash");
+    const completed = cursor.complete.mock.calls[0]?.[0];
+    expect(completed).toBeDefined();
+    cursor.claimNext.mockResolvedValueOnce({
+      kind: "claimed",
+      work: work({
+        modelJobState: "COMPLETED",
+        completedResponseBytes: completed!.responseBytes,
+        completedReceiptBytes: completed!.receiptBytes,
+      }),
+    });
+
+    await expect(runner.runOne(input())).resolves.toMatchObject({
+      kind: "replayed",
+    });
+    expect(runtime.run).toHaveBeenCalledTimes(1);
+    expect(publication.publish).toHaveBeenCalledTimes(2);
+    expect(cursor.finalizePublication).toHaveBeenCalledTimes(1);
   });
 
   it("fails before the runtime when the seven-hour absolute cap is reached", async () => {
@@ -99,8 +158,10 @@ describe("ReaderSummaryDailyTerminalRunner", () => {
       },
     }), []);
     const runtime = fakeRuntime([]);
+    const publication = fakePublication([]);
     await expect(new ReaderSummaryDailyTerminalRunner({
-      cursor, runtime, now: () => new Date("2026-08-01T01:00:00.000Z"),
+      cursor, runtime, publication,
+      now: () => new Date("2026-08-01T01:00:00.000Z"),
     }).runOne(input())).rejects.toThrow(/seven-hour/u);
     expect(runtime.run).not.toHaveBeenCalled();
   });
@@ -111,7 +172,7 @@ const input = () => ({ tenantId, workspaceId, workerId: "worker-1", firstUnresol
 const work = (patch: Partial<ReaderSummaryDailyExecutionWork> = {}): ReaderSummaryDailyExecutionWork => {
   const sourceRecord = {
     schemaVersion: 1, tenantId, workspaceId, requestedUtcDate: "2026-07-31",
-    ingestionCutoff: "2026-08-01T01:00:00.000Z", items: [],
+    ingestionCutoff: "2026-08-01T00:00:00.000Z", items: [],
   };
   const canonicalBytes = Buffer.from(JSON.stringify(sourceRecord));
   const canonicalSha256 = hash(canonicalBytes);
@@ -153,7 +214,28 @@ const fakeCursor = (claimed: ReaderSummaryDailyExecutionWork, events: string[]) 
     ReturnType<ReaderSummaryDailyExecutionCursorPort["complete"]>,
     Parameters<ReaderSummaryDailyExecutionCursorPort["complete"]>
   >(async (input) => { void input; events.push("complete"); }),
+  finalizePublication: jest.fn<
+    ReturnType<ReaderSummaryDailyExecutionCursorPort["finalizePublication"]>,
+    Parameters<ReaderSummaryDailyExecutionCursorPort["finalizePublication"]>
+  >(async (input) => { void input; events.push("finalize"); }),
 }) satisfies jest.Mocked<ReaderSummaryDailyExecutionCursorPort>;
+
+const fakePublication = (events: string[]) => ({
+  publish: jest.fn(async () => {
+    events.push("publish");
+    return {
+      readerSummaryJobId: "30000000-0000-4000-8000-000000000003",
+      readerSummaryArtifactId: "40000000-0000-4000-8000-000000000004",
+      publicationId: "40000000-0000-4000-8000-000000000004",
+      reportSha256: "a".repeat(64), proofSha256: "b".repeat(64),
+      weeklyEvidenceSha256: "c".repeat(64),
+      publicEvidenceBytes: Buffer.from("evidence"),
+      publicEvidenceSha256: hash(Buffer.from("evidence")),
+      publicFrontendBytes: Buffer.from("frontend"),
+      publicFrontendSha256: hash(Buffer.from("frontend")),
+    };
+  }),
+});
 
 const fakeRuntime = (events: string[]) => ({
   runtimeEngine: "subscription-runtime-cli" as const,

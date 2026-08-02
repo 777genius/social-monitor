@@ -31,6 +31,12 @@ const completeSql = `
     $7::BYTEA, $8::CHAR(64), $9::JSONB, $10::BYTEA, $11::CHAR(64),
     $12::BYTEA, $13::CHAR(64)
   )`;
+const finalizeSql = `
+  SELECT finalize_reader_summary_daily_publication(
+    $1::UUID, $2::UUID, $3::DATE, $4::TEXT, $5::BIGINT, $6::TIMESTAMPTZ,
+    $7::UUID, $8::UUID, $9::UUID, $10::CHAR(64), $11::CHAR(64),
+    $12::CHAR(64), $13::BYTEA, $14::CHAR(64), $15::BYTEA, $16::CHAR(64)
+  )`;
 
 export class PrismaReaderSummaryDailyExecutionCursor implements ReaderSummaryDailyExecutionCursorPort {
   constructor(
@@ -135,6 +141,33 @@ export class PrismaReaderSummaryDailyExecutionCursor implements ReaderSummaryDai
         input.receiptSha256,
       ]);
       exactlyOne(result.rows, "COMPLETED transition");
+    });
+  }
+
+  finalizePublication(input: Parameters<
+    ReaderSummaryDailyExecutionCursorPort["finalizePublication"]
+  >[0]): Promise<void> {
+    return this.serializable(async (transaction) => {
+      const publication = input.publication;
+      const result = await transaction.query<Record<string, unknown>>(finalizeSql, [
+        input.tenantId,
+        input.workspaceId,
+        input.requestedUtcDate,
+        input.workerId,
+        input.fencingToken.toString(),
+        input.finalizedAt,
+        publication.readerSummaryJobId,
+        publication.readerSummaryArtifactId,
+        publication.publicationId,
+        publication.reportSha256,
+        publication.proofSha256,
+        publication.weeklyEvidenceSha256,
+        publication.publicEvidenceBytes,
+        publication.publicEvidenceSha256,
+        publication.publicFrontendBytes,
+        publication.publicFrontendSha256,
+      ]);
+      exactlyOne(result.rows, "publication finalization");
     });
   }
 

@@ -32,6 +32,13 @@ describe("verifyReaderSummaryDailySourceAuthority", () => {
     const authority = snapshot({ observedAt: "2026-08-01T00:00:01.000Z" });
     expect(() => verifyReaderSummaryDailySourceAuthority({ ...scope, authority })).toThrow(/out-of-window/u);
   });
+
+  it("rejects invented authority v2 fields without normalizing the bytes", () => {
+    const authority = snapshot({ providerPayload: { invented: true } });
+    expect(() => verifyReaderSummaryDailySourceAuthority({
+      ...scope, authority,
+    })).toThrow(/outside authority v1/u);
+  });
 });
 
 const snapshot = (itemPatch: Record<string, unknown> = {}) => {

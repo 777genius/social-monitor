@@ -34,6 +34,19 @@ export type ReaderSummaryDailyExecutionWork = Readonly<{
   completedReceiptBytes?: Uint8Array;
 }>;
 
+export type ReaderSummaryDailyCanonicalPublication = Readonly<{
+  readerSummaryJobId: string;
+  readerSummaryArtifactId: string;
+  publicationId: string;
+  reportSha256: string;
+  proofSha256: string;
+  weeklyEvidenceSha256: string;
+  publicEvidenceBytes: Uint8Array;
+  publicEvidenceSha256: string;
+  publicFrontendBytes: Uint8Array;
+  publicFrontendSha256: string;
+}>;
+
 export type ReaderSummaryDailyClaimResult =
   | Readonly<{ kind: "claimed"; work: ReaderSummaryDailyExecutionWork }>
   | Readonly<{ kind: "caught_up"; eligibleThrough: string }>
@@ -87,5 +100,14 @@ export interface ReaderSummaryDailyExecutionCursorPort {
     readonly attestationSha256: string;
     readonly receiptBytes: Uint8Array;
     readonly receiptSha256: string;
+  }): Promise<void>;
+  finalizePublication(input: {
+    readonly tenantId: string;
+    readonly workspaceId: string;
+    readonly workerId: string;
+    readonly requestedUtcDate: string;
+    readonly fencingToken: bigint;
+    readonly finalizedAt: string;
+    readonly publication: ReaderSummaryDailyCanonicalPublication;
   }): Promise<void>;
 }
