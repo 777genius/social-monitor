@@ -1229,67 +1229,6 @@ model ReaderSummaryProductionRecoveryDryRun {
   @@map("reader_summary_production_recovery_dry_runs")
 }
 
-model ReaderSummaryDailyExecutionCursor {
-  tenantId               String    @map("tenant_id") @db.Uuid
-  workspaceId            String    @map("workspace_id") @db.Uuid
-  nextUnresolvedUtcDate  DateTime  @map("next_unresolved_utc_date") @db.Date
-  activeRequestedUtcDate DateTime? @map("active_requested_utc_date") @db.Date
-  leaseOwner             String?   @map("lease_owner")
-  fencingToken           BigInt    @default(0) @map("fencing_token")
-  leasedAt               DateTime? @map("leased_at") @db.Timestamptz(6)
-  leaseExpiresAt         DateTime? @map("lease_expires_at") @db.Timestamptz(6)
-  absoluteExpiresAt      DateTime? @map("absolute_expires_at") @db.Timestamptz(6)
-  recoveryRequiredAt     DateTime? @map("recovery_required_at") @db.Timestamptz(6)
-  createdAt              DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt              DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-
-  @@id([tenantId, workspaceId], map: "reader_summary_daily_execution_cursors_pkey")
-  @@map("reader_summary_daily_execution_cursors")
-}
-
-model ReaderSummaryDailySourceAuthority {
-  tenantId         String                      @map("tenant_id") @db.Uuid
-  workspaceId      String                      @map("workspace_id") @db.Uuid
-  requestedUtcDate DateTime                    @map("requested_utc_date") @db.Date
-  ingestionCutoff  DateTime                    @map("ingestion_cutoff") @db.Timestamptz(6)
-  canonicalRecord  Json                        @map("canonical_record")
-  canonicalBytes   Bytes                       @map("canonical_bytes")
-  canonicalSha256  String                      @map("canonical_sha256") @db.Char(64)
-  createdAt        DateTime                    @map("created_at") @db.Timestamptz(6)
-  modelJob         ReaderSummaryDailyModelJob?
-
-  @@id([tenantId, workspaceId, requestedUtcDate], map: "reader_summary_daily_source_authorities_pkey")
-  @@map("reader_summary_daily_source_authorities")
-}
-
-model ReaderSummaryDailyModelJob {
-  tenantId              String                            @map("tenant_id") @db.Uuid
-  workspaceId           String                            @map("workspace_id") @db.Uuid
-  requestedUtcDate      DateTime                          @map("requested_utc_date") @db.Date
-  identity              String                            @unique(map: "reader_summary_daily_model_jobs_identity_key")
-  sourceAuthoritySha256 String                            @map("source_authority_sha256") @db.Char(64)
-  provider              String
-  model                 String
-  reasoningEffort       String                            @map("reasoning_effort")
-  runtimeEngine         String                            @map("runtime_engine")
-  state                 String
-  reservedAt            DateTime                          @map("reserved_at") @db.Timestamptz(6)
-  runningAt             DateTime?                         @map("running_at") @db.Timestamptz(6)
-  completedAt           DateTime?                         @map("completed_at") @db.Timestamptz(6)
-  failedAmbiguousAt     DateTime?                         @map("failed_ambiguous_at") @db.Timestamptz(6)
-  responseBytes         Bytes?                            @map("response_bytes")
-  responseSha256        String?                           @map("response_sha256") @db.Char(64)
-  attestation           Json?
-  attestationBytes      Bytes?                            @map("attestation_bytes")
-  attestationSha256     String?                           @map("attestation_sha256") @db.Char(64)
-  receiptBytes          Bytes?                            @map("receipt_bytes")
-  receiptSha256         String?                           @map("receipt_sha256") @db.Char(64)
-  sourceAuthority       ReaderSummaryDailySourceAuthority @relation(fields: [tenantId, workspaceId, requestedUtcDate], references: [tenantId, workspaceId, requestedUtcDate], onDelete: Restrict, onUpdate: NoAction, map: "reader_summary_daily_model_jobs_source_fkey")
-
-  @@id([tenantId, workspaceId, requestedUtcDate], map: "reader_summary_daily_model_jobs_pkey")
-  @@map("reader_summary_daily_model_jobs")
-}
-
 model ReaderSummaryPublicationSlot {
   tenantId             String                    @map("tenant_id") @db.Uuid
   workspaceId          String                    @map("workspace_id") @db.Uuid
