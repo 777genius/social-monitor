@@ -120,7 +120,7 @@ services:
       retries: 20
 
   rabbitmq:
-    image: rabbitmq:4.3.2-management@sha256:c1e33461287f4c53049ce525575f0df77b2a00a88e2593776afbb6c1489bdb81
+    image: rabbitmq:4.3-management
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-social_monitor}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-social_monitor_local_password}
