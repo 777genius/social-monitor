@@ -20,6 +20,7 @@ type PoolContract = Readonly<{
 }>;
 type PoolFactory = (configuration: {
   readonly connectionString: string;
+  readonly min: 0;
   readonly max: 1;
   readonly application_name: string;
 }) => PoolContract;
@@ -55,11 +56,13 @@ export const createReaderSummaryDailyTerminalRuntimeConnection = (
   }
   const terminalPool = poolFactory({
     connectionString: terminalDsn,
+    min: 0,
     max: 1,
     application_name: "social-monitor-reader-summary-daily-terminal",
   });
   const auditorPool = poolFactory({
     connectionString: auditorDsn,
+    min: 0,
     max: 1,
     application_name: "social-monitor-reader-summary-daily-auditor",
   });
