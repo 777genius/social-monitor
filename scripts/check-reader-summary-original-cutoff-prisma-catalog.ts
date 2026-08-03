@@ -542,12 +542,19 @@ reader_summary_original_cutoff_probe() {
     apply:2:resolved) printf 'resolved\n' ;;
     apply:3:post) printf 'corrected\n' ;;
     retry-failure:1:pre) printf 'rollback\n' ;;
+    correction:1:pre) printf 'correction-rollback\n' ;;
+    correction:2:pre) printf 'clean\n' ;;
+    correction:3:post) printf 'corrected\n' ;;
     *:2:pre) return 71 ;;
     *) return 72 ;;
   esac
 }
 run_reader_summary_original_cutoff_prisma_resolve() {
-  printf 'resolve:%s\n' "$1" >>"$EVENTS"
+  if [ "$#" -eq 2 ]; then
+    printf 'resolve:%s:%s\n' "$1" "$2" >>"$EVENTS"
+  else
+    printf 'resolve:%s\n' "$1" >>"$EVENTS"
+  fi
   [ "$FAIL_RESOLUTION" != "$1" ]
 }
 case $CASE in
@@ -599,6 +606,18 @@ esac
       "admin:post",
     ].join("\n"),
     "terminal retry was not a resolve-free no-op",
+  );
+  const correctionRetry = runCase("correction-retry", {
+    CASE: "deploy",
+    PROBE_MODE: "correction",
+  }, true);
+  assert(
+    correctionRetry.join("\n") === [
+      "preflight", "admin:pre", "probe:pre",
+      `resolve:rolled-back:${correctionMigration}`, "probe:pre", "migrate",
+      "probe:post", "admin:post",
+    ].join("\n"),
+    "correction retry did not resolve only the reviewed failed correction",
   );
   const resolveFailure = runCase("resolve-failure", {
     CASE: "resolve",

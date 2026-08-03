@@ -27,6 +27,9 @@ FROM pg_database_owner,
   social_monitor_reader_summary_publication_runtime,
   :"runtime_role"
 CASCADE;
+REVOKE SELECT ("id", "tenant_id", "workspace_id", "scope"), UPDATE ("id")
+ON public."idempotency_keys"
+FROM social_monitor_reader_summary_publication_owner;
 DO $revoke_migrator_schema_create$
 BEGIN
   EXECUTE format(

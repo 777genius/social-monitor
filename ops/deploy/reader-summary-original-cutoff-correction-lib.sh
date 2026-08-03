@@ -70,7 +70,8 @@ reader_summary_original_cutoff_probe() {
   [[ $phase != resolved ]] || expected=resolved
   [[ $phase != post ]] || expected=corrected
   if [[ $result == "$expected" || ($phase == pre && \
-    ($result == rollback || $result == apply)) ]]; then
+    ($result == rollback || $result == apply || \
+      $result == correction-rollback)) ]]; then
     printf '%s\n' "$result"
     return 0
   fi
@@ -79,10 +80,14 @@ reader_summary_original_cutoff_probe() {
 
 run_reader_summary_original_cutoff_prisma_resolve() {
   local resolution=$1
+  local migration=${2:-$READER_SUMMARY_ORIGINAL_CUTOFF_MIGRATION}
   local secret=$ROOT/secrets/db/reader-summary-publication-admin-url
   local ca_certificate=$ROOT/secrets/db/ca-certificate.crt
 
   [[ $resolution == rolled-back || $resolution == applied ]] || return 64
+  [[ $migration == "$READER_SUMMARY_ORIGINAL_CUTOFF_MIGRATION" || \
+    $migration == "$READER_SUMMARY_ORIGINAL_CUTOFF_CORRECTION_MIGRATION" ]] || \
+    return 64
   # shellcheck disable=SC2016 # Expansion occurs in the child shell.
   "${COMPOSE[@]}" --profile app run -T --rm --no-deps \
     --user 0:0 \
@@ -92,6 +97,7 @@ run_reader_summary_original_cutoff_prisma_resolve() {
       set -eu
       set +x
       resolution=$1
+      migration=$2
       DATABASE_URL=$(cat /run/secrets/reader-summary-publication-admin-url)
       export DATABASE_URL
       case $resolution in
@@ -99,10 +105,9 @@ run_reader_summary_original_cutoff_prisma_resolve() {
         applied) flag=--applied ;;
         *) exit 64 ;;
       esac
-      exec npx prisma migrate resolve "$flag" \
-        20260731153000_reader_summary_production_recovery_original_cutoff_authority \
+      exec npx prisma migrate resolve "$flag" "$migration" \
         --schema prisma/schema.prisma
-    ' _ "$resolution"
+    ' _ "$resolution" "$migration"
 }
 
 resolve_reader_summary_original_cutoff_failure() {
@@ -110,6 +115,12 @@ resolve_reader_summary_original_cutoff_failure() {
 
   verify_reader_summary_original_cutoff_target || return
   action=$(reader_summary_original_cutoff_probe pre) || return
+  if [[ $action == correction-rollback ]]; then
+    run_reader_summary_original_cutoff_prisma_resolve rolled-back \
+      "$READER_SUMMARY_ORIGINAL_CUTOFF_CORRECTION_MIGRATION" || return
+    [[ $(reader_summary_original_cutoff_probe pre) == clean ]]
+    return
+  fi
   [[ $action == rollback || $action == apply ]] ||
     return 0
 

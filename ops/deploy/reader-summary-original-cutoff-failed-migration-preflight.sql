@@ -13,8 +13,11 @@ SET LOCAL social_monitor.workspace_id =
 DO $original_cutoff_probe$
 DECLARE
   v_alias_rows INTEGER;
+  v_correction_applied INTEGER;
   v_correction_matches INTEGER;
+  v_correction_rolled_back INTEGER;
   v_correction_rows INTEGER;
+  v_correction_unfinished INTEGER;
   v_current_applied INTEGER;
   v_current_matches INTEGER;
   v_current_rolled_back INTEGER;
@@ -114,7 +117,6 @@ BEGIN
     OR v_current_rolled_back > 1
     OR v_current_applied > 1
     OR v_target_rows <> v_legacy_rows + v_current_rows
-    OR v_unfinished <> v_current_unfinished
     OR EXISTS (
       SELECT 1
       FROM public."_prisma_migrations" AS current_row
@@ -177,6 +179,29 @@ BEGIN
           'a378d07c649aa6de2e741be727d835ff' ||
           '591f3a08b308ab452eea48430f669ff1'
         AND started_at IS NOT NULL
+        AND finished_at IS NULL
+        AND rolled_back_at IS NULL
+        AND applied_steps_count = 0
+        AND id <> ''
+        AND (logs IS NULL OR btrim(logs) <> '')
+    ),
+    count(*) FILTER (
+      WHERE checksum =
+          'a378d07c649aa6de2e741be727d835ff' ||
+          '591f3a08b308ab452eea48430f669ff1'
+        AND started_at IS NOT NULL
+        AND finished_at IS NULL
+        AND rolled_back_at IS NOT NULL
+        AND rolled_back_at >= started_at
+        AND applied_steps_count = 0
+        AND id <> ''
+        AND (logs IS NULL OR btrim(logs) <> '')
+    ),
+    count(*) FILTER (
+      WHERE checksum =
+          'a378d07c649aa6de2e741be727d835ff' ||
+          '591f3a08b308ab452eea48430f669ff1'
+        AND started_at IS NOT NULL
         AND finished_at IS NOT NULL
         AND finished_at >= started_at
         AND rolled_back_at IS NULL
@@ -184,13 +209,48 @@ BEGIN
         AND id <> ''
         AND logs IS NULL
     )
-  INTO v_correction_rows, v_correction_matches
+  INTO v_correction_rows, v_correction_unfinished,
+    v_correction_rolled_back, v_correction_applied
   FROM public."_prisma_migrations"
   WHERE migration_name =
       '20260801130000_reader_summary_original_cutoff_consumed_state_correction';
 
-  IF v_correction_rows <> v_correction_matches OR v_correction_rows > 1
-    OR (v_correction_rows = 1 AND v_history_action <> 'clean') THEN
+  v_correction_matches := v_correction_unfinished
+    + v_correction_rolled_back + v_correction_applied;
+  IF v_correction_rows <> v_correction_matches
+    OR v_correction_unfinished > 1
+    OR v_correction_rolled_back > 1
+    OR v_correction_applied > 1
+    OR v_unfinished <> v_current_unfinished + v_correction_unfinished
+    OR (v_correction_rows > 0 AND v_history_action <> 'clean')
+    OR NOT (
+      v_correction_rows = 0
+      OR (v_correction_rows = 1 AND (
+        v_correction_unfinished = 1
+        OR v_correction_rolled_back = 1
+        OR v_correction_applied = 1
+      ))
+      OR (v_correction_rows = 2
+        AND v_correction_rolled_back = 1
+        AND v_correction_applied = 1)
+    )
+    OR (v_correction_rolled_back = 1 AND v_correction_applied = 1
+      AND (
+        SELECT applied.started_at < failed.rolled_back_at
+        FROM public."_prisma_migrations" AS applied
+        CROSS JOIN public."_prisma_migrations" AS failed
+        WHERE applied.migration_name =
+            '20260801130000_reader_summary_original_cutoff_consumed_state_correction'
+          AND applied.checksum =
+            'a378d07c649aa6de2e741be727d835ff' ||
+            '591f3a08b308ab452eea48430f669ff1'
+          AND applied.finished_at IS NOT NULL
+          AND applied.rolled_back_at IS NULL
+          AND failed.migration_name = applied.migration_name
+          AND failed.checksum = applied.checksum
+          AND failed.finished_at IS NULL
+          AND failed.rolled_back_at IS NOT NULL
+      )) THEN
     RAISE EXCEPTION 'original-cutoff correction migration row diverged';
   END IF;
   IF v_phase = 'social-monitor/original-cutoff-resolved'
@@ -199,7 +259,8 @@ BEGIN
     RAISE EXCEPTION 'original-cutoff resolved history diverged';
   ELSIF v_phase = 'social-monitor/original-cutoff-post'
     AND (v_history_action <> 'clean' OR v_current_applied <> 1
-      OR v_correction_rows <> 1) THEN
+      OR v_correction_applied <> 1
+      OR v_correction_unfinished <> 0) THEN
     RAISE EXCEPTION 'original-cutoff correction migration row diverged';
   END IF;
 
@@ -433,6 +494,15 @@ SELECT CASE current_setting('application_name')
   WHEN 'social-monitor/original-cutoff-resolved' THEN 'resolved'
   WHEN 'social-monitor/original-cutoff-post' THEN 'corrected'
   ELSE CASE
+    WHEN EXISTS (
+      SELECT 1 FROM public."_prisma_migrations"
+      WHERE migration_name =
+          '20260801130000_reader_summary_original_cutoff_consumed_state_correction'
+        AND checksum =
+          'a378d07c649aa6de2e741be727d835ff' ||
+          '591f3a08b308ab452eea48430f669ff1'
+        AND finished_at IS NULL AND rolled_back_at IS NULL
+    ) THEN 'correction-rollback'
     WHEN EXISTS (
       SELECT 1 FROM public."_prisma_migrations"
       WHERE migration_name =
