@@ -1128,10 +1128,38 @@ model ReaderSummaryWeeklyCertificationSeal {
   canonicalRecord Json     @map("canonical_record")
   canonicalBytes  Bytes    @map("canonical_bytes")
   recordedAt      DateTime @default(now()) @map("recorded_at") @db.Timestamptz(6)
+  reviewManifest  ReaderSummaryWeeklyReviewManifest? @relation("ReaderSummaryWeeklyReviewManifestSeal")
 
   @@unique([tenantId, workspaceId, scopeType, scopeKey, weekStartedOn], map: "reader_summary_weekly_certification_seals_scope_week_key")
   @@index([tenantId, workspaceId, weekStartedOn], map: "reader_summary_weekly_certification_seals_tenant_week_idx")
   @@map("reader_summary_weekly_certification_seals")
+}
+
+model ReaderSummaryWeeklyReviewManifest {
+  manifestId                 String   @id(map: "reader_summary_weekly_review_manifests_pkey") @map("manifest_id")
+  manifestSha256             String   @unique(map: "reader_summary_weekly_review_manifests_sha_key") @map("manifest_sha256") @db.Char(64)
+  tenantId                   String   @map("tenant_id") @db.Uuid
+  workspaceId                String   @map("workspace_id") @db.Uuid
+  scopeType                  String   @map("scope_type")
+  scopeKey                   String   @map("scope_key")
+  weekStartedOn              DateTime @map("week_started_on") @db.Date
+  weekEndedOn                DateTime @map("week_ended_on") @db.Date
+  sealId                     String   @unique(map: "reader_summary_weekly_review_manifests_seal_key") @map("seal_id")
+  sealSha256                 String   @map("seal_sha256") @db.Char(64)
+  reviewAuthority            Json     @map("review_authority")
+  reviewAuthoritySha256      String   @map("review_authority_sha256") @db.Char(64)
+  observations               Json
+  citations                  Json
+  modelResponseSha256        String   @map("model_response_sha256") @db.Char(64)
+  executionAttestation       Json     @map("execution_attestation")
+  executionAttestationSha256 String   @map("execution_attestation_sha256") @db.Char(64)
+  canonicalRecord            Json     @map("canonical_record")
+  canonicalBytes             Bytes    @map("canonical_bytes")
+  recordedAt                 DateTime @default(now()) @map("recorded_at") @db.Timestamptz(6)
+  certificationSeal          ReaderSummaryWeeklyCertificationSeal @relation("ReaderSummaryWeeklyReviewManifestSeal", fields: [sealId], references: [sealId], onDelete: Restrict, onUpdate: Restrict, map: "reader_summary_weekly_review_manifests_seal_fkey")
+
+  @@unique([tenantId, workspaceId, scopeType, scopeKey, weekStartedOn], map: "reader_summary_weekly_review_manifests_scope_week_key")
+  @@map("reader_summary_weekly_review_manifests")
 }
 
 model ReaderSummaryRecoveryReceipt {

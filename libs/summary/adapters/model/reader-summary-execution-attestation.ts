@@ -13,7 +13,11 @@ import type {
 } from "../../ports";
 
 export type ReaderSummaryAttestedTaskRole =
-  "summary" | "topic_label" | "topic_relation" | "story_relation";
+  | "summary"
+  | "topic_label"
+  | "topic_relation"
+  | "story_relation"
+  | "weekly_review";
 
 export type VerifiedReaderSummaryExecutionAttestation = {
   readonly taskRole: ReaderSummaryAttestedTaskRole;

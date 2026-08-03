@@ -34,6 +34,7 @@ import { assertReaderSummaryWeeklyDailyCertificationBackfillPostgresContract } f
 import { assertReaderSummaryWeeklyCertificationSealPostgresContract } from "./lib/reader-summary-weekly-certification-seal-postgres-contract";
 import { assertReaderSummaryWeeklyAtomicPublicationPostgresContract } from "./lib/reader-summary-weekly-atomic-publication-postgres-contract";
 import { assertReaderSummaryWeeklyProjectionPostgresContract } from "./lib/reader-summary-weekly-projection-postgres-contract";
+import { assertReaderSummaryWeeklyReviewManifestPostgresContract } from "./lib/reader-summary-weekly-review-manifest-postgres-contract";
 import {
   assertReaderSummaryWeeklyProductionPostgresContract,
 } from "./lib/reader-summary-weekly-production-postgres-contract";
@@ -107,7 +108,8 @@ export type ReaderSummaryPublicationPostgresContract =
   | "publication"
   | "weekly-certification-seal"
   | "weekly-atomic-publication"
-  | "weekly-projection";
+  | "weekly-projection"
+  | "weekly-review-manifest";
 
 export const closeReaderSummaryPublicationPostgresContract = async (
 ): Promise<void> => {
@@ -252,7 +254,8 @@ export const runReaderSummaryPublicationPostgresContract = async (
         if (
           contract === "weekly-certification-seal" ||
           contract === "weekly-atomic-publication" ||
-          contract === "weekly-projection"
+          contract === "weekly-projection" ||
+          contract === "weekly-review-manifest"
         ) {
           await assertReaderSummaryWeeklyCertificationSealPostgresContract({
             adminClient,
@@ -278,6 +281,15 @@ export const runReaderSummaryPublicationPostgresContract = async (
           }
           if (contract === "weekly-projection") {
             await assertReaderSummaryWeeklyProjectionPostgresContract(first);
+          }
+          if (contract === "weekly-review-manifest") {
+            await assertReaderSummaryWeeklyReviewManifestPostgresContract({
+              adminClient,
+              auditorClient: auditor,
+              concurrentRuntimeClient: second,
+              runtimeClient: first,
+              runtimeRole,
+            });
           }
           return;
         }
