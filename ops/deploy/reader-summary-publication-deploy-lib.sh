@@ -925,7 +925,8 @@ LEFT JOIN LATERAL (
             :'runtime_role',
             'social_monitor_public_schema_owner',
             'social_monitor_reader_summary_publication_owner',
-            'social_monitor_reader_summary_publication_runtime'
+            'social_monitor_reader_summary_publication_runtime',
+            'social_monitor_reader_summary_daily_terminal'
           )
         ) = 3
         AND COUNT(*) FILTER (
