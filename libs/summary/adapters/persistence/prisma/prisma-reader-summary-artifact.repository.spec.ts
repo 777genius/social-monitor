@@ -7,14 +7,11 @@ import {
 import type { ReaderSummaryWeeklyPublicationAuthorization } from "../../../domain/policies/reader-summary-weekly-publication-authorization";
 import * as weeklyAuthorizationPolicy from "../../../domain/policies/reader-summary-weekly-publication-authorization";
 import { emptyReaderSummaryReliabilityReport } from "../../../domain/entities/reader-summary-reliability";
-import type {
-  ReaderSummaryWeeklyPublicationPersistencePayload,
-  ReaderSummaryWeeklyPublicationPersistenceSqlRow,
-} from "../reader-summary-weekly-publication-payload";
+import {
+  type ReaderSummaryDailyCanonicalRecoveryV4Binding,
+} from "../../../ports";
 import { PrismaReaderSummaryArtifactRepository } from "./prisma-reader-summary-artifact.repository";
-import type { PrismaReaderSummaryArtifactRecord } from "./prisma-reader-summary-records";
-import type { PrismaSummaryClient } from "./prisma-summary-client";
-import type { PrismaSummaryStatus } from "./prisma-summary-records";
+import { FakeReaderSummaryPrisma } from "./prisma-reader-summary-artifact.repository.spec-support";
 
 describe("PrismaReaderSummaryArtifactRepository", () => {
   it("rejects a daily completed candidate without canonical GitHub proof but stages a genuine no-signal candidate", async () => {
@@ -112,6 +109,90 @@ describe("PrismaReaderSummaryArtifactRepository", () => {
     expect(prisma.statusFor("reader-summary-unverified-github")).toBe(
       "REJECTED",
     );
+  });
+
+  it("stages V4 recovery only after PostgreSQL re-verifies its strict provenance", async () => {
+    const prisma = new FakeReaderSummaryPrisma();
+    const repository = new PrismaReaderSummaryArtifactRepository(prisma.client);
+    const binding: ReaderSummaryDailyCanonicalRecoveryV4Binding = {
+      schemaVersion: "reader_summary.daily_canonical_recovery_provenance.v2",
+      recoveryVersion: "reader_summary.daily_canonical_recovery.v4",
+      selectedOutputKind: "output_text",
+      sourceAuthoritySchemaVersion: 2,
+      tenantId: tenant,
+      workspaceId: workspace,
+      requestedUtcDate: "2026-07-24",
+      ingestionCutoff: "2026-07-25T00:00:00.000Z",
+      sourceAuthoritySha256: "a".repeat(64),
+      modelJobIdentity: "b".repeat(64),
+      outputTextSha256: "c".repeat(64),
+      outputTextByteLength: 17,
+      githubProjectionSha256: "d".repeat(64),
+    };
+    const audit = (): ReaderSummaryGitHubProjectionAudit & {
+      readonly recoveryV4: ReaderSummaryDailyCanonicalRecoveryV4Binding;
+    } => ({
+      schemaVersion: "reader_summary.github_projection.v1",
+      status: "verified",
+      requestedUtcDay: binding.requestedUtcDate,
+      pageCount: 1,
+      scannedItemCount: 0,
+      eligibleBindingIds: [],
+      observedThrough: binding.ingestionCutoff,
+      bindings: [],
+      violationCodes: [],
+      reasons: [],
+      recoveryV4: binding,
+    });
+    await expect(repository.save(
+      recoveryReaderSummaryArtifact("reader-summary-forged-ordinary-audit"),
+      { githubProjectionAudit: noEligibleGitHubBindingOptions().githubProjectionAudit },
+    )).rejects.toThrow(/not re-verified/u);
+    await expect(repository.save(
+      recoveryReaderSummaryArtifact("reader-summary-unverified-v4-recovery"),
+      { githubProjectionAudit: audit() },
+    )).rejects.toThrow(/not re-verified/u);
+    prisma.setDailyRecoveryVerification(true);
+    await repository.save(
+      recoveryReaderSummaryArtifact("reader-summary-verified-v4-recovery"),
+      { githubProjectionAudit: audit() },
+    );
+
+    expect(prisma.statusFor("reader-summary-forged-ordinary-audit")).toBeUndefined();
+    expect(prisma.statusFor("reader-summary-unverified-v4-recovery")).toBeUndefined();
+    expect(prisma.statusFor("reader-summary-verified-v4-recovery")).toBe(
+      "RUNNING",
+    );
+    expect(prisma.dailyRecoveryVerificationQueryCount).toBe(3);
+  });
+
+  it("keeps an ordinary existing Jul23-Jul30 artifact idempotent when PostgreSQL has no V4 authority", async () => {
+    const prisma = new FakeReaderSummaryPrisma();
+    const repository = new PrismaReaderSummaryArtifactRepository(prisma.client);
+    const artifact = recoveryNoSignalReaderSummaryArtifact(
+      "reader-summary-ordinary-recovery-window",
+    );
+    const githubProjectionAudit: ReaderSummaryGitHubProjectionAudit = {
+      schemaVersion: "reader_summary.github_projection.v1",
+      status: "not_required",
+      requestedUtcDay: "2026-07-24",
+      pageCount: 1,
+      scannedItemCount: 0,
+      eligibleBindingIds: [],
+      bindings: [],
+      violationCodes: [],
+      reasons: [],
+    };
+    prisma.setDailyRecoveryVerification(null);
+
+    await repository.save(artifact, { githubProjectionAudit });
+    await expect(repository.save(artifact, { githubProjectionAudit }))
+      .resolves.toBeUndefined();
+
+    expect(prisma.statusFor("reader-summary-ordinary-recovery-window")).toBe(
+      "RUNNING",
+    );
+    expect(prisma.dailyRecoveryVerificationQueryCount).toBe(2);
   });
 
   it("stages and records the exact verified GitHub audit", async () => {
@@ -496,6 +577,29 @@ const readerSummaryArtifact = (
     },
   });
 
+const recoveryReaderSummaryArtifact = (
+  readerSummaryId: string,
+): ReaderSummaryArtifact => {
+  const snapshot = readerSummaryArtifact(readerSummaryId).toSnapshot();
+  const startedAt = new Date("2026-07-24T00:00:00.000Z");
+  const endedAt = new Date("2026-07-25T00:00:00.000Z");
+  return ReaderSummaryArtifact.create({
+    ...snapshot,
+    period: {
+      cadence: "daily",
+      startedAt,
+      endedAt,
+      timezone: "UTC",
+      periodKey: "daily:2026-07-24T00:00:00.000Z:2026-07-25T00:00:00.000Z:UTC",
+    },
+    sourceWindow: {
+      ...snapshot.sourceWindow,
+      startedAt,
+      endedAt,
+    },
+  });
+};
+
 const noSignalReaderSummaryArtifact = (
   readerSummaryId: string,
 ): ReaderSummaryArtifact => {
@@ -543,6 +647,29 @@ const noSignalReaderSummaryArtifact = (
       rationale: "No eligible evidence items were selected.",
     },
     noSignalReason: "No eligible evidence items were selected.",
+  });
+};
+
+const recoveryNoSignalReaderSummaryArtifact = (
+  readerSummaryId: string,
+): ReaderSummaryArtifact => {
+  const snapshot = noSignalReaderSummaryArtifact(readerSummaryId).toSnapshot();
+  const startedAt = new Date("2026-07-24T00:00:00.000Z");
+  const endedAt = new Date("2026-07-25T00:00:00.000Z");
+  return ReaderSummaryArtifact.create({
+    ...snapshot,
+    period: {
+      cadence: "daily",
+      startedAt,
+      endedAt,
+      timezone: "UTC",
+      periodKey: "daily:2026-07-24T00:00:00.000Z:2026-07-25T00:00:00.000Z:UTC",
+    },
+    sourceWindow: {
+      ...snapshot.sourceWindow,
+      startedAt,
+      endedAt,
+    },
   });
 };
 
@@ -702,202 +829,3 @@ const topRead = () => ({
   citationIds: ["citation-1"],
   previewMedia: undefined,
 });
-
-class FakeReaderSummaryPrisma {
-  private readonly records = new Map<
-    string,
-    PrismaReaderSummaryArtifactRecord
-  >();
-  private readonly weeklyPayloadBySlot = new Map<string, string>();
-  private nowMs = Date.parse("2026-07-05T10:00:00.000Z");
-  readonly weeklyRequests: ReaderSummaryWeeklyPublicationPersistencePayload[] =
-    [];
-  readonly weeklyOutcomes: ReaderSummaryWeeklyPublicationPersistenceSqlRow["outcome"][] =
-    [];
-
-  readonly client = {
-    $queryRaw: async <T>(
-      _strings: TemplateStringsArray,
-      serialized: unknown,
-    ): Promise<T> => {
-      const payload = JSON.parse(
-        String(serialized),
-      ) as ReaderSummaryWeeklyPublicationPersistencePayload;
-      const slotKey = [
-        payload.tenantId,
-        payload.workspaceId,
-        payload.scopeKey,
-        payload.cadence,
-        payload.periodStartedAt,
-        payload.periodEndedAt,
-        payload.periodTimezone,
-      ].join(":");
-      const canonicalPayload = JSON.stringify(payload);
-      const existingPayload = this.weeklyPayloadBySlot.get(slotKey);
-      const outcome = existingPayload === undefined ? "persisted" : "replayed";
-      this.weeklyRequests.push(payload);
-
-      if (
-        existingPayload !== undefined &&
-        existingPayload !== canonicalPayload
-      ) {
-        throw new Error(
-          "weekly artifact persistence replay diverged from immutable sealId or sealSha",
-        );
-      }
-      if (outcome === "persisted") {
-        this.weeklyPayloadBySlot.set(slotKey, canonicalPayload);
-      }
-      this.weeklyOutcomes.push(outcome);
-
-      return [
-        {
-          outcome,
-          artifact_id: payload.artifactId,
-          artifact_payload_sha256: payload.artifactPayloadSha256,
-          proof_sha256: payload.proof.sha256,
-        },
-      ] as unknown as T;
-    },
-    readerSummaryArtifact: {
-      create: async (args: {
-        readonly data: Omit<
-          PrismaReaderSummaryArtifactRecord,
-          "createdAt" | "updatedAt"
-        >;
-      }) => {
-        if (this.records.has(args.data.id)) {
-          throw Object.assign(new Error("unique"), { code: "P2002" });
-        }
-        const now = this.nextDate();
-        const record = {
-          ...args.data,
-          createdAt: now,
-          updatedAt: now,
-        };
-        this.records.set(record.id, record);
-        return record;
-      },
-      upsert: async (args: {
-        readonly where: { readonly id: string };
-        readonly update: Partial<PrismaReaderSummaryArtifactRecord>;
-        readonly create: Omit<
-          PrismaReaderSummaryArtifactRecord,
-          "createdAt" | "updatedAt"
-        >;
-      }) => {
-        const now = this.nextDate();
-        const current = this.records.get(args.where.id);
-        const record =
-          current === undefined
-            ? { ...args.create, createdAt: now, updatedAt: now }
-            : { ...current, ...args.update, updatedAt: now };
-        this.records.set(args.where.id, record);
-        return record;
-      },
-      updateMany: async (args: {
-        readonly where: ReaderSummaryArtifactWhere;
-        readonly data: Partial<PrismaReaderSummaryArtifactRecord>;
-      }) => {
-        let count = 0;
-        for (const record of this.records.values()) {
-          if (matchesWhere(record, args.where)) {
-            this.records.set(record.id, {
-              ...record,
-              ...args.data,
-              updatedAt: this.nextDate(),
-            });
-            count += 1;
-          }
-        }
-        return { count };
-      },
-      findMany: async (args: {
-        readonly where: ReaderSummaryArtifactWhere;
-        readonly skip?: number;
-        readonly take?: number;
-      }) => {
-        const skip = args.skip ?? 0;
-        const take = args.take ?? Number.POSITIVE_INFINITY;
-        return [...this.records.values()]
-          .filter((record) => matchesWhere(record, args.where))
-          .sort(compareRecords)
-          .slice(skip, skip + take);
-      },
-      count: async (args: { readonly where: ReaderSummaryArtifactWhere }) =>
-        [...this.records.values()].filter((record) =>
-          matchesWhere(record, args.where),
-        ).length,
-      findFirst: async (args: { readonly where: ReaderSummaryArtifactWhere }) =>
-        [...this.records.values()]
-          .filter((record) => matchesWhere(record, args.where))
-          .sort(compareRecords)[0] ?? null,
-    },
-  } as unknown as PrismaSummaryClient;
-
-  statusFor(id: string): PrismaSummaryStatus | undefined {
-    return this.records.get(id)?.status;
-  }
-
-  qualitySignalsFor(id: string): unknown {
-    return this.records.get(id)?.qualitySignals;
-  }
-
-  private nextDate(): Date {
-    this.nowMs += 1;
-    return new Date(this.nowMs);
-  }
-}
-
-type ReaderSummaryArtifactWhere = {
-  readonly id?: { readonly not?: string } | string;
-  readonly tenantId?: string;
-  readonly workspaceId?: string;
-  readonly scopeKey?: string;
-  readonly cadence?: string;
-  readonly periodStartedAt?: Date;
-  readonly periodEndedAt?: Date;
-  readonly periodTimezone?: string;
-  readonly status?: { readonly in: readonly PrismaSummaryStatus[] };
-};
-
-const matchesWhere = (
-  record: PrismaReaderSummaryArtifactRecord,
-  where: ReaderSummaryArtifactWhere,
-): boolean =>
-  matchesId(record, where.id) &&
-  matchesValue(record.tenantId, where.tenantId) &&
-  matchesValue(record.workspaceId, where.workspaceId) &&
-  matchesValue(record.scopeKey, where.scopeKey) &&
-  matchesValue(record.cadence, where.cadence) &&
-  matchesDate(record.periodStartedAt, where.periodStartedAt) &&
-  matchesDate(record.periodEndedAt, where.periodEndedAt) &&
-  matchesValue(record.periodTimezone, where.periodTimezone) &&
-  (where.status === undefined || where.status.in.includes(record.status));
-
-const matchesId = (
-  record: PrismaReaderSummaryArtifactRecord,
-  id: ReaderSummaryArtifactWhere["id"],
-): boolean => {
-  if (id === undefined) {
-    return true;
-  }
-  if (typeof id === "string") {
-    return record.id === id;
-  }
-  return id.not === undefined || record.id !== id.not;
-};
-
-const matchesValue = <T>(actual: T, expected: T | undefined): boolean =>
-  expected === undefined || actual === expected;
-
-const matchesDate = (actual: Date, expected: Date | undefined): boolean =>
-  expected === undefined || actual.getTime() === expected.getTime();
-
-const compareRecords = (
-  left: PrismaReaderSummaryArtifactRecord,
-  right: PrismaReaderSummaryArtifactRecord,
-): number =>
-  right.periodStartedAt.getTime() - left.periodStartedAt.getTime() ||
-  right.createdAt.getTime() - left.createdAt.getTime() ||
-  right.id.localeCompare(left.id);

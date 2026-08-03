@@ -25,7 +25,7 @@ RUNTIME_CONTROL_PATHS=(runtime-control)
 install -d "$REPO/ops/deploy" "$CONTROL" "$STATE" "$SYSTEMD_UNIT_DIR"
 cp "$SCRIPT_DIR/social-monitor-production-deploy.sh" \
   "$SCRIPT_DIR/social-monitor-production-ssh-wrapper.sh" \
-  "$SCRIPT_DIR/deploy-control-lib.sh" \
+  "$SCRIPT_DIR/deploy-control-lib.sh" "$SCRIPT_DIR/deploy-control-bridge-lib.sh" \
   "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh" \
   "$SCRIPT_DIR/backend-image-rescue-lib.sh" \
   "$SCRIPT_DIR/x-collector-image-deploy-lib.sh" \
@@ -922,8 +922,17 @@ systemctl() {
     'show --property=UnitFileState --value social-monitor-github-premidnight-capture-v1.timer')
       cat "$timer_unit_file_state"
       ;;
+    'show --property=UnitFileState --value social-monitor-weekly.timer')
+      printf 'enabled\n'
+      ;;
     'show --property=ActiveState --value social-monitor-github-premidnight-capture-v1.timer')
       cat "$timer_active_state"
+      ;;
+    'show --property=ActiveState --value social-monitor-weekly.timer')
+      printf 'active\n'
+      ;;
+    'show --property=NextElapseUSecRealtime --value social-monitor-weekly.timer')
+      printf 'Sun 2026-08-09 06:00:00 UTC\n'
       ;;
     'show --property=ActiveState --value social-monitor-github-premidnight-capture-v1.service')
       cat "$service_active_state"

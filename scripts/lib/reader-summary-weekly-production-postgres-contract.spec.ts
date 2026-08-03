@@ -9,6 +9,7 @@ import {
   assertReaderSummaryWeeklyProductionPostgresContract,
   assertReaderSummaryWeeklyProductionWindow,
   loadReaderSummaryWeeklyProductionDbState,
+  readerSummaryWeeklyReviewAuthorityFromProductionState,
   resolveCompletedReaderSummaryWeeklyProductionWindow,
   resolveReaderSummaryWeeklyProductionWindow,
   withReaderSummaryWeeklyProductionDatabaseAccess,
@@ -152,6 +153,30 @@ describe("reader summary weekly production postgres contract", () => {
 
     expect(state.status).toBe("complete");
     expect(state.blockingReasons).toEqual([]);
+  });
+
+  it("maps the exact seal and daily authorities without inventing Jul 23 GitHub evidence", async () => {
+    const state = await loadReaderSummaryWeeklyProductionDbState(
+      fakeClient(week.dates.map((date) => rowForDate(
+        date,
+        date === "2026-07-23"
+          ? { githubMode: "historical_unavailable" }
+          : undefined,
+      ))),
+      scope,
+      week,
+    );
+    const authority = readerSummaryWeeklyReviewAuthorityFromProductionState(state);
+    const july23 = authority.days[3];
+
+    expect(authority.sealId).toBe(state.weeklyCertificationSeal?.sealId);
+    expect(july23).toMatchObject({
+      requestedUtcDate: "2026-07-23",
+      githubMode: "historical_unavailable",
+    });
+    expect(july23?.providerEvidence.map((item) => item.providerKey)).not.toContain(
+      "github-trending-page",
+    );
   });
 
   it("fails closed on historical GitHub evidence for every other date", async () => {

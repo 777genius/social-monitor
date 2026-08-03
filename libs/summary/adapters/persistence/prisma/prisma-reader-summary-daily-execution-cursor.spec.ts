@@ -62,7 +62,7 @@ describe("PrismaReaderSummaryDailyExecutionCursor", () => {
     expect(failed.serializableCalls).toBe(1);
   });
 
-  it("uses fenced SQL transitions for renew, RUNNING, and COMPLETED", async () => {
+  it("uses fenced SQL transitions for renew, RUNNING, COMPLETED, and finalization", async () => {
     const sql = fakeSql([{
       lease_owner: "worker-1",
       fencing_token: "7",
@@ -88,10 +88,27 @@ describe("PrismaReaderSummaryDailyExecutionCursor", () => {
       attestationSha256: "c".repeat(64), receiptBytes: Buffer.from("receipt"),
       receiptSha256: "d".repeat(64),
     });
+    await repository.finalizePublication({
+      tenantId, workspaceId, workerId: "worker-1",
+      requestedUtcDate: "2026-07-31", fencingToken: 7n,
+      finalizedAt: "2026-08-01T01:11:00.000Z",
+      publication: {
+        readerSummaryJobId: "30000000-0000-4000-8000-000000000003",
+        readerSummaryArtifactId: "40000000-0000-4000-8000-000000000004",
+        publicationId: "40000000-0000-4000-8000-000000000004",
+        reportSha256: "e".repeat(64), proofSha256: "f".repeat(64),
+        weeklyEvidenceSha256: "1".repeat(64),
+        publicEvidenceBytes: Buffer.from("evidence"),
+        publicEvidenceSha256: "2".repeat(64),
+        publicFrontendBytes: Buffer.from("frontend"),
+        publicFrontendSha256: "3".repeat(64),
+      },
+    });
     expect(sql.queries.map((query) => query.text)).toEqual(expect.arrayContaining([
       expect.stringContaining("renew_reader_summary_daily_execution_lease"),
       expect.stringContaining("mark_reader_summary_daily_model_job_running"),
       expect.stringContaining("complete_reader_summary_daily_model_job"),
+      expect.stringContaining("finalize_reader_summary_daily_publication"),
     ]));
   });
 });

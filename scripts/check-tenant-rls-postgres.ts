@@ -64,6 +64,7 @@ let ownerRolePreexisting = false;
 let capabilityRolePreexisting = false;
 let schemaOwnerRolePreexisting = false;
 let tenantSystemCapabilityRolePreexisting = false;
+let dailyActivationDefinerRolePreexisting = false;
 let databaseCreated = false;
 let migrationAdminCreated = false;
 let runtimeCreated = false;
@@ -76,6 +77,7 @@ async function main(): Promise<void> {
   capabilityRolePreexisting = protectedRoles.capability;
   schemaOwnerRolePreexisting = protectedRoles.schemaOwner;
   tenantSystemCapabilityRolePreexisting = protectedRoles.tenantSystemCapability;
+  dailyActivationDefinerRolePreexisting = protectedRoles.dailyActivationDefiner;
   try {
     await createFixtureDatabase();
     preparePrePublicationMigrations(workspace);
@@ -108,6 +110,7 @@ async function main(): Promise<void> {
       capabilityRolePreexisting,
       schemaOwnerRolePreexisting,
       tenantSystemCapabilityRolePreexisting,
+      dailyActivationDefinerRolePreexisting,
       fixtureDatabaseCreated: databaseCreated,
       fixtureMigrationAdminRoleCreated: migrationAdminCreated,
       fixtureRuntimeRoleCreated: runtimeCreated,

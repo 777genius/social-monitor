@@ -5,18 +5,16 @@ const protectedOwner = "social_monitor_reader_summary_publication_owner";
 const publicSchemaOwner = "social_monitor_public_schema_owner";
 const publicationCapability = "social_monitor_reader_summary_publication_runtime";
 const tenantSystemCapability = "social_monitor_tenant_system_runtime";
+const dailyActivationDefiner = "social_monitor_reader_summary_daily_publication_definer";
 export const publicationFixtureDailyTerminalRole = "social_monitor_reader_summary_daily_terminal";
+// The pre-migration bootstrap, not fixture setup, creates this PG18-protected role.
 const protectedFixtureRoles = [publicSchemaOwner, protectedOwner, publicationCapability, tenantSystemCapability] as const;
-export const publicationProtectedRolePresence = async (
-  serverAdmin: Pool,
-): Promise<{ readonly capability: boolean; readonly owner: boolean; readonly schemaOwner: boolean; readonly tenantSystemCapability: boolean }> => {
-  const protectedRoles = await serverAdmin.query<{ readonly rolname: string }>(
-    `SELECT rolname FROM pg_roles WHERE rolname = ANY($1::text[])`, [protectedFixtureRoles]);
-  const hasRole = (role: string): boolean =>
-    protectedRoles.rows.some((row) => row.rolname === role);
+export const publicationProtectedRolePresence = async (serverAdmin: Pool): Promise<{ readonly capability: boolean; readonly owner: boolean; readonly schemaOwner: boolean; readonly tenantSystemCapability: boolean; readonly dailyActivationDefiner: boolean }> => {
+  const protectedRoles = await serverAdmin.query<{ readonly rolname: string }>(`SELECT rolname FROM pg_roles WHERE rolname = ANY($1::text[])`, [[...protectedFixtureRoles, dailyActivationDefiner]]);
+  const hasRole = (role: string): boolean => protectedRoles.rows.some((row) => row.rolname === role);
   return {
     capability: hasRole(publicationCapability), owner: hasRole(protectedOwner),
-    schemaOwner: hasRole(publicSchemaOwner), tenantSystemCapability: hasRole(tenantSystemCapability),
+    schemaOwner: hasRole(publicSchemaOwner), tenantSystemCapability: hasRole(tenantSystemCapability), dailyActivationDefiner: hasRole(dailyActivationDefiner),
   };
 };
 export const provisionPublicationFixtureProtectedRoles = async (params: {
@@ -419,8 +417,10 @@ export const assertPublicationRoleMemberships = async (
          JOIN pg_roles granted ON granted.oid = membership.roleid
          JOIN pg_roles member ON member.oid = membership.member
          JOIN pg_roles grantor ON grantor.oid = membership.grantor
-        WHERE member.rolname = ANY($1::text[])
-          AND granted.rolname = ANY($2::text[])
+        WHERE (member.rolname = ANY($1::text[])
+          AND granted.rolname = ANY($2::text[]))
+          OR granted.rolname = 'social_monitor_reader_summary_daily_publication_definer'
+          OR member.rolname = 'social_monitor_reader_summary_daily_publication_definer'
         ORDER BY granted.rolname, member.rolname, membership.grantor`,
       [
         [migrationAdminRole, runtimeRole],
@@ -453,34 +453,11 @@ export const assertPublicationRoleMemberships = async (
           ),
         ),
       [
-        {
-          granted_role: publicSchemaOwner,
-          member_role: migrationAdminRole,
-          admin_option: true,
-          inherit_option: false,
-          set_option: false,
-        },
-        {
-          granted_role: publicSchemaOwner,
-          member_role: migrationAdminRole,
-          admin_option: false,
-          inherit_option: false,
-          set_option: true,
-        },
-        {
-          granted_role: "social_monitor_reader_summary_publication_owner",
-          member_role: migrationAdminRole,
-          admin_option: true,
-          inherit_option: false,
-          set_option: false,
-        },
-        {
-          granted_role: "social_monitor_reader_summary_publication_owner",
-          member_role: migrationAdminRole,
-          admin_option: false,
-          inherit_option: false,
-          set_option: true,
-        },
+        { granted_role: publicSchemaOwner, member_role: migrationAdminRole, admin_option: true, inherit_option: false, set_option: false },
+        { granted_role: publicSchemaOwner, member_role: migrationAdminRole, admin_option: false, inherit_option: false, set_option: true },
+        { granted_role: "social_monitor_reader_summary_publication_owner", member_role: migrationAdminRole, admin_option: true, inherit_option: false, set_option: false },
+        { granted_role: "social_monitor_reader_summary_publication_owner", member_role: migrationAdminRole, admin_option: false, inherit_option: false, set_option: true },
+        { granted_role: dailyActivationDefiner, member_role: migrationAdminRole, admin_option: true, inherit_option: false, set_option: false },
         {
           granted_role: "social_monitor_reader_summary_publication_runtime",
           member_role: migrationAdminRole,
@@ -553,6 +530,11 @@ export const assertPublicationRoleMemberships = async (
         !row.inherit_option &&
         row.set_option,
     );
+    const definerBootstrapGrant = memberships.rows.find(
+      (row) => row.granted_role === dailyActivationDefiner &&
+        row.member_role === migrationAdminRole && row.grantor_superuser &&
+        row.admin_option && !row.inherit_option && !row.set_option,
+    );
     const capabilityAdminGrant = memberships.rows.find(
       (row) =>
         row.granted_role ===
@@ -611,6 +593,8 @@ export const assertPublicationRoleMemberships = async (
       ownerSelfGrant.grantor_role === migrationAdminRole,
       "publication owner set grant must be issued by the migration admin",
     );
+    assert(definerBootstrapGrant !== undefined,
+      "daily activation definer must retain only its PG18 bootstrap grant");
     assert(
       capabilityAdminGrant.grantor_superuser,
       "publication capability admin grant must use a bootstrap superuser",
@@ -634,7 +618,7 @@ export const dropPublicationFixtureDatabaseAndRoles = async (params: {
   readonly serverAdmin: Pool; readonly databaseName: string;
   readonly migrationAdminRole: string; readonly runtimeRole: string;
   readonly ownerRolePreexisting: boolean; readonly capabilityRolePreexisting: boolean;
-  readonly schemaOwnerRolePreexisting: boolean; readonly tenantSystemCapabilityRolePreexisting: boolean;
+  readonly schemaOwnerRolePreexisting: boolean; readonly tenantSystemCapabilityRolePreexisting: boolean; readonly dailyActivationDefinerRolePreexisting: boolean;
   readonly fixtureDatabaseCreated: boolean; readonly fixtureMigrationAdminRoleCreated: boolean;
   readonly fixtureRuntimeRoleCreated: boolean; readonly fixtureDailyTerminalRoleCreated?: boolean;
   readonly systemRuntimeRole?: string; readonly systemRuntimeRoleCreated?: boolean;
@@ -664,6 +648,7 @@ export const dropPublicationFixtureDatabaseAndRoles = async (params: {
   if (!params.tenantSystemCapabilityRolePreexisting) {
     await params.serverAdmin.query(`DROP ROLE IF EXISTS ${tenantSystemCapability}`);
   }
+  if (!params.dailyActivationDefinerRolePreexisting) await params.serverAdmin.query(`DROP ROLE IF EXISTS ${dailyActivationDefiner}`);
   if (!params.ownerRolePreexisting) {
     await params.serverAdmin.query(`DROP ROLE IF EXISTS social_monitor_reader_summary_publication_owner`);
   }

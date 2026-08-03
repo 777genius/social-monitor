@@ -4,8 +4,10 @@ set -euo pipefail
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 PROJECT_ROOT=$(cd "$SCRIPT_DIR/../.." && pwd)
 CURRENT_SOURCE=$SCRIPT_DIR/social-monitor-production-ssh-wrapper.sh
+CURRENT_ENTRYPOINT=$SCRIPT_DIR/social-monitor-production-deploy.sh
 CONTROL_LIB=$SCRIPT_DIR/deploy-control-lib.sh
 LEGACY_CONTROL_SHA=4f47fac7faed7dc24110f4a43e88820d776b8a40
+V4A4_CONTROL_SHA=472d835c
 FIXTURE=$(mktemp -d "${TMPDIR:-/tmp}/production-ssh-wrapper.XXXXXX")
 trap 'rm -rf "$FIXTURE"' EXIT
 
@@ -13,15 +15,20 @@ BIN=$FIXTURE/bin
 ENTRYPOINT=$FIXTURE/github-production-deploy.sh
 EVENT_LOG=$FIXTURE/events.log
 SHA=1234567890abcdef1234567890abcdef12345678
+DAILY_CANONICAL_RECOVERY_CONFIRMATION=reader-summary-daily-canonical-recovery-v4
 install -d "$BIN"
 git -C "$PROJECT_ROOT" show \
   "$LEGACY_CONTROL_SHA:ops/deploy/social-monitor-production-ssh-wrapper.sh" \
   > "$FIXTURE/legacy-wrapper.source"
 git -C "$PROJECT_ROOT" show \
-  "$LEGACY_CONTROL_SHA:ops/deploy/social-monitor-production-deploy.sh" \
-  > "$FIXTURE/legacy-entrypoint.source"
+  "$V4A4_CONTROL_SHA:ops/deploy/social-monitor-production-deploy.sh" \
+  > "$FIXTURE/v4a4-entrypoint.source"
+cmp -s "$CURRENT_ENTRYPOINT" "$FIXTURE/v4a4-entrypoint.source" || {
+  echo 'current deploy entrypoint must remain byte-identical to the V4A4 bridge release' >&2
+  exit 1
+}
 
-python3 - "$FIXTURE/legacy-entrypoint.source" <<'PY'
+python3 - "$FIXTURE/v4a4-entrypoint.source" <<'PY'
 import pathlib
 import sys
 
@@ -50,6 +57,7 @@ action=$1
 sha=$2
 command_text=${SSH_ORIGINAL_COMMAND:-${*:-}}
 [[ $command_text != *$'\n'* && $command_text != *$'\r'* ]] || exit 64
+[[ $command_text == "$action $sha" ]] || exit 65
 if [[ $action != deploy ]]; then
   printf 'dispatch:%s:%s\n' "$action" "$sha" >> "$EVENT_LOG"
   exit
@@ -149,5 +157,26 @@ for action in \
   assert_rejected "$FIXTURE/legacy-wrapper.sh" "$action $SHA"
   [[ ! -s $EVENT_LOG ]]
 done
+
+: > "$EVENT_LOG"
+SSH_ORIGINAL_COMMAND="reader-summary-daily-canonical-recovery-v4 $SHA $DAILY_CANONICAL_RECOVERY_CONFIRMATION" \
+  EVENT_LOG=$EVENT_LOG CONTROL_LIB=$CONTROL_LIB EXACT_SHA=$SHA \
+  bash "$FIXTURE/current-wrapper.sh"
+grep -Fx "dispatch:reader-summary-recover-missing-days:$SHA" "$EVENT_LOG" >/dev/null
+[[ $(wc -l < "$EVENT_LOG") == 1 ]]
+
+for command in \
+  "reader-summary-daily-canonical-recovery-v4 $SHA" \
+  "reader-summary-daily-canonical-recovery-v4 $SHA wrong-reader-summary-daily-canonical-recovery-v4" \
+  "reader-summary-daily-canonical-recovery-v4 $SHA $DAILY_CANONICAL_RECOVERY_CONFIRMATION:$SHA"; do
+  : > "$EVENT_LOG"
+  assert_rejected "$FIXTURE/current-wrapper.sh" "$command"
+  [[ ! -s $EVENT_LOG ]]
+done
+
+: > "$EVENT_LOG"
+assert_rejected "$FIXTURE/legacy-wrapper.sh" \
+  "reader-summary-daily-canonical-recovery-v4 $SHA $DAILY_CANONICAL_RECOVERY_CONFIRMATION"
+[[ ! -s $EVENT_LOG ]]
 
 echo 'Production SSH wrapper reachability tests passed'

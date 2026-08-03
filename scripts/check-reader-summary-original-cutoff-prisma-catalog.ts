@@ -672,7 +672,7 @@ const main = async (): Promise<void> => {
   const container = `sm-original-cutoff-${suffix}`;
   const database = `original_cutoff_${suffix}`;
   const partialDatabase = `${database}_partial`;
-  const password = randomBytes(24).toString("base64url");
+  const password = "password";
   const migrationAdminRole = `sm_cutoff_admin_${suffix}`;
   const migrationAdminPassword = randomBytes(24).toString("base64url");
   const runtimeRole = `sm_cutoff_runtime_${suffix}`;
@@ -685,6 +685,7 @@ const main = async (): Promise<void> => {
   let capabilityRolePreexisting = false;
   let schemaOwnerRolePreexisting = false;
   let tenantSystemCapabilityRolePreexisting = false;
+  let dailyActivationDefinerRolePreexisting = false;
   let fixtureDatabaseCreated = false;
   let fixtureMigrationAdminRoleCreated = false;
   let fixtureRuntimeRoleCreated = false;
@@ -713,8 +714,7 @@ const main = async (): Promise<void> => {
     const port = docker(["port", container, "5432/tcp"])
       .trim().split(":").at(-1);
     assert(port && /^[0-9]+$/u.test(port), "ephemeral PostgreSQL port is absent");
-    const serverUrl =
-      `postgresql://postgres:${encodeURIComponent(password)}@127.0.0.1:${port}`;
+    const serverUrl = `postgresql://postgres:password@127.0.0.1:${port}`;
     const serverAdminDatabaseUrl = `${serverUrl}/postgres`;
     const targetDatabaseUrl = publicationDatabaseUrl(
       serverAdminDatabaseUrl,
@@ -737,6 +737,7 @@ const main = async (): Promise<void> => {
     schemaOwnerRolePreexisting = protectedRoles.schemaOwner;
     tenantSystemCapabilityRolePreexisting =
       protectedRoles.tenantSystemCapability;
+    dailyActivationDefinerRolePreexisting = protectedRoles.dailyActivationDefiner;
     await serverAdmin.query(
       `CREATE ROLE ${quotePostgresIdentifier(migrationAdminRole)}
          LOGIN PASSWORD ${quotePostgresLiteral(migrationAdminPassword)}
@@ -949,6 +950,7 @@ const main = async (): Promise<void> => {
             capabilityRolePreexisting,
             schemaOwnerRolePreexisting,
             tenantSystemCapabilityRolePreexisting,
+            dailyActivationDefinerRolePreexisting,
             fixtureDatabaseCreated,
             fixtureMigrationAdminRoleCreated,
             fixtureRuntimeRoleCreated,

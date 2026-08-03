@@ -1,5 +1,4 @@
 \set ON_ERROR_STOP on
-
 BEGIN;
 SELECT set_config('social_monitor.bootstrap_runtime_role', :'runtime_role', false);
 SELECT set_config('social_monitor.bootstrap_system_runtime_role', :'system_runtime_role', false);
@@ -20,7 +19,7 @@ BEGIN
     current_user,
     'social_monitor_public_schema_owner',
     'social_monitor_reader_summary_publication_owner',
-    'social_monitor_reader_summary_publication_runtime'
+    'social_monitor_reader_summary_publication_runtime', 'social_monitor_reader_summary_daily_publication_definer'
   ) THEN
     RAISE EXCEPTION 'reader summary runtime and migration roles must be distinct';
   END IF;
@@ -29,11 +28,10 @@ BEGIN
     'social_monitor_public_schema_owner',
     'social_monitor_reader_summary_publication_owner',
     'social_monitor_reader_summary_publication_runtime',
-    'social_monitor_tenant_system_runtime'
+    'social_monitor_tenant_system_runtime', 'social_monitor_reader_summary_daily_publication_definer'
   ) THEN
     RAISE EXCEPTION 'tenant system runtime role conflicts with a protected role';
   END IF;
-
   SELECT * INTO v_admin_role FROM pg_roles WHERE rolname = current_user;
   IF NOT v_admin_role.rolsuper AND NOT v_admin_role.rolcreaterole THEN
     RAISE EXCEPTION 'reader summary bootstrap requires a separate CREATEROLE admin';
@@ -41,7 +39,6 @@ BEGIN
   IF NOT v_admin_role.rolsuper AND NOT v_admin_role.rolinherit THEN
     RAISE EXCEPTION 'reader summary migration admin must inherit protected ownership';
   END IF;
-
   SELECT * INTO v_role FROM pg_roles WHERE rolname = v_runtime_role;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'reader summary runtime role % does not exist', v_runtime_role;
@@ -50,7 +47,6 @@ BEGIN
     OR v_role.rolreplication OR v_role.rolbypassrls THEN
     RAISE EXCEPTION 'reader summary runtime role has unsafe privileges';
   END IF;
-
   SELECT * INTO v_role FROM pg_roles WHERE rolname = v_system_runtime_role;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'tenant system runtime role % does not exist', v_system_runtime_role;
@@ -60,7 +56,6 @@ BEGIN
     OR v_role.rolbypassrls THEN
     RAISE EXCEPTION 'tenant system runtime role has unsafe privileges';
   END IF;
-
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'social_monitor_public_schema_owner') THEN
     PERFORM pg_catalog.set_config('createrole_self_grant', 'set', true);
     EXECUTE 'CREATE ROLE social_monitor_public_schema_owner '
@@ -74,7 +69,6 @@ BEGIN
     OR v_role.rolbypassrls THEN
     RAISE EXCEPTION 'public schema owner role is unsafe';
   END IF;
-
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'social_monitor_reader_summary_publication_owner') THEN
     PERFORM pg_catalog.set_config('createrole_self_grant', 'set', true);
     EXECUTE 'CREATE ROLE social_monitor_reader_summary_publication_owner '
@@ -88,7 +82,19 @@ BEGIN
     OR v_role.rolbypassrls THEN
     RAISE EXCEPTION 'reader summary publication owner role is unsafe';
   END IF;
-
+  -- PG18 invariant: bootstrap, never the forward migration, creates the definer.
+  -- Its upstream-superuser creator-admin edge is durable: GRANTED BY CURRENT_USER
+  -- cannot remove it. A temporary self SET edge is revoked.
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'social_monitor_reader_summary_daily_publication_definer') THEN
+    PERFORM pg_catalog.set_config('createrole_self_grant', '', true); EXECUTE 'CREATE ROLE social_monitor_reader_summary_daily_publication_definer NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS';
+  END IF;
+  SELECT * INTO v_role FROM pg_roles WHERE rolname = 'social_monitor_reader_summary_daily_publication_definer'; IF v_role.rolcanlogin OR v_role.rolsuper OR v_role.rolcreatedb OR v_role.rolcreaterole OR v_role.rolinherit OR v_role.rolreplication OR v_role.rolbypassrls OR v_role.rolconfig IS NOT NULL THEN
+    RAISE EXCEPTION 'daily publication definer role is unsafe';
+  END IF;
+  -- Exact cardinality excludes runtime/terminal members and every extra grantor.
+  IF EXISTS (SELECT 1 FROM pg_auth_members membership WHERE membership.member = v_role.oid) OR (SELECT count(*) <> 1 OR count(*) FILTER (WHERE member.rolname = current_user AND grantor.rolsuper AND membership.admin_option AND NOT membership.inherit_option AND NOT membership.set_option) <> 1 FROM pg_auth_members membership JOIN pg_roles member ON member.oid = membership.member JOIN pg_roles grantor ON grantor.oid = membership.grantor WHERE membership.roleid = v_role.oid) THEN
+    RAISE EXCEPTION 'daily publication definer PG18 bootstrap membership is unsafe';
+  END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'social_monitor_reader_summary_publication_runtime') THEN
     EXECUTE 'CREATE ROLE social_monitor_reader_summary_publication_runtime '
       'NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT '
@@ -100,7 +106,6 @@ BEGIN
     OR v_role.rolbypassrls THEN
     RAISE EXCEPTION 'reader summary publication runtime role is unsafe';
   END IF;
-
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'social_monitor_tenant_system_runtime') THEN
     EXECUTE 'CREATE ROLE social_monitor_tenant_system_runtime '
       'NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT '
@@ -371,11 +376,9 @@ BEGIN
   FROM pg_database database
   JOIN pg_roles owner ON owner.oid = database.datdba
   WHERE database.datname = current_database();
-
   SELECT pg_get_userbyid(namespace.nspowner) INTO v_schema_owner
   FROM pg_namespace namespace
   WHERE namespace.nspname = 'public';
-
   IF EXISTS (
     SELECT 1
     FROM pg_namespace namespace
@@ -401,7 +404,6 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'public schema has an unreviewed CREATE grant';
   END IF;
-
   IF v_schema_owner = 'pg_database_owner' THEN
     IF v_database_owner <> v_runtime_role THEN
       RAISE EXCEPTION
@@ -424,7 +426,6 @@ BEGIN
     'social_monitor_public_schema_owner' THEN
     RAISE EXCEPTION 'public schema has an unexpected owner';
   END IF;
-
   EXECUTE format(
     'REVOKE CREATE ON SCHEMA public FROM %I '
       'GRANTED BY CURRENT_USER CASCADE',
@@ -446,7 +447,6 @@ BEGIN
     v_runtime_role
   );
   EXECUTE 'RESET ROLE';
-
   IF pg_get_userbyid((
     SELECT namespace.nspowner
     FROM pg_namespace namespace
@@ -495,7 +495,6 @@ BEGIN
   END IF;
 END
 $schema_ownership_transfer$;
-
 -- Existing installations were migrated by the application login before the
 -- protected publication owner existed. Transfer the artifact table while all
 -- temporary upward membership remains uncommitted and therefore invisible to
@@ -528,7 +527,6 @@ BEGIN
   SELECT pg_get_userbyid(relowner) INTO v_outbox_owner
   FROM pg_class
   WHERE oid = to_regclass('public.outbox_events');
-
   IF v_artifact_owner IS NULL OR v_job_owner IS NULL
     OR v_migration_owner IS NULL OR v_outbox_owner IS NULL THEN
     RAISE EXCEPTION
@@ -561,7 +559,6 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'reader summary artifact has an unexpected owner';
   END IF;
-
   IF v_artifact_owner = v_job_owner AND v_job_owner <> v_admin_role THEN
     EXECUTE format(
       'GRANT social_monitor_reader_summary_publication_owner TO %I '
@@ -580,7 +577,6 @@ BEGIN
     );
     v_temporary_owner_membership := TRUE;
   END IF;
-
   IF v_job_owner <> v_admin_role THEN
     IF NOT pg_has_role(v_admin_role, v_job_owner, 'SET') THEN
       RAISE EXCEPTION
@@ -589,7 +585,6 @@ BEGIN
     EXECUTE format('SET LOCAL ROLE %I', v_job_owner);
     v_switched_role := TRUE;
   END IF;
-
   IF v_artifact_owner = v_job_owner THEN
     -- The old application remains live until the deployment admission lock
     -- reaches service replacement. Preserve only its candidate read/write
@@ -600,7 +595,6 @@ BEGIN
     ALTER TABLE public.reader_summary_artifacts
       OWNER TO social_monitor_reader_summary_publication_owner;
   END IF;
-
   GRANT SELECT, UPDATE, REFERENCES ON TABLE public.reader_summary_jobs
     TO social_monitor_reader_summary_publication_owner;
   GRANT SELECT, INSERT, REFERENCES ON TABLE public.outbox_events
@@ -610,12 +604,10 @@ BEGIN
       'public.outbox_events TO %I',
     v_admin_role
   );
-
   IF v_switched_role THEN
     EXECUTE 'RESET ROLE';
     v_switched_role := FALSE;
   END IF;
-
   IF v_migration_owner <> v_admin_role THEN
     IF NOT pg_has_role(v_admin_role, v_migration_owner, 'SET') THEN
       RAISE EXCEPTION
@@ -624,13 +616,11 @@ BEGIN
     EXECUTE format('SET LOCAL ROLE %I', v_migration_owner);
     v_switched_role := TRUE;
   END IF;
-
   EXECUTE format(
     'GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE '
       'public._prisma_migrations TO %I',
     v_admin_role
   );
-
   IF v_switched_role THEN
     EXECUTE 'RESET ROLE';
     v_switched_role := FALSE;
@@ -643,7 +633,6 @@ BEGIN
   END IF;
 END
 $ownership_transfer$;
-
 -- Move ordinary application tables away from the LOGIN runtime before RLS is
 -- enabled. The temporary membership is transaction-local from the point of
 -- view of concurrent sessions and is revoked before commit.
@@ -682,7 +671,8 @@ BEGIN
         'reader_summary_production_recovery_dry_runs',
         'reader_summary_production_recovery_leases',
         'reader_summary_recovery_receipts', 'reader_summary_weekly_certification_seals',
-        'reader_summary_weekly_publication_evidence'
+        'reader_summary_weekly_publication_evidence',
+        'reader_summary_weekly_review_manifests'
       )
       AND owner.rolname NOT IN (
         v_admin_role,
@@ -709,7 +699,8 @@ BEGIN
         'reader_summary_production_recovery_dry_runs',
         'reader_summary_production_recovery_leases',
         'reader_summary_recovery_receipts', 'reader_summary_weekly_certification_seals',
-        'reader_summary_weekly_publication_evidence'
+        'reader_summary_weekly_publication_evidence',
+        'reader_summary_weekly_review_manifests'
       )
       AND owner.rolname = v_runtime_role
   ) THEN
@@ -744,7 +735,8 @@ BEGIN
         'reader_summary_production_recovery_dry_runs',
         'reader_summary_production_recovery_leases',
         'reader_summary_recovery_receipts', 'reader_summary_weekly_certification_seals',
-        'reader_summary_weekly_publication_evidence'
+        'reader_summary_weekly_publication_evidence',
+        'reader_summary_weekly_review_manifests'
       )
       AND owner.rolname IN (v_admin_role, v_runtime_role)
     ORDER BY owner.rolname, relation.relname
@@ -888,24 +880,26 @@ BEGIN
       v_seal_owner,
       v_seal_relation_kind;
   END IF;
-  IF v_seal_owner =
-    'social_monitor_reader_summary_publication_owner' THEN
-    RETURN;
+  IF v_seal_owner = 'social_monitor_public_schema_owner' THEN
+    GRANT social_monitor_reader_summary_publication_owner
+    TO social_monitor_public_schema_owner
+    WITH ADMIN FALSE, INHERIT FALSE, SET TRUE GRANTED BY CURRENT_USER;
+    SET LOCAL ROLE social_monitor_public_schema_owner;
+    GRANT CREATE ON SCHEMA public
+    TO social_monitor_reader_summary_publication_owner;
+    ALTER TABLE public.reader_summary_weekly_certification_seals
+      OWNER TO social_monitor_reader_summary_publication_owner;
+    REVOKE CREATE ON SCHEMA public
+    FROM social_monitor_reader_summary_publication_owner;
   END IF;
-
-  GRANT social_monitor_reader_summary_publication_owner
-  TO social_monitor_public_schema_owner
-  WITH ADMIN FALSE, INHERIT FALSE, SET TRUE GRANTED BY CURRENT_USER;
-  SET LOCAL ROLE social_monitor_public_schema_owner;
-  GRANT CREATE ON SCHEMA public
-  TO social_monitor_reader_summary_publication_owner;
-  ALTER TABLE public.reader_summary_weekly_certification_seals
-    OWNER TO social_monitor_reader_summary_publication_owner;
-  REVOKE CREATE ON SCHEMA public
+  SET LOCAL ROLE social_monitor_reader_summary_publication_owner;
+  REVOKE REFERENCES ON TABLE public.reader_summary_weekly_certification_seals
   FROM social_monitor_reader_summary_publication_owner;
   RESET ROLE;
-  REVOKE social_monitor_reader_summary_publication_owner
-  FROM social_monitor_public_schema_owner GRANTED BY CURRENT_USER;
+  IF v_seal_owner = 'social_monitor_public_schema_owner' THEN
+    REVOKE social_monitor_reader_summary_publication_owner
+    FROM social_monitor_public_schema_owner GRANTED BY CURRENT_USER;
+  END IF;
 END
 $weekly_certification_seal_ownership_transfer$;
 DO $ownership_transfer_audit$
@@ -927,7 +921,8 @@ BEGIN
         'reader_summary_production_recovery_dry_runs',
         'reader_summary_production_recovery_leases',
         'reader_summary_recovery_receipts', 'reader_summary_weekly_certification_seals',
-        'reader_summary_weekly_publication_evidence'
+        'reader_summary_weekly_publication_evidence',
+        'reader_summary_weekly_review_manifests'
       )
       AND owner.rolname <>
         'social_monitor_reader_summary_publication_owner'
@@ -963,7 +958,7 @@ BEGIN
     FROM unnest(ARRAY['reader_summary_artifacts', 'reader_summary_publications', 'reader_summary_publication_slots', 'reader_summary_weekly_publication_evidence']) evidence_table(name)
     WHERE NOT has_table_privilege('social_monitor_reader_summary_daily_terminal', 'public.' || evidence_table.name, 'SELECT') OR has_table_privilege('social_monitor_reader_summary_daily_terminal', 'public.' || evidence_table.name, 'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
   ) OR EXISTS (SELECT 1
-    FROM unnest(ARRAY['reader_summary_jobs', 'reader_summary_production_recovery_leases', 'reader_summary_production_recovery_days', 'reader_summary_production_recovery_dry_runs', 'reader_summary_recovery_receipts', 'reader_summary_weekly_certification_seals']) protected_table(name)
+    FROM unnest(ARRAY['reader_summary_jobs', 'reader_summary_production_recovery_leases', 'reader_summary_production_recovery_days', 'reader_summary_production_recovery_dry_runs', 'reader_summary_recovery_receipts', 'reader_summary_weekly_certification_seals', 'reader_summary_weekly_review_manifests']) protected_table(name)
     WHERE has_table_privilege('social_monitor_reader_summary_daily_terminal', 'public.' || protected_table.name, 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
   ) THEN RAISE EXCEPTION 'daily terminal evidence authority is unsafe';
   ELSIF has_function_privilege('social_monitor_reader_summary_publication_runtime', 'public.claim_reader_summary_daily_terminal(uuid,uuid,uuid,text)', 'EXECUTE')

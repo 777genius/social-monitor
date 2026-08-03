@@ -5,6 +5,7 @@ import { Pool, type PoolClient } from "pg";
 
 import {
   assertReaderSummaryDailyExecutionCursorPostgresContract,
+  assertReaderSummaryDailyActivationMigrationContract,
   assertReaderSummaryDailyMigrationContract,
 } from "./lib/reader-summary-daily-execution-cursor-postgres-contract";
 
@@ -15,6 +16,10 @@ const migration = readFileSync(
   "prisma/migrations/20260802100000_reader_summary_daily_execution_cursor/migration.sql",
   "utf8",
 );
+const activationMigration = readFileSync(
+  "prisma/migrations/20260802143000_reader_summary_daily_execution_publication_activation/migration.sql",
+  "utf8",
+);
 const serverUrl = requiredAdminUrl(process.env);
 const targetUrl = databaseUrl(serverUrl, databaseName);
 const server = new Pool({ connectionString: serverUrl, max: 1 });
@@ -23,6 +28,7 @@ let terminalRoleCreated = false;
 
 const main = async (): Promise<void> => {
   assertReaderSummaryDailyMigrationContract(migration);
+  assertReaderSummaryDailyActivationMigrationContract(activationMigration);
   const version = await server.query<{ version: number }>(
     "SELECT current_setting('server_version_num')::integer AS version",
   );
@@ -50,6 +56,7 @@ const main = async (): Promise<void> => {
     admin = await adminPool.connect();
     await admin.query(baseSchemaSql);
     await admin.query(migration);
+    await admin.query(activationMigration);
     first = await firstPool.connect();
     second = await secondPool.connect();
     await Promise.all([
@@ -86,6 +93,38 @@ const cleanup = async (): Promise<void> => {
 };
 
 const baseSchemaSql = `
+  CREATE TABLE reader_summary_artifacts (
+    id UUID PRIMARY KEY,
+    tenant_id UUID NOT NULL,
+    workspace_id UUID NOT NULL,
+    status TEXT NOT NULL
+  );
+  CREATE TABLE reader_summary_jobs (
+    id UUID PRIMARY KEY,
+    tenant_id UUID NOT NULL,
+    workspace_id UUID NOT NULL,
+    status TEXT NOT NULL,
+    reader_summary_artifact_id UUID REFERENCES reader_summary_artifacts(id)
+  );
+  CREATE TABLE reader_summary_publications (
+    id UUID PRIMARY KEY REFERENCES reader_summary_artifacts(id),
+    tenant_id UUID NOT NULL,
+    workspace_id UUID NOT NULL,
+    requested_utc_date DATE NOT NULL,
+    cadence TEXT NOT NULL,
+    semantic_status TEXT NOT NULL,
+    reader_summary_job_id UUID REFERENCES reader_summary_jobs(id),
+    reader_summary_artifact_id UUID NOT NULL REFERENCES reader_summary_artifacts(id),
+    report_sha256 CHAR(64) NOT NULL,
+    proof_sha256 CHAR(64) NOT NULL
+  );
+  CREATE TABLE reader_summary_weekly_publication_evidence (
+    publication_id UUID PRIMARY KEY REFERENCES reader_summary_publications(id),
+    reader_summary_job_id UUID NOT NULL REFERENCES reader_summary_jobs(id),
+    reader_summary_artifact_id UUID NOT NULL REFERENCES reader_summary_artifacts(id),
+    canonical_bytes BYTEA NOT NULL,
+    canonical_sha256 CHAR(64) NOT NULL
+  );
   CREATE TABLE source_items (
     id UUID PRIMARY KEY,
     tenant_id UUID NOT NULL,

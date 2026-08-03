@@ -43,6 +43,32 @@ export const assertReaderSummaryDailyMigrationContract = (sql: string): void => 
   ].join(" "), "daily model job identity must use the exact pipe-delimited SHA-256 contract");
 };
 
+export const assertReaderSummaryDailyActivationMigrationContract = (
+  sql: string,
+): void => {
+  assert(sql.includes("CREATE OR REPLACE FUNCTION \"complete_reader_summary_daily_model_job\""),
+    "daily activation must additively replace only receipt completion");
+  assert(sql.includes("CREATE FUNCTION \"finalize_reader_summary_daily_publication\""),
+    "daily activation must define a separate publication finalizer");
+  assert(sql.includes("reader_summary_weekly_publication_evidence"),
+    "daily finalization must require canonical weekly evidence");
+  assert(sql.includes("encode(sha256(public_evidence_bytes), 'hex')") &&
+    sql.includes("encode(sha256(public_frontend_bytes), 'hex')"),
+  "daily finalization must hash both exact public files in PostgreSQL");
+  assert(sql.includes('btrim(v_job."publication_report_sha256")') &&
+    sql.includes('btrim(v_job."publication_proof_sha256")') &&
+    sql.includes('btrim(v_job."weekly_evidence_sha256")'),
+  "daily finalization replay must retain every canonical DB hash");
+  const completion = sql.slice(
+    sql.indexOf("CREATE OR REPLACE FUNCTION \"complete_reader_summary_daily_model_job\""),
+    sql.indexOf("CREATE FUNCTION \"finalize_reader_summary_daily_publication\""),
+  );
+  assert(!completion.includes('"next_unresolved_utc_date" = target_date + 1'),
+    "model receipt completion must not advance before publication");
+  assert(!sql.includes("reader_summary.daily_source_authority.v2"),
+    "daily activation must not invent a v2 source authority");
+};
+
 export const assertReaderSummaryDailyExecutionCursorPostgresContract = async (params: {
   readonly admin: ReaderSummaryDailyPostgresClient;
   readonly first: ReaderSummaryDailyPostgresClient;
@@ -137,8 +163,30 @@ export const assertReaderSummaryDailyExecutionCursorPostgresContract = async (pa
   assert(completed.rows[0]?.state === "COMPLETED" &&
     requiredBuffer(completed.rows[0]?.response_bytes).equals(responseBytes) &&
     requiredBuffer(completed.rows[0]?.receipt_bytes).equals(receiptBytes) &&
-    completed.rows[0]?.next_unresolved_utc_date === addUtcDays(firstDate, 1),
-    "COMPLETED bytes or one-day cursor advancement diverged");
+    completed.rows[0]?.next_unresolved_utc_date === firstDate,
+    "COMPLETED receipt must persist without cursor advancement");
+
+  const canonical = await seedCanonicalPublication(params.admin, scope, firstDate);
+  await serializable(params.first, `SELECT finalize_reader_summary_daily_publication(
+    $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`, [
+    scope.tenantId, scope.workspaceId, firstDate, owner, fence,
+    new Date().toISOString(), canonical.jobId, canonical.artifactId,
+    canonical.artifactId, canonical.reportSha, canonical.proofSha,
+    canonical.weeklySha, canonical.evidenceBytes, hash(canonical.evidenceBytes),
+    canonical.frontendBytes, hash(canonical.frontendBytes),
+  ]);
+  const finalized = await params.admin.query<{
+    next_unresolved_utc_date: string; publication_id: string;
+  }>(`SELECT cursor.next_unresolved_utc_date::text,
+        job.publication_id::text
+      FROM reader_summary_daily_execution_cursors cursor
+      JOIN reader_summary_daily_model_jobs job USING (tenant_id, workspace_id)
+      WHERE cursor.tenant_id = $1 AND cursor.workspace_id = $2
+        AND job.requested_utc_date = $3`,
+    [scope.tenantId, scope.workspaceId, firstDate]);
+  assert(finalized.rows[0]?.next_unresolved_utc_date === addUtcDays(firstDate, 1) &&
+    finalized.rows[0]?.publication_id === canonical.artifactId,
+    "canonical verification did not advance exactly once");
 
   const oldScope = scopeIds("2");
   const recovery = await claimWithRetry(
@@ -231,6 +279,46 @@ const seedSource = async (
       CURRENT_TIMESTAMP - INTERVAL '1 minute','VISIBLE')`,
     [feedId, scope.tenantId, scope.workspaceId, sourceId,
       `https://example.invalid/${suffix}`, `Title ${suffix}`, `Body ${suffix}`, date]);
+};
+const seedCanonicalPublication = async (
+  admin: ReaderSummaryDailyPostgresClient,
+  scope: { tenantId: string; workspaceId: string },
+  date: string,
+) => {
+  const jobId = "50000000-0000-4000-8000-000000000005";
+  const artifactId = "60000000-0000-4000-8000-000000000006";
+  const reportSha = "c".repeat(64);
+  const proofSha = "d".repeat(64);
+  const weeklyBytes = Buffer.from(JSON.stringify({ schemaVersion: 1, requestedUtcDate: date }));
+  const weeklySha = hash(weeklyBytes);
+  await admin.query(`INSERT INTO reader_summary_artifacts
+    (id, tenant_id, workspace_id, status) VALUES ($1,$2,$3,'COMPLETED')`,
+    [artifactId, scope.tenantId, scope.workspaceId]);
+  await admin.query(`INSERT INTO reader_summary_jobs
+    (id, tenant_id, workspace_id, status, reader_summary_artifact_id)
+    VALUES ($1,$2,$3,'COMPLETED',$4)`,
+    [jobId, scope.tenantId, scope.workspaceId, artifactId]);
+  await admin.query(`INSERT INTO reader_summary_publications
+    (id, tenant_id, workspace_id, requested_utc_date, cadence,
+     semantic_status, reader_summary_job_id, reader_summary_artifact_id,
+     report_sha256, proof_sha256)
+    VALUES ($1,$2,$3,$4,'daily','COMPLETED',$5,$1,$6,$7)`,
+    [artifactId, scope.tenantId, scope.workspaceId, date, jobId,
+      reportSha, proofSha]);
+  await admin.query(`INSERT INTO reader_summary_weekly_publication_evidence
+    (publication_id, reader_summary_job_id, reader_summary_artifact_id,
+     canonical_bytes, canonical_sha256)
+    VALUES ($1,$2,$1,$3,$4)`,
+    [artifactId, jobId, weeklyBytes, weeklySha]);
+  const evidenceBytes = Buffer.from(JSON.stringify({
+    scope: { tenantId: scope.tenantId, workspaceId: scope.workspaceId },
+    result: { readerSummaryJobId: jobId, readerSummaryId: artifactId },
+  }));
+  const frontendBytes = Buffer.from(JSON.stringify({
+    tenantId: scope.tenantId, workspaceId: scope.workspaceId,
+  }));
+  return { jobId, artifactId, reportSha, proofSha, weeklySha,
+    evidenceBytes, frontendBytes };
 };
 const scopeIds = (digit: string) => ({
   tenantId: `${digit}0000000-0000-4000-8000-000000000001`,

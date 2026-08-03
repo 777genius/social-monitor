@@ -21,6 +21,21 @@ report_error() {
 }
 trap 'report_error "$?" "$LINENO" "$BASH_COMMAND"' ERR
 
+write_target_quorum_health_fixture() {
+  local repository=$1
+  local script=$repository/ops/deploy/rabbitmq-quorum-health.sh
+  local recovery_script=$repository/ops/deploy/rabbitmq-quorum-recovery.sh
+
+  printf '%s\n' \
+    '#!/usr/bin/env bash' \
+    'rabbitmq_quorum_health_probe() { :; }' > "$script"
+  chmod 0755 "$script"
+  printf '%s\n' \
+    '#!/usr/bin/env bash' \
+    'rabbitmq_quorum_recovery_probe() { :; }' > "$recovery_script"
+  chmod 0755 "$recovery_script"
+}
+
 REPO=$FIXTURE/repo
 ORIGIN=$FIXTURE/origin.git
 ROOT=$FIXTURE/root
@@ -432,6 +447,7 @@ git -C "$REPO" diff --name-only "$BASE_SHA" "$STALE_CONTROL_SHA" -- \
   | grep -Fx 'apps/api-gateway/stale-control-gap.txt' >/dev/null
 cp "$PROJECT_ROOT/ops/deploy/social-monitor-production-deploy.sh" \
   "$PROJECT_ROOT/ops/deploy/deploy-control-lib.sh" \
+  "$PROJECT_ROOT/ops/deploy/deploy-control-bridge-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/postgres-runtime-deploy-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/backend-runtime-health-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/backend-image-rescue-lib.sh" \
@@ -440,6 +456,7 @@ cp "$PROJECT_ROOT/ops/deploy/social-monitor-production-deploy.sh" \
   "$PROJECT_ROOT/ops/deploy/x-collector-image-deploy-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/reader-summary-recovery-maintenance-lib.sh" \
   "$REPO/ops/deploy/"
+write_target_quorum_health_fixture "$REPO"
 # Adapt only the committed fallback copy; this matches literal reviewed shell.
 # shellcheck disable=SC2016
 sed -i -e 's/install -m 0755 -o root -g root "$source" "$temporary"/install -m 0755 "$source" "$temporary"/' \
@@ -921,6 +938,7 @@ git -C "$REPO" checkout -q main
 git -C "$REPO" checkout -qb non-ancestor-current "$TARGET_SHA"
 cp "$PROJECT_ROOT/ops/deploy/social-monitor-production-deploy.sh" \
   "$PROJECT_ROOT/ops/deploy/deploy-control-lib.sh" \
+  "$PROJECT_ROOT/ops/deploy/deploy-control-bridge-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/postgres-runtime-deploy-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/backend-runtime-health-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/backend-image-rescue-lib.sh" \
@@ -929,6 +947,7 @@ cp "$PROJECT_ROOT/ops/deploy/social-monitor-production-deploy.sh" \
   "$PROJECT_ROOT/ops/deploy/x-collector-image-deploy-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/reader-summary-recovery-maintenance-lib.sh" \
   "$REPO/ops/deploy/"
+write_target_quorum_health_fixture "$REPO"
 git -C "$REPO" add ops/deploy
 git -C "$REPO" commit -qm 'test: non-ancestor current integration'
 NON_ANCESTOR_CURRENT_SHA=$(git -C "$REPO" rev-parse HEAD)

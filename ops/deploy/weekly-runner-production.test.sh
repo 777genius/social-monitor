@@ -13,7 +13,14 @@ package_json=$REPO/package.json
 production_workflow=$REPO/.github/workflows/production-deploy.yml
 weekly_seal_migration=$REPO/prisma/migrations/20260731120000_reader_summary_weekly_certification_seal/migration.sql
 weekly_seal_contract=$REPO/scripts/lib/reader-summary-weekly-certification-seal-postgres-contract.ts
+weekly_receipt=$REPO/scripts/lib/reader-summary-weekly-execution-receipt.ts
+weekly_scheduler=$REPO/scripts/lib/reader-summary-weekly-production-scheduler.ts
+weekly_schedule=$REPO/scripts/lib/reader-summary-weekly-schedule-postgres.ts
+weekly_runner=$REPO/scripts/run-reader-summary-weekly-production.ts
+weekly_slot_pipeline=$REPO/scripts/lib/reader-summary-weekly-slot-pipeline.ts
+weekly_review_admission=$REPO/scripts/lib/reader-summary-weekly-review-admission.ts
 publication_pre_migration=$REPO/ops/deploy/reader-summary-publication-pre-migration.sql
+publication_post_migration=$REPO/ops/deploy/reader-summary-publication-post-migration.sql
 
 [[ -f $service ]]
 [[ -f $timer ]]
@@ -24,6 +31,7 @@ grep -Fx 'Restart=on-failure' "$service" >/dev/null
 grep -Fx 'RestartSec=30min' "$service" >/dev/null
 grep -Fx 'StartLimitIntervalSec=3h' "$service" >/dev/null
 grep -Fx 'StartLimitBurst=3' "$service" >/dev/null
+grep -Fx 'TimeoutStartSec=23400' "$service" >/dev/null
 grep -Fx 'Persistent=true' "$timer" >/dev/null
 grep -Fx 'Unit=social-monitor-weekly.service' "$timer" >/dev/null
 grep -F 'OnCalendar=Mon ' "$timer" >/dev/null
@@ -39,13 +47,20 @@ grep -F 'ops/deploy/production-runtime/social-monitor-weekly.service' \
 grep -F 'ops/deploy/production-runtime/social-monitor-weekly.timer' \
   "$deploy_entrypoint" >/dev/null
 grep -F 'run:reader-summary-weekly-production' "$package_json" >/dev/null
+grep -F 'run:reader-summary-weekly-production": "node scripts/run-with-timeout.mjs --timeout-ms 14400000' \
+  "$package_json" >/dev/null
 grep -F 'check:reader-summary-weekly-production-postgres' \
   "$package_json" >/dev/null
 grep -F 'check:reader-summary-weekly-production-runner' "$package_json" \
   >/dev/null
+grep -F 'reader-summary-weekly-slot-pipeline.spec.ts' "$package_json" >/dev/null
+grep -F 'check:reader-summary-weekly-execution-receipt-postgres18' \
+  "$package_json" >/dev/null
 grep -F 'check:reader-summary-weekly-certification-seal-postgres' \
   "$package_json" >/dev/null
 grep -F 'npm run check:reader-summary-weekly-production-runner' \
+  "$production_workflow" >/dev/null
+grep -F 'npm run check:reader-summary-weekly-execution-receipt-postgres18' \
   "$production_workflow" >/dev/null
 grep -F 'npm run check:reader-summary-weekly-certification-seal-postgres' \
   "$production_workflow" >/dev/null
@@ -75,6 +90,65 @@ grep -F 'function_capability_acl_count === "0"' "$weekly_seal_contract" \
   in_owner_list && /^      \)/ { in_owner_list = 0 }
   END { print count + 0 }
 ' "$publication_pre_migration") -eq 1 ]]
+[[ $(grep -Fc "'reader_summary_weekly_review_manifests'" \
+  "$publication_pre_migration") -eq 5 ]]
+[[ $(awk '
+  /AND relation\.relname NOT IN \(/ { in_owner_exclusion = 1; next }
+  in_owner_exclusion && /reader_summary_weekly_review_manifests/ { count++ }
+  in_owner_exclusion && /^      \)/ { in_owner_exclusion = 0 }
+  END { print count + 0 }
+' "$publication_pre_migration") -eq 3 ]]
+[[ $(awk '
+  /^DO \$ownership_transfer_audit\$/ { in_owner_audit = 1 }
+  in_owner_audit && /AND relation\.relname IN \(/ { in_owner_list = 1; next }
+  in_owner_list && /reader_summary_weekly_review_manifests/ { count++ }
+  in_owner_list && /^      \)/ { in_owner_list = 0 }
+  END { print count + 0 }
+' "$publication_pre_migration") -eq 1 ]]
+[[ $(awk '
+  /^DO \$ownership_transfer_audit\$/ { in_owner_audit = 1 }
+  in_owner_audit && /FROM unnest\(ARRAY\[/ {
+    in_protected_array = 1
+    protected_array = ""
+  }
+  in_owner_audit && in_protected_array {
+    protected_array = protected_array $0 "\n"
+  }
+  in_owner_audit && in_protected_array && /\]\) protected_table\(name\)/ {
+    if (protected_array ~ /reader_summary_weekly_review_manifests/) {
+      count++
+    }
+    in_protected_array = 0
+  }
+  END { print count + 0 }
+' "$publication_pre_migration") -eq 1 ]]
+[[ $(grep -Fc "'reader_summary_weekly_review_manifests'" \
+  "$publication_post_migration") -eq 2 ]]
+[[ $(awk '
+  /^DO \$bootstrap\$/ { in_bootstrap = 1 }
+  in_bootstrap && /AND relation\.relname IN \(/ { in_owner_list = 1; next }
+  in_owner_list && /reader_summary_weekly_review_manifests/ { count++ }
+  in_owner_list && /^    \)/ { in_owner_list = 0 }
+  END { print count + 0 }
+' "$publication_post_migration") -eq 1 ]]
+grep -F 'IF v_owner_count <> 5 THEN' "$publication_post_migration" >/dev/null
+[[ $(awk '
+  /^DO \$bootstrap\$/ { in_bootstrap = 1 }
+  in_bootstrap && /FROM unnest\(ARRAY\[/ {
+    in_protected_array = 1
+    protected_array = ""
+  }
+  in_bootstrap && in_protected_array {
+    protected_array = protected_array $0 "\n"
+  }
+  in_bootstrap && in_protected_array && /\]\) protected_table\(name\)/ {
+    if (protected_array ~ /reader_summary_weekly_review_manifests/) {
+      count++
+    }
+    in_protected_array = 0
+  }
+  END { print count + 0 }
+' "$publication_post_migration") -eq 1 ]]
 awk '
   /^DO \$weekly_certification_seal_ownership_transfer\$/ {
     in_transfer = 1
@@ -97,17 +171,29 @@ awk '
   in_transfer && /weekly certification seal has an unexpected owner/ {
     unsafe_rejection = NR
   }
-  in_transfer && /^  GRANT social_monitor_reader_summary_publication_owner$/ {
+  in_transfer && /^[[:space:]]+GRANT social_monitor_reader_summary_publication_owner$/ {
     temporary_grant = NR
   }
-  in_transfer && /^  SET LOCAL ROLE social_monitor_public_schema_owner;/ {
+  in_transfer && /^[[:space:]]+SET LOCAL ROLE social_monitor_public_schema_owner;$/ {
     set_role = NR
   }
-  in_transfer && /^  ALTER TABLE public\.reader_summary_weekly_certification_seals$/ {
+  in_transfer && /^[[:space:]]+ALTER TABLE public\.reader_summary_weekly_certification_seals$/ {
     transfer_owner = NR
   }
+  in_transfer && /^  SET LOCAL ROLE social_monitor_reader_summary_publication_owner;$/ {
+    publication_owner_role = NR
+  }
+  in_transfer && /^  REVOKE REFERENCES ON TABLE public\.reader_summary_weekly_certification_seals$/ {
+    revoke_references = NR
+    expect_revoke_grantee = 1
+    next
+  }
+  expect_revoke_grantee && /^  FROM social_monitor_reader_summary_publication_owner;$/ {
+    revoke_grantee = NR
+    expect_revoke_grantee = 0
+  }
   in_transfer && /^  RESET ROLE;/ { reset_role = NR }
-  in_transfer && /^  REVOKE social_monitor_reader_summary_publication_owner$/ {
+  in_transfer && /^[[:space:]]+REVOKE social_monitor_reader_summary_publication_owner$/ {
     temporary_revoke = NR
   }
   /^\$weekly_certification_seal_ownership_transfer\$;/ {
@@ -120,26 +206,97 @@ awk '
       safe_owner_count == 2
     valid_order = transfer < owner_guard && owner_guard < unsafe_rejection &&
       unsafe_rejection < temporary_grant && temporary_grant < set_role &&
-      set_role < transfer_owner && transfer_owner < reset_role &&
+      set_role < transfer_owner && transfer_owner < publication_owner_role &&
+      publication_owner_role < revoke_references &&
+      revoke_references < revoke_grantee && revoke_grantee < reset_role &&
       reset_role < temporary_revoke && temporary_revoke < transfer_end &&
       transfer_end < audit
-    exit !(valid_safe_owners && valid_order)
+    exit !(valid_safe_owners && valid_order && !expect_revoke_grantee)
   }
 ' "$publication_pre_migration"
 ! grep -Eq '(GRANT|REVOKE).+reader_summary_weekly_certification_seals' \
   "$weekly_seal_contract"
 
+grep -F 'FOR UPDATE OF job' "$weekly_receipt" >/dev/null
+grep -F 'ON CONFLICT (tenant_id, idempotency_key) DO NOTHING' \
+  "$weekly_receipt" >/dev/null
+grep -F 'claimReaderSummaryWeeklyExecutionReceiptPair' "$weekly_receipt" >/dev/null
+grep -F 'releaseReaderSummaryWeeklyExecutionReceiptPair' "$weekly_receipt" >/dev/null
+! grep -Eq '\bLOCK[[:space:]]+TABLE\b' "$weekly_receipt"
+grep -F 'planReaderSummaryWeeklyCatchUp' "$weekly_scheduler" >/dev/null
+grep -F 'decideReaderSummaryWeeklyRetry' "$weekly_scheduler" >/dev/null
+grep -F 'terminalDiagnostics' "$weekly_scheduler" >/dev/null
+grep -F '$5::timestamptz' "$weekly_schedule" >/dev/null
+! grep -F '$5::date' "$weekly_schedule" >/dev/null
+[[ -f $weekly_slot_pipeline ]]
+grep -F 'backfillDailyCertifications' "$weekly_slot_pipeline" >/dev/null
+grep -F 'replayZeroModel' "$weekly_slot_pipeline" >/dev/null
+grep -F 'persistReplayFailure' "$weekly_slot_pipeline" >/dev/null
+grep -F 'zeroModel: true' "$weekly_slot_pipeline" >/dev/null
+grep -F 'zeroWrite: true' "$weekly_slot_pipeline" >/dev/null
+grep -F 'runReaderSummaryWeeklySlotPipeline' "$weekly_runner" >/dev/null
+grep -F 'backfillReaderSummaryWeeklyDailyCertifications' "$weekly_runner" >/dev/null
+grep -F 'onDurableArtifactPair' "$weekly_runner" >/dev/null
+grep -F 'persistReplayFailure' "$weekly_runner" >/dev/null
+grep -F 'ReaderSummaryWeeklySubscriptionRuntimeFailureError' "$weekly_runner" \
+  >/dev/null
+grep -F 'PrismaReaderSummaryWeeklyReviewManifest' "$weekly_runner" >/dev/null
+grep -F 'admitReaderSummaryWeeklyReviewManifest' "$weekly_runner" >/dev/null
+grep -F 'buildModelInputFromDbState' "$weekly_runner" >/dev/null
+grep -F 'runReaderSummaryWeeklyReviewProducer' "$weekly_review_admission" >/dev/null
+grep -F 'manifestStore.findBySeal' "$weekly_review_admission" >/dev/null
+grep -F 'if (params.replay)' "$weekly_review_admission" >/dev/null
+grep -F 'reviewManifestId' "$REPO/scripts/lib/reader-summary-weekly-production-runner.ts" \
+  >/dev/null
+grep -F 'reviewManifestSha256' "$REPO/scripts/lib/reader-summary-weekly-production-runner.ts" \
+  >/dev/null
+review_admission_line=$(grep -n -m1 'admitReaderSummaryWeeklyReviewManifest({' \
+  "$weekly_runner" | cut -d: -f1)
+input_admission_line=$(grep -n -m1 'const inputAdmission = buildModelInputFromDbState(' \
+  "$weekly_runner" | cut -d: -f1)
+receipt_line=$(grep -n -m1 'acquireReaderSummaryWeeklyExecutionReceipt(client' \
+  "$weekly_runner" | cut -d: -f1)
+model_line=$(grep -n 'runReaderSummaryWeeklyProduction({' \
+  "$weekly_runner" | tail -n1 | cut -d: -f1)
+[[ $review_admission_line =~ ^[0-9]+$ && $input_admission_line =~ ^[0-9]+$ && $receipt_line =~ ^[0-9]+$ && $model_line =~ ^[0-9]+$ ]]
+(( review_admission_line < input_admission_line && input_admission_line < receipt_line && receipt_line < model_line ))
+completion_callback_line=$(grep -n -m1 'complete: async (input)' \
+  "$weekly_runner" | cut -d: -f1)
+reconciliation_line=$(grep -n -m1 '=> reconcileReaderSummaryWeeklyExecutionReceiptPublication(' \
+  "$weekly_runner" | cut -d: -f1)
+[[ $completion_callback_line =~ ^[0-9]+$ && $reconciliation_line =~ ^[0-9]+$ ]]
+(( model_line < completion_callback_line && completion_callback_line < reconciliation_line ))
+replay_branch_line=$(grep -n -m1 'if (options.replay)' \
+  "$weekly_runner" | cut -d: -f1)
+runtime_connect_line=$(grep -n -m1 'GrpcAgentRuntimeClient.connect' \
+  "$weekly_runner" | cut -d: -f1)
+[[ $replay_branch_line =~ ^[0-9]+$ && $runtime_connect_line =~ ^[0-9]+$ ]]
+(( replay_branch_line < runtime_connect_line ))
+grep -F 'model: "gpt-5.6-sol"' "$weekly_runner" >/dev/null
+grep -F 'reasoningEffort: "xhigh"' "$weekly_runner" >/dev/null
+! grep -Eq '(OPENAI|CODEX)_API_KEY' "$weekly_runner"
+
 grep -F 'DAILY_SINGLETON_LOCK' "$maintenance_lib" >/dev/null
 grep -F 'POSTGRES_ADMISSION_LOCK' "$maintenance_lib" >/dev/null
+grep -F 'local deadline_seconds=7500' "$maintenance_lib" >/dev/null
+grep -F 'flock -w "$deadline_seconds" 9' "$maintenance_lib" >/dev/null
+grep -F 'remaining_seconds=$(( deadline_seconds - elapsed_seconds ))' \
+  "$maintenance_lib" >/dev/null
+grep -F 'flock -w "$remaining_seconds" 8' "$maintenance_lib" >/dev/null
+! grep -F 'flock -n 9' "$maintenance_lib" >/dev/null
 grep -F 'npm run run:reader-summary-weekly-production' \
   "$maintenance_lib" >/dev/null
-grep -F 'npm run run:reader-summary-weekly-production -- --replay' \
+! grep -F 'npm run run:reader-summary-weekly-production -- --replay' \
   "$maintenance_lib" >/dev/null
-grep -F 'npm run backfill:reader-summary-weekly-daily-certifications' \
+! grep -F 'npm run backfill:reader-summary-weekly-daily-certifications' \
   "$maintenance_lib" >/dev/null
 grep -F -- '-e READER_SUMMARY_WEEKLY_PRODUCTION_TENANT_ID=00000000-0000-7000-8000-000000000901' \
   "$maintenance_lib" >/dev/null
 grep -F -- '-e READER_SUMMARY_WEEKLY_PRODUCTION_WORKSPACE_ID=00000000-0000-7000-8000-000000000902' \
+  "$maintenance_lib" >/dev/null
+grep -F -- '-e READER_SUMMARY_WEEKLY_PRODUCTION_FIRST_WEEK_START=2026-07-20' \
+  "$maintenance_lib" >/dev/null
+grep -F -- '-e READER_SUMMARY_WEEKLY_PRODUCTION_CATCH_UP_LIMIT=4' \
   "$maintenance_lib" >/dev/null
 grep -F 'READER_SUMMARY_WEEKLY_PRODUCTION_ARTIFACT_DIR=' \
   "$maintenance_lib" >/dev/null

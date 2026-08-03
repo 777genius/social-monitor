@@ -22,7 +22,7 @@ install -d "$REPO/apps/frontend" "$REPO/apps/api-gateway" \
   "$REPO/prisma/migrations"/{20260716170000_reader_summary_fail_closed_publication,20260731153000_reader_summary_production_recovery_original_cutoff_authority} \
   "$STATE" "$STAGING"
 cp "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh" "$REPO/ops/deploy/"
-cp "$SCRIPT_DIR/deploy-control-lib.sh" "$REPO/ops/deploy/"
+cp "$SCRIPT_DIR/deploy-control-lib.sh" "$SCRIPT_DIR/deploy-control-bridge-lib.sh" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/backend-runtime-health-lib.sh" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/backend-image-rescue-lib.sh" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/docker-maintenance-lib.sh" "$REPO/ops/deploy/"
@@ -983,6 +983,8 @@ bash "$SCRIPT_DIR/postgres-runtime-deploy-lib.test.sh"
 TMPDIR=/tmp bash "$SCRIPT_DIR/github-premidnight-capture-runtime.test.sh"
 bash "$SCRIPT_DIR/verify-postgres-runtime-topology.test.sh"
 bash "$SCRIPT_DIR/reader-summary-publication-migrator-validation.test.sh"
+bash "$SCRIPT_DIR/rabbitmq-quorum-deploy-bridge-transition.test.sh"
+bash "$SCRIPT_DIR/daily-canonical-recovery-production.test.sh"
 uid_fixture_status=0
 if ((EUID == 0)); then
   uid_fixture_probe=$(mktemp -d "${TMPDIR:-/tmp}/social-monitor-uidmap.XXXXXX")

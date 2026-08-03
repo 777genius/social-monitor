@@ -34,8 +34,8 @@ describe("createReaderSummaryDailyTerminalRuntimeConnection", () => {
 
   it.each([
     ["missing terminal", { ...testEnv(), READER_SUMMARY_DAILY_TERMINAL_DATABASE_URL: undefined }],
-    ["wrong terminal role", { ...testEnv(), READER_SUMMARY_DAILY_TERMINAL_DATABASE_URL: "postgresql://ordinary:secret@db.test/social" }],
-    ["same role", { ...testEnv(), READER_SUMMARY_DAILY_AUDITOR_DATABASE_URL: "postgresql://social_monitor_reader_summary_daily_terminal:other@db.test/social" }],
+    ["wrong terminal role", { ...testEnv(), READER_SUMMARY_DAILY_TERMINAL_DATABASE_URL: "postgresql://ordinary:password@db.test/social" }],
+    ["same role", { ...testEnv(), READER_SUMMARY_DAILY_AUDITOR_DATABASE_URL: "postgresql://social_monitor_reader_summary_daily_terminal:raw-password@db.test/social" }],
   ])("fails closed for %s", (_label, value) => {
     expect(() => createReaderSummaryDailyTerminalRuntimeConnection(value, () => pool([]))).toThrow();
   });
@@ -44,9 +44,9 @@ describe("createReaderSummaryDailyTerminalRuntimeConnection", () => {
 function testEnv() {
   return {
   READER_SUMMARY_DAILY_TERMINAL_DATABASE_URL:
-    "postgresql://social_monitor_reader_summary_daily_terminal:terminal-secret@db.test/social",
+    "postgresql://social_monitor_reader_summary_daily_terminal:password@db.test/social",
   READER_SUMMARY_DAILY_AUDITOR_DATABASE_URL:
-    "postgresql://social_monitor_reader_summary_daily_auditor:auditor-secret@db.test/social",
+    "postgresql://social_monitor_reader_summary_daily_auditor:raw-password@db.test/social",
   };
 }
 const pool = (queries: string[]) => ({

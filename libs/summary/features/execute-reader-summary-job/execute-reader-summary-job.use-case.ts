@@ -26,6 +26,7 @@ import {
   type ProviderReaderSummaryAttempt,
   type ReaderSummaryArtifactRepositoryPort,
   type ReaderSummaryContextProviderPort,
+  type ReaderSummaryDailyCanonicalRecoveryV4ProvenancePort,
   type ReaderSummaryEvidenceSelectorPort,
   type ReaderSummaryJobRepositoryPort,
   type ReaderSummaryGitHubProjectionReaderPort,
@@ -94,6 +95,7 @@ export class ExecuteReaderSummaryJobUseCase {
     private readonly publicationPolicy: ReaderSummaryPublicationPolicy = new ReaderSummaryPublicationPolicy(),
     private readonly githubProjectionReader: ReaderSummaryGitHubProjectionReaderPort = UNAVAILABLE_READER_SUMMARY_GITHUB_PROJECTION_READER,
     private readonly historicalGitHubOmission?: ReaderSummaryHistoricalGitHubOmission,
+    private readonly recoveryProvenance?: ReaderSummaryDailyCanonicalRecoveryV4ProvenancePort,
   ) {}
 
   async execute(
@@ -192,6 +194,7 @@ export class ExecuteReaderSummaryJobUseCase {
         githubProjectionReader: this.githubProjectionReader,
         observedThrough: this.clock.now(),
         historicalGitHubOmission: this.historicalGitHubOmission,
+        recoveryProvenance: this.recoveryProvenance,
       });
       await this.readerSummaryArtifacts.save(result.value.artifact, {
         publicationDecision: prepublication.publicationDecision,

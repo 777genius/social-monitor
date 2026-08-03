@@ -52,6 +52,7 @@ import { ExecuteReaderSummaryJobUseCase } from "../../features/execute-reader-su
 import { GetReaderSummaryJobStatusUseCase } from "../../features/get-reader-summary-job-status/get-reader-summary-job-status.use-case";
 import { GetReaderSummaryQualityRejectionUseCase } from "../../features/get-reader-summary-quality-rejection/get-reader-summary-quality-rejection.use-case";
 import { GetReaderSummaryUseCase } from "../../features/get-reader-summary/get-reader-summary.use-case";
+import { GetReaderSummaryWeeklyProjectionUseCase } from "../../features/get-reader-summary-weekly-projection/get-reader-summary-weekly-projection.use-case";
 import { ListReaderSummaryPeriodsUseCase } from "../../features/list-reader-summary-periods/list-reader-summary-periods.use-case";
 import { ListReaderSummariesUseCase } from "../../features/list-reader-summaries/list-reader-summaries.use-case";
 import { RequestReaderSummaryUseCase } from "../../features/request-reader-summary/request-reader-summary.use-case";
@@ -72,6 +73,7 @@ import {
   type ReaderSummaryPublicationPort,
   type ReaderSummaryTopicCollectionMetricsReaderPort,
   type ReaderSummaryTopicRecommendationDecisionRepositoryPort,
+  type ReaderSummaryWeeklyProjectionReaderPort,
   type StoryRankingMetricsPort,
   type SummaryMemoryPort,
   type UserSummaryPreferenceReaderPort,
@@ -89,6 +91,7 @@ import {
   READER_SUMMARY_PUBLICATION,
   READER_SUMMARY_PREVIEW_MEDIA_ENRICHER,
   READER_SUMMARY_TOPIC_LABELER_MODE,
+  READER_SUMMARY_WEEKLY_PROJECTION_READER,
   SUMMARY_MEMORY,
   SUMMARY_USER_SUMMARY_PREFERENCE_READER,
   SUMMARY_JOB_QUEUE_MODE,
@@ -359,6 +362,13 @@ export const summaryReaderSummaryProviders: Provider[] = [
       BuildReaderSummaryTopicMapUseCase,
       READER_SUMMARY_GITHUB_PROJECTION_READER,
     ],
+  },
+  {
+    provide: GetReaderSummaryWeeklyProjectionUseCase,
+    useFactory: (
+      projections: ReaderSummaryWeeklyProjectionReaderPort,
+    ) => new GetReaderSummaryWeeklyProjectionUseCase(projections),
+    inject: [READER_SUMMARY_WEEKLY_PROJECTION_READER],
   },
   {
     provide: GetReaderSummaryUseCase,

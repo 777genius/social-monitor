@@ -19,7 +19,7 @@ export type ReaderSummaryDailyRuntimeAttestation = Readonly<{
   runtimeEngine: typeof readerSummaryDailyRuntimeEngine;
   runtimePackageVersion: string;
   launcherSha256: string;
-  selectedOutputKind: "structured_output";
+  selectedOutputKind: "structured_output" | "output_text";
   selectedOutputSha256: string;
 }>;
 
@@ -32,6 +32,103 @@ export type ReaderSummaryDailyModelJobReceipt = Readonly<{
   receiptBytes: Buffer;
   receiptSha256: string;
 }>;
+
+/** Creates the exact, byte-addressable receipt for the V4 output_text route. */
+export const buildReaderSummaryDailyCanonicalRecoveryReceipt = (input: {
+  readonly modelJobIdentity: string;
+  readonly requestedUtcDate: string;
+  readonly sourceAuthoritySha256: string;
+  readonly responseBytes: Buffer;
+  readonly attestation: Readonly<Record<string, unknown>>;
+}): ReaderSummaryDailyModelJobReceipt => {
+  if (
+    !sha(input.modelJobIdentity) ||
+    !/^2026-07-(?:2[3-9]|30)$/u.test(input.requestedUtcDate) ||
+    !sha(input.sourceAuthoritySha256)
+  ) {
+    throw new Error("Daily canonical recovery receipt input is invalid");
+  }
+  const responseBytes = Buffer.from(input.responseBytes);
+  const responseSha256 = sha256(responseBytes);
+  const attestation = verifyRecoveryAttestation(input.attestation, responseSha256);
+  const attestationBytes = canonicalBytes(attestation);
+  const receiptRecord = {
+    schemaVersion: 1,
+    modelJobIdentity: input.modelJobIdentity,
+    requestedUtcDate: input.requestedUtcDate,
+    sourceAuthoritySha256: input.sourceAuthoritySha256,
+    responseSha256,
+    responseByteLength: responseBytes.length,
+    attestationSha256: sha256(attestationBytes),
+    attestation,
+  };
+  const receiptBytes = canonicalBytes(receiptRecord);
+  return Object.freeze({
+    responseBytes,
+    responseSha256,
+    attestation,
+    attestationBytes,
+    attestationSha256: receiptRecord.attestationSha256,
+    receiptBytes,
+    receiptSha256: sha256(receiptBytes),
+  });
+};
+
+/** Revalidates the exact V4 output_text receipt before it can be replayed. */
+export const verifyReaderSummaryDailyCanonicalRecoveryReceipt = (input: {
+  readonly modelJobIdentity: string;
+  readonly requestedUtcDate: string;
+  readonly sourceAuthoritySha256: string;
+  readonly responseBytes: Buffer;
+  readonly receiptBytes: Buffer;
+}): ReaderSummaryDailyModelJobReceipt => {
+  const responseBytes = Buffer.from(input.responseBytes);
+  const receiptBytes = Buffer.from(input.receiptBytes);
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse(receiptBytes.toString("utf8"));
+  } catch {
+    throw new Error("Daily canonical recovery receipt is not JSON");
+  }
+  const receipt = record(decoded, "Daily canonical recovery receipt");
+  exactKeys(receipt, [
+    "schemaVersion",
+    "modelJobIdentity",
+    "requestedUtcDate",
+    "sourceAuthoritySha256",
+    "responseSha256",
+    "responseByteLength",
+    "attestationSha256",
+    "attestation",
+  ], "Daily canonical recovery receipt");
+  const responseSha256 = sha256(responseBytes);
+  const attestation = verifyRecoveryAttestation(
+    record(receipt.attestation, "Daily canonical recovery attestation"),
+    responseSha256,
+  );
+  const attestationBytes = canonicalBytes(attestation);
+  if (
+    receipt.schemaVersion !== 1 ||
+    receipt.modelJobIdentity !== input.modelJobIdentity ||
+    receipt.requestedUtcDate !== input.requestedUtcDate ||
+    receipt.sourceAuthoritySha256 !== input.sourceAuthoritySha256 ||
+    receipt.responseSha256 !== responseSha256 ||
+    receipt.responseByteLength !== responseBytes.length ||
+    receipt.attestationSha256 !== sha256(attestationBytes) ||
+    !canonicalBytes(receipt).equals(receiptBytes)
+  ) {
+    throw new Error("Daily canonical recovery receipt binding diverged");
+  }
+  return Object.freeze({
+    responseBytes,
+    responseSha256,
+    attestation,
+    attestationBytes,
+    attestationSha256: receipt.attestationSha256 as string,
+    receiptBytes,
+    receiptSha256: sha256(receiptBytes),
+  });
+};
 
 export const buildReaderSummaryDailyModelJobReceipt = (input: {
   readonly modelJob: ReaderSummaryDailyModelJobIdentity;
@@ -94,6 +191,66 @@ const verifyAttestation = (
     throw new Error("Daily model job execution attestation conflicts with job identity");
   }
   return Object.freeze({ ...input } as ReaderSummaryDailyRuntimeAttestation);
+};
+
+const verifyRecoveryAttestation = (
+  input: Readonly<Record<string, unknown>>,
+  responseSha256: string,
+): ReaderSummaryDailyRuntimeAttestation => {
+  exactKeys(input, [
+    "schemaVersion",
+    "requestId",
+    "purpose",
+    "canonicalRequestSha256",
+    "provider",
+    "model",
+    "reasoningEffort",
+    "runtimeEngine",
+    "runtimePackageVersion",
+    "launcherSha256",
+    "selectedOutputKind",
+    "selectedOutputSha256",
+  ], "Daily canonical recovery attestation");
+  if (
+    input.schemaVersion !== 1 ||
+    typeof input.requestId !== "string" || input.requestId.length === 0 ||
+    input.purpose !== "social_monitor.reader_summary.weekly.generate" ||
+    input.provider !== readerSummaryDailyModelProvider ||
+    input.model !== readerSummaryDailyModel ||
+    input.reasoningEffort !== readerSummaryDailyReasoningEffort ||
+    input.runtimeEngine !== readerSummaryDailyRuntimeEngine ||
+    input.selectedOutputKind !== "output_text" ||
+    input.selectedOutputSha256 !== responseSha256 ||
+    !sha(input.canonicalRequestSha256) ||
+    !sha(input.launcherSha256) ||
+    typeof input.runtimePackageVersion !== "string" ||
+    !/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/u.test(input.runtimePackageVersion)
+  ) {
+    throw new Error("Daily canonical recovery execution attestation is invalid");
+  }
+  return Object.freeze({ ...input } as ReaderSummaryDailyRuntimeAttestation);
+};
+
+const record = (value: unknown, label: string): Readonly<Record<string, unknown>> => {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`${label} is invalid`);
+  }
+  return value as Readonly<Record<string, unknown>>;
+};
+
+const exactKeys = (
+  value: Readonly<Record<string, unknown>>,
+  expected: readonly string[],
+  label: string,
+): void => {
+  const actual = Object.keys(value).sort();
+  const canonical = [...expected].sort();
+  if (
+    actual.length !== canonical.length ||
+    actual.some((key, index) => key !== canonical[index])
+  ) {
+    throw new Error(`${label} schema is invalid`);
+  }
 };
 
 const canonicalBytes = (value: unknown): Buffer => Buffer.from(canonicalJson(value), "utf8");

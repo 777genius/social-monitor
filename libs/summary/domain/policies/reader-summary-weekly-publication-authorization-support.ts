@@ -9,13 +9,13 @@ import type {
 } from "../value-objects/reader-summary-weekly-certification-seal";
 import type { ReaderSummaryWeeklySealedInputManifest } from "../value-objects/reader-summary-weekly-input-manifest";
 import { readerSummaryWeeklyPublicationGitHubEvidenceSchemaVersion } from "../value-objects/reader-summary-weekly-publication-github-evidence";
+import { deriveReaderSummaryWeeklyReviewCitationSelector } from "../value-objects/reader-summary-weekly-review-manifest";
 import {
   canonicalizeReaderSummaryWeeklyJson,
   canonicalReaderSummaryWeeklyScope,
   deepFreezeReaderSummaryWeekly,
   readerSummaryWeeklyScopeKey,
 } from "../value-objects/reader-summary-weekly-canonical-json";
-
 export const verifiedArtifact = (
   artifact: ReaderSummaryWeeklyArtifact,
   modelInput: ReaderSummaryWeeklyArtifactProps["input"],
@@ -42,7 +42,6 @@ export const verifiedArtifact = (
   }
   return verified;
 };
-
 export const assertManifestBinding = (
   manifest: ReaderSummaryWeeklySealedInputManifest,
   modelInput: ReaderSummaryWeeklyArtifactProps["input"],
@@ -65,7 +64,6 @@ export const assertManifestBinding = (
   }
   assertModelDayBindings(manifest, modelInput);
 };
-
 const assertModelDayBindings = (
   manifest: ReaderSummaryWeeklySealedInputManifest,
   modelInput: ReaderSummaryWeeklyArtifactProps["input"],
@@ -104,7 +102,6 @@ const assertModelDayBindings = (
     }
   });
 };
-
 export const exactAuthorities = (
   manifest: ReaderSummaryWeeklySealedInputManifest,
   authorities: readonly ReaderSummaryWeeklyStoryAuthorityBinding[],
@@ -135,7 +132,6 @@ export const exactAuthorities = (
   }
   return deepFreezeReaderSummaryWeekly(ordered);
 };
-
 const assertAuthorityBinding = (
   manifest: ReaderSummaryWeeklySealedInputManifest,
   day: ReaderSummaryWeeklySealedInputManifest["days"][number],
@@ -191,7 +187,6 @@ const assertAuthorityBinding = (
   }
   assertStrictGitHubBoard(day, authority);
 };
-
 const assertStrictGitHubBoard = (
   day: ReaderSummaryWeeklySealedInputManifest["days"][number],
   authority: ReaderSummaryWeeklyStoryAuthorityBinding,
@@ -265,7 +260,6 @@ const assertStrictGitHubBoard = (
     );
   }
 };
-
 export const exactCitationCoverage = (
   modelInput: ReaderSummaryWeeklyArtifactProps["input"],
   output: ReaderSummaryWeeklyArtifactSnapshot["output"],
@@ -305,12 +299,19 @@ export const exactCitationCoverage = (
         `Reader summary weekly citation ${citation.citationId} is outside the sealed week`,
       );
     }
-    const matching = authority.evidence.filter(
-      (evidence) =>
-        evidence.citationId === citation.citationId &&
-        evidence.providerKey === citation.providerKey &&
-        evidence.canonicalUrl === citation.canonicalUrl &&
-        evidence.sourceContentHash === citation.sourceSha256,
+    const matching = authority.evidence.filter((evidence) =>
+      evidence.providerKey === citation.providerKey &&
+      evidence.canonicalUrl === citation.canonicalUrl &&
+      evidence.sourceContentHash === citation.sourceSha256 &&
+      deriveReaderSummaryWeeklyReviewCitationSelector({
+        requestedUtcDate: authority.requestedUtcDate,
+        publicationId: authority.publicationId,
+        publicationEvidenceSha256: authority.publicationEvidenceSha256,
+        providerKey: evidence.providerKey,
+        citationId: evidence.citationId,
+        sourceItemId: evidence.sourceItemId,
+        sourceContentHash: evidence.sourceContentHash,
+      }) === citation.citationId,
     );
     if (matching.length !== 1) {
       throw new Error(
@@ -334,7 +335,6 @@ export const exactCitationCoverage = (
   });
   return deepFreezeReaderSummaryWeekly(proof);
 };
-
 export const authorityProof = (
   authority: ReaderSummaryWeeklyStoryAuthorityBinding,
   day: ReaderSummaryWeeklySealedInputManifest["days"][number],
@@ -348,10 +348,8 @@ export const authorityProof = (
   githubBoardIdentity: day.githubAudit.identity,
   githubBoardSha256: day.githubAudit.sha256,
 });
-
 export const invalidAuthorization = (): Error => new Error(
   "Reader summary weekly publication authorization is forged or unavailable");
-
 export const assertCertifiedSealBinding = (
   seal: ReaderSummaryWeeklyCertificationSealBinding,
   modelInput: ReaderSummaryWeeklyArtifactProps["input"],
@@ -373,7 +371,6 @@ export const assertCertifiedSealBinding = (
     throw new Error("Reader summary weekly certified publication has a mismatched DB seal");
   }
 };
-
 export const exactCertifiedAuthorities = (
   seal: ReaderSummaryWeeklyCertificationSealBinding,
   modelInput: ReaderSummaryWeeklyArtifactProps["input"],
@@ -429,7 +426,6 @@ export const exactCertifiedAuthorities = (
   });
   return deepFreezeReaderSummaryWeekly(ordered);
 };
-
 export const exactCertifiedCitationCoverage = (
   modelInput: ReaderSummaryWeeklyArtifactProps["input"],
   output: ReaderSummaryWeeklyArtifactSnapshot["output"],
@@ -453,10 +449,18 @@ export const exactCertifiedCitationCoverage = (
     const day = seal.days[index];
     const authority = authorities[index];
     const evidence = authority?.evidence.filter((item) =>
-      item.citationId === citation.citationId &&
       item.providerKey === citation.providerKey &&
       item.canonicalUrl === citation.canonicalUrl &&
-      item.sourceContentHash === citation.sourceSha256);
+      item.sourceContentHash === citation.sourceSha256 &&
+      deriveReaderSummaryWeeklyReviewCitationSelector({
+        requestedUtcDate: authority.requestedUtcDate,
+        publicationId: authority.publicationId,
+        publicationEvidenceSha256: authority.publicationEvidenceSha256,
+        providerKey: item.providerKey,
+        citationId: item.citationId,
+        sourceItemId: item.sourceItemId,
+        sourceContentHash: item.sourceContentHash,
+      }) === citation.citationId);
     if (day === undefined || authority === undefined || evidence?.length !== 1 ||
         citation.dailyCertificationId !== day.publicationEvidenceIdentity ||
         citation.dailyCertificationSha !== day.publicationEvidenceSha256) {
@@ -480,7 +484,6 @@ export const exactCertifiedCitationCoverage = (
     };
   }));
 };
-
 export const certifiedAuthorityProof = (
   authority: ReaderSummaryWeeklyStoryAuthorityBinding,
   day: ReaderSummaryWeeklyArtifactProps["input"]["days"][number],

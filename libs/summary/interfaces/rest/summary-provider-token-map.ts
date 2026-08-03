@@ -14,6 +14,7 @@ import type {
   ReaderSummaryPolicyRepositoryPort,
   ReaderSummaryPreviewMediaEnricherPort,
   ReaderSummaryPublicationPort,
+  ReaderSummaryWeeklyProjectionReaderPort,
   SummaryArtifactRepositoryPort,
   SummaryEventPublisherPort,
   SummaryEvidenceSelectorPort,
@@ -37,6 +38,7 @@ import type {
   READER_SUMMARY_POLICY_REPOSITORY,
   READER_SUMMARY_PREVIEW_MEDIA_ENRICHER,
   READER_SUMMARY_PUBLICATION,
+  READER_SUMMARY_WEEKLY_PROJECTION_READER,
   READER_SUMMARY_TOPIC_LABELER_MODE,
   SUMMARY_ARTIFACT_REPOSITORY,
   SUMMARY_AUTO_SUMMARY_CANDIDATE_REPOSITORY,
@@ -94,6 +96,7 @@ export type SummaryProviderTokenMap = {
   readonly [READER_SUMMARY_EVIDENCE_SELECTOR]: ReaderSummaryEvidenceSelectorPort;
   readonly [READER_SUMMARY_ARTIFACT_REPOSITORY]: ReaderSummaryArtifactRepositoryPort;
   readonly [READER_SUMMARY_GITHUB_PROJECTION_READER]: ReaderSummaryGitHubProjectionReaderPort;
+  readonly [READER_SUMMARY_WEEKLY_PROJECTION_READER]: ReaderSummaryWeeklyProjectionReaderPort;
   readonly [READER_SUMMARY_POLICY_REPOSITORY]: ReaderSummaryPolicyRepositoryPort;
   readonly [READER_SUMMARY_PUBLICATION]: ReaderSummaryPublicationPort;
   readonly [READER_SUMMARY_CONTEXT_PROVIDER]: ReaderSummaryContextProviderPort;

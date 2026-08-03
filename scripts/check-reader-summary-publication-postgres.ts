@@ -33,6 +33,8 @@ import { assertReaderSummaryRecoveryPostgresContract } from "./lib/reader-summar
 import { assertReaderSummaryWeeklyDailyCertificationBackfillPostgresContract } from "./lib/reader-summary-weekly-daily-certification-backfill-postgres-contract";
 import { assertReaderSummaryWeeklyCertificationSealPostgresContract } from "./lib/reader-summary-weekly-certification-seal-postgres-contract";
 import { assertReaderSummaryWeeklyAtomicPublicationPostgresContract } from "./lib/reader-summary-weekly-atomic-publication-postgres-contract";
+import { assertReaderSummaryWeeklyProjectionPostgresContract } from "./lib/reader-summary-weekly-projection-postgres-contract";
+import { assertReaderSummaryWeeklyReviewManifestPostgresContract } from "./lib/reader-summary-weekly-review-manifest-postgres-contract";
 import {
   assertReaderSummaryWeeklyProductionPostgresContract,
 } from "./lib/reader-summary-weekly-production-postgres-contract";
@@ -97,6 +99,7 @@ let ownerRolePreexisting = false;
 let capabilityRolePreexisting = false;
 let schemaOwnerRolePreexisting = false;
 let tenantSystemCapabilityRolePreexisting = false;
+let dailyActivationDefinerRolePreexisting = false;
 let fixtureDatabaseCreated = false;
 let fixtureMigrationAdminRoleCreated = false;
 let fixtureRuntimeRoleCreated = false;
@@ -104,7 +107,9 @@ let fixtureDailyTerminalRoleCreated = false;
 export type ReaderSummaryPublicationPostgresContract =
   | "publication"
   | "weekly-certification-seal"
-  | "weekly-atomic-publication";
+  | "weekly-atomic-publication"
+  | "weekly-projection"
+  | "weekly-review-manifest";
 
 export const closeReaderSummaryPublicationPostgresContract = async (
 ): Promise<void> => {
@@ -123,6 +128,7 @@ export const runReaderSummaryPublicationPostgresContract = async (
   capabilityRolePreexisting = protectedRoles.capability;
   schemaOwnerRolePreexisting = protectedRoles.schemaOwner;
   tenantSystemCapabilityRolePreexisting = protectedRoles.tenantSystemCapability;
+  dailyActivationDefinerRolePreexisting = protectedRoles.dailyActivationDefiner;
   try {
     await serverAdmin.query(
       `CREATE ROLE ${quotePostgresIdentifier(migrationAdminRole)} LOGIN PASSWORD ${quotePostgresLiteral(migrationAdminPassword)}
@@ -247,7 +253,9 @@ export const runReaderSummaryPublicationPostgresContract = async (
         await assertLegacyRepositoryVisibility(runtimeDatabaseUrl);
         if (
           contract === "weekly-certification-seal" ||
-          contract === "weekly-atomic-publication"
+          contract === "weekly-atomic-publication" ||
+          contract === "weekly-projection" ||
+          contract === "weekly-review-manifest"
         ) {
           await assertReaderSummaryWeeklyCertificationSealPostgresContract({
             adminClient,
@@ -260,8 +268,23 @@ export const runReaderSummaryPublicationPostgresContract = async (
             publish: (payload) => publish(first, payload),
           });
           await assertReaderSummaryWeeklyProductionPostgresContract(first);
-          if (contract === "weekly-atomic-publication") {
+          if (
+            contract === "weekly-atomic-publication" ||
+            contract === "weekly-projection"
+          ) {
             await assertReaderSummaryWeeklyAtomicPublicationPostgresContract({
+              auditorClient: auditor,
+              concurrentRuntimeClient: second,
+              runtimeClient: first,
+              runtimeRole,
+            });
+          }
+          if (contract === "weekly-projection") {
+            await assertReaderSummaryWeeklyProjectionPostgresContract(first);
+          }
+          if (contract === "weekly-review-manifest") {
+            await assertReaderSummaryWeeklyReviewManifestPostgresContract({
+              adminClient,
               auditorClient: auditor,
               concurrentRuntimeClient: second,
               runtimeClient: first,
@@ -359,6 +382,7 @@ export const runReaderSummaryPublicationPostgresContract = async (
       capabilityRolePreexisting,
       schemaOwnerRolePreexisting,
       tenantSystemCapabilityRolePreexisting,
+      dailyActivationDefinerRolePreexisting,
       fixtureDatabaseCreated,
       fixtureMigrationAdminRoleCreated,
       fixtureRuntimeRoleCreated,

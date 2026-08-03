@@ -9,6 +9,7 @@ import {
 import {
   readerSummaryWeeklyPublicationGitHubEvidenceSchemaVersion,
 } from "../value-objects/reader-summary-weekly-publication-github-evidence";
+import { deriveReaderSummaryWeeklyReviewCitationSelector } from "../value-objects/reader-summary-weekly-review-manifest";
 import {
   readerSummaryWeeklyStoryAuthoritySchemaVersion,
   type ReaderSummaryWeeklyStoryAuthorityBinding,
@@ -43,7 +44,7 @@ const workspace = "22222222-2222-4222-8222-222222222222";
 
 describe("reader summary weekly certified publication authorization", () => {
   it("issues the existing opaque authorization and binds proof to the DB seal", () => {
-    const fixture = certifiedFixture();
+    const fixture = certifiedFixture(undefined, true);
     const authorization = authorizeCertified(fixture);
     const details = readReaderSummaryWeeklyPublicationAuthorization(authorization);
 
@@ -58,6 +59,14 @@ describe("reader summary weekly certified publication authorization", () => {
     expect(details.proof.authorities.map((item) => item.publicationId)).toEqual(
       fixture.seal.days.map((day) => day.publicationId),
     );
+    expect(new Set(fixture.bindings.flatMap((binding) => binding.evidence)
+      .filter((evidence) => evidence.providerKey === "rss")
+      .map((evidence) => evidence.citationId))).toEqual(
+      new Set(["citation:reused-local-id"]),
+    );
+    expect(new Set(fixture.command.modelInput.citations
+      .filter((citation) => citation.providerKey === "rss")
+      .map((citation) => citation.citationId)).size).toBe(2);
   });
 
   it("fails closed for duplicate story handles and divergent model day counts", () => {
@@ -104,6 +113,45 @@ describe("reader summary weekly certified publication authorization", () => {
       authorizeReaderSummaryWeeklyPublication,
     );
   });
+
+  it("rejects forged and cross-date substituted selectors for reused local citation ids", () => {
+    const fixture = certifiedFixture(undefined, true);
+    const forged = modelInputFor(fixture.seal, fixture.bindings, (body) => {
+      const citations = body.citations as Record<string, unknown>[];
+      const observations = body.observations as Record<string, unknown>[];
+      const citation = citations.find((item) =>
+        item.observationId === observations[1]!.observationId)!;
+      citation.citationId = `citation:${"f".repeat(64)}`;
+      observations[1]!.citationIds = [citation.citationId];
+      citations.sort((left, right) => String(left.citationId).localeCompare(String(right.citationId)));
+    });
+    expect(() => authorizeReaderSummaryWeeklyCertifiedPublication(
+      commandForModelInput(fixture, forged),
+      fixture.sealAuthority,
+      fixture.storyAuthority,
+    )).toThrow("1:1 certified DB authority");
+
+    const substituted = modelInputFor(fixture.seal, fixture.bindings, (body) => {
+      const citations = body.citations as Record<string, unknown>[];
+      const observations = body.observations as Record<string, unknown>[];
+      const first = citations.find((item) =>
+        item.observationId === observations[1]!.observationId)!;
+      const second = citations.find((item) =>
+        item.observationId === observations[2]!.observationId)!;
+      [first.citationId, second.citationId] = [
+        second.citationId, first.citationId,
+      ];
+      [observations[1]!.citationIds, observations[2]!.citationIds] = [
+        [first.citationId], [second.citationId],
+      ];
+      citations.sort((left, right) => String(left.citationId).localeCompare(String(right.citationId)));
+    });
+    expect(() => authorizeReaderSummaryWeeklyCertifiedPublication(
+      commandForModelInput(fixture, substituted),
+      fixture.sealAuthority,
+      fixture.storyAuthority,
+    )).toThrow("1:1 certified DB authority");
+  });
 });
 
 const authorizeCertified = (fixture: ReturnType<typeof certifiedFixture>) =>
@@ -113,10 +161,25 @@ const authorizeCertified = (fixture: ReturnType<typeof certifiedFixture>) =>
     fixture.storyAuthority,
   );
 
+const commandForModelInput = (
+  fixture: ReturnType<typeof certifiedFixture>,
+  modelInput: ReaderSummaryWeeklyModelInput,
+) => ({
+  ...fixture.command,
+  modelInput,
+  artifact: ReaderSummaryWeeklyArtifact.create({
+    input: modelInput,
+    output: weeklyOutput(modelInput),
+  }),
+});
+
 const certifiedFixture = (
   mutateModelBody?: (body: Record<string, unknown>) => void,
+  reuseLocalCitationIds = false,
 ) => {
-  const bindings = dates.map(storyBinding);
+  const bindings = dates.map((date, index) =>
+    storyBinding(date, index, reuseLocalCitationIds),
+  );
   const seal = certificationSeal(bindings);
   const modelInput = modelInputFor(seal, bindings, mutateModelBody);
   const output = weeklyOutput(modelInput);
@@ -127,6 +190,7 @@ const certifiedFixture = (
   storyHandles.forEach((handle, index) => storyByHandle.set(handle, bindings[index]!));
   return {
     seal,
+    bindings,
     storyHandles,
     sealAuthority: {
       readVerifiedBinding: (handle: ReaderSummaryWeeklyCertificationSealHandle) => {
@@ -154,12 +218,13 @@ const certifiedFixture = (
 const storyBinding = (
   date: string,
   index: number,
+  reuseLocalCitationIds = false,
 ): ReaderSummaryWeeklyStoryAuthorityBinding => {
   const publicationId = `publication:${date}`;
   const publicationEvidenceSha256 = canonicalizeReaderSummaryWeeklyJson({
     kind: "publication", date,
   }).sha256;
-  const evidence = authorityEvidence(date, index);
+  const evidence = authorityEvidence(date, index, reuseLocalCitationIds);
   const body = {
     schemaVersion: readerSummaryWeeklyStoryAuthoritySchemaVersion,
     tenantId: tenant,
@@ -196,8 +261,16 @@ const storyBinding = (
 const authorityEvidence = (
   date: string,
   dayIndex: number,
+  reuseLocalCitationIds = false,
 ): readonly ReaderSummaryWeeklyStoryAuthorityEvidence[] => {
   const citedIndex = citedDays.indexOf(dayIndex as (typeof citedDays)[number]);
+  const providerKey = citedIndex >= 0 && reuseLocalCitationIds &&
+    (citedIndex === 1 || citedIndex === 2)
+    ? "rss"
+    : citedProviders[citedIndex]!;
+  const citationId = reuseLocalCitationIds && providerKey === "rss"
+    ? "citation:reused-local-id"
+    : `citation:${date}`;
   return [
     ...Array.from({ length: 10 }, (_, index) => evidenceItem(
       date,
@@ -206,7 +279,7 @@ const authorityEvidence = (
       index + 1,
     )),
     ...(citedIndex >= 0
-      ? [evidenceItem(date, citedProviders[citedIndex]!, `citation:${date}`, 11)]
+      ? [evidenceItem(date, providerKey, citationId, 11)]
       : []),
   ];
 };
@@ -281,6 +354,15 @@ const modelInputFor = (
     const evidence = authority.evidence.find(
       (item) => item.providerKey !== "github-trending-page",
     )!;
+    const citationId = deriveReaderSummaryWeeklyReviewCitationSelector({
+      requestedUtcDate: authority.requestedUtcDate,
+      publicationId: authority.publicationId,
+      publicationEvidenceSha256: authority.publicationEvidenceSha256,
+      providerKey: evidence.providerKey,
+      citationId: evidence.citationId,
+      sourceItemId: evidence.sourceItemId,
+      sourceContentHash: evidence.sourceContentHash,
+    });
     return {
       observationId: `observation:${index + 1}`,
       storyId: index < 2 ? "story:alpha" : "story:beta",
@@ -290,7 +372,7 @@ const modelInputFor = (
       claimSupport: index === 1
         ? (["snapshot", "evolution"] as const)
         : (["snapshot"] as const),
-      citationIds: [evidence.citationId],
+      citationIds: [citationId],
       dailyCertificationId: authority.publicationEvidenceIdentity,
       dailyCertificationSha: authority.publicationEvidenceSha256,
       sourceSha256: evidence.sourceContentHash,
@@ -306,10 +388,9 @@ const modelInputFor = (
     weekStartedOn: dates[0],
     weekEndedOn: dates[6],
     days: bindings.map((binding, index) => {
-      const citedIndex = citedDays.indexOf(index as (typeof citedDays)[number]);
-      const citedProvider = citedIndex < 0
-        ? undefined
-        : citedProviders[citedIndex];
+      const citedProvider = bindings[index]!.evidence.find(
+        (item) => item.providerKey !== "github-trending-page",
+      )?.providerKey;
       return {
         date: binding.requestedUtcDate,
         dailyCertificationId: binding.publicationEvidenceIdentity,
@@ -347,12 +428,14 @@ const modelInputFor = (
       providerKey: observation.providerKey,
       title: `Certified source ${index + 1}`,
       canonicalUrl: bindings[citedDays[index]!]!.evidence.find(
-        (item) => item.citationId === observation.citationIds[0],
+        (item) =>
+          item.providerKey === observation.providerKey &&
+          item.sourceContentHash === observation.sourceSha256,
       )!.canonicalUrl,
       dailyCertificationId: observation.dailyCertificationId,
       dailyCertificationSha: observation.dailyCertificationSha,
       sourceSha256: observation.sourceSha256,
-    })),
+    })).sort((left, right) => left.citationId.localeCompare(right.citationId)),
   };
   mutate?.(body);
   const sealSha = canonicalizeReaderSummaryWeeklyJson(body).sha256;
@@ -367,6 +450,12 @@ const weeklyOutput = (
   input: ReaderSummaryWeeklyModelInput,
 ): ReaderSummaryWeeklyModelOutput => {
   const citationIds = input.citations.map((citation) => citation.citationId);
+  const citationIdsForStory = (storyId: string): string[] => input.citations
+    .filter((citation) => citation.storyId === storyId)
+    .sort((left, right) => left.observedOn.localeCompare(right.observedOn))
+    .map((citation) => citation.citationId);
+  const alphaCitationIds = citationIdsForStory("story:alpha");
+  const betaCitationIds = citationIdsForStory("story:beta");
   return {
     schemaVersion: readerSummaryWeeklyModelOutputSchemaVersion,
     sealId: input.sealId,
@@ -390,7 +479,7 @@ const weeklyOutput = (
         status: "developing",
         observedFrom: dates[0],
         observedThrough: dates[2],
-        citationIds: citationIds.slice(0, 2),
+        citationIds: [...alphaCitationIds],
       },
       {
         storyId: "story:beta",
@@ -400,7 +489,7 @@ const weeklyOutput = (
         status: "watch",
         observedFrom: dates[4],
         observedThrough: dates[6],
-        citationIds: citationIds.slice(2),
+        citationIds: [...betaCitationIds],
       },
     ],
     sections: [
@@ -413,7 +502,7 @@ const weeklyOutput = (
         text: "The week connected early safeguards to concrete use in team workflows.",
         observedFrom: dates[0],
         observedThrough: dates[2],
-        citationIds: citationIds.slice(0, 2),
+        citationIds: [...alphaCitationIds],
       },
       {
         sectionId: "section:beta-watch",
@@ -424,7 +513,7 @@ const weeklyOutput = (
         text: "The cited reports raised useful questions but did not establish an outcome.",
         observedFrom: dates[4],
         observedThrough: dates[6],
-        citationIds: citationIds.slice(2),
+        citationIds: [...betaCitationIds],
       },
     ],
   };
