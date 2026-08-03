@@ -798,6 +798,34 @@ LEFT JOIN LATERAL (
         NOT EXISTS (
           SELECT 1 FROM pg_catalog.pg_roles
           WHERE rolname =
+            'social_monitor_reader_summary_daily_publication_definer'
+        ) AND COUNT(*) FILTER (
+          WHERE granted_role.rolname =
+            'social_monitor_reader_summary_daily_publication_definer'
+        ) = 0
+      ) OR (
+        EXISTS (
+          SELECT 1 FROM pg_catalog.pg_roles
+          WHERE rolname =
+            'social_monitor_reader_summary_daily_publication_definer'
+        ) AND COUNT(*) FILTER (
+          WHERE granted_role.rolname =
+            'social_monitor_reader_summary_daily_publication_definer'
+        ) = 1 AND BOOL_AND(
+          CASE WHEN granted_role.rolname =
+            'social_monitor_reader_summary_daily_publication_definer'
+          THEN membership.admin_option
+            AND NOT membership.inherit_option
+            AND NOT membership.set_option
+            AND grantor_role.rolsuper
+          ELSE true END
+        )
+      )
+    ) AND (
+      (
+        NOT EXISTS (
+          SELECT 1 FROM pg_catalog.pg_roles
+          WHERE rolname =
             'social_monitor_reader_summary_daily_terminal'
         ) AND COUNT(*) FILTER (
           WHERE granted_role.rolname =
@@ -907,7 +935,8 @@ LEFT JOIN LATERAL (
         'social_monitor_public_schema_owner',
         'social_monitor_reader_summary_publication_owner',
         'social_monitor_reader_summary_publication_runtime',
-        'social_monitor_reader_summary_daily_terminal'
+        'social_monitor_reader_summary_daily_terminal',
+        'social_monitor_reader_summary_daily_publication_definer'
       )
     ) AS unexpected_membership_count,
     (
@@ -917,7 +946,8 @@ LEFT JOIN LATERAL (
           'social_monitor_public_schema_owner',
           'social_monitor_reader_summary_publication_owner',
           'social_monitor_reader_summary_publication_runtime',
-          'social_monitor_reader_summary_daily_terminal'
+          'social_monitor_reader_summary_daily_terminal',
+          'social_monitor_reader_summary_daily_publication_definer'
         )
       ) = 0 OR (
         COUNT(*) FILTER (
@@ -926,7 +956,8 @@ LEFT JOIN LATERAL (
             'social_monitor_public_schema_owner',
             'social_monitor_reader_summary_publication_owner',
             'social_monitor_reader_summary_publication_runtime',
-            'social_monitor_reader_summary_daily_terminal'
+            'social_monitor_reader_summary_daily_terminal',
+            'social_monitor_reader_summary_daily_publication_definer'
           )
         ) = 3
         AND COUNT(*) FILTER (
