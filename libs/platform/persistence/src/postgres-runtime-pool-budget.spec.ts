@@ -19,6 +19,10 @@ import {
   assertDeploymentPostgresBudget,
   type DeploymentPostgresBudgetConfiguration,
 } from './postgres-runtime-pool-budget';
+import {
+  PUBLICATION_POSTGRES_TEST_ONLY_FILES,
+  PUBLICATION_POSTGRES_TEST_POOL_MAXIMUMS,
+} from './postgres-runtime-pool-budget-test-inventory';
 describe('deployment PostgreSQL budget', () => {
   it('derives effective capacity and meaningful reserve from live PostgreSQL facts', () => {
     const budget = assertDeploymentPostgresBudget(productionBudgetFixture());
@@ -284,15 +288,8 @@ describe('deployment PostgreSQL budget', () => {
 });
 
 describe('production PostgreSQL construction and entrypoint inventory', () => {
-  const publicationPostgresTestOnlyFiles = new Set([
-    'scripts/check-reader-summary-daily-terminal-authority-postgres.ts',
-    'scripts/check-reader-summary-production-recovery-postgres.ts',
-    'scripts/check-reader-summary-publication-postgres.ts',
-    'scripts/check-tenant-rls-postgres.ts',
-    'scripts/reader-summary-publication-postgres-legacy.ts',
-    'scripts/reader-summary-publication-postgres-privileges.ts',
-    'scripts/reader-summary-publication-postgres-runtime-guard.ts',
-  ]);
+  const publicationPostgresTestOnlyFiles =
+    PUBLICATION_POSTGRES_TEST_ONLY_FILES;
   const sourceFiles = [...runtimeSourceFiles('apps'), ...runtimeSourceFiles('libs')];
   const completeDatabaseSourceFiles = [
     ...sourceFiles,
@@ -344,7 +341,21 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/capture-reader-summary-multi-day-quality-corpus.ts:Pool
       scripts/capture-reader-summary-multi-day-quality-target-manifest.ts:Pool
       scripts/check-github-repo-radar-prisma-live-e2e.ts:Pool
+      scripts/check-reader-summary-daily-execution-cursor-postgres.ts:Pool
+      scripts/check-reader-summary-daily-execution-cursor-postgres.ts:Pool
+      scripts/check-reader-summary-daily-execution-cursor-postgres.ts:Pool
+      scripts/check-reader-summary-daily-execution-cursor-postgres.ts:Pool
       scripts/check-reader-summary-multi-day-quality.ts:Pool
+      scripts/check-reader-summary-original-cutoff-prisma-catalog.ts:Pool
+      scripts/check-reader-summary-original-cutoff-prisma-catalog.ts:Pool
+      scripts/check-reader-summary-original-cutoff-prisma-catalog.ts:Pool
+      scripts/check-reader-summary-original-cutoff-prisma-catalog.ts:Pool
+      scripts/check-reader-summary-original-cutoff-prisma-catalog.ts:Pool
+      scripts/check-reader-summary-original-cutoff-prisma-catalog.ts:Pool
+      scripts/check-reader-summary-original-cutoff-prisma-catalog.ts:Pool
+      scripts/check-reader-summary-original-cutoff-prisma-catalog.ts:Pool
+      scripts/check-reader-summary-original-cutoff-prisma-catalog.ts:Pool
+      scripts/check-reader-summary-original-cutoff-prisma-catalog.ts:Pool
       scripts/check-reader-summary-production-regeneration-smoke.ts:Pool
       scripts/check-reader-summary-publication-postgres.ts:Pool
       scripts/check-reader-summary-publication-postgres.ts:Pool
@@ -356,6 +367,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/check-reader-summary-top-read-ranking.ts:Pool
       scripts/check-reader-summary-topic-map-real-data.ts:Pool
       scripts/check-reader-summary-weekly-daily-certifications-postgres.ts:Pool
+      scripts/check-reader-summary-weekly-execution-receipt-postgres.ts:Pool
       scripts/check-reader-summary-weekly-production-postgres.ts:Pool
       scripts/check-source-query-planner-real-binding-canary.ts:Pool
       scripts/check-summary-feedback-calibration-report.ts:Pool
@@ -369,6 +381,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/check-yesterday-social-collection-quality.ts:Pool
       scripts/lib/github-trending-durable-snapshot-reuse-postgres-fixture.ts:Pool
       scripts/lib/github-trending-durable-snapshot-reuse-postgres-fixture.ts:Pool
+      scripts/lib/reader-summary-daily-terminal-runtime-connection.ts:Pool
       scripts/lib/reader-summary-production-day-scope.ts:Pool
       scripts/lib/yesterday-social-replay-support.ts:Pool
       scripts/reader-summary-publication-postgres-legacy.ts:Pool
@@ -381,6 +394,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/reader-summary-publication-postgres-privileges.ts:Pool
       scripts/run-reader-summary-clean-real-day-collection.ts:Pool
       scripts/run-reader-summary-weekly-production.ts:Pool
+      scripts/run-reader-summary-weekly-review-producer.ts:Pool
     `));
   });
 
@@ -413,7 +427,9 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/capture-reader-summary-multi-day-quality-corpus.ts
       scripts/capture-reader-summary-multi-day-quality-target-manifest.ts
       scripts/check-github-repo-radar-prisma-live-e2e.ts
+      scripts/check-reader-summary-daily-execution-cursor-postgres.ts
       scripts/check-reader-summary-multi-day-quality.ts
+      scripts/check-reader-summary-original-cutoff-prisma-catalog.ts
       scripts/check-reader-summary-production-regeneration-smoke.ts
       scripts/check-reader-summary-publication-postgres.ts
       scripts/check-reader-summary-quality-dashboard.ts
@@ -421,6 +437,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/check-reader-summary-top-read-ranking.ts
       scripts/check-reader-summary-topic-map-real-data.ts
       scripts/check-reader-summary-weekly-daily-certifications-postgres.ts
+      scripts/check-reader-summary-weekly-execution-receipt-postgres.ts
       scripts/check-reader-summary-weekly-production-postgres.ts
       scripts/check-source-query-planner-real-binding-canary.ts
       scripts/check-summary-feedback-calibration-report.ts
@@ -435,6 +452,8 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/lib/github-trending-durable-snapshot-reuse.ts
       scripts/lib/reader-summary-current-publication-bindings.spec.ts
       scripts/lib/reader-summary-current-publication-bindings.ts
+      scripts/lib/reader-summary-daily-terminal-runtime-connection.spec.ts
+      scripts/lib/reader-summary-daily-terminal-runtime-connection.ts
       scripts/lib/reader-summary-production-day-scope.spec.ts
       scripts/lib/reader-summary-production-day-scope.ts
       scripts/lib/reader-summary-publication-postgres-running-fixture.ts
@@ -447,6 +466,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/lib/reader-summary-weekly-certification-seal-postgres-contract.ts
       scripts/lib/reader-summary-weekly-daily-certification-backfill-postgres-contract.ts
       scripts/lib/reader-summary-weekly-publication-evidence-postgres-contract.ts
+      scripts/lib/reader-summary-weekly-review-manifest-postgres-contract.ts
       scripts/lib/yesterday-reader-summary-artifact-quality-store.spec.ts
       scripts/lib/yesterday-reader-summary-artifact-quality-store.ts
       scripts/lib/yesterday-social-collection-quality-summary-counts.ts
@@ -457,6 +477,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/reader-summary-publication-postgres18-regression.ts
       scripts/run-reader-summary-clean-real-day-collection.ts
       scripts/run-reader-summary-weekly-production.ts
+      scripts/run-reader-summary-weekly-review-producer.ts
     `));
     for (const path of rawDependencyFiles) {
       expect(readSource(path)).not.toMatch(
@@ -558,21 +579,10 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
   });
 
   it('keeps the PostgreSQL publication harness test-only and explicitly bounded', () => {
-    const expectedPoolMaximums = new Map<string, readonly number[]>([
-      ['scripts/check-reader-summary-production-recovery-postgres.ts', []],
-      [
-        'scripts/check-reader-summary-publication-postgres.ts',
-        [1, 1, 2, 4, 1],
-      ],
-      ['scripts/check-tenant-rls-postgres.ts', [1, 1, 1, 1]],
-      ['scripts/reader-summary-publication-postgres-legacy.ts', [1]],
-      [
-        'scripts/reader-summary-publication-postgres-privileges.ts',
-        [1, 1, 1, 1, 1, 1, 1],
-      ],
-      ['scripts/reader-summary-publication-postgres-runtime-guard.ts', []],
-    ]);
-    for (const [path, expectedMaximums] of expectedPoolMaximums) {
+    for (const [
+      path,
+      expectedMaximums,
+    ] of PUBLICATION_POSTGRES_TEST_POOL_MAXIMUMS) {
       const maximums = directPoolOptions(readSource(path)).map((options) =>
         Number(/\bmax:\s*([124])\b/.exec(options)?.[1] ?? 0),
       );
