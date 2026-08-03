@@ -3,6 +3,8 @@ set -euo pipefail
 
 PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 
+# Linear control bridge: production provenance rejects merge-introduced entrypoints.
+
 if [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} == 1 ]]; then
   ROOT=${SOCIAL_MONITOR_DEPLOY_ROOT:?test root is required}
   REPO=${SOCIAL_MONITOR_DEPLOY_REPO:?test repo is required}
