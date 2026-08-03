@@ -82,6 +82,16 @@ final class AppCompositionRoot {
     final resolvedThemeModeController =
         themeModeController ?? AppThemeModeController();
     final routeObserver = RouteObserver<ModalRoute<dynamic>>();
+    final weeklySummariesRoute = _RouteDescriptor(
+      route: const FeatureRouteContract(
+        id: AppRouteId('summaries.weekly'),
+        path: AppRoutes.weeklySummary,
+      ),
+      builder: weeklySummariesFeatureBuilder(
+        useDemoRoutes: useDemoRoutes,
+        runtimeController: runtimeController,
+      ),
+    );
     final features = <AppFeatureDescriptor>[
       _RouteFeatureDescriptor(
         id: 'auth',
@@ -213,6 +223,7 @@ final class AppCompositionRoot {
       themeModeController: resolvedThemeModeController,
       router: createAppRouter(
         features: features,
+        additionalRoutes: [weeklySummariesRoute],
         observers: [routeObserver],
         runtimeController: runtimeController,
         themeModeController: resolvedThemeModeController,
@@ -291,6 +302,19 @@ final class _RouteFeatureDescriptor implements AppFeatureDescriptor {
 
   final String _status;
   final String Function()? _statusBuilder;
+  final AppRouteWidgetBuilder _builder;
+
+  @override
+  Widget buildPage(BuildContext context, Uri uri) => _builder(context, uri);
+}
+
+final class _RouteDescriptor implements AppRouteDescriptor {
+  const _RouteDescriptor({required this.route, required AppRouteWidgetBuilder builder})
+    : _builder = builder;
+
+  @override
+  final FeatureRouteContract route;
+
   final AppRouteWidgetBuilder _builder;
 
   @override
