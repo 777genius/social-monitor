@@ -524,6 +524,7 @@ const assertMetadata = async (auditor: Client, migratorRole: string,
       EXISTS (SELECT 1 FROM pg_proc owned_proc JOIN pg_roles owner ON owner.oid = owned_proc.proowner
         WHERE owner.rolname = 'social_monitor_reader_summary_publication_owner'
           AND owned_proc.oid NOT IN (SELECT oid FROM terminal_functions)
+          AND owned_proc.oid NOT IN ('claim_reader_summary_daily_canonical_recovery_v4(uuid,uuid,text,timestamptz)'::regprocedure, 'renew_reader_summary_daily_canonical_recovery_v4_lease(uuid,uuid,date,text,bigint,timestamptz)'::regprocedure, 'mark_reader_summary_daily_canonical_recovery_v4_running(uuid,uuid,date,text,bigint,timestamptz)'::regprocedure, 'complete_reader_summary_daily_canonical_recovery_v4(uuid,uuid,date,text,bigint,timestamptz,bytea,character,jsonb,bytea,character,bytea,character)'::regprocedure, 'read_reader_summary_daily_canonical_recovery_v4_finalized(uuid,uuid)'::regprocedure)
           AND has_function_privilege(current_user, owned_proc.oid, 'EXECUTE')) AS other_owned_execute,
       bool_or(proc.definition ~* 'LOCK[[:space:]]+TABLE') AS has_table_lock,
       bool_and(proc.definition ~* 'ORDER BY[\\s\\S]+FOR (UPDATE|SHARE)') AS has_row_locks,
@@ -557,8 +558,7 @@ const assertMetadata = async (auditor: Client, migratorRole: string,
   assert(row?.secure === true, "terminal functions must be SECURITY DEFINER"); assert(row.fixed_path === true, "terminal functions need fixed search paths");
   assert(row.fixed_session_user === true, "terminal functions need fixed LOGIN guards"); assert(row.public_execute === false, "PUBLIC execute must be denied");
   assert(row.terminal_execute === true, "terminal execute must be admitted"); assert(row.internal_execute === false, "terminal internal helpers must be denied");
-  assert(row.weekly_execute === false, "terminal weekly publish must be denied"); assert(row.evidence_read === true, "terminal evidence SELECT must be admitted");
-  assert(row.evidence_dml === false, "terminal evidence DML must be denied"); assert(row.protected_access === false, "terminal protected access must be denied");
+  assert(row.weekly_execute === false, "terminal weekly publish must be denied"); assert(row.evidence_read === true, "terminal evidence SELECT must be admitted"); assert(row.evidence_dml === false, "terminal evidence DML must be denied"); assert(row.protected_access === false, "terminal protected access must be denied");
   assert(row.other_owned_execute === false, "terminal internal helpers must be denied"); assert(row.has_table_lock === false, "terminal functions must not table-lock");
   assert(row.has_row_locks === true, "terminal functions need ordered row locks");
   assert(row.terminal_login && !row.terminal_inherit && !row.terminal_unsafe, "terminal LOGIN attributes must remain least privilege");

@@ -322,6 +322,7 @@ const verifyGitHubProjection = (input: {
     "mode", "unavailableField", "anchorField", "allowedRequestedUtcDates",
     "eligibleBindingIds", "items", "pageCount",
   ], "GitHub projection", 2);
+  const pageCount = value.pageCount;
   if (
     value.unavailableField !== "fetchStartedAt" ||
     value.anchorField !== "checkedAtCollectionAnchor" ||
@@ -334,7 +335,7 @@ const verifyGitHubProjection = (input: {
     ) ||
     value.allowedRequestedUtcDates.some((entry) => typeof entry !== "string") ||
     !Array.isArray(value.eligibleBindingIds) || !Array.isArray(value.items) ||
-      !Number.isSafeInteger(value.pageCount) || value.pageCount < 1) {
+      !isPositiveSafeInteger(pageCount)) {
     throw new Error("Daily source authority GitHub projection is invalid");
   }
   const eligibleBindingIds = value.eligibleBindingIds.map((entry, index) =>
@@ -380,7 +381,7 @@ const verifyGitHubProjection = (input: {
     eligibleBindingIds.length,
     expectedItems.length,
   );
-  if (value.pageCount !== expectedPageCount) {
+  if (pageCount !== expectedPageCount) {
     throw new Error("Daily source authority frozen GitHub projection page count diverged");
   }
   return Object.freeze({
@@ -391,7 +392,7 @@ const verifyGitHubProjection = (input: {
       readerSummaryDailyCanonicalFrozenGithubProjectionDates,
     eligibleBindingIds: Object.freeze(eligibleBindingIds),
     items: Object.freeze(items),
-    pageCount: value.pageCount as number,
+    pageCount,
   });
 };
 
@@ -405,9 +406,10 @@ const frozenGitHubProjectionItem = (
     "publishedAt", "observedAt", "sourceContentHash", "sourceProviderContentHash",
     "scanJobId", "repositoryFullName", "rank", "checkedAtCollectionAnchor",
   ], `GitHub projection item ${index}`, 2);
+  const rank = value.rank;
   if (
     value.providerKey !== "github-trending-page" ||
-    !Number.isSafeInteger(value.rank) || value.rank < 1
+    !isPositiveSafeInteger(rank)
   ) {
     throw new Error(`Daily source authority GitHub projection item ${index} is invalid`);
   }
@@ -437,7 +439,7 @@ const frozenGitHubProjectionItem = (
     sourceProviderContentHash: value.sourceProviderContentHash as string | null,
     scanJobId: uuid(value.scanJobId, index, "scanJobId"),
     repositoryFullName: text(value.repositoryFullName, index, "repositoryFullName"),
-    rank: value.rank,
+    rank,
     checkedAtCollectionAnchor,
   });
 };
@@ -479,6 +481,9 @@ const frozenProjectionPageCount = (
 
 const pageReads = (count: number): number =>
   Math.floor(count / frozenGitHubProjectionPageSize) + 1;
+
+const isPositiveSafeInteger = (value: unknown): value is number =>
+  Number.isSafeInteger(value) && value >= 1;
 
 const sameOrderedValues = (
   left: readonly string[],
