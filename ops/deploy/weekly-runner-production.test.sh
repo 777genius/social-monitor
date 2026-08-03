@@ -123,7 +123,7 @@ grep -F 'function_capability_acl_count === "0"' "$weekly_seal_contract" \
   END { print count + 0 }
 ' "$publication_pre_migration") -eq 1 ]]
 [[ $(grep -Fc "'reader_summary_weekly_review_manifests'" \
-  "$publication_post_migration") -eq 2 ]]
+  "$publication_post_migration") -eq 3 ]]
 [[ $(awk '
   /^DO \$bootstrap\$/ { in_bootstrap = 1 }
   in_bootstrap && /AND relation\.relname IN \(/ { in_owner_list = 1; next }
