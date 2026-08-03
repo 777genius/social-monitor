@@ -353,6 +353,7 @@ jobs:
             ops/deploy/backend-image-rescue-lib.test.sh
             ops/deploy/x-collector-image-deploy-lib.sh
             ops/deploy/x-collector-image-deploy-lib.test.sh
+            ops/deploy/deploy-control-bridge-lib.sh
             ops/deploy/deploy-control-lib.sh
             ops/deploy/deploy-control-lib.test.sh
             ops/deploy/github-production-deploy-client.sh
@@ -360,6 +361,7 @@ jobs:
             ops/deploy/postgres-pool-atomic-bootstrap-lib.sh
             ops/deploy/postgres-pool-atomic-bootstrap-lib.test.sh
             ops/deploy/postgres-runtime-deploy-lib.sh
+            ops/deploy/rabbitmq-quorum-deploy-bridge-transition.test.sh
             ops/deploy/reader-summary-publication-bridge-transition.test.sh
             ops/deploy/social-monitor-production-ssh-wrapper.sh
             ops/deploy/social-monitor-production-ssh-wrapper.test.sh

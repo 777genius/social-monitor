@@ -274,6 +274,11 @@ printf '%s\n' \
   'rabbitmq_quorum_health_probe() { :; }' > \
   "$TRANSITION_REPO/ops/deploy/rabbitmq-quorum-health.sh"
 chmod 0755 "$TRANSITION_REPO/ops/deploy/rabbitmq-quorum-health.sh"
+printf '%s\n' \
+  '#!/usr/bin/env bash' \
+  'rabbitmq_quorum_recovery_probe() { :; }' > \
+  "$TRANSITION_REPO/ops/deploy/rabbitmq-quorum-recovery.sh"
+chmod 0755 "$TRANSITION_REPO/ops/deploy/rabbitmq-quorum-recovery.sh"
 git -C "$TRANSITION_REPO" add ops/deploy
 git -C "$TRANSITION_REPO" commit -qm 'test: Release A provenance controller'
 RELEASE_A_SHA=$(git -C "$TRANSITION_REPO" rev-parse HEAD)

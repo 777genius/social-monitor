@@ -12,6 +12,7 @@ DEPLOY_CONTROL_BRIDGE_X_IMAGE_LIBRARY_PATH=ops/deploy/x-collector-image-deploy-l
 DEPLOY_CONTROL_BRIDGE_SELF_PATH=ops/deploy/deploy-control-bridge-lib.sh
 RABBITMQ_QUORUM_HEALTH_LIBRARY_PATH=ops/deploy/backend-runtime-health-lib.sh
 RABBITMQ_QUORUM_HEALTH_SCRIPT_PATH=ops/deploy/rabbitmq-quorum-health.sh
+RABBITMQ_QUORUM_RECOVERY_SCRIPT_PATH=ops/deploy/rabbitmq-quorum-recovery.sh
 
 load_target_reader_summary_publication_deploy_library() {
   local sha=$1
@@ -174,13 +175,13 @@ verify_deploy_control_bridge_target_compatibility() {
     fail 'deploy control changed with backend or runtime assets; deploy the bridge release first'
 }
 
-verify_target_rabbitmq_quorum_health_file() {
+verify_target_rabbitmq_quorum_asset() {
   local sha=$1 relative_path=$2 label=$3 required_target_mode=$4
   local repository_root actual_path actual_real target_mode actual_mode
   local reviewed_digest actual_digest identity_before identity_after
 
   repository_root=$(readlink -f -- "$REPO") || \
-    fail 'integration repository path cannot be resolved for RabbitMQ quorum health'
+    fail 'integration repository path cannot be resolved for RabbitMQ quorum assets'
   actual_path=$REPO/$relative_path
   [[ -f $actual_path && ! -L $actual_path ]] || \
     fail "$label is not a regular non-symlink file"
@@ -213,10 +214,12 @@ load_target_rabbitmq_quorum_backend_health() {
 
   [[ $sha =~ ^[0-9a-f]{40}$ ]] || \
     fail 'target RabbitMQ quorum health SHA is invalid'
-  verify_target_rabbitmq_quorum_health_file "$sha" \
+  verify_target_rabbitmq_quorum_asset "$sha" \
     "$RABBITMQ_QUORUM_HEALTH_LIBRARY_PATH" 'target backend health library' 100644
-  verify_target_rabbitmq_quorum_health_file "$sha" \
+  verify_target_rabbitmq_quorum_asset "$sha" \
     "$RABBITMQ_QUORUM_HEALTH_SCRIPT_PATH" 'target RabbitMQ quorum health script' 100755
+  verify_target_rabbitmq_quorum_asset "$sha" \
+    "$RABBITMQ_QUORUM_RECOVERY_SCRIPT_PATH" 'target RabbitMQ quorum recovery script' 100755
   unset -f verify_backend verify_backend_with_retry
   # shellcheck source=/dev/null
   source "$health_library" || fail 'target backend health library could not be loaded'

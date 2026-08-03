@@ -18,6 +18,7 @@ RELEASE_A_PATHS=(
 )
 HEALTH_LIBRARY=ops/deploy/backend-runtime-health-lib.sh
 QUORUM_SCRIPT=ops/deploy/rabbitmq-quorum-health.sh
+RECOVERY_SCRIPT=ops/deploy/rabbitmq-quorum-recovery.sh
 
 assert_exact_release_a() {
   local repo=$1 base=$2 release_a=$3
@@ -34,6 +35,10 @@ assert_exact_release_a() {
     echo 'Release A contains the RabbitMQ quorum functional health script' >&2
     exit 1
   fi
+  if git -C "$repo" cat-file -e "$release_a:$RECOVERY_SCRIPT" 2>/dev/null; then
+    echo 'Release A contains the RabbitMQ quorum functional recovery script' >&2
+    exit 1
+  fi
 }
 
 write_target_health_assets() {
@@ -42,12 +47,19 @@ write_target_health_assets() {
   cat > "$repo/$QUORUM_SCRIPT" <<'SCRIPT'
 #!/usr/bin/env bash
 rabbitmq_quorum_health_probe() { :; }
-printf 'quorum-health-script\n' >> "${BRIDGE_EVENTS:?}"
+  printf 'quorum-health-script\n' >> "${BRIDGE_EVENTS:?}"
 SCRIPT
   chmod 0755 "$repo/$QUORUM_SCRIPT"
+  cat > "$repo/$RECOVERY_SCRIPT" <<'SCRIPT'
+#!/usr/bin/env bash
+rabbitmq_quorum_recovery_probe() { :; }
+printf 'quorum-recovery-script\n' >> "${BRIDGE_EVENTS:?}"
+SCRIPT
+  chmod 0755 "$repo/$RECOVERY_SCRIPT"
   cat > "$repo/$HEALTH_LIBRARY" <<'LIBRARY'
 #!/usr/bin/env bash
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/rabbitmq-quorum-health.sh"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/rabbitmq-quorum-recovery.sh"
 printf 'target-health\n' >> "${BRIDGE_EVENTS:?}"
 TARGET_BACKEND_HEALTH_LOADED=true
 verify_backend() { :; }
@@ -98,17 +110,25 @@ prepare_case() {
 
   write_target_health_assets "$CASE_REPO"
   case $mutation in
-    correct|wrong-mode|mutation) ;;
+    correct|wrong-mode|mutation|wrong-recovery-mode|recovery-mutation) ;;
     committed-wrong-health-library-mode)
       chmod 0755 "$CASE_REPO/$HEALTH_LIBRARY"
       ;;
     committed-wrong-health-script-mode)
       chmod 0644 "$CASE_REPO/$QUORUM_SCRIPT"
       ;;
+    committed-wrong-recovery-script-mode)
+      chmod 0644 "$CASE_REPO/$RECOVERY_SCRIPT"
+      ;;
     missing-health-library) rm -f "$CASE_REPO/$HEALTH_LIBRARY" ;;
     symlink-health-script)
       rm -f "$CASE_REPO/$QUORUM_SCRIPT"
       ln -s backend-runtime-health-lib.sh "$CASE_REPO/$QUORUM_SCRIPT"
+      ;;
+    missing-recovery-script) rm -f "$CASE_REPO/$RECOVERY_SCRIPT" ;;
+    symlink-recovery-script)
+      rm -f "$CASE_REPO/$RECOVERY_SCRIPT"
+      ln -s rabbitmq-quorum-health.sh "$CASE_REPO/$RECOVERY_SCRIPT"
       ;;
     bridge-and-backend)
       printf '# target bridge mutation\n' >> \
@@ -173,6 +193,8 @@ run_release_b() (
     case $mutation in
       wrong-mode) chmod 0600 "$REPO/$QUORUM_SCRIPT" ;;
       mutation) printf '# post-advance mutation\n' >> "$REPO/$QUORUM_SCRIPT" ;;
+      wrong-recovery-mode) chmod 0600 "$REPO/$RECOVERY_SCRIPT" ;;
+      recovery-mutation) printf '# post-advance mutation\n' >> "$REPO/$RECOVERY_SCRIPT" ;;
       *) ;;
     esac
   }
@@ -266,13 +288,22 @@ backend_path_block=$(sed -n '/^BACKEND_PATHS=(/,/^)/p' \
   "$SCRIPT_DIR/social-monitor-production-deploy.sh")
 grep -Fx "  $HEALTH_LIBRARY" <<< "$backend_path_block" >/dev/null
 grep -Fx "  $QUORUM_SCRIPT" <<< "$backend_path_block" >/dev/null
+grep -Fx "  $RECOVERY_SCRIPT" <<< "$backend_path_block" >/dev/null
+workflow=$SCRIPT_DIR/../../.github/workflows/production-deploy.yml
+workflow_deploy_shell_files=$(sed -n '/^          deploy_shell_files=(/,/^          )/p' "$workflow")
+grep -Fx '            ops/deploy/rabbitmq-quorum-deploy-bridge-transition.test.sh' \
+  <<< "$workflow_deploy_shell_files" >/dev/null
+if grep -F "$RECOVERY_SCRIPT" "$workflow" >/dev/null; then
+  echo 'V4A4 workflow must not require the future RabbitMQ recovery script' >&2
+  exit 1
+fi
 
 prepare_case correct correct
 success_output=$(run_release_b correct)
 grep -F "deployed=$CASE_RELEASE_B_SHA frontend=false backend=true control=true" \
   <<< "$success_output" >/dev/null
 [[ $(<"$CASE_EVENTS") == \
-  $'advance '"$CASE_RELEASE_B_SHA"$'\nquorum-health-script\ntarget-health\npublication\nsync\nruntime\ncompose:--profile app --profile daily build api\ncompose:--profile app up -d --no-deps --force-recreate api ingestion-worker intelligence-worker delivery-service event-relay\nbootstrap-marker' ]]
+  $'advance '"$CASE_RELEASE_B_SHA"$'\nquorum-health-script\nquorum-recovery-script\ntarget-health\npublication\nsync\nruntime\ncompose:--profile app --profile daily build api\ncompose:--profile app up -d --no-deps --force-recreate api ingestion-worker intelligence-worker delivery-service event-relay\nbootstrap-marker' ]]
 [[ $(<"$CASE_STATE/backend.sha") == "$CASE_RELEASE_B_SHA" ]]
 [[ $(<"$CASE_STATE/postgres-pool-bootstrap.sha") == "$CASE_RELEASE_B_SHA" ]]
 [[ $(<"$CASE_STATE/control.sha") == "$CASE_RELEASE_B_SHA" ]]
@@ -290,6 +321,16 @@ assert_failure committed-wrong-health-library-mode \
 assert_failure committed-wrong-health-script-mode \
   'target RabbitMQ quorum health script committed target Git mode must be 100755'
 assert_failure mutation 'target RabbitMQ quorum health script differs from reviewed target'
+assert_failure missing-recovery-script \
+  'target RabbitMQ quorum recovery script is not a regular non-symlink file'
+assert_failure symlink-recovery-script \
+  'target RabbitMQ quorum recovery script is not a regular non-symlink file'
+assert_failure wrong-recovery-mode \
+  'target RabbitMQ quorum recovery script mode does not match its target Git mode'
+assert_failure committed-wrong-recovery-script-mode \
+  'target RabbitMQ quorum recovery script committed target Git mode must be 100755'
+assert_failure recovery-mutation \
+  'target RabbitMQ quorum recovery script differs from reviewed target'
 assert_bridge_backend_rejection
 
 echo 'RabbitMQ quorum deploy bridge transition tests passed'

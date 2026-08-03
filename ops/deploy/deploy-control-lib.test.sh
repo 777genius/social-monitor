@@ -922,8 +922,17 @@ systemctl() {
     'show --property=UnitFileState --value social-monitor-github-premidnight-capture-v1.timer')
       cat "$timer_unit_file_state"
       ;;
+    'show --property=UnitFileState --value social-monitor-weekly.timer')
+      printf 'enabled\n'
+      ;;
     'show --property=ActiveState --value social-monitor-github-premidnight-capture-v1.timer')
       cat "$timer_active_state"
+      ;;
+    'show --property=ActiveState --value social-monitor-weekly.timer')
+      printf 'active\n'
+      ;;
+    'show --property=NextElapseUSecRealtime --value social-monitor-weekly.timer')
+      printf 'Sun 2026-08-09 06:00:00 UTC\n'
       ;;
     'show --property=ActiveState --value social-monitor-github-premidnight-capture-v1.service')
       cat "$service_active_state"

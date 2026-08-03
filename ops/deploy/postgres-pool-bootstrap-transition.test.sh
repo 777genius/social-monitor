@@ -24,11 +24,16 @@ trap 'report_error "$?" "$LINENO" "$BASH_COMMAND"' ERR
 write_target_quorum_health_fixture() {
   local repository=$1
   local script=$repository/ops/deploy/rabbitmq-quorum-health.sh
+  local recovery_script=$repository/ops/deploy/rabbitmq-quorum-recovery.sh
 
   printf '%s\n' \
     '#!/usr/bin/env bash' \
     'rabbitmq_quorum_health_probe() { :; }' > "$script"
   chmod 0755 "$script"
+  printf '%s\n' \
+    '#!/usr/bin/env bash' \
+    'rabbitmq_quorum_recovery_probe() { :; }' > "$recovery_script"
+  chmod 0755 "$recovery_script"
 }
 
 REPO=$FIXTURE/repo
