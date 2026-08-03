@@ -15,7 +15,7 @@ class WeeklySummaryProjectionPanel extends StatelessWidget {
     return switch (projection) {
       CompleteWeeklySummaryProjection(:final artifact, :final week) =>
         WeeklySummaryArtifactPanel(artifact: artifact, week: week),
-      BlockedWeeklySummaryProjection blocked =>
+      final BlockedWeeklySummaryProjection blocked =>
         _BlockedWeeklySummaryPanel(projection: blocked),
     };
   }

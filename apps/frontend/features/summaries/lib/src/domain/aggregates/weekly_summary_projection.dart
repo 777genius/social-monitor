@@ -156,19 +156,13 @@ sealed class WeeklySummaryProjection {
 
 final class CompleteWeeklySummaryProjection extends WeeklySummaryProjection {
   const CompleteWeeklySummaryProjection._({
-    required WorkspaceScope scope,
-    required WeeklySummaryWeek week,
-    required List<String> certifiedDailyEvidenceDates,
-    required List<String> missingDailyEvidenceDates,
-    required List<WeeklySummaryBlockingReason> blockingReasons,
+    required super.scope,
+    required super.week,
+    required super.certifiedDailyEvidenceDates,
+    required super.missingDailyEvidenceDates,
+    required super.blockingReasons,
     required this.artifact,
-  }) : super._(
-         scope: scope,
-         week: week,
-         certifiedDailyEvidenceDates: certifiedDailyEvidenceDates,
-         missingDailyEvidenceDates: missingDailyEvidenceDates,
-         blockingReasons: blockingReasons,
-       );
+  }) : super._();
 
   final WeeklySummaryArtifact artifact;
 
@@ -179,35 +173,23 @@ final class CompleteWeeklySummaryProjection extends WeeklySummaryProjection {
 
 sealed class BlockedWeeklySummaryProjection extends WeeklySummaryProjection {
   const BlockedWeeklySummaryProjection._({
-    required WorkspaceScope scope,
-    required WeeklySummaryWeek week,
-    required List<String> certifiedDailyEvidenceDates,
-    required List<String> missingDailyEvidenceDates,
-    required List<WeeklySummaryBlockingReason> blockingReasons,
-  }) : super._(
-         scope: scope,
-         week: week,
-         certifiedDailyEvidenceDates: certifiedDailyEvidenceDates,
-         missingDailyEvidenceDates: missingDailyEvidenceDates,
-         blockingReasons: blockingReasons,
-       );
+    required super.scope,
+    required super.week,
+    required super.certifiedDailyEvidenceDates,
+    required super.missingDailyEvidenceDates,
+    required super.blockingReasons,
+  }) : super._();
 }
 
 final class PartialWeeklySummaryProjection
     extends BlockedWeeklySummaryProjection {
   const PartialWeeklySummaryProjection._({
-    required WorkspaceScope scope,
-    required WeeklySummaryWeek week,
-    required List<String> certifiedDailyEvidenceDates,
-    required List<String> missingDailyEvidenceDates,
-    required List<WeeklySummaryBlockingReason> blockingReasons,
-  }) : super._(
-         scope: scope,
-         week: week,
-         certifiedDailyEvidenceDates: certifiedDailyEvidenceDates,
-         missingDailyEvidenceDates: missingDailyEvidenceDates,
-         blockingReasons: blockingReasons,
-       );
+    required super.scope,
+    required super.week,
+    required super.certifiedDailyEvidenceDates,
+    required super.missingDailyEvidenceDates,
+    required super.blockingReasons,
+  }) : super._();
 
   @override
   WeeklySummaryProjectionStatus get status =>
@@ -217,18 +199,12 @@ final class PartialWeeklySummaryProjection
 final class UnavailableWeeklySummaryProjection
     extends BlockedWeeklySummaryProjection {
   const UnavailableWeeklySummaryProjection._({
-    required WorkspaceScope scope,
-    required WeeklySummaryWeek week,
-    required List<String> certifiedDailyEvidenceDates,
-    required List<String> missingDailyEvidenceDates,
-    required List<WeeklySummaryBlockingReason> blockingReasons,
-  }) : super._(
-         scope: scope,
-         week: week,
-         certifiedDailyEvidenceDates: certifiedDailyEvidenceDates,
-         missingDailyEvidenceDates: missingDailyEvidenceDates,
-         blockingReasons: blockingReasons,
-       );
+    required super.scope,
+    required super.week,
+    required super.certifiedDailyEvidenceDates,
+    required super.missingDailyEvidenceDates,
+    required super.blockingReasons,
+  }) : super._();
 
   @override
   WeeklySummaryProjectionStatus get status =>
