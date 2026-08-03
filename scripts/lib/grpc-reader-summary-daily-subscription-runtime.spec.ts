@@ -1,7 +1,16 @@
+import { createHash } from "node:crypto";
+
 import { canonicalJsonSha256 } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
 import type { AgentRuntimeClientPort } from "@social-monitor/summary/ports/agent-runtime-client.port";
 
-import { GrpcReaderSummaryDailySubscriptionRuntime } from "./grpc-reader-summary-daily-subscription-runtime";
+import {
+  GrpcReaderSummaryDailyCanonicalRecoveryRuntime,
+  GrpcReaderSummaryDailySubscriptionRuntime,
+} from "./grpc-reader-summary-daily-subscription-runtime";
+import { canonicalJsonBytes } from "./reader-summary-daily-canonical-recovery-v4";
+import {
+  readerSummaryDailyCanonicalHistoricalGithubOmissionReason,
+} from "./reader-summary-daily-source-authority-snapshot";
 
 const scope = {
   tenantId: "10000000-0000-4000-8000-000000000001",
@@ -50,6 +59,64 @@ describe("GrpcReaderSummaryDailySubscriptionRuntime", () => {
     })).rejects.toThrow("lease lost");
     expect(client.runTask).not.toHaveBeenCalled();
   });
+
+  it("uses the admitted output_text Codex subscription route for V4", async () => {
+    const outputText = canonicalJsonBytes(validOutput()).toString("utf8");
+    const client = {
+      runTask: jest.fn(async () => ({
+        status: "completed" as const,
+        outputText,
+        warnings: [],
+        executionAttestation: {
+          schemaVersion: 1 as const,
+          requestId: "recovery",
+          purpose: "social_monitor.reader_summary.weekly.generate",
+          canonicalRequestSha256: "a".repeat(64),
+          provider: "codex" as const,
+          model: "gpt-5.6-sol",
+          reasoningEffort: "xhigh",
+          runtimeEngine: "subscription-runtime-cli" as const,
+          runtimePackageVersion: "1.2.3",
+          launcherSha256: "b".repeat(64),
+          selectedOutputKind: "output_text" as const,
+          selectedOutputSha256: createHash("sha256")
+            .update(outputText)
+            .digest("hex"),
+        },
+      })),
+      checkHealth: jest.fn(),
+    } satisfies jest.Mocked<AgentRuntimeClientPort>;
+    const result = await new GrpcReaderSummaryDailyCanonicalRecoveryRuntime(client)
+      .run(canonicalRecoveryInput());
+    expect(result.responseBytes.toString("utf8")).toBe(outputText);
+    expect(client.runTask).toHaveBeenCalledWith(expect.objectContaining({
+      provider: "codex",
+      purpose: "social_monitor.reader_summary.weekly.generate",
+      metadata: expect.objectContaining({
+        authoritySchemaVersion: "reader_summary.daily_source_authority.v2",
+        runtimeOutput: "output_text",
+      }),
+    }));
+  });
+
+  it("rejects V1 authority before the output_text model call", async () => {
+    const client = fakeClient(validOutput());
+    const legacy = {
+      ...canonicalRecoveryInput(),
+      sourceAuthorityBytes: canonicalJsonBytes({
+        schemaVersion: 1,
+        tenantId: scope.tenantId,
+        workspaceId: scope.workspaceId,
+        requestedUtcDate: "2026-07-23",
+        ingestionCutoff: "2026-07-24T00:00:00.000Z",
+        items: [],
+      }),
+    };
+
+    await expect(new GrpcReaderSummaryDailyCanonicalRecoveryRuntime(client).run(legacy))
+      .rejects.toThrow(/immutable authority v2/u);
+    expect(client.runTask).not.toHaveBeenCalled();
+  });
 });
 
 const runtimeInput = () => ({
@@ -82,3 +149,59 @@ const fakeClient = (output: Record<string, unknown>, selectedModel = "gpt-5.6-so
   })),
   checkHealth: jest.fn(),
 }) satisfies jest.Mocked<AgentRuntimeClientPort>;
+
+const canonicalRecoveryInput = () => ({
+  ...scope,
+  modelJobIdentity: "a".repeat(64),
+  requestedUtcDate: "2026-07-23",
+  sourceAuthorityBytes: canonicalJsonBytes({
+    schemaVersion: 2,
+    tenantId: scope.tenantId,
+    workspaceId: scope.workspaceId,
+    requestedUtcDate: "2026-07-23",
+    ingestionCutoff: "2026-07-24T00:00:00.000Z",
+    items: [],
+    githubProjection: {
+      mode: "historical_omission",
+      reason: readerSummaryDailyCanonicalHistoricalGithubOmissionReason,
+      authorizedAt: "2026-07-24T00:00:00.000Z",
+    },
+  }),
+  signal: new AbortController().signal,
+});
+
+const validOutput = () => ({
+  headline: "Canonical day",
+  executiveSummary: "Immutable evidence only.",
+  narrativeSections: [],
+  content: {
+    headline: "Canonical day",
+    oneLineTakeaway: "Immutable evidence only.",
+    bullets: [],
+    interestSections: [],
+    sourceMix: [],
+    topReads: [],
+    claimBoard: [],
+    reliabilityReport: {
+      mode: "shadow",
+      policyVersion: "reader_summary.reliability.v1",
+      riskLevel: "low",
+      riskScore: 0,
+      risks: [],
+    },
+    trendDelta: {
+      newSignals: [], growingSignals: [], repeatedSignals: [], fadingSignals: [],
+    },
+    openQuestions: [],
+    risks: [],
+    nextActions: [],
+  },
+  topStories: [],
+  interestHighlights: [],
+  repeatedSignals: [],
+  risksAndUnknowns: [],
+  citationMap: [],
+  qualityFlags: ["no_signal"],
+  confidence: { level: "low", score: 0, rationale: "No invention." },
+  noSignalReason: "No immutable signal.",
+});

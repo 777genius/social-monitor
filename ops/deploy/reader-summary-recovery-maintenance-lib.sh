@@ -3,13 +3,17 @@
 # Sourced by social-monitor-production-deploy.sh after project paths, COMPOSE,
 # and fail are defined.
 
+readonly DAILY_CANONICAL_RECOVERY_CONFIRMATION=reader-summary-daily-canonical-recovery-v4
+
 verify_daily_runner_maintenance_runtime() {
+  local target_sha=$1
   local runtime_release backend_release
   runtime_release=$(cat "$POSTGRES_RUNTIME_CURRENT/READY" 2>/dev/null || true)
   backend_release=$(cat "$STATE/backend.sha" 2>/dev/null || true)
   if [[ ! $runtime_release =~ ^[0-9a-f]{40}$ || \
-        $runtime_release != "$backend_release" ]]; then
-    fail 'daily-runner runtime is not committed by the backend release'
+        $runtime_release != "$backend_release" || \
+        $runtime_release != "$target_sha" ]]; then
+    fail 'daily-runner runtime is not committed at the requested backend release'
   fi
 }
 
@@ -39,9 +43,24 @@ acquire_daily_runner_maintenance_locks() {
 
 run_reader_summary_daily_runner_maintenance() (
   local maintenance_action=$1
+  local target_sha=$2
+  local confirmation=${3:-}
+  [[ $target_sha =~ ^[0-9a-f]{40}$ ]] || fail 'daily-runner maintenance target must be a full lowercase commit SHA'
+  if [[ $maintenance_action == reader-summary-daily-canonical-recovery-v4 ]]; then
+    [[ $# == 3 ]] || fail 'daily canonical recovery requires a confirmation token'
+    [[ $confirmation == "$DAILY_CANONICAL_RECOVERY_CONFIRMATION" ]] || \
+      fail 'daily canonical recovery requires its exact confirmation token'
+  else
+    [[ $# == 2 ]] || fail 'this maintenance action does not accept a confirmation token'
+  fi
   acquire_daily_runner_maintenance_locks
-  verify_daily_runner_maintenance_runtime
+  verify_daily_runner_maintenance_runtime "$target_sha"
   case $maintenance_action in
+    reader-summary-daily-canonical-recovery-v4)
+      "${COMPOSE[@]}" --profile daily run --rm --no-deps \
+        daily-runner sh -lc \
+        'set -eu; npm run run:reader-summary-daily-canonical-recovery'
+      ;;
     reader-summary-recover-missing-days)
       "${COMPOSE[@]}" --profile daily run --rm --no-deps \
         daily-runner sh -lc \

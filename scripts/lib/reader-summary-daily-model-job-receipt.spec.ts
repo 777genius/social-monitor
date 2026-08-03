@@ -2,7 +2,10 @@ import { createHash } from "node:crypto";
 
 import { readerSummaryDailyModelJobIdentity } from "@social-monitor/summary/domain/value-objects/reader-summary-daily-model-job";
 
-import { buildReaderSummaryDailyModelJobReceipt } from "./reader-summary-daily-model-job-receipt";
+import {
+  buildReaderSummaryDailyCanonicalRecoveryReceipt,
+  buildReaderSummaryDailyModelJobReceipt,
+} from "./reader-summary-daily-model-job-receipt";
 
 const modelJob = readerSummaryDailyModelJobIdentity({
   tenantId: "10000000-0000-4000-8000-000000000001",
@@ -38,6 +41,26 @@ describe("buildReaderSummaryDailyModelJobReceipt", () => {
       responseBytes,
       attestation: { ...attestation(responseBytes), ...patch },
     })).toThrow(/attestation/u);
+  });
+
+  it("binds output_text to the consumed canonical recovery identity", () => {
+    const responseBytes = Buffer.from('{"canonical":true}', "utf8");
+    const receipt = buildReaderSummaryDailyCanonicalRecoveryReceipt({
+      modelJobIdentity: "d".repeat(64),
+      requestedUtcDate: "2026-07-23",
+      sourceAuthoritySha256: "e".repeat(64),
+      responseBytes,
+      attestation: {
+        ...attestation(responseBytes),
+        purpose: "social_monitor.reader_summary.weekly.generate",
+        selectedOutputKind: "output_text",
+      },
+    });
+    expect(JSON.parse(receipt.receiptBytes.toString("utf8"))).toMatchObject({
+      modelJobIdentity: "d".repeat(64),
+      requestedUtcDate: "2026-07-23",
+      sourceAuthoritySha256: "e".repeat(64),
+    });
   });
 });
 

@@ -3,7 +3,7 @@
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-FIXTURE=$(mktemp -d "/tmp/social-monitor-recovery-maintenance-test.XXXXXX")
+FIXTURE=$(mktemp -d "${TMPDIR:-/tmp}/social-monitor-recovery-maintenance-test.XXXXXX")
 trap 'rm -rf "$FIXTURE"' EXIT
 
 ROOT=$FIXTURE/root
@@ -66,9 +66,12 @@ COMPOSE=(fake_compose)
 source "$REPO/ops/deploy/reader-summary-recovery-maintenance-lib.sh"
 
 unset READER_SUMMARY_PRODUCTION_RECOVERY_SOURCE_DATABASE_URL
-run_reader_summary_daily_runner_maintenance reader-summary-recover-missing-days
+run_reader_summary_daily_runner_maintenance \
+  reader-summary-daily-canonical-recovery-v4 "$SHA" \
+  reader-summary-daily-canonical-recovery-v4
+run_reader_summary_daily_runner_maintenance reader-summary-recover-missing-days "$SHA"
 ASSERT_WEEKLY_LOCKS_HELD=1
-run_reader_summary_daily_runner_maintenance reader-summary-weekly-run
+run_reader_summary_daily_runner_maintenance reader-summary-weekly-run "$SHA"
 unset ASSERT_WEEKLY_LOCKS_HELD
 
 recovery_command='--profile daily run --rm --no-deps daily-runner sh -lc set -eu; npm run recover:reader-summary-production -- --apply --dates=2026-07-23,2026-07-24,2026-07-25,2026-07-26,2026-07-27,2026-07-28; npm run recover:reader-summary-production -- --apply --dates=2026-07-29,2026-07-30,2026-07-31'
@@ -76,7 +79,9 @@ grep -Fx -- "$recovery_command" \
   "$COMPOSE_LOG" >/dev/null
 [[ $recovery_command != *'2026-07-28,2026-07-29'* ]]
 [[ $recovery_command == *'--dates=2026-07-23,2026-07-24,2026-07-25,2026-07-26,2026-07-27,2026-07-28; npm run recover:reader-summary-production -- --apply --dates=2026-07-29,2026-07-30,2026-07-31' ]]
-[[ $(grep -Fc 'source-env=unset' "$COMPOSE_LOG") == 2 ]]
+grep -Fx -- '--profile daily run --rm --no-deps daily-runner sh -lc set -eu; npm run run:reader-summary-daily-canonical-recovery' \
+  "$COMPOSE_LOG" >/dev/null
+[[ $(grep -Fc 'source-env=unset' "$COMPOSE_LOG") == 3 ]]
 ! grep -F 'source-env=set' "$COMPOSE_LOG" >/dev/null
 ! grep -F 'READER_SUMMARY_PRODUCTION_RECOVERY_SOURCE_DATABASE_URL' \
   "$COMPOSE_LOG" >/dev/null
@@ -90,11 +95,44 @@ grep -Fx -- '--profile daily run --rm --no-deps -e READER_SUMMARY_WEEKLY_PRODUCT
   "$DOCKER_LOG" "$COMPOSE_LOG" >/dev/null
 ! compgen -G "$STATE/reader-summary-recovery-source.*.env" >/dev/null
 
+for confirmation in '' wrong-reader-summary-daily-canonical-recovery-v4 \
+  "reader-summary-daily-canonical-recovery-v4:$SHA"; do
+  : > "$COMPOSE_LOG"
+  set +e
+  run_reader_summary_daily_runner_maintenance \
+    reader-summary-daily-canonical-recovery-v4 "$SHA" "$confirmation" \
+    >/dev/null 2>&1
+  status=$?
+  set -e
+  [[ $status == 1 ]]
+  [[ ! -s $COMPOSE_LOG ]]
+done
+
+: > "$COMPOSE_LOG"
+set +e
+run_reader_summary_daily_runner_maintenance \
+  reader-summary-daily-canonical-recovery-v4 "$SHA" >/dev/null 2>&1
+status=$?
+set -e
+[[ $status == 1 ]]
+[[ ! -s $COMPOSE_LOG ]]
+
+: > "$COMPOSE_LOG"
+set +e
+run_reader_summary_daily_runner_maintenance \
+  reader-summary-daily-canonical-recovery-v4 \
+  89abcdef0123456789abcdef0123456789abcdef \
+  reader-summary-daily-canonical-recovery-v4 >/dev/null 2>&1
+status=$?
+set -e
+[[ $status == 1 ]]
+[[ ! -s $COMPOSE_LOG ]]
+
 : > "$COMPOSE_LOG"
 exec 7>"$DAILY_SINGLETON_LOCK"
 flock -n 7
 set +e
-run_reader_summary_daily_runner_maintenance reader-summary-weekly-run \
+run_reader_summary_daily_runner_maintenance reader-summary-weekly-run "$SHA" \
   >/dev/null 2>&1
 status=$?
 set -e
@@ -126,7 +164,7 @@ exec 7>&-
 exec 7>"$POSTGRES_ADMISSION_LOCK"
 flock -n 7
 set +e
-run_reader_summary_daily_runner_maintenance reader-summary-weekly-run \
+run_reader_summary_daily_runner_maintenance reader-summary-weekly-run "$SHA" \
   >/dev/null 2>&1
 status=$?
 set -e
@@ -139,7 +177,7 @@ exec 7>&-
 : > "$COMPOSE_LOG"
 FAKE_COMPOSE_FAIL=1
 set +e
-run_reader_summary_daily_runner_maintenance reader-summary-recover-missing-days
+run_reader_summary_daily_runner_maintenance reader-summary-recover-missing-days "$SHA"
 status=$?
 set -e
 [[ $status == 44 ]]
@@ -148,9 +186,9 @@ grep -Fx 'source-env=unset' "$COMPOSE_LOG" >/dev/null
 ! grep -F 'READER_SUMMARY_PRODUCTION_RECOVERY_SOURCE_DATABASE_URL' \
   "$COMPOSE_LOG" >/dev/null
 
-grep -F 'reader-summary-recover-missing-days|reader-summary-weekly-run' \
+grep -F 'reader-summary-recover-missing-days|reader-summary-weekly-run|reader-summary-daily-canonical-recovery-v4' \
   "$SCRIPT_DIR/social-monitor-production-ssh-wrapper.sh" >/dev/null
-grep -F 'reader-summary-recover-missing-days|reader-summary-weekly-run' \
+grep -F 'reader-summary-recover-missing-days|reader-summary-weekly-run|reader-summary-daily-canonical-recovery-v4' \
   "$SCRIPT_DIR/github-production-deploy-client.sh" >/dev/null
 
 echo 'Reader summary recovery maintenance tests passed'

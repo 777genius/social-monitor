@@ -25,8 +25,10 @@ import { StoryRankingMetricsRecorder } from "@social-monitor/summary/adapters/me
 import { PrismaReaderSummaryGitHubProjectionReader } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-github-projection.reader";
 import type { ReaderSummaryDailyCanonicalPublication } from "@social-monitor/summary/ports/reader-summary-daily-execution-cursor.port";
 import { BuildReaderSummaryTopicMapUseCase } from "@social-monitor/summary/features/build-reader-summary-topic-map/build-reader-summary-topic-map.use-case";
+import type { ReaderSummaryHistoricalGitHubOmission } from "@social-monitor/summary/features/execute-reader-summary-job/reader-summary-prepublication-gate";
 import type {
   ProviderReaderSummaryAttempt,
+  ReaderSummaryDailyCanonicalRecoveryV4ProvenancePort,
   ReaderSummaryEvidenceSelectorPort,
   ReaderSummaryGitHubProjectionReaderPort,
   ReaderSummaryModelEstimate,
@@ -37,9 +39,13 @@ import type { Clock } from "@social-monitor/shared-kernel";
 
 import type { ReaderSummaryDailyPublicationFinalizer } from "./reader-summary-daily-terminal-runner";
 import {
+  isReaderSummaryDailySourceAuthorityV2,
   verifyReaderSummaryDailySourceAuthority,
   type VerifiedReaderSummaryDailySourceAuthority,
 } from "./reader-summary-daily-source-authority-snapshot";
+import { createReaderSummaryDailyFrozenOutputTextWiring } from "./reader-summary-daily-frozen-publication-input";
+import { parseStrictDailyOutputText } from "./reader-summary-daily-canonical-recovery-v4";
+import { verifyReaderSummaryDailyCanonicalRecoveryReceipt } from "./reader-summary-daily-model-job-receipt";
 
 const dailyResponsePathEnv = "DURABLE_READER_SUMMARY_DAILY_RESPONSE_PATH";
 const dailyReceiptPathEnv = "DURABLE_READER_SUMMARY_DAILY_RECEIPT_PATH";
@@ -54,6 +60,7 @@ export type ReaderSummaryDailyReplayInput = Readonly<{
   ingestionCutoff: string;
   modelJobIdentity: string;
   authority: VerifiedReaderSummaryDailySourceAuthority;
+  outputKind: "structured_output" | "output_text";
 }>;
 
 export const createReaderSummaryDailyCaptureContext = (input: {
@@ -122,6 +129,7 @@ export const loadReaderSummaryDailyReplayInput = (
     ingestionCutoff: verified.ingestionCutoff,
     modelJobIdentity,
     authority: verified,
+    outputKind: "structured_output",
   });
 };
 
@@ -155,37 +163,87 @@ export const createReaderSummaryDailyPublicationWiring = (input: {
   readonly evidenceSelector: ReaderSummaryEvidenceSelectorPort;
   readonly githubProjectionReader: ReaderSummaryGitHubProjectionReaderPort;
   readonly attestationSink: VerifiedReaderSummaryExecutionAttestationSink;
-}) => Object.freeze({
-  evidenceSelector: createReaderSummaryDailyAuthorityEvidenceSelector({
-    delegate: input.evidenceSelector,
-    authority: input.replay.authority,
-  }),
-  githubProjectionReader:
-    createReaderSummaryDailyAuthorityGitHubProjectionReader(
-      input.githubProjectionReader,
-      input.replay.authority,
-    ),
-  model: createReaderSummaryDailyPersistedResponseModel({
-    responseBytes: input.replay.responseBytes,
-    receiptBytes: input.replay.receiptBytes,
-    modelJobIdentity: input.replay.modelJobIdentity,
-    requestedUtcDate: input.replay.authority.requestedUtcDate,
-    sourceAuthoritySha256: input.replay.authoritySha256,
-    attestationSink: input.attestationSink,
-  }),
-  topicMapBuilder: new BuildReaderSummaryTopicMapUseCase(),
-  inventory: feedInventoryFromAuthority(input.replay.authority.items),
-});
+}) => {
+  if (input.replay.outputKind === "output_text") {
+    throw new Error("Daily output_text recovery must use the verified frozen wiring");
+  }
+  if (isReaderSummaryDailySourceAuthorityV2(input.replay.authority)) {
+    throw new Error("Daily immutable authority v2 recovery requires output_text");
+  }
+  return Object.freeze({
+    evidenceSelector: createReaderSummaryDailyAuthorityEvidenceSelector({
+      delegate: input.evidenceSelector,
+      authority: input.replay.authority,
+    }),
+    githubProjectionReader:
+      createReaderSummaryDailyAuthorityGitHubProjectionReader(
+        input.githubProjectionReader,
+        input.replay.authority,
+      ),
+    model: createReaderSummaryDailyPersistedResponseModel({
+      responseBytes: input.replay.responseBytes,
+      receiptBytes: input.replay.receiptBytes,
+      modelJobIdentity: input.replay.modelJobIdentity,
+      requestedUtcDate: input.replay.authority.requestedUtcDate,
+      sourceAuthoritySha256: input.replay.authoritySha256,
+      attestationSink: input.attestationSink,
+      expectedOutputKind: input.replay.outputKind,
+    }),
+    topicMapBuilder: new BuildReaderSummaryTopicMapUseCase(),
+    inventory: feedInventoryFromAuthority(input.replay.authority.items),
+  });
+};
 
 export const createReaderSummaryDailyPublicationExecutionWiring = (input: {
   readonly replay: ReaderSummaryDailyReplayInput | null;
-  readonly feedItems: FeedItemReadRepositoryPort;
+  readonly feedItems?: FeedItemReadRepositoryPort;
   readonly summaryClient: ConstructorParameters<
     typeof PrismaReaderSummaryGitHubProjectionReader
   >[0];
   readonly clock: Clock;
   readonly attestationSink: VerifiedReaderSummaryExecutionAttestationSink;
 }): ReaderSummaryDailyPublicationExecutionWiring => {
+  if (input.replay?.outputKind === "output_text") {
+    const frozen = createReaderSummaryDailyFrozenOutputTextWiring({
+      authority: input.replay.authority,
+      sourceAuthoritySha256: input.replay.authoritySha256,
+      ingestionCutoff: input.replay.ingestionCutoff,
+      modelJobIdentity: input.replay.modelJobIdentity,
+      responseBytes: input.replay.responseBytes,
+      receiptBytes: input.replay.receiptBytes,
+      clock: input.clock,
+    });
+    return Object.freeze({
+      evidenceSelector: frozen.evidenceSelector,
+      githubProjectionReader: frozen.githubProjectionReader,
+      recoveryProvenance: frozen.recoveryProvenance,
+      ...(frozen.historicalGithubOmission === undefined
+        ? {}
+        : { historicalGithubOmission: frozen.historicalGithubOmission }),
+      model: createReaderSummaryDailyPersistedResponseModel({
+        responseBytes: input.replay.responseBytes,
+        receiptBytes: input.replay.receiptBytes,
+        modelJobIdentity: input.replay.modelJobIdentity,
+        requestedUtcDate: input.replay.authority.requestedUtcDate,
+        sourceAuthoritySha256: input.replay.authoritySha256,
+        attestationSink: input.attestationSink,
+        expectedOutputKind: "output_text",
+      }),
+      topicMapBuilder: new BuildReaderSummaryTopicMapUseCase(),
+      inventory: feedInventoryFromAuthority(input.replay.authority.items),
+    });
+  }
+  if (
+    input.replay !== null &&
+    isReaderSummaryDailySourceAuthorityV2(input.replay.authority)
+  ) {
+    throw new Error("Daily immutable authority v2 recovery requires output_text");
+  }
+  const githubProjectionReader =
+    new PrismaReaderSummaryGitHubProjectionReader(input.summaryClient);
+  if (input.feedItems === undefined) {
+    throw new Error("Daily publication requires a feed repository outside output_text recovery");
+  }
   const rankFeedItems = new RankFeedItemsUseCase(
     input.feedItems,
     new InMemoryUserRelevanceProfileRepository(),
@@ -197,8 +255,6 @@ export const createReaderSummaryDailyPublicationExecutionWiring = (input: {
     input.clock,
     new StoryRankingMetricsRecorder(new InMemoryMetricsRecorder()),
   );
-  const githubProjectionReader =
-    new PrismaReaderSummaryGitHubProjectionReader(input.summaryClient);
   if (input.replay === null) {
     return Object.freeze({ evidenceSelector, githubProjectionReader });
   }
@@ -213,6 +269,8 @@ export const createReaderSummaryDailyPublicationExecutionWiring = (input: {
 type ReaderSummaryDailyPublicationExecutionWiring = Readonly<{
   evidenceSelector: ReaderSummaryEvidenceSelectorPort;
   githubProjectionReader: ReaderSummaryGitHubProjectionReaderPort;
+  recoveryProvenance?: ReaderSummaryDailyCanonicalRecoveryV4ProvenancePort;
+  historicalGithubOmission?: ReaderSummaryHistoricalGitHubOmission;
   model?: ReaderSummaryModelPort;
   topicMapBuilder?: BuildReaderSummaryTopicMapUseCase;
   inventory?: readonly Readonly<{
@@ -237,15 +295,19 @@ export type ReaderSummaryDailyCanonicalCapture = (
   input: Parameters<ReaderSummaryDailyPublicationFinalizer["publish"]>[0],
 ) => Promise<ReaderSummaryDailyCaptureResult>;
 
-export const createReaderSummaryDailyPersistedResponseModel = (input: {
+const createReaderSummaryDailyPersistedResponseModel = (input: {
   readonly responseBytes: Buffer;
   readonly receiptBytes: Buffer;
   readonly modelJobIdentity: string;
   readonly requestedUtcDate: string;
   readonly sourceAuthoritySha256: string;
   readonly attestationSink: VerifiedReaderSummaryExecutionAttestationSink;
+  readonly expectedOutputKind?: "structured_output" | "output_text";
 }): ReaderSummaryModelPort => {
-  const response = parseRecord(input.responseBytes, "model response");
+  const responseBytes = input.expectedOutputKind === "output_text"
+    ? verifiedOutputTextBytes(input)
+    : Buffer.from(input.responseBytes);
+  const response = parseRecord(responseBytes, "model response");
   const receipt = parseRecord(input.receiptBytes, "model receipt");
   const attestation = record(receipt.attestation);
   if (
@@ -253,13 +315,14 @@ export const createReaderSummaryDailyPersistedResponseModel = (input: {
     receipt.modelJobIdentity !== input.modelJobIdentity ||
     receipt.requestedUtcDate !== input.requestedUtcDate ||
     receipt.sourceAuthoritySha256 !== input.sourceAuthoritySha256 ||
-    receipt.responseSha256 !== sha256(input.responseBytes) ||
+    receipt.responseSha256 !== sha256(responseBytes) ||
     attestation === null ||
     attestation.provider !== "codex" ||
     attestation.model !== "gpt-5.6-sol" ||
     attestation.reasoningEffort !== "xhigh" ||
     attestation.runtimeEngine !== "subscription-runtime-cli" ||
-    attestation.selectedOutputKind !== "structured_output" ||
+    attestation.selectedOutputKind !==
+      (input.expectedOutputKind ?? "structured_output") ||
     attestation.selectedOutputSha256 !== receipt.responseSha256
   ) {
     throw new Error("Daily persisted model receipt is invalid");
@@ -326,6 +389,29 @@ export const createReaderSummaryDailyPersistedResponseModel = (input: {
       "Unknown daily persisted reader summary error",
     ),
   };
+};
+
+const verifiedOutputTextBytes = (input: {
+  readonly responseBytes: Buffer;
+  readonly receiptBytes: Buffer;
+  readonly modelJobIdentity: string;
+  readonly requestedUtcDate: string;
+  readonly sourceAuthoritySha256: string;
+}): Buffer => {
+  const bytes = parseStrictDailyOutputText(
+    Buffer.from(input.responseBytes).toString("utf8"),
+  );
+  if (!bytes.equals(input.responseBytes)) {
+    throw new Error("Daily persisted output_text bytes are not strict canonical JSON");
+  }
+  verifyReaderSummaryDailyCanonicalRecoveryReceipt({
+    modelJobIdentity: input.modelJobIdentity,
+    requestedUtcDate: input.requestedUtcDate,
+    sourceAuthoritySha256: input.sourceAuthoritySha256,
+    responseBytes: bytes,
+    receiptBytes: input.receiptBytes,
+  });
+  return bytes;
 };
 
 const assertAuthorityQuery = (

@@ -984,6 +984,7 @@ TMPDIR=/tmp bash "$SCRIPT_DIR/github-premidnight-capture-runtime.test.sh"
 bash "$SCRIPT_DIR/verify-postgres-runtime-topology.test.sh"
 bash "$SCRIPT_DIR/reader-summary-publication-migrator-validation.test.sh"
 bash "$SCRIPT_DIR/rabbitmq-quorum-deploy-bridge-transition.test.sh"
+bash "$SCRIPT_DIR/daily-canonical-recovery-production.test.sh"
 uid_fixture_status=0
 if ((EUID == 0)); then
   uid_fixture_probe=$(mktemp -d "${TMPDIR:-/tmp}/social-monitor-uidmap.XXXXXX")

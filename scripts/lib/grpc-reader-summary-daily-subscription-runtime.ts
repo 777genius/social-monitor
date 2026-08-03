@@ -8,6 +8,16 @@ import type {
 import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 
 import type { ReaderSummaryDailySubscriptionRuntime } from "./reader-summary-daily-terminal-runner";
+import {
+  assertDailyOutputCitationsMatchSourceAuthority,
+  assertDailyOutputMatchesJsonSchema,
+  parseStrictDailyOutputText,
+  sha256 as recoverySha256,
+} from "./reader-summary-daily-canonical-recovery-v4";
+import {
+  isReaderSummaryDailySourceAuthorityV2,
+  verifyReaderSummaryDailySourceAuthority,
+} from "./reader-summary-daily-source-authority-snapshot";
 
 const purpose = "social_monitor.reader_summary.generate";
 const model = "gpt-5.6-sol";
@@ -66,6 +76,129 @@ export class GrpcReaderSummaryDailySubscriptionRuntime
     return exactCompletedOutput(result);
   }
 }
+
+/**
+ * The recovery uses the subscription-only Codex route, but requests canonical
+ * `output_text` so its exact bytes can be bound to the durable consumption row.
+ */
+export class GrpcReaderSummaryDailyCanonicalRecoveryRuntime
+  implements ReaderSummaryDailySubscriptionRuntime
+{
+  readonly runtimeEngine = "subscription-runtime-cli" as const;
+
+  constructor(
+    private readonly client: AgentRuntimeClientPort,
+    private readonly timeoutMs = 600_000,
+  ) {
+    if (!Number.isInteger(timeoutMs) || timeoutMs < 1) {
+      throw new Error("Daily canonical recovery runtime timeout must be positive");
+    }
+  }
+
+  async run(input: Parameters<ReaderSummaryDailySubscriptionRuntime["run"]>[0]) {
+    if (input.signal.aborted) {
+      throw input.signal.reason ?? new Error("Daily canonical recovery runtime aborted");
+    }
+    assertCanonicalRecoveryAuthorityV2(input);
+    const result = await this.client.runTask({
+      requestId: `reader-summary-daily-recovery-v4:${input.modelJobIdentity}`,
+      tenantId: tenantId(input.tenantId),
+      workspaceId: workspaceId(input.workspaceId),
+      correlationId: `reader-summary-daily-recovery-v4:${input.modelJobIdentity}`,
+      provider: "codex",
+      purpose: "social_monitor.reader_summary.weekly.generate",
+      systemPrompt: [
+        "Generate exactly one canonical daily Social Monitor reader summary.",
+        "The supplied immutable daily source authority v2 is complete.",
+        "Do not recollect, backdate, duplicate, or invent evidence.",
+        "Citation cN means the Nth authority item; cite only the first 200 items.",
+        "Return one canonical JSON object as output_text with no surrounding text.",
+      ].join(" "),
+      prompt: input.sourceAuthorityBytes.toString("utf8"),
+      outputSchema: openAiReaderSummaryJsonSchema,
+      controls: {
+        interactive: false,
+        outputSchemaName: "social_monitor_reader_summary_artifact",
+        schemaVersion: "reader_summary.artifact.v1",
+        model,
+        maxOutputTokens: 16_000,
+      },
+      timeoutMs: this.timeoutMs,
+      metadata: {
+        adapter: "reader-summary-daily-canonical-recovery-v4",
+        authoritySchemaVersion: "reader_summary.daily_source_authority.v2",
+        reasoningEffort,
+        runtimeOutput: "output_text",
+      },
+    });
+    if (input.signal.aborted) {
+      throw input.signal.reason ?? new Error("Daily canonical recovery runtime aborted");
+    }
+    const attestation = result.executionAttestation;
+    if (
+      result.status !== "completed" ||
+      result.structuredOutput !== undefined ||
+      result.outputText === undefined ||
+      attestation === undefined ||
+      attestation.purpose !== "social_monitor.reader_summary.weekly.generate" ||
+      attestation.provider !== "codex" ||
+      attestation.model !== model ||
+      attestation.reasoningEffort !== reasoningEffort ||
+      attestation.runtimeEngine !== "subscription-runtime-cli" ||
+      attestation.selectedOutputKind !== "output_text"
+    ) {
+      throw new Error("Daily canonical recovery runtime returned an invalid product result");
+    }
+    const responseBytes = parseStrictDailyOutputText(result.outputText);
+    const output = JSON.parse(responseBytes.toString("utf8")) as unknown;
+    assertDailyOutputMatchesJsonSchema(output, openAiReaderSummaryJsonSchema);
+    assertDailyOutputCitationsMatchSourceAuthority(
+      output,
+      input.sourceAuthorityBytes,
+      200,
+    );
+    if (recoverySha256(responseBytes) !== attestation.selectedOutputSha256) {
+      throw new Error("Daily canonical recovery output_text diverged from attestation");
+    }
+    return Object.freeze({
+      responseBytes,
+      executionAttestation: Object.freeze({ ...attestation }),
+    });
+  }
+}
+
+const assertCanonicalRecoveryAuthorityV2 = (
+  input: Parameters<ReaderSummaryDailySubscriptionRuntime["run"]>[0],
+): void => {
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse(input.sourceAuthorityBytes.toString("utf8")) as unknown;
+  } catch {
+    throw new Error("Daily canonical recovery source authority is not JSON");
+  }
+  if (
+    decoded === null ||
+    typeof decoded !== "object" ||
+    Array.isArray(decoded) ||
+    typeof (decoded as Record<string, unknown>).ingestionCutoff !== "string"
+  ) {
+    throw new Error("Daily canonical recovery source authority shape is invalid");
+  }
+  const authority = verifyReaderSummaryDailySourceAuthority({
+    tenantId: input.tenantId,
+    workspaceId: input.workspaceId,
+    requestedUtcDate: input.requestedUtcDate,
+    authority: {
+      requestedUtcDate: input.requestedUtcDate,
+      ingestionCutoff: (decoded as Record<string, unknown>).ingestionCutoff as string,
+      canonicalBytes: input.sourceAuthorityBytes,
+      canonicalSha256: recoverySha256(input.sourceAuthorityBytes),
+    },
+  });
+  if (!isReaderSummaryDailySourceAuthorityV2(authority)) {
+    throw new Error("Daily canonical recovery requires immutable authority v2");
+  }
+};
 
 const exactCompletedOutput = (
   result: AgentRuntimeTaskResult,

@@ -7,6 +7,9 @@ import {
 import type { ReaderSummaryWeeklyPublicationAuthorization } from "../../../domain/policies/reader-summary-weekly-publication-authorization";
 import * as weeklyAuthorizationPolicy from "../../../domain/policies/reader-summary-weekly-publication-authorization";
 import { emptyReaderSummaryReliabilityReport } from "../../../domain/entities/reader-summary-reliability";
+import {
+  type ReaderSummaryDailyCanonicalRecoveryV4Binding,
+} from "../../../ports";
 import type {
   ReaderSummaryWeeklyPublicationPersistencePayload,
   ReaderSummaryWeeklyPublicationPersistenceSqlRow,
@@ -112,6 +115,90 @@ describe("PrismaReaderSummaryArtifactRepository", () => {
     expect(prisma.statusFor("reader-summary-unverified-github")).toBe(
       "REJECTED",
     );
+  });
+
+  it("stages V4 recovery only after PostgreSQL re-verifies its strict provenance", async () => {
+    const prisma = new FakeReaderSummaryPrisma();
+    const repository = new PrismaReaderSummaryArtifactRepository(prisma.client);
+    const binding: ReaderSummaryDailyCanonicalRecoveryV4Binding = {
+      schemaVersion: "reader_summary.daily_canonical_recovery_provenance.v2",
+      recoveryVersion: "reader_summary.daily_canonical_recovery.v4",
+      selectedOutputKind: "output_text",
+      sourceAuthoritySchemaVersion: 2,
+      tenantId: tenant,
+      workspaceId: workspace,
+      requestedUtcDate: "2026-07-24",
+      ingestionCutoff: "2026-07-25T00:00:00.000Z",
+      sourceAuthoritySha256: "a".repeat(64),
+      modelJobIdentity: "b".repeat(64),
+      outputTextSha256: "c".repeat(64),
+      outputTextByteLength: 17,
+      githubProjectionSha256: "d".repeat(64),
+    };
+    const audit = (): ReaderSummaryGitHubProjectionAudit & {
+      readonly recoveryV4: ReaderSummaryDailyCanonicalRecoveryV4Binding;
+    } => ({
+      schemaVersion: "reader_summary.github_projection.v1",
+      status: "verified",
+      requestedUtcDay: binding.requestedUtcDate,
+      pageCount: 1,
+      scannedItemCount: 0,
+      eligibleBindingIds: [],
+      observedThrough: binding.ingestionCutoff,
+      bindings: [],
+      violationCodes: [],
+      reasons: [],
+      recoveryV4: binding,
+    });
+    await expect(repository.save(
+      recoveryReaderSummaryArtifact("reader-summary-forged-ordinary-audit"),
+      { githubProjectionAudit: noEligibleGitHubBindingOptions().githubProjectionAudit },
+    )).rejects.toThrow(/not re-verified/u);
+    await expect(repository.save(
+      recoveryReaderSummaryArtifact("reader-summary-unverified-v4-recovery"),
+      { githubProjectionAudit: audit() },
+    )).rejects.toThrow(/not re-verified/u);
+    prisma.setDailyRecoveryVerification(true);
+    await repository.save(
+      recoveryReaderSummaryArtifact("reader-summary-verified-v4-recovery"),
+      { githubProjectionAudit: audit() },
+    );
+
+    expect(prisma.statusFor("reader-summary-forged-ordinary-audit")).toBeUndefined();
+    expect(prisma.statusFor("reader-summary-unverified-v4-recovery")).toBeUndefined();
+    expect(prisma.statusFor("reader-summary-verified-v4-recovery")).toBe(
+      "RUNNING",
+    );
+    expect(prisma.dailyRecoveryVerificationQueryCount).toBe(3);
+  });
+
+  it("keeps an ordinary existing Jul23-Jul30 artifact idempotent when PostgreSQL has no V4 authority", async () => {
+    const prisma = new FakeReaderSummaryPrisma();
+    const repository = new PrismaReaderSummaryArtifactRepository(prisma.client);
+    const artifact = recoveryNoSignalReaderSummaryArtifact(
+      "reader-summary-ordinary-recovery-window",
+    );
+    const githubProjectionAudit: ReaderSummaryGitHubProjectionAudit = {
+      schemaVersion: "reader_summary.github_projection.v1",
+      status: "not_required",
+      requestedUtcDay: "2026-07-24",
+      pageCount: 1,
+      scannedItemCount: 0,
+      eligibleBindingIds: [],
+      bindings: [],
+      violationCodes: [],
+      reasons: [],
+    };
+    prisma.setDailyRecoveryVerification(null);
+
+    await repository.save(artifact, { githubProjectionAudit });
+    await expect(repository.save(artifact, { githubProjectionAudit }))
+      .resolves.toBeUndefined();
+
+    expect(prisma.statusFor("reader-summary-ordinary-recovery-window")).toBe(
+      "RUNNING",
+    );
+    expect(prisma.dailyRecoveryVerificationQueryCount).toBe(2);
   });
 
   it("stages and records the exact verified GitHub audit", async () => {
@@ -496,6 +583,29 @@ const readerSummaryArtifact = (
     },
   });
 
+const recoveryReaderSummaryArtifact = (
+  readerSummaryId: string,
+): ReaderSummaryArtifact => {
+  const snapshot = readerSummaryArtifact(readerSummaryId).toSnapshot();
+  const startedAt = new Date("2026-07-24T00:00:00.000Z");
+  const endedAt = new Date("2026-07-25T00:00:00.000Z");
+  return ReaderSummaryArtifact.create({
+    ...snapshot,
+    period: {
+      cadence: "daily",
+      startedAt,
+      endedAt,
+      timezone: "UTC",
+      periodKey: "daily:2026-07-24T00:00:00.000Z:2026-07-25T00:00:00.000Z:UTC",
+    },
+    sourceWindow: {
+      ...snapshot.sourceWindow,
+      startedAt,
+      endedAt,
+    },
+  });
+};
+
 const noSignalReaderSummaryArtifact = (
   readerSummaryId: string,
 ): ReaderSummaryArtifact => {
@@ -543,6 +653,29 @@ const noSignalReaderSummaryArtifact = (
       rationale: "No eligible evidence items were selected.",
     },
     noSignalReason: "No eligible evidence items were selected.",
+  });
+};
+
+const recoveryNoSignalReaderSummaryArtifact = (
+  readerSummaryId: string,
+): ReaderSummaryArtifact => {
+  const snapshot = noSignalReaderSummaryArtifact(readerSummaryId).toSnapshot();
+  const startedAt = new Date("2026-07-24T00:00:00.000Z");
+  const endedAt = new Date("2026-07-25T00:00:00.000Z");
+  return ReaderSummaryArtifact.create({
+    ...snapshot,
+    period: {
+      cadence: "daily",
+      startedAt,
+      endedAt,
+      timezone: "UTC",
+      periodKey: "daily:2026-07-24T00:00:00.000Z:2026-07-25T00:00:00.000Z:UTC",
+    },
+    sourceWindow: {
+      ...snapshot.sourceWindow,
+      startedAt,
+      endedAt,
+    },
   });
 };
 
@@ -710,6 +843,8 @@ class FakeReaderSummaryPrisma {
   >();
   private readonly weeklyPayloadBySlot = new Map<string, string>();
   private nowMs = Date.parse("2026-07-05T10:00:00.000Z");
+  private dailyRecoveryVerified: boolean | null = false;
+  dailyRecoveryVerificationQueryCount = 0;
   readonly weeklyRequests: ReaderSummaryWeeklyPublicationPersistencePayload[] =
     [];
   readonly weeklyOutcomes: ReaderSummaryWeeklyPublicationPersistenceSqlRow["outcome"][] =
@@ -717,9 +852,17 @@ class FakeReaderSummaryPrisma {
 
   readonly client = {
     $queryRaw: async <T>(
-      _strings: TemplateStringsArray,
+      strings: TemplateStringsArray,
       serialized: unknown,
     ): Promise<T> => {
+      if (
+        strings.join("").includes(
+          "verify_reader_summary_daily_canonical_recovery_v4_provenance",
+        )
+      ) {
+        this.dailyRecoveryVerificationQueryCount += 1;
+        return [{ verified: this.dailyRecoveryVerified }] as unknown as T;
+      }
       const payload = JSON.parse(
         String(serialized),
       ) as ReaderSummaryWeeklyPublicationPersistencePayload;
@@ -841,6 +984,10 @@ class FakeReaderSummaryPrisma {
 
   qualitySignalsFor(id: string): unknown {
     return this.records.get(id)?.qualitySignals;
+  }
+
+  setDailyRecoveryVerification(verified: boolean | null): void {
+    this.dailyRecoveryVerified = verified;
   }
 
   private nextDate(): Date {

@@ -96,7 +96,7 @@ fake_ssh() {
       IFS= read -r value
       printf '%s\n' "$value" > "$FAKE_UPLOAD_PATH"
       ;;
-    maintenance_success:"disk-report $TARGET_SHA"|maintenance_success:"project-disk-cleanup $TARGET_SHA"|maintenance_success:"reader-summary-recover-missing-days $TARGET_SHA"|maintenance_success:"reader-summary-weekly-run $TARGET_SHA")
+    maintenance_success:"disk-report $TARGET_SHA"|maintenance_success:"project-disk-cleanup $TARGET_SHA"|maintenance_success:"reader-summary-recover-missing-days $TARGET_SHA"|maintenance_success:"reader-summary-weekly-run $TARGET_SHA"|maintenance_success:"reader-summary-daily-canonical-recovery-v4 $TARGET_SHA reader-summary-daily-canonical-recovery-v4")
       printf 'maintenance=%s\n' "${command%% *}"
       ;;
     normal_success:"deploy $TARGET_SHA")
@@ -266,6 +266,21 @@ for maintenance_action in \
     "$TARGET_SHA" "$maintenance_action" >/dev/null
   assert_call_count 1 "$maintenance_action $TARGET_SHA"
 done
+run_client maintenance_success maintenance "$TARGET_SHA" \
+  reader-summary-daily-canonical-recovery-v4 \
+  reader-summary-daily-canonical-recovery-v4 >/dev/null
+assert_call_count 1 \
+  "reader-summary-daily-canonical-recovery-v4 $TARGET_SHA reader-summary-daily-canonical-recovery-v4"
+for confirmation in '' wrong-reader-summary-daily-canonical-recovery-v4 \
+  "reader-summary-daily-canonical-recovery-v4:$TARGET_SHA"; do
+  assert_fails maintenance_success maintenance "$TARGET_SHA" \
+    reader-summary-daily-canonical-recovery-v4 "$confirmation"
+  assert_call_count 0 \
+    "reader-summary-daily-canonical-recovery-v4 $TARGET_SHA $confirmation"
+done
+assert_fails maintenance_success maintenance "$TARGET_SHA" \
+  reader-summary-daily-canonical-recovery-v4
+assert_call_count 0 "reader-summary-daily-canonical-recovery-v4 $TARGET_SHA"
 assert_fails maintenance_success maintenance "$TARGET_SHA" docker-system-prune
 assert_call_count 0 "docker-system-prune $TARGET_SHA"
 
@@ -418,9 +433,15 @@ grep -F 'postgres_pool_repair: ${{ steps.plan.outputs.postgres_pool_repair }}' \
   "if: needs.plan.outputs.postgres_pool_repair != 'true'" "$WORKFLOW") == 1 ]]
 for maintenance_action in \
   disk-report project-disk-cleanup \
-  reader-summary-recover-missing-days reader-summary-weekly-run; do
+  reader-summary-recover-missing-days reader-summary-weekly-run \
+  reader-summary-daily-canonical-recovery-v4; do
   grep -F "          - $maintenance_action" "$WORKFLOW" >/dev/null
 done
+grep -F 'daily_canonical_recovery_confirmation:' "$WORKFLOW" >/dev/null
+grep -F 'timeout-minutes: 360' "$WORKFLOW" >/dev/null
+grep -F 'reader-summary-daily-canonical-recovery-v4' "$WORKFLOW" >/dev/null
+grep -F 'npm run check:reader-summary-daily-canonical-recovery-postgres18' "$WORKFLOW" >/dev/null
+grep -F 'npm run check:reader-summary-daily-canonical-recovery-production' "$WORKFLOW" >/dev/null
 for dependency in plan verify_reader_summary_publication verify_backend build_frontend; do
   grep -F "      - $dependency" "$WORKFLOW" >/dev/null
 done

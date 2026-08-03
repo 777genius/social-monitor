@@ -18,7 +18,10 @@ import type {
 import * as publicationProof from "../reader-summary-publication-proof";
 import type { ReaderSummaryPublicationPayload } from "../reader-summary-publication-proof";
 import { PrismaReaderSummaryPublication } from "./prisma-reader-summary-publication";
-import { PrismaReaderSummaryRecoveryFinalization } from "./prisma-reader-summary-recovery-finalization";
+import {
+  PrismaReaderSummaryDailyCanonicalRecoveryV4Finalization,
+  PrismaReaderSummaryRecoveryFinalization,
+} from "./prisma-reader-summary-recovery-finalization";
 import type { PrismaSummaryClient } from "./prisma-summary-client";
 import type { PrismaSummaryTransactionOptions } from "./prisma-summary-transaction";
 
@@ -216,6 +219,111 @@ describe("PrismaReaderSummaryRecoveryFinalization", () => {
       "finalize_reader_summary_recovery",
     );
   });
+});
+
+describe("PrismaReaderSummaryDailyCanonicalRecoveryV4Finalization", () => {
+  it("seals the DB before publishing private staging, then finalizes with the same fence", async () => {
+    const events: string[] = [];
+    const queryRaw = jest.fn(async (query: TemplateStringsArray) =>
+      String(query).includes(
+        "verify_reader_summary_daily_canonical_recovery_v4_provenance",
+      )
+        ? [{ verified: true }]
+        : [{ sealed: true }],
+    );
+    const staged = {
+      publish: jest.fn(async () => { events.push("publish"); }),
+      cleanup: jest.fn(async (removePublished?: boolean) => {
+        events.push(`cleanup:${String(removePublished ?? false)}`);
+      }),
+    };
+    const capture = jest.fn(async () => {
+      events.push("capture");
+      return canonicalCapturedPublication();
+    });
+    const finalization = new PrismaReaderSummaryDailyCanonicalRecoveryV4Finalization(
+      prismaClient(recoveryFinalizationTransaction(queryRaw), queryRaw),
+      capture,
+      jest.fn(async () => staged),
+    );
+
+    await expect(finalization.finalize(canonicalFinalizationInput())).resolves.toMatchObject({
+      requestedUtcDate: "2026-07-23",
+      publicationId: "40000000-0000-4000-8000-000000000004",
+    });
+
+    expect(events).toEqual(["capture", "publish", "cleanup:false"]);
+    expect(queryRaw).toHaveBeenCalledTimes(3);
+    expect(String(queryRaw.mock.calls[0]?.[0])).toContain(
+      "verify_reader_summary_daily_canonical_recovery_v4_provenance",
+    );
+    expect(String(queryRaw.mock.calls[1]?.[0])).toContain(
+      "prepare_reader_summary_daily_canonical_recovery_v4_publication",
+    );
+    expect(String(queryRaw.mock.calls[2]?.[0])).toContain(
+      "finalize_reader_summary_daily_canonical_recovery_v4",
+    );
+  });
+
+  it("removes only newly published staging when a fenced finalization fails", async () => {
+    let invocation = 0;
+    const queryRaw = jest.fn(async (query: TemplateStringsArray) => {
+      if (
+        String(query).includes(
+          "verify_reader_summary_daily_canonical_recovery_v4_provenance",
+        )
+      ) {
+        return [{ verified: true }];
+      }
+      invocation += 1;
+      if (invocation === 1) return [{ sealed: true }];
+      throw new Error("fence expired");
+    });
+    const cleanup = jest.fn(async () => undefined);
+    const finalization = new PrismaReaderSummaryDailyCanonicalRecoveryV4Finalization(
+      prismaClient(recoveryFinalizationTransaction(queryRaw), queryRaw),
+      jest.fn(async () => canonicalCapturedPublication()),
+      jest.fn(async () => ({ publish: jest.fn(async () => undefined), cleanup })),
+    );
+
+    await expect(finalization.finalize(canonicalFinalizationInput())).rejects.toThrow(
+      "fence expired",
+    );
+    expect(cleanup).toHaveBeenCalledWith(true);
+  });
+});
+
+const canonicalFinalizationInput = () => ({
+  work: {
+    tenantId: "00000000-0000-7000-8000-000000000901",
+    workspaceId: "00000000-0000-7000-8000-000000000902",
+    requestedUtcDate: "2026-07-23" as const,
+    sourceAuthoritySha256: "d".repeat(64),
+    modelJobIdentity: "e".repeat(64),
+    workerId: "worker",
+    sourceAuthorityBytes: Buffer.from("{}"),
+    state: "COMPLETED" as const,
+    fencingToken: 1n,
+    leasedAt: "2026-08-02T23:40:00.000Z",
+    leaseExpiresAt: "2026-08-03T00:00:00.000Z",
+    absoluteExpiresAt: "2026-08-03T06:40:00.000Z",
+    completedAt: "2026-08-02T23:45:00.000Z",
+  },
+  responseBytes: Buffer.from("response"),
+  receiptBytes: Buffer.from("receipt"),
+});
+
+const canonicalCapturedPublication = () => ({
+  readerSummaryJobId: "30000000-0000-4000-8000-000000000003",
+  readerSummaryArtifactId: "40000000-0000-4000-8000-000000000004",
+  publicationId: "40000000-0000-4000-8000-000000000004",
+  reportSha256: "a".repeat(64),
+  proofSha256: "b".repeat(64),
+  weeklyEvidenceSha256: "c".repeat(64),
+  publicEvidenceSha256: "d".repeat(64),
+  publicFrontendSha256: "e".repeat(64),
+  publicEvidenceBytes: Buffer.from("evidence"),
+  publicFrontendBytes: Buffer.from("frontend"),
 });
 
 const createFixture = (): {

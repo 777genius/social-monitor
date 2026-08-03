@@ -13,6 +13,7 @@ BIN=$FIXTURE/bin
 ENTRYPOINT=$FIXTURE/github-production-deploy.sh
 EVENT_LOG=$FIXTURE/events.log
 SHA=1234567890abcdef1234567890abcdef12345678
+DAILY_CANONICAL_RECOVERY_CONFIRMATION=reader-summary-daily-canonical-recovery-v4
 install -d "$BIN"
 git -C "$PROJECT_ROOT" show \
   "$LEGACY_CONTROL_SHA:ops/deploy/social-monitor-production-ssh-wrapper.sh" \
@@ -149,5 +150,26 @@ for action in \
   assert_rejected "$FIXTURE/legacy-wrapper.sh" "$action $SHA"
   [[ ! -s $EVENT_LOG ]]
 done
+
+: > "$EVENT_LOG"
+SSH_ORIGINAL_COMMAND="reader-summary-daily-canonical-recovery-v4 $SHA $DAILY_CANONICAL_RECOVERY_CONFIRMATION" \
+  EVENT_LOG=$EVENT_LOG CONTROL_LIB=$CONTROL_LIB EXACT_SHA=$SHA \
+  bash "$FIXTURE/current-wrapper.sh"
+grep -Fx "dispatch:reader-summary-daily-canonical-recovery-v4:$SHA" "$EVENT_LOG" >/dev/null
+[[ $(wc -l < "$EVENT_LOG") == 1 ]]
+
+for command in \
+  "reader-summary-daily-canonical-recovery-v4 $SHA" \
+  "reader-summary-daily-canonical-recovery-v4 $SHA wrong-reader-summary-daily-canonical-recovery-v4" \
+  "reader-summary-daily-canonical-recovery-v4 $SHA $DAILY_CANONICAL_RECOVERY_CONFIRMATION:$SHA"; do
+  : > "$EVENT_LOG"
+  assert_rejected "$FIXTURE/current-wrapper.sh" "$command"
+  [[ ! -s $EVENT_LOG ]]
+done
+
+: > "$EVENT_LOG"
+assert_rejected "$FIXTURE/legacy-wrapper.sh" \
+  "reader-summary-daily-canonical-recovery-v4 $SHA $DAILY_CANONICAL_RECOVERY_CONFIRMATION"
+[[ ! -s $EVENT_LOG ]]
 
 echo 'Production SSH wrapper reachability tests passed'

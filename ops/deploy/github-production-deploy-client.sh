@@ -14,6 +14,7 @@ MINIMUM_RECONCILE_WINDOW_SECONDS=600
 DEFAULT_RECONCILE_ATTEMPTS=45
 DEFAULT_RECONCILE_INTERVAL_SECONDS=15
 DEFAULT_RECONCILE_WINDOW_SECONDS=$(((DEFAULT_RECONCILE_ATTEMPTS - 1) * DEFAULT_RECONCILE_INTERVAL_SECONDS))
+DAILY_CANONICAL_RECOVERY_CONFIRMATION=reader-summary-daily-canonical-recovery-v4
 RECONCILE_ATTEMPTS=${DEPLOY_RECONCILE_ATTEMPTS:-$DEFAULT_RECONCILE_ATTEMPTS}
 RECONCILE_INTERVAL_SECONDS=${DEPLOY_RECONCILE_INTERVAL_SECONDS:-$DEFAULT_RECONCILE_INTERVAL_SECONDS}
 PLAN_POSTGRES_POOL_REPAIR=false
@@ -84,23 +85,42 @@ remove_ssh() {
 run_remote() {
   local action=$1
   local sha=$2
+  local confirmation=${3:-}
+  if (($# == 3)); then
+    "$SSH_BIN" "${SSH_OPTIONS[@]}" \
+      -- "$DEPLOY_USER@$DEPLOY_HOST" "$action $sha $confirmation"
+    return
+  fi
   "$SSH_BIN" "${SSH_OPTIONS[@]}" \
     -- "$DEPLOY_USER@$DEPLOY_HOST" "$action $sha"
 }
 
 validate_maintenance_action() {
   case ${1:-} in
-    disk-report|project-disk-cleanup|reader-summary-recover-missing-days|reader-summary-weekly-run) ;;
-    *) fail 'maintenance action must be disk-report, project-disk-cleanup, reader-summary-recover-missing-days, or reader-summary-weekly-run' ;;
+    disk-report|project-disk-cleanup|reader-summary-recover-missing-days|reader-summary-weekly-run|reader-summary-daily-canonical-recovery-v4) ;;
+    *) fail 'maintenance action must be disk-report, project-disk-cleanup, reader-summary-recover-missing-days, reader-summary-weekly-run, or reader-summary-daily-canonical-recovery-v4' ;;
   esac
+}
+
+validate_daily_canonical_recovery_confirmation() {
+  [[ ${1:-} == "$DAILY_CANONICAL_RECOVERY_CONFIRMATION" ]] || \
+    fail 'daily canonical recovery requires its exact confirmation token'
 }
 
 run_maintenance() {
   local sha=$1
   local maintenance_action=$2
+  local confirmation=${3:-}
   validate_sha "$sha"
   validate_maintenance_action "$maintenance_action"
   validate_remote_environment
+  if [[ $maintenance_action == reader-summary-daily-canonical-recovery-v4 ]]; then
+    [[ $# == 3 ]] || fail 'daily canonical recovery requires a confirmation token'
+    validate_daily_canonical_recovery_confirmation "$confirmation"
+    run_remote "$maintenance_action" "$sha" "$confirmation"
+    return
+  fi
+  [[ $# == 2 ]] || fail 'this maintenance action does not accept a confirmation token'
   run_remote "$maintenance_action" "$sha"
 }
 
@@ -353,8 +373,12 @@ case $action in
     deploy_release "$2"
     ;;
   maintenance)
-    [[ $# == 3 ]] || fail 'maintenance requires a target SHA and action'
-    run_maintenance "$2" "$3"
+    [[ $# == 3 || $# == 4 ]] || fail 'maintenance requires a target SHA, action, and optional confirmation'
+    if (($# == 4)); then
+      run_maintenance "$2" "$3" "$4"
+    else
+      run_maintenance "$2" "$3"
+    fi
     ;;
   *) fail 'allowed commands: configure, cleanup, plan, upload, deploy, maintenance' ;;
 esac
