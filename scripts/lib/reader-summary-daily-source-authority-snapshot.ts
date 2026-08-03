@@ -483,7 +483,7 @@ const pageReads = (count: number): number =>
   Math.floor(count / frozenGitHubProjectionPageSize) + 1;
 
 const isPositiveSafeInteger = (value: unknown): value is number =>
-  Number.isSafeInteger(value) && value >= 1;
+  typeof value === "number" && Number.isSafeInteger(value) && value >= 1;
 
 const sameOrderedValues = (
   left: readonly string[],
