@@ -556,6 +556,9 @@ reader_summary_original_cutoff_probe() {
     daily-v4:1:pre) printf 'daily-canonical-v4-rollback\n' ;;
     daily-v4:2:pre) printf 'clean\n' ;;
     daily-v4:3:post) printf 'corrected\n' ;;
+    daily-rls:1:pre) printf 'daily-execution-rls-rollback\n' ;;
+    daily-rls:2:pre) printf 'clean\n' ;;
+    daily-rls:3:post) printf 'corrected\n' ;;
     *:2:pre) return 71 ;;
     *) return 72 ;;
   esac
@@ -665,6 +668,18 @@ esac
       "probe:pre", "migrate", "probe:post", "admin:post",
     ].join("\n"),
     "daily V4 retry did not resolve only the reviewed failed migration",
+  );
+  const dailyRlsRetry = runCase("daily-rls-retry", {
+    CASE: "deploy",
+    PROBE_MODE: "daily-rls",
+  }, true);
+  assert(
+    dailyRlsRetry.join("\n") === [
+      "preflight", "admin:pre", "probe:pre",
+      "resolve:rolled-back:20260803174000_reader_summary_daily_execution_tenant_rls",
+      "probe:pre", "migrate", "probe:post", "admin:post",
+    ].join("\n"),
+    "daily execution RLS retry did not resolve only the reviewed failed migration",
   );
   const resolveFailure = runCase("resolve-failure", {
     CASE: "resolve",

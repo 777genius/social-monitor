@@ -33,6 +33,11 @@ DECLARE
   v_daily_v4_rolled_back INTEGER;
   v_daily_v4_rows INTEGER;
   v_daily_v4_unfinished INTEGER;
+  v_daily_rls_applied INTEGER;
+  v_daily_rls_matches INTEGER;
+  v_daily_rls_rolled_back INTEGER;
+  v_daily_rls_rows INTEGER;
+  v_daily_rls_unfinished INTEGER;
   v_expected JSONB;
   v_guard OID;
   v_guard_name TEXT;
@@ -484,9 +489,6 @@ BEGIN
     OR v_daily_v4_applied > 1
     OR v_daily_v4_rows > 2
     OR v_daily_v4_unfinished + v_daily_v4_applied > 1
-    OR v_unfinished <> v_current_unfinished + v_correction_unfinished
-      + v_activation_unfinished + v_weekly_unfinished
-      + v_daily_v4_unfinished
     OR (v_daily_v4_rows > 0 AND (
       v_history_action <> 'clean' OR v_correction_applied <> 1
       OR v_activation_applied <> 1 OR v_weekly_applied <> 1
@@ -515,6 +517,96 @@ BEGIN
       )) THEN
     RAISE EXCEPTION 'daily canonical recovery v4 migration row diverged';
   END IF;
+
+  SELECT
+    count(*),
+    count(*) FILTER (
+      WHERE checksum IN (
+          'fc353830f5600e03a12f3f04ca145d00' ||
+            '412b7df7367738fc95bca8c07da3910f',
+          '6d08c73e03b7af2cc3825893c1605708' ||
+            '2cc38a23eb4d7845afbc8de1393e5231'
+        )
+        AND started_at IS NOT NULL
+        AND finished_at IS NULL
+        AND rolled_back_at IS NULL
+        AND applied_steps_count = 0
+        AND id <> ''
+        AND (logs IS NULL OR btrim(logs) <> '')
+    ),
+    count(*) FILTER (
+      WHERE checksum IN (
+          'fc353830f5600e03a12f3f04ca145d00' ||
+            '412b7df7367738fc95bca8c07da3910f',
+          '6d08c73e03b7af2cc3825893c1605708' ||
+            '2cc38a23eb4d7845afbc8de1393e5231'
+        )
+        AND started_at IS NOT NULL
+        AND finished_at IS NULL
+        AND rolled_back_at IS NOT NULL
+        AND rolled_back_at >= started_at
+        AND applied_steps_count = 0
+        AND id <> ''
+        AND (logs IS NULL OR btrim(logs) <> '')
+    ),
+    count(*) FILTER (
+      WHERE checksum =
+          '6d08c73e03b7af2cc3825893c1605708' ||
+          '2cc38a23eb4d7845afbc8de1393e5231'
+        AND started_at IS NOT NULL
+        AND finished_at IS NOT NULL
+        AND finished_at >= started_at
+        AND rolled_back_at IS NULL
+        AND applied_steps_count = 1
+        AND id <> ''
+        AND logs IS NULL
+    )
+  INTO v_daily_rls_rows, v_daily_rls_unfinished,
+    v_daily_rls_rolled_back, v_daily_rls_applied
+  FROM public."_prisma_migrations"
+  WHERE migration_name =
+      '20260803174000_reader_summary_daily_execution_tenant_rls';
+
+  v_daily_rls_matches := v_daily_rls_unfinished
+    + v_daily_rls_rolled_back + v_daily_rls_applied;
+  IF v_daily_rls_rows <> v_daily_rls_matches
+    OR v_daily_rls_unfinished > 1
+    OR v_daily_rls_rolled_back > 1
+    OR v_daily_rls_applied > 1
+    OR v_daily_rls_rows > 2
+    OR v_daily_rls_unfinished + v_daily_rls_applied > 1
+    OR v_unfinished <> v_current_unfinished + v_correction_unfinished
+      + v_activation_unfinished + v_weekly_unfinished
+      + v_daily_v4_unfinished + v_daily_rls_unfinished
+    OR (v_daily_rls_rows > 0 AND (
+      v_history_action <> 'clean' OR v_correction_applied <> 1
+      OR v_activation_applied <> 1 OR v_weekly_applied <> 1
+      OR v_daily_v4_applied <> 1
+    ))
+    OR (v_daily_rls_rolled_back = 1 AND v_daily_rls_applied = 1
+      AND EXISTS (
+        SELECT 1
+        FROM public."_prisma_migrations" AS applied
+        CROSS JOIN public."_prisma_migrations" AS failed
+        WHERE applied.migration_name =
+            '20260803174000_reader_summary_daily_execution_tenant_rls'
+          AND applied.checksum =
+            '6d08c73e03b7af2cc3825893c1605708' ||
+            '2cc38a23eb4d7845afbc8de1393e5231'
+          AND applied.finished_at IS NOT NULL
+          AND applied.rolled_back_at IS NULL
+          AND failed.migration_name = applied.migration_name
+          AND failed.checksum IN (
+            'fc353830f5600e03a12f3f04ca145d00' ||
+              '412b7df7367738fc95bca8c07da3910f',
+            applied.checksum
+          )
+          AND failed.finished_at IS NULL
+          AND failed.rolled_back_at IS NOT NULL
+          AND applied.started_at < failed.rolled_back_at
+      )) THEN
+    RAISE EXCEPTION 'daily execution tenant RLS migration row diverged';
+  END IF;
   IF v_phase = 'social-monitor/original-cutoff-resolved'
     AND (v_history_action <> 'clean' OR v_current_applied <> 1
       OR v_correction_rows <> 0) THEN
@@ -528,7 +620,9 @@ BEGIN
       OR v_weekly_applied <> 1
       OR v_weekly_unfinished <> 0
       OR v_daily_v4_applied <> 1
-      OR v_daily_v4_unfinished <> 0) THEN
+      OR v_daily_v4_unfinished <> 0
+      OR v_daily_rls_applied <> 1
+      OR v_daily_rls_unfinished <> 0) THEN
     RAISE EXCEPTION 'original-cutoff correction migration row diverged';
   END IF;
 
@@ -762,6 +856,18 @@ SELECT CASE current_setting('application_name')
   WHEN 'social-monitor/original-cutoff-resolved' THEN 'resolved'
   WHEN 'social-monitor/original-cutoff-post' THEN 'corrected'
   ELSE CASE
+    WHEN EXISTS (
+      SELECT 1 FROM public."_prisma_migrations"
+      WHERE migration_name =
+          '20260803174000_reader_summary_daily_execution_tenant_rls'
+        AND checksum IN (
+          'fc353830f5600e03a12f3f04ca145d00' ||
+            '412b7df7367738fc95bca8c07da3910f',
+          '6d08c73e03b7af2cc3825893c1605708' ||
+            '2cc38a23eb4d7845afbc8de1393e5231'
+        )
+        AND finished_at IS NULL AND rolled_back_at IS NULL
+    ) THEN 'daily-execution-rls-rollback'
     WHEN EXISTS (
       SELECT 1 FROM public."_prisma_migrations"
       WHERE migration_name =

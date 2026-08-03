@@ -8,12 +8,36 @@ BEGIN;
 
 SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 
-ALTER TABLE "reader_summary_daily_execution_cursors"
-  OWNER TO "social_monitor_public_schema_owner";
-ALTER TABLE "reader_summary_daily_source_authorities"
-  OWNER TO "social_monitor_public_schema_owner";
-ALTER TABLE "reader_summary_daily_model_jobs"
-  OWNER TO "social_monitor_public_schema_owner";
+DO $transfer_daily_execution_relation_ownership$
+DECLARE
+  v_owner NAME;
+  v_owner_count INTEGER;
+BEGIN
+  SELECT pg_catalog.pg_get_userbyid(min(relation.relowner)),
+    count(DISTINCT relation.relowner)
+  INTO STRICT v_owner, v_owner_count
+  FROM pg_catalog.pg_class AS relation
+  WHERE relation.oid = ANY (ARRAY[
+    'public.reader_summary_daily_execution_cursors'::REGCLASS,
+    'public.reader_summary_daily_source_authorities'::REGCLASS,
+    'public.reader_summary_daily_model_jobs'::REGCLASS
+  ]::OID[]);
+  IF v_owner_count <> 1 THEN
+    RAISE EXCEPTION 'daily execution relations do not have one owner';
+  END IF;
+  IF v_owner = session_user THEN
+    ALTER TABLE "reader_summary_daily_execution_cursors"
+      OWNER TO "social_monitor_public_schema_owner";
+    ALTER TABLE "reader_summary_daily_source_authorities"
+      OWNER TO "social_monitor_public_schema_owner";
+    ALTER TABLE "reader_summary_daily_model_jobs"
+      OWNER TO "social_monitor_public_schema_owner";
+  ELSIF v_owner <> 'social_monitor_public_schema_owner' THEN
+    RAISE EXCEPTION 'daily execution relation owner is not reviewed: %',
+      v_owner;
+  END IF;
+END
+$transfer_daily_execution_relation_ownership$;
 
 SET LOCAL ROLE "social_monitor_public_schema_owner";
 
