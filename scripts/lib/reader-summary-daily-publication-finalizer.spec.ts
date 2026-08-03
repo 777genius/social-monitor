@@ -51,8 +51,12 @@ describe("CanonicalReaderSummaryDailyPublicationFinalizer", () => {
     await expect(finalizer.publish(input())).resolves.toMatchObject({
       publicationId: captured().publicationId,
     });
-    writeFileSync(join(directory,
-      "durable-reader-summary-2026-07-31.v1.json"), "conflict");
+    const evidencePath = join(
+      directory,
+      "durable-reader-summary-2026-07-31.v1.json",
+    );
+    rmSync(evidencePath);
+    writeFileSync(evidencePath, "conflict");
     await expect(finalizer.publish(input())).rejects.toThrow(/invalid|bind/u);
   });
 
