@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Bootstrap provenance bridge A; the next audited commit restores the original blob.
 set -euo pipefail
 
 PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
