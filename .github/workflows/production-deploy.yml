@@ -260,10 +260,10 @@ jobs:
           npm run check:runtime-profile-guards
           npm run check:migrations
           npm run check:tenant-db-guards
-          npm run check:backup-restore
           npm run prisma:generate
           npm run build
           if [[ $BACKEND_CHANGED == true ]]; then
+            npm run check:backup-restore
             npm run check:reader-summary-weekly-production-runner
             READER_SUMMARY_WEEKLY_RECEIPT_TEST_SCHEMA=weekly_execution_receipt_test_ci \
               npm run check:reader-summary-weekly-execution-receipt-postgres18
