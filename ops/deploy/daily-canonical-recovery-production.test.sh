@@ -54,9 +54,11 @@ grep -F "'2026-07-27', '2026-07-28', '2026-07-29', '2026-07-30'" "$foundation" >
   "$SCRIPT_DIR/production-runtime/social-monitor-daily.service" \
   "$SCRIPT_DIR/production-runtime/daily-run.sh"
 grep -F 'reader-summary-daily-canonical-recovery-v4' \
-  "$SCRIPT_DIR/reader-summary-recovery-maintenance-lib.sh" >/dev/null
+  "$SCRIPT_DIR/social-monitor-production-ssh-wrapper.sh" \
+  "$SCRIPT_DIR/github-production-deploy-client.sh" >/dev/null
 grep -F 'DAILY_CANONICAL_RECOVERY_CONFIRMATION=reader-summary-daily-canonical-recovery-v4' \
-  "$SCRIPT_DIR/reader-summary-recovery-maintenance-lib.sh" >/dev/null
+  "$SCRIPT_DIR/social-monitor-production-ssh-wrapper.sh" \
+  "$SCRIPT_DIR/github-production-deploy-client.sh" >/dev/null
 grep -F 'daily_canonical_recovery_confirmation:' "$workflow" >/dev/null
 grep -F 'timeout-minutes: 360' "$workflow" >/dev/null
 grep -F 'npm run check:reader-summary-daily-canonical-recovery-postgres18' "$workflow" >/dev/null
