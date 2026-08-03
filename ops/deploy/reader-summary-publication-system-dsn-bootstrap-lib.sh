@@ -62,7 +62,7 @@ reader_summary_publication_private_file_state() {
 reader_summary_publication_bootstrap_system_database_url() (
   set +x
   local admin_secret=$1 ca_certificate=$2 system_secret=$3
-  local system_password system_url sql_file temp_secret
+  local system_password system_url temp_secret
 
   if ! reader_summary_publication_private_file_absent "$system_secret"; then
     reader_summary_publication_private_file_valid "$system_secret" '400|600' || \
@@ -74,17 +74,11 @@ reader_summary_publication_bootstrap_system_database_url() (
     reader_summary_publication_system_database_url_from_admin \
       "$admin_secret" "$system_password"
   ) || return 1
-  sql_file=$STATE/system-database-url-bootstrap.$$.sql
   temp_secret=$system_secret.$$.next
-  trap 'rm -f "$sql_file" "$temp_secret"' EXIT
+  trap 'rm -f "$temp_secret"' EXIT
   umask 077
-  reader_summary_publication_write_system_runtime_bootstrap_sql \
-    "$sql_file" "$system_password" || return 1
-  reader_summary_publication_run_postgres_client \
-    "$admin_secret" "$ca_certificate" \
-    social-monitor/system-runtime-bootstrap \
-    bootstrap "$READER_SUMMARY_PUBLICATION_RUNTIME_ROLE" '' "$sql_file" || \
-    return 1
+  reader_summary_publication_reconcile_system_runtime_roles \
+    "$admin_secret" "$ca_certificate" "$system_password" || return 1
   install -d -m 0700 "$(dirname "$system_secret")" || return 1
   if ((EUID == 0)); then
     chown root:root "$(dirname "$system_secret")" || return 1
@@ -95,6 +89,46 @@ reader_summary_publication_bootstrap_system_database_url() (
   mv -f "$temp_secret" "$system_secret" || return 1
   reader_summary_publication_private_file_valid "$system_secret" '600'
 )
+
+# Reconcile every role carried by the system DSN contract before migrations.
+# The DSN can predate a newly introduced least-privilege LOGIN (for example the
+# daily terminal), so validating only the existing system LOGIN is insufficient.
+reader_summary_publication_reconcile_system_runtime_roles() (
+  set +x
+  local admin_secret=$1 ca_certificate=$2 system_password=$3
+  local sql_file=$STATE/system-database-url-bootstrap.$$.sql
+
+  [[ -n $system_password && $system_password != *$'\n'* && \
+    $system_password != *$'\r'* ]] || return 1
+  trap 'rm -f "$sql_file"' EXIT
+  umask 077
+  reader_summary_publication_write_system_runtime_bootstrap_sql \
+    "$sql_file" "$system_password" || return 1
+  reader_summary_publication_run_postgres_client \
+    "$admin_secret" "$ca_certificate" \
+    social-monitor/system-runtime-bootstrap \
+    bootstrap "$READER_SUMMARY_PUBLICATION_RUNTIME_ROLE" '' "$sql_file"
+)
+
+reader_summary_publication_system_password_from_secret() {
+  local system_secret=$1
+
+  python3 - "$system_secret" "$READER_SUMMARY_TENANT_SYSTEM_RUNTIME_ROLE" <<'PY'
+import sys
+from pathlib import Path
+from urllib.parse import unquote, urlsplit
+
+raw = Path(sys.argv[1]).read_text(encoding="utf-8").strip()
+expected_role = sys.argv[2]
+parts = urlsplit(raw)
+if unquote(parts.username or "") != expected_role or parts.password is None:
+    raise SystemExit(1)
+password = unquote(parts.password)
+if not password or "\n" in password or "\r" in password:
+    raise SystemExit(1)
+print(password)
+PY
+}
 
 reader_summary_publication_system_database_url_from_admin() {
   local admin_secret=$1 system_password=$2

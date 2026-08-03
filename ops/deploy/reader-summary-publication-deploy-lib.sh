@@ -94,7 +94,7 @@ ensure_system_database_url_deploy_contract() (
   local admin_secret=$ROOT/secrets/db/reader-summary-publication-admin-url ca_certificate=$ROOT/secrets/db/ca-certificate.crt
   local effective_api_secret=$STATE/database-url.$$.secret effective_system_secret=$STATE/system-database-url.$$.secret
   local database_url system_database_url system_secret_ref
-  local system_secret materialize_system_database_url=false
+  local system_secret system_password materialize_system_database_url=false
   trap 'rm -f "$effective_api_secret" "$effective_system_secret"' EXIT
   reader_summary_publication_private_file_valid "$production_env" '600' || \
     fail 'production env file must be root-owned with mode 0600 before deploy'
@@ -129,6 +129,11 @@ ensure_system_database_url_deploy_contract() (
   reader_summary_publication_validate_runtime_database_urls \
     "$effective_api_secret" "$system_secret" || \
     fail 'SYSTEM_DATABASE_URL must be a separate social_monitor_system_app PostgreSQL URL with verify-full TLS; do not reuse DATABASE_URL'
+  system_password=$(reader_summary_publication_system_password_from_secret \
+    "$system_secret") || fail 'SYSTEM_DATABASE_URL password cannot be read for controlled role reconciliation'
+  reader_summary_publication_reconcile_system_runtime_roles \
+    "$admin_secret" "$ca_certificate" "$system_password" || \
+    fail 'SYSTEM_DATABASE_URL runtime role reconciliation failed'
   if ! validate_reader_summary_system_runtime_role "$admin_secret" "$ca_certificate"; then
     if [[ $system_secret == "$approved_system_secret" ]]; then
       reader_summary_publication_bootstrap_system_database_url \
