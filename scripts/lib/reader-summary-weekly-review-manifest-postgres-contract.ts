@@ -332,12 +332,35 @@ const assertCatalogContract = async (
      FROM target_table
      FULL JOIN persist_function ON TRUE
      FULL JOIN mutation_function ON TRUE
-     WHERE NOT pg_catalog.has_column_privilege(
-       'social_monitor_reader_summary_publication_owner',
-       'public.reader_summary_weekly_certification_seals',
-       'seal_id',
-       'REFERENCES'
-     )`,
+     WHERE NOT EXISTS (
+       SELECT 1
+       FROM pg_catalog.pg_class AS seal_relation
+       CROSS JOIN LATERAL pg_catalog.aclexplode(
+         COALESCE(seal_relation.relacl, ARRAY[]::pg_catalog.aclitem[])
+       ) AS acl_row
+       JOIN pg_catalog.pg_roles AS grantee_role
+         ON grantee_role.oid = acl_row.grantee
+       WHERE seal_relation.oid =
+           'public.reader_summary_weekly_certification_seals'::REGCLASS
+         AND grantee_role.rolname =
+           'social_monitor_reader_summary_publication_owner'
+         AND acl_row.privilege_type = 'REFERENCES'
+     )
+       AND NOT EXISTS (
+         SELECT 1
+         FROM pg_catalog.pg_attribute AS seal_column
+         CROSS JOIN LATERAL pg_catalog.aclexplode(
+           COALESCE(seal_column.attacl, ARRAY[]::pg_catalog.aclitem[])
+         ) AS acl_row
+         JOIN pg_catalog.pg_roles AS grantee_role
+           ON grantee_role.oid = acl_row.grantee
+         WHERE seal_column.attrelid =
+             'public.reader_summary_weekly_certification_seals'::REGCLASS
+           AND seal_column.attname = 'seal_id'
+           AND grantee_role.rolname =
+             'social_monitor_reader_summary_publication_owner'
+           AND acl_row.privilege_type = 'REFERENCES'
+       )`,
     [
       `public.${tableName}`,
       `public.${functionName}`,
@@ -405,20 +428,66 @@ export const assertReaderSummaryWeeklyReviewManifestMigrationContract = (
 TO ${owner};`;
   const certificationSealReferencesRevocation = `REVOKE REFERENCES ("seal_id") ON TABLE "reader_summary_weekly_certification_seals"
 FROM ${owner};`;
-  const ownershipPrelude = `SET LOCAL ROLE ${schemaOwner};
+  const sealOwnershipNormalization = `DO $normalize_weekly_certification_seal_owner$
+DECLARE
+  v_seal_owner NAME;
+  v_seal_relation_kind "char";
+BEGIN
+  SELECT pg_get_userbyid(relation.relowner), relation.relkind
+  INTO v_seal_owner, v_seal_relation_kind
+  FROM pg_class AS relation
+  WHERE relation.oid =
+    to_regclass('public.reader_summary_weekly_certification_seals');
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'weekly certification seal is missing';
+  END IF;
+  IF v_seal_relation_kind NOT IN ('r', 'p') OR v_seal_owner NOT IN (
+    'social_monitor_public_schema_owner',
+    'social_monitor_reader_summary_publication_owner'
+  ) THEN
+    RAISE EXCEPTION
+      'weekly certification seal has an unexpected owner or relation kind '
+        '(owner=%, kind=%)',
+      v_seal_owner,
+      v_seal_relation_kind;
+  END IF;
+  IF v_seal_owner = 'social_monitor_public_schema_owner' THEN
+    GRANT social_monitor_reader_summary_publication_owner
+    TO social_monitor_public_schema_owner
+    WITH ADMIN FALSE, INHERIT FALSE, SET TRUE GRANTED BY CURRENT_USER;
+    SET LOCAL ROLE social_monitor_public_schema_owner;
+    GRANT CREATE ON SCHEMA public
+    TO social_monitor_reader_summary_publication_owner;
+    ALTER TABLE public.reader_summary_weekly_certification_seals
+      OWNER TO social_monitor_reader_summary_publication_owner;
+    REVOKE CREATE ON SCHEMA public
+    FROM social_monitor_reader_summary_publication_owner;
+    RESET ROLE;
+    REVOKE social_monitor_reader_summary_publication_owner
+    FROM social_monitor_public_schema_owner GRANTED BY CURRENT_USER;
+  END IF;
+END
+$normalize_weekly_certification_seal_owner$;`;
+  const ownershipPrelude = `${sealOwnershipNormalization}
+
+SET LOCAL ROLE ${schemaOwner};
 
 GRANT USAGE, CREATE ON SCHEMA public
 TO ${owner};
 
-${certificationSealReferencesGrant}
-
 SET LOCAL ROLE ${owner};
 
+${certificationSealReferencesGrant}
+
 CREATE TABLE "reader_summary_weekly_review_manifests" (`;
-  const schemaCreateRevocation = `RESET ROLE;
-SET LOCAL ROLE ${schemaOwner};
+  const finalPrivilegeRevocation = `RESET ROLE;
+SET LOCAL ROLE ${owner};
 
 ${certificationSealReferencesRevocation}
+
+RESET ROLE;
+SET LOCAL ROLE ${schemaOwner};
 
 REVOKE CREATE ON SCHEMA public
 FROM ${owner};
@@ -429,20 +498,20 @@ COMMIT;`;
     /SET LOCAL ROLE "social_monitor_reader_summary_publication_owner";/gu,
   ) ?? [];
   const schemaOwnerRoleSwitches = sql.match(
-    /SET LOCAL ROLE "social_monitor_public_schema_owner";/gu,
+    /SET LOCAL ROLE "?social_monitor_public_schema_owner"?;/gu,
   ) ?? [];
   const roleResets = sql.match(/RESET ROLE;/gu) ?? [];
 
   assert(
     sql.includes(ownershipPrelude) &&
-      sql.trimEnd().endsWith(schemaCreateRevocation) &&
+      sql.trimEnd().endsWith(finalPrivilegeRevocation) &&
       sql.split(certificationSealReferencesGrant).length === 2 &&
       sql.split(certificationSealReferencesRevocation).length === 2 &&
-      ownerRoleSwitches.length === 1 &&
-      schemaOwnerRoleSwitches.length === 2 &&
-      roleResets.length === 2 &&
+      ownerRoleSwitches.length === 2 &&
+      schemaOwnerRoleSwitches.length === 3 &&
+      roleResets.length === 4 &&
       !/ALTER\s+TABLE\s+"reader_summary_weekly_review_manifests"\s+OWNER\s+TO/iu.test(sql),
-    "weekly review manifest migration must create under the durable owner and revoke temporary column REFERENCES and schema CREATE",
+    "weekly review manifest migration must normalize the reviewed seal owner, create under the durable owner, and revoke temporary column REFERENCES and schema CREATE",
   );
 };
 

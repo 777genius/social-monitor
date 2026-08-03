@@ -204,6 +204,31 @@ export const assertDailyActivationMigrationContract = (): void => {
   const bootstrapPost = readFileSync(
     "ops/deploy/reader-summary-publication-post-migration.sql", "utf8",
   );
+  const schemaOwnershipTransfer = bootstrapPre.slice(
+    bootstrapPre.indexOf("DO $schema_ownership_transfer$"),
+    bootstrapPre.indexOf("$schema_ownership_transfer$;") +
+      "$schema_ownership_transfer$;".length,
+  );
+  const lastCreateRevoke = schemaOwnershipTransfer.lastIndexOf(
+    "REVOKE CREATE ON SCHEMA public",
+  );
+  const ownerCreateRegrant = schemaOwnershipTransfer.indexOf(
+    `  GRANT USAGE, CREATE ON SCHEMA public
+  TO social_monitor_reader_summary_publication_owner;`,
+  );
+  const resetRoleAfterOwnerCreateRegrant = schemaOwnershipTransfer.indexOf(
+    "EXECUTE 'RESET ROLE';",
+    ownerCreateRegrant,
+  );
+  assert(
+    bootstrapPre.includes(`GRANT USAGE, CREATE ON SCHEMA public
+TO social_monitor_reader_summary_publication_owner;`) &&
+      lastCreateRevoke >= 0 && ownerCreateRegrant > lastCreateRevoke &&
+      !/REVOKE CREATE ON SCHEMA public\s+FROM[^;]*social_monitor_reader_summary_publication_owner/u
+        .test(schemaOwnershipTransfer) &&
+      ownerCreateRegrant < resetRoleAfterOwnerCreateRegrant,
+    "pre-migration must re-grant publication-owner CREATE after schema revokes",
+  );
   for (const [name, sql] of [["activation", activation], ["ACL", acl]] as const) {
     assert(sql.split("\n").length < 1_000, `${name} migration exceeds line cap`);
   }

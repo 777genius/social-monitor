@@ -3,6 +3,48 @@
 -- from weekly publication output and accepts only an exact sealed replay.
 BEGIN;
 
+DO $normalize_weekly_certification_seal_owner$
+DECLARE
+  v_seal_owner NAME;
+  v_seal_relation_kind "char";
+BEGIN
+  SELECT pg_get_userbyid(relation.relowner), relation.relkind
+  INTO v_seal_owner, v_seal_relation_kind
+  FROM pg_class AS relation
+  WHERE relation.oid =
+    to_regclass('public.reader_summary_weekly_certification_seals');
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'weekly certification seal is missing';
+  END IF;
+  IF v_seal_relation_kind NOT IN ('r', 'p') OR v_seal_owner NOT IN (
+    'social_monitor_public_schema_owner',
+    'social_monitor_reader_summary_publication_owner'
+  ) THEN
+    RAISE EXCEPTION
+      'weekly certification seal has an unexpected owner or relation kind '
+        '(owner=%, kind=%)',
+      v_seal_owner,
+      v_seal_relation_kind;
+  END IF;
+  IF v_seal_owner = 'social_monitor_public_schema_owner' THEN
+    GRANT social_monitor_reader_summary_publication_owner
+    TO social_monitor_public_schema_owner
+    WITH ADMIN FALSE, INHERIT FALSE, SET TRUE GRANTED BY CURRENT_USER;
+    SET LOCAL ROLE social_monitor_public_schema_owner;
+    GRANT CREATE ON SCHEMA public
+    TO social_monitor_reader_summary_publication_owner;
+    ALTER TABLE public.reader_summary_weekly_certification_seals
+      OWNER TO social_monitor_reader_summary_publication_owner;
+    REVOKE CREATE ON SCHEMA public
+    FROM social_monitor_reader_summary_publication_owner;
+    RESET ROLE;
+    REVOKE social_monitor_reader_summary_publication_owner
+    FROM social_monitor_public_schema_owner GRANTED BY CURRENT_USER;
+  END IF;
+END
+$normalize_weekly_certification_seal_owner$;
+
 SET LOCAL ROLE "social_monitor_public_schema_owner";
 
 GRANT USAGE, CREATE ON SCHEMA public

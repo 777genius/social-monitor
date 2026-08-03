@@ -439,13 +439,14 @@ BEGIN
   REVOKE CREATE ON SCHEMA public
   FROM pg_database_owner,
     PUBLIC,
-    social_monitor_reader_summary_publication_owner,
     social_monitor_reader_summary_publication_runtime
   CASCADE;
   EXECUTE format(
     'REVOKE CREATE ON SCHEMA public FROM %I',
     v_runtime_role
   );
+  GRANT USAGE, CREATE ON SCHEMA public
+  TO social_monitor_reader_summary_publication_owner;
   EXECUTE 'RESET ROLE';
   IF pg_get_userbyid((
     SELECT namespace.nspowner
