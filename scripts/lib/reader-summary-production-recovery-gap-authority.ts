@@ -836,8 +836,11 @@ const readGapEvidenceRows = (
       feed."interest_id"::TEXT AS "interestId",
       source."provider_item_id" AS "providerItemId",
       source."canonical_url" AS "canonicalUrl", feed."title" AS "title",
-      feed."body_preview" AS "bodyPreview",
-      LEFT(COALESCE(NULLIF(feed."body_preview", ''), source."body"), 4096) AS "sourceText",
+      -- Historical provider rows may retain transport whitespace. Canonicalize
+      -- only the immutable authority projection; never rewrite source storage.
+      btrim(feed."body_preview") AS "bodyPreview",
+      LEFT(btrim(COALESCE(NULLIF(btrim(feed."body_preview"), ''), source."body")), 4096)
+        AS "sourceText",
       feed."author_handle" AS "authorHandle", source."content_hash" AS "sourceContentHash",
       source."provider_content_hash" AS "sourceProviderContentHash",
       feed."published_at" AS "publishedAt", feed."observed_at" AS "observedAt",
