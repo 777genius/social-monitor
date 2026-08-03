@@ -19,8 +19,12 @@ RELEASE_SHA=0123456789abcdef0123456789abcdef01234567
 # Production keeps collection before the canonical terminal. The terminal
 # receives the pinned date and owns the only production publication path.
 grep -F 'npm run run:reader-summary-clean-real-day-collection' "$DAILY_RUN" >/dev/null
+# This source assertion intentionally matches a literal shell variable reference.
+# shellcheck disable=SC2016
 grep -F 'READER_SUMMARY_DAILY_FIRST_UNRESOLVED_UTC_DATE="$requested_date"' \
   "$DAILY_RUN" >/dev/null
+# This source assertion intentionally matches a literal shell variable reference.
+# shellcheck disable=SC2016
 grep -F 'READER_SUMMARY_DAILY_PUBLIC_DIRECTORY="$public_dir"' \
   "$DAILY_RUN" >/dev/null
 grep -F 'scripts/run-reader-summary-daily-terminal.ts' "$DAILY_RUN" >/dev/null
