@@ -8,6 +8,9 @@ SET LOCAL ROLE "social_monitor_public_schema_owner";
 GRANT USAGE, CREATE ON SCHEMA public
 TO "social_monitor_reader_summary_publication_owner";
 
+GRANT REFERENCES ("seal_id") ON TABLE "reader_summary_weekly_certification_seals"
+TO "social_monitor_reader_summary_publication_owner";
+
 SET LOCAL ROLE "social_monitor_reader_summary_publication_owner";
 
 CREATE TABLE "reader_summary_weekly_review_manifests" (
@@ -570,7 +573,7 @@ BEGIN
           SELECT encode(sha256(convert_to(
             "reader_summary_weekly_canonical_json"(jsonb_build_object(
               'schemaVersion', 'reader_summary.weekly_story_identity.v1',
-              'subjectKey', 'provider:' || provider_item.value->>'providerKey',
+              'subjectKey', 'provider:' || (provider_item.value->>'providerKey'),
               'actionKey', 'action:tracked',
               'objectKeys', jsonb_build_array('resource:' || url_hash.url_sha),
               'qualifierKeys', jsonb_build_array('review:aggregate')
@@ -825,6 +828,9 @@ $grant_weekly_review_manifest_runtime_execute$;
 
 RESET ROLE;
 SET LOCAL ROLE "social_monitor_public_schema_owner";
+
+REVOKE REFERENCES ("seal_id") ON TABLE "reader_summary_weekly_certification_seals"
+FROM "social_monitor_reader_summary_publication_owner";
 
 REVOKE CREATE ON SCHEMA public
 FROM "social_monitor_reader_summary_publication_owner";

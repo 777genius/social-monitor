@@ -19,6 +19,7 @@ import type {
 import {
   runReaderSummaryWeeklyReviewProducer,
 } from "./reader-summary-weekly-review-producer";
+import { ReaderSummaryWeeklySubscriptionRuntimeFailureError } from "./reader-summary-weekly-execution-receipt";
 
 describe("reader summary weekly review producer", () => {
   it("replays an existing seal-bound manifest without model or write calls", async () => {
@@ -98,6 +99,46 @@ describe("reader summary weekly review producer", () => {
       manifestStore: store,
       agentRuntime: runtime,
     })).rejects.toThrow("execution attestation is invalid");
+    expect(store.persist).not.toHaveBeenCalled();
+  });
+
+  it("preserves retryable subscription-runtime failures for the scheduler", async () => {
+    const runtime = fakeRuntime();
+    runtime.runTask.mockResolvedValue({
+      status: "failed",
+      warnings: [],
+      failure: {
+        code: "runtime_unavailable",
+        safeMessage: "safe runtime failure",
+        retryable: true,
+        reconnectRequired: true,
+        causeCategory: "transport",
+        details: {},
+      },
+    });
+    const store = fakeStore(null);
+
+    let thrown: unknown;
+    try {
+      await runReaderSummaryWeeklyReviewProducer({
+        authorityLoader: { load: async () => authority() },
+        manifestStore: store,
+        agentRuntime: runtime,
+      });
+    } catch (error: unknown) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(
+      ReaderSummaryWeeklySubscriptionRuntimeFailureError,
+    );
+    expect(
+      (thrown as ReaderSummaryWeeklySubscriptionRuntimeFailureError).failure,
+    ).toMatchObject({
+      retryable: true,
+      code: "runtime_unavailable",
+      causeCategory: "transport",
+    });
     expect(store.persist).not.toHaveBeenCalled();
   });
 });

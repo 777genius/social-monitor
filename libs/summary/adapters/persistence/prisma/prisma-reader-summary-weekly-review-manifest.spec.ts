@@ -5,6 +5,9 @@ import {
   deriveReaderSummaryWeeklyReviewStoryCandidates,
   type ReaderSummaryWeeklyReviewAuthority,
 } from "../../../domain/value-objects/reader-summary-weekly-review-manifest";
+import {
+  ReaderSummaryWeeklyReviewManifestCorruptionError,
+} from "../../../ports/reader-summary-weekly-review-manifest.port";
 import type { PrismaSummaryClient } from "./prisma-summary-client";
 import {
   PrismaReaderSummaryWeeklyReviewManifest,
@@ -27,20 +30,70 @@ describe("PrismaReaderSummaryWeeklyReviewManifest", () => {
     expect(found?.toBytes()).toEqual(manifest.toBytes());
   });
 
-  it("rejects a forged byte or column binding", async () => {
+  it("classifies forged byte or column bindings as canonical corruption", async () => {
     const manifest = manifestFor(authority());
     const adapter = new PrismaReaderSummaryWeeklyReviewManifest(fakePrisma([{
       ...rowFor(manifest),
       manifest_sha256: "f".repeat(64),
     }]));
 
-    await expect(adapter.findBySeal({
+    const lookup = adapter.findBySeal({
       tenantId: manifest.tenantId,
       workspaceId: manifest.workspaceId,
       scope: manifest.scope,
       weekStartedOn: manifest.weekStartedOn,
       sealId: manifest.sealId,
-    })).rejects.toThrow("row diverged from canonical record");
+    });
+
+    await expect(lookup).rejects.toBeInstanceOf(
+      ReaderSummaryWeeklyReviewManifestCorruptionError,
+    );
+    await expect(lookup).rejects.toMatchObject({
+      reason: "canonical_divergence",
+    });
+  });
+
+  it("classifies ambiguous persisted rows as typed corruption", async () => {
+    const manifest = manifestFor(authority());
+    const adapter = new PrismaReaderSummaryWeeklyReviewManifest(fakePrisma([{}, {}]));
+
+    const lookup = adapter.findBySeal({
+      tenantId: manifest.tenantId,
+      workspaceId: manifest.workspaceId,
+      scope: manifest.scope,
+      weekStartedOn: manifest.weekStartedOn,
+      sealId: manifest.sealId,
+    });
+
+    await expect(lookup).rejects.toMatchObject({
+      reason: "ambiguous_lookup",
+    });
+  });
+
+  it("classifies an invalid persisted canonical scope as typed corruption", async () => {
+    const manifest = manifestFor(authority());
+    const adapter = new PrismaReaderSummaryWeeklyReviewManifest(fakePrisma([{
+      ...rowFor(manifest),
+      canonical_record: {
+        ...manifest.canonicalRecord,
+        scope: { type: "unsupported" },
+      },
+    }]));
+
+    const lookup = adapter.findBySeal({
+      tenantId: manifest.tenantId,
+      workspaceId: manifest.workspaceId,
+      scope: manifest.scope,
+      weekStartedOn: manifest.weekStartedOn,
+      sealId: manifest.sealId,
+    });
+
+    await expect(lookup).rejects.toBeInstanceOf(
+      ReaderSummaryWeeklyReviewManifestCorruptionError,
+    );
+    await expect(lookup).rejects.toMatchObject({
+      reason: "invalid_canonical_scope",
+    });
   });
 
   it("requires an exact persistence proof from the definer function", async () => {

@@ -33,6 +33,9 @@ import {
   parseReaderSummaryWeeklyReviewResponse,
   readerSummaryWeeklyReviewResponseJsonSchema,
 } from "./reader-summary-weekly-review-response";
+import {
+  readerSummaryWeeklySubscriptionRuntimeFailureFromResult,
+} from "./reader-summary-weekly-execution-receipt";
 
 export type ReaderSummaryWeeklyReviewAuthorityLoader = Readonly<{
   load(): Promise<ReaderSummaryWeeklyReviewAuthority>;
@@ -55,6 +58,13 @@ export type ReaderSummaryWeeklyReviewProducerParams = Readonly<{
 const purpose = "social_monitor.reader_summary.weekly.review" as const;
 const model = "gpt-5.6-sol" as const;
 const reasoningEffort = "xhigh" as const;
+
+export class ReaderSummaryWeeklyReviewManifestAuthorityError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ReaderSummaryWeeklyReviewManifestAuthorityError";
+  }
+}
 
 export const runReaderSummaryWeeklyReviewProducer = async (
   params: ReaderSummaryWeeklyReviewProducerParams,
@@ -89,7 +99,13 @@ export const runReaderSummaryWeeklyReviewProducer = async (
   });
   const command = reviewCommand(authority, prompt, timeoutMs);
   const result = await params.agentRuntime.runTask(command);
-  if (result.status !== "completed" || result.structuredOutput === undefined) {
+  if (result.status !== "completed") {
+    throw readerSummaryWeeklySubscriptionRuntimeFailureFromResult(
+      result.failure,
+      result.status,
+    );
+  }
+  if (result.structuredOutput === undefined) {
     throw new Error("Reader summary weekly review runtime did not return structured output");
   }
   const selections = parseReaderSummaryWeeklyReviewResponse(result.structuredOutput);
@@ -122,7 +138,9 @@ export const runReaderSummaryWeeklyReviewProducer = async (
     persisted.manifest.manifestId !== manifest.manifestId ||
     persisted.manifest.manifestSha256 !== manifest.manifestSha256
   ) {
-    throw new Error("Reader summary weekly review persistence returned another manifest");
+    throw new ReaderSummaryWeeklyReviewManifestAuthorityError(
+      "Reader summary weekly review persistence returned another manifest",
+    );
   }
   return Object.freeze({
     outcome: persisted.outcome,
@@ -223,6 +241,8 @@ const assertExistingManifestAuthority = (
     manifest.weekStartedOn !== authority.weekStartedOn ||
     manifest.weekEndedOn !== authority.weekEndedOn
   ) {
-    throw new Error("Reader summary weekly review replay manifest authority diverged");
+    throw new ReaderSummaryWeeklyReviewManifestAuthorityError(
+      "Reader summary weekly review replay manifest authority diverged",
+    );
   }
 };

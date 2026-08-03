@@ -4,8 +4,9 @@ import type {
 import type {
   AgentRuntimeClientPort,
 } from "../../libs/summary/ports/agent-runtime-client.port";
-import type {
-  ReaderSummaryWeeklyReviewManifestPort,
+import {
+  ReaderSummaryWeeklyReviewManifestCorruptionError,
+  type ReaderSummaryWeeklyReviewManifestPort,
 } from "../../libs/summary/ports/reader-summary-weekly-review-manifest.port";
 
 import {
@@ -13,7 +14,11 @@ import {
   type ReaderSummaryWeeklyProductionDbState,
 } from "./reader-summary-weekly-production-postgres-contract";
 import { buildModelInputFromDbState } from "./reader-summary-weekly-production-input";
-import { runReaderSummaryWeeklyReviewProducer } from "./reader-summary-weekly-review-producer";
+import {
+  ReaderSummaryWeeklyReviewManifestAuthorityError,
+  runReaderSummaryWeeklyReviewProducer,
+} from "./reader-summary-weekly-review-producer";
+import { ReaderSummaryWeeklySubscriptionRuntimeFailureError } from "./reader-summary-weekly-execution-receipt";
 
 export type ReaderSummaryWeeklyReviewAdmission =
   | Readonly<{
@@ -42,16 +47,9 @@ export const admitReaderSummaryWeeklyReviewManifest = async (
   if (params.dbState.status !== "complete") {
     return partial(params.dbState.blockingReasons);
   }
-  let authority: ReturnType<
-    typeof readerSummaryWeeklyReviewAuthorityFromProductionState
-  >;
-  try {
-    authority = readerSummaryWeeklyReviewAuthorityFromProductionState(
-      params.dbState,
-    );
-  } catch {
-    return partial(["weekly review requires seven sealed DB certifications"]);
-  }
+  const authority = readerSummaryWeeklyReviewAuthorityFromProductionState(
+    params.dbState,
+  );
   try {
     if (params.replay) {
       const manifest = await params.manifestStore.findBySeal({
@@ -84,10 +82,19 @@ export const admitReaderSummaryWeeklyReviewManifest = async (
       modelCallPerformed: produced.modelCallPerformed,
       writePerformed: produced.writePerformed,
     });
-  } catch {
-    return partial([
-      "weekly review manifest is corrupt or does not match sealed DB authority",
-    ]);
+  } catch (error: unknown) {
+    if (error instanceof ReaderSummaryWeeklySubscriptionRuntimeFailureError) {
+      throw error;
+    }
+    if (
+      error instanceof ReaderSummaryWeeklyReviewManifestAuthorityError ||
+      error instanceof ReaderSummaryWeeklyReviewManifestCorruptionError
+    ) {
+      return partial([
+        "weekly review manifest is corrupt or does not match sealed DB authority",
+      ]);
+    }
+    throw error;
   }
 };
 

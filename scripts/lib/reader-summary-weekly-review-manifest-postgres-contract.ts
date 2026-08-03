@@ -190,7 +190,7 @@ const assertCatalogContract = async (
        WHERE procedure_row.oid = $3::regprocedure
      )
      SELECT
-       pg_catalog.to_regclass($1)::text AS table_name,
+       target_table.oid::regclass::text AS table_name,
        pg_catalog.pg_get_userbyid(target_table.relowner) AS table_owner,
        target_table.relrowsecurity AS rls_enabled,
        target_table.relforcerowsecurity AS rls_forced,
@@ -199,13 +199,13 @@ const assertCatalogContract = async (
          WHERE policy_row.polrelid = target_table.oid
            AND policy_row.polname = 'tenant_isolation'
        ) AS tenant_policy,
-       pg_catalog.to_regprocedure($2)::text AS manifest_function,
+       persist_function.oid::regprocedure::text AS manifest_function,
        pg_catalog.pg_get_userbyid(persist_function.proowner) AS function_owner,
        persist_function.prosecdef AS function_security_definer,
        persist_function.proconfig = ARRAY['search_path=pg_catalog, public']::text[]
          AS function_fixed_search_path,
        persist_function.definition AS function_definition,
-       pg_catalog.to_regprocedure($3)::text AS mutation_function,
+       mutation_function.oid::regprocedure::text AS mutation_function,
        pg_catalog.pg_get_userbyid(mutation_function.proowner) AS mutation_function_owner,
        mutation_function.proconfig = ARRAY['search_path=pg_catalog, public']::text[]
          AS mutation_function_fixed_search_path,
@@ -331,7 +331,13 @@ const assertCatalogContract = async (
        ) AS unmanaged_index_count
      FROM target_table
      FULL JOIN persist_function ON TRUE
-     FULL JOIN mutation_function ON TRUE`,
+     FULL JOIN mutation_function ON TRUE
+     WHERE NOT pg_catalog.has_column_privilege(
+       'social_monitor_reader_summary_publication_owner',
+       'public.reader_summary_weekly_certification_seals',
+       'seal_id',
+       'REFERENCES'
+     )`,
     [
       `public.${tableName}`,
       `public.${functionName}`,
@@ -395,16 +401,24 @@ export const assertReaderSummaryWeeklyReviewManifestMigrationContract = (
 ): void => {
   const owner = '"social_monitor_reader_summary_publication_owner"';
   const schemaOwner = '"social_monitor_public_schema_owner"';
+  const certificationSealReferencesGrant = `GRANT REFERENCES ("seal_id") ON TABLE "reader_summary_weekly_certification_seals"
+TO ${owner};`;
+  const certificationSealReferencesRevocation = `REVOKE REFERENCES ("seal_id") ON TABLE "reader_summary_weekly_certification_seals"
+FROM ${owner};`;
   const ownershipPrelude = `SET LOCAL ROLE ${schemaOwner};
 
 GRANT USAGE, CREATE ON SCHEMA public
 TO ${owner};
+
+${certificationSealReferencesGrant}
 
 SET LOCAL ROLE ${owner};
 
 CREATE TABLE "reader_summary_weekly_review_manifests" (`;
   const schemaCreateRevocation = `RESET ROLE;
 SET LOCAL ROLE ${schemaOwner};
+
+${certificationSealReferencesRevocation}
 
 REVOKE CREATE ON SCHEMA public
 FROM ${owner};
@@ -422,11 +436,13 @@ COMMIT;`;
   assert(
     sql.includes(ownershipPrelude) &&
       sql.trimEnd().endsWith(schemaCreateRevocation) &&
+      sql.split(certificationSealReferencesGrant).length === 2 &&
+      sql.split(certificationSealReferencesRevocation).length === 2 &&
       ownerRoleSwitches.length === 1 &&
       schemaOwnerRoleSwitches.length === 2 &&
       roleResets.length === 2 &&
       !/ALTER\s+TABLE\s+"reader_summary_weekly_review_manifests"\s+OWNER\s+TO/iu.test(sql),
-    "weekly review manifest migration must create under the durable owner and revoke temporary schema CREATE",
+    "weekly review manifest migration must create under the durable owner and revoke temporary column REFERENCES and schema CREATE",
   );
 };
 
@@ -676,7 +692,7 @@ const forgedScopePayload = (payload: MutablePayload): MutablePayload => {
   const scope = { type: "interest", interestId };
   const reviewAuthority = {
     ...(payload.reviewAuthority as Record<string, unknown>),
-    scope,
+    scope: { ...scope },
     scopeKey: `interest:${interestId}`,
   };
   return rebuildPayload({

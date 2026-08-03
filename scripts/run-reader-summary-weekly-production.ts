@@ -14,11 +14,15 @@ import { PrismaReaderSummaryWeeklyStoryAuthority } from "../libs/summary/adapter
 import { PrismaReaderSummaryArtifactRepository } from "../libs/summary/adapters/persistence/prisma/prisma-reader-summary-artifact.repository";
 import { PrismaSummaryConnection } from "../libs/summary/adapters/persistence/prisma/prisma-summary-connection";
 import { PublishReaderSummaryWeeklyCertifiedArtifactUseCase } from "../libs/summary/features/publish-reader-summary-weekly-certified-artifact/publish-reader-summary-weekly-certified-artifact.use-case";
+import type { ReaderSummaryWeeklyReviewManifest } from "../libs/summary/domain/value-objects/reader-summary-weekly-review-manifest";
 import type { ReaderSummaryWeeklyModelPort } from "../libs/summary/ports/reader-summary-weekly-model.port";
 import type { AgentRuntimeClientPort } from "../libs/summary/ports/agent-runtime-client.port";
 import type { ReaderSummaryWeeklyReviewManifestPort } from "../libs/summary/ports/reader-summary-weekly-review-manifest.port";
 
 import { loadDotenvIfPresent } from "./lib/env-file";
+import {
+  backfillReaderSummaryWeeklyDailyCertifications,
+} from "./lib/reader-summary-weekly-daily-certification-backfill";
 import {
   AgentRuntimeReaderSummaryWeeklyTextModel,
   buildModelInputFromDbState,
@@ -46,6 +50,7 @@ import {
   resolveCompletedReaderSummaryWeeklyProductionWindow,
   withReaderSummaryWeeklyProductionDatabaseAccess,
   type ReaderSummaryWeeklyProductionScope,
+  type ReaderSummaryWeeklyProductionDbState,
   type ReaderSummaryWeeklyProductionWindow,
 } from "./lib/reader-summary-weekly-production-postgres-contract";
 import { loadReaderSummaryWeeklyScheduleObservations } from "./lib/reader-summary-weekly-schedule-postgres";
@@ -55,6 +60,11 @@ import {
   type ReaderSummaryWeeklyScheduledFailure,
   type ReaderSummaryWeeklyScheduledSlotOutcome,
 } from "./lib/reader-summary-weekly-production-scheduler";
+import {
+  runReaderSummaryWeeklySlotPipeline,
+  type ReaderSummaryWeeklySlotPipelineAdmission,
+  type ReaderSummaryWeeklySlotPipelineReplayRequest,
+} from "./lib/reader-summary-weekly-slot-pipeline";
 
 loadDotenvIfPresent(".env");
 
@@ -258,87 +268,123 @@ const executeWindow = async (params: Readonly<{
   let durablePair: ReaderSummaryWeeklyExecutionReceiptPair | undefined;
   let publishingReceipt: ReaderSummaryWeeklyExecutionReceipt | undefined;
   let completionAttempted = false;
+  let receiptAlreadyCompleted = false;
   try {
-    const dbState = await weeklyDatabaseOperation(
-      params.pool,
-      params.scope,
-      async (client) => {
+    const loadDbState = async (
+      window: ReaderSummaryWeeklyProductionWindow,
+    ): Promise<ReaderSummaryWeeklyProductionDbState> =>
+      weeklyDatabaseOperation(params.pool, params.scope, async (client) => {
         await assertReaderSummaryWeeklyProductionPostgresContract(client);
         return loadReaderSummaryWeeklyProductionDbState(
           client,
           params.scope,
-          params.window,
+          window,
         );
-      },
-    );
-    if (dbState.status !== "complete") {
-      const result = await runWithTenantDatabaseAccess(params.scope, () =>
-        runReaderSummaryWeeklyProduction({
-          dbState,
-          reviewManifest: null,
-          outputDirectory: params.options.outputDirectory,
-          model: params.model,
-          replay: params.options.replay,
-          generatedAt: new Date(),
-        }),
-      );
-      printResult(result);
-      return result.status === "complete"
-        ? completedOutcome
-        : terminalOutcome("schema", "certification_state_incomplete", "database_authority");
-    }
-    const reviewAdmission = await runWithTenantDatabaseAccess(params.scope, () =>
-      admitReaderSummaryWeeklyReviewManifest({
-        dbState,
-        replay: params.options.replay,
-        manifestStore: params.manifestStore,
-        ...(params.reviewAgentRuntime === undefined
-          ? {}
-          : { agentRuntime: params.reviewAgentRuntime }),
-      }),
-    );
-    if (reviewAdmission.status === "partial") {
-      const result = await runWithTenantDatabaseAccess(params.scope, () =>
-        runReaderSummaryWeeklyProduction({
-          dbState,
-          reviewManifest: null,
-          outputDirectory: params.options.outputDirectory,
-          model: params.model,
-          replay: params.options.replay,
-          generatedAt: new Date(),
-        }),
-      );
-      printResult(result);
-      for (const reason of reviewAdmission.reasons) {
-        console.log(`blocking_reason=${reason}`);
+      });
+    const admitReviewManifest = async (input: Readonly<{
+      mode: "normal" | "replay";
+      window: ReaderSummaryWeeklyProductionWindow;
+      dbState: ReaderSummaryWeeklyProductionDbState;
+    }>): Promise<
+      ReaderSummaryWeeklySlotPipelineAdmission<ReaderSummaryWeeklyReviewManifest>
+    > => {
+      if (input.dbState.status !== "complete") {
+        const result = await runWithTenantDatabaseAccess(params.scope, () =>
+          runReaderSummaryWeeklyProduction({
+            dbState: input.dbState,
+            reviewManifest: null,
+            outputDirectory: params.options.outputDirectory,
+            model: input.mode === "replay" ? replayModel : params.model,
+            replay: input.mode === "replay",
+            generatedAt: new Date(),
+          }),
+        );
+        printResult(result);
+        return Object.freeze({
+          status: "terminal" as const,
+          outcome: terminalOutcome(
+            "schema",
+            "certification_state_incomplete",
+            "database_authority",
+          ),
+        });
       }
-      return terminalOutcome("schema", "review_manifest_admission_failed", "review_authority");
-    }
-    const inputAdmission = buildModelInputFromDbState(
-      dbState,
-      reviewAdmission.manifest,
-    );
-    if (inputAdmission.status === "partial") {
-      const result = await runWithTenantDatabaseAccess(params.scope, () =>
-        runReaderSummaryWeeklyProduction({
-          dbState,
-          reviewManifest: reviewAdmission.manifest,
-          outputDirectory: params.options.outputDirectory,
-          model: params.model,
-          replay: params.options.replay,
-          generatedAt: new Date(),
+      const reviewAdmission = await runWithTenantDatabaseAccess(params.scope, () =>
+        admitReaderSummaryWeeklyReviewManifest({
+          dbState: input.dbState,
+          replay: input.mode === "replay",
+          manifestStore: params.manifestStore,
+          ...(input.mode === "replay" || params.reviewAgentRuntime === undefined
+            ? {}
+            : { agentRuntime: params.reviewAgentRuntime }),
         }),
       );
-      printResult(result);
-      return terminalOutcome("schema", "review_manifest_validation_failed", "review_authority");
-    }
-    if (params.options.replay) {
+      if (reviewAdmission.status === "partial") {
+        const result = await runWithTenantDatabaseAccess(params.scope, () =>
+          runReaderSummaryWeeklyProduction({
+            dbState: input.dbState,
+            reviewManifest: null,
+            outputDirectory: params.options.outputDirectory,
+            model: input.mode === "replay" ? replayModel : params.model,
+            replay: input.mode === "replay",
+            generatedAt: new Date(),
+          }),
+        );
+        printResult(result);
+        for (const reason of reviewAdmission.reasons) {
+          console.log(`blocking_reason=${reason}`);
+        }
+        return Object.freeze({
+          status: "terminal" as const,
+          outcome: terminalOutcome(
+            "schema",
+            "review_manifest_admission_failed",
+            "review_authority",
+          ),
+        });
+      }
+      const inputAdmission = buildModelInputFromDbState(
+        input.dbState,
+        reviewAdmission.manifest,
+      );
+      if (inputAdmission.status === "partial") {
+        const result = await runWithTenantDatabaseAccess(params.scope, () =>
+          runReaderSummaryWeeklyProduction({
+            dbState: input.dbState,
+            reviewManifest: reviewAdmission.manifest,
+            outputDirectory: params.options.outputDirectory,
+            model: input.mode === "replay" ? replayModel : params.model,
+            replay: input.mode === "replay",
+            generatedAt: new Date(),
+          }),
+        );
+        printResult(result);
+        return Object.freeze({
+          status: "terminal" as const,
+          outcome: terminalOutcome(
+            "schema",
+            "review_manifest_validation_failed",
+            "review_authority",
+          ),
+        });
+      }
+      return Object.freeze({
+        status: "admitted" as const,
+        reviewManifest: reviewAdmission.manifest,
+      });
+    };
+    const replayZeroModel = async (
+      input: ReaderSummaryWeeklySlotPipelineReplayRequest<
+        ReaderSummaryWeeklyProductionDbState,
+        ReaderSummaryWeeklyReviewManifest
+      >,
+    ): Promise<ReaderSummaryWeeklyScheduledSlotOutcome> => {
       const result = await runWithTenantDatabaseAccess(params.scope, () =>
         runReaderSummaryWeeklyProduction({
-          dbState,
-          reviewManifest: reviewAdmission.manifest,
+          dbState: input.dbState,
+          reviewManifest: input.reviewManifest,
           outputDirectory: params.options.outputDirectory,
-          model: params.model,
+          model: replayModel,
           replay: true,
           generatedAt: new Date(),
         }),
@@ -347,121 +393,195 @@ const executeWindow = async (params: Readonly<{
       return result.status === "complete"
         ? completedOutcome
         : terminalOutcome("schema", "weekly_artifact_replay_failed", "artifact_proof");
-    }
-    const seal = dbState.weeklyCertificationSeal;
-    const anchorJobId = dbState.certifications[0]?.jobId;
-    if (seal === null || anchorJobId === undefined) {
-      throw new Error("Reader summary weekly execution authority is incomplete");
-    }
-    receipt = await weeklyDatabaseOperation(
-      params.pool,
-      params.scope,
-      (client) => acquireReaderSummaryWeeklyExecutionReceipt(client, {
-        scope: params.scope,
-        window: params.window,
-        sealId: seal.sealId,
-        sealSha256: seal.sealSha256,
-        anchorJobId,
-        now: new Date(),
-        attemptNumber: params.attemptNumber,
-      }),
-    );
-    if (receipt.state === "completed") {
-      console.log(
-        `status=completed week=${params.window.weekStartedOn}..${params.window.weekEndedOn} model_call=false write=false`,
-      );
-      return completedOutcome;
-    }
-    if (await weeklyDatabaseOperation(params.pool, params.scope, (client) =>
-      reconcileReaderSummaryWeeklyExecutionReceiptPublication(client, receipt!, {
-        scope: params.scope,
-        window: params.window,
-      }),
-    )) {
-      console.log(
-        `status=reconciled week=${params.window.weekStartedOn}..${params.window.weekEndedOn} model_call=false write=false`,
-      );
-      return completedOutcome;
-    }
-    if (receipt.state === "failed") {
-      return terminalOutcome("domain", "receipt_terminal_failure", "receipt_fence");
-    }
-    const executionModel = receipt.state === "running"
-      ? recoveryOnlyModel
-      : params.model;
-    const result = await runWithTenantDatabaseAccess(params.scope, () =>
-      runReaderSummaryWeeklyProduction({
-        dbState,
-        reviewManifest: reviewAdmission.manifest,
-        outputDirectory: params.options.outputDirectory,
-        model: executionModel,
-        replay: false,
-        generatedAt: new Date(),
-        publisher: params.publisher,
-        onDurableArtifactPair: async (pair) => {
-          durablePair = Object.freeze({
-            artifactSha256: pair.artifactSha256,
-            proofSha256: pair.proofSha256,
-          });
-          publishingReceipt = await weeklyDatabaseOperation(
-            params.pool,
-            params.scope,
-            (client) => claimReaderSummaryWeeklyExecutionReceiptPair(
-              client,
-              receipt!,
-              { ...durablePair!, now: new Date() },
-            ),
-          );
-        },
-      }),
-    );
-    printResult(result);
-    if (result.status !== "complete" || !result.databasePublicationVerified) {
-      if (
-        receipt.state === "running" &&
-        durablePair === undefined &&
-        await weeklyDatabaseOperation(params.pool, params.scope, (client) =>
-          terminalizeReaderSummaryWeeklyExecutionReceiptStaleModelFence(
-            client,
-            receipt!,
-            new Date(),
+    };
+    const outcome = params.options.replay
+      ? await runReaderSummaryWeeklySlotPipeline({
+          mode: "replay" as const,
+          window: params.window,
+          loadDbState,
+          admitReviewManifest,
+          replayZeroModel,
+        })
+      : await runReaderSummaryWeeklySlotPipeline({
+          mode: "normal" as const,
+          window: params.window,
+          backfillDailyCertifications: async (window) => {
+            await weeklyDatabaseOperation(params.pool, params.scope, async (client) => {
+              await assertReaderSummaryWeeklyProductionPostgresContract(client);
+              await backfillReaderSummaryWeeklyDailyCertifications(
+                client,
+                params.scope,
+                window,
+              );
+            });
+          },
+          loadDbState,
+          admitReviewManifest,
+          synthesizeAndPublish: async (input) => {
+            const seal = input.dbState.weeklyCertificationSeal;
+            const anchorJobId = input.dbState.certifications[0]?.jobId;
+            if (seal === null || anchorJobId === undefined) {
+              throw new Error("Reader summary weekly execution authority is incomplete");
+            }
+            receipt = await weeklyDatabaseOperation(
+              params.pool,
+              params.scope,
+              (client) => acquireReaderSummaryWeeklyExecutionReceipt(client, {
+                scope: params.scope,
+                window: input.window,
+                sealId: seal.sealId,
+                sealSha256: seal.sealSha256,
+                anchorJobId,
+                now: new Date(),
+                attemptNumber: params.attemptNumber,
+              }),
+            );
+            if (receipt.state === "completed") {
+              receiptAlreadyCompleted = true;
+              return completedOutcome;
+            }
+            if (receipt.state === "failed") {
+              return terminalOutcome("domain", "receipt_terminal_failure", "receipt_fence");
+            }
+            const executionModel = receipt.state === "running"
+              ? recoveryOnlyModel
+              : params.model;
+            const result = await runWithTenantDatabaseAccess(params.scope, () =>
+              runReaderSummaryWeeklyProduction({
+                dbState: input.dbState,
+                reviewManifest: input.reviewManifest,
+                outputDirectory: params.options.outputDirectory,
+                model: executionModel,
+                replay: false,
+                generatedAt: new Date(),
+                publisher: params.publisher,
+                onDurableArtifactPair: async (pair) => {
+                  durablePair = Object.freeze({
+                    artifactSha256: pair.artifactSha256,
+                    proofSha256: pair.proofSha256,
+                  });
+                  publishingReceipt = await weeklyDatabaseOperation(
+                    params.pool,
+                    params.scope,
+                    (client) => claimReaderSummaryWeeklyExecutionReceiptPair(
+                      client,
+                      receipt!,
+                      { ...durablePair!, now: new Date() },
+                    ),
+                  );
+                },
+              }),
+            );
+            printResult(result);
+            if (result.status !== "complete" || !result.databasePublicationVerified) {
+              if (
+                receipt.state === "running" &&
+                durablePair === undefined &&
+                await weeklyDatabaseOperation(params.pool, params.scope, (client) =>
+                  terminalizeReaderSummaryWeeklyExecutionReceiptStaleModelFence(
+                    client,
+                    receipt!,
+                    new Date(),
+                  ),
+                )
+              ) {
+                return terminalOutcome("schema", "stale_model_fence", "receipt_fence");
+              }
+              const failure = receiptFailure(
+                "domain",
+                "publication_not_verified",
+                "database_publication",
+              );
+              if (publishingReceipt !== undefined) {
+                await weeklyDatabaseOperation(params.pool, params.scope, (client) =>
+                  failReaderSummaryWeeklyExecutionReceiptAfterDurableOutput(
+                    client,
+                    publishingReceipt!,
+                    failure,
+                  ),
+                );
+                publishingReceipt = undefined;
+              } else if (receipt.state === "acquired" && durablePair === undefined) {
+                await weeklyDatabaseOperation(params.pool, params.scope, (client) =>
+                  failReaderSummaryWeeklyExecutionReceiptBeforeDurableOutput(
+                    client,
+                    receipt!,
+                    failure,
+                  ),
+                );
+              }
+              return Object.freeze({ status: "terminal" as const, failure });
+            }
+            if (publishingReceipt === undefined) {
+              throw new Error("Reader summary weekly publication lacks a durable pair fence");
+            }
+            return completedOutcome;
+          },
+          replayZeroModel,
+          persistReplayFailure: async (_input, replay) => {
+            if (publishingReceipt === undefined) return;
+            const fallback = receiptFailure(
+              "schema",
+              "weekly_artifact_replay_failed",
+              "artifact_proof",
+            );
+            const failure = replay.status === "terminal"
+              ? replay.failure ?? fallback
+              : fallback;
+            await weeklyDatabaseOperation(params.pool, params.scope, (client) =>
+              failReaderSummaryWeeklyExecutionReceiptAfterDurableOutput(
+                client,
+                publishingReceipt!,
+                failure,
+              ),
+            );
+            publishingReceipt = undefined;
+          },
+          complete: async (input) => {
+            if (receiptAlreadyCompleted) {
+              console.log(
+                `status=completed week=${input.window.weekStartedOn}..${input.window.weekEndedOn} model_call=false write=false`,
+              );
+              return completedOutcome;
+            }
+            if (publishingReceipt !== undefined) {
+              await weeklyDatabaseOperation(params.pool, params.scope, (client) =>
+                completeReaderSummaryWeeklyExecutionReceipt(client, publishingReceipt!),
+              );
+              completionAttempted = true;
+              return completedOutcome;
+            }
+            const reconciled = receipt !== undefined && await weeklyDatabaseOperation(
+              params.pool,
+              params.scope,
+              (client) => reconcileReaderSummaryWeeklyExecutionReceiptPublication(
+                client,
+                receipt!,
+                { scope: params.scope, window: input.window },
+              ),
+            );
+            if (!reconciled) {
+              throw new Error("Reader summary weekly completion lacks a durable pair fence");
+            }
+            completionAttempted = true;
+            return completedOutcome;
+          },
+        });
+    if (outcome.status !== "completed" && publishingReceipt !== undefined) {
+      await weeklyDatabaseOperation(params.pool, params.scope, (client) =>
+        failReaderSummaryWeeklyExecutionReceiptAfterDurableOutput(
+          client,
+          publishingReceipt!,
+          outcome.failure ?? receiptFailure(
+            "schema",
+            "weekly_artifact_replay_failed",
+            "artifact_proof",
           ),
-        )
-      ) {
-        return terminalOutcome("schema", "stale_model_fence", "receipt_fence");
-      }
-      const failure = receiptFailure(
-        "domain",
-        "publication_not_verified",
-        "database_publication",
+        ),
       );
-      if (publishingReceipt !== undefined) {
-        await weeklyDatabaseOperation(params.pool, params.scope, (client) =>
-          failReaderSummaryWeeklyExecutionReceiptAfterDurableOutput(
-            client,
-            publishingReceipt!,
-            failure,
-          ),
-        );
-      } else if (receipt.state === "acquired" && durablePair === undefined) {
-        await weeklyDatabaseOperation(params.pool, params.scope, (client) =>
-          failReaderSummaryWeeklyExecutionReceiptBeforeDurableOutput(
-            client,
-            receipt!,
-            failure,
-          ),
-        );
-      }
-      return Object.freeze({ status: "terminal", failure });
+      publishingReceipt = undefined;
     }
-    if (publishingReceipt === undefined) {
-      throw new Error("Reader summary weekly publication lacks a durable pair fence");
-    }
-    completionAttempted = true;
-    await weeklyDatabaseOperation(params.pool, params.scope, (client) =>
-      completeReaderSummaryWeeklyExecutionReceipt(client, publishingReceipt!),
-    );
-    return completedOutcome;
+    return outcome;
   } catch (error: unknown) {
     if (error instanceof ReaderSummaryWeeklyScheduledExecutionError) {
       if (
@@ -618,14 +738,30 @@ const receiptFailure = (
 });
 
 const isRetryablePreReceiptInfrastructureError = (error: unknown): boolean => {
-  const code = errorCode(error);
+  const code = errorCode(error).toUpperCase();
   return code.startsWith("08") || [
     "40001",
     "40P01",
+    "55P03",
     "57P01",
+    "57014",
+    "53300",
+    "P1001",
+    "P2024",
+    "P2034",
     "ECONNREFUSED",
     "ECONNRESET",
+    "ECONNABORTED",
     "ETIMEDOUT",
+    "EAI_AGAIN",
+    "ENETUNREACH",
+    "EHOSTUNREACH",
+    "ENOTFOUND",
+    "EPIPE",
+    "UNAVAILABLE",
+    "DEADLINE_EXCEEDED",
+    "RESOURCE_EXHAUSTED",
+    "14",
   ].includes(code);
 };
 

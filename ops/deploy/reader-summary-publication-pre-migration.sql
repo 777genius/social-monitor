@@ -880,24 +880,26 @@ BEGIN
       v_seal_owner,
       v_seal_relation_kind;
   END IF;
-  IF v_seal_owner =
-    'social_monitor_reader_summary_publication_owner' THEN
-    RETURN;
+  IF v_seal_owner = 'social_monitor_public_schema_owner' THEN
+    GRANT social_monitor_reader_summary_publication_owner
+    TO social_monitor_public_schema_owner
+    WITH ADMIN FALSE, INHERIT FALSE, SET TRUE GRANTED BY CURRENT_USER;
+    SET LOCAL ROLE social_monitor_public_schema_owner;
+    GRANT CREATE ON SCHEMA public
+    TO social_monitor_reader_summary_publication_owner;
+    ALTER TABLE public.reader_summary_weekly_certification_seals
+      OWNER TO social_monitor_reader_summary_publication_owner;
+    REVOKE CREATE ON SCHEMA public
+    FROM social_monitor_reader_summary_publication_owner;
   END IF;
-
-  GRANT social_monitor_reader_summary_publication_owner
-  TO social_monitor_public_schema_owner
-  WITH ADMIN FALSE, INHERIT FALSE, SET TRUE GRANTED BY CURRENT_USER;
-  SET LOCAL ROLE social_monitor_public_schema_owner;
-  GRANT CREATE ON SCHEMA public
-  TO social_monitor_reader_summary_publication_owner;
-  ALTER TABLE public.reader_summary_weekly_certification_seals
-    OWNER TO social_monitor_reader_summary_publication_owner;
-  REVOKE CREATE ON SCHEMA public
+  SET LOCAL ROLE social_monitor_reader_summary_publication_owner;
+  REVOKE REFERENCES ON TABLE public.reader_summary_weekly_certification_seals
   FROM social_monitor_reader_summary_publication_owner;
   RESET ROLE;
-  REVOKE social_monitor_reader_summary_publication_owner
-  FROM social_monitor_public_schema_owner GRANTED BY CURRENT_USER;
+  IF v_seal_owner = 'social_monitor_public_schema_owner' THEN
+    REVOKE social_monitor_reader_summary_publication_owner
+    FROM social_monitor_public_schema_owner GRANTED BY CURRENT_USER;
+  END IF;
 END
 $weekly_certification_seal_ownership_transfer$;
 DO $ownership_transfer_audit$

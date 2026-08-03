@@ -14,11 +14,13 @@ import {
   readerSummaryWeeklyReviewManifestSchemaVersion,
   type ReaderSummaryWeeklyReviewManifest,
 } from "../../../domain/value-objects/reader-summary-weekly-review-manifest";
-import type {
-  FindReaderSummaryWeeklyReviewManifestQuery,
-  PersistReaderSummaryWeeklyReviewManifestCommand,
-  PersistReaderSummaryWeeklyReviewManifestResult,
-  ReaderSummaryWeeklyReviewManifestPort,
+import {
+  ReaderSummaryWeeklyReviewManifestCorruptionError,
+  type FindReaderSummaryWeeklyReviewManifestQuery,
+  type PersistReaderSummaryWeeklyReviewManifestCommand,
+  type PersistReaderSummaryWeeklyReviewManifestResult,
+  type ReaderSummaryWeeklyReviewManifestCorruptionReason,
+  type ReaderSummaryWeeklyReviewManifestPort,
 } from "../../../ports/reader-summary-weekly-review-manifest.port";
 import type { PrismaSummaryClient } from "./prisma-summary-client";
 import { runSerializableReaderSummaryTransaction } from "./prisma-summary-transaction";
@@ -95,7 +97,10 @@ export class PrismaReaderSummaryWeeklyReviewManifest
     `;
     if (rows.length === 0) return null;
     if (rows.length !== 1 || rows[0] === undefined) {
-      throw new Error("Reader summary weekly review manifest lookup is ambiguous");
+      throw manifestCorruption(
+        "ambiguous_lookup",
+        "Reader summary weekly review manifest lookup is ambiguous",
+      );
     }
     return manifestFromRow(rows[0], exact);
   }
@@ -133,7 +138,10 @@ export class PrismaReaderSummaryWeeklyReviewManifest
       row.manifest_sha256 !== manifest.manifestSha256 ||
       row.seal_id !== manifest.sealId
     ) {
-      throw new Error("PostgreSQL weekly review manifest persistence proof diverged");
+      throw manifestCorruption(
+        "persistence_proof_divergence",
+        "PostgreSQL weekly review manifest persistence proof diverged",
+      );
     }
     return Object.freeze({ outcome: row.outcome, manifest });
   }
@@ -204,6 +212,24 @@ const manifestFromRow = (
   row: WeeklyReviewManifestRow,
   query: FindReaderSummaryWeeklyReviewManifestQuery,
 ): ReaderSummaryWeeklyReviewManifest => {
+  try {
+    return manifestFromPersistedRow(row, query);
+  } catch (error: unknown) {
+    if (error instanceof ReaderSummaryWeeklyReviewManifestCorruptionError) {
+      throw error;
+    }
+    throw manifestCorruption(
+      "canonical_divergence",
+      "Reader summary weekly review manifest row diverged from canonical record",
+      error,
+    );
+  }
+};
+
+const manifestFromPersistedRow = (
+  row: WeeklyReviewManifestRow,
+  query: FindReaderSummaryWeeklyReviewManifestQuery,
+): ReaderSummaryWeeklyReviewManifest => {
   const record = row.canonical_record;
   assertReaderSummaryWeeklyExactObject(
     record,
@@ -219,7 +245,7 @@ const manifestFromRow = (
   const canonical = canonicalizeReaderSummaryWeeklyJson(body, "persisted weekly review manifest");
   const recordValues = record as Readonly<Record<string, unknown>>;
   const bytes = exactBytes(row.canonical_bytes);
-  const scope = canonicalReaderSummaryWeeklyScope(recordValues.scope as never);
+  const scope = persistedCanonicalScope(recordValues.scope);
   const scopeKey = readerSummaryWeeklyScopeKey(scope);
   if (
     recordValues.schemaVersion !== readerSummaryWeeklyReviewManifestSchemaVersion ||
@@ -268,6 +294,18 @@ const manifestFromRow = (
   });
 };
 
+const persistedCanonicalScope = (value: unknown) => {
+  try {
+    return canonicalReaderSummaryWeeklyScope(value as never);
+  } catch (error: unknown) {
+    throw manifestCorruption(
+      "invalid_canonical_scope",
+      "Reader summary weekly review manifest canonical scope is invalid",
+      error,
+    );
+  }
+};
+
 const exactBytes = (value: unknown): Buffer => {
   if (!(value instanceof Uint8Array)) {
     throw new Error("Reader summary weekly review manifest bytes are invalid");
@@ -279,3 +317,10 @@ const utcDateAfter = (date: string, offset: number): string =>
   new Date(Date.parse(`${date}T00:00:00.000Z`) + offset * 86_400_000)
     .toISOString()
     .slice(0, 10);
+
+const manifestCorruption = (
+  reason: ReaderSummaryWeeklyReviewManifestCorruptionReason,
+  message: string,
+  cause?: unknown,
+): ReaderSummaryWeeklyReviewManifestCorruptionError =>
+  new ReaderSummaryWeeklyReviewManifestCorruptionError(reason, message, cause);
