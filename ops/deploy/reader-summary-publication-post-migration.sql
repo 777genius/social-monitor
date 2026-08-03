@@ -235,6 +235,7 @@ DECLARE
   )::NAME;
   v_constraint_count INTEGER;
   v_owner_count INTEGER;
+  v_v4_table_count INTEGER;
   v_trigger_count INTEGER;
   v_function RECORD;
   v_role RECORD;
@@ -301,12 +302,26 @@ BEGIN
       'reader_summary_artifacts',
       'reader_summary_publications',
       'reader_summary_publication_slots',
+      'reader_summary_daily_canonical_recovery_v4_plans',
+      'reader_summary_daily_canonical_recovery_v4_authorities',
+      'reader_summary_daily_canonical_recovery_v4_leases',
       'reader_summary_weekly_publication_evidence',
       'reader_summary_weekly_review_manifests'
     )
     AND owner.rolname =
       'social_monitor_reader_summary_publication_owner';
-  IF v_owner_count <> 5 THEN
+  SELECT count(*) INTO v_v4_table_count
+  FROM pg_class relation
+  JOIN pg_namespace namespace ON namespace.oid = relation.relnamespace
+  WHERE namespace.nspname = 'public'
+    AND relation.relkind IN ('r', 'p')
+    AND relation.relname IN (
+      'reader_summary_daily_canonical_recovery_v4_plans',
+      'reader_summary_daily_canonical_recovery_v4_authorities',
+      'reader_summary_daily_canonical_recovery_v4_leases'
+    );
+  IF v_v4_table_count NOT IN (0, 3)
+    OR v_owner_count <> 5 + v_v4_table_count THEN
     RAISE EXCEPTION 'protected reader summary tables have unsafe owners';
   END IF;
 
@@ -745,11 +760,14 @@ BEGIN
       'reader_summary_production_recovery_dry_runs',
       'reader_summary_recovery_receipts',
       'reader_summary_weekly_certification_seals',
-      'reader_summary_weekly_review_manifests'
+      'reader_summary_weekly_review_manifests',
+      'reader_summary_daily_canonical_recovery_v4_plans',
+      'reader_summary_daily_canonical_recovery_v4_authorities',
+      'reader_summary_daily_canonical_recovery_v4_leases'
     ]) protected_table(name)
     WHERE has_table_privilege(
       'social_monitor_reader_summary_daily_terminal',
-      'public.' || protected_table.name,
+      to_regclass('public.' || protected_table.name),
       'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
     )
   ) THEN

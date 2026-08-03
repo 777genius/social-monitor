@@ -887,12 +887,8 @@ const assertCanonicalJsonParityAndBounds = async (
   }
 };
 const assertCanonicalFunctionsAreHardened = async (
-  canonicalJsonAuditor: PoolClient,
-): Promise<void> => {
-  const result = await canonicalJsonAuditor.query<{
-    readonly hardened_count: string;
-    readonly semantics_constraint_count: string;
-  }>(
+  canonicalJsonAuditor: PoolClient): Promise<void> => {
+  const result = await canonicalJsonAuditor.query<{ readonly hardened_count: string; readonly semantics_constraint_count: string }>(
     `SELECT
        (SELECT count(*)::text
           FROM pg_proc procedure
@@ -903,13 +899,18 @@ const assertCanonicalFunctionsAreHardened = async (
            'reader_summary_weekly_canonical_json_unbounded(jsonb)'::regprocedure,
            'reader_summary_weekly_canonical_json(jsonb)'::regprocedure,
            'guard_reader_summary_weekly_publication_evidence()'::regprocedure,
+           'record_reader_summary_weekly_publication_evidence_base(uuid)'::regprocedure,
+           'record_reader_summary_daily_canonical_recovery_v4_evidence(uuid)'::regprocedure,
            'record_reader_summary_weekly_publication_evidence(uuid)'::regprocedure,
            'publish_reader_summary_legacy_v1(jsonb)'::regprocedure,
            'publish_reader_summary_pre_evidence(jsonb)'::regprocedure,
            'publish_reader_summary(jsonb)'::regprocedure
          ])
-           AND procedure.proconfig =
-             ARRAY['search_path=pg_catalog, public, pg_temp']::text[])
+           AND procedure.proconfig = CASE WHEN procedure.proname IN (
+             'record_reader_summary_daily_canonical_recovery_v4_evidence',
+             'record_reader_summary_weekly_publication_evidence'
+           ) THEN ARRAY['search_path=pg_catalog']::text[]
+           ELSE ARRAY['search_path=pg_catalog, public, pg_temp']::text[] END)
          AS hardened_count,
        (SELECT count(*)::text
           FROM pg_constraint constraint_row
@@ -921,7 +922,7 @@ const assertCanonicalFunctionsAreHardened = async (
            AND constraint_row.convalidated) AS semantics_constraint_count`,
   );
   assert(
-    result.rows[0]?.hardened_count === "10" &&
+    result.rows[0]?.hardened_count === "12" &&
       result.rows[0]?.semantics_constraint_count === "1",
     "publication evidence functions or semantic constraint are not hardened",
   );
