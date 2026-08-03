@@ -18,6 +18,7 @@ weekly_scheduler=$REPO/scripts/lib/reader-summary-weekly-production-scheduler.ts
 weekly_schedule=$REPO/scripts/lib/reader-summary-weekly-schedule-postgres.ts
 weekly_runner=$REPO/scripts/run-reader-summary-weekly-production.ts
 publication_pre_migration=$REPO/ops/deploy/reader-summary-publication-pre-migration.sql
+publication_post_migration=$REPO/ops/deploy/reader-summary-publication-post-migration.sql
 
 [[ -f $service ]]
 [[ -f $timer ]]
@@ -83,6 +84,65 @@ grep -F 'function_capability_acl_count === "0"' "$weekly_seal_contract" \
   in_owner_list && /^      \)/ { in_owner_list = 0 }
   END { print count + 0 }
 ' "$publication_pre_migration") -eq 1 ]]
+[[ $(grep -Fc "'reader_summary_weekly_review_manifests'" \
+  "$publication_pre_migration") -eq 5 ]]
+[[ $(awk '
+  /AND relation\.relname NOT IN \(/ { in_owner_exclusion = 1; next }
+  in_owner_exclusion && /reader_summary_weekly_review_manifests/ { count++ }
+  in_owner_exclusion && /^      \)/ { in_owner_exclusion = 0 }
+  END { print count + 0 }
+' "$publication_pre_migration") -eq 3 ]]
+[[ $(awk '
+  /^DO \$ownership_transfer_audit\$/ { in_owner_audit = 1 }
+  in_owner_audit && /AND relation\.relname IN \(/ { in_owner_list = 1; next }
+  in_owner_list && /reader_summary_weekly_review_manifests/ { count++ }
+  in_owner_list && /^      \)/ { in_owner_list = 0 }
+  END { print count + 0 }
+' "$publication_pre_migration") -eq 1 ]]
+[[ $(awk '
+  /^DO \$ownership_transfer_audit\$/ { in_owner_audit = 1 }
+  in_owner_audit && /FROM unnest\(ARRAY\[/ {
+    in_protected_array = 1
+    protected_array = ""
+  }
+  in_owner_audit && in_protected_array {
+    protected_array = protected_array $0 "\n"
+  }
+  in_owner_audit && in_protected_array && /\]\) protected_table\(name\)/ {
+    if (protected_array ~ /reader_summary_weekly_review_manifests/) {
+      count++
+    }
+    in_protected_array = 0
+  }
+  END { print count + 0 }
+' "$publication_pre_migration") -eq 1 ]]
+[[ $(grep -Fc "'reader_summary_weekly_review_manifests'" \
+  "$publication_post_migration") -eq 2 ]]
+[[ $(awk '
+  /^DO \$bootstrap\$/ { in_bootstrap = 1 }
+  in_bootstrap && /AND relation\.relname IN \(/ { in_owner_list = 1; next }
+  in_owner_list && /reader_summary_weekly_review_manifests/ { count++ }
+  in_owner_list && /^    \)/ { in_owner_list = 0 }
+  END { print count + 0 }
+' "$publication_post_migration") -eq 1 ]]
+grep -F 'IF v_owner_count <> 5 THEN' "$publication_post_migration" >/dev/null
+[[ $(awk '
+  /^DO \$bootstrap\$/ { in_bootstrap = 1 }
+  in_bootstrap && /FROM unnest\(ARRAY\[/ {
+    in_protected_array = 1
+    protected_array = ""
+  }
+  in_bootstrap && in_protected_array {
+    protected_array = protected_array $0 "\n"
+  }
+  in_bootstrap && in_protected_array && /\]\) protected_table\(name\)/ {
+    if (protected_array ~ /reader_summary_weekly_review_manifests/) {
+      count++
+    }
+    in_protected_array = 0
+  }
+  END { print count + 0 }
+' "$publication_post_migration") -eq 1 ]]
 awk '
   /^DO \$weekly_certification_seal_ownership_transfer\$/ {
     in_transfer = 1

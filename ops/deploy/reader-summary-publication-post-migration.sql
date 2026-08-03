@@ -301,11 +301,12 @@ BEGIN
       'reader_summary_artifacts',
       'reader_summary_publications',
       'reader_summary_publication_slots',
-      'reader_summary_weekly_publication_evidence'
+      'reader_summary_weekly_publication_evidence',
+      'reader_summary_weekly_review_manifests'
     )
     AND owner.rolname =
       'social_monitor_reader_summary_publication_owner';
-  IF v_owner_count <> 4 THEN
+  IF v_owner_count <> 5 THEN
     RAISE EXCEPTION 'protected reader summary tables have unsafe owners';
   END IF;
 
@@ -743,7 +744,8 @@ BEGIN
       'reader_summary_production_recovery_days',
       'reader_summary_production_recovery_dry_runs',
       'reader_summary_recovery_receipts',
-      'reader_summary_weekly_certification_seals'
+      'reader_summary_weekly_certification_seals',
+      'reader_summary_weekly_review_manifests'
     ]) protected_table(name)
     WHERE has_table_privilege(
       'social_monitor_reader_summary_daily_terminal',

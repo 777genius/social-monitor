@@ -671,7 +671,8 @@ BEGIN
         'reader_summary_production_recovery_dry_runs',
         'reader_summary_production_recovery_leases',
         'reader_summary_recovery_receipts', 'reader_summary_weekly_certification_seals',
-        'reader_summary_weekly_publication_evidence'
+        'reader_summary_weekly_publication_evidence',
+        'reader_summary_weekly_review_manifests'
       )
       AND owner.rolname NOT IN (
         v_admin_role,
@@ -698,7 +699,8 @@ BEGIN
         'reader_summary_production_recovery_dry_runs',
         'reader_summary_production_recovery_leases',
         'reader_summary_recovery_receipts', 'reader_summary_weekly_certification_seals',
-        'reader_summary_weekly_publication_evidence'
+        'reader_summary_weekly_publication_evidence',
+        'reader_summary_weekly_review_manifests'
       )
       AND owner.rolname = v_runtime_role
   ) THEN
@@ -733,7 +735,8 @@ BEGIN
         'reader_summary_production_recovery_dry_runs',
         'reader_summary_production_recovery_leases',
         'reader_summary_recovery_receipts', 'reader_summary_weekly_certification_seals',
-        'reader_summary_weekly_publication_evidence'
+        'reader_summary_weekly_publication_evidence',
+        'reader_summary_weekly_review_manifests'
       )
       AND owner.rolname IN (v_admin_role, v_runtime_role)
     ORDER BY owner.rolname, relation.relname
@@ -916,7 +919,8 @@ BEGIN
         'reader_summary_production_recovery_dry_runs',
         'reader_summary_production_recovery_leases',
         'reader_summary_recovery_receipts', 'reader_summary_weekly_certification_seals',
-        'reader_summary_weekly_publication_evidence'
+        'reader_summary_weekly_publication_evidence',
+        'reader_summary_weekly_review_manifests'
       )
       AND owner.rolname <>
         'social_monitor_reader_summary_publication_owner'
@@ -952,7 +956,7 @@ BEGIN
     FROM unnest(ARRAY['reader_summary_artifacts', 'reader_summary_publications', 'reader_summary_publication_slots', 'reader_summary_weekly_publication_evidence']) evidence_table(name)
     WHERE NOT has_table_privilege('social_monitor_reader_summary_daily_terminal', 'public.' || evidence_table.name, 'SELECT') OR has_table_privilege('social_monitor_reader_summary_daily_terminal', 'public.' || evidence_table.name, 'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
   ) OR EXISTS (SELECT 1
-    FROM unnest(ARRAY['reader_summary_jobs', 'reader_summary_production_recovery_leases', 'reader_summary_production_recovery_days', 'reader_summary_production_recovery_dry_runs', 'reader_summary_recovery_receipts', 'reader_summary_weekly_certification_seals']) protected_table(name)
+    FROM unnest(ARRAY['reader_summary_jobs', 'reader_summary_production_recovery_leases', 'reader_summary_production_recovery_days', 'reader_summary_production_recovery_dry_runs', 'reader_summary_recovery_receipts', 'reader_summary_weekly_certification_seals', 'reader_summary_weekly_review_manifests']) protected_table(name)
     WHERE has_table_privilege('social_monitor_reader_summary_daily_terminal', 'public.' || protected_table.name, 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
   ) THEN RAISE EXCEPTION 'daily terminal evidence authority is unsafe';
   ELSIF has_function_privilege('social_monitor_reader_summary_publication_runtime', 'public.claim_reader_summary_daily_terminal(uuid,uuid,uuid,text)', 'EXECUTE')
