@@ -50,7 +50,7 @@ run_reader_summary_daily_runner_maintenance() (
     reader-summary-recover-missing-days)
       "${COMPOSE[@]}" --profile daily run --rm --no-deps \
         daily-runner sh -lc \
-        'set -eu; npm run run:reader-summary-daily-canonical-recovery'
+        'set -eu; npm run prepare:reader-summary-production-recovery-gap-authority; npm run run:reader-summary-daily-canonical-recovery'
       ;;
     reader-summary-weekly-run)
       "${COMPOSE[@]}" --profile daily run --rm --no-deps \

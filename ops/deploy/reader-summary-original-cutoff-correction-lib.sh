@@ -9,6 +9,7 @@ READER_SUMMARY_ORIGINAL_CUTOFF_CORRECTION_MIGRATION=20260801130000_reader_summar
 READER_SUMMARY_ORIGINAL_CUTOFF_CORRECTION_CHECKSUM=d26709b51ab37d368add42732b4c9fc8c70a56894ec9afdaec417408d4822dbc
 READER_SUMMARY_DAILY_ACTIVATION_ACL_MIGRATION=20260802143100_reader_summary_daily_execution_publication_activation_acl
 READER_SUMMARY_WEEKLY_REVIEW_MANIFEST_MIGRATION=20260802170000_reader_summary_weekly_review_manifest
+READER_SUMMARY_DAILY_CANONICAL_RECOVERY_V4_MIGRATION=20260802233000_reader_summary_daily_canonical_recovery_v4
 
 reader_summary_original_cutoff_target_has_correction() {
   local helper_relative=ops/deploy/reader-summary-original-cutoff-correction-lib.sh
@@ -75,7 +76,8 @@ reader_summary_original_cutoff_probe() {
     ($result == rollback || $result == apply || \
       $result == correction-rollback || \
       $result == activation-acl-rollback || \
-      $result == weekly-manifest-rollback)) ]]; then
+      $result == weekly-manifest-rollback || \
+      $result == daily-canonical-v4-rollback)) ]]; then
     printf '%s\n' "$result"
     return 0
   fi
@@ -92,7 +94,8 @@ run_reader_summary_original_cutoff_prisma_resolve() {
   [[ $migration == "$READER_SUMMARY_ORIGINAL_CUTOFF_MIGRATION" || \
     $migration == "$READER_SUMMARY_ORIGINAL_CUTOFF_CORRECTION_MIGRATION" || \
     $migration == "$READER_SUMMARY_DAILY_ACTIVATION_ACL_MIGRATION" || \
-    $migration == "$READER_SUMMARY_WEEKLY_REVIEW_MANIFEST_MIGRATION" ]] || \
+    $migration == "$READER_SUMMARY_WEEKLY_REVIEW_MANIFEST_MIGRATION" || \
+    $migration == "$READER_SUMMARY_DAILY_CANONICAL_RECOVERY_V4_MIGRATION" ]] || \
     return 64
   # shellcheck disable=SC2016 # Expansion occurs in the child shell.
   "${COMPOSE[@]}" --profile app run -T --rm --no-deps \
@@ -121,6 +124,12 @@ resolve_reader_summary_original_cutoff_failure() {
 
   verify_reader_summary_original_cutoff_target || return
   action=$(reader_summary_original_cutoff_probe pre) || return
+  if [[ $action == daily-canonical-v4-rollback ]]; then
+    run_reader_summary_original_cutoff_prisma_resolve rolled-back \
+      "$READER_SUMMARY_DAILY_CANONICAL_RECOVERY_V4_MIGRATION" || return
+    [[ $(reader_summary_original_cutoff_probe pre) == clean ]]
+    return
+  fi
   if [[ $action == weekly-manifest-rollback ]]; then
     run_reader_summary_original_cutoff_prisma_resolve rolled-back \
       "$READER_SUMMARY_WEEKLY_REVIEW_MANIFEST_MIGRATION" || return

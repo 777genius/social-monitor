@@ -1803,9 +1803,10 @@ BEGIN
     PERFORM public."assert_reader_summary_daily_canonical_recovery_v4_binding"();
     RETURN;
   END IF;
-  -- Normal ordered baseline upgrades do not carry the two immutable recovery
-  -- authorities. Preserve that empty state, but keep every partial matching
-  -- authority fail-closed through the full legacy assertion below.
+  -- Normal ordered baseline upgrades may not yet carry both immutable recovery
+  -- authorities. Preserve that empty state until the bounded maintenance runner
+  -- prepares the missing pre-model authority; the first runtime claim retries
+  -- this exact bootstrap before admitting any model call.
   SELECT count(*)::INTEGER INTO v_matching_legacy_authority_count
   FROM public."reader_summary_production_recovery_leases" AS lease
   WHERE lease."tenant_id" = c_tenant_id
@@ -1824,7 +1825,7 @@ BEGIN
          '2026-07-29', '2026-07-30', '2026-07-31'
        ))
     );
-  IF v_matching_legacy_authority_count = 0 THEN
+  IF v_matching_legacy_authority_count < 2 THEN
     RETURN;
   END IF;
   v_first := public."reader_summary_daily_canonical_recovery_v4_plan_ordered"();

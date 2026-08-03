@@ -553,6 +553,9 @@ reader_summary_original_cutoff_probe() {
     weekly-manifest:1:pre) printf 'weekly-manifest-rollback\n' ;;
     weekly-manifest:2:pre) printf 'clean\n' ;;
     weekly-manifest:3:post) printf 'corrected\n' ;;
+    daily-v4:1:pre) printf 'daily-canonical-v4-rollback\n' ;;
+    daily-v4:2:pre) printf 'clean\n' ;;
+    daily-v4:3:post) printf 'corrected\n' ;;
     *:2:pre) return 71 ;;
     *) return 72 ;;
   esac
@@ -650,6 +653,18 @@ esac
       "probe:post", "admin:post",
     ].join("\n"),
     "weekly manifest retry did not resolve only the reviewed failed migration",
+  );
+  const dailyV4Retry = runCase("daily-v4-retry", {
+    CASE: "deploy",
+    PROBE_MODE: "daily-v4",
+  }, true);
+  assert(
+    dailyV4Retry.join("\n") === [
+      "preflight", "admin:pre", "probe:pre",
+      "resolve:rolled-back:20260802233000_reader_summary_daily_canonical_recovery_v4",
+      "probe:pre", "migrate", "probe:post", "admin:post",
+    ].join("\n"),
+    "daily V4 retry did not resolve only the reviewed failed migration",
   );
   const resolveFailure = runCase("resolve-failure", {
     CASE: "resolve",

@@ -53,6 +53,14 @@ BEGIN
     OR invoked_at > v_now + INTERVAL '5 minutes' THEN
     RAISE EXCEPTION 'daily canonical recovery v4 claim session is invalid';
   END IF;
+  IF NOT EXISTS (
+    SELECT 1
+    FROM public."reader_summary_daily_canonical_recovery_v4_plans" AS plan
+    WHERE plan."tenant_id" = c_tenant_id
+      AND plan."workspace_id" = c_workspace_id
+  ) THEN
+    PERFORM public."bootstrap_reader_summary_daily_canonical_recovery_v4"();
+  END IF;
   PERFORM public."assert_reader_summary_daily_canonical_recovery_v4_binding"();
   SELECT lease.* INTO v_lease
   FROM public."reader_summary_daily_canonical_recovery_v4_leases" AS lease
