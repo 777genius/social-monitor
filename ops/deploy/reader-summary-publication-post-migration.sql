@@ -235,6 +235,7 @@ DECLARE
   )::NAME;
   v_constraint_count INTEGER;
   v_owner_count INTEGER;
+  v_weekly_review_manifest_table_count INTEGER;
   v_v4_table_count INTEGER;
   v_trigger_count INTEGER;
   v_function RECORD;
@@ -310,6 +311,16 @@ BEGIN
     )
     AND owner.rolname =
       'social_monitor_reader_summary_publication_owner';
+  -- This post-bootstrap audit also protects the daily-activation migration
+  -- replay fixture, whose historical cutoff predates the review-manifest
+  -- migration. Once present, the manifest must be owned alongside the other
+  -- protected publication tables.
+  SELECT count(*) INTO v_weekly_review_manifest_table_count
+  FROM pg_class relation
+  JOIN pg_namespace namespace ON namespace.oid = relation.relnamespace
+  WHERE namespace.nspname = 'public'
+    AND relation.relkind IN ('r', 'p')
+    AND relation.relname = 'reader_summary_weekly_review_manifests';
   SELECT count(*) INTO v_v4_table_count
   FROM pg_class relation
   JOIN pg_namespace namespace ON namespace.oid = relation.relnamespace
@@ -320,8 +331,10 @@ BEGIN
       'reader_summary_daily_canonical_recovery_v4_authorities',
       'reader_summary_daily_canonical_recovery_v4_leases'
     );
-  IF v_v4_table_count NOT IN (0, 3)
-    OR v_owner_count <> 5 + v_v4_table_count THEN
+  IF v_weekly_review_manifest_table_count NOT IN (0, 1)
+    OR v_v4_table_count NOT IN (0, 3)
+    OR v_owner_count <> 4 + v_weekly_review_manifest_table_count
+      + v_v4_table_count THEN
     RAISE EXCEPTION 'protected reader summary tables have unsafe owners';
   END IF;
 

@@ -131,9 +131,13 @@ grep -F 'function_capability_acl_count === "0"' "$weekly_seal_contract" \
   in_owner_list && /^    \)/ { in_owner_list = 0 }
   END { print count + 0 }
 ' "$publication_post_migration") -eq 1 ]]
-grep -F 'IF v_v4_table_count NOT IN (0, 3)' \
+grep -F 'IF v_weekly_review_manifest_table_count NOT IN (0, 1)' \
   "$publication_post_migration" >/dev/null
-grep -F 'OR v_owner_count <> 5 + v_v4_table_count THEN' \
+grep -F 'OR v_v4_table_count NOT IN (0, 3)' \
+  "$publication_post_migration" >/dev/null
+grep -F 'OR v_owner_count <> 4 + v_weekly_review_manifest_table_count' \
+  "$publication_post_migration" >/dev/null
+grep -F '+ v_v4_table_count THEN' \
   "$publication_post_migration" >/dev/null
 [[ $(awk '
   /^DO \$bootstrap\$/ { in_bootstrap = 1 }
