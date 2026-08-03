@@ -617,7 +617,7 @@ const buildGapDay = (params: {
 const assertExactGapCoverage = (
   date: ReaderSummaryProductionRecoveryGapDate,
   coverage: readonly ReaderSummaryProductionRecoveryGapCoverage[],
-  rows: readonly ReaderSummaryProductionRecoveryGapEvidenceRow[],
+  rows?: readonly ReaderSummaryProductionRecoveryGapEvidenceRow[],
 ): void => {
   const expected = readerSummaryProductionRecoveryGapExpectedCounts[date];
   if (
@@ -625,7 +625,7 @@ const assertExactGapCoverage = (
     coverage.some((entry, index) => {
       const providerKey = readerSummaryProductionRecoveryGapProviderKeys[index];
       const expectedCount = providerKey === undefined ? undefined : expected[providerKey];
-      const rawCount = providerKey === undefined
+      const rawCount = providerKey === undefined || rows === undefined
         ? 0
         : rows.filter((row) => row.providerKey === providerKey).length;
       if (
@@ -633,7 +633,8 @@ const assertExactGapCoverage = (
         entry.evidenceState === "unavailable"
       ) {
         return entry.providerKey !== providerKey || entry.count !== 0 ||
-          rawCount !== expectedCount;
+          expectedCount === 0 ||
+          (rows !== undefined && rawCount !== expectedCount);
       }
       return entry.providerKey !== providerKey ||
         entry.count !== expectedCount ||
