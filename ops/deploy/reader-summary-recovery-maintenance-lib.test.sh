@@ -77,7 +77,7 @@ ASSERT_WEEKLY_LOCKS_HELD=1
 run_reader_summary_daily_runner_maintenance reader-summary-weekly-run
 unset ASSERT_WEEKLY_LOCKS_HELD
 
-recovery_command='--profile daily run --rm --no-deps daily-runner sh -lc set -eu; npm run prepare:reader-summary-production-recovery-gap-authority; npm run run:reader-summary-daily-canonical-recovery'
+recovery_command='--profile daily run --rm --no-deps -e READER_SUMMARY_DAILY_TENANT_ID=00000000-0000-7000-8000-000000000901 -e READER_SUMMARY_DAILY_WORKSPACE_ID=00000000-0000-7000-8000-000000000902 -e READER_SUMMARY_DAILY_PUBLIC_DIRECTORY=/var/lib/social-monitor/artifacts/reports daily-runner sh -lc set -eu; npm run prepare:reader-summary-production-recovery-gap-authority; npm run run:reader-summary-daily-canonical-recovery'
 grep -Fx -- "$recovery_command" \
   "$COMPOSE_LOG" >/dev/null
 [[ $(grep -Fc 'source-env=unset' "$COMPOSE_LOG") == 2 ]]

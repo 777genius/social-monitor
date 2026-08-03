@@ -49,6 +49,9 @@ run_reader_summary_daily_runner_maintenance() (
   case $maintenance_action in
     reader-summary-recover-missing-days)
       "${COMPOSE[@]}" --profile daily run --rm --no-deps \
+        -e READER_SUMMARY_DAILY_TENANT_ID=00000000-0000-7000-8000-000000000901 \
+        -e READER_SUMMARY_DAILY_WORKSPACE_ID=00000000-0000-7000-8000-000000000902 \
+        -e READER_SUMMARY_DAILY_PUBLIC_DIRECTORY=/var/lib/social-monitor/artifacts/reports \
         daily-runner sh -lc \
         'set -eu; npm run prepare:reader-summary-production-recovery-gap-authority; npm run run:reader-summary-daily-canonical-recovery'
       ;;
