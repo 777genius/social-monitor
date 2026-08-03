@@ -131,7 +131,11 @@ const frozenRecoveryProvenance = (input: {
     outputTextSha256: input.outputTextSha256,
     outputTextByteLength: input.outputTextByteLength,
     githubProjectionSha256: recovery.githubProjectionSha256,
-    verifyPrepublication: (params) => {
+    verifyPrepublication: (
+      params: Parameters<
+        ReaderSummaryDailyCanonicalRecoveryV4ProvenancePort["verifyPrepublication"]
+      >[0],
+    ) => {
       assertRecoveryPrepublication({ authority, params });
       const audit = recoveryAudit({ authority, recovery });
       return Object.freeze({ audit, findings: [] });
