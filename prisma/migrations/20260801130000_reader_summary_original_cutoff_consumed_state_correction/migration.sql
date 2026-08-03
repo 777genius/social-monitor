@@ -423,8 +423,22 @@ BEGIN
 
   PERFORM publication."id"
   FROM "reader_summary_publications" AS publication
+  JOIN "reader_summary_jobs" AS publication_job
+    ON publication_job."id" = publication."reader_summary_job_id"
   WHERE publication."tenant_id" = c_tenant_id
     AND publication."workspace_id" = c_workspace_id
+    AND publication_job."tenant_id" = c_tenant_id
+    AND publication_job."workspace_id" = c_workspace_id
+    AND publication_job."period_started_at" >=
+      TIMESTAMPTZ '2026-07-23T00:00:00Z'
+    AND publication_job."period_started_at" <
+      TIMESTAMPTZ '2026-07-29T00:00:00Z'
+    AND (
+      publication_job."idempotency_key" LIKE
+        'reader-summary-production-recovery%'
+      OR publication_job."idempotency_key" LIKE
+        'reader_summary.production_recovery.%'
+    )
   ORDER BY publication."id"
   FOR UPDATE OF publication;
   GET DIAGNOSTICS v_publication_count = ROW_COUNT;
