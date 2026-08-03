@@ -1,6 +1,4 @@
 import { randomBytes, randomUUID } from "node:crypto";
-import { rmSync } from "node:fs";
-import { join } from "node:path";
 import { Pool, type PoolClient } from "pg";
 import {
   provisionReaderSummaryPublicationFixtureScope,
@@ -25,18 +23,25 @@ import {
   assertPostgresRejects as assertRejects,
   assertPostgresRejectsContaining as assertRejectsContaining,
 } from "./lib/reader-summary-publication-postgres-assertions";
+import {
+  createReaderSummaryPublicationRunningFixture as createRunningFixture,
+  readerSummaryPublicationPeriodStart as periodStart,
+  readerSummaryPublicationUtc as utc,
+  type ReaderSummaryPublicationRunningFixture as Fixture,
+} from "./lib/reader-summary-publication-postgres-running-fixture";
 import { assertReaderSummaryRecoveryPostgresContract } from "./lib/reader-summary-recovery-postgres-contract";
 import { assertReaderSummaryWeeklyDailyCertificationBackfillPostgresContract } from "./lib/reader-summary-weekly-daily-certification-backfill-postgres-contract";
+import { assertReaderSummaryWeeklyCertificationSealPostgresContract } from "./lib/reader-summary-weekly-certification-seal-postgres-contract";
+import { assertReaderSummaryWeeklyAtomicPublicationPostgresContract } from "./lib/reader-summary-weekly-atomic-publication-postgres-contract";
+import { assertReaderSummaryWeeklyProjectionPostgresContract } from "./lib/reader-summary-weekly-projection-postgres-contract";
+import { assertReaderSummaryWeeklyReviewManifestPostgresContract } from "./lib/reader-summary-weekly-review-manifest-postgres-contract";
+import {
+  assertReaderSummaryWeeklyProductionPostgresContract,
+} from "./lib/reader-summary-weekly-production-postgres-contract";
 import {
   assertReaderSummaryWeeklyPublicationEvidencePostgresContract,
   assertReaderSummaryWeeklyPublicationEvidenceRow,
-  canonicalObject,
-  createReaderSummaryPublicationFixtureAuthority,
   readerSummaryPublicationDbOwnedRequest,
-  sha256,
-  stableJson,
-  type EvidenceFixtureOverrides,
-  type ReaderSummaryPublicationEvidenceFixture,
 } from "./lib/reader-summary-weekly-publication-evidence-postgres-contract";
 import {
   assertLegacyPublicationUpgrade,
@@ -54,6 +59,7 @@ import {
   makePublicationFixtureRuntimeDatabaseOwner,
   publicationProtectedRolePresence,
   publicationDatabaseUrl,
+  provisionPublicationFixtureDailyTerminalRole,
   publicationRuntimeDatabaseUrl,
   quotePostgresIdentifier,
   quotePostgresLiteral,
@@ -63,14 +69,13 @@ import { assertReaderSummaryPublicationRuntimeGuard } from "./reader-summary-pub
 const serverAdminDatabaseUrl = requiredReaderSummaryPublicationAdminDatabaseUrl(
   process.env,
 );
-const dailyTerminalMigration =
-  "20260730120000_reader_summary_daily_terminal_authority";
 const fixtureSuffix = randomBytes(10).toString("hex");
 const databaseName = `reader_summary_publication_test_${fixtureSuffix}`;
 const migrationAdminRole = `social_monitor_publication_admin_${fixtureSuffix}`;
 const migrationAdminPassword = randomBytes(24).toString("base64url");
 const runtimeRole = `social_monitor_publication_test_${fixtureSuffix}`;
 const runtimePassword = randomBytes(24).toString("base64url");
+const dailyTerminalPassword = randomBytes(24).toString("base64url");
 const targetDatabaseUrl = publicationDatabaseUrl(
   serverAdminDatabaseUrl,
   databaseName,
@@ -94,10 +99,26 @@ let ownerRolePreexisting = false;
 let capabilityRolePreexisting = false;
 let schemaOwnerRolePreexisting = false;
 let tenantSystemCapabilityRolePreexisting = false;
+let dailyActivationDefinerRolePreexisting = false;
 let fixtureDatabaseCreated = false;
 let fixtureMigrationAdminRoleCreated = false;
 let fixtureRuntimeRoleCreated = false;
-async function main(): Promise<void> {
+let fixtureDailyTerminalRoleCreated = false;
+export type ReaderSummaryPublicationPostgresContract =
+  | "publication"
+  | "weekly-certification-seal"
+  | "weekly-atomic-publication"
+  | "weekly-projection"
+  | "weekly-review-manifest";
+
+export const closeReaderSummaryPublicationPostgresContract = async (
+): Promise<void> => {
+  await serverAdmin.end();
+};
+
+export const runReaderSummaryPublicationPostgresContract = async (
+  contract: ReaderSummaryPublicationPostgresContract = "publication",
+): Promise<void> => {
   assert(
     /^reader_summary_publication_test_[0-9a-f]{20}$/.test(databaseName),
     "temporary publication database name must be bounded",
@@ -107,6 +128,7 @@ async function main(): Promise<void> {
   capabilityRolePreexisting = protectedRoles.capability;
   schemaOwnerRolePreexisting = protectedRoles.schemaOwner;
   tenantSystemCapabilityRolePreexisting = protectedRoles.tenantSystemCapability;
+  dailyActivationDefinerRolePreexisting = protectedRoles.dailyActivationDefiner;
   try {
     await serverAdmin.query(
       `CREATE ROLE ${quotePostgresIdentifier(migrationAdminRole)} LOGIN PASSWORD ${quotePostgresLiteral(migrationAdminPassword)}
@@ -130,6 +152,7 @@ async function main(): Promise<void> {
       migrationAdminDatabaseUrl: adminDatabaseUrl,
       migrationAdminRole,
       runtimeRole,
+      systemRuntimeRole: runtimeRole,
       targetDatabaseUrl,
     });
 
@@ -160,11 +183,13 @@ async function main(): Promise<void> {
       migrationAdminRole,
       runtimeRole,
     );
+    fixtureDailyTerminalRoleCreated =
+      await provisionPublicationFixtureDailyTerminalRole({
+        dailyTerminalPassword,
+        migrationAdminRole,
+        serverAdmin,
+      });
     installPublicationAndFollowingMigrations(migrationWorkspace);
-    rmSync(
-      join(migrationWorkspace.directory, "migrations", dailyTerminalMigration),
-      { recursive: true },
-    );
     applyOrderedReaderSummaryMigrations(adminDatabaseUrl, migrationWorkspace);
     // Recovery after Prisma committed but before the post hardening phase.
     await runReaderSummaryPublicationBootstrapSql(
@@ -203,6 +228,7 @@ async function main(): Promise<void> {
     try {
       await grantPublicationFixtureRuntimePrivileges(admin, runtimeRole);
       const auditor = await auditorPool.connect();
+      const adminClient = await admin.connect();
       const first = await runtime.connect();
       const second = await runtime.connect();
       try {
@@ -225,6 +251,48 @@ async function main(): Promise<void> {
           readerSummaryPublicationMigration,
         );
         await assertLegacyRepositoryVisibility(runtimeDatabaseUrl);
+        if (
+          contract === "weekly-certification-seal" ||
+          contract === "weekly-atomic-publication" ||
+          contract === "weekly-projection" ||
+          contract === "weekly-review-manifest"
+        ) {
+          await assertReaderSummaryWeeklyCertificationSealPostgresContract({
+            adminClient,
+            auditorClient: auditor,
+            concurrentRuntimeClient: second,
+            runtimeClient: first,
+            runtimeRole,
+            createFixture: (status, day) =>
+              createRunningFixture(first, status, day),
+            publish: (payload) => publish(first, payload),
+          });
+          await assertReaderSummaryWeeklyProductionPostgresContract(first);
+          if (
+            contract === "weekly-atomic-publication" ||
+            contract === "weekly-projection"
+          ) {
+            await assertReaderSummaryWeeklyAtomicPublicationPostgresContract({
+              auditorClient: auditor,
+              concurrentRuntimeClient: second,
+              runtimeClient: first,
+              runtimeRole,
+            });
+          }
+          if (contract === "weekly-projection") {
+            await assertReaderSummaryWeeklyProjectionPostgresContract(first);
+          }
+          if (contract === "weekly-review-manifest") {
+            await assertReaderSummaryWeeklyReviewManifestPostgresContract({
+              adminClient,
+              auditorClient: auditor,
+              concurrentRuntimeClient: second,
+              runtimeClient: first,
+              runtimeRole,
+            });
+          }
+          return;
+        }
         await assertReaderSummaryWeeklyPublicationEvidencePostgresContract({
           runtimeClient: first,
           canonicalJsonAuditor: auditor,
@@ -294,6 +362,7 @@ async function main(): Promise<void> {
         });
       } finally {
         auditor.release();
+        adminClient.release();
         first.release();
         second.release();
       }
@@ -313,19 +382,19 @@ async function main(): Promise<void> {
       capabilityRolePreexisting,
       schemaOwnerRolePreexisting,
       tenantSystemCapabilityRolePreexisting,
+      dailyActivationDefinerRolePreexisting,
       fixtureDatabaseCreated,
       fixtureMigrationAdminRoleCreated,
       fixtureRuntimeRoleCreated,
+      fixtureDailyTerminalRoleCreated,
     });
   }
   console.log(
     "Reader summary PostgreSQL privilege, upgrade, replay, and concurrency gate OK",
   );
-}
+};
 const assertOrderedUpgrade = async (client: PoolClient): Promise<void> => {
-  const expected = readerSummaryMigrationNames().filter(
-    (migration) => migration < dailyTerminalMigration,
-  );
+  const expected = readerSummaryMigrationNames();
   const applied = await client.query<{ readonly migration_name: string }>(
     `SELECT migration_name
        FROM "_prisma_migrations"
@@ -659,235 +728,6 @@ const assertDbOwnedCardinality = async (
     "V2 concurrency must retain one slot, publication, evidence, and outbox event",
   );
 };
-type Fixture = ReaderSummaryPublicationEvidenceFixture;
-const createRunningFixture = async (
-  client: PoolClient,
-  status: "COMPLETED" | "NO_SIGNAL",
-  day: number | string,
-  overrides: {
-    readonly requestedAt?: string;
-    readonly modelVersion?: string;
-  } & EvidenceFixtureOverrides = {},
-): Promise<Fixture> => {
-  const { tenantId, workspaceId } = readerSummaryPublicationFixtureScope;
-  const jobId = randomUUID();
-  const artifactId = randomUUID();
-  const eventId = randomUUID();
-  const requestedAt = overrides.requestedAt ?? utc(day, 10);
-  const modelVersion = overrides.modelVersion ?? "codex:gpt-5.5:xhigh";
-  const startedAt = periodStart(day);
-  const endedAt = periodEnd(day);
-  const periodKey = `daily:${startedAt}:${endedAt}:UTC`;
-  const interestId = overrides.publicationInterestId;
-  const scopeType = interestId === undefined ? "workspace" : "interest";
-  const scopeKey = interestId === undefined ? "workspace" : `interest:${interestId}`;
-  if (interestId !== undefined) {
-    await client.query(
-      `INSERT INTO interests (
-         id, tenant_id, workspace_id, name, query, status, created_at, updated_at
-       ) VALUES ($1, $2, $3, $4, 'publication evidence', 'ENABLED', $5, $5)`,
-      [interestId, tenantId, workspaceId, `Publication ${interestId}`, requestedAt],
-    );
-  }
-  await client.query(
-    `INSERT INTO reader_summary_jobs (
-       id, tenant_id, workspace_id, scope_type, scope_key, interest_id, cadence,
-       period_started_at, period_ended_at, period_timezone, period_key,
-       status, idempotency_key, requested_at, started_at, created_at, updated_at
-     ) VALUES (
-       $1, $2, $3, $4, $5, $6, 'daily', $7, $8, 'UTC', $9,
-       'RUNNING', $10, $11, $11, $11, $11
-     )`,
-    [
-      jobId,
-      tenantId,
-      workspaceId,
-      scopeType,
-      scopeKey,
-      interestId ?? null,
-      startedAt,
-      endedAt,
-      periodKey,
-      `publication-gate:${jobId}`,
-      requestedAt,
-    ],
-  );
-  const qualityFlags = status === "NO_SIGNAL" ? ["no_signal"] : [];
-  const promptVersion = "reader-summary.prompt.pg-gate.v1";
-  const scope = interestId === undefined
-    ? { type: "workspace" } as const
-    : { type: "interest", interestId } as const;
-  const period = {
-    cadence: "daily",
-    startedAt,
-    endedAt,
-    timezone: "UTC",
-    periodKey,
-  } as const;
-  const evidenceAuthority =
-    await createReaderSummaryPublicationFixtureAuthority({
-      client,
-      tenantId,
-      workspaceId,
-      status,
-      startedAt,
-      endedAt,
-      requestedAt,
-      overrides,
-    });
-  const citations = evidenceAuthority.citations;
-  const githubProjectionAudit =
-    evidenceAuthority.githubProjectionAudit;
-  const persistedQualitySignals = {
-    qualityFlags,
-    publicationDecision: { status: "published", qualityPassed: true },
-    githubProjectionAudit,
-  };
-  const report = canonicalObject({
-    schemaVersion: "reader_summary.publication_report.v1",
-    semanticStatus: status,
-    modelVersion,
-    promptVersion,
-    headline: status === "NO_SIGNAL" ? "No reliable signal" : "Proved report",
-    summaryText:
-      status === "NO_SIGNAL" ? "No eligible evidence." : "Exact report body.",
-    artifactPayload: {
-      schemaVersion: "reader_summary.artifact.v1",
-      readerSummaryId: artifactId,
-      tenantId,
-      workspaceId,
-      scope,
-      period,
-      headline: status === "NO_SIGNAL" ? "No reliable signal" : "Proved report",
-      executiveSummary:
-        status === "NO_SIGNAL" ? "No eligible evidence." : "Exact report body.",
-      lineage: { modelVersion, promptVersion },
-      citationMap: citations,
-      qualityFlags,
-      content: evidenceAuthority.content,
-      ...(status === "NO_SIGNAL"
-        ? { noSignalReason: "No eligible evidence." }
-        : {}),
-    },
-    citations,
-    qualitySignals: {
-      ...persistedQualitySignals,
-      publicationGeneration: { requestedAt },
-    },
-  });
-  const reportCanonical = stableJson(report);
-  const reportSha256 = sha256(reportCanonical);
-  const exactProof = canonicalObject({
-    schemaVersion: "reader_summary.publication_proof.v1",
-    tenantId,
-    workspaceId,
-    scope: { type: scopeType, key: scopeKey },
-    period: {
-      cadence: "daily",
-      startedAt,
-      endedAt,
-      timezone: "UTC",
-      periodKey,
-    },
-    requestedUtcDate: requestedAt.slice(0, 10),
-    requestedAt,
-    readerSummaryJobId: jobId,
-    readerSummaryArtifactId: artifactId,
-    semanticStatus: status,
-    modelVersion,
-    reportSha256,
-  });
-  const proofCanonical = stableJson(exactProof);
-  const payload = canonicalObject({
-    schemaVersion: "reader_summary.publication.v1",
-    tenantId,
-    workspaceId,
-    scopeType,
-    scopeKey,
-    ...(interestId === undefined ? {} : { interestId }),
-    cadence: "daily",
-    periodStartedAt: startedAt,
-    periodEndedAt: endedAt,
-    periodTimezone: "UTC",
-    periodKey,
-    requestedUtcDate: requestedAt.slice(0, 10),
-    requestedAt,
-    readerSummaryJobId: jobId,
-    readerSummaryArtifactId: artifactId,
-    semanticStatus: status,
-    modelVersion,
-    publishedAt: utc(day, 11),
-    report,
-    reportCanonical,
-    reportSha256,
-    exactProof,
-    proofCanonical,
-    proofSha256: sha256(proofCanonical),
-    readyEvent: {
-      eventId,
-      eventType: "reader_summary.ready",
-      schemaVersion: 1,
-      occurredAt: utc(day, 11),
-      tenantId,
-      workspaceId,
-      correlationId: jobId,
-      causationId: jobId,
-      payload: {
-        readerSummaryJobId: jobId,
-        readerSummaryId: artifactId,
-        tenantId,
-        workspaceId,
-        scope,
-        period,
-        status: status === "NO_SIGNAL" ? "no_signal" : "completed",
-      },
-    },
-  });
-  await client.query(
-    `INSERT INTO reader_summary_artifacts (
-       id, tenant_id, workspace_id, scope_type, scope_key, interest_id, cadence,
-       period_started_at, period_ended_at, period_timezone, period_key,
-       status, schema_version, model_version, prompt_version, headline,
-       summary_text, artifact_payload, citations, quality_signals,
-       created_at, updated_at
-     ) VALUES (
-       $1, $2, $3, $4, $5, $6, 'daily', $7, $8, 'UTC', $9,
-       'RUNNING', 1, $10, $11, $12, $13, $14::jsonb, $15::jsonb, $16::jsonb,
-       $17, $17
-     )`,
-    [
-      artifactId,
-      tenantId,
-      workspaceId,
-      scopeType,
-      scopeKey,
-      interestId ?? null,
-      startedAt,
-      endedAt,
-      periodKey,
-      modelVersion,
-      promptVersion,
-      report.headline,
-      report.summaryText,
-      JSON.stringify(report.artifactPayload),
-      JSON.stringify(report.citations),
-      JSON.stringify(persistedQualitySignals),
-      requestedAt,
-    ],
-  );
-  return {
-    jobId,
-    artifactId,
-    eventId,
-    payload,
-    ...(evidenceAuthority.githubSourceBindingId === undefined
-      ? {}
-      : {
-          githubSourceBindingId:
-            evidenceAuthority.githubSourceBindingId,
-        }),
-  };
-};
 const assertNoPublication = async (
   client: PoolClient,
   fixture: Fixture,
@@ -953,28 +793,18 @@ const publish = async (
   assert(outcome !== undefined, "publication function returned no outcome");
   return outcome;
 };
-const periodStart = (day: number | string): string => utc(day, 0);
-const periodEnd = (day: number | string): string =>
-  new Date(Date.parse(periodStart(day)) + 86_400_000).toISOString();
-const utc = (day: number | string, hour: number): string => {
-  const date =
-    typeof day === "number"
-      ? new Date(Date.UTC(2026, 5, day)).toISOString().slice(0, 10)
-      : day;
-  return new Date(
-    Date.parse(`${date}T00:00:00.000Z`) + hour * 3_600_000,
-  ).toISOString();
-};
 const reverseObject = (
   value: Readonly<Record<string, unknown>>,
 ): Readonly<Record<string, unknown>> =>
   Object.fromEntries(Object.entries(value).reverse());
 
-void main()
-  .catch((error: unknown) => {
-    console.error(error instanceof Error ? error.message : String(error));
-    process.exitCode = 1;
-  })
-  .finally(async () => {
-    await serverAdmin.end();
-  });
+if (require.main === module) {
+  void runReaderSummaryPublicationPostgresContract()
+    .catch((error: unknown) => {
+      console.error(error instanceof Error ? error.message : String(error));
+      process.exitCode = 1;
+    })
+    .finally(async () => {
+      await closeReaderSummaryPublicationPostgresContract();
+    });
+}

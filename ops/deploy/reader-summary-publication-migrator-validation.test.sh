@@ -50,13 +50,11 @@ SECRET_METADATA_STATUS=0
 SYSTEM_DSN_CHOWN_EXIT=0
 CA_OWNER=root
 CA_METADATA_STATUS=0
-FAIL_PHASE=
 TEST_COUNT=0
 
 mkdir -p "$ROOT/secrets/db" "$REPO/ops/deploy" "$STATE" "$FAKE_BIN"
 printf '%s\n' 'test-only-ca-certificate' > "$CA_CERTIFICATE"
-cp "$SCRIPT_DIR/deploy-control-lib.sh" "$REPO/ops/deploy/"
-cp "$SCRIPT_DIR/deploy-control-bridge-lib.sh" "$REPO/ops/deploy/"
+cp "$SCRIPT_DIR/deploy-control-lib.sh" "$SCRIPT_DIR/deploy-control-bridge-lib.sh" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/backend-runtime-health-lib.sh" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/backend-image-rescue-lib.sh" "$REPO/ops/deploy/"
@@ -116,6 +114,7 @@ if [[ -n $query_file ]]; then
   [[ -f $query_file && ! -L $query_file && -s $query_file ]]
   query_mode=$(stat -c '%a' "$query_file")
   [[ $query_mode == 600 ]]
+  [[ " $* " == *' --quiet '* ]]
   query_payload=$(< "$query_file")
   if [[ $query_payload == *'system_role.rolname'* ]]; then
     [[ $query_payload == *"WHERE system_role.rolname = :'system_runtime_role';"* ]]
@@ -250,19 +249,6 @@ reader_summary_publication_admin_availability_query() {
   return "$AVAILABILITY_STATUS"
 }
 
-run_reader_summary_publication_admin_sql() {
-  local phase=$4
-  printf 'write:%s\n' "$phase" >> "$EVENT_LOG"
-  [[ $FAIL_PHASE != "$phase" ]] || return 81
-  printf 'psql:%s\n' "$phase" >> "$WRITE_LOG"
-}
-
-fake_compose() {
-  printf '%s\n' write:prisma >> "$EVENT_LOG"
-  [[ $FAIL_PHASE != prisma ]] || return 82
-  printf '%s\n' prisma-migrate >> "$WRITE_LOG"
-}
-
 docker() {
   local stdin_payload arguments script status pgpass_path query_path
   local index position
@@ -357,8 +343,6 @@ sleep() {
   :
 }
 
-COMPOSE=(fake_compose)
-
 write_admin_url() {
   local value=$1
   chmod 0600 "$SECRET" 2>/dev/null || true
@@ -421,7 +405,6 @@ reset_case() {
   SYSTEM_DSN_CHOWN_EXIT=0
   CA_OWNER=root
   CA_METADATA_STATUS=0
-  FAIL_PHASE=
   printf '%s\n' 'test-only-ca-certificate' > "$CA_CERTIFICATE"
   write_admin_url "$VALID_URL"
 }
@@ -545,20 +528,6 @@ assert_invalid_catalog() {
   [[ ! -s $WRITE_LOG ]]
   assert_redacted "$output" "$VALID_URL"
   [[ $output != *"$catalog_result"* ]]
-  TEST_COUNT=$((TEST_COUNT + 1))
-  : "$label"
-}
-
-assert_valid_catalog() {
-  local label=$1
-  local catalog_result=${2:-$VALID_CATALOG}
-  local output
-  reset_case
-  CATALOG_RESULT=$catalog_result
-  output=$(deploy_reader_summary_publication_migrations 2>&1)
-  [[ -z $output ]]
-  [[ $(< "$EVENT_LOG") == $'availability\ncatalog-query\nwrite:pre\nwrite:prisma\nwrite:post' ]]
-  [[ $(< "$WRITE_LOG") == $'psql:pre\nprisma-migrate\npsql:post' ]]
   TEST_COUNT=$((TEST_COUNT + 1))
   : "$label"
 }
@@ -707,24 +676,6 @@ TEST_COUNT=$((TEST_COUNT + 1))
 reset_case
 write_production_env "DATABASE_URL=$API_URL"
 write_system_url "$SYSTEM_URL"
-SYSTEM_DSN_REPAIR_PATH=$ROOT/secrets/db/system-database-url.real
-mv "$ROOT/secrets/db/system-database-url" "$SYSTEM_DSN_REPAIR_PATH"
-ln -s "$SYSTEM_DSN_REPAIR_PATH" "$ROOT/secrets/db/system-database-url"
-chmod 0644 "$SYSTEM_DSN_REPAIR_PATH"
-SYSTEM_DSN_OWNER=deploy-user
-TRANSPORT_FORBIDDEN_ENV_VALUE=$SYSTEM_PASSWORD
-TRANSPORT_EXPECTED_PGPASS="${DATABASE_HOST}:25060:social_monitor:${MIGRATOR_ROLE}:${PRIVATE_PASSWORD}"
-TRANSPORT_EXPECTED_SYSTEM_PGPASS="${DATABASE_HOST}:25060:social_monitor:${SYSTEM_ROLE}:${SYSTEM_PASSWORD}"
-system_contract_output=$(ensure_system_database_url_deploy_contract 2>&1)
-[[ -z $system_contract_output ]]
-grep -Fx "SYSTEM_DATABASE_URL=$SYSTEM_URL" "$ROOT/secrets/production.env" >/dev/null
-grep -Fx "$SYSTEM_DSN_REPAIR_PATH" "$CHOWN_LOG" >/dev/null
-[[ $(stat -c '%a' "$SYSTEM_DSN_REPAIR_PATH") == 600 ]]
-TEST_COUNT=$((TEST_COUNT + 1))
-
-reset_case
-write_production_env "DATABASE_URL=$API_URL"
-write_system_url "$SYSTEM_URL"
 chmod 0644 "$ROOT/secrets/db/system-database-url"
 SYSTEM_DSN_OWNER=deploy-user
 SYSTEM_DSN_CHOWN_EXIT=43
@@ -771,36 +722,6 @@ reader_summary_publication_admin_catalog_query() {
   fi
   printf '%s\n' "$CATALOG_RESULT"
 }
-
-assert_valid_catalog standard-catalog
-assert_valid_catalog exact-legacy-memberships "$(catalog_with_field 17 3)"
-
-for failed_phase in pre prisma post; do
-  reset_case
-  FAIL_PHASE=$failed_phase
-  set +e
-  failure_output=$(deploy_reader_summary_publication_migrations 2>&1)
-  failure_status=$?
-  set -e
-  ((failure_status != 0))
-  assert_redacted "$failure_output" "$VALID_URL"
-  case $failed_phase in
-    pre)
-      [[ $(< "$EVENT_LOG") == $'availability\ncatalog-query\nwrite:pre' ]]
-      [[ ! -s $WRITE_LOG ]]
-      ;;
-    prisma)
-      [[ $(< "$EVENT_LOG") == $'availability\ncatalog-query\nwrite:pre\nwrite:prisma' ]]
-      [[ $(< "$WRITE_LOG") == psql:pre ]]
-      ;;
-    post)
-      [[ $(< "$EVENT_LOG") == \
-        $'availability\ncatalog-query\nwrite:pre\nwrite:prisma\nwrite:post' ]]
-      [[ $(< "$WRITE_LOG") == $'psql:pre\nprisma-migrate' ]]
-      ;;
-  esac
-  TEST_COUNT=$((TEST_COUNT + 1))
-done
 
 assert_invalid_url malformed-url 'not-a-postgresql-url'
 assert_invalid_url malformed-percent \

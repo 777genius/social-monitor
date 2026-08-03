@@ -13,7 +13,11 @@ import type {
 } from "../../ports";
 
 export type ReaderSummaryAttestedTaskRole =
-  "summary" | "topic_label" | "topic_relation" | "story_relation";
+  | "summary"
+  | "topic_label"
+  | "topic_relation"
+  | "story_relation"
+  | "weekly_review";
 
 export type VerifiedReaderSummaryExecutionAttestation = {
   readonly taskRole: ReaderSummaryAttestedTaskRole;
@@ -45,12 +49,13 @@ export const verifyAndRecordReaderSummaryExecution = async (params: {
     attestation.purpose !== params.command.purpose ||
     attestation.provider !== params.command.provider ||
     attestation.provider !== "codex" ||
-    attestation.model !== "gpt-5.5" ||
+    attestation.model !== "gpt-5.6-sol" ||
     attestation.reasoningEffort !== "xhigh" ||
     attestation.runtimeEngine !== subscriptionRuntimeEngine ||
     !isConcreteRuntimePackageVersion(attestation.runtimePackageVersion) ||
     !isSha256Hex(attestation.canonicalRequestSha256) ||
     !isSha256Hex(attestation.launcherSha256) ||
+    attestation.selectedOutputKind !== "structured_output" ||
     !isSha256Hex(attestation.selectedOutputSha256) ||
     !executionAttestationOutputMatches(attestation, params.result)
   ) {

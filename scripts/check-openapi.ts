@@ -97,6 +97,7 @@ import { GetSummaryUseCase } from "@social-monitor/summary/features/get-summary/
 import { GetReaderSummaryJobStatusUseCase } from "@social-monitor/summary/features/get-reader-summary-job-status/get-reader-summary-job-status.use-case";
 import { GetReaderSummaryQualityRejectionUseCase } from "@social-monitor/summary/features/get-reader-summary-quality-rejection/get-reader-summary-quality-rejection.use-case";
 import { GetReaderSummaryUseCase } from "@social-monitor/summary/features/get-reader-summary/get-reader-summary.use-case";
+import { GetReaderSummaryWeeklyProjectionUseCase } from "@social-monitor/summary/features/get-reader-summary-weekly-projection/get-reader-summary-weekly-projection.use-case";
 import { ListSummariesUseCase } from "@social-monitor/summary/features/list-summaries/list-summaries.use-case";
 import { ListSummaryFeedbackUseCase } from "@social-monitor/summary/features/list-summary-feedback/list-summary-feedback.use-case";
 import { ListReaderSummaryTopicRecommendationsUseCase } from "@social-monitor/summary/features/list-reader-summary-topic-recommendations/list-reader-summary-topic-recommendations.use-case";
@@ -111,6 +112,7 @@ import { ReaderSummaryController } from "@social-monitor/summary/interfaces/rest
 import { ReaderSummaryJobController } from "@social-monitor/summary/interfaces/rest/reader-summary-job.controller";
 import { ReaderSummaryRequestController } from "@social-monitor/summary/interfaces/rest/reader-summary-request.controller";
 import { ReaderSummaryTopicRecommendationController } from "@social-monitor/summary/interfaces/rest/reader-summary-topic-recommendation.controller";
+import { ReaderSummaryWeeklyProjectionController } from "@social-monitor/summary/interfaces/rest/reader-summary-weekly-projection.controller";
 import { SummaryFeedbackController } from "@social-monitor/summary/interfaces/rest/summary-feedback.controller";
 import { SummaryJobController } from "@social-monitor/summary/interfaces/rest/summary-job.controller";
 import { SummaryPolicyController } from "@social-monitor/summary/interfaces/rest/summary-policy.controller";
@@ -269,6 +271,7 @@ const useCaseProviders = [
   GetReaderSummaryJobStatusUseCase,
   GetReaderSummaryQualityRejectionUseCase,
   GetReaderSummaryUseCase,
+  GetReaderSummaryWeeklyProjectionUseCase,
   GetWebhookEndpointUseCase,
   GetBetaLaunchSupportUseCase,
   ListApiKeysUseCase,
@@ -344,6 +347,7 @@ const useCaseProviders = [
     RelevanceController,
     SocialResearchController,
     SummaryController,
+    ReaderSummaryWeeklyProjectionController,
     ReaderSummaryController,
     ReaderSummaryJobController,
     ReaderSummaryRequestController,

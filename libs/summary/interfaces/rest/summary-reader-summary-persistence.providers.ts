@@ -7,12 +7,15 @@ import { PrismaReaderSummaryArtifactRepository } from "../../adapters/persistenc
 import { PrismaReaderSummaryGitHubProjectionReader } from "../../adapters/persistence/prisma/prisma-reader-summary-github-projection.reader";
 import { PrismaReaderSummaryJobRepository } from "../../adapters/persistence/prisma/prisma-reader-summary-job.repository";
 import { PrismaReaderSummaryPolicyRepository } from "../../adapters/persistence/prisma/prisma-reader-summary-policy.repository";
+import { PrismaReaderSummaryWeeklyProjectionReader } from "../../adapters/persistence/prisma/prisma-reader-summary-weekly-projection.reader";
+import { UnavailableReaderSummaryWeeklyProjectionReader } from "../../adapters/persistence/unavailable-reader-summary-weekly-projection.reader";
 import type { PrismaSummaryClient } from "../../adapters/persistence/prisma/prisma-summary-client";
 import {
   type ReaderSummaryArtifactRepositoryPort,
   type ReaderSummaryGitHubProjectionReaderPort,
   type ReaderSummaryJobRepositoryPort,
   type ReaderSummaryPolicyRepositoryPort,
+  type ReaderSummaryWeeklyProjectionReaderPort,
   UNAVAILABLE_READER_SUMMARY_GITHUB_PROJECTION_READER,
 } from "../../ports";
 import {
@@ -20,6 +23,7 @@ import {
   READER_SUMMARY_GITHUB_PROJECTION_READER,
   READER_SUMMARY_JOB_REPOSITORY,
   READER_SUMMARY_POLICY_REPOSITORY,
+  READER_SUMMARY_WEEKLY_PROJECTION_READER,
   SUMMARY_PERSISTENCE_MODE,
   SUMMARY_PRISMA_CLIENT,
   type SummaryPersistenceMode,
@@ -69,6 +73,19 @@ export const summaryReaderSummaryPersistenceProviders: Provider[] = [
             requirePrismaClient(prisma),
           )
         : UNAVAILABLE_READER_SUMMARY_GITHUB_PROJECTION_READER,
+    inject: [SUMMARY_PERSISTENCE_MODE, SUMMARY_PRISMA_CLIENT],
+  },
+  {
+    provide: READER_SUMMARY_WEEKLY_PROJECTION_READER,
+    useFactory: (
+      mode: SummaryPersistenceMode,
+      prisma: PrismaSummaryClient | null,
+    ): ReaderSummaryWeeklyProjectionReaderPort =>
+      mode === "prisma"
+        ? new PrismaReaderSummaryWeeklyProjectionReader(
+            requirePrismaClient(prisma),
+          )
+        : new UnavailableReaderSummaryWeeklyProjectionReader(),
     inject: [SUMMARY_PERSISTENCE_MODE, SUMMARY_PRISMA_CLIENT],
   },
   {

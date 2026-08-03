@@ -924,6 +924,7 @@ model ReaderSummaryArtifact {
   publication     ReaderSummaryPublication?
   weeklyPublicationEvidence ReaderSummaryWeeklyPublicationEvidence?
   recoveryReceipt ReaderSummaryRecoveryReceipt?
+  dailyModelJob ReaderSummaryDailyModelJob? @relation("ReaderSummaryDailyArtifact")
 
   @@index([tenantId, workspaceId, scopeKey, cadence, periodStartedAt], map: "reader_summary_artifacts_period_lookup_idx")
   @@index([tenantId, workspaceId, scopeKey, status, createdAt])
@@ -958,6 +959,7 @@ model ReaderSummaryJob {
   publication             ReaderSummaryPublication?
   weeklyPublicationEvidence ReaderSummaryWeeklyPublicationEvidence?
   recoveryReceipt         ReaderSummaryRecoveryReceipt?
+  dailyModelJob            ReaderSummaryDailyModelJob? @relation("ReaderSummaryDailyJob")
 
   @@unique([tenantId, idempotencyKey])
   @@index([tenantId, workspaceId, scopeKey, cadence, periodStartedAt], map: "reader_summary_jobs_period_lookup_idx")
@@ -996,6 +998,7 @@ model ReaderSummaryPublication {
   activeSlot              ReaderSummaryPublicationSlot?
   weeklyPublicationEvidence ReaderSummaryWeeklyPublicationEvidence?
   recoveryReceipt         ReaderSummaryRecoveryReceipt?
+  dailyModelJob            ReaderSummaryDailyModelJob? @relation("ReaderSummaryDailyPublication")
 
   @@index([tenantId, workspaceId, scopeKey, requestedAt], map: "reader_summary_publications_scope_requested_idx")
   @@map("reader_summary_publications")
@@ -1039,6 +1042,195 @@ model ReaderSummaryWeeklyPublicationEvidence {
   @@map("reader_summary_weekly_publication_evidence")
 }
 
+model ReaderSummaryDailyExecutionCursor {
+  tenantId              String    @map("tenant_id") @db.Uuid
+  workspaceId           String    @map("workspace_id") @db.Uuid
+  nextUnresolvedUtcDate DateTime  @map("next_unresolved_utc_date") @db.Date
+  activeRequestedUtcDate DateTime? @map("active_requested_utc_date") @db.Date
+  leaseOwner            String?   @map("lease_owner")
+  fencingToken          BigInt    @default(0) @map("fencing_token")
+  leasedAt              DateTime? @map("leased_at") @db.Timestamptz(6)
+  leaseExpiresAt        DateTime? @map("lease_expires_at") @db.Timestamptz(6)
+  absoluteExpiresAt     DateTime? @map("absolute_expires_at") @db.Timestamptz(6)
+  recoveryRequiredAt    DateTime? @map("recovery_required_at") @db.Timestamptz(6)
+  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@id([tenantId, workspaceId], map: "reader_summary_daily_execution_cursors_pkey")
+  @@map("reader_summary_daily_execution_cursors")
+}
+
+model ReaderSummaryDailySourceAuthority {
+  tenantId        String   @map("tenant_id") @db.Uuid
+  workspaceId     String   @map("workspace_id") @db.Uuid
+  requestedUtcDate DateTime @map("requested_utc_date") @db.Date
+  ingestionCutoff DateTime @map("ingestion_cutoff") @db.Timestamptz(6)
+  canonicalRecord Json     @map("canonical_record")
+  canonicalBytes  Bytes    @map("canonical_bytes")
+  canonicalSha256 String   @map("canonical_sha256") @db.Char(64)
+  createdAt       DateTime @map("created_at") @db.Timestamptz(6)
+  modelJob        ReaderSummaryDailyModelJob?
+
+  @@id([tenantId, workspaceId, requestedUtcDate], map: "reader_summary_daily_source_authorities_pkey")
+  @@map("reader_summary_daily_source_authorities")
+}
+
+model ReaderSummaryDailyModelJob {
+  tenantId                  String   @map("tenant_id") @db.Uuid
+  workspaceId               String   @map("workspace_id") @db.Uuid
+  requestedUtcDate          DateTime @map("requested_utc_date") @db.Date
+  identity                  String   @unique(map: "reader_summary_daily_model_jobs_identity_key")
+  sourceAuthoritySha256     String   @map("source_authority_sha256") @db.Char(64)
+  provider                  String
+  model                     String
+  reasoningEffort           String   @map("reasoning_effort")
+  runtimeEngine             String   @map("runtime_engine")
+  state                     String
+  reservedAt                DateTime @map("reserved_at") @db.Timestamptz(6)
+  runningAt                 DateTime? @map("running_at") @db.Timestamptz(6)
+  completedAt               DateTime? @map("completed_at") @db.Timestamptz(6)
+  failedAmbiguousAt         DateTime? @map("failed_ambiguous_at") @db.Timestamptz(6)
+  responseBytes             Bytes?   @map("response_bytes")
+  responseSha256            String?  @map("response_sha256") @db.Char(64)
+  attestation               Json?
+  attestationBytes          Bytes?   @map("attestation_bytes")
+  attestationSha256         String?  @map("attestation_sha256") @db.Char(64)
+  receiptBytes              Bytes?   @map("receipt_bytes")
+  receiptSha256             String?  @map("receipt_sha256") @db.Char(64)
+  readerSummaryJobId        String?  @unique(map: "reader_summary_daily_model_jobs_job_key") @map("reader_summary_job_id") @db.Uuid
+  readerSummaryArtifactId   String?  @unique(map: "reader_summary_daily_model_jobs_artifact_key") @map("reader_summary_artifact_id") @db.Uuid
+  publicationId             String?  @unique(map: "reader_summary_daily_model_jobs_publication_key") @map("publication_id") @db.Uuid
+  publicationReportSha256   String?  @map("publication_report_sha256") @db.Char(64)
+  publicationProofSha256    String?  @map("publication_proof_sha256") @db.Char(64)
+  weeklyEvidenceSha256      String?  @map("weekly_evidence_sha256") @db.Char(64)
+  publicEvidenceSha256      String?  @map("public_evidence_sha256") @db.Char(64)
+  publicFrontendSha256      String?  @map("public_frontend_sha256") @db.Char(64)
+  publicationFinalizedAt    DateTime? @map("publication_finalized_at") @db.Timestamptz(6)
+  sourceAuthority           ReaderSummaryDailySourceAuthority @relation(fields: [tenantId, workspaceId, requestedUtcDate], references: [tenantId, workspaceId, requestedUtcDate], onDelete: Restrict, onUpdate: Restrict, map: "reader_summary_daily_model_jobs_source_fkey")
+  readerSummaryJob          ReaderSummaryJob? @relation("ReaderSummaryDailyJob", fields: [readerSummaryJobId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "reader_summary_daily_model_jobs_job_fkey")
+  readerSummaryArtifact     ReaderSummaryArtifact? @relation("ReaderSummaryDailyArtifact", fields: [readerSummaryArtifactId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "reader_summary_daily_model_jobs_artifact_fkey")
+  publication              ReaderSummaryPublication? @relation("ReaderSummaryDailyPublication", fields: [publicationId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "reader_summary_daily_model_jobs_publication_fkey")
+
+  @@id([tenantId, workspaceId, requestedUtcDate], map: "reader_summary_daily_model_jobs_pkey")
+  @@map("reader_summary_daily_model_jobs")
+}
+
+model ReaderSummaryDailyCanonicalRecoveryV4Plan {
+  tenantId        String   @map("tenant_id") @db.Uuid
+  workspaceId     String   @map("workspace_id") @db.Uuid
+  ordinal         Int      @db.SmallInt
+  canonicalRecord Json     @map("canonical_record")
+  canonicalBytes  Bytes    @map("canonical_bytes")
+  canonicalSha256 String   @map("canonical_sha256") @db.Char(64)
+  adoptedAt       DateTime @map("adopted_at") @db.Timestamptz(6)
+
+  @@id([tenantId, workspaceId, ordinal], map: "reader_summary_daily_canonical_recovery_v4_plans_pkey")
+  @@map("reader_summary_daily_canonical_recovery_v4_plans")
+}
+
+model ReaderSummaryDailyCanonicalRecoveryV4Authority {
+  tenantId                 String   @map("tenant_id") @db.Uuid
+  workspaceId              String   @map("workspace_id") @db.Uuid
+  requestedUtcDate         DateTime @map("requested_utc_date") @db.Date
+  legacyRecoveryId         String   @map("legacy_recovery_id") @db.Uuid
+  legacyDayCanonicalSha256 String   @map("legacy_day_canonical_sha256") @db.Char(64)
+  sourceAuthorityRecord    Json     @map("source_authority_record")
+  sourceAuthorityBytes     Bytes    @map("source_authority_bytes")
+  sourceAuthoritySha256    String   @map("source_authority_sha256") @db.Char(64)
+  adoptedAt                DateTime @map("adopted_at") @db.Timestamptz(6)
+  lease                    ReaderSummaryDailyCanonicalRecoveryV4Lease?
+
+  @@id([tenantId, workspaceId, requestedUtcDate], map: "reader_summary_daily_canonical_recovery_v4_authorities_pkey")
+  @@map("reader_summary_daily_canonical_recovery_v4_authorities")
+}
+
+model ReaderSummaryDailyCanonicalRecoveryV4Lease {
+  tenantId                String    @map("tenant_id") @db.Uuid
+  workspaceId             String    @map("workspace_id") @db.Uuid
+  requestedUtcDate        DateTime  @map("requested_utc_date") @db.Date
+  sourceAuthoritySha256   String    @map("source_authority_sha256") @db.Char(64)
+  modelJobIdentity        String    @unique(map: "reader_summary_daily_canonical_recovery_v4_leases_identity_key") @map("model_job_identity") @db.Char(64)
+  state                   String
+  preModelConsumedAt      DateTime? @map("pre_model_consumed_at") @db.Timestamptz(6)
+  leaseOwner              String?   @map("lease_owner")
+  fencingToken            BigInt    @default(0) @map("fencing_token")
+  leasedAt                DateTime? @map("leased_at") @db.Timestamptz(6)
+  leaseExpiresAt          DateTime? @map("lease_expires_at") @db.Timestamptz(6)
+  absoluteExpiresAt       DateTime? @map("absolute_expires_at") @db.Timestamptz(6)
+  runningAt               DateTime? @map("running_at") @db.Timestamptz(6)
+  completedAt             DateTime? @map("completed_at") @db.Timestamptz(6)
+  failedAmbiguousAt       DateTime? @map("failed_ambiguous_at") @db.Timestamptz(6)
+  responseBytes           Bytes?    @map("response_bytes")
+  responseSha256          String?   @map("response_sha256") @db.Char(64)
+  attestation             Json?
+  attestationBytes        Bytes?    @map("attestation_bytes")
+  attestationSha256       String?   @map("attestation_sha256") @db.Char(64)
+  receiptBytes            Bytes?    @map("receipt_bytes")
+  receiptSha256           String?   @map("receipt_sha256") @db.Char(64)
+  readerSummaryJobId      String?   @map("reader_summary_job_id") @db.Uuid
+  readerSummaryArtifactId String?   @map("reader_summary_artifact_id") @db.Uuid
+  publicationId           String?   @map("publication_id") @db.Uuid
+  publicationReportSha256 String?   @map("publication_report_sha256") @db.Char(64)
+  publicationProofSha256  String?   @map("publication_proof_sha256") @db.Char(64)
+  weeklyEvidenceSha256    String?   @map("weekly_evidence_sha256") @db.Char(64)
+  publicEvidenceSha256    String?   @map("public_evidence_sha256") @db.Char(64)
+  publicFrontendSha256    String?   @map("public_frontend_sha256") @db.Char(64)
+  publicationPreparedAt   DateTime? @map("publication_prepared_at") @db.Timestamptz(6)
+  finalizedAt             DateTime? @map("finalized_at") @db.Timestamptz(6)
+  authority               ReaderSummaryDailyCanonicalRecoveryV4Authority @relation(fields: [tenantId, workspaceId, requestedUtcDate], references: [tenantId, workspaceId, requestedUtcDate], onDelete: Restrict, onUpdate: Restrict, map: "rs_daily_recovery_v4_leases_authority_fkey")
+
+  @@id([tenantId, workspaceId, requestedUtcDate], map: "reader_summary_daily_canonical_recovery_v4_leases_pkey")
+  @@index([tenantId, workspaceId, state, requestedUtcDate], map: "reader_summary_daily_canonical_recovery_v4_leases_state_idx")
+  @@map("reader_summary_daily_canonical_recovery_v4_leases")
+}
+
+model ReaderSummaryWeeklyCertificationSeal {
+  sealId          String   @id(map: "reader_summary_weekly_certification_seals_pkey") @map("seal_id")
+  sealSha256      String   @unique(map: "reader_summary_weekly_certification_seals_sha_key") @map("seal_sha256") @db.Char(64)
+  tenantId        String   @map("tenant_id") @db.Uuid
+  workspaceId     String   @map("workspace_id") @db.Uuid
+  scopeType       String   @map("scope_type")
+  scopeKey        String   @map("scope_key")
+  weekStartedOn   DateTime @map("week_started_on") @db.Date
+  weekEndedOn     DateTime @map("week_ended_on") @db.Date
+  days            Json
+  canonicalRecord Json     @map("canonical_record")
+  canonicalBytes  Bytes    @map("canonical_bytes")
+  recordedAt      DateTime @default(now()) @map("recorded_at") @db.Timestamptz(6)
+  reviewManifest  ReaderSummaryWeeklyReviewManifest? @relation("ReaderSummaryWeeklyReviewManifestSeal")
+
+  @@unique([tenantId, workspaceId, scopeType, scopeKey, weekStartedOn], map: "reader_summary_weekly_certification_seals_scope_week_key")
+  @@index([tenantId, workspaceId, weekStartedOn], map: "reader_summary_weekly_certification_seals_tenant_week_idx")
+  @@map("reader_summary_weekly_certification_seals")
+}
+
+model ReaderSummaryWeeklyReviewManifest {
+  manifestId                 String   @id(map: "reader_summary_weekly_review_manifests_pkey") @map("manifest_id")
+  manifestSha256             String   @unique(map: "reader_summary_weekly_review_manifests_sha_key") @map("manifest_sha256") @db.Char(64)
+  tenantId                   String   @map("tenant_id") @db.Uuid
+  workspaceId                String   @map("workspace_id") @db.Uuid
+  scopeType                  String   @map("scope_type")
+  scopeKey                   String   @map("scope_key")
+  weekStartedOn              DateTime @map("week_started_on") @db.Date
+  weekEndedOn                DateTime @map("week_ended_on") @db.Date
+  sealId                     String   @unique(map: "reader_summary_weekly_review_manifests_seal_key") @map("seal_id")
+  sealSha256                 String   @map("seal_sha256") @db.Char(64)
+  reviewAuthority            Json     @map("review_authority")
+  reviewAuthoritySha256      String   @map("review_authority_sha256") @db.Char(64)
+  observations               Json
+  citations                  Json
+  modelResponseSha256        String   @map("model_response_sha256") @db.Char(64)
+  executionAttestation       Json     @map("execution_attestation")
+  executionAttestationSha256 String   @map("execution_attestation_sha256") @db.Char(64)
+  canonicalRecord            Json     @map("canonical_record")
+  canonicalBytes             Bytes    @map("canonical_bytes")
+  recordedAt                 DateTime @default(now()) @map("recorded_at") @db.Timestamptz(6)
+  certificationSeal          ReaderSummaryWeeklyCertificationSeal @relation("ReaderSummaryWeeklyReviewManifestSeal", fields: [sealId], references: [sealId], onDelete: Restrict, onUpdate: Restrict, map: "reader_summary_weekly_review_manifests_seal_fkey")
+
+  @@unique([tenantId, workspaceId, scopeType, scopeKey, weekStartedOn], map: "reader_summary_weekly_review_manifests_scope_week_key")
+  @@map("reader_summary_weekly_review_manifests")
+}
+
 model ReaderSummaryRecoveryReceipt {
   publicationId           String                   @id(map: "reader_summary_recovery_receipts_pkey") @map("publication_id") @db.Uuid
   tenantId                String                   @map("tenant_id") @db.Uuid
@@ -1072,10 +1264,28 @@ model ReaderSummaryProductionRecoveryLease {
   consumedAt      DateTime?                               @map("consumed_at") @db.Timestamptz(6)
   days            ReaderSummaryProductionRecoveryDay[]
   dryRuns         ReaderSummaryProductionRecoveryDryRun[]
+  authorityCorrections ReaderSummaryProductionRecoveryAuthorityCorrection[]
 
   @@unique([id, tenantId, workspaceId], map: "reader_summary_production_recovery_leases_scope_key")
   @@index([tenantId, workspaceId, issuedAt], map: "reader_summary_production_recovery_leases_scope_idx")
   @@map("reader_summary_production_recovery_leases")
+}
+
+model ReaderSummaryProductionRecoveryAuthorityCorrection {
+  recoveryId               String                                  @id(map: "reader_summary_production_recovery_authority_corrections_pkey") @map("recovery_id") @db.Uuid
+  tenantId                 String                                  @map("tenant_id") @db.Uuid
+  workspaceId              String                                  @map("workspace_id") @db.Uuid
+  legacyCanonicalSha256    String                                  @map("legacy_canonical_sha256") @db.Char(64)
+  correctedCanonicalRecord Json                                    @map("corrected_canonical_record")
+  correctedCanonicalBytes  Bytes                                   @map("corrected_canonical_bytes")
+  correctedCanonicalSha256 String                                  @map("corrected_canonical_sha256") @db.Char(64)
+  correctionManifest       Json                                    @map("correction_manifest")
+  correctionManifestBytes  Bytes                                   @map("correction_manifest_bytes")
+  correctionManifestSha256 String                                  @map("correction_manifest_sha256") @db.Char(64)
+  recovery                 ReaderSummaryProductionRecoveryLease    @relation(fields: [recoveryId, tenantId, workspaceId], references: [id, tenantId, workspaceId], onDelete: Restrict, onUpdate: Restrict, map: "reader_summary_production_recovery_authority_corrections_lease_")
+
+  @@unique([recoveryId, tenantId, workspaceId, legacyCanonicalSha256, correctedCanonicalSha256], map: "reader_summary_production_recovery_authority_corrections_scope_")
+  @@map("reader_summary_production_recovery_authority_corrections")
 }
 
 model ReaderSummaryProductionRecoveryDay {

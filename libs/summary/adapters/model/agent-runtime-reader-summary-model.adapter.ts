@@ -61,7 +61,7 @@ export type AgentRuntimeReaderSummaryModelAdapterOptions = {
 
 const provider = "agent-runtime";
 const defaultAgentProvider: AgentRuntimeProvider = "codex";
-const defaultModel = "gpt-5.5";
+const defaultModel = "gpt-5.6-sol";
 const defaultReasoningEffort = "xhigh" as const;
 const defaultEvalDatasetVersion = "reader_summary.eval.mvp.v1";
 const defaultTimeoutMs = 600_000;

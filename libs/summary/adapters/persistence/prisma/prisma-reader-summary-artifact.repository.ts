@@ -7,20 +7,23 @@ import {
   readerSummaryScopeKey,
   type ReaderSummaryArtifact,
   type ReaderSummaryCadence,
+  type ReaderSummaryGitHubProjectionAudit,
 } from "../../../domain";
 import type {
+  ReaderSummaryDailyCanonicalRecoveryV4Binding,
+  FindReaderSummaryWeeklyArtifactQuery,
   ListReaderSummaryArtifactsQuery,
   ListReaderSummaryArtifactsResult,
   ListReaderSummaryPeriodSummariesResult,
+  PersistedReaderSummaryWeeklyArtifact,
   ReaderSummaryPeriodSummary,
   ReaderSummaryArtifactRepositoryPort,
   ReaderSummaryRejectedArtifactDebug,
   ReaderSummaryWeeklyArtifactRepositoryPort,
   SaveReaderSummaryWeeklyArtifactCommand,
 } from "../../../ports";
-import { buildReaderSummaryWeeklyPublicationPersistencePayload } from "../reader-summary-publication-proof";
+import type { PrismaReaderSummaryClient } from "./prisma-reader-summary-client";
 import type { PrismaSummaryClient } from "./prisma-summary-client";
-import type { PrismaReaderSummaryArtifactCreate } from "./prisma-reader-summary-client";
 import {
   readerSummaryArtifactFromPrisma,
   readerSummaryCitationsToPrisma,
@@ -36,12 +39,33 @@ import {
   parseSummaryCursor,
   type PrismaSummaryStatus,
 } from "./prisma-summary-records";
+import {
+  findReaderSummaryWeeklyArtifactById,
+  saveReaderSummaryWeeklyArtifact,
+} from "./prisma-reader-summary-weekly-artifact";
+import { runSerializableReaderSummaryTransaction } from "./prisma-summary-transaction";
 
 const VISIBLE_READER_SUMMARY_STATUSES = ["COMPLETED"] as const;
 const PUBLISHED_READER_SUMMARY_STATUSES = [
   ...VISIBLE_READER_SUMMARY_STATUSES,
   "NO_SIGNAL",
 ] as const;
+const dailyCanonicalRecoveryDates: readonly string[] = [
+  "2026-07-23",
+  "2026-07-24",
+  "2026-07-25",
+  "2026-07-26",
+  "2026-07-27",
+  "2026-07-28",
+  "2026-07-29",
+  "2026-07-30",
+];
+
+type DailyCanonicalRecoveryScope = Readonly<{
+  tenantId: string;
+  workspaceId: string;
+  requestedUtcDate: string;
+}>;
 
 type ReaderSummaryPublicationDecisionForPersistence = NonNullable<
   NonNullable<
@@ -58,6 +82,7 @@ export class PrismaReaderSummaryArtifactRepository implements
     options?: Parameters<ReaderSummaryArtifactRepositoryPort["save"]>[1],
   ): Promise<void> {
     const snapshot = artifact.toSnapshot();
+    const recoveryScope = dailyCanonicalRecoveryScope(snapshot);
     const existing = await this.prisma.readerSummaryArtifact.findFirst({
       where: {
         id: snapshot.readerSummaryId,
@@ -66,17 +91,44 @@ export class PrismaReaderSummaryArtifactRepository implements
       },
     });
     if (existing !== null) {
+      const persistedRecoveryScope = dailyCanonicalRecoveryScopeFromPersisted(
+        existing,
+      );
+      if (persistedRecoveryScope !== undefined) {
+        const classified = await withPrismaWriteRetry(() =>
+          runSerializableReaderSummaryTransaction(
+            this.prisma,
+            (prisma) => verifyReaderSummaryDailyCanonicalRecoveryV4Provenance({
+              prisma,
+              scope: persistedRecoveryScope,
+              audit: storedGithubProjectionAudit(existing.qualitySignals),
+            }),
+          ),
+        );
+        if (classified === undefined) return;
+        const verified = await withPrismaWriteRetry(() =>
+          runSerializableReaderSummaryTransaction(
+            this.prisma,
+            (prisma) => verifyReaderSummaryDailyCanonicalRecoveryV4Provenance({
+              prisma,
+              readerSummaryArtifactId: snapshot.readerSummaryId,
+            }),
+          ),
+        );
+        if (classified !== true || verified !== true) {
+          throw new Error(
+            "Daily canonical recovery artifact was not re-verified by PostgreSQL",
+          );
+        }
+      }
       return;
     }
     const publicationDecision = options?.publicationDecision;
-    const githubProjectionVerified = readerSummaryHasVerifiedGitHubProjection({
-      artifact,
-      audit: options?.githubProjectionAudit,
-    });
-    const status: PrismaSummaryStatus =
-      publicationDecision?.status === "rejected" || !githubProjectionVerified
-        ? "REJECTED"
-        : "RUNNING";
+    const ordinaryGitHubProjectionVerified =
+      readerSummaryHasVerifiedGitHubProjection({
+        artifact,
+        audit: options?.githubProjectionAudit,
+      });
     const artifactPayload = serializeReaderSummaryArtifact(artifact);
     const citations = readerSummaryCitationsToPrisma(artifact);
     const qualitySignals = {
@@ -89,7 +141,27 @@ export class PrismaReaderSummaryArtifactRepository implements
     const scopeFields = readerSummaryScopeToPrisma(snapshot.scope);
 
     await withPrismaWriteRetry(() =>
-      this.prisma.readerSummaryArtifact.upsert({
+      runSerializableReaderSummaryTransaction(this.prisma, async (prisma) => {
+        const recoveryVerified = recoveryScope === undefined
+          ? undefined
+          : await verifyReaderSummaryDailyCanonicalRecoveryV4Provenance({
+              prisma,
+              artifact,
+              audit: options?.githubProjectionAudit,
+            });
+        if (recoveryScope !== undefined && recoveryVerified !== undefined &&
+          recoveryVerified !== true) {
+          throw new Error(
+            "Daily canonical recovery artifact was not re-verified by PostgreSQL",
+          );
+        }
+        const githubProjectionVerified = recoveryVerified ??
+          ordinaryGitHubProjectionVerified;
+        const status: PrismaSummaryStatus =
+          publicationDecision?.status === "rejected" || !githubProjectionVerified
+            ? "REJECTED"
+            : "RUNNING";
+        await prisma.readerSummaryArtifact.upsert({
           where: { id: snapshot.readerSummaryId },
           update: {
             ...scopeFields,
@@ -131,7 +203,8 @@ export class PrismaReaderSummaryArtifactRepository implements
             citations,
             qualitySignals,
           },
-        }),
+        });
+      }),
     );
   }
 
@@ -243,43 +316,201 @@ export class PrismaReaderSummaryArtifactRepository implements
     return record === null ? null : rejectedDebugFromPrisma(record);
   }
   async saveWeekly(command: SaveReaderSummaryWeeklyArtifactCommand): Promise<void> {
-    const payload = buildReaderSummaryWeeklyPublicationPersistencePayload(command);
-    const existing = await this.prisma.readerSummaryArtifact.findFirst({
-      where: { id: payload.artifactId, tenantId: payload.tenantId,
-        workspaceId: payload.workspaceId },
-    });
-    if (existing !== null) throw weeklyAuthorizationReplay();
-    const data: PrismaReaderSummaryArtifactCreate = {
-      id: payload.artifactId, tenantId: payload.tenantId,
-      workspaceId: payload.workspaceId, schemaVersion: 1,
-      ...readerSummaryScopeToPrisma(payload.scope), cadence: "weekly",
-      periodStartedAt: new Date(payload.periodStartedAt),
-      periodEndedAt: new Date(payload.periodEndedAt), periodTimezone: "UTC",
-      periodKey: payload.periodKey, status: "RUNNING", userId: null,
-      subscriptionId: null, modelVersion: payload.modelVersion,
-      promptVersion: payload.promptVersion, headline: payload.headline,
-      summaryText: payload.summaryText, artifactPayload: payload.artifactPayload,
-      citations: payload.citations, qualitySignals: {
-        ...payload.qualitySignals, weeklyPublicationProof: payload.proof,
-      },
-    };
-    try {
-      const creator = this.prisma.readerSummaryArtifact as unknown as {
-        create(args: { readonly data: PrismaReaderSummaryArtifactCreate }): Promise<PrismaReaderSummaryArtifactRecord>;
-      };
-      await withPrismaWriteRetry(() => creator.create({ data }));
-    } catch (error: unknown) {
-      if (isPrismaUniqueConstraint(error)) throw weeklyAuthorizationReplay();
-      throw error;
-    }
+    await saveReaderSummaryWeeklyArtifact(this.prisma, command);
+  }
+
+  async findWeeklyById(
+    query: FindReaderSummaryWeeklyArtifactQuery,
+  ): Promise<PersistedReaderSummaryWeeklyArtifact | null> {
+    return findReaderSummaryWeeklyArtifactById(this.prisma, query);
   }
 }
 
-const isPrismaUniqueConstraint = (error: unknown): boolean =>
-  typeof error === "object" && error !== null && "code" in error &&
-  error.code === "P2002";
-const weeklyAuthorizationReplay = (): Error => new Error(
-  "Reader summary weekly publication authorization was replayed");
+/**
+ * The V4 recovery audit is data, never an in-process capability. This one
+ * PostgreSQL predicate is called before an artifact can be RUNNING and again
+ * from the fenced final-publication path.
+ */
+export const verifyReaderSummaryDailyCanonicalRecoveryV4Provenance = async (
+  input: Readonly<{
+    prisma: PrismaReaderSummaryClient;
+    artifact?: ReaderSummaryArtifact;
+    audit?: ReaderSummaryGitHubProjectionAudit;
+    readerSummaryArtifactId?: string;
+    scope?: DailyCanonicalRecoveryScope;
+  }>,
+): Promise<boolean | undefined> => {
+  const sourceCount = Number(input.artifact !== undefined) +
+    Number(input.readerSummaryArtifactId !== undefined) +
+    Number(input.scope !== undefined);
+  if (sourceCount !== 1) {
+    throw new Error(
+      "Daily canonical recovery verifier requires one canonical artifact scope source",
+    );
+  }
+  const scope = input.scope ?? (input.artifact === undefined
+    ? undefined
+    : dailyCanonicalRecoveryScope(input.artifact.toSnapshot()));
+  if (input.artifact !== undefined && scope === undefined) return undefined;
+  const audit = input.audit;
+  const binding = dailyCanonicalRecoveryBinding(audit);
+  if (binding !== undefined && input.artifact !== undefined) {
+    if (!bindingMatchesArtifact(binding, input.artifact)) {
+      throw new Error("Daily canonical recovery audit scope diverged from artifact");
+    }
+  }
+  const rows = await input.prisma.$queryRaw<readonly {
+    verified: boolean | null;
+  }[]>`
+    SELECT public."verify_reader_summary_daily_canonical_recovery_v4_provenance"(
+      ${scope?.tenantId ?? null}::UUID,
+      ${scope?.workspaceId ?? null}::UUID,
+      ${scope?.requestedUtcDate ?? null}::DATE,
+      ${audit === undefined ? null : JSON.stringify(audit)}::JSONB,
+      ${input.readerSummaryArtifactId ?? null}::UUID
+    ) AS verified
+  `;
+  if (rows.length !== 1 || rows[0] === undefined) {
+    throw new Error("Daily canonical recovery PostgreSQL verifier returned no outcome");
+  }
+  return rows[0].verified === null ? undefined : rows[0].verified === true;
+};
+
+const dailyCanonicalRecoveryBinding = (
+  audit: ReaderSummaryGitHubProjectionAudit | undefined,
+): ReaderSummaryDailyCanonicalRecoveryV4Binding | undefined => {
+  if (audit === undefined || !("recoveryV4" in audit)) return undefined;
+  const binding = audit.recoveryV4 as unknown;
+  if (typeof binding !== "object" || binding === null || Array.isArray(binding)) {
+    return undefined;
+  }
+  const value = binding as Record<string, unknown>;
+  const expectedKeys = [
+    "schemaVersion",
+    "recoveryVersion",
+    "selectedOutputKind",
+    "sourceAuthoritySchemaVersion",
+    "tenantId",
+    "workspaceId",
+    "requestedUtcDate",
+    "ingestionCutoff",
+    "sourceAuthoritySha256",
+    "modelJobIdentity",
+    "outputTextSha256",
+    "outputTextByteLength",
+    "githubProjectionSha256",
+  ] as const;
+  if (
+    Object.keys(value).length !== expectedKeys.length ||
+    expectedKeys.some((key) => !(key in value)) ||
+    value.schemaVersion !== "reader_summary.daily_canonical_recovery_provenance.v2" ||
+    value.recoveryVersion !== "reader_summary.daily_canonical_recovery.v4" ||
+    value.selectedOutputKind !== "output_text" ||
+    value.sourceAuthoritySchemaVersion !== 2 ||
+    !isText(value.tenantId) ||
+    !isText(value.workspaceId) ||
+    !/^\d{4}-\d{2}-\d{2}$/u.test(String(value.requestedUtcDate)) ||
+    !isExactIso(value.ingestionCutoff) ||
+    !isSha256(value.sourceAuthoritySha256) ||
+    !isSha256(value.modelJobIdentity) ||
+    !isSha256(value.outputTextSha256) ||
+    !isSha256(value.githubProjectionSha256) ||
+    !Number.isSafeInteger(value.outputTextByteLength) ||
+    (value.outputTextByteLength as number) < 1
+  ) {
+    return undefined;
+  }
+  return value as unknown as ReaderSummaryDailyCanonicalRecoveryV4Binding;
+};
+
+const storedGithubProjectionAudit = (
+  qualitySignals: unknown,
+): ReaderSummaryGitHubProjectionAudit | undefined => {
+  if (
+    typeof qualitySignals !== "object" || qualitySignals === null ||
+    Array.isArray(qualitySignals)
+  ) {
+    return undefined;
+  }
+  const audit = (qualitySignals as Record<string, unknown>).githubProjectionAudit;
+  return typeof audit === "object" && audit !== null && !Array.isArray(audit)
+    ? audit as ReaderSummaryGitHubProjectionAudit
+    : undefined;
+};
+
+const dailyCanonicalRecoveryScope = (
+  snapshot: ReturnType<ReaderSummaryArtifact["toSnapshot"]>,
+): DailyCanonicalRecoveryScope | undefined => {
+  const requestedUtcDate = snapshot.period.startedAt.toISOString().slice(0, 10);
+  if (
+    snapshot.scope.type !== "workspace" ||
+    snapshot.period.cadence !== "daily" ||
+    snapshot.period.timezone !== "UTC" ||
+    snapshot.period.startedAt.toISOString() !==
+      `${requestedUtcDate}T00:00:00.000Z` ||
+    snapshot.period.endedAt.toISOString() !== nextUtcDate(requestedUtcDate) ||
+    !dailyCanonicalRecoveryDates.includes(requestedUtcDate)
+  ) {
+    return undefined;
+  }
+  return {
+    tenantId: snapshot.tenantId,
+    workspaceId: snapshot.workspaceId,
+    requestedUtcDate,
+  };
+};
+
+const dailyCanonicalRecoveryScopeFromPersisted = (
+  record: PrismaReaderSummaryArtifactRecord,
+): DailyCanonicalRecoveryScope | undefined => {
+  const requestedUtcDate = record.periodStartedAt.toISOString().slice(0, 10);
+  if (
+    record.scopeType !== "workspace" ||
+    record.cadence !== "daily" ||
+    record.periodTimezone !== "UTC" ||
+    record.periodStartedAt.toISOString() !==
+      `${requestedUtcDate}T00:00:00.000Z` ||
+    record.periodEndedAt.toISOString() !== nextUtcDate(requestedUtcDate) ||
+    !dailyCanonicalRecoveryDates.includes(requestedUtcDate)
+  ) {
+    return undefined;
+  }
+  return {
+    tenantId: record.tenantId,
+    workspaceId: record.workspaceId,
+    requestedUtcDate,
+  };
+};
+
+const bindingMatchesArtifact = (
+  binding: ReaderSummaryDailyCanonicalRecoveryV4Binding,
+  artifact: ReaderSummaryArtifact,
+): boolean => {
+  const snapshot = artifact.toSnapshot();
+  return binding.tenantId === snapshot.tenantId &&
+    binding.workspaceId === snapshot.workspaceId &&
+    snapshot.scope.type === "workspace" &&
+    snapshot.period.cadence === "daily" &&
+    snapshot.period.timezone === "UTC" &&
+    snapshot.period.startedAt.toISOString() ===
+      `${binding.requestedUtcDate}T00:00:00.000Z` &&
+    snapshot.period.endedAt.toISOString() === nextUtcDate(binding.requestedUtcDate);
+};
+
+const nextUtcDate = (date: string): string =>
+  new Date(Date.parse(`${date}T00:00:00.000Z`) + 86_400_000).toISOString();
+
+const isText = (value: unknown): value is string =>
+  typeof value === "string" && value.length > 0;
+
+const isSha256 = (value: unknown): value is string =>
+  typeof value === "string" && /^[0-9a-f]{64}$/u.test(value);
+
+const isExactIso = (value: unknown): value is string => {
+  if (typeof value !== "string") return false;
+  const parsed = new Date(value);
+  return Number.isFinite(parsed.getTime()) && parsed.toISOString() === value;
+};
 
 const readerSummaryArtifactWhere = (
   query: ListReaderSummaryArtifactsQuery,

@@ -187,6 +187,51 @@ class _ReaderSummariesClient implements ReaderSummariesClient {
   }
 
   @override
+  Future<ReaderSummaryWeeklyProjectionResponseDto>
+  readerSummaryWeeklyProjectionControllerGet({
+    required String weekStartedOn,
+    required String xWorkspaceId,
+    required String xTenantId,
+    String? authorization,
+    String? xWorkspaceRole,
+  }) async {
+    final _extra = <String, dynamic>{};
+    final queryParameters = <String, dynamic>{
+      r'weekStartedOn': weekStartedOn,
+    };
+    queryParameters.removeWhere((k, v) => v == null);
+    final _headers = <String, dynamic>{
+      r'x-workspace-id': xWorkspaceId,
+      r'x-tenant-id': xTenantId,
+      r'authorization': authorization,
+      r'x-workspace-role': xWorkspaceRole,
+    };
+    _headers.removeWhere((k, v) => v == null);
+    const Map<String, dynamic>? _data = null;
+    final _options = _setStreamType<ReaderSummaryWeeklyProjectionResponseDto>(
+      Options(method: 'GET', headers: _headers, extra: _extra)
+          .compose(
+            _dio.options,
+            '/reader-summaries/weekly',
+            queryParameters: queryParameters,
+            data: _data,
+          )
+          .copyWith(baseUrl: _combineBaseUrls(_dio.options.baseUrl, baseUrl)),
+    );
+    final _result = await _dio.fetch<Map<String, Object?>>(_options);
+    late ReaderSummaryWeeklyProjectionResponseDto _value;
+    try {
+      _value = ReaderSummaryWeeklyProjectionResponseDto.fromJson(
+        _result.data!,
+      );
+    } on Object catch (e, s) {
+      errorLogger?.logError(e, s, _options, response: _result);
+      rethrow;
+    }
+    return _value;
+  }
+
+  @override
   Future<ReaderSummaryQualityRejectionResponseDto>
   readerSummaryJobControllerGetQualityRejection({
     required String readerSummaryJobId,

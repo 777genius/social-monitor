@@ -141,6 +141,9 @@ export type PersistedReaderSummaryWeeklyArtifact = Readonly<{
 
 export interface ReaderSummaryWeeklyArtifactRepositoryPort {
   saveWeekly(command: SaveReaderSummaryWeeklyArtifactCommand): Promise<void>;
+  findWeeklyById(
+    query: FindReaderSummaryWeeklyArtifactQuery,
+  ): Promise<PersistedReaderSummaryWeeklyArtifact | null>;
 }
 
 export type FindReaderSummaryWeeklyArtifactQuery = Readonly<{

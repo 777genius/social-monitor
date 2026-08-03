@@ -4,9 +4,38 @@
 # defined. Collector replacement must prove a real successful export because
 # application readiness intentionally permits only a short startup grace.
 
+BACKEND_RUNTIME_HEALTH_SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+BACKEND_RABBITMQ_QUORUM_HEALTH_SCRIPT=$BACKEND_RUNTIME_HEALTH_SCRIPT_DIR/rabbitmq-quorum-health.sh
+BACKEND_RABBITMQ_QUORUM_RECOVERY_SCRIPT=$BACKEND_RUNTIME_HEALTH_SCRIPT_DIR/rabbitmq-quorum-recovery.sh
 BACKEND_HEALTH_STARTUP_GRACE_SECONDS=${BACKEND_HEALTH_STARTUP_GRACE_SECONDS:-240}
 OTEL_COLLECTOR_HEALTH_STARTUP_GRACE_SECONDS=${OTEL_COLLECTOR_HEALTH_STARTUP_GRACE_SECONDS:-600}
 BACKEND_HEALTH_RETRY_SLEEP_SECONDS=${BACKEND_HEALTH_RETRY_SLEEP_SECONDS:-3}
+
+backend_health_load_rabbitmq_quorum_recovery() {
+  local script
+
+  if declare -F rabbitmq_quorum_recovery_ensure_steady >/dev/null && \
+    declare -F rabbitmq_quorum_health_verify_worker_container >/dev/null; then
+    return 0
+  fi
+  for script in "$BACKEND_RABBITMQ_QUORUM_HEALTH_SCRIPT" \
+    "$BACKEND_RABBITMQ_QUORUM_RECOVERY_SCRIPT"; do
+    [[ -f $script && ! -L $script && -r $script ]] || {
+      printf 'deploy-error: RabbitMQ quorum runtime asset is missing or unsafe\n' >&2
+      return 1
+    }
+  done
+  if ! declare -F rabbitmq_quorum_health_verify_worker_container >/dev/null; then
+    # shellcheck source=ops/deploy/rabbitmq-quorum-health.sh
+    source "$BACKEND_RABBITMQ_QUORUM_HEALTH_SCRIPT" || return 1
+  fi
+  if ! declare -F rabbitmq_quorum_recovery_ensure_steady >/dev/null; then
+    # shellcheck source=ops/deploy/rabbitmq-quorum-recovery.sh
+    source "$BACKEND_RABBITMQ_QUORUM_RECOVERY_SCRIPT" || return 1
+  fi
+  declare -F rabbitmq_quorum_recovery_ensure_steady >/dev/null && \
+    declare -F rabbitmq_quorum_health_verify_worker_container >/dev/null
+}
 
 backend_health_positive_integer() {
   [[ $1 =~ ^[1-9][0-9]*$ ]]
@@ -46,7 +75,7 @@ backend_health_sanitize_diagnostic_value() {
   value=$(printf '%s' "$value" | LC_ALL=C tr -cd '[:alnum:] ._:/@%+=,-')
   value=${value:0:160}
   [[ -n $value ]] || value=empty
-  lower=${value,,}
+  lower=$(printf '%s' "$value" | LC_ALL=C tr '[:upper:]' '[:lower:]')
   case $lower in
     *authorization*|*bearer*|*credential*|*password*|*passwd*|*secret*|*token*|*api_key*|*apikey*|*key=*)
       value=redacted
@@ -137,7 +166,7 @@ backend_health_container_diagnostic() {
       "$service" >&2
     return 0
   fi
-  if ! container=$("${COMPOSE[@]}" --profile app ps -q "$service" 2>/dev/null); then
+  if ! container=$("${COMPOSE[@]}" --profile app ps --no-trunc -q "$service" 2>/dev/null); then
     printf 'deploy-error: backend health final diagnostics: service=%s container=unavailable status=compose_ps_failed oom=unavailable exit=unavailable state_error=unavailable\n' \
       "$service" >&2
     return 0
@@ -189,6 +218,8 @@ backend_health_emit_final_diagnostics() {
 verify_backend() {
   local service container status oom exit_code state_error
   local require_ready_json=false ready_json
+  backend_health_load_rabbitmq_quorum_recovery || return 1
+  rabbitmq_quorum_recovery_ensure_steady || return 1
   curl -fsS --max-time 15 http://127.0.0.1:13000/healthz \
     >/dev/null 2>&1 || return 1
   for service in "$@"; do
@@ -205,8 +236,8 @@ verify_backend() {
   fi
   for service in "$@"; do
     [[ $service == migrate || $service == daily-runner ]] && continue
-    container=$("${COMPOSE[@]}" --profile app ps -q "$service") || return 1
-    [[ -n $container && $container != *[$'\t\r\n ']* ]] || return 1
+    container=$("${COMPOSE[@]}" --profile app ps --no-trunc -q "$service") || return 1
+    [[ $container =~ ^[0-9a-f]{64}$ ]] || return 1
     status=$(docker inspect "$container" --format '{{.State.Status}}')
     oom=$(docker inspect "$container" --format '{{.State.OOMKilled}}')
     if [[ $status != running || $oom != false ]]; then
@@ -221,6 +252,7 @@ verify_backend() {
         "$(backend_health_sanitize_diagnostic_value "$state_error")" >&2
       return 1
     fi
+    rabbitmq_quorum_health_verify_worker_container "$service" "$container" || return 1
   done
 }
 

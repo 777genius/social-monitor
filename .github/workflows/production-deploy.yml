@@ -254,20 +254,20 @@ jobs:
           npm ci
           npm run check:architecture
           npm run check:source-line-cap
+          npm run check:reader-summary-weekly-production-runner
+          READER_SUMMARY_WEEKLY_RECEIPT_TEST_SCHEMA=weekly_execution_receipt_test_ci \
+            npm run check:reader-summary-weekly-execution-receipt-postgres18
           npm run check:secrets
+          npm run check:dependencies
           npm run check:container
           npm run check:runtime-compose
           npm run check:runtime-profile-guards
           npm run check:migrations
           npm run check:tenant-db-guards
+          npm run check:backup-restore
           npm run prisma:generate
           npm run build
           if [[ $BACKEND_CHANGED == true ]]; then
-            npm run check:backup-restore
-            npm run check:reader-summary-weekly-production-runner
-            READER_SUMMARY_WEEKLY_RECEIPT_TEST_SCHEMA=weekly_execution_receipt_test_ci \
-              npm run check:reader-summary-weekly-execution-receipt-postgres18
-            npm run check:dependencies
             npm run check:postgres-runtime-pool-inventory
             npm run check:postgres-runtime-pool-unit
             TENANT_RLS_TEST_ADMIN_DATABASE_URL=postgresql://social_monitor_pool_ci:social_monitor_local_password@127.0.0.1:5432/social_monitor_pool_ci \

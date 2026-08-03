@@ -18,6 +18,7 @@ import {
   makePublicationFixtureRuntimeDatabaseOwner,
   publicationDatabaseUrl,
   publicationProtectedRolePresence,
+  provisionPublicationFixtureDailyTerminalRole,
   publicationRuntimeDatabaseUrl,
   quotePostgresIdentifier,
   quotePostgresLiteral,
@@ -63,10 +64,12 @@ let ownerRolePreexisting = false;
 let capabilityRolePreexisting = false;
 let schemaOwnerRolePreexisting = false;
 let tenantSystemCapabilityRolePreexisting = false;
+let dailyActivationDefinerRolePreexisting = false;
 let databaseCreated = false;
 let migrationAdminCreated = false;
 let runtimeCreated = false;
 let systemRuntimeCreated = false;
+let dailyTerminalRoleCreated = false;
 
 async function main(): Promise<void> {
   const protectedRoles = await publicationProtectedRolePresence(serverAdmin);
@@ -74,6 +77,7 @@ async function main(): Promise<void> {
   capabilityRolePreexisting = protectedRoles.capability;
   schemaOwnerRolePreexisting = protectedRoles.schemaOwner;
   tenantSystemCapabilityRolePreexisting = protectedRoles.tenantSystemCapability;
+  dailyActivationDefinerRolePreexisting = protectedRoles.dailyActivationDefiner;
   try {
     await createFixtureDatabase();
     preparePrePublicationMigrations(workspace);
@@ -106,9 +110,11 @@ async function main(): Promise<void> {
       capabilityRolePreexisting,
       schemaOwnerRolePreexisting,
       tenantSystemCapabilityRolePreexisting,
+      dailyActivationDefinerRolePreexisting,
       fixtureDatabaseCreated: databaseCreated,
       fixtureMigrationAdminRoleCreated: migrationAdminCreated,
       fixtureRuntimeRoleCreated: runtimeCreated,
+      fixtureDailyTerminalRoleCreated: dailyTerminalRoleCreated,
       systemRuntimeRole,
       systemRuntimeRoleCreated: systemRuntimeCreated,
     });
@@ -146,11 +152,18 @@ async function createFixtureDatabase(): Promise<void> {
        TO ${quotePostgresIdentifier(systemRuntimeRole)}`,
   );
   systemRuntimeCreated = true;
+  dailyTerminalRoleCreated =
+    await provisionPublicationFixtureDailyTerminalRole({
+      dailyTerminalPassword: password,
+      migrationAdminRole,
+      serverAdmin,
+    });
   await makePublicationFixtureRuntimeDatabaseOwner({
     databaseName,
     migrationAdminDatabaseUrl: migrationAdminUrl,
     migrationAdminRole,
     runtimeRole,
+    systemRuntimeRole,
     targetDatabaseUrl,
   });
 }

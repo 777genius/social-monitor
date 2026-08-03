@@ -16,45 +16,18 @@ import type {
   SubscriptionRuntimeInstallationIdentity,
   SubscriptionRuntimeInstallationInspector,
 } from "./subscription-runtime-installation";
+import {
+  admitSubscriptionRuntimeRequest,
+  parseSubscriptionRuntimeJsonObject,
+  productionAgentRuntimeModel,
+  productionAgentRuntimeReasoningEffort,
+  type SubscriptionRuntimePurposeProfile,
+} from "./subscription-runtime-purpose-model-policy";
 
-export const productionAgentRuntimeModel = "gpt-5.5";
-export const productionAgentRuntimeReasoningEffort = "xhigh";
-
-export const canonicalSubscriptionRuntimeRequest = (
-  request: AgentRuntimeExecutionRequest,
-): Record<string, unknown> => {
-  const controls = parseControls(request.controlsJson);
-  return {
-    protocolVersion: 1,
-    runId: request.requestId,
-    providerInstanceId: request.providerInstanceId,
-    cwd: request.cwd,
-    timeoutMs: request.timeoutMs,
-    task: {
-      kind: "structured-prompt",
-      systemPrompt: request.systemPrompt,
-      prompt: request.prompt,
-      outputSchemaName:
-        typeof controls.outputSchemaName === "string"
-          ? controls.outputSchemaName
-          : undefined,
-      controls: {
-        ...controls,
-        responseFormat: "json",
-        outputSchemaJson: request.outputSchemaJson,
-      },
-      metadata: request.metadata,
-    },
-    context: {
-      application: "social-monitor",
-      purpose: request.purpose,
-      correlationId: request.correlationId,
-      metadata: {
-        tenantId: request.tenantId,
-        workspaceId: request.workspaceId,
-      },
-    },
-  };
+export {
+  parseSubscriptionRuntimeJsonObject,
+  productionAgentRuntimeModel,
+  productionAgentRuntimeReasoningEffort,
 };
 
 export const attachExecutorOwnedExecutionAttestation = async (params: {
@@ -62,8 +35,7 @@ export const attachExecutorOwnedExecutionAttestation = async (params: {
   readonly request: AgentRuntimeExecutionRequest;
   readonly canonicalRequest: Record<string, unknown>;
   readonly result: AgentRuntimeExecutionResult;
-  readonly model: string;
-  readonly reasoningEffort: string;
+  readonly profile: SubscriptionRuntimePurposeProfile;
   readonly installationInspector: SubscriptionRuntimeInstallationInspector;
   readonly admittedInstallation: SubscriptionRuntimeInstallationIdentity;
 }): Promise<AgentRuntimeExecutionResult> => {
@@ -84,15 +56,24 @@ const createExecutionAttestation = async (params: {
   readonly request: AgentRuntimeExecutionRequest;
   readonly canonicalRequest: Record<string, unknown>;
   readonly result: AgentRuntimeExecutionResult;
-  readonly model: string;
-  readonly reasoningEffort: string;
+  readonly profile: SubscriptionRuntimePurposeProfile;
   readonly installationInspector: SubscriptionRuntimeInstallationInspector;
   readonly admittedInstallation: SubscriptionRuntimeInstallationIdentity;
 }): Promise<AgentRuntimeExecutionAttestation> => {
+  const exactAdmission = admitSubscriptionRuntimeRequest(params.request);
   if (
-    params.request.provider !== "codex" ||
-    params.model !== productionAgentRuntimeModel ||
-    params.reasoningEffort !== productionAgentRuntimeReasoningEffort
+    params.request.provider !== params.profile.provider ||
+    canonicalJsonSha256(params.canonicalRequest) !==
+      canonicalJsonSha256(exactAdmission.canonicalRequest) ||
+    params.profile.provider !== exactAdmission.profile.provider ||
+    params.profile.model !== exactAdmission.profile.model ||
+    params.profile.reasoningEffort !==
+      exactAdmission.profile.reasoningEffort ||
+    params.profile.outputKind !== exactAdmission.profile.outputKind ||
+    params.profile.responseFormat !== exactAdmission.profile.responseFormat ||
+    params.profile.reasoningEffort !== productionAgentRuntimeReasoningEffort ||
+    (params.profile.model !== productionAgentRuntimeModel &&
+      params.profile.model !== "gpt-5.6-sol")
   ) {
     throw new Error("Agent runtime execution identity is not production-safe");
   }
@@ -109,6 +90,9 @@ const createExecutionAttestation = async (params: {
     throw new Error("Agent runtime installation identity is malformed");
   }
   const output = selectedAgentRuntimeOutput(params.result);
+  if (output.kind !== params.profile.outputKind) {
+    throw new Error("Agent runtime output kind conflicts with purpose policy");
+  }
 
   return {
     schemaVersion: agentRuntimeExecutionAttestationSchemaVersion,
@@ -116,8 +100,8 @@ const createExecutionAttestation = async (params: {
     purpose: params.request.purpose,
     canonicalRequestSha256: canonicalJsonSha256(params.canonicalRequest),
     provider: params.request.provider,
-    model: params.model,
-    reasoningEffort: params.reasoningEffort,
+    model: params.profile.model,
+    reasoningEffort: params.profile.reasoningEffort,
     runtimeEngine: subscriptionRuntimeEngine,
     runtimePackageVersion: installation.runtimePackageVersion,
     launcherSha256: installation.launcherSha256,
@@ -147,28 +131,3 @@ export const invalidAttestationResult = (): AgentRuntimeExecutionResult => ({
     details: {},
   },
 });
-
-const parseControls = (value: string): Record<string, unknown> => {
-  return parseSubscriptionRuntimeJsonObject(value, "controls_json");
-};
-
-export const parseSubscriptionRuntimeJsonObject = (
-  value: string,
-  label: string,
-): Record<string, unknown> => {
-  try {
-    const parsed: unknown = JSON.parse(value);
-    if (
-      parsed === null ||
-      typeof parsed !== "object" ||
-      Array.isArray(parsed)
-    ) {
-      throw new Error(`${label} must be a JSON object`);
-    }
-    return parsed as Record<string, unknown>;
-  } catch (error) {
-    throw new Error(
-      error instanceof Error ? error.message : `${label} must be JSON`,
-    );
-  }
-};

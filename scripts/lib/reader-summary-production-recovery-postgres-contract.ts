@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { PrismaReaderSummaryProductionRecoveryAuthority } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-production-recovery-authority";
@@ -10,27 +11,24 @@ import {
   readerSummaryProductionRecoveryWorkspaceId,
 } from "@social-monitor/summary/ports";
 import { assertReaderSummaryProductionRecoveryCanonicalBounds } from "./reader-summary-production-recovery-canonical-bounds-postgres-contract";
-type RecoveryExecutionGuardModule = Readonly<{
-  PrismaReaderSummaryProductionRecoveryExecutionGuard: new (
-    client: unknown,
-  ) => Readonly<{
-    claim(params: {
-      readonly binding: ReaderSummaryProductionRecoveryAuthorityBinding;
-      readonly requestedUtcDate: ReaderSummaryProductionRecoveryRequestedUtcDate;
-    }): Promise<"execute" | "resume" | "remediate-quality" | "resume-quality" | "replayed" | object>;
-  }>;
-}>;
+import {
+  assertOriginalCutoffPostgresRepair,
+  installLegacyOriginalCutoffAuthority,
+  seedOriginalCutoffOutsidePeriodRss,
+} from "./reader-summary-production-recovery-original-cutoff-postgres-fixture";
+type RecoveryExecutionGuardModule = Readonly<{ PrismaReaderSummaryProductionRecoveryExecutionGuard: new (
+  client: unknown) => Readonly<{ claim(params: {
+    readonly binding: ReaderSummaryProductionRecoveryAuthorityBinding;
+    readonly generationProfile: RecoveryGenerationProfile;
+    readonly requestedUtcDate: ReaderSummaryProductionRecoveryRequestedUtcDate;
+  }): Promise<"execute" | "resume" | "remediate-quality" |
+    "resume-quality" | "replayed" | object>; }> }>;
 type RecoveryIds = Readonly<{ readerSummaryJobId: string; readerSummaryId: string }>;
+type RecoveryGenerationProfile = Readonly<{ modelVersion: string;
+  promptVersion: string; rankingPolicyVersion: string }>;
 type RecoveryCliModule = Readonly<{
-  readerSummaryProductionRecoveryDayIds(
-    binding: ReaderSummaryProductionRecoveryAuthorityBinding,
-    requestedUtcDate: ReaderSummaryProductionRecoveryRequestedUtcDate,
-  ): RecoveryIds;
-  readerSummaryProductionRecoveryLegacyDayIds(
-    binding: ReaderSummaryProductionRecoveryAuthorityBinding,
-    requestedUtcDate: ReaderSummaryProductionRecoveryRequestedUtcDate,
-  ): RecoveryIds;
-  readerSummaryProductionRecoveryQualityRemediationDayIds(binding: ReaderSummaryProductionRecoveryAuthorityBinding, requestedUtcDate: ReaderSummaryProductionRecoveryRequestedUtcDate): RecoveryIds;
+  readerSummaryProductionRecoveryLegacyDayIds(binding: ReaderSummaryProductionRecoveryAuthorityBinding,
+    date: ReaderSummaryProductionRecoveryRequestedUtcDate): RecoveryIds;
 }>;
 const runtimeRequire = createRequire(join(process.cwd(), "package.json"));
 (
@@ -47,40 +45,38 @@ const runtimeRequire = createRequire(join(process.cwd(), "package.json"));
   transpileOnly: true,
   compilerOptions: { rootDir: process.cwd() },
 });
-const { PrismaReaderSummaryProductionRecoveryExecutionGuard } =
-  runtimeRequire(
-    "./scripts/lib/reader-summary-production-recovery-replay-guard",
-  ) as RecoveryExecutionGuardModule;
+const { PrismaReaderSummaryProductionRecoveryExecutionGuard } = runtimeRequire(
+  "./scripts/lib/reader-summary-production-recovery-replay-guard",
+) as RecoveryExecutionGuardModule;
 const {
-  readerSummaryProductionRecoveryDayIds,
   readerSummaryProductionRecoveryLegacyDayIds,
-  readerSummaryProductionRecoveryQualityRemediationDayIds,
-} = runtimeRequire(
-  "./scripts/lib/reader-summary-production-recovery-cli",
-) as RecoveryCliModule;
+} = runtimeRequire("./scripts/lib/reader-summary-production-recovery-cli") as RecoveryCliModule;
 type QueryResult<TRow> = Readonly<{ rows: readonly TRow[] }>;
-export type RecoveryPostgresClient = Readonly<{
-  query<TRow = Record<string, unknown>>(
-    sql: string,
-    values?: readonly unknown[],
-  ): Promise<QueryResult<TRow>>;
-}>;
+export type RecoveryPostgresClient = Readonly<{ query<TRow = Record<string, unknown>>(
+  sql: string, values?: readonly unknown[]): Promise<QueryResult<TRow>> }>;
 export const readerSummaryProductionRecoveryFixtureScope = {
   tenantId: readerSummaryProductionRecoveryTenantId,
   workspaceId: readerSummaryProductionRecoveryWorkspaceId,
 } as const;
 const { tenantId, workspaceId } = readerSummaryProductionRecoveryFixtureScope;
-const legacyJul23CanonicalBoundsWrapper = "Invalid `prisma.$queryRaw()` invocation:\n\n\nRaw query failed. Code: `P0001`. Message: `weekly canonical JSON exceeds structural bounds`";
+const recoveryGenerationProfile: RecoveryGenerationProfile = Object.freeze({
+  modelVersion: "original-cutoff-contract-model-v1",
+  promptVersion: "original-cutoff-contract-prompt-v1",
+  rankingPolicyVersion: "original-cutoff-contract-ranking-v1",
+});
+const originalCutoffMigrationSql = readFileSync(join(
+  process.cwd(), "prisma/migrations/20260731153000_reader_summary_" +
+    "production_recovery_original_cutoff_authority/migration.sql"), "utf8");
 const expectedRecoveryProviderCounts = [
   ["2026-07-23", "github-trending-page", 0, "historical_unavailable"],
   ["2026-07-23", "hacker-news", 100, "verified_existing"],
   ["2026-07-23", "reddit", 100, "verified_existing"],
-  ["2026-07-23", "rss", 78, "verified_existing"],
+  ["2026-07-23", "rss", 75, "verified_existing"],
   ["2026-07-23", "x-twitter", 67, "verified_existing"],
   ["2026-07-24", "github-trending-page", 10, "verified_existing"],
   ["2026-07-24", "hacker-news", 100, "verified_existing"],
   ["2026-07-24", "reddit", 100, "verified_existing"],
-  ["2026-07-24", "rss", 68, "verified_existing"],
+  ["2026-07-24", "rss", 67, "verified_existing"],
   ["2026-07-24", "x-twitter", 73, "verified_existing"],
   ["2026-07-25", "github-trending-page", 10, "verified_existing"],
   ["2026-07-25", "hacker-news", 100, "verified_existing"],
@@ -108,19 +104,12 @@ export const seedReaderSummaryProductionRecoveryFixture = async (
 ): Promise<void> => {
   await client.query(`
     BEGIN;
-    INSERT INTO source_catalog_entries (
-      id, provider_key, display_name, acquisition_mode, readiness,
-      created_at, updated_at
-    )
-    SELECT
+    INSERT INTO source_catalog_entries (id, provider_key, display_name,
+      acquisition_mode, readiness, created_at, updated_at) SELECT
       ('40000000-0000-4000-8000-' ||
         lpad(provider.ordinal::TEXT, 12, '0'))::UUID,
-      provider.provider_key,
-      provider.provider_key,
-      'fixture',
-      'READY',
-      '2026-07-20T00:00:00Z',
-      '2026-07-20T00:00:00Z'
+      provider.provider_key, provider.provider_key, 'fixture', 'READY',
+      '2026-07-20T00:00:00Z', '2026-07-20T00:00:00Z'
     FROM (VALUES
       (1, 'github-trending-page'),
       (2, 'hacker-news'),
@@ -128,27 +117,19 @@ export const seedReaderSummaryProductionRecoveryFixture = async (
       (4, 'rss'),
       (5, 'x-twitter')
     ) AS provider(ordinal, provider_key);
-
-    INSERT INTO interests (
-      id, tenant_id, workspace_id, name, query, status,
-      created_at, updated_at, deleted_at
-    ) VALUES (
+    INSERT INTO interests (id, tenant_id, workspace_id, name, query, status,
+      created_at, updated_at, deleted_at) VALUES (
       '50000000-0000-4000-8000-000000000001',
       '${tenantId}', '${workspaceId}',
       'Production recovery fixture', 'DB authority', 'ENABLED',
       '2026-07-20T00:00:00Z', '2026-07-20T00:00:00Z', NULL
     );
-
-    INSERT INTO source_bindings (
-      id, tenant_id, workspace_id, interest_id, source_catalog_entry_id,
-      capability_profile_version, status, config,
-      created_at, updated_at, deleted_at
-    )
-    SELECT
+    INSERT INTO source_bindings (id, tenant_id, workspace_id, interest_id,
+      source_catalog_entry_id, capability_profile_version, status, config,
+      created_at, updated_at, deleted_at) SELECT
       ('30000000-0000-4000-8000-' ||
         lpad(provider.ordinal::TEXT, 12, '0'))::UUID,
-      '${tenantId}', '${workspaceId}',
-      '50000000-0000-4000-8000-000000000001',
+      '${tenantId}', '${workspaceId}', '50000000-0000-4000-8000-000000000001',
       catalog.id, 1, 'ENABLED',
       CASE WHEN provider.provider_key = 'github-trending-page'
         THEN '{"window":"daily"}'::JSONB ELSE '{}'::JSONB END,
@@ -160,44 +141,29 @@ export const seedReaderSummaryProductionRecoveryFixture = async (
       (4, 'rss'),
       (5, 'x-twitter')
     ) AS provider(ordinal, provider_key)
-    JOIN source_catalog_entries AS catalog
-      ON catalog.provider_key = provider.provider_key;
-
-    INSERT INTO scan_policies (
-      id, tenant_id, workspace_id, source_binding_id, interval_seconds,
-      freshness_seconds, retry_budget, next_run_at, created_at, updated_at
-    ) VALUES (
+    JOIN source_catalog_entries AS catalog ON catalog.provider_key = provider.provider_key;
+    INSERT INTO scan_policies (id, tenant_id, workspace_id, source_binding_id,
+      interval_seconds, freshness_seconds, retry_budget, next_run_at,
+      created_at, updated_at) VALUES (
       '60000000-0000-4000-8000-000000000001',
-      '${tenantId}', '${workspaceId}',
-      '30000000-0000-4000-8000-000000000001',
+      '${tenantId}', '${workspaceId}', '30000000-0000-4000-8000-000000000001',
       3600, 3600, 3, '2026-07-28T00:00:00Z',
       '2026-07-20T00:00:00Z', '2026-07-20T00:00:00Z'
     );
-
     CREATE TEMP TABLE recovery_days ON COMMIT DROP AS
-    SELECT
-      day::DATE AS requested_date,
+    SELECT day::DATE AS requested_date,
       row_number() OVER (ORDER BY day)::INTEGER AS day_number
-    FROM generate_series(
-      DATE '2026-07-23',
-      DATE '2026-07-28',
-      INTERVAL '1 day'
-    ) AS days(day);
-
-    INSERT INTO scan_jobs (
-      id, tenant_id, workspace_id, source_binding_id, scan_policy_id,
-      status, idempotency_key, leased_until, retry_count, requested_at,
-      enqueued_at, completed_at, created_at, updated_at
-    )
-    SELECT
+    FROM generate_series(DATE '2026-07-23', DATE '2026-07-28',
+      INTERVAL '1 day') AS days(day);
+    INSERT INTO scan_jobs (id, tenant_id, workspace_id, source_binding_id,
+      scan_policy_id, status, idempotency_key, leased_until, retry_count,
+      requested_at, enqueued_at, completed_at, created_at, updated_at) SELECT
       ('70000000-0000-4000-8000-' ||
         lpad(day_number::TEXT, 12, '0'))::UUID,
       '${tenantId}', '${workspaceId}',
       '30000000-0000-4000-8000-000000000001',
-      '60000000-0000-4000-8000-000000000001',
-      'SUCCEEDED',
-      'recovery-github-' || requested_date,
-      NULL, 0,
+      '60000000-0000-4000-8000-000000000001', 'SUCCEEDED',
+      'recovery-github-' || requested_date, NULL, 0,
       requested_date::TIMESTAMP AT TIME ZONE 'UTC' + INTERVAL '10 hours',
       requested_date::TIMESTAMP AT TIME ZONE 'UTC' + INTERVAL '10 hours',
       requested_date::TIMESTAMP AT TIME ZONE 'UTC' + INTERVAL '12 hours',
@@ -206,17 +172,12 @@ export const seedReaderSummaryProductionRecoveryFixture = async (
     FROM recovery_days
     WHERE requested_date > DATE '2026-07-23'
       AND requested_date < DATE '2026-07-28';
-
-    INSERT INTO scan_attempts (
-      scan_job_id, tenant_id, workspace_id, source_binding_id,
-      attempt_number, status, started_at, finished_at,
-      fetched, inserted, skipped_duplicates, projected, updated_at
-    )
-    SELECT
+    INSERT INTO scan_attempts (scan_job_id, tenant_id, workspace_id,
+      source_binding_id, attempt_number, status, started_at, finished_at,
+      fetched, inserted, skipped_duplicates, projected, updated_at) SELECT
       ('70000000-0000-4000-8000-' ||
         lpad(day_number::TEXT, 12, '0'))::UUID,
-      '${tenantId}', '${workspaceId}',
-      '30000000-0000-4000-8000-000000000001',
+      '${tenantId}', '${workspaceId}', '30000000-0000-4000-8000-000000000001',
       1, 'SUCCEEDED',
       requested_date::TIMESTAMP AT TIME ZONE 'UTC' + INTERVAL '10 hours',
       requested_date::TIMESTAMP AT TIME ZONE 'UTC' + INTERVAL '12 hours',
@@ -238,78 +199,34 @@ export const seedReaderSummaryProductionRecoveryFixture = async (
       position
     FROM recovery_days AS day
     CROSS JOIN LATERAL (VALUES
-      (
-        1,
-        'github-trending-page',
-        CASE
-          WHEN day.requested_date IN (
-            DATE '2026-07-23',
-            DATE '2026-07-28'
-          ) THEN 0
-          ELSE 10
-        END
-      ),
-      (
-        2,
-        'hacker-news',
-        CASE day.requested_date
-          WHEN DATE '2026-07-26' THEN 78
-          WHEN DATE '2026-07-27' THEN 87
-          WHEN DATE '2026-07-28' THEN 0
-          ELSE 100
-        END
-      ),
-      (
-        3,
-        'reddit',
-        CASE day.requested_date
-          WHEN DATE '2026-07-27' THEN 99
-          WHEN DATE '2026-07-28' THEN 0
-          ELSE 100
-        END
-      ),
-      (
-        4,
-        'rss',
-        CASE day.requested_date
-          WHEN DATE '2026-07-23' THEN 78
-          WHEN DATE '2026-07-24' THEN 68
-          WHEN DATE '2026-07-25' THEN 63
-          WHEN DATE '2026-07-26' THEN 62
-          WHEN DATE '2026-07-27' THEN 47
-          ELSE 31
-        END
-      ),
-      (
-        5,
-        'x-twitter',
-        CASE day.requested_date
-          WHEN DATE '2026-07-23' THEN 67
-          WHEN DATE '2026-07-24' THEN 73
-          WHEN DATE '2026-07-25' THEN 96
-          WHEN DATE '2026-07-26' THEN 94
-          WHEN DATE '2026-07-27' THEN 58
-          ELSE 107
-        END
-      )
+      (1, 'github-trending-page', CASE WHEN day.requested_date IN
+        (DATE '2026-07-23', DATE '2026-07-28') THEN 0 ELSE 10 END),
+      (2, 'hacker-news', CASE day.requested_date
+        WHEN DATE '2026-07-26' THEN 78 WHEN DATE '2026-07-27' THEN 87
+        WHEN DATE '2026-07-28' THEN 0 ELSE 100 END),
+      (3, 'reddit', CASE day.requested_date WHEN DATE '2026-07-27' THEN 99
+        WHEN DATE '2026-07-28' THEN 0 ELSE 100 END),
+      (4, 'rss', CASE day.requested_date WHEN DATE '2026-07-23' THEN 75
+        WHEN DATE '2026-07-24' THEN 67 WHEN DATE '2026-07-25' THEN 63
+        WHEN DATE '2026-07-26' THEN 62 WHEN DATE '2026-07-27' THEN 47
+        ELSE 31 END),
+      (5, 'x-twitter', CASE day.requested_date
+        WHEN DATE '2026-07-23' THEN 67 WHEN DATE '2026-07-24' THEN 73
+        WHEN DATE '2026-07-25' THEN 96 WHEN DATE '2026-07-26' THEN 94
+        WHEN DATE '2026-07-27' THEN 58 ELSE 107 END)
     ) AS provider(ordinal, provider_key, item_count)
     CROSS JOIN LATERAL
       generate_series(1, provider.item_count) AS positions(position);
 
-    INSERT INTO source_items (
-      id, tenant_id, workspace_id, source_binding_id, provider_key,
-      provider_item_id, canonical_url, title, body, author_handle,
-      published_at, content_hash, provider_content_hash, observed_at,
-      last_observed_at, content_updated_at, raw_pointer, metadata,
-      schema_version, created_at
-    )
-    SELECT
+    INSERT INTO source_items (id, tenant_id, workspace_id,
+      source_binding_id, provider_key, provider_item_id, canonical_url, title,
+      body, author_handle, published_at, content_hash, provider_content_hash,
+      observed_at, last_observed_at, content_updated_at, raw_pointer, metadata,
+      schema_version, created_at) SELECT
       ('10000000-0000-4000-8000-' ||
         lpad(item_number::TEXT, 12, '0'))::UUID,
-      '${tenantId}', '${workspaceId}',
-      ('30000000-0000-4000-8000-' ||
-        lpad(provider_number::TEXT, 12, '0'))::UUID,
-      provider_key,
+      '${tenantId}', '${workspaceId}', ('30000000-0000-4000-8000-' ||
+        lpad(provider_number::TEXT, 12, '0'))::UUID, provider_key,
       CASE WHEN provider_key = 'github-trending-page'
         THEN 'github-trending-page:daily:' ||
           ('70000000-0000-4000-8000-' ||
@@ -321,70 +238,52 @@ export const seedReaderSummaryProductionRecoveryFixture = async (
         THEN 'https://github.com/fixture/repository-' || position
         ELSE 'https://fixture.invalid/' || requested_date || '/' ||
           provider_key || '/' || position END,
-      'Recovery fixture ' || item_number,
-      'Immutable body ' || item_number,
-      NULL,
+      'Recovery fixture ' || item_number, 'Immutable body ' || item_number, NULL,
       requested_date::TIMESTAMP AT TIME ZONE 'UTC' +
         INTERVAL '8 hours' + position * INTERVAL '1 millisecond',
       encode(sha256(convert_to('source:' || item_number, 'UTF8')), 'hex'),
-      CASE WHEN provider_key = 'github-trending-page'
-        THEN encode(
-          sha256(convert_to('provider:' || item_number, 'UTF8')),
-          'hex'
-        )
-        ELSE NULL END,
+      CASE WHEN provider_key = 'github-trending-page' THEN encode(sha256(
+        convert_to('provider:' || item_number, 'UTF8')), 'hex') ELSE NULL END,
       requested_date::TIMESTAMP AT TIME ZONE 'UTC' +
         INTERVAL '12 hours' + position * INTERVAL '1 millisecond',
       NULL, NULL, NULL,
       CASE WHEN provider_key = 'github-trending-page'
         THEN jsonb_build_object(
           'kind', 'github_trending_page_repository',
-          'repository', jsonb_build_object(
-            'fullName', 'fixture/repository-' || position,
-            'url', 'https://github.com/fixture/repository-' || position
-          ),
+          'repository', jsonb_build_object('fullName',
+            'fixture/repository-' || position, 'url',
+            'https://github.com/fixture/repository-' || position),
           'trending', jsonb_build_object(
-            'scanJobId',
-            ('70000000-0000-4000-8000-' ||
+            'scanJobId', ('70000000-0000-4000-8000-' ||
               lpad(day_number::TEXT, 12, '0'))::UUID,
             'rank', position,
-            'checkedAt', to_char(
-              requested_date::TIMESTAMP AT TIME ZONE 'UTC' +
+            'checkedAt', to_char(requested_date::TIMESTAMP AT TIME ZONE 'UTC' +
                 INTERVAL '11 hours' + position * INTERVAL '1 millisecond',
               'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'
             ),
             'window', 'daily'
           )
-        )
-        ELSE '{}'::JSONB END,
-      1,
+        ) ELSE '{}'::JSONB END, 1,
       requested_date::TIMESTAMP AT TIME ZONE 'UTC' + INTERVAL '12 hours'
     FROM recovery_items;
 
-    INSERT INTO feed_items (
-      id, tenant_id, workspace_id, interest_id, source_item_id,
-      source_binding_id, provider_key, dedupe_key, canonical_url, title,
-      body_preview, author_handle, published_at, observed_at,
-      provider_metadata, status, created_at, updated_at
-    )
-    SELECT
+    INSERT INTO feed_items (id, tenant_id, workspace_id, interest_id,
+      source_item_id, source_binding_id, provider_key, dedupe_key,
+      canonical_url, title, body_preview, author_handle, published_at,
+      observed_at, provider_metadata, status, created_at, updated_at) SELECT
       ('20000000-0000-4000-8000-' ||
         lpad(item_number::TEXT, 12, '0'))::UUID,
-      '${tenantId}', '${workspaceId}',
-      '50000000-0000-4000-8000-000000000001',
+      '${tenantId}', '${workspaceId}', '50000000-0000-4000-8000-000000000001',
       ('10000000-0000-4000-8000-' ||
         lpad(item_number::TEXT, 12, '0'))::UUID,
       ('30000000-0000-4000-8000-' ||
-        lpad(provider_number::TEXT, 12, '0'))::UUID,
-      provider_key,
+        lpad(provider_number::TEXT, 12, '0'))::UUID, provider_key,
       'recovery:' || requested_date || ':' || provider_key || ':' || position,
       CASE WHEN provider_key = 'github-trending-page'
         THEN 'https://github.com/fixture/repository-' || position
         ELSE 'https://fixture.invalid/' || requested_date || '/' ||
           provider_key || '/' || position END,
-      'Recovery fixture ' || item_number,
-      'Immutable body ' || item_number,
-      NULL,
+      'Recovery fixture ' || item_number, 'Immutable body ' || item_number, NULL,
       requested_date::TIMESTAMP AT TIME ZONE 'UTC' +
         INTERVAL '8 hours' + position * INTERVAL '1 millisecond',
       requested_date::TIMESTAMP AT TIME ZONE 'UTC' +
@@ -394,17 +293,13 @@ export const seedReaderSummaryProductionRecoveryFixture = async (
       requested_date::TIMESTAMP AT TIME ZONE 'UTC' + INTERVAL '12 hours'
     FROM recovery_items;
 
-    INSERT INTO github_repository_trend_results (
-      id, tenant_id, workspace_id, interest_id, source_binding_id,
-      scan_job_id, source_item_id, repository_full_name, repository_url,
-      primary_window, rank, checked_at, observed_at, source,
-      metadata, created_at
-    )
-    SELECT
+    INSERT INTO github_repository_trend_results (id, tenant_id,
+      workspace_id, interest_id, source_binding_id, scan_job_id,
+      source_item_id, repository_full_name, repository_url, primary_window,
+      rank, checked_at, observed_at, source, metadata, created_at) SELECT
       ('80000000-0000-4000-8000-' ||
         lpad(item_number::TEXT, 12, '0'))::UUID,
-      '${tenantId}', '${workspaceId}',
-      '50000000-0000-4000-8000-000000000001',
+      '${tenantId}', '${workspaceId}', '50000000-0000-4000-8000-000000000001',
       '30000000-0000-4000-8000-000000000001',
       ('70000000-0000-4000-8000-' ||
         lpad(day_number::TEXT, 12, '0'))::UUID,
@@ -424,6 +319,7 @@ export const seedReaderSummaryProductionRecoveryFixture = async (
       AND requested_date <> DATE '2026-07-24';
     COMMIT;
   `);
+  await seedOriginalCutoffOutsidePeriodRss(client, { tenantId, workspaceId });
 };
 export const assertReaderSummaryProductionRecoveryPostgresContract =
   async (params: Readonly<{
@@ -436,10 +332,12 @@ export const assertReaderSummaryProductionRecoveryPostgresContract =
       tenantId,
       workspaceId,
     });
-    await assertRecoveryDaysDateConstraintDefinition(params.auditor);
+    await assertRecoveryDaysGeneralizedDateScope(params.auditor);
     await assertRecoveryExpectedCountsFunctionDefinition(params.auditor);
+    await assertOriginalCutoffMigrationDefinition(params.auditor);
     await assertRecoveryPersistenceFunctionDefinition(params.first);
     await assertRecoveryAuthorityRuntimePrivileges(params.first);
+    const auditorClient = new PgPrismaClient(params.auditor);
     const firstClient = new PgPrismaClient(params.first);
     const secondClient = new PgPrismaClient(params.second);
     const firstAuthority = new PrismaReaderSummaryProductionRecoveryAuthority(
@@ -502,8 +400,8 @@ export const assertReaderSummaryProductionRecoveryPostgresContract =
         ]),
       ) ===
         JSON.stringify([
-          ["2026-07-23", 345, "historical_unavailable"],
-          ["2026-07-24", 351, "verified_existing"],
+          ["2026-07-23", 342, "historical_unavailable"],
+          ["2026-07-24", 350, "verified_existing"],
           ["2026-07-25", 369, "verified_existing"],
           ["2026-07-26", 344, "verified_existing"],
           ["2026-07-27", 301, "verified_existing"],
@@ -532,72 +430,62 @@ export const assertReaderSummaryProductionRecoveryPostgresContract =
       ),
       "daily two-pass plan hashes diverged",
     );
-    await seedLegacyRejectedModelClaim(firstClient, leftBinding);
+    await installLegacyOriginalCutoffAuthority(
+      params.auditor,
+      leftBinding.recoveryId,
+    );
+    await assertOriginalCutoffPostgresRepair({
+      authority: firstAuthority,
+      canonicalSha256: leftBinding.canonicalSha256,
+      client: params.auditor,
+      migrationSql: originalCutoffMigrationSql,
+      scope: { tenantId, workspaceId },
+    });
+    await seedLegacyRejectedModelClaim(auditorClient, leftBinding);
+    await assertOriginalCutoffFailClosed(params.auditor);
     const beforeClaim = await recoveryWriteCounts(params.auditor);
     const firstGuard = new PrismaReaderSummaryProductionRecoveryExecutionGuard(
-      firstClient as never,
+      auditorClient as never,
     );
     const secondGuard = new PrismaReaderSummaryProductionRecoveryExecutionGuard(
-      secondClient as never,
+      auditorClient as never,
     );
     const firstClaim = await firstGuard.claim({
       binding: leftBinding,
+      generationProfile: recoveryGenerationProfile,
       requestedUtcDate: "2026-07-23",
     });
     const afterClaim = await recoveryWriteCounts(params.auditor);
-    const remediationIds = readerSummaryProductionRecoveryQualityRemediationDayIds(leftBinding, "2026-07-23");
-    const failed = await firstClient.$queryRaw<readonly { id: string }[]>`
-      UPDATE reader_summary_jobs
-      SET status = 'FAILED', failed_at = transaction_timestamp(),
-          failure_reason = ${legacyJul23CanonicalBoundsWrapper},
-          updated_at = transaction_timestamp()
-      WHERE id = ${remediationIds.readerSummaryJobId}::uuid
-        AND status = 'RUNNING' AND reader_summary_artifact_id IS NULL
-      RETURNING id::TEXT
-    `;
-    assert(failed.length === 1, "quality remediation failure fixture diverged");
-    const resumedClaim = await secondGuard.claim(
-      { binding: rightBinding, requestedUtcDate: "2026-07-23" },
+    const repeatedClaim = await secondGuard.claim(
+      { binding: rightBinding, generationProfile: recoveryGenerationProfile,
+        requestedUtcDate: "2026-07-23" },
     );
-    const afterResume = await recoveryWriteCounts(params.auditor);
-    let repeatedClaimError: unknown;
-    try {
-      await firstGuard.claim({
-        binding: rightBinding,
-        requestedUtcDate: "2026-07-23",
-      });
-    } catch (error) {
-      repeatedClaimError = error;
-    }
     const afterReplay = await recoveryWriteCounts(params.auditor);
-    assert(firstClaim === "remediate-quality", "quality remediation claim did not win");
-    assert(resumedClaim === "resume-quality", "failed quality remediation did not resume narrowly");
     assert(
-      repeatedClaimError instanceof Error &&
-        repeatedClaimError.message.includes(
-          "quality-remediation-resume-v1 lease was already consumed without final receipt"),
-      "consumed quality remediation resume allowed another model execution",
+      typeof firstClaim === "object" && firstClaim !== null &&
+        JSON.stringify(firstClaim) === JSON.stringify(repeatedClaim),
+      "legacy rejection replay was not immutable",
     );
     assert(
-      afterClaim.authorities === beforeClaim.authorities &&
-        afterClaim.claims === beforeClaim.claims + 1 &&
-        afterClaim.jobs === beforeClaim.jobs + 1 &&
-        afterClaim.artifacts === beforeClaim.artifacts &&
-        afterClaim.publications === beforeClaim.publications &&
-        afterClaim.receipts === beforeClaim.receipts,
-      "quality remediation claim/job writes were not exact",
+      JSON.stringify(afterClaim) === JSON.stringify(beforeClaim) &&
+        JSON.stringify(afterReplay) === JSON.stringify(beforeClaim),
+      "legacy rejection replay performed a write",
     );
-    assert(
-      afterResume.claims === afterClaim.claims + 1 &&
-        afterResume.jobs === afterClaim.jobs + 1 &&
-        afterResume.artifacts === afterClaim.artifacts &&
-        afterResume.publications === afterClaim.publications &&
-        afterResume.receipts === afterClaim.receipts,
-      "narrow quality remediation resume writes were not exact",
-    );
-    assert(JSON.stringify(afterReplay) === JSON.stringify(afterResume),
-      "consumed resume replay performed a write");
   };
+const assertOriginalCutoffFailClosed = async (
+  client: RecoveryPostgresClient,
+): Promise<void> => {
+  let rejection: unknown;
+  try {
+    await client.query(originalCutoffMigrationSql);
+  } catch (error) {
+    rejection = error;
+    await client.query("ROLLBACK");
+  }
+  assert(rejection instanceof Error && rejection.message.includes(
+    "original-cutoff repair refuses consumed model/job state"),
+  "original-cutoff migration did not fail closed on consumed model state");
+};
 const seedLegacyRejectedModelClaim = async (
   client: PgPrismaClient,
   binding: ReaderSummaryProductionRecoveryAuthorityBinding,
@@ -678,37 +566,56 @@ const seedLegacyRejectedModelClaim = async (
     FROM job
   `;
 };
-const assertRecoveryDaysDateConstraintDefinition = async (
+const assertRecoveryDaysGeneralizedDateScope = async (
   client: RecoveryPostgresClient,
 ): Promise<void> => {
-  const result = await client.query<{
-    readonly definition: string;
-    readonly is_check: boolean;
-    readonly is_validated: boolean;
+  const result = await client.query<{ readonly is_generalized: boolean }>(`
+    SELECT NOT EXISTS (
+      SELECT 1 FROM pg_constraint AS authority
+      WHERE authority.conrelid =
+          'reader_summary_production_recovery_days'::regclass
+        AND authority.conname =
+          'reader_summary_production_recovery_days_date_check'
+    ) AS is_generalized
+  `);
+  assert(
+    result.rows[0]?.is_generalized === true,
+    "daily authority table did not preserve generalized date scope",
+  );
+};
+const assertOriginalCutoffMigrationDefinition = async (
+  client: RecoveryPostgresClient,
+): Promise<void> => {
+  const metadata = await client.query<{
+    guards_are_immutable: boolean; helper_was_dropped: boolean; search_paths_are_fixed: boolean;
   }>(`
     SELECT
-      pg_get_constraintdef(authority.oid) AS definition,
-      authority.contype = 'c' AS is_check,
-      authority.convalidated AS is_validated
-    FROM pg_constraint AS authority
-    WHERE authority.conrelid =
-        'reader_summary_production_recovery_days'::regclass
-      AND authority.conname =
-        'reader_summary_production_recovery_days_date_check'
+      bool_and(strpos(pg_get_functiondef(authority.oid), 'production_recovery_original_cutoff_write') = 0) AS guards_are_immutable,
+      to_regprocedure(
+        'repair_reader_summary_production_recovery_original_cutoff_v2()'
+      ) IS NULL AS helper_was_dropped,
+      bool_and(authority.proconfig =
+        ARRAY['search_path=pg_catalog, public, pg_temp']) AS search_paths_are_fixed
+    FROM pg_proc AS authority
+    WHERE authority.oid = ANY(ARRAY[
+      'reader_summary_production_recovery_expected_counts_v2(date)'::regprocedure,
+      'guard_reader_summary_production_recovery_evidence()'::regprocedure,
+      'guard_reader_summary_production_recovery_lease()'::regprocedure
+    ])
   `);
-  const authority = result.rows[0];
-  const normalizedDefinition = authority?.definition.replace(/\s+/gu, " ");
-  const expectedDates = readerSummaryProductionRecoveryRequestedUtcDates
-    .map((date) => `'${date}'::date`)
-    .join(", ");
-  assert(
-    result.rows.length === 1 &&
-      authority?.is_check === true &&
-      authority.is_validated === true &&
-      normalizedDefinition ===
-        `CHECK ((requested_utc_date = ANY (ARRAY[${expectedDates}])))`,
-    "production recovery days date constraint is not the exact six-day definition",
-  );
+  const row = metadata.rows[0];
+  const exactLocks = ["lease", "day", "dry", "claim", "job", "publication", "receipt"]
+    .every((alias) => originalCutoffMigrationSql.includes(
+      `FOR UPDATE OF ${alias}`));
+  assert(row?.helper_was_dropped === true && row.guards_are_immutable === true &&
+    row.search_paths_are_fixed === true && exactLocks &&
+    originalCutoffMigrationSql.includes(
+      "SET TRANSACTION ISOLATION LEVEL SERIALIZABLE") &&
+    !/\bLOCK\s+TABLE\b/iu.test(originalCutoffMigrationSql) &&
+    !originalCutoffMigrationSql.includes("2026-07-21") &&
+    !/\b(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+"?(?:feed_items|source_items)\b/iu
+      .test(originalCutoffMigrationSql),
+  "original-cutoff migration locks, search_path, or forward-only scope diverged");
 };
 const assertRecoveryExpectedCountsFunctionDefinition = async (
   client: RecoveryPostgresClient,
@@ -840,11 +747,13 @@ const assertRecoveryAuthorityRuntimePrivileges = async (
         'reader_summary_production_recovery_expected_counts_v2(date)',
         'EXECUTE'
       ) AS exact_function_execute,
-      NOT has_function_privilege(
-        current_user,
-        'reader_summary_production_recovery_canonical_json(jsonb)',
-        'EXECUTE'
-      ) AS recovery_helper_is_private,
+      NOT has_function_privilege(current_user,
+        'reader_summary_production_recovery_canonical_json(jsonb)', 'EXECUTE')
+      AND NOT has_function_privilege(current_user,
+        'guard_reader_summary_production_recovery_evidence()', 'EXECUTE')
+      AND NOT has_function_privilege(current_user,
+        'guard_reader_summary_production_recovery_lease()', 'EXECUTE')
+        AS recovery_helper_is_private,
       bool_and(
         has_any_column_privilege(current_user, authority_table, 'SELECT')
         AND NOT has_table_privilege(
@@ -890,10 +799,8 @@ const assertRecoveryAuthorityRuntimePrivileges = async (
 };
 class PgPrismaClient {
   constructor(private readonly client: RecoveryPostgresClient) {}
-  readonly $queryRaw = async <T>(
-    strings: TemplateStringsArray,
-    ...values: readonly unknown[]
-  ): Promise<T> => {
+  readonly $queryRaw = async <T>(strings: TemplateStringsArray,
+    ...values: readonly unknown[]): Promise<T> => {
     const sql = strings.reduce(
       (query, part, index) =>
         query + part + (index < values.length ? `$${index + 1}` : ""),
@@ -901,9 +808,8 @@ class PgPrismaClient {
     );
     return (await this.client.query(sql, values)).rows as T;
   };
-  readonly $transaction = async <T>(
-    operation: (client: this) => Promise<T>,
-  ): Promise<T> => {
+  readonly $transaction = async <T>(operation: (client: this) => Promise<T>)
+    : Promise<T> => {
     await this.client.query("BEGIN ISOLATION LEVEL SERIALIZABLE");
     try {
       const result = await operation(this);
@@ -915,24 +821,11 @@ class PgPrismaClient {
     }
   };
 }
-const recoveryWriteCounts = async (
-  client: RecoveryPostgresClient,
-): Promise<{
-  readonly artifacts: number;
-  readonly authorities: number;
-  readonly claims: number;
-  readonly jobs: number;
-  readonly publications: number;
-  readonly receipts: number;
-}> => {
-  const result = await client.query<{
-    artifacts: number;
-    authorities: number;
-    claims: number;
-    jobs: number;
-    publications: number;
-    receipts: number;
-  }>(`
+type RecoveryWriteCounts = Readonly<{ artifacts: number; authorities: number;
+  claims: number; jobs: number; publications: number; receipts: number }>;
+const recoveryWriteCounts = async (client: RecoveryPostgresClient)
+  : Promise<RecoveryWriteCounts> => {
+  const result = await client.query<RecoveryWriteCounts>(`
     SELECT
       (
         SELECT count(*)::INTEGER

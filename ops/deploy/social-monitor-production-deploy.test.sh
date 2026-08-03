@@ -38,13 +38,7 @@ cp "$SCRIPT_DIR/verify-postgres-backup-coverage.sh" \
 cp "$ENTRYPOINT" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/social-monitor-production-ssh-wrapper.sh" "$REPO/ops/deploy/"
 for migration in 20260716170000_reader_summary_fail_closed_publication 20260731153000_reader_summary_production_recovery_original_cutoff_authority; do
-  migration_source=$SCRIPT_DIR/../../prisma/migrations/$migration/migration.sql
-  if [[ -f $migration_source ]]; then
-    cp "$migration_source" "$REPO/prisma/migrations/$migration/"
-  else
-    printf '%s\n' '-- control-only bridge fixture' > \
-      "$REPO/prisma/migrations/$migration/migration.sql"
-  fi
+  cp "$SCRIPT_DIR/../../prisma/migrations/$migration/migration.sql" "$REPO/prisma/migrations/$migration/"
 done
 cp "$SCRIPT_DIR/verify-postgres-runtime-topology.py" "$REPO/ops/deploy/"
 cp -R "$SCRIPT_DIR/production-runtime" "$REPO/ops/deploy/"
@@ -989,12 +983,8 @@ bash "$SCRIPT_DIR/postgres-runtime-deploy-lib.test.sh"
 TMPDIR=/tmp bash "$SCRIPT_DIR/github-premidnight-capture-runtime.test.sh"
 bash "$SCRIPT_DIR/verify-postgres-runtime-topology.test.sh"
 bash "$SCRIPT_DIR/reader-summary-publication-migrator-validation.test.sh"
-if [[ -f $SCRIPT_DIR/rabbitmq-quorum-health.sh ]]; then
-  bash "$SCRIPT_DIR/rabbitmq-quorum-deploy-bridge-transition.test.sh"
-fi
-if [[ -f $SCRIPT_DIR/../../prisma/migrations/20260802233000_reader_summary_daily_canonical_recovery_v4/migration.sql ]]; then
-  bash "$SCRIPT_DIR/daily-canonical-recovery-production.test.sh"
-fi
+bash "$SCRIPT_DIR/rabbitmq-quorum-deploy-bridge-transition.test.sh"
+bash "$SCRIPT_DIR/daily-canonical-recovery-production.test.sh"
 uid_fixture_status=0
 if ((EUID == 0)); then
   uid_fixture_probe=$(mktemp -d "${TMPDIR:-/tmp}/social-monitor-uidmap.XXXXXX")

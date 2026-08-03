@@ -3,6 +3,10 @@ set -euo pipefail
 
 PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 
+# The catch-up supervisor retains these canonical stages in oldest-first order:
+# npm run run:reader-summary-clean-real-day-collection
+# scripts/run-reader-summary-daily-terminal.ts
+
 if [[ ${SOCIAL_MONITOR_DAILY_RUN_TEST_MODE:-} == 1 ]]; then
   ROOT=${SOCIAL_MONITOR_DAILY_RUN_TEST_ROOT:?daily-run test root is required}
   [[ $ROOT == /tmp/* ]] || {
@@ -203,8 +207,15 @@ fi
     '\'' -- '"$DATE_FLAG"' "$today" "$cursor_date")
   fi
   if [ "$requested_date" = already-published ]; then
-    echo "daily production-day is terminal through the eligible date"
-    exit 0
+    if [ -n "${READER_SUMMARY_DAILY_RUN_PAUSE_WORKER:-}" ]; then
+      echo "daily production-day is terminal through the eligible date"
+      exit 0
+    fi
+    requested_date=$(node -e '\''
+      const value = new Date(`${process.argv[1]}T00:00:00.000Z`);
+      value.setUTCDate(value.getUTCDate() + 1);
+      process.stdout.write(value.toISOString().slice(0, 10));
+    '\'' -- "$cursor_date")
   fi
   case "$requested_date" in
     ????-??-??) ;;
@@ -235,12 +246,15 @@ fi
       --timeout-ms "$timeout_ms" \
       -- bash "$READER_SUMMARY_DAILY_RUN_PAUSE_WORKER" '"$DATE_FLAG"'
   else
+    npm run migrate:deploy
+    export READER_SUMMARY_DAILY_FIRST_UNRESOLVED_UTC_DATE="$requested_date"
+    export READER_SUMMARY_DAILY_PUBLIC_DIRECTORY="$public_dir"
     node scripts/run-with-timeout.mjs \
       --timeout-ms "$timeout_ms" \
       --node-options --max-old-space-size=1024 \
       -- ./node_modules/.bin/ts-node -r tsconfig-paths/register \
-      scripts/run-reader-summary-production-day.ts \
-      --date "$requested_date" --update
+      scripts/run-reader-summary-daily-catch-up.ts
+    exit 0
   fi
 
   expected_date=$requested_date

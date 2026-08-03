@@ -15,6 +15,19 @@ import {
   assertPublicationEvidenceSemantics,
   canonicalProviderEvidence,
 } from "../../libs/summary/domain/value-objects/reader-summary-weekly-publication-evidence-validation";
+import {
+  assertReaderSummaryWeeklyProductionCertificationSealBinding,
+  loadReaderSummaryWeeklyProductionCertificationSeal,
+  type ReaderSummaryWeeklyProductionCertificationSeal,
+} from "./reader-summary-weekly-production-certification-seal";
+import type {
+  ReaderSummaryWeeklyReviewAuthority,
+} from "../../libs/summary/domain/value-objects/reader-summary-weekly-review-manifest";
+
+export type {
+  ReaderSummaryWeeklyProductionCertificationSeal,
+  ReaderSummaryWeeklyProductionCertificationSealDay,
+} from "./reader-summary-weekly-production-certification-seal";
 
 export type ReaderSummaryWeeklyProductionStatus =
   | "complete"
@@ -107,6 +120,9 @@ export type ReaderSummaryWeeklyProductionDbState = Readonly<{
   status: ReaderSummaryWeeklyProductionStatus;
   scope: ReaderSummaryWeeklyProductionScope;
   window: ReaderSummaryWeeklyProductionWindow;
+  weeklyCertificationSeal:
+    | ReaderSummaryWeeklyProductionCertificationSeal
+    | null;
   certifications: readonly ReaderSummaryWeeklyProductionCertification[];
   missingDates: readonly string[];
   blockingReasons: readonly string[];
@@ -362,6 +378,12 @@ export const loadReaderSummaryWeeklyProductionDbState = async (
   assertReaderSummaryWeeklyProductionWindow(window);
   const exactScope = normalizeScope(scope);
   const scopeKey = readerSummaryWeeklyScopeKey(exactScope.scope);
+  const weeklyCertificationSeal =
+    await loadReaderSummaryWeeklyProductionCertificationSeal(
+      client,
+      exactScope,
+      window,
+    );
   const result = await client.query<WeeklyEvidenceRow>(
     `
       SELECT
@@ -404,7 +426,17 @@ export const loadReaderSummaryWeeklyProductionDbState = async (
   assertUniqueDates(certifications);
   const foundDates = new Set(certifications.map((row) => row.requestedUtcDate));
   const missingDates = window.dates.filter((date) => !foundDates.has(date));
+  if (weeklyCertificationSeal !== null) {
+    assertReaderSummaryWeeklyProductionCertificationSealBinding(
+      weeklyCertificationSeal,
+      certifications,
+      window,
+    );
+  }
   const blockingReasons = [
+    ...(weeklyCertificationSeal === null
+      ? ["missing persisted DB weekly certification seal"]
+      : []),
     ...missingDates.map((date) => `missing DB certification for ${date}`),
     ...certifications.flatMap(certificationBlockingReasons),
   ];
@@ -417,9 +449,75 @@ export const loadReaderSummaryWeeklyProductionDbState = async (
           : "partial",
     scope: exactScope,
     window,
+    weeklyCertificationSeal,
     certifications: Object.freeze(certifications),
     missingDates: Object.freeze(missingDates),
     blockingReasons: Object.freeze(blockingReasons),
+  });
+};
+
+export const readerSummaryWeeklyReviewAuthorityFromProductionState = (
+  state: ReaderSummaryWeeklyProductionDbState,
+): ReaderSummaryWeeklyReviewAuthority => {
+  const seal = state.weeklyCertificationSeal;
+  if (state.status !== "complete" || seal === null || state.certifications.length !== 7) {
+    throw new Error("Reader summary weekly review requires seven sealed daily authorities");
+  }
+  assertReaderSummaryWeeklyProductionCertificationSealBinding(
+    seal,
+    state.certifications,
+    state.window,
+  );
+  return Object.freeze({
+    sealId: seal.sealId,
+    sealSha256: seal.sealSha256,
+    tenantId: state.scope.tenantId,
+    workspaceId: state.scope.workspaceId,
+    scope: state.scope.scope,
+    weekStartedOn: state.window.weekStartedOn,
+    weekEndedOn: state.window.weekEndedOn,
+    days: Object.freeze(state.certifications.map((certification, index) => {
+      const githubEvidence = certification.githubEvidence as ReaderSummaryWeeklyPublicationGitHubEvidence;
+      const sealDay = seal.days[index];
+      if (
+        sealDay === undefined ||
+        sealDay.requestedUtcDate !== certification.requestedUtcDate ||
+        sealDay.publicationId !== certification.publicationId ||
+        sealDay.publicationEvidenceIdentity !== certification.identity ||
+        sealDay.publicationEvidenceSha256 !== certification.canonicalSha256
+      ) {
+        throw new Error("Reader summary weekly review certification seal day diverged");
+      }
+      return Object.freeze({
+        requestedUtcDate: certification.requestedUtcDate,
+        publicationId: certification.publicationId,
+        publicationEvidenceIdentity: certification.identity,
+        publicationEvidenceSha256: certification.canonicalSha256,
+        providerEvidenceSha256: canonicalizeReaderSummaryWeeklyJson(
+          certification.providerEvidence,
+          "weekly review provider authority",
+        ).sha256,
+        githubEvidenceSha256: githubEvidence.sha256,
+        semanticStatus: certification.semanticStatus,
+        githubMode: githubEvidence.mode,
+        providerEvidence: Object.freeze(certification.providerEvidence.map((evidence) =>
+          Object.freeze({
+            providerKey: evidence.providerKey,
+            citationId: evidence.citationId,
+            feedItemId: evidence.feedItemId,
+            sourceItemId: evidence.sourceItemId,
+            sourceBindingId: evidence.sourceBindingId,
+            providerItemId: evidence.providerItemId,
+            canonicalUrl: evidence.canonicalUrl,
+            sourceContentHash: evidence.sourceContentHash,
+            publishedAt: evidence.publishedAt,
+            observedAt: evidence.observedAt,
+            title: evidence.title,
+            sourceText: evidence.sourceText,
+          }),
+        )),
+      });
+    })),
   });
 };
 

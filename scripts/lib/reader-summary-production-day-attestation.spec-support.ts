@@ -25,7 +25,7 @@ const attestation = (requestId: string, purpose: string) => ({
   purpose,
   canonicalRequestSha256: "a".repeat(64),
   provider: "codex",
-  model: "gpt-5.5",
+  model: "gpt-5.6-sol",
   reasoningEffort: "xhigh",
   runtimeEngine: "subscription-runtime-cli",
   runtimePackageVersion: "0.1.0-main.2",

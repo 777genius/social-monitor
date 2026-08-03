@@ -59,7 +59,7 @@ const attestation = (
           : "social_monitor.reader_summary.topic_map.verify_relations",
     canonicalRequestSha256: "a".repeat(64),
     provider: "codex" as const,
-    model: "gpt-5.5",
+    model: "gpt-5.6-sol",
     reasoningEffort: "xhigh",
     runtimeEngine: "subscription-runtime-cli" as const,
     runtimePackageVersion: "0.1.0-main.2",

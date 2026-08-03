@@ -2,9 +2,18 @@ import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 
 import { stablePublicationJson } from "@social-monitor/summary/adapters/persistence/reader-summary-publication-proof";
+import type {
+  ReaderSummaryProductionRecoveryGapDayAuthority,
+} from "./reader-summary-production-recovery-gap-authority";
+import {
+  readerSummaryProductionRecoveryModelContract,
+  type ReaderSummaryProductionRecoveryModelContract,
+} from "./reader-summary-production-recovery-model-contract";
 
 export const readerSummaryProductionRecoveryClaimSchema =
   "reader_summary.production_recovery_model_claim.v2" as const;
+export const readerSummaryProductionRecoveryGapClaimSchema =
+  "reader_summary.production_recovery_model_claim.v3" as const;
 
 export const readerSummaryProductionRecoveryHistoricClaimSchemas = [
   "reader_summary.production_recovery_model_claim.v1",
@@ -56,6 +65,21 @@ export type ReaderSummaryProductionRecoveryModelClaimV2 =
         recollectionPerformed: false;
         providerWritePerformed: false;
       }>;
+    }>;
+
+export type ReaderSummaryProductionRecoveryGapClaimExpectation =
+  ReaderSummaryProductionRecoveryClaimExpectation &
+    Readonly<{
+      modelEligibility: ReaderSummaryProductionRecoveryGapDayAuthority["modelEligibility"];
+      modelContract: ReaderSummaryProductionRecoveryModelContract;
+    }>;
+
+export type ReaderSummaryProductionRecoveryModelClaimV3 =
+  ReaderSummaryProductionRecoveryGapClaimExpectation &
+    Readonly<{
+      schemaVersion: typeof readerSummaryProductionRecoveryGapClaimSchema;
+      supersededPredecessor: null;
+      boundaries: typeof v2Boundaries;
     }>;
 
 export type VerifiedReaderSummaryProductionRecoveryClaim = Readonly<{
@@ -120,6 +144,12 @@ const exactClaimKeys = [
   "boundaries",
 ] as const;
 
+const exactGapClaimKeys = [
+  ...exactClaimKeys,
+  "modelEligibility",
+  "modelContract",
+] as const;
+
 const historicCoreKeys = [
   "schemaVersion",
   "recoveryId",
@@ -154,6 +184,57 @@ export const buildReaderSummaryProductionRecoveryModelClaim = (
     generationProfile: { ...expected.generationProfile },
     supersededPredecessor: null,
     boundaries: v2Boundaries,
+  };
+};
+
+export const buildReaderSummaryProductionRecoveryGapModelClaim = (
+  expected: ReaderSummaryProductionRecoveryGapClaimExpectation,
+): ReaderSummaryProductionRecoveryModelClaimV3 => {
+  assertClaimExpectation(expected);
+  if (
+    !expected.modelEligibility.eligible ||
+    expected.modelEligibility.reasons.length !== 0 ||
+    !isDeepStrictEqual(
+      expected.modelContract,
+      readerSummaryProductionRecoveryModelContract,
+    ) ||
+    expected.generationProfile.modelVersion !== "codex:gpt-5.6-sol:xhigh"
+  ) {
+    throw claimError("gap claim is not model eligible");
+  }
+  return {
+    schemaVersion: readerSummaryProductionRecoveryGapClaimSchema,
+    ...expected,
+    dryRunCanonicalSha256s: [...expected.dryRunCanonicalSha256s] as [string, string],
+    generationProfile: { ...expected.generationProfile },
+    modelEligibility: {
+      ...expected.modelEligibility,
+      reasons: [...expected.modelEligibility.reasons],
+    },
+    modelContract: { ...expected.modelContract },
+    supersededPredecessor: null,
+    boundaries: v2Boundaries,
+  };
+};
+
+export const verifyReaderSummaryProductionRecoveryGapClaim = (
+  value: unknown,
+  expected: ReaderSummaryProductionRecoveryGapClaimExpectation,
+): VerifiedReaderSummaryProductionRecoveryClaim => {
+  const exact = buildReaderSummaryProductionRecoveryGapModelClaim(expected);
+  if (
+    !isRecord(value) ||
+    value.schemaVersion !== readerSummaryProductionRecoveryGapClaimSchema ||
+    !hasExactKeys(value, exactGapClaimKeys) ||
+    !isDeepStrictEqual(value, exact)
+  ) {
+    throw claimError("gap claim does not match its exact authority");
+  }
+  return {
+    payload: value,
+    historic: false,
+    supersededPredecessor: null,
+    generationProfile: exact.generationProfile,
   };
 };
 
