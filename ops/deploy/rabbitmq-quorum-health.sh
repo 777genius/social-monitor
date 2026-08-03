@@ -419,7 +419,7 @@ if not isinstance(state, dict):
     raise SystemExit(1)
 if state.get("Status") != "running" or state.get("OOMKilled") is not False:
     raise SystemExit(1)
-restart_count = state.get("RestartCount")
+restart_count = rows[0].get("RestartCount")
 if not isinstance(restart_count, int) or isinstance(restart_count, bool) or restart_count < 0:
     raise SystemExit(1)
 ' "$container_id"; then

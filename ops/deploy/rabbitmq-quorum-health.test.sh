@@ -45,23 +45,23 @@ JSON
 
 target_inspect_json() {
   cat <<JSON
-[{"Id":"$TARGET_ID","Image":"$TARGET_IMAGE","State":{"Status":"running","OOMKilled":false,"RestartCount":0},"Config":{"Hostname":"$TARGET_HOSTNAME","Labels":{"com.docker.compose.project":"$PROJECT","com.docker.compose.service":"rabbitmq"}},"Mounts":[{"Type":"volume","Name":"$TARGET_VOLUME","Destination":"/var/lib/rabbitmq","RW":true}]}]
+[{"Id":"$TARGET_ID","Image":"$TARGET_IMAGE","RestartCount":0,"State":{"Status":"running","OOMKilled":false},"Config":{"Hostname":"$TARGET_HOSTNAME","Labels":{"com.docker.compose.project":"$PROJECT","com.docker.compose.service":"rabbitmq"}},"Mounts":[{"Type":"volume","Name":"$TARGET_VOLUME","Destination":"/var/lib/rabbitmq","RW":true}]}]
 JSON
 }
 
 worker_inspect_json() {
   case $WORKER_MODE in
     healthy)
-      printf '[{"Id":"%s","State":{"Status":"running","OOMKilled":false,"RestartCount":3}}]\n' "$WORKER_ID"
+      printf '[{"Id":"%s","RestartCount":3,"State":{"Status":"running","OOMKilled":false}}]\n' "$WORKER_ID"
       ;;
     exited)
-      printf '[{"Id":"%s","State":{"Status":"exited","OOMKilled":false,"RestartCount":3}}]\n' "$WORKER_ID"
+      printf '[{"Id":"%s","RestartCount":3,"State":{"Status":"exited","OOMKilled":false}}]\n' "$WORKER_ID"
       ;;
     oom)
-      printf '[{"Id":"%s","State":{"Status":"running","OOMKilled":true,"RestartCount":3}}]\n' "$WORKER_ID"
+      printf '[{"Id":"%s","RestartCount":3,"State":{"Status":"running","OOMKilled":true}}]\n' "$WORKER_ID"
       ;;
     malformed)
-      printf '[{"Id":"%s","State":{"Status":"running","OOMKilled":false,"RestartCount":"3"}}]\n' "$WORKER_ID"
+      printf '[{"Id":"%s","RestartCount":"3","State":{"Status":"running","OOMKilled":false}}]\n' "$WORKER_ID"
       ;;
     *) fail "unknown worker mode: $WORKER_MODE" ;;
   esac
