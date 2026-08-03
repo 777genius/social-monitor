@@ -103,7 +103,9 @@ jobs:
     if: ${{ github.event_name != 'workflow_dispatch' || inputs.maintenance_action == 'none' }}
     name: Plan changed production components
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # A missing PostgreSQL bootstrap marker is repaired through the normal
+    # deploy path, whose bounded backend health grace and soak exceed 10 min.
+    timeout-minutes: 30
     environment: production
     outputs:
       backend: ${{ steps.plan.outputs.backend }}

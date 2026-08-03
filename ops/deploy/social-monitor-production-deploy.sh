@@ -287,7 +287,7 @@ expected_images = {
     "caddy": "caddy:2.11.4-alpine",
     "frontend": "nginx:1.29-alpine",
     "otel-collector": "otel/opentelemetry-collector-contrib:0.157.0@sha256:f2f01157055a9b2aab9df7118e1f1c9abf345e99b23bc7a2bc791db374a7d0f6",
-    "rabbitmq": "rabbitmq:4.3-management",
+    "rabbitmq": "rabbitmq:4.3.2-management@sha256:c1e33461287f4c53049ce525575f0df77b2a00a88e2593776afbb6c1489bdb81",
     "redis": "redis:8-alpine",
 }
 expected_dockerfiles = {

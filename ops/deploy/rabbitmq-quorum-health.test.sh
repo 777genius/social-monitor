@@ -27,7 +27,7 @@ fail() {
 
 cluster_status_json() {
   cat <<JSON
-{"alarms":[],"running_nodes":["rabbit@$TARGET_HOSTNAME"],"cluster_tags":[],"listeners":{"rabbit@$TARGET_HOSTNAME":[]},"cpu_cores":{"rabbit@$TARGET_HOSTNAME":6},"cluster_name":"rabbit@$TARGET_HOSTNAME","disk_nodes":["rabbit@$TARGET_HOSTNAME"],"versions":{"rabbit@$TARGET_HOSTNAME":{"erlang_version":"27.3.4.13","rabbitmq_name":"RabbitMQ","rabbitmq_version":"4.3.1"}},"partitions":{},"maintenance_status":{"rabbit@$TARGET_HOSTNAME":"not under maintenance"}}
+{"alarms":[],"running_nodes":["rabbit@$TARGET_HOSTNAME"],"cluster_tags":[],"listeners":{"rabbit@$TARGET_HOSTNAME":[]},"cpu_cores":{"rabbit@$TARGET_HOSTNAME":6},"cluster_name":"rabbit@$TARGET_HOSTNAME","disk_nodes":["rabbit@$TARGET_HOSTNAME"],"versions":{"rabbit@$TARGET_HOSTNAME":{"erlang_version":"27.3.4.13","rabbitmq_name":"RabbitMQ","rabbitmq_version":"4.3.2"}},"partitions":{},"maintenance_status":{"rabbit@$TARGET_HOSTNAME":"not under maintenance"}}
 JSON
 }
 
@@ -96,7 +96,7 @@ docker() {
             healthy) cluster_status_json ;;
             alarm) cluster_status_json | sed 's/"alarms":\[\]/"alarms":["memory"]/' ;;
             partition) cluster_status_json | sed 's/"partitions":{}/"partitions":{"rabbit@other":["rabbit@fixture"]}/' ;;
-            version) cluster_status_json | sed 's/"rabbitmq_version":"4.3.1"/"rabbitmq_version":"4.3.2"/' ;;
+            version) cluster_status_json | sed 's/"rabbitmq_version":"4.3.2"/"rabbitmq_version":"4.3.1"/' ;;
             malformed) printf '%s\n' '{"running_nodes":[]}' ;;
             *) fail "unknown cluster mode: $CLUSTER_MODE" ;;
           esac
