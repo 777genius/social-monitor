@@ -707,8 +707,8 @@ const exactGapEvidence = (
     providerItemId: exactText(row.providerItemId, "provider item id"),
     canonicalUrl: exactText(row.canonicalUrl, "canonical URL"),
     title: exactText(row.title, "title"),
-    bodyPreview: exactBoundedText(row.bodyPreview, "body preview", 4096),
-    sourceText: exactBoundedText(row.sourceText, "source text", 4096),
+    bodyPreview: exactHistoricalBody(row.bodyPreview, "body preview", 4096),
+    sourceText: exactHistoricalBody(row.sourceText, "source text", 4096),
     ...(row.authorHandle === null
       ? {}
       : { authorHandle: exactText(row.authorHandle, "author handle") }),
@@ -848,11 +848,8 @@ const readGapEvidenceRows = (
       feed."interest_id"::TEXT AS "interestId",
       source."provider_item_id" AS "providerItemId",
       source."canonical_url" AS "canonicalUrl", feed."title" AS "title",
-      -- Historical provider rows may retain transport whitespace. Canonicalize
-      -- only the immutable authority projection; never rewrite source storage.
-      btrim(feed."body_preview") AS "bodyPreview",
-      LEFT(btrim(COALESCE(NULLIF(btrim(feed."body_preview"), ''), source."body")), 4096)
-        AS "sourceText",
+      feed."body_preview" AS "bodyPreview",
+      LEFT(COALESCE(NULLIF(feed."body_preview", ''), source."body"), 4096) AS "sourceText",
       feed."author_handle" AS "authorHandle", source."content_hash" AS "sourceContentHash",
       source."provider_content_hash" AS "sourceProviderContentHash",
       feed."published_at" AS "publishedAt", feed."observed_at" AS "observedAt",
@@ -980,6 +977,24 @@ const exactBoundedText = (
     value.length === 0 ||
     value.length > maximumLength ||
     value !== value.trim() ||
+    /[\u0000]/u.test(value)
+  ) {
+    throw gapAuthorityError(`${label} is invalid`);
+  }
+  return value;
+};
+
+// The database seal compares historical body fields byte-for-byte. Preserve
+// transport whitespace here while retaining the strict size and NUL bounds.
+const exactHistoricalBody = (
+  value: string,
+  label: string,
+  maximumLength: number,
+): string => {
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    value.length > maximumLength ||
     /[\u0000]/u.test(value)
   ) {
     throw gapAuthorityError(`${label} is invalid`);
