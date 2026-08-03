@@ -104,26 +104,27 @@ describe("reader summary production recovery gap authority", () => {
     })).toThrow(`${label} exceeds immutable authority cutoff`);
   });
 
-  it("fails closed when required GitHub scan proof is unavailable", () => {
+  it("records bounded GitHub omission when historical scan proof is unavailable", () => {
     const rows = exactRecoveryGapRows().map((row) =>
       row.requestedUtcDate === "2026-07-29" &&
       row.providerKey === "github-trending-page"
         ? { ...row, githubResultId: null }
         : row,
     );
-    expect(() => buildReaderSummaryProductionRecoveryGapPlan({
+    const plan = buildReaderSummaryProductionRecoveryGapPlan({
       scope,
       rows,
       producer: "ordered_filter",
-    })).toThrow(
-      '2026-07-29 immutable provider counts diverged {"date":"2026-07-29",' +
-      '"actual":[{"providerKey":"github-trending-page","count":0,' +
-      '"evidenceState":"unavailable"},{"providerKey":"hacker-news",' +
-      '"count":0,"evidenceState":"missing"},{"providerKey":"reddit",' +
-      '"count":0,"evidenceState":"missing"},{"providerKey":"rss",' +
-      '"count":32,"evidenceState":"verified_existing"},' +
-      '{"providerKey":"x-twitter","count":17,' +
-      '"evidenceState":"verified_existing"}]}',
+    });
+    const day = plan.days[0]!;
+    expect(day.providerCoverage[0]).toMatchObject({
+      providerKey: "github-trending-page",
+      count: 0,
+      evidenceState: "unavailable",
+    });
+    expect(day.modelEligibility.eligible).toBe(false);
+    expect(day.modelEligibility.reasons).toContain(
+      "provider_github-trending-page_unavailable",
     );
   });
 });

@@ -510,7 +510,7 @@ const buildGapDay = (params: {
       sha256: evidenceSha256,
     })),
   ).sha256;
-  assertExactGapCoverage(params.date, providerCoverage);
+  assertExactGapCoverage(params.date, providerCoverage, params.rows);
   const totalEvidenceCount = providerCoverage.reduce(
     (total, coverage) => total + coverage.count,
     0,
@@ -617,6 +617,7 @@ const buildGapDay = (params: {
 const assertExactGapCoverage = (
   date: ReaderSummaryProductionRecoveryGapDate,
   coverage: readonly ReaderSummaryProductionRecoveryGapCoverage[],
+  rows: readonly ReaderSummaryProductionRecoveryGapEvidenceRow[],
 ): void => {
   const expected = readerSummaryProductionRecoveryGapExpectedCounts[date];
   if (
@@ -624,6 +625,16 @@ const assertExactGapCoverage = (
     coverage.some((entry, index) => {
       const providerKey = readerSummaryProductionRecoveryGapProviderKeys[index];
       const expectedCount = providerKey === undefined ? undefined : expected[providerKey];
+      const rawCount = providerKey === undefined
+        ? 0
+        : rows.filter((row) => row.providerKey === providerKey).length;
+      if (
+        providerKey === "github-trending-page" &&
+        entry.evidenceState === "unavailable"
+      ) {
+        return entry.providerKey !== providerKey || entry.count !== 0 ||
+          rawCount !== expectedCount;
+      }
       return entry.providerKey !== providerKey ||
         entry.count !== expectedCount ||
         entry.evidenceState !==
