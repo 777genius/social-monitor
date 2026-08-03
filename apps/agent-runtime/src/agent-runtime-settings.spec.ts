@@ -39,7 +39,7 @@ describe("resolveAgentRuntimeSettings", () => {
     expect(settings.cli.localEncryptionKey).toBe("env-key");
   });
 
-  it("defaults production Codex execution to gpt-5.6-sol with xhigh reasoning", () => {
+  it("defaults production Codex execution to gpt-5.5 with xhigh reasoning", () => {
     const settings = resolveAgentRuntimeSettings({});
 
     expect(settings.cli).toMatchObject({
@@ -48,7 +48,7 @@ describe("resolveAgentRuntimeSettings", () => {
       stateRoot: expect.stringMatching(
         /\.local\/state\/social-monitor\/subscription-runtime$/,
       ),
-      model: "gpt-5.6-sol",
+      model: "gpt-5.5",
       reasoningEffort: "xhigh",
     });
   });

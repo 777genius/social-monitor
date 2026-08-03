@@ -158,28 +158,6 @@ export const inspectOrRecoverReaderSummaryWeeklyArtifactPair = (params: {
   return validatePublishedPair(params.paths, params.validate);
 };
 
-export const inspectReaderSummaryWeeklyArtifactPairReadOnly = (params: {
-  paths: ReaderSummaryWeeklyArtifactPairPaths;
-  validate: ReaderSummaryWeeklyArtifactPairValidator;
-}): ReaderSummaryWeeklyArtifactPairState => {
-  const artifactExists = existsSync(params.paths.artifactPath);
-  const proofExists = existsSync(params.paths.proofPath);
-  if (existsSync(params.paths.pendingPairPath)) {
-    throw new Error(
-      "Reader summary weekly replay found pending mutable artifact state",
-    );
-  }
-  if (!artifactExists && !proofExists) {
-    return { status: "missing" };
-  }
-  if (!artifactExists || !proofExists) {
-    throw new Error(
-      "Reader summary weekly replay found an incomplete artifact/proof pair",
-    );
-  }
-  return validatePublishedPair(params.paths, params.validate);
-};
-
 export const commitReaderSummaryWeeklyArtifactPair = (params: {
   paths: ReaderSummaryWeeklyArtifactPairPaths;
   artifact: unknown;

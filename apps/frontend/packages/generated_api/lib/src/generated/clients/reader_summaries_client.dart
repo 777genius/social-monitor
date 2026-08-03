@@ -16,7 +16,6 @@ import '../models/list_reader_summary_topic_recommendations_response_dto.dart';
 import '../models/reader_summary_job_status_response_dto.dart';
 import '../models/reader_summary_quality_rejection_response_dto.dart';
 import '../models/reader_summary_response_dto.dart';
-import '../models/reader_summary_weekly_projection_response_dto.dart';
 import '../models/request_reader_summary_request_dto.dart';
 import '../models/request_reader_summary_response_dto.dart';
 import '../models/scope_type.dart';
@@ -88,21 +87,6 @@ abstract class ReaderSummariesClient {
     @Query('cadence') Cadence? cadence,
     @Query('interestId') String? interestId,
     @Query('scopeType') ScopeType? scopeType,
-    @Header('authorization') String? authorization,
-    @Header('x-workspace-role') String? xWorkspaceRole,
-  });
-
-  /// Get the certified Monday-Sunday UTC reader summary projection.
-  ///
-  /// [authorization] - Optional Bearer API key. Requires read:summaries. If supplied, x-workspace-role is not required.
-  ///
-  /// [xWorkspaceRole] - Comma-separated workspace roles. ReaderSummary reads allow owner, admin, member or viewer. Required when Authorization bearer API key is not supplied.
-  @GET('/reader-summaries/weekly')
-  Future<ReaderSummaryWeeklyProjectionResponseDto>
-  readerSummaryWeeklyProjectionControllerGet({
-    @Query('weekStartedOn') required String weekStartedOn,
-    @Header('x-workspace-id') required String xWorkspaceId,
-    @Header('x-tenant-id') required String xTenantId,
     @Header('authorization') String? authorization,
     @Header('x-workspace-role') String? xWorkspaceRole,
   });

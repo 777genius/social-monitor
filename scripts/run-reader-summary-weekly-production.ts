@@ -2,47 +2,13 @@ import { resolve } from "node:path";
 
 import { GrpcAgentRuntimeClient } from "@social-monitor/summary/adapters/model/grpc-agent-runtime-client";
 import { SystemClock } from "@social-monitor/shared-kernel";
-import {
-  defaultPostgresRuntimePoolConfig,
-  runWithTenantDatabaseAccess,
-} from "@social-monitor/platform-persistence";
 import { Pool } from "pg";
-
-import { PrismaReaderSummaryWeeklyCertificationSealAuthority } from "../libs/summary/adapters/persistence/prisma/prisma-reader-summary-weekly-certification-seal-authority";
-import { PrismaReaderSummaryWeeklyReviewManifest } from "../libs/summary/adapters/persistence/prisma/prisma-reader-summary-weekly-review-manifest";
-import { PrismaReaderSummaryWeeklyStoryAuthority } from "../libs/summary/adapters/persistence/prisma/prisma-reader-summary-weekly-story-authority";
-import { PrismaReaderSummaryArtifactRepository } from "../libs/summary/adapters/persistence/prisma/prisma-reader-summary-artifact.repository";
-import { PrismaSummaryConnection } from "../libs/summary/adapters/persistence/prisma/prisma-summary-connection";
-import { PublishReaderSummaryWeeklyCertifiedArtifactUseCase } from "../libs/summary/features/publish-reader-summary-weekly-certified-artifact/publish-reader-summary-weekly-certified-artifact.use-case";
-import type { ReaderSummaryWeeklyReviewManifest } from "../libs/summary/domain/value-objects/reader-summary-weekly-review-manifest";
-import type { ReaderSummaryWeeklyModelPort } from "../libs/summary/ports/reader-summary-weekly-model.port";
-import type { AgentRuntimeClientPort } from "../libs/summary/ports/agent-runtime-client.port";
-import type { ReaderSummaryWeeklyReviewManifestPort } from "../libs/summary/ports/reader-summary-weekly-review-manifest.port";
 
 import { loadDotenvIfPresent } from "./lib/env-file";
 import {
-  backfillReaderSummaryWeeklyDailyCertifications,
-} from "./lib/reader-summary-weekly-daily-certification-backfill";
-import {
   AgentRuntimeReaderSummaryWeeklyTextModel,
-  buildModelInputFromDbState,
   runReaderSummaryWeeklyProduction,
-  type ReaderSummaryWeeklyProductionPublisher,
 } from "./lib/reader-summary-weekly-production-runner";
-import { admitReaderSummaryWeeklyReviewManifest } from "./lib/reader-summary-weekly-review-admission";
-import {
-  acquireReaderSummaryWeeklyExecutionReceipt,
-  claimReaderSummaryWeeklyExecutionReceiptPair,
-  completeReaderSummaryWeeklyExecutionReceipt,
-  failReaderSummaryWeeklyExecutionReceiptAfterDurableOutput,
-  failReaderSummaryWeeklyExecutionReceiptBeforeDurableOutput,
-  reconcileReaderSummaryWeeklyExecutionReceiptPublication,
-  releaseReaderSummaryWeeklyExecutionReceiptPair,
-  ReaderSummaryWeeklySubscriptionRuntimeFailureError,
-  terminalizeReaderSummaryWeeklyExecutionReceiptStaleModelFence,
-  type ReaderSummaryWeeklyExecutionReceipt,
-  type ReaderSummaryWeeklyExecutionReceiptPair,
-} from "./lib/reader-summary-weekly-execution-receipt";
 import {
   assertReaderSummaryWeeklyProductionPostgresContract,
   loadReaderSummaryWeeklyProductionDbState,
@@ -50,21 +16,7 @@ import {
   resolveCompletedReaderSummaryWeeklyProductionWindow,
   withReaderSummaryWeeklyProductionDatabaseAccess,
   type ReaderSummaryWeeklyProductionScope,
-  type ReaderSummaryWeeklyProductionDbState,
-  type ReaderSummaryWeeklyProductionWindow,
 } from "./lib/reader-summary-weekly-production-postgres-contract";
-import { loadReaderSummaryWeeklyScheduleObservations } from "./lib/reader-summary-weekly-schedule-postgres";
-import {
-  ReaderSummaryWeeklyScheduledExecutionError,
-  runReaderSummaryWeeklyProductionSchedule,
-  type ReaderSummaryWeeklyScheduledFailure,
-  type ReaderSummaryWeeklyScheduledSlotOutcome,
-} from "./lib/reader-summary-weekly-production-scheduler";
-import {
-  runReaderSummaryWeeklySlotPipeline,
-  type ReaderSummaryWeeklySlotPipelineAdmission,
-  type ReaderSummaryWeeklySlotPipelineReplayRequest,
-} from "./lib/reader-summary-weekly-slot-pipeline";
 
 loadDotenvIfPresent(".env");
 
@@ -75,726 +27,69 @@ void main().catch((error) => {
 
 async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
-  const databaseUrl = requireEnv("DATABASE_URL");
   const pool = new Pool({
-    connectionString: databaseUrl,
+    connectionString: requireEnv("DATABASE_URL"),
     min: 0,
     max: 1,
     connectionTimeoutMillis: 5_000,
   });
-  const scope = readScope();
-  const now = new Date();
-  const connection = await PrismaSummaryConnection.create(
-    defaultPostgresRuntimePoolConfig(databaseUrl, "daily-runner"),
-  );
-  const reviewManifestStore: ReaderSummaryWeeklyReviewManifestPort =
-    new PrismaReaderSummaryWeeklyReviewManifest(connection);
-  if (options.replay) {
-    try {
-      const window = options.weekStartedOn === undefined
+  try {
+    const scope = readScope();
+    const now = new Date();
+    const window =
+      options.weekStartedOn === undefined
         ? previousCompletedReaderSummaryWeeklyProductionWindow(now)
         : resolveCompletedReaderSummaryWeeklyProductionWindow(
             options.weekStartedOn,
             now,
           );
-      const outcome = await executeWindow({
-        pool,
-        scope,
-        window,
-        options,
-        model: replayModel,
-        publisher: replayPublisher,
-        manifestStore: reviewManifestStore,
-        attemptNumber: 1,
-      });
-      if (outcome.status !== "completed") process.exitCode = 75;
-    } finally {
-      await connection.close().catch(() => undefined);
-      await pool.end().catch(() => undefined);
-    }
-    return;
-  }
-  try {
-    const repository = new PrismaReaderSummaryArtifactRepository(connection);
-    const publisherUseCase = new PublishReaderSummaryWeeklyCertifiedArtifactUseCase(
-      new PrismaReaderSummaryWeeklyCertificationSealAuthority(connection),
-      new PrismaReaderSummaryWeeklyStoryAuthority(connection),
-      repository,
+    const dbState = await withReaderSummaryWeeklyProductionDatabaseAccess(
+      pool,
+      {
+        kind: "tenant",
+        tenantId: scope.tenantId,
+        workspaceId: scope.workspaceId,
+      },
+      async (client) => {
+        await assertReaderSummaryWeeklyProductionPostgresContract(client);
+        return loadReaderSummaryWeeklyProductionDbState(client, scope, window);
+      },
     );
-    const agentRuntime = lazyAgentRuntime(options.modelTimeoutMs);
     const model = new AgentRuntimeReaderSummaryWeeklyTextModel({
-      client: agentRuntime,
+      client: GrpcAgentRuntimeClient.connect({
+        address: requireEnv("AGENT_RUNTIME_GRPC_ADDRESS"),
+        clock: new SystemClock(),
+        options: {
+          timeoutMs: options.modelTimeoutMs,
+          serviceToken: process.env.AGENT_RUNTIME_SERVICE_TOKEN,
+        },
+      }),
       provider: "codex",
       model: "gpt-5.6-sol",
       reasoningEffort: "xhigh",
       timeoutMs: options.modelTimeoutMs,
     });
-    const publisher: ReaderSummaryWeeklyProductionPublisher = {
-      publish: async (command) => {
-        const published = await publisherUseCase.execute(command);
-        if (!published.ok) throw published.error;
-        return published.value;
-      },
-    };
-    if (options.weekStartedOn !== undefined) {
-      const window = resolveCompletedReaderSummaryWeeklyProductionWindow(
-        options.weekStartedOn,
-        now,
-      );
-      const outcome = await executeWindow({
-        pool,
-        scope,
-        window,
-        options,
-        model,
-        publisher,
-        manifestStore: reviewManifestStore,
-        reviewAgentRuntime: agentRuntime,
-        attemptNumber: 1,
-      });
-      if (outcome.status !== "completed") process.exitCode = 75;
-      return;
-    }
-    const observedSlots = await weeklyDatabaseOperation(pool, scope, (client) =>
-      loadReaderSummaryWeeklyScheduleObservations(
-        client,
-        scope,
-        options.firstWeekStartedOn,
-        now,
-      ),
-    );
-    const schedule = await runReaderSummaryWeeklyProductionSchedule({
-      tenantId: scope.tenantId,
-      workspaceId: scope.workspaceId,
-      firstWeekStartedUtcDate: options.firstWeekStartedOn,
-      now,
-      catchUpLimit: options.catchUpLimit,
-      observedSlots,
-      execute: async (slot, attemptNumber) => executeWindow({
-          pool,
-          scope,
-          window: resolveCompletedReaderSummaryWeeklyProductionWindow(
-            slot.weekStartedUtcDate,
-            now,
-          ),
-          options,
-          model,
-          publisher,
-          manifestStore: reviewManifestStore,
-          reviewAgentRuntime: agentRuntime,
-          attemptNumber,
-        }),
-      wait: waitForRetry,
+    const result = await runReaderSummaryWeeklyProduction({
+      dbState,
+      outputDirectory: options.outputDirectory,
+      model,
+      replay: options.replay,
+      generatedAt: new Date(),
     });
-    console.log(
-      `schedule_planned=${schedule.planned} completed=${schedule.completed} terminal=${schedule.terminal} deferred=${schedule.deferred}`,
-    );
-    for (const diagnostic of schedule.terminalDiagnostics) {
-      console.log(
-        `terminal_slot=${diagnostic.slotIdentity} category=${diagnostic.category} retryable=${diagnostic.retryable} code=${diagnostic.code} cause=${diagnostic.cause} final_retry=${diagnostic.finalRetryDecision}`,
-      );
+    printResult(result);
+    if (result.status !== "complete") {
+      process.exitCode = result.status === "unavailable" ? 78 : 75;
     }
-    if (schedule.terminal > 0) process.exitCode = 75;
   } finally {
-    await connection.close().catch(() => undefined);
     await pool.end().catch(() => undefined);
   }
 }
-
-const replayModel: ReaderSummaryWeeklyModelPort = Object.freeze({
-  generate: async () => {
-    throw new Error("Reader summary weekly replay attempted a model call");
-  },
-});
-
-const replayPublisher: ReaderSummaryWeeklyProductionPublisher = Object.freeze({
-  publish: async () => {
-    throw new Error("Reader summary weekly replay attempted a provider write");
-  },
-});
-
-const lazyAgentRuntime = (
-  timeoutMs: number,
-): AgentRuntimeClientPort => {
-  let client: GrpcAgentRuntimeClient | undefined;
-  const resolve = (): GrpcAgentRuntimeClient => {
-    client ??= GrpcAgentRuntimeClient.connect({
-      address: requireEnv("AGENT_RUNTIME_GRPC_ADDRESS"),
-      clock: new SystemClock(),
-      options: {
-        timeoutMs,
-        serviceToken: process.env.AGENT_RUNTIME_SERVICE_TOKEN,
-      },
-    });
-    return client;
-  };
-  return Object.freeze({
-    runTask: (command: Parameters<AgentRuntimeClientPort["runTask"]>[0]) =>
-      resolve().runTask(command),
-    checkHealth: (service: Parameters<AgentRuntimeClientPort["checkHealth"]>[0]) =>
-      resolve().checkHealth(service),
-  });
-};
-
-const completedOutcome: ReaderSummaryWeeklyScheduledSlotOutcome = Object.freeze({
-  status: "completed",
-});
-
-const recoveryOnlyModel: ReaderSummaryWeeklyModelPort = Object.freeze({
-  generate: async () => {
-    throw new ReaderSummaryWeeklyScheduledExecutionError(
-      "Reader summary weekly running receipt has no durable artifact pair",
-      receiptFailure(
-        "schema",
-        "receipt_running_without_durable_pair",
-        "receipt_fence",
-      ),
-    );
-  },
-});
-
-const executeWindow = async (params: Readonly<{
-  pool: Pool;
-  scope: ReaderSummaryWeeklyProductionScope;
-  window: ReaderSummaryWeeklyProductionWindow;
-  options: CliOptions;
-  model: ReaderSummaryWeeklyModelPort;
-  publisher: ReaderSummaryWeeklyProductionPublisher;
-  manifestStore: ReaderSummaryWeeklyReviewManifestPort;
-  reviewAgentRuntime?: AgentRuntimeClientPort;
-  attemptNumber: number;
-}>): Promise<ReaderSummaryWeeklyScheduledSlotOutcome> => {
-  let receipt: ReaderSummaryWeeklyExecutionReceipt | undefined;
-  let durablePair: ReaderSummaryWeeklyExecutionReceiptPair | undefined;
-  let publishingReceipt: ReaderSummaryWeeklyExecutionReceipt | undefined;
-  let completionAttempted = false;
-  let receiptAlreadyCompleted = false;
-  try {
-    const loadDbState = async (
-      window: ReaderSummaryWeeklyProductionWindow,
-    ): Promise<ReaderSummaryWeeklyProductionDbState> =>
-      weeklyDatabaseOperation(params.pool, params.scope, async (client) => {
-        await assertReaderSummaryWeeklyProductionPostgresContract(client);
-        return loadReaderSummaryWeeklyProductionDbState(
-          client,
-          params.scope,
-          window,
-        );
-      });
-    const admitReviewManifest = async (input: Readonly<{
-      mode: "normal" | "replay";
-      window: ReaderSummaryWeeklyProductionWindow;
-      dbState: ReaderSummaryWeeklyProductionDbState;
-    }>): Promise<
-      ReaderSummaryWeeklySlotPipelineAdmission<ReaderSummaryWeeklyReviewManifest>
-    > => {
-      if (input.dbState.status !== "complete") {
-        const result = await runWithTenantDatabaseAccess(params.scope, () =>
-          runReaderSummaryWeeklyProduction({
-            dbState: input.dbState,
-            reviewManifest: null,
-            outputDirectory: params.options.outputDirectory,
-            model: input.mode === "replay" ? replayModel : params.model,
-            replay: input.mode === "replay",
-            generatedAt: new Date(),
-          }),
-        );
-        printResult(result);
-        return Object.freeze({
-          status: "terminal" as const,
-          outcome: terminalOutcome(
-            "schema",
-            "certification_state_incomplete",
-            "database_authority",
-          ),
-        });
-      }
-      const reviewAdmission = await runWithTenantDatabaseAccess(params.scope, () =>
-        admitReaderSummaryWeeklyReviewManifest({
-          dbState: input.dbState,
-          replay: input.mode === "replay",
-          manifestStore: params.manifestStore,
-          ...(input.mode === "replay" || params.reviewAgentRuntime === undefined
-            ? {}
-            : { agentRuntime: params.reviewAgentRuntime }),
-        }),
-      );
-      if (reviewAdmission.status === "partial") {
-        const result = await runWithTenantDatabaseAccess(params.scope, () =>
-          runReaderSummaryWeeklyProduction({
-            dbState: input.dbState,
-            reviewManifest: null,
-            outputDirectory: params.options.outputDirectory,
-            model: input.mode === "replay" ? replayModel : params.model,
-            replay: input.mode === "replay",
-            generatedAt: new Date(),
-          }),
-        );
-        printResult(result);
-        for (const reason of reviewAdmission.reasons) {
-          console.log(`blocking_reason=${reason}`);
-        }
-        return Object.freeze({
-          status: "terminal" as const,
-          outcome: terminalOutcome(
-            "schema",
-            "review_manifest_admission_failed",
-            "review_authority",
-          ),
-        });
-      }
-      const inputAdmission = buildModelInputFromDbState(
-        input.dbState,
-        reviewAdmission.manifest,
-      );
-      if (inputAdmission.status === "partial") {
-        const result = await runWithTenantDatabaseAccess(params.scope, () =>
-          runReaderSummaryWeeklyProduction({
-            dbState: input.dbState,
-            reviewManifest: reviewAdmission.manifest,
-            outputDirectory: params.options.outputDirectory,
-            model: input.mode === "replay" ? replayModel : params.model,
-            replay: input.mode === "replay",
-            generatedAt: new Date(),
-          }),
-        );
-        printResult(result);
-        return Object.freeze({
-          status: "terminal" as const,
-          outcome: terminalOutcome(
-            "schema",
-            "review_manifest_validation_failed",
-            "review_authority",
-          ),
-        });
-      }
-      return Object.freeze({
-        status: "admitted" as const,
-        reviewManifest: reviewAdmission.manifest,
-      });
-    };
-    const replayZeroModel = async (
-      input: ReaderSummaryWeeklySlotPipelineReplayRequest<
-        ReaderSummaryWeeklyProductionDbState,
-        ReaderSummaryWeeklyReviewManifest
-      >,
-    ): Promise<ReaderSummaryWeeklyScheduledSlotOutcome> => {
-      const result = await runWithTenantDatabaseAccess(params.scope, () =>
-        runReaderSummaryWeeklyProduction({
-          dbState: input.dbState,
-          reviewManifest: input.reviewManifest,
-          outputDirectory: params.options.outputDirectory,
-          model: replayModel,
-          replay: true,
-          generatedAt: new Date(),
-        }),
-      );
-      printResult(result);
-      return result.status === "complete"
-        ? completedOutcome
-        : terminalOutcome("schema", "weekly_artifact_replay_failed", "artifact_proof");
-    };
-    const outcome = params.options.replay
-      ? await runReaderSummaryWeeklySlotPipeline({
-          mode: "replay" as const,
-          window: params.window,
-          loadDbState,
-          admitReviewManifest,
-          replayZeroModel,
-        })
-      : await runReaderSummaryWeeklySlotPipeline({
-          mode: "normal" as const,
-          window: params.window,
-          backfillDailyCertifications: async (window) => {
-            await weeklyDatabaseOperation(params.pool, params.scope, async (client) => {
-              await assertReaderSummaryWeeklyProductionPostgresContract(client);
-              await backfillReaderSummaryWeeklyDailyCertifications(
-                client,
-                params.scope,
-                window,
-              );
-            });
-          },
-          loadDbState,
-          admitReviewManifest,
-          synthesizeAndPublish: async (input) => {
-            const seal = input.dbState.weeklyCertificationSeal;
-            const anchorJobId = input.dbState.certifications[0]?.jobId;
-            if (seal === null || anchorJobId === undefined) {
-              throw new Error("Reader summary weekly execution authority is incomplete");
-            }
-            receipt = await weeklyDatabaseOperation(
-              params.pool,
-              params.scope,
-              (client) => acquireReaderSummaryWeeklyExecutionReceipt(client, {
-                scope: params.scope,
-                window: input.window,
-                sealId: seal.sealId,
-                sealSha256: seal.sealSha256,
-                anchorJobId,
-                now: new Date(),
-                attemptNumber: params.attemptNumber,
-              }),
-            );
-            if (receipt.state === "completed") {
-              receiptAlreadyCompleted = true;
-              return completedOutcome;
-            }
-            if (receipt.state === "failed") {
-              return terminalOutcome("domain", "receipt_terminal_failure", "receipt_fence");
-            }
-            const executionModel = receipt.state === "running"
-              ? recoveryOnlyModel
-              : params.model;
-            const result = await runWithTenantDatabaseAccess(params.scope, () =>
-              runReaderSummaryWeeklyProduction({
-                dbState: input.dbState,
-                reviewManifest: input.reviewManifest,
-                outputDirectory: params.options.outputDirectory,
-                model: executionModel,
-                replay: false,
-                generatedAt: new Date(),
-                publisher: params.publisher,
-                onDurableArtifactPair: async (pair) => {
-                  durablePair = Object.freeze({
-                    artifactSha256: pair.artifactSha256,
-                    proofSha256: pair.proofSha256,
-                  });
-                  publishingReceipt = await weeklyDatabaseOperation(
-                    params.pool,
-                    params.scope,
-                    (client) => claimReaderSummaryWeeklyExecutionReceiptPair(
-                      client,
-                      receipt!,
-                      { ...durablePair!, now: new Date() },
-                    ),
-                  );
-                },
-              }),
-            );
-            printResult(result);
-            if (result.status !== "complete" || !result.databasePublicationVerified) {
-              if (
-                receipt.state === "running" &&
-                durablePair === undefined &&
-                await weeklyDatabaseOperation(params.pool, params.scope, (client) =>
-                  terminalizeReaderSummaryWeeklyExecutionReceiptStaleModelFence(
-                    client,
-                    receipt!,
-                    new Date(),
-                  ),
-                )
-              ) {
-                return terminalOutcome("schema", "stale_model_fence", "receipt_fence");
-              }
-              const failure = receiptFailure(
-                "domain",
-                "publication_not_verified",
-                "database_publication",
-              );
-              if (publishingReceipt !== undefined) {
-                await weeklyDatabaseOperation(params.pool, params.scope, (client) =>
-                  failReaderSummaryWeeklyExecutionReceiptAfterDurableOutput(
-                    client,
-                    publishingReceipt!,
-                    failure,
-                  ),
-                );
-                publishingReceipt = undefined;
-              } else if (receipt.state === "acquired" && durablePair === undefined) {
-                await weeklyDatabaseOperation(params.pool, params.scope, (client) =>
-                  failReaderSummaryWeeklyExecutionReceiptBeforeDurableOutput(
-                    client,
-                    receipt!,
-                    failure,
-                  ),
-                );
-              }
-              return Object.freeze({ status: "terminal" as const, failure });
-            }
-            if (publishingReceipt === undefined) {
-              throw new Error("Reader summary weekly publication lacks a durable pair fence");
-            }
-            return completedOutcome;
-          },
-          replayZeroModel,
-          persistReplayFailure: async (_input, replay) => {
-            if (publishingReceipt === undefined) return;
-            const fallback = receiptFailure(
-              "schema",
-              "weekly_artifact_replay_failed",
-              "artifact_proof",
-            );
-            const failure = replay.status === "terminal"
-              ? replay.failure ?? fallback
-              : fallback;
-            await weeklyDatabaseOperation(params.pool, params.scope, (client) =>
-              failReaderSummaryWeeklyExecutionReceiptAfterDurableOutput(
-                client,
-                publishingReceipt!,
-                failure,
-              ),
-            );
-            publishingReceipt = undefined;
-          },
-          complete: async (input) => {
-            if (receiptAlreadyCompleted) {
-              console.log(
-                `status=completed week=${input.window.weekStartedOn}..${input.window.weekEndedOn} model_call=false write=false`,
-              );
-              return completedOutcome;
-            }
-            if (publishingReceipt !== undefined) {
-              await weeklyDatabaseOperation(params.pool, params.scope, (client) =>
-                completeReaderSummaryWeeklyExecutionReceipt(client, publishingReceipt!),
-              );
-              completionAttempted = true;
-              return completedOutcome;
-            }
-            const reconciled = receipt !== undefined && await weeklyDatabaseOperation(
-              params.pool,
-              params.scope,
-              (client) => reconcileReaderSummaryWeeklyExecutionReceiptPublication(
-                client,
-                receipt!,
-                { scope: params.scope, window: input.window },
-              ),
-            );
-            if (!reconciled) {
-              throw new Error("Reader summary weekly completion lacks a durable pair fence");
-            }
-            completionAttempted = true;
-            return completedOutcome;
-          },
-        });
-    if (outcome.status !== "completed" && publishingReceipt !== undefined) {
-      await weeklyDatabaseOperation(params.pool, params.scope, (client) =>
-        failReaderSummaryWeeklyExecutionReceiptAfterDurableOutput(
-          client,
-          publishingReceipt!,
-          outcome.failure ?? receiptFailure(
-            "schema",
-            "weekly_artifact_replay_failed",
-            "artifact_proof",
-          ),
-        ),
-      );
-      publishingReceipt = undefined;
-    }
-    return outcome;
-  } catch (error: unknown) {
-    if (error instanceof ReaderSummaryWeeklyScheduledExecutionError) {
-      if (
-        receipt?.state === "running" &&
-        error.failure.code === "receipt_running_without_durable_pair" &&
-        await weeklyDatabaseOperation(params.pool, params.scope, (client) =>
-          terminalizeReaderSummaryWeeklyExecutionReceiptStaleModelFence(
-            client,
-            receipt!,
-            new Date(),
-          ),
-        )
-      ) {
-        return terminalOutcome("schema", "stale_model_fence", "receipt_fence");
-      }
-      if (receipt !== undefined) {
-        throw new ReaderSummaryWeeklyScheduledExecutionError(
-          error.message,
-          error.failure,
-          receipt.attemptNumber,
-        );
-      }
-      throw error;
-    }
-    if (error instanceof ReaderSummaryWeeklySubscriptionRuntimeFailureError) {
-      const failure = receiptFailure(
-        "infrastructure",
-        safeDiagnosticToken(error.failure.code, "agent_runtime_failure"),
-        safeDiagnosticToken(error.failure.causeCategory, "agent_runtime"),
-        error.failure.retryable,
-      );
-      if (receipt?.state === "acquired" && durablePair === undefined) {
-        await weeklyDatabaseOperation(params.pool, params.scope, (client) =>
-          failReaderSummaryWeeklyExecutionReceiptBeforeDurableOutput(
-            client,
-            receipt!,
-            {
-              ...failure,
-              retryable:
-                error.failure.retryable && receipt!.attemptNumber < 3,
-            },
-          ),
-        );
-      }
-      throw new ReaderSummaryWeeklyScheduledExecutionError(
-        error.message,
-        failure,
-        receipt?.attemptNumber,
-      );
-    }
-    if (durablePair !== undefined) {
-      const retryable =
-        publishingReceipt !== undefined &&
-        !completionAttempted &&
-        publishingReceipt.attemptNumber < 3 &&
-        isRetryableExactPairPublicationError(error);
-      const failure = receiptFailure(
-        "infrastructure",
-        safeDiagnosticToken(errorCode(error), "publication_failure"),
-        "database_publication",
-        retryable,
-      );
-      if (publishingReceipt !== undefined && !completionAttempted) {
-        await weeklyDatabaseOperation(params.pool, params.scope, (client) =>
-          retryable
-            ? releaseReaderSummaryWeeklyExecutionReceiptPair(
-                client,
-                publishingReceipt!,
-              )
-            : failReaderSummaryWeeklyExecutionReceiptAfterDurableOutput(
-                client,
-                publishingReceipt!,
-                failure,
-              ),
-        );
-      }
-      throw new ReaderSummaryWeeklyScheduledExecutionError(
-        error instanceof Error
-          ? error.message
-          : "Reader summary weekly durable publication failed",
-        failure,
-        publishingReceipt?.attemptNumber ?? receipt?.attemptNumber,
-      );
-    }
-    if (receipt?.state === "acquired") {
-      await weeklyDatabaseOperation(params.pool, params.scope, (client) =>
-        failReaderSummaryWeeklyExecutionReceiptBeforeDurableOutput(
-          client,
-          receipt!,
-          receiptFailure("domain", "pre_durable_output_failure", "execution"),
-        ),
-      );
-    }
-    if (
-      receipt?.state === "running" &&
-      await weeklyDatabaseOperation(params.pool, params.scope, (client) =>
-        terminalizeReaderSummaryWeeklyExecutionReceiptStaleModelFence(
-          client,
-          receipt!,
-          new Date(),
-        ),
-      )
-    ) {
-      return terminalOutcome("schema", "stale_model_fence", "receipt_fence");
-    }
-    throw new ReaderSummaryWeeklyScheduledExecutionError(
-      error instanceof Error
-        ? error.message
-        : "Reader summary weekly execution failed",
-      receiptFailure(
-        receipt === undefined ? "infrastructure" : "domain",
-        safeDiagnosticToken(errorCode(error), "execution_failure"),
-        receipt === undefined ? "pre_receipt" : "execution",
-        receipt === undefined && isRetryablePreReceiptInfrastructureError(error),
-      ),
-      receipt?.attemptNumber,
-    );
-  }
-};
-
-const weeklyDatabaseOperation = <T>(
-  pool: Pool,
-  scope: ReaderSummaryWeeklyProductionScope,
-  operation: Parameters<
-    typeof withReaderSummaryWeeklyProductionDatabaseAccess<T>
-  >[2],
-): Promise<T> => withReaderSummaryWeeklyProductionDatabaseAccess(
-  pool,
-  {
-    kind: "tenant",
-    tenantId: scope.tenantId,
-    workspaceId: scope.workspaceId,
-  },
-  operation,
-);
-
-const terminalOutcome = (
-  category: ReaderSummaryWeeklyScheduledFailure["category"],
-  code: string,
-  cause: string,
-): ReaderSummaryWeeklyScheduledSlotOutcome =>
-  Object.freeze({ status: "terminal", failure: receiptFailure(category, code, cause) });
-
-const receiptFailure = (
-  category: ReaderSummaryWeeklyScheduledFailure["category"],
-  code: string,
-  cause: string,
-  retryable = false,
-): ReaderSummaryWeeklyScheduledFailure => Object.freeze({
-  category,
-  retryable,
-  code: safeDiagnosticToken(code, "execution_failure"),
-  cause: safeDiagnosticToken(cause, "execution"),
-});
-
-const isRetryablePreReceiptInfrastructureError = (error: unknown): boolean => {
-  const code = errorCode(error).toUpperCase();
-  return code.startsWith("08") || [
-    "40001",
-    "40P01",
-    "55P03",
-    "57P01",
-    "57014",
-    "53300",
-    "P1001",
-    "P2024",
-    "P2034",
-    "ECONNREFUSED",
-    "ECONNRESET",
-    "ECONNABORTED",
-    "ETIMEDOUT",
-    "EAI_AGAIN",
-    "ENETUNREACH",
-    "EHOSTUNREACH",
-    "ENOTFOUND",
-    "EPIPE",
-    "UNAVAILABLE",
-    "DEADLINE_EXCEEDED",
-    "RESOURCE_EXHAUSTED",
-    "14",
-  ].includes(code);
-};
-
-const isRetryableExactPairPublicationError = (error: unknown): boolean => {
-  const code = errorCode(error).toLowerCase();
-  const text = error instanceof Error
-    ? `${code}:${error.message}`.toLowerCase()
-    : code;
-  return ![
-    "authorization.denied",
-    "resource.not_found",
-    "validation.failed",
-  ].includes(code) && !/(ambigu|fenc|identity|hash|consum|complet)/u.test(text);
-};
-
-const errorCode = (error: unknown): string =>
-  typeof error === "object" && error !== null && "code" in error
-    ? String((error as Readonly<{ code?: unknown }>).code ?? "")
-    : "";
-
-const safeDiagnosticToken = (value: string, fallback: string): string =>
-  /^[A-Za-z0-9._:-]{1,128}$/u.test(value) ? value : fallback;
-
-const waitForRetry = (milliseconds: number): Promise<void> =>
-  new Promise((resolveWait) => setTimeout(resolveWait, milliseconds));
 
 type CliOptions = Readonly<{
   weekStartedOn?: string;
   outputDirectory: string;
   replay: boolean;
   modelTimeoutMs: number;
-  firstWeekStartedOn: string;
-  catchUpLimit: number;
 }>;
 
 function parseArgs(args: readonly string[]): CliOptions {
@@ -807,15 +102,6 @@ function parseArgs(args: readonly string[]): CliOptions {
     process.env.READER_SUMMARY_WEEKLY_PRODUCTION_MODEL_TIMEOUT_MS,
     "READER_SUMMARY_WEEKLY_PRODUCTION_MODEL_TIMEOUT_MS",
     600_000,
-  );
-  let firstWeekStartedOn =
-    process.env.READER_SUMMARY_WEEKLY_PRODUCTION_FIRST_WEEK_START ??
-    previousCompletedReaderSummaryWeeklyProductionWindow(new Date())
-      .weekStartedOn;
-  let catchUpLimit = parsePositiveInt(
-    process.env.READER_SUMMARY_WEEKLY_PRODUCTION_CATCH_UP_LIMIT,
-    "READER_SUMMARY_WEEKLY_PRODUCTION_CATCH_UP_LIMIT",
-    4,
   );
 
   for (let index = 0; index < args.length; index += 1) {
@@ -832,14 +118,6 @@ function parseArgs(args: readonly string[]): CliOptions {
         arg,
         modelTimeoutMs,
       );
-    } else if (arg === "--first-week-start") {
-      firstWeekStartedOn = readArgValue(args, ++index, arg);
-    } else if (arg === "--catch-up-limit") {
-      catchUpLimit = parsePositiveInt(
-        readArgValue(args, ++index, arg),
-        arg,
-        catchUpLimit,
-      );
     } else {
       throw new Error(`Unknown reader summary weekly production option: ${arg}`);
     }
@@ -849,8 +127,6 @@ function parseArgs(args: readonly string[]): CliOptions {
     outputDirectory: resolve(outputDirectory),
     replay,
     modelTimeoutMs,
-    firstWeekStartedOn,
-    catchUpLimit,
   });
 }
 
@@ -885,9 +161,6 @@ function printResult(
         result.replayCanaryWritePerformed ? "true" : "false"
       }`,
       `replay=${result.replayed ? "true" : "false"}`,
-      `db_publication_verified=${
-        result.databasePublicationVerified ? "true" : "false"
-      }`,
     ].join(" "),
   );
   for (const reason of result.blockingReasons) {

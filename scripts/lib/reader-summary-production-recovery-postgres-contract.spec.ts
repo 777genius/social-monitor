@@ -40,26 +40,9 @@ describe("reader summary production recovery PostgreSQL contract", () => {
     ),
     "utf8",
   );
-  const originalCutoffMigration = readFileSync(
-    join(
-      process.cwd(),
-      "prisma/migrations/" +
-        "20260731153000_reader_summary_production_recovery_" +
-        "original_cutoff_authority/migration.sql",
-    ),
-    "utf8",
-  );
   const postgresContract = readFileSync(
     join(process.cwd(),
       "scripts/lib/reader-summary-production-recovery-postgres-contract.ts"),
-    "utf8",
-  );
-  const originalCutoffFixture = readFileSync(
-    join(
-      process.cwd(),
-      "scripts/lib/reader-summary-production-recovery-" +
-        "original-cutoff-postgres-fixture.ts",
-    ),
     "utf8",
   );
   const replayGuard = readFileSync(
@@ -76,114 +59,22 @@ describe("reader summary production recovery PostgreSQL contract", () => {
       .toBeInstanceOf(Function);
   });
 
-  it("contracts immutable legacy rejection replay without fixed hashes", () => {
+  it("contracts the exact Jul23 legacy-wrapper quality remediation resume", () => {
     expect(postgresContract).toContain(
-      "legacy rejection replay was not immutable",
+      "reader-summary-production-recovery-model-quality-remediation-resume-v1",
     );
     expect(postgresContract).toContain(
-      "legacy rejection replay performed a write",
+      "Invalid `prisma.$queryRaw()` invocation:\\n\\n\\nRaw query failed.",
+    );
+    expect(postgresContract).toContain(
+      'resumedClaim === "resume-quality"',
+    );
+    expect(postgresContract).toContain(
+      "quality-remediation-resume-v1 lease was already consumed",
     );
     expect(replayGuard).toContain(
-      "readerSummaryProductionRecoveryHistoricClaimSchemas",
+      "17318e621367dde799a0f55d635744baef8f7258041972b73c59b1f4584e4290",
     );
-    expect(postgresContract).not.toMatch(/\b[0-9a-f]{64}\b/u);
-    expect(replayGuard).not.toMatch(/\b[0-9a-f]{64}\b/u);
-  });
-
-  it("restores the immutable original cutoff without source-row writes", () => {
-    expect(originalCutoffMigration).toContain(
-      "SET TRANSACTION ISOLATION LEVEL SERIALIZABLE",
-    );
-    expect(originalCutoffMigration).toContain(
-      "'original-cutoff repair requires two identical persisted dry runs'",
-    );
-    expect(originalCutoffMigration).toContain(
-      "(item.entry->>'publishedAt')::TIMESTAMPTZ >= v_period_start",
-    );
-    expect(originalCutoffMigration).toContain(
-      "(item.entry->>'publishedAt')::TIMESTAMPTZ < v_period_end",
-    );
-    expect(originalCutoffMigration).not.toContain(
-      "(item.entry->>'observedAt')::TIMESTAMPTZ <= v_lease.\"issued_at\"",
-    );
-    expect(originalCutoffMigration).toContain(
-      "original-cutoff RSS evidence has unknown, missing, or duplicate identity/hash",
-    );
-    expect(originalCutoffMigration).toContain(
-      "OR NOT item.entry ?& ARRAY[",
-    );
-    expect(originalCutoffMigration).toContain(
-      "OR item.entry - ARRAY[",
-    );
-    expect(originalCutoffMigration).toContain(
-      "count(DISTINCT item.entry->>'sourceContentHash')",
-    );
-    expect(originalCutoffMigration).toContain(
-      "original-cutoff non-RSS evidence bytes diverged",
-    );
-    expect(originalCutoffMigration).toContain(
-      "WHEN v_date = DATE '2026-07-23' THEN 78 ELSE 68 END",
-    );
-    expect(originalCutoffMigration).toContain(
-      "WHEN v_date = DATE '2026-07-23' THEN 75 ELSE 67 END",
-    );
-    for (const alias of [
-      "lease",
-      "day",
-      "dry",
-      "claim",
-      "job",
-      "publication",
-      "receipt",
-    ]) {
-      expect(originalCutoffMigration).toContain(`FOR UPDATE OF ${alias}`);
-    }
-    expect(originalCutoffMigration).not.toMatch(/\bLOCK\s+TABLE\b/iu);
-    expect(originalCutoffMigration).not.toContain("2026-07-21");
-    expect(originalCutoffMigration).not.toMatch(
-      /\b(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+"?(?:feed_items|source_items)\b/iu,
-    );
-    expect(
-      originalCutoffMigration.match(
-        /CREATE OR REPLACE FUNCTION\s+public\."guard_reader_summary_production_recovery_(?:evidence|lease)"/gu,
-      ),
-    ).toHaveLength(4);
-    expect(originalCutoffMigration).toContain(
-      'DROP FUNCTION public."repair_reader_summary_production_recovery_original_cutoff_v2"()',
-    );
-    expect(originalCutoffFixture).toContain(
-      "TIMESTAMPTZ '2026-07-30T12:00:00Z'",
-    );
-    expect(originalCutoffFixture).toContain(
-      "original-cutoff-excluded:",
-    );
-    expect(originalCutoffFixture).toContain(
-      "original-cutoff migration replay performed an authority-row write",
-    );
-    for (const rejectedState of [
-      "unknown_identity",
-      "missing_hash",
-      "duplicate_identity",
-      "duplicate_hash",
-    ]) {
-      expect(originalCutoffFixture).toContain(`"${rejectedState}"`);
-    }
-    expect(originalCutoffFixture).toContain(
-      "original-cutoff migration wrote model/job/publication/receipt state",
-    );
-    expect(originalCutoffFixture).toContain(
-      "original-cutoff migration replay performed a non-authority write",
-    );
-    expect(originalCutoffFixture).toContain(
-      "CASE WHEN feed.author_handle IS NULL",
-    );
-    expect(originalCutoffFixture).toContain(
-      "ELSE jsonb_build_object('authorHandle', feed.author_handle)",
-    );
-    expect(originalCutoffFixture).not.toContain(
-      "'authorHandle', feed.author_handle,",
-    );
-    expect(originalCutoffFixture).not.toContain("jsonb_strip_nulls");
   });
 
   it("replaces only validation with the exact six-day v2 authority", () => {

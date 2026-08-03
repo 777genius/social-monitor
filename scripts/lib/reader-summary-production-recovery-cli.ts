@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { isDeepStrictEqual } from "node:util";
+
 import type { FeedItemReadRepositoryPort } from "@social-monitor/feed/ports";
 import { ReaderSummaryJob } from "@social-monitor/summary/domain";
 import { PrismaReaderSummaryArtifactRepository } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-artifact.repository";
@@ -24,45 +24,41 @@ import {
   tenantId,
   workspaceId,
 } from "@social-monitor/shared-kernel";
+
 import {
   buildReaderSummaryProductionRecoveryPlan,
-  buildReaderSummaryProductionRecoveryGapRuntimePlan,
   buildRecoveryEvidenceSelection,
   dayAuthority,
-  gapDayAuthority,
   periodForRecoveryDate,
   recoveryProvenanceForDay,
   type ReaderSummaryProductionRecoveryDate as PersistedRecoveryDate,
-  type ReaderSummaryProductionRecoveryGapPlan,
   type ReaderSummaryProductionRecoveryPlan,
 } from "./reader-summary-production-recovery-data";
 import {
-  readerSummaryProductionRecoveryGapDates,
-  type ReaderSummaryProductionRecoveryGapAuthorityBinding,
-  type ReaderSummaryProductionRecoveryGapDate,
-} from "./reader-summary-production-recovery-gap-authority";
-import type { ReaderSummaryProductionRecoveryModelContract } from "./reader-summary-production-recovery-model-contract";
-import {
   buildReaderSummaryProductionRecoveryRejectionEvidence,
   type ReaderSummaryProductionRecoveryClaimExpectation,
-  type ReaderSummaryProductionRecoveryGapClaimExpectation,
   type ReaderSummaryProductionRecoveryGenerationProfile,
   type ReaderSummaryProductionRecoveryHistoricClaimSchema,
   type ReaderSummaryProductionRecoveryRejectionEvidence,
 } from "./reader-summary-production-recovery-claim-verifier";
+
 export const readerSummaryProductionRecoveryHistoricalDates = [
-  "2026-07-23", "2026-07-24", "2026-07-25", "2026-07-26", "2026-07-27", "2026-07-28",
+  "2026-07-23",
+  "2026-07-24",
+  "2026-07-25",
+  "2026-07-26",
+  "2026-07-27",
+  "2026-07-28",
 ] as const;
 
 export type ReaderSummaryProductionRecoveryDate =
   (typeof readerSummaryProductionRecoveryHistoricalDates)[number];
-export type ReaderSummaryProductionRecoveryCliDate =
-  | ReaderSummaryProductionRecoveryDate
-  | ReaderSummaryProductionRecoveryGapDate;
+
 export type ReaderSummaryProductionRecoveryCliArguments = Readonly<{
   apply: true;
-  dates: readonly ReaderSummaryProductionRecoveryCliDate[];
+  dates: readonly ReaderSummaryProductionRecoveryDate[];
 }>;
+
 export const parseReaderSummaryProductionRecoveryCliArguments = (
   argv: readonly string[],
 ): ReaderSummaryProductionRecoveryCliArguments => {
@@ -101,50 +97,36 @@ export const parseReaderSummaryProductionRecoveryCliArguments = (
     throw cliArgumentError("--dates requires an explicit non-empty subset");
   }
   const rawDates = datesValue.split(",");
-  if (rawDates.some((date) => date.length === 0 || date !== date.trim())) {
+  if (
+    rawDates.some((date) => date.length === 0 || date !== date.trim())
+  ) {
     throw cliArgumentError("--dates must be a comma-separated date list");
   }
   if (new Set(rawDates).size !== rawDates.length) {
     throw cliArgumentError("--dates must not contain duplicates");
   }
-  const allowed = new Set<string>([
-    ...readerSummaryProductionRecoveryHistoricalDates,
-    ...readerSummaryProductionRecoveryGapDates,
-  ]);
+  const allowed = new Set<string>(
+    readerSummaryProductionRecoveryHistoricalDates,
+  );
   if (rawDates.some((date) => !allowed.has(date))) {
     throw cliArgumentError(
-      "--dates accepts only 2026-07-23 through 2026-07-31",
+      "--dates accepts only 2026-07-23 through 2026-07-28",
     );
   }
-  const includesV2 = rawDates.some((date) => date <= "2026-07-28");
-  const includesV3 = rawDates.some((date) => date >= "2026-07-29");
-  if (includesV2 && includesV3) {
-    throw cliArgumentError("--dates cannot mix v2 and v3 authority windows");
-  }
   const selected = new Set(rawDates);
-  const orderedDates = [
-    ...readerSummaryProductionRecoveryHistoricalDates,
-    ...readerSummaryProductionRecoveryGapDates,
-  ];
   return {
     apply: true,
-    dates: orderedDates.filter((date) =>
+    dates: readerSummaryProductionRecoveryHistoricalDates.filter((date) =>
       selected.has(date),
     ),
   };
 };
 
-export const isReaderSummaryProductionRecoveryGapDate = (
-  date: ReaderSummaryProductionRecoveryCliDate,
-): date is ReaderSummaryProductionRecoveryGapDate =>
-  readerSummaryProductionRecoveryGapDates.includes(
-    date as ReaderSummaryProductionRecoveryGapDate,
-  );
 export type ReaderSummaryProductionRecoveryDayResult = Readonly<{
   requestedUtcDate: ReaderSummaryProductionRecoveryDate;
-  outcome: "published" | "replayed" | "skipped" | "unavailable";
-  terminalStatus?: "UNAVAILABLE";
-  readerSummaryJobId?: string; readerSummaryId?: string;
+  outcome: "published" | "replayed" | "skipped";
+  readerSummaryJobId?: string;
+  readerSummaryId?: string;
   rejectionEvidence?: ReaderSummaryProductionRecoveryRejectionEvidence;
 }>;
 
@@ -158,6 +140,7 @@ export type ReaderSummaryProductionRecoveryDayExecutor = (params: {
   binding: ReaderSummaryProductionRecoveryAuthorityBinding;
   requestedUtcDate: ReaderSummaryProductionRecoveryDate;
 }) => Promise<ReaderSummaryProductionRecoveryDayResult>;
+
 export type ReaderSummaryProductionRecoveryExecutionGuard = Readonly<{
   claim(params: {
     binding: ReaderSummaryProductionRecoveryAuthorityBinding;
@@ -178,6 +161,7 @@ export type ReaderSummaryProductionRecoveryRunOptions = Readonly<{
   executionGuard: ReaderSummaryProductionRecoveryExecutionGuard;
   executeDay: ReaderSummaryProductionRecoveryDayExecutor;
 }>;
+
 export const runReaderSummaryProductionRecovery = async (
   options: ReaderSummaryProductionRecoveryRunOptions,
 ): Promise<ReaderSummaryProductionRecoveryRunResult> => {
@@ -203,17 +187,6 @@ export const runReaderSummaryProductionRecovery = async (
   }
   const dayResults: ReaderSummaryProductionRecoveryDayResult[] = [];
   for (const requestedUtcDate of options.dates) {
-    const day = plan.days.find(
-      (candidate) => candidate.requestedUtcDate === requestedUtcDate,
-    )!;
-    if (!day.modelEligible) {
-      dayResults.push({
-        requestedUtcDate,
-        outcome: "unavailable",
-        terminalStatus: "UNAVAILABLE",
-      });
-      continue;
-    }
     const claim = await options.executionGuard.claim({
       binding,
       requestedUtcDate,
@@ -244,121 +217,11 @@ export const runReaderSummaryProductionRecovery = async (
   };
 };
 
-export type ReaderSummaryProductionRecoveryGapDayResult = Readonly<{
-  requestedUtcDate: ReaderSummaryProductionRecoveryGapDate;
-  outcome: "published" | "replayed" | "skipped" | "partial" | "unavailable";
-  terminalStatus?: "PARTIAL" | "UNAVAILABLE";
-  terminalReasons?: readonly string[];
-  readerSummaryJobId?: string; readerSummaryId?: string;
-  rejectionEvidence?: ReaderSummaryProductionRecoveryRejectionEvidence;
-}>;
-
-export type ReaderSummaryProductionRecoveryGapExecutionGuard = Readonly<{
-  claim(params: {
-    binding: ReaderSummaryProductionRecoveryGapAuthorityBinding;
-    requestedUtcDate: ReaderSummaryProductionRecoveryGapDate;
-    generationProfile: ReaderSummaryProductionRecoveryGenerationProfile;
-    modelContract: ReaderSummaryProductionRecoveryModelContract;
-  }): Promise<
-    | "execute"
-    | "replayed"
-    | ReaderSummaryProductionRecoveryRejectionEvidence
-  >;
-}>;
-export const runReaderSummaryProductionRecoveryGap = async (options: Readonly<{
-  apply: boolean;
-  dates: readonly ReaderSummaryProductionRecoveryGapDate[];
-  generationProfile: ReaderSummaryProductionRecoveryGenerationProfile;
-  modelContract: ReaderSummaryProductionRecoveryModelContract;
-  binding: ReaderSummaryProductionRecoveryGapAuthorityBinding;
-  executionGuard: ReaderSummaryProductionRecoveryGapExecutionGuard;
-  executeDay(params: {
-    binding: ReaderSummaryProductionRecoveryGapAuthorityBinding;
-    requestedUtcDate: ReaderSummaryProductionRecoveryGapDate;
-  }): Promise<ReaderSummaryProductionRecoveryGapDayResult>;
-}>): Promise<Readonly<{
-  outcome: "applied" | "replayed";
-  plan: ReaderSummaryProductionRecoveryGapPlan;
-  dayResults: readonly ReaderSummaryProductionRecoveryGapDayResult[];
-}>> => {
-  if (!options.apply || options.dates.length === 0 || !isDeepStrictEqual(options.modelContract, options.binding.modelContract)) {
-    throw new Error("Reader summary production recovery gap requires --apply, explicit dates, and its exact model contract");
-  }
-  const fullPlan = buildReaderSummaryProductionRecoveryGapRuntimePlan(
-    options.binding,
-  );
-  const selected = new Set(options.dates);
-  const plan = {
-    ...fullPlan,
-    days: fullPlan.days.filter((day) => selected.has(day.requestedUtcDate)),
-  };
-  if (plan.days.length !== options.dates.length) {
-    throw new Error("Reader summary production recovery gap lacks a selected date");
-  }
-  const dayResults: ReaderSummaryProductionRecoveryGapDayResult[] = [];
-  for (const requestedUtcDate of options.dates) {
-    const day = gapDayAuthority(options.binding, requestedUtcDate);
-    if (!day.modelEligibility.eligible) {
-      const terminal = day.terminalOutcome;
-      if (terminal === null) {
-        throw new Error(
-          `Reader summary production recovery gap ${requestedUtcDate} lacks a terminal outcome`,
-        );
-      }
-      dayResults.push({
-        requestedUtcDate,
-        outcome: terminal.status === "PARTIAL" ? "partial" : "unavailable",
-        terminalStatus: terminal.status,
-        terminalReasons: terminal.reasons,
-      });
-      continue;
-    }
-    const claim = await options.executionGuard.claim({
-      binding: options.binding,
-      requestedUtcDate,
-      generationProfile: options.generationProfile,
-      modelContract: options.modelContract,
-    });
-    if (claim === "replayed") {
-      dayResults.push({ requestedUtcDate, outcome: "replayed" });
-    } else if (typeof claim === "object") {
-      dayResults.push({
-        requestedUtcDate,
-        outcome: "skipped",
-        readerSummaryJobId: claim.readerSummaryJobId,
-        readerSummaryId: claim.readerSummaryArtifactId,
-        rejectionEvidence: claim,
-      });
-    } else {
-      dayResults.push(await options.executeDay({
-        binding: options.binding,
-        requestedUtcDate,
-      }));
-    }
-  }
-  return {
-    outcome: dayResults.every((day) => day.outcome === "replayed")
-      ? "replayed"
-      : "applied",
-    plan,
-    dayResults,
-  };
-};
-
 export const readerSummaryProductionRecoveryIdentity = (
-  binding: ReaderSummaryProductionRecoveryAuthorityBinding | ReaderSummaryProductionRecoveryGapAuthorityBinding,
-  requestedUtcDate: ReaderSummaryProductionRecoveryDate | ReaderSummaryProductionRecoveryGapDate,
+  binding: ReaderSummaryProductionRecoveryAuthorityBinding,
+  requestedUtcDate: ReaderSummaryProductionRecoveryDate,
 ): string => {
-  if (binding.schemaVersion === "reader_summary.production_recovery_gap_authority.v3") {
-    return readerSummaryProductionRecoveryGapIdentity(
-      binding,
-      requestedUtcDate as ReaderSummaryProductionRecoveryGapDate,
-    );
-  }
-  const day = authorityDay(
-    binding,
-    requestedUtcDate as ReaderSummaryProductionRecoveryDate,
-  );
+  const day = authorityDay(binding, requestedUtcDate);
   return `reader_summary.production_recovery.generate.v2:${sha256(
     [
       binding.recoveryId,
@@ -369,64 +232,9 @@ export const readerSummaryProductionRecoveryIdentity = (
   )}`;
 };
 
-export const readerSummaryProductionRecoveryGapIdentity = (
-  binding: ReaderSummaryProductionRecoveryGapAuthorityBinding,
-  requestedUtcDate: ReaderSummaryProductionRecoveryGapDate,
-): string => {
-  const day = gapDayAuthority(binding, requestedUtcDate);
-  return `reader_summary.production_recovery.generate.v3:${sha256([
-    binding.recoveryId,
-    requestedUtcDate,
-    day.canonicalSha256,
-    day.providerEvidenceSha256,
-  ].join(":"))}`;
-};
-
-export const readerSummaryProductionRecoveryGapDayIds = (
-  binding: ReaderSummaryProductionRecoveryGapAuthorityBinding,
-  requestedUtcDate: ReaderSummaryProductionRecoveryGapDate,
-) => {
-  const identity = readerSummaryProductionRecoveryGapIdentity(binding, requestedUtcDate);
-  return {
-    readerSummaryJobId: deterministicUuid(`${identity}:job`),
-    readerSummaryId: deterministicUuid(`${identity}:artifact`),
-  };
-};
-
-export const readerSummaryProductionRecoveryGapClaimExpectation = (params: {
-  binding: ReaderSummaryProductionRecoveryGapAuthorityBinding;
-  requestedUtcDate: ReaderSummaryProductionRecoveryGapDate;
-  generationProfile: ReaderSummaryProductionRecoveryGenerationProfile;
-  modelContract: ReaderSummaryProductionRecoveryModelContract;
-}): ReaderSummaryProductionRecoveryGapClaimExpectation => {
-  const day = gapDayAuthority(params.binding, params.requestedUtcDate);
-  const ids = readerSummaryProductionRecoveryGapDayIds(
-    params.binding,
-    params.requestedUtcDate,
-  );
-  return {
-    recoveryIdentity: readerSummaryProductionRecoveryGapIdentity(
-      params.binding,
-      params.requestedUtcDate,
-    ),
-    recoveryId: params.binding.recoveryId,
-    tenantId: params.binding.tenantId,
-    workspaceId: params.binding.workspaceId,
-    requestedUtcDate: params.requestedUtcDate,
-    readerSummaryJobId: ids.readerSummaryJobId,
-    readerSummaryArtifactId: ids.readerSummaryId,
-    planCanonicalSha256: day.canonicalSha256,
-    dryRunCanonicalSha256s: day.planSha256s,
-    providerEvidenceSha256: day.providerEvidenceSha256,
-    generationProfile: params.generationProfile,
-    modelEligibility: day.modelEligibility,
-    modelContract: params.modelContract,
-  };
-};
-
 export const readerSummaryProductionRecoveryDayIds = (
-  binding: ReaderSummaryProductionRecoveryAuthorityBinding | ReaderSummaryProductionRecoveryGapAuthorityBinding,
-  requestedUtcDate: ReaderSummaryProductionRecoveryDate | ReaderSummaryProductionRecoveryGapDate,
+  binding: ReaderSummaryProductionRecoveryAuthorityBinding,
+  requestedUtcDate: ReaderSummaryProductionRecoveryDate,
 ): Readonly<{ readerSummaryJobId: string; readerSummaryId: string }> => {
   const identity = readerSummaryProductionRecoveryIdentity(
     binding,
@@ -438,6 +246,10 @@ export const readerSummaryProductionRecoveryDayIds = (
   };
 };
 
+/**
+ * Read-only compatibility identities for inspecting claims persisted by the
+ * rejected v1f flow. The production execution path never creates these.
+ */
 export const readerSummaryProductionRecoveryLegacyDayIds = (
   binding: ReaderSummaryProductionRecoveryAuthorityBinding,
   requestedUtcDate: ReaderSummaryProductionRecoveryDate,
@@ -496,7 +308,10 @@ export const readerSummaryProductionRecoveryQualityRemediationResumeDayIds =
   (
     binding: ReaderSummaryProductionRecoveryAuthorityBinding,
     requestedUtcDate: ReaderSummaryProductionRecoveryDate,
-  ): Readonly<{ readerSummaryJobId: string; readerSummaryId: string }> => ({
+  ): Readonly<{
+    readerSummaryJobId: string;
+    readerSummaryId: string;
+  }> => ({
     readerSummaryJobId: deterministicLegacyUuid(
       `reader-summary-production-recovery-quality-remediation-resume-v1-job:${binding.recoveryId}:${requestedUtcDate}`,
     ),
@@ -619,10 +434,6 @@ export const executeProductionRecoveryDay = async (
     }>,
 ): Promise<ReaderSummaryProductionRecoveryDayResult> => {
   const persistedDate = params.requestedUtcDate as PersistedRecoveryDate;
-  const model = (params.binding as unknown as { schemaVersion: string })
-      .schemaVersion === "reader_summary.production_recovery_gap_authority.v3"
-    ? limitRecoveryModelToOneCall(params.model)
-    : params.model;
   const period = periodForRecoveryDate(persistedDate);
   const ids = readerSummaryProductionRecoveryDayIds(
     params.binding,
@@ -661,7 +472,7 @@ export const executeProductionRecoveryDay = async (
       githubProjectionReader: params.githubProjectionReader,
       clock: params.clock,
     }),
-    model,
+    params.model,
     publications,
     new FirstIdRecoveryGenerator(ids.readerSummaryId, params.ids),
     params.clock,
@@ -722,27 +533,6 @@ export const executeProductionRecoveryDay = async (
     outcome: publications.lastOutcome ?? "published",
     readerSummaryJobId: result.value.readerSummaryJobId,
     readerSummaryId: result.value.readerSummaryId,
-  };
-};
-
-export const limitRecoveryModelToOneCall = (
-  model: ReaderSummaryModelPort,
-): ReaderSummaryModelPort => {
-  let called = false;
-  return {
-    route: model.route.bind(model),
-    estimate: model.estimate.bind(model),
-    generate: async (input, route) => {
-      if (called) {
-        throw new Error(
-          "Reader summary production recovery gap permits one model call per date",
-        );
-      }
-      called = true;
-      return model.generate(input, route);
-    },
-    validateRawProviderResponse: model.validateRawProviderResponse.bind(model),
-    classifyError: model.classifyError.bind(model),
   };
 };
 

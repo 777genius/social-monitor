@@ -9,7 +9,6 @@ import {
   assertReaderSummaryWeeklyProductionPostgresContract,
   assertReaderSummaryWeeklyProductionWindow,
   loadReaderSummaryWeeklyProductionDbState,
-  readerSummaryWeeklyReviewAuthorityFromProductionState,
   resolveCompletedReaderSummaryWeeklyProductionWindow,
   resolveReaderSummaryWeeklyProductionWindow,
   withReaderSummaryWeeklyProductionDatabaseAccess,
@@ -60,12 +59,6 @@ describe("reader summary weekly production postgres contract", () => {
 
     expect(state.status).toBe("complete");
     expect(state.certifications).toHaveLength(7);
-    expect(state.weeklyCertificationSeal).toMatchObject({
-      tenantId,
-      workspaceId,
-      weekStartedOn: "2026-07-20",
-      weekEndedOn: "2026-07-26",
-    });
     expect(state.missingDates).toEqual([]);
     expect(state.blockingReasons).toEqual([]);
   });
@@ -153,30 +146,6 @@ describe("reader summary weekly production postgres contract", () => {
 
     expect(state.status).toBe("complete");
     expect(state.blockingReasons).toEqual([]);
-  });
-
-  it("maps the exact seal and daily authorities without inventing Jul 23 GitHub evidence", async () => {
-    const state = await loadReaderSummaryWeeklyProductionDbState(
-      fakeClient(week.dates.map((date) => rowForDate(
-        date,
-        date === "2026-07-23"
-          ? { githubMode: "historical_unavailable" }
-          : undefined,
-      ))),
-      scope,
-      week,
-    );
-    const authority = readerSummaryWeeklyReviewAuthorityFromProductionState(state);
-    const july23 = authority.days[3];
-
-    expect(authority.sealId).toBe(state.weeklyCertificationSeal?.sealId);
-    expect(july23).toMatchObject({
-      requestedUtcDate: "2026-07-23",
-      githubMode: "historical_unavailable",
-    });
-    expect(july23?.providerEvidence.map((item) => item.providerKey)).not.toContain(
-      "github-trending-page",
-    );
   });
 
   it("fails closed on historical GitHub evidence for every other date", async () => {
@@ -356,82 +325,6 @@ describe("reader summary weekly production postgres contract", () => {
     expect(state.blockingReasons).toContain(
       "missing DB certification for 2026-07-26",
     );
-  });
-
-  it("fails closed when the persisted weekly certification seal is absent", async () => {
-    const rows = week.dates.map((date) => rowForDate(date));
-    const state = await loadReaderSummaryWeeklyProductionDbState(
-      fakeClient(rows, { sealRows: [] }),
-      scope,
-      week,
-    );
-
-    expect(state.status).toBe("partial");
-    expect(state.weeklyCertificationSeal).toBeNull();
-    expect(state.blockingReasons).toContain(
-      "missing persisted DB weekly certification seal",
-    );
-  });
-
-  it("rejects a forged persisted weekly certification seal", async () => {
-    const rows = week.dates.map((date) => rowForDate(date));
-    const forged = { ...sealRowFor(rows), seal_sha256: "b".repeat(64) };
-
-    await expect(
-      loadReaderSummaryWeeklyProductionDbState(
-        fakeClient(rows, { sealRows: [forged] }),
-        scope,
-        week,
-      ),
-    ).rejects.toThrow("persisted DB certification seal diverged");
-  });
-
-  it("rejects a seal for the wrong tenant, workspace or week", async () => {
-    const rows = week.dates.map((date) => rowForDate(date));
-    const persisted = sealRowFor(rows);
-    const wrongSeals = [
-      { ...persisted, tenant_id: "33333333-3333-4333-8333-333333333333" },
-      { ...persisted, workspace_id: "44444444-4444-4444-8444-444444444444" },
-      { ...persisted, week_started_on: "2026-07-13" },
-    ];
-
-    for (const wrongSeal of wrongSeals) {
-      await expect(
-        loadReaderSummaryWeeklyProductionDbState(
-          fakeClient(rows, { sealRows: [wrongSeal] }),
-          scope,
-          week,
-        ),
-      ).rejects.toThrow("persisted DB certification seal diverged");
-    }
-  });
-
-  it("rejects a non-exact 7/7 Monday-Sunday seal", async () => {
-    const rows = week.dates.map((date) => rowForDate(date));
-    const incomplete = sealRowFor(rows.slice(0, 6));
-
-    await expect(
-      loadReaderSummaryWeeklyProductionDbState(
-        fakeClient(rows, { sealRows: [incomplete] }),
-        scope,
-        week,
-      ),
-    ).rejects.toThrow("must contain exact 7/7 days");
-  });
-
-  it("rejects a stale persisted seal that no longer binds daily evidence", async () => {
-    const rows = week.dates.map((date) => rowForDate(date));
-    const staleRows = rows.map((row, index) =>
-      index === 0 ? { ...row, publication_id: "publication:stale" } : row,
-    );
-
-    await expect(
-      loadReaderSummaryWeeklyProductionDbState(
-        fakeClient(rows, { sealRows: [sealRowFor(staleRows)] }),
-        scope,
-        week,
-      ),
-    ).rejects.toThrow("stale or mismatched");
   });
 
   it("classifies no weekly DB certifications as unavailable", async () => {
@@ -622,7 +515,6 @@ const fakeClient = (
   options: Readonly<{
     backfillFunction?: string | null;
     secureBackfill?: boolean;
-    sealRows?: readonly Record<string, unknown>[];
   }> = {},
 ): ReaderSummaryWeeklyProductionPostgresClient => ({
   async query<TRow extends Record<string, unknown>>(sql: string) {
@@ -650,11 +542,6 @@ const fakeClient = (
           },
         ] as unknown as readonly TRow[],
       };
-    }
-    if (sql.includes("FROM reader_summary_weekly_certification_seals")) {
-      const sealRows = options.sealRows ??
-        (rows.length === 7 ? [sealRowFor(rows)] : []);
-      return { rows: sealRows as unknown as readonly TRow[] };
     }
     return { rows: rows as unknown as readonly TRow[] };
   },
@@ -730,53 +617,6 @@ function rowForDate(date: string, options: RowOptions = {}) {
     canonical_sha256: canonicalSha256,
     identity: `${readerSummaryWeeklyPublicationEvidenceSchemaVersion}:${canonicalSha256}`,
     recorded_at: `${date}T12:00:00.000Z`,
-  };
-}
-
-function sealRowFor(rows: readonly FakeRow[]) {
-  const weekStartedOn = rows[0]?.requested_utc_date ?? week.weekStartedOn;
-  const weekEndedOn = new Date(
-    Date.parse(`${weekStartedOn}T00:00:00.000Z`) + 6 * 86_400_000,
-  ).toISOString().slice(0, 10);
-  const days = rows.map((row) => ({
-    requestedUtcDate: row.requested_utc_date,
-    publicationId: row.publication_id,
-    artifactId: row.reader_summary_artifact_id,
-    jobId: row.reader_summary_job_id,
-    semanticStatus: row.semantic_status,
-    publicationEvidenceIdentity: row.identity,
-    publicationEvidenceSha256: row.canonical_sha256,
-  }));
-  const body = {
-    schemaVersion: "reader_summary.weekly_certification_seal.v1",
-    tenantId,
-    workspaceId,
-    scopeType: "workspace",
-    scopeKey: "workspace",
-    weekStartedOn,
-    weekEndedOn,
-    days,
-  };
-  const canonical = canonicalizeReaderSummaryWeeklyJson(body);
-  const sealId =
-    `reader_summary.weekly_certification_seal.v1:${canonical.sha256}`;
-  return {
-    seal_id: sealId,
-    seal_sha256: canonical.sha256,
-    tenant_id: tenantId,
-    workspace_id: workspaceId,
-    scope_type: "workspace",
-    scope_key: "workspace",
-    week_started_on: weekStartedOn,
-    week_ended_on: weekEndedOn,
-    days,
-    canonical_record: {
-      ...body,
-      sealId,
-      sealSha: canonical.sha256,
-    },
-    canonical_bytes: canonical.json,
-    recorded_at: "2026-07-27T06:00:00.000Z",
   };
 }
 

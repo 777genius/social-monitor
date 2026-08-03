@@ -24,12 +24,6 @@ READY_FAILURES=0
 READY_FAILURE_MODE=curl
 DOCKER_STATUS=running
 DOCKER_OOM=false
-API_CONTAINER_ID=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-COLLECTOR_CONTAINER_ID=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
-RABBITMQ_RECOVERY_STATUS=0
-RABBITMQ_WORKER_STATUS=0
-RABBITMQ_RECOVERY_CALLS=$FIXTURE/rabbitmq-recovery-calls
-RABBITMQ_WORKER_CALLS=$FIXTURE/rabbitmq-worker-calls
 
 reset_runtime() {
   printf '0\n' > "$READY_CALLS_FILE"
@@ -39,10 +33,6 @@ reset_runtime() {
   READY_FAILURE_MODE=curl
   DOCKER_STATUS=running
   DOCKER_OOM=false
-  RABBITMQ_RECOVERY_STATUS=0
-  RABBITMQ_WORKER_STATUS=0
-  : > "$RABBITMQ_RECOVERY_CALLS"
-  : > "$RABBITMQ_WORKER_CALLS"
 }
 
 ready_calls() {
@@ -135,20 +125,15 @@ curl() {
 
 fake_compose() {
   case $* in
-    '--profile app ps --no-trunc -q api') printf '%s\n' "$API_CONTAINER_ID" ;;
-    '--profile app ps --no-trunc -q otel-collector') printf '%s\n' "$COLLECTOR_CONTAINER_ID" ;;
+    '--profile app ps -q api') printf 'api-container\n' ;;
+    '--profile app ps -q otel-collector') printf 'collector-container\n' ;;
     *) return 90 ;;
   esac
 }
 
 docker() {
-  [[ $1 == inspect && ($2 == "$API_CONTAINER_ID" || $2 == "$COLLECTOR_CONTAINER_ID") ]] || \
+  [[ $1 == inspect && ($2 == api-container || $2 == collector-container) ]] || \
     return 91
-  if (($# == 2)); then
-    printf '[{"State":{"Status":"%s","OOMKilled":%s,"RestartCount":0}}]\n' \
-      "$DOCKER_STATUS" "$DOCKER_OOM"
-    return 0
-  fi
   case $4 in
     '{{.State.Status}}') printf '%s\n' "$DOCKER_STATUS" ;;
     '{{.State.OOMKilled}}') printf '%s\n' "$DOCKER_OOM" ;;
@@ -156,18 +141,6 @@ docker() {
     '{{.State.Error}}') printf 'fixture-state-error\n' ;;
     *) return 92 ;;
   esac
-}
-
-rabbitmq_quorum_recovery_ensure_steady() {
-  printf 'recovery\n' >> "$RABBITMQ_RECOVERY_CALLS"
-  return "$RABBITMQ_RECOVERY_STATUS"
-}
-
-rabbitmq_quorum_health_verify_worker_container() {
-  local service=$1 container=$2
-
-  printf '%s %s\n' "$service" "$container" >> "$RABBITMQ_WORKER_CALLS"
-  return "$RABBITMQ_WORKER_STATUS"
 }
 
 ((BACKEND_HEALTH_STARTUP_GRACE_SECONDS >= 180))
@@ -179,29 +152,11 @@ rabbitmq_quorum_health_verify_worker_container() {
 reset_runtime
 verify_backend api
 verify_backend otel-collector
-[[ $(wc -l < "$RABBITMQ_RECOVERY_CALLS") == 2 ]]
-grep -Fx "api $API_CONTAINER_ID" "$RABBITMQ_WORKER_CALLS" >/dev/null
-grep -Fx "otel-collector $COLLECTOR_CONTAINER_ID" "$RABBITMQ_WORKER_CALLS" >/dev/null
 for METRICS_STATE in pending failed stale missing; do
   if ! verify_backend otel-collector; then
     fail "collector verification rejected non-fatal metrics export state: $METRICS_STATE"
   fi
 done
-
-reset_runtime
-RABBITMQ_RECOVERY_STATUS=1
-if verify_backend api >/dev/null 2>&1; then
-  fail 'backend verification accepted failed RabbitMQ steady-state recovery'
-fi
-[[ $(ready_calls) == 0 ]] || fail 'RabbitMQ recovery did not run before HTTP readiness'
-[[ $(wc -l < "$RABBITMQ_RECOVERY_CALLS") == 1 ]]
-
-reset_runtime
-RABBITMQ_WORKER_STATUS=1
-if verify_backend api >/dev/null 2>&1; then
-  fail 'backend verification accepted failed worker runtime verification'
-fi
-[[ $(wc -l < "$RABBITMQ_WORKER_CALLS") == 1 ]]
 
 reset_runtime
 READY_FAILURES=1
@@ -273,7 +228,7 @@ grep -F 'ready_http curl_exit=0 http_status=200' \
   "$FIXTURE/otel-final-diagnostics.err" >/dev/null
 grep -F 'ready_json parse=ok exportState=pending lastExportAt=missing' \
   "$FIXTURE/otel-final-diagnostics.err" >/dev/null
-grep -F "service=otel-collector container=$COLLECTOR_CONTAINER_ID status=exited oom=false exit=137 state_error=fixture-state-error" \
+grep -F 'service=otel-collector container=collector-container status=exited oom=false exit=137 state_error=fixture-state-error' \
   "$FIXTURE/otel-final-diagnostics.err" >/dev/null
 
 reset_runtime
@@ -304,7 +259,7 @@ grep -F 'ready_http curl_exit=0 http_status=200' \
   "$FIXTURE/api-container-final-diagnostics.err" >/dev/null
 grep -F 'ready_json parse=ok exportState=succeeded lastExportAt=present' \
   "$FIXTURE/api-container-final-diagnostics.err" >/dev/null
-grep -F "service=api container=$API_CONTAINER_ID status=exited oom=false exit=137 state_error=fixture-state-error" \
+grep -F 'service=api container=api-container status=exited oom=false exit=137 state_error=fixture-state-error' \
   "$FIXTURE/api-container-final-diagnostics.err" >/dev/null
 
 BACKEND_HEALTH_STARTUP_GRACE_SECONDS=9

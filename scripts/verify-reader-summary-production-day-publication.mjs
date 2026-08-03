@@ -283,7 +283,7 @@ function runtimeProvenanceFromExecutorAttestations(evidence) {
   return {
     execution: "attested",
     summaryModel: "agent-runtime",
-    physicalModel: "gpt-5.6-sol",
+    physicalModel: "gpt-5.5",
     provider: "codex",
     runtime: "subscription-runtime-cli",
     runtimeVersion: identity.runtimePackageVersion,
@@ -295,7 +295,7 @@ function runtimeProvenanceFromExecutorAttestations(evidence) {
     completedTaskCount: records.length,
     topicLabeler: {
       mode: "agent-runtime",
-      physicalModel: "gpt-5.6-sol",
+      physicalModel: "gpt-5.5",
       provider: "codex",
       runtime: "subscription-runtime-cli",
       runtimeVersion: identity.runtimePackageVersion,
@@ -333,12 +333,14 @@ function validateAttestationRecord(record) {
     attestation.purpose !== expectedPurpose ||
     !isSha256(attestation.canonicalRequestSha256) ||
     attestation.provider !== "codex" ||
-    attestation.model !== "gpt-5.6-sol" ||
+    attestation.model !== "gpt-5.5" ||
     attestation.reasoningEffort !== "xhigh" ||
     attestation.runtimeEngine !== "subscription-runtime-cli" ||
     !isConcreteVersion(attestation.runtimePackageVersion) ||
     !isSha256(attestation.launcherSha256) ||
-    attestation.selectedOutputKind !== "structured_output" ||
+    !["structured_output", "output_text"].includes(
+      attestation.selectedOutputKind,
+    ) ||
     !isSha256(attestation.selectedOutputSha256)
   ) {
     fail("executor execution attestation is malformed or mismatched");
@@ -373,7 +375,7 @@ function isProductionRuntimeProvenance(value) {
     isObject(value.topicLabeler) &&
     value.execution === "attested" &&
     value.summaryModel === "agent-runtime" &&
-    value.physicalModel === "gpt-5.6-sol" &&
+    value.physicalModel === "gpt-5.5" &&
     value.provider === "codex" &&
     value.runtime === "subscription-runtime-cli" &&
     isConcreteVersion(value.runtimeVersion) &&
@@ -385,7 +387,7 @@ function isProductionRuntimeProvenance(value) {
     Number.isInteger(value.completedTaskCount) &&
     value.completedTaskCount >= 2 &&
     value.topicLabeler.mode === "agent-runtime" &&
-    value.topicLabeler.physicalModel === "gpt-5.6-sol" &&
+    value.topicLabeler.physicalModel === "gpt-5.5" &&
     value.topicLabeler.provider === "codex" &&
     value.topicLabeler.runtime === "subscription-runtime-cli" &&
     value.topicLabeler.runtimeVersion === value.runtimeVersion &&

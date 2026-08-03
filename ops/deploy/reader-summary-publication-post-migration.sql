@@ -6,11 +6,6 @@ SELECT set_config(
   false
 );
 SELECT set_config(
-  'social_monitor.bootstrap_system_runtime_role',
-  :'system_runtime_role',
-  false
-);
-SELECT set_config(
   'social_monitor.bootstrap_migrator_role',
   current_user,
   false
@@ -75,103 +70,16 @@ DECLARE
   v_runtime_role NAME := current_setting(
     'social_monitor.bootstrap_runtime_role'
   )::NAME;
-  v_system_runtime_role NAME := current_setting(
-    'social_monitor.bootstrap_system_runtime_role'
-  )::NAME;
-  v_terminal RECORD;
 BEGIN
   IF to_regprocedure(
     'public.claim_reader_summary_daily_terminal(uuid,uuid,uuid,text)'
   ) IS NOT NULL THEN
-    SELECT * INTO v_terminal FROM pg_roles
-    WHERE rolname = 'social_monitor_reader_summary_daily_terminal';
-    IF NOT FOUND OR NOT v_terminal.rolcanlogin OR v_terminal.rolinherit
-      OR v_terminal.rolsuper OR v_terminal.rolcreatedb
-      OR v_terminal.rolcreaterole OR v_terminal.rolreplication
-      OR v_terminal.rolbypassrls
-      OR v_terminal.rolconfig IS DISTINCT FROM
-        ARRAY['search_path=pg_catalog, public']::TEXT[]
-      OR (
-        SELECT count(*) > 1 OR count(*) <> count(*) FILTER (
-          WHERE member.rolname = session_user
-            AND grantor.rolsuper
-            AND membership.admin_option
-            AND NOT membership.inherit_option
-            AND NOT membership.set_option
-        )
-        FROM pg_auth_members membership
-        JOIN pg_roles member ON member.oid = membership.member
-        JOIN pg_roles grantor ON grantor.oid = membership.grantor
-        WHERE membership.roleid = v_terminal.oid
-      ) OR EXISTS (
-        SELECT 1 FROM pg_auth_members membership
-        WHERE membership.member = v_terminal.oid
-      ) OR EXISTS (
-        SELECT 1
-        FROM unnest(ARRAY[v_runtime_role, v_system_runtime_role]) ordinary(name)
-        CROSS JOIN unnest(ARRAY['MEMBER', 'USAGE', 'SET']) capability(name)
-        WHERE pg_has_role(ordinary.name, v_terminal.rolname, capability.name)
-      ) THEN
-      RAISE EXCEPTION 'daily terminal runtime LOGIN is missing or unsafe';
-    END IF;
-    REVOKE ALL PRIVILEGES ON TABLE
-      public.reader_summary_artifacts,
-      public.reader_summary_publications,
-      public.reader_summary_publication_slots,
-      public.reader_summary_weekly_publication_evidence
+    REVOKE ALL PRIVILEGES ON TABLE public.reader_summary_artifacts
     FROM social_monitor_reader_summary_publication_runtime;
-    REVOKE ALL PRIVILEGES ON TABLE
-      public.reader_summary_artifacts,
-      public.reader_summary_publications,
-      public.reader_summary_publication_slots,
-      public.reader_summary_weekly_publication_evidence
-    FROM social_monitor_reader_summary_daily_terminal;
-    GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE
-      public.reader_summary_artifacts
-    TO social_monitor_reader_summary_publication_runtime;
-    GRANT SELECT ON TABLE
-      public.reader_summary_publications,
-      public.reader_summary_publication_slots,
-      public.reader_summary_weekly_publication_evidence
-    TO social_monitor_reader_summary_publication_runtime;
     EXECUTE format(
-      'GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE '
-        'public.reader_summary_artifacts TO %I',
+      'GRANT SELECT ON TABLE public.reader_summary_artifacts TO %I',
       v_runtime_role
     );
-    GRANT SELECT ON TABLE
-      public.reader_summary_artifacts,
-      public.reader_summary_publications,
-      public.reader_summary_publication_slots,
-      public.reader_summary_weekly_publication_evidence
-    TO social_monitor_reader_summary_daily_terminal;
-    REVOKE ALL PRIVILEGES ON FUNCTION
-      public.reader_summary_daily_terminal_authority(UUID, UUID, DATE),
-      public.publish_reader_summary(JSONB),
-      public.publish_reader_summary_legacy_v1(JSONB),
-      public.publish_reader_summary_pre_evidence(JSONB),
-      public.record_reader_summary_weekly_publication_evidence(UUID)
-    FROM social_monitor_reader_summary_daily_terminal;
-    REVOKE ALL PRIVILEGES ON FUNCTION
-      public.claim_reader_summary_daily_terminal(UUID, UUID, UUID, TEXT),
-      public.finalize_reader_summary_daily_terminal(
-        UUID, UUID, DATE, TEXT, TEXT, TEXT, BIGINT
-      )
-    FROM social_monitor_reader_summary_publication_runtime,
-      social_monitor_reader_summary_daily_terminal;
-    EXECUTE format(
-      'REVOKE ALL PRIVILEGES ON FUNCTION '
-        'public.claim_reader_summary_daily_terminal(UUID,UUID,UUID,TEXT), '
-        'public.finalize_reader_summary_daily_terminal('
-        'UUID,UUID,DATE,TEXT,TEXT,TEXT,BIGINT) FROM %I',
-      v_runtime_role
-    );
-    GRANT EXECUTE ON FUNCTION
-      public.claim_reader_summary_daily_terminal(UUID, UUID, UUID, TEXT),
-      public.finalize_reader_summary_daily_terminal(
-        UUID, UUID, DATE, TEXT, TEXT, TEXT, BIGINT
-      )
-    TO social_monitor_reader_summary_daily_terminal;
   END IF;
 END
 $daily_terminal_artifact_acl$;
@@ -210,19 +118,6 @@ BEGIN
     );
     REVOKE ALL PRIVILEGES ON TABLE public.reader_summary_jobs
     FROM social_monitor_reader_summary_publication_runtime;
-    REVOKE ALL PRIVILEGES ON TABLE public.reader_summary_jobs
-    FROM social_monitor_reader_summary_daily_terminal;
-    GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.reader_summary_jobs
-    TO social_monitor_reader_summary_publication_runtime;
-    EXECUTE format(
-      'GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE '
-        'public.reader_summary_jobs TO %I',
-      v_runtime_role
-    );
-    GRANT USAGE ON SCHEMA public
-    TO social_monitor_reader_summary_daily_terminal;
-    REVOKE CREATE ON SCHEMA public
-    FROM social_monitor_reader_summary_daily_terminal;
     RESET ROLE;
   END IF;
 END
@@ -235,8 +130,6 @@ DECLARE
   )::NAME;
   v_constraint_count INTEGER;
   v_owner_count INTEGER;
-  v_weekly_review_manifest_table_count INTEGER;
-  v_v4_table_count INTEGER;
   v_trigger_count INTEGER;
   v_function RECORD;
   v_role RECORD;
@@ -303,38 +196,11 @@ BEGIN
       'reader_summary_artifacts',
       'reader_summary_publications',
       'reader_summary_publication_slots',
-      'reader_summary_daily_canonical_recovery_v4_plans',
-      'reader_summary_daily_canonical_recovery_v4_authorities',
-      'reader_summary_daily_canonical_recovery_v4_leases',
-      'reader_summary_weekly_publication_evidence',
-      'reader_summary_weekly_review_manifests'
+      'reader_summary_weekly_publication_evidence'
     )
     AND owner.rolname =
       'social_monitor_reader_summary_publication_owner';
-  -- This post-bootstrap audit also protects the daily-activation migration
-  -- replay fixture, whose historical cutoff predates the review-manifest
-  -- migration. Once present, the manifest must be owned alongside the other
-  -- protected publication tables.
-  SELECT count(*) INTO v_weekly_review_manifest_table_count
-  FROM pg_class relation
-  JOIN pg_namespace namespace ON namespace.oid = relation.relnamespace
-  WHERE namespace.nspname = 'public'
-    AND relation.relkind IN ('r', 'p')
-    AND relation.relname = 'reader_summary_weekly_review_manifests';
-  SELECT count(*) INTO v_v4_table_count
-  FROM pg_class relation
-  JOIN pg_namespace namespace ON namespace.oid = relation.relnamespace
-  WHERE namespace.nspname = 'public'
-    AND relation.relkind IN ('r', 'p')
-    AND relation.relname IN (
-      'reader_summary_daily_canonical_recovery_v4_plans',
-      'reader_summary_daily_canonical_recovery_v4_authorities',
-      'reader_summary_daily_canonical_recovery_v4_leases'
-    );
-  IF v_weekly_review_manifest_table_count NOT IN (0, 1)
-    OR v_v4_table_count NOT IN (0, 3)
-    OR v_owner_count <> 4 + v_weekly_review_manifest_table_count
-      + v_v4_table_count THEN
+  IF v_owner_count <> 4 THEN
     RAISE EXCEPTION 'protected reader summary tables have unsafe owners';
   END IF;
 
@@ -711,106 +577,39 @@ BEGIN
     ) THEN
       RAISE EXCEPTION 'legacy artifact continuity grants are unsafe';
     END IF;
-  ELSIF EXISTS (
+  ELSIF has_table_privilege(
+    'social_monitor_reader_summary_publication_runtime',
+    'public.reader_summary_artifacts',
+    'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
+  ) OR NOT has_table_privilege(
+    v_runtime_role, 'public.reader_summary_artifacts', 'SELECT'
+  ) OR has_table_privilege(
+    v_runtime_role, 'public.reader_summary_artifacts',
+    'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
+  ) THEN
+    RAISE EXCEPTION 'daily terminal artifact authority is not exclusive';
+  END IF;
+
+  IF to_regprocedure(
+    'public.claim_reader_summary_daily_terminal(uuid,uuid,uuid,text)'
+  ) IS NOT NULL AND EXISTS (
     SELECT 1
     FROM unnest(ARRAY[
       'social_monitor_reader_summary_publication_runtime'::NAME,
       v_runtime_role
-    ]) ordinary_role(name)
+    ]) AS state_role(name)
     CROSS JOIN unnest(ARRAY[
-      'reader_summary_jobs', 'reader_summary_artifacts'
-    ]) ordinary_table(name)
-    WHERE NOT has_table_privilege(
-      ordinary_role.name,
-      'public.' || ordinary_table.name,
-      'SELECT,INSERT,UPDATE,DELETE'
-    ) OR has_table_privilege(
-      ordinary_role.name,
-      'public.' || ordinary_table.name,
-      'TRUNCATE,REFERENCES,TRIGGER'
-    )
-  ) THEN
-    RAISE EXCEPTION 'daily ordinary runtime CRUD authority is unsafe';
-  ELSIF EXISTS (
-    SELECT 1
-    FROM unnest(ARRAY[
-      'reader_summary_publications',
-      'reader_summary_publication_slots',
-      'reader_summary_weekly_publication_evidence'
-    ]) ordinary_evidence_table(name)
-    WHERE NOT has_table_privilege(
-      'social_monitor_reader_summary_publication_runtime',
-      'public.' || ordinary_evidence_table.name,
-      'SELECT'
-    ) OR has_table_privilege(
-      'social_monitor_reader_summary_publication_runtime',
-      'public.' || ordinary_evidence_table.name,
-      'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
-    )
-  ) THEN
-    RAISE EXCEPTION 'daily ordinary runtime evidence reads are unsafe';
-  ELSIF EXISTS (
-    SELECT 1
-    FROM unnest(ARRAY[
-      'reader_summary_artifacts', 'reader_summary_publications',
-      'reader_summary_publication_slots',
-      'reader_summary_weekly_publication_evidence'
-    ]) evidence_table(name)
-    WHERE NOT has_table_privilege(
-      'social_monitor_reader_summary_daily_terminal',
-      'public.' || evidence_table.name,
-      'SELECT'
-    ) OR has_table_privilege(
-      'social_monitor_reader_summary_daily_terminal',
-      'public.' || evidence_table.name,
-      'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
-    )
-  ) OR EXISTS (
-    SELECT 1
-    FROM unnest(ARRAY[
-      'reader_summary_jobs', 'reader_summary_production_recovery_leases',
+      'reader_summary_jobs',
+      'reader_summary_production_recovery_leases',
       'reader_summary_production_recovery_days',
-      'reader_summary_production_recovery_dry_runs',
-      'reader_summary_recovery_receipts',
-      'reader_summary_weekly_certification_seals',
-      'reader_summary_weekly_review_manifests',
-      'reader_summary_daily_canonical_recovery_v4_plans',
-      'reader_summary_daily_canonical_recovery_v4_authorities',
-      'reader_summary_daily_canonical_recovery_v4_leases'
-    ]) protected_table(name)
+      'reader_summary_production_recovery_dry_runs'
+    ]) AS state_table(name)
     WHERE has_table_privilege(
-      'social_monitor_reader_summary_daily_terminal',
-      to_regclass('public.' || protected_table.name),
+      state_role.name, 'public.' || state_table.name,
       'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
     )
   ) THEN
-    RAISE EXCEPTION 'daily terminal evidence authority is unsafe';
-  ELSIF has_function_privilege(
-    'social_monitor_reader_summary_publication_runtime',
-    'public.claim_reader_summary_daily_terminal(uuid,uuid,uuid,text)',
-    'EXECUTE'
-  ) OR has_function_privilege(
-    v_runtime_role,
-    'public.claim_reader_summary_daily_terminal(uuid,uuid,uuid,text)',
-    'EXECUTE'
-  ) OR NOT has_function_privilege(
-    'social_monitor_reader_summary_daily_terminal',
-    'public.claim_reader_summary_daily_terminal(uuid,uuid,uuid,text)',
-    'EXECUTE'
-  ) OR NOT has_function_privilege(
-    'social_monitor_reader_summary_daily_terminal',
-    'public.finalize_reader_summary_daily_terminal(uuid,uuid,date,text,text,text,bigint)',
-    'EXECUTE'
-  ) OR has_function_privilege(
-    'social_monitor_reader_summary_daily_terminal',
-    'public.reader_summary_daily_terminal_authority(uuid,uuid,date)',
-    'EXECUTE'
-  ) OR has_function_privilege(
-    'social_monitor_reader_summary_daily_terminal',
-    'public.publish_reader_summary(jsonb)',
-    'EXECUTE'
-  ) THEN
-    RAISE EXCEPTION 'daily terminal function authority is unsafe';
+    RAISE EXCEPTION 'daily terminal runtime state authority is unsafe';
   END IF;
 
   IF NOT has_table_privilege(
@@ -900,130 +699,3 @@ BEGIN
   END IF;
 END
 $bootstrap$;
-
--- Ownership/bootstrap replay can replace direct table ACLs after the forward
--- activation migration. Reissue the legacy SECURITY DEFINER body grants only
--- after those owners are final, and only as the relations' current owner.
-DO $grant_legacy_daily_function_owner_acl$
-DECLARE
-  v_function_owner_oids OID[];
-  v_function_count BIGINT;
-  v_legacy_function_owner NAME;
-  v_daily_relation_owner_oids OID[];
-  v_daily_relation_count BIGINT;
-  v_daily_relation_owner NAME;
-BEGIN
-  SELECT ARRAY_AGG(DISTINCT proc.proowner), COUNT(*)
-  INTO STRICT v_function_owner_oids, v_function_count
-  FROM pg_catalog.pg_proc AS proc
-  WHERE proc.oid = ANY (ARRAY[
-    'public.claim_reader_summary_daily_execution(uuid,uuid,text,date,timestamptz)'::REGPROCEDURE,
-    'public.renew_reader_summary_daily_execution_lease(uuid,uuid,date,text,bigint,timestamptz)'::REGPROCEDURE,
-    'public.mark_reader_summary_daily_model_job_running(uuid,uuid,date,text,bigint,timestamptz)'::REGPROCEDURE
-  ]::OID[]);
-  IF v_function_count <> 3
-    OR pg_catalog.cardinality(v_function_owner_oids) <> 1 THEN
-    RAISE EXCEPTION
-      'legacy daily claim, renew, and running functions lack one common owner';
-  END IF;
-  v_legacy_function_owner := pg_catalog.pg_get_userbyid(
-    v_function_owner_oids[1]
-  );
-  IF v_legacy_function_owner IN (
-    'social_monitor_reader_summary_daily_terminal',
-    'social_monitor_reader_summary_publication_runtime',
-    'social_monitor_tenant_system_runtime',
-    'social_monitor_reader_summary_daily_publication_definer'
-  ) THEN
-    RAISE EXCEPTION
-      'legacy daily function owner is a terminal, capability, or definer role';
-  END IF;
-  SELECT ARRAY_AGG(DISTINCT relation.relowner), COUNT(*)
-  INTO STRICT v_daily_relation_owner_oids, v_daily_relation_count
-  FROM pg_catalog.pg_class AS relation
-  WHERE relation.oid = ANY (ARRAY[
-    'public.reader_summary_daily_execution_cursors'::REGCLASS,
-    'public.reader_summary_daily_model_jobs'::REGCLASS,
-    'public.reader_summary_daily_source_authorities'::REGCLASS
-  ]::OID[]);
-  IF v_daily_relation_count <> 3
-    OR pg_catalog.cardinality(v_daily_relation_owner_oids) <> 1 THEN
-    RAISE EXCEPTION
-      'daily cursor, model, and source authority relations lack one common owner';
-  END IF;
-  v_daily_relation_owner := pg_catalog.pg_get_userbyid(
-    v_daily_relation_owner_oids[1]
-  );
-  IF NOT pg_catalog.pg_has_role(
-    session_user, v_daily_relation_owner, 'SET'
-  ) THEN
-    RAISE EXCEPTION 'migration admin cannot SET the daily relation owner';
-  END IF;
-  EXECUTE pg_catalog.format('SET LOCAL ROLE %I', v_daily_relation_owner);
-  EXECUTE pg_catalog.format(
-    'GRANT SELECT, INSERT, UPDATE ON TABLE '
-      'public."reader_summary_daily_execution_cursors", '
-      'public."reader_summary_daily_model_jobs" TO %I',
-    v_legacy_function_owner
-  );
-  EXECUTE pg_catalog.format(
-    'GRANT SELECT, INSERT ON TABLE '
-      'public."reader_summary_daily_source_authorities" TO %I',
-    v_legacy_function_owner
-  );
-  EXECUTE 'RESET ROLE';
-  IF NOT pg_catalog.pg_has_role(
-    session_user, 'social_monitor_public_schema_owner', 'SET'
-  ) THEN
-    RAISE EXCEPTION 'migration admin cannot SET the public schema owner';
-  END IF;
-  EXECUTE 'SET LOCAL ROLE social_monitor_public_schema_owner';
-  EXECUTE pg_catalog.format(
-    'GRANT SELECT ON TABLE public."feed_items", public."source_items" TO %I',
-    v_legacy_function_owner
-  );
-  EXECUTE 'RESET ROLE';
-END
-$grant_legacy_daily_function_owner_acl$;
-
--- PG18 invariant: bootstrap leaves exactly one upstream-superuser creator-admin
--- edge for this migrator (ADMIN, NOINHERIT, NOSET). ACL migrations may create
--- and revoke a self SET edge; GRANTED BY CURRENT_USER cannot remove the
--- upstream edge, and no runtime, outgoing, or extra incoming edge may exist.
-DO $daily_activation_definer_audit$
-DECLARE
-  v_definer pg_catalog.pg_roles%ROWTYPE;
-BEGIN
-  SELECT * INTO v_definer FROM pg_catalog.pg_roles
-  WHERE rolname = 'social_monitor_reader_summary_daily_publication_definer';
-  IF NOT FOUND OR v_definer.rolcanlogin OR v_definer.rolsuper
-    OR v_definer.rolcreatedb OR v_definer.rolcreaterole
-    OR v_definer.rolinherit OR v_definer.rolreplication
-    OR v_definer.rolbypassrls OR v_definer.rolconfig IS NOT NULL
-    OR EXISTS (SELECT 1 FROM pg_catalog.pg_auth_members AS membership
-      WHERE membership.member = v_definer.oid)
-    OR (SELECT count(*) <> 1 OR count(*) FILTER (WHERE member.rolname = session_user
-      AND grantor.rolsuper AND membership.admin_option
-      AND NOT membership.inherit_option AND NOT membership.set_option) <> 1
-      FROM pg_catalog.pg_auth_members AS membership
-      JOIN pg_catalog.pg_roles AS member ON member.oid = membership.member
-      JOIN pg_catalog.pg_roles AS grantor ON grantor.oid = membership.grantor
-      WHERE membership.roleid = v_definer.oid)
-    OR EXISTS (
-      SELECT 1
-      FROM pg_catalog.unnest(ARRAY[
-        current_setting('social_monitor.bootstrap_runtime_role')::NAME,
-        current_setting('social_monitor.bootstrap_system_runtime_role')::NAME,
-        'social_monitor_reader_summary_publication_runtime'::NAME,
-        'social_monitor_tenant_system_runtime'::NAME,
-        'social_monitor_reader_summary_daily_terminal'::NAME
-      ]) AS ordinary(role_name)
-      CROSS JOIN pg_catalog.unnest(ARRAY['MEMBER', 'USAGE', 'SET']) AS capability(option_name)
-      WHERE pg_catalog.pg_has_role(
-        ordinary.role_name, v_definer.rolname, capability.option_name
-      )
-    ) THEN
-    RAISE EXCEPTION 'daily publication definer PG18 bootstrap membership is unsafe';
-  END IF;
-END
-$daily_activation_definer_audit$;

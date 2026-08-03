@@ -57,7 +57,6 @@ import { ReaderSummaryController } from "./reader-summary.controller";
 import { ReaderSummaryJobController } from "./reader-summary-job.controller";
 import { ReaderSummaryRequestController } from "./reader-summary-request.controller";
 import { ReaderSummaryTopicRecommendationController } from "./reader-summary-topic-recommendation.controller";
-import { ReaderSummaryWeeklyProjectionController } from "./reader-summary-weekly-projection.controller";
 import { SummaryFeedbackController } from "./summary-feedback.controller";
 import { SummaryJobController } from "./summary-job.controller";
 import { SummaryPolicyController } from "./summary-policy.controller";
@@ -115,7 +114,6 @@ import { SummaryController } from "./summary.controller";
     RelevanceRestModule,
   ],
   controllers: [
-    ReaderSummaryWeeklyProjectionController,
     ReaderSummaryController,
     ReaderSummaryJobController,
     ReaderSummaryRequestController,

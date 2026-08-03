@@ -5,13 +5,6 @@ const checker = readFileSync(
   join(process.cwd(), "scripts/check-yesterday-social-collection-quality.ts"),
   "utf8",
 );
-const summaryCounts = readFileSync(
-  join(
-    process.cwd(),
-    "scripts/lib/yesterday-social-collection-quality-summary-counts.ts",
-  ),
-  "utf8",
-);
 
 describe("yesterday social collection quality production scope", () => {
   it("selects the production day scope and enables system access before reading rows", () => {
@@ -27,11 +20,11 @@ describe("yesterday social collection quality production scope", () => {
       systemAccess,
     );
     const lastQualityRead = checker.indexOf(
-      "const summaryEvidence = await queryCollectionQualitySummaryEvidenceCounts(",
+      "const summaryJobs = await querySummaryJobs(client, scope);",
       firstQualityRead,
     );
     const rowEvaluation = checker.indexOf(
-      "const summaryWindowRows = visibleRows(",
+      "const summaryWindowRows = visibleRows(publishedWindowFeedRows);",
       lastQualityRead,
     );
 
@@ -41,27 +34,15 @@ describe("yesterday social collection quality production scope", () => {
     expect(scopeSelection).toBeGreaterThan(-1);
     expect(systemAccess).toBeGreaterThan(scopeSelection);
     expect(firstQualityRead).toBeGreaterThan(systemAccess);
-    expect(lastQualityRead).toBeGreaterThan(firstQualityRead);
     expect(rowEvaluation).toBeGreaterThan(lastQualityRead);
   });
 
   it("does not broaden quality reads into legacy tenant or workspace scopes", () => {
     const queryBodies = [
-      functionBody(
-        checker,
-        "async function queryFeedRowsByWindow",
-        "function buildDataIntegrityReport",
-      ),
-      functionBody(
-        checker,
-        "async function querySourceItemCounts",
-        "function buildProviderReports",
-      ),
-      functionBody(
-        summaryCounts,
-        "export async function queryCollectionQualitySummaryEvidenceCounts",
-        "return result.rows;",
-      ),
+      functionBody("queryFeedRowsByWindow", "function buildDataIntegrityReport"),
+      functionBody("querySourceItemCounts", "async function querySummaryArtifacts"),
+      functionBody("querySummaryArtifacts", "async function querySummaryJobs"),
+      functionBody("querySummaryJobs", "function buildProviderReports"),
     ];
 
     for (const body of queryBodies) {
@@ -72,15 +53,15 @@ describe("yesterday social collection quality production scope", () => {
     }
 
     expect(checker).not.toMatch(
-      /query(?:FeedRows|PublishedWindowFeedRows|SourceItemCounts|SummaryArtifacts|SummaryJobs|CollectionQualitySummaryEvidenceCounts)\(\s*client\s*(?:\)|,(?!\s*scope\b))/u,
+      /query(?:FeedRows|PublishedWindowFeedRows|SourceItemCounts|SummaryArtifacts|SummaryJobs)\(client\)(?!,\s*scope)/u,
     );
   });
 });
 
-function functionBody(source: string, start: string, end: string): string {
-  const startIndex = source.indexOf(start);
-  const endIndex = source.indexOf(end, startIndex);
+function functionBody(start: string, end: string): string {
+  const startIndex = checker.indexOf(start);
+  const endIndex = checker.indexOf(end, startIndex);
   expect(startIndex).toBeGreaterThan(-1);
   expect(endIndex).toBeGreaterThan(startIndex);
-  return source.slice(startIndex, endIndex);
+  return checker.slice(startIndex, endIndex);
 }

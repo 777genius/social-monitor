@@ -712,7 +712,7 @@ function evidenceFixture(withDatasetGuard = false) {
       readerSummaryId,
       period: productionDayUtcPeriod(collectionDate),
       lineage: {
-        modelVersion: "codex:gpt-5.6-sol:xhigh",
+        modelVersion: "codex:gpt-5.5:xhigh",
         providerVersion: "agent-runtime",
       },
       content: { topicMap: { generatedBy: "agent-runtime" } },
