@@ -5,19 +5,21 @@ SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 REPO=$(cd "$SCRIPT_DIR/../.." && pwd)
 foundation=$REPO/prisma/migrations/20260802233000_reader_summary_daily_canonical_recovery_v4/migration.sql
 security=$REPO/prisma/migrations/20260802233100_reader_summary_daily_canonical_recovery_v4_security/migration.sql
+tenant_rls=$REPO/prisma/migrations/20260803173000_reader_summary_daily_canonical_recovery_v4_tenant_rls/migration.sql
 runner=$REPO/scripts/run-reader-summary-daily-canonical-recovery.ts
 package_json=$REPO/package.json
 workflow=$REPO/.github/workflows/production-deploy.yml
 frozen_input=$REPO/scripts/lib/reader-summary-daily-frozen-publication-input.ts
 frozen_input_spec=$REPO/scripts/lib/reader-summary-daily-frozen-publication-input.spec.ts
 
-[[ -f $foundation && -f $security && -f $runner && -f $frozen_input && -f $frozen_input_spec ]]
+[[ -f $foundation && -f $security && -f $tenant_rls && -f $runner && -f $frozen_input && -f $frozen_input_spec ]]
 [[ ! -e $REPO/scripts/lib/reader-summary-daily-frozen-authority-projection.ts ]]
 [[ ! -e $REPO/prisma/migrations/20260802180000_reader_summary_daily_canonical_recovery_v4 ]]
 mapfile -t v4_migrations < <(compgen -G "$REPO/prisma/migrations/*daily_canonical_recovery_v4*" || true)
-[[ ${#v4_migrations[@]} == 2 ]]
+[[ ${#v4_migrations[@]} == 3 ]]
 [[ ${v4_migrations[0]} == *20260802233000_reader_summary_daily_canonical_recovery_v4 || ${v4_migrations[1]} == *20260802233000_reader_summary_daily_canonical_recovery_v4 ]]
 [[ ${v4_migrations[0]} == *20260802233100_reader_summary_daily_canonical_recovery_v4_security || ${v4_migrations[1]} == *20260802233100_reader_summary_daily_canonical_recovery_v4_security ]]
+printf '%s\n' "${v4_migrations[@]}" | grep -F '20260803173000_reader_summary_daily_canonical_recovery_v4_tenant_rls' >/dev/null
 grep -F 'run:reader-summary-daily-canonical-recovery' "$package_json" >/dev/null
 grep -F 'run:reader-summary-daily-canonical-recovery": "node scripts/run-with-timeout.mjs --timeout-ms 19800000' "$package_json" >/dev/null
 grep -F 'run:reader-summary-weekly-production": "node scripts/run-with-timeout.mjs --timeout-ms 14400000' "$package_json" >/dev/null
