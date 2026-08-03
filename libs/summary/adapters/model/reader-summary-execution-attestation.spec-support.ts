@@ -21,7 +21,7 @@ export const withTestExecutionAttestation = (
       purpose: command.purpose,
       canonicalRequestSha256: "a".repeat(64),
       provider: command.provider,
-      model: "gpt-5.6-sol",
+      model: "gpt-5.5",
       reasoningEffort: "xhigh",
       runtimeEngine: "subscription-runtime-cli",
       runtimePackageVersion: "0.1.0-main.2",

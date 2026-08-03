@@ -14,7 +14,6 @@ import type {
   PersistedReaderSummaryWeeklyArtifact,
   SaveReaderSummaryWeeklyArtifactCommand,
 } from "../../ports";
-import { canonicalizeReaderSummaryWeeklyJson } from "../../domain/value-objects/reader-summary-weekly-canonical-json";
 import { buildReaderSummaryWeeklyPublicationPersistencePayload } from "./reader-summary-publication-proof";
 
 type ReaderSummaryPublicationDecisionForPersistence = NonNullable<
@@ -177,8 +176,16 @@ export class InMemoryReaderSummaryArtifactRepository
       buildReaderSummaryWeeklyPublicationPersistencePayload(command);
     const key =
       `${payload.tenantId}:${payload.workspaceId}:${payload.artifactId}`;
-    const persisted = {
-      kind: "weekly" as const,
+    if (
+      this.weeklyArtifactsById.has(key) ||
+      this.usedWeeklyAuthorizationIds.has(payload.proof.authorizationId)
+    ) {
+      throw new Error(
+        "Reader summary weekly publication authorization was replayed",
+      );
+    }
+    this.weeklyArtifactsById.set(key, {
+      kind: "weekly",
       artifactId: payload.artifactId,
       tenantId: payload.tenantId,
       workspaceId: payload.workspaceId,
@@ -188,31 +195,7 @@ export class InMemoryReaderSummaryArtifactRepository
       },
       qualitySignals: payload.qualitySignals,
       proof: payload.proof,
-    };
-    const existing = this.weeklyArtifactsById.get(key);
-    if (existing !== undefined) {
-      if (
-        existing.kind === persisted.kind &&
-        existing.artifactId === persisted.artifactId &&
-        existing.tenantId === persisted.tenantId &&
-        existing.workspaceId === persisted.workspaceId &&
-        canonicalizeReaderSummaryWeeklyJson(existing.artifact).json ===
-          canonicalizeReaderSummaryWeeklyJson(persisted.artifact).json &&
-        canonicalizeReaderSummaryWeeklyJson(existing.qualitySignals).json ===
-          canonicalizeReaderSummaryWeeklyJson(persisted.qualitySignals).json &&
-        canonicalizeReaderSummaryWeeklyJson(existing.proof).json ===
-          canonicalizeReaderSummaryWeeklyJson(persisted.proof).json
-      ) {
-        return;
-      }
-      throw new Error(
-        "Reader summary weekly publication replay diverged",
-      );
-    }
-    if (this.usedWeeklyAuthorizationIds.has(payload.proof.authorizationId)) {
-      throw new Error("Reader summary weekly publication authorization diverged");
-    }
-    this.weeklyArtifactsById.set(key, persisted);
+    });
     this.usedWeeklyAuthorizationIds.add(payload.proof.authorizationId);
   }
 

@@ -25,41 +25,9 @@ import {
   workspaceId,
   type Clock,
 } from "@social-monitor/shared-kernel";
-import type {
-  ReaderSummaryProductionRecoveryGapAuthorityBinding,
-  ReaderSummaryProductionRecoveryGapDate,
-  ReaderSummaryProductionRecoveryGapDayAuthority,
-} from "./reader-summary-production-recovery-gap-authority";
 
 export const readerSummaryProductionRecoveryDates =
   readerSummaryProductionRecoveryRequestedUtcDates;
-
-export const readerSummaryProductionRecoveryExpectedCounts = Object.freeze({
-  "2026-07-23": Object.freeze({
-    "github-trending-page": 0, "hacker-news": 100, reddit: 100, rss: 75,
-    "x-twitter": 67,
-  }),
-  "2026-07-24": Object.freeze({
-    "github-trending-page": 10, "hacker-news": 100, reddit: 100, rss: 67,
-    "x-twitter": 73,
-  }),
-  "2026-07-25": Object.freeze({
-    "github-trending-page": 10, "hacker-news": 100, reddit: 100, rss: 63,
-    "x-twitter": 96,
-  }),
-  "2026-07-26": Object.freeze({
-    "github-trending-page": 10, "hacker-news": 78, reddit: 100, rss: 62,
-    "x-twitter": 94,
-  }),
-  "2026-07-27": Object.freeze({
-    "github-trending-page": 10, "hacker-news": 87, reddit: 99, rss: 47,
-    "x-twitter": 58,
-  }),
-  "2026-07-28": Object.freeze({
-    "github-trending-page": 0, "hacker-news": 0, reddit: 0, rss: 31,
-    "x-twitter": 107,
-  }),
-});
 
 export type ReaderSummaryProductionRecoveryDate =
   ReaderSummaryProductionRecoveryRequestedUtcDate;
@@ -82,18 +50,6 @@ export type ReaderSummaryProductionRecoveryDayPlan = Readonly<{
   primaryEvidenceCount: number;
   githubEvidenceCount: number;
   githubMode: "historical_unavailable" | "verified_existing";
-  dominanceRatioBasisPoints: number;
-  modelEligible: boolean;
-  terminalOutcome: "UNAVAILABLE" | null;
-}>;
-
-export type ReaderSummaryProductionRecoveryGapPlan = Readonly<{
-  recoveryId: string;
-  tenantId: string;
-  workspaceId: string;
-  canonicalSha256: string;
-  dryRunCanonicalSha256s: readonly [string, string];
-  days: readonly ReaderSummaryProductionRecoveryGapDayAuthority[];
 }>;
 
 export type ProductionRecoveryEvidenceSelectionInput = Readonly<{
@@ -126,99 +82,6 @@ export const buildReaderSummaryProductionRecoveryPlan = (
     canonicalSha256: binding.canonicalSha256,
     dryRunCanonicalSha256s: binding.dryRunCanonicalSha256s,
     days,
-  };
-};
-
-export const buildReaderSummaryProductionRecoveryGapRuntimePlan = (
-  binding: ReaderSummaryProductionRecoveryGapAuthorityBinding,
-): ReaderSummaryProductionRecoveryGapPlan => {
-  if (
-    binding.schemaVersion !==
-      "reader_summary.production_recovery_gap_authority.v3" ||
-    binding.days.length !== 3 ||
-    binding.dryRunCanonicalSha256s.some(
-      (hash) => hash !== binding.canonicalSha256,
-    )
-  ) {
-    throw new Error(
-      "Reader summary production recovery gap authority is not exact pre-model Jul29-Jul31 scope",
-    );
-  }
-  return {
-    recoveryId: binding.recoveryId,
-    tenantId: binding.tenantId,
-    workspaceId: binding.workspaceId,
-    canonicalSha256: binding.canonicalSha256,
-    dryRunCanonicalSha256s: binding.dryRunCanonicalSha256s,
-    days: binding.days,
-  };
-};
-
-export const gapDayAuthority = (
-  binding: ReaderSummaryProductionRecoveryGapAuthorityBinding,
-  requestedUtcDate: ReaderSummaryProductionRecoveryGapDate,
-): ReaderSummaryProductionRecoveryGapDayAuthority => {
-  const day = binding.days.find(
-    (candidate) => candidate.requestedUtcDate === requestedUtcDate,
-  );
-  if (day === undefined) {
-    throw new Error(
-      `Reader summary production recovery gap lacks ${requestedUtcDate} authority`,
-    );
-  }
-  return day;
-};
-
-export const buildRecoveryGapEvidenceSelection = async (input: Readonly<{
-  binding: ReaderSummaryProductionRecoveryGapAuthorityBinding;
-  requestedUtcDate: ReaderSummaryProductionRecoveryGapDate;
-  maxPrimaryEvidenceItems: number;
-  feedItems: FeedItemReadRepositoryPort;
-  githubProjectionReader: ReaderSummaryGitHubProjectionReaderPort;
-  clock: Clock;
-}>): Promise<SummaryEvidenceSelection> => {
-  const day = gapDayAuthority(input.binding, input.requestedUtcDate);
-  if (!day.modelEligibility.eligible) {
-    throw new Error(
-      `Reader summary production recovery gap ${input.requestedUtcDate} is not model eligible`,
-    );
-  }
-  return buildRecoveryEvidenceSelection({
-    ...input,
-    binding: input.binding as unknown as ReaderSummaryProductionRecoveryAuthorityBinding,
-    requestedUtcDate:
-      input.requestedUtcDate as unknown as ReaderSummaryProductionRecoveryDate,
-  });
-};
-
-export const recoveryGapProvenanceForDay = (
-  binding: ReaderSummaryProductionRecoveryGapAuthorityBinding,
-  requestedUtcDate: ReaderSummaryProductionRecoveryGapDate,
-) => {
-  const day = gapDayAuthority(binding, requestedUtcDate);
-  return {
-    schemaVersion: "reader_summary.summary_only_recovery_provenance.v1" as const,
-    mode: "summary-only" as const,
-    collectionUtcPeriod: day.period,
-    priorCollectionProof: {
-      sourceAttempt: {
-        artifactFormat: "reader-summary-production-recovery-gap-authority-v3",
-        sha256: binding.canonicalSha256,
-      },
-      collectionArtifact: {
-        artifactFormat: "reader-summary-production-recovery-gap-day-v3",
-        sha256: day.canonicalSha256,
-      },
-      collectionQualityReport: {
-        artifactFormat: "reader-summary-production-recovery-gap-evidence-v3",
-        sha256: day.providerEvidenceSha256,
-      },
-    },
-    regenerationInputManifest: {
-      artifactFormat: "reader-summary-production-recovery-gap-plan-v3",
-      sha256: day.canonicalSha256,
-      datasetSha256: day.providerEvidenceSha256,
-    },
   };
 };
 
@@ -301,13 +164,6 @@ export const recoveryProvenanceForDay = (
   binding: ReaderSummaryProductionRecoveryAuthorityBinding,
   requestedUtcDate: ReaderSummaryProductionRecoveryDate,
 ) => {
-  if ((binding as { schemaVersion: string }).schemaVersion ===
-    "reader_summary.production_recovery_gap_authority.v3") {
-    return recoveryGapProvenanceForDay(
-      binding as unknown as ReaderSummaryProductionRecoveryGapAuthorityBinding,
-      requestedUtcDate as unknown as ReaderSummaryProductionRecoveryGapDate,
-    );
-  }
   const day = dayAuthority(binding, requestedUtcDate);
   return {
     schemaVersion: "reader_summary.summary_only_recovery_provenance.v1" as const,
@@ -379,8 +235,6 @@ const dayPlan = (
   const allRows = readerSummaryProductionRecoveryProviderKeys.flatMap(
     (providerKey) => day.providerEvidence[providerKey],
   );
-  const expectedCounts =
-    readerSummaryProductionRecoveryExpectedCounts[day.requestedUtcDate];
   for (const providerKey of readerSummaryProductionRecoveryProviderKeys) {
     if (
       providerCounts[providerKey] !==
@@ -390,7 +244,6 @@ const dayPlan = (
           day.requestedUtcDate,
           providerKey,
         ) ||
-      providerCounts[providerKey] !== expectedCounts[providerKey] ||
       (evidenceStates[providerKey] === "historical_unavailable"
         ? providerCounts[providerKey] !== 0
         : providerCounts[providerKey] < 1)
@@ -400,15 +253,6 @@ const dayPlan = (
       );
     }
   }
-  const dominantCount = Math.max(...Object.values(providerCounts));
-  const dominanceRatioBasisPoints = allRows.length === 0
-    ? 0
-    : Math.floor((dominantCount * 10_000) / allRows.length);
-  const ordinaryCoverageComplete = readerSummaryProductionRecoveryProviderKeys
-    .filter((providerKey) => providerKey !== "github-trending-page")
-    .every((providerKey) => evidenceStates[providerKey] === "verified_existing");
-  const modelEligible = ordinaryCoverageComplete &&
-    dominanceRatioBasisPoints <= 7000;
   const githubRows = day.providerEvidence["github-trending-page"];
   if (
     githubRows.length !== day.githubEvidence.evidenceCount ||
@@ -433,9 +277,6 @@ const dayPlan = (
     primaryEvidenceCount: allRows.length - githubRows.length,
     githubEvidenceCount: githubRows.length,
     githubMode: day.githubEvidence.mode,
-    dominanceRatioBasisPoints,
-    modelEligible,
-    terminalOutcome: modelEligible ? null : "UNAVAILABLE",
   };
 };
 

@@ -17,10 +17,6 @@ READER_SUMMARY_PUBLICATION_VALIDATION_ATTEMPTS=3
 READER_SUMMARY_PUBLICATION_VALIDATION_RETRY_SECONDS=2
 # shellcheck source=ops/deploy/reader-summary-publication-system-dsn-bootstrap-lib.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/reader-summary-publication-system-dsn-bootstrap-lib.sh"
-if [[ -f $(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/reader-summary-original-cutoff-correction-lib.sh ]]; then
-  # shellcheck source=ops/deploy/reader-summary-original-cutoff-correction-lib.sh
-  source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/reader-summary-original-cutoff-correction-lib.sh"
-fi
 
 # This file is the authenticated target-publication wrapper loaded by the
 # installed c59 deploy-control bridge. The bridge's local target SHA remains
@@ -386,8 +382,6 @@ deploy_reader_summary_publication_migrations() {
   run_reader_summary_publication_admin_sql \
     "$secret" "$ca_certificate" "$runtime_role" pre || return
 
-  resolve_reader_summary_original_cutoff_failure || return
-
   # shellcheck disable=SC2016 # Expansion occurs in the child shell.
   "${COMPOSE[@]}" --profile app run -T --rm --no-deps \
     --user 0:0 \
@@ -399,8 +393,6 @@ deploy_reader_summary_publication_migrations() {
       export DATABASE_URL
       exec npm run migrate:deploy
     ' || return
-
-  [[ $(reader_summary_original_cutoff_probe post) == corrected ]] || return
 
   run_reader_summary_publication_admin_sql \
     "$secret" "$ca_certificate" "$runtime_role" post || return
@@ -685,7 +677,7 @@ reader_summary_publication_run_postgres_client() (
             printf "%s\n" "$query" > "$query_file"
             chmod 0600 "$query_file"
             [ -s "$query_file" ]
-            psql -X -A -t --quiet -F "|" --no-password -v ON_ERROR_STOP=1 \
+            psql -X -A -t -F "|" --no-password -v ON_ERROR_STOP=1 \
               --host="$host" --port="$port" --dbname="$database" \
               --username="$username" --set=runtime_role="$runtime_role" \
               --set=provisioner_role="$provisioner_role" \

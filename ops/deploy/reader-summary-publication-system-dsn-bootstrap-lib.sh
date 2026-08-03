@@ -152,9 +152,6 @@ INSERT INTO reader_summary_publication_bootstrap_settings (
 
 DO $bootstrap_system_runtime$
 DECLARE
-  v_daily_terminal_role CONSTANT NAME :=
-    'social_monitor_reader_summary_daily_terminal';
-  v_bootstrap_role NAME := CURRENT_USER;
   v_runtime_role NAME := (
     SELECT setting_value
     FROM pg_temp.reader_summary_publication_bootstrap_settings
@@ -181,9 +178,6 @@ BEGIN
   IF v_runtime_role = v_system_runtime_role THEN
     RAISE EXCEPTION 'runtime and tenant system roles must be distinct';
   END IF;
-  IF v_daily_terminal_role IN (v_runtime_role, v_system_runtime_role) THEN
-    RAISE EXCEPTION 'daily terminal and ordinary runtime roles must be distinct';
-  END IF;
   PERFORM pg_catalog.set_config('createrole_self_grant', 'set', true);
   IF NOT EXISTS (
     SELECT 1 FROM pg_catalog.pg_roles
@@ -200,51 +194,6 @@ BEGIN
     CREATE ROLE social_monitor_tenant_system_runtime
       NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT
       NOREPLICATION NOBYPASSRLS;
-  END IF;
-
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_catalog.pg_roles
-    WHERE rolname = v_daily_terminal_role
-  ) THEN
-    EXECUTE format(
-      'CREATE ROLE %I LOGIN PASSWORD %L NOSUPERUSER NOCREATEDB '
-        'NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS',
-      v_daily_terminal_role,
-      v_system_password
-    );
-  ELSE
-    SELECT * INTO v_role FROM pg_catalog.pg_roles
-    WHERE rolname = v_daily_terminal_role;
-    IF v_role.rolsuper OR v_role.rolcreatedb
-      OR v_role.rolreplication OR v_role.rolbypassrls THEN
-      RAISE EXCEPTION
-        'daily terminal runtime role requires privileged attribute repair';
-    END IF;
-    EXECUTE format(
-      'ALTER ROLE %I WITH LOGIN PASSWORD %L NOCREATEROLE NOINHERIT',
-      v_daily_terminal_role,
-      v_system_password
-    );
-  END IF;
-  EXECUTE format(
-    'REVOKE %I FROM %I GRANTED BY CURRENT_USER',
-    v_daily_terminal_role,
-    v_bootstrap_role
-  );
-  EXECUTE format('ALTER ROLE %I RESET ALL', v_daily_terminal_role);
-  EXECUTE format(
-    'ALTER ROLE %I SET search_path TO pg_catalog, public',
-    v_daily_terminal_role
-  );
-
-  SELECT * INTO v_role FROM pg_catalog.pg_roles
-  WHERE rolname = v_daily_terminal_role;
-  IF NOT FOUND OR NOT v_role.rolcanlogin OR v_role.rolinherit
-    OR v_role.rolsuper OR v_role.rolcreatedb OR v_role.rolcreaterole
-    OR v_role.rolreplication OR v_role.rolbypassrls
-    OR v_role.rolconfig IS DISTINCT FROM
-      ARRAY['search_path=pg_catalog, public']::TEXT[] THEN
-    RAISE EXCEPTION 'daily terminal runtime role is unsafe';
   END IF;
   PERFORM pg_catalog.set_config('createrole_self_grant', '', true);
 
@@ -312,44 +261,6 @@ BEGIN
       )
   ) THEN
     RAISE EXCEPTION 'tenant system runtime role has unexpected membership';
-  END IF;
-  IF (
-    SELECT count(*) > 1 OR count(*) <> count(*) FILTER (
-      WHERE member.rolname = v_bootstrap_role
-        AND grantor.rolsuper
-        AND membership.admin_option
-        AND NOT membership.inherit_option
-        AND NOT membership.set_option
-    )
-    FROM pg_catalog.pg_auth_members membership
-    JOIN pg_catalog.pg_roles member ON member.oid = membership.member
-    JOIN pg_catalog.pg_roles grantor ON grantor.oid = membership.grantor
-    WHERE membership.roleid = v_daily_terminal_role::REGROLE::OID
-  ) OR EXISTS (
-    SELECT 1
-    FROM pg_catalog.pg_auth_members membership
-    WHERE membership.member = v_daily_terminal_role::REGROLE::OID
-  ) THEN
-    RAISE EXCEPTION 'daily terminal runtime role has unexpected membership';
-  END IF;
-  IF EXISTS (
-    SELECT 1
-    FROM unnest(ARRAY[v_runtime_role, v_system_runtime_role]) ordinary(name)
-    CROSS JOIN unnest(ARRAY['MEMBER', 'USAGE', 'SET']) capability(name)
-    WHERE pg_catalog.pg_has_role(
-      ordinary.name,
-      v_daily_terminal_role,
-      capability.name
-    )
-  ) OR EXISTS (
-    SELECT 1
-    FROM pg_catalog.pg_auth_members membership
-    JOIN pg_catalog.pg_roles ordinary ON ordinary.oid = membership.member
-    WHERE membership.roleid = v_daily_terminal_role::REGROLE::OID
-      AND ordinary.rolname IN (v_runtime_role, v_system_runtime_role)
-      AND membership.inherit_option
-  ) THEN
-    RAISE EXCEPTION 'ordinary runtime role has daily terminal capability';
   END IF;
 END
 $bootstrap_system_runtime$;

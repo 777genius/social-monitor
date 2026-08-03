@@ -37,7 +37,7 @@ export const resolveAgentRuntimeSettings = (
       env.AGENT_RUNTIME_CLAUDE_TOKEN_ENV,
       "CLAUDE_CODE_OAUTH_TOKEN",
     ),
-    model: nonEmptyOrFallback(env.AGENT_RUNTIME_MODEL, "gpt-5.6-sol"),
+    model: nonEmptyOrFallback(env.AGENT_RUNTIME_MODEL, "gpt-5.5"),
     reasoningEffort: resolveReasoningEffort(env.AGENT_RUNTIME_REASONING_EFFORT),
   },
 });

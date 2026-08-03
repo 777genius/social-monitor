@@ -10,7 +10,6 @@ import 'feature_catalog.dart';
 
 GoRouter createAppRouter({
   required List<AppFeatureDescriptor> features,
-  required List<AppRouteDescriptor> additionalRoutes,
   required List<NavigatorObserver> observers,
   required AppRuntimeController runtimeController,
   required AppThemeModeController themeModeController,
@@ -80,19 +79,7 @@ GoRouter createAppRouter({
               pageBuilder: (context, state) => NoTransitionPage<void>(
                 key: state.pageKey,
                 child: _RuntimeFeaturePage(
-                  route: feature,
-                  uri: state.uri,
-                  runtimeController: runtimeController,
-                ),
-              ),
-            ),
-          for (final route in additionalRoutes)
-            GoRoute(
-              path: route.route.path,
-              pageBuilder: (context, state) => NoTransitionPage<void>(
-                key: state.pageKey,
-                child: _RuntimeFeaturePage(
-                  route: route,
+                  feature: feature,
                   uri: state.uri,
                   runtimeController: runtimeController,
                 ),
@@ -107,7 +94,7 @@ GoRouter createAppRouter({
               return NoTransitionPage<void>(
                 key: state.pageKey,
                 child: _RuntimeFeaturePage(
-                  route: summaries,
+                  feature: summaries,
                   uri: state.uri,
                   runtimeController: runtimeController,
                 ),
@@ -122,12 +109,12 @@ GoRouter createAppRouter({
 
 class _RuntimeFeaturePage extends StatefulWidget {
   const _RuntimeFeaturePage({
-    required this.route,
+    required this.feature,
     required this.uri,
     required this.runtimeController,
   });
 
-  final AppRouteDescriptor route;
+  final AppFeatureDescriptor feature;
   final Uri uri;
   final AppRuntimeController runtimeController;
 
@@ -152,7 +139,7 @@ class _RuntimeFeaturePageState extends State<_RuntimeFeaturePage> {
       oldWidget.runtimeController.removeListener(_handleRuntimeChanged);
       widget.runtimeController.addListener(_handleRuntimeChanged);
     }
-    if (oldWidget.route != widget.route || oldWidget.uri != widget.uri) {
+    if (oldWidget.feature != widget.feature || oldWidget.uri != widget.uri) {
       _child = null;
       _runtimeKey = null;
     }
@@ -184,7 +171,7 @@ class _RuntimeFeaturePageState extends State<_RuntimeFeaturePage> {
     ].join('|');
     if (_child == null || _runtimeKey != runtimeKey) {
       _runtimeKey = runtimeKey;
-      _child = widget.route.buildPage(context, widget.uri);
+      _child = widget.feature.buildPage(context, widget.uri);
     }
     return _child!;
   }
@@ -200,7 +187,6 @@ abstract final class AppRoutes {
   static const dashboard = '/';
   static const auth = '/auth';
   static const summaries = '/summaries';
-  static const weeklySummary = '/summaries/weekly';
   static const summaryDetail = '/summaries/:summaryId';
   static const initialFromEnvironment = String.fromEnvironment(
     'SOCIAL_MONITOR_INITIAL_ROUTE',

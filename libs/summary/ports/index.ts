@@ -22,8 +22,6 @@ export * from "./reader-summary-topic-labeler.port";
 export * from "./reader-summary-topic-map-publication-audit.port";
 export * from "./reader-summary-topic-relation-verifier.port";
 export * from "./reader-summary-topic-recommendation-decision-repository.port";
-export * from "./reader-summary-weekly-review-manifest.port";
-export * from "./reader-summary-weekly-projection-reader.port";
 export * from "./summary-artifact-repository.port";
 export * from "./summary-evidence-selector.port";
 export * from "./summary-event-publisher.port";

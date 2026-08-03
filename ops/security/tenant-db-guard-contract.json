@@ -6,15 +6,7 @@
   "rlsMigrationPaths": [
     "prisma/migrations/20260723153000_tenant_row_level_security/migration.sql",
     "prisma/migrations/20260726120000_tenant_secret_scope_and_weekly_evidence_rls/migration.sql",
-    "prisma/migrations/20260726170000_reader_summary_production_recovery_authority/migration.sql",
-    "prisma/migrations/20260731120000_reader_summary_weekly_certification_seal/migration.sql",
-    "prisma/migrations/20260801130000_reader_summary_original_cutoff_consumed_state_correction/migration.sql",
-    "prisma/migrations/20260802143000_reader_summary_daily_execution_publication_activation/migration.sql",
-    "prisma/migrations/20260802143100_reader_summary_daily_execution_publication_activation_acl/migration.sql",
-    "prisma/migrations/20260802170000_reader_summary_weekly_review_manifest/migration.sql",
-    "prisma/migrations/20260802233000_reader_summary_daily_canonical_recovery_v4/migration.sql",
-    "prisma/migrations/20260803173000_reader_summary_daily_canonical_recovery_v4_tenant_rls/migration.sql",
-    "prisma/migrations/20260803174000_reader_summary_daily_execution_tenant_rls/migration.sql"
+    "prisma/migrations/20260726170000_reader_summary_production_recovery_authority/migration.sql"
   ],
   "forwardRlsCoverage": [
     {
@@ -38,46 +30,6 @@
       "ownerRole": "social_monitor_reader_summary_publication_owner"
     },
     {
-      "table": "reader_summary_weekly_certification_seals",
-      "migrationPath": "prisma/migrations/20260731120000_reader_summary_weekly_certification_seal/migration.sql",
-      "ownerRole": "social_monitor_public_schema_owner"
-    },
-    {
-      "table": "reader_summary_weekly_review_manifests",
-      "migrationPath": "prisma/migrations/20260802170000_reader_summary_weekly_review_manifest/migration.sql",
-      "ownerRole": "social_monitor_reader_summary_publication_owner"
-    },
-    {
-      "table": "reader_summary_daily_canonical_recovery_v4_plans",
-      "migrationPath": "prisma/migrations/20260803173000_reader_summary_daily_canonical_recovery_v4_tenant_rls/migration.sql",
-      "ownerRole": "social_monitor_reader_summary_publication_owner"
-    },
-    {
-      "table": "reader_summary_daily_canonical_recovery_v4_authorities",
-      "migrationPath": "prisma/migrations/20260803173000_reader_summary_daily_canonical_recovery_v4_tenant_rls/migration.sql",
-      "ownerRole": "social_monitor_reader_summary_publication_owner"
-    },
-    {
-      "table": "reader_summary_daily_canonical_recovery_v4_leases",
-      "migrationPath": "prisma/migrations/20260803173000_reader_summary_daily_canonical_recovery_v4_tenant_rls/migration.sql",
-      "ownerRole": "social_monitor_reader_summary_publication_owner"
-    },
-    {
-      "table": "reader_summary_daily_execution_cursors",
-      "migrationPath": "prisma/migrations/20260803174000_reader_summary_daily_execution_tenant_rls/migration.sql",
-      "ownerRole": "social_monitor_public_schema_owner"
-    },
-    {
-      "table": "reader_summary_daily_source_authorities",
-      "migrationPath": "prisma/migrations/20260803174000_reader_summary_daily_execution_tenant_rls/migration.sql",
-      "ownerRole": "social_monitor_public_schema_owner"
-    },
-    {
-      "table": "reader_summary_daily_model_jobs",
-      "migrationPath": "prisma/migrations/20260803174000_reader_summary_daily_execution_tenant_rls/migration.sql",
-      "ownerRole": "social_monitor_public_schema_owner"
-    },
-    {
       "table": "webhook_secrets",
       "migrationPath": "prisma/migrations/20260726120000_tenant_secret_scope_and_weekly_evidence_rls/migration.sql",
       "ownerRole": "social_monitor_public_schema_owner"
@@ -99,9 +51,7 @@
     "reader_summary_publications",
     "reader_summary_publication_slots",
     "reader_summary_recovery_receipts",
-    "reader_summary_weekly_certification_seals",
     "reader_summary_weekly_publication_evidence",
-    "reader_summary_weekly_review_manifests",
     "reader_summary_topic_recommendation_decisions",
     "cursor_checkpoints",
     "delivery_attempts",
@@ -150,55 +100,6 @@
     "workspaces"
   ],
   "tenantScopedSystemTables": [
-    {
-      "table": "reader_summary_daily_canonical_recovery_v4_authorities",
-      "tenantIdRequired": true,
-      "workspaceIdRequired": true,
-      "tenantPrefixedIndexRequired": true,
-      "reason": "Immutable recovery authority is tenant-scoped system state exposed only through the fenced V4 recovery functions."
-    },
-    {
-      "table": "reader_summary_daily_canonical_recovery_v4_leases",
-      "tenantIdRequired": true,
-      "workspaceIdRequired": true,
-      "tenantPrefixedIndexRequired": true,
-      "reason": "V4 model-call and publication fencing is internal tenant-scoped system state."
-    },
-    {
-      "table": "reader_summary_daily_canonical_recovery_v4_plans",
-      "tenantIdRequired": true,
-      "workspaceIdRequired": true,
-      "tenantPrefixedIndexRequired": true,
-      "reason": "Canonical recovery plans are immutable tenant-scoped system authority, not application CRUD data."
-    },
-    {
-      "table": "reader_summary_daily_execution_cursors",
-      "tenantIdRequired": true,
-      "workspaceIdRequired": true,
-      "tenantPrefixedIndexRequired": true,
-      "reason": "Daily execution cursors are internal fenced scheduler state scoped to one tenant workspace."
-    },
-    {
-      "table": "reader_summary_daily_model_jobs",
-      "tenantIdRequired": true,
-      "workspaceIdRequired": true,
-      "tenantPrefixedIndexRequired": true,
-      "reason": "Daily model-call receipts are internal tenant-scoped execution authority with definer-only mutation."
-    },
-    {
-      "table": "reader_summary_daily_source_authorities",
-      "tenantIdRequired": true,
-      "workspaceIdRequired": true,
-      "tenantPrefixedIndexRequired": true,
-      "reason": "Daily source snapshots are immutable tenant-scoped system authority."
-    },
-    {
-      "table": "reader_summary_production_recovery_authority_corrections",
-      "tenantIdRequired": true,
-      "workspaceIdRequired": true,
-      "tenantPrefixedIndexRequired": false,
-      "reason": "Append-only recovery corrections inherit the tenant-prefixed lease scope through their composite foreign key."
-    },
     {
       "table": "idempotency_keys",
       "tenantIdRequired": false,

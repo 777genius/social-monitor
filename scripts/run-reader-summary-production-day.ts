@@ -77,27 +77,67 @@ loadDotenvIfPresent(".env");
 const outputPath = "ops/evals/reader-summary-production-day-run.v1.json";
 const update = process.argv.includes("--update");
 const artifactOnly = process.argv.includes("--artifact-only");
-let executionRequest: ReturnType<typeof resolveProductionDayExecutionRequest>;
-let reuseExistingArtifacts: boolean;
-let skipLiveCollection: boolean;
-let allowDegraded: boolean;
-let allowHistorical: boolean;
-let allowHistoricalProviderCollection: boolean;
-let qualityDateArgs: readonly string[];
-let collectionDate: string;
-let summaryModel: ReturnType<typeof resolveSummaryModel>;
-let topicLabeler: ReturnType<typeof resolveTopicLabeler>;
-let periodStartedAt: string;
-let periodEndedAt: string;
-let runtimeArtifactDirectory: string;
-let evidencePath: string;
-let frontendFixturePath: string;
-let nextEvidencePath: string;
-let nextFrontendFixturePath: string;
-let runtimeIdentityPath: string;
-let nextRuntimeIdentityPath: string;
-let datedOutputPath: string;
-let terminalOutcomePath: string;
+const executionRequest = resolveProductionDayExecutionRequest(
+  process.argv.slice(2),
+);
+const reuseExistingArtifacts = executionRequest.mode === "historical-reuse";
+const skipLiveCollection = executionRequest.mode !== "live-production";
+const allowDegraded = process.argv.includes("--allow-degraded");
+const allowHistorical = process.argv.includes("--allow-historical");
+const allowHistoricalProviderCollection =
+  allowHistorical && executionRequest.mode === "live-production";
+const qualityDateArgs = productionDayQualityDateArgs({
+  executionMode: executionRequest.mode,
+  allowHistorical,
+});
+const collectionDate = artifactOnly ? "1970-01-01" : resolveCollectionDate();
+const summaryModel = resolveSummaryModel();
+if (!artifactOnly && summaryModel !== "agent-runtime") {
+  throw new Error(
+    "Production reader summaries must use subscription runtime (agent-runtime)",
+  );
+}
+const topicLabeler = resolveTopicLabeler();
+if (!artifactOnly && topicLabeler !== "agent-runtime") {
+  throw new Error(
+    "Production reader summary topics must use subscription runtime (agent-runtime)",
+  );
+}
+const periodStartedAt = `${collectionDate}T00:00:00.000Z`;
+const periodEndedAt = nextDate(collectionDate);
+const runtimeArtifactDirectory = resolve(
+  process.env.READER_SUMMARY_PRODUCTION_DAY_ARTIFACT_DIR ??
+    join(
+      tmpdir(),
+      "social-monitor",
+      "reader-summary-production-day",
+      collectionDate,
+    ),
+);
+const evidencePath = join(
+  runtimeArtifactDirectory,
+  `durable-reader-summary-${collectionDate}.v1.json`,
+);
+const frontendFixturePath = join(
+  runtimeArtifactDirectory,
+  `frontend-reader-summary-${collectionDate}.fixture.v1.json`,
+);
+const nextEvidencePath = evidencePath.replace(/\.json$/u, ".next.json");
+const nextFrontendFixturePath = frontendFixturePath.replace(
+  /\.json$/u,
+  ".next.json",
+);
+const runtimeIdentityPath = join(
+  runtimeArtifactDirectory,
+  `runtime-live-identity-${collectionDate}.v1.json`,
+);
+const nextRuntimeIdentityPath = runtimeIdentityPath.replace(
+  /\.json$/u,
+  ".next.json",
+);
+const datedOutputPath = `ops/evals/reader-summary-production-day-run.${collectionDate}.v1.json`;
+const terminalOutcomePath =
+  `ops/evals/reader-summary-production-day-outcome.${collectionDate}.v1.json`;
 let liveCaptureExecution: ProductionDayCaptureExecution | null = null;
 
 void main().catch((error) => {
@@ -113,25 +153,6 @@ async function main(): Promise<void> {
 
   const startedAt = new Date();
   const steps: StepReport[] = [];
-  const migrationStep = runNpm("migrate", ["run", "migrate:deploy"]);
-  if (migrationStep.status !== "passed") {
-    throw new Error(
-      `Required database migration failed before production-day admission ` +
-        `(exit=${migrationStep.exitCode ?? "unknown"})`,
-    );
-  }
-  steps.push(migrationStep);
-  initializeProductionDayRuntime();
-  if (summaryModel !== "agent-runtime") {
-    throw new Error(
-      "Production reader summaries must use subscription runtime (agent-runtime)",
-    );
-  }
-  if (topicLabeler !== "agent-runtime") {
-    throw new Error(
-      "Production reader summary topics must use subscription runtime (agent-runtime)",
-    );
-  }
   const historicalReuse =
     executionRequest.mode === "historical-reuse"
       ? loadHistoricalReuseProvenance({
@@ -141,6 +162,7 @@ async function main(): Promise<void> {
           collectionDate,
         })
       : null;
+  steps.push(runNpm("migrate", ["run", "migrate:deploy"]));
   const scope = await readProductionDayScope({
     connectionString: yesterdaySocialQualityDatabaseUrl(),
     periodStartedAt,
@@ -347,7 +369,7 @@ async function main(): Promise<void> {
         {
           DATABASE_URL: yesterdaySocialQualityDatabaseUrl(),
           DURABLE_READER_SUMMARY_MODEL: summaryModel,
-          AGENT_RUNTIME_READER_SUMMARY_MODEL: "gpt-5.6-sol",
+          AGENT_RUNTIME_READER_SUMMARY_MODEL: "gpt-5.5",
           AGENT_RUNTIME_PROVIDER: "codex",
           AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT: "xhigh",
           AGENT_RUNTIME_READER_SUMMARY_TIMEOUT_MS: String(
@@ -515,48 +537,6 @@ async function main(): Promise<void> {
   if (!report.blockingPassed) {
     throw new Error("Reader summary production day run gates failed");
   }
-}
-
-function initializeProductionDayRuntime(): void {
-  executionRequest = resolveProductionDayExecutionRequest(process.argv.slice(2));
-  reuseExistingArtifacts = executionRequest.mode === "historical-reuse";
-  skipLiveCollection = executionRequest.mode !== "live-production";
-  allowDegraded = process.argv.includes("--allow-degraded");
-  allowHistorical = process.argv.includes("--allow-historical");
-  allowHistoricalProviderCollection =
-    allowHistorical && executionRequest.mode === "live-production";
-  qualityDateArgs = productionDayQualityDateArgs({
-    executionMode: executionRequest.mode,
-    allowHistorical,
-  });
-  collectionDate = resolveCollectionDate();
-  summaryModel = resolveSummaryModel();
-  topicLabeler = resolveTopicLabeler();
-  periodStartedAt = `${collectionDate}T00:00:00.000Z`;
-  periodEndedAt = nextDate(collectionDate);
-  runtimeArtifactDirectory = resolve(
-    process.env.READER_SUMMARY_PRODUCTION_DAY_ARTIFACT_DIR ??
-      join(tmpdir(), "social-monitor", "reader-summary-production-day", collectionDate),
-  );
-  evidencePath = join(
-    runtimeArtifactDirectory,
-    `durable-reader-summary-${collectionDate}.v1.json`,
-  );
-  frontendFixturePath = join(
-    runtimeArtifactDirectory,
-    `frontend-reader-summary-${collectionDate}.fixture.v1.json`,
-  );
-  nextEvidencePath = evidencePath.replace(/\.json$/u, ".next.json");
-  nextFrontendFixturePath = frontendFixturePath.replace(/\.json$/u, ".next.json");
-  runtimeIdentityPath = join(
-    runtimeArtifactDirectory,
-    `runtime-live-identity-${collectionDate}.v1.json`,
-  );
-  nextRuntimeIdentityPath = runtimeIdentityPath.replace(/\.json$/u, ".next.json");
-  datedOutputPath =
-    `ops/evals/reader-summary-production-day-run.${collectionDate}.v1.json`;
-  terminalOutcomePath =
-    `ops/evals/reader-summary-production-day-outcome.${collectionDate}.v1.json`;
 }
 
 function persistTerminalOutcome(

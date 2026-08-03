@@ -76,8 +76,8 @@
     "enumStrings": "preserve_raw_value_and_map_to_unknown_in_ui_layer",
     "additionalJsonProperties": "ignore_for_strong_models_preserve_in_raw_payload_when_available"
   },
-  "operationCount": 90,
-  "mobileReadyOperationCount": 90,
+  "operationCount": 89,
+  "mobileReadyOperationCount": 89,
   "devOnlyWorkspaceRoleOperations": [],
   "mobileReadyOperations": [
     "ApiKeysController_create",
@@ -116,7 +116,6 @@
     "ReaderSummaryRequestController_create",
     "ReaderSummaryTopicRecommendationController_decide",
     "ReaderSummaryTopicRecommendationController_list",
-    "ReaderSummaryWeeklyProjectionController_get",
     "RealtimeEventsController_list",
     "RelevanceController_digest",
     "RelevanceController_feed",
@@ -1457,36 +1456,6 @@
       "requestBodySchemaRef": null,
       "successResponseSchemaRefs": [
         "#/components/schemas/ListReaderSummaryPeriodsResponseDto"
-      ]
-    },
-    {
-      "operationId": "ReaderSummaryWeeklyProjectionController_get",
-      "clientName": "ReaderSummaryWeeklyProjectionController_get",
-      "method": "GET",
-      "path": "/reader-summaries/weekly",
-      "tags": [
-        "reader-summaries"
-      ],
-      "summary": "Get the certified Monday-Sunday UTC reader summary projection.",
-      "pathParameters": [],
-      "queryParameters": [
-        "weekStartedOn"
-      ],
-      "requiredHeaders": [
-        "x-tenant-id",
-        "x-workspace-id"
-      ],
-      "optionalHeaders": [
-        "authorization",
-        "x-workspace-role"
-      ],
-      "requiresTenantWorkspace": true,
-      "supportsBearerApiKey": true,
-      "usesDevOnlyWorkspaceRoleHeader": true,
-      "devOnlyWorkspaceRoleRequired": false,
-      "requestBodySchemaRef": null,
-      "successResponseSchemaRefs": [
-        "#/components/schemas/ReaderSummaryWeeklyProjectionResponseDto"
       ]
     },
     {
