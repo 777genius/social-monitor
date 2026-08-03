@@ -798,6 +798,34 @@ LEFT JOIN LATERAL (
         NOT EXISTS (
           SELECT 1 FROM pg_catalog.pg_roles
           WHERE rolname =
+            'social_monitor_reader_summary_daily_terminal'
+        ) AND COUNT(*) FILTER (
+          WHERE granted_role.rolname =
+            'social_monitor_reader_summary_daily_terminal'
+        ) = 0
+      ) OR (
+        EXISTS (
+          SELECT 1 FROM pg_catalog.pg_roles
+          WHERE rolname =
+            'social_monitor_reader_summary_daily_terminal'
+        ) AND COUNT(*) FILTER (
+          WHERE granted_role.rolname =
+            'social_monitor_reader_summary_daily_terminal'
+        ) = 1 AND BOOL_AND(
+          CASE WHEN granted_role.rolname =
+            'social_monitor_reader_summary_daily_terminal'
+          THEN membership.admin_option
+            AND NOT membership.inherit_option
+            AND NOT membership.set_option
+            AND grantor_role.rolsuper
+          ELSE true END
+        )
+      )
+    ) AND (
+      (
+        NOT EXISTS (
+          SELECT 1 FROM pg_catalog.pg_roles
+          WHERE rolname =
             'social_monitor_reader_summary_publication_owner'
         ) AND COUNT(*) FILTER (
           WHERE granted_role.rolname =
@@ -878,7 +906,8 @@ LEFT JOIN LATERAL (
         :'runtime_role',
         'social_monitor_public_schema_owner',
         'social_monitor_reader_summary_publication_owner',
-        'social_monitor_reader_summary_publication_runtime'
+        'social_monitor_reader_summary_publication_runtime',
+        'social_monitor_reader_summary_daily_terminal'
       )
     ) AS unexpected_membership_count,
     (
@@ -887,7 +916,8 @@ LEFT JOIN LATERAL (
           :'runtime_role',
           'social_monitor_public_schema_owner',
           'social_monitor_reader_summary_publication_owner',
-          'social_monitor_reader_summary_publication_runtime'
+          'social_monitor_reader_summary_publication_runtime',
+          'social_monitor_reader_summary_daily_terminal'
         )
       ) = 0 OR (
         COUNT(*) FILTER (
