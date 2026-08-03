@@ -89,7 +89,7 @@ describe("historical production-day reuse provenance", () => {
         readFileSync(frontendFixturePath, "utf8"),
       ) as { readerSummaryArtifact: { lineage: { modelVersion: string } } };
       frontend.readerSummaryArtifact.lineage.modelVersion =
-        "codex:gpt-5.5:xhigh-modified";
+        "codex:gpt-5.6-sol:xhigh-modified";
       writeFileSync(frontendFixturePath, `${JSON.stringify(frontend)}\n`);
 
       expect(() =>
@@ -225,7 +225,7 @@ function evidenceFixture() {
       readerSummaryId: "11111111-1111-4111-8111-111111111111",
       period: productionDayUtcPeriod(collectionDate),
       lineage: {
-        modelVersion: "codex:gpt-5.5:xhigh",
+        modelVersion: "codex:gpt-5.6-sol:xhigh",
         providerVersion: "agent-runtime",
       },
       content: { topicMap: { generatedBy: "agent-runtime" } },
