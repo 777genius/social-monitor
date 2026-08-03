@@ -191,6 +191,7 @@ const migrationWorkspace =
 const deferredCanonicalRecoveryMigrations = [
   "20260802233000_reader_summary_daily_canonical_recovery_v4",
   "20260802233100_reader_summary_daily_canonical_recovery_v4_security",
+  "20260803173000_reader_summary_daily_canonical_recovery_v4_tenant_rls",
 ] as const;
 let ownerRolePreexisting = false;
 let capabilityRolePreexisting = false;

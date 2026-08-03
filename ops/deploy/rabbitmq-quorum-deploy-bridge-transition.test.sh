@@ -321,6 +321,8 @@ run_release_b() (
     printf 'bootstrap-marker\n' >> "$BRIDGE_EVENTS"
     printf '%s\n' "$1" > "$STATE/postgres-pool-bootstrap.sha"
   }
+  # fake_compose is invoked indirectly through the COMPOSE command array below.
+  # shellcheck disable=SC2317,SC2329
   fake_compose() {
     printf 'compose:%s\n' "$*" >> "$BRIDGE_EVENTS"
     [[ " $* " != *' rabbitmq '* ]] || \
