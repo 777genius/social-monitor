@@ -336,7 +336,7 @@ const assertCatalogContract = async (
        SELECT 1
        FROM pg_catalog.pg_class AS seal_relation
        CROSS JOIN LATERAL pg_catalog.aclexplode(
-         COALESCE(seal_relation.relacl, ARRAY[]::pg_catalog.aclitem[])
+         NULLIF(seal_relation.relacl, ARRAY[]::pg_catalog.aclitem[])
        ) AS acl_row
        JOIN pg_catalog.pg_roles AS grantee_role
          ON grantee_role.oid = acl_row.grantee
@@ -350,7 +350,7 @@ const assertCatalogContract = async (
          SELECT 1
          FROM pg_catalog.pg_attribute AS seal_column
          CROSS JOIN LATERAL pg_catalog.aclexplode(
-           COALESCE(seal_column.attacl, ARRAY[]::pg_catalog.aclitem[])
+           NULLIF(seal_column.attacl, ARRAY[]::pg_catalog.aclitem[])
          ) AS acl_row
          JOIN pg_catalog.pg_roles AS grantee_role
            ON grantee_role.oid = acl_row.grantee
