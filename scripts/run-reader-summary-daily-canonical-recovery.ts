@@ -66,8 +66,10 @@ import { ReaderSummaryDailyCanonicalRecoveryV4Executor } from "./lib/reader-summ
 import { createReaderSummaryDailyTerminalRuntimeConnection } from "./lib/reader-summary-daily-terminal-runtime-connection";
 
 if (process.argv[1] !== undefined && resolve(process.argv[1]) === __filename) {
-  loadDotenvIfPresent(".env");
-  void main().catch((error: unknown) => {
+  void Promise.resolve().then(() => {
+    loadDotenvIfPresent(".env");
+    return main();
+  }).catch((error: unknown) => {
     console.error(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;
   });
