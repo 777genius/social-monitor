@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { canonicalizeReaderSummaryWeeklyJson } from "../../libs/summary/domain/value-objects/reader-summary-weekly-canonical-json";
-import { readerSummaryWeeklyCanonicalProviderKeys } from "../../libs/summary/domain/value-objects/reader-summary-weekly-daily-certification";
+import { evaluateReaderSummaryWeeklyEditorialQuality } from "../../libs/summary/domain/policies/reader-summary-weekly-editorial-quality-policy";
 import {
   readerSummaryWeeklyModelOutputSchemaVersion,
   type ReaderSummaryWeeklyModelInput,
@@ -31,14 +31,11 @@ import {
 } from "./reader-summary-weekly-production-runner";
 import { ReaderSummaryWeeklySubscriptionRuntimeFailureError } from "./reader-summary-weekly-execution-receipt";
 import {
-  resolveReaderSummaryWeeklyProductionWindow,
-  type ReaderSummaryWeeklyProductionCertification,
-  type ReaderSummaryWeeklyProductionDbState,
-} from "./reader-summary-weekly-production-postgres-contract";
-
-const tenantId = "11111111-1111-4111-8111-111111111111";
-const workspaceId = "22222222-2222-4222-8222-222222222222";
-const window = resolveReaderSummaryWeeklyProductionWindow("2026-07-20");
+  admittedRunnerInput,
+  completeDbState,
+  reviewManifestFor,
+  sha,
+} from "./reader-summary-weekly-production-test-fixture";
 
 describe("agent-runtime reader summary weekly text model", () => {
   it("accepts exact gpt-5.6-sol xhigh output_text runtime execution", async () => {
@@ -165,7 +162,7 @@ describe("reader summary weekly production runner", () => {
     const outputDirectory = tempDir();
 
     const result = await runReaderSummaryWeeklyProduction({
-      dbState: completeDbState(),
+      ...admittedRunnerInput(),
       outputDirectory,
       model,
       replay: false,
@@ -194,7 +191,7 @@ describe("reader summary weekly production runner", () => {
     const proof = JSON.parse(readFileSync(result.proofPath!, "utf8"));
     expect(artifact.status).toBe("complete");
     expect(artifact.editorialQuality.blockingPassed).toBe(true);
-    expect(artifact.qualityGate).toEqual({
+    expect(artifact.qualityGate).toMatchObject({
       schemaVersion: "reader_summary.weekly_production_quality_gate.v1",
       evaluator: "deterministic",
       decision: "allow",
@@ -206,14 +203,8 @@ describe("reader summary weekly production runner", () => {
         synthesisDayDominanceIsControlled: true,
         synthesisProviderDominanceIsControlled: true,
       },
-      metrics: {
-        synthesisCitationCount: 12,
-        synthesisCitedDayCount: 6,
-        synthesisCitedProviderCount: 2,
-        dominantSynthesisDayCitationShare: 1 / 6,
-        dominantSynthesisProviderCitationShare: 1 / 2,
-      },
     });
+    expect(artifact.qualityGate.metrics).toEqual(artifact.editorialQuality.metrics);
     expect(artifact.canary).toEqual({
       schemaVersion: "reader_summary.weekly_production_canary.v1",
       mode: "fail_closed",
@@ -234,6 +225,11 @@ describe("reader summary weekly production runner", () => {
     expect(proof.manifestSealSha).toBe(
       completeDbState().weeklyCertificationSeal?.sealSha256,
     );
+    const reviewManifest = reviewManifestFor();
+    expect(artifact.reviewManifestId).toBe(reviewManifest.manifestId);
+    expect(artifact.reviewManifestSha256).toBe(reviewManifest.manifestSha256);
+    expect(proof.reviewManifestId).toBe(reviewManifest.manifestId);
+    expect(proof.reviewManifestSha256).toBe(reviewManifest.manifestSha256);
     expect(proof.model).toEqual({
       provider: "agent-runtime",
       agentProvider: "codex",
@@ -250,7 +246,7 @@ describe("reader summary weekly production runner", () => {
     let firstPublisherCalls = 0;
     const durablePairs: { artifactSha256: string; proofSha256: string }[] = [];
     await expect(runReaderSummaryWeeklyProduction({
-      dbState: completeDbState(),
+      ...admittedRunnerInput(),
       outputDirectory,
       model: firstModel,
       replay: false,
@@ -271,7 +267,7 @@ describe("reader summary weekly production runner", () => {
     const retryModel = new FakeWeeklyModel((input) => outputFor(input));
     let retryPublisherCalls = 0;
     const retried = await runReaderSummaryWeeklyProduction({
-      dbState: completeDbState(),
+      ...admittedRunnerInput(),
       outputDirectory,
       model: retryModel,
       replay: false,
@@ -298,7 +294,7 @@ describe("reader summary weekly production runner", () => {
   it("replays existing evidence with zero calls and zero writes", async () => {
     const outputDirectory = tempDir();
     await runReaderSummaryWeeklyProduction({
-      dbState: completeDbState(),
+      ...admittedRunnerInput(),
       outputDirectory,
       model: new FakeWeeklyModel((input) => outputFor(input)),
       replay: false,
@@ -318,7 +314,7 @@ describe("reader summary weekly production runner", () => {
     const replayPublisher = fakePublisher();
 
     const result = await runReaderSummaryWeeklyProduction({
-      dbState: completeDbState(),
+      ...admittedRunnerInput(),
       outputDirectory,
       model: replayModel,
       replay: true,
@@ -338,7 +334,7 @@ describe("reader summary weekly production runner", () => {
     expect(statSync(proofPath).mtimeMs).toBe(proofMtime);
 
     const secondReplay = await runReaderSummaryWeeklyProduction({
-      dbState: completeDbState(),
+      ...admittedRunnerInput(),
       outputDirectory,
       model: replayModel,
       replay: true,
@@ -358,7 +354,7 @@ describe("reader summary weekly production runner", () => {
     const publisher = fakePublisher();
 
     const result = await runReaderSummaryWeeklyProduction({
-      dbState: completeDbState(),
+      ...admittedRunnerInput(),
       outputDirectory: tempDir(),
       model,
       replay: true,
@@ -379,6 +375,56 @@ describe("reader summary weekly production runner", () => {
     expect(publisher.publish).not.toHaveBeenCalled();
   });
 
+  it("fails closed without an admitted review manifest before model, artifact, or publication", async () => {
+    const outputDirectory = tempDir();
+    const model = new FakeWeeklyModel((input) => outputFor(input));
+    const publisher = fakePublisher();
+
+    const result = await runReaderSummaryWeeklyProduction({
+      dbState: completeDbState(),
+      reviewManifest: null,
+      outputDirectory,
+      model,
+      replay: false,
+      generatedAt: new Date("2026-07-27T07:00:00.000Z"),
+      publisher,
+    });
+
+    expect(result.status).toBe("partial");
+    expect(result.blockingReasons).toEqual([
+      "missing authorized weekly review manifest",
+    ]);
+    expect(result.modelCallPerformed).toBe(false);
+    expect(result.writePerformed).toBe(false);
+    expect(model.calls).toBe(0);
+    expect(publisher.publish).not.toHaveBeenCalled();
+    expect(productionArtifactExists(outputDirectory)).toBe(false);
+  });
+
+  it("fails closed when replay uses another valid review manifest", async () => {
+    const outputDirectory = tempDir();
+    const dbState = completeDbState();
+    await runReaderSummaryWeeklyProduction({
+      ...admittedRunnerInput(dbState),
+      outputDirectory,
+      model: new FakeWeeklyModel((input) => outputFor(input)),
+      replay: false,
+      generatedAt: new Date("2026-07-27T06:30:00.000Z"),
+    });
+    const replayModel = new FakeWeeklyModel((input) => outputFor(input));
+
+    await expect(runReaderSummaryWeeklyProduction({
+      dbState,
+      reviewManifest: reviewManifestFor(dbState, { responseSalt: "other" }),
+      outputDirectory,
+      model: replayModel,
+      replay: true,
+      generatedAt: new Date("2026-07-27T07:00:00.000Z"),
+      publisher: fakePublisher(),
+    })).rejects.toThrow(/does not match admitted input/u);
+    expect(replayModel.calls).toBe(0);
+  });
+
   it("never publishes unavailable DB state", async () => {
     const model = new FakeWeeklyModel((input) => outputFor(input));
     const publisher = fakePublisher();
@@ -388,6 +434,7 @@ describe("reader summary weekly production runner", () => {
         status: "unavailable" as const,
         blockingReasons: Object.freeze(["database unavailable"]),
       }),
+      reviewManifest: null,
       outputDirectory: tempDir(),
       model,
       replay: false,
@@ -409,6 +456,7 @@ describe("reader summary weekly production runner", () => {
         ...dbState,
         weeklyCertificationSeal: null,
       }),
+      reviewManifest: null,
       outputDirectory: tempDir(),
       model,
       replay: false,
@@ -441,6 +489,7 @@ describe("reader summary weekly production runner", () => {
           ]),
         }),
       }),
+      reviewManifest: null,
       outputDirectory: tempDir(),
       model,
       replay: false,
@@ -457,7 +506,7 @@ describe("reader summary weekly production runner", () => {
   it("rejects a canonical proof whose sealed daily evidence is divergent", async () => {
     const outputDirectory = tempDir();
     await runReaderSummaryWeeklyProduction({
-      dbState: completeDbState(),
+      ...admittedRunnerInput(),
       outputDirectory,
       model: new FakeWeeklyModel((input) => outputFor(input)),
       replay: false,
@@ -480,20 +529,20 @@ describe("reader summary weekly production runner", () => {
 
     await expect(
       runReaderSummaryWeeklyProduction({
-        dbState: completeDbState(),
+        ...admittedRunnerInput(),
         outputDirectory,
         model: replayModel,
         replay: true,
         generatedAt: new Date("2026-07-27T07:00:00.000Z"),
       }),
-    ).rejects.toThrow(/does not match DB input/u);
+    ).rejects.toThrow(/does not match admitted input/u);
     expect(replayModel.calls).toBe(0);
   });
 
-  it("rejects a valid-hash pair whose deterministic quality gate does not allow publication", async () => {
+  it("rejects self-consistent hashes when the stored quality gate is not recomputed", async () => {
     const outputDirectory = tempDir();
     await runReaderSummaryWeeklyProduction({
-      dbState: completeDbState(),
+      ...admittedRunnerInput(),
       outputDirectory,
       model: new FakeWeeklyModel((input) => outputFor(input)),
       replay: false,
@@ -508,7 +557,7 @@ describe("reader summary weekly production runner", () => {
       "reader-summary-weekly-production.2026-07-20.proof.v1.json",
     );
     const artifact = JSON.parse(readFileSync(artifactPath, "utf8")) as {
-      qualityGate: { decision: string };
+      qualityGate: { metrics: { citedDayCount: number } };
       canary: { qualityGateSha256: string };
     };
     const proof = JSON.parse(readFileSync(proofPath, "utf8")) as {
@@ -516,7 +565,7 @@ describe("reader summary weekly production runner", () => {
       canarySha256: string;
       artifactSha256: string;
     };
-    artifact.qualityGate.decision = "deny";
+    artifact.qualityGate.metrics.citedDayCount += 1;
     const qualityGateSha256 = canonicalizeReaderSummaryWeeklyJson(
       artifact.qualityGate,
     ).sha256;
@@ -537,13 +586,61 @@ describe("reader summary weekly production runner", () => {
 
     await expect(
       runReaderSummaryWeeklyProduction({
-        dbState: completeDbState(),
+        ...admittedRunnerInput(),
         outputDirectory,
         model: replayModel,
         replay: true,
         generatedAt: new Date("2026-07-27T07:00:00.000Z"),
       }),
-    ).rejects.toThrow(/does not match DB input/u);
+    ).rejects.toThrow(/does not match admitted input/u);
+    expect(replayModel.calls).toBe(0);
+  });
+
+  it("rejects self-consistent replay hashes with semantically invalid output", async () => {
+    const outputDirectory = tempDir();
+    await writeProductionArtifactPair(outputDirectory);
+    const { artifactPath, proofPath } = productionPaths(outputDirectory);
+    const artifact = JSON.parse(readFileSync(artifactPath, "utf8")) as {
+      output: { headlineCitationIds: string[] };
+    };
+    const proof = JSON.parse(readFileSync(proofPath, "utf8")) as {
+      artifactSha256: string;
+    };
+    artifact.output.headlineCitationIds = ["citation:forged"];
+    rewriteArtifactProofPair(artifactPath, proofPath, artifact, proof);
+    const replayModel = new FakeWeeklyModel((input) => outputFor(input));
+
+    await expect(runReaderSummaryWeeklyProduction({
+      ...admittedRunnerInput(), outputDirectory, model: replayModel, replay: true,
+      generatedAt: new Date("2026-07-27T07:00:00.000Z"),
+    })).rejects.toThrow(/headline cites unknown evidence/u);
+    expect(replayModel.calls).toBe(0);
+  });
+
+  it("rejects self-consistent replay hashes when editorial quality denies output", async () => {
+    const outputDirectory = tempDir();
+    await writeProductionArtifactPair(outputDirectory);
+    const { artifactPath, proofPath } = productionPaths(outputDirectory);
+    const artifact = JSON.parse(readFileSync(artifactPath, "utf8")) as {
+      modelInput: ReaderSummaryWeeklyModelInput;
+      output: ReaderSummaryWeeklyModelOutput;
+      editorialQuality: unknown;
+    };
+    const proof = JSON.parse(readFileSync(proofPath, "utf8")) as {
+      artifactSha256: string;
+    };
+    artifact.output = narrowSynthesisOutput(artifact.modelInput);
+    artifact.editorialQuality = evaluateReaderSummaryWeeklyEditorialQuality(
+      artifact.modelInput,
+      artifact.output,
+    );
+    rewriteArtifactProofPair(artifactPath, proofPath, artifact, proof);
+    const replayModel = new FakeWeeklyModel((input) => outputFor(input));
+
+    await expect(runReaderSummaryWeeklyProduction({
+      ...admittedRunnerInput(), outputDirectory, model: replayModel, replay: true,
+      generatedAt: new Date("2026-07-27T07:00:00.000Z"),
+    })).rejects.toThrow(/editorial output is blocked/u);
     expect(replayModel.calls).toBe(0);
   });
 
@@ -551,7 +648,7 @@ describe("reader summary weekly production runner", () => {
     const outputDirectory = tempDir();
     await expect(
       runReaderSummaryWeeklyProduction({
-        dbState: completeDbState(),
+        ...admittedRunnerInput(),
         outputDirectory,
         model: new FakeWeeklyModel((input) => stitchedDailyOutput(input)),
         replay: false,
@@ -566,7 +663,7 @@ describe("reader summary weekly production runner", () => {
 
     await expect(
       runReaderSummaryWeeklyProduction({
-        dbState: completeDbState(),
+        ...admittedRunnerInput(),
         outputDirectory,
         model: new FakeWeeklyModel((input) => narrowSynthesisOutput(input)),
         replay: false,
@@ -603,7 +700,10 @@ describe("reader summary weekly production runner", () => {
       ),
     });
 
-    const built = buildModelInputFromDbState(repeatedStoryState);
+    const built = buildModelInputFromDbState(
+      repeatedStoryState,
+      reviewManifestFor(repeatedStoryState),
+    );
 
     expect(built.status).toBe("complete");
     if (built.status !== "complete") {
@@ -612,7 +712,7 @@ describe("reader summary weekly production runner", () => {
     const repeatedObservations = built.input.observations.filter(
       (observation) => observation.providerKey === "rss",
     );
-    expect(repeatedObservations).toHaveLength(6);
+    expect(repeatedObservations).toHaveLength(7);
     expect(
       new Set(repeatedObservations.map((observation) => observation.storyId))
         .size,
@@ -620,7 +720,7 @@ describe("reader summary weekly production runner", () => {
     expect(
       new Set(repeatedObservations.map((observation) => observation.observedOn))
         .size,
-    ).toBe(6);
+    ).toBe(7);
     expect(
       built.input.stories.filter(
         (story) => story.storyId === repeatedObservations[0]!.storyId,
@@ -689,7 +789,8 @@ function productionExecutionAttestation(
 }
 
 function completeModelInput(): ReaderSummaryWeeklyModelInput {
-  const built = buildModelInputFromDbState(completeDbState());
+  const dbState = completeDbState();
+  const built = buildModelInputFromDbState(dbState, reviewManifestFor(dbState));
   if (built.status !== "complete") {
     throw new Error(built.reasons.join("; "));
   }
@@ -699,146 +800,6 @@ function completeModelInput(): ReaderSummaryWeeklyModelInput {
 const fakePublisher = () => ({
   publish: jest.fn(async () => ({ databasePublicationVerified: true as const })),
 });
-
-function completeDbState(): ReaderSummaryWeeklyProductionDbState {
-  const certifications = Object.freeze(window.dates.map(certificationFor));
-  return Object.freeze({
-    status: "complete" as const,
-    scope: Object.freeze({
-      tenantId,
-      workspaceId,
-      scope: Object.freeze({ type: "workspace" as const }),
-    }),
-    window,
-    weeklyCertificationSeal: certificationSealFor(certifications),
-    certifications,
-    missingDates: Object.freeze([]),
-    blockingReasons: Object.freeze([]),
-  });
-}
-
-function certificationSealFor(
-  certifications: readonly ReaderSummaryWeeklyProductionCertification[],
-) {
-  const body = {
-    schemaVersion: "reader_summary.weekly_certification_seal.v1",
-    tenantId,
-    workspaceId,
-    scopeType: "workspace",
-    scopeKey: "workspace",
-    weekStartedOn: window.weekStartedOn,
-    weekEndedOn: window.weekEndedOn,
-    days: certifications.map((certification) => ({
-      requestedUtcDate: certification.requestedUtcDate,
-      publicationId: certification.publicationId,
-      artifactId: certification.artifactId,
-      jobId: certification.jobId,
-      semanticStatus: certification.semanticStatus,
-      publicationEvidenceIdentity: certification.identity,
-      publicationEvidenceSha256: certification.canonicalSha256,
-    })),
-  };
-  const canonical = canonicalizeReaderSummaryWeeklyJson(body);
-  const sealId =
-    `reader_summary.weekly_certification_seal.v1:${canonical.sha256}`;
-  return Object.freeze({
-    sealId,
-    sealSha256: canonical.sha256,
-    tenantId,
-    workspaceId,
-    scopeType: "workspace" as const,
-    scopeKey: "workspace",
-    weekStartedOn: window.weekStartedOn,
-    weekEndedOn: window.weekEndedOn,
-    days: Object.freeze(body.days),
-    canonicalRecord: Object.freeze({
-      ...body,
-      sealId,
-      sealSha: canonical.sha256,
-    }),
-    canonicalBytes: canonical.json,
-    recordedAt: "2026-07-27T06:00:00.000Z",
-  });
-}
-
-function certificationFor(
-  date: string,
-  index: number,
-): ReaderSummaryWeeklyProductionCertification {
-  return Object.freeze({
-    requestedUtcDate: date,
-    tenantId,
-    workspaceId,
-    scope: Object.freeze({ type: "workspace" as const }),
-    scopeKey: "workspace",
-    publicationId: `publication:${date}`,
-    artifactId: `artifact:${date}`,
-    jobId: `job:${date}`,
-    reportId: `report:${date}`,
-    proofId: `proof:${date}`,
-    semanticStatus: "COMPLETED" as const,
-    periodStartedAt: `${date}T00:00:00.000Z`,
-    periodEndedAt: `${nextDate(date)}T00:00:00.000Z`,
-    providerCounts: Object.freeze(
-      readerSummaryWeeklyCanonicalProviderKeys.map((providerKey) =>
-        Object.freeze({
-          providerKey,
-          count:
-            providerKey === "github-trending-page"
-              ? 10
-              : providerKey === "rss"
-                ? 1
-                : 0,
-        }),
-      ),
-    ),
-    githubEvidence: Object.freeze({
-      schemaVersion: "reader_summary.weekly_publication_github_evidence.v1",
-      mode: "verified",
-      evidenceCount: 10,
-      repositories: Array.from({ length: 10 }, (_, repoIndex) => ({
-        rank: repoIndex + 1,
-      })),
-      sha256: sha(`github:${date}`),
-    }),
-    providerEvidence: Object.freeze([
-      providerEvidence(date, "github-trending-page", index * 2),
-      providerEvidence(date, "rss", index * 2 + 1),
-    ]),
-    report: Object.freeze({ status: "ok" }),
-    exactProof: Object.freeze({ status: "ok" }),
-    canonicalRecord: Object.freeze({ status: "ok" }),
-    canonicalSha256: sha(`cert:${date}`),
-    identity: `reader_summary.weekly_publication_evidence.v1:${sha(
-      `cert:${date}`,
-    )}`,
-    recordedAt: `${date}T12:00:00.000Z`,
-  });
-}
-
-function providerEvidence(date: string, providerKey: string, index: number) {
-  const isDurableRssStory = providerKey === "rss";
-  return Object.freeze({
-    citationId: `citation:${date}:${providerKey}`,
-    citationField: "title" as const,
-    feedItemId: `feed:${date}:${index}`,
-    sourceItemId: `source-item:${date}:${index}`,
-    sourceBindingId: `binding:${date}:${index}`,
-    providerKey,
-    providerItemId: `provider-item:${date}:${index}`,
-    canonicalUrl: isDurableRssStory
-      ? "https://example.com/rss/durable-story"
-      : `https://example.com/${providerKey}/${date}/${index}`,
-    title: isDurableRssStory
-      ? "One durable reader story"
-      : `Durable evidence ${providerKey} ${date}`,
-    sourceText:
-      `Stable source text for ${providerKey} on ${date} with enough weekly context to cite.`,
-    publishedAt: `${date}T08:00:00.000Z`,
-    observedAt: `${date}T09:00:00.000Z`,
-    sourceContentHash: sha(`${providerKey}:${date}:${index}`),
-  });
-}
 
 function outputFor(
   input: ReaderSummaryWeeklyModelInput,
@@ -947,16 +908,40 @@ function productionArtifactExists(outputDirectory: string): boolean {
   );
 }
 
+function productionPaths(outputDirectory: string): {
+  artifactPath: string;
+  proofPath: string;
+} {
+  const prefix = "reader-summary-weekly-production.2026-07-20";
+  return {
+    artifactPath: join(outputDirectory, `${prefix}.artifact.v1.json`),
+    proofPath: join(outputDirectory, `${prefix}.proof.v1.json`),
+  };
+}
+
+async function writeProductionArtifactPair(outputDirectory: string): Promise<void> {
+  await runReaderSummaryWeeklyProduction({
+    ...admittedRunnerInput(),
+    outputDirectory,
+    model: new FakeWeeklyModel((input) => outputFor(input)),
+    replay: false,
+    generatedAt: new Date("2026-07-27T06:30:00.000Z"),
+  });
+}
+
+function rewriteArtifactProofPair(
+  artifactPath: string,
+  proofPath: string,
+  artifact: unknown,
+  proof: { artifactSha256: string },
+): void {
+  proof.artifactSha256 = canonicalizeReaderSummaryWeeklyJson(artifact).sha256;
+  chmodSync(artifactPath, 0o644);
+  chmodSync(proofPath, 0o644);
+  writeFileSync(artifactPath, canonicalizeReaderSummaryWeeklyJson(artifact).toBytes());
+  writeFileSync(proofPath, canonicalizeReaderSummaryWeeklyJson(proof).toBytes());
+}
+
 function tempDir(): string {
   return mkdtempSync(join(tmpdir(), "reader-summary-weekly-production-"));
-}
-
-function nextDate(date: string): string {
-  return new Date(Date.parse(`${date}T00:00:00.000Z`) + 86_400_000)
-    .toISOString()
-    .slice(0, 10);
-}
-
-function sha(input: string): string {
-  return canonicalizeReaderSummaryWeeklyJson({ input }).sha256;
 }

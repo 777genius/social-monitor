@@ -41,6 +41,11 @@ export type ReaderSummaryWeeklyReviewCitationCandidate = Readonly<{
   publicationEvidenceSha256: string; providerKey: ReaderSummaryWeeklyCanonicalProviderKey;
   citationId: string; sourceItemId: string; sourceContentHash: string; title: string; sourceText: string;
 }>;
+export type ReaderSummaryWeeklyReviewCitationSelectorInput = Readonly<{
+  requestedUtcDate: string; publicationId: string; publicationEvidenceSha256: string;
+  providerKey: ReaderSummaryWeeklyCanonicalProviderKey; citationId: string; sourceItemId: string;
+  sourceContentHash: string;
+}>;
 export type ReaderSummaryWeeklyReviewStoryCandidate = Readonly<{
   storyId: string; story: string; citations: readonly ReaderSummaryWeeklyReviewCitationCandidate[];
 }>;
@@ -93,7 +98,31 @@ export type CreateReaderSummaryWeeklyReviewManifestInput = Readonly<{
 const authorityKeys = ["sealId", "sealSha256", "tenantId", "workspaceId", "scope", "weekStartedOn", "weekEndedOn", "days"] as const;
 const authorityDayKeys = ["requestedUtcDate", "publicationId", "publicationEvidenceIdentity", "publicationEvidenceSha256", "providerEvidenceSha256", "githubEvidenceSha256", "semanticStatus", "githubMode", "providerEvidence"] as const;
 const authorityEvidenceKeys = ["providerKey", "citationId", "feedItemId", "sourceItemId", "sourceBindingId", "providerItemId", "canonicalUrl", "sourceContentHash", "publishedAt", "observedAt", "title", "sourceText"] as const;
+const citationSelectorInputKeys = ["requestedUtcDate", "publicationId", "publicationEvidenceSha256", "providerKey", "citationId", "sourceItemId", "sourceContentHash"] as const;
 const selectionBaseKeys = ["story", "label", "citationSelectors"] as const;
+
+export const deriveReaderSummaryWeeklyReviewCitationSelector = (
+  input: ReaderSummaryWeeklyReviewCitationSelectorInput,
+): string => {
+  assertReaderSummaryWeeklyExactObject(
+    input,
+    citationSelectorInputKeys,
+    "weekly review citation selector input",
+    { allowAuthoritativeHashes: true },
+  );
+  if (!readerSummaryWeeklyCanonicalProviderKeys.includes(input.providerKey)) {
+    throw new Error("Reader summary weekly review selector provider is invalid");
+  }
+  return `citation:${canonicalizeReaderSummaryWeeklyJson({
+    requestedUtcDate: exactReaderSummaryWeeklyUtcDay(input.requestedUtcDate),
+    publicationId: exactReaderSummaryWeeklyIdentity(input.publicationId, "weekly review selector publication id"),
+    publicationEvidenceSha256: exactReaderSummaryWeeklySha256(input.publicationEvidenceSha256, "weekly review selector publication evidence hash"),
+    providerKey: input.providerKey,
+    citationId: exactReaderSummaryWeeklyIdentity(input.citationId, "weekly review selector local citation id"),
+    sourceItemId: exactReaderSummaryWeeklyIdentity(input.sourceItemId, "weekly review selector source item id"),
+    sourceContentHash: exactReaderSummaryWeeklySha256(input.sourceContentHash, "weekly review selector source content hash"),
+  }).sha256}`;
+};
 
 export const deriveReaderSummaryWeeklyReviewStoryCandidates = (authority: ReaderSummaryWeeklyReviewAuthority): readonly ReaderSummaryWeeklyReviewStoryCandidate[] => {
   canonicalReviewAuthority(authority);
@@ -108,11 +137,12 @@ export const deriveReaderSummaryWeeklyReviewStoryCandidates = (authority: Reader
       });
       const storyId = storyIdentity.identity;
       const story = `story:${storyIdentity.sha256}`;
-      const selector = `citation:${canonicalizeReaderSummaryWeeklyJson({
+      const selector = deriveReaderSummaryWeeklyReviewCitationSelector({
         requestedUtcDate: day.requestedUtcDate, publicationId: day.publicationId,
         publicationEvidenceSha256: day.publicationEvidenceSha256, providerKey: evidence.providerKey,
-        citationId: evidence.citationId, sourceItemId: evidence.sourceItemId, sourceContentHash: evidence.sourceContentHash,
-      }).sha256}`;
+        citationId: evidence.citationId, sourceItemId: evidence.sourceItemId,
+        sourceContentHash: evidence.sourceContentHash,
+      });
       const citation = deepFreezeReaderSummaryWeekly({
         selector, requestedUtcDate: day.requestedUtcDate, publicationId: day.publicationId,
         publicationEvidenceIdentity: day.publicationEvidenceIdentity, publicationEvidenceSha256: day.publicationEvidenceSha256,

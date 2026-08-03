@@ -9,18 +9,23 @@ import {
 import { Pool } from "pg";
 
 import { PrismaReaderSummaryWeeklyCertificationSealAuthority } from "../libs/summary/adapters/persistence/prisma/prisma-reader-summary-weekly-certification-seal-authority";
+import { PrismaReaderSummaryWeeklyReviewManifest } from "../libs/summary/adapters/persistence/prisma/prisma-reader-summary-weekly-review-manifest";
 import { PrismaReaderSummaryWeeklyStoryAuthority } from "../libs/summary/adapters/persistence/prisma/prisma-reader-summary-weekly-story-authority";
 import { PrismaReaderSummaryArtifactRepository } from "../libs/summary/adapters/persistence/prisma/prisma-reader-summary-artifact.repository";
 import { PrismaSummaryConnection } from "../libs/summary/adapters/persistence/prisma/prisma-summary-connection";
 import { PublishReaderSummaryWeeklyCertifiedArtifactUseCase } from "../libs/summary/features/publish-reader-summary-weekly-certified-artifact/publish-reader-summary-weekly-certified-artifact.use-case";
 import type { ReaderSummaryWeeklyModelPort } from "../libs/summary/ports/reader-summary-weekly-model.port";
+import type { AgentRuntimeClientPort } from "../libs/summary/ports/agent-runtime-client.port";
+import type { ReaderSummaryWeeklyReviewManifestPort } from "../libs/summary/ports/reader-summary-weekly-review-manifest.port";
 
 import { loadDotenvIfPresent } from "./lib/env-file";
 import {
   AgentRuntimeReaderSummaryWeeklyTextModel,
+  buildModelInputFromDbState,
   runReaderSummaryWeeklyProduction,
   type ReaderSummaryWeeklyProductionPublisher,
 } from "./lib/reader-summary-weekly-production-runner";
+import { admitReaderSummaryWeeklyReviewManifest } from "./lib/reader-summary-weekly-review-admission";
 import {
   acquireReaderSummaryWeeklyExecutionReceipt,
   claimReaderSummaryWeeklyExecutionReceiptPair,
@@ -69,6 +74,11 @@ async function main(): Promise<void> {
   });
   const scope = readScope();
   const now = new Date();
+  const connection = await PrismaSummaryConnection.create(
+    defaultPostgresRuntimePoolConfig(databaseUrl, "daily-runner"),
+  );
+  const reviewManifestStore: ReaderSummaryWeeklyReviewManifestPort =
+    new PrismaReaderSummaryWeeklyReviewManifest(connection);
   if (options.replay) {
     try {
       const window = options.weekStartedOn === undefined
@@ -84,17 +94,16 @@ async function main(): Promise<void> {
         options,
         model: replayModel,
         publisher: replayPublisher,
+        manifestStore: reviewManifestStore,
         attemptNumber: 1,
       });
       if (outcome.status !== "completed") process.exitCode = 75;
     } finally {
+      await connection.close().catch(() => undefined);
       await pool.end().catch(() => undefined);
     }
     return;
   }
-  const connection = await PrismaSummaryConnection.create(
-    defaultPostgresRuntimePoolConfig(databaseUrl, "daily-runner"),
-  );
   try {
     const repository = new PrismaReaderSummaryArtifactRepository(connection);
     const publisherUseCase = new PublishReaderSummaryWeeklyCertifiedArtifactUseCase(
@@ -102,15 +111,9 @@ async function main(): Promise<void> {
       new PrismaReaderSummaryWeeklyStoryAuthority(connection),
       repository,
     );
+    const agentRuntime = lazyAgentRuntime(options.modelTimeoutMs);
     const model = new AgentRuntimeReaderSummaryWeeklyTextModel({
-      client: GrpcAgentRuntimeClient.connect({
-        address: requireEnv("AGENT_RUNTIME_GRPC_ADDRESS"),
-        clock: new SystemClock(),
-        options: {
-          timeoutMs: options.modelTimeoutMs,
-          serviceToken: process.env.AGENT_RUNTIME_SERVICE_TOKEN,
-        },
-      }),
+      client: agentRuntime,
       provider: "codex",
       model: "gpt-5.6-sol",
       reasoningEffort: "xhigh",
@@ -135,6 +138,8 @@ async function main(): Promise<void> {
         options,
         model,
         publisher,
+        manifestStore: reviewManifestStore,
+        reviewAgentRuntime: agentRuntime,
         attemptNumber: 1,
       });
       if (outcome.status !== "completed") process.exitCode = 75;
@@ -165,6 +170,8 @@ async function main(): Promise<void> {
           options,
           model,
           publisher,
+          manifestStore: reviewManifestStore,
+          reviewAgentRuntime: agentRuntime,
           attemptNumber,
         }),
       wait: waitForRetry,
@@ -196,6 +203,29 @@ const replayPublisher: ReaderSummaryWeeklyProductionPublisher = Object.freeze({
   },
 });
 
+const lazyAgentRuntime = (
+  timeoutMs: number,
+): AgentRuntimeClientPort => {
+  let client: GrpcAgentRuntimeClient | undefined;
+  const resolve = (): GrpcAgentRuntimeClient => {
+    client ??= GrpcAgentRuntimeClient.connect({
+      address: requireEnv("AGENT_RUNTIME_GRPC_ADDRESS"),
+      clock: new SystemClock(),
+      options: {
+        timeoutMs,
+        serviceToken: process.env.AGENT_RUNTIME_SERVICE_TOKEN,
+      },
+    });
+    return client;
+  };
+  return Object.freeze({
+    runTask: (command: Parameters<AgentRuntimeClientPort["runTask"]>[0]) =>
+      resolve().runTask(command),
+    checkHealth: (service: Parameters<AgentRuntimeClientPort["checkHealth"]>[0]) =>
+      resolve().checkHealth(service),
+  });
+};
+
 const completedOutcome: ReaderSummaryWeeklyScheduledSlotOutcome = Object.freeze({
   status: "completed",
 });
@@ -220,6 +250,8 @@ const executeWindow = async (params: Readonly<{
   options: CliOptions;
   model: ReaderSummaryWeeklyModelPort;
   publisher: ReaderSummaryWeeklyProductionPublisher;
+  manifestStore: ReaderSummaryWeeklyReviewManifestPort;
+  reviewAgentRuntime?: AgentRuntimeClientPort;
   attemptNumber: number;
 }>): Promise<ReaderSummaryWeeklyScheduledSlotOutcome> => {
   let receipt: ReaderSummaryWeeklyExecutionReceipt | undefined;
@@ -239,10 +271,11 @@ const executeWindow = async (params: Readonly<{
         );
       },
     );
-    if (params.options.replay || dbState.status !== "complete") {
+    if (dbState.status !== "complete") {
       const result = await runWithTenantDatabaseAccess(params.scope, () =>
         runReaderSummaryWeeklyProduction({
           dbState,
+          reviewManifest: null,
           outputDirectory: params.options.outputDirectory,
           model: params.model,
           replay: params.options.replay,
@@ -253,6 +286,67 @@ const executeWindow = async (params: Readonly<{
       return result.status === "complete"
         ? completedOutcome
         : terminalOutcome("schema", "certification_state_incomplete", "database_authority");
+    }
+    const reviewAdmission = await runWithTenantDatabaseAccess(params.scope, () =>
+      admitReaderSummaryWeeklyReviewManifest({
+        dbState,
+        replay: params.options.replay,
+        manifestStore: params.manifestStore,
+        ...(params.reviewAgentRuntime === undefined
+          ? {}
+          : { agentRuntime: params.reviewAgentRuntime }),
+      }),
+    );
+    if (reviewAdmission.status === "partial") {
+      const result = await runWithTenantDatabaseAccess(params.scope, () =>
+        runReaderSummaryWeeklyProduction({
+          dbState,
+          reviewManifest: null,
+          outputDirectory: params.options.outputDirectory,
+          model: params.model,
+          replay: params.options.replay,
+          generatedAt: new Date(),
+        }),
+      );
+      printResult(result);
+      for (const reason of reviewAdmission.reasons) {
+        console.log(`blocking_reason=${reason}`);
+      }
+      return terminalOutcome("schema", "review_manifest_admission_failed", "review_authority");
+    }
+    const inputAdmission = buildModelInputFromDbState(
+      dbState,
+      reviewAdmission.manifest,
+    );
+    if (inputAdmission.status === "partial") {
+      const result = await runWithTenantDatabaseAccess(params.scope, () =>
+        runReaderSummaryWeeklyProduction({
+          dbState,
+          reviewManifest: reviewAdmission.manifest,
+          outputDirectory: params.options.outputDirectory,
+          model: params.model,
+          replay: params.options.replay,
+          generatedAt: new Date(),
+        }),
+      );
+      printResult(result);
+      return terminalOutcome("schema", "review_manifest_validation_failed", "review_authority");
+    }
+    if (params.options.replay) {
+      const result = await runWithTenantDatabaseAccess(params.scope, () =>
+        runReaderSummaryWeeklyProduction({
+          dbState,
+          reviewManifest: reviewAdmission.manifest,
+          outputDirectory: params.options.outputDirectory,
+          model: params.model,
+          replay: true,
+          generatedAt: new Date(),
+        }),
+      );
+      printResult(result);
+      return result.status === "complete"
+        ? completedOutcome
+        : terminalOutcome("schema", "weekly_artifact_replay_failed", "artifact_proof");
     }
     const seal = dbState.weeklyCertificationSeal;
     const anchorJobId = dbState.certifications[0]?.jobId;
@@ -298,6 +392,7 @@ const executeWindow = async (params: Readonly<{
     const result = await runWithTenantDatabaseAccess(params.scope, () =>
       runReaderSummaryWeeklyProduction({
         dbState,
+        reviewManifest: reviewAdmission.manifest,
         outputDirectory: params.options.outputDirectory,
         model: executionModel,
         replay: false,

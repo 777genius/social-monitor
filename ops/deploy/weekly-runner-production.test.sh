@@ -17,6 +17,7 @@ weekly_receipt=$REPO/scripts/lib/reader-summary-weekly-execution-receipt.ts
 weekly_scheduler=$REPO/scripts/lib/reader-summary-weekly-production-scheduler.ts
 weekly_schedule=$REPO/scripts/lib/reader-summary-weekly-schedule-postgres.ts
 weekly_runner=$REPO/scripts/run-reader-summary-weekly-production.ts
+weekly_review_admission=$REPO/scripts/lib/reader-summary-weekly-review-admission.ts
 publication_pre_migration=$REPO/ops/deploy/reader-summary-publication-pre-migration.sql
 publication_post_migration=$REPO/ops/deploy/reader-summary-publication-post-migration.sql
 
@@ -211,12 +212,26 @@ grep -F '$5::timestamptz' "$weekly_schedule" >/dev/null
 grep -F 'onDurableArtifactPair' "$weekly_runner" >/dev/null
 grep -F 'ReaderSummaryWeeklySubscriptionRuntimeFailureError' "$weekly_runner" \
   >/dev/null
+grep -F 'PrismaReaderSummaryWeeklyReviewManifest' "$weekly_runner" >/dev/null
+grep -F 'admitReaderSummaryWeeklyReviewManifest' "$weekly_runner" >/dev/null
+grep -F 'buildModelInputFromDbState' "$weekly_runner" >/dev/null
+grep -F 'runReaderSummaryWeeklyReviewProducer' "$weekly_review_admission" >/dev/null
+grep -F 'manifestStore.findBySeal' "$weekly_review_admission" >/dev/null
+grep -F 'if (params.replay)' "$weekly_review_admission" >/dev/null
+grep -F 'reviewManifestId' "$REPO/scripts/lib/reader-summary-weekly-production-runner.ts" \
+  >/dev/null
+grep -F 'reviewManifestSha256' "$REPO/scripts/lib/reader-summary-weekly-production-runner.ts" \
+  >/dev/null
+review_admission_line=$(grep -n -m1 'admitReaderSummaryWeeklyReviewManifest({' \
+  "$weekly_runner" | cut -d: -f1)
+input_admission_line=$(grep -n -m1 'const inputAdmission = buildModelInputFromDbState(' \
+  "$weekly_runner" | cut -d: -f1)
 receipt_line=$(grep -n -m1 'acquireReaderSummaryWeeklyExecutionReceipt(client' \
   "$weekly_runner" | cut -d: -f1)
 model_line=$(grep -n 'runReaderSummaryWeeklyProduction({' \
   "$weekly_runner" | tail -n1 | cut -d: -f1)
-[[ $receipt_line =~ ^[0-9]+$ && $model_line =~ ^[0-9]+$ ]]
-(( receipt_line < model_line ))
+[[ $review_admission_line =~ ^[0-9]+$ && $input_admission_line =~ ^[0-9]+$ && $receipt_line =~ ^[0-9]+$ && $model_line =~ ^[0-9]+$ ]]
+(( review_admission_line < input_admission_line && input_admission_line < receipt_line && receipt_line < model_line ))
 replay_branch_line=$(grep -n -m1 'if (options.replay)' \
   "$weekly_runner" | cut -d: -f1)
 runtime_connect_line=$(grep -n -m1 'GrpcAgentRuntimeClient.connect' \

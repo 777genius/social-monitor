@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 
 import {
   createReaderSummaryWeeklyReviewManifest,
+  deriveReaderSummaryWeeklyReviewCitationSelector,
   deriveReaderSummaryWeeklyReviewStoryCandidates,
   readerSummaryWeeklyReviewStoryIdentityPrefix,
   type ReaderSummaryWeeklyReviewAuthority,
@@ -19,6 +20,40 @@ describe("reader summary weekly review manifest", () => {
     expect(candidate?.story).toMatch(/^story:[0-9a-f]{64}$/u);
     expect(candidate?.citations).toHaveLength(8);
     expect(Object.isFrozen(candidate)).toBe(true);
+  });
+
+  it("derives globally exact candidate selectors when local citation ids recur", () => {
+    const source = authority();
+    const localCitationId = "citation:reused-local-id";
+    const repeated = {
+      ...source,
+      days: source.days.map((day, dayIndex) => dayIndex > 1 ? day : {
+        ...day,
+        providerEvidence: day.providerEvidence.map((evidence, evidenceIndex) =>
+          evidenceIndex === 0
+            ? { ...evidence, citationId: localCitationId }
+            : evidence),
+      }),
+    };
+    const expected = repeated.days.slice(0, 2).map((day) => {
+      const evidence = day.providerEvidence[0]!;
+      return deriveReaderSummaryWeeklyReviewCitationSelector({
+        requestedUtcDate: day.requestedUtcDate,
+        publicationId: day.publicationId,
+        publicationEvidenceSha256: day.publicationEvidenceSha256,
+        providerKey: evidence.providerKey,
+        citationId: evidence.citationId,
+        sourceItemId: evidence.sourceItemId,
+        sourceContentHash: evidence.sourceContentHash,
+      });
+    });
+    const derived = deriveReaderSummaryWeeklyReviewStoryCandidates(repeated)
+      .flatMap((candidate) => candidate.citations)
+      .filter((citation) => citation.citationId === localCitationId)
+      .map((citation) => citation.selector);
+
+    expect(derived).toEqual(expected);
+    expect(new Set(derived).size).toBe(2);
   });
 
   it("binds observations, authority, canonical bytes, and execution attestation", () => {
