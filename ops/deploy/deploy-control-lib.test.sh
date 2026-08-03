@@ -25,7 +25,7 @@ RUNTIME_CONTROL_PATHS=(runtime-control)
 install -d "$REPO/ops/deploy" "$CONTROL" "$STATE" "$SYSTEMD_UNIT_DIR"
 cp "$SCRIPT_DIR/social-monitor-production-deploy.sh" \
   "$SCRIPT_DIR/social-monitor-production-ssh-wrapper.sh" \
-  "$SCRIPT_DIR/deploy-control-lib.sh" \
+  "$SCRIPT_DIR/deploy-control-lib.sh" "$SCRIPT_DIR/deploy-control-bridge-lib.sh" \
   "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh" \
   "$SCRIPT_DIR/backend-image-rescue-lib.sh" \
   "$SCRIPT_DIR/x-collector-image-deploy-lib.sh" \

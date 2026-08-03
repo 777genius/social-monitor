@@ -1,0 +1,227 @@
+#!/usr/bin/env bash
+
+# Sourced by deploy-control-lib.sh after the deploy entrypoint has defined
+# REPO and fail(). Release A installs this bridge before a later RabbitMQ
+# quorum release can replace backend health behavior.
+
+DEPLOY_CONTROL_BRIDGE_ENTRYPOINT_PATH=ops/deploy/social-monitor-production-deploy.sh
+DEPLOY_CONTROL_BRIDGE_LIBRARY_PATH=ops/deploy/deploy-control-lib.sh
+DEPLOY_CONTROL_BRIDGE_POSTGRES_LIBRARY_PATH=ops/deploy/postgres-runtime-deploy-lib.sh
+DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_LIBRARY_PATH=ops/deploy/backend-image-rescue-lib.sh
+DEPLOY_CONTROL_BRIDGE_X_IMAGE_LIBRARY_PATH=ops/deploy/x-collector-image-deploy-lib.sh
+DEPLOY_CONTROL_BRIDGE_SELF_PATH=ops/deploy/deploy-control-bridge-lib.sh
+RABBITMQ_QUORUM_HEALTH_LIBRARY_PATH=ops/deploy/backend-runtime-health-lib.sh
+RABBITMQ_QUORUM_HEALTH_SCRIPT_PATH=ops/deploy/rabbitmq-quorum-health.sh
+
+load_target_reader_summary_publication_deploy_library() {
+  local sha=$1
+  local relative_path=ops/deploy/reader-summary-publication-deploy-lib.sh
+  local publication_library=$REPO/$relative_path
+  local repository_root publication_real mode reviewed_digest actual_digest
+  local target_entry target_mode target_type target_object target_path
+
+  repository_root=$(readlink -f "$REPO") || \
+    fail 'integration repository path cannot be resolved'
+  [[ -f $publication_library && ! -L $publication_library ]] || \
+    fail 'target publication deploy library is not a regular non-symlink file'
+  publication_real=$(readlink -f "$publication_library") || \
+    fail 'target publication deploy library path cannot be resolved'
+  [[ $publication_real == "$repository_root/"* ]] || \
+    fail 'target publication deploy library is outside integration'
+  [[ -r $publication_real ]] || \
+    fail 'target publication deploy library is unreadable'
+  mode=$(stat -c '%A' "$publication_real") || \
+    fail 'target publication deploy library mode cannot be read'
+  [[ ${mode:1:1} == r || ${mode:4:1} == r || ${mode:7:1} == r ]] || \
+    fail 'target publication deploy library is unreadable'
+  target_entry=$(git -C "$REPO" ls-tree "$sha" -- "$relative_path") || \
+    fail 'target commit publication deploy library cannot be inspected'
+  read -r target_mode target_type target_object target_path <<< "$target_entry"
+  [[ ($target_mode == 100644 || $target_mode == 100755) && \
+     $target_type == blob && $target_object =~ ^[0-9a-f]+$ && \
+     $target_path == "$relative_path" ]] || \
+    fail 'target commit publication deploy library is not a regular blob'
+  reviewed_digest=$(deploy_control_git_blob_digest "$sha" "$relative_path") || \
+    fail 'target commit is missing the publication deploy library'
+  actual_digest=$(deploy_control_file_digest "$publication_real") || \
+    fail 'target publication deploy library digest cannot be read'
+  [[ $actual_digest == "$reviewed_digest" ]] || \
+    fail 'target publication deploy library differs from reviewed target'
+  ! declare -F deploy_reader_summary_publication_migrations >/dev/null || \
+    fail 'publication migration entrypoint was loaded before target validation'
+  # The bridge release deliberately lacks this target-only source file.
+  # shellcheck source=/dev/null
+  source "$publication_real" || \
+    fail 'target publication deploy library could not be loaded'
+  declare -F deploy_reader_summary_publication_migrations >/dev/null || \
+    fail 'target publication deploy library is missing its migration entrypoint'
+}
+
+deploy_control_bridge_file_identity() {
+  [[ -f $1 && ! -L $1 ]] || return 1
+  stat -c '%d:%i:%f:%s:%y:%z' "$1"
+}
+
+deploy_control_bridge_git_regular_blob() {
+  local sha=$1 relative_path=$2 label=$3
+  local entry mode type object tree_path extra
+
+  entry=$(git -C "$REPO" ls-tree "$sha" -- "$relative_path") || \
+    fail "$label cannot be inspected at reviewed target"
+  read -r mode type object tree_path extra <<< "$entry"
+  [[ -z ${extra:-} && \
+     ($mode == 100644 || $mode == 100755) && \
+     $type == blob && $object =~ ^[0-9a-f]+$ && \
+     $tree_path == "$relative_path" ]] || \
+    fail "$label is not a regular blob at reviewed target"
+  printf '%s\n' "$mode"
+}
+
+deploy_control_bridge_require_initialized() {
+  [[ -n ${DEPLOY_CONTROL_BRIDGE_ENTRYPOINT_DIGEST:-} && \
+     -n ${DEPLOY_CONTROL_BRIDGE_LIBRARY_DIGEST:-} && \
+     -n ${DEPLOY_CONTROL_BRIDGE_POSTGRES_LIBRARY_DIGEST:-} && \
+     -n ${DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_LIBRARY_DIGEST:-} && \
+     -n ${DEPLOY_CONTROL_BRIDGE_X_IMAGE_LIBRARY_DIGEST:-} && \
+     -n ${DEPLOY_CONTROL_BRIDGE_SELF_DIGEST:-} ]] || \
+    fail 'deploy control bridge was not initialized before verification'
+}
+
+initialize_deploy_control_bridge() {
+  local entrypoint=$REPO/$DEPLOY_CONTROL_BRIDGE_ENTRYPOINT_PATH
+  local deploy_library=$REPO/$DEPLOY_CONTROL_BRIDGE_LIBRARY_PATH
+  local postgres_library=$REPO/$DEPLOY_CONTROL_BRIDGE_POSTGRES_LIBRARY_PATH
+  local image_rescue_library=$REPO/$DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_LIBRARY_PATH
+  local x_image_library=$REPO/$DEPLOY_CONTROL_BRIDGE_X_IMAGE_LIBRARY_PATH
+  local bridge_library=$REPO/$DEPLOY_CONTROL_BRIDGE_SELF_PATH
+
+  [[ -f $entrypoint && ! -L $entrypoint && \
+     -f $deploy_library && ! -L $deploy_library && \
+     -f $postgres_library && ! -L $postgres_library && \
+     -f $image_rescue_library && ! -L $image_rescue_library && \
+     -f $x_image_library && ! -L $x_image_library && \
+     -f $bridge_library && ! -L $bridge_library ]] || \
+    fail 'current integration is missing deploy control bridge sources'
+  DEPLOY_CONTROL_BRIDGE_ENTRYPOINT_DIGEST=$(deploy_control_file_digest "$entrypoint")
+  DEPLOY_CONTROL_BRIDGE_LIBRARY_DIGEST=$(deploy_control_file_digest "$deploy_library")
+  DEPLOY_CONTROL_BRIDGE_POSTGRES_LIBRARY_DIGEST=$(deploy_control_file_digest "$postgres_library")
+  DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_LIBRARY_DIGEST=$(deploy_control_file_digest "$image_rescue_library")
+  DEPLOY_CONTROL_BRIDGE_X_IMAGE_LIBRARY_DIGEST=$(deploy_control_file_digest "$x_image_library")
+  DEPLOY_CONTROL_BRIDGE_SELF_DIGEST=$(deploy_control_file_digest "$bridge_library")
+}
+
+verify_deploy_control_bridge_compatibility() {
+  local entrypoint=$REPO/$DEPLOY_CONTROL_BRIDGE_ENTRYPOINT_PATH
+  local deploy_library=$REPO/$DEPLOY_CONTROL_BRIDGE_LIBRARY_PATH
+  local postgres_library=$REPO/$DEPLOY_CONTROL_BRIDGE_POSTGRES_LIBRARY_PATH
+  local image_rescue_library=$REPO/$DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_LIBRARY_PATH
+  local x_image_library=$REPO/$DEPLOY_CONTROL_BRIDGE_X_IMAGE_LIBRARY_PATH
+  local bridge_library=$REPO/$DEPLOY_CONTROL_BRIDGE_SELF_PATH
+
+  deploy_control_bridge_require_initialized
+  [[ -f $entrypoint && ! -L $entrypoint && \
+     -f $deploy_library && ! -L $deploy_library && \
+     -f $postgres_library && ! -L $postgres_library && \
+     -f $image_rescue_library && ! -L $image_rescue_library && \
+     -f $x_image_library && ! -L $x_image_library && \
+     -f $bridge_library && ! -L $bridge_library ]] || \
+    fail 'target integration is missing deploy control bridge sources'
+  [[ $(deploy_control_file_digest "$entrypoint") == "$DEPLOY_CONTROL_BRIDGE_ENTRYPOINT_DIGEST" && \
+     $(deploy_control_file_digest "$deploy_library") == "$DEPLOY_CONTROL_BRIDGE_LIBRARY_DIGEST" && \
+     $(deploy_control_file_digest "$postgres_library") == "$DEPLOY_CONTROL_BRIDGE_POSTGRES_LIBRARY_DIGEST" && \
+     $(deploy_control_file_digest "$image_rescue_library") == "$DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_LIBRARY_DIGEST" && \
+     $(deploy_control_file_digest "$x_image_library") == "$DEPLOY_CONTROL_BRIDGE_X_IMAGE_LIBRARY_DIGEST" && \
+     $(deploy_control_file_digest "$bridge_library") == "$DEPLOY_CONTROL_BRIDGE_SELF_DIGEST" ]] || \
+    fail 'deploy control changed with backend or runtime assets; deploy the bridge release first'
+}
+
+verify_deploy_control_bridge_target_compatibility() {
+  local sha=$1
+  local entrypoint_digest deploy_library_digest postgres_library_digest
+  local image_rescue_library_digest x_image_library_digest bridge_library_digest
+
+  deploy_control_bridge_require_initialized
+  deploy_control_bridge_git_regular_blob "$sha" \
+    "$DEPLOY_CONTROL_BRIDGE_ENTRYPOINT_PATH" 'target deploy entrypoint bridge' >/dev/null
+  deploy_control_bridge_git_regular_blob "$sha" \
+    "$DEPLOY_CONTROL_BRIDGE_LIBRARY_PATH" 'target deploy control bridge library' >/dev/null
+  deploy_control_bridge_git_regular_blob "$sha" \
+    "$DEPLOY_CONTROL_BRIDGE_POSTGRES_LIBRARY_PATH" 'target PostgreSQL control bridge library' >/dev/null
+  deploy_control_bridge_git_regular_blob "$sha" \
+    "$DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_LIBRARY_PATH" 'target backend image rescue bridge library' >/dev/null
+  deploy_control_bridge_git_regular_blob "$sha" \
+    "$DEPLOY_CONTROL_BRIDGE_X_IMAGE_LIBRARY_PATH" 'target X image provenance bridge library' >/dev/null
+  deploy_control_bridge_git_regular_blob "$sha" \
+    "$DEPLOY_CONTROL_BRIDGE_SELF_PATH" 'target deploy control bridge library' >/dev/null
+  entrypoint_digest=$(deploy_control_git_blob_digest "$sha" "$DEPLOY_CONTROL_BRIDGE_ENTRYPOINT_PATH") || \
+    fail 'target integration is missing the deploy entrypoint bridge'
+  deploy_library_digest=$(deploy_control_git_blob_digest "$sha" "$DEPLOY_CONTROL_BRIDGE_LIBRARY_PATH") || \
+    fail 'target integration is missing the deploy control bridge library'
+  postgres_library_digest=$(deploy_control_git_blob_digest "$sha" "$DEPLOY_CONTROL_BRIDGE_POSTGRES_LIBRARY_PATH") || \
+    fail 'target integration is missing the PostgreSQL control bridge library'
+  image_rescue_library_digest=$(deploy_control_git_blob_digest "$sha" "$DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_LIBRARY_PATH") || \
+    fail 'target integration is missing the backend image rescue bridge library'
+  x_image_library_digest=$(deploy_control_git_blob_digest "$sha" "$DEPLOY_CONTROL_BRIDGE_X_IMAGE_LIBRARY_PATH") || \
+    fail 'target integration is missing the X image provenance bridge library'
+  bridge_library_digest=$(deploy_control_git_blob_digest "$sha" "$DEPLOY_CONTROL_BRIDGE_SELF_PATH") || \
+    fail 'target integration is missing the deploy control bridge library'
+  [[ $entrypoint_digest == "$DEPLOY_CONTROL_BRIDGE_ENTRYPOINT_DIGEST" && \
+     $deploy_library_digest == "$DEPLOY_CONTROL_BRIDGE_LIBRARY_DIGEST" && \
+     $postgres_library_digest == "$DEPLOY_CONTROL_BRIDGE_POSTGRES_LIBRARY_DIGEST" && \
+     $image_rescue_library_digest == "$DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_LIBRARY_DIGEST" && \
+     $x_image_library_digest == "$DEPLOY_CONTROL_BRIDGE_X_IMAGE_LIBRARY_DIGEST" && \
+     $bridge_library_digest == "$DEPLOY_CONTROL_BRIDGE_SELF_DIGEST" ]] || \
+    fail 'deploy control changed with backend or runtime assets; deploy the bridge release first'
+}
+
+verify_target_rabbitmq_quorum_health_file() {
+  local sha=$1 relative_path=$2 label=$3 required_target_mode=$4
+  local repository_root actual_path actual_real target_mode actual_mode
+  local reviewed_digest actual_digest identity_before identity_after
+
+  repository_root=$(readlink -f -- "$REPO") || \
+    fail 'integration repository path cannot be resolved for RabbitMQ quorum health'
+  actual_path=$REPO/$relative_path
+  [[ -f $actual_path && ! -L $actual_path ]] || \
+    fail "$label is not a regular non-symlink file"
+  actual_real=$(readlink -f -- "$actual_path") || \
+    fail "$label path cannot be resolved"
+  [[ $actual_real == "$repository_root/$relative_path" ]] || \
+    fail "$label is outside its canonical integration path"
+  identity_before=$(deploy_control_bridge_file_identity "$actual_real") || \
+    fail "$label identity cannot be inventoried"
+  target_mode=$(deploy_control_bridge_git_regular_blob "$sha" "$relative_path" "$label")
+  [[ $target_mode == "$required_target_mode" ]] || \
+    fail "$label committed target Git mode must be $required_target_mode"
+  actual_mode=$(stat -c '%a' "$actual_real") || fail "$label mode cannot be read"
+  [[ $actual_mode == "${required_target_mode#100}" ]] || \
+    fail "$label mode does not match its target Git mode"
+  reviewed_digest=$(deploy_control_git_blob_digest "$sha" "$relative_path") || \
+    fail "$label digest cannot be read at reviewed target"
+  actual_digest=$(deploy_control_file_digest "$actual_real") || \
+    fail "$label digest cannot be read"
+  identity_after=$(deploy_control_bridge_file_identity "$actual_real") || \
+    fail "$label identity cannot be re-inventoried"
+  [[ $identity_after == "$identity_before" ]] || \
+    fail "$label changed while being verified"
+  [[ $actual_digest == "$reviewed_digest" ]] || \
+    fail "$label differs from reviewed target"
+}
+
+load_target_rabbitmq_quorum_backend_health() {
+  local sha=$1 health_library=$REPO/$RABBITMQ_QUORUM_HEALTH_LIBRARY_PATH
+
+  [[ $sha =~ ^[0-9a-f]{40}$ ]] || \
+    fail 'target RabbitMQ quorum health SHA is invalid'
+  verify_target_rabbitmq_quorum_health_file "$sha" \
+    "$RABBITMQ_QUORUM_HEALTH_LIBRARY_PATH" 'target backend health library' 100644
+  verify_target_rabbitmq_quorum_health_file "$sha" \
+    "$RABBITMQ_QUORUM_HEALTH_SCRIPT_PATH" 'target RabbitMQ quorum health script' 100755
+  unset -f verify_backend verify_backend_with_retry
+  # shellcheck source=/dev/null
+  source "$health_library" || fail 'target backend health library could not be loaded'
+  declare -F verify_backend >/dev/null || \
+    fail 'target backend health library is missing its verification entrypoint'
+  declare -F verify_backend_with_retry >/dev/null || \
+    fail 'target backend health library is missing its retry entrypoint'
+}

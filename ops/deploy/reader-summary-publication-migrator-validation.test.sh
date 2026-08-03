@@ -54,7 +54,7 @@ TEST_COUNT=0
 
 mkdir -p "$ROOT/secrets/db" "$REPO/ops/deploy" "$STATE" "$FAKE_BIN"
 printf '%s\n' 'test-only-ca-certificate' > "$CA_CERTIFICATE"
-cp "$SCRIPT_DIR/deploy-control-lib.sh" "$REPO/ops/deploy/"
+cp "$SCRIPT_DIR/deploy-control-lib.sh" "$SCRIPT_DIR/deploy-control-bridge-lib.sh" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/backend-runtime-health-lib.sh" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/backend-image-rescue-lib.sh" "$REPO/ops/deploy/"

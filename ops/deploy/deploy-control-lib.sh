@@ -1,155 +1,42 @@
 #!/usr/bin/env bash
 # Sourced by social-monitor-production-deploy.sh after project paths, lock
-# paths, and fail() are defined. The entrypoint deliberately sources this file
-# before advancing integration so a reviewed bridge release controls the next
-# runtime-control activation.
+# paths, and fail() are defined. The entrypoint deliberately loads the bridge
+# before activating a release, while lightweight callers can override a
+# deploy path without requiring the bridge fixture.
 POSTGRES_ADMISSION_MAX_ATTEMPTS=3601
 POSTGRES_ADMISSION_RETRY_SLICE_SECONDS=1
 POSTGRES_POOL_ATOMIC_REPAIR_BACKEND_SHA=4f47fac7faed7dc24110f4a43e88820d776b8a40
+
 deploy_control_file_digest() {
   local path=$1
   sha256sum "$path" | awk '{print $1}'
 }
+
 deploy_control_git_blob_digest() {
   local sha=$1
   local path=$2
   git -C "$REPO" show "$sha:$path" | sha256sum | awk '{print $1}'
 }
-load_target_reader_summary_publication_deploy_library() {
-  local sha=$1
-  local relative_path=ops/deploy/reader-summary-publication-deploy-lib.sh
-  local publication_library=$REPO/$relative_path
-  local repository_root publication_real mode reviewed_digest actual_digest
-  local target_entry target_mode target_type target_object target_path
-  repository_root=$(readlink -f "$REPO") || \
-    fail 'integration repository path cannot be resolved'
-  [[ -f $publication_library && ! -L $publication_library ]] || \
-    fail 'target publication deploy library is not a regular non-symlink file'
-  publication_real=$(readlink -f "$publication_library") || \
-    fail 'target publication deploy library path cannot be resolved'
-  [[ $publication_real == "$repository_root/"* ]] || \
-    fail 'target publication deploy library is outside integration'
-  [[ -r $publication_real ]] || \
-    fail 'target publication deploy library is unreadable'
-  mode=$(stat -c '%A' "$publication_real") || \
-    fail 'target publication deploy library mode cannot be read'
-  [[ ${mode:1:1} == r || ${mode:4:1} == r || ${mode:7:1} == r ]] || \
-    fail 'target publication deploy library is unreadable'
-  target_entry=$(git -C "$REPO" ls-tree "$sha" -- "$relative_path") || \
-    fail 'target commit publication deploy library cannot be inspected'
-  read -r target_mode target_type target_object target_path <<< "$target_entry"
-  [[ ($target_mode == 100644 || $target_mode == 100755) && \
-     $target_type == blob && $target_object =~ ^[0-9a-f]+$ && \
-     $target_path == "$relative_path" ]] || \
-    fail 'target commit publication deploy library is not a regular blob'
-  reviewed_digest=$(
-    deploy_control_git_blob_digest "$sha" "$relative_path"
-  ) || fail 'target commit is missing the publication deploy library'
-  actual_digest=$(deploy_control_file_digest "$publication_real") || \
-    fail 'target publication deploy library digest cannot be read'
-  [[ $actual_digest == "$reviewed_digest" ]] || \
-    fail 'target publication deploy library differs from reviewed target'
-  ! declare -F deploy_reader_summary_publication_migrations >/dev/null || \
-    fail 'publication migration entrypoint was loaded before target validation'
-  # The bridge release deliberately lacks this target-only source file.
-  # shellcheck source=/dev/null
-  source "$publication_real" || \
-    fail 'target publication deploy library could not be loaded'
-  declare -F deploy_reader_summary_publication_migrations >/dev/null || \
-    fail 'target publication deploy library is missing its migration entrypoint'
+
+DEPLOY_CONTROL_BRIDGE_LIBRARY_LOADED=false
+
+load_deploy_control_bridge_library() {
+  [[ $DEPLOY_CONTROL_BRIDGE_LIBRARY_LOADED == true ]] && return 0
+  local deploy_control_library_directory deploy_control_bridge_library
+  deploy_control_library_directory=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+  deploy_control_bridge_library=$deploy_control_library_directory/deploy-control-bridge-lib.sh
+  [[ -f $deploy_control_bridge_library && ! -L $deploy_control_bridge_library ]] || \
+    fail 'deploy control bridge library is not a regular non-symlink file'
+  # shellcheck source=ops/deploy/deploy-control-bridge-lib.sh
+  source "$deploy_control_bridge_library"
+  DEPLOY_CONTROL_BRIDGE_LIBRARY_LOADED=true
 }
+
 initialize_deploy_control_bridge() {
-  local entrypoint=$REPO/ops/deploy/social-monitor-production-deploy.sh
-  local deploy_library=$REPO/ops/deploy/deploy-control-lib.sh
-  local postgres_library=$REPO/ops/deploy/postgres-runtime-deploy-lib.sh
-  local image_rescue_library=$REPO/ops/deploy/backend-image-rescue-lib.sh
-  local x_image_library=$REPO/ops/deploy/x-collector-image-deploy-lib.sh
-  [[ -f $entrypoint && -f $deploy_library && -f $postgres_library && \
-     -f $image_rescue_library && -f $x_image_library ]] || \
-    fail 'current integration is missing deploy control bridge sources'
-  DEPLOY_CONTROL_BRIDGE_ENTRYPOINT_DIGEST=$(
-    deploy_control_file_digest "$entrypoint"
-  )
-  DEPLOY_CONTROL_BRIDGE_LIBRARY_DIGEST=$(
-    deploy_control_file_digest "$deploy_library"
-  )
-  DEPLOY_CONTROL_BRIDGE_POSTGRES_LIBRARY_DIGEST=$(
-    deploy_control_file_digest "$postgres_library"
-  )
-  DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_LIBRARY_DIGEST=$(
-    deploy_control_file_digest "$image_rescue_library"
-  )
-  DEPLOY_CONTROL_BRIDGE_X_IMAGE_LIBRARY_DIGEST=$(
-    deploy_control_file_digest "$x_image_library"
-  )
+  load_deploy_control_bridge_library
+  initialize_deploy_control_bridge
 }
-verify_deploy_control_bridge_compatibility() {
-  local entrypoint=$REPO/ops/deploy/social-monitor-production-deploy.sh
-  local deploy_library=$REPO/ops/deploy/deploy-control-lib.sh
-  local postgres_library=$REPO/ops/deploy/postgres-runtime-deploy-lib.sh
-  local image_rescue_library=$REPO/ops/deploy/backend-image-rescue-lib.sh
-  local x_image_library=$REPO/ops/deploy/x-collector-image-deploy-lib.sh
-  [[ -n ${DEPLOY_CONTROL_BRIDGE_ENTRYPOINT_DIGEST:-} && \
-     -n ${DEPLOY_CONTROL_BRIDGE_LIBRARY_DIGEST:-} && \
-     -n ${DEPLOY_CONTROL_BRIDGE_POSTGRES_LIBRARY_DIGEST:-} && \
-     -n ${DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_LIBRARY_DIGEST:-} && \
-     -n ${DEPLOY_CONTROL_BRIDGE_X_IMAGE_LIBRARY_DIGEST:-} ]] || \
-    fail 'deploy control bridge was not initialized before integration advance'
-  [[ -f $entrypoint && -f $deploy_library && -f $postgres_library && \
-     -f $image_rescue_library && -f $x_image_library ]] || \
-    fail 'target integration is missing deploy control bridge sources'
-  [[ $(deploy_control_file_digest "$entrypoint") == \
-     "$DEPLOY_CONTROL_BRIDGE_ENTRYPOINT_DIGEST" && \
-     $(deploy_control_file_digest "$deploy_library") == \
-     "$DEPLOY_CONTROL_BRIDGE_LIBRARY_DIGEST" && \
-     $(deploy_control_file_digest "$postgres_library") == \
-       "$DEPLOY_CONTROL_BRIDGE_POSTGRES_LIBRARY_DIGEST" && \
-     $(deploy_control_file_digest "$image_rescue_library") == \
-       "$DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_LIBRARY_DIGEST" && \
-     $(deploy_control_file_digest "$x_image_library") == \
-       "$DEPLOY_CONTROL_BRIDGE_X_IMAGE_LIBRARY_DIGEST" ]] || \
-    fail 'deploy control changed with runtime assets; deploy the bridge release first'
-}
-verify_deploy_control_bridge_target_compatibility() {
-  local sha=$1
-  local entrypoint_path=ops/deploy/social-monitor-production-deploy.sh
-  local deploy_library_path=ops/deploy/deploy-control-lib.sh
-  local postgres_library_path=ops/deploy/postgres-runtime-deploy-lib.sh
-  local image_rescue_library_path=ops/deploy/backend-image-rescue-lib.sh
-  local x_image_library_path=ops/deploy/x-collector-image-deploy-lib.sh
-  local entrypoint_digest deploy_library_digest postgres_library_digest
-  local image_rescue_library_digest x_image_library_digest
-  [[ -n ${DEPLOY_CONTROL_BRIDGE_ENTRYPOINT_DIGEST:-} && \
-     -n ${DEPLOY_CONTROL_BRIDGE_LIBRARY_DIGEST:-} && \
-     -n ${DEPLOY_CONTROL_BRIDGE_POSTGRES_LIBRARY_DIGEST:-} && \
-     -n ${DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_LIBRARY_DIGEST:-} && \
-     -n ${DEPLOY_CONTROL_BRIDGE_X_IMAGE_LIBRARY_DIGEST:-} ]] || \
-    fail 'deploy control bridge was not initialized before target verification'
-  entrypoint_digest=$(
-    deploy_control_git_blob_digest "$sha" "$entrypoint_path"
-  ) || fail 'target integration is missing the deploy entrypoint bridge'
-  deploy_library_digest=$(
-    deploy_control_git_blob_digest "$sha" "$deploy_library_path"
-  ) || fail 'target integration is missing the deploy control bridge library'
-  postgres_library_digest=$(
-    deploy_control_git_blob_digest "$sha" "$postgres_library_path"
-  ) || fail 'target integration is missing the PostgreSQL control bridge library'
-  image_rescue_library_digest=$(
-    deploy_control_git_blob_digest "$sha" "$image_rescue_library_path"
-  ) || fail 'target integration is missing the backend image rescue bridge library'
-  x_image_library_digest=$(
-    deploy_control_git_blob_digest "$sha" "$x_image_library_path"
-  ) || fail 'target integration is missing the X image provenance bridge library'
-  [[ $entrypoint_digest == "$DEPLOY_CONTROL_BRIDGE_ENTRYPOINT_DIGEST" && \
-     $deploy_library_digest == "$DEPLOY_CONTROL_BRIDGE_LIBRARY_DIGEST" && \
-     $postgres_library_digest == \
-       "$DEPLOY_CONTROL_BRIDGE_POSTGRES_LIBRARY_DIGEST" && \
-     $image_rescue_library_digest == \
-       "$DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_LIBRARY_DIGEST" && \
-     $x_image_library_digest == \
-       "$DEPLOY_CONTROL_BRIDGE_X_IMAGE_LIBRARY_DIGEST" ]] || \
-    fail 'deploy control changed with runtime assets; deploy the bridge release first'
-}
+
 probe_daily_singleton_clear() {
   local singleton_fd
   exec {singleton_fd}>"$DAILY_SINGLETON_LOCK" || \
@@ -941,6 +828,7 @@ deploy_release() {
     ((atomic_state == 1)) || \
       fail 'PostgreSQL atomic repair marker state is invalid'
   fi
+  load_deploy_control_bridge_library
   exec 9>"$DEPLOY_LOCK"
   flock -w 3600 9 || fail 'timed out waiting for deployment lock'
   exec 8>"$POSTGRES_ADMISSION_LOCK"
@@ -980,11 +868,13 @@ deploy_release() {
   component_changed backend "$sha" \
     ops/deploy/production-runtime/x-collector.Dockerfile && \
     x_image_provenance_release=true
-  if [[ $runtime_control == true || $x_image_provenance_release == true ]]; then
+  if [[ $backend == true || $runtime_control == true || \
+        $x_image_provenance_release == true ]]; then
     verify_deploy_control_bridge_target_compatibility "$sha"
   fi
   advance_integration "$sha"
   if [[ $backend == true ]]; then
+    load_target_rabbitmq_quorum_backend_health "$sha"
     load_target_reader_summary_publication_deploy_library "$sha"
   fi
   sync_control_script "$sha"

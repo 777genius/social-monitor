@@ -90,6 +90,7 @@ BACKEND_PATHS=(
   ops/evals
   ops/observability
   ops/deploy/backend-runtime-health-lib.sh
+  ops/deploy/rabbitmq-quorum-health.sh
   ops/deploy/reader-summary-publication-deploy-lib.sh ops/deploy/reader-summary-publication-system-dsn-bootstrap-lib.sh
   ops/deploy/reader-summary-publication-pre-migration.sql
   ops/deploy/reader-summary-publication-post-migration.sql
@@ -862,7 +863,7 @@ deploy_release_runtime_transaction() {
     verify_compose_scope
     return
   fi
-  if [[ $runtime_control == true ]]; then
+  if [[ $backend == true || $runtime_control == true ]]; then
     verify_deploy_control_bridge_compatibility
   fi
   if [[ $backend == false ]]; then

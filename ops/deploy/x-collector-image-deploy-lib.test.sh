@@ -217,6 +217,7 @@ OLD_SOURCE_SHA=
 CURRENT_ENTRYPOINT_SOURCE_CLOSURE=(
   ops/deploy/social-monitor-production-deploy.sh
   ops/deploy/deploy-control-lib.sh
+  ops/deploy/deploy-control-bridge-lib.sh
   ops/deploy/postgres-runtime-deploy-lib.sh
   ops/deploy/backend-runtime-health-lib.sh
   ops/deploy/backend-image-rescue-lib.sh
@@ -268,6 +269,11 @@ cp "$TRANSITION_REPO/ops/deploy/social-monitor-production-deploy.sh" \
 for path in "${CURRENT_ENTRYPOINT_SOURCE_CLOSURE[@]}"; do
   cp "$SOURCE_REPOSITORY/$path" "$TRANSITION_REPO/$path"
 done
+printf '%s\n' \
+  '#!/usr/bin/env bash' \
+  'rabbitmq_quorum_health_probe() { :; }' > \
+  "$TRANSITION_REPO/ops/deploy/rabbitmq-quorum-health.sh"
+chmod 0755 "$TRANSITION_REPO/ops/deploy/rabbitmq-quorum-health.sh"
 git -C "$TRANSITION_REPO" add ops/deploy
 git -C "$TRANSITION_REPO" commit -qm 'test: Release A provenance controller'
 RELEASE_A_SHA=$(git -C "$TRANSITION_REPO" rev-parse HEAD)
@@ -369,6 +375,7 @@ A_CONTROLLER="$TRANSITION_CONTROL/github-production-deploy.sh" \
     required_sources=(
       ops/deploy/social-monitor-production-deploy.sh
       ops/deploy/deploy-control-lib.sh
+      ops/deploy/deploy-control-bridge-lib.sh
       ops/deploy/postgres-runtime-deploy-lib.sh
       ops/deploy/backend-runtime-health-lib.sh
       ops/deploy/backend-image-rescue-lib.sh
