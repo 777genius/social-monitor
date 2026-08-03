@@ -225,10 +225,13 @@ const assertRecoveryPrepublication = (input: {
   const allowed = input.authority.githubProjection.mode === "historical_omission"
     ? input.authority.items.filter((item) => item.providerKey !== "github-trending-page")
     : input.authority.items;
+  const preservesNoSignal = snapshot.qualityFlags.includes("no_signal");
+  const windowAuthority = allowed.slice(0, dailyCanonicalRecoveryEvidenceLimit);
+  const selectedAuthority = preservesNoSignal ? [] : windowAuthority;
   if (
-    input.params.evidence.selectedEvidence.length !== allowed.length ||
+    input.params.evidence.selectedEvidence.length !== selectedAuthority.length ||
     input.params.evidence.selectedEvidence.some((item, index) => {
-      const sealed = allowed[index];
+      const sealed = selectedAuthority[index];
       return sealed === undefined ||
         item.feedItemId !== sealed.feedItemId ||
         item.sourceItemId !== sealed.sourceItemId ||
@@ -253,11 +256,11 @@ const assertRecoveryPrepublication = (input: {
   ) {
     throw new Error("Daily canonical recovery selected evidence diverged from authority bytes");
   }
-  const expectedWindow = sourceWindowBounds(allowed);
+  const expectedWindow = sourceWindowBounds(windowAuthority);
   if (
     !sameOrderedValues(
       input.params.evidence.sourceWindow.selectedFeedItemIds,
-      allowed.map((item) => item.feedItemId),
+      selectedAuthority.map((item) => item.feedItemId),
     ) ||
     input.params.evidence.sourceWindow.startedAt.toISOString() !==
       expectedWindow.startedAt.toISOString() ||
@@ -299,7 +302,8 @@ const frozenAuthorityEvidenceSelector = (
     const eligibleItems = authority.githubProjection.mode === "historical_omission"
       ? authority.items.filter((item) => item.providerKey !== "github-trending-page")
       : authority.items;
-    const selected = eligibleItems.map((item, index) => ({
+    const selectedAuthority = eligibleItems.slice(0, query.maxItems);
+    const selected = (preservesNoSignal ? [] : selectedAuthority).map((item, index) => ({
       feedItemId: item.feedItemId,
       sourceItemId: item.sourceItemId,
       sourceBindingId: item.sourceBindingId,
@@ -329,7 +333,7 @@ const frozenAuthorityEvidenceSelector = (
       ...(preservesNoSignal ? { clusters: [] } : {}),
       sourceWindow: {
         ...clustered.sourceWindow,
-        ...sourceWindowBounds(authority.items),
+        ...sourceWindowBounds(selectedAuthority),
         selectedFeedItemIds: selected.map((item) => item.feedItemId),
         ...(preservesNoSignal ? { storyClusterIds: [] } : {}),
       },

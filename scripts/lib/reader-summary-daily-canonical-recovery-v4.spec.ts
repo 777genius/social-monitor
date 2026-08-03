@@ -1,3 +1,7 @@
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import {
   assertDailyOutputCitationsMatchSourceAuthority,
   canonicalJsonBytes,
@@ -304,6 +308,72 @@ describe("reader-summary daily canonical recovery v4", () => {
     expect(finalizer.finalize).not.toHaveBeenCalled();
     expect(authority.markRunning).not.toHaveBeenCalled();
     expect(authority.complete).not.toHaveBeenCalled();
+  });
+
+  it("converges after a committed finalization loses its client acknowledgement", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "daily-finalization-ack-loss-"));
+    const publicEvidencePath = join(
+      directory,
+      "durable-reader-summary-2026-07-23.v1.json",
+    );
+    const evidenceBytes = Buffer.from("immutable public evidence");
+    const publication = published();
+    const responseBytes = canonicalJsonBytes(validOutput());
+    let committed = false;
+    const runtime = {
+      runtimeEngine: "subscription-runtime-cli" as const,
+      run: jest.fn(async () => ({
+        responseBytes,
+        executionAttestation: attestation(responseBytes),
+      })),
+    };
+    const finalizer = {
+      finalize: jest.fn(async () => {
+        writeFileSync(publicEvidencePath, evidenceBytes);
+        // Failpoint: the FINALIZED transaction committed, then its client lost
+        // the acknowledgement before the executor could read it back.
+        committed = true;
+        throw new Error("finalization acknowledgement lost after commit");
+      }),
+    };
+    const authority = {
+      claim: jest.fn(async () => committed
+        ? { kind: "caught_up" as const }
+        : { kind: "claimed" as const, work: work() }),
+      markRunning: jest.fn(async () => undefined),
+      renew: jest.fn(async (claimed: CanonicalRecoveryWork) => claimed),
+      complete: jest.fn(async (claimed: CanonicalRecoveryWork) => ({
+        ...claimed,
+        state: "COMPLETED" as const,
+        completedAt: "2026-08-02T23:45:00.000Z",
+        responseBytes,
+        receiptBytes: Buffer.from("receipt"),
+      })),
+      readFinalized: jest.fn(async () => [publication]),
+    };
+    const executor = new ReaderSummaryDailyCanonicalRecoveryV4Executor({
+      authority,
+      runtime,
+      finalizer,
+      now: () => new Date("2026-08-02T23:45:00.000Z"),
+    });
+
+    try {
+      await expect(executor.runOne(input())).rejects.toThrow(
+        "finalization acknowledgement lost after commit",
+      );
+      await expect(executor.runOne(input())).resolves.toEqual({
+        kind: "caught_up",
+        publications: [publication],
+      });
+
+      expect(readFileSync(publicEvidencePath)).toEqual(evidenceBytes);
+      expect(runtime.run).toHaveBeenCalledTimes(1);
+      expect(finalizer.finalize).toHaveBeenCalledTimes(1);
+      expect(authority.readFinalized).toHaveBeenCalledTimes(1);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 
   it("finishes a completed crash replay without a second model call", async () => {

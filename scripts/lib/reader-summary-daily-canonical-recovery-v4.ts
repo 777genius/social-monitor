@@ -503,9 +503,17 @@ const bigintText = (value: unknown): string =>
   typeof value === "bigint" || typeof value === "number" ? String(value) : text(value);
 
 const recoveryDate = (value: unknown): CanonicalRecoveryDate => {
-  const date = value instanceof Date ? value.toISOString().slice(0, 10) : text(value);
+  // node-postgres parses DATE as local midnight. Converting that value to UTC
+  // moves it to the previous day on positive-offset production hosts, so keep
+  // its calendar components instead of using toISOString().
+  const date = value instanceof Date && !Number.isNaN(value.getTime())
+    ? `${value.getFullYear().toString().padStart(4, "0")}-${(value.getMonth() + 1)
+      .toString().padStart(2, "0")}-${value.getDate().toString().padStart(2, "0")}`
+    : text(value);
   if (!(canonicalRecoveryDates as readonly string[]).includes(date)) {
-    throw new Error("Daily canonical recovery database returned a date outside Jul23-Jul30");
+    throw new Error(
+      `Daily canonical recovery database returned a date outside Jul23-Jul30: ${String(value)}`,
+    );
   }
   return date as CanonicalRecoveryDate;
 };

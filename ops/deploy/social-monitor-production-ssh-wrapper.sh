@@ -14,8 +14,13 @@ read -r action sha confirmation extra <<< "$original_command"
 [[ ${sha:-} =~ ^[0-9a-f]{40}$ ]] || exit 64
 if [[ $action == reader-summary-daily-canonical-recovery-v4 ]]; then
   [[ ${confirmation:-} == "$DAILY_CANONICAL_RECOVERY_CONFIRMATION" ]] || exit 64
-  exec sudo -n "$ENTRYPOINT" "$action" "$sha" "$confirmation"
+  # V4A4's installed entrypoint accepts only the pre-existing bounded action.
+  # Do not carry SSH_ORIGINAL_COMMAND across sudo: the entrypoint deliberately
+  # prefers it over argv when a sudo policy preserves the environment.
+  unset SSH_ORIGINAL_COMMAND
+  exec sudo -n "$ENTRYPOINT" reader-summary-recover-missing-days "$sha"
 fi
 [[ -z ${confirmation:-} ]] || exit 64
 
+unset SSH_ORIGINAL_COMMAND
 exec sudo -n "$ENTRYPOINT" "$action" "$sha"

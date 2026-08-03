@@ -3,8 +3,40 @@ set -euo pipefail
 
 PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+PROJECT_ROOT=$(cd "$SCRIPT_DIR/../.." && pwd)
+BRIDGE_RELEASE_SHA=$(git -C "$PROJECT_ROOT" rev-parse '472d835c^{commit}')
 FIXTURE=$(mktemp -d "${TMPDIR:-/tmp}/rabbitmq-quorum-deploy-bridge.XXXXXX")
 trap 'rm -rf "$FIXTURE"' EXIT
+
+if ! command stat -c '%a' "$SCRIPT_DIR/social-monitor-production-deploy.sh" >/dev/null 2>&1; then
+  # Production runs GNU coreutils. Keep this deterministic fixture runnable on
+  # macOS as well, where BSD stat uses a different format interface.
+  stat() {
+    local option=${1:-} format=${2:-} path=${3:-}
+    if [[ $option != -c || -z $format || -z $path ]]; then
+      command stat "$@"
+      return
+    fi
+    python3 - "$format" "$path" <<'PY'
+import os
+import stat
+import sys
+
+format_string, path = sys.argv[1:]
+item = os.stat(path)
+mode = item.st_mode
+
+if format_string == '%a':
+    print(format(mode & 0o777, 'o'))
+elif format_string == '%A':
+    print(stat.filemode(mode))
+elif format_string == '%d:%i:%f:%s:%y:%z':
+    print(f'{item.st_dev}:{item.st_ino}:{mode:o}:{item.st_size}:{item.st_mtime_ns}:{item.st_ctime_ns}')
+else:
+    raise SystemExit(f'unsupported GNU stat format in test fixture: {format_string}')
+PY
+  }
+fi
 
 RELEASE_A_PATHS=(
   ops/deploy/deploy-control-bridge-lib.sh
@@ -19,6 +51,66 @@ RELEASE_A_PATHS=(
 HEALTH_LIBRARY=ops/deploy/backend-runtime-health-lib.sh
 QUORUM_SCRIPT=ops/deploy/rabbitmq-quorum-health.sh
 RECOVERY_SCRIPT=ops/deploy/rabbitmq-quorum-recovery.sh
+BRIDGE_CONTROL_PATHS=(
+  ops/deploy/social-monitor-production-deploy.sh
+  ops/deploy/deploy-control-lib.sh
+  ops/deploy/postgres-runtime-deploy-lib.sh
+  ops/deploy/backend-image-rescue-lib.sh
+  ops/deploy/x-collector-image-deploy-lib.sh
+  ops/deploy/deploy-control-bridge-lib.sh
+)
+
+assert_real_bridge_target_assets() {
+  local path entry mode type object tree_path expected_digest actual_digest actual_mode
+  local repository_root actual_path actual_real
+
+  repository_root=$(readlink -f -- "$PROJECT_ROOT")
+  for path in "${BRIDGE_CONTROL_PATHS[@]}"; do
+    entry=$(git -C "$PROJECT_ROOT" ls-tree "$BRIDGE_RELEASE_SHA" -- "$path")
+    read -r mode type object tree_path <<< "$entry"
+    [[ ($mode == 100644 || $mode == 100755) && $type == blob && \
+       $object =~ ^[0-9a-f]+$ && $tree_path == "$path" ]] || {
+      printf 'V4A4 bridge asset is malformed at %s: %s\n' "$BRIDGE_RELEASE_SHA" "$path" >&2
+      exit 1
+    }
+    actual_path=$PROJECT_ROOT/$path
+    [[ -f $actual_path && ! -L $actual_path ]] || {
+      printf 'current bridge asset is not a regular file: %s\n' "$path" >&2
+      exit 1
+    }
+    actual_real=$(readlink -f -- "$actual_path")
+    [[ $actual_real == "$repository_root/$path" ]] || {
+      printf 'current bridge asset escaped its canonical path: %s\n' "$path" >&2
+      exit 1
+    }
+    actual_mode=$(stat -c '%a' "$actual_real")
+    [[ $actual_mode == "${mode#100}" ]] || {
+      printf 'current bridge asset mode drifted from V4A4: %s\n' "$path" >&2
+      exit 1
+    }
+    expected_digest=$(git -C "$PROJECT_ROOT" show "$BRIDGE_RELEASE_SHA:$path" | sha256sum | awk '{print $1}')
+    actual_digest=$(sha256sum "$actual_real" | awk '{print $1}')
+    [[ $actual_digest == "$expected_digest" ]] || {
+      printf 'current bridge asset digest drifted from V4A4: %s\n' "$path" >&2
+      exit 1
+    }
+  done
+}
+
+materialize_bridge_release_a_path() {
+  local path=$1 destination=$CASE_REPO/$1 entry mode type object tree_path
+
+  install -d "$(dirname "$destination")"
+  entry=$(git -C "$PROJECT_ROOT" ls-tree "$BRIDGE_RELEASE_SHA" -- "$path")
+  read -r mode type object tree_path <<< "$entry"
+  [[ ($mode == 100644 || $mode == 100755) && $type == blob && \
+     $object =~ ^[0-9a-f]+$ && $tree_path == "$path" ]] || {
+    printf 'Release A fixture asset is malformed: %s\n' "$path" >&2
+    exit 1
+  }
+  git -C "$PROJECT_ROOT" show "$BRIDGE_RELEASE_SHA:$path" > "$destination"
+  chmod "${mode#100}" "$destination"
+}
 
 assert_exact_release_a() {
   local repo=$1 base=$2 release_a=$3
@@ -101,7 +193,7 @@ prepare_case() {
   CASE_BASE_SHA=$(git -C "$CASE_REPO" rev-parse HEAD)
 
   for path in "${RELEASE_A_PATHS[@]}"; do
-    cp "$SCRIPT_DIR/$(basename "$path")" "$CASE_REPO/$path"
+    materialize_bridge_release_a_path "$path"
   done
   git -C "$CASE_REPO" add ops/deploy
   git -C "$CASE_REPO" commit -qm 'test: Release A deploy bridge'
@@ -286,6 +378,7 @@ assert_bridge_backend_rejection() {
 
 backend_path_block=$(sed -n '/^BACKEND_PATHS=(/,/^)/p' \
   "$SCRIPT_DIR/social-monitor-production-deploy.sh")
+assert_real_bridge_target_assets
 grep -Fx "  $HEALTH_LIBRARY" <<< "$backend_path_block" >/dev/null
 grep -Fx "  $QUORUM_SCRIPT" <<< "$backend_path_block" >/dev/null
 grep -Fx "  $RECOVERY_SCRIPT" <<< "$backend_path_block" >/dev/null

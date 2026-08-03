@@ -233,9 +233,7 @@ describe("PrismaReaderSummaryDailyCanonicalRecoveryV4Finalization", () => {
     );
     const staged = {
       publish: jest.fn(async () => { events.push("publish"); }),
-      cleanup: jest.fn(async (removePublished?: boolean) => {
-        events.push(`cleanup:${String(removePublished ?? false)}`);
-      }),
+      cleanup: jest.fn(async () => { events.push("cleanup"); }),
     };
     const capture = jest.fn(async () => {
       events.push("capture");
@@ -252,7 +250,7 @@ describe("PrismaReaderSummaryDailyCanonicalRecoveryV4Finalization", () => {
       publicationId: "40000000-0000-4000-8000-000000000004",
     });
 
-    expect(events).toEqual(["capture", "publish", "cleanup:false"]);
+    expect(events).toEqual(["capture", "publish", "cleanup"]);
     expect(queryRaw).toHaveBeenCalledTimes(3);
     expect(String(queryRaw.mock.calls[0]?.[0])).toContain(
       "verify_reader_summary_daily_canonical_recovery_v4_provenance",
@@ -265,8 +263,12 @@ describe("PrismaReaderSummaryDailyCanonicalRecoveryV4Finalization", () => {
     );
   });
 
-  it("removes only newly published staging when a fenced finalization fails", async () => {
-    let invocation = 0;
+  it("converges an exact replay when DB commit acknowledgement is lost", async () => {
+    const publication = canonicalCapturedPublication();
+    let finalizationQueryRan = false;
+    let loseAcknowledgement = true;
+    let committed = false;
+    const published = new Map<string, Buffer>();
     const queryRaw = jest.fn(async (query: TemplateStringsArray) => {
       if (
         String(query).includes(
@@ -275,21 +277,70 @@ describe("PrismaReaderSummaryDailyCanonicalRecoveryV4Finalization", () => {
       ) {
         return [{ verified: true }];
       }
-      invocation += 1;
-      if (invocation === 1) return [{ sealed: true }];
-      throw new Error("fence expired");
+      if (
+        String(query).includes(
+          "finalize_reader_summary_daily_canonical_recovery_v4",
+        )
+      ) {
+        finalizationQueryRan = true;
+      }
+      return [{ sealed: true }];
     });
+    const transaction = jest.fn(
+      async <TValue>(
+        operation: (client: {
+          readonly $queryRaw: typeof queryRaw;
+        }) => Promise<TValue>,
+        options?: PrismaSummaryTransactionOptions,
+      ): Promise<TValue> => {
+        expect(options).toEqual(expectedRecoveryFinalizationTransactionOptions);
+        finalizationQueryRan = false;
+        const result = await operation({ $queryRaw: queryRaw });
+        if (finalizationQueryRan && loseAcknowledgement) {
+          committed = true;
+          loseAcknowledgement = false;
+          throw new Error("finalization acknowledgement lost after commit");
+        }
+        return result;
+      },
+    );
     const cleanup = jest.fn(async () => undefined);
+    const stage = jest.fn(async () => ({
+      publish: jest.fn(async () => {
+        published.set("evidence", publication.publicEvidenceBytes);
+        published.set("frontend", publication.publicFrontendBytes);
+      }),
+      cleanup,
+    }));
     const finalization = new PrismaReaderSummaryDailyCanonicalRecoveryV4Finalization(
-      prismaClient(recoveryFinalizationTransaction(queryRaw), queryRaw),
-      jest.fn(async () => canonicalCapturedPublication()),
-      jest.fn(async () => ({ publish: jest.fn(async () => undefined), cleanup })),
+      prismaClient(transaction, queryRaw),
+      jest.fn(async () => publication),
+      stage,
     );
 
     await expect(finalization.finalize(canonicalFinalizationInput())).rejects.toThrow(
-      "fence expired",
+      "finalization acknowledgement lost after commit",
     );
-    expect(cleanup).toHaveBeenCalledWith(true);
+    expect(committed).toBe(true);
+    expect(published.get("evidence")).toEqual(publication.publicEvidenceBytes);
+    expect(published.get("frontend")).toEqual(publication.publicFrontendBytes);
+
+    await expect(finalization.finalize(canonicalFinalizationInput())).resolves.toMatchObject({
+      requestedUtcDate: "2026-07-23",
+      readerSummaryJobId: publication.readerSummaryJobId,
+      readerSummaryArtifactId: publication.readerSummaryArtifactId,
+      publicationId: publication.publicationId,
+      reportSha256: publication.reportSha256,
+      proofSha256: publication.proofSha256,
+      weeklyEvidenceSha256: publication.weeklyEvidenceSha256,
+      publicEvidenceSha256: publication.publicEvidenceSha256,
+      publicFrontendSha256: publication.publicFrontendSha256,
+    });
+    expect(stage).toHaveBeenCalledTimes(2);
+    expect(cleanup).toHaveBeenCalledTimes(2);
+    expect(cleanup).toHaveBeenCalledWith();
+    expect(published.get("evidence")).toEqual(publication.publicEvidenceBytes);
+    expect(published.get("frontend")).toEqual(publication.publicFrontendBytes);
   });
 });
 

@@ -127,7 +127,7 @@ export const createReaderSummaryDailyCanonicalRecoveryV4Finalizer = (dependencie
   const atomic = new PrismaReaderSummaryDailyCanonicalRecoveryV4Finalization(
     dependencies.prisma,
     capture,
-    (input, publication) => stagePublicFiles(
+    (input, publication) => stageReaderSummaryDailyCanonicalRecoveryPublicFiles(
       dependencies.publicDirectory,
       input.work.modelJobIdentity,
       input.work.requestedUtcDate,
@@ -285,6 +285,12 @@ const capture = async (
     },
   };
   const evidence = canonicalJsonBytes(evidenceRecord);
+  // The presenter is an HTTP-facing object and legitimately uses undefined
+  // for omitted optional fields. Bind the exact JSON transport projection,
+  // not the in-memory TypeScript representation rejected by canonical JSON.
+  const frontendTransportArtifact = JSON.parse(
+    JSON.stringify(frontendArtifact),
+  ) as unknown;
   const frontend = canonicalJsonBytes({
     schemaVersion: 1,
     format: "frontend-reader-summary-live-fixture-v1",
@@ -292,7 +298,7 @@ const capture = async (
     tenantId: input.work.tenantId,
     workspaceId: input.work.workspaceId,
     userId: "durable-reader-summary-live-user",
-    readerSummaryArtifact: frontendArtifact,
+    readerSummaryArtifact: frontendTransportArtifact,
     evidence: evidenceRecord.result,
     redaction: evidenceRecord.redaction,
   });
@@ -559,7 +565,7 @@ class ExactRecoveryPolicyRepository implements ReaderSummaryPolicyRepositoryPort
   }
 }
 
-const stagePublicFiles = async (
+export const stageReaderSummaryDailyCanonicalRecoveryPublicFiles = async (
   directory: string,
   identity: string,
   date: string,
@@ -607,11 +613,11 @@ const stagePublicFiles = async (
         throw error;
       }
     },
-    cleanup: async (removePublished = false) => {
+    // Public files are immutable durable evidence once publish returns. A
+    // finalization client error can be post-commit, so retries must reuse
+    // exact bytes rather than delete a file that FINALIZED may already bind.
+    cleanup: async () => {
       for (const file of files) rmSync(file.staged, { force: true });
-      if (removePublished) {
-        for (const path of created) rmSync(path, { force: true });
-      }
     },
   };
 };

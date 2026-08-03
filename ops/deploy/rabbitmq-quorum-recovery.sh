@@ -256,13 +256,9 @@ rabbitmq_quorum_recovery_verify_manifest() {
      $entries == "$expected_entries" ]]
 }
 
-rabbitmq_quorum_recovery_verify_state_binding() {
+rabbitmq_quorum_recovery_verify_state_snapshot_binding() {
   local root=$1 snapshot_dir archive manifest sha bytes entries
 
-  [[ $RABBITMQ_QUORUM_RECOVERY_STATE_CONTAINER_ID == "$RABBITMQ_QUORUM_TARGET_CONTAINER_ID" && \
-     $RABBITMQ_QUORUM_RECOVERY_STATE_IMAGE_ID == "$RABBITMQ_QUORUM_TARGET_IMAGE_ID" && \
-     $RABBITMQ_QUORUM_RECOVERY_STATE_HOSTNAME == "$RABBITMQ_QUORUM_TARGET_HOSTNAME" && \
-     $RABBITMQ_QUORUM_RECOVERY_STATE_VOLUME == "$RABBITMQ_QUORUM_TARGET_VOLUME" ]] || return 1
   snapshot_dir=$(rabbitmq_quorum_recovery_safe_snapshot_path "$root" "$RABBITMQ_QUORUM_RECOVERY_SNAPSHOT_DIR") || return 1
   archive=$snapshot_dir/rabbitmq-data.tar
   manifest=$snapshot_dir/manifest
@@ -274,9 +270,35 @@ rabbitmq_quorum_recovery_verify_state_binding() {
      $bytes == "$RABBITMQ_QUORUM_RECOVERY_SNAPSHOT_BYTES" && \
      $entries == "$RABBITMQ_QUORUM_RECOVERY_SNAPSHOT_ENTRIES" ]] || return 1
   rabbitmq_quorum_recovery_verify_manifest "$manifest" \
-    "$RABBITMQ_QUORUM_TARGET_CONTAINER_ID" "$RABBITMQ_QUORUM_TARGET_IMAGE_ID" \
-    "$RABBITMQ_QUORUM_TARGET_HOSTNAME" "$RABBITMQ_QUORUM_TARGET_VOLUME" \
+    "$RABBITMQ_QUORUM_RECOVERY_STATE_CONTAINER_ID" "$RABBITMQ_QUORUM_RECOVERY_STATE_IMAGE_ID" \
+    "$RABBITMQ_QUORUM_RECOVERY_STATE_HOSTNAME" "$RABBITMQ_QUORUM_RECOVERY_STATE_VOLUME" \
     "$sha" "$bytes" "$entries"
+}
+
+rabbitmq_quorum_recovery_verify_state_binding() {
+  rabbitmq_quorum_recovery_verify_state_snapshot_binding "$1" || return 1
+  [[ $RABBITMQ_QUORUM_RECOVERY_STATE_CONTAINER_ID == "$RABBITMQ_QUORUM_TARGET_CONTAINER_ID" && \
+     $RABBITMQ_QUORUM_RECOVERY_STATE_IMAGE_ID == "$RABBITMQ_QUORUM_TARGET_IMAGE_ID" && \
+     $RABBITMQ_QUORUM_RECOVERY_STATE_HOSTNAME == "$RABBITMQ_QUORUM_TARGET_HOSTNAME" && \
+     $RABBITMQ_QUORUM_RECOVERY_STATE_VOLUME == "$RABBITMQ_QUORUM_TARGET_VOLUME" ]]
+}
+
+rabbitmq_quorum_recovery_verify_completed_state_binding() {
+  # A completed transaction never resumes a restart. Its immutable evidence is
+  # therefore bound only to its historical target. The health layer has already
+  # independently identified the current service, hostname and named volume.
+  rabbitmq_quorum_recovery_verify_state_snapshot_binding "$1"
+}
+
+rabbitmq_quorum_recovery_retire_completed_state() {
+  local root=$1 state=$root/recovery.state
+
+  # Only the terminal journal is retired. Immutable snapshots remain subject to
+  # the existing bounded retention policy; RabbitMQ data and volumes are never
+  # changed by this path.
+  [[ -f $state && ! -L $state ]] || return 1
+  rm -f -- "$state"
+  [[ ! -e $state && ! -L $state ]]
 }
 
 rabbitmq_quorum_recovery_create_snapshot() {
@@ -357,7 +379,10 @@ rabbitmq_quorum_recovery_create_snapshot() {
     return 1
   }
   mv -f -- "$manifest_partial" "$manifest"
-  final=$root/snapshot-$(date -u +%Y%m%dT%H%M%SZ)-${RABBITMQ_QUORUM_TARGET_CONTAINER_ID:0:12}
+  # Nanoseconds keep separate immutable evidence for two bounded incidents that
+  # happen within the same wall-clock second while the exclusive lock prevents
+  # concurrent journal writers.
+  final=$root/snapshot-$(date -u +%Y%m%dT%H%M%S%NZ)-${RABBITMQ_QUORUM_TARGET_CONTAINER_ID:0:12}
   [[ ! -e $final ]] || {
     rm -rf -- "$partial"
     return 1
@@ -523,36 +548,58 @@ rabbitmq_quorum_recovery_ensure_steady() (
       rabbitmq_quorum_recovery_error 'recovery state is malformed; refusing an unbound resume'
       exit 1
     }
-    rabbitmq_quorum_recovery_verify_state_binding "$root" || {
-      rabbitmq_quorum_recovery_error 'recovery state does not match the immutable snapshot and target identity'
-      exit 1
-    }
     case $RABBITMQ_QUORUM_RECOVERY_PHASE in
       complete)
-        rabbitmq_quorum_health_require_steady_state || exit 1
-        rabbitmq_quorum_recovery_reidentify_same_target \
-          "$RABBITMQ_QUORUM_RECOVERY_STATE_CONTAINER_ID" \
-          "$RABBITMQ_QUORUM_RECOVERY_STATE_IMAGE_ID" \
-          "$RABBITMQ_QUORUM_RECOVERY_STATE_HOSTNAME" \
-          "$RABBITMQ_QUORUM_RECOVERY_STATE_VOLUME" || exit 1
-        exit 0
+        rabbitmq_quorum_recovery_verify_completed_state_binding "$root" || {
+          rabbitmq_quorum_recovery_error 'completed recovery state does not match its immutable snapshot evidence'
+          exit 1
+        }
+        if rabbitmq_quorum_health_probe_target; then
+          rabbitmq_quorum_recovery_retire_completed_state "$root" || {
+            rabbitmq_quorum_recovery_error 'completed recovery state could not be retired after steady quorum health'
+            exit 1
+          }
+          rabbitmq_quorum_recovery_apply_retention "$root" "$RABBITMQ_QUORUM_SNAPSHOT_RETENTION" || exit 1
+          exit 0
+        else
+          status=$?
+        fi
+        if ((status != RABBITMQ_QUORUM_PROBE_NOPROC)); then
+          rabbitmq_quorum_recovery_error 'completed recovery state found a non-noproc incident; refusing automatic reinitialization'
+          exit 1
+        fi
+        rabbitmq_quorum_recovery_retire_completed_state "$root" || {
+          rabbitmq_quorum_recovery_error 'completed recovery state could not be retired before noproc reinitialization'
+          exit 1
+        }
+        rabbitmq_quorum_recovery_apply_retention "$root" "$RABBITMQ_QUORUM_SNAPSHOT_RETENTION" || exit 1
+        # The terminal journal is gone, so the bounded all-noproc recovery
+        # below snapshots and proves the current, strictly compatible target.
         ;;
-      restart_pending)
-        rabbitmq_quorum_recovery_resume_pending_restart "$root" \
-          "$RABBITMQ_QUORUM_TARGET_CONTAINER_ID" "$RABBITMQ_QUORUM_TARGET_IMAGE_ID" \
-          "$RABBITMQ_QUORUM_TARGET_HOSTNAME" "$RABBITMQ_QUORUM_TARGET_VOLUME" || exit 1
-        exit 0
-        ;;
-      restart_requested)
-        rabbitmq_quorum_recovery_wait_for_steady_container "$RABBITMQ_QUORUM_TARGET_CONTAINER_ID" || exit 1
-        rabbitmq_quorum_recovery_write_state "$root" complete \
-          "$RABBITMQ_QUORUM_RECOVERY_SNAPSHOT_DIR" "$RABBITMQ_QUORUM_RECOVERY_SNAPSHOT_SHA256" \
-          "$RABBITMQ_QUORUM_RECOVERY_SNAPSHOT_BYTES" "$RABBITMQ_QUORUM_RECOVERY_SNAPSHOT_ENTRIES" || exit 1
-        exit 0
-        ;;
-      proof_verified)
-        rabbitmq_quorum_recovery_restart_existing_target "$root" || exit 1
-        exit 0
+      *)
+        rabbitmq_quorum_recovery_verify_state_binding "$root" || {
+          rabbitmq_quorum_recovery_error 'recovery state does not match the immutable snapshot and target identity'
+          exit 1
+        }
+        case $RABBITMQ_QUORUM_RECOVERY_PHASE in
+          restart_pending)
+            rabbitmq_quorum_recovery_resume_pending_restart "$root" \
+              "$RABBITMQ_QUORUM_TARGET_CONTAINER_ID" "$RABBITMQ_QUORUM_TARGET_IMAGE_ID" \
+              "$RABBITMQ_QUORUM_TARGET_HOSTNAME" "$RABBITMQ_QUORUM_TARGET_VOLUME" || exit 1
+            exit 0
+            ;;
+          restart_requested)
+            rabbitmq_quorum_recovery_wait_for_steady_container "$RABBITMQ_QUORUM_TARGET_CONTAINER_ID" || exit 1
+            rabbitmq_quorum_recovery_write_state "$root" complete \
+              "$RABBITMQ_QUORUM_RECOVERY_SNAPSHOT_DIR" "$RABBITMQ_QUORUM_RECOVERY_SNAPSHOT_SHA256" \
+              "$RABBITMQ_QUORUM_RECOVERY_SNAPSHOT_BYTES" "$RABBITMQ_QUORUM_RECOVERY_SNAPSHOT_ENTRIES" || exit 1
+            exit 0
+            ;;
+          proof_verified)
+            rabbitmq_quorum_recovery_restart_existing_target "$root" || exit 1
+            exit 0
+            ;;
+        esac
         ;;
     esac
   fi

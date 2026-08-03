@@ -46,6 +46,10 @@ export const assertReaderSummaryDailyCanonicalRecoveryV4MigrationContract = (): 
   );
   assertPgCatalogOnlySecurityDefinerSearchPaths(sql);
   assert(
+    !/(?:^|[^.A-Za-z0-9_])jsonb_object_length\s*\(/gmu.test(sql),
+    "V4 SECURITY DEFINER functions must qualify the public JSON object helper",
+  );
+  assert(
     second.includes(
       'CREATE FUNCTION public."verify_reader_summary_daily_canonical_recovery_v4_provenance"(',
     ) &&
@@ -119,13 +123,98 @@ export const assertReaderSummaryDailyCanonicalRecoveryV4MigrationContract = (): 
       ) &&
       legacy.includes(
         "public.\"reader_summary_production_recovery_canonical_json\"(\n" +
-          "              v_day.\"provider_evidence\"\n            )",
+          "                v_day.\"provider_evidence\"->provider.provider_key\n              )",
       ) &&
+      legacy.includes("v_day.\"canonical_record\"->'providerEvidenceDigests' IS DISTINCT FROM\n" +
+        "              v_provider_digests") &&
+      legacy.includes("v_day.\"canonical_record\"->'providerCoverage' IS DISTINCT FROM\n" +
+        "              v_day.\"provider_counts\"") &&
+      legacy.includes("v_provider_digests->((coverage.ordinal - 1)::INTEGER)->>'sha256'") &&
+      !legacy.includes("v_day.\"canonical_record\"->'providerEvidence' IS DISTINCT FROM") &&
       !legacy.includes(
         "WHEN 'reader_summary.production_recovery_day.v2' THEN\n" +
           "                public.\"reader_summary_weekly_canonical_json\"(v_day.\"provider_evidence\")",
       ),
-    "v2/v3 legacy hash semantics must keep records and provider evidence on their original canonicalizers",
+    "v2/v3 legacy hash semantics must preserve record bytes and reconstruct aggregate provider digests",
+  );
+  assert(
+    first.includes(
+      'public."reader_summary_weekly_canonical_json_unbounded"(authority)',
+    ) &&
+      first.includes(
+        'public."reader_summary_weekly_canonical_json_unbounded"(v_authority)',
+      ) &&
+      first.includes(
+        'public."reader_summary_weekly_canonical_json_unbounded"(v_first."canonical_record")',
+      ) &&
+      first.includes(
+        'public."reader_summary_weekly_canonical_json_unbounded"(authority."source_authority_record")',
+      ) &&
+      first.includes(
+        'public."reader_summary_weekly_canonical_json_unbounded"(v_first)',
+      ) &&
+      !first.includes(
+        'public."reader_summary_weekly_canonical_json"(v_authority)',
+      ),
+    "strictly shaped V4 plans and source authorities must use one unbounded canonical byte contract",
+  );
+  assert(
+    first.includes(
+      'public."reader_summary_weekly_canonical_json_unbounded"(v_projection)',
+    ) &&
+      second.includes(
+        'public."reader_summary_weekly_canonical_json_unbounded"(v_projection)',
+      ) &&
+      first.includes(
+        'public."reader_summary_weekly_canonical_json_unbounded"(v_provider)',
+      ) &&
+      first.includes(
+        'public."reader_summary_weekly_canonical_json_unbounded"(v_report)',
+      ) &&
+      first.includes(
+        'public."reader_summary_weekly_canonical_json_unbounded"(v_publication."exact_proof")',
+      ) &&
+      first.includes(
+        'public."reader_summary_weekly_canonical_json_unbounded"(v_artifact."artifact_payload")',
+      ) &&
+      first.includes(
+        'public."reader_summary_weekly_canonical_json_unbounded"(v_body)',
+      ),
+    "strict V4 publication evidence must preserve exact canonical bytes beyond weekly shape limits",
+  );
+  assert(
+    second.includes(
+      'CREATE FUNCTION public."reader_summary_daily_canonical_recovery_v4_report_canonical_json"(',
+    ) &&
+      second.includes("public.jsonb_object_length(value) <> 9") &&
+      second.includes(
+        "IS DISTINCT FROM 'reader_summary.daily_canonical_recovery.v4' THEN",
+      ) &&
+      second.includes("v_nodes > 25000") &&
+      second.includes("v_depth > 32") &&
+      second.includes("v_bytes > 4194304") &&
+      second.includes(
+        'v_report_canonical := "reader_summary_daily_canonical_recovery_v4_report_canonical_json"(v_report);',
+      ) &&
+      second.includes(
+        "daily canonical recovery v4 publisher rewrite target diverged",
+      ) &&
+      second.includes(
+        "daily canonical recovery v4 pre-evidence rewrite target diverged",
+      ) &&
+      second.includes(
+        "artifact diverged from output_text",
+      ) &&
+      second.includes(
+        'public."reader_summary_weekly_canonical_json"(value);',
+      ),
+    "only exact V4 reports may use the finite widened canonicalization profile",
+  );
+  assert(
+    (sql.match(
+      /WHEN 'reader_summary\.production_recovery_authority\.v2' THEN\s+lease\."issued_at"/gu,
+    )?.length ?? 0) === 2,
+    "V2 source authority cutoffs must bind the immutable lease issuance timestamp",
   );
   assert(
     !sql.includes("Legacy immutable authority explicitly marks GitHub evidence") &&
@@ -156,8 +245,8 @@ const migrationFunction = (
   name: string,
   nextName: string,
 ): string => {
-  const start = sql.indexOf(`CREATE FUNCTION public.\"${name}\"()`);
-  const end = sql.indexOf(`CREATE FUNCTION public.\"${nextName}\"(`, start);
+  const start = sql.indexOf(`CREATE FUNCTION public."${name}"()`);
+  const end = sql.indexOf(`CREATE FUNCTION public."${nextName}"(`, start);
   if (start < 0 || end < 0 || end <= start) {
     throw new Error(`daily canonical recovery migration function ${name} is missing`);
   }
@@ -207,30 +296,49 @@ export const assertReaderSummaryDailyCanonicalRecoveryV4PostgresContract = async
       (SELECT count(*) FROM public.reader_summary_daily_canonical_recovery_v4_plans)::TEXT plans,
       (SELECT count(*) FROM public.reader_summary_daily_canonical_recovery_v4_authorities)::TEXT authorities,
       (SELECT count(*) FROM public.reader_summary_daily_canonical_recovery_v4_leases)::TEXT leases,
-      (SELECT count(DISTINCT btrim(canonical_sha256)) FROM public.reader_summary_daily_canonical_recovery_v4_plans)::TEXT matchingPlanHashes,
+      (SELECT count(DISTINCT btrim(canonical_sha256)) FROM public.reader_summary_daily_canonical_recovery_v4_plans)::TEXT "matchingPlanHashes",
       (SELECT count(*) FROM pg_catalog.pg_class
        WHERE relname LIKE 'reader_summary_daily_canonical_recovery_v4_%'
-         AND relrowsecurity AND relforcerowsecurity)::TEXT forcedRls,
+         AND relrowsecurity AND relforcerowsecurity)::TEXT "forcedRls",
       (SELECT count(*) FROM pg_catalog.pg_proc procedure
        JOIN pg_catalog.pg_namespace namespace ON namespace.oid = procedure.pronamespace
        WHERE namespace.nspname = 'public'
          AND procedure.proname LIKE '%reader_summary_daily_canonical_recovery_v4%'
-         AND (NOT procedure.prosecdef
-          OR procedure.proconfig IS DISTINCT FROM ARRAY['search_path=pg_catalog']::TEXT[]))::TEXT unsafeFunctions
+         AND (procedure.proconfig IS DISTINCT FROM ARRAY['search_path=pg_catalog']::TEXT[]
+          OR (NOT procedure.prosecdef AND procedure.proname NOT IN (
+            'reader_summary_daily_canonical_recovery_v4_model_identity',
+            'reader_summary_daily_canonical_recovery_v4_report_canonical_json',
+            'record_reader_summary_daily_canonical_recovery_v4_evidence'
+          ))))::TEXT "unsafeFunctions"
   `);
   const count = counts.rows[0];
   assert(
     count?.plans === "2" && count.matchingPlanHashes === "1" &&
       count.authorities === "8" && count.leases === "8",
-    "v4 did not persist exactly two matching plans and eight immutable rows",
+    `v4 did not persist exactly two matching plans and eight immutable rows: ${JSON.stringify(count)}`,
   );
   assert(
     count.forcedRls === "3" && count.unsafeFunctions === "0",
-    "v4 RLS or SECURITY DEFINER hardening diverged",
+    `v4 RLS or SECURITY DEFINER hardening diverged: ${JSON.stringify(count)}`,
   );
 
   await assertJul23Jul28Jul30Authority(input.auditor);
   await assertLeastPrivilege(input.auditor);
+  await assertRejected(
+    input.auditor,
+    `BEGIN;
+       ALTER TABLE public.reader_summary_production_recovery_days
+         DISABLE TRIGGER reader_summary_production_recovery_days_immutable;
+       UPDATE public.reader_summary_production_recovery_days
+       SET provider_evidence = jsonb_set(
+         provider_evidence, '{rss,0,title}', '"tampered legacy evidence"'::JSONB, false
+       )
+       WHERE tenant_id = '${tenant}' AND workspace_id = '${workspace}'
+         AND requested_utc_date = DATE '2026-07-24';
+       SELECT public.assert_reader_summary_daily_canonical_recovery_v4_legacy();
+       COMMIT`,
+    "legacy provider evidence tampering",
+  );
   await assertRejected(
     input.auditor,
     `BEGIN; SET LOCAL ROLE social_monitor_reader_summary_publication_owner;
@@ -365,7 +473,7 @@ const assertJul23Jul28Jul30Authority = async (client: Client): Promise<void> => 
     observedBeyondCutoff: string;
   }>(`
     SELECT
-      (SELECT github_evidence->>'mode' || ':' || github_evidence->>'evidenceCount'
+      (SELECT (github_evidence->>'mode') || ':' || (github_evidence->>'evidenceCount')
        FROM public.reader_summary_production_recovery_days
        WHERE requested_utc_date = DATE '2026-07-23' LIMIT 1) AS "jul23",
       (SELECT jsonb_build_array(
@@ -380,7 +488,7 @@ const assertJul23Jul28Jul30Authority = async (client: Client): Promise<void> => 
        FROM public.reader_summary_production_recovery_days day,
        LATERAL jsonb_each(day.provider_evidence) entry(key, value)
        WHERE requested_utc_date = DATE '2026-07-23') AS "jul23Total",
-      (SELECT github_evidence->>'mode' || ':' || github_evidence->>'evidenceCount'
+      (SELECT (github_evidence->>'mode') || ':' || (github_evidence->>'evidenceCount')
        FROM public.reader_summary_production_recovery_days
        WHERE requested_utc_date = DATE '2026-07-24' LIMIT 1) AS "jul24",
       (SELECT jsonb_build_array(
@@ -395,7 +503,7 @@ const assertJul23Jul28Jul30Authority = async (client: Client): Promise<void> => 
        FROM public.reader_summary_production_recovery_days day,
        LATERAL jsonb_each(day.provider_evidence) entry(key, value)
        WHERE requested_utc_date = DATE '2026-07-24') AS "jul24Total",
-      (SELECT github_evidence->>'mode' || ':' || github_evidence->>'evidenceCount'
+      (SELECT (github_evidence->>'mode') || ':' || (github_evidence->>'evidenceCount')
        FROM public.reader_summary_production_recovery_days
        WHERE requested_utc_date = DATE '2026-07-28' LIMIT 1) AS "jul28",
       (SELECT jsonb_build_array(
@@ -410,7 +518,7 @@ const assertJul23Jul28Jul30Authority = async (client: Client): Promise<void> => 
        FROM public.reader_summary_production_recovery_days day,
        LATERAL jsonb_each(day.provider_evidence) entry(key, value)
        WHERE requested_utc_date = DATE '2026-07-28') AS "jul28Total",
-      (SELECT github_evidence->>'mode' || ':' || github_evidence->>'evidenceCount'
+      (SELECT (github_evidence->>'mode') || ':' || (github_evidence->>'evidenceCount')
        FROM public.reader_summary_production_recovery_days
        WHERE requested_utc_date = DATE '2026-07-30' LIMIT 1) AS "jul30",
       (SELECT jsonb_build_array(

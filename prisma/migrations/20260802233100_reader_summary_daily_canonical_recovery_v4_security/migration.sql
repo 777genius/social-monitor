@@ -460,7 +460,7 @@ BEGIN
   v_projection := v_authority."source_authority_record"->'githubProjection';
   IF jsonb_typeof(v_audit) IS DISTINCT FROM 'object'
     OR jsonb_typeof(v_recovery) IS DISTINCT FROM 'object'
-    OR jsonb_object_length(v_recovery) <> 13
+    OR public.jsonb_object_length(v_recovery) <> 13
     OR NOT (v_recovery ?& ARRAY[
       'schemaVersion', 'recoveryVersion', 'selectedOutputKind',
       'sourceAuthoritySchemaVersion', 'tenantId', 'workspaceId',
@@ -486,7 +486,7 @@ BEGIN
     OR btrim(v_recovery->>'outputTextSha256') !~ '^[0-9a-f]{64}$'
     OR COALESCE(v_recovery->>'outputTextByteLength', '') !~ '^[1-9][0-9]*$'
     OR btrim(v_recovery->>'githubProjectionSha256') IS DISTINCT FROM encode(
-      sha256(convert_to(public."reader_summary_weekly_canonical_json"(v_projection), 'UTF8')),
+      sha256(convert_to(public."reader_summary_weekly_canonical_json_unbounded"(v_projection), 'UTF8')),
       'hex'
     )
     OR v_lease."response_bytes" IS NULL
@@ -496,7 +496,25 @@ BEGIN
     OR (v_recovery->>'outputTextByteLength')::INTEGER IS DISTINCT FROM
       octet_length(v_lease."response_bytes")
     OR v_lease."state" NOT IN ('COMPLETED', 'PUBLICATION_PENDING', 'FINALIZED') THEN
-    RAISE EXCEPTION 'daily canonical recovery v4 provenance is invalid';
+    RAISE EXCEPTION 'daily canonical recovery v4 provenance is invalid: %',
+      CASE
+        WHEN jsonb_typeof(v_audit) IS DISTINCT FROM 'object' THEN 'audit_type'
+        WHEN jsonb_typeof(v_recovery) IS DISTINCT FROM 'object' THEN
+          'recovery_type:' || COALESCE(v_audit->'reasons'->>0, 'missing reason')
+        WHEN public.jsonb_object_length(v_recovery) <> 13 THEN 'recovery_keys'
+        WHEN v_recovery->>'recoveryVersion' IS DISTINCT FROM 'reader_summary.daily_canonical_recovery.v4' THEN 'recovery_version'
+        WHEN v_recovery->>'tenantId' IS DISTINCT FROM target_tenant_id::TEXT THEN 'tenant'
+        WHEN v_recovery->>'workspaceId' IS DISTINCT FROM target_workspace_id::TEXT THEN 'workspace'
+        WHEN v_recovery->>'requestedUtcDate' IS DISTINCT FROM to_char(target_date, 'YYYY-MM-DD') THEN 'date'
+        WHEN btrim(v_recovery->>'sourceAuthoritySha256') IS DISTINCT FROM btrim(v_authority."source_authority_sha256") THEN 'authority_sha'
+        WHEN btrim(v_recovery->>'modelJobIdentity') IS DISTINCT FROM btrim(v_lease."model_job_identity") THEN 'model_identity'
+        WHEN btrim(v_recovery->>'githubProjectionSha256') IS DISTINCT FROM encode(sha256(convert_to(public."reader_summary_weekly_canonical_json_unbounded"(v_projection), 'UTF8')), 'hex') THEN 'github_projection_sha'
+        WHEN v_lease."response_bytes" IS NULL THEN 'response_missing'
+        WHEN v_lease."receipt_bytes" IS NULL THEN 'receipt_missing'
+        WHEN btrim(v_recovery->>'outputTextSha256') IS DISTINCT FROM encode(sha256(v_lease."response_bytes"), 'hex') THEN 'response_sha'
+        WHEN (v_recovery->>'outputTextByteLength')::INTEGER IS DISTINCT FROM octet_length(v_lease."response_bytes") THEN 'response_length'
+        ELSE 'lease_state:' || v_lease."state"
+      END;
   END IF;
 
   BEGIN
@@ -509,14 +527,14 @@ BEGIN
     OR v_lease."response_bytes" IS DISTINCT FROM convert_to(
       public."reader_summary_weekly_canonical_json"(v_response), 'UTF8'
     )
-    OR jsonb_object_length(v_response) <> 12
+    OR public.jsonb_object_length(v_response) <> 12
     OR NOT (v_response ?& ARRAY[
       'headline', 'executiveSummary', 'narrativeSections', 'content', 'topStories',
       'interestHighlights', 'repeatedSignals', 'risksAndUnknowns', 'citationMap',
       'qualityFlags', 'confidence', 'noSignalReason'
     ])
     OR jsonb_typeof(v_receipt) IS DISTINCT FROM 'object'
-    OR jsonb_object_length(v_receipt) <> 8
+    OR public.jsonb_object_length(v_receipt) <> 8
     OR NOT (v_receipt ?& ARRAY[
       'schemaVersion', 'modelJobIdentity', 'requestedUtcDate', 'sourceAuthoritySha256',
       'responseSha256', 'responseByteLength', 'attestationSha256', 'attestation'
@@ -533,8 +551,22 @@ BEGIN
     RAISE EXCEPTION 'daily canonical recovery v4 output_text provenance diverged';
   END IF;
 
+  -- Only direct model fields can be compared byte-for-byte here. The remaining
+  -- artifact is a deterministic domain projection and is source/hash-bound by
+  -- the publication recorder rather than falsely equated to raw output_text.
+  IF target_artifact_id IS NOT NULL AND (
+    v_artifact."headline" IS DISTINCT FROM v_response->>'headline'
+    OR v_artifact."summary_text" IS DISTINCT FROM v_response->>'executiveSummary'
+  ) THEN
+    RAISE EXCEPTION 'daily canonical recovery v4 artifact diverged from output_text: %',
+      CASE
+        WHEN v_artifact."headline" IS DISTINCT FROM v_response->>'headline' THEN 'headline'
+        ELSE 'executiveSummary'
+      END;
+  END IF;
+
   IF v_projection->>'mode' = 'checked_at_collection_anchor' THEN
-    IF jsonb_object_length(v_audit) <> 11
+    IF public.jsonb_object_length(v_audit) <> 11
       OR v_audit->>'schemaVersion' IS DISTINCT FROM 'reader_summary.github_projection.v1'
       OR v_audit->>'status' IS DISTINCT FROM 'verified'
       OR v_audit->>'requestedUtcDay' IS DISTINCT FROM to_char(target_date, 'YYYY-MM-DD')
@@ -551,7 +583,7 @@ BEGIN
     END IF;
   ELSIF v_projection->>'mode' = 'historical_omission' THEN
     IF target_date NOT IN (DATE '2026-07-23', DATE '2026-07-28', DATE '2026-07-30')
-      OR jsonb_object_length(v_audit) <> 11
+      OR public.jsonb_object_length(v_audit) <> 11
       OR v_audit->>'schemaVersion' IS DISTINCT FROM 'reader_summary.github_projection.v1'
       OR v_audit->>'status' IS DISTINCT FROM 'not_required'
       OR v_audit->>'requestedUtcDay' IS DISTINCT FROM to_char(target_date, 'YYYY-MM-DD')
@@ -575,6 +607,135 @@ BEGIN
   RETURN TRUE;
 END;
 $function$;
+
+-- The ordinary publisher intentionally applies the tighter weekly JSON shape
+-- limit to reports. A verified V4 artifact can legitimately carry the full
+-- immutable recovery audit beyond that node limit, while its exact bytes are
+-- still bound by the V4 provenance verifier and publication evidence hashes.
+CREATE FUNCTION public."reader_summary_daily_canonical_recovery_v4_report_canonical_json"(
+  value JSONB
+) RETURNS TEXT LANGUAGE plpgsql IMMUTABLE STRICT PARALLEL SAFE
+SET search_path = pg_catalog AS $function$
+DECLARE
+  v_array_elements BIGINT;
+  v_bytes BIGINT;
+  v_depth INTEGER;
+  v_max_array INTEGER;
+  v_max_keys INTEGER;
+  v_max_string INTEGER;
+  v_nodes BIGINT;
+  v_object_keys BIGINT;
+  v_result TEXT;
+BEGIN
+  IF jsonb_typeof(value) IS DISTINCT FROM 'object'
+    OR public.jsonb_object_length(value) <> 9
+    OR value->>'schemaVersion' IS DISTINCT FROM 'reader_summary.publication_report.v1'
+    OR value->'qualitySignals'->'githubProjectionAudit'->'recoveryV4'->>'recoveryVersion'
+      IS DISTINCT FROM 'reader_summary.daily_canonical_recovery.v4' THEN
+    RETURN public."reader_summary_weekly_canonical_json"(value);
+  END IF;
+  IF octet_length(convert_to(value::TEXT, 'UTF8')) > 4194304 THEN
+    RAISE EXCEPTION 'daily canonical recovery v4 report exceeds byte bounds';
+  END IF;
+  WITH RECURSIVE node(child, depth) AS (
+    SELECT value, 0
+    UNION ALL
+    SELECT nested.child, node.depth + 1
+    FROM node
+    CROSS JOIN LATERAL (
+      SELECT item.value AS child
+      FROM jsonb_array_elements(CASE jsonb_typeof(node.child)
+        WHEN 'array' THEN node.child ELSE '[]'::JSONB END) AS item
+      UNION ALL
+      SELECT item.value AS child
+      FROM jsonb_each(CASE jsonb_typeof(node.child)
+        WHEN 'object' THEN node.child ELSE '{}'::JSONB END) AS item
+    ) AS nested
+    WHERE node.depth <= 32
+  )
+  SELECT count(*), max(depth),
+    COALESCE(sum(CASE jsonb_typeof(child) WHEN 'object'
+      THEN public.jsonb_object_length(child) ELSE 0 END), 0),
+    COALESCE(max(CASE jsonb_typeof(child) WHEN 'object'
+      THEN public.jsonb_object_length(child) ELSE 0 END), 0),
+    COALESCE(sum(CASE jsonb_typeof(child) WHEN 'array'
+      THEN jsonb_array_length(child) ELSE 0 END), 0),
+    COALESCE(max(CASE jsonb_typeof(child) WHEN 'array'
+      THEN jsonb_array_length(child) ELSE 0 END), 0),
+    COALESCE(max(CASE jsonb_typeof(child) WHEN 'string'
+      THEN public.reader_summary_weekly_utf16_length(child #>> '{}') ELSE 0 END), 0)
+  INTO v_nodes, v_depth, v_object_keys, v_max_keys,
+    v_array_elements, v_max_array, v_max_string
+  FROM node;
+  IF v_depth > 32 OR v_nodes > 25000 OR v_object_keys > 20000
+    OR v_max_keys > 128 OR v_array_elements > 20000
+    OR v_max_array > 1024 OR v_max_string > 65536 THEN
+    RAISE EXCEPTION 'daily canonical recovery v4 report exceeds structural bounds';
+  END IF;
+  v_result := public."reader_summary_weekly_canonical_json_unbounded"(value);
+  v_bytes := octet_length(convert_to(v_result, 'UTF8'));
+  IF v_bytes > 4194304 THEN
+    RAISE EXCEPTION 'daily canonical recovery v4 report exceeds byte bounds';
+  END IF;
+  RETURN v_result;
+END;
+$function$;
+
+-- Replace exactly the report canonicalization call in the already-deployed
+-- publisher. Keeping the rewrite guarded makes drift fail the migration rather
+-- than silently broadening canonicalization for ordinary daily/weekly reports.
+DO $rewrite_publish_reader_summary$
+DECLARE
+  v_definition TEXT;
+  v_needle CONSTANT TEXT :=
+    'v_report_canonical := "reader_summary_weekly_canonical_json"(v_report);';
+  v_replacement CONSTANT TEXT :=
+    'v_report_canonical := "reader_summary_daily_canonical_recovery_v4_report_canonical_json"(v_report);';
+BEGIN
+  SELECT pg_catalog.pg_get_functiondef(
+    'public.publish_reader_summary(jsonb)'::REGPROCEDURE
+  ) INTO STRICT v_definition;
+  IF pg_catalog.length(v_definition) - pg_catalog.length(
+    pg_catalog.replace(v_definition, v_needle, '')
+  ) <> pg_catalog.length(v_needle) THEN
+    RAISE EXCEPTION 'daily canonical recovery v4 publisher rewrite target diverged';
+  END IF;
+  EXECUTE pg_catalog.replace(v_definition, v_needle, v_replacement);
+END;
+$rewrite_publish_reader_summary$;
+
+DO $rewrite_publish_reader_summary_pre_evidence$
+DECLARE
+  v_definition TEXT;
+  v_report_needle CONSTANT TEXT :=
+    'v_report_canonical := "reader_summary_weekly_canonical_json"(v_report);';
+  v_report_replacement CONSTANT TEXT :=
+    'v_report_canonical := "reader_summary_daily_canonical_recovery_v4_report_canonical_json"(v_report);';
+  v_lineage_needle CONSTANT TEXT :=
+    'OR v_artifact."artifact_payload"->''lineage'' IS DISTINCT FROM jsonb_build_object(
+''modelVersion'', v_artifact."model_version", ''promptVersion'', v_artifact."prompt_version" )';
+  v_lineage_replacement CONSTANT TEXT :=
+    'OR ((v_artifact."quality_signals"->''githubProjectionAudit''->''recoveryV4''->>''recoveryVersion'' IS DISTINCT FROM ''reader_summary.daily_canonical_recovery.v4'' AND v_artifact."artifact_payload"->''lineage'' IS DISTINCT FROM jsonb_build_object(''modelVersion'', v_artifact."model_version", ''promptVersion'', v_artifact."prompt_version")) OR (v_artifact."quality_signals"->''githubProjectionAudit''->''recoveryV4''->>''recoveryVersion'' = ''reader_summary.daily_canonical_recovery.v4'' AND (v_artifact."artifact_payload"->''lineage''->>''modelVersion'' IS DISTINCT FROM v_artifact."model_version" OR v_artifact."artifact_payload"->''lineage''->>''promptVersion'' IS DISTINCT FROM v_artifact."prompt_version")))';
+BEGIN
+  SELECT pg_catalog.pg_get_functiondef(
+    'public.publish_reader_summary_pre_evidence(jsonb)'::REGPROCEDURE
+  ) INTO STRICT v_definition;
+  IF pg_catalog.length(v_definition) - pg_catalog.length(
+    pg_catalog.replace(v_definition, v_report_needle, '')
+  ) <> pg_catalog.length(v_report_needle)
+    OR pg_catalog.length(v_definition) - pg_catalog.length(
+      pg_catalog.replace(v_definition, v_lineage_needle, '')
+    ) <> pg_catalog.length(v_lineage_needle) THEN
+    RAISE EXCEPTION 'daily canonical recovery v4 pre-evidence rewrite target diverged';
+  END IF;
+  v_definition := pg_catalog.replace(
+    v_definition, v_report_needle, v_report_replacement
+  );
+  EXECUTE pg_catalog.replace(
+    v_definition, v_lineage_needle, v_lineage_replacement
+  );
+END;
+$rewrite_publish_reader_summary_pre_evidence$;
 
 CREATE FUNCTION public."prepare_reader_summary_daily_canonical_recovery_v4_publication"(
   target_tenant_id UUID,
@@ -865,6 +1026,11 @@ REVOKE ALL ON FUNCTION public."verify_reader_summary_daily_canonical_recovery_v4
   UUID, UUID, DATE, JSONB, UUID
 ) FROM PUBLIC, "social_monitor_reader_summary_daily_terminal",
   "social_monitor_reader_summary_publication_runtime";
+REVOKE ALL ON FUNCTION
+  public."reader_summary_daily_canonical_recovery_v4_report_canonical_json"(JSONB)
+FROM PUBLIC, "social_monitor_reader_summary_daily_terminal",
+  "social_monitor_reader_summary_publication_runtime",
+  "social_monitor_tenant_system_runtime";
 REVOKE ALL ON FUNCTION public."complete_reader_summary_daily_canonical_recovery_v4"(
   UUID, UUID, DATE, TEXT, BIGINT, TIMESTAMPTZ, BYTEA, CHAR(64), JSONB,
   BYTEA, CHAR(64), BYTEA, CHAR(64)

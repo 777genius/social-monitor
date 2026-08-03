@@ -21,9 +21,15 @@ RABBITMQ_QUORUM_RECOVERY_TIMEOUT_SECONDS=3
 RABBITMQ_QUORUM_RECOVERY_SLEEP_SECONDS=1
 RABBITMQ_QUORUM_PROBE_NOPROC=64
 TARGET_ID=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+REPLACEMENT_ID=1111111111111111111111111111111111111111111111111111111111111111
 TARGET_IMAGE=sha256:abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd
+REPLACEMENT_IMAGE=sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 TARGET_HOSTNAME=rabbitmq-recovery-fixture
 TARGET_VOLUME=${PROJECT}_rabbitmq-data
+ACTIVE_TARGET_ID=$TARGET_ID
+ACTIVE_TARGET_IMAGE=$TARGET_IMAGE
+ACTIVE_TARGET_HOSTNAME=$TARGET_HOSTNAME
+ACTIVE_TARGET_VOLUME=$TARGET_VOLUME
 CLONE_ID=fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210
 SOURCE_DATA=$FIXTURE/source-data
 DOCKER_CALLS=$FIXTURE/docker-calls
@@ -54,10 +60,10 @@ flock() {
 }
 
 rabbitmq_quorum_health_identify_target() {
-  RABBITMQ_QUORUM_TARGET_CONTAINER_ID=$TARGET_ID
-  RABBITMQ_QUORUM_TARGET_IMAGE_ID=$TARGET_IMAGE
-  RABBITMQ_QUORUM_TARGET_HOSTNAME=$TARGET_HOSTNAME
-  RABBITMQ_QUORUM_TARGET_VOLUME=$TARGET_VOLUME
+  RABBITMQ_QUORUM_TARGET_CONTAINER_ID=$ACTIVE_TARGET_ID
+  RABBITMQ_QUORUM_TARGET_IMAGE_ID=$ACTIVE_TARGET_IMAGE
+  RABBITMQ_QUORUM_TARGET_HOSTNAME=$ACTIVE_TARGET_HOSTNAME
+  RABBITMQ_QUORUM_TARGET_VOLUME=$ACTIVE_TARGET_VOLUME
   export RABBITMQ_QUORUM_TARGET_CONTAINER_ID RABBITMQ_QUORUM_TARGET_IMAGE_ID \
     RABBITMQ_QUORUM_TARGET_HOSTNAME RABBITMQ_QUORUM_TARGET_VOLUME
 }
@@ -76,7 +82,7 @@ rabbitmq_quorum_recovery_probe_container() {
   if [[ $container_id == "$CLONE_ID" ]]; then
     return "$CLONE_PROBE_STATUS"
   fi
-  [[ $container_id == "$TARGET_ID" ]] || return 1
+  [[ $container_id == "$ACTIVE_TARGET_ID" ]] || return 1
   return "$TARGET_PROBE_STATUS"
 }
 
@@ -85,12 +91,12 @@ docker() {
   printf '%s\n' "$*" >> "$DOCKER_CALLS"
   case $1 in
     inspect)
-      [[ $2 == "$TARGET_ID" && $3 == --format && $4 == '{{.State.StartedAt}}' ]] || return 79
+      [[ $2 == "$ACTIVE_TARGET_ID" && $3 == --format && $4 == '{{.State.StartedAt}}' ]] || return 79
       ((START_FINGERPRINT_STATUS == 0)) || return "$START_FINGERPRINT_STATUS"
       cat "$STARTED_AT_FILE"
       ;;
     run)
-      if [[ " $* " == *" --volumes-from ${TARGET_ID}:ro "* ]]; then
+      if [[ " $* " == *" --volumes-from ${ACTIVE_TARGET_ID}:ro "* ]]; then
         tar -C "$SOURCE_DATA" -cf - .
         return 0
       fi
@@ -125,7 +131,7 @@ docker() {
       printf '%s\n' "$CLONE_ID"
       ;;
     restart)
-      [[ $2 == "$TARGET_ID" ]] || return 75
+      [[ $2 == "$ACTIVE_TARGET_ID" ]] || return 75
       TARGET_RESTARTS=$((TARGET_RESTARTS + 1))
       printf 'restart\n' >> "$RESTART_LOG"
       printf '2026-08-03T01:00:%02d.000000000Z\n' \
@@ -155,6 +161,10 @@ reset_state() {
   TARGET_RESTARTS=0
   CLONE_NAME=''
   START_FINGERPRINT_STATUS=0
+  ACTIVE_TARGET_ID=$TARGET_ID
+  ACTIVE_TARGET_IMAGE=$TARGET_IMAGE
+  ACTIVE_TARGET_HOSTNAME=$TARGET_HOSTNAME
+  ACTIVE_TARGET_VOLUME=$TARGET_VOLUME
   : > "$DOCKER_CALLS"
   : > "$RESTART_LOG"
   printf '%s\n' '2026-08-03T01:00:00.000000000Z' > "$STARTED_AT_FILE"
@@ -183,17 +193,44 @@ snapshot_dir=$(awk -F= '$1 == "snapshot_dir" { print $2 }' "$state_file")
 [[ -d $snapshot_dir && -f $snapshot_dir/rabbitmq-data.tar && -f $snapshot_dir/manifest ]] || fail 'immutable snapshot files are missing'
 [[ ! -e $snapshot_dir/.clone-* ]] || fail 'isolated clone was not cleaned'
 
+SOURCE_PROBE_STATUS=0
 if ! rabbitmq_quorum_recovery_ensure_steady; then
-  fail 'completed recovery state did not resume idempotently'
+  fail 'completed recovery state did not retire after steady quorum health'
 fi
-[[ $(wc -l < "$RESTART_LOG" | tr -d '[:space:]') == 1 ]] || fail 'completed recovery state restarted the target again'
+[[ ! -e $state_file ]] || fail 'steady completed recovery state was not retired'
+[[ $(wc -l < "$RESTART_LOG" | tr -d '[:space:]') == 1 ]] || fail 'steady completed recovery restarted the target'
+[[ -d $snapshot_dir ]] || fail 'steady completed recovery retirement removed immutable evidence'
 
+SOURCE_PROBE_STATUS=64
+if ! rabbitmq_quorum_recovery_ensure_steady; then
+  fail 'future all-queue noproc did not reinitialize after completed state retirement'
+fi
+[[ $(wc -l < "$RESTART_LOG" | tr -d '[:space:]') == 2 ]] || fail 'reinitialized recovery did not restart the target once'
+assert_file_contains 'phase=complete' "$state_file"
+
+ACTIVE_TARGET_ID=$REPLACEMENT_ID
+ACTIVE_TARGET_IMAGE=$REPLACEMENT_IMAGE
+SOURCE_PROBE_STATUS=0
+if ! rabbitmq_quorum_recovery_ensure_steady; then
+  fail 'completed state did not retire for a healthy replacement with a new image ID'
+fi
+[[ ! -e $state_file ]] || fail 'healthy replacement did not retire completed state'
+[[ $(wc -l < "$RESTART_LOG" | tr -d '[:space:]') == 2 ]] || fail 'healthy replacement restarted the target'
+
+SOURCE_PROBE_STATUS=64
+if ! rabbitmq_quorum_recovery_ensure_steady; then
+  fail 'replacement target all-queue noproc did not reinitialize recovery'
+fi
+[[ $(wc -l < "$RESTART_LOG" | tr -d '[:space:]') == 3 ]] || fail 'replacement recovery did not restart the replacement target once'
+assert_file_contains 'phase=complete' "$state_file"
+
+snapshot_dir=$(awk -F= '$1 == "snapshot_dir" { print $2 }' "$state_file")
 RABBITMQ_QUORUM_RECOVERY_SNAPSHOT_DIR=$snapshot_dir
 RABBITMQ_QUORUM_RECOVERY_SNAPSHOT_SHA256=$(awk -F= '$1 == "snapshot_sha256" { print $2 }' "$state_file")
 RABBITMQ_QUORUM_RECOVERY_SNAPSHOT_BYTES=$(awk -F= '$1 == "snapshot_bytes" { print $2 }' "$state_file")
 RABBITMQ_QUORUM_RECOVERY_SNAPSHOT_ENTRIES=$(awk -F= '$1 == "snapshot_entries" { print $2 }' "$state_file")
 RABBITMQ_QUORUM_RECOVERY_PRE_RESTART_FINGERPRINT=$(
-  rabbitmq_quorum_recovery_container_start_fingerprint "$TARGET_ID"
+  rabbitmq_quorum_recovery_container_start_fingerprint "$ACTIVE_TARGET_ID"
 )
 rabbitmq_quorum_health_identify_target
 rabbitmq_quorum_recovery_write_state "$RABBITMQ_QUORUM_RECOVERY_STATE_ROOT" restart_pending \
@@ -202,7 +239,7 @@ rabbitmq_quorum_recovery_write_state "$RABBITMQ_QUORUM_RECOVERY_STATE_ROOT" rest
 if ! rabbitmq_quorum_recovery_ensure_steady; then
   fail 'restart-pending state did not resume the exact same-container restart'
 fi
-[[ $(wc -l < "$RESTART_LOG" | tr -d '[:space:]') == 2 ]] || fail 'restart-pending state did not execute the missing restart exactly once'
+[[ $(wc -l < "$RESTART_LOG" | tr -d '[:space:]') == 4 ]] || fail 'restart-pending state did not execute the missing restart exactly once'
 
 RABBITMQ_QUORUM_RECOVERY_PRE_RESTART_FINGERPRINT=$(
   printf '%064d' 0
@@ -213,14 +250,14 @@ rabbitmq_quorum_recovery_write_state "$RABBITMQ_QUORUM_RECOVERY_STATE_ROOT" rest
 if ! rabbitmq_quorum_recovery_ensure_steady; then
   fail 'restart-pending state did not reconcile an already-issued exact-container restart'
 fi
-[[ $(wc -l < "$RESTART_LOG" | tr -d '[:space:]') == 2 ]] || fail 'restart reconciliation duplicated an already-issued restart'
+[[ $(wc -l < "$RESTART_LOG" | tr -d '[:space:]') == 4 ]] || fail 'restart reconciliation duplicated an already-issued restart'
 
 chmod u+w "$snapshot_dir" "$snapshot_dir/manifest"
 printf 'version=corrupt\n' > "$snapshot_dir/manifest"
 if rabbitmq_quorum_recovery_ensure_steady >/dev/null 2>&1; then
   fail 'tampered immutable snapshot manifest was accepted'
 fi
-[[ $(wc -l < "$RESTART_LOG" | tr -d '[:space:]') == 2 ]] || fail 'tampered snapshot restarted the target'
+[[ $(wc -l < "$RESTART_LOG" | tr -d '[:space:]') == 4 ]] || fail 'tampered snapshot restarted the target'
 
 reset_state
 SOURCE_PROBE_STATUS=1

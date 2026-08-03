@@ -133,7 +133,7 @@ export type ReaderSummaryDailyCanonicalRecoveryStage = (
   publication: ReaderSummaryDailyCanonicalRecoveryCapturedPublication,
 ) => Promise<Readonly<{
   publish(): Promise<void>;
-  cleanup(removePublished?: boolean): Promise<void>;
+  cleanup(): Promise<void>;
 }>>;
 
 /**
@@ -221,10 +221,13 @@ export class PrismaReaderSummaryDailyCanonicalRecoveryV4Finalization {
         ),
       );
     } catch (error) {
-      await staged.cleanup(true);
+      // A DB client error after publish is ambiguous: the fenced FINALIZED
+      // transaction could already have committed. Preserve immutable public
+      // files so FINALIZED readback never points to missing evidence.
+      await staged.cleanup();
       throw error;
     }
-    await staged.cleanup(false);
+    await staged.cleanup();
     return Object.freeze({
       requestedUtcDate: input.work.requestedUtcDate,
       sourceAuthoritySha256: input.work.sourceAuthoritySha256,

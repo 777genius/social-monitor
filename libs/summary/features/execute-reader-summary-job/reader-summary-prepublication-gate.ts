@@ -56,11 +56,12 @@ export const evaluateReaderSummaryPrepublication = async (params: {
       )) {
         throw new Error("Daily V4 recovery audit does not bind provenance");
       }
-    } catch {
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : "unknown binding error";
       projection = unavailableReaderSummaryGitHubProjectionAudit({
         artifact: params.artifact,
         reason:
-          "Verified Daily V4 recovery provenance could not be bound before publication.",
+          `Verified Daily V4 recovery provenance could not be bound before publication: ${detail}`,
       });
     }
   } else if (

@@ -42,8 +42,9 @@ describe("reader summary daily frozen publication input", () => {
       const selection = await wiring.evidenceSelector.select(
         evidenceQuery(requestedUtcDate, nextDay(requestedUtcDate)),
       );
-      expect(selection.selectedEvidence).toHaveLength(11);
+      expect(selection.selectedEvidence).toEqual([]);
       expect(selection.clusters).toEqual([]);
+      expect(selection.sourceWindow.selectedFeedItemIds).toEqual([]);
       expect(selection.sourceWindow.storyClusterIds).toEqual([]);
       expect(wiring.recoveryProvenance).toMatchObject({
         recoveryVersion: "reader_summary.daily_canonical_recovery.v4",

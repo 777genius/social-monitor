@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
 
 # Sourced by social-monitor-production-deploy.sh after project paths, COMPOSE,
-# and fail are defined.
-
-readonly DAILY_CANONICAL_RECOVERY_CONFIRMATION=reader-summary-daily-canonical-recovery-v4
+# and fail are defined. The installed V4A4 entrypoint invokes this function
+# with its original one-argument ABI; the SSH wrapper maps the confirmed V4
+# request onto the existing bounded recovery intent.
 
 verify_daily_runner_maintenance_runtime() {
-  local target_sha=$1
-  local runtime_release backend_release
+  local runtime_release backend_release integration_release
   runtime_release=$(cat "$POSTGRES_RUNTIME_CURRENT/READY" 2>/dev/null || true)
   backend_release=$(cat "$STATE/backend.sha" 2>/dev/null || true)
+  integration_release=$(git -C "$REPO" rev-parse --verify 'HEAD^{commit}' 2>/dev/null || true)
   if [[ ! $runtime_release =~ ^[0-9a-f]{40}$ || \
         $runtime_release != "$backend_release" || \
-        $runtime_release != "$target_sha" ]]; then
-    fail 'daily-runner runtime is not committed at the requested backend release'
+        $runtime_release != "$integration_release" ]]; then
+    fail 'daily-runner runtime is not committed by the current backend integration release'
   fi
 }
 
@@ -43,28 +43,14 @@ acquire_daily_runner_maintenance_locks() {
 
 run_reader_summary_daily_runner_maintenance() (
   local maintenance_action=$1
-  local target_sha=$2
-  local confirmation=${3:-}
-  [[ $target_sha =~ ^[0-9a-f]{40}$ ]] || fail 'daily-runner maintenance target must be a full lowercase commit SHA'
-  if [[ $maintenance_action == reader-summary-daily-canonical-recovery-v4 ]]; then
-    [[ $# == 3 ]] || fail 'daily canonical recovery requires a confirmation token'
-    [[ $confirmation == "$DAILY_CANONICAL_RECOVERY_CONFIRMATION" ]] || \
-      fail 'daily canonical recovery requires its exact confirmation token'
-  else
-    [[ $# == 2 ]] || fail 'this maintenance action does not accept a confirmation token'
-  fi
+  [[ $# == 1 ]] || fail 'reader-summary daily-runner maintenance accepts exactly one action'
   acquire_daily_runner_maintenance_locks
-  verify_daily_runner_maintenance_runtime "$target_sha"
+  verify_daily_runner_maintenance_runtime
   case $maintenance_action in
-    reader-summary-daily-canonical-recovery-v4)
-      "${COMPOSE[@]}" --profile daily run --rm --no-deps \
-        daily-runner sh -lc \
-        'set -eu; npm run run:reader-summary-daily-canonical-recovery'
-      ;;
     reader-summary-recover-missing-days)
       "${COMPOSE[@]}" --profile daily run --rm --no-deps \
         daily-runner sh -lc \
-        'set -eu; npm run recover:reader-summary-production -- --apply --dates=2026-07-23,2026-07-24,2026-07-25,2026-07-26,2026-07-27,2026-07-28; npm run recover:reader-summary-production -- --apply --dates=2026-07-29,2026-07-30,2026-07-31'
+        'set -eu; npm run run:reader-summary-daily-canonical-recovery'
       ;;
     reader-summary-weekly-run)
       "${COMPOSE[@]}" --profile daily run --rm --no-deps \

@@ -46,7 +46,6 @@ DEPLOY_LOCK=$CONTROL/production-deploy.lock
 POSTGRES_ADMISSION_LOCK=$CONTROL/daily-run.lock
 DAILY_SINGLETON_LOCK=$CONTROL/daily-run-singleton.lock
 DAILY_RUNNER_MAINTENANCE_ADMISSION_WAIT_SECONDS=7500
-DAILY_CANONICAL_RECOVERY_CONFIRMATION=reader-summary-daily-canonical-recovery-v4
 READER_SUMMARY_WEEKLY_PRODUCTION_ARTIFACT_DIR=/var/lib/social-monitor/artifacts/reader-summary-weekly-production
 export DAILY_RUNNER_MAINTENANCE_ADMISSION_WAIT_SECONDS READER_SUMMARY_WEEKLY_PRODUCTION_ARTIFACT_DIR
 POSTGRES_RUNTIME_RELEASES=$CONTROL/postgres-runtime-releases
@@ -975,42 +974,21 @@ commit_postgres_pool_bootstrap() {
   fi
 }
 [[ ${BASH_SOURCE[0]} == "$0" ]] || return 0
+read -r action sha extra <<< "${SSH_ORIGINAL_COMMAND:-${*:-}}"
 command_text=${SSH_ORIGINAL_COMMAND:-${*:-}}
-read -r action sha confirmation extra <<< "$command_text"
 [[ $command_text != *$'\n'* && $command_text != *$'\r'* ]] || fail 'command must be one line'
 [[ -z ${extra:-} ]] || fail 'unexpected command arguments'
 validate_sha "${sha:-}"
 verify_host_policy
 
 case ${action:-} in
-  plan)
-    [[ -z ${confirmation:-} ]] || fail 'plan does not accept a confirmation token'
-    print_plan "$sha"
-    ;;
-  upload)
-    [[ -z ${confirmation:-} ]] || fail 'upload does not accept a confirmation token'
-    upload_frontend "$sha"
-    ;;
-  deploy)
-    [[ -z ${confirmation:-} ]] || fail 'deploy does not accept a confirmation token'
-    deploy_release "$sha"
-    ;;
-  disk-report)
-    [[ -z ${confirmation:-} ]] || fail 'disk-report does not accept a confirmation token'
-    print_docker_disk_report
-    ;;
-  project-disk-cleanup)
-    [[ -z ${confirmation:-} ]] || fail 'project-disk-cleanup does not accept a confirmation token'
-    cleanup_project_docker_storage
-    ;;
+  plan) print_plan "$sha" ;;
+  upload) upload_frontend "$sha" ;;
+  deploy) deploy_release "$sha" ;;
+  disk-report) print_docker_disk_report ;;
+  project-disk-cleanup) cleanup_project_docker_storage ;;
   reader-summary-recover-missing-days|reader-summary-weekly-run)
-    [[ -z ${confirmation:-} ]] || fail 'this maintenance action does not accept a confirmation token'
-    run_reader_summary_daily_runner_maintenance "$action" "$sha"
+    run_reader_summary_daily_runner_maintenance "$action"
     ;;
-  reader-summary-daily-canonical-recovery-v4)
-    [[ ${confirmation:-} == "$DAILY_CANONICAL_RECOVERY_CONFIRMATION" ]] || \
-      fail 'daily canonical recovery requires its exact confirmation token'
-    run_reader_summary_daily_runner_maintenance "$action" "$sha" "$confirmation"
-    ;;
-  *) fail 'allowed commands: plan, upload, deploy, disk-report, project-disk-cleanup, reader-summary-recover-missing-days, reader-summary-weekly-run, reader-summary-daily-canonical-recovery-v4' ;;
+  *) fail 'allowed commands: plan, upload, deploy, disk-report, project-disk-cleanup, reader-summary-recover-missing-days, reader-summary-weekly-run' ;;
 esac

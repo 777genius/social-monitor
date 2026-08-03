@@ -230,6 +230,8 @@ DECLARE
   v_count INTEGER;
   v_expected_dates JSONB;
   v_expected_day_schema TEXT;
+  v_provider_digests JSONB;
+  v_provider_evidence_sha TEXT;
   v_lease public."reader_summary_production_recovery_leases"%ROWTYPE;
   v_day public."reader_summary_production_recovery_days"%ROWTYPE;
 BEGIN
@@ -365,13 +367,73 @@ BEGIN
         AND day."workspace_id" = c_workspace_id
       ORDER BY day."requested_utc_date"
     LOOP
+      v_provider_digests := CASE v_expected_day_schema
+        WHEN 'reader_summary.production_recovery_day.v2' THEN (
+          SELECT jsonb_agg(jsonb_build_object(
+            'providerKey', provider.provider_key,
+            'count', jsonb_array_length(
+              v_day."provider_evidence"->provider.provider_key
+            ),
+            'sha256', encode(sha256(convert_to(
+              public."reader_summary_production_recovery_canonical_json"(
+                v_day."provider_evidence"->provider.provider_key
+              ),
+              'UTF8'
+            )), 'hex')
+          ) ORDER BY provider.ordinal)
+          FROM unnest(ARRAY[
+            'github-trending-page', 'hacker-news', 'reddit', 'rss', 'x-twitter'
+          ]) WITH ORDINALITY AS provider(provider_key, ordinal)
+        )
+        ELSE (
+          SELECT jsonb_agg(jsonb_build_object(
+            'providerKey', coverage.value->>'providerKey',
+            'count', (coverage.value->>'count')::INTEGER,
+            'sha256', encode(sha256(convert_to(
+              public."reader_summary_production_recovery_canonical_json"(
+                v_day."provider_evidence"->(coverage.value->>'providerKey')
+              ),
+              'UTF8'
+            )), 'hex')
+          ) ORDER BY coverage.ordinal)
+          FROM jsonb_array_elements(
+            v_day."canonical_record"->'providerCoverage'
+          ) WITH ORDINALITY AS coverage(value, ordinal)
+        )
+      END;
+      v_provider_evidence_sha := encode(sha256(convert_to(
+        public."reader_summary_production_recovery_canonical_json"(
+          v_provider_digests
+        ),
+        'UTF8'
+      )), 'hex');
       IF v_day."canonical_record"->>'schemaVersion' IS DISTINCT FROM v_expected_day_schema
         OR v_day."canonical_record"->>'requestedUtcDate' IS DISTINCT FROM
           to_char(v_day."requested_utc_date", 'YYYY-MM-DD')
-        OR v_day."canonical_record"->'providerEvidence' IS DISTINCT FROM
-          v_day."provider_evidence"
         OR v_day."canonical_record"->'providerEvidenceSha256' IS DISTINCT FROM
           to_jsonb(btrim(v_day."provider_evidence_sha256"))
+        OR btrim(v_day."provider_evidence_sha256") IS DISTINCT FROM
+          v_provider_evidence_sha
+        OR (v_expected_day_schema = 'reader_summary.production_recovery_day.v2'
+          AND (
+            v_day."canonical_record"->'providerCounts' IS DISTINCT FROM
+              v_day."provider_counts"
+            OR v_day."canonical_record"->'providerEvidenceDigests' IS DISTINCT FROM
+              v_provider_digests
+          ))
+        OR (v_expected_day_schema = 'reader_summary.production_recovery_gap_day.v3'
+          AND (
+            v_day."canonical_record"->'providerCoverage' IS DISTINCT FROM
+              v_day."provider_counts"
+            OR EXISTS (
+              SELECT 1
+              FROM jsonb_array_elements(
+                v_day."canonical_record"->'providerCoverage'
+              ) WITH ORDINALITY AS coverage(value, ordinal)
+              WHERE coverage.value->>'evidenceSha256' IS DISTINCT FROM
+                v_provider_digests->((coverage.ordinal - 1)::INTEGER)->>'sha256'
+            )
+          ))
         OR v_day."canonical_bytes" IS DISTINCT FROM convert_to(
           CASE v_expected_day_schema
             WHEN 'reader_summary.production_recovery_day.v2' THEN
@@ -384,13 +446,6 @@ BEGIN
         )
         OR btrim(v_day."canonical_sha256") IS DISTINCT FROM
           encode(sha256(v_day."canonical_bytes"), 'hex')
-        OR btrim(v_day."provider_evidence_sha256") IS DISTINCT FROM
-          encode(sha256(convert_to(
-            public."reader_summary_production_recovery_canonical_json"(
-              v_day."provider_evidence"
-            ),
-            'UTF8'
-          )), 'hex')
       THEN
         RAISE EXCEPTION 'daily canonical recovery v4 legacy day evidence diverged';
       END IF;
@@ -665,7 +720,7 @@ BEGIN
     SELECT 1
     FROM jsonb_array_elements(legacy_evidence->'github-trending-page') AS evidence(value)
     WHERE jsonb_typeof(evidence.value->'github') IS DISTINCT FROM 'object'
-      OR jsonb_object_length(evidence.value->'github') <> 6
+      OR public.jsonb_object_length(evidence.value->'github') <> 6
       OR NOT (evidence.value->'github' ?& ARRAY[
         'resultId', 'scanJobId', 'scanAttemptNumber', 'repositoryIdentity', 'rank',
         'checkedAt'
@@ -800,7 +855,7 @@ BEGIN
       btrim(lease."canonical_sha256") AS recovery_sha,
       CASE lease."canonical_record"->>'schemaVersion'
         WHEN 'reader_summary.production_recovery_authority.v2' THEN
-          (lease."canonical_record"->>'issuedAt')::TIMESTAMPTZ
+          lease."issued_at"
         ELSE (lease."canonical_record"->'boundaries'->>'authorityCutoffAt')::TIMESTAMPTZ
       END AS cutoff
     FROM public."reader_summary_production_recovery_days" AS day
@@ -830,7 +885,7 @@ BEGIN
     ),
     'sourceAuthority', authority,
     'sourceAuthoritySha256', encode(sha256(convert_to(
-      public."reader_summary_weekly_canonical_json"(authority), 'UTF8'
+      public."reader_summary_weekly_canonical_json_unbounded"(authority), 'UTF8'
     )), 'hex')
   ) ORDER BY "requested_utc_date")
   INTO v_days
@@ -897,7 +952,7 @@ BEGIN
       btrim(lease."canonical_sha256") AS recovery_sha,
       CASE lease."canonical_record"->>'schemaVersion'
         WHEN 'reader_summary.production_recovery_authority.v2' THEN
-          (lease."canonical_record"->>'issuedAt')::TIMESTAMPTZ
+          lease."issued_at"
         ELSE (lease."canonical_record"->'boundaries'->>'authorityCutoffAt')::TIMESTAMPTZ
       END AS cutoff
     INTO STRICT v_day
@@ -921,7 +976,7 @@ BEGIN
       ),
       'sourceAuthority', v_authority,
       'sourceAuthoritySha256', encode(sha256(convert_to(
-        public."reader_summary_weekly_canonical_json"(v_authority), 'UTF8'
+        public."reader_summary_weekly_canonical_json_unbounded"(v_authority), 'UTF8'
       )), 'hex')
     ));
   END LOOP;
@@ -981,7 +1036,7 @@ BEGIN
     OR v_first."canonical_bytes" IS DISTINCT FROM v_second."canonical_bytes"
     OR btrim(v_first."canonical_sha256") IS DISTINCT FROM btrim(v_second."canonical_sha256")
     OR v_first."canonical_bytes" IS DISTINCT FROM convert_to(
-      public."reader_summary_weekly_canonical_json"(v_first."canonical_record"), 'UTF8'
+      public."reader_summary_weekly_canonical_json_unbounded"(v_first."canonical_record"), 'UTF8'
     )
     OR btrim(v_first."canonical_sha256") IS DISTINCT FROM
       encode(sha256(v_first."canonical_bytes"), 'hex')
@@ -1019,7 +1074,7 @@ BEGIN
         authority."requested_utc_date" IN (
           DATE '2026-07-23', DATE '2026-07-28', DATE '2026-07-30'
         ) AND (
-          jsonb_object_length(authority."source_authority_record"->'githubProjection')
+          public.jsonb_object_length(authority."source_authority_record"->'githubProjection')
             IS DISTINCT FROM 3
           OR NOT COALESCE(
             authority."source_authority_record"->'githubProjection' ?& ARRAY[
@@ -1045,7 +1100,7 @@ BEGIN
         authority."requested_utc_date" NOT IN (
           DATE '2026-07-23', DATE '2026-07-28', DATE '2026-07-30'
         ) AND (
-          jsonb_object_length(authority."source_authority_record"->'githubProjection')
+          public.jsonb_object_length(authority."source_authority_record"->'githubProjection')
             IS DISTINCT FROM 7
           OR NOT COALESCE(
             authority."source_authority_record"->'githubProjection' ?& ARRAY[
@@ -1109,7 +1164,7 @@ BEGIN
                 'sourceProviderContentHash', 'scanJobId', 'repositoryFullName',
                 'rank', 'checkedAtCollectionAnchor'
               ]::TEXT[] <> '{}'::JSONB
-              OR jsonb_object_length(projection.value) <> 13
+              OR public.jsonb_object_length(projection.value) <> 13
               OR projection.value->>'providerKey' IS DISTINCT FROM 'github-trending-page'
               OR projection.value->>'scanJobId' !~
                 '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
@@ -1197,7 +1252,7 @@ BEGIN
       OR btrim(authority."source_authority_sha256") IS DISTINCT FROM
         planned.value->>'sourceAuthoritySha256'
       OR authority."source_authority_bytes" IS DISTINCT FROM convert_to(
-        public."reader_summary_weekly_canonical_json"(authority."source_authority_record"),
+        public."reader_summary_weekly_canonical_json_unbounded"(authority."source_authority_record"),
         'UTF8'
       )
       OR btrim(authority."source_authority_sha256") IS DISTINCT FROM
@@ -1308,7 +1363,7 @@ BEGIN
     OR v_artifact."status" NOT IN (v_publication."semantic_status", 'SUPERSEDED')
     OR v_publication."requested_utc_date" <> v_day
     OR jsonb_typeof(v_recovery) IS DISTINCT FROM 'object'
-    OR jsonb_object_length(v_recovery) <> 13
+    OR public.jsonb_object_length(v_recovery) <> 13
     OR NOT (v_recovery ?& ARRAY[
       'schemaVersion', 'recoveryVersion', 'selectedOutputKind',
       'sourceAuthoritySchemaVersion', 'tenantId', 'workspaceId',
@@ -1334,7 +1389,7 @@ BEGIN
     OR btrim(v_recovery->>'outputTextSha256') !~ '^[0-9a-f]{64}$'
     OR COALESCE(v_recovery->>'outputTextByteLength', '') !~ '^[1-9][0-9]*$'
     OR btrim(v_recovery->>'githubProjectionSha256') IS DISTINCT FROM encode(
-      sha256(convert_to(public."reader_summary_weekly_canonical_json"(v_projection), 'UTF8')),
+      sha256(convert_to(public."reader_summary_weekly_canonical_json_unbounded"(v_projection), 'UTF8')),
       'hex'
     )
     OR v_lease."response_bytes" IS NULL
@@ -1356,7 +1411,7 @@ BEGIN
     OR v_lease."response_bytes" IS DISTINCT FROM convert_to(
       public."reader_summary_weekly_canonical_json"(v_response), 'UTF8'
     )
-    OR jsonb_object_length(v_response) <> 12
+    OR public.jsonb_object_length(v_response) <> 12
     OR NOT (v_response ?& ARRAY[
       'headline', 'executiveSummary', 'narrativeSections', 'content', 'topStories',
       'interestHighlights', 'repeatedSignals', 'risksAndUnknowns', 'citationMap',
@@ -1368,13 +1423,24 @@ BEGIN
   THEN
     RAISE EXCEPTION 'daily canonical recovery v4 publication output_text binding diverged';
   END IF;
+  -- Headline and executive summary are direct model fields. Structured story,
+  -- citation, confidence and content fields pass deterministic domain policies;
+  -- they are bound below to frozen source rows and the exact report hash.
+  IF v_artifact."headline" IS DISTINCT FROM v_response->>'headline'
+    OR v_artifact."summary_text" IS DISTINCT FROM v_response->>'executiveSummary' THEN
+    RAISE EXCEPTION 'daily canonical recovery v4 publication artifact diverged from output_text: %',
+      CASE
+        WHEN v_artifact."headline" IS DISTINCT FROM v_response->>'headline' THEN 'headline'
+        ELSE 'executiveSummary'
+      END;
+  END IF;
   BEGIN
     v_receipt := convert_from(v_lease."receipt_bytes", 'UTF8')::JSONB;
   EXCEPTION WHEN OTHERS THEN
     RAISE EXCEPTION 'daily canonical recovery v4 publication receipt is invalid';
   END;
   IF jsonb_typeof(v_receipt) IS DISTINCT FROM 'object'
-    OR jsonb_object_length(v_receipt) <> 8
+    OR public.jsonb_object_length(v_receipt) <> 8
     OR NOT (v_receipt ?& ARRAY[
       'schemaVersion', 'modelJobIdentity', 'requestedUtcDate', 'sourceAuthoritySha256',
       'responseSha256', 'responseByteLength', 'attestationSha256', 'attestation'
@@ -1406,7 +1472,7 @@ BEGIN
     OR (
       v_github_mode = 'checked_at_collection_anchor'
       AND (
-        jsonb_object_length(v_audit) <> 11
+        public.jsonb_object_length(v_audit) <> 11
         OR NOT (v_audit ?& ARRAY[
           'schemaVersion', 'status', 'requestedUtcDay', 'pageCount', 'scannedItemCount',
           'eligibleBindingIds', 'observedThrough', 'bindings', 'violationCodes',
@@ -1428,7 +1494,7 @@ BEGIN
     ) OR (
       v_github_mode = 'historical_omission'
       AND (
-        jsonb_object_length(v_audit) <> 11
+        public.jsonb_object_length(v_audit) <> 11
         OR NOT (v_audit ?& ARRAY[
           'schemaVersion', 'status', 'requestedUtcDay', 'pageCount', 'scannedItemCount',
           'eligibleBindingIds', 'historicalOmission', 'bindings', 'violationCodes',
@@ -1441,7 +1507,7 @@ BEGIN
         OR v_audit->>'scannedItemCount' IS DISTINCT FROM '0'
         OR v_audit->'eligibleBindingIds' IS DISTINCT FROM '[]'::JSONB
         OR jsonb_typeof(v_audit->'historicalOmission') IS DISTINCT FROM 'object'
-        OR jsonb_object_length(v_audit->'historicalOmission') <> 3
+        OR public.jsonb_object_length(v_audit->'historicalOmission') <> 3
         OR NOT (v_audit->'historicalOmission' ?& ARRAY[
           'mode', 'reason', 'authorizedAt'
         ])
@@ -1537,7 +1603,9 @@ BEGIN
   END IF;
   IF (v_publication."semantic_status" = 'COMPLETED' AND jsonb_array_length(v_provider) = 0)
     OR (v_publication."semantic_status" = 'NO_SIGNAL' AND jsonb_array_length(v_provider) <> 0) THEN
-    RAISE EXCEPTION 'daily canonical recovery v4 publication semantic status is invalid';
+    RAISE EXCEPTION 'daily canonical recovery v4 publication semantic status is invalid: status %, provider %, citations %, flags %',
+      v_publication."semantic_status", jsonb_array_length(v_provider),
+      jsonb_array_length(v_artifact."citations"), v_artifact."quality_signals"->'qualityFlags';
   END IF;
   v_provider_counts := (
     SELECT jsonb_agg(jsonb_build_object('providerKey', provider.key, 'count', (
@@ -1548,7 +1616,7 @@ BEGIN
       WITH ORDINALITY AS provider(key, ordinality)
   );
   v_provider_sha := encode(sha256(convert_to(
-    public."reader_summary_weekly_canonical_json"(v_provider), 'UTF8'
+    public."reader_summary_weekly_canonical_json_unbounded"(v_provider), 'UTF8'
   )), 'hex');
   v_github := jsonb_build_object(
     'schemaVersion', 'reader_summary.weekly_publication_github_evidence.v1',
@@ -1570,7 +1638,7 @@ BEGIN
     'canonicalRecoveryV4', v_recovery
   );
   v_github := v_github || jsonb_build_object('sha256', encode(sha256(convert_to(
-    public."reader_summary_weekly_canonical_json"(v_github), 'UTF8'
+    public."reader_summary_weekly_canonical_json_unbounded"(v_github), 'UTF8'
   )), 'hex'));
   v_report := jsonb_build_object(
     'schemaVersion', 'reader_summary.publication_report.v1',
@@ -1588,10 +1656,10 @@ BEGIN
     )
   );
   v_report_sha := encode(sha256(convert_to(
-    public."reader_summary_weekly_canonical_json"(v_report), 'UTF8'
+    public."reader_summary_weekly_canonical_json_unbounded"(v_report), 'UTF8'
   )), 'hex');
   v_proof_sha := encode(sha256(convert_to(
-    public."reader_summary_weekly_canonical_json"(v_publication."exact_proof"), 'UTF8'
+    public."reader_summary_weekly_canonical_json_unbounded"(v_publication."exact_proof"), 'UTF8'
   )), 'hex');
   IF btrim(v_publication."report_sha256") <> v_report_sha
     OR btrim(v_publication."proof_sha256") <> v_proof_sha THEN
@@ -1622,7 +1690,7 @@ BEGIN
     'reportSha256', v_report_sha,
     'proofSha256', v_proof_sha,
     'artifactPayloadSha256', encode(sha256(convert_to(
-      public."reader_summary_weekly_canonical_json"(v_artifact."artifact_payload"), 'UTF8'
+      public."reader_summary_weekly_canonical_json_unbounded"(v_artifact."artifact_payload"), 'UTF8'
     )), 'hex'),
     'providerEvidenceSha256', v_provider_sha,
     'providerEvidence', v_provider,
@@ -1630,7 +1698,7 @@ BEGIN
     'githubEvidence', v_github,
     'publishedAt', to_char(v_publication."published_at" AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
   );
-  v_canonical := public."reader_summary_weekly_canonical_json"(v_body);
+  v_canonical := public."reader_summary_weekly_canonical_json_unbounded"(v_body);
   v_bytes := convert_to(v_canonical, 'UTF8');
   v_sha := encode(sha256(v_bytes), 'hex');
   IF v_existing."publication_id" IS NOT NULL THEN
@@ -1736,14 +1804,14 @@ BEGIN
   END IF;
   v_first := public."reader_summary_daily_canonical_recovery_v4_plan_ordered"();
   v_second := public."reader_summary_daily_canonical_recovery_v4_plan_grouped"();
-  v_bytes := convert_to(public."reader_summary_weekly_canonical_json"(v_first), 'UTF8');
+  v_bytes := convert_to(public."reader_summary_weekly_canonical_json_unbounded"(v_first), 'UTF8');
   v_sha := encode(sha256(v_bytes), 'hex');
   IF v_first IS DISTINCT FROM v_second
     OR v_bytes IS DISTINCT FROM convert_to(
-      public."reader_summary_weekly_canonical_json"(v_second), 'UTF8'
+      public."reader_summary_weekly_canonical_json_unbounded"(v_second), 'UTF8'
     )
     OR v_sha IS DISTINCT FROM encode(sha256(convert_to(
-      public."reader_summary_weekly_canonical_json"(v_second), 'UTF8'
+      public."reader_summary_weekly_canonical_json_unbounded"(v_second), 'UTF8'
     )), 'hex') THEN
     RAISE EXCEPTION 'daily canonical recovery v4 plans are not independently byte-identical';
   END IF;
@@ -1757,7 +1825,7 @@ BEGIN
   LOOP
     v_authority := v_day->'sourceAuthority';
     v_authority_bytes := convert_to(
-      public."reader_summary_weekly_canonical_json"(v_authority), 'UTF8'
+      public."reader_summary_weekly_canonical_json_unbounded"(v_authority), 'UTF8'
     );
     v_authority_sha := encode(sha256(v_authority_bytes), 'hex');
     IF v_authority_sha IS DISTINCT FROM v_day->>'sourceAuthoritySha256' THEN
