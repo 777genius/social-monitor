@@ -478,21 +478,25 @@ const main = async (): Promise<void> => {
     }
   } finally {
     removeReaderSummaryPublicationMigrationWorkspace(migrationWorkspace);
-    await dropPublicationFixtureDatabaseAndRoles({
-      serverAdmin,
-      databaseName,
-      migrationAdminRole,
-      runtimeRole,
-      ownerRolePreexisting,
-      capabilityRolePreexisting,
-      schemaOwnerRolePreexisting,
-      tenantSystemCapabilityRolePreexisting,
-      dailyActivationDefinerRolePreexisting,
-      fixtureDatabaseCreated,
-      fixtureMigrationAdminRoleCreated,
-      fixtureRuntimeRoleCreated,
-      fixtureDailyTerminalRoleCreated,
-    });
+    try {
+      await dropPublicationFixtureDatabaseAndRoles({
+        serverAdmin,
+        databaseName,
+        migrationAdminRole,
+        runtimeRole,
+        ownerRolePreexisting,
+        capabilityRolePreexisting,
+        schemaOwnerRolePreexisting,
+        tenantSystemCapabilityRolePreexisting,
+        dailyActivationDefinerRolePreexisting,
+        fixtureDatabaseCreated,
+        fixtureMigrationAdminRoleCreated,
+        fixtureRuntimeRoleCreated,
+        fixtureDailyTerminalRoleCreated,
+      });
+    } finally {
+      await serverAdmin.end();
+    }
   }
   console.log(
     "Reader summary production recovery PostgreSQL authority gate OK",
