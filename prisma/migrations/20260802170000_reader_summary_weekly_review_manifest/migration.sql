@@ -8,10 +8,10 @@ SET LOCAL ROLE "social_monitor_public_schema_owner";
 GRANT USAGE, CREATE ON SCHEMA public
 TO "social_monitor_reader_summary_publication_owner";
 
+SET LOCAL ROLE "social_monitor_reader_summary_publication_owner";
+
 GRANT REFERENCES ("seal_id") ON TABLE "reader_summary_weekly_certification_seals"
 TO "social_monitor_reader_summary_publication_owner";
-
-SET LOCAL ROLE "social_monitor_reader_summary_publication_owner";
 
 CREATE TABLE "reader_summary_weekly_review_manifests" (
   "manifest_id" TEXT NOT NULL,
@@ -827,10 +827,13 @@ END
 $grant_weekly_review_manifest_runtime_execute$;
 
 RESET ROLE;
-SET LOCAL ROLE "social_monitor_public_schema_owner";
+SET LOCAL ROLE "social_monitor_reader_summary_publication_owner";
 
 REVOKE REFERENCES ("seal_id") ON TABLE "reader_summary_weekly_certification_seals"
 FROM "social_monitor_reader_summary_publication_owner";
+
+RESET ROLE;
+SET LOCAL ROLE "social_monitor_public_schema_owner";
 
 REVOKE CREATE ON SCHEMA public
 FROM "social_monitor_reader_summary_publication_owner";

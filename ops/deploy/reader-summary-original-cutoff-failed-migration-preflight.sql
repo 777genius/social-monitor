@@ -40,6 +40,11 @@ DECLARE
   v_legacy_rows INTEGER;
   v_target_rows INTEGER;
   v_unfinished INTEGER;
+  v_weekly_applied INTEGER;
+  v_weekly_matches INTEGER;
+  v_weekly_rolled_back INTEGER;
+  v_weekly_rows INTEGER;
+  v_weekly_unfinished INTEGER;
 BEGIN
   IF v_phase NOT IN (
     'social-monitor/original-cutoff-pre',
@@ -307,8 +312,6 @@ BEGIN
     OR v_activation_applied > 1
     OR v_activation_rows > 2
     OR v_activation_unfinished + v_activation_applied > 1
-    OR v_unfinished <> v_current_unfinished + v_correction_unfinished
-      + v_activation_unfinished
     OR (v_activation_rows > 0 AND (
       v_history_action <> 'clean' OR v_correction_applied <> 1
     ))
@@ -332,6 +335,94 @@ BEGIN
       )) THEN
     RAISE EXCEPTION 'daily activation ACL migration row diverged';
   END IF;
+
+  SELECT
+    count(*),
+    count(*) FILTER (
+      WHERE checksum IN (
+          '14d2453ee27ce39fcdca890394fe919a4' ||
+            '107832700d3084af1964f3380caffe4',
+          '930c7de104be51d2ced8b45d1c33a5d1' ||
+            'ccfe9c6e279af8b58aa8e2d4726eef8f'
+        )
+        AND started_at IS NOT NULL
+        AND finished_at IS NULL
+        AND rolled_back_at IS NULL
+        AND applied_steps_count = 0
+        AND id <> ''
+        AND (logs IS NULL OR btrim(logs) <> '')
+    ),
+    count(*) FILTER (
+      WHERE checksum IN (
+          '14d2453ee27ce39fcdca890394fe919a4' ||
+            '107832700d3084af1964f3380caffe4',
+          '930c7de104be51d2ced8b45d1c33a5d1' ||
+            'ccfe9c6e279af8b58aa8e2d4726eef8f'
+        )
+        AND started_at IS NOT NULL
+        AND finished_at IS NULL
+        AND rolled_back_at IS NOT NULL
+        AND rolled_back_at >= started_at
+        AND applied_steps_count = 0
+        AND id <> ''
+        AND (logs IS NULL OR btrim(logs) <> '')
+    ),
+    count(*) FILTER (
+      WHERE checksum =
+          '930c7de104be51d2ced8b45d1c33a5d1' ||
+          'ccfe9c6e279af8b58aa8e2d4726eef8f'
+        AND started_at IS NOT NULL
+        AND finished_at IS NOT NULL
+        AND finished_at >= started_at
+        AND rolled_back_at IS NULL
+        AND applied_steps_count = 1
+        AND id <> ''
+        AND logs IS NULL
+    )
+  INTO v_weekly_rows, v_weekly_unfinished,
+    v_weekly_rolled_back, v_weekly_applied
+  FROM public."_prisma_migrations"
+  WHERE migration_name =
+      '20260802170000_reader_summary_weekly_review_manifest';
+
+  v_weekly_matches := v_weekly_unfinished
+    + v_weekly_rolled_back + v_weekly_applied;
+  IF v_weekly_rows <> v_weekly_matches
+    OR v_weekly_unfinished > 1
+    OR v_weekly_rolled_back > 2
+    OR v_weekly_applied > 1
+    OR v_weekly_rows > 3
+    OR v_weekly_unfinished + v_weekly_applied > 1
+    OR v_unfinished <> v_current_unfinished + v_correction_unfinished
+      + v_activation_unfinished + v_weekly_unfinished
+    OR (v_weekly_rows > 0 AND (
+      v_history_action <> 'clean' OR v_correction_applied <> 1
+      OR v_activation_applied <> 1
+    ))
+    OR (v_weekly_rolled_back > 0 AND v_weekly_applied = 1
+      AND EXISTS (
+        SELECT 1
+        FROM public."_prisma_migrations" AS applied
+        CROSS JOIN public."_prisma_migrations" AS failed
+        WHERE applied.migration_name =
+            '20260802170000_reader_summary_weekly_review_manifest'
+          AND applied.checksum =
+            '930c7de104be51d2ced8b45d1c33a5d1' ||
+            'ccfe9c6e279af8b58aa8e2d4726eef8f'
+          AND applied.finished_at IS NOT NULL
+          AND applied.rolled_back_at IS NULL
+          AND failed.migration_name = applied.migration_name
+          AND failed.checksum IN (
+            '14d2453ee27ce39fcdca890394fe919a4' ||
+              '107832700d3084af1964f3380caffe4',
+            applied.checksum
+          )
+          AND failed.finished_at IS NULL
+          AND failed.rolled_back_at IS NOT NULL
+          AND applied.started_at < failed.rolled_back_at
+      )) THEN
+    RAISE EXCEPTION 'weekly review manifest migration row diverged';
+  END IF;
   IF v_phase = 'social-monitor/original-cutoff-resolved'
     AND (v_history_action <> 'clean' OR v_current_applied <> 1
       OR v_correction_rows <> 0) THEN
@@ -341,7 +432,9 @@ BEGIN
       OR v_correction_applied <> 1
       OR v_correction_unfinished <> 0
       OR v_activation_applied <> 1
-      OR v_activation_unfinished <> 0) THEN
+      OR v_activation_unfinished <> 0
+      OR v_weekly_applied <> 1
+      OR v_weekly_unfinished <> 0) THEN
     RAISE EXCEPTION 'original-cutoff correction migration row diverged';
   END IF;
 
@@ -575,6 +668,18 @@ SELECT CASE current_setting('application_name')
   WHEN 'social-monitor/original-cutoff-resolved' THEN 'resolved'
   WHEN 'social-monitor/original-cutoff-post' THEN 'corrected'
   ELSE CASE
+    WHEN EXISTS (
+      SELECT 1 FROM public."_prisma_migrations"
+      WHERE migration_name =
+          '20260802170000_reader_summary_weekly_review_manifest'
+        AND checksum IN (
+          '14d2453ee27ce39fcdca890394fe919a4' ||
+            '107832700d3084af1964f3380caffe4',
+          '930c7de104be51d2ced8b45d1c33a5d1' ||
+            'ccfe9c6e279af8b58aa8e2d4726eef8f'
+        )
+        AND finished_at IS NULL AND rolled_back_at IS NULL
+    ) THEN 'weekly-manifest-rollback'
     WHEN EXISTS (
       SELECT 1 FROM public."_prisma_migrations"
       WHERE migration_name =

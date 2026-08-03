@@ -16,6 +16,7 @@ const publicationMigration = "20260716170000_reader_summary_fail_closed_publicat
 const targetMigration = "20260731153000_reader_summary_production_recovery_original_cutoff_authority";
 const correctionMigration = "20260801130000_reader_summary_original_cutoff_consumed_state_correction";
 const activationAclMigration = "20260802143100_reader_summary_daily_execution_publication_activation_acl";
+const weeklyManifestMigration = "20260802170000_reader_summary_weekly_review_manifest";
 const legacyChecksum = "8748c4e266d8c1838f29b1a6f59f4be056514de64fe95fe44f5c7bb3680b477d";
 const currentChecksum = "4100dd4ae236a300e002d2599a880b27df50972aed2f4a9f33578a3da2fe5c35";
 const correctionChecksum = "d26709b51ab37d368add42732b4c9fc8c70a56894ec9afdaec417408d4822dbc";
@@ -549,6 +550,9 @@ reader_summary_original_cutoff_probe() {
     activation:1:pre) printf 'activation-acl-rollback\n' ;;
     activation:2:pre) printf 'clean\n' ;;
     activation:3:post) printf 'corrected\n' ;;
+    weekly-manifest:1:pre) printf 'weekly-manifest-rollback\n' ;;
+    weekly-manifest:2:pre) printf 'clean\n' ;;
+    weekly-manifest:3:post) printf 'corrected\n' ;;
     *:2:pre) return 71 ;;
     *) return 72 ;;
   esac
@@ -634,6 +638,18 @@ esac
       "probe:post", "admin:post",
     ].join("\n"),
     "activation ACL retry did not resolve only the reviewed failed migration",
+  );
+  const weeklyManifestRetry = runCase("weekly-manifest-retry", {
+    CASE: "deploy",
+    PROBE_MODE: "weekly-manifest",
+  }, true);
+  assert(
+    weeklyManifestRetry.join("\n") === [
+      "preflight", "admin:pre", "probe:pre",
+      `resolve:rolled-back:${weeklyManifestMigration}`, "probe:pre", "migrate",
+      "probe:post", "admin:post",
+    ].join("\n"),
+    "weekly manifest retry did not resolve only the reviewed failed migration",
   );
   const resolveFailure = runCase("resolve-failure", {
     CASE: "resolve",
