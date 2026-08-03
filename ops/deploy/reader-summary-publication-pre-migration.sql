@@ -999,15 +999,19 @@ BEGIN
   END IF;
 END
 $ownership_transfer_audit$;
--- Admit protected-owner DDL only for the ordered migration window.
+-- PG18 preserves the grantor across SET ROLE. Remove migrator-granted CREATE
+-- residue from an interrupted attempt. Every pending protected migration owns
+-- its bounded schema CREATE window, so the bootstrap must not keep one open.
+REVOKE CREATE ON SCHEMA public
+FROM social_monitor_reader_summary_publication_owner
+GRANTED BY CURRENT_USER;
 SET LOCAL ROLE social_monitor_public_schema_owner;
-GRANT CREATE ON SCHEMA public
-TO social_monitor_reader_summary_publication_owner;
 -- The original-cutoff correction verifies and locks only these claim columns.
 -- Its predecessor revoked the same bounded ACL after applying, so re-admit it
 -- for the correction migration and remove it in the post-migration phase.
 GRANT SELECT ("id", "tenant_id", "workspace_id", "scope"), UPDATE ("id")
 ON public."idempotency_keys"
-TO social_monitor_reader_summary_publication_owner;
+TO social_monitor_reader_summary_publication_owner
+GRANTED BY social_monitor_public_schema_owner;
 RESET ROLE;
 COMMIT;
