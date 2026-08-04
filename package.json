@@ -235,7 +235,7 @@
     "check:summary-policy-rest": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-summary-policy-rest-smoke.ts",
     "check:summary-persistence": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-summary-prisma-persistence.ts",
     "recover:reader-summary-production": "node scripts/run-with-timeout.mjs --timeout-ms 2400000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/recover-reader-summary-production.ts",
-    "check:reader-summary-production-recovery-postgres": "node scripts/run-with-timeout.mjs --timeout-ms 300000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-reader-summary-production-recovery-postgres.ts",
+    "check:reader-summary-production-recovery-postgres": "node scripts/run-with-timeout.mjs --timeout-ms 600000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-reader-summary-production-recovery-postgres.ts",
     "check:reader-summary-daily-canonical-recovery-postgres18": "bash ops/deploy/daily-canonical-recovery-postgres18.test.sh",
     "check:reader-summary-daily-canonical-recovery-production": "bash ops/deploy/daily-canonical-recovery-production.test.sh",
     "check:reader-summary-original-cutoff-prisma-catalog": "node scripts/run-with-timeout.mjs --timeout-ms 300000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-reader-summary-original-cutoff-prisma-catalog.ts",

@@ -37,8 +37,12 @@ import {
   assertReaderSummaryDailyCanonicalRecoveryV4PostgresContract,
 } from "./lib/reader-summary-daily-canonical-recovery-v4-postgres-contract";
 import {
+  type CanonicalRecoveryAuthority,
+  type CanonicalRecoveryFinalizer,
+  type CanonicalRecoveryPublication,
   PostgresCanonicalRecoveryAuthority,
   canonicalJsonBytes,
+  canonicalRecoveryDates,
   sha256,
 } from "./lib/reader-summary-daily-canonical-recovery-v4";
 import { ReaderSummaryDailyCanonicalRecoveryV4Executor } from "./lib/reader-summary-daily-canonical-recovery-v4-executor";
@@ -188,10 +192,16 @@ const serverAdmin = new Pool({
 });
 const migrationWorkspace =
   createReaderSummaryPublicationMigrationWorkspace();
-const deferredCanonicalRecoveryMigrations = [
+const canonicalRecoveryFoundationMigrations = [
   "20260802233000_reader_summary_daily_canonical_recovery_v4",
   "20260802233100_reader_summary_daily_canonical_recovery_v4_security",
   "20260803173000_reader_summary_daily_canonical_recovery_v4_tenant_rls",
+] as const;
+const originalCutoffForwardMigration =
+  "20260804110000_reader_summary_daily_v4_original_cutoff_forward_correction";
+const deferredCanonicalRecoveryMigrations = [
+  ...canonicalRecoveryFoundationMigrations,
+  originalCutoffForwardMigration,
 ] as const;
 let ownerRolePreexisting = false;
 let capabilityRolePreexisting = false;
@@ -287,6 +297,75 @@ class DeterministicDailyRecoveryRuntime {
   }
 }
 
+const assertReaderSummaryDailyCanonicalRecoveryV4GenericFixture = async (
+  client: RecoveryPostgresClient,
+  expectedV4Rows: "0" | "18",
+): Promise<string> => {
+  const { tenantId, workspaceId } = readerSummaryProductionRecoveryFixtureScope;
+  const result = await client.query<{
+    aliasScope: string; legacyAuthorities: string; legacySha: string;
+    jul23Items: string; jul23Rss: string; jul24Items: string; jul24Rss: string;
+    legacySnapshot: string; v4Rows: string;
+  }>(`
+    SELECT
+      (SELECT count(*) FROM public.reader_summary_production_recovery_authority_corrections
+       WHERE tenant_id = '${tenantId}' AND workspace_id = '${workspaceId}')::TEXT "aliasScope",
+      (SELECT count(*) FROM public.reader_summary_production_recovery_leases
+       WHERE tenant_id = '${tenantId}' AND workspace_id = '${workspaceId}'
+         AND canonical_record->>'schemaVersion' =
+           'reader_summary.production_recovery_authority.v2')::TEXT "legacyAuthorities",
+      (SELECT btrim(canonical_sha256) FROM public.reader_summary_production_recovery_leases
+       WHERE tenant_id = '${tenantId}' AND workspace_id = '${workspaceId}'
+         AND canonical_record->>'schemaVersion' =
+           'reader_summary.production_recovery_authority.v2') "legacySha",
+      (SELECT sum(jsonb_array_length(value))::TEXT FROM public.reader_summary_production_recovery_days,
+       LATERAL jsonb_each(provider_evidence) evidence(key, value)
+       WHERE tenant_id = '${tenantId}' AND workspace_id = '${workspaceId}'
+         AND requested_utc_date = DATE '2026-07-23') "jul23Items",
+      (SELECT jsonb_array_length(provider_evidence->'rss')::TEXT
+       FROM public.reader_summary_production_recovery_days WHERE tenant_id = '${tenantId}'
+         AND workspace_id = '${workspaceId}' AND requested_utc_date = DATE '2026-07-23') "jul23Rss",
+      (SELECT sum(jsonb_array_length(value))::TEXT FROM public.reader_summary_production_recovery_days,
+       LATERAL jsonb_each(provider_evidence) evidence(key, value)
+       WHERE tenant_id = '${tenantId}' AND workspace_id = '${workspaceId}'
+         AND requested_utc_date = DATE '2026-07-24') "jul24Items",
+      (SELECT jsonb_array_length(provider_evidence->'rss')::TEXT
+       FROM public.reader_summary_production_recovery_days WHERE tenant_id = '${tenantId}'
+         AND workspace_id = '${workspaceId}' AND requested_utc_date = DATE '2026-07-24') "jul24Rss",
+      ((SELECT count(*) FROM public.reader_summary_daily_canonical_recovery_v4_plans
+        WHERE tenant_id = '${tenantId}' AND workspace_id = '${workspaceId}') +
+       (SELECT count(*) FROM public.reader_summary_daily_canonical_recovery_v4_authorities
+        WHERE tenant_id = '${tenantId}' AND workspace_id = '${workspaceId}') +
+       (SELECT count(*) FROM public.reader_summary_daily_canonical_recovery_v4_leases
+        WHERE tenant_id = '${tenantId}' AND workspace_id = '${workspaceId}'))::TEXT "v4Rows",
+      encode(sha256(convert_to(jsonb_build_object(
+        'aliases', (SELECT coalesce(jsonb_agg(to_jsonb(alias) ORDER BY recovery_id), '[]'::JSONB)
+          FROM public.reader_summary_production_recovery_authority_corrections alias
+          WHERE tenant_id = '${tenantId}' AND workspace_id = '${workspaceId}'),
+        'leases', (SELECT coalesce(jsonb_agg(to_jsonb(lease) ORDER BY id), '[]'::JSONB)
+          FROM public.reader_summary_production_recovery_leases lease
+          WHERE tenant_id = '${tenantId}' AND workspace_id = '${workspaceId}'),
+        'days', (SELECT coalesce(jsonb_agg(to_jsonb(day) ORDER BY recovery_id, requested_utc_date), '[]'::JSONB)
+          FROM public.reader_summary_production_recovery_days day
+          WHERE tenant_id = '${tenantId}' AND workspace_id = '${workspaceId}'),
+        'dryRuns', (SELECT coalesce(jsonb_agg(to_jsonb(dry) ORDER BY recovery_id, ordinal), '[]'::JSONB)
+          FROM public.reader_summary_production_recovery_dry_runs dry
+          WHERE tenant_id = '${tenantId}' AND workspace_id = '${workspaceId}')
+      )::TEXT, 'UTF8')), 'hex') "legacySnapshot"
+  `);
+  const row = result.rows[0];
+  assert(
+    row?.aliasScope === "0" && row.legacyAuthorities === "1" &&
+      row.legacySha.length === 64 &&
+      row.legacySha !== "7fa94c8538f55592349e820685dc4d34d84c4f3a4afe9165e18df6271d7816f3" &&
+      row.jul23Items === "342" && row.jul23Rss === "75" &&
+      row.jul24Items === "350" && row.jul24Rss === "67" &&
+      row.v4Rows === expectedV4Rows && row.legacySnapshot.length === 64,
+    `generic corrected non-target fixture diverged: ${JSON.stringify(row)}`,
+  );
+  return row.legacySnapshot;
+};
+
 const main = async (): Promise<void> => {
   assertReaderSummaryDailyCanonicalRecoveryV4MigrationContract();
   assert(
@@ -358,6 +437,17 @@ const main = async (): Promise<void> => {
       adminDatabaseUrl,
       migrationWorkspace,
     );
+    for (const migration of canonicalRecoveryFoundationMigrations) {
+      cpSync(
+        join(process.cwd(), "prisma", "migrations", migration),
+        join(migrationWorkspace.directory, "migrations", migration),
+        { recursive: true },
+      );
+    }
+    applyOrderedReaderSummaryMigrations(
+      adminDatabaseUrl,
+      migrationWorkspace,
+    );
     await runReaderSummaryPublicationBootstrapSql(
       "post",
       adminDatabaseUrl,
@@ -415,18 +505,30 @@ const main = async (): Promise<void> => {
           first,
           second,
         });
-        for (const migration of deferredCanonicalRecoveryMigrations) {
-          cpSync(
-            join(process.cwd(), "prisma", "migrations", migration),
-            join(migrationWorkspace.directory, "migrations", migration),
-            { recursive: true },
+        const legacyRecoveryBeforeForward =
+          await assertReaderSummaryDailyCanonicalRecoveryV4GenericFixture(
+            auditor,
+            "0",
           );
-        }
+        cpSync(
+          join(process.cwd(), "prisma", "migrations", originalCutoffForwardMigration),
+          join(migrationWorkspace.directory, "migrations", originalCutoffForwardMigration),
+          { recursive: true },
+        );
         applyOrderedReaderSummaryMigrations(
           adminDatabaseUrl,
           migrationWorkspace,
         );
         assertReaderSummaryMigrationDatabaseMatchesSchema(targetDatabaseUrl);
+        const legacyRecoveryAfterForward =
+          await assertReaderSummaryDailyCanonicalRecoveryV4GenericFixture(
+            auditor,
+            "18",
+          );
+        assert(
+          legacyRecoveryAfterForward === legacyRecoveryBeforeForward,
+          "forward migration changed generic legacy recovery rows, bytes, or hashes",
+        );
         const firstTerminal = await dailyTerminalPool.connect();
         const terminalRuntime = createReaderSummaryDailyTerminalRuntimeConnection({
           READER_SUMMARY_DAILY_TERMINAL_DATABASE_URL: dailyTerminalDatabaseUrl,
@@ -439,15 +541,74 @@ const main = async (): Promise<void> => {
           join(tmpdir(), "social-monitor-daily-recovery-v4-pg18-"),
         );
         const runtime = new DeterministicDailyRecoveryRuntime();
-        const executor = new ReaderSummaryDailyCanonicalRecoveryV4Executor({
-          authority: new PostgresCanonicalRecoveryAuthority(
-            terminalRuntime.terminal,
-          ),
-          runtime,
-          finalizer: createReaderSummaryDailyCanonicalRecoveryV4Finalizer({
+        const baseAuthority: CanonicalRecoveryAuthority =
+          new PostgresCanonicalRecoveryAuthority(terminalRuntime.terminal);
+        const baseFinalizer: CanonicalRecoveryFinalizer =
+          createReaderSummaryDailyCanonicalRecoveryV4Finalizer({
             prisma,
             publicDirectory,
-          }),
+          });
+        const recordedPublications: CanonicalRecoveryPublication[] = [];
+        let pendingFinalizeReadback = false;
+        let deferredReadCount = 0;
+        let realReadCount = 0;
+        const immutablePublication = (
+          publication: CanonicalRecoveryPublication,
+        ): CanonicalRecoveryPublication => Object.freeze({ ...publication });
+
+        // Checker-only batching defers immediate reads; terminal authority is verified twice.
+        const wrappedFinalizer: CanonicalRecoveryFinalizer = {
+          finalize: async (input) => {
+            assert(
+              !pendingFinalizeReadback,
+              "checker-only batching requires the prior post-finalize readback",
+            );
+            const publication = await baseFinalizer.finalize(input);
+            assert(
+              !recordedPublications.some(
+                (recorded) =>
+                  recorded.requestedUtcDate === publication.requestedUtcDate,
+              ),
+              `checker-only batching recorded duplicate finalized date ${publication.requestedUtcDate}`,
+            );
+            const expectedNextDate =
+              canonicalRecoveryDates[recordedPublications.length];
+            assert(
+              expectedNextDate !== undefined &&
+                publication.requestedUtcDate === expectedNextDate,
+              `checker-only batching finalized non-chronological next date: expected ${expectedNextDate ?? "none"}, received ${publication.requestedUtcDate}`,
+            );
+            recordedPublications.push(immutablePublication(publication));
+            pendingFinalizeReadback = true;
+            return publication;
+          },
+        };
+        const wrappedAuthority: CanonicalRecoveryAuthority = {
+          claim: (input) => baseAuthority.claim(input),
+          markRunning: (work, at) => baseAuthority.markRunning(work, at),
+          renew: (work, at) => baseAuthority.renew(work, at),
+          complete: (work, input) => baseAuthority.complete(work, input),
+          readFinalized: async (input) => {
+            if (pendingFinalizeReadback) {
+              pendingFinalizeReadback = false;
+              deferredReadCount += 1;
+              return Object.freeze(recordedPublications.map(immutablePublication));
+            }
+            const actual = await baseAuthority.readFinalized(input);
+            realReadCount += 1;
+            assert(
+              canonicalJsonBytes(actual).equals(
+                canonicalJsonBytes(recordedPublications),
+              ),
+              "terminal authority readback did not byte-match ordered finalizer publications",
+            );
+            return actual;
+          },
+        };
+        const executor = new ReaderSummaryDailyCanonicalRecoveryV4Executor({
+          authority: wrappedAuthority,
+          runtime,
+          finalizer: wrappedFinalizer,
           now: () => new Date(),
         });
         try {
@@ -461,6 +622,22 @@ const main = async (): Promise<void> => {
             }),
             runtimeCallCount: () => runtime.callCount,
           });
+          assert(
+            recordedPublications.length === 8,
+            `checker-only batching must record exactly 8 finalizer publications; received ${recordedPublications.length}`,
+          );
+          assert(
+            pendingFinalizeReadback === false,
+            "checker-only batching must clear the final pending post-finalize readback",
+          );
+          assert(
+            deferredReadCount === 8,
+            `checker-only batching must defer exactly 8 immediate executor readbacks; received ${deferredReadCount}`,
+          );
+          assert(
+            realReadCount === 2,
+            `checker-only batching must perform exactly 2 real terminal authority readbacks; received ${realReadCount}`,
+          );
         } finally {
           firstTerminal.release();
           rmSync(publicDirectory, { recursive: true, force: true });

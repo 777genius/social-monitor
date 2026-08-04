@@ -5,6 +5,8 @@ const foundation =
   "prisma/migrations/20260802233000_reader_summary_daily_canonical_recovery_v4/migration.sql";
 const security =
   "prisma/migrations/20260802233100_reader_summary_daily_canonical_recovery_v4_security/migration.sql";
+const originalCutoffForward =
+  "prisma/migrations/20260804110000_reader_summary_daily_v4_original_cutoff_forward_correction/migration.sql";
 const artifactRepository =
   "libs/summary/adapters/persistence/prisma/prisma-reader-summary-artifact.repository.ts";
 const publicationUseCase =
@@ -25,13 +27,35 @@ type Client = Readonly<{
 export const assertReaderSummaryDailyCanonicalRecoveryV4MigrationContract = (): void => {
   const first = readFileSync(resolve(foundation), "utf8");
   const second = readFileSync(resolve(security), "utf8");
+  const forward = readFileSync(resolve(originalCutoffForward), "utf8");
   const repository = readFileSync(resolve(artifactRepository), "utf8");
   const publication = readFileSync(resolve(publicationUseCase), "utf8");
-  const sql = `${first}\n${second}`;
+  const sql = `${first}\n${second}\n${forward}`;
+  const forwardBootstrap = forward.slice(
+    forward.indexOf(
+      'CREATE OR REPLACE FUNCTION public."bootstrap_reader_summary_daily_canonical_recovery_v4"()',
+    ),
+    forward.indexOf("DO $bootstrap_daily_v4_original_cutoff_forward$"),
+  );
+  const v4TransitionLock = `LOCK TABLE public."reader_summary_daily_canonical_recovery_v4_plans",
+    public."reader_summary_daily_canonical_recovery_v4_authorities"
+    IN ACCESS EXCLUSIVE MODE;`;
+  const firstBootstrapRowLock = forwardBootstrap.search(/\bFOR\s+(?:UPDATE|KEY\s+SHARE)\b/iu);
+  const firstBootstrapRecount = forwardBootstrap.indexOf("SELECT count(*)::INTEGER");
   const legacy = migrationFunction(
     first,
     "assert_reader_summary_daily_canonical_recovery_v4_legacy",
     "reader_summary_daily_canonical_recovery_v4_source_authority",
+  );
+  const orderedLegacyPlan = migrationFunction(
+    first,
+    "reader_summary_daily_canonical_recovery_v4_plan_ordered",
+    "reader_summary_daily_canonical_recovery_v4_plan_grouped",
+  );
+  const groupedLegacyPlan = migrationFunction(
+    first,
+    "reader_summary_daily_canonical_recovery_v4_plan_grouped",
+    "assert_reader_summary_daily_canonical_recovery_v4_binding",
   );
   const recoveryDays = ["23", "24", "25", "26", "27", "28", "29", "30"];
   const datedLiterals = new Set(
@@ -70,7 +94,11 @@ export const assertReaderSummaryDailyCanonicalRecoveryV4MigrationContract = (): 
       !publication.includes("verifyPublication"),
     "V4 acceptance must be DB-first and publication must not trust a caller port",
   );
-  assert(!/\bLOCK\s+TABLE\b/iu.test(sql), "table locks are forbidden");
+  assert(
+    !/\bLOCK\s+TABLE\b/iu.test(`${first}\n${second}`) &&
+      (forward.match(/\bLOCK\s+TABLE\b/giu)?.length ?? 0) === 1,
+    "only the forward V4 bootstrap may take its transition table lock",
+  );
   assert(
     sql.includes("FOR UPDATE") && sql.includes("FOR KEY SHARE"),
     "serializable row locks are required",
@@ -211,10 +239,12 @@ export const assertReaderSummaryDailyCanonicalRecoveryV4MigrationContract = (): 
     "only exact V4 reports may use the finite widened canonicalization profile",
   );
   assert(
-    (sql.match(
+    (orderedLegacyPlan.match(
       /WHEN 'reader_summary\.production_recovery_authority\.v2' THEN\s+lease\."issued_at"/gu,
-    )?.length ?? 0) === 2,
-    "V2 source authority cutoffs must bind the immutable lease issuance timestamp",
+    )?.length ?? 0) === 1 && (groupedLegacyPlan.match(
+      /WHEN 'reader_summary\.production_recovery_authority\.v2' THEN\s+lease\."issued_at"/gu,
+    )?.length ?? 0) === 1,
+    "each legacy V2 plan builder must bind the immutable lease issuance timestamp",
   );
   assert(
     !sql.includes("Legacy immutable authority explicitly marks GitHub evidence") &&
@@ -237,6 +267,64 @@ export const assertReaderSummaryDailyCanonicalRecoveryV4MigrationContract = (): 
       second.includes('"social_monitor_reader_summary_publication_runtime"') &&
       second.includes('"record_reader_summary_weekly_publication_evidence"(UUID)'),
     "V4 evidence must remain behind the existing publication boundary",
+  );
+  assert(
+    forward.includes(
+      "7fa94c8538f55592349e820685dc4d34d84c4f3a4afe9165e18df6271d7816f3",
+    ) && forward.includes(
+      "c51223e11e4631f3c613aa7708fe92d9c308ce31fd8ee5e626e5cee2972ad3e5",
+    ) && !forward.includes("'legacyRssCount':") &&
+      forward.includes('"legacyRssCount":78') &&
+      forward.includes('"legacyRssCount":68') &&
+      forward.includes('"correctedRssCount":75') &&
+      forward.includes('"correctedRssCount":67') &&
+      forward.includes('"legacyTotal":345') &&
+      forward.includes('"legacyTotal":351') &&
+      forward.includes("'daily v4 original-cutoff removed RSS intersects an artifact'") &&
+      forward.includes("v_claim_count <> 10") &&
+      forward.includes("v_job_count <> 10") && forward.includes("v_artifact_count <> 8") &&
+      forward.includes("v_publication_count <> 0") &&
+      forward.includes("v_receipt_count <> 0"),
+    "forward cutoff replay must admit only the reviewed consumed legacy state",
+  );
+  assert(
+    forwardBootstrap.includes('FOR UPDATE OF plan') &&
+      forwardBootstrap.includes('FOR UPDATE OF authority') &&
+      forwardBootstrap.includes('FOR UPDATE OF lease') &&
+      !forwardBootstrap.includes("FOR KEY SHARE") &&
+      forwardBootstrap.includes("v_plans = 2 AND v_authorities = 8 AND v_leases = 8") &&
+      forwardBootstrap.includes("assert_reader_summary_daily_canonical_recovery_v4_binding_base") &&
+      forwardBootstrap.includes("old READY binding diverged") &&
+      forwardBootstrap.includes("DISABLE TRIGGER \"reader_summary_daily_canonical_recovery_v4_plans_immutable\"") &&
+      forwardBootstrap.includes("DISABLE TRIGGER \"rs_daily_recovery_v4_authorities_immutable\"") &&
+      forwardBootstrap.includes("tgenabled = 'O'") &&
+      forward.includes("daily v4 original-cutoff correction alias is absent") &&
+      forward.includes("daily v4 original-cutoff correction alias diverged") &&
+      forward.includes("reader_summary_daily_canonical_recovery_v4_corrected_plan_day") &&
+      forward.includes("v_effective_authority_sha := v_projection->>'correctedAuthoritySha256'") &&
+      forward.includes("daily v4 bootstrap requires empty or exact READY authority state") &&
+      forward.includes("daily v4 bootstrap refuses consumed, modeled, or published state") &&
+      forward.includes("v_plans = 2 AND v_authorities = 8 AND v_leases = 8"),
+    "forward cutoff replay must preserve immutable legacy rows and guard V4 bootstrap state",
+  );
+  assert(
+    forwardBootstrap.includes(v4TransitionLock) &&
+      forwardBootstrap.indexOf(v4TransitionLock) < firstBootstrapRowLock &&
+      forwardBootstrap.indexOf(v4TransitionLock) < firstBootstrapRecount &&
+      forwardBootstrap.indexOf("FOR UPDATE OF plan") <
+        forwardBootstrap.indexOf("FOR UPDATE OF authority") &&
+      forwardBootstrap.indexOf("FOR UPDATE OF authority") <
+        forwardBootstrap.indexOf("FOR UPDATE OF lease"),
+    "forward V4 bootstrap must lock exact trigger tables before ordered V4 row locks and recount",
+  );
+  assert(
+    !/\b(?:UPDATE|DELETE\s+FROM)\s+public\."reader_summary_production_recovery_(?:leases|days|dry_runs)"/u
+      .test(forward) &&
+      !/\b(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+public\."reader_summary_production_recovery_authority_corrections"/u
+        .test(forward) &&
+      !/\b(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+public\."(?:feed_items|source_items)"/u
+        .test(forward),
+    "forward cutoff replay must be append-only with respect to legacy authority and source rows",
   );
 };
 
@@ -456,6 +544,8 @@ const assertJul23Jul28Jul30Authority = async (client: Client): Promise<void> => 
     jul24: string;
     jul24Counts: string;
     jul24Total: string;
+    jul23V4Rss: string;
+    jul24V4Rss: string;
     jul28: string;
     jul28Counts: string;
     jul28Total: string;
@@ -475,7 +565,8 @@ const assertJul23Jul28Jul30Authority = async (client: Client): Promise<void> => 
     SELECT
       (SELECT (github_evidence->>'mode') || ':' || (github_evidence->>'evidenceCount')
        FROM public.reader_summary_production_recovery_days
-       WHERE requested_utc_date = DATE '2026-07-23' LIMIT 1) AS "jul23",
+       WHERE tenant_id = '${tenant}' AND workspace_id = '${workspace}'
+         AND requested_utc_date = DATE '2026-07-23' LIMIT 1) AS "jul23",
       (SELECT jsonb_build_array(
         jsonb_array_length(provider_evidence->'github-trending-page'),
         jsonb_array_length(provider_evidence->'hacker-news'),
@@ -483,14 +574,17 @@ const assertJul23Jul28Jul30Authority = async (client: Client): Promise<void> => 
         jsonb_array_length(provider_evidence->'rss'),
         jsonb_array_length(provider_evidence->'x-twitter'))::TEXT
        FROM public.reader_summary_production_recovery_days
-       WHERE requested_utc_date = DATE '2026-07-23' LIMIT 1) AS "jul23Counts",
+       WHERE tenant_id = '${tenant}' AND workspace_id = '${workspace}'
+         AND requested_utc_date = DATE '2026-07-23' LIMIT 1) AS "jul23Counts",
       (SELECT sum(jsonb_array_length(entry.value))::TEXT
        FROM public.reader_summary_production_recovery_days day,
        LATERAL jsonb_each(day.provider_evidence) entry(key, value)
-       WHERE requested_utc_date = DATE '2026-07-23') AS "jul23Total",
+       WHERE day.tenant_id = '${tenant}' AND day.workspace_id = '${workspace}'
+         AND requested_utc_date = DATE '2026-07-23') AS "jul23Total",
       (SELECT (github_evidence->>'mode') || ':' || (github_evidence->>'evidenceCount')
        FROM public.reader_summary_production_recovery_days
-       WHERE requested_utc_date = DATE '2026-07-24' LIMIT 1) AS "jul24",
+       WHERE tenant_id = '${tenant}' AND workspace_id = '${workspace}'
+         AND requested_utc_date = DATE '2026-07-24' LIMIT 1) AS "jul24",
       (SELECT jsonb_build_array(
         jsonb_array_length(provider_evidence->'github-trending-page'),
         jsonb_array_length(provider_evidence->'hacker-news'),
@@ -498,11 +592,25 @@ const assertJul23Jul28Jul30Authority = async (client: Client): Promise<void> => 
         jsonb_array_length(provider_evidence->'rss'),
         jsonb_array_length(provider_evidence->'x-twitter'))::TEXT
        FROM public.reader_summary_production_recovery_days
-       WHERE requested_utc_date = DATE '2026-07-24' LIMIT 1) AS "jul24Counts",
+       WHERE tenant_id = '${tenant}' AND workspace_id = '${workspace}'
+         AND requested_utc_date = DATE '2026-07-24' LIMIT 1) AS "jul24Counts",
       (SELECT sum(jsonb_array_length(entry.value))::TEXT
        FROM public.reader_summary_production_recovery_days day,
        LATERAL jsonb_each(day.provider_evidence) entry(key, value)
-       WHERE requested_utc_date = DATE '2026-07-24') AS "jul24Total",
+       WHERE day.tenant_id = '${tenant}' AND day.workspace_id = '${workspace}'
+         AND requested_utc_date = DATE '2026-07-24') AS "jul24Total",
+      (SELECT count(*)::TEXT
+       FROM public.reader_summary_daily_canonical_recovery_v4_authorities authority,
+       LATERAL jsonb_array_elements(authority.source_authority_record->'items') item(value)
+       WHERE authority.tenant_id = '${tenant}' AND authority.workspace_id = '${workspace}'
+         AND authority.requested_utc_date = DATE '2026-07-23'
+         AND item.value->>'providerKey' = 'rss') AS "jul23V4Rss",
+      (SELECT count(*)::TEXT
+       FROM public.reader_summary_daily_canonical_recovery_v4_authorities authority,
+       LATERAL jsonb_array_elements(authority.source_authority_record->'items') item(value)
+       WHERE authority.tenant_id = '${tenant}' AND authority.workspace_id = '${workspace}'
+         AND authority.requested_utc_date = DATE '2026-07-24'
+         AND item.value->>'providerKey' = 'rss') AS "jul24V4Rss",
       (SELECT (github_evidence->>'mode') || ':' || (github_evidence->>'evidenceCount')
        FROM public.reader_summary_production_recovery_days
        WHERE requested_utc_date = DATE '2026-07-28' LIMIT 1) AS "jul28",
@@ -752,6 +860,7 @@ const assertJul23Jul28Jul30Authority = async (client: Client): Promise<void> => 
       row.jul23Counts === "[0, 100, 100, 75, 67]" && row.jul23Total === "342" &&
       row.jul24 === "verified_existing:10" &&
       row.jul24Counts === "[10, 100, 100, 67, 73]" && row.jul24Total === "350" &&
+      row.jul23V4Rss === "75" && row.jul24V4Rss === "67" &&
       row.jul28 === "historical_unavailable:0" &&
       row.jul28Counts === "[0, 0, 0, 31, 107]" && row.jul28Total === "138" &&
       row.jul30 === "missing:0" &&
