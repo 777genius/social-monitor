@@ -29,6 +29,11 @@ grep -F 'PrismaReaderSummaryDailyCanonicalRecoveryV4Finalization' "$runner" >/de
 grep -F 'PostgresCanonicalRecoveryAuthority' "$runner" >/dev/null
 grep -F 'required("SYSTEM_DATABASE_URL")' "$runner" >/dev/null
 ! grep -F 'required("DATABASE_URL")' "$runner" >/dev/null
+grep -F 'deriveReaderSummaryDailyTerminalDatabaseUrl' "$runner" >/dev/null
+grep -F 'terminalDsn.username = readerSummaryDailyTerminalRole' "$runner" >/dev/null
+grep -F 'READER_SUMMARY_DAILY_TERMINAL_DATABASE_URL: terminalDatabaseUrl' "$runner" >/dev/null
+grep -F 'READER_SUMMARY_DAILY_AUDITOR_DATABASE_URL: publicationDatabaseUrl' "$runner" >/dev/null
+! grep -F 'createReaderSummaryDailyTerminalRuntimeConnection(process.env)' "$runner" >/dev/null
 daily_runner_database_environment=$(awk '
   /^  daily-runner:$/ { daily_runner = 1; next }
   daily_runner && /^  [A-Za-z0-9_-]+:$/ { exit }

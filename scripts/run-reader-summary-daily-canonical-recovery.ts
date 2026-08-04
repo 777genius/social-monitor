@@ -63,7 +63,10 @@ import {
   type CanonicalRecoveryFinalizer,
 } from "./lib/reader-summary-daily-canonical-recovery-v4";
 import { ReaderSummaryDailyCanonicalRecoveryV4Executor } from "./lib/reader-summary-daily-canonical-recovery-v4-executor";
-import { createReaderSummaryDailyTerminalRuntimeConnection } from "./lib/reader-summary-daily-terminal-runtime-connection";
+import {
+  createReaderSummaryDailyTerminalRuntimeConnection,
+  readerSummaryDailyTerminalRole,
+} from "./lib/reader-summary-daily-terminal-runtime-connection";
 
 if (process.argv[1] !== undefined && resolve(process.argv[1]) === __filename) {
   void Promise.resolve().then(() => {
@@ -79,8 +82,13 @@ async function main(): Promise<void> {
   const recoveryTenantId = required("READER_SUMMARY_DAILY_TENANT_ID");
   const recoveryWorkspaceId = required("READER_SUMMARY_DAILY_WORKSPACE_ID");
   const publicationDatabaseUrl = requiredSystemDatabaseUrl();
+  const terminalDatabaseUrl =
+    deriveReaderSummaryDailyTerminalDatabaseUrl(publicationDatabaseUrl);
   const publicDirectory = resolve(required("READER_SUMMARY_DAILY_PUBLIC_DIRECTORY"));
-  const runtimeConnection = createReaderSummaryDailyTerminalRuntimeConnection(process.env);
+  const runtimeConnection = createReaderSummaryDailyTerminalRuntimeConnection({
+    READER_SUMMARY_DAILY_TERMINAL_DATABASE_URL: terminalDatabaseUrl,
+    READER_SUMMARY_DAILY_AUDITOR_DATABASE_URL: publicationDatabaseUrl,
+  });
   const prisma = await PrismaSummaryConnection.create(
     defaultPostgresRuntimePoolConfig(publicationDatabaseUrl, "daily-runner"),
   );
@@ -677,6 +685,14 @@ const requiredSystemDatabaseUrl = (): string => {
     throw new Error("SYSTEM_DATABASE_URL must use the production system login");
   }
   return value;
+};
+
+export const deriveReaderSummaryDailyTerminalDatabaseUrl = (
+  systemDatabaseUrl: string,
+): string => {
+  const terminalDsn = new URL(systemDatabaseUrl);
+  terminalDsn.username = readerSummaryDailyTerminalRole;
+  return terminalDsn.toString();
 };
 
 const required = (name: string): string => exactText(process.env[name]?.trim(), name);
