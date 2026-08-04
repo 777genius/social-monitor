@@ -984,10 +984,15 @@ BEGIN
       'reader_summary_daily_canonical_recovery_v4_leases',
       'reader_summary_daily_canonical_recovery_v4_ambiguity_retries'
     );
+  -- A resumable pre-migration handoff may reach this audit with one protected
+  -- table owner; every other state must match the exact final ownership count.
   IF v_weekly_review_manifest_table_count NOT IN (0, 1)
     OR v_v4_table_count NOT IN (0, 3, 4)
-    OR v_owner_count <> 4 + v_weekly_review_manifest_table_count
-      + v_v4_table_count THEN
+    OR (
+      v_owner_count <> 1
+      AND v_owner_count <> 4 + v_weekly_review_manifest_table_count
+        + v_v4_table_count
+    ) THEN
     RAISE EXCEPTION 'protected reader summary tables have unsafe owners';
   END IF;
   IF to_regprocedure('public.claim_reader_summary_daily_terminal(uuid,uuid,uuid,text)') IS NULL THEN

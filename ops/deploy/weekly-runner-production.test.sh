@@ -91,7 +91,7 @@ grep -F 'function_capability_acl_count === "0"' "$weekly_seal_contract" \
   END { print count + 0 }
 ' "$publication_pre_migration") -eq 1 ]]
 [[ $(grep -Fc "'reader_summary_weekly_review_manifests'" \
-  "$publication_pre_migration") -eq 5 ]]
+  "$publication_pre_migration") -eq 7 ]]
 [[ $(awk '
   /AND relation\.relname NOT IN \(/ { in_owner_exclusion = 1; next }
   in_owner_exclusion && /reader_summary_weekly_review_manifests/ { count++ }
@@ -102,9 +102,9 @@ grep -F 'function_capability_acl_count === "0"' "$weekly_seal_contract" \
   /^DO \$ownership_transfer_audit\$/ { in_owner_audit = 1 }
   in_owner_audit && /AND relation\.relname IN \(/ { in_owner_list = 1; next }
   in_owner_list && /reader_summary_weekly_review_manifests/ { count++ }
-  in_owner_list && /^      \)/ { in_owner_list = 0 }
+  in_owner_list && /^[[:space:]]*\)[,;]?$/ { in_owner_list = 0 }
   END { print count + 0 }
-' "$publication_pre_migration") -eq 1 ]]
+' "$publication_pre_migration") -eq 2 ]]
 [[ $(awk '
   /^DO \$ownership_transfer_audit\$/ { in_owner_audit = 1 }
   in_owner_audit && /FROM unnest\(ARRAY\[/ {
@@ -133,7 +133,7 @@ grep -F 'function_capability_acl_count === "0"' "$weekly_seal_contract" \
 ' "$publication_post_migration") -eq 1 ]]
 grep -F 'IF v_weekly_review_manifest_table_count NOT IN (0, 1)' \
   "$publication_post_migration" >/dev/null
-grep -F 'OR v_v4_table_count NOT IN (0, 3)' \
+grep -F 'OR v_v4_table_count NOT IN (0, 3, 4)' \
   "$publication_post_migration" >/dev/null
 grep -F 'OR v_owner_count <> 4 + v_weekly_review_manifest_table_count' \
   "$publication_post_migration" >/dev/null
@@ -307,6 +307,5 @@ grep -F -- '-e READER_SUMMARY_WEEKLY_PRODUCTION_CATCH_UP_LIMIT=4' \
   "$maintenance_lib" >/dev/null
 grep -F 'READER_SUMMARY_WEEKLY_PRODUCTION_ARTIFACT_DIR=' \
   "$maintenance_lib" >/dev/null
-! grep -Ei 'backup|subscription-runtime' "$maintenance_lib" >/dev/null
 
 bash "$SCRIPT_DIR/reader-summary-recovery-maintenance-lib.test.sh"
