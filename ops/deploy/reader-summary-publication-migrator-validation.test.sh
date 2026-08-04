@@ -647,7 +647,7 @@ TEST_COUNT=$((TEST_COUNT + 1))
 
 tenant_system_services=$(
   awk '/^  [A-Za-z0-9_-]+:$/ {service=$1; sub(/:$/, "", service)}
-       /DATABASE_URL: \${SYSTEM_DATABASE_URL:\?/ {print service}' \
+       /^[[:space:]]*DATABASE_URL: \${SYSTEM_DATABASE_URL:\?/ {print service}' \
     "$SCRIPT_DIR/production-runtime/compose.postgres-runtime.yml"
 )
 [[ $tenant_system_services == $'ingestion-worker\nintelligence-worker\ndelivery-service\nevent-relay\ndaily-runner' ]]
