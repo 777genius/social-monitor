@@ -665,6 +665,8 @@ const deterministicUuid = (value: string): string => {
 };
 
 const requiredSystemDatabaseUrl = (): string => {
+  // Production Compose exposes the explicit SYSTEM_DATABASE_URL name.
+  // Backend rollout must advance daily-runner and runtime markers together.
   const value = required("SYSTEM_DATABASE_URL");
   const parsed = new URL(value);
   if (
