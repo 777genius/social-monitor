@@ -1007,9 +1007,9 @@ REVOKE CREATE ON SCHEMA public
 FROM social_monitor_reader_summary_publication_owner
 GRANTED BY CURRENT_USER;
 SET LOCAL ROLE social_monitor_public_schema_owner;
--- The original-cutoff correction verifies and locks only these claim columns.
--- Its predecessor revoked the same bounded ACL after applying, so re-admit it
--- for the correction migration and remove it in the post-migration phase.
+-- The recovery SECURITY DEFINER assertions verify and lock only these claim
+-- columns. Reissue the bounded durable ACL before each migration pass; the
+-- post-migration audit preserves the same final state.
 GRANT SELECT ("id", "tenant_id", "workspace_id", "scope"), UPDATE ("id")
 ON public."idempotency_keys"
 TO social_monitor_reader_summary_publication_owner
