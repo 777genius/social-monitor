@@ -49,6 +49,14 @@ Important env:
 - `AGENT_RUNTIME_CODEX_AUTH_JSON_PATH`
 - `AGENT_RUNTIME_CLAUDE_TOKEN_ENV`, default `CLAUDE_CODE_OAUTH_TOKEN`
 
+Operational invariant: production summary launchers append
+`compose.agent-runtime-model.yml` last and idempotently recreate
+`agent-runtime` before daily or weekly jobs, so the admitted model remains
+`gpt-5.6-sol` even when host overlays are stale. This backend-owned document
+also ensures the current main SHA receives the normal backend release
+transaction, aligning `backend.sha`, the PostgreSQL runtime `READY` marker and
+integration `HEAD` before bounded recovery.
+
 For local development, `npm run start:agent-runtime` loads only the runtime
 allowlist above from the repository `.env`; unrelated application credentials
 are not copied into the child process. It also uses the standard local durable
