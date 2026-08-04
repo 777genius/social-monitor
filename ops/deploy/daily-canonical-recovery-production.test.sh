@@ -13,6 +13,17 @@ workflow=$REPO/.github/workflows/production-deploy.yml
 frozen_input=$REPO/scripts/lib/reader-summary-daily-frozen-publication-input.ts
 frozen_input_spec=$REPO/scripts/lib/reader-summary-daily-frozen-publication-input.spec.ts
 postgres_runtime_compose=$SCRIPT_DIR/production-runtime/compose.postgres-runtime.yml
+compose=$REPO/docker-compose.yml
+compose_contract_dir=$(mktemp -d)
+stale_production_env=$compose_contract_dir/stale-production.env
+stale_production_rendered=$compose_contract_dir/stale-production.json
+local_override_env=$compose_contract_dir/local-override.env
+local_override_rendered=$compose_contract_dir/local-override.json
+
+cleanup_compose_contract() {
+  rm -rf "$compose_contract_dir"
+}
+trap cleanup_compose_contract EXIT
 
 [[ -f $foundation && -f $security && -f $tenant_rls && -f $forward && -f $runner && -f $frozen_input && -f $frozen_input_spec ]]
 [[ ! -e $REPO/scripts/lib/reader-summary-daily-frozen-authority-projection.ts ]]
@@ -80,6 +91,54 @@ grep -F 'daily_canonical_recovery_confirmation:' "$workflow" >/dev/null
 grep -F 'timeout-minutes: 360' "$workflow" >/dev/null
 grep -F 'npm run check:reader-summary-daily-canonical-recovery-postgres18' "$workflow" >/dev/null
 grep -F 'npm run check:reader-summary-daily-canonical-recovery-production' "$workflow" >/dev/null
+
+printf '%s\n' \
+  'AGENT_RUNTIME_MODEL=gpt-5.5' \
+  'AGENT_RUNTIME_READER_SUMMARY_MODEL=gpt-5.5' > "$stale_production_env"
+(
+  unset AGENT_RUNTIME_MODEL AGENT_RUNTIME_READER_SUMMARY_MODEL
+  unset AGENT_RUNTIME_MODEL_OVERRIDE AGENT_RUNTIME_READER_SUMMARY_MODEL_OVERRIDE
+  docker compose --env-file "$stale_production_env" -f "$compose" --profile app \
+    config --format json > "$stale_production_rendered"
+)
+
+printf '%s\n' \
+  'AGENT_RUNTIME_MODEL=gpt-5.5' \
+  'AGENT_RUNTIME_READER_SUMMARY_MODEL=gpt-5.5' \
+  'AGENT_RUNTIME_MODEL_OVERRIDE=local-test-model' \
+  'AGENT_RUNTIME_READER_SUMMARY_MODEL_OVERRIDE=local-test-model' > "$local_override_env"
+(
+  unset AGENT_RUNTIME_MODEL AGENT_RUNTIME_READER_SUMMARY_MODEL
+  unset AGENT_RUNTIME_MODEL_OVERRIDE AGENT_RUNTIME_READER_SUMMARY_MODEL_OVERRIDE
+  docker compose --env-file "$local_override_env" -f "$compose" --profile app \
+    config --format json > "$local_override_rendered"
+)
+
+node --input-type=module - "$stale_production_rendered" "$local_override_rendered" <<'NODE'
+import { readFileSync } from "node:fs";
+
+const [staleProductionPath, localOverridePath] = process.argv.slice(2);
+const expectedProductionModel = "gpt-5.6-sol";
+
+const assertModels = (path, expectedModel, scenario) => {
+  const rendered = JSON.parse(readFileSync(path, "utf8"));
+  const actualModels = {
+    agentRuntime: rendered.services?.["agent-runtime"]?.environment?.AGENT_RUNTIME_MODEL,
+    readerSummary: rendered.services?.api?.environment?.AGENT_RUNTIME_READER_SUMMARY_MODEL,
+  };
+
+  for (const [name, actual] of Object.entries(actualModels)) {
+    if (actual !== expectedModel || actual === "gpt-5.5") {
+      throw new Error(
+        `${scenario} rendered ${name} model as ${String(actual)}, expected ${expectedModel}`,
+      );
+    }
+  }
+};
+
+assertModels(staleProductionPath, expectedProductionModel, "stale production environment");
+assertModels(localOverridePath, "local-test-model", "explicit local/test override");
+NODE
 
 bash "$SCRIPT_DIR/reader-summary-recovery-maintenance-lib.test.sh"
 echo 'Daily canonical recovery production contract passed'
