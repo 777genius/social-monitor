@@ -204,7 +204,8 @@ export const seedReaderSummaryProductionRecoveryGapFixture = async (
       'fixture', '{"verifiedExisting":true}'::JSONB,
       requested_date::TIMESTAMP AT TIME ZONE 'UTC' + INTERVAL '12 hours'
     FROM recovery_gap_items
-    WHERE provider_key = 'github-trending-page';
+    WHERE provider_key = 'github-trending-page'
+      AND requested_date <> DATE '2026-07-29';
     COMMIT;
   `);
 };
@@ -274,14 +275,24 @@ export const assertReaderSummaryProductionRecoveryGapPostgresContract = async (
         day.terminalOutcome?.status === "PARTIAL" &&
         day.providerCoverage.every((provider, index) => {
           const providerKey = readerSummaryProductionRecoveryGapProviderKeys[index];
+          const reviewedJul29GithubOmission =
+            day.requestedUtcDate === "2026-07-29" &&
+            providerKey === "github-trending-page";
+          const expectedCount = providerKey === undefined
+            ? undefined
+            : reviewedJul29GithubOmission
+            ? 0
+            : readerSummaryProductionRecoveryGapExpectedCounts[
+              day.requestedUtcDate
+            ][providerKey];
           return provider.providerKey === providerKey &&
-            provider.count === (providerKey === undefined
-              ? undefined
-              : readerSummaryProductionRecoveryGapExpectedCounts[
-                  day.requestedUtcDate
-                ][providerKey]) &&
+            provider.count === expectedCount &&
             provider.evidenceState ===
-              (provider.count === 0 ? "missing" : "verified_existing");
+              (reviewedJul29GithubOmission
+                ? "unavailable"
+                : provider.count === 0
+                ? "missing"
+                : "verified_existing");
         }) &&
         day.dominance.permitted,
     ),

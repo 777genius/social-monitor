@@ -549,6 +549,9 @@ const assertJul23Jul28Jul30Authority = async (client: Client): Promise<void> => 
     jul28: string;
     jul28Counts: string;
     jul28Total: string;
+    jul29: string;
+    jul29Counts: string;
+    jul29RawGithub: string;
     jul30: string;
     jul30Counts: string;
     jul30Total: string;
@@ -626,6 +629,23 @@ const assertJul23Jul28Jul30Authority = async (client: Client): Promise<void> => 
        FROM public.reader_summary_production_recovery_days day,
        LATERAL jsonb_each(day.provider_evidence) entry(key, value)
        WHERE requested_utc_date = DATE '2026-07-28') AS "jul28Total",
+      (SELECT (github_evidence->>'mode') || ':' || (github_evidence->>'evidenceCount')
+       FROM public.reader_summary_production_recovery_days
+       WHERE requested_utc_date = DATE '2026-07-29' LIMIT 1) AS "jul29",
+      (SELECT jsonb_build_array(
+        jsonb_array_length(provider_evidence->'github-trending-page'),
+        jsonb_array_length(provider_evidence->'hacker-news'),
+        jsonb_array_length(provider_evidence->'reddit'),
+        jsonb_array_length(provider_evidence->'rss'),
+        jsonb_array_length(provider_evidence->'x-twitter'))::TEXT
+       FROM public.reader_summary_production_recovery_days
+       WHERE requested_utc_date = DATE '2026-07-29' LIMIT 1) AS "jul29Counts",
+      (SELECT count(*)::TEXT
+       FROM public.feed_items AS feed
+       WHERE feed.tenant_id = '${tenant}' AND feed.workspace_id = '${workspace}'
+         AND feed.provider_key = 'github-trending-page'
+         AND feed.published_at >= TIMESTAMPTZ '2026-07-29T00:00:00Z'
+         AND feed.published_at < TIMESTAMPTZ '2026-07-30T00:00:00Z') AS "jul29RawGithub",
       (SELECT (github_evidence->>'mode') || ':' || (github_evidence->>'evidenceCount')
        FROM public.reader_summary_production_recovery_days
        WHERE requested_utc_date = DATE '2026-07-30' LIMIT 1) AS "jul30",
@@ -863,6 +883,8 @@ const assertJul23Jul28Jul30Authority = async (client: Client): Promise<void> => 
       row.jul23V4Rss === "75" && row.jul24V4Rss === "67" &&
       row.jul28 === "historical_unavailable:0" &&
       row.jul28Counts === "[0, 0, 0, 31, 107]" && row.jul28Total === "138" &&
+      row.jul29 === "unavailable:0" &&
+      row.jul29Counts === "[0, 0, 0, 32, 17]" && row.jul29RawGithub === "10" &&
       row.jul30 === "missing:0" &&
       row.jul30Counts === "[0, 0, 0, 34, 64]" && row.jul30Total === "98" &&
       row.v2Authorities === "8" && row.invalidAuthority === "0" &&
