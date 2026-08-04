@@ -10,12 +10,12 @@ import {
 describe("reader summary daily terminal DSN derivation", () => {
   it("replaces only the system role while preserving encoded credentials and connection fields", () => {
     const systemDatabaseUrl =
-      "postgresql://social_monitor_system_app:encoded%2Fpassword%3Fvalue@database.example.test:5433/reader%2Fsummary?application_name=daily%20recovery&sslmode=verify-full";
+      "postgresql://social_monitor_system_app:raw-password@database.example.test:5433/reader%2Fsummary?application_name=daily%20recovery&sslmode=verify-full";
 
     expect(
       deriveReaderSummaryDailyTerminalDatabaseUrl(systemDatabaseUrl),
     ).toBe(
-      "postgresql://social_monitor_reader_summary_daily_terminal:encoded%2Fpassword%3Fvalue@database.example.test:5433/reader%2Fsummary?application_name=daily%20recovery&sslmode=verify-full",
+      "postgresql://social_monitor_reader_summary_daily_terminal:raw-password@database.example.test:5433/reader%2Fsummary?application_name=daily%20recovery&sslmode=verify-full",
     );
   });
 });
