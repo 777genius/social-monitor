@@ -213,7 +213,7 @@ export const assertReaderSummaryDailyCanonicalRecoveryV4AmbiguityRetryMigrationC
       preBootstrapSql.includes("v_v4_table_count NOT IN (0, 3, 4)") &&
       postBootstrapSql.includes("v_v4_table_count NOT IN (0, 3, 4)") &&
       preBootstrapSql.includes(
-        "v_owner_count <> 4 + v_weekly_review_manifest_table_count\n      + v_v4_table_count",
+        "v_owner_count <> 4 + v_weekly_review_manifest_table_count\n        + v_v4_table_count",
       ) &&
       postBootstrapSql.includes(
         "v_owner_count <> 4 + v_weekly_review_manifest_table_count\n      + v_v4_table_count",

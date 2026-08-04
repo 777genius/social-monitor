@@ -543,6 +543,9 @@ grep -F -- '--sandbox read-only' "$ENTRYPOINT" >/dev/null
 grep -F -- '--output-last-message' "$ENTRYPOINT" >/dev/null
 grep -F -- '--broker-pool-job-id' "$ENTRYPOINT" >/dev/null
 grep -F 'registry-v4' "$ENTRYPOINT" >/dev/null
-! grep -F 'reader-summary-recovery-maintenance-lib' "$ENTRYPOINT" >/dev/null
+if grep -F 'reader-summary-recovery-maintenance-lib' "$ENTRYPOINT" >/dev/null; then
+  echo 'reader-summary recovery maintenance library reference is present' >&2
+  exit 1
+fi
 
 echo 'Subscription auth refresh tests passed'
