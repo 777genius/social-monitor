@@ -37,9 +37,14 @@ import {
   assertReaderSummaryDailyCanonicalRecoveryV4PostgresContract,
 } from "./lib/reader-summary-daily-canonical-recovery-v4-postgres-contract";
 import {
+  assertReaderSummaryDailyCanonicalRecoveryV4AmbiguityRetryMigrationContract,
+  prepareReaderSummaryDailyCanonicalRecoveryV4AmbiguityRetryFixture,
+} from "./lib/reader-summary-daily-canonical-recovery-v4-ambiguity-retry-postgres-contract";
+import {
   type CanonicalRecoveryAuthority,
   type CanonicalRecoveryFinalizer,
   type CanonicalRecoveryPublication,
+  PostgresCanonicalRecoveryAmbiguityRetryAuthorizer,
   PostgresCanonicalRecoveryAuthority,
   canonicalJsonBytes,
   canonicalRecoveryDates,
@@ -199,9 +204,16 @@ const canonicalRecoveryFoundationMigrations = [
 ] as const;
 const originalCutoffForwardMigration =
   "20260804110000_reader_summary_daily_v4_original_cutoff_forward_correction";
+const ambiguityRetryMigrations = [
+  "20260804130000_reader_summary_daily_v4_ambiguity_retry_schema",
+  "20260804130100_reader_summary_daily_v4_ambiguity_retry_transitions",
+  "20260804130200_reader_summary_daily_v4_ambiguity_retry_consumers",
+  "20260804130300_reader_summary_daily_v4_ambiguity_retry_evidence",
+] as const;
 const deferredCanonicalRecoveryMigrations = [
   ...canonicalRecoveryFoundationMigrations,
   originalCutoffForwardMigration,
+  ...ambiguityRetryMigrations,
 ] as const;
 let ownerRolePreexisting = false;
 let capabilityRolePreexisting = false;
@@ -368,6 +380,7 @@ const assertReaderSummaryDailyCanonicalRecoveryV4GenericFixture = async (
 
 const main = async (): Promise<void> => {
   assertReaderSummaryDailyCanonicalRecoveryV4MigrationContract();
+  assertReaderSummaryDailyCanonicalRecoveryV4AmbiguityRetryMigrationContract();
   assert(
     /^reader_summary_recovery_test_[0-9a-f]{20}$/u.test(databaseName),
     "temporary recovery database name must be bounded",
@@ -510,14 +523,24 @@ const main = async (): Promise<void> => {
             auditor,
             "0",
           );
-        cpSync(
-          join(process.cwd(), "prisma", "migrations", originalCutoffForwardMigration),
-          join(migrationWorkspace.directory, "migrations", originalCutoffForwardMigration),
-          { recursive: true },
-        );
+        for (const migration of [
+          originalCutoffForwardMigration,
+          ...ambiguityRetryMigrations,
+        ]) {
+          cpSync(
+            join(process.cwd(), "prisma", "migrations", migration),
+            join(migrationWorkspace.directory, "migrations", migration),
+            { recursive: true },
+          );
+        }
         applyOrderedReaderSummaryMigrations(
           adminDatabaseUrl,
           migrationWorkspace,
+        );
+        await runReaderSummaryPublicationBootstrapSql(
+          "post",
+          adminDatabaseUrl,
+          runtimeRole,
         );
         assertReaderSummaryMigrationDatabaseMatchesSchema(targetDatabaseUrl);
         const legacyRecoveryAfterForward =
@@ -612,6 +635,40 @@ const main = async (): Promise<void> => {
           now: () => new Date(),
         });
         try {
+          const ambiguityRetry =
+            await prepareReaderSummaryDailyCanonicalRecoveryV4AmbiguityRetryFixture({
+              auditor,
+              firstTerminal,
+              rogue: first,
+              authority: baseAuthority,
+              authorizer: new PostgresCanonicalRecoveryAmbiguityRetryAuthorizer(
+                terminalRuntime.terminal,
+              ),
+              tenantId: readerSummaryProductionRecoveryFixtureScope.tenantId,
+              workspaceId: readerSummaryProductionRecoveryFixtureScope.workspaceId,
+            });
+          const claimedRetryExecutor =
+            new ReaderSummaryDailyCanonicalRecoveryV4Executor({
+              authority: {
+                ...wrappedAuthority,
+                claim: async () => ({
+                  kind: "claimed" as const,
+                  work: ambiguityRetry.retryWork,
+                }),
+              },
+              runtime,
+              finalizer: wrappedFinalizer,
+              now: () => new Date(),
+            });
+          const claimedRetryOutcome = await claimedRetryExecutor.runOne({
+            tenantId: readerSummaryProductionRecoveryFixtureScope.tenantId,
+            workspaceId: readerSummaryProductionRecoveryFixtureScope.workspaceId,
+            workerId: ambiguityRetry.retryWork.workerId,
+          });
+          assert(
+            claimedRetryOutcome.kind === "completed",
+            "genuine attempt-2 work did not succeed after stale callbacks were rejected",
+          );
           await assertReaderSummaryDailyCanonicalRecoveryV4PostgresContract({
             auditor,
             firstTerminal,
@@ -622,6 +679,7 @@ const main = async (): Promise<void> => {
             }),
             runtimeCallCount: () => runtime.callCount,
           });
+          await ambiguityRetry.assertAfterExecution();
           assert(
             recordedPublications.length === 8,
             `checker-only batching must record exactly 8 finalizer publications; received ${recordedPublications.length}`,

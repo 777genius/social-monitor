@@ -119,6 +119,21 @@ async function main(): Promise<void> {
     if (outcome.kind === "caught_up") {
       console.log(`finalized_dates=${outcome.publications.length}`);
     }
+    const exitCode = canonicalRecoveryCliExitCode(outcome);
+    if (outcome.kind === "failed_ambiguous") {
+      console.error(
+        `reader-summary-daily-canonical-recovery-v4 unresolved_ambiguity=${outcome.requestedUtcDate}`,
+      );
+      if (
+        outcome.modelJobIdentity !== undefined &&
+        outcome.sourceAuthoritySha256 !== undefined
+      ) {
+        console.error(
+          `reader-summary-daily-canonical-recovery-v4 failed_model_job_identity=${outcome.modelJobIdentity} source_authority_sha256=${outcome.sourceAuthoritySha256}`,
+        );
+      }
+      process.exitCode = exitCode;
+    }
   } finally {
     await Promise.all([runtimeConnection.close(), prisma.close()]);
   }
@@ -146,6 +161,10 @@ export const createReaderSummaryDailyCanonicalRecoveryV4Finalizer = (dependencie
   );
   return { finalize: (input) => atomic.finalize(input) };
 };
+
+export const canonicalRecoveryCliExitCode = (
+  outcome: Readonly<{ kind: string }>,
+): number => outcome.kind === "failed_ambiguous" ? 1 : 0;
 
 const capture = async (
   input: Parameters<CanonicalRecoveryFinalizer["finalize"]>[0],

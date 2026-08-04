@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
+  canonicalRecoveryCliExitCode,
   deriveReaderSummaryDailyTerminalDatabaseUrl,
   stageReaderSummaryDailyCanonicalRecoveryPublicFiles,
 } from "./run-reader-summary-daily-canonical-recovery";
@@ -17,6 +18,13 @@ describe("reader summary daily terminal DSN derivation", () => {
     ).toBe(
       "postgresql://social_monitor_reader_summary_daily_terminal:raw-password@database.example.test:5433/reader%2Fsummary?application_name=daily%20recovery&sslmode=verify-full",
     );
+  });
+});
+
+describe("reader summary daily canonical recovery CLI outcome", () => {
+  it("returns nonzero while a consumed attempt remains ambiguous", () => {
+    expect(canonicalRecoveryCliExitCode({ kind: "failed_ambiguous" })).toBe(1);
+    expect(canonicalRecoveryCliExitCode({ kind: "caught_up" })).toBe(0);
   });
 });
 

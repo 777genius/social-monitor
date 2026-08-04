@@ -406,7 +406,7 @@ export const assertReaderSummaryDailyCanonicalRecoveryV4PostgresContract = async
     `v4 did not persist exactly two matching plans and eight immutable rows: ${JSON.stringify(count)}`,
   );
   assert(
-    count.forcedRls === "3" && count.unsafeFunctions === "0",
+    count.forcedRls === "4" && count.unsafeFunctions === "0",
     `v4 RLS or SECURITY DEFINER hardening diverged: ${JSON.stringify(count)}`,
   );
 
@@ -488,31 +488,31 @@ export const assertReaderSummaryDailyCanonicalRecoveryV4PostgresContract = async
     outside: string;
   }>(`
     SELECT
-      (SELECT count(*) FROM public.reader_summary_daily_canonical_recovery_v4_leases
+      (SELECT count(*) FROM public.reader_summary_daily_canonical_recovery_v4_effective_leases
        WHERE state = 'FINALIZED' AND finalized_at IS NOT NULL)::TEXT AS "finalizedLeases",
-      (SELECT count(*) FROM public.reader_summary_daily_canonical_recovery_v4_leases
+      (SELECT count(*) FROM public.reader_summary_daily_canonical_recovery_v4_effective_leases
        WHERE reader_summary_job_id IS NOT NULL
          AND reader_summary_artifact_id IS NOT NULL
          AND publication_id IS NOT NULL
          AND publication_prepared_at IS NOT NULL)::TEXT AS "linkedLeases",
       (SELECT count(*) FROM public.reader_summary_artifacts artifact
-       JOIN public.reader_summary_daily_canonical_recovery_v4_leases lease
+       JOIN public.reader_summary_daily_canonical_recovery_v4_effective_leases lease
          ON lease.reader_summary_artifact_id = artifact.id
        WHERE artifact.status = 'NO_SIGNAL')::TEXT AS "finalizedArtifacts",
       (SELECT count(*) FROM public.reader_summary_jobs job
-       JOIN public.reader_summary_daily_canonical_recovery_v4_leases lease
+       JOIN public.reader_summary_daily_canonical_recovery_v4_effective_leases lease
          ON lease.reader_summary_job_id = job.id
        WHERE job.status = 'NO_SIGNAL')::TEXT AS "finalizedJobs",
       (SELECT count(*) FROM public.reader_summary_publications publication
-       JOIN public.reader_summary_daily_canonical_recovery_v4_leases lease
+       JOIN public.reader_summary_daily_canonical_recovery_v4_effective_leases lease
          ON lease.publication_id = publication.id
        WHERE publication.semantic_status = 'NO_SIGNAL'
          AND publication.cadence = 'daily')::TEXT AS "finalizedPublications",
       (SELECT count(*) FROM public.reader_summary_weekly_publication_evidence evidence
-       JOIN public.reader_summary_daily_canonical_recovery_v4_leases lease
+       JOIN public.reader_summary_daily_canonical_recovery_v4_effective_leases lease
          ON lease.publication_id = evidence.publication_id)::TEXT AS "finalizedEvidence",
       (SELECT count(*) FROM public.reader_summary_artifacts artifact
-       JOIN public.reader_summary_daily_canonical_recovery_v4_leases lease
+       JOIN public.reader_summary_daily_canonical_recovery_v4_effective_leases lease
          ON lease.reader_summary_artifact_id = artifact.id
        WHERE artifact.quality_signals->'githubProjectionAudit'->'recoveryV4'
          ->>'schemaVersion' = 'reader_summary.daily_canonical_recovery_provenance.v2')::TEXT AS "v2Audits",
@@ -923,10 +923,10 @@ const assertLeastPrivilege = async (client: Client): Promise<void> => {
         'public.claim_reader_summary_daily_canonical_recovery_v4(UUID,UUID,TEXT,TIMESTAMPTZ)',
         'EXECUTE') AS "terminalClaim",
       has_function_privilege('social_monitor_reader_summary_daily_terminal',
-        'public.finalize_reader_summary_daily_canonical_recovery_v4(UUID,UUID,DATE,TEXT,BIGINT,UUID,UUID,UUID,CHAR,CHAR,CHAR,CHAR,CHAR)',
+        'public.finalize_reader_summary_daily_canonical_recovery_v4(UUID,UUID,DATE,CHAR,SMALLINT,TEXT,BIGINT,UUID,UUID,UUID,CHAR,CHAR,CHAR,CHAR,CHAR)',
         'EXECUTE') AS "terminalFinalize",
       has_function_privilege('social_monitor_reader_summary_publication_runtime',
-        'public.finalize_reader_summary_daily_canonical_recovery_v4(UUID,UUID,DATE,TEXT,BIGINT,UUID,UUID,UUID,CHAR,CHAR,CHAR,CHAR,CHAR)',
+        'public.finalize_reader_summary_daily_canonical_recovery_v4(UUID,UUID,DATE,CHAR,SMALLINT,TEXT,BIGINT,UUID,UUID,UUID,CHAR,CHAR,CHAR,CHAR,CHAR)',
         'EXECUTE') AS "publicationFinalize",
       has_function_privilege('public',
         'public.verify_reader_summary_daily_canonical_recovery_v4_provenance(UUID,UUID,DATE,JSONB,UUID)',
@@ -938,10 +938,10 @@ const assertLeastPrivilege = async (client: Client): Promise<void> => {
         'public.verify_reader_summary_daily_canonical_recovery_v4_provenance(UUID,UUID,DATE,JSONB,UUID)',
         'EXECUTE') AS "systemVerifier",
       has_function_privilege('social_monitor_tenant_system_runtime',
-        'public.prepare_reader_summary_daily_canonical_recovery_v4_publication(UUID,UUID,DATE,TEXT,BIGINT,UUID,UUID,UUID,CHAR,CHAR,CHAR,CHAR,CHAR)',
+        'public.prepare_reader_summary_daily_canonical_recovery_v4_publication(UUID,UUID,DATE,CHAR,SMALLINT,TEXT,BIGINT,UUID,UUID,UUID,CHAR,CHAR,CHAR,CHAR,CHAR)',
         'EXECUTE') AS "systemPrepare",
       has_function_privilege('social_monitor_tenant_system_runtime',
-        'public.finalize_reader_summary_daily_canonical_recovery_v4(UUID,UUID,DATE,TEXT,BIGINT,UUID,UUID,UUID,CHAR,CHAR,CHAR,CHAR,CHAR)',
+        'public.finalize_reader_summary_daily_canonical_recovery_v4(UUID,UUID,DATE,CHAR,SMALLINT,TEXT,BIGINT,UUID,UUID,UUID,CHAR,CHAR,CHAR,CHAR,CHAR)',
         'EXECUTE') AS "systemFinalize",
       has_function_privilege('public',
         'public.record_reader_summary_daily_canonical_recovery_v4_evidence(UUID)',

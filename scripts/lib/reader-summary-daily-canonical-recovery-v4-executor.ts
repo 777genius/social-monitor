@@ -47,9 +47,12 @@ export class ReaderSummaryDailyCanonicalRecoveryV4Executor {
         kind: "caught_up";
         publications: readonly CanonicalRecoveryPublication[];
       }>
+    | Readonly<{ kind: "leased"; requestedUtcDate: string }>
     | Readonly<{
-        kind: "leased" | "failed_ambiguous";
+        kind: "failed_ambiguous";
         requestedUtcDate: string;
+        modelJobIdentity?: string;
+        sourceAuthoritySha256?: string;
       }>
   > {
     const claim = await this.dependencies.authority.claim({
@@ -169,9 +172,12 @@ export class ReaderSummaryDailyCanonicalRecoveryV4Executor {
         kind: "caught_up";
         publications: readonly CanonicalRecoveryPublication[];
       }>
+    | Readonly<{ kind: "leased"; requestedUtcDate: string }>
     | Readonly<{
-        kind: "leased" | "failed_ambiguous";
+        kind: "failed_ambiguous";
         requestedUtcDate: string;
+        modelJobIdentity?: string;
+        sourceAuthoritySha256?: string;
       }>
   > {
     for (let resolved = 0; resolved <= 8; resolved += 1) {
@@ -300,6 +306,7 @@ const assertRenewedWork = (
     refreshed.sourceAuthoritySha256 !== current.sourceAuthoritySha256 ||
     !refreshed.sourceAuthorityBytes.equals(current.sourceAuthorityBytes) ||
     refreshed.modelJobIdentity !== current.modelJobIdentity ||
+    refreshed.attemptOrdinal !== current.attemptOrdinal ||
     refreshed.workerId !== current.workerId ||
     refreshed.fencingToken !== current.fencingToken ||
     refreshed.state !== current.state ||

@@ -9,6 +9,7 @@ export const canonicalRecoveryDates = Object.freeze([
 ] as const);
 
 export type CanonicalRecoveryDate = typeof canonicalRecoveryDates[number];
+export const canonicalRecoveryAmbiguityRetryDate = "2026-07-23" as const;
 export type CanonicalRecoveryLeaseState =
   | "RESERVED"
   | "COMPLETED"
@@ -22,6 +23,8 @@ export type CanonicalRecoveryWork = Readonly<{
   sourceAuthorityBytes: Buffer;
   sourceAuthoritySha256: string;
   modelJobIdentity: string;
+  /** Present on every durable claim; optional only for legacy in-memory specs. */
+  attemptOrdinal?: 1 | 2;
   state: CanonicalRecoveryLeaseState;
   workerId: string;
   fencingToken: bigint;
@@ -36,9 +39,12 @@ export type CanonicalRecoveryWork = Readonly<{
 export type CanonicalRecoveryClaim =
   | Readonly<{ kind: "claimed"; work: CanonicalRecoveryWork }>
   | Readonly<{ kind: "caught_up" }>
+  | Readonly<{ kind: "leased"; requestedUtcDate: CanonicalRecoveryDate }>
   | Readonly<{
-      kind: "leased" | "failed_ambiguous";
+      kind: "failed_ambiguous";
       requestedUtcDate: CanonicalRecoveryDate;
+      modelJobIdentity?: string;
+      sourceAuthoritySha256?: string;
     }>;
 
 export type CanonicalRecoveryPublication = Readonly<{
@@ -88,6 +94,20 @@ export interface CanonicalRecoveryFinalizer {
   }>): Promise<CanonicalRecoveryPublication>;
 }
 
+export type CanonicalRecoveryAmbiguityRetryAuthorizationInput = Readonly<{
+  tenantId: string;
+  workspaceId: string;
+  requestedUtcDate: string;
+  originalModelJobIdentity: string;
+  sourceAuthoritySha256: string;
+  authorizedAt: string;
+}>;
+
+export type CanonicalRecoveryAmbiguityRetryAuthorization = Readonly<{
+  modelJobIdentity: string;
+  authorizationSha256: string;
+}>;
+
 /**
  * The dedicated terminal login can invoke only the narrow v4 SQL functions.
  * All transitions run in a SERIALIZABLE transaction supplied by the connection
@@ -110,10 +130,33 @@ export class PostgresCanonicalRecoveryAuthority
       const outcome = text(row.outcome);
       if (outcome === "CAUGHT_UP") return { kind: "caught_up" as const };
       const requestedUtcDate = recoveryDate(row.requested_utc_date);
-      if (outcome === "LEASED" || outcome === "FAILED_AMBIGUOUS") {
+      if (outcome === "LEASED") {
         return {
-          kind: outcome.toLowerCase() as "leased" | "failed_ambiguous",
+          kind: "leased" as const,
           requestedUtcDate,
+        };
+      }
+      if (outcome === "FAILED_AMBIGUOUS") {
+        const modelJobIdentity = row.model_job_identity;
+        const sourceAuthoritySha256 = row.source_canonical_sha256;
+        if (
+          (modelJobIdentity === null || modelJobIdentity === undefined) !==
+          (sourceAuthoritySha256 === null || sourceAuthoritySha256 === undefined)
+        ) {
+          throw new Error("Daily canonical recovery failed ambiguity binding is incomplete");
+        }
+        return {
+          kind: "failed_ambiguous" as const,
+          requestedUtcDate,
+          ...(modelJobIdentity === null || modelJobIdentity === undefined
+            ? {}
+            : {
+                modelJobIdentity: sha(modelJobIdentity, "failed model identity"),
+                sourceAuthoritySha256: sha(
+                  sourceAuthoritySha256,
+                  "failed source authority",
+                ),
+              }),
         };
       }
       if (outcome !== "CLAIMED") {
@@ -147,12 +190,15 @@ export class PostgresCanonicalRecoveryAuthority
     return this.client.serializable(async (transaction) => {
       const result = await transaction.query<Record<string, unknown>>(
         `SELECT * FROM public."renew_reader_summary_daily_canonical_recovery_v4_lease"(
-          $1::UUID,$2::UUID,$3::DATE,$4::TEXT,$5::BIGINT,$6::TIMESTAMPTZ
+          $1::UUID,$2::UUID,$3::DATE,$4::CHAR(64),$5::SMALLINT,$6::TEXT,
+          $7::BIGINT,$8::TIMESTAMPTZ
         )`,
         [
           work.tenantId,
           work.workspaceId,
           work.requestedUtcDate,
+          work.modelJobIdentity,
+          exactAttemptOrdinal(work),
           work.workerId,
           work.fencingToken,
           at,
@@ -182,14 +228,16 @@ export class PostgresCanonicalRecoveryAuthority
     return this.client.serializable(async (transaction) => {
       const result = await transaction.query<Record<string, unknown>>(
         `SELECT * FROM public."complete_reader_summary_daily_canonical_recovery_v4"(
-          $1::UUID,$2::UUID,$3::DATE,$4::TEXT,$5::BIGINT,$6::TIMESTAMPTZ,
-          $7::BYTEA,$8::CHAR(64),$9::JSONB,$10::BYTEA,$11::CHAR(64),
-          $12::BYTEA,$13::CHAR(64)
+          $1::UUID,$2::UUID,$3::DATE,$4::CHAR(64),$5::SMALLINT,$6::TEXT,
+          $7::BIGINT,$8::TIMESTAMPTZ,$9::BYTEA,$10::CHAR(64),$11::JSONB,
+          $12::BYTEA,$13::CHAR(64),$14::BYTEA,$15::CHAR(64)
         )`,
         [
           work.tenantId,
           work.workspaceId,
           work.requestedUtcDate,
+          work.modelJobIdentity,
+          exactAttemptOrdinal(work),
           work.workerId,
           work.fencingToken,
           input.completedAt,
@@ -238,17 +286,62 @@ export class PostgresCanonicalRecoveryAuthority
     await this.client.serializable(async (transaction) => {
       await transaction.query(
         `SELECT * FROM public."${functionName}"(
-          $1::UUID,$2::UUID,$3::DATE,$4::TEXT,$5::BIGINT,$6::TIMESTAMPTZ
+          $1::UUID,$2::UUID,$3::DATE,$4::CHAR(64),$5::SMALLINT,$6::TEXT,
+          $7::BIGINT,$8::TIMESTAMPTZ
         )`,
         [
           work.tenantId,
           work.workspaceId,
           work.requestedUtcDate,
+          work.modelJobIdentity,
+          exactAttemptOrdinal(work),
           work.workerId,
           work.fencingToken,
           at,
         ],
       );
+    });
+  }
+}
+
+/** Dedicated operator path; the SQL boundary repeats every scope and audit check. */
+export class PostgresCanonicalRecoveryAmbiguityRetryAuthorizer {
+  constructor(private readonly client: ReaderSummaryDailySqlClient) {}
+
+  async authorize(
+    input: CanonicalRecoveryAmbiguityRetryAuthorizationInput,
+  ): Promise<CanonicalRecoveryAmbiguityRetryAuthorization> {
+    if (input.requestedUtcDate !== canonicalRecoveryAmbiguityRetryDate) {
+      throw new Error("Daily canonical recovery ambiguity retry date is not authorized");
+    }
+    const originalModelJobIdentity = sha(
+      input.originalModelJobIdentity,
+      "original model identity",
+    );
+    const sourceAuthoritySha256 = sha(
+      input.sourceAuthoritySha256,
+      "source authority",
+    );
+    const authorizedAt = iso(input.authorizedAt, "ambiguity retry authorization time");
+    return this.client.serializable(async (transaction) => {
+      const result = await transaction.query<Record<string, unknown>>(
+        `SELECT * FROM public."authorize_reader_summary_daily_canonical_recovery_v4_ambiguity_retry"(
+          $1::UUID,$2::UUID,$3::DATE,$4::CHAR(64),$5::CHAR(64),$6::TIMESTAMPTZ
+        )`,
+        [
+          input.tenantId,
+          input.workspaceId,
+          canonicalRecoveryAmbiguityRetryDate,
+          originalModelJobIdentity,
+          sourceAuthoritySha256,
+          authorizedAt,
+        ],
+      );
+      const row = one(result.rows, "ambiguity retry authorization");
+      return Object.freeze({
+        modelJobIdentity: sha(row.model_job_identity, "retry model identity"),
+        authorizationSha256: sha(row.authorization_sha256, "authorization"),
+      });
     });
   }
 }
@@ -504,6 +597,21 @@ const text = (value: unknown): string => typeof value === "string" ? value : "";
 const bigintText = (value: unknown): string =>
   typeof value === "bigint" || typeof value === "number" ? String(value) : text(value);
 
+const attemptOrdinal = (value: unknown): 1 | 2 => {
+  const parsed = Number(bigintText(value));
+  if (parsed !== 1 && parsed !== 2) {
+    throw new Error("Daily canonical recovery attempt ordinal is invalid");
+  }
+  return parsed;
+};
+
+const exactAttemptOrdinal = (work: CanonicalRecoveryWork): 1 | 2 => {
+  if (work.attemptOrdinal !== 1 && work.attemptOrdinal !== 2) {
+    throw new Error("Daily canonical recovery work lacks an exact attempt ordinal");
+  }
+  return work.attemptOrdinal;
+};
+
 const recoveryDate = (value: unknown): CanonicalRecoveryDate => {
   // node-postgres parses DATE as local midnight. Converting that value to UTC
   // moves it to the previous day on positive-offset production hosts, so keep
@@ -573,6 +681,7 @@ const workFromRow = (
     sourceAuthorityBytes: buffer(row.source_canonical_bytes, "source authority"),
     sourceAuthoritySha256: sha(row.source_canonical_sha256, "source authority"),
     modelJobIdentity: sha(row.model_job_identity, "model identity"),
+    attemptOrdinal: attemptOrdinal(row.attempt_ordinal),
     state,
     workerId,
     fencingToken: BigInt(bigintText(row.fencing_token)),

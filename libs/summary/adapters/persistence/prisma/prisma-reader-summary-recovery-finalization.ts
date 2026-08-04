@@ -100,6 +100,7 @@ export type ReaderSummaryDailyCanonicalRecoveryFinalizationInput = Readonly<{
       | "2026-07-27" | "2026-07-28" | "2026-07-29" | "2026-07-30";
     sourceAuthoritySha256: string;
     modelJobIdentity: string;
+    attemptOrdinal?: 1 | 2;
     workerId: string;
     sourceAuthorityBytes: Buffer;
     state: "RESERVED" | "COMPLETED" | "PUBLICATION_PENDING" | "FINALIZED";
@@ -149,6 +150,8 @@ export class PrismaReaderSummaryDailyCanonicalRecoveryV4Finalization {
   ) {}
 
   async finalize(input: ReaderSummaryDailyCanonicalRecoveryFinalizationInput) {
+    const modelJobIdentity = exactModelJobIdentity(input.work.modelJobIdentity);
+    const attemptOrdinal = exactAttemptOrdinal(input.work.attemptOrdinal);
     const publication = await withPrismaWriteRetry(() =>
       runSerializableReaderSummaryTransaction(
         this.prisma,
@@ -169,6 +172,8 @@ export class PrismaReaderSummaryDailyCanonicalRecoveryV4Finalization {
               ${input.work.tenantId}::UUID,
               ${input.work.workspaceId}::UUID,
               ${input.work.requestedUtcDate}::DATE,
+              ${modelJobIdentity}::CHAR(64),
+              ${attemptOrdinal}::SMALLINT,
               ${input.work.workerId}::TEXT,
               ${input.work.fencingToken}::BIGINT,
               ${captured.readerSummaryJobId}::UUID,
@@ -201,6 +206,8 @@ export class PrismaReaderSummaryDailyCanonicalRecoveryV4Finalization {
                 ${input.work.tenantId}::UUID,
                 ${input.work.workspaceId}::UUID,
                 ${input.work.requestedUtcDate}::DATE,
+                ${modelJobIdentity}::CHAR(64),
+                ${attemptOrdinal}::SMALLINT,
                 ${input.work.workerId}::TEXT,
                 ${input.work.fencingToken}::BIGINT,
                 ${publication.readerSummaryJobId}::UUID,
@@ -243,3 +250,17 @@ export class PrismaReaderSummaryDailyCanonicalRecoveryV4Finalization {
     });
   }
 }
+
+const exactModelJobIdentity = (value: string): string => {
+  if (!/^[0-9a-f]{64}$/u.test(value)) {
+    throw new Error("Daily canonical recovery finalization lacks an exact model identity");
+  }
+  return value;
+};
+
+const exactAttemptOrdinal = (value: 1 | 2 | undefined): 1 | 2 => {
+  if (value !== 1 && value !== 2) {
+    throw new Error("Daily canonical recovery finalization lacks an exact attempt ordinal");
+  }
+  return value;
+};

@@ -245,7 +245,8 @@ describe("PrismaReaderSummaryDailyCanonicalRecoveryV4Finalization", () => {
       jest.fn(async () => staged),
     );
 
-    await expect(finalization.finalize(canonicalFinalizationInput())).resolves.toMatchObject({
+    const input = canonicalFinalizationInput();
+    await expect(finalization.finalize(input)).resolves.toMatchObject({
       requestedUtcDate: "2026-07-23",
       publicationId: "40000000-0000-4000-8000-000000000004",
     });
@@ -261,6 +262,24 @@ describe("PrismaReaderSummaryDailyCanonicalRecoveryV4Finalization", () => {
     expect(String(queryRaw.mock.calls[2]?.[0])).toContain(
       "finalize_reader_summary_daily_canonical_recovery_v4",
     );
+    expect(queryRaw.mock.calls[1]?.slice(1, 8)).toEqual([
+      input.work.tenantId,
+      input.work.workspaceId,
+      input.work.requestedUtcDate,
+      input.work.modelJobIdentity,
+      input.work.attemptOrdinal,
+      input.work.workerId,
+      input.work.fencingToken,
+    ]);
+    expect(queryRaw.mock.calls[2]?.slice(1, 8)).toEqual([
+      input.work.tenantId,
+      input.work.workspaceId,
+      input.work.requestedUtcDate,
+      input.work.modelJobIdentity,
+      input.work.attemptOrdinal,
+      input.work.workerId,
+      input.work.fencingToken,
+    ]);
   });
 
   it("converges an exact replay when DB commit acknowledgement is lost", async () => {
@@ -351,6 +370,7 @@ const canonicalFinalizationInput = () => ({
     requestedUtcDate: "2026-07-23" as const,
     sourceAuthoritySha256: "d".repeat(64),
     modelJobIdentity: "e".repeat(64),
+    attemptOrdinal: 1 as const,
     workerId: "worker",
     sourceAuthorityBytes: Buffer.from("{}"),
     state: "COMPLETED" as const,

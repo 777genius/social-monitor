@@ -1178,10 +1178,60 @@ model ReaderSummaryDailyCanonicalRecoveryV4Lease {
   publicationPreparedAt   DateTime? @map("publication_prepared_at") @db.Timestamptz(6)
   finalizedAt             DateTime? @map("finalized_at") @db.Timestamptz(6)
   authority               ReaderSummaryDailyCanonicalRecoveryV4Authority @relation(fields: [tenantId, workspaceId, requestedUtcDate], references: [tenantId, workspaceId, requestedUtcDate], onDelete: Restrict, onUpdate: Restrict, map: "rs_daily_recovery_v4_leases_authority_fkey")
+  ambiguityRetry          ReaderSummaryDailyCanonicalRecoveryV4AmbiguityRetry? @relation("ReaderSummaryDailyCanonicalRecoveryV4AmbiguityRetryOriginal")
 
   @@id([tenantId, workspaceId, requestedUtcDate], map: "reader_summary_daily_canonical_recovery_v4_leases_pkey")
   @@index([tenantId, workspaceId, state, requestedUtcDate], map: "reader_summary_daily_canonical_recovery_v4_leases_state_idx")
   @@map("reader_summary_daily_canonical_recovery_v4_leases")
+}
+
+model ReaderSummaryDailyCanonicalRecoveryV4AmbiguityRetry {
+  tenantId                     String    @map("tenant_id") @db.Uuid
+  workspaceId                  String    @map("workspace_id") @db.Uuid
+  requestedUtcDate             DateTime  @map("requested_utc_date") @db.Date
+  attemptOrdinal               Int       @default(2) @map("attempt_ordinal") @db.SmallInt
+  supersedesModelJobIdentity   String    @map("supersedes_model_job_identity") @db.Char(64)
+  supersededPreModelConsumedAt DateTime  @map("superseded_pre_model_consumed_at") @db.Timestamptz(6)
+  supersededRunningAt          DateTime  @map("superseded_running_at") @db.Timestamptz(6)
+  supersededFailedAmbiguousAt  DateTime  @map("superseded_failed_ambiguous_at") @db.Timestamptz(6)
+  sourceAuthoritySha256        String    @map("source_authority_sha256") @db.Char(64)
+  authorizationSha256          String    @map("authorization_sha256") @db.Char(64)
+  authorizationReason          String    @map("authorization_reason")
+  authorizedBy                 String    @map("authorized_by")
+  authorizedAt                 DateTime  @map("authorized_at") @db.Timestamptz(6)
+  modelJobIdentity             String    @unique(map: "rs_daily_recovery_v4_ambiguity_retries_identity_key") @map("model_job_identity") @db.Char(64)
+  state                        String    @default("AUTHORIZED")
+  preModelConsumedAt           DateTime? @map("pre_model_consumed_at") @db.Timestamptz(6)
+  leaseOwner                   String?   @map("lease_owner")
+  fencingToken                 BigInt    @default(0) @map("fencing_token")
+  leasedAt                     DateTime? @map("leased_at") @db.Timestamptz(6)
+  leaseExpiresAt               DateTime? @map("lease_expires_at") @db.Timestamptz(6)
+  absoluteExpiresAt            DateTime? @map("absolute_expires_at") @db.Timestamptz(6)
+  runningAt                    DateTime? @map("running_at") @db.Timestamptz(6)
+  completedAt                  DateTime? @map("completed_at") @db.Timestamptz(6)
+  failedAmbiguousAt            DateTime? @map("failed_ambiguous_at") @db.Timestamptz(6)
+  responseBytes                Bytes?    @map("response_bytes")
+  responseSha256               String?   @map("response_sha256") @db.Char(64)
+  attestation                  Json?
+  attestationBytes             Bytes?    @map("attestation_bytes")
+  attestationSha256            String?   @map("attestation_sha256") @db.Char(64)
+  receiptBytes                 Bytes?    @map("receipt_bytes")
+  receiptSha256                String?   @map("receipt_sha256") @db.Char(64)
+  readerSummaryJobId           String?   @map("reader_summary_job_id") @db.Uuid
+  readerSummaryArtifactId      String?   @map("reader_summary_artifact_id") @db.Uuid
+  publicationId                String?   @map("publication_id") @db.Uuid
+  publicationReportSha256      String?   @map("publication_report_sha256") @db.Char(64)
+  publicationProofSha256       String?   @map("publication_proof_sha256") @db.Char(64)
+  weeklyEvidenceSha256         String?   @map("weekly_evidence_sha256") @db.Char(64)
+  publicEvidenceSha256         String?   @map("public_evidence_sha256") @db.Char(64)
+  publicFrontendSha256         String?   @map("public_frontend_sha256") @db.Char(64)
+  publicationPreparedAt        DateTime? @map("publication_prepared_at") @db.Timestamptz(6)
+  finalizedAt                  DateTime? @map("finalized_at") @db.Timestamptz(6)
+  originalLease                ReaderSummaryDailyCanonicalRecoveryV4Lease @relation("ReaderSummaryDailyCanonicalRecoveryV4AmbiguityRetryOriginal", fields: [tenantId, workspaceId, requestedUtcDate], references: [tenantId, workspaceId, requestedUtcDate], onDelete: Restrict, onUpdate: Restrict, map: "rs_daily_recovery_v4_ambiguity_retries_original_fkey")
+
+  @@id([tenantId, workspaceId, requestedUtcDate], map: "rs_daily_recovery_v4_ambiguity_retries_pkey")
+  @@index([tenantId, workspaceId, state, requestedUtcDate], map: "rs_daily_recovery_v4_ambiguity_retries_state_idx")
+  @@map("reader_summary_daily_canonical_recovery_v4_ambiguity_retries")
 }
 
 model ReaderSummaryWeeklyCertificationSeal {

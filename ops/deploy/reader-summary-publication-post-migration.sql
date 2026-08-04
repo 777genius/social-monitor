@@ -399,6 +399,7 @@ BEGIN
       'reader_summary_daily_canonical_recovery_v4_plans',
       'reader_summary_daily_canonical_recovery_v4_authorities',
       'reader_summary_daily_canonical_recovery_v4_leases',
+      'reader_summary_daily_canonical_recovery_v4_ambiguity_retries',
       'reader_summary_weekly_publication_evidence',
       'reader_summary_weekly_review_manifests'
     )
@@ -422,10 +423,11 @@ BEGIN
     AND relation.relname IN (
       'reader_summary_daily_canonical_recovery_v4_plans',
       'reader_summary_daily_canonical_recovery_v4_authorities',
-      'reader_summary_daily_canonical_recovery_v4_leases'
+      'reader_summary_daily_canonical_recovery_v4_leases',
+      'reader_summary_daily_canonical_recovery_v4_ambiguity_retries'
     );
   IF v_weekly_review_manifest_table_count NOT IN (0, 1)
-    OR v_v4_table_count NOT IN (0, 3)
+    OR v_v4_table_count NOT IN (0, 3, 4)
     OR v_owner_count <> 4 + v_weekly_review_manifest_table_count
       + v_v4_table_count THEN
     RAISE EXCEPTION 'protected reader summary tables have unsafe owners';
@@ -869,7 +871,8 @@ BEGIN
       'reader_summary_weekly_review_manifests',
       'reader_summary_daily_canonical_recovery_v4_plans',
       'reader_summary_daily_canonical_recovery_v4_authorities',
-      'reader_summary_daily_canonical_recovery_v4_leases'
+      'reader_summary_daily_canonical_recovery_v4_leases',
+      'reader_summary_daily_canonical_recovery_v4_ambiguity_retries'
     ]) protected_table(name)
     WHERE has_table_privilege(
       'social_monitor_reader_summary_daily_terminal',
