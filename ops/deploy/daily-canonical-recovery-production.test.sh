@@ -16,7 +16,7 @@ postgres_runtime_compose=$SCRIPT_DIR/production-runtime/compose.postgres-runtime
 [[ -f $foundation && -f $security && -f $tenant_rls && -f $runner && -f $frozen_input && -f $frozen_input_spec ]]
 [[ ! -e $REPO/scripts/lib/reader-summary-daily-frozen-authority-projection.ts ]]
 [[ ! -e $REPO/prisma/migrations/20260802180000_reader_summary_daily_canonical_recovery_v4 ]]
-mapfile -t v4_migrations < <(compgen -G "$REPO/prisma/migrations/*daily_canonical_recovery_v4*" || true)
+mapfile -t v4_migrations < <(compgen -G "$REPO/prisma/migrations/*daily_canonical_recovery_v4*" | sort || true)
 [[ ${#v4_migrations[@]} == 3 ]]
 [[ ${v4_migrations[0]} == *20260802233000_reader_summary_daily_canonical_recovery_v4 || ${v4_migrations[1]} == *20260802233000_reader_summary_daily_canonical_recovery_v4 ]]
 [[ ${v4_migrations[0]} == *20260802233100_reader_summary_daily_canonical_recovery_v4_security || ${v4_migrations[1]} == *20260802233100_reader_summary_daily_canonical_recovery_v4_security ]]
