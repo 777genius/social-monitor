@@ -17,9 +17,9 @@ export const isReaderSummaryDailyMaintenanceScope = (
   value.tenantId === readerSummaryDailyMaintenanceScope.tenantId &&
   value.workspaceId === readerSummaryDailyMaintenanceScope.workspaceId;
 
-export const assertReaderSummaryDailyMaintenanceScope = (
+export const assertReaderSummaryDailyMaintenanceScope: (
   value: Readonly<{ tenantId: string; workspaceId: string }>,
-): asserts value is ReaderSummaryDailyMaintenanceScope => {
+) => asserts value is ReaderSummaryDailyMaintenanceScope = (value) => {
   if (!isReaderSummaryDailyMaintenanceScope(value)) {
     throw new Error("Reader summary daily maintenance scope is not canonical");
   }

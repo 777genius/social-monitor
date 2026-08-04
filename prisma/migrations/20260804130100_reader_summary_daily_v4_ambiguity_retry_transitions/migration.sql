@@ -24,6 +24,9 @@ DROP FUNCTION IF EXISTS public."complete_reader_summary_daily_canonical_recovery
   BYTEA, CHAR(64), BYTEA, CHAR(64)
 );
 
+-- The OUT row type changed, so CREATE OR REPLACE cannot replace this existing signature safely.
+DROP FUNCTION IF EXISTS public."claim_reader_summary_daily_canonical_recovery_v4"(UUID, UUID, TEXT, TIMESTAMPTZ);
+
 CREATE FUNCTION public."assert_reader_summary_daily_canonical_recovery_v4_ambiguity_retry_binding"(
   target_tenant_id UUID,
   target_workspace_id UUID,

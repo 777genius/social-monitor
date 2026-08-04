@@ -130,7 +130,10 @@ const main = async (): Promise<void> => {
         try {
           return readReaderSummaryDailyMaintenanceCursorPreview({
             reader: {
-              query: async <TRow extends Record<string, unknown>>(sql, values) => {
+              query: async <TRow extends Record<string, unknown>>(
+                sql: string,
+                values: readonly unknown[],
+              ) => {
                 const result = await client.query<TRow>(sql, [...values]);
                 return { rows: result.rows };
               },
