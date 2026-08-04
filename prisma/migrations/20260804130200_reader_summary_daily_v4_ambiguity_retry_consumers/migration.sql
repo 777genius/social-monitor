@@ -239,7 +239,7 @@ BEGIN
       RAISE EXCEPTION 'daily canonical recovery v4 checked-at audit is invalid';
     END IF;
   ELSIF v_projection->>'mode' = 'historical_omission' THEN
-    IF target_date NOT IN (DATE '2026-07-23', DATE '2026-07-28', DATE '2026-07-30')
+    IF target_date NOT IN (DATE '2026-07-23', DATE '2026-07-28', DATE '2026-07-29', DATE '2026-07-30')
       OR public.jsonb_object_length(v_audit) <> 11
       OR v_audit->>'schemaVersion' IS DISTINCT FROM 'reader_summary.github_projection.v1'
       OR v_audit->>'status' IS DISTINCT FROM 'not_required'

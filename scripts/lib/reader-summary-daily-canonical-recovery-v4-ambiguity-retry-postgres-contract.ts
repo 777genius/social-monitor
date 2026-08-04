@@ -198,6 +198,10 @@ export const assertReaderSummaryDailyCanonicalRecoveryV4AmbiguityRetryMigrationC
     "provenance, publication, finalized readback, and evidence must bind attempt-2",
   );
   assert(
+    consumerSql.includes("target_date NOT IN (DATE '2026-07-23', DATE '2026-07-28', DATE '2026-07-29', DATE '2026-07-30')"),
+    "historical omission allowlist must remain exact",
+  );
+  assert(
     countOccurrences(backupContract, `"${retryTable}"`) === 2 &&
       backupContract.includes(`"select count(*) from ${retryTable}"`),
     "ambiguity retry audit state must be included in backup and restore validation",
@@ -819,9 +823,9 @@ const assertRetryRow = async (
     superseded_running_at: string | null;
     superseded_failed_ambiguous_at: string | null;
   }>(`
-    SELECT attempt_ordinal::TEXT, btrim(supersedes_model_job_identity),
-      btrim(source_authority_sha256), btrim(authorization_sha256),
-      btrim(model_job_identity), state,
+    SELECT attempt_ordinal::TEXT, btrim(supersedes_model_job_identity) AS supersedes_model_job_identity,
+      btrim(source_authority_sha256) AS source_authority_sha256, btrim(authorization_sha256) AS authorization_sha256,
+      btrim(model_job_identity) AS model_job_identity, state,
       superseded_pre_model_consumed_at::TEXT, superseded_running_at::TEXT,
       superseded_failed_ambiguous_at::TEXT
     FROM public."reader_summary_daily_canonical_recovery_v4_ambiguity_retries"
