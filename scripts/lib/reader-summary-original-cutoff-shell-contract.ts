@@ -11,10 +11,16 @@ export const assertShellStops = ({
   correctionMigration,
   activationAclMigration,
   weeklyManifestMigration,
+  dailyV4ForwardMigration,
+  dailyV4ForwardOldChecksum,
+  dailyV4ForwardFixedChecksum,
 }: Readonly<{
   correctionMigration: string;
   activationAclMigration: string;
   weeklyManifestMigration: string;
+  dailyV4ForwardMigration: string;
+  dailyV4ForwardOldChecksum: string;
+  dailyV4ForwardFixedChecksum: string;
 }>): void => {
   const deployLibrary = readFileSync(
     "ops/deploy/reader-summary-publication-deploy-lib.sh",
@@ -33,6 +39,10 @@ export const assertShellStops = ({
     "ops/deploy/reader-summary-original-cutoff-correction-lib.sh",
     "utf8",
   );
+  const preflight = readFileSync(
+    "ops/deploy/reader-summary-original-cutoff-failed-migration-preflight.sql",
+    "utf8",
+  );
   const entrypoint = readFileSync(
     "ops/deploy/social-monitor-production-deploy.sh",
     "utf8",
@@ -41,6 +51,18 @@ export const assertShellStops = ({
     entrypoint.startsWith("#!/usr/bin/env bash\nset -euo pipefail\n") &&
       /^\s{4}deploy_reader_summary_publication_migrations$/mu.test(entrypoint),
     "production entrypoint no longer makes publication migration fatal",
+  );
+  assert(
+    helper.includes(`READER_SUMMARY_DAILY_V4_FORWARD_MIGRATION=${dailyV4ForwardMigration}`) &&
+      helper.includes(`READER_SUMMARY_DAILY_V4_FORWARD_FIXED_CHECKSUM=${dailyV4ForwardFixedChecksum}`) &&
+      helper.includes('[[ $target_digest == "$READER_SUMMARY_DAILY_V4_FORWARD_FIXED_CHECKSUM" ]]') &&
+      helper.includes("daily-v4-forward-rollback") &&
+      preflight.includes(dailyV4ForwardMigration) &&
+      preflight.includes(dailyV4ForwardOldChecksum) &&
+      preflight.includes(dailyV4ForwardFixedChecksum) &&
+      preflight.indexOf("daily-v4-forward-rollback") <
+        preflight.indexOf("daily-execution-rls-rollback"),
+    "daily V4 forward retry no longer pins the exact reviewed failed-row lifecycle",
   );
   const directory = mkdtempSync(join(tmpdir(), "original-cutoff-shell-"));
   const script = join(directory, "gate.sh");
@@ -85,6 +107,9 @@ reader_summary_original_cutoff_probe() {
     daily-rls:1:pre) printf 'daily-execution-rls-rollback\n' ;;
     daily-rls:2:pre) printf 'clean\n' ;;
     daily-rls:3:post) printf 'corrected\n' ;;
+    daily-v4-forward:1:pre) printf 'daily-v4-forward-rollback\n' ;;
+    daily-v4-forward:2:pre) printf 'clean\n' ;;
+    daily-v4-forward:3:post) printf 'corrected\n' ;;
     *:2:pre) return 71 ;;
     *) return 72 ;;
   esac
@@ -206,6 +231,18 @@ esac
       "probe:pre", "migrate", "probe:post", "admin:post",
     ].join("\n"),
     "daily execution RLS retry did not resolve only the reviewed failed migration",
+  );
+  const dailyV4ForwardRetry = runCase("daily-v4-forward-retry", {
+    CASE: "deploy",
+    PROBE_MODE: "daily-v4-forward",
+  }, true);
+  assert(
+    dailyV4ForwardRetry.join("\n") === [
+      "preflight", "admin:pre", "probe:pre",
+      `resolve:rolled-back:${dailyV4ForwardMigration}`,
+      "probe:pre", "migrate", "probe:post", "admin:post",
+    ].join("\n"),
+    "daily V4 forward retry did not resolve the exact failed migration before deploy",
   );
   const resolveFailure = runCase("resolve-failure", {
     CASE: "resolve",

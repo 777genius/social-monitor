@@ -6,6 +6,7 @@ REPO=$(cd "$SCRIPT_DIR/../.." && pwd)
 foundation=$REPO/prisma/migrations/20260802233000_reader_summary_daily_canonical_recovery_v4/migration.sql
 security=$REPO/prisma/migrations/20260802233100_reader_summary_daily_canonical_recovery_v4_security/migration.sql
 tenant_rls=$REPO/prisma/migrations/20260803173000_reader_summary_daily_canonical_recovery_v4_tenant_rls/migration.sql
+forward=$REPO/prisma/migrations/20260804110000_reader_summary_daily_v4_original_cutoff_forward_correction/migration.sql
 runner=$REPO/scripts/run-reader-summary-daily-canonical-recovery.ts
 package_json=$REPO/package.json
 workflow=$REPO/.github/workflows/production-deploy.yml
@@ -13,7 +14,7 @@ frozen_input=$REPO/scripts/lib/reader-summary-daily-frozen-publication-input.ts
 frozen_input_spec=$REPO/scripts/lib/reader-summary-daily-frozen-publication-input.spec.ts
 postgres_runtime_compose=$SCRIPT_DIR/production-runtime/compose.postgres-runtime.yml
 
-[[ -f $foundation && -f $security && -f $tenant_rls && -f $runner && -f $frozen_input && -f $frozen_input_spec ]]
+[[ -f $foundation && -f $security && -f $tenant_rls && -f $forward && -f $runner && -f $frozen_input && -f $frozen_input_spec ]]
 [[ ! -e $REPO/scripts/lib/reader-summary-daily-frozen-authority-projection.ts ]]
 [[ ! -e $REPO/prisma/migrations/20260802180000_reader_summary_daily_canonical_recovery_v4 ]]
 mapfile -t v4_migrations < <(compgen -G "$REPO/prisma/migrations/*daily_canonical_recovery_v4*" | sort || true)
@@ -59,6 +60,8 @@ grep -F 'public."reader_summary_production_recovery_canonical_json"(' \
   "$foundation" >/dev/null
 ! grep -F 'reader_summary_weekly_canonical_json"(v_day."provider_evidence")' \
   "$foundation"
+grep -F "(v_expected - 'legacyTotal') || jsonb_build_object('removedRss', v_removed_manifest_day)" \
+  "$forward" >/dev/null
 grep -F "'requestedUtcDates', jsonb_build_array(" "$foundation" >/dev/null
 grep -F "'2026-07-23', '2026-07-24', '2026-07-25', '2026-07-26'," "$foundation" >/dev/null
 grep -F "'2026-07-27', '2026-07-28', '2026-07-29', '2026-07-30'" "$foundation" >/dev/null

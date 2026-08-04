@@ -357,7 +357,7 @@ BEGIN
       'providerEvidenceSha256', v_evidence_sha, 'dayCanonicalSha256', v_day_sha
     ));
     v_removed_manifest := v_removed_manifest || jsonb_build_array(
-      v_expected || jsonb_build_object('removedRss', v_removed_manifest_day)
+      (v_expected - 'legacyTotal') || jsonb_build_object('removedRss', v_removed_manifest_day)
     );
   END LOOP;
 
