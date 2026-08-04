@@ -13,9 +13,13 @@ workflow=$REPO/.github/workflows/production-deploy.yml
 frozen_input=$REPO/scripts/lib/reader-summary-daily-frozen-publication-input.ts
 frozen_input_spec=$REPO/scripts/lib/reader-summary-daily-frozen-publication-input.spec.ts
 postgres_runtime_compose=$SCRIPT_DIR/production-runtime/compose.postgres-runtime.yml
+final_runtime_model_compose=$SCRIPT_DIR/production-runtime/compose.agent-runtime-model.yml
+production_deploy=$SCRIPT_DIR/social-monitor-production-deploy.sh
+production_service=$SCRIPT_DIR/production-runtime/social-monitor-prod.service
 compose=$REPO/docker-compose.yml
 compose_contract_dir=$(mktemp -d)
 stale_production_env=$compose_contract_dir/stale-production.env
+stale_control_compose=$compose_contract_dir/compose.production.yml
 stale_production_rendered=$compose_contract_dir/stale-production.json
 local_override_env=$compose_contract_dir/local-override.env
 local_override_rendered=$compose_contract_dir/local-override.json
@@ -25,7 +29,7 @@ cleanup_compose_contract() {
 }
 trap cleanup_compose_contract EXIT
 
-[[ -f $foundation && -f $security && -f $tenant_rls && -f $forward && -f $runner && -f $frozen_input && -f $frozen_input_spec ]]
+[[ -f $foundation && -f $security && -f $tenant_rls && -f $forward && -f $runner && -f $frozen_input && -f $frozen_input_spec && -f $final_runtime_model_compose ]]
 [[ ! -e $REPO/scripts/lib/reader-summary-daily-frozen-authority-projection.ts ]]
 [[ ! -e $REPO/prisma/migrations/20260802180000_reader_summary_daily_canonical_recovery_v4 ]]
 mapfile -t v4_migrations < <(compgen -G "$REPO/prisma/migrations/*daily_canonical_recovery_v4*" | sort || true)
@@ -91,14 +95,44 @@ grep -F 'daily_canonical_recovery_confirmation:' "$workflow" >/dev/null
 grep -F 'timeout-minutes: 360' "$workflow" >/dev/null
 grep -F 'npm run check:reader-summary-daily-canonical-recovery-postgres18' "$workflow" >/dev/null
 grep -F 'npm run check:reader-summary-daily-canonical-recovery-production' "$workflow" >/dev/null
+python3 - "$production_deploy" "$production_service" \
+  "$SCRIPT_DIR/production-runtime/daily-run.sh" <<'PY'
+import pathlib
+import sys
+
+for raw_path in sys.argv[1:]:
+    path = pathlib.Path(raw_path)
+    source = path.read_text(encoding="utf-8")
+    postgres = source.find("compose.postgres-runtime.yml")
+    final_model = source.find("compose.agent-runtime-model.yml")
+    if postgres < 0 or final_model < 0 or postgres >= final_model:
+        raise SystemExit(f"final model Compose overlay order is invalid: {path}")
+    if path == pathlib.Path(sys.argv[1]):
+        activation = source.find("activate_postgres_runtime_control")
+        if activation < 0 or source.find("compose.agent-runtime-model.yml", activation) < activation:
+            raise SystemExit("production deploy does not restore the final model overlay")
+PY
 
 printf '%s\n' \
+  'SYSTEM_DATABASE_URL=postgresql://system:fixture@postgres:5432/social_monitor' \
   'AGENT_RUNTIME_MODEL=gpt-5.5' \
   'AGENT_RUNTIME_READER_SUMMARY_MODEL=gpt-5.5' > "$stale_production_env"
+cat > "$stale_control_compose" <<'YAML'
+services:
+  agent-runtime:
+    environment:
+      AGENT_RUNTIME_MODEL: gpt-5.5
+  daily-runner:
+    image: alpine:3.21
+    environment:
+      AGENT_RUNTIME_READER_SUMMARY_MODEL: gpt-5.5
+YAML
 (
   unset AGENT_RUNTIME_MODEL AGENT_RUNTIME_READER_SUMMARY_MODEL
   unset AGENT_RUNTIME_MODEL_OVERRIDE AGENT_RUNTIME_READER_SUMMARY_MODEL_OVERRIDE
-  docker compose --env-file "$stale_production_env" -f "$compose" --profile app \
+  docker compose --env-file "$stale_production_env" -f "$compose" \
+    -f "$stale_control_compose" -f "$postgres_runtime_compose" \
+    -f "$final_runtime_model_compose" --profile app --profile daily \
     config --format json > "$stale_production_rendered"
 )
 
@@ -120,13 +154,7 @@ import { readFileSync } from "node:fs";
 const [staleProductionPath, localOverridePath] = process.argv.slice(2);
 const expectedProductionModel = "gpt-5.6-sol";
 
-const assertModels = (path, expectedModel, scenario) => {
-  const rendered = JSON.parse(readFileSync(path, "utf8"));
-  const actualModels = {
-    agentRuntime: rendered.services?.["agent-runtime"]?.environment?.AGENT_RUNTIME_MODEL,
-    readerSummary: rendered.services?.api?.environment?.AGENT_RUNTIME_READER_SUMMARY_MODEL,
-  };
-
+const assertModels = (actualModels, expectedModel, scenario) => {
   for (const [name, actual] of Object.entries(actualModels)) {
     if (actual !== expectedModel || actual === "gpt-5.5") {
       throw new Error(
@@ -136,8 +164,26 @@ const assertModels = (path, expectedModel, scenario) => {
   }
 };
 
-assertModels(staleProductionPath, expectedProductionModel, "stale production environment");
-assertModels(localOverridePath, "local-test-model", "explicit local/test override");
+const staleProduction = JSON.parse(readFileSync(staleProductionPath, "utf8"));
+assertModels(
+  {
+    agentRuntime: staleProduction.services?.["agent-runtime"]?.environment?.AGENT_RUNTIME_MODEL,
+    dailyReaderSummaryCaller:
+      staleProduction.services?.["daily-runner"]?.environment?.AGENT_RUNTIME_READER_SUMMARY_MODEL,
+  },
+  expectedProductionModel,
+  "final production overlay",
+);
+
+const localOverride = JSON.parse(readFileSync(localOverridePath, "utf8"));
+assertModels(
+  {
+    agentRuntime: localOverride.services?.["agent-runtime"]?.environment?.AGENT_RUNTIME_MODEL,
+    readerSummary: localOverride.services?.api?.environment?.AGENT_RUNTIME_READER_SUMMARY_MODEL,
+  },
+  "local-test-model",
+  "explicit local/test override",
+);
 NODE
 
 bash "$SCRIPT_DIR/reader-summary-recovery-maintenance-lib.test.sh"

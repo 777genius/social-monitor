@@ -8,8 +8,8 @@ Wants=network-online.target
 Type=oneshot
 RemainAfterExit=yes
 WorkingDirectory=/var/data/social-monitor/integration
-ExecStart=/usr/bin/docker compose -p social-monitor-prod --env-file /var/data/social-monitor/secrets/production.env -f /var/data/social-monitor/integration/docker-compose.yml -f /var/data/social-monitor/control/compose.production.yml -f /var/data/social-monitor/control/compose.managed-db.yml -f /var/data/social-monitor/control/postgres-runtime-current/compose.postgres-runtime.yml --profile app up -d --remove-orphans
-ExecStop=/usr/bin/docker compose -p social-monitor-prod --env-file /var/data/social-monitor/secrets/production.env -f /var/data/social-monitor/integration/docker-compose.yml -f /var/data/social-monitor/control/compose.production.yml -f /var/data/social-monitor/control/compose.managed-db.yml -f /var/data/social-monitor/control/postgres-runtime-current/compose.postgres-runtime.yml --profile app stop
+ExecStart=/usr/bin/docker compose -p social-monitor-prod --env-file /var/data/social-monitor/secrets/production.env -f /var/data/social-monitor/integration/docker-compose.yml -f /var/data/social-monitor/control/compose.production.yml -f /var/data/social-monitor/control/compose.managed-db.yml -f /var/data/social-monitor/control/postgres-runtime-current/compose.postgres-runtime.yml -f /var/data/social-monitor/integration/ops/deploy/production-runtime/compose.agent-runtime-model.yml --profile app up -d --remove-orphans
+ExecStop=/usr/bin/docker compose -p social-monitor-prod --env-file /var/data/social-monitor/secrets/production.env -f /var/data/social-monitor/integration/docker-compose.yml -f /var/data/social-monitor/control/compose.production.yml -f /var/data/social-monitor/control/compose.managed-db.yml -f /var/data/social-monitor/control/postgres-runtime-current/compose.postgres-runtime.yml -f /var/data/social-monitor/integration/ops/deploy/production-runtime/compose.agent-runtime-model.yml --profile app stop
 TimeoutStartSec=1800
 TimeoutStopSec=180
 
