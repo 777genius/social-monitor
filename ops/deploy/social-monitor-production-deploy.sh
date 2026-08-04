@@ -121,9 +121,10 @@ COMPOSE=(
   -f "$CONTROL/compose.managed-db.yml"
 )
 if [[ -f $POSTGRES_RUNTIME_CURRENT/compose.postgres-runtime.yml ]]; then
-  COMPOSE+=( -f "$POSTGRES_RUNTIME_CURRENT/compose.postgres-runtime.yml" )
+  COMPOSE+=(
+    -f "$POSTGRES_RUNTIME_CURRENT/compose.postgres-runtime.yml"
+  )
 fi
-COMPOSE+=( -f "$REPO/ops/deploy/production-runtime/compose.agent-runtime-model.yml" )
 
 fail() {
   printf 'deploy-error: %s\n' "$*" >&2
@@ -887,11 +888,7 @@ deploy_release_runtime_transaction() {
   set +e
   (
     set -euo pipefail
-    if [[ ${COMPOSE[-1]} == "$REPO/ops/deploy/production-runtime/compose.agent-runtime-model.yml" ]]; then
-      COMPOSE=("${COMPOSE[@]:0:$((${#COMPOSE[@]} - 2))}")
-    fi
     activate_postgres_runtime_control "$sha" "$compatible_backend_sha"
-    COMPOSE+=( -f "$REPO/ops/deploy/production-runtime/compose.agent-runtime-model.yml" )
     verify_compose_scope
     if [[ $backend == true ]]; then
       deploy_backend "$sha"
@@ -922,6 +919,12 @@ deploy_release_runtime_transaction() {
       fail 'release succeeded but collector config snapshot cleanup failed'
     backend_image_rescue_cleanup "$previous_images" || \
       fail 'release succeeded but exact backend rescue-tag cleanup failed'
+  fi
+  if [[ ${COMPOSE[-1]} != \
+        "$POSTGRES_RUNTIME_CURRENT/compose.postgres-runtime.yml" ]]; then
+    COMPOSE+=(
+      -f "$POSTGRES_RUNTIME_CURRENT/compose.postgres-runtime.yml"
+    )
   fi
 }
 

@@ -41,11 +41,34 @@ acquire_daily_runner_maintenance_locks() {
     fail 'timed out waiting for PostgreSQL admission lock'
 }
 
+append_final_agent_runtime_model_overlay() {
+  local final_model_overlay="$REPO/ops/deploy/production-runtime/compose.agent-runtime-model.yml"
+  local -a reconciled_compose=()
+  local index=0
+  while (( index < ${#COMPOSE[@]} )); do
+    if [[ ${COMPOSE[index]} == -f ]] &&
+       (( index + 1 < ${#COMPOSE[@]} )) &&
+       [[ ${COMPOSE[index + 1]} == "$final_model_overlay" ]]; then
+      ((index += 2))
+      continue
+    fi
+    reconciled_compose+=("${COMPOSE[index]}")
+    ((index += 1))
+  done
+  COMPOSE=("${reconciled_compose[@]}" -f "$final_model_overlay")
+}
+
 run_reader_summary_daily_runner_maintenance() (
   local maintenance_action=$1
   [[ $# == 1 ]] || fail 'reader-summary daily-runner maintenance accepts exactly one action'
+  case $maintenance_action in
+    reader-summary-recover-missing-days|reader-summary-weekly-run) ;;
+    *) fail 'unknown reader-summary daily-runner maintenance action' ;;
+  esac
   acquire_daily_runner_maintenance_locks
   verify_daily_runner_maintenance_runtime
+  append_final_agent_runtime_model_overlay
+  "${COMPOSE[@]}" --profile app up -d --no-deps agent-runtime
   case $maintenance_action in
     reader-summary-recover-missing-days)
       "${COMPOSE[@]}" --profile daily run --rm --no-deps \

@@ -18,6 +18,7 @@ READER_SUMMARY_WEEKLY_PRODUCTION_ARTIFACT_DIR=/var/lib/social-monitor/artifacts/
 DOCKER_LOG=$FIXTURE/docker.log
 COMPOSE_LOG=$FIXTURE/compose.log
 SHA=''
+FINAL_MODEL_OVERLAY=$REPO/ops/deploy/production-runtime/compose.agent-runtime-model.yml
 
 install -d "$REPO/ops/deploy" "$STATE" "$POSTGRES_RUNTIME_CURRENT"
 cp "$SCRIPT_DIR/reader-summary-recovery-maintenance-lib.sh" "$REPO/ops/deploy/"
@@ -78,13 +79,18 @@ run_reader_summary_daily_runner_maintenance reader-summary-weekly-run
 unset ASSERT_WEEKLY_LOCKS_HELD
 
 recovery_command='--profile daily run --rm --no-deps -e READER_SUMMARY_DAILY_TENANT_ID=00000000-0000-7000-8000-000000000901 -e READER_SUMMARY_DAILY_WORKSPACE_ID=00000000-0000-7000-8000-000000000902 -e READER_SUMMARY_DAILY_PUBLIC_DIRECTORY=/var/lib/social-monitor/artifacts/reports daily-runner sh -lc set -eu; npm run prepare:reader-summary-production-recovery-gap-authority; npm run run:reader-summary-daily-canonical-recovery'
-grep -Fx -- "$recovery_command" \
-  "$COMPOSE_LOG" >/dev/null
-[[ $(grep -Fc 'source-env=unset' "$COMPOSE_LOG") == 2 ]]
+reconcile_command="-f $FINAL_MODEL_OVERLAY --profile app up -d --no-deps agent-runtime"
+recovery_command="-f $FINAL_MODEL_OVERLAY $recovery_command"
+weekly_command="-f $FINAL_MODEL_OVERLAY --profile daily run --rm --no-deps -e READER_SUMMARY_WEEKLY_PRODUCTION_TENANT_ID=00000000-0000-7000-8000-000000000901 -e READER_SUMMARY_WEEKLY_PRODUCTION_WORKSPACE_ID=00000000-0000-7000-8000-000000000902 -e READER_SUMMARY_WEEKLY_PRODUCTION_FIRST_WEEK_START=2026-07-20 -e READER_SUMMARY_WEEKLY_PRODUCTION_CATCH_UP_LIMIT=4 -e READER_SUMMARY_WEEKLY_PRODUCTION_ARTIFACT_DIR=/var/lib/social-monitor/artifacts/reader-summary-weekly-production daily-runner sh -lc set -eu; npm run run:reader-summary-weekly-production"
+mapfile -t compose_commands < <(grep -v '^source-env=' "$COMPOSE_LOG")
+[[ ${#compose_commands[@]} == 4 ]]
+[[ ${compose_commands[0]} == "$reconcile_command" ]]
+[[ ${compose_commands[1]} == "$recovery_command" ]]
+[[ ${compose_commands[2]} == "$reconcile_command" ]]
+[[ ${compose_commands[3]} == "$weekly_command" ]]
+[[ $(grep -Fc 'source-env=unset' "$COMPOSE_LOG") == 4 ]]
 ! grep -F 'source-env=set' "$COMPOSE_LOG" >/dev/null
 ! grep -F 'READER_SUMMARY_PRODUCTION_RECOVERY_SOURCE_DATABASE_URL' \
-  "$COMPOSE_LOG" >/dev/null
-grep -Fx -- '--profile daily run --rm --no-deps -e READER_SUMMARY_WEEKLY_PRODUCTION_TENANT_ID=00000000-0000-7000-8000-000000000901 -e READER_SUMMARY_WEEKLY_PRODUCTION_WORKSPACE_ID=00000000-0000-7000-8000-000000000902 -e READER_SUMMARY_WEEKLY_PRODUCTION_FIRST_WEEK_START=2026-07-20 -e READER_SUMMARY_WEEKLY_PRODUCTION_CATCH_UP_LIMIT=4 -e READER_SUMMARY_WEEKLY_PRODUCTION_ARTIFACT_DIR=/var/lib/social-monitor/artifacts/reader-summary-weekly-production daily-runner sh -lc set -eu; npm run run:reader-summary-weekly-production' \
   "$COMPOSE_LOG" >/dev/null
 ! grep -F 'backfill:reader-summary-weekly-daily-certifications' "$COMPOSE_LOG" >/dev/null
 ! grep -F 'run:reader-summary-weekly-production -- --replay' "$COMPOSE_LOG" >/dev/null
@@ -93,6 +99,15 @@ grep -Fx -- '--profile daily run --rm --no-deps -e READER_SUMMARY_WEEKLY_PRODUCT
 ! grep -F 'social-monitor-reader-summary-recovery-source-' \
   "$DOCKER_LOG" "$COMPOSE_LOG" >/dev/null
 ! compgen -G "$STATE/reader-summary-recovery-source.*.env" >/dev/null
+
+COMPOSE=(fake_compose -f "$REPO/compose.base.yml" -f "$FINAL_MODEL_OVERLAY" -f "$FINAL_MODEL_OVERLAY")
+append_final_agent_runtime_model_overlay
+[[ ${#COMPOSE[@]} == 5 ]]
+[[ ${COMPOSE[1]} == -f ]]
+[[ ${COMPOSE[2]} == "$REPO/compose.base.yml" ]]
+[[ ${COMPOSE[-2]} == -f ]]
+[[ ${COMPOSE[-1]} == "$FINAL_MODEL_OVERLAY" ]]
+[[ $(printf '%s\n' "${COMPOSE[@]}" | grep -Fxc -- "$FINAL_MODEL_OVERLAY") == 1 ]]
 
 for action in reader-summary-daily-canonical-recovery-v4 reader-summary-recover-missing-days; do
   : > "$COMPOSE_LOG"

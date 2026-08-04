@@ -14,8 +14,8 @@ frozen_input=$REPO/scripts/lib/reader-summary-daily-frozen-publication-input.ts
 frozen_input_spec=$REPO/scripts/lib/reader-summary-daily-frozen-publication-input.spec.ts
 postgres_runtime_compose=$SCRIPT_DIR/production-runtime/compose.postgres-runtime.yml
 final_runtime_model_compose=$SCRIPT_DIR/production-runtime/compose.agent-runtime-model.yml
-production_deploy=$SCRIPT_DIR/social-monitor-production-deploy.sh
 production_service=$SCRIPT_DIR/production-runtime/social-monitor-prod.service
+daily_run=$SCRIPT_DIR/production-runtime/daily-run.sh
 compose=$REPO/docker-compose.yml
 compose_contract_dir=$(mktemp -d)
 stale_production_env=$compose_contract_dir/stale-production.env
@@ -95,8 +95,7 @@ grep -F 'daily_canonical_recovery_confirmation:' "$workflow" >/dev/null
 grep -F 'timeout-minutes: 360' "$workflow" >/dev/null
 grep -F 'npm run check:reader-summary-daily-canonical-recovery-postgres18' "$workflow" >/dev/null
 grep -F 'npm run check:reader-summary-daily-canonical-recovery-production' "$workflow" >/dev/null
-python3 - "$production_deploy" "$production_service" \
-  "$SCRIPT_DIR/production-runtime/daily-run.sh" <<'PY'
+python3 - "$production_service" "$daily_run" <<'PY'
 import pathlib
 import sys
 
@@ -105,12 +104,40 @@ for raw_path in sys.argv[1:]:
     source = path.read_text(encoding="utf-8")
     postgres = source.find("compose.postgres-runtime.yml")
     final_model = source.find("compose.agent-runtime-model.yml")
-    if postgres < 0 or final_model < 0 or postgres >= final_model:
+    if (
+        postgres < 0
+        or final_model < 0
+        or postgres >= final_model
+    ):
         raise SystemExit(f"final model Compose overlay order is invalid: {path}")
-    if path == pathlib.Path(sys.argv[1]):
-        activation = source.find("activate_postgres_runtime_control")
-        if activation < 0 or source.find("compose.agent-runtime-model.yml", activation) < activation:
-            raise SystemExit("production deploy does not restore the final model overlay")
+    if path == pathlib.Path(sys.argv[2]) and source.count(
+        "compose.agent-runtime-model.yml"
+    ) != 1:
+        raise SystemExit("daily launcher includes the final model overlay more than once")
+
+daily_source = pathlib.Path(sys.argv[2]).read_text(encoding="utf-8")
+admission_lock = daily_source.find(
+    '"$FLOCK_COMMAND" -w "$POSTGRES_ADMISSION_WAIT_SECONDS" 8'
+)
+auth_refresh = daily_source.find('"$ROOT/control/refresh-codex-auth.sh"')
+auth_restart = daily_source.find('"${COMPOSE[@]}" restart agent-runtime')
+reconcile_runtime = daily_source.find(
+    '"${COMPOSE[@]}" --profile app up -d --no-deps agent-runtime'
+)
+daily_runner = daily_source.find(
+    '"${COMPOSE[@]}" --profile daily run --rm --no-deps daily-runner'
+)
+ordered_steps = (
+    admission_lock,
+    auth_refresh,
+    auth_restart,
+    reconcile_runtime,
+    daily_runner,
+)
+if any(step < 0 for step in ordered_steps) or ordered_steps != tuple(sorted(ordered_steps)):
+    raise SystemExit(
+        "daily launcher must reconcile agent-runtime after auth refresh and before daily-runner"
+    )
 PY
 
 printf '%s\n' \

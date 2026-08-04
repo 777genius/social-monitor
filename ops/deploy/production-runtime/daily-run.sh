@@ -90,6 +90,8 @@ if [[ -f "$ROOT/runtime/auth-account-changed" ]]; then
   sleep 3
 fi
 
+"${COMPOSE[@]}" --profile app up -d --no-deps agent-runtime
+
 # The quoted body expands inside the daily runner container.
 # shellcheck disable=SC2016
 "${COMPOSE[@]}" --profile daily run --rm --no-deps daily-runner sh -lc '
