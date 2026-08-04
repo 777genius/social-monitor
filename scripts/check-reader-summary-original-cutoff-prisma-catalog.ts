@@ -211,16 +211,23 @@ const reviewedLegacyUnfinishedRow = (
   );
   return row;
 };
+const withMigrationAdminPool = async <T>(
+  connectionString: string,
+  use: (pool: Pool) => Promise<T>,
+): Promise<T> => {
+  const pool = new Pool({ connectionString, max: 1 });
+  try {
+    return await use(pool);
+  } finally {
+    await pool.end();
+  }
+};
 const normalizeReviewedLegacyStartedAt = async (
   migrationAdminDatabaseUrl: string,
   migrationAdminRole: string,
   row: CatalogRow,
 ): Promise<void> => {
-  const migrationAdmin = new Pool({
-    connectionString: migrationAdminDatabaseUrl,
-    max: 1,
-  });
-  try {
+  await withMigrationAdminPool(migrationAdminDatabaseUrl, async (migrationAdmin) => {
     const identity = await migrationAdmin.query<{
       current_user: string;
       session_user: string;
@@ -248,9 +255,7 @@ const normalizeReviewedLegacyStartedAt = async (
       normalized.rowCount === 1 && normalized.rows[0]?.id === row.id,
       "dedicated migration admin did not normalize exactly one reviewed row",
     );
-  } finally {
-    await migrationAdmin.end();
-  }
+  });
 };
 const postgresErrorCode = (error: unknown): string | undefined =>
   typeof error === "object" && error !== null && "code" in error &&
@@ -550,11 +555,7 @@ const installHistoricalWeeklyManifestFixture = (workspace: Workspace): void => {
 const modelProductionWeeklyManifestCatalogHistory = async (
   migrationAdminDatabaseUrl: string,
 ): Promise<void> => {
-  const migrationAdmin = new Pool({
-    connectionString: migrationAdminDatabaseUrl,
-    max: 1,
-  });
-  try {
+  await withMigrationAdminPool(migrationAdminDatabaseUrl, async (migrationAdmin) => {
     const updated = await migrationAdmin.query<{ id: string }>(
       `UPDATE public."_prisma_migrations"
           SET checksum = $1
@@ -576,9 +577,7 @@ const modelProductionWeeklyManifestCatalogHistory = async (
       updated.rowCount === 1 && id !== undefined && id.trim().length > 0,
       "dedicated migration admin did not model exactly one production weekly catalog row",
     );
-  } finally {
-    await migrationAdmin.end();
-  }
+  });
 };
 const installDailyV4ForwardOldMigration = (workspace: Workspace): void => {
   const destination = join(workspace.migrations, dailyV4ForwardMigration);

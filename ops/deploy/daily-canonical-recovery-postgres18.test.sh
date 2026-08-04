@@ -16,11 +16,11 @@ docker run --detach --rm --name "$container" \
 port=$(docker port "$container" 5432/tcp | /usr/bin/sed -E 's/.*:([0-9]+)$/\1/')
 [[ $port =~ ^[0-9]+$ ]]
 for _ in $(seq 1 60); do
-  docker exec "$container" pg_isready --username postgres --dbname postgres \
+  docker exec "$container" pg_isready --host 127.0.0.1 --username postgres --dbname postgres \
     >/dev/null 2>&1 && break
   sleep 1
 done
-docker exec "$container" pg_isready --username postgres --dbname postgres >/dev/null
+docker exec "$container" pg_isready --host 127.0.0.1 --username postgres --dbname postgres >/dev/null
 
 READER_SUMMARY_PUBLICATION_TEST_ADMIN_DATABASE_URL="postgresql://postgres:daily_recovery_local_test_password@127.0.0.1:$port/postgres" \
   npm --prefix "$REPO" run check:reader-summary-production-recovery-postgres
