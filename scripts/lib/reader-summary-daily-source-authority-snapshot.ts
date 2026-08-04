@@ -275,7 +275,7 @@ const commonSourceItem = (
     providerKey: text(value.providerKey, index, "providerKey"),
     canonicalUrl: text(value.canonicalUrl, index, "canonicalUrl"),
     title: text(value.title, index, "title"),
-    bodyPreview: text(value.bodyPreview, index, "bodyPreview"),
+    bodyPreview: legacyBodyPreview(value.bodyPreview, index),
     authorHandle: value.authorHandle as string | null,
     publishedAt: value.publishedAt,
     observedAt: value.observedAt,
@@ -549,6 +549,12 @@ const exactIsoText = (value: unknown, label: string): string => {
 const text = (value: unknown, index: number, field: string): string => {
   if (typeof value !== "string" || value.length === 0) {
     throw new Error(`Daily source authority item ${index} has invalid ${field}`);
+  }
+  return value;
+};
+const legacyBodyPreview = (value: unknown, index: number): string => {
+  if (typeof value !== "string") {
+    throw new Error(`Daily source authority item ${index} has invalid bodyPreview`);
   }
   return value;
 };

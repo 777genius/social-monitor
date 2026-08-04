@@ -346,8 +346,7 @@ export const assertDailyOutputCitationsMatchSourceAuthority = (
       value.field !== "canonicalUrl" ||
       typeof item.title !== "string" ||
       item.title.length === 0 ||
-      typeof item.bodyPreview !== "string" ||
-      item.bodyPreview.length === 0 ||
+      !isLegacyBodyPreview(item.bodyPreview) ||
       typeof item.canonicalUrl !== "string" ||
       item.canonicalUrl.length === 0 ||
       typeof item.contentHash !== "string" ||
@@ -360,6 +359,9 @@ export const assertDailyOutputCitationsMatchSourceAuthority = (
     seen.add(value.citationId);
   }
 };
+
+const isLegacyBodyPreview = (value: unknown): value is string =>
+  typeof value === "string";
 
 const dailyOutputKeys = [
   "citationMap",

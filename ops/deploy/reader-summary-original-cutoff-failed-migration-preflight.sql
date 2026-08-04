@@ -38,9 +38,8 @@ DECLARE
   v_daily_rls_rolled_back INTEGER;
   v_daily_rls_rows INTEGER;
   v_daily_rls_unfinished INTEGER;
-  v_daily_v4_forward_applied INTEGER; v_daily_v4_forward_matches INTEGER;
-  v_daily_v4_forward_rolled_back INTEGER; v_daily_v4_forward_rows INTEGER;
-  v_daily_v4_forward_unfinished INTEGER;
+  v_daily_v4_forward_applied INTEGER; v_daily_v4_forward_matches INTEGER; v_daily_v4_forward_old_rolled_back INTEGER;
+  v_daily_v4_forward_rolled_back INTEGER; v_daily_v4_forward_rows INTEGER; v_daily_v4_forward_unfinished INTEGER;
   v_expected JSONB;
   v_guard OID;
   v_guard_name TEXT;
@@ -62,6 +61,7 @@ BEGIN
   IF v_phase NOT IN (
     'social-monitor/original-cutoff-pre',
     'social-monitor/original-cutoff-resolved',
+    'social-monitor/original-cutoff-forward-resolved',
     'social-monitor/original-cutoff-post'
   ) THEN
     RAISE EXCEPTION 'original-cutoff probe application name is invalid';
@@ -607,49 +607,25 @@ BEGIN
       )) THEN
     RAISE EXCEPTION 'daily execution tenant RLS migration row diverged';
   END IF;
-  -- One reviewed failed forward row may be rolled back before the fixed blob applies.
+  -- The production path is exactly old rollback, current rollback, then this new blob.
   SELECT count(*),
-    count(*) FILTER (WHERE checksum IN ('34e6505c0d78697cc55219bd858f66372c8317ddadc86266053b2f4f52ae7e13',
-      '0aea8870e788130ca749a1dbb220a9b8d3424b8dde548a655e8e4b1eb1beb0f0') AND started_at IS NOT NULL AND finished_at IS NULL AND rolled_back_at IS NULL
-      AND applied_steps_count = 0 AND id <> '' AND (logs IS NULL OR btrim(logs) <> '')),
-    count(*) FILTER (WHERE checksum IN ('34e6505c0d78697cc55219bd858f66372c8317ddadc86266053b2f4f52ae7e13',
-      '0aea8870e788130ca749a1dbb220a9b8d3424b8dde548a655e8e4b1eb1beb0f0') AND started_at IS NOT NULL AND finished_at IS NULL AND rolled_back_at IS NOT NULL
-      AND rolled_back_at >= started_at AND applied_steps_count = 0 AND id <> ''
-      AND (logs IS NULL OR btrim(logs) <> '')),
-    count(*) FILTER (WHERE checksum =
-      '0aea8870e788130ca749a1dbb220a9b8d3424b8dde548a655e8e4b1eb1beb0f0'
-      AND started_at IS NOT NULL AND finished_at IS NOT NULL AND finished_at >= started_at
-      AND rolled_back_at IS NULL AND applied_steps_count = 1 AND id <> '' AND logs IS NULL)
-  INTO v_daily_v4_forward_rows, v_daily_v4_forward_unfinished, v_daily_v4_forward_rolled_back, v_daily_v4_forward_applied
+    count(*) FILTER (WHERE checksum = '34e6505c0d78697cc55219bd858f66372c8317ddadc86266053b2f4f52ae7e13' AND started_at IS NOT NULL AND finished_at IS NULL AND rolled_back_at >= started_at AND applied_steps_count = 0 AND id <> '' AND (logs IS NULL OR btrim(logs) <> '')),
+    count(*) FILTER (WHERE checksum = '0aea8870e788130ca749a1dbb220a9b8d3424b8dde548a655e8e4b1eb1beb0f0' AND started_at IS NOT NULL AND finished_at IS NULL AND rolled_back_at IS NULL AND applied_steps_count = 0 AND id <> '' AND logs IS NULL),
+    count(*) FILTER (WHERE checksum = '0aea8870e788130ca749a1dbb220a9b8d3424b8dde548a655e8e4b1eb1beb0f0' AND started_at IS NOT NULL AND finished_at IS NULL AND rolled_back_at >= started_at AND applied_steps_count = 0 AND id <> '' AND logs IS NULL),
+    count(*) FILTER (WHERE checksum = '071f9906506540c5452c98580125ab56f5f662c19087a6d471489e8901c2325d' AND started_at IS NOT NULL AND finished_at >= started_at AND rolled_back_at IS NULL AND applied_steps_count = 1 AND id <> '' AND logs IS NULL)
+  INTO v_daily_v4_forward_rows, v_daily_v4_forward_old_rolled_back, v_daily_v4_forward_unfinished, v_daily_v4_forward_rolled_back, v_daily_v4_forward_applied
   FROM public."_prisma_migrations" WHERE migration_name = '20260804110000_reader_summary_daily_v4_original_cutoff_forward_correction';
-  v_daily_v4_forward_matches := v_daily_v4_forward_unfinished + v_daily_v4_forward_rolled_back + v_daily_v4_forward_applied;
-  IF v_daily_v4_forward_rows <> v_daily_v4_forward_matches
-    OR v_daily_v4_forward_unfinished + v_daily_v4_forward_rolled_back > 1
-    OR v_daily_v4_forward_applied > 1 OR v_daily_v4_forward_rows > 2
-    OR v_daily_v4_forward_unfinished + v_daily_v4_forward_applied > 1
-    OR v_unfinished <> v_current_unfinished + v_correction_unfinished
-      + v_activation_unfinished + v_weekly_unfinished + v_daily_v4_unfinished
-      + v_daily_rls_unfinished + v_daily_v4_forward_unfinished
-    OR (v_daily_v4_forward_rows > 0 AND (
-      v_history_action <> 'clean' OR v_correction_applied <> 1
-      OR v_activation_applied <> 1 OR v_weekly_applied <> 1
-      OR v_daily_v4_applied <> 1 OR v_daily_rls_applied <> 1
-    )) OR (v_daily_v4_forward_rolled_back = 1 AND v_daily_v4_forward_applied = 1
-      AND EXISTS (
-        SELECT 1 FROM public."_prisma_migrations" AS applied
-        CROSS JOIN public."_prisma_migrations" AS failed
-        WHERE applied.migration_name =
-            '20260804110000_reader_summary_daily_v4_original_cutoff_forward_correction'
-          AND applied.checksum =
-            '0aea8870e788130ca749a1dbb220a9b8d3424b8dde548a655e8e4b1eb1beb0f0'
-          AND applied.finished_at IS NOT NULL AND applied.rolled_back_at IS NULL
-          AND failed.migration_name = applied.migration_name
-          AND failed.checksum IN (
-            '34e6505c0d78697cc55219bd858f66372c8317ddadc86266053b2f4f52ae7e13',
-            applied.checksum
-          ) AND failed.finished_at IS NULL AND failed.rolled_back_at IS NOT NULL
-          AND applied.started_at < failed.rolled_back_at
-      )) THEN
+  v_daily_v4_forward_matches := v_daily_v4_forward_old_rolled_back + v_daily_v4_forward_unfinished + v_daily_v4_forward_rolled_back + v_daily_v4_forward_applied;
+  IF v_daily_v4_forward_rows <> v_daily_v4_forward_matches OR v_daily_v4_forward_old_rolled_back > 1
+    OR v_daily_v4_forward_unfinished > 1 OR v_daily_v4_forward_rolled_back > 1 OR v_daily_v4_forward_applied > 1
+    OR v_daily_v4_forward_unfinished + v_daily_v4_forward_rolled_back > 1 OR v_daily_v4_forward_rows > 3
+    OR v_unfinished <> v_current_unfinished + v_correction_unfinished + v_activation_unfinished + v_weekly_unfinished + v_daily_v4_unfinished + v_daily_rls_unfinished + v_daily_v4_forward_unfinished
+    OR (v_daily_v4_forward_rows > 0 AND (v_daily_v4_forward_old_rolled_back <> 1 OR v_history_action <> 'clean' OR v_correction_applied <> 1 OR v_activation_applied <> 1 OR v_weekly_applied <> 1 OR v_daily_v4_applied <> 1 OR v_daily_rls_applied <> 1))
+    OR (v_daily_v4_forward_rows > 0 AND NOT EXISTS (SELECT 1 FROM public."_prisma_migrations" AS old JOIN public."_prisma_migrations" AS current ON current.migration_name = old.migration_name WHERE old.migration_name = '20260804110000_reader_summary_daily_v4_original_cutoff_forward_correction' AND old.checksum = '34e6505c0d78697cc55219bd858f66372c8317ddadc86266053b2f4f52ae7e13' AND old.rolled_back_at IS NOT NULL AND current.checksum = '0aea8870e788130ca749a1dbb220a9b8d3424b8dde548a655e8e4b1eb1beb0f0' AND current.started_at >= old.rolled_back_at))
+    OR (v_daily_v4_forward_applied = 1 AND NOT EXISTS (SELECT 1 FROM public."_prisma_migrations" AS current JOIN public."_prisma_migrations" AS new_row ON new_row.migration_name = current.migration_name WHERE current.migration_name = '20260804110000_reader_summary_daily_v4_original_cutoff_forward_correction' AND current.checksum = '0aea8870e788130ca749a1dbb220a9b8d3424b8dde548a655e8e4b1eb1beb0f0' AND current.rolled_back_at IS NOT NULL AND new_row.checksum = '071f9906506540c5452c98580125ab56f5f662c19087a6d471489e8901c2325d' AND new_row.started_at >= current.rolled_back_at))
+    OR (v_phase = 'social-monitor/original-cutoff-post' AND NOT (v_daily_v4_forward_rows = 3 AND v_daily_v4_forward_old_rolled_back = 1 AND v_daily_v4_forward_unfinished = 0 AND v_daily_v4_forward_rolled_back = 1 AND v_daily_v4_forward_applied = 1 AND v_unfinished = 0))
+    OR (v_phase = 'social-monitor/original-cutoff-forward-resolved' AND NOT (v_daily_v4_forward_rows = 2 AND v_daily_v4_forward_old_rolled_back = 1 AND v_daily_v4_forward_unfinished = 0 AND v_daily_v4_forward_rolled_back = 1 AND v_daily_v4_forward_applied = 0 AND v_unfinished = 0))
+    OR (v_phase <> 'social-monitor/original-cutoff-post' AND v_daily_v4_forward_rows > 0 AND NOT ((v_daily_v4_forward_rows = 2 AND v_daily_v4_forward_old_rolled_back = 1 AND v_daily_v4_forward_unfinished = 1 AND v_daily_v4_forward_rolled_back = 0 AND v_daily_v4_forward_applied = 0 AND v_unfinished = 1) OR (v_daily_v4_forward_rows = 2 AND v_daily_v4_forward_old_rolled_back = 1 AND v_daily_v4_forward_unfinished = 0 AND v_daily_v4_forward_rolled_back = 1 AND v_daily_v4_forward_applied = 0 AND v_unfinished = 0) OR (v_daily_v4_forward_rows = 3 AND v_daily_v4_forward_old_rolled_back = 1 AND v_daily_v4_forward_unfinished = 0 AND v_daily_v4_forward_rolled_back = 1 AND v_daily_v4_forward_applied = 1 AND v_unfinished = 0))) THEN
     RAISE EXCEPTION 'daily V4 forward migration row diverged';
   END IF;
   IF v_phase = 'social-monitor/original-cutoff-resolved'
@@ -901,16 +877,16 @@ ROLLBACK;
 
 SELECT CASE current_setting('application_name')
   WHEN 'social-monitor/original-cutoff-resolved' THEN 'resolved'
+  WHEN 'social-monitor/original-cutoff-forward-resolved' THEN 'forward-resolved'
   WHEN 'social-monitor/original-cutoff-post' THEN 'corrected'
   ELSE CASE
     WHEN EXISTS (
       SELECT 1 FROM public."_prisma_migrations"
       WHERE migration_name =
           '20260804110000_reader_summary_daily_v4_original_cutoff_forward_correction'
-        AND checksum IN ('34e6505c0d78697cc55219bd858f66372c8317ddadc86266053b2f4f52ae7e13',
-          '0aea8870e788130ca749a1dbb220a9b8d3424b8dde548a655e8e4b1eb1beb0f0')
+        AND checksum = '0aea8870e788130ca749a1dbb220a9b8d3424b8dde548a655e8e4b1eb1beb0f0'
         AND finished_at IS NULL AND rolled_back_at IS NULL
-    ) THEN 'daily-v4-forward-rollback'
+    ) THEN 'daily-v4-forward-current-rollback'
     WHEN EXISTS (
       SELECT 1 FROM public."_prisma_migrations"
       WHERE migration_name =

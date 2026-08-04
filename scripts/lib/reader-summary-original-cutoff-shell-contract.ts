@@ -13,14 +13,16 @@ export const assertShellStops = ({
   weeklyManifestMigration,
   dailyV4ForwardMigration,
   dailyV4ForwardOldChecksum,
-  dailyV4ForwardFixedChecksum,
+  dailyV4ForwardPreviousChecksum,
+  dailyV4ForwardNewChecksum,
 }: Readonly<{
   correctionMigration: string;
   activationAclMigration: string;
   weeklyManifestMigration: string;
   dailyV4ForwardMigration: string;
   dailyV4ForwardOldChecksum: string;
-  dailyV4ForwardFixedChecksum: string;
+  dailyV4ForwardPreviousChecksum: string;
+  dailyV4ForwardNewChecksum: string;
 }>): void => {
   const deployLibrary = readFileSync(
     "ops/deploy/reader-summary-publication-deploy-lib.sh",
@@ -54,13 +56,18 @@ export const assertShellStops = ({
   );
   assert(
     helper.includes(`READER_SUMMARY_DAILY_V4_FORWARD_MIGRATION=${dailyV4ForwardMigration}`) &&
-      helper.includes(`READER_SUMMARY_DAILY_V4_FORWARD_FIXED_CHECKSUM=${dailyV4ForwardFixedChecksum}`) &&
-      helper.includes('[[ $target_digest == "$READER_SUMMARY_DAILY_V4_FORWARD_FIXED_CHECKSUM" ]]') &&
-      helper.includes("daily-v4-forward-rollback") &&
+      helper.includes(`READER_SUMMARY_DAILY_V4_FORWARD_NEW_CHECKSUM=${dailyV4ForwardNewChecksum}`) &&
+      helper.includes('[[ $target_digest == "$READER_SUMMARY_DAILY_V4_FORWARD_NEW_CHECKSUM" ]]') &&
+      helper.includes("daily-v4-forward-current-rollback") &&
+      helper.includes("forward-resolved") &&
       preflight.includes(dailyV4ForwardMigration) &&
       preflight.includes(dailyV4ForwardOldChecksum) &&
-      preflight.includes(dailyV4ForwardFixedChecksum) &&
-      preflight.indexOf("daily-v4-forward-rollback") <
+      preflight.includes(dailyV4ForwardPreviousChecksum) &&
+      preflight.includes(dailyV4ForwardNewChecksum) &&
+      preflight.includes("v_daily_v4_forward_old_rolled_back = 1") &&
+      preflight.includes("v_unfinished = 1") &&
+      preflight.includes("v_daily_v4_forward_rows = 3") &&
+      preflight.indexOf("daily-v4-forward-current-rollback") <
         preflight.indexOf("daily-execution-rls-rollback"),
     "daily V4 forward retry no longer pins the exact reviewed failed-row lifecycle",
   );
@@ -107,8 +114,8 @@ reader_summary_original_cutoff_probe() {
     daily-rls:1:pre) printf 'daily-execution-rls-rollback\n' ;;
     daily-rls:2:pre) printf 'clean\n' ;;
     daily-rls:3:post) printf 'corrected\n' ;;
-    daily-v4-forward:1:pre) printf 'daily-v4-forward-rollback\n' ;;
-    daily-v4-forward:2:pre) printf 'clean\n' ;;
+    daily-v4-forward:1:pre) printf 'daily-v4-forward-current-rollback\n' ;;
+    daily-v4-forward:2:forward-resolved) printf 'forward-resolved\n' ;;
     daily-v4-forward:3:post) printf 'corrected\n' ;;
     *:2:pre) return 71 ;;
     *) return 72 ;;

@@ -12,7 +12,7 @@ READER_SUMMARY_WEEKLY_REVIEW_MANIFEST_MIGRATION=20260802170000_reader_summary_we
 READER_SUMMARY_DAILY_CANONICAL_RECOVERY_V4_MIGRATION=20260802233000_reader_summary_daily_canonical_recovery_v4
 READER_SUMMARY_DAILY_EXECUTION_TENANT_RLS_MIGRATION=20260803174000_reader_summary_daily_execution_tenant_rls
 READER_SUMMARY_DAILY_V4_FORWARD_MIGRATION=20260804110000_reader_summary_daily_v4_original_cutoff_forward_correction
-READER_SUMMARY_DAILY_V4_FORWARD_FIXED_CHECKSUM=0aea8870e788130ca749a1dbb220a9b8d3424b8dde548a655e8e4b1eb1beb0f0
+READER_SUMMARY_DAILY_V4_FORWARD_NEW_CHECKSUM=071f9906506540c5452c98580125ab56f5f662c19087a6d471489e8901c2325d
 
 reader_summary_original_cutoff_target_has_correction() {
   local helper_relative=ops/deploy/reader-summary-original-cutoff-correction-lib.sh
@@ -56,8 +56,8 @@ verify_reader_summary_original_cutoff_target() {
       [[ $target_digest == "$READER_SUMMARY_ORIGINAL_CUTOFF_CORRECTION_CHECKSUM" ]] ||
         fail 'reader summary original-cutoff correction migration is not reviewed'
     elif [[ $relative == "$forward_relative" ]]; then
-      [[ $target_digest == "$READER_SUMMARY_DAILY_V4_FORWARD_FIXED_CHECKSUM" ]] ||
-        fail 'reader summary daily V4 forward migration is not reviewed'
+      [[ $target_digest == "$READER_SUMMARY_DAILY_V4_FORWARD_NEW_CHECKSUM" ]] ||
+        fail 'reader summary daily V4 forward migration is not the reviewed new blob'
     fi
   done
 }
@@ -69,7 +69,7 @@ reader_summary_original_cutoff_probe() {
   local sql=$REPO/ops/deploy/reader-summary-original-cutoff-failed-migration-preflight.sql
   local query result expected
 
-  [[ $phase == pre || $phase == resolved || $phase == post ]] ||
+  [[ $phase == pre || $phase == resolved || $phase == forward-resolved || $phase == post ]] ||
     fail 'reader summary original-cutoff probe phase is invalid'
   query=$(< "$sql") || return
   result=$(reader_summary_publication_run_postgres_client \
@@ -78,6 +78,7 @@ reader_summary_original_cutoff_probe() {
     "$READER_SUMMARY_PUBLICATION_RUNTIME_ROLE" "$query") || return
   expected=clean
   [[ $phase != resolved ]] || expected=resolved
+  [[ $phase != forward-resolved ]] || expected=forward-resolved
   [[ $phase != post ]] || expected=corrected
   if [[ $result == "$expected" || ($phase == pre && \
     ($result == rollback || $result == apply || \
@@ -86,7 +87,7 @@ reader_summary_original_cutoff_probe() {
       $result == weekly-manifest-rollback || \
       $result == daily-canonical-v4-rollback || \
       $result == daily-execution-rls-rollback || \
-      $result == daily-v4-forward-rollback)) ]]; then
+      $result == daily-v4-forward-current-rollback)) ]]; then
     printf '%s\n' "$result"
     return 0
   fi
@@ -136,10 +137,10 @@ resolve_reader_summary_original_cutoff_failure() {
   verify_reader_summary_original_cutoff_target || return
   action=$(reader_summary_original_cutoff_probe pre) || return
   # The reviewed failed forward row is resolved only by its exact migration id.
-  if [[ $action == daily-v4-forward-rollback ]]; then
+  if [[ $action == daily-v4-forward-current-rollback ]]; then
     run_reader_summary_original_cutoff_prisma_resolve rolled-back \
       "$READER_SUMMARY_DAILY_V4_FORWARD_MIGRATION" || return
-    [[ $(reader_summary_original_cutoff_probe pre) == clean ]]
+    [[ $(reader_summary_original_cutoff_probe forward-resolved) == forward-resolved ]]
     return
   fi
   if [[ $action == daily-execution-rls-rollback ]]; then

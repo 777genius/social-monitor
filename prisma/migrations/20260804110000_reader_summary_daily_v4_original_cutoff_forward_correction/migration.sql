@@ -427,7 +427,33 @@ BEGIN
   );
 END;
 $function$;
-
+-- Accept immutable legacy empty body previews without weakening any other text field.
+ALTER FUNCTION public."reader_summary_daily_canonical_recovery_v4_source_authority"(UUID, UUID, DATE, TIMESTAMPTZ, JSONB, JSONB) RENAME TO "reader_summary_daily_canonical_recovery_v4_source_authority_base";
+CREATE FUNCTION public."reader_summary_daily_canonical_recovery_v4_source_authority"(target_tenant_id UUID, target_workspace_id UUID, target_date DATE, target_cutoff TIMESTAMPTZ, legacy_evidence JSONB, legacy_github_evidence JSONB) RETURNS JSONB LANGUAGE plpgsql IMMUTABLE STRICT SECURITY DEFINER
+SET search_path = pg_catalog AS $function$
+DECLARE c_empty_preview_sentinel CONSTANT TEXT := '__reader_summary_legacy_empty_body_preview__'; v_authority JSONB; v_normalized JSONB;
+BEGIN
+  IF EXISTS (SELECT 1 FROM jsonb_each(legacy_evidence) AS provider(key, value)
+    CROSS JOIN LATERAL jsonb_array_elements(provider.value) AS evidence(value)
+    WHERE NOT (evidence.value ? 'bodyPreview') OR jsonb_typeof(evidence.value->'bodyPreview') <> 'string'
+      OR evidence.value->>'bodyPreview' = c_empty_preview_sentinel) THEN
+    RAISE EXCEPTION 'daily canonical recovery v4 source authority bodyPreview is invalid';
+  END IF;
+  SELECT jsonb_object_agg(provider.key, (SELECT COALESCE(jsonb_agg(CASE WHEN evidence.value->'bodyPreview' = '""'::JSONB
+    THEN jsonb_set(evidence.value, '{bodyPreview}', to_jsonb(c_empty_preview_sentinel), FALSE) ELSE evidence.value END ORDER BY evidence.ordinal), '[]'::JSONB)
+    FROM jsonb_array_elements(provider.value) WITH ORDINALITY AS evidence(value, ordinal))) INTO v_normalized
+  FROM jsonb_each(legacy_evidence) AS provider(key, value);
+  v_authority := public."reader_summary_daily_canonical_recovery_v4_source_authority_base"(target_tenant_id, target_workspace_id, target_date, target_cutoff, v_normalized, legacy_github_evidence);
+  RETURN jsonb_set(v_authority, '{items}', COALESCE((SELECT jsonb_agg(CASE WHEN EXISTS(
+    SELECT 1 FROM jsonb_each(legacy_evidence) AS provider(key, value)
+    CROSS JOIN LATERAL jsonb_array_elements(provider.value) AS evidence(value)
+    WHERE evidence.value->>'feedItemId' = item.value->>'feedItemId'
+      AND evidence.value->>'sourceItemId' = item.value->>'sourceItemId'
+      AND evidence.value->>'providerKey' = item.value->>'providerKey'
+      AND evidence.value->'bodyPreview' = '""'::JSONB) THEN jsonb_set(item.value, '{bodyPreview}', '""'::JSONB, FALSE) ELSE item.value END ORDER BY item.ordinal)
+    FROM jsonb_array_elements(v_authority->'items') WITH ORDINALITY AS item(value, ordinal)), '[]'::JSONB), FALSE);
+END;
+$function$;
 CREATE FUNCTION public."reader_summary_daily_canonical_recovery_v4_corrected_plan_day"(
   target_date DATE
 ) RETURNS JSONB LANGUAGE plpgsql VOLATILE STRICT SECURITY DEFINER
@@ -917,14 +943,13 @@ BEGIN
   PERFORM public."assert_reader_summary_daily_canonical_recovery_v4_binding"();
 END;
 $function$;
-
 DO $bootstrap_daily_v4_original_cutoff_forward$
 BEGIN
   PERFORM public."bootstrap_reader_summary_daily_canonical_recovery_v4"();
 END;
 $bootstrap_daily_v4_original_cutoff_forward$;
-
 REVOKE ALL ON FUNCTION public."reader_summary_daily_canonical_recovery_v4_original_cutoff_projection"(BOOLEAN),
+  public."reader_summary_daily_canonical_recovery_v4_source_authority"(UUID, UUID, DATE, TIMESTAMPTZ, JSONB, JSONB),
   public."reader_summary_daily_canonical_recovery_v4_corrected_plan_day"(DATE),
   public."assert_reader_summary_daily_canonical_recovery_v4_legacy"(),
   public."assert_reader_summary_daily_canonical_recovery_v4_legacy_base"(),
@@ -934,7 +959,6 @@ REVOKE ALL ON FUNCTION public."reader_summary_daily_canonical_recovery_v4_origin
   public."assert_reader_summary_daily_canonical_recovery_v4_binding_base"(),
   public."bootstrap_reader_summary_daily_canonical_recovery_v4"()
 FROM PUBLIC, "social_monitor_reader_summary_daily_terminal";
-
 DO $validate_daily_v4_forward_security$
 DECLARE
   v_count INTEGER;
@@ -946,6 +970,7 @@ BEGIN
   WHERE namespace.nspname = 'public'
     AND procedure.proname IN (
       'reader_summary_daily_canonical_recovery_v4_original_cutoff_projection',
+      'reader_summary_daily_canonical_recovery_v4_source_authority',
       'reader_summary_daily_canonical_recovery_v4_corrected_plan_day',
       'assert_reader_summary_daily_canonical_recovery_v4_legacy',
       'assert_reader_summary_daily_canonical_recovery_v4_legacy_base',
@@ -961,16 +986,14 @@ BEGIN
       AND NOT has_function_privilege(
         'social_monitor_reader_summary_daily_terminal', procedure.oid, 'EXECUTE'
       );
-  IF v_count <> 9 THEN
+  IF v_count <> 10 THEN
     RAISE EXCEPTION 'daily v4 forward function owner, ACL, or search_path diverged';
   END IF;
 END;
 $validate_daily_v4_forward_security$;
-
 RESET ROLE;
 SET LOCAL ROLE "social_monitor_public_schema_owner";
 REVOKE CREATE ON SCHEMA public
 FROM "social_monitor_reader_summary_publication_owner";
 RESET ROLE;
-
 COMMIT;

@@ -18,28 +18,24 @@ const targetMigration = "20260731153000_reader_summary_production_recovery_origi
 const correctionMigration = "20260801130000_reader_summary_original_cutoff_consumed_state_correction";
 const activationAclMigration = "20260802143100_reader_summary_daily_execution_publication_activation_acl";
 const weeklyManifestMigration = "20260802170000_reader_summary_weekly_review_manifest";
-const dailyV4ForwardMigration =
-  "20260804110000_reader_summary_daily_v4_original_cutoff_forward_correction";
+const dailyV4ForwardMigration = "20260804110000_reader_summary_daily_v4_original_cutoff_forward_correction";
 const legacyChecksum = "8748c4e266d8c1838f29b1a6f59f4be056514de64fe95fe44f5c7bb3680b477d";
 const currentChecksum = "4100dd4ae236a300e002d2599a880b27df50972aed2f4a9f33578a3da2fe5c35";
 const correctionChecksum = "d26709b51ab37d368add42732b4c9fc8c70a56894ec9afdaec417408d4822dbc";
 const weeklyManifestCurrentChecksum = "a6e77d075bf9f680f23732f0fb28f0d151078b87e6fda93dba748b6c3e3a70f2";
 const weeklyManifestProductionChecksum = "930c7de104be51d2ced8b45d1c33a5d1ccfe9c6e279af8b58aa8e2d4726eef8f";
 const dailyV4ForwardOldChecksum = "34e6505c0d78697cc55219bd858f66372c8317ddadc86266053b2f4f52ae7e13";
-const dailyV4ForwardFixedChecksum = "0aea8870e788130ca749a1dbb220a9b8d3424b8dde548a655e8e4b1eb1beb0f0";
+const dailyV4ForwardPreviousChecksum = "0aea8870e788130ca749a1dbb220a9b8d3424b8dde548a655e8e4b1eb1beb0f0";
+const dailyV4ForwardNewChecksum = "071f9906506540c5452c98580125ab56f5f662c19087a6d471489e8901c2325d";
 const defaultUnfinishedTargetBlockerRole = "social_monitor_public_schema_owner";
 const defaultUnfinishedTargetBlockerRelation = "public.idempotency_keys";
 const dailyV4ForwardBlockerRole = "social_monitor_reader_summary_publication_owner";
-const dailyV4ForwardBlockerRelation =
-  'public."reader_summary_production_recovery_authority_corrections"';
-type UnfinishedTargetBlockerRelation =
-  | typeof defaultUnfinishedTargetBlockerRelation
-  | typeof dailyV4ForwardBlockerRelation;
+const dailyV4ForwardBlockerRelation = 'public."reader_summary_production_recovery_authority_corrections"';
+type UnfinishedTargetBlockerRelation = typeof defaultUnfinishedTargetBlockerRelation | typeof dailyV4ForwardBlockerRelation;
 const reviewedStartedAt = "2026-07-31 21:16:04.938573+00";
 const postgresImage = "postgres:18.4-alpine";
 const prismaConfig = "scripts/reader-summary-publication-prisma.config.ts";
-const probeSql = readFileSync(
-  "ops/deploy/reader-summary-original-cutoff-failed-migration-preflight.sql", "utf8");
+const probeSql = readFileSync("ops/deploy/reader-summary-original-cutoff-failed-migration-preflight.sql", "utf8");
 const catalogConnectionSql = `SELECT current_user, session_user,
        connected.rolsuper, owner.rolname AS table_owner
   FROM pg_catalog.pg_class relation
@@ -50,19 +46,15 @@ const catalogConnectionSql = `SELECT current_user, session_user,
    AND relation.relkind IN ('r', 'p')`;
 type Workspace = Readonly<{ directory: string; migrations: string; schema: string }>;
 type CatalogRow = Readonly<{
-  applied_steps_count: number; checksum: string; finished_at: Date | null; id: string;
-  logs: string | null; migration_name: string; rolled_back_at: Date | null;
-  started_at: Date; started_at_exact: string }>;
+  applied_steps_count: number; checksum: string; finished_at: Date | null; id: string; logs: string | null;
+  migration_name: string; rolled_back_at: Date | null; started_at: Date; started_at_exact: string }>;
 type CatalogConnection = Readonly<{ current_user: string; rolsuper: boolean; session_user: string; table_owner: string }>;
 type PrismaExit = Readonly<{ code: number | null; signal: NodeJS.Signals | null; stderr: string; stdout: string }>;
 const assert: (condition: unknown, message: string) => asserts condition = (condition, message) => {
   if (!condition) throw new Error(message);
 };
-const checked = (
-  command: string,
-  args: readonly string[],
-  options: Readonly<{ env?: NodeJS.ProcessEnv; input?: string }> = {},
-): string => {
+const checked = (command: string, args: readonly string[],
+  options: Readonly<{ env?: NodeJS.ProcessEnv; input?: string }> = {}): string => {
   const result = spawnSync(command, args, {
     encoding: "utf8", env: options.env, input: options.input,
   });
@@ -72,8 +64,7 @@ const checked = (
   }
   return result.stdout.trim();
 };
-const docker = (args: readonly string[], input?: string): string =>
-  checked("docker", args, { input });
+const docker = (args: readonly string[], input?: string): string => checked("docker", args, { input });
 const createWorkspace = (): Workspace => {
   const directory = mkdtempSync(join(tmpdir(), "reader-summary-original-cutoff-catalog-"));
   const migrations = join(directory, "migrations");
@@ -86,21 +77,15 @@ const migrationNames = (): readonly string[] =>
     .filter((entry) => entry.isDirectory())
     .map((entry) => entry.name)
     .sort();
-const copyMigrations = (
-  workspace: Workspace,
-  predicate: (name: string) => boolean,
-): void => {
+const copyMigrations = (workspace: Workspace, predicate: (name: string) => boolean): void => {
   for (const name of migrationNames().filter(predicate)) {
     const destination = join(workspace.migrations, name);
     if (readdirSync(workspace.migrations).includes(name)) continue;
     cpSync(join("prisma/migrations", name), destination, { recursive: true });
   }
 };
-const prismaEnvironment = (
-  workspace: Workspace,
-  databaseUrl: string,
-  extra: NodeJS.ProcessEnv = {},
-): NodeJS.ProcessEnv => ({
+const prismaEnvironment = (workspace: Workspace, databaseUrl: string,
+  extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv => ({
   ...process.env,
   DATABASE_URL: databaseUrl,
   JITI_FS_CACHE: "false",
@@ -116,10 +101,7 @@ const databaseUrlWithStatementTimeout = (databaseUrl: string, milliseconds: numb
   url.searchParams.set("options", `${existing}${separator}-c statement_timeout=${milliseconds}`);
   return url.toString();
 };
-const boundedPrismaEvidence = (
-  outcome: PrismaExit,
-  databaseUrl: string,
-): string => {
+const boundedPrismaEvidence = (outcome: PrismaExit, databaseUrl: string): string => {
   const url = new URL(databaseUrl);
   const sanitize = (raw: string): string => {
     let value = raw.replace(/postgres(?:ql)?:\/\/[^\s"'`]+/giu, "postgresql://[redacted]");
@@ -579,33 +561,27 @@ const modelProductionWeeklyManifestCatalogHistory = async (
     );
   });
 };
+const replaceOnce = (value: string, expected: string, replacement: string, label: string): string => {
+  assert(value.split(expected).length === 2, `daily V4 ${label} is unavailable or ambiguous`); return value.replace(expected, replacement);
+};
+const dailyV4ForwardPreviousMigration = (): Buffer => {
+  const forward = readFileSync(join("prisma/migrations", dailyV4ForwardMigration, "migration.sql"), "utf8");
+  const start = forward.indexOf("-- Accept immutable legacy empty body previews"), end = forward.indexOf('CREATE FUNCTION public."reader_summary_daily_canonical_recovery_v4_corrected_plan_day"(', start);
+  assert(start >= 0 && end > start, "daily V4 compatibility wrapper is unavailable or ambiguous");
+  let previous = `${forward.slice(0, start)}\n${forward.slice(end)}`;
+  for (const [expected, replacement, label] of [['  public."reader_summary_daily_canonical_recovery_v4_source_authority"(UUID, UUID, DATE, TIMESTAMPTZ, JSONB, JSONB),\n', "", "revoke"], ["      'reader_summary_daily_canonical_recovery_v4_source_authority',\n", "", "security list"], ["IF v_count <> 10 THEN", "IF v_count <> 9 THEN", "security count"], ["$function$;\nDO $bootstrap_daily_v4_original_cutoff_forward$", "$function$;\n\nDO $bootstrap_daily_v4_original_cutoff_forward$", "bootstrap spacing"], ["$bootstrap_daily_v4_original_cutoff_forward$;\nREVOKE", "$bootstrap_daily_v4_original_cutoff_forward$;\n\nREVOKE", "revoke spacing"], ["social_monitor_reader_summary_daily_terminal\";\nDO $validate", "social_monitor_reader_summary_daily_terminal\";\n\nDO $validate", "validation spacing"], ["$validate_daily_v4_forward_security$;\nRESET ROLE", "$validate_daily_v4_forward_security$;\n\nRESET ROLE", "reset spacing"], ["RESET ROLE;\nCOMMIT;", "RESET ROLE;\n\nCOMMIT;", "commit spacing"]] as const) previous = replaceOnce(previous, expected, replacement, label);
+  const bytes = Buffer.from(previous, "utf8");
+  assert(createHash("sha256").update(bytes).digest("hex") === dailyV4ForwardPreviousChecksum, "reviewed previous daily V4 forward migration blob is unavailable");
+  return bytes;
+};
 const installDailyV4ForwardOldMigration = (workspace: Workspace): void => {
-  const destination = join(workspace.migrations, dailyV4ForwardMigration);
-  mkdirSync(destination);
-  const fixedExpression =
-    "(v_expected - 'legacyTotal') || jsonb_build_object('removedRss', v_removed_manifest_day)";
-  const oldExpression = "v_expected || jsonb_build_object('removedRss', v_removed_manifest_day)";
-  const fixed = readFileSync(
-    join("prisma/migrations", dailyV4ForwardMigration, "migration.sql"),
-  );
-  const fixedText = fixed.toString("utf8");
-  assert(
-    fixedText.split(fixedExpression).length === 2,
-    "fixed daily V4 forward migration expression is unavailable or ambiguous",
-  );
-  const old = Buffer.from(fixedText.replace(fixedExpression, oldExpression), "utf8");
-  assert(
-    createHash("sha256").update(old).digest("hex") === dailyV4ForwardOldChecksum,
-    "reviewed old daily V4 forward migration blob is unavailable",
-  );
+  const destination = join(workspace.migrations, dailyV4ForwardMigration); mkdirSync(destination);
+  const old = Buffer.from(dailyV4ForwardPreviousMigration().toString("utf8").replace("(v_expected - 'legacyTotal') || jsonb_build_object('removedRss', v_removed_manifest_day)", "v_expected || jsonb_build_object('removedRss', v_removed_manifest_day)"), "utf8");
+  assert(createHash("sha256").update(old).digest("hex") === dailyV4ForwardOldChecksum, "reviewed old daily V4 forward migration blob is unavailable");
   writeFileSync(join(destination, "migration.sql"), old);
 };
-const installDailyV4ForwardFixedMigration = (workspace: Workspace): void => {
-  cpSync(
-    join("prisma/migrations", dailyV4ForwardMigration, "migration.sql"),
-    join(workspace.migrations, dailyV4ForwardMigration, "migration.sql"),
-  );
-};
+const installDailyV4ForwardPreviousMigration = (workspace: Workspace): void => writeFileSync(join(workspace.migrations, dailyV4ForwardMigration, "migration.sql"), dailyV4ForwardPreviousMigration());
+const installDailyV4ForwardNewMigration = (workspace: Workspace): void => cpSync(join("prisma/migrations", dailyV4ForwardMigration, "migration.sql"), join(workspace.migrations, dailyV4ForwardMigration, "migration.sql"));
 const main = async (): Promise<void> => {
   assertShellStops({
     correctionMigration,
@@ -613,7 +589,8 @@ const main = async (): Promise<void> => {
     weeklyManifestMigration,
     dailyV4ForwardMigration,
     dailyV4ForwardOldChecksum,
-    dailyV4ForwardFixedChecksum,
+    dailyV4ForwardPreviousChecksum,
+    dailyV4ForwardNewChecksum,
   });
   assert(
     createHash("sha256")
@@ -625,8 +602,8 @@ const main = async (): Promise<void> => {
   assert(
     createHash("sha256").update(readFileSync(join("prisma/migrations",
       dailyV4ForwardMigration, "migration.sql"))).digest("hex") ===
-      dailyV4ForwardFixedChecksum,
-    "fixed daily V4 forward migration digest diverged",
+      dailyV4ForwardNewChecksum,
+    "new daily V4 forward migration digest diverged",
   );
   const suffix = randomBytes(8).toString("hex");
   const container = `sm-original-cutoff-${suffix}`;
@@ -884,8 +861,19 @@ const main = async (): Promise<void> => {
       dailyV4ForwardBlockerRole,
       dailyV4ForwardBlockerRelation,
     );
-    assert(probe(container, database, "pre") === "daily-v4-forward-rollback",
-      "reviewed daily V4 forward failure did not classify for rollback");
+    resolve(workspace, adminDatabaseUrl, "--rolled-back", {}, dailyV4ForwardMigration);
+    installDailyV4ForwardPreviousMigration(workspace);
+    await createUnfinishedTarget(
+      workspace, adminDatabaseUrl, dailyV4ForwardPreviousChecksum,
+      dailyV4ForwardMigration, false, dailyV4ForwardBlockerRole, dailyV4ForwardBlockerRelation,
+    );
+    const beforeForwardResolve = await catalog(adminDatabaseUrl, dailyV4ForwardMigration);
+    assert(beforeForwardResolve.length === 2 && beforeForwardResolve[0]?.checksum === dailyV4ForwardOldChecksum &&
+      beforeForwardResolve[0]?.rolled_back_at !== null && beforeForwardResolve[1]?.checksum === dailyV4ForwardPreviousChecksum &&
+      beforeForwardResolve[1]?.finished_at === null && beforeForwardResolve[1]?.rolled_back_at === null && beforeForwardResolve[1]?.logs === null,
+    "production forward pre-resolve catalog lifecycle diverged");
+    assert(probe(container, database, "pre") === "daily-v4-forward-current-rollback",
+      "reviewed current daily V4 forward failure did not classify for rollback");
     resolve(
       workspace,
       adminDatabaseUrl,
@@ -893,9 +881,9 @@ const main = async (): Promise<void> => {
       {},
       dailyV4ForwardMigration,
     );
-    assert(probe(container, database, "pre") === "clean",
-      "rolled-back daily V4 forward row did not return to clean");
-    installDailyV4ForwardFixedMigration(workspace);
+    assert(probe(container, database, "forward-resolved") === "forward-resolved",
+      "resolved current daily V4 forward row did not retain the exact forward lifecycle");
+    installDailyV4ForwardNewMigration(workspace);
     deploy(workspace, adminDatabaseUrl);
     assert(probe(container, database, "post") === "corrected",
       "fixed daily V4 forward history was not proven");
@@ -905,14 +893,16 @@ const main = async (): Promise<void> => {
     const forwardRows = await catalog(adminDatabaseUrl, dailyV4ForwardMigration);
     const oldForwardRow = forwardRows.find((row) =>
       row.checksum === dailyV4ForwardOldChecksum);
-    const fixedForwardRow = forwardRows.find((row) =>
-      row.checksum === dailyV4ForwardFixedChecksum);
+    const previousForwardRow = forwardRows.find((row) =>
+      row.checksum === dailyV4ForwardPreviousChecksum);
+    const newForwardRow = forwardRows.find((row) => row.checksum === dailyV4ForwardNewChecksum);
     assert(
-      forwardRows.length === 2 && oldForwardRow !== undefined &&
-        oldForwardRow.rolled_back_at !== null && oldForwardRow.finished_at === null &&
-        fixedForwardRow !== undefined && fixedForwardRow.finished_at !== null &&
-        fixedForwardRow.rolled_back_at === null &&
-        fixedForwardRow.started_at.getTime() >= oldForwardRow.rolled_back_at.getTime(),
+      forwardRows.length === 3 && oldForwardRow !== undefined && previousForwardRow !== undefined && newForwardRow !== undefined &&
+      oldForwardRow.rolled_back_at !== null && oldForwardRow.finished_at === null &&
+        previousForwardRow.rolled_back_at !== null && previousForwardRow.finished_at === null && previousForwardRow.logs === null &&
+        newForwardRow.finished_at !== null && newForwardRow.rolled_back_at === null &&
+        previousForwardRow.started_at.getTime() >= oldForwardRow.rolled_back_at.getTime() &&
+        newForwardRow.started_at.getTime() >= previousForwardRow.rolled_back_at.getTime(),
       "daily V4 forward catalog did not preserve the exact failed-row lifecycle",
     );
     const finalRows = await catalog(adminDatabaseUrl);

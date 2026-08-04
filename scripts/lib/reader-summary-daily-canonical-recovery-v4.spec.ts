@@ -85,6 +85,39 @@ describe("reader-summary daily canonical recovery v4", () => {
     }, authority, 200)).toThrow(/frozen authority/u);
   });
 
+  it("allows empty legacy bodyPreview but keeps citation authority text strict", () => {
+    const output = {
+      ...validOutput(),
+      citationMap: [{
+        citationId: "c1",
+        feedItemId: "30000000-0000-4000-8000-000000000003",
+        sourceItemId: "40000000-0000-4000-8000-000000000004",
+        providerKey: "rss",
+        field: "canonicalUrl",
+      }],
+    };
+    const authority = JSON.parse(authorityBytes().toString("utf8")) as {
+      items: Array<Record<string, unknown>>;
+    };
+    authority.items[0]!.bodyPreview = "";
+    const legacyEmpty = Buffer.from(JSON.stringify(authority), "utf8");
+    expect(() => assertDailyOutputCitationsMatchSourceAuthority(output, legacyEmpty, 200))
+      .not.toThrow();
+    authority.items[0]!.bodyPreview = null;
+    expect(() => assertDailyOutputCitationsMatchSourceAuthority(
+      output, Buffer.from(JSON.stringify(authority), "utf8"), 200,
+    )).toThrow(/frozen authority/u);
+    authority.items[0]!.bodyPreview = 1;
+    expect(() => assertDailyOutputCitationsMatchSourceAuthority(
+      output, Buffer.from(JSON.stringify(authority), "utf8"), 200,
+    )).toThrow(/frozen authority/u);
+    authority.items[0]!.bodyPreview = "Frozen body";
+    authority.items[0]!.title = "";
+    expect(() => assertDailyOutputCitationsMatchSourceAuthority(
+      output, Buffer.from(JSON.stringify(authority), "utf8"), 200,
+    )).toThrow(/frozen authority/u);
+  });
+
   it("marks running after the irreversible claim and before one model call", async () => {
     const events: string[] = [];
     const publication = published();

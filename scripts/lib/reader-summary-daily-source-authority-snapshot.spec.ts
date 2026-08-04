@@ -39,6 +39,20 @@ describe("verifyReaderSummaryDailySourceAuthority", () => {
       ...scope, authority,
     })).toThrow(/outside authority v1/u);
   });
+
+  it.each([
+    ["empty bodyPreview", { bodyPreview: "" }, false],
+    ["null bodyPreview", { bodyPreview: null }, true],
+    ["non-string bodyPreview", { bodyPreview: 1 }, true],
+    ["empty title", { title: "" }, true],
+  ])("handles %s without weakening other text fields", (_label, patch, rejects) => {
+    const attempt = () => verifyReaderSummaryDailySourceAuthority({
+      ...scope,
+      authority: snapshot(patch),
+    });
+    if (rejects) expect(attempt).toThrow(/invalid/u);
+    else expect(attempt).not.toThrow();
+  });
 });
 
 const snapshot = (itemPatch: Record<string, unknown> = {}) => {
