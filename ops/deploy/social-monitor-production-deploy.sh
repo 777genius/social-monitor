@@ -83,6 +83,7 @@ BACKEND_PATHS=(
   apps/event-relay
   apps/x-collector
   ops/deploy/production-runtime/x-collector.Dockerfile
+  ops/deploy/production-runtime/compose.postgres-runtime.yml
   apps/social-research-runtime
   apps/social-research-grpc
   apps/social-research-mcp
