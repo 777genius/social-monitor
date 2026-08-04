@@ -31,9 +31,12 @@ fi
 
 reader_summary_publication_prebootstrap_target_daily_runner() {
   if [[ ! ${publication_library+x} && ! ${reviewed_digest+x} &&
-        ! ${actual_digest+x} && ! ${sha+x} && ! ${backend+x} ]]; then
+        ! ${actual_digest+x} ]]; then
     return 0
   fi
+  [[ ${publication_library+x} && ${reviewed_digest+x} &&
+     ${actual_digest+x} ]] || \
+    fail 'incomplete target publication loader context'
 
   local expected_publication_library=$REPO/ops/deploy/reader-summary-publication-deploy-lib.sh
   local integration_head process_id deploy_lock_fd expected_deploy_lock

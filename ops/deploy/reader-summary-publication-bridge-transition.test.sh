@@ -333,7 +333,12 @@ run_target_case() {
         }
         deploy_release "$TARGET_SHA"
         if [[ $BRIDGE_PREBOOTSTRAP_MODE == unauthenticated-recall ]]; then
-          reader_summary_publication_prebootstrap_target_daily_runner
+          recall_without_publication_loader_context() {
+            local sha=$TARGET_SHA
+            local backend=true
+            reader_summary_publication_prebootstrap_target_daily_runner
+          }
+          recall_without_publication_loader_context
         fi
       ' 2>&1
   )
