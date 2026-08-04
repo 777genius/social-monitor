@@ -14,6 +14,7 @@ export const assertShellStops = ({
   dailyV4ForwardMigration,
   dailyV4ForwardOldChecksum,
   dailyV4ForwardPreviousChecksum,
+  dailyV4ForwardCurrentChecksum,
   dailyV4ForwardNewChecksum,
 }: Readonly<{
   correctionMigration: string;
@@ -22,6 +23,7 @@ export const assertShellStops = ({
   dailyV4ForwardMigration: string;
   dailyV4ForwardOldChecksum: string;
   dailyV4ForwardPreviousChecksum: string;
+  dailyV4ForwardCurrentChecksum: string;
   dailyV4ForwardNewChecksum: string;
 }>): void => {
   const deployLibrary = readFileSync(
@@ -60,12 +62,16 @@ export const assertShellStops = ({
       helper.includes('[[ $target_digest == "$READER_SUMMARY_DAILY_V4_FORWARD_NEW_CHECKSUM" ]]') &&
       helper.includes("daily-v4-forward-current-rollback") &&
       helper.includes("forward-resolved") &&
+      helper.includes('reader_summary_original_cutoff_probe forward-resolved) == forward-resolved') &&
       preflight.includes(dailyV4ForwardMigration) &&
       preflight.includes(dailyV4ForwardOldChecksum) &&
       preflight.includes(dailyV4ForwardPreviousChecksum) &&
+      preflight.includes(dailyV4ForwardCurrentChecksum) &&
       preflight.includes(dailyV4ForwardNewChecksum) &&
       preflight.includes("v_daily_v4_forward_old_rolled_back = 1") &&
+      preflight.includes("v_daily_v4_forward_previous_rolled_back = 1") &&
       preflight.includes("v_unfinished = 1") &&
+      preflight.includes("v_daily_v4_forward_rows = 4") &&
       preflight.includes("v_daily_v4_forward_rows = 3") &&
       preflight.indexOf("daily-v4-forward-current-rollback") <
         preflight.indexOf("daily-execution-rls-rollback"),

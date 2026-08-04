@@ -27,7 +27,7 @@ export type ReaderSummaryDailySourceItemV2 = ReaderSummaryDailySourceItem & Read
  * authority, release migration, and prepublication gate cannot drift.
  */
 export const readerSummaryDailyCanonicalHistoricalGithubOmissionDates =
-  Object.freeze(["2026-07-23", "2026-07-28", "2026-07-30"] as const);
+  Object.freeze(["2026-07-23", "2026-07-28", "2026-07-29", "2026-07-30"] as const);
 
 export const readerSummaryDailyCanonicalHistoricalGithubOmissionReason =
   "Reviewed immutable recovery authority contains no eligible GitHub trending projection for this UTC day.";

@@ -26,9 +26,9 @@ const weeklyManifestCurrentChecksum = "a6e77d075bf9f680f23732f0fb28f0d151078b87e
 const weeklyManifestProductionChecksum = "930c7de104be51d2ced8b45d1c33a5d1ccfe9c6e279af8b58aa8e2d4726eef8f";
 const dailyV4ForwardOldChecksum = "34e6505c0d78697cc55219bd858f66372c8317ddadc86266053b2f4f52ae7e13";
 const dailyV4ForwardPreviousChecksum = "0aea8870e788130ca749a1dbb220a9b8d3424b8dde548a655e8e4b1eb1beb0f0";
-const dailyV4ForwardNewChecksum = "071f9906506540c5452c98580125ab56f5f662c19087a6d471489e8901c2325d";
-const defaultUnfinishedTargetBlockerRole = "social_monitor_public_schema_owner";
-const defaultUnfinishedTargetBlockerRelation = "public.idempotency_keys";
+const dailyV4ForwardCurrentChecksum = "071f9906506540c5452c98580125ab56f5f662c19087a6d471489e8901c2325d";
+const dailyV4ForwardNewChecksum = "8000636562c896e41d1af2b892aef08862fc5f0e94741ec3ce07567f77016f4f";
+const defaultUnfinishedTargetBlockerRole = "social_monitor_public_schema_owner"; const defaultUnfinishedTargetBlockerRelation = "public.idempotency_keys";
 const dailyV4ForwardBlockerRole = "social_monitor_reader_summary_publication_owner";
 const dailyV4ForwardBlockerRelation = 'public."reader_summary_production_recovery_authority_corrections"';
 type UnfinishedTargetBlockerRelation = typeof defaultUnfinishedTargetBlockerRelation | typeof dailyV4ForwardBlockerRelation;
@@ -564,23 +564,27 @@ const modelProductionWeeklyManifestCatalogHistory = async (
 const replaceOnce = (value: string, expected: string, replacement: string, label: string): string => {
   assert(value.split(expected).length === 2, `daily V4 ${label} is unavailable or ambiguous`); return value.replace(expected, replacement);
 };
+// The compact historical patch is authenticated by the checksum below before fixture use.
+const dailyV4ForwardCurrentPatch = Buffer.from("LS0gQWNjZXB0IGltbXV0YWJsZSBsZWdhY3kgZW1wdHkgYm9keSBwcmV2aWV3cyB3aXRob3V0IHdlYWtlbmluZyBhbnkgb3RoZXIgdGV4dCBmaWVsZC4KQUxURVIgRlVOQ1RJT04gcHVibGljLiJyZWFkZXJfc3VtbWFyeV9kYWlseV9jYW5vbmljYWxfcmVjb3ZlcnlfdjRfc291cmNlX2F1dGhvcml0eSIoVVVJRCwgVVVJRCwgREFURSwgVElNRVNUQU1QVFosIEpTT05CLCBKU09OQikgUkVOQU1FIFRPICJyZWFkZXJfc3VtbWFyeV9kYWlseV9jYW5vbmljYWxfcmVjb3ZlcnlfdjRfc291cmNlX2F1dGhvcml0eV9iYXNlIjsKQ1JFQVRFIEZVTkNUSU9OIHB1YmxpYy4icmVhZGVyX3N1bW1hcnlfZGFpbHlfY2Fub25pY2FsX3JlY292ZXJ5X3Y0X3NvdXJjZV9hdXRob3JpdHkiKHRhcmdldF90ZW5hbnRfaWQgVVVJRCwgdGFyZ2V0X3dvcmtzcGFjZV9pZCBVVUlELCB0YXJnZXRfZGF0ZSBEQVRFLCB0YXJnZXRfY3V0b2ZmIFRJTUVTVEFNUFRaLCBsZWdhY3lfZXZpZGVuY2UgSlNPTkIsIGxlZ2FjeV9naXRodWJfZXZpZGVuY2UgSlNPTkIpIFJFVFVSTlMgSlNPTkIgTEFOR1VBR0UgcGxwZ3NxbCBJTU1VVEFCTEUgU1RSSUNUIFNFQ1VSSVRZIERFRklORVIKU0VUIHNlYXJjaF9wYXRoID0gcGdfY2F0YWxvZyBBUyAkZnVuY3Rpb24kCkRFQ0xBUkUgY19lbXB0eV9wcmV2aWV3X3NlbnRpbmVsIENPTlNUQU5UIFRFWFQgOj0gJ19fcmVhZGVyX3N1bW1hcnlfbGVnYWN5X2VtcHR5X2JvZHlfcHJldmlld19fJzsgdl9hdXRob3JpdHkgSlNPTkI7IHZfbm9ybWFsaXplZCBKU09OQjsKQkVHSU4KICBJRiBFWElTVFMgKFNFTEVDVCAxIEZST00ganNvbmJfZWFjaChsZWdhY3lfZXZpZGVuY2UpIEFTIHByb3ZpZGVyKGtleSwgdmFsdWUpCiAgICBDUk9TUyBKT0lOIExBVEVSQUwganNvbmJfYXJyYXlfZWxlbWVudHMocHJvdmlkZXIudmFsdWUpIEFTIGV2aWRlbmNlKHZhbHVlKQogICAgV0hFUkUgTk9UIChldmlkZW5jZS52YWx1ZSA/ICdib2R5UHJldmlldycpIE9SIGpzb25iX3R5cGVvZihldmlkZW5jZS52YWx1ZS0+J2JvZHlQcmV2aWV3JykgPD4gJ3N0cmluZycKICAgICAgT1IgZXZpZGVuY2UudmFsdWUtPj4nYm9keVByZXZpZXcnID0gY19lbXB0eV9wcmV2aWV3X3NlbnRpbmVsKSBUSEVOCiAgICBSQUlTRSBFWENFUFRJT04gJ2RhaWx5IGNhbm9uaWNhbCByZWNvdmVyeSB2NCBzb3VyY2UgYXV0aG9yaXR5IGJvZHlQcmV2aWV3IGlzIGludmFsaWQnOwogIEVORCBJRjsKICBTRUxFQ1QganNvbmJfb2JqZWN0X2FnZyhwcm92aWRlci5rZXksIChTRUxFQ1QgQ09BTEVTQ0UoanNvbmJfYWdnKENBU0UgV0hFTiBldmlkZW5jZS52YWx1ZS0+J2JvZHlQcmV2aWV3JyA9ICciIic6OkpTT05CCiAgICBUSEVOIGpzb25iX3NldChldmlkZW5jZS52YWx1ZSwgJ3tib2R5UHJldmlld30nLCB0b19qc29uYihjX2VtcHR5X3ByZXZpZXdfc2VudGluZWwpLCBGQUxTRSkgRUxTRSBldmlkZW5jZS52YWx1ZSBFTkQgT1JERVIgQlkgZXZpZGVuY2Uub3JkaW5hbCksICdbXSc6OkpTT05CKQogICAgRlJPTSBqc29uYl9hcnJheV9lbGVtZW50cyhwcm92aWRlci52YWx1ZSkgV0lUSCBPUkRJTkFMSVRZIEFTIGV2aWRlbmNlKHZhbHVlLCBvcmRpbmFsKSkpIElOVE8gdl9ub3JtYWxpemVkCiAgRlJPTSBqc29uYl9lYWNoKGxlZ2FjeV9ldmlkZW5jZSkgQVMgcHJvdmlkZXIoa2V5LCB2YWx1ZSk7CiAgdl9hdXRob3JpdHkgOj0gcHVibGljLiJyZWFkZXJfc3VtbWFyeV9kYWlseV9jYW5vbmljYWxfcmVjb3ZlcnlfdjRfc291cmNlX2F1dGhvcml0eV9iYXNlIih0YXJnZXRfdGVuYW50X2lkLCB0YXJnZXRfd29ya3NwYWNlX2lkLCB0YXJnZXRfZGF0ZSwgdGFyZ2V0X2N1dG9mZiwgdl9ub3JtYWxpemVkLCBsZWdhY3lfZ2l0aHViX2V2aWRlbmNlKTsKICBSRVRVUk4ganNvbmJfc2V0KHZfYXV0aG9yaXR5LCAne2l0ZW1zfScsIENPQUxFU0NFKChTRUxFQ1QganNvbmJfYWdnKENBU0UgV0hFTiBFWElTVFMoCiAgICBTRUxFQ1QgMSBGUk9NIGpzb25iX2VhY2gobGVnYWN5X2V2aWRlbmNlKSBBUyBwcm92aWRlcihrZXksIHZhbHVlKQogICAgQ1JPU1MgSk9JTiBMQVRFUkFMIGpzb25iX2FycmF5X2VsZW1lbnRzKHByb3ZpZGVyLnZhbHVlKSBBUyBldmlkZW5jZSh2YWx1ZSkKICAgIFdIRVJFIGV2aWRlbmNlLnZhbHVlLT4+J2ZlZWRJdGVtSWQnID0gaXRlbS52YWx1ZS0+PidmZWVkSXRlbUlkJwogICAgICBBTkQgZXZpZGVuY2UudmFsdWUtPj4nc291cmNlSXRlbUlkJyA9IGl0ZW0udmFsdWUtPj4nc291cmNlSXRlbUlkJwogICAgICBBTkQgZXZpZGVuY2UudmFsdWUtPj4ncHJvdmlkZXJLZXknID0gaXRlbS52YWx1ZS0+Pidwcm92aWRlcktleScKICAgICAgQU5EIGV2aWRlbmNlLnZhbHVlLT4nYm9keVByZXZpZXcnID0gJyIiJzo6SlNPTkIpIFRIRU4ganNvbmJfc2V0KGl0ZW0udmFsdWUsICd7Ym9keVByZXZpZXd9JywgJyIiJzo6SlNPTkIsIEZBTFNFKSBFTFNFIGl0ZW0udmFsdWUgRU5EIE9SREVSIEJZIGl0ZW0ub3JkaW5hbCkKICAgIEZST00ganNvbmJfYXJyYXlfZWxlbWVudHModl9hdXRob3JpdHktPidpdGVtcycpIFdJVEggT1JESU5BTElUWSBBUyBpdGVtKHZhbHVlLCBvcmRpbmFsKSksICdbXSc6OkpTT05CKSwgRkFMU0UpOwpFTkQ7CiRmdW5jdGlvbiQ7Cg==", "base64").toString("utf8");
+const dailyV4ForwardCurrentMigration = (): Buffer => {
+  const forward = readFileSync(join("prisma/migrations", dailyV4ForwardMigration, "migration.sql"), "utf8"); assert(createHash("sha256").update(forward).digest("hex") === dailyV4ForwardNewChecksum, "reviewed new daily V4 forward migration blob is unavailable");
+  const start = forward.indexOf("-- Amend the already-applied validator"), end = forward.indexOf('CREATE FUNCTION public."reader_summary_daily_canonical_recovery_v4_corrected_plan_day"(', start); assert(start >= 0 && end > start, "daily V4 new compatibility patch is unavailable or ambiguous");
+  let current = forward.slice(0, start) + dailyV4ForwardCurrentPatch + forward.slice(end);
+  for (const [expected, replacement, label] of [['  public."reader_summary_daily_canonical_recovery_v4_corrected_plan_day"(DATE),\n', '  public."reader_summary_daily_canonical_recovery_v4_source_authority"(UUID, UUID, DATE, TIMESTAMPTZ, JSONB, JSONB),\n  public."reader_summary_daily_canonical_recovery_v4_corrected_plan_day"(DATE),\n', "revoke"], ["      'reader_summary_daily_canonical_recovery_v4_corrected_plan_day',\n", "      'reader_summary_daily_canonical_recovery_v4_source_authority',\n      'reader_summary_daily_canonical_recovery_v4_corrected_plan_day',\n", "security list"], ["IF v_count <> 9 THEN", "IF v_count <> 10 THEN", "security count"]] as const) current = replaceOnce(current, expected, replacement, label);
+  const bytes = Buffer.from(current, "utf8"); assert(createHash("sha256").update(bytes).digest("hex") === dailyV4ForwardCurrentChecksum, "reviewed current daily V4 forward migration blob is unavailable"); return bytes;
+};
 const dailyV4ForwardPreviousMigration = (): Buffer => {
-  const forward = readFileSync(join("prisma/migrations", dailyV4ForwardMigration, "migration.sql"), "utf8");
-  const start = forward.indexOf("-- Accept immutable legacy empty body previews"), end = forward.indexOf('CREATE FUNCTION public."reader_summary_daily_canonical_recovery_v4_corrected_plan_day"(', start);
-  assert(start >= 0 && end > start, "daily V4 compatibility wrapper is unavailable or ambiguous");
-  let previous = `${forward.slice(0, start)}\n${forward.slice(end)}`;
+  const current = dailyV4ForwardCurrentMigration().toString("utf8"); const start = current.indexOf("-- Accept immutable legacy empty body previews"), end = current.indexOf('CREATE FUNCTION public."reader_summary_daily_canonical_recovery_v4_corrected_plan_day"(', start); assert(start >= 0 && end > start, "daily V4 compatibility wrapper is unavailable or ambiguous");
+  let previous = current.slice(0, start) + "\n" + current.slice(end);
   for (const [expected, replacement, label] of [['  public."reader_summary_daily_canonical_recovery_v4_source_authority"(UUID, UUID, DATE, TIMESTAMPTZ, JSONB, JSONB),\n', "", "revoke"], ["      'reader_summary_daily_canonical_recovery_v4_source_authority',\n", "", "security list"], ["IF v_count <> 10 THEN", "IF v_count <> 9 THEN", "security count"], ["$function$;\nDO $bootstrap_daily_v4_original_cutoff_forward$", "$function$;\n\nDO $bootstrap_daily_v4_original_cutoff_forward$", "bootstrap spacing"], ["$bootstrap_daily_v4_original_cutoff_forward$;\nREVOKE", "$bootstrap_daily_v4_original_cutoff_forward$;\n\nREVOKE", "revoke spacing"], ["social_monitor_reader_summary_daily_terminal\";\nDO $validate", "social_monitor_reader_summary_daily_terminal\";\n\nDO $validate", "validation spacing"], ["$validate_daily_v4_forward_security$;\nRESET ROLE", "$validate_daily_v4_forward_security$;\n\nRESET ROLE", "reset spacing"], ["RESET ROLE;\nCOMMIT;", "RESET ROLE;\n\nCOMMIT;", "commit spacing"]] as const) previous = replaceOnce(previous, expected, replacement, label);
-  const bytes = Buffer.from(previous, "utf8");
-  assert(createHash("sha256").update(bytes).digest("hex") === dailyV4ForwardPreviousChecksum, "reviewed previous daily V4 forward migration blob is unavailable");
-  return bytes;
+  const bytes = Buffer.from(previous, "utf8"); assert(createHash("sha256").update(bytes).digest("hex") === dailyV4ForwardPreviousChecksum, "reviewed previous daily V4 forward migration blob is unavailable"); return bytes;
 };
 const installDailyV4ForwardOldMigration = (workspace: Workspace): void => {
-  const destination = join(workspace.migrations, dailyV4ForwardMigration); mkdirSync(destination);
-  const old = Buffer.from(dailyV4ForwardPreviousMigration().toString("utf8").replace("(v_expected - 'legacyTotal') || jsonb_build_object('removedRss', v_removed_manifest_day)", "v_expected || jsonb_build_object('removedRss', v_removed_manifest_day)"), "utf8");
-  assert(createHash("sha256").update(old).digest("hex") === dailyV4ForwardOldChecksum, "reviewed old daily V4 forward migration blob is unavailable");
-  writeFileSync(join(destination, "migration.sql"), old);
+  const destination = join(workspace.migrations, dailyV4ForwardMigration); mkdirSync(destination); const old = Buffer.from(dailyV4ForwardPreviousMigration().toString("utf8").replace("(v_expected - 'legacyTotal') || jsonb_build_object('removedRss', v_removed_manifest_day)", "v_expected || jsonb_build_object('removedRss', v_removed_manifest_day)"), "utf8");
+  assert(createHash("sha256").update(old).digest("hex") === dailyV4ForwardOldChecksum, "reviewed old daily V4 forward migration blob is unavailable"); writeFileSync(join(destination, "migration.sql"), old);
 };
 const installDailyV4ForwardPreviousMigration = (workspace: Workspace): void => writeFileSync(join(workspace.migrations, dailyV4ForwardMigration, "migration.sql"), dailyV4ForwardPreviousMigration());
+const installDailyV4ForwardCurrentMigration = (workspace: Workspace): void => writeFileSync(join(workspace.migrations, dailyV4ForwardMigration, "migration.sql"), dailyV4ForwardCurrentMigration());
 const installDailyV4ForwardNewMigration = (workspace: Workspace): void => cpSync(join("prisma/migrations", dailyV4ForwardMigration, "migration.sql"), join(workspace.migrations, dailyV4ForwardMigration, "migration.sql"));
 const main = async (): Promise<void> => {
   assertShellStops({
@@ -590,6 +594,7 @@ const main = async (): Promise<void> => {
     dailyV4ForwardMigration,
     dailyV4ForwardOldChecksum,
     dailyV4ForwardPreviousChecksum,
+    dailyV4ForwardCurrentChecksum,
     dailyV4ForwardNewChecksum,
   });
   assert(
@@ -857,7 +862,7 @@ const main = async (): Promise<void> => {
       adminDatabaseUrl,
       dailyV4ForwardOldChecksum,
       dailyV4ForwardMigration,
-      true,
+      false,
       dailyV4ForwardBlockerRole,
       dailyV4ForwardBlockerRelation,
     );
@@ -867,10 +872,18 @@ const main = async (): Promise<void> => {
       workspace, adminDatabaseUrl, dailyV4ForwardPreviousChecksum,
       dailyV4ForwardMigration, false, dailyV4ForwardBlockerRole, dailyV4ForwardBlockerRelation,
     );
+    resolve(workspace, adminDatabaseUrl, "--rolled-back", {}, dailyV4ForwardMigration);
+    installDailyV4ForwardCurrentMigration(workspace);
+    await createUnfinishedTarget(
+      workspace, adminDatabaseUrl, dailyV4ForwardCurrentChecksum,
+      dailyV4ForwardMigration, false, dailyV4ForwardBlockerRole, dailyV4ForwardBlockerRelation,
+    );
     const beforeForwardResolve = await catalog(adminDatabaseUrl, dailyV4ForwardMigration);
-    assert(beforeForwardResolve.length === 2 && beforeForwardResolve[0]?.checksum === dailyV4ForwardOldChecksum &&
-      beforeForwardResolve[0]?.rolled_back_at !== null && beforeForwardResolve[1]?.checksum === dailyV4ForwardPreviousChecksum &&
-      beforeForwardResolve[1]?.finished_at === null && beforeForwardResolve[1]?.rolled_back_at === null && beforeForwardResolve[1]?.logs === null,
+    assert(beforeForwardResolve.length === 3 && beforeForwardResolve[0]?.checksum === dailyV4ForwardOldChecksum &&
+      beforeForwardResolve[0]?.rolled_back_at !== null && beforeForwardResolve[0]?.logs === null &&
+      beforeForwardResolve[1]?.checksum === dailyV4ForwardPreviousChecksum && beforeForwardResolve[1]?.rolled_back_at !== null &&
+      beforeForwardResolve[1]?.logs === null && beforeForwardResolve[2]?.checksum === dailyV4ForwardCurrentChecksum &&
+      beforeForwardResolve[2]?.finished_at === null && beforeForwardResolve[2]?.rolled_back_at === null && beforeForwardResolve[2]?.logs === null,
     "production forward pre-resolve catalog lifecycle diverged");
     assert(probe(container, database, "pre") === "daily-v4-forward-current-rollback",
       "reviewed current daily V4 forward failure did not classify for rollback");
@@ -895,14 +908,18 @@ const main = async (): Promise<void> => {
       row.checksum === dailyV4ForwardOldChecksum);
     const previousForwardRow = forwardRows.find((row) =>
       row.checksum === dailyV4ForwardPreviousChecksum);
+    const currentForwardRow = forwardRows.find((row) =>
+      row.checksum === dailyV4ForwardCurrentChecksum);
     const newForwardRow = forwardRows.find((row) => row.checksum === dailyV4ForwardNewChecksum);
     assert(
-      forwardRows.length === 3 && oldForwardRow !== undefined && previousForwardRow !== undefined && newForwardRow !== undefined &&
+      forwardRows.length === 4 && oldForwardRow !== undefined && previousForwardRow !== undefined && currentForwardRow !== undefined && newForwardRow !== undefined &&
       oldForwardRow.rolled_back_at !== null && oldForwardRow.finished_at === null &&
         previousForwardRow.rolled_back_at !== null && previousForwardRow.finished_at === null && previousForwardRow.logs === null &&
+        currentForwardRow.rolled_back_at !== null && currentForwardRow.finished_at === null && currentForwardRow.logs === null &&
         newForwardRow.finished_at !== null && newForwardRow.rolled_back_at === null &&
         previousForwardRow.started_at.getTime() >= oldForwardRow.rolled_back_at.getTime() &&
-        newForwardRow.started_at.getTime() >= previousForwardRow.rolled_back_at.getTime(),
+        currentForwardRow.started_at.getTime() >= previousForwardRow.rolled_back_at.getTime() &&
+        newForwardRow.started_at.getTime() >= currentForwardRow.rolled_back_at.getTime(),
       "daily V4 forward catalog did not preserve the exact failed-row lifecycle",
     );
     const finalRows = await catalog(adminDatabaseUrl);

@@ -536,7 +536,7 @@ const authorityBytes = (
       providerContentHash: sha256(Buffer.from(`github-provider:${rank}`, "utf8")),
     };
   });
-  const historicalOmission = ["2026-07-23", "2026-07-28", "2026-07-30"]
+  const historicalOmission = ["2026-07-23", "2026-07-28", "2026-07-29", "2026-07-30"]
     .includes(requestedUtcDate);
   return canonicalJsonBytes({
     schemaVersion: 2,

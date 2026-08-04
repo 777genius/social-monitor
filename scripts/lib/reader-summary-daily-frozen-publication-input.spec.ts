@@ -35,7 +35,7 @@ const hash = (seed: string) => sha256(Buffer.from(seed, "utf8"));
 describe("reader summary daily frozen publication input", () => {
   it("routes verified V4 provenance through Jul24 and every reviewed date", async () => {
     for (const requestedUtcDate of [
-      "2026-07-24", "2026-07-25", "2026-07-26", "2026-07-27", "2026-07-29",
+      "2026-07-24", "2026-07-25", "2026-07-26", "2026-07-27",
     ]) {
       const replay = recoveryReplay(requestedUtcDate, "checked_at_collection_anchor");
       const wiring = frozenWiring(replay);
@@ -77,7 +77,7 @@ describe("reader summary daily frozen publication input", () => {
     }
   });
 
-  it.each(["2026-07-23", "2026-07-28", "2026-07-30"]) (
+  it.each(["2026-07-23", "2026-07-28", "2026-07-29", "2026-07-30"]) (
     "preserves the exact cutoff-bound historical GitHub omission for %s",
     async (requestedUtcDate) => {
       const replay = recoveryReplay(requestedUtcDate, "historical_omission");
@@ -91,9 +91,9 @@ describe("reader summary daily frozen publication input", () => {
     },
   );
 
-  it("rejects historical omissions outside the exact three reviewed dates", () => {
+  it("rejects historical omissions outside the exact four reviewed dates", () => {
     for (const requestedUtcDate of [
-      "2026-07-24", "2026-07-25", "2026-07-26", "2026-07-27", "2026-07-29",
+      "2026-07-24", "2026-07-25", "2026-07-26", "2026-07-27",
     ]) {
       expect(() => verifiedAuthority(requestedUtcDate, "historical_omission"))
         .toThrow(/omission is invalid/u);
@@ -475,7 +475,7 @@ const reviewedRecoveryDays = Object.freeze([
   ["2026-07-26", "checked_at_collection_anchor"],
   ["2026-07-27", "checked_at_collection_anchor"],
   ["2026-07-28", "historical_omission"],
-  ["2026-07-29", "checked_at_collection_anchor"],
+  ["2026-07-29", "historical_omission"],
   ["2026-07-30", "historical_omission"],
 ] as const);
 

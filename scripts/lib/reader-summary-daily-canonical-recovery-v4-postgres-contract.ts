@@ -651,7 +651,7 @@ const assertJul23Jul28Jul30Authority = async (client: Client): Promise<void> => 
            IS DISTINCT FROM 'object'
          OR (
            authority.requested_utc_date IN (
-             DATE '2026-07-23', DATE '2026-07-28', DATE '2026-07-30'
+             DATE '2026-07-23', DATE '2026-07-28', DATE '2026-07-29', DATE '2026-07-30'
            ) AND (
              jsonb_object_length(authority.source_authority_record->'githubProjection')
                IS DISTINCT FROM 3
@@ -674,7 +674,7 @@ const assertJul23Jul28Jul30Authority = async (client: Client): Promise<void> => 
          )
          OR (
            authority.requested_utc_date NOT IN (
-             DATE '2026-07-23', DATE '2026-07-28', DATE '2026-07-30'
+             DATE '2026-07-23', DATE '2026-07-28', DATE '2026-07-29', DATE '2026-07-30'
            ) AND (
              jsonb_object_length(authority.source_authority_record->'githubProjection')
                IS DISTINCT FROM 7
@@ -703,14 +703,14 @@ const assertJul23Jul28Jul30Authority = async (client: Client): Promise<void> => 
       (SELECT count(*)::TEXT
        FROM public.reader_summary_daily_canonical_recovery_v4_authorities authority
        WHERE authority.requested_utc_date IN (
-         DATE '2026-07-23', DATE '2026-07-28', DATE '2026-07-30'
+         DATE '2026-07-23', DATE '2026-07-28', DATE '2026-07-29', DATE '2026-07-30'
        )
          AND authority.source_authority_record->'githubProjection'->>'mode'
            = 'historical_omission') AS "targetOmissions",
       (SELECT count(*)::TEXT
        FROM public.reader_summary_daily_canonical_recovery_v4_authorities authority
        WHERE authority.requested_utc_date NOT IN (
-         DATE '2026-07-23', DATE '2026-07-28', DATE '2026-07-30'
+         DATE '2026-07-23', DATE '2026-07-28', DATE '2026-07-29', DATE '2026-07-30'
        )
          AND authority.source_authority_record->'githubProjection'->>'mode'
            = 'historical_omission') AS "nonTargetOmissions",
@@ -741,7 +741,7 @@ const assertJul23Jul28Jul30Authority = async (client: Client): Promise<void> => 
       (SELECT count(*)::TEXT
        FROM public.reader_summary_daily_canonical_recovery_v4_authorities authority
        WHERE authority.requested_utc_date NOT IN (
-         DATE '2026-07-23', DATE '2026-07-28', DATE '2026-07-30'
+         DATE '2026-07-23', DATE '2026-07-28', DATE '2026-07-29', DATE '2026-07-30'
        ) AND (
          authority.source_authority_record->'githubProjection'->'eligibleBindingIds'
            IS DISTINCT FROM (
@@ -866,8 +866,8 @@ const assertJul23Jul28Jul30Authority = async (client: Client): Promise<void> => 
       row.jul30 === "missing:0" &&
       row.jul30Counts === "[0, 0, 0, 34, 64]" && row.jul30Total === "98" &&
       row.v2Authorities === "8" && row.invalidAuthority === "0" &&
-      row.targetOmissions === "3" && row.nonTargetOmissions === "0" &&
-      row.anchoredAuthorities === "5" && row.githubAuthorityItems === "50" &&
+      row.targetOmissions === "4" && row.nonTargetOmissions === "0" &&
+      row.anchoredAuthorities === "4" && row.githubAuthorityItems === "40" &&
       row.invalidAuthorityIds === "0" && row.invalidCheckedAtProjection === "0" &&
       row.observedBeyondCutoff === "0",
     "immutable source authority v2 projection, real IDs, cutoff, or exact omissions diverged",

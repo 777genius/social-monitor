@@ -427,33 +427,35 @@ BEGIN
   );
 END;
 $function$;
--- Accept immutable legacy empty body previews without weakening any other text field.
-ALTER FUNCTION public."reader_summary_daily_canonical_recovery_v4_source_authority"(UUID, UUID, DATE, TIMESTAMPTZ, JSONB, JSONB) RENAME TO "reader_summary_daily_canonical_recovery_v4_source_authority_base";
-CREATE FUNCTION public."reader_summary_daily_canonical_recovery_v4_source_authority"(target_tenant_id UUID, target_workspace_id UUID, target_date DATE, target_cutoff TIMESTAMPTZ, legacy_evidence JSONB, legacy_github_evidence JSONB) RETURNS JSONB LANGUAGE plpgsql IMMUTABLE STRICT SECURITY DEFINER
-SET search_path = pg_catalog AS $function$
-DECLARE c_empty_preview_sentinel CONSTANT TEXT := '__reader_summary_legacy_empty_body_preview__'; v_authority JSONB; v_normalized JSONB;
-BEGIN
-  IF EXISTS (SELECT 1 FROM jsonb_each(legacy_evidence) AS provider(key, value)
-    CROSS JOIN LATERAL jsonb_array_elements(provider.value) AS evidence(value)
-    WHERE NOT (evidence.value ? 'bodyPreview') OR jsonb_typeof(evidence.value->'bodyPreview') <> 'string'
-      OR evidence.value->>'bodyPreview' = c_empty_preview_sentinel) THEN
-    RAISE EXCEPTION 'daily canonical recovery v4 source authority bodyPreview is invalid';
-  END IF;
-  SELECT jsonb_object_agg(provider.key, (SELECT COALESCE(jsonb_agg(CASE WHEN evidence.value->'bodyPreview' = '""'::JSONB
-    THEN jsonb_set(evidence.value, '{bodyPreview}', to_jsonb(c_empty_preview_sentinel), FALSE) ELSE evidence.value END ORDER BY evidence.ordinal), '[]'::JSONB)
-    FROM jsonb_array_elements(provider.value) WITH ORDINALITY AS evidence(value, ordinal))) INTO v_normalized
-  FROM jsonb_each(legacy_evidence) AS provider(key, value);
-  v_authority := public."reader_summary_daily_canonical_recovery_v4_source_authority_base"(target_tenant_id, target_workspace_id, target_date, target_cutoff, v_normalized, legacy_github_evidence);
-  RETURN jsonb_set(v_authority, '{items}', COALESCE((SELECT jsonb_agg(CASE WHEN EXISTS(
-    SELECT 1 FROM jsonb_each(legacy_evidence) AS provider(key, value)
-    CROSS JOIN LATERAL jsonb_array_elements(provider.value) AS evidence(value)
-    WHERE evidence.value->>'feedItemId' = item.value->>'feedItemId'
-      AND evidence.value->>'sourceItemId' = item.value->>'sourceItemId'
-      AND evidence.value->>'providerKey' = item.value->>'providerKey'
-      AND evidence.value->'bodyPreview' = '""'::JSONB) THEN jsonb_set(item.value, '{bodyPreview}', '""'::JSONB, FALSE) ELSE item.value END ORDER BY item.ordinal)
-    FROM jsonb_array_elements(v_authority->'items') WITH ORDINALITY AS item(value, ordinal)), '[]'::JSONB), FALSE);
-END;
-$function$;
+-- Amend the already-applied validator only for two authenticated legacy shapes.
+DO $patch_daily_v4_source_authority$
+DECLARE v_definition TEXT; v_next TEXT; BEGIN
+  SELECT pg_get_functiondef(procedure.oid) INTO STRICT v_definition
+  FROM pg_proc AS procedure JOIN pg_namespace AS namespace ON namespace.oid = procedure.pronamespace
+  WHERE namespace.nspname = 'public' AND procedure.proname = 'reader_summary_daily_canonical_recovery_v4_source_authority'
+    AND pg_get_function_identity_arguments(procedure.oid) = 'target_tenant_id uuid, target_workspace_id uuid, target_date date, target_cutoff timestamp with time zone, legacy_evidence jsonb, legacy_github_evidence jsonb';
+  v_next := replace(v_definition, $$v_github_mode NOT IN ('historical_unavailable', 'verified_existing', 'missing')$$,
+    $$v_github_mode NOT IN ('historical_unavailable', 'verified_existing', 'missing', 'unavailable')$$);
+  IF v_next = v_definition THEN RAISE EXCEPTION 'daily v4 GitHub mode validator patch target diverged'; END IF; v_definition := v_next;
+  v_next := replace(v_definition, $$target_date = DATE '2026-07-30'
+    AND (v_github_mode <> 'missing' OR v_github_count <> 0)$$, $$target_date = DATE '2026-07-30'
+    AND (v_github_mode <> 'missing' OR v_github_count <> 0)
+  ) OR (
+    target_date = DATE '2026-07-29'
+    AND (v_github_mode <> 'unavailable' OR v_github_count <> 0)$$);
+  IF v_next = v_definition THEN RAISE EXCEPTION 'daily v4 GitHub date validator patch target diverged'; END IF; v_definition := v_next;
+  v_next := replace(v_definition, $$target_date NOT IN (DATE '2026-07-23', DATE '2026-07-28', DATE '2026-07-30')$$,
+    $$target_date NOT IN (DATE '2026-07-23', DATE '2026-07-28', DATE '2026-07-29', DATE '2026-07-30')$$);
+  IF v_next = v_definition THEN RAISE EXCEPTION 'daily v4 GitHub exclusion patch target diverged'; END IF; v_definition := v_next;
+  v_next := replace(v_definition, $$OR COALESCE(evidence.value->>'bodyPreview', '') = ''$$,
+    $$OR jsonb_typeof(evidence.value->'bodyPreview') IS DISTINCT FROM 'string'$$);
+  IF v_next = v_definition THEN RAISE EXCEPTION 'daily v4 bodyPreview validator patch target diverged'; END IF; EXECUTE v_next;
+  SELECT pg_get_functiondef(procedure.oid) INTO STRICT v_definition FROM pg_proc AS procedure JOIN pg_namespace AS namespace ON namespace.oid = procedure.pronamespace
+  WHERE namespace.nspname = 'public' AND procedure.proname = 'assert_reader_summary_daily_canonical_recovery_v4_binding' AND pg_get_function_identity_arguments(procedure.oid) = '';
+  v_next := replace(v_definition, $$DATE '2026-07-23', DATE '2026-07-28', DATE '2026-07-30'$$, $$DATE '2026-07-23', DATE '2026-07-28', DATE '2026-07-29', DATE '2026-07-30'$$); IF length(v_next) - length(v_definition) <> 2 * length($$, DATE '2026-07-29'$$) THEN RAISE EXCEPTION 'daily v4 binding date patch target diverged'; END IF; EXECUTE v_next;
+  SELECT pg_get_functiondef(procedure.oid) INTO STRICT v_definition FROM pg_proc AS procedure JOIN pg_namespace AS namespace ON namespace.oid = procedure.pronamespace WHERE namespace.nspname = 'public' AND procedure.proname = 'verify_reader_summary_daily_canonical_recovery_v4_provenance' AND pg_get_function_identity_arguments(procedure.oid) = 'target_tenant_id uuid, target_workspace_id uuid, target_date date, supplied_audit jsonb, target_artifact_id uuid';
+  v_next := replace(v_definition, $$DATE '2026-07-23', DATE '2026-07-28', DATE '2026-07-30'$$, $$DATE '2026-07-23', DATE '2026-07-28', DATE '2026-07-29', DATE '2026-07-30'$$); IF length(v_next) - length(v_definition) <> length($$, DATE '2026-07-29'$$) THEN RAISE EXCEPTION 'daily v4 provenance date patch target diverged'; END IF; EXECUTE v_next;
+END; $patch_daily_v4_source_authority$;
 CREATE FUNCTION public."reader_summary_daily_canonical_recovery_v4_corrected_plan_day"(
   target_date DATE
 ) RETURNS JSONB LANGUAGE plpgsql VOLATILE STRICT SECURITY DEFINER
@@ -949,7 +951,6 @@ BEGIN
 END;
 $bootstrap_daily_v4_original_cutoff_forward$;
 REVOKE ALL ON FUNCTION public."reader_summary_daily_canonical_recovery_v4_original_cutoff_projection"(BOOLEAN),
-  public."reader_summary_daily_canonical_recovery_v4_source_authority"(UUID, UUID, DATE, TIMESTAMPTZ, JSONB, JSONB),
   public."reader_summary_daily_canonical_recovery_v4_corrected_plan_day"(DATE),
   public."assert_reader_summary_daily_canonical_recovery_v4_legacy"(),
   public."assert_reader_summary_daily_canonical_recovery_v4_legacy_base"(),
@@ -970,7 +971,6 @@ BEGIN
   WHERE namespace.nspname = 'public'
     AND procedure.proname IN (
       'reader_summary_daily_canonical_recovery_v4_original_cutoff_projection',
-      'reader_summary_daily_canonical_recovery_v4_source_authority',
       'reader_summary_daily_canonical_recovery_v4_corrected_plan_day',
       'assert_reader_summary_daily_canonical_recovery_v4_legacy',
       'assert_reader_summary_daily_canonical_recovery_v4_legacy_base',
@@ -986,7 +986,7 @@ BEGIN
       AND NOT has_function_privilege(
         'social_monitor_reader_summary_daily_terminal', procedure.oid, 'EXECUTE'
       );
-  IF v_count <> 10 THEN
+  IF v_count <> 9 THEN
     RAISE EXCEPTION 'daily v4 forward function owner, ACL, or search_path diverged';
   END IF;
 END;
