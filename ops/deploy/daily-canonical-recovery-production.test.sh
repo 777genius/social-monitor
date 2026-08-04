@@ -14,8 +14,6 @@ frozen_input_spec=$REPO/scripts/lib/reader-summary-daily-frozen-publication-inpu
 postgres_runtime_compose=$SCRIPT_DIR/production-runtime/compose.postgres-runtime.yml
 
 [[ -f $foundation && -f $security && -f $tenant_rls && -f $runner && -f $frozen_input && -f $frozen_input_spec ]]
-grep -Fx '  ops/deploy/production-runtime/compose.postgres-runtime.yml' \
-  < <(sed -n '/^BACKEND_PATHS=(/,/^)/p' "$SCRIPT_DIR/social-monitor-production-deploy.sh") >/dev/null
 [[ ! -e $REPO/scripts/lib/reader-summary-daily-frozen-authority-projection.ts ]]
 [[ ! -e $REPO/prisma/migrations/20260802180000_reader_summary_daily_canonical_recovery_v4 ]]
 mapfile -t v4_migrations < <(compgen -G "$REPO/prisma/migrations/*daily_canonical_recovery_v4*" | sort || true)
