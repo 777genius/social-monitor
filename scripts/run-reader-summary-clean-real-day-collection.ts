@@ -9,7 +9,6 @@ import { Pool, type QueryResultRow } from "pg";
 import {
   acquirePrismaPgRuntimeConnection,
   defaultPostgresRuntimePoolConfig,
-  runWithSystemDatabaseAccess,
   runWithTenantDatabaseAccess,
   type PostgresRuntimePoolConfig,
   type PrismaPgRuntimeClientConstructor,
@@ -19,10 +18,8 @@ import { loadPrismaRuntimeClient } from "@social-monitor/platform-persistence/pr
 
 import { PrismaIngestionWorkerConnection } from "../apps/ingestion-worker/src/adapters/persistence/prisma-ingestion-worker-connection";
 import {
-  collectionDateOptionOrDefault,
   fingerprint,
   message,
-  nextDate,
   noRawSecretFragments,
   yesterdaySocialQualityDatabaseUrl,
 } from "./lib/yesterday-social-replay-support";
@@ -50,6 +47,15 @@ import {
   readExactDayCollectionArtifact,
   writeCollectionArtifactAtomically,
 } from "./lib/reader-summary-clean-real-day-collection-artifact";
+import {
+  discoverCanonicalReaderSummaryDailyMaintenanceTargets,
+} from "./lib/reader-summary-daily-maintenance-scope";
+import {
+  discoverSingleScopeCleanRealDayTargets as discoverUnboundedCleanRealDayTargets,
+} from "./lib/clean-real-day-target-discovery";
+import {
+  readReaderSummaryCleanRealDayCollectionCli,
+} from "./lib/reader-summary-clean-real-day-collection-cli";
 import {
   executeCleanRealDayProviderAcquisition,
   type CleanRealDaySourceBindingTarget as SourceBindingTarget,
@@ -88,36 +94,29 @@ type TargetDiscoveryRuntimeClient = TargetDiscoveryClient & {
   $disconnect(): Promise<void>;
 };
 
-const outputPath = "ops/evals/reader-summary-clean-real-day-collection.v1.json";
-const readerSummaryProductionScope = {
-  tenantId: "00000000-0000-7000-8000-000000006101",
-  workspaceId: "00000000-0000-7000-8000-000000006102",
-} as const;
 const databaseUrl = yesterdaySocialQualityDatabaseUrl();
-const update = process.argv.includes("--update");
-const artifactOnly = process.argv.includes("--artifact-only");
-const recalculateExisting = process.argv.includes("--recalculate-existing");
-const waitForXReadiness = process.argv.includes("--wait-for-x-readiness");
-const providerCatchUp = process.argv.includes("--provider-catch-up");
-const allowHistoricalProviderCollection = process.argv.includes(
-  "--allow-historical-provider-collection",
-);
-const collectionPolicyEvaluatedAt = new Date();
-const { collectionDate: targetCollectionDate } = collectionDateOptionOrDefault(
-  dateOnly(collectionPolicyEvaluatedAt),
-);
-const requestedProviderKeys = readProviderKeys();
-if (providerCatchUp && process.argv.includes("--providers")) {
-  throw new Error("--provider-catch-up cannot be combined with --providers");
-}
-const targetPublishedWindow = {
-  startInclusive: `${targetCollectionDate}T00:00:00.000Z`,
-  endExclusive: nextDate(targetCollectionDate),
-};
-const targetPublishedWindowConfig = {
-  ...targetPublishedWindow,
-  observedAt: new Date().toISOString(),
-};
+const collectionCli = readReaderSummaryCleanRealDayCollectionCli({
+  collectionPolicyEvaluatedAt: new Date(),
+  targetPublishedWindowObservedAt: new Date(),
+});
+const {
+  update,
+  artifactOnly,
+  recalculateExisting,
+  waitForXReadiness,
+  providerCatchUp,
+  allowHistoricalProviderCollection,
+  allowUnprovenExistingRowsForExactFullCollection,
+  collectionPolicyEvaluatedAt,
+  targetCollectionDate,
+  requestedProviderKeys,
+  outputPath,
+  targetPublishedWindow,
+  targetPublishedWindowConfig,
+  maintenanceScope,
+  targetDiscoveryScopePredicate,
+  targetDiscoveryScopeValues,
+} = collectionCli;
 
 if (require.main === module) {
   void main();
@@ -153,7 +152,13 @@ async function main(): Promise<void> {
   const { report, plan } = attempt;
 
   if (update) {
-    writeCollectionArtifactAtomically({ path: outputPath, report });
+    writeCollectionArtifactAtomically({
+      path: outputPath,
+      report,
+      ...(maintenanceScope === undefined
+        ? {}
+        : { expectedScope: maintenanceScope }),
+    });
     console.log(`Updated ${outputPath}`);
   }
 
@@ -242,15 +247,20 @@ async function tryRunCollection(): Promise<
     const requiredProviderKeys = providerCatchUp
       ? defaultCleanRealDayCollectionProviderKeys
       : requestedProviderKeys;
-    const allTargets = await discoverSingleScopeCleanRealDayTargets(() =>
-      readTargets(targetDiscoveryConnection.client, requiredProviderKeys),
-    );
+    const allTargets = maintenanceScope === undefined
+      ? await discoverUnboundedCleanRealDayTargets(() =>
+          readTargets(targetDiscoveryConnection.client, requiredProviderKeys))
+      : await discoverCanonicalReaderSummaryDailyMaintenanceTargets(() =>
+          readTargets(targetDiscoveryConnection.client, requiredProviderKeys));
     const targetScope = allTargets[0]!;
     const tenantDatabase = createTenantScopedPgQuery(pool, targetScope);
     const existingReport = providerCatchUp
       ? readExactDayCollectionArtifact({
           path: outputPath,
           collectionDate: targetCollectionDate,
+          ...(maintenanceScope === undefined
+            ? {}
+            : { expectedScope: maintenanceScope }),
         })
       : null;
     const databaseWindow = await readTargetWindowProof(
@@ -265,6 +275,8 @@ async function tryRunCollection(): Promise<
         ? databaseWindow.providerCounts
         : {},
       allowHistoricalCollection: allowHistoricalProviderCollection,
+      allowUnprovenExistingRowsForExactFullCollection:
+        allowUnprovenExistingRowsForExactFullCollection,
       requiredProviderKeys,
     });
     if (plan.barrierMessage !== null) {
@@ -380,40 +392,9 @@ function createTenantScopedPgQuery(
         connection.release();
       }
     });
-
   return { query: query as Pool["query"] };
 }
-
-export async function discoverSingleScopeCleanRealDayTargets<
-  Target extends Pick<SourceBindingTarget, "tenantId" | "workspaceId">,
->(
-  discover: () => Promise<readonly Target[]>,
-): Promise<readonly Target[]> {
-  const targets = await runWithSystemDatabaseAccess(
-    "clean real-day enabled provider target discovery",
-    discover,
-  );
-  const scopes = new Set(
-    targets.map((target) => `${target.tenantId}\u0000${target.workspaceId}`),
-  );
-  if (scopes.size === 1) {
-    return targets;
-  }
-
-  const productionTargets = targets.filter(
-    (target) =>
-      target.tenantId === readerSummaryProductionScope.tenantId &&
-      target.workspaceId === readerSummaryProductionScope.workspaceId,
-  );
-  if (productionTargets.length > 0) {
-    return productionTargets;
-  }
-
-  throw new Error(
-    `Clean real-day target discovery expected exactly one tenant/workspace scope, found ${scopes.size}`,
-  );
-}
-
+export { discoverSingleScopeCleanRealDayTargets } from "./lib/clean-real-day-target-discovery";
 async function readTargets(
   client: TargetDiscoveryClient,
   providerKeys: readonly ProviderKey[],
@@ -446,12 +427,12 @@ async function readTargets(
         and sp.source_binding_id = sb.id
       where sb.deleted_at is null
         and sb.status = 'ENABLED'
-        and sce.provider_key = any($1::text[])
+        and sce.provider_key = any($1::text[])${targetDiscoveryScopePredicate}
       order by sce.provider_key, sb.created_at, sb.id
     `,
     [...providerKeys],
+    ...targetDiscoveryScopeValues,
   );
-
   return requireScanPolicyTargets(rows).map((row) => {
     const config = asRecord(row.config) as SourceRuntimeConfig;
     const runtimeConfig = configForTargetPublishedWindow(
@@ -817,6 +798,7 @@ function buildReport(params: {
     },
     inputs: {
       database: "local-postgres",
+      ...(maintenanceScope === undefined ? {} : { scope: maintenanceScope }),
       providerKeys: requiredProviderKeys,
       xCollectorConfigured: xCollectorConfigured(),
       targetPublishedWindow,
@@ -870,57 +852,19 @@ function sourceQueryModeFromValue(value: unknown): SourceQueryMode {
   return value === "listing" ? "listing" : "search";
 }
 
-function readProviderKeys(): readonly ProviderKey[] {
-  const option = readOption("--providers");
-  if (option === undefined) {
-    return defaultCleanRealDayCollectionProviderKeys;
-  }
-
-  const providers = option
-    .split(",")
-    .map((item) => item.trim())
-    .filter((item) => item.length > 0);
-  if (providers.length === 0) {
-    throw new Error("--providers must include at least one provider");
-  }
-
-  return providers.map((provider) => {
-    if (
-      provider !== "github-trending-page" &&
-      provider !== "hacker-news" &&
-      provider !== "reddit" &&
-      provider !== "rss" &&
-      provider !== "x-twitter"
-    ) {
-      throw new Error(`Unsupported provider for clean collection: ${provider}`);
-    }
-
-    return provider;
-  });
-}
-
-function readOption(name: string): string | undefined {
-  const index = process.argv.indexOf(name);
-  if (index < 0) {
-    return undefined;
-  }
-
-  const value = process.argv[index + 1];
-  if (value === undefined || value.startsWith("--")) {
-    throw new Error(`${name} requires a value`);
-  }
-
-  return value;
-}
-
 function validateExistingReport(): void {
   if (!existsSync(outputPath)) {
     throw new Error(`${outputPath} is missing.`);
   }
 
-  const report = JSON.parse(
-    readFileSync(outputPath, "utf8"),
-  ) as CleanRealDayCollectionReport;
+  const report = maintenanceScope === undefined
+    ? JSON.parse(readFileSync(outputPath, "utf8")) as CleanRealDayCollectionReport
+    : readExactDayCollectionArtifact({
+        path: outputPath,
+        collectionDate: targetCollectionDate,
+        expectedScope: maintenanceScope,
+      });
+  if (report === null) throw new Error(`${outputPath} does not contain ${targetCollectionDate} evidence`);
   if (!collectionArtifactPassesBlockingValidation(report)) {
     throw new Error(`${outputPath} failed existing artifact validation`);
   }
@@ -950,8 +894,4 @@ function numberFromPg(value: string): number {
 
 function coverage(numerator: number, denominator: number): number {
   return denominator === 0 ? 0 : Number((numerator / denominator).toFixed(3));
-}
-
-function dateOnly(value: Date): string {
-  return value.toISOString().slice(0, 10);
 }

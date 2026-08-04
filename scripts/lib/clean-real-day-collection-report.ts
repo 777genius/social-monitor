@@ -1,5 +1,6 @@
 import type { ProviderCollectionObservation } from "./provider-collection-observability";
 import type { GitHubTrendingDurableSnapshotProof } from "./github-trending-durable-snapshot-reuse";
+import type { ReaderSummaryDailyMaintenanceScope } from "./reader-summary-daily-maintenance-scope";
 
 export type CleanRealDayCollectionProviderKey =
   "github-trending-page" | "hacker-news" | "reddit" | "rss" | "x-twitter";
@@ -27,6 +28,7 @@ export type CleanRealDayCollectionReport = {
   };
   readonly inputs: {
     readonly database: "local-postgres";
+    readonly scope?: ReaderSummaryDailyMaintenanceScope;
     readonly providerKeys: readonly CleanRealDayCollectionProviderKey[];
     readonly xCollectorConfigured: boolean;
     readonly targetPublishedWindow: {

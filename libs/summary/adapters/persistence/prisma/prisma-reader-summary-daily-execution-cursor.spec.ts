@@ -47,6 +47,47 @@ describe("PrismaReaderSummaryDailyExecutionCursor", () => {
     });
   });
 
+  it("uses the bounded claim procedure and maps a post-bound cursor without a claim", async () => {
+    const sql = fakeSql([{
+      ...claimedRow,
+      outcome: "BOUNDED_CAUGHT_UP",
+      requested_utc_date: "2026-08-04",
+      eligible_through: "2026-08-03",
+      ingestion_cutoff: null,
+      source_canonical_bytes: null,
+      source_canonical_sha256: null,
+      model_job_state: null,
+      lease_owner: null,
+      fencing_token: null,
+      leased_at: null,
+      lease_expires_at: null,
+      absolute_expires_at: null,
+    }]);
+    const repository = new PrismaReaderSummaryDailyExecutionCursor(sql.client);
+
+    await expect(repository.claimExactBoundedMaintenance({
+      tenantId,
+      workspaceId,
+      workerId: "worker-1",
+      requestedUtcDate: "2026-08-03",
+      invokedAt: "2026-08-04T01:00:00.000Z",
+    })).resolves.toEqual({
+      kind: "bounded_caught_up",
+      nextUnresolvedUtcDate: "2026-08-04",
+    });
+
+    expect(sql.queries[0]?.text).toContain(
+      "claim_reader_summary_daily_execution_bounded_maintenance",
+    );
+    expect(sql.queries[0]?.values).toEqual([
+      tenantId,
+      workspaceId,
+      "worker-1",
+      "2026-08-03",
+      "2026-08-04T01:00:00.000Z",
+    ]);
+  });
+
   it("retries serialization conflicts and never retries ordinary failures", async () => {
     const sql = fakeSql([claimedRow]);
     sql.failures.push(Object.assign(new Error("serialization"), { code: "40001" }));

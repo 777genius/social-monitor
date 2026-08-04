@@ -254,6 +254,108 @@ describe("daily reader-summary provider catch-up", () => {
     expect(plan.barrierMessage).toContain("DB/artifact evidence is unsafe");
   });
 
+  it("permits one exact historical full collection to replace unproven August rows", () => {
+    const plan = planDailyProviderCatchUp({
+      collectionDate: "2026-08-01",
+      evaluatedAt: new Date("2026-08-04T01:00:00.000Z"),
+      existingReport: null,
+      databaseProviderCounts: {
+        "hacker-news": 63,
+        reddit: 40,
+        rss: 90,
+      },
+      allowHistoricalCollection: true,
+      allowUnprovenExistingRowsForExactFullCollection: true,
+    });
+
+    expect(plan).toMatchObject({
+      collectionPolicy: "historical_explicit",
+      collectionAllowed: true,
+      barrierMessage: null,
+    });
+    expect(plan.providerKeysToCollect).toEqual(
+      defaultCleanRealDayCollectionProviderKeys,
+    );
+    expect(plan.providerStates).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        providerKey: "hacker-news",
+        state: "missing",
+        reasonCodes: ["database_rows_require_exact_full_collection"],
+      }),
+      expect.objectContaining({
+        providerKey: "reddit",
+        state: "missing",
+        reasonCodes: ["database_rows_require_exact_full_collection"],
+      }),
+      expect.objectContaining({
+        providerKey: "rss",
+        state: "missing",
+        reasonCodes: ["database_rows_require_exact_full_collection"],
+      }),
+    ]));
+  });
+
+  it("does not permit unproven rows outside a first explicit historical collection", () => {
+    expect(() => planDailyProviderCatchUp({
+      collectionDate: "2026-08-01",
+      evaluatedAt: new Date("2026-08-04T01:00:00.000Z"),
+      existingReport: null,
+      databaseProviderCounts: { "hacker-news": 63 },
+      allowUnprovenExistingRowsForExactFullCollection: true,
+    })).toThrow("first explicit historical full collection");
+  });
+
+  it("continues ordinary historical catch-up after a first attempt wrote exact evidence", () => {
+    const firstAttempt = report(
+      defaultCleanRealDayCollectionProviderKeys.map(failedScan),
+      "2026-08-01",
+    );
+    const existingReport = {
+      ...firstAttempt,
+      inputs: {
+        ...firstAttempt.inputs,
+        targetPublishedWindow: {
+          ...firstAttempt.inputs.targetPublishedWindow,
+          endExclusive: "2026-08-02T00:00:00.000Z",
+        },
+      },
+    };
+
+    expect(planDailyProviderCatchUp({
+      collectionDate: "2026-08-01",
+      evaluatedAt: new Date("2026-08-04T01:00:00.000Z"),
+      existingReport,
+      databaseProviderCounts: existingReport.targetWindow.providerCounts,
+      allowHistoricalCollection: true,
+      allowUnprovenExistingRowsForExactFullCollection: true,
+    })).toMatchObject({
+      collectionPolicy: "historical_explicit",
+      barrierMessage: null,
+      providerKeysToCollect: defaultCleanRealDayCollectionProviderKeys,
+    });
+  });
+
+  it("requires the unproven-row exception to collect every provider historically", () => {
+    expect(() => planDailyProviderCatchUp({
+      collectionDate: "2026-07-27",
+      evaluatedAt,
+      existingReport: null,
+      databaseProviderCounts: { reddit: 12 },
+      allowHistoricalCollection: true,
+      allowUnprovenExistingRowsForExactFullCollection: true,
+      requiredProviderKeys: ["reddit"],
+    })).toThrow("first explicit historical full collection");
+
+    expect(() => planDailyProviderCatchUp({
+      collectionDate: "2026-07-27",
+      evaluatedAt: new Date("2026-07-27T12:00:00.000Z"),
+      existingReport: null,
+      databaseProviderCounts: { reddit: 12 },
+      allowHistoricalCollection: true,
+      allowUnprovenExistingRowsForExactFullCollection: true,
+    })).toThrow("first explicit historical full collection");
+  });
+
   it("blocks future-dated collection even with historical permission", () => {
     const plan = planDailyProviderCatchUp({
       collectionDate: "2026-07-28",

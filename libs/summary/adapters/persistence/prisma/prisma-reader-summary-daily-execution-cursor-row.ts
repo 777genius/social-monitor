@@ -6,6 +6,9 @@ import type {
   ReaderSummaryDailyExecutionWork,
   ReaderSummaryDailyLease,
 } from "../../../ports/reader-summary-daily-execution-cursor.port";
+import type {
+  ReaderSummaryDailyBoundedMaintenanceClaimResult,
+} from "../../../ports/reader-summary-daily-bounded-maintenance-claim.port";
 
 export type ReaderSummaryDailySqlResult<TRow> = Readonly<{
   rows: readonly TRow[];
@@ -92,6 +95,22 @@ export const mapReaderSummaryDailyClaimRow = (
     ...(row.receipt_bytes === null ? {} : { completedReceiptBytes: row.receipt_bytes }),
   };
   return { kind: "claimed", work };
+};
+
+export const mapReaderSummaryDailyBoundedMaintenanceClaimRow = (
+  row: ReaderSummaryDailyClaimRow,
+): ReaderSummaryDailyBoundedMaintenanceClaimResult => {
+  const nextUnresolvedUtcDate = row.requested_utc_date ?? undefined;
+  if (
+    row.outcome === "BOUNDED_CAUGHT_UP" &&
+    nextUnresolvedUtcDate !== undefined
+  ) {
+    return { kind: "bounded_caught_up", nextUnresolvedUtcDate };
+  }
+  if (row.outcome === "STALE_CURSOR" && nextUnresolvedUtcDate !== undefined) {
+    return { kind: "stale_cursor", nextUnresolvedUtcDate };
+  }
+  return mapReaderSummaryDailyClaimRow(row);
 };
 
 export const mapReaderSummaryDailyLease = (row: {

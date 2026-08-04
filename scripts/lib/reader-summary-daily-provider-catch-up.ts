@@ -48,6 +48,7 @@ export const planDailyProviderCatchUp = (params: {
     Partial<Record<CleanRealDayCollectionProviderKey, number>>
   >;
   readonly allowHistoricalCollection?: boolean;
+  readonly allowUnprovenExistingRowsForExactFullCollection?: boolean;
   readonly requiredProviderKeys?: readonly CleanRealDayCollectionProviderKey[];
 }): DailyProviderCatchUpPlan => {
   if (!Number.isFinite(params.evaluatedAt.getTime())) {
@@ -59,6 +60,23 @@ export const planDailyProviderCatchUp = (params: {
     params.existingReport?.run.collectionDate === params.collectionDate
       ? params.existingReport
       : null;
+  const collectionPolicy = resolveCollectionPolicy({
+    collectionDate: params.collectionDate,
+    evaluatedAt: params.evaluatedAt,
+    allowHistoricalCollection: params.allowHistoricalCollection === true,
+  });
+  if (
+    params.allowUnprovenExistingRowsForExactFullCollection === true &&
+    (collectionPolicy.collectionPolicy !== "historical_explicit" ||
+      !isExactFullProviderCollection(requiredProviderKeys))
+  ) {
+    throw new Error(
+      "Unproven existing rows may be collected only for a first explicit historical full collection",
+    );
+  }
+  const allowUnprovenExistingRows =
+    params.allowUnprovenExistingRowsForExactFullCollection === true &&
+    previousReport === null;
   if (
     previousReport !== null &&
     (previousReport.schemaVersion !== 1 ||
@@ -77,11 +95,6 @@ export const planDailyProviderCatchUp = (params: {
   const closedRequestedUtcDay =
     params.evaluatedAt.getTime() >=
     new Date(nextUtcDate(params.collectionDate)).getTime();
-  const collectionPolicy = resolveCollectionPolicy({
-    collectionDate: params.collectionDate,
-    evaluatedAt: params.evaluatedAt,
-    allowHistoricalCollection: params.allowHistoricalCollection === true,
-  });
   const providerStates = requiredProviderKeys.map((providerKey) =>
     catchUpState({
       providerKey,
@@ -90,6 +103,8 @@ export const planDailyProviderCatchUp = (params: {
       previousReport,
       databaseFeedItemCount:
         params.databaseProviderCounts[providerKey] ?? 0,
+      allowUnprovenExistingRowsForExactFullCollection:
+        allowUnprovenExistingRows,
     }),
   );
   const completedProviderKeys = providerStates
@@ -195,6 +210,7 @@ const catchUpState = (params: {
   readonly closedRequestedUtcDay: boolean;
   readonly previousReport: CleanRealDayCollectionReport | null;
   readonly databaseFeedItemCount: number;
+  readonly allowUnprovenExistingRowsForExactFullCollection: boolean;
 }): DailyProviderCatchUpState => {
   if (
     !Number.isInteger(params.databaseFeedItemCount) ||
@@ -216,6 +232,16 @@ const catchUpState = (params: {
       scans.length === 0 &&
       targets.length <= 1
     ) {
+      if (params.allowUnprovenExistingRowsForExactFullCollection) {
+        return {
+          providerKey: params.providerKey,
+          state: "missing",
+          evidence: "invalid",
+          policy: "blocking",
+          reasonCodes: ["database_rows_require_exact_full_collection"],
+          retryDisposition: "immediate",
+        };
+      }
       return invalidState(
         params.providerKey,
         "database_rows_without_collection_evidence",
@@ -264,6 +290,14 @@ const catchUpState = (params: {
     }),
   };
 };
+
+const isExactFullProviderCollection = (
+  providerKeys: readonly CleanRealDayCollectionProviderKey[],
+): boolean =>
+  providerKeys.length === defaultCleanRealDayCollectionProviderKeys.length &&
+  defaultCleanRealDayCollectionProviderKeys.every((providerKey) =>
+    providerKeys.includes(providerKey),
+  );
 
 const invalidState = (
   providerKey: CleanRealDayCollectionProviderKey,

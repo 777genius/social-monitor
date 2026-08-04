@@ -3,7 +3,12 @@ import type {
   ReaderSummaryDailyExecutionCursorPort,
   ReaderSummaryDailyLease,
 } from "../../../ports/reader-summary-daily-execution-cursor.port";
+import type {
+  ReaderSummaryDailyBoundedMaintenanceClaim,
+  ReaderSummaryDailyBoundedMaintenanceClaimPort,
+} from "../../../ports/reader-summary-daily-bounded-maintenance-claim.port";
 import {
+  mapReaderSummaryDailyBoundedMaintenanceClaimRow,
   mapReaderSummaryDailyClaimRow,
   mapReaderSummaryDailyLease,
   type ReaderSummaryDailyClaimRow,
@@ -14,6 +19,11 @@ import {
 const claimSql = `
   SELECT *
   FROM claim_reader_summary_daily_execution(
+    $1::UUID, $2::UUID, $3::TEXT, $4::DATE, $5::TIMESTAMPTZ
+  )`;
+const boundedMaintenanceClaimSql = `
+  SELECT *
+  FROM claim_reader_summary_daily_execution_bounded_maintenance(
     $1::UUID, $2::UUID, $3::TEXT, $4::DATE, $5::TIMESTAMPTZ
   )`;
 const renewSql = `
@@ -38,7 +48,9 @@ const finalizeSql = `
     $12::CHAR(64), $13::BYTEA, $14::CHAR(64), $15::BYTEA, $16::CHAR(64)
   )`;
 
-export class PrismaReaderSummaryDailyExecutionCursor implements ReaderSummaryDailyExecutionCursorPort {
+export class PrismaReaderSummaryDailyExecutionCursor implements
+  ReaderSummaryDailyExecutionCursorPort,
+  ReaderSummaryDailyBoundedMaintenanceClaimPort {
   constructor(
     private readonly client: ReaderSummaryDailySqlClient,
     private readonly maxSerializableAttempts = 4,
@@ -58,6 +70,24 @@ export class PrismaReaderSummaryDailyExecutionCursor implements ReaderSummaryDai
         input.invokedAt,
       ]);
       return mapReaderSummaryDailyClaimRow(exactlyOne(result.rows, "claim"));
+    });
+  }
+
+  claimExactBoundedMaintenance(input: ReaderSummaryDailyBoundedMaintenanceClaim) {
+    return this.serializable(async (transaction) => {
+      const result = await transaction.query<ReaderSummaryDailyClaimRow>(
+        boundedMaintenanceClaimSql,
+        [
+          input.tenantId,
+          input.workspaceId,
+          input.workerId,
+          input.requestedUtcDate,
+          input.invokedAt,
+        ],
+      );
+      return mapReaderSummaryDailyBoundedMaintenanceClaimRow(
+        exactlyOne(result.rows, "bounded maintenance claim"),
+      );
     });
   }
 
