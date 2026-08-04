@@ -247,7 +247,7 @@ esac
     dailyV4ForwardRetry.join("\n") === [
       "preflight", "admin:pre", "probe:pre",
       `resolve:rolled-back:${dailyV4ForwardMigration}`,
-      "probe:pre", "migrate", "probe:post", "admin:post",
+      "probe:forward-resolved", "migrate", "probe:post", "admin:post",
     ].join("\n"),
     "daily V4 forward retry did not resolve the exact failed migration before deploy",
   );

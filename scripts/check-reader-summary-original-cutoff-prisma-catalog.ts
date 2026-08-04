@@ -353,7 +353,7 @@ const assertRuntimeCatalogWritesRejected = async (
 const probe = (
   container: string,
   database: string,
-  phase: "pre" | "resolved" | "post",
+  phase: "pre" | "resolved" | "forward-resolved" | "post",
 ): string => {
   const result = spawnSync(
     "docker",
