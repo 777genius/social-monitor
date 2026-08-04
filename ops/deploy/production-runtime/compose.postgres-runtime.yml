@@ -18,6 +18,7 @@ services:
   daily-runner:
     environment:
       DATABASE_URL: ${SYSTEM_DATABASE_URL:?SYSTEM_DATABASE_URL is required for tenant-system workers}
+      SYSTEM_DATABASE_URL: ${SYSTEM_DATABASE_URL:?SYSTEM_DATABASE_URL is required for tenant-system workers}
       POSTGRES_RUNTIME_PROCESS: daily-runner
       POSTGRES_RUNTIME_POOL_MIN: "0"
       POSTGRES_RUNTIME_POOL_MAX: "2"

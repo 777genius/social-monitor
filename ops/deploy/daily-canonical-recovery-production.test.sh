@@ -11,6 +11,7 @@ package_json=$REPO/package.json
 workflow=$REPO/.github/workflows/production-deploy.yml
 frozen_input=$REPO/scripts/lib/reader-summary-daily-frozen-publication-input.ts
 frozen_input_spec=$REPO/scripts/lib/reader-summary-daily-frozen-publication-input.spec.ts
+postgres_runtime_compose=$SCRIPT_DIR/production-runtime/compose.postgres-runtime.yml
 
 [[ -f $foundation && -f $security && -f $tenant_rls && -f $runner && -f $frozen_input && -f $frozen_input_spec ]]
 [[ ! -e $REPO/scripts/lib/reader-summary-daily-frozen-authority-projection.ts ]]
@@ -28,6 +29,12 @@ grep -F 'PrismaReaderSummaryDailyCanonicalRecoveryV4Finalization' "$runner" >/de
 grep -F 'PostgresCanonicalRecoveryAuthority' "$runner" >/dev/null
 grep -F 'required("SYSTEM_DATABASE_URL")' "$runner" >/dev/null
 ! grep -F 'required("DATABASE_URL")' "$runner" >/dev/null
+daily_runner_database_environment=$(awk '
+  /^  daily-runner:$/ { daily_runner = 1; next }
+  daily_runner && /^  [A-Za-z0-9_-]+:$/ { exit }
+  daily_runner && /^      (DATABASE_URL|SYSTEM_DATABASE_URL): / { print }
+' "$postgres_runtime_compose")
+[[ $daily_runner_database_environment == $'      DATABASE_URL: ${SYSTEM_DATABASE_URL:?SYSTEM_DATABASE_URL is required for tenant-system workers}\n      SYSTEM_DATABASE_URL: ${SYSTEM_DATABASE_URL:?SYSTEM_DATABASE_URL is required for tenant-system workers}' ]]
 ! grep -Eiq '(OPENAI|CODEX)_API_KEY|spawnSync|child_process' "$runner"
 grep -F 'executor.runAll' "$runner" >/dev/null
 grep -F 'immutable authority v2' "$runner" "$frozen_input" >/dev/null
