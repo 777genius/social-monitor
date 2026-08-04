@@ -8,6 +8,8 @@ security=$REPO/prisma/migrations/20260802233100_reader_summary_daily_canonical_r
 tenant_rls=$REPO/prisma/migrations/20260803173000_reader_summary_daily_canonical_recovery_v4_tenant_rls/migration.sql
 forward=$REPO/prisma/migrations/20260804110000_reader_summary_daily_v4_original_cutoff_forward_correction/migration.sql
 runner=$REPO/scripts/run-reader-summary-daily-canonical-recovery.ts
+bounded_runner=$REPO/scripts/run-reader-summary-daily-bounded-maintenance.ts
+bounded_runner_spec=$REPO/scripts/run-reader-summary-daily-bounded-maintenance.spec.ts
 package_json=$REPO/package.json
 workflow=$REPO/.github/workflows/production-deploy.yml
 frozen_input=$REPO/scripts/lib/reader-summary-daily-frozen-publication-input.ts
@@ -29,7 +31,7 @@ cleanup_compose_contract() {
 }
 trap cleanup_compose_contract EXIT
 
-[[ -f $foundation && -f $security && -f $tenant_rls && -f $forward && -f $runner && -f $frozen_input && -f $frozen_input_spec && -f $final_runtime_model_compose ]]
+[[ -f $foundation && -f $security && -f $tenant_rls && -f $forward && -f $runner && -f $bounded_runner && -f $bounded_runner_spec && -f $frozen_input && -f $frozen_input_spec && -f $final_runtime_model_compose ]]
 [[ ! -e $REPO/scripts/lib/reader-summary-daily-frozen-authority-projection.ts ]]
 [[ ! -e $REPO/prisma/migrations/20260802180000_reader_summary_daily_canonical_recovery_v4 ]]
 mapfile -t v4_migrations < <(compgen -G "$REPO/prisma/migrations/*daily_canonical_recovery_v4*" | sort || true)
@@ -92,6 +94,27 @@ grep -F 'DAILY_CANONICAL_RECOVERY_CONFIRMATION=reader-summary-daily-canonical-re
   "$SCRIPT_DIR/social-monitor-production-ssh-wrapper.sh" \
   "$SCRIPT_DIR/github-production-deploy-client.sh" >/dev/null
 grep -F 'daily_canonical_recovery_confirmation:' "$workflow" >/dev/null
+grep -F 'daily_canonical_recovery_model_job_identity:' "$workflow" >/dev/null
+grep -F 'daily_canonical_recovery_authority_sha256:' "$workflow" >/dev/null
+grep -F 'READER_SUMMARY_DAILY_MAINTENANCE_AUTHORIZED_UTC_DATE=2026-07-23' \
+  "$SCRIPT_DIR/social-monitor-production-ssh-wrapper.sh" \
+  "$SCRIPT_DIR/reader-summary-recovery-maintenance-lib.sh" >/dev/null
+grep -F 'READER_SUMMARY_DAILY_MAINTENANCE_MODEL_JOB_IDENTITY' \
+  "$SCRIPT_DIR/social-monitor-production-ssh-wrapper.sh" \
+  "$SCRIPT_DIR/github-production-deploy-client.sh" \
+  "$SCRIPT_DIR/reader-summary-recovery-maintenance-lib.sh" \
+  "$bounded_runner" >/dev/null
+grep -F 'READER_SUMMARY_DAILY_MAINTENANCE_AUTHORITY_SHA256' \
+  "$SCRIPT_DIR/social-monitor-production-ssh-wrapper.sh" \
+  "$SCRIPT_DIR/github-production-deploy-client.sh" \
+  "$SCRIPT_DIR/reader-summary-recovery-maintenance-lib.sh" \
+  "$bounded_runner" >/dev/null
+grep -F 'for bounded_run in 1 2 3 4' \
+  "$SCRIPT_DIR/reader-summary-recovery-maintenance-lib.sh" >/dev/null
+grep -F 'node scripts/run-with-timeout.mjs --timeout-ms 19800000' \
+  "$SCRIPT_DIR/reader-summary-recovery-maintenance-lib.sh" >/dev/null
+grep -F 'ts-node -r tsconfig-paths/register scripts/run-reader-summary-daily-bounded-maintenance.ts' \
+  "$SCRIPT_DIR/reader-summary-recovery-maintenance-lib.sh" >/dev/null
 grep -F 'timeout-minutes: 360' "$workflow" >/dev/null
 grep -F 'npm run check:reader-summary-daily-canonical-recovery-postgres18' "$workflow" >/dev/null
 grep -F 'npm run check:reader-summary-daily-canonical-recovery-production' "$workflow" >/dev/null

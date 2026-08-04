@@ -96,7 +96,7 @@ fake_ssh() {
       IFS= read -r value
       printf '%s\n' "$value" > "$FAKE_UPLOAD_PATH"
       ;;
-    maintenance_success:"disk-report $TARGET_SHA"|maintenance_success:"project-disk-cleanup $TARGET_SHA"|maintenance_success:"reader-summary-recover-missing-days $TARGET_SHA"|maintenance_success:"reader-summary-weekly-run $TARGET_SHA"|maintenance_success:"reader-summary-daily-canonical-recovery-v4 $TARGET_SHA reader-summary-daily-canonical-recovery-v4")
+    maintenance_success:"disk-report $TARGET_SHA"|maintenance_success:"project-disk-cleanup $TARGET_SHA"|maintenance_success:"reader-summary-recover-missing-days $TARGET_SHA"|maintenance_success:"reader-summary-weekly-run $TARGET_SHA"|maintenance_success:"reader-summary-daily-canonical-recovery-v4 $TARGET_SHA reader-summary-daily-canonical-recovery-v4 $MODEL_JOB_IDENTITY $AUTHORITY_SHA256")
       printf 'maintenance=%s\n' "${command%% *}"
       ;;
     normal_success:"deploy $TARGET_SHA")
@@ -188,6 +188,8 @@ trap 'rm -rf "$FIXTURE"' EXIT
 TARGET_SHA=1234567890abcdef1234567890abcdef12345678
 BACKEND_SHA=4f47fac7faed7dc24110f4a43e88820d776b8a40
 CURRENT_BACKEND_SHA=617e284607f3dde74c27164af2b981770b9a62ed
+MODEL_JOB_IDENTITY=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+AUTHORITY_SHA256=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 FAKE_SSH=$FIXTURE/fake-ssh
 FAKE_SSH_LOG=$FIXTURE/ssh.log
 FAKE_SSH_STATE=$FIXTURE/ssh.state
@@ -199,7 +201,8 @@ DEPLOY_SSH_KNOWN_HOSTS_PATH=$FIXTURE/ssh/pinned-known-hosts
 DEPLOY_HOST=production.example.invalid
 DEPLOY_USER=social-monitor-deploy
 
-export TARGET_SHA BACKEND_SHA CURRENT_BACKEND_SHA FAKE_SSH_LOG FAKE_SSH_STATE FAKE_UPLOAD_PATH
+export TARGET_SHA BACKEND_SHA CURRENT_BACKEND_SHA MODEL_JOB_IDENTITY AUTHORITY_SHA256
+export FAKE_SSH_LOG FAKE_SSH_STATE FAKE_UPLOAD_PATH
 export DEPLOY_SSH_DIRECTORY DEPLOY_SSH_KEY_PATH DEPLOY_SSH_KNOWN_HOSTS_PATH
 export DEPLOY_HOST DEPLOY_USER GITHUB_OUTPUT
 install -m 0700 "$0" "$FAKE_SSH"
@@ -268,9 +271,10 @@ for maintenance_action in \
 done
 run_client maintenance_success maintenance "$TARGET_SHA" \
   reader-summary-daily-canonical-recovery-v4 \
-  reader-summary-daily-canonical-recovery-v4 >/dev/null
+  reader-summary-daily-canonical-recovery-v4 \
+  "$MODEL_JOB_IDENTITY" "$AUTHORITY_SHA256" >/dev/null
 assert_call_count 1 \
-  "reader-summary-daily-canonical-recovery-v4 $TARGET_SHA reader-summary-daily-canonical-recovery-v4"
+  "reader-summary-daily-canonical-recovery-v4 $TARGET_SHA reader-summary-daily-canonical-recovery-v4 $MODEL_JOB_IDENTITY $AUTHORITY_SHA256"
 for confirmation in '' wrong-reader-summary-daily-canonical-recovery-v4 \
   "reader-summary-daily-canonical-recovery-v4:$TARGET_SHA"; do
   assert_fails maintenance_success maintenance "$TARGET_SHA" \
@@ -281,6 +285,11 @@ done
 assert_fails maintenance_success maintenance "$TARGET_SHA" \
   reader-summary-daily-canonical-recovery-v4
 assert_call_count 0 "reader-summary-daily-canonical-recovery-v4 $TARGET_SHA"
+assert_fails maintenance_success maintenance "$TARGET_SHA" \
+  reader-summary-daily-canonical-recovery-v4 \
+  reader-summary-daily-canonical-recovery-v4 "${MODEL_JOB_IDENTITY^^}" "$AUTHORITY_SHA256"
+assert_call_count 0 \
+  "reader-summary-daily-canonical-recovery-v4 $TARGET_SHA reader-summary-daily-canonical-recovery-v4 ${MODEL_JOB_IDENTITY^^} $AUTHORITY_SHA256"
 assert_fails maintenance_success maintenance "$TARGET_SHA" docker-system-prune
 assert_call_count 0 "docker-system-prune $TARGET_SHA"
 
@@ -438,6 +447,8 @@ for maintenance_action in \
   grep -F "          - $maintenance_action" "$WORKFLOW" >/dev/null
 done
 grep -F 'daily_canonical_recovery_confirmation:' "$WORKFLOW" >/dev/null
+grep -F 'daily_canonical_recovery_model_job_identity:' "$WORKFLOW" >/dev/null
+grep -F 'daily_canonical_recovery_authority_sha256:' "$WORKFLOW" >/dev/null
 grep -F 'timeout-minutes: 360' "$WORKFLOW" >/dev/null
 grep -F 'reader-summary-daily-canonical-recovery-v4' "$WORKFLOW" >/dev/null
 grep -F 'npm run check:reader-summary-daily-canonical-recovery-postgres18' "$WORKFLOW" >/dev/null

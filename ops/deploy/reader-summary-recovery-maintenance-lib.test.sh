@@ -17,25 +17,54 @@ DAILY_RUNNER_MAINTENANCE_ADMISSION_WAIT_SECONDS=1
 READER_SUMMARY_WEEKLY_PRODUCTION_ARTIFACT_DIR=/var/lib/social-monitor/artifacts/reader-summary-weekly-production
 DOCKER_LOG=$FIXTURE/docker.log
 COMPOSE_LOG=$FIXTURE/compose.log
-SHA=''
+AUTH_LOG=$FIXTURE/auth.log
+ORDER_LOG=$FIXTURE/order.log
+AUTH_CHANGED_MARKER=$ROOT/runtime/auth-account-changed
+SHA=1234567890abcdef1234567890abcdef12345678
+FAKE_GIT_HEAD=$SHA
 FINAL_MODEL_OVERLAY=$REPO/ops/deploy/production-runtime/compose.agent-runtime-model.yml
 
-install -d "$REPO/ops/deploy" "$STATE" "$POSTGRES_RUNTIME_CURRENT"
+install -d "$REPO/ops/deploy" "$STATE" "$POSTGRES_RUNTIME_CURRENT" \
+  "$ROOT/runtime/subscription-runtime/sessions" "$ROOT/backups"
 cp "$SCRIPT_DIR/reader-summary-recovery-maintenance-lib.sh" "$REPO/ops/deploy/"
-git -C "$REPO" init -q
-git -C "$REPO" config user.name 'Reader summary maintenance fixture'
-git -C "$REPO" config user.email reader-summary-maintenance@example.invalid
-git -C "$REPO" add ops/deploy/reader-summary-recovery-maintenance-lib.sh
-git -C "$REPO" commit -qm 'test: maintenance runtime identity'
-SHA=$(git -C "$REPO" rev-parse HEAD)
 printf '%s\n' "$SHA" > "$POSTGRES_RUNTIME_CURRENT/READY"
 printf '%s\n' "$SHA" > "$STATE/backend.sha"
 : > "$DOCKER_LOG"
 : > "$COMPOSE_LOG"
+: > "$AUTH_LOG"
+: > "$ORDER_LOG"
+
+cat > "$CONTROL/refresh-codex-auth.sh" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+
+[[ $# == 2 && ${1:-} == --broker-pool-job-id && \
+   ${2:-} == social-monitor-production-account-pool-terra-v25-20260804 ]] || exit 93
+if [[ ${ASSERT_AUTH_LOCKS_HELD:-0} == 1 ]]; then
+  exec 6>"$DAILY_SINGLETON_LOCK"
+  if flock -n 6; then exit 91; fi
+  exec 6>&-
+  exec 5>"$POSTGRES_ADMISSION_LOCK"
+  if flock -n 5; then exit 92; fi
+  exec 5>&-
+fi
+printf 'refresh:%s:%s\n' "$1" "$2" >> "$AUTH_LOG"
+printf 'refresh\n' >> "$ORDER_LOG"
+if [[ ${AUTH_ACCOUNT_CHANGED:-0} == 1 ]]; then
+  : > "$AUTH_CHANGED_MARKER"
+fi
+SH
+chmod 0700 "$CONTROL/refresh-codex-auth.sh"
 
 fail() {
   printf 'test failure: %s\n' "$*" >&2
   exit 1
+}
+
+git() {
+  [[ ${1:-} == -C && ${2:-} == "$REPO" && ${3:-} == rev-parse && \
+     ${4:-} == --verify && ${5:-} == 'HEAD^{commit}' ]] || return 97
+  printf '%s\n' "$FAKE_GIT_HEAD"
 }
 
 docker() {
@@ -61,24 +90,44 @@ fake_compose() {
   fi
   printf '%s\n' "$*" >> "$COMPOSE_LOG"
   printf 'source-env=%s\n' "$source_env_status" >> "$COMPOSE_LOG"
+  if [[ $* == *'restart agent-runtime' ]]; then
+    printf 'reset\n' >> "$ORDER_LOG"
+  elif [[ $* == *'npm run authorize:reader-summary-daily-canonical-recovery-ambiguity-retry'* ]]; then
+    [[ $* == *'npm run authorize:reader-summary-daily-canonical-recovery-ambiguity-retry; npm run run:reader-summary-daily-canonical-recovery'* ]] || return 93
+    printf '%s\n' authorize canonical >> "$ORDER_LOG"
+  elif [[ $* == *'scripts/run-reader-summary-daily-bounded-maintenance.ts'* ]]; then
+    printf 'bounded\n' >> "$ORDER_LOG"
+  fi
   [[ ${FAKE_COMPOSE_FAIL:-0} == 1 ]] && return 44
   return 0
 }
 
 export SOCIAL_MONITOR_DEPLOY_TEST_MODE=1
-export DOCKER_LOG COMPOSE_LOG
+export DOCKER_LOG COMPOSE_LOG AUTH_LOG ORDER_LOG AUTH_CHANGED_MARKER DAILY_SINGLETON_LOCK \
+  POSTGRES_ADMISSION_LOCK
 COMPOSE=(fake_compose)
 
 # shellcheck source=ops/deploy/reader-summary-recovery-maintenance-lib.sh
 source "$REPO/ops/deploy/reader-summary-recovery-maintenance-lib.sh"
+daily_runner_maintenance_sleep() { :; }
+install() {
+  if [[ ${1:-} == -d && ${2:-} == -m && ${3:-} == 0700 && \
+        ${4:-} == -o && ${5:-} == 1000 && ${6:-} == -g && \
+        ${7:-} == 1000 ]]; then
+    command install -d -m 0700 "$8"
+    return
+  fi
+  command install "$@"
+}
 
 unset READER_SUMMARY_PRODUCTION_RECOVERY_SOURCE_DATABASE_URL
+export ASSERT_AUTH_LOCKS_HELD=1
 run_reader_summary_daily_runner_maintenance reader-summary-recover-missing-days
 ASSERT_WEEKLY_LOCKS_HELD=1
 run_reader_summary_daily_runner_maintenance reader-summary-weekly-run
-unset ASSERT_WEEKLY_LOCKS_HELD
+unset ASSERT_WEEKLY_LOCKS_HELD ASSERT_AUTH_LOCKS_HELD
 
-recovery_command='--profile daily run --rm --no-deps -e READER_SUMMARY_DAILY_TENANT_ID=00000000-0000-7000-8000-000000000901 -e READER_SUMMARY_DAILY_WORKSPACE_ID=00000000-0000-7000-8000-000000000902 -e READER_SUMMARY_DAILY_PUBLIC_DIRECTORY=/var/lib/social-monitor/artifacts/reports daily-runner sh -lc set -eu; npm run prepare:reader-summary-production-recovery-gap-authority; npm run run:reader-summary-daily-canonical-recovery'
+recovery_command='--profile daily run --rm --no-deps -e READER_SUMMARY_DAILY_TENANT_ID=00000000-0000-7000-8000-000000000901 -e READER_SUMMARY_DAILY_WORKSPACE_ID=00000000-0000-7000-8000-000000000902 -e READER_SUMMARY_DAILY_FIRST_UNRESOLVED_UTC_DATE=2026-07-23 -e READER_SUMMARY_DAILY_PUBLIC_DIRECTORY=/var/lib/social-monitor/artifacts/reports daily-runner sh -lc set -eu; npm run prepare:reader-summary-production-recovery-gap-authority; npm run run:reader-summary-daily-canonical-recovery'
 reconcile_command="-f $FINAL_MODEL_OVERLAY --profile app up -d --no-deps agent-runtime"
 recovery_command="-f $FINAL_MODEL_OVERLAY $recovery_command"
 weekly_command="-f $FINAL_MODEL_OVERLAY --profile daily run --rm --no-deps -e READER_SUMMARY_WEEKLY_PRODUCTION_TENANT_ID=00000000-0000-7000-8000-000000000901 -e READER_SUMMARY_WEEKLY_PRODUCTION_WORKSPACE_ID=00000000-0000-7000-8000-000000000902 -e READER_SUMMARY_WEEKLY_PRODUCTION_FIRST_WEEK_START=2026-07-20 -e READER_SUMMARY_WEEKLY_PRODUCTION_CATCH_UP_LIMIT=4 -e READER_SUMMARY_WEEKLY_PRODUCTION_ARTIFACT_DIR=/var/lib/social-monitor/artifacts/reader-summary-weekly-production daily-runner sh -lc set -eu; npm run run:reader-summary-weekly-production"
@@ -89,6 +138,7 @@ mapfile -t compose_commands < <(grep -v '^source-env=' "$COMPOSE_LOG")
 [[ ${compose_commands[2]} == "$reconcile_command" ]]
 [[ ${compose_commands[3]} == "$weekly_command" ]]
 [[ $(grep -Fc 'source-env=unset' "$COMPOSE_LOG") == 4 ]]
+[[ $(grep -Fc 'refresh:--broker-pool-job-id:social-monitor-production-account-pool-terra-v25-20260804' "$AUTH_LOG") == 2 ]]
 ! grep -F 'source-env=set' "$COMPOSE_LOG" >/dev/null
 ! grep -F 'READER_SUMMARY_PRODUCTION_RECOVERY_SOURCE_DATABASE_URL' \
   "$COMPOSE_LOG" >/dev/null
@@ -99,6 +149,62 @@ mapfile -t compose_commands < <(grep -v '^source-env=' "$COMPOSE_LOG")
 ! grep -F 'social-monitor-reader-summary-recovery-source-' \
   "$DOCKER_LOG" "$COMPOSE_LOG" >/dev/null
 ! compgen -G "$STATE/reader-summary-recovery-source.*.env" >/dev/null
+
+: > "$COMPOSE_LOG"
+: > "$ORDER_LOG"
+printf 'old subscription session\n' > "$ROOT/runtime/subscription-runtime/sessions/session"
+export AUTH_ACCOUNT_CHANGED=1
+READER_SUMMARY_DAILY_MAINTENANCE_AUTHORIZED_UTC_DATE=2026-07-23 \
+READER_SUMMARY_DAILY_MAINTENANCE_MODEL_JOB_IDENTITY=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+READER_SUMMARY_DAILY_MAINTENANCE_AUTHORITY_SHA256=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb \
+  run_reader_summary_daily_runner_maintenance reader-summary-recover-missing-days
+unset AUTH_ACCOUNT_CHANGED
+authorized_recovery_command='--profile daily run --rm --no-deps -e READER_SUMMARY_DAILY_TENANT_ID=00000000-0000-7000-8000-000000000901 -e READER_SUMMARY_DAILY_WORKSPACE_ID=00000000-0000-7000-8000-000000000902 -e READER_SUMMARY_DAILY_FIRST_UNRESOLVED_UTC_DATE=2026-07-23 -e READER_SUMMARY_DAILY_PUBLIC_DIRECTORY=/var/lib/social-monitor/artifacts/reports -e READER_SUMMARY_DAILY_AMBIGUITY_ORIGINAL_MODEL_JOB_IDENTITY=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa -e READER_SUMMARY_DAILY_AMBIGUITY_SOURCE_AUTHORITY_SHA256=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb daily-runner sh -lc set -eu; npm run prepare:reader-summary-production-recovery-gap-authority; npm run authorize:reader-summary-daily-canonical-recovery-ambiguity-retry; npm run run:reader-summary-daily-canonical-recovery'
+authorized_recovery_command="-f $FINAL_MODEL_OVERLAY $authorized_recovery_command"
+bounded_command='--profile daily run --rm --no-deps -e READER_SUMMARY_DAILY_TENANT_ID=00000000-0000-7000-8000-000000000901 -e READER_SUMMARY_DAILY_WORKSPACE_ID=00000000-0000-7000-8000-000000000902 -e READER_SUMMARY_DAILY_FIRST_UNRESOLVED_UTC_DATE=2026-07-31 -e READER_SUMMARY_DAILY_PUBLIC_DIRECTORY=/var/lib/social-monitor/artifacts/reports -e READER_SUMMARY_DAILY_COLLECTION_ARTIFACT_DIRECTORY=/var/lib/social-monitor/artifacts/reader-summary-daily-collection -e READER_SUMMARY_DAILY_MAINTENANCE_AUTHORIZED_UTC_DATE=2026-07-23 -e READER_SUMMARY_DAILY_MAINTENANCE_MODEL_JOB_IDENTITY=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa -e READER_SUMMARY_DAILY_MAINTENANCE_AUTHORITY_SHA256=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb daily-runner sh -lc set -eu; node scripts/run-with-timeout.mjs --timeout-ms 19800000 --node-options --max-old-space-size=768 -- ts-node -r tsconfig-paths/register scripts/run-reader-summary-daily-bounded-maintenance.ts'
+bounded_command="-f $FINAL_MODEL_OVERLAY $bounded_command"
+restart_command="-f $FINAL_MODEL_OVERLAY restart agent-runtime"
+mapfile -t bounded_commands < <(grep -v '^source-env=' "$COMPOSE_LOG")
+[[ ${#bounded_commands[@]} == 7 ]]
+[[ ${bounded_commands[0]} == "$restart_command" ]]
+[[ ${bounded_commands[1]} == "$reconcile_command" ]]
+[[ ${bounded_commands[2]} == "$authorized_recovery_command" ]]
+for bounded_index in 3 4 5 6; do
+  [[ ${bounded_commands[$bounded_index]} == "$bounded_command" ]]
+done
+[[ $(grep -Fc 'scripts/run-reader-summary-daily-bounded-maintenance.ts' "$COMPOSE_LOG") == 4 ]]
+! grep -F 'npm run run:reader-summary-daily-bounded-maintenance' "$COMPOSE_LOG" >/dev/null
+mapfile -t bounded_execution_order < "$ORDER_LOG"
+[[ ${bounded_execution_order[*]} == 'refresh reset authorize canonical bounded bounded bounded bounded' ]]
+[[ ! -e $AUTH_CHANGED_MARKER ]]
+[[ -d $ROOT/runtime/subscription-runtime/sessions ]]
+compgen -G "$ROOT/backups/subscription-runtime-sessions.*/session" >/dev/null
+
+: > "$COMPOSE_LOG"
+set +e
+READER_SUMMARY_DAILY_MAINTENANCE_AUTHORIZED_UTC_DATE=2026-07-24 \
+READER_SUMMARY_DAILY_MAINTENANCE_MODEL_JOB_IDENTITY=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+READER_SUMMARY_DAILY_MAINTENANCE_AUTHORITY_SHA256=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb \
+  run_reader_summary_daily_runner_maintenance reader-summary-recover-missing-days >/dev/null 2>&1
+status=$?
+set -e
+[[ $status == 1 ]]
+[[ ! -s $COMPOSE_LOG ]]
+
+: > "$COMPOSE_LOG"
+printf 'old subscription session\n' > "$ROOT/runtime/subscription-runtime/sessions/session"
+export AUTH_ACCOUNT_CHANGED=1
+run_reader_summary_daily_runner_maintenance reader-summary-weekly-run
+unset AUTH_ACCOUNT_CHANGED
+restart_command="-f $FINAL_MODEL_OVERLAY restart agent-runtime"
+mapfile -t auth_changed_commands < <(grep -v '^source-env=' "$COMPOSE_LOG")
+[[ ${#auth_changed_commands[@]} == 3 ]]
+[[ ${auth_changed_commands[0]} == "$restart_command" ]]
+[[ ${auth_changed_commands[1]} == "$reconcile_command" ]]
+[[ ${auth_changed_commands[2]} == "$weekly_command" ]]
+[[ ! -e $AUTH_CHANGED_MARKER ]]
+[[ -d $ROOT/runtime/subscription-runtime/sessions ]]
+compgen -G "$ROOT/backups/subscription-runtime-sessions.*/session" >/dev/null
 
 COMPOSE=(fake_compose -f "$REPO/compose.base.yml" -f "$FINAL_MODEL_OVERLAY" -f "$FINAL_MODEL_OVERLAY")
 append_final_agent_runtime_model_overlay
@@ -194,20 +300,19 @@ exec 7>&-
 
 : > "$DOCKER_LOG"
 : > "$COMPOSE_LOG"
-FAKE_COMPOSE_FAIL=1
+export FAKE_COMPOSE_FAIL=1
 set +e
 run_reader_summary_daily_runner_maintenance reader-summary-recover-missing-days
 status=$?
 set -e
 [[ $status == 44 ]]
+unset FAKE_COMPOSE_FAIL
 [[ ! -s $DOCKER_LOG ]]
 grep -Fx 'source-env=unset' "$COMPOSE_LOG" >/dev/null
 ! grep -F 'READER_SUMMARY_PRODUCTION_RECOVERY_SOURCE_DATABASE_URL' \
   "$COMPOSE_LOG" >/dev/null
 
-printf 'integration moved after backend release\n' > "$REPO/integration-drift"
-git -C "$REPO" add integration-drift
-git -C "$REPO" commit -qm 'test: integration drift'
+FAKE_GIT_HEAD=89abcdef0123456789abcdef0123456789abcdef
 : > "$COMPOSE_LOG"
 set +e
 run_reader_summary_daily_runner_maintenance reader-summary-recover-missing-days >/dev/null 2>&1

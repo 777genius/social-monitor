@@ -21,6 +21,10 @@ daily_runner_maintenance_now_seconds() {
   printf '%s\n' "$SECONDS"
 }
 
+daily_runner_maintenance_sleep() {
+  sleep "$1"
+}
+
 acquire_daily_runner_maintenance_locks() {
   local deadline_seconds=7500
   local started_at elapsed_seconds remaining_seconds
@@ -58,25 +62,111 @@ append_final_agent_runtime_model_overlay() {
   COMPOSE=("${reconciled_compose[@]}" -f "$final_model_overlay")
 }
 
+has_reader_summary_daily_bounded_maintenance_authorization() {
+  [[ -n ${READER_SUMMARY_DAILY_MAINTENANCE_AUTHORIZED_UTC_DATE:-} || \
+     -n ${READER_SUMMARY_DAILY_MAINTENANCE_MODEL_JOB_IDENTITY:-} || \
+     -n ${READER_SUMMARY_DAILY_MAINTENANCE_AUTHORITY_SHA256:-} ]]
+}
+
+assert_reader_summary_daily_bounded_maintenance_authorization() {
+  [[ ${READER_SUMMARY_DAILY_MAINTENANCE_AUTHORIZED_UTC_DATE:-} == 2026-07-23 ]] || \
+    fail 'reader-summary daily bounded maintenance authorization must name 2026-07-23'
+  [[ ${READER_SUMMARY_DAILY_MAINTENANCE_MODEL_JOB_IDENTITY:-} =~ ^[0-9a-f]{64}$ ]] || \
+    fail 'reader-summary daily bounded maintenance model job identity is invalid'
+  [[ ${READER_SUMMARY_DAILY_MAINTENANCE_AUTHORITY_SHA256:-} =~ ^[0-9a-f]{64}$ ]] || \
+    fail 'reader-summary daily bounded maintenance authority SHA-256 is invalid'
+}
+
+refresh_daily_runner_maintenance_auth() {
+  "$CONTROL/refresh-codex-auth.sh" \
+    --broker-pool-job-id social-monitor-production-account-pool-terra-v25-20260804 || return
+  if [[ -f $ROOT/runtime/auth-account-changed ]]; then
+    local stamp
+    stamp=$(date -u +%Y%m%dT%H%M%SZ)
+    if [[ -d $ROOT/runtime/subscription-runtime/sessions ]]; then
+      mv "$ROOT/runtime/subscription-runtime/sessions" \
+        "$ROOT/backups/subscription-runtime-sessions.$stamp"
+    fi
+    install -d -m 0700 -o 1000 -g 1000 \
+      "$ROOT/runtime/subscription-runtime/sessions"
+    "${COMPOSE[@]}" restart agent-runtime || return
+    rm -f "$ROOT/runtime/auth-account-changed"
+    daily_runner_maintenance_sleep 3
+  fi
+}
+
+run_reader_summary_daily_canonical_recovery() {
+  local recovery_command
+  local -a ambiguity_authorization=()
+  if (($# == 2)); then
+    local original_model_job_identity=$1 source_authority_sha256=$2
+    ambiguity_authorization=(
+      -e "READER_SUMMARY_DAILY_AMBIGUITY_ORIGINAL_MODEL_JOB_IDENTITY=$original_model_job_identity"
+      -e "READER_SUMMARY_DAILY_AMBIGUITY_SOURCE_AUTHORITY_SHA256=$source_authority_sha256"
+    )
+    recovery_command='set -eu; npm run prepare:reader-summary-production-recovery-gap-authority; npm run authorize:reader-summary-daily-canonical-recovery-ambiguity-retry; npm run run:reader-summary-daily-canonical-recovery'
+  elif (($# == 0)); then
+    recovery_command='set -eu; npm run prepare:reader-summary-production-recovery-gap-authority; npm run run:reader-summary-daily-canonical-recovery'
+  else
+    fail 'reader-summary daily canonical recovery ambiguity authorization accepts exactly two values'
+  fi
+  "${COMPOSE[@]}" --profile daily run --rm --no-deps \
+    -e READER_SUMMARY_DAILY_TENANT_ID=00000000-0000-7000-8000-000000000901 \
+    -e READER_SUMMARY_DAILY_WORKSPACE_ID=00000000-0000-7000-8000-000000000902 \
+    -e READER_SUMMARY_DAILY_FIRST_UNRESOLVED_UTC_DATE=2026-07-23 \
+    -e READER_SUMMARY_DAILY_PUBLIC_DIRECTORY=/var/lib/social-monitor/artifacts/reports \
+    "${ambiguity_authorization[@]}" \
+    daily-runner sh -lc "$recovery_command"
+}
+
+run_reader_summary_daily_bounded_maintenance() {
+  local model_job_identity=$1 authority_sha256=$2
+  "${COMPOSE[@]}" --profile daily run --rm --no-deps \
+    -e READER_SUMMARY_DAILY_TENANT_ID=00000000-0000-7000-8000-000000000901 \
+    -e READER_SUMMARY_DAILY_WORKSPACE_ID=00000000-0000-7000-8000-000000000902 \
+    -e READER_SUMMARY_DAILY_FIRST_UNRESOLVED_UTC_DATE=2026-07-31 \
+    -e READER_SUMMARY_DAILY_PUBLIC_DIRECTORY=/var/lib/social-monitor/artifacts/reports \
+    -e READER_SUMMARY_DAILY_COLLECTION_ARTIFACT_DIRECTORY=/var/lib/social-monitor/artifacts/reader-summary-daily-collection \
+    -e READER_SUMMARY_DAILY_MAINTENANCE_AUTHORIZED_UTC_DATE=2026-07-23 \
+    -e "READER_SUMMARY_DAILY_MAINTENANCE_MODEL_JOB_IDENTITY=$model_job_identity" \
+    -e "READER_SUMMARY_DAILY_MAINTENANCE_AUTHORITY_SHA256=$authority_sha256" \
+    daily-runner sh -lc \
+    'set -eu; node scripts/run-with-timeout.mjs --timeout-ms 19800000 --node-options --max-old-space-size=768 -- ts-node -r tsconfig-paths/register scripts/run-reader-summary-daily-bounded-maintenance.ts'
+}
+
 run_reader_summary_daily_runner_maintenance() (
   local maintenance_action=$1
+  local run_bounded_maintenance=false
   [[ $# == 1 ]] || fail 'reader-summary daily-runner maintenance accepts exactly one action'
   case $maintenance_action in
     reader-summary-recover-missing-days|reader-summary-weekly-run) ;;
     *) fail 'unknown reader-summary daily-runner maintenance action' ;;
   esac
+  if [[ $maintenance_action == reader-summary-recover-missing-days ]] && \
+     has_reader_summary_daily_bounded_maintenance_authorization; then
+    assert_reader_summary_daily_bounded_maintenance_authorization
+    run_bounded_maintenance=true
+  fi
   acquire_daily_runner_maintenance_locks
   verify_daily_runner_maintenance_runtime
   append_final_agent_runtime_model_overlay
-  "${COMPOSE[@]}" --profile app up -d --no-deps agent-runtime
+  refresh_daily_runner_maintenance_auth || return
+  "${COMPOSE[@]}" --profile app up -d --no-deps agent-runtime || return
   case $maintenance_action in
     reader-summary-recover-missing-days)
-      "${COMPOSE[@]}" --profile daily run --rm --no-deps \
-        -e READER_SUMMARY_DAILY_TENANT_ID=00000000-0000-7000-8000-000000000901 \
-        -e READER_SUMMARY_DAILY_WORKSPACE_ID=00000000-0000-7000-8000-000000000902 \
-        -e READER_SUMMARY_DAILY_PUBLIC_DIRECTORY=/var/lib/social-monitor/artifacts/reports \
-        daily-runner sh -lc \
-        'set -eu; npm run prepare:reader-summary-production-recovery-gap-authority; npm run run:reader-summary-daily-canonical-recovery'
+      if [[ $run_bounded_maintenance == true ]]; then
+        run_reader_summary_daily_canonical_recovery \
+          "$READER_SUMMARY_DAILY_MAINTENANCE_MODEL_JOB_IDENTITY" \
+          "$READER_SUMMARY_DAILY_MAINTENANCE_AUTHORITY_SHA256" || return
+        local bounded_run
+        for bounded_run in 1 2 3 4; do
+          run_reader_summary_daily_bounded_maintenance \
+            "$READER_SUMMARY_DAILY_MAINTENANCE_MODEL_JOB_IDENTITY" \
+            "$READER_SUMMARY_DAILY_MAINTENANCE_AUTHORITY_SHA256" || return
+        done
+      else
+        run_reader_summary_daily_canonical_recovery || return
+      fi
       ;;
     reader-summary-weekly-run)
       "${COMPOSE[@]}" --profile daily run --rm --no-deps \
@@ -86,7 +176,7 @@ run_reader_summary_daily_runner_maintenance() (
         -e READER_SUMMARY_WEEKLY_PRODUCTION_CATCH_UP_LIMIT=4 \
         -e "READER_SUMMARY_WEEKLY_PRODUCTION_ARTIFACT_DIR=$READER_SUMMARY_WEEKLY_PRODUCTION_ARTIFACT_DIR" \
         daily-runner sh -lc \
-        'set -eu; npm run run:reader-summary-weekly-production'
+        'set -eu; npm run run:reader-summary-weekly-production' || return
       ;;
     *) fail 'unknown reader-summary daily-runner maintenance action' ;;
   esac

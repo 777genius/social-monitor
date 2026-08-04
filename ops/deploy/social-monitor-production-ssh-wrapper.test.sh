@@ -16,6 +16,8 @@ ENTRYPOINT=$FIXTURE/github-production-deploy.sh
 EVENT_LOG=$FIXTURE/events.log
 SHA=1234567890abcdef1234567890abcdef12345678
 DAILY_CANONICAL_RECOVERY_CONFIRMATION=reader-summary-daily-canonical-recovery-v4
+MODEL_JOB_IDENTITY=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+AUTHORITY_SHA256=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 install -d "$BIN"
 git -C "$PROJECT_ROOT" show \
   "$LEGACY_CONTROL_SHA:ops/deploy/social-monitor-production-ssh-wrapper.sh" \
@@ -46,7 +48,7 @@ cat > "$BIN/sudo" <<'SH'
 set -euo pipefail
 [[ ${1:-} == -n ]]
 shift
-exec "$@"
+exec env "$@"
 SH
 chmod 0755 "$BIN/sudo"
 
@@ -59,6 +61,15 @@ command_text=${SSH_ORIGINAL_COMMAND:-${*:-}}
 [[ $command_text != *$'\n'* && $command_text != *$'\r'* ]] || exit 64
 [[ $command_text == "$action $sha" ]] || exit 65
 if [[ $action != deploy ]]; then
+  if [[ -n ${READER_SUMMARY_DAILY_MAINTENANCE_AUTHORIZED_UTC_DATE:-} ]]; then
+    [[ $READER_SUMMARY_DAILY_MAINTENANCE_AUTHORIZED_UTC_DATE == 2026-07-23 ]]
+    [[ ${READER_SUMMARY_DAILY_MAINTENANCE_MODEL_JOB_IDENTITY:-} =~ ^[0-9a-f]{64}$ ]]
+    [[ ${READER_SUMMARY_DAILY_MAINTENANCE_AUTHORITY_SHA256:-} =~ ^[0-9a-f]{64}$ ]]
+    printf 'bounded-auth:%s:%s:%s\n' \
+      "$READER_SUMMARY_DAILY_MAINTENANCE_AUTHORIZED_UTC_DATE" \
+      "$READER_SUMMARY_DAILY_MAINTENANCE_MODEL_JOB_IDENTITY" \
+      "$READER_SUMMARY_DAILY_MAINTENANCE_AUTHORITY_SHA256" >> "$EVENT_LOG"
+  fi
   printf 'dispatch:%s:%s\n' "$action" "$sha" >> "$EVENT_LOG"
   exit
 fi
@@ -159,16 +170,21 @@ for action in \
 done
 
 : > "$EVENT_LOG"
-SSH_ORIGINAL_COMMAND="reader-summary-daily-canonical-recovery-v4 $SHA $DAILY_CANONICAL_RECOVERY_CONFIRMATION" \
+SSH_ORIGINAL_COMMAND="reader-summary-daily-canonical-recovery-v4 $SHA $DAILY_CANONICAL_RECOVERY_CONFIRMATION $MODEL_JOB_IDENTITY $AUTHORITY_SHA256" \
   EVENT_LOG=$EVENT_LOG CONTROL_LIB=$CONTROL_LIB EXACT_SHA=$SHA \
   bash "$FIXTURE/current-wrapper.sh"
+grep -Fx "bounded-auth:2026-07-23:$MODEL_JOB_IDENTITY:$AUTHORITY_SHA256" \
+  "$EVENT_LOG" >/dev/null
 grep -Fx "dispatch:reader-summary-recover-missing-days:$SHA" "$EVENT_LOG" >/dev/null
-[[ $(wc -l < "$EVENT_LOG") == 1 ]]
+[[ $(wc -l < "$EVENT_LOG") == 2 ]]
 
 for command in \
   "reader-summary-daily-canonical-recovery-v4 $SHA" \
   "reader-summary-daily-canonical-recovery-v4 $SHA wrong-reader-summary-daily-canonical-recovery-v4" \
-  "reader-summary-daily-canonical-recovery-v4 $SHA $DAILY_CANONICAL_RECOVERY_CONFIRMATION:$SHA"; do
+  "reader-summary-daily-canonical-recovery-v4 $SHA $DAILY_CANONICAL_RECOVERY_CONFIRMATION:$SHA" \
+  "reader-summary-daily-canonical-recovery-v4 $SHA $DAILY_CANONICAL_RECOVERY_CONFIRMATION $MODEL_JOB_IDENTITY" \
+  "reader-summary-daily-canonical-recovery-v4 $SHA $DAILY_CANONICAL_RECOVERY_CONFIRMATION ${MODEL_JOB_IDENTITY^^} $AUTHORITY_SHA256" \
+  "reader-summary-daily-canonical-recovery-v4 $SHA $DAILY_CANONICAL_RECOVERY_CONFIRMATION $MODEL_JOB_IDENTITY short"; do
   : > "$EVENT_LOG"
   assert_rejected "$FIXTURE/current-wrapper.sh" "$command"
   [[ ! -s $EVENT_LOG ]]
@@ -176,7 +192,7 @@ done
 
 : > "$EVENT_LOG"
 assert_rejected "$FIXTURE/legacy-wrapper.sh" \
-  "reader-summary-daily-canonical-recovery-v4 $SHA $DAILY_CANONICAL_RECOVERY_CONFIRMATION"
+  "reader-summary-daily-canonical-recovery-v4 $SHA $DAILY_CANONICAL_RECOVERY_CONFIRMATION $MODEL_JOB_IDENTITY $AUTHORITY_SHA256"
 [[ ! -s $EVENT_LOG ]]
 
 echo 'Production SSH wrapper reachability tests passed'

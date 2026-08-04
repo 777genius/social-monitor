@@ -86,6 +86,14 @@ run_remote() {
   local action=$1
   local sha=$2
   local confirmation=${3:-}
+  local model_job_identity=${4:-}
+  local authority_sha256=${5:-}
+  if (($# == 5)); then
+    "$SSH_BIN" "${SSH_OPTIONS[@]}" \
+      -- "$DEPLOY_USER@$DEPLOY_HOST" \
+      "$action $sha $confirmation $model_job_identity $authority_sha256"
+    return
+  fi
   if (($# == 3)); then
     "$SSH_BIN" "${SSH_OPTIONS[@]}" \
       -- "$DEPLOY_USER@$DEPLOY_HOST" "$action $sha $confirmation"
@@ -107,17 +115,28 @@ validate_daily_canonical_recovery_confirmation() {
     fail 'daily canonical recovery requires its exact confirmation token'
 }
 
+validate_lowercase_hex_identity() {
+  [[ ${1:-} =~ ^[0-9a-f]{64}$ ]] || \
+    fail 'daily bounded maintenance identity must be a 64-character lowercase hexadecimal value'
+}
+
 run_maintenance() {
   local sha=$1
   local maintenance_action=$2
   local confirmation=${3:-}
+  local model_job_identity=${4:-}
+  local authority_sha256=${5:-}
   validate_sha "$sha"
   validate_maintenance_action "$maintenance_action"
   validate_remote_environment
   if [[ $maintenance_action == reader-summary-daily-canonical-recovery-v4 ]]; then
-    [[ $# == 3 ]] || fail 'daily canonical recovery requires a confirmation token'
+    [[ $# == 5 ]] || \
+      fail 'daily canonical recovery requires confirmation, model identity, and authority SHA-256'
     validate_daily_canonical_recovery_confirmation "$confirmation"
-    run_remote "$maintenance_action" "$sha" "$confirmation"
+    validate_lowercase_hex_identity "$model_job_identity"
+    validate_lowercase_hex_identity "$authority_sha256"
+    run_remote "$maintenance_action" "$sha" "$confirmation" \
+      "$model_job_identity" "$authority_sha256"
     return
   fi
   [[ $# == 2 ]] || fail 'this maintenance action does not accept a confirmation token'
@@ -373,9 +392,10 @@ case $action in
     deploy_release "$2"
     ;;
   maintenance)
-    [[ $# == 3 || $# == 4 ]] || fail 'maintenance requires a target SHA, action, and optional confirmation'
-    if (($# == 4)); then
-      run_maintenance "$2" "$3" "$4"
+    [[ $# == 3 || $# == 6 ]] || \
+      fail 'maintenance requires a target SHA, action, and optional recovery authorization'
+    if (($# == 6)); then
+      run_maintenance "$2" "$3" "$4" "$5" "$6"
     else
       run_maintenance "$2" "$3"
     fi

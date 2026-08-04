@@ -53,6 +53,16 @@ on:
         required: false
         default: ''
         type: string
+      daily_canonical_recovery_model_job_identity:
+        description: Required lowercase-hex Jul23 model job identity for bounded recovery
+        required: false
+        default: ''
+        type: string
+      daily_canonical_recovery_authority_sha256:
+        description: Required lowercase-hex Jul23 source authority SHA-256 for bounded recovery
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: read
@@ -85,11 +95,15 @@ jobs:
           DEPLOY_USER: ${{ vars.PRODUCTION_SSH_USER }}
           MAINTENANCE_ACTION: ${{ inputs.maintenance_action }}
           DAILY_CANONICAL_RECOVERY_CONFIRMATION: ${{ inputs.daily_canonical_recovery_confirmation }}
+          DAILY_CANONICAL_RECOVERY_MODEL_JOB_IDENTITY: ${{ inputs.daily_canonical_recovery_model_job_identity }}
+          DAILY_CANONICAL_RECOVERY_AUTHORITY_SHA256: ${{ inputs.daily_canonical_recovery_authority_sha256 }}
         run: |
           set -euo pipefail
           if [[ $MAINTENANCE_ACTION == reader-summary-daily-canonical-recovery-v4 ]]; then
             bash ops/deploy/github-production-deploy-client.sh maintenance "$GITHUB_SHA" \
-              "$MAINTENANCE_ACTION" "$DAILY_CANONICAL_RECOVERY_CONFIRMATION"
+              "$MAINTENANCE_ACTION" "$DAILY_CANONICAL_RECOVERY_CONFIRMATION" \
+              "$DAILY_CANONICAL_RECOVERY_MODEL_JOB_IDENTITY" \
+              "$DAILY_CANONICAL_RECOVERY_AUTHORITY_SHA256"
           else
             bash ops/deploy/github-production-deploy-client.sh maintenance "$GITHUB_SHA" \
               "$MAINTENANCE_ACTION"
