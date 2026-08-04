@@ -114,7 +114,7 @@ for raw_path in sys.argv[1:]:
 PY
 
 printf '%s\n' \
-  'SYSTEM_DATABASE_URL=postgresql://system:fixture@postgres:5432/social_monitor' \
+  'SYSTEM_DATABASE_URL=postgresql://system:password@postgres:5432/social_monitor' \
   'AGENT_RUNTIME_MODEL=gpt-5.5' \
   'AGENT_RUNTIME_READER_SUMMARY_MODEL=gpt-5.5' > "$stale_production_env"
 cat > "$stale_control_compose" <<'YAML'
