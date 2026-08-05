@@ -124,12 +124,24 @@ backend_image_rescue_image_id() {
 }
 
 backend_image_rescue_image_config() {
-  [[ -n $(lookup_id "$1") ]] || return 1
-  if [[ $1 == "$(compose_image_name intelligence-worker)" ]]; then
-    printf '%s\n' "$BASE_CONFIG"
-  else
-    printf '%s\n' "$BUILT_CONFIG"
-  fi
+  local image=$1
+
+  printf 'config-id\t%s\n' "$image" >> "$EVENTS"
+  case $image in
+    "$BASE_ID")
+      printf '%s\n' "$BASE_CONFIG"
+      ;;
+    "$MUTATED_ID")
+      printf '%s\n' "$MUTATED_BASE_CONFIG"
+      ;;
+    "$BASE_TAG")
+      printf '%s\n' "$BASE_TAG_CONFIG"
+      ;;
+    *)
+      [[ -n $(lookup_id "$image") ]] || return 1
+      printf '%s\n' "$BUILT_CONFIG"
+      ;;
+  esac
 }
 
 fake_compose() {
@@ -157,7 +169,7 @@ docker() {
   printf 'docker\t%s\n' "$*" >> "$EVENTS"
   case ${1:-}:${2:-} in
     container:ls)
-      local expected_format=$'{{.ID}}\t{{.State}}\t{{.Label "com.docker.compose.project"}}\t{{.Label "com.docker.compose.service"}}'
+      local daily_format=$'{{.ID}}\t{{.State}}\t{{.Label "com.docker.compose.project"}}\t{{.Label "com.docker.compose.service"}}'
       local format='' project_filter='' service_filter='' no_trunc=false
       shift 2
       while (($# > 0)); do
@@ -186,18 +198,48 @@ docker() {
           *) return 92 ;;
         esac
       done
-      [[ $no_trunc == true && $project_filter == "$PROJECT" && \
-         $service_filter == daily-runner && $format == "$expected_format" ]] || \
+      [[ $no_trunc == true && $project_filter == "$PROJECT" ]] || \
         return 93
-      [[ $CONTAINER_LS_STATUS == 0 ]] || return "$CONTAINER_LS_STATUS"
-      if [[ $CONTAINER_FORCE_LABEL_MISMATCH == true ]]; then
-        printf '%s\t%s\t%s\t%s\n' \
-          "$CONTAINER_ID_A" running wrong-project daily-runner
+      case $service_filter in
+        daily-runner)
+          [[ $format == "$daily_format" ]] || return 94
+          [[ $CONTAINER_LS_STATUS == 0 ]] || return "$CONTAINER_LS_STATUS"
+          if [[ $CONTAINER_FORCE_LABEL_MISMATCH == true ]]; then
+            printf '%s\t%s\t%s\t%s\n' \
+              "$CONTAINER_ID_A" running wrong-project daily-runner
+            return 0
+          fi
+          awk -F '\t' -v project="$project_filter" -v service="$service_filter" \
+            '$3 == project && $4 == service {printf "%s\t%s\t%s\t%s\n", $1, $2, $3, $4}' \
+            "$CONTAINERS"
+          ;;
+        intelligence-worker)
+          [[ $format == '{{.ID}}' ]] || return 95
+          [[ $LEGACY_RUNTIME_LS_STATUS == 0 ]] || \
+            return "$LEGACY_RUNTIME_LS_STATUS"
+          printf '%s\n' "$LEGACY_RUNTIME_IDS"
+          ;;
+        *) return 96 ;;
+      esac
+      ;;
+    inspect:*)
+      local legacy_format='{{.Id}}|{{.Image}}|{{.State.Status}}|{{.State.Running}}|{{.State.Paused}}|{{.State.Restarting}}|{{.State.Dead}}|{{.State.OOMKilled}}|{{.State.Error}}|{{.RestartCount}}|{{index .Config.Labels "com.docker.compose.project"}}|{{index .Config.Labels "com.docker.compose.service"}}|{{index .Config.Labels "com.docker.compose.image"}}|{{index .Config.Labels "com.docker.compose.oneoff"}}|{{index .Config.Labels "com.docker.compose.container-number"}}'
+      [[ ${3:-} == --format && ${4:-} == "$legacy_format" ]] || return 97
+      [[ $LEGACY_RUNTIME_INSPECT_STATUS == 0 ]] || \
+        return "$LEGACY_RUNTIME_INSPECT_STATUS"
+      if [[ -n $LEGACY_RUNTIME_RECORD_OVERRIDE ]]; then
+        printf '%s\n' "$LEGACY_RUNTIME_RECORD_OVERRIDE"
         return 0
       fi
-      awk -F '\t' -v project="$project_filter" -v service="$service_filter" \
-        '$3 == project && $4 == service {printf "%s\t%s\t%s\t%s\n", $1, $2, $3, $4}' \
-        "$CONTAINERS"
+      printf '%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s\n' \
+        "$LEGACY_RUNTIME_INSPECT_ID" "$LEGACY_RUNTIME_IMAGE_ID" \
+        "$LEGACY_RUNTIME_STATE_STATUS" "$LEGACY_RUNTIME_RUNNING" \
+        "$LEGACY_RUNTIME_PAUSED" "$LEGACY_RUNTIME_RESTARTING" \
+        "$LEGACY_RUNTIME_DEAD" "$LEGACY_RUNTIME_OOM_KILLED" \
+        "$LEGACY_RUNTIME_ERROR" "$LEGACY_RUNTIME_RESTART_COUNT" \
+        "$LEGACY_RUNTIME_PROJECT" "$LEGACY_RUNTIME_SERVICE" \
+        "$LEGACY_RUNTIME_COMPOSE_IMAGE" "$LEGACY_RUNTIME_ONEOFF" \
+        "$LEGACY_RUNTIME_CONTAINER_NUMBER"
       ;;
     build:*)
       shift
@@ -243,11 +285,19 @@ docker() {
       image_id=$(lookup_id "$3")
       revision=$(lookup_revision "$3")
       [[ -n $image_id ]] || return 1
-      if [[ ${*: -1} == *org.opencontainers.image.revision* ]]; then
-        printf '%s|%s\n' "$image_id" "$revision"
-      else
-        printf '%s\n' "$image_id"
-      fi
+      case ${5:-} in
+        '{{.Id}}')
+          printf '%s\n' "$image_id"
+          ;;
+        '{{.Id}}|{{with index .Config.Labels "org.opencontainers.image.revision"}}{{.}}{{end}}')
+          [[ $3 == "$BASE_TAG" ]] || return 98
+          printf '%s|%s\n' "$image_id" "$revision"
+          ;;
+        '{{.Id}}|{{index .Config.Labels "org.opencontainers.image.revision"}}')
+          printf '%s|%s\n' "$image_id" "$revision"
+          ;;
+        *) return 99 ;;
+      esac
       ;;
     image:tag)
       source=$3
@@ -297,6 +347,8 @@ reset_case() {
   : > "$EVENTS"
   set_ref "$BASE_TAG" "$BASE_ID" "$PREVIOUS_SHA"
   BASE_CONFIG=$EXPECTED_CONFIG
+  BASE_TAG_CONFIG='["must-not-use"]|["config"]|"/app"|"node"|null'
+  MUTATED_BASE_CONFIG=$EXPECTED_CONFIG
   BUILT_CONFIG=$EXPECTED_CONFIG
   BUILT_IMAGE_ID=$CANDIDATE_ID
   BUILT_REVISION_OVERRIDE=
@@ -308,6 +360,50 @@ reset_case() {
   MUTATE_BASE_REVISION_AFTER_BUILD=false
   MUTATE_DOCKERFILE_AFTER_BUILD=false
   SIGNAL_AFTER_INSTALL=false
+  LEGACY_RUNTIME_LS_STATUS=0
+  LEGACY_RUNTIME_IDS=
+  LEGACY_RUNTIME_INSPECT_STATUS=0
+  LEGACY_RUNTIME_RECORD_OVERRIDE=
+  LEGACY_RUNTIME_INSPECT_ID=$CONTAINER_ID_A
+  LEGACY_RUNTIME_IMAGE_ID=$BASE_ID
+  LEGACY_RUNTIME_STATE_STATUS=running
+  LEGACY_RUNTIME_RUNNING=true
+  LEGACY_RUNTIME_PAUSED=false
+  LEGACY_RUNTIME_RESTARTING=false
+  LEGACY_RUNTIME_DEAD=false
+  LEGACY_RUNTIME_OOM_KILLED=false
+  LEGACY_RUNTIME_ERROR=
+  LEGACY_RUNTIME_RESTART_COUNT=0
+  LEGACY_RUNTIME_PROJECT=$PROJECT
+  LEGACY_RUNTIME_SERVICE=intelligence-worker
+  LEGACY_RUNTIME_COMPOSE_IMAGE=$BASE_ID
+  LEGACY_RUNTIME_ONEOFF=False
+  LEGACY_RUNTIME_CONTAINER_NUMBER=1
+  LEGACY_RUNTIME_HEALTH=unhealthy
+}
+
+configure_legacy_runtime_stable() {
+  LEGACY_RUNTIME_IDS=$CONTAINER_ID_A
+  LEGACY_RUNTIME_INSPECT_ID=$CONTAINER_ID_A
+  LEGACY_RUNTIME_IMAGE_ID=$BASE_ID
+  LEGACY_RUNTIME_STATE_STATUS=running
+  LEGACY_RUNTIME_RUNNING=true
+  LEGACY_RUNTIME_PAUSED=false
+  LEGACY_RUNTIME_RESTARTING=false
+  LEGACY_RUNTIME_DEAD=false
+  LEGACY_RUNTIME_OOM_KILLED=false
+  LEGACY_RUNTIME_ERROR=
+  LEGACY_RUNTIME_RESTART_COUNT=0
+  LEGACY_RUNTIME_PROJECT=$PROJECT
+  LEGACY_RUNTIME_SERVICE=intelligence-worker
+  LEGACY_RUNTIME_COMPOSE_IMAGE=$BASE_ID
+  LEGACY_RUNTIME_ONEOFF=False
+  LEGACY_RUNTIME_CONTAINER_NUMBER=1
+}
+
+configure_unlabelled_base() {
+  set_ref "$BASE_TAG" "$BASE_ID" ''
+  configure_legacy_runtime_stable
 }
 
 assert_fails_with() {
@@ -500,6 +596,125 @@ assert_fails_with 'base image config is unexpected' \
   daily_runner_image_bootstrap_before_rescue "$PREVIOUS_SHA" "$TARGET_SHA"
 assert_events_exclude $'docker\tbuild'
 
+# A labelled base accepts only the prior release and never consults legacy
+# runtime state. The exact `with` template renders an absent label as empty;
+# a literal Docker `<no value>` and any other non-empty revision cannot fall
+# back to the runtime-stability exception.
+reset_case
+[[ $(daily_runner_bootstrap_base_image_id "$PREVIOUS_SHA") == "$BASE_ID" ]]
+assert_events_exclude $'docker\tcontainer ls'
+assert_events_exclude $'docker\tinspect'
+assert_events_exclude $'config-id\tsocial-monitor-prod-intelligence-worker:latest'
+
+reset_case
+set_ref "$BASE_TAG" "$BASE_ID" '<no value>'
+configure_legacy_runtime_stable
+assert_fails_with 'base image identity or revision is unexpected' \
+  daily_runner_bootstrap_base_image_id "$PREVIOUS_SHA"
+assert_events_exclude $'docker\tcontainer ls'
+
+reset_case
+set_ref "$BASE_TAG" "$BASE_ID" "$TARGET_SHA"
+configure_legacy_runtime_stable
+assert_fails_with 'base image identity or revision is unexpected' \
+  daily_runner_bootstrap_base_image_id "$PREVIOUS_SHA"
+assert_events_exclude $'docker\tcontainer ls'
+
+# A truly unlabelled base has one narrow compatibility proof. It must resolve
+# through one full container ID and an exact, healthy-enough Compose runtime;
+# Docker health status is deliberately not part of the legacy contract.
+reset_case
+configure_unlabelled_base
+[[ $(daily_runner_bootstrap_base_image_id "$PREVIOUS_SHA") == "$BASE_ID" ]]
+[[ $(grep -cF -- $'config-id\t'"$BASE_ID" "$EVENTS") == 1 ]]
+assert_events_exclude $'config-id\tsocial-monitor-prod-intelligence-worker:latest'
+assert_events_exclude 'State.Health'
+
+for legacy_failure in list zero multiple malformed-id inspect malformed-record \
+  image-mismatch inspected-id-mismatch; do
+  reset_case
+  configure_unlabelled_base
+  case $legacy_failure in
+    list)
+      LEGACY_RUNTIME_LS_STATUS=72
+      ;;
+    zero)
+      LEGACY_RUNTIME_IDS=
+      ;;
+    multiple)
+      LEGACY_RUNTIME_IDS=$CONTAINER_ID_A$'\n'$CONTAINER_ID_B
+      ;;
+    malformed-id)
+      LEGACY_RUNTIME_IDS=not-a-full-container-id
+      ;;
+    inspect)
+      LEGACY_RUNTIME_INSPECT_STATUS=71
+      ;;
+    malformed-record)
+      LEGACY_RUNTIME_RECORD_OVERRIDE=not-a-runtime-record
+      ;;
+    image-mismatch)
+      LEGACY_RUNTIME_IMAGE_ID=$MUTATED_ID
+      ;;
+    inspected-id-mismatch)
+      LEGACY_RUNTIME_INSPECT_ID=$CONTAINER_ID_B
+      ;;
+  esac
+  assert_fails_with 'unlabelled base image is not runtime-stable' \
+    daily_runner_bootstrap_base_image_id "$PREVIOUS_SHA"
+  assert_events_exclude $'config-id\t'
+done
+
+for legacy_label in project service compose-image oneoff container-number; do
+  for legacy_label_value in mismatch missing; do
+    reset_case
+    configure_unlabelled_base
+    case $legacy_label:$legacy_label_value in
+      project:mismatch) LEGACY_RUNTIME_PROJECT=wrong-project ;;
+      project:missing) LEGACY_RUNTIME_PROJECT='<no value>' ;;
+      service:mismatch) LEGACY_RUNTIME_SERVICE=wrong-service ;;
+      service:missing) LEGACY_RUNTIME_SERVICE='<no value>' ;;
+      compose-image:mismatch) LEGACY_RUNTIME_COMPOSE_IMAGE=$MUTATED_ID ;;
+      compose-image:missing) LEGACY_RUNTIME_COMPOSE_IMAGE='<no value>' ;;
+      oneoff:mismatch) LEGACY_RUNTIME_ONEOFF=True ;;
+      oneoff:missing) LEGACY_RUNTIME_ONEOFF='<no value>' ;;
+      container-number:mismatch) LEGACY_RUNTIME_CONTAINER_NUMBER=2 ;;
+      container-number:missing) LEGACY_RUNTIME_CONTAINER_NUMBER='<no value>' ;;
+    esac
+    assert_fails_with 'unlabelled base image is not runtime-stable' \
+      daily_runner_bootstrap_base_image_id "$PREVIOUS_SHA"
+    assert_events_exclude $'config-id\t'
+  done
+done
+
+for legacy_state in status running paused restarting dead oom-killed error \
+  restart-count; do
+  reset_case
+  configure_unlabelled_base
+  case $legacy_state in
+    status) LEGACY_RUNTIME_STATE_STATUS=exited ;;
+    running) LEGACY_RUNTIME_RUNNING=false ;;
+    paused) LEGACY_RUNTIME_PAUSED=true ;;
+    restarting) LEGACY_RUNTIME_RESTARTING=true ;;
+    dead) LEGACY_RUNTIME_DEAD=true ;;
+    oom-killed) LEGACY_RUNTIME_OOM_KILLED=true ;;
+    error) LEGACY_RUNTIME_ERROR=daemon-error ;;
+    restart-count) LEGACY_RUNTIME_RESTART_COUNT=1 ;;
+  esac
+  assert_fails_with 'unlabelled base image is not runtime-stable' \
+    daily_runner_bootstrap_base_image_id "$PREVIOUS_SHA"
+  assert_events_exclude $'config-id\t'
+done
+
+# Configuration must be inspected by the immutable ID before and after the
+# historical build, never through the mutable Compose tag.
+reset_case
+configure_unlabelled_base
+daily_runner_image_bootstrap_before_rescue "$PREVIOUS_SHA" "$TARGET_SHA"
+[[ $(lookup_id "$COMPOSE_TAG") == "$CANDIDATE_ID" ]]
+[[ $(grep -cF -- $'config-id\t'"$BASE_ID" "$EVENTS") == 2 ]]
+assert_events_exclude $'config-id\tsocial-monitor-prod-intelligence-worker:latest'
+
 # Archive traversal and symlink entries never reach Docker.
 # Invoked through the daily_runner_bootstrap_create_archive override below.
 # shellcheck disable=SC2317
@@ -579,6 +794,9 @@ MUTATE_BASE_ID_AFTER_BUILD=true
 assert_fails_with 'base image identity changed during historical build' \
   daily_runner_image_bootstrap_before_rescue "$PREVIOUS_SHA" "$TARGET_SHA"
 [[ -z $(lookup_id "$COMPOSE_TAG") ]]
+grep -F -- $'config-id\t'"$BASE_ID" "$EVENTS" >/dev/null
+grep -F -- $'config-id\t'"$MUTATED_ID" "$EVENTS" >/dev/null
+assert_events_exclude $'config-id\tsocial-monitor-prod-intelligence-worker:latest'
 assert_no_temporary_state
 
 reset_case

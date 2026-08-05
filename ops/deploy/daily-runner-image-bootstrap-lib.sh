@@ -209,6 +209,36 @@ daily_runner_bootstrap_verify_control_dockerfile() {
   printf '%s\n' "$digest"
 }
 
+daily_runner_bootstrap_verify_legacy_base_image() {
+  local base_id=$1
+  local container_id record
+  local inspected_id image_id status running paused restarting dead oom_killed
+  local error restart_count project service compose_image oneoff container_number extra
+
+  [[ $base_id =~ ^sha256:[0-9a-f]{64}$ && \
+     $PROJECT == social-monitor-prod ]] || return 1
+  container_id=$(docker container ls --no-trunc \
+    --filter "label=com.docker.compose.project=$PROJECT" \
+    --filter 'label=com.docker.compose.service=intelligence-worker' \
+    --format '{{.ID}}' 2>/dev/null) || return 1
+  [[ $container_id =~ ^[0-9a-f]{64}$ ]] || return 1
+  record=$(docker inspect "$container_id" --format \
+    '{{.Id}}|{{.Image}}|{{.State.Status}}|{{.State.Running}}|{{.State.Paused}}|{{.State.Restarting}}|{{.State.Dead}}|{{.State.OOMKilled}}|{{.State.Error}}|{{.RestartCount}}|{{index .Config.Labels "com.docker.compose.project"}}|{{index .Config.Labels "com.docker.compose.service"}}|{{index .Config.Labels "com.docker.compose.image"}}|{{index .Config.Labels "com.docker.compose.oneoff"}}|{{index .Config.Labels "com.docker.compose.container-number"}}' \
+    2>/dev/null) || return 1
+  [[ $record != *$'\n'* && $record != *$'\r'* ]] || return 1
+  IFS='|' read -r inspected_id image_id status running paused restarting dead \
+    oom_killed error restart_count project service compose_image oneoff \
+    container_number extra <<< "$record"
+  [[ $inspected_id == "$container_id" && \
+     $image_id == "$base_id" && \
+     $status == running && $running == true && \
+     $paused == false && $restarting == false && $dead == false && \
+     $oom_killed == false && -z $error && $restart_count == 0 && \
+     $project == social-monitor-prod && $service == intelligence-worker && \
+     $compose_image == "$image_id" && $oneoff == False && \
+     $container_number == 1 && -z $extra ]]
+}
+
 daily_runner_bootstrap_base_image_id() {
   local previous_sha=$1
   local base_tag identity image_id revision extra config
@@ -217,15 +247,22 @@ daily_runner_bootstrap_base_image_id() {
   [[ $base_tag == social-monitor-prod-intelligence-worker:latest ]] || \
     fail 'daily-runner bootstrap base tag is unexpected'
   identity=$(docker image inspect "$base_tag" --format \
-    '{{.Id}}|{{index .Config.Labels "org.opencontainers.image.revision"}}' \
+    '{{.Id}}|{{with index .Config.Labels "org.opencontainers.image.revision"}}{{.}}{{end}}' \
     2>/dev/null) || fail 'daily-runner base image identity cannot be inspected'
   [[ $identity != *$'\n'* ]] || \
     fail 'daily-runner base image identity is ambiguous'
   IFS='|' read -r image_id revision extra <<< "$identity"
-  [[ $image_id =~ ^sha256:[0-9a-f]{64}$ && \
-     $revision == "$previous_sha" && -z $extra ]] || \
+  [[ $image_id =~ ^sha256:[0-9a-f]{64}$ && -z $extra ]] || \
     fail 'daily-runner base image identity or revision is unexpected'
-  config=$(backend_image_rescue_image_config "$base_tag") || \
+  if [[ $revision == "$previous_sha" ]]; then
+    :
+  elif [[ -n $revision ]]; then
+    fail 'daily-runner base image identity or revision is unexpected'
+  else
+    daily_runner_bootstrap_verify_legacy_base_image "$image_id" || \
+      fail 'daily-runner unlabelled base image is not runtime-stable'
+  fi
+  config=$(backend_image_rescue_image_config "$image_id") || \
     fail 'daily-runner base image config cannot be inspected'
   [[ $config == "$DAILY_RUNNER_BOOTSTRAP_IMAGE_CONFIG" ]] || \
     fail 'daily-runner base image config is unexpected'
