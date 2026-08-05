@@ -25,13 +25,6 @@ export const runCanonicalRecoveryAmbiguityRetryAuthorizationCli = async (
   );
 };
 
-if (require.main === module) {
-  void main().catch((error: unknown) => {
-    console.error(error instanceof Error ? error.message : String(error));
-    process.exitCode = 1;
-  });
-}
-
 async function main(): Promise<void> {
   const systemDatabaseUrl = requiredSystemDatabaseUrl();
   assertScope("READER_SUMMARY_DAILY_TENANT_ID", tenantId);
@@ -91,3 +84,10 @@ const required = (name: string): string => {
   }
   return value;
 };
+
+if (require.main === module) {
+  void main().catch((error: unknown) => {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  });
+}

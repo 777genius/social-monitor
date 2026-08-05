@@ -1,3 +1,6 @@
+import { spawnSync } from "node:child_process";
+import { join } from "node:path";
+
 import type {
   ReaderSummaryDailySqlClient,
   ReaderSummaryDailySqlTransaction,
@@ -90,5 +93,35 @@ describe("reader summary daily canonical recovery v4 ambiguity retry authorizer"
       expect.stringContaining("ambiguity_retry_authorized date=2026-07-23"),
     );
     expect(authorize).toHaveBeenCalledTimes(1);
+  });
+
+  it("starts directly before attempting database setup when the system URL is absent", () => {
+    const child = spawnSync(
+      process.execPath,
+      [
+        "-r",
+        "ts-node/register/transpile-only",
+        "-r",
+        "tsconfig-paths/register",
+        "scripts/authorize-reader-summary-daily-canonical-recovery-v4-ambiguity-retry.ts",
+      ],
+      {
+        cwd: join(__dirname, "../.."),
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          SYSTEM_DATABASE_URL: "",
+          TS_NODE_COMPILER_OPTIONS: JSON.stringify({ rootDir: "." }),
+        },
+      },
+    );
+
+    if (child.error !== undefined) {
+      throw child.error;
+    }
+
+    expect(child.status).toBe(1);
+    expect(child.signal).toBeNull();
+    expect(child.stderr).toBe("SYSTEM_DATABASE_URL is required\n");
   });
 });
