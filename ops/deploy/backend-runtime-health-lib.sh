@@ -281,3 +281,93 @@ verify_backend_with_retry() {
   done
   return 1
 }
+
+backend_health_pin_migrate_from_running_api() {
+  local service=$1
+  local policy=$2
+  local rescue_tag=$3
+  local source_kind_name=$4
+  local source_ref_name=$5
+  local image_id_name=$6
+  local migrate_containers api_container verified_api_container final_api_container
+  local api_image_id inspected_image_id pinned_id final_api_image_id
+
+  [[ $service == migrate && $policy == tag-only-migrate ]] || return 1
+  migrate_containers=$("${COMPOSE[@]}" --profile app --profile daily ps -q migrate) || return 1
+  [[ -z $migrate_containers ]] || return 1
+  api_container=$(backend_image_rescue_compose_container_id api) || return 1
+  verify_backend_with_retry api || return 1
+  verified_api_container=$(backend_image_rescue_compose_container_id api) || return 1
+  [[ $verified_api_container == "$api_container" ]] || return 1
+  backend_image_rescue_verify_running_container "$api_container" || return 1
+  api_image_id=$(docker inspect "$api_container" --format '{{.Image}}' 2>/dev/null) || return 1
+  [[ $api_image_id =~ ^sha256:[0-9a-f]{64}$ ]] || return 1
+  inspected_image_id=$(backend_image_rescue_image_id "$api_image_id") || return 1
+  [[ $inspected_image_id == "$api_image_id" ]] || return 1
+  docker image tag "$api_image_id" "$rescue_tag" >/dev/null || return 1
+  pinned_id=$(backend_image_rescue_image_id "$rescue_tag") || return 1
+  [[ $pinned_id == "$api_image_id" ]] || return 1
+  final_api_container=$(backend_image_rescue_compose_container_id api) || return 1
+  [[ $final_api_container == "$api_container" ]] || return 1
+  backend_image_rescue_verify_running_container "$api_container" || return 1
+  final_api_image_id=$(docker inspect "$api_container" --format '{{.Image}}' 2>/dev/null) || return 1
+  [[ $final_api_image_id == "$api_image_id" ]] || return 1
+  printf -v "$source_kind_name" '%s' running-image
+  printf -v "$source_ref_name" '%s' "$api_container"
+  printf -v "$image_id_name" '%s' "$api_image_id"
+}
+
+backend_image_rescue_pin_service() {
+  local sha=$1
+  local service=$2
+  local policy=$3
+  local source_kind_name=$4
+  local source_ref_name=$5
+  local image_id_name=$6
+  local rescue_tag compose_tag pinned_id
+  local source_kind_value source_ref_value image_id_value
+  local -a container_ids=()
+
+  rescue_tag=$(backend_image_rescue_tag "$sha" "$service")
+  mapfile -t container_ids < <(
+    "${COMPOSE[@]}" --profile app --profile daily ps -q "$service"
+  )
+  ((${#container_ids[@]} <= 1)) || return 1
+  if ((${#container_ids[@]} == 0)) && \
+    [[ $service == migrate && $policy == tag-only-migrate ]]; then
+    backend_health_pin_migrate_from_running_api \
+      "$service" "$policy" "$rescue_tag" \
+      source_kind_value source_ref_value image_id_value || return 1
+    pinned_id=$(backend_image_rescue_image_id "$rescue_tag") || return 1
+    [[ $pinned_id == "$image_id_value" ]] || return 1
+    printf -v "$source_kind_name" '%s' "$source_kind_value"
+    printf -v "$source_ref_name" '%s' "$source_ref_value"
+    printf -v "$image_id_name" '%s' "$image_id_value"
+    return 0
+  fi
+  if ((${#container_ids[@]} == 1)); then
+    source_ref_value=${container_ids[0]}
+    verify_backend_with_retry "$service" || return 1
+    backend_image_rescue_pin_running_container \
+      "$service" "$source_ref_value" "$rescue_tag" \
+      source_kind_value image_id_value || return 1
+  else
+    if [[ $service == otel-collector && $policy == recreate ]]; then
+      compose_tag=${PINNED_OTEL_COLLECTOR_IMAGE:?}
+    else
+      [[ $policy != recreate ]] || return 1
+      compose_tag=$(compose_image_name "$service")
+    fi
+    pinned_id=$(backend_image_rescue_image_id "$compose_tag") || return 1
+    [[ $pinned_id =~ ^sha256:[0-9a-f]{64}$ ]] || return 1
+    docker image tag "$compose_tag" "$rescue_tag" >/dev/null || return 1
+    source_kind_value=compose-tag
+    source_ref_value=$compose_tag
+    image_id_value=$pinned_id
+  fi
+  pinned_id=$(backend_image_rescue_image_id "$rescue_tag") || return 1
+  [[ $pinned_id == "$image_id_value" ]] || return 1
+  printf -v "$source_kind_name" '%s' "$source_kind_value"
+  printf -v "$source_ref_name" '%s' "$source_ref_value"
+  printf -v "$image_id_name" '%s' "$image_id_value"
+}

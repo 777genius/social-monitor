@@ -3,6 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 LIBRARY=$SCRIPT_DIR/backend-image-rescue-lib.sh
+HEALTH_LIBRARY=$SCRIPT_DIR/backend-runtime-health-lib.sh
 FIXTURE=$(mktemp -d "${TMPDIR:-/tmp}/backend-image-rescue-migrate.XXXXXX")
 trap 'rm -rf "$FIXTURE"' EXIT
 
@@ -93,15 +94,18 @@ fake_compose() {
 }
 
 compose_image_name() { printf '%s-%s:latest\n' "$PROJECT" "$1"; }
-verify_backend_with_retry() {
-  printf 'verify-backend\t%s\n' "$1" >> "$EVENT_LOG"
-  [[ ${FAKE_VERIFY_STATUS:-0} == 0 ]]
-}
 marker_value() { :; }
 COMPOSE=(fake_compose)
 
 # shellcheck source=ops/deploy/backend-image-rescue-lib.sh
 source "$LIBRARY"
+# shellcheck source=ops/deploy/backend-runtime-health-lib.sh
+source "$HEALTH_LIBRARY"
+
+verify_backend_with_retry() {
+  printf 'verify-backend\t%s\n' "$1" >> "$EVENT_LOG"
+  [[ ${FAKE_VERIFY_STATUS:-0} == 0 ]]
+}
 
 reset_case() {
   STATE=$FIXTURE/$1/state

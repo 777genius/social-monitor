@@ -601,11 +601,8 @@ backend_image_rescue_pin_running_container() {
   local rescue_tag=$3
   local source_kind_name=$4
   local image_id_name=$5
-  local allow_legacy_reconstruction=${6:-true}
   local recorded_id inspected_id reconstructed_id
 
-  [[ $allow_legacy_reconstruction == true || \
-     $allow_legacy_reconstruction == false ]] || return 1
   backend_image_rescue_verify_running_container "$container" || return 1
   recorded_id=$(docker inspect "$container" --format '{{.Image}}' 2>/dev/null) || return 1
   [[ $recorded_id =~ ^sha256:[0-9a-f]{64}$ ]] || return 1
@@ -618,7 +615,6 @@ backend_image_rescue_pin_running_container() {
     return 0
   fi
 
-  [[ $allow_legacy_reconstruction == true ]] || return 1
   # The recorded object is gone, so preserve only the paused root filesystem.
   # Rebuild metadata from a reviewed, service-specific config with no Env.
   backend_image_rescue_reconstruct_running_container \
@@ -627,32 +623,6 @@ backend_image_rescue_pin_running_container() {
   [[ $reconstructed_id =~ ^sha256:[0-9a-f]{64}$ ]] || return 1
   printf -v "$source_kind_name" '%s' container-export-import
   printf -v "$image_id_name" '%s' "$reconstructed_id"
-}
-
-backend_image_rescue_pin_migrate_from_api_container() {
-  local rescue_tag=$1
-  local source_kind_name=$2
-  local source_ref_name=$3
-  local image_id_name=$4
-  local migrate_containers api_container api_source_kind api_image_id
-
-  # Invariant: api and migrate share the reviewed SERVICE=api build image;
-  # their Compose commands differ. Rescue only the exact immutable .Image from
-  # one verified api container, never the mutable api Compose tag.
-  migrate_containers=$(
-    "${COMPOSE[@]}" --profile app --profile daily ps -q migrate
-  ) || return 1
-  [[ -z $migrate_containers ]] || return 1
-  api_container=$(backend_image_rescue_compose_container_id api) || return 1
-  verify_backend_with_retry api || return 1
-  [[ $(backend_image_rescue_compose_container_id api) == "$api_container" ]] || return 1
-  backend_image_rescue_pin_running_container \
-    api "$api_container" "$rescue_tag" api_source_kind api_image_id false || return 1
-  [[ $api_source_kind == running-image ]] || return 1
-  [[ $(backend_image_rescue_compose_container_id api) == "$api_container" ]] || return 1
-  printf -v "$source_kind_name" '%s' "$api_source_kind"
-  printf -v "$source_ref_name" '%s' "$api_container"
-  printf -v "$image_id_name" '%s' "$api_image_id"
 }
 
 backend_image_rescue_pin_service() {
@@ -684,17 +654,12 @@ backend_image_rescue_pin_service() {
       [[ $policy != recreate ]] || return 1
       compose_tag=$(compose_image_name "$service")
     fi
-    if pinned_id=$(backend_image_rescue_image_id "$compose_tag"); then
-      [[ $pinned_id =~ ^sha256:[0-9a-f]{64}$ ]] || return 1
-      docker image tag "$compose_tag" "$rescue_tag" >/dev/null || return 1
-      source_kind_value=compose-tag
-      source_ref_value=$compose_tag
-      image_id_value=$pinned_id
-    else
-      [[ $service == migrate && $policy == tag-only-migrate ]] || return 1
-      backend_image_rescue_pin_migrate_from_api_container \
-        "$rescue_tag" source_kind_value source_ref_value image_id_value || return 1
-    fi
+    pinned_id=$(backend_image_rescue_image_id "$compose_tag") || return 1
+    [[ $pinned_id =~ ^sha256:[0-9a-f]{64}$ ]] || return 1
+    docker image tag "$compose_tag" "$rescue_tag" >/dev/null || return 1
+    source_kind_value=compose-tag
+    source_ref_value=$compose_tag
+    image_id_value=$pinned_id
   fi
   pinned_id=$(backend_image_rescue_image_id "$rescue_tag") || return 1
   [[ $pinned_id == "$image_id_value" ]] || return 1
