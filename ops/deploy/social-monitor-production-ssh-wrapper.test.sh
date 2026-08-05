@@ -231,7 +231,10 @@ assert_non_v4_stdin_is_sealed() {
     bash "$FIXTURE/current-wrapper.sh" <<< "$AUTHORIZED_STDIN_RECORD"
   grep -Fx 'sudo-clean' "$EVENT_LOG" >/dev/null
   grep -Fx "ordinary-probe-stdin-eof:$action" "$EVENT_LOG" >/dev/null
-  ! grep -F 'authorized-stdin' "$EVENT_LOG" >/dev/null
+  if grep -F 'authorized-stdin' "$EVENT_LOG" >/dev/null; then
+    printf 'unexpected authorized stdin record for %s\n' "$action" >&2
+    exit 1
+  fi
   [[ $(wc -l < "$EVENT_LOG") == 2 ]]
 }
 
