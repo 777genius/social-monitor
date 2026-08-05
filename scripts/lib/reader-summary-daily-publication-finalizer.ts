@@ -20,7 +20,10 @@ import {
   normalizeOpenAiReaderSummaryDraft,
 } from "@social-monitor/summary/adapters/model/openai-responses-reader-summary-draft-normalizer";
 import { currentReaderSummaryPromptRelease } from "@social-monitor/summary/adapters/model/openai-responses-reader-summary-prompt";
-import type { VerifiedReaderSummaryExecutionAttestationSink } from "@social-monitor/summary/adapters/model/reader-summary-execution-attestation";
+import type {
+  VerifiedReaderSummaryExecutionAttestation,
+  VerifiedReaderSummaryExecutionAttestationSink,
+} from "@social-monitor/summary/adapters/model/reader-summary-execution-attestation";
 import { StoryRankingMetricsRecorder } from "@social-monitor/summary/adapters/metrics/story-ranking-metrics.recorder";
 import { PrismaReaderSummaryGitHubProjectionReader } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-github-projection.reader";
 import type { ReaderSummaryDailyCanonicalPublication } from "@social-monitor/summary/ports/reader-summary-daily-execution-cursor.port";
@@ -304,29 +307,24 @@ const createReaderSummaryDailyPersistedResponseModel = (input: {
   readonly attestationSink: VerifiedReaderSummaryExecutionAttestationSink;
   readonly expectedOutputKind?: "structured_output" | "output_text";
 }): ReaderSummaryModelPort => {
-  const responseBytes = input.expectedOutputKind === "output_text"
-    ? verifiedOutputTextBytes(input)
-    : Buffer.from(input.responseBytes);
+  const outputKind = input.expectedOutputKind ?? "structured_output";
+  const outputTextBytes = outputKind === "output_text"
+    ? strictOutputTextBytes(input.responseBytes)
+    : undefined;
+  const receiptAttestation = outputTextBytes === undefined
+    ? undefined
+    : deriveReaderSummaryDailyCanonicalRecoveryExecutionAttestation({
+      modelJobIdentity: input.modelJobIdentity,
+      requestedUtcDate: input.requestedUtcDate,
+      sourceAuthoritySha256: input.sourceAuthoritySha256,
+      responseBytes: outputTextBytes,
+      receiptBytes: input.receiptBytes,
+    });
+  const responseBytes = outputTextBytes ?? Buffer.from(input.responseBytes);
   const response = parseRecord(responseBytes, "model response");
-  const receipt = parseRecord(input.receiptBytes, "model receipt");
-  const attestation = record(receipt.attestation);
-  if (
-    receipt.schemaVersion !== 1 ||
-    receipt.modelJobIdentity !== input.modelJobIdentity ||
-    receipt.requestedUtcDate !== input.requestedUtcDate ||
-    receipt.sourceAuthoritySha256 !== input.sourceAuthoritySha256 ||
-    receipt.responseSha256 !== sha256(responseBytes) ||
-    attestation === null ||
-    attestation.provider !== "codex" ||
-    attestation.model !== "gpt-5.6-sol" ||
-    attestation.reasoningEffort !== "xhigh" ||
-    attestation.runtimeEngine !== "subscription-runtime-cli" ||
-    attestation.selectedOutputKind !==
-      (input.expectedOutputKind ?? "structured_output") ||
-    attestation.selectedOutputSha256 !== receipt.responseSha256
-  ) {
-    throw new Error("Daily persisted model receipt is invalid");
-  }
+  const structuredAttestation = receiptAttestation === undefined
+    ? verifiedStructuredOutputAttestation(input, responseBytes)
+    : undefined;
   let generated = false;
   const route: ReaderSummaryModelRoute = {
     provider: "agent-runtime",
@@ -354,14 +352,20 @@ const createReaderSummaryDailyPersistedResponseModel = (input: {
         estimate(),
         "reader_summary.eval.mvp.v1",
       );
-      await input.attestationSink.record({
-        taskRole: "summary",
-        attempt: "persisted_daily_response",
-        normalizedOutputSha256: canonicalJsonSha256(draft),
-        attestation: attestation as Parameters<
-          VerifiedReaderSummaryExecutionAttestationSink["record"]
-        >[0]["attestation"],
-      });
+      await input.attestationSink.record(
+        receiptAttestation ?? {
+          taskRole: "summary",
+          attempt: "persisted_daily_response",
+          normalizedOutputSha256: readerSummaryDailyPersistedResponseSha256({
+            outputKind,
+            responseBytes,
+            draft,
+          }),
+          attestation: structuredAttestation as Parameters<
+            VerifiedReaderSummaryExecutionAttestationSink["record"]
+          >[0]["attestation"],
+        },
+      );
       return { route: selectedRoute, draft };
     },
     validateRawProviderResponse: (attempt: ProviderReaderSummaryAttempt) => {
@@ -391,26 +395,81 @@ const createReaderSummaryDailyPersistedResponseModel = (input: {
   };
 };
 
-const verifiedOutputTextBytes = (input: {
+export const readerSummaryDailyPersistedResponseSha256 = (input: {
+  readonly outputKind: "structured_output" | "output_text";
   readonly responseBytes: Buffer;
-  readonly receiptBytes: Buffer;
-  readonly modelJobIdentity: string;
-  readonly requestedUtcDate: string;
-  readonly sourceAuthoritySha256: string;
-}): Buffer => {
-  const bytes = parseStrictDailyOutputText(
-    Buffer.from(input.responseBytes).toString("utf8"),
-  );
-  if (!bytes.equals(input.responseBytes)) {
-    throw new Error("Daily persisted output_text bytes are not strict canonical JSON");
-  }
-  verifyReaderSummaryDailyCanonicalRecoveryReceipt({
+  readonly draft: unknown;
+}): string => input.outputKind === "output_text"
+  ? sha256(strictOutputTextBytes(input.responseBytes))
+  : canonicalJsonSha256(input.draft);
+
+/**
+ * Only a verified persisted output_text receipt may produce a public
+ * execution attestation. Its response digest binds strict canonical bytes,
+ * rather than a later normalized draft projection.
+ */
+export const deriveReaderSummaryDailyCanonicalRecoveryExecutionAttestation = (
+  input: {
+    readonly modelJobIdentity: string;
+    readonly requestedUtcDate: string;
+    readonly sourceAuthoritySha256: string;
+    readonly responseBytes: Buffer;
+    readonly receiptBytes: Buffer;
+  },
+): VerifiedReaderSummaryExecutionAttestation => {
+  const responseBytes = strictOutputTextBytes(input.responseBytes);
+  const receipt = verifyReaderSummaryDailyCanonicalRecoveryReceipt({
     modelJobIdentity: input.modelJobIdentity,
     requestedUtcDate: input.requestedUtcDate,
     sourceAuthoritySha256: input.sourceAuthoritySha256,
-    responseBytes: bytes,
+    responseBytes,
     receiptBytes: input.receiptBytes,
   });
+  return Object.freeze({
+    taskRole: "summary" as const,
+    attempt: "persisted_daily_response" as const,
+    normalizedOutputSha256: receipt.responseSha256,
+    attestation: receipt.attestation,
+  });
+};
+
+const verifiedStructuredOutputAttestation = (
+  input: {
+    readonly receiptBytes: Buffer;
+    readonly modelJobIdentity: string;
+    readonly requestedUtcDate: string;
+    readonly sourceAuthoritySha256: string;
+  },
+  responseBytes: Buffer,
+): Record<string, unknown> => {
+  const receipt = parseRecord(input.receiptBytes, "model receipt");
+  const attestation = record(receipt.attestation);
+  if (
+    receipt.schemaVersion !== 1 ||
+    receipt.modelJobIdentity !== input.modelJobIdentity ||
+    receipt.requestedUtcDate !== input.requestedUtcDate ||
+    receipt.sourceAuthoritySha256 !== input.sourceAuthoritySha256 ||
+    receipt.responseSha256 !== sha256(responseBytes) ||
+    attestation === null ||
+    attestation.provider !== "codex" ||
+    attestation.model !== "gpt-5.6-sol" ||
+    attestation.reasoningEffort !== "xhigh" ||
+    attestation.runtimeEngine !== "subscription-runtime-cli" ||
+    attestation.selectedOutputKind !== "structured_output" ||
+    attestation.selectedOutputSha256 !== receipt.responseSha256
+  ) {
+    throw new Error("Daily persisted model receipt is invalid");
+  }
+  return attestation;
+};
+
+const strictOutputTextBytes = (responseBytes: Buffer): Buffer => {
+  const bytes = parseStrictDailyOutputText(
+    Buffer.from(responseBytes).toString("utf8"),
+  );
+  if (!bytes.equals(responseBytes)) {
+    throw new Error("Daily persisted output_text bytes are not strict canonical JSON");
+  }
   return bytes;
 };
 

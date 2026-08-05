@@ -12,6 +12,7 @@ import { join, resolve } from "node:path";
 import { canonicalJsonSha256 } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
 import { defaultPostgresRuntimePoolConfig } from "@social-monitor/platform-persistence";
 import { GrpcAgentRuntimeClient } from "@social-monitor/summary/adapters/model/grpc-agent-runtime-client";
+import type { VerifiedReaderSummaryExecutionAttestation } from "@social-monitor/summary/adapters/model/reader-summary-execution-attestation";
 import { PrismaReaderSummaryArtifactRepository } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-artifact.repository";
 import type { PrismaReaderSummaryClient } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-client";
 import { PrismaReaderSummaryJobRepository } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-job.repository";
@@ -49,6 +50,7 @@ import { GrpcReaderSummaryDailyCanonicalRecoveryRuntime } from "./lib/grpc-reade
 import { DurableReaderSummaryExecutionAttestationCapture } from "./lib/reader-summary-execution-attestation-capture";
 import {
   createReaderSummaryDailyPublicationExecutionWiring,
+  deriveReaderSummaryDailyCanonicalRecoveryExecutionAttestation,
   type ReaderSummaryDailyReplayInput,
 } from "./lib/reader-summary-daily-publication-finalizer";
 import {
@@ -174,6 +176,14 @@ const capture = async (
   const operationClock: Clock = { now: () => new Date(completedAt) };
   const executionAttestations = new DurableReaderSummaryExecutionAttestationCapture();
   const replay = replayInput(input);
+  const receiptAttestation =
+    deriveReaderSummaryDailyCanonicalRecoveryExecutionAttestation({
+      modelJobIdentity: replay.modelJobIdentity,
+      requestedUtcDate: replay.authority.requestedUtcDate,
+      sourceAuthoritySha256: replay.authoritySha256,
+      responseBytes: replay.responseBytes,
+      receiptBytes: replay.receiptBytes,
+    });
   const frozenObservedThrough = createFrozenObservedThroughExecution({
     completedAt,
     ingestionCutoff: replay.ingestionCutoff,
@@ -266,6 +276,30 @@ const capture = async (
     status: "fresh",
     checkedAt: operationClock.now(),
   });
+  const result = {
+    readerSummaryJobId: jobId,
+    readerSummaryId: artifactId,
+    status: execution.value.status,
+    headline: frontendArtifact.headline,
+    selectedFeedItemCount: frontendArtifact.coverage.selectedFeedItemCount,
+    topReadCount: frontendArtifact.coverage.topReadCount,
+    citationCount: frontendArtifact.coverage.citationCount,
+    providerCount: frontendArtifact.coverage.providerCount,
+    topProviderKeys: frontendArtifact.coverage.topProviderKeys,
+    qualityFlags: frontendArtifact.qualityFlags,
+  };
+  assertReaderSummaryDailyCanonicalRecoveryResultShape(result);
+  const executionEvidence =
+    readerSummaryDailyCanonicalRecoveryPublicExecutionEvidence({
+      requestCreated: request.value.created,
+      executionStatus: result.status,
+      capturedCommandCount: queue.count,
+      transientAttestations: executionAttestations.all(),
+      receiptAttestation,
+    });
+  const executionAttestationSetSha256 = canonicalJsonSha256(
+    executionEvidence.executionAttestations,
+  );
   const evidenceRecord = {
     schemaVersion: 1,
     artifactId: "durable-reader-summary-postgres-evidence-v1",
@@ -289,23 +323,12 @@ const capture = async (
     },
     period: frontendArtifact.period,
     inputInventory: wiring.inventory,
-    queue: { capturedCommandCount: queue.count },
-    result: {
-      readerSummaryJobId: jobId,
-      readerSummaryId: artifactId,
-      status: execution.value.status,
-      headline: frontendArtifact.headline,
-      selectedFeedItemCount: frontendArtifact.coverage.selectedFeedItemCount,
-      topReadCount: frontendArtifact.coverage.topReadCount,
-      citationCount: frontendArtifact.coverage.citationCount,
-      providerCount: frontendArtifact.coverage.providerCount,
-      topProviderKeys: frontendArtifact.coverage.topProviderKeys,
-      qualityFlags: frontendArtifact.qualityFlags,
-    },
-    executionAttestations: executionAttestations.all(),
+    result,
+    ...executionEvidence,
     durableReadback: {
       summaryContentSha256: canonicalJsonSha256(frontendArtifact.content),
       topicMapSha256: canonicalJsonSha256(frontendArtifact.content.topicMap),
+      executionAttestationSetSha256,
     },
     redaction: {
       secretsIncluded: false,
@@ -362,6 +385,75 @@ const capture = async (
     publicEvidenceBytes: evidence,
     publicFrontendBytes: frontend,
   };
+};
+
+export const assertReaderSummaryDailyCanonicalRecoveryResultShape = (input: {
+  readonly status: string;
+  readonly selectedFeedItemCount: number;
+  readonly qualityFlags: readonly string[];
+}): void => {
+  const hasNoSignal = input.qualityFlags.includes("no_signal");
+  if (input.status === "completed") {
+    if (!Number.isInteger(input.selectedFeedItemCount) ||
+        input.selectedFeedItemCount < 1 || hasNoSignal) {
+      throw new Error("Daily canonical recovery completed result shape is invalid");
+    }
+    return;
+  }
+  if (input.status === "no_signal") {
+    if (input.selectedFeedItemCount !== 0 || !hasNoSignal) {
+      throw new Error("Daily canonical recovery no_signal result shape is invalid");
+    }
+    return;
+  }
+  throw new Error("Daily canonical recovery did not reach a terminal signal state");
+};
+
+/**
+ * Public V4 evidence is receipt-derived. The in-process capture is retained
+ * only as a fresh-path admission check and can never change replay bytes.
+ */
+export const readerSummaryDailyCanonicalRecoveryPublicExecutionEvidence = (
+  input: Readonly<{
+    requestCreated: boolean;
+    executionStatus: string;
+    capturedCommandCount: number;
+    transientAttestations: readonly VerifiedReaderSummaryExecutionAttestation[];
+    receiptAttestation: VerifiedReaderSummaryExecutionAttestation;
+  }>,
+): Readonly<{
+  executionAttestations: readonly VerifiedReaderSummaryExecutionAttestation[];
+}> => {
+  if (
+    input.executionStatus !== "completed" &&
+    input.executionStatus !== "no_signal"
+  ) {
+    throw new Error("Daily canonical recovery did not reach a terminal signal state");
+  }
+  const durableAttestations = Object.freeze([
+    Object.freeze({
+      ...input.receiptAttestation,
+      attestation: Object.freeze({ ...input.receiptAttestation.attestation }),
+    }),
+  ]);
+  if (input.requestCreated) {
+    if (input.capturedCommandCount !== 1) {
+      throw new Error("Daily canonical recovery fresh queue admission diverged");
+    }
+    if (!canonicalJsonBytes(input.transientAttestations).equals(
+      canonicalJsonBytes(durableAttestations),
+    )) {
+      throw new Error("Daily canonical recovery fresh attestation admission diverged");
+    }
+  } else {
+    if (input.capturedCommandCount !== 0) {
+      throw new Error("Daily canonical recovery replay queue admission diverged");
+    }
+    if (input.transientAttestations.length !== 0) {
+      throw new Error("Daily canonical recovery replay retained ephemeral admission state");
+    }
+  }
+  return Object.freeze({ executionAttestations: durableAttestations });
 };
 
 /**
