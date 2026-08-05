@@ -670,7 +670,8 @@ const main = async (): Promise<void> => {
         const recordedPublications: CanonicalRecoveryPublication[] = [];
         let pendingFinalizeReadback = false;
         let deferredReadCount = 0;
-        let realReadCount = 0;
+        let realFinalizedReadCount = 0;
+        let realTerminalReadCount = 0;
         const immutablePublication = (
           publication: CanonicalRecoveryPublication,
         ): CanonicalRecoveryPublication => Object.freeze({ ...publication });
@@ -714,12 +715,29 @@ const main = async (): Promise<void> => {
               return Object.freeze(recordedPublications.map(immutablePublication));
             }
             const actual = await baseAuthority.readFinalized(input);
-            realReadCount += 1;
+            realFinalizedReadCount += 1;
             assert(
               canonicalJsonBytes(actual).equals(
                 canonicalJsonBytes(recordedPublications),
               ),
               "terminal authority readback did not byte-match ordered finalizer publications",
+            );
+            return actual;
+          },
+          readTerminals: async (input) => {
+            const actual = await baseAuthority.readTerminals(input);
+            realTerminalReadCount += 1;
+            const expected = Object.freeze(
+              recordedPublications.map((publication) =>
+                Object.freeze({
+                  kind: "finalized" as const,
+                  publication: immutablePublication(publication),
+                }),
+              ),
+            );
+            assert(
+              canonicalJsonBytes(actual).equals(canonicalJsonBytes(expected)),
+              "terminal authority terminal readback diverged from ordered finalized terminal publications",
             );
             return actual;
           },
@@ -867,8 +885,12 @@ const main = async (): Promise<void> => {
             `checker-only batching must defer exactly 7 post-replay executor readbacks; received ${deferredReadCount}`,
           );
           assert(
-            realReadCount === 2,
-            `checker-only batching must perform exactly 2 real terminal authority readbacks; received ${realReadCount}`,
+            realFinalizedReadCount === 0,
+            `checker-only batching must perform exactly 0 real finalized authority readbacks; received ${realFinalizedReadCount}`,
+          );
+          assert(
+            realTerminalReadCount === 2,
+            `checker-only batching must perform exactly 2 real terminal authority readbacks; received ${realTerminalReadCount}`,
           );
         } finally {
           firstTerminal.release();
