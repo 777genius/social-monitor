@@ -23,6 +23,10 @@ AUTH_CHANGED_MARKER=$ROOT/runtime/auth-account-changed
 SHA=1234567890abcdef1234567890abcdef12345678
 FAKE_GIT_HEAD=$SHA
 FINAL_MODEL_OVERLAY=$REPO/ops/deploy/production-runtime/compose.agent-runtime-model.yml
+DAILY_CANONICAL_RECOVERY_CONFIRMATION=reader-summary-daily-canonical-recovery-v4
+MODEL_JOB_IDENTITY=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+AUTHORITY_SHA256=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+AUTHORIZED_STDIN_RECORD="$DAILY_CANONICAL_RECOVERY_CONFIRMATION 2026-07-23 $MODEL_JOB_IDENTITY $AUTHORITY_SHA256"
 
 install -d "$REPO/ops/deploy" "$STATE" "$POSTGRES_RUNTIME_CURRENT" \
   "$ROOT/runtime/subscription-runtime/sessions" "$ROOT/backups"
@@ -122,7 +126,12 @@ install() {
 
 unset READER_SUMMARY_PRODUCTION_RECOVERY_SOURCE_DATABASE_URL
 export ASSERT_AUTH_LOCKS_HELD=1
-run_reader_summary_daily_runner_maintenance reader-summary-recover-missing-days
+# Empty/EOF stdin is the ordinary ambiguity probe even when a caller injects
+# the retired authorization environment names.
+READER_SUMMARY_DAILY_MAINTENANCE_AUTHORIZED_UTC_DATE=unexpected \
+READER_SUMMARY_DAILY_MAINTENANCE_MODEL_JOB_IDENTITY=unexpected \
+READER_SUMMARY_DAILY_MAINTENANCE_AUTHORITY_SHA256=unexpected \
+  run_reader_summary_daily_runner_maintenance reader-summary-recover-missing-days < /dev/null
 ASSERT_WEEKLY_LOCKS_HELD=1
 run_reader_summary_daily_runner_maintenance reader-summary-weekly-run
 unset ASSERT_WEEKLY_LOCKS_HELD ASSERT_AUTH_LOCKS_HELD
@@ -154,14 +163,12 @@ mapfile -t compose_commands < <(grep -v '^source-env=' "$COMPOSE_LOG")
 : > "$ORDER_LOG"
 printf 'old subscription session\n' > "$ROOT/runtime/subscription-runtime/sessions/session"
 export AUTH_ACCOUNT_CHANGED=1
-READER_SUMMARY_DAILY_MAINTENANCE_AUTHORIZED_UTC_DATE=2026-07-23 \
-READER_SUMMARY_DAILY_MAINTENANCE_MODEL_JOB_IDENTITY=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
-READER_SUMMARY_DAILY_MAINTENANCE_AUTHORITY_SHA256=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb \
+printf '%s\n' "$AUTHORIZED_STDIN_RECORD" | \
   run_reader_summary_daily_runner_maintenance reader-summary-recover-missing-days
 unset AUTH_ACCOUNT_CHANGED
-authorized_recovery_command='--profile daily run --rm --no-deps -e READER_SUMMARY_DAILY_TENANT_ID=00000000-0000-7000-8000-000000000901 -e READER_SUMMARY_DAILY_WORKSPACE_ID=00000000-0000-7000-8000-000000000902 -e READER_SUMMARY_DAILY_FIRST_UNRESOLVED_UTC_DATE=2026-07-23 -e READER_SUMMARY_DAILY_PUBLIC_DIRECTORY=/var/lib/social-monitor/artifacts/reports -e READER_SUMMARY_DAILY_AMBIGUITY_ORIGINAL_MODEL_JOB_IDENTITY=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa -e READER_SUMMARY_DAILY_AMBIGUITY_SOURCE_AUTHORITY_SHA256=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb daily-runner sh -lc set -eu; npm run prepare:reader-summary-production-recovery-gap-authority; npm run authorize:reader-summary-daily-canonical-recovery-ambiguity-retry; npm run run:reader-summary-daily-canonical-recovery'
+authorized_recovery_command="--profile daily run --rm --no-deps -e READER_SUMMARY_DAILY_TENANT_ID=00000000-0000-7000-8000-000000000901 -e READER_SUMMARY_DAILY_WORKSPACE_ID=00000000-0000-7000-8000-000000000902 -e READER_SUMMARY_DAILY_FIRST_UNRESOLVED_UTC_DATE=2026-07-23 -e READER_SUMMARY_DAILY_PUBLIC_DIRECTORY=/var/lib/social-monitor/artifacts/reports -e READER_SUMMARY_DAILY_AMBIGUITY_ORIGINAL_MODEL_JOB_IDENTITY=$MODEL_JOB_IDENTITY -e READER_SUMMARY_DAILY_AMBIGUITY_SOURCE_AUTHORITY_SHA256=$AUTHORITY_SHA256 daily-runner sh -lc set -eu; npm run prepare:reader-summary-production-recovery-gap-authority; npm run authorize:reader-summary-daily-canonical-recovery-ambiguity-retry; npm run run:reader-summary-daily-canonical-recovery"
 authorized_recovery_command="-f $FINAL_MODEL_OVERLAY $authorized_recovery_command"
-bounded_command='--profile daily run --rm --no-deps -e READER_SUMMARY_DAILY_TENANT_ID=00000000-0000-7000-8000-000000000901 -e READER_SUMMARY_DAILY_WORKSPACE_ID=00000000-0000-7000-8000-000000000902 -e READER_SUMMARY_DAILY_FIRST_UNRESOLVED_UTC_DATE=2026-07-31 -e READER_SUMMARY_DAILY_PUBLIC_DIRECTORY=/var/lib/social-monitor/artifacts/reports -e READER_SUMMARY_DAILY_COLLECTION_ARTIFACT_DIRECTORY=/var/lib/social-monitor/artifacts/reader-summary-daily-collection -e READER_SUMMARY_DAILY_MAINTENANCE_AUTHORIZED_UTC_DATE=2026-07-23 -e READER_SUMMARY_DAILY_MAINTENANCE_MODEL_JOB_IDENTITY=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa -e READER_SUMMARY_DAILY_MAINTENANCE_AUTHORITY_SHA256=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb daily-runner sh -lc set -eu; node scripts/run-with-timeout.mjs --timeout-ms 19800000 --node-options --max-old-space-size=768 -- ts-node -r tsconfig-paths/register scripts/run-reader-summary-daily-bounded-maintenance.ts'
+bounded_command="--profile daily run --rm --no-deps -e READER_SUMMARY_DAILY_TENANT_ID=00000000-0000-7000-8000-000000000901 -e READER_SUMMARY_DAILY_WORKSPACE_ID=00000000-0000-7000-8000-000000000902 -e READER_SUMMARY_DAILY_FIRST_UNRESOLVED_UTC_DATE=2026-07-31 -e READER_SUMMARY_DAILY_PUBLIC_DIRECTORY=/var/lib/social-monitor/artifacts/reports -e READER_SUMMARY_DAILY_COLLECTION_ARTIFACT_DIRECTORY=/var/lib/social-monitor/artifacts/reader-summary-daily-collection -e READER_SUMMARY_DAILY_MAINTENANCE_AUTHORIZED_UTC_DATE=2026-07-23 -e READER_SUMMARY_DAILY_MAINTENANCE_MODEL_JOB_IDENTITY=$MODEL_JOB_IDENTITY -e READER_SUMMARY_DAILY_MAINTENANCE_AUTHORITY_SHA256=$AUTHORITY_SHA256 daily-runner sh -lc set -eu; node scripts/run-with-timeout.mjs --timeout-ms 19800000 --node-options --max-old-space-size=768 -- ts-node -r tsconfig-paths/register scripts/run-reader-summary-daily-bounded-maintenance.ts"
 bounded_command="-f $FINAL_MODEL_OVERLAY $bounded_command"
 restart_command="-f $FINAL_MODEL_OVERLAY restart agent-runtime"
 mapfile -t bounded_commands < <(grep -v '^source-env=' "$COMPOSE_LOG")
@@ -180,16 +187,81 @@ mapfile -t bounded_execution_order < "$ORDER_LOG"
 [[ -d $ROOT/runtime/subscription-runtime/sessions ]]
 compgen -G "$ROOT/backups/subscription-runtime-sessions.*/session" >/dev/null
 
+assert_stdin_authorization_rejected() {
+  local authorization_record=$1 status
+  : > "$COMPOSE_LOG"
+  : > "$AUTH_LOG"
+  : > "$ORDER_LOG"
+  set +e
+  printf '%s\n' "$authorization_record" | \
+    run_reader_summary_daily_runner_maintenance reader-summary-recover-missing-days \
+      >/dev/null 2>&1
+  status=$?
+  set -e
+  ((status != 0))
+  [[ ! -s $COMPOSE_LOG ]]
+  [[ ! -s $AUTH_LOG ]]
+  [[ ! -s $ORDER_LOG ]]
+}
+
+assert_stdin_authorization_rejected \
+  "$DAILY_CANONICAL_RECOVERY_CONFIRMATION 2026-07-23 $MODEL_JOB_IDENTITY"
+assert_stdin_authorization_rejected \
+  "$DAILY_CANONICAL_RECOVERY_CONFIRMATION 2026-07-23 $MODEL_JOB_IDENTITY $AUTHORITY_SHA256 extra"
+assert_stdin_authorization_rejected \
+  "$DAILY_CANONICAL_RECOVERY_CONFIRMATION 2026-07-23 short $AUTHORITY_SHA256"
+assert_stdin_authorization_rejected \
+  "$DAILY_CANONICAL_RECOVERY_CONFIRMATION 2026-07-23 ${MODEL_JOB_IDENTITY^^} $AUTHORITY_SHA256"
+assert_stdin_authorization_rejected \
+  "$DAILY_CANONICAL_RECOVERY_CONFIRMATION 2026-07-23 $MODEL_JOB_IDENTITY ${AUTHORITY_SHA256^^}"
+assert_stdin_authorization_rejected \
+  "wrong-reader-summary-daily-canonical-recovery-v4 2026-07-23 $MODEL_JOB_IDENTITY $AUTHORITY_SHA256"
+assert_stdin_authorization_rejected \
+  "$DAILY_CANONICAL_RECOVERY_CONFIRMATION 2026-07-24 $MODEL_JOB_IDENTITY $AUTHORITY_SHA256"
+assert_stdin_authorization_rejected \
+  "$DAILY_CANONICAL_RECOVERY_CONFIRMATION 2026-07-23  $MODEL_JOB_IDENTITY $AUTHORITY_SHA256"
+
 : > "$COMPOSE_LOG"
+: > "$AUTH_LOG"
+: > "$ORDER_LOG"
 set +e
-READER_SUMMARY_DAILY_MAINTENANCE_AUTHORIZED_UTC_DATE=2026-07-24 \
-READER_SUMMARY_DAILY_MAINTENANCE_MODEL_JOB_IDENTITY=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
-READER_SUMMARY_DAILY_MAINTENANCE_AUTHORITY_SHA256=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb \
-  run_reader_summary_daily_runner_maintenance reader-summary-recover-missing-days >/dev/null 2>&1
+printf '%s' "$AUTHORIZED_STDIN_RECORD" | \
+  run_reader_summary_daily_runner_maintenance reader-summary-recover-missing-days \
+    >/dev/null 2>&1
 status=$?
 set -e
-[[ $status == 1 ]]
+((status != 0))
 [[ ! -s $COMPOSE_LOG ]]
+[[ ! -s $AUTH_LOG ]]
+[[ ! -s $ORDER_LOG ]]
+
+: > "$COMPOSE_LOG"
+: > "$AUTH_LOG"
+: > "$ORDER_LOG"
+set +e
+printf '%s\0' "$AUTHORIZED_STDIN_RECORD" | \
+  run_reader_summary_daily_runner_maintenance reader-summary-recover-missing-days \
+    >/dev/null 2>&1
+status=$?
+set -e
+((status != 0))
+[[ ! -s $COMPOSE_LOG ]]
+[[ ! -s $AUTH_LOG ]]
+[[ ! -s $ORDER_LOG ]]
+
+: > "$COMPOSE_LOG"
+: > "$AUTH_LOG"
+: > "$ORDER_LOG"
+set +e
+printf '%s\nunexpected\n' "$AUTHORIZED_STDIN_RECORD" | \
+  run_reader_summary_daily_runner_maintenance reader-summary-recover-missing-days \
+    >/dev/null 2>&1
+status=$?
+set -e
+((status != 0))
+[[ ! -s $COMPOSE_LOG ]]
+[[ ! -s $AUTH_LOG ]]
+[[ ! -s $ORDER_LOG ]]
 
 : > "$COMPOSE_LOG"
 printf 'old subscription session\n' > "$ROOT/runtime/subscription-runtime/sessions/session"
@@ -236,7 +308,8 @@ set -e
 : > "$COMPOSE_LOG"
 printf '%s\n' 89abcdef0123456789abcdef0123456789abcdef > "$POSTGRES_RUNTIME_CURRENT/READY"
 set +e
-run_reader_summary_daily_runner_maintenance reader-summary-recover-missing-days >/dev/null 2>&1
+run_reader_summary_daily_runner_maintenance reader-summary-recover-missing-days \
+  < /dev/null >/dev/null 2>&1
 status=$?
 set -e
 [[ $status == 1 ]]
@@ -246,7 +319,8 @@ printf '%s\n' "$SHA" > "$POSTGRES_RUNTIME_CURRENT/READY"
 : > "$COMPOSE_LOG"
 printf '%s\n' 89abcdef0123456789abcdef0123456789abcdef > "$STATE/backend.sha"
 set +e
-run_reader_summary_daily_runner_maintenance reader-summary-recover-missing-days >/dev/null 2>&1
+run_reader_summary_daily_runner_maintenance reader-summary-recover-missing-days \
+  < /dev/null >/dev/null 2>&1
 status=$?
 set -e
 [[ $status == 1 ]]
@@ -302,7 +376,7 @@ exec 7>&-
 : > "$COMPOSE_LOG"
 export FAKE_COMPOSE_FAIL=1
 set +e
-run_reader_summary_daily_runner_maintenance reader-summary-recover-missing-days
+run_reader_summary_daily_runner_maintenance reader-summary-recover-missing-days < /dev/null
 status=$?
 set -e
 [[ $status == 44 ]]
@@ -315,7 +389,8 @@ grep -Fx 'source-env=unset' "$COMPOSE_LOG" >/dev/null
 FAKE_GIT_HEAD=89abcdef0123456789abcdef0123456789abcdef
 : > "$COMPOSE_LOG"
 set +e
-run_reader_summary_daily_runner_maintenance reader-summary-recover-missing-days >/dev/null 2>&1
+run_reader_summary_daily_runner_maintenance reader-summary-recover-missing-days \
+  < /dev/null >/dev/null 2>&1
 status=$?
 set -e
 [[ $status == 1 ]]

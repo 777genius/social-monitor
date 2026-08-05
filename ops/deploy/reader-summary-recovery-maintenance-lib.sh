@@ -62,6 +62,57 @@ append_final_agent_runtime_model_overlay() {
   COMPOSE=("${reconciled_compose[@]}" -f "$final_model_overlay")
 }
 
+consume_reader_summary_daily_bounded_maintenance_authorization_from_stdin() {
+  local authorization_record=''
+  local confirmation authorized_utc_date model_job_identity authority_sha256 extra
+  local read_status
+  local -r required_confirmation=reader-summary-daily-canonical-recovery-v4
+  local -r required_authorized_utc_date=2026-07-23
+  local -r authorization_read_timeout_seconds=1
+  local expected_record_length maximum_record_characters
+
+  expected_record_length=$(( ${#required_confirmation} + 1 + \
+    ${#required_authorized_utc_date} + 1 + 64 + 1 + 64 ))
+  # NUL is the delimiter so Bash cannot silently discard it. The one-byte
+  # sentinel rejects a record that is longer than the canonical line plus LF.
+  maximum_record_characters=$(( expected_record_length + 2 ))
+  if IFS= read -r -t "$authorization_read_timeout_seconds" -d '' \
+      -n "$maximum_record_characters" authorization_record; then
+    read_status=0
+  else
+    read_status=$?
+  fi
+
+  # Ordinary ambiguity probes have an empty or EOF stdin. The finite read
+  # keeps an open SSH channel from delaying that pre-existing path forever.
+  if [[ -z $authorization_record ]] && \
+     (( read_status == 1 || read_status > 128 )); then
+    return 0
+  fi
+
+  [[ $read_status == 1 ]] || \
+    fail 'reader-summary daily bounded maintenance authorization is invalid'
+  [[ ${#authorization_record} == $(( expected_record_length + 1 )) ]] || \
+    fail 'reader-summary daily bounded maintenance authorization is invalid'
+  [[ $authorization_record == *$'\n' ]] || \
+    fail 'reader-summary daily bounded maintenance authorization is invalid'
+  authorization_record=${authorization_record%$'\n'}
+  [[ $authorization_record =~ ^reader-summary-daily-canonical-recovery-v4\ 2026-07-23\ [0-9a-f]{64}\ [0-9a-f]{64}$ ]] || \
+    fail 'reader-summary daily bounded maintenance authorization is invalid'
+  IFS=' ' read -r confirmation authorized_utc_date model_job_identity \
+    authority_sha256 extra <<< "$authorization_record"
+  [[ $confirmation == "$required_confirmation" && \
+     $authorized_utc_date == "$required_authorized_utc_date" && \
+     $model_job_identity =~ ^[0-9a-f]{64}$ && \
+     $authority_sha256 =~ ^[0-9a-f]{64}$ && \
+     -z ${extra:-} ]] || \
+    fail 'reader-summary daily bounded maintenance authorization is invalid'
+
+  READER_SUMMARY_DAILY_MAINTENANCE_AUTHORIZED_UTC_DATE=$authorized_utc_date
+  READER_SUMMARY_DAILY_MAINTENANCE_MODEL_JOB_IDENTITY=$model_job_identity
+  READER_SUMMARY_DAILY_MAINTENANCE_AUTHORITY_SHA256=$authority_sha256
+}
+
 has_reader_summary_daily_bounded_maintenance_authorization() {
   [[ -n ${READER_SUMMARY_DAILY_MAINTENANCE_AUTHORIZED_UTC_DATE:-} || \
      -n ${READER_SUMMARY_DAILY_MAINTENANCE_MODEL_JOB_IDENTITY:-} || \
@@ -142,10 +193,13 @@ run_reader_summary_daily_runner_maintenance() (
     reader-summary-recover-missing-days|reader-summary-weekly-run) ;;
     *) fail 'unknown reader-summary daily-runner maintenance action' ;;
   esac
-  if [[ $maintenance_action == reader-summary-recover-missing-days ]] && \
-     has_reader_summary_daily_bounded_maintenance_authorization; then
-    assert_reader_summary_daily_bounded_maintenance_authorization
-    run_bounded_maintenance=true
+  unset READER_SUMMARY_DAILY_MAINTENANCE_AUTHORIZED_UTC_DATE READER_SUMMARY_DAILY_MAINTENANCE_MODEL_JOB_IDENTITY READER_SUMMARY_DAILY_MAINTENANCE_AUTHORITY_SHA256
+  if [[ $maintenance_action == reader-summary-recover-missing-days ]]; then
+    consume_reader_summary_daily_bounded_maintenance_authorization_from_stdin
+    if has_reader_summary_daily_bounded_maintenance_authorization; then
+      assert_reader_summary_daily_bounded_maintenance_authorization
+      run_bounded_maintenance=true
+    fi
   fi
   acquire_daily_runner_maintenance_locks
   verify_daily_runner_maintenance_runtime

@@ -4,8 +4,8 @@ set -euo pipefail
 PATH=/usr/bin:/bin:/usr/sbin:/sbin
 ENTRYPOINT=/var/data/social-monitor/control/github-production-deploy.sh
 DAILY_CANONICAL_RECOVERY_CONFIRMATION=reader-summary-daily-canonical-recovery-v4
-DAILY_BOUNDED_MAINTENANCE_AUTHORIZED_UTC_DATE=2026-07-23
 
+unset original_command action sha confirmation model_job_identity authority_sha256 extra authorization_record
 original_command=${SSH_ORIGINAL_COMMAND:-}
 [[ $original_command != *$'\n'* && $original_command != *$'\r'* ]] || exit 64
 read -r action sha confirmation model_job_identity authority_sha256 extra <<< "$original_command"
@@ -17,17 +17,16 @@ if [[ $action == reader-summary-daily-canonical-recovery-v4 ]]; then
   [[ ${confirmation:-} == "$DAILY_CANONICAL_RECOVERY_CONFIRMATION" && \
      ${model_job_identity:-} =~ ^[0-9a-f]{64}$ && \
      ${authority_sha256:-} =~ ^[0-9a-f]{64}$ ]] || exit 64
-  # V4A4's installed entrypoint accepts only the pre-existing bounded action.
-  # Do not carry SSH_ORIGINAL_COMMAND across sudo: the entrypoint deliberately
-  # prefers it over argv when a sudo policy preserves the environment.
-  unset SSH_ORIGINAL_COMMAND
-  exec sudo -n \
-    READER_SUMMARY_DAILY_MAINTENANCE_AUTHORIZED_UTC_DATE="$DAILY_BOUNDED_MAINTENANCE_AUTHORIZED_UTC_DATE" \
-    READER_SUMMARY_DAILY_MAINTENANCE_MODEL_JOB_IDENTITY="$model_job_identity" \
-    READER_SUMMARY_DAILY_MAINTENANCE_AUTHORITY_SHA256="$authority_sha256" \
-    "$ENTRYPOINT" reader-summary-recover-missing-days "$sha"
+  # V4A4 accepts only the existing recovery action. Its one-shot stdin record
+  # carries the authorization without exposing it in sudo's environment/argv.
+  unset SSH_ORIGINAL_COMMAND authorization_record
+  unset READER_SUMMARY_DAILY_MAINTENANCE_AUTHORIZED_UTC_DATE READER_SUMMARY_DAILY_MAINTENANCE_MODEL_JOB_IDENTITY READER_SUMMARY_DAILY_MAINTENANCE_AUTHORITY_SHA256
+  authorization_record="$DAILY_CANONICAL_RECOVERY_CONFIRMATION 2026-07-23 $model_job_identity $authority_sha256"
+  exec sudo -n -- "$ENTRYPOINT" reader-summary-recover-missing-days "$sha" \
+    <<< "$authorization_record"
 fi
 [[ -z ${confirmation:-}${model_job_identity:-}${authority_sha256:-} ]] || exit 64
 
-unset SSH_ORIGINAL_COMMAND
-exec sudo -n "$ENTRYPOINT" "$action" "$sha"
+unset SSH_ORIGINAL_COMMAND authorization_record
+unset READER_SUMMARY_DAILY_MAINTENANCE_AUTHORIZED_UTC_DATE READER_SUMMARY_DAILY_MAINTENANCE_MODEL_JOB_IDENTITY READER_SUMMARY_DAILY_MAINTENANCE_AUTHORITY_SHA256
+exec sudo -n -- "$ENTRYPOINT" "$action" "$sha" </dev/null
