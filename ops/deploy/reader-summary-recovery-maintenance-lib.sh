@@ -15,12 +15,24 @@ verify_daily_runner_maintenance_runtime() {
         ! $backend_release =~ ^[0-9a-f]{40}$ || \
         ! $control_release =~ ^[0-9a-f]{40}$ || \
         ! $integration_release =~ ^[0-9a-f]{40}$ || \
-        $runtime_release != "$backend_release" || \
-        $control_release != "$integration_release" ]]; then
+        $runtime_release != "$backend_release" ]]; then
     fail 'daily-runner runtime is not committed by the current backend integration release'
   fi
   git -C "$REPO" merge-base --is-ancestor \
     "$backend_release" "$integration_release" || \
+    fail 'daily-runner runtime is not committed by the current backend integration release'
+  git -C "$REPO" merge-base --is-ancestor \
+    "$control_release" "$integration_release" || \
+    fail 'daily-runner runtime is not committed by the current backend integration release'
+  declare -p BACKEND_PATHS CONTROL_PATHS >/dev/null 2>&1 || \
+    fail 'daily-runner runtime is not committed by the current backend integration release'
+  ((${#BACKEND_PATHS[@]} > 0 && ${#CONTROL_PATHS[@]} > 0)) || \
+    fail 'daily-runner runtime is not committed by the current backend integration release'
+  git -C "$REPO" diff --quiet \
+    "$backend_release" "$integration_release" -- "${BACKEND_PATHS[@]}" || \
+    fail 'daily-runner runtime is not committed by the current backend integration release'
+  git -C "$REPO" diff --quiet \
+    "$control_release" "$integration_release" -- "${CONTROL_PATHS[@]}" || \
     fail 'daily-runner runtime is not committed by the current backend integration release'
 }
 

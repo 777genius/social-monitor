@@ -23,8 +23,14 @@ AUTH_CHANGED_MARKER=$ROOT/runtime/auth-account-changed
 SHA=1234567890abcdef1234567890abcdef12345678
 CONTROL_ONLY_SHA=89abcdef0123456789abcdef0123456789abcdef
 DIVERGENT_BACKEND_SHA=fedcba9876543210fedcba9876543210fedcba98
+FRONTEND_DOCS_ONLY_SHA=0123456789abcdef0123456789abcdef01234567
+DIVERGENT_CONTROL_SHA=abcdef0123456789abcdef0123456789abcdef01
 FAKE_GIT_HEAD=$SHA
-FAKE_GIT_ANCESTOR=$SHA
+FAKE_GIT_ANCESTORS=("$SHA")
+FAKE_BACKEND_DIFF_STATUS=0
+FAKE_CONTROL_DIFF_STATUS=0
+BACKEND_PATHS=(backend)
+CONTROL_PATHS=(control)
 FINAL_MODEL_OVERLAY=$REPO/ops/deploy/production-runtime/compose.agent-runtime-model.yml
 DAILY_CANONICAL_RECOVERY_CONFIRMATION=reader-summary-daily-canonical-recovery-v4
 MODEL_JOB_IDENTITY=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
@@ -77,9 +83,27 @@ git() {
   fi
   if [[ ${1:-} == -C && ${2:-} == "$REPO" && ${3:-} == merge-base && \
         ${4:-} == --is-ancestor ]]; then
-    [[ ${5:-} == "$FAKE_GIT_ANCESTOR" && ${6:-} == "$FAKE_GIT_HEAD" ]] || \
-      return 1
-    return 0
+    local ancestor
+    [[ ${6:-} == "$FAKE_GIT_HEAD" ]] || return 1
+    for ancestor in "${FAKE_GIT_ANCESTORS[@]}"; do
+      [[ ${5:-} == "$ancestor" ]] && return 0
+    done
+    return 1
+  fi
+  if [[ ${1:-} == -C && ${2:-} == "$REPO" && ${3:-} == diff && \
+        ${4:-} == --quiet && ${7:-} == -- ]]; then
+    shift 7
+    case ${1:-} in
+      backend)
+        [[ $# == 1 && $1 == backend ]] || return 97
+        return "$FAKE_BACKEND_DIFF_STATUS"
+        ;;
+      control)
+        [[ $# == 1 && $1 == control ]] || return 97
+        return "$FAKE_CONTROL_DIFF_STATUS"
+        ;;
+      *) return 97 ;;
+    esac
   fi
   return 97
 }
@@ -399,19 +423,11 @@ grep -Fx 'source-env=unset' "$COMPOSE_LOG" >/dev/null
 ! grep -F 'READER_SUMMARY_PRODUCTION_RECOVERY_SOURCE_DATABASE_URL' \
   "$COMPOSE_LOG" >/dev/null
 
-FAKE_GIT_HEAD=89abcdef0123456789abcdef0123456789abcdef
-: > "$COMPOSE_LOG"
-set +e
-run_reader_summary_daily_runner_maintenance reader-summary-recover-missing-days \
-  < /dev/null >/dev/null 2>&1
-status=$?
-set -e
-[[ $status == 1 ]]
-[[ ! -s $COMPOSE_LOG ]]
-
 reset_daily_runner_maintenance_runtime_identity() {
   FAKE_GIT_HEAD=$SHA
-  FAKE_GIT_ANCESTOR=$SHA
+  FAKE_GIT_ANCESTORS=("$SHA")
+  FAKE_BACKEND_DIFF_STATUS=0
+  FAKE_CONTROL_DIFF_STATUS=0
   printf '%s\n' "$SHA" > "$POSTGRES_RUNTIME_CURRENT/READY"
   printf '%s\n' "$SHA" > "$STATE/backend.sha"
   printf '%s\n' "$SHA" > "$STATE/control.sha"
@@ -429,17 +445,70 @@ assert_daily_runner_maintenance_runtime_rejected() {
   [[ ! -s $COMPOSE_LOG ]]
 }
 
-# A valid but non-ancestor backend marker cannot authorize a runtime.
+# Backend-only deploys are valid when the deployed control marker is a clean
+# ancestor of the current integration commit.
+reset_daily_runner_maintenance_runtime_identity
+FAKE_GIT_ANCESTORS=("$SHA" "$CONTROL_ONLY_SHA")
+printf '%s\n' "$CONTROL_ONLY_SHA" > "$STATE/control.sha"
+: > "$COMPOSE_LOG"
+run_reader_summary_daily_runner_maintenance reader-summary-weekly-run
+[[ $(grep -Fc \
+  'daily-runner sh -lc set -eu; npm run run:reader-summary-weekly-production' \
+  "$COMPOSE_LOG") == 1 ]]
+
+# Control-only deploys are valid when the deployed backend/runtime marker is a
+# clean ancestor of the current integration commit.
+reset_daily_runner_maintenance_runtime_identity
+FAKE_GIT_HEAD=$CONTROL_ONLY_SHA
+FAKE_GIT_ANCESTORS=("$SHA" "$CONTROL_ONLY_SHA")
+printf '%s\n' "$CONTROL_ONLY_SHA" > "$STATE/control.sha"
+verify_daily_runner_maintenance_runtime
+
+# Frontend/docs-only commits may leave both runtime markers on valid clean
+# ancestors rather than advancing either marker to integration HEAD.
+reset_daily_runner_maintenance_runtime_identity
+FAKE_GIT_HEAD=$FRONTEND_DOCS_ONLY_SHA
+FAKE_GIT_ANCESTORS=("$SHA" "$CONTROL_ONLY_SHA" "$FRONTEND_DOCS_ONLY_SHA")
+printf '%s\n' "$CONTROL_ONLY_SHA" > "$STATE/control.sha"
+verify_daily_runner_maintenance_runtime
+
+# A backend change after the deployed backend marker must reject maintenance.
+reset_daily_runner_maintenance_runtime_identity
+FAKE_GIT_HEAD=$FRONTEND_DOCS_ONLY_SHA
+FAKE_GIT_ANCESTORS=("$SHA" "$CONTROL_ONLY_SHA" "$FRONTEND_DOCS_ONLY_SHA")
+FAKE_BACKEND_DIFF_STATUS=1
+printf '%s\n' "$CONTROL_ONLY_SHA" > "$STATE/control.sha"
+assert_daily_runner_maintenance_runtime_rejected
+
+# A control/deploy change after the deployed control marker must reject
+# maintenance, as must a git diff error.
+reset_daily_runner_maintenance_runtime_identity
+FAKE_GIT_HEAD=$FRONTEND_DOCS_ONLY_SHA
+FAKE_GIT_ANCESTORS=("$SHA" "$CONTROL_ONLY_SHA" "$FRONTEND_DOCS_ONLY_SHA")
+FAKE_CONTROL_DIFF_STATUS=1
+printf '%s\n' "$CONTROL_ONLY_SHA" > "$STATE/control.sha"
+assert_daily_runner_maintenance_runtime_rejected
+
+reset_daily_runner_maintenance_runtime_identity
+FAKE_BACKEND_DIFF_STATUS=2
+assert_daily_runner_maintenance_runtime_rejected
+
+# Valid-looking but divergent markers cannot authorize maintenance.
 reset_daily_runner_maintenance_runtime_identity
 printf '%s\n' "$DIVERGENT_BACKEND_SHA" > "$POSTGRES_RUNTIME_CURRENT/READY"
 printf '%s\n' "$DIVERGENT_BACKEND_SHA" > "$STATE/backend.sha"
 assert_daily_runner_maintenance_runtime_rejected
 
-# The control marker must be present, current, and lower-case hexadecimal.
 reset_daily_runner_maintenance_runtime_identity
-printf '%s\n' "$CONTROL_ONLY_SHA" > "$STATE/control.sha"
+printf '%s\n' "$DIVERGENT_CONTROL_SHA" > "$STATE/control.sha"
 assert_daily_runner_maintenance_runtime_rejected
 
+# The runtime and backend markers must be the same deployed release.
+reset_daily_runner_maintenance_runtime_identity
+printf '%s\n' "$CONTROL_ONLY_SHA" > "$POSTGRES_RUNTIME_CURRENT/READY"
+assert_daily_runner_maintenance_runtime_rejected
+
+# A missing control marker fails closed.
 reset_daily_runner_maintenance_runtime_identity
 rm -f "$STATE/control.sha"
 assert_daily_runner_maintenance_runtime_rejected
@@ -460,18 +529,6 @@ assert_daily_runner_maintenance_runtime_rejected
 reset_daily_runner_maintenance_runtime_identity
 FAKE_GIT_HEAD=${SHA^^}
 assert_daily_runner_maintenance_runtime_rejected
-
-# A control-only descendant is allowed when it is the current integration
-# release and the committed backend/runtime release is its ancestor.
-reset_daily_runner_maintenance_runtime_identity
-FAKE_GIT_HEAD=$CONTROL_ONLY_SHA
-FAKE_GIT_ANCESTOR=$SHA
-printf '%s\n' "$CONTROL_ONLY_SHA" > "$STATE/control.sha"
-: > "$COMPOSE_LOG"
-run_reader_summary_daily_runner_maintenance reader-summary-weekly-run
-[[ $(grep -Fc \
-  'daily-runner sh -lc set -eu; npm run run:reader-summary-weekly-production' \
-  "$COMPOSE_LOG") == 1 ]]
 
 grep -F 'reader-summary-recover-missing-days|reader-summary-weekly-run|reader-summary-daily-canonical-recovery-v4' \
   "$SCRIPT_DIR/social-monitor-production-ssh-wrapper.sh" >/dev/null
