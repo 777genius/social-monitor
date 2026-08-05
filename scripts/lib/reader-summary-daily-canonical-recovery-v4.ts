@@ -10,6 +10,8 @@ export const canonicalRecoveryDates = Object.freeze([
 
 export type CanonicalRecoveryDate = typeof canonicalRecoveryDates[number];
 export const canonicalRecoveryAmbiguityRetryDate = "2026-07-23" as const;
+/** The one already-consumed invalid result that can only be reconciled after expiry. */
+export const canonicalRecoveryExpiredInvalidRuntimeDate = "2026-07-24" as const;
 export const canonicalRecoveryAmbiguityRetryModelJobIdentity =
   "241cc317da26fe2125ccf0590f99cee9d1694c91b4a019b036c9619c61e3672a" as const;
 export const canonicalRecoveryAmbiguityRetrySourceAuthoritySha256 =
@@ -47,8 +49,9 @@ export type CanonicalRecoveryClaim =
   | Readonly<{
       kind: "failed_ambiguous";
       requestedUtcDate: CanonicalRecoveryDate;
-      modelJobIdentity?: string;
-      sourceAuthoritySha256?: string;
+      modelJobIdentity: string;
+      sourceAuthoritySha256: string;
+      attemptOrdinal: 1 | 2;
     }>;
 
 export type CanonicalRecoveryPublication = Readonly<{
@@ -74,8 +77,54 @@ export type CanonicalRecoveryUnavailable = Readonly<{
   signalCount: number;
   sourceAuthoritySha256: string;
   modelJobIdentity: string;
-  attemptOrdinal: 2;
+  attemptOrdinal: 1 | 2;
 }>;
+
+export type CanonicalRecoveryExpiredUnavailableInput = Readonly<{
+  tenantId: string;
+  workspaceId: string;
+  requestedUtcDate: CanonicalRecoveryDate;
+  modelJobIdentity: string;
+  sourceAuthoritySha256: string;
+  attemptOrdinal: 1;
+}>;
+
+/**
+ * Only an already-returned provider product result that fails strict admission
+ * may use this type. Never retain a provider error, payload, warning, usage,
+ * or prompt in this error.
+ */
+export const canonicalRecoveryRuntimeFailureCode =
+  "invalid_or_non_completed_runtime_result" as const;
+
+export class DailyCanonicalRecoveryRuntimeFailureError extends Error {
+  readonly code = canonicalRecoveryRuntimeFailureCode;
+
+  constructor(readonly terminalized: boolean) {
+    super("Daily canonical recovery runtime returned an invalid product result");
+    this.name = "DailyCanonicalRecoveryRuntimeFailureError";
+  }
+}
+
+/** A bounded call failed before a product result was returned. */
+export class DailyCanonicalRecoveryRuntimeTransportError extends Error {
+  readonly code = "runtime_transport_failure" as const;
+
+  constructor() {
+    super("Daily canonical recovery runtime transport failed");
+    this.name = "DailyCanonicalRecoveryRuntimeTransportError";
+  }
+}
+
+/** The current fence or caller aborted the bounded call before admission. */
+export class DailyCanonicalRecoveryRuntimeAbortedError extends Error {
+  readonly code = "runtime_aborted" as const;
+
+  constructor() {
+    super("Daily canonical recovery runtime aborted");
+    this.name = "DailyCanonicalRecoveryRuntimeAbortedError";
+  }
+}
 
 export type CanonicalRecoveryTerminal =
   | Readonly<{ kind: "finalized"; publication: CanonicalRecoveryPublication }>
@@ -100,6 +149,19 @@ export interface CanonicalRecoveryAuthority {
     receiptBytes: Buffer;
     receiptSha256: string;
   }>): Promise<CanonicalRecoveryWork>;
+  terminalizeUnavailable(work: CanonicalRecoveryWork): Promise<CanonicalRecoveryUnavailable>;
+  readUnavailable(input: Readonly<{
+    tenantId: string;
+    workspaceId: string;
+    requestedUtcDate: CanonicalRecoveryDate;
+  }>): Promise<CanonicalRecoveryUnavailable>;
+  /**
+   * Handles only the one operator-certified expired Jul24 attempt. Omitting
+   * this capability fails closed for an otherwise ambiguous claim.
+   */
+  reconcileExpiredUnavailable?(
+    input: CanonicalRecoveryExpiredUnavailableInput,
+  ): Promise<CanonicalRecoveryUnavailable>;
   readFinalized(input: Readonly<{
     tenantId: string;
     workspaceId: string;
@@ -161,26 +223,15 @@ export class PostgresCanonicalRecoveryAuthority
         };
       }
       if (outcome === "FAILED_AMBIGUOUS") {
-        const modelJobIdentity = row.model_job_identity;
-        const sourceAuthoritySha256 = row.source_canonical_sha256;
-        if (
-          (modelJobIdentity === null || modelJobIdentity === undefined) !==
-          (sourceAuthoritySha256 === null || sourceAuthoritySha256 === undefined)
-        ) {
-          throw new Error("Daily canonical recovery failed ambiguity binding is incomplete");
-        }
         return {
           kind: "failed_ambiguous" as const,
           requestedUtcDate,
-          ...(modelJobIdentity === null || modelJobIdentity === undefined
-            ? {}
-            : {
-                modelJobIdentity: sha(modelJobIdentity, "failed model identity"),
-                sourceAuthoritySha256: sha(
-                  sourceAuthoritySha256,
-                  "failed source authority",
-                ),
-              }),
+          modelJobIdentity: sha(row.model_job_identity, "failed model identity"),
+          sourceAuthoritySha256: sha(
+            row.source_canonical_sha256,
+            "failed source authority",
+          ),
+          attemptOrdinal: attemptOrdinal(row.attempt_ordinal),
         };
       }
       if (outcome !== "CLAIMED") {
@@ -282,6 +333,65 @@ export class PostgresCanonicalRecoveryAuthority
         responseBytes: Buffer.from(input.responseBytes),
         receiptBytes: Buffer.from(input.receiptBytes),
       });
+    });
+  }
+
+  async terminalizeUnavailable(
+    work: CanonicalRecoveryWork,
+  ): Promise<CanonicalRecoveryUnavailable> {
+    return this.client.serializable(async (transaction) => {
+      const result = await transaction.query<Record<string, unknown>>(
+        `SELECT * FROM public."fail_reader_summary_daily_canonical_recovery_v4_runtime_result"(
+          $1::UUID,$2::UUID,$3::DATE,$4::CHAR(64),$5::SMALLINT,$6::TEXT,$7::BIGINT
+        )`,
+        [
+          work.tenantId,
+          work.workspaceId,
+          work.requestedUtcDate,
+          work.modelJobIdentity,
+          exactAttemptOrdinal(work),
+          work.workerId,
+          work.fencingToken,
+        ],
+      );
+      return unavailableFromRow(one(result.rows, "runtime unavailable terminal"));
+    });
+  }
+
+  async readUnavailable(
+    input: Parameters<CanonicalRecoveryAuthority["readUnavailable"]>[0],
+  ): Promise<CanonicalRecoveryUnavailable> {
+    return this.client.serializable(async (transaction) => {
+      const result = await transaction.query<Record<string, unknown>>(
+        `SELECT * FROM public."read_reader_summary_daily_canonical_recovery_v4_unavailable"(
+          $1::UUID,$2::UUID,$3::DATE
+        )`,
+        [input.tenantId, input.workspaceId, input.requestedUtcDate],
+      );
+      return unavailableFromRow(one(result.rows, "unavailable terminal"));
+    });
+  }
+
+  async reconcileExpiredUnavailable(
+    input: CanonicalRecoveryExpiredUnavailableInput,
+  ): Promise<CanonicalRecoveryUnavailable> {
+    if (input.attemptOrdinal !== 1) {
+      throw new Error("Daily canonical recovery expired runtime attempt is invalid");
+    }
+    return this.client.serializable(async (transaction) => {
+      const result = await transaction.query<Record<string, unknown>>(
+        `SELECT * FROM public."reconcile_reader_summary_daily_canonical_recovery_v4_expired_invalid_runtime_result"(
+          $1::UUID,$2::UUID,$3::DATE,$4::CHAR(64),$5::CHAR(64)
+        )`,
+        [
+          input.tenantId,
+          input.workspaceId,
+          input.requestedUtcDate,
+          input.modelJobIdentity,
+          input.sourceAuthoritySha256,
+        ],
+      );
+      return unavailableFromRow(one(result.rows, "expired runtime unavailable terminal"));
     });
   }
 
@@ -389,6 +499,20 @@ export const canonicalJsonBytes = (value: unknown): Buffer =>
 
 export const sha256 = (value: Buffer): string =>
   createHash("sha256").update(value).digest("hex");
+
+/** The terminal signal count is always derived from immutable authority bytes. */
+export const canonicalRecoverySignalCount = (sourceAuthorityBytes: Buffer): number => {
+  let authority: unknown;
+  try {
+    authority = JSON.parse(sourceAuthorityBytes.toString("utf8")) as unknown;
+  } catch {
+    throw new Error("Daily canonical recovery source authority is not JSON");
+  }
+  if (!isObject(authority) || !Array.isArray(authority.items)) {
+    throw new Error("Daily canonical recovery source authority signal count is invalid");
+  }
+  return authority.items.length;
+};
 
 /** Rejects whitespace, duplicate/unknown top-level fields, and noncanonical JSON. */
 export const parseStrictDailyOutputText = (outputText: string): Buffer => {
@@ -763,8 +887,14 @@ const terminalFromRow = (
   if (text(row.outcome) !== "UNAVAILABLE") {
     throw new Error("Daily canonical recovery terminal outcome is invalid");
   }
+  return Object.freeze({ kind: "unavailable" as const, unavailable: unavailableFromRow(row) });
+};
+
+const unavailableFromRow = (
+  row: Record<string, unknown>,
+): CanonicalRecoveryUnavailable => {
   const signalCount = Number(bigintText(row.signal_count));
-  const attemptOrdinal = Number(bigintText(row.attempt_ordinal));
+  const unavailableAttemptOrdinal = attemptOrdinal(row.attempt_ordinal);
   const requestedUtcDate = recoveryDate(row.requested_utc_date);
   const sourceAuthoritySha256 = sha(
     row.source_authority_sha256,
@@ -772,13 +902,9 @@ const terminalFromRow = (
   );
   const modelJobIdentity = sha(row.model_job_identity, "unavailable model identity");
   if (
-    requestedUtcDate !== canonicalRecoveryAmbiguityRetryDate ||
     text(row.reason_code) !== canonicalRecoveryUnavailableReason ||
-    signalCount !== 342 ||
-    attemptOrdinal !== 2 ||
-    modelJobIdentity !== canonicalRecoveryAmbiguityRetryModelJobIdentity ||
-    sourceAuthoritySha256 !==
-      canonicalRecoveryAmbiguityRetrySourceAuthoritySha256 ||
+    !Number.isSafeInteger(signalCount) ||
+    signalCount < 0 ||
     [
       row.reader_summary_job_id,
       row.reader_summary_artifact_id,
@@ -793,14 +919,11 @@ const terminalFromRow = (
     throw new Error("Daily canonical recovery unavailable terminal is invalid");
   }
   return Object.freeze({
-    kind: "unavailable" as const,
-    unavailable: Object.freeze({
-      requestedUtcDate,
-      reasonCode: canonicalRecoveryUnavailableReason,
-      signalCount,
-      sourceAuthoritySha256,
-      modelJobIdentity,
-      attemptOrdinal: 2 as const,
-    }),
+    requestedUtcDate,
+    reasonCode: canonicalRecoveryUnavailableReason,
+    signalCount,
+    sourceAuthoritySha256,
+    modelJobIdentity,
+    attemptOrdinal: unavailableAttemptOrdinal,
   });
 };

@@ -11,6 +11,9 @@ import type { ReaderSummaryDailySubscriptionRuntime } from "./reader-summary-dai
 import {
   assertDailyOutputCitationsMatchSourceAuthority,
   assertDailyOutputMatchesJsonSchema,
+  DailyCanonicalRecoveryRuntimeAbortedError,
+  DailyCanonicalRecoveryRuntimeFailureError,
+  DailyCanonicalRecoveryRuntimeTransportError,
   parseStrictDailyOutputText,
   sha256 as recoverySha256,
 } from "./reader-summary-daily-canonical-recovery-v4";
@@ -97,73 +100,88 @@ export class GrpcReaderSummaryDailyCanonicalRecoveryRuntime
 
   async run(input: Parameters<ReaderSummaryDailySubscriptionRuntime["run"]>[0]) {
     if (input.signal.aborted) {
-      throw input.signal.reason ?? new Error("Daily canonical recovery runtime aborted");
+      throw new DailyCanonicalRecoveryRuntimeAbortedError();
     }
     assertCanonicalRecoveryAuthorityV2(input);
-    const result = await this.client.runTask({
-      requestId: `reader-summary-daily-recovery-v4:${input.modelJobIdentity}`,
-      tenantId: tenantId(input.tenantId),
-      workspaceId: workspaceId(input.workspaceId),
-      correlationId: `reader-summary-daily-recovery-v4:${input.modelJobIdentity}`,
-      provider: "codex",
-      purpose: "social_monitor.reader_summary.weekly.generate",
-      systemPrompt: [
-        "Generate exactly one canonical daily Social Monitor reader summary.",
-        "The supplied immutable daily source authority v2 is complete.",
-        "Do not recollect, backdate, duplicate, or invent evidence.",
-        "Citation cN means the Nth authority item; cite only the first 200 items.",
-        "Return one canonical JSON object as output_text with no surrounding text.",
-      ].join(" "),
-      prompt: input.sourceAuthorityBytes.toString("utf8"),
-      outputSchema: openAiReaderSummaryJsonSchema,
-      controls: {
-        interactive: false,
-        outputSchemaName: "social_monitor_reader_summary_artifact",
-        schemaVersion: "reader_summary.artifact.v1",
-        model,
-        maxOutputTokens: 16_000,
-      },
-      timeoutMs: this.timeoutMs,
-      metadata: {
-        adapter: "reader-summary-daily-canonical-recovery-v4",
-        authoritySchemaVersion: "reader_summary.daily_source_authority.v2",
-        reasoningEffort,
-        runtimeOutput: "output_text",
-      },
-    });
+    let result: AgentRuntimeTaskResult;
+    try {
+      result = await this.client.runTask({
+        requestId: `reader-summary-daily-recovery-v4:${input.modelJobIdentity}`,
+        tenantId: tenantId(input.tenantId),
+        workspaceId: workspaceId(input.workspaceId),
+        correlationId: `reader-summary-daily-recovery-v4:${input.modelJobIdentity}`,
+        provider: "codex",
+        purpose: "social_monitor.reader_summary.weekly.generate",
+        systemPrompt: [
+          "Generate exactly one canonical daily Social Monitor reader summary.",
+          "The supplied immutable daily source authority v2 is complete.",
+          "Do not recollect, backdate, duplicate, or invent evidence.",
+          "Citation cN means the Nth authority item; cite only the first 200 items.",
+          "Return one canonical JSON object as output_text with no surrounding text.",
+        ].join(" "),
+        prompt: input.sourceAuthorityBytes.toString("utf8"),
+        outputSchema: openAiReaderSummaryJsonSchema,
+        controls: {
+          interactive: false,
+          outputSchemaName: "social_monitor_reader_summary_artifact",
+          schemaVersion: "reader_summary.artifact.v1",
+          model,
+          maxOutputTokens: 16_000,
+        },
+        timeoutMs: this.timeoutMs,
+        metadata: {
+          adapter: "reader-summary-daily-canonical-recovery-v4",
+          authoritySchemaVersion: "reader_summary.daily_source_authority.v2",
+          reasoningEffort,
+          runtimeOutput: "output_text",
+        },
+      });
+    } catch {
+      if (input.signal.aborted) {
+        throw new DailyCanonicalRecoveryRuntimeAbortedError();
+      }
+      throw new DailyCanonicalRecoveryRuntimeTransportError();
+    }
     if (input.signal.aborted) {
-      throw input.signal.reason ?? new Error("Daily canonical recovery runtime aborted");
+      throw new DailyCanonicalRecoveryRuntimeAbortedError();
     }
-    const attestation = result.executionAttestation;
-    if (
-      result.status !== "completed" ||
-      result.structuredOutput !== undefined ||
-      result.outputText === undefined ||
-      attestation === undefined ||
-      attestation.purpose !== "social_monitor.reader_summary.weekly.generate" ||
-      attestation.provider !== "codex" ||
-      attestation.model !== model ||
-      attestation.reasoningEffort !== reasoningEffort ||
-      attestation.runtimeEngine !== "subscription-runtime-cli" ||
-      attestation.selectedOutputKind !== "output_text"
-    ) {
-      throw new Error("Daily canonical recovery runtime returned an invalid product result");
+    try {
+      const attestation = result.executionAttestation;
+      if (
+        result.status !== "completed" ||
+        result.structuredOutput !== undefined ||
+        result.outputText === undefined ||
+        attestation === undefined ||
+        attestation.purpose !== "social_monitor.reader_summary.weekly.generate" ||
+        attestation.provider !== "codex" ||
+        attestation.model !== model ||
+        attestation.reasoningEffort !== reasoningEffort ||
+        attestation.runtimeEngine !== "subscription-runtime-cli" ||
+        attestation.selectedOutputKind !== "output_text"
+      ) {
+        throw new DailyCanonicalRecoveryRuntimeFailureError(false);
+      }
+      const responseBytes = parseStrictDailyOutputText(result.outputText);
+      const output = JSON.parse(responseBytes.toString("utf8")) as unknown;
+      assertDailyOutputMatchesJsonSchema(output, openAiReaderSummaryJsonSchema);
+      assertDailyOutputCitationsMatchSourceAuthority(
+        output,
+        input.sourceAuthorityBytes,
+        200,
+      );
+      if (recoverySha256(responseBytes) !== attestation.selectedOutputSha256) {
+        throw new DailyCanonicalRecoveryRuntimeFailureError(false);
+      }
+      return Object.freeze({
+        responseBytes,
+        executionAttestation: Object.freeze({ ...attestation }),
+      });
+    } catch {
+      if (input.signal.aborted) {
+        throw new DailyCanonicalRecoveryRuntimeAbortedError();
+      }
+      throw new DailyCanonicalRecoveryRuntimeFailureError(false);
     }
-    const responseBytes = parseStrictDailyOutputText(result.outputText);
-    const output = JSON.parse(responseBytes.toString("utf8")) as unknown;
-    assertDailyOutputMatchesJsonSchema(output, openAiReaderSummaryJsonSchema);
-    assertDailyOutputCitationsMatchSourceAuthority(
-      output,
-      input.sourceAuthorityBytes,
-      200,
-    );
-    if (recoverySha256(responseBytes) !== attestation.selectedOutputSha256) {
-      throw new Error("Daily canonical recovery output_text diverged from attestation");
-    }
-    return Object.freeze({
-      responseBytes,
-      executionAttestation: Object.freeze({ ...attestation }),
-    });
   }
 }
 

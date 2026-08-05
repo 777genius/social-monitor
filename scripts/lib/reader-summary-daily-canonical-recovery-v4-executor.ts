@@ -4,8 +4,12 @@ import {
   canonicalRecoveryAmbiguityRetryDate,
   canonicalRecoveryAmbiguityRetryModelJobIdentity,
   canonicalRecoveryAmbiguityRetrySourceAuthoritySha256,
+  canonicalRecoveryExpiredInvalidRuntimeDate,
   canonicalRecoveryDates,
+  canonicalRecoverySignalCount,
+  DailyCanonicalRecoveryRuntimeFailureError,
   type CanonicalRecoveryAuthority,
+  type CanonicalRecoveryDate,
   type CanonicalRecoveryFinalizer,
   type CanonicalRecoveryPublication,
   type CanonicalRecoveryTerminal,
@@ -18,6 +22,14 @@ import {
 } from "./reader-summary-daily-source-authority-snapshot";
 
 const renewalIntervalMs = 5 * 60 * 1_000;
+
+class TerminalizedCanonicalRecoveryRuntimeFailureError
+  extends DailyCanonicalRecoveryRuntimeFailureError
+{
+  constructor() {
+    super(true);
+  }
+}
 
 type CanonicalRecoveryCaughtUp = Readonly<{
   kind: "caught_up";
@@ -53,12 +65,13 @@ export class ReaderSummaryDailyCanonicalRecoveryV4Executor {
   }>): Promise<
     | Readonly<{ kind: "completed" | "replayed"; publication: CanonicalRecoveryPublication }>
     | CanonicalRecoveryCaughtUp
-    | Readonly<{ kind: "leased"; requestedUtcDate: string }>
+    | Readonly<{ kind: "leased"; requestedUtcDate: CanonicalRecoveryDate }>
     | Readonly<{
         kind: "failed_ambiguous";
-        requestedUtcDate: string;
-        modelJobIdentity?: string;
-        sourceAuthoritySha256?: string;
+        requestedUtcDate: CanonicalRecoveryDate;
+        modelJobIdentity: string;
+        sourceAuthoritySha256: string;
+        attemptOrdinal: 1 | 2;
       }>
   > {
     const claim = await this.dependencies.authority.claim({
@@ -120,16 +133,40 @@ export class ReaderSummaryDailyCanonicalRecoveryV4Executor {
         timerStopped = true;
       }
     };
+    const terminalizeRuntimeFailure = async (): Promise<never> => {
+      stopRenewalTimer();
+      await renewal;
+      if (renewalFailure !== undefined) {
+        throw renewalFailure;
+      }
+      assertLeaseCurrent(activeWork, this.dependencies.now());
+      const unavailable = await this.dependencies.authority.terminalizeUnavailable(
+        activeWork,
+      );
+      assertUnavailableMatchesWork(unavailable, activeWork);
+      throw new TerminalizedCanonicalRecoveryRuntimeFailureError();
+    };
 
     try {
-      const execution = await this.dependencies.runtime.run({
-        tenantId: activeWork.tenantId,
-        workspaceId: activeWork.workspaceId,
-        modelJobIdentity: activeWork.modelJobIdentity,
-        requestedUtcDate: activeWork.requestedUtcDate,
-        sourceAuthorityBytes: Buffer.from(activeWork.sourceAuthorityBytes),
-        signal: abort.signal,
-      });
+      let execution: Awaited<ReturnType<ReaderSummaryDailySubscriptionRuntime["run"]>>;
+      try {
+        execution = await this.dependencies.runtime.run({
+          tenantId: activeWork.tenantId,
+          workspaceId: activeWork.workspaceId,
+          modelJobIdentity: activeWork.modelJobIdentity,
+          requestedUtcDate: activeWork.requestedUtcDate,
+          sourceAuthorityBytes: Buffer.from(activeWork.sourceAuthorityBytes),
+          signal: abort.signal,
+        });
+      } catch (error) {
+        if (
+          error instanceof DailyCanonicalRecoveryRuntimeFailureError &&
+          !error.terminalized
+        ) {
+          return terminalizeRuntimeFailure();
+        }
+        throw error;
+      }
       // Do not let a queued heartbeat replace activeWork while completion is
       // being fenced. Await the one that is already in flight, then use its
       // refreshed fence for completion and the final pre-publication refresh.
@@ -172,12 +209,13 @@ export class ReaderSummaryDailyCanonicalRecoveryV4Executor {
     workerId: string;
   }>): Promise<
     | CanonicalRecoveryCaughtUp
-    | Readonly<{ kind: "leased"; requestedUtcDate: string }>
+    | Readonly<{ kind: "leased"; requestedUtcDate: CanonicalRecoveryDate }>
     | Readonly<{
         kind: "failed_ambiguous";
-        requestedUtcDate: string;
-        modelJobIdentity?: string;
-        sourceAuthoritySha256?: string;
+        requestedUtcDate: CanonicalRecoveryDate;
+        modelJobIdentity: string;
+        sourceAuthoritySha256: string;
+        attemptOrdinal: 1 | 2;
       }>
   > {
     for (
@@ -185,16 +223,58 @@ export class ReaderSummaryDailyCanonicalRecoveryV4Executor {
       resolved < canonicalRecoveryDates.length + 1;
       resolved += 1
     ) {
-      const outcome = await this.runOne(input);
+      let outcome: Awaited<ReturnType<typeof this.runOne>>;
+      try {
+        outcome = await this.runOne(input);
+      } catch (error) {
+        if (
+          error instanceof TerminalizedCanonicalRecoveryRuntimeFailureError
+        ) {
+          continue;
+        }
+        throw error;
+      }
       if (outcome.kind === "failed_ambiguous") {
-        if (isHistoricalJul23Unavailable(outcome)) continue;
-        return outcome;
+        const unavailable = await this.readUnavailableForClaim(input, outcome);
+        assertUnavailableMatchesClaim(unavailable, outcome);
+        continue;
       }
       if (outcome.kind === "caught_up" || outcome.kind === "leased") {
         return outcome;
       }
     }
     throw new Error("Daily canonical recovery exceeded exact Jul23-Jul30 coverage");
+  }
+
+  private async readUnavailableForClaim(
+    input: Readonly<{ tenantId: string; workspaceId: string }>,
+    claim: Readonly<{
+      requestedUtcDate: CanonicalRecoveryDate;
+      modelJobIdentity: string;
+      sourceAuthoritySha256: string;
+    attemptOrdinal: 1 | 2;
+  }>,
+  ): Promise<CanonicalRecoveryUnavailable> {
+    if (claim.requestedUtcDate === canonicalRecoveryExpiredInvalidRuntimeDate) {
+      const authority = this.dependencies.authority;
+      if (
+        claim.attemptOrdinal !== 1 ||
+        authority.reconcileExpiredUnavailable === undefined
+      ) {
+        throw new Error("Daily canonical recovery failed ambiguity is not an unavailable terminal");
+      }
+      return authority.reconcileExpiredUnavailable({
+        ...input,
+        requestedUtcDate: claim.requestedUtcDate,
+        modelJobIdentity: claim.modelJobIdentity,
+        sourceAuthoritySha256: claim.sourceAuthoritySha256,
+        attemptOrdinal: claim.attemptOrdinal,
+      });
+    }
+    return this.dependencies.authority.readUnavailable({
+      ...input,
+      requestedUtcDate: claim.requestedUtcDate,
+    });
   }
 
   private async finalize(
@@ -245,16 +325,6 @@ const exact = (value: Buffer | undefined, label: string): Buffer => {
   return Buffer.from(value);
 };
 
-const isHistoricalJul23Unavailable = (outcome: Readonly<{
-  requestedUtcDate: string;
-  modelJobIdentity?: string;
-  sourceAuthoritySha256?: string;
-}>): boolean =>
-  outcome.requestedUtcDate === canonicalRecoveryAmbiguityRetryDate &&
-  outcome.modelJobIdentity === canonicalRecoveryAmbiguityRetryModelJobIdentity &&
-  outcome.sourceAuthoritySha256 ===
-    canonicalRecoveryAmbiguityRetrySourceAuthoritySha256;
-
 const caughtUp = (
   terminals: readonly CanonicalRecoveryTerminal[],
 ): CanonicalRecoveryCaughtUp => {
@@ -273,11 +343,7 @@ const caughtUp = (
     if (terminal.kind === "finalized") {
       publications.push(terminal.publication);
     } else {
-      if (!isHistoricalJul23Unavailable(terminal.unavailable)) {
-        throw new Error(
-          "Daily canonical recovery unavailable terminal is not exact",
-        );
-      }
+      assertUnavailableTerminal(terminal.unavailable);
       unavailable.push(terminal.unavailable);
     }
   }
@@ -286,6 +352,65 @@ const caughtUp = (
     publications: Object.freeze(publications),
     unavailable: Object.freeze(unavailable),
   });
+};
+
+const assertUnavailableMatchesWork = (
+  unavailable: CanonicalRecoveryUnavailable,
+  work: CanonicalRecoveryWork,
+): void => {
+  assertUnavailableTerminal(unavailable);
+  if (
+    unavailable.requestedUtcDate !== work.requestedUtcDate ||
+    unavailable.signalCount !== canonicalRecoverySignalCount(work.sourceAuthorityBytes) ||
+    unavailable.sourceAuthoritySha256 !== work.sourceAuthoritySha256 ||
+    unavailable.modelJobIdentity !== work.modelJobIdentity ||
+    unavailable.attemptOrdinal !== work.attemptOrdinal
+  ) {
+    throw new Error("Daily canonical recovery unavailable terminal lost its fenced work binding");
+  }
+};
+
+const assertUnavailableMatchesClaim = (
+  unavailable: CanonicalRecoveryUnavailable,
+  claim: Readonly<{
+    requestedUtcDate: string;
+    modelJobIdentity: string;
+    sourceAuthoritySha256: string;
+    attemptOrdinal: 1 | 2;
+  }>,
+): void => {
+  assertUnavailableTerminal(unavailable);
+  if (
+    unavailable.requestedUtcDate !== claim.requestedUtcDate ||
+    unavailable.modelJobIdentity !== claim.modelJobIdentity ||
+    unavailable.sourceAuthoritySha256 !== claim.sourceAuthoritySha256 ||
+    unavailable.attemptOrdinal !== claim.attemptOrdinal
+  ) {
+    throw new Error("Daily canonical recovery failed ambiguity is not an unavailable terminal");
+  }
+};
+
+const assertUnavailableTerminal = (
+  unavailable: CanonicalRecoveryUnavailable,
+): void => {
+  if (
+    !(canonicalRecoveryDates as readonly string[]).includes(unavailable.requestedUtcDate) ||
+    unavailable.reasonCode !== "model_result_not_durably_persisted_after_consumed_attempt" ||
+    !Number.isSafeInteger(unavailable.signalCount) ||
+    unavailable.signalCount < 0 ||
+    !/^[0-9a-f]{64}$/u.test(unavailable.sourceAuthoritySha256) ||
+    !/^[0-9a-f]{64}$/u.test(unavailable.modelJobIdentity) ||
+    (unavailable.attemptOrdinal !== 1 && unavailable.attemptOrdinal !== 2) ||
+    (unavailable.attemptOrdinal === 2 && (
+      unavailable.requestedUtcDate !== canonicalRecoveryAmbiguityRetryDate ||
+      unavailable.signalCount !== 342 ||
+      unavailable.modelJobIdentity !== canonicalRecoveryAmbiguityRetryModelJobIdentity ||
+      unavailable.sourceAuthoritySha256 !==
+        canonicalRecoveryAmbiguityRetrySourceAuthoritySha256
+    ))
+  ) {
+    throw new Error("Daily canonical recovery unavailable terminal is invalid");
+  }
 };
 
 const assertLeaseCurrent = (work: CanonicalRecoveryWork, now: Date): void => {

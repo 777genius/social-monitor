@@ -40,6 +40,10 @@ import {
   assertReaderSummaryDailyCanonicalRecoveryV4HistoricalUnavailableMigrationContract,
 } from "./lib/reader-summary-daily-canonical-recovery-v4-historical-unavailable-postgres-contract";
 import {
+  assertReaderSummaryDailyCanonicalRecoveryV4InvalidRuntimeMigrationContract,
+  assertReaderSummaryDailyCanonicalRecoveryV4InvalidRuntimePostgresContract,
+} from "./lib/reader-summary-daily-canonical-recovery-v4-invalid-runtime-postgres-contract";
+import {
   assertReaderSummaryDailyCanonicalRecoveryV4AmbiguityRetryMigrationContract,
   prepareReaderSummaryDailyCanonicalRecoveryV4AmbiguityRetryFixture,
 } from "./lib/reader-summary-daily-canonical-recovery-v4-ambiguity-retry-postgres-contract";
@@ -210,6 +214,8 @@ const originalCutoffForwardMigration =
   "20260804110000_reader_summary_daily_v4_original_cutoff_forward_correction";
 const historicalUnavailableMigration =
   "20260805163000_reader_summary_daily_v4_historical_unavailable";
+const invalidRuntimeTerminalMigration =
+  "20260805180000_reader_summary_daily_v4_invalid_runtime_terminalization";
 const ambiguityRetryMigrations = [
   "20260804130000_reader_summary_daily_v4_ambiguity_retry_schema",
   "20260804130100_reader_summary_daily_v4_ambiguity_retry_transitions",
@@ -217,6 +223,7 @@ const ambiguityRetryMigrations = [
   "20260804130300_reader_summary_daily_v4_ambiguity_retry_evidence",
   "20260805090000_reader_summary_daily_v4_ambiguity_retry_period_guard",
   historicalUnavailableMigration,
+  invalidRuntimeTerminalMigration,
 ] as const;
 const deferredCanonicalRecoveryMigrations = [
   ...canonicalRecoveryFoundationMigrations,
@@ -476,6 +483,7 @@ const assertPreparedFinalizationPublisherRace = async (input: Readonly<{ auditor
 const main = async (): Promise<void> => {
   assertReaderSummaryDailyCanonicalRecoveryV4MigrationContract();
   assertReaderSummaryDailyCanonicalRecoveryV4HistoricalUnavailableMigrationContract();
+  assertReaderSummaryDailyCanonicalRecoveryV4InvalidRuntimeMigrationContract();
   assertReaderSummaryDailyCanonicalRecoveryV4AmbiguityRetryMigrationContract();
   assert(
     /^reader_summary_recovery_test_[0-9a-f]{20}$/u.test(databaseName),
@@ -708,6 +716,15 @@ const main = async (): Promise<void> => {
           markRunning: (work, at) => baseAuthority.markRunning(work, at),
           renew: (work, at) => baseAuthority.renew(work, at),
           complete: (work, input) => baseAuthority.complete(work, input),
+          terminalizeUnavailable: (work) => baseAuthority.terminalizeUnavailable(work),
+          readUnavailable: (input) => baseAuthority.readUnavailable(input),
+          reconcileExpiredUnavailable: (input) => {
+            const reconcile = baseAuthority.reconcileExpiredUnavailable;
+            if (reconcile === undefined) {
+              throw new Error("daily terminal authority lacks expired runtime reconciliation");
+            }
+            return reconcile(input);
+          },
           readFinalized: async (input) => {
             if (pendingFinalizeReadback) {
               pendingFinalizeReadback = false;
@@ -749,6 +766,14 @@ const main = async (): Promise<void> => {
           now: () => new Date(),
         });
         try {
+          await assertReaderSummaryDailyCanonicalRecoveryV4InvalidRuntimePostgresContract({
+            auditor,
+            tenantId: readerSummaryProductionRecoveryFixtureScope.tenantId,
+            workspaceId: readerSummaryProductionRecoveryFixtureScope.workspaceId,
+          });
+          if (process.env.READER_SUMMARY_DAILY_INVALID_RUNTIME_ONLY === "1") {
+            return;
+          }
           const ambiguityRetry =
             await prepareReaderSummaryDailyCanonicalRecoveryV4AmbiguityRetryFixture({
               auditor,

@@ -9,7 +9,11 @@ import {
   canonicalRecoveryAmbiguityRetryModelJobIdentity,
   canonicalRecoveryAmbiguityRetrySourceAuthoritySha256,
   canonicalRecoveryDates,
+  canonicalRecoverySignalCount,
   canonicalRecoveryUnavailableReason,
+  DailyCanonicalRecoveryRuntimeAbortedError,
+  DailyCanonicalRecoveryRuntimeFailureError,
+  DailyCanonicalRecoveryRuntimeTransportError,
   parseStrictDailyOutputText,
   sha256,
   type CanonicalRecoveryPublication,
@@ -26,8 +30,12 @@ import {
   assertReaderSummaryDailyCanonicalRecoveryV4HistoricalUnavailableMigrationContract,
 } from "./reader-summary-daily-canonical-recovery-v4-historical-unavailable-postgres-contract";
 import {
+  assertReaderSummaryDailyCanonicalRecoveryV4InvalidRuntimeMigrationContract,
+} from "./reader-summary-daily-canonical-recovery-v4-invalid-runtime-postgres-contract";
+import {
   readerSummaryDailyCanonicalHistoricalGithubOmissionReason,
 } from "./reader-summary-daily-source-authority-snapshot";
+import { GrpcReaderSummaryDailyCanonicalRecoveryRuntime } from "./grpc-reader-summary-daily-subscription-runtime";
 
 describe("reader-summary daily canonical recovery v4", () => {
   it("fixes exactly Jul23 through Jul30", () => {
@@ -45,7 +53,6 @@ describe("reader-summary daily canonical recovery v4", () => {
     expect(canonicalRecoveryDates).not.toContain("2026-07-22");
     expect(canonicalRecoveryDates).not.toContain("2026-07-31");
   });
-
   it("pins the one historical failed attempt binding", () => {
     expect(canonicalRecoveryAmbiguityRetryDate).toBe("2026-07-23");
     expect(canonicalRecoveryAmbiguityRetryModelJobIdentity).toBe(
@@ -55,7 +62,6 @@ describe("reader-summary daily canonical recovery v4", () => {
       "010fd4f8da8aa2e4b332601e145e49549ff41c34b7ea498024b7449f9c827bbb",
     );
   });
-
   it("accepts only exact canonical output_text bytes", () => {
     const bytes = canonicalJsonBytes(validOutput());
     expect(parseStrictDailyOutputText(bytes.toString("utf8"))).toEqual(bytes);
@@ -66,7 +72,6 @@ describe("reader-summary daily canonical recovery v4", () => {
       unbound: true,
     }))).toThrow(/fields/u);
   });
-
   it("rejects any SECURITY DEFINER path other than pg_catalog", () => {
     const safe = `CREATE FUNCTION public.safe() RETURNS BOOLEAN
       LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog AS $function$
@@ -76,15 +81,33 @@ describe("reader-summary daily canonical recovery v4", () => {
       safe.replace("pg_catalog AS", "pg_catalog, public AS"),
     )).toThrow(/unsafe/u);
   });
-
   it("preserves legacy canonicalizers and enforces the owned unavailable migration", () => {
     expect(() => assertReaderSummaryDailyCanonicalRecoveryV4MigrationContract())
       .not.toThrow();
     expect(() =>
       assertReaderSummaryDailyCanonicalRecoveryV4HistoricalUnavailableMigrationContract(),
     ).not.toThrow();
+    expect(() => assertReaderSummaryDailyCanonicalRecoveryV4InvalidRuntimeMigrationContract())
+      .not.toThrow();
   });
-
+  it.each([
+    ["non-completed product", "invalid_or_non_completed_runtime_result"],
+    ["transport", "runtime_transport_failure"],
+    ["abort", "runtime_aborted"],
+  ] as const)("keeps gRPC %s failures sanitized and distinct", async (_label, code) => {
+    const claimed = work({ requestedUtcDate: "2026-07-24" });
+    const abort = new AbortController();
+    const client = { runTask: jest.fn(async () => {
+      if (code === "invalid_or_non_completed_runtime_result") return { status: "failed" } as never;
+      if (code === "runtime_aborted") abort.abort();
+      throw new Error("transport");
+    }) };
+    await expect(new GrpcReaderSummaryDailyCanonicalRecoveryRuntime(client as never).run({
+      tenantId: claimed.tenantId, workspaceId: claimed.workspaceId,
+      modelJobIdentity: claimed.modelJobIdentity, requestedUtcDate: claimed.requestedUtcDate,
+      sourceAuthorityBytes: claimed.sourceAuthorityBytes, signal: abort.signal,
+    })).rejects.toMatchObject({ code });
+  });
   it("binds citation ordinals and source identities to frozen evidence", () => {
     const authority = authorityBytes();
     const output = {
@@ -107,7 +130,6 @@ describe("reader-summary daily canonical recovery v4", () => {
       citationMap: [{ ...output.citationMap[0], sourceItemId: "forged" }],
     }, authority, 200)).toThrow(/frozen authority/u);
   });
-
   it("allows empty legacy bodyPreview but keeps citation authority text strict", () => {
     const output = {
       ...validOutput(),
@@ -140,7 +162,6 @@ describe("reader-summary daily canonical recovery v4", () => {
       output, Buffer.from(JSON.stringify(authority), "utf8"), 200,
     )).toThrow(/frozen authority/u);
   });
-
   it("marks running after the irreversible claim and before one model call", async () => {
     const events: string[] = [];
     const publication = published();
@@ -169,6 +190,8 @@ describe("reader-summary daily canonical recovery v4", () => {
         events.push("read-after-commit");
         return [publication];
       }),
+      terminalizeUnavailable: jest.fn(async () => unavailableTerminal()),
+      readUnavailable: jest.fn(async () => unavailableTerminal()),
       readTerminals: jest.fn(),
     };
     const runtime = {
@@ -187,14 +210,12 @@ describe("reader-summary daily canonical recovery v4", () => {
         return publication;
       }),
     };
-
     await expect(new ReaderSummaryDailyCanonicalRecoveryV4Executor({
       authority,
       runtime,
       finalizer,
       now: () => new Date("2026-08-02T23:45:00.000Z"),
     }).runOne(input())).resolves.toMatchObject({ kind: "completed", publication });
-
     expect(events).toEqual([
       "claim-pre-model-consumed",
       "running",
@@ -207,7 +228,6 @@ describe("reader-summary daily canonical recovery v4", () => {
     ]);
     expect(runtime.run).toHaveBeenCalledTimes(1);
   });
-
   it("uses the refreshed fenced lease for completion after renewal", async () => {
     const responseBytes = canonicalJsonBytes(validOutput());
     const claimed = work();
@@ -231,6 +251,8 @@ describe("reader-summary daily canonical recovery v4", () => {
         receiptBytes: Buffer.from("receipt"),
       })),
       readFinalized: jest.fn(async () => [published()]),
+      terminalizeUnavailable: jest.fn(async () => unavailableTerminal()),
+      readUnavailable: jest.fn(async () => unavailableTerminal()),
       readTerminals: jest.fn(),
     };
     const finalizer = { finalize: jest.fn(async () => published()) };
@@ -251,7 +273,6 @@ describe("reader-summary daily canonical recovery v4", () => {
         return { stop: jest.fn() };
       },
     });
-
     await expect(executor.runOne(input())).resolves.toMatchObject({ kind: "completed" });
     expect(authority.renew).toHaveBeenCalledWith(claimed, "2026-08-02T23:45:00.000Z");
     expect(authority.renew).toHaveBeenCalledWith(
@@ -269,7 +290,6 @@ describe("reader-summary daily canonical recovery v4", () => {
       }),
     }));
   });
-
   it("does not call the model when the source authority hash has changed", async () => {
     const corrupted = work({ sourceAuthoritySha256: "b".repeat(64) });
     const runtime = { runtimeEngine: "subscription-runtime-cli" as const, run: jest.fn() };
@@ -279,6 +299,8 @@ describe("reader-summary daily canonical recovery v4", () => {
       renew: jest.fn(async (claimed: CanonicalRecoveryWork) => claimed),
       complete: jest.fn(),
       readFinalized: jest.fn(),
+      terminalizeUnavailable: jest.fn(async () => unavailableTerminal()),
+      readUnavailable: jest.fn(async () => unavailableTerminal()),
       readTerminals: jest.fn(),
     };
     await expect(new ReaderSummaryDailyCanonicalRecoveryV4Executor({
@@ -290,20 +312,18 @@ describe("reader-summary daily canonical recovery v4", () => {
     expect(authority.markRunning).not.toHaveBeenCalled();
     expect(runtime.run).not.toHaveBeenCalled();
   });
-
-  it("fails closed before the model when a lease refresh returns stale work", async () => {
+  it("fails closed without terminalizing a renewal failure before the model", async () => {
     const claimed = work();
     const runtime = { runtimeEngine: "subscription-runtime-cli" as const, run: jest.fn() };
     const finalizer = { finalize: jest.fn() };
     const authority = {
       claim: jest.fn(async () => ({ kind: "claimed" as const, work: claimed })),
       markRunning: jest.fn(async () => undefined),
-      renew: jest.fn(async (active: CanonicalRecoveryWork) => ({
-        ...active,
-        leaseExpiresAt: "2026-08-02T23:44:00.000Z",
-      })),
+      renew: jest.fn(async () => { throw new Error("renewal failed"); }),
       complete: jest.fn(),
       readFinalized: jest.fn(),
+      terminalizeUnavailable: jest.fn(async () => unavailableTerminal()),
+      readUnavailable: jest.fn(async () => unavailableTerminal()),
       readTerminals: jest.fn(),
     };
     await expect(new ReaderSummaryDailyCanonicalRecoveryV4Executor({
@@ -311,28 +331,36 @@ describe("reader-summary daily canonical recovery v4", () => {
       runtime,
       finalizer,
       now: () => new Date("2026-08-02T23:45:00.000Z"),
-    }).runOne(input())).rejects.toThrow(/renewal did not return current fenced work/u);
+    }).runOne(input())).rejects.toThrow("renewal failed");
     expect(runtime.run).not.toHaveBeenCalled();
+    expect(authority.terminalizeUnavailable).not.toHaveBeenCalled();
     expect(finalizer.finalize).not.toHaveBeenCalled();
   });
-
-  it("fails closed after an ambiguous model interruption without a second call", async () => {
+  it.each([
+    ["terminalizes", 0],
+    ["rejects a forged signal count from", 1],
+  ] as const)("%s a typed invalid runtime result", async (_case, signalCountDelta) => {
+    const claimed = work({ requestedUtcDate: "2026-07-24" });
     const runtime = {
       runtimeEngine: "subscription-runtime-cli" as const,
-      run: jest.fn(async () => { throw new Error("interrupted"); }),
+      run: jest.fn(async () => {
+        throw new DailyCanonicalRecoveryRuntimeFailureError(false);
+      }),
     };
     const authority = {
       claim: jest
         .fn()
-        .mockResolvedValueOnce({ kind: "claimed" as const, work: work() })
-        .mockResolvedValueOnce({
-          kind: "failed_ambiguous" as const,
-          requestedUtcDate: "2026-07-23",
-        }),
+        .mockResolvedValueOnce({ kind: "claimed" as const, work: claimed })
+        .mockResolvedValueOnce({ kind: "leased" as const, requestedUtcDate: "2026-07-25" }),
       markRunning: jest.fn(async () => undefined),
       renew: jest.fn(async (claimed: CanonicalRecoveryWork) => claimed),
       complete: jest.fn(),
       readFinalized: jest.fn(),
+      terminalizeUnavailable: jest.fn(async (active: CanonicalRecoveryWork) => ({
+        ...unavailableFor(active),
+        signalCount: canonicalRecoverySignalCount(active.sourceAuthorityBytes) + signalCountDelta,
+      })),
+      readUnavailable: jest.fn(),
       readTerminals: jest.fn(),
     };
     const executor = new ReaderSummaryDailyCanonicalRecoveryV4Executor({
@@ -341,14 +369,73 @@ describe("reader-summary daily canonical recovery v4", () => {
       finalizer: { finalize: jest.fn() },
       now: () => new Date("2026-08-02T23:45:00.000Z"),
     });
-    await expect(executor.runOne(input())).rejects.toThrow("interrupted");
-    await expect(executor.runOne(input())).resolves.toEqual({
-      kind: "failed_ambiguous",
-      requestedUtcDate: "2026-07-23",
+    const first = executor.runOne(input());
+    if (signalCountDelta !== 0) {
+      await expect(first).rejects.toThrow(/fenced work binding/u);
+      expect(runtime.run).toHaveBeenCalledTimes(1);
+      expect(authority.terminalizeUnavailable).toHaveBeenCalledTimes(1);
+      expect(authority.complete).not.toHaveBeenCalled();
+      return;
+    }
+    await expect(first).rejects.toMatchObject({
+      name: "DailyCanonicalRecoveryRuntimeFailureError",
+      terminalized: true,
+    });
+    await expect(executor.runAll(input())).resolves.toEqual({
+      kind: "leased",
+      requestedUtcDate: "2026-07-25",
     });
     expect(runtime.run).toHaveBeenCalledTimes(1);
+    expect(authority.terminalizeUnavailable).toHaveBeenCalledTimes(1);
+    expect(authority.complete).not.toHaveBeenCalled();
   });
-
+  it("reconciles the known expired Jul24 terminal with zero model calls", async () => {
+    const expired = work({ requestedUtcDate: "2026-07-24" });
+    const authority = {
+      claim: jest.fn()
+        .mockResolvedValueOnce({ kind: "failed_ambiguous" as const,
+          requestedUtcDate: expired.requestedUtcDate,
+          modelJobIdentity: expired.modelJobIdentity,
+          sourceAuthoritySha256: expired.sourceAuthoritySha256,
+          attemptOrdinal: 1 })
+        .mockResolvedValueOnce({ kind: "leased" as const, requestedUtcDate: "2026-07-25" }),
+      markRunning: jest.fn(), renew: jest.fn(), complete: jest.fn(),
+      terminalizeUnavailable: jest.fn(), readUnavailable: jest.fn(),
+      reconcileExpiredUnavailable: jest.fn(async () => unavailableFor(expired)),
+      readFinalized: jest.fn(), readTerminals: jest.fn(),
+    };
+    const runtime = { runtimeEngine: "subscription-runtime-cli" as const, run: jest.fn() };
+    await expect(new ReaderSummaryDailyCanonicalRecoveryV4Executor({
+      authority, runtime, finalizer: { finalize: jest.fn() },
+      now: () => new Date("2026-08-02T23:45:00.000Z"),
+    }).runAll(input())).resolves.toEqual({ kind: "leased", requestedUtcDate: "2026-07-25" });
+    expect(runtime.run).not.toHaveBeenCalled();
+    expect(authority.reconcileExpiredUnavailable).toHaveBeenCalledTimes(1);
+    expect(authority.reconcileExpiredUnavailable).toHaveBeenCalledWith(expect.objectContaining({
+      attemptOrdinal: 1,
+    }));
+  });
+  it.each([
+    ["transport", new DailyCanonicalRecoveryRuntimeTransportError(), "runtime_transport_failure"],
+    ["abort", new DailyCanonicalRecoveryRuntimeAbortedError(), "runtime_aborted"],
+    ["pre-result ambiguity", new Error("pre-result ambiguity"), undefined],
+  ] as const)("does not terminalize %s", async (_label, failure, code) => {
+    const authority = {
+      claim: jest.fn(async () => ({ kind: "claimed" as const, work: work() })),
+      markRunning: jest.fn(), renew: jest.fn(async (current: CanonicalRecoveryWork) => current),
+      complete: jest.fn(), terminalizeUnavailable: jest.fn(), readUnavailable: jest.fn(),
+      readFinalized: jest.fn(), readTerminals: jest.fn(),
+    };
+    await expect(new ReaderSummaryDailyCanonicalRecoveryV4Executor({
+      authority,
+      runtime: { runtimeEngine: "subscription-runtime-cli" as const,
+        run: jest.fn(async () => { throw failure; }) },
+      finalizer: { finalize: jest.fn() }, now: () => new Date("2026-08-02T23:45:00.000Z"),
+    }).runAll(input())).rejects.toMatchObject(
+      code === undefined ? { message: "pre-result ambiguity" } : { code },
+    );
+    expect(authority.terminalizeUnavailable).not.toHaveBeenCalled();
+  });
   it("does no model, finalization, or filesystem-facing work on a finalized replay", async () => {
     const runtime = { runtimeEngine: "subscription-runtime-cli" as const, run: jest.fn() };
     const finalizer = { finalize: jest.fn() };
@@ -359,6 +446,8 @@ describe("reader-summary daily canonical recovery v4", () => {
       renew: jest.fn(),
       complete: jest.fn(),
       readFinalized: jest.fn(async () => [published()]),
+      terminalizeUnavailable: jest.fn(async () => unavailableTerminal()),
+      readUnavailable: jest.fn(async () => unavailableTerminal()),
       readTerminals: jest.fn(async () => terminalOutcomes({
         publications: terminalPublications,
       })),
@@ -379,7 +468,6 @@ describe("reader-summary daily canonical recovery v4", () => {
     expect(authority.complete).not.toHaveBeenCalled();
     expect(authority.readTerminals).toHaveBeenCalledTimes(1);
   });
-
   it("converges after a committed finalization loses its client acknowledgement", async () => {
     const directory = mkdtempSync(join(tmpdir(), "daily-finalization-ack-loss-"));
     const publicEvidencePath = join(
@@ -421,6 +509,8 @@ describe("reader-summary daily canonical recovery v4", () => {
         receiptBytes: Buffer.from("receipt"),
       })),
       readFinalized: jest.fn(async () => [publication]),
+      terminalizeUnavailable: jest.fn(async () => unavailableTerminal()),
+      readUnavailable: jest.fn(async () => unavailableTerminal()),
       readTerminals: jest.fn(async () => terminalOutcomes({
         publications: terminalPublications,
       })),
@@ -431,7 +521,6 @@ describe("reader-summary daily canonical recovery v4", () => {
       finalizer,
       now: () => new Date("2026-08-02T23:45:00.000Z"),
     });
-
     try {
       await expect(executor.runOne(input())).rejects.toThrow(
         "finalization acknowledgement lost after commit",
@@ -441,7 +530,6 @@ describe("reader-summary daily canonical recovery v4", () => {
         publications: terminalPublications,
         unavailable: [],
       });
-
       expect(readFileSync(publicEvidencePath)).toEqual(evidenceBytes);
       expect(runtime.run).toHaveBeenCalledTimes(1);
       expect(finalizer.finalize).toHaveBeenCalledTimes(1);
@@ -450,7 +538,6 @@ describe("reader-summary daily canonical recovery v4", () => {
       rmSync(directory, { recursive: true, force: true });
     }
   });
-
   it("finishes a completed crash replay without a second model call", async () => {
     const publication = published();
     const responseBytes = canonicalJsonBytes(validOutput());
@@ -469,6 +556,8 @@ describe("reader-summary daily canonical recovery v4", () => {
       renew: jest.fn(async (claimed: CanonicalRecoveryWork) => claimed),
       complete: jest.fn(),
       readFinalized: jest.fn(async () => [publication]),
+      terminalizeUnavailable: jest.fn(async () => unavailableTerminal()),
+      readUnavailable: jest.fn(async () => unavailableTerminal()),
       readTerminals: jest.fn(),
     };
     await expect(new ReaderSummaryDailyCanonicalRecoveryV4Executor({
@@ -481,7 +570,6 @@ describe("reader-summary daily canonical recovery v4", () => {
     expect(authority.complete).not.toHaveBeenCalled();
     expect(finalizer.finalize).toHaveBeenCalledTimes(1);
   });
-
   it("drains only the eight canonical dates in deterministic order", async () => {
     const dates = [...canonicalRecoveryDates];
   const publications = dates.map((requestedUtcDate) => ({
@@ -507,6 +595,8 @@ describe("reader-summary daily canonical recovery v4", () => {
           receiptBytes: Buffer.from("receipt"),
         })),
         readFinalized: jest.fn(async () => publications),
+        terminalizeUnavailable: jest.fn(async () => unavailableTerminal()),
+        readUnavailable: jest.fn(async () => unavailableTerminal()),
         readTerminals: jest.fn(async () => terminalOutcomes({ publications })),
       },
       runtime: {
@@ -534,7 +624,6 @@ describe("reader-summary daily canonical recovery v4", () => {
     expect(publications.map((entry) => entry.requestedUtcDate)).toEqual(dates);
     expect(finalizedDates).toEqual(dates);
   });
-
   it("records the terminal Jul23 unavailable outcome, calls only Jul24-Jul30, and replays with zero writes", async () => {
     const dates = [...canonicalRecoveryDates];
     const publications = dates.slice(1).map((requestedUtcDate) =>
@@ -552,6 +641,7 @@ describe("reader-summary daily canonical recovery v4", () => {
             requestedUtcDate: unavailable.requestedUtcDate,
             modelJobIdentity: unavailable.modelJobIdentity,
             sourceAuthoritySha256: unavailable.sourceAuthoritySha256,
+            attemptOrdinal: unavailable.attemptOrdinal,
           };
         }
         const requestedUtcDate = dates.slice(1)[claimedDates.length];
@@ -569,6 +659,8 @@ describe("reader-summary daily canonical recovery v4", () => {
         receiptBytes: Buffer.from("receipt"),
       })),
       readFinalized: jest.fn(async () => publications),
+      terminalizeUnavailable: jest.fn(async () => unavailable),
+      readUnavailable: jest.fn(async () => unavailable),
       readTerminals: jest.fn(async () => terminalOutcomes({
         publications,
         unavailable: [unavailable],
@@ -599,7 +691,6 @@ describe("reader-summary daily canonical recovery v4", () => {
       finalizer,
       now: () => new Date("2026-08-02T23:45:00.000Z"),
     });
-
     const first = await executor.runAll(input());
     const writesAfterFirst = {
       runtime: runtime.run.mock.calls.length,
@@ -608,7 +699,6 @@ describe("reader-summary daily canonical recovery v4", () => {
       complete: authority.complete.mock.calls.length,
       finalize: finalizer.finalize.mock.calls.length,
     };
-
     expect(first).toEqual({
       kind: "caught_up",
       publications,
@@ -631,29 +721,32 @@ describe("reader-summary daily canonical recovery v4", () => {
       finalize: finalizer.finalize.mock.calls.length,
     }).toEqual(writesAfterFirst);
   });
-
   it.each([
     {
       requestedUtcDate: "2026-07-24",
       modelJobIdentity: canonicalRecoveryAmbiguityRetryModelJobIdentity,
       sourceAuthoritySha256:
         canonicalRecoveryAmbiguityRetrySourceAuthoritySha256,
+      attemptOrdinal: 1,
     },
     {
       requestedUtcDate: "2026-07-23",
       modelJobIdentity: "b".repeat(64),
       sourceAuthoritySha256:
         canonicalRecoveryAmbiguityRetrySourceAuthoritySha256,
+      attemptOrdinal: 2,
     },
     {
       requestedUtcDate: "2026-07-23",
       modelJobIdentity: canonicalRecoveryAmbiguityRetryModelJobIdentity,
       sourceAuthoritySha256: "a".repeat(64),
+      attemptOrdinal: 2,
     },
     {
       requestedUtcDate: "2026-07-23",
       modelJobIdentity: "not-a-sha",
       sourceAuthoritySha256: "a".repeat(64),
+      attemptOrdinal: 2,
     },
   ] as const)("fails closed for noncanonical ambiguity %o", async (ambiguity) => {
     const authority = {
@@ -662,31 +755,29 @@ describe("reader-summary daily canonical recovery v4", () => {
       renew: jest.fn(),
       complete: jest.fn(),
       readFinalized: jest.fn(),
+      terminalizeUnavailable: jest.fn(async () => unavailableTerminal()),
+      readUnavailable: jest.fn(async () => unavailableTerminal()),
       readTerminals: jest.fn(),
     };
     const runtime = { runtimeEngine: "subscription-runtime-cli" as const, run: jest.fn() };
     const finalizer = { finalize: jest.fn() };
-
     await expect(new ReaderSummaryDailyCanonicalRecoveryV4Executor({
       authority,
       runtime,
       finalizer,
       now: () => new Date("2026-08-02T23:45:00.000Z"),
-    }).runAll(input())).resolves.toEqual({ kind: "failed_ambiguous", ...ambiguity });
-
+    }).runAll(input())).rejects.toThrow(/not an unavailable terminal/u);
     expect(runtime.run).not.toHaveBeenCalled();
     expect(authority.markRunning).not.toHaveBeenCalled();
     expect(authority.complete).not.toHaveBeenCalled();
     expect(finalizer.finalize).not.toHaveBeenCalled();
   });
 });
-
 const input = () => ({
   tenantId: "00000000-0000-7000-8000-000000000901",
   workspaceId: "00000000-0000-7000-8000-000000000902",
   workerId: "worker",
 });
-
 const authorityBytes = (
   requestedUtcDate: CanonicalRecoveryWork["requestedUtcDate"] = "2026-07-23",
 ) => {
@@ -768,13 +859,11 @@ const authorityBytes = (
         },
   });
 };
-
 const nextUtcDate = (date: string): string => {
   const next = new Date(`${date}T00:00:00.000Z`);
   next.setUTCDate(next.getUTCDate() + 1);
   return next.toISOString().slice(0, 10);
 };
-
 const work = (patch: Partial<CanonicalRecoveryWork> = {}): CanonicalRecoveryWork => {
   const requestedUtcDate = patch.requestedUtcDate ?? "2026-07-23";
   const bytes = authorityBytes(requestedUtcDate);
@@ -785,6 +874,7 @@ const work = (patch: Partial<CanonicalRecoveryWork> = {}): CanonicalRecoveryWork
     sourceAuthorityBytes: bytes,
     sourceAuthoritySha256: sha256(bytes),
     modelJobIdentity: "b".repeat(64),
+    attemptOrdinal: 1,
     state: "RESERVED",
     workerId: input().workerId,
     fencingToken: 1n,
@@ -794,7 +884,6 @@ const work = (patch: Partial<CanonicalRecoveryWork> = {}): CanonicalRecoveryWork
     ...patch,
   };
 };
-
 const published = (
   requestedUtcDate: CanonicalRecoveryWork["requestedUtcDate"] = "2026-07-23",
 ): CanonicalRecoveryPublication => ({
@@ -810,10 +899,8 @@ const published = (
   publicEvidenceSha256: "2".repeat(64),
   publicFrontendSha256: "3".repeat(64),
 });
-
 const allPublications = (): CanonicalRecoveryPublication[] =>
   canonicalRecoveryDates.map((requestedUtcDate) => published(requestedUtcDate));
-
 const unavailableTerminal = (): CanonicalRecoveryUnavailable => ({
   requestedUtcDate: canonicalRecoveryAmbiguityRetryDate,
   reasonCode: canonicalRecoveryUnavailableReason,
@@ -823,7 +910,14 @@ const unavailableTerminal = (): CanonicalRecoveryUnavailable => ({
   modelJobIdentity: canonicalRecoveryAmbiguityRetryModelJobIdentity,
   attemptOrdinal: 2,
 });
-
+const unavailableFor = (claimed: CanonicalRecoveryWork): CanonicalRecoveryUnavailable => ({
+  requestedUtcDate: claimed.requestedUtcDate,
+  reasonCode: canonicalRecoveryUnavailableReason,
+  signalCount: canonicalRecoverySignalCount(claimed.sourceAuthorityBytes),
+  sourceAuthoritySha256: claimed.sourceAuthoritySha256,
+  modelJobIdentity: claimed.modelJobIdentity,
+  attemptOrdinal: claimed.attemptOrdinal === 2 ? 2 : 1,
+});
 const terminalOutcomes = (input: Readonly<{
   publications: readonly CanonicalRecoveryPublication[];
   unavailable?: readonly CanonicalRecoveryUnavailable[];
@@ -845,7 +939,6 @@ const terminalOutcomes = (input: Readonly<{
       : { kind: "finalized" as const, publication };
   });
 };
-
 const validOutput = () => ({
   headline: "Canonical day",
   executiveSummary: "Immutable evidence only.",
@@ -888,7 +981,6 @@ const validOutput = () => ({
   },
   noSignalReason: "No immutable signal was selected.",
 });
-
 const attestation = (response: Buffer) => ({
   schemaVersion: 1,
   requestId: "recovery",
