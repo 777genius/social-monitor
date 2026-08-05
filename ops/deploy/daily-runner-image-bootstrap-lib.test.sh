@@ -379,7 +379,6 @@ reset_case() {
   LEGACY_RUNTIME_COMPOSE_IMAGE=$BASE_ID
   LEGACY_RUNTIME_ONEOFF=False
   LEGACY_RUNTIME_CONTAINER_NUMBER=1
-  LEGACY_RUNTIME_HEALTH=unhealthy
 }
 
 configure_legacy_runtime_stable() {

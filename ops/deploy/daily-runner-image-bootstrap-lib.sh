@@ -211,14 +211,15 @@ daily_runner_bootstrap_verify_control_dockerfile() {
 
 daily_runner_bootstrap_verify_legacy_base_image() {
   local base_id=$1
+  local deployment_project=${PROJECT:-}
   local container_id record
   local inspected_id image_id status running paused restarting dead oom_killed
   local error restart_count project service compose_image oneoff container_number extra
 
   [[ $base_id =~ ^sha256:[0-9a-f]{64}$ && \
-     $PROJECT == social-monitor-prod ]] || return 1
+     $deployment_project == social-monitor-prod ]] || return 1
   container_id=$(docker container ls --no-trunc \
-    --filter "label=com.docker.compose.project=$PROJECT" \
+    --filter "label=com.docker.compose.project=$deployment_project" \
     --filter 'label=com.docker.compose.service=intelligence-worker' \
     --format '{{.ID}}' 2>/dev/null) || return 1
   [[ $container_id =~ ^[0-9a-f]{64}$ ]] || return 1
@@ -234,7 +235,7 @@ daily_runner_bootstrap_verify_legacy_base_image() {
      $status == running && $running == true && \
      $paused == false && $restarting == false && $dead == false && \
      $oom_killed == false && -z $error && $restart_count == 0 && \
-     $project == social-monitor-prod && $service == intelligence-worker && \
+     $project == "$deployment_project" && $service == intelligence-worker && \
      $compose_image == "$image_id" && $oneoff == False && \
      $container_number == 1 && -z $extra ]]
 }
