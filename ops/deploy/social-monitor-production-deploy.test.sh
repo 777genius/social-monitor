@@ -978,7 +978,7 @@ bash "$SCRIPT_DIR/daily-runner-image-bootstrap-deploy.test.sh"
 bash "$SCRIPT_DIR/daily-runner-image-bootstrap-lib.test.sh"
 bash "$SCRIPT_DIR/backend-runtime-health-lib.test.sh"
 bash "$SCRIPT_DIR/otel-collector-deploy-lifecycle.test.sh"
-bash "$SCRIPT_DIR/backend-image-rescue-lib.test.sh"
+for test_file in backend-image-rescue-lib.test.sh backend-image-rescue-migrate-fallback.test.sh; do bash "$SCRIPT_DIR/$test_file"; done
 bash "$SCRIPT_DIR/postgres-runtime-deploy-lib.test.sh"
 TMPDIR=/tmp bash "$SCRIPT_DIR/github-premidnight-capture-runtime.test.sh"
 bash "$SCRIPT_DIR/verify-postgres-runtime-topology.test.sh"

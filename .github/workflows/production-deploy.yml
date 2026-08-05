@@ -419,7 +419,10 @@ jobs:
             ops/deploy/verify-postgres-runtime-topology.test.sh
           )
           if [[ $bridge_phase == false ]]; then
-            deploy_shell_files+=(ops/deploy/daily-deploy-lock-race.test.sh)
+            deploy_shell_files+=(
+              ops/deploy/daily-deploy-lock-race.test.sh
+              ops/deploy/backend-image-rescue-migrate-fallback.test.sh
+            )
           fi
           final_publication_shell_files=(
             ops/deploy/postgres-backup-deploy-lib.sh
