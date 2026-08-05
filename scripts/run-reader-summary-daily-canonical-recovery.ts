@@ -120,6 +120,10 @@ async function main(): Promise<void> {
     console.log(`reader-summary-daily-canonical-recovery-v4 outcome=${outcome.kind}`);
     if (outcome.kind === "caught_up") {
       console.log(`finalized_dates=${outcome.publications.length}`);
+      console.log(
+        `unavailable_dates=${outcome.unavailable.map((entry) =>
+          `${entry.requestedUtcDate}:${entry.reasonCode}`).join(",") || "none"}`,
+      );
     }
     const exitCode = canonicalRecoveryCliExitCode(outcome);
     if (outcome.kind === "failed_ambiguous") {

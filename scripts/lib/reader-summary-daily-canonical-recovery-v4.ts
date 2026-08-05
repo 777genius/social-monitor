@@ -10,6 +10,10 @@ export const canonicalRecoveryDates = Object.freeze([
 
 export type CanonicalRecoveryDate = typeof canonicalRecoveryDates[number];
 export const canonicalRecoveryAmbiguityRetryDate = "2026-07-23" as const;
+export const canonicalRecoveryAmbiguityRetryModelJobIdentity =
+  "241cc317da26fe2125ccf0590f99cee9d1694c91b4a019b036c9619c61e3672a" as const;
+export const canonicalRecoveryAmbiguityRetrySourceAuthoritySha256 =
+  "010fd4f8da8aa2e4b332601e145e49549ff41c34b7ea498024b7449f9c827bbb" as const;
 export type CanonicalRecoveryLeaseState =
   | "RESERVED"
   | "COMPLETED"
@@ -61,6 +65,22 @@ export type CanonicalRecoveryPublication = Readonly<{
   publicFrontendSha256: string;
 }>;
 
+export const canonicalRecoveryUnavailableReason =
+  "model_result_not_durably_persisted_after_consumed_attempt" as const;
+
+export type CanonicalRecoveryUnavailable = Readonly<{
+  requestedUtcDate: CanonicalRecoveryDate;
+  reasonCode: typeof canonicalRecoveryUnavailableReason;
+  signalCount: number;
+  sourceAuthoritySha256: string;
+  modelJobIdentity: string;
+  attemptOrdinal: 2;
+}>;
+
+export type CanonicalRecoveryTerminal =
+  | Readonly<{ kind: "finalized"; publication: CanonicalRecoveryPublication }>
+  | Readonly<{ kind: "unavailable"; unavailable: CanonicalRecoveryUnavailable }>;
+
 export interface CanonicalRecoveryAuthority {
   claim(input: Readonly<{
     tenantId: string;
@@ -84,6 +104,10 @@ export interface CanonicalRecoveryAuthority {
     tenantId: string;
     workspaceId: string;
   }>): Promise<readonly CanonicalRecoveryPublication[]>;
+  readTerminals(input: Readonly<{
+    tenantId: string;
+    workspaceId: string;
+  }>): Promise<readonly CanonicalRecoveryTerminal[]>;
 }
 
 export interface CanonicalRecoveryFinalizer {
@@ -272,6 +296,20 @@ export class PostgresCanonicalRecoveryAuthority
         [input.tenantId, input.workspaceId],
       );
       return result.rows.map(publicationFromRow);
+    });
+  }
+
+  async readTerminals(
+    input: Parameters<CanonicalRecoveryAuthority["readTerminals"]>[0],
+  ): Promise<readonly CanonicalRecoveryTerminal[]> {
+    return this.client.serializable(async (transaction) => {
+      const result = await transaction.query<Record<string, unknown>>(
+        `SELECT * FROM public."read_reader_summary_daily_canonical_recovery_v4_terminals"(
+          $1::UUID,$2::UUID
+        )`,
+        [input.tenantId, input.workspaceId],
+      );
+      return result.rows.map(terminalFromRow);
     });
   }
 
@@ -715,3 +753,54 @@ const publicationFromRow = (
   publicEvidenceSha256: sha(row.public_evidence_sha256, "public evidence"),
   publicFrontendSha256: sha(row.public_frontend_sha256, "public frontend"),
 });
+
+const terminalFromRow = (
+  row: Record<string, unknown>,
+): CanonicalRecoveryTerminal => {
+  if (text(row.outcome) === "FINALIZED") {
+    return Object.freeze({ kind: "finalized" as const, publication: publicationFromRow(row) });
+  }
+  if (text(row.outcome) !== "UNAVAILABLE") {
+    throw new Error("Daily canonical recovery terminal outcome is invalid");
+  }
+  const signalCount = Number(bigintText(row.signal_count));
+  const attemptOrdinal = Number(bigintText(row.attempt_ordinal));
+  const requestedUtcDate = recoveryDate(row.requested_utc_date);
+  const sourceAuthoritySha256 = sha(
+    row.source_authority_sha256,
+    "unavailable source authority",
+  );
+  const modelJobIdentity = sha(row.model_job_identity, "unavailable model identity");
+  if (
+    requestedUtcDate !== canonicalRecoveryAmbiguityRetryDate ||
+    text(row.reason_code) !== canonicalRecoveryUnavailableReason ||
+    signalCount !== 342 ||
+    attemptOrdinal !== 2 ||
+    modelJobIdentity !== canonicalRecoveryAmbiguityRetryModelJobIdentity ||
+    sourceAuthoritySha256 !==
+      canonicalRecoveryAmbiguityRetrySourceAuthoritySha256 ||
+    [
+      row.reader_summary_job_id,
+      row.reader_summary_artifact_id,
+      row.publication_id,
+      row.report_sha256,
+      row.proof_sha256,
+      row.weekly_evidence_sha256,
+      row.public_evidence_sha256,
+      row.public_frontend_sha256,
+    ].some((value) => value !== null && value !== undefined)
+  ) {
+    throw new Error("Daily canonical recovery unavailable terminal is invalid");
+  }
+  return Object.freeze({
+    kind: "unavailable" as const,
+    unavailable: Object.freeze({
+      requestedUtcDate,
+      reasonCode: canonicalRecoveryUnavailableReason,
+      signalCount,
+      sourceAuthoritySha256,
+      modelJobIdentity,
+      attemptOrdinal: 2 as const,
+    }),
+  });
+};

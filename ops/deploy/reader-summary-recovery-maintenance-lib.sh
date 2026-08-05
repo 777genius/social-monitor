@@ -167,25 +167,13 @@ refresh_daily_runner_maintenance_auth() {
 
 run_reader_summary_daily_canonical_recovery() {
   local recovery_command
-  local -a ambiguity_authorization=()
-  if (($# == 2)); then
-    local original_model_job_identity=$1 source_authority_sha256=$2
-    ambiguity_authorization=(
-      -e "READER_SUMMARY_DAILY_AMBIGUITY_ORIGINAL_MODEL_JOB_IDENTITY=$original_model_job_identity"
-      -e "READER_SUMMARY_DAILY_AMBIGUITY_SOURCE_AUTHORITY_SHA256=$source_authority_sha256"
-    )
-    recovery_command='set -eu; npm run prepare:reader-summary-production-recovery-gap-authority; npm run authorize:reader-summary-daily-canonical-recovery-ambiguity-retry; npm run run:reader-summary-daily-canonical-recovery'
-  elif (($# == 0)); then
-    recovery_command='set -eu; npm run prepare:reader-summary-production-recovery-gap-authority; npm run run:reader-summary-daily-canonical-recovery'
-  else
-    fail 'reader-summary daily canonical recovery ambiguity authorization accepts exactly two values'
-  fi
+  [[ $# == 0 ]] || fail 'reader-summary daily canonical recovery accepts no authorization input'
+  recovery_command='set -eu; npm run prepare:reader-summary-production-recovery-gap-authority; npm run run:reader-summary-daily-canonical-recovery'
   "${COMPOSE[@]}" --profile daily run --rm --no-deps \
     -e READER_SUMMARY_DAILY_TENANT_ID=00000000-0000-7000-8000-000000000901 \
     -e READER_SUMMARY_DAILY_WORKSPACE_ID=00000000-0000-7000-8000-000000000902 \
     -e READER_SUMMARY_DAILY_FIRST_UNRESOLVED_UTC_DATE=2026-07-23 \
     -e READER_SUMMARY_DAILY_PUBLIC_DIRECTORY=/var/lib/social-monitor/artifacts/reports \
-    "${ambiguity_authorization[@]}" \
     daily-runner sh -lc "$recovery_command"
 }
 
@@ -228,9 +216,7 @@ run_reader_summary_daily_runner_maintenance() (
   case $maintenance_action in
     reader-summary-recover-missing-days)
       if [[ $run_bounded_maintenance == true ]]; then
-        run_reader_summary_daily_canonical_recovery \
-          "$READER_SUMMARY_DAILY_MAINTENANCE_MODEL_JOB_IDENTITY" \
-          "$READER_SUMMARY_DAILY_MAINTENANCE_AUTHORITY_SHA256" || return
+        run_reader_summary_daily_canonical_recovery || return
         local bounded_run
         for bounded_run in 1 2 3 4; do
           run_reader_summary_daily_bounded_maintenance \
@@ -245,11 +231,11 @@ run_reader_summary_daily_runner_maintenance() (
       "${COMPOSE[@]}" --profile daily run --rm --no-deps \
         -e READER_SUMMARY_WEEKLY_PRODUCTION_TENANT_ID=00000000-0000-7000-8000-000000000901 \
         -e READER_SUMMARY_WEEKLY_PRODUCTION_WORKSPACE_ID=00000000-0000-7000-8000-000000000902 \
-        -e READER_SUMMARY_WEEKLY_PRODUCTION_FIRST_WEEK_START=2026-07-20 \
-        -e READER_SUMMARY_WEEKLY_PRODUCTION_CATCH_UP_LIMIT=4 \
+        -e READER_SUMMARY_WEEKLY_PRODUCTION_FIRST_WEEK_START=2026-07-27 \
+        -e READER_SUMMARY_WEEKLY_PRODUCTION_CATCH_UP_LIMIT=1 \
         -e "READER_SUMMARY_WEEKLY_PRODUCTION_ARTIFACT_DIR=$READER_SUMMARY_WEEKLY_PRODUCTION_ARTIFACT_DIR" \
         daily-runner sh -lc \
-        'set -eu; npm run run:reader-summary-weekly-production' || return
+        'set -eu; npm run run:reader-summary-weekly-production -- --week-start 2026-07-27; npm run run:reader-summary-weekly-production -- --replay --week-start 2026-07-27' || return
       ;;
     *) fail 'unknown reader-summary daily-runner maintenance action' ;;
   esac

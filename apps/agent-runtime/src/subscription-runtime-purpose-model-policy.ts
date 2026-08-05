@@ -108,10 +108,14 @@ export const admitSubscriptionRuntimeRequest = (
         kind: "structured-prompt",
         systemPrompt: request.systemPrompt,
         prompt: request.prompt,
-        outputSchemaName:
-          typeof controls.outputSchemaName === "string"
-            ? controls.outputSchemaName
-            : undefined,
+        ...(profile.outputKind === "structured_output"
+          ? {
+              outputSchemaName:
+                typeof controls.outputSchemaName === "string"
+                  ? controls.outputSchemaName
+                  : undefined,
+            }
+          : {}),
         controls: canonicalControls,
         metadata: {
           ...request.metadata,
@@ -152,6 +156,9 @@ const canonicalControlsForProfile = (
   delete preserved.outputSchemaJson;
   delete preserved.runtimeOutput;
   delete preserved.selectedOutputKind;
+  if (profile.outputKind === "output_text") {
+    delete preserved.outputSchemaName;
+  }
   return {
     ...preserved,
     model: profile.model,

@@ -1,9 +1,15 @@
 import { buildReaderSummaryDailyCanonicalRecoveryReceipt } from "./reader-summary-daily-model-job-receipt";
 import type { ReaderSummaryDailySubscriptionRuntime } from "./reader-summary-daily-terminal-runner";
 import {
+  canonicalRecoveryAmbiguityRetryDate,
+  canonicalRecoveryAmbiguityRetryModelJobIdentity,
+  canonicalRecoveryAmbiguityRetrySourceAuthoritySha256,
+  canonicalRecoveryDates,
   type CanonicalRecoveryAuthority,
   type CanonicalRecoveryFinalizer,
   type CanonicalRecoveryPublication,
+  type CanonicalRecoveryTerminal,
+  type CanonicalRecoveryUnavailable,
   type CanonicalRecoveryWork,
 } from "./reader-summary-daily-canonical-recovery-v4";
 import {
@@ -12,6 +18,12 @@ import {
 } from "./reader-summary-daily-source-authority-snapshot";
 
 const renewalIntervalMs = 5 * 60 * 1_000;
+
+type CanonicalRecoveryCaughtUp = Readonly<{
+  kind: "caught_up";
+  publications: readonly CanonicalRecoveryPublication[];
+  unavailable: readonly CanonicalRecoveryUnavailable[];
+}>;
 
 /**
  * Executes only v4's fixed eight-day authority. A successful claim writes the
@@ -39,14 +51,8 @@ export class ReaderSummaryDailyCanonicalRecoveryV4Executor {
     workspaceId: string;
     workerId: string;
   }>): Promise<
-    | Readonly<{
-        kind: "completed" | "replayed";
-        publication: CanonicalRecoveryPublication;
-      }>
-    | Readonly<{
-        kind: "caught_up";
-        publications: readonly CanonicalRecoveryPublication[];
-      }>
+    | Readonly<{ kind: "completed" | "replayed"; publication: CanonicalRecoveryPublication }>
+    | CanonicalRecoveryCaughtUp
     | Readonly<{ kind: "leased"; requestedUtcDate: string }>
     | Readonly<{
         kind: "failed_ambiguous";
@@ -60,10 +66,7 @@ export class ReaderSummaryDailyCanonicalRecoveryV4Executor {
       invokedAt: this.dependencies.now().toISOString(),
     });
     if (claim.kind === "caught_up") {
-      return {
-        kind: "caught_up",
-        publications: await this.dependencies.authority.readFinalized(input),
-      };
+      return caughtUp(await this.dependencies.authority.readTerminals(input));
     }
     if (claim.kind !== "claimed") return claim;
 
@@ -168,10 +171,7 @@ export class ReaderSummaryDailyCanonicalRecoveryV4Executor {
     workspaceId: string;
     workerId: string;
   }>): Promise<
-    | Readonly<{
-        kind: "caught_up";
-        publications: readonly CanonicalRecoveryPublication[];
-      }>
+    | CanonicalRecoveryCaughtUp
     | Readonly<{ kind: "leased"; requestedUtcDate: string }>
     | Readonly<{
         kind: "failed_ambiguous";
@@ -180,13 +180,17 @@ export class ReaderSummaryDailyCanonicalRecoveryV4Executor {
         sourceAuthoritySha256?: string;
       }>
   > {
-    for (let resolved = 0; resolved <= 8; resolved += 1) {
+    for (
+      let resolved = 0;
+      resolved < canonicalRecoveryDates.length + 1;
+      resolved += 1
+    ) {
       const outcome = await this.runOne(input);
-      if (
-        outcome.kind === "caught_up" ||
-        outcome.kind === "leased" ||
-        outcome.kind === "failed_ambiguous"
-      ) {
+      if (outcome.kind === "failed_ambiguous") {
+        if (isHistoricalJul23Unavailable(outcome)) continue;
+        return outcome;
+      }
+      if (outcome.kind === "caught_up" || outcome.kind === "leased") {
         return outcome;
       }
     }
@@ -239,6 +243,49 @@ const exact = (value: Buffer | undefined, label: string): Buffer => {
     throw new Error(`Completed canonical recovery work lacks exact ${label} bytes`);
   }
   return Buffer.from(value);
+};
+
+const isHistoricalJul23Unavailable = (outcome: Readonly<{
+  requestedUtcDate: string;
+  modelJobIdentity?: string;
+  sourceAuthoritySha256?: string;
+}>): boolean =>
+  outcome.requestedUtcDate === canonicalRecoveryAmbiguityRetryDate &&
+  outcome.modelJobIdentity === canonicalRecoveryAmbiguityRetryModelJobIdentity &&
+  outcome.sourceAuthoritySha256 ===
+    canonicalRecoveryAmbiguityRetrySourceAuthoritySha256;
+
+const caughtUp = (
+  terminals: readonly CanonicalRecoveryTerminal[],
+): CanonicalRecoveryCaughtUp => {
+  if (terminals.length !== canonicalRecoveryDates.length) {
+    throw new Error("Daily canonical recovery terminal read is incomplete");
+  }
+  const publications: CanonicalRecoveryPublication[] = [];
+  const unavailable: CanonicalRecoveryUnavailable[] = [];
+  for (const [index, terminal] of terminals.entries()) {
+    const requestedUtcDate = terminal.kind === "finalized"
+      ? terminal.publication.requestedUtcDate
+      : terminal.unavailable.requestedUtcDate;
+    if (requestedUtcDate !== canonicalRecoveryDates[index]) {
+      throw new Error("Daily canonical recovery terminal read is not exact Jul23-Jul30 coverage");
+    }
+    if (terminal.kind === "finalized") {
+      publications.push(terminal.publication);
+    } else {
+      if (!isHistoricalJul23Unavailable(terminal.unavailable)) {
+        throw new Error(
+          "Daily canonical recovery unavailable terminal is not exact",
+        );
+      }
+      unavailable.push(terminal.unavailable);
+    }
+  }
+  return Object.freeze({
+    kind: "caught_up" as const,
+    publications: Object.freeze(publications),
+    unavailable: Object.freeze(unavailable),
+  });
 };
 
 const assertLeaseCurrent = (work: CanonicalRecoveryWork, now: Date): void => {

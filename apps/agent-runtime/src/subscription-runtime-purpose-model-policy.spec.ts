@@ -62,6 +62,29 @@ describe("subscription runtime purpose policy", () => {
     expect(controls.outputSchema).toBeUndefined();
   });
 
+  it("strips both schema-name fields from output_text while preserving structured output", () => {
+    const structured = admitSubscriptionRuntimeRequest(request({
+      controlsJson: '{"outputSchemaName":"daily-summary"}',
+    }));
+    const structuredTask = structured.canonicalRequest.task as Record<string, unknown>;
+    const structuredControls = structuredTask.controls as Record<string, unknown>;
+    expect(structuredTask.outputSchemaName).toBe("daily-summary");
+    expect(structuredControls.outputSchemaName).toBe("daily-summary");
+    expect(structuredControls.outputSchema).toEqual({ type: "object" });
+
+    const text = admitSubscriptionRuntimeRequest(request({
+      purpose: "social_monitor.reader_summary.weekly.generate",
+      controlsJson: '{"outputSchemaName":"weekly-summary"}',
+    }));
+    const textTask = text.canonicalRequest.task as Record<string, unknown>;
+    const textControls = textTask.controls as Record<string, unknown>;
+    const textMetadata = textTask.metadata as Record<string, unknown>;
+    expect(textTask).not.toHaveProperty("outputSchemaName");
+    expect(textControls).not.toHaveProperty("outputSchemaName");
+    expect(textControls.responseFormat).toBe("text");
+    expect(textMetadata.runtimeOutput).toBe("output_text");
+  });
+
   it.each([
     ["unknown purpose", { purpose: "social_monitor.reader_summary.unknown" }],
     ["provider", { provider: "claude" as const }],

@@ -293,7 +293,7 @@ grep -F 'flock -w "$remaining_seconds" 8' "$maintenance_lib" >/dev/null
 ! grep -F 'flock -n 9' "$maintenance_lib" >/dev/null
 grep -F 'npm run run:reader-summary-weekly-production' \
   "$maintenance_lib" >/dev/null
-! grep -F 'npm run run:reader-summary-weekly-production -- --replay' \
+grep -F 'npm run run:reader-summary-weekly-production -- --week-start 2026-07-27; npm run run:reader-summary-weekly-production -- --replay --week-start 2026-07-27' \
   "$maintenance_lib" >/dev/null
 ! grep -F 'npm run backfill:reader-summary-weekly-daily-certifications' \
   "$maintenance_lib" >/dev/null
@@ -301,9 +301,9 @@ grep -F -- '-e READER_SUMMARY_WEEKLY_PRODUCTION_TENANT_ID=00000000-0000-7000-800
   "$maintenance_lib" >/dev/null
 grep -F -- '-e READER_SUMMARY_WEEKLY_PRODUCTION_WORKSPACE_ID=00000000-0000-7000-8000-000000000902' \
   "$maintenance_lib" >/dev/null
-grep -F -- '-e READER_SUMMARY_WEEKLY_PRODUCTION_FIRST_WEEK_START=2026-07-20' \
+grep -F -- '-e READER_SUMMARY_WEEKLY_PRODUCTION_FIRST_WEEK_START=2026-07-27' \
   "$maintenance_lib" >/dev/null
-grep -F -- '-e READER_SUMMARY_WEEKLY_PRODUCTION_CATCH_UP_LIMIT=4' \
+grep -F -- '-e READER_SUMMARY_WEEKLY_PRODUCTION_CATCH_UP_LIMIT=1' \
   "$maintenance_lib" >/dev/null
 grep -F 'READER_SUMMARY_WEEKLY_PRODUCTION_ARTIFACT_DIR=' \
   "$maintenance_lib" >/dev/null

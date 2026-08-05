@@ -33,8 +33,8 @@ BACKEND_PATHS=(backend)
 CONTROL_PATHS=(control)
 FINAL_MODEL_OVERLAY=$REPO/ops/deploy/production-runtime/compose.agent-runtime-model.yml
 DAILY_CANONICAL_RECOVERY_CONFIRMATION=reader-summary-daily-canonical-recovery-v4
-MODEL_JOB_IDENTITY=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-AUTHORITY_SHA256=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+MODEL_JOB_IDENTITY=a771ebcf1dbb24f6a4eb1c6299133397a5fc1599ed4109c7fba27a0ec5e7b148
+AUTHORITY_SHA256=010fd4f8da8aa2e4b332601e145e49549ff41c34b7ea498024b7449f9c827bbb
 AUTHORIZED_STDIN_RECORD="$DAILY_CANONICAL_RECOVERY_CONFIRMATION 2026-07-23 $MODEL_JOB_IDENTITY $AUTHORITY_SHA256"
 
 install -d "$REPO/ops/deploy" "$STATE" "$POSTGRES_RUNTIME_CURRENT" \
@@ -133,9 +133,10 @@ fake_compose() {
   printf 'source-env=%s\n' "$source_env_status" >> "$COMPOSE_LOG"
   if [[ $* == *'restart agent-runtime' ]]; then
     printf 'reset\n' >> "$ORDER_LOG"
-  elif [[ $* == *'npm run authorize:reader-summary-daily-canonical-recovery-ambiguity-retry'* ]]; then
-    [[ $* == *'npm run authorize:reader-summary-daily-canonical-recovery-ambiguity-retry; npm run run:reader-summary-daily-canonical-recovery'* ]] || return 93
-    printf '%s\n' authorize canonical >> "$ORDER_LOG"
+  elif [[ $* == *'npm run run:reader-summary-daily-canonical-recovery'* ]]; then
+    [[ $* == *'npm run prepare:reader-summary-production-recovery-gap-authority; npm run run:reader-summary-daily-canonical-recovery'* ]] || return 93
+    [[ $* != *'npm run authorize:reader-summary-daily-canonical-recovery-ambiguity-retry'* ]] || return 94
+    printf '%s\n' canonical >> "$ORDER_LOG"
   elif [[ $* == *'scripts/run-reader-summary-daily-bounded-maintenance.ts'* ]]; then
     printf 'bounded\n' >> "$ORDER_LOG"
   fi
@@ -176,7 +177,7 @@ unset ASSERT_WEEKLY_LOCKS_HELD ASSERT_AUTH_LOCKS_HELD
 recovery_command='--profile daily run --rm --no-deps -e READER_SUMMARY_DAILY_TENANT_ID=00000000-0000-7000-8000-000000000901 -e READER_SUMMARY_DAILY_WORKSPACE_ID=00000000-0000-7000-8000-000000000902 -e READER_SUMMARY_DAILY_FIRST_UNRESOLVED_UTC_DATE=2026-07-23 -e READER_SUMMARY_DAILY_PUBLIC_DIRECTORY=/var/lib/social-monitor/artifacts/reports daily-runner sh -lc set -eu; npm run prepare:reader-summary-production-recovery-gap-authority; npm run run:reader-summary-daily-canonical-recovery'
 reconcile_command="-f $FINAL_MODEL_OVERLAY --profile app up -d --no-deps agent-runtime"
 recovery_command="-f $FINAL_MODEL_OVERLAY $recovery_command"
-weekly_command="-f $FINAL_MODEL_OVERLAY --profile daily run --rm --no-deps -e READER_SUMMARY_WEEKLY_PRODUCTION_TENANT_ID=00000000-0000-7000-8000-000000000901 -e READER_SUMMARY_WEEKLY_PRODUCTION_WORKSPACE_ID=00000000-0000-7000-8000-000000000902 -e READER_SUMMARY_WEEKLY_PRODUCTION_FIRST_WEEK_START=2026-07-20 -e READER_SUMMARY_WEEKLY_PRODUCTION_CATCH_UP_LIMIT=4 -e READER_SUMMARY_WEEKLY_PRODUCTION_ARTIFACT_DIR=/var/lib/social-monitor/artifacts/reader-summary-weekly-production daily-runner sh -lc set -eu; npm run run:reader-summary-weekly-production"
+weekly_command="-f $FINAL_MODEL_OVERLAY --profile daily run --rm --no-deps -e READER_SUMMARY_WEEKLY_PRODUCTION_TENANT_ID=00000000-0000-7000-8000-000000000901 -e READER_SUMMARY_WEEKLY_PRODUCTION_WORKSPACE_ID=00000000-0000-7000-8000-000000000902 -e READER_SUMMARY_WEEKLY_PRODUCTION_FIRST_WEEK_START=2026-07-27 -e READER_SUMMARY_WEEKLY_PRODUCTION_CATCH_UP_LIMIT=1 -e READER_SUMMARY_WEEKLY_PRODUCTION_ARTIFACT_DIR=/var/lib/social-monitor/artifacts/reader-summary-weekly-production daily-runner sh -lc set -eu; npm run run:reader-summary-weekly-production -- --week-start 2026-07-27; npm run run:reader-summary-weekly-production -- --replay --week-start 2026-07-27"
 mapfile -t compose_commands < <(grep -v '^source-env=' "$COMPOSE_LOG")
 [[ ${#compose_commands[@]} == 4 ]]
 [[ ${compose_commands[0]} == "$reconcile_command" ]]
@@ -189,7 +190,7 @@ mapfile -t compose_commands < <(grep -v '^source-env=' "$COMPOSE_LOG")
 ! grep -F 'READER_SUMMARY_PRODUCTION_RECOVERY_SOURCE_DATABASE_URL' \
   "$COMPOSE_LOG" >/dev/null
 ! grep -F 'backfill:reader-summary-weekly-daily-certifications' "$COMPOSE_LOG" >/dev/null
-! grep -F 'run:reader-summary-weekly-production -- --replay' "$COMPOSE_LOG" >/dev/null
+grep -F 'npm run run:reader-summary-weekly-production -- --week-start 2026-07-27; npm run run:reader-summary-weekly-production -- --replay --week-start 2026-07-27' "$COMPOSE_LOG" >/dev/null
 ! grep -F 'postgresql://' "$COMPOSE_LOG" >/dev/null
 ! grep -F 'pg_restore' "$DOCKER_LOG" "$COMPOSE_LOG" >/dev/null
 ! grep -F 'social-monitor-reader-summary-recovery-source-' \
@@ -203,8 +204,7 @@ export AUTH_ACCOUNT_CHANGED=1
 printf '%s\n' "$AUTHORIZED_STDIN_RECORD" | \
   run_reader_summary_daily_runner_maintenance reader-summary-recover-missing-days
 unset AUTH_ACCOUNT_CHANGED
-authorized_recovery_command="--profile daily run --rm --no-deps -e READER_SUMMARY_DAILY_TENANT_ID=00000000-0000-7000-8000-000000000901 -e READER_SUMMARY_DAILY_WORKSPACE_ID=00000000-0000-7000-8000-000000000902 -e READER_SUMMARY_DAILY_FIRST_UNRESOLVED_UTC_DATE=2026-07-23 -e READER_SUMMARY_DAILY_PUBLIC_DIRECTORY=/var/lib/social-monitor/artifacts/reports -e READER_SUMMARY_DAILY_AMBIGUITY_ORIGINAL_MODEL_JOB_IDENTITY=$MODEL_JOB_IDENTITY -e READER_SUMMARY_DAILY_AMBIGUITY_SOURCE_AUTHORITY_SHA256=$AUTHORITY_SHA256 daily-runner sh -lc set -eu; npm run prepare:reader-summary-production-recovery-gap-authority; npm run authorize:reader-summary-daily-canonical-recovery-ambiguity-retry; npm run run:reader-summary-daily-canonical-recovery"
-authorized_recovery_command="-f $FINAL_MODEL_OVERLAY $authorized_recovery_command"
+canonical_recovery_command="$recovery_command"
 bounded_command="--profile daily run --rm --no-deps -e READER_SUMMARY_DAILY_TENANT_ID=00000000-0000-7000-8000-000000000901 -e READER_SUMMARY_DAILY_WORKSPACE_ID=00000000-0000-7000-8000-000000000902 -e READER_SUMMARY_DAILY_FIRST_UNRESOLVED_UTC_DATE=2026-07-31 -e READER_SUMMARY_DAILY_PUBLIC_DIRECTORY=/var/lib/social-monitor/artifacts/reports -e READER_SUMMARY_DAILY_COLLECTION_ARTIFACT_DIRECTORY=/var/lib/social-monitor/artifacts/reader-summary-daily-collection -e READER_SUMMARY_DAILY_MAINTENANCE_AUTHORIZED_UTC_DATE=2026-07-23 -e READER_SUMMARY_DAILY_MAINTENANCE_MODEL_JOB_IDENTITY=$MODEL_JOB_IDENTITY -e READER_SUMMARY_DAILY_MAINTENANCE_AUTHORITY_SHA256=$AUTHORITY_SHA256 daily-runner sh -lc set -eu; node scripts/run-with-timeout.mjs --timeout-ms 19800000 --node-options --max-old-space-size=768 -- ts-node -r tsconfig-paths/register scripts/run-reader-summary-daily-bounded-maintenance.ts"
 bounded_command="-f $FINAL_MODEL_OVERLAY $bounded_command"
 restart_command="-f $FINAL_MODEL_OVERLAY restart agent-runtime"
@@ -212,14 +212,15 @@ mapfile -t bounded_commands < <(grep -v '^source-env=' "$COMPOSE_LOG")
 [[ ${#bounded_commands[@]} == 7 ]]
 [[ ${bounded_commands[0]} == "$restart_command" ]]
 [[ ${bounded_commands[1]} == "$reconcile_command" ]]
-[[ ${bounded_commands[2]} == "$authorized_recovery_command" ]]
+[[ ${bounded_commands[2]} == "$canonical_recovery_command" ]]
 for bounded_index in 3 4 5 6; do
   [[ ${bounded_commands[$bounded_index]} == "$bounded_command" ]]
 done
 [[ $(grep -Fc 'scripts/run-reader-summary-daily-bounded-maintenance.ts' "$COMPOSE_LOG") == 4 ]]
 ! grep -F 'npm run run:reader-summary-daily-bounded-maintenance' "$COMPOSE_LOG" >/dev/null
+! grep -F 'npm run authorize:reader-summary-daily-canonical-recovery-ambiguity-retry' "$COMPOSE_LOG" >/dev/null
 mapfile -t bounded_execution_order < "$ORDER_LOG"
-[[ ${bounded_execution_order[*]} == 'refresh reset authorize canonical bounded bounded bounded bounded' ]]
+[[ ${bounded_execution_order[*]} == 'refresh reset canonical bounded bounded bounded bounded' ]]
 [[ ! -e $AUTH_CHANGED_MARKER ]]
 [[ -d $ROOT/runtime/subscription-runtime/sessions ]]
 compgen -G "$ROOT/backups/subscription-runtime-sessions.*/session" >/dev/null
@@ -453,7 +454,7 @@ printf '%s\n' "$CONTROL_ONLY_SHA" > "$STATE/control.sha"
 : > "$COMPOSE_LOG"
 run_reader_summary_daily_runner_maintenance reader-summary-weekly-run
 [[ $(grep -Fc \
-  'daily-runner sh -lc set -eu; npm run run:reader-summary-weekly-production' \
+  'daily-runner sh -lc set -eu; npm run run:reader-summary-weekly-production -- --week-start 2026-07-27; npm run run:reader-summary-weekly-production -- --replay --week-start 2026-07-27' \
   "$COMPOSE_LOG") == 1 ]]
 
 # Control-only deploys are valid when the deployed backend/runtime marker is a
