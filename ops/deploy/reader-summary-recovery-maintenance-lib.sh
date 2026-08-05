@@ -6,15 +6,22 @@
 # request onto the existing bounded recovery intent.
 
 verify_daily_runner_maintenance_runtime() {
-  local runtime_release backend_release integration_release
+  local runtime_release backend_release control_release integration_release
   runtime_release=$(cat "$POSTGRES_RUNTIME_CURRENT/READY" 2>/dev/null || true)
   backend_release=$(cat "$STATE/backend.sha" 2>/dev/null || true)
+  control_release=$(cat "$STATE/control.sha" 2>/dev/null || true)
   integration_release=$(git -C "$REPO" rev-parse --verify 'HEAD^{commit}' 2>/dev/null || true)
   if [[ ! $runtime_release =~ ^[0-9a-f]{40}$ || \
+        ! $backend_release =~ ^[0-9a-f]{40}$ || \
+        ! $control_release =~ ^[0-9a-f]{40}$ || \
+        ! $integration_release =~ ^[0-9a-f]{40}$ || \
         $runtime_release != "$backend_release" || \
-        $runtime_release != "$integration_release" ]]; then
+        $control_release != "$integration_release" ]]; then
     fail 'daily-runner runtime is not committed by the current backend integration release'
   fi
+  git -C "$REPO" merge-base --is-ancestor \
+    "$backend_release" "$integration_release" || \
+    fail 'daily-runner runtime is not committed by the current backend integration release'
 }
 
 daily_runner_maintenance_now_seconds() {
