@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { cpSync, mkdtempSync, rmSync } from "node:fs";
+import { cpSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -44,6 +44,7 @@ import {
   type CanonicalRecoveryAuthority,
   type CanonicalRecoveryFinalizer,
   type CanonicalRecoveryPublication,
+  type CanonicalRecoveryWork,
   PostgresCanonicalRecoveryAmbiguityRetryAuthorizer,
   PostgresCanonicalRecoveryAuthority,
   canonicalJsonBytes,
@@ -209,6 +210,7 @@ const ambiguityRetryMigrations = [
   "20260804130100_reader_summary_daily_v4_ambiguity_retry_transitions",
   "20260804130200_reader_summary_daily_v4_ambiguity_retry_consumers",
   "20260804130300_reader_summary_daily_v4_ambiguity_retry_evidence",
+  "20260805090000_reader_summary_daily_v4_ambiguity_retry_period_guard",
 ] as const;
 const deferredCanonicalRecoveryMigrations = [
   ...canonicalRecoveryFoundationMigrations,
@@ -376,6 +378,92 @@ const assertReaderSummaryDailyCanonicalRecoveryV4GenericFixture = async (
     `generic corrected non-target fixture diverged: ${JSON.stringify(row)}`,
   );
   return row.legacySnapshot;
+};
+
+type PeriodGuardIds = Readonly<{ artifact: string; event: string; job: string; publication: string }>;
+type PeriodGuardPublicationInput = Readonly<{ periodStartedAt: string; periodEndedAt: string; requestedUtcDate: string; semanticStatus: "COMPLETED" | "NO_SIGNAL"; timestamp: string }>;
+type PreparedPeriodGuardRetry = Readonly<{ artifact: string; evidence: string; job: string; proof: string; publicEvidence: string; publicFrontend: string; publication: string; report: string; requestedAt: string; snapshot: string; state: string }>;
+const periodGuardIdsFor = (first: number): PeriodGuardIds => {
+  const id = (offset: number): string => `f0000000-0000-4000-8000-000000000${String(first + offset).padStart(3, "0")}`;
+  return { artifact: id(0), event: id(1), job: id(2), publication: id(3) };
+};
+const periodGuardIds = Object.freeze({ authorizationCollision: periodGuardIdsFor(201), historical: periodGuardIdsFor(211), raceCandidate: periodGuardIdsFor(221), racePrior: periodGuardIdsFor(231) });
+let assertPeriodGuardAfterExecution: (() => Promise<void>) | undefined;
+const withPublicationOwner = async (client: RecoveryPostgresClient, operation: () => Promise<void>): Promise<void> => {
+  await client.query('SET ROLE "social_monitor_reader_summary_publication_owner"'); try { await operation(); } finally { await client.query("RESET ROLE"); }
+};
+const isExactSha256 = (value: unknown): value is string => typeof value === "string" && /^[a-f0-9]{64}$/u.test(value);
+
+const seedPeriodGuardPublication = async (client: RecoveryPostgresClient, ids: PeriodGuardIds, input: PeriodGuardPublicationInput): Promise<void> => {
+  const { tenantId, workspaceId } = readerSummaryProductionRecoveryFixtureScope; const key = ["daily", input.periodStartedAt, input.periodEndedAt, "UTC"].join(":");
+  await client.query(`
+    WITH artifact AS (INSERT INTO public."reader_summary_artifacts" (id,tenant_id,workspace_id,scope_type,scope_key,interest_id,cadence,period_started_at,period_ended_at,period_timezone,period_key,user_id,subscription_id,status,schema_version,model_version,prompt_version,headline,summary_text,artifact_payload,citations,quality_signals,created_at,updated_at) VALUES ($1::UUID,$2::UUID,$3::UUID,'workspace','workspace',NULL,'daily',$4::TIMESTAMPTZ,$5::TIMESTAMPTZ,'UTC',$6::TEXT,NULL,NULL,$7::"SummaryStatus",1,'codex:period-guard-fixture','period-guard-fixture','period guard fixture','period guard fixture','{}'::JSONB,'[]'::JSONB,jsonb_build_object('qualityFlags',CASE WHEN $7::TEXT='NO_SIGNAL' THEN '["no_signal"]'::JSONB ELSE '[]'::JSONB END),$8::TIMESTAMPTZ,$8::TIMESTAMPTZ) RETURNING id),
+    job AS (INSERT INTO public."reader_summary_jobs" (id,tenant_id,workspace_id,scope_type,scope_key,interest_id,cadence,period_started_at,period_ended_at,period_timezone,period_key,user_id,subscription_id,status,idempotency_key,requested_at,started_at,completed_at,failed_at,reader_summary_artifact_id,failure_reason,created_at,updated_at) SELECT $9::UUID,$2::UUID,$3::UUID,'workspace','workspace',NULL,'daily',$4::TIMESTAMPTZ,$5::TIMESTAMPTZ,'UTC',$6::TEXT,NULL,NULL,$7::"SummaryStatus",'period-guard:'||$9::TEXT,$8::TIMESTAMPTZ,$8::TIMESTAMPTZ,$8::TIMESTAMPTZ,NULL,artifact.id,NULL,$8::TIMESTAMPTZ,$8::TIMESTAMPTZ FROM artifact RETURNING id),
+    event AS (INSERT INTO public."outbox_events" (id,tenant_id,workspace_id,event_type,schema_version,payload,status,correlation_id,causation_id,created_at) VALUES ($10::UUID,$2::UUID,$3::UUID,'period-guard-fixture',1,'{}'::JSONB,'PENDING','period-guard-fixture',NULL,$8::TIMESTAMPTZ) RETURNING id),
+    publication AS (INSERT INTO public."reader_summary_publications" (id,tenant_id,workspace_id,scope_type,scope_key,cadence,period_started_at,period_ended_at,period_timezone,period_key,requested_utc_date,publication_kind,reader_summary_job_id,reader_summary_artifact_id,semantic_status,requested_at,model_version,model_authority,report_sha256,proof_sha256,exact_proof,outbox_event_id,published_at) SELECT $11::UUID,$2::UUID,$3::UUID,'workspace','workspace','daily',$4::TIMESTAMPTZ,$5::TIMESTAMPTZ,'UTC',$6::TEXT,$12::DATE,'EXACT',job.id,artifact.id,$7::"SummaryStatus",$8::TIMESTAMPTZ,'codex:period-guard-fixture',3,repeat('a',64),repeat('b',64),'{"schemaVersion":"reader_summary.publication_proof.v1"}'::JSONB,event.id,$8::TIMESTAMPTZ FROM artifact,job,event RETURNING id)
+    INSERT INTO public."reader_summary_publication_slots" (tenant_id,workspace_id,scope_type,scope_key,cadence,period_started_at,period_ended_at,period_timezone,current_publication_id,updated_at) SELECT $2::UUID,$3::UUID,'workspace','workspace','daily',$4::TIMESTAMPTZ,$5::TIMESTAMPTZ,'UTC',publication.id,$8::TIMESTAMPTZ FROM publication
+  `, [ids.artifact, tenantId, workspaceId, input.periodStartedAt, input.periodEndedAt, key, input.semanticStatus, input.timestamp, ids.job, ids.event, ids.publication, input.requestedUtcDate]);
+};
+const periodGuardSnapshot = async (client: RecoveryPostgresClient, ids: PeriodGuardIds): Promise<string> => {
+  const result = await client.query<{ snapshot: string }>(`SELECT encode(sha256(convert_to(jsonb_build_object('artifact',(SELECT to_jsonb(artifact) FROM public."reader_summary_artifacts" artifact WHERE artifact.id=$1::UUID),'job',(SELECT to_jsonb(job) FROM public."reader_summary_jobs" job WHERE job.id=$2::UUID),'publication',(SELECT to_jsonb(publication) FROM public."reader_summary_publications" publication WHERE publication.id=$3::UUID),'slot',(SELECT to_jsonb(slot) FROM public."reader_summary_publication_slots" slot WHERE slot.current_publication_id=$3::UUID))::TEXT,'UTF8')),'hex') AS snapshot`, [ids.artifact, ids.job, ids.publication]);
+  const snapshot = result.rows[0]?.snapshot; if (!isExactSha256(snapshot)) throw new Error("period-guard fixture snapshot is invalid"); return snapshot;
+};
+const seedPeriodGuardPublisherCandidate = async (client: RecoveryPostgresClient, input: Readonly<{ recoveryV4: boolean; timestamp: string }>): Promise<void> => {
+  const ids = periodGuardIds.raceCandidate; await client.query(`
+    WITH artifact AS (INSERT INTO public."reader_summary_artifacts" (id,tenant_id,workspace_id,scope_type,scope_key,interest_id,cadence,period_started_at,period_ended_at,period_timezone,period_key,user_id,subscription_id,status,schema_version,model_version,prompt_version,headline,summary_text,artifact_payload,citations,quality_signals,created_at,updated_at) VALUES ($1::UUID,$2::UUID,$3::UUID,'workspace','workspace',NULL,'daily',TIMESTAMPTZ '2026-07-23T00:00:00Z',TIMESTAMPTZ '2026-07-24T00:00:00Z','UTC','daily:2026-07-23T00:00:00.000Z:2026-07-24T00:00:00.000Z:UTC',NULL,NULL,'RUNNING',1,'codex:period-guard-fixture','period-guard-fixture','period guard candidate','period guard candidate',jsonb_build_object('schemaVersion','reader_summary.artifact.v1','readerSummaryId',$1::TEXT,'tenantId',$2::TEXT,'workspaceId',$3::TEXT,'scope',jsonb_build_object('type','workspace'),'period',jsonb_build_object('cadence','daily','startedAt','2026-07-23T00:00:00.000Z','endedAt','2026-07-24T00:00:00.000Z','timezone','UTC','periodKey','daily:2026-07-23T00:00:00.000Z:2026-07-24T00:00:00.000Z:UTC'),'lineage',jsonb_build_object('modelVersion','codex:period-guard-fixture','promptVersion','period-guard-fixture'),'headline','period guard candidate','executiveSummary','period guard candidate','citationMap','[]'::JSONB,'qualityFlags','["no_signal"]'::JSONB,'noSignalReason','period guard fixture'),'[]'::JSONB,jsonb_build_object('qualityFlags','["no_signal"]'::JSONB,'githubProjectionAudit',CASE WHEN $5::BOOLEAN THEN jsonb_build_object('recoveryV4',jsonb_build_object('recoveryVersion','reader_summary.daily_canonical_recovery.v4')) ELSE jsonb_build_object('schemaVersion','reader_summary.github_projection.v1','status','not_required','requestedUtcDay','2026-07-23','pageCount',1,'scannedItemCount',0,'eligibleBindingIds','[]'::JSONB,'bindings','[]'::JSONB,'violationCodes','[]'::JSONB,'reasons','[]'::JSONB) END),$6::TIMESTAMPTZ,$6::TIMESTAMPTZ) RETURNING id)
+    INSERT INTO public."reader_summary_jobs" (id,tenant_id,workspace_id,scope_type,scope_key,interest_id,cadence,period_started_at,period_ended_at,period_timezone,period_key,user_id,subscription_id,status,idempotency_key,requested_at,started_at,completed_at,failed_at,reader_summary_artifact_id,failure_reason,created_at,updated_at) SELECT $4::UUID,$2::UUID,$3::UUID,'workspace','workspace',NULL,'daily',TIMESTAMPTZ '2026-07-23T00:00:00Z',TIMESTAMPTZ '2026-07-24T00:00:00Z','UTC','daily:2026-07-23T00:00:00.000Z:2026-07-24T00:00:00.000Z:UTC',NULL,NULL,'RUNNING','period-guard-race-candidate',$6::TIMESTAMPTZ,NULL,NULL,NULL,artifact.id,NULL,$6::TIMESTAMPTZ,$6::TIMESTAMPTZ FROM artifact
+  `, [ids.artifact, readerSummaryProductionRecoveryFixtureScope.tenantId, readerSummaryProductionRecoveryFixtureScope.workspaceId, ids.job, input.recoveryV4, input.timestamp]);
+};
+const publishPeriodGuardCandidate = (client: RecoveryPostgresClient) => client.query<{ outcome: string; publication_id: string }>(`SELECT * FROM public."publish_reader_summary"($1::JSONB)`, [JSON.stringify({ schemaVersion: "reader_summary.publication_command.v2", tenantId: readerSummaryProductionRecoveryFixtureScope.tenantId, workspaceId: readerSummaryProductionRecoveryFixtureScope.workspaceId, readerSummaryJobId: periodGuardIds.raceCandidate.job, readerSummaryArtifactId: periodGuardIds.raceCandidate.artifact })]);
+
+const assertAmbiguityRetryPublishedHistoryPeriodGuard = async (input: Readonly<{ auditor: RecoveryPostgresClient; originalModelJobIdentity: string; sourceAuthoritySha256: string }>): Promise<void> => {
+  const historical = periodGuardIds.historical;
+  await withPublicationOwner(input.auditor, () => seedPeriodGuardPublication(input.auditor, historical, { periodStartedAt: "2026-07-22T00:00:00.000Z", periodEndedAt: "2026-07-23T00:00:00.000Z", requestedUtcDate: "2026-07-23", semanticStatus: "COMPLETED", timestamp: "2026-07-23T12:00:00.000Z" }));
+  const historicalSnapshot = await periodGuardSnapshot(input.auditor, historical);
+  assertPeriodGuardAfterExecution = async () => {
+    const result = await input.auditor.query<{ targetRows: string; publicationDate: string; evidenceDate: string; liveJobRequest: boolean }>(`
+      SELECT (SELECT count(*)::TEXT FROM public."reader_summary_publications" publication WHERE publication.tenant_id=$1::UUID AND publication.workspace_id=$2::UUID AND publication.scope_type='workspace' AND publication.scope_key='workspace' AND publication.cadence='daily' AND publication.period_timezone='UTC' AND publication.period_started_at=TIMESTAMPTZ '2026-07-23T00:00:00Z' AND publication.period_ended_at=TIMESTAMPTZ '2026-07-24T00:00:00Z') AS "targetRows", publication.requested_utc_date::TEXT AS "publicationDate", evidence.requested_utc_date::TEXT AS "evidenceDate", (job.requested_at AT TIME ZONE 'UTC')::DATE <> DATE '2026-07-23' AS "liveJobRequest"
+      FROM public."reader_summary_daily_canonical_recovery_v4_ambiguity_retries" retry JOIN public."reader_summary_publications" publication ON publication.id=retry.publication_id JOIN public."reader_summary_jobs" job ON job.id=retry.reader_summary_job_id JOIN public."reader_summary_weekly_publication_evidence" evidence ON evidence.publication_id=publication.id WHERE retry.tenant_id=$1::UUID AND retry.workspace_id=$2::UUID AND retry.requested_utc_date=DATE '2026-07-23'
+    `, [readerSummaryProductionRecoveryFixtureScope.tenantId, readerSummaryProductionRecoveryFixtureScope.workspaceId]);
+    const row = result.rows[0]; assert((await periodGuardSnapshot(input.auditor, historical)) === historicalSnapshot && row?.targetRows === "1" && row.publicationDate === "2026-07-23" && row.evidenceDate === "2026-07-23" && row.liveJobRequest === true, `period guard changed Jul22 history or V4 dates: ${JSON.stringify(row)}`);
+  };
+  await input.auditor.query("BEGIN ISOLATION LEVEL SERIALIZABLE");
+  try {
+    await input.auditor.query('SET LOCAL ROLE "social_monitor_reader_summary_publication_owner"'); await seedPeriodGuardPublication(input.auditor, periodGuardIds.authorizationCollision, { periodStartedAt: "2026-07-23T00:00:00.000Z", periodEndedAt: "2026-07-24T00:00:00.000Z", requestedUtcDate: "2026-08-05", semanticStatus: "NO_SIGNAL", timestamp: "2026-08-04T12:00:00.000Z" }); await input.auditor.query("RESET ROLE"); await input.auditor.query('SET LOCAL SESSION AUTHORIZATION "social_monitor_reader_summary_daily_terminal"');
+    let message: string | undefined; try { await input.auditor.query(`SELECT * FROM public."authorize_reader_summary_daily_canonical_recovery_v4_ambiguity_retry"($1::UUID,$2::UUID,DATE '2026-07-23',$3::CHAR(64),$4::CHAR(64),transaction_timestamp())`, [readerSummaryProductionRecoveryFixtureScope.tenantId, readerSummaryProductionRecoveryFixtureScope.workspaceId, input.originalModelJobIdentity, input.sourceAuthoritySha256]); } catch (error) { message = error instanceof Error ? error.message : String(error); }
+    assert(message?.includes("cannot supersede published history"), "authorization accepted a current-date/status collision");
+  } finally { await input.auditor.query("ROLLBACK"); }
+};
+const assertPostAuthorizationPublisherRace = async (input: Readonly<{ auditor: RecoveryPostgresClient; runtimeCallCount(): number }>): Promise<void> => {
+  const callsBefore = input.runtimeCallCount(); await input.auditor.query("BEGIN ISOLATION LEVEL SERIALIZABLE");
+  try {
+    await input.auditor.query('SET LOCAL ROLE "social_monitor_reader_summary_publication_owner"'); await seedPeriodGuardPublication(input.auditor, periodGuardIds.racePrior, { periodStartedAt: "2026-07-23T00:00:00.000Z", periodEndedAt: "2026-07-24T00:00:00.000Z", requestedUtcDate: "2026-08-04", semanticStatus: "COMPLETED", timestamp: "2026-08-04T12:00:00.000Z" }); const before = await periodGuardSnapshot(input.auditor, periodGuardIds.racePrior); await seedPeriodGuardPublisherCandidate(input.auditor, { recoveryV4: true, timestamp: "2026-08-04T13:00:00.000Z" }); await input.auditor.query("SAVEPOINT before_period_guard_publisher");
+    let message: string | undefined; try { await publishPeriodGuardCandidate(input.auditor); } catch (error) { message = error instanceof Error ? error.message : String(error); } await input.auditor.query("ROLLBACK TO SAVEPOINT before_period_guard_publisher");
+    const retry = await input.auditor.query<{ state: string; unprepared: boolean }>(`SELECT state,reader_summary_job_id IS NULL AND reader_summary_artifact_id IS NULL AND publication_id IS NULL AND publication_prepared_at IS NULL AND finalized_at IS NULL AS unprepared FROM public."reader_summary_daily_canonical_recovery_v4_ambiguity_retries" WHERE tenant_id=$1::UUID AND workspace_id=$2::UUID AND requested_utc_date=DATE '2026-07-23'`, [readerSummaryProductionRecoveryFixtureScope.tenantId, readerSummaryProductionRecoveryFixtureScope.workspaceId]);
+    assert(message?.includes("retry cannot supersede target publication slot") && (await periodGuardSnapshot(input.auditor, periodGuardIds.racePrior)) === before && retry.rows[0]?.state === "CONSUMED" && retry.rows[0]?.unprepared === true, `post-authorization publisher race mutated history or retry: ${message ?? "accepted"}`);
+  } finally { await input.auditor.query("ROLLBACK"); }
+  assert(input.runtimeCallCount() === callsBefore, "post-authorization publisher race made an unbounded model call");
+};
+const preparedPeriodGuardRetry = async (client: RecoveryPostgresClient): Promise<PreparedPeriodGuardRetry> => {
+  const result = await client.query<PreparedPeriodGuardRetry>(`
+    SELECT retry.state,retry.reader_summary_artifact_id::TEXT AS artifact,retry.reader_summary_job_id::TEXT AS job,retry.publication_id::TEXT AS publication,btrim(retry.publication_report_sha256) AS report,btrim(retry.publication_proof_sha256) AS proof,btrim(retry.weekly_evidence_sha256) AS evidence,btrim(retry.public_evidence_sha256) AS "publicEvidence",btrim(retry.public_frontend_sha256) AS "publicFrontend",job.requested_at::TEXT AS "requestedAt",encode(sha256(convert_to(jsonb_build_object('retry',to_jsonb(retry),'publication',to_jsonb(publication),'slot',to_jsonb(slot))::TEXT,'UTF8')),'hex') AS snapshot
+    FROM public."reader_summary_daily_canonical_recovery_v4_ambiguity_retries" retry JOIN public."reader_summary_publications" publication ON publication.id=retry.publication_id JOIN public."reader_summary_jobs" job ON job.id=retry.reader_summary_job_id JOIN public."reader_summary_publication_slots" slot ON slot.tenant_id=publication.tenant_id AND slot.workspace_id=publication.workspace_id AND slot.scope_type=publication.scope_type AND slot.scope_key=publication.scope_key AND slot.cadence=publication.cadence AND slot.period_started_at=publication.period_started_at AND slot.period_ended_at=publication.period_ended_at AND slot.period_timezone=publication.period_timezone WHERE retry.tenant_id=$1::UUID AND retry.workspace_id=$2::UUID AND retry.requested_utc_date=DATE '2026-07-23'
+  `, [readerSummaryProductionRecoveryFixtureScope.tenantId, readerSummaryProductionRecoveryFixtureScope.workspaceId]);
+  const row = result.rows[0]; if (row === undefined || row.state !== "PUBLICATION_PENDING" || ![row.report,row.proof,row.evidence,row.publicEvidence,row.publicFrontend,row.snapshot].every(isExactSha256)) throw new Error(`prepared finalization retry is invalid: ${JSON.stringify(row)}`); return row;
+};
+const assertPreparedFinalizationPublisherRace = async (input: Readonly<{ auditor: RecoveryPostgresClient; systemRuntime: RecoveryPostgresClient; work: CanonicalRecoveryWork }>): Promise<void> => {
+  const before = await preparedPeriodGuardRetry(input.auditor); if (input.work.attemptOrdinal !== 2) throw new Error("prepared finalization race lacks attempt 2");
+  await withPublicationOwner(input.auditor, () => seedPeriodGuardPublisherCandidate(input.auditor, { recoveryV4: false, timestamp: new Date(Date.parse(before.requestedAt) + 1).toISOString() }));
+  await input.systemRuntime.query("BEGIN ISOLATION LEVEL SERIALIZABLE");
+  try {
+    const published = await publishPeriodGuardCandidate(input.systemRuntime); assert(published.rows[0]?.outcome === "published" && published.rows[0]?.publication_id === periodGuardIds.raceCandidate.artifact, `prepared finalization race did not publish its competing slot: ${JSON.stringify(published.rows[0])}`); await input.systemRuntime.query("SAVEPOINT before_finalize_period_guard_race");
+    let message: string | undefined;
+    try { await input.systemRuntime.query(`SELECT public."finalize_reader_summary_daily_canonical_recovery_v4"($1::UUID,$2::UUID,$3::DATE,$4::CHAR(64),$5::SMALLINT,$6::TEXT,$7::BIGINT,$8::UUID,$9::UUID,$10::UUID,$11::CHAR(64),$12::CHAR(64),$13::CHAR(64),$14::CHAR(64),$15::CHAR(64))`, [input.work.tenantId,input.work.workspaceId,input.work.requestedUtcDate,input.work.modelJobIdentity,2,input.work.workerId,input.work.fencingToken.toString(),before.job,before.artifact,before.publication,before.report,before.proof,before.evidence,before.publicEvidence,before.publicFrontend]); } catch (error) { message = error instanceof Error ? error.message : String(error); }
+    await input.systemRuntime.query("ROLLBACK TO SAVEPOINT before_finalize_period_guard_race");
+    const observed = await input.systemRuntime.query<{ state: string; pending: boolean; rows: string; current: string }>(`SELECT retry.state,retry.finalized_at IS NULL AS pending,(SELECT count(*)::TEXT FROM public."reader_summary_publications" publication WHERE publication.tenant_id=$1::UUID AND publication.workspace_id=$2::UUID AND publication.scope_type='workspace' AND publication.scope_key='workspace' AND publication.cadence='daily' AND publication.period_timezone='UTC' AND publication.period_started_at=TIMESTAMPTZ '2026-07-23T00:00:00Z' AND publication.period_ended_at=TIMESTAMPTZ '2026-07-24T00:00:00Z') AS rows,(SELECT slot.current_publication_id::TEXT FROM public."reader_summary_publication_slots" slot WHERE slot.tenant_id=$1::UUID AND slot.workspace_id=$2::UUID AND slot.scope_type='workspace' AND slot.scope_key='workspace' AND slot.cadence='daily' AND slot.period_timezone='UTC' AND slot.period_started_at=TIMESTAMPTZ '2026-07-23T00:00:00Z' AND slot.period_ended_at=TIMESTAMPTZ '2026-07-24T00:00:00Z') AS current FROM public."reader_summary_daily_canonical_recovery_v4_ambiguity_retries" retry WHERE retry.tenant_id=$1::UUID AND retry.workspace_id=$2::UUID AND retry.requested_utc_date=DATE '2026-07-23'`, [input.work.tenantId,input.work.workspaceId]);
+    const row = observed.rows[0]; assert(message?.includes("finalization target slot diverged") && row?.state === "PUBLICATION_PENDING" && row.pending === true && row.rows === "2" && row.current === periodGuardIds.raceCandidate.artifact, `prepared finalization race accepted a superseding publication: ${message ?? JSON.stringify(row)}`);
+  } finally { await input.systemRuntime.query("ROLLBACK"); }
+  const after = await preparedPeriodGuardRetry(input.auditor); assert(after.snapshot === before.snapshot, "prepared finalization race changed retry, target publication, or current slot bytes");
 };
 
 const main = async (): Promise<void> => {
@@ -644,9 +732,21 @@ const main = async (): Promise<void> => {
               authorizer: new PostgresCanonicalRecoveryAmbiguityRetryAuthorizer(
                 terminalRuntime.terminal,
               ),
+              assertPublishedHistory: ({
+                originalModelJobIdentity,
+                sourceAuthoritySha256,
+              }) => assertAmbiguityRetryPublishedHistoryPeriodGuard({
+                auditor,
+                originalModelJobIdentity,
+                sourceAuthoritySha256,
+              }),
               tenantId: readerSummaryProductionRecoveryFixtureScope.tenantId,
               workspaceId: readerSummaryProductionRecoveryFixtureScope.workspaceId,
             });
+          await assertPostAuthorizationPublisherRace({
+            auditor,
+            runtimeCallCount: () => runtime.callCount,
+          });
           const claimedRetryExecutor =
             new ReaderSummaryDailyCanonicalRecoveryV4Executor({
               authority: {
@@ -660,14 +760,76 @@ const main = async (): Promise<void> => {
               finalizer: wrappedFinalizer,
               now: () => new Date(),
             });
-          const claimedRetryOutcome = await claimedRetryExecutor.runOne({
+          const immutableEvidenceConflict = join(
+            publicDirectory,
+            "durable-reader-summary-2026-07-23.v1.json",
+          );
+          writeFileSync(
+            immutableEvidenceConflict,
+            Buffer.from("checker-only conflicting immutable Jul23 evidence", "utf8"),
+            { flag: "wx", mode: 0o444 },
+          );
+          let immutableConflict: string | undefined;
+          try {
+            await claimedRetryExecutor.runOne({
+              tenantId: readerSummaryProductionRecoveryFixtureScope.tenantId,
+              workspaceId: readerSummaryProductionRecoveryFixtureScope.workspaceId,
+              workerId: ambiguityRetry.retryWork.workerId,
+            });
+          } catch (error) {
+            immutableConflict = error instanceof Error ? error.message : String(error);
+          }
+          const preparedRetry = await preparedPeriodGuardRetry(auditor);
+          assert(
+            immutableConflict === "Canonical public file conflicts with immutable bytes" &&
+              preparedRetry.state === "PUBLICATION_PENDING" &&
+              runtime.callCount === 1,
+            `attempt-2 conflict did not leave exactly one prepared publication: ${immutableConflict ?? "completed"}`,
+          );
+          await assertPreparedFinalizationPublisherRace({
+            auditor,
+            systemRuntime: second,
+            work: ambiguityRetry.retryWork,
+          });
+          // Remove only the checker-created public evidence collision.
+          rmSync(immutableEvidenceConflict);
+          // Fixture-only expiry lets the ordinary terminal claim replay prepared bytes.
+          const expiredRetry = await auditor.query<{ state: string }>(`
+            UPDATE public."reader_summary_daily_canonical_recovery_v4_ambiguity_retries"
+            SET lease_expires_at = transaction_timestamp() - INTERVAL '1 second'
+            WHERE tenant_id = $1::UUID AND workspace_id = $2::UUID
+              AND requested_utc_date = DATE '2026-07-23'
+              AND state = 'PUBLICATION_PENDING'
+            RETURNING state
+          `, [
+            readerSummaryProductionRecoveryFixtureScope.tenantId,
+            readerSummaryProductionRecoveryFixtureScope.workspaceId,
+          ]);
+          assert(
+            expiredRetry.rows.length === 1 &&
+              expiredRetry.rows[0]?.state === "PUBLICATION_PENDING",
+            "checker-only retry lease expiry did not preserve the prepared publication",
+          );
+          const replayExecutor = new ReaderSummaryDailyCanonicalRecoveryV4Executor({
+            authority: baseAuthority,
+            runtime,
+            finalizer: baseFinalizer,
+            now: () => new Date(),
+          });
+          const replayedRetry = await replayExecutor.runOne({
             tenantId: readerSummaryProductionRecoveryFixtureScope.tenantId,
             workspaceId: readerSummaryProductionRecoveryFixtureScope.workspaceId,
-            workerId: ambiguityRetry.retryWork.workerId,
+            workerId: `daily-recovery-pg18-resume-${suffix}`,
           });
           assert(
-            claimedRetryOutcome.kind === "completed",
-            "genuine attempt-2 work did not succeed after stale callbacks were rejected",
+            replayedRetry.kind === "replayed" &&
+              replayedRetry.publication.requestedUtcDate === "2026-07-23",
+            "ordinary retry replay did not finalize the prepared Jul23 publication",
+          );
+          recordedPublications.push(immutablePublication(replayedRetry.publication));
+          assert(
+            runtime.callCount === 1,
+            "the disposable retry E2E must make exactly one model call before replay coverage",
           );
           await assertReaderSummaryDailyCanonicalRecoveryV4PostgresContract({
             auditor,
@@ -681,6 +843,11 @@ const main = async (): Promise<void> => {
           });
           await ambiguityRetry.assertAfterExecution();
           assert(
+            assertPeriodGuardAfterExecution !== undefined,
+            "period-guard post-execution assertion is missing",
+          );
+          await assertPeriodGuardAfterExecution();
+          assert(
             recordedPublications.length === 8,
             `checker-only batching must record exactly 8 finalizer publications; received ${recordedPublications.length}`,
           );
@@ -689,8 +856,8 @@ const main = async (): Promise<void> => {
             "checker-only batching must clear the final pending post-finalize readback",
           );
           assert(
-            deferredReadCount === 8,
-            `checker-only batching must defer exactly 8 immediate executor readbacks; received ${deferredReadCount}`,
+            deferredReadCount === 7,
+            `checker-only batching must defer exactly 7 post-replay executor readbacks; received ${deferredReadCount}`,
           );
           assert(
             realReadCount === 2,

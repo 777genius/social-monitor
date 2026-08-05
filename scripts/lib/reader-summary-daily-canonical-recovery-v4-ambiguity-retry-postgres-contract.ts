@@ -7,7 +7,6 @@ import type {
 } from "./reader-summary-daily-canonical-recovery-v4";
 import { assertPgCatalogOnlySecurityDefinerSearchPaths } from "./reader-summary-daily-canonical-recovery-v4-postgres-contract";
 import type { RecoveryPostgresClient } from "./reader-summary-production-recovery-postgres-contract";
-
 const schema =
   "prisma/migrations/20260804130000_reader_summary_daily_v4_ambiguity_retry_schema/migration.sql";
 const transitions =
@@ -16,6 +15,7 @@ const consumers =
   "prisma/migrations/20260804130200_reader_summary_daily_v4_ambiguity_retry_consumers/migration.sql";
 const evidence =
   "prisma/migrations/20260804130300_reader_summary_daily_v4_ambiguity_retry_evidence/migration.sql";
+const periodGuard = "prisma/migrations/20260805090000_reader_summary_daily_v4_ambiguity_retry_period_guard/migration.sql";
 const backupRestoreContract = "ops/recovery/backup-restore-contract.json";
 const tenantGuardContract = "ops/security/tenant-db-guard-contract.json";
 const preMigrationBootstrap =
@@ -26,9 +26,7 @@ const tenant = "00000000-0000-7000-8000-000000000901";
 const workspace = "00000000-0000-7000-8000-000000000902";
 const date = "2026-07-23";
 const retryTable = "reader_summary_daily_canonical_recovery_v4_ambiguity_retries";
-
 type Client = Pick<RecoveryPostgresClient, "query">;
-
 type OriginalSnapshot = Readonly<{
   snapshot: string;
   modelJobIdentity: string;
@@ -39,7 +37,6 @@ type OriginalSnapshot = Readonly<{
   failedAmbiguousAt: string | null;
   payloadFree: boolean;
 }>;
-
 export type CanonicalRecoveryV4AmbiguityRetryFixture = Readonly<{
   retryWork: CanonicalRecoveryWork;
   assertAfterExecution(): Promise<void>;
@@ -54,15 +51,15 @@ export const assertReaderSummaryDailyCanonicalRecoveryV4AmbiguityRetryMigrationC
   const transitionSql = readFileSync(resolve(transitions), "utf8");
   const consumerSql = readFileSync(resolve(consumers), "utf8");
   const evidenceSql = readFileSync(resolve(evidence), "utf8");
+  const periodGuardSql = readFileSync(resolve(periodGuard), "utf8");
   const backupContract = readFileSync(resolve(backupRestoreContract), "utf8");
   const tenantGuard = readFileSync(resolve(tenantGuardContract), "utf8");
   const preBootstrapSql = readFileSync(resolve(preMigrationBootstrap), "utf8");
   const postBootstrapSql = readFileSync(resolve(postMigrationBootstrap), "utf8");
-  const sql = `${schemaSql}\n${transitionSql}\n${consumerSql}\n${evidenceSql}`;
-  const authorization = functionBody(
-    schemaSql,
+  const sql = `${schemaSql}\n${transitionSql}\n${consumerSql}\n${evidenceSql}\n${periodGuardSql}`;
+  const authorization = exactFunctionBody(
+    periodGuardSql,
     "authorize_reader_summary_daily_canonical_recovery_v4_ambiguity_retry",
-    "REVOKE ALL PRIVILEGES ON TABLE",
   );
   const effectiveAttemptLock = functionBody(
     schemaSql,
@@ -86,9 +83,17 @@ export const assertReaderSummaryDailyCanonicalRecoveryV4AmbiguityRetryMigrationC
     "complete_reader_summary_daily_canonical_recovery_v4",
   );
   const prepare = exactFunctionBody(
-    consumerSql,
+    periodGuardSql,
     "prepare_reader_summary_daily_canonical_recovery_v4_publication",
   );
+  const periodGuardEvidence = exactFunctionBody(
+    periodGuardSql,
+    "record_reader_summary_daily_canonical_recovery_v4_evidence",
+  );
+  const collisionGuard = (marker: string): string => authorization.slice(authorization.indexOf(marker), authorization.indexOf("IF FOUND THEN", authorization.indexOf(marker)));
+  const publicationGuard = collisionGuard('PERFORM publication."id"');
+  const evidenceGuard = collisionGuard('PERFORM evidence."publication_id"');
+  const exactSlotPredicates = ['publication."scope_type" = \'workspace\'', 'publication."scope_key" = \'workspace\'', 'publication."cadence" = \'daily\'', 'publication."period_timezone" = \'UTC\'', 'publication."period_started_at" = (c_date::TIMESTAMP AT TIME ZONE \'UTC\')', 'publication."period_ended_at" = ((c_date + 1)::TIMESTAMP AT TIME ZONE \'UTC\')'] as const;
   const finalize = exactFunctionBody(
     consumerSql,
     "finalize_reader_summary_daily_canonical_recovery_v4",
@@ -131,9 +136,13 @@ export const assertReaderSummaryDailyCanonicalRecoveryV4AmbiguityRetryMigrationC
         authorization.indexOf(`FROM public."${retryTable}"`) &&
       authorization.includes("FOR UPDATE") &&
       authorization.includes("FOR KEY SHARE") &&
+      exactSlotPredicates.every((part) => publicationGuard.includes(part)) &&
+      !['requested_utc_date', 'publication_kind', 'semantic_status'].some((part) => publicationGuard.includes(part)) &&
+      exactSlotPredicates.every((part) => evidenceGuard.includes(part.replace("publication.", "evidence."))) &&
+      !evidenceGuard.includes('requested_utc_date') &&
       !/\b(?:UPDATE|DELETE\s+FROM)\s+public\."reader_summary_daily_canonical_recovery_v4_leases"/iu
         .test(authorization),
-    "authorization must serializably lock immutable original history before retry without mutating it",
+    "authorization must lock the exact daily slot without treating requested date as published history",
   );
   assert(
     effectiveAttemptLock.indexOf('FROM public."reader_summary_daily_canonical_recovery_v4_leases"') <
@@ -194,8 +203,12 @@ export const assertReaderSummaryDailyCanonicalRecoveryV4AmbiguityRetryMigrationC
   assert(
     evidenceSql.includes("reader_summary_daily_canonical_recovery_v4_effective_leases") &&
       evidenceSql.includes("assert_reader_summary_daily_canonical_recovery_v4_ambiguity_retry_binding") &&
-      consumerSql.includes("assert_reader_summary_daily_canonical_recovery_v4_ambiguity_retry_binding"),
-    "provenance, publication, finalized readback, and evidence must bind attempt-2",
+      consumerSql.includes("assert_reader_summary_daily_canonical_recovery_v4_ambiguity_retry_binding") &&
+      periodGuardEvidence.includes('v_publication."period_started_at" <> (v_day::TIMESTAMP AT TIME ZONE \'UTC\')') &&
+      periodGuardEvidence.includes('v_publication."period_ended_at" <> ((v_day + 1)::TIMESTAMP AT TIME ZONE \'UTC\')') &&
+      periodGuardEvidence.includes('v_day, v_job."id", v_artifact."id"') &&
+      !periodGuardEvidence.includes('v_publication."requested_utc_date" <> v_day'),
+    "provenance and evidence must bind attempt-2 through the exact period, not a backdated request",
   );
   assert(
     consumerSql.includes("target_date NOT IN (DATE '2026-07-23', DATE '2026-07-28', DATE '2026-07-29', DATE '2026-07-30')"),
@@ -255,6 +268,11 @@ export const assertReaderSummaryDailyCanonicalRecoveryV4AmbiguityRetryMigrationC
       transitionSql.includes("UUID, UUID, DATE, CHAR(64), SMALLINT, TEXT, BIGINT, TIMESTAMPTZ") &&
       prepare.includes('retry."attempt_ordinal" = target_attempt_ordinal') &&
       prepare.includes('btrim(retry."model_job_identity") = btrim(target_model_job_identity)') &&
+      prepare.includes('publication."period_started_at" = (target_date::TIMESTAMP AT TIME ZONE \'UTC\')') &&
+      prepare.includes('publication."period_ended_at" = ((target_date + 1)::TIMESTAMP AT TIME ZONE \'UTC\')') &&
+      ['v_target_slot_publication_count <> 1', 'v_target_slot_publication_id IS DISTINCT FROM target_publication_id', 'ORDER BY publication."id"\n    FOR KEY SHARE\n  LOOP'].every((part) => prepare.includes(part)) &&
+      prepare.includes('verify_reader_summary_daily_canonical_recovery_v4_provenance') &&
+      !prepare.includes('publication."requested_utc_date" = target_date') &&
       finalize.includes('retry."attempt_ordinal" = target_attempt_ordinal') &&
       finalize.includes('btrim(retry."model_job_identity") = btrim(target_model_job_identity)') &&
       prepare.indexOf("stale attempt identity") <
@@ -272,6 +290,15 @@ export const assertReaderSummaryDailyCanonicalRecoveryV4AmbiguityRetryMigrationC
       authorization.indexOf("IF v_has_retry THEN") <
         authorization.indexOf("authorization time is invalid"),
     "an exact committed authorization replay must return the immutable attempt-2 identity before any new authorization write",
+  );
+  assert(
+    periodGuardSql.includes("-- @social-monitor-forward-migration") &&
+    periodGuardSql.includes("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE") &&
+      !/DROP\s+FUNCTION/iu.test(periodGuardSql) &&
+      periodGuardSql.includes("SET search_path = pg_catalog") &&
+      ['rewrite_publish_reader_summary_pre_evidence_period_guard', 'retry cannot supersede target publication slot', 'publication."id" IS DISTINCT FROM v_artifact."id" FOR KEY SHARE', 'rewrite_finalize_reader_summary_daily_canonical_recovery_v4_period_guard', 'slot."current_publication_id" = target_publication_id', 'FOR UPDATE OF publication, job, artifact, evidence', 'btrim(evidence."canonical_sha256") = btrim(target_weekly_evidence_sha256)'].every((part) => periodGuardSql.includes(part)) &&
+      periodGuardSql.includes('TO "social_monitor_reader_summary_daily_terminal"'),
+    "period guard must be an append-only hardened migration with terminal-only authorization",
   );
 };
 
@@ -298,6 +325,10 @@ export const prepareReaderSummaryDailyCanonicalRecoveryV4AmbiguityRetryFixture =
         authorizationSha256: string;
       }>>;
     }>;
+    assertPublishedHistory?: (input: Readonly<{
+      originalModelJobIdentity: string;
+      sourceAuthoritySha256: string;
+    }>) => Promise<void>;
     tenantId: string;
     workspaceId: string;
   }>,
@@ -347,6 +378,10 @@ export const prepareReaderSummaryDailyCanonicalRecoveryV4AmbiguityRetryFixture =
       failed.sourceAuthoritySha256 === original.sourceAuthoritySha256,
     "terminal claim did not map the failed original binding for authorization",
   );
+  await input.assertPublishedHistory?.({
+    originalModelJobIdentity: original.modelJobIdentity,
+    sourceAuthoritySha256: original.sourceAuthoritySha256,
+  });
 
   await assertRetryAcl(input.auditor);
   await assertRejected(input.firstTerminal, "wrong source hash", [
@@ -506,9 +541,12 @@ export const prepareReaderSummaryDailyCanonicalRecoveryV4AmbiguityRetryFixture =
               AND lease.requested_utc_date = $3::DATE) AS "effectiveIdentity",
           (SELECT count(*)::TEXT FROM public.reader_summary_publications publication
             WHERE publication.tenant_id = $1::UUID AND publication.workspace_id = $2::UUID
-              AND publication.requested_utc_date = $3::DATE) AS "publicationCount",
+              AND publication.period_started_at = ($3::DATE::TIMESTAMP AT TIME ZONE 'UTC')
+              AND publication.period_ended_at = (($3::DATE + 1)::TIMESTAMP AT TIME ZONE 'UTC')) AS "publicationCount",
           (SELECT count(*)::TEXT FROM public.reader_summary_weekly_publication_evidence evidence
             WHERE evidence.tenant_id = $1::UUID AND evidence.workspace_id = $2::UUID
+              AND evidence.period_started_at = ($3::DATE::TIMESTAMP AT TIME ZONE 'UTC')
+              AND evidence.period_ended_at = (($3::DATE + 1)::TIMESTAMP AT TIME ZONE 'UTC')
               AND evidence.requested_utc_date = $3::DATE) AS "evidenceCount"
       `, [tenant, workspace, date]);
       const row = result.rows[0];
