@@ -113,7 +113,7 @@ grep -F 'for bounded_run in 1 2 3 4' \
   "$SCRIPT_DIR/reader-summary-recovery-maintenance-lib.sh" >/dev/null
 grep -F 'node scripts/run-with-timeout.mjs --timeout-ms 19800000' \
   "$SCRIPT_DIR/reader-summary-recovery-maintenance-lib.sh" >/dev/null
-grep -F 'ts-node -r tsconfig-paths/register scripts/run-reader-summary-daily-bounded-maintenance.ts' \
+grep -F './node_modules/.bin/ts-node -r tsconfig-paths/register scripts/run-reader-summary-daily-bounded-maintenance.ts' \
   "$SCRIPT_DIR/reader-summary-recovery-maintenance-lib.sh" >/dev/null
 grep -F 'timeout-minutes: 360' "$workflow" >/dev/null
 grep -F 'npm run check:reader-summary-daily-canonical-recovery-postgres18' "$workflow" >/dev/null

@@ -189,7 +189,7 @@ run_reader_summary_daily_bounded_maintenance() {
     -e "READER_SUMMARY_DAILY_MAINTENANCE_MODEL_JOB_IDENTITY=$model_job_identity" \
     -e "READER_SUMMARY_DAILY_MAINTENANCE_AUTHORITY_SHA256=$authority_sha256" \
     daily-runner sh -lc \
-    'set -eu; node scripts/run-with-timeout.mjs --timeout-ms 19800000 --node-options --max-old-space-size=768 -- ts-node -r tsconfig-paths/register scripts/run-reader-summary-daily-bounded-maintenance.ts'
+    'set -eu; node scripts/run-with-timeout.mjs --timeout-ms 19800000 --node-options --max-old-space-size=768 -- ./node_modules/.bin/ts-node -r tsconfig-paths/register scripts/run-reader-summary-daily-bounded-maintenance.ts'
 }
 
 run_reader_summary_daily_runner_maintenance() (
