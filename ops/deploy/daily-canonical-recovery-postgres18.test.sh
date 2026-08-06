@@ -10,6 +10,7 @@ trap cleanup EXIT HUP INT TERM
 
 docker image inspect postgres:18.4-alpine >/dev/null
 docker run --detach --rm --name "$container" \
+  --tmpfs /var/lib/postgresql:rw,size=8g \
   --env POSTGRES_PASSWORD=daily_recovery_local_test_password \
   --env POSTGRES_DB=postgres \
   --publish 127.0.0.1::5432 postgres:18.4-alpine >/dev/null

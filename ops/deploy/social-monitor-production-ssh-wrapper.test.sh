@@ -16,9 +16,12 @@ ENTRYPOINT=$FIXTURE/github-production-deploy.sh
 EVENT_LOG=$FIXTURE/events.log
 SHA=1234567890abcdef1234567890abcdef12345678
 DAILY_CANONICAL_RECOVERY_CONFIRMATION=reader-summary-daily-canonical-recovery-v4
+DAILY_CANONICAL_RECOVERY_RETRY_SET_TOKEN=invalid-product-retry-set-v1
 MODEL_JOB_IDENTITY=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 AUTHORITY_SHA256=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
-AUTHORIZED_STDIN_RECORD="$DAILY_CANONICAL_RECOVERY_CONFIRMATION 2026-07-23 $MODEL_JOB_IDENTITY $AUTHORITY_SHA256"
+TERMINAL_SET_SHA256=cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+AUTHORIZED_STDIN_RECORD="reader-summary-daily-canonical-recovery-v4 $DAILY_CANONICAL_RECOVERY_RETRY_SET_TOKEN $TERMINAL_SET_SHA256"
+LEGACY_STDIN_RECORD="$DAILY_CANONICAL_RECOVERY_CONFIRMATION 2026-07-23 $MODEL_JOB_IDENTITY $AUTHORITY_SHA256"
 install -d "$BIN"
 git -C "$PROJECT_ROOT" show \
   "$LEGACY_CONTROL_SHA:ops/deploy/social-monitor-production-ssh-wrapper.sh" \
@@ -56,17 +59,23 @@ fi
 [[ -z ${READER_SUMMARY_DAILY_MAINTENANCE_AUTHORIZED_UTC_DATE+x} ]]
 [[ -z ${READER_SUMMARY_DAILY_MAINTENANCE_MODEL_JOB_IDENTITY+x} ]]
 [[ -z ${READER_SUMMARY_DAILY_MAINTENANCE_AUTHORITY_SHA256+x} ]]
-[[ -z ${confirmation+x} ]]
-[[ -z ${model_job_identity+x} ]]
-[[ -z ${authority_sha256+x} ]]
+[[ -z ${READER_SUMMARY_DAILY_MAINTENANCE_RETRY_SET_TOKEN+x} ]]
+[[ -z ${READER_SUMMARY_DAILY_MAINTENANCE_TERMINAL_SET_SHA256+x} ]]
+[[ -z ${first_authorization_value+x} ]]
+[[ -z ${second_authorization_value+x} ]]
+[[ -z ${third_authorization_value+x} ]]
+[[ -z ${retry_set_token+x} ]]
+[[ -z ${terminal_set_sha256+x} ]]
 [[ -z ${authorization_record+x} ]]
-expected_authorization_record='reader-summary-daily-canonical-recovery-v4 2026-07-23 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+expected_authorization_record='reader-summary-daily-canonical-recovery-v4 invalid-product-retry-set-v1 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc'
 [[ $# == 3 ]]
 for argument in "$@"; do
   [[ $argument != "$expected_authorization_record" ]]
   [[ $argument != READER_SUMMARY_DAILY_MAINTENANCE_AUTHORIZED_UTC_DATE=* ]]
   [[ $argument != READER_SUMMARY_DAILY_MAINTENANCE_MODEL_JOB_IDENTITY=* ]]
   [[ $argument != READER_SUMMARY_DAILY_MAINTENANCE_AUTHORITY_SHA256=* ]]
+  [[ $argument != READER_SUMMARY_DAILY_MAINTENANCE_RETRY_SET_TOKEN=* ]]
+  [[ $argument != READER_SUMMARY_DAILY_MAINTENANCE_TERMINAL_SET_SHA256=* ]]
 done
 printf 'sudo-clean\n' >> "$EVENT_LOG"
 exec "$@"
@@ -77,9 +86,8 @@ cat > "$ENTRYPOINT" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
 
-expected_confirmation=reader-summary-daily-canonical-recovery-v4
-expected_model_job_identity=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-expected_authority_sha256=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+expected_retry_set_token=invalid-product-retry-set-v1
+expected_terminal_set_sha256=cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 action=${1:-}
 sha=${2:-}
 [[ $# == 2 ]]
@@ -87,9 +95,13 @@ sha=${2:-}
 [[ -z ${READER_SUMMARY_DAILY_MAINTENANCE_AUTHORIZED_UTC_DATE+x} ]]
 [[ -z ${READER_SUMMARY_DAILY_MAINTENANCE_MODEL_JOB_IDENTITY+x} ]]
 [[ -z ${READER_SUMMARY_DAILY_MAINTENANCE_AUTHORITY_SHA256+x} ]]
-[[ -z ${confirmation+x} ]]
-[[ -z ${model_job_identity+x} ]]
-[[ -z ${authority_sha256+x} ]]
+[[ -z ${READER_SUMMARY_DAILY_MAINTENANCE_RETRY_SET_TOKEN+x} ]]
+[[ -z ${READER_SUMMARY_DAILY_MAINTENANCE_TERMINAL_SET_SHA256+x} ]]
+[[ -z ${first_authorization_value+x} ]]
+[[ -z ${second_authorization_value+x} ]]
+[[ -z ${third_authorization_value+x} ]]
+[[ -z ${retry_set_token+x} ]]
+[[ -z ${terminal_set_sha256+x} ]]
 [[ -z ${authorization_record+x} ]]
 if [[ ${EXPECT_ORDINARY_PROBE_STDIN_EOF:-0} == 1 ]]; then
   unexpected_authorization_record=''
@@ -104,7 +116,7 @@ if [[ ${EXPECT_AUTHORIZED_STDIN:-0} == 1 ]]; then
   [[ $action == reader-summary-recover-missing-days ]]
   [[ -z ${SSH_ORIGINAL_COMMAND+x} ]]
   IFS= read -r authorization_record
-  [[ $authorization_record == "$expected_confirmation 2026-07-23 $expected_model_job_identity $expected_authority_sha256" ]]
+  [[ $authorization_record == "${EXPECTED_AUTHORIZED_STDIN_RECORD:-reader-summary-daily-canonical-recovery-v4 $expected_retry_set_token $expected_terminal_set_sha256}" ]]
   trailing_record=''
   if IFS= read -r trailing_record; then
     exit 65
@@ -245,15 +257,38 @@ for action in \
 done
 
 : > "$EVENT_LOG"
-SSH_ORIGINAL_COMMAND="reader-summary-daily-canonical-recovery-v4 $SHA $DAILY_CANONICAL_RECOVERY_CONFIRMATION $MODEL_JOB_IDENTITY $AUTHORITY_SHA256" \
+SSH_ORIGINAL_COMMAND="reader-summary-daily-canonical-recovery-v4 $SHA $DAILY_CANONICAL_RECOVERY_RETRY_SET_TOKEN $TERMINAL_SET_SHA256" \
   EVENT_LOG=$EVENT_LOG CONTROL_LIB=$CONTROL_LIB EXACT_SHA=$SHA \
   EXPECT_AUTHORIZED_STDIN=1 \
   READER_SUMMARY_DAILY_MAINTENANCE_AUTHORIZED_UTC_DATE=unexpected \
   READER_SUMMARY_DAILY_MAINTENANCE_MODEL_JOB_IDENTITY=unexpected \
   READER_SUMMARY_DAILY_MAINTENANCE_AUTHORITY_SHA256=unexpected \
-  confirmation=unexpected \
-  model_job_identity=unexpected \
-  authority_sha256=unexpected \
+  READER_SUMMARY_DAILY_MAINTENANCE_RETRY_SET_TOKEN=unexpected \
+  READER_SUMMARY_DAILY_MAINTENANCE_TERMINAL_SET_SHA256=unexpected \
+  first_authorization_value=unexpected \
+  second_authorization_value=unexpected \
+  third_authorization_value=unexpected \
+  retry_set_token=unexpected \
+  terminal_set_sha256=unexpected \
+  authorization_record=unexpected \
+  bash "$FIXTURE/current-wrapper.sh" </dev/null
+grep -Fx 'sudo-clean' "$EVENT_LOG" >/dev/null
+grep -Fx 'authorized-stdin' "$EVENT_LOG" >/dev/null
+grep -Fx "dispatch:reader-summary-recover-missing-days:$SHA" "$EVENT_LOG" >/dev/null
+[[ $(wc -l < "$EVENT_LOG") == 3 ]]
+
+: > "$EVENT_LOG"
+SSH_ORIGINAL_COMMAND="reader-summary-daily-canonical-recovery-v4 $SHA $DAILY_CANONICAL_RECOVERY_CONFIRMATION $MODEL_JOB_IDENTITY $AUTHORITY_SHA256" \
+  EVENT_LOG=$EVENT_LOG CONTROL_LIB=$CONTROL_LIB EXACT_SHA=$SHA \
+  EXPECT_AUTHORIZED_STDIN=1 EXPECTED_AUTHORIZED_STDIN_RECORD="$LEGACY_STDIN_RECORD" \
+  READER_SUMMARY_DAILY_MAINTENANCE_AUTHORIZED_UTC_DATE=unexpected \
+  READER_SUMMARY_DAILY_MAINTENANCE_MODEL_JOB_IDENTITY=unexpected \
+  READER_SUMMARY_DAILY_MAINTENANCE_AUTHORITY_SHA256=unexpected \
+  READER_SUMMARY_DAILY_MAINTENANCE_RETRY_SET_TOKEN=unexpected \
+  READER_SUMMARY_DAILY_MAINTENANCE_TERMINAL_SET_SHA256=unexpected \
+  first_authorization_value=unexpected \
+  second_authorization_value=unexpected \
+  third_authorization_value=unexpected \
   authorization_record=unexpected \
   bash "$FIXTURE/current-wrapper.sh" </dev/null
 grep -Fx 'sudo-clean' "$EVENT_LOG" >/dev/null
@@ -263,13 +298,16 @@ grep -Fx "dispatch:reader-summary-recover-missing-days:$SHA" "$EVENT_LOG" >/dev/
 
 for command in \
   "reader-summary-daily-canonical-recovery-v4 $SHA" \
-  "reader-summary-daily-canonical-recovery-v4 $SHA wrong-reader-summary-daily-canonical-recovery-v4 $MODEL_JOB_IDENTITY $AUTHORITY_SHA256" \
-  "reader-summary-daily-canonical-recovery-v4 $SHA $DAILY_CANONICAL_RECOVERY_CONFIRMATION:$SHA $MODEL_JOB_IDENTITY $AUTHORITY_SHA256" \
+  "reader-summary-daily-canonical-recovery-v4 $SHA wrong-invalid-product-retry-set-v1 $TERMINAL_SET_SHA256" \
+  "reader-summary-daily-canonical-recovery-v4 $SHA $DAILY_CANONICAL_RECOVERY_RETRY_SET_TOKEN:$SHA $TERMINAL_SET_SHA256" \
+  "reader-summary-daily-canonical-recovery-v4 $SHA $DAILY_CANONICAL_RECOVERY_RETRY_SET_TOKEN" \
+  "reader-summary-daily-canonical-recovery-v4 $SHA $DAILY_CANONICAL_RECOVERY_RETRY_SET_TOKEN ${TERMINAL_SET_SHA256^^}" \
+  "reader-summary-daily-canonical-recovery-v4 $SHA $DAILY_CANONICAL_RECOVERY_RETRY_SET_TOKEN short" \
+  "reader-summary-daily-canonical-recovery-v4 $SHA $DAILY_CANONICAL_RECOVERY_RETRY_SET_TOKEN $TERMINAL_SET_SHA256 extra" \
   "reader-summary-daily-canonical-recovery-v4 $SHA $DAILY_CANONICAL_RECOVERY_CONFIRMATION $MODEL_JOB_IDENTITY" \
+  "reader-summary-daily-canonical-recovery-v4 $SHA wrong-reader-summary-daily-canonical-recovery-v4 $MODEL_JOB_IDENTITY $AUTHORITY_SHA256" \
   "reader-summary-daily-canonical-recovery-v4 $SHA $DAILY_CANONICAL_RECOVERY_CONFIRMATION ${MODEL_JOB_IDENTITY^^} $AUTHORITY_SHA256" \
-  "reader-summary-daily-canonical-recovery-v4 $SHA $DAILY_CANONICAL_RECOVERY_CONFIRMATION $MODEL_JOB_IDENTITY ${AUTHORITY_SHA256^^}" \
-  "reader-summary-daily-canonical-recovery-v4 $SHA $DAILY_CANONICAL_RECOVERY_CONFIRMATION $MODEL_JOB_IDENTITY short" \
-  "reader-summary-daily-canonical-recovery-v4 $SHA $DAILY_CANONICAL_RECOVERY_CONFIRMATION $MODEL_JOB_IDENTITY $AUTHORITY_SHA256 extra"; do
+  "reader-summary-daily-canonical-recovery-v4 $SHA $DAILY_CANONICAL_RECOVERY_CONFIRMATION $MODEL_JOB_IDENTITY short"; do
   : > "$EVENT_LOG"
   assert_rejected "$FIXTURE/current-wrapper.sh" "$command"
   [[ ! -s $EVENT_LOG ]]
@@ -277,7 +315,7 @@ done
 
 : > "$EVENT_LOG"
 assert_rejected "$FIXTURE/legacy-wrapper.sh" \
-  "reader-summary-daily-canonical-recovery-v4 $SHA $DAILY_CANONICAL_RECOVERY_CONFIRMATION $MODEL_JOB_IDENTITY $AUTHORITY_SHA256"
+  "reader-summary-daily-canonical-recovery-v4 $SHA $DAILY_CANONICAL_RECOVERY_RETRY_SET_TOKEN $TERMINAL_SET_SHA256"
 [[ ! -s $EVENT_LOG ]]
 
 echo 'Production SSH wrapper reachability tests passed'

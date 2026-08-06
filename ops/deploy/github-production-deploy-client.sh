@@ -15,6 +15,7 @@ DEFAULT_RECONCILE_ATTEMPTS=45
 DEFAULT_RECONCILE_INTERVAL_SECONDS=15
 DEFAULT_RECONCILE_WINDOW_SECONDS=$(((DEFAULT_RECONCILE_ATTEMPTS - 1) * DEFAULT_RECONCILE_INTERVAL_SECONDS))
 DAILY_CANONICAL_RECOVERY_CONFIRMATION=reader-summary-daily-canonical-recovery-v4
+DAILY_CANONICAL_RECOVERY_RETRY_SET_TOKEN=invalid-product-retry-set-v1
 RECONCILE_ATTEMPTS=${DEPLOY_RECONCILE_ATTEMPTS:-$DEFAULT_RECONCILE_ATTEMPTS}
 RECONCILE_INTERVAL_SECONDS=${DEPLOY_RECONCILE_INTERVAL_SECONDS:-$DEFAULT_RECONCILE_INTERVAL_SECONDS}
 PLAN_POSTGRES_POOL_REPAIR=false
@@ -85,18 +86,19 @@ remove_ssh() {
 run_remote() {
   local action=$1
   local sha=$2
-  local confirmation=${3:-}
-  local model_job_identity=${4:-}
-  local authority_sha256=${5:-}
+  local first_authorization_value=${3:-}
+  local second_authorization_value=${4:-}
+  local third_authorization_value=${5:-}
   if (($# == 5)); then
     "$SSH_BIN" "${SSH_OPTIONS[@]}" \
       -- "$DEPLOY_USER@$DEPLOY_HOST" \
-      "$action $sha $confirmation $model_job_identity $authority_sha256"
+      "$action $sha $first_authorization_value $second_authorization_value $third_authorization_value"
     return
   fi
-  if (($# == 3)); then
+  if (($# == 4)); then
     "$SSH_BIN" "${SSH_OPTIONS[@]}" \
-      -- "$DEPLOY_USER@$DEPLOY_HOST" "$action $sha $confirmation"
+      -- "$DEPLOY_USER@$DEPLOY_HOST" \
+      "$action $sha $first_authorization_value $second_authorization_value"
     return
   fi
   "$SSH_BIN" "${SSH_OPTIONS[@]}" \
@@ -110,34 +112,47 @@ validate_maintenance_action() {
   esac
 }
 
+validate_daily_canonical_recovery_retry_set_token() {
+  [[ ${1:-} == "$DAILY_CANONICAL_RECOVERY_RETRY_SET_TOKEN" ]] || \
+    fail 'daily canonical recovery requires invalid-product-retry-set-v1'
+}
+
 validate_daily_canonical_recovery_confirmation() {
   [[ ${1:-} == "$DAILY_CANONICAL_RECOVERY_CONFIRMATION" ]] || \
     fail 'daily canonical recovery requires its exact confirmation token'
 }
 
-validate_lowercase_hex_identity() {
+validate_lowercase_hex_digest() {
   [[ ${1:-} =~ ^[0-9a-f]{64}$ ]] || \
-    fail 'daily bounded maintenance identity must be a 64-character lowercase hexadecimal value'
+    fail 'daily canonical recovery terminal-set digest must be a 64-character lowercase hexadecimal value'
 }
 
 run_maintenance() {
   local sha=$1
   local maintenance_action=$2
-  local confirmation=${3:-}
-  local model_job_identity=${4:-}
-  local authority_sha256=${5:-}
+  local first_authorization_value=${3:-}
+  local second_authorization_value=${4:-}
+  local third_authorization_value=${5:-}
   validate_sha "$sha"
   validate_maintenance_action "$maintenance_action"
   validate_remote_environment
   if [[ $maintenance_action == reader-summary-daily-canonical-recovery-v4 ]]; then
-    [[ $# == 5 ]] || \
-      fail 'daily canonical recovery requires confirmation, model identity, and authority SHA-256'
-    validate_daily_canonical_recovery_confirmation "$confirmation"
-    validate_lowercase_hex_identity "$model_job_identity"
-    validate_lowercase_hex_identity "$authority_sha256"
-    run_remote "$maintenance_action" "$sha" "$confirmation" \
-      "$model_job_identity" "$authority_sha256"
-    return
+    if (($# == 4)); then
+      validate_daily_canonical_recovery_retry_set_token "$first_authorization_value"
+      validate_lowercase_hex_digest "$second_authorization_value"
+      run_remote "$maintenance_action" "$sha" "$first_authorization_value" \
+        "$second_authorization_value"
+      return
+    fi
+    if (($# == 5)); then
+      validate_daily_canonical_recovery_confirmation "$first_authorization_value"
+      validate_lowercase_hex_digest "$second_authorization_value"
+      validate_lowercase_hex_digest "$third_authorization_value"
+      run_remote "$maintenance_action" "$sha" "$first_authorization_value" \
+        "$second_authorization_value" "$third_authorization_value"
+      return
+    fi
+    fail 'daily canonical recovery requires either retry-set token and digest or its exact legacy confirmation'
   fi
   [[ $# == 2 ]] || fail 'this maintenance action does not accept a confirmation token'
   run_remote "$maintenance_action" "$sha"
@@ -392,10 +407,12 @@ case $action in
     deploy_release "$2"
     ;;
   maintenance)
-    [[ $# == 3 || $# == 6 ]] || \
-      fail 'maintenance requires a target SHA, action, and optional recovery authorization'
+    [[ $# == 3 || $# == 5 || $# == 6 ]] || \
+      fail 'maintenance requires a target SHA, action, and optional retry-set authorization'
     if (($# == 6)); then
       run_maintenance "$2" "$3" "$4" "$5" "$6"
+    elif (($# == 5)); then
+      run_maintenance "$2" "$3" "$4" "$5"
     else
       run_maintenance "$2" "$3"
     fi

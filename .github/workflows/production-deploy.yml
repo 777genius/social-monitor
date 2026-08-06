@@ -48,18 +48,28 @@ on:
           - reader-summary-recover-missing-days
           - reader-summary-weekly-run
           - reader-summary-daily-canonical-recovery-v4
+      daily_canonical_recovery_retry_set_token:
+        description: Required exact invalid-product retry-set token for daily canonical recovery V4
+        required: false
+        default: ''
+        type: string
+      daily_canonical_recovery_terminal_set_sha256:
+        description: Required lowercase-hex terminal-set SHA-256 for daily canonical recovery V4
+        required: false
+        default: ''
+        type: string
       daily_canonical_recovery_confirmation:
-        description: Required exact confirmation for daily canonical recovery V4
+        description: Required exact confirmation for ordinary daily canonical recovery V4
         required: false
         default: ''
         type: string
       daily_canonical_recovery_model_job_identity:
-        description: Required lowercase-hex Jul23 model job identity for bounded recovery
+        description: Required lowercase-hex Jul23 model job identity for ordinary bounded recovery
         required: false
         default: ''
         type: string
       daily_canonical_recovery_authority_sha256:
-        description: Required lowercase-hex Jul23 source authority SHA-256 for bounded recovery
+        description: Required lowercase-hex Jul23 source authority SHA-256 for ordinary bounded recovery
         required: false
         default: ''
         type: string
@@ -94,17 +104,30 @@ jobs:
           DEPLOY_HOST: ${{ vars.PRODUCTION_SSH_HOST }}
           DEPLOY_USER: ${{ vars.PRODUCTION_SSH_USER }}
           MAINTENANCE_ACTION: ${{ inputs.maintenance_action }}
+          DAILY_CANONICAL_RECOVERY_RETRY_SET_TOKEN: ${{ inputs.daily_canonical_recovery_retry_set_token }}
+          DAILY_CANONICAL_RECOVERY_TERMINAL_SET_SHA256: ${{ inputs.daily_canonical_recovery_terminal_set_sha256 }}
           DAILY_CANONICAL_RECOVERY_CONFIRMATION: ${{ inputs.daily_canonical_recovery_confirmation }}
           DAILY_CANONICAL_RECOVERY_MODEL_JOB_IDENTITY: ${{ inputs.daily_canonical_recovery_model_job_identity }}
           DAILY_CANONICAL_RECOVERY_AUTHORITY_SHA256: ${{ inputs.daily_canonical_recovery_authority_sha256 }}
         run: |
           set -euo pipefail
           if [[ $MAINTENANCE_ACTION == reader-summary-daily-canonical-recovery-v4 ]]; then
-            bash ops/deploy/github-production-deploy-client.sh maintenance "$GITHUB_SHA" \
-              "$MAINTENANCE_ACTION" "$DAILY_CANONICAL_RECOVERY_CONFIRMATION" \
-              "$DAILY_CANONICAL_RECOVERY_MODEL_JOB_IDENTITY" \
-              "$DAILY_CANONICAL_RECOVERY_AUTHORITY_SHA256"
+            if [[ -n $DAILY_CANONICAL_RECOVERY_RETRY_SET_TOKEN || \
+                  -n $DAILY_CANONICAL_RECOVERY_TERMINAL_SET_SHA256 ]]; then
+              [[ $DAILY_CANONICAL_RECOVERY_RETRY_SET_TOKEN == invalid-product-retry-set-v1 ]]
+              [[ $DAILY_CANONICAL_RECOVERY_TERMINAL_SET_SHA256 =~ ^[0-9a-f]{64}$ ]]
+              [[ -z $DAILY_CANONICAL_RECOVERY_CONFIRMATION$DAILY_CANONICAL_RECOVERY_MODEL_JOB_IDENTITY$DAILY_CANONICAL_RECOVERY_AUTHORITY_SHA256 ]]
+              bash ops/deploy/github-production-deploy-client.sh maintenance "$GITHUB_SHA" \
+                "$MAINTENANCE_ACTION" "$DAILY_CANONICAL_RECOVERY_RETRY_SET_TOKEN" \
+                "$DAILY_CANONICAL_RECOVERY_TERMINAL_SET_SHA256"
+            else
+              bash ops/deploy/github-production-deploy-client.sh maintenance "$GITHUB_SHA" \
+                "$MAINTENANCE_ACTION" "$DAILY_CANONICAL_RECOVERY_CONFIRMATION" \
+                "$DAILY_CANONICAL_RECOVERY_MODEL_JOB_IDENTITY" \
+                "$DAILY_CANONICAL_RECOVERY_AUTHORITY_SHA256"
+            fi
           else
+            [[ -z $DAILY_CANONICAL_RECOVERY_RETRY_SET_TOKEN$DAILY_CANONICAL_RECOVERY_TERMINAL_SET_SHA256$DAILY_CANONICAL_RECOVERY_CONFIRMATION$DAILY_CANONICAL_RECOVERY_MODEL_JOB_IDENTITY$DAILY_CANONICAL_RECOVERY_AUTHORITY_SHA256 ]]
             bash ops/deploy/github-production-deploy-client.sh maintenance "$GITHUB_SHA" \
               "$MAINTENANCE_ACTION"
           fi

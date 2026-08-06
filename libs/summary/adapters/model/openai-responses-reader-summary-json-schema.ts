@@ -102,7 +102,7 @@ export const openAiReaderSummaryContentJsonSchemaDefs = {
         items: { $ref: "#/$defs/readerClaimRisk" },
         maxItems: 2,
       },
-      citationIds: readerStringArraySchema(3),
+      citationIds: { ...readerStringArraySchema(3), minItems: 1 },
     },
   ),
   readerClaimEvidence: readerObjectSchema(

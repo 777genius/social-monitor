@@ -92,7 +92,7 @@ export const openAiReaderSummaryJsonSchema = {
         summary: stringSchema(720),
         interestIds: stringArraySchema(5),
         providerKeys: stringArraySchema(5),
-        citationIds: stringArraySchema(2),
+        citationIds: { ...stringArraySchema(2), minItems: 1 },
       },
     ),
     interestHighlight: objectSchema(
@@ -101,7 +101,7 @@ export const openAiReaderSummaryJsonSchema = {
         interestId: stringSchema(120),
         title: stringSchema(140),
         summary: stringSchema(320),
-        citationIds: stringArraySchema(3),
+        citationIds: { ...stringArraySchema(3), minItems: 1 },
       },
     ),
     repeatedSignal: objectSchema(
@@ -110,7 +110,7 @@ export const openAiReaderSummaryJsonSchema = {
         storyClusterId: stringSchema(120),
         title: stringSchema(180),
         interestIds: stringArraySchema(5),
-        citationIds: stringArraySchema(3),
+        citationIds: { ...stringArraySchema(3), minItems: 1 },
       },
     ),
     risk: objectSchema(["description", "citationIds", "reason"], {

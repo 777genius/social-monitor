@@ -35,7 +35,10 @@ FINAL_MODEL_OVERLAY=$REPO/ops/deploy/production-runtime/compose.agent-runtime-mo
 DAILY_CANONICAL_RECOVERY_CONFIRMATION=reader-summary-daily-canonical-recovery-v4
 MODEL_JOB_IDENTITY=a771ebcf1dbb24f6a4eb1c6299133397a5fc1599ed4109c7fba27a0ec5e7b148
 AUTHORITY_SHA256=010fd4f8da8aa2e4b332601e145e49549ff41c34b7ea498024b7449f9c827bbb
-AUTHORIZED_STDIN_RECORD="$DAILY_CANONICAL_RECOVERY_CONFIRMATION 2026-07-23 $MODEL_JOB_IDENTITY $AUTHORITY_SHA256"
+DAILY_CANONICAL_RECOVERY_RETRY_SET_TOKEN=invalid-product-retry-set-v1
+TERMINAL_SET_SHA256=cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+AUTHORIZED_STDIN_RECORD="reader-summary-daily-canonical-recovery-v4 $DAILY_CANONICAL_RECOVERY_RETRY_SET_TOKEN $TERMINAL_SET_SHA256"
+LEGACY_STDIN_RECORD="$DAILY_CANONICAL_RECOVERY_CONFIRMATION 2026-07-23 $MODEL_JOB_IDENTITY $AUTHORITY_SHA256"
 
 install -d "$REPO/ops/deploy" "$STATE" "$POSTGRES_RUNTIME_CURRENT" \
   "$ROOT/runtime/subscription-runtime/sessions" "$ROOT/backups"
@@ -134,8 +137,13 @@ fake_compose() {
   if [[ $* == *'restart agent-runtime' ]]; then
     printf 'reset\n' >> "$ORDER_LOG"
   elif [[ $* == *'npm run run:reader-summary-daily-canonical-recovery'* ]]; then
-    [[ $* == *'npm run prepare:reader-summary-production-recovery-gap-authority; npm run run:reader-summary-daily-canonical-recovery'* ]] || return 93
     [[ $* != *'npm run authorize:reader-summary-daily-canonical-recovery-ambiguity-retry'* ]] || return 94
+    if [[ $* == *'invalid-product-retry-set-v1'* ]]; then
+      [[ $* == *"npm run run:reader-summary-daily-canonical-recovery -- invalid-product-retry-set-v1 $TERMINAL_SET_SHA256"* ]] || return 95
+      [[ $* != *'prepare:reader-summary-production-recovery-gap-authority'* ]] || return 96
+    else
+      [[ $* == *'npm run prepare:reader-summary-production-recovery-gap-authority; npm run run:reader-summary-daily-canonical-recovery'* ]] || return 93
+    fi
     printf '%s\n' canonical >> "$ORDER_LOG"
   elif [[ $* == *'scripts/run-reader-summary-daily-bounded-maintenance.ts'* ]]; then
     printf 'bounded\n' >> "$ORDER_LOG"
@@ -201,7 +209,7 @@ grep -F 'npm run run:reader-summary-weekly-production -- --week-start 2026-07-27
 : > "$ORDER_LOG"
 printf 'old subscription session\n' > "$ROOT/runtime/subscription-runtime/sessions/session"
 export AUTH_ACCOUNT_CHANGED=1
-printf '%s\n' "$AUTHORIZED_STDIN_RECORD" | \
+printf '%s\n' "$LEGACY_STDIN_RECORD" | \
   run_reader_summary_daily_runner_maintenance reader-summary-recover-missing-days
 unset AUTH_ACCOUNT_CHANGED
 canonical_recovery_command="$recovery_command"
@@ -225,6 +233,25 @@ mapfile -t bounded_execution_order < "$ORDER_LOG"
 [[ -d $ROOT/runtime/subscription-runtime/sessions ]]
 compgen -G "$ROOT/backups/subscription-runtime-sessions.*/session" >/dev/null
 
+: > "$COMPOSE_LOG"
+: > "$ORDER_LOG"
+printf '%s\n' "$AUTHORIZED_STDIN_RECORD" | \
+  run_reader_summary_daily_runner_maintenance reader-summary-recover-missing-days
+canonical_recovery_command="--profile daily run --rm --no-deps -e READER_SUMMARY_DAILY_TENANT_ID=00000000-0000-7000-8000-000000000901 -e READER_SUMMARY_DAILY_WORKSPACE_ID=00000000-0000-7000-8000-000000000902 -e READER_SUMMARY_DAILY_FIRST_UNRESOLVED_UTC_DATE=2026-07-23 -e READER_SUMMARY_DAILY_PUBLIC_DIRECTORY=/var/lib/social-monitor/artifacts/reports daily-runner sh -lc set -eu; npm run run:reader-summary-daily-canonical-recovery -- $DAILY_CANONICAL_RECOVERY_RETRY_SET_TOKEN $TERMINAL_SET_SHA256"
+canonical_recovery_command="-f $FINAL_MODEL_OVERLAY $canonical_recovery_command"
+mapfile -t retry_set_commands < <(grep -v '^source-env=' "$COMPOSE_LOG")
+[[ ${#retry_set_commands[@]} == 2 ]]
+[[ ${retry_set_commands[0]} == "$reconcile_command" ]]
+[[ ${retry_set_commands[1]} == "$canonical_recovery_command" ]]
+! grep -F 'scripts/run-reader-summary-daily-bounded-maintenance.ts' "$COMPOSE_LOG" >/dev/null
+! grep -F 'READER_SUMMARY_DAILY_FIRST_UNRESOLVED_UTC_DATE=2026-07-31' "$COMPOSE_LOG" >/dev/null
+! grep -F 'npm run authorize:reader-summary-daily-canonical-recovery-ambiguity-retry' "$COMPOSE_LOG" >/dev/null
+mapfile -t retry_set_execution_order < "$ORDER_LOG"
+[[ ${retry_set_execution_order[*]} == 'refresh canonical' ]]
+[[ ! -e $AUTH_CHANGED_MARKER ]]
+[[ -d $ROOT/runtime/subscription-runtime/sessions ]]
+compgen -G "$ROOT/backups/subscription-runtime-sessions.*/session" >/dev/null
+
 assert_stdin_authorization_rejected() {
   local authorization_record=$1 status
   : > "$COMPOSE_LOG"
@@ -243,6 +270,22 @@ assert_stdin_authorization_rejected() {
 }
 
 assert_stdin_authorization_rejected \
+  "reader-summary-daily-canonical-recovery-v4 $DAILY_CANONICAL_RECOVERY_RETRY_SET_TOKEN"
+assert_stdin_authorization_rejected \
+  "reader-summary-daily-canonical-recovery-v4 $DAILY_CANONICAL_RECOVERY_RETRY_SET_TOKEN $TERMINAL_SET_SHA256 extra"
+assert_stdin_authorization_rejected \
+  "reader-summary-daily-canonical-recovery-v4 $DAILY_CANONICAL_RECOVERY_RETRY_SET_TOKEN short"
+assert_stdin_authorization_rejected \
+  "reader-summary-daily-canonical-recovery-v4 $DAILY_CANONICAL_RECOVERY_RETRY_SET_TOKEN ${TERMINAL_SET_SHA256^^}"
+assert_stdin_authorization_rejected \
+  "reader-summary-daily-canonical-recovery-v4 wrong-invalid-product-retry-set-v1 $TERMINAL_SET_SHA256"
+assert_stdin_authorization_rejected \
+  "wrong-reader-summary-daily-canonical-recovery-v4 $DAILY_CANONICAL_RECOVERY_RETRY_SET_TOKEN $TERMINAL_SET_SHA256"
+assert_stdin_authorization_rejected \
+  "reader-summary-daily-canonical-recovery-v4 $DAILY_CANONICAL_RECOVERY_RETRY_SET_TOKEN 2026-07-24"
+assert_stdin_authorization_rejected \
+  "reader-summary-daily-canonical-recovery-v4  $DAILY_CANONICAL_RECOVERY_RETRY_SET_TOKEN $TERMINAL_SET_SHA256"
+assert_stdin_authorization_rejected \
   "$DAILY_CANONICAL_RECOVERY_CONFIRMATION 2026-07-23 $MODEL_JOB_IDENTITY"
 assert_stdin_authorization_rejected \
   "$DAILY_CANONICAL_RECOVERY_CONFIRMATION 2026-07-23 $MODEL_JOB_IDENTITY $AUTHORITY_SHA256 extra"
@@ -256,8 +299,6 @@ assert_stdin_authorization_rejected \
   "wrong-reader-summary-daily-canonical-recovery-v4 2026-07-23 $MODEL_JOB_IDENTITY $AUTHORITY_SHA256"
 assert_stdin_authorization_rejected \
   "$DAILY_CANONICAL_RECOVERY_CONFIRMATION 2026-07-24 $MODEL_JOB_IDENTITY $AUTHORITY_SHA256"
-assert_stdin_authorization_rejected \
-  "$DAILY_CANONICAL_RECOVERY_CONFIRMATION 2026-07-23  $MODEL_JOB_IDENTITY $AUTHORITY_SHA256"
 
 : > "$COMPOSE_LOG"
 : > "$AUTH_LOG"

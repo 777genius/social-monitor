@@ -33,14 +33,30 @@ export type ReaderSummaryDailyModelJobReceipt = Readonly<{
   receiptSha256: string;
 }>;
 
+/**
+ * V4 records the provider-selected raw output only as metadata. The raw bytes
+ * are intentionally absent from this durable type: responseBytes is always the
+ * server-canonical payload that may be replayed or published.
+ */
+export type ReaderSummaryDailyCanonicalRecoveryReceipt =
+  ReaderSummaryDailyModelJobReceipt & Readonly<{
+    canonicalOutputSha256: string;
+    canonicalOutputByteLength: number;
+    rawOutputSha256: string;
+    rawOutputByteLength: number;
+  }>;
+
 /** Creates the exact, byte-addressable receipt for the V4 output_text route. */
 export const buildReaderSummaryDailyCanonicalRecoveryReceipt = (input: {
   readonly modelJobIdentity: string;
   readonly requestedUtcDate: string;
   readonly sourceAuthoritySha256: string;
+  /** Canonical server bytes only; never the selected provider bytes. */
   readonly responseBytes: Buffer;
+  readonly rawOutputSha256: string;
+  readonly rawOutputByteLength: number;
   readonly attestation: Readonly<Record<string, unknown>>;
-}): ReaderSummaryDailyModelJobReceipt => {
+}): ReaderSummaryDailyCanonicalRecoveryReceipt => {
   if (
     !sha(input.modelJobIdentity) ||
     !/^2026-07-(?:2[3-9]|30)$/u.test(input.requestedUtcDate) ||
@@ -49,16 +65,31 @@ export const buildReaderSummaryDailyCanonicalRecoveryReceipt = (input: {
     throw new Error("Daily canonical recovery receipt input is invalid");
   }
   const responseBytes = Buffer.from(input.responseBytes);
+  if (responseBytes.length < 1 || responseBytes.length > 1_000_000) {
+    throw new Error("Daily canonical recovery canonical output receipt is oversized");
+  }
   const responseSha256 = sha256(responseBytes);
-  const attestation = verifyRecoveryAttestation(input.attestation, responseSha256);
+  if (
+    !sha(input.rawOutputSha256) ||
+    !Number.isSafeInteger(input.rawOutputByteLength) ||
+    input.rawOutputByteLength < 1 || input.rawOutputByteLength > 1_000_000
+  ) {
+    throw new Error("Daily canonical recovery raw output receipt metadata is invalid");
+  }
+  const attestation = verifyReaderSummaryDailyCanonicalRecoveryRawAttestation(
+    input.attestation,
+    input.rawOutputSha256,
+  );
   const attestationBytes = canonicalBytes(attestation);
   const receiptRecord = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     modelJobIdentity: input.modelJobIdentity,
     requestedUtcDate: input.requestedUtcDate,
     sourceAuthoritySha256: input.sourceAuthoritySha256,
-    responseSha256,
-    responseByteLength: responseBytes.length,
+    canonicalOutputSha256: responseSha256,
+    canonicalOutputByteLength: responseBytes.length,
+    rawOutputSha256: input.rawOutputSha256,
+    rawOutputByteLength: input.rawOutputByteLength,
     attestationSha256: sha256(attestationBytes),
     attestation,
   };
@@ -66,6 +97,10 @@ export const buildReaderSummaryDailyCanonicalRecoveryReceipt = (input: {
   return Object.freeze({
     responseBytes,
     responseSha256,
+    canonicalOutputSha256: responseSha256,
+    canonicalOutputByteLength: responseBytes.length,
+    rawOutputSha256: input.rawOutputSha256,
+    rawOutputByteLength: input.rawOutputByteLength,
     attestation,
     attestationBytes,
     attestationSha256: receiptRecord.attestationSha256,
@@ -81,8 +116,11 @@ export const verifyReaderSummaryDailyCanonicalRecoveryReceipt = (input: {
   readonly sourceAuthoritySha256: string;
   readonly responseBytes: Buffer;
   readonly receiptBytes: Buffer;
-}): ReaderSummaryDailyModelJobReceipt => {
+}): ReaderSummaryDailyCanonicalRecoveryReceipt => {
   const responseBytes = Buffer.from(input.responseBytes);
+  if (responseBytes.length < 1 || responseBytes.length > 1_000_000) {
+    throw new Error("Daily canonical recovery canonical output receipt is oversized");
+  }
   const receiptBytes = Buffer.from(input.receiptBytes);
   let decoded: unknown;
   try {
@@ -96,24 +134,30 @@ export const verifyReaderSummaryDailyCanonicalRecoveryReceipt = (input: {
     "modelJobIdentity",
     "requestedUtcDate",
     "sourceAuthoritySha256",
-    "responseSha256",
-    "responseByteLength",
+    "canonicalOutputSha256",
+    "canonicalOutputByteLength",
+    "rawOutputSha256",
+    "rawOutputByteLength",
     "attestationSha256",
     "attestation",
   ], "Daily canonical recovery receipt");
   const responseSha256 = sha256(responseBytes);
-  const attestation = verifyRecoveryAttestation(
+  const rawOutputSha256 = stringSha(receipt.rawOutputSha256);
+  const rawOutputByteLength = positiveByteLength(receipt.rawOutputByteLength);
+  const attestation = verifyReaderSummaryDailyCanonicalRecoveryRawAttestation(
     record(receipt.attestation, "Daily canonical recovery attestation"),
-    responseSha256,
+    rawOutputSha256,
   );
   const attestationBytes = canonicalBytes(attestation);
   if (
-    receipt.schemaVersion !== 1 ||
+    receipt.schemaVersion !== 2 ||
     receipt.modelJobIdentity !== input.modelJobIdentity ||
     receipt.requestedUtcDate !== input.requestedUtcDate ||
     receipt.sourceAuthoritySha256 !== input.sourceAuthoritySha256 ||
-    receipt.responseSha256 !== responseSha256 ||
-    receipt.responseByteLength !== responseBytes.length ||
+    receipt.canonicalOutputSha256 !== responseSha256 ||
+    receipt.canonicalOutputByteLength !== responseBytes.length ||
+    receipt.rawOutputSha256 !== rawOutputSha256 ||
+    receipt.rawOutputByteLength !== rawOutputByteLength ||
     receipt.attestationSha256 !== sha256(attestationBytes) ||
     !canonicalBytes(receipt).equals(receiptBytes)
   ) {
@@ -122,6 +166,10 @@ export const verifyReaderSummaryDailyCanonicalRecoveryReceipt = (input: {
   return Object.freeze({
     responseBytes,
     responseSha256,
+    canonicalOutputSha256: responseSha256,
+    canonicalOutputByteLength: responseBytes.length,
+    rawOutputSha256,
+    rawOutputByteLength,
     attestation,
     attestationBytes,
     attestationSha256: receipt.attestationSha256 as string,
@@ -193,9 +241,13 @@ const verifyAttestation = (
   return Object.freeze({ ...input } as ReaderSummaryDailyRuntimeAttestation);
 };
 
-const verifyRecoveryAttestation = (
+/**
+ * Validates the complete 12-key provider attestation against raw selected
+ * output bytes. Call this before any JSON parsing or canonicalization.
+ */
+export const verifyReaderSummaryDailyCanonicalRecoveryRawAttestation = (
   input: Readonly<Record<string, unknown>>,
-  responseSha256: string,
+  rawOutputSha256: string,
 ): ReaderSummaryDailyRuntimeAttestation => {
   exactKeys(input, [
     "schemaVersion",
@@ -220,7 +272,7 @@ const verifyRecoveryAttestation = (
     input.reasoningEffort !== readerSummaryDailyReasoningEffort ||
     input.runtimeEngine !== readerSummaryDailyRuntimeEngine ||
     input.selectedOutputKind !== "output_text" ||
-    input.selectedOutputSha256 !== responseSha256 ||
+    input.selectedOutputSha256 !== rawOutputSha256 ||
     !sha(input.canonicalRequestSha256) ||
     !sha(input.launcherSha256) ||
     typeof input.runtimePackageVersion !== "string" ||
@@ -229,6 +281,23 @@ const verifyRecoveryAttestation = (
     throw new Error("Daily canonical recovery execution attestation is invalid");
   }
   return Object.freeze({ ...input } as ReaderSummaryDailyRuntimeAttestation);
+};
+
+const stringSha = (value: unknown): string => {
+  if (!sha(value)) throw new Error("Daily canonical recovery raw output SHA-256 is invalid");
+  return value;
+};
+
+const positiveByteLength = (value: unknown): number => {
+  if (
+    typeof value !== "number" ||
+    !Number.isSafeInteger(value) ||
+    value < 1 ||
+    value > 1_000_000
+  ) {
+    throw new Error("Daily canonical recovery raw output length is invalid");
+  }
+  return value;
 };
 
 const record = (value: unknown, label: string): Readonly<Record<string, unknown>> => {

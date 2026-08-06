@@ -90,30 +90,41 @@ grep -F "'2026-07-27', '2026-07-28', '2026-07-29', '2026-07-30'" "$foundation" >
 grep -F 'reader-summary-daily-canonical-recovery-v4' \
   "$SCRIPT_DIR/social-monitor-production-ssh-wrapper.sh" \
   "$SCRIPT_DIR/github-production-deploy-client.sh" >/dev/null
-grep -F 'DAILY_CANONICAL_RECOVERY_CONFIRMATION=reader-summary-daily-canonical-recovery-v4' \
+grep -F 'invalid-product-retry-set-v1' \
   "$SCRIPT_DIR/social-monitor-production-ssh-wrapper.sh" \
-  "$SCRIPT_DIR/github-production-deploy-client.sh" >/dev/null
-grep -F 'daily_canonical_recovery_confirmation:' "$workflow" >/dev/null
-grep -F 'daily_canonical_recovery_model_job_identity:' "$workflow" >/dev/null
-grep -F 'daily_canonical_recovery_authority_sha256:' "$workflow" >/dev/null
-grep -F 'READER_SUMMARY_DAILY_MAINTENANCE_AUTHORIZED_UTC_DATE=2026-07-23' \
-  "$SCRIPT_DIR/social-monitor-production-ssh-wrapper.sh" \
+  "$SCRIPT_DIR/github-production-deploy-client.sh" \
+  "$SCRIPT_DIR/reader-summary-recovery-maintenance-lib.sh" \
+  "$workflow" >/dev/null
+grep -F 'daily_canonical_recovery_retry_set_token:' "$workflow" >/dev/null
+grep -F 'daily_canonical_recovery_terminal_set_sha256:' "$workflow" >/dev/null
+grep -F 'DAILY_CANONICAL_RECOVERY_RETRY_SET_TOKEN == invalid-product-retry-set-v1' \
+  "$workflow" >/dev/null
+grep -F 'DAILY_CANONICAL_RECOVERY_TERMINAL_SET_SHA256 =~ ^[0-9a-f]{64}$' \
+  "$workflow" >/dev/null
+python3 - "$workflow" <<'PY'
+import pathlib
+import sys
+
+source = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")
+start = source.index('          if [[ $MAINTENANCE_ACTION == reader-summary-daily-canonical-recovery-v4 ]]; then')
+else_start = source.index('\n          else\n', start)
+else_end = source.index('\n          fi\n', else_start)
+non_daily = source[else_start:else_end]
+guard = '[[ -z $DAILY_CANONICAL_RECOVERY_RETRY_SET_TOKEN$DAILY_CANONICAL_RECOVERY_TERMINAL_SET_SHA256$DAILY_CANONICAL_RECOVERY_CONFIRMATION$DAILY_CANONICAL_RECOVERY_MODEL_JOB_IDENTITY$DAILY_CANONICAL_RECOVERY_AUTHORITY_SHA256 ]]'
+if guard not in non_daily or non_daily.index(guard) > non_daily.index('github-production-deploy-client.sh maintenance'):
+    raise SystemExit("non-daily maintenance must reject every daily recovery input before dispatch")
+PY
+grep -F 'PostgresCanonicalRecoveryInvalidProductRetrySetAuthorizer' "$runner" >/dev/null
+grep -F 'parseDailyCanonicalRecoveryV4Invocation(process.argv.slice(2))' "$runner" >/dev/null
+grep -F 'recovery_command="set -eu; npm run run:reader-summary-daily-canonical-recovery -- $retry_set_token $terminal_set_sha256"' \
   "$SCRIPT_DIR/reader-summary-recovery-maintenance-lib.sh" >/dev/null
-grep -F 'READER_SUMMARY_DAILY_MAINTENANCE_MODEL_JOB_IDENTITY' \
-  "$SCRIPT_DIR/social-monitor-production-ssh-wrapper.sh" \
-  "$SCRIPT_DIR/github-production-deploy-client.sh" \
-  "$SCRIPT_DIR/reader-summary-recovery-maintenance-lib.sh" \
-  "$bounded_runner" >/dev/null
-grep -F 'READER_SUMMARY_DAILY_MAINTENANCE_AUTHORITY_SHA256' \
-  "$SCRIPT_DIR/social-monitor-production-ssh-wrapper.sh" \
-  "$SCRIPT_DIR/github-production-deploy-client.sh" \
-  "$SCRIPT_DIR/reader-summary-recovery-maintenance-lib.sh" \
-  "$bounded_runner" >/dev/null
+grep -F 'if [[ $run_invalid_product_retry_set == true ]]; then' \
+  "$SCRIPT_DIR/reader-summary-recovery-maintenance-lib.sh" >/dev/null
+grep -F 'elif [[ $run_bounded_maintenance == true ]]; then' \
+  "$SCRIPT_DIR/reader-summary-recovery-maintenance-lib.sh" >/dev/null
 grep -F 'for bounded_run in 1 2 3 4' \
   "$SCRIPT_DIR/reader-summary-recovery-maintenance-lib.sh" >/dev/null
-grep -F 'node scripts/run-with-timeout.mjs --timeout-ms 19800000' \
-  "$SCRIPT_DIR/reader-summary-recovery-maintenance-lib.sh" >/dev/null
-grep -F './node_modules/.bin/ts-node -r tsconfig-paths/register scripts/run-reader-summary-daily-bounded-maintenance.ts' \
+grep -F 'run_reader_summary_daily_bounded_maintenance \' \
   "$SCRIPT_DIR/reader-summary-recovery-maintenance-lib.sh" >/dev/null
 grep -F 'timeout-minutes: 360' "$workflow" >/dev/null
 grep -F 'npm run check:reader-summary-daily-canonical-recovery-postgres18' "$workflow" >/dev/null
