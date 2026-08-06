@@ -1,5 +1,10 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import {
+  assertFullReplayDurableSnapshot,
+  protectedDayDigest,
+  type RecoveryV4ReplaySnapshotClient,
+} from "./reader-summary-daily-canonical-recovery-v4-replay-snapshot";
 const foundation = "prisma/migrations/20260802233000_reader_summary_daily_canonical_recovery_v4/migration.sql";
 const security = "prisma/migrations/20260802233100_reader_summary_daily_canonical_recovery_v4_security/migration.sql";
 const originalCutoffForward = "prisma/migrations/20260804110000_reader_summary_daily_v4_original_cutoff_forward_correction/migration.sql";
@@ -8,7 +13,7 @@ const publicationUseCase = "libs/summary/features/execute-reader-summary-job/pub
 const tenant = "00000000-0000-7000-8000-000000000901";
 const workspace = "00000000-0000-7000-8000-000000000902";
 const historicalGithubOmissionReason = "Reviewed immutable recovery authority contains no eligible GitHub trending projection for this UTC day.";
-type Client = Readonly<{ query<T extends Record<string, unknown> = Record<string, unknown>>(sql: string, values?: readonly unknown[]): Promise<Readonly<{ rows: readonly T[] }>> }>;
+type Client = RecoveryV4ReplaySnapshotClient;
 
 /** Static gate used before an ephemeral PostgreSQL contract creates its fixture. */
 export const assertReaderSummaryDailyCanonicalRecoveryV4MigrationContract = (): void => {
@@ -461,14 +466,7 @@ export const assertReaderSummaryDailyCanonicalRecoveryV4PostgresContract = async
     "real V4 pipeline did not publish exactly the eight immutable UTC dates",
   );
   input.markStage("first_execute_all_complete");
-  const beforeReplay = await fullReplayDurableSnapshot(input.auditor);
-  const replay = await input.executeAll();
-  const afterReplay = await fullReplayDurableSnapshot(input.auditor);
-  assert(
-    replay.kind === "caught_up" && input.runtimeCallCount() === expectedDates.length,
-    "fenced canonical recovery replay invoked the subscription runtime again",
-  );
-  assert(afterReplay.bytes === beforeReplay.bytes && afterReplay.byteLength === beforeReplay.byteLength && afterReplay.digest === beforeReplay.digest && afterReplay.rowCount === beforeReplay.rowCount && afterReplay.tableCount === beforeReplay.tableCount, `fenced canonical recovery replay mutated durable state: ${JSON.stringify({ beforeReplay, afterReplay })}`);
+  await assertFullReplayDurableSnapshot(input.auditor, tenant, workspace, () => input.executeAll(), () => input.runtimeCallCount(), expectedDates.length);
   input.markStage("replay_complete");
   const finalized = await input.auditor.query<{
     finalizedLeases: string;
@@ -959,23 +957,6 @@ const assertLeastPrivilege = async (client: Client): Promise<void> => {
       row.closedRecoveryEvidenceRecorders === true,
     "v4 least-privilege function ACLs diverged",
   );
-};
-
-const protectedDayDigest = async (client: Client): Promise<string> => {
-  const result = await client.query<{ digest: string }>(`
-    SELECT encode(sha256(convert_to(COALESCE(jsonb_agg(jsonb_build_array(
-      requested_utc_date, btrim(canonical_sha256)) ORDER BY requested_utc_date,
-      recovery_id), '[]'::JSONB)::TEXT, 'UTF8')), 'hex') AS digest
-    FROM public.reader_summary_production_recovery_days
-    WHERE requested_utc_date IN (DATE '2026-07-21', DATE '2026-07-22')
-  `);
-  return result.rows[0]?.digest ?? "";
-};
-
-type FullReplayDurableSnapshot = Readonly<{ bytes: string; byteLength: string; digest: string; rowCount: string; tableCount: string }>;
-const fullReplayDurableSnapshot = async (client: Client): Promise<FullReplayDurableSnapshot> => {
-  const result = await client.query<FullReplayDurableSnapshot>(`WITH state AS (SELECT jsonb_build_object('plans',(SELECT COALESCE(jsonb_agg(to_jsonb(row) ORDER BY to_jsonb(row)::TEXT),'[]'::JSONB) FROM public.reader_summary_daily_canonical_recovery_v4_plans row WHERE tenant_id=$1::UUID AND workspace_id=$2::UUID),'authorities',(SELECT COALESCE(jsonb_agg(to_jsonb(row) ORDER BY to_jsonb(row)::TEXT),'[]'::JSONB) FROM public.reader_summary_daily_canonical_recovery_v4_authorities row WHERE tenant_id=$1::UUID AND workspace_id=$2::UUID),'leases',(SELECT COALESCE(jsonb_agg(to_jsonb(row) ORDER BY to_jsonb(row)::TEXT),'[]'::JSONB) FROM public.reader_summary_daily_canonical_recovery_v4_leases row WHERE tenant_id=$1::UUID AND workspace_id=$2::UUID),'retries',(SELECT COALESCE(jsonb_agg(to_jsonb(row) ORDER BY to_jsonb(row)::TEXT),'[]'::JSONB) FROM public.reader_summary_daily_canonical_recovery_v4_ambiguity_retries row WHERE tenant_id=$1::UUID AND workspace_id=$2::UUID),'artifacts',(SELECT COALESCE(jsonb_agg(to_jsonb(row) ORDER BY to_jsonb(row)::TEXT),'[]'::JSONB) FROM public.reader_summary_artifacts row WHERE tenant_id=$1::UUID AND workspace_id=$2::UUID),'jobs',(SELECT COALESCE(jsonb_agg(to_jsonb(row) ORDER BY to_jsonb(row)::TEXT),'[]'::JSONB) FROM public.reader_summary_jobs row WHERE tenant_id=$1::UUID AND workspace_id=$2::UUID),'publications',(SELECT COALESCE(jsonb_agg(to_jsonb(row) ORDER BY to_jsonb(row)::TEXT),'[]'::JSONB) FROM public.reader_summary_publications row WHERE tenant_id=$1::UUID AND workspace_id=$2::UUID),'publicationSlots',(SELECT COALESCE(jsonb_agg(to_jsonb(row) ORDER BY to_jsonb(row)::TEXT),'[]'::JSONB) FROM public.reader_summary_publication_slots row WHERE tenant_id=$1::UUID AND workspace_id=$2::UUID),'publicationEvidence',(SELECT COALESCE(jsonb_agg(to_jsonb(row) ORDER BY to_jsonb(row)::TEXT),'[]'::JSONB) FROM public.reader_summary_weekly_publication_evidence row WHERE tenant_id=$1::UUID AND workspace_id=$2::UUID),'outboxEvents',(SELECT COALESCE(jsonb_agg(to_jsonb(row) ORDER BY to_jsonb(row)::TEXT),'[]'::JSONB) FROM public.outbox_events row WHERE tenant_id=$1::UUID AND workspace_id=$2::UUID)) AS bytes), inventory AS (SELECT jsonb_build_object('plans',(SELECT count(*) FROM public.reader_summary_daily_canonical_recovery_v4_plans WHERE tenant_id=$1::UUID AND workspace_id=$2::UUID),'authorities',(SELECT count(*) FROM public.reader_summary_daily_canonical_recovery_v4_authorities WHERE tenant_id=$1::UUID AND workspace_id=$2::UUID),'leases',(SELECT count(*) FROM public.reader_summary_daily_canonical_recovery_v4_leases WHERE tenant_id=$1::UUID AND workspace_id=$2::UUID),'retries',(SELECT count(*) FROM public.reader_summary_daily_canonical_recovery_v4_ambiguity_retries WHERE tenant_id=$1::UUID AND workspace_id=$2::UUID),'artifacts',(SELECT count(*) FROM public.reader_summary_artifacts WHERE tenant_id=$1::UUID AND workspace_id=$2::UUID),'jobs',(SELECT count(*) FROM public.reader_summary_jobs WHERE tenant_id=$1::UUID AND workspace_id=$2::UUID),'publications',(SELECT count(*) FROM public.reader_summary_publications WHERE tenant_id=$1::UUID AND workspace_id=$2::UUID),'publicationSlots',(SELECT count(*) FROM public.reader_summary_publication_slots WHERE tenant_id=$1::UUID AND workspace_id=$2::UUID),'publicationEvidence',(SELECT count(*) FROM public.reader_summary_weekly_publication_evidence WHERE tenant_id=$1::UUID AND workspace_id=$2::UUID),'outboxEvents',(SELECT count(*) FROM public.outbox_events WHERE tenant_id=$1::UUID AND workspace_id=$2::UUID)) AS counts) SELECT bytes::TEXT AS bytes,octet_length(convert_to(bytes::TEXT,'UTF8'))::TEXT AS "byteLength",encode(sha256(convert_to(bytes::TEXT,'UTF8')),'hex') AS digest,(SELECT count(*)::TEXT FROM jsonb_object_keys(bytes)) AS "tableCount",(SELECT sum(value::BIGINT)::TEXT FROM jsonb_each_text(counts)) AS "rowCount" FROM state,inventory`, [tenant, workspace]);
-  const row = result.rows[0]; if (row === undefined || !/^[0-9a-f]{64}$/u.test(row.digest) || !/^[0-9]+$/u.test(row.byteLength) || !/^[0-9]+$/u.test(row.rowCount) || row.tableCount !== "10") throw new Error("full replay durable snapshot is invalid"); return row;
 };
 
 const assertRejected = async (
