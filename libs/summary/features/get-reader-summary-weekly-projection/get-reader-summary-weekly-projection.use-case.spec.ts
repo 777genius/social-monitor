@@ -54,7 +54,9 @@ describe("GetReaderSummaryWeeklyProjectionUseCase", () => {
           certifiedDailyEvidenceDates: dates.slice(0, dayCount),
           missingDailyEvidenceDates: dates.slice(dayCount),
           blockingReasons,
-          artifact: weeklyArtifact,
+          activeWeeklyCertifiedArtifactPresent: weeklyArtifact !== null,
+          evidenceLimitations: [],
+          artifact: status === "complete" ? weeklyArtifact : null,
         }),
       });
       expect(reader.queries).toEqual([{
@@ -116,6 +118,45 @@ describe("GetReaderSummaryWeeklyProjectionUseCase", () => {
       });
     }
   });
+
+  it("preserves a historical evidence limitation only for a certified date", async () => {
+    const limitation = {
+      requestedUtcDate: dates[0]!,
+      providerKey: "github-trending-page" as const,
+      evidenceState: "historical_unavailable" as const,
+    };
+    const result = await new GetReaderSummaryWeeklyProjectionUseCase(
+      new FakeWeeklyProjectionReader([dates[0]!], null, [limitation]),
+    ).execute({ tenantId: tenant, workspaceId: workspace, weekStartedOn });
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        activeWeeklyCertifiedArtifactPresent: false,
+        evidenceLimitations: [limitation],
+        artifact: null,
+      },
+    });
+  });
+
+  it("fails closed for contradictory artifact presence or limitations", async () => {
+    const invalidPresence = new FakeWeeklyProjectionReader([], artifact);
+    invalidPresence.activeWeeklyCertifiedArtifactPresent = false;
+    await expect(new GetReaderSummaryWeeklyProjectionUseCase(
+      invalidPresence,
+    ).execute({ tenantId: tenant, workspaceId: workspace, weekStartedOn }))
+      .resolves.toMatchObject({ ok: false });
+
+    const invalidLimitation = {
+      requestedUtcDate: dates[1]!,
+      providerKey: "github-trending-page" as const,
+      evidenceState: "historical_unavailable" as const,
+    };
+    await expect(new GetReaderSummaryWeeklyProjectionUseCase(
+      new FakeWeeklyProjectionReader([dates[0]!], null, [invalidLimitation]),
+    ).execute({ tenantId: tenant, workspaceId: workspace, weekStartedOn }))
+      .resolves.toMatchObject({ ok: false });
+  });
 });
 
 class FakeWeeklyProjectionReader
@@ -126,12 +167,27 @@ class FakeWeeklyProjectionReader
   constructor(
     private readonly certifiedDailyEvidenceDates: readonly string[],
     private readonly artifact: PersistedReaderSummaryWeeklyArtifact | null,
-  ) {}
+    private readonly evidenceLimitations: readonly {
+      requestedUtcDate: string;
+      providerKey: "github-trending-page";
+      evidenceState: "historical_unavailable";
+    }[] = [],
+  ) {
+    this.activeWeeklyCertifiedArtifactPresent = artifact !== null;
+  }
+
+  activeWeeklyCertifiedArtifactPresent: boolean;
 
   async read(
     query: Parameters<ReaderSummaryWeeklyProjectionReaderPort["read"]>[0],
   ) {
     this.queries.push(query);
-    return { certifiedDailyEvidenceDates: this.certifiedDailyEvidenceDates, artifact: this.artifact };
+    return {
+      certifiedDailyEvidenceDates: this.certifiedDailyEvidenceDates,
+      activeWeeklyCertifiedArtifactPresent:
+        this.activeWeeklyCertifiedArtifactPresent,
+      evidenceLimitations: this.evidenceLimitations,
+      artifact: this.artifact,
+    };
   }
 }

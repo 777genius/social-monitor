@@ -155,6 +155,17 @@ export class ReaderSummaryWeeklyProjectionArtifactDto {
   declare readonly citations: readonly ReaderSummaryWeeklyProjectionCitationDto[];
 }
 
+export class ReaderSummaryWeeklyProjectionEvidenceLimitationDto {
+  @ApiProperty({ format: "date" })
+  declare readonly requestedUtcDate: string;
+
+  @ApiProperty({ enum: ["github-trending-page"] })
+  declare readonly providerKey: "github-trending-page";
+
+  @ApiProperty({ enum: ["historical_unavailable"] })
+  declare readonly evidenceState: "historical_unavailable";
+}
+
 export class ReaderSummaryWeeklyProjectionResponseDto {
   @ApiProperty({ enum: ["reader_summary.weekly_projection.v1"] })
   declare readonly schemaVersion: "reader_summary.weekly_projection.v1";
@@ -187,6 +198,14 @@ export class ReaderSummaryWeeklyProjectionResponseDto {
   declare readonly blockingReasons: readonly (
     typeof readerSummaryWeeklyProjectionBlockingReasons
   )[number][];
+
+  @ApiProperty()
+  declare readonly activeWeeklyCertifiedArtifactPresent: boolean;
+
+  @ApiProperty({
+    type: () => [ReaderSummaryWeeklyProjectionEvidenceLimitationDto],
+  })
+  declare readonly evidenceLimitations: readonly ReaderSummaryWeeklyProjectionEvidenceLimitationDto[];
 
   @ApiProperty({
     type: () => ReaderSummaryWeeklyProjectionArtifactDto,

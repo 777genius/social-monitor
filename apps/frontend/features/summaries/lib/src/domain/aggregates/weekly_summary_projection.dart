@@ -1,6 +1,7 @@
 import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 
 import '../entities/weekly_summary_artifact.dart';
+import '../value_objects/weekly_summary_evidence_limitation.dart';
 import '../value_objects/weekly_summary_week.dart';
 
 enum WeeklySummaryProjectionStatus { complete, partial, unavailable }
@@ -24,6 +25,8 @@ sealed class WeeklySummaryProjection {
     required this.certifiedDailyEvidenceDates,
     required this.missingDailyEvidenceDates,
     required this.blockingReasons,
+    required this.activeWeeklyCertifiedArtifactPresent,
+    required this.evidenceLimitations,
   });
 
   final WorkspaceScope scope;
@@ -31,6 +34,8 @@ sealed class WeeklySummaryProjection {
   final List<String> certifiedDailyEvidenceDates;
   final List<String> missingDailyEvidenceDates;
   final List<WeeklySummaryBlockingReason> blockingReasons;
+  final bool activeWeeklyCertifiedArtifactPresent;
+  final List<WeeklySummaryEvidenceLimitation> evidenceLimitations;
 
   WeeklySummaryProjectionStatus get status;
 
@@ -41,6 +46,8 @@ sealed class WeeklySummaryProjection {
     required List<String> certifiedDailyEvidenceDates,
     required List<String> missingDailyEvidenceDates,
     required List<WeeklySummaryBlockingReason> blockingReasons,
+    required bool activeWeeklyCertifiedArtifactPresent,
+    required List<WeeklySummaryEvidenceLimitation> evidenceLimitations,
     required WeeklySummaryArtifact? artifact,
   }) {
     if (!scope.isValid ||
@@ -51,18 +58,25 @@ sealed class WeeklySummaryProjection {
         )) {
       return _invalid();
     }
+    if (!_areEvidenceLimitationsExact(
+      limitations: evidenceLimitations,
+      certifiedDates: certifiedDailyEvidenceDates,
+    )) {
+      return _invalid();
+    }
 
     final expectedReasons = <WeeklySummaryBlockingReason>[
       if (certifiedDailyEvidenceDates.length != week.utcDates.length)
         WeeklySummaryBlockingReason.certifiedDailyEvidenceIncomplete,
-      if (artifact == null)
+      if (!activeWeeklyCertifiedArtifactPresent)
         WeeklySummaryBlockingReason.activeWeeklyCertifiedArtifactMissing,
     ];
     if (!_sameReasons(blockingReasons, expectedReasons)) {
       return _invalid();
     }
 
-    final expectedStatus = certifiedDailyEvidenceDates.isEmpty && artifact == null
+    final expectedStatus = certifiedDailyEvidenceDates.isEmpty &&
+            !activeWeeklyCertifiedArtifactPresent
         ? WeeklySummaryProjectionStatus.unavailable
         : expectedReasons.isEmpty
         ? WeeklySummaryProjectionStatus.complete
@@ -70,11 +84,19 @@ sealed class WeeklySummaryProjection {
     if (status != expectedStatus) {
       return _invalid();
     }
+    if ((status == WeeklySummaryProjectionStatus.complete) !=
+            (artifact != null) ||
+        (artifact != null && !activeWeeklyCertifiedArtifactPresent)) {
+      return _invalid();
+    }
 
     final certified = List<String>.unmodifiable(certifiedDailyEvidenceDates);
     final missing = List<String>.unmodifiable(missingDailyEvidenceDates);
     final reasons = List<WeeklySummaryBlockingReason>.unmodifiable(
       blockingReasons,
+    );
+    final limitations = List<WeeklySummaryEvidenceLimitation>.unmodifiable(
+      evidenceLimitations,
     );
     return Result.success(
       switch (status) {
@@ -85,6 +107,9 @@ sealed class WeeklySummaryProjection {
             certifiedDailyEvidenceDates: certified,
             missingDailyEvidenceDates: missing,
             blockingReasons: reasons,
+            activeWeeklyCertifiedArtifactPresent:
+                activeWeeklyCertifiedArtifactPresent,
+            evidenceLimitations: limitations,
             artifact: artifact!,
           ),
         WeeklySummaryProjectionStatus.partial =>
@@ -94,6 +119,9 @@ sealed class WeeklySummaryProjection {
             certifiedDailyEvidenceDates: certified,
             missingDailyEvidenceDates: missing,
             blockingReasons: reasons,
+            activeWeeklyCertifiedArtifactPresent:
+                activeWeeklyCertifiedArtifactPresent,
+            evidenceLimitations: limitations,
           ),
         WeeklySummaryProjectionStatus.unavailable =>
           UnavailableWeeklySummaryProjection._(
@@ -102,6 +130,9 @@ sealed class WeeklySummaryProjection {
             certifiedDailyEvidenceDates: certified,
             missingDailyEvidenceDates: missing,
             blockingReasons: reasons,
+            activeWeeklyCertifiedArtifactPresent:
+                activeWeeklyCertifiedArtifactPresent,
+            evidenceLimitations: limitations,
           ),
       },
     );
@@ -127,6 +158,27 @@ sealed class WeeklySummaryProjection {
       if (values[index - 1].compareTo(values[index]) >= 0) {
         return false;
       }
+    }
+    return true;
+  }
+
+  static bool _areEvidenceLimitationsExact({
+    required List<WeeklySummaryEvidenceLimitation> limitations,
+    required List<String> certifiedDates,
+  }) {
+    final certified = certifiedDates.toSet();
+    String? previousKey;
+    for (final limitation in limitations) {
+      final key = [
+        limitation.requestedUtcDate,
+        limitation.providerKey,
+        limitation.evidenceState,
+      ].join(':');
+      if (!certified.contains(limitation.requestedUtcDate) ||
+          (previousKey != null && previousKey.compareTo(key) >= 0)) {
+        return false;
+      }
+      previousKey = key;
     }
     return true;
   }
@@ -161,6 +213,8 @@ final class CompleteWeeklySummaryProjection extends WeeklySummaryProjection {
     required super.certifiedDailyEvidenceDates,
     required super.missingDailyEvidenceDates,
     required super.blockingReasons,
+    required super.activeWeeklyCertifiedArtifactPresent,
+    required super.evidenceLimitations,
     required this.artifact,
   }) : super._();
 
@@ -178,6 +232,8 @@ sealed class BlockedWeeklySummaryProjection extends WeeklySummaryProjection {
     required super.certifiedDailyEvidenceDates,
     required super.missingDailyEvidenceDates,
     required super.blockingReasons,
+    required super.activeWeeklyCertifiedArtifactPresent,
+    required super.evidenceLimitations,
   }) : super._();
 }
 
@@ -189,6 +245,8 @@ final class PartialWeeklySummaryProjection
     required super.certifiedDailyEvidenceDates,
     required super.missingDailyEvidenceDates,
     required super.blockingReasons,
+    required super.activeWeeklyCertifiedArtifactPresent,
+    required super.evidenceLimitations,
   }) : super._();
 
   @override
@@ -204,6 +262,8 @@ final class UnavailableWeeklySummaryProjection
     required super.certifiedDailyEvidenceDates,
     required super.missingDailyEvidenceDates,
     required super.blockingReasons,
+    required super.activeWeeklyCertifiedArtifactPresent,
+    required super.evidenceLimitations,
   }) : super._();
 
   @override

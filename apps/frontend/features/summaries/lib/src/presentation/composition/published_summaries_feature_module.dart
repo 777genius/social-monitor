@@ -16,12 +16,14 @@ final class PublishedSummariesFeatureModule extends Module {
     required this.scope,
     this.summaryId,
     this.onSummarySelected,
+    required this.onOpenWeeklySummary,
   });
 
   final Object generatedApiRuntime;
   final WorkspaceScope scope;
   final String? summaryId;
   final void Function(String summaryId)? onSummarySelected;
+  final void Function() onOpenWeeklySummary;
 
   Object get retentionKey =>
       'published-summary-${scope.tenantId}-${scope.workspaceId}-${summaryId ?? 'latest'}';

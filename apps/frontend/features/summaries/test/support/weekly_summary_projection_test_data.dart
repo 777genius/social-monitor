@@ -4,6 +4,7 @@ import 'package:social_monitor_summaries/src/domain/entities/weekly_summary_arti
 import 'package:social_monitor_summaries/src/domain/entities/weekly_summary_citation.dart';
 import 'package:social_monitor_summaries/src/domain/entities/weekly_summary_section.dart';
 import 'package:social_monitor_summaries/src/domain/entities/weekly_summary_story.dart';
+import 'package:social_monitor_summaries/src/domain/value_objects/weekly_summary_evidence_limitation.dart';
 import 'package:social_monitor_summaries/src/domain/value_objects/weekly_summary_week.dart';
 
 const weeklySummaryWorkspaceScope = WorkspaceScope(
@@ -90,6 +91,7 @@ WeeklySummaryArtifact weeklySummaryTestArtifact({WeeklySummaryWeek? week}) {
 CompleteWeeklySummaryProjection completeWeeklySummaryProjection({
   WorkspaceScope scope = weeklySummaryWorkspaceScope,
   WeeklySummaryWeek? week,
+  List<WeeklySummaryEvidenceLimitation> evidenceLimitations = const [],
 }) {
   final resolvedWeek = week ?? weeklySummaryTestWeek;
   final projection = _requireValue(
@@ -100,6 +102,8 @@ CompleteWeeklySummaryProjection completeWeeklySummaryProjection({
       certifiedDailyEvidenceDates: resolvedWeek.utcDates,
       missingDailyEvidenceDates: const [],
       blockingReasons: const [],
+      activeWeeklyCertifiedArtifactPresent: true,
+      evidenceLimitations: evidenceLimitations,
       artifact: weeklySummaryTestArtifact(week: resolvedWeek),
     ),
   );
@@ -113,6 +117,8 @@ PartialWeeklySummaryProjection partialWeeklySummaryProjection({
   WorkspaceScope scope = weeklySummaryWorkspaceScope,
   WeeklySummaryWeek? week,
   bool hasCompleteEvidence = false,
+  bool activeWeeklyCertifiedArtifactPresent = false,
+  List<WeeklySummaryEvidenceLimitation> evidenceLimitations = const [],
 }) {
   final resolvedWeek = week ?? weeklySummaryTestWeek;
   final certified = hasCompleteEvidence
@@ -121,12 +127,12 @@ PartialWeeklySummaryProjection partialWeeklySummaryProjection({
   final missing = hasCompleteEvidence
       ? const <String>[]
       : <String>[resolvedWeek.utcDates.last];
-  final reasons = hasCompleteEvidence
-      ? const [WeeklySummaryBlockingReason.activeWeeklyCertifiedArtifactMissing]
-      : const [
-          WeeklySummaryBlockingReason.certifiedDailyEvidenceIncomplete,
-          WeeklySummaryBlockingReason.activeWeeklyCertifiedArtifactMissing,
-        ];
+  final reasons = <WeeklySummaryBlockingReason>[
+    if (!hasCompleteEvidence)
+      WeeklySummaryBlockingReason.certifiedDailyEvidenceIncomplete,
+    if (!activeWeeklyCertifiedArtifactPresent)
+      WeeklySummaryBlockingReason.activeWeeklyCertifiedArtifactMissing,
+  ];
   final projection = _requireValue(
     WeeklySummaryProjection.create(
       status: WeeklySummaryProjectionStatus.partial,
@@ -135,6 +141,9 @@ PartialWeeklySummaryProjection partialWeeklySummaryProjection({
       certifiedDailyEvidenceDates: certified,
       missingDailyEvidenceDates: missing,
       blockingReasons: reasons,
+      activeWeeklyCertifiedArtifactPresent:
+          activeWeeklyCertifiedArtifactPresent,
+      evidenceLimitations: evidenceLimitations,
       artifact: null,
     ),
   );
@@ -160,6 +169,8 @@ UnavailableWeeklySummaryProjection unavailableWeeklySummaryProjection({
         WeeklySummaryBlockingReason.certifiedDailyEvidenceIncomplete,
         WeeklySummaryBlockingReason.activeWeeklyCertifiedArtifactMissing,
       ],
+      activeWeeklyCertifiedArtifactPresent: false,
+      evidenceLimitations: const [],
       artifact: null,
     ),
   );
@@ -168,6 +179,17 @@ UnavailableWeeklySummaryProjection unavailableWeeklySummaryProjection({
   }
   return projection;
 }
+
+WeeklySummaryEvidenceLimitation weeklySummaryHistoricalLimitation({
+  String? requestedUtcDate,
+}) => _requireValue(
+  WeeklySummaryEvidenceLimitation.create(
+    requestedUtcDate:
+        requestedUtcDate ?? weeklySummaryTestWeek.utcDates.first,
+    providerKey: WeeklySummaryEvidenceLimitation.githubTrendingProvider,
+    evidenceState: WeeklySummaryEvidenceLimitation.historicalUnavailableState,
+  ),
+);
 
 T _requireValue<T extends Object>(Result<T> result) => result.fold(
   onSuccess: (value) => value,

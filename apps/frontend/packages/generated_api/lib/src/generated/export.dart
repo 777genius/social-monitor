@@ -144,6 +144,7 @@ export 'models/reader_summary_trend_delta_dto.dart';
 export 'models/reader_summary_usage_dto.dart';
 export 'models/reader_summary_weekly_projection_artifact_dto.dart';
 export 'models/reader_summary_weekly_projection_citation_dto.dart';
+export 'models/reader_summary_weekly_projection_evidence_limitation_dto.dart';
 export 'models/reader_summary_weekly_projection_response_dto.dart';
 export 'models/reader_summary_weekly_projection_section_dto.dart';
 export 'models/reader_summary_weekly_projection_story_dto.dart';
@@ -313,6 +314,8 @@ export 'models/reader_summary_topic_recommendation_dto_current_tier_current_tier
 export 'models/reader_summary_topic_recommendation_dto_decision_status_decision_status.dart';
 export 'models/reader_summary_topic_recommendation_dto_kind_kind.dart';
 export 'models/reader_summary_topic_recommendation_dto_suggested_tier_suggested_tier.dart';
+export 'models/reader_summary_weekly_projection_evidence_limitation_dto_evidence_state_evidence_state.dart';
+export 'models/reader_summary_weekly_projection_evidence_limitation_dto_provider_key_provider_key.dart';
 export 'models/reader_summary_weekly_projection_response_dto_blocking_reasons_blocking_reasons.dart';
 export 'models/reader_summary_weekly_projection_response_dto_schema_version_schema_version.dart';
 export 'models/reader_summary_weekly_projection_response_dto_status_status.dart';

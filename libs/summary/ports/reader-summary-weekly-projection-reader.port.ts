@@ -9,8 +9,16 @@ export type ReadReaderSummaryWeeklyProjectionQuery = Readonly<{
   weekEndedOn: string;
 }>;
 
+export type ReaderSummaryWeeklyEvidenceLimitation = Readonly<{
+  requestedUtcDate: string;
+  providerKey: "github-trending-page";
+  evidenceState: "historical_unavailable";
+}>;
+
 export type ReaderSummaryWeeklyProjectionRead = Readonly<{
   certifiedDailyEvidenceDates: readonly string[];
+  activeWeeklyCertifiedArtifactPresent: boolean;
+  evidenceLimitations: readonly ReaderSummaryWeeklyEvidenceLimitation[];
   artifact: PersistedReaderSummaryWeeklyArtifact | null;
 }>;
 

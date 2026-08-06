@@ -263,9 +263,10 @@ export const runReaderSummaryPublicationPostgresContract = async (
             concurrentRuntimeClient: second,
             runtimeClient: first,
             runtimeRole,
-            createFixture: (status, day) =>
-              createRunningFixture(first, status, day),
+            createFixture: (status, day, overrides) =>
+              createRunningFixture(first, status, day, overrides),
             publish: (payload) => publish(first, payload),
+            includeProjectionRevision: contract === "weekly-projection",
           });
           await assertReaderSummaryWeeklyProductionPostgresContract(first);
           if (
