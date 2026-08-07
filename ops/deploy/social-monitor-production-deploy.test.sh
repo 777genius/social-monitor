@@ -329,14 +329,18 @@ assert_backup_output "$valid_backup_output" 'database-backup-role-capability=pre
 for backup_log_snippet in 'pg_restore --file=/dev/null --no-owner --no-privileges' '20260716170000_reader_summary_fail_closed_publication'; do grep -F "$backup_log_snippet" "$BACKUP_DOCKER_LOG" >/dev/null; done
 for backup_env_use in capability database-name pg_dump; do grep -Fx "backup-env:$backup_env_use" "$BACKUP_DOCKER_LOG" >/dev/null; done
 for backup_env_marker in 'backup-env:schema' 'backup-env:migration' 'migration-state-sql-file:mode=600:variables-via-file'; do [[ $(grep -cFx "$backup_env_marker" "$BACKUP_DOCKER_LOG") == 2 ]]; done
-for forbidden_backup_log in '-c "$3"' '--command'; do ! grep -F -- "$forbidden_backup_log" "$BACKUP_DOCKER_LOG" >/dev/null; done
+for forbidden_backup_log in '-c "$3"' '--command'; do
+  if grep -F -- "$forbidden_backup_log" "$BACKUP_DOCKER_LOG" >/dev/null; then exit 1; fi
+done
 mapfile -t migration_snapshot_lines < <(grep -nF 'migration-state-sql-file:mode=600:variables-via-file' "$BACKUP_DOCKER_LOG" | cut -d: -f1)
 ((${#migration_snapshot_lines[@]} == 2))
 dump_capture_line=$(grep -nF 'pg_dump --format=custom' "$BACKUP_DOCKER_LOG" | cut -d: -f1)
 ((migration_snapshot_lines[0] < dump_capture_line && dump_capture_line < migration_snapshot_lines[1]))
 grep -F 'postgres-backup-admin-url' "$BACKUP_LIBRARY" >/dev/null
-for forbidden_backup_snippet in 'reader-summary-publication-admin-url' 'managed-db-app.url' 'SYSTEM_DATABASE_URL'; do ! grep -F "$forbidden_backup_snippet" "$BACKUP_LIBRARY" >/dev/null; done
-! grep -E -- '--enable-row-security|--exclude-(table|schema)|--schema-only|--data-only' "$BACKUP_LIBRARY" >/dev/null
+for forbidden_backup_snippet in 'reader-summary-publication-admin-url' 'managed-db-app.url' 'SYSTEM_DATABASE_URL'; do
+  if grep -F "$forbidden_backup_snippet" "$BACKUP_LIBRARY" >/dev/null; then exit 1; fi
+done
+if grep -E -- '--enable-row-security|--exclude-(table|schema)|--schema-only|--data-only' "$BACKUP_LIBRARY" >/dev/null; then exit 1; fi
 : > "$BACKUP_DOCKER_LOG"; managed_admin_output=$(run_backup_fixture managed-admin 20260719T120010Z)
 MANAGED_ADMIN_BACKUP=$ROOT/backups/pre-autodeploy-${BACKUP_PREFIX}-20260719T120010Z.dump
 [[ -s $MANAGED_ADMIN_BACKUP ]]

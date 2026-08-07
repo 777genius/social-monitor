@@ -62,7 +62,9 @@ PY
   done
 done
 
+# shellcheck disable=SC2016 # Literal GitHub expression is asserted in workflow text.
 upload_line=$(grep -nF 'bash ops/deploy/github-production-deploy-client.sh upload "$GITHUB_SHA"' "$WORKFLOW" | cut -d: -f1)
+# shellcheck disable=SC2016 # Literal GitHub expression is asserted in workflow text.
 deploy_line=$(grep -nF 'run: bash ops/deploy/github-production-deploy-client.sh deploy "$GITHUB_SHA"' "$WORKFLOW" | cut -d: -f1)
 [[ -n $upload_line && -n $deploy_line && $upload_line -lt $deploy_line ]]
 sed -n "$((upload_line - 8)),${upload_line}p" "$WORKFLOW" | \
