@@ -234,13 +234,20 @@ run_reader_summary_daily_bounded_maintenance() {
     'set -eu; node scripts/run-with-timeout.mjs --timeout-ms 19800000 --node-options --max-old-space-size=768 -- ./node_modules/.bin/ts-node -r tsconfig-paths/register scripts/run-reader-summary-daily-bounded-maintenance.ts'
 }
 
+run_reader_summary_daily_terminal_set_receipt() {
+  [[ $# == 0 ]] || fail 'reader-summary daily terminal-set receipt accepts no input'
+  "${COMPOSE[@]}" --profile daily run --rm --no-deps \
+    daily-runner sh -lc \
+    'set -eu; node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=768 -- ./node_modules/.bin/ts-node -r tsconfig-paths/register scripts/read-reader-summary-daily-terminal-set-receipt.ts'
+}
+
 run_reader_summary_daily_runner_maintenance() (
   local maintenance_action=$1
   local run_bounded_maintenance=false
   local run_invalid_product_retry_set=false
   [[ $# == 1 ]] || fail 'reader-summary daily-runner maintenance accepts exactly one action'
   case $maintenance_action in
-    reader-summary-recover-missing-days|reader-summary-weekly-run) ;;
+    reader-summary-recover-missing-days|reader-summary-weekly-run|reader-summary-daily-terminal-set-receipt-v1) ;;
     *) fail 'unknown reader-summary daily-runner maintenance action' ;;
   esac
   unset READER_SUMMARY_DAILY_MAINTENANCE_AUTHORIZED_UTC_DATE READER_SUMMARY_DAILY_MAINTENANCE_MODEL_JOB_IDENTITY READER_SUMMARY_DAILY_MAINTENANCE_AUTHORITY_SHA256 READER_SUMMARY_DAILY_MAINTENANCE_RETRY_SET_TOKEN READER_SUMMARY_DAILY_MAINTENANCE_TERMINAL_SET_SHA256
@@ -257,6 +264,10 @@ run_reader_summary_daily_runner_maintenance() (
   fi
   acquire_daily_runner_maintenance_locks
   verify_daily_runner_maintenance_runtime
+  if [[ $maintenance_action == reader-summary-daily-terminal-set-receipt-v1 ]]; then
+    run_reader_summary_daily_terminal_set_receipt
+    return
+  fi
   append_final_agent_runtime_model_overlay
   refresh_daily_runner_maintenance_auth || return
   "${COMPOSE[@]}" --profile app up -d --no-deps agent-runtime || return

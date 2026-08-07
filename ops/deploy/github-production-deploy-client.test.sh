@@ -96,7 +96,7 @@ fake_ssh() {
       IFS= read -r value
       printf '%s\n' "$value" > "$FAKE_UPLOAD_PATH"
       ;;
-    maintenance_success:"disk-report $TARGET_SHA"|maintenance_success:"project-disk-cleanup $TARGET_SHA"|maintenance_success:"reader-summary-recover-missing-days $TARGET_SHA"|maintenance_success:"reader-summary-weekly-run $TARGET_SHA"|maintenance_success:"reader-summary-daily-canonical-recovery-v4 $TARGET_SHA invalid-product-retry-set-v1 $TERMINAL_SET_SHA256"|maintenance_success:"reader-summary-daily-canonical-recovery-v4 $TARGET_SHA reader-summary-daily-canonical-recovery-v4 $MODEL_JOB_IDENTITY $AUTHORITY_SHA256")
+    maintenance_success:"disk-report $TARGET_SHA"|maintenance_success:"project-disk-cleanup $TARGET_SHA"|maintenance_success:"reader-summary-recover-missing-days $TARGET_SHA"|maintenance_success:"reader-summary-weekly-run $TARGET_SHA"|maintenance_success:"reader-summary-daily-terminal-set-receipt-v1 $TARGET_SHA"|maintenance_success:"reader-summary-daily-canonical-recovery-v4 $TARGET_SHA invalid-product-retry-set-v1 $TERMINAL_SET_SHA256"|maintenance_success:"reader-summary-daily-canonical-recovery-v4 $TARGET_SHA reader-summary-daily-canonical-recovery-v4 $MODEL_JOB_IDENTITY $AUTHORITY_SHA256")
       printf 'maintenance=%s\n' "${command%% *}"
       ;;
     normal_success:"deploy $TARGET_SHA")
@@ -265,7 +265,8 @@ bash "$CLIENT" cleanup
 
 for maintenance_action in \
   disk-report project-disk-cleanup \
-  reader-summary-recover-missing-days reader-summary-weekly-run; do
+  reader-summary-recover-missing-days reader-summary-weekly-run \
+  reader-summary-daily-terminal-set-receipt-v1; do
   run_client maintenance_success maintenance \
     "$TARGET_SHA" "$maintenance_action" >/dev/null
   assert_call_count 1 "$maintenance_action $TARGET_SHA"
@@ -311,6 +312,40 @@ assert_call_count 0 \
   "reader-summary-daily-canonical-recovery-v4 $TARGET_SHA reader-summary-daily-canonical-recovery-v4 ${MODEL_JOB_IDENTITY^^} $AUTHORITY_SHA256"
 assert_fails maintenance_success maintenance "$TARGET_SHA" docker-system-prune
 assert_call_count 0 "docker-system-prune $TARGET_SHA"
+
+RECEIPT=$FIXTURE/terminal-set-receipt.json
+receipt_line='{"schemaVersion":"reader_summary.daily_terminal_set_receipt.v1","retrySetToken":"invalid-product-retry-set-v1","tenantId":"00000000-0000-7000-8000-000000000901","workspaceId":"00000000-0000-7000-8000-000000000902","requestedUtcDates":["2026-07-25","2026-07-26","2026-07-27","2026-07-28","2026-07-29","2026-07-30"],"terminalCount":6,"terminalSetSha256":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"}'
+printf '%s\n' "$receipt_line" > "$RECEIPT"
+bash "$CLIENT" validate-terminal-set-receipt "$RECEIPT"
+[[ $(stat -c '%a' "$RECEIPT") == 444 ]]
+
+assert_invalid_receipt() {
+  local label=$1 value=$2
+  chmod 0600 "$RECEIPT"
+  printf '%s' "$value" > "$RECEIPT"
+  if bash "$CLIENT" validate-terminal-set-receipt "$RECEIPT" >/dev/null 2>&1; then
+    printf 'invalid terminal-set receipt accepted: %s\n' "$label" >&2
+    exit 1
+  fi
+  [[ $(stat -c '%a' "$RECEIPT") == 600 ]]
+}
+
+assert_invalid_receipt duplicate-key \
+  "${receipt_line/\{\"schemaVersion\":/\{\"schemaVersion\":\"reader_summary.daily_terminal_set_receipt.v1\",\"schemaVersion\":}"$'\n'
+assert_invalid_receipt missing-key \
+  "${receipt_line/,\"terminalCount\":6/}"$'\n'
+assert_invalid_receipt wrong-date \
+  "${receipt_line/2026-07-25/2026-07-24}"$'\n'
+assert_invalid_receipt wrong-state \
+  "${receipt_line/reader_summary.daily_terminal_set_receipt.v1/reader_summary.daily_terminal_set_receipt.v2}"$'\n'
+assert_invalid_receipt wrong-reason \
+  "${receipt_line/invalid-product-retry-set-v1/other-retry-set}"$'\n'
+assert_invalid_receipt wrong-attempt \
+  "${receipt_line/\"terminalCount\":6/\"terminalCount\":7}"$'\n'
+assert_invalid_receipt wrong-hash \
+  "${receipt_line/cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc/CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC}"$'\n'
+assert_invalid_receipt extra-key "${receipt_line%\}},\"extra\":true}"$'\n'
+assert_invalid_receipt extra-output "$receipt_line"$'\nnoise\n'
 
 : > "$GITHUB_OUTPUT"
 run_client plan_success plan "$TARGET_SHA" >/dev/null

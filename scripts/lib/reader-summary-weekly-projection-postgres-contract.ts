@@ -60,8 +60,29 @@ export const assertReaderSummaryWeeklyProjectionPostgresContract = async (
       "projection must return one strict active WEEKLY_CERTIFIED artifact",
     );
     assert(
-      projection.evidenceLimitations.length === 0,
-      "projection must derive no historical limitations from verified fixture evidence",
+      JSON.stringify(projection.evidenceLimitations) === JSON.stringify([
+        {
+          requestedUtcDate: "2026-06-01",
+          providerKey: "github-trending-page",
+          evidenceState: "historical_unavailable",
+        },
+        {
+          requestedUtcDate: "2026-06-03",
+          providerKey: "github-trending-page",
+          evidenceState: "historical_unavailable",
+        },
+        {
+          requestedUtcDate: "2026-06-05",
+          providerKey: "github-trending-page",
+          evidenceState: "historical_unavailable",
+        },
+        {
+          requestedUtcDate: "2026-06-07",
+          providerKey: "github-trending-page",
+          evidenceState: "historical_unavailable",
+        },
+      ]),
+      "projection must expose the exact ordered historical fixture limitations",
     );
 
     await assertJuneSecondRetainedEvidenceAndSealSelection(client);
@@ -255,14 +276,22 @@ const currentDailyPublicationId = async (
   return publicationId;
 };
 
-const prismaDateColumns = <TRow extends Record<string, unknown>>(
+export const prismaDateColumns = <TRow extends Record<string, unknown>>(
   row: TRow,
 ): TRow => {
   const result = { ...row };
   for (const key of ["requestedUtcDate", "weekStartedOn", "weekEndedOn"]) {
     const value = result[key];
-    if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/u.test(value)) {
-      result[key as keyof TRow] = new Date(`${value}T00:00:00.000Z`) as TRow[keyof TRow];
+    if (value instanceof Date && Number.isFinite(value.getTime())) {
+      result[key as keyof TRow] = new Date(Date.UTC(
+        value.getFullYear(),
+        value.getMonth(),
+        value.getDate(),
+      )) as TRow[keyof TRow];
+    } else if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/u.test(value)) {
+      result[key as keyof TRow] = new Date(
+        `${value}T00:00:00.000Z`,
+      ) as TRow[keyof TRow];
     }
   }
   return result;

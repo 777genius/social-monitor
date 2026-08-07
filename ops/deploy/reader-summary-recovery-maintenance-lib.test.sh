@@ -160,6 +160,7 @@ COMPOSE=(fake_compose)
 # shellcheck source=ops/deploy/reader-summary-recovery-maintenance-lib.sh
 source "$REPO/ops/deploy/reader-summary-recovery-maintenance-lib.sh"
 daily_runner_maintenance_sleep() { :; }
+daily_runner_maintenance_now_seconds() { printf '%s\n' 0; }
 install() {
   if [[ ${1:-} == -d && ${2:-} == -m && ${3:-} == 0700 && \
         ${4:-} == -o && ${5:-} == 1000 && ${6:-} == -g && \
@@ -204,6 +205,21 @@ grep -F 'npm run run:reader-summary-weekly-production -- --week-start 2026-07-27
 ! grep -F 'social-monitor-reader-summary-recovery-source-' \
   "$DOCKER_LOG" "$COMPOSE_LOG" >/dev/null
 ! compgen -G "$STATE/reader-summary-recovery-source.*.env" >/dev/null
+
+: > "$COMPOSE_LOG"
+: > "$AUTH_LOG"
+: > "$ORDER_LOG"
+run_reader_summary_daily_runner_maintenance \
+  reader-summary-daily-terminal-set-receipt-v1 < /dev/null
+receipt_command='--profile daily run --rm --no-deps daily-runner sh -lc set -eu; node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=768 -- ./node_modules/.bin/ts-node -r tsconfig-paths/register scripts/read-reader-summary-daily-terminal-set-receipt.ts'
+mapfile -t receipt_commands < <(grep -v '^source-env=' "$COMPOSE_LOG")
+[[ ${#receipt_commands[@]} == 1 ]]
+[[ ${receipt_commands[0]} == "$receipt_command" ]]
+[[ ! -s $AUTH_LOG && ! -s $ORDER_LOG ]]
+! grep -F -- '-f compose.agent-runtime-model.yml' "$COMPOSE_LOG" >/dev/null
+! grep -F 'agent-runtime' "$COMPOSE_LOG" >/dev/null
+! grep -F 'authorize:' "$COMPOSE_LOG" >/dev/null
+! grep -F 'READER_SUMMARY_DAILY_TERMINAL_SET_RECEIPT_DIRECTORY' "$COMPOSE_LOG" >/dev/null
 
 : > "$COMPOSE_LOG"
 : > "$ORDER_LOG"

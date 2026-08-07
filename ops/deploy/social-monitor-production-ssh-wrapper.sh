@@ -13,7 +13,7 @@ read -r action sha first_authorization_value second_authorization_value \
   third_authorization_value extra <<< "$original_command"
 
 [[ -z ${extra:-} ]] || exit 64
-[[ ${action:-} =~ ^(plan|upload|deploy|disk-report|project-disk-cleanup|reader-summary-recover-missing-days|reader-summary-weekly-run|reader-summary-daily-canonical-recovery-v4)$ ]] || exit 64
+[[ ${action:-} =~ ^(plan|upload|deploy|disk-report|project-disk-cleanup|reader-summary-recover-missing-days|reader-summary-weekly-run|reader-summary-daily-canonical-recovery-v4|reader-summary-daily-terminal-set-receipt-v1)$ ]] || exit 64
 [[ ${sha:-} =~ ^[0-9a-f]{40}$ ]] || exit 64
 if [[ $action == reader-summary-daily-canonical-recovery-v4 ]]; then
   # Both externally-confirmed forms map onto the existing recovery intent. The

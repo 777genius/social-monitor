@@ -732,7 +732,7 @@ grep -F 'unfinished backend rollback requires operator recovery before retry' \
   <<< "$interrupted_retry_output" >/dev/null
 [[ ! -s $INTERRUPTED_RETRY_LOG ]]
 rm -f "$STATE/backend-image-rescue-fedcba9876543210fedcba9876543210fedcba98.tsv"
-grep -F 'verify_live_postgres_admission "$postgres_env"' "$ENTRYPOINT" >/dev/null
+grep -F 'verify_live_postgres_admission "$postgres_env"' "$ENTRYPOINT" >/dev/null; grep -F 'reader-summary-daily-terminal-set-receipt-v1)' "$ENTRYPOINT" >/dev/null
 grep -F 'probe_postgres_maximum_envelope "$postgres_env"' "$ENTRYPOINT" >/dev/null
 grep -F 'deploy_reader_summary_publication_migrations' "$ENTRYPOINT" >/dev/null
 grep -F 'reader_summary_publication_migrator_preflight' "$ENTRYPOINT" >/dev/null

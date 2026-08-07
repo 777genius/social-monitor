@@ -107,13 +107,32 @@ import sys
 
 source = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")
 start = source.index('          if [[ $MAINTENANCE_ACTION == reader-summary-daily-canonical-recovery-v4 ]]; then')
-else_start = source.index('\n          else\n', start)
+terminal_start = source.index(
+    '          elif [[ $MAINTENANCE_ACTION == reader-summary-daily-terminal-set-receipt-v1 ]]; then',
+    start,
+)
+else_start = source.index('\n          else\n', terminal_start)
 else_end = source.index('\n          fi\n', else_start)
 non_daily = source[else_start:else_end]
+terminal = source[terminal_start:else_start]
 guard = '[[ -z $DAILY_CANONICAL_RECOVERY_RETRY_SET_TOKEN$DAILY_CANONICAL_RECOVERY_TERMINAL_SET_SHA256$DAILY_CANONICAL_RECOVERY_CONFIRMATION$DAILY_CANONICAL_RECOVERY_MODEL_JOB_IDENTITY$DAILY_CANONICAL_RECOVERY_AUTHORITY_SHA256 ]]'
 if guard not in non_daily or non_daily.index(guard) > non_daily.index('github-production-deploy-client.sh maintenance'):
     raise SystemExit("non-daily maintenance must reject every daily recovery input before dispatch")
+for required in (
+    guard,
+    'maintenance "$GITHUB_SHA"',
+    'reader-summary-daily-terminal-set-receipt-v1 > "$receipt_path"',
+    'validate-terminal-set-receipt "$receipt_path"',
+):
+    if required not in terminal:
+        raise SystemExit(f"terminal-set receipt workflow is missing: {required}")
+if not terminal.index(guard) < terminal.index('maintenance "$GITHUB_SHA"') < terminal.index('validate-terminal-set-receipt'):
+    raise SystemExit("terminal-set receipt capture/validation order is unsafe")
 PY
+grep -F 'uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f' "$workflow" >/dev/null
+grep -F "name: reader-summary-daily-terminal-set-receipt-v1-\${{ github.run_id }}-\${{ github.run_attempt }}" "$workflow" >/dev/null
+grep -F "path: \${{ runner.temp }}/reader-summary-daily-terminal-set-receipt-v1-\${{ github.run_id }}-\${{ github.run_attempt }}.json" "$workflow" >/dev/null
+grep -F "if: \${{ inputs.maintenance_action == 'reader-summary-daily-terminal-set-receipt-v1' }}" "$workflow" >/dev/null
 grep -F 'PostgresCanonicalRecoveryInvalidProductRetrySetAuthorizer' "$runner" >/dev/null
 grep -F 'parseDailyCanonicalRecoveryV4Invocation(process.argv.slice(2))' "$runner" >/dev/null
 grep -F 'recovery_command="set -eu; npm run run:reader-summary-daily-canonical-recovery -- $retry_set_token $terminal_set_sha256"' \

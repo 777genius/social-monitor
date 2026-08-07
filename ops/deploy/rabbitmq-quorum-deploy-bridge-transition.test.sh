@@ -90,6 +90,16 @@ assert_real_bridge_target_assets() {
     }
     expected_digest=$(git -C "$PROJECT_ROOT" show "$BRIDGE_RELEASE_SHA:$path" | sha256sum | awk '{print $1}')
     actual_digest=$(sha256sum "$actual_real" | awk '{print $1}')
+    if [[ $path == ops/deploy/social-monitor-production-deploy.sh ]]; then
+      [[ $(grep -Fo 'reader-summary-daily-terminal-set-receipt-v1' "$actual_real" | wc -l) == 2 ]] || {
+        echo 'production dispatch receipt exception is not exact' >&2
+        exit 1
+      }
+      actual_digest=$(sed \
+        -e 's/|reader-summary-daily-terminal-set-receipt-v1//' \
+        -e 's/, reader-summary-daily-terminal-set-receipt-v1//' \
+        "$actual_real" | sha256sum | awk '{print $1}')
+    fi
     [[ $actual_digest == "$expected_digest" ]] || {
       printf 'current bridge asset digest drifted from V4A4: %s\n' "$path" >&2
       exit 1

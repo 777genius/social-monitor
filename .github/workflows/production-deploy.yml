@@ -48,6 +48,7 @@ on:
           - reader-summary-recover-missing-days
           - reader-summary-weekly-run
           - reader-summary-daily-canonical-recovery-v4
+          - reader-summary-daily-terminal-set-receipt-v1
       daily_canonical_recovery_retry_set_token:
         description: Required exact invalid-product retry-set token for daily canonical recovery V4
         required: false
@@ -126,11 +127,28 @@ jobs:
                 "$DAILY_CANONICAL_RECOVERY_MODEL_JOB_IDENTITY" \
                 "$DAILY_CANONICAL_RECOVERY_AUTHORITY_SHA256"
             fi
+          elif [[ $MAINTENANCE_ACTION == reader-summary-daily-terminal-set-receipt-v1 ]]; then
+            [[ -z $DAILY_CANONICAL_RECOVERY_RETRY_SET_TOKEN$DAILY_CANONICAL_RECOVERY_TERMINAL_SET_SHA256$DAILY_CANONICAL_RECOVERY_CONFIRMATION$DAILY_CANONICAL_RECOVERY_MODEL_JOB_IDENTITY$DAILY_CANONICAL_RECOVERY_AUTHORITY_SHA256 ]]
+            receipt_path="$RUNNER_TEMP/reader-summary-daily-terminal-set-receipt-v1-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.json"
+            umask 077
+            bash ops/deploy/github-production-deploy-client.sh maintenance "$GITHUB_SHA" \
+              reader-summary-daily-terminal-set-receipt-v1 > "$receipt_path"
+            bash ops/deploy/github-production-deploy-client.sh \
+              validate-terminal-set-receipt "$receipt_path"
           else
             [[ -z $DAILY_CANONICAL_RECOVERY_RETRY_SET_TOKEN$DAILY_CANONICAL_RECOVERY_TERMINAL_SET_SHA256$DAILY_CANONICAL_RECOVERY_CONFIRMATION$DAILY_CANONICAL_RECOVERY_MODEL_JOB_IDENTITY$DAILY_CANONICAL_RECOVERY_AUTHORITY_SHA256 ]]
             bash ops/deploy/github-production-deploy-client.sh maintenance "$GITHUB_SHA" \
               "$MAINTENANCE_ACTION"
           fi
+
+      - name: Store unique immutable terminal-set receipt
+        if: ${{ inputs.maintenance_action == 'reader-summary-daily-terminal-set-receipt-v1' }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: reader-summary-daily-terminal-set-receipt-v1-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/reader-summary-daily-terminal-set-receipt-v1-${{ github.run_id }}-${{ github.run_attempt }}.json
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Remove production SSH material
         if: always()

@@ -107,8 +107,8 @@ run_remote() {
 
 validate_maintenance_action() {
   case ${1:-} in
-    disk-report|project-disk-cleanup|reader-summary-recover-missing-days|reader-summary-weekly-run|reader-summary-daily-canonical-recovery-v4) ;;
-    *) fail 'maintenance action must be disk-report, project-disk-cleanup, reader-summary-recover-missing-days, reader-summary-weekly-run, or reader-summary-daily-canonical-recovery-v4' ;;
+    disk-report|project-disk-cleanup|reader-summary-recover-missing-days|reader-summary-weekly-run|reader-summary-daily-canonical-recovery-v4|reader-summary-daily-terminal-set-receipt-v1) ;;
+    *) fail 'maintenance action must be disk-report, project-disk-cleanup, reader-summary-recover-missing-days, reader-summary-weekly-run, reader-summary-daily-canonical-recovery-v4, or reader-summary-daily-terminal-set-receipt-v1' ;;
   esac
 }
 
@@ -125,6 +125,43 @@ validate_daily_canonical_recovery_confirmation() {
 validate_lowercase_hex_digest() {
   [[ ${1:-} =~ ^[0-9a-f]{64}$ ]] || \
     fail 'daily canonical recovery terminal-set digest must be a 64-character lowercase hexadecimal value'
+}
+
+validate_terminal_set_receipt_file() {
+  local receipt_path=${1:-}
+  [[ $# == 1 && -f $receipt_path && ! -L $receipt_path ]] || \
+    fail 'terminal-set receipt must be one regular file'
+  node - "$receipt_path" <<'NODE' || fail 'terminal-set receipt is invalid'
+const fs = require("node:fs");
+const raw = fs.readFileSync(process.argv[2], "utf8");
+if (!raw.endsWith("\n") || raw.slice(0, -1).includes("\n") || raw.includes("\r")) {
+  process.exit(1);
+}
+let receipt;
+try { receipt = JSON.parse(raw.slice(0, -1)); } catch { process.exit(1); }
+const keys = [
+  "schemaVersion", "retrySetToken", "tenantId", "workspaceId",
+  "requestedUtcDates", "terminalCount", "terminalSetSha256",
+];
+const dates = [
+  "2026-07-25", "2026-07-26", "2026-07-27",
+  "2026-07-28", "2026-07-29", "2026-07-30",
+];
+if (receipt === null || typeof receipt !== "object" || Array.isArray(receipt) ||
+    JSON.stringify(receipt) + "\n" !== raw ||
+    JSON.stringify(Object.keys(receipt)) !== JSON.stringify(keys) ||
+    receipt.schemaVersion !== "reader_summary.daily_terminal_set_receipt.v1" ||
+    receipt.retrySetToken !== "invalid-product-retry-set-v1" ||
+    receipt.tenantId !== "00000000-0000-7000-8000-000000000901" ||
+    receipt.workspaceId !== "00000000-0000-7000-8000-000000000902" ||
+    JSON.stringify(receipt.requestedUtcDates) !== JSON.stringify(dates) ||
+    receipt.terminalCount !== 6 ||
+    typeof receipt.terminalSetSha256 !== "string" ||
+    !/^[0-9a-f]{64}$/.test(receipt.terminalSetSha256)) process.exit(1);
+NODE
+  chmod 0444 "$receipt_path"
+  [[ $(stat -c '%a' "$receipt_path") == 444 ]] || \
+    fail 'terminal-set receipt could not be made immutable'
 }
 
 run_maintenance() {
@@ -417,5 +454,9 @@ case $action in
       run_maintenance "$2" "$3"
     fi
     ;;
-  *) fail 'allowed commands: configure, cleanup, plan, upload, deploy, maintenance' ;;
+  validate-terminal-set-receipt)
+    [[ $# == 2 ]] || fail 'validate-terminal-set-receipt requires one file'
+    validate_terminal_set_receipt_file "$2"
+    ;;
+  *) fail 'allowed commands: configure, cleanup, plan, upload, deploy, maintenance, validate-terminal-set-receipt' ;;
 esac

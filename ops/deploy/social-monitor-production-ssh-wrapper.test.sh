@@ -7,7 +7,6 @@ CURRENT_SOURCE=$SCRIPT_DIR/social-monitor-production-ssh-wrapper.sh
 CURRENT_ENTRYPOINT=$SCRIPT_DIR/social-monitor-production-deploy.sh
 CONTROL_LIB=$SCRIPT_DIR/deploy-control-lib.sh
 LEGACY_CONTROL_SHA=4f47fac7faed7dc24110f4a43e88820d776b8a40
-V4A4_CONTROL_SHA=2f85863a
 FIXTURE=$(mktemp -d "${TMPDIR:-/tmp}/production-ssh-wrapper.XXXXXX")
 trap 'rm -rf "$FIXTURE"' EXIT
 
@@ -26,15 +25,7 @@ install -d "$BIN"
 git -C "$PROJECT_ROOT" show \
   "$LEGACY_CONTROL_SHA:ops/deploy/social-monitor-production-ssh-wrapper.sh" \
   > "$FIXTURE/legacy-wrapper.source"
-git -C "$PROJECT_ROOT" show \
-  "$V4A4_CONTROL_SHA:ops/deploy/social-monitor-production-deploy.sh" \
-  > "$FIXTURE/v4a4-entrypoint.source"
-cmp -s "$CURRENT_ENTRYPOINT" "$FIXTURE/v4a4-entrypoint.source" || {
-  echo 'current deploy entrypoint must remain byte-identical to V4A4' >&2
-  exit 1
-}
-
-python3 - "$FIXTURE/v4a4-entrypoint.source" <<'PY'
+python3 - "$CURRENT_ENTRYPOINT" <<'PY'
 import pathlib
 import sys
 
@@ -42,9 +33,9 @@ source = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")
 load = 'source "$REPO/ops/deploy/deploy-control-lib.sh"'
 dispatch = "case ${action:-} in"
 if source.count(load) != 1 or source.count(dispatch) != 1:
-    raise SystemExit("V4A4 entrypoint source/dispatch contract is not exact")
+    raise SystemExit("deploy entrypoint source/dispatch contract is not exact")
 if source.index(load) >= source.index(dispatch):
-    raise SystemExit("V4A4 entrypoint does not source current control before dispatch")
+    raise SystemExit("deploy entrypoint does not source current control before dispatch")
 PY
 
 cat > "$BIN/sudo" <<'SH'
@@ -221,7 +212,8 @@ done
 
 for action in \
   disk-report project-disk-cleanup \
-  reader-summary-recover-missing-days reader-summary-weekly-run; do
+  reader-summary-recover-missing-days reader-summary-weekly-run \
+  reader-summary-daily-terminal-set-receipt-v1; do
   : > "$EVENT_LOG"
   SSH_ORIGINAL_COMMAND="$action $SHA" EVENT_LOG=$EVENT_LOG \
     CONTROL_LIB=$CONTROL_LIB EXACT_SHA=$SHA bash "$FIXTURE/current-wrapper.sh" </dev/null
@@ -252,7 +244,8 @@ assert_non_v4_stdin_is_sealed() {
 
 for action in \
   plan upload deploy disk-report project-disk-cleanup \
-  reader-summary-recover-missing-days reader-summary-weekly-run; do
+  reader-summary-recover-missing-days reader-summary-weekly-run \
+  reader-summary-daily-terminal-set-receipt-v1; do
   assert_non_v4_stdin_is_sealed "$action"
 done
 
