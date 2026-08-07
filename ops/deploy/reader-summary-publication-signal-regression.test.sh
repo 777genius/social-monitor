@@ -65,8 +65,8 @@ prepare_case() {
     '#!/usr/bin/env bash' \
     'set -euo pipefail' \
     '[[ "$#" -eq 2 ]]' \
-    '[[ "$1" == --broker-pool-job-id ]]' \
-    '[[ "$2" == social-monitor-production-account-pool-terra-v25-20260804 ]]' \
+    "[[ \"\$1\" == --broker-pool-job-id ]]" \
+    "[[ \"\$2\" == social-monitor-production-account-pool-terra-v25-20260804 ]]" \
     'exit 0' > "$root/control/refresh-codex-auth.sh"
   chmod +x "$root/control/refresh-codex-auth.sh"
 }
