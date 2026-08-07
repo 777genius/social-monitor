@@ -235,7 +235,7 @@ describe('hostile PostgreSQL pool budget review', () => {
       'PostgreSQL bootstrap marker must be absent for atomic repair',
     );
     expect(sshWrapper).toContain(
-      '^(plan|upload|deploy|disk-report|project-disk-cleanup|reader-summary-recover-missing-days|reader-summary-weekly-run|reader-summary-daily-canonical-recovery-v4)$',
+      '^(plan|upload|deploy|disk-report|project-disk-cleanup|reader-summary-recover-missing-days|reader-summary-weekly-run|reader-summary-daily-canonical-recovery-v4|reader-summary-daily-terminal-set-receipt-v1)$',
     );
     expect(sshWrapper).not.toContain('bootstrap-postgres-pool');
     expect(transitionTest.indexOf('TEST_PHASE=legacy-poison-window')).toBeLessThan(
