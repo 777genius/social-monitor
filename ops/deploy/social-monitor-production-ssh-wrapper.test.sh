@@ -21,6 +21,8 @@ AUTHORITY_SHA256=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 TERMINAL_SET_SHA256=cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 AUTHORIZED_STDIN_RECORD="reader-summary-daily-canonical-recovery-v4 $DAILY_CANONICAL_RECOVERY_RETRY_SET_TOKEN $TERMINAL_SET_SHA256"
 LEGACY_STDIN_RECORD="$DAILY_CANONICAL_RECOVERY_CONFIRMATION 2026-07-23 $MODEL_JOB_IDENTITY $AUTHORITY_SHA256"
+UPLOAD_PAYLOAD=$FIXTURE/frontend-upload.payload
+printf 'frontend-upload\0payload\nwithout-final-newline' > "$UPLOAD_PAYLOAD"
 install -d "$BIN"
 git -C "$PROJECT_ROOT" show \
   "$LEGACY_CONTROL_SHA:ops/deploy/social-monitor-production-ssh-wrapper.sh" \
@@ -52,6 +54,16 @@ fi
 [[ -z ${READER_SUMMARY_DAILY_MAINTENANCE_AUTHORITY_SHA256+x} ]]
 [[ -z ${READER_SUMMARY_DAILY_MAINTENANCE_RETRY_SET_TOKEN+x} ]]
 [[ -z ${READER_SUMMARY_DAILY_MAINTENANCE_TERMINAL_SET_SHA256+x} ]]
+if [[ ${EXPECT_WRAPPER_STATE_CLEAN:-0} == 1 ]]; then
+  [[ -z ${SSH_ORIGINAL_COMMAND+x} ]]
+  [[ -z ${original_command+x} ]]
+  [[ -z ${action+x} ]]
+  [[ -z ${sha+x} ]]
+  [[ -z ${extra+x} ]]
+  [[ -z ${confirmation+x} ]]
+  [[ -z ${model_job_identity+x} ]]
+  [[ -z ${authority_sha256+x} ]]
+fi
 [[ -z ${first_authorization_value+x} ]]
 [[ -z ${second_authorization_value+x} ]]
 [[ -z ${third_authorization_value+x} ]]
@@ -79,6 +91,16 @@ set -euo pipefail
 
 expected_retry_set_token=invalid-product-retry-set-v1
 expected_terminal_set_sha256=cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+if [[ ${EXPECT_WRAPPER_STATE_CLEAN:-0} == 1 ]]; then
+  [[ -z ${SSH_ORIGINAL_COMMAND+x} ]]
+  [[ -z ${original_command+x} ]]
+  [[ -z ${action+x} ]]
+  [[ -z ${sha+x} ]]
+  [[ -z ${extra+x} ]]
+  [[ -z ${confirmation+x} ]]
+  [[ -z ${model_job_identity+x} ]]
+  [[ -z ${authority_sha256+x} ]]
+fi
 action=${1:-}
 sha=${2:-}
 [[ $# == 2 ]]
@@ -94,6 +116,11 @@ sha=${2:-}
 [[ -z ${retry_set_token+x} ]]
 [[ -z ${terminal_set_sha256+x} ]]
 [[ -z ${authorization_record+x} ]]
+if [[ ${EXPECT_UPLOAD_STDIN:-0} == 1 ]]; then
+  [[ $action == upload ]]
+  cmp - "${EXPECTED_UPLOAD_PAYLOAD_FILE:?}" >/dev/null
+  printf 'upload-stdin-exact\n' >> "$EVENT_LOG"
+fi
 if [[ ${EXPECT_ORDINARY_PROBE_STDIN_EOF:-0} == 1 ]]; then
   unexpected_authorization_record=''
   if IFS= read -r unexpected_authorization_record; then
@@ -243,11 +270,26 @@ assert_non_v4_stdin_is_sealed() {
 }
 
 for action in \
-  plan upload deploy disk-report project-disk-cleanup \
+  plan deploy disk-report project-disk-cleanup \
   reader-summary-recover-missing-days reader-summary-weekly-run \
   reader-summary-daily-terminal-set-receipt-v1; do
   assert_non_v4_stdin_is_sealed "$action"
 done
+
+: > "$EVENT_LOG"
+SSH_ORIGINAL_COMMAND="upload $SHA" EVENT_LOG=$EVENT_LOG \
+  CONTROL_LIB=$CONTROL_LIB EXACT_SHA=$SHA \
+  EXPECT_UPLOAD_STDIN=1 EXPECTED_UPLOAD_PAYLOAD_FILE=$UPLOAD_PAYLOAD \
+  EXPECT_WRAPPER_STATE_CLEAN=1 \
+  original_command=unexpected action=unexpected sha=unexpected extra=unexpected \
+  confirmation=unexpected model_job_identity=unexpected authority_sha256=unexpected \
+  first_authorization_value=unexpected second_authorization_value=unexpected \
+  third_authorization_value=unexpected authorization_record=unexpected \
+  bash "$FIXTURE/current-wrapper.sh" < "$UPLOAD_PAYLOAD"
+grep -Fx 'sudo-clean' "$EVENT_LOG" >/dev/null
+grep -Fx 'upload-stdin-exact' "$EVENT_LOG" >/dev/null
+grep -Fx "dispatch:upload:$SHA" "$EVENT_LOG" >/dev/null
+[[ $(wc -l < "$EVENT_LOG") == 3 ]]
 
 : > "$EVENT_LOG"
 SSH_ORIGINAL_COMMAND="reader-summary-daily-canonical-recovery-v4 $SHA $DAILY_CANONICAL_RECOVERY_RETRY_SET_TOKEN $TERMINAL_SET_SHA256" \

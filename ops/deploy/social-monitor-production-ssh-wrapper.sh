@@ -39,4 +39,7 @@ fi
 
 unset SSH_ORIGINAL_COMMAND first_authorization_value second_authorization_value third_authorization_value confirmation model_job_identity authority_sha256 retry_set_token terminal_set_sha256 authorization_record
 unset READER_SUMMARY_DAILY_MAINTENANCE_AUTHORIZED_UTC_DATE READER_SUMMARY_DAILY_MAINTENANCE_MODEL_JOB_IDENTITY READER_SUMMARY_DAILY_MAINTENANCE_AUTHORITY_SHA256 READER_SUMMARY_DAILY_MAINTENANCE_RETRY_SET_TOKEN READER_SUMMARY_DAILY_MAINTENANCE_TERMINAL_SET_SHA256
+if [[ $action == upload ]]; then
+  exec sudo -n -- "$ENTRYPOINT" "$action" "$sha"
+fi
 exec sudo -n -- "$ENTRYPOINT" "$action" "$sha" </dev/null
