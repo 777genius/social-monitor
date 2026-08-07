@@ -310,6 +310,14 @@ jobs:
             fi
           fi
           npm ci
+          FRONTEND_CHANGED=${{ needs.plan.outputs.frontend }} \
+          BACKEND_CHANGED=${{ needs.plan.outputs.backend }} \
+          BACKEND_PLAN_BASE=${{ needs.plan.outputs.backend_base }} \
+          CONTROL_CHANGED=${{ needs.plan.outputs.control }} \
+          X_COLLECTOR_CHANGED=${{ needs.plan.outputs.x_collector }} \
+          POSTGRES_POOL_BOOTSTRAP=${{ needs.plan.outputs.postgres_pool_bootstrap }} \
+            bash ops/deploy/production-release-a-transition.sh ci "$GITHUB_SHA"
+          npm run check:production-release-preflight
           npm run check:architecture
           npm run check:source-line-cap
           npm run check:reader-summary-weekly-production-runner

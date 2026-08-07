@@ -56,6 +56,23 @@ cannot silently skip an earlier component change.
 
 ## PostgreSQL pool bootstrap
 
+### Temporary production bootstrap Release A
+
+Release A is based exactly on `683c6ff94e964a2f268041fda462a2aa1c9eb2e2`
+and restores only the 33 changed `apps/frontend` paths to
+`cec570ce45a357d2f521c0513b39a5ecffb2222a`. Its temporary CI guard requires
+`frontend=false`, `backend=true`,
+`backend_base=4bb8f6d4969b8449726a10859202b23e2bfb4366`, `control=true`,
+`x_collector=false`, and `postgres_pool_bootstrap=postgres-pool-v1`. Thus A
+uploads no frontend bundle and cannot advance the frontend marker; it deploys
+the already-reviewed backend and control bytes from the 683 base.
+
+Release B must remove `production-release-a-transition.sh` and its workflow
+invocation, then restore exactly the same 33 frontend paths from `683c6ff...`.
+The permanent forced-wrapper cross-version test and production release
+preflight remain. Publication PostgreSQL verification remains a separate,
+mandatory CI job because it is intentionally longer-running.
+
 The first bounded-pool rollout must be two main-branch releases. The exact
 sorted sets are pinned to 18 Release A paths and 98 Release B paths in
 `postgres-pool-release-a.files` and

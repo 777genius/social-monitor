@@ -31,8 +31,5 @@ class _PublishedSummariesFeatureModuleHostState
   }
 
   @override
-  Widget build(BuildContext context) => PublishedSummaryPage(
-    store: _store,
-    onOpenWeeklySummary: widget.module.onOpenWeeklySummary,
-  );
+  Widget build(BuildContext context) => PublishedSummaryPage(store: _store);
 }
