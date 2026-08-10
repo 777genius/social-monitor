@@ -5873,8 +5873,37 @@
         ],
         "type": "object"
       },
+      "ReaderSummaryWeeklyProjectionEvidenceLimitationDto": {
+        "properties": {
+          "evidenceState": {
+            "enum": [
+              "historical_unavailable"
+            ],
+            "type": "string"
+          },
+          "providerKey": {
+            "enum": [
+              "github-trending-page"
+            ],
+            "type": "string"
+          },
+          "requestedUtcDate": {
+            "format": "date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "requestedUtcDate",
+          "providerKey",
+          "evidenceState"
+        ],
+        "type": "object"
+      },
       "ReaderSummaryWeeklyProjectionResponseDto": {
         "properties": {
+          "activeWeeklyCertifiedArtifactPresent": {
+            "type": "boolean"
+          },
           "artifact": {
             "allOf": [
               {
@@ -5898,6 +5927,12 @@
             "items": {
               "format": "date",
               "type": "string"
+            },
+            "type": "array"
+          },
+          "evidenceLimitations": {
+            "items": {
+              "$ref": "#/components/schemas/ReaderSummaryWeeklyProjectionEvidenceLimitationDto"
             },
             "type": "array"
           },
@@ -5947,6 +5982,8 @@
           "certifiedDailyEvidenceDates",
           "missingDailyEvidenceDates",
           "blockingReasons",
+          "activeWeeklyCertifiedArtifactPresent",
+          "evidenceLimitations",
           "artifact"
         ],
         "type": "object"
