@@ -37,6 +37,7 @@ void main() {
     payload['blockingReasons'] = [
       'active_weekly_certified_artifact_missing',
     ];
+    payload['activeWeeklyCertifiedArtifactPresent'] = false;
     payload['artifact'] = null;
 
     final projection = _projectionValue(
@@ -48,6 +49,7 @@ void main() {
     );
 
     expect(projection, isA<PartialWeeklySummaryProjection>());
+    expect(projection.activeWeeklyCertifiedArtifactPresent, isFalse);
   });
 
   test('validates but withholds an attached artifact for incomplete evidence', () {
@@ -69,6 +71,7 @@ void main() {
 
     expect(projection, isA<PartialWeeklySummaryProjection>());
     expect(projection, isNot(isA<CompleteWeeklySummaryProjection>()));
+    expect(projection.activeWeeklyCertifiedArtifactPresent, isTrue);
   });
 
   test('maps an unavailable projection without an artifact', () {
@@ -80,6 +83,7 @@ void main() {
       'certified_daily_evidence_incomplete',
       'active_weekly_certified_artifact_missing',
     ];
+    payload['activeWeeklyCertifiedArtifactPresent'] = false;
     payload['artifact'] = null;
 
     final projection = _projectionValue(
@@ -91,6 +95,69 @@ void main() {
     );
 
     expect(projection, isA<UnavailableWeeklySummaryProjection>());
+  });
+
+  test('maps explicit historical unavailable evidence limitations', () {
+    final payload = _completePayload();
+    payload['evidenceLimitations'] = <Map<String, Object?>>[
+      {
+        'requestedUtcDate': weeklySummaryTestWeek.utcDates.first,
+        'providerKey': 'github-trending-page',
+        'evidenceState': 'historical_unavailable',
+      },
+    ];
+
+    final projection = _projectionValue(
+      mapper.toDomain(
+        ReaderSummaryWeeklyProjectionResponseDto.fromJson(payload),
+        scope: weeklySummaryWorkspaceScope,
+        requestedWeek: weeklySummaryTestWeek,
+      ),
+    );
+
+    expect(projection.evidenceLimitations, hasLength(1));
+    expect(
+      projection.evidenceLimitations.single.evidenceState,
+      'historical_unavailable',
+    );
+  });
+
+  test('fails closed for unsupported or uncertified evidence limitations', () {
+    final unsupported = _completePayload();
+    unsupported['evidenceLimitations'] = <Map<String, Object?>>[
+      {
+        'requestedUtcDate': weeklySummaryTestWeek.utcDates.first,
+        'providerKey': 'future-provider',
+        'evidenceState': 'historical_unavailable',
+      },
+    ];
+    final uncertified = _completePayload();
+    uncertified['status'] = 'partial';
+    uncertified['certifiedDailyEvidenceDates'] = weeklySummaryTestWeek.utcDates
+        .take(6)
+        .toList();
+    uncertified['missingDailyEvidenceDates'] = [
+      weeklySummaryTestWeek.utcDates.last,
+    ];
+    uncertified['blockingReasons'] = ['certified_daily_evidence_incomplete'];
+    uncertified['evidenceLimitations'] = <Map<String, Object?>>[
+      {
+        'requestedUtcDate': weeklySummaryTestWeek.utcDates.last,
+        'providerKey': 'github-trending-page',
+        'evidenceState': 'historical_unavailable',
+      },
+    ];
+
+    for (final payload in [unsupported, uncertified]) {
+      expect(
+        mapper.toDomain(
+          ReaderSummaryWeeklyProjectionResponseDto.fromJson(payload),
+          scope: weeklySummaryWorkspaceScope,
+          requestedWeek: weeklySummaryTestWeek,
+        ),
+        isA<ResultFailure<WeeklySummaryProjection>>(),
+      );
+    }
   });
 
   test('fails closed when certification or blocking facts do not match status', () {
@@ -190,23 +257,10 @@ void main() {
     citations.add(
       Map<String, Object?>.from(citations.single)..['citationId'] = 'citation-2',
     );
-    final malformedWithheldArtifact = _completePayload();
-    malformedWithheldArtifact['status'] = 'partial';
-    malformedWithheldArtifact['certifiedDailyEvidenceDates'] =
-        weeklySummaryTestWeek.utcDates.take(6).toList();
-    malformedWithheldArtifact['missingDailyEvidenceDates'] = [
-      weeklySummaryTestWeek.utcDates.last,
-    ];
-    malformedWithheldArtifact['blockingReasons'] = [
-      'certified_daily_evidence_incomplete',
-    ];
-    _artifact(malformedWithheldArtifact)['stories'] = <Map<String, Object?>>[];
-
     for (final payload in [
       emptyStories,
       unknownCitation,
       uncitedCitation,
-      malformedWithheldArtifact,
     ]) {
       _expectFailureCode(
         mapper.toDomain(
@@ -217,6 +271,28 @@ void main() {
         'summaries.weekly_artifact_invalid',
       );
     }
+  });
+
+  test('does not inspect a suppressed partial artifact payload', () {
+    final payload = _completePayload();
+    payload['status'] = 'partial';
+    payload['certifiedDailyEvidenceDates'] = weeklySummaryTestWeek.utcDates
+        .take(6)
+        .toList();
+    payload['missingDailyEvidenceDates'] = [weeklySummaryTestWeek.utcDates.last];
+    payload['blockingReasons'] = ['certified_daily_evidence_incomplete'];
+    _artifact(payload)['stories'] = <Map<String, Object?>>[];
+
+    final projection = _projectionValue(
+      mapper.toDomain(
+        ReaderSummaryWeeklyProjectionResponseDto.fromJson(payload),
+        scope: weeklySummaryWorkspaceScope,
+        requestedWeek: weeklySummaryTestWeek,
+      ),
+    );
+
+    expect(projection, isA<PartialWeeklySummaryProjection>());
+    expect(projection, isNot(isA<CompleteWeeklySummaryProjection>()));
   });
 
   test('rejects citation userinfo before it reaches presentation', () {
@@ -272,6 +348,8 @@ Map<String, Object?> _completePayload() => <String, Object?>{
       'certifiedDailyEvidenceDates': weeklySummaryTestWeek.utcDates,
       'missingDailyEvidenceDates': <String>[],
       'blockingReasons': <String>[],
+      'activeWeeklyCertifiedArtifactPresent': true,
+      'evidenceLimitations': <Map<String, Object?>>[],
       'artifact': <String, Object?>{
         'artifactId': 'artifact-1',
         'schemaVersion': 'reader_summary.weekly_model_output.v1',

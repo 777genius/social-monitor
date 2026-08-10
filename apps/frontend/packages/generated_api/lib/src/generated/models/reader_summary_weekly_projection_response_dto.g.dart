@@ -10,6 +10,8 @@ ReaderSummaryWeeklyProjectionResponseDto
 _$ReaderSummaryWeeklyProjectionResponseDtoFromJson(
   Map<String, dynamic> json,
 ) => ReaderSummaryWeeklyProjectionResponseDto(
+  activeWeeklyCertifiedArtifactPresent:
+      json['activeWeeklyCertifiedArtifactPresent'] as bool,
   artifact: json['artifact'] == null
       ? null
       : ReaderSummaryWeeklyProjectionArtifactDto.fromJson(
@@ -18,20 +20,30 @@ _$ReaderSummaryWeeklyProjectionResponseDtoFromJson(
   blockingReasons: (json['blockingReasons'] as List<dynamic>)
       .map(
         (e) =>
-            ReaderSummaryWeeklyProjectionResponseDtoBlockingReasonsBlockingReasons
-                .fromJson(e as String),
+            ReaderSummaryWeeklyProjectionResponseDtoBlockingReasonsBlockingReasons.fromJson(
+              e as String,
+            ),
       )
       .toList(),
   certifiedDailyEvidenceDates:
       (json['certifiedDailyEvidenceDates'] as List<dynamic>)
           .map((e) => e as String)
           .toList(),
-  missingDailyEvidenceDates: (json['missingDailyEvidenceDates'] as List<dynamic>)
-      .map((e) => e as String)
+  evidenceLimitations: (json['evidenceLimitations'] as List<dynamic>)
+      .map(
+        (e) => ReaderSummaryWeeklyProjectionEvidenceLimitationDto.fromJson(
+          e as Map<String, dynamic>,
+        ),
+      )
       .toList(),
+  missingDailyEvidenceDates:
+      (json['missingDailyEvidenceDates'] as List<dynamic>)
+          .map((e) => e as String)
+          .toList(),
   schemaVersion:
-      ReaderSummaryWeeklyProjectionResponseDtoSchemaVersionSchemaVersion
-          .fromJson(json['schemaVersion'] as String),
+      ReaderSummaryWeeklyProjectionResponseDtoSchemaVersionSchemaVersion.fromJson(
+        json['schemaVersion'] as String,
+      ),
   status: ReaderSummaryWeeklyProjectionResponseDtoStatusStatus.fromJson(
     json['status'] as String,
   ),
@@ -44,9 +56,12 @@ _$ReaderSummaryWeeklyProjectionResponseDtoFromJson(
 Map<String, dynamic> _$ReaderSummaryWeeklyProjectionResponseDtoToJson(
   ReaderSummaryWeeklyProjectionResponseDto instance,
 ) => <String, dynamic>{
+  'activeWeeklyCertifiedArtifactPresent':
+      instance.activeWeeklyCertifiedArtifactPresent,
   'artifact': instance.artifact,
   'blockingReasons': instance.blockingReasons,
   'certifiedDailyEvidenceDates': instance.certifiedDailyEvidenceDates,
+  'evidenceLimitations': instance.evidenceLimitations,
   'missingDailyEvidenceDates': instance.missingDailyEvidenceDates,
   'schemaVersion': instance.schemaVersion,
   'status': instance.status,
