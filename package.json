@@ -27,7 +27,7 @@
     "check:consumed-worktree-janitor": "bash ops/maintenance/consumed-worktree-janitor.test.sh",
     "check:source-line-cap": "node scripts/check-source-line-cap.mjs",
     "check:container": "node scripts/check-container.mjs",
-    "check:production-deploy-lifecycle": "bash ops/deploy/social-monitor-production-deploy.test.sh && bash ops/deploy/reader-summary-recovery-maintenance-lib.test.sh",
+    "check:production-deploy-lifecycle": "bash ops/deploy/social-monitor-production-deploy.test.sh && bash ops/deploy/production-component-classification.test.sh && bash ops/deploy/production-release-a-transition.test.sh && bash ops/deploy/reader-summary-recovery-maintenance-lib.test.sh",
     "check:production-release-preflight": "bash ops/deploy/production-release-preflight.sh",
     "check:credential-secret-runtime-flow": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=768 -- ts-node -r tsconfig-paths/register scripts/check-credential-secret-runtime-flow.ts && node scripts/check-credential-secret-runtime-flow.mjs",
     "check:cross-process-scheduler": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-cross-process-scheduler-smoke.ts",

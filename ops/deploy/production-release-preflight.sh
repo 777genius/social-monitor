@@ -8,7 +8,7 @@ cd "$PROJECT_ROOT"
 # This command executes the repository's pinned high/critical npm audit and
 # applies its reviewed, expiring exception policy.
 npm run check:dependencies
-DATABASE_URL=${DATABASE_URL:-postgresql://preflight:preflight@127.0.0.1:5432/preflight} \
+DATABASE_URL=${DATABASE_URL:-postgresql://preflight:social_monitor_local_password@127.0.0.1:5432/preflight} \
   npm run prisma:generate
 npm run check:postgres-runtime-pool-inventory
 npm run check:postgres-runtime-pool-unit

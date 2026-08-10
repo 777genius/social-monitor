@@ -344,6 +344,18 @@ read_initial_plan() {
   write_plan_outputs
 }
 
+inspect_plan() {
+  local sha=$1 status
+  PLAN_POSTGRES_POOL_REPAIR=false
+  if capture_plan "$sha"; then
+    status=0
+  else
+    status=$?
+  fi
+  ((status == 0)) || fail "inspect-plan command failed with status $status"
+  print_plan
+}
+
 plan_is_fully_reconciled() {
   [[ $PLAN_FRONTEND == false && $PLAN_BACKEND == false && \
      $PLAN_CONTROL == false && $PLAN_X_COLLECTOR == false && \
@@ -430,6 +442,12 @@ case $action in
     validate_sha "$2"
     validate_remote_environment
     read_initial_plan "$2"
+    ;;
+  inspect-plan)
+    [[ $# == 2 ]] || fail 'inspect-plan requires a target SHA'
+    validate_sha "$2"
+    validate_remote_environment
+    inspect_plan "$2"
     ;;
   upload)
     [[ $# == 3 ]] || fail 'upload requires a target SHA and archive'

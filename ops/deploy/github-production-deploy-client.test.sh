@@ -374,6 +374,16 @@ grep -Fx 'postgres_pool_repair=true' "$GITHUB_OUTPUT" >/dev/null
 assert_call_count 2 "plan $TARGET_SHA"
 assert_call_count 1 "deploy $TARGET_SHA"
 
+# Inspection is deliberately read-only: an uninstalled bootstrap is reported
+# without invoking repair and without writing workflow outputs.
+: > "$GITHUB_OUTPUT"
+inspect_output=$(run_client atomic_success inspect-plan "$TARGET_SHA")
+grep -Fx 'postgres_pool_bootstrap=uninstalled' <<< "$inspect_output" >/dev/null
+grep -Fx 'postgres_pool_repair=false' <<< "$inspect_output" >/dev/null
+[[ ! -s $GITHUB_OUTPUT ]]
+assert_call_count 1 "plan $TARGET_SHA"
+assert_call_count 0 "deploy $TARGET_SHA"
+
 : > "$GITHUB_OUTPUT"
 run_client current_backend_missing plan "$TARGET_SHA" >/dev/null
 grep -Fx "backend_base=$CURRENT_BACKEND_SHA" "$GITHUB_OUTPUT" >/dev/null

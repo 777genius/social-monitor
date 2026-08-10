@@ -75,6 +75,7 @@ BACKEND_PATHS=(
   prisma
   vendor
   libs
+  ':(exclude)libs/contracts/rest/openapi.snapshot.json'
   apps/api-gateway
   apps/agent-runtime
   apps/ingestion-worker
