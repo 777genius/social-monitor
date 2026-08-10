@@ -26,7 +26,7 @@ import '../stores/summaries_review_store.dart';
 import '../workflows/summaries_review_store_dependencies.dart';
 
 final class SummariesFeatureModule extends Module {
-  SummariesFeatureModule()
+  SummariesFeatureModule({this.onOpenWeeklySummary})
     : generatedApiRuntime = null,
       userId = 'user-demo',
       scope = const WorkspaceScope(
@@ -38,11 +38,13 @@ final class SummariesFeatureModule extends Module {
     required this.generatedApiRuntime,
     required this.scope,
     required this.userId,
+    required this.onOpenWeeklySummary,
   });
 
   final Object? generatedApiRuntime;
   final WorkspaceScope scope;
   final String userId;
+  final void Function()? onOpenWeeklySummary;
 
   Object get retentionKey => 'summaries-${scope.tenantId}-${scope.workspaceId}';
 
