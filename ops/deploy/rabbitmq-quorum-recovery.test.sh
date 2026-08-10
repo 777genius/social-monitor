@@ -20,6 +20,8 @@ RABBITMQ_QUORUM_SNAPSHOT_RETENTION=2
 RABBITMQ_QUORUM_RECOVERY_TIMEOUT_SECONDS=3
 RABBITMQ_QUORUM_RECOVERY_SLEEP_SECONDS=1
 RABBITMQ_QUORUM_PROBE_NOPROC=64
+RABBITMQ_QUORUM_PROBE_QUEUE_NOT_FOUND=65
+RABBITMQ_QUORUM_PROBE_METADATA_NOPROC=66
 TARGET_ID=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 REPLACEMENT_ID=1111111111111111111111111111111111111111111111111111111111111111
 TARGET_IMAGE=sha256:abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd
@@ -265,6 +267,31 @@ if rabbitmq_quorum_recovery_ensure_steady >/dev/null 2>&1; then
   fail 'non-noproc incident entered automatic recovery'
 fi
 
+for rejected_source_status in 1 65; do
+  reset_state
+  SOURCE_PROBE_STATUS=$rejected_source_status
+  if rabbitmq_quorum_recovery_ensure_steady >/dev/null 2>&1; then
+    fail "source status $rejected_source_status entered automatic recovery"
+  fi
+  [[ ! -s $RESTART_LOG ]] || fail "source status $rejected_source_status restarted RabbitMQ"
+  if grep -F 'run ' "$DOCKER_CALLS" >/dev/null; then
+    fail "source status $rejected_source_status created a snapshot or clone"
+  fi
+done
+
+reset_state
+SOURCE_PROBE_STATUS=66
+if ! rabbitmq_quorum_recovery_ensure_steady; then
+  fail 'classified metadata noproc did not complete bounded recovery'
+fi
+[[ $(wc -l < "$RESTART_LOG" | tr -d '[:space:]') == 1 ]] || fail 'metadata noproc did not restart the exact target once'
+
+SOURCE_PROBE_STATUS=66
+if ! rabbitmq_quorum_recovery_ensure_steady; then
+  fail 'completed-state metadata noproc did not reinitialize bounded recovery'
+fi
+[[ $(wc -l < "$RESTART_LOG" | tr -d '[:space:]') == 2 ]] || fail 'completed-state metadata noproc did not restart once'
+
 reset_state
 FLOCK_MODE=busy
 if rabbitmq_quorum_recovery_ensure_steady >/dev/null 2>&1; then
@@ -282,6 +309,15 @@ CLONE_PROBE_STATUS=1
 if rabbitmq_quorum_recovery_ensure_steady >/dev/null 2>&1; then
   fail 'failed isolated clone was accepted'
 fi
+
+for rejected_clone_status in 64 65 66; do
+  reset_state
+  CLONE_PROBE_STATUS=$rejected_clone_status
+  if rabbitmq_quorum_recovery_ensure_steady >/dev/null 2>&1; then
+    fail "clone status $rejected_clone_status was accepted as ordinary health"
+  fi
+  [[ ! -s $RESTART_LOG ]] || fail "clone status $rejected_clone_status restarted the source"
+done
 [[ $(wc -l < "$RESTART_LOG" | tr -d '[:space:]') == 0 ]] || fail 'failed clone allowed target restart'
 if find "$RABBITMQ_QUORUM_RECOVERY_STATE_ROOT" -mindepth 1 -maxdepth 1 -type d -name 'snapshot-*' | grep -q .; then
   fail 'failed isolated clone left an unbounded candidate snapshot behind'

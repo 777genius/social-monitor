@@ -95,9 +95,14 @@ assert_real_bridge_target_assets() {
         echo 'production dispatch receipt exception is not exact' >&2
         exit 1
       }
+      [[ $(grep -Fxc "  ':(exclude)libs/contracts/rest/openapi.snapshot.json'" "$actual_real") == 1 ]] || {
+        echo 'OpenAPI snapshot backend-classification exception is not exact' >&2
+        exit 1
+      }
       actual_digest=$(sed \
         -e 's/|reader-summary-daily-terminal-set-receipt-v1//' \
         -e 's/, reader-summary-daily-terminal-set-receipt-v1//' \
+        -e "/  ':(exclude)libs\/contracts\/rest\/openapi.snapshot.json'/d" \
         "$actual_real" | sha256sum | awk '{print $1}')
     fi
     [[ $actual_digest == "$expected_digest" ]] || {

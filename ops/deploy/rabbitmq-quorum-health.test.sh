@@ -14,6 +14,16 @@ TARGET_HOSTNAME=rabbitmq-fixture
 DOCKER_CALLS=$FIXTURE/docker-calls
 QUEUE_MODE=healthy
 CLUSTER_MODE=healthy
+METADATA_INIT_STATUS=0
+METADATA_INIT_OUTPUT="Metadata store on node rabbit@$TARGET_HOSTNAME has completed its initialization"
+METADATA_DATA_STATUS=69
+METADATA_DATA_OUTPUT=$'Error:\nnoproc'
+METADATA_STATUS_STATUS=0
+METADATA_STATUS_OUTPUT='[]'
+VHOST_STATUS=0
+VHOST_OUTPUT=''
+LISTENERS_STATUS=0
+LISTENERS_OUTPUT="Node rabbit@$TARGET_HOSTNAME reported no enabled listeners."
 WORKER_MODE=healthy
 WORKER_ID=abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd
 
@@ -91,26 +101,78 @@ docker() {
       [[ $2 == "$TARGET_ID" ]] || return 95
       case $3 in
         rabbitmq-diagnostics)
-          [[ $4 == cluster_status && $5 == --formatter && $6 == json ]] || return 96
-          case $CLUSTER_MODE in
-            healthy) cluster_status_json ;;
-            alarm) cluster_status_json | sed 's/"alarms":\[\]/"alarms":["memory"]/' ;;
-            partition) cluster_status_json | sed 's/"partitions":{}/"partitions":{"rabbit@other":["rabbit@fixture"]}/' ;;
-            version) cluster_status_json | sed 's/"rabbitmq_version":"4.3.2"/"rabbitmq_version":"4.3.1"/' ;;
-            malformed) printf '%s\n' '{"running_nodes":[]}' ;;
-            *) fail "unknown cluster mode: $CLUSTER_MODE" ;;
+          case $4 in
+            cluster_status)
+              [[ $5 == --formatter && $6 == json ]] || return 96
+              case $CLUSTER_MODE in
+                healthy) cluster_status_json ;;
+                alarm) cluster_status_json | sed 's/"alarms":\[\]/"alarms":["memory"]/' ;;
+                partition) cluster_status_json | sed 's/"partitions":{}/"partitions":{"rabbit@other":["rabbit@fixture"]}/' ;;
+                version) cluster_status_json | sed 's/"rabbitmq_version":"4.3.2"/"rabbitmq_version":"4.3.1"/' ;;
+                malformed) printf '%s\n' '{"running_nodes":[]}' ;;
+                *) fail "unknown cluster mode: $CLUSTER_MODE" ;;
+              esac
+              ;;
+            metadata_store_status)
+              [[ $5 == --formatter && $6 == json ]] || return 96
+              printf '%s\n' "$METADATA_STATUS_OUTPUT"
+              return "$METADATA_STATUS_STATUS"
+              ;;
+            -q)
+              (($# == 5)) || return 96
+              case $5 in
+                check_if_metadata_store_is_initialized)
+                  printf '%s\n' "$METADATA_INIT_OUTPUT"
+                  return "$METADATA_INIT_STATUS"
+                  ;;
+                check_if_metadata_store_is_initialized_with_data)
+                  printf '%s\n' "$METADATA_DATA_OUTPUT"
+                  return "$METADATA_DATA_STATUS"
+                  ;;
+                listeners)
+                  printf '%s\n' "$LISTENERS_OUTPUT"
+                  return "$LISTENERS_STATUS"
+                  ;;
+                *) return 96 ;;
+              esac
+              ;;
+            *) return 96 ;;
           esac
           ;;
         rabbitmq-queues)
-          [[ $4 == quorum_status && $5 == --vhost && $6 == / && $8 == --formatter && $9 == json ]] || return 97
+          [[ $4 == quorum_status && $5 == --vhost && $6 == "$RABBITMQ_QUORUM_HEALTH_VHOST" && $8 == --formatter && $9 == json ]] || return 97
           case $QUEUE_MODE in
             healthy) quorum_status_json ;;
             noproc) quorum_noproc_json ;;
+            not-found)
+              printf "queue '%s' was not found in virtual host '/'\n" "$7"
+              return 65
+              ;;
+            not-found-malformed)
+              printf "Queue '%s' was not found in virtual host '/'\n" "$7"
+              return 65
+              ;;
+            not-found-wrong-exit)
+              printf "queue '%s' was not found in virtual host '/'\n" "$7"
+              return 64
+              ;;
+            not-found-mixed)
+              if [[ $7 == events.delivery.summary.ready ]]; then
+                return 65
+              fi
+              printf "queue '%s' was not found in virtual host '/'\n" "$7"
+              return 65
+              ;;
             malformed) printf '%s\n' '[{"node":"rabbit@fixture"}]' ;;
             no-leader) quorum_status_json | sed 's/"Raft State":"leader"/"Raft State":"follower"/' ;;
             non-voter) quorum_status_json | sed 's/"Membership":"voter"/"Membership":"promotable"/' ;;
             *) fail "unknown queue mode: $QUEUE_MODE" ;;
           esac
+          ;;
+        rabbitmqctl)
+          [[ $4 == -q && $5 == list_vhosts && $6 == name ]] || return 98
+          [[ -z $VHOST_OUTPUT ]] || printf '%s\n' "$VHOST_OUTPUT"
+          return "$VHOST_STATUS"
           ;;
         *) return 98 ;;
       esac
@@ -135,6 +197,21 @@ assert_steady_rejected() {
   fi
 }
 
+reset_metadata_fingerprint() {
+  RABBITMQ_QUORUM_HEALTH_VHOST=/
+  METADATA_INIT_STATUS=0
+  METADATA_INIT_OUTPUT="Metadata store on node rabbit@$TARGET_HOSTNAME has completed its initialization"
+  METADATA_DATA_STATUS=69
+  METADATA_DATA_OUTPUT=$'Error:\nnoproc'
+  METADATA_STATUS_STATUS=0
+  METADATA_STATUS_OUTPUT='[]'
+  VHOST_STATUS=0
+  VHOST_OUTPUT=''
+  LISTENERS_STATUS=0
+  LISTENERS_OUTPUT="Node rabbit@$TARGET_HOSTNAME reported no enabled listeners."
+  : > "$DOCKER_CALLS"
+}
+
 : > "$DOCKER_CALLS"
 assert_probe_status 0
 grep -Fx "ps --no-trunc --filter label=com.docker.compose.project=$PROJECT --filter label=com.docker.compose.service=rabbitmq --format {{.ID}}" "$DOCKER_CALLS" >/dev/null
@@ -145,6 +222,44 @@ grep -F "exec $TARGET_ID rabbitmq-queues quorum_status --vhost / events.delivery
 QUEUE_MODE=noproc
 assert_probe_status "$RABBITMQ_QUORUM_PROBE_NOPROC"
 assert_steady_rejected
+
+QUEUE_MODE=not-found
+reset_metadata_fingerprint
+assert_probe_status "$RABBITMQ_QUORUM_PROBE_METADATA_NOPROC"
+[[ $(grep -c 'check_if_metadata_store_is_initialized_with_data' "$DOCKER_CALLS") == 1 ]] || fail 'metadata fingerprint was not run exactly once'
+grep -Fx "exec $TARGET_ID rabbitmq-diagnostics -q check_if_metadata_store_is_initialized" "$DOCKER_CALLS" >/dev/null || fail 'metadata initialization check did not use exact quiet argv'
+grep -Fx "exec $TARGET_ID rabbitmq-diagnostics -q check_if_metadata_store_is_initialized_with_data" "$DOCKER_CALLS" >/dev/null || fail 'metadata-with-data check did not use exact quiet argv'
+grep -Fx "exec $TARGET_ID rabbitmq-diagnostics -q listeners" "$DOCKER_CALLS" >/dev/null || fail 'listeners check did not use exact quiet argv'
+
+for deviation in vhost init-exit init-hostname data-exit data-output status-exit status-output vhosts-exit vhosts-output listeners-exit listeners-hostname; do
+  reset_metadata_fingerprint
+  case $deviation in
+    vhost) RABBITMQ_QUORUM_HEALTH_VHOST=/other ;;
+    init-exit) METADATA_INIT_STATUS=1 ;;
+    init-hostname) METADATA_INIT_OUTPUT='Metadata store on node rabbit@other has completed its initialization' ;;
+    data-exit) METADATA_DATA_STATUS=68 ;;
+    data-output) METADATA_DATA_OUTPUT='noproc' ;;
+    status-exit) METADATA_STATUS_STATUS=1 ;;
+    status-output) METADATA_STATUS_OUTPUT='{}' ;;
+    vhosts-exit) VHOST_STATUS=1 ;;
+    vhosts-output) VHOST_OUTPUT=/ ;;
+    listeners-exit) LISTENERS_STATUS=1 ;;
+    listeners-hostname) LISTENERS_OUTPUT='Node rabbit@other reported no enabled listeners.' ;;
+  esac
+  assert_probe_status 1
+  if grep -E '^(run|restart) ' "$DOCKER_CALLS" >/dev/null; then
+    fail "$deviation metadata deviation reached a recovery action"
+  fi
+done
+
+reset_metadata_fingerprint
+for QUEUE_MODE in not-found-malformed not-found-wrong-exit not-found-mixed; do
+  assert_probe_status 1
+  if grep -F 'check_if_metadata_store_is_initialized' "$DOCKER_CALLS" >/dev/null; then
+    fail "$QUEUE_MODE queue result reached the metadata fingerprint"
+  fi
+  : > "$DOCKER_CALLS"
+done
 
 QUEUE_MODE=healthy
 for CLUSTER_MODE in alarm partition version malformed; do
@@ -175,6 +290,12 @@ fi
 
 if RABBITMQ_QUORUM_HEALTH_QUEUES='jobs.good,,jobs.bad' rabbitmq_quorum_health_queue_names >/dev/null 2>&1; then
   fail 'queue inventory accepted an empty queue name'
+fi
+if RABBITMQ_QUORUM_HEALTH_QUEUES='jobs.one,jobs.two,jobs.three,jobs.four,jobs/five' rabbitmq_quorum_health_queue_names >/dev/null 2>&1; then
+  fail 'queue inventory accepted an unsafe queue name'
+fi
+if RABBITMQ_QUORUM_HEALTH_QUEUES='jobs.one,jobs.two,jobs.three,jobs.four,jobs.four' rabbitmq_quorum_health_queue_names >/dev/null 2>&1; then
+  fail 'queue inventory accepted duplicate queue names'
 fi
 
 echo 'RabbitMQ quorum health contract tests passed'
