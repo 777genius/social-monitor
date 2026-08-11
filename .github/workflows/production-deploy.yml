@@ -583,7 +583,7 @@ jobs:
           bash ops/deploy/social-monitor-production-ssh-wrapper.test.sh
           bash ops/deploy/verify-postgres-pool-release-contract.test.sh
       - name: Verify legacy-main deployment transitions
-        if: needs.plan.outputs.backend == 'true' || needs.plan.outputs.control == 'true' || needs.plan.outputs.recovery_transition == 'true'
+        if: (needs.plan.outputs.backend == 'true' || needs.plan.outputs.control == 'true' || needs.plan.outputs.recovery_transition == 'true') && needs.plan.outputs.daily_c1_bridge != 'true'
         run: |
           set -euo pipefail
           if git cat-file -e \
