@@ -370,8 +370,10 @@ daily_runner_image_bootstrap_before_rescue() (
   local compose_tag state_file partial phase manifest_target
   local dockerfile_digest dockerfile_digest_after base_id base_id_after
   local workdir='' archive='' context='' temporary_tag='' candidate_id=''
+  local base_alias_tag=''
   local identity config singleton_fd revision extra
   local compose_created=false completed=false temporary_owned=false
+  local base_alias_created=false
 
   compose_tag=$(compose_image_name daily-runner)
   if backend_image_rescue_image_id "$compose_tag" >/dev/null; then
@@ -426,6 +428,10 @@ daily_runner_image_bootstrap_before_rescue() (
       daily_runner_bootstrap_remove_tag \
         "$temporary_tag" "$candidate_id" || cleanup_status=1
     fi
+    if [[ $base_alias_created == true ]]; then
+      daily_runner_bootstrap_remove_tag \
+        "$base_alias_tag" "$base_id" || cleanup_status=1
+    fi
     daily_runner_bootstrap_remove_workdir \
       "$workdir" "$previous_sha" || cleanup_status=1
     if ((cleanup_status != 0)); then
@@ -458,6 +464,16 @@ daily_runner_image_bootstrap_before_rescue() (
     fail 'daily-runner Dockerfile could not be validated'
   base_id=$(daily_runner_bootstrap_base_image_id "$previous_sha") || \
     fail 'daily-runner base image could not be validated'
+  base_alias_tag=$(compose_image_name intelligence-worker)
+  [[ $base_alias_tag == social-monitor-prod-intelligence-worker:latest ]] || \
+    fail 'daily-runner build base alias is unexpected'
+  if ! backend_image_rescue_image_id "$base_alias_tag" >/dev/null; then
+    docker image tag "$base_id" "$base_alias_tag" >/dev/null || \
+      fail 'daily-runner build base alias could not be created'
+    base_alias_created=true
+    [[ $(backend_image_rescue_image_id "$base_alias_tag") == "$base_id" ]] || \
+      fail 'daily-runner build base alias identity is unexpected'
+  fi
   daily_runner_bootstrap_create_archive "$previous_sha" "$archive" || \
     fail 'historical daily-runner archive could not be created'
   chmod 0600 "$archive" || fail 'historical daily-runner archive mode failed'
@@ -504,6 +520,11 @@ daily_runner_image_bootstrap_before_rescue() (
   daily_runner_bootstrap_remove_tag "$temporary_tag" "$candidate_id" || \
     fail 'historical daily-runner temporary tag cleanup failed'
   temporary_owned=false
+  if [[ $base_alias_created == true ]]; then
+    daily_runner_bootstrap_remove_tag "$base_alias_tag" "$base_id" || \
+      fail 'daily-runner build base alias cleanup failed'
+    base_alias_created=false
+  fi
   daily_runner_bootstrap_remove_workdir "$workdir" "$previous_sha" || \
     fail 'historical daily-runner context cleanup failed'
   workdir=

@@ -242,6 +242,7 @@ docker() {
         "$LEGACY_RUNTIME_CONTAINER_NUMBER"
       ;;
     build:*)
+      [[ -n $(lookup_id "$BASE_TAG") ]] || return 72
       shift
       while (($# > 0)); do
         argument=$1
@@ -304,6 +305,11 @@ docker() {
       destination=$4
       image_id=$(lookup_id "$source")
       revision=$(lookup_revision "$source")
+      if [[ -z $image_id && $source == "$BASE_ID" ]]; then
+        image_id=$BASE_ID
+        revision=$(awk -F '\t' -v image_id="$BASE_ID" \
+          '$2 == image_id { print $3; exit }' "$REFS")
+      fi
       [[ -n $image_id ]] || return 1
       set_ref "$destination" "$image_id" "$revision"
       if [[ $SIGNAL_AFTER_INSTALL == true ]]; then
@@ -619,6 +625,26 @@ grep -F $'docker\timage inspect social-monitor-prod-intelligence-worker:latest' 
 grep -F $'docker\timage inspect social-monitor-prod-api:latest' \
   "$EVENTS" >/dev/null
 assert_events_exclude $'config-id\tsocial-monitor-prod-api:latest'
+
+reset_case
+remove_ref "$BASE_TAG"
+set_ref "$FALLBACK_BASE_TAG" "$BASE_ID" "$PREVIOUS_SHA"
+daily_runner_image_bootstrap_before_rescue "$PREVIOUS_SHA" "$TARGET_SHA"
+[[ $(lookup_id "$COMPOSE_TAG") == "$CANDIDATE_ID" ]]
+[[ -z $(lookup_id "$BASE_TAG") ]]
+[[ $(lookup_id "$FALLBACK_BASE_TAG") == "$BASE_ID" ]]
+[[ $(grep -c $'^docker\timage tag' "$EVENTS") == 2 ]]
+assert_no_temporary_state
+
+reset_case
+remove_ref "$BASE_TAG"
+set_ref "$FALLBACK_BASE_TAG" "$BASE_ID" "$PREVIOUS_SHA"
+BUILD_FAILURE=true
+assert_fails_with 'historical daily-runner image build failed' \
+  daily_runner_image_bootstrap_before_rescue "$PREVIOUS_SHA" "$TARGET_SHA"
+[[ -z $(lookup_id "$BASE_TAG") ]]
+[[ $(lookup_id "$FALLBACK_BASE_TAG") == "$BASE_ID" ]]
+assert_no_temporary_state
 
 reset_case
 set_ref "$BASE_TAG" "$BASE_ID" '<no value>'
