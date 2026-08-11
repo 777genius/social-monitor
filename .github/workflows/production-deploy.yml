@@ -370,7 +370,17 @@ jobs:
           fi
           npm ci
           bash ops/deploy/production-release-a-transition.sh validate "$GITHUB_SHA"
-          npm run check:production-release-preflight
+          source ops/deploy/deploy-control-bridge-lib.sh
+          [[ $DAILY_C1_BRIDGE =~ ^(true|false)$ ]] || {
+            echo 'daily C1 bridge plan output is invalid' >&2
+            exit 1
+          }
+          bridge_phase=$DAILY_C1_BRIDGE
+          if [[ $bridge_phase == false ]]; then
+            npm run check:production-release-preflight
+          else
+            echo 'backend-gate=production-release-preflight deferred-to-final-runtime-release'
+          fi
           npm run check:architecture
           npm run check:source-line-cap
           npm run check:reader-summary-weekly-production-runner
@@ -386,12 +396,6 @@ jobs:
           npm run check:backup-restore
           npm run prisma:generate
           npm run build
-          source ops/deploy/deploy-control-bridge-lib.sh
-          [[ $DAILY_C1_BRIDGE =~ ^(true|false)$ ]] || {
-            echo 'daily C1 bridge plan output is invalid' >&2
-            exit 1
-          }
-          bridge_phase=$DAILY_C1_BRIDGE
           if [[ $BACKEND_CHANGED == true ]]; then
             npm run check:postgres-runtime-pool-inventory
             if [[ $bridge_phase == false ]]; then
