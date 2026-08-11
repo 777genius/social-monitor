@@ -101,6 +101,8 @@ grep -F 'shellcheck -S warning -x "${deploy_shell_files[@]}"' \
   "$workflow" >/dev/null || fail 'workflow treats informational shellcheck findings as release failures'
 grep -F "needs.plan.outputs.daily_c1_bridge != 'true'" \
   "$workflow" >/dev/null || fail 'bridge does not defer final-only legacy transition fixtures'
+[[ $(grep -Fc "needs.plan.outputs.daily_c1_bridge != 'true'" "$workflow") == 9 ]] || \
+  fail 'bridge must defer exactly the publication, frontend and legacy final-only gates'
 ! grep -F 'daily C1 bridge classification is not control-only' "$workflow" >/dev/null || \
   fail 'workflow confused live pending components with the control-only bridge diff'
 
