@@ -741,15 +741,13 @@ jobs:
           DEPLOY_KEY: ${{ secrets.PRODUCTION_SSH_PRIVATE_KEY }}
           KNOWN_HOSTS: ${{ secrets.PRODUCTION_SSH_KNOWN_HOSTS }}
         run: bash ops/deploy/github-production-deploy-client.sh configure
-      - name: Install the daily-runner alias bridge and deploy the daily C1 target
+      - name: Deploy the daily C1 target through the alias-aware controller
         if: needs.plan.outputs.daily_c1_bridge == 'true'
         env:
           DEPLOY_HOST: ${{ vars.PRODUCTION_SSH_HOST }}
           DEPLOY_USER: ${{ vars.PRODUCTION_SSH_USER }}
         run: |
           set -euo pipefail
-          alias_bridge=2bea3af85faad4b31603c61e1c813e16ec15acff
-          bash ops/deploy/github-production-deploy-client.sh deploy "$alias_bridge"
           bash ops/deploy/github-production-deploy-client.sh deploy "$GITHUB_SHA"
       - name: Freshly inspect after bounded repair
         id: recovery_state

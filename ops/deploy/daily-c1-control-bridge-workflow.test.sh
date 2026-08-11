@@ -44,8 +44,8 @@ bridge_paths=()
 while IFS= read -r bridge_path; do
   bridge_paths+=("$bridge_path")
 done < <(deploy_control_daily_c1_bridge_release_paths)
-[[ ${#bridge_paths[@]} == 19 ]] || fail 'daily C1 bridge release manifest count drifted'
-[[ $(printf '%s\n' "${bridge_paths[@]}" | LC_ALL=C sort -u | wc -l | tr -d ' ') == 19 ]] || \
+[[ ${#bridge_paths[@]} == 20 ]] || fail 'daily C1 bridge release manifest count drifted'
+[[ $(printf '%s\n' "${bridge_paths[@]}" | LC_ALL=C sort -u | wc -l | tr -d ' ') == 20 ]] || \
   fail 'daily C1 bridge release manifest contains duplicates'
 for path in "${bridge_paths[@]}"; do
   install -d "$REPO/$(dirname "$path")"
@@ -105,10 +105,8 @@ grep -F "needs.plan.outputs.daily_c1_bridge != 'true'" \
   "$workflow" >/dev/null || fail 'bridge does not defer final-only legacy transition fixtures'
 [[ $(grep -Fc "needs.plan.outputs.daily_c1_bridge != 'true'" "$workflow") == 9 ]] || \
   fail 'bridge must defer exactly the publication, frontend and legacy final-only gates'
-grep -F 'Install the daily-runner alias bridge and deploy the daily C1 target' \
-  "$workflow" >/dev/null || fail 'bridge does not install its alias helper before the target'
-grep -F 'alias_bridge=2bea3af8' \
-  "$workflow" >/dev/null || fail 'daily-runner alias bridge is not pinned to its reviewed commit'
+grep -F 'Deploy the daily C1 target through the alias-aware controller' \
+  "$workflow" >/dev/null || fail 'bridge does not run through the installed alias-aware controller'
 grep -F 'bash ops/deploy/github-production-deploy-client.sh deploy "$GITHUB_SHA"' \
   "$workflow" >/dev/null || fail 'daily C1 bridge bypasses the reviewed deploy client'
 ! grep -F 'daily C1 bridge classification is not control-only' "$workflow" >/dev/null || \

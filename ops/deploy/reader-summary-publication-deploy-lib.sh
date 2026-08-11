@@ -15,11 +15,30 @@ READER_SUMMARY_PUBLICATION_DATABASE_HOST=dbaas-db-8050451-do-user-39622063-0.e.d
 READER_SUMMARY_PUBLICATION_DATABASE_PORT=25060
 READER_SUMMARY_PUBLICATION_VALIDATION_ATTEMPTS=3
 READER_SUMMARY_PUBLICATION_VALIDATION_RETRY_SECONDS=2
-# shellcheck source=ops/deploy/reader-summary-publication-system-dsn-bootstrap-lib.sh
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/reader-summary-publication-system-dsn-bootstrap-lib.sh"
-if [[ -f $(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/reader-summary-original-cutoff-correction-lib.sh ]]; then
-  # shellcheck source=ops/deploy/reader-summary-original-cutoff-correction-lib.sh
-  source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/reader-summary-original-cutoff-correction-lib.sh"
+if declare -F source_reviewed_deploy_library >/dev/null && \
+   [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} != 1 ]]; then
+  reader_summary_publication_support_sha=$(git -C "$REPO" rev-parse HEAD) || \
+    fail 'publication support commit cannot be resolved'
+  source_reviewed_deploy_library "$reader_summary_publication_support_sha" \
+    ops/deploy/reader-summary-publication-system-dsn-bootstrap-lib.sh \
+    'reader summary publication system DSN bootstrap library'
+  if git -C "$REPO" cat-file -e \
+      "$reader_summary_publication_support_sha:ops/deploy/reader-summary-original-cutoff-correction-lib.sh" \
+      2>/dev/null; then
+    source_reviewed_deploy_library "$reader_summary_publication_support_sha" \
+      ops/deploy/reader-summary-original-cutoff-correction-lib.sh \
+      'reader summary original cutoff correction library'
+  fi
+  unset reader_summary_publication_support_sha
+else
+  reader_summary_publication_support_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+  # shellcheck source=ops/deploy/reader-summary-publication-system-dsn-bootstrap-lib.sh
+  source "$reader_summary_publication_support_dir/reader-summary-publication-system-dsn-bootstrap-lib.sh"
+  if [[ -f $reader_summary_publication_support_dir/reader-summary-original-cutoff-correction-lib.sh ]]; then
+    # shellcheck source=ops/deploy/reader-summary-original-cutoff-correction-lib.sh
+    source "$reader_summary_publication_support_dir/reader-summary-original-cutoff-correction-lib.sh"
+  fi
+  unset reader_summary_publication_support_dir
 fi
 
 # This file is the authenticated target-publication wrapper loaded by the
