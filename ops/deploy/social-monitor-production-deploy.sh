@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 set -euo pipefail
-
 PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 
 if [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} == 1 ]]; then
@@ -93,7 +92,7 @@ BACKEND_PATHS=(
   ops/deploy/backend-runtime-health-lib.sh
   ops/deploy/rabbitmq-quorum-health.sh
   ops/deploy/rabbitmq-quorum-recovery.sh
-  ops/deploy/reader-summary-publication-deploy-lib.sh ops/deploy/reader-summary-publication-system-dsn-bootstrap-lib.sh
+  ops/deploy/reader-summary-publication-deploy-lib.sh ops/deploy/reader-summary-publication-system-dsn-bootstrap-lib.sh ops/deploy/reader-summary-publication-system-runtime-deploy-lib.sh
   ops/deploy/reader-summary-publication-pre-migration.sql
   ops/deploy/reader-summary-publication-post-migration.sql
   test
@@ -106,12 +105,16 @@ CONTROL_PATHS=(
 )
 
 RUNTIME_CONTROL_PATHS=(
+  ops/deploy/production-runtime/daily-c1-runtime.sh
   ops/deploy/production-runtime/daily-run.sh
+  ops/deploy/production-runtime/reader-summary-daily-c1.readiness
+  ops/deploy/postgres-runtime-daily-c1-readiness-lib.sh ops/deploy/postgres-runtime-weekly-timer-state-lib.sh ops/deploy/postgres-runtime-activation-boundary-lib.sh
   ops/deploy/production-runtime/github-premidnight-capture-v1.activation
   ops/deploy/production-runtime/github-premidnight-capture-v1.sh
   ops/deploy/production-runtime/social-monitor-github-premidnight-capture-v1.service
   ops/deploy/production-runtime/social-monitor-github-premidnight-capture-v1.timer
-  ops/deploy/production-runtime/social-monitor-daily.service
+  ops/deploy/production-runtime/social-monitor-daily.service ops/deploy/production-runtime/social-monitor-daily.timer
+  ops/deploy/production-runtime/social-monitor-reader-summary-production-day.service.d-10-daily-c1-owner.conf
   ops/deploy/production-runtime/social-monitor-weekly.service ops/deploy/production-runtime/social-monitor-weekly.timer
 )
 COMPOSE=(
@@ -184,9 +187,6 @@ validate_main_commit() {
 }
 
 : "$POSTGRES_RUNTIME_RELEASES" "$SYSTEMD_UNIT_DIR" "$DAILY_SINGLETON_LOCK"
-# The installed entrypoint intentionally loads the current integration
-# libraries before advance_integration. A bridge release must install these
-# control functions before a later release changes runtime-control assets.
 DEPLOY_CONTROL_LIBRARY_AVAILABLE=false
 if [[ -f $REPO/ops/deploy/deploy-control-lib.sh ]]; then
   # shellcheck source=ops/deploy/deploy-control-lib.sh
@@ -228,14 +228,16 @@ source "$REPO/ops/deploy/backend-runtime-health-lib.sh"
 # shellcheck source=ops/deploy/backend-image-rescue-lib.sh
 source "$REPO/ops/deploy/backend-image-rescue-lib.sh"
 source_deploy_library() {
-  local library=$1 label=$2 path
-  path=$REPO/ops/deploy/$library
-  if [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} == 1 && ! -f $path ]]; then
-    path=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$library
+  local library=$1 label=$2 path=$REPO/ops/deploy/$1 reviewed_sha
+  if [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} == 1 ]]; then
+    [[ -f $path && ! -L $path ]] || path=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$library
+    [[ -f $path && ! -L $path ]] || fail "$label is not a regular file"
+    # shellcheck source=/dev/null
+    source "$path"
+    return
   fi
-  [[ -f $path && ! -L $path ]] || fail "$label is not a regular file"
-  # shellcheck source=/dev/null
-  source "$path"
+  reviewed_sha=$(git -C "$REPO" rev-parse --verify 'HEAD^{commit}') || fail "$label reviewed integration commit is unavailable"
+  source_reviewed_deploy_library "$reviewed_sha" "ops/deploy/$library" "$label"
 }
 source_deploy_library docker-maintenance-lib.sh 'docker maintenance library'
 # Ordering marker for legacy fixture checks: source "$daily_runner_bootstrap_library".
@@ -889,7 +891,7 @@ deploy_release_runtime_transaction() {
   set +e
   (
     set -euo pipefail
-    activate_postgres_runtime_control "$sha" "$compatible_backend_sha"
+    activate_postgres_runtime_control "$sha" "$compatible_backend_sha" "$runtime_control_backup"
     verify_compose_scope
     if [[ $backend == true ]]; then
       deploy_backend "$sha"
@@ -902,7 +904,7 @@ deploy_release_runtime_transaction() {
   fi
   trap - HUP INT TERM
   if ((activation_status != 0)); then
-    rollback_backend_and_runtime_control \
+    rollback_backend_and_postgres_runtime_control \
       "$backend" "$previous_images" "$runtime_control_backup" || rollback_status=$?
     if ((rollback_status != 0)); then
       fail 'release failed; rollback is incomplete and rescue tags were preserved'
@@ -988,8 +990,11 @@ case ${action:-} in
   deploy) deploy_release "$sha" ;;
   disk-report) print_docker_disk_report ;;
   project-disk-cleanup) cleanup_project_docker_storage ;;
-  reader-summary-recover-missing-days|reader-summary-weekly-run|reader-summary-daily-terminal-set-receipt-v1)
+  reader-summary-recover-missing-days|reader-summary-weekly-run|reader-summary-daily-terminal-set-receipt-v1|reader-summary-daily-scan-terminal-preimage-c1)
     run_reader_summary_daily_runner_maintenance "$action"
     ;;
-  *) fail 'allowed commands: plan, upload, deploy, disk-report, project-disk-cleanup, reader-summary-recover-missing-days, reader-summary-weekly-run, reader-summary-daily-terminal-set-receipt-v1' ;;
+  reader-summary-daily-scan-terminal-repair-c1) run_reader_summary_daily_scan_terminal_repair_c1_from_stdin ;;
+  reader-summary-daily-delivery-c1-run) run_reader_summary_daily_delivery_c1 "$sha" ;;
+  reader-summary-daily-delivery-c1-contain) run_reader_summary_daily_delivery_c1_containment "$sha" ;;
+  *) fail 'command is not in the reviewed production allowlist' ;;
 esac

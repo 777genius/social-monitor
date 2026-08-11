@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+PROJECT_ROOT=$(cd "$SCRIPT_DIR/../.." && pwd)
+FIXTURE=$(mktemp -d "${TMPDIR:-/tmp}/daily-c1-control-bridge.XXXXXX")
+trap 'rm -rf "$FIXTURE"' EXIT
+REPO=$FIXTURE/repo
+
+fail() {
+  printf 'daily-c1-bridge-test-error: %s\n' "$*" >&2
+  exit 1
+}
+
+# shellcheck source=ops/deploy/deploy-control-bridge-lib.sh
+source "$SCRIPT_DIR/deploy-control-bridge-lib.sh"
+
+expected_sealed_paths=$(cat <<'PATHS'
+ops/deploy/backend-image-rescue-lib.sh
+ops/deploy/deploy-control-bridge-lib.sh
+ops/deploy/deploy-control-lib.sh
+ops/deploy/postgres-runtime-activation-boundary-lib.sh
+ops/deploy/postgres-runtime-daily-c1-readiness-lib.sh
+ops/deploy/postgres-runtime-deploy-lib.sh
+ops/deploy/postgres-runtime-weekly-timer-state-lib.sh
+ops/deploy/reader-summary-recovery-maintenance-lib.sh
+ops/deploy/social-monitor-production-deploy.sh
+ops/deploy/x-collector-image-deploy-lib.sh
+PATHS
+)
+actual_sealed_paths=$(deploy_control_bridge_sealed_paths | LC_ALL=C sort)
+[[ $actual_sealed_paths == "$expected_sealed_paths" ]] || \
+  fail 'sealed source path manifest is not exact'
+
+git init -q -b main "$REPO"
+git -C "$REPO" config user.name 'Daily C1 bridge workflow test'
+git -C "$REPO" config user.email daily-c1-bridge@example.invalid
+printf 'canonical B2 fixture\n' > "$REPO/base"
+git -C "$REPO" add base
+git -C "$REPO" commit -qm 'test: seed canonical B2 fixture'
+base=$(git -C "$REPO" rev-parse HEAD)
+
+bridge_paths=()
+while IFS= read -r bridge_path; do
+  bridge_paths+=("$bridge_path")
+done < <(deploy_control_daily_c1_bridge_release_paths)
+[[ ${#bridge_paths[@]} == 16 ]] || fail 'daily C1 bridge release manifest count drifted'
+[[ $(printf '%s\n' "${bridge_paths[@]}" | LC_ALL=C sort -u | wc -l | tr -d ' ') == 16 ]] || \
+  fail 'daily C1 bridge release manifest contains duplicates'
+for path in "${bridge_paths[@]}"; do
+  install -d "$REPO/$(dirname "$path")"
+  printf 'reviewed bridge fixture: %s\n' "$path" > "$REPO/$path"
+done
+git -C "$REPO" add .
+git -C "$REPO" commit -qm 'test: exact daily C1 control bridge'
+exact_bridge=$(git -C "$REPO" rev-parse HEAD)
+
+expected_diff=$(printf '%s\n' "${bridge_paths[@]}" | LC_ALL=C sort)
+actual_diff=$(git -C "$REPO" diff --name-only --no-renames \
+  "$base" "$exact_bridge" -- | LC_ALL=C sort)
+[[ $actual_diff == "$expected_diff" ]] || fail 'fixture diff is not byte-exact manifest'
+deploy_control_is_exact_daily_c1_bridge_release "$base" "$exact_bridge" || \
+  fail 'exact B2 bridge diff was not detected'
+[[ $(deploy_control_daily_c1_bridge_classification) == \
+  $'frontend=false\nbackend=false\ncontrol=true' ]] || \
+  fail 'daily C1 bridge classification is not exact control-only output'
+
+install -d "$REPO/ops/deploy/production-runtime"
+printf 'forbidden final runtime asset\n' > \
+  "$REPO/ops/deploy/production-runtime/reader-summary-daily-c1.readiness"
+git -C "$REPO" add .
+git -C "$REPO" commit -qm 'test: add final asset to bridge'
+asset_target=$(git -C "$REPO" rev-parse HEAD)
+if deploy_control_is_exact_daily_c1_bridge_release "$base" "$asset_target"; then
+  fail 'bridge detector admitted a final runtime asset'
+fi
+
+git -C "$REPO" checkout -q "$exact_bridge"
+rm "$REPO/${bridge_paths[1]}"
+git -C "$REPO" add -A
+git -C "$REPO" commit -qm 'test: remove one manifest path'
+missing_target=$(git -C "$REPO" rev-parse HEAD)
+if deploy_control_is_exact_daily_c1_bridge_release "$base" "$missing_target"; then
+  fail 'bridge detector admitted a missing manifest path'
+fi
+
+workflow=$PROJECT_ROOT/.github/workflows/production-deploy.yml
+grep -F 'daily_c1_bridge_base=e3b5b5d89b3586668e36f987f03672415b5a0f37' \
+  "$workflow" >/dev/null
+[[ $(grep -Fc 'deploy_control_is_exact_daily_c1_bridge_release' "$workflow") == 2 ]] || \
+  fail 'workflow must enforce exact B2 detection in plan and verification'
+grep -F 'deploy_control_daily_c1_bridge_classification' "$workflow" >/dev/null
+
+printf 'daily C1 control bridge workflow tests passed\n'

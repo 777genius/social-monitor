@@ -4,6 +4,9 @@ set -euo pipefail
 INTEGRATION_BASE=bb76b205fb9ee77a016cf62b4905a1be53988ed3
 APPROVED_A=cb6790a93122d138bae61f3155133ce926a88874
 APPROVED_B=140e73127376452103bd7a5a4b8a9103a24537c0
+FIXED_E=889d50f50328c89e25b3ef898e552df631b3222f
+FIXED_A2=c64c3b46b6b6ba5c7ac7b04028932e09dae2116a
+FIXED_B2=e3b5b5d89b3586668e36f987f03672415b5a0f37
 BACKEND_BASE=4bb8f6d4969b8449726a10859202b23e2bfb4366
 CONTROL_BASE=cec570ce45a357d2f521c0513b39a5ecffb2222a
 ENTRYPOINT=ops/deploy/social-monitor-production-deploy.sh
@@ -30,12 +33,18 @@ OWNED_PATHS=(
 )
 
 RUNTIME_CONTROL_PATHS=(
+  ops/deploy/production-runtime/daily-c1-runtime.sh
   ops/deploy/production-runtime/daily-run.sh
+  ops/deploy/production-runtime/reader-summary-daily-c1.readiness
+  ops/deploy/postgres-runtime-daily-c1-readiness-lib.sh
+  ops/deploy/postgres-runtime-weekly-timer-state-lib.sh
   ops/deploy/production-runtime/github-premidnight-capture-v1.activation
   ops/deploy/production-runtime/github-premidnight-capture-v1.sh
   ops/deploy/production-runtime/social-monitor-github-premidnight-capture-v1.service
   ops/deploy/production-runtime/social-monitor-github-premidnight-capture-v1.timer
   ops/deploy/production-runtime/social-monitor-daily.service
+  ops/deploy/production-runtime/social-monitor-daily.timer
+  ops/deploy/production-runtime/social-monitor-reader-summary-production-day.service.d-10-daily-c1-owner.conf
   ops/deploy/production-runtime/social-monitor-weekly.service
   ops/deploy/production-runtime/social-monitor-weekly.timer
 )
@@ -87,16 +96,14 @@ manifest_digest() {
 }
 
 manifest_trailer() {
-  local commit=$1 key=$2 label=$3
-  local -a values
-  mapfile -t values < <(
-    git show -s --format=%B "$commit" |
-      git interpret-trailers --parse |
-      awk -F': ' -v key="$key" '$1 == key { print $2 }'
-  )
-  ((${#values[@]} == 1)) && [[ ${values[0]} =~ ^[0-9a-f]{64}$ ]] ||
+  local commit=$1 key=$2 label=$3 values count
+  values=$(git show -s --format=%B "$commit" |
+    git interpret-trailers --parse |
+    awk -F': ' -v key="$key" '$1 == key { print $2 }')
+  count=$(awk 'NF { count += 1 } END { print count + 0 }' <<< "$values")
+  [[ $count == 1 && $values =~ ^[0-9a-f]{64}$ ]] ||
     fail "$label must contain one exact $key trailer"
-  printf '%s\n' "${values[0]}"
+  printf '%s\n' "$values"
 }
 
 verify_manifest() {
@@ -220,9 +227,10 @@ verify_three_phase_graph() {
     "$CONTROL_BASE" "$release_e" -- "${RUNTIME_CONTROL_PATHS[@]}" | LC_ALL=C sort)
   [[ $runtime_paths == "$PENDING_RUNTIME_PATH" ]] ||
     fail 'Release E pending runtime delta is not exactly daily-run.sh'
-  git diff --quiet "$release_e" "$release_a2" -- "${RUNTIME_CONTROL_PATHS[@]}" &&
-    git diff --quiet "$release_a2" "$release_b2" -- "${RUNTIME_CONTROL_PATHS[@]}" ||
+  if ! git diff --quiet "$release_e" "$release_a2" -- "${RUNTIME_CONTROL_PATHS[@]}" ||
+     ! git diff --quiet "$release_a2" "$release_b2" -- "${RUNTIME_CONTROL_PATHS[@]}"; then
     fail 'Release A2/B2 unexpectedly changes runtime-control paths'
+  fi
 
   verify_manifest "$release_e" "$release_e" \
     Recovery-E-Manifest-SHA256 'Release E'
@@ -242,9 +250,28 @@ verify_three_phase_graph() {
   RELEASE_B2=$release_b2
 }
 
+first_parent_contains() {
+  local ancestor=$1 descendant=$2 found
+  found=$(git rev-list --first-parent "$descendant" |
+    awk -v ancestor="$ancestor" '$0 == ancestor { found = 1 } END { print found + 0 }')
+  [[ $found == 1 ]]
+}
+
+verify_target() {
+  local target=$1
+  require_commit "$target" 'target commit'
+  verify_three_phase_graph "$FIXED_B2"
+  [[ $RELEASE_E == "$FIXED_E" && $RELEASE_A2 == "$FIXED_A2" ]] ||
+    fail 'fixed E/A2/B2 graph does not match the canonical anchors'
+  first_parent_contains "$FIXED_B2" "$target" ||
+    fail 'target commit does not first-parent-contain canonical Release B2'
+  TARGET=$target
+}
+
 load_plan() {
-  local plan_file=$1 key value extra required
-  declare -gA PLAN=()
+  local plan_file=$1 key value extra required seen=' '
+  PLAN_FRONTEND='' PLAN_BACKEND='' PLAN_BACKEND_BASE='' PLAN_CONTROL=''
+  PLAN_X_COLLECTOR='' PLAN_BOOTSTRAP='' PLAN_BOOTSTRAP_SHA='' PLAN_REPAIR=''
   [[ -f $plan_file && ! -L $plan_file ]] || fail 'plan input is not a regular file'
   while IFS='=' read -r key value extra; do
     [[ -n $key && -n $value && -z ${extra:-} ]] || fail 'plan has a malformed line'
@@ -252,69 +279,109 @@ load_plan() {
       frontend|backend|backend_base|control|x_collector|postgres_pool_bootstrap|postgres_pool_bootstrap_sha|postgres_pool_repair) ;;
       *) fail "plan contains unexpected key $key" ;;
     esac
-    [[ -z ${PLAN[$key]+present} ]] || fail "plan contains duplicate key $key"
-    PLAN[$key]=$value
+    case $seen in *" $key "*) fail "plan contains duplicate key $key" ;; esac
+    seen="$seen$key "
+    case $key in
+      frontend) PLAN_FRONTEND=$value ;;
+      backend) PLAN_BACKEND=$value ;;
+      backend_base) PLAN_BACKEND_BASE=$value ;;
+      control) PLAN_CONTROL=$value ;;
+      x_collector) PLAN_X_COLLECTOR=$value ;;
+      postgres_pool_bootstrap) PLAN_BOOTSTRAP=$value ;;
+      postgres_pool_bootstrap_sha) PLAN_BOOTSTRAP_SHA=$value ;;
+      postgres_pool_repair) PLAN_REPAIR=$value ;;
+    esac
   done < "$plan_file"
-  for required in frontend backend backend_base control x_collector \
-    postgres_pool_bootstrap postgres_pool_bootstrap_sha postgres_pool_repair; do
-    [[ -n ${PLAN[$required]+present} ]] || fail "plan is missing key $required"
+  for required in frontend backend backend_base control x_collector postgres_pool_bootstrap postgres_pool_bootstrap_sha postgres_pool_repair; do
+    case $seen in *" $required "*) ;; *) fail "plan is missing key $required" ;; esac
   done
   for required in frontend backend control x_collector postgres_pool_repair; do
-    [[ ${PLAN[$required]} =~ ^(true|false)$ ]] || fail "plan key $required is not boolean"
+    case $required in
+      frontend) value=$PLAN_FRONTEND ;; backend) value=$PLAN_BACKEND ;;
+      control) value=$PLAN_CONTROL ;; x_collector) value=$PLAN_X_COLLECTOR ;;
+      postgres_pool_repair) value=$PLAN_REPAIR ;;
+    esac
+    [[ $value =~ ^(true|false)$ ]] || fail "plan key $required is not boolean"
   done
-  [[ ${PLAN[backend_base]} =~ ^[0-9a-f]{40}$ ]] || fail 'plan backend_base is invalid'
-  [[ ${PLAN[postgres_pool_bootstrap_sha]} =~ ^[0-9a-f]{40}$ && \
-     ${PLAN[postgres_pool_bootstrap_sha]} != 0000000000000000000000000000000000000000 ]] ||
+  [[ $PLAN_BACKEND_BASE =~ ^[0-9a-f]{40}$ ]] || fail 'plan backend_base is invalid'
+  [[ $PLAN_BOOTSTRAP_SHA =~ ^[0-9a-f]{40}$ ]] ||
     fail 'plan bootstrap SHA is invalid'
-  [[ ${PLAN[postgres_pool_bootstrap]} == "$POSTGRES_POOL_BOOTSTRAP_VERSION" ]] ||
-    fail 'plan PostgreSQL pool bootstrap is not postgres-pool-v1'
-  [[ ${PLAN[postgres_pool_repair]} == false ]] ||
-    fail 'inspect-plan must never report a repair'
+  [[ $PLAN_BOOTSTRAP =~ ^(uninstalled|$POSTGRES_POOL_BOOTSTRAP_VERSION)$ ]] ||
+    fail 'plan PostgreSQL pool bootstrap status is invalid'
+  if [[ $PLAN_BOOTSTRAP == uninstalled ]]; then
+    [[ $PLAN_BOOTSTRAP_SHA == 0000000000000000000000000000000000000000 ]] ||
+      fail 'uninstalled bootstrap must use the zero marker'
+  fi
 }
 
 plan_flags_are() {
-  [[ ${PLAN[frontend]} == "$1" && ${PLAN[backend]} == "$2" && \
-     ${PLAN[control]} == "$3" && ${PLAN[x_collector]} == "$4" ]]
+  [[ $PLAN_FRONTEND == "$1" && $PLAN_BACKEND == "$2" && \
+     $PLAN_CONTROL == "$3" && $PLAN_X_COLLECTOR == "$4" ]]
+}
+
+repair_required() {
+  [[ $PLAN_REPAIR == true || $PLAN_BOOTSTRAP == uninstalled ||
+     $PLAN_BOOTSTRAP_SHA == 0000000000000000000000000000000000000000 ]]
+}
+
+emit_state() {
+  if repair_required; then
+    printf 'transition_state=repair-required\n'
+  else
+    printf 'transition_state=%s\n' "$1"
+  fi
 }
 
 classify_plan() {
-  local release_b2=$1 target_phase=$2 plan_file=$3
-  verify_three_phase_graph "$release_b2"
+  local target=$1 target_phase=$2 plan_file=$3
+  verify_target "$target"
   load_plan "$plan_file"
+  if require_commit "$PLAN_BACKEND_BASE" 'current backend marker' &&
+     first_parent_contains "$FIXED_B2" "$PLAN_BACKEND_BASE"; then
+    if repair_required; then
+      printf 'transition_state=repair-required\n'
+    elif plan_flags_are false false false false; then
+      printf 'transition_state=target-complete\n'
+    else
+      printf 'transition_state=target-pending\n'
+    fi
+    return
+  fi
   case $target_phase in
     E)
-      if [[ ${PLAN[backend_base]} == "$BACKEND_BASE" ]] &&
+      if [[ $PLAN_BACKEND_BASE == "$BACKEND_BASE" ]] &&
          plan_flags_are false true true false; then
-        printf 'transition_state=pre-E\n'
-      elif [[ ${PLAN[backend_base]} == "$RELEASE_E" ]] &&
+        emit_state pre-E
+      elif [[ $PLAN_BACKEND_BASE == "$RELEASE_E" ]] &&
            plan_flags_are false false true false; then
-        printf 'transition_state=pre-E\n'
-      elif [[ ${PLAN[backend_base]} == "$RELEASE_E" ]] &&
+        emit_state pre-E
+      elif [[ $PLAN_BACKEND_BASE == "$RELEASE_E" ]] &&
            plan_flags_are false false false false; then
-        printf 'transition_state=E-complete\n'
+        emit_state E-complete
       else
         fail 'Release E plan is neither its exact pending, retry, nor complete state'
       fi
       ;;
     A2)
-      [[ ${PLAN[backend_base]} == "$RELEASE_E" ]] ||
+      [[ $PLAN_BACKEND_BASE == "$RELEASE_E" ]] ||
         fail 'Release A2 backend_base is not Release E'
       plan_flags_are false false true false ||
         fail 'Release A2 plan is not the exact control-only state'
-      printf 'transition_state=E-complete\n'
+      emit_state E-complete
       ;;
     B2)
-      [[ ${PLAN[backend_base]} == "$RELEASE_E" ]] ||
+      [[ $PLAN_BACKEND_BASE == "$RELEASE_E" ]] ||
         fail 'Release B2 backend_base is not Release E'
       if plan_flags_are true false false false; then
-        printf 'transition_state=A-complete\n'
+        emit_state A-complete
       elif plan_flags_are false false false false; then
-        printf 'transition_state=B-complete\n'
+        emit_state B-complete
       else
         fail 'Release B2 plan is neither pending nor complete'
       fi
       ;;
-    *) fail 'plan phase must be E, A2, or B2' ;;
+    TARGET) fail 'current target plan does not prove the fixed phases complete' ;;
+    *) fail 'plan phase must be E, A2, B2, or TARGET' ;;
   esac
 }
 
@@ -343,7 +410,7 @@ verify_worktree() {
 }
 
 for anchor in "$INTEGRATION_BASE" "$APPROVED_A" "$APPROVED_B" \
-  "$BACKEND_BASE" "$CONTROL_BASE"; do
+  "$BACKEND_BASE" "$CONTROL_BASE" "$FIXED_E" "$FIXED_A2" "$FIXED_B2"; do
   require_commit "$anchor" "fixed anchor $anchor"
 done
 git merge-base --is-ancestor "$BACKEND_BASE" "$CONTROL_BASE" ||
@@ -357,17 +424,15 @@ case ${1:-} in
     verify_worktree
     ;;
   validate)
-    [[ $# == 2 && ${2:-} =~ ^[0-9a-f]{40}$ ]] || fail 'validate requires Release B2 SHA'
-    require_commit "$2" 'Release B2'
-    verify_three_phase_graph "$2"
-    printf 'release_e=%s\nrelease_a2=%s\nrelease_b2=%s\n' \
-      "$RELEASE_E" "$RELEASE_A2" "$RELEASE_B2"
+    [[ $# == 2 && ${2:-} =~ ^[0-9a-f]{40}$ ]] || fail 'validate requires target SHA'
+    verify_target "$2"
+    printf 'release_e=%s\nrelease_a2=%s\nrelease_b2=%s\ntarget=%s\n' \
+      "$RELEASE_E" "$RELEASE_A2" "$RELEASE_B2" "$TARGET"
     ;;
   state)
     [[ $# == 4 && ${2:-} =~ ^[0-9a-f]{40}$ ]] ||
-      fail 'state requires Release B2 SHA, E|A2|B2, and plan file'
-    require_commit "$2" 'Release B2'
+      fail 'state requires target SHA, E|A2|B2|TARGET, and plan file'
     classify_plan "$2" "$3" "$4"
     ;;
-  *) fail 'usage: production-release-a-transition.sh worktree|validate B2_SHA|state B2_SHA E|A2|B2 PLAN_FILE' ;;
+  *) fail 'usage: production-release-a-transition.sh worktree|validate TARGET_SHA|state TARGET_SHA E|A2|B2|TARGET PLAN_FILE' ;;
 esac

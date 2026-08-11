@@ -5,6 +5,43 @@
 # entrypoint's source-line cap without making this file independently runnable.
 
 ROOT=${ROOT:?caller must define ROOT before sourcing postgres-runtime-deploy-lib.sh}
+load_postgres_runtime_reviewed_helper() {
+  local relative_path=$1 label=$2 helper entry mode type object tree_path
+  local reviewed_digest actual_digest
+  if [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} == 1 || \
+        ${POSTGRES_RUNTIME_DAILY_C1_HELPER_TEST_MODE:-} == 1 ]]; then
+    helper=${BASH_SOURCE[0]%/*}/${relative_path##*/}
+  else
+    helper=$REPO/$relative_path
+    [[ -f $helper && ! -L $helper ]] || \
+      fail "$label is not a regular non-symlink file"
+    entry=$(git -C "$REPO" ls-tree HEAD -- "$relative_path") || \
+      fail "$label cannot be inspected at current HEAD"
+    read -r mode type object tree_path <<< "$entry"
+    [[ $mode == 100644 && $type == blob && $object =~ ^[0-9a-f]+$ && \
+       $tree_path == "$relative_path" ]] || \
+      fail "$label is not a regular blob at current HEAD"
+    reviewed_digest=$(git -C "$REPO" show "HEAD:$relative_path" | \
+      sha256sum | awk '{print $1}')
+    actual_digest=$(sha256sum "$helper" | awk '{print $1}')
+    [[ $actual_digest == "$reviewed_digest" ]] || \
+      fail "$label differs from current HEAD"
+  fi
+  [[ -f $helper && ! -L $helper ]] || \
+    fail "$label is not a regular non-symlink file"
+  # shellcheck source=/dev/null
+  source "$helper"
+}
+load_postgres_runtime_reviewed_helper \
+  ops/deploy/postgres-runtime-weekly-timer-state-lib.sh \
+  'weekly timer state helper'
+load_postgres_runtime_reviewed_helper \
+  ops/deploy/postgres-runtime-daily-c1-readiness-lib.sh \
+  'daily C1 readiness helper'
+load_postgres_runtime_reviewed_helper \
+  ops/deploy/postgres-runtime-activation-boundary-lib.sh \
+  'PostgreSQL runtime activation boundary helper'
+unset -f load_postgres_runtime_reviewed_helper
 
 github_premidnight_capture_marker_state() {
   local root=$1
@@ -54,6 +91,7 @@ postgres_runtime_control_units_for_scope() {
     base)
       printf '%s\n' \
         social-monitor-daily.service \
+        social-monitor-daily.timer \
         social-monitor-prod.service \
         social-monitor-weekly.service \
         social-monitor-weekly.timer
@@ -68,6 +106,7 @@ postgres_runtime_control_units_for_scope() {
         social-monitor-github-premidnight-capture-v1.service \
         social-monitor-github-premidnight-capture-v1.timer \
         social-monitor-daily.service \
+        social-monitor-daily.timer \
         social-monitor-prod.service \
         social-monitor-weekly.service \
         social-monitor-weekly.timer
@@ -129,32 +168,11 @@ require_postgres_runtime_safe_mutation_target() {
   fi
 }
 
-snapshot_postgres_runtime_weekly_timer() {
-  local backup=$1 unit_state active_state
-  unit_state=$(systemctl show --property=UnitFileState --value social-monitor-weekly.timer) ||
-    { fail 'systemd weekly timer enablement is unavailable'; return 1; }
-  active_state=$(systemctl show --property=ActiveState --value social-monitor-weekly.timer) ||
-    { fail 'systemd weekly timer active state is unavailable'; return 1; }
-  [[ "$unit_state $active_state" =~ ^(enabled\ active|disabled\ inactive)$ ]] ||
-    { fail "systemd weekly timer state is not rollback-safe: $unit_state/$active_state"; return 1; }
-  printf '%s %s\n' "$unit_state" "$active_state" > "$backup/weekly-timer-state"
-}
-
-restore_postgres_runtime_weekly_timer() {
-  local backup=$1 unit_state active_state
-  read -r unit_state active_state < "$backup/weekly-timer-state" || return 1
-  [[ "$unit_state $active_state" =~ ^(enabled\ active|disabled\ inactive)$ ]] || return 1
-  case "$unit_state/$active_state" in
-    enabled/active) systemctl enable social-monitor-weekly.timer && systemctl start social-monitor-weekly.timer || return 1 ;;
-    disabled/inactive) systemctl stop social-monitor-weekly.timer && systemctl disable social-monitor-weekly.timer || return 1 ;;
-  esac
-  [[ $(systemctl show --property=UnitFileState --value social-monitor-weekly.timer) == "$unit_state" && $(systemctl show --property=ActiveState --value social-monitor-weekly.timer) == "$active_state" ]]
-}
 activate_postgres_runtime_control() {
   local sha=$1
   local compatible_backend_sha=${2:-$sha}
-  local activation_status
-  activate_postgres_runtime_control_transaction "$sha" "$compatible_backend_sha"
+  local outer_backup=${3:-} activation_status
+  activate_postgres_runtime_control_transaction "$sha" "$compatible_backend_sha" "$outer_backup"
   activation_status=$?
   ((activation_status == 0)) || return "$activation_status"
   if [[ ${COMPOSE[-1]} != "$POSTGRES_RUNTIME_CURRENT/compose.postgres-runtime.yml" ]]; then
@@ -165,15 +183,20 @@ activate_postgres_runtime_control() {
 }
 
 rollback_postgres_runtime_control_activation() {
-  local staged_release=$1
-  local next_link=$2
-  local current_link=$3
-  local previous_target=$4
-  local backup=$5
-  local unit_directory=$6
+  local staged_release=$1 next_link=$2 current_link=$3 previous_target=$4
+  local backup=$5 unit_directory=$6
+  local outer_backup=${7:-}
   local launcher rollback_link scope unit
   local rollback_status=0
   local -a launchers units
+
+  propagate_postgres_runtime_control_forward_only_boundary \
+    "$backup" "$outer_backup" || return 1
+  if ! require_postgres_runtime_control_rollback_allowed "$backup"; then
+    rm -rf "$staged_release" || true
+    rm -f "$next_link" "$next_link.rollback" || true
+    return 1
+  fi
 
   scope=$(<"$backup/mutation-scope") || rollback_status=1
   [[ $scope =~ ^(base|capture-only|full)$ ]] || rollback_status=1
@@ -217,6 +240,10 @@ rollback_postgres_runtime_control_activation() {
       rollback_status=1
     fi
   done
+  if [[ -f $backup/daily-timer-states ]]; then
+    restore_postgres_runtime_daily_handoff_units "$backup" "$unit_directory" || \
+      rollback_status=1
+  fi
   if [[ -n $previous_target ]]; then
     ln -s "$previous_target" "$rollback_link" || rollback_status=1
     if [[ -L $rollback_link ]]; then
@@ -228,6 +255,8 @@ rollback_postgres_runtime_control_activation() {
   if ((EUID == 0)) && [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} != 1 ]]; then
     systemctl daemon-reload || rollback_status=1
   fi
+  [[ ! -f $backup/daily-timer-states ]] || \
+    restore_postgres_runtime_daily_handoff_states "$backup" || rollback_status=1
   [[ ! -f $backup/weekly-timer-state ]] ||
     restore_postgres_runtime_weekly_timer "$backup" || rollback_status=1
   if ((rollback_status == 0)); then
@@ -243,6 +272,7 @@ activate_postgres_runtime_control_transaction() (
   set -euo pipefail
   local sha=$1
   local compatible_backend_sha=${2:-$sha}
+  local outer_backup=${3:-}
   local source=$REPO/ops/deploy/production-runtime
   local release=$POSTGRES_RUNTIME_RELEASES/$sha
   local staged_release=$release.next.$$
@@ -251,7 +281,7 @@ activate_postgres_runtime_control_transaction() (
   local previous_target
   local cleanup_command
   local expected_release_entry_count launcher launcher_source_mode
-  local release_entry_markers release_state scope source_state unit
+  local daily_c1_containment daily_c1_state release_entry_markers release_state scope source_state unit
   local -a launchers release_launchers release_units units
 
   [[ $sha =~ ^[0-9a-f]{40}$ && \
@@ -280,6 +310,17 @@ activate_postgres_runtime_control_transaction() (
   fi
   require_postgres_runtime_regular_source \
     "$source/compose.postgres-runtime.yml" 644
+  require_postgres_runtime_daily_c1_source "$source"
+  daily_c1_state=$(postgres_runtime_daily_c1_readiness_state \
+    "$source/$POSTGRES_RUNTIME_DAILY_C1_MARKER")
+  require_postgres_runtime_daily_c1_transition \
+    "$daily_c1_state" "$POSTGRES_RUNTIME_CURRENT"
+  daily_c1_containment=$(postgres_runtime_daily_c1_containment_state)
+  if [[ $daily_c1_containment != clear && \
+        ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} != 1 ]] && ((EUID == 0)); then
+    enforce_postgres_runtime_daily_c1_containment \
+      "$POSTGRES_RUNTIME_CURRENT" "$SYSTEMD_UNIT_DIR"
+  fi
   for launcher in "${release_launchers[@]}"; do
     launcher_source_mode=755
     [[ $launcher != daily-run.sh ]] || launcher_source_mode=644
@@ -299,12 +340,17 @@ activate_postgres_runtime_control_transaction() (
   for launcher in "${launchers[@]}"; do
     require_postgres_runtime_safe_mutation_target "$CONTROL/$launcher"
   done
+  require_postgres_runtime_safe_mutation_target \
+    "$CONTROL/$POSTGRES_RUNTIME_DAILY_C1_RUNTIME"
+  require_postgres_runtime_safe_mutation_target \
+    "$SYSTEMD_UNIT_DIR/$POSTGRES_RUNTIME_DAILY_C1_V6_DROPIN_DIRECTORY/$POSTGRES_RUNTIME_DAILY_C1_V6_DROPIN"
 
   previous_target=$(readlink "$POSTGRES_RUNTIME_CURRENT" 2>/dev/null || true)
-  install -d -m 0700 "$backup"
+  initialize_postgres_runtime_control_rollback_basis "$backup"
   printf '%s\n' "$scope" > "$backup/mutation-scope"
   if ((EUID == 0)) && [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} != 1 ]]; then
     snapshot_postgres_runtime_weekly_timer "$backup"
+    snapshot_postgres_runtime_daily_handoff "$backup" "$SYSTEMD_UNIT_DIR"
   fi
   if [[ -n $previous_target ]]; then
     printf '%s\n' "$previous_target" > "$backup/current-target"
@@ -328,13 +374,17 @@ activate_postgres_runtime_control_transaction() (
     fi
   done
   printf -v cleanup_command \
-    'rollback_postgres_runtime_control_activation %q %q %q %q %q %q' \
+    'rollback_postgres_runtime_control_activation %q %q %q %q %q %q %q' \
     "$staged_release" "$next_link" "$POSTGRES_RUNTIME_CURRENT" \
-    "$previous_target" "$backup" "$SYSTEMD_UNIT_DIR"
+    "$previous_target" "$backup" "$SYSTEMD_UNIT_DIR" "$outer_backup"
   # Literal, shell-escaped paths must be captured before local scope unwinds.
   # shellcheck disable=SC2064
   trap "$cleanup_command" EXIT
 
+  if ((EUID == 0)) && [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} != 1 ]]; then
+    prepare_postgres_runtime_daily_c1_ready_reexposure "$daily_c1_state"
+    [[ $daily_c1_state != READY ]] || prepare_postgres_runtime_daily_c1_baseline "$sha"
+  fi
   install -d -m 0755 "$POSTGRES_RUNTIME_RELEASES" "$SYSTEMD_UNIT_DIR"
   if [[ ! -f $release/SOURCE_SHA || $(cat "$release/SOURCE_SHA") != "$sha" || \
         ! -f $release/READY || \
@@ -346,6 +396,7 @@ activate_postgres_runtime_control_transaction() (
     install -d -m 0755 "$staged_release"
     install -m 0644 "$source/compose.postgres-runtime.yml" \
       "$staged_release/compose.postgres-runtime.yml"
+    stage_postgres_runtime_daily_c1_readiness "$source" "$staged_release"
     for launcher in "${release_launchers[@]}"; do
       install -m 0755 "$source/$launcher" "$staged_release/$launcher"
     done
@@ -366,7 +417,7 @@ activate_postgres_runtime_control_transaction() (
   [[ $release_state == "$source_state" ]] || \
     fail 'PostgreSQL runtime control release activation state is immutable'
   expected_release_entry_count=$((
-    ${#release_launchers[@]} + ${#release_units[@]} + 3
+    ${#release_launchers[@]} + ${#release_units[@]} + 6
   ))
   if [[ $source_state == active ]]; then
     expected_release_entry_count=$((expected_release_entry_count + 1))
@@ -383,6 +434,7 @@ activate_postgres_runtime_control_transaction() (
   cmp -s "$source/compose.postgres-runtime.yml" \
     "$release/compose.postgres-runtime.yml" || \
     fail 'immutable PostgreSQL runtime Compose release differs from source'
+  verify_postgres_runtime_daily_c1_release "$source" "$release"
   for launcher in "${release_launchers[@]}"; do
     require_postgres_runtime_regular_release_file \
       "$release/$launcher" 755
@@ -402,6 +454,9 @@ activate_postgres_runtime_control_transaction() (
       fail 'immutable GitHub pre-midnight activation marker differs from source'
   fi
 
+  if ((EUID == 0)) && [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} != 1 ]]; then
+    prepare_postgres_runtime_daily_c1_owner_before_exposure "$sha"
+  fi
   for unit in "${units[@]}"; do
     install -m 0644 "$release/$unit" "$SYSTEMD_UNIT_DIR/$unit.next"
     mv -f "$SYSTEMD_UNIT_DIR/$unit.next" "$SYSTEMD_UNIT_DIR/$unit"
@@ -410,10 +465,28 @@ activate_postgres_runtime_control_transaction() (
     install -m 0755 "$release/$launcher" "$CONTROL/$launcher.next"
     mv -f "$CONTROL/$launcher.next" "$CONTROL/$launcher"
   done
+  install_postgres_runtime_daily_c1_bridge_assets "$release" "$SYSTEMD_UNIT_DIR"
   ln -s "$release" "$next_link"
   mv -Tf "$next_link" "$POSTGRES_RUNTIME_CURRENT"
   if ((EUID == 0)) && [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} != 1 ]]; then
     systemctl daemon-reload
+    if [[ $daily_c1_containment == clear ]]; then
+      bridge_postgres_runtime_daily_c1_owner \
+        "$release" "$SYSTEMD_UNIT_DIR" "$sha"
+    fi
+    if [[ $daily_c1_state == READY ]]; then
+      if [[ $daily_c1_containment != clear ]]; then
+        enforce_postgres_runtime_daily_c1_containment \
+          "$release" "$SYSTEMD_UNIT_DIR"
+      else
+        activate_postgres_runtime_daily_c1_handoff \
+          "$release" "$SYSTEMD_UNIT_DIR" "$sha" "$backup"
+        postgres_runtime_activation_failpoint \
+          after-legacy-owner-before-boundary-propagation
+        propagate_postgres_runtime_control_forward_only_boundary \
+          "$backup" "$outer_backup"
+      fi
+    fi
   fi
   verify_installed_postgres_runtime_control "$sha" "$compatible_backend_sha"
   rm -rf "$backup"
@@ -425,7 +498,7 @@ verify_installed_postgres_runtime_control() {
   local compatible_backend_sha=${2:-$sha}
   local source=$REPO/ops/deploy/production-runtime
   local release=$POSTGRES_RUNTIME_RELEASES/$sha
-  local launcher release_state source_state unit
+  local containment launcher release_state source_state unit
   local -a launchers units
 
   source_state=$(github_premidnight_capture_marker_state "$source") || return
@@ -457,6 +530,8 @@ verify_installed_postgres_runtime_control() {
   cmp -s "$source/compose.postgres-runtime.yml" \
     "$POSTGRES_RUNTIME_CURRENT/compose.postgres-runtime.yml" || \
     fail 'installed PostgreSQL Compose overlay differs from the release'
+  verify_installed_postgres_runtime_daily_c1_readiness \
+    "$source" "$release" "$POSTGRES_RUNTIME_CURRENT"
   for launcher in "${launchers[@]}"; do
     cmp -s "$source/$launcher" "$release/$launcher" || \
       fail "versioned launcher differs from the release source: $launcher"
@@ -488,7 +563,13 @@ verify_installed_postgres_runtime_control() {
         social-monitor-github-premidnight-capture-v1.service) == inactive ]] || \
         fail 'GitHub pre-midnight service must remain inactive'
     fi
-    verify_effective_postgres_daily_topology
+    containment=$(postgres_runtime_daily_c1_containment_state) || return
+    if [[ $containment != clear ]]; then
+      verify_postgres_runtime_daily_c1_contained_topology \
+        "$release" "$SYSTEMD_UNIT_DIR"
+    else
+      verify_effective_postgres_daily_topology
+    fi
     reconcile_postgres_runtime_weekly_timer
   fi
 }
@@ -496,7 +577,7 @@ verify_installed_postgres_runtime_control() {
 snapshot_postgres_runtime_control() {
   local sha=$1
   local backup=$STATE/postgres-runtime-release-rollback-${sha:0:12}.$$
-  local launcher scope target unit
+  local containment launcher scope target unit
   local -a launchers units
 
   scope=$(postgres_runtime_control_mutation_scope) || return
@@ -504,10 +585,17 @@ snapshot_postgres_runtime_control() {
   mapfile -t launchers < <(
     postgres_runtime_control_launchers_for_scope "$scope"
   )
-  install -d -m 0700 "$backup"
+  containment=$(postgres_runtime_daily_c1_containment_state) || return
+  if [[ $containment != clear && \
+        ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} != 1 ]] && ((EUID == 0)); then
+    enforce_postgres_runtime_daily_c1_containment \
+      "$POSTGRES_RUNTIME_CURRENT" "$SYSTEMD_UNIT_DIR"
+  fi
+  initialize_postgres_runtime_control_rollback_basis "$backup"
   printf '%s\n' "$scope" > "$backup/mutation-scope"
   if ((EUID == 0)) && [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} != 1 ]]; then
     snapshot_postgres_runtime_weekly_timer "$backup"
+    snapshot_postgres_runtime_daily_handoff "$backup" "$SYSTEMD_UNIT_DIR"
   fi
   target=$(readlink "$POSTGRES_RUNTIME_CURRENT" 2>/dev/null || true)
   if [[ -n $target ]]; then
@@ -541,6 +629,7 @@ restore_postgres_runtime_control() {
   local -a launchers units
 
   [[ -d $backup ]] || return 1
+  require_postgres_runtime_control_rollback_allowed "$backup" || return 1
   scope=$(<"$backup/mutation-scope") || return 1
   [[ $scope =~ ^(base|capture-only|full)$ ]] || return 1
   mapfile -t units < <(
@@ -587,6 +676,9 @@ restore_postgres_runtime_control() {
       return 1
     fi
   done
+  [[ ! -f $backup/daily-timer-states ]] || \
+    restore_postgres_runtime_daily_handoff_units "$backup" "$SYSTEMD_UNIT_DIR" || \
+    return 1
   rm -f "$next_link" || return 1
   if [[ -f $backup/current-target ]]; then
     ln -s "$target" "$next_link" || return 1
@@ -599,106 +691,12 @@ restore_postgres_runtime_control() {
   if ((EUID == 0)) && [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} != 1 ]]; then
     systemctl daemon-reload || return 1
   fi
+  [[ ! -f $backup/daily-timer-states ]] || \
+    restore_postgres_runtime_daily_handoff_states "$backup" || return 1
   [[ ! -f $backup/weekly-timer-state ]] ||
     restore_postgres_runtime_weekly_timer "$backup" || return 1
   rm -rf "$backup"
 }
-
-reconcile_postgres_runtime_weekly_timer() {
-  local timer=social-monitor-weekly.timer unit_state active_state next_trigger
-  unit_state=$(systemctl show --property=UnitFileState --value "$timer") ||
-    { fail 'systemd weekly timer enablement is unavailable'; return 1; }
-  case $unit_state in
-    enabled) ;;
-    disabled) systemctl enable "$timer" ||
-      { fail 'systemd weekly timer could not be enabled'; return 1; } ;;
-    *) fail "systemd weekly timer enablement is not reconcilable: $unit_state"; return 1 ;;
-  esac
-  active_state=$(systemctl show --property=ActiveState --value "$timer") ||
-    { fail 'systemd weekly timer active state is unavailable'; return 1; }
-  case $active_state in
-    active) ;;
-    inactive) systemctl start "$timer" || {
-      fail 'systemd weekly timer could not be started'; return 1; } ;;
-    *) fail "systemd weekly timer active state is not reconcilable: $active_state"; return 1 ;;
-  esac
-  unit_state=$(systemctl show --property=UnitFileState --value "$timer") ||
-    { fail 'systemd weekly timer proof is unavailable'; return 1; }
-  active_state=$(systemctl show --property=ActiveState --value "$timer") ||
-    { fail 'systemd weekly timer proof is unavailable'; return 1; }
-  next_trigger=$(systemctl show --property=NextElapseUSecRealtime --value "$timer") ||
-    { fail 'systemd weekly timer proof is unavailable'; return 1; }
-  [[ $unit_state == enabled && $active_state == active && -n $next_trigger ]] ||
-    { fail "systemd weekly timer proof is invalid: $unit_state/$active_state"; return 1; }
-}
-
-reconcile_effective_postgres_daily_timer() {
-  local timer=$1 active_state next_trigger
-  active_state=$(systemctl show --property=ActiveState --value "$timer") ||
-    { fail "systemd daily timer active state is unavailable: $timer"; return 1; }
-  case $active_state in
-    active) ;;
-    inactive) systemctl start "$timer" ||
-      { fail "systemd daily timer could not be started: $timer"; return 1; } ;;
-    *) fail "systemd daily timer active state is not reconcilable: $timer ($active_state)"
-      return 1 ;;
-  esac
-  active_state=$(systemctl show --property=ActiveState --value "$timer") ||
-    { fail "systemd daily timer active state is unavailable after reconciliation: $timer"; return 1; }
-  [[ $active_state == active ]] ||
-    { fail "systemd daily timer is not active after reconciliation: $timer"; return 1; }
-  next_trigger=$(systemctl show --property=NextElapseUSecRealtime --value "$timer") ||
-    { fail "systemd daily timer next trigger is unavailable: $timer"; return 1; }
-  [[ -n $next_trigger ]] ||
-    { fail "systemd daily timer has no next trigger: $timer"; return 1; }
-}
-
-verify_effective_postgres_daily_topology() (
-  set -euo pipefail
-  local legacy_timer=social-monitor-daily.timer
-  local legacy_service=social-monitor-daily.service
-  local v6_timer=social-monitor-reader-summary-production-day.timer
-  local v6_service=social-monitor-reader-summary-production-day.service
-  local timer service runner
-  local legacy_enabled=false v6_enabled=false
-  local effective_service=$STATE/postgres-daily-service.$$.unit
-  trap 'rm -f "$effective_service"' EXIT
-
-  systemctl is-enabled --quiet "$legacy_timer" && legacy_enabled=true
-  systemctl is-enabled --quiet "$v6_timer" && v6_enabled=true
-  if [[ $legacy_enabled == "$v6_enabled" ]]; then
-    fail 'exactly one reviewed production daily timer must be enabled'
-    return 1
-  fi
-  if [[ $v6_enabled == true ]]; then
-    timer=$v6_timer
-    service=$v6_service
-    runner=$CONTROL/run-reader-summary-production-day.sh
-  else
-    timer=$legacy_timer
-    service=$legacy_service
-    runner=$CONTROL/daily-run.sh
-  fi
-  [[ -f $runner ]] || {
-    fail 'effective production daily runner is unavailable'
-    return 1
-  }
-  [[ -z $(systemctl show --property=DropInPaths --value "$timer") ]] || {
-    fail "systemd daily timer has an unreviewed drop-in: $timer"
-    return 1
-  }
-  [[ -z $(systemctl show --property=DropInPaths --value "$service") ]] || {
-    fail "systemd daily service has an unreviewed drop-in: $service"
-    return 1
-  }
-  systemctl cat "$service" > "$effective_service" || {
-    fail 'effective production daily service is unavailable'
-    return 1
-  }
-  python3 "$REPO/ops/deploy/verify-postgres-runtime-topology.py" \
-    daily "$effective_service" "$runner" || return
-  reconcile_effective_postgres_daily_timer "$timer"
-)
 
 capture_effective_postgres_environment() {
   local output=$1
