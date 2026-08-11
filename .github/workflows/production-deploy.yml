@@ -755,6 +755,10 @@ jobs:
           DEPLOY_USER: ${{ vars.PRODUCTION_SSH_USER }}
         run: |
           set -euo pipefail
+          helper_bridge=d85bce0b5440fc1c7fd2a135841cd1d89d25dae9
+          bash ops/deploy/github-production-deploy-client.sh deploy "$helper_bridge"
+          control_bridge=4a3a5bf6835a7286eecb6b77a8e21c886df1bc7f
+          bash ops/deploy/github-production-deploy-client.sh deploy "$control_bridge"
           bash ops/deploy/github-production-deploy-client.sh deploy "$GITHUB_SHA"
       - name: Freshly inspect after bounded repair
         id: recovery_state

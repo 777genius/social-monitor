@@ -109,6 +109,10 @@ grep -F 'bootstrap_repair=404390b5' \
   "$workflow" >/dev/null || fail 'bridge bootstrap repair is not pinned to its reviewed commit'
 grep -F 'Deploy the daily C1 bridge through the repaired controller' \
   "$workflow" >/dev/null || fail 'bridge does not run through the repaired controller'
+grep -F 'helper_bridge=d85bce0b' \
+  "$workflow" >/dev/null || fail 'bridge runtime helpers are not pinned to their reviewed commit'
+grep -F 'control_bridge=4a3a5bf6' \
+  "$workflow" >/dev/null || fail 'sealed control sources are not pinned to their reviewed commit'
 grep -F 'bash ops/deploy/github-production-deploy-client.sh deploy "$GITHUB_SHA"' \
   "$workflow" >/dev/null || fail 'daily C1 bridge bypasses the reviewed deploy client'
 ! grep -F 'daily C1 bridge classification is not control-only' "$workflow" >/dev/null || \
