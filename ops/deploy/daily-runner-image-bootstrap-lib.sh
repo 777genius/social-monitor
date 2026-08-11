@@ -244,9 +244,12 @@ daily_runner_bootstrap_verify_legacy_base_image() {
 
 daily_runner_bootstrap_base_image_id() {
   local previous_sha=$1
+  local validation_mode=${2:-initial}
   local base_tag fallback_tag base_service=intelligence-worker
   local identity image_id revision extra config
 
+  [[ $validation_mode == initial || $validation_mode == revalidate ]] || \
+    fail 'daily-runner base image validation mode is unexpected'
   base_tag=$(compose_image_name intelligence-worker)
   [[ $base_tag == social-monitor-prod-intelligence-worker:latest ]] || \
     fail 'daily-runner bootstrap base tag is unexpected'
@@ -271,7 +274,7 @@ daily_runner_bootstrap_base_image_id() {
     :
   elif [[ -n $revision ]]; then
     fail 'daily-runner base image identity or revision is unexpected'
-  else
+  elif [[ $validation_mode == initial ]]; then
     daily_runner_bootstrap_verify_legacy_base_image \
       "$image_id" "$base_service" || \
       fail 'daily-runner unlabelled base image is not runtime-stable'
@@ -506,7 +509,8 @@ daily_runner_image_bootstrap_before_rescue() (
   fi
 
   daily_runner_bootstrap_verify_release "$previous_sha" "$target_sha"
-  base_id_after=$(daily_runner_bootstrap_base_image_id "$previous_sha") || \
+  base_id_after=$(daily_runner_bootstrap_base_image_id \
+    "$previous_sha" revalidate) || \
     fail 'daily-runner base image could not be revalidated'
   [[ $base_id_after == "$base_id" ]] || \
     fail 'daily-runner base image identity changed during historical build'
