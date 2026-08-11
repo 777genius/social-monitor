@@ -99,6 +99,10 @@ grep -F 'backend-gate=production-release-preflight deferred-to-final-runtime-rel
   "$workflow" >/dev/null || fail 'bridge does not defer the final-only release preflight'
 grep -F 'backend-gate=weekly-runtime-contract deferred-to-final-runtime-release' \
   "$workflow" >/dev/null || fail 'bridge does not defer the final-only weekly runtime contract'
+grep -F 'transition_state=repair-required' "$workflow" >/dev/null || \
+  fail 'bridge cannot schedule bounded repair for a missing PostgreSQL bootstrap'
+grep -F 'backend-gate=postgres-pool-release deferred-to-bounded-B2-repair' \
+  "$workflow" >/dev/null || fail 'bridge CI blocks the reviewed bounded bootstrap repair'
 grep -F 'shellcheck -S warning -x "${deploy_shell_files[@]}"' \
   "$workflow" >/dev/null || fail 'workflow treats informational shellcheck findings as release failures'
 grep -F "needs.plan.outputs.daily_c1_bridge != 'true'" \

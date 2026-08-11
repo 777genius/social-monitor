@@ -211,7 +211,14 @@ jobs:
             daily_c1_bridge=true
           fi
           if [[ $daily_c1_bridge == true ]]; then
-            transition_state=target-pending
+            target_pool_bootstrap=$(awk -F= \
+              '$1 == "postgres_pool_bootstrap" { print $2 }' "$target_plan")
+            if [[ $target_pool_bootstrap == uninstalled ]]; then
+              repair_anchor=$release_b2
+              transition_state=repair-required
+            else
+              transition_state=target-pending
+            fi
           elif target_state=$(bash "$transition" state "$GITHUB_SHA" TARGET "$target_plan" \
               2> "$RUNNER_TEMP/recovery-target-state.err") && \
              [[ $target_state != transition_state=repair-required ]]; then
@@ -551,13 +558,23 @@ jobs:
           shellcheck -S warning -x "${deploy_shell_files[@]}"
           python3 -m py_compile ops/deploy/verify-postgres-runtime-topology.py
           python3 -m py_compile ops/deploy/verify-postgres-pool-release-contract.py
-          python3 ops/deploy/verify-postgres-pool-release-contract.py ci \
-            --target "$GITHUB_SHA" \
-            --backend-base "$BACKEND_BASE" \
-            --backend "$BACKEND_CHANGED" \
-            --control "$CONTROL_CHANGED" \
-            --bootstrap "$POSTGRES_POOL_BOOTSTRAP" \
-            --bootstrap-sha "$POSTGRES_POOL_BOOTSTRAP_SHA"
+          if [[ $bridge_phase == true && \
+                $POSTGRES_POOL_BOOTSTRAP == uninstalled ]]; then
+            [[ $POSTGRES_POOL_BOOTSTRAP_SHA == \
+               0000000000000000000000000000000000000000 ]] || {
+              echo 'uninstalled bridge bootstrap has a nonzero durable release SHA' >&2
+              exit 1
+            }
+            echo 'backend-gate=postgres-pool-release deferred-to-bounded-B2-repair'
+          else
+            python3 ops/deploy/verify-postgres-pool-release-contract.py ci \
+              --target "$GITHUB_SHA" \
+              --backend-base "$BACKEND_BASE" \
+              --backend "$BACKEND_CHANGED" \
+              --control "$CONTROL_CHANGED" \
+              --bootstrap "$POSTGRES_POOL_BOOTSTRAP" \
+              --bootstrap-sha "$POSTGRES_POOL_BOOTSTRAP_SHA"
+          fi
           echo "backend-gate=deploy-shell-tests bridge=$bridge_phase"
           if [[ $bridge_phase == true ]]; then
             # Final runtime assets are deliberately absent from the control-only
