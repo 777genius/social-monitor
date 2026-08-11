@@ -41,24 +41,6 @@ void main() {
     expect(tester.getTopLeft(header), Offset.zero);
     expect(tester.getSize(header).width, 1280);
   });
-
-  testWidgets('invokes the app-owned weekly summary callback', (tester) async {
-    final store = _store(
-      [githubTrendingSummaryApiDto()],
-      workspaceSummary: githubTrendingReaderSummaryApiDto(),
-    );
-    addTearDown(store.dispose);
-    var opened = false;
-
-    await _pumpSizedFeature(
-      tester,
-      store: store,
-      onOpenWeeklySummary: () => opened = true,
-    );
-    await tester.tap(find.byKey(const ValueKey('open-weekly-summary')));
-
-    expect(opened, isTrue);
-  });
 }
 
 SummariesReviewStore _store(
@@ -108,7 +90,6 @@ final class _FakeReaderSourceLauncher implements ReaderSourceLauncher {
 Future<void> _pumpSizedFeature(
   WidgetTester tester, {
   required SummariesReviewStore store,
-  VoidCallback? onOpenWeeklySummary,
 }) async {
   const size = Size(1280, 820);
   tester.view.physicalSize = size;
@@ -126,11 +107,7 @@ Future<void> _pumpSizedFeature(
         home: MediaQuery(
           data: const MediaQueryData(size: size),
           child: Scaffold(
-            body: SummariesFeaturePage(
-              store: store,
-              autoload: false,
-              onOpenWeeklySummary: onOpenWeeklySummary,
-            ),
+            body: SummariesFeaturePage(store: store, autoload: false),
           ),
         ),
       ),

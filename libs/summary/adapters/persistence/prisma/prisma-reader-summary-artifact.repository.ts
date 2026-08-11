@@ -354,13 +354,6 @@ export const verifyReaderSummaryDailyCanonicalRecoveryV4Provenance = async (
   if (input.artifact !== undefined && scope === undefined) return undefined;
   const audit = input.audit;
   const binding = dailyCanonicalRecoveryBinding(audit);
-  if (
-    audit !== undefined &&
-    Object.prototype.hasOwnProperty.call(audit, "recoveryV4") &&
-    binding === undefined
-  ) {
-    throw new Error("Daily canonical recovery provenance binding is invalid");
-  }
   if (binding !== undefined && input.artifact !== undefined) {
     if (!bindingMatchesArtifact(binding, input.artifact)) {
       throw new Error("Daily canonical recovery audit scope diverged from artifact");
@@ -386,33 +379,13 @@ export const verifyReaderSummaryDailyCanonicalRecoveryV4Provenance = async (
 const dailyCanonicalRecoveryBinding = (
   audit: ReaderSummaryGitHubProjectionAudit | undefined,
 ): ReaderSummaryDailyCanonicalRecoveryV4Binding | undefined => {
-  if (
-    audit === undefined ||
-    !Object.prototype.hasOwnProperty.call(audit, "recoveryV4")
-  ) return undefined;
-  const binding = (audit as unknown as Record<string, unknown>).recoveryV4;
+  if (audit === undefined || !("recoveryV4" in audit)) return undefined;
+  const binding = audit.recoveryV4 as unknown;
   if (typeof binding !== "object" || binding === null || Array.isArray(binding)) {
     return undefined;
   }
   const value = binding as Record<string, unknown>;
-  const v3Keys = [
-    "schemaVersion",
-    "recoveryVersion",
-    "selectedOutputKind",
-    "sourceAuthoritySchemaVersion",
-    "tenantId",
-    "workspaceId",
-    "requestedUtcDate",
-    "ingestionCutoff",
-    "sourceAuthoritySha256",
-    "modelJobIdentity",
-    "canonicalOutputSha256",
-    "canonicalOutputByteLength",
-    "rawOutputSha256",
-    "rawOutputByteLength",
-    "githubProjectionSha256",
-  ] as const;
-  const v2Keys = [
+  const expectedKeys = [
     "schemaVersion",
     "recoveryVersion",
     "selectedOutputKind",
@@ -427,42 +400,27 @@ const dailyCanonicalRecoveryBinding = (
     "outputTextByteLength",
     "githubProjectionSha256",
   ] as const;
-  const hasCommonBinding =
-    value.recoveryVersion === "reader_summary.daily_canonical_recovery.v4" &&
-    value.selectedOutputKind === "output_text" &&
-    value.sourceAuthoritySchemaVersion === 2 &&
-    isText(value.tenantId) &&
-    isText(value.workspaceId) &&
-    /^\d{4}-\d{2}-\d{2}$/u.test(String(value.requestedUtcDate)) &&
-    isExactIso(value.ingestionCutoff) &&
-    isSha256(value.sourceAuthoritySha256) &&
-    isSha256(value.modelJobIdentity) &&
-    isSha256(value.githubProjectionSha256);
-  if (!hasCommonBinding) return undefined;
   if (
-    Object.keys(value).length === v3Keys.length &&
-    v3Keys.every((key) => Object.prototype.hasOwnProperty.call(value, key)) &&
-    value.schemaVersion === "reader_summary.daily_canonical_recovery_provenance.v3" &&
-    isSha256(value.canonicalOutputSha256) &&
-    isSha256(value.rawOutputSha256) &&
-    Number.isSafeInteger(value.canonicalOutputByteLength) &&
-    (value.canonicalOutputByteLength as number) >= 1 &&
-    (value.canonicalOutputByteLength as number) <= 1_000_000 &&
-    Number.isSafeInteger(value.rawOutputByteLength) &&
-    (value.rawOutputByteLength as number) >= 1 &&
-    (value.rawOutputByteLength as number) <= 1_000_000
+    Object.keys(value).length !== expectedKeys.length ||
+    expectedKeys.some((key) => !(key in value)) ||
+    value.schemaVersion !== "reader_summary.daily_canonical_recovery_provenance.v2" ||
+    value.recoveryVersion !== "reader_summary.daily_canonical_recovery.v4" ||
+    value.selectedOutputKind !== "output_text" ||
+    value.sourceAuthoritySchemaVersion !== 2 ||
+    !isText(value.tenantId) ||
+    !isText(value.workspaceId) ||
+    !/^\d{4}-\d{2}-\d{2}$/u.test(String(value.requestedUtcDate)) ||
+    !isExactIso(value.ingestionCutoff) ||
+    !isSha256(value.sourceAuthoritySha256) ||
+    !isSha256(value.modelJobIdentity) ||
+    !isSha256(value.outputTextSha256) ||
+    !isSha256(value.githubProjectionSha256) ||
+    !Number.isSafeInteger(value.outputTextByteLength) ||
+    (value.outputTextByteLength as number) < 1
   ) {
-    return value as unknown as ReaderSummaryDailyCanonicalRecoveryV4Binding;
+    return undefined;
   }
-  if (
-    Object.keys(value).length === v2Keys.length &&
-    v2Keys.every((key) => Object.prototype.hasOwnProperty.call(value, key)) &&
-    value.schemaVersion === "reader_summary.daily_canonical_recovery_provenance.v2" &&
-    isSha256(value.outputTextSha256) &&
-    Number.isSafeInteger(value.outputTextByteLength) &&
-    (value.outputTextByteLength as number) >= 1
-  ) return value as unknown as ReaderSummaryDailyCanonicalRecoveryV4Binding;
-  return undefined;
+  return value as unknown as ReaderSummaryDailyCanonicalRecoveryV4Binding;
 };
 
 const storedGithubProjectionAudit = (

@@ -3,9 +3,6 @@ set -euo pipefail
 
 PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 
-# Retained daily auth pool (v25/account-o); do not prune.
-readonly DAILY_AUTH_POOL_JOB_ID=social-monitor-production-account-pool-terra-v25-20260804
-
 # The catch-up supervisor retains these canonical stages in oldest-first order:
 # npm run run:reader-summary-clean-real-day-collection
 # scripts/run-reader-summary-daily-terminal.ts
@@ -78,7 +75,7 @@ if [[ ! $runtime_release =~ ^[0-9a-f]{40}$ || $runtime_release != "$backend_rele
   exit 75
 fi
 
-"$ROOT/control/refresh-codex-auth.sh" --broker-pool-job-id "$DAILY_AUTH_POOL_JOB_ID"
+"$ROOT/control/refresh-codex-auth.sh"
 
 if [[ -f "$ROOT/runtime/auth-account-changed" ]]; then
   stamp=$(date -u +%Y%m%dT%H%M%SZ)

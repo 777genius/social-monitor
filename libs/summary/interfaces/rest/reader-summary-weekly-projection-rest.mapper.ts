@@ -16,9 +16,6 @@ export const readerSummaryWeeklyProjectionResponse = (
   certifiedDailyEvidenceDates: projection.certifiedDailyEvidenceDates,
   missingDailyEvidenceDates: projection.missingDailyEvidenceDates,
   blockingReasons: projection.blockingReasons,
-  activeWeeklyCertifiedArtifactPresent:
-    projection.activeWeeklyCertifiedArtifactPresent,
-  evidenceLimitations: projection.evidenceLimitations,
   artifact:
     projection.artifact === null
       ? null
