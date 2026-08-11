@@ -153,7 +153,7 @@ require_postgres_runtime_control_rollback_allowed() {
   }
 }
 
-rollback_backend_and_postgres_runtime_control() {
+rollback_backend_and_runtime_control_forward_only_safe() {
   local backend_status=0
   if require_postgres_runtime_control_rollback_allowed "$3"; then
     rollback_backend_and_runtime_control "$@"

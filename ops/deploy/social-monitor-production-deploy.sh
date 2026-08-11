@@ -904,7 +904,7 @@ deploy_release_runtime_transaction() {
   fi
   trap - HUP INT TERM
   if ((activation_status != 0)); then
-    rollback_backend_and_postgres_runtime_control \
+    rollback_backend_and_runtime_control_forward_only_safe \
       "$backend" "$previous_images" "$runtime_control_backup" || rollback_status=$?
     if ((rollback_status != 0)); then
       fail 'release failed; rollback is incomplete and rescue tags were preserved'
