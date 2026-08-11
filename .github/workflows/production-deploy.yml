@@ -545,7 +545,9 @@ jobs:
             --bootstrap "$POSTGRES_POOL_BOOTSTRAP" \
             --bootstrap-sha "$POSTGRES_POOL_BOOTSTRAP_SHA"
           if [[ $bridge_phase == true ]]; then
-            bash ops/deploy/deploy-control-lib.test.sh
+            # Final runtime assets are deliberately absent from the control-only
+            # bridge. Run the bridge-safe controller closure here; the complete
+            # controller and client suites run with the BLOCKED final release.
             bash ops/deploy/deploy-control-bridge-runtime-helper.test.sh
             bash ops/deploy/deploy-control-reviewed-library-source.test.sh
             bash ops/deploy/daily-c1-control-bridge-workflow.test.sh
@@ -560,7 +562,9 @@ jobs:
             bash ops/deploy/github-premidnight-capture-runtime.test.sh
           fi
           bash ops/deploy/x-collector-image-deploy-lib.test.sh
-          bash ops/deploy/github-production-deploy-client.test.sh
+          if [[ $bridge_phase == false ]]; then
+            bash ops/deploy/github-production-deploy-client.test.sh
+          fi
           bash ops/deploy/production-release-a-transition.test.sh
           bash ops/deploy/postgres-pool-atomic-bootstrap-lib.test.sh
           bash ops/deploy/social-monitor-production-ssh-wrapper.test.sh
