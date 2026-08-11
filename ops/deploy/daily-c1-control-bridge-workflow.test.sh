@@ -105,7 +105,7 @@ grep -F "needs.plan.outputs.daily_c1_bridge != 'true'" \
   fail 'bridge must defer exactly the publication, frontend and legacy final-only gates'
 grep -F 'Install the daily-runner bootstrap repair before the daily C1 bridge' \
   "$workflow" >/dev/null || fail 'bridge does not install its control-only bootstrap repair'
-grep -F 'bootstrap_repair=538a8ab4' \
+grep -F 'bootstrap_repair=28278e31' \
   "$workflow" >/dev/null || fail 'bridge bootstrap repair is not pinned to its reviewed commit'
 grep -F 'Deploy the daily C1 bridge through the repaired controller' \
   "$workflow" >/dev/null || fail 'bridge does not run through the repaired controller'
