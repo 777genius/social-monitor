@@ -56,49 +56,6 @@ cannot silently skip an earlier component change.
 
 ## PostgreSQL pool bootstrap
 
-### Temporary production bootstrap Release A
-
-The frozen recovery graph is rooted at
-`9adb8eca792c6208c1477576f72487dc4224c4cf`. Release A is its direct child and
-keeps all 33 reviewed `apps/frontend` paths byte-identical to that source. It
-also retains OpenAPI snapshot blob
-`5948d59742978b90e8b884dcec62df4fc72c58d3`. Its temporary CI guard requires
-`frontend=false`, `backend=true`,
-`backend_base=4bb8f6d4969b8449726a10859202b23e2bfb4366`, `control=true`,
-`x_collector=false`, and `postgres_pool_bootstrap=postgres-pool-v1`. Thus A
-uploads no frontend bundle and cannot advance the frontend marker; it deploys
-the already-reviewed backend and corrected control bytes, then reconciliation
-must reach the unambiguous `A-complete` state.
-
-Release B is the direct child of A and changes exactly 34 public paths: the 33
-`apps/frontend` paths from `683c6ff94e964a2f268041fda462a2aa1c9eb2e2`
-plus `libs/contracts/rest/openapi.snapshot.json` at blob
-`e54354c8e7a38a3763af25265a024b619c80b4bb`. The snapshot remains frontend
-classified but is excluded from backend classification; adjacent `libs`
-paths remain backend classified. After a fresh SSH setup, `inspect-plan` is
-the read-only way to require `frontend=true`, `backend=false`,
-`backend_base=<Release A>`, `control=false`, and `x_collector=false` before B
-is deployed. `plan` remains the workflow action that may perform the narrowly
-authorized missing-bootstrap repair. Reconciliation must reach the explicit
-`B-complete` state. Its commit message carries exact
-`Recovery-A-Manifest-SHA256` and `Recovery-B-Manifest-SHA256` trailers over
-the respective full-index commit deltas, so both frozen path/blob manifests
-are validated before any production mutation.
-
-One pushed B workflow is resumable from `pre-A`, `A-complete`, or
-`B-complete`. It validates the graph and manifests, inspects without repair,
-and completes all B verification and the immutable frontend build before it
-may deploy A. From `pre-A`, it deploys and reconciles A through the installed
-old wrapper, discards the SSH material, opens fresh SSH through A, and requires
-the exact read-only B plan. It then uploads B and uses the ordinary deploy
-client, whose deploy action reconciles B without replaying a disconnected
-mutation. A distinct acceptance job opens another fresh connection and
-requires `B-complete`; a replay observes that state and skips both deploys.
-The transition guard and its unconditional workflow invocation remain through
-B so validation cannot be skipped merely because B is frontend-only.
-Publication PostgreSQL verification remains a separate, mandatory CI job
-because it is intentionally longer-running.
-
 The first bounded-pool rollout must be two main-branch releases. The exact
 sorted sets are pinned to 18 Release A paths and 98 Release B paths in
 `postgres-pool-release-a.files` and

@@ -2,10 +2,6 @@ import { createHash } from "node:crypto";
 
 import type { ReaderSummaryDailySqlClient } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-daily-execution-cursor-row";
 
-import {
-  parseStrictDailyOutputText as parseCanonicalRecoveryOutputText,
-} from "./reader-summary-daily-canonical-recovery-v4-semantic-output";
-
 /** The immutable recovery window. No caller may widen or reorder it. */
 export const canonicalRecoveryDates = Object.freeze([
   "2026-07-23", "2026-07-24", "2026-07-25", "2026-07-26",
@@ -74,16 +70,10 @@ export type CanonicalRecoveryPublication = Readonly<{
 
 export const canonicalRecoveryUnavailableReason =
   "model_result_not_durably_persisted_after_consumed_attempt" as const;
-/** Closed category persisted for the six admitted invalid-product terminals. */
-export const canonicalRecoveryInvalidProductUnavailableReason =
-  "invalid_product" as const;
-export type CanonicalRecoveryUnavailableReason =
-  | typeof canonicalRecoveryUnavailableReason
-  | typeof canonicalRecoveryInvalidProductUnavailableReason;
 
 export type CanonicalRecoveryUnavailable = Readonly<{
   requestedUtcDate: CanonicalRecoveryDate;
-  reasonCode: CanonicalRecoveryUnavailableReason;
+  reasonCode: typeof canonicalRecoveryUnavailableReason;
   signalCount: number;
   sourceAuthoritySha256: string;
   modelJobIdentity: string;
@@ -524,13 +514,45 @@ export const canonicalRecoverySignalCount = (sourceAuthorityBytes: Buffer): numb
   return authority.items.length;
 };
 
-/**
- * Converts a syntactically exact V4 object to canonical bytes. Attestation and
- * semantic admission are intentionally owned by the dedicated semantic-output
- * boundary so a raw provider selection is never persisted from this helper.
- */
-export const parseStrictDailyOutputText = (outputText: string): Buffer =>
-  parseCanonicalRecoveryOutputText(outputText);
+/** Rejects whitespace, duplicate/unknown top-level fields, and noncanonical JSON. */
+export const parseStrictDailyOutputText = (outputText: string): Buffer => {
+  if (
+    outputText.length === 0 ||
+    outputText.trim() !== outputText ||
+    Buffer.byteLength(outputText, "utf8") > 1_000_000
+  ) {
+    throw new Error("Daily canonical recovery output_text framing is invalid");
+  }
+  let value: unknown;
+  try {
+    value = JSON.parse(outputText) as unknown;
+  } catch {
+    throw new Error("Daily canonical recovery output_text is not JSON");
+  }
+  assertExactObject(value, dailyOutputKeys, "daily output");
+  const record = value as Record<string, unknown>;
+  if (
+    typeof record.headline !== "string" ||
+    typeof record.executiveSummary !== "string" ||
+    !Array.isArray(record.narrativeSections) ||
+    !isObject(record.content) ||
+    !Array.isArray(record.topStories) ||
+    !Array.isArray(record.interestHighlights) ||
+    !Array.isArray(record.repeatedSignals) ||
+    !Array.isArray(record.risksAndUnknowns) ||
+    !Array.isArray(record.citationMap) ||
+    !Array.isArray(record.qualityFlags) ||
+    !isObject(record.confidence) ||
+    !(record.noSignalReason === null || typeof record.noSignalReason === "string")
+  ) {
+    throw new Error("Daily canonical recovery output_text shape is invalid");
+  }
+  const bytes = canonicalJsonBytes(value);
+  if (bytes.toString("utf8") !== outputText) {
+    throw new Error("Daily canonical recovery output_text is not canonical JSON");
+  }
+  return bytes;
+};
 
 export const assertDailyOutputMatchesJsonSchema = (
   value: unknown,
@@ -595,6 +617,34 @@ export const assertDailyOutputCitationsMatchSourceAuthority = (
 
 const isLegacyBodyPreview = (value: unknown): value is string =>
   typeof value === "string";
+
+const dailyOutputKeys = [
+  "citationMap",
+  "confidence",
+  "content",
+  "executiveSummary",
+  "headline",
+  "interestHighlights",
+  "narrativeSections",
+  "noSignalReason",
+  "qualityFlags",
+  "repeatedSignals",
+  "risksAndUnknowns",
+  "topStories",
+] as const;
+
+const assertExactObject: (
+  value: unknown,
+  keys: readonly string[],
+  label: string,
+) => asserts value is Record<string, unknown> = (value, keys, label) => {
+  if (
+    !isObject(value) ||
+    JSON.stringify(Object.keys(value).sort()) !== JSON.stringify(keys)
+  ) {
+    throw new Error(`Daily canonical recovery ${label} fields are invalid`);
+  }
+};
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value);
@@ -851,10 +901,8 @@ const unavailableFromRow = (
     "unavailable source authority",
   );
   const modelJobIdentity = sha(row.model_job_identity, "unavailable model identity");
-  const reasonCode = text(row.reason_code);
   if (
-    (reasonCode !== canonicalRecoveryUnavailableReason &&
-      reasonCode !== canonicalRecoveryInvalidProductUnavailableReason) ||
+    text(row.reason_code) !== canonicalRecoveryUnavailableReason ||
     !Number.isSafeInteger(signalCount) ||
     signalCount < 0 ||
     [
@@ -872,7 +920,7 @@ const unavailableFromRow = (
   }
   return Object.freeze({
     requestedUtcDate,
-    reasonCode,
+    reasonCode: canonicalRecoveryUnavailableReason,
     signalCount,
     sourceAuthoritySha256,
     modelJobIdentity,

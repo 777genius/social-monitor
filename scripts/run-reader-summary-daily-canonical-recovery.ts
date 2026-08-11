@@ -66,12 +66,6 @@ import {
 } from "./lib/reader-summary-daily-canonical-recovery-v4";
 import { ReaderSummaryDailyCanonicalRecoveryV4Executor } from "./lib/reader-summary-daily-canonical-recovery-v4-executor";
 import {
-  PostgresCanonicalRecoveryInvalidProductRetrySetAuthorizer,
-} from "./lib/reader-summary-daily-canonical-recovery-v4-invalid-product-retry-set";
-import {
-  parseDailyCanonicalRecoveryV4Invocation,
-} from "./lib/reader-summary-daily-canonical-recovery-v4-invocation";
-import {
   createReaderSummaryDailyTerminalRuntimeConnection,
   readerSummaryDailyTerminalRole,
 } from "./lib/reader-summary-daily-terminal-runtime-connection";
@@ -87,7 +81,6 @@ if (process.argv[1] !== undefined && resolve(process.argv[1]) === __filename) {
 }
 
 async function main(): Promise<void> {
-  const invocation = parseDailyCanonicalRecoveryV4Invocation(process.argv.slice(2));
   const recoveryTenantId = required("READER_SUMMARY_DAILY_TENANT_ID");
   const recoveryWorkspaceId = required("READER_SUMMARY_DAILY_WORKSPACE_ID");
   const publicationDatabaseUrl = requiredSystemDatabaseUrl();
@@ -98,28 +91,18 @@ async function main(): Promise<void> {
     READER_SUMMARY_DAILY_TERMINAL_DATABASE_URL: terminalDatabaseUrl,
     READER_SUMMARY_DAILY_AUDITOR_DATABASE_URL: publicationDatabaseUrl,
   });
-  let prisma: PrismaSummaryConnection | undefined;
+  const prisma = await PrismaSummaryConnection.create(
+    defaultPostgresRuntimePoolConfig(publicationDatabaseUrl, "daily-runner"),
+  );
+  const runtimeClient = GrpcAgentRuntimeClient.connect({
+    address: required("AGENT_RUNTIME_GRPC_ADDRESS"),
+    clock: new SystemClock(),
+    options: {
+      timeoutMs: positive(process.env.AGENT_RUNTIME_GRPC_TIMEOUT_MS, 5_000),
+      serviceToken: process.env.AGENT_RUNTIME_SERVICE_TOKEN?.trim() || undefined,
+    },
+  });
   try {
-    if (invocation.kind === "invalid_product_retry_set") {
-      await new PostgresCanonicalRecoveryInvalidProductRetrySetAuthorizer(
-        runtimeConnection.terminal,
-      ).authorize({
-        tenantId: recoveryTenantId,
-        workspaceId: recoveryWorkspaceId,
-        terminalSetSha256: invocation.terminalSetSha256,
-      });
-    }
-    prisma = await PrismaSummaryConnection.create(
-      defaultPostgresRuntimePoolConfig(publicationDatabaseUrl, "daily-runner"),
-    );
-    const runtimeClient = GrpcAgentRuntimeClient.connect({
-      address: required("AGENT_RUNTIME_GRPC_ADDRESS"),
-      clock: new SystemClock(),
-      options: {
-        timeoutMs: positive(process.env.AGENT_RUNTIME_GRPC_TIMEOUT_MS, 5_000),
-        serviceToken: process.env.AGENT_RUNTIME_SERVICE_TOKEN?.trim() || undefined,
-      },
-    });
     const executor = new ReaderSummaryDailyCanonicalRecoveryV4Executor({
       authority: new PostgresCanonicalRecoveryAuthority(runtimeConnection.terminal),
       runtime: new GrpcReaderSummaryDailyCanonicalRecoveryRuntime(runtimeClient),
@@ -158,8 +141,7 @@ async function main(): Promise<void> {
       process.exitCode = exitCode;
     }
   } finally {
-    await runtimeConnection.close();
-    await prisma?.close();
+    await Promise.all([runtimeConnection.close(), prisma.close()]);
   }
 }
 

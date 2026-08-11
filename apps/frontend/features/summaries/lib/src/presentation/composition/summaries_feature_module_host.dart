@@ -32,9 +32,6 @@ class _SummariesFeatureModuleHostState
 
   @override
   Widget build(BuildContext context) {
-    return SummariesFeaturePage(
-      store: _store,
-      onOpenWeeklySummary: widget.module.onOpenWeeklySummary,
-    );
+    return SummariesFeaturePage(store: _store);
   }
 }

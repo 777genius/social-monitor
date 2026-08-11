@@ -12,7 +12,6 @@ import type {
 import { buildReaderSummary, primaryReaderSummaryEvidence } from "../../domain";
 import {
   asRecord,
-  assertOpenAiReaderSummaryClaimCitationIds,
   assertOpenAiReaderSummaryDraftShape,
   buildOpenAiReaderSummaryLineage,
   classifyOpenAiReaderSummaryHttpFailure,
@@ -204,7 +203,6 @@ export class OpenAiResponsesReaderSummaryModelAdapter implements ReaderSummaryMo
     }
 
     const rawDraft = parseOpenAiReaderSummaryJsonObject(outputText);
-    assertOpenAiReaderSummaryClaimCitationIds(rawDraft);
     const usage = resolveOpenAiReaderSummaryUsage(
       responseJson,
       this.estimate(input, selectedRoute),

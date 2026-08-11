@@ -11,14 +11,9 @@ import '../components/workspace_summary_period_shell.dart';
 import '../stores/published_summary_store.dart';
 
 class PublishedSummaryPage extends StatefulWidget {
-  const PublishedSummaryPage({
-    super.key,
-    required this.store,
-    this.onOpenWeeklySummary,
-  });
+  const PublishedSummaryPage({super.key, required this.store});
 
   final PublishedSummaryStore store;
-  final VoidCallback? onOpenWeeklySummary;
 
   @override
   State<PublishedSummaryPage> createState() => _PublishedSummaryPageState();
@@ -49,7 +44,6 @@ class _PublishedSummaryPageState extends State<PublishedSummaryPage> {
             summary: summary,
             isRefreshing: state is LoadingViewState<ReaderSummary>,
             onOpenUrl: (url) => unawaited(widget.store.openUrl(url)),
-            onOpenWeeklySummary: widget.onOpenWeeklySummary,
           );
         }
 
@@ -81,21 +75,6 @@ class _PublishedSummaryPageState extends State<PublishedSummaryPage> {
         return CustomScrollView(
           key: const PageStorageKey<String>('published-summary-scroll-view'),
           slivers: [
-            if (widget.onOpenWeeklySummary != null)
-              SliverPadding(
-                padding: appPageSurfaceInsets(context).copyWith(bottom: 0),
-                sliver: SliverToBoxAdapter(
-                  child: Align(
-                    alignment: Alignment.centerRight,
-                    child: AppButton(
-                      key: const ValueKey('open-weekly-summary'),
-                      label: 'Weekly summary',
-                      icon: Icons.calendar_view_week_outlined,
-                      onPressed: widget.onOpenWeeklySummary,
-                    ),
-                  ),
-                ),
-              ),
             SliverPadding(
               padding: appPageSurfaceInsets(context),
               sliver: SliverToBoxAdapter(child: body),
@@ -113,14 +92,12 @@ class _PublishedSummaryArticle extends StatelessWidget {
     required this.summary,
     required this.isRefreshing,
     required this.onOpenUrl,
-    required this.onOpenWeeklySummary,
   });
 
   final PublishedSummaryStore store;
   final ReaderSummary summary;
   final bool isRefreshing;
   final ValueChanged<String> onOpenUrl;
-  final VoidCallback? onOpenWeeklySummary;
 
   @override
   Widget build(BuildContext context) {
@@ -140,21 +117,6 @@ class _PublishedSummaryArticle extends StatelessWidget {
     return CustomScrollView(
       key: const PageStorageKey<String>('published-summary-scroll-view'),
       slivers: [
-        if (onOpenWeeklySummary != null)
-          SliverPadding(
-            padding: pageInsets.copyWith(bottom: 0),
-            sliver: SliverToBoxAdapter(
-              child: Align(
-                alignment: Alignment.centerRight,
-                child: AppButton(
-                  key: const ValueKey('open-weekly-summary'),
-                  label: 'Weekly summary',
-                  icon: Icons.calendar_view_week_outlined,
-                  onPressed: onOpenWeeklySummary,
-                ),
-              ),
-            ),
-          ),
         SliverToBoxAdapter(
           child: WorkspaceSummaryPeriodShell(
             selectedPeriod: store.selectedPeriod,

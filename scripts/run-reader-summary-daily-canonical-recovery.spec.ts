@@ -178,7 +178,7 @@ describe("reader summary daily canonical recovery replay evidence", () => {
         responseBytes: Buffer.concat([responseBytes, Buffer.from("\n")]),
         receiptBytes: receipt.receiptBytes,
       }),
-    ).toThrow(/strict canonical JSON/u);
+    ).toThrow(/framing/u);
     expect(() =>
       readerSummaryDailyCanonicalRecoveryPublicExecutionEvidence({
         requestCreated: true,
@@ -322,8 +322,6 @@ const receiptFor = (responseBytes: Buffer) =>
     requestedUtcDate: "2026-07-23",
     sourceAuthoritySha256,
     responseBytes,
-    rawOutputSha256: hash(responseBytes),
-    rawOutputByteLength: responseBytes.length,
     attestation: {
       schemaVersion: 1,
       requestId: "daily-recovery-request",

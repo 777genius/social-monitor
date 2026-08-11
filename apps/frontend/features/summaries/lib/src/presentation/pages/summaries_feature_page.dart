@@ -19,12 +19,10 @@ class SummariesFeaturePage extends StatefulWidget {
     super.key,
     required this.store,
     this.autoload = true,
-    this.onOpenWeeklySummary,
   });
 
   final SummariesReviewStore store;
   final bool autoload;
-  final VoidCallback? onOpenWeeklySummary;
 
   @override
   State<SummariesFeaturePage> createState() => _SummariesFeaturePageState();
@@ -49,24 +47,7 @@ class _SummariesFeaturePageState extends State<SummariesFeaturePage> {
           removeTop: true,
           child: CustomScrollView(
             key: const PageStorageKey<String>('summaries-feature-scroll-view'),
-            slivers: [
-              if (widget.onOpenWeeklySummary != null)
-                SliverPadding(
-                  padding: appPageSurfaceInsets(context).copyWith(bottom: 0),
-                  sliver: SliverToBoxAdapter(
-                    child: Align(
-                      alignment: Alignment.centerRight,
-                      child: AppButton(
-                        key: const ValueKey('open-weekly-summary'),
-                        label: 'Weekly summary',
-                        icon: Icons.calendar_view_week_outlined,
-                        onPressed: widget.onOpenWeeklySummary,
-                      ),
-                    ),
-                  ),
-                ),
-              _SummariesBody(store: widget.store),
-            ],
+            slivers: [_SummariesBody(store: widget.store)],
           ),
         );
       },
