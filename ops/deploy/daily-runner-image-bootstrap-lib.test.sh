@@ -213,7 +213,7 @@ docker() {
             '$3 == project && $4 == service {printf "%s\t%s\t%s\t%s\n", $1, $2, $3, $4}' \
             "$CONTAINERS"
           ;;
-        intelligence-worker)
+        intelligence-worker|api)
           [[ $format == '{{.ID}}' ]] || return 95
           [[ $LEGACY_RUNTIME_LS_STATUS == 0 ]] || \
             return "$LEGACY_RUNTIME_LS_STATUS"
@@ -290,7 +290,7 @@ docker() {
           printf '%s\n' "$image_id"
           ;;
         '{{.Id}}|{{with index .Config.Labels "org.opencontainers.image.revision"}}{{.}}{{end}}')
-          [[ $3 == "$BASE_TAG" ]] || return 98
+          [[ $3 == "$BASE_TAG" || $3 == "$FALLBACK_BASE_TAG" ]] || return 98
           printf '%s|%s\n' "$image_id" "$revision"
           ;;
         '{{.Id}}|{{index .Config.Labels "org.opencontainers.image.revision"}}')
@@ -323,6 +323,7 @@ source "$LIBRARY"
 assert_compose_sentinel_fails_fast
 EXPECTED_CONFIG=$DAILY_RUNNER_BOOTSTRAP_IMAGE_CONFIG
 BASE_TAG=$(compose_image_name intelligence-worker)
+FALLBACK_BASE_TAG=$(compose_image_name api)
 COMPOSE_TAG=$(compose_image_name daily-runner)
 
 reset_runtime() {
@@ -604,6 +605,20 @@ reset_case
 assert_events_exclude $'docker\tcontainer ls'
 assert_events_exclude $'docker\tinspect'
 assert_events_exclude $'config-id\tsocial-monitor-prod-intelligence-worker:latest'
+
+# A missing intelligence-worker tag falls back to the same reviewed runtime
+# image contract under the always-on API service. This is the production
+# recovery path when an interrupted backend replacement removed only the
+# preferred mutable tag.
+reset_case
+remove_ref "$BASE_TAG"
+set_ref "$FALLBACK_BASE_TAG" "$BASE_ID" "$PREVIOUS_SHA"
+[[ $(daily_runner_bootstrap_base_image_id "$PREVIOUS_SHA") == "$BASE_ID" ]]
+grep -F $'docker\timage inspect social-monitor-prod-intelligence-worker:latest' \
+  "$EVENTS" >/dev/null
+grep -F $'docker\timage inspect social-monitor-prod-api:latest' \
+  "$EVENTS" >/dev/null
+assert_events_exclude $'config-id\tsocial-monitor-prod-api:latest'
 
 reset_case
 set_ref "$BASE_TAG" "$BASE_ID" '<no value>'
