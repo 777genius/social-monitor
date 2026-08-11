@@ -746,7 +746,7 @@ jobs:
           DEPLOY_USER: ${{ vars.PRODUCTION_SSH_USER }}
         run: |
           set -euo pipefail
-          bootstrap_repair=7b2784c66f6fa8bae2569818fe18a121c335c5e5
+          bootstrap_repair=538a8ab40a6803a5e8d1b3e8f0e757bd5b25cb1b
           bash ops/deploy/github-production-deploy-client.sh deploy "$bootstrap_repair"
       - name: Deploy the daily C1 bridge through the repaired controller
         if: needs.plan.outputs.daily_c1_bridge == 'true'
