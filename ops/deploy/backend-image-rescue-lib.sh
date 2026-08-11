@@ -696,7 +696,6 @@ backend_image_rescue_prepare() (
   local -a services=("$@")
   local partial=$state_file.partial
   local other service policy source_kind source_ref image_id rescue_tag phase
-  local backend_marker
   local snapshot_complete=false
 
   [[ $sha =~ ^[0-9a-f]{40}$ && ${#services[@]} -gt 0 ]] || return 1
@@ -712,22 +711,13 @@ backend_image_rescue_prepare() (
     return 0
   fi
   backend_image_rescue_cleanup_abandoned_partials || return 1
-  backend_marker=$(marker_value backend || true)
   local -a completed=("$STATE"/backend-image-rescue-*.tsv)
   if [[ -e ${completed[0]} || -L ${completed[0]} ]]; then
     for other in "${completed[@]}"; do
       [[ $other == "$state_file" ]] || {
-        backend_image_rescue_reconcile_completed_state \
-          "$other" "$backend_marker" || {
-            printf 'deploy-error: unfinished backend image rescue snapshot blocks a different release: %s\n' \
-              "$other" >&2
-            return 1
-          }
-        [[ ! -e $other && ! -L $other ]] || {
-          printf 'deploy-error: unfinished backend image rescue snapshot blocks a different release: %s\n' \
-            "$other" >&2
-          return 1
-        }
+        printf 'deploy-error: unfinished backend image rescue snapshot blocks a different release: %s\n' \
+          "$other" >&2
+        return 1
       }
     done
   fi
@@ -891,7 +881,7 @@ rollback_backend_and_runtime_control() {
 backend_image_rescue_cleanup() {
   local state_file=$1
   [[ -e $state_file || -L $state_file ]] || return 0
-  backend_image_rescue_validate "$state_file" || return 1
+  backend_image_rescue_validate_structure "$state_file" || return 1
   local record service policy source_kind source_ref image_id rescue_tag extra
   local phase_file
   local status=0
@@ -907,39 +897,15 @@ backend_image_rescue_cleanup() {
   return "$status"
 }
 
-backend_image_rescue_reconcile_completed_state() {
-  local state_file=$1
-  local backend_marker=$2
-  local target phase
-
-  backend_image_rescue_validate "$state_file" || return 1
-  phase=$(backend_image_rescue_read_phase "$state_file") || return 1
-  target=$(backend_image_rescue_manifest_target "$state_file") || return 1
-  if [[ -n $backend_marker && $target == "$backend_marker" ]]; then
-    backend_image_rescue_cleanup "$state_file" || return 1
-    return 0
-  fi
-  case $phase in
-    replacement-started)
-      rollback_backend_images "$state_file" || return 1
-      backend_image_rescue_cleanup "$state_file" || return 1
-      ;;
-    rollback-complete)
-      backend_image_rescue_cleanup "$state_file" || return 1
-      ;;
-    prepared) return 1 ;;
-    *) return 1 ;;
-  esac
-  return 0
-}
-
 reconcile_completed_backend_image_rescues() {
-  local backend_marker state_file
+  local backend_marker state_file target
   local -a state_files=("$STATE"/backend-image-rescue-*.tsv)
   [[ -e ${state_files[0]} || -L ${state_files[0]} ]] || return 0
-  backend_marker=$(marker_value backend || true)
+  backend_marker=$(marker_value backend)
   for state_file in "${state_files[@]}"; do
-    backend_image_rescue_reconcile_completed_state \
-      "$state_file" "$backend_marker" || return 1
+    target=$(backend_image_rescue_manifest_target "$state_file") || return 1
+    if [[ -n $backend_marker && $target == "$backend_marker" ]]; then
+      backend_image_rescue_cleanup "$state_file" || return 1
+    fi
   done
 }

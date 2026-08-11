@@ -1355,36 +1355,6 @@ const socialMonitorApiOperations = <Map<String, Object?>>[
     ],
   },
   {
-    'operationId': 'ReaderSummaryWeeklyProjectionController_get',
-    'clientName': 'ReaderSummaryWeeklyProjectionController_get',
-    'method': 'GET',
-    'path': '/reader-summaries/weekly',
-    'tags': [
-      'reader-summaries',
-    ],
-    'summary': 'Get the certified Monday-Sunday UTC reader summary projection.',
-    'pathParameters': [],
-    'queryParameters': [
-      'weekStartedOn',
-    ],
-    'requiredHeaders': [
-      'x-tenant-id',
-      'x-workspace-id',
-    ],
-    'optionalHeaders': [
-      'authorization',
-      'x-workspace-role',
-    ],
-    'requiresTenantWorkspace': true,
-    'supportsBearerApiKey': true,
-    'usesDevOnlyWorkspaceRoleHeader': true,
-    'devOnlyWorkspaceRoleRequired': false,
-    'requestBodySchemaRef': null,
-    'successResponseSchemaRefs': [
-      '#/components/schemas/ReaderSummaryWeeklyProjectionResponseDto',
-    ],
-  },
-  {
     'operationId': 'ReaderSummaryJobController_getQualityRejection',
     'clientName': 'ReaderSummaryJobController_getQualityRejection',
     'method': 'GET',

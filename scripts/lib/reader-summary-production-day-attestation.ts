@@ -7,7 +7,7 @@ import {
 export type ProductionDayExecutedRuntimeProvenance = {
   readonly execution: "attested";
   readonly summaryModel: "agent-runtime";
-  readonly physicalModel: "gpt-5.6-sol";
+  readonly physicalModel: "gpt-5.5";
   readonly provider: "codex";
   readonly runtime: "subscription-runtime-cli";
   readonly runtimeVersion: string;
@@ -19,7 +19,7 @@ export type ProductionDayExecutedRuntimeProvenance = {
   readonly completedTaskCount: number;
   readonly topicLabeler: {
     readonly mode: "agent-runtime";
-    readonly physicalModel: "gpt-5.6-sol";
+    readonly physicalModel: "gpt-5.5";
     readonly provider: "codex";
     readonly runtime: "subscription-runtime-cli";
     readonly runtimeVersion: string;
@@ -47,12 +47,12 @@ type ValidAttestationRecord = {
     readonly purpose: string;
     readonly canonicalRequestSha256: string;
     readonly provider: "codex";
-    readonly model: "gpt-5.6-sol";
+    readonly model: "gpt-5.5";
     readonly reasoningEffort: "xhigh";
     readonly runtimeEngine: "subscription-runtime-cli";
     readonly runtimePackageVersion: string;
     readonly launcherSha256: string;
-    readonly selectedOutputKind: "structured_output";
+    readonly selectedOutputKind: "structured_output" | "output_text";
     readonly selectedOutputSha256: string;
   };
 };
@@ -173,7 +173,7 @@ export const runtimeProvenanceFromExecutorAttestations = (
   return {
     execution: "attested",
     summaryModel: "agent-runtime",
-    physicalModel: "gpt-5.6-sol",
+    physicalModel: "gpt-5.5",
     provider: "codex",
     runtime: "subscription-runtime-cli",
     runtimeVersion: identity.runtimePackageVersion,
@@ -185,7 +185,7 @@ export const runtimeProvenanceFromExecutorAttestations = (
     completedTaskCount: records.length,
     topicLabeler: {
       mode: "agent-runtime",
-      physicalModel: "gpt-5.6-sol",
+      physicalModel: "gpt-5.5",
       provider: "codex",
       runtime: "subscription-runtime-cli",
       runtimeVersion: identity.runtimePackageVersion,
@@ -237,7 +237,7 @@ export const isProductionSubscriptionRuntimeProvenance = (
   return (
     value.execution === "attested" &&
     value.summaryModel === "agent-runtime" &&
-    value.physicalModel === "gpt-5.6-sol" &&
+    value.physicalModel === "gpt-5.5" &&
     value.provider === "codex" &&
     value.runtime === "subscription-runtime-cli" &&
     isConcreteRuntimePackageVersion(value.runtimeVersion) &&
@@ -289,12 +289,12 @@ const validateRecord = (
     !nonEmpty(attestation.purpose) ||
     !isSha256Hex(attestation.canonicalRequestSha256) ||
     attestation.provider !== "codex" ||
-    attestation.model !== "gpt-5.6-sol" ||
+    attestation.model !== "gpt-5.5" ||
     attestation.reasoningEffort !== "xhigh" ||
     attestation.runtimeEngine !== "subscription-runtime-cli" ||
     !isConcreteRuntimePackageVersion(attestation.runtimePackageVersion) ||
     !isSha256Hex(attestation.launcherSha256) ||
-    attestation.selectedOutputKind !== "structured_output" ||
+    !isOutputKind(attestation.selectedOutputKind) ||
     !isSha256Hex(attestation.selectedOutputSha256) ||
     !purposeMatches(taskRole, attempt, attestation.purpose)
   ) {
@@ -353,6 +353,9 @@ const isTaskRole = (
   value === "topic_label" ||
   value === "topic_relation" ||
   value === "story_relation";
+
+const isOutputKind = (value: unknown): boolean =>
+  value === "structured_output" || value === "output_text";
 
 const nonEmpty = (value: unknown): value is string =>
   typeof value === "string" && value.trim().length > 0;

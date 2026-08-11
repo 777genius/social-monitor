@@ -16,20 +16,16 @@ DAILY_SINGLETON_LOCK=$CONTROL/daily-run-singleton.lock
 PROJECT=social-monitor-prod
 TMP_ROOT=$FIXTURE/tmp
 REFS=$FIXTURE/docker-refs.tsv
-CONTAINERS=$FIXTURE/docker-containers.tsv
 EVENTS=$FIXTURE/events.log
 BASE_ID=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 MUTATED_ID=sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 CANDIDATE_ID=sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 EXISTING_ID=sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
-CONTAINER_ID_A=1111111111111111111111111111111111111111111111111111111111111111
-CONTAINER_ID_B=2222222222222222222222222222222222222222222222222222222222222222
 
 export SOCIAL_MONITOR_DEPLOY_TEST_MODE=1
 export SOCIAL_MONITOR_DAILY_RUNNER_BOOTSTRAP_TMP_ROOT=$TMP_ROOT
 install -d "$REPO" "$CONTROL" "$STATE" "$POSTGRES_RUNTIME_RELEASES" "$TMP_ROOT"
 : > "$REFS"
-: > "$CONTAINERS"
 : > "$EVENTS"
 
 write_reviewed_dockerfile() {
@@ -111,10 +107,6 @@ remove_ref() {
   mv -f "$next" "$REFS"
 }
 
-add_container() {
-  printf '%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "$4" >> "$CONTAINERS"
-}
-
 backend_image_rescue_image_id() {
   local image_id
   printf 'inspect-id\t%s\n' "$1" >> "$EVENTS"
@@ -124,125 +116,27 @@ backend_image_rescue_image_id() {
 }
 
 backend_image_rescue_image_config() {
-  local image=$1
-
-  printf 'config-id\t%s\n' "$image" >> "$EVENTS"
-  case $image in
-    "$BASE_ID")
-      printf '%s\n' "$BASE_CONFIG"
-      ;;
-    "$MUTATED_ID")
-      printf '%s\n' "$MUTATED_BASE_CONFIG"
-      ;;
-    "$BASE_TAG")
-      printf '%s\n' "$BASE_TAG_CONFIG"
-      ;;
-    *)
-      [[ -n $(lookup_id "$image") ]] || return 1
-      printf '%s\n' "$BUILT_CONFIG"
-      ;;
-  esac
+  [[ -n $(lookup_id "$1") ]] || return 1
+  if [[ $1 == "$(compose_image_name intelligence-worker)" ]]; then
+    printf '%s\n' "$BASE_CONFIG"
+  else
+    printf '%s\n' "$BUILT_CONFIG"
+  fi
 }
 
 fake_compose() {
   printf 'compose\t%s\n' "$*" >> "$EVENTS"
-  return 97
+  [[ $* == '--profile app --profile daily ps -q daily-runner' ]]
+  [[ $ACTIVE_DAILY_CONTAINER == false ]] || printf 'daily-container\n'
 }
 COMPOSE=(fake_compose)
-
-assert_compose_sentinel_fails_fast() {
-  local status
-
-  set +e
-  "${COMPOSE[@]}" sentinel-check
-  status=$?
-  set -e
-  ((status == 97)) || fail 'fake Compose sentinel did not fail fast'
-  [[ $(<"$EVENTS") == $'compose\tsentinel-check' ]] || \
-    fail 'fake Compose sentinel did not record the expected event'
-  : > "$EVENTS"
-}
 
 docker() {
   local source destination image_id revision
   local tag='' label='' context='' argument=''
   printf 'docker\t%s\n' "$*" >> "$EVENTS"
   case ${1:-}:${2:-} in
-    container:ls)
-      local daily_format=$'{{.ID}}\t{{.State}}\t{{.Label "com.docker.compose.project"}}\t{{.Label "com.docker.compose.service"}}'
-      local format='' project_filter='' service_filter='' no_trunc=false
-      shift 2
-      while (($# > 0)); do
-        argument=$1
-        shift
-        case $argument in
-          --no-trunc)
-            no_trunc=true
-            ;;
-          --filter)
-            case ${1:-} in
-              label=com.docker.compose.project=*)
-                project_filter=${1#label=com.docker.compose.project=}
-                ;;
-              label=com.docker.compose.service=*)
-                service_filter=${1#label=com.docker.compose.service=}
-                ;;
-              *) return 91 ;;
-            esac
-            shift
-            ;;
-          --format)
-            format=${1:-}
-            shift
-            ;;
-          *) return 92 ;;
-        esac
-      done
-      [[ $no_trunc == true && $project_filter == "$PROJECT" ]] || \
-        return 93
-      case $service_filter in
-        daily-runner)
-          [[ $format == "$daily_format" ]] || return 94
-          [[ $CONTAINER_LS_STATUS == 0 ]] || return "$CONTAINER_LS_STATUS"
-          if [[ $CONTAINER_FORCE_LABEL_MISMATCH == true ]]; then
-            printf '%s\t%s\t%s\t%s\n' \
-              "$CONTAINER_ID_A" running wrong-project daily-runner
-            return 0
-          fi
-          awk -F '\t' -v project="$project_filter" -v service="$service_filter" \
-            '$3 == project && $4 == service {printf "%s\t%s\t%s\t%s\n", $1, $2, $3, $4}' \
-            "$CONTAINERS"
-          ;;
-        intelligence-worker|api)
-          [[ $format == '{{.ID}}' ]] || return 95
-          [[ $LEGACY_RUNTIME_LS_STATUS == 0 ]] || \
-            return "$LEGACY_RUNTIME_LS_STATUS"
-          printf '%s\n' "$LEGACY_RUNTIME_IDS"
-          ;;
-        *) return 96 ;;
-      esac
-      ;;
-    inspect:*)
-      local legacy_format='{{.Id}}|{{.Image}}|{{.State.Status}}|{{.State.Running}}|{{.State.Paused}}|{{.State.Restarting}}|{{.State.Dead}}|{{.State.OOMKilled}}|{{.State.Error}}|{{.RestartCount}}|{{index .Config.Labels "com.docker.compose.project"}}|{{index .Config.Labels "com.docker.compose.service"}}|{{index .Config.Labels "com.docker.compose.image"}}|{{index .Config.Labels "com.docker.compose.oneoff"}}|{{index .Config.Labels "com.docker.compose.container-number"}}'
-      [[ ${3:-} == --format && ${4:-} == "$legacy_format" ]] || return 97
-      [[ $LEGACY_RUNTIME_INSPECT_STATUS == 0 ]] || \
-        return "$LEGACY_RUNTIME_INSPECT_STATUS"
-      if [[ -n $LEGACY_RUNTIME_RECORD_OVERRIDE ]]; then
-        printf '%s\n' "$LEGACY_RUNTIME_RECORD_OVERRIDE"
-        return 0
-      fi
-      printf '%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s\n' \
-        "$LEGACY_RUNTIME_INSPECT_ID" "$LEGACY_RUNTIME_IMAGE_ID" \
-        "$LEGACY_RUNTIME_STATE_STATUS" "$LEGACY_RUNTIME_RUNNING" \
-        "$LEGACY_RUNTIME_PAUSED" "$LEGACY_RUNTIME_RESTARTING" \
-        "$LEGACY_RUNTIME_DEAD" "$LEGACY_RUNTIME_OOM_KILLED" \
-        "$LEGACY_RUNTIME_ERROR" "$LEGACY_RUNTIME_RESTART_COUNT" \
-        "$LEGACY_RUNTIME_PROJECT" "$LEGACY_RUNTIME_SERVICE" \
-        "$LEGACY_RUNTIME_COMPOSE_IMAGE" "$LEGACY_RUNTIME_ONEOFF" \
-        "$LEGACY_RUNTIME_CONTAINER_NUMBER"
-      ;;
     build:*)
-      [[ -n $(lookup_id "$BASE_TAG") ]] || return 72
       shift
       while (($# > 0)); do
         argument=$1
@@ -286,30 +180,17 @@ docker() {
       image_id=$(lookup_id "$3")
       revision=$(lookup_revision "$3")
       [[ -n $image_id ]] || return 1
-      case ${5:-} in
-        '{{.Id}}')
-          printf '%s\n' "$image_id"
-          ;;
-        '{{.Id}}|{{with index .Config.Labels "org.opencontainers.image.revision"}}{{.}}{{end}}')
-          [[ $3 == "$BASE_TAG" || $3 == "$FALLBACK_BASE_TAG" ]] || return 98
-          printf '%s|%s\n' "$image_id" "$revision"
-          ;;
-        '{{.Id}}|{{index .Config.Labels "org.opencontainers.image.revision"}}')
-          printf '%s|%s\n' "$image_id" "$revision"
-          ;;
-        *) return 99 ;;
-      esac
+      if [[ ${*: -1} == *org.opencontainers.image.revision* ]]; then
+        printf '%s|%s\n' "$image_id" "$revision"
+      else
+        printf '%s\n' "$image_id"
+      fi
       ;;
     image:tag)
       source=$3
       destination=$4
       image_id=$(lookup_id "$source")
       revision=$(lookup_revision "$source")
-      if [[ -z $image_id && $source == "$BASE_ID" ]]; then
-        image_id=$BASE_ID
-        revision=$(awk -F '\t' -v image_id="$BASE_ID" \
-          '$2 == image_id { print $3; exit }' "$REFS")
-      fi
       [[ -n $image_id ]] || return 1
       set_ref "$destination" "$image_id" "$revision"
       if [[ $SIGNAL_AFTER_INSTALL == true ]]; then
@@ -326,10 +207,8 @@ docker() {
 
 # shellcheck source=ops/deploy/daily-runner-image-bootstrap-lib.sh
 source "$LIBRARY"
-assert_compose_sentinel_fails_fast
 EXPECTED_CONFIG=$DAILY_RUNNER_BOOTSTRAP_IMAGE_CONFIG
 BASE_TAG=$(compose_image_name intelligence-worker)
-FALLBACK_BASE_TAG=$(compose_image_name api)
 COMPOSE_TAG=$(compose_image_name daily-runner)
 
 reset_runtime() {
@@ -354,62 +233,15 @@ reset_case() {
   : > "$EVENTS"
   set_ref "$BASE_TAG" "$BASE_ID" "$PREVIOUS_SHA"
   BASE_CONFIG=$EXPECTED_CONFIG
-  BASE_TAG_CONFIG='["must-not-use"]|["config"]|"/app"|"node"|null'
-  MUTATED_BASE_CONFIG=$EXPECTED_CONFIG
   BUILT_CONFIG=$EXPECTED_CONFIG
   BUILT_IMAGE_ID=$CANDIDATE_ID
   BUILT_REVISION_OVERRIDE=
-  : > "$CONTAINERS"
-  CONTAINER_LS_STATUS=0
-  CONTAINER_FORCE_LABEL_MISMATCH=false
   BUILD_FAILURE=false
   MUTATE_BASE_ID_AFTER_BUILD=false
   MUTATE_BASE_REVISION_AFTER_BUILD=false
   MUTATE_DOCKERFILE_AFTER_BUILD=false
   SIGNAL_AFTER_INSTALL=false
-  LEGACY_RUNTIME_LS_STATUS=0
-  LEGACY_RUNTIME_IDS=
-  LEGACY_RUNTIME_INSPECT_STATUS=0
-  LEGACY_RUNTIME_RECORD_OVERRIDE=
-  LEGACY_RUNTIME_INSPECT_ID=$CONTAINER_ID_A
-  LEGACY_RUNTIME_IMAGE_ID=$BASE_ID
-  LEGACY_RUNTIME_STATE_STATUS=running
-  LEGACY_RUNTIME_RUNNING=true
-  LEGACY_RUNTIME_PAUSED=false
-  LEGACY_RUNTIME_RESTARTING=false
-  LEGACY_RUNTIME_DEAD=false
-  LEGACY_RUNTIME_OOM_KILLED=false
-  LEGACY_RUNTIME_ERROR=
-  LEGACY_RUNTIME_RESTART_COUNT=0
-  LEGACY_RUNTIME_PROJECT=$PROJECT
-  LEGACY_RUNTIME_SERVICE=intelligence-worker
-  LEGACY_RUNTIME_COMPOSE_IMAGE=$BASE_ID
-  LEGACY_RUNTIME_ONEOFF=False
-  LEGACY_RUNTIME_CONTAINER_NUMBER=1
-}
-
-configure_legacy_runtime_stable() {
-  LEGACY_RUNTIME_IDS=$CONTAINER_ID_A
-  LEGACY_RUNTIME_INSPECT_ID=$CONTAINER_ID_A
-  LEGACY_RUNTIME_IMAGE_ID=$BASE_ID
-  LEGACY_RUNTIME_STATE_STATUS=running
-  LEGACY_RUNTIME_RUNNING=true
-  LEGACY_RUNTIME_PAUSED=false
-  LEGACY_RUNTIME_RESTARTING=false
-  LEGACY_RUNTIME_DEAD=false
-  LEGACY_RUNTIME_OOM_KILLED=false
-  LEGACY_RUNTIME_ERROR=
-  LEGACY_RUNTIME_RESTART_COUNT=0
-  LEGACY_RUNTIME_PROJECT=$PROJECT
-  LEGACY_RUNTIME_SERVICE=intelligence-worker
-  LEGACY_RUNTIME_COMPOSE_IMAGE=$BASE_ID
-  LEGACY_RUNTIME_ONEOFF=False
-  LEGACY_RUNTIME_CONTAINER_NUMBER=1
-}
-
-configure_unlabelled_base() {
-  set_ref "$BASE_TAG" "$BASE_ID" ''
-  configure_legacy_runtime_stable
+  ACTIVE_DAILY_CONTAINER=false
 }
 
 assert_fails_with() {
@@ -525,47 +357,9 @@ flock -u 9
 exec 9>&-
 
 reset_case
-add_container "$CONTAINER_ID_A" running other-project daily-runner
-add_container "$CONTAINER_ID_B" running "$PROJECT" api
-daily_runner_image_bootstrap_before_rescue "$PREVIOUS_SHA" "$TARGET_SHA"
-[[ $(lookup_id "$COMPOSE_TAG") == "$CANDIDATE_ID" ]]
-assert_events_exclude $'compose\t'
-
-reset_case
-add_container "$CONTAINER_ID_A" running "$PROJECT" daily-runner
+ACTIVE_DAILY_CONTAINER=true
 assert_fails_with 'active daily-runner container blocks' \
   daily_runner_image_bootstrap_before_rescue "$PREVIOUS_SHA" "$TARGET_SHA"
-assert_events_exclude $'docker\tbuild'
-assert_events_exclude $'compose\t'
-
-reset_case
-add_container "$CONTAINER_ID_A" running "$PROJECT" daily-runner
-add_container "$CONTAINER_ID_B" running "$PROJECT" daily-runner
-assert_fails_with 'daily-runner container inventory is ambiguous' \
-  daily_runner_image_bootstrap_before_rescue "$PREVIOUS_SHA" "$TARGET_SHA"
-assert_events_exclude $'docker\tbuild'
-assert_events_exclude $'compose\t'
-
-reset_case
-add_container "$CONTAINER_ID_A" exited "$PROJECT" daily-runner
-assert_fails_with 'daily-runner container state is unexpected' \
-  daily_runner_image_bootstrap_before_rescue "$PREVIOUS_SHA" "$TARGET_SHA"
-assert_events_exclude $'docker\tbuild'
-assert_events_exclude $'compose\t'
-
-reset_case
-CONTAINER_FORCE_LABEL_MISMATCH=true
-assert_fails_with 'daily-runner container inventory label mismatch' \
-  daily_runner_image_bootstrap_before_rescue "$PREVIOUS_SHA" "$TARGET_SHA"
-assert_events_exclude $'docker\tbuild'
-assert_events_exclude $'compose\t'
-
-reset_case
-CONTAINER_LS_STATUS=72
-assert_fails_with 'daily-runner container state cannot be inventoried' \
-  daily_runner_image_bootstrap_before_rescue "$PREVIOUS_SHA" "$TARGET_SHA"
-assert_events_exclude $'docker\tbuild'
-assert_events_exclude $'compose\t'
 
 reset_case
 partial=$(backend_image_rescue_state_file "$TARGET_SHA").partial
@@ -601,161 +395,6 @@ BASE_CONFIG='["wrong"]|["config"]|"/app"|"node"|null'
 assert_fails_with 'base image config is unexpected' \
   daily_runner_image_bootstrap_before_rescue "$PREVIOUS_SHA" "$TARGET_SHA"
 assert_events_exclude $'docker\tbuild'
-
-# A labelled base accepts only the prior release and never consults legacy
-# runtime state. The exact `with` template renders an absent label as empty;
-# a literal Docker `<no value>` and any other non-empty revision cannot fall
-# back to the runtime-stability exception.
-reset_case
-[[ $(daily_runner_bootstrap_base_image_id "$PREVIOUS_SHA") == "$BASE_ID" ]]
-assert_events_exclude $'docker\tcontainer ls'
-assert_events_exclude $'docker\tinspect'
-assert_events_exclude $'config-id\tsocial-monitor-prod-intelligence-worker:latest'
-
-# A missing intelligence-worker tag falls back to the same reviewed runtime
-# image contract under the always-on API service. This is the production
-# recovery path when an interrupted backend replacement removed only the
-# preferred mutable tag.
-reset_case
-remove_ref "$BASE_TAG"
-set_ref "$FALLBACK_BASE_TAG" "$BASE_ID" "$PREVIOUS_SHA"
-[[ $(daily_runner_bootstrap_base_image_id "$PREVIOUS_SHA") == "$BASE_ID" ]]
-grep -F $'docker\timage inspect social-monitor-prod-intelligence-worker:latest' \
-  "$EVENTS" >/dev/null
-grep -F $'docker\timage inspect social-monitor-prod-api:latest' \
-  "$EVENTS" >/dev/null
-assert_events_exclude $'config-id\tsocial-monitor-prod-api:latest'
-
-reset_case
-remove_ref "$BASE_TAG"
-set_ref "$FALLBACK_BASE_TAG" "$BASE_ID" ''
-configure_legacy_runtime_stable
-LEGACY_RUNTIME_SERVICE=api
-daily_runner_image_bootstrap_before_rescue "$PREVIOUS_SHA" "$TARGET_SHA"
-[[ $(lookup_id "$COMPOSE_TAG") == "$CANDIDATE_ID" ]]
-[[ -z $(lookup_id "$BASE_TAG") ]]
-[[ $(lookup_id "$FALLBACK_BASE_TAG") == "$BASE_ID" ]]
-[[ $(grep -c $'^docker\timage tag' "$EVENTS") == 2 ]]
-assert_no_temporary_state
-
-reset_case
-remove_ref "$BASE_TAG"
-set_ref "$FALLBACK_BASE_TAG" "$BASE_ID" "$PREVIOUS_SHA"
-BUILD_FAILURE=true
-assert_fails_with 'historical daily-runner image build failed' \
-  daily_runner_image_bootstrap_before_rescue "$PREVIOUS_SHA" "$TARGET_SHA"
-[[ -z $(lookup_id "$BASE_TAG") ]]
-[[ $(lookup_id "$FALLBACK_BASE_TAG") == "$BASE_ID" ]]
-assert_no_temporary_state
-
-reset_case
-set_ref "$BASE_TAG" "$BASE_ID" '<no value>'
-configure_legacy_runtime_stable
-assert_fails_with 'base image identity or revision is unexpected' \
-  daily_runner_bootstrap_base_image_id "$PREVIOUS_SHA"
-assert_events_exclude $'docker\tcontainer ls'
-
-reset_case
-set_ref "$BASE_TAG" "$BASE_ID" "$TARGET_SHA"
-configure_legacy_runtime_stable
-assert_fails_with 'base image identity or revision is unexpected' \
-  daily_runner_bootstrap_base_image_id "$PREVIOUS_SHA"
-assert_events_exclude $'docker\tcontainer ls'
-
-# A truly unlabelled base has one narrow compatibility proof. It must resolve
-# through one full container ID and an exact, healthy-enough Compose runtime;
-# Docker health status is deliberately not part of the legacy contract.
-reset_case
-configure_unlabelled_base
-[[ $(daily_runner_bootstrap_base_image_id "$PREVIOUS_SHA") == "$BASE_ID" ]]
-[[ $(grep -cF -- $'config-id\t'"$BASE_ID" "$EVENTS") == 1 ]]
-assert_events_exclude $'config-id\tsocial-monitor-prod-intelligence-worker:latest'
-assert_events_exclude 'State.Health'
-
-for legacy_failure in list zero multiple malformed-id inspect malformed-record \
-  image-mismatch inspected-id-mismatch; do
-  reset_case
-  configure_unlabelled_base
-  case $legacy_failure in
-    list)
-      LEGACY_RUNTIME_LS_STATUS=72
-      ;;
-    zero)
-      LEGACY_RUNTIME_IDS=
-      ;;
-    multiple)
-      LEGACY_RUNTIME_IDS=$CONTAINER_ID_A$'\n'$CONTAINER_ID_B
-      ;;
-    malformed-id)
-      LEGACY_RUNTIME_IDS=not-a-full-container-id
-      ;;
-    inspect)
-      LEGACY_RUNTIME_INSPECT_STATUS=71
-      ;;
-    malformed-record)
-      LEGACY_RUNTIME_RECORD_OVERRIDE=not-a-runtime-record
-      ;;
-    image-mismatch)
-      LEGACY_RUNTIME_IMAGE_ID=$MUTATED_ID
-      ;;
-    inspected-id-mismatch)
-      LEGACY_RUNTIME_INSPECT_ID=$CONTAINER_ID_B
-      ;;
-  esac
-  assert_fails_with 'unlabelled base image is not runtime-stable' \
-    daily_runner_bootstrap_base_image_id "$PREVIOUS_SHA"
-  assert_events_exclude $'config-id\t'
-done
-
-for legacy_label in project service compose-image oneoff container-number; do
-  for legacy_label_value in mismatch missing; do
-    reset_case
-    configure_unlabelled_base
-    case $legacy_label:$legacy_label_value in
-      project:mismatch) LEGACY_RUNTIME_PROJECT=wrong-project ;;
-      project:missing) LEGACY_RUNTIME_PROJECT='<no value>' ;;
-      service:mismatch) LEGACY_RUNTIME_SERVICE=wrong-service ;;
-      service:missing) LEGACY_RUNTIME_SERVICE='<no value>' ;;
-      compose-image:mismatch) LEGACY_RUNTIME_COMPOSE_IMAGE=$MUTATED_ID ;;
-      compose-image:missing) LEGACY_RUNTIME_COMPOSE_IMAGE='<no value>' ;;
-      oneoff:mismatch) LEGACY_RUNTIME_ONEOFF=True ;;
-      oneoff:missing) LEGACY_RUNTIME_ONEOFF='<no value>' ;;
-      container-number:mismatch) LEGACY_RUNTIME_CONTAINER_NUMBER=2 ;;
-      container-number:missing) LEGACY_RUNTIME_CONTAINER_NUMBER='<no value>' ;;
-    esac
-    assert_fails_with 'unlabelled base image is not runtime-stable' \
-      daily_runner_bootstrap_base_image_id "$PREVIOUS_SHA"
-    assert_events_exclude $'config-id\t'
-  done
-done
-
-for legacy_state in status running paused restarting dead oom-killed error \
-  restart-count; do
-  reset_case
-  configure_unlabelled_base
-  case $legacy_state in
-    status) LEGACY_RUNTIME_STATE_STATUS=exited ;;
-    running) LEGACY_RUNTIME_RUNNING=false ;;
-    paused) LEGACY_RUNTIME_PAUSED=true ;;
-    restarting) LEGACY_RUNTIME_RESTARTING=true ;;
-    dead) LEGACY_RUNTIME_DEAD=true ;;
-    oom-killed) LEGACY_RUNTIME_OOM_KILLED=true ;;
-    error) LEGACY_RUNTIME_ERROR=daemon-error ;;
-    restart-count) LEGACY_RUNTIME_RESTART_COUNT=1 ;;
-  esac
-  assert_fails_with 'unlabelled base image is not runtime-stable' \
-    daily_runner_bootstrap_base_image_id "$PREVIOUS_SHA"
-  assert_events_exclude $'config-id\t'
-done
-
-# Configuration must be inspected by the immutable ID before and after the
-# historical build, never through the mutable Compose tag.
-reset_case
-configure_unlabelled_base
-daily_runner_image_bootstrap_before_rescue "$PREVIOUS_SHA" "$TARGET_SHA"
-[[ $(lookup_id "$COMPOSE_TAG") == "$CANDIDATE_ID" ]]
-[[ $(grep -cF -- $'config-id\t'"$BASE_ID" "$EVENTS") == 2 ]]
-assert_events_exclude $'config-id\tsocial-monitor-prod-intelligence-worker:latest'
 
 # Archive traversal and symlink entries never reach Docker.
 # Invoked through the daily_runner_bootstrap_create_archive override below.
@@ -836,9 +475,6 @@ MUTATE_BASE_ID_AFTER_BUILD=true
 assert_fails_with 'base image identity changed during historical build' \
   daily_runner_image_bootstrap_before_rescue "$PREVIOUS_SHA" "$TARGET_SHA"
 [[ -z $(lookup_id "$COMPOSE_TAG") ]]
-grep -F -- $'config-id\t'"$BASE_ID" "$EVENTS" >/dev/null
-grep -F -- $'config-id\t'"$MUTATED_ID" "$EVENTS" >/dev/null
-assert_events_exclude $'config-id\tsocial-monitor-prod-intelligence-worker:latest'
 assert_no_temporary_state
 
 reset_case
@@ -877,7 +513,6 @@ daily_runner_image_bootstrap_before_rescue "$PREVIOUS_SHA" "$TARGET_SHA"
 [[ $(grep -c $'^docker\tbuild' "$EVENTS") == "$build_count" ]]
 [[ $(grep -c $'^docker\timage tag' "$EVENTS") == "$tag_count" ]]
 [[ $(lookup_id "$COMPOSE_TAG") == "$CANDIDATE_ID" ]]
-assert_events_exclude $'compose\t'
 assert_events_exclude 'image prune'
 assert_events_exclude 'system prune'
 

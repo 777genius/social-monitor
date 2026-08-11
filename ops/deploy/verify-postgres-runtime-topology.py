@@ -191,7 +191,6 @@ def verify_daily_topology(service_path: str, runner_path: str) -> None:
         "control/compose.production.yml",
         "control/compose.managed-db.yml",
         "control/postgres-runtime-current/compose.postgres-runtime.yml",
-        "integration/ops/deploy/production-runtime/compose.agent-runtime-model.yml",
     ):
         if compose_path not in runner:
             fail(f"effective daily runner omits Compose input: {compose_path}")

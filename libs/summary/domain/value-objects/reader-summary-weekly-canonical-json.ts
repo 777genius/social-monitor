@@ -14,18 +14,12 @@ export const readerSummaryWeeklyCanonicalJsonLimits = Object.freeze({
   maxBytes: 1_048_576,
   maxObjectKeys: 64,
   maxTotalObjectKeys: 4_096,
-  maxArrayElements: 512,
+  maxArrayElements: 256,
   maxTotalArrayElements: 4_096,
   maxStringLength: 16_384,
   maxNodes: 6_000,
 });
 
-// The exact 369-row recovery artifact needs 5,607 keys at full row shape.
-export const readerSummaryProductionRecoveryCanonicalJsonLimits =
-  Object.freeze({
-    ...readerSummaryWeeklyCanonicalJsonLimits,
-    maxTotalObjectKeys: 5_700,
-  });
 export type ReaderSummaryWeeklyCanonicalJson = Readonly<{
   json: string;
   sha256: string;
@@ -70,51 +64,40 @@ const forbiddenInputFields = new Set([
   "weekEndedUtcDate",
 ]);
 
-type TraversalBudget = { objectKeys: number; arrayElements: number; nodes: number };
+type TraversalBudget = {
+  objectKeys: number;
+  arrayElements: number;
+  nodes: number;
+};
 
-type CanonicalJsonLimits = Readonly<Record<
-  keyof typeof readerSummaryWeeklyCanonicalJsonLimits, number
->>;
 type CanonicalWriter = TraversalBudget & {
   readonly parts: string[];
   readonly visited: WeakSet<object>;
-  readonly limits: CanonicalJsonLimits;
   byteLength: number;
 };
 
 export const canonicalizeReaderSummaryWeeklyJson = (
   value: unknown,
   label = "value",
-): ReaderSummaryWeeklyCanonicalJson =>
-  canonicalizeReaderSummaryJsonWithLimits(value,
-    `Reader summary weekly ${label}`, readerSummaryWeeklyCanonicalJsonLimits);
-export const canonicalizeReaderSummaryProductionRecoveryJson = (
-  value: unknown,
-  label = "evidence",
-): ReaderSummaryWeeklyCanonicalJson =>
-  canonicalizeReaderSummaryJsonWithLimits(value,
-    `Reader summary production recovery ${label}`,
-    readerSummaryProductionRecoveryCanonicalJsonLimits);
-
-const canonicalizeReaderSummaryJsonWithLimits = (
-  value: unknown,
-  path: string,
-  limits: CanonicalJsonLimits,
 ): ReaderSummaryWeeklyCanonicalJson => {
   const writer: CanonicalWriter = {
     parts: [],
     visited: new WeakSet<object>(),
-    limits,
     byteLength: 0,
     objectKeys: 0,
     arrayElements: 0,
     nodes: 0,
   };
-  writeCanonicalValue(value, path, 0, writer);
+  writeCanonicalValue(
+    value,
+    `Reader summary weekly ${label}`,
+    0,
+    writer,
+  );
   const json = writer.parts.join("");
   const bytes = Buffer.from(json, "utf8");
   if (bytes.byteLength !== writer.byteLength) {
-    throw new Error(`${path} byte accounting failed`);
+    throw new Error(`Reader summary weekly ${label} byte accounting failed`);
   }
   const sha256 = readerSummaryWeeklySha256(bytes);
 
@@ -392,10 +375,10 @@ const writeCanonicalValue = (
   writer: CanonicalWriter,
 ): void => {
   writer.nodes += 1;
-  if (writer.nodes > writer.limits.maxNodes) {
+  if (writer.nodes > readerSummaryWeeklyCanonicalJsonLimits.maxNodes) {
     throw new Error(`${path} exceeds the JSON node limit`);
   }
-  if (depth > writer.limits.maxDepth) {
+  if (depth > readerSummaryWeeklyCanonicalJsonLimits.maxDepth) {
     throw new Error(`${path} exceeds the JSON depth limit`);
   }
   if (value === null || typeof value === "boolean") {
@@ -405,7 +388,7 @@ const writeCanonicalValue = (
   if (typeof value === "string") {
     if (
       value.length >
-      writer.limits.maxStringLength
+      readerSummaryWeeklyCanonicalJsonLimits.maxStringLength
     ) {
       throw new Error(`${path} exceeds the string length limit`);
     }
@@ -425,7 +408,7 @@ const writeCanonicalValue = (
     writer.arrayElements += value.length;
     if (
       writer.arrayElements >
-      writer.limits.maxTotalArrayElements
+      readerSummaryWeeklyCanonicalJsonLimits.maxTotalArrayElements
     ) {
       throw new Error(`${path} exceeds the total array element limit`);
     }
@@ -442,20 +425,20 @@ const writeCanonicalValue = (
   assertReaderSummaryWeeklyPlainObject(value, path);
   assertUnvisited(value, path, writer.visited);
   const keys = readerSummaryWeeklyOwnDataKeys(value, path);
-  if (keys.length > writer.limits.maxObjectKeys) {
+  if (keys.length > readerSummaryWeeklyCanonicalJsonLimits.maxObjectKeys) {
     throw new Error(`${path} exceeds the object key limit`);
   }
   writer.objectKeys += keys.length;
   if (
     writer.objectKeys >
-    writer.limits.maxTotalObjectKeys
+    readerSummaryWeeklyCanonicalJsonLimits.maxTotalObjectKeys
   ) {
     throw new Error(`${path} exceeds the total object key limit`);
   }
   appendCanonicalChunk("{", path, writer);
   [...keys].sort(lexicalCompare).forEach((key, index) => {
     if (
-      key.length > writer.limits.maxStringLength
+      key.length > readerSummaryWeeklyCanonicalJsonLimits.maxStringLength
     ) {
       throw new Error(`${path} has an object key above the string limit`);
     }
@@ -477,7 +460,7 @@ const appendCanonicalChunk = (
   writer: CanonicalWriter,
 ): void => {
   const nextByteLength = writer.byteLength + Buffer.byteLength(chunk, "utf8");
-  if (nextByteLength > writer.limits.maxBytes) {
+  if (nextByteLength > readerSummaryWeeklyCanonicalJsonLimits.maxBytes) {
     throw new Error(`${path} exceeds the canonical byte limit`);
   }
   writer.parts.push(chunk);

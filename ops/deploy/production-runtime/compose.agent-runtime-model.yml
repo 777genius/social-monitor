@@ -1,8 +1,0 @@
-services:
-  agent-runtime:
-    environment:
-      AGENT_RUNTIME_MODEL: gpt-5.6-sol
-
-  daily-runner:
-    environment:
-      AGENT_RUNTIME_READER_SUMMARY_MODEL: gpt-5.6-sol

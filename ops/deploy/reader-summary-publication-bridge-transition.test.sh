@@ -68,10 +68,7 @@ PUBLICATION_MISSING_ENTRYPOINT_SHA=$(git -C "$SYNTHESIS_REPO" rev-parse HEAD)
 
 cp "$SCRIPT_DIR/reader-summary-publication-deploy-lib.sh" \
   "$SYNTHESIS_REPO/$PUBLICATION_LIBRARY"
-cp "$SCRIPT_DIR/reader-summary-publication-system-dsn-bootstrap-lib.sh" \
-  "$SYNTHESIS_REPO/ops/deploy/reader-summary-publication-system-dsn-bootstrap-lib.sh"
-git -C "$SYNTHESIS_REPO" add "$PUBLICATION_LIBRARY" \
-  ops/deploy/reader-summary-publication-system-dsn-bootstrap-lib.sh
+git -C "$SYNTHESIS_REPO" add "$PUBLICATION_LIBRARY"
 git -C "$SYNTHESIS_REPO" commit -qm \
   'test: target missing PostgreSQL backup blob'
 BACKUP_MISSING_BLOB_SHA=$(git -C "$SYNTHESIS_REPO" rev-parse HEAD)
@@ -209,12 +206,10 @@ run_target_case() {
   local mutation=$2
   local expected_error=$3
   local expected_status=$4
-  local prebootstrap_mode=${5:-no-daily}
   local case_root case_repo case_control case_state case_events case_output
-  local case_status expected_events
+  local case_status
 
-  case_root=$(create_case_checkout \
-    "${mutation}-${prebootstrap_mode}-${target_sha:0:12}")
+  case_root=$(create_case_checkout "${mutation}-${target_sha:0:12}")
   case_repo=$case_root/integration
   case_control=$case_root/control
   case_state=$case_control/deploy-state
@@ -231,9 +226,7 @@ run_target_case() {
   set +e
   # shellcheck disable=SC2016
   case_output=$(
-    TARGET_SHA="$target_sha" BRIDGE_PREVIOUS_SHA="$INSTALLED_CONTROLLER" \
-    BRIDGE_MUTATION="$mutation" \
-    BRIDGE_PREBOOTSTRAP_MODE="$prebootstrap_mode" \
+    TARGET_SHA="$target_sha" BRIDGE_MUTATION="$mutation" \
     BRIDGE_EVENTS="$case_events" \
     SOCIAL_MONITOR_DEPLOY_TEST_MODE=1 \
     SOCIAL_MONITOR_DEPLOY_ROOT="$case_root" \
@@ -242,31 +235,6 @@ run_target_case() {
     SOCIAL_MONITOR_DEPLOY_STATE="$case_state" \
       bash -c '
         source "$SOCIAL_MONITOR_DEPLOY_CONTROL/github-production-deploy.sh"
-
-        if [[ $BRIDGE_PREBOOTSTRAP_MODE == missing-helper ]]; then
-          unset -f daily_runner_image_bootstrap_before_rescue
-        else
-          daily_runner_image_bootstrap_before_rescue() {
-            [[ $# == 2 && $1 == "$BRIDGE_PREVIOUS_SHA" && \
-              $2 == "$TARGET_SHA" ]] || {
-              printf "daily-runner bootstrap received unexpected SHA arguments\n" >&2
-              return 93
-            }
-            printf "bootstrap\n" >> "$BRIDGE_EVENTS"
-            [[ $BRIDGE_PREBOOTSTRAP_MODE != bootstrap-failure ]]
-          }
-        fi
-        backend_services() {
-          case $BRIDGE_PREBOOTSTRAP_MODE in
-            daily|bootstrap-failure) printf "%s\n" daily-runner ;;
-            no-daily|unauthenticated-recall|missing-helper) printf "%s\n" api ;;
-            service-failure) return 91 ;;
-            *) return 92 ;;
-          esac
-        }
-        [[ $BRIDGE_PREBOOTSTRAP_MODE != missing-service-helper ]] || \
-          unset -f backend_services
-
         helper_path=$SOCIAL_MONITOR_DEPLOY_REPO/ops/deploy/postgres-backup-deploy-lib.sh
         if [[ $BRIDGE_MUTATION == publication-preloaded ]]; then
           deploy_reader_summary_publication_migrations() { :; }
@@ -332,14 +300,6 @@ run_target_case() {
           return 96
         }
         deploy_release "$TARGET_SHA"
-        if [[ $BRIDGE_PREBOOTSTRAP_MODE == unauthenticated-recall ]]; then
-          recall_without_publication_loader_context() {
-            local sha=$TARGET_SHA
-            local backend=true
-            reader_summary_publication_prebootstrap_target_daily_runner
-          }
-          recall_without_publication_loader_context
-        fi
       ' 2>&1
   )
   case_status=$?
@@ -353,12 +313,8 @@ run_target_case() {
     grep -F \
       "deployed=$target_sha frontend=false backend=true control=true" \
       <<< "$case_output" >/dev/null
-    if [[ $prebootstrap_mode == daily ]]; then
-      expected_events=$'advance '"$target_sha"$'\nbootstrap\nsync\nsnapshot\nactivation\nverify\nbackend\nbackup'
-    else
-      expected_events=$'advance '"$target_sha"$'\nsync\nsnapshot\nactivation\nverify\nbackend\nbackup'
-    fi
-    [[ $(cat "$case_events") == "$expected_events" ]]
+    [[ $(cat "$case_events") == \
+      $'advance '"$target_sha"$'\nsync\nsnapshot\nactivation\nverify\nbackend\nbackup' ]]
     [[ $(cat "$case_state/backend.sha") == "$target_sha" ]]
     [[ $(cat "$case_state/control.sha") == "$target_sha" ]]
   else
@@ -371,10 +327,7 @@ run_target_case() {
         "$mutation" "$case_output" >&2
       exit 1
     }
-    expected_events="advance $target_sha"
-    [[ $prebootstrap_mode != bootstrap-failure ]] || \
-      expected_events+=$'\nbootstrap'
-    [[ $(cat "$case_events") == "$expected_events" ]] || {
+    [[ $(cat "$case_events") == "advance $target_sha" ]] || {
       printf '%s reached work after advance: %q\n' \
         "$mutation" "$(cat "$case_events")" >&2
       exit 1
@@ -428,21 +381,7 @@ run_target_case "$BACKUP_MISSING_ENTRYPOINT_SHA" helper-missing-entrypoint \
   'target PostgreSQL backup deploy library is missing its backup entrypoint' failure
 run_target_case "$FINAL_SHA" helper-preloaded \
   'PostgreSQL backup entrypoint was loaded before target validation' failure
-run_target_case "$FINAL_SHA" correct '' success no-daily
-
-# The authenticated target source-time guard must reconstruct daily-runner
-# before c59 can sync its control script or activate its runtime transaction.
-run_target_case "$FINAL_SHA" correct '' success daily
-run_target_case "$FINAL_SHA" correct \
-  'target publication prebootstrap daily-runner image reconstruction failed' \
-  failure bootstrap-failure
-run_target_case "$FINAL_SHA" correct \
-  'target publication prebootstrap daily-runner bootstrap helper is missing' \
-  failure missing-helper
-run_target_case "$FINAL_SHA" correct \
-  'target publication prebootstrap backend service discovery failed' \
-  failure service-failure
-run_target_case "$FINAL_SHA" correct '' success unauthenticated-recall
+run_target_case "$FINAL_SHA" correct '' success
 
 # The current controller preserves the authenticated c59 seam ordering:
 # advance, source target, then sync and enter the runtime transaction.

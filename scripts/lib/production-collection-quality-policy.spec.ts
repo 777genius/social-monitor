@@ -1,6 +1,5 @@
 import {
   durableSnapshotReuseProviderCollectionObservation,
-  unavailableProviderCollectionObservation,
   type ProviderCollectionObservation,
 } from "./provider-collection-observability";
 import {
@@ -10,7 +9,6 @@ import {
   type GitHubTrendingDurableSnapshotCandidate,
 } from "./github-trending-durable-snapshot-reuse";
 import {
-  evaluateProductionProviderCollectionState,
   productionCollectionThresholds,
   providerMeetsProductionBlockingPolicy,
   recalculateProductionBlockingPolicyGates,
@@ -92,19 +90,6 @@ describe("production collection quality policy", () => {
       [github, hackerNews].every(providerMeetsProductionBlockingPolicy),
     ).toBe(true);
     expect(
-      recalculateProductionBlockingPolicyGates(
-        {
-          ...blockingProviderGates(false),
-          durableSnapshotProofMatchesRequestedDay: true,
-        },
-        [github, hackerNews],
-        {
-          "github-trending-page": 10,
-          "hacker-news": 71,
-        },
-      ),
-    ).toMatchObject(blockingProviderGates(true));
-    expect(
       providerMeetsProductionBlockingPolicy({
         ...github,
         durableSnapshotProof: {
@@ -119,128 +104,6 @@ describe("production collection quality policy", () => {
         durableSnapshotProof: undefined,
       }),
     ).toBe(false);
-  });
-
-  it("requires exact-day durable GitHub evidence after the UTC day closes", async () => {
-    const proof = await certifiedDurableProof();
-    const exact = {
-      providerKey: "github-trending-page" as const,
-      bindingFingerprint:
-        githubTrendingDurableSnapshotBindingFingerprint("binding-a"),
-      status: "succeeded" as const,
-      acquisitionMode: "durable_snapshot_reuse" as const,
-      observability: durableSnapshotReuseProviderCollectionObservation({
-        itemCount: 10,
-        newestPublishedAt: new Date("2026-07-23T23:59:00.000Z"),
-        targetWindowEndedAt: new Date("2026-07-24T00:00:00.000Z"),
-      }),
-      durableSnapshotProof: proof,
-    };
-
-    expect(
-      evaluateProductionProviderCollectionState({
-        collectionDate: "2026-07-23",
-        closedRequestedUtcDay: true,
-        scan: exact,
-        targetWindowItemCount: 10,
-      }),
-    ).toMatchObject({
-      state: "complete",
-      evidence: "exact_day_durable_snapshot",
-      policy: "accepted",
-    });
-    expect(
-      evaluateProductionProviderCollectionState({
-        collectionDate: "2026-07-22",
-        closedRequestedUtcDay: true,
-        scan: exact,
-        targetWindowItemCount: 10,
-      }),
-    ).toMatchObject({
-      evidence: "invalid",
-      policy: "blocking",
-      reasonCodes: expect.arrayContaining([
-        "github_exact_day_durable_evidence_missing",
-      ]),
-    });
-  });
-
-  it("accepts explicit GitHub unavailability when HN, Reddit, RSS, and X are ready", () => {
-    const input = transparentPartialDailyInput();
-
-    expect(
-      recalculateProductionBlockingPolicyGates(
-        blockingProviderGates(false),
-        input.scans,
-        input.targetWindowProviderCounts,
-      ),
-    ).toMatchObject(blockingProviderGates(true));
-  });
-
-  it("rejects explicit GitHub unavailability when HN or Reddit has no target-window items", () => {
-    const input = transparentPartialDailyInput();
-
-    for (const providerKey of ["hacker-news", "reddit"] as const) {
-      expect(
-        recalculateProductionBlockingPolicyGates(
-          blockingProviderGates(false),
-          input.scans,
-          {
-            ...input.targetWindowProviderCounts,
-            [providerKey]: 0,
-          },
-        ),
-      ).toMatchObject(blockingProviderGates(false));
-    }
-  });
-
-  it("rejects stale, malformed, or non-explicit GitHub unavailability", () => {
-    const input = transparentPartialDailyInput();
-    const github = input.scans[0]!;
-    const staleObservation = {
-      ...github.observability,
-      slo: {
-        ...github.observability.slo,
-        freshnessLagSeconds: 86_400,
-        reasons: [
-          "target_shortfall",
-          "freshness_lag_exceeded",
-          "provider_unavailable",
-        ] as const,
-      },
-      freshness: {
-        newestAcceptedPublishedAt: "2026-07-26T00:00:00.000Z",
-        lagToWindowEndSeconds: 86_400,
-      },
-    };
-    const rejectedGitHubScans = [
-      { ...github, observability: staleObservation },
-      {
-        ...github,
-        observability: {
-          ...github.observability,
-          collectedItemCount: 1,
-        },
-      },
-      {
-        ...github,
-        acquisitionMode: "live_collection" as const,
-      },
-      {
-        ...github,
-        failureFingerprint: undefined,
-      },
-    ];
-
-    for (const rejectedGitHub of rejectedGitHubScans) {
-      expect(
-        recalculateProductionBlockingPolicyGates(
-          blockingProviderGates(false),
-          [rejectedGitHub, ...input.scans.slice(1)],
-          input.targetWindowProviderCounts,
-        ),
-      ).toMatchObject(blockingProviderGates(false));
-    }
   });
 
   it("accepts bounded HN and X inventories without treating desired depth as an exact minimum", () => {
@@ -344,102 +207,15 @@ describe("production collection quality policy", () => {
         {
           everyRequestedProviderMeetsCollectionSlo: false,
           providerRetriesAreBounded: true,
-          durableSnapshotProofMatchesRequestedDay: true,
         },
         scans,
-        { "hacker-news": 71 },
       ),
     ).toEqual({
-      everyRequestedProviderSucceeded: true,
-      everyRequestedProviderHasTargetItems: true,
       everyRequestedProviderMeetsBlockingCoveragePolicy: true,
-      durableSnapshotProofMatchesRequestedDay: true,
       providerRetriesAreBounded: true,
     });
   });
 });
-
-const blockingProviderGates = (
-  value: boolean,
-): Readonly<Record<string, boolean>> => ({
-  everyRequestedProviderSucceeded: value,
-  everyRequestedProviderHasTargetItems: value,
-  everyRequestedProviderMeetsBlockingCoveragePolicy: value,
-  durableSnapshotProofMatchesRequestedDay: value,
-});
-
-const transparentPartialDailyInput = () => {
-  const targetWindowEndedAt = new Date("2026-07-28T00:00:00.000Z");
-  return {
-    scans: [
-      {
-        providerKey: "github-trending-page" as const,
-        bindingFingerprint: "github-binding-fingerprint",
-        status: "failed" as const,
-        acquisitionMode: "durable_snapshot_reuse" as const,
-        observability: unavailableProviderCollectionObservation({
-          targetItemCount:
-            productionCollectionThresholds.githubTrendingFeedItems,
-          status: "failed",
-          acquisitionMode: "durable_snapshot_reuse",
-          targetWindowEndedAt,
-        }),
-        failureFingerprint: "github-unavailable-fingerprint",
-      },
-      {
-        providerKey: "hacker-news" as const,
-        status: "succeeded" as const,
-        observability: observation({
-          target: 100,
-          collected: 71,
-          evaluated: 71,
-          coverageRatio: 0.71,
-          reasons: ["target_shortfall"],
-        }),
-      },
-      {
-        providerKey: "reddit" as const,
-        status: "succeeded" as const,
-        observability: observation({
-          target: 10,
-          collected: 10,
-          evaluated: 10,
-          coverageRatio: 1,
-          reasons: [],
-        }),
-      },
-      {
-        providerKey: "rss" as const,
-        status: "succeeded" as const,
-        observability: observation({
-          target: 10,
-          collected: 10,
-          evaluated: 10,
-          coverageRatio: 1,
-          reasons: [],
-        }),
-      },
-      {
-        providerKey: "x-twitter" as const,
-        status: "succeeded" as const,
-        observability: observation({
-          target: 25,
-          collected: 22,
-          evaluated: 22,
-          coverageRatio: 0.88,
-          reasons: ["target_shortfall"],
-        }),
-      },
-    ],
-    targetWindowProviderCounts: {
-      "github-trending-page": 0,
-      "hacker-news": 71,
-      reddit: 10,
-      rss: 10,
-      "x-twitter": 22,
-    },
-  };
-};
 
 const observation = (params: {
   readonly target: number;

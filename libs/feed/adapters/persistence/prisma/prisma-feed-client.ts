@@ -81,12 +81,7 @@ export type PrismaFeedClient = {
         readonly interestId?: string;
         readonly sourceItemId?: string;
         readonly observedAt?: {
-          readonly gte?: Date;
           readonly gt?: Date;
-          readonly lt?: Date;
-        };
-        readonly publishedAt?: {
-          readonly gte?: Date;
           readonly lt?: Date;
         };
         readonly providerKey?: string;

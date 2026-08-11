@@ -13,7 +13,6 @@ import { InMemoryReaderSummaryArtifactRepository } from "./in-memory-reader-summ
 import { InMemoryReaderSummaryJobRepository } from "./in-memory-reader-summary-job.repository";
 import { InMemoryReaderSummaryPublication } from "./in-memory-reader-summary-publication";
 import {
-  buildReaderSummaryAuthorizedPublicationProof,
   buildReaderSummaryPublicationPayload,
   stablePublicationJson,
 } from "./reader-summary-publication-proof";
@@ -113,13 +112,8 @@ describe("InMemoryReaderSummaryPublication", () => {
     const fixture = createFixture({ semanticStatus: "COMPLETED", sequence: 6 });
     const first = buildReaderSummaryPublicationPayload(fixture.command);
     const second = buildReaderSummaryPublicationPayload(fixture.command);
-    const discriminated = buildReaderSummaryAuthorizedPublicationProof({
-      kind: "daily",
-      command: fixture.command,
-    });
 
     expect(second).toEqual(first);
-    expect(JSON.stringify(discriminated)).toBe(JSON.stringify(first));
     expect(stablePublicationJson(first.report)).toBe(first.reportCanonical);
     expect(first.requestedUtcDate).toBe("2026-07-05");
     expect(first.exactProof).toMatchObject({

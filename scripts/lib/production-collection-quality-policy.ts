@@ -1,7 +1,4 @@
-import {
-  defaultCleanRealDayCollectionProviderKeys,
-  type CleanRealDayCollectionProviderKey,
-} from "./clean-real-day-collection-report";
+import type { CleanRealDayCollectionProviderKey } from "./clean-real-day-collection-report";
 import {
   githubTrendingDurableSnapshotBindingFingerprint,
   githubTrendingDurableSnapshotProofPassesInvariants,
@@ -17,162 +14,34 @@ export const productionCollectionThresholds = {
   xCollectorUsableRunRatePercent: 80,
 } as const;
 
-export type ProviderScanProof = {
+type ProviderScanProof = {
   readonly providerKey: CleanRealDayCollectionProviderKey;
   readonly bindingFingerprint?: string;
   readonly status: "succeeded" | "failed" | "skipped";
   readonly acquisitionMode?: "live_collection" | "durable_snapshot_reuse";
   readonly observability: ProviderCollectionObservation;
   readonly durableSnapshotProof?: GitHubTrendingDurableSnapshotProof;
-  readonly failureFingerprint?: string;
-};
-
-export type ProductionProviderCollectionState = {
-  readonly state: "complete" | "partial" | "unavailable";
-  readonly evidence:
-    | "live_collection"
-    | "exact_day_durable_snapshot"
-    | "explicit_unavailable"
-    | "invalid";
-  readonly policy: "accepted" | "blocking";
-  readonly reasonCodes: readonly string[];
-  readonly retryDisposition: "none" | "immediate" | "deferred";
-};
-
-export const evaluateProductionProviderCollectionState = (params: {
-  readonly collectionDate: string;
-  readonly closedRequestedUtcDay: boolean;
-  readonly scan: ProviderScanProof;
-  readonly targetWindowItemCount: number;
-}): ProductionProviderCollectionState => {
-  const { scan } = params;
-  const explicitUnavailable =
-    scan.status !== "succeeded" &&
-    scan.observability.coverageState === "unavailable" &&
-    scan.observability.slo.reasons.includes("provider_unavailable") &&
-    typeof scan.failureFingerprint === "string" &&
-    scan.failureFingerprint.length > 0;
-  const explicitGitHubUnavailable =
-    params.closedRequestedUtcDay &&
-    params.targetWindowItemCount === 0 &&
-    isExplicitGitHubUnavailable(scan);
-  const exactClosedDayGitHubEvidence =
-    scan.providerKey !== "github-trending-page" ||
-    !params.closedRequestedUtcDay ||
-    (scan.acquisitionMode === "durable_snapshot_reuse" &&
-      scan.durableSnapshotProof?.requestedUtcDay === params.collectionDate);
-  const accepted =
-    explicitGitHubUnavailable ||
-    (params.targetWindowItemCount > 0 &&
-      exactClosedDayGitHubEvidence &&
-      providerMeetsProductionBlockingPolicy(scan));
-  const state =
-    scan.status !== "succeeded" ||
-    scan.observability.coverageState === "unavailable" ||
-    params.targetWindowItemCount <= 0
-      ? "unavailable"
-      : scan.observability.coverageState === "complete"
-        ? "complete"
-        : "partial";
-  const reasonCodes = new Set<string>(scan.observability.slo.reasons);
-  if (params.targetWindowItemCount <= 0) {
-    reasonCodes.add("target_window_empty");
-  }
-  if (!exactClosedDayGitHubEvidence) {
-    reasonCodes.add("github_exact_day_durable_evidence_missing");
-  }
-  if (!accepted && reasonCodes.size === 0) {
-    reasonCodes.add("blocking_policy_not_met");
-  }
-
-  return {
-    state,
-    evidence: explicitUnavailable
-      ? "explicit_unavailable"
-      : scan.acquisitionMode === "durable_snapshot_reuse" &&
-          scan.durableSnapshotProof?.requestedUtcDay === params.collectionDate
-        ? "exact_day_durable_snapshot"
-        : scan.acquisitionMode === "live_collection"
-          ? "live_collection"
-          : "invalid",
-    policy: accepted ? "accepted" : "blocking",
-    reasonCodes: [...reasonCodes],
-    retryDisposition: accepted
-      ? "none"
-      : scan.observability.slo.retryDisposition,
-  };
 };
 
 export const recalculateProductionBlockingPolicyGates = (
   qualityGates: Readonly<Record<string, boolean>>,
   scans: readonly ProviderScanProof[],
-  targetWindowProviderCounts: Readonly<Record<string, number>>,
 ): Record<string, boolean> => {
-  const transparentPartialInput =
-    explicitGitHubUnavailableIsTransparentPartialDailyInput({
-      requestedProviderKeys: scans.map((scan) => scan.providerKey),
-      scans,
-      targetWindowProviderCounts,
-    });
   const preservedGates = Object.fromEntries(
     Object.entries(qualityGates).filter(
       ([key]) =>
-        key !== "everyRequestedProviderSucceeded" &&
-        key !== "everyRequestedProviderHasTargetItems" &&
         key !== "everyRequestedProviderMeetsCollectionSlo" &&
-        key !== "everyRequestedProviderMeetsBlockingCoveragePolicy" &&
-        key !== "durableSnapshotProofMatchesRequestedDay",
+        key !== "everyRequestedProviderMeetsBlockingCoveragePolicy",
     ),
   );
 
   return {
     ...preservedGates,
-    everyRequestedProviderSucceeded:
-      scans.every((scan) => scan.status === "succeeded") ||
-      transparentPartialInput,
-    everyRequestedProviderHasTargetItems:
-      scans.every(
-        (scan) => (targetWindowProviderCounts[scan.providerKey] ?? 0) > 0,
-      ) || transparentPartialInput,
-    everyRequestedProviderMeetsBlockingCoveragePolicy:
-      scans.every(providerMeetsProductionBlockingPolicy) ||
-      transparentPartialInput,
-    durableSnapshotProofMatchesRequestedDay:
-      qualityGates.durableSnapshotProofMatchesRequestedDay === true ||
-      transparentPartialInput,
+    everyRequestedProviderMeetsBlockingCoveragePolicy: scans.every(
+      providerMeetsProductionBlockingPolicy,
+    ),
   };
 };
-
-export const explicitGitHubUnavailableIsTransparentPartialDailyInput =
-  (params: {
-    readonly requestedProviderKeys: readonly CleanRealDayCollectionProviderKey[];
-    readonly scans: readonly ProviderScanProof[];
-    readonly targetWindowProviderCounts: Readonly<Record<string, number>>;
-  }): boolean => {
-    if (
-      !hasEveryDailyProviderExactlyOnce(params.requestedProviderKeys) ||
-      !hasEveryDailyProviderExactlyOnce(
-        params.scans.map((scan) => scan.providerKey),
-      ) ||
-      (params.targetWindowProviderCounts["github-trending-page"] ?? 0) !== 0
-    ) {
-      return false;
-    }
-
-    const github = onlyScanFor(params.scans, "github-trending-page");
-    if (github === undefined || !isExplicitGitHubUnavailable(github)) {
-      return false;
-    }
-
-    return nonGitHubDailyProviderKeys.every((providerKey) => {
-      const scan = onlyScanFor(params.scans, providerKey);
-      return (
-        scan !== undefined &&
-        (params.targetWindowProviderCounts[providerKey] ?? 0) > 0 &&
-        providerMeetsProductionBlockingPolicy(scan)
-      );
-    });
-  };
 
 export const providerMeetsProductionBlockingPolicy = (
   scan: ProviderScanProof,
@@ -253,72 +122,3 @@ const meetsBoundedInventoryPolicy = (
 ): boolean =>
   observation.slo.coverageRatio >= minimumCoverageRatio &&
   observation.slo.reasons.every((reason) => reason === "target_shortfall");
-
-const nonGitHubDailyProviderKeys = [
-  "hacker-news",
-  "reddit",
-  "rss",
-  "x-twitter",
-] as const satisfies readonly CleanRealDayCollectionProviderKey[];
-
-const hasEveryDailyProviderExactlyOnce = (
-  providerKeys: readonly CleanRealDayCollectionProviderKey[],
-): boolean =>
-  providerKeys.length === defaultCleanRealDayCollectionProviderKeys.length &&
-  defaultCleanRealDayCollectionProviderKeys.every(
-    (providerKey) =>
-      providerKeys.filter((candidate) => candidate === providerKey).length ===
-      1,
-  );
-
-const onlyScanFor = (
-  scans: readonly ProviderScanProof[],
-  providerKey: CleanRealDayCollectionProviderKey,
-): ProviderScanProof | undefined => {
-  const matches = scans.filter((scan) => scan.providerKey === providerKey);
-  return matches.length === 1 ? matches[0] : undefined;
-};
-
-const isExplicitGitHubUnavailable = (scan: ProviderScanProof): boolean => {
-  const observation = scan.observability;
-  const reasons = observation.slo.reasons;
-
-  return (
-    scan.providerKey === "github-trending-page" &&
-    scan.status === "failed" &&
-    scan.acquisitionMode === "durable_snapshot_reuse" &&
-    observation.acquisitionMode === "durable_snapshot_reuse" &&
-    scan.durableSnapshotProof === undefined &&
-    typeof scan.bindingFingerprint === "string" &&
-    scan.bindingFingerprint.length > 0 &&
-    typeof scan.failureFingerprint === "string" &&
-    scan.failureFingerprint.length > 0 &&
-    observation.targetItemCount ===
-      productionCollectionThresholds.githubTrendingFeedItems &&
-    observation.collectedItemCount === 0 &&
-    observation.acceptedItemCount === 0 &&
-    observation.insertedItemCount === 0 &&
-    observation.outsideWindowItemCount === 0 &&
-    observation.paginationDuplicateItemCount === 0 &&
-    observation.storageDuplicateItemCount === 0 &&
-    observation.totalDuplicateItemCount === 0 &&
-    observation.pageCount === 0 &&
-    observation.paginationStopReason === "failed" &&
-    observation.rateLimitEventCount === 0 &&
-    observation.failureKind === undefined &&
-    observation.coverageState === "unavailable" &&
-    observation.slo.met === false &&
-    observation.slo.targetItemCount ===
-      productionCollectionThresholds.githubTrendingFeedItems &&
-    observation.slo.evaluatedItemCount === 0 &&
-    observation.slo.coverageRatio === 0 &&
-    observation.slo.freshnessLagSeconds === undefined &&
-    reasons.length === 2 &&
-    reasons.includes("target_shortfall") &&
-    reasons.includes("provider_unavailable") &&
-    observation.slo.retryDisposition === "immediate" &&
-    observation.freshness.oldestAcceptedPublishedAt === undefined &&
-    observation.freshness.newestAcceptedPublishedAt === undefined &&
-    observation.freshness.lagToWindowEndSeconds === undefined
-  );
-};

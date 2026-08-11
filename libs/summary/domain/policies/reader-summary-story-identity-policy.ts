@@ -27,113 +27,10 @@ import type {
   StoryCluster,
   SummaryEvidenceItem,
 } from "../value-objects/summary-evidence-item";
-import type {
-  ReaderSummaryWeeklyModelCitation,
-  ReaderSummaryWeeklyModelInput,
-  ReaderSummaryWeeklyModelOutput,
-} from "../../ports/reader-summary-weekly-model.port";
 
 type ThematicSynthesisSupport = {
   readonly clusterCount: number;
   readonly providerCount: number;
-};
-
-export type ReaderSummaryWeeklyStorySynthesisAssessment = Readonly<{
-  stableStoryIdentityIsUsed: boolean;
-  sameDayStoryObservationsAreUnique: boolean;
-  duplicateSameDayStoryObservationCount: number;
-  crossDayStoryCount: number;
-  synthesizedCrossDayStoryCount: number;
-}>;
-
-export const assertReaderSummaryWeeklyModelStoryObservationsUnique = (
-  input: ReaderSummaryWeeklyModelInput,
-): void => {
-  const duplicateSameDayStoryObservationCount = duplicateCount(
-    input.observations.map(
-      (observation) =>
-        `${observation.storyId}\u0000${observation.observedOn}`,
-    ),
-  );
-  if (duplicateSameDayStoryObservationCount > 0) {
-    throw new Error(
-      "Reader summary weekly evidence contains duplicate same-story same-day observations",
-    );
-  }
-};
-
-export const assessReaderSummaryWeeklyStorySynthesis = (params: {
-  readonly input: ReaderSummaryWeeklyModelInput;
-  readonly output: ReaderSummaryWeeklyModelOutput;
-}): ReaderSummaryWeeklyStorySynthesisAssessment => {
-  const knownStoryIds = new Set(
-    params.input.stories.map((story) => story.storyId),
-  );
-  const citationById = new Map(
-    params.input.citations.map(
-      (citation) => [citation.citationId, citation] as const,
-    ),
-  );
-  const outputStoryIds = params.output.stories.map((story) => story.storyId);
-  const outputStoryIdSet = new Set(outputStoryIds);
-  const duplicateSameDayStoryObservationCount = duplicateCount(
-    params.input.observations.map(
-      (observation) =>
-        `${observation.storyId}\u0000${observation.observedOn}`,
-    ),
-  );
-  const stableStoryIdentityIsUsed =
-    outputStoryIds.length > 0 &&
-    outputStoryIdSet.size === outputStoryIds.length &&
-    outputStoryIds.every((storyId) => knownStoryIds.has(storyId)) &&
-    params.output.stories.every((story) =>
-      citationsUseStoryIdentity(story.citationIds, story.storyId, citationById),
-    ) &&
-    params.output.sections.every(
-      (section) =>
-        outputStoryIdSet.has(section.storyId) &&
-        citationsUseStoryIdentity(
-          section.citationIds,
-          section.storyId,
-          citationById,
-        ),
-    );
-  const crossDayStoryIds = new Set(
-    params.output.stories
-      .filter(
-        (story) =>
-          citedDays(story.citationIds, citationById, story.storyId).size >= 2,
-      )
-      .map((story) => story.storyId),
-  );
-  const synthesisDaysByStory = citedDaysByStory(
-    params.output.synthesisCitationIds,
-    citationById,
-  );
-  const synthesizedCrossDayStoryIds = new Set(
-    params.output.sections
-      .filter(
-        (section) =>
-          section.kind === "lead" &&
-          crossDayStoryIds.has(section.storyId) &&
-          citedDays(
-            section.citationIds,
-            citationById,
-            section.storyId,
-          ).size >= 2 &&
-          (synthesisDaysByStory.get(section.storyId)?.size ?? 0) >= 2,
-      )
-      .map((section) => section.storyId),
-  );
-
-  return Object.freeze({
-    stableStoryIdentityIsUsed,
-    sameDayStoryObservationsAreUnique:
-      duplicateSameDayStoryObservationCount === 0,
-    duplicateSameDayStoryObservationCount,
-    crossDayStoryCount: crossDayStoryIds.size,
-    synthesizedCrossDayStoryCount: synthesizedCrossDayStoryIds.size,
-  });
 };
 
 export const resolveReaderSummaryNarrativeLead = (params: {
@@ -306,57 +203,6 @@ const broadProductCategoryTokens = new Set([
 ]);
 const minimumSharedTopicTokens = 5;
 const minimumTopicSimilarity = 0.5;
-
-const citationsUseStoryIdentity = (
-  citationIds: readonly string[],
-  storyId: string,
-  citationById: ReadonlyMap<string, ReaderSummaryWeeklyModelCitation>,
-): boolean =>
-  citationIds.length > 0 &&
-  new Set(citationIds).size === citationIds.length &&
-  citationIds.every(
-    (citationId) => citationById.get(citationId)?.storyId === storyId,
-  );
-
-const citedDays = (
-  citationIds: readonly string[],
-  citationById: ReadonlyMap<string, ReaderSummaryWeeklyModelCitation>,
-  storyId: string,
-): ReadonlySet<string> =>
-  new Set(
-    citationIds.flatMap((citationId) => {
-      const citation = citationById.get(citationId);
-      return citation?.storyId === storyId ? [citation.observedOn] : [];
-    }),
-  );
-
-const citedDaysByStory = (
-  citationIds: readonly string[],
-  citationById: ReadonlyMap<string, ReaderSummaryWeeklyModelCitation>,
-): ReadonlyMap<string, ReadonlySet<string>> => {
-  const daysByStory = new Map<string, Set<string>>();
-  for (const citationId of citationIds) {
-    const citation = citationById.get(citationId);
-    if (citation === undefined) {
-      continue;
-    }
-    const days = daysByStory.get(citation.storyId) ?? new Set<string>();
-    days.add(citation.observedOn);
-    daysByStory.set(citation.storyId, days);
-  }
-  return daysByStory;
-};
-
-const duplicateCount = (values: readonly string[]): number => {
-  const counts = new Map<string, number>();
-  for (const value of values) {
-    counts.set(value, (counts.get(value) ?? 0) + 1);
-  }
-  return [...counts.values()].reduce(
-    (total, count) => total + Math.max(0, count - 1),
-    0,
-  );
-};
 
 const acceptedNarrativeLeadCandidate = (params: {
   readonly selected: RenderedTopReadCandidate | undefined;

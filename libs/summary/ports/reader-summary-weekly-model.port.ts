@@ -7,6 +7,7 @@ import {
   exactReaderSummaryWeeklyIdentity,
   exactReaderSummaryWeeklySha256,
   exactReaderSummaryWeeklyUtcDay,
+  type ReaderSummaryWeeklyManifestScope,
 } from "../domain/value-objects/reader-summary-weekly-canonical-json";
 import {
   readerSummaryWeeklyCanonicalProviderKeys,
@@ -14,53 +15,105 @@ import {
 } from "../domain/value-objects/reader-summary-weekly-daily-certification";
 import {
   assertReaderSummaryWeeklySealedInputManifest,
-  readerSummaryWeeklyHistoricalGitHubAuthorizationIdentity,
-  readerSummaryWeeklyHistoricalGitHubDate,
   readerSummaryWeeklyInputManifestSchemaVersion,
   type ReaderSummaryWeeklySealedInputManifest,
 } from "../domain/value-objects/reader-summary-weekly-input-manifest";
-import {
-  readerSummaryWeeklyPublicationGitHubEvidenceSchemaVersion,
-} from "../domain/value-objects/reader-summary-weekly-publication-github-evidence";
-import {
-  readerSummaryWeeklyClaimTypes,
-  readerSummaryWeeklyModelInputSchemaVersion,
-  type ReaderSummaryWeeklyClaimType,
-  type ReaderSummaryWeeklyModelCitation,
-  type ReaderSummaryWeeklyModelCitationEvidence,
-  type ReaderSummaryWeeklyModelDay,
-  type ReaderSummaryWeeklyModelEvidenceInput,
-  type ReaderSummaryWeeklyModelInput,
-  type ReaderSummaryWeeklyModelObservation,
-  type ReaderSummaryWeeklyModelObservationEvidence,
-  type ReaderSummaryWeeklyModelProviderCount,
-  type ReaderSummaryWeeklyModelStory,
-  type ReaderSummaryWeeklyModelStoryEvidence,
-} from "./reader-summary-weekly-model-contract";
-
-export * from "./reader-summary-weekly-model-contract";
+export const readerSummaryWeeklyModelInputSchemaVersion =
+  "reader_summary.weekly_model_input.v1" as const;
+export const readerSummaryWeeklyModelOutputSchemaVersion =
+  "reader_summary.weekly_model_output.v1" as const;
+export const readerSummaryWeeklyClaimTypes =
+  ["snapshot", "evolution", "resolution"] as const;
+export const readerSummaryWeeklyStoryStatuses =
+  ["new", "developing", "resolved", "watch"] as const;
+export const readerSummaryWeeklySectionKinds =
+  ["lead", "development", "why_it_matters", "watch"] as const;
+export type ReaderSummaryWeeklyClaimType =
+  (typeof readerSummaryWeeklyClaimTypes)[number];
+export type ReaderSummaryWeeklyStoryStatus =
+  (typeof readerSummaryWeeklyStoryStatuses)[number];
+export type ReaderSummaryWeeklySectionKind =
+  (typeof readerSummaryWeeklySectionKinds)[number];
+export type ReaderSummaryWeeklyModelStoryEvidence = Readonly<{
+  storyId: string; label: string;
+}>;
+export type ReaderSummaryWeeklyModelObservationEvidence = Readonly<{
+  observationId: string; storyId: string; observedOn: string;
+  providerKey: ReaderSummaryWeeklyCanonicalProviderKey; text: string;
+  claimSupport: readonly ReaderSummaryWeeklyClaimType[];
+  citationIds: readonly string[]; dailyCertificationId: string;
+  dailyCertificationSha: string; sourceSha256: string;
+}>;
+export type ReaderSummaryWeeklyModelCitationEvidence = Readonly<{
+  citationId: string; observationId: string; storyId: string;
+  observedOn: string; providerKey: ReaderSummaryWeeklyCanonicalProviderKey;
+  title: string; canonicalUrl: string; dailyCertificationId: string;
+  dailyCertificationSha: string; sourceSha256: string;
+}>;
+export type ReaderSummaryWeeklyModelEvidenceInput = Readonly<{
+  manifest: ReaderSummaryWeeklySealedInputManifest;
+  stories: readonly ReaderSummaryWeeklyModelStoryEvidence[];
+  observations: readonly ReaderSummaryWeeklyModelObservationEvidence[];
+  citations: readonly ReaderSummaryWeeklyModelCitationEvidence[];
+}>;
+export type ReaderSummaryWeeklyModelProviderCount = Readonly<{
+  providerKey: ReaderSummaryWeeklyCanonicalProviderKey; count: number;
+}>;
+export type ReaderSummaryWeeklyModelDay = Readonly<{
+  date: string; dailyCertificationId: string; dailyCertificationSha: string;
+  dailyCertificationStatus: "certified"; githubBoardId: string;
+  githubBoardSha: string; githubBoardStatus: "verified";
+  providerCounts: readonly ReaderSummaryWeeklyModelProviderCount[];
+}>;
+export type ReaderSummaryWeeklyModelStory =
+  ReaderSummaryWeeklyModelStoryEvidence;
+export type ReaderSummaryWeeklyModelObservation =
+  ReaderSummaryWeeklyModelObservationEvidence;
+export type ReaderSummaryWeeklyModelCitation =
+  ReaderSummaryWeeklyModelCitationEvidence;
+export type ReaderSummaryWeeklyModelInput = Readonly<{
+  schemaVersion: typeof readerSummaryWeeklyModelInputSchemaVersion;
+  sealId: string; sealSha: string; manifestSealId: string;
+  manifestSealSha: string; tenantId: string; workspaceId: string;
+  scope: ReaderSummaryWeeklyManifestScope; weekStartedOn: string;
+  weekEndedOn: string; days: readonly ReaderSummaryWeeklyModelDay[];
+  stories: readonly ReaderSummaryWeeklyModelStory[];
+  observations: readonly ReaderSummaryWeeklyModelObservation[];
+  citations: readonly ReaderSummaryWeeklyModelCitation[];
+}>;
+export type ReaderSummaryWeeklyModelOutputStory = Readonly<{
+  storyId: string; headline: string; summary: string;
+  status: ReaderSummaryWeeklyStoryStatus; observedFrom: string;
+  observedThrough: string; citationIds: readonly string[];
+}>;
+export type ReaderSummaryWeeklyModelOutputSection = Readonly<{
+  sectionId: string; storyId: string; kind: ReaderSummaryWeeklySectionKind;
+  claimType: ReaderSummaryWeeklyClaimType; heading: string; text: string;
+  observedFrom: string; observedThrough: string; citationIds: readonly string[];
+}>;
+export type ReaderSummaryWeeklyModelOutput = Readonly<{
+  schemaVersion: typeof readerSummaryWeeklyModelOutputSchemaVersion;
+  sealId: string; sealSha: string; weekStartedOn: string; weekEndedOn: string;
+  headline: string; headlineCitationIds: readonly string[]; takeaway: string;
+  takeawayCitationIds: readonly string[]; synthesis: string;
+  synthesisCitationIds: readonly string[];
+  stories: readonly ReaderSummaryWeeklyModelOutputStory[];
+  sections: readonly ReaderSummaryWeeklyModelOutputSection[];
+}>;
+export interface ReaderSummaryWeeklyModelPort {
+  generate(input: ReaderSummaryWeeklyModelInput):
+    Promise<ReaderSummaryWeeklyModelOutput>;
+}
 const modelInputKeys = ["schemaVersion", "sealId", "sealSha",
   "manifestSealId", "manifestSealSha", "tenantId", "workspaceId", "scope",
   "weekStartedOn", "weekEndedOn", "days", "stories", "observations",
   "citations"] as const;
-const readerSummaryWeeklyCertificationSealSchemaVersion =
-  "reader_summary.weekly_certification_seal.v1" as const;
-const acceptedManifestSealSchemaVersions = Object.freeze([
-  readerSummaryWeeklyInputManifestSchemaVersion,
-  readerSummaryWeeklyCertificationSealSchemaVersion,
-]);
 const modelInputBodyKeys = modelInputKeys.filter((key) =>
   key !== "sealId" && key !== "sealSha",
 ) as readonly Exclude<(typeof modelInputKeys)[number], "sealId" | "sealSha">[];
 const dayKeys = ["date", "dailyCertificationId", "dailyCertificationSha",
   "dailyCertificationStatus", "githubBoardId", "githubBoardSha",
-  "githubBoardStatus",
-  "providerCounts"] as const;
-const historicalDayKeys = [
-  "date", "dailyCertificationId", "dailyCertificationSha",
-  "dailyCertificationStatus", "githubBoardId", "githubBoardSha",
-  "githubBoardStatus", "githubAuthorizationIdentity", "providerCounts",
-] as const;
+  "githubBoardStatus", "providerCounts"] as const;
 const storyKeys = ["storyId", "label"] as const;
 const observationKeys = ["observationId", "storyId", "observedOn",
   "providerKey", "text", "claimSupport", "citationIds",
@@ -134,10 +187,8 @@ export function assertReaderSummaryWeeklyModelInput(
   canonicalReaderSummaryWeeklyScope(model.scope);
   const manifestSha =
     exactReaderSummaryWeeklySha256(model.manifestSealSha, "manifest seal");
-  if (!acceptedManifestSealSchemaVersions.some(
-    (schemaVersion) =>
-      model.manifestSealId === `${schemaVersion}:${manifestSha}`,
-  )) {
+  if (model.manifestSealId !==
+      `${readerSummaryWeeklyInputManifestSchemaVersion}:${manifestSha}`) {
     throw new Error("Reader summary weekly manifest seal is invalid");
   }
   const body = Object.fromEntries(
@@ -278,30 +329,16 @@ const sameEvidenceAuthority = (
 const modelDays = (
   manifest: ReaderSummaryWeeklySealedInputManifest,
 ): readonly ReaderSummaryWeeklyModelDay[] =>
-  deepFreezeReaderSummaryWeekly(manifest.days.map((entry) => {
-    const day = {
-      date: entry.requestedUtcDate,
-      dailyCertificationId: entry.dailyCertification.identity,
-      dailyCertificationSha: entry.dailyCertification.sha256,
-      dailyCertificationStatus: entry.dailyCertification.status,
-      githubBoardId: entry.githubAudit.identity,
-      githubBoardSha: entry.githubAudit.sha256,
-      githubBoardStatus: entry.githubAudit.status,
-      providerCounts: entry.dailyCertification.providerCounts,
-    };
-    return entry.githubAudit.status === "historical_unavailable"
-      ? {
-          ...day,
-          date: readerSummaryWeeklyHistoricalGitHubDate,
-          githubBoardStatus: "historical_unavailable" as const,
-          githubAuthorizationIdentity:
-            entry.githubAudit.authorizationIdentity,
-        }
-      : {
-          ...day,
-          githubBoardStatus: "verified" as const,
-        };
-  }));
+  deepFreezeReaderSummaryWeekly(manifest.days.map((entry) => ({
+    date: entry.requestedUtcDate,
+    dailyCertificationId: entry.dailyCertification.identity,
+    dailyCertificationSha: entry.dailyCertification.sha256,
+    dailyCertificationStatus: entry.dailyCertification.status,
+    githubBoardId: entry.githubAudit.identity,
+    githubBoardSha: entry.githubAudit.sha256,
+    githubBoardStatus: entry.githubAudit.status,
+    providerCounts: entry.dailyCertification.providerCounts,
+  })));
 const assertModelDays = (
   input: readonly ReaderSummaryWeeklyModelDay[],
   weekStartedOn: string,
@@ -311,53 +348,20 @@ const assertModelDays = (
     throw new Error("Reader summary weekly model input requires 7/7 days");
   }
   input.forEach((day, index) => {
+    assertReaderSummaryWeeklyExactObject(day, dayKeys,
+      `weekly model day ${index + 1}`, { allowAuthoritativeHashes: true });
     if (day.date !== utcDayAfter(weekStartedOn, index) ||
-        day.dailyCertificationStatus !== "certified") {
+        day.dailyCertificationStatus !== "certified" ||
+        day.githubBoardStatus !== "verified") {
       throw new Error("Reader summary weekly model day is not certified");
     }
     exactReaderSummaryWeeklyIdentity(
       day.dailyCertificationId, "daily certification id");
     exactReaderSummaryWeeklySha256(
       day.dailyCertificationSha, "daily certification hash");
-    const githubBoardSha = exactReaderSummaryWeeklySha256(
-      day.githubBoardSha,
-      "GitHub board hash",
-    );
-    const githubBoardStatus: unknown = day.githubBoardStatus;
-    if (githubBoardStatus === "historical_unavailable") {
-      assertReaderSummaryWeeklyExactObject(
-        day,
-        historicalDayKeys,
-        `weekly model day ${index + 1}`,
-        { allowAuthoritativeHashes: true },
-      );
-      if (
-        !("githubAuthorizationIdentity" in day) ||
-        day.date !== readerSummaryWeeklyHistoricalGitHubDate ||
-        day.githubAuthorizationIdentity !==
-          readerSummaryWeeklyHistoricalGitHubAuthorizationIdentity ||
-        day.githubBoardId !==
-          `${readerSummaryWeeklyPublicationGitHubEvidenceSchemaVersion}:${githubBoardSha}`
-      ) {
-        throw new Error(
-          "Reader summary weekly model GitHub authority is invalid",
-        );
-      }
-    } else if (githubBoardStatus === "verified") {
-      assertReaderSummaryWeeklyExactObject(
-        day,
-        dayKeys,
-        `weekly model day ${index + 1}`,
-        { allowAuthoritativeHashes: true },
-      );
-      exactReaderSummaryWeeklyIdentity(day.githubBoardId, "GitHub board id");
-    } else {
-      throw new Error("Reader summary weekly model day is not certified");
-    }
-    canonicalProviderCounts(
-      day.providerCounts,
-      githubBoardStatus,
-    );
+    exactReaderSummaryWeeklyIdentity(day.githubBoardId, "GitHub board id");
+    exactReaderSummaryWeeklySha256(day.githubBoardSha, "GitHub board hash");
+    canonicalProviderCounts(day.providerCounts);
   });
   assertUnique(input.map((day) => day.date), "model days");
   assertUnique(input.map((day) => day.dailyCertificationId),
@@ -367,7 +371,6 @@ const assertModelDays = (
 };
 const canonicalProviderCounts = (
   input: readonly ReaderSummaryWeeklyModelProviderCount[],
-  githubBoardStatus: ReaderSummaryWeeklyModelDay["githubBoardStatus"],
 ): void => {
   assertReaderSummaryWeeklyDenseArray(input, "model day provider counts");
   if (input.length !== readerSummaryWeeklyCanonicalProviderKeys.length) {
@@ -383,11 +386,9 @@ const canonicalProviderCounts = (
       throw new Error("Reader summary weekly provider count is invalid");
     }
   });
-  const expectedGitHubCount =
-    githubBoardStatus === "verified" ? 10 : 0;
-  if (input[0]?.count !== expectedGitHubCount) {
+  if (input[0]?.count !== 10) {
     throw new Error(
-      "Reader summary weekly day does not bind truthful GitHub evidence");
+      "Reader summary weekly day does not bind a verified GitHub board");
   }
 };
 const boundDay = (

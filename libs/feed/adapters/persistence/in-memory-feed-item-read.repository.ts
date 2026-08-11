@@ -57,7 +57,6 @@ export class InMemoryFeedItemReadRepository
   }
 
   async list(query: ListFeedItemsQuery): Promise<ListFeedItemsResult> {
-    assertUnambiguousObservationWindow(query);
     const offset = parseCursor(query.cursor);
     const allItems = [...this.itemsById.values()]
       .filter((item) => {
@@ -69,9 +68,6 @@ export class InMemoryFeedItemReadRepository
           (query.interestId === undefined || snapshot.interestId === query.interestId) &&
           (query.observedAfter === undefined ||
             snapshot.observedAt.getTime() > query.observedAfter.getTime()) &&
-          (query.observedAtOrAfter === undefined ||
-            snapshot.observedAt.getTime() >=
-              query.observedAtOrAfter.getTime()) &&
           (query.observedBefore === undefined ||
             snapshot.observedAt.getTime() < query.observedBefore.getTime()) &&
           (query.publishedAtOrAfter === undefined ||
@@ -168,19 +164,6 @@ export class InMemoryFeedItemReadRepository
     return [...this.itemsById.values()];
   }
 }
-
-const assertUnambiguousObservationWindow = (
-  query: ListFeedItemsQuery,
-): void => {
-  if (
-    query.observedAfter !== undefined &&
-    query.observedAtOrAfter !== undefined
-  ) {
-    throw new Error(
-      "Feed item observation window cannot mix exclusive and inclusive starts",
-    );
-  }
-};
 
 const compareFeedItems = (left: FeedItem, right: FeedItem): number => {
   const leftSnapshot = left.toSnapshot();

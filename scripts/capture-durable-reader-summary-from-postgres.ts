@@ -5,8 +5,10 @@ import { dirname } from "node:path";
 import { PrismaFeedConnection } from "@social-monitor/feed/adapters/persistence/prisma/prisma-feed-connection";
 import { defaultPostgresRuntimePoolConfig } from "@social-monitor/platform-persistence";
 import { PrismaFeedItemReadRepository } from "@social-monitor/feed/adapters/persistence/prisma/prisma-feed-item-read.repository";
+import { InMemoryMetricsRecorder } from "@social-monitor/platform-metrics";
 import { PrismaSummaryConnection } from "@social-monitor/summary/adapters/persistence/prisma/prisma-summary-connection";
 import { PrismaReaderSummaryPublication } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-publication";
+import { RelevanceReaderSummaryEvidenceSelector } from "@social-monitor/summary/adapters/evidence/relevance-reader-summary-evidence.selector";
 import {
   AgentRuntimeReaderSummaryModelAdapter,
   resolveAgentRuntimeReaderSummaryModelOptions,
@@ -26,8 +28,10 @@ import {
   resolveOpenAiResponsesReaderSummaryModelOptions,
 } from "@social-monitor/summary/adapters/model/openai-responses-reader-summary-model.adapter";
 import { PrismaReaderSummaryArtifactRepository } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-artifact.repository";
+import { PrismaReaderSummaryGitHubProjectionReader } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-github-projection.reader";
 import { PrismaReaderSummaryJobRepository } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-job.repository";
 import { PrismaReaderSummaryPolicyRepository } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-policy.repository";
+import { StoryRankingMetricsRecorder } from "@social-monitor/summary/adapters/metrics/story-ranking-metrics.recorder";
 import {
   buildReaderSummaryPeriod,
   ReaderSummaryPolicy,
@@ -38,7 +42,6 @@ import { presentReaderSummaryArtifact } from "@social-monitor/summary/features/s
 import { RequestReaderSummaryUseCase } from "@social-monitor/summary/features/request-reader-summary/request-reader-summary.use-case";
 import type {
   EnqueueReaderSummaryJobCommand,
-  ReaderSummaryTimestampPolicy,
   ReaderSummaryJobQueuePort,
   ReaderSummaryModelPort,
   ReaderSummaryTopicMapPublicationAuditPort,
@@ -47,6 +50,8 @@ import type {
   ReserveSummaryJobQuotaResult,
   SummaryQuotaPort,
 } from "@social-monitor/summary/ports";
+import { InMemoryUserRelevanceProfileRepository } from "@social-monitor/relevance/adapters/persistence/in-memory-user-relevance-profile.repository";
+import { RankFeedItemsUseCase } from "@social-monitor/relevance/features/rank-feed-items/rank-feed-items.use-case";
 import {
   CryptoIdGenerator,
   ok,
@@ -55,7 +60,6 @@ import {
   workspaceId,
   type DomainError,
   type Result,
-  type Clock,
 } from "@social-monitor/shared-kernel";
 
 import { loadDotenvIfPresent } from "./lib/env-file";
@@ -72,10 +76,6 @@ import {
 } from "./lib/reader-summary-day-dataset-guard";
 import { assertImmutableRecoveryInputs } from "./lib/reader-summary-recovery-files";
 import { canonicalJsonSha256 } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
-import {
-  createReaderSummaryDailyCaptureContext,
-  createReaderSummaryDailyPublicationExecutionWiring,
-} from "./lib/reader-summary-daily-publication-finalizer";
 
 const databaseUrlEnv = "DATABASE_URL";
 const evidencePathEnv = "DURABLE_READER_SUMMARY_EVIDENCE_PATH";
@@ -93,8 +93,7 @@ const datasetManifestPathEnv = "DURABLE_READER_SUMMARY_DATASET_MANIFEST_PATH";
 const datasetManifestSha256Env =
   "DURABLE_READER_SUMMARY_DATASET_MANIFEST_SHA256";
 const datasetRecoveryRootEnv = "DURABLE_READER_SUMMARY_RECOVERY_ROOT";
-const recoveryTimestampPolicyEnv =
-  "DURABLE_READER_SUMMARY_RECOVERY_TIMESTAMP_POLICY";
+
 loadDotenvIfPresent(".env");
 type DurableReaderSummaryModelMode =
   "deterministic" | "openai-responses" | "agent-runtime";
@@ -109,11 +108,7 @@ type FeedInventoryRow = {
 
 async function main(): Promise<void> {
   const databaseUrl = requiredEnv(databaseUrlEnv);
-  const { dailyReplay, operationalClock: clock } =
-    createReaderSummaryDailyCaptureContext({
-      env: process.env,
-      operationalClock: new SystemClock(),
-    });
+  const clock = new SystemClock();
   const now = clock.now();
   const tenant = tenantId(
     readEnv("DURABLE_READER_SUMMARY_TENANT_ID") ?? defaultTenantId,
@@ -133,15 +128,6 @@ async function main(): Promise<void> {
     endedAt: periodEndedAt,
     timezone,
   });
-  const recoveryTimestampPolicy = resolveRecoveryTimestampPolicy({
-    argv: process.argv.slice(2),
-    envValue: readEnv(recoveryTimestampPolicyEnv),
-    cadence,
-    timezone,
-    periodStartedAt,
-    periodEndedAt,
-    now,
-  });
   const historicalGitHubOmission = resolveHistoricalGitHubOmission({
     argv: process.argv.slice(2),
     reason: readEnv(historicalGitHubOmissionReasonEnv),
@@ -151,14 +137,6 @@ async function main(): Promise<void> {
     periodEndedAt,
     now,
   });
-  if (
-    historicalGitHubOmission !== undefined &&
-    !recoveryTimestampPolicy.active
-  ) {
-    throw new Error(
-      "Historical GitHub omission requires explicit historical recovery mode",
-    );
-  }
   const maxEvidenceItems = readIntegerEnv(
     "DURABLE_READER_SUMMARY_MAX_EVIDENCE_ITEMS",
     200,
@@ -174,8 +152,7 @@ async function main(): Promise<void> {
   const modelMode = readModelMode();
   const topicLabelerMode = readTopicLabelerMode();
   const agentRuntimeClient =
-    dailyReplay === null &&
-      (modelMode === "agent-runtime" || topicLabelerMode === "agent-runtime")
+    modelMode === "agent-runtime" || topicLabelerMode === "agent-runtime"
       ? buildAgentRuntimeClient()
       : null;
   const executionAttestations =
@@ -190,18 +167,6 @@ async function main(): Promise<void> {
     await PrismaSummaryConnection.create(runtimePoolConfig);
 
   try {
-    const datasetGuard = recoveryTimestampPolicy.active
-      ? buildDatasetGuard({
-          client: summaryConnection,
-          clock,
-          tenantId: tenant,
-          workspaceId: workspace,
-          periodStartedAt,
-          periodEndedAt,
-          now,
-          timestampPolicy: recoveryTimestampPolicy.policy,
-        })
-      : null;
     const feedItems = new PrismaFeedItemReadRepository(feedConnection);
     const readerSummaryJobs = new PrismaReaderSummaryJobRepository(
       summaryConnection,
@@ -212,14 +177,6 @@ async function main(): Promise<void> {
     const readerSummaryPolicies = new PrismaReaderSummaryPolicyRepository(
       summaryConnection,
     );
-    const publicationWiring =
-      createReaderSummaryDailyPublicationExecutionWiring({
-        replay: dailyReplay,
-        feedItems,
-        summaryClient: summaryConnection,
-        clock,
-        attestationSink: executionAttestations,
-      });
     const queue = new CapturingReaderSummaryJobQueue();
     const ids = new CryptoIdGenerator();
     const scope = { type: "workspace" } as const;
@@ -247,15 +204,12 @@ async function main(): Promise<void> {
       }),
     );
 
-    const inventoryBefore = dailyReplay === null
-      ? await loadFeedInventory(summaryConnection, {
-          tenantId: tenant,
-          workspaceId: workspace,
-          startedAt: periodStartedAt,
-          endedAt: periodEndedAt,
-          timestampPolicy: recoveryTimestampPolicy.policy,
-        })
-      : publicationWiring.inventory!;
+    const inventoryBefore = await loadFeedInventory(summaryConnection, {
+      tenantId: tenant,
+      workspaceId: workspace,
+      startedAt: periodStartedAt,
+      endedAt: periodEndedAt,
+    });
 
     const requestReaderSummary = new RequestReaderSummaryUseCase(
       readerSummaryJobs,
@@ -274,22 +228,43 @@ async function main(): Promise<void> {
         endedAt: periodEndedAt,
         timezone,
       },
-      idempotencyKey: dailyReplay === null
-        ? `durable-reader-summary:${period.periodKey}:${now.toISOString()}`
-        : `reader-summary-daily:${dailyReplay.modelJobIdentity}`,
+      idempotencyKey: `durable-reader-summary:${period.periodKey}:${now.toISOString()}`,
       correlationId: `corr-durable-reader-summary-${now.getTime()}`,
     });
     if (!request.ok) {
       throw request.error;
     }
 
-    const relevanceEvidenceSelector = publicationWiring.evidenceSelector;
+    const rankFeedItems = new RankFeedItemsUseCase(
+      feedItems,
+      new InMemoryUserRelevanceProfileRepository(),
+      clock,
+    );
+    const relevanceEvidenceSelector =
+      new RelevanceReaderSummaryEvidenceSelector(
+        rankFeedItems,
+        feedItems,
+        clock,
+        new StoryRankingMetricsRecorder(new InMemoryMetricsRecorder()),
+      );
     const omissionAwareEvidenceSelector =
       historicalGitHubOmission === undefined
         ? relevanceEvidenceSelector
         : new HistoricalGitHubOmissionEvidenceSelector(
             relevanceEvidenceSelector,
           );
+    const datasetGuard =
+      historicalGitHubOmission === undefined
+        ? null
+        : buildDatasetGuard({
+            client: summaryConnection,
+            clock,
+            tenantId: tenant,
+            workspaceId: workspace,
+            periodStartedAt,
+            periodEndedAt,
+            now,
+          });
     const evidenceSelector =
       datasetGuard === null
         ? omissionAwareEvidenceSelector
@@ -311,7 +286,7 @@ async function main(): Promise<void> {
       readerSummaryArtifacts,
       readerSummaryPolicies,
       evidenceSelector,
-      publicationWiring.model ?? buildReaderSummaryModel(
+      buildReaderSummaryModel(
         modelMode,
         agentRuntimeClient,
         executionAttestations,
@@ -321,13 +296,13 @@ async function main(): Promise<void> {
       clock,
       undefined,
       undefined,
-      publicationWiring.topicMapBuilder ?? buildTopicMapBuilder(
+      buildTopicMapBuilder(
         topicLabelerMode,
         agentRuntimeClient,
         executionAttestations,
       ),
       undefined,
-      publicationWiring.githubProjectionReader,
+      new PrismaReaderSummaryGitHubProjectionReader(summaryConnection),
       historicalGitHubOmission,
     );
     const execution = await executeReaderSummary.execute({
@@ -420,14 +395,6 @@ async function main(): Promise<void> {
                   historicalGitHubOmission.authorizedAt.toISOString(),
               },
         datasetManifest: datasetGuard?.evidence(),
-        dailySourceAuthority:
-          dailyReplay === null
-            ? undefined
-            : {
-                schemaVersion: 1,
-                canonicalSha256: dailyReplay.authoritySha256,
-                modelJobIdentity: dailyReplay.modelJobIdentity,
-              },
       },
       scope: {
         tenantId: tenant,
@@ -436,7 +403,6 @@ async function main(): Promise<void> {
       },
       period: frontendArtifact.period,
       inputInventory: inventoryBefore,
-      inputInventoryTimestampPolicy: recoveryTimestampPolicy.policy,
       queue: {
         capturedCommandCount: queue.all().length,
       },
@@ -493,13 +459,12 @@ async function main(): Promise<void> {
 
 function buildDatasetGuard(params: {
   readonly client: PrismaSummaryConnection;
-  readonly clock: Clock;
+  readonly clock: SystemClock;
   readonly tenantId: string;
   readonly workspaceId: string;
   readonly periodStartedAt: Date;
   readonly periodEndedAt: Date;
   readonly now: Date;
-  readonly timestampPolicy: ReaderSummaryTimestampPolicy;
 }): ReaderSummaryDayDatasetGuard {
   const manifestPath = requiredEnv(datasetManifestPathEnv);
   assertImmutableRecoveryInputs({
@@ -515,7 +480,6 @@ function buildDatasetGuard(params: {
     startedAt: params.periodStartedAt,
     endedAt: params.periodEndedAt,
     now: params.now,
-    expectedTimestampPolicy: params.timestampPolicy,
   });
   return new ReaderSummaryDayDatasetGuard(
     params.client,
@@ -542,7 +506,7 @@ class CapturingReaderSummaryJobQueue implements ReaderSummaryJobQueuePort {
 }
 
 class AllowingSummaryQuota implements SummaryQuotaPort {
-  constructor(private readonly clock: Clock) {}
+  constructor(private readonly clock: SystemClock) {}
 
   async reserveSummaryJob(
     _command: ReserveSummaryJobQuotaCommand,
@@ -686,7 +650,6 @@ const loadFeedInventory = async (
     readonly workspaceId: string;
     readonly startedAt: Date;
     readonly endedAt: Date;
-    readonly timestampPolicy: ReaderSummaryTimestampPolicy;
   },
 ): Promise<readonly FeedInventoryRow[]> => {
   const rows = await prisma.$queryRaw<
@@ -701,16 +664,8 @@ const loadFeedInventory = async (
     where tenant_id = ${params.tenantId}
       and workspace_id = ${params.workspaceId}
       and status = 'VISIBLE'
-      and case ${params.timestampPolicy}
-        when 'published_at' then published_at
-        when 'observed_at' then observed_at
-        else null
-      end >= ${params.startedAt}
-      and case ${params.timestampPolicy}
-        when 'published_at' then published_at
-        when 'observed_at' then observed_at
-        else null
-      end < ${params.endedAt}
+      and published_at >= ${params.startedAt}
+      and published_at < ${params.endedAt}
     group by provider_key
     order by provider_key asc
   `;
@@ -756,51 +711,6 @@ const readCadence = (): DurableReaderSummaryCadence => {
   }
 
   throw new Error(`${cadenceEnv} must be daily, weekly, monthly or custom`);
-};
-
-const resolveRecoveryTimestampPolicy = (params: {
-  readonly argv: readonly string[];
-  readonly envValue?: string;
-  readonly cadence: DurableReaderSummaryCadence;
-  readonly timezone: string;
-  readonly periodStartedAt: Date;
-  readonly periodEndedAt: Date;
-  readonly now: Date;
-}): {
-  readonly active: boolean;
-  readonly policy: ReaderSummaryTimestampPolicy;
-} => {
-  const explicitlyHistorical = params.argv.includes("--historical-recovery");
-  if (!explicitlyHistorical && params.envValue === undefined) {
-    return { active: false, policy: "published_at" };
-  }
-  if (!explicitlyHistorical || params.envValue === undefined) {
-    throw new Error(
-      `Historical recovery requires both --historical-recovery and ${recoveryTimestampPolicyEnv}`,
-    );
-  }
-  if (
-    params.envValue !== "published_at" &&
-    params.envValue !== "observed_at"
-  ) {
-    throw new Error(
-      `${recoveryTimestampPolicyEnv} must be published_at or observed_at`,
-    );
-  }
-  if (
-    params.cadence !== "daily" ||
-    params.timezone !== "UTC" ||
-    params.periodStartedAt.toISOString() !==
-      `${params.periodStartedAt.toISOString().slice(0, 10)}T00:00:00.000Z` ||
-    params.periodEndedAt.getTime() - params.periodStartedAt.getTime() !==
-      86_400_000 ||
-    params.periodEndedAt.getTime() > params.now.getTime()
-  ) {
-    throw new Error(
-      "Historical recovery timestamp policy is restricted to one completed exact UTC day",
-    );
-  }
-  return { active: true, policy: params.envValue };
 };
 
 const readDateEnv = (name: string): Date | undefined => {

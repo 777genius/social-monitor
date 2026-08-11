@@ -51,18 +51,8 @@ import {
   resolveProductionDayExecutionRequest,
 } from "./lib/reader-summary-production-day-reuse-provenance";
 import { loadHistoricalRegeneration } from "./lib/reader-summary-production-day-regeneration";
-import { buildProductionDayTerminalOutcome } from "./lib/reader-summary-production-day-outcome";
-import {
-  resolveProductionDayProviderReadiness,
-  type ProductionDayDatabaseQualityReport,
-  type ProductionDayProviderReadiness,
-} from "./lib/reader-summary-production-day-provider-readiness";
 import { productionDayQualityDateArgs } from "./lib/reader-summary-production-day-quality-date";
 import { collectionQualityRegenerationFreshnessArgs } from "./lib/yesterday-social-collection-quality-regeneration";
-import type { CleanRealDayCollectionReport } from "./lib/clean-real-day-collection-report";
-import {
-  type YesterdaySocialProviderReadiness,
-} from "./lib/yesterday-social-collection-quality";
 import { readProductionDayScope } from "./lib/reader-summary-production-day-scope";
 import {
   probeProductionRuntimeLiveIdentity,
@@ -77,27 +67,63 @@ loadDotenvIfPresent(".env");
 const outputPath = "ops/evals/reader-summary-production-day-run.v1.json";
 const update = process.argv.includes("--update");
 const artifactOnly = process.argv.includes("--artifact-only");
-let executionRequest: ReturnType<typeof resolveProductionDayExecutionRequest>;
-let reuseExistingArtifacts: boolean;
-let skipLiveCollection: boolean;
-let allowDegraded: boolean;
-let allowHistorical: boolean;
-let allowHistoricalProviderCollection: boolean;
-let qualityDateArgs: readonly string[];
-let collectionDate: string;
-let summaryModel: ReturnType<typeof resolveSummaryModel>;
-let topicLabeler: ReturnType<typeof resolveTopicLabeler>;
-let periodStartedAt: string;
-let periodEndedAt: string;
-let runtimeArtifactDirectory: string;
-let evidencePath: string;
-let frontendFixturePath: string;
-let nextEvidencePath: string;
-let nextFrontendFixturePath: string;
-let runtimeIdentityPath: string;
-let nextRuntimeIdentityPath: string;
-let datedOutputPath: string;
-let terminalOutcomePath: string;
+const executionRequest = resolveProductionDayExecutionRequest(
+  process.argv.slice(2),
+);
+const reuseExistingArtifacts = executionRequest.mode === "historical-reuse";
+const skipLiveCollection = executionRequest.mode !== "live-production";
+const allowDegraded = process.argv.includes("--allow-degraded");
+const allowHistorical = process.argv.includes("--allow-historical");
+const qualityDateArgs = productionDayQualityDateArgs({
+  executionMode: executionRequest.mode,
+  allowHistorical,
+});
+const collectionDate = artifactOnly ? "1970-01-01" : resolveCollectionDate();
+const summaryModel = resolveSummaryModel();
+if (!artifactOnly && summaryModel !== "agent-runtime") {
+  throw new Error(
+    "Production reader summaries must use subscription runtime (agent-runtime)",
+  );
+}
+const topicLabeler = resolveTopicLabeler();
+if (!artifactOnly && topicLabeler !== "agent-runtime") {
+  throw new Error(
+    "Production reader summary topics must use subscription runtime (agent-runtime)",
+  );
+}
+const periodStartedAt = `${collectionDate}T00:00:00.000Z`;
+const periodEndedAt = nextDate(collectionDate);
+const runtimeArtifactDirectory = resolve(
+  process.env.READER_SUMMARY_PRODUCTION_DAY_ARTIFACT_DIR ??
+    join(
+      tmpdir(),
+      "social-monitor",
+      "reader-summary-production-day",
+      collectionDate,
+    ),
+);
+const evidencePath = join(
+  runtimeArtifactDirectory,
+  `durable-reader-summary-${collectionDate}.v1.json`,
+);
+const frontendFixturePath = join(
+  runtimeArtifactDirectory,
+  `frontend-reader-summary-${collectionDate}.fixture.v1.json`,
+);
+const nextEvidencePath = evidencePath.replace(/\.json$/u, ".next.json");
+const nextFrontendFixturePath = frontendFixturePath.replace(
+  /\.json$/u,
+  ".next.json",
+);
+const runtimeIdentityPath = join(
+  runtimeArtifactDirectory,
+  `runtime-live-identity-${collectionDate}.v1.json`,
+);
+const nextRuntimeIdentityPath = runtimeIdentityPath.replace(
+  /\.json$/u,
+  ".next.json",
+);
+const datedOutputPath = `ops/evals/reader-summary-production-day-run.${collectionDate}.v1.json`;
 let liveCaptureExecution: ProductionDayCaptureExecution | null = null;
 
 void main().catch((error) => {
@@ -113,25 +139,6 @@ async function main(): Promise<void> {
 
   const startedAt = new Date();
   const steps: StepReport[] = [];
-  const migrationStep = runNpm("migrate", ["run", "migrate:deploy"]);
-  if (migrationStep.status !== "passed") {
-    throw new Error(
-      `Required database migration failed before production-day admission ` +
-        `(exit=${migrationStep.exitCode ?? "unknown"})`,
-    );
-  }
-  steps.push(migrationStep);
-  initializeProductionDayRuntime();
-  if (summaryModel !== "agent-runtime") {
-    throw new Error(
-      "Production reader summaries must use subscription runtime (agent-runtime)",
-    );
-  }
-  if (topicLabeler !== "agent-runtime") {
-    throw new Error(
-      "Production reader summary topics must use subscription runtime (agent-runtime)",
-    );
-  }
   const historicalReuse =
     executionRequest.mode === "historical-reuse"
       ? loadHistoricalReuseProvenance({
@@ -141,6 +148,7 @@ async function main(): Promise<void> {
           collectionDate,
         })
       : null;
+  steps.push(runNpm("migrate", ["run", "migrate:deploy"]));
   const scope = await readProductionDayScope({
     connectionString: yesterdaySocialQualityDatabaseUrl(),
     periodStartedAt,
@@ -192,10 +200,6 @@ async function main(): Promise<void> {
           "--update",
           "--date",
           collectionDate,
-          "--provider-catch-up",
-          ...(allowHistoricalProviderCollection
-            ? ["--allow-historical-provider-collection"]
-            : []),
           ...(allowHistorical ? [] : ["--wait-for-x-readiness"]),
         ]);
   steps.push(collectionStep);
@@ -203,7 +207,7 @@ async function main(): Promise<void> {
   mkdirSync(runtimeArtifactDirectory, { recursive: true });
   isolateCaptureArtifacts();
 
-  let collectionQualityStep = runNpm("collection-quality", [
+  const collectionQualityStep = runNpm("collection-quality", [
     "run",
     "check:yesterday-social-collection-quality",
     "--",
@@ -223,96 +227,26 @@ async function main(): Promise<void> {
               : "",
           tenantId: scope.tenantId,
           workspaceId: scope.workspaceId,
-          timestampPolicy:
-            executionRequest.mode === "historical-regeneration"
-              ? executionRequest.timestampPolicy
-              : "published_at",
         })
       : []),
     ...(allowHistorical ? ["--allow-historical"] : []),
   ]);
-  const collectionQualityReport =
-    readJsonIfExists<ProductionDayDatabaseQualityReport>(
-      "ops/evals/yesterday-social-collection-quality-report.v1.json",
-    );
-  const collectionReport =
-    readJsonIfExists<CleanRealDayCollectionReport>(
-      "ops/evals/reader-summary-clean-real-day-collection.v1.json",
-    );
-  const providerAdmission =
-    executionRequest.mode === "live-production"
-      ? resolveProductionDayProviderReadiness({
-          collectionDate,
-          evaluatedAt: new Date(),
-          qualityReport: collectionQualityReport,
-          collectionReport,
-        })
-      : null;
-  const providerReadiness = providerAdmission?.readiness ?? null;
-  const requiredProvidersReady =
-    providerAdmission?.summaryPolicy === "allowed" ||
-    executionRequest.mode !== "live-production";
-  if (
-    executionRequest.mode === "live-production" &&
-    providerAdmission?.status !== "complete"
-  ) {
-    collectionQualityStep = {
-      ...collectionQualityStep,
-      command:
-        `${collectionQualityStep.command} -- ` +
-        (providerAdmission?.barrierMessage ??
-          `verified provider outcome=${providerAdmission?.status ?? "missing"}`),
-      status: "failed",
-      exitCode: 1,
-    };
-  }
   steps.push(collectionQualityStep);
-  if (
-    providerAdmission?.status === "partial" ||
-    providerAdmission?.status === "unavailable"
-  ) {
-    const safeMessage =
-      `Production provider evidence for ${collectionDate} is ` +
-      `${providerAdmission.status}; AI summary and publication were not started`;
-    steps.push(...blockedProductionDaySteps(safeMessage));
-    persistProductionDayReport({
-      startedAt,
-      completedAt: new Date(),
-      steps,
-      scope,
-      providerReadiness,
-      includeSummaryEvidence: false,
-      failure: {
-        code: "collection_quality_failed",
-        safeMessage,
-      },
-      historicalReuseProvenance: historicalReuse?.provenance ?? null,
-      historicalRegenerationProvenance:
-        historicalRegeneration?.provenance ?? null,
-    });
-    persistTerminalOutcome(providerAdmission);
-    return;
-  }
   if (
     !collectionIsReadyForProductionSummary({
       liveCollection: !skipLiveCollection,
       collectionStepStatus: collectionStep.status,
       collectionQualityStepStatus: collectionQualityStep.status,
-      requiredProvidersReady,
     })
   ) {
     const safeMessage =
-      providerReadiness?.barrierMessage === null ||
-      providerReadiness === null
-        ? "Production collection quality failed; AI summary and publication were not started"
-        : `${providerReadiness.barrierMessage}; AI summary and publication were not started. Retry not before ${providerReadiness.retrySchedule?.notBefore ?? "the next scheduled run"}; completed providers will not be recollected`;
+      "Production collection quality failed; AI summary was not started";
     steps.push(...blockedProductionDaySteps(safeMessage));
     persistProductionDayReport({
       startedAt,
       completedAt: new Date(),
       steps,
       scope,
-      providerReadiness,
       includeSummaryEvidence: false,
       failure: {
         code: "collection_quality_failed",
@@ -335,19 +269,13 @@ async function main(): Promise<void> {
           "run",
           "capture:durable-reader-summary",
           ...(executionRequest.mode === "historical-regeneration"
-            ? [
-                "--",
-                "--historical-recovery",
-                ...(executionRequest.allowHistoricalGitHubOmission
-                  ? ["--allow-historical-github-omission"]
-                  : []),
-              ]
+            ? ["--", "--allow-historical-github-omission"]
             : []),
         ],
         {
           DATABASE_URL: yesterdaySocialQualityDatabaseUrl(),
           DURABLE_READER_SUMMARY_MODEL: summaryModel,
-          AGENT_RUNTIME_READER_SUMMARY_MODEL: "gpt-5.6-sol",
+          AGENT_RUNTIME_READER_SUMMARY_MODEL: "gpt-5.5",
           AGENT_RUNTIME_PROVIDER: "codex",
           AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT: "xhigh",
           AGENT_RUNTIME_READER_SUMMARY_TIMEOUT_MS: String(
@@ -388,8 +316,6 @@ async function main(): Promise<void> {
                 DURABLE_READER_SUMMARY_RECOVERY_ROOT:
                   process.env.READER_SUMMARY_PRODUCTION_DAY_RECOVERY_DIR ??
                   `/var/lib/social-monitor/artifacts/recovery/${collectionDate}`,
-                DURABLE_READER_SUMMARY_RECOVERY_TIMESTAMP_POLICY:
-                  executionRequest.timestampPolicy,
               }
             : {}),
         },
@@ -495,7 +421,6 @@ async function main(): Promise<void> {
     completedAt: new Date(),
     steps,
     scope,
-    providerReadiness,
     includeSummaryEvidence: true,
     failure: null,
     historicalReuseProvenance: historicalReuse?.provenance ?? null,
@@ -517,69 +442,11 @@ async function main(): Promise<void> {
   }
 }
 
-function initializeProductionDayRuntime(): void {
-  executionRequest = resolveProductionDayExecutionRequest(process.argv.slice(2));
-  reuseExistingArtifacts = executionRequest.mode === "historical-reuse";
-  skipLiveCollection = executionRequest.mode !== "live-production";
-  allowDegraded = process.argv.includes("--allow-degraded");
-  allowHistorical = process.argv.includes("--allow-historical");
-  allowHistoricalProviderCollection =
-    allowHistorical && executionRequest.mode === "live-production";
-  qualityDateArgs = productionDayQualityDateArgs({
-    executionMode: executionRequest.mode,
-    allowHistorical,
-  });
-  collectionDate = resolveCollectionDate();
-  summaryModel = resolveSummaryModel();
-  topicLabeler = resolveTopicLabeler();
-  periodStartedAt = `${collectionDate}T00:00:00.000Z`;
-  periodEndedAt = nextDate(collectionDate);
-  runtimeArtifactDirectory = resolve(
-    process.env.READER_SUMMARY_PRODUCTION_DAY_ARTIFACT_DIR ??
-      join(tmpdir(), "social-monitor", "reader-summary-production-day", collectionDate),
-  );
-  evidencePath = join(
-    runtimeArtifactDirectory,
-    `durable-reader-summary-${collectionDate}.v1.json`,
-  );
-  frontendFixturePath = join(
-    runtimeArtifactDirectory,
-    `frontend-reader-summary-${collectionDate}.fixture.v1.json`,
-  );
-  nextEvidencePath = evidencePath.replace(/\.json$/u, ".next.json");
-  nextFrontendFixturePath = frontendFixturePath.replace(/\.json$/u, ".next.json");
-  runtimeIdentityPath = join(
-    runtimeArtifactDirectory,
-    `runtime-live-identity-${collectionDate}.v1.json`,
-  );
-  nextRuntimeIdentityPath = runtimeIdentityPath.replace(/\.json$/u, ".next.json");
-  datedOutputPath =
-    `ops/evals/reader-summary-production-day-run.${collectionDate}.v1.json`;
-  terminalOutcomePath =
-    `ops/evals/reader-summary-production-day-outcome.${collectionDate}.v1.json`;
-}
-
-function persistTerminalOutcome(
-  providerReadiness: ProductionDayProviderReadiness,
-): void {
-  const outcome = buildProductionDayTerminalOutcome({
-    generatedAt: new Date(),
-    providerReadiness,
-  });
-  if (!noRawSecretFragments(outcome)) {
-    throw new Error("Terminal provider outcome contains a secret fragment");
-  }
-  mkdirSync(dirname(terminalOutcomePath), { recursive: true });
-  writeFileSync(terminalOutcomePath, `${JSON.stringify(outcome, null, 2)}\n`);
-  console.log(`Updated ${terminalOutcomePath}`);
-}
-
 function persistProductionDayReport(params: {
   readonly startedAt: Date;
   readonly completedAt: Date;
   readonly steps: readonly StepReport[];
   readonly scope: { readonly tenantId: string; readonly workspaceId: string };
-  readonly providerReadiness: YesterdaySocialProviderReadiness | null;
   readonly includeSummaryEvidence: boolean;
   readonly failure: ProductionDayReport["failure"];
   readonly historicalReuseProvenance: HistoricalReuseProvenance | null;
@@ -769,7 +636,6 @@ function buildReport(params: {
   readonly completedAt: Date;
   readonly steps: readonly StepReport[];
   readonly scope: { readonly tenantId: string; readonly workspaceId: string };
-  readonly providerReadiness: YesterdaySocialProviderReadiness | null;
   readonly includeSummaryEvidence: boolean;
   readonly failure: ProductionDayReport["failure"];
   readonly historicalReuseProvenance: HistoricalReuseProvenance | null;
@@ -795,7 +661,6 @@ function buildReport(params: {
     completedAt: params.completedAt,
     steps: params.steps,
     scope: params.scope,
-    providerReadiness: params.providerReadiness,
     collectionQuality,
     durableEvidence:
       evidenceArtifact.evidence as ProductionDayDurableEvidence | null,

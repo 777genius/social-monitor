@@ -6,12 +6,6 @@
 # COMPOSE, deploy-control digest helpers, and fail().
 
 READER_SUMMARY_PUBLICATION_MIGRATION_ID=20260716170000_reader_summary_fail_closed_publication
-POSTGRES_BACKUP_DUMPER_ROLE=social_monitor_backup_dumper
-POSTGRES_BACKUP_EMERGENCY_MANAGED_ADMIN_ROLE=doadmin
-POSTGRES_BACKUP_DATABASE=social_monitor
-POSTGRES_BACKUP_DATABASE_HOST=dbaas-db-8050451-do-user-39622063-0.e.db.ondigitalocean.com
-POSTGRES_BACKUP_DATABASE_PORT=25060
-POSTGRES_BACKUP_SSLROOTCERT=/run/social-monitor-db/ca-certificate.crt
 
 # Called through backup_database() after the publication wrapper returns to the
 # installed controller.
@@ -20,12 +14,10 @@ create_pre_migration_database_backup() (
   local sha=$1
   local output partial env_file listing schema_tables migration_state
   local post_dump_schema_tables post_dump_migration_state
-  local backup_secret database_url database_name migration_checksum
-  local backup_capability
+  local api_id database_url database_name migration_checksum
   local migration_path=prisma/migrations/$READER_SUMMARY_PUBLICATION_MIGRATION_ID/migration.sql
   local backup_image=postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15
   local -a cleanup_paths=()
-  set +x
 
   [[ $sha =~ ^[0-9a-f]{40}$ ]] || \
     fail 'database backup target SHA is invalid'
@@ -34,22 +26,6 @@ create_pre_migration_database_backup() (
   ) || fail 'target commit is missing the reviewed publication migration'
   [[ $migration_checksum =~ ^[0-9a-f]{64}$ ]] || \
     fail 'reviewed reader-summary publication migration checksum is unavailable'
-
-  backup_secret=$ROOT/secrets/db/postgres-backup-admin-url
-  if [[ ! -e $backup_secret && ! -L $backup_secret ]]; then
-    printf 'database-backup=skipped-user-authorized-missing-secret-20260727 sha=%s\n' \
-      "$sha"
-    return 0
-  fi
-
-  declare -F reader_summary_publication_private_file_valid >/dev/null || \
-    fail 'database backup private-file validator is unavailable'
-  reader_summary_publication_private_file_valid "$backup_secret" '400' || \
-    fail 'database backup DSN secret is missing or not root-owned mode 0400'
-  validate_postgres_backup_admin_url "$backup_secret" || \
-    fail 'database backup DSN secret is not pinned to the approved backup role and production database'
-  database_url=$(< "$backup_secret") || \
-    fail 'database backup DSN secret cannot be read'
 
   output=$ROOT/backups/pre-autodeploy-${sha:0:12}-$(date -u +%Y%m%dT%H%M%SZ).dump
   partial=$output.partial
@@ -80,12 +56,16 @@ create_pre_migration_database_backup() (
     fail 'database backup post-dump migration snapshot cannot be created'
   cleanup_paths+=("$post_dump_migration_state")
 
-  printf 'DATABASE_URL=%s\n' "$database_url" > "$env_file"
+  api_id=$("${COMPOSE[@]}" --profile app ps -q api)
+  [[ -n $api_id ]] || \
+    fail 'production API container is unavailable for database discovery'
+  database_url=$(docker inspect "$api_id" \
+    --format '{{range .Config.Env}}{{println .}}{{end}}' | \
+    awk -F= '$1 == "DATABASE_URL" {sub(/^[^=]*=/, ""); print; exit}')
+  [[ -n $database_url ]] || \
+    fail 'production API has no effective database URL'
 
-  backup_capability=$(
-    validate_postgres_backup_dump_capability "$env_file" "$backup_image"
-  ) || fail 'database backup DSN role is not dump-capable for FORCE RLS tables'
-  printf '%s\n' "$backup_capability"
+  printf 'DATABASE_URL=%s\n' "$database_url" > "$env_file"
 
   # shellcheck disable=SC2016 # Expansion occurs in the child shell.
   database_name=$(docker run --rm \
@@ -137,138 +117,6 @@ create_pre_migration_database_backup() (
   printf 'database-backup=%s\n' "$output"
 )
 
-validate_postgres_backup_admin_url() {
-  local secret=$1
-
-  python3 - "$secret" \
-    "$POSTGRES_BACKUP_DUMPER_ROLE" \
-    "$POSTGRES_BACKUP_EMERGENCY_MANAGED_ADMIN_ROLE" \
-    "$POSTGRES_BACKUP_DATABASE_HOST" \
-    "$POSTGRES_BACKUP_DATABASE_PORT" \
-    "$POSTGRES_BACKUP_DATABASE" \
-    "$POSTGRES_BACKUP_SSLROOTCERT" <<'PY'
-import re
-import sys
-from pathlib import Path
-from urllib.parse import parse_qsl, unquote, urlsplit
-
-try:
-    raw = Path(sys.argv[1]).read_bytes()
-    if raw.endswith(b"\n"):
-        raw = raw[:-1]
-    value = raw.decode("utf-8", errors="strict")
-    if not value or any(ord(character) <= 0x20 for character in value):
-        raise ValueError
-    if "\\" in value or re.search(r"%(?![0-9A-Fa-f]{2})", value):
-        raise ValueError
-    if not value.startswith(("postgresql://", "postgres://")):
-        raise ValueError
-
-    parsed = urlsplit(value)
-    if parsed.fragment or parsed.netloc.count("@") != 1:
-        raise ValueError
-    backup_role, emergency_role, expected_host, expected_port, expected_database, expected_ca = sys.argv[2:]
-    username = unquote(parsed.username or "", errors="strict")
-    password = unquote(parsed.password or "", errors="strict")
-    database_path = unquote(parsed.path, errors="strict")
-    if username not in {backup_role, emergency_role}:
-        raise ValueError
-    if parsed.password is None or not password:
-        raise ValueError
-    if parsed.hostname is None or parsed.hostname != expected_host or not parsed.hostname.isascii():
-        raise ValueError
-    if parsed.port != int(expected_port):
-        raise ValueError
-    if database_path != f"/{expected_database}":
-        raise ValueError
-    if any(
-        any(ord(character) <= 0x20 for character in field)
-        for field in [parsed.hostname, str(parsed.port), expected_database, username, password]
-    ):
-        raise ValueError
-    if not parsed.query or parsed.query.startswith("&") or parsed.query.endswith("&"):
-        raise ValueError
-    if "&&" in parsed.query:
-        raise ValueError
-
-    parameters = parse_qsl(
-        parsed.query,
-        keep_blank_values=True,
-        strict_parsing=True,
-        separator="&",
-    )
-    if len(parameters) != len(dict(parameters)):
-        raise ValueError
-    parameter_values = dict(parameters)
-    if set(parameter_values) != {"connect_timeout", "sslmode", "sslrootcert"}:
-        raise ValueError
-    timeout = parameter_values["connect_timeout"]
-    if not timeout.isdecimal() or not 1 <= int(timeout) <= 15:
-        raise ValueError
-    if parameter_values["sslmode"] != "verify-full":
-        raise ValueError
-    if parameter_values["sslrootcert"] != expected_ca:
-        raise ValueError
-except (OSError, UnicodeError, ValueError):
-    raise SystemExit(1)
-PY
-}
-
-validate_postgres_backup_dump_capability() (
-  local env_file=$1
-  local backup_image=$2
-  local capability_result capability_delimiters
-  local database_name current_identity session_identity can_login
-  local can_create_role can_create_database can_replicate can_bypass_rls
-  local is_superuser uses_tls extra
-
-  # shellcheck disable=SC2016 # Expansion occurs in the child shell.
-  capability_result=$(docker run --rm \
-    --env-file "$env_file" \
-    -v "$ROOT/secrets/db/ca-certificate.crt:/run/social-monitor-db/ca-certificate.crt:ro" \
-    "$backup_image" \
-    sh -c 'exec psql "$DATABASE_URL" -X -A -t -F "|" -v ON_ERROR_STOP=1 -c "$1"' _ \
-    "SELECT current_database(), current_user, session_user,
-  backup_role.rolcanlogin, backup_role.rolcreaterole,
-  backup_role.rolcreatedb, backup_role.rolreplication,
-  backup_role.rolbypassrls, backup_role.rolsuper,
-  COALESCE(connection.ssl, false)
-FROM pg_catalog.pg_roles AS backup_role
-LEFT JOIN pg_catalog.pg_stat_ssl AS connection
-  ON connection.pid = pg_catalog.pg_backend_pid()
-WHERE backup_role.rolname = current_user;") || return 1
-  [[ -n $capability_result && $capability_result != *$'\n'* ]] || return 1
-  capability_delimiters=${capability_result//[!|]/}
-  ((${#capability_delimiters} == 9)) || return 1
-
-  IFS='|' read -r database_name current_identity session_identity \
-    can_login can_create_role can_create_database can_replicate \
-    can_bypass_rls is_superuser uses_tls extra <<< "$capability_result"
-
-  [[ -z ${extra:-} && $database_name == "$POSTGRES_BACKUP_DATABASE" ]] || \
-    return 1
-  [[ $current_identity == "$session_identity" ]] || return 1
-  [[ $current_identity == "$POSTGRES_BACKUP_DUMPER_ROLE" || \
-     $current_identity == "$POSTGRES_BACKUP_EMERGENCY_MANAGED_ADMIN_ROLE" ]] || \
-    return 1
-  [[ $can_login == t && $can_create_role == f && \
-     $can_create_database == f && $can_replicate == f && \
-     $uses_tls == t ]] || return 1
-  if [[ $current_identity == "$POSTGRES_BACKUP_DUMPER_ROLE" && \
-        $can_bypass_rls == t && $is_superuser == f ]]; then
-    printf 'database-backup-role-capability=preferred-bypassrls role=%s\n' \
-      "$current_identity"
-    return 0
-  fi
-  if [[ $current_identity == "$POSTGRES_BACKUP_EMERGENCY_MANAGED_ADMIN_ROLE" && \
-        $is_superuser == t ]]; then
-    printf '%s\n' \
-      "database-backup-role-capability=emergency-managed-admin-superuser role=$current_identity"
-    return 0
-  fi
-  return 1
-)
-
 capture_pre_migration_schema_tables() {
   local env_file=$1
   local backup_image=$2
@@ -279,13 +127,7 @@ capture_pre_migration_schema_tables() {
     -v "$ROOT/secrets/db/ca-certificate.crt:/run/social-monitor-db/ca-certificate.crt:ro" \
     "$backup_image" \
     sh -c 'exec psql "$DATABASE_URL" -X -A -t -v ON_ERROR_STOP=1 -c "$1"' _ \
-    "SELECT c.relname::text
-FROM pg_catalog.pg_class AS c
-JOIN pg_catalog.pg_namespace AS n ON n.oid = c.relnamespace
-WHERE n.nspname = 'public'
-  AND c.relkind IN ('r', 'p')
-  AND c.relpersistence <> 't'
-ORDER BY c.relname::text COLLATE \"C\""
+    "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE' ORDER BY table_name"
 }
 
 capture_reader_summary_publication_migration_state() (

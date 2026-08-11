@@ -1,23 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-POOL_JOB_ID=''
-POOL_JOB_SELECTED=false
-usage() {
-  echo "usage: $0 [--broker-pool-job-id <social-monitor-job-id>]" >&2
-  exit 64
-}
-
-case $# in
-  0) ;;
-  2)
-    [[ $1 == --broker-pool-job-id ]] || usage
-    POOL_JOB_ID=$2
-    POOL_JOB_SELECTED=true
-    ;;
-  *) usage ;;
-esac
-
 if [[ ${SOCIAL_MONITOR_AUTH_REFRESH_TEST_MODE:-} == 1 ]]; then
   ((EUID != 0)) || {
     echo 'auth-refresh-error: test mode refuses root execution' >&2
@@ -26,7 +9,6 @@ if [[ ${SOCIAL_MONITOR_AUTH_REFRESH_TEST_MODE:-} == 1 ]]; then
   AUTH_ROOT=${SOCIAL_MONITOR_AUTH_ROOT:?test auth root is required}
   TARGET_DIR=${SOCIAL_MONITOR_AUTH_TARGET_DIR:?test target dir is required}
   REGISTRY_ROOT=${SOCIAL_MONITOR_AUTH_REGISTRY_ROOT:?test registry root is required}
-  PROJECT_ROOT=${SOCIAL_MONITOR_AUTH_PROJECT_ROOT:-}
   CONTROLLER_JOB_ID=${SOCIAL_MONITOR_AUTH_CONTROLLER_JOB_ID:-test-controller}
   CURSOR_FILE=${SOCIAL_MONITOR_AUTH_CURSOR_FILE:?test cursor file is required}
   ACCOUNT_NAME_FILE=${SOCIAL_MONITOR_AUTH_ACCOUNT_NAME_FILE:?test account name file is required}
@@ -41,7 +23,6 @@ if [[ ${SOCIAL_MONITOR_AUTH_REFRESH_TEST_MODE:-} == 1 ]]; then
   POOL_REGISTRY_PREFIX=${SOCIAL_MONITOR_AUTH_POOL_REGISTRY_PREFIX:-/var/data/social-monitor/worker-jobs/}
 elif ((EUID == 0)); then
   PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
-  PROJECT_ROOT=/var/data/social-monitor
   AUTH_ROOT=/var/data/codex-home/live-codex-auth
   TARGET_DIR=/var/data/social-monitor/auth-current
   POOL_POINTER=/var/data/social-monitor/control/subscription-account-pool.json
@@ -57,7 +38,6 @@ elif ((EUID == 0)); then
   POOL_REGISTRY_PREFIX=/var/data/social-monitor/worker-jobs/
   unset SOCIAL_MONITOR_AUTH_REFRESH_TEST_MODE SOCIAL_MONITOR_AUTH_ROOT \
     SOCIAL_MONITOR_AUTH_TARGET_DIR SOCIAL_MONITOR_AUTH_REGISTRY_ROOT \
-    SOCIAL_MONITOR_AUTH_PROJECT_ROOT \
     SOCIAL_MONITOR_AUTH_CONTROLLER_JOB_ID SOCIAL_MONITOR_AUTH_CURSOR_FILE \
     SOCIAL_MONITOR_AUTH_ACCOUNT_NAME_FILE \
     SOCIAL_MONITOR_AUTH_PROBE_WORKSPACE SOCIAL_MONITOR_AUTH_CHANGED_MARKER \
@@ -67,114 +47,6 @@ else
   echo 'auth-refresh-error: production entrypoint requires root' >&2
   exit 1
 fi
-
-MANIFEST_ACCOUNTS=()
-REQUIRE_MANIFEST_ACCOUNT_MEMBERSHIP=false
-# This remains based on the default runtime cursor so every invocation shares
-# one install lock. Only the rotation cursor and selected-account name vary by
-# approved pool.
-AUTH_INSTALL_LOCK_FILE=$CURSOR_FILE.install.lock
-
-fail() {
-  echo "auth-refresh-error: $*" >&2
-  exit 1
-}
-
-require_canonical_directory() {
-  local directory=$1 label=$2 canonical
-  [[ -d $directory && ! -L $directory ]] || fail "$label is missing or unsafe"
-  canonical=$(realpath -e "$directory") || fail "cannot canonicalize $label"
-  [[ $canonical == "$directory" ]] || fail "$label is not canonical"
-}
-
-require_not_group_or_other_writable() {
-  local path=$1 label=$2 mode
-  mode=$(stat -c '%a' "$path" 2>/dev/null || stat -f '%Lp' "$path")
-  [[ $mode =~ ^[0-7]{3,4}$ ]] || fail "$label mode is invalid"
-  (( (8#$mode & 022) == 0 )) || fail "$label is writable by group or other"
-}
-
-is_manifest_account() {
-  local candidate=$1 manifest_account
-  for manifest_account in "${MANIFEST_ACCOUNTS[@]}"; do
-    [[ $candidate == "$manifest_account" ]] && return 0
-  done
-  return 1
-}
-
-resolve_broker_managed_pool() {
-  local job_id=$1 registry_root worker_jobs job_directory job_manifest
-  local job_root workspace_path canonical_manifest manifest_data manifest_account
-
-  [[ -n ${PROJECT_ROOT:-} ]] || fail 'broker-managed pool selection requires a project root'
-  [[ $job_id =~ ^social-monitor-production-account-pool-[A-Za-z0-9][A-Za-z0-9._-]{0,120}$ && \
-     $job_id != *..* ]] || fail 'broker-managed pool job id is invalid'
-
-  worker_jobs=$PROJECT_ROOT/worker-jobs
-  registry_root=$worker_jobs/registry-v4
-  require_canonical_directory "$PROJECT_ROOT" 'project root'
-  require_canonical_directory "$worker_jobs" 'project worker-jobs root'
-  require_canonical_directory "$registry_root" 'broker-managed pool registry'
-  require_not_group_or_other_writable "$registry_root" \
-    'broker-managed pool registry'
-
-  job_directory=$registry_root/$job_id
-  require_canonical_directory "$job_directory" 'broker-managed pool job directory'
-  require_not_group_or_other_writable "$job_directory" \
-    'broker-managed pool job directory'
-  job_manifest=$job_directory/job.json
-  [[ -f $job_manifest && ! -L $job_manifest ]] || \
-    fail 'broker-managed pool manifest is missing or unsafe'
-  canonical_manifest=$(realpath -e "$job_manifest") || \
-    fail 'cannot canonicalize broker-managed pool manifest'
-  [[ $canonical_manifest == "$job_manifest" ]] || \
-    fail 'broker-managed pool manifest is not canonical'
-  require_not_group_or_other_writable "$job_manifest" \
-    'broker-managed pool manifest'
-
-  job_root=$worker_jobs/$job_id
-  manifest_data=$(jq -cer --arg job_id "$job_id" --arg registry_root "$registry_root" \
-    --arg job_root "$job_root" '
-      if (
-        type == "object" and .schemaVersion == 1 and .jobId == $job_id and
-        (.tags | type == "array" and index("account-pool") != null and
-          index("production-auth") != null) and
-        (.accounts | type == "array" and length > 0 and
-          all(.[]; type == "string" and test("^[A-Za-z0-9][A-Za-z0-9._-]*$")) and
-          (length == (unique | length))) and
-        (.jobRootDir | type == "string" and . == $job_root) and
-        (.workspacePath | type == "string" and startswith("/")) and
-        (.workspacePath as $workspace_path |
-          .projectAccessScope | type == "object" and
-          .projectId == "social-monitor" and
-          .registryRoot == $registry_root and
-          (.workspaceRoots | type == "array" and length == 1 and
-            .[0] == $workspace_path))
-      ) then {
-        accounts: .accounts,
-        workspacePath: .workspacePath
-      } else empty end
-    ' "$job_manifest") || \
-    fail 'broker-managed pool manifest is not an approved Social Monitor pool'
-
-  require_canonical_directory "$job_root" 'broker-managed pool job root'
-  MANIFEST_ACCOUNTS=()
-  while IFS= read -r manifest_account; do
-    MANIFEST_ACCOUNTS+=("$manifest_account")
-  done < <(jq -r '.accounts[]' <<<"$manifest_data")
-  (( ${#MANIFEST_ACCOUNTS[@]} > 0 )) || \
-    fail 'broker-managed pool manifest has no approved accounts'
-  workspace_path=$(jq -r '.workspacePath' <<<"$manifest_data")
-  require_canonical_directory "$workspace_path" 'broker-managed pool workspace'
-  [[ $workspace_path == "$PROJECT_ROOT"/worktrees/* ]] || \
-    fail 'broker-managed pool workspace escapes the project worktrees root'
-
-  CONTROLLER_JOB_ID=$job_id
-  REGISTRY_ROOT=$registry_root
-  CURSOR_FILE=$CURSOR_FILE.pool-$job_id
-  ACCOUNT_NAME_FILE=$ACCOUNT_NAME_FILE.pool-$job_id
-  REQUIRE_MANIFEST_ACCOUNT_MEMBERSHIP=true
-}
 
 resolve_account_pool_pointer() {
   [[ -f $POOL_POINTER && ! -L $POOL_POINTER ]] || {
@@ -215,13 +87,7 @@ resolve_account_pool_pointer() {
   REGISTRY_ROOT=$canonical_registry
 }
 
-exec 9>"$AUTH_INSTALL_LOCK_FILE"
-chmod 0600 "$AUTH_INSTALL_LOCK_FILE"
-flock -w 1800 9
-
-if [[ $POOL_JOB_SELECTED == true ]]; then
-  resolve_broker_managed_pool "$POOL_JOB_ID"
-elif [[ -n ${POOL_POINTER:-} ]]; then
+if [[ -n ${POOL_POINTER:-} ]]; then
   resolve_account_pool_pointer
 fi
 
@@ -237,27 +103,18 @@ fi
 rm -f "$TARGET_DIR/auth.json.next"
 install -d -m 0750 "$PROBE_WORKSPACE"
 install -d -m 0700 "$PROBE_TMP_ROOT"
+exec 9>"$CURSOR_FILE.lock"
+chmod 0600 "$CURSOR_FILE.lock"
+flock -w 1800 9
 
 status_json=$(timeout 30 subscription-runtime-codex-goal tool codex_goal_accounts_status \
   --args-json "{\"jobId\":\"$CONTROLLER_JOB_ID\",\"registryRootDir\":\"$REGISTRY_ROOT\",\"liveCheck\":false}")
 
-jq -e --arg job_id "$CONTROLLER_JOB_ID" --arg registry_root "$REGISTRY_ROOT" '
+jq -e '
   (.ok == true)
-  and (.jobId == $job_id)
-  and (.registryRootDir == $registry_root)
   and (.hasAvailableAccount == true)
   and (.availableDedupedAccountNames | type == "array")
   and (.availableDedupedAccountNames | length > 0)
-  and (.availableDedupedAccountNames |
-    all(.[]; type == "string" and test("^[A-Za-z0-9][A-Za-z0-9._-]*$")))
-  and (.availableDedupedAccountNames as $accounts |
-    ($accounts | length) == ($accounts | unique | length))
-  and (.availableDedupedAccountNames as $accounts |
-    ($accounts | length) as $available_count |
-    (.summary | type == "object" and
-      (.ready | type == "number" and . == floor and . >= $available_count) and
-      (.availableDeduped | type == "number" and . == floor and
-        . == $available_count)))
 ' >/dev/null <<<"$status_json"
 
 available_accounts=()
@@ -265,12 +122,6 @@ while IFS= read -r account; do
   available_accounts+=("$account")
 done < <(jq -r '.availableDedupedAccountNames[]' <<<"$status_json")
 account_count=${#available_accounts[@]}
-if [[ $REQUIRE_MANIFEST_ACCOUNT_MEMBERSHIP == true ]]; then
-  for account in "${available_accounts[@]}"; do
-    is_manifest_account "$account" || \
-      fail 'broker account status is outside the approved pool manifest'
-  done
-fi
 start_index=0
 if [[ -f $CURSOR_FILE ]]; then
   read -r start_index < "$CURSOR_FILE"
@@ -287,8 +138,9 @@ for ((candidate_index = 0; candidate_index < account_count; candidate_index += 1
     break
   fi
 done
-require_canonical_directory "$AUTH_ROOT" 'auth root'
-auth_root_resolved=$(realpath -e "$AUTH_ROOT")
+auth_root_resolved=$(realpath "$AUTH_ROOT")
+target_auth_existed=false
+[[ -f $TARGET_DIR/auth.json ]] && target_auth_existed=true
 
 probe_home=''
 cleanup() {
@@ -299,22 +151,9 @@ trap cleanup EXIT
 for ((offset = 0; offset < account_count; offset += 1)); do
   index=$(((start_index + offset) % account_count))
   account=${available_accounts[$index]}
-  [[ $account =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || \
-    fail 'broker account name is invalid'
-  account_directory=$AUTH_ROOT/$account
-  [[ -d $account_directory && ! -L $account_directory ]] || \
-    fail 'approved broker account directory is missing or unsafe'
-  account_directory_resolved=$(realpath -e "$account_directory") || \
-    fail 'cannot canonicalize approved broker account directory'
-  [[ $account_directory_resolved == "$auth_root_resolved/$account" ]] || \
-    fail 'approved broker account directory is not canonical'
-  account_auth=$account_directory/auth.json
-  [[ -f $account_auth && ! -L $account_auth ]] || \
-    fail 'approved broker account auth file is missing or unsafe'
-  selected=$(realpath -e "$account_auth") || \
-    fail 'cannot canonicalize approved broker account auth file'
-  [[ $selected == "$auth_root_resolved/$account/auth.json" ]] || \
-    fail 'approved broker account auth file is not canonical'
+  [[ $account =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || continue
+  selected=$(realpath "$AUTH_ROOT/$account/auth.json" 2>/dev/null) || continue
+  [[ $selected == "$auth_root_resolved"/*/auth.json ]] || continue
 
   probe_home=$(mktemp -d "$PROBE_TMP_ROOT/auth-probe.XXXXXX")
   probe_result=$probe_home/result.txt
@@ -330,27 +169,20 @@ for ((offset = 0; offset < account_count; offset += 1)); do
     </dev/null >/dev/null 2>&1 \
     && [[ -f $probe_result ]] \
     && [[ $(tr -d '\r\n' < "$probe_result") == AUTH_OK ]]; then
-    target_auth_changed=true
-    if [[ -e $TARGET_DIR/auth.json ]]; then
-      [[ -f $TARGET_DIR/auth.json && ! -L $TARGET_DIR/auth.json ]] || \
-        fail 'existing target auth is not a regular file'
-      if cmp -s "$probe_home/auth.json" "$TARGET_DIR/auth.json"; then
-        target_auth_changed=false
-      fi
-    fi
-    if [[ $target_auth_changed == true ]]; then
-      install -m "$TARGET_MODE" -o "$TARGET_OWNER" -g "$TARGET_GROUP" \
-        "$probe_home/auth.json" "$TARGET_DIR/auth.json.next"
-      mv -f "$TARGET_DIR/auth.json.next" "$TARGET_DIR/auth.json"
-      : > "$ACCOUNT_CHANGED_MARKER"
-      chmod 0600 "$ACCOUNT_CHANGED_MARKER"
-    fi
+    install -m "$TARGET_MODE" -o "$TARGET_OWNER" -g "$TARGET_GROUP" \
+      "$probe_home/auth.json" "$TARGET_DIR/auth.json.next"
+    mv -f "$TARGET_DIR/auth.json.next" "$TARGET_DIR/auth.json"
     printf '%s\n' "$index" > "$CURSOR_FILE.next.$$"
     chmod 0600 "$CURSOR_FILE.next.$$"
     mv -f "$CURSOR_FILE.next.$$" "$CURSOR_FILE"
     printf '%s\n' "$account" > "$ACCOUNT_NAME_FILE.next.$$"
     chmod 0600 "$ACCOUNT_NAME_FILE.next.$$"
     mv -f "$ACCOUNT_NAME_FILE.next.$$" "$ACCOUNT_NAME_FILE"
+    if [[ -n $previous_account && $account != "$previous_account" ]] \
+      || [[ -z $previous_account && $target_auth_existed == true ]]; then
+      : > "$ACCOUNT_CHANGED_MARKER"
+      chmod 0600 "$ACCOUNT_CHANGED_MARKER"
+    fi
     cleanup
     probe_home=''
     echo 'subscription account validation passed'

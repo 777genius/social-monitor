@@ -3,10 +3,7 @@ import { readFileSync } from "node:fs";
 
 import type { PrismaSummaryClient } from "@social-monitor/summary/adapters/persistence/prisma/prisma-summary-client";
 import type { PrismaReaderSummaryClient } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-client";
-import type {
-  ReaderSummaryEvidenceSelectorPort,
-  ReaderSummaryTimestampPolicy,
-} from "@social-monitor/summary/ports";
+import type { ReaderSummaryEvidenceSelectorPort } from "@social-monitor/summary/ports";
 
 import {
   captureReaderSummaryDayDatasetManifest,
@@ -79,7 +76,6 @@ export class ReaderSummaryDayDatasetGuard {
       startedAt: new Date(this.expected.period.startedAt),
       endedAt: new Date(this.expected.period.endedAt),
       generatedAt: now,
-      timestampPolicy: this.expected.policy.timestampPolicy,
     });
     if (!manifestsMatch(this.expected, actual)) {
       throw new Error(`Reader summary dataset changed at ${phase}`);
@@ -97,15 +93,10 @@ export class ReaderSummaryDayDatasetGuard {
       datasetSha256: this.expected.dataset.aggregateSha256,
       feedRowCount: this.expected.dataset.feedRowCount,
       providerCounts: this.expected.dataset.providerCounts,
-      timestampPolicy: this.expected.policy.timestampPolicy,
       githubEligibilityRowCount:
         this.expected.dataset.githubEligibilityRowCount,
       completedPhases: [...this.completedPhases],
     };
-  }
-
-  timestampPolicy(): ReaderSummaryTimestampPolicy {
-    return this.expected.policy.timestampPolicy;
   }
 }
 
@@ -145,20 +136,8 @@ export class DatasetGuardedReaderSummaryEvidenceSelector implements ReaderSummar
   async select(
     params: Parameters<ReaderSummaryEvidenceSelectorPort["select"]>[0],
   ) {
-    const timestampPolicy = this.guard.timestampPolicy();
-    if (
-      params.timestampPolicy !== undefined &&
-      params.timestampPolicy !== timestampPolicy
-    ) {
-      throw new Error(
-        "Reader summary evidence timestamp policy does not match dataset manifest",
-      );
-    }
     await this.guard.assertCurrent("before_evidence_selection");
-    const selection = await this.delegate.select({
-      ...params,
-      timestampPolicy,
-    });
+    const selection = await this.delegate.select(params);
     await this.guard.assertCurrent("after_evidence_selection");
     return selection;
   }
@@ -172,7 +151,6 @@ export function readReaderSummaryDayDatasetManifest(params: {
   readonly startedAt: Date;
   readonly endedAt: Date;
   readonly now: Date;
-  readonly expectedTimestampPolicy?: ReaderSummaryTimestampPolicy;
   readonly maxAgeMs?: number;
 }): {
   readonly manifest: ReaderSummaryDayDatasetManifest;
@@ -191,8 +169,6 @@ export function readReaderSummaryDayDatasetManifest(params: {
     value.scope.workspaceId !== params.workspaceId ||
     value.period.startedAt !== params.startedAt.toISOString() ||
     value.period.endedAt !== params.endedAt.toISOString() ||
-    value.policy.timestampPolicy !==
-      (params.expectedTimestampPolicy ?? "published_at") ||
     !Number.isFinite(generatedAt.getTime()) ||
     generatedAt.getTime() > params.now.getTime() ||
     params.now.getTime() - generatedAt.getTime() > maxAgeMs
@@ -224,8 +200,6 @@ function parseManifest(bytes: Buffer): ReaderSummaryDayDatasetManifest {
     typeof value.dataset.githubEligibilitySha256 !== "string" ||
     typeof value.dataset.aggregateSha256 !== "string" ||
     !isRecord(value.policy) ||
-    (value.policy.timestampPolicy !== "published_at" &&
-      value.policy.timestampPolicy !== "observed_at") ||
     value.policy.githubRowsIncluded !== true ||
     value.policy.githubEligibilityIncluded !== true ||
     !isRecord(value.redaction) ||

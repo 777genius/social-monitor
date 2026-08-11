@@ -1,7 +1,5 @@
 import { readFileSync } from "node:fs";
 
-import type { ReaderSummaryTimestampPolicy } from "@social-monitor/summary/ports";
-
 import type { ProductionDayStepReport } from "./reader-summary-production-day-collection-barrier";
 import {
   isRecord,
@@ -29,7 +27,6 @@ const expectedProviders = [
 
 export type HistoricalRegenerationSourceProvenance = {
   readonly mode: "historical-regeneration";
-  readonly timestampPolicy: ReaderSummaryTimestampPolicy;
   readonly requestedUtcPeriod: ProductionDayUtcPeriod;
   readonly collectionUtcPeriod: ProductionDayUtcPeriod;
   readonly priorCollectionProof: {
@@ -43,18 +40,11 @@ export type HistoricalRegenerationSourceProvenance = {
     readonly feedRowCount: number;
     readonly githubEligibilityRowCount: number;
     readonly providerCounts: Readonly<Record<string, number>>;
-    readonly timestampPolicy: ReaderSummaryTimestampPolicy;
   };
-  readonly githubPolicy:
-    | {
-        readonly mode: "historical_unavailable";
-        readonly reason: string;
-        readonly collectedRowCount: 0;
-      }
-    | {
-        readonly mode: "verified_collected_rows";
-        readonly collectedRowCount: number;
-      };
+  readonly githubOmission: {
+    readonly mode: "github_projection_unavailable_historical";
+    readonly reason: string;
+  };
   readonly freshnessOverride: {
     readonly mode: "historical_regeneration_current_snapshot";
     readonly generalAllowHistorical: false;
@@ -80,6 +70,18 @@ export function loadHistoricalRegeneration(params: {
   readonly provenance: HistoricalRegenerationSourceProvenance;
   readonly verifiedCollectionStep: ProductionDayStepReport;
 } {
+  const githubOmissionReason = params.githubOmissionReason?.trim();
+  if (
+    githubOmissionReason === undefined ||
+    githubOmissionReason.length < 20 ||
+    githubOmissionReason.length > 500 ||
+    /[\r\n]/u.test(githubOmissionReason) ||
+    !noRawSecretFragments(githubOmissionReason)
+  ) {
+    throw new Error(
+      "Historical regeneration requires one safe GitHub omission reason",
+    );
+  }
   assertImmutableRecoveryInputs({
     recoveryRoot: params.recoveryRoot,
     inputPaths: [
@@ -124,22 +126,12 @@ export function loadHistoricalRegeneration(params: {
       startedAt: new Date(`${params.collectionDate}T00:00:00.000Z`),
       endedAt: new Date(productionDayUtcPeriod(params.collectionDate).endedAt),
       now: params.now,
-      expectedTimestampPolicy: params.request.timestampPolicy,
     });
-  if (params.request.timestampPolicy === "published_at") {
-    validateManifestProviderCounts(sourceCollection.value, datasetManifest);
-  }
-  const githubPolicy = historicalGitHubPolicy({
-    allowOmission: params.request.allowHistoricalGitHubOmission,
-    omissionReason: params.githubOmissionReason,
-    collectedRowCount:
-      datasetManifest.dataset.providerCounts["github-trending-page"] ?? 0,
-  });
+  validateManifestProviderCounts(sourceCollection.value, datasetManifest);
 
   const requestedUtcPeriod = productionDayUtcPeriod(params.collectionDate);
   const provenance: HistoricalRegenerationSourceProvenance = {
     mode: "historical-regeneration",
-    timestampPolicy: params.request.timestampPolicy,
     requestedUtcPeriod,
     collectionUtcPeriod: requestedUtcPeriod,
     priorCollectionProof: {
@@ -165,9 +157,11 @@ export function loadHistoricalRegeneration(params: {
       githubEligibilityRowCount:
         datasetManifest.dataset.githubEligibilityRowCount,
       providerCounts: datasetManifest.dataset.providerCounts,
-      timestampPolicy: datasetManifest.policy.timestampPolicy,
     },
-    githubPolicy,
+    githubOmission: {
+      mode: "github_projection_unavailable_historical",
+      reason: githubOmissionReason,
+    },
     freshnessOverride: {
       mode: "historical_regeneration_current_snapshot",
       generalAllowHistorical: false,
@@ -185,48 +179,11 @@ export function loadHistoricalRegeneration(params: {
         `collection=${sourceCollection.sha256}`,
         `quality=${sourceCollectionQuality.sha256}`,
         `dataset=${datasetManifest.dataset.aggregateSha256}`,
-        `timestampPolicy=${params.request.timestampPolicy}`,
       ].join(" "),
       status: "passed",
       durationMs: 0,
       exitCode: 0,
     },
-  };
-}
-
-function historicalGitHubPolicy(params: {
-  readonly allowOmission: boolean;
-  readonly omissionReason?: string;
-  readonly collectedRowCount: number;
-}): HistoricalRegenerationSourceProvenance["githubPolicy"] {
-  const reason = params.omissionReason?.trim();
-  if (params.collectedRowCount > 0) {
-    if (params.allowOmission || reason !== undefined) {
-      throw new Error(
-        "Historical GitHub omission is forbidden when collected GitHub rows exist",
-      );
-    }
-    return {
-      mode: "verified_collected_rows",
-      collectedRowCount: params.collectedRowCount,
-    };
-  }
-  if (
-    !params.allowOmission ||
-    reason === undefined ||
-    reason.length < 20 ||
-    reason.length > 500 ||
-    /[\r\n]/u.test(reason) ||
-    !noRawSecretFragments(reason)
-  ) {
-    throw new Error(
-      "GitHub0 requires one safe explicit historical_unavailable omission policy",
-    );
-  }
-  return {
-    mode: "historical_unavailable",
-    reason,
-    collectedRowCount: 0,
   };
 }
 

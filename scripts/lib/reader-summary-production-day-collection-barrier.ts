@@ -24,9 +24,7 @@ export const collectionIsReadyForProductionSummary = (params: {
   readonly liveCollection: boolean;
   readonly collectionStepStatus: ProductionDayStepStatus;
   readonly collectionQualityStepStatus: ProductionDayStepStatus;
-  readonly requiredProvidersReady: boolean;
 }): boolean =>
-  params.requiredProvidersReady &&
   params.collectionQualityStepStatus === "passed" &&
   (!params.liveCollection || params.collectionStepStatus === "passed");
 

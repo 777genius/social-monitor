@@ -74,11 +74,9 @@ for (const command of commands) {
 migrationSql = readFileSync(migrationDiffPath, 'utf8');
 
 const violations = [];
-const committedMigrationSqlByFile = migrationFiles.map((file) => readFileSync(file, 'utf8'));
-const committedMigrationSql = committedMigrationSqlByFile.join('\n');
-const createdTableNames = new Set(
-  committedMigrationSqlByFile.flatMap((sql) => [...createdTables(sql)]),
-);
+const committedMigrationSql = migrationFiles
+  .map((file) => readFileSync(file, 'utf8'))
+  .join('\n');
 
 if (!migrationSql.includes('CREATE TABLE')) {
   violations.push('clean migration diff must create tables from the current Prisma schema');
@@ -116,7 +114,8 @@ for (const [label, sql] of [
 }
 
 for (const tableName of mappedTables()) {
-  if (!createdTableNames.has(tableName)) {
+  const createTable = `CREATE TABLE "${tableName}"`;
+  if (!committedMigrationSql.includes(createTable)) {
     violations.push(`committed migration history must create mapped Prisma table "${tableName}"`);
   }
 }
@@ -162,174 +161,6 @@ console.log('Migration schema checks OK');
 function mappedTables() {
   const schema = readFileSync('prisma/schema.prisma', 'utf8');
   return [...schema.matchAll(/@@map\("([^"]+)"\)/g)].map((match) => match[1]).sort();
-}
-
-function createdTables(sql) {
-  const tokens = sqlTokens(sql);
-  const names = new Set();
-  let statementStart = 0;
-
-  while (statementStart < tokens.length) {
-    while (tokens[statementStart]?.value === ';') {
-      statementStart += 1;
-    }
-
-    const tableName = createdTableAt(tokens, statementStart);
-    if (tableName !== undefined) {
-      names.add(tableName);
-    }
-
-    while (statementStart < tokens.length && tokens[statementStart].value !== ';') {
-      statementStart += 1;
-    }
-  }
-
-  return names;
-}
-
-function createdTableAt(tokens, statementStart) {
-  let cursor = statementStart;
-  if (!isKeyword(tokens[cursor], 'CREATE') || !isKeyword(tokens[cursor + 1], 'TABLE')) {
-    return undefined;
-  }
-  cursor += 2;
-
-  if (
-    isKeyword(tokens[cursor], 'IF') &&
-    isKeyword(tokens[cursor + 1], 'NOT') &&
-    isKeyword(tokens[cursor + 2], 'EXISTS')
-  ) {
-    cursor += 3;
-  }
-
-  if (isPublicIdentifier(tokens[cursor]) && tokens[cursor + 1]?.value === '.') {
-    cursor += 2;
-  }
-
-  const table = tokens[cursor];
-  if (table?.type !== 'quotedIdentifier' || tokens[cursor + 1]?.value !== '(') {
-    return undefined;
-  }
-  return table.value;
-}
-
-function isKeyword(token, keyword) {
-  return token?.type === 'word' && token.value.toUpperCase() === keyword;
-}
-
-function isPublicIdentifier(token) {
-  return (
-    (token?.type === 'word' && token.value.toLowerCase() === 'public') ||
-    (token?.type === 'quotedIdentifier' && token.value === 'public')
-  );
-}
-
-function sqlTokens(sql) {
-  const tokens = [];
-  let cursor = 0;
-
-  while (cursor < sql.length) {
-    const character = sql[cursor];
-
-    if (/\s/.test(character)) {
-      cursor += 1;
-      continue;
-    }
-    if (sql.startsWith('--', cursor)) {
-      cursor = skipLineComment(sql, cursor + 2);
-      continue;
-    }
-    if (sql.startsWith('/*', cursor)) {
-      cursor = skipBlockComment(sql, cursor + 2);
-      continue;
-    }
-    if (character === "'") {
-      cursor = skipSingleQuotedString(sql, cursor + 1);
-      continue;
-    }
-    if (character === '$') {
-      const delimiter = /^\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$/.exec(sql.slice(cursor))?.[0];
-      if (delimiter !== undefined) {
-        const closingDelimiter = sql.indexOf(delimiter, cursor + delimiter.length);
-        cursor = closingDelimiter < 0 ? sql.length : closingDelimiter + delimiter.length;
-        continue;
-      }
-    }
-    if (character === '"') {
-      const identifier = readQuotedIdentifier(sql, cursor + 1);
-      tokens.push({ type: 'quotedIdentifier', value: identifier.value });
-      cursor = identifier.cursor;
-      continue;
-    }
-    if (/[A-Za-z_]/.test(character)) {
-      const start = cursor;
-      cursor += 1;
-      while (cursor < sql.length && /[A-Za-z0-9_$]/.test(sql[cursor])) {
-        cursor += 1;
-      }
-      tokens.push({ type: 'word', value: sql.slice(start, cursor) });
-      continue;
-    }
-
-    tokens.push({ type: 'symbol', value: character });
-    cursor += 1;
-  }
-
-  return tokens;
-}
-
-function skipLineComment(sql, cursor) {
-  while (cursor < sql.length && sql[cursor] !== '\n') {
-    cursor += 1;
-  }
-  return cursor;
-}
-
-function skipBlockComment(sql, cursor) {
-  let depth = 1;
-  while (cursor < sql.length && depth > 0) {
-    if (sql.startsWith('/*', cursor)) {
-      depth += 1;
-      cursor += 2;
-    } else if (sql.startsWith('*/', cursor)) {
-      depth -= 1;
-      cursor += 2;
-    } else {
-      cursor += 1;
-    }
-  }
-  return cursor;
-}
-
-function skipSingleQuotedString(sql, cursor) {
-  while (cursor < sql.length) {
-    if (sql[cursor] === "'" && sql[cursor + 1] === "'") {
-      cursor += 2;
-    } else if (sql[cursor] === '\\') {
-      cursor += 2;
-    } else if (sql[cursor] === "'") {
-      return cursor + 1;
-    } else {
-      cursor += 1;
-    }
-  }
-  return cursor;
-}
-
-function readQuotedIdentifier(sql, cursor) {
-  let value = '';
-  while (cursor < sql.length) {
-    if (sql[cursor] === '"' && sql[cursor + 1] === '"') {
-      value += '"';
-      cursor += 2;
-    } else if (sql[cursor] === '"') {
-      return { cursor: cursor + 1, value };
-    } else {
-      value += sql[cursor];
-      cursor += 1;
-    }
-  }
-  return { cursor, value };
 }
 
 function sha256(value) {

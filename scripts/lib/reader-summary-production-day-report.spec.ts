@@ -13,7 +13,6 @@ import {
   productionDayUtcPeriod,
 } from "./reader-summary-production-day-provenance";
 import { productionExecutionAttestations } from "./reader-summary-production-day-attestation.spec-support";
-import type { YesterdaySocialProviderReadiness } from "./yesterday-social-collection-quality";
 
 const collectionDate = "2026-07-15";
 const readerSummaryId = "11111111-1111-4111-8111-111111111111";
@@ -44,7 +43,6 @@ describe("production-day report", () => {
     const manifest = regenerationManifest();
     const regeneration = {
       mode: "historical-regeneration" as const,
-      timestampPolicy: "published_at" as const,
       requestedUtcPeriod: productionDayUtcPeriod(collectionDate),
       collectionUtcPeriod: productionDayUtcPeriod(collectionDate),
       priorCollectionProof: {
@@ -62,9 +60,10 @@ describe("production-day report", () => {
         },
       },
       regenerationInputManifest: manifest,
-      githubPolicy: {
-        mode: "verified_collected_rows" as const,
-        collectedRowCount: 10,
+      githubOmission: {
+        mode: "github_projection_unavailable_historical" as const,
+        reason:
+          "The exact end-of-day GitHub projection is unavailable for this completed UTC day.",
       },
       freshnessOverride: {
         mode: "historical_regeneration_current_snapshot" as const,
@@ -89,11 +88,6 @@ describe("production-day report", () => {
       "liveCollectionExecutedAndPassed",
     );
     expect(report.provenance).toMatchObject(regeneration);
-    expect(report.stats).toMatchObject({
-      timestampPolicy: "published_at",
-      collectedFeedItemCount: 10,
-      providerCounts: { "github-trending-page": 10 },
-    });
     expect(report.qualityGates.hashBoundHistoricalRegeneration).toBe(true);
     expect(
       validateLiveProductionDayReport({
@@ -102,60 +96,6 @@ describe("production-day report", () => {
         expectedDate: collectionDate,
       }),
     ).toEqual([]);
-
-    const mixedQuality = buildReport(
-      passedSteps(),
-      artifact,
-      {
-        collectionDate,
-        inputs: {
-          historicalRegenerationFreshness: {
-            mode: "historical_regeneration_current_snapshot",
-            manifestFileSha256: manifest.sha256,
-            manifestGeneratedAt: manifest.generatedAt,
-            datasetSha256: manifest.datasetSha256,
-            timestampPolicy: "observed_at",
-          },
-        },
-        dayWindowAudit: { publishedInsideWindowFeedItemCount: 10 },
-        xAccountPool: { totalAccountCount: 1, eligibleAccountCount: 1 },
-      },
-      regeneration,
-    );
-    expect(
-      mixedQuality.qualityGates.regenerationCollectionQualityVerified,
-    ).toBe(false);
-    expect(mixedQuality.blockingPassed).toBe(false);
-  });
-
-  it("persists blocked provider policy and retry timing without passing", () => {
-    const providerReadiness = {
-      ...completeProviderReadiness(),
-      ready: false,
-      policy: "blocked" as const,
-      readyProviderKeys: ["rss", "x-twitter"] as const,
-      blockingProviderKeys: ["hacker-news", "reddit"] as const,
-      missingProviderKeys: ["hacker-news", "reddit"] as const,
-      retrySchedule: {
-        disposition: "scheduled" as const,
-        notBefore: "2026-07-15T01:15:00.000Z",
-        providerKeys: ["hacker-news", "reddit"] as const,
-        reason: "blocking_provider_retry" as const,
-      },
-      barrierMessage:
-        "Provider policy blocked 2026-07-15: hacker-news=missing; reddit=missing",
-    };
-    const report = buildReport(
-      passedSteps(),
-      evidenceFixture(),
-      undefined,
-      null,
-      providerReadiness,
-    );
-
-    expect(report.blockingPassed).toBe(false);
-    expect(report.qualityGates.providerReadinessPolicySatisfied).toBe(false);
-    expect(report.providerReadiness).toEqual(providerReadiness);
   });
 
   it.each(requiredProductionDayStepIds)(
@@ -604,33 +544,10 @@ function buildReport(
   historicalRegenerationProvenance: Parameters<
     typeof buildProductionDayReport
   >[0]["historicalRegenerationProvenance"] = null,
-  providerReadiness: YesterdaySocialProviderReadiness =
-    completeProviderReadiness(),
 ) {
   const resolvedCollectionQuality: ProductionDayCollectionQuality =
     collectionQuality ?? {
       collectionDate,
-      ...(historicalRegenerationProvenance === null
-        ? {}
-        : {
-            inputs: {
-              historicalRegenerationFreshness: {
-                mode: "historical_regeneration_current_snapshot",
-                manifestFileSha256:
-                  historicalRegenerationProvenance.regenerationInputManifest
-                    .sha256,
-                manifestGeneratedAt:
-                  historicalRegenerationProvenance.regenerationInputManifest
-                    .generatedAt,
-                datasetSha256:
-                  historicalRegenerationProvenance.regenerationInputManifest
-                    .datasetSha256,
-                timestampPolicy:
-                  historicalRegenerationProvenance.regenerationInputManifest
-                    .timestampPolicy,
-              },
-            },
-          }),
       dayWindowAudit: {
         publishedInsideWindowFeedItemCount: 10,
         providerBreakdown: [],
@@ -663,7 +580,6 @@ function buildReport(
       tenantId: "33333333-3333-4333-8333-333333333333",
       workspaceId: "44444444-4444-4444-8444-444444444444",
     },
-    providerReadiness,
     collectionQuality: resolvedCollectionQuality,
     durableEvidence: artifact.evidence,
     evidenceBinding: artifact.binding,
@@ -672,25 +588,6 @@ function buildReport(
     allowHistorical: false,
     failure: null,
   });
-}
-
-function completeProviderReadiness(): YesterdaySocialProviderReadiness {
-  return {
-    ready: true,
-    policy: "complete",
-    collectionDate,
-    requiredProviderKeys: [],
-    providerStates: [],
-    readyProviderKeys: [],
-    blockingProviderKeys: [],
-    missingProviderKeys: [],
-    duplicateProviderKeys: [],
-    emptyProviderKeys: [],
-    partialProviderKeys: [],
-    unavailableProviderKeys: [],
-    retrySchedule: null,
-    barrierMessage: null,
-  };
 }
 
 function passedSteps(): readonly ProductionDayStepReport[] {
@@ -712,7 +609,7 @@ function evidenceFixture(withDatasetGuard = false) {
       readerSummaryId,
       period: productionDayUtcPeriod(collectionDate),
       lineage: {
-        modelVersion: "codex:gpt-5.6-sol:xhigh",
+        modelVersion: "codex:gpt-5.5:xhigh",
         providerVersion: "agent-runtime",
       },
       content: { topicMap: { generatedBy: "agent-runtime" } },
@@ -737,9 +634,6 @@ function evidenceFixture(withDatasetGuard = false) {
       ...(withDatasetGuard ? { datasetManifest: datasetGuardEvidence() } : {}),
     },
     period: productionDayUtcPeriod(collectionDate),
-    ...(withDatasetGuard
-      ? { inputInventoryTimestampPolicy: "published_at" }
-      : {}),
     result: {
       readerSummaryId,
       readerSummaryJobId,
@@ -786,8 +680,7 @@ function regenerationManifest() {
     datasetSha256: "e".repeat(64),
     feedRowCount: 10,
     githubEligibilityRowCount: 1,
-    providerCounts: { "github-trending-page": 10 },
-    timestampPolicy: "published_at" as const,
+    providerCounts: { reddit: 10 },
   };
 }
 
@@ -801,7 +694,6 @@ function datasetGuardEvidence() {
     feedRowCount: manifest.feedRowCount,
     githubEligibilityRowCount: manifest.githubEligibilityRowCount,
     providerCounts: manifest.providerCounts,
-    timestampPolicy: manifest.timestampPolicy,
     completedPhases: [
       "before_evidence_selection",
       "after_evidence_selection",

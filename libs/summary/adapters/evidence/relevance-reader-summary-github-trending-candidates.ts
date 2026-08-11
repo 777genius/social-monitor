@@ -8,8 +8,8 @@ import type { Clock } from "@social-monitor/shared-kernel";
 import type { SummaryEvidenceItem } from "../../domain";
 import type { ReaderSummaryEvidenceSelectorPort } from "../../ports";
 import {
+  inclusiveObservedBefore,
   mapSupplementFeedItem,
-  readerSummaryPeriodQuery,
 } from "./relevance-reader-summary-evidence-support";
 
 export const withGitHubTrendingCandidates = async (params: {
@@ -33,7 +33,12 @@ export const withGitHubTrendingCandidates = async (params: {
           ? params.query.scope.interestId
           : undefined,
       providerKey: "github-trending-page",
-      ...readerSummaryPeriodQuery(params.query),
+      publishedAtOrAfter: params.query.period.startedAt,
+      publishedBefore: params.query.period.endedAt,
+      observedBefore:
+        params.query.observedThrough === undefined
+          ? undefined
+          : inclusiveObservedBefore(params.query.observedThrough),
       limit: 100,
       cursor,
     });

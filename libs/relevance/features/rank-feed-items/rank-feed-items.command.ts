@@ -7,7 +7,6 @@ export type RankFeedItemsCommand = {
   readonly interestId?: string;
   readonly limit: number;
   readonly observedAfter?: Date;
-  readonly observedAtOrAfter?: Date;
   readonly observedBefore?: Date;
   readonly publishedAtOrAfter?: Date;
   readonly publishedBefore?: Date;

@@ -1,14 +1,7 @@
-import {
-  currentDatabaseAccess,
-  type DatabaseAccess,
-} from "@social-monitor/platform-persistence";
-
 import type { CleanRealDayCollectionReport } from "./clean-real-day-collection-report";
 import {
-  cleanRealDayFeedProjectionClient,
   requestedUtcDayIsClosed,
   runCleanRealDayProviderAcquisitionPlan,
-  runCleanRealDayLiveTargetWithDatabaseAccess,
   type CleanRealDaySourceBindingTarget,
 } from "./clean-real-day-provider-acquisition";
 import {
@@ -16,9 +9,6 @@ import {
   successfulProviderCollectionObservation,
   unavailableProviderCollectionObservation,
 } from "./provider-collection-observability";
-import {
-  discoverSingleScopeCleanRealDayTargets,
-} from "../run-reader-summary-clean-real-day-collection";
 
 describe("clean real-day provider acquisition", () => {
   it("switches GitHub to reuse exactly when the requested UTC day closes", () => {
@@ -119,113 +109,6 @@ describe("clean real-day provider acquisition", () => {
       providerKey: "hacker-news",
       acquisitionMode: "live_collection",
       attemptCount: 3,
-    });
-  });
-
-  it("runs live acquisition inside its DB-derived tenant workspace access", async () => {
-    const scope = {
-      tenantId: "93d91443-5598-4f2e-baa5-a85cbe30b9c4",
-      workspaceId: "2b61fe09-5f67-4e34-874d-7e92210d73aa",
-    };
-    let observedAccess: ReturnType<typeof currentDatabaseAccess>;
-
-    await runCleanRealDayLiveTargetWithDatabaseAccess(scope, async () => {
-      observedAccess = currentDatabaseAccess();
-    });
-
-    expect(observedAccess).toEqual({ kind: "tenant", ...scope });
-    expect(currentDatabaseAccess()).toBeUndefined();
-  });
-
-  it("discovers targets with explicit system database access", async () => {
-    let observedAccess: DatabaseAccess | undefined;
-    const targets = [target("hacker-news")];
-
-    await expect(
-      discoverSingleScopeCleanRealDayTargets(async () => {
-        observedAccess = currentDatabaseAccess();
-        return targets;
-      }),
-    ).resolves.toBe(targets);
-
-    expect(observedAccess).toEqual({
-      kind: "system",
-      reason: "clean real-day enabled provider target discovery",
-    });
-    expect(currentDatabaseAccess()).toBeUndefined();
-  });
-
-  it("ignores legacy scopes when the deterministic production scope exists", async () => {
-    const productionScope = {
-      tenantId: "00000000-0000-7000-8000-000000006101",
-      workspaceId: "00000000-0000-7000-8000-000000006102",
-    };
-    const productionTargets = [
-      { ...target("reddit"), ...productionScope },
-      { ...target("rss"), ...productionScope },
-    ];
-    const targets = [target("hacker-news"), ...productionTargets];
-
-    await expect(
-      discoverSingleScopeCleanRealDayTargets(async () => targets),
-    ).resolves.toEqual(productionTargets);
-  });
-
-  it("fails closed before acquisition when discovery returns no scopes", async () => {
-    const acquireLive = jest.fn();
-
-    await expect(
-      discoverSingleScopeCleanRealDayTargets(async () => []).then(acquireLive),
-    ).rejects.toThrow(
-      "expected exactly one tenant/workspace scope, found 0",
-    );
-    expect(acquireLive).not.toHaveBeenCalled();
-  });
-
-  it("fails closed before acquisition for multiple non-production scopes", async () => {
-    const targets = [
-      target("hacker-news"),
-      {
-        ...target("reddit"),
-        workspaceId: "workspace-b",
-      },
-    ];
-    const acquireLive = jest.fn();
-
-    await expect(
-      discoverSingleScopeCleanRealDayTargets(async () => targets).then(
-        acquireLive,
-      ),
-    ).rejects.toThrow(
-      "expected exactly one tenant/workspace scope, found 2",
-    );
-    expect(acquireLive).not.toHaveBeenCalled();
-  });
-
-  it("preserves targets when discovery returns one scope", async () => {
-    const targets = [target("hacker-news"), target("reddit")];
-
-    await expect(
-      discoverSingleScopeCleanRealDayTargets(async () => targets),
-    ).resolves.toBe(targets);
-  });
-
-  it("extends the feed projection transaction budget for 100-item writes", async () => {
-    const transaction = jest.fn().mockResolvedValue("complete");
-    const client = cleanRealDayFeedProjectionClient({
-      feedItem: {} as never,
-      feedSignalBaselineSample: {} as never,
-      $transaction: transaction as never,
-    });
-
-    await client.$transaction(async () => "complete", {
-      isolationLevel: "Serializable",
-    });
-
-    expect(transaction).toHaveBeenCalledWith(expect.any(Function), {
-      isolationLevel: "Serializable",
-      maxWait: 30_000,
-      timeout: 300_000,
     });
   });
 });

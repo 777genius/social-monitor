@@ -41,7 +41,7 @@ describe("production-day evidence provenance", () => {
       captureExecution: { executionId: capture.executionId },
       runtimeProvenance: {
         execution: "attested",
-        physicalModel: "gpt-5.6-sol",
+        physicalModel: "gpt-5.5",
         provider: "codex",
         runtime: "subscription-runtime-cli",
         runtimeVersion: "0.1.0-main.2",
@@ -102,7 +102,6 @@ describe("production-day evidence provenance", () => {
     ["provider", "claude"],
     ["model", "gpt-4"],
     ["reasoningEffort", "high"],
-    ["selectedOutputKind", "output_text"],
     ["runtimeEngine", "direct"],
     ["runtimePackageVersion", "unknown"],
   ] as const)(
@@ -447,7 +446,7 @@ function executionAttestation(
       purpose,
       canonicalRequestSha256: "a".repeat(64),
       provider: "codex",
-      model: "gpt-5.6-sol",
+      model: "gpt-5.5",
       reasoningEffort: "xhigh",
       runtimeEngine: "subscription-runtime-cli",
       runtimePackageVersion: "0.1.0-main.2",
@@ -467,7 +466,7 @@ function frontendArtifact() {
       readerSummaryId,
       period: productionDayUtcPeriod(collectionDate),
       lineage: {
-        modelVersion: "codex:gpt-5.6-sol:xhigh",
+        modelVersion: "codex:gpt-5.5:xhigh",
         providerVersion: "agent-runtime",
       },
       content: { topicMap: { generatedBy: "agent-runtime" } },

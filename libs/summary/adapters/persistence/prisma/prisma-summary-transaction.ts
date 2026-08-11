@@ -17,16 +17,12 @@ export type PrismaTransactionalSummaryClient = PrismaSummaryClient & {
 export const runSerializableReaderSummaryTransaction = <TValue>(
   client: PrismaSummaryClient,
   operation: (client: PrismaReaderSummaryClient) => Promise<TValue>,
-  options?: PrismaSummaryTransactionOptions,
 ): Promise<TValue> => {
   if (!isTransactionalSummaryClient(client)) {
     return operation(client);
   }
 
-  return client.$transaction(operation, {
-    ...options,
-    isolationLevel: "Serializable",
-  });
+  return client.$transaction(operation, { isolationLevel: "Serializable" });
 };
 
 const isTransactionalSummaryClient = (

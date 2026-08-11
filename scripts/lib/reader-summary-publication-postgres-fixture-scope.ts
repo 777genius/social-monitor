@@ -1,19 +1,9 @@
-type ReaderSummaryPublicationPostgresClient = Readonly<{
-  query<TRow = Record<string, unknown>>(
-    sql: string,
-    values?: readonly unknown[],
-  ): Promise<Readonly<{ rows: readonly TRow[] }>>;
-}>;
+import type { PoolClient } from "pg";
 
 export const readerSummaryPublicationFixtureScope = {
   tenantId: "00000000-0000-7000-8000-000000000001",
   workspaceId: "00000000-0000-7000-8000-000000000002",
 } as const;
-
-export type ReaderSummaryPublicationFixtureScope = Readonly<{
-  tenantId: string;
-  workspaceId: string;
-}>;
 
 export const requiredReaderSummaryPublicationAdminDatabaseUrl = (
   env: NodeJS.ProcessEnv,
@@ -28,7 +18,7 @@ export const requiredReaderSummaryPublicationAdminDatabaseUrl = (
 };
 
 export const readerSummaryPublicationBackendPid = async (
-  client: ReaderSummaryPublicationPostgresClient,
+  client: Pick<PoolClient, "query">,
 ): Promise<number> => {
   const result = await client.query<{ readonly pid: number }>(
     "SELECT pg_backend_pid() AS pid",
@@ -41,11 +31,9 @@ export const readerSummaryPublicationBackendPid = async (
 };
 
 export const setReaderSummaryPublicationSessionScope = async (
-  client: ReaderSummaryPublicationPostgresClient,
-  scope: ReaderSummaryPublicationFixtureScope =
-    readerSummaryPublicationFixtureScope,
+  client: Pick<PoolClient, "query">,
 ): Promise<void> => {
-  const { tenantId, workspaceId } = scope;
+  const { tenantId, workspaceId } = readerSummaryPublicationFixtureScope;
   await client.query(
     `SELECT set_config('social_monitor.tenant_id', $1, false),
             set_config('social_monitor.workspace_id', $2, false),
@@ -61,11 +49,9 @@ const workspaceName = "Reader summary publication fixture workspace";
 const workspaceSlug = "weekly-publication-evidence";
 
 export const provisionReaderSummaryPublicationFixtureScope = async (
-  auditor: ReaderSummaryPublicationPostgresClient,
-  scope: ReaderSummaryPublicationFixtureScope =
-    readerSummaryPublicationFixtureScope,
+  auditor: Pick<PoolClient, "query">,
 ): Promise<void> => {
-  const { tenantId, workspaceId } = scope;
+  const { tenantId, workspaceId } = readerSummaryPublicationFixtureScope;
   await auditor.query("BEGIN");
   try {
     await auditor.query(

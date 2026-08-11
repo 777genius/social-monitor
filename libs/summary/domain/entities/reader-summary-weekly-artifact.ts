@@ -160,7 +160,7 @@ const canonicalOutput = (
     output.stories.length === 0 ||
     output.stories.length > 12 ||
     output.sections.length === 0 ||
-    output.sections.length > 6
+    output.sections.length > 16
   ) {
     throw new Error("Reader summary weekly model output has invalid cardinality");
   }

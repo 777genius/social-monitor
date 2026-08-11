@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
 
 import type { PrismaSummaryClient } from "@social-monitor/summary/adapters/persistence/prisma/prisma-summary-client";
-import type { ReaderSummaryTimestampPolicy } from "@social-monitor/summary/ports";
 
 export const readerSummaryDayDatasetManifestFormat =
   "reader-summary-day-dataset-manifest-v1";
@@ -38,7 +37,6 @@ export type ReaderSummaryDayDatasetManifest = {
   };
   readonly policy: {
     readonly status: "VISIBLE";
-    readonly timestampPolicy: ReaderSummaryTimestampPolicy;
     readonly githubRowsIncluded: true;
     readonly githubEligibilityIncluded: true;
   };
@@ -56,11 +54,9 @@ export async function captureReaderSummaryDayDatasetManifest(params: {
   readonly startedAt: Date;
   readonly endedAt: Date;
   readonly generatedAt: Date;
-  readonly timestampPolicy?: ReaderSummaryTimestampPolicy;
 }): Promise<ReaderSummaryDayDatasetManifest> {
   assertExactUtcDay(params.startedAt, params.endedAt);
-  const timestampPolicy = params.timestampPolicy ?? "published_at";
-  const feedRows = await readFeedRows({ ...params, timestampPolicy });
+  const feedRows = await readFeedRows(params);
   const eligibilityRows = await readGitHubEligibilityRows(params);
   return buildReaderSummaryDayDatasetManifest({
     tenantId: params.tenantId,
@@ -68,7 +64,6 @@ export async function captureReaderSummaryDayDatasetManifest(params: {
     startedAt: params.startedAt,
     endedAt: params.endedAt,
     generatedAt: params.generatedAt,
-    timestampPolicy,
     feedRows,
     eligibilityRows,
   });
@@ -80,12 +75,10 @@ export function buildReaderSummaryDayDatasetManifest(params: {
   readonly startedAt: Date;
   readonly endedAt: Date;
   readonly generatedAt: Date;
-  readonly timestampPolicy?: ReaderSummaryTimestampPolicy;
   readonly feedRows: readonly DatasetRow[];
   readonly eligibilityRows: readonly EligibilityRow[];
 }): ReaderSummaryDayDatasetManifest {
   assertExactUtcDay(params.startedAt, params.endedAt);
-  const timestampPolicy = params.timestampPolicy ?? "published_at";
   const providerCounts: Record<string, number> = {};
   for (const row of params.feedRows) {
     providerCounts[row.providerKey] =
@@ -101,7 +94,6 @@ export function buildReaderSummaryDayDatasetManifest(params: {
     String(params.feedRows.length),
     String(params.eligibilityRows.length),
     JSON.stringify(sortedRecord(providerCounts)),
-    timestampPolicy,
   ]);
   return {
     schemaVersion: 1,
@@ -126,7 +118,6 @@ export function buildReaderSummaryDayDatasetManifest(params: {
     },
     policy: {
       status: "VISIBLE",
-      timestampPolicy,
       githubRowsIncluded: true,
       githubEligibilityIncluded: true,
     },
@@ -147,7 +138,6 @@ export function manifestsMatch(
     expected.scope.workspaceId === actual.scope.workspaceId &&
     expected.period.startedAt === actual.period.startedAt &&
     expected.period.endedAt === actual.period.endedAt &&
-    expected.policy.timestampPolicy === actual.policy.timestampPolicy &&
     expected.dataset.aggregateSha256 === actual.dataset.aggregateSha256 &&
     expected.dataset.feedRowCount === actual.dataset.feedRowCount &&
     expected.dataset.githubEligibilityRowCount ===
@@ -163,7 +153,6 @@ async function readFeedRows(params: {
   readonly workspaceId: string;
   readonly startedAt: Date;
   readonly endedAt: Date;
-  readonly timestampPolicy: ReaderSummaryTimestampPolicy;
 }): Promise<readonly DatasetRow[]> {
   return params.client.$queryRaw<readonly DatasetRow[]>`
     select
@@ -205,16 +194,8 @@ async function readFeedRows(params: {
     where fi.tenant_id = ${params.tenantId}::uuid
       and fi.workspace_id = ${params.workspaceId}::uuid
       and fi.status = 'VISIBLE'
-      and case ${params.timestampPolicy}
-        when 'published_at' then fi.published_at
-        when 'observed_at' then fi.observed_at
-        else null
-      end >= ${params.startedAt}
-      and case ${params.timestampPolicy}
-        when 'published_at' then fi.published_at
-        when 'observed_at' then fi.observed_at
-        else null
-      end < ${params.endedAt}
+      and fi.published_at >= ${params.startedAt}
+      and fi.published_at < ${params.endedAt}
     order by fi.id asc
   `;
 }

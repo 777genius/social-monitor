@@ -11,7 +11,6 @@ import {
   githubProjectionInput,
 } from "../../../domain/policies/reader-summary-github-projection-policy.spec-support";
 import type { ReaderSummaryPublicationCommand } from "../../../ports";
-import type { ReaderSummaryAuthorizedPublication } from "../../../ports";
 import { PrismaReaderSummaryPublication } from "./prisma-reader-summary-publication";
 import type { PrismaReaderSummaryClient } from "./prisma-reader-summary-client";
 import type { PrismaSummaryClient } from "./prisma-summary-client";
@@ -19,10 +18,6 @@ import type { PrismaSummaryClient } from "./prisma-summary-client";
 describe("PrismaReaderSummaryPublication", () => {
   it("commits DB-owned weekly authority without comparing caller report hashes", async () => {
     const command = publicationCommand();
-    const authorizedPublication = {
-      kind: "daily",
-      command,
-    } satisfies ReaderSummaryAuthorizedPublication;
     const artifactId = command.finalJob.toSnapshot().readerSummaryId!;
     let serializedRequest = "";
     const publicationQuery = jest.fn(
@@ -50,9 +45,7 @@ describe("PrismaReaderSummaryPublication", () => {
       prismaClient(transaction, publicationQuery),
     );
 
-    await expect(
-      publication.publish(authorizedPublication.command),
-    ).resolves.toBe("published");
+    await expect(publication.publish(command)).resolves.toBe("published");
 
     expect(JSON.parse(serializedRequest)).toEqual({
       schemaVersion: "reader_summary.publication_command.v2",

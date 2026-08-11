@@ -1,75 +1,6 @@
-import { spawnSync } from "node:child_process";
-import {
-  chmodSync,
-  existsSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-
 import { resolveProductionDayExecutionRequest } from "./lib/reader-summary-production-day-reuse-provenance";
 
 describe("production-day execution request", () => {
-  it("preserves reports and exits on P3009 before runtime admission", () => {
-    const fixture = mkdtempSync(join(tmpdir(), "production-day-migrate-"));
-    const npmPath = join(fixture, "npm");
-    const callsPath = join(fixture, "calls");
-    const artifactPath = join(fixture, "artifacts");
-    writeFileSync(
-      npmPath,
-      `#!/usr/bin/env bash\nprintf '%s\\n' "$*" >> "$PRODUCTION_DAY_NPM_CALLS"\nprintf 'P3009 fixture\\n' >&2\nexit 1\n`,
-    );
-    chmodSync(npmPath, 0o755);
-    const latestReport = join(
-      process.cwd(),
-      "ops/evals/reader-summary-production-day-run.v1.json",
-    );
-    const reportBefore = readFileSync(latestReport);
-    try {
-      const result = spawnSync(
-        process.execPath,
-        [
-          "-r",
-          "ts-node/register/transpile-only",
-          "-r",
-          "tsconfig-paths/register",
-          "scripts/run-reader-summary-production-day.ts",
-          "--date",
-          "2099-12-31",
-          "--update",
-          "--summary-model",
-          "deterministic",
-        ],
-        {
-          cwd: process.cwd(),
-          encoding: "utf8",
-          env: {
-            ...process.env,
-            PATH: `${fixture}:${process.env.PATH ?? ""}`,
-            PRODUCTION_DAY_NPM_CALLS: callsPath,
-            READER_SUMMARY_PRODUCTION_DAY_ARTIFACT_DIR: artifactPath,
-            TS_NODE_COMPILER_OPTIONS: JSON.stringify({
-              rootDir: process.cwd(),
-            }),
-          },
-        },
-      );
-
-      expect(result.status).not.toBe(0);
-      expect(result.stderr).toContain("P3009 fixture");
-      expect(result.stderr).toContain("failed before production-day admission");
-      expect(result.stderr).not.toContain("must use subscription runtime");
-      expect(readFileSync(callsPath, "utf8")).toBe("run migrate:deploy\n");
-      expect(readFileSync(latestReport)).toEqual(reportBefore);
-      expect(existsSync(artifactPath)).toBe(false);
-    } finally {
-      rmSync(fixture, { recursive: true, force: true });
-    }
-  });
-
   it("defaults to live production without reuse flags", () => {
     expect(
       resolveProductionDayExecutionRequest(["--date", "2026-07-15"]),
@@ -161,6 +92,7 @@ describe("production-day execution request", () => {
     expect(
       resolveProductionDayExecutionRequest([
         "--regenerate-after-passed-collection",
+        "--allow-historical-github-omission",
         "--reuse-source-report",
         "/tmp/source-report.json",
         "--reuse-source-artifact-sha256",
@@ -188,45 +120,8 @@ describe("production-day execution request", () => {
       collectionQualityReportSha256: "c".repeat(64),
       datasetManifestPath: "/tmp/dataset-manifest.json",
       datasetManifestSha256: "d".repeat(64),
-      timestampPolicy: "published_at",
-      allowHistoricalGitHubOmission: false,
+      allowHistoricalGitHubOmission: true,
     });
-  });
-
-  it("accepts observed_at only inside bounded historical regeneration", () => {
-    const request = resolveProductionDayExecutionRequest([
-      "--regenerate-after-passed-collection",
-      "--recovery-timestamp-policy",
-      "observed_at",
-      "--reuse-source-report",
-      "/tmp/source-report.json",
-      "--reuse-source-artifact-sha256",
-      "a".repeat(64),
-      "--reuse-collection-artifact",
-      "/tmp/collection.json",
-      "--reuse-collection-artifact-sha256",
-      "b".repeat(64),
-      "--reuse-collection-quality-report",
-      "/tmp/collection-quality.json",
-      "--reuse-collection-quality-report-sha256",
-      "c".repeat(64),
-      "--reuse-dataset-manifest",
-      "/tmp/dataset-manifest.json",
-      "--reuse-dataset-manifest-sha256",
-      "d".repeat(64),
-    ]);
-
-    expect(request).toMatchObject({
-      mode: "historical-regeneration",
-      timestampPolicy: "observed_at",
-      allowHistoricalGitHubOmission: false,
-    });
-    expect(() =>
-      resolveProductionDayExecutionRequest([
-        "--recovery-timestamp-policy",
-        "observed_at",
-      ]),
-    ).toThrow("Historical regeneration requires its bounded mode");
   });
 
   it.each([
@@ -251,7 +146,7 @@ describe("production-day execution request", () => {
         "--allow-historical-github-omission",
       ]),
     ).toThrow(
-      "Historical recovery options are restricted to historical regeneration",
+      "Historical GitHub omission is restricted to historical regeneration",
     );
   });
 });

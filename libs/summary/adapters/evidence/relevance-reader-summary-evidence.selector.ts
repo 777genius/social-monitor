@@ -35,7 +35,6 @@ import {
   mapRankedItem,
   mapSupplementFeedItem,
   providerSupplementTargetForLimit,
-  readerSummaryPeriodQuery,
   readerSummaryProviderDiversityOrder,
   selectRankedEvidence,
 } from "./relevance-reader-summary-evidence-support";
@@ -65,14 +64,19 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
   async select(
     params: Parameters<ReaderSummaryEvidenceSelectorPort["select"]>[0],
   ) {
-    const periodQuery = readerSummaryPeriodQuery(params);
+    const observedBefore =
+      params.observedThrough === undefined
+        ? undefined
+        : inclusiveObservedBefore(params.observedThrough);
     const ranked = await this.rankFeedItems.execute({
       tenantId: params.tenantId,
       workspaceId: params.workspaceId,
       interestId:
         params.scope.type === "interest" ? params.scope.interestId : undefined,
       userId: params.userId,
-      ...periodQuery,
+      publishedAtOrAfter: params.period.startedAt,
+      publishedBefore: params.period.endedAt,
+      observedBefore,
       limit: expandedCandidateLimit(params.maxItems),
     });
 
@@ -83,7 +87,6 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
     const expandedRankedItems = filterItemsByReaderSummaryPeriod(
       await this.expandRankedItems(params, ranked.value.items),
       params.period,
-      params.timestampPolicy,
     );
     const rankedItems = filterItemsByDefaultReaderSummaryProviders(
       expandedRankedItems,
@@ -358,7 +361,9 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
             ? params.scope.interestId
             : undefined,
         providerKey,
-        ...readerSummaryPeriodQuery(params),
+        publishedAtOrAfter: params.period.startedAt,
+        publishedBefore: params.period.endedAt,
+        observedBefore: observedBeforeFor(params.observedThrough),
         limit: target * 2,
       });
 
@@ -417,7 +422,9 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
             ? params.scope.interestId
             : undefined,
         providerKey,
-        ...readerSummaryPeriodQuery(params),
+        publishedAtOrAfter: params.period.startedAt,
+        publishedBefore: params.period.endedAt,
+        observedBefore: observedBeforeFor(params.observedThrough),
         limit: target * 4,
       });
 

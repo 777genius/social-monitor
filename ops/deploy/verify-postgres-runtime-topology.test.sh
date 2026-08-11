@@ -136,7 +136,6 @@ COMPOSE=(
   -f "$ROOT/control/compose.production.yml"
   -f "$ROOT/control/compose.managed-db.yml"
   -f "$ROOT/control/postgres-runtime-current/compose.postgres-runtime.yml"
-  -f "$ROOT/integration/ops/deploy/production-runtime/compose.agent-runtime-model.yml"
 )
 exec 9>"$ROOT/control/daily-run-singleton.lock"
 flock -n 9
@@ -151,13 +150,6 @@ cp "$daily_runner" "$daily_runner.reviewed"
 sed -i '/FLOCK_COMMAND=flock/d' "$daily_runner"
 if python3 "$VERIFIER" daily "$daily_service" "$daily_runner" >/dev/null 2>&1; then
   echo 'daily runner without the reviewed flock command was accepted' >&2
-  exit 1
-fi
-mv "$daily_runner.reviewed" "$daily_runner"
-cp "$daily_runner" "$daily_runner.reviewed"
-sed -i '/compose.agent-runtime-model.yml/d' "$daily_runner"
-if python3 "$VERIFIER" daily "$daily_service" "$daily_runner" >/dev/null 2>&1; then
-  echo 'daily runner without the final model overlay was accepted' >&2
   exit 1
 fi
 mv "$daily_runner.reviewed" "$daily_runner"

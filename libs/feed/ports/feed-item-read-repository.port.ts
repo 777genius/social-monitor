@@ -4,8 +4,6 @@ import type { FeedItem } from "../domain";
 
 export const FEED_ITEM_READ_REPOSITORY = Symbol("FEED_ITEM_READ_REPOSITORY");
 
-export type FeedItemWindowTimestampPolicy = "published_at" | "observed_at";
-
 export type ListFeedItemsQuery = {
   readonly tenantId: TenantId;
   readonly workspaceId: WorkspaceId;
@@ -14,7 +12,6 @@ export type ListFeedItemsQuery = {
   readonly interestId?: string;
   readonly searchQuery?: string;
   readonly observedAfter?: Date;
-  readonly observedAtOrAfter?: Date;
   readonly observedBefore?: Date;
   readonly publishedAtOrAfter?: Date;
   readonly publishedBefore?: Date;

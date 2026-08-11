@@ -182,47 +182,6 @@ jobs:
           TENANT_RLS_TEST_ADMIN_DATABASE_URL: postgresql://social_monitor_rls_ci:social_monitor_local_password@127.0.0.1:5432/social_monitor_rls_ci
         run: npm run check:tenant-rls-postgres
 
-  reader_summary_weekly_review_manifest_postgres18:
-    name: Reader-summary weekly review manifest PostgreSQL 18
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    services:
-      postgres:
-        image: postgres:18.4-alpine
-        env:
-          POSTGRES_USER: social_monitor_weekly_review_manifest_ci_admin
-          POSTGRES_PASSWORD: social_monitor_local_password
-          POSTGRES_DB: social_monitor_weekly_review_manifest_ci_admin
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U social_monitor_weekly_review_manifest_ci_admin -d social_monitor_weekly_review_manifest_ci_admin"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 20
-
-    steps:
-      - name: Check out the review commit
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
-
-      - name: Set up Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: Install exact dependencies
-        run: npm ci
-
-      - name: Generate the pinned Prisma client
-        run: npm run prisma:generate
-
-      - name: Prove weekly review manifest PostgreSQL 18 contract
-        env:
-          DATABASE_URL: postgresql://social_monitor_weekly_review_manifest_ci_admin:social_monitor_local_password@127.0.0.1:5432/social_monitor_weekly_review_manifest_ci_admin
-          READER_SUMMARY_PUBLICATION_TEST_ADMIN_DATABASE_URL: postgresql://social_monitor_weekly_review_manifest_ci_admin:social_monitor_local_password@127.0.0.1:5432/social_monitor_weekly_review_manifest_ci_admin
-        run: npm run check:reader-summary-weekly-review-manifest-postgres18
-
   production_runtime:
     name: Production container and deploy lifecycle
     runs-on: ubuntu-latest

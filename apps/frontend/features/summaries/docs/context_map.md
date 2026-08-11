@@ -8,8 +8,7 @@
 ## Upstream Contexts
 
 - Backend Summary APIs provide generated summaries, canonical ReaderSummary DTOs,
-  citations, weekly certification presence, historical evidence limitations and
-  feedback state.
+  citations and feedback state.
 - Feed provides selected feed items, normalized signal score and provider-native
   metrics.
 - Relevance provides learning feedback state and user relevance profile effects.
@@ -26,9 +25,6 @@
 
 - Do not import feed or settings feature packages directly.
 - Keep generated summary DTOs and provider-specific language in infrastructure.
-- Map weekly projection status, active-artifact presence and evidence limitations
-  into sealed Summary domain state; partial and unavailable projections suppress
-  artifact payloads before presentation.
 - Map backend/API ReaderSummary terminology to Summary before it reaches
   user-facing presentation copy.
 - Summary domain consumes `signalScore` and `providerMetrics`; it must not know

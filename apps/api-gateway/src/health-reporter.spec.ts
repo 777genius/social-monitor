@@ -315,7 +315,27 @@ describe("ApiGatewayHealthReporter", () => {
     );
   });
 
-  it("reports a pending OTLP export as degraded readiness detail", async () => {
+  it("allows a pending OTLP export only within bounded startup grace", async () => {
+    const reporter = new ApiGatewayHealthReporter(
+      betaDurableEnv,
+      new FixedClock(new Date("2026-01-02T03:04:05.000Z")),
+      () => 89,
+      readinessProfiles,
+      databaseReady,
+      metricsRuntimeWithExportHealth("pending"),
+    );
+
+    await expect(reporter.ready()).resolves.toMatchObject({
+      runtime: {
+        metrics: {
+          exportState: "pending",
+          lastExportAt: undefined,
+        },
+      },
+    });
+  });
+
+  it("fails readiness when OTLP remains pending beyond startup grace", async () => {
     const reporter = new ApiGatewayHealthReporter(
       betaDurableEnv,
       new FixedClock(new Date("2026-01-02T03:04:05.000Z")),
@@ -325,26 +345,12 @@ describe("ApiGatewayHealthReporter", () => {
       metricsRuntimeWithExportHealth("pending"),
     );
 
-    await expect(reporter.ready()).resolves.toMatchObject({
-      status: "ok",
-      runtime: {
-        metrics: {
-          exportState: "pending",
-          lastExportAt: undefined,
-        },
-      },
-      checks: expect.arrayContaining([
-        {
-          name: "metrics_exporter",
-          status: "degraded",
-          detail:
-            "OTLP metrics export not_ready: export is pending beyond startup grace; metrics export is non-blocking for API readiness.",
-        },
-      ]),
-    });
+    await expect(reporter.ready()).rejects.toThrow(
+      "API gateway OTLP metrics export remained pending beyond startup grace",
+    );
   });
 
-  it("reports a failed OTLP export as degraded readiness detail", async () => {
+  it("fails readiness immediately after an OTLP export failure", async () => {
     const reporter = new ApiGatewayHealthReporter(
       betaDurableEnv,
       new FixedClock(new Date("2026-01-02T03:04:05.000Z")),
@@ -354,26 +360,12 @@ describe("ApiGatewayHealthReporter", () => {
       metricsRuntimeWithExportHealth("failed"),
     );
 
-    await expect(reporter.ready()).resolves.toMatchObject({
-      status: "ok",
-      runtime: {
-        metrics: {
-          exportState: "failed",
-          lastExportAt: undefined,
-        },
-      },
-      checks: expect.arrayContaining([
-        {
-          name: "metrics_exporter",
-          status: "degraded",
-          detail:
-            "OTLP metrics export not_ready: latest export failed; metrics export is non-blocking for API readiness.",
-        },
-      ]),
-    });
+    await expect(reporter.ready()).rejects.toThrow(
+      "API gateway OTLP metrics export failed",
+    );
   });
 
-  it("reports a stale OTLP export as degraded readiness detail", async () => {
+  it("fails readiness when the last successful OTLP export is stale", async () => {
     const reporter = new ApiGatewayHealthReporter(
       betaDurableEnv,
       new FixedClock(new Date("2026-01-02T03:04:05.000Z")),
@@ -383,23 +375,9 @@ describe("ApiGatewayHealthReporter", () => {
       metricsRuntimeWithExportHealth("succeeded", "2026-01-02T03:02:34.000Z"),
     );
 
-    await expect(reporter.ready()).resolves.toMatchObject({
-      status: "ok",
-      runtime: {
-        metrics: {
-          exportState: "succeeded",
-          lastExportAt: "2026-01-02T03:02:34.000Z",
-        },
-      },
-      checks: expect.arrayContaining([
-        {
-          name: "metrics_exporter",
-          status: "degraded",
-          detail:
-            "OTLP metrics export not_ready: last successful export is missing or stale; metrics export is non-blocking for API readiness.",
-        },
-      ]),
-    });
+    await expect(reporter.ready()).rejects.toThrow(
+      "API gateway OTLP metrics last successful export is missing or stale",
+    );
   });
 
   it("rejects beta readiness when durable selectors would fall back to in-memory", async () => {
@@ -430,7 +408,6 @@ describe("ApiGatewayHealthReporter", () => {
       {
         check: async () => Promise.reject(new Error("SQLSTATE 53300")),
       },
-      metricsReady,
     );
 
     await expect(reporter.ready()).rejects.toThrow("SQLSTATE 53300");

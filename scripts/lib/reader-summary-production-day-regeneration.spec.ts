@@ -42,14 +42,13 @@ describe("historical production-day regeneration", () => {
     });
     expect(result.provenance).toMatchObject({
       mode: "historical-regeneration",
-      timestampPolicy: "published_at",
       requestedUtcPeriod: {
         startedAt: "2026-07-19T00:00:00.000Z",
         endedAt: "2026-07-20T00:00:00.000Z",
       },
-      githubPolicy: {
-        mode: "verified_collected_rows",
-        collectedRowCount: 20,
+      githubOmission: {
+        mode: "github_projection_unavailable_historical",
+        reason: omissionReason,
       },
     });
   });
@@ -92,34 +91,14 @@ describe("historical production-day regeneration", () => {
   });
 
   it("requires a safe explicit GitHub omission reason", () => {
-    const request = writeFixtures({
-      timestampPolicy: "observed_at",
-      githubCount: 0,
-      allowHistoricalGitHubOmission: true,
-    });
+    const request = writeFixtures();
 
     expect(() =>
       loadHistoricalRegeneration({
         ...loadParams(request),
         githubOmissionReason: "too short",
       }),
-    ).toThrow("GitHub0 requires one safe explicit historical_unavailable");
-  });
-
-  it("allows GitHub0 only with explicit historical_unavailable policy", () => {
-    const request = writeFixtures({
-      timestampPolicy: "observed_at",
-      githubCount: 0,
-      allowHistoricalGitHubOmission: true,
-    });
-
-    expect(
-      loadHistoricalRegeneration(loadParams(request)).provenance.githubPolicy,
-    ).toEqual({
-      mode: "historical_unavailable",
-      reason: omissionReason,
-      collectedRowCount: 0,
-    });
+    ).toThrow("requires one safe GitHub omission reason");
   });
 
   function writeFixtures(
@@ -127,9 +106,6 @@ describe("historical production-day regeneration", () => {
       readonly collectionDate?: string;
       readonly collectStatus?: "passed" | "failed";
       readonly qualityXCount?: number;
-      readonly timestampPolicy?: "published_at" | "observed_at";
-      readonly githubCount?: number;
-      readonly allowHistoricalGitHubOmission?: boolean;
     } = {},
   ): Extract<
     ProductionDayExecutionRequest,
@@ -142,7 +118,7 @@ describe("historical production-day regeneration", () => {
     const collectionQualityReportPath = join(directory, "quality.json");
     const datasetManifestPath = join(directory, "dataset-manifest.json");
     const providerCounts = {
-      "github-trending-page": options.githubCount ?? 20,
+      "github-trending-page": 20,
       "hacker-news": 82,
       reddit: 161,
       rss: 72,
@@ -229,7 +205,6 @@ describe("historical production-day regeneration", () => {
             : "2026-07-19T00:00:00.000Z",
         ),
         generatedAt: new Date("2026-07-20T00:05:00.000Z"),
-        timestampPolicy: options.timestampPolicy,
         feedRows: Object.entries(providerCounts).flatMap(
           ([providerKey, count]) =>
             Array.from({ length: count }, (_, index) => ({
@@ -259,9 +234,7 @@ describe("historical production-day regeneration", () => {
       collectionQualityReportSha256: digest(collectionQualityReportPath),
       datasetManifestPath,
       datasetManifestSha256: digest(datasetManifestPath),
-      timestampPolicy: options.timestampPolicy ?? "published_at",
-      allowHistoricalGitHubOmission:
-        options.allowHistoricalGitHubOmission ?? false,
+      allowHistoricalGitHubOmission: true,
     };
   }
 });
@@ -275,9 +248,7 @@ function loadParams(
   return {
     request,
     collectionDate,
-    githubOmissionReason: request.allowHistoricalGitHubOmission
-      ? omissionReason
-      : undefined,
+    githubOmissionReason: omissionReason,
     recoveryRoot: directoryFor(request.sourceReportPath),
     forbiddenOutputPaths: [],
     tenantId,

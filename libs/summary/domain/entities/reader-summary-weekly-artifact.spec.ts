@@ -211,41 +211,6 @@ describe("ReaderSummaryWeeklyArtifact", () => {
     ).toThrow("unsupported resolution");
   });
 
-  it("rejects a weekly artifact without a cross-day lead story", () => {
-    const input = weeklyInput();
-    const output = mutable(weeklyOutput(input));
-    output.stories[0] = {
-      ...output.stories[0]!,
-      summary:
-        "The cited safeguard report describes current controls without claiming a later change.",
-      status: "watch",
-      observedThrough: dates[0],
-      citationIds: ["citation:01"],
-    };
-    output.sections[0] = {
-      ...output.sections[0]!,
-      claimType: "snapshot",
-      text:
-        "The cited safeguard report describes current controls and their limits.",
-      observedThrough: dates[0],
-      citationIds: ["citation:01"],
-    };
-    output.stories[1] = {
-      ...output.stories[1]!,
-      observedThrough: dates[4],
-      citationIds: ["citation:03"],
-    };
-    output.sections[1] = {
-      ...output.sections[1]!,
-      observedThrough: dates[4],
-      citationIds: ["citation:03"],
-    };
-
-    expect(() =>
-      ReaderSummaryWeeklyArtifact.create({ input, output }),
-    ).toThrow("must carry one stable story across multiple days");
-  });
-
   it("rejects unknown fields and any unverified weekly board", () => {
     const input = weeklyInput();
     const extra = mutable(weeklyOutput(input));

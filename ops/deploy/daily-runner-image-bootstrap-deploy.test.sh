@@ -19,7 +19,6 @@ EVENTS=$FIXTURE/events.log
 install -d "$REPO/ops/deploy" "$CONTROL" "$STATE" "$STAGING"
 cp "$ENTRYPOINT" \
   "$SCRIPT_DIR/deploy-control-lib.sh" \
-  "$SCRIPT_DIR/deploy-control-bridge-lib.sh" \
   "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh" \
   "$SCRIPT_DIR/backend-runtime-health-lib.sh" \
   "$SCRIPT_DIR/backend-image-rescue-lib.sh" \

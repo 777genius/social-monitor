@@ -239,11 +239,7 @@ export function inspectDurableEvidenceArtifact(params: {
     "frontend.format",
     violations,
   );
-  validateEvidenceCaptureProvenance(
-    evidence.provenance,
-    evidence.inputInventoryTimestampPolicy,
-    violations,
-  );
+  validateEvidenceCaptureProvenance(evidence.provenance, violations);
   validatePeriod(
     evidence.period,
     expectedPeriod,
@@ -698,7 +694,6 @@ function validateFrontendIdentity(
 
 function validateEvidenceCaptureProvenance(
   value: unknown,
-  inputInventoryTimestampPolicy: unknown,
   violations: string[],
 ): void {
   const provenance = recordOrViolation(
@@ -738,22 +733,6 @@ function validateEvidenceCaptureProvenance(
       provenance.datasetManifest,
       violations,
     );
-    if (
-      !isRecord(provenance.datasetManifest) ||
-      inputInventoryTimestampPolicy !==
-        provenance.datasetManifest.timestampPolicy
-    ) {
-      violations.push(
-        "evidence input inventory timestamp policy must match the immutable dataset guard",
-      );
-    }
-  } else if (
-    inputInventoryTimestampPolicy !== undefined &&
-    inputInventoryTimestampPolicy !== "published_at"
-  ) {
-    violations.push(
-      "unguarded evidence input inventory timestamp policy must be published_at",
-    );
   }
 }
 
@@ -783,8 +762,6 @@ function validateDatasetManifestGuardEvidence(
     !hashesValid ||
     typeof guard.feedRowCount !== "number" ||
     typeof guard.githubEligibilityRowCount !== "number" ||
-    (guard.timestampPolicy !== "published_at" &&
-      guard.timestampPolicy !== "observed_at") ||
     !isRecord(guard.providerCounts) ||
     JSON.stringify(guard.completedPhases) !== JSON.stringify(expectedPhases)
   ) {

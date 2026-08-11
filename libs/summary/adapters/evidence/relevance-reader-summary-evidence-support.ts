@@ -16,26 +16,7 @@ import type { SummaryEvidenceItem } from "../../domain";
 import { isReaderSummaryEvidenceEligible } from "../../domain/policies/reader-summary-evidence-eligibility-policy";
 import { previewMediaFromProviderMetadata } from "./provider-preview-media";
 import { isDefaultReaderSummaryEvidenceProvider } from "./reader-summary-evidence-provider-filter";
-import type {
-  ReaderSummaryEvidenceSelectorPort,
-  ReaderSummaryTimestampPolicy,
-} from "../../ports";
-import {
-  inclusiveObservedBefore,
-  isHackerNewsCanonicalUrl,
-  isInsidePeriod,
-  normalizeProviderKey,
-  providerBalancedQuotaForLimit,
-  roundScore,
-} from "./relevance-reader-summary-evidence-normalization";
-
-export {
-  inclusiveObservedAfter,
-  inclusiveObservedBefore,
-  normalizeProviderKey,
-  providerBalancedQuotaForLimit,
-  roundScore,
-} from "./relevance-reader-summary-evidence-normalization";
+import type { ReaderSummaryEvidenceSelectorPort } from "../../ports";
 
 export const maxReaderSummaryEvidenceItems = 200;
 export const maxReaderSummaryCandidateItems = 200;
@@ -255,39 +236,21 @@ export const filterItemsByDefaultReaderSummaryProviders = (
 export const filterItemsByReaderSummaryPeriod = (
   items: readonly SummaryEvidenceItem[],
   period: Parameters<ReaderSummaryEvidenceSelectorPort["select"]>[0]["period"],
-  timestampPolicy: ReaderSummaryTimestampPolicy = "published_at",
 ): readonly SummaryEvidenceItem[] =>
-  items.filter((item) =>
-    isInsidePeriod(
-      timestampPolicy === "observed_at" ? item.observedAt : item.publishedAt,
-      period,
-    ),
-  );
+  items.filter((item) => isInsidePeriod(item.publishedAt, period));
 
-export const readerSummaryPeriodQuery = (
-  params: Parameters<ReaderSummaryEvidenceSelectorPort["select"]>[0],
-): {
-  readonly observedAtOrAfter?: Date;
-  readonly observedBefore?: Date;
-  readonly publishedAtOrAfter?: Date;
-  readonly publishedBefore?: Date;
-} => {
-  if ((params.timestampPolicy ?? "published_at") === "observed_at") {
-    return {
-      observedAtOrAfter: params.period.startedAt,
-      observedBefore: params.period.endedAt,
-    };
-  }
+const isInsidePeriod = (
+  date: Date,
+  period: Parameters<ReaderSummaryEvidenceSelectorPort["select"]>[0]["period"],
+): boolean =>
+  date.getTime() >= period.startedAt.getTime() &&
+  date.getTime() < period.endedAt.getTime();
 
-  return {
-    publishedAtOrAfter: params.period.startedAt,
-    publishedBefore: params.period.endedAt,
-    observedBefore:
-      params.observedThrough === undefined
-        ? undefined
-        : inclusiveObservedBefore(params.observedThrough),
-  };
-};
+export const inclusiveObservedAfter = (startedAt: Date): Date =>
+  new Date(startedAt.getTime() - 1);
+
+export const inclusiveObservedBefore = (endedAt: Date): Date =>
+  new Date(endedAt.getTime() + 1);
 
 export const normalizeSelectionLimit = (limit: number): number => {
   if (!Number.isInteger(limit) || limit < 1) {
@@ -337,6 +300,17 @@ export const providerSupplementTargetForLimit = (limit: number): number => {
   return providerReserveForLimit(normalizedLimit);
 };
 
+export const providerBalancedQuotaForLimit = (params: {
+  readonly limit: number;
+  readonly activeProviderCount: number;
+}): number => {
+  if (params.activeProviderCount <= 0) {
+    return params.limit;
+  }
+
+  return Math.max(1, Math.floor(params.limit / params.activeProviderCount));
+};
+
 export const countItemsForProvider = (
   items: Iterable<SummaryEvidenceItem>,
   providerKey: string,
@@ -352,6 +326,9 @@ export const countItemsForProvider = (
 
   return count;
 };
+
+export const normalizeProviderKey = (providerKey: string): string =>
+  providerKey.trim().toLocaleLowerCase("en-US");
 
 export const mapSupplementFeedItem = (params: {
   readonly snapshot: ReturnType<FeedItem["toSnapshot"]>;
@@ -422,6 +399,18 @@ export const mapSupplementFeedItem = (params: {
   };
 };
 
+const isHackerNewsCanonicalUrl = (value: string | undefined): boolean => {
+  if (value === undefined) {
+    return false;
+  }
+
+  try {
+    return new URL(value).hostname.toLowerCase() === "news.ycombinator.com";
+  } catch {
+    return false;
+  }
+};
+
 export const supplementEvidenceScore = (params: {
   readonly snapshot: ReturnType<FeedItem["toSnapshot"]>;
   readonly contentQuality: SummaryEvidenceItem["contentQuality"];
@@ -480,3 +469,6 @@ export const supplementWhyImportant = (params: {
 
   return reasons;
 };
+
+export const roundScore = (value: number): number =>
+  Math.round(value * 1000) / 1000;

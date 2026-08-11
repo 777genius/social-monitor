@@ -2,16 +2,67 @@ import { FeedItem } from "@social-monitor/feed/domain";
 import type { FeedItemReadRepositoryPort } from "@social-monitor/feed/ports";
 import type { RankFeedItemsCommand } from "@social-monitor/relevance/features/rank-feed-items/rank-feed-items.command";
 import type { RankFeedItemsUseCase } from "@social-monitor/relevance/features/rank-feed-items/rank-feed-items.use-case";
+import type { RankedFeedItemView } from "@social-monitor/relevance/features/rank-feed-items/rank-feed-items.result";
 import { ok, tenantId, workspaceId } from "@social-monitor/shared-kernel";
 
 import { RelevanceReaderSummaryEvidenceSelector } from "./relevance-reader-summary-evidence.selector";
 import {
-  FakeStoryRankingMetrics,
   githubTrendingMetadataFixture,
-  readerSummaryRankedItemFixture as rankedItem,
   readerSummaryEvidenceTestClock as clock,
   readerSummaryEvidenceTestPeriod as readerSummaryPeriod,
 } from "./relevance-reader-summary-evidence-test-fixtures";
+import type { SummaryEvidenceSelection } from "../../domain";
+import type { StoryRankingMetricsPort } from "../../ports";
+
+const rankedItem = (
+  overrides: Partial<RankedFeedItemView> & {
+    readonly feedItemId: string;
+    readonly providerKey: string;
+    readonly rank: number;
+    readonly score: number;
+  },
+): RankedFeedItemView => {
+  const { feedItemId, providerKey, rank, score, ...rest } = overrides;
+
+  return {
+    feedItemId,
+    sourceItemId: `source-${feedItemId}`,
+    sourceBindingId: `binding-${providerKey}`,
+    interestId: "interest-ai",
+    providerKey,
+    canonicalUrl: `https://example.test/${feedItemId}`,
+    title: `${providerKey} story ${rank}`,
+    bodyPreview: "Useful source evidence for an AI developer summary.",
+    publishedAt: "2026-06-23T10:00:00.000Z",
+    observedAt: new Date(
+      Date.UTC(2026, 5, 23, 10, 0, 0) + rank * 60_000,
+    ).toISOString(),
+    score,
+    rank,
+    clusterId: `cluster-${feedItemId}`,
+    clusterSize: 1,
+    duplicateFeedItemIds: [],
+    whyImportant: ["Fresh item in the current monitoring window"],
+    safety: {
+      status: "allowed",
+      categories: ["raw_payload_retention_disabled"],
+      rawPayloadRetained: false,
+      retentionPolicy: "normalized_preview_only",
+    },
+    contentQuality: {
+      qualityScore: 1,
+      interestRelevanceScore: 1,
+      engagementIntegrityScore: 1,
+      eligibleForSummary: true,
+      eligibleForTopRead: true,
+      needsLlmReview: false,
+      decision: "promote",
+      flags: [],
+      reason: "Test evidence is eligible.",
+    },
+    ...rest,
+  };
+};
 
 describe("RelevanceReaderSummaryEvidenceSelector", () => {
   it("keeps workspace reader summary evidence in relevance ranking order", async () => {
@@ -857,78 +908,6 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
     ]);
   });
 
-  it("keeps observed-window evidence published outside the day", async () => {
-    const rankedItems = [
-      rankedItem({
-        feedItemId: "feed-observed-old-publication",
-        providerKey: "reddit",
-        rank: 1,
-        score: 2.5,
-        publishedAt: "2026-06-01T10:00:00.000Z",
-        observedAt: "2026-06-23T10:00:00.000Z",
-      }),
-      rankedItem({
-        feedItemId: "feed-observed-future-publication",
-        providerKey: "hacker-news",
-        rank: 2,
-        score: 2.4,
-        publishedAt: "2026-06-25T10:00:00.000Z",
-        observedAt: "2026-06-23T11:00:00.000Z",
-      }),
-      rankedItem({
-        feedItemId: "feed-observed-at-end",
-        providerKey: "rss",
-        rank: 3,
-        score: 2.3,
-        publishedAt: "2026-06-23T11:00:00.000Z",
-        observedAt: "2026-06-24T00:00:00.000Z",
-      }),
-    ];
-    const rankFeedItems = {
-      execute: jest.fn(async (command: RankFeedItemsCommand) =>
-        ok({
-          generatedAt: clock.now().toISOString(),
-          profileApplied: false,
-          items: rankedItems.slice(0, command.limit),
-        }),
-      ),
-    } as unknown as RankFeedItemsUseCase;
-    const selector = new RelevanceReaderSummaryEvidenceSelector(
-      rankFeedItems,
-      {
-        list: jest.fn(async () => ({ items: [] })),
-        findById: jest.fn(async () => null),
-      },
-      clock,
-      new FakeStoryRankingMetrics(),
-    );
-
-    const selection = await selector.select({
-      tenantId: tenantId("tenant-observed-window"),
-      workspaceId: workspaceId("workspace-observed-window"),
-      scope: { type: "workspace" },
-      period: readerSummaryPeriod,
-      maxItems: 5,
-      timestampPolicy: "observed_at",
-    });
-
-    expect(rankFeedItems.execute).toHaveBeenCalledWith(
-      expect.objectContaining({
-        observedAtOrAfter: readerSummaryPeriod.startedAt,
-        observedBefore: readerSummaryPeriod.endedAt,
-      }),
-    );
-    const rankingCommand = (rankFeedItems.execute as jest.MockedFunction<
-      RankFeedItemsUseCase["execute"]
-    >).mock.calls[0]?.[0];
-    expect(rankingCommand?.publishedAtOrAfter).toBeUndefined();
-    expect(rankingCommand?.publishedBefore).toBeUndefined();
-    expect(selection.selectedEvidence.map((item) => item.feedItemId)).toEqual([
-      "feed-observed-old-publication",
-      "feed-observed-future-publication",
-    ]);
-  });
-
   it("does not select low-quality X evidence just to satisfy provider diversity", async () => {
     const rankedItems = [
       rankedItem({
@@ -997,3 +976,22 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
     ]);
   });
 });
+
+class FakeStoryRankingMetrics implements StoryRankingMetricsPort {
+  readonly recorded: SummaryEvidenceSelection[] = [];
+  readonly storyRelationMetrics: Parameters<
+    StoryRankingMetricsPort["recordStoryRelationVerification"]
+  >[0][] = [];
+
+  recordStoryRanking(selection: SummaryEvidenceSelection): void {
+    this.recorded.push(selection);
+  }
+
+  recordStoryRelationVerification(
+    metric: Parameters<
+      StoryRankingMetricsPort["recordStoryRelationVerification"]
+    >[0],
+  ): void {
+    this.storyRelationMetrics.push(metric);
+  }
+}

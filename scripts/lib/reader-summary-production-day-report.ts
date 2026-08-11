@@ -24,7 +24,6 @@ import {
   type ProductionDayUtcPeriod,
 } from "./reader-summary-production-day-provenance";
 import type { HistoricalRegenerationSourceProvenance } from "./reader-summary-production-day-regeneration";
-import type { YesterdaySocialProviderReadiness } from "./yesterday-social-collection-quality";
 import {
   buildHistoricalRegenerationProvenance,
   regenerationDatasetGuardMatches,
@@ -45,15 +44,6 @@ export type HistoricalReuseProvenance = {
 
 export type ProductionDayCollectionQuality = {
   readonly collectionDate?: string;
-  readonly inputs?: {
-    readonly historicalRegenerationFreshness?: {
-      readonly mode?: string;
-      readonly manifestFileSha256?: string;
-      readonly manifestGeneratedAt?: string;
-      readonly datasetSha256?: string;
-      readonly timestampPolicy?: string;
-    } | null;
-  };
   readonly dayWindowAudit?: {
     readonly publishedInsideWindowFeedItemCount?: number;
     readonly observedButPublishedOutsideWindowFeedItemCount?: number;
@@ -160,7 +150,6 @@ export function buildProductionDayReport(params: {
   readonly completedAt: Date;
   readonly steps: readonly ProductionDayStepReport[];
   readonly scope: { readonly tenantId: string; readonly workspaceId: string };
-  readonly providerReadiness?: YesterdaySocialProviderReadiness | null;
   readonly collectionQuality: ProductionDayCollectionQuality | null;
   readonly durableEvidence: ProductionDayDurableEvidence | null;
   readonly evidenceBinding: DurableEvidenceBinding | null;
@@ -242,11 +231,6 @@ export function buildProductionDayReport(params: {
       evidence: params.durableEvidence,
       provenance: params.historicalRegenerationProvenance,
     });
-  const regenerationCollectionQualityValid =
-    collectionQualityMatchesRegeneration(
-      params.collectionQuality,
-      params.historicalRegenerationProvenance,
-    );
   const historicalEvaluationPassed = historicalReuseEvaluationPassed({
     liveProduction: writesProductionData,
     steps: params.steps,
@@ -262,10 +246,6 @@ export function buildProductionDayReport(params: {
         ?.publishedInsideWindowFeedItemCount !== undefined,
     collectionQualityDateMatchesRequestedDate:
       params.collectionQuality?.collectionDate === params.collectionDate,
-    providerReadinessPolicySatisfied:
-      !liveCollection ||
-      params.providerReadiness === undefined ||
-      params.providerReadiness?.ready === true,
     durableSummaryCaptured:
       params.durableEvidence?.result?.selectedFeedItemCount !== undefined,
     durableSummaryPersistedAndUuidBound: evidenceBound && liveCaptureBound,
@@ -286,7 +266,6 @@ export function buildProductionDayReport(params: {
       (params.executionMode === "historical-regeneration" &&
         regenerationProvenanceValid &&
         regenerationDatasetGuardValid &&
-        regenerationCollectionQualityValid &&
         requiredStepPassed(params.steps, "collect")),
     cleanDayE2eExecutedAndPassed:
       writesProductionData && requiredStepPassed(params.steps, "clean-day-e2e"),
@@ -295,8 +274,7 @@ export function buildProductionDayReport(params: {
       exactStepsPassed &&
       evidenceBound &&
       liveCaptureBound &&
-      regenerationDatasetGuardValid &&
-      regenerationCollectionQualityValid,
+      regenerationDatasetGuardValid,
     strictLiveProductionControls:
       writesProductionData && !params.allowDegraded && !params.allowHistorical,
     subscriptionRuntimeProvenanceVerified:
@@ -311,8 +289,6 @@ export function buildProductionDayReport(params: {
     provenanceMatchesExecutionMode: provenanceValid,
     hashBoundHistoricalRegeneration: regenerationProvenanceValid,
     regenerationDatasetGuardVerified: regenerationDatasetGuardValid,
-    regenerationCollectionQualityVerified:
-      regenerationCollectionQualityValid,
     historicalReuseEvaluationPassed: historicalEvaluationPassed,
     noRawSecretFragments: true,
     productionFailureAbsent: params.failure === null,
@@ -347,7 +323,6 @@ export function buildProductionDayReport(params: {
       frontendArtifactFormat:
         params.evidenceBinding?.captureExecution.frontendArtifactFormat ?? null,
     },
-    providerReadiness: params.providerReadiness ?? null,
     run: {
       startedAt: params.startedAt.toISOString(),
       completedAt: params.completedAt.toISOString(),
@@ -356,11 +331,7 @@ export function buildProductionDayReport(params: {
     failure: params.failure,
     summary,
     steps: params.steps,
-    stats: buildStats(
-      params.collectionQuality,
-      params.durableEvidence,
-      params.historicalRegenerationProvenance,
-    ),
+    stats: buildStats(params.collectionQuality, params.durableEvidence),
     qualityGates,
     blockingPassed: false,
   };
@@ -631,17 +602,11 @@ function requiredStepPassed(
 function buildStats(
   collectionQuality: ProductionDayCollectionQuality | null,
   evidence: ProductionDayDurableEvidence | null,
-  regeneration: HistoricalRegenerationSourceProvenance | null,
 ) {
   const audit = collectionQuality?.dayWindowAudit;
   const pool = collectionQuality?.xAccountPool;
-  const regenerationDataset = regeneration?.regenerationInputManifest;
   return {
-    timestampPolicy: regeneration?.timestampPolicy ?? "published_at",
-    collectedFeedItemCount:
-      regenerationDataset?.feedRowCount ??
-      audit?.publishedInsideWindowFeedItemCount ??
-      null,
+    collectedFeedItemCount: audit?.publishedInsideWindowFeedItemCount ?? null,
     publishedInsideWindowFeedItemCount:
       audit?.publishedInsideWindowFeedItemCount ?? null,
     observedButPublishedOutsideWindowFeedItemCount:
@@ -651,14 +616,12 @@ function buildStats(
     summaryCandidateFeedItemCount: audit?.summaryCandidateFeedItemCount ?? null,
     selectedFeedItemCount: evidence?.result?.selectedFeedItemCount ?? null,
     topReadCount: evidence?.result?.topReadCount ?? null,
-    providerCounts:
-      regenerationDataset?.providerCounts ??
-      Object.fromEntries(
-        audit?.providerBreakdown?.map((provider) => [
-          provider.providerKey,
-          provider.publishedInsideWindowFeedItemCount ?? 0,
-        ]) ?? [],
-      ),
+    providerCounts: Object.fromEntries(
+      audit?.providerBreakdown?.map((provider) => [
+        provider.providerKey,
+        provider.publishedInsideWindowFeedItemCount ?? 0,
+      ]) ?? [],
+    ),
     xAccountCount: pool?.totalAccountCount ?? null,
     xAccountTotalCount: pool?.totalAccountCount ?? null,
     xAccountEligibleCount: pool?.eligibleAccountCount ?? null,
@@ -693,24 +656,6 @@ function buildStats(
           : [normalizedXAccount(account)],
       ) ?? [],
   };
-}
-
-function collectionQualityMatchesRegeneration(
-  quality: ProductionDayCollectionQuality | null,
-  regeneration: HistoricalRegenerationSourceProvenance | null,
-): boolean {
-  if (regeneration === null) {
-    return true;
-  }
-  const freshness = quality?.inputs?.historicalRegenerationFreshness;
-  const manifest = regeneration.regenerationInputManifest;
-  return (
-    freshness?.mode === "historical_regeneration_current_snapshot" &&
-    freshness.manifestFileSha256 === manifest.sha256 &&
-    freshness.manifestGeneratedAt === manifest.generatedAt &&
-    freshness.datasetSha256 === manifest.datasetSha256 &&
-    freshness.timestampPolicy === manifest.timestampPolicy
-  );
 }
 
 function normalizedXAccount(account: ProductionDayXAccount) {

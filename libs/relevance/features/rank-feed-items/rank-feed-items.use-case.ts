@@ -163,7 +163,6 @@ export class RankFeedItemsUseCase {
         workspaceId: command.workspaceId,
         interestId: normalizeOptional(command.interestId),
         observedAfter: command.observedAfter,
-        observedAtOrAfter: command.observedAtOrAfter,
         observedBefore: command.observedBefore,
         publishedAtOrAfter: command.publishedAtOrAfter,
         publishedBefore: command.publishedBefore,

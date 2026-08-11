@@ -54,8 +54,6 @@ const identityKeys = [
 const semanticKeyPattern = /^[a-z0-9]+(?:[._:/-][a-z0-9]+)*$/u;
 const temporalSemanticSegment =
   /(?:^|[._:/-])(?:chronology|date|day|first-seen|last-seen|observed-at|published-at|resolution|resolved-at|sealed-at|timestamp|transition|utc|week|weekly)(?:$|[._:/-])/u;
-const evidenceIdentitySemanticSegment =
-  /(?:^|[._:/-])(?:citation|daily-certification|evidence|feed-item|observation|provider-item|publication|publication-evidence|source-binding|source-item)(?:$|[._:/-])/u;
 const utcDateFragment = /\d{4}-\d{2}-\d{2}/u;
 
 export const deriveReaderSummaryWeeklyStoryIdentity = (
@@ -156,7 +154,6 @@ const exactSemanticKey = (input: unknown, label: string): string => {
     input.length > 256 ||
     !semanticKeyPattern.test(input) ||
     temporalSemanticSegment.test(input) ||
-    evidenceIdentitySemanticSegment.test(input) ||
     utcDateFragment.test(input)
   ) {
     throw new Error(

@@ -209,77 +209,23 @@ daily_runner_bootstrap_verify_control_dockerfile() {
   printf '%s\n' "$digest"
 }
 
-daily_runner_bootstrap_verify_legacy_base_image() {
-  local base_id=$1
-  local base_service=$2
-  local deployment_project=${PROJECT:-}
-  local container_id record
-  local inspected_id image_id status running paused restarting dead oom_killed
-  local error restart_count project service compose_image oneoff container_number extra
-
-  [[ $base_id =~ ^sha256:[0-9a-f]{64}$ && \
-     $deployment_project == social-monitor-prod && \
-     $base_service =~ ^(intelligence-worker|api)$ ]] || return 1
-  container_id=$(docker container ls --no-trunc \
-    --filter "label=com.docker.compose.project=$deployment_project" \
-    --filter "label=com.docker.compose.service=$base_service" \
-    --format '{{.ID}}' 2>/dev/null) || return 1
-  [[ $container_id =~ ^[0-9a-f]{64}$ ]] || return 1
-  record=$(docker inspect "$container_id" --format \
-    '{{.Id}}|{{.Image}}|{{.State.Status}}|{{.State.Running}}|{{.State.Paused}}|{{.State.Restarting}}|{{.State.Dead}}|{{.State.OOMKilled}}|{{.State.Error}}|{{.RestartCount}}|{{index .Config.Labels "com.docker.compose.project"}}|{{index .Config.Labels "com.docker.compose.service"}}|{{index .Config.Labels "com.docker.compose.image"}}|{{index .Config.Labels "com.docker.compose.oneoff"}}|{{index .Config.Labels "com.docker.compose.container-number"}}' \
-    2>/dev/null) || return 1
-  [[ $record != *$'\n'* && $record != *$'\r'* ]] || return 1
-  IFS='|' read -r inspected_id image_id status running paused restarting dead \
-    oom_killed error restart_count project service compose_image oneoff \
-    container_number extra <<< "$record"
-  [[ $inspected_id == "$container_id" && \
-     $image_id == "$base_id" && \
-     $status == running && $running == true && \
-     $paused == false && $restarting == false && $dead == false && \
-     $oom_killed == false && -z $error && $restart_count == 0 && \
-     $project == "$deployment_project" && $service == "$base_service" && \
-     $compose_image == "$image_id" && $oneoff == False && \
-     $container_number == 1 && -z $extra ]]
-}
-
 daily_runner_bootstrap_base_image_id() {
   local previous_sha=$1
-  local validation_mode=${2:-initial}
-  local base_tag fallback_tag base_service=intelligence-worker
-  local identity image_id revision extra config
+  local base_tag identity image_id revision extra config
 
-  [[ $validation_mode == initial || $validation_mode == revalidate ]] || \
-    fail 'daily-runner base image validation mode is unexpected'
   base_tag=$(compose_image_name intelligence-worker)
   [[ $base_tag == social-monitor-prod-intelligence-worker:latest ]] || \
     fail 'daily-runner bootstrap base tag is unexpected'
-  fallback_tag=$(compose_image_name api)
-  [[ $fallback_tag == social-monitor-prod-api:latest ]] || \
-    fail 'daily-runner bootstrap fallback base tag is unexpected'
-  if ! identity=$(docker image inspect "$base_tag" --format \
-    '{{.Id}}|{{with index .Config.Labels "org.opencontainers.image.revision"}}{{.}}{{end}}' \
-  2>/dev/null); then
-    base_tag=$fallback_tag
-    base_service=api
-    identity=$(docker image inspect "$base_tag" --format \
-      '{{.Id}}|{{with index .Config.Labels "org.opencontainers.image.revision"}}{{.}}{{end}}' \
-      2>/dev/null) || fail 'daily-runner base image identity cannot be inspected'
-  fi
+  identity=$(docker image inspect "$base_tag" --format \
+    '{{.Id}}|{{index .Config.Labels "org.opencontainers.image.revision"}}' \
+    2>/dev/null) || fail 'daily-runner base image identity cannot be inspected'
   [[ $identity != *$'\n'* ]] || \
     fail 'daily-runner base image identity is ambiguous'
   IFS='|' read -r image_id revision extra <<< "$identity"
-  [[ $image_id =~ ^sha256:[0-9a-f]{64}$ && -z $extra ]] || \
+  [[ $image_id =~ ^sha256:[0-9a-f]{64}$ && \
+     $revision == "$previous_sha" && -z $extra ]] || \
     fail 'daily-runner base image identity or revision is unexpected'
-  if [[ $revision == "$previous_sha" ]]; then
-    :
-  elif [[ -n $revision ]]; then
-    fail 'daily-runner base image identity or revision is unexpected'
-  elif [[ $validation_mode == initial ]]; then
-    daily_runner_bootstrap_verify_legacy_base_image \
-      "$image_id" "$base_service" || \
-      fail 'daily-runner unlabelled base image is not runtime-stable'
-  fi
-  config=$(backend_image_rescue_image_config "$image_id") || \
+  config=$(backend_image_rescue_image_config "$base_tag") || \
     fail 'daily-runner base image config cannot be inspected'
   [[ $config == "$DAILY_RUNNER_BOOTSTRAP_IMAGE_CONFIG" ]] || \
     fail 'daily-runner base image config is unexpected'
@@ -304,42 +250,6 @@ daily_runner_bootstrap_require_admission() {
   if flock -n "$admission_real" true; then
     fail 'daily-runner bootstrap requires the held PostgreSQL admission lock'
   fi
-}
-
-daily_runner_bootstrap_assert_no_active_container() {
-  local inventory_format inventory
-  local container_id container_state label_project label_service extra
-  local active_count=0
-
-  [[ $PROJECT =~ ^[a-z0-9][a-z0-9_-]*$ ]] || \
-    fail 'daily-runner bootstrap project label is invalid'
-  inventory_format=$'{{.ID}}\t{{.State}}\t{{.Label "com.docker.compose.project"}}\t{{.Label "com.docker.compose.service"}}'
-  inventory=$(docker container ls --no-trunc \
-    --filter "label=com.docker.compose.project=$PROJECT" \
-    --filter 'label=com.docker.compose.service=daily-runner' \
-    --format "$inventory_format") || \
-    fail 'daily-runner container state cannot be inventoried'
-  [[ $inventory != *$'\r'* ]] || \
-    fail 'daily-runner container inventory is malformed'
-  [[ -n $inventory ]] || return 0
-
-  while IFS=$'\t' read -r \
-    container_id container_state label_project label_service extra; do
-    [[ $container_id =~ ^[0-9a-f]{64}$ && -n $container_state && \
-       -z $extra ]] || fail 'daily-runner container inventory is malformed'
-    [[ $label_project == "$PROJECT" && $label_service == daily-runner ]] || \
-      fail 'daily-runner container inventory label mismatch'
-    case $container_state in
-      running|restarting|paused) ;;
-      *) fail 'daily-runner container state is unexpected' ;;
-    esac
-    ((active_count += 1))
-  done <<< "$inventory"
-
-  ((active_count <= 1)) || \
-    fail 'daily-runner container inventory is ambiguous'
-  ((active_count == 0)) || \
-    fail 'active daily-runner container blocks image bootstrap'
 }
 
 daily_runner_bootstrap_remove_tag() {
@@ -373,10 +283,8 @@ daily_runner_image_bootstrap_before_rescue() (
   local compose_tag state_file partial phase manifest_target
   local dockerfile_digest dockerfile_digest_after base_id base_id_after
   local workdir='' archive='' context='' temporary_tag='' candidate_id=''
-  local base_alias_tag=''
-  local identity config singleton_fd revision extra
+  local identity config existing_container singleton_fd revision extra
   local compose_created=false completed=false temporary_owned=false
-  local base_alias_created=false
 
   compose_tag=$(compose_image_name daily-runner)
   if backend_image_rescue_image_id "$compose_tag" >/dev/null; then
@@ -415,7 +323,11 @@ daily_runner_image_bootstrap_before_rescue() (
     fail 'daily singleton lock descriptor is unexpected'
   flock -n "$singleton_fd" || \
     fail 'active daily execution blocks daily-runner image bootstrap'
-  daily_runner_bootstrap_assert_no_active_container
+  existing_container=$(
+    "${COMPOSE[@]}" --profile app --profile daily ps -q daily-runner
+  ) || fail 'daily-runner container state cannot be inventoried'
+  [[ -z $existing_container ]] || \
+    fail 'active daily-runner container blocks image bootstrap'
 
   # Invoked by the EXIT/INT/TERM traps installed below.
   # shellcheck disable=SC2317,SC2329
@@ -430,10 +342,6 @@ daily_runner_image_bootstrap_before_rescue() (
     if [[ $temporary_owned == true ]]; then
       daily_runner_bootstrap_remove_tag \
         "$temporary_tag" "$candidate_id" || cleanup_status=1
-    fi
-    if [[ $base_alias_created == true ]]; then
-      daily_runner_bootstrap_remove_tag \
-        "$base_alias_tag" "$base_id" || cleanup_status=1
     fi
     daily_runner_bootstrap_remove_workdir \
       "$workdir" "$previous_sha" || cleanup_status=1
@@ -467,16 +375,6 @@ daily_runner_image_bootstrap_before_rescue() (
     fail 'daily-runner Dockerfile could not be validated'
   base_id=$(daily_runner_bootstrap_base_image_id "$previous_sha") || \
     fail 'daily-runner base image could not be validated'
-  base_alias_tag=$(compose_image_name intelligence-worker)
-  [[ $base_alias_tag == social-monitor-prod-intelligence-worker:latest ]] || \
-    fail 'daily-runner build base alias is unexpected'
-  if ! backend_image_rescue_image_id "$base_alias_tag" >/dev/null; then
-    docker image tag "$base_id" "$base_alias_tag" >/dev/null || \
-      fail 'daily-runner build base alias could not be created'
-    base_alias_created=true
-    [[ $(backend_image_rescue_image_id "$base_alias_tag") == "$base_id" ]] || \
-      fail 'daily-runner build base alias identity is unexpected'
-  fi
   daily_runner_bootstrap_create_archive "$previous_sha" "$archive" || \
     fail 'historical daily-runner archive could not be created'
   chmod 0600 "$archive" || fail 'historical daily-runner archive mode failed'
@@ -502,15 +400,9 @@ daily_runner_image_bootstrap_before_rescue() (
     fail 'historical daily-runner image config cannot be inspected'
   [[ $config == "$DAILY_RUNNER_BOOTSTRAP_IMAGE_CONFIG" ]] || \
     fail 'historical daily-runner image config is unexpected'
-  if [[ $base_alias_created == true ]]; then
-    daily_runner_bootstrap_remove_tag "$base_alias_tag" "$base_id" || \
-      fail 'daily-runner build base alias cleanup failed'
-    base_alias_created=false
-  fi
 
   daily_runner_bootstrap_verify_release "$previous_sha" "$target_sha"
-  base_id_after=$(daily_runner_bootstrap_base_image_id \
-    "$previous_sha" revalidate) || \
+  base_id_after=$(daily_runner_bootstrap_base_image_id "$previous_sha") || \
     fail 'daily-runner base image could not be revalidated'
   [[ $base_id_after == "$base_id" ]] || \
     fail 'daily-runner base image identity changed during historical build'

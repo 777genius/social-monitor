@@ -34,9 +34,6 @@ describe("reader summary weekly editorial quality policy", () => {
       blockingPassed: true,
       metrics: {
         leadSectionCount: 1,
-        crossDayStoryCount: 2,
-        synthesizedCrossDayStoryCount: 1,
-        duplicateSameDayStoryObservationCount: 0,
         citedDayCount: 4,
         citedProviderCount: 4,
         dominantDayCitationShare: 0.25,
@@ -90,13 +87,6 @@ describe("reader summary weekly editorial quality policy", () => {
       text: "This day-by-day digest joins each day's summary.",
       gate: "weeklySynthesisIsCoherent",
       issue: "stitched daily summaries",
-    },
-    {
-      label: "inline daily chronology",
-      text:
-        "On Monday safeguards appeared. On Wednesday teams tried them. On Friday limits remained.",
-      gate: "weeklySynthesisIsCoherent",
-      issue: "enumerates a daily chronology",
     },
     {
       label: "provider inventory",
@@ -157,145 +147,8 @@ describe("reader summary weekly editorial quality policy", () => {
     expect(result.qualityGates.weeklySynthesisIsCoherent).toBe(false);
     expect(result.metrics.dayHeadingCount).toBe(0);
     expect(result.issues).toContain(
-      "Weekly editorial output reads as stitched single-day sections",
+      "Weekly editorial output reads as seven stitched daily sections",
     );
-  });
-
-  it("blocks a five-day section diary even when the remaining days are omitted", () => {
-    const input = weeklyInput({
-      providers: [
-        "hacker-news",
-        "reddit",
-        "rss",
-        "x-twitter",
-        "hacker-news",
-        "reddit",
-        "rss",
-      ],
-      dayIndexes: [0, 1, 2, 3, 4, 5, 6],
-      alphaObservationCount: 4,
-    });
-    const output = mutable(sevenSectionDiaryOutput(input));
-    output.sections = output.sections.slice(0, 5);
-
-    const result = evaluateReaderSummaryWeeklyEditorialQuality(input, output);
-
-    expect(result.qualityGates.weeklySynthesisIsCoherent).toBe(false);
-    expect(result.issues).toContain(
-      "Weekly editorial output reads as stitched single-day sections",
-    );
-  });
-
-  it("blocks a partial three-day diary instead of waiting for five daily slots", () => {
-    const input = weeklyInput({
-      providers: [
-        "hacker-news",
-        "reddit",
-        "rss",
-        "x-twitter",
-        "hacker-news",
-        "reddit",
-        "rss",
-      ],
-      dayIndexes: [0, 1, 2, 3, 4, 5, 6],
-      alphaObservationCount: 4,
-    });
-    const output = mutable(sevenSectionDiaryOutput(input));
-    output.sections = output.sections.slice(0, 3);
-
-    const result = evaluateReaderSummaryWeeklyEditorialQuality(input, output);
-
-    expect(result.qualityGates.weeklySynthesisIsCoherent).toBe(false);
-    expect(result.metrics.singleDaySectionCount).toBe(3);
-    expect(result.issues).toContain(
-      "Weekly editorial output reads as stitched single-day sections",
-    );
-  });
-
-  it("requires the lead and synthesis to carry one stable story across days", () => {
-    const input = weeklyInput();
-    const output = mutable(weeklyOutput(input));
-    output.stories[0] = {
-      ...output.stories[0]!,
-      summary:
-        "The cited safeguard report describes the current controls without claiming a later change.",
-      status: "watch",
-      observedThrough: input.citations[0]!.observedOn,
-      citationIds: ["citation:01"],
-    };
-    output.sections[0] = {
-      ...output.sections[0]!,
-      claimType: "snapshot",
-      text:
-        "The cited safeguard report describes the current controls and their limits.",
-      observedThrough: input.citations[0]!.observedOn,
-      citationIds: ["citation:01"],
-    };
-    output.stories[1] = {
-      ...output.stories[1]!,
-      observedThrough: input.citations[2]!.observedOn,
-      citationIds: ["citation:03"],
-    };
-    output.sections[1] = {
-      ...output.sections[1]!,
-      observedThrough: input.citations[2]!.observedOn,
-      citationIds: ["citation:03"],
-    };
-
-    const result = evaluateReaderSummaryWeeklyEditorialQuality(input, output);
-
-    expect(result.qualityGates.crossDayStoryIsSynthesized).toBe(false);
-    expect(result.metrics.crossDayStoryCount).toBe(0);
-    expect(result.issues).toContain(
-      "Weekly lead and synthesis must carry one stable story across multiple days",
-    );
-  });
-
-  it("rejects duplicate same-story same-day observations", () => {
-    const input = weeklyInput({ dayIndexes: [0, 0, 4, 6] });
-    const result = evaluateReaderSummaryWeeklyEditorialQuality(
-      input,
-      weeklyOutput(input),
-    );
-
-    expect(result.qualityGates.sameDayStoryObservationsAreUnique).toBe(false);
-    expect(result.metrics.duplicateSameDayStoryObservationCount).toBe(1);
-    expect(result.issues).toContain(
-      "Weekly evidence contains duplicate same-story same-day observations",
-    );
-  });
-
-  it("rejects output that reassigns a section to an unstable story identity", () => {
-    const input = weeklyInput();
-    const output = mutable(weeklyOutput(input));
-    output.sections[0]!.storyId = "story:invented";
-
-    const result = evaluateReaderSummaryWeeklyEditorialQuality(input, output);
-
-    expect(result.qualityGates.stableStoryIdentityIsUsed).toBe(false);
-    expect(result.issues).toContain(
-      "Weekly editorial output must preserve stable story identity",
-    );
-  });
-
-  it("requires the synthesis itself to be balanced cross-day evidence", () => {
-    const input = weeklyInput();
-    const output = mutable(weeklyOutput(input));
-    output.synthesisCitationIds = ["citation:01"];
-
-    const result = evaluateReaderSummaryWeeklyEditorialQuality(input, output);
-
-    expect(result.qualityGates).toMatchObject({
-      citationsSpanMultipleProviders: true,
-      citationsSpanAtLeastThreeDays: true,
-      providerDominanceIsControlled: true,
-      dayDominanceIsControlled: true,
-      synthesisCitationsSpanMultipleProviders: false,
-      synthesisCitationsSpanAtLeastThreeDays: false,
-      synthesisProviderDominanceIsControlled: false,
-      synthesisDayDominanceIsControlled: false,
-    });
-    expect(result.publicationDecision).toBe("block");
   });
 
   it("blocks unsupported evolution and resolution language", () => {

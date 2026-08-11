@@ -5,19 +5,9 @@ import {
   readerSummaryScopeKey,
 } from "../../domain";
 import type {
-  ReaderSummaryAuthorizedPublication,
   ReaderSummaryPublicationCommand,
   ReaderSummaryPublicationOutcome,
 } from "../../ports";
-import {
-  buildReaderSummaryWeeklyPublicationPersistencePayload,
-  type ReaderSummaryWeeklyPublicationPersistencePayload,
-} from "./reader-summary-weekly-publication-payload";
-
-export {
-  buildReaderSummaryWeeklyPublicationPersistencePayload,
-  type ReaderSummaryWeeklyPublicationPersistencePayload,
-} from "./reader-summary-weekly-publication-payload";
 
 export type ReaderSummaryPublicationPayload = Readonly<{
   schemaVersion: "reader_summary.publication.v1";
@@ -55,19 +45,6 @@ export type ReaderSummaryPublicationSqlRow = Readonly<{
   report_sha256: string;
   proof_sha256: string;
 }>;
-
-export const buildReaderSummaryAuthorizedPublicationProof = (
-  publication: ReaderSummaryAuthorizedPublication,
-):
-  | ReaderSummaryPublicationPayload
-  | ReaderSummaryWeeklyPublicationPersistencePayload =>
-  publication.kind === "daily"
-    ? buildReaderSummaryPublicationPayload(publication.command)
-    : buildReaderSummaryWeeklyPublicationPersistencePayload({
-        kind: "weekly",
-        artifactId: publication.artifactId,
-        authorization: publication.authorization,
-      });
 
 export const buildReaderSummaryPublicationPayload = (
   command: ReaderSummaryPublicationCommand,

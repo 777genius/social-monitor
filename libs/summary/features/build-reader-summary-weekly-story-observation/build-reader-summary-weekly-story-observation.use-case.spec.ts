@@ -137,31 +137,6 @@ describe("BuildReaderSummaryWeeklyStoryObservationUseCase", () => {
       "already has an observation for the requested UTC date",
     );
   });
-
-  it("keeps one stable story across days while preserving one observation per day", async () => {
-    const firstUseCase =
-      new BuildReaderSummaryWeeklyStoryObservationUseCase(
-        new FakeWeeklyStoryAuthority(authorityBinding()),
-      );
-    const first = await firstUseCase.execute(command());
-    if (!first.ok) {
-      throw first.error;
-    }
-    const later =
-      await new BuildReaderSummaryWeeklyStoryObservationUseCase(
-        new FakeWeeklyStoryAuthority(authorityBinding("2026-07-12")),
-      ).execute({
-        ...command(),
-        existingObservations: [first.value],
-      });
-    if (!later.ok) {
-      throw later.error;
-    }
-
-    expect(later.value.story.identity).toBe(first.value.story.identity);
-    expect(later.value.observedUtcDate).toBe("2026-07-12");
-    expect(later.value.uniquenessKey).not.toBe(first.value.uniquenessKey);
-  });
 });
 
 class FakeWeeklyStoryAuthority
@@ -225,15 +200,13 @@ const command = (): BuildReaderSummaryWeeklyStoryObservationCommand => ({
   existingObservations: [],
 });
 
-const authorityBinding = (
-  requestedUtcDate = "2026-07-05",
-): ReaderSummaryWeeklyStoryAuthorityBinding => {
+const authorityBinding = (): ReaderSummaryWeeklyStoryAuthorityBinding => {
   const body = {
     schemaVersion: readerSummaryWeeklyStoryAuthoritySchemaVersion,
     tenantId: "00000000-0000-4000-8000-000000000001",
     workspaceId: "00000000-0000-4000-8000-000000000002",
     scope: { type: "workspace" as const },
-    requestedUtcDate,
+    requestedUtcDate: "2026-07-05",
     publicationId: "20000000-0000-4000-8000-000000000001",
     artifactId: "20000000-0000-4000-8000-000000000001",
     jobId: "10000000-0000-4000-8000-000000000001",
@@ -250,7 +223,7 @@ const authorityBinding = (
     providerEvidenceSha256: "b".repeat(64),
     githubEvidenceSha256: "1".repeat(64),
     semanticStatus: "COMPLETED" as const,
-    publishedAt: `${requestedUtcDate}T12:00:00.000Z`,
+    publishedAt: "2026-07-05T12:00:00.000Z",
     evidence: [
       {
         providerKey: "rss" as const,
@@ -262,8 +235,8 @@ const authorityBinding = (
         providerItemId: "provider-1",
         canonicalUrl: "https://example.test/citation-1",
         sourceContentHash: "2".repeat(64),
-        publishedAt: `${requestedUtcDate}T08:00:00.000Z`,
-        observedAt: `${requestedUtcDate}T08:05:00.000Z`,
+        publishedAt: "2026-07-05T08:00:00.000Z",
+        observedAt: "2026-07-05T08:05:00.000Z",
       },
     ],
   };

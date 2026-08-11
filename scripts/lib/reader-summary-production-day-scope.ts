@@ -1,4 +1,4 @@
-import { Pool, type PoolClient } from "pg";
+import { Pool } from "pg";
 
 export type ProductionDayScope = {
   readonly tenantId: string;
@@ -18,48 +18,40 @@ export async function readProductionDayScope(params: {
     connectionTimeoutMillis: 2_000,
   });
   try {
-    const client = await pool.connect();
-    try {
-      await client.query(
-        "SELECT set_config('social_monitor.system_access', 'true', false)",
-      );
-      const result = await client.query<{
-        readonly tenantId: string;
-        readonly workspaceId: string;
-        readonly itemCount: string;
-      }>(
-        `
-          select
-            tenant_id::text as "tenantId",
-            workspace_id::text as "workspaceId",
-            count(*)::text as "itemCount"
-          from feed_items
-          where published_at >= $1::timestamptz
-            and published_at < $2::timestamptz
-          group by tenant_id, workspace_id
-          order by count(*) desc
-          limit 1
-        `,
-        [params.periodStartedAt, params.periodEndedAt],
-      );
-      const row = result.rows[0];
-      if (row !== undefined && Number.parseInt(row.itemCount, 10) > 0) {
-        return { tenantId: row.tenantId, workspaceId: row.workspaceId };
-      }
-      return await readDominantConfiguredScope(client, params.collectionDate);
-    } finally {
-      client.release();
+    const result = await pool.query<{
+      readonly tenantId: string;
+      readonly workspaceId: string;
+      readonly itemCount: string;
+    }>(
+      `
+        select
+          tenant_id::text as "tenantId",
+          workspace_id::text as "workspaceId",
+          count(*)::text as "itemCount"
+        from feed_items
+        where published_at >= $1::timestamptz
+          and published_at < $2::timestamptz
+        group by tenant_id, workspace_id
+        order by count(*) desc
+        limit 1
+      `,
+      [params.periodStartedAt, params.periodEndedAt],
+    );
+    const row = result.rows[0];
+    if (row !== undefined && Number.parseInt(row.itemCount, 10) > 0) {
+      return { tenantId: row.tenantId, workspaceId: row.workspaceId };
     }
+    return await readDominantConfiguredScope(pool, params.collectionDate);
   } finally {
     await pool.end().catch(() => undefined);
   }
 }
 
 async function readDominantConfiguredScope(
-  client: PoolClient,
+  pool: Pool,
   collectionDate: string,
 ): Promise<ProductionDayScope> {
-  const result = await client.query<{
+  const result = await pool.query<{
     readonly tenantId: string;
     readonly workspaceId: string;
     readonly bindingCount: string;

@@ -7,15 +7,9 @@ import type {
   ListReaderSummaryArtifactsQuery,
   ListReaderSummaryArtifactsResult,
   ListReaderSummaryPeriodSummariesResult,
-  FindReaderSummaryWeeklyArtifactQuery,
   ReaderSummaryArtifactRepositoryPort,
   ReaderSummaryRejectedArtifactDebug,
-  ReaderSummaryWeeklyArtifactRepositoryPort,
-  PersistedReaderSummaryWeeklyArtifact,
-  SaveReaderSummaryWeeklyArtifactCommand,
 } from "../../ports";
-import { canonicalizeReaderSummaryWeeklyJson } from "../../domain/value-objects/reader-summary-weekly-canonical-json";
-import { buildReaderSummaryWeeklyPublicationPersistencePayload } from "./reader-summary-publication-proof";
 
 type ReaderSummaryPublicationDecisionForPersistence = NonNullable<
   NonNullable<
@@ -23,11 +17,7 @@ type ReaderSummaryPublicationDecisionForPersistence = NonNullable<
   >["publicationDecision"]
 >;
 
-export class InMemoryReaderSummaryArtifactRepository
-  implements
-    ReaderSummaryArtifactRepositoryPort,
-    ReaderSummaryWeeklyArtifactRepositoryPort
-{
+export class InMemoryReaderSummaryArtifactRepository implements ReaderSummaryArtifactRepositoryPort {
   private readonly artifactsById = new Map<string, ReaderSummaryArtifact>();
   private readonly statusesById = new Map<
     string,
@@ -37,11 +27,6 @@ export class InMemoryReaderSummaryArtifactRepository
     string,
     ReaderSummaryPublicationDecisionForPersistence
   >();
-  private readonly weeklyArtifactsById = new Map<
-    string,
-    PersistedReaderSummaryWeeklyArtifact
-  >();
-  private readonly usedWeeklyAuthorizationIds = new Set<string>();
 
   async save(
     artifact: ReaderSummaryArtifact,
@@ -168,60 +153,6 @@ export class InMemoryReaderSummaryArtifactRepository
       artifact,
       this.publicationDecisionsById.get(key),
     );
-  }
-
-  async saveWeekly(
-    command: SaveReaderSummaryWeeklyArtifactCommand,
-  ): Promise<void> {
-    const payload =
-      buildReaderSummaryWeeklyPublicationPersistencePayload(command);
-    const key =
-      `${payload.tenantId}:${payload.workspaceId}:${payload.artifactId}`;
-    const persisted = {
-      kind: "weekly" as const,
-      artifactId: payload.artifactId,
-      tenantId: payload.tenantId,
-      workspaceId: payload.workspaceId,
-      artifact: {
-        output: payload.artifactPayload.output,
-        editorialQuality: payload.qualitySignals.editorialQuality,
-      },
-      qualitySignals: payload.qualitySignals,
-      proof: payload.proof,
-    };
-    const existing = this.weeklyArtifactsById.get(key);
-    if (existing !== undefined) {
-      if (
-        existing.kind === persisted.kind &&
-        existing.artifactId === persisted.artifactId &&
-        existing.tenantId === persisted.tenantId &&
-        existing.workspaceId === persisted.workspaceId &&
-        canonicalizeReaderSummaryWeeklyJson(existing.artifact).json ===
-          canonicalizeReaderSummaryWeeklyJson(persisted.artifact).json &&
-        canonicalizeReaderSummaryWeeklyJson(existing.qualitySignals).json ===
-          canonicalizeReaderSummaryWeeklyJson(persisted.qualitySignals).json &&
-        canonicalizeReaderSummaryWeeklyJson(existing.proof).json ===
-          canonicalizeReaderSummaryWeeklyJson(persisted.proof).json
-      ) {
-        return;
-      }
-      throw new Error(
-        "Reader summary weekly publication replay diverged",
-      );
-    }
-    if (this.usedWeeklyAuthorizationIds.has(payload.proof.authorizationId)) {
-      throw new Error("Reader summary weekly publication authorization diverged");
-    }
-    this.weeklyArtifactsById.set(key, persisted);
-    this.usedWeeklyAuthorizationIds.add(payload.proof.authorizationId);
-  }
-
-  async findWeeklyById(
-    params: FindReaderSummaryWeeklyArtifactQuery,
-  ): Promise<PersistedReaderSummaryWeeklyArtifact | null> {
-    const key =
-      `${params.tenantId}:${params.workspaceId}:${params.artifactId}`;
-    return this.weeklyArtifactsById.get(key) ?? null;
   }
 
   all(): readonly ReaderSummaryArtifact[] {

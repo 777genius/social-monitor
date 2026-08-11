@@ -344,36 +344,6 @@
       "purgeTrigger": "reader_summary_publication_graph_retention_completed"
     },
     {
-      "table": "reader_summary_production_recovery_days",
-      "dataClass": "immutable_summary_recovery_evidence",
-      "owner": "summary-owner",
-      "retentionDays": 365,
-      "deleteMode": "owner_authorized_graph_purge_after_retention",
-      "exportable": true,
-      "legalHoldAware": true,
-      "purgeTrigger": "reader_summary_production_recovery_graph_retention_completed"
-    },
-    {
-      "table": "reader_summary_production_recovery_dry_runs",
-      "dataClass": "immutable_summary_recovery_audit",
-      "owner": "summary-owner",
-      "retentionDays": 365,
-      "deleteMode": "owner_authorized_graph_purge_after_retention",
-      "exportable": true,
-      "legalHoldAware": true,
-      "purgeTrigger": "reader_summary_production_recovery_graph_retention_completed"
-    },
-    {
-      "table": "reader_summary_production_recovery_leases",
-      "dataClass": "immutable_summary_recovery_authority",
-      "owner": "summary-owner",
-      "retentionDays": 365,
-      "deleteMode": "owner_authorized_graph_purge_after_retention",
-      "exportable": true,
-      "legalHoldAware": true,
-      "purgeTrigger": "reader_summary_production_recovery_graph_retention_completed"
-    },
-    {
       "table": "reader_summary_publications",
       "dataClass": "immutable_summary_publication_audit",
       "owner": "summary-owner",
