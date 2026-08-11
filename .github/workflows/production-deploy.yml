@@ -210,7 +210,9 @@ jobs:
             }
             daily_c1_bridge=true
           fi
-          if target_state=$(bash "$transition" state "$GITHUB_SHA" TARGET "$target_plan" \
+          if [[ $daily_c1_bridge == true ]]; then
+            transition_state=target-pending
+          elif target_state=$(bash "$transition" state "$GITHUB_SHA" TARGET "$target_plan" \
               2> "$RUNNER_TEMP/recovery-target-state.err") && \
              [[ $target_state != transition_state=repair-required ]]; then
             transition_state=${target_state#transition_state=}

@@ -91,6 +91,8 @@ grep -F 'daily_c1_bridge_base=e3b5b5d89b3586668e36f987f03672415b5a0f37' \
   fail 'workflow must enforce exact B2 detection in its authoritative plan'
 grep -F 'daily_c1_bridge: ${{ steps.plan.outputs.daily_c1_bridge }}' \
   "$workflow" >/dev/null || fail 'workflow does not export the exact bridge decision'
+grep -F 'if [[ $daily_c1_bridge == true ]]; then' \
+  "$workflow" >/dev/null || fail 'exact bridge still enters the obsolete E/A/B classifier'
 grep -F 'DAILY_C1_BRIDGE: ${{ needs.plan.outputs.daily_c1_bridge }}' \
   "$workflow" >/dev/null || fail 'backend gate does not consume the bridge decision'
 grep -F 'backend-gate=production-release-preflight deferred-to-final-runtime-release' \
