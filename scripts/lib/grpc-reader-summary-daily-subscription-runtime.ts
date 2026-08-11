@@ -9,18 +9,14 @@ import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 
 import type { ReaderSummaryDailySubscriptionRuntime } from "./reader-summary-daily-terminal-runner";
 import {
+  assertDailyOutputCitationsMatchSourceAuthority,
+  assertDailyOutputMatchesJsonSchema,
   DailyCanonicalRecoveryRuntimeAbortedError,
   DailyCanonicalRecoveryRuntimeFailureError,
   DailyCanonicalRecoveryRuntimeTransportError,
+  parseStrictDailyOutputText,
   sha256 as recoverySha256,
 } from "./reader-summary-daily-canonical-recovery-v4";
-import {
-  assertDailyCanonicalRecoveryOutputSemanticValidity,
-  parseDailyCanonicalRecoveryOutputText,
-} from "./reader-summary-daily-canonical-recovery-v4-semantic-output";
-import {
-  verifyReaderSummaryDailyCanonicalRecoveryRawAttestation,
-} from "./reader-summary-daily-model-job-receipt";
 import {
   isReaderSummaryDailySourceAuthorityV2,
   verifyReaderSummaryDailySourceAuthority,
@@ -155,32 +151,30 @@ export class GrpcReaderSummaryDailyCanonicalRecoveryRuntime
         result.status !== "completed" ||
         result.structuredOutput !== undefined ||
         result.outputText === undefined ||
-        attestation === undefined
+        attestation === undefined ||
+        attestation.purpose !== "social_monitor.reader_summary.weekly.generate" ||
+        attestation.provider !== "codex" ||
+        attestation.model !== model ||
+        attestation.reasoningEffort !== reasoningEffort ||
+        attestation.runtimeEngine !== "subscription-runtime-cli" ||
+        attestation.selectedOutputKind !== "output_text"
       ) {
         throw new DailyCanonicalRecoveryRuntimeFailureError(false);
       }
-      // The selected provider bytes are transient. Verify their exact digest
-      // against the complete 12-key attestation before decoding or sorting any
-      // JSON members, then admit and retain only canonical server bytes.
-      const rawOutputBytes = Buffer.from(result.outputText, "utf8");
-      const rawOutputSha256 = recoverySha256(rawOutputBytes);
-      const verifiedAttestation =
-        verifyReaderSummaryDailyCanonicalRecoveryRawAttestation(
-          attestation,
-          rawOutputSha256,
-        );
-      const admission = parseDailyCanonicalRecoveryOutputText(rawOutputBytes);
-      assertDailyCanonicalRecoveryOutputSemanticValidity({
-        output: admission.output,
-        sourceAuthorityBytes: input.sourceAuthorityBytes,
-        schema: openAiReaderSummaryJsonSchema,
-        citationSelectionLimit: 200,
-      });
+      const responseBytes = parseStrictDailyOutputText(result.outputText);
+      const output = JSON.parse(responseBytes.toString("utf8")) as unknown;
+      assertDailyOutputMatchesJsonSchema(output, openAiReaderSummaryJsonSchema);
+      assertDailyOutputCitationsMatchSourceAuthority(
+        output,
+        input.sourceAuthorityBytes,
+        200,
+      );
+      if (recoverySha256(responseBytes) !== attestation.selectedOutputSha256) {
+        throw new DailyCanonicalRecoveryRuntimeFailureError(false);
+      }
       return Object.freeze({
-        responseBytes: admission.canonicalBytes,
-        rawOutputSha256,
-        rawOutputByteLength: rawOutputBytes.length,
-        executionAttestation: verifiedAttestation,
+        responseBytes,
+        executionAttestation: Object.freeze({ ...attestation }),
       });
     } catch {
       if (input.signal.aborted) {

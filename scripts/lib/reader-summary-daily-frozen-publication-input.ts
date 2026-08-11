@@ -12,13 +12,12 @@ import {
 import type { Clock } from "@social-monitor/shared-kernel";
 
 import {
+  assertDailyOutputCitationsMatchSourceAuthority,
+  assertDailyOutputMatchesJsonSchema,
   canonicalJsonBytes,
+  parseStrictDailyOutputText,
   sha256,
 } from "./reader-summary-daily-canonical-recovery-v4";
-import {
-  assertDailyCanonicalRecoveryOutputSemanticValidity,
-  parseDailyCanonicalRecoveryOutputText,
-} from "./reader-summary-daily-canonical-recovery-v4-semantic-output";
 import {
   verifyReaderSummaryDailyCanonicalRecoveryReceipt,
 } from "./reader-summary-daily-model-job-receipt";
@@ -67,23 +66,14 @@ export const createReaderSummaryDailyFrozenOutputTextWiring = (input: {
   ) {
     throw new Error("Daily output_text replay is not bound to immutable authority v2");
   }
-  const outputAdmission = parseDailyCanonicalRecoveryOutputText(
-    Buffer.from(input.responseBytes),
+  const outputTextBytes = parseStrictDailyOutputText(
+    Buffer.from(input.responseBytes).toString("utf8"),
   );
-  const outputTextBytes = outputAdmission.canonicalBytes;
   if (!outputTextBytes.equals(input.responseBytes)) {
     throw new Error("Daily output_text replay bytes are not strict canonical output_text");
   }
-  // Re-run the exact admission predicates before a durable canonical payload
-  // can be transformed into an artifact. The receipt independently binds the
-  // raw selection metadata and canonical bytes below.
-  assertDailyCanonicalRecoveryOutputSemanticValidity({
-    output: outputAdmission.output,
-    sourceAuthorityBytes: authority.canonicalBytes,
-    schema: openAiReaderSummaryJsonSchema,
-    citationSelectionLimit: 200,
-  });
-  const preservesNoSignal = assertDailyOutputTextSignalState(outputAdmission.output);
+  assertOutputTextUsesAuthority(outputTextBytes, authority);
+  const preservesNoSignal = assertDailyOutputTextSignalState(outputTextBytes);
   const receipt = verifyReaderSummaryDailyCanonicalRecoveryReceipt({
     modelJobIdentity: input.modelJobIdentity,
     requestedUtcDate: authority.requestedUtcDate,
@@ -94,10 +84,8 @@ export const createReaderSummaryDailyFrozenOutputTextWiring = (input: {
   const recoveryProvenance = frozenRecoveryProvenance({
     authority,
     modelJobIdentity: input.modelJobIdentity,
-    canonicalOutputSha256: receipt.canonicalOutputSha256,
-    canonicalOutputByteLength: receipt.canonicalOutputByteLength,
-    rawOutputSha256: receipt.rawOutputSha256,
-    rawOutputByteLength: receipt.rawOutputByteLength,
+    outputTextSha256: receipt.responseSha256,
+    outputTextByteLength: outputTextBytes.length,
   });
   const historicalGithubOmission = authority.githubProjection.mode ===
     "historical_omission"
@@ -125,10 +113,8 @@ export const createReaderSummaryDailyFrozenOutputTextWiring = (input: {
 const frozenRecoveryProvenance = (input: {
   readonly authority: VerifiedReaderSummaryDailySourceAuthorityV2;
   readonly modelJobIdentity: string;
-  readonly canonicalOutputSha256: string;
-  readonly canonicalOutputByteLength: number;
-  readonly rawOutputSha256: string;
-  readonly rawOutputByteLength: number;
+  readonly outputTextSha256: string;
+  readonly outputTextByteLength: number;
 }): ReaderSummaryDailyCanonicalRecoveryV4ProvenancePort => {
   const { authority } = input;
   const recovery = recoveryBinding(input);
@@ -142,10 +128,8 @@ const frozenRecoveryProvenance = (input: {
     ingestionCutoff: authority.ingestionCutoff,
     sourceAuthoritySha256: authority.canonicalSha256,
     modelJobIdentity: input.modelJobIdentity,
-    canonicalOutputSha256: input.canonicalOutputSha256,
-    canonicalOutputByteLength: input.canonicalOutputByteLength,
-    rawOutputSha256: input.rawOutputSha256,
-    rawOutputByteLength: input.rawOutputByteLength,
+    outputTextSha256: input.outputTextSha256,
+    outputTextByteLength: input.outputTextByteLength,
     githubProjectionSha256: recovery.githubProjectionSha256,
     verifyPrepublication: (
       params: Parameters<
@@ -162,12 +146,10 @@ const frozenRecoveryProvenance = (input: {
 const recoveryBinding = (input: {
   readonly authority: VerifiedReaderSummaryDailySourceAuthorityV2;
   readonly modelJobIdentity: string;
-  readonly canonicalOutputSha256: string;
-  readonly canonicalOutputByteLength: number;
-  readonly rawOutputSha256: string;
-  readonly rawOutputByteLength: number;
+  readonly outputTextSha256: string;
+  readonly outputTextByteLength: number;
 }): ReaderSummaryDailyCanonicalRecoveryV4Binding => Object.freeze({
-  schemaVersion: "reader_summary.daily_canonical_recovery_provenance.v3",
+  schemaVersion: "reader_summary.daily_canonical_recovery_provenance.v2",
   recoveryVersion: "reader_summary.daily_canonical_recovery.v4",
   selectedOutputKind: "output_text",
   sourceAuthoritySchemaVersion: 2,
@@ -177,10 +159,8 @@ const recoveryBinding = (input: {
   ingestionCutoff: input.authority.ingestionCutoff,
   sourceAuthoritySha256: input.authority.canonicalSha256,
   modelJobIdentity: input.modelJobIdentity,
-  canonicalOutputSha256: input.canonicalOutputSha256,
-  canonicalOutputByteLength: input.canonicalOutputByteLength,
-  rawOutputSha256: input.rawOutputSha256,
-  rawOutputByteLength: input.rawOutputByteLength,
+  outputTextSha256: input.outputTextSha256,
+  outputTextByteLength: input.outputTextByteLength,
   githubProjectionSha256: sha256(canonicalJsonBytes(input.authority.githubProjection)),
 });
 
@@ -393,7 +373,17 @@ const nextDay = (requestedUtcDate: string): string =>
   new Date(Date.parse(`${requestedUtcDate}T00:00:00.000Z`) + 86_400_000)
     .toISOString();
 
-const assertDailyOutputTextSignalState = (output: unknown): boolean => {
+const assertOutputTextUsesAuthority = (
+  bytes: Buffer,
+  authority: VerifiedReaderSummaryDailySourceAuthorityV2,
+): void => {
+  const output = JSON.parse(bytes.toString("utf8")) as unknown;
+  assertDailyOutputMatchesJsonSchema(output, openAiReaderSummaryJsonSchema);
+  assertDailyOutputCitationsMatchSourceAuthority(output, authority.canonicalBytes, 200);
+};
+
+const assertDailyOutputTextSignalState = (bytes: Buffer): boolean => {
+  const output = JSON.parse(bytes.toString("utf8")) as unknown;
   if (output === null || typeof output !== "object" || Array.isArray(output)) {
     throw new Error("Daily output_text recovery payload must be an object");
   }

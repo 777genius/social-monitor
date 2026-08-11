@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 
 # Sourced by social-monitor-production-deploy.sh after project paths, COMPOSE,
-# and fail are defined. The installed V4A4 entrypoint retains its one-argument
-# ABI; the SSH wrapper carries the exact retry-set authorization on stdin.
+# and fail are defined. The installed V4A4 entrypoint invokes this function
+# with its original one-argument ABI; the SSH wrapper maps the confirmed V4
+# request onto the existing bounded recovery intent.
 
 verify_daily_runner_maintenance_runtime() {
   local runtime_release backend_release control_release integration_release
@@ -82,24 +83,18 @@ append_final_agent_runtime_model_overlay() {
 
 consume_reader_summary_daily_bounded_maintenance_authorization_from_stdin() {
   local authorization_record=''
-  local confirmation authorized_utc_date model_job_identity authority_sha256
-  local recovery_action retry_set_token terminal_set_sha256 extra
+  local confirmation authorized_utc_date model_job_identity authority_sha256 extra
   local read_status
   local -r required_confirmation=reader-summary-daily-canonical-recovery-v4
   local -r required_authorized_utc_date=2026-07-23
-  local -r required_recovery_action=reader-summary-daily-canonical-recovery-v4
-  local -r required_retry_set_token=invalid-product-retry-set-v1
   local -r authorization_read_timeout_seconds=1
-  local legacy_record_length retry_set_record_length maximum_record_characters
+  local expected_record_length maximum_record_characters
 
-  legacy_record_length=$(( ${#required_confirmation} + 1 + \
+  expected_record_length=$(( ${#required_confirmation} + 1 + \
     ${#required_authorized_utc_date} + 1 + 64 + 1 + 64 ))
-  retry_set_record_length=$(( ${#required_recovery_action} + 1 + \
-    ${#required_retry_set_token} + 1 + 64 ))
   # NUL is the delimiter so Bash cannot silently discard it. The one-byte
   # sentinel rejects a record that is longer than the canonical line plus LF.
-  maximum_record_characters=$(( legacy_record_length > retry_set_record_length
-    ? legacy_record_length + 2 : retry_set_record_length + 2 ))
+  maximum_record_characters=$(( expected_record_length + 2 ))
   if IFS= read -r -t "$authorization_read_timeout_seconds" -d '' \
       -n "$maximum_record_characters" authorization_record; then
     read_status=0
@@ -116,64 +111,40 @@ consume_reader_summary_daily_bounded_maintenance_authorization_from_stdin() {
 
   [[ $read_status == 1 ]] || \
     fail 'reader-summary daily bounded maintenance authorization is invalid'
-  [[ ${#authorization_record} == $(( legacy_record_length + 1 )) || \
-     ${#authorization_record} == $(( retry_set_record_length + 1 )) ]] || \
+  [[ ${#authorization_record} == $(( expected_record_length + 1 )) ]] || \
     fail 'reader-summary daily bounded maintenance authorization is invalid'
   [[ $authorization_record == *$'\n' ]] || \
     fail 'reader-summary daily bounded maintenance authorization is invalid'
   authorization_record=${authorization_record%$'\n'}
-  if [[ $authorization_record =~ ^reader-summary-daily-canonical-recovery-v4\ 2026-07-23\ [0-9a-f]{64}\ [0-9a-f]{64}$ ]]; then
-    IFS=' ' read -r confirmation authorized_utc_date model_job_identity \
-      authority_sha256 extra <<< "$authorization_record"
-    [[ $confirmation == "$required_confirmation" && \
-       $authorized_utc_date == "$required_authorized_utc_date" && \
-       $model_job_identity =~ ^[0-9a-f]{64}$ && \
-       $authority_sha256 =~ ^[0-9a-f]{64}$ && \
-       -z ${extra:-} ]] || \
-      fail 'reader-summary daily bounded maintenance authorization is invalid'
-    READER_SUMMARY_DAILY_MAINTENANCE_AUTHORIZED_UTC_DATE=$authorized_utc_date
-    READER_SUMMARY_DAILY_MAINTENANCE_MODEL_JOB_IDENTITY=$model_job_identity
-    READER_SUMMARY_DAILY_MAINTENANCE_AUTHORITY_SHA256=$authority_sha256
-    return
-  fi
-  if [[ $authorization_record =~ ^reader-summary-daily-canonical-recovery-v4\ invalid-product-retry-set-v1\ [0-9a-f]{64}$ ]]; then
-    IFS=' ' read -r recovery_action retry_set_token terminal_set_sha256 extra <<< "$authorization_record"
-    [[ $recovery_action == "$required_recovery_action" && \
-       $retry_set_token == "$required_retry_set_token" && \
-       $terminal_set_sha256 =~ ^[0-9a-f]{64}$ && \
-       -z ${extra:-} ]] || \
-      fail 'reader-summary daily bounded maintenance authorization is invalid'
-    READER_SUMMARY_DAILY_MAINTENANCE_RETRY_SET_TOKEN=$retry_set_token
-    READER_SUMMARY_DAILY_MAINTENANCE_TERMINAL_SET_SHA256=$terminal_set_sha256
-    return
-  fi
-  fail 'reader-summary daily bounded maintenance authorization is invalid'
+  [[ $authorization_record =~ ^reader-summary-daily-canonical-recovery-v4\ 2026-07-23\ [0-9a-f]{64}\ [0-9a-f]{64}$ ]] || \
+    fail 'reader-summary daily bounded maintenance authorization is invalid'
+  IFS=' ' read -r confirmation authorized_utc_date model_job_identity \
+    authority_sha256 extra <<< "$authorization_record"
+  [[ $confirmation == "$required_confirmation" && \
+     $authorized_utc_date == "$required_authorized_utc_date" && \
+     $model_job_identity =~ ^[0-9a-f]{64}$ && \
+     $authority_sha256 =~ ^[0-9a-f]{64}$ && \
+     -z ${extra:-} ]] || \
+    fail 'reader-summary daily bounded maintenance authorization is invalid'
+
+  READER_SUMMARY_DAILY_MAINTENANCE_AUTHORIZED_UTC_DATE=$authorized_utc_date
+  READER_SUMMARY_DAILY_MAINTENANCE_MODEL_JOB_IDENTITY=$model_job_identity
+  READER_SUMMARY_DAILY_MAINTENANCE_AUTHORITY_SHA256=$authority_sha256
 }
 
 has_reader_summary_daily_bounded_maintenance_authorization() {
   [[ -n ${READER_SUMMARY_DAILY_MAINTENANCE_AUTHORIZED_UTC_DATE:-} || \
      -n ${READER_SUMMARY_DAILY_MAINTENANCE_MODEL_JOB_IDENTITY:-} || \
-     -n ${READER_SUMMARY_DAILY_MAINTENANCE_AUTHORITY_SHA256:-} || \
-     -n ${READER_SUMMARY_DAILY_MAINTENANCE_RETRY_SET_TOKEN:-} || \
-     -n ${READER_SUMMARY_DAILY_MAINTENANCE_TERMINAL_SET_SHA256:-} ]]
+     -n ${READER_SUMMARY_DAILY_MAINTENANCE_AUTHORITY_SHA256:-} ]]
 }
 
 assert_reader_summary_daily_bounded_maintenance_authorization() {
-  if [[ -n ${READER_SUMMARY_DAILY_MAINTENANCE_AUTHORIZED_UTC_DATE:-} || \
-        -n ${READER_SUMMARY_DAILY_MAINTENANCE_MODEL_JOB_IDENTITY:-} || \
-        -n ${READER_SUMMARY_DAILY_MAINTENANCE_AUTHORITY_SHA256:-} ]]; then
-    [[ -z ${READER_SUMMARY_DAILY_MAINTENANCE_RETRY_SET_TOKEN:-} && \
-       -z ${READER_SUMMARY_DAILY_MAINTENANCE_TERMINAL_SET_SHA256:-} && \
-       ${READER_SUMMARY_DAILY_MAINTENANCE_AUTHORIZED_UTC_DATE:-} == 2026-07-23 && \
-       ${READER_SUMMARY_DAILY_MAINTENANCE_MODEL_JOB_IDENTITY:-} =~ ^[0-9a-f]{64}$ && \
-       ${READER_SUMMARY_DAILY_MAINTENANCE_AUTHORITY_SHA256:-} =~ ^[0-9a-f]{64}$ ]] || \
-      fail 'reader-summary daily bounded maintenance authorization must name the exact Jul23 identity'
-    return
-  fi
-  [[ ${READER_SUMMARY_DAILY_MAINTENANCE_RETRY_SET_TOKEN:-} == invalid-product-retry-set-v1 ]] || \
-    fail 'reader-summary daily bounded maintenance retry-set token is invalid'
-  [[ ${READER_SUMMARY_DAILY_MAINTENANCE_TERMINAL_SET_SHA256:-} =~ ^[0-9a-f]{64}$ ]] || \
-    fail 'reader-summary daily bounded maintenance terminal-set SHA-256 is invalid'
+  [[ ${READER_SUMMARY_DAILY_MAINTENANCE_AUTHORIZED_UTC_DATE:-} == 2026-07-23 ]] || \
+    fail 'reader-summary daily bounded maintenance authorization must name 2026-07-23'
+  [[ ${READER_SUMMARY_DAILY_MAINTENANCE_MODEL_JOB_IDENTITY:-} =~ ^[0-9a-f]{64}$ ]] || \
+    fail 'reader-summary daily bounded maintenance model job identity is invalid'
+  [[ ${READER_SUMMARY_DAILY_MAINTENANCE_AUTHORITY_SHA256:-} =~ ^[0-9a-f]{64}$ ]] || \
+    fail 'reader-summary daily bounded maintenance authority SHA-256 is invalid'
 }
 
 refresh_daily_runner_maintenance_auth() {
@@ -195,22 +166,9 @@ refresh_daily_runner_maintenance_auth() {
 }
 
 run_reader_summary_daily_canonical_recovery() {
-  local recovery_command retry_set_token='' terminal_set_sha256=''
-  if (($# == 2)); then
-    retry_set_token=$1
-    terminal_set_sha256=$2
-    [[ $retry_set_token == invalid-product-retry-set-v1 && \
-       $terminal_set_sha256 =~ ^[0-9a-f]{64}$ ]] || \
-      fail 'reader-summary daily canonical recovery retry-set input is invalid'
-  elif (($# != 0)); then
-    fail 'reader-summary daily canonical recovery accepts no input or one retry-set authorization'
-  fi
+  local recovery_command
+  [[ $# == 0 ]] || fail 'reader-summary daily canonical recovery accepts no authorization input'
   recovery_command='set -eu; npm run prepare:reader-summary-production-recovery-gap-authority; npm run run:reader-summary-daily-canonical-recovery'
-  if [[ -n $retry_set_token ]]; then
-    # The already-terminal six-row set needs no gap-authority preparation.
-    # The V4 runner authorizes the exact digest before it opens Prisma or gRPC.
-    recovery_command="set -eu; npm run run:reader-summary-daily-canonical-recovery -- $retry_set_token $terminal_set_sha256"
-  fi
   "${COMPOSE[@]}" --profile daily run --rm --no-deps \
     -e READER_SUMMARY_DAILY_TENANT_ID=00000000-0000-7000-8000-000000000901 \
     -e READER_SUMMARY_DAILY_WORKSPACE_ID=00000000-0000-7000-8000-000000000902 \
@@ -234,50 +192,30 @@ run_reader_summary_daily_bounded_maintenance() {
     'set -eu; node scripts/run-with-timeout.mjs --timeout-ms 19800000 --node-options --max-old-space-size=768 -- ./node_modules/.bin/ts-node -r tsconfig-paths/register scripts/run-reader-summary-daily-bounded-maintenance.ts'
 }
 
-run_reader_summary_daily_terminal_set_receipt() {
-  [[ $# == 0 ]] || fail 'reader-summary daily terminal-set receipt accepts no input'
-  "${COMPOSE[@]}" --profile daily run --rm --no-deps \
-    daily-runner sh -lc \
-    'set -eu; node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=768 -- ./node_modules/.bin/ts-node -r tsconfig-paths/register scripts/read-reader-summary-daily-terminal-set-receipt.ts'
-}
-
 run_reader_summary_daily_runner_maintenance() (
   local maintenance_action=$1
   local run_bounded_maintenance=false
-  local run_invalid_product_retry_set=false
   [[ $# == 1 ]] || fail 'reader-summary daily-runner maintenance accepts exactly one action'
   case $maintenance_action in
-    reader-summary-recover-missing-days|reader-summary-weekly-run|reader-summary-daily-terminal-set-receipt-v1) ;;
+    reader-summary-recover-missing-days|reader-summary-weekly-run) ;;
     *) fail 'unknown reader-summary daily-runner maintenance action' ;;
   esac
-  unset READER_SUMMARY_DAILY_MAINTENANCE_AUTHORIZED_UTC_DATE READER_SUMMARY_DAILY_MAINTENANCE_MODEL_JOB_IDENTITY READER_SUMMARY_DAILY_MAINTENANCE_AUTHORITY_SHA256 READER_SUMMARY_DAILY_MAINTENANCE_RETRY_SET_TOKEN READER_SUMMARY_DAILY_MAINTENANCE_TERMINAL_SET_SHA256
+  unset READER_SUMMARY_DAILY_MAINTENANCE_AUTHORIZED_UTC_DATE READER_SUMMARY_DAILY_MAINTENANCE_MODEL_JOB_IDENTITY READER_SUMMARY_DAILY_MAINTENANCE_AUTHORITY_SHA256
   if [[ $maintenance_action == reader-summary-recover-missing-days ]]; then
     consume_reader_summary_daily_bounded_maintenance_authorization_from_stdin
     if has_reader_summary_daily_bounded_maintenance_authorization; then
       assert_reader_summary_daily_bounded_maintenance_authorization
-      if [[ -n ${READER_SUMMARY_DAILY_MAINTENANCE_RETRY_SET_TOKEN:-} ]]; then
-        run_invalid_product_retry_set=true
-      else
-        run_bounded_maintenance=true
-      fi
+      run_bounded_maintenance=true
     fi
   fi
   acquire_daily_runner_maintenance_locks
   verify_daily_runner_maintenance_runtime
-  if [[ $maintenance_action == reader-summary-daily-terminal-set-receipt-v1 ]]; then
-    run_reader_summary_daily_terminal_set_receipt
-    return
-  fi
   append_final_agent_runtime_model_overlay
   refresh_daily_runner_maintenance_auth || return
   "${COMPOSE[@]}" --profile app up -d --no-deps agent-runtime || return
   case $maintenance_action in
     reader-summary-recover-missing-days)
-      if [[ $run_invalid_product_retry_set == true ]]; then
-        run_reader_summary_daily_canonical_recovery \
-          "$READER_SUMMARY_DAILY_MAINTENANCE_RETRY_SET_TOKEN" \
-          "$READER_SUMMARY_DAILY_MAINTENANCE_TERMINAL_SET_SHA256" || return
-      elif [[ $run_bounded_maintenance == true ]]; then
+      if [[ $run_bounded_maintenance == true ]]; then
         run_reader_summary_daily_canonical_recovery || return
         local bounded_run
         for bounded_run in 1 2 3 4; do

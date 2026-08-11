@@ -121,7 +121,7 @@ const isRecoveryAuditForProvenance = (
     return false;
   }
   const recovery = (audit as Readonly<Record<string, unknown>>).recoveryV4;
-  const baseFields = [
+  const fields = [
     "schemaVersion",
     "recoveryVersion",
     "selectedOutputKind",
@@ -132,27 +132,14 @@ const isRecoveryAuditForProvenance = (
     "ingestionCutoff",
     "sourceAuthoritySha256",
     "modelJobIdentity",
+    "outputTextSha256",
+    "outputTextByteLength",
+    "githubProjectionSha256",
   ] as const;
   if (!isNonArrayRecord(recovery)) {
     return false;
   }
   const record = recovery;
-  const isV3 = "canonicalOutputSha256" in provenance;
-  const fields = isV3
-    ? [
-        ...baseFields,
-        "canonicalOutputSha256",
-        "canonicalOutputByteLength",
-        "rawOutputSha256",
-        "rawOutputByteLength",
-        "githubProjectionSha256",
-      ]
-    : [
-        ...baseFields,
-        "outputTextSha256",
-        "outputTextByteLength",
-        "githubProjectionSha256",
-      ];
   if (
     Object.keys(record).length !== fields.length ||
     fields.some(
@@ -161,7 +148,8 @@ const isRecoveryAuditForProvenance = (
   ) {
     return false;
   }
-  const commonMatches =
+  return record.schemaVersion ===
+      "reader_summary.daily_canonical_recovery_provenance.v2" &&
     record.recoveryVersion === provenance.recoveryVersion &&
     record.selectedOutputKind === provenance.selectedOutputKind &&
     record.sourceAuthoritySchemaVersion === provenance.sourceAuthoritySchemaVersion &&
@@ -171,20 +159,9 @@ const isRecoveryAuditForProvenance = (
     record.ingestionCutoff === provenance.ingestionCutoff &&
     record.sourceAuthoritySha256 === provenance.sourceAuthoritySha256 &&
     record.modelJobIdentity === provenance.modelJobIdentity &&
-    record.githubProjectionSha256 === provenance.githubProjectionSha256;
-  if (!commonMatches) return false;
-  if (isV3) {
-    return record.schemaVersion ===
-        "reader_summary.daily_canonical_recovery_provenance.v3" &&
-      record.canonicalOutputSha256 === provenance.canonicalOutputSha256 &&
-      record.canonicalOutputByteLength === provenance.canonicalOutputByteLength &&
-      record.rawOutputSha256 === provenance.rawOutputSha256 &&
-      record.rawOutputByteLength === provenance.rawOutputByteLength;
-  }
-  return record.schemaVersion ===
-      "reader_summary.daily_canonical_recovery_provenance.v2" &&
     record.outputTextSha256 === provenance.outputTextSha256 &&
-    record.outputTextByteLength === provenance.outputTextByteLength;
+    record.outputTextByteLength === provenance.outputTextByteLength &&
+    record.githubProjectionSha256 === provenance.githubProjectionSha256;
 };
 
 const isNonArrayRecord = (
