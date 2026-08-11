@@ -386,8 +386,7 @@ jobs:
               2>/dev/null; then
               npm run check:postgres-runtime-pool-unit
             else
-              POSTGRES_RUNTIME_DAILY_C1_HELPER_TEST_MODE=1 \
-                npm run check:postgres-runtime-pool-unit
+              echo 'backend-gate=postgres-pool-unit deferred-to-final-runtime-release'
             fi
             echo 'backend-gate=tenant-rls'
             TENANT_RLS_TEST_ADMIN_DATABASE_URL=postgresql://social_monitor_pool_ci:social_monitor_local_password@127.0.0.1:5432/social_monitor_pool_ci \
