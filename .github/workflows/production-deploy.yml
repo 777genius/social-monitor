@@ -192,6 +192,7 @@ jobs:
           transition=ops/deploy/production-release-a-transition.sh
           client=ops/deploy/github-production-deploy-client.sh
           release_e=889d50f50328c89e25b3ef898e552df631b3222f; release_a2=c64c3b46b6b6ba5c7ac7b04028932e09dae2116a; release_b2=e3b5b5d89b3586668e36f987f03672415b5a0f37
+          daily_c1_atomic_repair=61018b1d376ba6695c29f9ccee1b53b1b344d4dc
           target_plan="$RUNNER_TEMP/recovery-target-inspect.plan"; b_plan="$RUNNER_TEMP/recovery-b2-inspect.plan"
           a_plan="$RUNNER_TEMP/recovery-a2-inspect.plan"; e_plan="$RUNNER_TEMP/recovery-e-inspect.plan"
           repair_anchor=none
@@ -214,7 +215,7 @@ jobs:
             target_pool_bootstrap=$(awk -F= \
               '$1 == "postgres_pool_bootstrap" { print $2 }' "$target_plan")
             if [[ $target_pool_bootstrap == uninstalled ]]; then
-              repair_anchor=$release_b2
+              repair_anchor=$daily_c1_atomic_repair
               transition_state=repair-required
             else
               transition_state=target-pending
@@ -744,7 +745,7 @@ jobs:
           DEPLOY_RECONCILE_INTERVAL_SECONDS: 0
         run: |
           case $REPAIR_ANCHOR in
-            889d50f50328c89e25b3ef898e552df631b3222f|c64c3b46b6b6ba5c7ac7b04028932e09dae2116a|e3b5b5d89b3586668e36f987f03672415b5a0f37) ;;
+            889d50f50328c89e25b3ef898e552df631b3222f|c64c3b46b6b6ba5c7ac7b04028932e09dae2116a|e3b5b5d89b3586668e36f987f03672415b5a0f37|61018b1d376ba6695c29f9ccee1b53b1b344d4dc) ;;
             *) exit 1 ;;
           esac
           repair_status=0

@@ -101,6 +101,8 @@ grep -F 'backend-gate=weekly-runtime-contract deferred-to-final-runtime-release'
   "$workflow" >/dev/null || fail 'bridge does not defer the final-only weekly runtime contract'
 grep -F 'transition_state=repair-required' "$workflow" >/dev/null || \
   fail 'bridge cannot schedule bounded repair for a missing PostgreSQL bootstrap'
+grep -F 'daily_c1_atomic_repair=61018b1d' "$workflow" >/dev/null || \
+  fail 'bridge does not pin the descendant atomic PostgreSQL repair commit'
 grep -F 'backend-gate=postgres-pool-release deferred-to-bounded-B2-repair' \
   "$workflow" >/dev/null || fail 'bridge CI blocks the reviewed bounded bootstrap repair'
 grep -F 'shellcheck -S warning -x "${deploy_shell_files[@]}"' \
