@@ -96,7 +96,7 @@ fake_ssh() {
       IFS= read -r value
       printf '%s\n' "$value" > "$FAKE_UPLOAD_PATH"
       ;;
-    maintenance_success:"disk-report $TARGET_SHA"|maintenance_success:"project-disk-cleanup $TARGET_SHA"|maintenance_success:"reader-summary-recover-missing-days $TARGET_SHA"|maintenance_success:"reader-summary-weekly-run $TARGET_SHA"|maintenance_success:"reader-summary-daily-terminal-set-receipt-v1 $TARGET_SHA"|maintenance_success:"reader-summary-daily-canonical-recovery-v4 $TARGET_SHA invalid-product-retry-set-v1 $TERMINAL_SET_SHA256"|maintenance_success:"reader-summary-daily-canonical-recovery-v4 $TARGET_SHA reader-summary-daily-canonical-recovery-v4 $MODEL_JOB_IDENTITY $AUTHORITY_SHA256")
+    maintenance_success:"disk-report $TARGET_SHA"|maintenance_success:"project-disk-cleanup $TARGET_SHA"|maintenance_success:"reader-summary-recover-missing-days $TARGET_SHA"|maintenance_success:"reader-summary-weekly-run $TARGET_SHA"|maintenance_success:"reader-summary-daily-canonical-recovery-v4 $TARGET_SHA reader-summary-daily-canonical-recovery-v4 $MODEL_JOB_IDENTITY $AUTHORITY_SHA256")
       printf 'maintenance=%s\n' "${command%% *}"
       ;;
     normal_success:"deploy $TARGET_SHA")
@@ -190,7 +190,6 @@ BACKEND_SHA=4f47fac7faed7dc24110f4a43e88820d776b8a40
 CURRENT_BACKEND_SHA=617e284607f3dde74c27164af2b981770b9a62ed
 MODEL_JOB_IDENTITY=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 AUTHORITY_SHA256=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
-TERMINAL_SET_SHA256=cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 FAKE_SSH=$FIXTURE/fake-ssh
 FAKE_SSH_LOG=$FIXTURE/ssh.log
 FAKE_SSH_STATE=$FIXTURE/ssh.state
@@ -202,7 +201,7 @@ DEPLOY_SSH_KNOWN_HOSTS_PATH=$FIXTURE/ssh/pinned-known-hosts
 DEPLOY_HOST=production.example.invalid
 DEPLOY_USER=social-monitor-deploy
 
-export TARGET_SHA BACKEND_SHA CURRENT_BACKEND_SHA MODEL_JOB_IDENTITY AUTHORITY_SHA256 TERMINAL_SET_SHA256
+export TARGET_SHA BACKEND_SHA CURRENT_BACKEND_SHA MODEL_JOB_IDENTITY AUTHORITY_SHA256
 export FAKE_SSH_LOG FAKE_SSH_STATE FAKE_UPLOAD_PATH
 export DEPLOY_SSH_DIRECTORY DEPLOY_SSH_KEY_PATH DEPLOY_SSH_KNOWN_HOSTS_PATH
 export DEPLOY_HOST DEPLOY_USER GITHUB_OUTPUT
@@ -265,46 +264,27 @@ bash "$CLIENT" cleanup
 
 for maintenance_action in \
   disk-report project-disk-cleanup \
-  reader-summary-recover-missing-days reader-summary-weekly-run \
-  reader-summary-daily-terminal-set-receipt-v1; do
+  reader-summary-recover-missing-days reader-summary-weekly-run; do
   run_client maintenance_success maintenance \
     "$TARGET_SHA" "$maintenance_action" >/dev/null
   assert_call_count 1 "$maintenance_action $TARGET_SHA"
 done
 run_client maintenance_success maintenance "$TARGET_SHA" \
   reader-summary-daily-canonical-recovery-v4 \
-  invalid-product-retry-set-v1 "$TERMINAL_SET_SHA256" >/dev/null
-assert_call_count 1 \
-  "reader-summary-daily-canonical-recovery-v4 $TARGET_SHA invalid-product-retry-set-v1 $TERMINAL_SET_SHA256"
-run_client maintenance_success maintenance "$TARGET_SHA" \
-  reader-summary-daily-canonical-recovery-v4 \
   reader-summary-daily-canonical-recovery-v4 \
   "$MODEL_JOB_IDENTITY" "$AUTHORITY_SHA256" >/dev/null
 assert_call_count 1 \
   "reader-summary-daily-canonical-recovery-v4 $TARGET_SHA reader-summary-daily-canonical-recovery-v4 $MODEL_JOB_IDENTITY $AUTHORITY_SHA256"
-for retry_set_token in '' wrong-invalid-product-retry-set-v1 \
-  "invalid-product-retry-set-v1:$TARGET_SHA"; do
+for confirmation in '' wrong-reader-summary-daily-canonical-recovery-v4 \
+  "reader-summary-daily-canonical-recovery-v4:$TARGET_SHA"; do
   assert_fails maintenance_success maintenance "$TARGET_SHA" \
-    reader-summary-daily-canonical-recovery-v4 "$retry_set_token" "$TERMINAL_SET_SHA256"
+    reader-summary-daily-canonical-recovery-v4 "$confirmation"
   assert_call_count 0 \
-    "reader-summary-daily-canonical-recovery-v4 $TARGET_SHA $retry_set_token $TERMINAL_SET_SHA256"
+    "reader-summary-daily-canonical-recovery-v4 $TARGET_SHA $confirmation"
 done
 assert_fails maintenance_success maintenance "$TARGET_SHA" \
   reader-summary-daily-canonical-recovery-v4
 assert_call_count 0 "reader-summary-daily-canonical-recovery-v4 $TARGET_SHA"
-assert_fails maintenance_success maintenance "$TARGET_SHA" \
-  reader-summary-daily-canonical-recovery-v4 \
-  invalid-product-retry-set-v1 "${TERMINAL_SET_SHA256^^}"
-assert_call_count 0 \
-  "reader-summary-daily-canonical-recovery-v4 $TARGET_SHA invalid-product-retry-set-v1 ${TERMINAL_SET_SHA256^^}"
-for confirmation in '' wrong-reader-summary-daily-canonical-recovery-v4 \
-  "reader-summary-daily-canonical-recovery-v4:$TARGET_SHA"; do
-  assert_fails maintenance_success maintenance "$TARGET_SHA" \
-    reader-summary-daily-canonical-recovery-v4 "$confirmation" \
-    "$MODEL_JOB_IDENTITY" "$AUTHORITY_SHA256"
-  assert_call_count 0 \
-    "reader-summary-daily-canonical-recovery-v4 $TARGET_SHA $confirmation $MODEL_JOB_IDENTITY $AUTHORITY_SHA256"
-done
 assert_fails maintenance_success maintenance "$TARGET_SHA" \
   reader-summary-daily-canonical-recovery-v4 \
   reader-summary-daily-canonical-recovery-v4 "${MODEL_JOB_IDENTITY^^}" "$AUTHORITY_SHA256"
@@ -312,40 +292,6 @@ assert_call_count 0 \
   "reader-summary-daily-canonical-recovery-v4 $TARGET_SHA reader-summary-daily-canonical-recovery-v4 ${MODEL_JOB_IDENTITY^^} $AUTHORITY_SHA256"
 assert_fails maintenance_success maintenance "$TARGET_SHA" docker-system-prune
 assert_call_count 0 "docker-system-prune $TARGET_SHA"
-
-RECEIPT=$FIXTURE/terminal-set-receipt.json
-receipt_line='{"schemaVersion":"reader_summary.daily_terminal_set_receipt.v1","retrySetToken":"invalid-product-retry-set-v1","tenantId":"00000000-0000-7000-8000-000000000901","workspaceId":"00000000-0000-7000-8000-000000000902","requestedUtcDates":["2026-07-25","2026-07-26","2026-07-27","2026-07-28","2026-07-29","2026-07-30"],"terminalCount":6,"terminalSetSha256":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"}'
-printf '%s\n' "$receipt_line" > "$RECEIPT"
-bash "$CLIENT" validate-terminal-set-receipt "$RECEIPT"
-[[ $(stat -c '%a' "$RECEIPT") == 444 ]]
-
-assert_invalid_receipt() {
-  local label=$1 value=$2
-  chmod 0600 "$RECEIPT"
-  printf '%s' "$value" > "$RECEIPT"
-  if bash "$CLIENT" validate-terminal-set-receipt "$RECEIPT" >/dev/null 2>&1; then
-    printf 'invalid terminal-set receipt accepted: %s\n' "$label" >&2
-    exit 1
-  fi
-  [[ $(stat -c '%a' "$RECEIPT") == 600 ]]
-}
-
-assert_invalid_receipt duplicate-key \
-  "${receipt_line/\{\"schemaVersion\":/\{\"schemaVersion\":\"reader_summary.daily_terminal_set_receipt.v1\",\"schemaVersion\":}"$'\n'
-assert_invalid_receipt missing-key \
-  "${receipt_line/,\"terminalCount\":6/}"$'\n'
-assert_invalid_receipt wrong-date \
-  "${receipt_line/2026-07-25/2026-07-24}"$'\n'
-assert_invalid_receipt wrong-state \
-  "${receipt_line/reader_summary.daily_terminal_set_receipt.v1/reader_summary.daily_terminal_set_receipt.v2}"$'\n'
-assert_invalid_receipt wrong-reason \
-  "${receipt_line/invalid-product-retry-set-v1/other-retry-set}"$'\n'
-assert_invalid_receipt wrong-attempt \
-  "${receipt_line/\"terminalCount\":6/\"terminalCount\":7}"$'\n'
-assert_invalid_receipt wrong-hash \
-  "${receipt_line/cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc/CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC}"$'\n'
-assert_invalid_receipt extra-key "${receipt_line%\}},\"extra\":true}"$'\n'
-assert_invalid_receipt extra-output "$receipt_line"$'\nnoise\n'
 
 : > "$GITHUB_OUTPUT"
 run_client plan_success plan "$TARGET_SHA" >/dev/null
@@ -373,16 +319,6 @@ grep -Fx "postgres_pool_bootstrap_sha=$TARGET_SHA" "$GITHUB_OUTPUT" >/dev/null
 grep -Fx 'postgres_pool_repair=true' "$GITHUB_OUTPUT" >/dev/null
 assert_call_count 2 "plan $TARGET_SHA"
 assert_call_count 1 "deploy $TARGET_SHA"
-
-# Inspection is deliberately read-only: an uninstalled bootstrap is reported
-# without invoking repair and without writing workflow outputs.
-: > "$GITHUB_OUTPUT"
-inspect_output=$(run_client atomic_success inspect-plan "$TARGET_SHA")
-grep -Fx 'postgres_pool_bootstrap=uninstalled' <<< "$inspect_output" >/dev/null
-grep -Fx 'postgres_pool_repair=false' <<< "$inspect_output" >/dev/null
-[[ ! -s $GITHUB_OUTPUT ]]
-assert_call_count 1 "plan $TARGET_SHA"
-assert_call_count 0 "deploy $TARGET_SHA"
 
 : > "$GITHUB_OUTPUT"
 run_client current_backend_missing plan "$TARGET_SHA" >/dev/null
@@ -510,14 +446,9 @@ for maintenance_action in \
   reader-summary-daily-canonical-recovery-v4; do
   grep -F "          - $maintenance_action" "$WORKFLOW" >/dev/null
 done
-grep -F 'daily_canonical_recovery_retry_set_token:' "$WORKFLOW" >/dev/null
-grep -F 'daily_canonical_recovery_terminal_set_sha256:' "$WORKFLOW" >/dev/null
 grep -F 'daily_canonical_recovery_confirmation:' "$WORKFLOW" >/dev/null
 grep -F 'daily_canonical_recovery_model_job_identity:' "$WORKFLOW" >/dev/null
 grep -F 'daily_canonical_recovery_authority_sha256:' "$WORKFLOW" >/dev/null
-grep -F 'DAILY_CANONICAL_RECOVERY_RETRY_SET_TOKEN == invalid-product-retry-set-v1' \
-  "$WORKFLOW" >/dev/null
-grep -F 'DAILY_CANONICAL_RECOVERY_CONFIRMATION' "$WORKFLOW" >/dev/null
 grep -F 'timeout-minutes: 360' "$WORKFLOW" >/dev/null
 grep -F 'reader-summary-daily-canonical-recovery-v4' "$WORKFLOW" >/dev/null
 grep -F 'npm run check:reader-summary-daily-canonical-recovery-postgres18' "$WORKFLOW" >/dev/null

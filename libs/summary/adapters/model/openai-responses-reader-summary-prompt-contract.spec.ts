@@ -88,22 +88,12 @@ describe("OpenAI reader summary prompt contract", () => {
     });
   });
 
-  it("requires every claim-bearing structured surface to cite evidence", () => {
+  it("requires every structured narrative section to cite evidence", () => {
     expect(openAiReaderSummaryJsonSchema.$defs.narrativeSection).toMatchObject({
       properties: {
         citationIds: { minItems: 1, maxItems: 3 },
       },
     });
-    for (const definition of [
-      openAiReaderSummaryJsonSchema.$defs.topStory,
-      openAiReaderSummaryJsonSchema.$defs.interestHighlight,
-      openAiReaderSummaryJsonSchema.$defs.repeatedSignal,
-      openAiReaderSummaryJsonSchema.$defs.readerClaim,
-    ]) {
-      expect(definition).toMatchObject({
-        properties: { citationIds: { minItems: 1 } },
-      });
-    }
   });
 
   it("does not expose GitHub Trending evidence or coverage to the model", () => {

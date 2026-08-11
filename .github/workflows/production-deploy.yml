@@ -1,4 +1,5 @@
 name: Production deploy
+
 on:
   push:
     branches:
@@ -47,66 +48,29 @@ on:
           - reader-summary-recover-missing-days
           - reader-summary-weekly-run
           - reader-summary-daily-canonical-recovery-v4
-          - reader-summary-daily-terminal-set-receipt-v1
-          - reader-summary-daily-scan-terminal-preimage-c1
-          - reader-summary-daily-scan-terminal-repair-c1
-          - reader-summary-daily-delivery-c1-run
-          - reader-summary-daily-delivery-c1-contain
-      daily_scan_terminal_repair_confirmation:
-        description: Required exact C1 scan-terminal repair confirmation
-        required: false
-        default: ''
-        type: string
-      daily_scan_terminal_repair_preimage_sha256:
-        description: Required reviewed fresh C1 scan-terminal preimage SHA-256
-        required: false
-        default: ''
-        type: string
-      daily_delivery_c1_confirmation:
-        description: Required exact C1 run or containment confirmation
-        required: false
-        default: ''
-        type: string
-      daily_delivery_c1_recovery_through:
-        description: Required exact UTC recovery-through date for the C1 run
-        required: false
-        default: ''
-        type: string
-      daily_delivery_c1_ready_sha:
-        description: Required exact current READY SHA for C1 containment
-        required: false
-        default: ''
-        type: string
-      daily_canonical_recovery_retry_set_token:
-        description: Required exact invalid-product retry-set token for daily canonical recovery V4
-        required: false
-        default: ''
-        type: string
-      daily_canonical_recovery_terminal_set_sha256:
-        description: Required lowercase-hex terminal-set SHA-256 for daily canonical recovery V4
-        required: false
-        default: ''
-        type: string
       daily_canonical_recovery_confirmation:
-        description: Required exact confirmation for ordinary daily canonical recovery V4
+        description: Required exact confirmation for daily canonical recovery V4
         required: false
         default: ''
         type: string
       daily_canonical_recovery_model_job_identity:
-        description: Required lowercase-hex Jul23 model job identity for ordinary bounded recovery
+        description: Required lowercase-hex Jul23 model job identity for bounded recovery
         required: false
         default: ''
         type: string
       daily_canonical_recovery_authority_sha256:
-        description: Required lowercase-hex Jul23 source authority SHA-256 for ordinary bounded recovery
+        description: Required lowercase-hex Jul23 source authority SHA-256 for bounded recovery
         required: false
         default: ''
         type: string
+
 permissions:
   contents: read
+
 concurrency:
   group: social-monitor-production
   cancel-in-progress: false
+
 jobs:
   production_maintenance:
     name: Production maintenance
@@ -114,152 +78,82 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 360
     environment: production
+
     steps:
       - name: Check out the release commit
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+
       - name: Configure restricted production SSH
         env:
           DEPLOY_KEY: ${{ secrets.PRODUCTION_SSH_PRIVATE_KEY }}
           KNOWN_HOSTS: ${{ secrets.PRODUCTION_SSH_KNOWN_HOSTS }}
         run: bash ops/deploy/github-production-deploy-client.sh configure
+
       - name: Run bounded production maintenance
         env:
           DEPLOY_HOST: ${{ vars.PRODUCTION_SSH_HOST }}
           DEPLOY_USER: ${{ vars.PRODUCTION_SSH_USER }}
           MAINTENANCE_ACTION: ${{ inputs.maintenance_action }}
-          DAILY_CANONICAL_RECOVERY_RETRY_SET_TOKEN: ${{ inputs.daily_canonical_recovery_retry_set_token }}
-          DAILY_CANONICAL_RECOVERY_TERMINAL_SET_SHA256: ${{ inputs.daily_canonical_recovery_terminal_set_sha256 }}
           DAILY_CANONICAL_RECOVERY_CONFIRMATION: ${{ inputs.daily_canonical_recovery_confirmation }}
           DAILY_CANONICAL_RECOVERY_MODEL_JOB_IDENTITY: ${{ inputs.daily_canonical_recovery_model_job_identity }}
           DAILY_CANONICAL_RECOVERY_AUTHORITY_SHA256: ${{ inputs.daily_canonical_recovery_authority_sha256 }}
-          DAILY_SCAN_TERMINAL_REPAIR_CONFIRMATION: ${{ inputs.daily_scan_terminal_repair_confirmation }}
-          DAILY_SCAN_TERMINAL_REPAIR_PREIMAGE_SHA256: ${{ inputs.daily_scan_terminal_repair_preimage_sha256 }}
-          DAILY_DELIVERY_C1_CONFIRMATION: ${{ inputs.daily_delivery_c1_confirmation }}
-          DAILY_DELIVERY_C1_RECOVERY_THROUGH: ${{ inputs.daily_delivery_c1_recovery_through }}
-          DAILY_DELIVERY_C1_READY_SHA: ${{ inputs.daily_delivery_c1_ready_sha }}
         run: |
           set -euo pipefail
-          bash ops/deploy/github-production-maintenance-dispatch.sh
-      - name: Store unique immutable maintenance artifact
-        if: ${{ inputs.maintenance_action == 'reader-summary-daily-terminal-set-receipt-v1' || inputs.maintenance_action == 'reader-summary-daily-scan-terminal-preimage-c1' || inputs.maintenance_action == 'reader-summary-daily-scan-terminal-repair-c1' || inputs.maintenance_action == 'reader-summary-daily-delivery-c1-run' || inputs.maintenance_action == 'reader-summary-daily-delivery-c1-contain' }}
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
-        with:
-          name: ${{ inputs.maintenance_action }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/${{ inputs.maintenance_action }}-${{ github.run_id }}-${{ github.run_attempt }}.json
-          if-no-files-found: error
-          retention-days: 30
+          if [[ $MAINTENANCE_ACTION == reader-summary-daily-canonical-recovery-v4 ]]; then
+            bash ops/deploy/github-production-deploy-client.sh maintenance "$GITHUB_SHA" \
+              "$MAINTENANCE_ACTION" "$DAILY_CANONICAL_RECOVERY_CONFIRMATION" \
+              "$DAILY_CANONICAL_RECOVERY_MODEL_JOB_IDENTITY" \
+              "$DAILY_CANONICAL_RECOVERY_AUTHORITY_SHA256"
+          else
+            bash ops/deploy/github-production-deploy-client.sh maintenance "$GITHUB_SHA" \
+              "$MAINTENANCE_ACTION"
+          fi
+
       - name: Remove production SSH material
         if: always()
         run: bash ops/deploy/github-production-deploy-client.sh cleanup
+
   plan:
     if: ${{ github.event_name != 'workflow_dispatch' || inputs.maintenance_action == 'none' }}
     name: Plan changed production components
     runs-on: ubuntu-latest
+    # A missing PostgreSQL bootstrap marker is repaired through the normal
+    # deploy path, whose bounded backend health grace and soak exceed 10 min.
     timeout-minutes: 30
     environment: production
     outputs:
       backend: ${{ steps.plan.outputs.backend }}
       backend_base: ${{ steps.plan.outputs.backend_base }}
       control: ${{ steps.plan.outputs.control }}
-      daily_c1_bridge: ${{ steps.plan.outputs.daily_c1_bridge }}
       frontend: ${{ steps.plan.outputs.frontend }}
       postgres_pool_bootstrap: ${{ steps.plan.outputs.postgres_pool_bootstrap }}
       postgres_pool_bootstrap_sha: ${{ steps.plan.outputs.postgres_pool_bootstrap_sha }}
       postgres_pool_repair: ${{ steps.plan.outputs.postgres_pool_repair }}
       x_collector: ${{ steps.plan.outputs.x_collector }}
-      recovery_transition: ${{ steps.plan.outputs.recovery_transition }}
-      repair_anchor: ${{ steps.plan.outputs.repair_anchor }}
-      transition_state: ${{ steps.plan.outputs.transition_state }}
+
     steps:
       - name: Check out the release commit
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
         with:
           fetch-depth: 0
-      - name: Validate frozen three-phase graph before production SSH
-        run: bash ops/deploy/production-release-a-transition.sh validate "$GITHUB_SHA"
+
       - name: Configure restricted production SSH
         env:
           DEPLOY_KEY: ${{ secrets.PRODUCTION_SSH_PRIVATE_KEY }}
           KNOWN_HOSTS: ${{ secrets.PRODUCTION_SSH_KNOWN_HOSTS }}
         run: bash ops/deploy/github-production-deploy-client.sh configure
-      - name: Inspect transition state in B then A then E order
+
+      - name: Read durable component markers
         id: plan
         env:
           DEPLOY_HOST: ${{ vars.PRODUCTION_SSH_HOST }}
           DEPLOY_USER: ${{ vars.PRODUCTION_SSH_USER }}
-        run: |
-          set -euo pipefail
-          transition=ops/deploy/production-release-a-transition.sh
-          client=ops/deploy/github-production-deploy-client.sh
-          release_e=889d50f50328c89e25b3ef898e552df631b3222f; release_a2=c64c3b46b6b6ba5c7ac7b04028932e09dae2116a; release_b2=e3b5b5d89b3586668e36f987f03672415b5a0f37
-          target_plan="$RUNNER_TEMP/recovery-target-inspect.plan"; b_plan="$RUNNER_TEMP/recovery-b2-inspect.plan"
-          a_plan="$RUNNER_TEMP/recovery-a2-inspect.plan"; e_plan="$RUNNER_TEMP/recovery-e-inspect.plan"
-          repair_anchor=none
-          bash "$client" inspect-plan "$GITHUB_SHA" > "$target_plan"
-          source ops/deploy/deploy-control-bridge-lib.sh
-          daily_c1_bridge_base=e3b5b5d89b3586668e36f987f03672415b5a0f37
-          daily_c1_final_marker=ops/deploy/production-runtime/reader-summary-daily-c1.readiness
-          daily_c1_bridge=false
-          daily_c1_final_marker_mode=$(git ls-tree "$GITHUB_SHA" -- \
-            "$daily_c1_final_marker" | awk 'NR == 1 { print $1 }')
-          if [[ -z $daily_c1_final_marker_mode ]]; then
-            deploy_control_is_exact_daily_c1_bridge_release \
-              "$daily_c1_bridge_base" "$GITHUB_SHA" || {
-              echo 'daily C1 bridge diff does not match its exact B2 manifest' >&2
-              exit 1
-            }
-            daily_c1_bridge=true
-          fi
-          if [[ $daily_c1_bridge == true ]]; then
-            transition_state=target-pending
-          elif target_state=$(bash "$transition" state "$GITHUB_SHA" TARGET "$target_plan" \
-              2> "$RUNNER_TEMP/recovery-target-state.err") && \
-             [[ $target_state != transition_state=repair-required ]]; then
-            transition_state=${target_state#transition_state=}
-          else
-            bash "$client" inspect-plan "$release_b2" > "$b_plan"
-            if b_state=$(bash "$transition" state "$GITHUB_SHA" B2 "$b_plan" \
-                2> "$RUNNER_TEMP/recovery-b2-state.err"); then
-              transition_state=${b_state#transition_state=}
-              [[ $transition_state != repair-required ]] || repair_anchor=$release_b2
-            else
-              bash "$client" inspect-plan "$release_a2" > "$a_plan"
-              if a_state=$(bash "$transition" state "$GITHUB_SHA" A2 "$a_plan" \
-                  2> "$RUNNER_TEMP/recovery-a2-state.err"); then
-                transition_state=${a_state#transition_state=}
-                if [[ $transition_state == repair-required ]]; then
-                  repair_anchor=$release_a2
-                else
-                  [[ $a_state == transition_state=E-complete ]]
-                fi
-              fi
-              if [[ -z ${a_state:-} ]]; then
-                bash "$client" inspect-plan "$release_e" > "$e_plan"
-                if e_state=$(bash "$transition" state "$GITHUB_SHA" E "$e_plan" \
-                    2> "$RUNNER_TEMP/recovery-e-state.err"); then
-                  transition_state=${e_state#transition_state=}
-                  [[ $transition_state != repair-required ]] || repair_anchor=$release_e
-                else
-                  cat "$RUNNER_TEMP"/recovery-{b2,a2,e}-state.err >&2
-                  exit 1
-                fi
-              fi
-            fi
-          fi
-          {
-            awk -F= '$1 == "frontend" || $1 == "backend" || \
-              $1 == "backend_base" || $1 == "control" || \
-              $1 == "x_collector" || $1 == "postgres_pool_bootstrap" || \
-              $1 == "postgres_pool_bootstrap_sha" || \
-              $1 == "postgres_pool_repair" { print }' "$target_plan"
-            printf 'recovery_transition=true\n'
-            printf 'daily_c1_bridge=%s\n' "$daily_c1_bridge"
-            printf 'repair_anchor=%s\n' "$repair_anchor"
-            printf 'transition_state=%s\n' "$transition_state"
-          } >> "$GITHUB_OUTPUT"
+        run: bash ops/deploy/github-production-deploy-client.sh plan "$GITHUB_SHA"
+
       - name: Remove production SSH material
         if: always()
         run: bash ops/deploy/github-production-deploy-client.sh cleanup
+
   verify_reader_summary_publication:
     name: Verify mandatory reader-summary publication boundary
     needs: plan
@@ -279,18 +173,21 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 20
+
     steps:
       - name: Check out the release commit
-        if: needs.plan.outputs.backend == 'true' && needs.plan.outputs.daily_c1_bridge != 'true'
+        if: needs.plan.outputs.backend == 'true'
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+
       - name: Set up Node.js
-        if: needs.plan.outputs.backend == 'true' && needs.plan.outputs.daily_c1_bridge != 'true'
+        if: needs.plan.outputs.backend == 'true'
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
           node-version: 22
           cache: npm
+
       - name: Prove fail-closed PostgreSQL and signal publication
-        if: needs.plan.outputs.backend == 'true' && needs.plan.outputs.daily_c1_bridge != 'true'
+        if: needs.plan.outputs.backend == 'true'
         env:
           DATABASE_URL: postgresql://social_monitor_publication_ci_admin:social_monitor_local_password@127.0.0.1:5432/social_monitor_publication_ci_admin
           READER_SUMMARY_PUBLICATION_TEST_ADMIN_DATABASE_URL: postgresql://social_monitor_publication_ci_admin:social_monitor_local_password@127.0.0.1:5432/social_monitor_publication_ci_admin
@@ -300,14 +197,12 @@ jobs:
           npm run prisma:generate
           npm run check:reader-summary-publication-postgres
           npm run check:reader-summary-weekly-certification-seal-postgres
-          npm run check:reader-summary-weekly-projection-postgres
           npm run check:reader-summary-weekly-review-manifest-postgres18
           npm run check:reader-summary-daily-terminal-authority-postgres
           npm run check:reader-summary-daily-canonical-recovery-postgres18
-          npm run check:reader-summary-daily-delivery-c1-postgres
-          npm run check:reader-summary-daily-scan-terminal-repair-c1-postgres
           npm run check:reader-summary-daily-canonical-recovery-production
           npm run check:reader-summary-publication-signal-regression
+
   verify_backend:
     name: Verify backend, collector and deploy control
     needs: plan
@@ -327,25 +222,27 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 20
+
     steps:
       - name: Check out the release commit
-        if: needs.plan.outputs.backend == 'true' || needs.plan.outputs.control == 'true' || needs.plan.outputs.x_collector == 'true' || needs.plan.outputs.recovery_transition == 'true'
+        if: needs.plan.outputs.backend == 'true' || needs.plan.outputs.control == 'true' || needs.plan.outputs.x_collector == 'true'
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
         with:
           fetch-depth: 0
+
       - name: Set up Node.js
-        if: needs.plan.outputs.backend == 'true' || needs.plan.outputs.control == 'true' || needs.plan.outputs.recovery_transition == 'true'
+        if: needs.plan.outputs.backend == 'true' || needs.plan.outputs.control == 'true'
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
           node-version: 22
           cache: npm
+
       - name: Verify backend and deployment contract
-        if: needs.plan.outputs.backend == 'true' || needs.plan.outputs.control == 'true' || needs.plan.outputs.recovery_transition == 'true'
+        if: needs.plan.outputs.backend == 'true' || needs.plan.outputs.control == 'true'
         env:
           BACKEND_CHANGED: ${{ needs.plan.outputs.backend }}
           BACKEND_BASE: ${{ needs.plan.outputs.backend_base }}
           CONTROL_CHANGED: ${{ needs.plan.outputs.control }}
-          DAILY_C1_BRIDGE: ${{ needs.plan.outputs.daily_c1_bridge }}
           FRONTEND_CHANGED: ${{ needs.plan.outputs.frontend }}
           X_COLLECTOR_CHANGED: ${{ needs.plan.outputs.x_collector }}
           DATABASE_URL: postgresql://social_monitor_pool_ci:social_monitor_local_password@127.0.0.1:5432/social_monitor_pool_ci
@@ -371,27 +268,11 @@ jobs:
             fi
           fi
           npm ci
-          bash ops/deploy/production-release-a-transition.sh validate "$GITHUB_SHA"
-          source ops/deploy/deploy-control-bridge-lib.sh
-          [[ $DAILY_C1_BRIDGE =~ ^(true|false)$ ]] || {
-            echo 'daily C1 bridge plan output is invalid' >&2
-            exit 1
-          }
-          bridge_phase=$DAILY_C1_BRIDGE
-          if [[ $bridge_phase == false ]]; then
-            npm run check:production-release-preflight
-          else
-            echo 'backend-gate=production-release-preflight deferred-to-final-runtime-release'
-          fi
           npm run check:architecture
           npm run check:source-line-cap
-          if [[ $bridge_phase == false ]]; then
-            npm run check:reader-summary-weekly-production-runner
-            READER_SUMMARY_WEEKLY_RECEIPT_TEST_SCHEMA=weekly_execution_receipt_test_ci \
-              npm run check:reader-summary-weekly-execution-receipt-postgres18
-          else
-            echo 'backend-gate=weekly-runtime-contract deferred-to-final-runtime-release'
-          fi
+          npm run check:reader-summary-weekly-production-runner
+          READER_SUMMARY_WEEKLY_RECEIPT_TEST_SCHEMA=weekly_execution_receipt_test_ci \
+            npm run check:reader-summary-weekly-execution-receipt-postgres18
           npm run check:secrets
           npm run check:dependencies
           npm run check:container
@@ -404,28 +285,30 @@ jobs:
           npm run build
           if [[ $BACKEND_CHANGED == true ]]; then
             npm run check:postgres-runtime-pool-inventory
-            if [[ $bridge_phase == false ]]; then
-              npm run check:postgres-runtime-pool-unit
-            else
-              echo 'backend-gate=postgres-pool-unit deferred-to-final-runtime-release'
-            fi
-            echo 'backend-gate=tenant-rls'
+            npm run check:postgres-runtime-pool-unit
             TENANT_RLS_TEST_ADMIN_DATABASE_URL=postgresql://social_monitor_pool_ci:social_monitor_local_password@127.0.0.1:5432/social_monitor_pool_ci \
               npm run check:tenant-rls-postgres
-            echo 'backend-gate=prisma-concurrency'
             POSTGRES_POOL_PRISMA_TEST_DATABASE_URL=postgresql://social_monitor_pool_ci:social_monitor_local_password@127.0.0.1:5432/social_monitor_pool_ci \
               npm run check:postgres-runtime-pool-prisma-concurrency
           fi
-          echo 'backend-gate=bridge-classification'
-          bridge_release_paths=()
-          while IFS= read -r bridge_path; do
-            bridge_release_paths+=("$bridge_path")
-          done < <(deploy_control_daily_c1_bridge_release_paths)
+          legacy_publication_bridge_base=7185a5d02366437b5ad9146c3ae178d62c50101d
+          bridge_release_paths=(
+            .github/workflows/production-deploy.yml
+            ops/deploy/README.md
+            ops/deploy/backend-image-rescue-lib.sh
+            ops/deploy/backend-image-rescue-lib.test.sh
+            ops/deploy/deploy-control-lib.sh
+            ops/deploy/deploy-control-lib.test.sh
+            ops/deploy/postgres-pool-bootstrap-transition.test.sh
+            ops/deploy/postgres-runtime-deploy-lib.sh
+            ops/deploy/reader-summary-publication-bridge-transition.test.sh
+            ops/deploy/social-monitor-production-deploy.sh
+            ops/deploy/social-monitor-production-deploy.test.sh
+          )
           final_publication_assets=(
             ops/deploy/postgres-backup-deploy-lib.sh
             ops/deploy/reader-summary-publication-deploy-lib.sh
             ops/deploy/reader-summary-publication-system-dsn-bootstrap-lib.sh
-            ops/deploy/reader-summary-publication-system-runtime-deploy-lib.sh
             ops/deploy/reader-summary-publication-migrator-validation.test.sh
             ops/deploy/reader-summary-publication-signal-regression.test.sh
             ops/deploy/fixtures/reader-summary-publication-fake-docker.sh
@@ -434,12 +317,14 @@ jobs:
             ops/deploy/reader-summary-publication-post-migration.sql
             prisma/migrations/20260716170000_reader_summary_fail_closed_publication/migration.sql
           )
-          final_daily_c1_assets=(
-            ops/deploy/production-runtime/daily-c1-runtime.sh
-            ops/deploy/production-runtime/reader-summary-daily-c1.readiness
-            ops/deploy/production-runtime/social-monitor-daily.timer
-            ops/deploy/production-runtime/social-monitor-reader-summary-production-day.service.d-10-daily-c1-owner.conf
-          )
+          for bridge_path in "${bridge_release_paths[@]}"; do
+            for publication_asset in "${final_publication_assets[@]}"; do
+              [[ $bridge_path != "$publication_asset" ]] || {
+                echo "release path cannot be both bridge-safe and final-only: $bridge_path" >&2
+                exit 1
+              }
+            done
+          done
           git_path_mode() {
             git ls-tree "$GITHUB_SHA" -- "$1" | awk 'NR == 1 { print $1 }'
           }
@@ -455,24 +340,40 @@ jobs:
               exit 1
             }
           }
-          if [[ $bridge_phase == true ]]; then
-            if [[ $CONTROL_CHANGED != true ]]; then
-              echo 'daily C1 bridge control deployment is not pending' >&2
+          bridge_phase=false
+          publication_library_mode=$(git_path_mode \
+            ops/deploy/reader-summary-publication-deploy-lib.sh)
+          if [[ -z $publication_library_mode ]]; then
+            if [[ $BACKEND_CHANGED != false || $CONTROL_CHANGED != true || \
+                  $FRONTEND_CHANGED != false ]]; then
+              echo 'publication bridge must be control-only' >&2
               exit 1
             fi
+            git merge-base --is-ancestor \
+              "$legacy_publication_bridge_base" "$GITHUB_SHA" || {
+              echo 'publication bridge does not descend from the deployed controller base' >&2
+              exit 1
+            }
+            expected_bridge_paths=$(printf '%s\n' "${bridge_release_paths[@]}" | LC_ALL=C sort)
+            actual_bridge_paths=$(git diff --name-only \
+              "$legacy_publication_bridge_base" "$GITHUB_SHA" -- | LC_ALL=C sort)
+            [[ $actual_bridge_paths == "$expected_bridge_paths" ]] || {
+              echo 'publication bridge changed paths outside its exact manifest' >&2
+              diff -u <(printf '%s\n' "$expected_bridge_paths") \
+                <(printf '%s\n' "$actual_bridge_paths") || true
+              exit 1
+            }
             for bridge_path in "${bridge_release_paths[@]}"; do
               require_regular_blob "$bridge_path"
             done
-            for daily_c1_asset in "${final_daily_c1_assets[@]}"; do
-              [[ -z $(git_path_mode "$daily_c1_asset") ]] || {
-                echo "daily C1 bridge contains final-only asset: $daily_c1_asset" >&2
+            for publication_asset in "${final_publication_assets[@]}"; do
+              [[ -z $(git_path_mode "$publication_asset") ]] || {
+                echo "publication bridge contains final-only asset: $publication_asset" >&2
                 exit 1
               }
             done
+            bridge_phase=true
           else
-            for daily_c1_asset in "${final_daily_c1_assets[@]}"; do
-              require_regular_blob "$daily_c1_asset"
-            done
             for publication_asset in "${final_publication_assets[@]}"; do
               require_regular_blob "$publication_asset"
             done
@@ -494,13 +395,6 @@ jobs:
             ops/deploy/postgres-pool-atomic-bootstrap-lib.sh
             ops/deploy/postgres-pool-atomic-bootstrap-lib.test.sh
             ops/deploy/postgres-runtime-deploy-lib.sh
-            ops/deploy/postgres-runtime-activation-boundary-lib.sh
-            ops/deploy/postgres-runtime-daily-c1-readiness-lib.sh
-            ops/deploy/postgres-runtime-weekly-timer-state-lib.sh
-            ops/deploy/reader-summary-recovery-maintenance-lib.sh
-            ops/deploy/deploy-control-bridge-runtime-helper.test.sh
-            ops/deploy/deploy-control-reviewed-library-source.test.sh
-            ops/deploy/daily-c1-control-bridge-workflow.test.sh
             ops/deploy/rabbitmq-quorum-deploy-bridge-transition.test.sh
             ops/deploy/reader-summary-publication-bridge-transition.test.sh
             ops/deploy/social-monitor-production-ssh-wrapper.sh
@@ -528,17 +422,12 @@ jobs:
             deploy_shell_files+=(
               ops/deploy/daily-deploy-lock-race.test.sh
               ops/deploy/backend-image-rescue-migrate-fallback.test.sh
-              ops/deploy/postgres-runtime-daily-c1-readiness-lib.test.sh
-              ops/deploy/reader-summary-daily-delivery-c1-action.test.sh
-              ops/deploy/github-production-maintenance-dispatch.sh
-              ops/deploy/github-production-maintenance-dispatch.test.sh
             )
           fi
           final_publication_shell_files=(
             ops/deploy/postgres-backup-deploy-lib.sh
             ops/deploy/reader-summary-publication-deploy-lib.sh
             ops/deploy/reader-summary-publication-system-dsn-bootstrap-lib.sh
-            ops/deploy/reader-summary-publication-system-runtime-deploy-lib.sh
             ops/deploy/reader-summary-publication-migrator-validation.test.sh
             ops/deploy/reader-summary-publication-signal-regression.test.sh
             ops/deploy/fixtures/reader-summary-publication-fake-docker.sh
@@ -548,7 +437,7 @@ jobs:
             deploy_shell_files+=("${final_publication_shell_files[@]}")
           fi
           bash -n "${deploy_shell_files[@]}"
-          shellcheck -S warning -x "${deploy_shell_files[@]}"
+          shellcheck -x "${deploy_shell_files[@]}"
           python3 -m py_compile ops/deploy/verify-postgres-runtime-topology.py
           python3 -m py_compile ops/deploy/verify-postgres-pool-release-contract.py
           python3 ops/deploy/verify-postgres-pool-release-contract.py ci \
@@ -558,34 +447,24 @@ jobs:
             --control "$CONTROL_CHANGED" \
             --bootstrap "$POSTGRES_POOL_BOOTSTRAP" \
             --bootstrap-sha "$POSTGRES_POOL_BOOTSTRAP_SHA"
-          echo "backend-gate=deploy-shell-tests bridge=$bridge_phase"
           if [[ $bridge_phase == true ]]; then
-            # Final runtime assets are deliberately absent from the control-only
-            # bridge. Run the bridge-safe controller closure here; the complete
-            # controller and client suites run with the BLOCKED final release.
-            bash ops/deploy/deploy-control-bridge-runtime-helper.test.sh
-            bash ops/deploy/deploy-control-reviewed-library-source.test.sh
-            bash ops/deploy/daily-c1-control-bridge-workflow.test.sh
+            bash ops/deploy/backend-image-rescue-lib.test.sh
+            bash ops/deploy/deploy-control-lib.test.sh
           else
             bash ops/deploy/social-monitor-production-deploy.test.sh
             bash ops/deploy/deploy-control-lib.test.sh
             bash ops/deploy/daily-deploy-lock-race.test.sh
             bash ops/deploy/postgres-runtime-deploy-lib.test.sh
-            bash ops/deploy/postgres-runtime-daily-c1-readiness-lib.test.sh
-            bash ops/deploy/reader-summary-daily-delivery-c1-action.test.sh && bash ops/deploy/deploy-control-bridge-runtime-helper.test.sh && bash ops/deploy/deploy-control-reviewed-library-source.test.sh
-            bash ops/deploy/github-production-maintenance-dispatch.test.sh
             bash ops/deploy/github-premidnight-capture-runtime.test.sh
           fi
           bash ops/deploy/x-collector-image-deploy-lib.test.sh
-          if [[ $bridge_phase == false ]]; then
-            bash ops/deploy/github-production-deploy-client.test.sh
-          fi
-          bash ops/deploy/production-release-a-transition.test.sh
+          bash ops/deploy/github-production-deploy-client.test.sh
           bash ops/deploy/postgres-pool-atomic-bootstrap-lib.test.sh
           bash ops/deploy/social-monitor-production-ssh-wrapper.test.sh
           bash ops/deploy/verify-postgres-pool-release-contract.test.sh
+
       - name: Verify legacy-main deployment transitions
-        if: (needs.plan.outputs.backend == 'true' || needs.plan.outputs.control == 'true' || needs.plan.outputs.recovery_transition == 'true') && needs.plan.outputs.daily_c1_bridge != 'true'
+        if: needs.plan.outputs.backend == 'true' || needs.plan.outputs.control == 'true'
         run: |
           set -euo pipefail
           if git cat-file -e \
@@ -605,6 +484,7 @@ jobs:
             echo "::error title=Publication bridge transition failed::The c071/7185 B-to-F fixture failed with status $publication_bridge_status."
             exit "$publication_bridge_status"
           fi
+
       - name: Test affected backend modules
         if: needs.plan.outputs.backend == 'true'
         env:
@@ -615,36 +495,42 @@ jobs:
             base=$(git rev-list --max-parents=0 "$GITHUB_SHA" | tail -n 1)
           fi
           npm test -- --changedSince="$base"
+
       - name: Set up Python for X collector verification
         if: needs.plan.outputs.x_collector == 'true'
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
         with:
           python-version: '3.13'
+
       - name: Verify X collector
         if: needs.plan.outputs.x_collector == 'true'
         run: |
           set -euo pipefail
           python -m pip install --disable-pip-version-check -e 'apps/x-collector[dev]'
           python -m pytest -m 'not real_e2e' apps/x-collector/tests
+
   build_frontend:
     name: Verify and package frontend
     needs: plan
     runs-on: ubuntu-latest
     timeout-minutes: 60
+
     steps:
       - name: Check out the release commit
-        if: needs.plan.outputs.frontend == 'true' && needs.plan.outputs.daily_c1_bridge != 'true'
+        if: needs.plan.outputs.frontend == 'true'
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+
       - name: Set up Flutter
-        if: needs.plan.outputs.frontend == 'true' && needs.plan.outputs.daily_c1_bridge != 'true'
+        if: needs.plan.outputs.frontend == 'true'
         uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
         with:
           channel: stable
           flutter-version-file: apps/frontend/.fvmrc
           cache: false
           pub-cache: false
+
       - name: Verify frontend
-        if: needs.plan.outputs.frontend == 'true' && needs.plan.outputs.daily_c1_bridge != 'true'
+        if: needs.plan.outputs.frontend == 'true'
         working-directory: apps/frontend
         run: |
           set -euo pipefail
@@ -656,8 +542,9 @@ jobs:
             features/settings features/sources features/summaries
           dart test packages/shared_kernel
           dart test packages/generated_api
+
       - name: Build public and admin frontend bundles
-        if: needs.plan.outputs.frontend == 'true' && needs.plan.outputs.daily_c1_bridge != 'true'
+        if: needs.plan.outputs.frontend == 'true'
         working-directory: apps/frontend/app
         run: |
           set -euo pipefail
@@ -687,237 +574,44 @@ jobs:
           grep -F 'self.registration.unregister()' \
             "$release/admin/flutter_service_worker.js" >/dev/null
           tar -C "$release" -czf "$RUNNER_TEMP/social-monitor-frontend-release.tgz" public admin
+
       - name: Store immutable frontend artifact
-        if: needs.plan.outputs.frontend == 'true' && needs.plan.outputs.daily_c1_bridge != 'true'
+        if: needs.plan.outputs.frontend == 'true'
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: social-monitor-frontend-${{ github.sha }}
           path: ${{ runner.temp }}/social-monitor-frontend-release.tgz
           if-no-files-found: error
           retention-days: 3
-  release_a:
-    name: Reconcile Release E and Release A before Release B
-    needs:
-      - plan
-      - verify_reader_summary_publication
-      - verify_backend
-      - build_frontend
-    runs-on: ubuntu-latest
-    timeout-minutes: 120
-    environment: production
-    steps:
-      - name: Check out frozen three-phase graph
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
-        with:
-          fetch-depth: 0
-      - name: Validate graph and immutable manifests before production SSH
-        run: bash ops/deploy/production-release-a-transition.sh validate "$GITHUB_SHA"
-      - name: Configure restricted production SSH
-        env:
-          DEPLOY_KEY: ${{ secrets.PRODUCTION_SSH_PRIVATE_KEY }}
-          KNOWN_HOSTS: ${{ secrets.PRODUCTION_SSH_KNOWN_HOSTS }}
-        run: bash ops/deploy/github-production-deploy-client.sh configure
-      - name: Repair PostgreSQL bootstrap after verification
-        if: needs.plan.outputs.transition_state == 'repair-required'
-        env:
-          DEPLOY_HOST: ${{ vars.PRODUCTION_SSH_HOST }}
-          DEPLOY_USER: ${{ vars.PRODUCTION_SSH_USER }}
-          REPAIR_ANCHOR: ${{ needs.plan.outputs.repair_anchor }}
-          DEPLOY_RECONCILE_ATTEMPTS: 1
-          DEPLOY_RECONCILE_INTERVAL_SECONDS: 0
-        run: |
-          case $REPAIR_ANCHOR in
-            889d50f50328c89e25b3ef898e552df631b3222f|c64c3b46b6b6ba5c7ac7b04028932e09dae2116a|e3b5b5d89b3586668e36f987f03672415b5a0f37) ;;
-            *) exit 1 ;;
-          esac
-          repair_status=0
-          bash ops/deploy/github-production-deploy-client.sh deploy "$REPAIR_ANCHOR" || repair_status=$?
-          printf 'bounded repair client status=%s; fresh inspection is authoritative\n' "$repair_status"
-      - name: Close possibly interrupted repair SSH
-        if: always()
-        run: bash ops/deploy/github-production-deploy-client.sh cleanup
-      - name: Configure fresh SSH after repair boundary
-        env:
-          DEPLOY_KEY: ${{ secrets.PRODUCTION_SSH_PRIVATE_KEY }}
-          KNOWN_HOSTS: ${{ secrets.PRODUCTION_SSH_KNOWN_HOSTS }}
-        run: bash ops/deploy/github-production-deploy-client.sh configure
-      - name: Deploy the daily C1 target through the alias-aware controller
-        if: needs.plan.outputs.daily_c1_bridge == 'true'
-        env:
-          DEPLOY_HOST: ${{ vars.PRODUCTION_SSH_HOST }}
-          DEPLOY_USER: ${{ vars.PRODUCTION_SSH_USER }}
-        run: |
-          set -euo pipefail
-          helper_sync=e6597827c0280a8783fa5980387bc574897edc2b
-          helper_sync_status=0
-          DEPLOY_RECONCILE_ATTEMPTS=1 DEPLOY_RECONCILE_INTERVAL_SECONDS=0 \
-            bash ops/deploy/github-production-deploy-client.sh deploy "$helper_sync" || helper_sync_status=$?
-          printf 'bounded base revalidation helper sync status=%s; fresh target is authoritative\n' "$helper_sync_status"
-          bash ops/deploy/github-production-deploy-client.sh deploy "$GITHUB_SHA"
-      - name: Freshly inspect after bounded repair
-        id: recovery_state
-        env:
-          DEPLOY_HOST: ${{ vars.PRODUCTION_SSH_HOST }}
-          DEPLOY_USER: ${{ vars.PRODUCTION_SSH_USER }}
-        run: |
-          set -euo pipefail
-          transition=ops/deploy/production-release-a-transition.sh
-          client=ops/deploy/github-production-deploy-client.sh
-          release_e=889d50f50328c89e25b3ef898e552df631b3222f; release_a2=c64c3b46b6b6ba5c7ac7b04028932e09dae2116a; release_b2=e3b5b5d89b3586668e36f987f03672415b5a0f37
-          target_plan="$RUNNER_TEMP/recovery-target-fresh.plan"; b_plan="$RUNNER_TEMP/recovery-b2-fresh.plan"
-          a_plan="$RUNNER_TEMP/recovery-a2-fresh.plan"; e_plan="$RUNNER_TEMP/recovery-e-fresh.plan"
-          bash "$client" inspect-plan "$GITHUB_SHA" > "$target_plan"
-          if state=$(bash "$transition" state "$GITHUB_SHA" TARGET "$target_plan" \
-              2> "$RUNNER_TEMP/recovery-target-fresh.err"); then
-            transition_state=${state#transition_state=}
-            [[ $transition_state != repair-required ]]
-          else
-          bash "$client" inspect-plan "$release_b2" > "$b_plan"
-          if state=$(bash "$transition" state "$GITHUB_SHA" B2 "$b_plan" \
-              2> "$RUNNER_TEMP/recovery-b2-fresh.err"); then
-            transition_state=${state#transition_state=}
-          else
-            bash "$client" inspect-plan "$release_a2" > "$a_plan"
-            if a_state=$(bash "$transition" state "$GITHUB_SHA" A2 "$a_plan" \
-                2> "$RUNNER_TEMP/recovery-a2-fresh.err"); then
-              transition_state=${a_state#transition_state=}
-              [[ $transition_state == E-complete ]]
-            fi
-            if [[ -z ${a_state:-} ]]; then
-              bash "$client" inspect-plan "$release_e" > "$e_plan"
-              if e_state=$(bash "$transition" state "$GITHUB_SHA" E "$e_plan" \
-                  2> "$RUNNER_TEMP/recovery-e-fresh.err"); then
-                transition_state=${e_state#transition_state=}
-              else
-                cat "$RUNNER_TEMP"/recovery-{b2,a2,e}-fresh.err >&2
-                exit 1
-              fi
-            fi
-          fi
-          fi
-          [[ $transition_state != repair-required ]]
-          printf 'transition_state=%s\n' "$transition_state" >> "$GITHUB_OUTPUT"
-      - name: Deploy and reconcile Release E through the installed wrapper
-        if: steps.recovery_state.outputs.transition_state == 'pre-E'
-        env:
-          DEPLOY_HOST: ${{ vars.PRODUCTION_SSH_HOST }}
-          DEPLOY_USER: ${{ vars.PRODUCTION_SSH_USER }}
-        run: |
-          set -euo pipefail
-          release_e=889d50f50328c89e25b3ef898e552df631b3222f
-          bash ops/deploy/github-production-deploy-client.sh deploy "$release_e"
-      - name: Remove Release E SSH material
-        if: always()
-        run: bash ops/deploy/github-production-deploy-client.sh cleanup
-      - name: Open fresh SSH after Release E
-        if: steps.recovery_state.outputs.transition_state == 'pre-E' || steps.recovery_state.outputs.transition_state == 'E-complete'
-        env:
-          DEPLOY_KEY: ${{ secrets.PRODUCTION_SSH_PRIVATE_KEY }}
-          KNOWN_HOSTS: ${{ secrets.PRODUCTION_SSH_KNOWN_HOSTS }}
-        run: bash ops/deploy/github-production-deploy-client.sh configure
-      - name: Prove E-complete through the Release A plan
-        if: steps.recovery_state.outputs.transition_state == 'pre-E' || steps.recovery_state.outputs.transition_state == 'E-complete'
-        env:
-          DEPLOY_HOST: ${{ vars.PRODUCTION_SSH_HOST }}
-          DEPLOY_USER: ${{ vars.PRODUCTION_SSH_USER }}
-        run: |
-          set -euo pipefail
-          release_a2=c64c3b46b6b6ba5c7ac7b04028932e09dae2116a
-          plan="$RUNNER_TEMP/recovery-a2-after-e.plan"
-          bash ops/deploy/github-production-deploy-client.sh \
-            inspect-plan "$release_a2" > "$plan"
-          state=$(bash ops/deploy/production-release-a-transition.sh \
-            state "$GITHUB_SHA" A2 "$plan")
-          [[ $state == transition_state=E-complete ]]
-      - name: Deploy and reconcile Release A through the installed wrapper
-        if: steps.recovery_state.outputs.transition_state == 'pre-E' || steps.recovery_state.outputs.transition_state == 'E-complete'
-        env:
-          DEPLOY_HOST: ${{ vars.PRODUCTION_SSH_HOST }}
-          DEPLOY_USER: ${{ vars.PRODUCTION_SSH_USER }}
-        run: |
-          set -euo pipefail
-          release_a2=c64c3b46b6b6ba5c7ac7b04028932e09dae2116a
-          bash ops/deploy/github-production-deploy-client.sh deploy "$release_a2"
-      - name: Remove Release A SSH material
-        if: always()
-        run: bash ops/deploy/github-production-deploy-client.sh cleanup
-      - name: Open fresh SSH after Release A
-        if: steps.recovery_state.outputs.transition_state == 'pre-E' || steps.recovery_state.outputs.transition_state == 'E-complete' || steps.recovery_state.outputs.transition_state == 'A-complete'
-        env:
-          DEPLOY_KEY: ${{ secrets.PRODUCTION_SSH_PRIVATE_KEY }}
-          KNOWN_HOSTS: ${{ secrets.PRODUCTION_SSH_KNOWN_HOSTS }}
-        run: bash ops/deploy/github-production-deploy-client.sh configure
-      - name: Prove A-complete through the Release B plan
-        if: steps.recovery_state.outputs.transition_state == 'pre-E' || steps.recovery_state.outputs.transition_state == 'E-complete' || steps.recovery_state.outputs.transition_state == 'A-complete'
-        env:
-          DEPLOY_HOST: ${{ vars.PRODUCTION_SSH_HOST }}
-          DEPLOY_USER: ${{ vars.PRODUCTION_SSH_USER }}
-        run: |
-          set -euo pipefail
-          plan="$RUNNER_TEMP/recovery-b2-after-a.plan"
-          release_b2=e3b5b5d89b3586668e36f987f03672415b5a0f37
-          bash ops/deploy/github-production-deploy-client.sh \
-            inspect-plan "$release_b2" > "$plan"
-          state=$(bash ops/deploy/production-release-a-transition.sh \
-            state "$GITHUB_SHA" B2 "$plan")
-          [[ $state == transition_state=A-complete ]]
-      - name: Remove production SSH material
-        if: always()
-        run: bash ops/deploy/github-production-deploy-client.sh cleanup
+
   deploy:
-    name: Deploy Release B with host locks and rollback
+    name: Deploy with host locks and rollback
     needs:
       - plan
       - verify_reader_summary_publication
       - verify_backend
       - build_frontend
-      - release_a
     runs-on: ubuntu-latest
     timeout-minutes: 120
     environment: production
+
     steps:
       - name: Check out the release commit
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
-        with:
-          fetch-depth: 0
-      - name: Validate graph and immutable manifests before Release B SSH
-        run: bash ops/deploy/production-release-a-transition.sh validate "$GITHUB_SHA"
-      - name: Configure restricted production SSH
-        env:
-          DEPLOY_KEY: ${{ secrets.PRODUCTION_SSH_PRIVATE_KEY }}
-          KNOWN_HOSTS: ${{ secrets.PRODUCTION_SSH_KNOWN_HOSTS }}
-        run: bash ops/deploy/github-production-deploy-client.sh configure
-      - name: Freshly require A-complete or B-complete
-        id: b_state
-        env:
-          DEPLOY_HOST: ${{ vars.PRODUCTION_SSH_HOST }}
-          DEPLOY_USER: ${{ vars.PRODUCTION_SSH_USER }}
-        run: |
-          set -euo pipefail
-          target_plan="$RUNNER_TEMP/recovery-target-before-deploy.plan"
-          bash ops/deploy/github-production-deploy-client.sh \
-            inspect-plan "$GITHUB_SHA" > "$target_plan"
-          if state=$(bash ops/deploy/production-release-a-transition.sh \
-              state "$GITHUB_SHA" TARGET "$target_plan"); then
-            [[ $state == transition_state=target-pending || \
-               $state == transition_state=target-complete ]]
-          else
-            plan="$RUNNER_TEMP/recovery-b2-before-deploy.plan"
-            release_b2=e3b5b5d89b3586668e36f987f03672415b5a0f37
-            bash ops/deploy/github-production-deploy-client.sh \
-              inspect-plan "$release_b2" > "$plan"
-            state=$(bash ops/deploy/production-release-a-transition.sh \
-              state "$GITHUB_SHA" B2 "$plan")
-            [[ $state == transition_state=A-complete || \
-               $state == transition_state=B-complete ]]
-          fi
-          printf '%s\n' "$state" >> "$GITHUB_OUTPUT"
+
       - name: Download immutable frontend artifact
         if: needs.plan.outputs.frontend == 'true'
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
           name: social-monitor-frontend-${{ github.sha }}
           path: ${{ runner.temp }}/frontend-artifact
+
+      - name: Configure restricted production SSH
+        env:
+          DEPLOY_KEY: ${{ secrets.PRODUCTION_SSH_PRIVATE_KEY }}
+          KNOWN_HOSTS: ${{ secrets.PRODUCTION_SSH_KNOWN_HOSTS }}
+        run: bash ops/deploy/github-production-deploy-client.sh configure
+
       - name: Upload immutable frontend release
         if: needs.plan.outputs.frontend == 'true'
         env:
@@ -926,57 +620,16 @@ jobs:
         run: >-
           bash ops/deploy/github-production-deploy-client.sh upload "$GITHUB_SHA"
           "$RUNNER_TEMP/frontend-artifact/social-monitor-frontend-release.tgz"
+
       - name: Deploy changed components
-        if: steps.b_state.outputs.transition_state != 'target-complete'
+        if: needs.plan.outputs.postgres_pool_repair != 'true'
         env:
           DEPLOY_HOST: ${{ vars.PRODUCTION_SSH_HOST }}
           DEPLOY_USER: ${{ vars.PRODUCTION_SSH_USER }}
+        # A durably verified repair makes this run repair-only. On replay the
+        # plan reports repair=false and this ordinary fully-gated deploy runs.
         run: bash ops/deploy/github-production-deploy-client.sh deploy "$GITHUB_SHA"
-      - name: Remove production SSH material
-        if: always()
-        run: bash ops/deploy/github-production-deploy-client.sh cleanup
-  acceptance:
-    name: Require separate post-deploy Release B acceptance
-    needs:
-      - plan
-      - deploy
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    environment: production
-    steps:
-      - name: Check out frozen three-phase graph
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
-        with:
-          fetch-depth: 0
-      - name: Validate graph and immutable manifests before acceptance SSH
-        run: bash ops/deploy/production-release-a-transition.sh validate "$GITHUB_SHA"
-      - name: Configure fresh restricted production SSH
-        env:
-          DEPLOY_KEY: ${{ secrets.PRODUCTION_SSH_PRIVATE_KEY }}
-          KNOWN_HOSTS: ${{ secrets.PRODUCTION_SSH_KNOWN_HOSTS }}
-        run: bash ops/deploy/github-production-deploy-client.sh configure
-      - name: Accept only B-complete durable state
-        env:
-          DEPLOY_HOST: ${{ vars.PRODUCTION_SSH_HOST }}
-          DEPLOY_USER: ${{ vars.PRODUCTION_SSH_USER }}
-        run: |
-          set -euo pipefail
-          plan="$RUNNER_TEMP/recovery-target-acceptance.plan"
-          bash ops/deploy/github-production-deploy-client.sh \
-            inspect-plan "$GITHUB_SHA" > "$plan"
-          if state=$(bash ops/deploy/production-release-a-transition.sh \
-              state "$GITHUB_SHA" TARGET "$plan"); then
-            [[ $state == transition_state=target-complete ]]
-          else
-            awk -F= '$1 == "frontend" || $1 == "backend" || \
-              $1 == "control" || $1 == "x_collector" { if ($2 != "false") exit 1 }' "$plan"
-            release_b2=e3b5b5d89b3586668e36f987f03672415b5a0f37
-            bash ops/deploy/github-production-deploy-client.sh \
-              inspect-plan "$release_b2" > "$RUNNER_TEMP/recovery-b2-acceptance.plan"
-            state=$(bash ops/deploy/production-release-a-transition.sh state \
-              "$GITHUB_SHA" B2 "$RUNNER_TEMP/recovery-b2-acceptance.plan")
-            [[ $state == transition_state=B-complete ]]
-          fi
+
       - name: Remove production SSH material
         if: always()
         run: bash ops/deploy/github-production-deploy-client.sh cleanup

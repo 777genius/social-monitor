@@ -32,10 +32,6 @@ rabbitmq_quorum_recovery_nonnegative_integer() {
   [[ $1 =~ ^[0-9]+$ ]]
 }
 
-rabbitmq_quorum_recovery_source_status_is_recoverable() {
-  (($1 == RABBITMQ_QUORUM_PROBE_NOPROC || $1 == RABBITMQ_QUORUM_PROBE_METADATA_NOPROC))
-}
-
 rabbitmq_quorum_recovery_file_size() {
   stat -c '%s' "$1" 2>/dev/null || stat -f '%z' "$1"
 }
@@ -568,8 +564,8 @@ rabbitmq_quorum_recovery_ensure_steady() (
         else
           status=$?
         fi
-        if ! rabbitmq_quorum_recovery_source_status_is_recoverable "$status"; then
-          rabbitmq_quorum_recovery_error 'completed recovery state found a non-recoverable incident; refusing automatic reinitialization'
+        if ((status != RABBITMQ_QUORUM_PROBE_NOPROC)); then
+          rabbitmq_quorum_recovery_error 'completed recovery state found a non-noproc incident; refusing automatic reinitialization'
           exit 1
         fi
         rabbitmq_quorum_recovery_retire_completed_state "$root" || {
@@ -577,7 +573,7 @@ rabbitmq_quorum_recovery_ensure_steady() (
           exit 1
         }
         rabbitmq_quorum_recovery_apply_retention "$root" "$RABBITMQ_QUORUM_SNAPSHOT_RETENTION" || exit 1
-        # The terminal journal is gone, so the bounded classified-noproc recovery
+        # The terminal journal is gone, so the bounded all-noproc recovery
         # below snapshots and proves the current, strictly compatible target.
         ;;
       *)
@@ -613,8 +609,8 @@ rabbitmq_quorum_recovery_ensure_steady() (
   else
     status=$?
   fi
-  if ! rabbitmq_quorum_recovery_source_status_is_recoverable "$status"; then
-    rabbitmq_quorum_recovery_error 'only a classified quorum or metadata noproc incident may enter automatic snapshot/bootstrap recovery'
+  if ((status != RABBITMQ_QUORUM_PROBE_NOPROC)); then
+    rabbitmq_quorum_recovery_error 'only an all-queue noproc incident may enter automatic snapshot/bootstrap recovery'
     exit 1
   fi
   rabbitmq_quorum_recovery_create_snapshot "$root" || exit 1

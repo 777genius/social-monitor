@@ -1197,8 +1197,6 @@ model ReaderSummaryDailyCanonicalRecoveryV4AmbiguityRetry {
   sourceAuthoritySha256        String    @map("source_authority_sha256") @db.Char(64)
   authorizationSha256          String    @map("authorization_sha256") @db.Char(64)
   authorizationReason          String    @map("authorization_reason")
-  invalidCategory              String?   @map("invalid_category")
-  terminalSetSha256            String?   @map("terminal_set_sha256") @db.Char(64)
   authorizedBy                 String    @map("authorized_by")
   authorizedAt                 DateTime  @map("authorized_at") @db.Timestamptz(6)
   modelJobIdentity             String    @unique(map: "rs_daily_recovery_v4_ambiguity_retries_identity_key") @map("model_job_identity") @db.Char(64)

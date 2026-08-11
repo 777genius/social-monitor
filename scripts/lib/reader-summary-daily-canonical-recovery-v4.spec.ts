@@ -62,11 +62,11 @@ describe("reader-summary daily canonical recovery v4", () => {
       "010fd4f8da8aa2e4b332601e145e49549ff41c34b7ea498024b7449f9c827bbb",
     );
   });
-  it("canonicalizes outer-whitespace output_text bytes", () => {
+  it("accepts only exact canonical output_text bytes", () => {
     const bytes = canonicalJsonBytes(validOutput());
     expect(parseStrictDailyOutputText(bytes.toString("utf8"))).toEqual(bytes);
-    expect(parseStrictDailyOutputText(` ${bytes.toString("utf8")}\n`))
-      .toEqual(bytes);
+    expect(() => parseStrictDailyOutputText(` ${bytes.toString("utf8")}`))
+      .toThrow(/framing/u);
     expect(() => parseStrictDailyOutputText(JSON.stringify({
       ...validOutput(),
       unbound: true,
@@ -198,7 +198,10 @@ describe("reader-summary daily canonical recovery v4", () => {
       runtimeEngine: "subscription-runtime-cli" as const,
       run: jest.fn(async () => {
         events.push("model");
-        return outputTextExecution(responseBytes);
+        return {
+          responseBytes,
+          executionAttestation: attestation(responseBytes),
+        };
       }),
     };
     const finalizer = {
@@ -260,7 +263,7 @@ describe("reader-summary daily canonical recovery v4", () => {
         run: jest.fn(async () => {
           renewCallback?.();
           await Promise.resolve();
-          return outputTextExecution(responseBytes);
+          return { responseBytes, executionAttestation: attestation(responseBytes) };
         }),
       },
       finalizer,
@@ -478,7 +481,10 @@ describe("reader-summary daily canonical recovery v4", () => {
     let committed = false;
     const runtime = {
       runtimeEngine: "subscription-runtime-cli" as const,
-      run: jest.fn(async () => outputTextExecution(responseBytes)),
+      run: jest.fn(async () => ({
+        responseBytes,
+        executionAttestation: attestation(responseBytes),
+      })),
     };
     const finalizer = {
       finalize: jest.fn(async () => {
@@ -595,7 +601,10 @@ describe("reader-summary daily canonical recovery v4", () => {
       },
       runtime: {
         runtimeEngine: "subscription-runtime-cli" as const,
-        run: jest.fn(async () => outputTextExecution(responseBytes)),
+        run: jest.fn(async () => ({
+          responseBytes,
+          executionAttestation: attestation(responseBytes),
+        })),
       },
       finalizer: {
         finalize: jest.fn(async ({ work: finalizedWork }: {
@@ -659,7 +668,10 @@ describe("reader-summary daily canonical recovery v4", () => {
     };
     const runtime = {
       runtimeEngine: "subscription-runtime-cli" as const,
-      run: jest.fn(async () => outputTextExecution(responseBytes)),
+      run: jest.fn(async () => ({
+        responseBytes,
+        executionAttestation: attestation(responseBytes),
+      })),
     };
     const finalizer = {
       finalize: jest.fn(async ({ work: finalizedWork }: {
@@ -982,11 +994,4 @@ const attestation = (response: Buffer) => ({
   launcherSha256: "1".repeat(64),
   selectedOutputKind: "output_text",
   selectedOutputSha256: sha256(response),
-});
-
-const outputTextExecution = (responseBytes: Buffer) => ({
-  responseBytes,
-  rawOutputSha256: sha256(responseBytes),
-  rawOutputByteLength: responseBytes.length,
-  executionAttestation: attestation(responseBytes),
 });
