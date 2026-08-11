@@ -107,6 +107,10 @@ grep -F "needs.plan.outputs.daily_c1_bridge != 'true'" \
   fail 'bridge must defer exactly the publication, frontend and legacy final-only gates'
 grep -F 'Deploy the daily C1 target through the alias-aware controller' \
   "$workflow" >/dev/null || fail 'bridge does not run through the installed alias-aware controller'
+grep -F 'reseal=a58a4608' \
+  "$workflow" >/dev/null || fail 'bridge manifest re-seal is not pinned to its reviewed commit'
+grep -F 'bounded manifest re-seal status=' \
+  "$workflow" >/dev/null || fail 'bridge manifest re-seal is not explicitly bounded'
 grep -F 'bash ops/deploy/github-production-deploy-client.sh deploy "$GITHUB_SHA"' \
   "$workflow" >/dev/null || fail 'daily C1 bridge bypasses the reviewed deploy client'
 ! grep -F 'daily C1 bridge classification is not control-only' "$workflow" >/dev/null || \
