@@ -383,9 +383,13 @@ jobs:
           fi
           npm run check:architecture
           npm run check:source-line-cap
-          npm run check:reader-summary-weekly-production-runner
-          READER_SUMMARY_WEEKLY_RECEIPT_TEST_SCHEMA=weekly_execution_receipt_test_ci \
-            npm run check:reader-summary-weekly-execution-receipt-postgres18
+          if [[ $bridge_phase == false ]]; then
+            npm run check:reader-summary-weekly-production-runner
+            READER_SUMMARY_WEEKLY_RECEIPT_TEST_SCHEMA=weekly_execution_receipt_test_ci \
+              npm run check:reader-summary-weekly-execution-receipt-postgres18
+          else
+            echo 'backend-gate=weekly-runtime-contract deferred-to-final-runtime-release'
+          fi
           npm run check:secrets
           npm run check:dependencies
           npm run check:container

@@ -95,6 +95,8 @@ grep -F 'DAILY_C1_BRIDGE: ${{ needs.plan.outputs.daily_c1_bridge }}' \
   "$workflow" >/dev/null || fail 'backend gate does not consume the bridge decision'
 grep -F 'backend-gate=production-release-preflight deferred-to-final-runtime-release' \
   "$workflow" >/dev/null || fail 'bridge does not defer the final-only release preflight'
+grep -F 'backend-gate=weekly-runtime-contract deferred-to-final-runtime-release' \
+  "$workflow" >/dev/null || fail 'bridge does not defer the final-only weekly runtime contract'
 ! grep -F 'daily C1 bridge classification is not control-only' "$workflow" >/dev/null || \
   fail 'workflow confused live pending components with the control-only bridge diff'
 
