@@ -10,7 +10,6 @@ import {
   setReaderSummaryPublicationSessionScope,
 } from "./reader-summary-publication-postgres-fixture-scope";
 import type { ReaderSummaryPublicationRunningFixture } from "./reader-summary-publication-postgres-running-fixture";
-import type { EvidenceFixtureOverrides } from "./reader-summary-weekly-publication-evidence-postgres-contract";
 
 type WeeklySealRow = Readonly<{
   outcome: string;
@@ -28,13 +27,8 @@ type WeeklySealFixtureParams = Readonly<{
   createFixture(
     status: "COMPLETED" | "NO_SIGNAL",
     day: string,
-    overrides?: EvidenceFixtureOverrides & Readonly<{
-      requestedAt?: string;
-      modelVersion?: string;
-    }>,
   ): Promise<ReaderSummaryPublicationRunningFixture>;
   publish(payload: Readonly<Record<string, unknown>>): Promise<string>;
-  includeProjectionRevision?: boolean;
 }>;
 
 const sealTable = "reader_summary_weekly_certification_seals";
@@ -70,29 +64,9 @@ export const assertReaderSummaryWeeklyCertificationSealPostgresContract =
     await assertIncompleteWeekFailsClosed(params.runtimeClient);
 
     for (const [index, requestedUtcDate] of weekDates.entries()) {
-      if (params.includeProjectionRevision && requestedUtcDate === "2026-06-02") {
-        const superseded = await params.createFixture("COMPLETED", requestedUtcDate, {
-          githubEvidenceMode: "historical_unavailable",
-          requestedAt: "2026-06-02T09:00:00.000Z",
-          modelVersion: "codex:gpt-5.5:xhigh:historical",
-        });
-        assert(
-          (await params.publish(superseded.payload)) === "published",
-          "historical daily publication must publish before its verified revision",
-        );
-      }
       const fixture = await params.createFixture(
-        params.includeProjectionRevision && requestedUtcDate === "2026-06-02"
-          ? "COMPLETED"
-          : weekStatuses[index]!,
+        weekStatuses[index]!,
         requestedUtcDate,
-        params.includeProjectionRevision && requestedUtcDate === "2026-06-02"
-          ? {
-              githubEvidenceMode: "verified",
-              requestedAt: "2026-06-02T10:00:00.000Z",
-              modelVersion: "codex:gpt-5.5:xhigh:verified-revision",
-            }
-          : undefined,
       );
       assert(
         (await params.publish(fixture.payload)) === "published",
@@ -124,14 +98,7 @@ export const assertReaderSummaryWeeklyCertificationSealPostgresContract =
       "weekly certification replay must retain immutable sealId and sealSha",
     );
 
-    await assertExactSevenDaySeal(
-      params.runtimeClient,
-      sealed,
-      params.includeProjectionRevision
-        ? weekStatuses.map((status, index) =>
-            index === 1 ? "COMPLETED" : status)
-        : weekStatuses,
-    );
+    await assertExactSevenDaySeal(params.runtimeClient, sealed);
     await assertTenantVisibility(params.runtimeClient);
     await assertRuntimeWritesDenied(params.runtimeClient);
     await assertPublicationOwnerAppendOnly(params.adminClient, sealed.seal_id);
@@ -617,7 +584,6 @@ const callSealAtDefaultIsolation = async (
 const assertExactSevenDaySeal = async (
   client: PoolClient,
   seal: WeeklySealRow,
-  expectedStatuses: readonly string[],
 ): Promise<void> => {
   const result = await client.query<{
     readonly dates: string[];
@@ -648,7 +614,7 @@ const assertExactSevenDaySeal = async (
       seal_id: seal.seal_id,
       seal_sha256: seal.seal_sha256,
       dates: weekDates,
-      statuses: expectedStatuses,
+      statuses: weekStatuses,
     },
     "weekly seal must retain exact ordered Monday-Sunday terminal publications",
   );

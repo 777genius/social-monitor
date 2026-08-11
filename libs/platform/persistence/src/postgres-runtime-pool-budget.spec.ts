@@ -384,7 +384,6 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/lib/reader-summary-daily-terminal-runtime-connection.ts:Pool
       scripts/lib/reader-summary-production-day-scope.ts:Pool
       scripts/lib/yesterday-social-replay-support.ts:Pool
-      scripts/read-reader-summary-daily-terminal-set-receipt.ts:Pool
       scripts/reader-summary-publication-postgres-legacy.ts:Pool
       scripts/reader-summary-publication-postgres-privileges.ts:Pool
       scripts/reader-summary-publication-postgres-privileges.ts:Pool
@@ -466,15 +465,12 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/lib/reader-summary-weekly-atomic-publication-postgres-contract.ts
       scripts/lib/reader-summary-weekly-certification-seal-postgres-contract.ts
       scripts/lib/reader-summary-weekly-daily-certification-backfill-postgres-contract.ts
-      scripts/lib/reader-summary-weekly-projection-postgres-contract.ts
       scripts/lib/reader-summary-weekly-publication-evidence-postgres-contract.ts
       scripts/lib/reader-summary-weekly-review-manifest-postgres-contract.ts
       scripts/lib/yesterday-reader-summary-artifact-quality-store.spec.ts
       scripts/lib/yesterday-reader-summary-artifact-quality-store.ts
       scripts/lib/yesterday-social-collection-quality-summary-counts.ts
       scripts/lib/yesterday-social-replay-support.ts
-      scripts/read-reader-summary-daily-terminal-set-receipt.spec.ts
-      scripts/read-reader-summary-daily-terminal-set-receipt.ts
       scripts/reader-summary-publication-postgres-legacy.ts
       scripts/reader-summary-publication-postgres-privileges.ts
       scripts/reader-summary-publication-postgres-runtime-guard.ts

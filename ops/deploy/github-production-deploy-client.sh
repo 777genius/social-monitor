@@ -15,7 +15,6 @@ DEFAULT_RECONCILE_ATTEMPTS=45
 DEFAULT_RECONCILE_INTERVAL_SECONDS=15
 DEFAULT_RECONCILE_WINDOW_SECONDS=$(((DEFAULT_RECONCILE_ATTEMPTS - 1) * DEFAULT_RECONCILE_INTERVAL_SECONDS))
 DAILY_CANONICAL_RECOVERY_CONFIRMATION=reader-summary-daily-canonical-recovery-v4
-DAILY_CANONICAL_RECOVERY_RETRY_SET_TOKEN=invalid-product-retry-set-v1
 RECONCILE_ATTEMPTS=${DEPLOY_RECONCILE_ATTEMPTS:-$DEFAULT_RECONCILE_ATTEMPTS}
 RECONCILE_INTERVAL_SECONDS=${DEPLOY_RECONCILE_INTERVAL_SECONDS:-$DEFAULT_RECONCILE_INTERVAL_SECONDS}
 PLAN_POSTGRES_POOL_REPAIR=false
@@ -86,19 +85,18 @@ remove_ssh() {
 run_remote() {
   local action=$1
   local sha=$2
-  local first_authorization_value=${3:-}
-  local second_authorization_value=${4:-}
-  local third_authorization_value=${5:-}
+  local confirmation=${3:-}
+  local model_job_identity=${4:-}
+  local authority_sha256=${5:-}
   if (($# == 5)); then
     "$SSH_BIN" "${SSH_OPTIONS[@]}" \
       -- "$DEPLOY_USER@$DEPLOY_HOST" \
-      "$action $sha $first_authorization_value $second_authorization_value $third_authorization_value"
+      "$action $sha $confirmation $model_job_identity $authority_sha256"
     return
   fi
-  if (($# == 4)); then
+  if (($# == 3)); then
     "$SSH_BIN" "${SSH_OPTIONS[@]}" \
-      -- "$DEPLOY_USER@$DEPLOY_HOST" \
-      "$action $sha $first_authorization_value $second_authorization_value"
+      -- "$DEPLOY_USER@$DEPLOY_HOST" "$action $sha $confirmation"
     return
   fi
   "$SSH_BIN" "${SSH_OPTIONS[@]}" \
@@ -107,14 +105,9 @@ run_remote() {
 
 validate_maintenance_action() {
   case ${1:-} in
-    disk-report|project-disk-cleanup|reader-summary-recover-missing-days|reader-summary-weekly-run|reader-summary-daily-canonical-recovery-v4|reader-summary-daily-terminal-set-receipt-v1) ;;
-    *) fail 'maintenance action must be disk-report, project-disk-cleanup, reader-summary-recover-missing-days, reader-summary-weekly-run, reader-summary-daily-canonical-recovery-v4, or reader-summary-daily-terminal-set-receipt-v1' ;;
+    disk-report|project-disk-cleanup|reader-summary-recover-missing-days|reader-summary-weekly-run|reader-summary-daily-canonical-recovery-v4) ;;
+    *) fail 'maintenance action must be disk-report, project-disk-cleanup, reader-summary-recover-missing-days, reader-summary-weekly-run, or reader-summary-daily-canonical-recovery-v4' ;;
   esac
-}
-
-validate_daily_canonical_recovery_retry_set_token() {
-  [[ ${1:-} == "$DAILY_CANONICAL_RECOVERY_RETRY_SET_TOKEN" ]] || \
-    fail 'daily canonical recovery requires invalid-product-retry-set-v1'
 }
 
 validate_daily_canonical_recovery_confirmation() {
@@ -122,74 +115,29 @@ validate_daily_canonical_recovery_confirmation() {
     fail 'daily canonical recovery requires its exact confirmation token'
 }
 
-validate_lowercase_hex_digest() {
+validate_lowercase_hex_identity() {
   [[ ${1:-} =~ ^[0-9a-f]{64}$ ]] || \
-    fail 'daily canonical recovery terminal-set digest must be a 64-character lowercase hexadecimal value'
-}
-
-validate_terminal_set_receipt_file() {
-  local receipt_path=${1:-}
-  [[ $# == 1 && -f $receipt_path && ! -L $receipt_path ]] || \
-    fail 'terminal-set receipt must be one regular file'
-  node - "$receipt_path" <<'NODE' || fail 'terminal-set receipt is invalid'
-const fs = require("node:fs");
-const raw = fs.readFileSync(process.argv[2], "utf8");
-if (!raw.endsWith("\n") || raw.slice(0, -1).includes("\n") || raw.includes("\r")) {
-  process.exit(1);
-}
-let receipt;
-try { receipt = JSON.parse(raw.slice(0, -1)); } catch { process.exit(1); }
-const keys = [
-  "schemaVersion", "retrySetToken", "tenantId", "workspaceId",
-  "requestedUtcDates", "terminalCount", "terminalSetSha256",
-];
-const dates = [
-  "2026-07-25", "2026-07-26", "2026-07-27",
-  "2026-07-28", "2026-07-29", "2026-07-30",
-];
-if (receipt === null || typeof receipt !== "object" || Array.isArray(receipt) ||
-    JSON.stringify(receipt) + "\n" !== raw ||
-    JSON.stringify(Object.keys(receipt)) !== JSON.stringify(keys) ||
-    receipt.schemaVersion !== "reader_summary.daily_terminal_set_receipt.v1" ||
-    receipt.retrySetToken !== "invalid-product-retry-set-v1" ||
-    receipt.tenantId !== "00000000-0000-7000-8000-000000000901" ||
-    receipt.workspaceId !== "00000000-0000-7000-8000-000000000902" ||
-    JSON.stringify(receipt.requestedUtcDates) !== JSON.stringify(dates) ||
-    receipt.terminalCount !== 6 ||
-    typeof receipt.terminalSetSha256 !== "string" ||
-    !/^[0-9a-f]{64}$/.test(receipt.terminalSetSha256)) process.exit(1);
-NODE
-  chmod 0444 "$receipt_path"
-  [[ $(stat -c '%a' "$receipt_path") == 444 ]] || \
-    fail 'terminal-set receipt could not be made immutable'
+    fail 'daily bounded maintenance identity must be a 64-character lowercase hexadecimal value'
 }
 
 run_maintenance() {
   local sha=$1
   local maintenance_action=$2
-  local first_authorization_value=${3:-}
-  local second_authorization_value=${4:-}
-  local third_authorization_value=${5:-}
+  local confirmation=${3:-}
+  local model_job_identity=${4:-}
+  local authority_sha256=${5:-}
   validate_sha "$sha"
   validate_maintenance_action "$maintenance_action"
   validate_remote_environment
   if [[ $maintenance_action == reader-summary-daily-canonical-recovery-v4 ]]; then
-    if (($# == 4)); then
-      validate_daily_canonical_recovery_retry_set_token "$first_authorization_value"
-      validate_lowercase_hex_digest "$second_authorization_value"
-      run_remote "$maintenance_action" "$sha" "$first_authorization_value" \
-        "$second_authorization_value"
-      return
-    fi
-    if (($# == 5)); then
-      validate_daily_canonical_recovery_confirmation "$first_authorization_value"
-      validate_lowercase_hex_digest "$second_authorization_value"
-      validate_lowercase_hex_digest "$third_authorization_value"
-      run_remote "$maintenance_action" "$sha" "$first_authorization_value" \
-        "$second_authorization_value" "$third_authorization_value"
-      return
-    fi
-    fail 'daily canonical recovery requires either retry-set token and digest or its exact legacy confirmation'
+    [[ $# == 5 ]] || \
+      fail 'daily canonical recovery requires confirmation, model identity, and authority SHA-256'
+    validate_daily_canonical_recovery_confirmation "$confirmation"
+    validate_lowercase_hex_identity "$model_job_identity"
+    validate_lowercase_hex_identity "$authority_sha256"
+    run_remote "$maintenance_action" "$sha" "$confirmation" \
+      "$model_job_identity" "$authority_sha256"
+    return
   fi
   [[ $# == 2 ]] || fail 'this maintenance action does not accept a confirmation token'
   run_remote "$maintenance_action" "$sha"
@@ -344,18 +292,6 @@ read_initial_plan() {
   write_plan_outputs
 }
 
-inspect_plan() {
-  local sha=$1 status
-  PLAN_POSTGRES_POOL_REPAIR=false
-  if capture_plan "$sha"; then
-    status=0
-  else
-    status=$?
-  fi
-  ((status == 0)) || fail "inspect-plan command failed with status $status"
-  print_plan
-}
-
 plan_is_fully_reconciled() {
   [[ $PLAN_FRONTEND == false && $PLAN_BACKEND == false && \
      $PLAN_CONTROL == false && $PLAN_X_COLLECTOR == false && \
@@ -443,12 +379,6 @@ case $action in
     validate_remote_environment
     read_initial_plan "$2"
     ;;
-  inspect-plan)
-    [[ $# == 2 ]] || fail 'inspect-plan requires a target SHA'
-    validate_sha "$2"
-    validate_remote_environment
-    inspect_plan "$2"
-    ;;
   upload)
     [[ $# == 3 ]] || fail 'upload requires a target SHA and archive'
     validate_sha "$2"
@@ -462,19 +392,13 @@ case $action in
     deploy_release "$2"
     ;;
   maintenance)
-    [[ $# == 3 || $# == 5 || $# == 6 ]] || \
-      fail 'maintenance requires a target SHA, action, and optional retry-set authorization'
+    [[ $# == 3 || $# == 6 ]] || \
+      fail 'maintenance requires a target SHA, action, and optional recovery authorization'
     if (($# == 6)); then
       run_maintenance "$2" "$3" "$4" "$5" "$6"
-    elif (($# == 5)); then
-      run_maintenance "$2" "$3" "$4" "$5"
     else
       run_maintenance "$2" "$3"
     fi
     ;;
-  validate-terminal-set-receipt)
-    [[ $# == 2 ]] || fail 'validate-terminal-set-receipt requires one file'
-    validate_terminal_set_receipt_file "$2"
-    ;;
-  *) fail 'allowed commands: configure, cleanup, plan, upload, deploy, maintenance, validate-terminal-set-receipt' ;;
+  *) fail 'allowed commands: configure, cleanup, plan, upload, deploy, maintenance' ;;
 esac
