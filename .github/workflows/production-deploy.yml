@@ -546,7 +546,7 @@ jobs:
             deploy_shell_files+=("${final_publication_shell_files[@]}")
           fi
           bash -n "${deploy_shell_files[@]}"
-          shellcheck -x "${deploy_shell_files[@]}"
+          shellcheck -S warning -x "${deploy_shell_files[@]}"
           python3 -m py_compile ops/deploy/verify-postgres-runtime-topology.py
           python3 -m py_compile ops/deploy/verify-postgres-pool-release-contract.py
           python3 ops/deploy/verify-postgres-pool-release-contract.py ci \

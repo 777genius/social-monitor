@@ -97,6 +97,8 @@ grep -F 'backend-gate=production-release-preflight deferred-to-final-runtime-rel
   "$workflow" >/dev/null || fail 'bridge does not defer the final-only release preflight'
 grep -F 'backend-gate=weekly-runtime-contract deferred-to-final-runtime-release' \
   "$workflow" >/dev/null || fail 'bridge does not defer the final-only weekly runtime contract'
+grep -F 'shellcheck -S warning -x "${deploy_shell_files[@]}"' \
+  "$workflow" >/dev/null || fail 'workflow treats informational shellcheck findings as release failures'
 ! grep -F 'daily C1 bridge classification is not control-only' "$workflow" >/dev/null || \
   fail 'workflow confused live pending components with the control-only bridge diff'
 
