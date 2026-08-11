@@ -87,8 +87,12 @@ fi
 workflow=$PROJECT_ROOT/.github/workflows/production-deploy.yml
 grep -F 'daily_c1_bridge_base=e3b5b5d89b3586668e36f987f03672415b5a0f37' \
   "$workflow" >/dev/null
-[[ $(grep -Fc 'deploy_control_is_exact_daily_c1_bridge_release' "$workflow") == 2 ]] || \
-  fail 'workflow must enforce exact B2 detection in plan and verification'
+[[ $(grep -Fc 'deploy_control_is_exact_daily_c1_bridge_release' "$workflow") == 1 ]] || \
+  fail 'workflow must enforce exact B2 detection in its authoritative plan'
+grep -F 'daily_c1_bridge: ${{ steps.plan.outputs.daily_c1_bridge }}' \
+  "$workflow" >/dev/null || fail 'workflow does not export the exact bridge decision'
+grep -F 'DAILY_C1_BRIDGE: ${{ needs.plan.outputs.daily_c1_bridge }}' \
+  "$workflow" >/dev/null || fail 'backend gate does not consume the bridge decision'
 ! grep -F 'daily C1 bridge classification is not control-only' "$workflow" >/dev/null || \
   fail 'workflow confused live pending components with the control-only bridge diff'
 

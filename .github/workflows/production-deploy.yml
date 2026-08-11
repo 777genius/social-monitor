@@ -161,6 +161,7 @@ jobs:
       backend: ${{ steps.plan.outputs.backend }}
       backend_base: ${{ steps.plan.outputs.backend_base }}
       control: ${{ steps.plan.outputs.control }}
+      daily_c1_bridge: ${{ steps.plan.outputs.daily_c1_bridge }}
       frontend: ${{ steps.plan.outputs.frontend }}
       postgres_pool_bootstrap: ${{ steps.plan.outputs.postgres_pool_bootstrap }}
       postgres_pool_bootstrap_sha: ${{ steps.plan.outputs.postgres_pool_bootstrap_sha }}
@@ -198,12 +199,14 @@ jobs:
           source ops/deploy/deploy-control-bridge-lib.sh
           daily_c1_bridge_base=e3b5b5d89b3586668e36f987f03672415b5a0f37
           daily_c1_final_marker=ops/deploy/production-runtime/reader-summary-daily-c1.readiness
+          daily_c1_bridge=false
           if ! git cat-file -e "$GITHUB_SHA:$daily_c1_final_marker" 2>/dev/null; then
             deploy_control_is_exact_daily_c1_bridge_release \
               "$daily_c1_bridge_base" "$GITHUB_SHA" || {
               echo 'daily C1 bridge diff does not match its exact B2 manifest' >&2
               exit 1
             }
+            daily_c1_bridge=true
           fi
           if target_state=$(bash "$transition" state "$GITHUB_SHA" TARGET "$target_plan" \
               2> "$RUNNER_TEMP/recovery-target-state.err") && \
@@ -246,6 +249,7 @@ jobs:
               $1 == "postgres_pool_bootstrap_sha" || \
               $1 == "postgres_pool_repair" { print }' "$target_plan"
             printf 'recovery_transition=true\n'
+            printf 'daily_c1_bridge=%s\n' "$daily_c1_bridge"
             printf 'repair_anchor=%s\n' "$repair_anchor"
             printf 'transition_state=%s\n' "$transition_state"
           } >> "$GITHUB_OUTPUT"
@@ -337,6 +341,7 @@ jobs:
           BACKEND_CHANGED: ${{ needs.plan.outputs.backend }}
           BACKEND_BASE: ${{ needs.plan.outputs.backend_base }}
           CONTROL_CHANGED: ${{ needs.plan.outputs.control }}
+          DAILY_C1_BRIDGE: ${{ needs.plan.outputs.daily_c1_bridge }}
           FRONTEND_CHANGED: ${{ needs.plan.outputs.frontend }}
           X_COLLECTOR_CHANGED: ${{ needs.plan.outputs.x_collector }}
           DATABASE_URL: postgresql://social_monitor_pool_ci:social_monitor_local_password@127.0.0.1:5432/social_monitor_pool_ci
@@ -379,13 +384,12 @@ jobs:
           npm run check:backup-restore
           npm run prisma:generate
           npm run build
-          daily_c1_bridge_base=e3b5b5d89b3586668e36f987f03672415b5a0f37
           source ops/deploy/deploy-control-bridge-lib.sh
-          bridge_phase=false
-          if deploy_control_is_exact_daily_c1_bridge_release \
-            "$daily_c1_bridge_base" "$GITHUB_SHA"; then
-            bridge_phase=true
-          fi
+          [[ $DAILY_C1_BRIDGE =~ ^(true|false)$ ]] || {
+            echo 'daily C1 bridge plan output is invalid' >&2
+            exit 1
+          }
+          bridge_phase=$DAILY_C1_BRIDGE
           if [[ $BACKEND_CHANGED == true ]]; then
             npm run check:postgres-runtime-pool-inventory
             if [[ $bridge_phase == false ]]; then
