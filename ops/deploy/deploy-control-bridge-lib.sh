@@ -36,6 +36,8 @@ deploy_control_daily_c1_bridge_release_paths() {
   printf '%s\n' \
     .github/workflows/production-deploy.yml \
     ops/deploy/daily-c1-control-bridge-workflow.test.sh \
+    ops/deploy/daily-runner-image-bootstrap-lib.sh \
+    ops/deploy/daily-runner-image-bootstrap-lib.test.sh \
     ops/deploy/deploy-control-bridge-lib.sh \
     ops/deploy/deploy-control-bridge-runtime-helper.test.sh \
     ops/deploy/deploy-control-lib-test-fixture.sh \

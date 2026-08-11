@@ -739,15 +739,23 @@ jobs:
           DEPLOY_KEY: ${{ secrets.PRODUCTION_SSH_PRIVATE_KEY }}
           KNOWN_HOSTS: ${{ secrets.PRODUCTION_SSH_KNOWN_HOSTS }}
         run: bash ops/deploy/github-production-deploy-client.sh configure
-      - name: Reconcile the already-installed Release B2 before the daily C1 bridge
+      - name: Install the daily-runner bootstrap repair before the daily C1 bridge
         if: needs.plan.outputs.daily_c1_bridge == 'true'
         env:
           DEPLOY_HOST: ${{ vars.PRODUCTION_SSH_HOST }}
           DEPLOY_USER: ${{ vars.PRODUCTION_SSH_USER }}
         run: |
           set -euo pipefail
-          release_b2=e3b5b5d89b3586668e36f987f03672415b5a0f37
-          bash ops/deploy/github-production-deploy-client.sh deploy "$release_b2"
+          bootstrap_repair=7b2784c66f6fa8bae2569818fe18a121c335c5e5
+          bash ops/deploy/github-production-deploy-client.sh deploy "$bootstrap_repair"
+      - name: Deploy the daily C1 bridge through the repaired controller
+        if: needs.plan.outputs.daily_c1_bridge == 'true'
+        env:
+          DEPLOY_HOST: ${{ vars.PRODUCTION_SSH_HOST }}
+          DEPLOY_USER: ${{ vars.PRODUCTION_SSH_USER }}
+        run: |
+          set -euo pipefail
+          bash ops/deploy/github-production-deploy-client.sh deploy "$GITHUB_SHA"
       - name: Freshly inspect after bounded repair
         id: recovery_state
         env:

@@ -44,8 +44,8 @@ bridge_paths=()
 while IFS= read -r bridge_path; do
   bridge_paths+=("$bridge_path")
 done < <(deploy_control_daily_c1_bridge_release_paths)
-[[ ${#bridge_paths[@]} == 17 ]] || fail 'daily C1 bridge release manifest count drifted'
-[[ $(printf '%s\n' "${bridge_paths[@]}" | LC_ALL=C sort -u | wc -l | tr -d ' ') == 17 ]] || \
+[[ ${#bridge_paths[@]} == 19 ]] || fail 'daily C1 bridge release manifest count drifted'
+[[ $(printf '%s\n' "${bridge_paths[@]}" | LC_ALL=C sort -u | wc -l | tr -d ' ') == 19 ]] || \
   fail 'daily C1 bridge release manifest contains duplicates'
 for path in "${bridge_paths[@]}"; do
   install -d "$REPO/$(dirname "$path")"
@@ -103,10 +103,14 @@ grep -F "needs.plan.outputs.daily_c1_bridge != 'true'" \
   "$workflow" >/dev/null || fail 'bridge does not defer final-only legacy transition fixtures'
 [[ $(grep -Fc "needs.plan.outputs.daily_c1_bridge != 'true'" "$workflow") == 9 ]] || \
   fail 'bridge must defer exactly the publication, frontend and legacy final-only gates'
-grep -F 'Reconcile the already-installed Release B2 before the daily C1 bridge' \
-  "$workflow" >/dev/null || fail 'bridge does not reconcile the installed partial B2 release'
-grep -F 'bash ops/deploy/github-production-deploy-client.sh deploy "$release_b2"' \
-  "$workflow" >/dev/null || fail 'bridge B2 reconciliation bypasses the reviewed deploy client'
+grep -F 'Install the daily-runner bootstrap repair before the daily C1 bridge' \
+  "$workflow" >/dev/null || fail 'bridge does not install its control-only bootstrap repair'
+grep -F 'bootstrap_repair=7b2784c6' \
+  "$workflow" >/dev/null || fail 'bridge bootstrap repair is not pinned to its reviewed commit'
+grep -F 'Deploy the daily C1 bridge through the repaired controller' \
+  "$workflow" >/dev/null || fail 'bridge does not run through the repaired controller'
+grep -F 'bash ops/deploy/github-production-deploy-client.sh deploy "$GITHUB_SHA"' \
+  "$workflow" >/dev/null || fail 'daily C1 bridge bypasses the reviewed deploy client'
 ! grep -F 'daily C1 bridge classification is not control-only' "$workflow" >/dev/null || \
   fail 'workflow confused live pending components with the control-only bridge diff'
 
