@@ -628,7 +628,9 @@ assert_events_exclude $'config-id\tsocial-monitor-prod-api:latest'
 
 reset_case
 remove_ref "$BASE_TAG"
-set_ref "$FALLBACK_BASE_TAG" "$BASE_ID" "$PREVIOUS_SHA"
+set_ref "$FALLBACK_BASE_TAG" "$BASE_ID" ''
+configure_legacy_runtime_stable
+LEGACY_RUNTIME_SERVICE=api
 daily_runner_image_bootstrap_before_rescue "$PREVIOUS_SHA" "$TARGET_SHA"
 [[ $(lookup_id "$COMPOSE_TAG") == "$CANDIDATE_ID" ]]
 [[ -z $(lookup_id "$BASE_TAG") ]]

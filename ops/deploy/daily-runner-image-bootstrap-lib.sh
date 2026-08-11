@@ -499,6 +499,11 @@ daily_runner_image_bootstrap_before_rescue() (
     fail 'historical daily-runner image config cannot be inspected'
   [[ $config == "$DAILY_RUNNER_BOOTSTRAP_IMAGE_CONFIG" ]] || \
     fail 'historical daily-runner image config is unexpected'
+  if [[ $base_alias_created == true ]]; then
+    daily_runner_bootstrap_remove_tag "$base_alias_tag" "$base_id" || \
+      fail 'daily-runner build base alias cleanup failed'
+    base_alias_created=false
+  fi
 
   daily_runner_bootstrap_verify_release "$previous_sha" "$target_sha"
   base_id_after=$(daily_runner_bootstrap_base_image_id "$previous_sha") || \
@@ -520,11 +525,6 @@ daily_runner_image_bootstrap_before_rescue() (
   daily_runner_bootstrap_remove_tag "$temporary_tag" "$candidate_id" || \
     fail 'historical daily-runner temporary tag cleanup failed'
   temporary_owned=false
-  if [[ $base_alias_created == true ]]; then
-    daily_runner_bootstrap_remove_tag "$base_alias_tag" "$base_id" || \
-      fail 'daily-runner build base alias cleanup failed'
-    base_alias_created=false
-  fi
   daily_runner_bootstrap_remove_workdir "$workdir" "$previous_sha" || \
     fail 'historical daily-runner context cleanup failed'
   workdir=

@@ -748,11 +748,11 @@ jobs:
           DEPLOY_USER: ${{ vars.PRODUCTION_SSH_USER }}
         run: |
           set -euo pipefail
-          reseal=a58a4608fa8be3fec15b34d063908f26421e7be7
-          reseal_status=0
+          helper_sync=b4a07fb913e80ec0d0524b11e98cd8ea3014a958
+          helper_sync_status=0
           DEPLOY_RECONCILE_ATTEMPTS=1 DEPLOY_RECONCILE_INTERVAL_SECONDS=0 \
-            bash ops/deploy/github-production-deploy-client.sh deploy "$reseal" || reseal_status=$?
-          printf 'bounded manifest re-seal status=%s; fresh target is authoritative\n' "$reseal_status"
+            bash ops/deploy/github-production-deploy-client.sh deploy "$helper_sync" || helper_sync_status=$?
+          printf 'bounded base revalidation helper sync status=%s; fresh target is authoritative\n' "$helper_sync_status"
           bash ops/deploy/github-production-deploy-client.sh deploy "$GITHUB_SHA"
       - name: Freshly inspect after bounded repair
         id: recovery_state
