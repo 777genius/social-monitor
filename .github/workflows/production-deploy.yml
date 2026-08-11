@@ -379,10 +379,16 @@ jobs:
           npm run check:backup-restore
           npm run prisma:generate
           npm run build
+          daily_c1_bridge_base=e3b5b5d89b3586668e36f987f03672415b5a0f37
+          source ops/deploy/deploy-control-bridge-lib.sh
+          bridge_phase=false
+          if deploy_control_is_exact_daily_c1_bridge_release \
+            "$daily_c1_bridge_base" "$GITHUB_SHA"; then
+            bridge_phase=true
+          fi
           if [[ $BACKEND_CHANGED == true ]]; then
             npm run check:postgres-runtime-pool-inventory
-            daily_c1_readiness=ops/deploy/production-runtime/reader-summary-daily-c1.readiness
-            if [[ -f $daily_c1_readiness && ! -L $daily_c1_readiness ]]; then
+            if [[ $bridge_phase == false ]]; then
               npm run check:postgres-runtime-pool-unit
             else
               echo 'backend-gate=postgres-pool-unit deferred-to-final-runtime-release'
@@ -395,8 +401,6 @@ jobs:
               npm run check:postgres-runtime-pool-prisma-concurrency
           fi
           echo 'backend-gate=bridge-classification'
-          daily_c1_bridge_base=e3b5b5d89b3586668e36f987f03672415b5a0f37
-          source ops/deploy/deploy-control-bridge-lib.sh
           bridge_release_paths=()
           while IFS= read -r bridge_path; do
             bridge_release_paths+=("$bridge_path")
@@ -435,22 +439,9 @@ jobs:
               exit 1
             }
           }
-          bridge_phase=false
-          daily_c1_marker_mode=$(git_path_mode \
-            ops/deploy/production-runtime/reader-summary-daily-c1.readiness)
-          if [[ -z $daily_c1_marker_mode ]]; then
+          if [[ $bridge_phase == true ]]; then
             if [[ $CONTROL_CHANGED != true ]]; then
               echo 'daily C1 bridge control deployment is not pending' >&2
-              exit 1
-            fi
-            if ! deploy_control_is_exact_daily_c1_bridge_release \
-              "$daily_c1_bridge_base" "$GITHUB_SHA"; then
-              expected_bridge_paths=$(printf '%s\n' "${bridge_release_paths[@]}" | LC_ALL=C sort)
-              actual_bridge_paths=$(git diff --name-only \
-                --no-renames "$daily_c1_bridge_base" "$GITHUB_SHA" -- | LC_ALL=C sort)
-              echo 'daily C1 bridge diff does not match its exact B2 manifest' >&2
-              diff -u <(printf '%s\n' "$expected_bridge_paths") \
-                <(printf '%s\n' "$actual_bridge_paths") || true
               exit 1
             fi
             for bridge_path in "${bridge_release_paths[@]}"; do
@@ -462,7 +453,6 @@ jobs:
                 exit 1
               }
             done
-            bridge_phase=true
           else
             for daily_c1_asset in "${final_daily_c1_assets[@]}"; do
               require_regular_blob "$daily_c1_asset"
