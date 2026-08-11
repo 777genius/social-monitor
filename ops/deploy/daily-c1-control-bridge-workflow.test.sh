@@ -107,7 +107,7 @@ grep -F "needs.plan.outputs.daily_c1_bridge != 'true'" \
   fail 'bridge must defer exactly the publication, frontend and legacy final-only gates'
 grep -F 'Deploy the daily C1 target through the alias-aware controller' \
   "$workflow" >/dev/null || fail 'bridge does not run through the installed alias-aware controller'
-grep -F 'helper_sync=e6597827' \
+grep -F 'helper_sync=fddeabc8' \
   "$workflow" >/dev/null || fail 'base revalidation helper sync is not pinned to its reviewed commit'
 grep -F 'bounded base revalidation helper sync status=' \
   "$workflow" >/dev/null || fail 'base revalidation helper sync is not explicitly bounded'
