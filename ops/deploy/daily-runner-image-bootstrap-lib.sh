@@ -211,16 +211,18 @@ daily_runner_bootstrap_verify_control_dockerfile() {
 
 daily_runner_bootstrap_verify_legacy_base_image() {
   local base_id=$1
+  local base_service=$2
   local deployment_project=${PROJECT:-}
   local container_id record
   local inspected_id image_id status running paused restarting dead oom_killed
   local error restart_count project service compose_image oneoff container_number extra
 
   [[ $base_id =~ ^sha256:[0-9a-f]{64}$ && \
-     $deployment_project == social-monitor-prod ]] || return 1
+     $deployment_project == social-monitor-prod && \
+     $base_service =~ ^(intelligence-worker|api)$ ]] || return 1
   container_id=$(docker container ls --no-trunc \
     --filter "label=com.docker.compose.project=$deployment_project" \
-    --filter 'label=com.docker.compose.service=intelligence-worker' \
+    --filter "label=com.docker.compose.service=$base_service" \
     --format '{{.ID}}' 2>/dev/null) || return 1
   [[ $container_id =~ ^[0-9a-f]{64}$ ]] || return 1
   record=$(docker inspect "$container_id" --format \
@@ -235,21 +237,31 @@ daily_runner_bootstrap_verify_legacy_base_image() {
      $status == running && $running == true && \
      $paused == false && $restarting == false && $dead == false && \
      $oom_killed == false && -z $error && $restart_count == 0 && \
-     $project == "$deployment_project" && $service == intelligence-worker && \
+     $project == "$deployment_project" && $service == "$base_service" && \
      $compose_image == "$image_id" && $oneoff == False && \
      $container_number == 1 && -z $extra ]]
 }
 
 daily_runner_bootstrap_base_image_id() {
   local previous_sha=$1
-  local base_tag identity image_id revision extra config
+  local base_tag fallback_tag base_service=intelligence-worker
+  local identity image_id revision extra config
 
   base_tag=$(compose_image_name intelligence-worker)
   [[ $base_tag == social-monitor-prod-intelligence-worker:latest ]] || \
     fail 'daily-runner bootstrap base tag is unexpected'
-  identity=$(docker image inspect "$base_tag" --format \
+  fallback_tag=$(compose_image_name api)
+  [[ $fallback_tag == social-monitor-prod-api:latest ]] || \
+    fail 'daily-runner bootstrap fallback base tag is unexpected'
+  if ! identity=$(docker image inspect "$base_tag" --format \
     '{{.Id}}|{{with index .Config.Labels "org.opencontainers.image.revision"}}{{.}}{{end}}' \
-    2>/dev/null) || fail 'daily-runner base image identity cannot be inspected'
+  2>/dev/null); then
+    base_tag=$fallback_tag
+    base_service=api
+    identity=$(docker image inspect "$base_tag" --format \
+      '{{.Id}}|{{with index .Config.Labels "org.opencontainers.image.revision"}}{{.}}{{end}}' \
+      2>/dev/null) || fail 'daily-runner base image identity cannot be inspected'
+  fi
   [[ $identity != *$'\n'* ]] || \
     fail 'daily-runner base image identity is ambiguous'
   IFS='|' read -r image_id revision extra <<< "$identity"
@@ -260,7 +272,8 @@ daily_runner_bootstrap_base_image_id() {
   elif [[ -n $revision ]]; then
     fail 'daily-runner base image identity or revision is unexpected'
   else
-    daily_runner_bootstrap_verify_legacy_base_image "$image_id" || \
+    daily_runner_bootstrap_verify_legacy_base_image \
+      "$image_id" "$base_service" || \
       fail 'daily-runner unlabelled base image is not runtime-stable'
   fi
   config=$(backend_image_rescue_image_config "$image_id") || \
