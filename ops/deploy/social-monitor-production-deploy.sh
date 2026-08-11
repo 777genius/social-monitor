@@ -75,6 +75,7 @@ BACKEND_PATHS=(
   prisma
   vendor
   libs
+  ':(exclude)libs/contracts/rest/openapi.snapshot.json'
   apps/api-gateway
   apps/agent-runtime
   apps/ingestion-worker
@@ -987,8 +988,8 @@ case ${action:-} in
   deploy) deploy_release "$sha" ;;
   disk-report) print_docker_disk_report ;;
   project-disk-cleanup) cleanup_project_docker_storage ;;
-  reader-summary-recover-missing-days|reader-summary-weekly-run)
+  reader-summary-recover-missing-days|reader-summary-weekly-run|reader-summary-daily-terminal-set-receipt-v1)
     run_reader_summary_daily_runner_maintenance "$action"
     ;;
-  *) fail 'allowed commands: plan, upload, deploy, disk-report, project-disk-cleanup, reader-summary-recover-missing-days, reader-summary-weekly-run' ;;
+  *) fail 'allowed commands: plan, upload, deploy, disk-report, project-disk-cleanup, reader-summary-recover-missing-days, reader-summary-weekly-run, reader-summary-daily-terminal-set-receipt-v1' ;;
 esac
