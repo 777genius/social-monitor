@@ -381,7 +381,14 @@ jobs:
           npm run build
           if [[ $BACKEND_CHANGED == true ]]; then
             npm run check:postgres-runtime-pool-inventory
-            npm run check:postgres-runtime-pool-unit
+            if git cat-file -e \
+              "$GITHUB_SHA:ops/deploy/production-runtime/reader-summary-daily-c1.readiness" \
+              2>/dev/null; then
+              npm run check:postgres-runtime-pool-unit
+            else
+              POSTGRES_RUNTIME_DAILY_C1_HELPER_TEST_MODE=1 \
+                npm run check:postgres-runtime-pool-unit
+            fi
             echo 'backend-gate=tenant-rls'
             TENANT_RLS_TEST_ADMIN_DATABASE_URL=postgresql://social_monitor_pool_ci:social_monitor_local_password@127.0.0.1:5432/social_monitor_pool_ci \
               npm run check:tenant-rls-postgres
