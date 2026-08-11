@@ -1,11 +1,6 @@
 import { spawnSync, type SpawnSyncReturns } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import {
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -22,6 +17,7 @@ import { loadDotenvIfPresent } from "./lib/env-file";
 import { GrpcReaderSummaryDailySubscriptionRuntime } from "./lib/grpc-reader-summary-daily-subscription-runtime";
 import {
   ReaderSummaryDailyCatchUpSupervisor,
+  readerSummaryDailyCatchUpBatchSize,
   type ReaderSummaryDailyCatchUpEvidence,
 } from "./lib/reader-summary-daily-catch-up-supervisor";
 import {
@@ -36,6 +32,11 @@ import { defaultCleanRealDayCollectionProviderKeys } from "./lib/clean-real-day-
 import { verifyReaderSummaryDailySourceAuthority } from "./lib/reader-summary-daily-source-authority-snapshot";
 import { createReaderSummaryDailyTerminalRuntimeConnection } from "./lib/reader-summary-daily-terminal-runtime-connection";
 import { ReaderSummaryDailyTerminalRunner } from "./lib/reader-summary-daily-terminal-runner";
+import {
+  createReaderSummaryDailyDeliveryC1ClaimNext,
+  readerSummaryDailyDeliveryC1FirstDate,
+  readerSummaryDailyDeliveryC1Mode,
+} from "./lib/reader-summary-daily-delivery-c1-cursor";
 
 type Spawn = (
   command: string,
@@ -55,7 +56,9 @@ export type ReaderSummaryDailyCatchUpRuntime = Readonly<{
   ): Promise<readonly PersistedProviderRow[]>;
   executeClaimed(
     work: ReaderSummaryDailyExecutionWork,
-  ): Promise<Readonly<{ kind: "completed" | "replayed"; requestedUtcDate: string }>>;
+  ): Promise<
+    Readonly<{ kind: "completed" | "replayed"; requestedUtcDate: string }>
+  >;
   spawn: Spawn;
   env: NodeJS.ProcessEnv;
   cwd: string;
@@ -120,7 +123,75 @@ export const runReaderSummaryDailyCatchUp = async (
     executeClaimed: runtime.executeClaimed,
   }).run();
 
-export const providerCatchUpArgs = (requestedUtcDate: string): readonly string[] => [
+export const readerSummaryDailyDeliveryC1CatchUpBatchLimit = (
+  recoveryThrough: string,
+): number => {
+  const firstDay = utcDayOrdinal(
+    readerSummaryDailyDeliveryC1FirstDate,
+    "C1 first unresolved date",
+  );
+  const lastDay = utcDayOrdinal(recoveryThrough, "C1 recovery-through date");
+  if (lastDay < firstDay) {
+    throw new Error("Daily delivery C1 recovery-through predates Jul23");
+  }
+  const eligibleDays = lastDay - firstDay + 1;
+  // An exact multiple needs one more claim to observe CAUGHT_UP because the
+  // seven-claim supervisor intentionally does not lease an eighth date.
+  return Math.floor(eligibleDays / readerSummaryDailyCatchUpBatchSize) + 1;
+};
+
+export const runReaderSummaryDailyCatchUpBatches = async (
+  runtime: ReaderSummaryDailyCatchUpRuntime,
+  c1Mode: boolean,
+  recoveryThrough?: string,
+): Promise<ReaderSummaryDailyCatchUpEvidence> => {
+  if (!c1Mode) return runReaderSummaryDailyCatchUp(runtime);
+
+  if (recoveryThrough === undefined) {
+    throw new Error("Daily delivery C1 recovery-through is required");
+  }
+  const maximum =
+    readerSummaryDailyDeliveryC1CatchUpBatchLimit(recoveryThrough);
+  for (let batch = 1; batch <= maximum; batch += 1) {
+    const result = await runReaderSummaryDailyCatchUp(runtime);
+    assertC1CatchUpEvidence(result, recoveryThrough);
+    if (result.outcome !== "pending") {
+      if (
+        result.outcome === "caught_up" &&
+        result.eligibleThrough !== recoveryThrough
+      ) {
+        throw new Error("Daily delivery C1 caught-up boundary mismatched");
+      }
+      return result;
+    }
+  }
+  throw new Error(
+    `Daily delivery C1 did not reach CAUGHT_UP through ${recoveryThrough}`,
+  );
+};
+
+const assertC1CatchUpEvidence = (
+  result: ReaderSummaryDailyCatchUpEvidence,
+  recoveryThrough: string,
+): void => {
+  utcDayOrdinal(recoveryThrough, "C1 recovery-through date");
+  utcDayOrdinal(result.eligibleThrough, "C1 result eligible-through");
+  if (result.eligibleThrough > recoveryThrough) {
+    throw new Error("Daily delivery C1 result exceeds recovery-through");
+  }
+  for (const event of result.events) {
+    if (event.requestedUtcDate !== undefined) {
+      utcDayOrdinal(event.requestedUtcDate, "C1 result date");
+      if (event.requestedUtcDate > recoveryThrough) {
+        throw new Error("Daily delivery C1 event exceeds recovery-through");
+      }
+    }
+  }
+};
+
+export const providerCatchUpArgs = (
+  requestedUtcDate: string,
+): readonly string[] => [
   "run",
   "run:reader-summary-clean-real-day-collection",
   "--",
@@ -131,11 +202,13 @@ export const providerCatchUpArgs = (requestedUtcDate: string): readonly string[]
   "--wait-for-x-readiness",
 ];
 
-export const verifyClaimedProviderAuthority = (params: Readonly<{
-  work: ReaderSummaryDailyExecutionWork;
-  artifactPath: string;
-  persistedRows?: readonly PersistedProviderRow[];
-}>): void => {
+export const verifyClaimedProviderAuthority = (
+  params: Readonly<{
+    work: ReaderSummaryDailyExecutionWork;
+    artifactPath: string;
+    persistedRows?: readonly PersistedProviderRow[];
+  }>,
+): void => {
   const authority = verifyReaderSummaryDailySourceAuthority({
     tenantId: params.work.tenantId,
     workspaceId: params.work.workspaceId,
@@ -190,17 +263,23 @@ export const assertVisibleProviderAuthority = (
     ...Object.keys(visibleCounts),
   ]);
   for (const providerKey of providerKeys) {
-    if ((visibleCounts[providerKey] ?? 0) !== (authorityCounts[providerKey] ?? 0)) {
-      throw new Error("Visible provider counts diverged from immutable authority");
+    if (
+      (visibleCounts[providerKey] ?? 0) !== (authorityCounts[providerKey] ?? 0)
+    ) {
+      throw new Error(
+        "Visible provider counts diverged from immutable authority",
+      );
     }
   }
 };
 
-const classifyClaimedProviderAuthority = async (params: Readonly<{
-  work: ReaderSummaryDailyExecutionWork;
-  artifactPath: string;
-  persistedRows: readonly PersistedProviderRow[];
-}>): Promise<
+const classifyClaimedProviderAuthority = async (
+  params: Readonly<{
+    work: ReaderSummaryDailyExecutionWork;
+    artifactPath: string;
+    persistedRows: readonly PersistedProviderRow[];
+  }>,
+): Promise<
   | "verified"
   | Readonly<{ kind: "provider_deferred"; reasonCode: string }>
   | Readonly<{ kind: "authority_blocked"; reasonCode: string }>
@@ -209,11 +288,19 @@ const classifyClaimedProviderAuthority = async (params: Readonly<{
     verifyClaimedProviderAuthority(params);
     return "verified";
   } catch (error) {
-    if (error instanceof Error &&
-        error.message === "Provider catch-up did not return exact day evidence") {
-      return { kind: "provider_deferred", reasonCode: "exact_day_evidence_absent" };
+    if (
+      error instanceof Error &&
+      error.message === "Provider catch-up did not return exact day evidence"
+    ) {
+      return {
+        kind: "provider_deferred",
+        reasonCode: "exact_day_evidence_absent",
+      };
     }
-    return { kind: "authority_blocked", reasonCode: "provider_authority_invalid" };
+    return {
+      kind: "authority_blocked",
+      reasonCode: "provider_authority_invalid",
+    };
   }
 };
 
@@ -224,50 +311,79 @@ const main = async (): Promise<void> => {
   const firstUnresolvedUtcDate = requiredUtcDate(
     "READER_SUMMARY_DAILY_FIRST_UNRESOLVED_UTC_DATE",
   );
+  const c1Mode =
+    process.env.READER_SUMMARY_DAILY_DELIVERY_C1_MODE ===
+    readerSummaryDailyDeliveryC1Mode;
+  const recoveryThrough = c1Mode
+    ? requiredUtcDate("READER_SUMMARY_DAILY_DELIVERY_C1_RECOVERY_THROUGH")
+    : undefined;
   const databaseUrl = requiredEnv("DATABASE_URL");
-  const publicDirectory = resolve(requiredEnv(
-    "READER_SUMMARY_DAILY_PUBLIC_DIRECTORY",
-  ));
-  const connection = createReaderSummaryDailyTerminalRuntimeConnection(process.env);
-  const cursor = new PrismaReaderSummaryDailyExecutionCursor(connection.terminal);
+  const publicDirectory = resolve(
+    requiredEnv("READER_SUMMARY_DAILY_PUBLIC_DIRECTORY"),
+  );
+  const connection = createReaderSummaryDailyTerminalRuntimeConnection(
+    process.env,
+  );
+  const cursor = new PrismaReaderSummaryDailyExecutionCursor(
+    connection.terminal,
+  );
   const workerId = `daily-catch-up-${randomUUID()}`;
   const runtimeClient = GrpcAgentRuntimeClient.connect({
     address: requiredEnv("AGENT_RUNTIME_GRPC_ADDRESS"),
     clock: new SystemClock(),
     options: {
-      timeoutMs: positiveInteger(process.env.AGENT_RUNTIME_GRPC_TIMEOUT_MS, 5_000),
-      serviceToken: process.env.AGENT_RUNTIME_SERVICE_TOKEN?.trim() || undefined,
+      timeoutMs: positiveInteger(
+        process.env.AGENT_RUNTIME_GRPC_TIMEOUT_MS,
+        5_000,
+      ),
+      serviceToken:
+        process.env.AGENT_RUNTIME_SERVICE_TOKEN?.trim() || undefined,
     },
   });
   const publication = new CanonicalReaderSummaryDailyPublicationFinalizer({
     publicDirectory,
-    capture: (input) => captureCanonicalPublication({
-      input,
-      databaseUrl,
-      query: async (sql, values) => {
-        const client = await connection.auditor.connect();
-        try {
-          return (await client.query<Record<string, unknown>>(sql, [...values])).rows;
-        } finally {
-          client.release();
-        }
-      },
-    }),
+    capture: (input) =>
+      captureCanonicalPublication({
+        input,
+        databaseUrl,
+        query: async (sql, values) => {
+          const client = await connection.auditor.connect();
+          try {
+            return (
+              await client.query<Record<string, unknown>>(sql, [...values])
+            ).rows;
+          } finally {
+            client.release();
+          }
+        },
+      }),
   });
   try {
-    const result = await runReaderSummaryDailyCatchUp({
-      claimNext: () => cursor.claimNext({
-        tenantId,
-        workspaceId,
-        workerId,
-        firstUnresolvedUtcDate,
-        invokedAt: new Date().toISOString(),
-      }),
-      readPersistedRows: async (work) => {
-        const client = await connection.auditor.connect();
-        try {
-          const result = await client.query<PersistedProviderRow>(
-            `SELECT feed.provider_key AS "providerKey", feed.status::TEXT AS status
+    const claim = {
+      tenantId,
+      workspaceId,
+      workerId,
+      firstUnresolvedUtcDate,
+      invokedAt: new Date().toISOString(),
+    };
+    const claimNext = c1Mode
+      ? createReaderSummaryDailyDeliveryC1ClaimNext({
+          client: connection.terminal,
+          cursor,
+          claim,
+          mode: process.env.READER_SUMMARY_DAILY_DELIVERY_C1_MODE,
+          recoveryThrough: recoveryThrough!,
+        })
+      : () =>
+          cursor.claimNext({ ...claim, invokedAt: new Date().toISOString() });
+    const result = await runReaderSummaryDailyCatchUpBatches(
+      {
+        claimNext,
+        readPersistedRows: async (work) => {
+          const client = await connection.auditor.connect();
+          try {
+            const result = await client.query<PersistedProviderRow>(
+              `SELECT feed.provider_key AS "providerKey", feed.status::TEXT AS status
              FROM feed_items feed
              JOIN source_items source_item ON source_item.id = feed.source_item_id
              WHERE feed.tenant_id = $1::UUID
@@ -276,37 +392,54 @@ const main = async (): Promise<void> => {
                AND feed.published_at < ($3::DATE + 1)::TIMESTAMP AT TIME ZONE 'UTC'
                AND feed.observed_at <= $4::TIMESTAMPTZ
                AND source_item.created_at <= $4::TIMESTAMPTZ`,
-            [work.tenantId, work.workspaceId, work.requestedUtcDate,
-              work.sourceAuthority.ingestionCutoff],
-          );
-          return result.rows;
-        } finally {
-          client.release();
-        }
+              [
+                work.tenantId,
+                work.workspaceId,
+                work.requestedUtcDate,
+                work.sourceAuthority.ingestionCutoff,
+              ],
+            );
+            return result.rows;
+          } finally {
+            client.release();
+          }
+        },
+        executeClaimed: async (work) => {
+          const terminal = await new ReaderSummaryDailyTerminalRunner({
+            cursor: claimedCursor(cursor, work),
+            runtime: new GrpcReaderSummaryDailySubscriptionRuntime(
+              runtimeClient,
+            ),
+            publication,
+            now: () => new Date(),
+          }).runOne({
+            tenantId,
+            workspaceId,
+            workerId,
+            firstUnresolvedUtcDate: work.requestedUtcDate,
+          });
+          if (terminal.kind !== "completed" && terminal.kind !== "replayed") {
+            throw new Error(
+              "Claimed daily terminal returned a non-executable state",
+            );
+          }
+          return terminal;
+        },
+        spawn: (command, args, options) =>
+          spawnSync(command, [...args], options),
+        env: process.env,
+        cwd: process.cwd(),
       },
-      executeClaimed: async (work) => {
-        const terminal = await new ReaderSummaryDailyTerminalRunner({
-          cursor: claimedCursor(cursor, work),
-          runtime: new GrpcReaderSummaryDailySubscriptionRuntime(runtimeClient),
-          publication,
-          now: () => new Date(),
-        }).runOne({
-          tenantId,
-          workspaceId,
-          workerId,
-          firstUnresolvedUtcDate: work.requestedUtcDate,
-        });
-        if (terminal.kind !== "completed" && terminal.kind !== "replayed") {
-          throw new Error("Claimed daily terminal returned a non-executable state");
-        }
-        return terminal;
-      },
-      spawn: (command, args, options) => spawnSync(command, [...args], options),
-      env: process.env,
-      cwd: process.cwd(),
-    });
+      c1Mode,
+      recoveryThrough,
+    );
     console.log(JSON.stringify(result));
-    if (result.outcome === "blocked") process.exitCode = 1;
+    if (
+      result.outcome === "blocked" ||
+      (c1Mode && result.outcome !== "caught_up")
+    ) {
+      process.exitCode = 1;
+    }
   } finally {
     await connection.close();
   }
@@ -324,7 +457,9 @@ const claimedCursor = (
 });
 
 type CaptureInput = Parameters<
-  ConstructorParameters<typeof CanonicalReaderSummaryDailyPublicationFinalizer>[0]["capture"]
+  ConstructorParameters<
+    typeof CanonicalReaderSummaryDailyPublicationFinalizer
+  >[0]["capture"]
 >[0];
 
 const captureCanonicalPublication = async (params: {
@@ -335,7 +470,9 @@ const captureCanonicalPublication = async (params: {
     values: readonly unknown[],
   ) => Promise<readonly Record<string, unknown>[]>;
 }): Promise<ReaderSummaryDailyCaptureResult> => {
-  const directory = mkdtempSync(join(tmpdir(), "reader-summary-daily-capture-"));
+  const directory = mkdtempSync(
+    join(tmpdir(), "reader-summary-daily-capture-"),
+  );
   const responsePath = join(directory, "response.json");
   const receiptPath = join(directory, "receipt.json");
   const authorityPath = join(directory, "authority.json");
@@ -344,37 +481,47 @@ const captureCanonicalPublication = async (params: {
   try {
     writeFileSync(responsePath, params.input.responseBytes, { mode: 0o400 });
     writeFileSync(receiptPath, params.input.receiptBytes, { mode: 0o400 });
-    writeFileSync(authorityPath,
-      Buffer.from(params.input.work.sourceAuthority.canonicalBytes), { mode: 0o400 });
+    writeFileSync(
+      authorityPath,
+      Buffer.from(params.input.work.sourceAuthority.canonicalBytes),
+      { mode: 0o400 },
+    );
     const date = params.input.work.requestedUtcDate;
-    const capture = spawnSync(process.execPath, [
-      "-r", "ts-node/register", "-r", "tsconfig-paths/register",
-      "scripts/capture-durable-reader-summary-from-postgres.ts",
-    ], {
-      cwd: process.cwd(),
-      env: {
-        ...process.env,
-        DATABASE_URL: params.databaseUrl,
-        DURABLE_READER_SUMMARY_TENANT_ID: params.input.work.tenantId,
-        DURABLE_READER_SUMMARY_WORKSPACE_ID: params.input.work.workspaceId,
-        DURABLE_READER_SUMMARY_TIMEZONE: "UTC",
-        DURABLE_READER_SUMMARY_CADENCE: "daily",
-        DURABLE_READER_SUMMARY_PERIOD_STARTED_AT: `${date}T00:00:00.000Z`,
-        DURABLE_READER_SUMMARY_PERIOD_ENDED_AT: nextUtcDate(date),
-        DURABLE_READER_SUMMARY_MODEL: "agent-runtime",
-        DURABLE_READER_SUMMARY_TOPIC_LABELER: "deterministic",
-        DURABLE_READER_SUMMARY_EVIDENCE_PATH: evidencePath,
-        DURABLE_READER_SUMMARY_FRONTEND_FIXTURE_PATH: frontendPath,
-        DURABLE_READER_SUMMARY_DAILY_RESPONSE_PATH: responsePath,
-        DURABLE_READER_SUMMARY_DAILY_RECEIPT_PATH: receiptPath,
-        DURABLE_READER_SUMMARY_DAILY_AUTHORITY_PATH: authorityPath,
-        DURABLE_READER_SUMMARY_DAILY_MODEL_JOB_IDENTITY:
-          params.input.work.modelJob.value,
-        OPENAI_API_KEY: "",
+    const capture = spawnSync(
+      process.execPath,
+      [
+        "-r",
+        "ts-node/register",
+        "-r",
+        "tsconfig-paths/register",
+        "scripts/capture-durable-reader-summary-from-postgres.ts",
+      ],
+      {
+        cwd: process.cwd(),
+        env: {
+          ...process.env,
+          DATABASE_URL: params.databaseUrl,
+          DURABLE_READER_SUMMARY_TENANT_ID: params.input.work.tenantId,
+          DURABLE_READER_SUMMARY_WORKSPACE_ID: params.input.work.workspaceId,
+          DURABLE_READER_SUMMARY_TIMEZONE: "UTC",
+          DURABLE_READER_SUMMARY_CADENCE: "daily",
+          DURABLE_READER_SUMMARY_PERIOD_STARTED_AT: `${date}T00:00:00.000Z`,
+          DURABLE_READER_SUMMARY_PERIOD_ENDED_AT: nextUtcDate(date),
+          DURABLE_READER_SUMMARY_MODEL: "agent-runtime",
+          DURABLE_READER_SUMMARY_TOPIC_LABELER: "deterministic",
+          DURABLE_READER_SUMMARY_EVIDENCE_PATH: evidencePath,
+          DURABLE_READER_SUMMARY_FRONTEND_FIXTURE_PATH: frontendPath,
+          DURABLE_READER_SUMMARY_DAILY_RESPONSE_PATH: responsePath,
+          DURABLE_READER_SUMMARY_DAILY_RECEIPT_PATH: receiptPath,
+          DURABLE_READER_SUMMARY_DAILY_AUTHORITY_PATH: authorityPath,
+          DURABLE_READER_SUMMARY_DAILY_MODEL_JOB_IDENTITY:
+            params.input.work.modelJob.value,
+          OPENAI_API_KEY: "",
+        },
+        encoding: "utf8",
+        timeout: 30 * 60 * 1_000,
       },
-      encoding: "utf8",
-      timeout: 30 * 60 * 1_000,
-    });
+    );
     if (capture.status !== 0) {
       throw new Error("Daily canonical capture failed");
     }
@@ -384,9 +531,13 @@ const captureCanonicalPublication = async (params: {
       result?: { readerSummaryJobId?: string; readerSummaryId?: string };
     };
     const readerSummaryJobId = requiredText(
-      evidence.result?.readerSummaryJobId, "canonical job id");
+      evidence.result?.readerSummaryJobId,
+      "canonical job id",
+    );
     const readerSummaryArtifactId = requiredText(
-      evidence.result?.readerSummaryId, "canonical artifact id");
+      evidence.result?.readerSummaryId,
+      "canonical artifact id",
+    );
     const rows = await params.query(
       `SELECT publication.id::TEXT AS "publicationId",
         btrim(publication.report_sha256) AS "reportSha256",
@@ -399,12 +550,18 @@ const captureCanonicalPublication = async (params: {
          AND publication.workspace_id = $2::UUID
          AND publication.reader_summary_job_id = $3::UUID
          AND publication.reader_summary_artifact_id = $4::UUID`,
-      [params.input.work.tenantId, params.input.work.workspaceId,
-        readerSummaryJobId, readerSummaryArtifactId],
+      [
+        params.input.work.tenantId,
+        params.input.work.workspaceId,
+        readerSummaryJobId,
+        readerSummaryArtifactId,
+      ],
     );
     const row = rows[0];
     if (rows.length !== 1 || row === undefined) {
-      throw new Error("Daily canonical DB publication was not read back exactly");
+      throw new Error(
+        "Daily canonical DB publication was not read back exactly",
+      );
     }
     return {
       readerSummaryJobId,
@@ -412,7 +569,10 @@ const captureCanonicalPublication = async (params: {
       publicationId: requiredText(row.publicationId, "publication id"),
       reportSha256: requiredSha(row.reportSha256, "report"),
       proofSha256: requiredSha(row.proofSha256, "proof"),
-      weeklyEvidenceSha256: requiredSha(row.weeklyEvidenceSha256, "weekly evidence"),
+      weeklyEvidenceSha256: requiredSha(
+        row.weeklyEvidenceSha256,
+        "weekly evidence",
+      ),
       evidenceBytes,
       frontendBytes,
     };
@@ -421,15 +581,16 @@ const captureCanonicalPublication = async (params: {
   }
 };
 
-const childOptions = (runtime: Pick<ReaderSummaryDailyCatchUpRuntime,
-  "cwd" | "env">) => ({
+const childOptions = (
+  runtime: Pick<ReaderSummaryDailyCatchUpRuntime, "cwd" | "env">,
+) => ({
   cwd: runtime.cwd,
   env: runtime.env,
   encoding: "utf8" as const,
   maxBuffer: 1024 * 1024,
 });
-const requiredEnv = (name: string): string => requiredText(
-  process.env[name]?.trim(), name);
+const requiredEnv = (name: string): string =>
+  requiredText(process.env[name]?.trim(), name);
 const requiredText = (value: unknown, label: string): string => {
   if (typeof value !== "string" || value.trim().length === 0) {
     throw new Error(`${label} is required`);
@@ -438,13 +599,16 @@ const requiredText = (value: unknown, label: string): string => {
 };
 const requiredSha = (value: unknown, label: string): string => {
   const result = requiredText(value, `${label} SHA-256`);
-  if (!/^[0-9a-f]{64}$/u.test(result)) throw new Error(`${label} SHA-256 is invalid`);
+  if (!/^[0-9a-f]{64}$/u.test(result))
+    throw new Error(`${label} SHA-256 is invalid`);
   return result;
 };
 const requiredUtcDate = (name: string): string => {
   const value = requiredEnv(name);
-  if (!/^\d{4}-\d{2}-\d{2}$/u.test(value) ||
-      new Date(`${value}T00:00:00.000Z`).toISOString().slice(0, 10) !== value) {
+  if (
+    !/^\d{4}-\d{2}-\d{2}$/u.test(value) ||
+    new Date(`${value}T00:00:00.000Z`).toISOString().slice(0, 10) !== value
+  ) {
     throw new Error(`${name} must be an exact UTC date`);
   }
   return value;
@@ -454,7 +618,19 @@ const nextUtcDate = (date: string): string => {
   value.setUTCDate(value.getUTCDate() + 1);
   return value.toISOString();
 };
-const positiveInteger = (value: string | undefined, fallback: number): number => {
+const utcDayOrdinal = (value: string, label: string): number => {
+  if (
+    !/^\d{4}-\d{2}-\d{2}$/u.test(value) ||
+    new Date(`${value}T00:00:00.000Z`).toISOString().slice(0, 10) !== value
+  ) {
+    throw new Error(`${label} must be an exact UTC date`);
+  }
+  return Math.floor(Date.parse(`${value}T00:00:00.000Z`) / 86_400_000);
+};
+const positiveInteger = (
+  value: string | undefined,
+  fallback: number,
+): number => {
   if (value === undefined || value.trim().length === 0) return fallback;
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed < 1) {

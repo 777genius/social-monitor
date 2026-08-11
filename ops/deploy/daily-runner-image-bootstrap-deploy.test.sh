@@ -24,6 +24,10 @@ cp "$ENTRYPOINT" \
   "$SCRIPT_DIR/backend-runtime-health-lib.sh" \
   "$SCRIPT_DIR/backend-image-rescue-lib.sh" \
   "$SCRIPT_DIR/daily-runner-image-bootstrap-lib.sh" \
+  "$SCRIPT_DIR/postgres-runtime-activation-boundary-lib.sh" \
+  "$SCRIPT_DIR/postgres-runtime-daily-c1-readiness-lib.sh" \
+  "$SCRIPT_DIR/postgres-runtime-weekly-timer-state-lib.sh" \
+  "$SCRIPT_DIR/reader-summary-recovery-maintenance-lib.sh" \
   "$SCRIPT_DIR/x-collector-image-deploy-lib.sh" \
   "$REPO/ops/deploy/"
 

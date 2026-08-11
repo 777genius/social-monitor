@@ -17,6 +17,15 @@ ZERO_SHA = "0" * 40
 EXPECTED_RELEASE_A_COUNT = 18
 EXPECTED_RELEASE_B_COUNT = 98
 EXPECTED_ATOMIC_REPAIR_COUNT = 17
+EXPECTED_DAILY_TIMER_CONTRACT = {
+    "dailyTimerOwner": "daily-readiness-v6b",
+    "dailyTimerHistoricalOwner": "daily-readiness-v6b",
+    "dailyTimerReadyOwner": "daily-delivery-c1-runtime-control",
+    "dailyTimerPath": "ops/deploy/production-runtime/social-monitor-daily.timer",
+    "dailyTimerSchedule": "*-*-* 00:15:00 UTC",
+    "dailyTimerRule": "The historical pool adoption releases do not change timer ownership. A later runtime-control release transfers ownership transactionally to the repo-owned legacy timer only for an exact READY C1 marker; BLOCKED retains the existing reviewed owner and READY cannot regress to BLOCKED.",
+    "dailyTimerInvariant": "Normal topology has exactly one reviewed production daily timer enabled and active. READY normal topology requires social-monitor-daily.timer enabled and active with the v6 timer disabled and inactive. A valid persistent REQUESTED or CONTAINED marker requires both timers disabled and inactive and both services inactive; an invalid marker fails closed.",
+}
 # Release A owns the historical EOF normalization; Release B owns the later
 # substantive pool-budget documentation at the same non-runtime path.
 EXPECTED_RELEASE_OVERLAP = (
@@ -97,6 +106,9 @@ def load_contract() -> dict[str, Any]:
         candidate = pathlib.PurePosixPath(path)
         if candidate.is_absolute() or ".." in candidate.parts:
             fail(f"PostgreSQL atomic repair contains unsafe path: {path}")
+    for key, expected in EXPECTED_DAILY_TIMER_CONTRACT.items():
+        if contract.get(key) != expected:
+            fail(f"PostgreSQL daily timer contract {key} is invalid")
     return contract
 
 
@@ -251,7 +263,7 @@ def manifests(contract: dict[str, Any]) -> tuple[list[str], list[str]]:
     if not any(path.startswith("libs/platform/persistence/") for path in release_b):
         fail("Release B does not contain the bounded persistence implementation")
     if any(path.endswith(".timer") for path in release_a + release_b):
-        fail("PostgreSQL pool releases must not own a daily timer")
+        fail("historical PostgreSQL pool adoption releases must not own a timer")
     return release_a, release_b
 
 

@@ -14,11 +14,20 @@ BIN=$FIXTURE/bin
 ENTRYPOINT=$FIXTURE/github-production-deploy.sh
 EVENT_LOG=$FIXTURE/events.log
 SHA=1234567890abcdef1234567890abcdef12345678
+SHA_UPPER=$(printf '%s' "$SHA" | tr '[:lower:]' '[:upper:]')
 DAILY_CANONICAL_RECOVERY_CONFIRMATION=reader-summary-daily-canonical-recovery-v4
 DAILY_CANONICAL_RECOVERY_RETRY_SET_TOKEN=invalid-product-retry-set-v1
 MODEL_JOB_IDENTITY=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 AUTHORITY_SHA256=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 TERMINAL_SET_SHA256=cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+TERMINAL_SET_SHA256_UPPER=$(printf '%s' "$TERMINAL_SET_SHA256" | tr '[:lower:]' '[:upper:]')
+MODEL_JOB_IDENTITY_UPPER=$(printf '%s' "$MODEL_JOB_IDENTITY" | tr '[:lower:]' '[:upper:]')
+C1_REPAIR_CONFIRMATION=reader-summary-daily-scan-terminal-repair-c1
+C1_REPAIR_STDIN_RECORD="$C1_REPAIR_CONFIRMATION $TERMINAL_SET_SHA256"
+C1_RUN_CONFIRMATION=reader-summary-daily-delivery-c1-run
+C1_RUN_STDIN_RECORD="$C1_RUN_CONFIRMATION 2026-08-10"
+C1_CONTAIN_CONFIRMATION=reader-summary-daily-delivery-c1-contain
+C1_CONTAIN_STDIN_RECORD="$C1_CONTAIN_CONFIRMATION $SHA"
 AUTHORIZED_STDIN_RECORD="reader-summary-daily-canonical-recovery-v4 $DAILY_CANONICAL_RECOVERY_RETRY_SET_TOKEN $TERMINAL_SET_SHA256"
 LEGACY_STDIN_RECORD="$DAILY_CANONICAL_RECOVERY_CONFIRMATION 2026-07-23 $MODEL_JOB_IDENTITY $AUTHORITY_SHA256"
 UPLOAD_PAYLOAD=$FIXTURE/frontend-upload.payload
@@ -131,7 +140,10 @@ if [[ ${EXPECT_ORDINARY_PROBE_STDIN_EOF:-0} == 1 ]]; then
   exit
 fi
 if [[ ${EXPECT_AUTHORIZED_STDIN:-0} == 1 ]]; then
-  [[ $action == reader-summary-recover-missing-days ]]
+  [[ $action == reader-summary-recover-missing-days || \
+     $action == reader-summary-daily-scan-terminal-repair-c1 || \
+     $action == reader-summary-daily-delivery-c1-run || \
+     $action == reader-summary-daily-delivery-c1-contain ]]
   [[ -z ${SSH_ORIGINAL_COMMAND+x} ]]
   IFS= read -r authorization_record
   [[ $authorization_record == "${EXPECTED_AUTHORIZED_STDIN_RECORD:-reader-summary-daily-canonical-recovery-v4 $expected_retry_set_token $expected_terminal_set_sha256}" ]]
@@ -231,7 +243,8 @@ done
 
 for command in \
   "deploy $SHA"$'\n'"plan $SHA" \
-  "deploy $SHA"$'\r'; do
+  "deploy $SHA"$'\r' \
+  "reader-summary-daily-delivery-c1-run $SHA_UPPER reader-summary-daily-delivery-c1-run 2026-08-10"; do
   : > "$EVENT_LOG"
   assert_rejected "$FIXTURE/current-wrapper.sh" "$command"
   [[ ! -s $EVENT_LOG ]]
@@ -240,7 +253,8 @@ done
 for action in \
   disk-report project-disk-cleanup \
   reader-summary-recover-missing-days reader-summary-weekly-run \
-  reader-summary-daily-terminal-set-receipt-v1; do
+  reader-summary-daily-terminal-set-receipt-v1 \
+  reader-summary-daily-scan-terminal-preimage-c1; do
   : > "$EVENT_LOG"
   SSH_ORIGINAL_COMMAND="$action $SHA" EVENT_LOG=$EVENT_LOG \
     CONTROL_LIB=$CONTROL_LIB EXACT_SHA=$SHA bash "$FIXTURE/current-wrapper.sh" </dev/null
@@ -272,7 +286,8 @@ assert_non_v4_stdin_is_sealed() {
 for action in \
   plan deploy disk-report project-disk-cleanup \
   reader-summary-recover-missing-days reader-summary-weekly-run \
-  reader-summary-daily-terminal-set-receipt-v1; do
+  reader-summary-daily-terminal-set-receipt-v1 \
+  reader-summary-daily-scan-terminal-preimage-c1; do
   assert_non_v4_stdin_is_sealed "$action"
 done
 
@@ -290,6 +305,45 @@ grep -Fx 'sudo-clean' "$EVENT_LOG" >/dev/null
 grep -Fx 'upload-stdin-exact' "$EVENT_LOG" >/dev/null
 grep -Fx "dispatch:upload:$SHA" "$EVENT_LOG" >/dev/null
 [[ $(wc -l < "$EVENT_LOG") == 3 ]]
+
+: > "$EVENT_LOG"
+SSH_ORIGINAL_COMMAND="$C1_REPAIR_CONFIRMATION $SHA $C1_REPAIR_CONFIRMATION $TERMINAL_SET_SHA256" \
+  EVENT_LOG=$EVENT_LOG CONTROL_LIB=$CONTROL_LIB EXACT_SHA=$SHA \
+  EXPECT_AUTHORIZED_STDIN=1 EXPECTED_AUTHORIZED_STDIN_RECORD="$C1_REPAIR_STDIN_RECORD" \
+  bash "$FIXTURE/current-wrapper.sh" </dev/null
+grep -Fx 'sudo-clean' "$EVENT_LOG" >/dev/null
+grep -Fx 'authorized-stdin' "$EVENT_LOG" >/dev/null
+grep -Fx "dispatch:$C1_REPAIR_CONFIRMATION:$SHA" "$EVENT_LOG" >/dev/null
+[[ $(wc -l < "$EVENT_LOG") == 3 ]]
+: > "$EVENT_LOG"
+assert_rejected "$FIXTURE/current-wrapper.sh" \
+  "$C1_REPAIR_CONFIRMATION $SHA $C1_REPAIR_CONFIRMATION short-digest"
+assert_rejected "$FIXTURE/legacy-wrapper.sh" \
+  "$C1_REPAIR_CONFIRMATION $SHA $C1_REPAIR_CONFIRMATION $TERMINAL_SET_SHA256"
+
+for contract in \
+  "$C1_RUN_CONFIRMATION|2026-08-10|$C1_RUN_STDIN_RECORD" \
+  "$C1_CONTAIN_CONFIRMATION|$SHA|$C1_CONTAIN_STDIN_RECORD"; do
+  IFS='|' read -r action value record <<< "$contract"
+  : > "$EVENT_LOG"
+  SSH_ORIGINAL_COMMAND="$action $SHA $action $value" \
+    EVENT_LOG=$EVENT_LOG CONTROL_LIB=$CONTROL_LIB EXACT_SHA=$SHA \
+    EXPECT_AUTHORIZED_STDIN=1 EXPECTED_AUTHORIZED_STDIN_RECORD="$record" \
+    bash "$FIXTURE/current-wrapper.sh" </dev/null
+  grep -Fx 'sudo-clean' "$EVENT_LOG" >/dev/null
+  grep -Fx 'authorized-stdin' "$EVENT_LOG" >/dev/null
+  grep -Fx "dispatch:$action:$SHA" "$EVENT_LOG" >/dev/null
+  [[ $(wc -l < "$EVENT_LOG") == 3 ]]
+  assert_rejected "$FIXTURE/legacy-wrapper.sh" "$action $SHA $action $value"
+done
+for command in \
+  "$C1_RUN_CONFIRMATION $SHA wrong 2026-08-10" \
+  "$C1_RUN_CONFIRMATION $SHA $C1_RUN_CONFIRMATION bad-date" \
+  "$C1_CONTAIN_CONFIRMATION $SHA $C1_CONTAIN_CONFIRMATION 0000000000000000000000000000000000000000"; do
+  : > "$EVENT_LOG"
+  assert_rejected "$FIXTURE/current-wrapper.sh" "$command"
+  [[ ! -s $EVENT_LOG ]]
+done
 
 : > "$EVENT_LOG"
 SSH_ORIGINAL_COMMAND="reader-summary-daily-canonical-recovery-v4 $SHA $DAILY_CANONICAL_RECOVERY_RETRY_SET_TOKEN $TERMINAL_SET_SHA256" \
@@ -336,12 +390,12 @@ for command in \
   "reader-summary-daily-canonical-recovery-v4 $SHA wrong-invalid-product-retry-set-v1 $TERMINAL_SET_SHA256" \
   "reader-summary-daily-canonical-recovery-v4 $SHA $DAILY_CANONICAL_RECOVERY_RETRY_SET_TOKEN:$SHA $TERMINAL_SET_SHA256" \
   "reader-summary-daily-canonical-recovery-v4 $SHA $DAILY_CANONICAL_RECOVERY_RETRY_SET_TOKEN" \
-  "reader-summary-daily-canonical-recovery-v4 $SHA $DAILY_CANONICAL_RECOVERY_RETRY_SET_TOKEN ${TERMINAL_SET_SHA256^^}" \
+  "reader-summary-daily-canonical-recovery-v4 $SHA $DAILY_CANONICAL_RECOVERY_RETRY_SET_TOKEN $TERMINAL_SET_SHA256_UPPER" \
   "reader-summary-daily-canonical-recovery-v4 $SHA $DAILY_CANONICAL_RECOVERY_RETRY_SET_TOKEN short" \
   "reader-summary-daily-canonical-recovery-v4 $SHA $DAILY_CANONICAL_RECOVERY_RETRY_SET_TOKEN $TERMINAL_SET_SHA256 extra" \
   "reader-summary-daily-canonical-recovery-v4 $SHA $DAILY_CANONICAL_RECOVERY_CONFIRMATION $MODEL_JOB_IDENTITY" \
   "reader-summary-daily-canonical-recovery-v4 $SHA wrong-reader-summary-daily-canonical-recovery-v4 $MODEL_JOB_IDENTITY $AUTHORITY_SHA256" \
-  "reader-summary-daily-canonical-recovery-v4 $SHA $DAILY_CANONICAL_RECOVERY_CONFIRMATION ${MODEL_JOB_IDENTITY^^} $AUTHORITY_SHA256" \
+  "reader-summary-daily-canonical-recovery-v4 $SHA $DAILY_CANONICAL_RECOVERY_CONFIRMATION $MODEL_JOB_IDENTITY_UPPER $AUTHORITY_SHA256" \
   "reader-summary-daily-canonical-recovery-v4 $SHA $DAILY_CANONICAL_RECOVERY_CONFIRMATION $MODEL_JOB_IDENTITY short"; do
   : > "$EVENT_LOG"
   assert_rejected "$FIXTURE/current-wrapper.sh" "$command"

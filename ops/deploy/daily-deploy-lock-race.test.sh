@@ -13,7 +13,13 @@ CONTROL=$ROOT/control
 STATE=$CONTROL/deploy-state
 SINGLETON_LOCK=$CONTROL/daily-run-singleton.lock
 ADMISSION_LOCK=$CONTROL/daily-run.lock
-install -d "$CONTROL" "$STATE" "$ROOT/runtime"
+install -d "$CONTROL/postgres-runtime-current" "$STATE" "$ROOT/runtime"
+cat >"$CONTROL/postgres-runtime-current/reader-summary-daily-c1.readiness" <<'EOF'
+schemaVersion=reader_summary.daily_delivery_readiness.c1
+state=READY
+requires=H_GREEN,C0_GREEN,C1_SCAN_TERMINAL_REPAIR_GREEN
+activation=reviewed
+EOF
 
 FAKE_DOCKER=$FIXTURE/fake-docker
 cat > "$FAKE_DOCKER" <<'SH'
@@ -33,8 +39,8 @@ REFRESH_CALLED=$FIXTURE/refresh-called
 DOCKER_CALLED=$FIXTURE/docker-called
 export RACE_REFRESH_CALLED=$REFRESH_CALLED RACE_DOCKER_CALLED=$DOCKER_CALLED
 
-# A duplicate daily invocation observes only the dedicated singleton and exits
-# successfully without touching admission-dependent work.
+# A duplicate daily invocation observes only the dedicated singleton and fails
+# closed with EX_TEMPFAIL without touching admission-dependent work.
 (
   exec 7>"$SINGLETON_LOCK"
   flock 7
@@ -43,15 +49,21 @@ export RACE_REFRESH_CALLED=$REFRESH_CALLED RACE_DOCKER_CALLED=$DOCKER_CALLED
 ) &
 singleton_pid=$!
 while [[ ! -e $FIXTURE/singleton-ready ]]; do sleep 0.01; done
+set +e
 duplicate_output=$(
   SOCIAL_MONITOR_DAILY_RUN_TEST_MODE=1 \
   SOCIAL_MONITOR_DAILY_RUN_TEST_ROOT="$ROOT" \
   SOCIAL_MONITOR_DAILY_RUN_TEST_DOCKER="$FAKE_DOCKER" \
   SOCIAL_MONITOR_DAILY_RUN_TEST_ADMISSION_WAIT_SECONDS=0.05 \
-    bash "$DAILY_RUN" --yesterday
+    bash "$DAILY_RUN" --yesterday 2>"$FIXTURE/duplicate.stderr"
 )
-grep -F 'daily production-day run already active' \
-  <<< "$duplicate_output" >/dev/null
+duplicate_status=$?
+set -e
+((duplicate_status == 75))
+[[ -z $duplicate_output ]]
+grep -Fx 'daily production-day run already active' \
+  "$FIXTURE/duplicate.stderr" >/dev/null
+[[ $(wc -l <"$FIXTURE/duplicate.stderr") -eq 1 ]]
 [[ ! -e $REFRESH_CALLED && ! -e $DOCKER_CALLED ]]
 : > "$FIXTURE/release"
 wait "$singleton_pid"

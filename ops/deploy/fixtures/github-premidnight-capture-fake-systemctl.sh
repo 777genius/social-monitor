@@ -2,7 +2,7 @@
 set -euo pipefail
 
 unit_dir=${GITHUB_PREMIDNIGHT_FAKE_SYSTEMD_UNIT_DIR:?fake systemd unit directory is required}
-control=${GITHUB_PREMIDNIGHT_FAKE_SYSTEMCTL_CONTROL:?fake systemctl control root is required}
+: "${GITHUB_PREMIDNIGHT_FAKE_SYSTEMCTL_CONTROL:?fake systemctl control root is required}"
 events=${GITHUB_PREMIDNIGHT_FAKE_SYSTEMCTL_EVENTS:?fake systemctl event path is required}
 printf '%s\n' "$*" >> "$events"
 
@@ -16,8 +16,13 @@ if [[ $1 == is-enabled && $2 == --quiet ]]; then
 fi
 if [[ $1 == cat ]]; then
   [[ $# == 2 && $2 == social-monitor-daily.service ]] || exit 1
-  printf '[Service]\nExecStart=%s/daily-run.sh --yesterday\nTimeoutStartSec=23400\nRestart=no\n' \
-    "$control"
+  printf '%s\n' \
+    '[Service]' \
+    'ExecCondition=/var/data/social-monitor/control/daily-c1-runtime.sh --check-legacy-owner' \
+    'ExecStartPre=/var/data/social-monitor/control/daily-c1-runtime.sh --prepare-legacy-start' \
+    'ExecStart=/var/data/social-monitor/control/daily-c1-runtime.sh --run-and-complete-legacy' \
+    'ExecStopPost=/var/data/social-monitor/control/daily-c1-runtime.sh --complete-legacy-start' \
+    'TimeoutStartSec=19800' 'Restart=no'
   exit
 fi
 [[ $1 == show && $2 == --property=* && $3 == --value && $# == 4 ]] || exit 1

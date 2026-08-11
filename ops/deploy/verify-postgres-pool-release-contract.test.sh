@@ -139,6 +139,25 @@ assert_rejected() {
   grep -F "$expected" <<< "$output" >/dev/null
 }
 
+cp "$REPO/ops/deploy/postgres-pool-release-contract.json" \
+  "$FIXTURE/postgres-pool-release-contract.valid.json"
+python3 - "$REPO/ops/deploy/postgres-pool-release-contract.json" <<'PY'
+import json
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+contract = json.loads(path.read_text(encoding="utf-8"))
+contract["dailyTimerSchedule"] = "*-*-* 00:00:00 UTC"
+path.write_text(json.dumps(contract, indent=2) + "\n", encoding="utf-8")
+PY
+assert_rejected 'PostgreSQL daily timer contract dailyTimerSchedule is invalid' \
+  --target "$RELEASE_A" --backend-base "$BASE" \
+  --backend false --control true --bootstrap uninstalled \
+  --bootstrap-sha "$ZERO_SHA"
+cp "$FIXTURE/postgres-pool-release-contract.valid.json" \
+  "$REPO/ops/deploy/postgres-pool-release-contract.json"
+
 # The exact original Release A and Release B contracts remain accepted.
 run_ci --target "$RELEASE_A" --backend-base "$BASE" \
   --backend false --control true --bootstrap uninstalled \

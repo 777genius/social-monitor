@@ -13,8 +13,32 @@ read -r action sha first_authorization_value second_authorization_value \
   third_authorization_value extra <<< "$original_command"
 
 [[ -z ${extra:-} ]] || exit 64
-[[ ${action:-} =~ ^(plan|upload|deploy|disk-report|project-disk-cleanup|reader-summary-recover-missing-days|reader-summary-weekly-run|reader-summary-daily-canonical-recovery-v4|reader-summary-daily-terminal-set-receipt-v1)$ ]] || exit 64
+[[ ${action:-} =~ ^(plan|upload|deploy|disk-report|project-disk-cleanup|reader-summary-recover-missing-days|reader-summary-weekly-run|reader-summary-daily-canonical-recovery-v4|reader-summary-daily-terminal-set-receipt-v1|reader-summary-daily-scan-terminal-preimage-c1|reader-summary-daily-scan-terminal-repair-c1|reader-summary-daily-delivery-c1-run|reader-summary-daily-delivery-c1-contain)$ ]] || exit 64
 [[ ${sha:-} =~ ^[0-9a-f]{40}$ ]] || exit 64
+if [[ $action == reader-summary-daily-delivery-c1-run ]]; then
+  [[ ${first_authorization_value:-} == "$action" && \
+     ${second_authorization_value:-} =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ && \
+     -z ${third_authorization_value:-} ]] || exit 64
+  authorization_record="$first_authorization_value $second_authorization_value"
+  unset SSH_ORIGINAL_COMMAND first_authorization_value second_authorization_value third_authorization_value
+  exec sudo -n -- "$ENTRYPOINT" "$action" "$sha" <<< "$authorization_record"
+fi
+if [[ $action == reader-summary-daily-delivery-c1-contain ]]; then
+  [[ ${first_authorization_value:-} == "$action" && \
+     ${second_authorization_value:-} == "$sha" && \
+     -z ${third_authorization_value:-} ]] || exit 64
+  authorization_record="$first_authorization_value $second_authorization_value"
+  unset SSH_ORIGINAL_COMMAND first_authorization_value second_authorization_value third_authorization_value
+  exec sudo -n -- "$ENTRYPOINT" "$action" "$sha" <<< "$authorization_record"
+fi
+if [[ $action == reader-summary-daily-scan-terminal-repair-c1 ]]; then
+  [[ ${first_authorization_value:-} == reader-summary-daily-scan-terminal-repair-c1 && \
+     ${second_authorization_value:-} =~ ^[0-9a-f]{64}$ && \
+     -z ${third_authorization_value:-} ]] || exit 64
+  authorization_record="$first_authorization_value $second_authorization_value"
+  unset SSH_ORIGINAL_COMMAND first_authorization_value second_authorization_value third_authorization_value
+  exec sudo -n -- "$ENTRYPOINT" "$action" "$sha" <<< "$authorization_record"
+fi
 if [[ $action == reader-summary-daily-canonical-recovery-v4 ]]; then
   # Both externally-confirmed forms map onto the existing recovery intent. The
   # retry-set form is mutually exclusive so only it can skip the Jul31 runner.

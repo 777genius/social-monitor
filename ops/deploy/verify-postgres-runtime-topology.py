@@ -180,12 +180,23 @@ def verify_daily_topology(service_path: str, runner_path: str) -> None:
         runner = pathlib.Path(runner_path).read_text(encoding="utf-8")
     except OSError as error:
         fail(f"cannot read effective daily topology: {error}")
-    expected_runner = str(pathlib.Path(runner_path))
+    runner_name = pathlib.Path(runner_path).name
     exec_start_lines = [
         line.strip() for line in service.splitlines() if line.startswith("ExecStart=")
     ]
-    if not any(expected_runner in line for line in exec_start_lines):
-        fail("effective daily service does not execute the reviewed runner")
+    if runner_name == "daily-run.sh":
+        required_runtime_lines = {
+            "ExecCondition=/var/data/social-monitor/control/daily-c1-runtime.sh --check-legacy-owner",
+            "ExecStartPre=/var/data/social-monitor/control/daily-c1-runtime.sh --prepare-legacy-start",
+            "ExecStart=/var/data/social-monitor/control/daily-c1-runtime.sh --run-and-complete-legacy",
+            "ExecStopPost=/var/data/social-monitor/control/daily-c1-runtime.sh --complete-legacy-start",
+        }
+        if not required_runtime_lines.issubset(set(service.splitlines())):
+            fail("effective legacy daily service omits the reviewed invocation journal wrapper")
+    else:
+        expected_runner = str(pathlib.Path(runner_path))
+        if not any(expected_runner in line for line in exec_start_lines):
+            fail("effective daily service does not execute the reviewed runner")
     for compose_path in (
         "integration/docker-compose.yml",
         "control/compose.production.yml",
@@ -206,7 +217,13 @@ def verify_daily_topology(service_path: str, runner_path: str) -> None:
         fail("effective daily runner does not wait on PostgreSQL admission")
     if "POSTGRES_ADMISSION_WAIT_SECONDS=7500" not in runner:
         fail("effective daily runner does not use the reviewed admission timeout")
-    if "TimeoutStartSec=23400" not in service:
+    if runner_name == "daily-run.sh":
+        expected_timeout = "TimeoutStartSec=19800"
+    elif runner_name == "run-reader-summary-production-day.sh":
+        expected_timeout = "TimeoutStartSec=23400"
+    else:
+        fail("effective daily runner identity is not reviewed")
+    if expected_timeout not in service:
         fail("effective daily service does not use the reviewed start timeout")
     if "Restart=no" not in service:
         fail("effective daily service must not restart a completed or failed run")

@@ -17,6 +17,7 @@ export type ReaderSummaryDailyTerminalSetRow = Readonly<{
   requestedUtcDate: string;
   outcome: string;
   reasonCode: string | null;
+  signalCount: string | number | null;
   attemptOrdinal: string | number | null;
   modelJobIdentity: string;
   sourceAuthoritySha256: string;
@@ -40,18 +41,25 @@ type ReceiptSqlClient = Readonly<{
 }>;
 
 export const readerSummaryDailyTerminalSetReceiptKeys = Object.freeze([
-  "schemaVersion", "retrySetToken", "tenantId", "workspaceId",
-  "requestedUtcDates", "terminalCount", "terminalSetSha256",
+  "schemaVersion",
+  "retrySetToken",
+  "tenantId",
+  "workspaceId",
+  "requestedUtcDates",
+  "terminalCount",
+  "terminalSetSha256",
 ] as const);
 
 export const readReaderSummaryDailyTerminalSetRows = async (
   client: ReceiptSqlClient,
 ): Promise<readonly ReaderSummaryDailyTerminalSetRow[]> => {
-  const result = await client.query<ReaderSummaryDailyTerminalSetRow>(`
+  const result = await client.query<ReaderSummaryDailyTerminalSetRow>(
+    `
     SELECT
       to_char(terminal.requested_utc_date, 'YYYY-MM-DD') AS "requestedUtcDate",
       terminal.outcome,
       terminal.reason_code AS "reasonCode",
+      terminal.signal_count::TEXT AS "signalCount",
       terminal.attempt_ordinal::TEXT AS "attemptOrdinal",
       terminal.model_job_identity AS "modelJobIdentity",
       terminal.source_authority_sha256 AS "sourceAuthoritySha256"
@@ -60,11 +68,13 @@ export const readReaderSummaryDailyTerminalSetRows = async (
     ) AS terminal
     WHERE terminal.requested_utc_date = ANY($3::DATE[])
     ORDER BY terminal.requested_utc_date
-  `, [
-    readerSummaryDailyTerminalSetReceiptTenantId,
-    readerSummaryDailyTerminalSetReceiptWorkspaceId,
-    invalidProductRetryDates,
-  ]);
+  `,
+    [
+      readerSummaryDailyTerminalSetReceiptTenantId,
+      readerSummaryDailyTerminalSetReceiptWorkspaceId,
+      invalidProductRetryDates,
+    ],
+  );
   return result.rows;
 };
 
@@ -72,19 +82,25 @@ export const buildReaderSummaryDailyTerminalSetReceipt = (
   rows: readonly ReaderSummaryDailyTerminalSetRow[],
 ): ReaderSummaryDailyTerminalSetReceipt => {
   if (rows.length !== invalidProductRetryDates.length) {
-    throw new Error("Daily terminal-set receipt requires exactly six terminals");
+    throw new Error(
+      "Daily terminal-set receipt requires exactly six terminals",
+    );
   }
   const entries = rows.map((row, index) => {
     const expectedDate = invalidProductRetryDates[index];
     if (
       row.requestedUtcDate !== expectedDate ||
       row.outcome !== "UNAVAILABLE" ||
-      row.reasonCode !== "invalid_product" ||
-      row.attemptOrdinal !== "2" ||
+      row.reasonCode !==
+        "model_result_not_durably_persisted_after_consumed_attempt" ||
+      !isPositiveSignalCount(row.signalCount) ||
+      row.attemptOrdinal !== "1" ||
       !/^[0-9a-f]{64}$/u.test(row.modelJobIdentity) ||
       !/^[0-9a-f]{64}$/u.test(row.sourceAuthoritySha256)
     ) {
-      throw new Error("Daily terminal-set receipt terminal authority is invalid");
+      throw new Error(
+        "Daily terminal-set receipt terminal authority is invalid",
+      );
     }
     return Object.freeze({
       requestedUtcDate: expectedDate as InvalidProductRetryDate,
@@ -103,11 +119,22 @@ export const buildReaderSummaryDailyTerminalSetReceipt = (
   });
 };
 
+const isPositiveSignalCount = (value: string | number | null): boolean => {
+  const parsed =
+    typeof value === "string" && /^[1-9][0-9]*$/u.test(value)
+      ? Number(value)
+      : value;
+  return Number.isSafeInteger(parsed) && Number(parsed) > 0;
+};
+
 export const parseReaderSummaryDailyTerminalSetReceiptLine = (
   line: string,
 ): ReaderSummaryDailyTerminalSetReceipt => {
-  if (!line.endsWith("\n") || line.slice(0, -1).includes("\n") ||
-      line.includes("\r")) {
+  if (
+    !line.endsWith("\n") ||
+    line.slice(0, -1).includes("\n") ||
+    line.includes("\r")
+  ) {
     throw new Error("Daily terminal-set receipt must be exactly one JSON line");
   }
   let value: unknown;
@@ -120,19 +147,25 @@ export const parseReaderSummaryDailyTerminalSetReceiptLine = (
     throw new Error("Daily terminal-set receipt shape is invalid");
   }
   const receipt = value as Record<string, unknown>;
-  if (JSON.stringify(receipt) + "\n" !== line ||
-      JSON.stringify(Object.keys(receipt)) !==
-        JSON.stringify(readerSummaryDailyTerminalSetReceiptKeys)) {
+  if (
+    JSON.stringify(receipt) + "\n" !== line ||
+    JSON.stringify(Object.keys(receipt)) !==
+      JSON.stringify(readerSummaryDailyTerminalSetReceiptKeys)
+  ) {
     throw new Error("Daily terminal-set receipt keys or encoding are invalid");
   }
-  if (receipt.schemaVersion !== readerSummaryDailyTerminalSetReceiptSchemaVersion ||
-      receipt.retrySetToken !== invalidProductRetrySetToken ||
-      receipt.tenantId !== readerSummaryDailyTerminalSetReceiptTenantId ||
-      receipt.workspaceId !== readerSummaryDailyTerminalSetReceiptWorkspaceId ||
-      JSON.stringify(receipt.requestedUtcDates) !== JSON.stringify(invalidProductRetryDates) ||
-      receipt.terminalCount !== invalidProductRetryDates.length ||
-      typeof receipt.terminalSetSha256 !== "string" ||
-      !/^[0-9a-f]{64}$/u.test(receipt.terminalSetSha256)) {
+  if (
+    receipt.schemaVersion !==
+      readerSummaryDailyTerminalSetReceiptSchemaVersion ||
+    receipt.retrySetToken !== invalidProductRetrySetToken ||
+    receipt.tenantId !== readerSummaryDailyTerminalSetReceiptTenantId ||
+    receipt.workspaceId !== readerSummaryDailyTerminalSetReceiptWorkspaceId ||
+    JSON.stringify(receipt.requestedUtcDates) !==
+      JSON.stringify(invalidProductRetryDates) ||
+    receipt.terminalCount !== invalidProductRetryDates.length ||
+    typeof receipt.terminalSetSha256 !== "string" ||
+    !/^[0-9a-f]{64}$/u.test(receipt.terminalSetSha256)
+  ) {
     throw new Error("Daily terminal-set receipt values are invalid");
   }
   return Object.freeze(receipt) as ReaderSummaryDailyTerminalSetReceipt;

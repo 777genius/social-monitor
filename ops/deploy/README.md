@@ -137,11 +137,21 @@ the ordinary plan, requires the unchanged adoption backend, target-bound
 bootstrap, and still-pending backend, before the normal single deploy action.
 This narrow repair is not a waiver in the generic two-release verifier.
 
-The second release installs `production-runtime` as a versioned control release
-and atomically switches `postgres-runtime-current`. The deploy command, boot
-unit, and systemd daily runner then use the same Compose overlay. The pool
-release does not own a timer; daily-readiness-v6b is the sole timer owner, and
-the topology gate requires exactly one effective reviewed timer. Deploy
+The second historical pool release installs `production-runtime` as a
+versioned control release and atomically switches `postgres-runtime-current`.
+The deploy command, boot unit, and systemd daily runner then use the same
+Compose overlay. That historical release leaves timer ownership with
+daily-readiness-v6b. A later C1 runtime-control release may transfer ownership
+only when its immutable four-line marker is exactly `READY`: while deployment
+and PostgreSQL admission are held it stops both timers, re-probes the daily
+singleton, proves both services inactive, installs the byte-exact repo-owned
+legacy service/timer/runner/marker, and enables the legacy timer at 00:15 UTC.
+`BLOCKED` retains the existing reviewed owner, and a READY release cannot
+regress to BLOCKED. Normal topology requires exactly one effective reviewed
+timer. A canonical persistent containment marker has two phases: `REQUESTED`
+durably blocks the runner before mutation, then becomes `CONTAINED` only after
+both timers are disabled and inactive and both services are inactive. Both
+phases require that zero-timer topology; an invalid marker fails closed. Deploy
 snapshots the running API's database URL without printing it. After old database
 containers stop and before replacements start, the gate queries live PostgreSQL
 capacity, reserved/role/database limits, and attributed external occupancy. It rejects operator-only

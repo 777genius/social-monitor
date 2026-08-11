@@ -51,6 +51,14 @@ describe("reader summary weekly production postgres contract", () => {
     ).rejects.toThrow("missing DB weekly capability");
   });
 
+  it("fails closed when the production slot boundary is insecure", async () => {
+    await expect(
+      assertReaderSummaryWeeklyProductionPostgresContract(
+        fakeClient([], { secureSlotPrepare: false }),
+      ),
+    ).rejects.toThrow("missing DB weekly capability");
+  });
+
   it("classifies exact Monday-Sunday 7/7 completed certifications as complete", async () => {
     const state = await loadReaderSummaryWeeklyProductionDbState(
       fakeClient(week.dates.map((date) => rowForDate(date))),
@@ -622,6 +630,7 @@ const fakeClient = (
   options: Readonly<{
     backfillFunction?: string | null;
     secureBackfill?: boolean;
+    secureSlotPrepare?: boolean;
     sealRows?: readonly Record<string, unknown>[];
   }> = {},
 ): ReaderSummaryWeeklyProductionPostgresClient => ({
@@ -646,6 +655,18 @@ const fakeClient = (
               options.secureBackfill ?? true,
             backfill_public_execute:
               !(options.secureBackfill ?? true),
+            slot_prepare_function:
+              "prepare_reader_summary_weekly_production_slot(uuid,uuid,text,text,date)",
+            slot_prepare_security_definer:
+              options.secureSlotPrepare ?? true,
+            slot_prepare_fixed_search_path:
+              options.secureSlotPrepare ?? true,
+            slot_prepare_owner:
+              "social_monitor_reader_summary_publication_owner",
+            slot_prepare_runtime_execute:
+              options.secureSlotPrepare ?? true,
+            slot_prepare_public_execute:
+              !(options.secureSlotPrepare ?? true),
             column_count: "28",
           },
         ] as unknown as readonly TRow[],

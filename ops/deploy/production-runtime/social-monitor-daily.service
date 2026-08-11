@@ -5,8 +5,11 @@ Requires=social-monitor-prod.service
 
 [Service]
 Type=oneshot
-ExecStart=/var/data/social-monitor/control/daily-run.sh --yesterday
-TimeoutStartSec=23400
+ExecCondition=/var/data/social-monitor/control/daily-c1-runtime.sh --check-legacy-owner
+ExecStartPre=/var/data/social-monitor/control/daily-c1-runtime.sh --prepare-legacy-start
+ExecStart=/var/data/social-monitor/control/daily-c1-runtime.sh --run-and-complete-legacy
+ExecStopPost=/var/data/social-monitor/control/daily-c1-runtime.sh --complete-legacy-start
+TimeoutStartSec=19800
 Restart=no
 Nice=10
 IOSchedulingClass=best-effort

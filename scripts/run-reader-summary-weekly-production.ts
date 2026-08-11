@@ -65,6 +65,10 @@ import {
   type ReaderSummaryWeeklySlotPipelineAdmission,
   type ReaderSummaryWeeklySlotPipelineReplayRequest,
 } from "./lib/reader-summary-weekly-slot-pipeline";
+import {
+  assertReaderSummaryWeeklyProductionSlot,
+  prepareReaderSummaryWeeklyProductionSlot,
+} from "./lib/reader-summary-weekly-production-slot";
 
 loadDotenvIfPresent(".env");
 
@@ -275,6 +279,13 @@ const executeWindow = async (params: Readonly<{
     ): Promise<ReaderSummaryWeeklyProductionDbState> =>
       weeklyDatabaseOperation(params.pool, params.scope, async (client) => {
         await assertReaderSummaryWeeklyProductionPostgresContract(client);
+        if (params.options.replay) {
+          await assertReaderSummaryWeeklyProductionSlot(
+            client,
+            params.scope,
+            window,
+          );
+        }
         return loadReaderSummaryWeeklyProductionDbState(
           client,
           params.scope,
@@ -379,6 +390,13 @@ const executeWindow = async (params: Readonly<{
         ReaderSummaryWeeklyReviewManifest
       >,
     ): Promise<ReaderSummaryWeeklyScheduledSlotOutcome> => {
+      await weeklyDatabaseOperation(params.pool, params.scope, (client) =>
+        assertReaderSummaryWeeklyProductionSlot(
+          client,
+          params.scope,
+          input.window,
+        ),
+      );
       const result = await runWithTenantDatabaseAccess(params.scope, () =>
         runReaderSummaryWeeklyProduction({
           dbState: input.dbState,
@@ -409,6 +427,11 @@ const executeWindow = async (params: Readonly<{
             await weeklyDatabaseOperation(params.pool, params.scope, async (client) => {
               await assertReaderSummaryWeeklyProductionPostgresContract(client);
               await backfillReaderSummaryWeeklyDailyCertifications(
+                client,
+                params.scope,
+                window,
+              );
+              await prepareReaderSummaryWeeklyProductionSlot(
                 client,
                 params.scope,
                 window,

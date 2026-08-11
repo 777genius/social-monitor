@@ -158,14 +158,20 @@ daily run closed instead of starting a mismatched pool.
 
 The versioned runtime-control release contains the daily runner Compose
 identity/min/max, its exact lock-taking and backend-marker-guarded launcher, the
-daily service, and the production boot unit. One symlink switch installs the daily runner topology
-with the backend release. Timer creation and enablement remain solely owned by
-the daily-readiness-v6b release. The pool release creates no timer and fails
-unless exactly one legacy-or-v6b daily timer is enabled. The verifier reads the
-effective systemd service and its actual runner, requires the same Compose file
-chain used by deploy and boot, and rejects drop-ins. This closes the previous
-gap between a hypothetical Compose service and the systemd-triggered runner
-without competing with the daily release for timer ownership.
+daily service, and the production boot unit. The historical pool adoption
+release did not create a timer; daily-readiness-v6b remained its timer owner.
+The later daily-delivery C1 control contract adds a repo-owned timer fixed at
+00:15 UTC. Ownership transfers transactionally to that legacy-named timer only
+for an exact immutable `READY` marker, after both timers stop, the daily
+singleton is re-probed, and both services are proven inactive. `BLOCKED` keeps
+the existing reviewed owner, and a current READY release rejects a later
+BLOCKED downgrade before mutation. In normal topology the verifier requires
+exactly one reviewed timer, the effective systemd service and actual runner,
+the same Compose chain used by deploy and boot, exact unit bytes, and no
+drop-ins. A canonical `REQUESTED` containment marker blocks the runner before
+mutation and is atomically promoted to `CONTAINED` only after both timers are
+disabled and inactive and both services are inactive. Either valid phase
+requires that zero-timer topology; an invalid marker fails closed.
 
 Control-only changes to the daily launcher or daily service activate through
 the same snapshot, staged immutable release, atomic file replacement,
@@ -173,8 +179,11 @@ the same snapshot, staged immutable release, atomic file replacement,
 runtime `SOURCE_SHA` records the control release while `READY` retains the
 durable backend SHA, so a control-only activation does not trip the launcher's
 backend-compatibility fence. The reviewed daily unit has
-`TimeoutStartSec=23400` and `Restart=no`; timer ownership remains exactly one
-effective reviewed timer.
+`Restart=no`; the C1 legacy runner has `TimeoutStartSec=19800`, while the
+historical v6 runner retains `TimeoutStartSec=23400`. The topology verifier
+binds each timeout to its exact runner identity. Outside persistent containment,
+timer ownership remains exactly one effective reviewed timer before and after
+any READY-only handoff.
 
 Production success is not inferred from process liveness. `/ready` executes
 `SELECT 1` through the already-owned bounded Prisma client. Deployment requires

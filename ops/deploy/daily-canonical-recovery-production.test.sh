@@ -12,6 +12,7 @@ bounded_runner=$REPO/scripts/run-reader-summary-daily-bounded-maintenance.ts
 bounded_runner_spec=$REPO/scripts/run-reader-summary-daily-bounded-maintenance.spec.ts
 package_json=$REPO/package.json
 workflow=$REPO/.github/workflows/production-deploy.yml
+maintenance_dispatch=$SCRIPT_DIR/github-production-maintenance-dispatch.sh
 frozen_input=$REPO/scripts/lib/reader-summary-daily-frozen-publication-input.ts
 frozen_input_spec=$REPO/scripts/lib/reader-summary-daily-frozen-publication-input.spec.ts
 postgres_runtime_compose=$SCRIPT_DIR/production-runtime/compose.postgres-runtime.yml
@@ -82,7 +83,7 @@ grep -F "(v_expected - 'legacyTotal') || jsonb_build_object('removedRss', v_remo
 grep -F "'requestedUtcDates', jsonb_build_array(" "$foundation" >/dev/null
 grep -F "'2026-07-23', '2026-07-24', '2026-07-25', '2026-07-26'," "$foundation" >/dev/null
 grep -F "'2026-07-27', '2026-07-28', '2026-07-29', '2026-07-30'" "$foundation" >/dev/null
-! grep -F 'reader-summary-daily-canonical-recovery-v4' \
+! grep -F 'run:reader-summary-daily-canonical-recovery' \
   "$SCRIPT_DIR/production-runtime/social-monitor-weekly.service" \
   "$SCRIPT_DIR/production-runtime/social-monitor-weekly.timer" \
   "$SCRIPT_DIR/production-runtime/social-monitor-daily.service" \
@@ -98,43 +99,35 @@ grep -F 'invalid-product-retry-set-v1' \
 grep -F 'daily_canonical_recovery_retry_set_token:' "$workflow" >/dev/null
 grep -F 'daily_canonical_recovery_terminal_set_sha256:' "$workflow" >/dev/null
 grep -F 'DAILY_CANONICAL_RECOVERY_RETRY_SET_TOKEN == invalid-product-retry-set-v1' \
-  "$workflow" >/dev/null
+  "$maintenance_dispatch" >/dev/null
 grep -F 'DAILY_CANONICAL_RECOVERY_TERMINAL_SET_SHA256 =~ ^[0-9a-f]{64}$' \
-  "$workflow" >/dev/null
-python3 - "$workflow" <<'PY'
+  "$maintenance_dispatch" >/dev/null
+python3 - "$maintenance_dispatch" <<'PY'
 import pathlib
 import sys
 
 source = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")
-start = source.index('          if [[ $MAINTENANCE_ACTION == reader-summary-daily-canonical-recovery-v4 ]]; then')
-terminal_start = source.index(
-    '          elif [[ $MAINTENANCE_ACTION == reader-summary-daily-terminal-set-receipt-v1 ]]; then',
-    start,
-)
-else_start = source.index('\n          else\n', terminal_start)
-else_end = source.index('\n          fi\n', else_start)
-non_daily = source[else_start:else_end]
-terminal = source[terminal_start:else_start]
-guard = '[[ -z $DAILY_CANONICAL_RECOVERY_RETRY_SET_TOKEN$DAILY_CANONICAL_RECOVERY_TERMINAL_SET_SHA256$DAILY_CANONICAL_RECOVERY_CONFIRMATION$DAILY_CANONICAL_RECOVERY_MODEL_JOB_IDENTITY$DAILY_CANONICAL_RECOVERY_AUTHORITY_SHA256 ]]'
-if guard not in non_daily or non_daily.index(guard) > non_daily.index('github-production-deploy-client.sh maintenance'):
-    raise SystemExit("non-daily maintenance must reject every daily recovery input before dispatch")
+terminal_start = source.index('  reader-summary-daily-terminal-set-receipt-v1)')
+terminal_end = source.index('\n    ;;', terminal_start)
+terminal = source[terminal_start:terminal_end]
 for required in (
-    guard,
-    'maintenance "$GITHUB_SHA"',
-    'reader-summary-daily-terminal-set-receipt-v1 > "$receipt_path"',
-    'validate-terminal-set-receipt "$receipt_path"',
+    'DAILY_SCAN_TERMINAL_REPAIR_CONFIRMATION',
+    'artifact_path="$RUNNER_TEMP/reader-summary-daily-terminal-set-receipt-v1-',
+    'bash "$CLIENT" maintenance',
+    'bash "$CLIENT" validate-terminal-set-receipt',
 ):
     if required not in terminal:
-        raise SystemExit(f"terminal-set receipt workflow is missing: {required}")
-if not terminal.index(guard) < terminal.index('maintenance "$GITHUB_SHA"') < terminal.index('validate-terminal-set-receipt'):
+        raise SystemExit(f"terminal-set receipt dispatch is missing: {required}")
+if not terminal.index('assert_empty') < terminal.index('maintenance "$GITHUB_SHA"') < terminal.index('validate-terminal-set-receipt'):
     raise SystemExit("terminal-set receipt capture/validation order is unsafe")
 PY
 grep -F 'uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f' "$workflow" >/dev/null
-grep -F "name: reader-summary-daily-terminal-set-receipt-v1-\${{ github.run_id }}-\${{ github.run_attempt }}" "$workflow" >/dev/null
-grep -F "path: \${{ runner.temp }}/reader-summary-daily-terminal-set-receipt-v1-\${{ github.run_id }}-\${{ github.run_attempt }}.json" "$workflow" >/dev/null
-grep -F "if: \${{ inputs.maintenance_action == 'reader-summary-daily-terminal-set-receipt-v1' }}" "$workflow" >/dev/null
+grep -F 'name: ${{ inputs.maintenance_action }}-${{ github.run_id }}-${{ github.run_attempt }}' "$workflow" >/dev/null
+grep -F 'path: ${{ runner.temp }}/${{ inputs.maintenance_action }}-${{ github.run_id }}-${{ github.run_attempt }}.json' "$workflow" >/dev/null
+grep -F "inputs.maintenance_action == 'reader-summary-daily-terminal-set-receipt-v1'" "$workflow" >/dev/null
 grep -F 'PostgresCanonicalRecoveryInvalidProductRetrySetAuthorizer' "$runner" >/dev/null
-grep -F 'parseDailyCanonicalRecoveryV4Invocation(process.argv.slice(2))' "$runner" >/dev/null
+grep -F 'parseDailyCanonicalRecoveryV4Invocation(' "$runner" >/dev/null
+grep -F 'process.argv.slice(2),' "$runner" >/dev/null
 grep -F 'recovery_command="set -eu; npm run run:reader-summary-daily-canonical-recovery -- $retry_set_token $terminal_set_sha256"' \
   "$SCRIPT_DIR/reader-summary-recovery-maintenance-lib.sh" >/dev/null
 grep -F 'if [[ $run_invalid_product_retry_set == true ]]; then' \

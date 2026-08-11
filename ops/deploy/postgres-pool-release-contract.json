@@ -32,7 +32,12 @@
   "releaseADormantAssetRule": "Release A checks in the runtime library, Compose overlay, daily runner, systemd unit and topology verifier only as bootstrap prerequisites; backend.sha, postgres-runtime-current, installed units, the installed daily runner and running runtimes remain untouched until Release B.",
   "releaseBIntent": "Install the bounded Prisma pool and exact runtime topology only after Release A is proven on the host.",
   "dailyTimerOwner": "daily-readiness-v6b",
-  "dailyTimerRule": "This release installs pool topology and a guarded launcher but never creates or enables a daily timer.",
+  "dailyTimerHistoricalOwner": "daily-readiness-v6b",
+  "dailyTimerReadyOwner": "daily-delivery-c1-runtime-control",
+  "dailyTimerPath": "ops/deploy/production-runtime/social-monitor-daily.timer",
+  "dailyTimerSchedule": "*-*-* 00:15:00 UTC",
+  "dailyTimerRule": "The historical pool adoption releases do not change timer ownership. A later runtime-control release transfers ownership transactionally to the repo-owned legacy timer only for an exact READY C1 marker; BLOCKED retains the existing reviewed owner and READY cannot regress to BLOCKED.",
+  "dailyTimerInvariant": "Normal topology has exactly one reviewed production daily timer enabled and active. READY normal topology requires social-monitor-daily.timer enabled and active with the v6 timer disabled and inactive. A valid persistent REQUESTED or CONTAINED marker requires both timers disabled and inactive and both services inactive; an invalid marker fails closed.",
   "dailyV6bRunnerSource": "ops/deploy/host/run-reader-summary-production-day.sh",
   "dailyV6bRequiredComposeOverlay": "/var/data/social-monitor/control/postgres-runtime-current/compose.postgres-runtime.yml",
   "dailyV6bRequiredReleaseMarkers": [

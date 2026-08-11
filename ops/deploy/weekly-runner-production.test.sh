@@ -8,6 +8,7 @@ service=$SCRIPT_DIR/production-runtime/social-monitor-weekly.service
 timer=$SCRIPT_DIR/production-runtime/social-monitor-weekly.timer
 maintenance_lib=$SCRIPT_DIR/reader-summary-recovery-maintenance-lib.sh
 deploy_lib=$SCRIPT_DIR/postgres-runtime-deploy-lib.sh
+weekly_timer_state_lib=$SCRIPT_DIR/postgres-runtime-weekly-timer-state-lib.sh
 deploy_entrypoint=$SCRIPT_DIR/social-monitor-production-deploy.sh
 package_json=$REPO/package.json
 production_workflow=$REPO/.github/workflows/production-deploy.yml
@@ -24,6 +25,7 @@ publication_post_migration=$REPO/ops/deploy/reader-summary-publication-post-migr
 
 [[ -f $service ]]
 [[ -f $timer ]]
+[[ -f $weekly_timer_state_lib ]]
 grep -Fx 'Type=oneshot' "$service" >/dev/null
 grep -F 'github-production-deploy.sh" reader-summary-weekly-run "$release"' \
   "$service" >/dev/null
@@ -36,9 +38,18 @@ grep -Fx 'Persistent=true' "$timer" >/dev/null
 grep -Fx 'Unit=social-monitor-weekly.service' "$timer" >/dev/null
 grep -F 'OnCalendar=Mon ' "$timer" >/dev/null
 ! grep -Eq '^(OnBootSec|OnActiveSec|OnUnitActiveSec)=' "$timer"
-grep -F 'systemctl enable "$timer"' "$deploy_lib" >/dev/null
-grep -F 'systemctl start "$timer"' "$deploy_lib" >/dev/null
-grep -F 'NextElapseUSecRealtime' "$deploy_lib" >/dev/null
+grep -F 'ops/deploy/postgres-runtime-weekly-timer-state-lib.sh' \
+  "$deploy_lib" >/dev/null
+grep -F 'source "$helper"' "$deploy_lib" >/dev/null
+grep -F 'ops/deploy/postgres-runtime-weekly-timer-state-lib.sh' \
+  "$deploy_entrypoint" >/dev/null
+grep -F 'reconcile_postgres_runtime_weekly_timer()' \
+  "$weekly_timer_state_lib" >/dev/null
+grep -F 'systemctl enable "$timer"' "$weekly_timer_state_lib" >/dev/null
+grep -F 'systemctl start "$timer"' "$weekly_timer_state_lib" >/dev/null
+grep -F 'NextElapseUSecRealtime' "$weekly_timer_state_lib" >/dev/null
+! grep -F 'systemctl enable "$timer"' "$deploy_lib" >/dev/null
+! grep -F 'systemctl start "$timer"' "$deploy_lib" >/dev/null
 ! grep -Eq 'systemctl[[:space:]]+(enable|start|restart)[[:space:]]+social-monitor-weekly' "$deploy_entrypoint"
 grep -F 'social-monitor-weekly.service' "$deploy_lib" >/dev/null
 grep -F 'social-monitor-weekly.timer' "$deploy_lib" >/dev/null
@@ -47,6 +58,8 @@ grep -F 'ops/deploy/production-runtime/social-monitor-weekly.service' \
 grep -F 'ops/deploy/production-runtime/social-monitor-weekly.timer' \
   "$deploy_entrypoint" >/dev/null
 grep -F 'run:reader-summary-weekly-production' "$package_json" >/dev/null
+[[ $(grep -Fc 'model_call=${result.modelCallPerformed ? "true" : "false"}' \
+  "$weekly_runner") -eq 1 ]]
 grep -F 'run:reader-summary-weekly-production": "node scripts/run-with-timeout.mjs --timeout-ms 14400000' \
   "$package_json" >/dev/null
 grep -F 'check:reader-summary-weekly-production-postgres' \

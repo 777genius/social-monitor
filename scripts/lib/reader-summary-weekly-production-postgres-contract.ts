@@ -163,6 +163,12 @@ type ContractRow = Readonly<{
   backfill_public_execute: boolean;
   backfill_runtime_execute: boolean;
   backfill_security_definer: boolean;
+  slot_prepare_function: string | null;
+  slot_prepare_fixed_search_path: boolean;
+  slot_prepare_owner: string | null;
+  slot_prepare_public_execute: boolean;
+  slot_prepare_runtime_execute: boolean;
+  slot_prepare_security_definer: boolean;
   column_count: string;
 }>;
 
@@ -309,6 +315,17 @@ export const assertReaderSummaryWeeklyProductionPostgresContract = async (
         WHERE procedure.oid = pg_catalog.to_regprocedure(
           'public.backfill_reader_summary_weekly_daily_certifications(uuid,uuid,text,text,date)'
         )
+      ), slot_prepare AS (
+        SELECT
+          procedure.prosecdef,
+          procedure.proconfig,
+          procedure.proowner,
+          procedure.proacl,
+          procedure.oid
+        FROM pg_catalog.pg_proc AS procedure
+        WHERE procedure.oid = pg_catalog.to_regprocedure(
+          'public.prepare_reader_summary_weekly_production_slot(uuid,uuid,text,text,date)'
+        )
       )
       SELECT
         to_regclass('public.reader_summary_weekly_publication_evidence')::text
@@ -318,7 +335,32 @@ export const assertReaderSummaryWeeklyProductionPostgresContract = async (
         to_regprocedure(
           'public.backfill_reader_summary_weekly_daily_certifications(uuid,uuid,text,text,date)'
         )::text AS backfill_function,
+        to_regprocedure(
+          'public.prepare_reader_summary_weekly_production_slot(uuid,uuid,text,text,date)'
+        )::text AS slot_prepare_function,
         backfill.prosecdef AS backfill_security_definer,
+        slot_prepare.prosecdef AS slot_prepare_security_definer,
+        slot_prepare.proconfig = ARRAY[
+          'search_path=pg_catalog, public'
+        ]::text[] AS slot_prepare_fixed_search_path,
+        pg_catalog.pg_get_userbyid(slot_prepare.proowner)
+          AS slot_prepare_owner,
+        pg_catalog.has_function_privilege(
+          current_user,
+          slot_prepare.oid,
+          'EXECUTE'
+        ) AS slot_prepare_runtime_execute,
+        EXISTS (
+          SELECT 1
+          FROM pg_catalog.aclexplode(
+            COALESCE(
+              slot_prepare.proacl,
+              pg_catalog.acldefault('f', slot_prepare.proowner)
+            )
+          ) AS privilege
+          WHERE privilege.grantee = 0
+            AND privilege.privilege_type = 'EXECUTE'
+        ) AS slot_prepare_public_execute,
         backfill.proconfig = ARRAY[
           'search_path=pg_catalog, public, pg_temp'
         ]::text[] AS backfill_fixed_search_path,
@@ -346,7 +388,7 @@ export const assertReaderSummaryWeeklyProductionPostgresContract = async (
             AND table_name = 'reader_summary_weekly_publication_evidence'
             AND column_name = ANY($1::text[])
         ) AS column_count
-      FROM backfill
+      FROM backfill CROSS JOIN slot_prepare
     `,
     [weeklyEvidenceColumns],
   );
@@ -362,6 +404,14 @@ export const assertReaderSummaryWeeklyProductionPostgresContract = async (
       "social_monitor_reader_summary_publication_owner" ||
     row.backfill_runtime_execute !== true ||
     row.backfill_public_execute !== false ||
+    row.slot_prepare_function !==
+      "prepare_reader_summary_weekly_production_slot(uuid,uuid,text,text,date)" ||
+    row.slot_prepare_security_definer !== true ||
+    row.slot_prepare_fixed_search_path !== true ||
+    row.slot_prepare_owner !==
+      "social_monitor_reader_summary_publication_owner" ||
+    row.slot_prepare_runtime_execute !== true ||
+    row.slot_prepare_public_execute !== false ||
     row.column_count !== String(weeklyEvidenceColumns.length)
   ) {
     throw new Error(

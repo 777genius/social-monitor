@@ -96,7 +96,7 @@ fake_ssh() {
       IFS= read -r value
       printf '%s\n' "$value" > "$FAKE_UPLOAD_PATH"
       ;;
-    maintenance_success:"disk-report $TARGET_SHA"|maintenance_success:"project-disk-cleanup $TARGET_SHA"|maintenance_success:"reader-summary-recover-missing-days $TARGET_SHA"|maintenance_success:"reader-summary-weekly-run $TARGET_SHA"|maintenance_success:"reader-summary-daily-terminal-set-receipt-v1 $TARGET_SHA"|maintenance_success:"reader-summary-daily-canonical-recovery-v4 $TARGET_SHA invalid-product-retry-set-v1 $TERMINAL_SET_SHA256"|maintenance_success:"reader-summary-daily-canonical-recovery-v4 $TARGET_SHA reader-summary-daily-canonical-recovery-v4 $MODEL_JOB_IDENTITY $AUTHORITY_SHA256")
+    maintenance_success:"disk-report $TARGET_SHA"|maintenance_success:"project-disk-cleanup $TARGET_SHA"|maintenance_success:"reader-summary-recover-missing-days $TARGET_SHA"|maintenance_success:"reader-summary-weekly-run $TARGET_SHA"|maintenance_success:"reader-summary-daily-terminal-set-receipt-v1 $TARGET_SHA"|maintenance_success:"reader-summary-daily-scan-terminal-preimage-c1 $TARGET_SHA"|maintenance_success:"reader-summary-daily-canonical-recovery-v4 $TARGET_SHA invalid-product-retry-set-v1 $TERMINAL_SET_SHA256"|maintenance_success:"reader-summary-daily-canonical-recovery-v4 $TARGET_SHA reader-summary-daily-canonical-recovery-v4 $MODEL_JOB_IDENTITY $AUTHORITY_SHA256"|maintenance_success:"reader-summary-daily-scan-terminal-repair-c1 $TARGET_SHA reader-summary-daily-scan-terminal-repair-c1 $TERMINAL_SET_SHA256"|maintenance_success:"reader-summary-daily-delivery-c1-run $TARGET_SHA reader-summary-daily-delivery-c1-run 2026-08-10"|maintenance_success:"reader-summary-daily-delivery-c1-contain $TARGET_SHA reader-summary-daily-delivery-c1-contain $TARGET_SHA")
       printf 'maintenance=%s\n' "${command%% *}"
       ;;
     normal_success:"deploy $TARGET_SHA"|normal_success:"deploy 944fdb6da3071f70a69c7048c9fcdf1c2552603e")
@@ -182,6 +182,7 @@ fi
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 CLIENT=$SCRIPT_DIR/github-production-deploy-client.sh
 WORKFLOW=$SCRIPT_DIR/../../.github/workflows/production-deploy.yml
+MAINTENANCE_DISPATCH=$SCRIPT_DIR/github-production-maintenance-dispatch.sh
 FIXTURE=$(mktemp -d "${TMPDIR:-/tmp}/github-production-deploy-client-test.XXXXXX")
 trap 'rm -rf "$FIXTURE"' EXIT
 
@@ -191,6 +192,8 @@ CURRENT_BACKEND_SHA=617e284607f3dde74c27164af2b981770b9a62ed
 MODEL_JOB_IDENTITY=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 AUTHORITY_SHA256=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 TERMINAL_SET_SHA256=cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+TERMINAL_SET_SHA256_UPPER=$(printf '%s' "$TERMINAL_SET_SHA256" | tr '[:lower:]' '[:upper:]')
+MODEL_JOB_IDENTITY_UPPER=$(printf '%s' "$MODEL_JOB_IDENTITY" | tr '[:lower:]' '[:upper:]')
 FAKE_SSH=$FIXTURE/fake-ssh
 FAKE_SSH_LOG=$FIXTURE/ssh.log
 FAKE_SSH_STATE=$FIXTURE/ssh.state
@@ -266,7 +269,8 @@ bash "$CLIENT" cleanup
 for maintenance_action in \
   disk-report project-disk-cleanup \
   reader-summary-recover-missing-days reader-summary-weekly-run \
-  reader-summary-daily-terminal-set-receipt-v1; do
+  reader-summary-daily-terminal-set-receipt-v1 \
+  reader-summary-daily-scan-terminal-preimage-c1; do
   run_client maintenance_success maintenance \
     "$TARGET_SHA" "$maintenance_action" >/dev/null
   assert_call_count 1 "$maintenance_action $TARGET_SHA"
@@ -282,6 +286,33 @@ run_client maintenance_success maintenance "$TARGET_SHA" \
   "$MODEL_JOB_IDENTITY" "$AUTHORITY_SHA256" >/dev/null
 assert_call_count 1 \
   "reader-summary-daily-canonical-recovery-v4 $TARGET_SHA reader-summary-daily-canonical-recovery-v4 $MODEL_JOB_IDENTITY $AUTHORITY_SHA256"
+run_client maintenance_success maintenance "$TARGET_SHA" \
+  reader-summary-daily-scan-terminal-repair-c1 \
+  reader-summary-daily-scan-terminal-repair-c1 "$TERMINAL_SET_SHA256" >/dev/null
+assert_call_count 1 \
+  "reader-summary-daily-scan-terminal-repair-c1 $TARGET_SHA reader-summary-daily-scan-terminal-repair-c1 $TERMINAL_SET_SHA256"
+run_client maintenance_success maintenance "$TARGET_SHA" \
+  reader-summary-daily-delivery-c1-run \
+  reader-summary-daily-delivery-c1-run 2026-08-10 >/dev/null
+assert_call_count 1 \
+  "reader-summary-daily-delivery-c1-run $TARGET_SHA reader-summary-daily-delivery-c1-run 2026-08-10"
+run_client maintenance_success maintenance "$TARGET_SHA" \
+  reader-summary-daily-delivery-c1-contain \
+  reader-summary-daily-delivery-c1-contain "$TARGET_SHA" >/dev/null
+assert_call_count 1 \
+  "reader-summary-daily-delivery-c1-contain $TARGET_SHA reader-summary-daily-delivery-c1-contain $TARGET_SHA"
+assert_fails maintenance_success maintenance "$TARGET_SHA" \
+  reader-summary-daily-delivery-c1-run wrong 2026-08-10
+assert_fails maintenance_success maintenance "$TARGET_SHA" \
+  reader-summary-daily-delivery-c1-run reader-summary-daily-delivery-c1-run bad-date
+assert_fails maintenance_success maintenance "$TARGET_SHA" \
+  reader-summary-daily-delivery-c1-contain reader-summary-daily-delivery-c1-contain \
+  0000000000000000000000000000000000000000
+assert_fails maintenance_success maintenance "$TARGET_SHA" \
+  reader-summary-daily-scan-terminal-repair-c1 wrong-confirmation "$TERMINAL_SET_SHA256"
+assert_fails maintenance_success maintenance "$TARGET_SHA" \
+  reader-summary-daily-scan-terminal-repair-c1 \
+  reader-summary-daily-scan-terminal-repair-c1 short-digest
 for retry_set_token in '' wrong-invalid-product-retry-set-v1 \
   "invalid-product-retry-set-v1:$TARGET_SHA"; do
   assert_fails maintenance_success maintenance "$TARGET_SHA" \
@@ -294,9 +325,9 @@ assert_fails maintenance_success maintenance "$TARGET_SHA" \
 assert_call_count 0 "reader-summary-daily-canonical-recovery-v4 $TARGET_SHA"
 assert_fails maintenance_success maintenance "$TARGET_SHA" \
   reader-summary-daily-canonical-recovery-v4 \
-  invalid-product-retry-set-v1 "${TERMINAL_SET_SHA256^^}"
+  invalid-product-retry-set-v1 "$TERMINAL_SET_SHA256_UPPER"
 assert_call_count 0 \
-  "reader-summary-daily-canonical-recovery-v4 $TARGET_SHA invalid-product-retry-set-v1 ${TERMINAL_SET_SHA256^^}"
+  "reader-summary-daily-canonical-recovery-v4 $TARGET_SHA invalid-product-retry-set-v1 $TERMINAL_SET_SHA256_UPPER"
 for confirmation in '' wrong-reader-summary-daily-canonical-recovery-v4 \
   "reader-summary-daily-canonical-recovery-v4:$TARGET_SHA"; do
   assert_fails maintenance_success maintenance "$TARGET_SHA" \
@@ -307,9 +338,9 @@ for confirmation in '' wrong-reader-summary-daily-canonical-recovery-v4 \
 done
 assert_fails maintenance_success maintenance "$TARGET_SHA" \
   reader-summary-daily-canonical-recovery-v4 \
-  reader-summary-daily-canonical-recovery-v4 "${MODEL_JOB_IDENTITY^^}" "$AUTHORITY_SHA256"
+  reader-summary-daily-canonical-recovery-v4 "$MODEL_JOB_IDENTITY_UPPER" "$AUTHORITY_SHA256"
 assert_call_count 0 \
-  "reader-summary-daily-canonical-recovery-v4 $TARGET_SHA reader-summary-daily-canonical-recovery-v4 ${MODEL_JOB_IDENTITY^^} $AUTHORITY_SHA256"
+  "reader-summary-daily-canonical-recovery-v4 $TARGET_SHA reader-summary-daily-canonical-recovery-v4 $MODEL_JOB_IDENTITY_UPPER $AUTHORITY_SHA256"
 assert_fails maintenance_success maintenance "$TARGET_SHA" docker-system-prune
 assert_call_count 0 "docker-system-prune $TARGET_SHA"
 
@@ -346,6 +377,45 @@ assert_invalid_receipt wrong-hash \
   "${receipt_line/cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc/CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC}"$'\n'
 assert_invalid_receipt extra-key "${receipt_line%\}},\"extra\":true}"$'\n'
 assert_invalid_receipt extra-output "$receipt_line"$'\nnoise\n'
+
+PREIMAGE_ARTIFACT=$FIXTURE/daily-scan-terminal-preimage.json
+preimage_targets='[{"target":"hacker_news","jobId":"e630ed7d-42b7-4bf0-a747-f9bdf0f8a9d7","sourceBindingId":"0348ff97-3925-4d04-a192-7e782badbf50","leaseId":"703fd7b5-cf83-4508-a5b1-5a9dfdc4643e","leasePresent":true,"jobStatus":"ENQUEUED","attemptStatus":"RUNNING","attemptNumber":1,"fetched":0,"inserted":0,"skippedDuplicates":0,"projected":0,"failureReasonSha256":null,"schedulerDecisionCount":1,"downstream":{"failureQueue":0,"githubCandidates":0,"githubResults":0,"engagementObservations":0,"sourceItems":0,"feedItems":0,"outbox":0,"inbox":0,"idempotency":0,"cursor":0},"failureMetadataSqlNull":true,"executionMetadataSqlNull":true},{"target":"reddit","jobId":"b9de1ac8-4490-48d6-befa-a25472b5e94a","sourceBindingId":"8e753ea9-fb03-4c05-8288-6e871cb20b27","leaseId":null,"leasePresent":false,"jobStatus":"REQUESTED","attemptStatus":"FAILED","attemptNumber":1,"fetched":0,"inserted":0,"skippedDuplicates":0,"projected":0,"failureReasonSha256":"f6080204874629cf05223f8dc7650330a89106f0e4562a92b4b5310bd9f90ad1","schedulerDecisionCount":1,"downstream":{"failureQueue":0,"githubCandidates":0,"githubResults":0,"engagementObservations":0,"sourceItems":0,"feedItems":0,"outbox":0,"inbox":0,"idempotency":0,"cursor":0},"failureMetadataSqlNull":true,"executionMetadataSqlNull":true}]'
+redacted_targets_sha256=$(node -e 'process.stdout.write(require("node:crypto").createHash("sha256").update(process.argv[1],"utf8").digest("hex"))' "$preimage_targets")
+preimage_line="{\"schemaVersion\":\"reader_summary.daily_scan_terminal_preimage.c1\",\"confirmation\":\"reader-summary-daily-scan-terminal-repair-c1\",\"capturedAt\":\"2026-08-11T12:00:00.000Z\",\"reviewedPreimageSha256\":\"$TERMINAL_SET_SHA256\",\"targetCount\":2,\"redactedTargetsSha256\":\"$redacted_targets_sha256\",\"targets\":$preimage_targets}"
+printf '%s\n' "$preimage_line" > "$PREIMAGE_ARTIFACT"
+bash "$CLIENT" validate-daily-scan-terminal-artifact preimage "$PREIMAGE_ARTIFACT"
+[[ $(stat -c '%a' "$PREIMAGE_ARTIFACT") == 444 ]]
+
+REPAIR_ARTIFACT=$FIXTURE/daily-scan-terminal-repair.json
+repair_line='{"schemaVersion":"reader_summary.daily_scan_terminal_repair.c1","confirmation":"reader-summary-daily-scan-terminal-repair-c1","reviewedPreimageSha256":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","transactionTimestamp":"2026-08-11 12:01:00+00","targetCount":2,"restoreEvidenceSha256":"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd","durableReceipt":true}'
+printf '%s\n' "$repair_line" > "$REPAIR_ARTIFACT"
+bash "$CLIENT" validate-daily-scan-terminal-artifact repair \
+  "$REPAIR_ARTIFACT" "$TERMINAL_SET_SHA256"
+[[ $(stat -c '%a' "$REPAIR_ARTIFACT") == 444 ]]
+
+assert_invalid_daily_scan_artifact() {
+  local kind=$1 path=$2 value=$3 expected_digest=${4:-}
+  chmod 0600 "$path"
+  printf '%s' "$value" > "$path"
+  if bash "$CLIENT" validate-daily-scan-terminal-artifact \
+    "$kind" "$path" "$expected_digest" >/dev/null 2>&1; then
+    printf 'invalid daily scan terminal artifact accepted: %s\n' "$value" >&2
+    exit 1
+  fi
+  [[ $(stat -c '%a' "$path") == 600 ]]
+}
+
+assert_invalid_daily_scan_artifact preimage "$PREIMAGE_ARTIFACT" \
+  "${preimage_line/\"targetCount\":2/\"targetCount\":3}"$'\n'
+assert_invalid_daily_scan_artifact preimage "$PREIMAGE_ARTIFACT" \
+  "${preimage_line/\"schedulerDecisionCount\":1/\"schedulerDecisionCount\":2}"$'\n'
+assert_invalid_daily_scan_artifact preimage "$PREIMAGE_ARTIFACT" \
+  "${preimage_line/\"jobStatus\":\"ENQUEUED\"/\"providerConfig\":{},\"jobStatus\":\"ENQUEUED\"}"$'\n'
+assert_invalid_daily_scan_artifact repair "$REPAIR_ARTIFACT" \
+  "${repair_line/\"durableReceipt\":true/\"durableReceipt\":false}"$'\n' \
+  "$TERMINAL_SET_SHA256"
+assert_invalid_daily_scan_artifact repair "$REPAIR_ARTIFACT" \
+  "${repair_line%\}},\"before\":{}}"$'\n' "$TERMINAL_SET_SHA256"
 
 : > "$GITHUB_OUTPUT"
 run_client plan_success plan "$TARGET_SHA" >/dev/null
@@ -512,12 +582,23 @@ assert_call_count 0 "deploy $TARGET_SHA"
 # shellcheck disable=SC2016 # Literal GitHub expression is asserted in workflow text.
 grep -F 'postgres_pool_repair: ${{ steps.plan.outputs.postgres_pool_repair }}' \
   "$WORKFLOW" >/dev/null
+# PostgreSQL bootstrap repair is now driven by the freshly inspected transition
+# state and is restricted to one of the three frozen release anchors.
 [[ $(grep -cF \
-  "if: needs.plan.outputs.postgres_pool_repair != 'true'" "$WORKFLOW") == 1 ]]
+  "if: needs.plan.outputs.transition_state == 'repair-required'" "$WORKFLOW") == 1 ]]
+grep -F 'repair_anchor: ${{ steps.plan.outputs.repair_anchor }}' \
+  "$WORKFLOW" >/dev/null
+grep -F 'REPAIR_ANCHOR: ${{ needs.plan.outputs.repair_anchor }}' \
+  "$WORKFLOW" >/dev/null
+grep -F '889d50f50328c89e25b3ef898e552df631b3222f|c64c3b46b6b6ba5c7ac7b04028932e09dae2116a|e3b5b5d89b3586668e36f987f03672415b5a0f37' \
+  "$WORKFLOW" >/dev/null
 for maintenance_action in \
   disk-report project-disk-cleanup \
   reader-summary-recover-missing-days reader-summary-weekly-run \
-  reader-summary-daily-canonical-recovery-v4; do
+  reader-summary-daily-canonical-recovery-v4 \
+  reader-summary-daily-scan-terminal-preimage-c1 \
+  reader-summary-daily-delivery-c1-run \
+  reader-summary-daily-delivery-c1-contain; do
   grep -F "          - $maintenance_action" "$WORKFLOW" >/dev/null
 done
 grep -F 'daily_canonical_recovery_retry_set_token:' "$WORKFLOW" >/dev/null
@@ -526,11 +607,16 @@ grep -F 'daily_canonical_recovery_confirmation:' "$WORKFLOW" >/dev/null
 grep -F 'daily_canonical_recovery_model_job_identity:' "$WORKFLOW" >/dev/null
 grep -F 'daily_canonical_recovery_authority_sha256:' "$WORKFLOW" >/dev/null
 grep -F 'DAILY_CANONICAL_RECOVERY_RETRY_SET_TOKEN == invalid-product-retry-set-v1' \
-  "$WORKFLOW" >/dev/null
+  "$MAINTENANCE_DISPATCH" >/dev/null
 grep -F 'DAILY_CANONICAL_RECOVERY_CONFIRMATION' "$WORKFLOW" >/dev/null
+grep -F 'daily_delivery_c1_confirmation:' "$WORKFLOW" >/dev/null
+grep -F 'daily_delivery_c1_recovery_through:' "$WORKFLOW" >/dev/null
+grep -F 'daily_delivery_c1_ready_sha:' "$WORKFLOW" >/dev/null
 grep -F 'timeout-minutes: 360' "$WORKFLOW" >/dev/null
 grep -F 'reader-summary-daily-canonical-recovery-v4' "$WORKFLOW" >/dev/null
 grep -F 'npm run check:reader-summary-daily-canonical-recovery-postgres18' "$WORKFLOW" >/dev/null
+grep -F 'npm run check:reader-summary-daily-delivery-c1-postgres' "$WORKFLOW" >/dev/null
+grep -F 'npm run check:reader-summary-daily-scan-terminal-repair-c1-postgres' "$WORKFLOW" >/dev/null
 grep -F 'npm run check:reader-summary-daily-canonical-recovery-production' "$WORKFLOW" >/dev/null
 for dependency in plan verify_reader_summary_publication verify_backend build_frontend; do
   grep -F "      - $dependency" "$WORKFLOW" >/dev/null

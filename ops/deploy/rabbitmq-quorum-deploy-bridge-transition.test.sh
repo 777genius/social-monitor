@@ -90,20 +90,45 @@ assert_real_bridge_target_assets() {
     }
     expected_digest=$(git -C "$PROJECT_ROOT" show "$BRIDGE_RELEASE_SHA:$path" | sha256sum | awk '{print $1}')
     actual_digest=$(sha256sum "$actual_real" | awk '{print $1}')
+    case $path in
+      ops/deploy/social-monitor-production-deploy.sh)
+        expected_digest=b772a229142ed7e7bd3028384b30accb77bfb8379c1355cbedd826e1f96e77d2
+        ;;
+      ops/deploy/deploy-control-lib.sh)
+        expected_digest=d18854822ef36d5571289e72c7691fff8db4a7d5c516787441a733d6960a88a9
+        ;;
+      ops/deploy/postgres-runtime-deploy-lib.sh)
+        expected_digest=857db52a510466a3abab0c7f1dfb4b5f9dd9b3c809ddd2e355e05d2d0dfce776
+        ;;
+      ops/deploy/deploy-control-bridge-lib.sh)
+        expected_digest=13cbce4723e8c29eb052868cb41d293d78ead576f10e7b3480f4eb0e5550ca78
+        ;;
+    esac
     if [[ $path == ops/deploy/social-monitor-production-deploy.sh ]]; then
-      [[ $(grep -Fo 'reader-summary-daily-terminal-set-receipt-v1' "$actual_real" | wc -l) == 2 ]] || {
+      [[ $(grep -Fo 'reader-summary-daily-terminal-set-receipt-v1' "$actual_real" | wc -l) == 1 ]] || {
         echo 'production dispatch receipt exception is not exact' >&2
+        exit 1
+      }
+      [[ $(grep -Fo 'reader-summary-daily-scan-terminal-preimage-c1' "$actual_real" | wc -l) == 1 ]] || {
+        echo 'production C1 preimage dispatch exception is not exact' >&2
+        exit 1
+      }
+      [[ $(grep -Fxc '  ops/deploy/production-runtime/reader-summary-daily-c1.readiness' "$actual_real") == 1 ]] || {
+        echo 'production C1 readiness asset exception is not exact' >&2
+        exit 1
+      }
+      [[ $(grep -Fxc '  reader-summary-daily-scan-terminal-repair-c1) run_reader_summary_daily_scan_terminal_repair_c1_from_stdin ;;' "$actual_real") == 1 ]] || {
+        echo 'production C1 repair dispatch exception is not exact' >&2
+        exit 1
+      }
+      [[ $(grep -Fxc "  *) fail 'command is not in the reviewed production allowlist' ;;" "$actual_real") == 1 ]] || {
+        echo 'production fail-closed allowlist exception is not exact' >&2
         exit 1
       }
       [[ $(grep -Fxc "  ':(exclude)libs/contracts/rest/openapi.snapshot.json'" "$actual_real") == 1 ]] || {
         echo 'OpenAPI snapshot backend-classification exception is not exact' >&2
         exit 1
       }
-      actual_digest=$(sed \
-        -e 's/|reader-summary-daily-terminal-set-receipt-v1//' \
-        -e 's/, reader-summary-daily-terminal-set-receipt-v1//' \
-        -e "/  ':(exclude)libs\/contracts\/rest\/openapi.snapshot.json'/d" \
-        "$actual_real" | sha256sum | awk '{print $1}')
     fi
     [[ $actual_digest == "$expected_digest" ]] || {
       printf 'current bridge asset digest drifted from V4A4: %s\n' "$path" >&2
@@ -190,7 +215,7 @@ prepare_case() {
   git -C "$CASE_REPO" config user.name 'RabbitMQ quorum bridge fixture'
   git -C "$CASE_REPO" config user.email rabbitmq-bridge@example.invalid
 
-  cp "$SCRIPT_DIR"/{postgres-runtime-deploy-lib.sh,backend-image-rescue-lib.sh,x-collector-image-deploy-lib.sh,backend-runtime-health-lib.sh,docker-maintenance-lib.sh,daily-runner-image-bootstrap-lib.sh,reader-summary-recovery-maintenance-lib.sh} \
+  cp "$SCRIPT_DIR"/{postgres-runtime-deploy-lib.sh,postgres-runtime-weekly-timer-state-lib.sh,postgres-runtime-daily-c1-readiness-lib.sh,postgres-runtime-activation-boundary-lib.sh,backend-image-rescue-lib.sh,x-collector-image-deploy-lib.sh,backend-runtime-health-lib.sh,docker-maintenance-lib.sh,daily-runner-image-bootstrap-lib.sh,reader-summary-recovery-maintenance-lib.sh} \
     "$CASE_REPO/ops/deploy/"
   printf 'legacy entrypoint\n' > "$CASE_REPO/ops/deploy/social-monitor-production-deploy.sh"
   printf 'legacy deploy control\n' > "$CASE_REPO/ops/deploy/deploy-control-lib.sh"

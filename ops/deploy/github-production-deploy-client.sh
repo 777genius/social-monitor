@@ -108,8 +108,8 @@ run_remote() {
 
 validate_maintenance_action() {
   case ${1:-} in
-    disk-report|project-disk-cleanup|reader-summary-recover-missing-days|reader-summary-weekly-run|reader-summary-daily-canonical-recovery-v4|reader-summary-daily-terminal-set-receipt-v1) ;;
-    *) fail 'maintenance action must be disk-report, project-disk-cleanup, reader-summary-recover-missing-days, reader-summary-weekly-run, reader-summary-daily-canonical-recovery-v4, or reader-summary-daily-terminal-set-receipt-v1' ;;
+    disk-report|project-disk-cleanup|reader-summary-recover-missing-days|reader-summary-weekly-run|reader-summary-daily-canonical-recovery-v4|reader-summary-daily-terminal-set-receipt-v1|reader-summary-daily-scan-terminal-preimage-c1|reader-summary-daily-scan-terminal-repair-c1|reader-summary-daily-delivery-c1-run|reader-summary-daily-delivery-c1-contain) ;;
+    *) fail 'maintenance action is not in the reviewed allowlist' ;;
   esac
 }
 
@@ -165,6 +165,136 @@ NODE
     fail 'terminal-set receipt could not be made immutable'
 }
 
+validate_daily_scan_terminal_artifact_file() {
+  local artifact_kind=${1:-} artifact_path=${2:-} expected_preimage_sha256=${3:-}
+  [[ $# == 2 || $# == 3 ]] || \
+    fail 'daily scan terminal artifact validation requires kind, file, and optional expected digest'
+  [[ $artifact_kind == preimage || $artifact_kind == repair ]] || \
+    fail 'daily scan terminal artifact kind is invalid'
+  [[ -f $artifact_path && ! -L $artifact_path ]] || \
+    fail 'daily scan terminal artifact must be one regular file'
+  if [[ $artifact_kind == repair ]]; then
+    validate_lowercase_hex_digest "$expected_preimage_sha256"
+  else
+    [[ -z $expected_preimage_sha256 ]] || \
+      fail 'daily scan terminal preimage artifact does not accept an expected digest'
+  fi
+  node - "$artifact_kind" "$artifact_path" "$expected_preimage_sha256" <<'NODE' || \
+    fail 'daily scan terminal artifact is invalid'
+const fs = require("node:fs");
+const crypto = require("node:crypto");
+const [kind, path, expectedDigest] = process.argv.slice(2);
+const raw = fs.readFileSync(path, "utf8");
+if (!raw.endsWith("\n") || raw.slice(0, -1).includes("\n") || raw.includes("\r")) {
+  process.exit(1);
+}
+let artifact;
+try { artifact = JSON.parse(raw.slice(0, -1)); } catch { process.exit(1); }
+const keys = kind === "preimage"
+  ? ["schemaVersion", "confirmation", "capturedAt", "reviewedPreimageSha256", "targetCount", "redactedTargetsSha256", "targets"]
+  : ["schemaVersion", "confirmation", "reviewedPreimageSha256", "transactionTimestamp", "targetCount", "restoreEvidenceSha256", "durableReceipt"];
+const timestampKey = kind === "preimage" ? "capturedAt" : "transactionTimestamp";
+const schemaVersion = kind === "preimage"
+  ? "reader_summary.daily_scan_terminal_preimage.c1"
+  : "reader_summary.daily_scan_terminal_repair.c1";
+const digest = artifact?.reviewedPreimageSha256;
+const targetKeys = ["target", "jobId", "sourceBindingId", "leaseId", "leasePresent", "jobStatus", "attemptStatus", "attemptNumber", "fetched", "inserted", "skippedDuplicates", "projected", "failureReasonSha256", "schedulerDecisionCount", "downstream", "failureMetadataSqlNull", "executionMetadataSqlNull"];
+const downstreamKeys = ["failureQueue", "githubCandidates", "githubResults", "engagementObservations", "sourceItems", "feedItems", "outbox", "inbox", "idempotency", "cursor"];
+const fixedTargets = [
+  { target: "hacker_news", jobId: "e630ed7d-42b7-4bf0-a747-f9bdf0f8a9d7", sourceBindingId: "0348ff97-3925-4d04-a192-7e782badbf50", leaseId: "703fd7b5-cf83-4508-a5b1-5a9dfdc4643e", leasePresent: true, jobStatus: "ENQUEUED", attemptStatus: "RUNNING", failureReasonSha256: null },
+  { target: "reddit", jobId: "b9de1ac8-4490-48d6-befa-a25472b5e94a", sourceBindingId: "8e753ea9-fb03-4c05-8288-6e871cb20b27", leaseId: null, leasePresent: false, jobStatus: "REQUESTED", attemptStatus: "FAILED", failureReasonSha256: "f6080204874629cf05223f8dc7650330a89106f0e4562a92b4b5310bd9f90ad1" },
+];
+const validTargets = kind !== "preimage" || (Array.isArray(artifact?.targets) &&
+  artifact.targets.length === 2 && artifact.targets.every((target, index) => {
+    const fixed = fixedTargets[index];
+    return target !== null && typeof target === "object" && !Array.isArray(target) &&
+      JSON.stringify(Object.keys(target)) === JSON.stringify(targetKeys) &&
+      Object.entries(fixed).every(([key, value]) => target[key] === value) &&
+      target.attemptNumber === 1 &&
+      [target.fetched, target.inserted, target.skippedDuplicates, target.projected].every(value => Number.isSafeInteger(value) && value >= 0) &&
+      target.schedulerDecisionCount === 1 &&
+      target.downstream !== null && typeof target.downstream === "object" && !Array.isArray(target.downstream) &&
+      JSON.stringify(Object.keys(target.downstream)) === JSON.stringify(downstreamKeys) &&
+      downstreamKeys.every(key => target.downstream[key] === 0) &&
+      typeof target.failureMetadataSqlNull === "boolean" &&
+      typeof target.executionMetadataSqlNull === "boolean";
+  }) && typeof artifact.redactedTargetsSha256 === "string" &&
+  artifact.redactedTargetsSha256 === crypto.createHash("sha256").update(JSON.stringify(artifact.targets), "utf8").digest("hex"));
+if (artifact === null || typeof artifact !== "object" || Array.isArray(artifact) ||
+    JSON.stringify(artifact) + "\n" !== raw ||
+    JSON.stringify(Object.keys(artifact)) !== JSON.stringify(keys) ||
+    artifact.schemaVersion !== schemaVersion ||
+    artifact.confirmation !== "reader-summary-daily-scan-terminal-repair-c1" ||
+    typeof artifact[timestampKey] !== "string" ||
+    Number.isNaN(Date.parse(artifact[timestampKey])) ||
+    typeof digest !== "string" || !/^[0-9a-f]{64}$/.test(digest) ||
+    artifact.targetCount !== 2 ||
+    !validTargets ||
+    (kind === "repair" && (digest !== expectedDigest ||
+      typeof artifact.restoreEvidenceSha256 !== "string" ||
+      !/^[0-9a-f]{64}$/.test(artifact.restoreEvidenceSha256) ||
+      artifact.durableReceipt !== true))) process.exit(1);
+NODE
+  chmod 0444 "$artifact_path"
+  [[ $(stat -c '%a' "$artifact_path") == 444 ]] || \
+    fail 'daily scan terminal artifact could not be made immutable'
+}
+
+validate_daily_delivery_c1_artifact_file() {
+  local kind=${1:-} artifact_path=${2:-} expected_sha=${3:-}
+  local expected_date=${4:-}
+  [[ $kind == run || $kind == contain ]] || fail 'daily delivery C1 artifact kind is invalid'
+  [[ -f $artifact_path && ! -L $artifact_path ]] || fail 'daily delivery C1 artifact must be one regular file'
+  validate_sha "$expected_sha"
+  if [[ $kind == run ]]; then
+    [[ $# == 4 && $expected_date =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || fail 'daily delivery C1 run artifact requires its expected date'
+  else
+    [[ $# == 3 ]] || fail 'daily delivery C1 containment artifact accepts no date'
+  fi
+  node - "$kind" "$artifact_path" "$expected_sha" "$expected_date" <<'NODE' || fail 'daily delivery C1 artifact is invalid'
+const fs = require("node:fs");
+const [kind, path, expectedSha, expectedDate] = process.argv.slice(2);
+const raw = fs.readFileSync(path, "utf8");
+if (!raw.endsWith("\n") || raw.slice(0, -1).includes("\n") || raw.includes("\r")) process.exit(1);
+let value;
+try { value = JSON.parse(raw.slice(0, -1)); } catch { process.exit(1); }
+const runKeys = ["schemaVersion", "confirmation", "releaseSha", "requestedUtcDate", "eligibleThrough", "nextUnresolvedUtcDate", "publicationCount", "publicationSetSha256", "receiptSha256", "journalState", "serviceInvocationId", "serviceBootId", "baselineSha256", "invocationOrigin", "startedAtRealtimeUsec", "serviceResult", "exitCode", "exitStatus", "owner", "ownerReleaseSha", "legacyTimerUnitFileState", "legacyTimerActiveState", "legacyTimerNextElapseUSecRealtime", "v6TimerUnitFileState", "v6TimerActiveState"];
+const containKeys = ["schemaVersion", "confirmation", "releaseSha", "state", "scheduleResumePolicy", "legacyTimerUnitFileState", "legacyTimerActiveState", "v6TimerUnitFileState", "v6TimerActiveState", "legacyServiceActiveState", "v6ServiceActiveState"];
+const keys = kind === "run" ? runKeys : containKeys;
+const hex = item => typeof item === "string" && /^[0-9a-f]{64}$/.test(item);
+const positiveInteger = item => typeof item === "string" && /^[1-9][0-9]*$/.test(item);
+const invocation = item => typeof item === "string" && /^[0-9a-f]{32}$/.test(item);
+const uuid = item => typeof item === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(item);
+const sha = item => typeof item === "string" && /^[0-9a-f]{40}$/.test(item);
+const next = new Date(`${expectedDate}T00:00:00.000Z`);
+const first = new Date("2026-07-23T00:00:00.000Z");
+const expectedCount = Math.floor((next.getTime() - first.getTime()) / 86400000) + 1;
+next.setUTCDate(next.getUTCDate() + 1);
+const validRun = kind !== "run" || (
+  value.schemaVersion === "reader_summary.daily_delivery_c1_run.v2" &&
+  value.confirmation === "reader-summary-daily-delivery-c1-run" &&
+  value.requestedUtcDate === expectedDate && value.eligibleThrough === expectedDate &&
+  value.nextUnresolvedUtcDate === next.toISOString().slice(0, 10) &&
+  value.publicationCount === expectedCount && hex(value.publicationSetSha256) &&
+  hex(value.receiptSha256) && value.journalState === "SUCCESS" &&
+  invocation(value.serviceInvocationId) && uuid(value.serviceBootId) &&
+  hex(value.baselineSha256) && /^(automatic|manual-reconcile)$/.test(value.invocationOrigin) &&
+  positiveInteger(value.startedAtRealtimeUsec) && value.serviceResult === "success" &&
+  value.exitCode === "exited" && value.exitStatus === "0" &&
+  value.owner === "LEGACY" && sha(value.ownerReleaseSha) &&
+  value.legacyTimerUnitFileState === "enabled" && value.legacyTimerActiveState === "active" &&
+  typeof value.legacyTimerNextElapseUSecRealtime === "string" &&
+  value.legacyTimerNextElapseUSecRealtime.length > 0 &&
+  value.legacyTimerNextElapseUSecRealtime !== "n/a" &&
+  value.v6TimerUnitFileState === "disabled" && value.v6TimerActiveState === "inactive"
+);
+const validContain = kind !== "contain" || (value.schemaVersion === "reader_summary.daily_delivery_c1_containment.v1" && value.confirmation === "reader-summary-daily-delivery-c1-contain" && value.state === "CONTAINED" && value.scheduleResumePolicy === "separate-reviewed-clearance-required" && value.legacyTimerUnitFileState === "disabled" && value.legacyTimerActiveState === "inactive" && value.v6TimerUnitFileState === "disabled" && value.v6TimerActiveState === "inactive" && value.legacyServiceActiveState === "inactive" && value.v6ServiceActiveState === "inactive");
+if (value === null || typeof value !== "object" || Array.isArray(value) || JSON.stringify(value) + "\n" !== raw || JSON.stringify(Object.keys(value)) !== JSON.stringify(keys) || value.releaseSha !== expectedSha || !validRun || !validContain) process.exit(1);
+NODE
+  chmod 0444 "$artifact_path"
+  [[ $(stat -c '%a' "$artifact_path") == 444 ]] || fail 'daily delivery C1 artifact could not be made immutable'
+}
+
 run_maintenance() {
   local sha=$1
   local maintenance_action=$2
@@ -191,6 +321,31 @@ run_maintenance() {
       return
     fi
     fail 'daily canonical recovery requires either retry-set token and digest or its exact legacy confirmation'
+  fi
+  if [[ $maintenance_action == reader-summary-daily-scan-terminal-repair-c1 ]]; then
+    [[ $# == 4 && \
+       $first_authorization_value == reader-summary-daily-scan-terminal-repair-c1 ]] || \
+      fail 'daily scan terminal repair requires exact confirmation and reviewed preimage SHA-256'
+    validate_lowercase_hex_digest "$second_authorization_value"
+    run_remote "$maintenance_action" "$sha" "$first_authorization_value" \
+      "$second_authorization_value"
+    return
+  fi
+  if [[ $maintenance_action == reader-summary-daily-delivery-c1-run ]]; then
+    [[ $# == 4 && $first_authorization_value == "$maintenance_action" && \
+       $second_authorization_value =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || \
+      fail 'daily delivery C1 run requires exact confirmation and UTC recovery-through date'
+    run_remote "$maintenance_action" "$sha" "$first_authorization_value" \
+      "$second_authorization_value"
+    return
+  fi
+  if [[ $maintenance_action == reader-summary-daily-delivery-c1-contain ]]; then
+    [[ $# == 4 && $first_authorization_value == "$maintenance_action" && \
+       $second_authorization_value == "$sha" ]] || \
+      fail 'daily delivery C1 containment requires exact confirmation and current READY SHA'
+    run_remote "$maintenance_action" "$sha" "$first_authorization_value" \
+      "$second_authorization_value"
+    return
   fi
   [[ $# == 2 ]] || fail 'this maintenance action does not accept a confirmation token'
   run_remote "$maintenance_action" "$sha"
@@ -496,5 +651,23 @@ case $action in
     [[ $# == 2 ]] || fail 'validate-terminal-set-receipt requires one file'
     validate_terminal_set_receipt_file "$2"
     ;;
-  *) fail 'allowed commands: configure, cleanup, plan, upload, deploy, install-daily-c1-bridge-policy, maintenance, validate-terminal-set-receipt' ;;
+  validate-daily-scan-terminal-artifact)
+    [[ $# == 3 || $# == 4 ]] || \
+      fail 'validate-daily-scan-terminal-artifact requires kind, file, and optional expected digest'
+    if [[ $# == 4 ]]; then
+      validate_daily_scan_terminal_artifact_file "$2" "$3" "$4"
+    else
+      validate_daily_scan_terminal_artifact_file "$2" "$3"
+    fi
+    ;;
+  validate-daily-delivery-c1-artifact)
+    [[ $# == 4 || $# == 5 ]] || \
+      fail 'validate-daily-delivery-c1-artifact requires kind, file, SHA, and optional date'
+    if [[ $# == 5 ]]; then
+      validate_daily_delivery_c1_artifact_file "$2" "$3" "$4" "$5"
+    else
+      validate_daily_delivery_c1_artifact_file "$2" "$3" "$4"
+    fi
+    ;;
+  *) fail 'command is not in the reviewed client allowlist' ;;
 esac

@@ -22,6 +22,8 @@ install -d "$REPO/apps/frontend" "$REPO/apps/api-gateway" \
   "$REPO/prisma/migrations"/{20260716170000_reader_summary_fail_closed_publication,20260731153000_reader_summary_production_recovery_original_cutoff_authority} \
   "$STATE" "$STAGING"
 cp "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh" "$REPO/ops/deploy/"
+cp "$SCRIPT_DIR"/postgres-runtime-{weekly-timer-state,daily-c1-readiness,activation-boundary}-lib.sh \
+  "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/deploy-control-lib.sh" "$SCRIPT_DIR/deploy-control-bridge-lib.sh" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/backend-runtime-health-lib.sh" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/backend-image-rescue-lib.sh" "$REPO/ops/deploy/"
@@ -422,7 +424,7 @@ grep -F 'snapshot_postgres_runtime_control "$sha"' \
   "$ENTRYPOINT" >/dev/null
 grep -F 'restore_postgres_runtime_control "$runtime_control_backup"' \
   "$SCRIPT_DIR/backend-image-rescue-lib.sh" >/dev/null
-grep -F 'rollback_backend_and_runtime_control' "$ENTRYPOINT" >/dev/null
+grep -F 'rollback_backend_and_postgres_runtime_control' "$ENTRYPOINT" >/dev/null
 grep -F 'rollback_backend_images "$state_file" || backend_status=$?' \
   "$SCRIPT_DIR/backend-image-rescue-lib.sh" >/dev/null
 grep -F 'restore_postgres_runtime_control "$runtime_control_backup" || runtime_status=$?' \
@@ -736,7 +738,7 @@ grep -F 'unfinished backend rollback requires operator recovery before retry' \
   <<< "$interrupted_retry_output" >/dev/null
 [[ ! -s $INTERRUPTED_RETRY_LOG ]]
 rm -f "$STATE/backend-image-rescue-fedcba9876543210fedcba9876543210fedcba98.tsv"
-grep -F 'verify_live_postgres_admission "$postgres_env"' "$ENTRYPOINT" >/dev/null; grep -F 'reader-summary-daily-terminal-set-receipt-v1)' "$ENTRYPOINT" >/dev/null
+grep -F 'verify_live_postgres_admission "$postgres_env"' "$ENTRYPOINT" >/dev/null; grep -F 'reader-summary-weekly-run|reader-summary-daily-terminal-set-receipt-v1|' "$ENTRYPOINT" >/dev/null
 grep -F 'probe_postgres_maximum_envelope "$postgres_env"' "$ENTRYPOINT" >/dev/null
 grep -F 'deploy_reader_summary_publication_migrations' "$ENTRYPOINT" >/dev/null
 grep -F 'reader_summary_publication_migrator_preflight' "$ENTRYPOINT" >/dev/null
@@ -834,24 +836,11 @@ grep -F 'social-monitor-github-premidnight-capture-v1.service' \
 grep -F 'social-monitor-github-premidnight-capture-v1.timer' \
   "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh" >/dev/null
 grep -F 'DropInPaths' "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh" >/dev/null
-grep -F 'postgres-runtime-current/compose.postgres-runtime.yml' \
-  "$SCRIPT_DIR/production-runtime/daily-run.sh" >/dev/null
 grep -F 'social-monitor-github-premidnight-capture-v1.timer' \
   "$ENTRYPOINT" >/dev/null
 grep -F 'dailyTimerOwner' \
   "$SCRIPT_DIR/postgres-pool-release-contract.json" >/dev/null
-grep -F 'runtime_release != "$backend_release"' \
-  "$SCRIPT_DIR/production-runtime/daily-run.sh" >/dev/null
-grep -F 'daily-run-singleton.lock' \
-  "$SCRIPT_DIR/production-runtime/daily-run.sh" >/dev/null
-# The command text is intentionally matched literally.
-# shellcheck disable=SC2016
-grep -F '"$FLOCK_COMMAND" -w "$POSTGRES_ADMISSION_WAIT_SECONDS" 8' \
-  "$SCRIPT_DIR/production-runtime/daily-run.sh" >/dev/null
-grep -Fx 'TimeoutStartSec=23400' \
-  "$SCRIPT_DIR/production-runtime/social-monitor-daily.service" >/dev/null
-grep -Fx 'Restart=no' \
-  "$SCRIPT_DIR/production-runtime/social-monitor-daily.service" >/dev/null
+bash "$SCRIPT_DIR/production-runtime/daily-runtime-contract.test.sh"
 deploy_library_source_line=$(grep -nF 'source "$REPO/ops/deploy/deploy-control-lib.sh"' \
   "$ENTRYPOINT" | cut -d: -f1)
 publication_library_source_line=$(grep -nF 'source_deploy_library reader-summary-publication-deploy-lib.sh' "$ENTRYPOINT" | cut -d: -f1)

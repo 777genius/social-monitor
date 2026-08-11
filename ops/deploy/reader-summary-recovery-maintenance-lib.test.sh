@@ -222,6 +222,21 @@ mapfile -t receipt_commands < <(grep -v '^source-env=' "$COMPOSE_LOG")
 ! grep -F 'READER_SUMMARY_DAILY_TERMINAL_SET_RECEIPT_DIRECTORY' "$COMPOSE_LOG" >/dev/null
 
 : > "$COMPOSE_LOG"
+: > "$AUTH_LOG"
+: > "$ORDER_LOG"
+run_reader_summary_daily_runner_maintenance \
+  reader-summary-daily-scan-terminal-preimage-c1 < /dev/null
+preimage_command='--profile daily run --rm --no-deps daily-runner sh -lc set -eu; node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=768 -- ./node_modules/.bin/ts-node -r tsconfig-paths/register scripts/run-reader-summary-daily-canonical-recovery.ts --scan-terminal-preimage-c1'
+mapfile -t preimage_commands < <(grep -v '^source-env=' "$COMPOSE_LOG")
+[[ ${#preimage_commands[@]} == 1 ]]
+[[ ${preimage_commands[0]} == "$preimage_command" ]]
+[[ ! -s $AUTH_LOG && ! -s $ORDER_LOG ]]
+if grep -F 'agent-runtime' "$COMPOSE_LOG" >/dev/null || \
+   grep -F 'READER_SUMMARY_DAILY_REPAIR_RECEIPT_DIRECTORY' "$COMPOSE_LOG" >/dev/null; then
+  fail 'daily scan terminal preimage inherited repair/runtime side effects'
+fi
+
+: > "$COMPOSE_LOG"
 : > "$ORDER_LOG"
 printf 'old subscription session\n' > "$ROOT/runtime/subscription-runtime/sessions/session"
 export AUTH_ACCOUNT_CHANGED=1
@@ -592,5 +607,85 @@ grep -F 'reader-summary-recover-missing-days|reader-summary-weekly-run|reader-su
   "$SCRIPT_DIR/social-monitor-production-ssh-wrapper.sh" >/dev/null
 grep -F 'reader-summary-recover-missing-days|reader-summary-weekly-run|reader-summary-daily-canonical-recovery-v4' \
   "$SCRIPT_DIR/github-production-deploy-client.sh" >/dev/null
+grep -F 'jobs.freshness.scan must have ready=0 unacked=0 consumers=0' \
+  "$SCRIPT_DIR/reader-summary-recovery-maintenance-lib.sh" >/dev/null
+grep -F 'api ingestion-worker event-relay' \
+  "$SCRIPT_DIR/reader-summary-recovery-maintenance-lib.sh" >/dev/null
+grep -F 'reader-summary-daily-scan-terminal-repair-c1' \
+  "$SCRIPT_DIR/social-monitor-production-ssh-wrapper.sh" >/dev/null
+grep -F 'reviewed preimage SHA-256' \
+  "$SCRIPT_DIR/github-production-deploy-client.sh" >/dev/null
+grep -F 'previously_running+=("$service")' \
+  "$SCRIPT_DIR/reader-summary-recovery-maintenance-lib.sh" >/dev/null
+grep -F 'trap restore_reader_summary_daily_scan_repair_services_c1 EXIT' \
+  "$SCRIPT_DIR/reader-summary-recovery-maintenance-lib.sh" >/dev/null
+grep -F 'stop -t 60 api ingestion-worker event-relay' \
+  "$SCRIPT_DIR/reader-summary-recovery-maintenance-lib.sh" >/dev/null
+grep -F 'restored=%s' \
+  "$SCRIPT_DIR/reader-summary-recovery-maintenance-lib.sh" >/dev/null
+
+rabbitmq_quorum_health_require_steady_state() {
+  RABBITMQ_QUORUM_TARGET_CONTAINER_ID=$(printf 'a%.0s' {1..64})
+}
+docker() {
+  if [[ ${1:-} == ps ]]; then
+    local requested_service
+    for requested_service in api ingestion-worker event-relay; do
+      if [[ " ${C1_ACTIVE_SERVICES:-} " == *" $requested_service "* && \
+            $* == *"com.docker.compose.service=$requested_service"* ]]; then
+        printf 'b%.0s' {1..64}
+      fi
+    done
+    [[ ${ACTIVE_SERVICE:-} == api && $* == *'com.docker.compose.service=api'* ]] && \
+      printf 'b%.0s' {1..64}
+    return 0
+  fi
+  if [[ $* == *'rabbitmq-diagnostics listeners --formatter json'* ]]; then
+    printf '[{"port":5672},{"port":15672}]\n'
+    return 0
+  fi
+  if [[ $* == *'rabbitmqctl -q list_queues'* ]]; then
+    printf '%s\n' '[
+      {"name":"jobs.freshness.scan","messages_ready":0,"messages_unacknowledged":0,"consumers":0},
+      {"name":"jobs.summary.execute","messages_ready":1,"messages_unacknowledged":0,"consumers":1},
+      {"name":"jobs.reader-summary.execute","messages_ready":0,"messages_unacknowledged":0,"consumers":1},
+      {"name":"jobs.delivery.attempt.send","messages_ready":0,"messages_unacknowledged":0,"consumers":1},
+      {"name":"events.delivery.summary.ready","messages_ready":0,"messages_unacknowledged":0,"consumers":1}
+    ]'
+    return 0
+  fi
+  return 97
+}
+PROJECT=social-monitor-c1-test
+assert_reader_summary_daily_scan_repair_quiescence_c1
+if (ACTIVE_SERVICE=api; assert_reader_summary_daily_scan_repair_quiescence_c1); then
+  fail 'daily scan terminal repair accepted a running API container'
+fi
+
+c1_lifecycle_log=$(mktemp)
+trap 'rm -f "$c1_lifecycle_log"' EXIT
+fake_compose() {
+  if [[ $* == *'stop -t 60 api ingestion-worker event-relay'* ]]; then
+    printf 'stop\n' >> "$c1_lifecycle_log"
+    C1_ACTIVE_SERVICES=''
+  elif [[ $* == *'--profile daily run '* ]]; then
+    printf 'repair\n' >> "$c1_lifecycle_log"
+  elif [[ $* == *'--profile app up -d --no-deps '* ]]; then
+    printf 'restore\n' >> "$c1_lifecycle_log"
+    C1_ACTIVE_SERVICES='api ingestion-worker event-relay'
+  else
+    fail "unexpected C1 lifecycle Compose call: $*"
+  fi
+}
+acquire_daily_runner_maintenance_locks() { :; }
+verify_daily_runner_maintenance_runtime() { :; }
+DEPLOY_LOCK=$(mktemp)
+COMPOSE=(fake_compose)
+C1_ACTIVE_SERVICES='api ingestion-worker event-relay'
+run_reader_summary_daily_scan_terminal_repair_c1 \
+  reader-summary-daily-scan-terminal-repair-c1 "$(printf 'a%.0s' {1..64})"
+[[ $(cat "$c1_lifecycle_log") == $'stop\nrepair\nrestore' ]] || \
+  fail 'daily scan terminal repair did not stop, repair, and restore in order'
+rm -f "$DEPLOY_LOCK"
 
 echo 'Reader summary recovery maintenance tests passed'

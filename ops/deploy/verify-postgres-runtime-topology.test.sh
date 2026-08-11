@@ -122,10 +122,16 @@ if python3 "$VERIFIER" "$rendered" "$facts" >/dev/null 2>&1; then
   exit 1
 fi
 
-daily_service=$FIXTURE/daily.service
-daily_runner=$FIXTURE/daily-run.sh
-printf '[Service]\nExecStart=%s --yesterday\nTimeoutStartSec=23400\nRestart=no\n' \
-  "$daily_runner" > "$daily_service"
+FIXTURE_REAL=$(cd "$FIXTURE" && pwd -P)
+daily_service=$FIXTURE_REAL/daily.service
+daily_runner=$FIXTURE_REAL/daily-run.sh
+printf '%s\n' \
+  '[Service]' \
+  'ExecCondition=/var/data/social-monitor/control/daily-c1-runtime.sh --check-legacy-owner' \
+  'ExecStartPre=/var/data/social-monitor/control/daily-c1-runtime.sh --prepare-legacy-start' \
+  'ExecStart=/var/data/social-monitor/control/daily-c1-runtime.sh --run-and-complete-legacy' \
+  'ExecStopPost=/var/data/social-monitor/control/daily-c1-runtime.sh --complete-legacy-start' \
+  'TimeoutStartSec=19800' 'Restart=no' > "$daily_service"
 cat > "$daily_runner" <<'SH'
 #!/usr/bin/env bash
 ROOT=/var/data/social-monitor
@@ -147,21 +153,44 @@ backend_release=$(cat "$ROOT/control/deploy-state/backend.sha")
 [[ $runtime_release == "$backend_release" ]]
 SH
 python3 "$VERIFIER" daily "$daily_service" "$daily_runner"
+sed 's/TimeoutStartSec=19800/TimeoutStartSec=23400/' "$daily_service" > \
+  "$daily_service.wrong-timeout"
+if python3 "$VERIFIER" daily "$daily_service.wrong-timeout" "$daily_runner" \
+  >/dev/null 2>&1; then
+  echo 'legacy daily runner accepted the v6 timeout' >&2
+  exit 1
+fi
+v6_runner=$FIXTURE_REAL/run-reader-summary-production-day.sh
+v6_service=$FIXTURE_REAL/daily-v6.service
+cp "$daily_runner" "$v6_runner"
+printf '[Service]\nExecStart=%s --yesterday\nTimeoutStartSec=23400\nRestart=no\n' \
+  "$v6_runner" > "$v6_service"
+python3 "$VERIFIER" daily "$v6_service" "$v6_runner"
+sed 's/TimeoutStartSec=23400/TimeoutStartSec=19800/' "$v6_service" > \
+  "$v6_service.wrong-timeout"
+if python3 "$VERIFIER" daily "$v6_service.wrong-timeout" "$v6_runner" \
+  >/dev/null 2>&1; then
+  echo 'v6 daily runner accepted the legacy C1 timeout' >&2
+  exit 1
+fi
 cp "$daily_runner" "$daily_runner.reviewed"
-sed -i '/FLOCK_COMMAND=flock/d' "$daily_runner"
+sed '/FLOCK_COMMAND=flock/d' "$daily_runner" > "$daily_runner.next"
+mv "$daily_runner.next" "$daily_runner"
 if python3 "$VERIFIER" daily "$daily_service" "$daily_runner" >/dev/null 2>&1; then
   echo 'daily runner without the reviewed flock command was accepted' >&2
   exit 1
 fi
 mv "$daily_runner.reviewed" "$daily_runner"
 cp "$daily_runner" "$daily_runner.reviewed"
-sed -i '/compose.agent-runtime-model.yml/d' "$daily_runner"
+sed '/compose.agent-runtime-model.yml/d' "$daily_runner" > "$daily_runner.next"
+mv "$daily_runner.next" "$daily_runner"
 if python3 "$VERIFIER" daily "$daily_service" "$daily_runner" >/dev/null 2>&1; then
   echo 'daily runner without the final model overlay was accepted' >&2
   exit 1
 fi
 mv "$daily_runner.reviewed" "$daily_runner"
-sed -i '/compose.postgres-runtime.yml/d' "$daily_runner"
+sed '/compose.postgres-runtime.yml/d' "$daily_runner" > "$daily_runner.next"
+mv "$daily_runner.next" "$daily_runner"
 if python3 "$VERIFIER" daily "$daily_service" "$daily_runner" >/dev/null 2>&1; then
   echo 'daily runner without the release-owned pool overlay was accepted' >&2
   exit 1

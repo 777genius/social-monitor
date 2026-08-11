@@ -3,8 +3,7 @@
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-LIBRARY=$SCRIPT_DIR/reader-summary-publication-deploy-lib.sh
-DEPLOY_ENTRYPOINT=$SCRIPT_DIR/social-monitor-production-deploy.sh
+LIBRARY=$SCRIPT_DIR/reader-summary-publication-deploy-lib.sh DEPLOY_ENTRYPOINT=$SCRIPT_DIR/social-monitor-production-deploy.sh
 FIXTURE=$(mktemp -d "/tmp/publication-migrator-validation.XXXXXX")
 FIXTURE=$(cd "$FIXTURE" && pwd -P)
 trap 'rm -rf "$FIXTURE"' EXIT
@@ -14,12 +13,10 @@ REPO=$FIXTURE/repo
 STATE=$ROOT/control/deploy-state
 SECRET=$ROOT/secrets/db/reader-summary-publication-admin-url
 CA_CERTIFICATE=$ROOT/secrets/db/ca-certificate.crt
-EVENT_LOG=$FIXTURE/events.log
-WRITE_LOG=$FIXTURE/writes.log
-TRANSPORT_LOG=$FIXTURE/transport.log
+EVENT_LOG=$FIXTURE/events.log WRITE_LOG=$FIXTURE/writes.log
+TRANSPORT_LOG=$FIXTURE/transport.log CHOWN_LOG=$FIXTURE/chown.log
 TRANSPORT_PGPASS_PATH_LOG=$FIXTURE/transport-pgpass-path.log
 TRANSPORT_QUERY_PATH_LOG=$FIXTURE/transport-query-path.log
-CHOWN_LOG=$FIXTURE/chown.log
 FAKE_BIN=$FIXTURE/bin
 PRIVATE_QUERY_PAYLOAD=private-query-output-must-stay-redacted
 PRIVATE_PASSWORD=redacted-test-password
@@ -54,13 +51,8 @@ TEST_COUNT=0
 
 mkdir -p "$ROOT/secrets/db" "$REPO/ops/deploy" "$STATE" "$FAKE_BIN"
 printf '%s\n' 'test-only-ca-certificate' > "$CA_CERTIFICATE"
-cp "$SCRIPT_DIR/deploy-control-lib.sh" "$SCRIPT_DIR/deploy-control-bridge-lib.sh" "$REPO/ops/deploy/"
-cp "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh" "$REPO/ops/deploy/"
-cp "$SCRIPT_DIR/backend-runtime-health-lib.sh" "$REPO/ops/deploy/"
-cp "$SCRIPT_DIR/backend-image-rescue-lib.sh" "$REPO/ops/deploy/"
-cp "$SCRIPT_DIR/x-collector-image-deploy-lib.sh" "$REPO/ops/deploy/"
-cp "$DEPLOY_ENTRYPOINT" "$REPO/ops/deploy/"
-cp "$SCRIPT_DIR/postgres-backup-deploy-lib.sh" "$REPO/ops/deploy/"
+cp "$SCRIPT_DIR"/{deploy-control-lib.sh,deploy-control-bridge-lib.sh,postgres-runtime-deploy-lib.sh,postgres-runtime-weekly-timer-state-lib.sh,postgres-runtime-daily-c1-readiness-lib.sh,postgres-runtime-activation-boundary-lib.sh,backend-runtime-health-lib.sh,backend-image-rescue-lib.sh,x-collector-image-deploy-lib.sh,reader-summary-recovery-maintenance-lib.sh,social-monitor-production-deploy.sh,postgres-backup-deploy-lib.sh,reader-summary-publication-system-runtime-deploy-lib.sh} \
+  "$REPO/ops/deploy/"
 git init -q -b main "$REPO"
 git -C "$REPO" config user.name 'Publication Migrator Validation'
 git -C "$REPO" config user.email publication-validation@example.invalid
@@ -190,6 +182,14 @@ deploy_control_file_digest() {
 
 deploy_control_git_blob_digest() {
   git -C "$REPO" show "$1:$2" | sha256sum | awk '{print $1}'
+}
+
+source_deploy_library() {
+  local library=$1
+  # This focused test reviews the publication library from SCRIPT_DIR while
+  # preserving its production loader contract for adjacent helper libraries.
+  # shellcheck source=/dev/null
+  source "$SCRIPT_DIR/$library"
 }
 
 stat() {
@@ -970,7 +970,8 @@ for catalog_token in \
   'provisioner_membership' \
   'pg_isready' \
   '--no-password'; do
-  grep -F -- "$catalog_token" "$LIBRARY" >/dev/null
+  grep -F -- "$catalog_token" \
+    "$SCRIPT_DIR"/reader-summary-publication-{deploy-lib,system-runtime-deploy-lib}.sh >/dev/null
 done
 
 # shellcheck disable=SC2016
