@@ -105,16 +105,10 @@ grep -F "needs.plan.outputs.daily_c1_bridge != 'true'" \
   "$workflow" >/dev/null || fail 'bridge does not defer final-only legacy transition fixtures'
 [[ $(grep -Fc "needs.plan.outputs.daily_c1_bridge != 'true'" "$workflow") == 9 ]] || \
   fail 'bridge must defer exactly the publication, frontend and legacy final-only gates'
-grep -F 'Install the daily-runner bootstrap repair before the daily C1 bridge' \
-  "$workflow" >/dev/null || fail 'bridge does not install its control-only bootstrap repair'
-grep -F 'bootstrap_repair=404390b5' \
-  "$workflow" >/dev/null || fail 'bridge bootstrap repair is not pinned to its reviewed commit'
-grep -F 'Deploy the daily C1 bridge through the repaired controller' \
-  "$workflow" >/dev/null || fail 'bridge does not run through the repaired controller'
-grep -F 'helper_bridge=d85bce0b' \
-  "$workflow" >/dev/null || fail 'bridge runtime helpers are not pinned to their reviewed commit'
-grep -F 'control_bridge=4a3a5bf6' \
-  "$workflow" >/dev/null || fail 'sealed control sources are not pinned to their reviewed commit'
+grep -F 'Install the daily-runner alias bridge and deploy the daily C1 target' \
+  "$workflow" >/dev/null || fail 'bridge does not install its alias helper before the target'
+grep -F 'alias_bridge=2bea3af8' \
+  "$workflow" >/dev/null || fail 'daily-runner alias bridge is not pinned to its reviewed commit'
 grep -F 'bash ops/deploy/github-production-deploy-client.sh deploy "$GITHUB_SHA"' \
   "$workflow" >/dev/null || fail 'daily C1 bridge bypasses the reviewed deploy client'
 ! grep -F 'daily C1 bridge classification is not control-only' "$workflow" >/dev/null || \

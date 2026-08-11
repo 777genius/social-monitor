@@ -741,26 +741,15 @@ jobs:
           DEPLOY_KEY: ${{ secrets.PRODUCTION_SSH_PRIVATE_KEY }}
           KNOWN_HOSTS: ${{ secrets.PRODUCTION_SSH_KNOWN_HOSTS }}
         run: bash ops/deploy/github-production-deploy-client.sh configure
-      - name: Install the daily-runner bootstrap repair before the daily C1 bridge
+      - name: Install the daily-runner alias bridge and deploy the daily C1 target
         if: needs.plan.outputs.daily_c1_bridge == 'true'
         env:
           DEPLOY_HOST: ${{ vars.PRODUCTION_SSH_HOST }}
           DEPLOY_USER: ${{ vars.PRODUCTION_SSH_USER }}
         run: |
           set -euo pipefail
-          bootstrap_repair=404390b5e6986d097d637d719c1b13ff4c5eadb2
-          bash ops/deploy/github-production-deploy-client.sh deploy "$bootstrap_repair"
-      - name: Deploy the daily C1 bridge through the repaired controller
-        if: needs.plan.outputs.daily_c1_bridge == 'true'
-        env:
-          DEPLOY_HOST: ${{ vars.PRODUCTION_SSH_HOST }}
-          DEPLOY_USER: ${{ vars.PRODUCTION_SSH_USER }}
-        run: |
-          set -euo pipefail
-          helper_bridge=d85bce0b5440fc1c7fd2a135841cd1d89d25dae9
-          bash ops/deploy/github-production-deploy-client.sh deploy "$helper_bridge"
-          control_bridge=4a3a5bf6835a7286eecb6b77a8e21c886df1bc7f
-          bash ops/deploy/github-production-deploy-client.sh deploy "$control_bridge"
+          alias_bridge=2bea3af85faad4b31603c61e1c813e16ec15acff
+          bash ops/deploy/github-production-deploy-client.sh deploy "$alias_bridge"
           bash ops/deploy/github-production-deploy-client.sh deploy "$GITHUB_SHA"
       - name: Freshly inspect after bounded repair
         id: recovery_state
