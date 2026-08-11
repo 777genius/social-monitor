@@ -381,9 +381,8 @@ jobs:
           npm run build
           if [[ $BACKEND_CHANGED == true ]]; then
             npm run check:postgres-runtime-pool-inventory
-            if git cat-file -e \
-              "$GITHUB_SHA:ops/deploy/production-runtime/reader-summary-daily-c1.readiness" \
-              2>/dev/null; then
+            daily_c1_readiness=ops/deploy/production-runtime/reader-summary-daily-c1.readiness
+            if [[ -f $daily_c1_readiness && ! -L $daily_c1_readiness ]]; then
               npm run check:postgres-runtime-pool-unit
             else
               echo 'backend-gate=postgres-pool-unit deferred-to-final-runtime-release'
