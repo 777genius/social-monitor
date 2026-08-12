@@ -115,10 +115,8 @@ grep -F 'Deploy the daily C1 target through the alias-aware controller' \
   "$workflow" >/dev/null || fail 'bridge does not run through the installed alias-aware controller'
 ! grep -F 'timer_bootstrap=' "$workflow" >/dev/null || \
   fail 'bridge still replays the obsolete partial timer bootstrap'
-grep -F 'bridge_policy=944fdb6d' \
-  "$workflow" >/dev/null || fail 'reviewed exact bridge policy is not pinned'
-grep -F 'install-daily-c1-bridge-policy "$bridge_policy"' "$workflow" >/dev/null || \
-  fail 'bridge does not install exact transition policy before the target'
+! grep -F 'install-daily-c1-bridge-policy' "$workflow" >/dev/null || \
+  fail 'bridge still tries to deploy a redundant intermediate policy'
 grep -F 'bash ops/deploy/github-production-deploy-client.sh deploy "$GITHUB_SHA"' \
   "$workflow" >/dev/null || fail 'daily C1 bridge bypasses the reviewed deploy client'
 ! grep -F 'daily C1 bridge classification is not control-only' "$workflow" >/dev/null || \

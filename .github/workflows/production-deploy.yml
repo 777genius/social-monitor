@@ -762,9 +762,6 @@ jobs:
           DEPLOY_USER: ${{ vars.PRODUCTION_SSH_USER }}
         run: |
           set -euo pipefail
-          bridge_policy=944fdb6da3071f70a69c7048c9fcdf1c2552603e
-          bash ops/deploy/github-production-deploy-client.sh \
-            install-daily-c1-bridge-policy "$bridge_policy"
           bash ops/deploy/github-production-deploy-client.sh deploy "$GITHUB_SHA"
       - name: Freshly inspect after bounded repair
         id: recovery_state
