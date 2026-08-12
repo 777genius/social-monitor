@@ -151,4 +151,11 @@ commit_target_state 'test: restore existing sealed dependency' >/dev/null
 
 verify_deploy_control_bridge_compatibility
 verify_deploy_control_bridge_target_compatibility "$reviewed_sha"
+
+printf '# reviewed readiness-only transition\n' >> \
+  "$REPO/$DEPLOY_CONTROL_BRIDGE_POSTGRES_DAILY_C1_HELPER_PATH"
+readiness_parent=$(git -C "$REPO" rev-parse HEAD)
+readiness_sha=$(commit_target_state 'test: readiness-only transition')
+git -C "$REPO" checkout -q "$readiness_parent"
+verify_deploy_control_bridge_target_compatibility "$readiness_sha"
 printf 'deploy control bridge runtime helper tests passed\n'
