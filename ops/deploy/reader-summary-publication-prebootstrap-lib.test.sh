@@ -6,13 +6,16 @@ FIXTURE=$(mktemp -d "${TMPDIR:-/tmp}/publication-prebootstrap.XXXXXX")
 trap 'rm -rf "$FIXTURE"' EXIT
 
 REPO=$FIXTURE/repo
+CONTROL=$FIXTURE/control
 SYSTEMD_UNIT_DIR=$FIXTURE/systemd
-mkdir -p "$REPO/ops/deploy/production-runtime" "$SYSTEMD_UNIT_DIR"
+mkdir -p "$REPO/ops/deploy/production-runtime" "$SYSTEMD_UNIT_DIR" "$CONTROL"
 cp "$SCRIPT_DIR/production-runtime/social-monitor-reader-summary-production-day.bootstrap.timer" \
   "$REPO/ops/deploy/production-runtime/"
 cp "$SCRIPT_DIR/production-runtime/social-monitor-reader-summary-production-day.service.d-10-daily-c1-owner.conf" \
   "$REPO/ops/deploy/production-runtime/"
 cp "$SCRIPT_DIR/production-runtime/social-monitor-daily.service" \
+  "$REPO/ops/deploy/production-runtime/"
+cp "$SCRIPT_DIR/production-runtime/daily-run.sh" \
   "$REPO/ops/deploy/production-runtime/"
 
 fail() {
@@ -51,12 +54,24 @@ reader_summary_publication_systemctl() {
 
 # shellcheck source=ops/deploy/reader-summary-publication-prebootstrap-lib.sh
 source "$SCRIPT_DIR/reader-summary-publication-prebootstrap-lib.sh"
+reader_summary_publication_prebootstrap_v6_runner
+cmp -s "$REPO/ops/deploy/production-runtime/daily-run.sh" \
+  "$CONTROL/run-reader-summary-production-day.sh"
+[[ -x $CONTROL/run-reader-summary-production-day.sh ]]
+reader_summary_publication_prebootstrap_v6_runner
 reader_summary_publication_prebootstrap_absent_daily_timer
 cmp -s \
   "$REPO/ops/deploy/production-runtime/social-monitor-reader-summary-production-day.bootstrap.timer" \
   "$SYSTEMD_UNIT_DIR/social-monitor-reader-summary-production-day.timer"
 reader_summary_publication_prebootstrap_absent_daily_timer
 reader_summary_publication_prebootstrap_v6_dropin
+
+printf 'stale reviewed drop-in\n' > \
+  "$SYSTEMD_UNIT_DIR/social-monitor-reader-summary-production-day.service.d/10-daily-c1-owner.conf"
+reader_summary_publication_prebootstrap_v6_dropin
+cmp -s \
+  "$REPO/ops/deploy/production-runtime/social-monitor-reader-summary-production-day.service.d-10-daily-c1-owner.conf" \
+  "$SYSTEMD_UNIT_DIR/social-monitor-reader-summary-production-day.service.d/10-daily-c1-owner.conf"
 cmp -s \
   "$REPO/ops/deploy/production-runtime/social-monitor-reader-summary-production-day.service.d-10-daily-c1-owner.conf" \
   "$SYSTEMD_UNIT_DIR/social-monitor-reader-summary-production-day.service.d/10-daily-c1-owner.conf"
