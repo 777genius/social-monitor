@@ -350,7 +350,9 @@ classify_plan() {
   fi
   if [[ $target_phase == TARGET && $PLAN_BACKEND_BASE == "$BACKEND_BASE" &&
         $PLAN_BOOTSTRAP == "$POSTGRES_POOL_BOOTSTRAP_VERSION" &&
-        $PLAN_BOOTSTRAP_SHA == "$POST_ROLLBACK_BOOTSTRAP_SHA" &&
+        ( $PLAN_BOOTSTRAP_SHA == "$POST_ROLLBACK_BOOTSTRAP_SHA" ||
+          ( $(git cat-file -t "$PLAN_BOOTSTRAP_SHA" 2>/dev/null || true) == commit &&
+            $(first_parent_contains "$FIXED_B2" "$PLAN_BOOTSTRAP_SHA" && printf true || printf false) == true ) ) &&
         $PLAN_REPAIR == false && $PLAN_FRONTEND =~ ^(true|false)$ &&
         $PLAN_BACKEND == true && $PLAN_CONTROL == true &&
         $PLAN_X_COLLECTOR == false ]]; then
