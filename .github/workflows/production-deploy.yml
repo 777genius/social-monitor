@@ -769,6 +769,7 @@ jobs:
           runtime_reconcile=e7b19bc805815af310f1e5096d3fec5789129ddb
           policy_sync=2ee45aadf9c36c3bf311ec968c6c39224b1ce423
           readiness_sync=4bd017e396c813a5370a87132d69822eb328160a
+          bash ops/deploy/github-production-deploy-client.sh inspect-plan "$runtime_reconcile"
           bash ops/deploy/github-production-deploy-client.sh deploy "$runtime_reconcile"
           bash ops/deploy/github-production-deploy-client.sh deploy "$policy_sync"
           bash ops/deploy/github-production-deploy-client.sh deploy "$readiness_sync"
