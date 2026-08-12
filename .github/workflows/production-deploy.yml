@@ -505,6 +505,8 @@ jobs:
             ops/deploy/postgres-runtime-activation-boundary-lib.sh
             ops/deploy/postgres-runtime-daily-c1-readiness-lib.sh
             ops/deploy/postgres-runtime-weekly-timer-state-lib.sh
+            ops/deploy/reader-summary-publication-prebootstrap-lib.sh
+            ops/deploy/reader-summary-publication-prebootstrap-lib.test.sh
             ops/deploy/reader-summary-recovery-maintenance-lib.sh
             ops/deploy/deploy-control-bridge-runtime-helper.test.sh
             ops/deploy/deploy-control-reviewed-library-source.test.sh
@@ -584,6 +586,7 @@ jobs:
             bash ops/deploy/deploy-control-bridge-runtime-helper.test.sh
             bash ops/deploy/deploy-control-reviewed-library-source.test.sh
             bash ops/deploy/daily-c1-control-bridge-workflow.test.sh
+            bash ops/deploy/reader-summary-publication-prebootstrap-lib.test.sh
           else
             bash ops/deploy/social-monitor-production-deploy.test.sh
             bash ops/deploy/deploy-control-lib.test.sh

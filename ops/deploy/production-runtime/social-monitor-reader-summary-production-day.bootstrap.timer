@@ -1,0 +1,10 @@
+[Unit]
+Description=Social Monitor reader summary production day bootstrap timer
+
+[Timer]
+OnCalendar=2099-01-01 00:00:00 UTC
+Persistent=false
+Unit=social-monitor-reader-summary-production-day.service
+
+[Install]
+WantedBy=timers.target
