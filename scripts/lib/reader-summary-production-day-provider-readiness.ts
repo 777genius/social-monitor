@@ -151,13 +151,8 @@ const buildProviderDiagnostics = (params: {
     );
     const databaseFeedItemCount =
       qualityRows.length === 0 ? 0 : qualityRows[0]?.feedItemCount;
-    const reportedCollectionFeedItemCount =
-      params.collectionReport.targetWindow.providerCounts[providerKey];
     const collectionFeedItemCount =
-      reportedCollectionFeedItemCount === undefined &&
-      databaseFeedItemCount === 0
-        ? 0
-        : reportedCollectionFeedItemCount;
+      params.collectionReport.targetWindow.providerCounts[providerKey];
     if (
       states.length !== 1 ||
       qualityRows.length > 1 ||

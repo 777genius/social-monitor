@@ -14,8 +14,8 @@ DEPLOY_CONTROL_BRIDGE_RECOVERY_MAINTENANCE_LIBRARY_PATH=ops/deploy/reader-summar
 DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_LIBRARY_PATH=ops/deploy/backend-image-rescue-lib.sh
 DEPLOY_CONTROL_BRIDGE_X_IMAGE_LIBRARY_PATH=ops/deploy/x-collector-image-deploy-lib.sh
 DEPLOY_CONTROL_BRIDGE_SELF_PATH=ops/deploy/deploy-control-bridge-lib.sh
-DEPLOY_CONTROL_DAILY_FINAL_BASE=d494c143c242873bfac53f54c15b0f24df0ab33d
-DEPLOY_CONTROL_DAILY_FINAL_HELPER_BLOB=119726c2f2aff06798cade4dc3a127f24a2d2cc9
+DEPLOY_CONTROL_DAILY_FINAL_BASE=fd0daaee8c9ddf3a37c503ce2c4cc08dc648edf2
+DEPLOY_CONTROL_DAILY_FINAL_TREE=35e54eee02c2e47174021112f4adc0cfb42848be
 DEPLOY_CONTROL_DAILY_RECOVERY_BASE=cb1595d9bdca844d6a221d21fd3c53e6845cc4cf
 DEPLOY_CONTROL_DAILY_RECOVERY_BACKEND_RESCUE_BLOB=a4291fad8b1f36f0cbb0760f3dbca6e7603138bc
 DEPLOY_CONTROL_DAILY_RECOVERY_MIGRATE_TEST_BLOB=f62a83ce95cc768c4e888e7c576bad3bd6fdbced
@@ -90,26 +90,18 @@ deploy_control_daily_c1_bridge_classification() {
 
 deploy_control_is_reviewed_daily_final_transition() {
   local bridge=$1 target=$2 repository=${REPO:-.}
-  local target_parent changed final_delta path
-  local -a sealed_paths=() target_ancestry=()
+  local bridge_parent target_parent target_tree
+  local -a target_ancestry=()
+  bridge_parent=$(git -C "$repository" rev-parse "$bridge^" 2>/dev/null) || return 1
   target_parent=$(git -C "$repository" rev-parse "$target^" 2>/dev/null) || return 1
   read -r -a target_ancestry <<< "$(git -C "$repository" \
     rev-list --parents -n 1 "$target")" || return 1
   git -C "$repository" cat-file -e \
     "$DEPLOY_CONTROL_DAILY_FINAL_BASE^{commit}" 2>/dev/null || return 1
-  git -C "$repository" merge-base --is-ancestor \
-    "$DEPLOY_CONTROL_DAILY_FINAL_BASE" "$bridge" 2>/dev/null || return 1
-  [[ $target_parent == "$bridge" && ${#target_ancestry[@]} == 2 ]] || return 1
-  final_delta=$(git -C "$repository" diff --name-only --no-renames \
-    "$DEPLOY_CONTROL_DAILY_FINAL_BASE" "$target" -- 2>/dev/null) || return 1
-  [[ $final_delta == $'ops/deploy/daily-final-control-bridge.test.sh\nops/deploy/deploy-control-bridge-lib.sh' ]] || return 1
-  while IFS= read -r path; do sealed_paths+=("$path"); done < <(deploy_control_bridge_sealed_paths)
-  changed=$(git -C "$repository" diff --name-only --no-renames \
-    "$bridge" "$target" -- "${sealed_paths[@]}" 2>/dev/null) || return 1
-  [[ $changed == "$DEPLOY_CONTROL_BRIDGE_POSTGRES_DAILY_C1_HELPER_PATH" &&
-     $(git -C "$repository" rev-parse \
-       "$target:$DEPLOY_CONTROL_BRIDGE_POSTGRES_DAILY_C1_HELPER_PATH" 2>/dev/null) == \
-       "$DEPLOY_CONTROL_DAILY_FINAL_HELPER_BLOB" ]]
+  target_tree=$(git -C "$repository" rev-parse "$target^{tree}" 2>/dev/null) || return 1
+  [[ $bridge_parent == "$DEPLOY_CONTROL_DAILY_FINAL_BASE" && \
+     $target_parent == "$bridge" && ${#target_ancestry[@]} == 2 && \
+     $target_tree == "$DEPLOY_CONTROL_DAILY_FINAL_TREE" ]]
 }
 
 deploy_control_daily_recovery_release_blobs() {
@@ -176,13 +168,7 @@ deploy_control_daily_final_transition_compatible_paths() {
 }
 
 deploy_control_daily_final_transition_matches() {
-  local bridge=$1 target=$2 path
-  deploy_control_is_reviewed_daily_final_transition "$bridge" "$target" || return 1
-  while IFS= read -r path; do
-    [[ $path == "$DEPLOY_CONTROL_BRIDGE_POSTGRES_DAILY_C1_HELPER_PATH" ]] && continue
-    [[ $(git -C "$REPO" rev-parse "$bridge:$path" 2>/dev/null) == \
-       $(git -C "$REPO" rev-parse "$target:$path" 2>/dev/null) ]] || return 1
-  done < <(deploy_control_daily_final_transition_compatible_paths)
+  deploy_control_is_reviewed_daily_final_transition "$1" "$2"
 }
 
 verify_deploy_control_daily_final_transition_files() {

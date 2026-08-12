@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
+
 if ((EUID != 0)); then
   if [[ ${POSTGRES_RUNTIME_DEPLOY_LIB_TEST_ROOT_REEXEC:-} == 1 ]]; then
     echo 'PostgreSQL runtime deploy library tests require root; sudo re-exec did not obtain root privileges' >&2
     exit 1
   fi
+
   sudo_path=$(type -P sudo || true)
   if [[ -z $sudo_path ]]; then
     echo 'PostgreSQL runtime deploy library tests require root; sudo is unavailable' >&2
@@ -14,15 +16,18 @@ if ((EUID != 0)); then
     echo 'PostgreSQL runtime deploy library tests require root; passwordless sudo elevation is unavailable' >&2
     exit 1
   fi
+
   export POSTGRES_RUNTIME_DEPLOY_LIB_TEST_ROOT_REEXEC=1
   exec "$sudo_path" --non-interactive \
     --preserve-env=POSTGRES_RUNTIME_DEPLOY_LIB_TEST_ROOT_REEXEC \
     /bin/bash "${BASH_SOURCE[0]}" "$@"
 fi
+
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 SOURCE_REPO=$(cd "$SCRIPT_DIR/../.." && pwd)
 FIXTURE=$(mktemp -d "${TMPDIR:-/tmp}/postgres-runtime-deploy-lib-test.XXXXXX")
 trap 'rm -rf "$FIXTURE"' EXIT
+
 REPO=$FIXTURE/repo
 ROOT=$FIXTURE/root
 CONTROL=$ROOT/control
@@ -43,8 +48,6 @@ ACTIVE_SERVICE_SHA=2222222222222222222222222222222222222222
 ROLLBACK_FAILURE_SHA=3333333333333333333333333333333333333333
 INVALID_MARKER_SHA=4444444444444444444444444444444444444444
 MASKED_TIMER_SHA=5555555555555555555555555555555555555555
-CAPTURE_ENABLE_FAILURE_SHA=5656565656565656565656565656565656565656
-CAPTURE_PROOF_FAILURE_SHA=5757575757575757575757575757575757575757
 TAMPERED_RELEASE_SHA=6666666666666666666666666666666666666666
 TAMPERED_C1_READINESS_SHA=1212121212121212121212121212121212121212
 MISSING_C1_READINESS_SHA=1313131313131313131313131313131313131313
@@ -55,10 +58,9 @@ WEEKLY_START_FAILURE_SHA=8888888888888888888888888888888888888888
 WEEKLY_PROOF_FAILURE_SHA=9999999999999999999999999999999999999999
 WEEKLY_ROLLBACK_FAILURE_SHA=abababababababababababababababababababab
 REJECT_DROPIN=false
+TIMER_UNIT_FILE_STATE=disabled
+TIMER_ACTIVE_STATE=inactive
 SERVICE_ACTIVE_STATE=inactive
-TIMER_NEXT_TRIGGER='Thu 2026-08-13 23:50:00 UTC'
-TIMER_ENABLE_STATUS=0
-TIMER_DISABLE_STATUS=0
 DAEMON_RELOAD_STATUS=0
 WEEKLY_TIMER_NEXT_TRIGGER='Mon 2026-08-03 06:30:00 UTC'
 WEEKLY_TIMER_ENABLE_STATUS=0
@@ -77,13 +79,9 @@ DAILY_TIMER_START_STATUS=0
 SYSTEMCTL_EVENTS=$FIXTURE/systemctl-events
 WEEKLY_TIMER_UNIT_FILE_STATE=$FIXTURE/weekly-timer-unit-file-state
 WEEKLY_TIMER_ACTIVE_STATE=$FIXTURE/weekly-timer-active-state
-TIMER_UNIT_FILE_STATE=$FIXTURE/github-premidnight-timer-unit-file-state
-TIMER_ACTIVE_STATE=$FIXTURE/github-premidnight-timer-active-state
 FAKE_SYSTEMCTL=$SCRIPT_DIR/fixtures/github-premidnight-capture-fake-systemctl.sh
 printf 'disabled\n' > "$WEEKLY_TIMER_UNIT_FILE_STATE"
 printf 'inactive\n' > "$WEEKLY_TIMER_ACTIVE_STATE"
-printf 'disabled\n' > "$TIMER_UNIT_FILE_STATE"
-printf 'inactive\n' > "$TIMER_ACTIVE_STATE"
 install -d "$STATE" "$SYSTEMD_UNIT_DIR" "$CONTROL/old-runtime" \
   "$REPO/ops/deploy"
 cp -a "$SOURCE_REPO/ops/deploy/production-runtime" \
@@ -98,6 +96,7 @@ install -m 0755 \
   "$REPO/ops/deploy/production-runtime/daily-run.sh" \
   "$CONTROL/run-reader-summary-production-day.sh"
 ln -s "$CONTROL/old-runtime" "$POSTGRES_RUNTIME_CURRENT"
+
 capture_units=(
   social-monitor-github-premidnight-capture-v1.service
   social-monitor-github-premidnight-capture-v1.timer
@@ -118,66 +117,14 @@ printf 'unrelated-service\n' > "$SYSTEMD_UNIT_DIR/unrelated.service"
 printf 'unrelated-timer\n' > "$SYSTEMD_UNIT_DIR/unrelated.timer"
 unrelated_service_inode=$(stat -c '%i' "$SYSTEMD_UNIT_DIR/unrelated.service")
 unrelated_timer_inode=$(stat -c '%i' "$SYSTEMD_UNIT_DIR/unrelated.timer")
+
 fail() {
   printf 'test deploy failure: %s\n' "$*" >&2
   return 1
 }
-probe_daily_singleton_clear() {
-  return 0
-}
+
 systemctl() {
   case "$*" in
-    'show --property=InvocationID --value social-monitor-daily.service')
-      printf '\n'
-      return 0
-      ;;
-    'show --property=ExecMainStartTimestampMonotonic --value social-monitor-daily.service')
-      printf '0\n'
-      return 0
-      ;;
-    'show --property=ActiveState --value social-monitor-daily.service'|\
-    'show --property=ActiveState --value social-monitor-reader-summary-production-day.service')
-      printf 'inactive\n'
-      return 0
-      ;;
-    'show --property=Unit --value social-monitor-daily.timer')
-      printf 'social-monitor-daily.service\n'
-      return 0
-      ;;
-    'enable --now social-monitor-github-premidnight-capture-v1.timer')
-      printf '%s\n' "$*" >> "$SYSTEMCTL_EVENTS"
-      ((TIMER_ENABLE_STATUS == 0)) || return "$TIMER_ENABLE_STATUS"
-      printf 'enabled\n' > "$TIMER_UNIT_FILE_STATE"
-      printf 'active\n' > "$TIMER_ACTIVE_STATE"
-      return 0
-      ;;
-    'disable --now social-monitor-github-premidnight-capture-v1.timer')
-      printf '%s\n' "$*" >> "$SYSTEMCTL_EVENTS"
-      ((TIMER_DISABLE_STATUS == 0)) || return "$TIMER_DISABLE_STATUS"
-      printf 'disabled\n' > "$TIMER_UNIT_FILE_STATE"
-      printf 'inactive\n' > "$TIMER_ACTIVE_STATE"
-      return 0
-      ;;
-    'show --property=NextElapseUSecRealtime --value social-monitor-github-premidnight-capture-v1.timer')
-      printf '%s\n' "$*" >> "$SYSTEMCTL_EVENTS"
-      printf '%s\n' "$TIMER_NEXT_TRIGGER"
-      return 0
-      ;;
-    'show --property=UnitFileState --value social-monitor-github-premidnight-capture-v1.timer')
-      printf '%s\n' "$*" >> "$SYSTEMCTL_EVENTS"
-      cat "$TIMER_UNIT_FILE_STATE"
-      return 0
-      ;;
-    'show --property=ActiveState --value social-monitor-github-premidnight-capture-v1.timer')
-      printf '%s\n' "$*" >> "$SYSTEMCTL_EVENTS"
-      cat "$TIMER_ACTIVE_STATE"
-      return 0
-      ;;
-    'show --property=ActiveState --value social-monitor-github-premidnight-capture-v1.service')
-      printf '%s\n' "$*" >> "$SYSTEMCTL_EVENTS"
-      printf '%s\n' "$SERVICE_ACTIVE_STATE"
-      return 0
-      ;;
     'show --property=UnitFileState --value social-monitor-weekly.timer')
       printf '%s\n' "$*" >> "$SYSTEMCTL_EVENTS"
       cat "$WEEKLY_TIMER_UNIT_FILE_STATE"
@@ -267,27 +214,27 @@ systemctl() {
       ;;
     'enable social-monitor-daily.timer')
       LEGACY_DAILY_TIMER_ENABLED=true
-      return 0
+      return
       ;;
     'enable social-monitor-reader-summary-production-day.timer')
       V6_DAILY_TIMER_ENABLED=true
-      return 0
+      return
       ;;
     'disable social-monitor-daily.timer')
       LEGACY_DAILY_TIMER_ENABLED=false
-      return 0
+      return
       ;;
     'disable social-monitor-reader-summary-production-day.timer')
       V6_DAILY_TIMER_ENABLED=false
-      return 0
+      return
       ;;
     'stop social-monitor-daily.timer')
       LEGACY_DAILY_TIMER_ACTIVE_STATE=inactive
-      return 0
+      return
       ;;
     'stop social-monitor-reader-summary-production-day.timer')
       V6_DAILY_TIMER_ACTIVE_STATE=inactive
-      return 0
+      return
       ;;
     'start social-monitor-daily.timer'|\
     'start social-monitor-reader-summary-production-day.timer')
@@ -314,18 +261,16 @@ systemctl() {
   GITHUB_PREMIDNIGHT_FAKE_SYSTEMCTL_CONTROL=$CONTROL \
   GITHUB_PREMIDNIGHT_FAKE_SYSTEMCTL_EVENTS=$SYSTEMCTL_EVENTS \
   GITHUB_PREMIDNIGHT_FAKE_SYSTEMCTL_REJECT_DROPIN=$REJECT_DROPIN \
-  GITHUB_PREMIDNIGHT_FAKE_TIMER_UNIT_FILE_STATE=$(<"$TIMER_UNIT_FILE_STATE") \
-  GITHUB_PREMIDNIGHT_FAKE_TIMER_ACTIVE_STATE=$(<"$TIMER_ACTIVE_STATE") \
+  GITHUB_PREMIDNIGHT_FAKE_TIMER_UNIT_FILE_STATE=$TIMER_UNIT_FILE_STATE \
+  GITHUB_PREMIDNIGHT_FAKE_TIMER_ACTIVE_STATE=$TIMER_ACTIVE_STATE \
   GITHUB_PREMIDNIGHT_FAKE_SERVICE_ACTIVE_STATE=$SERVICE_ACTIVE_STATE \
   GITHUB_PREMIDNIGHT_FAKE_SYSTEMCTL_DAEMON_RELOAD_STATUS=$DAEMON_RELOAD_STATUS \
     "$FAKE_SYSTEMCTL" "$@"
 }
+
 # shellcheck source=ops/deploy/postgres-runtime-deploy-lib.sh
 source "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh"
-owner_marker=$(postgres_runtime_daily_c1_owner_marker)
-printf '%s\n' schemaVersion=reader_summary.daily_c1_owner.v1 owner=LEGACY \
-  "releaseSha=$BRIDGE_SHA" > "$owner_marker"
-chmod 0444 "$owner_marker"
+
 rm -f \
   "$REPO/ops/deploy/production-runtime/github-premidnight-capture-v1.activation"
 bridge_snapshot=$(snapshot_postgres_runtime_control "$BRIDGE_SHA")
@@ -347,6 +292,7 @@ cmp -s "$bridge_release/$readiness_name" \
   "$POSTGRES_RUNTIME_CURRENT/$readiness_name"
 restore_postgres_runtime_control "$bridge_snapshot"
 [[ $(readlink -f "$POSTGRES_RUNTIME_CURRENT") == "$CONTROL/old-runtime" ]]
+
 mv "$readiness_source" "$readiness_source.missing"
 set +e
 missing_readiness_error=$(activate_postgres_runtime_control \
@@ -359,9 +305,10 @@ grep -F 'runtime source is not a regular file' \
   <<< "$missing_readiness_error" >/dev/null
 [[ ! -e $POSTGRES_RUNTIME_RELEASES/$MISSING_C1_READINESS_SHA ]]
 [[ $(readlink -f "$POSTGRES_RUNTIME_CURRENT") == "$CONTROL/old-runtime" ]]
+
 printf 'install-disabled-v1\n' > \
   "$REPO/ops/deploy/production-runtime/github-premidnight-capture-v1.activation"
-printf 'enable-immediately-v1\n' > \
+printf 'enable-now\n' > \
   "$REPO/ops/deploy/production-runtime/github-premidnight-capture-v1.activation"
 set +e
 invalid_marker_error=$(
@@ -371,7 +318,7 @@ invalid_marker_status=$?
 set -e
 ((invalid_marker_status != 0))
 grep -F 'activation marker is invalid' <<< "$invalid_marker_error" >/dev/null
-printf 'enable-now-v1\n' > \
+printf 'install-disabled-v1\n' > \
   "$REPO/ops/deploy/production-runtime/github-premidnight-capture-v1.activation"
 printf 'old-GitHub-premidnight-runner\n' > \
   "$CONTROL/github-premidnight-capture-v1.sh"
@@ -383,9 +330,11 @@ declare -A base_unit_inodes=()
 for unit in "${base_units[@]}"; do
   base_unit_inodes[$unit]=$(stat -c '%i' "$SYSTEMD_UNIT_DIR/$unit")
 done
+
 : > "$SYSTEMCTL_EVENTS"
 rollback_snapshot=$(snapshot_postgres_runtime_control "$SHA")
 activate_postgres_runtime_control "$SHA"
+
 release=$POSTGRES_RUNTIME_RELEASES/$SHA
 rm -f \
   "$REPO/ops/deploy/production-runtime/github-premidnight-capture-v1.activation"
@@ -398,7 +347,7 @@ set -e
 ((marker_removal_status != 0))
 grep -F 'activation marker cannot be removed' \
   <<< "$marker_removal_error" >/dev/null
-printf 'enable-now-v1\n' > \
+printf 'install-disabled-v1\n' > \
   "$REPO/ops/deploy/production-runtime/github-premidnight-capture-v1.activation"
 [[ $(readlink -f "$POSTGRES_RUNTIME_CURRENT") == "$release" ]]
 [[ $(cat "$release/READY") == "$SHA" ]]
@@ -439,10 +388,7 @@ done
 [[ $(stat -c '%i' "$SYSTEMD_UNIT_DIR/unrelated.timer") == \
   "$unrelated_timer_inode" ]]
 [[ $(grep -E '(^| )(enable|disable|start|stop|restart)( |$)' \
-  "$SYSTEMCTL_EVENTS") == \
-  $'enable --now social-monitor-github-premidnight-capture-v1.timer\nenable social-monitor-weekly.timer\nstart social-monitor-weekly.timer' ]]
-[[ $(<"$TIMER_UNIT_FILE_STATE") == enabled ]]
-[[ $(<"$TIMER_ACTIVE_STATE") == active ]]
+  "$SYSTEMCTL_EVENTS") == $'enable social-monitor-weekly.timer\nstart social-monitor-weekly.timer' ]]
 [[ $(<"$WEEKLY_TIMER_UNIT_FILE_STATE") == enabled ]]
 [[ $(<"$WEEKLY_TIMER_ACTIVE_STATE") == active ]]
 grep -Fx \
@@ -457,12 +403,11 @@ grep -Fx \
 grep -Fx \
   'show --property=ActiveState --value social-monitor-github-premidnight-capture-v1.service' \
   "$SYSTEMCTL_EVENTS" >/dev/null
+
 restore_postgres_runtime_control "$rollback_snapshot"
 [[ $(readlink -f "$POSTGRES_RUNTIME_CURRENT") == "$CONTROL/old-runtime" ]]
 [[ $(<"$WEEKLY_TIMER_UNIT_FILE_STATE") == disabled ]]
 [[ $(<"$WEEKLY_TIMER_ACTIVE_STATE") == inactive ]]
-[[ $(<"$TIMER_UNIT_FILE_STATE") == disabled ]]
-[[ $(<"$TIMER_ACTIVE_STATE") == inactive ]]
 for unit in "${units[@]}"; do
   if [[ $unit == social-monitor-github-premidnight-capture-v1.* ]]; then
     [[ $(cat "$SYSTEMD_UNIT_DIR/$unit") == "old-$unit" ]]
@@ -481,6 +426,7 @@ cmp -s "$REPO/ops/deploy/production-runtime/daily-run.sh" \
   "$unrelated_service_inode" ]]
 [[ $(stat -c '%i' "$SYSTEMD_UNIT_DIR/unrelated.timer") == \
   "$unrelated_timer_inode" ]]
+
 tampered_release=$POSTGRES_RUNTIME_RELEASES/$TAMPERED_RELEASE_SHA
 cp -a "$release" "$tampered_release"
 printf '%s\n' "$TAMPERED_RELEASE_SHA" > "$tampered_release/SOURCE_SHA"
@@ -496,6 +442,7 @@ set -e
 [[ $(readlink -f "$POSTGRES_RUNTIME_CURRENT") == "$CONTROL/old-runtime" ]]
 [[ $(cat "$CONTROL/github-premidnight-capture-v1.sh") == \
    old-GitHub-premidnight-runner ]]
+
 legacy_timerless_release=$POSTGRES_RUNTIME_RELEASES/$LEGACY_TIMERLESS_SHA
 cp -a "$release" "$legacy_timerless_release"
 printf '%s\n' "$LEGACY_TIMERLESS_SHA" > \
@@ -514,13 +461,14 @@ if ((legacy_timerless_status == 0)); then
 fi
 [[ ! -e $legacy_timerless_release/social-monitor-daily.timer ]]
 [[ $(readlink -f "$POSTGRES_RUNTIME_CURRENT") == "$legacy_timerless_current" ]]
+
 tampered_readiness_release=$POSTGRES_RUNTIME_RELEASES/$TAMPERED_C1_READINESS_SHA
 cp -a "$release" "$tampered_readiness_release"
 printf '%s\n' "$TAMPERED_C1_READINESS_SHA" > \
   "$tampered_readiness_release/SOURCE_SHA"
 printf '%s\n' "$TAMPERED_C1_READINESS_SHA" > \
   "$tampered_readiness_release/READY"
-sed -i 's/^state=READY$/state=BLOCKED/' \
+sed -i 's/^state=BLOCKED$/state=READY/' \
   "$tampered_readiness_release/$readiness_name"
 set +e
 tampered_readiness_error=$(activate_postgres_runtime_control \
@@ -531,6 +479,7 @@ set -e
 grep -F 'daily C1 readiness marker differs from source' \
   <<< "$tampered_readiness_error" >/dev/null
 [[ $(readlink -f "$POSTGRES_RUNTIME_CURRENT") == "$CONTROL/old-runtime" ]]
+
 control_only_snapshot=$(snapshot_postgres_runtime_control "$CONTROL_ONLY_SHA")
 activate_postgres_runtime_control \
   "$CONTROL_ONLY_SHA" "$BACKEND_COMPATIBLE_SHA"
@@ -543,6 +492,7 @@ cmp -s "$REPO/ops/deploy/production-runtime/daily-run.sh" \
   "$CONTROL/daily-run.sh"
 [[ $(cat "$CONTROL/github-premidnight-capture-v1.sh") == \
    old-GitHub-premidnight-runner ]]
+
 REJECT_DROPIN=true
 set +e
 activate_postgres_runtime_control "$FAILED_SHA" >/dev/null 2>&1
@@ -564,37 +514,20 @@ cmp -s "$REPO/ops/deploy/production-runtime/daily-run.sh" \
    old-GitHub-premidnight-runner ]]
 [[ $(<"$SYSTEMD_UNIT_DIR/unrelated.service") == unrelated-service ]]
 [[ $(<"$SYSTEMD_UNIT_DIR/unrelated.timer") == unrelated-timer ]]
+
 REJECT_DROPIN=false
-TIMER_ENABLE_STATUS=51
+TIMER_UNIT_FILE_STATE=enabled
 set +e
-activate_postgres_runtime_control "$CAPTURE_ENABLE_FAILURE_SHA" >/dev/null 2>&1
-capture_enable_failure_status=$?
-set -e
-((capture_enable_failure_status != 0))
-[[ $(<"$TIMER_UNIT_FILE_STATE") == disabled ]]
-[[ $(<"$TIMER_ACTIVE_STATE") == inactive ]]
-TIMER_ENABLE_STATUS=0
-TIMER_NEXT_TRIGGER=
-set +e
-activate_postgres_runtime_control "$CAPTURE_PROOF_FAILURE_SHA" >/dev/null 2>&1
-capture_proof_failure_status=$?
-set -e
-((capture_proof_failure_status != 0))
-[[ $(<"$TIMER_UNIT_FILE_STATE") == disabled ]]
-[[ $(<"$TIMER_ACTIVE_STATE") == inactive ]]
-TIMER_NEXT_TRIGGER='Thu 2026-08-13 23:50:00 UTC'
-printf 'enabled\n' > "$TIMER_UNIT_FILE_STATE"
-printf 'active\n' > "$TIMER_ACTIVE_STATE"
-enabled_timer_snapshot=$(snapshot_postgres_runtime_control "$ENABLED_TIMER_SHA")
 activate_postgres_runtime_control "$ENABLED_TIMER_SHA" >/dev/null 2>&1
-[[ $(<"$TIMER_UNIT_FILE_STATE") == enabled ]]
-[[ $(<"$TIMER_ACTIVE_STATE") == active ]]
-restore_postgres_runtime_control "$enabled_timer_snapshot"
+enabled_timer_status=$?
+set -e
+((enabled_timer_status != 0))
 [[ $(readlink -f "$POSTGRES_RUNTIME_CURRENT") == "$CONTROL/old-runtime" ]]
 [[ $(cat "$CONTROL/github-premidnight-capture-v1.sh") == \
    old-GitHub-premidnight-runner ]]
-printf 'disabled\n' > "$TIMER_UNIT_FILE_STATE"
-printf 'active\n' > "$TIMER_ACTIVE_STATE"
+
+TIMER_UNIT_FILE_STATE=disabled
+TIMER_ACTIVE_STATE=active
 set +e
 activate_postgres_runtime_control "$ACTIVE_TIMER_SHA" >/dev/null 2>&1
 active_timer_status=$?
@@ -603,19 +536,19 @@ set -e
 [[ $(readlink -f "$POSTGRES_RUNTIME_CURRENT") == "$CONTROL/old-runtime" ]]
 [[ $(cat "$CONTROL/github-premidnight-capture-v1.sh") == \
    old-GitHub-premidnight-runner ]]
-printf 'inactive\n' > "$TIMER_ACTIVE_STATE"
+TIMER_ACTIVE_STATE=inactive
+
 SERVICE_ACTIVE_STATE=active
 set +e
 activate_postgres_runtime_control "$ACTIVE_SERVICE_SHA" >/dev/null 2>&1
 active_service_status=$?
 set -e
 ((active_service_status != 0))
-[[ $(<"$TIMER_UNIT_FILE_STATE") == disabled ]]
-[[ $(<"$TIMER_ACTIVE_STATE") == inactive ]]
 [[ $(readlink -f "$POSTGRES_RUNTIME_CURRENT") == "$CONTROL/old-runtime" ]]
 [[ $(cat "$CONTROL/github-premidnight-capture-v1.sh") == \
    old-GitHub-premidnight-runner ]]
 SERVICE_ACTIVE_STATE=inactive
+
 rm -f \
   "$SYSTEMD_UNIT_DIR/social-monitor-github-premidnight-capture-v1.timer"
 ln -s /dev/null \
@@ -633,6 +566,7 @@ rm -f \
   "$SYSTEMD_UNIT_DIR/social-monitor-github-premidnight-capture-v1.timer"
 printf 'old-%s\n' social-monitor-github-premidnight-capture-v1.timer > \
   "$SYSTEMD_UNIT_DIR/social-monitor-github-premidnight-capture-v1.timer"
+
 DAEMON_RELOAD_STATUS=1
 set +e
 activate_postgres_runtime_control "$ROLLBACK_FAILURE_SHA" >/dev/null 2>&1
@@ -649,14 +583,13 @@ DAEMON_RELOAD_STATUS=0
 restore_postgres_runtime_control "${retained_backups[0]}"
 [[ ! -e ${retained_backups[0]} ]]
 if grep -E '(^| )(enable|disable|start|stop|restart)( |$)' \
-  "$SYSTEMCTL_EVENTS" | \
-  grep -Fv 'social-monitor-weekly.timer' | \
-  grep -Fv 'social-monitor-github-premidnight-capture-v1.timer' >/dev/null; then
-  echo 'runtime rollback mutated an unrelated systemd unit state' >&2
+  "$SYSTEMCTL_EVENTS" | grep -Fv 'social-monitor-weekly.timer' >/dev/null; then
+  echo 'runtime rollback mutated a non-weekly systemd unit state' >&2
   exit 1
 fi
 [[ $(<"$SYSTEMD_UNIT_DIR/unrelated.service") == unrelated-service ]]
 [[ $(<"$SYSTEMD_UNIT_DIR/unrelated.timer") == unrelated-timer ]]
+
 reset_weekly_reconciliation_fixture() {
   printf 'disabled\n' > "$WEEKLY_TIMER_UNIT_FILE_STATE"
   printf 'inactive\n' > "$WEEKLY_TIMER_ACTIVE_STATE"
@@ -667,6 +600,7 @@ reset_weekly_reconciliation_fixture() {
   WEEKLY_TIMER_STOP_STATUS=0
   : > "$SYSTEMCTL_EVENTS"
 }
+
 reset_weekly_reconciliation_fixture
 WEEKLY_TIMER_ENABLE_STATUS=41
 set +e
@@ -680,6 +614,7 @@ fi
 [[ $(<"$WEEKLY_TIMER_UNIT_FILE_STATE") == disabled ]]
 [[ $(<"$WEEKLY_TIMER_ACTIVE_STATE") == inactive ]]
 [[ $(grep -Fxc 'enable social-monitor-weekly.timer' "$SYSTEMCTL_EVENTS") == 1 ]]
+
 reset_weekly_reconciliation_fixture
 WEEKLY_TIMER_START_STATUS=42
 set +e
@@ -693,6 +628,7 @@ fi
 [[ $(<"$WEEKLY_TIMER_UNIT_FILE_STATE") == disabled ]]
 [[ $(<"$WEEKLY_TIMER_ACTIVE_STATE") == inactive ]]
 [[ $(grep -Fxc 'disable social-monitor-weekly.timer' "$SYSTEMCTL_EVENTS") == 1 ]]
+
 reset_weekly_reconciliation_fixture
 WEEKLY_TIMER_NEXT_TRIGGER=
 set +e
@@ -706,6 +642,7 @@ fi
 [[ $(<"$WEEKLY_TIMER_UNIT_FILE_STATE") == disabled ]]
 [[ $(<"$WEEKLY_TIMER_ACTIVE_STATE") == inactive ]]
 [[ $(grep -Fxc 'stop social-monitor-weekly.timer' "$SYSTEMCTL_EVENTS") == 1 ]]
+
 reset_weekly_reconciliation_fixture
 WEEKLY_TIMER_NEXT_TRIGGER=
 WEEKLY_TIMER_STOP_STATUS=43
@@ -730,6 +667,7 @@ restore_postgres_runtime_control "${weekly_retained_backups[0]}"
 [[ $(<"$WEEKLY_TIMER_ACTIVE_STATE") == inactive ]]
 [[ ! -e ${weekly_retained_backups[0]} ]]
 reset_weekly_reconciliation_fixture
+
 # Failed rollback fixtures may deliberately mutate/remove bridge assets.
 # Reconciliation cases start from the exact current reviewed bridge.
 install -m 0755 \
@@ -740,6 +678,7 @@ install -m 0644 \
   "$POSTGRES_RUNTIME_CURRENT/$POSTGRES_RUNTIME_DAILY_C1_V6_DROPIN_ASSET"
 install_postgres_runtime_daily_c1_bridge_assets \
   "$POSTGRES_RUNTIME_CURRENT" "$SYSTEMD_UNIT_DIR"
+
 daily_reconciliation_inode_snapshot=$(
   stat -c '%n:%i' \
     "$SYSTEMD_UNIT_DIR/social-monitor-daily.service" \
@@ -767,17 +706,20 @@ assert_daily_reconciliation_mutations() {
     "$SYSTEMCTL_EVENTS" || true)
   [[ $actual == "$expected" ]]
 }
+
 reset_daily_reconciliation_fixture
 verify_effective_postgres_daily_topology
 assert_daily_reconciliation_mutations ''
 [[ $(grep -Fxc \
   'show --property=ActiveState --value social-monitor-daily.timer' \
   "$SYSTEMCTL_EVENTS") == 2 ]]
+
 reset_daily_reconciliation_fixture
 DAILY_TIMER_ACTIVE_STATE=inactive
 verify_effective_postgres_daily_topology
 [[ $(grep -Fxc 'start social-monitor-daily.timer' "$SYSTEMCTL_EVENTS") == 1 ]]
 assert_daily_reconciliation_mutations 'start social-monitor-daily.timer'
+
 reset_daily_reconciliation_fixture
 LEGACY_DAILY_TIMER_ENABLED=false
 V6_DAILY_TIMER_ENABLED=true
@@ -788,6 +730,7 @@ verify_effective_postgres_daily_topology
   "$SYSTEMCTL_EVENTS") == 1 ]]
 assert_daily_reconciliation_mutations \
   'start social-monitor-reader-summary-production-day.timer'
+
 reset_daily_reconciliation_fixture
 DAILY_TIMER_ACTIVE_STATE=inactive
 DAILY_TIMER_START_STATUS=1
@@ -797,6 +740,7 @@ if verify_effective_postgres_daily_topology >/dev/null 2>&1; then
 fi
 [[ $(grep -Fxc 'start social-monitor-daily.timer' "$SYSTEMCTL_EVENTS") == 1 ]]
 assert_daily_reconciliation_mutations 'start social-monitor-daily.timer'
+
 reset_daily_reconciliation_fixture
 DAILY_TIMER_ACTIVE_STATE=inactive
 DAILY_TIMER_ACTIVE_STATE_AFTER_START=failed
@@ -805,6 +749,7 @@ if verify_effective_postgres_daily_topology >/dev/null 2>&1; then
   exit 1
 fi
 assert_daily_reconciliation_mutations 'start social-monitor-daily.timer'
+
 reset_daily_reconciliation_fixture
 DAILY_TIMER_ACTIVE_STATE=activating
 if verify_effective_postgres_daily_topology >/dev/null 2>&1; then
@@ -812,12 +757,14 @@ if verify_effective_postgres_daily_topology >/dev/null 2>&1; then
   exit 1
 fi
 assert_daily_reconciliation_mutations ''
+
 reset_daily_reconciliation_fixture
 DAILY_TIMER_NEXT_TRIGGER=
 if verify_effective_postgres_daily_topology >/dev/null 2>&1; then
   echo 'active daily timer without a next trigger was accepted' >&2
   exit 1
 fi
+
 for enabled_pair in 'true true' 'false false'; do
   reset_daily_reconciliation_fixture
   read -r LEGACY_DAILY_TIMER_ENABLED V6_DAILY_TIMER_ENABLED <<< "$enabled_pair"
@@ -827,6 +774,7 @@ for enabled_pair in 'true true' 'false false'; do
   fi
   assert_daily_reconciliation_mutations ''
 done
+
 [[ $daily_reconciliation_inode_snapshot == "$(
   stat -c '%n:%i' \
     "$SYSTEMD_UNIT_DIR/social-monitor-daily.service" \
@@ -839,6 +787,7 @@ done
     "$SYSTEMD_UNIT_DIR/unrelated.timer"
 )" ]]
 reset_daily_reconciliation_fixture
+
 SOAK_CONTAINER=stable-ingestion-container
 SOAK_RESTARTS=7
 SOAK_LOG=$FIXTURE/soak.log
@@ -870,9 +819,11 @@ docker() {
   fi
   return 1
 }
+
 probe_env=$FIXTURE/probe.env
 printf 'DATABASE_URL=postgresql://fixture.invalid/test\n' > "$probe_env"
 probe_postgres_maximum_envelope "$probe_env"
+
 soak_baseline=$FIXTURE/soak-baseline.txt
 printf 'ingestion-worker %s %s 2026-07-15T00:00:00.000000000+00:00\n' \
   "$SOAK_CONTAINER" "$SOAK_RESTARTS" > "$soak_baseline"
@@ -880,6 +831,7 @@ printf 'scan queue drain loop tick completed failed=0 retry=0\n' > "$SOAK_LOG"
 verify_backend_soak_state "$soak_baseline"
 verify_backend_soak_logs "$soak_baseline"
 verify_ingestion_queue_recovery "$soak_baseline"
+
 for hostile_log in \
   'request handled errorClassification=postgres.too_many_connections' \
   'request handled errorCode=53300' \
@@ -892,12 +844,14 @@ for hostile_log in \
     exit 1
   fi
 done
+
 proxy_frontend_container=frontend-proxy-container
 fake_proxy_compose() {
   [[ $* == '--profile app ps -q frontend' ]] || return 1
   printf '%s\n' "$proxy_frontend_container"
 }
 COMPOSE=(fake_proxy_compose)
+
 docker() {
   case "$*" in
     "inspect $proxy_frontend_container --format {{.State.Status}}")
@@ -911,6 +865,7 @@ docker() {
       ;;
   esac
 }
+
 curl() {
   [[ ${*: -1} == http://127.0.0.1:13080/auth/session ]] || return 90
   [[ $* == *'Host: social-monitor.app'* ]] || return 90
@@ -918,6 +873,7 @@ curl() {
   printf '%s' "$PROXY_AUTH_BODY"
   printf '\n%s' "$PROXY_AUTH_STATUS"
 }
+
 assert_proxy_probe_accepts() {
   PROXY_AUTH_STATUS=$1
   PROXY_AUTH_BODY=${2:-}
@@ -927,6 +883,7 @@ assert_proxy_probe_accepts() {
     exit 1
   }
 }
+
 assert_proxy_probe_rejects() {
   local label=$1
   PROXY_AUTH_STATUS=$2
@@ -937,6 +894,7 @@ assert_proxy_probe_rejects() {
     exit 1
   fi
 }
+
 expected_auth_denial='{"status":403,"code":"authorization.denied","detail":"Bearer JWT workspace membership is missing","details":{}}'
 assert_proxy_probe_accepts 200 '{"userId":"fixture-user"}'
 assert_proxy_probe_accepts 204 ''
@@ -952,6 +910,7 @@ assert_proxy_probe_rejects wrong-detail-403 403 \
   '{"status":403,"code":"authorization.denied","detail":"Bearer JWT user session is required"}'
 assert_proxy_probe_rejects wrong-status-json-403 403 \
   '{"status":401,"code":"authorization.denied","detail":"Bearer JWT workspace membership is missing"}'
+
 PROXY_AUTH_STATUS=200
 PROXY_AUTH_BODY='{"userId":"fixture-user"}'
 PROXY_CURL_TRANSPORT=1
@@ -960,18 +919,16 @@ if verify_frontend_api_proxy >/dev/null 2>&1; then
   exit 1
 fi
 unset PROXY_CURL_TRANSPORT
+
 # Simulate SIGKILL after current exposure and durable V6 -> LEGACY commit. No
 # EXIT trap or marker propagation runs; restore must derive the fence from the
 # owner state captured in the outer backup.
-chmod 0644 "$owner_marker"
-printf '%s\n' schemaVersion=reader_summary.daily_c1_owner.v1 owner=V6 \
-  "releaseSha=$SHA" > "$owner_marker"
-chmod 0444 "$owner_marker"
 crash_restart_backup=$(snapshot_postgres_runtime_control "$CRASH_RESTART_SHA")
 [[ ! -e $crash_restart_backup/$POSTGRES_RUNTIME_FORWARD_ONLY_MARKER ]]
 [[ $(postgres_runtime_control_rollback_owner_basis "$crash_restart_backup") == V6 ]]
 rm -f "$POSTGRES_RUNTIME_CURRENT"
 ln -s "$release" "$POSTGRES_RUNTIME_CURRENT"
+owner_marker=$(postgres_runtime_daily_c1_owner_marker)
 chmod 0644 "$owner_marker"
 printf '%s\n' schemaVersion=reader_summary.daily_c1_owner.v1 owner=LEGACY \
   "releaseSha=$SHA" > "$owner_marker"
@@ -984,4 +941,5 @@ set -e
 ((crash_restart_restore_status != 0))
 [[ $(readlink -f "$POSTGRES_RUNTIME_CURRENT") == "$release" ]]
 [[ -d $crash_restart_backup ]]
+
 echo 'PostgreSQL runtime deploy library tests passed'

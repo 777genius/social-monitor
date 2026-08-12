@@ -43,28 +43,43 @@ load_postgres_runtime_reviewed_helper \
   'PostgreSQL runtime activation boundary helper'
 unset -f load_postgres_runtime_reviewed_helper
 
+github_premidnight_capture_marker_state() {
+  local root=$1
+  local marker=$root/github-premidnight-capture-v1.activation
+
+  if [[ ! -e $marker && ! -L $marker ]]; then
+    printf 'inactive\n'
+    return
+  fi
+  [[ -f $marker && ! -L $marker ]] || {
+    fail 'GitHub pre-midnight activation marker is not a regular file'
+    return 1
+  }
+  cmp -s "$marker" <(printf 'install-disabled-v1\n') || {
+    fail 'GitHub pre-midnight activation marker is invalid'
+    return 1
+  }
+  printf 'active\n'
+}
+
 postgres_runtime_control_mutation_scope() {
-  local source_mode current_mode=absent
-  source_mode=$(
-    github_premidnight_capture_marker_mode \
+  local source_state current_state=inactive
+  source_state=$(
+    github_premidnight_capture_marker_state \
       "$REPO/ops/deploy/production-runtime"
   ) || return
   if [[ -e $POSTGRES_RUNTIME_CURRENT || -L $POSTGRES_RUNTIME_CURRENT ]]; then
-    current_mode=$(
-      github_premidnight_capture_marker_mode "$POSTGRES_RUNTIME_CURRENT"
+    current_state=$(
+      github_premidnight_capture_marker_state "$POSTGRES_RUNTIME_CURRENT"
     ) || return
   fi
-  if [[ $source_mode == absent && $current_mode != absent ]]; then
+  if [[ $source_state == inactive && $current_state == active ]]; then
     fail 'GitHub pre-midnight activation marker cannot be removed'
     return 1
   fi
-  if [[ $source_mode == install-disabled && $current_mode == enable-now ]]; then
-    fail 'GitHub pre-midnight activation marker cannot disable an activated timer'
-    return 1
-  fi
-  if [[ $source_mode != "$current_mode" && $source_mode != absent ]]; then
+  if [[ $source_state == active && $current_state == inactive ]]; then
     printf 'capture-only\n'
-  elif [[ $source_mode != absent ]]; then
+  elif [[ $source_state == active ]]; then
     printf 'full\n'
   else
     printf 'base\n'
@@ -244,8 +259,6 @@ rollback_postgres_runtime_control_activation() {
     restore_postgres_runtime_daily_handoff_states "$backup" || rollback_status=1
   [[ ! -f $backup/weekly-timer-state ]] ||
     restore_postgres_runtime_weekly_timer "$backup" || rollback_status=1
-  [[ ! -f $backup/github-premidnight-timer-state ]] || \
-    restore_github_premidnight_capture_timer "$backup" || rollback_status=1
   if ((rollback_status == 0)); then
     rm -rf "$backup" || rollback_status=1
   else
@@ -338,9 +351,6 @@ activate_postgres_runtime_control_transaction() (
   if ((EUID == 0)) && [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} != 1 ]]; then
     snapshot_postgres_runtime_weekly_timer "$backup"
     snapshot_postgres_runtime_daily_handoff "$backup" "$SYSTEMD_UNIT_DIR"
-    if postgres_runtime_scope_includes_github_capture "$scope"; then
-      snapshot_github_premidnight_capture_timer "$backup"
-    fi
   fi
   if [[ -n $previous_target ]]; then
     printf '%s\n' "$previous_target" > "$backup/current-target"
@@ -488,11 +498,10 @@ verify_installed_postgres_runtime_control() {
   local compatible_backend_sha=${2:-$sha}
   local source=$REPO/ops/deploy/production-runtime
   local release=$POSTGRES_RUNTIME_RELEASES/$sha
-  local containment launcher release_state source_mode source_state unit
+  local containment launcher release_state source_state unit
   local -a launchers units
 
   source_state=$(github_premidnight_capture_marker_state "$source") || return
-  source_mode=$(github_premidnight_capture_marker_mode "$source") || return
   release_state=$(github_premidnight_capture_marker_state "$release") || return
   [[ $release_state == "$source_state" ]] || \
     fail 'installed PostgreSQL runtime activation state differs from the release'
@@ -543,9 +552,7 @@ verify_installed_postgres_runtime_control() {
       [[ -z $(systemctl show --property=DropInPaths --value "$unit") ]] || \
         fail "systemd unit has an unreviewed drop-in: $unit"
     done
-    if [[ $source_mode == enable-now ]]; then
-      reconcile_github_premidnight_capture_timer
-    elif [[ $source_state == active ]]; then
+    if [[ $source_state == active ]]; then
       [[ $(systemctl show --property=UnitFileState --value \
         social-monitor-github-premidnight-capture-v1.timer) == disabled ]] || \
         fail 'GitHub pre-midnight timer must remain disabled'
@@ -589,9 +596,6 @@ snapshot_postgres_runtime_control() {
   if ((EUID == 0)) && [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} != 1 ]]; then
     snapshot_postgres_runtime_weekly_timer "$backup"
     snapshot_postgres_runtime_daily_handoff "$backup" "$SYSTEMD_UNIT_DIR"
-    if postgres_runtime_scope_includes_github_capture "$scope"; then
-      snapshot_github_premidnight_capture_timer "$backup"
-    fi
   fi
   target=$(readlink "$POSTGRES_RUNTIME_CURRENT" 2>/dev/null || true)
   if [[ -n $target ]]; then
@@ -691,8 +695,6 @@ restore_postgres_runtime_control() {
     restore_postgres_runtime_daily_handoff_states "$backup" || return 1
   [[ ! -f $backup/weekly-timer-state ]] ||
     restore_postgres_runtime_weekly_timer "$backup" || return 1
-  [[ ! -f $backup/github-premidnight-timer-state ]] || \
-    restore_github_premidnight_capture_timer "$backup" || return 1
   rm -rf "$backup"
 }
 

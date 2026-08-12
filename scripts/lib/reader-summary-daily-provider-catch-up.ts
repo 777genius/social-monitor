@@ -268,13 +268,8 @@ const catchUpState = (params: {
       retryDisposition: "immediate",
     };
   }
-  const recordedCollectionFeedItemCount =
-    params.previousReport?.targetWindow.providerCounts[params.providerKey];
   const collectionFeedItemCount =
-    recordedCollectionFeedItemCount === undefined &&
-    params.databaseFeedItemCount === 0
-      ? 0
-      : recordedCollectionFeedItemCount;
+    params.previousReport?.targetWindow.providerCounts[params.providerKey];
   if (
     !Number.isInteger(collectionFeedItemCount) ||
     collectionFeedItemCount !== params.databaseFeedItemCount
