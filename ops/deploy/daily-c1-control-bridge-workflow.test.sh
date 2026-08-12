@@ -117,7 +117,7 @@ grep -F 'Deploy the daily C1 target through the alias-aware controller' \
   fail 'bridge still replays the obsolete partial timer bootstrap'
 grep -F 'bridge_policy=6507e47a' \
   "$workflow" >/dev/null || fail 'reviewed exact bridge policy is not pinned'
-grep -F 'deploy "$bridge_policy"' "$workflow" >/dev/null || \
+grep -F 'install-daily-c1-bridge-policy "$bridge_policy"' "$workflow" >/dev/null || \
   fail 'bridge does not install exact transition policy before the target'
 grep -F 'bash ops/deploy/github-production-deploy-client.sh deploy "$GITHUB_SHA"' \
   "$workflow" >/dev/null || fail 'daily C1 bridge bypasses the reviewed deploy client'

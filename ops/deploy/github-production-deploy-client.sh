@@ -5,6 +5,7 @@ PATH=/usr/local/bin:/usr/bin:/bin
 
 ZERO_SHA=0000000000000000000000000000000000000000
 POSTGRES_POOL_BOOTSTRAP_VERSION=postgres-pool-v1
+DAILY_C1_BRIDGE_POLICY_SHA=6507e47a21b75d622672a28c7eee7bd5624c5eb9
 SSH_DIRECTORY=${DEPLOY_SSH_DIRECTORY:-${HOME:?HOME is required}/.ssh}
 SSH_KEY_PATH=${DEPLOY_SSH_KEY_PATH:-$SSH_DIRECTORY/social-monitor-production}
 SSH_KNOWN_HOSTS_PATH=${DEPLOY_SSH_KNOWN_HOSTS_PATH:-$SSH_DIRECTORY/known_hosts}
@@ -417,6 +418,19 @@ deploy_release() {
   }
 }
 
+install_daily_c1_bridge_policy() {
+  local sha=$1 status
+  [[ $sha == "$DAILY_C1_BRIDGE_POLICY_SHA" ]] || \
+    fail 'daily C1 bridge policy SHA is not the reviewed pin'
+  if run_remote deploy "$sha"; then
+    status=0
+  else
+    status=$?
+  fi
+  ((status == 0 || status == 255)) || \
+    fail "daily C1 bridge policy install failed with status $status"
+}
+
 upload_frontend() {
   local sha=$1
   local archive=${2:-}
@@ -461,6 +475,12 @@ case $action in
     validate_remote_environment
     deploy_release "$2"
     ;;
+  install-daily-c1-bridge-policy)
+    [[ $# == 2 ]] || fail 'install-daily-c1-bridge-policy requires its pinned SHA'
+    validate_sha "$2"
+    validate_remote_environment
+    install_daily_c1_bridge_policy "$2"
+    ;;
   maintenance)
     [[ $# == 3 || $# == 5 || $# == 6 ]] || \
       fail 'maintenance requires a target SHA, action, and optional retry-set authorization'
@@ -476,5 +496,5 @@ case $action in
     [[ $# == 2 ]] || fail 'validate-terminal-set-receipt requires one file'
     validate_terminal_set_receipt_file "$2"
     ;;
-  *) fail 'allowed commands: configure, cleanup, plan, upload, deploy, maintenance, validate-terminal-set-receipt' ;;
+  *) fail 'allowed commands: configure, cleanup, plan, upload, deploy, install-daily-c1-bridge-policy, maintenance, validate-terminal-set-receipt' ;;
 esac
