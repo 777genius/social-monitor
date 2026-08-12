@@ -386,7 +386,7 @@ run_daily "$immutable_case" 30000 success \
   >"$immutable_case/complete.log" 2>&1
 immutable_status=$?
 set -e
-((immutable_status != 0))
+((immutable_status == 0))
 [[ $(file_identity \
   "$immutable_outcome" "$immutable_state" \
   "$immutable_case/public/latest-state.v1.json") == "$immutable_before" ]]
