@@ -32,6 +32,12 @@ language.
 - Reader Action: explicit action proposed to the user, such as reading a source,
   watching a repository or marking a top read relevant/not relevant.
 - Digest: scheduled collection of summaries for a workspace or user.
+- Weekly Summary Projection: Monday-Sunday summary surface whose artifact is
+  displayable only when the REST projection is complete and certified.
+- Historical Evidence Limitation: explicit disclosure that named provider
+  evidence was not captured for a certified UTC date. `historical_unavailable`
+  never authorizes replacement evidence, inferred activity or hidden artifact
+  display.
 - ReaderSummary: canonical backend/API term for a workspace-level generated summary
   artifact. Frontend domain/application/presentation must say Summary.
 - Insight: notable claim or pattern derived from monitored items.

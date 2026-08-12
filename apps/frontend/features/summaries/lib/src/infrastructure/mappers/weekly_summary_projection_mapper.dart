@@ -4,6 +4,7 @@ import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 
 import '../../domain/aggregates/weekly_summary_projection.dart';
 import '../../domain/entities/weekly_summary_artifact.dart';
+import '../../domain/value_objects/weekly_summary_evidence_limitation.dart';
 import '../../domain/value_objects/weekly_summary_week.dart';
 import 'weekly_summary_artifact_mapper.dart';
 
@@ -42,9 +43,25 @@ final class WeeklySummaryProjectionMapper {
       return _invalid('summaries.weekly_blocking_reason_unsupported');
     }
 
+    final evidenceLimitations = <WeeklySummaryEvidenceLimitation>[];
+    for (final limitationDto in dto.evidenceLimitations) {
+      final mapped = WeeklySummaryEvidenceLimitation.create(
+        requestedUtcDate: limitationDto.requestedUtcDate,
+        providerKey: limitationDto.providerKey.toJson(),
+        evidenceState: limitationDto.evidenceState.toJson(),
+      );
+      if (mapped is ResultFailure<WeeklySummaryEvidenceLimitation>) {
+        return Result.failure(mapped.failure);
+      }
+      evidenceLimitations.add(
+        (mapped as ResultSuccess<WeeklySummaryEvidenceLimitation>).value,
+      );
+    }
+
     WeeklySummaryArtifact? artifact;
     final artifactDto = dto.artifact;
-    if (artifactDto != null) {
+    if (status == WeeklySummaryProjectionStatus.complete &&
+        artifactDto != null) {
       final mappedArtifact = _artifactMapper.toDomain(artifactDto, requestedWeek);
       if (mappedArtifact is ResultFailure<WeeklySummaryArtifact>) {
         return Result.failure(mappedArtifact.failure);
@@ -59,6 +76,9 @@ final class WeeklySummaryProjectionMapper {
       certifiedDailyEvidenceDates: dto.certifiedDailyEvidenceDates,
       missingDailyEvidenceDates: dto.missingDailyEvidenceDates,
       blockingReasons: blockingReasons,
+      activeWeeklyCertifiedArtifactPresent:
+          dto.activeWeeklyCertifiedArtifactPresent,
+      evidenceLimitations: evidenceLimitations,
       artifact: artifact,
     );
   }

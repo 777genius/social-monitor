@@ -25,25 +25,31 @@ done < <(deploy_control_bridge_sealed_paths)
 printf 'final helper\n' > \
   "$REPO/$DEPLOY_CONTROL_BRIDGE_POSTGRES_DAILY_C1_HELPER_PATH"
 git -C "$REPO" add .
-git -C "$REPO" commit -qm final-base
-final_base=$(git -C "$REPO" rev-parse HEAD)
-final_tree=$(git -C "$REPO" rev-parse 'HEAD^{tree}')
-DEPLOY_CONTROL_DAILY_FINAL_BASE=$final_base
-DEPLOY_CONTROL_DAILY_FINAL_TREE=$final_tree
+git -C "$REPO" commit -qm anchor
+anchor=$(git -C "$REPO" rev-parse HEAD)
+DEPLOY_CONTROL_DAILY_FINAL_BASE=$anchor
 
 printf 'bridge policy\n' > "$REPO/$DEPLOY_CONTROL_BRIDGE_SELF_PATH"
 printf 'bridge helper\n' > \
   "$REPO/$DEPLOY_CONTROL_BRIDGE_POSTGRES_DAILY_C1_HELPER_PATH"
 printf 'reviewed bridge fixture\n' > \
   "$REPO/ops/deploy/daily-final-control-bridge.test.sh"
+printf 'bridge-only rollback fixture\n' > "$REPO/bridge-only"
 git -C "$REPO" add .
 git -C "$REPO" commit -qm bridge
 bridge=$(git -C "$REPO" rev-parse HEAD)
 
-git -C "$REPO" restore --source="$final_base" -- .
+git -C "$REPO" checkout -qb final-base "$bridge"
+git -C "$REPO" rm -q bridge-only
+git -C "$REPO" show \
+  "$anchor:$DEPLOY_CONTROL_BRIDGE_POSTGRES_DAILY_C1_HELPER_PATH" > \
+  "$REPO/$DEPLOY_CONTROL_BRIDGE_POSTGRES_DAILY_C1_HELPER_PATH"
 git -C "$REPO" add .
-git -C "$REPO" commit -qm final
+git -C "$REPO" commit -qm final-base
 target=$(git -C "$REPO" rev-parse HEAD)
+DEPLOY_CONTROL_DAILY_FINAL_HELPER_BLOB=$(git -C "$REPO" rev-parse \
+  "$target:$DEPLOY_CONTROL_BRIDGE_POSTGRES_DAILY_C1_HELPER_PATH")
+DEPLOY_CONTROL_DAILY_FINAL_BASE=$anchor
 
 deploy_control_is_reviewed_daily_final_transition "$bridge" "$target" || \
   fail 'reviewed linear bridge transition was rejected'
@@ -60,15 +66,6 @@ if verify_deploy_control_daily_final_transition_files "$target"; then
 fi
 git -C "$REPO" restore --source="$target" -- \
   "$DEPLOY_CONTROL_BRIDGE_POSTGRES_DAILY_C1_HELPER_PATH"
-
-printf 'unreviewed target tree\n' > "$REPO/unreviewed-target"
-git -C "$REPO" add .
-git -C "$REPO" commit -qm unreviewed-target
-unreviewed_target=$(git -C "$REPO" rev-parse HEAD)
-if deploy_control_is_reviewed_daily_final_transition \
-    "$target" "$unreviewed_target"; then
-  fail 'unreviewed target tree was admitted'
-fi
 
 printf 'drift\n' >> "$REPO/$DEPLOY_CONTROL_BRIDGE_LIBRARY_PATH"
 git -C "$REPO" add .

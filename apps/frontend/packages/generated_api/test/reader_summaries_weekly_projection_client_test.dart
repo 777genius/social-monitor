@@ -41,6 +41,8 @@ void main() {
       expect(response.certifiedDailyEvidenceDates, _weekDates);
       expect(response.missingDailyEvidenceDates, isEmpty);
       expect(response.blockingReasons, isEmpty);
+      expect(response.activeWeeklyCertifiedArtifactPresent, isTrue);
+      expect(response.evidenceLimitations, isEmpty);
 
       final artifact = response.artifact;
       expect(artifact, isNotNull);
@@ -129,6 +131,12 @@ void main() {
 
       expect(partial.status.toJson(), 'partial');
       expect(partial.artifact, isNull);
+      expect(partial.activeWeeklyCertifiedArtifactPresent, isTrue);
+      expect(partial.evidenceLimitations.single.requestedUtcDate, '2026-07-20');
+      expect(
+        partial.evidenceLimitations.single.evidenceState.toJson(),
+        'historical_unavailable',
+      );
       expect(partial.missingDailyEvidenceDates, ['2026-07-26']);
       expect(
         partial.blockingReasons.single.toJson(),
@@ -137,6 +145,7 @@ void main() {
 
       expect(unavailable.status.toJson(), 'unavailable');
       expect(unavailable.artifact, isNull);
+      expect(unavailable.activeWeeklyCertifiedArtifactPresent, isFalse);
       expect(unavailable.certifiedDailyEvidenceDates, isEmpty);
       expect(
         unavailable.blockingReasons.map((reason) => reason.toJson()),
@@ -180,6 +189,8 @@ Map<String, Object?> _completeProjectionPayload() => <String, Object?>{
       'certifiedDailyEvidenceDates': _weekDates,
       'missingDailyEvidenceDates': <String>[],
       'blockingReasons': <String>[],
+      'activeWeeklyCertifiedArtifactPresent': true,
+      'evidenceLimitations': <Map<String, Object?>>[],
       'artifact': <String, Object?>{
         'artifactId': 'weekly-artifact-1',
         'schemaVersion': 'reader_summary.weekly_model_output.v1',
@@ -308,6 +319,14 @@ Map<String, Object?> _partialProjectionPayload() => <String, Object?>{
       'certifiedDailyEvidenceDates': _weekDates.take(6).toList(),
       'missingDailyEvidenceDates': <String>['2026-07-26'],
       'blockingReasons': <String>['certified_daily_evidence_incomplete'],
+      'activeWeeklyCertifiedArtifactPresent': true,
+      'evidenceLimitations': <Map<String, Object?>>[
+        <String, Object?>{
+          'requestedUtcDate': '2026-07-20',
+          'providerKey': 'github-trending-page',
+          'evidenceState': 'historical_unavailable',
+        },
+      ],
       'artifact': null,
     };
 
@@ -324,5 +343,7 @@ Map<String, Object?> _unavailableProjectionPayload() => <String, Object?>{
         'certified_daily_evidence_incomplete',
         'active_weekly_certified_artifact_missing',
       ],
+      'activeWeeklyCertifiedArtifactPresent': false,
+      'evidenceLimitations': <Map<String, Object?>>[],
       'artifact': null,
     };

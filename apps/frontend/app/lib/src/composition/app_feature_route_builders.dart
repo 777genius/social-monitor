@@ -9,6 +9,7 @@ import 'package:social_monitor_settings/social_monitor_settings.dart';
 import 'package:social_monitor_sources/social_monitor_sources.dart';
 import 'package:social_monitor_summaries/social_monitor_summaries.dart';
 
+import '../routing/app_router.dart';
 import 'app_demo_feature_builders.dart';
 import 'app_runtime.dart';
 import 'app_theme_mode_controller.dart';
@@ -206,7 +207,10 @@ AppRouteWidgetBuilder summariesFeatureBuilder({
   required AppRuntimeController runtimeController,
 }) {
   if (useDemoRoutes) {
-    return (context, uri) => SummariesFeatureRoute();
+    return (context, uri) => SummariesFeatureRoute(
+      onOpenWeeklySummary: () =>
+          GoRouter.of(context).go(AppRoutes.weeklySummary),
+    );
   }
 
   return (context, uri) {
@@ -228,12 +232,16 @@ AppRouteWidgetBuilder summariesFeatureBuilder({
               context,
             ).go('/summaries/${Uri.encodeComponent(selectedSummaryId)}');
           },
+          onOpenWeeklySummary: () =>
+              GoRouter.of(context).go(AppRoutes.weeklySummary),
         );
       }
       return SummariesFeatureRoute.generatedApi(
         generatedApiRuntime: generatedApiRuntime,
         scope: scope,
         userId: runtime.session.userId,
+        onOpenWeeklySummary: () =>
+            GoRouter.of(context).go(AppRoutes.weeklySummary),
       );
     }
 

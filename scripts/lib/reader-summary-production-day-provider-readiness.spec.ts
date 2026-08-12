@@ -124,6 +124,51 @@ describe("production-day provider readiness admission", () => {
     );
   });
 
+  it("normalizes an omitted collection count to zero for explicit GitHub unavailability", () => {
+    const report = collectionReport(githubProof);
+    replaceProviderScan(report, unavailableGitHubScan());
+    delete report.targetWindow.providerCounts["github-trending-page"];
+    const result = resolveProductionDayProviderReadiness({
+      collectionDate,
+      evaluatedAt,
+      qualityReport: qualityReport(report.targetWindow.providerCounts),
+      collectionReport: report,
+    });
+
+    expect(result.status).toBe("unavailable");
+    expect(result.summaryPolicy).toBe("blocked");
+    expect(result.readiness.ready).toBe(true);
+    expect(result.providers).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          providerKey: "github-trending-page",
+          state: "unavailable",
+          evidence: "explicit_unavailable",
+          databaseFeedItemCount: 0,
+          collectionFeedItemCount: 0,
+        }),
+      ]),
+    );
+  });
+
+  it("fails closed when a positive DB count has no collection count", () => {
+    const report = collectionReport(githubProof);
+    delete report.targetWindow.providerCounts["github-trending-page"];
+    const result = resolveProductionDayProviderReadiness({
+      collectionDate,
+      evaluatedAt,
+      qualityReport: qualityReport({
+        ...report.targetWindow.providerCounts,
+        "github-trending-page": 10,
+      }),
+      collectionReport: report,
+    });
+
+    expect(result.status).toBe("blocked");
+    expect(result.summaryPolicy).toBe("blocked");
+    expect(result.providers).toEqual([]);
+  });
+
   it("fails closed for stale DB provenance, count mismatch, weak inventory, or unverified GitHub", () => {
     const partial = collectionReport(githubProof, partialCounts);
     const stale = {
@@ -356,6 +401,30 @@ const unavailableScan = (
     },
   };
 };
+
+const unavailableGitHubScan =
+  (): CleanRealDayCollectionReport["scans"][number] => {
+    const scan = partialScan("github-trending-page", 10, 0);
+    return {
+      ...scan,
+      acquisitionMode: "durable_snapshot_reuse",
+      attemptCount: 1,
+      status: "failed",
+      failureFingerprint: "github-trending-page-unavailable",
+      observability: {
+        ...scan.observability,
+        acquisitionMode: "durable_snapshot_reuse",
+        pageCount: 0,
+        paginationStopReason: "failed",
+        coverageState: "unavailable",
+        slo: {
+          ...scan.observability.slo,
+          coverageRatio: 0,
+          reasons: ["target_shortfall", "provider_unavailable"],
+        },
+      },
+    };
+  };
 
 const replaceProviderScan = (
   report: CleanRealDayCollectionReport,

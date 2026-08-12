@@ -26,37 +26,38 @@ void main() {
     );
   });
 
-  testWidgets('fails closed on the production route without a generated runtime', (
-    tester,
-  ) async {
-    const workspace = AppWorkspaceSnapshot(
-      tenantName: 'Test tenant',
-      workspaceName: 'Test workspace',
-      workspaceRole: 'owner',
-      statusLabel: 'Active',
-      scope: WorkspaceScope(
-        tenantId: 'tenant-weekly-route',
-        workspaceId: 'workspace-weekly-route',
-      ),
-    );
-    final composition = AppCompositionRoot.production(
-      runtime: AppShellRuntime.connected(
-        workspace: workspace,
-        generatedApiRuntime: Object(),
-      ),
-      initialLocation: AppRoutes.weeklySummary,
-    );
+  testWidgets(
+    'fails closed on the production route without a generated runtime',
+    (tester) async {
+      const workspace = AppWorkspaceSnapshot(
+        tenantName: 'Test tenant',
+        workspaceName: 'Test workspace',
+        workspaceRole: 'owner',
+        statusLabel: 'Active',
+        scope: WorkspaceScope(
+          tenantId: 'tenant-weekly-route',
+          workspaceId: 'workspace-weekly-route',
+        ),
+      );
+      final composition = AppCompositionRoot.production(
+        runtime: AppShellRuntime.connected(
+          workspace: workspace,
+          generatedApiRuntime: Object(),
+        ),
+        initialLocation: AppRoutes.weeklySummary,
+      );
 
-    await tester.pumpWidget(SocialMonitorApp(composition: composition));
-    await tester.pumpAndSettle();
+      await tester.pumpWidget(SocialMonitorApp(composition: composition));
+      await tester.pumpAndSettle();
 
-    expect(
-      composition.router.routeInformationProvider.value.uri.path,
-      AppRoutes.weeklySummary,
-    );
-    expect(
-      find.text('Weekly summary data is not connected yet'),
-      findsOneWidget,
-    );
-  });
+      expect(
+        composition.router.routeInformationProvider.value.uri.path,
+        AppRoutes.weeklySummary,
+      );
+      expect(
+        find.text('Weekly summary data is not connected yet'),
+        findsOneWidget,
+      );
+    },
+  );
 }

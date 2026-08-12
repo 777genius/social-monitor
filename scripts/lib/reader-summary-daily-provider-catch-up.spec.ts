@@ -205,6 +205,64 @@ describe("daily reader-summary provider catch-up", () => {
     });
   });
 
+  it("treats an omitted provider count as zero only when the database count is zero", () => {
+    const existingReport = report([
+      explicitUnavailableGitHubScan(),
+      readyScan("hacker-news"),
+      readyScan("reddit"),
+      readyScan("rss"),
+      readyScan("x-twitter"),
+    ]);
+    delete existingReport.targetWindow.providerCounts["github-trending-page"];
+
+    const plan = planDailyProviderCatchUp({
+      collectionDate: "2026-07-27",
+      evaluatedAt: new Date("2026-07-28T01:00:00.000Z"),
+      existingReport,
+      databaseProviderCounts: {
+        ...existingReport.targetWindow.providerCounts,
+        "github-trending-page": 0,
+      },
+    });
+
+    expect(plan.barrierMessage).toBeNull();
+    expect(plan.providerStates[0]).toMatchObject({
+      providerKey: "github-trending-page",
+      state: "unavailable",
+      evidence: "explicit_unavailable",
+      policy: "accepted",
+    });
+  });
+
+  it("blocks an omitted provider count when the database has positive rows", () => {
+    const existingReport = report([
+      explicitUnavailableGitHubScan(),
+      readyScan("hacker-news"),
+      readyScan("reddit"),
+      readyScan("rss"),
+      readyScan("x-twitter"),
+    ]);
+    delete existingReport.targetWindow.providerCounts["github-trending-page"];
+
+    const plan = planDailyProviderCatchUp({
+      collectionDate: "2026-07-27",
+      evaluatedAt: new Date("2026-07-28T01:00:00.000Z"),
+      existingReport,
+      databaseProviderCounts: {
+        ...existingReport.targetWindow.providerCounts,
+        "github-trending-page": 1,
+      },
+    });
+
+    expect(plan.providerKeysToCollect).toEqual([]);
+    expect(plan.providerStates[0]).toMatchObject({
+      providerKey: "github-trending-page",
+      state: "invalid",
+      reasonCodes: ["database_collection_count_mismatch"],
+    });
+    expect(plan.barrierMessage).toContain("DB/artifact evidence is unsafe");
+  });
+
   it("blocks historical recollection unless the collection policy explicitly permits it", () => {
     const blocked = planDailyProviderCatchUp({
       collectionDate: "2026-07-27",
