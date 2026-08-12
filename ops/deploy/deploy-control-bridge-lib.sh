@@ -14,7 +14,6 @@ DEPLOY_CONTROL_BRIDGE_RECOVERY_MAINTENANCE_LIBRARY_PATH=ops/deploy/reader-summar
 DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_LIBRARY_PATH=ops/deploy/backend-image-rescue-lib.sh
 DEPLOY_CONTROL_BRIDGE_X_IMAGE_LIBRARY_PATH=ops/deploy/x-collector-image-deploy-lib.sh
 DEPLOY_CONTROL_BRIDGE_SELF_PATH=ops/deploy/deploy-control-bridge-lib.sh
-DEPLOY_CONTROL_DAILY_C1_BRIDGE_BASE=e3b5b5d89b3586668e36f987f03672415b5a0f37
 RABBITMQ_QUORUM_HEALTH_LIBRARY_PATH=ops/deploy/backend-runtime-health-lib.sh
 RABBITMQ_QUORUM_HEALTH_SCRIPT_PATH=ops/deploy/rabbitmq-quorum-health.sh
 RABBITMQ_QUORUM_RECOVERY_SCRIPT_PATH=ops/deploy/rabbitmq-quorum-recovery.sh
@@ -49,17 +48,10 @@ deploy_control_daily_c1_bridge_release_paths() {
     ops/deploy/postgres-runtime-daily-c1-readiness-lib.sh \
     ops/deploy/postgres-runtime-deploy-lib.sh \
     ops/deploy/postgres-runtime-weekly-timer-state-lib.sh \
-    ops/deploy/production-runtime/daily-c1-runtime.sh \
-    ops/deploy/production-runtime/reader-summary-daily-c1.readiness \
-    ops/deploy/production-runtime/social-monitor-daily.timer \
     ops/deploy/production-release-a-transition.sh \
     ops/deploy/production-release-a-transition.test.sh \
     ops/deploy/reader-summary-publication-deploy-lib.sh \
-    ops/deploy/reader-summary-publication-prebootstrap-lib.sh \
-    ops/deploy/reader-summary-publication-prebootstrap-lib.test.sh \
     ops/deploy/reader-summary-recovery-maintenance-lib.sh \
-    ops/deploy/production-runtime/social-monitor-reader-summary-production-day.bootstrap.timer \
-    ops/deploy/production-runtime/social-monitor-reader-summary-production-day.service.d-10-daily-c1-owner.conf \
     ops/deploy/social-monitor-production-deploy.sh \
     ops/deploy/x-collector-image-deploy-lib.test.sh
 }
@@ -68,8 +60,7 @@ deploy_control_is_exact_daily_c1_bridge_release() {
   local base=$1 target=$2 repository=${REPO:-.}
   local expected actual
 
-  git -C "$repository" merge-base --is-ancestor "$base" "$target" \
-    2>/dev/null || return 1
+  git -C "$repository" merge-base --is-ancestor "$base" "$target" || return 1
   expected=$(deploy_control_daily_c1_bridge_release_paths | LC_ALL=C sort)
   actual=$(git -C "$repository" diff --name-only --no-renames \
     "$base" "$target" -- | LC_ALL=C sort)
@@ -78,14 +69,6 @@ deploy_control_is_exact_daily_c1_bridge_release() {
 
 deploy_control_daily_c1_bridge_classification() {
   printf 'frontend=false\nbackend=false\ncontrol=true\n'
-}
-
-deploy_control_is_reviewed_daily_c1_bridge_transition() {
-  local current=$1 sha=$2 parent
-  parent=$(git -C "$REPO" rev-parse "$sha^1") || return 1
-  [[ $parent == "$current" ]] || return 1
-  deploy_control_is_exact_daily_c1_bridge_release \
-    "$DEPLOY_CONTROL_DAILY_C1_BRIDGE_BASE" "$sha"
 }
 
 load_target_reader_summary_publication_deploy_library() {
@@ -286,32 +269,11 @@ verify_deploy_control_bridge_target_compatibility() {
     fail 'target integration is missing the X image provenance bridge library'
   bridge_library_digest=$(deploy_control_git_blob_digest "$sha" "$DEPLOY_CONTROL_BRIDGE_SELF_PATH") || \
     fail 'target integration is missing the deploy control bridge library'
-  if [[ $entrypoint_digest == "$DEPLOY_CONTROL_BRIDGE_ENTRYPOINT_DIGEST" && \
+  [[ $entrypoint_digest == "$DEPLOY_CONTROL_BRIDGE_ENTRYPOINT_DIGEST" && \
      $deploy_library_digest == "$DEPLOY_CONTROL_BRIDGE_LIBRARY_DIGEST" && \
      $postgres_library_digest == "$DEPLOY_CONTROL_BRIDGE_POSTGRES_LIBRARY_DIGEST" && \
      $weekly_timer_helper_digest == "$DEPLOY_CONTROL_BRIDGE_POSTGRES_WEEKLY_TIMER_HELPER_DIGEST" && \
      $daily_c1_helper_digest == "$DEPLOY_CONTROL_BRIDGE_POSTGRES_DAILY_C1_HELPER_DIGEST" && \
-     $activation_boundary_helper_digest == "$DEPLOY_CONTROL_BRIDGE_POSTGRES_ACTIVATION_BOUNDARY_HELPER_DIGEST" && \
-     $recovery_maintenance_library_digest == "$DEPLOY_CONTROL_BRIDGE_RECOVERY_MAINTENANCE_LIBRARY_DIGEST" && \
-     $image_rescue_library_digest == "$DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_LIBRARY_DIGEST" && \
-     $x_image_library_digest == "$DEPLOY_CONTROL_BRIDGE_X_IMAGE_LIBRARY_DIGEST" && \
-     $bridge_library_digest == "$DEPLOY_CONTROL_BRIDGE_SELF_DIGEST" ]]; then
-    return 0
-  fi
-  local current parent actual
-  current=$(git -C "$REPO" rev-parse HEAD) || return 1
-  parent=$(git -C "$REPO" rev-parse "$sha^1") || return 1
-  if deploy_control_is_reviewed_daily_c1_bridge_transition "$current" "$sha"; then
-    return 0
-  fi
-  actual=$(git -C "$REPO" diff --name-only --no-renames "$parent" "$sha" --) || \
-    return 1
-  [[ $parent == "$current" && \
-     $actual == "$DEPLOY_CONTROL_BRIDGE_POSTGRES_DAILY_C1_HELPER_PATH" && \
-     $entrypoint_digest == "$DEPLOY_CONTROL_BRIDGE_ENTRYPOINT_DIGEST" && \
-     $deploy_library_digest == "$DEPLOY_CONTROL_BRIDGE_LIBRARY_DIGEST" && \
-     $postgres_library_digest == "$DEPLOY_CONTROL_BRIDGE_POSTGRES_LIBRARY_DIGEST" && \
-     $weekly_timer_helper_digest == "$DEPLOY_CONTROL_BRIDGE_POSTGRES_WEEKLY_TIMER_HELPER_DIGEST" && \
      $activation_boundary_helper_digest == "$DEPLOY_CONTROL_BRIDGE_POSTGRES_ACTIVATION_BOUNDARY_HELPER_DIGEST" && \
      $recovery_maintenance_library_digest == "$DEPLOY_CONTROL_BRIDGE_RECOVERY_MAINTENANCE_LIBRARY_DIGEST" && \
      $image_rescue_library_digest == "$DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_LIBRARY_DIGEST" && \

@@ -65,7 +65,8 @@ reader_summary_publication_prebootstrap_v6_dropin() {
   reader_summary_publication_systemctl daemon-reload || return 1
   dropins=$(reader_summary_publication_systemctl show \
     --property=DropInPaths --value "$service") || return 1
-  [[ $dropins == "$destination" ]] && cmp -s "$source" "$destination" || \
+  [[ $dropins == "$destination" || -z $dropins ]] && \
+    cmp -s "$source" "$destination" || \
     fail 'target publication prebootstrap v6 drop-in did not become exact'
 }
 
