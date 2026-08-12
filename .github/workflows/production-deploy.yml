@@ -1,8 +1,7 @@
 name: Production deploy
 on:
   push:
-    branches:
-      - main
+    branches: [main]
     paths:
       - .dockerignore
       - .github/workflows/production-deploy.yml
@@ -62,11 +61,8 @@ on:
       daily_canonical_recovery_confirmation: {description: Required exact confirmation for ordinary daily canonical recovery V4, required: false, default: '', type: string}
       daily_canonical_recovery_model_job_identity: {description: Required lowercase-hex Jul23 model job identity for ordinary bounded recovery, required: false, default: '', type: string}
       daily_canonical_recovery_authority_sha256: {description: Required lowercase-hex Jul23 source authority SHA-256 for ordinary bounded recovery, required: false, default: '', type: string}
-permissions:
-  contents: read
-concurrency:
-  group: social-monitor-production
-  cancel-in-progress: false
+permissions: {contents: read}
+concurrency: {group: social-monitor-production, cancel-in-progress: false}
 jobs:
   production_maintenance:
     name: Production maintenance
@@ -141,8 +137,7 @@ jobs:
     steps:
       - name: Check out the release commit
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
-        with:
-          fetch-depth: 0
+        with: {fetch-depth: 0}
       - name: Validate frozen three-phase graph before production SSH
         run: bash ops/deploy/production-release-a-transition.sh validate "$GITHUB_SHA"
       - name: Configure restricted production SSH
@@ -309,9 +304,7 @@ jobs:
       - name: Set up Node.js
         if: needs.plan.outputs.backend == 'true' && needs.plan.outputs.daily_c1_bridge != 'true'
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
-        with:
-          node-version: 22
-          cache: npm
+        with: {node-version: 22, cache: npm}
       - name: Prove fail-closed PostgreSQL and signal publication
         if: needs.plan.outputs.backend == 'true' && needs.plan.outputs.daily_c1_bridge != 'true'
         env:
@@ -354,14 +347,11 @@ jobs:
       - name: Check out the release commit
         if: needs.plan.outputs.backend == 'true' || needs.plan.outputs.control == 'true' || needs.plan.outputs.x_collector == 'true' || needs.plan.outputs.recovery_transition == 'true'
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
-        with:
-          fetch-depth: 0
+        with: {fetch-depth: 0}
       - name: Set up Node.js
         if: needs.plan.outputs.backend == 'true' || needs.plan.outputs.control == 'true' || needs.plan.outputs.recovery_transition == 'true'
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
-        with:
-          node-version: 22
-          cache: npm
+        with: {node-version: 22, cache: npm}
       - name: Verify backend and deployment contract
         if: needs.plan.outputs.backend == 'true' || needs.plan.outputs.control == 'true' || needs.plan.outputs.recovery_transition == 'true'
         env:
@@ -742,8 +732,7 @@ jobs:
     steps:
       - name: Check out frozen three-phase graph
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
-        with:
-          fetch-depth: 0
+        with: {fetch-depth: 0}
       - name: Validate graph and immutable manifests before production SSH
         run: bash ops/deploy/production-release-a-transition.sh validate "$GITHUB_SHA"
       - name: Configure restricted production SSH
@@ -907,8 +896,7 @@ jobs:
     steps:
       - name: Check out the release commit
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
-        with:
-          fetch-depth: 0
+        with: {fetch-depth: 0}
       - name: Validate graph and immutable manifests before Release B SSH
         run: bash ops/deploy/production-release-a-transition.sh validate "$GITHUB_SHA"
       - name: Configure restricted production SSH
@@ -975,8 +963,7 @@ jobs:
     steps:
       - name: Check out frozen three-phase graph
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
-        with:
-          fetch-depth: 0
+        with: {fetch-depth: 0}
       - name: Validate graph and immutable manifests before acceptance SSH
         run: bash ops/deploy/production-release-a-transition.sh validate "$GITHUB_SHA"
       - name: Configure fresh restricted production SSH
