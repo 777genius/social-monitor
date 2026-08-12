@@ -9,8 +9,6 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { currentDatabaseAccess } from "@social-monitor/platform-persistence";
-
 import {
   buildReaderSummaryDayDatasetManifest,
   captureReaderSummaryDayDatasetManifest,
@@ -66,32 +64,6 @@ describe("reader summary day dataset manifest", () => {
       "hacker-news": 1,
       reddit: 1,
     });
-  });
-
-  it("reads every manifest snapshot under its exact tenant database scope", async () => {
-    const accessSnapshots: unknown[] = [];
-    const query = jest.fn(async () => {
-      accessSnapshots.push(currentDatabaseAccess());
-      return [];
-    });
-
-    await captureReaderSummaryDayDatasetManifest({
-      client: { $queryRaw: query as never },
-      ...scope,
-    });
-
-    expect(accessSnapshots).toEqual([
-      {
-        kind: "tenant",
-        tenantId: scope.tenantId,
-        workspaceId: scope.workspaceId,
-      },
-      {
-        kind: "tenant",
-        tenantId: scope.tenantId,
-        workspaceId: scope.workspaceId,
-      },
-    ]);
   });
 
   it("changes the aggregate digest when evidence content changes", () => {

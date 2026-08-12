@@ -223,10 +223,7 @@ versions = payload["versions"]
 if not isinstance(maintenance, dict) or not isinstance(versions, dict):
     raise SystemExit(1)
 for node in running:
-    maintenance_value = maintenance.get(node)
-    if isinstance(maintenance_value, dict):
-        maintenance_value = maintenance_value.get("status")
-    if maintenance_value != "not under maintenance":
+    if maintenance.get(node) != "not under maintenance":
         raise SystemExit(1)
     version = versions.get(node)
     if not isinstance(version, dict) or version.get("rabbitmq_version") != "4.3.2":
