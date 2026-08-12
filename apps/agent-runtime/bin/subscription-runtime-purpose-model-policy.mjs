@@ -120,16 +120,43 @@ export const admitSubscriptionRuntimeWrapperRequest = (input) => {
   };
 };
 
+const codexSubprocessEnvironmentKeys = new Set([
+  "LANG",
+  "LANGUAGE",
+  "LC_ADDRESS",
+  "LC_ALL",
+  "LC_COLLATE",
+  "LC_CTYPE",
+  "LC_IDENTIFICATION",
+  "LC_MEASUREMENT",
+  "LC_MESSAGES",
+  "LC_MONETARY",
+  "LC_NAME",
+  "LC_NUMERIC",
+  "LC_PAPER",
+  "LC_TELEPHONE",
+  "LC_TIME",
+  "NODE_EXTRA_CA_CERTS",
+  "PATH",
+  "SSL_CERT_DIR",
+  "SSL_CERT_FILE",
+  "TEMP",
+  "TMP",
+  "TMPDIR",
+]);
+
+const sensitiveEnvironmentKeyFragment =
+  /(CREDENTIAL|KEY|PASSWORD|SECRET|TOKEN|URL)/u;
+
 export const subscriptionOnlyCodexEnvironment = (env) =>
   Object.fromEntries(
     Object.entries(env).filter(
       ([key, value]) =>
-        value !== undefined && !isApiKeyCredentialEnvKey(key),
+        value !== undefined &&
+        codexSubprocessEnvironmentKeys.has(key) &&
+        !sensitiveEnvironmentKeyFragment.test(key),
     ),
   );
-
-const isApiKeyCredentialEnvKey = (key) =>
-  key.endsWith("_API_KEY") || key.endsWith("_API_KEY_FILE");
 
 const assertOptionalExactString = (value, expected, label) => {
   if (value === undefined) {

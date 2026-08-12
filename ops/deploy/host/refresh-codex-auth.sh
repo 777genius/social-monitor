@@ -150,6 +150,17 @@ materialize_auth_pool_snapshot() {
   chmod 0750 "$stage_dir"
   snapshot_dir=$POOL_SNAPSHOT_ROOT/snapshots/$generation
   if [[ -d $snapshot_dir && ! -L $snapshot_dir ]]; then
+    for account in "${available_accounts[@]}"; do
+      [[ -f $snapshot_dir/$account/auth.json && \
+         ! -L $snapshot_dir/$account/auth.json ]] || \
+        fail 'existing auth pool snapshot is incomplete or unsafe'
+      cmp -s "$stage_dir/$account/auth.json" \
+        "$snapshot_dir/$account/auth.json" || \
+        fail 'existing auth pool snapshot bytes do not match its digest'
+    done
+    [[ $(find "$snapshot_dir" -mindepth 2 -maxdepth 2 -type f \
+      -name auth.json | wc -l) == ${#available_accounts[@]} ]] || \
+      fail 'existing auth pool snapshot contains unexpected auth files'
     rm -rf -- "$stage_dir"
   else
     [[ ! -e $snapshot_dir && ! -L $snapshot_dir ]] || \
@@ -184,6 +195,26 @@ materialize_auth_pool_snapshot() {
   else
     rm -f "$manifest_next"
   fi
+  prune_expired_auth_pool_snapshots "$generation"
+}
+
+prune_expired_auth_pool_snapshots() {
+  local current_generation=$1 snapshot generation modified_at now
+  local retention_seconds=${SOCIAL_MONITOR_AUTH_POOL_RETENTION_SECONDS:-172800}
+  [[ $retention_seconds =~ ^[0-9]+$ && $retention_seconds -ge 86400 ]] || \
+    fail 'auth pool snapshot retention must be at least one day'
+  now=$(date +%s)
+  while IFS= read -r -d '' snapshot; do
+    [[ ! -L $snapshot ]] || fail 'auth pool snapshot cannot be a symlink'
+    generation=${snapshot##*/}
+    [[ $generation =~ ^[0-9a-f]{64}$ ]] || \
+      fail 'auth pool snapshot name is invalid'
+    [[ $generation != "$current_generation" ]] || continue
+    modified_at=$(stat -c '%Y' "$snapshot" 2>/dev/null || stat -f '%m' "$snapshot")
+    ((now - modified_at >= retention_seconds)) || continue
+    rm -rf -- "$snapshot"
+  done < <(find "$POOL_SNAPSHOT_ROOT/snapshots" -mindepth 1 -maxdepth 1 \
+    -type d -print0)
 }
 
 is_manifest_account() {

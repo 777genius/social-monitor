@@ -97,7 +97,8 @@ exec 8>"$ROOT/control/daily-run.lock"
 
 check_runtime_release || exit 75
 
-"$ROOT/control/refresh-codex-auth.sh"
+"$ROOT/control/refresh-codex-auth.sh" \
+  --broker-pool-job-id social-monitor-production-account-pool-terra-v25-20260804
 
 if [[ -f "$ROOT/runtime/auth-account-changed" ]]; then
   stamp=$(date -u +%Y%m%dT%H%M%SZ)

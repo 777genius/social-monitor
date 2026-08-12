@@ -251,6 +251,16 @@ while IFS=$'\t' read -r account relative_path; do
 done < <(jq -r '.accounts[] | [.id, .relativePath] | @tsv' \
   "$POOL_SNAPSHOT_ROOT/current.json")
 
+current_generation=$(jq -r '.snapshotId' "$POOL_SNAPSHOT_ROOT/current.json")
+expired_generation=$(printf 'f%.0s' {1..64})
+install -d "$POOL_SNAPSHOT_ROOT/snapshots/$expired_generation/account-old"
+printf '{"account":"old"}\n' > \
+  "$POOL_SNAPSHOT_ROOT/snapshots/$expired_generation/account-old/auth.json"
+touch -t 202001010000 "$POOL_SNAPSHOT_ROOT/snapshots/$expired_generation"
+run_refresh >/dev/null
+[[ ! -e $POOL_SNAPSHOT_ROOT/snapshots/$expired_generation ]]
+[[ -d $POOL_SNAPSHOT_ROOT/snapshots/$current_generation ]]
+
 rm -f "$CHANGED_MARKER"
 SOCIAL_MONITOR_TEST_ACCOUNTS='["account-b"]' run_refresh >/dev/null
 cmp "$AUTH_ROOT/account-b/auth.json" "$TARGET_DIR/auth.json"

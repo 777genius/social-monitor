@@ -15,7 +15,7 @@ grep -Fx 'activation=reviewed' "$C1_READINESS" >/dev/null
 
 # The assertions below intentionally match literal nested-shell variables.
 # shellcheck disable=SC2016
-grep -Fx '"$ROOT/control/refresh-codex-auth.sh"' "$DAILY_RUN" >/dev/null
+grep -F '"$ROOT/control/refresh-codex-auth.sh"' "$DAILY_RUN" >/dev/null
 ! grep -F -- '--broker-pool-job-id' "$DAILY_RUN"
 grep -F 'scripts/run-reader-summary-production-day.ts \' "$DAILY_RUN" >/dev/null
 grep -F -- '--date "$requested_date" --update' "$DAILY_RUN" >/dev/null

@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 
-import { createHash } from "node:crypto";
 import { mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -9,6 +8,11 @@ import {
   subscriptionOnlyCodexEnvironment,
 } from "./subscription-runtime-purpose-model-policy.mjs";
 import { loadCodexAuthPoolFromEnv } from "./codex-auth-pool-manifest.mjs";
+import {
+  codexAuthPoolExecutionPolicy,
+  codexAuthPoolTaskHash,
+  orderCodexAuthAccountsForTask,
+} from "./codex-auth-pool-routing.mjs";
 
 const argv = process.argv.slice(2);
 const provider = requiredArgument(argv, "--provider");
@@ -98,7 +102,7 @@ function createPooledCodexWorker({ input, model, authPool }) {
       if (!taskId) {
         throw new Error("Pooled Codex worker requires a stable runId");
       }
-      const taskHash = createHash("sha256").update(taskId).digest("hex");
+      const taskHash = codexAuthPoolTaskHash(taskId);
       const workspacePath = join(
         input.stateRootDir,
         "task-workspaces",
@@ -113,15 +117,13 @@ function createPooledCodexWorker({ input, model, authPool }) {
         requireGitWorkspace: false,
         effectMode: "read_only",
         maxAccountCycles: 1,
-        safeExecutionPolicy: {
-          retryOnCapacity: true,
-          retryOnAccountUnavailable: true,
-          retryOnReconnectRequired: false,
-          retryUnknownCleanWorkspace: false,
-          retryUnknownChangedWorkspace: false,
-          continuationMode: "packet_first",
-        },
-        accounts: authPool.accounts.map((account) => ({
+        // The bounded account pool performs quota failover with the original job.
+        // The outer safe runner gets one attempt so it cannot rewrite the prompt.
+        safeExecutionPolicy: codexAuthPoolExecutionPolicy,
+        accounts: orderCodexAuthAccountsForTask(
+          authPool.accounts,
+          taskId,
+        ).map((account) => ({
           codexAuthJsonPath: account.authJsonPath,
           worker: {
             providerInstanceId: `codex:${account.id}`,

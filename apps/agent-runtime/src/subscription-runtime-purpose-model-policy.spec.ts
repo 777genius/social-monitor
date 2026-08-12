@@ -144,9 +144,8 @@ describe("subscription runtime purpose policy", () => {
     });
   });
 
-  it("keeps API-key credentials out of the independent wrapper environment", () => {
+  it("keeps credentials and auth paths out of the independent wrapper environment", () => {
     expect(readMjsFilteredEnvironment()).toEqual({
-      CODEX_AUTH_JSON_PATH: "/redacted/account-auth.json",
       PATH: "/redacted/bin",
     });
   });

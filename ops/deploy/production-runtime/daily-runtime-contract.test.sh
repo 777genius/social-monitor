@@ -23,7 +23,9 @@ grep -Fx 'Restart=no' "$DAILY_SERVICE" >/dev/null
 singleton_lock_line=$(grep -n 'daily-run-singleton.lock' "$DAILY_RUN" | cut -d: -f1)
 admission_lock_line=$(grep -n 'daily-run.lock"' "$DAILY_RUN" | cut -d: -f1)
 release_line=$(grep -n 'check_runtime_release || exit 75' "$DAILY_RUN" | tail -1 | cut -d: -f1)
-auth_line=$(grep -n 'refresh-codex-auth.sh" --broker-pool-job-id' "$DAILY_RUN" | cut -d: -f1)
+auth_line=$(grep -n -- \
+  '--broker-pool-job-id social-monitor-production-account-pool-terra-v25-20260804' \
+  "$DAILY_RUN" | cut -d: -f1)
 runtime_line=$(grep -n 'profile app up -d --no-deps agent-runtime' "$DAILY_RUN" | cut -d: -f1)
 daily_line=$(grep -n 'profile daily run --rm --no-deps' "$DAILY_RUN" | cut -d: -f1)
 ((singleton_lock_line < admission_lock_line && \
