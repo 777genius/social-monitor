@@ -30,6 +30,8 @@ anchor=$(git -C "$REPO" rev-parse HEAD)
 DEPLOY_CONTROL_DAILY_FINAL_BASE=$anchor
 
 printf 'bridge policy\n' > "$REPO/$DEPLOY_CONTROL_BRIDGE_SELF_PATH"
+printf 'bridge helper\n' > \
+  "$REPO/$DEPLOY_CONTROL_BRIDGE_POSTGRES_DAILY_C1_HELPER_PATH"
 printf 'reviewed bridge fixture\n' > \
   "$REPO/ops/deploy/daily-final-control-bridge.test.sh"
 printf 'bridge-only rollback fixture\n' > "$REPO/bridge-only"
@@ -39,6 +41,9 @@ bridge=$(git -C "$REPO" rev-parse HEAD)
 
 git -C "$REPO" checkout -qb final-base "$bridge"
 git -C "$REPO" rm -q bridge-only
+git -C "$REPO" show \
+  "$anchor:$DEPLOY_CONTROL_BRIDGE_POSTGRES_DAILY_C1_HELPER_PATH" > \
+  "$REPO/$DEPLOY_CONTROL_BRIDGE_POSTGRES_DAILY_C1_HELPER_PATH"
 git -C "$REPO" add .
 git -C "$REPO" commit -qm final-base
 target=$(git -C "$REPO" rev-parse HEAD)

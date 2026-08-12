@@ -89,7 +89,7 @@ deploy_control_is_reviewed_daily_final_transition() {
   while IFS= read -r path; do sealed_paths+=("$path"); done < <(deploy_control_bridge_sealed_paths)
   changed=$(git -C "$repository" diff --name-only --no-renames \
     "$bridge" "$target" -- "${sealed_paths[@]}" 2>/dev/null) || return 1
-  [[ -z $changed &&
+  [[ $changed == "$DEPLOY_CONTROL_BRIDGE_POSTGRES_DAILY_C1_HELPER_PATH" &&
      $(git -C "$repository" rev-parse \
        "$target:$DEPLOY_CONTROL_BRIDGE_POSTGRES_DAILY_C1_HELPER_PATH" 2>/dev/null) == \
        "$DEPLOY_CONTROL_DAILY_FINAL_HELPER_BLOB" ]]
@@ -112,6 +112,7 @@ deploy_control_daily_final_transition_matches() {
   local bridge=$1 target=$2 path
   deploy_control_is_reviewed_daily_final_transition "$bridge" "$target" || return 1
   while IFS= read -r path; do
+    [[ $path == "$DEPLOY_CONTROL_BRIDGE_POSTGRES_DAILY_C1_HELPER_PATH" ]] && continue
     [[ $(git -C "$REPO" rev-parse "$bridge:$path" 2>/dev/null) == \
        $(git -C "$REPO" rev-parse "$target:$path" 2>/dev/null) ]] || return 1
   done < <(deploy_control_daily_final_transition_compatible_paths)
