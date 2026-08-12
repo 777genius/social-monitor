@@ -197,14 +197,47 @@ jobs:
           a_plan="$RUNNER_TEMP/recovery-a2-inspect.plan"; e_plan="$RUNNER_TEMP/recovery-e-inspect.plan"
           repair_anchor=none
           bash "$client" inspect-plan "$GITHUB_SHA" > "$target_plan"
-          source ops/deploy/deploy-control-bridge-lib.sh
           daily_c1_bridge_base=e3b5b5d89b3586668e36f987f03672415b5a0f37
           daily_c1_final_marker=ops/deploy/production-runtime/reader-summary-daily-c1.readiness
           daily_c1_bridge=false
+          daily_c1_bridge_expected=$(cat <<'EOF' | LC_ALL=C sort
+          .github/workflows/production-deploy.yml
+          ops/deploy/daily-c1-control-bridge-workflow.test.sh
+          ops/deploy/daily-runner-image-bootstrap-lib.sh
+          ops/deploy/daily-runner-image-bootstrap-lib.test.sh
+          ops/deploy/deploy-control-bridge-lib.sh
+          ops/deploy/deploy-control-bridge-runtime-helper.test.sh
+          ops/deploy/deploy-control-lib-test-fixture.sh
+          ops/deploy/deploy-control-lib.sh
+          ops/deploy/deploy-control-lib.test.sh
+          ops/deploy/deploy-control-reviewed-library-source.test.sh
+          ops/deploy/github-production-deploy-client.sh
+          ops/deploy/github-production-deploy-client.test.sh
+          ops/deploy/postgres-runtime-activation-boundary-lib.sh
+          ops/deploy/postgres-runtime-daily-c1-readiness-lib.sh
+          ops/deploy/postgres-runtime-deploy-lib.sh
+          ops/deploy/postgres-runtime-weekly-timer-state-lib.sh
+          ops/deploy/production-release-a-transition.sh
+          ops/deploy/production-release-a-transition.test.sh
+          ops/deploy/production-runtime/daily-c1-runtime.sh
+          ops/deploy/production-runtime/reader-summary-daily-c1.readiness
+          ops/deploy/production-runtime/social-monitor-daily.timer
+          ops/deploy/production-runtime/social-monitor-reader-summary-production-day.bootstrap.timer
+          ops/deploy/production-runtime/social-monitor-reader-summary-production-day.service.d-10-daily-c1-owner.conf
+          ops/deploy/reader-summary-publication-deploy-lib.sh
+          ops/deploy/reader-summary-publication-prebootstrap-lib.sh
+          ops/deploy/reader-summary-publication-prebootstrap-lib.test.sh
+          ops/deploy/reader-summary-recovery-maintenance-lib.sh
+          ops/deploy/social-monitor-production-deploy.sh
+          ops/deploy/x-collector-image-deploy-lib.test.sh
+          EOF
+          )
+          daily_c1_bridge_actual=$(git diff --name-only --no-renames \
+            "$daily_c1_bridge_base" "$GITHUB_SHA" -- | LC_ALL=C sort)
           daily_c1_final_marker_mode=$(git ls-tree "$GITHUB_SHA" -- \
             "$daily_c1_final_marker" | awk 'NR == 1 { print $1 }')
-          if deploy_control_is_exact_daily_c1_bridge_release \
-              "$daily_c1_bridge_base" "$GITHUB_SHA"; then
+          if git merge-base --is-ancestor "$daily_c1_bridge_base" "$GITHUB_SHA" && \
+             [[ $daily_c1_bridge_actual == "$daily_c1_bridge_expected" ]]; then
             daily_c1_bridge=true
           elif [[ -z $daily_c1_final_marker_mode ]]; then
             echo 'daily C1 bridge diff does not match its exact B2 manifest' >&2

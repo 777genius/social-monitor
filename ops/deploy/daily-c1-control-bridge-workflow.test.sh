@@ -44,8 +44,8 @@ bridge_paths=()
 while IFS= read -r bridge_path; do
   bridge_paths+=("$bridge_path")
 done < <(deploy_control_daily_c1_bridge_release_paths)
-[[ ${#bridge_paths[@]} == 29 ]] || fail 'daily C1 bridge release manifest count drifted'
-[[ $(printf '%s\n' "${bridge_paths[@]}" | LC_ALL=C sort -u | wc -l | tr -d ' ') == 29 ]] || \
+[[ ${#bridge_paths[@]} == 20 ]] || fail 'installed bridge release manifest count drifted'
+[[ $(printf '%s\n' "${bridge_paths[@]}" | LC_ALL=C sort -u | wc -l | tr -d ' ') == 20 ]] || \
   fail 'daily C1 bridge release manifest contains duplicates'
 for path in "${bridge_paths[@]}"; do
   install -d "$REPO/$(dirname "$path")"
@@ -87,8 +87,15 @@ fi
 workflow=$PROJECT_ROOT/.github/workflows/production-deploy.yml
 grep -F 'daily_c1_bridge_base=e3b5b5d89b3586668e36f987f03672415b5a0f37' \
   "$workflow" >/dev/null
-[[ $(grep -Fc 'deploy_control_is_exact_daily_c1_bridge_release' "$workflow") == 1 ]] || \
-  fail 'workflow must enforce exact B2 detection in its authoritative plan'
+grep -F 'daily_c1_bridge_expected=$(cat' "$workflow" >/dev/null || \
+  fail 'workflow does not define the sealed bridge manifest in its authoritative plan'
+[[ $(sed -n "/daily_c1_bridge_expected=\$(cat <<'EOF'/,/^[[:space:]]*EOF$/p" "$workflow" | \
+  grep -Ec '^[[:space:]]+(\.github|ops)/') == 29 ]] || \
+  fail 'workflow sealed bridge manifest count drifted'
+grep -F 'daily_c1_bridge_actual=$(git diff --name-only --no-renames' "$workflow" >/dev/null || \
+  fail 'workflow does not calculate the exact reviewed bridge diff'
+grep -F '[[ $daily_c1_bridge_actual == "$daily_c1_bridge_expected" ]]' "$workflow" >/dev/null || \
+  fail 'workflow does not enforce exact B2 detection in its authoritative plan'
 grep -F 'daily_c1_bridge: ${{ steps.plan.outputs.daily_c1_bridge }}' \
   "$workflow" >/dev/null || fail 'workflow does not export the exact bridge decision'
 grep -F 'if [[ $daily_c1_bridge == true ]]; then' \
