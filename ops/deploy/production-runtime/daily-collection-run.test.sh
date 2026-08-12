@@ -6,12 +6,16 @@ RUNNER=$SCRIPT_DIR/daily-collection-run.sh
 SERVICE=$SCRIPT_DIR/social-monitor-post-collection.service
 TIMER=$SCRIPT_DIR/social-monitor-daily.timer
 
-grep -F 'date -u -d yesterday +%F' "$RUNNER" >/dev/null
+grep -F 'date -u +%F' "$RUNNER" >/dev/null
 grep -F 'daily-collection-singleton.lock' "$RUNNER" >/dev/null
 grep -F 'daily-run.lock' "$RUNNER" >/dev/null
 grep -F 'runtime_release != "$backend_release"' "$RUNNER" >/dev/null
 grep -F 'run:reader-summary-clean-real-day-collection' "$RUNNER" >/dev/null
-grep -F -- '--date "$1" --wait-for-x-readiness' "$RUNNER" >/dev/null
+grep -F -- '--update --date "$1"' "$RUNNER" >/dev/null
+! grep -F -- '--wait-for-x-readiness' "$RUNNER" >/dev/null
+grep -F 'successfulProviderCount' "$RUNNER" >/dev/null
+grep -F 'fetchedItemCount' "$RUNNER" >/dev/null
+grep -F 'insertedItemCount' "$RUNNER" >/dev/null
 grep -F 'social_monitor.daily_collection_receipt.v1' "$RUNNER" >/dev/null
 
 for forbidden in \

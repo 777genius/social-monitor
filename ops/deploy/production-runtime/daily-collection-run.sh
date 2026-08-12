@@ -4,7 +4,7 @@ set -euo pipefail
 PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 ROOT=/var/data/social-monitor
 POSTGRES_ADMISSION_WAIT_SECONDS=1800
-COLLECTION_DATE=${1:-$(date -u -d yesterday +%F)}
+COLLECTION_DATE=${1:-$(date -u +%F)}
 
 [[ $COLLECTION_DATE =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || {
   echo 'daily collection date must use YYYY-MM-DD' >&2
@@ -43,25 +43,52 @@ install -d -m 0700 "$receipt_dir"
 log_file=$(mktemp "$receipt_dir/.collection.$COLLECTION_DATE.XXXXXX.log")
 trap 'rm -f "$log_file"' EXIT HUP INT TERM
 
-if ! "${COMPOSE[@]}" --profile daily run --rm --no-deps daily-runner \
+artifact=$ROOT/artifacts/evals/reader-summary-clean-real-day-collection.v1.json
+rm -f "$artifact"
+set +e
+"${COMPOSE[@]}" --profile daily run --rm --no-deps daily-runner \
   sh -lc '
     set -eu
     npm run run:reader-summary-clean-real-day-collection -- \
-      --date "$1" --wait-for-x-readiness
-  ' daily-collection "$COLLECTION_DATE" 2>&1 | tee "$log_file"; then
-  exit 1
-fi
+      --update --date "$1"
+  ' daily-collection "$COLLECTION_DATE" 2>&1 | tee "$log_file"
+collection_status=${PIPESTATUS[0]}
+set -e
+
+[[ -f $artifact ]] || {
+  echo 'daily collection did not produce its scan artifact' >&2
+  exit "${collection_status:-1}"
+}
+metrics=$(python3 - "$artifact" "$COLLECTION_DATE" <<'PY'
+import json, sys
+artifact, expected = sys.argv[1:]
+data = json.load(open(artifact, encoding="utf-8"))
+if data.get("run", {}).get("collectionDate") != expected:
+    raise SystemExit("daily collection artifact date mismatch")
+scans = data.get("scans")
+if not isinstance(scans, list) or not scans:
+    raise SystemExit("daily collection artifact has no provider scans")
+successful = sum(scan.get("status") == "succeeded" for scan in scans)
+fetched = sum(int(scan.get("fetched", 0)) for scan in scans)
+inserted = sum(int(scan.get("inserted", 0)) for scan in scans)
+duplicates = sum(int(scan.get("skippedDuplicates", 0)) for scan in scans)
+if successful < 1 or fetched < 1:
+    raise SystemExit("daily collection has no successful provider data")
+print(successful, fetched, inserted, duplicates)
+PY
+)
+read -r successful_providers fetched_items inserted_items duplicate_items <<<"$metrics"
+dated_artifact=$receipt_dir/collection.$COLLECTION_DATE.scans.v1.json
+cp "$artifact" "$dated_artifact.tmp.$$"
+chmod 0444 "$dated_artifact.tmp.$$"
+mv -f "$dated_artifact.tmp.$$" "$dated_artifact"
 
 completed_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 log_sha256=$(sha256sum "$log_file" | awk '{print $1}')
-fresh_items=$(sed -nE \
-  's/^Reader summary clean real-day collection OK \(([0-9]+) fresh items\)$/\1/p' \
-  "$log_file" | tail -1)
-fresh_items=${fresh_items:-0}
 receipt=$receipt_dir/collection.$COLLECTION_DATE.receipt.v1.json
 temp=$receipt.tmp.$$
 printf '%s\n' \
-  "{\"schemaVersion\":\"social_monitor.daily_collection_receipt.v1\",\"collectionDate\":\"$COLLECTION_DATE\",\"completedAt\":\"$completed_at\",\"freshItemCount\":$fresh_items,\"logSha256\":\"$log_sha256\",\"status\":\"SUCCESS\"}" \
+  "{\"schemaVersion\":\"social_monitor.daily_collection_receipt.v1\",\"collectionDate\":\"$COLLECTION_DATE\",\"completedAt\":\"$completed_at\",\"successfulProviderCount\":$successful_providers,\"fetchedItemCount\":$fetched_items,\"insertedItemCount\":$inserted_items,\"duplicateItemCount\":$duplicate_items,\"summaryQualityGatePassed\":false,\"logSha256\":\"$log_sha256\",\"status\":\"SUCCESS\"}" \
   >"$temp"
 chmod 0444 "$temp"
 if ! mv -n "$temp" "$receipt" 2>/dev/null; then
@@ -72,5 +99,6 @@ if ! mv -n "$temp" "$receipt" 2>/dev/null; then
   }
   rm -f "$temp"
 fi
-printf 'daily-collection outcome=SUCCESS date=%s freshItems=%s receipt=%s\n' \
-  "$COLLECTION_DATE" "$fresh_items" "$receipt"
+printf 'daily-collection outcome=SUCCESS date=%s providers=%s fetched=%s inserted=%s duplicates=%s receipt=%s\n' \
+  "$COLLECTION_DATE" "$successful_providers" "$fetched_items" \
+  "$inserted_items" "$duplicate_items" "$receipt"
