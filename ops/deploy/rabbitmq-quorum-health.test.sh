@@ -26,6 +26,7 @@ VHOST_OUTPUT=''
 LISTENERS_STATUS=0
 LISTENERS_OUTPUT="Node rabbit@$TARGET_HOSTNAME reported no enabled listeners."
 WORKER_MODE=healthy
+CLUSTER_MAINTENANCE_MODE=string
 WORKER_ID=abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd
 
 # shellcheck source=ops/deploy/rabbitmq-quorum-health.sh
@@ -40,6 +41,11 @@ cluster_status_json() {
   cat <<JSON
 {"alarms":[],"running_nodes":["rabbit@$TARGET_HOSTNAME"],"cluster_tags":[],"listeners":{"rabbit@$TARGET_HOSTNAME":[]},"cpu_cores":{"rabbit@$TARGET_HOSTNAME":6},"cluster_name":"rabbit@$TARGET_HOSTNAME","disk_nodes":["rabbit@$TARGET_HOSTNAME"],"versions":{"rabbit@$TARGET_HOSTNAME":{"erlang_version":"27.3.4.13","rabbitmq_name":"RabbitMQ","rabbitmq_version":"$CLUSTER_VERSION"}},"partitions":{},"maintenance_status":{"rabbit@$TARGET_HOSTNAME":"not under maintenance"}}
 JSON
+}
+
+cluster_status_object_maintenance_json() {
+  cluster_status_json | sed \
+    's/"not under maintenance"/{"status":"not under maintenance"}/'
 }
 
 quorum_status_json() {
@@ -106,7 +112,13 @@ docker() {
             cluster_status)
               [[ $5 == --formatter && $6 == json ]] || return 96
               case $CLUSTER_MODE in
-                healthy) cluster_status_json ;;
+                healthy)
+                  if [[ $CLUSTER_MAINTENANCE_MODE == object ]]; then
+                    cluster_status_object_maintenance_json
+                  else
+                    cluster_status_json
+                  fi
+                  ;;
                 alarm) cluster_status_json | sed 's/"alarms":\[\]/"alarms":["memory"]/' ;;
                 partition) cluster_status_json | sed 's/"partitions":{}/"partitions":{"rabbit@other":["rabbit@fixture"]}/' ;;
                 malformed) printf '%s\n' '{"running_nodes":[]}' ;;
@@ -265,6 +277,9 @@ QUEUE_MODE=healthy
 for CLUSTER_VERSION in 4.3.2 4.3.4; do
   assert_probe_status 0
 done
+CLUSTER_MAINTENANCE_MODE=object
+assert_probe_status 0
+CLUSTER_MAINTENANCE_MODE=string
 for CLUSTER_VERSION in 4.3.1 4.4.0 4.3.4-rc.1 invalid; do
   assert_probe_status 1
 done
