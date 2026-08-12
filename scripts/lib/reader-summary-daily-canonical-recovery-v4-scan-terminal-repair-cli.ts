@@ -269,6 +269,7 @@ const syncDirectory = (directory: string): void => {
 const createSystemPool = (applicationName: string): Pool =>
   new Pool({
     connectionString: requiredSystemDatabaseUrl(),
+    min: 0,
     max: 1,
     application_name: applicationName,
   });

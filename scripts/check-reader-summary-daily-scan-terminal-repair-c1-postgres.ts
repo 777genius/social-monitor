@@ -20,7 +20,7 @@ const suffix = randomBytes(8).toString("hex");
 const databaseName = `daily_scan_terminal_repair_c1_${suffix}`;
 const serverUrl = requiredAdminUrl(process.env);
 const targetUrl = databaseUrl(serverUrl, databaseName);
-const server = new Pool({ connectionString: serverUrl, max: 1 });
+const server = new Pool({ connectionString: serverUrl, min: 0, max: 1 });
 const createdRoles: string[] = [];
 const addedMemberships: { role: string; member: string }[] = [];
 let databaseCreated = false;
@@ -62,8 +62,8 @@ const main = async (): Promise<void> => {
   await server.query(`CREATE DATABASE ${quoteIdentifier(databaseName)}`);
   databaseCreated = true;
 
-  const adminPool = new Pool({ connectionString: targetUrl, max: 1 });
-  const runtimePool = new Pool({ connectionString: targetUrl, max: 1 });
+  const adminPool = new Pool({ connectionString: targetUrl, min: 0, max: 1 });
+  const runtimePool = new Pool({ connectionString: targetUrl, min: 0, max: 1 });
   let admin: PoolClient | undefined;
   let runtime: PoolClient | undefined;
   try {

@@ -114,6 +114,7 @@ export const runDailyDeliveryC1 = async (
   }
   const pool = new Pool({
     connectionString: databaseUrl,
+    min: 0,
     max: 1,
     application_name: `reader-summary-daily-delivery-c1-${mode}`,
   });
@@ -121,6 +122,7 @@ export const runDailyDeliveryC1 = async (
   terminalDatabaseUrl.username = "social_monitor_reader_summary_daily_terminal";
   const terminalPool = new Pool({
     connectionString: terminalDatabaseUrl.toString(),
+    min: 0,
     max: 1,
     application_name: `reader-summary-daily-delivery-c1-terminal-${mode}`,
   });

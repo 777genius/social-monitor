@@ -341,10 +341,18 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/capture-reader-summary-multi-day-quality-corpus.ts:Pool
       scripts/capture-reader-summary-multi-day-quality-target-manifest.ts:Pool
       scripts/check-github-repo-radar-prisma-live-e2e.ts:Pool
+      scripts/check-reader-summary-daily-delivery-c1-postgres.ts:Pool
+      scripts/check-reader-summary-daily-delivery-c1-postgres.ts:Pool
+      scripts/check-reader-summary-daily-delivery-c1-postgres.ts:Pool
+      scripts/check-reader-summary-daily-delivery-c1-postgres.ts:Pool
+      scripts/check-reader-summary-daily-delivery-c1-postgres.ts:Pool
       scripts/check-reader-summary-daily-execution-cursor-postgres.ts:Pool
       scripts/check-reader-summary-daily-execution-cursor-postgres.ts:Pool
       scripts/check-reader-summary-daily-execution-cursor-postgres.ts:Pool
       scripts/check-reader-summary-daily-execution-cursor-postgres.ts:Pool
+      scripts/check-reader-summary-daily-scan-terminal-repair-c1-postgres.ts:Pool
+      scripts/check-reader-summary-daily-scan-terminal-repair-c1-postgres.ts:Pool
+      scripts/check-reader-summary-daily-scan-terminal-repair-c1-postgres.ts:Pool
       scripts/check-reader-summary-multi-day-quality.ts:Pool
       scripts/check-reader-summary-original-cutoff-prisma-catalog.ts:Pool
       scripts/check-reader-summary-original-cutoff-prisma-catalog.ts:Pool
@@ -381,6 +389,9 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/check-yesterday-social-collection-quality.ts:Pool
       scripts/lib/github-trending-durable-snapshot-reuse-postgres-fixture.ts:Pool
       scripts/lib/github-trending-durable-snapshot-reuse-postgres-fixture.ts:Pool
+      scripts/lib/reader-summary-daily-canonical-recovery-v4-delivery-c1.ts:Pool
+      scripts/lib/reader-summary-daily-canonical-recovery-v4-delivery-c1.ts:Pool
+      scripts/lib/reader-summary-daily-canonical-recovery-v4-scan-terminal-repair-cli.ts:Pool
       scripts/lib/reader-summary-daily-terminal-runtime-connection.ts:Pool
       scripts/lib/reader-summary-production-day-scope.ts:Pool
       scripts/lib/yesterday-social-replay-support.ts:Pool
@@ -428,7 +439,9 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/capture-reader-summary-multi-day-quality-corpus.ts
       scripts/capture-reader-summary-multi-day-quality-target-manifest.ts
       scripts/check-github-repo-radar-prisma-live-e2e.ts
+      scripts/check-reader-summary-daily-delivery-c1-postgres.ts
       scripts/check-reader-summary-daily-execution-cursor-postgres.ts
+      scripts/check-reader-summary-daily-scan-terminal-repair-c1-postgres.ts
       scripts/check-reader-summary-multi-day-quality.ts
       scripts/check-reader-summary-original-cutoff-prisma-catalog.ts
       scripts/check-reader-summary-production-regeneration-smoke.ts
@@ -453,6 +466,8 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/lib/github-trending-durable-snapshot-reuse.ts
       scripts/lib/reader-summary-current-publication-bindings.spec.ts
       scripts/lib/reader-summary-current-publication-bindings.ts
+      scripts/lib/reader-summary-daily-canonical-recovery-v4-delivery-c1.ts
+      scripts/lib/reader-summary-daily-canonical-recovery-v4-scan-terminal-repair-cli.ts
       scripts/lib/reader-summary-daily-terminal-runtime-connection.spec.ts
       scripts/lib/reader-summary-daily-terminal-runtime-connection.ts
       scripts/lib/reader-summary-production-day-scope.spec.ts
@@ -728,7 +743,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
     const productionDailyUnit = readSource(
       'ops/deploy/production-runtime/social-monitor-daily.service',
     );
-    expect(productionDailyUnit).toContain('TimeoutStartSec=23400');
+    expect(productionDailyUnit).toContain('TimeoutStartSec=19800');
     expect(productionDailyUnit).toContain('Restart=no');
     expect(deploy).toContain(
       'verify_live_postgres_admission "$postgres_env"',

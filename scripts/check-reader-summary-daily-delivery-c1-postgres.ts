@@ -43,7 +43,7 @@ const boundedClaimMigration = readFileSync(
   "prisma/migrations/20260804130400_reader_summary_daily_bounded_maintenance_claim/migration.sql",
   "utf8",
 );
-const server = new Pool({ connectionString: serverUrl, max: 1 });
+const server = new Pool({ connectionString: serverUrl, min: 0, max: 1 });
 const createdRoles: string[] = [];
 let databaseCreated = false;
 let systemMembershipCreated = false;
@@ -89,7 +89,7 @@ const main = async (): Promise<void> => {
   await server.query(`CREATE DATABASE ${quoteIdentifier(databaseName)}`);
   databaseCreated = true;
 
-  const adminPool = new Pool({ connectionString: targetUrl, max: 1 });
+  const adminPool = new Pool({ connectionString: targetUrl, min: 0, max: 1 });
   try {
     await adminPool.query(
       `ALTER SCHEMA public OWNER TO ${quoteIdentifier(schemaOwnerRole)}`,
@@ -499,7 +499,7 @@ const claimLegacy = async (
   gucs: ReturnType<typeof cursorGucs>,
   expectedUtcDate: string,
 ): Promise<Readonly<{ outcome: string; requestedUtcDate: string | null }>> => {
-  const pool = new Pool({ connectionString: targetUrl, max: 1 });
+  const pool = new Pool({ connectionString: targetUrl, min: 0, max: 1 });
   const client = await pool.connect();
   try {
     await client.query(`SET SESSION AUTHORIZATION ${quoteIdentifier(role)}`);
@@ -611,7 +611,7 @@ const readEvidence = async (
   targetTenantId: string,
   targetWorkspaceId: string,
 ): Promise<readonly EvidenceRow[]> => {
-  const pool = new Pool({ connectionString: targetUrl, max: 1 });
+  const pool = new Pool({ connectionString: targetUrl, min: 0, max: 1 });
   const client = await pool.connect();
   try {
     await client.query(`SET SESSION AUTHORIZATION ${quoteIdentifier(role)}`);
@@ -656,7 +656,7 @@ const advanceCursor = async (
   targetTenantId: string,
   targetWorkspaceId: string,
 ): Promise<string> => {
-  const pool = new Pool({ connectionString: targetUrl, max: 1 });
+  const pool = new Pool({ connectionString: targetUrl, min: 0, max: 1 });
   const client = await pool.connect();
   try {
     await client.query(`SET SESSION AUTHORIZATION ${quoteIdentifier(role)}`);
