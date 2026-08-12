@@ -6,6 +6,12 @@ DAILY_RUN=$SCRIPT_DIR/daily-run.sh
 DAILY_SERVICE=$SCRIPT_DIR/social-monitor-daily.service
 DAILY_TIMER=$SCRIPT_DIR/social-monitor-daily.timer
 DAILY_ARTIFACTS_COMPOSE=$SCRIPT_DIR/compose.daily-artifacts.yml
+C1_READINESS=$SCRIPT_DIR/reader-summary-daily-c1.readiness
+
+grep -Fx 'state=READY' "$C1_READINESS" >/dev/null
+grep -Fx 'requires=H_GREEN,C0_GREEN,C1_SCAN_TERMINAL_REPAIR_GREEN' \
+  "$C1_READINESS" >/dev/null
+grep -Fx 'activation=reviewed' "$C1_READINESS" >/dev/null
 
 grep -Fx \
   'readonly DAILY_AUTH_POOL_JOB_ID=social-monitor-production-account-pool-terra-v25-20260804' \
