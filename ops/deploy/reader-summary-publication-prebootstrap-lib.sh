@@ -37,12 +37,12 @@ reader_summary_publication_prebootstrap_absent_daily_timer() {
 }
 
 reader_summary_publication_prebootstrap_v6_runner() {
-  local previous_sha=${1:-}
+  local previous_sha=${1:-} target_sha=${2:-}
   local source=$REPO/ops/deploy/production-runtime/daily-run.sh
   local destination=$CONTROL/run-reader-summary-production-day.sh
   local next=$CONTROL/.run-reader-summary-production-day.sh.bootstrap-next
   local service=social-monitor-reader-summary-production-day.service
-  local active_state
+  local active_state candidate_sha reviewed=false
 
   if cmp -s "$source" "$destination"; then
     [[ -f $destination && ! -L $destination && -x $destination ]] || \
@@ -58,13 +58,22 @@ reader_summary_publication_prebootstrap_v6_runner() {
     { fail 'target publication prebootstrap v6 runner state is unsafe'; return 1; }
   if [[ -e $destination || -L $destination ]]; then
     [[ -f $destination && ! -L $destination && -x $destination && \
-       $previous_sha =~ ^[0-9a-f]{40}$ ]] || \
+       $previous_sha =~ ^[0-9a-f]{40}$ && $target_sha =~ ^[0-9a-f]{40}$ ]] || \
       { fail 'target publication prebootstrap v6 runner state is unsafe'; return 1; }
-    git -C "$REPO" cat-file -e \
-      "$previous_sha:ops/deploy/production-runtime/daily-run.sh" 2>/dev/null && \
-      git -C "$REPO" show \
-        "$previous_sha:ops/deploy/production-runtime/daily-run.sh" | \
-        cmp -s - "$destination" || \
+    git -C "$REPO" merge-base --is-ancestor "$previous_sha" "$target_sha" || \
+      { fail 'target publication prebootstrap v6 runner ancestry is unsafe'; return 1; }
+    while IFS= read -r candidate_sha; do
+      git -C "$REPO" cat-file -e \
+        "$candidate_sha:ops/deploy/production-runtime/daily-run.sh" 2>/dev/null || continue
+      if git -C "$REPO" show \
+          "$candidate_sha:ops/deploy/production-runtime/daily-run.sh" | \
+          cmp -s - "$destination"; then
+        reviewed=true
+        break
+      fi
+    done < <(printf '%s\n' "$previous_sha"; \
+      git -C "$REPO" rev-list "$previous_sha..$target_sha")
+    [[ $reviewed == true ]] || \
       { fail 'target publication prebootstrap v6 runner provenance is unsafe'; return 1; }
   fi
   install -m 0755 "$source" "$next" || return 1
@@ -180,7 +189,7 @@ reader_summary_publication_prebootstrap_target_daily_runner() {
       break
     done <<< "$services"
   fi
-  reader_summary_publication_prebootstrap_v6_runner "$previous_sha"
+  reader_summary_publication_prebootstrap_v6_runner "$previous_sha" "$sha"
   reader_summary_publication_prebootstrap_absent_daily_timer
   reader_summary_publication_prebootstrap_v6_dropin
 }

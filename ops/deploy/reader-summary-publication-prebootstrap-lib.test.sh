@@ -23,7 +23,6 @@ git -C "$REPO" config user.name test
 git -C "$REPO" add ops/deploy/production-runtime/daily-run.sh
 git -C "$REPO" commit -qm 'test: previous runner'
 PREVIOUS_SHA=$(git -C "$REPO" rev-parse HEAD)
-
 fail() {
   printf 'publication-prebootstrap-test-error: %s\n' "$*" >&2
   return 1
@@ -69,13 +68,17 @@ reader_summary_publication_prebootstrap_v6_runner
 printf '# previous reviewed runner\n' > \
   "$REPO/ops/deploy/production-runtime/daily-run.sh"
 chmod 0755 "$REPO/ops/deploy/production-runtime/daily-run.sh"
-reader_summary_publication_prebootstrap_v6_runner "$PREVIOUS_SHA"
+git -C "$REPO" add ops/deploy/production-runtime/daily-run.sh
+git -C "$REPO" commit -qm 'test: target runner'
+TARGET_SHA=$(git -C "$REPO" rev-parse HEAD)
+reader_summary_publication_prebootstrap_v6_runner "$PREVIOUS_SHA" "$TARGET_SHA"
 cmp -s "$REPO/ops/deploy/production-runtime/daily-run.sh" \
   "$CONTROL/run-reader-summary-production-day.sh"
 
 printf '# unknown runner\n' > "$CONTROL/run-reader-summary-production-day.sh"
 chmod 0755 "$CONTROL/run-reader-summary-production-day.sh"
-if reader_summary_publication_prebootstrap_v6_runner "$PREVIOUS_SHA" 2>/dev/null; then
+if reader_summary_publication_prebootstrap_v6_runner \
+    "$PREVIOUS_SHA" "$TARGET_SHA" 2>/dev/null; then
   echo 'unknown previous runner was unexpectedly accepted' >&2
   exit 1
 fi
@@ -84,12 +87,13 @@ git -C "$REPO" show \
   "$CONTROL/run-reader-summary-production-day.sh"
 chmod 0755 "$CONTROL/run-reader-summary-production-day.sh"
 fake_active_state=active
-if reader_summary_publication_prebootstrap_v6_runner "$PREVIOUS_SHA" 2>/dev/null; then
+if reader_summary_publication_prebootstrap_v6_runner \
+    "$PREVIOUS_SHA" "$TARGET_SHA" 2>/dev/null; then
   echo 'active previous runner was unexpectedly replaced' >&2
   exit 1
 fi
 fake_active_state=inactive
-reader_summary_publication_prebootstrap_v6_runner "$PREVIOUS_SHA"
+reader_summary_publication_prebootstrap_v6_runner "$PREVIOUS_SHA" "$TARGET_SHA"
 reader_summary_publication_prebootstrap_absent_daily_timer
 cmp -s \
   "$REPO/ops/deploy/production-runtime/social-monitor-reader-summary-production-day.bootstrap.timer" \
