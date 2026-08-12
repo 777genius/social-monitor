@@ -99,7 +99,7 @@ fake_ssh() {
     maintenance_success:"disk-report $TARGET_SHA"|maintenance_success:"project-disk-cleanup $TARGET_SHA"|maintenance_success:"reader-summary-recover-missing-days $TARGET_SHA"|maintenance_success:"reader-summary-weekly-run $TARGET_SHA"|maintenance_success:"reader-summary-daily-terminal-set-receipt-v1 $TARGET_SHA"|maintenance_success:"reader-summary-daily-canonical-recovery-v4 $TARGET_SHA invalid-product-retry-set-v1 $TERMINAL_SET_SHA256"|maintenance_success:"reader-summary-daily-canonical-recovery-v4 $TARGET_SHA reader-summary-daily-canonical-recovery-v4 $MODEL_JOB_IDENTITY $AUTHORITY_SHA256")
       printf 'maintenance=%s\n' "${command%% *}"
       ;;
-    normal_success:"deploy $TARGET_SHA")
+    normal_success:"deploy $TARGET_SHA"|normal_success:"deploy 944fdb6da3071f70a69c7048c9fcdf1c2552603e")
       printf 'deployed=%s\n' "$TARGET_SHA"
       ;;
     atomic_success:"deploy $TARGET_SHA")
@@ -436,6 +436,16 @@ assert_call_count 1 "upload $TARGET_SHA"
 run_client normal_success deploy "$TARGET_SHA" >/dev/null
 assert_call_count 1 "deploy $TARGET_SHA"
 assert_call_count 1 "plan $TARGET_SHA"
+
+run_client normal_success install-daily-c1-bridge-policy \
+  944fdb6da3071f70a69c7048c9fcdf1c2552603e >/dev/null
+assert_call_count 1 \
+  "deploy 944fdb6da3071f70a69c7048c9fcdf1c2552603e"
+assert_call_count 0 \
+  "plan 944fdb6da3071f70a69c7048c9fcdf1c2552603e"
+
+assert_fails normal_success install-daily-c1-bridge-policy "$TARGET_SHA"
+assert_call_count 0 "deploy $TARGET_SHA"
 
 run_client disconnect_eventual deploy "$TARGET_SHA" >/dev/null
 assert_call_count 1 "deploy $TARGET_SHA"
