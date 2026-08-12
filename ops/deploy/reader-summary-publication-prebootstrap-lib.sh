@@ -36,6 +36,39 @@ reader_summary_publication_prebootstrap_absent_daily_timer() {
     fail 'target publication prebootstrap daily timer did not become rollback-safe'
 }
 
+reader_summary_publication_prebootstrap_v6_dropin() {
+  local service=social-monitor-reader-summary-production-day.service
+  local asset=social-monitor-reader-summary-production-day.service.d-10-daily-c1-owner.conf
+  local source=$REPO/ops/deploy/production-runtime/$asset
+  local directory=$SYSTEMD_UNIT_DIR/$service.d
+  local destination=$directory/10-daily-c1-owner.conf
+  local next=$directory/.10-daily-c1-owner.conf.bootstrap-next active_state dropins
+
+  active_state=$(reader_summary_publication_systemctl show \
+    --property=ActiveState --value "$service") || \
+    fail 'target publication prebootstrap v6 service activity is unavailable'
+  dropins=$(reader_summary_publication_systemctl show \
+    --property=DropInPaths --value "$service") || \
+    fail 'target publication prebootstrap v6 drop-in state is unavailable'
+  [[ $active_state == inactive ]] || \
+    fail 'target publication prebootstrap v6 service is not inactive'
+  if [[ $dropins == "$destination" ]] && cmp -s "$source" "$destination"; then
+    return 0
+  fi
+  [[ -z $dropins && ! -e $destination && ! -L $destination && \
+     -f $source && ! -L $source && ! -e $next && ! -L $next ]] || \
+    fail 'target publication prebootstrap v6 drop-in state is unsafe'
+  install -d -m 0755 "$directory" || return 1
+  install -m 0644 "$source" "$next" || return 1
+  if ((EUID == 0)); then chown root:root "$next" || return 1; fi
+  mv -f "$next" "$destination" || return 1
+  reader_summary_publication_systemctl daemon-reload || return 1
+  dropins=$(reader_summary_publication_systemctl show \
+    --property=DropInPaths --value "$service") || return 1
+  [[ $dropins == "$destination" ]] && cmp -s "$source" "$destination" || \
+    fail 'target publication prebootstrap v6 drop-in did not become exact'
+}
+
 reader_summary_publication_prebootstrap_target_daily_runner() {
   if [[ ! ${publication_library+x} && ! ${reviewed_digest+x} &&
         ! ${actual_digest+x} ]]; then
@@ -94,4 +127,5 @@ reader_summary_publication_prebootstrap_target_daily_runner() {
     done <<< "$services"
   fi
   reader_summary_publication_prebootstrap_absent_daily_timer
+  reader_summary_publication_prebootstrap_v6_dropin
 }

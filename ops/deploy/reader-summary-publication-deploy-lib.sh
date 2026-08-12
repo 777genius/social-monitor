@@ -50,6 +50,7 @@ fi
 # installed c59 deploy-control bridge. The bridge's local target SHA remains
 # Bash-dynamically scoped while this file is sourced, so validate the adjacent
 # target-only backup implementation here before returning to installed code.
+# The adjacent prebootstrap also seals the inactive daily systemd handoff.
 ! declare -F create_pre_migration_database_backup >/dev/null || \
   fail 'PostgreSQL backup entrypoint was loaded before target validation'
 
