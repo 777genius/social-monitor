@@ -9,6 +9,26 @@ SET LOCAL ROLE "social_monitor_public_schema_owner";
 GRANT USAGE, CREATE ON SCHEMA public
 TO "social_monitor_reader_summary_publication_owner";
 RESET ROLE;
+
+DO $grant_c1_model_evidence_read$
+DECLARE
+  v_daily_owner NAME;
+BEGIN
+  SELECT pg_catalog.pg_get_userbyid(relation.relowner)
+  INTO STRICT v_daily_owner
+  FROM pg_catalog.pg_class AS relation
+  WHERE relation.oid =
+    'public.reader_summary_daily_model_jobs'::REGCLASS;
+  IF NOT pg_catalog.pg_has_role(session_user, v_daily_owner, 'SET') THEN
+    RAISE EXCEPTION 'migration admin cannot SET the daily model table owner';
+  END IF;
+  EXECUTE pg_catalog.format('SET LOCAL ROLE %I', v_daily_owner);
+  GRANT SELECT ON TABLE public."reader_summary_daily_model_jobs"
+  TO "social_monitor_reader_summary_publication_owner";
+  RESET ROLE;
+END
+$grant_c1_model_evidence_read$;
+
 SET LOCAL ROLE "social_monitor_reader_summary_publication_owner";
 
 CREATE FUNCTION public."read_reader_summary_daily_delivery_c1_retry_evidence"(
@@ -254,8 +274,6 @@ FROM PUBLIC, "social_monitor_reader_summary_daily_terminal",
   "social_monitor_reader_summary_publication_runtime",
   "social_monitor_tenant_system_runtime";
 RESET ROLE;
-GRANT SELECT ON TABLE public."reader_summary_daily_model_jobs"
-TO "social_monitor_reader_summary_publication_owner";
 SET LOCAL ROLE "social_monitor_reader_summary_publication_owner";
 GRANT EXECUTE ON FUNCTION public."is_reader_summary_daily_delivery_c1_jul24_adoptable"()
 TO "social_monitor_public_schema_owner";
