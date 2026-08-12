@@ -19,9 +19,8 @@ RELEASE_SHA=0123456789abcdef0123456789abcdef01234567
 # Production keeps collection before the canonical terminal. The terminal
 # receives the pinned date and owns the only production publication path.
 grep -F 'npm run run:reader-summary-clean-real-day-collection' "$DAILY_RUN" >/dev/null
-# This source assertion intentionally matches a literal shell variable reference.
-# shellcheck disable=SC2016
-grep -F 'READER_SUMMARY_DAILY_FIRST_UNRESOLVED_UTC_DATE="$requested_date"' \
+# C1 recovery starts from the reviewed first unresolved production date.
+grep -F 'READER_SUMMARY_DAILY_FIRST_UNRESOLVED_UTC_DATE=2026-07-23' \
   "$DAILY_RUN" >/dev/null
 # This source assertion intentionally matches a literal shell variable reference.
 # shellcheck disable=SC2016
@@ -61,6 +60,12 @@ prepare_case() {
     "$case_dir/public"
   printf '%s\n' "$RELEASE_SHA" > "$root/control/deploy-state/backend.sha"
   printf '%s\n' "$RELEASE_SHA" > "$root/control/postgres-runtime-current/READY"
+  printf '%s\n' \
+    schemaVersion=reader_summary.daily_delivery_readiness.c1 \
+    state=READY \
+    requires=H_GREEN,C0_GREEN,C1_SCAN_TERMINAL_REPAIR_GREEN \
+    activation=reviewed \
+    > "$root/control/postgres-runtime-current/reader-summary-daily-c1.readiness"
   printf '%s\n' \
     '#!/usr/bin/env bash' \
     'set -euo pipefail' \
