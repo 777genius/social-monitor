@@ -762,7 +762,7 @@ jobs:
           DEPLOY_USER: ${{ vars.PRODUCTION_SSH_USER }}
         run: |
           set -euo pipefail
-          bridge_policy=6507e47a21b75d622672a28c7eee7bd5624c5eb9
+          bridge_policy=944fdb6da3071f70a69c7048c9fcdf1c2552603e
           bash ops/deploy/github-production-deploy-client.sh \
             install-daily-c1-bridge-policy "$bridge_policy"
           bash ops/deploy/github-production-deploy-client.sh deploy "$GITHUB_SHA"
