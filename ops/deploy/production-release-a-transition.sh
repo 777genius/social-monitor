@@ -351,8 +351,9 @@ classify_plan() {
   if [[ $target_phase == TARGET && $PLAN_BACKEND_BASE == "$BACKEND_BASE" &&
         $PLAN_BOOTSTRAP == "$POSTGRES_POOL_BOOTSTRAP_VERSION" &&
         $PLAN_BOOTSTRAP_SHA == "$POST_ROLLBACK_BOOTSTRAP_SHA" &&
-        $PLAN_REPAIR == false ]] &&
-     plan_flags_are false true true false; then
+        $PLAN_REPAIR == false && $PLAN_FRONTEND =~ ^(true|false)$ &&
+        $PLAN_BACKEND == true && $PLAN_CONTROL == true &&
+        $PLAN_X_COLLECTOR == false ]]; then
     printf 'transition_state=target-pending\n'
     return
   fi

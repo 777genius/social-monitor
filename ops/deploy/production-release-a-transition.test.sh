@@ -76,6 +76,9 @@ write_plan "$FIXTURE/post-rollback-target.plan" false true "$BACKEND_BASE" true 
 [[ $(bash "$TRANSITION" state "$TARGET" TARGET "$FIXTURE/target-pending.plan") == transition_state=target-pending ]]
 [[ $(bash "$TRANSITION" state "$TARGET" TARGET "$FIXTURE/target-complete.plan") == transition_state=target-complete ]]
 [[ $(bash "$TRANSITION" state "$TARGET" TARGET "$FIXTURE/post-rollback-target.plan") == transition_state=target-pending ]]
+write_plan "$FIXTURE/post-rollback-frontend-target.plan" true true "$BACKEND_BASE" true false \
+  postgres-pool-v1 e7b19bc805815af310f1e5096d3fec5789129ddb
+[[ $(bash "$TRANSITION" state "$TARGET" TARGET "$FIXTURE/post-rollback-frontend-target.plan") == transition_state=target-pending ]]
 
 # Bootstrap absence and an already reported repair are explicit A2 states.
 write_plan "$FIXTURE/uninstalled.plan" false false "$FIXED_E" true false uninstalled "$ZERO_SHA"
