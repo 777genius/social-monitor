@@ -164,6 +164,16 @@ jobs:
           target_plan="$RUNNER_TEMP/recovery-target-inspect.plan"; b_plan="$RUNNER_TEMP/recovery-b2-inspect.plan"
           a_plan="$RUNNER_TEMP/recovery-a2-inspect.plan"; e_plan="$RUNNER_TEMP/recovery-e-inspect.plan"
           repair_anchor=none
+          target_atomic_repair_plan() {
+            [[ $(awk -F= '$1 == "frontend" { print $2 }' "$target_plan") =~ ^(true|false)$ &&
+               $(awk -F= '$1 == "backend" { print $2 }' "$target_plan") == true &&
+               $(awk -F= '$1 == "backend_base" { print $2 }' "$target_plan") == 4bb8f6d4969b8449726a10859202b23e2bfb4366 &&
+               $(awk -F= '$1 == "control" { print $2 }' "$target_plan") == true &&
+               $(awk -F= '$1 == "x_collector" { print $2 }' "$target_plan") == false &&
+               $(awk -F= '$1 == "postgres_pool_bootstrap" { print $2 }' "$target_plan") == uninstalled &&
+               $(awk -F= '$1 == "postgres_pool_bootstrap_sha" { print $2 }' "$target_plan") == 0000000000000000000000000000000000000000 &&
+               $(awk -F= '$1 == "postgres_pool_repair" { print $2 }' "$target_plan") == false ]]
+          }
           bash "$client" inspect-plan "$GITHUB_SHA" > "$target_plan"
           daily_c1_bridge_base=e3b5b5d89b3586668e36f987f03672415b5a0f37
           daily_c1_final_marker=ops/deploy/production-runtime/reader-summary-daily-c1.readiness
@@ -221,9 +231,14 @@ jobs:
               transition_state=target-pending
             fi
           elif target_state=$(bash "$transition" state "$GITHUB_SHA" TARGET "$target_plan" \
-              2> "$RUNNER_TEMP/recovery-target-state.err") && \
-             [[ $target_state != transition_state=repair-required ]]; then
+              2> "$RUNNER_TEMP/recovery-target-state.err") &&
+             { case $target_state in
+                 transition_state=repair-required) target_atomic_repair_plan ;;
+                 *) true ;;
+               esac; }; then
             transition_state=${target_state#transition_state=}
+            [[ $transition_state != repair-required ]] || \
+              repair_anchor=$daily_c1_atomic_repair
           else
             bash "$client" inspect-plan "$release_b2" > "$b_plan"
             if b_state=$(bash "$transition" state "$GITHUB_SHA" B2 "$b_plan" \
@@ -359,6 +374,8 @@ jobs:
           DATABASE_URL: postgresql://social_monitor_pool_ci:social_monitor_local_password@127.0.0.1:5432/social_monitor_pool_ci
           POSTGRES_POOL_BOOTSTRAP: ${{ needs.plan.outputs.postgres_pool_bootstrap }}
           POSTGRES_POOL_BOOTSTRAP_SHA: ${{ needs.plan.outputs.postgres_pool_bootstrap_sha }}
+          REPAIR_ANCHOR: ${{ needs.plan.outputs.repair_anchor }}
+          TRANSITION_STATE: ${{ needs.plan.outputs.transition_state }}
         run: |
           set -euo pipefail
           x_dockerfile=ops/deploy/production-runtime/x-collector.Dockerfile
@@ -555,14 +572,16 @@ jobs:
           shellcheck -S warning -x "${deploy_shell_files[@]}"
           python3 -m py_compile ops/deploy/verify-postgres-runtime-topology.py
           python3 -m py_compile ops/deploy/verify-postgres-pool-release-contract.py
-          if [[ $bridge_phase == true && \
-                $POSTGRES_POOL_BOOTSTRAP == uninstalled ]]; then
+          if [[ $POSTGRES_POOL_BOOTSTRAP == uninstalled && \
+                ( $bridge_phase == true || \
+                  ( $TRANSITION_STATE == repair-required &&
+                    $REPAIR_ANCHOR == 61018b1d376ba6695c29f9ccee1b53b1b344d4dc ) ) ]]; then
             [[ $POSTGRES_POOL_BOOTSTRAP_SHA == \
                0000000000000000000000000000000000000000 ]] || {
-              echo 'uninstalled bridge bootstrap has a nonzero durable release SHA' >&2
+              echo 'repairable uninstalled bootstrap has a nonzero durable release SHA' >&2
               exit 1
             }
-            echo 'backend-gate=postgres-pool-release deferred-to-bounded-B2-repair'
+            echo 'backend-gate=postgres-pool-release deferred-to-bounded-repair'
           else
             python3 ops/deploy/verify-postgres-pool-release-contract.py ci \
               --target "$GITHUB_SHA" \

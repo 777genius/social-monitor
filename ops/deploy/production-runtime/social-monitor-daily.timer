@@ -6,7 +6,7 @@ OnCalendar=*-*-* 00:15:00 UTC
 AccuracySec=1min
 RandomizedDelaySec=0
 Persistent=true
-Unit=social-monitor-post-collection.service
+Unit=social-monitor-daily.service
 
 [Install]
 WantedBy=timers.target

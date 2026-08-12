@@ -349,6 +349,17 @@ classify_plan() {
     return
   fi
   if [[ $target_phase == TARGET &&
+        $PLAN_BACKEND_BASE == "$BACKEND_BASE" &&
+        $PLAN_BOOTSTRAP == uninstalled &&
+        $PLAN_BOOTSTRAP_SHA == 0000000000000000000000000000000000000000 &&
+        $PLAN_REPAIR == false &&
+        $PLAN_FRONTEND =~ ^(true|false)$ &&
+        $PLAN_BACKEND == true && $PLAN_CONTROL == true &&
+        $PLAN_X_COLLECTOR == false ]]; then
+    printf 'transition_state=repair-required\n'
+    return
+  fi
+  if [[ $target_phase == TARGET &&
         $(git cat-file -t "$PLAN_BACKEND_BASE" 2>/dev/null || true) == commit &&
         $(first_parent_contains "$PLAN_BACKEND_BASE" "$target" && printf true || printf false) == true &&
         $PLAN_BOOTSTRAP == "$POSTGRES_POOL_BOOTSTRAP_VERSION" &&

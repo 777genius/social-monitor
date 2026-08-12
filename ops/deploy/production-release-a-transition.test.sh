@@ -68,6 +68,8 @@ write_plan "$FIXTURE/target-pending.plan" true true "$FIXED_B2" true false
 write_plan "$FIXTURE/target-complete.plan" false false "$TARGET" false false
 write_plan "$FIXTURE/post-rollback-target.plan" false true "$BACKEND_BASE" true false \
   postgres-pool-v1 e7b19bc805815af310f1e5096d3fec5789129ddb
+write_plan "$FIXTURE/post-rollback-uninstalled-target.plan" true true \
+  "$BACKEND_BASE" true false uninstalled "$ZERO_SHA"
 [[ $(bash "$TRANSITION" state "$TARGET" E "$FIXTURE/e-pending.plan") == transition_state=pre-E ]]
 [[ $(bash "$TRANSITION" state "$TARGET" E "$FIXTURE/e-complete.plan") == transition_state=E-complete ]]
 [[ $(bash "$TRANSITION" state "$TARGET" A2 "$FIXTURE/a-pending.plan") == transition_state=E-complete ]]
@@ -76,6 +78,8 @@ write_plan "$FIXTURE/post-rollback-target.plan" false true "$BACKEND_BASE" true 
 [[ $(bash "$TRANSITION" state "$TARGET" TARGET "$FIXTURE/target-pending.plan") == transition_state=target-pending ]]
 [[ $(bash "$TRANSITION" state "$TARGET" TARGET "$FIXTURE/target-complete.plan") == transition_state=target-complete ]]
 [[ $(bash "$TRANSITION" state "$TARGET" TARGET "$FIXTURE/post-rollback-target.plan") == transition_state=target-pending ]]
+[[ $(bash "$TRANSITION" state "$TARGET" TARGET \
+  "$FIXTURE/post-rollback-uninstalled-target.plan") == transition_state=repair-required ]]
 write_plan "$FIXTURE/post-rollback-descendant-bootstrap.plan" false true \
   "$BACKEND_BASE" true false postgres-pool-v1 "$TARGET"
 [[ $(bash "$TRANSITION" state "$TARGET" TARGET \
@@ -148,6 +152,16 @@ write_plan "$FIXTURE/post-rollback-wrong-bootstrap.plan" false true "$BACKEND_BA
   postgres-pool-v1 "$FIXED_E"
 assert_refuses 'current target plan does not prove the fixed phases complete' \
   bash "$TRANSITION" state "$TARGET" TARGET "$FIXTURE/post-rollback-wrong-bootstrap.plan"
+write_plan "$FIXTURE/post-rollback-uninstalled-control-complete.plan" true true \
+  "$BACKEND_BASE" false false uninstalled "$ZERO_SHA"
+assert_refuses 'current target plan does not prove the fixed phases complete' \
+  bash "$TRANSITION" state "$TARGET" TARGET \
+    "$FIXTURE/post-rollback-uninstalled-control-complete.plan"
+write_plan "$FIXTURE/post-rollback-uninstalled-wrong-base.plan" true true \
+  "$FIXED_A2" true false uninstalled "$ZERO_SHA"
+assert_refuses 'current target plan does not prove the fixed phases complete' \
+  bash "$TRANSITION" state "$TARGET" TARGET \
+    "$FIXTURE/post-rollback-uninstalled-wrong-base.plan"
 write_plan "$FIXTURE/wrong-b.plan" true false "$FIXED_E" true false
 assert_refuses 'Release B2 plan is neither pending nor complete' \
   bash "$TRANSITION" state "$TARGET" B2 "$FIXTURE/wrong-b.plan"
@@ -218,6 +232,25 @@ for forbidden in (' plan "$GITHUB_SHA"', ' deploy "$GITHUB_SHA"'):
         raise SystemExit("read-only plan job performs a mutation")
 if 'repair_anchor: ${{ steps.plan.outputs.repair_anchor }}' not in plan:
     raise SystemExit("plan job does not publish the fixed repair anchor")
+for fragment in (
+    "target_atomic_repair_plan()",
+    "== 4bb8f6d4969b8449726a10859202b23e2bfb4366",
+    "[[ $transition_state != repair-required ]] ||",
+    "repair_anchor=$daily_c1_atomic_repair",
+):
+    if fragment not in plan:
+        raise SystemExit(f"TARGET repair admission omits {fragment}")
+if "[[ $target_state != transition_state=repair-required ]]" in plan:
+    raise SystemExit("TARGET repair still falls through to stale fixed-phase probes")
+for fragment in (
+    "TRANSITION_STATE: ${{ needs.plan.outputs.transition_state }}",
+    "$TRANSITION_STATE == repair-required",
+    "REPAIR_ANCHOR: ${{ needs.plan.outputs.repair_anchor }}",
+    "$REPAIR_ANCHOR == 61018b1d376ba6695c29f9ccee1b53b1b344d4dc",
+    "repairable uninstalled bootstrap has a nonzero durable release SHA",
+):
+    if fragment not in w:
+        raise SystemExit(f"backend gate omits bounded TARGET repair contract: {fragment}")
 if 'deploy "$GITHUB_SHA"' not in deploy:
     raise SystemExit("deploy job does not deploy the current target")
 if "      - release_a\n" not in deploy:

@@ -16,21 +16,24 @@ chmod 0755 "$WORKER"
 EXPECTED_DATE=2026-07-16
 RELEASE_SHA=0123456789abcdef0123456789abcdef01234567
 
-# Production keeps collection before the canonical terminal. The terminal
-# receives the pinned date and owns the only production publication path.
-grep -F 'npm run run:reader-summary-clean-real-day-collection' "$DAILY_RUN" >/dev/null
-# C1 recovery starts from the reviewed first unresolved production date.
-grep -F 'READER_SUMMARY_DAILY_FIRST_UNRESOLVED_UTC_DATE=2026-07-23' \
-  "$DAILY_RUN" >/dev/null
-# This source assertion intentionally matches a literal shell variable reference.
-# shellcheck disable=SC2016
-grep -F 'READER_SUMMARY_DAILY_PUBLIC_DIRECTORY="$public_dir"' \
-  "$DAILY_RUN" >/dev/null
-grep -F 'scripts/run-reader-summary-daily-terminal.ts' "$DAILY_RUN" >/dev/null
-if grep -F 'scripts/run-reader-summary-production-day.ts' "$DAILY_RUN" >/dev/null; then
-  echo 'noncanonical production-day generation remains publishable' >&2
+file_identity() {
+  if stat -c '%n:%i:%Y' "$@" 2>/dev/null; then
+    return
+  fi
+  stat -f '%N:%i:%m' "$@"
+}
+
+# V6 owns collection, quality, summary and publication for one exact day.
+grep -F 'scripts/run-reader-summary-production-day.ts \' "$DAILY_RUN" >/dev/null
+grep -F -- '--date "$requested_date" --update' "$DAILY_RUN" >/dev/null
+if grep -Eq '(READER_SUMMARY_DAILY_FIRST_UNRESOLVED|daily-c1|00000000-0000-7000-8000-00000000090[12])' \
+  "$DAILY_RUN"; then
+  echo 'obsolete C1 scope remains in the V6 publication path' >&2
   exit 1
 fi
+grep -F \
+  '/var/lib/social-monitor/artifacts/reports/reader-summary-production-v2' \
+  "$DAILY_RUN" >/dev/null
 grep -F 'latest-state.v1.json' "$DAILY_RUN" >/dev/null
 
 wait_for_ready() {
@@ -216,12 +219,12 @@ node "$PROJECT_ROOT/scripts/verify-reader-summary-production-day-state.mjs" \
   --state-dir "$success_case/public" |
   grep -Fx "$EXPECTED_DATE" >/dev/null
 
-complete_public_inodes_before=$(stat -c '%n:%i:%Y' \
+complete_public_inodes_before=$(file_identity \
   "$dated_report" "$proof" "$runtime_identity" "$state" \
   "$success_case/public/latest.v1.json" \
   "$success_case/public/latest-state.v1.json")
 run_daily "$success_case" 30000 success >"$success_case/replay.log" 2>&1
-[[ $(stat -c '%n:%i:%Y' \
+[[ $(file_identity \
   "$dated_report" "$proof" "$runtime_identity" "$state" \
   "$success_case/public/latest.v1.json" \
   "$success_case/public/latest-state.v1.json") == \
@@ -241,6 +244,21 @@ run_daily "$fresh_case" 30000 partial '' '' 2026-07-18 --yesterday \
 [[ -s $fresh_case/public/reader-summary-production-day-state.2026-07-17.v1.json ]]
 [[ ! -e $fresh_case/public/reader-summary-production-day-state.2026-07-18.v1.json ]]
 
+production_v2_case=$FIXTURE/production-v2-first-aug7
+prepare_case "$production_v2_case"
+run_daily "$production_v2_case" 30000 success '' 2026-08-07 \
+  >"$production_v2_case/aug7.log" 2>&1
+node "$PROJECT_ROOT/scripts/verify-reader-summary-production-day-state.mjs" \
+  --latest-state "$production_v2_case/public/latest-state.v1.json" \
+  --state-dir "$production_v2_case/public" |
+  grep -Fx 2026-08-07 >/dev/null
+run_daily "$production_v2_case" 30000 success '' 2026-08-08 \
+  >"$production_v2_case/aug8.log" 2>&1
+node "$PROJECT_ROOT/scripts/verify-reader-summary-production-day-state.mjs" \
+  --latest-state "$production_v2_case/public/latest-state.v1.json" \
+  --state-dir "$production_v2_case/public" |
+  grep -Fx 2026-08-08 >/dev/null
+
 catchup_case=$FIXTURE/catchup
 prepare_case "$catchup_case"
 run_daily "$catchup_case" 30000 partial '' 2026-07-15 \
@@ -253,12 +271,12 @@ cmp -s "$partial_state" "$catchup_case/public/latest-state.v1.json"
 [[ ! -e $catchup_case/public/latest.v1.json ]]
 [[ ! -e $catchup_case/public/reader-summary-production-day-run.2026-07-15.v1.json ]]
 [[ ! -e $catchup_case/public/reader-summary-production-day-run.2026-07-15.publication-proof.v1.json ]]
-partial_public_inodes_before=$(stat -c '%n:%i:%Y' \
+partial_public_inodes_before=$(file_identity \
   "$partial_outcome" "$partial_state" \
   "$catchup_case/public/latest-state.v1.json")
 run_daily "$catchup_case" 30000 partial '' 2026-07-15 \
   >"$catchup_case/partial-replay.log" 2>&1
-[[ $(stat -c '%n:%i:%Y' \
+[[ $(file_identity \
   "$partial_outcome" "$partial_state" \
   "$catchup_case/public/latest-state.v1.json") == \
   "$partial_public_inodes_before" ]]
@@ -282,14 +300,18 @@ run_daily "$legacy_case" 30000 success '' 2026-07-22 \
 rm "$legacy_case/public/latest-state.v1.json"
 rm "$legacy_case/public/reader-summary-production-day-state.2026-07-22.v1.json"
 rm -f "$legacy_case/ready"
+set +e
 run_daily "$legacy_case" 30000 success '' '' 2026-07-30 --yesterday \
   >"$legacy_case/migration.log" 2>&1
-[[ -s $legacy_case/public/reader-summary-production-day-run.2026-07-23.v1.json ]]
+legacy_status=$?
+set -e
+((legacy_status != 0))
+[[ ! -e $legacy_case/public/reader-summary-production-day-run.2026-07-23.v1.json ]]
 [[ ! -e $legacy_case/public/reader-summary-production-day-run.2026-07-29.v1.json ]]
 node "$PROJECT_ROOT/scripts/verify-reader-summary-production-day-state.mjs" \
   --latest-state "$legacy_case/public/latest-state.v1.json" \
   --state-dir "$legacy_case/public" |
-  grep -Fx 2026-07-23 >/dev/null
+  grep -Fx 2026-07-22 >/dev/null
 
 unavailable_case=$FIXTURE/unavailable
 prepare_case "$unavailable_case"
@@ -356,7 +378,7 @@ run_daily "$immutable_case" 30000 partial \
   >"$immutable_case/partial.log" 2>&1
 immutable_outcome=$immutable_case/public/reader-summary-production-day-outcome.$EXPECTED_DATE.v1.json
 immutable_state=$immutable_case/public/reader-summary-production-day-state.$EXPECTED_DATE.v1.json
-immutable_before=$(stat -c '%n:%i:%Y' \
+immutable_before=$(file_identity \
   "$immutable_outcome" "$immutable_state" \
   "$immutable_case/public/latest-state.v1.json")
 set +e
@@ -365,7 +387,7 @@ run_daily "$immutable_case" 30000 success \
 immutable_status=$?
 set -e
 ((immutable_status != 0))
-[[ $(stat -c '%n:%i:%Y' \
+[[ $(file_identity \
   "$immutable_outcome" "$immutable_state" \
   "$immutable_case/public/latest-state.v1.json") == "$immutable_before" ]]
 [[ ! -e $immutable_case/public/latest.v1.json ]]
