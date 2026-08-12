@@ -253,6 +253,10 @@ REVOKE ALL ON FUNCTION public."is_reader_summary_daily_delivery_c1_jul24_adoptab
 FROM PUBLIC, "social_monitor_reader_summary_daily_terminal",
   "social_monitor_reader_summary_publication_runtime",
   "social_monitor_tenant_system_runtime";
+RESET ROLE;
+GRANT SELECT ON TABLE public."reader_summary_daily_model_jobs"
+TO "social_monitor_reader_summary_publication_owner";
+SET LOCAL ROLE "social_monitor_reader_summary_publication_owner";
 GRANT EXECUTE ON FUNCTION public."is_reader_summary_daily_delivery_c1_jul24_adoptable"()
 TO "social_monitor_public_schema_owner";
 

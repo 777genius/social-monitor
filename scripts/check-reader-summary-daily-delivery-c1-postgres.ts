@@ -184,6 +184,7 @@ const main = async (): Promise<void> => {
         public_frontend_sha256 CHAR(64),
         PRIMARY KEY (tenant_id, workspace_id, requested_utc_date)
       );
+      RESET ROLE;
       ALTER TABLE public."reader_summary_daily_model_jobs"
         ADD COLUMN reader_summary_job_id UUID,
         ADD COLUMN public_evidence_sha256 CHAR(64),
