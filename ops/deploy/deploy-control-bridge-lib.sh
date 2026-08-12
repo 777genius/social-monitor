@@ -75,14 +75,14 @@ deploy_control_daily_c1_bridge_classification() {
 
 deploy_control_is_reviewed_daily_final_transition() {
   local bridge=$1 target=$2 repository=${REPO:-.}
-  local bridge_parent target_parent changed final_delta path
+  local target_parent changed final_delta path
   local -a sealed_paths=() target_ancestry=()
-  bridge_parent=$(git -C "$repository" rev-parse "$bridge^" 2>/dev/null) || return 1
   target_parent=$(git -C "$repository" rev-parse "$target^" 2>/dev/null) || return 1
   read -r -a target_ancestry <<< "$(git -C "$repository" \
     rev-list --parents -n 1 "$target")" || return 1
-  [[ $bridge_parent == "$DEPLOY_CONTROL_DAILY_FINAL_BASE" &&
-     $target_parent == "$bridge" && ${#target_ancestry[@]} == 2 ]] || return 1
+  git -C "$repository" merge-base --is-ancestor \
+    "$DEPLOY_CONTROL_DAILY_FINAL_BASE" "$bridge" || return 1
+  [[ $target_parent == "$bridge" && ${#target_ancestry[@]} == 2 ]] || return 1
   final_delta=$(git -C "$repository" diff --name-only --no-renames \
     "$DEPLOY_CONTROL_DAILY_FINAL_BASE" "$target" -- 2>/dev/null) || return 1
   [[ $final_delta == $'ops/deploy/daily-final-control-bridge.test.sh\nops/deploy/deploy-control-bridge-lib.sh' ]] || return 1
