@@ -113,14 +113,10 @@ grep -F "needs.plan.outputs.daily_c1_bridge != 'true'" \
   fail 'bridge must defer exactly the publication, frontend and legacy final-only gates'
 grep -F 'Deploy the daily C1 target through the alias-aware controller' \
   "$workflow" >/dev/null || fail 'bridge does not run through the installed alias-aware controller'
-grep -F 'timer_bootstrap=195a875b' \
-  "$workflow" >/dev/null || fail 'rollback-safe timer bootstrap is not pinned'
-grep -F 'bridge_policy=6507e47a' \
-  "$workflow" >/dev/null || fail 'reviewed exact bridge policy is not pinned'
-grep -F 'deploy "$timer_bootstrap"' "$workflow" >/dev/null || \
-  fail 'bridge does not install the rollback-safe timer first'
-grep -F 'deploy "$bridge_policy"' "$workflow" >/dev/null || \
-  fail 'bridge does not install exact transition policy after the timer bootstrap'
+! grep -F 'timer_bootstrap=' "$workflow" >/dev/null || \
+  fail 'bridge still replays the obsolete partial timer bootstrap'
+! grep -F 'bridge_policy=' "$workflow" >/dev/null || \
+  fail 'bridge still replays the obsolete partial transition policy'
 grep -F 'bash ops/deploy/github-production-deploy-client.sh deploy "$GITHUB_SHA"' \
   "$workflow" >/dev/null || fail 'daily C1 bridge bypasses the reviewed deploy client'
 ! grep -F 'daily C1 bridge classification is not control-only' "$workflow" >/dev/null || \

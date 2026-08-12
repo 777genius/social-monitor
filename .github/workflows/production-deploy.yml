@@ -762,10 +762,6 @@ jobs:
           DEPLOY_USER: ${{ vars.PRODUCTION_SSH_USER }}
         run: |
           set -euo pipefail
-          timer_bootstrap=195a875b8ecf66f4a022203c718d49aa9384eac0
-          bridge_policy=6507e47a21b75d622672a28c7eee7bd5624c5eb9
-          bash ops/deploy/github-production-deploy-client.sh deploy "$timer_bootstrap"
-          bash ops/deploy/github-production-deploy-client.sh deploy "$bridge_policy"
           bash ops/deploy/github-production-deploy-client.sh deploy "$GITHUB_SHA"
       - name: Freshly inspect after bounded repair
         id: recovery_state
