@@ -20,7 +20,6 @@ import {
 import { noRawSecretFragments } from "./yesterday-social-replay-support";
 import {
   assertReaderSummaryDailyMaintenanceScope,
-  isReaderSummaryProductionHistoryScope,
   type ReaderSummaryDailyMaintenanceScope,
 } from "./reader-summary-daily-maintenance-scope";
 
@@ -61,12 +60,9 @@ export const readExactDayCollectionArtifact = (params: {
   assertSafeCollectionArtifactPath(params.path);
   if (
     params.expectedScope !== undefined &&
-    basename(params.path) !==
-      readerSummaryDailyCollectionArtifactFileName(params.collectionDate)
+    basename(params.path) !== readerSummaryDailyCollectionArtifactFileName(params.collectionDate)
   ) {
-    throw new Error(
-      "Collection artifact path is not explicit for its requested date",
-    );
+    throw new Error("Collection artifact path is not explicit for its requested date");
   }
   if (!existsSync(params.path)) {
     return null;
@@ -117,23 +113,16 @@ export const writeCollectionArtifactAtomically = (params: {
   if (
     params.expectedScope !== undefined &&
     basename(params.path) !==
-      readerSummaryDailyCollectionArtifactFileName(
-        params.report.run.collectionDate,
-      )
+      readerSummaryDailyCollectionArtifactFileName(params.report.run.collectionDate)
   ) {
-    throw new Error(
-      "Collection artifact path is not explicit for its report date",
-    );
+    throw new Error("Collection artifact path is not explicit for its report date");
   }
   if (
     params.expectedScope !== undefined &&
     (params.report.inputs.scope?.tenantId !== params.expectedScope.tenantId ||
-      params.report.inputs.scope?.workspaceId !==
-        params.expectedScope.workspaceId)
+      params.report.inputs.scope?.workspaceId !== params.expectedScope.workspaceId)
   ) {
-    throw new Error(
-      "Collection artifact scope is not the canonical daily maintenance scope",
-    );
+    throw new Error("Collection artifact scope is not the canonical daily maintenance scope");
   }
   const directory = dirname(params.path);
   mkdirSync(directory, { recursive: true });
@@ -196,7 +185,8 @@ const assertExactDayIdentity = (
 ): void => {
   if (
     report.schemaVersion !== 1 ||
-    report.artifactFormat !== "reader-summary-clean-real-day-collection-v1" ||
+    report.artifactFormat !==
+      "reader-summary-clean-real-day-collection-v1" ||
     report.generatedBy !==
       "npm run run:reader-summary-clean-real-day-collection" ||
     report.run.collectionDate !== collectionDate ||
@@ -248,9 +238,7 @@ const assertExactUtcDate = (value: string): void => {
 
 const assertSafeCollectionArtifactDirectory = (directory: string): void => {
   if (directory.trim().length === 0 || directory !== directory.trim()) {
-    throw new Error(
-      "Collection artifact directory is required and must be safe",
-    );
+    throw new Error("Collection artifact directory is required and must be safe");
   }
   assertNoUnsafePathSegments(directory, "Collection artifact directory");
 };
@@ -259,9 +247,7 @@ const assertExpectedMaintenanceScope = (
   expectedScope: ReaderSummaryDailyMaintenanceScope | undefined,
 ): void => {
   if (expectedScope !== undefined) {
-    if (!isReaderSummaryProductionHistoryScope(expectedScope)) {
-      assertReaderSummaryDailyMaintenanceScope(expectedScope);
-    }
+    assertReaderSummaryDailyMaintenanceScope(expectedScope);
   }
 };
 
@@ -297,13 +283,11 @@ const fsyncDirectoryIfSupported = (directory: string): void => {
 
 const isPortableDirectoryFsyncLimitation = (error: unknown): boolean => {
   const code = (error as NodeJS.ErrnoException).code;
-  return (
-    code === "EISDIR" ||
+  return code === "EISDIR" ||
     code === "EINVAL" ||
     code === "ENOTSUP" ||
     code === "EOPNOTSUPP" ||
-    code === "EPERM"
-  );
+    code === "EPERM";
 };
 
 const removeTemporaryArtifact = (temporaryPath: string): void => {
