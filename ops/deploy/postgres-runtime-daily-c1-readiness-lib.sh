@@ -536,7 +536,6 @@ snapshot_postgres_runtime_daily_handoff() {
       { fail "daily timer enablement is unavailable: $timer"; return 1; }
     active_state=$(systemctl show --property=ActiveState --value "$timer") || \
       { fail "daily timer active state is unavailable: $timer"; return 1; }
-    [[ -n $unit_state ]] || unit_state=not-found
     [[ ($unit_state =~ ^(enabled|disabled)$ && \
         $active_state =~ ^(active|inactive)$) || \
        ($unit_state == not-found && $active_state == inactive) ]] || {
@@ -611,7 +610,7 @@ restore_postgres_runtime_daily_handoff_units() {
 }
 
 restore_postgres_runtime_daily_handoff_states() {
-  local backup=$1 timer unit_state active_state enablement_command current_unit_state
+  local backup=$1 timer unit_state active_state enablement_command
   local state_file=$backup/daily-timer-states
   local restored=0
 
@@ -626,10 +625,8 @@ restore_postgres_runtime_daily_handoff_states() {
       enabled) enablement_command=enable ;;
       disabled) enablement_command=disable ;;
       not-found)
-        current_unit_state=$(systemctl show \
-          --property=UnitFileState --value "$timer") || return 1
-        [[ -n $current_unit_state ]] || current_unit_state=not-found
-        [[ $current_unit_state == not-found && \
+        [[ $(systemctl show --property=UnitFileState --value "$timer") == \
+           not-found && \
            $(systemctl show --property=ActiveState --value "$timer") == \
            inactive ]] || return 1
         restored=$((restored + 1))

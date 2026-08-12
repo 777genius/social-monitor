@@ -39,7 +39,10 @@ reader_summary_publication_prebootstrap_absent_daily_timer() {
 reader_summary_publication_prebootstrap_v6_dropin() {
   local service=social-monitor-reader-summary-production-day.service
   local asset=social-monitor-reader-summary-production-day.service.d-10-daily-c1-owner.conf
+  local service_source=$REPO/ops/deploy/production-runtime/social-monitor-daily.service
   local source=$REPO/ops/deploy/production-runtime/$asset
+  local service_destination=$SYSTEMD_UNIT_DIR/$service
+  local service_next=$SYSTEMD_UNIT_DIR/.$service.bootstrap-next
   local directory=$SYSTEMD_UNIT_DIR/$service.d
   local destination=$directory/10-daily-c1-owner.conf
   local next=$directory/.10-daily-c1-owner.conf.bootstrap-next active_state dropins
@@ -52,6 +55,18 @@ reader_summary_publication_prebootstrap_v6_dropin() {
     fail 'target publication prebootstrap v6 drop-in state is unavailable'
   [[ $active_state == inactive ]] || \
     fail 'target publication prebootstrap v6 service is not inactive'
+  if [[ ! -e $service_destination && ! -L $service_destination ]]; then
+    [[ -f $service_source && ! -L $service_source && \
+       ! -e $service_next && ! -L $service_next ]] || \
+      fail 'target publication prebootstrap v6 service asset is invalid'
+    install -m 0644 "$service_source" "$service_next" || return 1
+    if ((EUID == 0)); then chown root:root "$service_next" || return 1; fi
+    mv -f "$service_next" "$service_destination" || return 1
+    reader_summary_publication_systemctl daemon-reload || return 1
+  else
+    [[ -f $service_destination && ! -L $service_destination ]] || \
+      fail 'target publication prebootstrap v6 service target is unsafe'
+  fi
   if cmp -s "$source" "$destination" && \
      [[ $dropins == "$destination" || -z $dropins ]]; then
     return 0
@@ -66,7 +81,7 @@ reader_summary_publication_prebootstrap_v6_dropin() {
   reader_summary_publication_systemctl daemon-reload || return 1
   dropins=$(reader_summary_publication_systemctl show \
     --property=DropInPaths --value "$service") || return 1
-  [[ $dropins == "$destination" || -z $dropins ]] && \
+  [[ $dropins == "$destination" ]] && \
     cmp -s "$source" "$destination" || \
     fail 'target publication prebootstrap v6 drop-in did not become exact'
 }
