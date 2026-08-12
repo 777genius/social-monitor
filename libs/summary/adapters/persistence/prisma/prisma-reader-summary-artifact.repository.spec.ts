@@ -115,7 +115,7 @@ describe("PrismaReaderSummaryArtifactRepository", () => {
     const prisma = new FakeReaderSummaryPrisma();
     const repository = new PrismaReaderSummaryArtifactRepository(prisma.client);
     const binding: ReaderSummaryDailyCanonicalRecoveryV4Binding = {
-      schemaVersion: "reader_summary.daily_canonical_recovery_provenance.v3",
+      schemaVersion: "reader_summary.daily_canonical_recovery_provenance.v2",
       recoveryVersion: "reader_summary.daily_canonical_recovery.v4",
       selectedOutputKind: "output_text",
       sourceAuthoritySchemaVersion: 2,
@@ -125,10 +125,8 @@ describe("PrismaReaderSummaryArtifactRepository", () => {
       ingestionCutoff: "2026-07-25T00:00:00.000Z",
       sourceAuthoritySha256: "a".repeat(64),
       modelJobIdentity: "b".repeat(64),
-      canonicalOutputSha256: "c".repeat(64),
-      canonicalOutputByteLength: 17,
-      rawOutputSha256: "e".repeat(64),
-      rawOutputByteLength: 17,
+      outputTextSha256: "c".repeat(64),
+      outputTextByteLength: 17,
       githubProjectionSha256: "d".repeat(64),
     };
     const audit = (): ReaderSummaryGitHubProjectionAudit & {
@@ -159,56 +157,13 @@ describe("PrismaReaderSummaryArtifactRepository", () => {
       recoveryReaderSummaryArtifact("reader-summary-verified-v4-recovery"),
       { githubProjectionAudit: audit() },
     );
-    await expect(repository.save(
-      recoveryReaderSummaryArtifact("reader-summary-malformed-v4-recovery"),
-      {
-        githubProjectionAudit: {
-          ...audit(),
-          recoveryV4: {
-            ...binding,
-            rawOutputSha256: "e".repeat(63),
-          },
-        },
-      },
-    )).rejects.toThrow(/provenance binding is invalid/u);
 
     expect(prisma.statusFor("reader-summary-forged-ordinary-audit")).toBeUndefined();
     expect(prisma.statusFor("reader-summary-unverified-v4-recovery")).toBeUndefined();
     expect(prisma.statusFor("reader-summary-verified-v4-recovery")).toBe(
       "RUNNING",
     );
-    expect(prisma.statusFor("reader-summary-malformed-v4-recovery")).toBeUndefined();
     expect(prisma.dailyRecoveryVerificationQueryCount).toBe(3);
-  });
-
-  it("preserves the ordinary V2 13-field recovery audit parser", async () => {
-    const prisma = new FakeReaderSummaryPrisma();
-    const repository = new PrismaReaderSummaryArtifactRepository(prisma.client);
-    const binding: ReaderSummaryDailyCanonicalRecoveryV4Binding = {
-      schemaVersion: "reader_summary.daily_canonical_recovery_provenance.v2",
-      recoveryVersion: "reader_summary.daily_canonical_recovery.v4",
-      selectedOutputKind: "output_text",
-      sourceAuthoritySchemaVersion: 2,
-      tenantId: tenant,
-      workspaceId: workspace,
-      requestedUtcDate: "2026-07-24",
-      ingestionCutoff: "2026-07-25T00:00:00.000Z",
-      sourceAuthoritySha256: "a".repeat(64),
-      modelJobIdentity: "b".repeat(64),
-      outputTextSha256: "c".repeat(64),
-      outputTextByteLength: 17,
-      githubProjectionSha256: "d".repeat(64),
-    };
-    prisma.setDailyRecoveryVerification(true);
-    await repository.save(recoveryReaderSummaryArtifact("reader-summary-v2-recovery"), {
-      githubProjectionAudit: {
-        ...noEligibleGitHubBindingOptions().githubProjectionAudit,
-        recoveryV4: binding,
-      },
-    });
-
-    expect(prisma.statusFor("reader-summary-v2-recovery")).toBe("RUNNING");
-    expect(prisma.dailyRecoveryVerificationQueryCount).toBe(1);
   });
 
   it("keeps an ordinary existing Jul23-Jul30 artifact idempotent when PostgreSQL has no V4 authority", async () => {

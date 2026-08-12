@@ -2,10 +2,8 @@
 set -euo pipefail
 
 PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
-# Retained daily auth pool (v25/account-o); do not prune.
-readonly DAILY_AUTH_POOL_JOB_ID=social-monitor-production-account-pool-terra-v25-20260804
 
-# Canonical catch-up stages, oldest first:
+# The catch-up supervisor retains these canonical stages in oldest-first order:
 # npm run run:reader-summary-clean-real-day-collection
 # scripts/run-reader-summary-daily-terminal.ts
 
@@ -49,16 +47,8 @@ COMPOSE=(
 DATE_FLAG=${1:---yesterday}
 
 case "$DATE_FLAG" in
-  --check-readiness|--today|--yesterday) ;;
-  --frozen-date)
-    [[ $# == 2 && $2 =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || {
-      echo "daily production-day frozen date is invalid" >&2
-      exit 64
-    }
-    export READER_SUMMARY_DAILY_RUN_EXPECTED_DATE=$2
-    DATE_FLAG=--yesterday
-    ;;
-  *) echo "usage: $0 [--check-readiness|--today|--yesterday|--frozen-date YYYY-MM-DD]" >&2; exit 64 ;;
+  --today|--yesterday) ;;
+  *) echo "usage: $0 [--today|--yesterday]" >&2; exit 64 ;;
 esac
 
 [[ $POSTGRES_ADMISSION_WAIT_SECONDS =~ \
@@ -67,37 +57,11 @@ esac
   exit 64
 }
 
-check_daily_c1_readiness() {
-  local readiness containment
-  readiness=$ROOT/control/postgres-runtime-current/reader-summary-daily-c1.readiness
-  containment=$ROOT/control/reader-summary-daily-c1-contained.v1
-  if [[ -e $containment || -L $containment ]]; then
-    echo "daily production-day C1 containment marker is present" >&2
-    return 75
-  fi
-  if ! cmp -s "$readiness" <(
-    printf '%s\n' \
-      'schemaVersion=reader_summary.daily_delivery_readiness.c1' \
-      'state=READY' \
-      'requires=H_GREEN,C0_GREEN,C1_SCAN_TERMINAL_REPAIR_GREEN' \
-      'activation=reviewed'
-  ); then
-    echo "daily production-day C1 readiness marker is not canonical READY" >&2
-    return 75
-  fi
-}
-
-if [[ $DATE_FLAG == --check-readiness ]]; then
-  check_daily_c1_readiness || exit 75
-  exit 0
-fi
-
 exec 9>"$ROOT/control/daily-run-singleton.lock"
 "$FLOCK_COMMAND" -n 9 || {
-  echo "daily production-day run already active" >&2
-  exit 75
+  echo "daily production-day run already active"
+  exit 0
 }
-check_daily_c1_readiness || exit 75
 exec 8>"$ROOT/control/daily-run.lock"
 "$FLOCK_COMMAND" -w "$POSTGRES_ADMISSION_WAIT_SECONDS" 8 || {
   echo "daily production-day timed out waiting for PostgreSQL admission" >&2
@@ -111,7 +75,7 @@ if [[ ! $runtime_release =~ ^[0-9a-f]{40}$ || $runtime_release != "$backend_rele
   exit 75
 fi
 
-"$ROOT/control/refresh-codex-auth.sh" --broker-pool-job-id "$DAILY_AUTH_POOL_JOB_ID"
+"$ROOT/control/refresh-codex-auth.sh"
 
 if [[ -f "$ROOT/runtime/auth-account-changed" ]]; then
   stamp=$(date -u +%Y%m%dT%H%M%SZ)
@@ -286,40 +250,13 @@ fi
       -- bash "$READER_SUMMARY_DAILY_RUN_PAUSE_WORKER" '"$DATE_FLAG"'
   else
     npm run migrate:deploy
-    export READER_SUMMARY_DAILY_FIRST_UNRESOLVED_UTC_DATE=2026-07-23
+    export READER_SUMMARY_DAILY_FIRST_UNRESOLVED_UTC_DATE="$requested_date"
     export READER_SUMMARY_DAILY_PUBLIC_DIRECTORY="$public_dir"
-    export READER_SUMMARY_DAILY_TENANT_ID=00000000-0000-7000-8000-000000000901
-    export READER_SUMMARY_DAILY_WORKSPACE_ID=00000000-0000-7000-8000-000000000902
-    export READER_SUMMARY_DAILY_DELIVERY_C1_MODE=exact
-    c1_boundary_dir=$(mktemp -d /tmp/reader-summary-daily-c1.XXXXXX)
-    chmod 0700 "$c1_boundary_dir"
-    trap '"'"'rm -rf "$c1_boundary_dir"'"'"' EXIT HUP INT TERM
-    export READER_SUMMARY_DAILY_DELIVERY_C1_RECOVERY_THROUGH_FILE="$c1_boundary_dir/recovery-through"
-    node scripts/run-with-timeout.mjs \
-      --timeout-ms "$timeout_ms" \
-      --node-options --max-old-space-size=768 \
-      -- ./node_modules/.bin/ts-node -r tsconfig-paths/register \
-      scripts/lib/reader-summary-daily-canonical-recovery-v4-delivery-c1.ts precollect
-    READER_SUMMARY_DAILY_DELIVERY_C1_RECOVERY_THROUGH=$(node -e '"'"'
-      const { readFileSync } = require("node:fs");
-      const value = readFileSync(process.argv[1], "utf8");
-      if (!/^\d{4}-\d{2}-\d{2}\n$/.test(value) ||
-          new Date(`${value.trim()}T00:00:00.000Z`).toISOString().slice(0, 10) !== value.trim()) {
-        throw new Error("daily delivery C1 recovery-through handoff is invalid");
-      }
-      process.stdout.write(value.trim());
-    '"'"' -- "$READER_SUMMARY_DAILY_DELIVERY_C1_RECOVERY_THROUGH_FILE")
-    export READER_SUMMARY_DAILY_DELIVERY_C1_RECOVERY_THROUGH
     node scripts/run-with-timeout.mjs \
       --timeout-ms "$timeout_ms" \
       --node-options --max-old-space-size=1024 \
       -- ./node_modules/.bin/ts-node -r tsconfig-paths/register \
       scripts/run-reader-summary-daily-catch-up.ts
-    node scripts/run-with-timeout.mjs \
-      --timeout-ms 60000 \
-      --node-options --max-old-space-size=512 \
-      -- ./node_modules/.bin/ts-node -r tsconfig-paths/register \
-      scripts/lib/reader-summary-daily-canonical-recovery-v4-delivery-c1.ts verify-caught-up
     exit 0
   fi
 

@@ -1,8 +1,6 @@
 export const PUBLICATION_POSTGRES_TEST_ONLY_FILES = new Set([
   'libs/platform/persistence/src/postgres-runtime-pool-budget-test-inventory.ts',
   'scripts/check-reader-summary-daily-execution-cursor-postgres.ts',
-  'scripts/check-reader-summary-daily-delivery-c1-postgres.ts',
-  'scripts/check-reader-summary-daily-scan-terminal-repair-c1-postgres.ts',
   'scripts/check-reader-summary-daily-terminal-authority-postgres.ts',
   'scripts/check-reader-summary-original-cutoff-prisma-catalog.ts',
   'scripts/check-reader-summary-production-recovery-postgres.ts',
@@ -22,8 +20,6 @@ export const PUBLICATION_POSTGRES_TEST_POOL_MAXIMUMS = new Map<
     'scripts/check-reader-summary-daily-execution-cursor-postgres.ts',
     [1, 1, 1, 1],
   ],
-  ['scripts/check-reader-summary-daily-delivery-c1-postgres.ts', [1, 1, 1, 1, 1]],
-  ['scripts/check-reader-summary-daily-scan-terminal-repair-c1-postgres.ts', [1, 1, 1]],
   [
     'scripts/check-reader-summary-original-cutoff-prisma-catalog.ts',
     [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],

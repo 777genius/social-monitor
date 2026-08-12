@@ -8,6 +8,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join, resolve } from "node:path";
+
 import { canonicalJsonSha256 } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
 import { defaultPostgresRuntimePoolConfig } from "@social-monitor/platform-persistence";
 import { GrpcAgentRuntimeClient } from "@social-monitor/summary/adapters/model/grpc-agent-runtime-client";
@@ -64,116 +65,64 @@ import {
   type CanonicalRecoveryFinalizer,
 } from "./lib/reader-summary-daily-canonical-recovery-v4";
 import { ReaderSummaryDailyCanonicalRecoveryV4Executor } from "./lib/reader-summary-daily-canonical-recovery-v4-executor";
-import { PostgresCanonicalRecoveryInvalidProductRetrySetAuthorizer } from "./lib/reader-summary-daily-canonical-recovery-v4-invalid-product-retry-set";
-import { runReaderSummaryDailyCanonicalRecoveryV4InvalidProduct } from "./lib/reader-summary-daily-canonical-recovery-v4-invalid-product-run-policy";
-import { parseDailyCanonicalRecoveryV4Invocation } from "./lib/reader-summary-daily-canonical-recovery-v4-invocation";
-import {
-  printDailyScanTerminalRepairPreimage,
-  runDailyScanTerminalRepair,
-} from "./lib/reader-summary-daily-canonical-recovery-v4-scan-terminal-repair-cli";
 import {
   createReaderSummaryDailyTerminalRuntimeConnection,
   readerSummaryDailyTerminalRole,
 } from "./lib/reader-summary-daily-terminal-runtime-connection";
 
 if (process.argv[1] !== undefined && resolve(process.argv[1]) === __filename) {
-  void Promise.resolve()
-    .then(() => {
-      loadDotenvIfPresent(".env");
-      return main();
-    })
-    .catch((error: unknown) => {
-      console.error(error instanceof Error ? error.message : String(error));
-      process.exitCode = 1;
-    });
+  void Promise.resolve().then(() => {
+    loadDotenvIfPresent(".env");
+    return main();
+  }).catch((error: unknown) => {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  });
 }
 
 async function main(): Promise<void> {
-  if (process.argv[2] === "--scan-terminal-preimage-c1") {
-    await printDailyScanTerminalRepairPreimage();
-    return;
-  }
-  if (process.argv[2] === "--scan-terminal-repair-c1") {
-    await runDailyScanTerminalRepair(process.argv.slice(3));
-    return;
-  }
-  const invocation = parseDailyCanonicalRecoveryV4Invocation(
-    process.argv.slice(2),
-  );
   const recoveryTenantId = required("READER_SUMMARY_DAILY_TENANT_ID");
   const recoveryWorkspaceId = required("READER_SUMMARY_DAILY_WORKSPACE_ID");
   const publicationDatabaseUrl = requiredSystemDatabaseUrl();
-  const terminalDatabaseUrl = deriveReaderSummaryDailyTerminalDatabaseUrl(
-    publicationDatabaseUrl,
-  );
-  const publicDirectory = resolve(
-    required("READER_SUMMARY_DAILY_PUBLIC_DIRECTORY"),
-  );
+  const terminalDatabaseUrl =
+    deriveReaderSummaryDailyTerminalDatabaseUrl(publicationDatabaseUrl);
+  const publicDirectory = resolve(required("READER_SUMMARY_DAILY_PUBLIC_DIRECTORY"));
   const runtimeConnection = createReaderSummaryDailyTerminalRuntimeConnection({
     READER_SUMMARY_DAILY_TERMINAL_DATABASE_URL: terminalDatabaseUrl,
     READER_SUMMARY_DAILY_AUDITOR_DATABASE_URL: publicationDatabaseUrl,
   });
-  let prisma: PrismaSummaryConnection | undefined;
+  const prisma = await PrismaSummaryConnection.create(
+    defaultPostgresRuntimePoolConfig(publicationDatabaseUrl, "daily-runner"),
+  );
+  const runtimeClient = GrpcAgentRuntimeClient.connect({
+    address: required("AGENT_RUNTIME_GRPC_ADDRESS"),
+    clock: new SystemClock(),
+    options: {
+      timeoutMs: positive(process.env.AGENT_RUNTIME_GRPC_TIMEOUT_MS, 5_000),
+      serviceToken: process.env.AGENT_RUNTIME_SERVICE_TOKEN?.trim() || undefined,
+    },
+  });
   try {
-    prisma = await PrismaSummaryConnection.create(
-      defaultPostgresRuntimePoolConfig(publicationDatabaseUrl, "daily-runner"),
-    );
-    const runtimeServiceToken =
-      process.env.AGENT_RUNTIME_SERVICE_TOKEN?.trim() ?? "";
-    const runtimeClient = GrpcAgentRuntimeClient.connect({
-      address: required("AGENT_RUNTIME_GRPC_ADDRESS"),
-      clock: new SystemClock(),
-      options: {
-        timeoutMs: positive(process.env.AGENT_RUNTIME_GRPC_TIMEOUT_MS, 5_000),
-        serviceToken: runtimeServiceToken || undefined,
-      },
-    });
     const executor = new ReaderSummaryDailyCanonicalRecoveryV4Executor({
-      authority: new PostgresCanonicalRecoveryAuthority(
-        runtimeConnection.terminal,
-      ),
-      runtime: new GrpcReaderSummaryDailyCanonicalRecoveryRuntime(
-        runtimeClient,
-      ),
+      authority: new PostgresCanonicalRecoveryAuthority(runtimeConnection.terminal),
+      runtime: new GrpcReaderSummaryDailyCanonicalRecoveryRuntime(runtimeClient),
       finalizer: createReaderSummaryDailyCanonicalRecoveryV4Finalizer({
         prisma,
         publicDirectory,
       }),
       now: () => new Date(),
     });
-    const workerId = `daily-canonical-recovery-v4-${randomUUID()}`;
-    const outcome =
-      invocation.kind === "invalid_product_retry_set"
-        ? await runReaderSummaryDailyCanonicalRecoveryV4InvalidProduct({
-            tenantId: recoveryTenantId,
-            workspaceId: recoveryWorkspaceId,
-            workerId,
-            terminalSetSha256: invocation.terminalSetSha256,
-            runtimeServiceToken,
-            runtimeClient,
-            authorizer:
-              new PostgresCanonicalRecoveryInvalidProductRetrySetAuthorizer(
-                runtimeConnection.terminal,
-              ),
-            executor,
-            now: () => new Date(),
-          })
-        : await executor.runAll({
-            tenantId: recoveryTenantId,
-            workspaceId: recoveryWorkspaceId,
-            workerId,
-          });
-    console.log(
-      `reader-summary-daily-canonical-recovery-v4 outcome=${outcome.kind}`,
-    );
+    const outcome = await executor.runAll({
+      tenantId: recoveryTenantId,
+      workspaceId: recoveryWorkspaceId,
+      workerId: `daily-canonical-recovery-v4-${randomUUID()}`,
+    });
+    console.log(`reader-summary-daily-canonical-recovery-v4 outcome=${outcome.kind}`);
     if (outcome.kind === "caught_up") {
       console.log(`finalized_dates=${outcome.publications.length}`);
       console.log(
-        `unavailable_dates=${
-          outcome.unavailable
-            .map((entry) => `${entry.requestedUtcDate}:${entry.reasonCode}`)
-            .join(",") || "none"
-        }`,
+        `unavailable_dates=${outcome.unavailable.map((entry) =>
+          `${entry.requestedUtcDate}:${entry.reasonCode}`).join(",") || "none"}`,
       );
     }
     const exitCode = canonicalRecoveryCliExitCode(outcome);
@@ -192,8 +141,7 @@ async function main(): Promise<void> {
       process.exitCode = exitCode;
     }
   } finally {
-    await runtimeConnection.close();
-    await prisma?.close();
+    await Promise.all([runtimeConnection.close(), prisma.close()]);
   }
 }
 
@@ -203,28 +151,26 @@ async function main(): Promise<void> {
  * The contract injects only a deterministic subscription response; it never
  * emulates a repository, publication, or V4 transition in memory.
  */
-export const createReaderSummaryDailyCanonicalRecoveryV4Finalizer =
-  (dependencies: {
-    readonly prisma: PrismaSummaryConnection;
-    readonly publicDirectory: string;
-  }): CanonicalRecoveryFinalizer => {
-    const atomic = new PrismaReaderSummaryDailyCanonicalRecoveryV4Finalization(
-      dependencies.prisma,
-      capture,
-      (input, publication) =>
-        stageReaderSummaryDailyCanonicalRecoveryPublicFiles(
-          dependencies.publicDirectory,
-          input.work.modelJobIdentity,
-          input.work.requestedUtcDate,
-          publication,
-        ),
-    );
-    return { finalize: (input) => atomic.finalize(input) };
-  };
+export const createReaderSummaryDailyCanonicalRecoveryV4Finalizer = (dependencies: {
+  readonly prisma: PrismaSummaryConnection;
+  readonly publicDirectory: string;
+}): CanonicalRecoveryFinalizer => {
+  const atomic = new PrismaReaderSummaryDailyCanonicalRecoveryV4Finalization(
+    dependencies.prisma,
+    capture,
+    (input, publication) => stageReaderSummaryDailyCanonicalRecoveryPublicFiles(
+      dependencies.publicDirectory,
+      input.work.modelJobIdentity,
+      input.work.requestedUtcDate,
+      publication,
+    ),
+  );
+  return { finalize: (input) => atomic.finalize(input) };
+};
 
 export const canonicalRecoveryCliExitCode = (
   outcome: Readonly<{ kind: string }>,
-): number => (outcome.kind === "failed_ambiguous" ? 1 : 0);
+): number => outcome.kind === "failed_ambiguous" ? 1 : 0;
 
 const capture = async (
   input: Parameters<CanonicalRecoveryFinalizer["finalize"]>[0],
@@ -232,8 +178,7 @@ const capture = async (
 ) => {
   const completedAt = exactText(input.work.completedAt, "DB completion time");
   const operationClock: Clock = { now: () => new Date(completedAt) };
-  const executionAttestations =
-    new DurableReaderSummaryExecutionAttestationCapture();
+  const executionAttestations = new DurableReaderSummaryExecutionAttestationCapture();
   const replay = replayInput(input);
   const receiptAttestation =
     deriveReaderSummaryDailyCanonicalRecoveryExecutionAttestation({
@@ -253,9 +198,7 @@ const capture = async (
   const tenant = tenantId(input.work.tenantId);
   const workspace = workspaceId(input.work.workspaceId);
   const policy = ReaderSummaryPolicy.create({
-    id: deterministicUuid(
-      `policy:${input.work.tenantId}:${input.work.workspaceId}`,
-    ),
+    id: deterministicUuid(`policy:${input.work.tenantId}:${input.work.workspaceId}`),
     tenantId: tenant,
     workspaceId: workspace,
     scope: { type: "workspace" },
@@ -267,8 +210,7 @@ const capture = async (
     includeInterestHighlights: true,
     includeRepeatedSignals: true,
     dedupeStrategy: "canonical_url_then_title",
-    customInstructions:
-      "Build a practical daily reader summary from immutable authority only.",
+    customInstructions: "Build a practical daily reader summary from immutable authority only.",
     createdAt: operationClock.now(),
     updatedAt: operationClock.now(),
   });
@@ -333,11 +275,7 @@ const capture = async (
   if (artifact === null) {
     throw new Error("Canonical recovery artifact readback is missing");
   }
-  assertFinalCitationsUseAuthority(
-    replay.authority,
-    artifact.toSnapshot().citationMap,
-    200,
-  );
+  assertFinalCitationsUseAuthority(replay.authority, artifact.toSnapshot().citationMap, 200);
   const frontendArtifact = presentReaderSummaryArtifact(artifact, {
     status: "fresh",
     checkedAt: operationClock.now(),
@@ -460,28 +398,19 @@ export const assertReaderSummaryDailyCanonicalRecoveryResultShape = (input: {
 }): void => {
   const hasNoSignal = input.qualityFlags.includes("no_signal");
   if (input.status === "completed") {
-    if (
-      !Number.isInteger(input.selectedFeedItemCount) ||
-      input.selectedFeedItemCount < 1 ||
-      hasNoSignal
-    ) {
-      throw new Error(
-        "Daily canonical recovery completed result shape is invalid",
-      );
+    if (!Number.isInteger(input.selectedFeedItemCount) ||
+        input.selectedFeedItemCount < 1 || hasNoSignal) {
+      throw new Error("Daily canonical recovery completed result shape is invalid");
     }
     return;
   }
   if (input.status === "no_signal") {
     if (input.selectedFeedItemCount !== 0 || !hasNoSignal) {
-      throw new Error(
-        "Daily canonical recovery no_signal result shape is invalid",
-      );
+      throw new Error("Daily canonical recovery no_signal result shape is invalid");
     }
     return;
   }
-  throw new Error(
-    "Daily canonical recovery did not reach a terminal signal state",
-  );
+  throw new Error("Daily canonical recovery did not reach a terminal signal state");
 };
 
 /**
@@ -503,9 +432,7 @@ export const readerSummaryDailyCanonicalRecoveryPublicExecutionEvidence = (
     input.executionStatus !== "completed" &&
     input.executionStatus !== "no_signal"
   ) {
-    throw new Error(
-      "Daily canonical recovery did not reach a terminal signal state",
-    );
+    throw new Error("Daily canonical recovery did not reach a terminal signal state");
   }
   const durableAttestations = Object.freeze([
     Object.freeze({
@@ -515,29 +442,19 @@ export const readerSummaryDailyCanonicalRecoveryPublicExecutionEvidence = (
   ]);
   if (input.requestCreated) {
     if (input.capturedCommandCount !== 1) {
-      throw new Error(
-        "Daily canonical recovery fresh queue admission diverged",
-      );
+      throw new Error("Daily canonical recovery fresh queue admission diverged");
     }
-    if (
-      !canonicalJsonBytes(input.transientAttestations).equals(
-        canonicalJsonBytes(durableAttestations),
-      )
-    ) {
-      throw new Error(
-        "Daily canonical recovery fresh attestation admission diverged",
-      );
+    if (!canonicalJsonBytes(input.transientAttestations).equals(
+      canonicalJsonBytes(durableAttestations),
+    )) {
+      throw new Error("Daily canonical recovery fresh attestation admission diverged");
     }
   } else {
     if (input.capturedCommandCount !== 0) {
-      throw new Error(
-        "Daily canonical recovery replay queue admission diverged",
-      );
+      throw new Error("Daily canonical recovery replay queue admission diverged");
     }
     if (input.transientAttestations.length !== 0) {
-      throw new Error(
-        "Daily canonical recovery replay retained ephemeral admission state",
-      );
+      throw new Error("Daily canonical recovery replay retained ephemeral admission state");
     }
   }
   return Object.freeze({ executionAttestations: durableAttestations });
@@ -575,11 +492,10 @@ const createFrozenObservedThroughExecution = (input: {
     evidenceSelector: (
       delegate: ReaderSummaryEvidenceSelectorPort,
     ): ReaderSummaryEvidenceSelectorPort => ({
-      select: (query) =>
-        delegate.select({
-          ...query,
-          observedThrough: new Date(input.ingestionCutoff),
-        }),
+      select: (query) => delegate.select({
+        ...query,
+        observedThrough: new Date(input.ingestionCutoff),
+      }),
     }),
     model: (delegate: ReaderSummaryModelPort): ReaderSummaryModelPort => ({
       ...delegate,
@@ -606,9 +522,7 @@ const assertFrozenPublicationEvidence = (
     if (!isRecord(entry)) {
       throw new Error("Canonical recovery publication evidence is invalid");
     }
-    const item = byFeedItemId.get(
-      exactText(entry.feedItemId, "publication feed item"),
-    );
+    const item = byFeedItemId.get(exactText(entry.feedItemId, "publication feed item"));
     if (
       item === undefined ||
       entry.sourceItemId !== item.sourceItemId ||
@@ -620,9 +534,7 @@ const assertFrozenPublicationEvidence = (
       entry.observedAt !== item.observedAt ||
       entry.sourceContentHash !== item.contentHash
     ) {
-      throw new Error(
-        "Canonical recovery publication evidence diverges from frozen authority",
-      );
+      throw new Error("Canonical recovery publication evidence diverges from frozen authority");
     }
   }
 };
@@ -654,9 +566,7 @@ const assertFinalCitationsUseAuthority = (
       citation.field !== "canonicalUrl" ||
       citation.canonicalUrl !== item.canonicalUrl
     ) {
-      throw new Error(
-        "Canonical recovery final citation diverges from frozen authority",
-      );
+      throw new Error("Canonical recovery final citation diverges from frozen authority");
     }
     seen.add(citation.citationId);
   }
@@ -665,9 +575,7 @@ const assertFinalCitationsUseAuthority = (
 const replayInput = (
   input: Parameters<CanonicalRecoveryFinalizer["finalize"]>[0],
 ): ReaderSummaryDailyReplayInput => {
-  const source = JSON.parse(
-    input.work.sourceAuthorityBytes.toString("utf8"),
-  ) as unknown;
+  const source = JSON.parse(input.work.sourceAuthorityBytes.toString("utf8")) as unknown;
   if (!isRecord(source)) {
     throw new Error("Canonical recovery source authority is invalid");
   }
@@ -684,9 +592,7 @@ const replayInput = (
     },
   });
   if (!isReaderSummaryDailySourceAuthorityV2(authority)) {
-    throw new Error(
-      "Canonical recovery persisted output_text requires immutable authority v2",
-    );
+    throw new Error("Canonical recovery persisted output_text requires immutable authority v2");
   }
   return Object.freeze({
     responseBytes: Buffer.from(input.responseBytes),
@@ -712,15 +618,11 @@ const canonicalRecoveryPrismaClient = (
     typeof candidate.$queryRaw !== "function" ||
     Object.entries(delegates).some(([name, methods]) => {
       const delegate = candidate[name];
-      return (
-        !isRecord(delegate) ||
-        methods.some((method) => typeof delegate[method] !== "function")
-      );
+      return !isRecord(delegate) || methods.some((method) =>
+        typeof delegate[method] !== "function");
     })
   ) {
-    throw new Error(
-      "Canonical recovery Prisma transaction lacks required delegates",
-    );
+    throw new Error("Canonical recovery Prisma transaction lacks required delegates");
   }
   return candidate as unknown as PrismaSummaryClient;
 };
@@ -739,7 +641,9 @@ class DeterministicRecoveryIds implements IdGenerator {
 class CaptureQueue implements ReaderSummaryJobQueuePort {
   count = 0;
 
-  async canAccept(_command: EnqueueReaderSummaryJobCommand): Promise<boolean> {
+  async canAccept(
+    _command: EnqueueReaderSummaryJobCommand,
+  ): Promise<boolean> {
     void _command;
     return true;
   }
@@ -765,9 +669,7 @@ class ExactRecoveryPolicyRepository implements ReaderSummaryPolicyRepositoryPort
   constructor(private readonly policy: ReaderSummaryPolicy) {}
 
   async save(): Promise<void> {
-    throw new Error(
-      "Canonical recovery policy is immutable and cannot be persisted",
-    );
+    throw new Error("Canonical recovery policy is immutable and cannot be persisted");
   }
 
   async findByScope(
@@ -775,8 +677,7 @@ class ExactRecoveryPolicyRepository implements ReaderSummaryPolicyRepositoryPort
   ): Promise<ReaderSummaryPolicy | null> {
     const snapshot = this.policy.toSnapshot();
     return query.tenantId === snapshot.tenantId &&
-      query.workspaceId === snapshot.workspaceId &&
-      query.scope.type === "workspace"
+      query.workspaceId === snapshot.workspaceId && query.scope.type === "workspace"
       ? this.policy
       : null;
   }
@@ -810,10 +711,7 @@ export const stageReaderSummaryDailyCanonicalRecoveryPublicFiles = async (
     },
     {
       staged: join(stageDirectory, `${identity}.frontend.next`),
-      public: join(
-        directory,
-        `frontend-reader-summary-${date}.fixture.v1.json`,
-      ),
+      public: join(directory, `frontend-reader-summary-${date}.fixture.v1.json`),
       bytes: publication.publicFrontendBytes,
     },
   ];
@@ -873,9 +771,7 @@ const readExistingExact = (path: string, bytes: Buffer): boolean => {
 
 const exactModel = <T>(model: T | undefined): T => {
   if (model === undefined) {
-    throw new Error(
-      "Canonical recovery requires the persisted output_text model",
-    );
+    throw new Error("Canonical recovery requires the persisted output_text model");
   }
   return model;
 };
@@ -914,8 +810,7 @@ export const deriveReaderSummaryDailyTerminalDatabaseUrl = (
   return terminalDsn.toString();
 };
 
-const required = (name: string): string =>
-  exactText(process.env[name]?.trim(), name);
+const required = (name: string): string => exactText(process.env[name]?.trim(), name);
 
 const exactText = (value: unknown, label: string): string => {
   if (typeof value !== "string" || value.trim().length === 0) {

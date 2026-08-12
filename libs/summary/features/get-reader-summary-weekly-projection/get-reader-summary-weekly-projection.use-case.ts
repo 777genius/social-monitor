@@ -8,10 +8,7 @@ import {
 } from "@social-monitor/shared-kernel";
 
 import type { PersistedReaderSummaryWeeklyArtifact } from "../../ports/reader-summary-artifact-repository.port";
-import type {
-  ReaderSummaryWeeklyEvidenceLimitation,
-  ReaderSummaryWeeklyProjectionReaderPort,
-} from "../../ports/reader-summary-weekly-projection-reader.port";
+import type { ReaderSummaryWeeklyProjectionReaderPort } from "../../ports/reader-summary-weekly-projection-reader.port";
 
 export const readerSummaryWeeklyProjectionSchemaVersion =
   "reader_summary.weekly_projection.v1" as const;
@@ -40,8 +37,6 @@ export type ReaderSummaryWeeklyProjection = Readonly<{
   certifiedDailyEvidenceDates: readonly string[];
   missingDailyEvidenceDates: readonly string[];
   blockingReasons: readonly ReaderSummaryWeeklyProjectionBlockingReason[];
-  activeWeeklyCertifiedArtifactPresent: boolean;
-  evidenceLimitations: readonly ReaderSummaryWeeklyEvidenceLimitation[];
   artifact: PersistedReaderSummaryWeeklyArtifact | null;
 }>;
 
@@ -75,17 +70,6 @@ export class GetReaderSummaryWeeklyProjectionUseCase {
     );
     if (!certifiedDatesResult.ok) return certifiedDatesResult;
     const certifiedDates = certifiedDatesResult.value;
-    if (
-      typeof read.activeWeeklyCertifiedArtifactPresent !== "boolean" ||
-      read.activeWeeklyCertifiedArtifactPresent !== (read.artifact !== null)
-    ) {
-      return invalidProjection("artifact presence");
-    }
-    const evidenceLimitationsResult = exactEvidenceLimitations(
-      read.evidenceLimitations,
-      certifiedDates,
-    );
-    if (!evidenceLimitationsResult.ok) return evidenceLimitationsResult;
     const foundDates = new Set(certifiedDates);
     const missingDates = window.value.dates.filter(
       (date) => !foundDates.has(date),
@@ -94,11 +78,10 @@ export class GetReaderSummaryWeeklyProjectionUseCase {
     if (certifiedDates.length !== 7) {
       blockingReasons.push("certified_daily_evidence_incomplete");
     }
-    if (!read.activeWeeklyCertifiedArtifactPresent) {
+    if (read.artifact === null) {
       blockingReasons.push("active_weekly_certified_artifact_missing");
     }
-    const status = certifiedDates.length === 0 &&
-        !read.activeWeeklyCertifiedArtifactPresent
+    const status = certifiedDates.length === 0 && read.artifact === null
       ? "unavailable"
       : blockingReasons.length === 0
         ? "complete"
@@ -114,10 +97,7 @@ export class GetReaderSummaryWeeklyProjectionUseCase {
       certifiedDailyEvidenceDates: Object.freeze(certifiedDates),
       missingDailyEvidenceDates: Object.freeze(missingDates),
       blockingReasons: Object.freeze(blockingReasons),
-      activeWeeklyCertifiedArtifactPresent:
-        read.activeWeeklyCertifiedArtifactPresent,
-      evidenceLimitations: evidenceLimitationsResult.value,
-      artifact: status === "complete" ? read.artifact : null,
+      artifact: read.artifact,
     }));
   }
 }
@@ -174,43 +154,6 @@ const exactCertifiedDates = (
   }
   return ok(dates);
 };
-
-const exactEvidenceLimitations = (
-  values: readonly ReaderSummaryWeeklyEvidenceLimitation[],
-  certifiedDates: readonly string[],
-): Result<readonly ReaderSummaryWeeklyEvidenceLimitation[], DomainError> => {
-  if (!Array.isArray(values)) return invalidProjection("evidence limitations");
-  const certified = new Set(certifiedDates);
-  const limitations: ReaderSummaryWeeklyEvidenceLimitation[] = [];
-  let previousKey: string | null = null;
-  for (const value of values) {
-    if (typeof value !== "object" || value === null || Array.isArray(value)) {
-      return invalidProjection("evidence limitations");
-    }
-    const keys = Object.keys(value).sort();
-    if (
-      keys.join(",") !== "evidenceState,providerKey,requestedUtcDate" ||
-      !certified.has(value.requestedUtcDate) ||
-      value.providerKey !== "github-trending-page" ||
-      value.evidenceState !== "historical_unavailable"
-    ) {
-      return invalidProjection("evidence limitations");
-    }
-    const key = `${value.requestedUtcDate}:${value.providerKey}:${value.evidenceState}`;
-    if (previousKey !== null && previousKey >= key) {
-      return invalidProjection("evidence limitations");
-    }
-    previousKey = key;
-    limitations.push(Object.freeze({ ...value }));
-  }
-  return ok(Object.freeze(limitations));
-};
-
-const invalidProjection = (field: string) =>
-  err(new DomainError(
-    "external.dependency_unavailable",
-    `Reader summary weekly projection ${field} is invalid`,
-  ));
 
 const invalidWeek = () =>
   err(new DomainError(

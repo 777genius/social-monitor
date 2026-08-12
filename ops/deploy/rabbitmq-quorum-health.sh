@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# RabbitMQ 4.3.x quorum health is deliberately broker-local.  It never asks an
+# RabbitMQ 4.3.2 quorum health is deliberately broker-local.  It never asks an
 # application to declare a queue, so Compose can reach a healthy broker before
 # any application service is available.  The recovery library uses the distinct
 # noproc result below only to decide whether a bounded snapshot/bootstrap path
@@ -10,8 +10,6 @@ RABBITMQ_QUORUM_HEALTH_SERVICE=${RABBITMQ_QUORUM_HEALTH_SERVICE:-rabbitmq}
 RABBITMQ_QUORUM_HEALTH_VHOST=${RABBITMQ_QUORUM_HEALTH_VHOST:-/}
 RABBITMQ_QUORUM_HEALTH_QUEUES=${RABBITMQ_QUORUM_HEALTH_QUEUES:-jobs.freshness.scan,jobs.summary.execute,jobs.reader-summary.execute,jobs.delivery.attempt.send,events.delivery.summary.ready}
 RABBITMQ_QUORUM_PROBE_NOPROC=64
-RABBITMQ_QUORUM_PROBE_QUEUE_NOT_FOUND=65
-RABBITMQ_QUORUM_PROBE_METADATA_NOPROC=66
 
 rabbitmq_quorum_health_error() {
   printf 'deploy-error: RabbitMQ quorum health: %s\n' "$*" >&2
@@ -37,16 +35,14 @@ rabbitmq_quorum_health_require_project() {
 }
 
 rabbitmq_quorum_health_queue_names() {
-  local raw=${RABBITMQ_QUORUM_HEALTH_QUEUES:-} queue seen=,
+  local raw=${RABBITMQ_QUORUM_HEALTH_QUEUES:-} queue
   local -a queues=()
   local IFS=,
 
   read -r -a queues <<< "$raw"
-  ((${#queues[@]} == 5)) || return 1
+  ((${#queues[@]} > 0)) || return 1
   for queue in "${queues[@]}"; do
     rabbitmq_quorum_health_safe_queue_name "$queue" || return 1
-    [[ $seen != *",$queue,"* ]] || return 1
-    seen+="$queue,"
   done
   printf '%s\n' "${queues[@]}"
 }
@@ -230,10 +226,7 @@ for node in running:
     if maintenance.get(node) != "not under maintenance":
         raise SystemExit(1)
     version = versions.get(node)
-    if not isinstance(version, dict):
-        raise SystemExit(1)
-    match = re.fullmatch(r"4\.3\.(\d+)", version.get("rabbitmq_version", ""))
-    if match is None or int(match.group(1)) < 2:
+    if not isinstance(version, dict) or version.get("rabbitmq_version") != "4.3.2":
         raise SystemExit(1)
 '
 }
@@ -331,13 +324,13 @@ rabbitmq_quorum_health_cluster_status() {
     return 1
   fi
   if ! printf '%s' "$output" | rabbitmq_quorum_health_validate_cluster_status_json; then
-    rabbitmq_quorum_health_error 'RabbitMQ cluster_status JSON is not the supported 4.3.x steady-state shape'
+    rabbitmq_quorum_health_error 'RabbitMQ cluster_status JSON is not the supported 4.3.2 steady-state shape'
     return 1
   fi
 }
 
 rabbitmq_quorum_health_queue_status() {
-  local container_id=$1 queue=$2 output status
+  local container_id=$1 queue=$2 output
 
   if output=$(docker exec "$container_id" rabbitmq-queues quorum_status \
     --vhost "$RABBITMQ_QUORUM_HEALTH_VHOST" "$queue" --formatter json 2>&1); then
@@ -349,16 +342,6 @@ rabbitmq_quorum_health_queue_status() {
     fi
     rabbitmq_quorum_health_error "RabbitMQ quorum_status JSON is invalid for queue $queue"
     return 1
-  else
-    status=$?
-  fi
-  if ((status == RABBITMQ_QUORUM_PROBE_QUEUE_NOT_FOUND)) &&
-     [[ $output == "queue '$queue' was not found in virtual host '/'" ]]; then
-    return "$RABBITMQ_QUORUM_PROBE_QUEUE_NOT_FOUND"
-  fi
-  if ((status == RABBITMQ_QUORUM_PROBE_QUEUE_NOT_FOUND)); then
-    rabbitmq_quorum_health_error "RabbitMQ queue-not-found output is invalid for queue $queue"
-    return 1
   fi
   if printf '%s' "$output" | LC_ALL=C grep -Eqi '(^|[^[:alnum:]_])noproc([^[:alnum:]_]|$)'; then
     return "$RABBITMQ_QUORUM_PROBE_NOPROC"
@@ -367,88 +350,11 @@ rabbitmq_quorum_health_queue_status() {
   return 1
 }
 
-rabbitmq_quorum_health_validate_empty_json_array() {
-  python3 -c '
-import json
-import sys
-
-try:
-    payload = json.load(sys.stdin)
-except Exception:
-    raise SystemExit(1)
-if payload != []:
-    raise SystemExit(1)
-'
-}
-
-rabbitmq_quorum_health_metadata_noproc_fingerprint() {
-  local container_id=$1 hostname=$2 output status
-
-  [[ $RABBITMQ_QUORUM_HEALTH_VHOST == / ]] || return 1
-  [[ $container_id =~ ^[0-9a-f]{64}$ ]] || return 1
-  rabbitmq_quorum_health_safe_hostname "$hostname" || return 1
-
-  if output=$(docker exec "$container_id" rabbitmq-diagnostics -q \
-    check_if_metadata_store_is_initialized 2>&1); then
-    :
-  else
-    status=$?
-    rabbitmq_quorum_health_error "metadata initialization check exited $status"
-    return 1
-  fi
-  [[ $output == "Metadata store on node rabbit@$hostname has completed its initialization" ]] || return 1
-
-  if output=$(docker exec "$container_id" rabbitmq-diagnostics -q \
-    check_if_metadata_store_is_initialized_with_data 2>&1); then
-    rabbitmq_quorum_health_error 'metadata-with-data check unexpectedly succeeded'
-    return 1
-  else
-    status=$?
-  fi
-  ((status == 69)) || return 1
-  [[ $output == $'Error:\nnoproc' ]] || return 1
-
-  if output=$(docker exec "$container_id" rabbitmq-diagnostics \
-    metadata_store_status --formatter json 2>&1); then
-    :
-  else
-    status=$?
-    rabbitmq_quorum_health_error "metadata status exited $status"
-    return 1
-  fi
-  printf '%s' "$output" | rabbitmq_quorum_health_validate_empty_json_array || return 1
-
-  if output=$(docker exec "$container_id" rabbitmqctl -q list_vhosts name 2>&1); then
-    :
-  else
-    status=$?
-    rabbitmq_quorum_health_error "vhost inventory exited $status"
-    return 1
-  fi
-  [[ -z $output ]] || return 1
-
-  if output=$(docker exec "$container_id" rabbitmq-diagnostics -q listeners 2>&1); then
-    :
-  else
-    status=$?
-    rabbitmq_quorum_health_error "listener check exited $status"
-    return 1
-  fi
-  [[ $output == "Node rabbit@$hostname reported no enabled listeners." ]]
-}
-
 rabbitmq_quorum_health_probe_target() {
-  local queue status queue_inventory total=0 healthy=0 noproc=0 not_found=0
+  local queue status total=0 healthy=0 noproc=0
 
   rabbitmq_quorum_health_identify_target || return 1
   rabbitmq_quorum_health_cluster_status "$RABBITMQ_QUORUM_TARGET_CONTAINER_ID" || return 1
-  if queue_inventory=$(rabbitmq_quorum_health_queue_names); then
-    :
-  else
-    status=$?
-    rabbitmq_quorum_health_error "RabbitMQ quorum queue inventory is invalid (status $status)"
-    return 1
-  fi
   while IFS= read -r queue; do
     [[ -n $queue ]] || continue
     ((total += 1))
@@ -458,24 +364,20 @@ rabbitmq_quorum_health_probe_target() {
       status=$?
       if ((status == RABBITMQ_QUORUM_PROBE_NOPROC)); then
         ((noproc += 1))
-      elif ((status == RABBITMQ_QUORUM_PROBE_QUEUE_NOT_FOUND)); then
-        ((not_found += 1))
       else
         return 1
       fi
     fi
-  done <<< "$queue_inventory"
+  done < <(rabbitmq_quorum_health_queue_names) || {
+    rabbitmq_quorum_health_error 'RabbitMQ quorum queue inventory is invalid'
+    return 1
+  }
   ((total > 0)) || return 1
   if ((healthy == total)); then
     return 0
   fi
   if ((noproc == total)); then
     return "$RABBITMQ_QUORUM_PROBE_NOPROC"
-  fi
-  if ((total == 5 && not_found == total)); then
-    rabbitmq_quorum_health_metadata_noproc_fingerprint \
-      "$RABBITMQ_QUORUM_TARGET_CONTAINER_ID" "$RABBITMQ_QUORUM_TARGET_HOSTNAME" || return 1
-    return "$RABBITMQ_QUORUM_PROBE_METADATA_NOPROC"
   fi
   rabbitmq_quorum_health_error 'RabbitMQ quorum health is mixed; refusing an automatic recovery'
   return 1
