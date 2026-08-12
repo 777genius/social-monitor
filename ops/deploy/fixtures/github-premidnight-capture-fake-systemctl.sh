@@ -18,10 +18,7 @@ if [[ $1 == cat ]]; then
   [[ $# == 2 && $2 == social-monitor-daily.service ]] || exit 1
   printf '%s\n' \
     '[Service]' \
-    'ExecCondition=/var/data/social-monitor/control/daily-c1-runtime.sh --check-legacy-owner' \
-    'ExecStartPre=/var/data/social-monitor/control/daily-c1-runtime.sh --prepare-legacy-start' \
-    'ExecStart=/var/data/social-monitor/control/daily-c1-runtime.sh --run-and-complete-legacy' \
-    'ExecStopPost=/var/data/social-monitor/control/daily-c1-runtime.sh --complete-legacy-start' \
+    'ExecStart=/var/data/social-monitor/control/daily-run.sh --yesterday' \
     'TimeoutStartSec=19800' 'Restart=no'
   exit
 fi
