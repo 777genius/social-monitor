@@ -37,19 +37,36 @@ reader_summary_publication_prebootstrap_absent_daily_timer() {
 }
 
 reader_summary_publication_prebootstrap_v6_runner() {
+  local previous_sha=${1:-}
   local source=$REPO/ops/deploy/production-runtime/daily-run.sh
   local destination=$CONTROL/run-reader-summary-production-day.sh
   local next=$CONTROL/.run-reader-summary-production-day.sh.bootstrap-next
+  local service=social-monitor-reader-summary-production-day.service
+  local active_state
 
   if cmp -s "$source" "$destination"; then
     [[ -f $destination && ! -L $destination && -x $destination ]] || \
       fail 'target publication prebootstrap v6 runner target is unsafe'
     return 0
   fi
-  [[ -f $source && ! -L $source && \
-     ! -e $destination && ! -L $destination && \
-     ! -e $next && ! -L $next ]] || \
-    fail 'target publication prebootstrap v6 runner state is unsafe'
+  active_state=$(reader_summary_publication_systemctl show \
+    --property=ActiveState --value "$service") || \
+    { fail 'target publication prebootstrap v6 runner activity is unavailable'; return 1; }
+  [[ $active_state == inactive ]] || \
+    { fail 'target publication prebootstrap v6 runner service is not inactive'; return 1; }
+  [[ -f $source && ! -L $source && ! -e $next && ! -L $next ]] || \
+    { fail 'target publication prebootstrap v6 runner state is unsafe'; return 1; }
+  if [[ -e $destination || -L $destination ]]; then
+    [[ -f $destination && ! -L $destination && -x $destination && \
+       $previous_sha =~ ^[0-9a-f]{40}$ ]] || \
+      { fail 'target publication prebootstrap v6 runner state is unsafe'; return 1; }
+    git -C "$REPO" cat-file -e \
+      "$previous_sha:ops/deploy/production-runtime/daily-run.sh" 2>/dev/null && \
+      git -C "$REPO" show \
+        "$previous_sha:ops/deploy/production-runtime/daily-run.sh" | \
+        cmp -s - "$destination" || \
+      { fail 'target publication prebootstrap v6 runner provenance is unsafe'; return 1; }
+  fi
   install -m 0755 "$source" "$next" || return 1
   if ((EUID == 0)); then chown root:root "$next" || return 1; fi
   mv -f "$next" "$destination"
@@ -163,7 +180,7 @@ reader_summary_publication_prebootstrap_target_daily_runner() {
       break
     done <<< "$services"
   fi
-  reader_summary_publication_prebootstrap_v6_runner
+  reader_summary_publication_prebootstrap_v6_runner "$previous_sha"
   reader_summary_publication_prebootstrap_absent_daily_timer
   reader_summary_publication_prebootstrap_v6_dropin
 }

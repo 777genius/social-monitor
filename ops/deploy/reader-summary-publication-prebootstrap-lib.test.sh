@@ -17,6 +17,12 @@ cp "$SCRIPT_DIR/production-runtime/social-monitor-daily.service" \
   "$REPO/ops/deploy/production-runtime/"
 cp "$SCRIPT_DIR/production-runtime/daily-run.sh" \
   "$REPO/ops/deploy/production-runtime/"
+git -C "$REPO" init -q
+git -C "$REPO" config user.email test@example.invalid
+git -C "$REPO" config user.name test
+git -C "$REPO" add ops/deploy/production-runtime/daily-run.sh
+git -C "$REPO" commit -qm 'test: previous runner'
+PREVIOUS_SHA=$(git -C "$REPO" rev-parse HEAD)
 
 fail() {
   printf 'publication-prebootstrap-test-error: %s\n' "$*" >&2
@@ -59,6 +65,31 @@ cmp -s "$REPO/ops/deploy/production-runtime/daily-run.sh" \
   "$CONTROL/run-reader-summary-production-day.sh"
 [[ -x $CONTROL/run-reader-summary-production-day.sh ]]
 reader_summary_publication_prebootstrap_v6_runner
+
+printf '# previous reviewed runner\n' > \
+  "$REPO/ops/deploy/production-runtime/daily-run.sh"
+chmod 0755 "$REPO/ops/deploy/production-runtime/daily-run.sh"
+reader_summary_publication_prebootstrap_v6_runner "$PREVIOUS_SHA"
+cmp -s "$REPO/ops/deploy/production-runtime/daily-run.sh" \
+  "$CONTROL/run-reader-summary-production-day.sh"
+
+printf '# unknown runner\n' > "$CONTROL/run-reader-summary-production-day.sh"
+chmod 0755 "$CONTROL/run-reader-summary-production-day.sh"
+if reader_summary_publication_prebootstrap_v6_runner "$PREVIOUS_SHA" 2>/dev/null; then
+  echo 'unknown previous runner was unexpectedly accepted' >&2
+  exit 1
+fi
+git -C "$REPO" show \
+  "$PREVIOUS_SHA:ops/deploy/production-runtime/daily-run.sh" > \
+  "$CONTROL/run-reader-summary-production-day.sh"
+chmod 0755 "$CONTROL/run-reader-summary-production-day.sh"
+fake_active_state=active
+if reader_summary_publication_prebootstrap_v6_runner "$PREVIOUS_SHA" 2>/dev/null; then
+  echo 'active previous runner was unexpectedly replaced' >&2
+  exit 1
+fi
+fake_active_state=inactive
+reader_summary_publication_prebootstrap_v6_runner "$PREVIOUS_SHA"
 reader_summary_publication_prebootstrap_absent_daily_timer
 cmp -s \
   "$REPO/ops/deploy/production-runtime/social-monitor-reader-summary-production-day.bootstrap.timer" \
