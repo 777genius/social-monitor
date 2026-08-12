@@ -44,8 +44,8 @@ bridge_paths=()
 while IFS= read -r bridge_path; do
   bridge_paths+=("$bridge_path")
 done < <(deploy_control_daily_c1_bridge_release_paths)
-[[ ${#bridge_paths[@]} == 27 ]] || fail 'daily C1 bridge release manifest count drifted'
-[[ $(printf '%s\n' "${bridge_paths[@]}" | LC_ALL=C sort -u | wc -l | tr -d ' ') == 27 ]] || \
+[[ ${#bridge_paths[@]} == 20 ]] || fail 'daily C1 bridge release manifest count drifted'
+[[ $(printf '%s\n' "${bridge_paths[@]}" | LC_ALL=C sort -u | wc -l | tr -d ' ') == 20 ]] || \
   fail 'daily C1 bridge release manifest contains duplicates'
 for path in "${bridge_paths[@]}"; do
   install -d "$REPO/$(dirname "$path")"
@@ -67,12 +67,12 @@ deploy_control_is_exact_daily_c1_bridge_release "$base" "$exact_bridge" || \
 
 install -d "$REPO/ops/deploy/production-runtime"
 printf 'forbidden final runtime asset\n' > \
-  "$REPO/ops/deploy/production-runtime/unreviewed-daily-c1.timer"
+  "$REPO/ops/deploy/production-runtime/reader-summary-daily-c1.readiness"
 git -C "$REPO" add .
 git -C "$REPO" commit -qm 'test: add final asset to bridge'
 asset_target=$(git -C "$REPO" rev-parse HEAD)
 if deploy_control_is_exact_daily_c1_bridge_release "$base" "$asset_target"; then
-  fail 'bridge detector admitted an unreviewed runtime asset'
+  fail 'bridge detector admitted a final runtime asset'
 fi
 
 git -C "$REPO" checkout -q "$exact_bridge"
@@ -99,12 +99,6 @@ grep -F 'backend-gate=production-release-preflight deferred-to-final-runtime-rel
   "$workflow" >/dev/null || fail 'bridge does not defer the final-only release preflight'
 grep -F 'backend-gate=weekly-runtime-contract deferred-to-final-runtime-release' \
   "$workflow" >/dev/null || fail 'bridge does not defer the final-only weekly runtime contract'
-grep -F 'transition_state=repair-required' "$workflow" >/dev/null || \
-  fail 'bridge cannot schedule bounded repair for a missing PostgreSQL bootstrap'
-grep -F 'daily_c1_atomic_repair=61018b1d' "$workflow" >/dev/null || \
-  fail 'bridge does not pin the descendant atomic PostgreSQL repair commit'
-grep -F 'backend-gate=postgres-pool-release deferred-to-bounded-B2-repair' \
-  "$workflow" >/dev/null || fail 'bridge CI blocks the reviewed bounded bootstrap repair'
 grep -F 'shellcheck -S warning -x "${deploy_shell_files[@]}"' \
   "$workflow" >/dev/null || fail 'workflow treats informational shellcheck findings as release failures'
 grep -F "needs.plan.outputs.daily_c1_bridge != 'true'" \
@@ -113,14 +107,10 @@ grep -F "needs.plan.outputs.daily_c1_bridge != 'true'" \
   fail 'bridge must defer exactly the publication, frontend and legacy final-only gates'
 grep -F 'Deploy the daily C1 target through the alias-aware controller' \
   "$workflow" >/dev/null || fail 'bridge does not run through the installed alias-aware controller'
-grep -F 'timer_bootstrap=2c3d78af' \
-  "$workflow" >/dev/null || fail 'rollback-safe timer bootstrap is not pinned'
-grep -F 'bridge_policy=6507e47a' \
-  "$workflow" >/dev/null || fail 'reviewed exact bridge policy is not pinned'
-grep -F 'deploy "$timer_bootstrap"' "$workflow" >/dev/null || \
-  fail 'bridge does not install the rollback-safe timer first'
-grep -F 'deploy "$bridge_policy"' "$workflow" >/dev/null || \
-  fail 'bridge does not install exact transition policy after the timer bootstrap'
+grep -F 'helper_sync=e6597827' \
+  "$workflow" >/dev/null || fail 'base revalidation helper sync is not pinned to its reviewed commit'
+grep -F 'bounded base revalidation helper sync status=' \
+  "$workflow" >/dev/null || fail 'base revalidation helper sync is not explicitly bounded'
 grep -F 'bash ops/deploy/github-production-deploy-client.sh deploy "$GITHUB_SHA"' \
   "$workflow" >/dev/null || fail 'daily C1 bridge bypasses the reviewed deploy client'
 ! grep -F 'daily C1 bridge classification is not control-only' "$workflow" >/dev/null || \

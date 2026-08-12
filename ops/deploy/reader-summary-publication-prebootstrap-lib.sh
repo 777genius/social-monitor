@@ -52,7 +52,8 @@ reader_summary_publication_prebootstrap_v6_dropin() {
     fail 'target publication prebootstrap v6 drop-in state is unavailable'
   [[ $active_state == inactive ]] || \
     fail 'target publication prebootstrap v6 service is not inactive'
-  if [[ $dropins == "$destination" ]] && cmp -s "$source" "$destination"; then
+  if cmp -s "$source" "$destination" && \
+     [[ $dropins == "$destination" || -z $dropins ]]; then
     return 0
   fi
   [[ -z $dropins && ! -e $destination && ! -L $destination && \
