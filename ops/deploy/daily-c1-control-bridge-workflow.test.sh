@@ -115,6 +115,10 @@ grep -F 'Deploy the daily C1 target through the alias-aware controller' \
   "$workflow" >/dev/null || fail 'bridge does not run through the installed alias-aware controller'
 grep -F 'policy_sync=2ee45aad' \
   "$workflow" >/dev/null || fail 'readiness-only policy sync is not pinned'
+grep -F 'runtime_reconcile=e7b19bc8' \
+  "$workflow" >/dev/null || fail 'pending runtime-control reconciliation is not pinned'
+grep -F 'deploy "$runtime_reconcile"' "$workflow" >/dev/null || \
+  fail 'bridge does not reconcile current runtime-control state first'
 grep -F 'readiness_sync=4bd017e3' \
   "$workflow" >/dev/null || fail 'readiness-only runtime sync is not pinned'
 grep -F 'deploy "$policy_sync"' "$workflow" >/dev/null || \
