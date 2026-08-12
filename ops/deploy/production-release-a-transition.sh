@@ -14,6 +14,7 @@ OLD_ENTRYPOINT_BLOB=cd6c54ba92e2e55ecc7e9a55bcdec08a1c8f4551
 APPROVED_ENTRYPOINT_BLOB=25295a9d2f9265795ca46894728b25fe9d70422b
 SNAPSHOT_PATH=libs/contracts/rest/openapi.snapshot.json
 POSTGRES_POOL_BOOTSTRAP_VERSION=postgres-pool-v1
+POST_ROLLBACK_BOOTSTRAP_SHA=e7b19bc805815af310f1e5096d3fec5789129ddb
 EXPECTED_E_PATHS=47
 EXPECTED_FRONTEND_PATHS=33
 EXPECTED_PUBLIC_PATHS=34
@@ -345,6 +346,14 @@ classify_plan() {
     else
       printf 'transition_state=target-pending\n'
     fi
+    return
+  fi
+  if [[ $target_phase == TARGET && $PLAN_BACKEND_BASE == "$BACKEND_BASE" &&
+        $PLAN_BOOTSTRAP == "$POSTGRES_POOL_BOOTSTRAP_VERSION" &&
+        $PLAN_BOOTSTRAP_SHA == "$POST_ROLLBACK_BOOTSTRAP_SHA" &&
+        $PLAN_REPAIR == false ]] &&
+     plan_flags_are false true true false; then
+    printf 'transition_state=target-pending\n'
     return
   fi
   case $target_phase in

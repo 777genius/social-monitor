@@ -66,6 +66,8 @@ write_plan "$FIXTURE/b-pending.plan" true false "$FIXED_E" false false
 write_plan "$FIXTURE/b-complete.plan" false false "$FIXED_E" false false
 write_plan "$FIXTURE/target-pending.plan" true true "$FIXED_B2" true false
 write_plan "$FIXTURE/target-complete.plan" false false "$TARGET" false false
+write_plan "$FIXTURE/post-rollback-target.plan" false true "$BACKEND_BASE" true false \
+  postgres-pool-v1 e7b19bc805815af310f1e5096d3fec5789129ddb
 [[ $(bash "$TRANSITION" state "$TARGET" E "$FIXTURE/e-pending.plan") == transition_state=pre-E ]]
 [[ $(bash "$TRANSITION" state "$TARGET" E "$FIXTURE/e-complete.plan") == transition_state=E-complete ]]
 [[ $(bash "$TRANSITION" state "$TARGET" A2 "$FIXTURE/a-pending.plan") == transition_state=E-complete ]]
@@ -73,6 +75,7 @@ write_plan "$FIXTURE/target-complete.plan" false false "$TARGET" false false
 [[ $(bash "$TRANSITION" state "$TARGET" B2 "$FIXTURE/b-complete.plan") == transition_state=B-complete ]]
 [[ $(bash "$TRANSITION" state "$TARGET" TARGET "$FIXTURE/target-pending.plan") == transition_state=target-pending ]]
 [[ $(bash "$TRANSITION" state "$TARGET" TARGET "$FIXTURE/target-complete.plan") == transition_state=target-complete ]]
+[[ $(bash "$TRANSITION" state "$TARGET" TARGET "$FIXTURE/post-rollback-target.plan") == transition_state=target-pending ]]
 
 # Bootstrap absence and an already reported repair are explicit A2 states.
 write_plan "$FIXTURE/uninstalled.plan" false false "$FIXED_E" true false uninstalled "$ZERO_SHA"
@@ -130,6 +133,10 @@ assert_refuses 'plan contains duplicate key frontend' \
 write_plan "$FIXTURE/wrong-a.plan" false false "$BACKEND_BASE" true false
 assert_refuses 'Release A2 backend_base is not Release E' \
   bash "$TRANSITION" state "$TARGET" A2 "$FIXTURE/wrong-a.plan"
+write_plan "$FIXTURE/post-rollback-wrong-bootstrap.plan" false true "$BACKEND_BASE" true false \
+  postgres-pool-v1 "$FIXED_E"
+assert_refuses 'current target plan does not prove the fixed phases complete' \
+  bash "$TRANSITION" state "$TARGET" TARGET "$FIXTURE/post-rollback-wrong-bootstrap.plan"
 write_plan "$FIXTURE/wrong-b.plan" true false "$FIXED_E" true false
 assert_refuses 'Release B2 plan is neither pending nor complete' \
   bash "$TRANSITION" state "$TARGET" B2 "$FIXTURE/wrong-b.plan"
