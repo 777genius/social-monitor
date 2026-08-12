@@ -766,7 +766,7 @@ jobs:
           DEPLOY_USER: ${{ vars.PRODUCTION_SSH_USER }}
         run: |
           set -euo pipefail
-          helper_sync=fddeabc88d1fd8a0d5158ecbe4cc2022ac197e61
+          helper_sync=0cfa7379557ea4cca1d7782d11f942bacb669ec2
           helper_sync_status=0
           DEPLOY_RECONCILE_ATTEMPTS=1 DEPLOY_RECONCILE_INTERVAL_SECONDS=0 \
             bash ops/deploy/github-production-deploy-client.sh deploy "$helper_sync" || helper_sync_status=$?
