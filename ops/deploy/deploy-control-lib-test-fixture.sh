@@ -38,7 +38,7 @@ cp "$SCRIPT_DIR/social-monitor-production-deploy.sh" \
   "$SCRIPT_DIR/verify-postgres-runtime-topology.py" \
   "$REPO/ops/deploy/"
 cp -a "$SCRIPT_DIR/production-runtime" "$REPO/ops/deploy/"
-git -C "$REPO" init -q
+git -C "$REPO" init -q -b main
 git -C "$REPO" config user.name 'Deploy Control Fixture'
 git -C "$REPO" config user.email deploy-control-fixture@example.invalid
 git -C "$REPO" add ops/deploy

@@ -196,7 +196,6 @@ for unit in \
   install -m 0644 "$source_runtime/$unit" "$SYSTEMD_UNIT_DIR/$unit"
 done
 install -m 0755 "$source_runtime/daily-run.sh" "$CONTROL/daily-run.sh"
-git -C "$REPO" init -q -b main
 git -C "$REPO" config user.email deploy-control-test@example.invalid
 git -C "$REPO" config user.name deploy-control-test
 git -C "$REPO" add .
