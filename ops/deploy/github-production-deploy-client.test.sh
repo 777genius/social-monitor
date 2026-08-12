@@ -579,15 +579,17 @@ if DEPLOY_HOST=bad.-label run_client normal_success deploy "$TARGET_SHA" >/dev/n
 fi
 assert_call_count 0 "deploy $TARGET_SHA"
 
-# shellcheck disable=SC2016 # Literal GitHub expression is asserted in workflow text.
+# shellcheck disable=SC2016 # Literal GitHub expressions are asserted in workflow text.
 grep -F 'postgres_pool_repair: ${{ steps.plan.outputs.postgres_pool_repair }}' \
   "$WORKFLOW" >/dev/null
 # PostgreSQL bootstrap repair is now driven by the freshly inspected transition
 # state and is restricted to one of the three frozen release anchors.
 [[ $(grep -cF \
   "if: needs.plan.outputs.transition_state == 'repair-required'" "$WORKFLOW") == 1 ]]
+# shellcheck disable=SC2016
 grep -F 'repair_anchor: ${{ steps.plan.outputs.repair_anchor }}' \
   "$WORKFLOW" >/dev/null
+# shellcheck disable=SC2016
 grep -F 'REPAIR_ANCHOR: ${{ needs.plan.outputs.repair_anchor }}' \
   "$WORKFLOW" >/dev/null
 grep -F '889d50f50328c89e25b3ef898e552df631b3222f|c64c3b46b6b6ba5c7ac7b04028932e09dae2116a|e3b5b5d89b3586668e36f987f03672415b5a0f37' \

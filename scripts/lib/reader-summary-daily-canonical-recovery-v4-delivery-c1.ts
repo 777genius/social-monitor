@@ -299,15 +299,20 @@ const readDeliveryState = async (
         btrim(publication.report_sha256) AS report_sha256,
         btrim(publication.proof_sha256) AS proof_sha256,
         btrim(evidence.canonical_sha256) AS weekly_evidence_sha256,
-        btrim(job.public_evidence_sha256) AS public_evidence_sha256,
-        btrim(job.public_frontend_sha256) AS public_frontend_sha256
+        btrim(model_job.public_evidence_sha256) AS public_evidence_sha256,
+        btrim(model_job.public_frontend_sha256) AS public_frontend_sha256
       FROM public.reader_summary_publications publication
       JOIN public.reader_summary_publication_slots slot
         ON slot.current_publication_id=publication.id
       JOIN public.reader_summary_weekly_publication_evidence evidence
         ON evidence.publication_id=publication.id
-      JOIN public.reader_summary_jobs job
-        ON job.id=publication.reader_summary_job_id
+      JOIN public.reader_summary_jobs canonical_job
+        ON canonical_job.id=publication.reader_summary_job_id
+      JOIN public.reader_summary_daily_model_jobs model_job
+        ON model_job.tenant_id=publication.tenant_id
+        AND model_job.workspace_id=publication.workspace_id
+        AND model_job.requested_utc_date=publication.requested_utc_date
+        AND model_job.reader_summary_job_id=publication.reader_summary_job_id
       JOIN public.reader_summary_artifacts artifact
         ON artifact.id=publication.reader_summary_artifact_id
       LEFT JOIN public."read_reader_summary_daily_delivery_c1_retry_evidence"(
@@ -318,23 +323,23 @@ const readDeliveryState = async (
         AND publication.requested_utc_date BETWEEN DATE '${dailyDeliveryC1FirstDate}'
           AND ${recoveryThroughSql}
         AND publication.semantic_status IN ('COMPLETED','NO_SIGNAL')
-        AND job.status IN ('COMPLETED','NO_SIGNAL')
+        AND canonical_job.status IN ('COMPLETED','NO_SIGNAL')
         AND artifact.status IN ('COMPLETED','NO_SIGNAL')
         AND btrim(publication.report_sha256) ~ '^[0-9a-f]{64}$'
         AND btrim(publication.proof_sha256) ~ '^[0-9a-f]{64}$'
         AND btrim(evidence.canonical_sha256) ~ '^[0-9a-f]{64}$'
-        AND btrim(job.public_evidence_sha256) ~ '^[0-9a-f]{64}$'
-        AND btrim(job.public_frontend_sha256) ~ '^[0-9a-f]{64}$'
+        AND btrim(model_job.public_evidence_sha256) ~ '^[0-9a-f]{64}$'
+        AND btrim(model_job.public_frontend_sha256) ~ '^[0-9a-f]{64}$'
         AND (publication.requested_utc_date NOT BETWEEN DATE '2026-07-25' AND DATE '2026-07-30'
           OR (retry.attempt_ordinal=2
-            AND retry.reader_summary_job_id=job.id
+            AND retry.reader_summary_job_id=canonical_job.id
             AND retry.reader_summary_artifact_id=artifact.id
             AND retry.publication_id=publication.id
             AND btrim(retry.publication_report_sha256)=btrim(publication.report_sha256)
             AND btrim(retry.publication_proof_sha256)=btrim(publication.proof_sha256)
             AND btrim(retry.weekly_evidence_sha256)=btrim(evidence.canonical_sha256)
-            AND btrim(retry.public_evidence_sha256)=btrim(job.public_evidence_sha256)
-            AND btrim(retry.public_frontend_sha256)=btrim(job.public_frontend_sha256)))
+            AND btrim(retry.public_evidence_sha256)=btrim(model_job.public_evidence_sha256)
+            AND btrim(retry.public_frontend_sha256)=btrim(model_job.public_frontend_sha256)))
     ) proof ON TRUE
     ORDER BY proof.requested_utc_date NULLS FIRST`,
       frozenRecoveryThrough === undefined

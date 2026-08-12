@@ -150,8 +150,13 @@ BEGIN
       ON slot."current_publication_id" = publication."id"
     JOIN public."reader_summary_weekly_publication_evidence" AS evidence
       ON evidence."publication_id" = publication."id"
-    JOIN public."reader_summary_jobs" AS job
-      ON job."id" = publication."reader_summary_job_id"
+    JOIN public."reader_summary_jobs" AS canonical_job
+      ON canonical_job."id" = publication."reader_summary_job_id"
+    JOIN public."reader_summary_daily_model_jobs" AS model_job
+      ON model_job."tenant_id" = c_tenant_id
+      AND model_job."workspace_id" = c_workspace_id
+      AND model_job."requested_utc_date" = terminal.requested_utc_date
+      AND model_job."reader_summary_job_id" = publication."reader_summary_job_id"
     JOIN public."reader_summary_artifacts" AS artifact
       ON artifact."id" = publication."reader_summary_artifact_id"
     LEFT JOIN public."reader_summary_daily_canonical_recovery_v4_ambiguity_retries" AS retry
@@ -162,13 +167,13 @@ BEGIN
       AND terminal.requested_utc_date = ANY(c_dates)
       AND publication."cadence" = 'daily'
       AND publication."semantic_status" IN ('COMPLETED', 'NO_SIGNAL')
-      AND job."status" IN ('COMPLETED', 'NO_SIGNAL')
+      AND canonical_job."status" IN ('COMPLETED', 'NO_SIGNAL')
       AND artifact."status" IN ('COMPLETED', 'NO_SIGNAL')
       AND btrim(publication."report_sha256") = terminal.report_sha256
       AND btrim(publication."proof_sha256") = terminal.proof_sha256
       AND btrim(evidence."canonical_sha256") = terminal.weekly_evidence_sha256
-      AND btrim(job."public_evidence_sha256") = terminal.public_evidence_sha256
-      AND btrim(job."public_frontend_sha256") = terminal.public_frontend_sha256
+      AND btrim(model_job."public_evidence_sha256") = terminal.public_evidence_sha256
+      AND btrim(model_job."public_frontend_sha256") = terminal.public_frontend_sha256
       AND (
         retry."attempt_ordinal" = 2 AND retry."state" = 'FINALIZED'
           AND retry."receipt_bytes" IS NOT NULL
@@ -221,21 +226,26 @@ SET search_path = pg_catalog AS $function$
       ON slot."current_publication_id" = publication."id"
     JOIN public."reader_summary_weekly_publication_evidence" AS evidence
       ON evidence."publication_id" = publication."id"
-    JOIN public."reader_summary_jobs" AS job
-      ON job."id" = publication."reader_summary_job_id"
+    JOIN public."reader_summary_jobs" AS canonical_job
+      ON canonical_job."id" = publication."reader_summary_job_id"
+    JOIN public."reader_summary_daily_model_jobs" AS model_job
+      ON model_job."tenant_id" = publication."tenant_id"
+      AND model_job."workspace_id" = publication."workspace_id"
+      AND model_job."requested_utc_date" = terminal.requested_utc_date
+      AND model_job."reader_summary_job_id" = publication."reader_summary_job_id"
     JOIN public."reader_summary_artifacts" AS artifact
       ON artifact."id" = publication."reader_summary_artifact_id"
     WHERE terminal.requested_utc_date = DATE '2026-07-24'
       AND terminal.outcome = 'FINALIZED'
       AND publication."cadence" = 'daily'
       AND publication."semantic_status" IN ('COMPLETED', 'NO_SIGNAL')
-      AND job."status" IN ('COMPLETED', 'NO_SIGNAL')
+      AND canonical_job."status" IN ('COMPLETED', 'NO_SIGNAL')
       AND artifact."status" IN ('COMPLETED', 'NO_SIGNAL')
       AND btrim(publication."report_sha256") = terminal.report_sha256
       AND btrim(publication."proof_sha256") = terminal.proof_sha256
       AND btrim(evidence."canonical_sha256") = terminal.weekly_evidence_sha256
-      AND btrim(job."public_evidence_sha256") = terminal.public_evidence_sha256
-      AND btrim(job."public_frontend_sha256") = terminal.public_frontend_sha256
+      AND btrim(model_job."public_evidence_sha256") = terminal.public_evidence_sha256
+      AND btrim(model_job."public_frontend_sha256") = terminal.public_frontend_sha256
   );
 $function$;
 

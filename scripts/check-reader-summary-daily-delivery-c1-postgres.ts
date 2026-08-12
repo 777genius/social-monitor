@@ -151,9 +151,7 @@ const main = async (): Promise<void> => {
         id UUID PRIMARY KEY, status TEXT NOT NULL
       );
       CREATE TABLE public."reader_summary_jobs" (
-        id UUID PRIMARY KEY, status TEXT NOT NULL,
-        public_evidence_sha256 CHAR(64) NOT NULL,
-        public_frontend_sha256 CHAR(64) NOT NULL
+        id UUID PRIMARY KEY, status TEXT NOT NULL
       );
       CREATE TABLE public."reader_summary_publications" (
         id UUID PRIMARY KEY, tenant_id UUID NOT NULL, workspace_id UUID NOT NULL,
@@ -186,6 +184,10 @@ const main = async (): Promise<void> => {
         public_frontend_sha256 CHAR(64),
         PRIMARY KEY (tenant_id, workspace_id, requested_utc_date)
       );
+      ALTER TABLE public."reader_summary_daily_model_jobs"
+        ADD COLUMN reader_summary_job_id UUID,
+        ADD COLUMN public_evidence_sha256 CHAR(64),
+        ADD COLUMN public_frontend_sha256 CHAR(64);
       ALTER TABLE public."reader_summary_daily_canonical_recovery_v4_ambiguity_retries"
         ENABLE ROW LEVEL SECURITY;
       ALTER TABLE public."reader_summary_daily_canonical_recovery_v4_ambiguity_retries"
@@ -223,13 +225,18 @@ const main = async (): Promise<void> => {
           NULL::SMALLINT, publication.reader_summary_job_id,
           publication.reader_summary_artifact_id, publication.id,
           btrim(publication.report_sha256), btrim(publication.proof_sha256),
-          btrim(evidence.canonical_sha256), btrim(job.public_evidence_sha256),
-          btrim(job.public_frontend_sha256)
+          btrim(evidence.canonical_sha256), btrim(model_job.public_evidence_sha256),
+          btrim(model_job.public_frontend_sha256)
         FROM public."reader_summary_publications" AS publication
         JOIN public."reader_summary_weekly_publication_evidence" AS evidence
           ON evidence.publication_id=publication.id
         JOIN public."reader_summary_jobs" AS job
           ON job.id=publication.reader_summary_job_id
+        JOIN public."reader_summary_daily_model_jobs" AS model_job
+          ON model_job.tenant_id=publication.tenant_id
+          AND model_job.workspace_id=publication.workspace_id
+          AND model_job.requested_utc_date=publication.requested_utc_date
+          AND model_job.reader_summary_job_id=publication.reader_summary_job_id
         WHERE publication.tenant_id=target_tenant_id
           AND publication.workspace_id=target_workspace_id
       $fixture$;
@@ -537,10 +544,20 @@ const insertC0Evidence = async (pool: Pool): Promise<void> => {
       [fixtureId("2", date)],
     );
     await pool.query(
-      `INSERT INTO public."reader_summary_jobs" VALUES (
-        $1::UUID,'COMPLETED',$2::CHAR(64),$3::CHAR(64)
-      )`,
-      [fixtureId("1", date), "d".repeat(64), "e".repeat(64)],
+      `INSERT INTO public."reader_summary_jobs" VALUES ($1::UUID,'COMPLETED')`,
+      [fixtureId("1", date)],
+    );
+    await pool.query(
+      `INSERT INTO public."reader_summary_daily_model_jobs" (
+        tenant_id, workspace_id, requested_utc_date, identity,
+        source_authority_sha256, provider, model, reasoning_effort,
+        runtime_engine, state, reserved_at, reader_summary_job_id,
+        public_evidence_sha256, public_frontend_sha256
+      ) VALUES ($1::UUID,$2::UUID,$3::DATE,$4,$5::CHAR(64),'codex','gpt-5.6-sol',
+        'xhigh','subscription-runtime-cli','COMPLETED',statement_timestamp(),
+        $6::UUID,$7::CHAR(64),$8::CHAR(64))`,
+      [tenantId, workspaceId, date, `model-${date}`, "f".repeat(64),
+        fixtureId("1", date), "d".repeat(64), "e".repeat(64)],
     );
     await pool.query(
       `INSERT INTO public."reader_summary_publications" VALUES (
