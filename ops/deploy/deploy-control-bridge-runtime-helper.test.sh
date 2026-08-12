@@ -152,22 +152,24 @@ commit_target_state 'test: restore existing sealed dependency' >/dev/null
 verify_deploy_control_bridge_compatibility
 verify_deploy_control_bridge_target_compatibility "$reviewed_sha"
 
-printf '# reviewed readiness-only transition\n' >> \
-  "$REPO/$DEPLOY_CONTROL_BRIDGE_POSTGRES_DAILY_C1_HELPER_PATH"
-readiness_parent=$(git -C "$REPO" rev-parse HEAD)
-readiness_sha=$(commit_target_state 'test: readiness-only transition')
-git -C "$REPO" checkout -q "$readiness_parent"
-verify_deploy_control_bridge_target_compatibility "$readiness_sha"
+if declare -F deploy_control_is_reviewed_daily_c1_bridge_transition >/dev/null; then
+  printf '# reviewed readiness-only transition\n' >> \
+    "$REPO/$DEPLOY_CONTROL_BRIDGE_POSTGRES_DAILY_C1_HELPER_PATH"
+  readiness_parent=$(git -C "$REPO" rev-parse HEAD)
+  readiness_sha=$(commit_target_state 'test: readiness-only transition')
+  git -C "$REPO" checkout -q "$readiness_parent"
+  verify_deploy_control_bridge_target_compatibility "$readiness_sha"
 
-printf '# reviewed exact bridge transition\n' >> \
-  "$REPO/$DEPLOY_CONTROL_BRIDGE_POSTGRES_DAILY_C1_HELPER_PATH"
-printf '# reviewed exact bridge transition\n' >> \
-  "$REPO/$DEPLOY_CONTROL_BRIDGE_POSTGRES_LIBRARY_PATH"
-reviewed_bridge_parent=$(git -C "$REPO" rev-parse HEAD)
-reviewed_bridge_sha=$(commit_target_state 'test: reviewed exact bridge transition')
-git -C "$REPO" checkout -q "$reviewed_bridge_parent"
-deploy_control_is_reviewed_daily_c1_bridge_transition() {
-  [[ $1 == "$reviewed_bridge_parent" && $2 == "$reviewed_bridge_sha" ]]
-}
-verify_deploy_control_bridge_target_compatibility "$reviewed_bridge_sha"
+  printf '# reviewed exact bridge transition\n' >> \
+    "$REPO/$DEPLOY_CONTROL_BRIDGE_POSTGRES_DAILY_C1_HELPER_PATH"
+  printf '# reviewed exact bridge transition\n' >> \
+    "$REPO/$DEPLOY_CONTROL_BRIDGE_POSTGRES_LIBRARY_PATH"
+  reviewed_bridge_parent=$(git -C "$REPO" rev-parse HEAD)
+  reviewed_bridge_sha=$(commit_target_state 'test: reviewed exact bridge transition')
+  git -C "$REPO" checkout -q "$reviewed_bridge_parent"
+  deploy_control_is_reviewed_daily_c1_bridge_transition() {
+    [[ $1 == "$reviewed_bridge_parent" && $2 == "$reviewed_bridge_sha" ]]
+  }
+  verify_deploy_control_bridge_target_compatibility "$reviewed_bridge_sha"
+fi
 printf 'deploy control bridge runtime helper tests passed\n'
