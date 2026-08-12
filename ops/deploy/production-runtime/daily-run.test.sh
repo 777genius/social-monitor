@@ -13,14 +13,10 @@ grep -Fx 'requires=H_GREEN,C0_GREEN,C1_SCAN_TERMINAL_REPAIR_GREEN' \
   "$C1_READINESS" >/dev/null
 grep -Fx 'activation=reviewed' "$C1_READINESS" >/dev/null
 
-grep -Fx \
-  'readonly DAILY_AUTH_POOL_JOB_ID=social-monitor-production-account-pool-terra-v25-20260804' \
-  "$DAILY_RUN" >/dev/null
 # The assertions below intentionally match literal nested-shell variables.
 # shellcheck disable=SC2016
-grep -Fx \
-  '"$ROOT/control/refresh-codex-auth.sh" --broker-pool-job-id "$DAILY_AUTH_POOL_JOB_ID"' \
-  "$DAILY_RUN" >/dev/null
+grep -Fx '"$ROOT/control/refresh-codex-auth.sh"' "$DAILY_RUN" >/dev/null
+! grep -F -- '--broker-pool-job-id' "$DAILY_RUN"
 grep -F 'scripts/run-reader-summary-production-day.ts \' "$DAILY_RUN" >/dev/null
 grep -F -- '--date "$requested_date" --update' "$DAILY_RUN" >/dev/null
 grep -F 'scripts/verify-reader-summary-production-day-publication.mjs' \

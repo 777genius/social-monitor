@@ -264,7 +264,9 @@ run_reader_summary_production_history() (
   exec 7>"$DEPLOY_LOCK"
   flock -w "$DAILY_DELIVERY_C1_DEPLOY_LOCK_WAIT_SECONDS" 7 || \
     fail 'timed out waiting for deployment exclusion lock'
-  verify_daily_delivery_c1_release_identity "$sha"
+  [[ $(git -C "$REPO" rev-parse --verify 'HEAD^{commit}' 2>/dev/null) == \
+     "$sha" ]] || fail 'historical reader-summary requires exact integration HEAD'
+  verify_daily_runner_maintenance_runtime
   [[ -x $REPO/ops/deploy/run-reader-summary-production-history.sh && \
      ! -L $REPO/ops/deploy/run-reader-summary-production-history.sh ]] || \
     fail 'reviewed historical reader-summary wrapper is unavailable'
