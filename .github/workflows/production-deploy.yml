@@ -52,56 +52,16 @@ on:
           - reader-summary-daily-scan-terminal-repair-c1
           - reader-summary-daily-delivery-c1-run
           - reader-summary-daily-delivery-c1-contain
-      daily_scan_terminal_repair_confirmation:
-        description: Required exact C1 scan-terminal repair confirmation
-        required: false
-        default: ''
-        type: string
-      daily_scan_terminal_repair_preimage_sha256:
-        description: Required reviewed fresh C1 scan-terminal preimage SHA-256
-        required: false
-        default: ''
-        type: string
-      daily_delivery_c1_confirmation:
-        description: Required exact C1 run or containment confirmation
-        required: false
-        default: ''
-        type: string
-      daily_delivery_c1_recovery_through:
-        description: Required exact UTC recovery-through date for the C1 run
-        required: false
-        default: ''
-        type: string
-      daily_delivery_c1_ready_sha:
-        description: Required exact current READY SHA for C1 containment
-        required: false
-        default: ''
-        type: string
-      daily_canonical_recovery_retry_set_token:
-        description: Required exact invalid-product retry-set token for daily canonical recovery V4
-        required: false
-        default: ''
-        type: string
-      daily_canonical_recovery_terminal_set_sha256:
-        description: Required lowercase-hex terminal-set SHA-256 for daily canonical recovery V4
-        required: false
-        default: ''
-        type: string
-      daily_canonical_recovery_confirmation:
-        description: Required exact confirmation for ordinary daily canonical recovery V4
-        required: false
-        default: ''
-        type: string
-      daily_canonical_recovery_model_job_identity:
-        description: Required lowercase-hex Jul23 model job identity for ordinary bounded recovery
-        required: false
-        default: ''
-        type: string
-      daily_canonical_recovery_authority_sha256:
-        description: Required lowercase-hex Jul23 source authority SHA-256 for ordinary bounded recovery
-        required: false
-        default: ''
-        type: string
+      daily_scan_terminal_repair_confirmation: {description: Required exact C1 scan-terminal repair confirmation, required: false, default: '', type: string}
+      daily_scan_terminal_repair_preimage_sha256: {description: Required reviewed fresh C1 scan-terminal preimage SHA-256, required: false, default: '', type: string}
+      daily_delivery_c1_confirmation: {description: Required exact C1 run or containment confirmation, required: false, default: '', type: string}
+      daily_delivery_c1_recovery_through: {description: Required exact UTC recovery-through date for the C1 run, required: false, default: '', type: string}
+      daily_delivery_c1_ready_sha: {description: Required exact current READY SHA for C1 containment, required: false, default: '', type: string}
+      daily_canonical_recovery_retry_set_token: {description: Required exact invalid-product retry-set token for daily canonical recovery V4, required: false, default: '', type: string}
+      daily_canonical_recovery_terminal_set_sha256: {description: Required lowercase-hex terminal-set SHA-256 for daily canonical recovery V4, required: false, default: '', type: string}
+      daily_canonical_recovery_confirmation: {description: Required exact confirmation for ordinary daily canonical recovery V4, required: false, default: '', type: string}
+      daily_canonical_recovery_model_job_identity: {description: Required lowercase-hex Jul23 model job identity for ordinary bounded recovery, required: false, default: '', type: string}
+      daily_canonical_recovery_authority_sha256: {description: Required lowercase-hex Jul23 source authority SHA-256 for ordinary bounded recovery, required: false, default: '', type: string}
 permissions:
   contents: read
 concurrency:

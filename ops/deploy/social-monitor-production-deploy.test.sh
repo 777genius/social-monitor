@@ -31,7 +31,7 @@ cp "$SCRIPT_DIR/docker-maintenance-lib.sh" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/daily-runner-image-bootstrap-lib.sh" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/x-collector-image-deploy-lib.sh" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/reader-summary-recovery-maintenance-lib.sh" "$REPO/ops/deploy/"
-cp "$SCRIPT_DIR"/{reader-summary-publication-deploy-lib.sh,reader-summary-publication-system-dsn-bootstrap-lib.sh,reader-summary-publication-pre-migration.sql,reader-summary-publication-post-migration.sql,reader-summary-original-cutoff-failed-migration-preflight.sql} \
+cp "$SCRIPT_DIR"/{reader-summary-publication-deploy-lib.sh,reader-summary-publication-system-dsn-bootstrap-lib.sh,reader-summary-publication-prebootstrap-lib.sh,reader-summary-publication-pre-migration.sql,reader-summary-publication-post-migration.sql,reader-summary-original-cutoff-failed-migration-preflight.sql} \
   "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/verify-postgres-backup-coverage.sh" \
   "$SCRIPT_DIR/prune-pre-autodeploy-backups.sh" \

@@ -101,7 +101,7 @@ assert_real_bridge_target_assets() {
         expected_digest=857db52a510466a3abab0c7f1dfb4b5f9dd9b3c809ddd2e355e05d2d0dfce776
         ;;
       ops/deploy/deploy-control-bridge-lib.sh)
-        expected_digest=13cbce4723e8c29eb052868cb41d293d78ead576f10e7b3480f4eb0e5550ca78
+        expected_digest=8bb5e972344a22bdfa6e6d7f989af859e2ef4edf8f14a392a789bc985520bd98
         ;;
     esac
     if [[ $path == ops/deploy/social-monitor-production-deploy.sh ]]; then

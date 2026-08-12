@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# RabbitMQ 4.3.2 quorum health is deliberately broker-local.  It never asks an
+# RabbitMQ 4.3.x quorum health is deliberately broker-local.  It never asks an
 # application to declare a queue, so Compose can reach a healthy broker before
 # any application service is available.  The recovery library uses the distinct
 # noproc result below only to decide whether a bounded snapshot/bootstrap path
@@ -230,7 +230,10 @@ for node in running:
     if maintenance.get(node) != "not under maintenance":
         raise SystemExit(1)
     version = versions.get(node)
-    if not isinstance(version, dict) or version.get("rabbitmq_version") != "4.3.2":
+    if not isinstance(version, dict):
+        raise SystemExit(1)
+    match = re.fullmatch(r"4\.3\.(\d+)", version.get("rabbitmq_version", ""))
+    if match is None or int(match.group(1)) < 2:
         raise SystemExit(1)
 '
 }
@@ -328,7 +331,7 @@ rabbitmq_quorum_health_cluster_status() {
     return 1
   fi
   if ! printf '%s' "$output" | rabbitmq_quorum_health_validate_cluster_status_json; then
-    rabbitmq_quorum_health_error 'RabbitMQ cluster_status JSON is not the supported 4.3.2 steady-state shape'
+    rabbitmq_quorum_health_error 'RabbitMQ cluster_status JSON is not the supported 4.3.x steady-state shape'
     return 1
   fi
 }

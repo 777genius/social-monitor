@@ -14,6 +14,7 @@ TARGET_HOSTNAME=rabbitmq-fixture
 DOCKER_CALLS=$FIXTURE/docker-calls
 QUEUE_MODE=healthy
 CLUSTER_MODE=healthy
+CLUSTER_VERSION=4.3.4
 METADATA_INIT_STATUS=0
 METADATA_INIT_OUTPUT="Metadata store on node rabbit@$TARGET_HOSTNAME has completed its initialization"
 METADATA_DATA_STATUS=69
@@ -37,7 +38,7 @@ fail() {
 
 cluster_status_json() {
   cat <<JSON
-{"alarms":[],"running_nodes":["rabbit@$TARGET_HOSTNAME"],"cluster_tags":[],"listeners":{"rabbit@$TARGET_HOSTNAME":[]},"cpu_cores":{"rabbit@$TARGET_HOSTNAME":6},"cluster_name":"rabbit@$TARGET_HOSTNAME","disk_nodes":["rabbit@$TARGET_HOSTNAME"],"versions":{"rabbit@$TARGET_HOSTNAME":{"erlang_version":"27.3.4.13","rabbitmq_name":"RabbitMQ","rabbitmq_version":"4.3.2"}},"partitions":{},"maintenance_status":{"rabbit@$TARGET_HOSTNAME":"not under maintenance"}}
+{"alarms":[],"running_nodes":["rabbit@$TARGET_HOSTNAME"],"cluster_tags":[],"listeners":{"rabbit@$TARGET_HOSTNAME":[]},"cpu_cores":{"rabbit@$TARGET_HOSTNAME":6},"cluster_name":"rabbit@$TARGET_HOSTNAME","disk_nodes":["rabbit@$TARGET_HOSTNAME"],"versions":{"rabbit@$TARGET_HOSTNAME":{"erlang_version":"27.3.4.13","rabbitmq_name":"RabbitMQ","rabbitmq_version":"$CLUSTER_VERSION"}},"partitions":{},"maintenance_status":{"rabbit@$TARGET_HOSTNAME":"not under maintenance"}}
 JSON
 }
 
@@ -108,7 +109,6 @@ docker() {
                 healthy) cluster_status_json ;;
                 alarm) cluster_status_json | sed 's/"alarms":\[\]/"alarms":["memory"]/' ;;
                 partition) cluster_status_json | sed 's/"partitions":{}/"partitions":{"rabbit@other":["rabbit@fixture"]}/' ;;
-                version) cluster_status_json | sed 's/"rabbitmq_version":"4.3.2"/"rabbitmq_version":"4.3.1"/' ;;
                 malformed) printf '%s\n' '{"running_nodes":[]}' ;;
                 *) fail "unknown cluster mode: $CLUSTER_MODE" ;;
               esac
@@ -262,7 +262,14 @@ for QUEUE_MODE in not-found-malformed not-found-wrong-exit not-found-mixed; do
 done
 
 QUEUE_MODE=healthy
-for CLUSTER_MODE in alarm partition version malformed; do
+for CLUSTER_VERSION in 4.3.2 4.3.4; do
+  assert_probe_status 0
+done
+for CLUSTER_VERSION in 4.3.1 4.4.0 4.3.4-rc.1 invalid; do
+  assert_probe_status 1
+done
+CLUSTER_VERSION=4.3.4
+for CLUSTER_MODE in alarm partition malformed; do
   assert_probe_status 1
 done
 CLUSTER_MODE=healthy
