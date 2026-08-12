@@ -36,6 +36,25 @@ reader_summary_publication_prebootstrap_absent_daily_timer() {
     fail 'target publication prebootstrap daily timer did not become rollback-safe'
 }
 
+reader_summary_publication_prebootstrap_v6_runner() {
+  local source=$REPO/ops/deploy/production-runtime/daily-run.sh
+  local destination=$CONTROL/run-reader-summary-production-day.sh
+  local next=$CONTROL/.run-reader-summary-production-day.sh.bootstrap-next
+
+  if cmp -s "$source" "$destination"; then
+    [[ -f $destination && ! -L $destination && -x $destination ]] || \
+      fail 'target publication prebootstrap v6 runner target is unsafe'
+    return 0
+  fi
+  [[ -f $source && ! -L $source && \
+     ! -e $destination && ! -L $destination && \
+     ! -e $next && ! -L $next ]] || \
+    fail 'target publication prebootstrap v6 runner state is unsafe'
+  install -m 0755 "$source" "$next" || return 1
+  if ((EUID == 0)); then chown root:root "$next" || return 1; fi
+  mv -f "$next" "$destination"
+}
+
 reader_summary_publication_prebootstrap_v6_dropin() {
   local service=social-monitor-reader-summary-production-day.service
   local asset=social-monitor-reader-summary-production-day.service.d-10-daily-c1-owner.conf
@@ -71,8 +90,9 @@ reader_summary_publication_prebootstrap_v6_dropin() {
      [[ $dropins == "$destination" || -z $dropins ]]; then
     return 0
   fi
-  [[ -z $dropins && ! -e $destination && ! -L $destination && \
-     -f $source && ! -L $source && ! -e $next && ! -L $next ]] || \
+  [[ -f $source && ! -L $source && ! -e $next && ! -L $next && \
+     ((-z $dropins && ! -e $destination && ! -L $destination) || \
+      ($dropins == "$destination" && -f $destination && ! -L $destination)) ]] || \
     fail 'target publication prebootstrap v6 drop-in state is unsafe'
   install -d -m 0755 "$directory" || return 1
   install -m 0644 "$source" "$next" || return 1
@@ -143,6 +163,7 @@ reader_summary_publication_prebootstrap_target_daily_runner() {
       break
     done <<< "$services"
   fi
+  reader_summary_publication_prebootstrap_v6_runner
   reader_summary_publication_prebootstrap_absent_daily_timer
   reader_summary_publication_prebootstrap_v6_dropin
 }
