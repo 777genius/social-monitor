@@ -192,7 +192,6 @@ jobs:
           transition=ops/deploy/production-release-a-transition.sh
           client=ops/deploy/github-production-deploy-client.sh
           release_e=889d50f50328c89e25b3ef898e552df631b3222f; release_a2=c64c3b46b6b6ba5c7ac7b04028932e09dae2116a; release_b2=e3b5b5d89b3586668e36f987f03672415b5a0f37
-          daily_c1_atomic_repair=61018b1d376ba6695c29f9ccee1b53b1b344d4dc
           target_plan="$RUNNER_TEMP/recovery-target-inspect.plan"; b_plan="$RUNNER_TEMP/recovery-b2-inspect.plan"
           a_plan="$RUNNER_TEMP/recovery-a2-inspect.plan"; e_plan="$RUNNER_TEMP/recovery-e-inspect.plan"
           repair_anchor=none
@@ -212,14 +211,7 @@ jobs:
             daily_c1_bridge=true
           fi
           if [[ $daily_c1_bridge == true ]]; then
-            target_pool_bootstrap=$(awk -F= \
-              '$1 == "postgres_pool_bootstrap" { print $2 }' "$target_plan")
-            if [[ $target_pool_bootstrap == uninstalled ]]; then
-              repair_anchor=$daily_c1_atomic_repair
-              transition_state=repair-required
-            else
-              transition_state=target-pending
-            fi
+            transition_state=target-pending
           elif target_state=$(bash "$transition" state "$GITHUB_SHA" TARGET "$target_plan" \
               2> "$RUNNER_TEMP/recovery-target-state.err") && \
              [[ $target_state != transition_state=repair-required ]]; then
@@ -505,8 +497,6 @@ jobs:
             ops/deploy/postgres-runtime-activation-boundary-lib.sh
             ops/deploy/postgres-runtime-daily-c1-readiness-lib.sh
             ops/deploy/postgres-runtime-weekly-timer-state-lib.sh
-            ops/deploy/reader-summary-publication-prebootstrap-lib.sh
-            ops/deploy/reader-summary-publication-prebootstrap-lib.test.sh
             ops/deploy/reader-summary-recovery-maintenance-lib.sh
             ops/deploy/deploy-control-bridge-runtime-helper.test.sh
             ops/deploy/deploy-control-reviewed-library-source.test.sh
@@ -561,23 +551,13 @@ jobs:
           shellcheck -S warning -x "${deploy_shell_files[@]}"
           python3 -m py_compile ops/deploy/verify-postgres-runtime-topology.py
           python3 -m py_compile ops/deploy/verify-postgres-pool-release-contract.py
-          if [[ $bridge_phase == true && \
-                $POSTGRES_POOL_BOOTSTRAP == uninstalled ]]; then
-            [[ $POSTGRES_POOL_BOOTSTRAP_SHA == \
-               0000000000000000000000000000000000000000 ]] || {
-              echo 'uninstalled bridge bootstrap has a nonzero durable release SHA' >&2
-              exit 1
-            }
-            echo 'backend-gate=postgres-pool-release deferred-to-bounded-B2-repair'
-          else
-            python3 ops/deploy/verify-postgres-pool-release-contract.py ci \
-              --target "$GITHUB_SHA" \
-              --backend-base "$BACKEND_BASE" \
-              --backend "$BACKEND_CHANGED" \
-              --control "$CONTROL_CHANGED" \
-              --bootstrap "$POSTGRES_POOL_BOOTSTRAP" \
-              --bootstrap-sha "$POSTGRES_POOL_BOOTSTRAP_SHA"
-          fi
+          python3 ops/deploy/verify-postgres-pool-release-contract.py ci \
+            --target "$GITHUB_SHA" \
+            --backend-base "$BACKEND_BASE" \
+            --backend "$BACKEND_CHANGED" \
+            --control "$CONTROL_CHANGED" \
+            --bootstrap "$POSTGRES_POOL_BOOTSTRAP" \
+            --bootstrap-sha "$POSTGRES_POOL_BOOTSTRAP_SHA"
           echo "backend-gate=deploy-shell-tests bridge=$bridge_phase"
           if [[ $bridge_phase == true ]]; then
             # Final runtime assets are deliberately absent from the control-only
@@ -586,7 +566,6 @@ jobs:
             bash ops/deploy/deploy-control-bridge-runtime-helper.test.sh
             bash ops/deploy/deploy-control-reviewed-library-source.test.sh
             bash ops/deploy/daily-c1-control-bridge-workflow.test.sh
-            bash ops/deploy/reader-summary-publication-prebootstrap-lib.test.sh
           else
             bash ops/deploy/social-monitor-production-deploy.test.sh
             bash ops/deploy/deploy-control-lib.test.sh
@@ -748,7 +727,7 @@ jobs:
           DEPLOY_RECONCILE_INTERVAL_SECONDS: 0
         run: |
           case $REPAIR_ANCHOR in
-            889d50f50328c89e25b3ef898e552df631b3222f|c64c3b46b6b6ba5c7ac7b04028932e09dae2116a|e3b5b5d89b3586668e36f987f03672415b5a0f37|61018b1d376ba6695c29f9ccee1b53b1b344d4dc) ;;
+            889d50f50328c89e25b3ef898e552df631b3222f|c64c3b46b6b6ba5c7ac7b04028932e09dae2116a|e3b5b5d89b3586668e36f987f03672415b5a0f37) ;;
             *) exit 1 ;;
           esac
           repair_status=0
@@ -769,13 +748,11 @@ jobs:
           DEPLOY_USER: ${{ vars.PRODUCTION_SSH_USER }}
         run: |
           set -euo pipefail
-          runtime_reconcile=e7b19bc805815af310f1e5096d3fec5789129ddb
-          policy_sync=2ee45aadf9c36c3bf311ec968c6c39224b1ce423
-          readiness_sync=4bd017e396c813a5370a87132d69822eb328160a
-          bash ops/deploy/github-production-deploy-client.sh inspect-plan "$runtime_reconcile"
-          bash ops/deploy/github-production-deploy-client.sh deploy "$runtime_reconcile"
-          bash ops/deploy/github-production-deploy-client.sh deploy "$policy_sync"
-          bash ops/deploy/github-production-deploy-client.sh deploy "$readiness_sync"
+          helper_sync=e6597827c0280a8783fa5980387bc574897edc2b
+          helper_sync_status=0
+          DEPLOY_RECONCILE_ATTEMPTS=1 DEPLOY_RECONCILE_INTERVAL_SECONDS=0 \
+            bash ops/deploy/github-production-deploy-client.sh deploy "$helper_sync" || helper_sync_status=$?
+          printf 'bounded base revalidation helper sync status=%s; fresh target is authoritative\n' "$helper_sync_status"
           bash ops/deploy/github-production-deploy-client.sh deploy "$GITHUB_SHA"
       - name: Freshly inspect after bounded repair
         id: recovery_state
