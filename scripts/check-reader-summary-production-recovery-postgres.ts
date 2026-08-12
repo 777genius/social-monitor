@@ -165,7 +165,6 @@ const serverAdmin = new Pool({
 });
 const checkerStartedAt = process.hrtime.bigint();
 const markLateStage = (stage: string): void => console.log(`[reader-summary-pg18] stage=${stage} elapsed_ms=${(process.hrtime.bigint() - checkerStartedAt) / 1_000_000n}`);
-// The PG18 path needs 23–25m, so 30m includes cleanup. Direct checker lock/statement timeouts surface exact PostgreSQL errors before that limit; stage markers bound/localize the separate executeAll pools.
 const configureLateAssertionSession = async (client: RecoveryPostgresClient): Promise<void> => { await client.query("SET lock_timeout = '10s'"); await client.query("SET statement_timeout = '180s'"); };
 const isCheckerQueryTimeout = (error: unknown): boolean => typeof error === "object" && error !== null && "code" in error && ((error as { code?: unknown }).code === "55P03" || (error as { code?: unknown }).code === "57014");
 const migrationWorkspace = createReaderSummaryPublicationMigrationWorkspace();
@@ -174,14 +173,12 @@ const canonicalRecoveryFoundationMigrations = [
   "20260802233100_reader_summary_daily_canonical_recovery_v4_security",
   "20260803173000_reader_summary_daily_canonical_recovery_v4_tenant_rls",
 ] as const;
-const originalCutoffForwardMigration =
-  "20260804110000_reader_summary_daily_v4_original_cutoff_forward_correction";
-const historicalUnavailableMigration =
-  "20260805163000_reader_summary_daily_v4_historical_unavailable";
-const invalidRuntimeTerminalMigration =
-  "20260805180000_reader_summary_daily_v4_invalid_runtime_terminalization";
+const originalCutoffForwardMigration = "20260804110000_reader_summary_daily_v4_original_cutoff_forward_correction";
+const historicalUnavailableMigration = "20260805163000_reader_summary_daily_v4_historical_unavailable";
+const invalidRuntimeTerminalMigration = "20260805180000_reader_summary_daily_v4_invalid_runtime_terminalization";
 const invalidProductRetrySetMigration = "20260806010000_reader_summary_daily_v4_invalid_product_retry_set";
 const canonicalOutputReceiptMigration = "20260806010100_reader_summary_daily_v4_canonical_output_receipt_v3";
+const dailyDeliveryC1Migration = "20260811170000_reader_summary_daily_delivery_c1_retry_evidence";
 const ambiguityRetryMigrations = [
   "20260804130000_reader_summary_daily_v4_ambiguity_retry_schema",
   "20260804130100_reader_summary_daily_v4_ambiguity_retry_transitions",
@@ -197,6 +194,7 @@ const deferredCanonicalRecoveryMigrations = [
   ...canonicalRecoveryFoundationMigrations,
   originalCutoffForwardMigration,
   ...ambiguityRetryMigrations,
+  dailyDeliveryC1Migration,
 ] as const;
 let ownerRolePreexisting = false;
 let capabilityRolePreexisting = false;
@@ -632,6 +630,7 @@ const main = async (): Promise<void> => {
         for (const migration of [
           originalCutoffForwardMigration,
           ...ambiguityRetryMigrations,
+          dailyDeliveryC1Migration,
         ]) {
           cpSync(
             join(process.cwd(), "prisma", "migrations", migration),

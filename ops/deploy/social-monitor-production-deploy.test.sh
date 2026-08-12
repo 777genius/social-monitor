@@ -424,7 +424,7 @@ grep -F 'snapshot_postgres_runtime_control "$sha"' \
   "$ENTRYPOINT" >/dev/null
 grep -F 'restore_postgres_runtime_control "$runtime_control_backup"' \
   "$SCRIPT_DIR/backend-image-rescue-lib.sh" >/dev/null
-grep -F 'rollback_backend_and_postgres_runtime_control' "$ENTRYPOINT" >/dev/null
+grep -F 'rollback_backend_and_runtime_control_forward_only_safe' "$ENTRYPOINT" >/dev/null
 grep -F 'rollback_backend_images "$state_file" || backend_status=$?' \
   "$SCRIPT_DIR/backend-image-rescue-lib.sh" >/dev/null
 grep -F 'restore_postgres_runtime_control "$runtime_control_backup" || runtime_status=$?' \
