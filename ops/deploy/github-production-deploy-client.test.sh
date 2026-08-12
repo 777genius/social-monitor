@@ -47,6 +47,13 @@ fake_ssh() {
     plan_success:"plan $TARGET_SHA"|normal_success:"plan $TARGET_SHA")
       print_fake_plan false false false false
       ;;
+    inspect_transient_reset:"plan $TARGET_SHA")
+      count=$(grep -cFx "plan $TARGET_SHA" "$FAKE_SSH_LOG")
+      if ((count < 3)); then
+        exit 255
+      fi
+      print_fake_plan false false false false
+      ;;
     atomic_success:"plan $TARGET_SHA"|atomic_disconnect:"plan $TARGET_SHA"|atomic_wrong_sha:"plan $TARGET_SHA"|atomic_changed_base:"plan $TARGET_SHA"|atomic_not_pending:"plan $TARGET_SHA"|atomic_no_commit:"plan $TARGET_SHA"|atomic_partial_marker:"plan $TARGET_SHA")
       count=$(grep -cFx "plan $TARGET_SHA" "$FAKE_SSH_LOG")
       if ((count == 1)); then
@@ -212,7 +219,8 @@ export DEPLOY_HOST DEPLOY_USER GITHUB_OUTPUT
 install -m 0700 "$0" "$FAKE_SSH"
 
 (
-  unset DEPLOY_RECONCILE_ATTEMPTS DEPLOY_RECONCILE_INTERVAL_SECONDS
+  unset DEPLOY_RECONCILE_ATTEMPTS DEPLOY_RECONCILE_INTERVAL_SECONDS \
+    DEPLOY_PLAN_READ_ATTEMPTS DEPLOY_PLAN_READ_INTERVAL_SECONDS
   # shellcheck source=/dev/null
   source "$CLIENT"
   ((KNOWN_BACKEND_SOAK_SECONDS == 300))
@@ -220,6 +228,8 @@ install -m 0700 "$0" "$FAKE_SSH"
   ((DEFAULT_RECONCILE_ATTEMPTS == 45))
   ((DEFAULT_RECONCILE_INTERVAL_SECONDS == 15))
   ((DEFAULT_RECONCILE_WINDOW_SECONDS == 660))
+  ((DEFAULT_PLAN_READ_ATTEMPTS == 4))
+  ((DEFAULT_PLAN_READ_INTERVAL_SECONDS == 3))
   ((DEFAULT_RECONCILE_WINDOW_SECONDS >= MINIMUM_RECONCILE_WINDOW_SECONDS))
   ((DEFAULT_RECONCILE_WINDOW_SECONDS > KNOWN_BACKEND_SOAK_SECONDS))
 )
@@ -234,6 +244,8 @@ run_client() {
   DEPLOY_SSH_BIN=$FAKE_SSH \
   DEPLOY_RECONCILE_ATTEMPTS=3 \
   DEPLOY_RECONCILE_INTERVAL_SECONDS=0 \
+  DEPLOY_PLAN_READ_ATTEMPTS=4 \
+  DEPLOY_PLAN_READ_INTERVAL_SECONDS=0 \
     bash "$CLIENT" "$@"
 }
 
@@ -452,6 +464,11 @@ grep -Fx 'postgres_pool_bootstrap=uninstalled' <<< "$inspect_output" >/dev/null
 grep -Fx 'postgres_pool_repair=false' <<< "$inspect_output" >/dev/null
 [[ ! -s $GITHUB_OUTPUT ]]
 assert_call_count 1 "plan $TARGET_SHA"
+assert_call_count 0 "deploy $TARGET_SHA"
+
+inspect_output=$(run_client inspect_transient_reset inspect-plan "$TARGET_SHA")
+grep -Fx 'backend=false' <<< "$inspect_output" >/dev/null
+assert_call_count 3 "plan $TARGET_SHA"
 assert_call_count 0 "deploy $TARGET_SHA"
 
 : > "$GITHUB_OUTPUT"

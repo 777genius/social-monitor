@@ -15,10 +15,14 @@ MINIMUM_RECONCILE_WINDOW_SECONDS=600
 DEFAULT_RECONCILE_ATTEMPTS=45
 DEFAULT_RECONCILE_INTERVAL_SECONDS=15
 DEFAULT_RECONCILE_WINDOW_SECONDS=$(((DEFAULT_RECONCILE_ATTEMPTS - 1) * DEFAULT_RECONCILE_INTERVAL_SECONDS))
+DEFAULT_PLAN_READ_ATTEMPTS=4
+DEFAULT_PLAN_READ_INTERVAL_SECONDS=3
 DAILY_CANONICAL_RECOVERY_CONFIRMATION=reader-summary-daily-canonical-recovery-v4
 DAILY_CANONICAL_RECOVERY_RETRY_SET_TOKEN=invalid-product-retry-set-v1
 RECONCILE_ATTEMPTS=${DEPLOY_RECONCILE_ATTEMPTS:-$DEFAULT_RECONCILE_ATTEMPTS}
 RECONCILE_INTERVAL_SECONDS=${DEPLOY_RECONCILE_INTERVAL_SECONDS:-$DEFAULT_RECONCILE_INTERVAL_SECONDS}
+PLAN_READ_ATTEMPTS=${DEPLOY_PLAN_READ_ATTEMPTS:-$DEFAULT_PLAN_READ_ATTEMPTS}
+PLAN_READ_INTERVAL_SECONDS=${DEPLOY_PLAN_READ_INTERVAL_SECONDS:-$DEFAULT_PLAN_READ_INTERVAL_SECONDS}
 PLAN_POSTGRES_POOL_REPAIR=false
 
 SSH_OPTIONS=(
@@ -68,6 +72,8 @@ validate_remote_environment() {
      $DEPLOY_USER =~ ^[A-Za-z_][A-Za-z0-9._-]*$ ]] || fail 'DEPLOY_USER is invalid'
   [[ $RECONCILE_ATTEMPTS =~ ^[1-9][0-9]*$ ]] || fail 'reconciliation attempts must be positive'
   [[ $RECONCILE_INTERVAL_SECONDS =~ ^[0-9]+$ ]] || fail 'reconciliation interval must be non-negative'
+  [[ $PLAN_READ_ATTEMPTS =~ ^[1-9][0-9]*$ ]] || fail 'plan read attempts must be positive'
+  [[ $PLAN_READ_INTERVAL_SECONDS =~ ^[0-9]+$ ]] || fail 'plan read interval must be non-negative'
 }
 
 configure_ssh() {
@@ -419,15 +425,22 @@ print_plan() {
 }
 
 capture_plan() {
-  local sha=$1
-  local output status
-  if output=$(run_remote plan "$sha"); then
-    status=0
-  else
-    status=$?
-  fi
-  ((status == 0)) || return "$status"
-  parse_plan "$output" || return 65
+  local sha=$1 attempt output status
+  for ((attempt = 1; attempt <= PLAN_READ_ATTEMPTS; attempt += 1)); do
+    if output=$(run_remote plan "$sha"); then
+      status=0
+    else
+      status=$?
+    fi
+    if ((status == 0)); then
+      parse_plan "$output" || return 65
+      return 0
+    fi
+    ((status == 255 && attempt < PLAN_READ_ATTEMPTS)) || return "$status"
+    printf 'deploy-client: plan SSH read disconnected; retrying (%d/%d)\n' \
+      "$attempt" "$PLAN_READ_ATTEMPTS" >&2
+    sleep "$PLAN_READ_INTERVAL_SECONDS"
+  done
 }
 
 write_plan_outputs() {
