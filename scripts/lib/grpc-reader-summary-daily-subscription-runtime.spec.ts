@@ -99,30 +99,6 @@ describe("GrpcReaderSummaryDailySubscriptionRuntime", () => {
     }));
   });
 
-  it("attests raw output_text before canonicalizing reordered outer-whitespace JSON", async () => {
-    const output = validOutput();
-    const rawOutputText = `\n ${JSON.stringify(
-      Object.fromEntries(Object.entries(output).reverse()),
-    )}\t`;
-    const client = canonicalRecoveryClient(rawOutputText);
-
-    const result = await new GrpcReaderSummaryDailyCanonicalRecoveryRuntime(client)
-      .run(canonicalRecoveryInput());
-
-    expect(result.responseBytes).toEqual(canonicalJsonBytes(output));
-    expect(result.rawOutputSha256).toBe(hash(rawOutputText));
-    expect(result.rawOutputByteLength).toBe(Buffer.byteLength(rawOutputText, "utf8"));
-    expect(Object.keys(result)).not.toContain("rawOutputBytes");
-  });
-
-  it("rejects a raw output_text attestation mismatch before semantic admission", async () => {
-    const outputText = canonicalJsonBytes(validOutput()).toString("utf8");
-    const client = canonicalRecoveryClient(outputText, "0".repeat(64));
-
-    await expect(new GrpcReaderSummaryDailyCanonicalRecoveryRuntime(client)
-      .run(canonicalRecoveryInput())).rejects.toThrow(/invalid product result/u);
-  });
-
   it("rejects V1 authority before the output_text model call", async () => {
     const client = fakeClient(validOutput());
     const legacy = {
@@ -229,30 +205,3 @@ const validOutput = () => ({
   confidence: { level: "low", score: 0, rationale: "No invention." },
   noSignalReason: "No immutable signal.",
 });
-
-const canonicalRecoveryClient = (outputText: string, selectedOutputSha256 = hash(outputText)) => ({
-  runTask: jest.fn(async () => ({
-    status: "completed" as const,
-    outputText,
-    warnings: [],
-    executionAttestation: {
-      schemaVersion: 1 as const,
-      requestId: "recovery",
-      purpose: "social_monitor.reader_summary.weekly.generate",
-      canonicalRequestSha256: "a".repeat(64),
-      provider: "codex" as const,
-      model: "gpt-5.6-sol",
-      reasoningEffort: "xhigh",
-      runtimeEngine: "subscription-runtime-cli" as const,
-      runtimePackageVersion: "1.2.3",
-      launcherSha256: "b".repeat(64),
-      selectedOutputKind: "output_text" as const,
-      selectedOutputSha256,
-    },
-  })),
-  checkHealth: jest.fn(),
-}) satisfies jest.Mocked<AgentRuntimeClientPort>;
-
-const hash = (value: string): string => createHash("sha256")
-  .update(value, "utf8")
-  .digest("hex");

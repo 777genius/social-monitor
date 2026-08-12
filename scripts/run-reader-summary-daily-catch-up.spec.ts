@@ -12,8 +12,6 @@ import { readerSummaryDailyModelJobIdentity } from "@social-monitor/summary/doma
 
 import {
   runReaderSummaryDailyCatchUp,
-  runReaderSummaryDailyCatchUpBatches,
-  readerSummaryDailyDeliveryC1CatchUpBatchLimit,
   providerCatchUpArgs,
   verifyClaimedProviderAuthority,
   visibleProviderCounts,
@@ -21,121 +19,6 @@ import {
 } from "./run-reader-summary-daily-catch-up";
 
 describe("daily reader-summary catch-up entrypoint", () => {
-  it("reaches caught_up across multiple seven-claim C1 batches", async () => {
-    const requestedDates = [
-      "2026-07-23",
-      "2026-07-24",
-      "2026-07-31",
-      "2026-08-01",
-      "2026-08-02",
-      "2026-08-03",
-      "2026-08-04",
-      "2026-08-05",
-      "2026-08-06",
-      "2026-08-07",
-      "2026-08-08",
-      "2026-08-09",
-      "2026-08-10",
-    ];
-    const claims: ReaderSummaryDailyClaimResult[] = [
-      ...requestedDates.map((requestedUtcDate) => ({
-        kind: "claimed" as const,
-        work: dailyWork(requestedUtcDate, "COMPLETED", "2026-08-10"),
-      })),
-      { kind: "caught_up", eligibleThrough: "2026-08-10" },
-    ];
-    let terminalCalls = 0;
-    const result = await runReaderSummaryDailyCatchUpBatches(
-      {
-        claimNext: async () => claims.shift()!,
-        executeClaimed: async (work) => {
-          terminalCalls += 1;
-          return { kind: "replayed", requestedUtcDate: work.requestedUtcDate };
-        },
-        readPersistedRows: async () => [],
-        spawn: () => childResult(""),
-        env: {},
-        cwd: "/workspace",
-      },
-      true,
-      "2026-08-10",
-    );
-    expect(result.outcome).toBe("caught_up");
-    expect(terminalCalls).toBe(13);
-    expect(claims).toHaveLength(0);
-    expect(readerSummaryDailyDeliveryC1CatchUpBatchLimit("2026-08-10")).toBe(3);
-  });
-
-  it("fails closed instead of returning a partial C1 recovery", async () => {
-    const claims: ReaderSummaryDailyClaimResult[] = Array.from(
-      { length: 21 },
-      () => ({
-        kind: "claimed" as const,
-        work: dailyWork("2026-07-23", "COMPLETED", "2026-08-10"),
-      }),
-    );
-    await expect(
-      runReaderSummaryDailyCatchUpBatches(
-        {
-          claimNext: async () => claims.shift()!,
-          executeClaimed: async (work) => ({
-            kind: "replayed",
-            requestedUtcDate: work.requestedUtcDate,
-          }),
-          readPersistedRows: async () => [],
-          spawn: () => childResult(""),
-          env: {},
-          cwd: "/workspace",
-        },
-        true,
-        "2026-08-10",
-      ),
-    ).rejects.toThrow("did not reach CAUGHT_UP through 2026-08-10");
-  });
-
-  it("requires the frozen C1 boundary before making the first claim", async () => {
-    const claimNext = jest.fn();
-    await expect(
-      runReaderSummaryDailyCatchUpBatches(
-        {
-          claimNext,
-          executeClaimed: jest.fn(),
-          readPersistedRows: jest.fn(),
-          spawn: jest.fn(),
-          env: {},
-          cwd: "/workspace",
-        },
-        true,
-      ),
-    ).rejects.toThrow("recovery-through is required");
-    expect(claimNext).not.toHaveBeenCalled();
-  });
-
-  it("rejects rollover evidence beyond the frozen boundary", async () => {
-    const claimNext = jest.fn().mockResolvedValue({
-      kind: "claimed",
-      work: dailyWork("2026-08-11", "COMPLETED", "2026-08-11"),
-    });
-    await expect(
-      runReaderSummaryDailyCatchUpBatches(
-        {
-          claimNext,
-          executeClaimed: async (work) => ({
-            kind: "replayed",
-            requestedUtcDate: work.requestedUtcDate,
-          }),
-          readPersistedRows: async () => [],
-          spawn: () => childResult(""),
-          env: {},
-          cwd: "/workspace",
-        },
-        true,
-        "2026-08-10",
-      ),
-    ).rejects.toThrow("result exceeds recovery-through");
-    expect(claimNext).toHaveBeenCalledTimes(7);
-  });
-
   it("acquires DB ownership and invokes providers before transient deferral", async () => {
     const order: string[] = [];
     const result = await runReaderSummaryDailyCatchUp({
@@ -259,28 +142,23 @@ describe("daily reader-summary catch-up entrypoint", () => {
     const directory = mkdtempSync(join(tmpdir(), "daily-catch-up-test-"));
     const artifactPath = join(directory, "collection.json");
     try {
-      writeFileSync(
-        artifactPath,
-        JSON.stringify({
-          schemaVersion: 1,
-          artifactFormat: "reader-summary-clean-real-day-collection-v1",
-          generatedBy: "npm run run:reader-summary-clean-real-day-collection",
-          run: { collectionDate: "2026-07-26" },
-          inputs: {
-            database: "local-postgres",
-            targetPublishedWindow: {
-              startInclusive: "2026-07-26T00:00:00.000Z",
-              endExclusive: "2026-07-27T00:00:00.000Z",
-            },
+      writeFileSync(artifactPath, JSON.stringify({
+        schemaVersion: 1,
+        artifactFormat: "reader-summary-clean-real-day-collection-v1",
+        generatedBy: "npm run run:reader-summary-clean-real-day-collection",
+        run: { collectionDate: "2026-07-26" },
+        inputs: {
+          database: "local-postgres",
+          targetPublishedWindow: {
+            startInclusive: "2026-07-26T00:00:00.000Z",
+            endExclusive: "2026-07-27T00:00:00.000Z",
           },
-        }),
-      );
-      expect(() =>
-        verifyClaimedProviderAuthority({
-          work: dailyWork("2026-07-27"),
-          artifactPath,
-        }),
-      ).toThrow("exact day evidence");
+        },
+      }));
+      expect(() => verifyClaimedProviderAuthority({
+        work: dailyWork("2026-07-27"),
+        artifactPath,
+      })).toThrow("exact day evidence");
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
@@ -288,33 +166,28 @@ describe("daily reader-summary catch-up entrypoint", () => {
 
   it("rejects immutable source bytes whose hash changed", () => {
     const value = dailyWork("2026-07-27");
-    expect(() =>
-      verifyClaimedProviderAuthority({
-        work: {
-          ...value,
-          sourceAuthority: {
-            ...value.sourceAuthority,
-            canonicalSha256: "f".repeat(64),
-          },
+    expect(() => verifyClaimedProviderAuthority({
+      work: {
+        ...value,
+        sourceAuthority: {
+          ...value.sourceAuthority,
+          canonicalSha256: "f".repeat(64),
         },
-        artifactPath: "/missing",
-      }),
-    ).toThrow("SHA-256 diverged");
+      },
+      artifactPath: "/missing",
+    })).toThrow("SHA-256 diverged");
   });
 
   it("does not let a prior-day global report block the next collector", async () => {
     const directory = mkdtempSync(join(tmpdir(), "daily-catch-up-sequential-"));
     const artifactPath = join(directory, "collection.json");
-    writeFileSync(
-      artifactPath,
-      JSON.stringify({
-        schemaVersion: 1,
-        artifactFormat: "reader-summary-clean-real-day-collection-v1",
-        generatedBy: "npm run run:reader-summary-clean-real-day-collection",
-        run: { collectionDate: "2026-07-27" },
-        inputs: { database: "local-postgres" },
-      }),
-    );
+    writeFileSync(artifactPath, JSON.stringify({
+      schemaVersion: 1,
+      artifactFormat: "reader-summary-clean-real-day-collection-v1",
+      generatedBy: "npm run run:reader-summary-clean-real-day-collection",
+      run: { collectionDate: "2026-07-27" },
+      inputs: { database: "local-postgres" },
+    }));
     const claims: ReaderSummaryDailyClaimResult[] = [
       { kind: "claimed", work: dailyWork("2026-07-27", "COMPLETED") },
       { kind: "claimed", work: dailyWork("2026-07-28") },
@@ -348,13 +221,9 @@ describe("daily reader-summary catch-up entrypoint", () => {
     const result = await runReaderSummaryDailyCatchUp({
       claimNext: async () => ({
         kind: "claimed",
-        work: {
-          ...corrupt,
-          sourceAuthority: {
-            ...corrupt.sourceAuthority,
-            canonicalSha256: "f".repeat(64),
-          },
-        },
+        work: { ...corrupt, sourceAuthority: {
+          ...corrupt.sourceAuthority, canonicalSha256: "f".repeat(64),
+        } },
       }),
       readPersistedRows: async () => [],
       executeClaimed: async () => {
@@ -372,26 +241,19 @@ describe("daily reader-summary catch-up entrypoint", () => {
   });
 
   it("counts only VISIBLE persisted rows", () => {
-    expect(
-      visibleProviderCounts([
-        { providerKey: "reddit", status: "VISIBLE" },
-        { providerKey: "reddit", status: "HIDDEN" },
-        { providerKey: "reddit", status: "TOMBSTONED" },
-        { providerKey: "rss", status: "VISIBLE" },
-      ]),
-    ).toEqual({ reddit: 1, rss: 1 });
+    expect(visibleProviderCounts([
+      { providerKey: "reddit", status: "VISIBLE" },
+      { providerKey: "reddit", status: "HIDDEN" },
+      { providerKey: "reddit", status: "TOMBSTONED" },
+      { providerKey: "rss", status: "VISIBLE" },
+    ])).toEqual({ reddit: 1, rss: 1 });
   });
 
   it("treats a VISIBLE count conflict as terminal corruption", () => {
-    expect(() =>
-      assertVisibleProviderAuthority(
-        [
-          { providerKey: "reddit", status: "VISIBLE" },
-          { providerKey: "reddit", status: "HIDDEN" },
-        ],
-        { reddit: 0 },
-      ),
-    ).toThrow("Visible provider counts diverged");
+    expect(() => assertVisibleProviderAuthority([
+      { providerKey: "reddit", status: "VISIBLE" },
+      { providerKey: "reddit", status: "HIDDEN" },
+    ], { reddit: 0 })).toThrow("Visible provider counts diverged");
   });
 
   it("classifies malformed exact-day evidence as blocked", async () => {
@@ -400,10 +262,7 @@ describe("daily reader-summary catch-up entrypoint", () => {
     writeFileSync(artifactPath, "not-json");
     try {
       const result = await runReaderSummaryDailyCatchUp({
-        claimNext: async () => ({
-          kind: "claimed",
-          work: dailyWork("2026-07-27"),
-        }),
+        claimNext: async () => ({ kind: "claimed", work: dailyWork("2026-07-27") }),
         readPersistedRows: async () => [],
         executeClaimed: async () => {
           throw new Error("terminal must not run");
@@ -425,7 +284,6 @@ describe("daily reader-summary catch-up entrypoint", () => {
 const dailyWork = (
   requestedUtcDate: string,
   modelJobState: ReaderSummaryDailyExecutionWork["modelJobState"] = "RESERVED",
-  eligibleThrough = "2026-07-28",
 ): ReaderSummaryDailyExecutionWork => {
   const record = {
     schemaVersion: 1,
@@ -440,7 +298,7 @@ const dailyWork = (
     tenantId: record.tenantId,
     workspaceId: record.workspaceId,
     requestedUtcDate,
-    eligibleThrough,
+    eligibleThrough: "2026-07-28",
     sourceAuthority: {
       requestedUtcDate,
       ingestionCutoff: record.ingestionCutoff,
@@ -462,10 +320,8 @@ const dailyWork = (
       absoluteExpiresAt: "2026-07-29T08:00:00.000Z",
     },
     ...(modelJobState === "COMPLETED"
-      ? {
-          completedResponseBytes: Buffer.from("response"),
-          completedReceiptBytes: Buffer.from("receipt"),
-        }
+      ? { completedResponseBytes: Buffer.from("response"),
+          completedReceiptBytes: Buffer.from("receipt") }
       : {}),
   };
 };

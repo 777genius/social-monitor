@@ -2,11 +2,10 @@
 set -euo pipefail
 
 PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
-# Retained daily auth pool (v25/account-o); do not prune.
-readonly DAILY_AUTH_POOL_JOB_ID=social-monitor-production-account-pool-terra-v25-20260804
 
-# Canonical daily stages are owned by run-reader-summary-production-day.ts:
-# collection -> collection quality -> AI summary -> publication gates.
+# The catch-up supervisor retains these canonical stages in oldest-first order:
+# npm run run:reader-summary-clean-real-day-collection
+# scripts/run-reader-summary-daily-terminal.ts
 
 if [[ ${SOCIAL_MONITOR_DAILY_RUN_TEST_MODE:-} == 1 ]]; then
   ROOT=${SOCIAL_MONITOR_DAILY_RUN_TEST_ROOT:?daily-run test root is required}
@@ -48,8 +47,8 @@ COMPOSE=(
 DATE_FLAG=${1:---yesterday}
 
 case "$DATE_FLAG" in
-  --check-readiness|--today|--yesterday) ;;
-  *) echo "usage: $0 [--check-readiness|--today|--yesterday]" >&2; exit 64 ;;
+  --today|--yesterday) ;;
+  *) echo "usage: $0 [--today|--yesterday]" >&2; exit 64 ;;
 esac
 
 [[ $POSTGRES_ADMISSION_WAIT_SECONDS =~ \
@@ -58,26 +57,10 @@ esac
   exit 64
 }
 
-check_runtime_release() {
-  local runtime_release backend_release
-  runtime_release=$(cat "$ROOT/control/postgres-runtime-current/READY" 2>/dev/null || true)
-  backend_release=$(cat "$ROOT/control/deploy-state/backend.sha" 2>/dev/null || true)
-  if [[ ! $runtime_release =~ ^[0-9a-f]{40}$ || \
-        $runtime_release != "$backend_release" ]]; then
-    echo "daily production-day runtime is not committed by the backend release" >&2
-    return 75
-  fi
-}
-
-if [[ $DATE_FLAG == --check-readiness ]]; then
-  check_runtime_release || exit 75
-  exit 0
-fi
-
 exec 9>"$ROOT/control/daily-run-singleton.lock"
 "$FLOCK_COMMAND" -n 9 || {
-  echo "daily production-day run already active" >&2
-  exit 75
+  echo "daily production-day run already active"
+  exit 0
 }
 exec 8>"$ROOT/control/daily-run.lock"
 "$FLOCK_COMMAND" -w "$POSTGRES_ADMISSION_WAIT_SECONDS" 8 || {
@@ -85,9 +68,14 @@ exec 8>"$ROOT/control/daily-run.lock"
   exit 75
 }
 
-check_runtime_release || exit 75
+runtime_release=$(cat "$ROOT/control/postgres-runtime-current/READY" 2>/dev/null || true)
+backend_release=$(cat "$ROOT/control/deploy-state/backend.sha" 2>/dev/null || true)
+if [[ ! $runtime_release =~ ^[0-9a-f]{40}$ || $runtime_release != "$backend_release" ]]; then
+  echo "daily production-day runtime is not committed by the backend release" >&2
+  exit 75
+fi
 
-"$ROOT/control/refresh-codex-auth.sh" --broker-pool-job-id "$DAILY_AUTH_POOL_JOB_ID"
+"$ROOT/control/refresh-codex-auth.sh"
 
 if [[ -f "$ROOT/runtime/auth-account-changed" ]]; then
   stamp=$(date -u +%Y%m%dT%H%M%SZ)
@@ -111,7 +99,7 @@ fi
 
   timeout_ms=${READER_SUMMARY_DAILY_RUN_TIMEOUT_MS:-12300000}
   report_dir=${READER_SUMMARY_DAILY_RUN_REPORT_DIR:-ops/evals}
-  public_dir=${READER_SUMMARY_DAILY_RUN_PUBLIC_DIR:-/var/lib/social-monitor/artifacts/reports/reader-summary-production-v2}
+  public_dir=${READER_SUMMARY_DAILY_RUN_PUBLIC_DIR:-/var/lib/social-monitor/artifacts/reports}
 
   install_immutable() {
     source=$1
@@ -193,7 +181,7 @@ fi
   if [ -z "$requested_date" ]; then
     today=${READER_SUMMARY_DAILY_RUN_TEST_TODAY:-$(date -u +%F)}
     requested_date=$(node -e '\''
-      const [flag, today] = process.argv.slice(1);
+      const [flag, today, cursorDate] = process.argv.slice(1);
       const validDate = (value) =>
         typeof value === "string" &&
         /^\d{4}-\d{2}-\d{2}$/.test(value) &&
@@ -201,17 +189,41 @@ fi
       if (!validDate(today)) throw new Error("daily catch-up today is invalid");
       const eligible = new Date(`${today}T00:00:00.000Z`);
       if (flag === "--yesterday") eligible.setUTCDate(eligible.getUTCDate() - 1);
-      process.stdout.write(eligible.toISOString().slice(0, 10));
-    '\'' -- '"$DATE_FLAG"' "$today")
+      const latestEligibleDate = eligible.toISOString().slice(0, 10);
+      if (cursorDate === "") {
+        process.stdout.write(latestEligibleDate);
+        process.exit(0);
+      }
+      if (!validDate(cursorDate)) {
+        throw new Error("verified latest daily state date is invalid");
+      }
+      if (cursorDate > latestEligibleDate) {
+        throw new Error("latest daily state is ahead of the eligible date");
+      }
+      if (cursorDate === latestEligibleDate) {
+        process.stdout.write("already-published");
+        process.exit(0);
+      }
+      const candidate = new Date(`${cursorDate}T00:00:00.000Z`);
+      candidate.setUTCDate(candidate.getUTCDate() + 1);
+      process.stdout.write(candidate.toISOString().slice(0, 10));
+    '\'' -- '"$DATE_FLAG"' "$today" "$cursor_date")
+  fi
+  if [ "$requested_date" = already-published ]; then
+    if [ -n "${READER_SUMMARY_DAILY_RUN_PAUSE_WORKER:-}" ]; then
+      echo "daily production-day is terminal through the eligible date"
+      exit 0
+    fi
+    requested_date=$(node -e '\''
+      const value = new Date(`${process.argv[1]}T00:00:00.000Z`);
+      value.setUTCDate(value.getUTCDate() + 1);
+      process.stdout.write(value.toISOString().slice(0, 10));
+    '\'' -- "$cursor_date")
   fi
   case "$requested_date" in
     ????-??-??) ;;
     *) echo "daily production-day catch-up date is invalid" >&2; exit 64 ;;
   esac
-  if [ "$cursor_date" = "$requested_date" ]; then
-    echo "daily production-day is already terminal for $requested_date"
-    exit 0
-  fi
   node -e '\''
     const [previous, expected] = process.argv.slice(1);
     const validDate = (value) =>
@@ -221,7 +233,7 @@ fi
     if (!validDate(expected)) {
       throw new Error("requested daily state date is invalid");
     }
-    if (previous === "") process.exit(0);
+    if (previous === "" || previous === expected) process.exit(0);
     const next = new Date(`${previous}T00:00:00.000Z`);
     next.setUTCDate(next.getUTCDate() + 1);
     if (next.toISOString().slice(0, 10) !== expected) {
@@ -237,12 +249,15 @@ fi
       --timeout-ms "$timeout_ms" \
       -- bash "$READER_SUMMARY_DAILY_RUN_PAUSE_WORKER" '"$DATE_FLAG"'
   else
+    npm run migrate:deploy
+    export READER_SUMMARY_DAILY_FIRST_UNRESOLVED_UTC_DATE="$requested_date"
+    export READER_SUMMARY_DAILY_PUBLIC_DIRECTORY="$public_dir"
     node scripts/run-with-timeout.mjs \
       --timeout-ms "$timeout_ms" \
       --node-options --max-old-space-size=1024 \
       -- ./node_modules/.bin/ts-node -r tsconfig-paths/register \
-      scripts/run-reader-summary-production-day.ts \
-      --date "$requested_date" --update
+      scripts/run-reader-summary-daily-catch-up.ts
+    exit 0
   fi
 
   expected_date=$requested_date

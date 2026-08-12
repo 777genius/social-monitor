@@ -1,3 +1,5 @@
+import { readFileSync, readdirSync } from 'node:fs';
+import { extname, join, relative } from 'node:path';
 import {
   POSTGRES_BACKUP_CONNECTIONS,
   POSTGRES_CAPACITY_VERIFICATION_CONNECTIONS,
@@ -21,14 +23,6 @@ import {
   PUBLICATION_POSTGRES_TEST_ONLY_FILES,
   PUBLICATION_POSTGRES_TEST_POOL_MAXIMUMS,
 } from './postgres-runtime-pool-budget-test-inventory';
-import {
-  directDatabaseConstructions,
-  directPoolOptions,
-  expectedSourceList,
-  readComposeService,
-  readSource,
-  runtimeSourceFiles,
-} from './postgres-runtime-pool-budget-test-source';
 describe('deployment PostgreSQL budget', () => {
   it('derives effective capacity and meaningful reserve from live PostgreSQL facts', () => {
     const budget = assertDeploymentPostgresBudget(productionBudgetFixture());
@@ -347,18 +341,10 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/capture-reader-summary-multi-day-quality-corpus.ts:Pool
       scripts/capture-reader-summary-multi-day-quality-target-manifest.ts:Pool
       scripts/check-github-repo-radar-prisma-live-e2e.ts:Pool
-      scripts/check-reader-summary-daily-delivery-c1-postgres.ts:Pool
-      scripts/check-reader-summary-daily-delivery-c1-postgres.ts:Pool
-      scripts/check-reader-summary-daily-delivery-c1-postgres.ts:Pool
-      scripts/check-reader-summary-daily-delivery-c1-postgres.ts:Pool
-      scripts/check-reader-summary-daily-delivery-c1-postgres.ts:Pool
       scripts/check-reader-summary-daily-execution-cursor-postgres.ts:Pool
       scripts/check-reader-summary-daily-execution-cursor-postgres.ts:Pool
       scripts/check-reader-summary-daily-execution-cursor-postgres.ts:Pool
       scripts/check-reader-summary-daily-execution-cursor-postgres.ts:Pool
-      scripts/check-reader-summary-daily-scan-terminal-repair-c1-postgres.ts:Pool
-      scripts/check-reader-summary-daily-scan-terminal-repair-c1-postgres.ts:Pool
-      scripts/check-reader-summary-daily-scan-terminal-repair-c1-postgres.ts:Pool
       scripts/check-reader-summary-multi-day-quality.ts:Pool
       scripts/check-reader-summary-original-cutoff-prisma-catalog.ts:Pool
       scripts/check-reader-summary-original-cutoff-prisma-catalog.ts:Pool
@@ -395,13 +381,9 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/check-yesterday-social-collection-quality.ts:Pool
       scripts/lib/github-trending-durable-snapshot-reuse-postgres-fixture.ts:Pool
       scripts/lib/github-trending-durable-snapshot-reuse-postgres-fixture.ts:Pool
-      scripts/lib/reader-summary-daily-canonical-recovery-v4-delivery-c1.ts:Pool
-      scripts/lib/reader-summary-daily-canonical-recovery-v4-delivery-c1.ts:Pool
-      scripts/lib/reader-summary-daily-canonical-recovery-v4-scan-terminal-repair-cli.ts:Pool
       scripts/lib/reader-summary-daily-terminal-runtime-connection.ts:Pool
       scripts/lib/reader-summary-production-day-scope.ts:Pool
       scripts/lib/yesterday-social-replay-support.ts:Pool
-      scripts/read-reader-summary-daily-terminal-set-receipt.ts:Pool
       scripts/reader-summary-publication-postgres-legacy.ts:Pool
       scripts/reader-summary-publication-postgres-privileges.ts:Pool
       scripts/reader-summary-publication-postgres-privileges.ts:Pool
@@ -445,9 +427,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/capture-reader-summary-multi-day-quality-corpus.ts
       scripts/capture-reader-summary-multi-day-quality-target-manifest.ts
       scripts/check-github-repo-radar-prisma-live-e2e.ts
-      scripts/check-reader-summary-daily-delivery-c1-postgres.ts
       scripts/check-reader-summary-daily-execution-cursor-postgres.ts
-      scripts/check-reader-summary-daily-scan-terminal-repair-c1-postgres.ts
       scripts/check-reader-summary-multi-day-quality.ts
       scripts/check-reader-summary-original-cutoff-prisma-catalog.ts
       scripts/check-reader-summary-production-regeneration-smoke.ts
@@ -472,8 +452,6 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/lib/github-trending-durable-snapshot-reuse.ts
       scripts/lib/reader-summary-current-publication-bindings.spec.ts
       scripts/lib/reader-summary-current-publication-bindings.ts
-      scripts/lib/reader-summary-daily-canonical-recovery-v4-delivery-c1.ts
-      scripts/lib/reader-summary-daily-canonical-recovery-v4-scan-terminal-repair-cli.ts
       scripts/lib/reader-summary-daily-terminal-runtime-connection.spec.ts
       scripts/lib/reader-summary-daily-terminal-runtime-connection.ts
       scripts/lib/reader-summary-production-day-scope.spec.ts
@@ -487,15 +465,12 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/lib/reader-summary-weekly-atomic-publication-postgres-contract.ts
       scripts/lib/reader-summary-weekly-certification-seal-postgres-contract.ts
       scripts/lib/reader-summary-weekly-daily-certification-backfill-postgres-contract.ts
-      scripts/lib/reader-summary-weekly-projection-postgres-contract.ts
       scripts/lib/reader-summary-weekly-publication-evidence-postgres-contract.ts
       scripts/lib/reader-summary-weekly-review-manifest-postgres-contract.ts
       scripts/lib/yesterday-reader-summary-artifact-quality-store.spec.ts
       scripts/lib/yesterday-reader-summary-artifact-quality-store.ts
       scripts/lib/yesterday-social-collection-quality-summary-counts.ts
       scripts/lib/yesterday-social-replay-support.ts
-      scripts/read-reader-summary-daily-terminal-set-receipt.spec.ts
-      scripts/read-reader-summary-daily-terminal-set-receipt.ts
       scripts/reader-summary-publication-postgres-legacy.ts
       scripts/reader-summary-publication-postgres-privileges.ts
       scripts/reader-summary-publication-postgres-runtime-guard.ts
@@ -749,7 +724,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
     const productionDailyUnit = readSource(
       'ops/deploy/production-runtime/social-monitor-daily.service',
     );
-    expect(productionDailyUnit).toContain('TimeoutStartSec=19800');
+    expect(productionDailyUnit).toContain('TimeoutStartSec=23400');
     expect(productionDailyUnit).toContain('Restart=no');
     expect(deploy).toContain(
       'verify_live_postgres_admission "$postgres_env"',
@@ -904,4 +879,117 @@ function topology(
     poolMax,
     replicas: 1,
   };
+}
+
+function runtimeSourceFiles(directory: string): readonly string[] {
+  if (directory === 'prisma/generated') {
+    return [];
+  }
+  const absoluteDirectory = join(process.cwd(), directory);
+  const files: string[] = [];
+
+  for (const entry of readdirSync(absoluteDirectory, { withFileTypes: true })) {
+    const absolutePath = join(absoluteDirectory, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...runtimeSourceFiles(join(directory, entry.name)));
+      continue;
+    }
+    if (['.ts', '.js', '.mjs', '.cjs', '.py'].includes(extname(entry.name))) {
+      files.push(relative(process.cwd(), absolutePath));
+    }
+  }
+
+  return files;
+}
+
+function readSource(path: string): string {
+  return readFileSync(join(process.cwd(), path), 'utf8');
+}
+
+function expectedSourceList(value: string): readonly string[] {
+  return value.trim().split(/\s+/u);
+}
+
+function directDatabaseConstructions(
+  source: string,
+): readonly ('Pool' | 'PrismaPg' | 'PrismaClient')[] {
+  const imported = databaseConstructorAliases(source);
+  const constructions: ('Pool' | 'PrismaPg' | 'PrismaClient')[] = [];
+  for (const [localName, canonical] of imported) {
+    const constructorPattern = new RegExp(
+      `new\\s+${escapeRegularExpression(localName)}\\s*\\(`,
+      'g',
+    );
+    constructions.push(
+      ...(source.match(constructorPattern) ?? []).map(() => canonical),
+    );
+  }
+  return constructions;
+}
+
+function databaseConstructorAliases(
+  source: string,
+): ReadonlyMap<string, 'Pool' | 'PrismaPg' | 'PrismaClient'> {
+  const imported = new Map<string, 'Pool' | 'PrismaPg' | 'PrismaClient'>();
+  for (const match of source.matchAll(
+    /import\s*\{([\s\S]*?)\}\s*from\s*['"]([^'"]+)['"]/g,
+  )) {
+    const moduleName = match[2] ?? '';
+    const canonical =
+      moduleName === 'pg'
+        ? 'Pool'
+        : moduleName === '@prisma/adapter-pg'
+          ? 'PrismaPg'
+          : moduleName.includes('generated/client/client')
+            ? 'PrismaClient'
+            : undefined;
+    if (canonical === undefined) {
+      continue;
+    }
+    for (const specifier of (match[1] ?? '').split(',')) {
+      const importedName = new RegExp(
+        `^(?:type\\s+)?${canonical}(?:\\s+as\\s+([A-Za-z_$][\\w$]*))?$`,
+      ).exec(specifier.trim());
+      if (importedName !== null) {
+        imported.set(importedName[1] ?? canonical, canonical);
+      }
+    }
+  }
+  return imported;
+}
+
+function directPoolOptions(source: string): readonly string[] {
+  const options: string[] = [];
+  for (const [localName, canonical] of databaseConstructorAliases(source)) {
+    if (canonical !== 'Pool') {
+      continue;
+    }
+    const poolPattern = new RegExp(
+      `new\\s+${escapeRegularExpression(localName)}\\s*\\(\\s*\\{([\\s\\S]*?)\\}\\s*(?:as[\\s\\S]*?)?\\)`,
+      'g',
+    );
+    for (const match of source.matchAll(poolPattern)) {
+      options.push(match[1] ?? '');
+    }
+  }
+  return options;
+}
+
+function escapeRegularExpression(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function readComposeService(compose: string, service: string): string {
+  const startMarker = `  ${service}:\n`;
+  const start = compose.indexOf(startMarker);
+  if (start < 0) {
+    throw new Error(`Compose service is missing: ${service}`);
+  }
+  const remainder = compose.slice(start + startMarker.length);
+  const nextService = /^ {2}[a-z0-9-]+:\s*$/m.exec(remainder);
+  const end =
+    nextService === null
+      ? undefined
+      : start + startMarker.length + nextService.index;
+  return compose.slice(start, end);
 }

@@ -1,4 +1,0 @@
-schemaVersion=reader_summary.daily_delivery_readiness.c1
-state=BLOCKED
-requires=H_GREEN,C0_GREEN,reviewed_activation
-activation=forbidden

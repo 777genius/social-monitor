@@ -6,7 +6,7 @@ Requires=social-monitor-prod.service
 [Service]
 Type=oneshot
 ExecStart=/var/data/social-monitor/control/daily-run.sh --yesterday
-TimeoutStartSec=19800
+TimeoutStartSec=23400
 Restart=no
 Nice=10
 IOSchedulingClass=best-effort

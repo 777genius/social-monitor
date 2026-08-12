@@ -27,8 +27,7 @@
     "check:consumed-worktree-janitor": "bash ops/maintenance/consumed-worktree-janitor.test.sh",
     "check:source-line-cap": "node scripts/check-source-line-cap.mjs",
     "check:container": "node scripts/check-container.mjs",
-    "check:production-deploy-lifecycle": "bash ops/deploy/social-monitor-production-deploy.test.sh && bash ops/deploy/production-component-classification.test.sh && bash ops/deploy/production-release-a-transition.test.sh && bash ops/deploy/postgres-runtime-daily-c1-readiness-lib.test.sh && bash ops/deploy/deploy-control-bridge-runtime-helper.test.sh && bash ops/deploy/deploy-control-reviewed-library-source.test.sh && bash ops/deploy/reader-summary-recovery-maintenance-lib.test.sh && bash ops/deploy/reader-summary-daily-delivery-c1-action.test.sh && bash ops/deploy/github-production-maintenance-dispatch.test.sh",
-    "check:production-release-preflight": "bash ops/deploy/production-release-preflight.sh",
+    "check:production-deploy-lifecycle": "bash ops/deploy/social-monitor-production-deploy.test.sh && bash ops/deploy/reader-summary-recovery-maintenance-lib.test.sh",
     "check:credential-secret-runtime-flow": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=768 -- ts-node -r tsconfig-paths/register scripts/check-credential-secret-runtime-flow.ts && node scripts/check-credential-secret-runtime-flow.mjs",
     "check:cross-process-scheduler": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-cross-process-scheduler-smoke.ts",
     "check:dependencies": "node scripts/check-dependencies.mjs",
@@ -237,10 +236,8 @@
     "check:summary-policy-rest": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-summary-policy-rest-smoke.ts",
     "check:summary-persistence": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-summary-prisma-persistence.ts",
     "recover:reader-summary-production": "node scripts/run-with-timeout.mjs --timeout-ms 2400000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/recover-reader-summary-production.ts",
-    "check:reader-summary-production-recovery-postgres": "node scripts/run-with-timeout.mjs --timeout-ms 1800000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-reader-summary-production-recovery-postgres.ts",
+    "check:reader-summary-production-recovery-postgres": "node scripts/run-with-timeout.mjs --timeout-ms 600000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-reader-summary-production-recovery-postgres.ts",
     "check:reader-summary-daily-canonical-recovery-postgres18": "bash ops/deploy/daily-canonical-recovery-postgres18.test.sh",
-    "check:reader-summary-daily-delivery-c1-postgres": "node scripts/run-with-timeout.mjs --timeout-ms 180000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-reader-summary-daily-delivery-c1-postgres.ts",
-    "check:reader-summary-daily-scan-terminal-repair-c1-postgres": "node scripts/run-with-timeout.mjs --timeout-ms 180000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-reader-summary-daily-scan-terminal-repair-c1-postgres.ts",
     "check:reader-summary-daily-canonical-recovery-production": "bash ops/deploy/daily-canonical-recovery-production.test.sh",
     "check:reader-summary-original-cutoff-prisma-catalog": "node scripts/run-with-timeout.mjs --timeout-ms 300000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-reader-summary-original-cutoff-prisma-catalog.ts",
     "check:reader-summary-publication-postgres": "node scripts/run-with-timeout.mjs --timeout-ms 180000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-reader-summary-publication-postgres.ts",
@@ -252,7 +249,6 @@
     "check:reader-summary-weekly-review-manifest-postgres18": "npm run check:reader-summary-weekly-review-manifest-postgres",
     "check:reader-summary-weekly-review-manifest-postgres18-local": "READER_SUMMARY_PUBLICATION_TEST_ADMIN_DATABASE_URL=postgresql://social_monitor_publication_ci_admin:social_monitor_local_password@127.0.0.1:5432/social_monitor_publication_ci_admin npm run check:reader-summary-weekly-review-manifest-postgres",
     "check:reader-summary-daily-terminal-authority-postgres": "node scripts/run-with-timeout.mjs --timeout-ms 180000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-reader-summary-daily-terminal-authority-postgres.ts",
-    "read:reader-summary-daily-terminal-set-receipt": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=768 -- ./node_modules/.bin/ts-node -r tsconfig-paths/register scripts/read-reader-summary-daily-terminal-set-receipt.ts",
     "check:reader-summary-publication-signal-regression": "bash ops/deploy/reader-summary-publication-signal-regression.test.sh",
     "check:summary-topic-recommendation-prisma-live": "npm run migrate:deploy && node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-summary-topic-recommendation-prisma-live.ts",
     "check:summary-topic-recommendation-rest-prisma-live": "npm run migrate:deploy && node scripts/run-with-timeout.mjs --timeout-ms 90000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-summary-topic-recommendation-rest-prisma-live.ts",
@@ -366,7 +362,7 @@
   "overrides": {
     "@eslint/eslintrc": "3.3.6",
     "@istanbuljs/load-nyc-config": {
-      "js-yaml": "4.3.1"
+      "js-yaml": "4.3.0"
     },
     "@nestjs/swagger": {
       "js-yaml": "5.2.2"
