@@ -126,6 +126,10 @@ grep -F 'Deploy the daily C1 target through the alias-aware controller' \
   fail 'bridge still tries to deploy a redundant intermediate policy'
 grep -F 'bash ops/deploy/github-production-deploy-client.sh deploy "$GITHUB_SHA"' \
   "$workflow" >/dev/null || fail 'daily C1 bridge bypasses the reviewed deploy client'
+grep -F 'disk-report|project-disk-cleanup|reader-summary-recover-missing-days|reader-summary-weekly-run)' \
+  "$workflow" >/dev/null || fail 'bridge cannot run installed bounded maintenance actions'
+grep -F '"$GITHUB_SHA" "$MAINTENANCE_ACTION"' "$workflow" >/dev/null || \
+  fail 'bridge basic maintenance does not use the reviewed deploy client'
 ! grep -F 'daily C1 bridge classification is not control-only' "$workflow" >/dev/null || \
   fail 'workflow confused live pending components with the control-only bridge diff'
 
