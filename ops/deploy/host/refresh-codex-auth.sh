@@ -33,6 +33,7 @@ if [[ ${SOCIAL_MONITOR_AUTH_REFRESH_TEST_MODE:-} == 1 ]]; then
   PROBE_WORKSPACE=${SOCIAL_MONITOR_AUTH_PROBE_WORKSPACE:?test probe workspace is required}
   ACCOUNT_CHANGED_MARKER=${SOCIAL_MONITOR_AUTH_CHANGED_MARKER:?test marker is required}
   PROBE_TMP_ROOT=${SOCIAL_MONITOR_AUTH_PROBE_TMP_ROOT:?test probe temp root is required}
+  POOL_SNAPSHOT_ROOT=${SOCIAL_MONITOR_AUTH_POOL_SNAPSHOT_ROOT:?test pool snapshot root is required}
   TARGET_DIR_OWNER=$(id -u)
   TARGET_OWNER=$(id -u)
   TARGET_GROUP=$(id -g)
@@ -50,6 +51,7 @@ elif ((EUID == 0)); then
   PROBE_WORKSPACE=/var/data/social-monitor/runtime/auth-probe-workspace
   ACCOUNT_CHANGED_MARKER=/var/data/social-monitor/runtime/auth-account-changed
   PROBE_TMP_ROOT=/var/data/social-monitor/runtime/auth-probes
+  POOL_SNAPSHOT_ROOT=/var/data/social-monitor/auth-pool
   TARGET_DIR_OWNER=root
   TARGET_OWNER=root
   TARGET_GROUP=1000
@@ -62,7 +64,8 @@ elif ((EUID == 0)); then
     SOCIAL_MONITOR_AUTH_ACCOUNT_NAME_FILE \
     SOCIAL_MONITOR_AUTH_PROBE_WORKSPACE SOCIAL_MONITOR_AUTH_CHANGED_MARKER \
     SOCIAL_MONITOR_AUTH_PROBE_TMP_ROOT SOCIAL_MONITOR_AUTH_POOL_POINTER \
-    SOCIAL_MONITOR_AUTH_POOL_REGISTRY_PREFIX
+    SOCIAL_MONITOR_AUTH_POOL_REGISTRY_PREFIX \
+    SOCIAL_MONITOR_AUTH_POOL_SNAPSHOT_ROOT
 else
   echo 'auth-refresh-error: production entrypoint requires root' >&2
   exit 1
@@ -80,6 +83,14 @@ fail() {
   exit 1
 }
 
+file_sha256() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{print $1}'
+  else
+    shasum -a 256 "$1" | awk '{print $1}'
+  fi
+}
+
 require_canonical_directory() {
   local directory=$1 label=$2 canonical
   [[ -d $directory && ! -L $directory ]] || fail "$label is missing or unsafe"
@@ -92,6 +103,87 @@ require_not_group_or_other_writable() {
   mode=$(stat -c '%a' "$path" 2>/dev/null || stat -f '%Lp' "$path")
   [[ $mode =~ ^[0-7]{3,4}$ ]] || fail "$label mode is invalid"
   (( (8#$mode & 022) == 0 )) || fail "$label is writable by group or other"
+}
+
+resolve_approved_account_auth() {
+  local account=$1 account_directory account_directory_resolved account_auth
+  [[ $account =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || \
+    fail 'broker account name is invalid'
+  account_directory=$AUTH_ROOT/$account
+  [[ -d $account_directory && ! -L $account_directory ]] || \
+    fail 'approved broker account directory is missing or unsafe'
+  account_directory_resolved=$(realpath -e "$account_directory") || \
+    fail 'cannot canonicalize approved broker account directory'
+  [[ $account_directory_resolved == "$auth_root_resolved/$account" ]] || \
+    fail 'approved broker account directory is not canonical'
+  account_auth=$account_directory/auth.json
+  [[ -f $account_auth && ! -L $account_auth ]] || \
+    fail 'approved broker account auth file is missing or unsafe'
+  selected=$(realpath -e "$account_auth") || \
+    fail 'cannot canonicalize approved broker account auth file'
+  [[ $selected == "$auth_root_resolved/$account/auth.json" ]] || \
+    fail 'approved broker account auth file is not canonical'
+  printf '%s\n' "$selected"
+}
+
+materialize_auth_pool_snapshot() {
+  local stage_dir digest_input generation snapshot_dir account selected
+  local manifest_next manifest_changed=true
+
+  install -d -m 0750 -o "$TARGET_DIR_OWNER" -g "$TARGET_GROUP" \
+    "$POOL_SNAPSHOT_ROOT" "$POOL_SNAPSHOT_ROOT/snapshots"
+  stage_dir=$(mktemp -d "$POOL_SNAPSHOT_ROOT/.snapshot.XXXXXX")
+  digest_input=$stage_dir/digests
+  : > "$digest_input"
+  for account in "${available_accounts[@]}"; do
+    selected=$(resolve_approved_account_auth "$account")
+    install -d -m 0750 -o "$TARGET_DIR_OWNER" -g "$TARGET_GROUP" \
+      "$stage_dir/$account"
+    install -m "$TARGET_MODE" -o "$TARGET_OWNER" -g "$TARGET_GROUP" \
+      "$selected" "$stage_dir/$account/auth.json"
+    printf '%s\t%s\n' "$account" "$(file_sha256 "$stage_dir/$account/auth.json")" \
+      >> "$digest_input"
+  done
+  generation=$(file_sha256 "$digest_input")
+  rm -f "$digest_input"
+  chown "$TARGET_DIR_OWNER:$TARGET_GROUP" "$stage_dir"
+  chmod 0750 "$stage_dir"
+  snapshot_dir=$POOL_SNAPSHOT_ROOT/snapshots/$generation
+  if [[ -d $snapshot_dir && ! -L $snapshot_dir ]]; then
+    rm -rf -- "$stage_dir"
+  else
+    [[ ! -e $snapshot_dir && ! -L $snapshot_dir ]] || \
+      fail 'auth pool snapshot destination is unsafe'
+    mv "$stage_dir" "$snapshot_dir"
+    find "$snapshot_dir" -type d -exec chmod 0550 {} +
+    find "$snapshot_dir" -type f -exec chmod "$TARGET_MODE" {} +
+  fi
+
+  manifest_next=$POOL_SNAPSHOT_ROOT/current.json.next.$$
+  jq -n --arg generation "$generation" \
+    --argjson accounts "$(printf '%s\n' "${available_accounts[@]}" | \
+      jq -Rsc --arg generation "$generation" '
+        split("\n") | map(select(length > 0)) |
+        map({id: ., relativePath: ("snapshots/" + $generation + "/" + . + "/auth.json")})
+      ')" '
+      {
+        schemaVersion: 1,
+        snapshotId: $generation,
+        accounts: $accounts
+      }
+    ' > "$manifest_next"
+  chown "$TARGET_OWNER:$TARGET_GROUP" "$manifest_next"
+  chmod "$TARGET_MODE" "$manifest_next"
+  if [[ -f $POOL_SNAPSHOT_ROOT/current.json && \
+        ! -L $POOL_SNAPSHOT_ROOT/current.json ]] && \
+      cmp -s "$manifest_next" "$POOL_SNAPSHOT_ROOT/current.json"; then
+    manifest_changed=false
+  fi
+  if [[ $manifest_changed == true ]]; then
+    mv -f "$manifest_next" "$POOL_SNAPSHOT_ROOT/current.json"
+  else
+    rm -f "$manifest_next"
+  fi
 }
 
 is_manifest_account() {
@@ -322,7 +414,7 @@ for ((offset = 0; offset < account_count; offset += 1)); do
   if timeout 180 env CODEX_HOME="$probe_home" codex exec \
     --skip-git-repo-check \
     --sandbox read-only \
-    --model gpt-5.5 \
+    --model gpt-5.6-sol \
     --color never \
     --output-last-message "$probe_result" \
     -C "$PROBE_WORKSPACE" \
@@ -330,6 +422,7 @@ for ((offset = 0; offset < account_count; offset += 1)); do
     </dev/null >/dev/null 2>&1 \
     && [[ -f $probe_result ]] \
     && [[ $(tr -d '\r\n' < "$probe_result") == AUTH_OK ]]; then
+    materialize_auth_pool_snapshot
     target_auth_changed=true
     if [[ -e $TARGET_DIR/auth.json ]]; then
       [[ -f $TARGET_DIR/auth.json && ! -L $TARGET_DIR/auth.json ]] || \

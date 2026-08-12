@@ -52,6 +52,7 @@ ACCOUNT_NAME_FILE=$FIXTURE/account-name
 PROBE_WORKSPACE=$FIXTURE/workspace
 CHANGED_MARKER=$FIXTURE/changed
 PROBE_TMP_ROOT=$FIXTURE/tmp
+POOL_SNAPSHOT_ROOT=$FIXTURE/auth-pool
 POOL_POINTER=$FIXTURE/account-pool.json
 BIN=$FIXTURE/bin
 POOL_JOB_ID=social-monitor-production-account-pool-terra-v25-20260804
@@ -175,6 +176,7 @@ SOCIAL_MONITOR_AUTH_ACCOUNT_NAME_FILE="$ACCOUNT_NAME_FILE" \
 SOCIAL_MONITOR_AUTH_PROBE_WORKSPACE="$PROBE_WORKSPACE" \
 SOCIAL_MONITOR_AUTH_CHANGED_MARKER="$CHANGED_MARKER" \
 SOCIAL_MONITOR_AUTH_PROBE_TMP_ROOT="$PROBE_TMP_ROOT" \
+SOCIAL_MONITOR_AUTH_POOL_SNAPSHOT_ROOT="$POOL_SNAPSHOT_ROOT" \
 SOCIAL_MONITOR_AUTH_POOL_POINTER="$POOL_POINTER" \
 SOCIAL_MONITOR_AUTH_POOL_REGISTRY_PREFIX="$PROJECT_ROOT/worker-jobs/" \
 SOCIAL_MONITOR_TEST_SYSTEM_FLOCK="$SYSTEM_FLOCK" \
@@ -234,6 +236,20 @@ cmp "$AUTH_ROOT/account-a/auth.json" "$TARGET_DIR/auth.json"
 [[ -f $CHANGED_MARKER ]]
 [[ -f $CURSOR_FILE.install.lock ]]
 [[ ! -e $CURSOR_FILE.lock && ! -L $CURSOR_FILE.lock ]]
+jq -e '
+  .schemaVersion == 1 and
+  (.snapshotId | test("^[0-9a-f]{64}$")) and
+  (.accounts | map(.id) == ["account-a", "account-b"]) and
+  (.accounts | all(.relativePath | startswith("snapshots/")))
+' "$POOL_SNAPSHOT_ROOT/current.json" >/dev/null
+[[ $(stat -c '%a' "$POOL_SNAPSHOT_ROOT/current.json" 2>/dev/null || \
+      stat -f '%Lp' "$POOL_SNAPSHOT_ROOT/current.json") == 400 ]]
+while IFS=$'\t' read -r account relative_path; do
+  cmp "$AUTH_ROOT/$account/auth.json" "$POOL_SNAPSHOT_ROOT/$relative_path"
+  [[ $(stat -c '%a' "$POOL_SNAPSHOT_ROOT/$relative_path" 2>/dev/null || \
+        stat -f '%Lp' "$POOL_SNAPSHOT_ROOT/$relative_path") == 400 ]]
+done < <(jq -r '.accounts[] | [.id, .relativePath] | @tsv' \
+  "$POOL_SNAPSHOT_ROOT/current.json")
 
 rm -f "$CHANGED_MARKER"
 SOCIAL_MONITOR_TEST_ACCOUNTS='["account-b"]' run_refresh >/dev/null

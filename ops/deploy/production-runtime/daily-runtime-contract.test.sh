@@ -7,7 +7,7 @@ DAILY_SERVICE=$SCRIPT_DIR/social-monitor-daily.service
 DAILY_TIMER=$SCRIPT_DIR/social-monitor-daily.timer
 
 grep -F 'postgres-runtime-current/compose.postgres-runtime.yml' "$DAILY_RUN" >/dev/null
-grep -F 'compose.agent-runtime-model.yml' "$DAILY_RUN" >/dev/null
+grep -F 'control/compose.agent-runtime-model.yml' "$DAILY_RUN" >/dev/null
 grep -F 'daily-run-singleton.lock' "$DAILY_RUN" >/dev/null
 # The assertions below intentionally match literal shell variables.
 # shellcheck disable=SC2016

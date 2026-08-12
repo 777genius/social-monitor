@@ -1,11 +1,14 @@
 #!/usr/bin/env node
 
-import { readFile, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdir, readFile, realpath, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 
 import {
   admitSubscriptionRuntimeWrapperRequest,
   subscriptionOnlyCodexEnvironment,
 } from "./subscription-runtime-purpose-model-policy.mjs";
+import { loadCodexAuthPoolFromEnv } from "./codex-auth-pool-manifest.mjs";
 
 const argv = process.argv.slice(2);
 const provider = requiredArgument(argv, "--provider");
@@ -25,9 +28,17 @@ await writeFile(inputPath, JSON.stringify(admission.canonicalRequest), "utf8");
 const { FileBackendCodexWorker } = await import(
   "@vioxen/subscription-runtime/worker-codex"
 );
+const { FileBackendCodexSafeExecutor } = await import(
+  "@vioxen/subscription-runtime/worker-codex"
+);
+const { SubscriptionWorkerError } = await import(
+  "@vioxen/subscription-runtime/worker-core"
+);
 const { runSubscriptionAgentTaskCli } = await import(
   "../../../node_modules/@vioxen/subscription-runtime/dist/worker-local/agent-task-runner-cli.js"
 );
+
+const authPool = await loadCodexAuthPoolFromEnv(process.env);
 
 const createStrictCodexWorker = (input) => {
   if (input.provider !== admission.profile.provider) {
@@ -37,6 +48,10 @@ const createStrictCodexWorker = (input) => {
   const model = input.model?.trim() || admission.profile.model;
   if (model !== admission.profile.model) {
     throw new Error("Agent runtime model conflicts with purpose policy");
+  }
+
+  if (authPool !== undefined) {
+    return createPooledCodexWorker({ input, model, authPool });
   }
 
   return new FileBackendCodexWorker({
@@ -51,6 +66,104 @@ const createStrictCodexWorker = (input) => {
     ...(input.timeoutMs ? { taskTimeoutMs: input.timeoutMs } : {}),
   });
 };
+
+function createPooledCodexWorker({ input, model, authPool }) {
+  let executor;
+  let disposed = false;
+
+  return {
+    async start() {},
+
+    async seedCodexAuthJsonFile(authJsonPath) {
+      const selectedPath = await realpath(authJsonPath);
+      if (
+        !authPool.accounts.some(
+          (account) => account.authJsonPath === selectedPath,
+        )
+      ) {
+        throw new Error(
+          "--codex-auth-json cannot override the configured Codex auth pool",
+        );
+      }
+    },
+
+    async run(job) {
+      if (disposed) {
+        throw new Error("Pooled Codex worker has been disposed");
+      }
+      if (executor !== undefined) {
+        throw new Error("Pooled Codex worker accepts one task per CLI process");
+      }
+      const taskId = job.runId?.trim();
+      if (!taskId) {
+        throw new Error("Pooled Codex worker requires a stable runId");
+      }
+      const taskHash = createHash("sha256").update(taskId).digest("hex");
+      const workspacePath = join(
+        input.stateRootDir,
+        "task-workspaces",
+        taskHash,
+      );
+      await mkdir(workspacePath, { recursive: true, mode: 0o700 });
+
+      executor = new FileBackendCodexSafeExecutor({
+        executorId: `social-monitor-agent-task:${taskHash}`,
+        stateRootDir: input.stateRootDir,
+        workspacePath,
+        requireGitWorkspace: false,
+        effectMode: "read_only",
+        maxAccountCycles: 1,
+        safeExecutionPolicy: {
+          retryOnCapacity: true,
+          retryOnAccountUnavailable: true,
+          retryOnReconnectRequired: false,
+          retryUnknownCleanWorkspace: false,
+          retryUnknownChangedWorkspace: false,
+          continuationMode: "packet_first",
+        },
+        accounts: authPool.accounts.map((account) => ({
+          codexAuthJsonPath: account.authJsonPath,
+          worker: {
+            providerInstanceId: `codex:${account.id}`,
+            capacityAccountId: account.id,
+            stateRootDir: input.stateRootDir,
+            encryptionKey: input.encryptionKey,
+            codexBinaryPath: input.codexBinaryPath ?? "codex",
+            sourceEnv: subscriptionOnlyCodexEnvironment(input.env),
+            model,
+            reasoningEffort: admission.profile.reasoningEffort,
+            ...(input.timeoutMs ? { taskTimeoutMs: input.timeoutMs } : {}),
+          },
+        })),
+      });
+      const result = await executor.run({
+        ...job,
+        taskId,
+        originalPrompt: job.prompt,
+        effectMode: "read_only",
+        maxAccountCycles: 1,
+      });
+      if (result.status === "completed") {
+        return result.result;
+      }
+      throw new SubscriptionWorkerError(
+        "subscription_worker_run_failed",
+        result.safeMessage,
+        {
+          details: {
+            reason: result.reason,
+            ...(result.failureDetails ?? {}),
+          },
+        },
+      );
+    },
+
+    async dispose() {
+      disposed = true;
+      await executor?.dispose();
+    },
+  };
+}
 
 process.exitCode = await runSubscriptionAgentTaskCli(
   withExactModel(argv, admission.profile.model),

@@ -476,18 +476,77 @@ const readFailure = (
     return undefined;
   }
 
+  const details = readSafeRuntimeFailureDetails(record.details);
+  const code = promotedRuntimeFailureCode(record.code, details.reason);
+
   return {
-    code: optionalString(record.code) ?? "agent_runtime.failed",
+    code,
     safeMessage:
       optionalString(record.safeMessage) ??
       optionalString(record.message) ??
       "Agent runtime task failed",
-    retryable: record.retryable === true,
-    reconnectRequired: record.reconnectRequired === true,
+    retryable: record.retryable === true || retryableRuntimeCodes.has(code),
+    reconnectRequired:
+      record.reconnectRequired === true || code === "needs_reconnect",
     causeCategory: optionalString(record.causeCategory) ?? "agent_runtime",
-    details: {},
+    details,
   };
 };
+
+const safeRuntimeFailureDetailKeys = new Set([
+  "availability",
+  "cooldownUntil",
+  "reason",
+  "subscriptionWorkerCode",
+]);
+
+const readSafeRuntimeFailureDetails = (
+  value: unknown,
+): Readonly<Record<string, string>> => {
+  const record = readOptionalRecord(value);
+  if (record === undefined) {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(record).flatMap(([key, detail]) => {
+      const safeValue = optionalString(detail);
+      return safeRuntimeFailureDetailKeys.has(key) && safeValue !== undefined
+        ? [[key, safeValue]]
+        : [];
+    }),
+  );
+};
+
+const promotedRuntimeFailureCode = (
+  value: unknown,
+  reason: string | undefined,
+): string => {
+  const code = optionalString(value) ?? "agent_runtime.failed";
+  if (code !== "unknown_runtime_failure") {
+    return code;
+  }
+
+  return runtimeFailureCodeBySafeReason[reason ?? ""] ?? code;
+};
+
+const runtimeFailureCodeBySafeReason: Readonly<Record<string, string>> = {
+  account_unavailable: "provider_session_invalid",
+  capacity_unavailable: "backend_unavailable",
+  provider_output_invalid: "provider_output_invalid",
+  quota_limited: "quota_limited",
+  reconnect_required: "needs_reconnect",
+  task_timeout: "task_timeout",
+  user_abort: "task_cancelled",
+};
+
+const retryableRuntimeCodes = new Set([
+  "backend_unavailable",
+  "needs_reconnect",
+  "provider_session_invalid",
+  "quota_limited",
+  "task_timeout",
+]);
 
 const nonNegativeInteger = (value: unknown): number =>
   typeof value === "number" && Number.isInteger(value) && value >= 0

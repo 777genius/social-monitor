@@ -197,6 +197,41 @@ describe("SubscriptionRuntimeCliExecutor", () => {
     },
   );
 
+  it("preserves a typed quota failure and its safe cooldown details", async () => {
+    tempDir = await mkdtemp(join(tmpdir(), "agent-runtime-cli-test-"));
+    const cliPath = join(tempDir, "fake-quota-cli.mjs");
+    await writeFile(
+      cliPath,
+      [
+        "#!/usr/bin/env node",
+        "process.stdout.write(JSON.stringify({ status: 'failed', warnings: [], failure: { code: 'unknown_runtime_failure', safeMessage: 'Account quota is unavailable.', retryable: false, reconnectRequired: false, details: { reason: 'quota_limited', cooldownUntil: '2026-08-13T00:00:00.000Z', stderrTail: 'must-not-cross-boundary' } } }));",
+      ].join("\n"),
+      "utf8",
+    );
+    await chmod(cliPath, 0o755);
+    const executor = new SubscriptionRuntimeCliExecutor({
+      command: cliPath,
+      ephemeral: true,
+      installationInspector,
+    });
+
+    const result = await executor.execute(validExecutionRequest());
+
+    expect(result).toMatchObject({
+      status: "failed",
+      failure: {
+        code: "quota_limited",
+        retryable: true,
+        reconnectRequired: false,
+        details: {
+          reason: "quota_limited",
+          cooldownUntil: "2026-08-13T00:00:00.000Z",
+        },
+      },
+    });
+    expect(result.failure?.details).not.toHaveProperty("stderrTail");
+  });
+
   it("spawns the exact executable path admitted by the inspector", async () => {
     tempDir = await mkdtemp(join(tmpdir(), "agent-runtime-cli-test-"));
     const cliPath = join(tempDir, "admitted-cli.mjs");
