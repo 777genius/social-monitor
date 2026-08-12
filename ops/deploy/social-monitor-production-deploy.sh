@@ -105,7 +105,6 @@ CONTROL_PATHS=(
 RUNTIME_CONTROL_PATHS=(
   ops/deploy/production-runtime/daily-c1-runtime.sh
   ops/deploy/production-runtime/daily-run.sh
-  ops/deploy/production-runtime/compose.agent-runtime-model.yml
   ops/deploy/production-runtime/compose.daily-artifacts.yml
   ops/deploy/production-runtime/reader-summary-daily-c1.readiness
   ops/deploy/postgres-runtime-daily-c1-readiness-lib.sh ops/deploy/postgres-runtime-weekly-timer-state-lib.sh ops/deploy/postgres-runtime-activation-boundary-lib.sh
@@ -123,7 +122,6 @@ COMPOSE=(
   -f "$REPO/docker-compose.yml"
   -f "$CONTROL/compose.production.yml"
   -f "$CONTROL/compose.managed-db.yml"
-  -f "$REPO/ops/deploy/production-runtime/compose.agent-runtime-model.yml"
 )
 if [[ -f $POSTGRES_RUNTIME_CURRENT/compose.postgres-runtime.yml ]]; then
   COMPOSE+=(
@@ -937,8 +935,6 @@ sync_control_script() {
   local wrapper_destination=$CONTROL/github-production-deploy-wrapper.sh
   local auth_refresh_source=$REPO/ops/deploy/host/refresh-codex-auth.sh
   local auth_refresh_destination=$CONTROL/refresh-codex-auth.sh
-  local agent_runtime_overlay_source=$REPO/ops/deploy/production-runtime/compose.agent-runtime-model.yml
-  local agent_runtime_overlay_destination=$CONTROL/compose.agent-runtime-model.yml
   [[ -f $REPO/ops/deploy/social-monitor-production-deploy.sh ]] || return 0
   if [[ -f $wrapper_source ]]; then
     install -m 0755 -o root -g root "$wrapper_source" "$wrapper_destination.next"
@@ -949,14 +945,6 @@ sync_control_script() {
     mv -f "$auth_refresh_destination.next" "$auth_refresh_destination"
     [[ $(stat -c '%U:%G:%a' "$auth_refresh_destination") == root:root:700 ]] || \
       fail 'subscription auth refresh ownership or mode is invalid after sync'
-  fi
-  if [[ -f $agent_runtime_overlay_source ]]; then
-    install -m 0644 -o root -g root "$agent_runtime_overlay_source" \
-      "$agent_runtime_overlay_destination.next"
-    mv -f "$agent_runtime_overlay_destination.next" \
-      "$agent_runtime_overlay_destination"
-    cmp -s "$agent_runtime_overlay_source" "$agent_runtime_overlay_destination" || \
-      fail 'installed agent-runtime overlay differs from reviewed source'
   fi
   if x_collector_target_has_tracked_dockerfile "$sha"; then
     sync_x_collector_dockerfile "$sha"

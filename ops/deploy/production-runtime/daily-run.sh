@@ -43,7 +43,7 @@ COMPOSE=(
   -f "$ROOT/control/compose.production.yml"
   -f "$ROOT/control/compose.managed-db.yml"
   -f "$ROOT/control/postgres-runtime-current/compose.postgres-runtime.yml"
-  -f "$ROOT/control/compose.agent-runtime-model.yml"
+  -f "$ROOT/integration/ops/deploy/production-runtime/compose.agent-runtime-model.yml"
   -f "$ROOT/integration/ops/deploy/production-runtime/compose.daily-artifacts.yml"
 )
 DATE_FLAG=${1:---yesterday}
