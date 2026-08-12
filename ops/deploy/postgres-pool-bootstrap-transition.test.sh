@@ -167,7 +167,11 @@ chmod 0755 "$FIXTURE/bin/docker"
 git -C "$PROJECT_ROOT" show \
   "$RELEASE_A_COMMIT:ops/deploy/social-monitor-production-deploy.sh" \
   > "$REPO/ops/deploy/social-monitor-production-deploy.sh"
-cp "$PROJECT_ROOT/ops/deploy/postgres-runtime-deploy-lib.sh" "$REPO/ops/deploy/"
+cp "$PROJECT_ROOT/ops/deploy/postgres-runtime-deploy-lib.sh" \
+  "$PROJECT_ROOT/ops/deploy/postgres-runtime-weekly-timer-state-lib.sh" \
+  "$PROJECT_ROOT/ops/deploy/postgres-runtime-daily-c1-readiness-lib.sh" \
+  "$PROJECT_ROOT/ops/deploy/postgres-runtime-activation-boundary-lib.sh" \
+  "$REPO/ops/deploy/"
 cp "$PROJECT_ROOT/ops/deploy/reader-summary-publication-deploy-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/reader-summary-publication-system-dsn-bootstrap-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/reader-summary-publication-pre-migration.sql" \
