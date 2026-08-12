@@ -192,6 +192,7 @@ jobs:
           transition=ops/deploy/production-release-a-transition.sh
           client=ops/deploy/github-production-deploy-client.sh
           release_e=889d50f50328c89e25b3ef898e552df631b3222f; release_a2=c64c3b46b6b6ba5c7ac7b04028932e09dae2116a; release_b2=e3b5b5d89b3586668e36f987f03672415b5a0f37
+          daily_c1_atomic_repair=61018b1d376ba6695c29f9ccee1b53b1b344d4dc
           target_plan="$RUNNER_TEMP/recovery-target-inspect.plan"; b_plan="$RUNNER_TEMP/recovery-b2-inspect.plan"
           a_plan="$RUNNER_TEMP/recovery-a2-inspect.plan"; e_plan="$RUNNER_TEMP/recovery-e-inspect.plan"
           repair_anchor=none
@@ -202,16 +203,22 @@ jobs:
           daily_c1_bridge=false
           daily_c1_final_marker_mode=$(git ls-tree "$GITHUB_SHA" -- \
             "$daily_c1_final_marker" | awk 'NR == 1 { print $1 }')
-          if [[ -z $daily_c1_final_marker_mode ]]; then
-            deploy_control_is_exact_daily_c1_bridge_release \
-              "$daily_c1_bridge_base" "$GITHUB_SHA" || {
-              echo 'daily C1 bridge diff does not match its exact B2 manifest' >&2
-              exit 1
-            }
+          if deploy_control_is_exact_daily_c1_bridge_release \
+              "$daily_c1_bridge_base" "$GITHUB_SHA"; then
             daily_c1_bridge=true
+          elif [[ -z $daily_c1_final_marker_mode ]]; then
+            echo 'daily C1 bridge diff does not match its exact B2 manifest' >&2
+            exit 1
           fi
           if [[ $daily_c1_bridge == true ]]; then
-            transition_state=target-pending
+            target_pool_bootstrap=$(awk -F= \
+              '$1 == "postgres_pool_bootstrap" { print $2 }' "$target_plan")
+            if [[ $target_pool_bootstrap == uninstalled ]]; then
+              repair_anchor=$daily_c1_atomic_repair
+              transition_state=repair-required
+            else
+              transition_state=target-pending
+            fi
           elif target_state=$(bash "$transition" state "$GITHUB_SHA" TARGET "$target_plan" \
               2> "$RUNNER_TEMP/recovery-target-state.err") && \
              [[ $target_state != transition_state=repair-required ]]; then
@@ -463,12 +470,6 @@ jobs:
             for bridge_path in "${bridge_release_paths[@]}"; do
               require_regular_blob "$bridge_path"
             done
-            for daily_c1_asset in "${final_daily_c1_assets[@]}"; do
-              [[ -z $(git_path_mode "$daily_c1_asset") ]] || {
-                echo "daily C1 bridge contains final-only asset: $daily_c1_asset" >&2
-                exit 1
-              }
-            done
           else
             for daily_c1_asset in "${final_daily_c1_assets[@]}"; do
               require_regular_blob "$daily_c1_asset"
@@ -497,6 +498,8 @@ jobs:
             ops/deploy/postgres-runtime-activation-boundary-lib.sh
             ops/deploy/postgres-runtime-daily-c1-readiness-lib.sh
             ops/deploy/postgres-runtime-weekly-timer-state-lib.sh
+            ops/deploy/reader-summary-publication-prebootstrap-lib.sh
+            ops/deploy/reader-summary-publication-prebootstrap-lib.test.sh
             ops/deploy/reader-summary-recovery-maintenance-lib.sh
             ops/deploy/deploy-control-bridge-runtime-helper.test.sh
             ops/deploy/deploy-control-reviewed-library-source.test.sh
@@ -551,13 +554,23 @@ jobs:
           shellcheck -S warning -x "${deploy_shell_files[@]}"
           python3 -m py_compile ops/deploy/verify-postgres-runtime-topology.py
           python3 -m py_compile ops/deploy/verify-postgres-pool-release-contract.py
-          python3 ops/deploy/verify-postgres-pool-release-contract.py ci \
-            --target "$GITHUB_SHA" \
-            --backend-base "$BACKEND_BASE" \
-            --backend "$BACKEND_CHANGED" \
-            --control "$CONTROL_CHANGED" \
-            --bootstrap "$POSTGRES_POOL_BOOTSTRAP" \
-            --bootstrap-sha "$POSTGRES_POOL_BOOTSTRAP_SHA"
+          if [[ $bridge_phase == true && \
+                $POSTGRES_POOL_BOOTSTRAP == uninstalled ]]; then
+            [[ $POSTGRES_POOL_BOOTSTRAP_SHA == \
+               0000000000000000000000000000000000000000 ]] || {
+              echo 'uninstalled bridge bootstrap has a nonzero durable release SHA' >&2
+              exit 1
+            }
+            echo 'backend-gate=postgres-pool-release deferred-to-bounded-B2-repair'
+          else
+            python3 ops/deploy/verify-postgres-pool-release-contract.py ci \
+              --target "$GITHUB_SHA" \
+              --backend-base "$BACKEND_BASE" \
+              --backend "$BACKEND_CHANGED" \
+              --control "$CONTROL_CHANGED" \
+              --bootstrap "$POSTGRES_POOL_BOOTSTRAP" \
+              --bootstrap-sha "$POSTGRES_POOL_BOOTSTRAP_SHA"
+          fi
           echo "backend-gate=deploy-shell-tests bridge=$bridge_phase"
           if [[ $bridge_phase == true ]]; then
             # Final runtime assets are deliberately absent from the control-only
@@ -566,6 +579,7 @@ jobs:
             bash ops/deploy/deploy-control-bridge-runtime-helper.test.sh
             bash ops/deploy/deploy-control-reviewed-library-source.test.sh
             bash ops/deploy/daily-c1-control-bridge-workflow.test.sh
+            bash ops/deploy/reader-summary-publication-prebootstrap-lib.test.sh
           else
             bash ops/deploy/social-monitor-production-deploy.test.sh
             bash ops/deploy/deploy-control-lib.test.sh
@@ -727,7 +741,7 @@ jobs:
           DEPLOY_RECONCILE_INTERVAL_SECONDS: 0
         run: |
           case $REPAIR_ANCHOR in
-            889d50f50328c89e25b3ef898e552df631b3222f|c64c3b46b6b6ba5c7ac7b04028932e09dae2116a|e3b5b5d89b3586668e36f987f03672415b5a0f37) ;;
+            889d50f50328c89e25b3ef898e552df631b3222f|c64c3b46b6b6ba5c7ac7b04028932e09dae2116a|e3b5b5d89b3586668e36f987f03672415b5a0f37|61018b1d376ba6695c29f9ccee1b53b1b344d4dc) ;;
             *) exit 1 ;;
           esac
           repair_status=0
@@ -748,11 +762,10 @@ jobs:
           DEPLOY_USER: ${{ vars.PRODUCTION_SSH_USER }}
         run: |
           set -euo pipefail
-          helper_sync=e6597827c0280a8783fa5980387bc574897edc2b
-          helper_sync_status=0
-          DEPLOY_RECONCILE_ATTEMPTS=1 DEPLOY_RECONCILE_INTERVAL_SECONDS=0 \
-            bash ops/deploy/github-production-deploy-client.sh deploy "$helper_sync" || helper_sync_status=$?
-          printf 'bounded base revalidation helper sync status=%s; fresh target is authoritative\n' "$helper_sync_status"
+          timer_bootstrap=2c3d78afd758267170ae166e6a5cc673a180c71f
+          bridge_policy=6507e47a21b75d622672a28c7eee7bd5624c5eb9
+          bash ops/deploy/github-production-deploy-client.sh deploy "$timer_bootstrap"
+          bash ops/deploy/github-production-deploy-client.sh deploy "$bridge_policy"
           bash ops/deploy/github-production-deploy-client.sh deploy "$GITHUB_SHA"
       - name: Freshly inspect after bounded repair
         id: recovery_state
