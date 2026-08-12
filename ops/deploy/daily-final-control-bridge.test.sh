@@ -75,4 +75,52 @@ if deploy_control_is_reviewed_daily_final_transition "$bridge" "$drift"; then
   fail 'drifted target was admitted'
 fi
 
+git -C "$REPO" checkout -q main
+while read -r _ path; do
+  mkdir -p "$REPO/$(dirname "$path")"
+  printf 'recovery base %s\n' "$path" > "$REPO/$path"
+done < <(deploy_control_daily_recovery_release_blobs)
+git -C "$REPO" add .
+git -C "$REPO" commit -qm recovery-base
+recovery_base=$(git -C "$REPO" rev-parse HEAD)
+DEPLOY_CONTROL_DAILY_RECOVERY_BASE=$recovery_base
+
+printf 'recovery bridge policy\n' > "$REPO/$DEPLOY_CONTROL_BRIDGE_SELF_PATH"
+printf 'recovery bridge fixture\n' > \
+  "$REPO/ops/deploy/daily-final-control-bridge.test.sh"
+git -C "$REPO" add .
+git -C "$REPO" commit -qm recovery-bridge
+recovery_bridge=$(git -C "$REPO" rev-parse HEAD)
+
+while read -r _ path; do
+  printf 'reviewed recovery %s\n' "$path" > "$REPO/$path"
+done < <(deploy_control_daily_recovery_release_blobs)
+git -C "$REPO" add .
+git -C "$REPO" commit -qm recovery-target
+recovery_target=$(git -C "$REPO" rev-parse HEAD)
+
+deploy_control_daily_recovery_release_blobs() {
+  local path
+  git -C "$REPO" diff --name-only --no-renames \
+    "$recovery_bridge" "$recovery_target" -- | while IFS= read -r path; do
+    printf '%s %s\n' "$(git -C "$REPO" rev-parse "$recovery_target:$path")" "$path"
+  done
+}
+
+deploy_control_is_reviewed_daily_recovery_transition \
+  "$recovery_bridge" "$recovery_target" || \
+  fail 'reviewed daily recovery transition was rejected'
+DEPLOY_CONTROL_BRIDGE_INITIALIZED_HEAD=$recovery_bridge
+verify_deploy_control_daily_final_transition_files "$recovery_target" || \
+  fail 'reviewed daily recovery filesystem was rejected'
+
+printf 'unexpected recovery drift\n' > "$REPO/unreviewed"
+git -C "$REPO" add .
+git -C "$REPO" commit -qm recovery-drift
+recovery_drift=$(git -C "$REPO" rev-parse HEAD)
+if deploy_control_is_reviewed_daily_recovery_transition \
+    "$recovery_bridge" "$recovery_drift"; then
+  fail 'daily recovery transition admitted an extra path'
+fi
+
 printf 'daily final control bridge tests passed\n'

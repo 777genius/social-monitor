@@ -16,6 +16,21 @@ DEPLOY_CONTROL_BRIDGE_X_IMAGE_LIBRARY_PATH=ops/deploy/x-collector-image-deploy-l
 DEPLOY_CONTROL_BRIDGE_SELF_PATH=ops/deploy/deploy-control-bridge-lib.sh
 DEPLOY_CONTROL_DAILY_FINAL_BASE=d494c143c242873bfac53f54c15b0f24df0ab33d
 DEPLOY_CONTROL_DAILY_FINAL_HELPER_BLOB=119726c2f2aff06798cade4dc3a127f24a2d2cc9
+DEPLOY_CONTROL_DAILY_RECOVERY_BASE=cb1595d9bdca844d6a221d21fd3c53e6845cc4cf
+DEPLOY_CONTROL_DAILY_RECOVERY_BACKEND_RESCUE_BLOB=a4291fad8b1f36f0cbb0760f3dbca6e7603138bc
+DEPLOY_CONTROL_DAILY_RECOVERY_MIGRATE_TEST_BLOB=f62a83ce95cc768c4e888e7c576bad3bd6fdbced
+DEPLOY_CONTROL_DAILY_RECOVERY_CLIENT_BLOB=5539203fb8204b8ba230bf5dd5cfb0035329cc71
+DEPLOY_CONTROL_DAILY_RECOVERY_CLIENT_TEST_BLOB=1d9306b3cba76fba5c04709c69e3cf692236b3cb
+DEPLOY_CONTROL_DAILY_RECOVERY_RUNNER_BLOB=524a2d6105439de397a67411f01ee5f6373e13f5
+DEPLOY_CONTROL_DAILY_RECOVERY_RUNNER_TEST_BLOB=74550928c6606304410386a5075806ec1b8559f3
+DEPLOY_CONTROL_DAILY_RECOVERY_MAINTENANCE_BLOB=128a43549f117b0c934c91270581080a72d7c7b8
+DEPLOY_CONTROL_DAILY_RECOVERY_ENTRYPOINT_BLOB=3e6fa93501ee56b392618c319ec554dd99d5c4fd
+DEPLOY_CONTROL_DAILY_RECOVERY_SSH_WRAPPER_BLOB=bb0792969f366393f0ad126441bc722f8fcc6ff9
+DEPLOY_CONTROL_DAILY_RECOVERY_SSH_TEST_BLOB=1fda773628cfabc4d3bed779352391d5fd11016c
+DEPLOY_CONTROL_DAILY_RECOVERY_ABSENT_TEST_BLOB=bf9ad2356276d469aef3d493d2a238ef40422f60
+DEPLOY_CONTROL_DAILY_RECOVERY_ARTIFACTS_BLOB=85fdf0ef6d217eded040313a3c80117ef552bc04
+DEPLOY_CONTROL_DAILY_RECOVERY_HISTORY_BLOB=a3bae65e501a59401bfc4c72163e1580b471c142
+DEPLOY_CONTROL_DAILY_RECOVERY_HISTORY_TEST_BLOB=c7307f3e2808d02207ce8b8a62624271cc90caa7
 RABBITMQ_QUORUM_HEALTH_LIBRARY_PATH=ops/deploy/backend-runtime-health-lib.sh
 RABBITMQ_QUORUM_HEALTH_SCRIPT_PATH=ops/deploy/rabbitmq-quorum-health.sh
 RABBITMQ_QUORUM_RECOVERY_SCRIPT_PATH=ops/deploy/rabbitmq-quorum-recovery.sh
@@ -80,8 +95,10 @@ deploy_control_is_reviewed_daily_final_transition() {
   target_parent=$(git -C "$repository" rev-parse "$target^" 2>/dev/null) || return 1
   read -r -a target_ancestry <<< "$(git -C "$repository" \
     rev-list --parents -n 1 "$target")" || return 1
+  git -C "$repository" cat-file -e \
+    "$DEPLOY_CONTROL_DAILY_FINAL_BASE^{commit}" 2>/dev/null || return 1
   git -C "$repository" merge-base --is-ancestor \
-    "$DEPLOY_CONTROL_DAILY_FINAL_BASE" "$bridge" || return 1
+    "$DEPLOY_CONTROL_DAILY_FINAL_BASE" "$bridge" 2>/dev/null || return 1
   [[ $target_parent == "$bridge" && ${#target_ancestry[@]} == 2 ]] || return 1
   final_delta=$(git -C "$repository" diff --name-only --no-renames \
     "$DEPLOY_CONTROL_DAILY_FINAL_BASE" "$target" -- 2>/dev/null) || return 1
@@ -93,6 +110,56 @@ deploy_control_is_reviewed_daily_final_transition() {
      $(git -C "$repository" rev-parse \
        "$target:$DEPLOY_CONTROL_BRIDGE_POSTGRES_DAILY_C1_HELPER_PATH" 2>/dev/null) == \
        "$DEPLOY_CONTROL_DAILY_FINAL_HELPER_BLOB" ]]
+}
+
+deploy_control_daily_recovery_release_blobs() {
+  printf '%s %s\n' \
+    "$DEPLOY_CONTROL_DAILY_RECOVERY_BACKEND_RESCUE_BLOB" ops/deploy/backend-image-rescue-lib.sh \
+    "$DEPLOY_CONTROL_DAILY_RECOVERY_MIGRATE_TEST_BLOB" ops/deploy/backend-image-rescue-migrate-fallback.test.sh \
+    "$DEPLOY_CONTROL_DAILY_RECOVERY_ABSENT_TEST_BLOB" ops/deploy/backend-image-rescue-absent-service.test.sh \
+    "$DEPLOY_CONTROL_DAILY_RECOVERY_CLIENT_BLOB" ops/deploy/github-production-deploy-client.sh \
+    "$DEPLOY_CONTROL_DAILY_RECOVERY_CLIENT_TEST_BLOB" ops/deploy/github-production-deploy-client.test.sh \
+    "$DEPLOY_CONTROL_DAILY_RECOVERY_ARTIFACTS_BLOB" ops/deploy/production-runtime/compose.daily-artifacts.yml \
+    "$DEPLOY_CONTROL_DAILY_RECOVERY_RUNNER_BLOB" ops/deploy/production-runtime/daily-run.sh \
+    "$DEPLOY_CONTROL_DAILY_RECOVERY_RUNNER_TEST_BLOB" ops/deploy/production-runtime/daily-run.test.sh \
+    "$DEPLOY_CONTROL_DAILY_RECOVERY_MAINTENANCE_BLOB" ops/deploy/reader-summary-recovery-maintenance-lib.sh \
+    "$DEPLOY_CONTROL_DAILY_RECOVERY_HISTORY_BLOB" ops/deploy/run-reader-summary-production-history.sh \
+    "$DEPLOY_CONTROL_DAILY_RECOVERY_HISTORY_TEST_BLOB" ops/deploy/run-reader-summary-production-history.test.sh \
+    "$DEPLOY_CONTROL_DAILY_RECOVERY_ENTRYPOINT_BLOB" ops/deploy/social-monitor-production-deploy.sh \
+    "$DEPLOY_CONTROL_DAILY_RECOVERY_SSH_WRAPPER_BLOB" ops/deploy/social-monitor-production-ssh-wrapper.sh \
+    "$DEPLOY_CONTROL_DAILY_RECOVERY_SSH_TEST_BLOB" ops/deploy/social-monitor-production-ssh-wrapper.test.sh
+}
+
+deploy_control_is_reviewed_daily_recovery_transition() {
+  local bridge=$1 target=$2 repository=${REPO:-.}
+  local target_parent bridge_delta expected actual expected_blob path
+  local -a target_ancestry=()
+
+  git -C "$repository" cat-file -e \
+    "$DEPLOY_CONTROL_DAILY_RECOVERY_BASE^{commit}" 2>/dev/null || return 1
+  target_parent=$(git -C "$repository" rev-parse "$target^" 2>/dev/null) || return 1
+  read -r -a target_ancestry <<< "$(git -C "$repository" \
+    rev-list --parents -n 1 "$target" 2>/dev/null)" || return 1
+  [[ $target_parent == "$bridge" && ${#target_ancestry[@]} == 2 ]] || return 1
+  bridge_delta=$(git -C "$repository" diff --name-only --no-renames \
+    "$DEPLOY_CONTROL_DAILY_RECOVERY_BASE" "$bridge" -- 2>/dev/null) || return 1
+  [[ $bridge_delta == $'ops/deploy/daily-final-control-bridge.test.sh\nops/deploy/deploy-control-bridge-lib.sh' ]] || return 1
+  expected=$(deploy_control_daily_recovery_release_blobs | awk '{ print $2 }' | LC_ALL=C sort)
+  actual=$(git -C "$repository" diff --name-only --no-renames \
+    "$bridge" "$target" -- 2>/dev/null | LC_ALL=C sort) || return 1
+  [[ $actual == "$expected" ]] || return 1
+  while read -r expected_blob path; do
+    [[ $(git -C "$repository" rev-parse "$target:$path" 2>/dev/null) == \
+       "$expected_blob" ]] || return 1
+  done < <(deploy_control_daily_recovery_release_blobs)
+}
+
+deploy_control_reviewed_transition_matches() {
+  local bridge=$1 target=$2
+  if deploy_control_daily_final_transition_matches "$bridge" "$target"; then
+    return 0
+  fi
+  deploy_control_is_reviewed_daily_recovery_transition "$bridge" "$target"
 }
 
 deploy_control_daily_final_transition_compatible_paths() {
@@ -120,7 +187,7 @@ deploy_control_daily_final_transition_matches() {
 
 verify_deploy_control_daily_final_transition_files() {
   local target=$1 path actual expected
-  deploy_control_daily_final_transition_matches \
+  deploy_control_reviewed_transition_matches \
     "$DEPLOY_CONTROL_BRIDGE_INITIALIZED_HEAD" "$target" || return 1
   while IFS= read -r path; do
     actual=$(deploy_control_file_digest "$REPO/$path") || return 1
@@ -333,7 +400,7 @@ verify_deploy_control_bridge_target_compatibility() {
     fail 'target integration is missing the X image provenance bridge library'
   bridge_library_digest=$(deploy_control_git_blob_digest "$sha" "$DEPLOY_CONTROL_BRIDGE_SELF_PATH") || \
     fail 'target integration is missing the deploy control bridge library'
-  if deploy_control_daily_final_transition_matches \
+  if deploy_control_reviewed_transition_matches \
       "$DEPLOY_CONTROL_BRIDGE_INITIALIZED_HEAD" "$sha"; then
     return 0
   fi
