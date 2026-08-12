@@ -80,6 +80,10 @@ write_plan "$FIXTURE/post-rollback-descendant-bootstrap.plan" false true \
   "$BACKEND_BASE" true false postgres-pool-v1 "$TARGET"
 [[ $(bash "$TRANSITION" state "$TARGET" TARGET \
   "$FIXTURE/post-rollback-descendant-bootstrap.plan") == transition_state=target-pending ]]
+write_plan "$FIXTURE/post-rollback-descendant-backend.plan" false true \
+  "$FIXED_A2" true false postgres-pool-v1 "$TARGET"
+[[ $(bash "$TRANSITION" state "$TARGET" TARGET \
+  "$FIXTURE/post-rollback-descendant-backend.plan") == transition_state=target-pending ]]
 write_plan "$FIXTURE/post-rollback-frontend-target.plan" true true "$BACKEND_BASE" true false \
   postgres-pool-v1 e7b19bc805815af310f1e5096d3fec5789129ddb
 [[ $(bash "$TRANSITION" state "$TARGET" TARGET "$FIXTURE/post-rollback-frontend-target.plan") == transition_state=target-pending ]]

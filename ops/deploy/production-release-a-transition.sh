@@ -348,7 +348,9 @@ classify_plan() {
     fi
     return
   fi
-  if [[ $target_phase == TARGET && $PLAN_BACKEND_BASE == "$BACKEND_BASE" &&
+  if [[ $target_phase == TARGET &&
+        $(git cat-file -t "$PLAN_BACKEND_BASE" 2>/dev/null || true) == commit &&
+        $(first_parent_contains "$PLAN_BACKEND_BASE" "$target" && printf true || printf false) == true &&
         $PLAN_BOOTSTRAP == "$POSTGRES_POOL_BOOTSTRAP_VERSION" &&
         ( $PLAN_BOOTSTRAP_SHA == "$POST_ROLLBACK_BOOTSTRAP_SHA" ||
           ( $(git cat-file -t "$PLAN_BOOTSTRAP_SHA" 2>/dev/null || true) == commit &&
