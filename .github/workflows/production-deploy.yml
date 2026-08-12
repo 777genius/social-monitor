@@ -766,11 +766,10 @@ jobs:
           DEPLOY_USER: ${{ vars.PRODUCTION_SSH_USER }}
         run: |
           set -euo pipefail
-          helper_sync=0cfa7379557ea4cca1d7782d11f942bacb669ec2
-          helper_sync_status=0
-          DEPLOY_RECONCILE_ATTEMPTS=1 DEPLOY_RECONCILE_INTERVAL_SECONDS=0 \
-            bash ops/deploy/github-production-deploy-client.sh deploy "$helper_sync" || helper_sync_status=$?
-          printf 'bounded base revalidation helper sync status=%s; fresh target is authoritative\n' "$helper_sync_status"
+          policy_sync=2ee45aadf9c36c3bf311ec968c6c39224b1ce423
+          readiness_sync=4bd017e396c813a5370a87132d69822eb328160a
+          bash ops/deploy/github-production-deploy-client.sh deploy "$policy_sync"
+          bash ops/deploy/github-production-deploy-client.sh deploy "$readiness_sync"
           bash ops/deploy/github-production-deploy-client.sh deploy "$GITHUB_SHA"
       - name: Freshly inspect after bounded repair
         id: recovery_state

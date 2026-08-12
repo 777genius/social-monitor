@@ -113,10 +113,14 @@ grep -F "needs.plan.outputs.daily_c1_bridge != 'true'" \
   fail 'bridge must defer exactly the publication, frontend and legacy final-only gates'
 grep -F 'Deploy the daily C1 target through the alias-aware controller' \
   "$workflow" >/dev/null || fail 'bridge does not run through the installed alias-aware controller'
-grep -F 'helper_sync=0cfa7379' \
-  "$workflow" >/dev/null || fail 'base revalidation helper sync is not pinned to its reviewed commit'
-grep -F 'bounded base revalidation helper sync status=' \
-  "$workflow" >/dev/null || fail 'base revalidation helper sync is not explicitly bounded'
+grep -F 'policy_sync=2ee45aad' \
+  "$workflow" >/dev/null || fail 'readiness-only policy sync is not pinned'
+grep -F 'readiness_sync=4bd017e3' \
+  "$workflow" >/dev/null || fail 'readiness-only runtime sync is not pinned'
+grep -F 'deploy "$policy_sync"' "$workflow" >/dev/null || \
+  fail 'bridge does not install the readiness-only policy first'
+grep -F 'deploy "$readiness_sync"' "$workflow" >/dev/null || \
+  fail 'bridge does not install readiness after its policy'
 grep -F 'bash ops/deploy/github-production-deploy-client.sh deploy "$GITHUB_SHA"' \
   "$workflow" >/dev/null || fail 'daily C1 bridge bypasses the reviewed deploy client'
 ! grep -F 'daily C1 bridge classification is not control-only' "$workflow" >/dev/null || \
