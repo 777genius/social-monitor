@@ -54,6 +54,8 @@ deploy_control_daily_c1_bridge_release_paths() {
     ops/deploy/production-runtime/social-monitor-daily.timer \
     ops/deploy/production-release-a-transition.sh \
     ops/deploy/production-release-a-transition.test.sh \
+    ops/deploy/github-production-deploy-client.sh \
+    ops/deploy/github-production-deploy-client.test.sh \
     ops/deploy/reader-summary-publication-deploy-lib.sh \
     ops/deploy/reader-summary-publication-prebootstrap-lib.sh \
     ops/deploy/reader-summary-publication-prebootstrap-lib.test.sh \

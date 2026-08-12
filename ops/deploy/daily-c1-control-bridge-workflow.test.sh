@@ -44,8 +44,8 @@ bridge_paths=()
 while IFS= read -r bridge_path; do
   bridge_paths+=("$bridge_path")
 done < <(deploy_control_daily_c1_bridge_release_paths)
-[[ ${#bridge_paths[@]} == 27 ]] || fail 'daily C1 bridge release manifest count drifted'
-[[ $(printf '%s\n' "${bridge_paths[@]}" | LC_ALL=C sort -u | wc -l | tr -d ' ') == 27 ]] || \
+[[ ${#bridge_paths[@]} == 29 ]] || fail 'daily C1 bridge release manifest count drifted'
+[[ $(printf '%s\n' "${bridge_paths[@]}" | LC_ALL=C sort -u | wc -l | tr -d ' ') == 29 ]] || \
   fail 'daily C1 bridge release manifest contains duplicates'
 for path in "${bridge_paths[@]}"; do
   install -d "$REPO/$(dirname "$path")"
