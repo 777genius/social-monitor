@@ -716,7 +716,6 @@ prove_postgres_runtime_daily_c1_flip_idle() {
 
 verify_postgres_runtime_daily_c1_handoff() {
   local release=$1 unit_directory=$2 next_trigger fragment unit
-  local exec_condition='ExecCondition=/var/data/social-monitor/control/daily-c1-runtime.sh --check-legacy-owner'
 
   [[ $(systemctl show --property=UnitFileState --value \
     "$POSTGRES_RUNTIME_DAILY_TIMER") == enabled ]] || \
@@ -747,15 +746,13 @@ verify_postgres_runtime_daily_c1_handoff() {
   [[ $(systemctl show --property=Unit --value \
     "$POSTGRES_RUNTIME_DAILY_TIMER") == "$POSTGRES_RUNTIME_DAILY_SERVICE" ]] || \
     { fail 'daily C1 timer unit mapping is invalid'; return 1; }
-  [[ $(grep -Fxc "$exec_condition" \
+  [[ $(grep -Fxc \
+    'ExecStart=/var/data/social-monitor/control/daily-run.sh --yesterday' \
     "$release/$POSTGRES_RUNTIME_DAILY_SERVICE") == 1 ]] || \
-    { fail 'daily C1 service ExecCondition is invalid'; return 1; }
-  grep -Fx 'ExecStartPre=/var/data/social-monitor/control/daily-c1-runtime.sh --prepare-legacy-start' \
-    "$release/$POSTGRES_RUNTIME_DAILY_SERVICE" >/dev/null || return 1
-  grep -Fx 'ExecStart=/var/data/social-monitor/control/daily-c1-runtime.sh --run-and-complete-legacy' \
-    "$release/$POSTGRES_RUNTIME_DAILY_SERVICE" >/dev/null || return 1
-  grep -Fx 'ExecStopPost=/var/data/social-monitor/control/daily-c1-runtime.sh --complete-legacy-start' \
-    "$release/$POSTGRES_RUNTIME_DAILY_SERVICE" >/dev/null || return 1
+    { fail 'daily service runner is invalid'; return 1; }
+  ! grep -Eq '^Exec(Condition|StartPre|StopPost)=' \
+    "$release/$POSTGRES_RUNTIME_DAILY_SERVICE" || \
+    { fail 'daily service retains a legacy invocation wrapper'; return 1; }
   cmp -s "$release/$POSTGRES_RUNTIME_DAILY_RUNNER" \
     "$CONTROL/$POSTGRES_RUNTIME_DAILY_RUNNER" || \
     { fail 'daily C1 installed runner differs from release'; return 1; }
@@ -773,7 +770,6 @@ verify_postgres_runtime_daily_c1_handoff() {
 verify_postgres_runtime_daily_c1_ready_static() {
   local sha=$1 source=$REPO/ops/deploy/production-runtime
   local release=$POSTGRES_RUNTIME_RELEASES/$sha state unit fragment current_release
-  local exec_condition='ExecCondition=/var/data/social-monitor/control/daily-c1-runtime.sh --check-legacy-owner'
   [[ $sha =~ ^[0-9a-f]{40}$ ]] || \
     { fail 'daily C1 static proof release marker is invalid'; return 1; }
   current_release=$(readlink -f "$POSTGRES_RUNTIME_CURRENT" 2>/dev/null || \
@@ -803,8 +799,11 @@ verify_postgres_runtime_daily_c1_ready_static() {
     "$release/$POSTGRES_RUNTIME_DAILY_RUNNER" || return
   verify_postgres_runtime_daily_c1_baseline "$sha" || return
   [[ $(postgres_runtime_daily_c1_owner_state) == LEGACY ]] || return
-  [[ $(grep -Fxc "$exec_condition" \
-    "$release/$POSTGRES_RUNTIME_DAILY_SERVICE") == 1 ]]
+  [[ $(grep -Fxc \
+    'ExecStart=/var/data/social-monitor/control/daily-run.sh --yesterday' \
+    "$release/$POSTGRES_RUNTIME_DAILY_SERVICE") == 1 ]] &&
+    ! grep -Eq '^Exec(Condition|StartPre|StopPost)=' \
+      "$release/$POSTGRES_RUNTIME_DAILY_SERVICE"
 }
 
 verify_postgres_runtime_daily_c1_ready_topology() {

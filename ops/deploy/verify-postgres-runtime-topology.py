@@ -185,14 +185,14 @@ def verify_daily_topology(service_path: str, runner_path: str) -> None:
         line.strip() for line in service.splitlines() if line.startswith("ExecStart=")
     ]
     if runner_name == "daily-run.sh":
-        required_runtime_lines = {
-            "ExecCondition=/var/data/social-monitor/control/daily-c1-runtime.sh --check-legacy-owner",
-            "ExecStartPre=/var/data/social-monitor/control/daily-c1-runtime.sh --prepare-legacy-start",
-            "ExecStart=/var/data/social-monitor/control/daily-c1-runtime.sh --run-and-complete-legacy",
-            "ExecStopPost=/var/data/social-monitor/control/daily-c1-runtime.sh --complete-legacy-start",
-        }
-        if not required_runtime_lines.issubset(set(service.splitlines())):
-            fail("effective legacy daily service omits the reviewed invocation journal wrapper")
+        expected = "ExecStart=/var/data/social-monitor/control/daily-run.sh --yesterday"
+        if exec_start_lines != [expected]:
+            fail("effective daily service does not execute the reviewed runner")
+        if any(
+            line.startswith(("ExecCondition=", "ExecStartPre=", "ExecStopPost="))
+            for line in service.splitlines()
+        ):
+            fail("effective daily service retains a legacy invocation wrapper")
     else:
         expected_runner = str(pathlib.Path(runner_path))
         if not any(expected_runner in line for line in exec_start_lines):

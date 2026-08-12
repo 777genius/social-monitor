@@ -127,10 +127,7 @@ daily_service=$FIXTURE_REAL/daily.service
 daily_runner=$FIXTURE_REAL/daily-run.sh
 printf '%s\n' \
   '[Service]' \
-  'ExecCondition=/var/data/social-monitor/control/daily-c1-runtime.sh --check-legacy-owner' \
-  'ExecStartPre=/var/data/social-monitor/control/daily-c1-runtime.sh --prepare-legacy-start' \
-  'ExecStart=/var/data/social-monitor/control/daily-c1-runtime.sh --run-and-complete-legacy' \
-  'ExecStopPost=/var/data/social-monitor/control/daily-c1-runtime.sh --complete-legacy-start' \
+  'ExecStart=/var/data/social-monitor/control/daily-run.sh --yesterday' \
   'TimeoutStartSec=19800' 'Restart=no' > "$daily_service"
 cat > "$daily_runner" <<'SH'
 #!/usr/bin/env bash
