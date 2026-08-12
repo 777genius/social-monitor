@@ -1,0 +1,4 @@
+services:
+  daily-runner:
+    volumes:
+      - /var/data/social-monitor/artifacts:/var/lib/social-monitor/artifacts

@@ -44,12 +44,25 @@ COMPOSE=(
   -f "$ROOT/control/compose.managed-db.yml"
   -f "$ROOT/control/postgres-runtime-current/compose.postgres-runtime.yml"
   -f "$ROOT/integration/ops/deploy/production-runtime/compose.agent-runtime-model.yml"
+  -f "$ROOT/integration/ops/deploy/production-runtime/compose.daily-artifacts.yml"
 )
 DATE_FLAG=${1:---yesterday}
+MAINTENANCE_DATE=${2:-}
 
 case "$DATE_FLAG" in
   --check-readiness|--today|--yesterday) ;;
-  *) echo "usage: $0 [--check-readiness|--today|--yesterday]" >&2; exit 64 ;;
+  --maintenance-date)
+    [[ $# -eq 2 && $MAINTENANCE_DATE =~ ^2026-(07-(2[3-9]|3[01])|08-(0[1-9]|1[0-2]))$ ]] || {
+      echo "historical daily production-day date is outside the reviewed recovery bound" >&2
+      exit 64
+    }
+    yesterday=$(node -e 'process.stdout.write(new Date(Date.now()-86400000).toISOString().slice(0,10))')
+    [[ $MAINTENANCE_DATE < $yesterday || $MAINTENANCE_DATE == "$yesterday" ]] || {
+      echo "historical daily production-day date must not exceed UTC yesterday" >&2
+      exit 64
+    }
+    ;;
+  *) echo "usage: $0 [--check-readiness|--today|--yesterday|--maintenance-date YYYY-MM-DD]" >&2; exit 64 ;;
 esac
 
 [[ $POSTGRES_ADMISSION_WAIT_SECONDS =~ \
@@ -189,7 +202,14 @@ fi
     fi
   fi
 
-  requested_date=${READER_SUMMARY_DAILY_RUN_EXPECTED_DATE:-}
+  requested_date='"$([[ $DATE_FLAG == --maintenance-date ]] && printf '%s' "$MAINTENANCE_DATE")"'
+  historical_args=
+  if [ '"$DATE_FLAG"' = --maintenance-date ]; then
+    historical_args="--allow-historical --allow-historical-provider-collection"
+  fi
+  if [ -z "$requested_date" ]; then
+    requested_date=${READER_SUMMARY_DAILY_RUN_EXPECTED_DATE:-}
+  fi
   if [ -z "$requested_date" ]; then
     today=${READER_SUMMARY_DAILY_RUN_TEST_TODAY:-$(date -u +%F)}
     requested_date=$(node -e '\''
@@ -208,7 +228,8 @@ fi
     ????-??-??) ;;
     *) echo "daily production-day catch-up date is invalid" >&2; exit 64 ;;
   esac
-  if [ "$cursor_date" = "$requested_date" ]; then
+  if [ -n "$cursor_date" ] &&
+     { [ "$requested_date" = "$cursor_date" ] || [ "$requested_date" \< "$cursor_date" ]; }; then
     echo "daily production-day is already terminal for $requested_date"
     exit 0
   fi
@@ -242,7 +263,7 @@ fi
       --node-options --max-old-space-size=1024 \
       -- ./node_modules/.bin/ts-node -r tsconfig-paths/register \
       scripts/run-reader-summary-production-day.ts \
-      --date "$requested_date" --update
+      --date "$requested_date" --update $historical_args
   fi
 
   expected_date=$requested_date

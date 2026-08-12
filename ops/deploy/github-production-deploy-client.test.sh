@@ -103,7 +103,7 @@ fake_ssh() {
       IFS= read -r value
       printf '%s\n' "$value" > "$FAKE_UPLOAD_PATH"
       ;;
-    maintenance_success:"disk-report $TARGET_SHA"|maintenance_success:"project-disk-cleanup $TARGET_SHA"|maintenance_success:"reader-summary-recover-missing-days $TARGET_SHA"|maintenance_success:"reader-summary-weekly-run $TARGET_SHA"|maintenance_success:"reader-summary-daily-terminal-set-receipt-v1 $TARGET_SHA"|maintenance_success:"reader-summary-daily-scan-terminal-preimage-c1 $TARGET_SHA"|maintenance_success:"reader-summary-daily-canonical-recovery-v4 $TARGET_SHA invalid-product-retry-set-v1 $TERMINAL_SET_SHA256"|maintenance_success:"reader-summary-daily-canonical-recovery-v4 $TARGET_SHA reader-summary-daily-canonical-recovery-v4 $MODEL_JOB_IDENTITY $AUTHORITY_SHA256"|maintenance_success:"reader-summary-daily-scan-terminal-repair-c1 $TARGET_SHA reader-summary-daily-scan-terminal-repair-c1 $TERMINAL_SET_SHA256"|maintenance_success:"reader-summary-daily-delivery-c1-run $TARGET_SHA reader-summary-daily-delivery-c1-run 2026-08-10"|maintenance_success:"reader-summary-daily-delivery-c1-contain $TARGET_SHA reader-summary-daily-delivery-c1-contain $TARGET_SHA")
+    maintenance_success:"disk-report $TARGET_SHA"|maintenance_success:"project-disk-cleanup $TARGET_SHA"|maintenance_success:"reader-summary-recover-missing-days $TARGET_SHA"|maintenance_success:"reader-summary-weekly-run $TARGET_SHA"|maintenance_success:"reader-summary-production-history $TARGET_SHA 2026-08-11"|maintenance_success:"reader-summary-daily-terminal-set-receipt-v1 $TARGET_SHA"|maintenance_success:"reader-summary-daily-scan-terminal-preimage-c1 $TARGET_SHA"|maintenance_success:"reader-summary-daily-canonical-recovery-v4 $TARGET_SHA invalid-product-retry-set-v1 $TERMINAL_SET_SHA256"|maintenance_success:"reader-summary-daily-canonical-recovery-v4 $TARGET_SHA reader-summary-daily-canonical-recovery-v4 $MODEL_JOB_IDENTITY $AUTHORITY_SHA256"|maintenance_success:"reader-summary-daily-scan-terminal-repair-c1 $TARGET_SHA reader-summary-daily-scan-terminal-repair-c1 $TERMINAL_SET_SHA256"|maintenance_success:"reader-summary-daily-delivery-c1-run $TARGET_SHA reader-summary-daily-delivery-c1-run 2026-08-10"|maintenance_success:"reader-summary-daily-delivery-c1-contain $TARGET_SHA reader-summary-daily-delivery-c1-contain $TARGET_SHA")
       printf 'maintenance=%s\n' "${command%% *}"
       ;;
     normal_success:"deploy $TARGET_SHA"|normal_success:"deploy 944fdb6da3071f70a69c7048c9fcdf1c2552603e")
@@ -287,6 +287,12 @@ for maintenance_action in \
     "$TARGET_SHA" "$maintenance_action" >/dev/null
   assert_call_count 1 "$maintenance_action $TARGET_SHA"
 done
+run_client maintenance_success maintenance "$TARGET_SHA" \
+  reader-summary-production-history 2026-08-11 >/dev/null
+assert_call_count 1 \
+  "reader-summary-production-history $TARGET_SHA 2026-08-11"
+assert_fails maintenance_success maintenance "$TARGET_SHA" \
+  reader-summary-production-history bad-date
 run_client maintenance_success maintenance "$TARGET_SHA" \
   reader-summary-daily-canonical-recovery-v4 \
   invalid-product-retry-set-v1 "$TERMINAL_SET_SHA256" >/dev/null

@@ -251,6 +251,35 @@ run_reader_summary_daily_scan_terminal_preimage_c1() {
     'set -eu; node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=768 -- ./node_modules/.bin/ts-node -r tsconfig-paths/register scripts/run-reader-summary-daily-canonical-recovery.ts --scan-terminal-preimage-c1'
 }
 
+run_reader_summary_production_history() (
+  local sha=${1:-} through=${2:-} yesterday
+  [[ $# == 2 && $sha =~ ^[0-9a-f]{40}$ && \
+     $through =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ && \
+     $through > 2026-07-22 && \
+     ($through < 2026-08-12 || $through == 2026-08-12) ]] || \
+    fail 'historical reader-summary recovery-through date is outside the reviewed bound'
+  yesterday=$(node -e 'process.stdout.write(new Date(Date.now()-86400000).toISOString().slice(0,10))')
+  [[ $through < $yesterday || $through == "$yesterday" ]] || \
+    fail 'historical reader-summary recovery-through date must not exceed UTC yesterday'
+  exec 7>"$DEPLOY_LOCK"
+  flock -w "$DAILY_DELIVERY_C1_DEPLOY_LOCK_WAIT_SECONDS" 7 || \
+    fail 'timed out waiting for deployment exclusion lock'
+  verify_daily_delivery_c1_release_identity "$sha"
+  [[ -x $REPO/ops/deploy/run-reader-summary-production-history.sh && \
+     ! -L $REPO/ops/deploy/run-reader-summary-production-history.sh ]] || \
+    fail 'reviewed historical reader-summary wrapper is unavailable'
+  "$REPO/ops/deploy/run-reader-summary-production-history.sh" "$through"
+)
+
+run_reader_summary_production_history_from_stdin() {
+  local sha=$1 through='' extra=''
+  IFS= read -r through || fail 'historical reader-summary recovery-through date is missing'
+  if IFS= read -r extra || [[ -n $extra ]]; then
+    fail 'historical reader-summary authorization must be exactly one line'
+  fi
+  run_reader_summary_production_history "$sha" "$through"
+}
+
 assert_reader_summary_daily_scan_repair_quiescence_c1() {
   local service running rabbit_id queue_rows listener_rows
   for service in api ingestion-worker event-relay; do

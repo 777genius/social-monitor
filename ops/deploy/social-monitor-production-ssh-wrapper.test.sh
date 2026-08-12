@@ -28,6 +28,8 @@ C1_RUN_CONFIRMATION=reader-summary-daily-delivery-c1-run
 C1_RUN_STDIN_RECORD="$C1_RUN_CONFIRMATION 2026-08-10"
 C1_CONTAIN_CONFIRMATION=reader-summary-daily-delivery-c1-contain
 C1_CONTAIN_STDIN_RECORD="$C1_CONTAIN_CONFIRMATION $SHA"
+HISTORY_CONFIRMATION=reader-summary-production-history
+HISTORY_STDIN_RECORD=2026-08-11
 AUTHORIZED_STDIN_RECORD="reader-summary-daily-canonical-recovery-v4 $DAILY_CANONICAL_RECOVERY_RETRY_SET_TOKEN $TERMINAL_SET_SHA256"
 LEGACY_STDIN_RECORD="$DAILY_CANONICAL_RECOVERY_CONFIRMATION 2026-07-23 $MODEL_JOB_IDENTITY $AUTHORITY_SHA256"
 UPLOAD_PAYLOAD=$FIXTURE/frontend-upload.payload
@@ -89,6 +91,7 @@ for argument in "$@"; do
   [[ $argument != READER_SUMMARY_DAILY_MAINTENANCE_RETRY_SET_TOKEN=* ]]
   [[ $argument != READER_SUMMARY_DAILY_MAINTENANCE_TERMINAL_SET_SHA256=* ]]
 done
+
 printf 'sudo-clean\n' >> "$EVENT_LOG"
 exec "$@"
 SH
@@ -336,6 +339,19 @@ for contract in \
   [[ $(wc -l < "$EVENT_LOG") == 3 ]]
   assert_rejected "$FIXTURE/legacy-wrapper.sh" "$action $SHA $action $value"
 done
+
+: > "$EVENT_LOG"
+SSH_ORIGINAL_COMMAND="$HISTORY_CONFIRMATION $SHA $HISTORY_STDIN_RECORD" \
+  EVENT_LOG=$EVENT_LOG CONTROL_LIB=$CONTROL_LIB EXACT_SHA=$SHA \
+  EXPECT_AUTHORIZED_STDIN=1 EXPECTED_AUTHORIZED_STDIN_RECORD="$HISTORY_STDIN_RECORD" \
+  bash "$FIXTURE/current-wrapper.sh" </dev/null
+grep -Fx 'sudo-clean' "$EVENT_LOG" >/dev/null
+grep -Fx 'authorized-stdin' "$EVENT_LOG" >/dev/null
+grep -Fx "dispatch:$HISTORY_CONFIRMATION:$SHA" "$EVENT_LOG" >/dev/null
+[[ $(wc -l < "$EVENT_LOG") == 3 ]]
+: > "$EVENT_LOG"
+assert_rejected "$FIXTURE/current-wrapper.sh" "$HISTORY_CONFIRMATION $SHA bad-date"
+[[ ! -s $EVENT_LOG ]]
 for command in \
   "$C1_RUN_CONFIRMATION $SHA wrong 2026-08-10" \
   "$C1_RUN_CONFIRMATION $SHA $C1_RUN_CONFIRMATION bad-date" \

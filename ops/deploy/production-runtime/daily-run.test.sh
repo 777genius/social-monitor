@@ -5,6 +5,7 @@ SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 DAILY_RUN=$SCRIPT_DIR/daily-run.sh
 DAILY_SERVICE=$SCRIPT_DIR/social-monitor-daily.service
 DAILY_TIMER=$SCRIPT_DIR/social-monitor-daily.timer
+DAILY_ARTIFACTS_COMPOSE=$SCRIPT_DIR/compose.daily-artifacts.yml
 
 grep -Fx \
   'readonly DAILY_AUTH_POOL_JOB_ID=social-monitor-production-account-pool-terra-v25-20260804' \
@@ -24,6 +25,12 @@ grep -F 'latest-state.v1.json' "$DAILY_RUN" >/dev/null
 grep -F \
   'public_dir=${READER_SUMMARY_DAILY_RUN_PUBLIC_DIR:-/var/lib/social-monitor/artifacts/reports/reader-summary-production-v2}' \
   "$DAILY_RUN" >/dev/null
+grep -Fx '      - /var/data/social-monitor/artifacts:/var/lib/social-monitor/artifacts' \
+  "$DAILY_ARTIFACTS_COMPOSE" >/dev/null
+grep -F -- '--allow-historical --allow-historical-provider-collection' \
+  "$DAILY_RUN" >/dev/null
+grep -F 'DATE_FLAG=${1:---yesterday}' "$DAILY_RUN" >/dev/null
+! grep -Eq 'READER_SUMMARY.*(MAINTENANCE|HISTORICAL).*DATE_FLAG' "$DAILY_RUN"
 
 if grep -Eq \
   '(allow-degraded|00000000-0000-7000-8000-00000000090[12]|daily-c1|delivery-c1|daily-catch-up)' \
@@ -85,5 +92,19 @@ grep -Fx 'daily production-day run already active' "$test_root/stderr" >/dev/nul
 grep -Fx -- '-n 9' "$fake_flock.calls" >/dev/null
 [[ $(wc -l <"$fake_flock.calls") -eq 1 ]]
 [[ ! -e "$work_marker" ]]
+
+for invalid in 2026-07-22 2026-08-13 not-a-date; do
+  set +e
+  SOCIAL_MONITOR_DAILY_RUN_TEST_MODE=1 \
+  SOCIAL_MONITOR_DAILY_RUN_TEST_ROOT="$test_root" \
+  SOCIAL_MONITOR_DAILY_RUN_TEST_FLOCK="$fake_flock" \
+  SOCIAL_MONITOR_DAILY_RUN_TEST_DOCKER="$fake_docker" \
+    bash "$DAILY_RUN" --maintenance-date "$invalid" >/dev/null 2>"$test_root/invalid"
+  status=$?
+  set -e
+  [[ $status -eq 64 ]]
+  grep -Fx 'historical daily production-day date is outside the reviewed recovery bound' \
+    "$test_root/invalid" >/dev/null
+done
 
 printf 'daily V6 reader-summary schedule wiring test passed\n'

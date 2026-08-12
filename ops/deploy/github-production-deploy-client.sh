@@ -108,13 +108,19 @@ run_remote() {
       "$action $sha $first_authorization_value $second_authorization_value"
     return
   fi
+  if (($# == 3)); then
+    "$SSH_BIN" "${SSH_OPTIONS[@]}" \
+      -- "$DEPLOY_USER@$DEPLOY_HOST" \
+      "$action $sha $first_authorization_value"
+    return
+  fi
   "$SSH_BIN" "${SSH_OPTIONS[@]}" \
     -- "$DEPLOY_USER@$DEPLOY_HOST" "$action $sha"
 }
 
 validate_maintenance_action() {
   case ${1:-} in
-    disk-report|project-disk-cleanup|reader-summary-recover-missing-days|reader-summary-weekly-run|reader-summary-daily-canonical-recovery-v4|reader-summary-daily-terminal-set-receipt-v1|reader-summary-daily-scan-terminal-preimage-c1|reader-summary-daily-scan-terminal-repair-c1|reader-summary-daily-delivery-c1-run|reader-summary-daily-delivery-c1-contain) ;;
+    disk-report|project-disk-cleanup|reader-summary-recover-missing-days|reader-summary-weekly-run|reader-summary-production-history|reader-summary-daily-canonical-recovery-v4|reader-summary-daily-terminal-set-receipt-v1|reader-summary-daily-scan-terminal-preimage-c1|reader-summary-daily-scan-terminal-repair-c1|reader-summary-daily-delivery-c1-run|reader-summary-daily-delivery-c1-contain) ;;
     *) fail 'maintenance action is not in the reviewed allowlist' ;;
   esac
 }
@@ -351,6 +357,12 @@ run_maintenance() {
       fail 'daily delivery C1 containment requires exact confirmation and current READY SHA'
     run_remote "$maintenance_action" "$sha" "$first_authorization_value" \
       "$second_authorization_value"
+    return
+  fi
+  if [[ $maintenance_action == reader-summary-production-history ]]; then
+    [[ $# == 3 && $first_authorization_value =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || \
+      fail 'historical reader-summary recovery requires one UTC recovery-through date'
+    run_remote "$maintenance_action" "$sha" "$first_authorization_value"
     return
   fi
   [[ $# == 2 ]] || fail 'this maintenance action does not accept a confirmation token'
@@ -650,12 +662,14 @@ case $action in
     install_daily_c1_bridge_policy "$2"
     ;;
   maintenance)
-    [[ $# == 3 || $# == 5 || $# == 6 ]] || \
+    [[ $# == 3 || $# == 4 || $# == 5 || $# == 6 ]] || \
       fail 'maintenance requires a target SHA, action, and optional retry-set authorization'
     if (($# == 6)); then
       run_maintenance "$2" "$3" "$4" "$5" "$6"
     elif (($# == 5)); then
       run_maintenance "$2" "$3" "$4" "$5"
+    elif (($# == 4)); then
+      run_maintenance "$2" "$3" "$4"
     else
       run_maintenance "$2" "$3"
     fi

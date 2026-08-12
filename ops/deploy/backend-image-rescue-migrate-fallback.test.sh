@@ -85,7 +85,7 @@ take_sequence() {
 fake_compose() {
   local service=${!#} container
   { printf compose; printf '\t%s' "$@"; printf '\n'; } >> "$EVENT_LOG"
-  [[ $* == *' ps -q '* ]] || return 92
+  [[ $* == *' ps -q '* || $* == *' ps --all -q '* ]] || return 92
   if container=$(take_sequence "$service"); then
     [[ $container == missing ]] || printf '%s\n' "$container"
   else

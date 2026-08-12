@@ -97,16 +97,15 @@ BACKEND_PATHS=(
   ops/deploy/reader-summary-publication-post-migration.sql
   test
 )
-
 CONTROL_PATHS=(
   .github/workflows/production-deploy.yml
   ops/deploy
   ops/recovery/backup-restore-contract.json
 )
-
 RUNTIME_CONTROL_PATHS=(
   ops/deploy/production-runtime/daily-c1-runtime.sh
   ops/deploy/production-runtime/daily-run.sh
+  ops/deploy/production-runtime/compose.daily-artifacts.yml
   ops/deploy/production-runtime/reader-summary-daily-c1.readiness
   ops/deploy/postgres-runtime-daily-c1-readiness-lib.sh ops/deploy/postgres-runtime-weekly-timer-state-lib.sh ops/deploy/postgres-runtime-activation-boundary-lib.sh
   ops/deploy/production-runtime/github-premidnight-capture-v1.activation
@@ -994,6 +993,7 @@ case ${action:-} in
     run_reader_summary_daily_runner_maintenance "$action"
     ;;
   reader-summary-daily-scan-terminal-repair-c1) run_reader_summary_daily_scan_terminal_repair_c1_from_stdin ;;
+  reader-summary-production-history) run_reader_summary_production_history_from_stdin ;;
   reader-summary-daily-delivery-c1-run) run_reader_summary_daily_delivery_c1 "$sha" ;;
   reader-summary-daily-delivery-c1-contain) run_reader_summary_daily_delivery_c1_containment "$sha" ;;
   *) fail 'command is not in the reviewed production allowlist' ;;

@@ -45,7 +45,12 @@ backend_image_rescue_known_services() {
     migrate api agent-runtime ingestion-worker intelligence-worker \
     delivery-service event-relay daily-runner otel-collector x-collector
 }
-
+backend_image_rescue_operationally_absent() {
+  local -a container_ids=()
+  mapfile -t container_ids < <("${COMPOSE[@]}" --profile app \
+    --profile daily ps --all -q "$1") || return 1
+  ((${#container_ids[@]} == 0))
+}
 backend_image_rescue_otel_config_path() {
   local sha=$1
   printf '%s/otel-collector-config-%s.yml\n' "$STATE" "$sha"
@@ -384,6 +389,16 @@ backend_image_rescue_validate_structure() {
         seen_services[$service]=1
         actual_count=$((actual_count + 1))
         ;;
+      *:absent)
+        [[ $saw_target == true && $saw_project == true && $saw_complete == false ]] || return 1
+        [[ $service =~ ^[a-z0-9][a-z0-9-]*$ && \
+           -z $source_kind$source_ref$image_id$rescue_tag$extra ]] || return 1
+        [[ -z ${seen_services[$service]:-} ]] || return 1
+        expected_policy=$(backend_image_rescue_policy "$service")
+        [[ $policy == "$expected_policy" ]] || return 1
+        seen_services[$service]=1
+        actual_count=$((actual_count + 1))
+        ;;
       *:complete)
         [[ $saw_complete == false && $actual_count -gt 0 && \
            $service =~ ^[0-9]+$ && \
@@ -486,9 +501,11 @@ backend_image_rescue_validate() {
     expected[$service]=1
   done
   while IFS=$'\t' read -r record service policy source_kind source_ref image_id rescue_tag extra; do
-    [[ $record == image ]] || continue
-    actual_id=$(backend_image_rescue_image_id "$rescue_tag") || return 1
-    [[ $actual_id == "$image_id" ]] || return 1
+    [[ $record == image || $record == absent ]] || continue
+    if [[ $record == image ]]; then
+      actual_id=$(backend_image_rescue_image_id "$rescue_tag") || return 1
+      [[ $actual_id == "$image_id" ]] || return 1
+    fi
     captured[$service]=1
   done < "$state_file"
   if ((${#expected[@]} > 0)); then
@@ -601,8 +618,11 @@ backend_image_rescue_pin_running_container() {
   local rescue_tag=$3
   local source_kind_name=$4
   local image_id_name=$5
+  local allow_legacy_reconstruction=${6:-true}
   local recorded_id inspected_id reconstructed_id
 
+  [[ $allow_legacy_reconstruction == true || \
+     $allow_legacy_reconstruction == false ]] || return 1
   backend_image_rescue_verify_running_container "$container" || return 1
   recorded_id=$(docker inspect "$container" --format '{{.Image}}' 2>/dev/null) || return 1
   [[ $recorded_id =~ ^sha256:[0-9a-f]{64}$ ]] || return 1
@@ -615,6 +635,7 @@ backend_image_rescue_pin_running_container() {
     return 0
   fi
 
+  [[ $allow_legacy_reconstruction == true ]] || return 1
   # The recorded object is gone, so preserve only the paused root filesystem.
   # Rebuild metadata from a reviewed, service-specific config with no Env.
   backend_image_rescue_reconstruct_running_container \
@@ -625,6 +646,25 @@ backend_image_rescue_pin_running_container() {
   printf -v "$image_id_name" '%s' "$reconstructed_id"
 }
 
+backend_image_rescue_pin_migrate_from_api_container() {
+  local rescue_tag=$1 source_kind_name=$2 source_ref_name=$3 image_id_name=$4
+  local migrate_containers api_container api_source_kind api_image_id
+  migrate_containers=$("${COMPOSE[@]}" --profile app --profile daily \
+    ps --all -q migrate) || return 1
+  [[ -z $migrate_containers ]] || return 1
+  api_container=$(backend_image_rescue_compose_container_id api) || return 1
+  verify_backend_with_retry api || return 1
+  [[ $(backend_image_rescue_compose_container_id api) == \
+     "$api_container" ]] || return 1
+  backend_image_rescue_pin_running_container \
+    api "$api_container" "$rescue_tag" api_source_kind api_image_id false || return 1
+  [[ $api_source_kind == running-image ]] || return 1
+  [[ $(backend_image_rescue_compose_container_id api) == \
+     "$api_container" ]] || return 1
+  printf -v "$source_kind_name" '%s' "$api_source_kind"
+  printf -v "$source_ref_name" '%s' "$api_container"
+  printf -v "$image_id_name" '%s' "$api_image_id"
+}
 backend_image_rescue_pin_service() {
   local sha=$1
   local service=$2
@@ -654,12 +694,17 @@ backend_image_rescue_pin_service() {
       [[ $policy != recreate ]] || return 1
       compose_tag=$(compose_image_name "$service")
     fi
-    pinned_id=$(backend_image_rescue_image_id "$compose_tag") || return 1
-    [[ $pinned_id =~ ^sha256:[0-9a-f]{64}$ ]] || return 1
-    docker image tag "$compose_tag" "$rescue_tag" >/dev/null || return 1
-    source_kind_value=compose-tag
-    source_ref_value=$compose_tag
-    image_id_value=$pinned_id
+    if pinned_id=$(backend_image_rescue_image_id "$compose_tag"); then
+      [[ $pinned_id =~ ^sha256:[0-9a-f]{64}$ ]] || return 1
+      docker image tag "$compose_tag" "$rescue_tag" >/dev/null || return 1
+      source_kind_value=compose-tag
+      source_ref_value=$compose_tag
+      image_id_value=$pinned_id
+    else
+      [[ $service == migrate && $policy == tag-only-migrate ]] || return 1
+      backend_image_rescue_pin_migrate_from_api_container \
+        "$rescue_tag" source_kind_value source_ref_value image_id_value || return 1
+    fi
   fi
   pinned_id=$(backend_image_rescue_image_id "$rescue_tag") || return 1
   [[ $pinned_id == "$image_id_value" ]] || return 1
@@ -758,6 +803,11 @@ backend_image_rescue_prepare() (
   for service in "${services[@]}"; do
     [[ $service =~ ^[a-z0-9][a-z0-9-]*$ ]] || return 1
     policy=$(backend_image_rescue_policy "$service")
+    if [[ $policy == recreate ]] && \
+       backend_image_rescue_operationally_absent "$service"; then
+      printf 'absent\t%s\t%s\n' "$service" "$policy" >> "$partial"
+      continue
+    fi
     rescue_tag=$(backend_image_rescue_tag "$sha" "$service")
     backend_image_rescue_remove_tag "$rescue_tag" || return 1
     backend_image_rescue_pin_service \
@@ -818,6 +868,10 @@ rollback_backend_images() {
   fi
   [[ $phase == replacement-started ]] || return 1
   while IFS=$'\t' read -r record service policy source_kind source_ref image_id rescue_tag extra; do
+    if [[ $record == absent ]]; then
+      remove_services+=("$service")
+      continue
+    fi
     [[ $record == image && $policy == recreate ]] || continue
     if [[ $service == otel-collector && $source_kind == compose-tag ]]; then
       remove_services+=("$service")
@@ -833,7 +887,8 @@ rollback_backend_images() {
     fi
   done < "$state_file"
   if ((${#remove_services[@]} > 0)); then
-    "${COMPOSE[@]}" --profile app rm -sf "${remove_services[@]}" || return 1
+    "${COMPOSE[@]}" --profile app --profile daily rm -sf \
+      "${remove_services[@]}" || return 1
   fi
   if ((${#rollback_services[@]} > 0)); then
     stop_and_remove_database_services "${rollback_services[@]}" || return 1
