@@ -511,6 +511,7 @@ jobs:
             ops/deploy/reader-summary-recovery-maintenance-lib.sh
             ops/deploy/deploy-control-bridge-runtime-helper.test.sh
             ops/deploy/deploy-control-reviewed-library-source.test.sh
+            ops/deploy/daily-final-control-bridge.sh ops/deploy/daily-final-control-bridge.test.sh
             ops/deploy/daily-c1-control-bridge-workflow.test.sh
             ops/deploy/rabbitmq-quorum-deploy-bridge-transition.test.sh
             ops/deploy/reader-summary-publication-bridge-transition.test.sh
@@ -571,7 +572,7 @@ jobs:
               echo 'repairable uninstalled bootstrap has a nonzero durable release SHA' >&2
               exit 1
             }
-            echo 'backend-gate=postgres-pool-release deferred-to-bounded-repair'
+            echo 'backend-gate=postgres-pool-release deferred-to-bounded-B2-repair'
           else
             python3 ops/deploy/verify-postgres-pool-release-contract.py ci \
               --target "$GITHUB_SHA" \
@@ -911,6 +912,7 @@ jobs:
           DEPLOY_USER: ${{ vars.PRODUCTION_SSH_USER }}
         run: |
           set -euo pipefail
+          bash ops/deploy/daily-final-control-bridge.sh "$GITHUB_SHA"
           target_plan="$RUNNER_TEMP/recovery-target-before-deploy.plan"
           bash ops/deploy/github-production-deploy-client.sh \
             inspect-plan "$GITHUB_SHA" > "$target_plan"

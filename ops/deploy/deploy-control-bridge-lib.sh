@@ -14,6 +14,9 @@ DEPLOY_CONTROL_BRIDGE_RECOVERY_MAINTENANCE_LIBRARY_PATH=ops/deploy/reader-summar
 DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_LIBRARY_PATH=ops/deploy/backend-image-rescue-lib.sh
 DEPLOY_CONTROL_BRIDGE_X_IMAGE_LIBRARY_PATH=ops/deploy/x-collector-image-deploy-lib.sh
 DEPLOY_CONTROL_BRIDGE_SELF_PATH=ops/deploy/deploy-control-bridge-lib.sh
+DEPLOY_CONTROL_DAILY_FINAL_ANCHOR=36c919c78f4a446809f33172714f0ed428b184ce
+DEPLOY_CONTROL_DAILY_FINAL_BASE=d494c143c242873bfac53f54c15b0f24df0ab33d
+DEPLOY_CONTROL_DAILY_FINAL_HELPER_BLOB=119726c2f2aff06798cade4dc3a127f24a2d2cc9
 RABBITMQ_QUORUM_HEALTH_LIBRARY_PATH=ops/deploy/backend-runtime-health-lib.sh
 RABBITMQ_QUORUM_HEALTH_SCRIPT_PATH=ops/deploy/rabbitmq-quorum-health.sh
 RABBITMQ_QUORUM_RECOVERY_SCRIPT_PATH=ops/deploy/rabbitmq-quorum-recovery.sh
@@ -69,6 +72,59 @@ deploy_control_is_exact_daily_c1_bridge_release() {
 
 deploy_control_daily_c1_bridge_classification() {
   printf 'frontend=false\nbackend=false\ncontrol=true\n'
+}
+
+deploy_control_is_reviewed_daily_final_transition() {
+  local bridge=$1 target=$2 repository=${REPO:-.}
+  local bridge_parent target_first target_second changed path
+  local -a sealed_paths=()
+  bridge_parent=$(git -C "$repository" rev-parse "$bridge^" 2>/dev/null) || return 1
+  target_first=$(git -C "$repository" rev-parse "$target^1" 2>/dev/null) || return 1
+  target_second=$(git -C "$repository" rev-parse "$target^2" 2>/dev/null) || return 1
+  [[ $bridge_parent == "$DEPLOY_CONTROL_DAILY_FINAL_ANCHOR" &&
+     $target_first == "$DEPLOY_CONTROL_DAILY_FINAL_BASE" &&
+     $target_second == "$bridge" ]] || return 1
+  while IFS= read -r path; do sealed_paths+=("$path"); done < <(deploy_control_bridge_sealed_paths)
+  changed=$(git -C "$repository" diff --name-only --no-renames \
+    "$bridge" "$target" -- "${sealed_paths[@]}" 2>/dev/null) || return 1
+  [[ $changed == "$DEPLOY_CONTROL_BRIDGE_POSTGRES_DAILY_C1_HELPER_PATH" &&
+     $(git -C "$repository" rev-parse \
+       "$target:$DEPLOY_CONTROL_BRIDGE_POSTGRES_DAILY_C1_HELPER_PATH" 2>/dev/null) == \
+       "$DEPLOY_CONTROL_DAILY_FINAL_HELPER_BLOB" ]]
+}
+
+deploy_control_daily_final_transition_compatible_paths() {
+  printf '%s\n' \
+    "$DEPLOY_CONTROL_BRIDGE_ENTRYPOINT_PATH" \
+    "$DEPLOY_CONTROL_BRIDGE_LIBRARY_PATH" \
+    "$DEPLOY_CONTROL_BRIDGE_POSTGRES_LIBRARY_PATH" \
+    "$DEPLOY_CONTROL_BRIDGE_POSTGRES_WEEKLY_TIMER_HELPER_PATH" \
+    "$DEPLOY_CONTROL_BRIDGE_POSTGRES_DAILY_C1_HELPER_PATH" \
+    "$DEPLOY_CONTROL_BRIDGE_POSTGRES_ACTIVATION_BOUNDARY_HELPER_PATH" \
+    "$DEPLOY_CONTROL_BRIDGE_RECOVERY_MAINTENANCE_LIBRARY_PATH" \
+    "$DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_LIBRARY_PATH" \
+    "$DEPLOY_CONTROL_BRIDGE_X_IMAGE_LIBRARY_PATH"
+}
+
+deploy_control_daily_final_transition_matches() {
+  local bridge=$1 target=$2 path
+  deploy_control_is_reviewed_daily_final_transition "$bridge" "$target" || return 1
+  while IFS= read -r path; do
+    [[ $path == "$DEPLOY_CONTROL_BRIDGE_POSTGRES_DAILY_C1_HELPER_PATH" ]] && continue
+    [[ $(git -C "$REPO" rev-parse "$bridge:$path" 2>/dev/null) == \
+       $(git -C "$REPO" rev-parse "$target:$path" 2>/dev/null) ]] || return 1
+  done < <(deploy_control_daily_final_transition_compatible_paths)
+}
+
+verify_deploy_control_daily_final_transition_files() {
+  local target=$1 path actual expected
+  deploy_control_daily_final_transition_matches \
+    "$DEPLOY_CONTROL_BRIDGE_INITIALIZED_HEAD" "$target" || return 1
+  while IFS= read -r path; do
+    actual=$(deploy_control_file_digest "$REPO/$path") || return 1
+    expected=$(deploy_control_git_blob_digest "$target" "$path") || return 1
+    [[ $actual == "$expected" ]] || return 1
+  done < <(deploy_control_bridge_sealed_paths)
 }
 
 load_target_reader_summary_publication_deploy_library() {
@@ -182,6 +238,8 @@ initialize_deploy_control_bridge() {
   DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_LIBRARY_DIGEST=$(deploy_control_file_digest "$image_rescue_library")
   DEPLOY_CONTROL_BRIDGE_X_IMAGE_LIBRARY_DIGEST=$(deploy_control_file_digest "$x_image_library")
   DEPLOY_CONTROL_BRIDGE_SELF_DIGEST=$(deploy_control_file_digest "$bridge_library")
+  DEPLOY_CONTROL_BRIDGE_INITIALIZED_HEAD=$(git -C "$REPO" rev-parse HEAD) || \
+    fail 'deploy control bridge integration marker cannot be read'
 }
 
 verify_deploy_control_bridge_compatibility() {
@@ -208,6 +266,10 @@ verify_deploy_control_bridge_compatibility() {
      -f $x_image_library && ! -L $x_image_library && \
      -f $bridge_library && ! -L $bridge_library ]] || \
     fail 'target integration is missing deploy control bridge sources'
+  if verify_deploy_control_daily_final_transition_files \
+      "$(git -C "$REPO" rev-parse HEAD)"; then
+    return 0
+  fi
   [[ $(deploy_control_file_digest "$entrypoint") == "$DEPLOY_CONTROL_BRIDGE_ENTRYPOINT_DIGEST" && \
      $(deploy_control_file_digest "$deploy_library") == "$DEPLOY_CONTROL_BRIDGE_LIBRARY_DIGEST" && \
      $(deploy_control_file_digest "$postgres_library") == "$DEPLOY_CONTROL_BRIDGE_POSTGRES_LIBRARY_DIGEST" && \
@@ -269,6 +331,10 @@ verify_deploy_control_bridge_target_compatibility() {
     fail 'target integration is missing the X image provenance bridge library'
   bridge_library_digest=$(deploy_control_git_blob_digest "$sha" "$DEPLOY_CONTROL_BRIDGE_SELF_PATH") || \
     fail 'target integration is missing the deploy control bridge library'
+  if deploy_control_daily_final_transition_matches \
+      "$DEPLOY_CONTROL_BRIDGE_INITIALIZED_HEAD" "$sha"; then
+    return 0
+  fi
   [[ $entrypoint_digest == "$DEPLOY_CONTROL_BRIDGE_ENTRYPOINT_DIGEST" && \
      $deploy_library_digest == "$DEPLOY_CONTROL_BRIDGE_LIBRARY_DIGEST" && \
      $postgres_library_digest == "$DEPLOY_CONTROL_BRIDGE_POSTGRES_LIBRARY_DIGEST" && \
