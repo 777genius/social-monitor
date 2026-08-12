@@ -203,6 +203,7 @@ fi
   historical_args=
   if [ '"$DATE_FLAG"' = --maintenance-date ]; then
     historical_args="--allow-historical --allow-historical-provider-collection"
+    export READER_SUMMARY_PRODUCTION_HISTORY_COLLECTION_DIR=/var/lib/social-monitor/artifacts/reader-summary-production-history-collection
   fi
   if [ -z "$requested_date" ]; then
     requested_date=${READER_SUMMARY_DAILY_RUN_EXPECTED_DATE:-}

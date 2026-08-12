@@ -3,10 +3,16 @@ export type ReaderSummaryDailyMaintenanceBounds = Readonly<{
   upperInclusive: string;
 }>;
 
-export const readerSummaryDailyJul31Aug3MaintenanceBounds:
-  ReaderSummaryDailyMaintenanceBounds = Object.freeze({
+export const readerSummaryDailyJul31Aug3MaintenanceBounds: ReaderSummaryDailyMaintenanceBounds =
+  Object.freeze({
     lowerInclusive: "2026-07-31",
     upperInclusive: "2026-08-03",
+  });
+
+export const readerSummaryProductionHistoryMaintenanceBounds: ReaderSummaryDailyMaintenanceBounds =
+  Object.freeze({
+    lowerInclusive: "2026-07-23",
+    upperInclusive: "2026-08-12",
   });
 
 export const assertReaderSummaryDailyMaintenanceBounds = (
@@ -26,7 +32,9 @@ export const assertReaderSummaryDailyMaintenanceDate = (
   assertReaderSummaryDailyMaintenanceBounds(bounds);
   assertExactUtcDate(requestedUtcDate, "maintenance cursor date");
   if (requestedUtcDate < bounds.lowerInclusive) {
-    throw new Error("Reader summary daily maintenance cursor is below the lower bound");
+    throw new Error(
+      "Reader summary daily maintenance cursor is below the lower bound",
+    );
   }
 };
 
