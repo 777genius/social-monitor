@@ -216,7 +216,22 @@ if not isinstance(payload["partitions"], dict) or payload["partitions"]:
 node_pattern = re.compile(r"rabbit@[A-Za-z0-9._-]+")
 running = payload["running_nodes"]
 disk = payload["disk_nodes"]
-if not isinstance(running, list) or not isinstance(disk, list) or not running or not disk:
+if not isinstance(running, list) or not isinstance(disk, list):
+    raise SystemExit(1)
+if not running and not disk:
+    feature_flags = payload.get("feature_flags")
+    cluster_name = payload.get("cluster_name")
+    if not isinstance(feature_flags, list) or cluster_name != f"rabbit@{sys.argv[1]}":
+        raise SystemExit(1)
+    enabled = {
+        row.get("name")
+        for row in feature_flags
+        if isinstance(row, dict) and row.get("state") == "enabled"
+    }
+    if not {"khepri_db", "rabbitmq_4.3.0"}.issubset(enabled):
+        raise SystemExit(1)
+    raise SystemExit(0)
+if not running or not disk:
     raise SystemExit(1)
 if any(not isinstance(node, str) or not node_pattern.fullmatch(node) for node in running + disk):
     raise SystemExit(1)
@@ -238,6 +253,15 @@ for node in running:
     match = re.fullmatch(r"4\.3\.(\d+)", version.get("rabbitmq_version", ""))
     if match is None or int(match.group(1)) < 2:
         raise SystemExit(1)
+' "$RABBITMQ_QUORUM_TARGET_HOSTNAME"
+}
+
+rabbitmq_quorum_health_validate_server_version() {
+  python3 -c '
+import re
+import sys
+match = re.fullmatch(r"4\.3\.(\d+)", sys.stdin.read().strip())
+raise SystemExit(0 if match and int(match.group(1)) >= 2 else 1)
 '
 }
 
@@ -327,7 +351,7 @@ for row in rows:
 }
 
 rabbitmq_quorum_health_cluster_status() {
-  local container_id=$1 output
+  local container_id=$1 output version
 
   if ! output=$(docker exec "$container_id" rabbitmq-diagnostics cluster_status --formatter json 2>&1); then
     rabbitmq_quorum_health_error 'RabbitMQ cluster_status command failed'
@@ -335,6 +359,11 @@ rabbitmq_quorum_health_cluster_status() {
   fi
   if ! printf '%s' "$output" | rabbitmq_quorum_health_validate_cluster_status_json; then
     rabbitmq_quorum_health_error 'RabbitMQ cluster_status JSON is not the supported 4.3.x steady-state shape'
+    return 1
+  fi
+  if ! version=$(docker exec "$container_id" rabbitmq-diagnostics -q server_version 2>&1) ||
+     ! printf '%s' "$version" | rabbitmq_quorum_health_validate_server_version; then
+    rabbitmq_quorum_health_error 'RabbitMQ server version is not supported 4.3.2+'
     return 1
   fi
 }

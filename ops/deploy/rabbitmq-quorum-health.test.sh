@@ -27,6 +27,7 @@ LISTENERS_STATUS=0
 LISTENERS_OUTPUT="Node rabbit@$TARGET_HOSTNAME reported no enabled listeners."
 WORKER_MODE=healthy
 CLUSTER_MAINTENANCE_MODE=string
+CLUSTER_SHAPE=expanded
 WORKER_ID=abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd
 
 # shellcheck source=ops/deploy/rabbitmq-quorum-health.sh
@@ -46,6 +47,12 @@ JSON
 cluster_status_object_maintenance_json() {
   cluster_status_json | sed \
     's/"not under maintenance"/{"status":"not under maintenance"}/'
+}
+
+cluster_status_compact_json() {
+  cat <<JSON
+{"versions":{},"feature_flags":[{"name":"khepri_db","state":"enabled"},{"name":"rabbitmq_4.3.0","state":"enabled"}],"running_nodes":[],"alarms":[],"cluster_name":"rabbit@$TARGET_HOSTNAME","disk_nodes":[],"partitions":{},"maintenance_status":{}}
+JSON
 }
 
 quorum_status_json() {
@@ -113,7 +120,9 @@ docker() {
               [[ $5 == --formatter && $6 == json ]] || return 96
               case $CLUSTER_MODE in
                 healthy)
-                  if [[ $CLUSTER_MAINTENANCE_MODE == object ]]; then
+                  if [[ $CLUSTER_SHAPE == compact ]]; then
+                    cluster_status_compact_json
+                  elif [[ $CLUSTER_MAINTENANCE_MODE == object ]]; then
                     cluster_status_object_maintenance_json
                   else
                     cluster_status_json
@@ -130,7 +139,15 @@ docker() {
               printf '%s\n' "$METADATA_STATUS_OUTPUT"
               return "$METADATA_STATUS_STATUS"
               ;;
+            server_version)
+              printf '%s\n' "$CLUSTER_VERSION"
+              ;;
             -q)
+              if [[ ${5:-} == server_version ]]; then
+                (($# == 5)) || return 96
+                printf '%s\n' "$CLUSTER_VERSION"
+                return 0
+              fi
               (($# == 5)) || return 96
               case $5 in
                 check_if_metadata_store_is_initialized)
@@ -279,6 +296,12 @@ for CLUSTER_VERSION in 4.3.2 4.3.4; do
 done
 CLUSTER_MAINTENANCE_MODE=object
 assert_probe_status 0
+CLUSTER_SHAPE=compact
+assert_probe_status 0
+CLUSTER_VERSION=4.3.1
+assert_probe_status 1
+CLUSTER_VERSION=4.3.4
+CLUSTER_SHAPE=expanded
 CLUSTER_MAINTENANCE_MODE=string
 for CLUSTER_VERSION in 4.3.1 4.4.0 4.3.4-rc.1 invalid; do
   assert_probe_status 1
