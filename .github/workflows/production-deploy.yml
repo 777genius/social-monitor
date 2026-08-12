@@ -139,7 +139,8 @@ jobs:
           DAILY_DELIVERY_C1_READY_SHA: ${{ inputs.daily_delivery_c1_ready_sha }}
         run: |
           set -euo pipefail
-          bash ops/deploy/github-production-maintenance-dispatch.sh
+          bash ops/deploy/github-production-deploy-client.sh inspect-plan \
+            e7b19bc805815af310f1e5096d3fec5789129ddb
       - name: Store unique immutable maintenance artifact
         if: ${{ inputs.maintenance_action == 'reader-summary-daily-terminal-set-receipt-v1' || inputs.maintenance_action == 'reader-summary-daily-scan-terminal-preimage-c1' || inputs.maintenance_action == 'reader-summary-daily-scan-terminal-repair-c1' || inputs.maintenance_action == 'reader-summary-daily-delivery-c1-run' || inputs.maintenance_action == 'reader-summary-daily-delivery-c1-contain' }}
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
