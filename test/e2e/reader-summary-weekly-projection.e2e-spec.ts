@@ -57,6 +57,8 @@ describe("Reader summary weekly projection REST (e2e)", () => {
         "certified_daily_evidence_incomplete",
         "active_weekly_certified_artifact_missing",
       ],
+      activeWeeklyCertifiedArtifactPresent: false,
+      evidenceLimitations: [],
       artifact: null,
     });
   });
@@ -71,8 +73,37 @@ describe("Reader summary weekly projection REST (e2e)", () => {
       certifiedDailyEvidenceDates: dates,
       missingDailyEvidenceDates: [],
       blockingReasons: ["active_weekly_certified_artifact_missing"],
+      activeWeeklyCertifiedArtifactPresent: false,
+      evidenceLimitations: [],
       artifact: null,
     });
+  });
+
+  it("discloses historical evidence limits while withholding an active artifact", async () => {
+    reader.certifiedDailyEvidenceDates = dates.slice(0, 6);
+    reader.artifact = weeklyArtifact();
+    reader.evidenceLimitations = [{
+      requestedUtcDate: dates[1]!,
+      providerKey: "github-trending-page",
+      evidenceState: "historical_unavailable",
+    }];
+
+    const response = await getProjection().expect(200);
+
+    expect(response.body).toMatchObject({
+      status: "partial",
+      blockingReasons: ["certified_daily_evidence_incomplete"],
+      activeWeeklyCertifiedArtifactPresent: true,
+      evidenceLimitations: [{
+        requestedUtcDate: dates[1],
+        providerKey: "github-trending-page",
+        evidenceState: "historical_unavailable",
+      }],
+      artifact: null,
+    });
+    expect(JSON.stringify(response.body)).not.toContain(
+      "active_weekly_certified_artifact_missing",
+    );
   });
 
   it("returns the separate complete weekly contract without sourceWindow", async () => {
@@ -87,6 +118,8 @@ describe("Reader summary weekly projection REST (e2e)", () => {
       certifiedDailyEvidenceDates: dates,
       missingDailyEvidenceDates: [],
       blockingReasons: [],
+      activeWeeklyCertifiedArtifactPresent: true,
+      evidenceLimitations: [],
       artifact: {
         artifactId: "00000000-0000-7000-8000-000000000739",
         schemaVersion: "reader_summary.weekly_model_output.v1",
@@ -145,12 +178,18 @@ class FakeWeeklyProjectionReader
 {
   certifiedDailyEvidenceDates: readonly string[] = [];
   artifact: PersistedReaderSummaryWeeklyArtifact | null = null;
+  evidenceLimitations: readonly {
+    requestedUtcDate: string;
+    providerKey: "github-trending-page";
+    evidenceState: "historical_unavailable";
+  }[] = [];
   failure: Error | null = null;
   readonly queries: Parameters<ReaderSummaryWeeklyProjectionReaderPort["read"]>[0][] = [];
 
   reset(): void {
     this.certifiedDailyEvidenceDates = [];
     this.artifact = null;
+    this.evidenceLimitations = [];
     this.failure = null;
     this.queries.splice(0);
   }
@@ -162,6 +201,8 @@ class FakeWeeklyProjectionReader
     if (this.failure !== null) throw this.failure;
     return {
       certifiedDailyEvidenceDates: this.certifiedDailyEvidenceDates,
+      activeWeeklyCertifiedArtifactPresent: this.artifact !== null,
+      evidenceLimitations: this.evidenceLimitations,
       artifact: this.artifact,
     };
   }

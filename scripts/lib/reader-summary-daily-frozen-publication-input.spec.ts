@@ -50,8 +50,10 @@ describe("reader summary daily frozen publication input", () => {
         recoveryVersion: "reader_summary.daily_canonical_recovery.v4",
         sourceAuthoritySha256: replay.authority.canonicalSha256,
         modelJobIdentity: replay.modelJobIdentity,
-        outputTextSha256: sha256(replay.responseBytes),
-        outputTextByteLength: replay.responseBytes.length,
+        canonicalOutputSha256: sha256(replay.responseBytes),
+        canonicalOutputByteLength: replay.responseBytes.length,
+        rawOutputSha256: sha256(replay.responseBytes),
+        rawOutputByteLength: replay.responseBytes.length,
       });
       await expect(wiring.githubProjectionReader.read(githubQuery(requestedUtcDate)))
         .rejects.toThrow(/unavailable/u);
@@ -214,6 +216,8 @@ describe("reader summary daily frozen publication input", () => {
       requestedUtcDate: "2026-07-24",
       sourceAuthoritySha256: replay.sourceAuthoritySha256,
       responseBytes: forgedResponseBytes,
+      rawOutputSha256: sha256(forgedResponseBytes),
+      rawOutputByteLength: forgedResponseBytes.length,
       attestation: persistedOutputTextAttestation(forgedResponseBytes),
     });
     expect(() => createReaderSummaryDailyFrozenOutputTextWiring({
@@ -339,6 +343,8 @@ const recoveryReplay = (
     requestedUtcDate,
     sourceAuthoritySha256: authority.canonicalSha256,
     responseBytes,
+    rawOutputSha256: sha256(responseBytes),
+    rawOutputByteLength: responseBytes.length,
     attestation: persistedOutputTextAttestation(responseBytes),
   });
   return {

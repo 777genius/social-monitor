@@ -70,8 +70,20 @@ cp "$SCRIPT_DIR/reader-summary-publication-deploy-lib.sh" \
   "$SYNTHESIS_REPO/$PUBLICATION_LIBRARY"
 cp "$SCRIPT_DIR/reader-summary-publication-system-dsn-bootstrap-lib.sh" \
   "$SYNTHESIS_REPO/ops/deploy/reader-summary-publication-system-dsn-bootstrap-lib.sh"
+cp "$SCRIPT_DIR/reader-summary-publication-prebootstrap-lib.sh" \
+  "$SYNTHESIS_REPO/ops/deploy/reader-summary-publication-prebootstrap-lib.sh"
+for prebootstrap_asset in \
+  daily-run.sh \
+  social-monitor-reader-summary-production-day.bootstrap.timer \
+  social-monitor-daily.service \
+  social-monitor-reader-summary-production-day.service.d-10-daily-c1-owner.conf; do
+  cp "$SCRIPT_DIR/production-runtime/$prebootstrap_asset" \
+    "$SYNTHESIS_REPO/ops/deploy/production-runtime/$prebootstrap_asset"
+done
 git -C "$SYNTHESIS_REPO" add "$PUBLICATION_LIBRARY" \
-  ops/deploy/reader-summary-publication-system-dsn-bootstrap-lib.sh
+  ops/deploy/reader-summary-publication-system-dsn-bootstrap-lib.sh \
+  ops/deploy/reader-summary-publication-prebootstrap-lib.sh \
+  ops/deploy/production-runtime
 git -C "$SYNTHESIS_REPO" commit -qm \
   'test: target missing PostgreSQL backup blob'
 BACKUP_MISSING_BLOB_SHA=$(git -C "$SYNTHESIS_REPO" rev-parse HEAD)
@@ -220,7 +232,26 @@ run_target_case() {
   case_state=$case_control/deploy-state
   case_events=$case_root/events
   install -d "$case_control" "$case_state" \
-    "$case_root/runtime/deploy-staging"
+    "$case_root/runtime/deploy-staging" "$case_root/runtime/systemd"
+  if git -C "$case_repo" cat-file -e \
+    "$target_sha:ops/deploy/reader-summary-publication-prebootstrap-lib.sh" \
+    2>/dev/null; then
+    git -C "$case_repo" show \
+      "$target_sha:ops/deploy/production-runtime/daily-run.sh" \
+      > "$case_control/run-reader-summary-production-day.sh"
+    chmod 0755 "$case_control/run-reader-summary-production-day.sh"
+    git -C "$case_repo" show \
+      "$target_sha:ops/deploy/production-runtime/social-monitor-reader-summary-production-day.bootstrap.timer" \
+      > "$case_root/runtime/systemd/social-monitor-reader-summary-production-day.timer"
+    git -C "$case_repo" show \
+      "$target_sha:ops/deploy/production-runtime/social-monitor-daily.service" \
+      > "$case_root/runtime/systemd/social-monitor-reader-summary-production-day.service"
+    install -d -m 0755 \
+      "$case_root/runtime/systemd/social-monitor-reader-summary-production-day.service.d"
+    git -C "$case_repo" show \
+      "$target_sha:ops/deploy/production-runtime/social-monitor-reader-summary-production-day.service.d-10-daily-c1-owner.conf" \
+      > "$case_root/runtime/systemd/social-monitor-reader-summary-production-day.service.d/10-daily-c1-owner.conf"
+  fi
   cp "$INSTALLED_ENTRYPOINT" "$case_control/github-production-deploy.sh"
   chmod 0755 "$case_control/github-production-deploy.sh"
   for component in frontend backend control; do
@@ -242,6 +273,20 @@ run_target_case() {
     SOCIAL_MONITOR_DEPLOY_STATE="$case_state" \
       bash -c '
         source "$SOCIAL_MONITOR_DEPLOY_CONTROL/github-production-deploy.sh"
+
+        reader_summary_publication_systemctl() {
+          [[ $1 != daemon-reload ]] || return 0
+          local property=${2#--property=} unit=${4:-}
+          case $1:$property in
+            show:UnitFileState) printf "%s\n" disabled ;;
+            show:ActiveState) printf "%s\n" inactive ;;
+            show:DropInPaths)
+              local dropin=$SYSTEMD_UNIT_DIR/$unit.d/10-daily-c1-owner.conf
+              [[ ! -f $dropin ]] || printf "%s\n" "$dropin"
+              ;;
+            *) return 1 ;;
+          esac
+        }
 
         if [[ $BRIDGE_PREBOOTSTRAP_MODE == missing-helper ]]; then
           unset -f daily_runner_image_bootstrap_before_rescue

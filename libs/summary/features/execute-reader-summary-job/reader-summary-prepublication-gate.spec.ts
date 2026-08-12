@@ -237,8 +237,10 @@ describe("evaluateReaderSummaryPrepublication", () => {
       ingestionCutoff: observedThrough.toISOString(),
       sourceAuthoritySha256: "a".repeat(64),
       modelJobIdentity: "b".repeat(64),
-      outputTextSha256: "c".repeat(64),
-      outputTextByteLength: 1,
+      canonicalOutputSha256: "c".repeat(64),
+      canonicalOutputByteLength: 1,
+      rawOutputSha256: "e".repeat(64),
+      rawOutputByteLength: 1,
       githubProjectionSha256: "d".repeat(64),
       verifyPrepublication: () => {
         throw new Error("recovery provenance binding diverged");
@@ -277,8 +279,10 @@ describe("evaluateReaderSummaryPrepublication", () => {
       ingestionCutoff: observedThrough.toISOString(),
       sourceAuthoritySha256: "a".repeat(64),
       modelJobIdentity: "b".repeat(64),
-      outputTextSha256: "c".repeat(64),
-      outputTextByteLength: 1,
+      canonicalOutputSha256: "c".repeat(64),
+      canonicalOutputByteLength: 1,
+      rawOutputSha256: "e".repeat(64),
+      rawOutputByteLength: 1,
       githubProjectionSha256: "d".repeat(64),
       verifyPrepublication: () => ({
         audit: {
@@ -337,10 +341,32 @@ describe("evaluateReaderSummaryPrepublication", () => {
     expect(decision.githubProjectionAudit).toMatchObject({ recoveryV4 });
   });
 
+  it("keeps matching 13-field V2 recovery provenance publishable", async () => {
+    let readCount = 0;
+    const recoveryV4 = matchingRecoveryV2();
+    const decision = await evaluateReaderSummaryPrepublication({
+      artifact: artifactWithoutGitHubBoard(),
+      evidence: evidenceSelection,
+      publicationPolicy: publishingPolicy(),
+      githubProjectionReader: {
+        async read() {
+          readCount += 1;
+          throw new Error("ordinary projection reader must stay unreachable");
+        },
+      },
+      observedThrough,
+      recoveryProvenance: recoveryProvenanceV2For(dailyRecoveryAudit(recoveryV4)),
+    });
+
+    expect(readCount).toBe(0);
+    expect(decision.publicationDecision.status).toBe("published");
+    expect(decision.githubProjectionAudit).toMatchObject({ recoveryV4 });
+  });
+
   it("fails closed when one V4 recovery provenance field diverges", async () => {
     const recoveryV4 = {
       ...matchingRecoveryV4(),
-      outputTextByteLength: 2,
+      canonicalOutputByteLength: 2,
     };
     const decision = await evaluateReaderSummaryPrepublication({
       artifact: artifactWithoutGitHubBoard(),
@@ -513,10 +539,28 @@ const projectionItems = () =>
   githubProjectionInput();
 
 const matchingRecoveryV4 = () => ({
-  schemaVersion: "reader_summary.daily_canonical_recovery_provenance.v2",
+  schemaVersion: "reader_summary.daily_canonical_recovery_provenance.v3",
   recoveryVersion: "reader_summary.daily_canonical_recovery.v4",
   selectedOutputKind: "output_text",
   sourceAuthoritySchemaVersion: 2,
+  tenantId: tenant,
+  workspaceId: workspace,
+  requestedUtcDate: "2026-07-10",
+  ingestionCutoff: observedThrough.toISOString(),
+  sourceAuthoritySha256: "a".repeat(64),
+  modelJobIdentity: "b".repeat(64),
+  canonicalOutputSha256: "c".repeat(64),
+  canonicalOutputByteLength: 1,
+  rawOutputSha256: "e".repeat(64),
+  rawOutputByteLength: 1,
+  githubProjectionSha256: "d".repeat(64),
+});
+
+const matchingRecoveryV2 = () => ({
+  schemaVersion: "reader_summary.daily_canonical_recovery_provenance.v2",
+  recoveryVersion: "reader_summary.daily_canonical_recovery.v4",
+  selectedOutputKind: "output_text",
+  sourceAuthoritySchemaVersion: 2 as const,
   tenantId: tenant,
   workspaceId: workspace,
   requestedUtcDate: "2026-07-10",
@@ -545,6 +589,28 @@ const dailyRecoveryAudit = (recoveryV4: unknown) =>
   >["audit"];
 
 const recoveryProvenanceFor = (
+  audit: ReturnType<
+    ReaderSummaryDailyCanonicalRecoveryV4ProvenancePort["verifyPrepublication"]
+  >["audit"],
+): ReaderSummaryDailyCanonicalRecoveryV4ProvenancePort => ({
+  recoveryVersion: "reader_summary.daily_canonical_recovery.v4",
+  selectedOutputKind: "output_text",
+  sourceAuthoritySchemaVersion: 2,
+  tenantId: tenant,
+  workspaceId: workspace,
+  requestedUtcDate: "2026-07-10",
+  ingestionCutoff: observedThrough.toISOString(),
+  sourceAuthoritySha256: "a".repeat(64),
+  modelJobIdentity: "b".repeat(64),
+  canonicalOutputSha256: "c".repeat(64),
+  canonicalOutputByteLength: 1,
+  rawOutputSha256: "e".repeat(64),
+  rawOutputByteLength: 1,
+  githubProjectionSha256: "d".repeat(64),
+  verifyPrepublication: () => ({ audit, findings: [] }),
+});
+
+const recoveryProvenanceV2For = (
   audit: ReturnType<
     ReaderSummaryDailyCanonicalRecoveryV4ProvenancePort["verifyPrepublication"]
   >["audit"],

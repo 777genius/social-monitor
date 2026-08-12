@@ -5,6 +5,7 @@ import {
   canonicalRecoveryAmbiguityRetryModelJobIdentity,
   canonicalRecoveryAmbiguityRetrySourceAuthoritySha256,
   canonicalRecoveryExpiredInvalidRuntimeDate,
+  canonicalRecoveryInvalidProductUnavailableReason,
   canonicalRecoveryDates,
   canonicalRecoverySignalCount,
   DailyCanonicalRecoveryRuntimeFailureError,
@@ -16,12 +17,30 @@ import {
   type CanonicalRecoveryUnavailable,
   type CanonicalRecoveryWork,
 } from "./reader-summary-daily-canonical-recovery-v4";
+import { invalidProductRetryDates } from "./reader-summary-daily-canonical-recovery-v4-invalid-product-retry-set";
 import {
   isReaderSummaryDailySourceAuthorityV2,
   verifyReaderSummaryDailySourceAuthority,
 } from "./reader-summary-daily-source-authority-snapshot";
 
 const renewalIntervalMs = 5 * 60 * 1_000;
+
+/**
+ * V4 owns its output_text admission contract. Keeping its transient raw-output
+ * metadata here avoids widening the ordinary terminal runner's durable runtime
+ * contract, which never receives or persists raw output_text bytes.
+ */
+type ReaderSummaryDailyCanonicalRecoveryRuntime = Readonly<{
+  readonly runtimeEngine: "subscription-runtime-cli";
+  run(input: Parameters<ReaderSummaryDailySubscriptionRuntime["run"]>[0]): Promise<
+    Readonly<{
+      responseBytes: Buffer;
+      executionAttestation: Readonly<Record<string, unknown>>;
+      rawOutputSha256: string;
+      rawOutputByteLength: number;
+    }>
+  >;
+}>;
 
 class TerminalizedCanonicalRecoveryRuntimeFailureError
   extends DailyCanonicalRecoveryRuntimeFailureError
@@ -45,7 +64,7 @@ type CanonicalRecoveryCaughtUp = Readonly<{
 export class ReaderSummaryDailyCanonicalRecoveryV4Executor {
   constructor(private readonly dependencies: Readonly<{
     authority: CanonicalRecoveryAuthority;
-    runtime: ReaderSummaryDailySubscriptionRuntime;
+    runtime: ReaderSummaryDailyCanonicalRecoveryRuntime;
     finalizer: CanonicalRecoveryFinalizer;
     now: () => Date;
     schedule?: (
@@ -148,7 +167,9 @@ export class ReaderSummaryDailyCanonicalRecoveryV4Executor {
     };
 
     try {
-      let execution: Awaited<ReturnType<ReaderSummaryDailySubscriptionRuntime["run"]>>;
+      let execution: Awaited<
+        ReturnType<ReaderSummaryDailyCanonicalRecoveryRuntime["run"]>
+      >;
       try {
         execution = await this.dependencies.runtime.run({
           tenantId: activeWork.tenantId,
@@ -175,11 +196,22 @@ export class ReaderSummaryDailyCanonicalRecoveryV4Executor {
       if (renewalFailure !== undefined) throw renewalFailure;
       assertLeaseCurrent(activeWork, this.dependencies.now());
 
+      if (
+        typeof execution.rawOutputSha256 !== "string" ||
+        !/^[0-9a-f]{64}$/u.test(execution.rawOutputSha256) ||
+        !Number.isSafeInteger(execution.rawOutputByteLength) ||
+        execution.rawOutputByteLength < 1 ||
+        execution.rawOutputByteLength > 1_000_000
+      ) {
+        return terminalizeRuntimeFailure();
+      }
       const receipt = buildReaderSummaryDailyCanonicalRecoveryReceipt({
         modelJobIdentity: activeWork.modelJobIdentity,
         requestedUtcDate: activeWork.requestedUtcDate,
         sourceAuthoritySha256: activeWork.sourceAuthoritySha256,
         responseBytes: execution.responseBytes,
+        rawOutputSha256: execution.rawOutputSha256,
+        rawOutputByteLength: execution.rawOutputByteLength,
         attestation: execution.executionAttestation,
       });
       const completedWork = await this.dependencies.authority.complete(activeWork, {
@@ -395,19 +427,30 @@ const assertUnavailableTerminal = (
 ): void => {
   if (
     !(canonicalRecoveryDates as readonly string[]).includes(unavailable.requestedUtcDate) ||
-    unavailable.reasonCode !== "model_result_not_durably_persisted_after_consumed_attempt" ||
+    (unavailable.reasonCode !== "model_result_not_durably_persisted_after_consumed_attempt" &&
+      unavailable.reasonCode !== canonicalRecoveryInvalidProductUnavailableReason) ||
     !Number.isSafeInteger(unavailable.signalCount) ||
     unavailable.signalCount < 0 ||
     !/^[0-9a-f]{64}$/u.test(unavailable.sourceAuthoritySha256) ||
     !/^[0-9a-f]{64}$/u.test(unavailable.modelJobIdentity) ||
     (unavailable.attemptOrdinal !== 1 && unavailable.attemptOrdinal !== 2) ||
     (unavailable.attemptOrdinal === 2 && (
-      unavailable.requestedUtcDate !== canonicalRecoveryAmbiguityRetryDate ||
-      unavailable.signalCount !== 342 ||
-      unavailable.modelJobIdentity !== canonicalRecoveryAmbiguityRetryModelJobIdentity ||
-      unavailable.sourceAuthoritySha256 !==
-        canonicalRecoveryAmbiguityRetrySourceAuthoritySha256
-    ))
+      (unavailable.requestedUtcDate === canonicalRecoveryAmbiguityRetryDate && (
+        unavailable.reasonCode !== "model_result_not_durably_persisted_after_consumed_attempt" ||
+        unavailable.signalCount !== 342 ||
+        unavailable.modelJobIdentity !== canonicalRecoveryAmbiguityRetryModelJobIdentity ||
+        unavailable.sourceAuthoritySha256 !==
+          canonicalRecoveryAmbiguityRetrySourceAuthoritySha256
+      )) ||
+      (unavailable.requestedUtcDate !== canonicalRecoveryAmbiguityRetryDate && (
+        !(invalidProductRetryDates as readonly string[]).includes(
+          unavailable.requestedUtcDate,
+        ) ||
+        unavailable.reasonCode !== canonicalRecoveryInvalidProductUnavailableReason
+      ))
+    )) ||
+    (unavailable.attemptOrdinal === 1 &&
+      unavailable.reasonCode !== "model_result_not_durably_persisted_after_consumed_attempt")
   ) {
     throw new Error("Daily canonical recovery unavailable terminal is invalid");
   }

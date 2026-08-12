@@ -5,7 +5,9 @@ import { readerSummaryDailyModelJobIdentity } from "@social-monitor/summary/doma
 import {
   buildReaderSummaryDailyCanonicalRecoveryReceipt,
   buildReaderSummaryDailyModelJobReceipt,
+  verifyReaderSummaryDailyCanonicalRecoveryReceipt,
 } from "./reader-summary-daily-model-job-receipt";
+import { canonicalJsonBytes } from "./reader-summary-daily-canonical-recovery-v4";
 
 const modelJob = readerSummaryDailyModelJobIdentity({
   tenantId: "10000000-0000-4000-8000-000000000001",
@@ -50,6 +52,8 @@ describe("buildReaderSummaryDailyModelJobReceipt", () => {
       requestedUtcDate: "2026-07-23",
       sourceAuthoritySha256: "e".repeat(64),
       responseBytes,
+      rawOutputSha256: hash(responseBytes),
+      rawOutputByteLength: responseBytes.length,
       attestation: {
         ...attestation(responseBytes),
         purpose: "social_monitor.reader_summary.weekly.generate",
@@ -60,7 +64,50 @@ describe("buildReaderSummaryDailyModelJobReceipt", () => {
       modelJobIdentity: "d".repeat(64),
       requestedUtcDate: "2026-07-23",
       sourceAuthoritySha256: "e".repeat(64),
+      canonicalOutputSha256: hash(responseBytes),
+      canonicalOutputByteLength: responseBytes.length,
+      rawOutputSha256: hash(responseBytes),
+      rawOutputByteLength: responseBytes.length,
     });
+  });
+
+  it("rejects independent raw and canonical recovery receipt tampering", () => {
+    const responseBytes = Buffer.from('{"canonical":true}', "utf8");
+    const rawOutputBytes = Buffer.from('{ "canonical": true }', "utf8");
+    const input = {
+      modelJobIdentity: "d".repeat(64),
+      requestedUtcDate: "2026-07-23",
+      sourceAuthoritySha256: "e".repeat(64),
+      responseBytes,
+    } as const;
+    const receipt = buildReaderSummaryDailyCanonicalRecoveryReceipt({
+      ...input,
+      rawOutputSha256: hash(rawOutputBytes),
+      rawOutputByteLength: rawOutputBytes.length,
+      attestation: {
+        ...attestation(rawOutputBytes),
+        purpose: "social_monitor.reader_summary.weekly.generate",
+        selectedOutputKind: "output_text",
+      },
+    });
+    expect(() => verifyReaderSummaryDailyCanonicalRecoveryReceipt({
+      ...input,
+      receiptBytes: receipt.receiptBytes,
+    })).not.toThrow();
+
+    const canonicalTamper = JSON.parse(receipt.receiptBytes.toString("utf8")) as Record<string, unknown>;
+    canonicalTamper.canonicalOutputSha256 = "0".repeat(64);
+    expect(() => verifyReaderSummaryDailyCanonicalRecoveryReceipt({
+      ...input,
+      receiptBytes: canonicalJsonBytes(canonicalTamper),
+    })).toThrow(/receipt/u);
+
+    const rawTamper = JSON.parse(receipt.receiptBytes.toString("utf8")) as Record<string, unknown>;
+    rawTamper.rawOutputSha256 = "0".repeat(64);
+    expect(() => verifyReaderSummaryDailyCanonicalRecoveryReceipt({
+      ...input,
+      receiptBytes: canonicalJsonBytes(rawTamper),
+    })).toThrow(/attestation/u);
   });
 });
 

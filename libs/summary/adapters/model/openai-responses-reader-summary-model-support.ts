@@ -9,6 +9,7 @@ export {
 } from "./openai-responses-reader-summary-http";
 export { asRecord } from "./openai-responses-reader-summary-json";
 export {
+  assertOpenAiReaderSummaryClaimCitationIds,
   extractOpenAiOutputText,
   OpenAiReaderSummaryOutputParseError,
   parseOpenAiReaderSummaryJsonObject,

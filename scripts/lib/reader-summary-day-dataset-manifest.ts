@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 
+import { runWithTenantDatabaseAccess } from "@social-monitor/platform-persistence";
 import type { PrismaSummaryClient } from "@social-monitor/summary/adapters/persistence/prisma/prisma-summary-client";
 import type { ReaderSummaryTimestampPolicy } from "@social-monitor/summary/ports";
 
@@ -60,8 +61,16 @@ export async function captureReaderSummaryDayDatasetManifest(params: {
 }): Promise<ReaderSummaryDayDatasetManifest> {
   assertExactUtcDay(params.startedAt, params.endedAt);
   const timestampPolicy = params.timestampPolicy ?? "published_at";
-  const feedRows = await readFeedRows({ ...params, timestampPolicy });
-  const eligibilityRows = await readGitHubEligibilityRows(params);
+  const { feedRows, eligibilityRows } = await runWithTenantDatabaseAccess(
+    {
+      tenantId: params.tenantId,
+      workspaceId: params.workspaceId,
+    },
+    async () => ({
+      feedRows: await readFeedRows({ ...params, timestampPolicy }),
+      eligibilityRows: await readGitHubEligibilityRows(params),
+    }),
+  );
   return buildReaderSummaryDayDatasetManifest({
     tenantId: params.tenantId,
     workspaceId: params.workspaceId,

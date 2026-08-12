@@ -1,27 +1,19 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-
-const foundation =
-  "prisma/migrations/20260802233000_reader_summary_daily_canonical_recovery_v4/migration.sql";
-const security =
-  "prisma/migrations/20260802233100_reader_summary_daily_canonical_recovery_v4_security/migration.sql";
-const originalCutoffForward =
-  "prisma/migrations/20260804110000_reader_summary_daily_v4_original_cutoff_forward_correction/migration.sql";
-const artifactRepository =
-  "libs/summary/adapters/persistence/prisma/prisma-reader-summary-artifact.repository.ts";
-const publicationUseCase =
-  "libs/summary/features/execute-reader-summary-job/publish-reader-summary-job.ts";
+import {
+  assertFullReplayDurableSnapshot,
+  protectedDayDigest,
+  type RecoveryV4ReplaySnapshotClient,
+} from "./reader-summary-daily-canonical-recovery-v4-replay-snapshot";
+const foundation = "prisma/migrations/20260802233000_reader_summary_daily_canonical_recovery_v4/migration.sql";
+const security = "prisma/migrations/20260802233100_reader_summary_daily_canonical_recovery_v4_security/migration.sql";
+const originalCutoffForward = "prisma/migrations/20260804110000_reader_summary_daily_v4_original_cutoff_forward_correction/migration.sql";
+const artifactRepository = "libs/summary/adapters/persistence/prisma/prisma-reader-summary-artifact.repository.ts";
+const publicationUseCase = "libs/summary/features/execute-reader-summary-job/publish-reader-summary-job.ts";
 const tenant = "00000000-0000-7000-8000-000000000901";
 const workspace = "00000000-0000-7000-8000-000000000902";
-const historicalGithubOmissionReason =
-  "Reviewed immutable recovery authority contains no eligible GitHub trending projection for this UTC day.";
-
-type Client = Readonly<{
-  query<T extends Record<string, unknown> = Record<string, unknown>>(
-    sql: string,
-    values?: readonly unknown[],
-  ): Promise<Readonly<{ rows: readonly T[] }>>;
-}>;
+const historicalGithubOmissionReason = "Reviewed immutable recovery authority contains no eligible GitHub trending projection for this UTC day.";
+type Client = RecoveryV4ReplaySnapshotClient;
 
 /** Static gate used before an ephemeral PostgreSQL contract creates its fixture. */
 export const assertReaderSummaryDailyCanonicalRecoveryV4MigrationContract = (): void => {
@@ -364,11 +356,9 @@ export const assertReaderSummaryDailyCanonicalRecoveryV4PostgresContract = async
   input: Readonly<{
     auditor: Client;
     firstTerminal: Client;
-    executeAll(): Promise<Readonly<{
-      kind: string;
-      publications?: readonly Readonly<{ requestedUtcDate: string }>[];
-    }>>;
+    executeAll(): Promise<Readonly<{ kind: string; publications?: readonly Readonly<{ requestedUtcDate: string }>[] }>>;
     runtimeCallCount(): number;
+    markStage(stage: "authority_audit_complete" | "least_privilege_audit_complete" | "negative_probes_complete" | "first_execute_all_complete" | "replay_complete" | "final_aggregate_complete"): void;
   }>,
 ): Promise<void> => {
   const protectedBefore = await protectedDayDigest(input.auditor);
@@ -396,7 +386,9 @@ export const assertReaderSummaryDailyCanonicalRecoveryV4PostgresContract = async
           OR (NOT procedure.prosecdef AND procedure.proname NOT IN (
             'reader_summary_daily_canonical_recovery_v4_model_identity',
             'reader_summary_daily_canonical_recovery_v4_report_canonical_json',
-            'record_reader_summary_daily_canonical_recovery_v4_evidence'
+            -- Intentional ACL-closed invoker evidence recorders:
+            'record_reader_summary_daily_canonical_recovery_v4_evidence',
+            'record_reader_summary_daily_canonical_recovery_v4_evidence_v2', 'record_reader_summary_daily_canonical_recovery_v4_evidence_v3'
           ))))::TEXT "unsafeFunctions"
   `);
   const count = counts.rows[0];
@@ -410,8 +402,8 @@ export const assertReaderSummaryDailyCanonicalRecoveryV4PostgresContract = async
     `v4 RLS or SECURITY DEFINER hardening diverged: ${JSON.stringify(count)}`,
   );
 
-  await assertJul23Jul28Jul30Authority(input.auditor);
-  await assertLeastPrivilege(input.auditor);
+  await assertJul23Jul28Jul30Authority(input.auditor); input.markStage("authority_audit_complete");
+  await assertLeastPrivilege(input.auditor); input.markStage("least_privilege_audit_complete");
   await assertRejected(
     input.auditor,
     `BEGIN;
@@ -459,6 +451,7 @@ export const assertReaderSummaryDailyCanonicalRecoveryV4PostgresContract = async
      COMMIT`,
     "terminal provenance re-verification",
   );
+  input.markStage("negative_probes_complete");
 
   const firstRun = await input.executeAll();
   const expectedDates = [
@@ -472,11 +465,9 @@ export const assertReaderSummaryDailyCanonicalRecoveryV4PostgresContract = async
       input.runtimeCallCount() === expectedDates.length,
     "real V4 pipeline did not publish exactly the eight immutable UTC dates",
   );
-  const replay = await input.executeAll();
-  assert(
-    replay.kind === "caught_up" && input.runtimeCallCount() === expectedDates.length,
-    "fenced canonical recovery replay invoked the subscription runtime again",
-  );
+  input.markStage("first_execute_all_complete");
+  await assertFullReplayDurableSnapshot(input.auditor, tenant, workspace, () => input.executeAll(), () => input.runtimeCallCount(), expectedDates.length);
+  input.markStage("replay_complete");
   const finalized = await input.auditor.query<{
     finalizedLeases: string;
     linkedLeases: string;
@@ -484,7 +475,7 @@ export const assertReaderSummaryDailyCanonicalRecoveryV4PostgresContract = async
     finalizedJobs: string;
     finalizedPublications: string;
     finalizedEvidence: string;
-    v2Audits: string;
+    v3Audits: string;
     outside: string;
   }>(`
     SELECT
@@ -515,7 +506,7 @@ export const assertReaderSummaryDailyCanonicalRecoveryV4PostgresContract = async
        JOIN public.reader_summary_daily_canonical_recovery_v4_effective_leases lease
          ON lease.reader_summary_artifact_id = artifact.id
        WHERE artifact.quality_signals->'githubProjectionAudit'->'recoveryV4'
-         ->>'schemaVersion' = 'reader_summary.daily_canonical_recovery_provenance.v2')::TEXT AS "v2Audits",
+         ->>'schemaVersion' = 'reader_summary.daily_canonical_recovery_provenance.v3')::TEXT AS "v3Audits",
       (SELECT count(*) FROM public.reader_summary_daily_canonical_recovery_v4_authorities
        WHERE requested_utc_date NOT BETWEEN DATE '2026-07-23' AND DATE '2026-07-30')::TEXT outside
   `);
@@ -526,14 +517,12 @@ export const assertReaderSummaryDailyCanonicalRecoveryV4PostgresContract = async
       finalized.rows[0]?.finalizedJobs === "8" &&
       finalized.rows[0]?.finalizedPublications === "8" &&
       finalized.rows[0]?.finalizedEvidence === "8" &&
-      finalized.rows[0]?.v2Audits === "8" &&
+      finalized.rows[0]?.v3Audits === "8" &&
       finalized.rows[0]?.outside === "0",
     "real V4 Prisma publication or fenced finalization did not cover all eight dates",
   );
-  assert(
-    await protectedDayDigest(input.auditor) === protectedBefore,
-    "v4 changed an excluded Jul21 or Jul22 authority",
-  );
+  assert(await protectedDayDigest(input.auditor) === protectedBefore, "v4 changed an excluded Jul21 or Jul22 authority");
+  input.markStage("final_aggregate_complete");
 };
 
 const assertJul23Jul28Jul30Authority = async (client: Client): Promise<void> => {
@@ -895,22 +884,17 @@ const assertJul23Jul28Jul30Authority = async (client: Client): Promise<void> => 
     "immutable source authority v2 projection, real IDs, cutoff, or exact omissions diverged",
   );
 };
-
 const assertLeastPrivilege = async (client: Client): Promise<void> => {
   const result = await client.query<{
-    directTable: boolean;
-    publicClaim: boolean;
-    terminalClaim: boolean;
-    terminalFinalize: boolean;
-    publicationFinalize: boolean;
-    publicVerifier: boolean;
-    terminalVerifier: boolean;
-    systemVerifier: boolean;
-    systemPrepare: boolean;
-    systemFinalize: boolean;
+    directTable: boolean; publicClaim: boolean;
+    terminalClaim: boolean; terminalFinalize: boolean;
+    publicationFinalize: boolean; publicVerifier: boolean;
+    terminalVerifier: boolean; systemVerifier: boolean;
+    systemPrepare: boolean; systemFinalize: boolean;
     publicRecoveryEvidence: boolean;
     terminalRecoveryEvidence: boolean;
     runtimeRecoveryEvidence: boolean;
+    closedRecoveryEvidenceRecorders: boolean;
   }>(`
     SELECT
       has_table_privilege('social_monitor_reader_summary_daily_terminal',
@@ -951,7 +935,14 @@ const assertLeastPrivilege = async (client: Client): Promise<void> => {
         'EXECUTE') AS "terminalRecoveryEvidence",
       has_function_privilege('social_monitor_reader_summary_publication_runtime',
         'public.record_reader_summary_daily_canonical_recovery_v4_evidence(UUID)',
-        'EXECUTE') AS "runtimeRecoveryEvidence"
+        'EXECUTE') AS "runtimeRecoveryEvidence",
+      NOT EXISTS (
+        SELECT 1 FROM (VALUES ('public'::TEXT),
+          ('social_monitor_reader_summary_daily_terminal'::TEXT), ('social_monitor_reader_summary_publication_runtime'::TEXT), ('social_monitor_tenant_system_runtime'::TEXT)) AS principal(name)
+        CROSS JOIN (VALUES ('public.record_reader_summary_daily_canonical_recovery_v4_evidence_v2(UUID)'::TEXT),
+          ('public.record_reader_summary_daily_canonical_recovery_v4_evidence_v3(UUID)'::TEXT)) AS recorder(signature)
+        WHERE has_function_privilege(principal.name, recorder.signature, 'EXECUTE')
+      ) AS "closedRecoveryEvidenceRecorders"
   `);
   const row = result.rows[0];
   assert(
@@ -959,22 +950,13 @@ const assertLeastPrivilege = async (client: Client): Promise<void> => {
       row.terminalClaim === true && row.terminalFinalize === false &&
       row.publicationFinalize === false && row.publicVerifier === false &&
       row.terminalVerifier === false && row.systemVerifier === true &&
-      row.systemPrepare === true &&
-      row.systemFinalize === true && row.publicRecoveryEvidence === false &&
-      row.terminalRecoveryEvidence === false && row.runtimeRecoveryEvidence === false,
+      row.systemPrepare === true && row.systemFinalize === true &&
+      row.publicRecoveryEvidence === false &&
+      row.terminalRecoveryEvidence === false &&
+      row.runtimeRecoveryEvidence === false &&
+      row.closedRecoveryEvidenceRecorders === true,
     "v4 least-privilege function ACLs diverged",
   );
-};
-
-const protectedDayDigest = async (client: Client): Promise<string> => {
-  const result = await client.query<{ digest: string }>(`
-    SELECT encode(sha256(convert_to(COALESCE(jsonb_agg(jsonb_build_array(
-      requested_utc_date, btrim(canonical_sha256)) ORDER BY requested_utc_date,
-      recovery_id), '[]'::JSONB)::TEXT, 'UTF8')), 'hex') AS digest
-    FROM public.reader_summary_production_recovery_days
-    WHERE requested_utc_date IN (DATE '2026-07-21', DATE '2026-07-22')
-  `);
-  return result.rows[0]?.digest ?? "";
 };
 
 const assertRejected = async (
@@ -984,12 +966,14 @@ const assertRejected = async (
 ): Promise<void> => {
   try {
     await client.query(sql);
-  } catch {
+  } catch (error) {
+    if (isCheckerQueryTimeout(error)) throw error;
     if (/^BEGIN/iu.test(sql.trim())) await client.query("ROLLBACK");
     return;
   }
   throw new Error(`daily canonical recovery admitted ${label}`);
 };
+const isCheckerQueryTimeout = (error: unknown): boolean => typeof error === "object" && error !== null && "code" in error && ((error as { code?: unknown }).code === "55P03" || (error as { code?: unknown }).code === "57014");
 
 const assert: (condition: unknown, message: string) => asserts condition =
   (condition, message) => {

@@ -1,0 +1,12 @@
+[Unit]
+Description=Run Social Monitor daily live collection and AI reader summary
+
+[Timer]
+OnCalendar=*-*-* 00:15:00 UTC
+AccuracySec=1min
+RandomizedDelaySec=0
+Persistent=true
+Unit=social-monitor-daily.service
+
+[Install]
+WantedBy=timers.target

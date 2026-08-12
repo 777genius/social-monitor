@@ -7,57 +7,17 @@ import { join } from "node:path";
 import { defaultPostgresRuntimePoolConfig } from "@social-monitor/platform-persistence";
 import { PrismaSummaryConnection } from "@social-monitor/summary/adapters/persistence/prisma/prisma-summary-connection";
 
-import {
-  provisionReaderSummaryPublicationFixtureScope,
-  readerSummaryPublicationBackendPid,
-  requiredReaderSummaryPublicationAdminDatabaseUrl,
-  setReaderSummaryPublicationSessionScope,
-} from "./lib/reader-summary-publication-postgres-fixture-scope";
-import {
-  applyOrderedReaderSummaryMigrations,
-  assertReaderSummaryMigrationDatabaseMatchesSchema,
-  createReaderSummaryPublicationMigrationWorkspace,
-  installPublicationAndFollowingMigrations,
-  preparePrePublicationMigrations,
-  removeReaderSummaryPublicationMigrationWorkspace,
-} from "./lib/reader-summary-publication-postgres-migrations";
-import {
-  assertReaderSummaryProductionRecoveryPostgresContract,
-  type RecoveryPostgresClient,
-  readerSummaryProductionRecoveryFixtureScope,
-  seedReaderSummaryProductionRecoveryFixture,
-} from "./lib/reader-summary-production-recovery-postgres-contract";
-import {
-  assertReaderSummaryProductionRecoveryGapPostgresContract,
-  removeOriginalCutoffGapFixtureCollision,
-  seedReaderSummaryProductionRecoveryGapFixture,
-} from "./lib/reader-summary-production-recovery-gap-postgres-contract";
-import {
-  assertReaderSummaryDailyCanonicalRecoveryV4MigrationContract,
-  assertReaderSummaryDailyCanonicalRecoveryV4PostgresContract,
-} from "./lib/reader-summary-daily-canonical-recovery-v4-postgres-contract";
-import {
-  assertReaderSummaryDailyCanonicalRecoveryV4HistoricalUnavailableMigrationContract,
-} from "./lib/reader-summary-daily-canonical-recovery-v4-historical-unavailable-postgres-contract";
-import {
-  assertReaderSummaryDailyCanonicalRecoveryV4InvalidRuntimeMigrationContract,
-  assertReaderSummaryDailyCanonicalRecoveryV4InvalidRuntimePostgresContract,
-} from "./lib/reader-summary-daily-canonical-recovery-v4-invalid-runtime-postgres-contract";
-import {
-  assertReaderSummaryDailyCanonicalRecoveryV4AmbiguityRetryMigrationContract,
-  prepareReaderSummaryDailyCanonicalRecoveryV4AmbiguityRetryFixture,
-} from "./lib/reader-summary-daily-canonical-recovery-v4-ambiguity-retry-postgres-contract";
-import {
-  type CanonicalRecoveryAuthority,
-  type CanonicalRecoveryFinalizer,
-  type CanonicalRecoveryPublication,
-  type CanonicalRecoveryWork,
-  PostgresCanonicalRecoveryAmbiguityRetryAuthorizer,
-  PostgresCanonicalRecoveryAuthority,
-  canonicalJsonBytes,
-  canonicalRecoveryDates,
-  sha256,
-} from "./lib/reader-summary-daily-canonical-recovery-v4";
+import { provisionReaderSummaryPublicationFixtureScope, readerSummaryPublicationBackendPid, requiredReaderSummaryPublicationAdminDatabaseUrl, setReaderSummaryPublicationSessionScope } from "./lib/reader-summary-publication-postgres-fixture-scope";
+import { applyOrderedReaderSummaryMigrations, assertReaderSummaryMigrationDatabaseMatchesSchema, createReaderSummaryPublicationMigrationWorkspace, installPublicationAndFollowingMigrations, preparePrePublicationMigrations, removeReaderSummaryPublicationMigrationWorkspace } from "./lib/reader-summary-publication-postgres-migrations";
+import { assertReaderSummaryProductionRecoveryPostgresContract, type RecoveryPostgresClient, readerSummaryProductionRecoveryFixtureScope, seedReaderSummaryProductionRecoveryFixture } from "./lib/reader-summary-production-recovery-postgres-contract";
+import { assertReaderSummaryProductionRecoveryGapPostgresContract, removeOriginalCutoffGapFixtureCollision, seedReaderSummaryProductionRecoveryGapFixture } from "./lib/reader-summary-production-recovery-gap-postgres-contract";
+import { assertReaderSummaryDailyCanonicalRecoveryV4MigrationContract, assertReaderSummaryDailyCanonicalRecoveryV4PostgresContract } from "./lib/reader-summary-daily-canonical-recovery-v4-postgres-contract";
+import { assertReaderSummaryDailyCanonicalRecoveryV4HistoricalUnavailableMigrationContract } from "./lib/reader-summary-daily-canonical-recovery-v4-historical-unavailable-postgres-contract";
+import { assertReaderSummaryDailyCanonicalRecoveryV4InvalidRuntimeMigrationContract, assertReaderSummaryDailyCanonicalRecoveryV4InvalidRuntimePostgresContract } from "./lib/reader-summary-daily-canonical-recovery-v4-invalid-runtime-postgres-contract";
+import { assertReaderSummaryDailyCanonicalRecoveryV4AmbiguityRetryMigrationContract, prepareReaderSummaryDailyCanonicalRecoveryV4AmbiguityRetryFixture } from "./lib/reader-summary-daily-canonical-recovery-v4-ambiguity-retry-postgres-contract";
+import { assertReaderSummaryDailyCanonicalRecoveryV4EvidenceRecorderPostgresContract } from "./lib/reader-summary-daily-canonical-recovery-v4-evidence-recorder-postgres-contract";
+import { assertReaderSummaryDailyCanonicalRecoveryV4InvalidProductRetrySetMigrationContract, assertReaderSummaryDailyCanonicalRecoveryV4InvalidProductRetrySetPostgresContract } from "./lib/reader-summary-daily-canonical-recovery-v4-invalid-product-retry-set-postgres-contract";
+import { type CanonicalRecoveryAuthority, type CanonicalRecoveryFinalizer, type CanonicalRecoveryPublication, type CanonicalRecoveryWork, PostgresCanonicalRecoveryAmbiguityRetryAuthorizer, PostgresCanonicalRecoveryAuthority, canonicalJsonBytes, canonicalRecoveryDates, sha256 } from "./lib/reader-summary-daily-canonical-recovery-v4";
 import { ReaderSummaryDailyCanonicalRecoveryV4Executor } from "./lib/reader-summary-daily-canonical-recovery-v4-executor";
 import { createReaderSummaryDailyTerminalRuntimeConnection } from "./lib/reader-summary-daily-terminal-runtime-connection";
 import { createReaderSummaryDailyCanonicalRecoveryV4Finalizer } from "./run-reader-summary-daily-canonical-recovery";
@@ -203,19 +163,22 @@ const serverAdmin = new Pool({
   connectionString: serverAdminDatabaseUrl,
   max: 1,
 });
-const migrationWorkspace =
-  createReaderSummaryPublicationMigrationWorkspace();
+const checkerStartedAt = process.hrtime.bigint();
+const markLateStage = (stage: string): void => console.log(`[reader-summary-pg18] stage=${stage} elapsed_ms=${(process.hrtime.bigint() - checkerStartedAt) / 1_000_000n}`);
+const configureLateAssertionSession = async (client: RecoveryPostgresClient): Promise<void> => { await client.query("SET lock_timeout = '10s'"); await client.query("SET statement_timeout = '180s'"); };
+const isCheckerQueryTimeout = (error: unknown): boolean => typeof error === "object" && error !== null && "code" in error && ((error as { code?: unknown }).code === "55P03" || (error as { code?: unknown }).code === "57014");
+const migrationWorkspace = createReaderSummaryPublicationMigrationWorkspace();
 const canonicalRecoveryFoundationMigrations = [
   "20260802233000_reader_summary_daily_canonical_recovery_v4",
   "20260802233100_reader_summary_daily_canonical_recovery_v4_security",
   "20260803173000_reader_summary_daily_canonical_recovery_v4_tenant_rls",
 ] as const;
-const originalCutoffForwardMigration =
-  "20260804110000_reader_summary_daily_v4_original_cutoff_forward_correction";
-const historicalUnavailableMigration =
-  "20260805163000_reader_summary_daily_v4_historical_unavailable";
-const invalidRuntimeTerminalMigration =
-  "20260805180000_reader_summary_daily_v4_invalid_runtime_terminalization";
+const originalCutoffForwardMigration = "20260804110000_reader_summary_daily_v4_original_cutoff_forward_correction";
+const historicalUnavailableMigration = "20260805163000_reader_summary_daily_v4_historical_unavailable";
+const invalidRuntimeTerminalMigration = "20260805180000_reader_summary_daily_v4_invalid_runtime_terminalization";
+const invalidProductRetrySetMigration = "20260806010000_reader_summary_daily_v4_invalid_product_retry_set";
+const canonicalOutputReceiptMigration = "20260806010100_reader_summary_daily_v4_canonical_output_receipt_v3";
+const dailyDeliveryC1Migration = "20260811170000_reader_summary_daily_delivery_c1_retry_evidence";
 const ambiguityRetryMigrations = [
   "20260804130000_reader_summary_daily_v4_ambiguity_retry_schema",
   "20260804130100_reader_summary_daily_v4_ambiguity_retry_transitions",
@@ -224,11 +187,14 @@ const ambiguityRetryMigrations = [
   "20260805090000_reader_summary_daily_v4_ambiguity_retry_period_guard",
   historicalUnavailableMigration,
   invalidRuntimeTerminalMigration,
+  invalidProductRetrySetMigration,
+  canonicalOutputReceiptMigration,
 ] as const;
 const deferredCanonicalRecoveryMigrations = [
   ...canonicalRecoveryFoundationMigrations,
   originalCutoffForwardMigration,
   ...ambiguityRetryMigrations,
+  dailyDeliveryC1Migration,
 ] as const;
 let ownerRolePreexisting = false;
 let capabilityRolePreexisting = false;
@@ -242,7 +208,7 @@ let fixtureDailyTerminalRoleCreated = false;
 
 class DeterministicDailyRecoveryRuntime {
   readonly runtimeEngine = "subscription-runtime-cli" as const;
-  private readonly responseBytes = canonicalJsonBytes({
+  private readonly canonicalResponseBytes = canonicalJsonBytes({
     headline: "Canonical recovery fixture",
     executiveSummary: "Immutable recovery evidence is intentionally no-signal.",
     narrativeSections: [],
@@ -280,11 +246,20 @@ class DeterministicDailyRecoveryRuntime {
     confidence: { level: "low", score: 0, rationale: "No invented signal." },
     noSignalReason: "No immutable signal.",
   });
+  private readonly selectedRawOutputBytes = Buffer.concat([
+    Buffer.from("\n ", "utf8"), this.canonicalResponseBytes, Buffer.from("\t", "utf8"),
+  ]);
   private readonly requestedUtcDates: string[] = [];
 
   get callCount(): number {
     return this.requestedUtcDates.length;
   }
+
+  get canonicalOutputSha256(): string { return sha256(this.canonicalResponseBytes); }
+  get canonicalOutputByteLength(): number { return this.canonicalResponseBytes.length; }
+  get rawOutputSha256(): string { return sha256(this.selectedRawOutputBytes); }
+  get rawOutputByteLength(): number { return this.selectedRawOutputBytes.length; }
+  get rawOutputBytes(): Buffer { return Buffer.from(this.selectedRawOutputBytes); }
 
   async run(input: Readonly<{
     requestedUtcDate: string;
@@ -292,14 +267,27 @@ class DeterministicDailyRecoveryRuntime {
   }>): Promise<Readonly<{
     responseBytes: Buffer;
     executionAttestation: Readonly<Record<string, unknown>>;
+    rawOutputSha256: string;
+    rawOutputByteLength: number;
   }>> {
     if (input.signal.aborted) {
       throw new Error("Daily recovery runtime was aborted before output_text");
     }
     this.requestedUtcDates.push(input.requestedUtcDate);
-    const responseSha256 = sha256(this.responseBytes);
+    const rawOutputBytes = this.rawOutputBytes;
+    const rawOutputSha256 = sha256(rawOutputBytes);
+    assert(
+      rawOutputSha256 !== this.canonicalOutputSha256 &&
+        rawOutputBytes.length !== this.canonicalOutputByteLength &&
+        canonicalJsonBytes(JSON.parse(rawOutputBytes.toString("utf8"))).equals(
+          this.canonicalResponseBytes,
+        ),
+      "deterministic runtime must bind semantic-equal raw JSON separately from canonical bytes",
+    );
     return {
-      responseBytes: Buffer.from(this.responseBytes),
+      responseBytes: Buffer.from(this.canonicalResponseBytes),
+      rawOutputSha256,
+      rawOutputByteLength: rawOutputBytes.length,
       executionAttestation: {
         schemaVersion: 1,
         requestId: `daily-recovery-pg18-${input.requestedUtcDate}`,
@@ -318,11 +306,22 @@ class DeterministicDailyRecoveryRuntime {
           "utf8",
         )),
         selectedOutputKind: "output_text",
-        selectedOutputSha256: responseSha256,
+        selectedOutputSha256: rawOutputSha256,
       },
     };
   }
 }
+
+const assertRawOutputMetadataOnly = async (client: RecoveryPostgresClient, runtime: DeterministicDailyRecoveryRuntime): Promise<void> => {
+  assert(runtime.rawOutputSha256 !== runtime.canonicalOutputSha256 && runtime.rawOutputByteLength !== runtime.canonicalOutputByteLength, "raw and canonical deterministic bindings must differ");
+  const result = await client.query<{ finalized: string; bound: string; rawDurable: string }>(`
+    SELECT count(*)::TEXT AS finalized, count(*) FILTER (WHERE btrim(lease."response_sha256")=$3 AND octet_length(lease."response_bytes")=$4::INTEGER AND decoded.receipt->>'canonicalOutputSha256'=$3 AND (decoded.receipt->>'canonicalOutputByteLength')::INTEGER=$4::INTEGER AND decoded.receipt->>'rawOutputSha256'=$5 AND (decoded.receipt->>'rawOutputByteLength')::INTEGER=$6::INTEGER AND lease."attestation"->>'selectedOutputSha256'=$5)::TEXT AS bound, count(*) FILTER (WHERE position($7::BYTEA IN lease."response_bytes")>0 OR position($7::BYTEA IN lease."receipt_bytes")>0 OR position($7::BYTEA IN lease."attestation_bytes")>0)::TEXT AS "rawDurable"
+    FROM public."reader_summary_daily_canonical_recovery_v4_effective_leases" lease CROSS JOIN LATERAL (SELECT convert_from(lease."receipt_bytes",'UTF8')::JSONB AS receipt) decoded
+    WHERE lease."tenant_id"=$1::UUID AND lease."workspace_id"=$2::UUID AND lease."state"='FINALIZED'
+  `, [readerSummaryProductionRecoveryFixtureScope.tenantId, readerSummaryProductionRecoveryFixtureScope.workspaceId, runtime.canonicalOutputSha256, runtime.canonicalOutputByteLength, runtime.rawOutputSha256, runtime.rawOutputByteLength, runtime.rawOutputBytes]);
+  const row = result.rows[0];
+  assert(row?.finalized === "8" && row.bound === "8" && row.rawDurable === "0", `raw/canonical receipt separation diverged: ${JSON.stringify(row)}`);
+};
 
 const assertReaderSummaryDailyCanonicalRecoveryV4GenericFixture = async (
   client: RecoveryPostgresClient,
@@ -442,7 +441,7 @@ const assertAmbiguityRetryPublishedHistoryPeriodGuard = async (input: Readonly<{
   await input.auditor.query("BEGIN ISOLATION LEVEL SERIALIZABLE");
   try {
     await seedPeriodGuardPublication(input.auditor, periodGuardIds.authorizationCollision, { periodStartedAt: "2026-07-23T00:00:00.000Z", periodEndedAt: "2026-07-24T00:00:00.000Z", requestedUtcDate: "2026-08-05", semanticStatus: "NO_SIGNAL", timestamp: "2026-08-04T12:00:00.000Z" }); await input.auditor.query('SET LOCAL SESSION AUTHORIZATION "social_monitor_reader_summary_daily_terminal"');
-    let message: string | undefined; try { await input.auditor.query(`SELECT * FROM public."authorize_reader_summary_daily_canonical_recovery_v4_ambiguity_retry"($1::UUID,$2::UUID,DATE '2026-07-23',$3::CHAR(64),$4::CHAR(64),transaction_timestamp())`, [readerSummaryProductionRecoveryFixtureScope.tenantId, readerSummaryProductionRecoveryFixtureScope.workspaceId, input.originalModelJobIdentity, input.sourceAuthoritySha256]); } catch (error) { message = error instanceof Error ? error.message : String(error); }
+    let message: string | undefined; try { await input.auditor.query(`SELECT * FROM public."authorize_reader_summary_daily_canonical_recovery_v4_ambiguity_retry"($1::UUID,$2::UUID,DATE '2026-07-23',$3::CHAR(64),$4::CHAR(64),transaction_timestamp())`, [readerSummaryProductionRecoveryFixtureScope.tenantId, readerSummaryProductionRecoveryFixtureScope.workspaceId, input.originalModelJobIdentity, input.sourceAuthoritySha256]); } catch (error) { if (isCheckerQueryTimeout(error)) throw error; message = error instanceof Error ? error.message : String(error); }
     assert(message?.includes("cannot supersede published history"), "authorization accepted a current-date/status collision");
   } finally { await input.auditor.query("ROLLBACK"); }
 };
@@ -450,7 +449,7 @@ const assertPostAuthorizationPublisherRace = async (input: Readonly<{ auditor: R
   const callsBefore = input.runtimeCallCount(); await input.auditor.query("BEGIN ISOLATION LEVEL SERIALIZABLE");
   try {
     await seedPeriodGuardPublication(input.auditor, periodGuardIds.racePrior, { periodStartedAt: "2026-07-23T00:00:00.000Z", periodEndedAt: "2026-07-24T00:00:00.000Z", requestedUtcDate: "2026-08-04", semanticStatus: "COMPLETED", timestamp: "2026-08-04T12:00:00.000Z" }); const before = await periodGuardSnapshot(input.auditor, periodGuardIds.racePrior); await seedPeriodGuardPublisherCandidate(input.auditor, { recoveryV4: true, timestamp: "2026-08-04T13:00:00.000Z" }); await input.auditor.query('SET LOCAL ROLE "social_monitor_reader_summary_publication_owner"'); await input.auditor.query("SAVEPOINT before_period_guard_publisher");
-    let message: string | undefined; try { await publishPeriodGuardCandidate(input.auditor); } catch (error) { message = error instanceof Error ? error.message : String(error); } await input.auditor.query("ROLLBACK TO SAVEPOINT before_period_guard_publisher"); await input.auditor.query("RESET ROLE");
+    let message: string | undefined; try { await publishPeriodGuardCandidate(input.auditor); } catch (error) { if (isCheckerQueryTimeout(error)) throw error; message = error instanceof Error ? error.message : String(error); } await input.auditor.query("ROLLBACK TO SAVEPOINT before_period_guard_publisher"); await input.auditor.query("RESET ROLE");
     const retry = await input.auditor.query<{ state: string; unprepared: boolean }>(`SELECT state,reader_summary_job_id IS NULL AND reader_summary_artifact_id IS NULL AND publication_id IS NULL AND publication_prepared_at IS NULL AND finalized_at IS NULL AS unprepared FROM public."reader_summary_daily_canonical_recovery_v4_ambiguity_retries" WHERE tenant_id=$1::UUID AND workspace_id=$2::UUID AND requested_utc_date=DATE '2026-07-23'`, [readerSummaryProductionRecoveryFixtureScope.tenantId, readerSummaryProductionRecoveryFixtureScope.workspaceId]);
     assert(message?.includes("retry cannot supersede target publication slot") && (await periodGuardSnapshot(input.auditor, periodGuardIds.racePrior)) === before && retry.rows[0]?.state === "CONSUMED" && retry.rows[0]?.unprepared === true, `post-authorization publisher race mutated history or retry: ${message ?? "accepted"}`);
   } finally { await input.auditor.query("ROLLBACK"); }
@@ -471,7 +470,7 @@ const assertPreparedFinalizationPublisherRace = async (input: Readonly<{ auditor
     await input.auditor.query(`SET LOCAL SESSION AUTHORIZATION ${quotePostgresIdentifier(runtimeRole)}`);
     const published = await publishPeriodGuardCandidate(input.auditor); assert(published.rows[0]?.outcome === "published" && published.rows[0]?.publication_id === periodGuardIds.raceCandidate.artifact, `prepared finalization race did not publish its competing slot: ${JSON.stringify(published.rows[0])}`); await input.auditor.query("SAVEPOINT before_finalize_period_guard_race");
     let message: string | undefined;
-    try { await input.auditor.query(`SELECT public."finalize_reader_summary_daily_canonical_recovery_v4"($1::UUID,$2::UUID,$3::DATE,$4::CHAR(64),$5::SMALLINT,$6::TEXT,$7::BIGINT,$8::UUID,$9::UUID,$10::UUID,$11::CHAR(64),$12::CHAR(64),$13::CHAR(64),$14::CHAR(64),$15::CHAR(64))`, [input.work.tenantId,input.work.workspaceId,input.work.requestedUtcDate,input.work.modelJobIdentity,2,input.work.workerId,input.work.fencingToken.toString(),before.job,before.artifact,before.publication,before.report,before.proof,before.evidence,before.publicEvidence,before.publicFrontend]); } catch (error) { message = error instanceof Error ? error.message : String(error); }
+    try { await input.auditor.query(`SELECT public."finalize_reader_summary_daily_canonical_recovery_v4"($1::UUID,$2::UUID,$3::DATE,$4::CHAR(64),$5::SMALLINT,$6::TEXT,$7::BIGINT,$8::UUID,$9::UUID,$10::UUID,$11::CHAR(64),$12::CHAR(64),$13::CHAR(64),$14::CHAR(64),$15::CHAR(64))`, [input.work.tenantId,input.work.workspaceId,input.work.requestedUtcDate,input.work.modelJobIdentity,2,input.work.workerId,input.work.fencingToken.toString(),before.job,before.artifact,before.publication,before.report,before.proof,before.evidence,before.publicEvidence,before.publicFrontend]); } catch (error) { if (isCheckerQueryTimeout(error)) throw error; message = error instanceof Error ? error.message : String(error); }
     await input.auditor.query("ROLLBACK TO SAVEPOINT before_finalize_period_guard_race");
     await input.auditor.query("RESET SESSION AUTHORIZATION");
     const observed = await input.auditor.query<{ state: string; pending: boolean; rows: string; current: string }>(`SELECT retry.state,retry.finalized_at IS NULL AS pending,(SELECT count(*)::TEXT FROM public."reader_summary_publications" publication WHERE publication.tenant_id=$1::UUID AND publication.workspace_id=$2::UUID AND publication.scope_type='workspace' AND publication.scope_key='workspace' AND publication.cadence='daily' AND publication.period_timezone='UTC' AND publication.period_started_at=TIMESTAMPTZ '2026-07-23T00:00:00Z' AND publication.period_ended_at=TIMESTAMPTZ '2026-07-24T00:00:00Z') AS rows,(SELECT slot.current_publication_id::TEXT FROM public."reader_summary_publication_slots" slot WHERE slot.tenant_id=$1::UUID AND slot.workspace_id=$2::UUID AND slot.scope_type='workspace' AND slot.scope_key='workspace' AND slot.cadence='daily' AND slot.period_timezone='UTC' AND slot.period_started_at=TIMESTAMPTZ '2026-07-23T00:00:00Z' AND slot.period_ended_at=TIMESTAMPTZ '2026-07-24T00:00:00Z') AS current FROM public."reader_summary_daily_canonical_recovery_v4_ambiguity_retries" retry WHERE retry.tenant_id=$1::UUID AND retry.workspace_id=$2::UUID AND retry.requested_utc_date=DATE '2026-07-23'`, [input.work.tenantId,input.work.workspaceId]);
@@ -485,6 +484,7 @@ const main = async (): Promise<void> => {
   assertReaderSummaryDailyCanonicalRecoveryV4HistoricalUnavailableMigrationContract();
   assertReaderSummaryDailyCanonicalRecoveryV4InvalidRuntimeMigrationContract();
   assertReaderSummaryDailyCanonicalRecoveryV4AmbiguityRetryMigrationContract();
+  assertReaderSummaryDailyCanonicalRecoveryV4InvalidProductRetrySetMigrationContract();
   assert(
     /^reader_summary_recovery_test_[0-9a-f]{20}$/u.test(databaseName),
     "temporary recovery database name must be bounded",
@@ -630,6 +630,7 @@ const main = async (): Promise<void> => {
         for (const migration of [
           originalCutoffForwardMigration,
           ...ambiguityRetryMigrations,
+          dailyDeliveryC1Migration,
         ]) {
           cpSync(
             join(process.cwd(), "prisma", "migrations", migration),
@@ -765,12 +766,15 @@ const main = async (): Promise<void> => {
           finalizer: wrappedFinalizer,
           now: () => new Date(),
         });
+        await Promise.all([auditor, first, firstTerminal].map(configureLateAssertionSession));
+        markLateStage("migrations_fixture_ready");
         try {
           await assertReaderSummaryDailyCanonicalRecoveryV4InvalidRuntimePostgresContract({
             auditor,
             tenantId: readerSummaryProductionRecoveryFixtureScope.tenantId,
             workspaceId: readerSummaryProductionRecoveryFixtureScope.workspaceId,
           });
+          markLateStage("invalid_runtime_complete");
           if (process.env.READER_SUMMARY_DAILY_INVALID_RUNTIME_ONLY === "1") {
             return;
           }
@@ -798,6 +802,7 @@ const main = async (): Promise<void> => {
             auditor,
             runtimeCallCount: () => runtime.callCount,
           });
+          markLateStage("retry_race_preparation_complete");
           const claimedRetryExecutor =
             new ReaderSummaryDailyCanonicalRecoveryV4Executor({
               authority: {
@@ -827,15 +832,16 @@ const main = async (): Promise<void> => {
               workspaceId: readerSummaryProductionRecoveryFixtureScope.workspaceId,
               workerId: ambiguityRetry.retryWork.workerId,
             });
-          } catch (error) {
-            immutableConflict = error instanceof Error ? error.message : String(error);
-          }
+          } catch (error) { if (isCheckerQueryTimeout(error)) throw error; immutableConflict = error instanceof Error ? error.message : String(error); }
+          assert(
+            immutableConflict === "Canonical public file conflicts with immutable bytes",
+            `attempt-2 immutable-file conflict diverged: ${immutableConflict ?? "completed"}`,
+          );
           const preparedRetry = await preparedPeriodGuardRetry(auditor);
           assert(
-            immutableConflict === "Canonical public file conflicts with immutable bytes" &&
-              preparedRetry.state === "PUBLICATION_PENDING" &&
+            preparedRetry.state === "PUBLICATION_PENDING" &&
               runtime.callCount === 1,
-            `attempt-2 conflict did not leave exactly one prepared publication: ${immutableConflict ?? "completed"}`,
+            "attempt-2 immutable-file conflict did not leave exactly one prepared publication",
           );
           await assertPreparedFinalizationPublisherRace({
             auditor,
@@ -881,6 +887,20 @@ const main = async (): Promise<void> => {
             runtime.callCount === 1,
             "the disposable retry E2E must make exactly one model call before replay coverage",
           );
+          await assertReaderSummaryDailyCanonicalRecoveryV4InvalidProductRetrySetPostgresContract({
+            auditor, terminal: terminalRuntime.terminal, terminalSession: firstTerminal, authority: wrappedAuthority,
+            finalizer: wrappedFinalizer,
+            completeJul24: () => executor.runOne({
+              tenantId: readerSummaryProductionRecoveryFixtureScope.tenantId,
+              workspaceId: readerSummaryProductionRecoveryFixtureScope.workspaceId,
+              workerId: `daily-recovery-pg18-jul24-${suffix}`,
+            }),
+            now: () => new Date(),
+            tenantId: readerSummaryProductionRecoveryFixtureScope.tenantId,
+            workspaceId: readerSummaryProductionRecoveryFixtureScope.workspaceId,
+            workerId: `daily-recovery-pg18-invalid-product-${suffix}`,
+          });
+          markLateStage("entering_v4_contract");
           await assertReaderSummaryDailyCanonicalRecoveryV4PostgresContract({
             auditor,
             firstTerminal,
@@ -890,7 +910,10 @@ const main = async (): Promise<void> => {
               workerId: `daily-recovery-pg18-${suffix}`,
             }),
             runtimeCallCount: () => runtime.callCount,
+            markStage: markLateStage,
           });
+          await assertRawOutputMetadataOnly(auditor, runtime);
+          await assertReaderSummaryDailyCanonicalRecoveryV4EvidenceRecorderPostgresContract(auditor);
           await ambiguityRetry.assertAfterExecution();
           assert(
             assertPeriodGuardAfterExecution !== undefined,
@@ -917,6 +940,7 @@ const main = async (): Promise<void> => {
             realTerminalReadCount === 2,
             `checker-only batching must perform exactly 2 real terminal authority readbacks; received ${realTerminalReadCount}`,
           );
+          markLateStage("post_execution_assertions_complete");
         } finally {
           firstTerminal.release();
           rmSync(publicDirectory, { recursive: true, force: true });
@@ -954,6 +978,7 @@ const main = async (): Promise<void> => {
       await serverAdmin.end();
     }
   }
+  markLateStage("cleanup_complete");
   console.log(
     "Reader summary production recovery PostgreSQL authority gate OK",
   );
@@ -963,9 +988,7 @@ function assert(
   condition: unknown,
   message: string,
 ): asserts condition {
-  if (!condition) {
-    throw new Error(message);
-  }
+  if (!condition) throw new Error(message);
 }
 
 void main().catch((error: unknown) => {

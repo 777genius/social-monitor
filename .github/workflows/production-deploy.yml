@@ -511,7 +511,6 @@ jobs:
             ops/deploy/reader-summary-recovery-maintenance-lib.sh
             ops/deploy/deploy-control-bridge-runtime-helper.test.sh
             ops/deploy/deploy-control-reviewed-library-source.test.sh
-            ops/deploy/daily-final-control-bridge.test.sh
             ops/deploy/daily-c1-control-bridge-workflow.test.sh
             ops/deploy/rabbitmq-quorum-deploy-bridge-transition.test.sh
             ops/deploy/reader-summary-publication-bridge-transition.test.sh
