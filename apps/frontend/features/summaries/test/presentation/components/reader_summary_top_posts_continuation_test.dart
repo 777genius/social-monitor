@@ -56,9 +56,12 @@ void main() {
 
     await tester.pumpWidget(_TopPostsTestApp(summary: _continuationSummary()));
     await tester.pumpAndSettle();
+    await tester.tap(_moreSelectedBoard());
+    await tester.pumpAndSettle();
 
-    expect(_topPostSliverChildCount(tester), 15);
-    expect(find.text('Continuation 0'), findsNothing);
+    expect(_topPostSliverChildCount(tester), 48);
+    expect(find.text('Continuation 0'), findsOneWidget);
+    expect(find.text('Continuation 24'), findsNothing);
   });
 
   testWidgets('keeps selected continuation reachable with zero top reads', (
