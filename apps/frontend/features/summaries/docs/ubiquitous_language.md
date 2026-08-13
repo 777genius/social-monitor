@@ -16,6 +16,11 @@ language.
   quality state and `ReaderAction`.
 - Top Read: a user-readable item selected for review. It has a normalized
   `signalScore` plus provider-native `providerMetrics`.
+- More Selected Post: additional evidence selected for the Summary but not
+  promoted into the curated Top Reads. The UI keeps it in a separate section
+  and orders it by normalized Signal, independent source confirmation,
+  confidence and matched-interest breadth. Provider-native metrics are not
+  compared across platforms.
 - Top Read Feedback Target: the concrete feed/source item identity used when a
   user rates a Top Read with 1-5 stars. It is recorded for review learning
   only and must not directly reorder results until a capped ranking policy

@@ -1,5 +1,39 @@
 part of 'reader_summary_brief_surface.dart';
 
+class _MoreSelectedSortIndicator extends StatelessWidget {
+  const _MoreSelectedSortIndicator();
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final colorScheme = Theme.of(context).colorScheme;
+    return Tooltip(
+      message:
+          'Normalized Signal, independent source support, confidence, '
+          'then matched interests.',
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.auto_awesome_outlined,
+            size: 16,
+            color: colorScheme.primary,
+          ),
+          const SizedBox(width: AppSpacing.xs),
+          Text(
+            'Sorted by usefulness',
+            style: textTheme.labelSmall?.copyWith(
+              color: colorScheme.onSurfaceVariant,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _TopPostSortMenu extends StatelessWidget {
   const _TopPostSortMenu({required this.sort, required this.onSortChanged});
 
@@ -75,7 +109,7 @@ class _TopPostFilterMenu extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     return PopupMenuButton<String>(
       key: const ValueKey('reader-summary-top-posts-filters'),
-      tooltip: 'Filter top posts by source',
+      tooltip: 'Filter posts by source',
       position: PopupMenuPosition.under,
       onSelected: onProviderToggled,
       itemBuilder: (context) => [

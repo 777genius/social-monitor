@@ -3,13 +3,15 @@ part of 'reader_summary_brief_surface.dart';
 class _TopPostBoardToggle extends StatelessWidget {
   const _TopPostBoardToggle({
     required this.board,
-    required this.postCount,
+    required this.topPostCount,
+    required this.moreSelectedPostCount,
     required this.githubTrendingCount,
     required this.onChanged,
   });
 
   final _TopPostBoard board;
-  final int postCount;
+  final int topPostCount;
+  final int moreSelectedPostCount;
   final int githubTrendingCount;
   final ValueChanged<_TopPostBoard> onChanged;
 
@@ -31,7 +33,7 @@ class _TopPostBoardToggle extends StatelessWidget {
             child: Align(
               alignment: AlignmentDirectional.centerStart,
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 420),
+                constraints: const BoxConstraints(maxWidth: 620),
                 child: Row(
                   children: [
                     Expanded(
@@ -40,11 +42,24 @@ class _TopPostBoardToggle extends StatelessWidget {
                           'reader-summary-top-posts-board-posts',
                         ),
                         label: 'Top posts',
-                        count: postCount,
+                        count: topPostCount,
                         showCount: showCounts,
-                        selected: board == _TopPostBoard.posts,
+                        selected: board == _TopPostBoard.topPosts,
                         leading: const Icon(Icons.article_outlined, size: 17),
-                        onPressed: () => onChanged(_TopPostBoard.posts),
+                        onPressed: () => onChanged(_TopPostBoard.topPosts),
+                      ),
+                    ),
+                    Expanded(
+                      child: _TopPostBoardToggleSegment(
+                        key: const ValueKey(
+                          'reader-summary-top-posts-board-more-selected',
+                        ),
+                        label: 'More selected posts',
+                        count: moreSelectedPostCount,
+                        showCount: showCounts,
+                        selected: board == _TopPostBoard.moreSelected,
+                        leading: const Icon(Icons.playlist_add, size: 17),
+                        onPressed: () => onChanged(_TopPostBoard.moreSelected),
                       ),
                     ),
                     Expanded(

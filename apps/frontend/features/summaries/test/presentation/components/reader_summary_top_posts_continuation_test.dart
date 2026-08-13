@@ -7,7 +7,7 @@ import 'package:social_monitor_summaries/src/presentation/components/reader_summ
 import '../../support/top_posts_test_fixtures.dart';
 
 void main() {
-  testWidgets('starts at eight and reveals two automatic batches on scroll', (
+  testWidgets('keeps Top at eight and batches More selected on scroll', (
     tester,
   ) async {
     _configureView(tester);
@@ -19,18 +19,12 @@ void main() {
     expect(find.text('Curated 0'), findsOneWidget);
     expect(find.text('Continuation 0'), findsNothing);
     expect(find.textContaining('Load more'), findsNothing);
-    expect(_topPostSliverChildCount(tester), 16);
+    expect(_topPostSliverChildCount(tester), 15);
 
-    await tester.scrollUntilVisible(
-      find.text('Continuation 2'),
-      420,
-      scrollable: find.byType(Scrollable).first,
-      maxScrolls: 100,
-    );
+    await tester.tap(_moreSelectedBoard());
     await tester.pumpAndSettle();
 
-    expect(find.text('Continuation 2'), findsOneWidget);
-    expect(_topPostSliverChildCount(tester), 64);
+    expect(_topPostSliverChildCount(tester), 48);
 
     await tester.scrollUntilVisible(
       find.text('Continuation 28'),
@@ -41,7 +35,18 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Continuation 28'), findsOneWidget);
-    expect(_topPostSliverChildCount(tester), 112);
+    expect(_topPostSliverChildCount(tester), 96);
+
+    await tester.scrollUntilVisible(
+      find.text('Continuation 55'),
+      420,
+      scrollable: find.byType(Scrollable).first,
+      maxScrolls: 100,
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Continuation 55'), findsOneWidget);
+    expect(_topPostSliverChildCount(tester), 119);
   });
 
   testWidgets('does not reveal a visible sentinel before user scroll', (
@@ -52,7 +57,7 @@ void main() {
     await tester.pumpWidget(_TopPostsTestApp(summary: _continuationSummary()));
     await tester.pumpAndSettle();
 
-    expect(_topPostSliverChildCount(tester), 16);
+    expect(_topPostSliverChildCount(tester), 15);
     expect(find.text('Continuation 0'), findsNothing);
   });
 
@@ -71,8 +76,7 @@ void main() {
     await tester.pumpWidget(_TopPostsTestApp(summary: summary));
     await tester.pumpAndSettle();
 
-    expect(_topPostSliverChildCount(tester), 16);
-    expect(find.text('Selected 8'), findsNothing);
+    expect(_topPostSliverChildCount(tester), 23);
 
     await tester.scrollUntilVisible(
       find.text('Selected 8'),
@@ -86,7 +90,7 @@ void main() {
     expect(_topPostSliverChildCount(tester), 23);
   });
 
-  testWidgets('dedupes top reads while filling eight unique initial posts', (
+  testWidgets('dedupes top reads without filling Top from selected posts', (
     tester,
   ) async {
     _configureView(tester);
@@ -119,9 +123,12 @@ void main() {
     await tester.pumpWidget(_TopPostsTestApp(summary: summary));
     await tester.pumpAndSettle();
 
-    expect(_topPostSliverChildCount(tester), 16);
+    expect(_topPostSliverChildCount(tester), 5);
     expect(find.text('Duplicate inside top reads'), findsNothing);
     expect(find.text('Selected 5'), findsNothing);
+
+    await tester.tap(_moreSelectedBoard());
+    await tester.pumpAndSettle();
 
     await tester.scrollUntilVisible(
       find.text('Selected 8'),
@@ -132,7 +139,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Selected 8'), findsOneWidget);
-    expect(_topPostSliverChildCount(tester), 23);
+    expect(_topPostSliverChildCount(tester), 17);
   });
 
   testWidgets('keeps continuation on an equivalent dataset rebuild', (
@@ -142,20 +149,22 @@ void main() {
 
     await tester.pumpWidget(_TopPostsTestApp(summary: _continuationSummary()));
     await tester.pumpAndSettle();
+    await tester.tap(_moreSelectedBoard());
+    await tester.pumpAndSettle();
     await tester.scrollUntilVisible(
-      find.text('Continuation 2'),
+      find.text('Continuation 28'),
       420,
       scrollable: find.byType(Scrollable).first,
       maxScrolls: 100,
     );
     await tester.pumpAndSettle();
-    expect(_topPostSliverChildCount(tester), 64);
+    expect(_topPostSliverChildCount(tester), 96);
 
     await tester.pumpWidget(_TopPostsTestApp(summary: _continuationSummary()));
     await tester.pumpAndSettle();
 
-    expect(find.text('Continuation 2'), findsOneWidget);
-    expect(_topPostSliverChildCount(tester), 64);
+    expect(find.text('Continuation 28'), findsOneWidget);
+    expect(_topPostSliverChildCount(tester), 96);
     expect(tester.takeException(), isNull);
   });
 
@@ -166,21 +175,21 @@ void main() {
 
     await tester.pumpWidget(_TopPostsTestApp(summary: _continuationSummary()));
     await tester.pumpAndSettle();
+    await tester.tap(_moreSelectedBoard());
+    await tester.pumpAndSettle();
     await tester.scrollUntilVisible(
-      find.text('Continuation 2'),
+      find.text('Continuation 28'),
       420,
       scrollable: find.byType(Scrollable).first,
       maxScrolls: 100,
     );
     await tester.pumpAndSettle();
-    expect(_topPostSliverChildCount(tester), 64);
+    expect(_topPostSliverChildCount(tester), 96);
 
-    await tester.scrollUntilVisible(
-      find.text('Curated 0'),
-      -420,
-      scrollable: find.byType(Scrollable).first,
-      maxScrolls: 100,
-    );
+    tester
+        .state<ScrollableState>(find.byType(Scrollable).first)
+        .position
+        .jumpTo(0);
     await tester.pumpAndSettle();
     await tester.pumpWidget(
       _TopPostsTestApp(
@@ -196,7 +205,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(_topPostSliverChildCount(tester), 16);
+    expect(_topPostSliverChildCount(tester), 48);
   });
 }
 
@@ -204,6 +213,9 @@ int _topPostSliverChildCount(WidgetTester tester) {
   final sliver = tester.widget<SliverList>(find.byType(SliverList));
   return sliver.delegate.estimatedChildCount!;
 }
+
+Finder _moreSelectedBoard() =>
+    find.byKey(const ValueKey('reader-summary-top-posts-board-more-selected'));
 
 ReaderSummary _continuationSummary({SummaryPeriod? period}) {
   return topPostsSummaryFixture(

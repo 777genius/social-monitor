@@ -49,9 +49,9 @@ class _ReaderSummaryTopPostsSliverState
   @override
   void initState() {
     super.initState();
-    _board = _availableTopPostBoard(widget.projection.items);
+    _board = _availableTopPostBoard(widget.projection);
     _continuation = TopPostsContinuationWindow(
-      initialVisibleCount: readerSummaryCuratedTopPostLimit,
+      initialVisibleCount: topPostsContinuationBatchSize,
     );
     _refreshBoardItems();
   }
@@ -79,12 +79,10 @@ class _ReaderSummaryTopPostsSliverState
     );
     final periodChanged = widget.period != oldWidget.period;
     if (datasetChanged || periodChanged) {
-      _continuation.reset(
-        initialVisibleCount: readerSummaryCuratedTopPostLimit,
-      );
+      _continuation.reset(initialVisibleCount: topPostsContinuationBatchSize);
       _requireFreshUserScroll();
     }
-    _board = _availableTopPostBoard(widget.projection.items, preferred: _board);
+    _board = _availableTopPostBoard(widget.projection, preferred: _board);
     _refreshBoardItems();
   }
 
@@ -99,11 +97,11 @@ class _ReaderSummaryTopPostsSliverState
     final colorScheme = Theme.of(context).colorScheme;
     final activeBoard = _board;
     final filtered = _filteredItems;
-    final visibleItemCount = activeBoard == _TopPostBoard.posts
+    final visibleItemCount = activeBoard == _TopPostBoard.moreSelected
         ? _continuation.visibleItemCount(filtered.length)
         : filtered.length;
     final hasMoreItems =
-        activeBoard == _TopPostBoard.posts &&
+        activeBoard == _TopPostBoard.moreSelected &&
         visibleItemCount < filtered.length;
     final sliverItemCount = hasMoreItems
         ? math.max(1, visibleItemCount * 2)
@@ -115,7 +113,8 @@ class _ReaderSummaryTopPostsSliverState
           child: _TopPostsHeader(
             board: activeBoard,
             sort: _sort,
-            postCount: widget.projection.posts.length,
+            topPostCount: widget.projection.curatedPosts.length,
+            moreSelectedPostCount: widget.projection.moreSelectedPosts.length,
             githubTrendingCount: widget.projection.githubTrendingPosts.length,
             curatedTopPostCount: widget.projection.curatedPosts.length,
             selectedPostCount: widget.selectedPostCount,
@@ -226,7 +225,7 @@ class _ReaderSummaryTopPostsSliverState
 
   bool _revealMoreItems(int generation) {
     if (!mounted ||
-        _board != _TopPostBoard.posts ||
+        _board != _TopPostBoard.moreSelected ||
         generation != _continuation.generation ||
         _userScrollSerial <= _lastRevealUserScrollSerial ||
         _continuation.visibleItemCount(_filteredItems.length) >=
@@ -247,7 +246,7 @@ class _ReaderSummaryTopPostsSliverState
   }
 
   void _resetContinuation() {
-    _continuation.reset(initialVisibleCount: readerSummaryCuratedTopPostLimit);
+    _continuation.reset(initialVisibleCount: topPostsContinuationBatchSize);
     _requireFreshUserScroll();
   }
 
@@ -270,7 +269,8 @@ class _ReaderSummaryTopPostsSliverState
 
   void _refreshBoardItems() {
     _boardItems = switch (_board) {
-      _TopPostBoard.posts => widget.projection.posts,
+      _TopPostBoard.topPosts => widget.projection.curatedPosts,
+      _TopPostBoard.moreSelected => widget.projection.moreSelectedPosts,
       _TopPostBoard.githubTrending => widget.projection.githubTrendingPosts,
     };
     _providerKeys = {
@@ -279,7 +279,7 @@ class _ReaderSummaryTopPostsSliverState
     _filteredItems = orderTopPosts(
       _boardItems.where((item) => !_hiddenProviders.contains(item.providerKey)),
       byEngagement:
-          _board == _TopPostBoard.posts && _sort == _TopPostSort.engagement,
+          _board == _TopPostBoard.topPosts && _sort == _TopPostSort.engagement,
     );
     _reservePreviewSpace = _filteredItems.any(
       (item) => item.previewMedia != null,

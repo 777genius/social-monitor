@@ -50,20 +50,19 @@ void main() {
       for (var index = 2; index < 8; index += 1) 'Editorial $index',
       'Legacy position 10',
     ]);
-    expect(projection.continuationPosts.map((item) => item.title), [
+    expect(projection.moreSelectedPosts.map((item) => item.title), [
       'Selected A',
       'Selected B',
     ]);
     expect(projection.curatedPosts, hasLength(8));
-    expect(projection.posts, hasLength(10));
     expect(
-      projection.posts.map(readerSummaryTopPostIdentity).toSet(),
-      hasLength(projection.posts.length),
+      projection.items.map(readerSummaryTopPostIdentity).toSet(),
+      hasLength(projection.items.length),
     );
     expect(projection.githubTrendingPosts, isEmpty);
   });
 
-  test('fills eight unique initial posts from selected continuation', () {
+  test('does not promote selected posts into the editorial top eight', () {
     final summary = topPostsSummaryFixture(
       topReads: [
         topPostFixture(
@@ -100,13 +99,10 @@ void main() {
       'Curated 1',
       'Curated 2',
     ]);
-    expect(projection.posts.take(8).map((item) => item.title), [
-      'Curated 0',
-      'Curated 1',
-      'Curated 2',
-      for (var index = 0; index < 5; index += 1) 'Selected $index',
+    expect(projection.moreSelectedPosts.map((item) => item.title), [
+      for (var index = 0; index < 9; index += 1) 'Selected $index',
     ]);
-    expect(projection.posts, hasLength(12));
+    expect(projection.items, hasLength(12));
   });
 
   test(
@@ -161,7 +157,8 @@ void main() {
       ),
     );
 
-    expect(projection.posts, isEmpty);
+    expect(projection.curatedPosts, isEmpty);
+    expect(projection.moreSelectedPosts, isEmpty);
     expect(projection.githubTrendingPosts.map((item) => item.title), [
       for (var rank = 1; rank <= 10; rank += 1) 'selected/repo-$rank',
     ]);
@@ -180,7 +177,8 @@ void main() {
       topPostsSummaryFixture(topReads: _githubBoard(prefix: 'fallback')),
     );
 
-    expect(projection.posts, isEmpty);
+    expect(projection.curatedPosts, isEmpty);
+    expect(projection.moreSelectedPosts, isEmpty);
     expect(projection.githubTrendingPosts, isEmpty);
   });
 

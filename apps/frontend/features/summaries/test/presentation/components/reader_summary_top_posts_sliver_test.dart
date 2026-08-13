@@ -10,7 +10,7 @@ import 'package:social_monitor_summaries/src/presentation/view_models/reader_sum
 import '../../support/summaries_test_fixtures.dart';
 
 void main() {
-  testWidgets('shows both tabs and keeps top posts selected by default', (
+  testWidgets('shows all boards and keeps top posts selected by default', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(320, 700);
@@ -35,6 +35,12 @@ void main() {
       findsOneWidget,
     );
     expect(
+      find.byKey(
+        const ValueKey('reader-summary-top-posts-board-more-selected'),
+      ),
+      findsOneWidget,
+    );
+    expect(
       find.byKey(const ValueKey('reader-summary-top-posts-board-github')),
       findsOneWidget,
     );
@@ -54,7 +60,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('reveals more top posts as the user scrolls', (tester) async {
+  testWidgets('keeps posts after eight in More selected', (tester) async {
     tester.view.physicalSize = const Size(1100, 700);
     tester.view.devicePixelRatio = 1;
     addTearDown(() {
@@ -73,6 +79,13 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Lazy top post 30'), findsNothing);
+
+    await tester.tap(
+      find.byKey(
+        const ValueKey('reader-summary-top-posts-board-more-selected'),
+      ),
+    );
+    await tester.pumpAndSettle();
 
     await tester.scrollUntilVisible(
       find.text('Lazy top post 30'),
@@ -162,20 +175,25 @@ void main() {
       await tester.pumpWidget(_TestApp(summary: summary));
       await tester.pumpAndSettle();
 
-      expect(find.bySemanticsLabel('Top posts, 3 items'), findsOneWidget);
+      expect(find.bySemanticsLabel('Top posts, 2 items'), findsOneWidget);
       expect(find.text('2 editorial picks from 3 selected'), findsOneWidget);
       expect(find.text('Backend editorial winner'), findsOneWidget);
       expect(find.text('Higher engagement runner-up'), findsOneWidget);
+      expect(find.text('Long-tail selected evidence'), findsNothing);
 
-      await tester.scrollUntilVisible(
-        find.text('Long-tail selected evidence'),
-        320,
-        scrollable: find.byType(Scrollable).first,
-        maxScrolls: 20,
+      await tester.tap(
+        find.byKey(
+          const ValueKey('reader-summary-top-posts-board-more-selected'),
+        ),
       );
       await tester.pumpAndSettle();
 
+      expect(
+        find.bySemanticsLabel('More selected posts, 1 items'),
+        findsOneWidget,
+      );
       expect(find.text('Long-tail selected evidence'), findsOneWidget);
+      expect(find.text('Sorted by usefulness'), findsOneWidget);
 
       await tester.ensureVisible(
         find.byKey(const ValueKey('reader-summary-top-posts-board-github')),
@@ -206,7 +224,10 @@ void main() {
     final projection = readerSummaryTopPostsProjection(summary);
 
     expect(projection.curatedPosts, isEmpty);
-    expect(projection.posts.single.title, 'Long-tail selected evidence');
+    expect(
+      projection.moreSelectedPosts.single.title,
+      'Long-tail selected evidence',
+    );
     expect(projection.githubTrendingPosts, isEmpty);
   });
 
