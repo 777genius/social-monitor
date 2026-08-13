@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
 
 import { canonicalJsonSha256 } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
-import { openAiReaderSummaryJsonSchema } from "@social-monitor/summary/adapters/model/openai-responses-reader-summary-schema";
 import type { AgentRuntimeClientPort } from "@social-monitor/summary/ports/agent-runtime-client.port";
 
 import {
@@ -93,11 +92,6 @@ describe("GrpcReaderSummaryDailySubscriptionRuntime", () => {
     expect(client.runTask).toHaveBeenCalledWith(expect.objectContaining({
       provider: "codex",
       purpose: "social_monitor.reader_summary.weekly.generate",
-      systemPrompt: expect.stringContaining(
-        `The output must conform exactly to this JSON Schema: ${JSON.stringify(
-          openAiReaderSummaryJsonSchema,
-        )}`,
-      ),
       metadata: expect.objectContaining({
         authoritySchemaVersion: "reader_summary.daily_source_authority.v2",
         runtimeOutput: "output_text",

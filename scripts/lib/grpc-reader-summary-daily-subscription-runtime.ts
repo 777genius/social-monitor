@@ -29,9 +29,6 @@ import {
 const purpose = "social_monitor.reader_summary.generate";
 const model = "gpt-5.6-sol";
 const reasoningEffort = "xhigh";
-const canonicalRecoveryOutputSchema = JSON.stringify(
-  openAiReaderSummaryJsonSchema,
-);
 
 export class GrpcReaderSummaryDailySubscriptionRuntime
   implements ReaderSummaryDailySubscriptionRuntime
@@ -124,9 +121,7 @@ export class GrpcReaderSummaryDailyCanonicalRecoveryRuntime
           "The supplied immutable daily source authority v2 is complete.",
           "Do not recollect, backdate, duplicate, or invent evidence.",
           "Citation cN means the Nth authority item; cite only the first 200 items.",
-          "Return one JSON object as output_text with no surrounding text.",
-          "Do not echo the authority envelope, its schemaVersion, date, or ingestionCutoff.",
-          `The output must conform exactly to this JSON Schema: ${canonicalRecoveryOutputSchema}`,
+          "Return one canonical JSON object as output_text with no surrounding text.",
         ].join(" "),
         prompt: input.sourceAuthorityBytes.toString("utf8"),
         outputSchema: openAiReaderSummaryJsonSchema,

@@ -6,7 +6,6 @@ import {
   normalizeLineEndings,
   roundMetric,
 } from "./lib/yesterday-social-replay-support";
-import { targetWindowHasEveryPrimaryProvider } from "./lib/reader-summary-clean-real-day-e2e-policy";
 
 type PrimaryProviderKey = "reddit" | "x-twitter";
 type ProviderKey =
@@ -45,9 +44,6 @@ type CleanCollectionReport = {
     readonly sourceBindingSnapshotCoverage: number;
     readonly sourceQueryLaneCoverage: number;
     readonly distinctSourceQueryLaneCount: number;
-  };
-  readonly targetWindow: {
-    readonly providerCounts: Record<string, number>;
   };
   readonly qualityGates: Record<string, boolean>;
   readonly blockingPassed: boolean;
@@ -534,8 +530,8 @@ function buildReportWithoutSecretGate(
         collectionDate === plannerRolloutProof.latestEligibleCleanDate,
       cleanCollectionFreshFeedWritten:
         collectionReport.freshWindow.feedItemCount > 0,
-      cleanCollectionPrimarySourcesCollected: targetWindowHasEveryPrimaryProvider(
-        collectionReport.targetWindow.providerCounts,
+      cleanCollectionPrimarySourcesCollected: primarySources.every(
+        (source) => cleanProviderCounts[source] > 0,
       ),
       cleanCollectionNoOrphans:
         collectionReport.freshWindow.orphanInterestCount === 0 &&
