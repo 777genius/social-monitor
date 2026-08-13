@@ -144,6 +144,7 @@ if [[ ${EXPECT_ORDINARY_PROBE_STDIN_EOF:-0} == 1 ]]; then
 fi
 if [[ ${EXPECT_AUTHORIZED_STDIN:-0} == 1 ]]; then
   [[ $action == reader-summary-recover-missing-days || \
+     $action == reader-summary-production-history || \
      $action == reader-summary-daily-scan-terminal-repair-c1 || \
      $action == reader-summary-daily-delivery-c1-run || \
      $action == reader-summary-daily-delivery-c1-contain ]]

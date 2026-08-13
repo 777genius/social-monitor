@@ -603,9 +603,9 @@ reset_daily_runner_maintenance_runtime_identity
 FAKE_GIT_HEAD=${SHA^^}
 assert_daily_runner_maintenance_runtime_rejected
 
-grep -F 'reader-summary-recover-missing-days|reader-summary-weekly-run|reader-summary-daily-canonical-recovery-v4' \
+grep -F 'reader-summary-recover-missing-days|reader-summary-weekly-run|reader-summary-production-history|reader-summary-daily-canonical-recovery-v4' \
   "$SCRIPT_DIR/social-monitor-production-ssh-wrapper.sh" >/dev/null
-grep -F 'reader-summary-recover-missing-days|reader-summary-weekly-run|reader-summary-daily-canonical-recovery-v4' \
+grep -F 'reader-summary-recover-missing-days|reader-summary-weekly-run|reader-summary-production-history|reader-summary-daily-canonical-recovery-v4' \
   "$SCRIPT_DIR/github-production-deploy-client.sh" >/dev/null
 grep -F 'jobs.freshness.scan must have ready=0 unacked=0 consumers=0' \
   "$SCRIPT_DIR/reader-summary-recovery-maintenance-lib.sh" >/dev/null
