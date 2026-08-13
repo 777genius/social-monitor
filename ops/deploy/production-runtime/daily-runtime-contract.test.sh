@@ -115,7 +115,8 @@ set -e
   echo "canonical release did not reach retained auth admission, got $canonical_status" >&2
   exit 1
 }
-[[ ! -s "$canonical_root/auth.called" ]]
+[[ -f "$canonical_root/auth.called" ]]
+[[ -z $(<"$canonical_root/auth.called") ]]
 diff -u <(printf '%s\n' '-n 9' '-w 0 8') "$canonical_root/flock.calls"
 [[ ! -e "$canonical_root/docker.calls" ]]
 
