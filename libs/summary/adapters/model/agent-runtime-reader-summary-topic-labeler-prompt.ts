@@ -4,7 +4,10 @@ import {
   buildReaderSummaryTopicRelationCandidates,
   readerSummaryTopicClaimTypes,
 } from "../../domain";
-import type { ReaderSummaryTopicLabelerInput } from "../../ports";
+import type {
+  ReaderSummaryTopicLabelerInput,
+  ReaderSummaryTopicMapAttemptContext,
+} from "../../ports";
 import { buildAgentRuntimeTopicEvidenceSamples } from "./agent-runtime-reader-summary-topic-evidence-prompt";
 
 export const agentRuntimeReaderSummaryTopicLabelerInstructions = [
@@ -37,7 +40,9 @@ export const agentRuntimeReaderSummaryTopicLabelerInstructions = [
   "Example: a model-family rollout, one variant's benchmarks, another variant's pricing, and CLI availability require separate topicIds even when they belong to one parent group and should appear near each other in the same color.",
   "Before assigning groupId, derive a single global taxonomy of 3-8 broad, mutually exclusive semantic families from all input nodes.",
   "Use groupId only for a broader parent ecosystem or domain family, never for one story, one product variant, or as the unique bubble id.",
+  "A group is only a visual and editorial family; it never merges topic bubbles. Keep distinct topicId values while grouping related nodes by a broader grounded domain.",
   "Products and models that belong to the same parent organization or ecosystem must share one group even when their product names differ.",
+  "Durable evidence-grounded domains such as software development, healthcare, business, and AI research are valid group families. Prefer them when product ecosystems alone would leave most nodes ungrouped.",
   "For every semantic group, return 2-8 semanticAnchors copied from concrete entity, product, model, project, or domain terms in the assigned nodes. Each anchor must occur in at least two assigned nodes, and the anchors must collectively cover every assigned node.",
   "For every grouped node, include in nodeLabels.keywords at least one evidence-grounded semantic anchor shared with another node in that group. Keywords are required even when the label already contains the anchor.",
   "Do not use broad words such as AI, model, product, tool, ecosystem, industry, or technology as the only semantic anchor. If a node has no evidence-grounded shared anchor with the group, assign it to group:ungrouped.",
@@ -50,6 +55,7 @@ export const agentRuntimeReaderSummaryTopicLabelerInstructions = [
 export const buildAgentRuntimeReaderSummaryTopicLabelPrompt = (
   input: ReaderSummaryTopicLabelerInput,
   candidates: readonly ReaderSummaryTopicLabelerInput["candidates"][number][],
+  attemptContext?: ReaderSummaryTopicMapAttemptContext,
 ): string => {
   const evidenceByFeedItemId = new Map(
     input.selectedEvidence.map((item) => [item.feedItemId, item] as const),
@@ -61,6 +67,18 @@ export const buildAgentRuntimeReaderSummaryTopicLabelPrompt = (
   return JSON.stringify(
     {
       task: "Label and group topic nodes for a summary bubble map.",
+      retryFeedback:
+        attemptContext?.retryFeedback === undefined
+          ? null
+          : {
+              ...attemptContext.retryFeedback,
+              minimumGroupedNodeCount: Math.ceil(
+                candidates.length *
+                  attemptContext.retryFeedback.minimumGroupedCoverage,
+              ),
+              instruction:
+                "The previous map was rejected only for low grouped coverage. Rebuild the global taxonomy, keep distinct stories as distinct topicId values, and group at least the minimum node count when grounded broad domains support it.",
+            },
       constraints: {
         maxLabelWords: 4,
         maxGroups: READER_SUMMARY_TOPIC_MAP_MAX_SEMANTIC_GROUPS,

@@ -186,7 +186,15 @@ describe("AgentRuntimeReaderSummaryTopicLabeler", () => {
       ],
     });
 
-    await labeler.label(input, { attemptNumber: 2, totalAttempts: 2 });
+    await labeler.label(input, {
+      attemptNumber: 2,
+      totalAttempts: 2,
+      retryFeedback: {
+        reason: "grouped_coverage_below_minimum",
+        previousGroupedCoverage: 0.333,
+        minimumGroupedCoverage: 0.5,
+      },
+    });
     expect(client.commands[1]?.requestId).not.toBe(
       client.commands[0]?.requestId,
     );
@@ -196,6 +204,13 @@ describe("AgentRuntimeReaderSummaryTopicLabeler", () => {
     expect(client.commands[1]?.metadata).toMatchObject({
       attemptNumber: "2",
       totalAttempts: "2",
+    });
+    expect(
+      JSON.parse(client.commands[1]?.prompt ?? "{}").retryFeedback,
+    ).toMatchObject({
+      previousGroupedCoverage: 0.333,
+      minimumGroupedCoverage: 0.5,
+      minimumGroupedNodeCount: 1,
     });
 
     const incompleteLabeler = new AgentRuntimeReaderSummaryTopicLabeler({

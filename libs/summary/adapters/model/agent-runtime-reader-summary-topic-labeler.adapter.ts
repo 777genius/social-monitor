@@ -114,7 +114,11 @@ export class AgentRuntimeReaderSummaryTopicLabeler implements ReaderSummaryTopic
       providerInstanceId: this.providerInstanceId,
       purpose: "social_monitor.reader_summary.topic_map.label",
       systemPrompt: agentRuntimeReaderSummaryTopicLabelerInstructions,
-      prompt: buildAgentRuntimeReaderSummaryTopicLabelPrompt(input, candidates),
+      prompt: buildAgentRuntimeReaderSummaryTopicLabelPrompt(
+        input,
+        candidates,
+        attemptContext,
+      ),
       outputSchema: agentRuntimeReaderSummaryTopicLabelerJsonSchema,
       controls: {
         interactive: false,

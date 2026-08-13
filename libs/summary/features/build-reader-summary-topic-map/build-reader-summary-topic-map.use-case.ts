@@ -89,6 +89,7 @@ export class BuildReaderSummaryTopicMapUseCase {
       );
     }
 
+    let retryFeedback: ReaderSummaryTopicMapAttemptContext["retryFeedback"];
     for (
       let attemptNumber = 1;
       attemptNumber <= agentRuntimeTotalAttempts;
@@ -97,6 +98,7 @@ export class BuildReaderSummaryTopicMapUseCase {
       const attemptContext = {
         attemptNumber,
         totalAttempts: agentRuntimeTotalAttempts,
+        ...(retryFeedback === undefined ? {} : { retryFeedback }),
       } satisfies ReaderSummaryTopicMapAttemptContext;
       const labelPlanResult = await this.labelWithAgentRuntime(
         { ...command, ...topicEvidence },
@@ -131,6 +133,7 @@ export class BuildReaderSummaryTopicMapUseCase {
       if (publication.result.ok || !publication.willRetry) {
         return publication.result;
       }
+      retryFeedback = publication.retryFeedback;
     }
 
     return err(topicMapFailure("Reader summary topic map attempts exhausted"));
@@ -318,6 +321,9 @@ const publishableTopicMap = async (
 ): Promise<{
   readonly result: BuildReaderSummaryTopicMapResult;
   readonly willRetry: boolean;
+  readonly retryFeedback?: NonNullable<
+    ReaderSummaryTopicMapAttemptContext["retryFeedback"]
+  >;
 }> => {
   const structure = evaluateReaderSummaryTopicMapStructure(topicMap);
   const minimumGroupedCoverage =
@@ -362,6 +368,15 @@ const publishableTopicMap = async (
       ),
     ),
     willRetry,
+    ...(willRetry
+      ? {
+          retryFeedback: {
+            reason: "grouped_coverage_below_minimum" as const,
+            previousGroupedCoverage: structure.metrics.groupedCoverage,
+            minimumGroupedCoverage,
+          },
+        }
+      : {}),
   };
 };
 
