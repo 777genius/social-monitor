@@ -711,14 +711,20 @@ const createVerifiedGitHubAuthority = async (
   await params.client.query(
     `INSERT INTO scan_jobs (
        id, tenant_id, workspace_id, source_binding_id, scan_policy_id,
-       status, idempotency_key, requested_at, completed_at, created_at,
-       updated_at
+       status, idempotency_key, requested_at, completed_at, execution_metadata,
+       created_at, updated_at
      ) VALUES (
-       $1, $2, $3, $4, $5, 'SUCCEEDED', $6, $7, $8, $7, $8
+       $1, $2, $3, $4, $5, 'SUCCEEDED', $6, $7, $8, $9::jsonb, $7, $8
      )`,
     [scanJobId, params.tenantId, params.workspaceId, sourceBindingId,
       randomUUID(), `publication-github-scan:${scanJobId}`, fetchStartedAt,
-      observedAt],
+      observedAt, JSON.stringify({
+        providerKey: "github-trending-page",
+        status: "succeeded",
+        acceptedItemCount: 10,
+        targetPublishedWindowStartedAt: params.startedAt,
+        targetPublishedWindowEndedAt: params.endedAt,
+      })],
   );
   const bindings: Readonly<Record<string, unknown>>[] = [];
   const citations: Readonly<Record<string, unknown>>[] = [];
