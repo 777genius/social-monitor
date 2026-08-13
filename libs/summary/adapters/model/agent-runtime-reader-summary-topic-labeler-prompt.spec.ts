@@ -52,12 +52,11 @@ describe("buildTopicCandidateRelationshipHints", () => {
 
     const selected = selectAgentRuntimeReaderSummaryTopicCandidates(input, 10);
 
-    expect(selected.slice(0, 5).map((item) => item.nodeId)).toEqual([
+    expect(selected.slice(0, 4).map((item) => item.nodeId)).toEqual([
       "node:top-1",
       "node:top-2",
       "node:claude-lead",
       "node:top-4",
-      "node:rust-lead",
     ]);
     expect(selected.map((item) => item.nodeId)).toEqual(
       expect.arrayContaining([
@@ -130,11 +129,38 @@ describe("buildTopicCandidateRelationshipHints", () => {
     ).toEqual([
       "node:top-1",
       "node:top-2",
-      "node:top-3",
-      "node:filler",
       "node:claude-1",
       "node:claude-2",
+      "node:rust-1",
+      "node:rust-2",
     ]);
+  });
+
+  it("leaves enough capacity to meet the 50 percent grouping gate", () => {
+    const candidates = [
+      ...Array.from({ length: 8 }, (_, index) =>
+        candidate(`node:top-${index + 1}`, [`Top ${index + 1}`]),
+      ),
+      ...Array.from({ length: 10 }, (_, index) =>
+        candidate(`node:cohort-${index + 1}`, [
+          `Cohort ${Math.floor(index / 2) + 1}`,
+        ]),
+      ),
+    ];
+    const input = {
+      candidates,
+      clusters: candidates.map((item, index) =>
+        storyCluster(item.storyClusterId, candidates.length - index),
+      ),
+    } satisfies Pick<ReaderSummaryTopicLabelerInput, "candidates" | "clusters">;
+
+    const selected = selectAgentRuntimeReaderSummaryTopicCandidates(input, 18);
+    const selectedCohortIds = selected
+      .filter((item) => item.nodeId.includes("cohort"))
+      .map((item) => item.nodeId);
+
+    expect(selectedCohortIds).toHaveLength(10);
+    expect(selected).toHaveLength(18);
   });
 });
 

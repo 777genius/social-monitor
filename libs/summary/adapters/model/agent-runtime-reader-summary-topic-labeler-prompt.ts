@@ -190,7 +190,11 @@ export const selectAgentRuntimeReaderSummaryTopicCandidates = (
       .filter(([, support]) => support >= 2)
       .map(([term]) => term),
   );
-  const leadingCandidateCount = Math.ceil(maxCandidates / 2);
+  const minimumGroupedCandidateCount = Math.ceil(maxCandidates / 2);
+  const leadingCandidateCount = Math.max(
+    0,
+    maxCandidates - minimumGroupedCandidateCount - 1,
+  );
   const selected = new Set(
     ranked
       .slice(0, leadingCandidateCount)
