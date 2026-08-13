@@ -16,7 +16,7 @@ describe("reader summary safe citation URL authority migration", () => {
     );
   });
 
-  it("guardedly removes exactly two source and one feed citation URL predicates", () => {
+  it("guardedly rewrites exactly two source and one feed citation URL predicates", () => {
     expect(sql.match(/v_source_lock_needle CONSTANT TEXT/gu)).toHaveLength(1);
     expect(sql.match(/v_provider_needle CONSTANT TEXT/gu)).toHaveLength(1);
     expect(sql.match(/v_feed_lock_needle CONSTANT TEXT/gu)).toHaveLength(1);
@@ -41,6 +41,26 @@ describe("reader summary safe citation URL authority migration", () => {
     expect(evidenceSql.match(
       /feed\."canonical_url" = citation\.value->>'canonicalUrl'/gu,
     )).toHaveLength(1);
+    expect(sql.match(
+      /public\.reader_summary_safe_citation_url\((?:source|feed)\."canonical_url"\) = citation\.value->>''canonicalUrl''/gu,
+    )).toHaveLength(3);
+  });
+
+  it("derives the strict display-safe URL used by summary citations", () => {
+    expect(sql).toContain(
+      "CREATE OR REPLACE FUNCTION public.reader_summary_safe_citation_url(",
+    );
+    expect(sql).toContain("LANGUAGE plpgsql");
+    expect(sql).toContain("IMMUTABLE");
+    expect(sql).toContain("STRICT");
+    expect(sql).toContain("PARALLEL SAFE");
+    expect(sql).toContain("SET search_path = pg_catalog");
+    expect(sql).toContain("pg_catalog.regexp_replace(v_match[2], '^.*@', '')");
+    expect(sql).toContain("pg_catalog.regexp_replace(v_host, '^www[.]', '') = 'news.ycombinator.com'");
+    expect(sql).toContain("'(^|&)id=([0-9]+)(&|$)'");
+    expect(sql).toContain("CASE WHEN v_path = '/' THEN '' ELSE v_path END");
+    expect(sql).toContain("REVOKE ALL ON FUNCTION public.reader_summary_safe_citation_url(TEXT)");
+    expect(sql).toContain("FROM PUBLIC");
   });
 
   it("preserves immutable source-feed URL binding and DB-owned provider URL", () => {
@@ -63,7 +83,6 @@ describe("reader summary safe citation URL authority migration", () => {
     expect(sql).toContain("GRANT CREATE ON SCHEMA public");
     expect(sql).toContain("REVOKE CREATE ON SCHEMA public");
     expect(sql).not.toContain("GRANT EXECUTE");
-    expect(sql).not.toContain("REVOKE ALL ON FUNCTION");
     expect(sql).not.toContain("ALTER FUNCTION");
   });
 });
