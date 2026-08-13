@@ -335,6 +335,25 @@ describe("buildTopicCandidateRelationshipHints", () => {
       "node:claude-2",
     ]);
   });
+
+  it("does not group headline clauses through the modal word will", () => {
+    const candidates = [
+      candidate("node:forecast", ["There Will Very"]),
+      candidate("node:limits", ["OpenAI Will Drop Limits"]),
+    ];
+
+    expect(
+      selectAgentRuntimeReaderSummaryTopicCandidates(
+        {
+          candidates,
+          clusters: candidates.map((item, index) =>
+            storyCluster(item.storyClusterId, candidates.length - index),
+          ),
+        },
+        2,
+      ).map((item) => item.nodeId),
+    ).toEqual(["node:forecast", "node:limits"]);
+  });
 });
 
 const candidate = (
