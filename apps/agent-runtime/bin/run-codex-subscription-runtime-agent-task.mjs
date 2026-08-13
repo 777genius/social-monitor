@@ -21,6 +21,12 @@ const requestedModel = optionalArgument(argv, "--model");
 const requestedReasoningEffort =
   process.env.AGENT_RUNTIME_REASONING_EFFORT?.trim() || undefined;
 const request = JSON.parse(await readFile(inputPath, "utf8"));
+const pinnedCodexBinaryPath = join(
+  process.cwd(),
+  "node_modules",
+  ".bin",
+  "codex",
+);
 const admission = admitSubscriptionRuntimeWrapperRequest({
   request,
   provider,
@@ -62,7 +68,7 @@ const createStrictCodexWorker = (input) => {
     providerInstanceId: input.providerInstanceId,
     stateRootDir: input.stateRootDir,
     encryptionKey: input.encryptionKey,
-    codexBinaryPath: input.codexBinaryPath ?? "codex",
+    codexBinaryPath: input.codexBinaryPath ?? pinnedCodexBinaryPath,
     sourceEnv: subscriptionOnlyCodexEnvironment(input.env),
     workspacePath: input.cwd,
     model,
@@ -131,7 +137,7 @@ function createPooledCodexWorker({ input, model, authPool }) {
             capacityAccountId: account.id,
             stateRootDir: input.stateRootDir,
             encryptionKey: input.encryptionKey,
-            codexBinaryPath: input.codexBinaryPath ?? "codex",
+            codexBinaryPath: input.codexBinaryPath ?? pinnedCodexBinaryPath,
             sourceEnv: subscriptionOnlyCodexEnvironment(input.env),
             model,
             reasoningEffort: admission.profile.reasoningEffort,
