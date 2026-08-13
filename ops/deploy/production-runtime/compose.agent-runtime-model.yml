@@ -2,6 +2,8 @@ services:
   agent-runtime:
     environment:
       AGENT_RUNTIME_MODEL: gpt-5.6-sol
+      AGENT_RUNTIME_CODEX_AUTH_JSON_PATH: ""
+      CODEX_AUTH_JSON_PATH: ""
       AGENT_RUNTIME_CODEX_AUTH_POOL_ROOT: /run/social-monitor-codex-auth-pool
       AGENT_RUNTIME_CODEX_AUTH_POOL_MANIFEST: /run/social-monitor-codex-auth-pool/current.json
     volumes:

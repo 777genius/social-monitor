@@ -195,6 +195,8 @@ services:
   agent-runtime:
     environment:
       AGENT_RUNTIME_MODEL: gpt-5.5
+      AGENT_RUNTIME_CODEX_AUTH_JSON_PATH: /run/legacy-auth/auth.json
+      CODEX_AUTH_JSON_PATH: /run/legacy-auth/auth.json
   daily-runner:
     image: alpine:3.21
     environment:
@@ -247,6 +249,26 @@ assertModels(
   expectedProductionModel,
   "final production overlay",
 );
+const productionAgentEnvironment =
+  staleProduction.services?.["agent-runtime"]?.environment ?? {};
+for (const legacyAuthKey of [
+  "AGENT_RUNTIME_CODEX_AUTH_JSON_PATH",
+  "CODEX_AUTH_JSON_PATH",
+]) {
+  if (productionAgentEnvironment[legacyAuthKey] !== "") {
+    throw new Error(
+      `final production overlay did not clear legacy ${legacyAuthKey}`,
+    );
+  }
+}
+if (
+  productionAgentEnvironment.AGENT_RUNTIME_CODEX_AUTH_POOL_ROOT !==
+    "/run/social-monitor-codex-auth-pool" ||
+  productionAgentEnvironment.AGENT_RUNTIME_CODEX_AUTH_POOL_MANIFEST !==
+    "/run/social-monitor-codex-auth-pool/current.json"
+) {
+  throw new Error("final production overlay did not retain the Codex auth pool");
+}
 
 const localOverride = JSON.parse(readFileSync(localOverridePath, "utf8"));
 assertModels(
