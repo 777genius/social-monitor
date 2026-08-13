@@ -102,7 +102,7 @@ def test_collect_daily_search_sorts_and_deduplicates_by_trend_score() -> None:
     assert fake.calls[0] == {
         "query": "AI agents",
         "since": "2026-06-26",
-        "until": "2026-06-28",
+        "until": "2026-06-27",
         "lang": "en",
         "display_type": "Top",
         "limit": 10,
@@ -115,7 +115,7 @@ def test_collect_daily_search_sorts_and_deduplicates_by_trend_score() -> None:
     assert fake.calls[1] == {
         "query": "AI agents",
         "since": "2026-06-26",
-        "until": "2026-06-28",
+        "until": "2026-06-27",
         "lang": "en",
         "display_type": "Top",
         "limit": 10,
@@ -128,7 +128,7 @@ def test_collect_daily_search_sorts_and_deduplicates_by_trend_score() -> None:
     assert fake.calls[2] == {
         "query": "AI agents",
         "since": "2026-06-26",
-        "until": "2026-06-28",
+        "until": "2026-06-27",
         "lang": "en",
         "display_type": "Latest",
         "limit": 10,
@@ -240,13 +240,13 @@ def test_collect_daily_search_handles_non_list_scweet_response() -> None:
 
 
 def test_scweet_date_window_uses_explicit_dates() -> None:
-    assert scweet_date_window(request()) == ("2026-06-26", "2026-06-28")
+    assert scweet_date_window(request()) == ("2026-06-26", "2026-06-27")
 
 
 def test_scweet_date_window_does_not_overfetch_midnight_end() -> None:
     assert scweet_date_window(
         request(window_end=datetime(2026, 6, 28, 0, tzinfo=UTC)),
-    ) == ("2026-06-27", "2026-06-28")
+    ) == ("2026-06-27", "2026-06-27")
 
 
 def test_post_mapping_drops_invalid_records() -> None:

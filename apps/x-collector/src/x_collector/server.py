@@ -14,13 +14,13 @@ from .health import (
     XCollectorHealthMonitor,
     install_scweet_manifest_health_monitor,
 )
-from .scweet_adapter import ScweetDailySearchCollector
+from .reloading_scweet_collector import ReloadingScweetDailySearchCollector
 
 
 def create_server(settings: XCollectorSettings) -> grpc.Server:
     health_monitor = XCollectorHealthMonitor()
     install_scweet_manifest_health_monitor(health_monitor)
-    collector = ScweetDailySearchCollector.from_settings(settings)
+    collector = ReloadingScweetDailySearchCollector(settings)
     server = grpc.server(
         futures.ThreadPoolExecutor(max_workers=settings.max_workers),
     )

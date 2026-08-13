@@ -735,17 +735,20 @@ def run_scweet_search_pass(
 def scweet_date_window(request: DailySearchRequest) -> tuple[str, str]:
     window_end = request.window_end.astimezone(UTC)
     window_start = window_end - timedelta(hours=request.window_hours)
-    until_offset_days = (
-        0
-        if (
-            window_end.hour == 0
-            and window_end.minute == 0
-            and window_end.second == 0
-            and window_end.microsecond == 0
-        )
-        else 1
+    # Scweet expands `until` to 23:59:59 of the supplied date, so it is an
+    # inclusive calendar-day boundary rather than Twitter's exclusive `until`.
+    # A midnight window end therefore belongs to the preceding UTC day.
+    end_is_midnight = (
+        window_end.hour == 0
+        and window_end.minute == 0
+        and window_end.second == 0
+        and window_end.microsecond == 0
     )
-    until_date = (window_end.date() + timedelta(days=until_offset_days)).isoformat()
+    until_date = (
+        window_end.date() - timedelta(days=1)
+        if end_is_midnight
+        else window_end.date()
+    ).isoformat()
 
     return window_start.date().isoformat(), until_date
 

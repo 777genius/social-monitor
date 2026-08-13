@@ -22,7 +22,9 @@ class AccountLimitObservation:
 
     @property
     def blocks_growth(self) -> bool:
-        return self.cooldown_reason is not None
+        # A profile limit is our own conservative ceiling, not provider
+        # evidence. Let clean high-watermark usage probe above it gradually.
+        return self.cooldown_reason not in (None, "profile_daily_limit")
 
 
 @dataclass(frozen=True)
@@ -160,7 +162,7 @@ def clean_usage_cap(
     if observed < configured * policy.high_watermark_ratio:
         return configured
 
-    growth_cap = int(configured * (1 + policy.clean_growth_ratio))
+    growth_cap = int(max(configured, observed) * (1 + policy.clean_growth_ratio))
     max_cap = int(configured * policy.max_growth_multiplier)
 
     return max(configured, min(max(growth_cap, configured + 1), max_cap))

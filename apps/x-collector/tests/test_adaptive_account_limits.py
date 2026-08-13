@@ -28,7 +28,7 @@ def test_adaptive_limit_boosts_clean_high_usage_account() -> None:
     )
 
 
-def test_adaptive_limit_does_not_boost_profile_cooldown() -> None:
+def test_adaptive_limit_grows_past_conservative_profile_cooldown() -> None:
     adapted = adapt_account_limit(
         AccountLimitOverride(daily_requests=30, daily_tweets=600, priority=100),
         AccountLimitObservation(
@@ -40,8 +40,22 @@ def test_adaptive_limit_does_not_boost_profile_cooldown() -> None:
     )
 
     assert adapted == AccountLimitOverride(
-        daily_requests=30,
+        daily_requests=36,
         daily_tweets=600,
+        priority=100,
+    )
+
+
+def test_adaptive_limit_compounds_clean_growth_up_to_safety_cap() -> None:
+    adapted = adapt_account_limit(
+        AccountLimitOverride(daily_requests=30, daily_tweets=600, priority=100),
+        AccountLimitObservation(daily_requests=50, daily_tweets=950),
+        AdaptiveAccountLimitPolicy(enabled=True),
+    )
+
+    assert adapted == AccountLimitOverride(
+        daily_requests=60,
+        daily_tweets=1_140,
         priority=100,
     )
 
