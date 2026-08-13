@@ -136,7 +136,7 @@ describe("AgentRuntimeReaderSummaryTopicLabeler", () => {
       purpose: "social_monitor.reader_summary.topic_map.label",
       timeoutMs: 600_000,
       metadata: {
-        promptVersion: "reader_summary.topic_map.agent_runtime.v18",
+        promptVersion: "reader_summary.topic_map.agent_runtime.v19",
         attemptNumber: "1",
         totalAttempts: "2",
       },

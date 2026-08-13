@@ -15,6 +15,7 @@ import {
   combineReaderSummaryTopicRelations,
   evaluateReaderSummaryTopicMapStructure,
   extractReaderSummaryTopicLabelCandidates,
+  READER_SUMMARY_TOPIC_MAP_MAX_NODES,
   READER_SUMMARY_TOPIC_RELATION_MAX_CANDIDATES,
   reconcileVerifiedReaderSummaryTopicRelations,
   type ReaderSummaryTopicMap,
@@ -218,8 +219,16 @@ export class BuildReaderSummaryTopicMapUseCase {
         }),
       } satisfies ReaderSummaryTopicLabelerInput;
 
+      const labelPlan = await this.labeler!.label(input, attemptContext);
+
       return ok({
-        labelPlan: await this.labeler!.label(input, attemptContext),
+        labelPlan: {
+          ...labelPlan,
+          nodeLabels: labelPlan.nodeLabels.slice(
+            0,
+            READER_SUMMARY_TOPIC_MAP_MAX_NODES,
+          ),
+        },
         input,
       });
     } catch (error) {
