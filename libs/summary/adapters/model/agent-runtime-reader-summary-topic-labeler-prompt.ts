@@ -2,6 +2,7 @@ import {
   READER_SUMMARY_TOPIC_MAP_MAX_SEMANTIC_GROUPS,
   READER_SUMMARY_TOPIC_MAP_UNGROUPED_ID,
   buildReaderSummaryTopicRelationCandidates,
+  meaningfulTopicLabelTokens,
   readerSummaryTopicClaimTypes,
 } from "../../domain";
 import type {
@@ -42,7 +43,7 @@ export const agentRuntimeReaderSummaryTopicLabelerInstructions = [
   "Use groupId only for a broader parent ecosystem or domain family, never for one story, one product variant, or as the unique bubble id.",
   "A group is only a visual and editorial family; it never merges topic bubbles. Keep distinct topicId values while grouping related nodes by a broader grounded domain.",
   "Products and models that belong to the same parent organization or ecosystem must share one group even when their product names differ.",
-  "Durable evidence-grounded domains such as software development, healthcare, business, and AI research are valid group families. Prefer them when product ecosystems alone would leave most nodes ungrouped.",
+  "Prefer concrete evidence-grounded parent organizations, ecosystems, projects, or technical families. Never invent a broad category only to increase grouped coverage.",
   "For every semantic group, return 2-8 semanticAnchors copied from concrete entity, product, model, project, or domain terms in the assigned nodes. Each anchor must occur in at least two assigned nodes, and the anchors must collectively cover every assigned node.",
   "For every grouped node, include in nodeLabels.keywords at least one evidence-grounded semantic anchor shared with another node in that group. Keywords are required even when the label already contains the anchor.",
   "Do not use broad words such as AI, model, product, tool, ecosystem, industry, or technology as the only semantic anchor. If a node has no evidence-grounded shared anchor with the group, assign it to group:ungrouped.",
@@ -157,7 +158,7 @@ export const selectAgentRuntimeReaderSummaryTopicCandidates = (
     input.clusters.map((cluster) => [cluster.id, cluster.score] as const),
   );
 
-  return input.candidates
+  const ranked = input.candidates
     .slice()
     .sort((left, right) => {
       const scoreDifference =
@@ -167,9 +168,161 @@ export const selectAgentRuntimeReaderSummaryTopicCandidates = (
       return scoreDifference !== 0
         ? scoreDifference
         : left.nodeId.localeCompare(right.nodeId);
-    })
-    .slice(0, maxCandidates);
+    });
+  if (ranked.length <= maxCandidates) {
+    return ranked;
+  }
+
+  const concreteTermsByNodeId = new Map(
+    ranked.map((candidate) => [
+      candidate.nodeId,
+      concreteCandidateTerms(candidate),
+    ]),
+  );
+  const termSupport = new Map<string, number>();
+  for (const terms of concreteTermsByNodeId.values()) {
+    for (const term of terms) {
+      termSupport.set(term, (termSupport.get(term) ?? 0) + 1);
+    }
+  }
+  const groupableTerms = new Set(
+    [...termSupport]
+      .filter(([, support]) => support >= 2)
+      .map(([term]) => term),
+  );
+  const leadingCandidateCount = Math.ceil(maxCandidates / 2);
+  const selected = new Set(
+    ranked
+      .slice(0, leadingCandidateCount)
+      .map((candidate) => candidate.nodeId),
+  );
+  const selectedTerms = new Set(
+    ranked
+      .slice(0, leadingCandidateCount)
+      .flatMap((candidate) => [
+        ...(concreteTermsByNodeId.get(candidate.nodeId) ?? []),
+      ])
+      .filter((term) => groupableTerms.has(term)),
+  );
+
+  for (const candidate of ranked.slice(leadingCandidateCount)) {
+    if (selected.size >= maxCandidates) {
+      break;
+    }
+    const terms = concreteTermsByNodeId.get(candidate.nodeId) ?? new Set();
+    if ([...terms].some((term) => selectedTerms.has(term))) {
+      selected.add(candidate.nodeId);
+    }
+  }
+
+  const cohortCandidates = ranked
+    .slice(leadingCandidateCount)
+    .filter((candidate) => !selected.has(candidate.nodeId))
+    .filter((candidate) =>
+      [...(concreteTermsByNodeId.get(candidate.nodeId) ?? [])].some((term) =>
+        groupableTerms.has(term),
+      ),
+    );
+  while (selected.size < maxCandidates && cohortCandidates.length > 0) {
+    const remainingSlots = maxCandidates - selected.size;
+    const bundle = bestGroundedCandidateBundle(
+      cohortCandidates,
+      concreteTermsByNodeId,
+      remainingSlots,
+    );
+    if (bundle.length === 0) {
+      break;
+    }
+    for (const member of bundle) {
+      selected.add(member.nodeId);
+    }
+    for (const member of bundle) {
+      const index = cohortCandidates.findIndex(
+        (candidate) => candidate.nodeId === member.nodeId,
+      );
+      if (index >= 0) {
+        cohortCandidates.splice(index, 1);
+      }
+    }
+  }
+  for (const candidate of ranked) {
+    if (selected.size >= maxCandidates) {
+      break;
+    }
+    selected.add(candidate.nodeId);
+  }
+
+  return ranked.filter((candidate) => selected.has(candidate.nodeId));
 };
+
+const bestGroundedCandidateBundle = (
+  candidates: readonly ReaderSummaryTopicLabelerInput["candidates"][number][],
+  termsByNodeId: ReadonlyMap<string, ReadonlySet<string>>,
+  remainingSlots: number,
+): readonly ReaderSummaryTopicLabelerInput["candidates"][number][] => {
+  if (remainingSlots < 2) {
+    return [];
+  }
+  for (let leftIndex = 0; leftIndex < candidates.length; leftIndex += 1) {
+    const left = candidates[leftIndex]!;
+    for (
+      let rightIndex = leftIndex + 1;
+      rightIndex < candidates.length;
+      rightIndex += 1
+    ) {
+      const right = candidates[rightIndex]!;
+      if (
+        haveSharedConcreteTerm(
+          termsByNodeId.get(left.nodeId) ?? new Set(),
+          termsByNodeId.get(right.nodeId) ?? new Set(),
+        )
+      ) {
+        return [left, right];
+      }
+    }
+  }
+
+  return [];
+};
+
+const haveSharedConcreteTerm = (
+  left: ReadonlySet<string>,
+  right: ReadonlySet<string>,
+): boolean => [...left].some((term) => right.has(term));
+
+const concreteCandidateTerms = (
+  candidate: ReaderSummaryTopicLabelerInput["candidates"][number],
+): ReadonlySet<string> =>
+  new Set(
+    [
+      candidate.fallbackLabel,
+      ...candidate.keywords,
+      ...candidate.labelCandidates.map((option) => option.label),
+    ]
+      .flatMap(meaningfulTopicLabelTokens)
+      .filter((term) => !nonDiscriminativeCandidateTerms.has(term)),
+  );
+
+const nonDiscriminativeCandidateTerms = new Set([
+  "ai",
+  "content",
+  "developer",
+  "developers",
+  "ecosystem",
+  "ecosystems",
+  "event",
+  "industry",
+  "industries",
+  "model",
+  "models",
+  "product",
+  "products",
+  "release",
+  "technology",
+  "technologies",
+  "tool",
+  "tools",
+]);
 
 export const agentRuntimeReaderSummaryTopicLabelerJsonSchema = {
   type: "object",
