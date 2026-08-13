@@ -158,8 +158,8 @@ materialize_auth_pool_snapshot() {
         "$snapshot_dir/$account/auth.json" || \
         fail 'existing auth pool snapshot bytes do not match its digest'
     done
-    [[ $(find "$snapshot_dir" -mindepth 2 -maxdepth 2 -type f \
-      -name auth.json | wc -l) == ${#available_accounts[@]} ]] || \
+    (( $(find "$snapshot_dir" -mindepth 2 -maxdepth 2 -type f \
+      -name auth.json | wc -l) == ${#available_accounts[@]} )) || \
       fail 'existing auth pool snapshot contains unexpected auth files'
     rm -rf -- "$stage_dir"
   else
