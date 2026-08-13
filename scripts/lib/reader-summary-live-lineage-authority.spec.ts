@@ -12,8 +12,14 @@ describe("reader summary live lineage authority migration", () => {
 
   it("runs after the daily live canonical migrations", () => {
     const migrationNames = readdirSync(resolve("prisma/migrations")).sort();
-    expect(migrationNames.at(-1)).toBe(
-      "20260813093000_reader_summary_live_lineage_authority",
+    expect(
+      migrationNames.indexOf(
+        "20260813093000_reader_summary_live_lineage_authority",
+      ),
+    ).toBeGreaterThan(
+      migrationNames.indexOf(
+        "20260813090000_reader_summary_daily_live_canonical_bounds",
+      ),
     );
   });
 
