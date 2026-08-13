@@ -10,20 +10,25 @@ TopRead topPostFixture({
   int? githubRank,
   List<ProviderMetric>? providerMetrics,
   List<String> citationIds = const [],
+  double signalScore = 1,
+  String confidenceLevel = 'medium',
+  double confidenceScore = 0.6,
+  List<String> matchedInterestIds = const ['ai-developer-tools'],
+  List<String>? confirmedProviderKeys,
 }) {
   return TopRead(
     title: title,
     providerKey: providerKey,
     reason: '$title is relevant evidence.',
-    matchedInterestIds: const ['ai-developer-tools'],
+    matchedInterestIds: matchedInterestIds,
     matchedRules: const [],
-    signalScore: SignalScore.normalized(1),
-    confidence: const TopReadConfidence(
-      level: 'medium',
-      score: 0.6,
+    signalScore: SignalScore.normalized(signalScore),
+    confidence: TopReadConfidence(
+      level: confidenceLevel,
+      score: confidenceScore,
       rationale: 'Test evidence.',
     ),
-    confirmedProviderKeys: [providerKey],
+    confirmedProviderKeys: confirmedProviderKeys ?? [providerKey],
     providerMetrics:
         providerMetrics ??
         [

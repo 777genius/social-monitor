@@ -409,7 +409,7 @@ void main() {
     );
   });
 
-  testWidgets('workspace summary renders the top ten reader reads', (
+  testWidgets('workspace summary separates reads after the top eight', (
     tester,
   ) async {
     final store = _store([
@@ -431,16 +431,15 @@ void main() {
       findsOneWidget,
     );
 
-    final scrollable = find.byType(Scrollable).first;
-    final lastPost = find.byKey(const ValueKey('reader-summary-top-post-10'));
-    for (var i = 0; i < 40 && !tester.any(lastPost); i += 1) {
-      await tester.drag(scrollable, const Offset(0, -320));
-      await tester.pumpAndSettle();
-    }
-    expect(
-      find.byKey(const ValueKey('reader-summary-top-post-10')),
-      findsOneWidget,
+    expect(find.text('repo-radar/project-11'), findsNothing);
+
+    await tester.tap(
+      find.byKey(
+        const ValueKey('reader-summary-top-posts-board-more-selected'),
+      ),
     );
+    await tester.pumpAndSettle();
+
     expect(find.text('repo-radar/project-11'), findsWidgets);
   });
 

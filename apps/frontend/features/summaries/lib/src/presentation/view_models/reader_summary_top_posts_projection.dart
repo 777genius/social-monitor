@@ -1,5 +1,6 @@
 import '../../domain/aggregates/reader_summary.dart';
 import '../formatters/top_post_metrics.dart';
+import 'more_selected_posts_ranking.dart';
 
 const readerSummaryCuratedTopPostLimit = 8;
 const readerSummaryGitHubTrendingProviderKey = 'github-trending-page';
@@ -7,16 +8,14 @@ const readerSummaryGitHubTrendingProviderKey = 'github-trending-page';
 final class ReaderSummaryTopPostsProjection {
   ReaderSummaryTopPostsProjection._({
     required this.curatedPosts,
-    required this.continuationPosts,
-    required this.posts,
+    required this.moreSelectedPosts,
     required this.githubTrendingPosts,
     required this.items,
     required List<String> datasetOrder,
   }) : _datasetOrder = datasetOrder;
 
   final List<TopRead> curatedPosts;
-  final List<TopRead> continuationPosts;
-  final List<TopRead> posts;
+  final List<TopRead> moreSelectedPosts;
   final List<TopRead> githubTrendingPosts;
   final List<TopRead> items;
   final List<String> _datasetOrder;
@@ -45,41 +44,43 @@ ReaderSummaryTopPostsProjection readerSummaryTopPostsProjection(
   final curatedPosts = editorialTopReads
       .take(readerSummaryCuratedTopPostLimit)
       .toList(growable: false);
-  // Preserve backend order while keeping the first identity across the
-  // complete non-GitHub continuation.
-  final continuationPosts = List<TopRead>.unmodifiable(
-    _stableUniquePosts(
-      [
-        ...editorialTopReads.skip(readerSummaryCuratedTopPostLimit),
-        ...summary.content.selectedPosts.where(
-          (item) => !isGitHubTrendingTopPost(item),
-        ),
-      ],
-      seenIdentities: {
-        for (final item in curatedPosts) readerSummaryTopPostIdentity(item),
-      },
+  final moreSelectedPosts = List<TopRead>.unmodifiable(
+    orderMoreSelectedPostsByUsefulness(
+      _stableUniquePosts(
+        [
+          ...editorialTopReads.skip(readerSummaryCuratedTopPostLimit),
+          ...summary.content.selectedPosts.where(
+            (item) => !isGitHubTrendingTopPost(item),
+          ),
+        ],
+        seenIdentities: {
+          for (final item in curatedPosts) readerSummaryTopPostIdentity(item),
+        },
+      ),
     ),
   );
-  final posts = List<TopRead>.unmodifiable([
-    ...curatedPosts,
-    ...continuationPosts,
-  ]);
   final githubTrendingPosts = List<TopRead>.unmodifiable(
     orderGitHubTrendingPosts(
       summary.content.selectedPosts.where(isGitHubTrendingTopPost),
     ),
   );
-  final items = List<TopRead>.unmodifiable([...posts, ...githubTrendingPosts]);
+  final items = List<TopRead>.unmodifiable([
+    ...curatedPosts,
+    ...moreSelectedPosts,
+    ...githubTrendingPosts,
+  ]);
 
   return ReaderSummaryTopPostsProjection._(
     curatedPosts: List<TopRead>.unmodifiable(curatedPosts),
-    continuationPosts: continuationPosts,
-    posts: posts,
+    moreSelectedPosts: moreSelectedPosts,
     githubTrendingPosts: githubTrendingPosts,
     items: items,
     datasetOrder: List<String>.unmodifiable([
       'curated:${curatedPosts.length}',
-      for (final item in posts) 'post:${readerSummaryTopPostIdentity(item)}',
+      for (final item in curatedPosts)
+        'curated-post:${readerSummaryTopPostIdentity(item)}',
+      for (final item in moreSelectedPosts)
+        'more-selected:${readerSummaryTopPostIdentity(item)}',
       for (final item in githubTrendingPosts)
         'github:${readerSummaryTopPostIdentity(item)}',
     ]),
