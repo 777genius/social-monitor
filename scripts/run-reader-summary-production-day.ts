@@ -58,11 +58,12 @@ import {
   type ProductionDayProviderReadiness,
 } from "./lib/reader-summary-production-day-provider-readiness";
 import { productionDayQualityDateArgs } from "./lib/reader-summary-production-day-quality-date";
+import { resolveProductionDayCollectionDate } from "./lib/reader-summary-production-day-date";
 import { collectionQualityRegenerationFreshnessArgs } from "./lib/yesterday-social-collection-quality-regeneration";
 import type { CleanRealDayCollectionReport } from "./lib/clean-real-day-collection-report";
-import {
-  type YesterdaySocialProviderReadiness,
-} from "./lib/yesterday-social-collection-quality";
+import { readerSummaryProductionHistoryScope } from "./lib/reader-summary-daily-maintenance-scope";
+import { productionHistoryCollection } from "./lib/reader-summary-production-history-collection";
+import { type YesterdaySocialProviderReadiness } from "./lib/yesterday-social-collection-quality";
 import { readProductionDayScope } from "./lib/reader-summary-production-day-scope";
 import {
   probeProductionRuntimeLiveIdentity,
@@ -173,6 +174,19 @@ async function main(): Promise<void> {
           now: new Date(),
         })
       : null;
+  const historicalCollection = allowHistoricalProviderCollection
+    ? productionHistoryCollection({
+        directory: process.env.READER_SUMMARY_PRODUCTION_HISTORY_COLLECTION_DIR,
+        collectionDate,
+      })
+    : null;
+  if (
+    historicalCollection !== null &&
+    (scope.tenantId !== readerSummaryProductionHistoryScope.tenantId ||
+      scope.workspaceId !== readerSummaryProductionHistoryScope.workspaceId)
+  ) {
+    throw new Error("Production history collection scope is not 6101/6102");
+  }
 
   const collectionStep: StepReport = historicalRegeneration
     ? historicalRegeneration.verifiedCollectionStep
@@ -194,7 +208,10 @@ async function main(): Promise<void> {
           collectionDate,
           "--provider-catch-up",
           ...(allowHistoricalProviderCollection
-            ? ["--allow-historical-provider-collection"]
+            ? [
+                "--allow-historical-provider-collection",
+                ...(historicalCollection?.arguments ?? []),
+              ]
             : []),
           ...(allowHistorical ? [] : ["--wait-for-x-readiness"]),
         ]);
@@ -235,10 +252,10 @@ async function main(): Promise<void> {
     readJsonIfExists<ProductionDayDatabaseQualityReport>(
       "ops/evals/yesterday-social-collection-quality-report.v1.json",
     );
-  const collectionReport =
-    readJsonIfExists<CleanRealDayCollectionReport>(
+  const collectionReport = readJsonIfExists<CleanRealDayCollectionReport>(
+    historicalCollection?.path ??
       "ops/evals/reader-summary-clean-real-day-collection.v1.json",
-    );
+  );
   const providerAdmission =
     executionRequest.mode === "live-production"
       ? resolveProductionDayProviderReadiness({
@@ -302,8 +319,7 @@ async function main(): Promise<void> {
     })
   ) {
     const safeMessage =
-      providerReadiness?.barrierMessage === null ||
-      providerReadiness === null
+      providerReadiness?.barrierMessage === null || providerReadiness === null
         ? "Production collection quality failed; AI summary and publication were not started"
         : `${providerReadiness.barrierMessage}; AI summary and publication were not started. Retry not before ${providerReadiness.retrySchedule?.notBefore ?? "the next scheduled run"}; completed providers will not be recollected`;
     steps.push(...blockedProductionDaySteps(safeMessage));
@@ -518,7 +534,9 @@ async function main(): Promise<void> {
 }
 
 function initializeProductionDayRuntime(): void {
-  executionRequest = resolveProductionDayExecutionRequest(process.argv.slice(2));
+  executionRequest = resolveProductionDayExecutionRequest(
+    process.argv.slice(2),
+  );
   reuseExistingArtifacts = executionRequest.mode === "historical-reuse";
   skipLiveCollection = executionRequest.mode !== "live-production";
   allowDegraded = process.argv.includes("--allow-degraded");
@@ -529,14 +547,19 @@ function initializeProductionDayRuntime(): void {
     executionMode: executionRequest.mode,
     allowHistorical,
   });
-  collectionDate = resolveCollectionDate();
+  collectionDate = resolveProductionDayCollectionDate(process.argv.slice(2));
   summaryModel = resolveSummaryModel();
   topicLabeler = resolveTopicLabeler();
   periodStartedAt = `${collectionDate}T00:00:00.000Z`;
   periodEndedAt = nextDate(collectionDate);
   runtimeArtifactDirectory = resolve(
     process.env.READER_SUMMARY_PRODUCTION_DAY_ARTIFACT_DIR ??
-      join(tmpdir(), "social-monitor", "reader-summary-production-day", collectionDate),
+      join(
+        tmpdir(),
+        "social-monitor",
+        "reader-summary-production-day",
+        collectionDate,
+      ),
   );
   evidencePath = join(
     runtimeArtifactDirectory,
@@ -547,16 +570,20 @@ function initializeProductionDayRuntime(): void {
     `frontend-reader-summary-${collectionDate}.fixture.v1.json`,
   );
   nextEvidencePath = evidencePath.replace(/\.json$/u, ".next.json");
-  nextFrontendFixturePath = frontendFixturePath.replace(/\.json$/u, ".next.json");
+  nextFrontendFixturePath = frontendFixturePath.replace(
+    /\.json$/u,
+    ".next.json",
+  );
   runtimeIdentityPath = join(
     runtimeArtifactDirectory,
     `runtime-live-identity-${collectionDate}.v1.json`,
   );
-  nextRuntimeIdentityPath = runtimeIdentityPath.replace(/\.json$/u, ".next.json");
-  datedOutputPath =
-    `ops/evals/reader-summary-production-day-run.${collectionDate}.v1.json`;
-  terminalOutcomePath =
-    `ops/evals/reader-summary-production-day-outcome.${collectionDate}.v1.json`;
+  nextRuntimeIdentityPath = runtimeIdentityPath.replace(
+    /\.json$/u,
+    ".next.json",
+  );
+  datedOutputPath = `ops/evals/reader-summary-production-day-run.${collectionDate}.v1.json`;
+  terminalOutcomePath = `ops/evals/reader-summary-production-day-outcome.${collectionDate}.v1.json`;
 }
 
 function persistTerminalOutcome(
@@ -875,24 +902,6 @@ function printStats(report: ProductionDayReport): void {
   }
 }
 
-function resolveCollectionDate(): string {
-  const explicit = readOption("--date");
-  if (explicit !== undefined) {
-    assertCollectionDate(explicit);
-    return explicit;
-  }
-  if (process.argv.includes("--today")) {
-    return new Date().toISOString().slice(0, 10);
-  }
-  if (process.argv.includes("--yesterday")) {
-    return new Date(Date.now() - 24 * 60 * 60 * 1000)
-      .toISOString()
-      .slice(0, 10);
-  }
-
-  throw new Error("Provide --date YYYY-MM-DD, --today or --yesterday");
-}
-
 function resolveSummaryModel():
   "agent-runtime" | "openai-responses" | "deterministic" {
   const value = readOption("--summary-model") ?? "agent-runtime";
@@ -971,17 +980,4 @@ function readJsonIfExists<TValue>(path: string): TValue | null {
   }
 
   return JSON.parse(readFileSync(path, "utf8")) as TValue;
-}
-
-function assertCollectionDate(value: string): void {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    throw new Error(`Collection date must use YYYY-MM-DD format: ${value}`);
-  }
-  const parsed = new Date(`${value}T00:00:00.000Z`);
-  if (
-    Number.isNaN(parsed.getTime()) ||
-    parsed.toISOString().slice(0, 10) !== value
-  ) {
-    throw new Error(`Collection date is invalid: ${value}`);
-  }
 }

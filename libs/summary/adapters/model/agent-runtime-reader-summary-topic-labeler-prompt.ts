@@ -4,8 +4,15 @@ import {
   buildReaderSummaryTopicRelationCandidates,
   readerSummaryTopicClaimTypes,
 } from "../../domain";
-import type { ReaderSummaryTopicLabelerInput } from "../../ports";
+import type {
+  ReaderSummaryTopicLabelerInput,
+  ReaderSummaryTopicMapAttemptContext,
+} from "../../ports";
 import { buildAgentRuntimeTopicEvidenceSamples } from "./agent-runtime-reader-summary-topic-evidence-prompt";
+import {
+  buildGroundedTopicCohortsForCandidates,
+} from "./agent-runtime-reader-summary-topic-grounded-cohorts";
+export { selectAgentRuntimeReaderSummaryTopicCandidates } from "./agent-runtime-reader-summary-topic-candidate-selection";
 
 export const agentRuntimeReaderSummaryTopicLabelerInstructions = [
   "You label and group Social Monitor summary topic nodes.",
@@ -31,13 +38,17 @@ export const agentRuntimeReaderSummaryTopicLabelerInstructions = [
   "Use the same topicId for candidates that describe the same concrete story, event, release, project, product, company, or person so they become one bubble.",
   "Treat coordinated coverage of one announcement as one topic even when an official account, a leader, an engineer, and an article emphasize different components. Use the announced product or event as the shared subject and topicId; do not split by speaker or supporting technology.",
   "Review relationshipHints before assigning topicId. They are retrieval hints, not proof: merge hinted nodes only when their evidence samples describe the same concrete event or announcement.",
+  "requiredGroundedCohorts are executable assignments derived from high-trust topic identity. Assign every listed nodeId to that cohort's groupId and include its sharedAnchor in node keywords and group semanticAnchors.",
+  "Keep a distinct topicId for each distinct story inside a required grounded cohort. A required group assignment never merges topicIds.",
   "Do not reuse topicId merely because candidates mention the same company, model family, or ecosystem. Rollout, availability, benchmark results, cost or token efficiency, usage limits, and courses or guides are separate topics.",
   "Treat distinct model variants as distinct primary subjects. Merge variants only when every merged candidate is explicitly about one family-level announcement; label that bubble as a family rollout rather than listing variant names.",
   "For an explicit family-level announcement that lists sibling variants, subject must name the shared family and include Family. Never select one listed sibling as the subject of the family announcement.",
   "Example: a model-family rollout, one variant's benchmarks, another variant's pricing, and CLI availability require separate topicIds even when they belong to one parent group and should appear near each other in the same color.",
   "Before assigning groupId, derive a single global taxonomy of 3-8 broad, mutually exclusive semantic families from all input nodes.",
   "Use groupId only for a broader parent ecosystem or domain family, never for one story, one product variant, or as the unique bubble id.",
+  "A group is only a visual and editorial family; it never merges topic bubbles. Keep distinct topicId values while grouping related nodes by a broader grounded domain.",
   "Products and models that belong to the same parent organization or ecosystem must share one group even when their product names differ.",
+  "Prefer concrete evidence-grounded parent organizations, ecosystems, projects, or technical families. Never invent a broad category only to increase grouped coverage.",
   "For every semantic group, return 2-8 semanticAnchors copied from concrete entity, product, model, project, or domain terms in the assigned nodes. Each anchor must occur in at least two assigned nodes, and the anchors must collectively cover every assigned node.",
   "For every grouped node, include in nodeLabels.keywords at least one evidence-grounded semantic anchor shared with another node in that group. Keywords are required even when the label already contains the anchor.",
   "Do not use broad words such as AI, model, product, tool, ecosystem, industry, or technology as the only semantic anchor. If a node has no evidence-grounded shared anchor with the group, assign it to group:ungrouped.",
@@ -50,6 +61,7 @@ export const agentRuntimeReaderSummaryTopicLabelerInstructions = [
 export const buildAgentRuntimeReaderSummaryTopicLabelPrompt = (
   input: ReaderSummaryTopicLabelerInput,
   candidates: readonly ReaderSummaryTopicLabelerInput["candidates"][number][],
+  attemptContext?: ReaderSummaryTopicMapAttemptContext,
 ): string => {
   const evidenceByFeedItemId = new Map(
     input.selectedEvidence.map((item) => [item.feedItemId, item] as const),
@@ -57,10 +69,25 @@ export const buildAgentRuntimeReaderSummaryTopicLabelPrompt = (
   const clusterById = new Map(
     input.clusters.map((cluster) => [cluster.id, cluster] as const),
   );
+  const requiredGroundedCohorts = buildGroundedTopicCohortsForCandidates(
+    candidates,
+  );
 
   return JSON.stringify(
     {
       task: "Label and group topic nodes for a summary bubble map.",
+      retryFeedback:
+        attemptContext?.retryFeedback === undefined
+          ? null
+          : {
+              ...attemptContext.retryFeedback,
+              minimumGroupedNodeCount: Math.ceil(
+                candidates.length *
+                  attemptContext.retryFeedback.minimumGroupedCoverage,
+              ),
+              instruction:
+                "The previous map was rejected only for low grouped coverage. Rebuild the global taxonomy, keep distinct stories as distinct topicId values, and group at least the minimum node count when grounded broad domains support it.",
+            },
       constraints: {
         maxLabelWords: 4,
         maxGroups: READER_SUMMARY_TOPIC_MAP_MAX_SEMANTIC_GROUPS,
@@ -96,6 +123,20 @@ export const buildAgentRuntimeReaderSummaryTopicLabelPrompt = (
           "Signal",
         ],
       },
+      requiredGroundedCohorts: {
+        minimumGroupedNodeCount: requiredGroundedCohorts.reduce(
+          (total, cohort) => total + cohort.nodeIds.length,
+          0,
+        ),
+        instruction:
+          "Apply every listed groupId to exactly its nodeIds, preserve a distinct topicId for distinct stories, and copy sharedAnchor into each member's keywords plus the group's semanticAnchors.",
+        groups: requiredGroundedCohorts.map((cohort) => ({
+          groupId: cohort.groupId,
+          label: cohort.label,
+          sharedAnchor: cohort.sharedAnchor,
+          nodeIds: cohort.nodeIds,
+        })),
+      },
       period: {
         cadence: input.period.cadence,
         startedAt: input.period.startedAt.toISOString(),
@@ -129,28 +170,6 @@ export const buildAgentRuntimeReaderSummaryTopicLabelPrompt = (
     null,
     2,
   );
-};
-
-export const selectAgentRuntimeReaderSummaryTopicCandidates = (
-  input: Pick<ReaderSummaryTopicLabelerInput, "candidates" | "clusters">,
-  maxCandidates: number,
-): readonly ReaderSummaryTopicLabelerInput["candidates"][number][] => {
-  const clusterScoreById = new Map(
-    input.clusters.map((cluster) => [cluster.id, cluster.score] as const),
-  );
-
-  return input.candidates
-    .slice()
-    .sort((left, right) => {
-      const scoreDifference =
-        (clusterScoreById.get(right.storyClusterId) ?? right.score) -
-        (clusterScoreById.get(left.storyClusterId) ?? left.score);
-
-      return scoreDifference !== 0
-        ? scoreDifference
-        : left.nodeId.localeCompare(right.nodeId);
-    })
-    .slice(0, maxCandidates);
 };
 
 export const agentRuntimeReaderSummaryTopicLabelerJsonSchema = {
@@ -193,6 +212,7 @@ export const agentRuntimeReaderSummaryTopicLabelerJsonSchema = {
     },
     groups: {
       type: "array",
+      minItems: 1,
       maxItems: READER_SUMMARY_TOPIC_MAP_MAX_SEMANTIC_GROUPS,
       items: {
         type: "object",
@@ -205,7 +225,7 @@ export const agentRuntimeReaderSummaryTopicLabelerJsonSchema = {
           label: { type: "string" },
           semanticAnchors: {
             type: "array",
-            minItems: 2,
+            minItems: 1,
             maxItems: 8,
             items: { type: "string" },
           },

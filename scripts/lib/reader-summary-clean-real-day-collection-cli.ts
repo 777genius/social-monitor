@@ -8,15 +8,18 @@ import {
   type CleanRealDayCollectionProviderKey,
 } from "./clean-real-day-collection-report";
 import {
+  readExactDayCollectionArtifact,
   readerSummaryDailyCollectionArtifactPath,
 } from "./reader-summary-clean-real-day-collection-artifact";
 import {
   assertReaderSummaryDailyMaintenanceDate,
   isAfterReaderSummaryDailyMaintenanceBounds,
+  readerSummaryProductionHistoryMaintenanceBounds,
   readerSummaryDailyJul31Aug3MaintenanceBounds,
 } from "./reader-summary-daily-maintenance-bounds";
 import {
   readerSummaryDailyMaintenanceScope,
+  readerSummaryProductionHistoryScope,
   type ReaderSummaryDailyMaintenanceScope,
 } from "./reader-summary-daily-maintenance-scope";
 
@@ -61,23 +64,91 @@ export const readReaderSummaryCleanRealDayCollectionCli = (params: {
   const allowUnprovenExistingRowsForExactFullCollection = process.argv.includes(
     "--allow-unproven-existing-window",
   );
-  const { collectionDate: targetCollectionDate } = collectionDateOptionOrDefault(
-    dateOnly(params.collectionPolicyEvaluatedAt),
-  );
+  const { collectionDate: targetCollectionDate } =
+    collectionDateOptionOrDefault(dateOnly(params.collectionPolicyEvaluatedAt));
   const requestedProviderKeys = readProviderKeys();
   const artifactDirectory = readOption("--artifact-directory");
-  const maintenanceScope = artifactDirectory === undefined
-    ? undefined
-    : readerSummaryDailyMaintenanceScope;
+  const productionHistoryFirstAttempt = process.argv.includes(
+    "--production-history-scope",
+  );
+  const productionHistoryRetry = process.argv.includes(
+    "--production-history-retry",
+  );
+  if (productionHistoryFirstAttempt && productionHistoryRetry) {
+    throw new Error(
+      "Production history first-attempt and retry modes are exclusive",
+    );
+  }
+  const productionHistory =
+    productionHistoryFirstAttempt || productionHistoryRetry;
+  const maintenanceScope =
+    artifactDirectory === undefined
+      ? undefined
+      : productionHistory
+        ? readerSummaryProductionHistoryScope
+        : readerSummaryDailyMaintenanceScope;
 
   if (providerCatchUp && process.argv.includes("--providers")) {
     throw new Error("--provider-catch-up cannot be combined with --providers");
   }
-  if (artifactDirectory !== undefined && (!providerCatchUp || (!update && !artifactOnly))) {
-    throw new Error("--artifact-directory requires --provider-catch-up and --update unless --artifact-only");
+  if (
+    artifactDirectory !== undefined &&
+    (!providerCatchUp || (!update && !artifactOnly))
+  ) {
+    throw new Error(
+      "--artifact-directory requires --provider-catch-up and --update unless --artifact-only",
+    );
   }
   if (artifactDirectory !== undefined && recalculateExisting) {
-    throw new Error("Date-scoped collection artifacts cannot be recalculated without collection");
+    throw new Error(
+      "Date-scoped collection artifacts cannot be recalculated without collection",
+    );
+  }
+  if (productionHistory && artifactDirectory === undefined) {
+    throw new Error(
+      "--production-history-scope requires a date artifact directory",
+    );
+  }
+  if (
+    productionHistoryFirstAttempt &&
+    (!update ||
+      artifactOnly ||
+      !providerCatchUp ||
+      !allowHistoricalProviderCollection ||
+      !allowUnprovenExistingRowsForExactFullCollection)
+  ) {
+    throw new Error(
+      "--production-history-scope requires update, historical provider catch-up, first-attempt authorization, and a date artifact directory",
+    );
+  }
+  if (
+    productionHistoryRetry &&
+    (!update ||
+      artifactOnly ||
+      !providerCatchUp ||
+      !allowHistoricalProviderCollection ||
+      allowUnprovenExistingRowsForExactFullCollection ||
+      artifactDirectory === undefined)
+  ) {
+    throw new Error(
+      "--production-history-retry requires update, historical provider catch-up, an existing date artifact, and no first-attempt authorization",
+    );
+  }
+  if (
+    productionHistoryRetry &&
+    artifactDirectory !== undefined &&
+    readExactDayCollectionArtifact({
+      path: readerSummaryDailyCollectionArtifactPath({
+        directory: artifactDirectory,
+        collectionDate: targetCollectionDate,
+      }),
+      collectionDate: targetCollectionDate,
+      expectedScope: readerSummaryProductionHistoryScope,
+    }) === null
+  ) {
+    throw new Error(
+      "--production-history-retry requires the exact dated artifact",
+    );
   }
   if (
     allowUnprovenExistingRowsForExactFullCollection &&
@@ -90,17 +161,22 @@ export const readReaderSummaryCleanRealDayCollectionCli = (params: {
     );
   }
   if (maintenanceScope !== undefined) {
+    const maintenanceBounds = productionHistory
+      ? readerSummaryProductionHistoryMaintenanceBounds
+      : readerSummaryDailyJul31Aug3MaintenanceBounds;
     assertReaderSummaryDailyMaintenanceDate(
       targetCollectionDate,
-      readerSummaryDailyJul31Aug3MaintenanceBounds,
+      maintenanceBounds,
     );
     if (
       isAfterReaderSummaryDailyMaintenanceBounds(
         targetCollectionDate,
-        readerSummaryDailyJul31Aug3MaintenanceBounds,
+        maintenanceBounds,
       )
     ) {
-      throw new Error("Date-scoped maintenance collection is outside the daily maintenance upper bound");
+      throw new Error(
+        "Date-scoped maintenance collection is outside the daily maintenance upper bound",
+      );
     }
   }
 
@@ -119,24 +195,27 @@ export const readReaderSummaryCleanRealDayCollectionCli = (params: {
     collectionPolicyEvaluatedAt: params.collectionPolicyEvaluatedAt,
     targetCollectionDate,
     requestedProviderKeys,
-    outputPath: artifactDirectory === undefined
-      ? "ops/evals/reader-summary-clean-real-day-collection.v1.json"
-      : readerSummaryDailyCollectionArtifactPath({
-          directory: artifactDirectory,
-          collectionDate: targetCollectionDate,
-        }),
+    outputPath:
+      artifactDirectory === undefined
+        ? "ops/evals/reader-summary-clean-real-day-collection.v1.json"
+        : readerSummaryDailyCollectionArtifactPath({
+            directory: artifactDirectory,
+            collectionDate: targetCollectionDate,
+          }),
     targetPublishedWindow,
     targetPublishedWindowConfig: {
       ...targetPublishedWindow,
       observedAt: params.targetPublishedWindowObservedAt.toISOString(),
     },
     maintenanceScope,
-    targetDiscoveryScopePredicate: maintenanceScope === undefined
-      ? ""
-      : "\n        and sb.tenant_id = $2::uuid\n        and sb.workspace_id = $3::uuid",
-    targetDiscoveryScopeValues: maintenanceScope === undefined
-      ? []
-      : [maintenanceScope.tenantId, maintenanceScope.workspaceId],
+    targetDiscoveryScopePredicate:
+      maintenanceScope === undefined
+        ? ""
+        : "\n        and sb.tenant_id = $2::uuid\n        and sb.workspace_id = $3::uuid",
+    targetDiscoveryScopeValues:
+      maintenanceScope === undefined
+        ? []
+        : [maintenanceScope.tenantId, maintenanceScope.workspaceId],
   };
 };
 

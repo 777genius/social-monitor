@@ -6,17 +6,22 @@ import '../composition/summaries_feature_module.dart';
 import '../composition/summaries_feature_module_host.dart';
 
 class SummariesFeatureRoute extends StatelessWidget {
-  SummariesFeatureRoute({super.key}) : _module = SummariesFeatureModule();
+  SummariesFeatureRoute({super.key, void Function()? onOpenWeeklySummary})
+    : _module = SummariesFeatureModule(
+        onOpenWeeklySummary: onOpenWeeklySummary,
+      );
 
   SummariesFeatureRoute.generatedApi({
     super.key,
     required Object generatedApiRuntime,
     required WorkspaceScope scope,
     required String userId,
+    required void Function() onOpenWeeklySummary,
   }) : _module = SummariesFeatureModule.generatedApi(
          generatedApiRuntime: generatedApiRuntime,
          scope: scope,
          userId: userId,
+         onOpenWeeklySummary: onOpenWeeklySummary,
        );
 
   final SummariesFeatureModule _module;

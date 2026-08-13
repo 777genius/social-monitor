@@ -1,4 +1,5 @@
 import {
+  READER_SUMMARY_TOPIC_MAP_MAX_NODES,
   readerSummaryScopeKey,
   type ReaderSummaryTopicLabelPlan,
 } from "../../domain";
@@ -45,7 +46,7 @@ export type AgentRuntimeReaderSummaryTopicLabelerOptions = {
 
 const defaultAgentProvider: AgentRuntimeProvider = "codex";
 const defaultModel = "agent-runtime-reader-summary-topic-labeler";
-const defaultPromptVersion = "reader_summary.topic_map.agent_runtime.v13";
+const defaultPromptVersion = "reader_summary.topic_map.agent_runtime.v21";
 const defaultTimeoutMs = 600_000;
 const defaultMaxOutputTokens = 6_000;
 const defaultMaxCandidates = 30;
@@ -91,7 +92,7 @@ export class AgentRuntimeReaderSummaryTopicLabeler implements ReaderSummaryTopic
   ): Promise<ReaderSummaryTopicLabelPlan> {
     const candidates = selectAgentRuntimeReaderSummaryTopicCandidates(
       input,
-      this.maxCandidates,
+      Math.min(this.maxCandidates, READER_SUMMARY_TOPIC_MAP_MAX_NODES),
     );
     const command = {
       requestId: buildAgentRuntimeRequestId(
@@ -114,7 +115,11 @@ export class AgentRuntimeReaderSummaryTopicLabeler implements ReaderSummaryTopic
       providerInstanceId: this.providerInstanceId,
       purpose: "social_monitor.reader_summary.topic_map.label",
       systemPrompt: agentRuntimeReaderSummaryTopicLabelerInstructions,
-      prompt: buildAgentRuntimeReaderSummaryTopicLabelPrompt(input, candidates),
+      prompt: buildAgentRuntimeReaderSummaryTopicLabelPrompt(
+        input,
+        candidates,
+        attemptContext,
+      ),
       outputSchema: agentRuntimeReaderSummaryTopicLabelerJsonSchema,
       controls: {
         interactive: false,

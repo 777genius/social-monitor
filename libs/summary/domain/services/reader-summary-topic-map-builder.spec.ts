@@ -563,6 +563,34 @@ describe("buildReaderSummaryTopicMap", () => {
     expect(map.nodes).toHaveLength(READER_SUMMARY_TOPIC_MAP_MAX_NODES);
   });
 
+  it("keeps the full temporary candidate pool for agent labeling", () => {
+    const clusters = Array.from({ length: 30 }, (_, index) =>
+      storyCluster({
+        id: `story:label-candidate-${index}`,
+        representativeFeedItemId: `feed-label-candidate-${index}`,
+        score: 1 - index / 100,
+      }),
+    );
+    const selectedEvidence = clusters.map((cluster, index) =>
+      evidenceItem({
+        feedItemId: cluster.representativeFeedItemId,
+        title: `Candidate${index} runtime signal`,
+        providerKey: "rss",
+      }),
+    );
+    const map = buildReaderSummaryTopicMap({
+      clusters,
+      selectedEvidence,
+      topStories: [],
+      citationMap: selectedEvidence.map((item, index) =>
+        citation(`c${index}`, item.feedItemId, item.providerKey),
+      ),
+      preserveStoryClustersForLabeling: true,
+    });
+
+    expect(map.nodes).toHaveLength(30);
+  });
+
   it("does not surface source or UI meta labels as topic node labels", () => {
     const map = buildReaderSummaryTopicMap({
       clusters: [

@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 
-import { Pool } from "pg";
+import { Pool, type PoolConfig } from "pg";
 
 import {
   tenantId,
@@ -78,6 +78,19 @@ export const yesterdaySocialQualityDatabaseUrl = (): string =>
   readDatabaseUrlFromEnvFile() ??
   defaultYesterdaySocialQualityDatabaseUrl;
 
+export function yesterdaySocialQualityPoolConfig(
+  connectionString: string,
+  max: 1 | 2 = 1,
+): PoolConfig {
+  return {
+    connectionString,
+    min: 0,
+    max,
+    connectionTimeoutMillis: 2_000,
+    options: "-c social_monitor.system_access=true",
+  };
+}
+
 function readDatabaseUrlFromEnvFile(): string | undefined {
   if (!existsSync(".env")) {
     return undefined;
@@ -101,12 +114,7 @@ export async function readDominantFeedScope(params: {
   readonly tenantId: TenantId;
   readonly workspaceId: WorkspaceId;
 }> {
-  const pool = new Pool({
-    connectionString: params.databaseUrl,
-    min: 0,
-    max: 1,
-    connectionTimeoutMillis: 2_000,
-  });
+  const pool = new Pool(yesterdaySocialQualityPoolConfig(params.databaseUrl));
 
   try {
     const result = await pool.query<ScopeRow>(

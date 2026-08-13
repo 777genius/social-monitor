@@ -6,6 +6,7 @@ import type {
   ReadReaderSummaryGitHubProjectionResult,
   ReaderSummaryGitHubProjectionReaderPort,
 } from "../../../ports";
+import { runWithTenantDatabaseAccess } from "@social-monitor/platform-persistence";
 import type { PrismaSummaryClient } from "./prisma-summary-client";
 
 type GitHubProjectionRow = {
@@ -43,6 +44,12 @@ export class PrismaReaderSummaryGitHubProjectionReader
     query: ReadReaderSummaryGitHubProjectionQuery,
   ): Promise<ReadReaderSummaryGitHubProjectionResult> {
     assertBoundedUtcDay(query);
+    return runWithTenantDatabaseAccess(query, () => this.readScoped(query));
+  }
+
+  private async readScoped(
+    query: ReadReaderSummaryGitHubProjectionQuery,
+  ): Promise<ReadReaderSummaryGitHubProjectionResult> {
     const eligibleBindingIds: string[] = [];
     const items: ReaderSummaryGitHubProjectionItem[] = [];
     let pageCount = 0;
