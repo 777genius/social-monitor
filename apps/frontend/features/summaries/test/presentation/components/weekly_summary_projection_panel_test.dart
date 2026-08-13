@@ -8,18 +8,10 @@ import '../../support/weekly_summary_projection_test_data.dart';
 
 void main() {
   testWidgets('withholds the artifact for a partial projection', (tester) async {
-    await _pumpProjection(
-      tester,
-      partialWeeklySummaryProjection(
-        activeWeeklyCertifiedArtifactPresent: true,
-        evidenceLimitations: [weeklySummaryHistoricalLimitation()],
-      ),
-    );
+    await _pumpProjection(tester, partialWeeklySummaryProjection());
 
     expect(find.byKey(const ValueKey('weekly-summary-blocked')), findsOneWidget);
     expect(find.text('Daily evidence is incomplete'), findsOneWidget);
-    expect(find.text('Historical evidence limitation'), findsOneWidget);
-    expect(find.textContaining('historical_unavailable'), findsOneWidget);
     expect(find.byKey(const ValueKey('weekly-summary-artifact')), findsNothing);
   });
 
@@ -58,24 +50,6 @@ void main() {
     );
     expect(find.textContaining('fixture=1'), findsNothing);
     expect(find.textContaining('#evidence'), findsNothing);
-  });
-
-  testWidgets('discloses a historical limitation beside a complete artifact', (
-    tester,
-  ) async {
-    await _pumpProjection(
-      tester,
-      completeWeeklySummaryProjection(
-        evidenceLimitations: [weeklySummaryHistoricalLimitation()],
-      ),
-    );
-
-    expect(
-      find.byKey(const ValueKey('weekly-summary-evidence-limitations')),
-      findsOneWidget,
-    );
-    expect(find.text('Historical evidence limitation'), findsOneWidget);
-    expect(find.byKey(const ValueKey('weekly-summary-artifact')), findsOneWidget);
   });
 
   testWidgets('withholds an unavailable projection from the artifact panel', (

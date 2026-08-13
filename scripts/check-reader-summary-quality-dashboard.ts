@@ -33,7 +33,6 @@ import {
   readOption,
   roundMetric,
   yesterdaySocialQualityDatabaseUrl,
-  yesterdaySocialQualityPoolConfig,
 } from "./lib/yesterday-social-replay-support";
 import {
   type DashboardFeedItemRow as FeedItemRow,
@@ -380,7 +379,12 @@ async function main(): Promise<void> {
 async function tryBuildReport(): Promise<
   ReaderSummaryQualityDashboardReport | undefined
 > {
-  const pool = new Pool(yesterdaySocialQualityPoolConfig(databaseUrl, 2));
+  const pool = new Pool({
+    connectionString: databaseUrl,
+    min: 0,
+    max: 2,
+    connectionTimeoutMillis: 2_000,
+  });
 
   try {
     const collectionDates = await readDashboardCollectionDates(

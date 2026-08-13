@@ -1,10 +1,4 @@
-import {
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  readdirSync,
-  rmSync,
-} from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -43,20 +37,16 @@ describe("reader summary exact-day collection artifacts", () => {
       expect(jul31Path).not.toBe(aug1Path);
       expect(jul31Path).toContain("2026-07-31");
       expect(aug1Path).toContain("2026-08-01");
-      expect(
-        readExactDayCollectionArtifact({
-          path: jul31Path,
-          collectionDate: "2026-07-31",
-          expectedScope: readerSummaryDailyMaintenanceScope,
-        })?.run.collectionDate,
-      ).toBe("2026-07-31");
-      expect(
-        readExactDayCollectionArtifact({
-          path: aug1Path,
-          collectionDate: "2026-08-01",
-          expectedScope: readerSummaryDailyMaintenanceScope,
-        })?.run.collectionDate,
-      ).toBe("2026-08-01");
+      expect(readExactDayCollectionArtifact({
+        path: jul31Path,
+        collectionDate: "2026-07-31",
+        expectedScope: readerSummaryDailyMaintenanceScope,
+      })?.run.collectionDate).toBe("2026-07-31");
+      expect(readExactDayCollectionArtifact({
+        path: aug1Path,
+        collectionDate: "2026-08-01",
+        expectedScope: readerSummaryDailyMaintenanceScope,
+      })?.run.collectionDate).toBe("2026-08-01");
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
@@ -69,26 +59,22 @@ describe("reader summary exact-day collection artifacts", () => {
       collectionDate: "2026-07-31",
     });
     const fallbackScope = {
-      tenantId: "00000000-0000-7000-8000-000000007101",
-      workspaceId: "00000000-0000-7000-8000-000000007102",
+      tenantId: "00000000-0000-7000-8000-000000006101",
+      workspaceId: "00000000-0000-7000-8000-000000006102",
     };
     try {
-      expect(() =>
-        writeCollectionArtifactAtomically({
-          path,
-          report: report("2026-07-31", {
-            ...fallbackScope,
-          }),
-          expectedScope: readerSummaryDailyMaintenanceScope,
+      expect(() => writeCollectionArtifactAtomically({
+        path,
+        report: report("2026-07-31", {
+          ...fallbackScope,
         }),
-      ).toThrow("scope is not the canonical");
-      expect(() =>
-        writeCollectionArtifactAtomically({
-          path,
-          report: report("2026-07-31", readerSummaryDailyMaintenanceScope),
-          expectedScope: fallbackScope as never,
-        }),
-      ).toThrow("scope is not canonical");
+        expectedScope: readerSummaryDailyMaintenanceScope,
+      })).toThrow("scope is not the canonical");
+      expect(() => writeCollectionArtifactAtomically({
+        path,
+        report: report("2026-07-31", readerSummaryDailyMaintenanceScope),
+        expectedScope: fallbackScope as never,
+      })).toThrow("scope is not canonical");
       writeCollectionArtifactAtomically({
         path,
         report: report("2026-07-31", {
@@ -96,13 +82,11 @@ describe("reader summary exact-day collection artifacts", () => {
         }),
       });
 
-      expect(() =>
-        readExactDayCollectionArtifact({
-          path,
-          collectionDate: "2026-07-31",
-          expectedScope: readerSummaryDailyMaintenanceScope,
-        }),
-      ).toThrow("scope does not match");
+      expect(() => readExactDayCollectionArtifact({
+        path,
+        collectionDate: "2026-07-31",
+        expectedScope: readerSummaryDailyMaintenanceScope,
+      })).toThrow("scope does not match");
       expect(readFileSync(path, "utf8")).toContain("2026-07-31");
     } finally {
       rmSync(directory, { recursive: true, force: true });
@@ -116,25 +100,21 @@ describe("reader summary exact-day collection artifacts", () => {
       collectionDate: "2026-07-31",
     });
     try {
-      expect(() =>
-        writeCollectionArtifactAtomically({
-          path: jul31Path,
-          report: report("2026-08-01"),
-          expectedScope: readerSummaryDailyMaintenanceScope,
-        }),
-      ).toThrow("not explicit for its report date");
+      expect(() => writeCollectionArtifactAtomically({
+        path: jul31Path,
+        report: report("2026-08-01"),
+        expectedScope: readerSummaryDailyMaintenanceScope,
+      })).toThrow("not explicit for its report date");
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
   });
 
   it("rejects a non-date artifact name before it can overwrite another day", () => {
-    expect(() =>
-      readerSummaryDailyCollectionArtifactPath({
-        directory: "/tmp/reader-summary-collection",
-        collectionDate: "2026-08-1",
-      }),
-    ).toThrow("exact UTC date");
+    expect(() => readerSummaryDailyCollectionArtifactPath({
+      directory: "/tmp/reader-summary-collection",
+      collectionDate: "2026-08-1",
+    })).toThrow("exact UTC date");
   });
 
   it("gives concurrent artifact invocations unique temporary files in the destination directory", () => {
@@ -144,16 +124,14 @@ describe("reader summary exact-day collection artifacts", () => {
       collectionDate: "2026-07-31",
     });
     try {
-      const temporaryPaths = Array.from({ length: 32 }, () =>
-        readerSummaryDailyCollectionArtifactTemporaryPath(path),
+      const temporaryPaths = Array.from(
+        { length: 32 },
+        () => readerSummaryDailyCollectionArtifactTemporaryPath(path),
       );
 
       expect(new Set(temporaryPaths).size).toBe(temporaryPaths.length);
-      expect(
-        temporaryPaths.every(
-          (temporaryPath) => dirname(temporaryPath) === directory,
-        ),
-      ).toBe(true);
+      expect(temporaryPaths.every((temporaryPath) =>
+        dirname(temporaryPath) === directory)).toBe(true);
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
@@ -164,15 +142,11 @@ describe("reader summary exact-day collection artifacts", () => {
     const destination = join(directory, "occupied.json");
     mkdirSync(destination);
     try {
-      expect(() =>
-        writeCollectionArtifactAtomically({
-          path: destination,
-          report: report("2026-07-31"),
-        }),
-      ).toThrow();
-      expect(
-        readdirSync(directory).filter((entry) => entry.endsWith(".tmp")),
-      ).toEqual([]);
+      expect(() => writeCollectionArtifactAtomically({
+        path: destination,
+        report: report("2026-07-31"),
+      })).toThrow();
+      expect(readdirSync(directory).filter((entry) => entry.endsWith(".tmp"))).toEqual([]);
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
@@ -181,12 +155,10 @@ describe("reader summary exact-day collection artifacts", () => {
   it("rejects artifact paths that traverse outside their intended directory", () => {
     const directory = mkdtempSync(join(tmpdir(), "reader-summary-collection-"));
     try {
-      expect(() =>
-        writeCollectionArtifactAtomically({
-          path: `${directory}/../escaped.json`,
-          report: report("2026-07-31"),
-        }),
-      ).toThrow("unsafe path segment");
+      expect(() => writeCollectionArtifactAtomically({
+        path: `${directory}/../escaped.json`,
+        report: report("2026-07-31"),
+      })).toThrow("unsafe path segment");
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
@@ -195,10 +167,8 @@ describe("reader summary exact-day collection artifacts", () => {
 
 function report(
   collectionDate: string,
-  scope: {
-    readonly tenantId: string;
-    readonly workspaceId: string;
-  } = readerSummaryDailyMaintenanceScope,
+  scope: { readonly tenantId: string; readonly workspaceId: string } =
+    readerSummaryDailyMaintenanceScope,
 ): CleanRealDayCollectionReport {
   return {
     schemaVersion: 1,

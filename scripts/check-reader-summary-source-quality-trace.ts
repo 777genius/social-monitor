@@ -27,7 +27,6 @@ import {
   readOption,
   roundMetric,
   yesterdaySocialQualityDatabaseUrl,
-  yesterdaySocialQualityPoolConfig,
 } from "./lib/yesterday-social-replay-support";
 import {
   dayEnd,
@@ -240,7 +239,12 @@ async function main(): Promise<void> {
 }
 
 async function tryBuildReport(): Promise<SourceQualityTraceReport | undefined> {
-  const pool = new Pool(yesterdaySocialQualityPoolConfig(databaseUrl));
+  const pool = new Pool({
+    connectionString: databaseUrl,
+    min: 0,
+    max: 1,
+    connectionTimeoutMillis: 2_000,
+  });
 
   try {
     return await buildReport(pool);

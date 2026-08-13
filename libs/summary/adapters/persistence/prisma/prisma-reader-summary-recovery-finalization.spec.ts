@@ -206,7 +206,7 @@ describe("PrismaReaderSummaryRecoveryFinalization", () => {
       ];
     });
     const publication = new PrismaReaderSummaryPublication(
-      prismaClient(recoveryFinalizationTransaction(queryRaw), queryRaw),
+      prismaClient(serializableTransaction(queryRaw), queryRaw),
     );
 
     await expect(

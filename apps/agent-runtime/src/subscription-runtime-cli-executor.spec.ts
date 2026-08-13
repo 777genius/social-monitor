@@ -257,36 +257,6 @@ describe("SubscriptionRuntimeCliExecutor", () => {
     ).resolves.toMatchObject({ status: "completed" });
   });
 
-  it("reports serving when the approved wrapper reaches its input boundary", async () => {
-    tempDir = await mkdtemp(join(tmpdir(), "agent-runtime-cli-test-"));
-    const cliPath = join(tempDir, "approved-wrapper.mjs");
-    await writeFile(
-      cliPath,
-      [
-        "#!/usr/bin/env node",
-        "if (process.argv.includes('--provider')) {",
-        "  process.stderr.write('Error: --input is required\\n');",
-        "  process.exitCode = 1;",
-        "}",
-      ].join("\n"),
-      "utf8",
-    );
-    await chmod(cliPath, 0o755);
-    const executor = new SubscriptionRuntimeCliExecutor({
-      command: cliPath,
-      ephemeral: true,
-      installationInspector,
-    });
-
-    await expect(executor.checkHealth()).resolves.toEqual({
-      healthy: true,
-      runtimeEngine: "subscription-runtime-cli",
-      runtimeVersion: "0.1.0-main.2",
-      launcherSha256: "a".repeat(64),
-      warnings: [],
-    });
-  });
-
   it("fails closed when the admitted installation changes after execution", async () => {
     tempDir = await mkdtemp(join(tmpdir(), "agent-runtime-cli-test-"));
     const cliPath = join(tempDir, "admitted-cli.mjs");

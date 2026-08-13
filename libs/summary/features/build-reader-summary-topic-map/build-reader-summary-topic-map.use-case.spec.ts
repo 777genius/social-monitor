@@ -260,15 +260,7 @@ describe("BuildReaderSummaryTopicMapUseCase", () => {
     ).toBeGreaterThanOrEqual(0.5);
     expect(labeler.attempts).toEqual([
       { attemptNumber: 1, totalAttempts: 2 },
-      {
-        attemptNumber: 2,
-        totalAttempts: 2,
-        retryFeedback: {
-          reason: "grouped_coverage_below_minimum",
-          previousGroupedCoverage: 0,
-          minimumGroupedCoverage: 0.5,
-        },
-      },
+      { attemptNumber: 2, totalAttempts: 2 },
     ]);
     expect(verifier.attempts).toEqual(labeler.attempts);
     expect(publicationAudit.rejections).toEqual([

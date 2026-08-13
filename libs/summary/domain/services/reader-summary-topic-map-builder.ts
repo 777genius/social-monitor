@@ -137,11 +137,11 @@ export const buildReaderSummaryTopicMap = (
       uniqueNonEmpty([group.label, ...(group.semanticAnchors ?? [])]),
     ]),
   );
-  const rankedNodes = normalizeNodePopularity(rawNodes);
   const nodes = applyReaderSummaryTopicMapGroupingPolicy(
-    params.preserveStoryClustersForLabeling === true
-      ? rankedNodes
-      : rankedNodes.slice(0, READER_SUMMARY_TOPIC_MAP_MAX_NODES),
+    normalizeNodePopularity(rawNodes).slice(
+      0,
+      READER_SUMMARY_TOPIC_MAP_MAX_NODES,
+    ),
     { semanticAnchorsByGroup },
   );
   const groups = buildReaderSummaryTopicMapGroups(nodes, labelGroups);

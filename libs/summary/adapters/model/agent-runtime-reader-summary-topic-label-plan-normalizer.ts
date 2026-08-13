@@ -15,7 +15,7 @@ import {
   normalizeTopicLabel,
   readerSummaryTopicLabelFromSlug,
 } from "../../domain/services/reader-summary-topic-map-text";
-import { buildGroundedTopicCohortsForCandidates } from "./agent-runtime-reader-summary-topic-grounded-cohorts";
+import { recoverGroundedTopicGroups } from "./agent-runtime-reader-summary-topic-group-recovery";
 
 export const normalizeAgentRuntimeReaderSummaryTopicLabelPlan = (
   raw: Record<string, unknown>,
@@ -81,10 +81,16 @@ export const normalizeAgentRuntimeReaderSummaryTopicLabelPlan = (
       groupRecords.set(id, group);
     }
   }
-  const recovery = recoverRequiredGroundedCohorts(
-    initialNodeLabels,
+  const recovery = recoverGroundedTopicGroups({
+    nodeLabels: initialNodeLabels,
     candidates,
-  );
+    explicitAnchorsByGroup: new Map(
+      [...groupRecords].map(([groupId, group]) => [
+        groupId,
+        readStringArray(group.semanticAnchors),
+      ]),
+    ),
+  });
   const nodeLabels = recovery.nodeLabels;
   const finalGroupIds = new Set(
     nodeLabels
@@ -184,51 +190,6 @@ export const normalizeAgentRuntimeReaderSummaryTopicLabelPlan = (
   };
 };
 
-const recoverRequiredGroundedCohorts = (
-  initialNodeLabels: readonly ReaderSummaryTopicLabelPlan["nodeLabels"][number][],
-  candidates: readonly ReaderSummaryTopicLabelerInput["candidates"][number][],
-): {
-  readonly nodeLabels: ReaderSummaryTopicLabelPlan["nodeLabels"];
-  readonly semanticAnchorsByGroup: ReadonlyMap<string, readonly string[]>;
-  readonly recoveredNodeCount: number;
-} => {
-  let nodeLabels = [...initialNodeLabels];
-  const semanticAnchorsByGroup = new Map<string, readonly string[]>();
-  let recoveredNodeCount = 0;
-  for (const cohort of buildGroundedTopicCohortsForCandidates(candidates)) {
-    const recoverableNodeIds = new Set(
-      cohort.nodeIds.filter((nodeId) => {
-        const label = nodeLabels.find((item) => item.nodeId === nodeId);
-
-        return (
-          label?.groupId === READER_SUMMARY_TOPIC_MAP_UNGROUPED_ID &&
-          (label.semantic?.confidenceScore ?? 0) >=
-            READER_SUMMARY_TOPIC_SEMANTIC_CONFIDENCE_MIN
-        );
-      }),
-    );
-    if (recoverableNodeIds.size < 2) {
-      continue;
-    }
-    nodeLabels = nodeLabels.map((label) =>
-      recoverableNodeIds.has(label.nodeId)
-        ? {
-            ...label,
-            groupId: cohort.groupId,
-            keywords: uniqueStrings([
-              ...(label.keywords ?? []),
-              cohort.sharedAnchor,
-            ]),
-          }
-        : label,
-    );
-    semanticAnchorsByGroup.set(cohort.groupId, [cohort.sharedAnchor]);
-    recoveredNodeCount += recoverableNodeIds.size;
-  }
-
-  return { nodeLabels, semanticAnchorsByGroup, recoveredNodeCount };
-};
-
 export const parseAgentRuntimeReaderSummaryTopicLabelerJsonObject = (
   value: string,
 ): Record<string, unknown> => {
@@ -275,7 +236,6 @@ const retainedSemanticGroupIds = (
 
   return new Set(
     [...stats.entries()]
-      .filter(([, stats]) => stats.count >= 2)
       .sort((left, right) => {
         const byCount = right[1].count - left[1].count;
         if (byCount !== 0) {

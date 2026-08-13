@@ -88,14 +88,6 @@ export const createReaderSummaryPublicationRunningFixture = async (
     timezone: "UTC",
     periodKey,
   } as const;
-  const lineage = {
-    schemaVersion: "reader_summary.artifact.v1",
-    modelVersion,
-    providerVersion: "reader-summary.provider.pg-gate.v1",
-    promptVersion,
-    rulesVersion: "reader-summary.rules.pg-gate.v1",
-    evalDatasetVersion: "reader-summary.eval.pg-gate.v1",
-  } as const;
   const evidenceAuthority =
     await createReaderSummaryPublicationFixtureAuthority({
       client,
@@ -133,7 +125,7 @@ export const createReaderSummaryPublicationRunningFixture = async (
         status === "NO_SIGNAL" ? "No reliable signal" : "Proved report",
       executiveSummary:
         status === "NO_SIGNAL" ? "No eligible evidence." : "Exact report body.",
-      lineage,
+      lineage: { modelVersion, promptVersion },
       citationMap: citations,
       qualityFlags,
       content: evidenceAuthority.content,

@@ -4,7 +4,6 @@ import 'package:social_monitor_design_system/social_monitor_design_system.dart';
 import '../../domain/aggregates/weekly_summary_projection.dart';
 import '../formatters/weekly_summary_projection_text.dart';
 import 'weekly_summary_artifact_panel.dart';
-import 'weekly_summary_evidence_limitations_panel.dart';
 
 class WeeklySummaryProjectionPanel extends StatelessWidget {
   const WeeklySummaryProjectionPanel({super.key, required this.projection});
@@ -15,17 +14,7 @@ class WeeklySummaryProjectionPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     return switch (projection) {
       CompleteWeeklySummaryProjection(:final artifact, :final week) =>
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            WeeklySummaryEvidenceLimitationsPanel(
-              limitations: projection.evidenceLimitations,
-            ),
-            if (projection.evidenceLimitations.isNotEmpty)
-              const SizedBox(height: AppSpacing.lg),
-            WeeklySummaryArtifactPanel(artifact: artifact, week: week),
-          ],
-        ),
+        WeeklySummaryArtifactPanel(artifact: artifact, week: week),
       final BlockedWeeklySummaryProjection blocked =>
         _BlockedWeeklySummaryPanel(projection: blocked),
     };
@@ -82,12 +71,6 @@ class _BlockedWeeklySummaryPanel extends StatelessWidget {
               ),
             ],
           ),
-          if (projection.evidenceLimitations.isNotEmpty) ...[
-            const SizedBox(height: AppSpacing.md),
-            WeeklySummaryEvidenceLimitationsPanel(
-              limitations: projection.evidenceLimitations,
-            ),
-          ],
           if (missingDays.isNotEmpty) ...[
             const SizedBox(height: AppSpacing.md),
             Text(

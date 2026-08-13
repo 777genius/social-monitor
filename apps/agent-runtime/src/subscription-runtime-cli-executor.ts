@@ -153,7 +153,7 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
       );
       const probe = await runCli({
         command: installation.executablePath,
-        args: ["--provider", "codex"],
+        args: ["--help"],
         timeoutMs: 2_000,
       });
       const healthy =
@@ -409,13 +409,8 @@ const runtimeSessionScopedEnvKeys = new Set([
 const isApiKeyCredentialEnvKey = (key: string): boolean =>
   key.endsWith("_API_KEY") || key.endsWith("_API_KEY_FILE");
 
-const isUsageProbeOutput = (stdout: string, stderr: string): boolean => {
-  const output = `${stdout}\n${stderr}`;
-  return (
-    output.includes("subscription-runtime-run-agent-task") ||
-    output.includes("--input is required")
-  );
-};
+const isUsageProbeOutput = (stdout: string, stderr: string): boolean =>
+  `${stdout}\n${stderr}`.includes("subscription-runtime-run-agent-task");
 
 const parseStatus = (value: unknown): AgentRuntimeExecutionResult["status"] => {
   if (

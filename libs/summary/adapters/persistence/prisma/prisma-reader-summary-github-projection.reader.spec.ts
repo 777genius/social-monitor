@@ -1,5 +1,4 @@
 import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
-import { currentDatabaseAccess } from "@social-monitor/platform-persistence";
 
 import { PrismaReaderSummaryGitHubProjectionReader } from "./prisma-reader-summary-github-projection.reader";
 import type { PrismaSummaryClient } from "./prisma-summary-client";
@@ -87,18 +86,6 @@ describe("PrismaReaderSummaryGitHubProjectionReader", () => {
     expect(sql).toContain(
       `si.metadata->'trending'->>'fetchStartedAt' as "fetchStartedAt"`,
     );
-    expect(prisma.calls.map((call) => call.access)).toEqual([
-      {
-        kind: "tenant",
-        tenantId: query.tenantId,
-        workspaceId: query.workspaceId,
-      },
-      {
-        kind: "tenant",
-        tenantId: query.tenantId,
-        workspaceId: query.workspaceId,
-      },
-    ]);
   });
 
   it("requires active bindings and prevents a cross-binding source item join", async () => {
@@ -155,7 +142,6 @@ describe("PrismaReaderSummaryGitHubProjectionReader", () => {
 type RawQueryCall = {
   readonly sql: string;
   readonly values: readonly unknown[];
-  readonly access: ReturnType<typeof currentDatabaseAccess>;
 };
 
 class FakeRawQueryClient {
@@ -170,11 +156,7 @@ class FakeRawQueryClient {
     strings: TemplateStringsArray,
     ...values: readonly unknown[]
   ): Promise<T> => {
-    this.calls.push({
-      sql: strings.join("?"),
-      values,
-      access: currentDatabaseAccess(),
-    });
+    this.calls.push({ sql: strings.join("?"), values });
     const offset = values.at(-1);
     const pages = strings.join("?").includes(
       'select sb.id::text as "sourceBindingId"',

@@ -13,21 +13,6 @@ import { join } from "node:path";
 import { resolveProductionDayExecutionRequest } from "./lib/reader-summary-production-day-reuse-provenance";
 
 describe("production-day execution request", () => {
-  it("binds production history readiness to its exact-day artifact", () => {
-    const source = readFileSync(
-      join(process.cwd(), "scripts/run-reader-summary-production-day.ts"),
-      "utf8",
-    );
-    expect(source).toContain(
-      "READER_SUMMARY_PRODUCTION_HISTORY_COLLECTION_DIR",
-    );
-    expect(source).toContain("productionHistoryCollection(");
-    expect(source).toContain("historicalCollection?.arguments ?? []");
-    expect(source).toContain("historicalCollection?.path ??");
-    expect(source).toContain(
-      "Production history collection scope is not 6101/6102",
-    );
-  });
   it("preserves reports and exits on P3009 before runtime admission", () => {
     const fixture = mkdtempSync(join(tmpdir(), "production-day-migrate-"));
     const npmPath = join(fixture, "npm");

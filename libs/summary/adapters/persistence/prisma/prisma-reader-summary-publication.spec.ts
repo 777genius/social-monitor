@@ -65,8 +65,6 @@ describe("PrismaReaderSummaryPublication", () => {
       command.artifact.toSnapshot().headline,
     );
     expect(transaction).toHaveBeenCalledWith(expect.any(Function), {
-      maxWait: 30_000,
-      timeout: 300_000,
       isolationLevel: "Serializable",
     });
   });
@@ -95,11 +93,6 @@ describe("PrismaReaderSummaryPublication", () => {
     );
     expect(guard).toHaveBeenCalledWith(transactionClient, command);
     expect(publicationQuery).not.toHaveBeenCalled();
-    expect(transaction).toHaveBeenCalledWith(expect.any(Function), {
-      maxWait: 30_000,
-      timeout: 300_000,
-      isolationLevel: "Serializable",
-    });
   });
 });
 

@@ -75,6 +75,35 @@ if deploy_control_is_reviewed_daily_final_transition "$bridge" "$drift"; then
   fail 'drifted target was admitted'
 fi
 
+git -C "$REPO" checkout -qb scheduled-summary-catch-up "$target"
+DEPLOY_CONTROL_SCHEDULED_SUMMARY_CATCH_UP_BASE=$target
+printf 'scheduled summary bridge policy\n' > \
+  "$REPO/$DEPLOY_CONTROL_BRIDGE_SELF_PATH"
+printf 'scheduled summary bridge fixture\n' > \
+  "$REPO/ops/deploy/daily-final-control-bridge.test.sh"
+git -C "$REPO" add .
+git -C "$REPO" commit -qm 'test: scheduled summary catch-up bridge'
+scheduled_summary_bridge=$(git -C "$REPO" rev-parse HEAD)
+git -C "$REPO" commit --allow-empty -qm 'test: scheduled summary catch-up target'
+scheduled_summary_target=$(git -C "$REPO" rev-parse HEAD)
+
+deploy_control_is_reviewed_scheduled_summary_catch_up_transition \
+  "$scheduled_summary_bridge" "$scheduled_summary_target" || \
+  fail 'reviewed scheduled summary catch-up transition was rejected'
+DEPLOY_CONTROL_BRIDGE_INITIALIZED_HEAD=$scheduled_summary_bridge
+verify_deploy_control_daily_final_transition_files \
+  "$scheduled_summary_target" || \
+  fail 'reviewed scheduled summary catch-up filesystem was rejected'
+
+printf 'unexpected scheduled summary drift\n' > "$REPO/unreviewed-catch-up"
+git -C "$REPO" add .
+git -C "$REPO" commit -qm 'test: scheduled summary catch-up drift'
+scheduled_summary_drift=$(git -C "$REPO" rev-parse HEAD)
+if deploy_control_is_reviewed_scheduled_summary_catch_up_transition \
+    "$scheduled_summary_target" "$scheduled_summary_drift"; then
+  fail 'scheduled summary catch-up admitted an extra path'
+fi
+
 git -C "$REPO" checkout -q main
 while read -r _ path; do
   mkdir -p "$REPO/$(dirname "$path")"

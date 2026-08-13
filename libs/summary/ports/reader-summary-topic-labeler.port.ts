@@ -38,11 +38,6 @@ export type ReaderSummaryTopicLabelerInput = {
 export type ReaderSummaryTopicMapAttemptContext = {
   readonly attemptNumber: number;
   readonly totalAttempts: number;
-  readonly retryFeedback?: {
-    readonly reason: "grouped_coverage_below_minimum";
-    readonly previousGroupedCoverage: number;
-    readonly minimumGroupedCoverage: number;
-  };
 };
 
 export interface ReaderSummaryTopicLabelerPort {

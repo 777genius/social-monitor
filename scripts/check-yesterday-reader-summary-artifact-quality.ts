@@ -20,7 +20,6 @@ import {
   readDominantFeedScope,
   roundMetric,
   yesterdaySocialQualityDatabaseUrl,
-  yesterdaySocialQualityPoolConfig,
 } from "./lib/yesterday-social-replay-support";
 import {
   dailyPeriodKey,
@@ -252,7 +251,12 @@ async function buildReport(): Promise<ArtifactQualityReport> {
     databaseUrl,
     collectionDate,
   });
-  const pool = new Pool(yesterdaySocialQualityPoolConfig(databaseUrl));
+  const pool = new Pool({
+    connectionString: databaseUrl,
+    min: 0,
+    max: 1,
+    connectionTimeoutMillis: 2_000,
+  });
   const artifactScope = {
     tenantId: String(scope.tenantId),
     workspaceId: String(scope.workspaceId),
