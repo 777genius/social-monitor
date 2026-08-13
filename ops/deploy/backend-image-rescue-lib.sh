@@ -46,9 +46,13 @@ backend_image_rescue_known_services() {
     delivery-service event-relay daily-runner otel-collector x-collector
 }
 backend_image_rescue_operationally_absent() {
+  local output
   local -a container_ids=()
-  mapfile -t container_ids < <("${COMPOSE[@]}" --profile app \
+  output=$("${COMPOSE[@]}" --profile app \
     --profile daily ps --all -q "$1") || return 1
+  if [[ -n $output ]]; then
+    mapfile -t container_ids <<< "$output"
+  fi
   ((${#container_ids[@]} == 0))
 }
 backend_image_rescue_otel_config_path() {
