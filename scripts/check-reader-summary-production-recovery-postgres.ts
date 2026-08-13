@@ -7,7 +7,7 @@ import { defaultPostgresRuntimePoolConfig } from "@social-monitor/platform-persi
 import { PrismaSummaryConnection } from "@social-monitor/summary/adapters/persistence/prisma/prisma-summary-connection";
 
 import { provisionReaderSummaryPublicationFixtureScope, readerSummaryPublicationBackendPid, requiredReaderSummaryPublicationAdminDatabaseUrl, setReaderSummaryPublicationSessionScope } from "./lib/reader-summary-publication-postgres-fixture-scope";
-import { applyOrderedReaderSummaryMigrations, assertReaderSummaryMigrationDatabaseMatchesSchema, createReaderSummaryPublicationMigrationWorkspace, installPublicationAndFollowingMigrations, preparePrePublicationMigrations, readerSummaryMigrationNames, removeReaderSummaryPublicationMigrationWorkspace } from "./lib/reader-summary-publication-postgres-migrations";
+import { applyOrderedReaderSummaryMigrations, assertReaderSummaryMigrationDatabaseMatchesSchema, createReaderSummaryPublicationMigrationWorkspace, installPublicationAndFollowingMigrations, preparePrePublicationMigrations, removeReaderSummaryPublicationMigrationWorkspace } from "./lib/reader-summary-publication-postgres-migrations";
 import { assertReaderSummaryProductionRecoveryPostgresContract, type RecoveryPostgresClient, readerSummaryProductionRecoveryFixtureScope, seedReaderSummaryProductionRecoveryFixture } from "./lib/reader-summary-production-recovery-postgres-contract";
 import { assertReaderSummaryProductionRecoveryGapPostgresContract, removeOriginalCutoffGapFixtureCollision, seedReaderSummaryProductionRecoveryGapFixture } from "./lib/reader-summary-production-recovery-gap-postgres-contract";
 import { assertReaderSummaryDailyCanonicalRecoveryV4MigrationContract, assertReaderSummaryDailyCanonicalRecoveryV4PostgresContract } from "./lib/reader-summary-daily-canonical-recovery-v4-postgres-contract";
@@ -178,7 +178,7 @@ const invalidRuntimeTerminalMigration = "20260805180000_reader_summary_daily_v4_
 const invalidProductRetrySetMigration = "20260806010000_reader_summary_daily_v4_invalid_product_retry_set";
 const canonicalOutputReceiptMigration = "20260806010100_reader_summary_daily_v4_canonical_output_receipt_v3";
 const dailyDeliveryC1Migration = "20260811170000_reader_summary_daily_delivery_c1_retry_evidence";
-const postDailyDeliveryMigrations = readerSummaryMigrationNames().filter((migration) => migration > dailyDeliveryC1Migration);
+const dailyLiveCanonicalCompatibilityMigration = "20260813085900_reader_summary_daily_live_canonical_preimage_compatibility";
 const ambiguityRetryMigrations = [
   "20260804130000_reader_summary_daily_v4_ambiguity_retry_schema",
   "20260804130100_reader_summary_daily_v4_ambiguity_retry_transitions",
@@ -195,7 +195,7 @@ const deferredCanonicalRecoveryMigrations = [
   originalCutoffForwardMigration,
   ...ambiguityRetryMigrations,
   dailyDeliveryC1Migration,
-  ...postDailyDeliveryMigrations,
+  dailyLiveCanonicalCompatibilityMigration,
 ] as const;
 let ownerRolePreexisting = false;
 let capabilityRolePreexisting = false;
@@ -632,7 +632,7 @@ const main = async (): Promise<void> => {
           originalCutoffForwardMigration,
           ...ambiguityRetryMigrations,
           dailyDeliveryC1Migration,
-          ...postDailyDeliveryMigrations,
+          dailyLiveCanonicalCompatibilityMigration,
         ]) {
           cpSync(
             join(process.cwd(), "prisma", "migrations", migration),
