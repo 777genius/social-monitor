@@ -53,7 +53,8 @@ printf 'image\totel-collector\trecreate\tcompose-tag\t%s\t%s\t%s\n' \
   'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' \
   "$(backend_image_rescue_tag "$TARGET_SHA" otel-collector)" > "$STATE_FILE"
 rollback_backend_images "$STATE_FILE"
-grep -F 'compose:--profile app rm -sf otel-collector' "$EVENT_LOG" >/dev/null
+grep -F 'compose:--profile app --profile daily rm -sf otel-collector' \
+  "$EVENT_LOG" >/dev/null
 
 : > "$EVENT_LOG"
 printf 'image\totel-collector\trecreate\trunning-image\tcollector-container\t%s\t%s\n' \

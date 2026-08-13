@@ -10,8 +10,7 @@ import type {
 } from "../../ports";
 import { buildAgentRuntimeTopicEvidenceSamples } from "./agent-runtime-reader-summary-topic-evidence-prompt";
 import {
-  buildGroundedTopicCohorts,
-  groundedCandidateTopicAnchors,
+  buildGroundedTopicCohortsForCandidates,
 } from "./agent-runtime-reader-summary-topic-grounded-cohorts";
 export { selectAgentRuntimeReaderSummaryTopicCandidates } from "./agent-runtime-reader-summary-topic-candidate-selection";
 
@@ -39,7 +38,8 @@ export const agentRuntimeReaderSummaryTopicLabelerInstructions = [
   "Use the same topicId for candidates that describe the same concrete story, event, release, project, product, company, or person so they become one bubble.",
   "Treat coordinated coverage of one announcement as one topic even when an official account, a leader, an engineer, and an article emphasize different components. Use the announced product or event as the shared subject and topicId; do not split by speaker or supporting technology.",
   "Review relationshipHints before assigning topicId. They are retrieval hints, not proof: merge hinted nodes only when their evidence samples describe the same concrete event or announcement.",
-  "Review groundedGroupingOpportunities before assigning groupId. They expose concrete terms shared by candidate evidence. Use them as grouping evidence only when the shared anchor describes each node's identity rather than an incidental mention.",
+  "requiredGroundedCohorts are executable assignments derived from high-trust topic identity. Assign every listed nodeId to that cohort's groupId and include its sharedAnchor in node keywords and group semanticAnchors.",
+  "Keep a distinct topicId for each distinct story inside a required grounded cohort. A required group assignment never merges topicIds.",
   "Do not reuse topicId merely because candidates mention the same company, model family, or ecosystem. Rollout, availability, benchmark results, cost or token efficiency, usage limits, and courses or guides are separate topics.",
   "Treat distinct model variants as distinct primary subjects. Merge variants only when every merged candidate is explicitly about one family-level announcement; label that bubble as a family rollout rather than listing variant names.",
   "For an explicit family-level announcement that lists sibling variants, subject must name the shared family and include Family. Never select one listed sibling as the subject of the family announcement.",
@@ -68,6 +68,9 @@ export const buildAgentRuntimeReaderSummaryTopicLabelPrompt = (
   );
   const clusterById = new Map(
     input.clusters.map((cluster) => [cluster.id, cluster] as const),
+  );
+  const requiredGroundedCohorts = buildGroundedTopicCohortsForCandidates(
+    candidates,
   );
 
   return JSON.stringify(
@@ -120,6 +123,20 @@ export const buildAgentRuntimeReaderSummaryTopicLabelPrompt = (
           "Signal",
         ],
       },
+      requiredGroundedCohorts: {
+        minimumGroupedNodeCount: requiredGroundedCohorts.reduce(
+          (total, cohort) => total + cohort.nodeIds.length,
+          0,
+        ),
+        instruction:
+          "Apply every listed groupId to exactly its nodeIds, preserve a distinct topicId for distinct stories, and copy sharedAnchor into each member's keywords plus the group's semanticAnchors.",
+        groups: requiredGroundedCohorts.map((cohort) => ({
+          groupId: cohort.groupId,
+          label: cohort.label,
+          sharedAnchor: cohort.sharedAnchor,
+          nodeIds: cohort.nodeIds,
+        })),
+      },
       period: {
         cadence: input.period.cadence,
         startedAt: input.period.startedAt.toISOString(),
@@ -127,15 +144,6 @@ export const buildAgentRuntimeReaderSummaryTopicLabelPrompt = (
         timezone: input.period.timezone,
       },
       relationshipHints: buildReaderSummaryTopicRelationCandidates(candidates),
-      groundedGroupingOpportunities: buildGroundedTopicCohorts(
-        candidates.map((candidate) => candidate.nodeId),
-        new Map(
-          candidates.map((candidate) => [
-            candidate.nodeId,
-            groundedCandidateTopicAnchors(candidate),
-          ]),
-        ),
-      ),
       nodes: candidates.map((candidate) => ({
         nodeId: candidate.nodeId,
         fallbackLabel: candidate.fallbackLabel,
@@ -204,6 +212,7 @@ export const agentRuntimeReaderSummaryTopicLabelerJsonSchema = {
     },
     groups: {
       type: "array",
+      minItems: 1,
       maxItems: READER_SUMMARY_TOPIC_MAP_MAX_SEMANTIC_GROUPS,
       items: {
         type: "object",
@@ -216,7 +225,7 @@ export const agentRuntimeReaderSummaryTopicLabelerJsonSchema = {
           label: { type: "string" },
           semanticAnchors: {
             type: "array",
-            minItems: 2,
+            minItems: 1,
             maxItems: 8,
             items: { type: "string" },
           },

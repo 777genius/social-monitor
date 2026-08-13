@@ -1,6 +1,10 @@
 import type { ReaderSummaryTopicLabelCandidate } from "../../ports";
 import type { ReaderSummaryTopicLabelerInput } from "../../ports";
-import { selectAgentRuntimeReaderSummaryTopicCandidates } from "./agent-runtime-reader-summary-topic-labeler-prompt";
+import {
+  buildAgentRuntimeReaderSummaryTopicLabelPrompt,
+  selectAgentRuntimeReaderSummaryTopicCandidates,
+} from "./agent-runtime-reader-summary-topic-labeler-prompt";
+import { normalizeAgentRuntimeReaderSummaryTopicLabelPlan } from "./agent-runtime-reader-summary-topic-label-plan-normalizer";
 
 describe("buildTopicCandidateRelationshipHints", () => {
   it("selects candidates by deterministic story score", () => {
@@ -22,7 +26,7 @@ describe("buildTopicCandidateRelationshipHints", () => {
     ]);
   });
 
-  it("preserves the leading stories and completes grounded cohorts", () => {
+  it("uses only fallback identity and keeps selected cohorts grounded", () => {
     const candidates = [
       candidate("node:top-1", ["Flutter"]),
       candidate("node:top-2", ["Grok"]),
@@ -56,17 +60,14 @@ describe("buildTopicCandidateRelationshipHints", () => {
       "node:top-1",
       "node:top-2",
       "node:claude-lead",
-      "node:top-4",
+      "node:claude-peer",
     ]);
     expect(selected.map((item) => item.nodeId)).toEqual(
       expect.arrayContaining([
         "node:claude-peer",
-        "node:rust-peer",
-        "node:gemini-lead",
-        "node:gemini-peer",
       ]),
     );
-    expect(selected).toHaveLength(10);
+    expect(selected).toHaveLength(4);
   });
 
   it("adds grounded cohorts atomically before filling by rank", () => {
@@ -163,7 +164,7 @@ describe("buildTopicCandidateRelationshipHints", () => {
     expect(selected).toHaveLength(18);
   });
 
-  it("selects a connected cohort instead of getting trapped by an overlapping pair", () => {
+  it("does not create transitive mixed-anchor components", () => {
     const candidates = [
       candidate("node:singleton-1", ["SoloAlpha"]),
       candidate("node:singleton-2", ["SoloBeta"]),
@@ -172,7 +173,7 @@ describe("buildTopicCandidateRelationshipHints", () => {
       candidate("node:filler-1", ["FillAlpha"]),
       candidate("node:filler-2", ["FillBeta"]),
       candidate("node:bridge-c", ["AnchorY"]),
-      candidate("node:bridge-d", ["AnchorZ"]),
+      candidate("node:bridge-d", ["AnchorY"]),
     ];
     const input = {
       candidates,
@@ -190,9 +191,101 @@ describe("buildTopicCandidateRelationshipHints", () => {
       "node:singleton-2",
       "node:bridge-a",
       "node:bridge-b",
-      "node:filler-1",
       "node:bridge-c",
+      "node:bridge-d",
     ]);
+  });
+
+  it("bounds a production-shaped grounded cohort set to provable coverage", () => {
+    const candidates = [
+      ...Array.from({ length: 4 }, (_, index) =>
+        candidate(`node:claude-${index + 1}`, ["Claude"]),
+      ),
+      ...Array.from({ length: 2 }, (_, index) =>
+        candidate(`node:rust-${index + 1}`, ["Rust"]),
+      ),
+      ...Array.from({ length: 12 }, (_, index) =>
+        candidate(`node:unique-${index + 1}`, [`Unique${index + 1}`]),
+      ),
+    ];
+    const selected = selectAgentRuntimeReaderSummaryTopicCandidates(
+      {
+        candidates,
+        clusters: candidates.map((item, index) =>
+          storyCluster(item.storyClusterId, candidates.length - index),
+        ),
+      },
+      18,
+    );
+
+    expect(selected).toHaveLength(12);
+    expect(selected.filter((item) => /claude|rust/u.test(item.nodeId))).toHaveLength(6);
+
+    const prompt = JSON.parse(
+      buildAgentRuntimeReaderSummaryTopicLabelPrompt(
+        promptInput(candidates),
+        selected,
+      ),
+    ) as {
+      requiredGroundedCohorts: {
+        minimumGroupedNodeCount: number;
+        groups: readonly { groupId: string; nodeIds: readonly string[] }[];
+      };
+    };
+    expect(prompt.requiredGroundedCohorts).toMatchObject({
+      minimumGroupedNodeCount: 6,
+      groups: [
+        { groupId: "group:claude", nodeIds: expect.arrayContaining(["node:claude-1", "node:claude-4"]) },
+        { groupId: "group:rust", nodeIds: ["node:rust-1", "node:rust-2"] },
+      ],
+    });
+
+    const normalized = normalizeAgentRuntimeReaderSummaryTopicLabelPlan(
+      {
+        nodeLabels: selected.map((item) => ({
+          nodeId: item.nodeId,
+          topicId: `topic:${item.nodeId}`,
+          subject: item.fallbackLabel,
+          parentSubject: "",
+          claimType: "other",
+          confidenceScore: 0.9,
+          groupId: "group:ungrouped",
+          keywords: [],
+        })),
+        groups: [],
+      },
+      selected,
+    );
+    expect(normalized.nodeLabels.filter((item) => item.groupId !== "group:ungrouped")).toHaveLength(6);
+    expect(normalized.groups.map((group) => group.id)).toEqual([
+      "group:claude",
+      "group:rust",
+    ]);
+  });
+
+  it("ignores incidental label candidate mentions", () => {
+    const unrelated = [
+      candidate("node:gardening", ["Gardening"]),
+      candidate("node:cooking", ["Cooking"]),
+    ].map((item) => ({
+      ...item,
+      labelCandidates: [
+        {
+          label: "Claude Codex commentary",
+          source: "evidence-title" as const,
+          score: 0.9,
+          evidenceFeedItemIds: [],
+          rationale: "incidental mention",
+        },
+      ],
+    }));
+
+    expect(
+      selectAgentRuntimeReaderSummaryTopicCandidates(
+        { candidates: unrelated, clusters: [] },
+        2,
+      ).map((item) => item.nodeId),
+    ).toEqual(["node:cooking", "node:gardening"]);
   });
 
   it("handles empty limits and duplicate node ids deterministically", () => {
@@ -272,4 +365,26 @@ const storyCluster = (id: string, score: number) => ({
     endedAt: new Date("2026-07-09T00:00:00.000Z"),
   },
   whyImportant: ["Fixture"],
+});
+
+const promptInput = (
+  candidates: readonly ReaderSummaryTopicLabelCandidate[],
+): ReaderSummaryTopicLabelerInput => ({
+  tenantId: "tenant:test" as ReaderSummaryTopicLabelerInput["tenantId"],
+  workspaceId: "workspace:test" as ReaderSummaryTopicLabelerInput["workspaceId"],
+  scope: { type: "workspace" },
+  period: {
+    cadence: "daily",
+    startedAt: new Date("2026-07-09T00:00:00.000Z"),
+    endedAt: new Date("2026-07-10T00:00:00.000Z"),
+    timezone: "UTC",
+    periodKey: "2026-07-09",
+  },
+  requestedAt: new Date("2026-07-10T00:00:00.000Z"),
+  clusters: candidates.map((item, index) =>
+    storyCluster(item.storyClusterId, candidates.length - index),
+  ),
+  selectedEvidence: [],
+  topStories: [],
+  candidates,
 });
