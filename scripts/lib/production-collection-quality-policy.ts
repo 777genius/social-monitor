@@ -66,12 +66,19 @@ export const evaluateProductionProviderCollectionState = (params: {
     (params.targetWindowItemCount > 0 &&
       exactClosedDayGitHubEvidence &&
       providerMeetsProductionBlockingPolicy(scan));
+  const acceptedExactDayDurableGitHubSnapshot =
+    accepted &&
+    params.closedRequestedUtcDay &&
+    scan.providerKey === "github-trending-page" &&
+    scan.acquisitionMode === "durable_snapshot_reuse" &&
+    scan.durableSnapshotProof?.requestedUtcDay === params.collectionDate;
   const state =
     scan.status !== "succeeded" ||
     scan.observability.coverageState === "unavailable" ||
     params.targetWindowItemCount <= 0
       ? "unavailable"
-      : scan.observability.coverageState === "complete"
+      : acceptedExactDayDurableGitHubSnapshot ||
+          scan.observability.coverageState === "complete"
         ? "complete"
         : "partial";
   const reasonCodes = new Set<string>(scan.observability.slo.reasons);

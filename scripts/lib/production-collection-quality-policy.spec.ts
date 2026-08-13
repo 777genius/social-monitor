@@ -165,6 +165,49 @@ describe("production collection quality policy", () => {
     });
   });
 
+  it("classifies an accepted exact-day durable GitHub snapshot as complete despite its generic freshness SLO", async () => {
+    const proof = await certifiedDurableProof();
+    const observability = durableSnapshotReuseProviderCollectionObservation({
+      itemCount: 10,
+      newestPublishedAt: new Date("2026-07-23T12:00:00.000Z"),
+      targetWindowEndedAt: new Date("2026-07-24T00:00:00.000Z"),
+    });
+    const scan = {
+      providerKey: "github-trending-page" as const,
+      bindingFingerprint:
+        githubTrendingDurableSnapshotBindingFingerprint("binding-a"),
+      status: "succeeded" as const,
+      acquisitionMode: "durable_snapshot_reuse" as const,
+      observability: {
+        ...observability,
+        freshness: {
+          ...observability.freshness,
+          newestAcceptedPublishedAt: proof.group.publishedAt,
+        },
+      },
+      durableSnapshotProof: proof,
+    };
+
+    expect(scan.observability.coverageState).toBe("partial");
+    expect(scan.observability.slo.reasons).toContain(
+      "freshness_lag_exceeded",
+    );
+    expect(providerMeetsProductionBlockingPolicy(scan)).toBe(true);
+    expect(
+      evaluateProductionProviderCollectionState({
+        collectionDate: "2026-07-23",
+        closedRequestedUtcDay: true,
+        scan,
+        targetWindowItemCount: 10,
+      }),
+    ).toMatchObject({
+      state: "complete",
+      evidence: "exact_day_durable_snapshot",
+      policy: "accepted",
+      retryDisposition: "none",
+    });
+  });
+
   it("accepts explicit GitHub unavailability when HN, Reddit, RSS, and X are ready", () => {
     const input = transparentPartialDailyInput();
 

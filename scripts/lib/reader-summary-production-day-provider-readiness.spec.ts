@@ -56,6 +56,52 @@ describe("production-day provider readiness admission", () => {
     });
   });
 
+  it("admits an accepted exact-day GitHub snapshot when only its generic freshness SLO is partial", () => {
+    const report = collectionReport(githubProof);
+    const github = report.scans.find(
+      (scan) => scan.providerKey === "github-trending-page",
+    )!;
+    replaceProviderScan(report, {
+      ...github,
+      observability: {
+        ...github.observability,
+        coverageState: "partial",
+        slo: {
+          ...github.observability.slo,
+          met: false,
+          freshnessLagSeconds: 43_200,
+          reasons: ["freshness_lag_exceeded"],
+          retryDisposition: "immediate",
+        },
+        freshness: {
+          ...github.observability.freshness,
+          lagToWindowEndSeconds: 43_200,
+        },
+      },
+    });
+    report.qualityGates = {
+      ...report.qualityGates,
+      everyRequestedProviderMeetsBlockingCoveragePolicy: true,
+    };
+    (report as { blockingPassed: boolean }).blockingPassed = true;
+
+    const result = resolveProductionDayProviderReadiness({
+      collectionDate,
+      evaluatedAt,
+      qualityReport: qualityReport(report.targetWindow.providerCounts),
+      collectionReport: report,
+    });
+
+    expect(result.status).toBe("complete");
+    expect(result.summaryPolicy).toBe("allowed");
+    expect(result.providers[0]).toMatchObject({
+      providerKey: "github-trending-page",
+      state: "complete",
+      evidence: "exact_day_durable_snapshot",
+      reasonCodes: ["freshness_lag_exceeded"],
+    });
+  });
+
   it("terminalizes the Jul 27 bounded shortfalls without admitting a summary", () => {
     const report = collectionReport(githubProof, partialCounts);
     const result = resolveProductionDayProviderReadiness({
