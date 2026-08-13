@@ -92,24 +92,27 @@ assert_real_bridge_target_assets() {
     actual_digest=$(sha256sum "$actual_real" | awk '{print $1}')
     case $path in
       ops/deploy/social-monitor-production-deploy.sh)
-        expected_digest=b772a229142ed7e7bd3028384b30accb77bfb8379c1355cbedd826e1f96e77d2
+        expected_digest=e76db96e9cc7bdb62cb09a3be509a7776e09a0499ff41a0d3769d8b499bde04f
         ;;
       ops/deploy/deploy-control-lib.sh)
         expected_digest=d18854822ef36d5571289e72c7691fff8db4a7d5c516787441a733d6960a88a9
         ;;
       ops/deploy/postgres-runtime-deploy-lib.sh)
-        expected_digest=857db52a510466a3abab0c7f1dfb4b5f9dd9b3c809ddd2e355e05d2d0dfce776
+        expected_digest=261fb030bea2f203564c59e0c22db8058b310fb5d979c7db622938fe6045545a
+        ;;
+      ops/deploy/backend-image-rescue-lib.sh)
+        expected_digest=68f13213e6d1662d943185df7cdd1c11678261e76977021f74493c4e6c643b59
         ;;
       ops/deploy/deploy-control-bridge-lib.sh)
-        expected_digest=8bb5e972344a22bdfa6e6d7f989af859e2ef4edf8f14a392a789bc985520bd98
+        expected_digest=5a4f290959db019b1ca68c2d8ed39e3741b05d80b72696b11cbeb7d67c775a20
         ;;
     esac
     if [[ $path == ops/deploy/social-monitor-production-deploy.sh ]]; then
-      [[ $(grep -Fo 'reader-summary-daily-terminal-set-receipt-v1' "$actual_real" | wc -l) == 1 ]] || {
+      (( $(grep -Fo 'reader-summary-daily-terminal-set-receipt-v1' "$actual_real" | wc -l) == 1 )) || {
         echo 'production dispatch receipt exception is not exact' >&2
         exit 1
       }
-      [[ $(grep -Fo 'reader-summary-daily-scan-terminal-preimage-c1' "$actual_real" | wc -l) == 1 ]] || {
+      (( $(grep -Fo 'reader-summary-daily-scan-terminal-preimage-c1' "$actual_real" | wc -l) == 1 )) || {
         echo 'production C1 preimage dispatch exception is not exact' >&2
         exit 1
       }
