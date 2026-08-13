@@ -49,21 +49,17 @@ import {
 } from "./lib/reader-summary-clean-real-day-collection-artifact";
 import {
   discoverCanonicalReaderSummaryDailyMaintenanceTargets,
+  discoverReaderSummaryProductionHistoryTargets,
+  isReaderSummaryProductionHistoryScope,
 } from "./lib/reader-summary-daily-maintenance-scope";
-import {
-  discoverSingleScopeCleanRealDayTargets as discoverUnboundedCleanRealDayTargets,
-} from "./lib/clean-real-day-target-discovery";
-import {
-  readReaderSummaryCleanRealDayCollectionCli,
-} from "./lib/reader-summary-clean-real-day-collection-cli";
+import { discoverSingleScopeCleanRealDayTargets as discoverUnboundedCleanRealDayTargets } from "./lib/clean-real-day-target-discovery";
+import { readReaderSummaryCleanRealDayCollectionCli } from "./lib/reader-summary-clean-real-day-collection-cli";
 import {
   executeCleanRealDayProviderAcquisition,
   type CleanRealDaySourceBindingTarget as SourceBindingTarget,
 } from "./lib/clean-real-day-provider-acquisition";
 import { requireScanPolicyTargets } from "./lib/clean-real-day-scan-policy-targets";
-import {
-  withProviderCollectionWindowProof,
-} from "./lib/provider-collection-observability";
+import { withProviderCollectionWindowProof } from "./lib/provider-collection-observability";
 import {
   explicitGitHubUnavailableIsTransparentPartialDailyInput,
   providerMeetsProductionBlockingPolicy,
@@ -84,10 +80,7 @@ type ScanProofRow = {
 };
 
 type TargetDiscoveryClient = {
-  $queryRawUnsafe<T>(
-    query: string,
-    ...values: readonly unknown[]
-  ): Promise<T>;
+  $queryRawUnsafe<T>(query: string, ...values: readonly unknown[]): Promise<T>;
 };
 
 type TargetDiscoveryRuntimeClient = TargetDiscoveryClient & {
@@ -169,8 +162,7 @@ async function main(): Promise<void> {
           (candidate) => candidate.providerKey === providerKey,
         );
         return (
-          scan === undefined ||
-          !providerMeetsProductionBlockingPolicy(scan)
+          scan === undefined || !providerMeetsProductionBlockingPolicy(scan)
         );
       },
     );
@@ -234,24 +226,35 @@ async function tryRunCollection(): Promise<
     "daily-runner",
   );
   let targetDiscovery:
-    | PrismaPgRuntimeConnectionLease<TargetDiscoveryRuntimeClient>
-    | undefined;
+    PrismaPgRuntimeConnectionLease<TargetDiscoveryRuntimeClient> | undefined;
   let connection: PrismaIngestionWorkerConnection | undefined;
 
   try {
     const targetDiscoveryConnection =
       await createTargetDiscoveryConnection(runtimeConfig);
     targetDiscovery = targetDiscoveryConnection;
-    connection =
-      await PrismaIngestionWorkerConnection.create(runtimeConfig);
+    connection = await PrismaIngestionWorkerConnection.create(runtimeConfig);
     const requiredProviderKeys = providerCatchUp
       ? defaultCleanRealDayCollectionProviderKeys
       : requestedProviderKeys;
-    const allTargets = maintenanceScope === undefined
-      ? await discoverUnboundedCleanRealDayTargets(() =>
-          readTargets(targetDiscoveryConnection.client, requiredProviderKeys))
-      : await discoverCanonicalReaderSummaryDailyMaintenanceTargets(() =>
-          readTargets(targetDiscoveryConnection.client, requiredProviderKeys));
+    const allTargets =
+      maintenanceScope === undefined
+        ? await discoverUnboundedCleanRealDayTargets(() =>
+            readTargets(targetDiscoveryConnection.client, requiredProviderKeys),
+          )
+        : isReaderSummaryProductionHistoryScope(maintenanceScope)
+          ? await discoverReaderSummaryProductionHistoryTargets(() =>
+              readTargets(
+                targetDiscoveryConnection.client,
+                requiredProviderKeys,
+              ),
+            )
+          : await discoverCanonicalReaderSummaryDailyMaintenanceTargets(() =>
+              readTargets(
+                targetDiscoveryConnection.client,
+                requiredProviderKeys,
+              ),
+            );
     const targetScope = allTargets[0]!;
     const tenantDatabase = createTenantScopedPgQuery(pool, targetScope);
     const existingReport = providerCatchUp
@@ -399,16 +402,18 @@ async function readTargets(
   client: TargetDiscoveryClient,
   providerKeys: readonly ProviderKey[],
 ): Promise<readonly SourceBindingTarget[]> {
-  const rows = await client.$queryRawUnsafe<readonly {
-    readonly tenantId: string;
-    readonly workspaceId: string;
-    readonly interestId: string;
-    readonly interestQuery: string;
-    readonly sourceBindingId: string;
-    readonly scanPolicyId: string | null;
-    readonly providerKey: ProviderKey;
-    readonly config: unknown;
-  }[]>(
+  const rows = await client.$queryRawUnsafe<
+    readonly {
+      readonly tenantId: string;
+      readonly workspaceId: string;
+      readonly interestId: string;
+      readonly interestQuery: string;
+      readonly sourceBindingId: string;
+      readonly scanPolicyId: string | null;
+      readonly providerKey: ProviderKey;
+      readonly config: unknown;
+    }[]
+  >(
     `
       select
         sb.tenant_id::text as "tenantId",
@@ -772,11 +777,12 @@ function buildReport(params: {
         scan.acquisitionMode !== "durable_snapshot_reuse" ||
         scan.attemptCount === 1,
     ),
-    durableSnapshotProofMatchesRequestedDay: finalScanResults.every(
-      (scan) =>
-        scan.acquisitionMode !== "durable_snapshot_reuse" ||
-        scan.durableSnapshotProof?.requestedUtcDay === targetCollectionDate,
-    ) || transparentPartialInput,
+    durableSnapshotProofMatchesRequestedDay:
+      finalScanResults.every(
+        (scan) =>
+          scan.acquisitionMode !== "durable_snapshot_reuse" ||
+          scan.durableSnapshotProof?.requestedUtcDay === targetCollectionDate,
+      ) || transparentPartialInput,
     partialProviderCoverageIsExplicit: finalScanResults.every((scan) =>
       ["complete", "partial", "degraded", "unavailable"].includes(
         scan.observability.coverageState,
@@ -857,14 +863,20 @@ function validateExistingReport(): void {
     throw new Error(`${outputPath} is missing.`);
   }
 
-  const report = maintenanceScope === undefined
-    ? JSON.parse(readFileSync(outputPath, "utf8")) as CleanRealDayCollectionReport
-    : readExactDayCollectionArtifact({
-        path: outputPath,
-        collectionDate: targetCollectionDate,
-        expectedScope: maintenanceScope,
-      });
-  if (report === null) throw new Error(`${outputPath} does not contain ${targetCollectionDate} evidence`);
+  const report =
+    maintenanceScope === undefined
+      ? (JSON.parse(
+          readFileSync(outputPath, "utf8"),
+        ) as CleanRealDayCollectionReport)
+      : readExactDayCollectionArtifact({
+          path: outputPath,
+          collectionDate: targetCollectionDate,
+          expectedScope: maintenanceScope,
+        });
+  if (report === null)
+    throw new Error(
+      `${outputPath} does not contain ${targetCollectionDate} evidence`,
+    );
   if (!collectionArtifactPassesBlockingValidation(report)) {
     throw new Error(`${outputPath} failed existing artifact validation`);
   }
