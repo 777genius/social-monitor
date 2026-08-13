@@ -41,8 +41,8 @@ BEGIN
       OR v_period->>'cadence' IS DISTINCT FROM 'daily'
       OR v_period->>'timezone' IS DISTINCT FROM 'UTC'
       OR v_period->>'periodKey' IS DISTINCT FROM
-        'daily:' || v_period->>'startedAt' || ':' ||
-        v_period->>'endedAt' || ':UTC'
+        ('daily:' || (v_period->>'startedAt') || ':' ||
+        (v_period->>'endedAt') || ':UTC')
       OR COALESCE(v_period->>'startedAt', '') !~
         '^\d{4}-\d{2}-\d{2}T00:00:00\.000Z$'
       OR COALESCE(v_period->>'endedAt', '') !~
@@ -120,8 +120,8 @@ BEGIN
     OR v_period->>'cadence' IS DISTINCT FROM 'daily'
     OR v_period->>'timezone' IS DISTINCT FROM 'UTC'
     OR v_period->>'periodKey' IS DISTINCT FROM
-      'daily:' || v_period->>'startedAt' || ':' ||
-      v_period->>'endedAt' || ':UTC'
+      ('daily:' || (v_period->>'startedAt') || ':' ||
+      (v_period->>'endedAt') || ':UTC')
     OR COALESCE(v_period->>'startedAt', '') !~
       '^\d{4}-\d{2}-\d{2}T00:00:00\.000Z$'
     OR COALESCE(v_period->>'endedAt', '') !~

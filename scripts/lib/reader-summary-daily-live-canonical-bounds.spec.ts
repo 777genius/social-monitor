@@ -13,7 +13,7 @@ describe("daily live canonical bounds migration", () => {
     expect(sql).toContain("'reader_summary.artifact.v1'");
     expect(sql).toContain("v_period->>'cadence' IS DISTINCT FROM 'daily'");
     expect(sql).toContain("v_period->>'timezone' IS DISTINCT FROM 'UTC'");
-    expect(sql).toContain("'daily:' || v_period->>'startedAt'");
+    expect(sql).toContain("'daily:' || (v_period->>'startedAt')");
     expect(sql).toContain("IS DISTINCT FROM INTERVAL '1 day'");
     expect(sql).toContain('RETURN public."reader_summary_weekly_canonical_json"(value)');
     expect(sql).toContain("v_nodes > 25000");
