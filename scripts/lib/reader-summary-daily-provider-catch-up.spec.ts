@@ -263,6 +263,46 @@ describe("daily reader-summary provider catch-up", () => {
     expect(plan.barrierMessage).toContain("DB/artifact evidence is unsafe");
   });
 
+  it("accepts monotonic DB growth after a successful exact-day scan", () => {
+    const existingReport = report(
+      defaultCleanRealDayCollectionProviderKeys.map(readyScan),
+    );
+    const plan = planDailyProviderCatchUp({
+      collectionDate: "2026-07-27",
+      evaluatedAt,
+      existingReport,
+      databaseProviderCounts: {
+        ...existingReport.targetWindow.providerCounts,
+        reddit: 245,
+        rss: 128,
+      },
+    });
+
+    expect(plan.barrierMessage).toBeNull();
+    expect(plan.providerKeysToCollect).toEqual([]);
+  });
+
+  it("blocks a DB count decrease below successful exact-day evidence", () => {
+    const existingReport = report(
+      defaultCleanRealDayCollectionProviderKeys.map(readyScan),
+    );
+    const plan = planDailyProviderCatchUp({
+      collectionDate: "2026-07-27",
+      evaluatedAt,
+      existingReport,
+      databaseProviderCounts: {
+        ...existingReport.targetWindow.providerCounts,
+        reddit: 9,
+      },
+    });
+
+    expect(plan.providerStates[2]).toMatchObject({
+      state: "invalid",
+      reasonCodes: ["database_collection_count_mismatch"],
+    });
+    expect(plan.barrierMessage).toContain("reddit");
+  });
+
   it("blocks historical recollection unless the collection policy explicitly permits it", () => {
     const blocked = planDailyProviderCatchUp({
       collectionDate: "2026-07-27",

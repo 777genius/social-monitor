@@ -228,12 +228,16 @@ const providerState = (params: {
   });
   const explicitlyUnavailable =
     collectionState.evidence === "explicit_unavailable";
+  const successfulCollectionCanPrecedeProjectionGrowth =
+    scans[0]!.status === "succeeded";
   const qualityEvidenceMatches = explicitlyUnavailable
     ? params.qualityReports.length === 0
     : params.qualityReports.length === 1 &&
       Number.isFinite(params.qualityReports[0]!.feedItemCount) &&
       params.qualityReports[0]!.feedItemCount > 0 &&
-      params.qualityReports[0]!.feedItemCount === feedItemCount;
+      (params.qualityReports[0]!.feedItemCount === feedItemCount ||
+        (successfulCollectionCanPrecedeProjectionGrowth &&
+          params.qualityReports[0]!.feedItemCount >= feedItemCount));
   const qualityReasons = qualityEvidenceMatches
     ? []
     : params.qualityReports.length === 0

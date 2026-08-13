@@ -163,7 +163,13 @@ const buildProviderDiagnostics = (params: {
       qualityRows.length > 1 ||
       !isNonNegativeInteger(databaseFeedItemCount) ||
       !isNonNegativeInteger(collectionFeedItemCount) ||
-      databaseFeedItemCount !== collectionFeedItemCount
+      !(
+        databaseFeedItemCount === collectionFeedItemCount ||
+        (params.collectionReport.scans.find(
+          (scan) => scan.providerKey === providerKey,
+        )?.status === "succeeded" &&
+          databaseFeedItemCount >= collectionFeedItemCount)
+      )
     ) {
       return null;
     }

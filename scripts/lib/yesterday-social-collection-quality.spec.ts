@@ -198,6 +198,26 @@ describe("yesterday social required-provider readiness", () => {
       }).ready,
     ).toBe(false);
   });
+
+  it("accepts only monotonic quality-count growth after successful scan evidence", () => {
+    const grown = qualityReport(undefined, { reddit: 245, rss: 128 });
+    const baseCollection = collectionReport();
+    expect(readiness(grown, baseCollection).ready).toBe(true);
+
+    const decreased = qualityReport(undefined, { reddit: 99 });
+    expect(
+      readiness(decreased, baseCollection).providerStates[2]?.reasonCodes,
+    ).toContain("quality_provider_count_mismatch");
+
+    const failedCollection = collectionReport();
+    const reddit = failedCollection.scans.find(
+      (scan) => scan.providerKey === "reddit",
+    )!;
+    replaceScan(failedCollection, { ...reddit, status: "failed" });
+    expect(
+      readiness(grown, failedCollection).providerStates[2]?.reasonCodes,
+    ).toContain("quality_provider_count_mismatch");
+  });
 });
 
 function readiness(
@@ -277,6 +297,17 @@ function collectionReport(
     qualityGates: {},
     blockingPassed: false,
   };
+}
+
+function replaceScan(
+  report: CleanRealDayCollectionReport,
+  replacement: CleanRealDayCollectionReport["scans"][number],
+): void {
+  const scans = report.scans as CleanRealDayCollectionReport["scans"][number][];
+  const index = scans.findIndex(
+    (scan) => scan.providerKey === replacement.providerKey,
+  );
+  scans[index] = replacement;
 }
 
 function target(

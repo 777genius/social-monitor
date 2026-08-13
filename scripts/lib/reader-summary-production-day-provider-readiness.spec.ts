@@ -215,6 +215,48 @@ describe("production-day provider readiness admission", () => {
     expect(result.providers).toEqual([]);
   });
 
+  it("uses monotonic DB growth after successful scan evidence without accepting decreases", () => {
+    const report = collectionReport(githubProof);
+    const grown = resolveProductionDayProviderReadiness({
+      collectionDate,
+      evaluatedAt,
+      qualityReport: qualityReport({
+        ...report.targetWindow.providerCounts,
+        reddit: 245,
+        rss: 128,
+      }),
+      collectionReport: report,
+    });
+
+    expect(grown.status).toBe("complete");
+    expect(grown.providers).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          providerKey: "reddit",
+          databaseFeedItemCount: 245,
+          collectionFeedItemCount: 100,
+        }),
+        expect.objectContaining({
+          providerKey: "rss",
+          databaseFeedItemCount: 128,
+          collectionFeedItemCount: 50,
+        }),
+      ]),
+    );
+
+    const decreased = resolveProductionDayProviderReadiness({
+      collectionDate,
+      evaluatedAt,
+      qualityReport: qualityReport({
+        ...report.targetWindow.providerCounts,
+        reddit: 99,
+      }),
+      collectionReport: report,
+    });
+    expect(decreased.status).toBe("blocked");
+    expect(decreased.providers).toEqual([]);
+  });
+
   it("fails closed for stale DB provenance, count mismatch, weak inventory, or unverified GitHub", () => {
     const partial = collectionReport(githubProof, partialCounts);
     const stale = {

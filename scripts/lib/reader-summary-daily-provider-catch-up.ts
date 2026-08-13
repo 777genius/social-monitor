@@ -277,7 +277,11 @@ const catchUpState = (params: {
       : recordedCollectionFeedItemCount;
   if (
     !Number.isInteger(collectionFeedItemCount) ||
-    collectionFeedItemCount !== params.databaseFeedItemCount
+    !(
+      collectionFeedItemCount === params.databaseFeedItemCount ||
+      (scans[0]!.status === "succeeded" &&
+        params.databaseFeedItemCount >= collectionFeedItemCount)
+    )
   ) {
     return invalidState(
       params.providerKey,
