@@ -1,5 +1,3 @@
-import { describe, expect, it } from "vitest";
-
 import { targetWindowHasEveryPrimaryProvider } from "./reader-summary-clean-real-day-e2e-policy";
 
 describe("clean real-day E2E provider policy", () => {
