@@ -2,7 +2,6 @@ import {
   READER_SUMMARY_TOPIC_MAP_MAX_SEMANTIC_GROUPS,
   READER_SUMMARY_TOPIC_MAP_UNGROUPED_ID,
   buildReaderSummaryTopicRelationCandidates,
-  meaningfulTopicLabelTokens,
   readerSummaryTopicClaimTypes,
 } from "../../domain";
 import type {
@@ -10,6 +9,11 @@ import type {
   ReaderSummaryTopicMapAttemptContext,
 } from "../../ports";
 import { buildAgentRuntimeTopicEvidenceSamples } from "./agent-runtime-reader-summary-topic-evidence-prompt";
+import {
+  buildGroundedTopicCohorts,
+  groundedCandidateTopicAnchors,
+} from "./agent-runtime-reader-summary-topic-grounded-cohorts";
+export { selectAgentRuntimeReaderSummaryTopicCandidates } from "./agent-runtime-reader-summary-topic-candidate-selection";
 
 export const agentRuntimeReaderSummaryTopicLabelerInstructions = [
   "You label and group Social Monitor summary topic nodes.",
@@ -35,6 +39,7 @@ export const agentRuntimeReaderSummaryTopicLabelerInstructions = [
   "Use the same topicId for candidates that describe the same concrete story, event, release, project, product, company, or person so they become one bubble.",
   "Treat coordinated coverage of one announcement as one topic even when an official account, a leader, an engineer, and an article emphasize different components. Use the announced product or event as the shared subject and topicId; do not split by speaker or supporting technology.",
   "Review relationshipHints before assigning topicId. They are retrieval hints, not proof: merge hinted nodes only when their evidence samples describe the same concrete event or announcement.",
+  "Review groundedGroupingOpportunities before assigning groupId. They expose concrete terms shared by candidate evidence. Use them as grouping evidence only when the shared anchor describes each node's identity rather than an incidental mention.",
   "Do not reuse topicId merely because candidates mention the same company, model family, or ecosystem. Rollout, availability, benchmark results, cost or token efficiency, usage limits, and courses or guides are separate topics.",
   "Treat distinct model variants as distinct primary subjects. Merge variants only when every merged candidate is explicitly about one family-level announcement; label that bubble as a family rollout rather than listing variant names.",
   "For an explicit family-level announcement that lists sibling variants, subject must name the shared family and include Family. Never select one listed sibling as the subject of the family announcement.",
@@ -122,6 +127,15 @@ export const buildAgentRuntimeReaderSummaryTopicLabelPrompt = (
         timezone: input.period.timezone,
       },
       relationshipHints: buildReaderSummaryTopicRelationCandidates(candidates),
+      groundedGroupingOpportunities: buildGroundedTopicCohorts(
+        candidates.map((candidate) => candidate.nodeId),
+        new Map(
+          candidates.map((candidate) => [
+            candidate.nodeId,
+            groundedCandidateTopicAnchors(candidate),
+          ]),
+        ),
+      ),
       nodes: candidates.map((candidate) => ({
         nodeId: candidate.nodeId,
         fallbackLabel: candidate.fallbackLabel,
@@ -149,184 +163,6 @@ export const buildAgentRuntimeReaderSummaryTopicLabelPrompt = (
     2,
   );
 };
-
-export const selectAgentRuntimeReaderSummaryTopicCandidates = (
-  input: Pick<ReaderSummaryTopicLabelerInput, "candidates" | "clusters">,
-  maxCandidates: number,
-): readonly ReaderSummaryTopicLabelerInput["candidates"][number][] => {
-  const clusterScoreById = new Map(
-    input.clusters.map((cluster) => [cluster.id, cluster.score] as const),
-  );
-
-  const ranked = input.candidates
-    .slice()
-    .sort((left, right) => {
-      const scoreDifference =
-        (clusterScoreById.get(right.storyClusterId) ?? right.score) -
-        (clusterScoreById.get(left.storyClusterId) ?? left.score);
-
-      return scoreDifference !== 0
-        ? scoreDifference
-        : left.nodeId.localeCompare(right.nodeId);
-    });
-  if (ranked.length <= maxCandidates) {
-    return ranked;
-  }
-
-  const concreteTermsByNodeId = new Map(
-    ranked.map((candidate) => [
-      candidate.nodeId,
-      concreteCandidateTerms(candidate),
-    ]),
-  );
-  const termSupport = new Map<string, number>();
-  for (const terms of concreteTermsByNodeId.values()) {
-    for (const term of terms) {
-      termSupport.set(term, (termSupport.get(term) ?? 0) + 1);
-    }
-  }
-  const groupableTerms = new Set(
-    [...termSupport]
-      .filter(([, support]) => support >= 2)
-      .map(([term]) => term),
-  );
-  const minimumGroupedCandidateCount = Math.ceil(maxCandidates / 2);
-  const leadingCandidateCount = Math.max(
-    0,
-    maxCandidates - minimumGroupedCandidateCount - 1,
-  );
-  const selected = new Set(
-    ranked
-      .slice(0, leadingCandidateCount)
-      .map((candidate) => candidate.nodeId),
-  );
-  const selectedTerms = new Set(
-    ranked
-      .slice(0, leadingCandidateCount)
-      .flatMap((candidate) => [
-        ...(concreteTermsByNodeId.get(candidate.nodeId) ?? []),
-      ])
-      .filter((term) => groupableTerms.has(term)),
-  );
-
-  for (const candidate of ranked.slice(leadingCandidateCount)) {
-    if (selected.size >= maxCandidates) {
-      break;
-    }
-    const terms = concreteTermsByNodeId.get(candidate.nodeId) ?? new Set();
-    if ([...terms].some((term) => selectedTerms.has(term))) {
-      selected.add(candidate.nodeId);
-    }
-  }
-
-  const cohortCandidates = ranked
-    .slice(leadingCandidateCount)
-    .filter((candidate) => !selected.has(candidate.nodeId))
-    .filter((candidate) =>
-      [...(concreteTermsByNodeId.get(candidate.nodeId) ?? [])].some((term) =>
-        groupableTerms.has(term),
-      ),
-    );
-  while (selected.size < maxCandidates && cohortCandidates.length > 0) {
-    const remainingSlots = maxCandidates - selected.size;
-    const bundle = bestGroundedCandidateBundle(
-      cohortCandidates,
-      concreteTermsByNodeId,
-      remainingSlots,
-    );
-    if (bundle.length === 0) {
-      break;
-    }
-    for (const member of bundle) {
-      selected.add(member.nodeId);
-    }
-    for (const member of bundle) {
-      const index = cohortCandidates.findIndex(
-        (candidate) => candidate.nodeId === member.nodeId,
-      );
-      if (index >= 0) {
-        cohortCandidates.splice(index, 1);
-      }
-    }
-  }
-  for (const candidate of ranked) {
-    if (selected.size >= maxCandidates) {
-      break;
-    }
-    selected.add(candidate.nodeId);
-  }
-
-  return ranked.filter((candidate) => selected.has(candidate.nodeId));
-};
-
-const bestGroundedCandidateBundle = (
-  candidates: readonly ReaderSummaryTopicLabelerInput["candidates"][number][],
-  termsByNodeId: ReadonlyMap<string, ReadonlySet<string>>,
-  remainingSlots: number,
-): readonly ReaderSummaryTopicLabelerInput["candidates"][number][] => {
-  if (remainingSlots < 2) {
-    return [];
-  }
-  for (let leftIndex = 0; leftIndex < candidates.length; leftIndex += 1) {
-    const left = candidates[leftIndex]!;
-    for (
-      let rightIndex = leftIndex + 1;
-      rightIndex < candidates.length;
-      rightIndex += 1
-    ) {
-      const right = candidates[rightIndex]!;
-      if (
-        haveSharedConcreteTerm(
-          termsByNodeId.get(left.nodeId) ?? new Set(),
-          termsByNodeId.get(right.nodeId) ?? new Set(),
-        )
-      ) {
-        return [left, right];
-      }
-    }
-  }
-
-  return [];
-};
-
-const haveSharedConcreteTerm = (
-  left: ReadonlySet<string>,
-  right: ReadonlySet<string>,
-): boolean => [...left].some((term) => right.has(term));
-
-const concreteCandidateTerms = (
-  candidate: ReaderSummaryTopicLabelerInput["candidates"][number],
-): ReadonlySet<string> =>
-  new Set(
-    [
-      candidate.fallbackLabel,
-      ...candidate.keywords,
-      ...candidate.labelCandidates.map((option) => option.label),
-    ]
-      .flatMap(meaningfulTopicLabelTokens)
-      .filter((term) => !nonDiscriminativeCandidateTerms.has(term)),
-  );
-
-const nonDiscriminativeCandidateTerms = new Set([
-  "ai",
-  "content",
-  "developer",
-  "developers",
-  "ecosystem",
-  "ecosystems",
-  "event",
-  "industry",
-  "industries",
-  "model",
-  "models",
-  "product",
-  "products",
-  "release",
-  "technology",
-  "technologies",
-  "tool",
-  "tools",
-]);
 
 export const agentRuntimeReaderSummaryTopicLabelerJsonSchema = {
   type: "object",

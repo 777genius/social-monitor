@@ -162,6 +162,59 @@ describe("buildTopicCandidateRelationshipHints", () => {
     expect(selectedCohortIds).toHaveLength(10);
     expect(selected).toHaveLength(18);
   });
+
+  it("selects a connected cohort instead of getting trapped by an overlapping pair", () => {
+    const candidates = [
+      candidate("node:singleton-1", ["SoloAlpha"]),
+      candidate("node:singleton-2", ["SoloBeta"]),
+      candidate("node:bridge-a", ["AnchorX", "AnchorY"]),
+      candidate("node:bridge-b", ["AnchorX", "AnchorZ"]),
+      candidate("node:filler-1", ["FillAlpha"]),
+      candidate("node:filler-2", ["FillBeta"]),
+      candidate("node:bridge-c", ["AnchorY"]),
+      candidate("node:bridge-d", ["AnchorZ"]),
+    ];
+    const input = {
+      candidates,
+      clusters: candidates.map((item, index) =>
+        storyCluster(item.storyClusterId, candidates.length - index),
+      ),
+    } satisfies Pick<ReaderSummaryTopicLabelerInput, "candidates" | "clusters">;
+
+    expect(
+      selectAgentRuntimeReaderSummaryTopicCandidates(input, 6).map(
+        (item) => item.nodeId,
+      ),
+    ).toEqual([
+      "node:singleton-1",
+      "node:singleton-2",
+      "node:bridge-a",
+      "node:bridge-b",
+      "node:filler-1",
+      "node:bridge-c",
+    ]);
+  });
+
+  it("handles empty limits and duplicate node ids deterministically", () => {
+    const duplicate = candidate("node:duplicate", ["Claude"]);
+    const input = {
+      candidates: [
+        duplicate,
+        { ...duplicate, score: 0 },
+        candidate("node:peer", ["Claude"]),
+      ],
+      clusters: [],
+    } satisfies Pick<ReaderSummaryTopicLabelerInput, "candidates" | "clusters">;
+
+    expect(selectAgentRuntimeReaderSummaryTopicCandidates(input, 0)).toEqual(
+      [],
+    );
+    expect(
+      selectAgentRuntimeReaderSummaryTopicCandidates(input, 2).map(
+        (item) => item.nodeId,
+      ),
+    ).toEqual(["node:duplicate", "node:peer"]);
+  });
 });
 
 const candidate = (
