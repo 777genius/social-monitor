@@ -282,6 +282,37 @@ describe("daily reader-summary provider catch-up", () => {
     expect(plan.providerKeysToCollect).toEqual([]);
   });
 
+  it("recollects a provider after exact-day DB growth over a failed scan", () => {
+    const existingReport = report([
+      readyScan("github-trending-page"),
+      readyScan("hacker-news"),
+      readyScan("reddit"),
+      readyScan("rss"),
+      failedScan("x-twitter"),
+    ]);
+    const plan = planDailyProviderCatchUp({
+      collectionDate: "2026-07-27",
+      evaluatedAt,
+      existingReport,
+      databaseProviderCounts: {
+        ...existingReport.targetWindow.providerCounts,
+        "x-twitter": 42,
+      },
+    });
+
+    expect(plan.barrierMessage).toBeNull();
+    expect(plan.providerKeysToCollect).toEqual(["x-twitter"]);
+    expect(
+      plan.providerStates.find(
+        (providerState) => providerState.providerKey === "x-twitter",
+      ),
+    ).toMatchObject({
+      providerKey: "x-twitter",
+      state: "unavailable",
+      policy: "blocking",
+    });
+  });
+
   it("blocks a DB count decrease below successful exact-day evidence", () => {
     const existingReport = report(
       defaultCleanRealDayCollectionProviderKeys.map(readyScan),
