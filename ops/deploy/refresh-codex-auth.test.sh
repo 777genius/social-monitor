@@ -36,6 +36,9 @@ unset SOCIAL_MONITOR_AUTH_REFRESH_RELOCATED_ROOT
 ENTRYPOINT=$SCRIPT_DIR/host/refresh-codex-auth.sh
 FIXTURE=$(mktemp -d "${TMPDIR:-/tmp}/social-monitor-auth-refresh-test.XXXXXX")
 cleanup() {
+  # Production snapshots are intentionally read-only; restore owner write
+  # permission so the unprivileged Linux fixture can remove its own tree.
+  chmod -R u+w -- "$FIXTURE" 2>/dev/null || true
   rm -rf "$FIXTURE"
   if [[ -n $RELOCATED_ROOT ]]; then
     rm -rf -- "$RELOCATED_ROOT"
