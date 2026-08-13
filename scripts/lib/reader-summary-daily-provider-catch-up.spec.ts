@@ -302,7 +302,11 @@ describe("daily reader-summary provider catch-up", () => {
 
     expect(plan.barrierMessage).toBeNull();
     expect(plan.providerKeysToCollect).toEqual(["x-twitter"]);
-    expect(plan.providerStates[4]).toMatchObject({
+    expect(
+      plan.providerStates.find(
+        (providerState) => providerState.providerKey === "x-twitter",
+      ),
+    ).toMatchObject({
       providerKey: "x-twitter",
       state: "unavailable",
       policy: "blocking",
