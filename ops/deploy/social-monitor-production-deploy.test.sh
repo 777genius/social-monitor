@@ -741,7 +741,7 @@ rm -f "$STATE/backend-image-rescue-fedcba9876543210fedcba9876543210fedcba98.tsv"
 grep -F 'verify_live_postgres_admission "$postgres_env"' "$ENTRYPOINT" >/dev/null
 grep -F 'reader-summary-weekly-run|reader-summary-daily-terminal-set-receipt-v1|' \
   "$ENTRYPOINT" >/dev/null
-grep -F 'reader-summary-production-history) run_reader_summary_production_history_from_stdin ;;' \
+grep -F 'reader-summary-production-history) run_reader_summary_production_history_from_stdin "$sha" ;;' \
   "$ENTRYPOINT" >/dev/null
 grep -F 'probe_postgres_maximum_envelope "$postgres_env"' "$ENTRYPOINT" >/dev/null
 grep -F 'deploy_reader_summary_publication_migrations' "$ENTRYPOINT" >/dev/null
