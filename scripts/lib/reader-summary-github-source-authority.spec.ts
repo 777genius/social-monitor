@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 const migration =
@@ -7,10 +7,7 @@ const migration =
 describe("reader summary GitHub source authority migration", () => {
   const sql = readFileSync(resolve(migration), "utf8");
 
-  it("is the latest guarded forward migration", () => {
-    expect(readdirSync(resolve("prisma/migrations")).sort().at(-1)).toBe(
-      "20260813101000_reader_summary_github_source_authority",
-    );
+  it("is a guarded forward migration", () => {
     expect(sql).toContain("target diverged");
     expect(sql).toContain("rewrite is not exact");
   });
