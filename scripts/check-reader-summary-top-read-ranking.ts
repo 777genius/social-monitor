@@ -33,6 +33,7 @@ import {
   normalizeLineEndings,
   readDominantFeedScope,
   yesterdaySocialQualityDatabaseUrl,
+  yesterdaySocialQualityPoolConfig,
 } from "./lib/yesterday-social-replay-support";
 import {
   dailyPeriodKey,
@@ -197,12 +198,7 @@ async function tryBuildReport(): Promise<TopReadRankingReport | undefined> {
 async function buildReportFromDatabase(
   connectionString: string,
 ): Promise<TopReadRankingReport> {
-  const pool = new Pool({
-    connectionString,
-    min: 0,
-    max: 1,
-    connectionTimeoutMillis: 2_000,
-  });
+  const pool = new Pool(yesterdaySocialQualityPoolConfig(connectionString));
 
   try {
     const scope = await readDominantFeedScope({
