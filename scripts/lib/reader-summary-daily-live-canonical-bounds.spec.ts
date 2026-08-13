@@ -20,16 +20,16 @@ describe("daily live canonical bounds migration", () => {
       ) + 1],
     ).toBe("20260813090000_reader_summary_daily_live_canonical_bounds");
     expect(compatibilitySql).toContain(
-      "public.reader_summary_weekly_canonical_json_unbounded(v_report)",
+      '"reader_summary_weekly_canonical_json_unbounded"(v_report)',
     );
     expect(compatibilitySql).toContain(
-      "public.reader_summary_weekly_canonical_json_unbounded(v_artifact.artifact_payload)",
+      '"reader_summary_weekly_canonical_json_unbounded"(v_artifact."artifact_payload")',
     );
     expect(compatibilitySql).toContain(
-      "public.reader_summary_weekly_canonical_json(v_report)",
+      '"reader_summary_weekly_canonical_json"(v_report)',
     );
     expect(compatibilitySql).toContain(
-      "public.reader_summary_weekly_canonical_json(v_artifact.artifact_payload)",
+      '"reader_summary_weekly_canonical_json"(v_artifact."artifact_payload")',
     );
     expect(compatibilitySql).toContain(
       "IF v_artifact_helper IS NOT NULL AND v_report_helper IS NOT NULL THEN\n    RETURN;",
@@ -41,17 +41,23 @@ describe("daily live canonical bounds migration", () => {
       "daily live canonical helper installation is incomplete",
     );
     expect(occurrences(
+      '"reader_summary_weekly_canonical_json_unbounded"(v_report)',
+    )).toBe(1);
+    expect(occurrences(
+      '"reader_summary_weekly_canonical_json_unbounded"(v_artifact."artifact_payload")',
+    )).toBe(1);
+    expect(occurrences(
+      '"reader_summary_weekly_canonical_json"(v_report)',
+    )).toBe(1);
+    expect(occurrences(
+      '"reader_summary_weekly_canonical_json"(v_artifact."artifact_payload")',
+    )).toBe(1);
+    expect(compatibilitySql).not.toContain(
       "public.reader_summary_weekly_canonical_json_unbounded(v_report)",
-    )).toBe(1);
-    expect(occurrences(
-      "public.reader_summary_weekly_canonical_json_unbounded(v_artifact.artifact_payload)",
-    )).toBe(1);
-    expect(occurrences(
+    );
+    expect(compatibilitySql).not.toContain(
       "public.reader_summary_weekly_canonical_json(v_report)",
-    )).toBe(1);
-    expect(occurrences(
-      "public.reader_summary_weekly_canonical_json(v_artifact.artifact_payload)",
-    )).toBe(1);
+    );
     expect(compatibilitySql.indexOf("IF v_artifact_helper IS NOT NULL"))
       .toBeLessThan(compatibilitySql.indexOf("SELECT pg_catalog.pg_get_functiondef"));
     expect(compatibilitySql).toContain(

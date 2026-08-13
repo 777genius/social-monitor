@@ -14,13 +14,13 @@ DECLARE
     'public.reader_summary_daily_canonical_recovery_v4_report_canonical_json(jsonb)'
   );
   v_report_needle CONSTANT TEXT :=
-    'public.reader_summary_weekly_canonical_json_unbounded(v_report)';
+    '"reader_summary_weekly_canonical_json_unbounded"(v_report)';
   v_report_replacement CONSTANT TEXT :=
-    'public.reader_summary_weekly_canonical_json(v_report)';
+    '"reader_summary_weekly_canonical_json"(v_report)';
   v_artifact_needle CONSTANT TEXT :=
-    'public.reader_summary_weekly_canonical_json_unbounded(v_artifact.artifact_payload)';
+    '"reader_summary_weekly_canonical_json_unbounded"(v_artifact."artifact_payload")';
   v_artifact_replacement CONSTANT TEXT :=
-    'public.reader_summary_weekly_canonical_json(v_artifact.artifact_payload)';
+    '"reader_summary_weekly_canonical_json"(v_artifact."artifact_payload")';
 BEGIN
   -- The report helper was introduced by the recovery-v4 baseline. The artifact
   -- helper is the unambiguous marker that 090000 has already been applied.
