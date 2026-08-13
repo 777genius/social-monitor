@@ -14,13 +14,13 @@ DECLARE
     'public.reader_summary_daily_canonical_recovery_v4_report_canonical_json(jsonb)'
   );
   v_report_needle CONSTANT TEXT :=
-    '"reader_summary_weekly_canonical_json_unbounded"(v_report)';
+    'public.reader_summary_weekly_canonical_json_unbounded(v_report)';
   v_report_replacement CONSTANT TEXT :=
-    '"reader_summary_weekly_canonical_json"(v_report)';
+    'public.reader_summary_weekly_canonical_json(v_report)';
   v_artifact_needle CONSTANT TEXT :=
-    '"reader_summary_weekly_canonical_json_unbounded"(v_artifact."artifact_payload")';
+    'public.reader_summary_weekly_canonical_json_unbounded(v_artifact.artifact_payload)';
   v_artifact_replacement CONSTANT TEXT :=
-    '"reader_summary_weekly_canonical_json"(v_artifact."artifact_payload")';
+    'public.reader_summary_weekly_canonical_json(v_artifact.artifact_payload)';
 BEGIN
   -- The report helper was introduced by the recovery-v4 baseline. The artifact
   -- helper is the unambiguous marker that 090000 has already been applied.
@@ -35,10 +35,23 @@ BEGIN
     'public.record_reader_summary_weekly_publication_evidence_base(uuid)'::REGPROCEDURE
   ) INTO STRICT v_definition;
   v_original := v_definition;
+
+  -- Fresh ordered baselines already expose the exact bounded preimage that
+  -- 090000 consumes. Only older out-of-order baselines require normalization.
+  IF length(v_definition) - length(replace(v_definition, v_report_replacement, ''))
+      = length(v_report_replacement)
+    AND length(v_definition) - length(replace(v_definition, v_artifact_replacement, ''))
+      = length(v_artifact_replacement)
+    AND position(v_report_needle IN v_definition) = 0
+    AND position(v_artifact_needle IN v_definition) = 0 THEN
+    RETURN;
+  END IF;
   IF length(v_definition) - length(replace(v_definition, v_report_needle, ''))
       <> length(v_report_needle)
     OR length(v_definition) - length(replace(v_definition, v_artifact_needle, ''))
-      <> length(v_artifact_needle) THEN
+      <> length(v_artifact_needle)
+    OR position(v_report_replacement IN v_definition) <> 0
+    OR position(v_artifact_replacement IN v_definition) <> 0 THEN
     RAISE EXCEPTION 'daily live canonical compatibility preimage diverged';
   END IF;
 
