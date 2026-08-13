@@ -2,7 +2,7 @@
 
 Internal gRPC boundary between Social Monitor summary adapters and
 `@vioxen/subscription-runtime`. The dependency is vendored as
-`vendor/vioxen-subscription-runtime-0.1.0-main.2.tgz` so Docker and `npm ci`
+`vendor/vioxen-subscription-runtime-0.1.0-main.2-sm.1.tgz` so Docker and `npm ci`
 install the CLI binary deterministically.
 
 ## Protocol

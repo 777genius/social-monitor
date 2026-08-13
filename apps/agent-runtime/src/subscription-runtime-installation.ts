@@ -11,9 +11,10 @@ import {
   sep,
 } from "node:path";
 
-export const approvedSubscriptionRuntimePackageVersion = "0.1.0-main.2";
+export const approvedSubscriptionRuntimePackageVersion =
+  "0.1.0-main.2-sm.1";
 export const approvedSubscriptionRuntimeLauncherSha256 =
-  "2d0c2854d5ab4e4d64f18a866b37ede2a6a29dd7734efb6793be7d08134d8281";
+  "289e98a04de4890f0985a5a51748c6c1881344027433cd4713ededccc802d334";
 
 export type SubscriptionRuntimeInstallationIdentity = {
   /** Exact real path that was admitted and must be passed to spawn. */
