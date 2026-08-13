@@ -5,6 +5,7 @@ import {
   selectAgentRuntimeReaderSummaryTopicCandidates,
 } from "./agent-runtime-reader-summary-topic-labeler-prompt";
 import { normalizeAgentRuntimeReaderSummaryTopicLabelPlan } from "./agent-runtime-reader-summary-topic-label-plan-normalizer";
+import { buildGroundedTopicCohortsForCandidates } from "./agent-runtime-reader-summary-topic-grounded-cohorts";
 
 describe("buildTopicCandidateRelationshipHints", () => {
   it("selects candidates by deterministic story score", () => {
@@ -261,6 +262,47 @@ describe("buildTopicCandidateRelationshipHints", () => {
       "group:claude",
       "group:rust",
     ]);
+  });
+
+  it("does not bypass grounded selection when full-pool supply exceeds the limit", () => {
+    const topCohorts = Array.from({ length: 3 }, (_, cohortIndex) =>
+      Array.from({ length: 2 }, (_, memberIndex) =>
+        candidate(
+          `node:top-cohort-${cohortIndex}-${memberIndex}`,
+          [`TopCohort${cohortIndex}`],
+        ),
+      ),
+    ).flat();
+    const fillers = Array.from({ length: 12 }, (_, index) =>
+      candidate(`node:filler-${index}`, [`Unique${index}`]),
+    );
+    const lowerCohorts = Array.from({ length: 7 }, (_, cohortIndex) =>
+      Array.from({ length: 2 }, (_, memberIndex) =>
+        candidate(
+          `node:lower-cohort-${cohortIndex}-${memberIndex}`,
+          [`LowerCohort${cohortIndex}`],
+        ),
+      ),
+    ).flat();
+    const candidates = [...topCohorts, ...fillers, ...lowerCohorts];
+    const selected = selectAgentRuntimeReaderSummaryTopicCandidates(
+      {
+        candidates,
+        clusters: candidates.map((item, index) =>
+          storyCluster(item.storyClusterId, candidates.length - index),
+        ),
+      },
+      18,
+    );
+    const rebuiltGroundedNodeCount = buildGroundedTopicCohortsForCandidates(
+      selected,
+    ).reduce((total, cohort) => total + cohort.nodeIds.length, 0);
+
+    expect(selected).toHaveLength(18);
+    expect(rebuiltGroundedNodeCount).toBeGreaterThanOrEqual(9);
+    expect(
+      selected.filter((item) => item.nodeId.includes("lower-cohort")),
+    ).toHaveLength(4);
   });
 
   it("ignores incidental label candidate mentions", () => {
