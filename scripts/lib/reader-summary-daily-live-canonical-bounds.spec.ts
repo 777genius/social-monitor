@@ -32,7 +32,10 @@ describe("daily live canonical bounds migration", () => {
       '"reader_summary_weekly_canonical_json"(v_artifact."artifact_payload")',
     );
     expect(compatibilitySql).toContain(
-      "IF v_report_helper IS NOT NULL AND v_artifact_helper IS NOT NULL THEN\n    RETURN;",
+      "IF v_artifact_helper IS NOT NULL AND v_report_helper IS NOT NULL THEN\n    RETURN;",
+    );
+    expect(compatibilitySql).toContain(
+      "IF v_report_helper IS NULL OR v_artifact_helper IS NOT NULL THEN",
     );
     expect(compatibilitySql).toContain(
       "daily live canonical helper installation is incomplete",
@@ -49,7 +52,7 @@ describe("daily live canonical bounds migration", () => {
     expect(occurrences(
       '"reader_summary_weekly_canonical_json"(v_artifact."artifact_payload")',
     )).toBe(1);
-    expect(compatibilitySql.indexOf("IF v_report_helper IS NOT NULL"))
+    expect(compatibilitySql.indexOf("IF v_artifact_helper IS NOT NULL"))
       .toBeLessThan(compatibilitySql.indexOf("SELECT pg_catalog.pg_get_functiondef"));
     expect(compatibilitySql).not.toContain("CASCADE");
     expect(compatibilitySql).not.toContain("DROP FUNCTION");

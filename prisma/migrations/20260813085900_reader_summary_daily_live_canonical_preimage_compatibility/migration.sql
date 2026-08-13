@@ -22,10 +22,12 @@ DECLARE
   v_artifact_replacement CONSTANT TEXT :=
     '"reader_summary_weekly_canonical_json"(v_artifact."artifact_payload")';
 BEGIN
-  IF v_report_helper IS NOT NULL AND v_artifact_helper IS NOT NULL THEN
+  -- The report helper was introduced by the recovery-v4 baseline. The artifact
+  -- helper is the unambiguous marker that 090000 has already been applied.
+  IF v_artifact_helper IS NOT NULL AND v_report_helper IS NOT NULL THEN
     RETURN;
   END IF;
-  IF v_report_helper IS NOT NULL OR v_artifact_helper IS NOT NULL THEN
+  IF v_report_helper IS NULL OR v_artifact_helper IS NOT NULL THEN
     RAISE EXCEPTION 'daily live canonical helper installation is incomplete';
   END IF;
 
