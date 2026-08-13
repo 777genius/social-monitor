@@ -275,12 +275,18 @@ const catchUpState = (params: {
     params.databaseFeedItemCount === 0
       ? 0
       : recordedCollectionFeedItemCount;
+  if (!Number.isInteger(collectionFeedItemCount)) {
+    return invalidState(
+      params.providerKey,
+      "database_collection_count_mismatch",
+    );
+  }
+  const provenCollectionFeedItemCount = collectionFeedItemCount as number;
   if (
-    !Number.isInteger(collectionFeedItemCount) ||
+    provenCollectionFeedItemCount !== params.databaseFeedItemCount &&
     !(
-      collectionFeedItemCount === params.databaseFeedItemCount ||
-      (scans[0]!.status === "succeeded" &&
-        params.databaseFeedItemCount >= collectionFeedItemCount)
+      scans[0]!.status === "succeeded" &&
+      params.databaseFeedItemCount >= provenCollectionFeedItemCount
     )
   ) {
     return invalidState(
