@@ -993,7 +993,7 @@ case ${action:-} in
     run_reader_summary_daily_runner_maintenance "$action"
     ;;
   reader-summary-daily-scan-terminal-repair-c1) run_reader_summary_daily_scan_terminal_repair_c1_from_stdin ;;
-  reader-summary-production-history) run_reader_summary_production_history_from_stdin ;;
+  reader-summary-production-history) run_reader_summary_production_history_from_stdin "$sha" ;;
   reader-summary-daily-delivery-c1-run) run_reader_summary_daily_delivery_c1 "$sha" ;;
   reader-summary-daily-delivery-c1-contain) run_reader_summary_daily_delivery_c1_containment "$sha" ;;
   *) fail 'command is not in the reviewed production allowlist' ;;

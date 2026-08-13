@@ -827,7 +827,7 @@ deploy_frontend() {
   local staged=$STAGING/$sha/frontend
   local release=$RELEASES/$sha
   local upload_lock=$STAGING/$sha/upload.lock
-  local previous_public previous_admin
+  local previous_public previous_admin; install -d -m 0755 "$STAGING/$sha"
   previous_public=$(readlink -f "$PUBLIC_LINK" || true)
   previous_admin=$(readlink -f "$ADMIN_LINK" || true)
   [[ -n $previous_public && -n $previous_admin ]] || \

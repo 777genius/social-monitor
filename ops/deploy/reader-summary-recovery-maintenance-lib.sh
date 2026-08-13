@@ -179,8 +179,7 @@ assert_reader_summary_daily_bounded_maintenance_authorization() {
 }
 
 refresh_daily_runner_maintenance_auth() {
-  "$CONTROL/refresh-codex-auth.sh" \
-    --broker-pool-job-id social-monitor-production-account-pool-terra-v25-20260804 || return
+  "$CONTROL/refresh-codex-auth.sh" || return
   if [[ -f $ROOT/runtime/auth-account-changed ]]; then
     local stamp
     stamp=$(date -u +%Y%m%dT%H%M%SZ)
@@ -242,7 +241,7 @@ run_reader_summary_daily_terminal_set_receipt() {
   [[ $# == 0 ]] || fail 'reader-summary daily terminal-set receipt accepts no input'
   "${COMPOSE[@]}" --profile daily run --rm --no-deps \
     daily-runner sh -lc \
-    'set -eu; node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=768 -- ./node_modules/.bin/ts-node -r tsconfig-paths/register scripts/read-reader-summary-daily-terminal-set-receipt.ts'
+    'set -eu; node scripts/run-with-timeout.mjs --timeout-ms 300000 --node-options --max-old-space-size=768 -- ./node_modules/.bin/ts-node -r tsconfig-paths/register scripts/read-reader-summary-daily-terminal-set-receipt.ts'
 }
 
 run_reader_summary_daily_scan_terminal_preimage_c1() {

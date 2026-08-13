@@ -55,8 +55,7 @@ cat > "$CONTROL/refresh-codex-auth.sh" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
 
-[[ $# == 2 && ${1:-} == --broker-pool-job-id && \
-   ${2:-} == social-monitor-production-account-pool-terra-v25-20260804 ]] || exit 93
+[[ $# == 0 ]] || exit 93
 if [[ ${ASSERT_AUTH_LOCKS_HELD:-0} == 1 ]]; then
   exec 6>"$DAILY_SINGLETON_LOCK"
   if flock -n 6; then exit 91; fi
@@ -65,7 +64,7 @@ if [[ ${ASSERT_AUTH_LOCKS_HELD:-0} == 1 ]]; then
   if flock -n 5; then exit 92; fi
   exec 5>&-
 fi
-printf 'refresh:%s:%s\n' "$1" "$2" >> "$AUTH_LOG"
+printf 'refresh::\n' >> "$AUTH_LOG"
 printf 'refresh\n' >> "$ORDER_LOG"
 if [[ ${AUTH_ACCOUNT_CHANGED:-0} == 1 ]]; then
   : > "$AUTH_CHANGED_MARKER"
@@ -194,7 +193,7 @@ mapfile -t compose_commands < <(grep -v '^source-env=' "$COMPOSE_LOG")
 [[ ${compose_commands[2]} == "$reconcile_command" ]]
 [[ ${compose_commands[3]} == "$weekly_command" ]]
 [[ $(grep -Fc 'source-env=unset' "$COMPOSE_LOG") == 4 ]]
-[[ $(grep -Fc 'refresh:--broker-pool-job-id:social-monitor-production-account-pool-terra-v25-20260804' "$AUTH_LOG") == 2 ]]
+[[ $(grep -Fc 'refresh::' "$AUTH_LOG") == 2 ]]
 ! grep -F 'source-env=set' "$COMPOSE_LOG" >/dev/null
 ! grep -F 'READER_SUMMARY_PRODUCTION_RECOVERY_SOURCE_DATABASE_URL' \
   "$COMPOSE_LOG" >/dev/null
@@ -211,7 +210,7 @@ grep -F 'npm run run:reader-summary-weekly-production -- --week-start 2026-07-27
 : > "$ORDER_LOG"
 run_reader_summary_daily_runner_maintenance \
   reader-summary-daily-terminal-set-receipt-v1 < /dev/null
-receipt_command='--profile daily run --rm --no-deps daily-runner sh -lc set -eu; node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=768 -- ./node_modules/.bin/ts-node -r tsconfig-paths/register scripts/read-reader-summary-daily-terminal-set-receipt.ts'
+receipt_command='--profile daily run --rm --no-deps daily-runner sh -lc set -eu; node scripts/run-with-timeout.mjs --timeout-ms 300000 --node-options --max-old-space-size=768 -- ./node_modules/.bin/ts-node -r tsconfig-paths/register scripts/read-reader-summary-daily-terminal-set-receipt.ts'
 mapfile -t receipt_commands < <(grep -v '^source-env=' "$COMPOSE_LOG")
 [[ ${#receipt_commands[@]} == 1 ]]
 [[ ${receipt_commands[0]} == "$receipt_command" ]]
