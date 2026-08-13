@@ -3,6 +3,11 @@
 -- model and prompt bindings authoritative for every publication path.
 BEGIN;
 
+SET LOCAL ROLE "social_monitor_public_schema_owner";
+GRANT CREATE ON SCHEMA public
+TO "social_monitor_reader_summary_publication_owner";
+RESET ROLE;
+
 SET LOCAL ROLE "social_monitor_reader_summary_publication_owner";
 
 DO $rewrite_reader_summary_live_lineage_authority$
@@ -47,4 +52,10 @@ END;
 $rewrite_reader_summary_live_lineage_authority$;
 
 RESET ROLE;
+
+SET LOCAL ROLE "social_monitor_public_schema_owner";
+REVOKE CREATE ON SCHEMA public
+FROM "social_monitor_reader_summary_publication_owner";
+RESET ROLE;
+
 COMMIT;

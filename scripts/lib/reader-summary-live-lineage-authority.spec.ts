@@ -97,9 +97,16 @@ describe("reader summary live lineage authority migration", () => {
     expect(sql).toContain(
       'SET LOCAL ROLE "social_monitor_reader_summary_publication_owner"',
     );
+    expect(sql).toContain(
+      'SET LOCAL ROLE "social_monitor_public_schema_owner"',
+    );
+    expect(sql).toContain(
+      'GRANT CREATE ON SCHEMA public\nTO "social_monitor_reader_summary_publication_owner"',
+    );
+    expect(sql).toContain(
+      'REVOKE CREATE ON SCHEMA public\nFROM "social_monitor_reader_summary_publication_owner"',
+    );
     expect(sql).not.toContain("ALTER FUNCTION");
-    expect(sql).not.toContain("GRANT ");
-    expect(sql).not.toContain("REVOKE ");
     expect(sql).not.toContain("CASCADE");
   });
 });
