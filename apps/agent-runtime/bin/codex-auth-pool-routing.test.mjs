@@ -91,7 +91,11 @@ test("pool retries a quota failure on another account with the exact same job", 
   }
 });
 
-test("safe executor does not create a continuation prompt around pool failover", () => {
-  assert.equal(codexAuthPoolExecutionPolicy.maxAttempts, 1);
-  assert.equal(codexAuthPoolExecutionPolicy.continuationMode, "disabled");
+test("safe executor retries clean failures with the exact original job", () => {
+  assert.equal(
+    codexAuthPoolExecutionPolicy.continuationMode,
+    "retry_original_job",
+  );
+  assert.equal(codexAuthPoolExecutionPolicy.retryUnknownCleanWorkspace, true);
+  assert.equal(codexAuthPoolExecutionPolicy.retryUnknownChangedWorkspace, false);
 });

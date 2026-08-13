@@ -1,13 +1,12 @@
 import { createHash } from "node:crypto";
 
 export const codexAuthPoolExecutionPolicy = Object.freeze({
-  maxAttempts: 1,
   retryOnCapacity: true,
   retryOnAccountUnavailable: true,
   retryOnReconnectRequired: false,
-  retryUnknownCleanWorkspace: false,
+  retryUnknownCleanWorkspace: true,
   retryUnknownChangedWorkspace: false,
-  continuationMode: "disabled",
+  continuationMode: "retry_original_job",
 });
 
 export const codexAuthPoolTaskHash = (taskId) =>

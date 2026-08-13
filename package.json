@@ -324,7 +324,7 @@
     "@opentelemetry/semantic-conventions": "1.43.0",
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
-    "@vioxen/subscription-runtime": "file:vendor/vioxen-subscription-runtime-0.1.0-main.2.tgz",
+    "@vioxen/subscription-runtime": "file:vendor/vioxen-subscription-runtime-0.1.0-main.2-sm.1.tgz",
     "amqplib": "^2.0.1",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.3",

@@ -117,9 +117,10 @@ function createPooledCodexWorker({ input, model, authPool }) {
         requireGitWorkspace: false,
         effectMode: "read_only",
         maxAccountCycles: 1,
-        // The bounded account pool performs quota failover with the original job.
-        // The outer safe runner gets one attempt so it cannot rewrite the prompt.
-        safeExecutionPolicy: codexAuthPoolExecutionPolicy,
+        safeExecutionPolicy: {
+          ...codexAuthPoolExecutionPolicy,
+          maxAttempts: authPool.accounts.length,
+        },
         accounts: orderCodexAuthAccountsForTask(
           authPool.accounts,
           taskId,

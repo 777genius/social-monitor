@@ -73,8 +73,8 @@ importers:
         specifier: ^7.8.0
         version: 7.8.0(prisma@7.8.0(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@6.0.3))(typescript@6.0.3)
       '@vioxen/subscription-runtime':
-        specifier: file:vendor/vioxen-subscription-runtime-0.1.0-main.2.tgz
-        version: file:vendor/vioxen-subscription-runtime-0.1.0-main.2.tgz
+        specifier: file:vendor/vioxen-subscription-runtime-0.1.0-main.2-sm.1.tgz
+        version: file:vendor/vioxen-subscription-runtime-0.1.0-main.2-sm.1.tgz
       amqplib:
         specifier: ^2.0.1
         version: 2.0.1
@@ -1390,9 +1390,9 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@vioxen/subscription-runtime@file:vendor/vioxen-subscription-runtime-0.1.0-main.2.tgz':
-    resolution: {integrity: sha512-1tJ/dFolS0FUXWDpaut/0HBR6n/eJQJJwmQrt4KS+InuMiogdFCIY005tvB8vSvDArjYbBaWcfv2v/FFDIRfVQ==, tarball: file:vendor/vioxen-subscription-runtime-0.1.0-main.2.tgz}
-    version: 0.1.0-main.2
+  '@vioxen/subscription-runtime@file:vendor/vioxen-subscription-runtime-0.1.0-main.2-sm.1.tgz':
+    resolution: {integrity: sha512-2YNWomkj6N81JFcJCt+6iHCenK96WVqDXWQ35aVt8R4SeRLbvulark+b4csFBse/mzdiipkOYOcxtVoJIh4+kg==, tarball: file:vendor/vioxen-subscription-runtime-0.1.0-main.2-sm.1.tgz}
+    version: 0.1.0-main.2-sm.1
     engines: {node: '>=20'}
     hasBin: true
     peerDependencies:
@@ -5098,7 +5098,7 @@ snapshots:
   '@unrs/resolver-binding-win32-x64-msvc@1.12.2':
     optional: true
 
-  '@vioxen/subscription-runtime@file:vendor/vioxen-subscription-runtime-0.1.0-main.2.tgz':
+  '@vioxen/subscription-runtime@file:vendor/vioxen-subscription-runtime-0.1.0-main.2-sm.1.tgz':
     dependencies:
       '@modelcontextprotocol/sdk': 1.29.0(zod@4.4.3)
       libsodium-wrappers: 0.8.4
