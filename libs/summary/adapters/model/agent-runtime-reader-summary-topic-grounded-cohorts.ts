@@ -114,6 +114,8 @@ const union = (parent: number[], left: number, right: number): void => {
 
 const nonDiscriminativeCandidateTerms = new Set([
   "ai",
+  "agent",
+  "agents",
   "availability",
   "benchmark",
   "code",
@@ -131,6 +133,8 @@ const nonDiscriminativeCandidateTerms = new Set([
   "event",
   "industry",
   "industries",
+  "href",
+  "https",
   "limits",
   "model",
   "models",
@@ -138,6 +142,7 @@ const nonDiscriminativeCandidateTerms = new Set([
   "product",
   "products",
   "provider",
+  "quality",
   "release",
   "review",
   "rollout",
@@ -150,4 +155,7 @@ const nonDiscriminativeCandidateTerms = new Set([
   "technologies",
   "tool",
   "tools",
+  "ve",
+  "hey",
+  "never",
 ]);

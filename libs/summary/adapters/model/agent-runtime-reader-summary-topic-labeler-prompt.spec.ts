@@ -215,6 +215,33 @@ describe("buildTopicCandidateRelationshipHints", () => {
       ),
     ).toEqual(["node:duplicate", "node:peer"]);
   });
+
+  it("does not bridge unrelated cohorts through transport and prose noise", () => {
+    const candidates = [
+      candidate("node:flutter-1", ["Flutter", "https", "quality"]),
+      candidate("node:flutter-2", ["Flutter", "ve", "agent"]),
+      candidate("node:claude-1", ["Claude", "https", "never"]),
+      candidate("node:claude-2", ["Claude", "quality", "agents"]),
+      candidate("node:noise-only-1", ["href", "hey"]),
+      candidate("node:noise-only-2", ["href", "hey"]),
+    ];
+    const selected = selectAgentRuntimeReaderSummaryTopicCandidates(
+      {
+        candidates,
+        clusters: candidates.map((item, index) =>
+          storyCluster(item.storyClusterId, candidates.length - index),
+        ),
+      },
+      4,
+    );
+
+    expect(selected.map((item) => item.nodeId)).toEqual([
+      "node:flutter-1",
+      "node:flutter-2",
+      "node:claude-1",
+      "node:claude-2",
+    ]);
+  });
 });
 
 const candidate = (
