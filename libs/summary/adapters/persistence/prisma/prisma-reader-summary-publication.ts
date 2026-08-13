@@ -17,6 +17,11 @@ import type { PrismaSummaryClient } from "./prisma-summary-client";
 import type { PrismaReaderSummaryClient } from "./prisma-reader-summary-client";
 import { runSerializableReaderSummaryTransaction } from "./prisma-summary-transaction";
 
+const publicationTransactionOptions = Object.freeze({
+  maxWait: 30_000,
+  timeout: 300_000,
+});
+
 export type ReaderSummaryPublicationTransactionGuard = (
   client: PrismaReaderSummaryClient,
   command: ReaderSummaryPublicationCommand,
@@ -38,13 +43,17 @@ export class PrismaReaderSummaryPublication implements ReaderSummaryPublicationP
       : buildReaderSummaryPublicationPayload(command);
     const serialized = JSON.stringify(request);
     const rows = await withPrismaWriteRetry(() =>
-      runSerializableReaderSummaryTransaction(this.prisma, async (prisma) => {
-        await this.transactionGuard?.(prisma, command);
-        return prisma.$queryRaw<readonly ReaderSummaryPublicationSqlRow[]>`
-          SELECT *
-          FROM "publish_reader_summary"(${serialized}::jsonb)
-        `;
-      }),
+      runSerializableReaderSummaryTransaction(
+        this.prisma,
+        async (prisma) => {
+          await this.transactionGuard?.(prisma, command);
+          return prisma.$queryRaw<readonly ReaderSummaryPublicationSqlRow[]>`
+            SELECT *
+            FROM "publish_reader_summary"(${serialized}::jsonb)
+          `;
+        },
+        publicationTransactionOptions,
+      ),
     );
     const row = rows[0];
     if (rows.length !== 1 || row === undefined) {
