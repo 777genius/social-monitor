@@ -30,6 +30,11 @@ cp "$ENTRYPOINT" \
   "$SCRIPT_DIR/reader-summary-recovery-maintenance-lib.sh" \
   "$SCRIPT_DIR/x-collector-image-deploy-lib.sh" \
   "$REPO/ops/deploy/"
+git -C "$REPO" init -q
+git -C "$REPO" config user.name 'Deploy Contract Test'
+git -C "$REPO" config user.email deploy-contract@example.invalid
+git -C "$REPO" add ops/deploy
+git -C "$REPO" commit -qm 'test: bootstrap deploy fixture'
 
 run_deploy_backend_case() {
   local services=$1
