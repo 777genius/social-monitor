@@ -11,9 +11,10 @@ describe("reader summary safe citation URL authority migration", () => {
   const evidenceSql = readFileSync(resolve(evidenceMigration), "utf8");
 
   it("is the forward migration after the live lineage authority fix", () => {
-    expect(readdirSync(resolve("prisma/migrations")).sort().at(-1)).toBe(
-      "20260813100000_reader_summary_safe_citation_url_authority",
-    );
+    const migrations = readdirSync(resolve("prisma/migrations")).sort();
+    expect(migrations[migrations.indexOf(
+      "20260813093000_reader_summary_live_lineage_authority",
+    ) + 1]).toBe("20260813100000_reader_summary_safe_citation_url_authority");
   });
 
   it("guardedly rewrites exactly two source and one feed citation URL predicates", () => {
