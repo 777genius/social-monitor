@@ -36,6 +36,10 @@ grep -F -- '--allow-historical --allow-historical-provider-collection' \
   "$DAILY_RUN" >/dev/null
 grep -F 'READER_SUMMARY_PRODUCTION_HISTORY_COLLECTION_DIR=/var/lib/social-monitor/artifacts/reader-summary-production-history-collection' \
   "$DAILY_RUN" >/dev/null
+grep -F 'historical_mode=true' "$DAILY_RUN" >/dev/null
+grep -F 'historicalMode === "true" && expected < previous' "$DAILY_RUN" >/dev/null
+grep -F 'if [ "$transition" = historical ]; then' "$DAILY_RUN" >/dev/null
+grep -F -- '--dated-state "$requested_state"' "$DAILY_RUN" >/dev/null
 grep -F 'DATE_FLAG=${1:---yesterday}' "$DAILY_RUN" >/dev/null
 ! grep -Eq 'READER_SUMMARY.*(MAINTENANCE|HISTORICAL).*DATE_FLAG' "$DAILY_RUN"
 

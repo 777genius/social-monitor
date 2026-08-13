@@ -201,7 +201,9 @@ fi
 
   requested_date='"$([[ $DATE_FLAG == --maintenance-date ]] && printf '%s' "$MAINTENANCE_DATE")"'
   historical_args=
+  historical_mode=false
   if [ '"$DATE_FLAG"' = --maintenance-date ]; then
+    historical_mode=true
     historical_args="--allow-historical --allow-historical-provider-collection"
     export READER_SUMMARY_PRODUCTION_HISTORY_COLLECTION_DIR=/var/lib/social-monitor/artifacts/reader-summary-production-history-collection
   fi
@@ -226,12 +228,25 @@ fi
     ????-??-??) ;;
     *) echo "daily production-day catch-up date is invalid" >&2; exit 64 ;;
   esac
-  if [ -n "$cursor_date" ] &&
+  requested_state="$public_dir/reader-summary-production-day-state.$requested_date.v1.json"
+  if [ "$historical_mode" = true ] && [ -e "$requested_state" ]; then
+    terminal_date=$(node scripts/verify-reader-summary-production-day-state.mjs \
+      --dated-state "$requested_state" \
+      --state-dir "$public_dir")
+    [ "$terminal_date" = "$requested_date" ] || {
+      echo "historical daily production-day terminal state is inconsistent" >&2
+      exit 1
+    }
+    echo "daily production-day is already terminal for $requested_date"
+    exit 0
+  fi
+  if [ "$historical_mode" = false ] && [ -n "$cursor_date" ] &&
      { [ "$requested_date" = "$cursor_date" ] || [ "$requested_date" \< "$cursor_date" ]; }; then
     echo "daily production-day is already terminal for $requested_date"
     exit 0
   fi
-  node -e '\''
+  if [ "$historical_mode" = false ]; then
+    node -e '\''
     const [previous, expected] = process.argv.slice(1);
     const validDate = (value) =>
       typeof value === "string" &&
@@ -246,7 +261,8 @@ fi
     if (next.toISOString().slice(0, 10) !== expected) {
       throw new Error("requested daily state transition is not consecutive");
     }
-  '\'' -- "$cursor_date" "$requested_date"
+    '\'' -- "$cursor_date" "$requested_date"
+  fi
   export READER_SUMMARY_DAILY_RUN_EXPECTED_DATE=$requested_date
   rm -f \
     "$report_dir/reader-summary-production-day-outcome.$requested_date.v1.json"
@@ -354,7 +370,7 @@ fi
       --state-dir "$public_dir")
   fi
   transition=$(node -e '\''
-    const [previous, expected] = process.argv.slice(1);
+    const [previous, expected, historicalMode] = process.argv.slice(1);
     const next = (date) => {
       const value = new Date(`${date}T00:00:00.000Z`);
       value.setUTCDate(value.getUTCDate() + 1);
@@ -362,9 +378,10 @@ fi
     };
     if (previous === "") process.stdout.write("initial");
     else if (previous === expected) process.stdout.write("replay");
+    else if (historicalMode === "true" && expected < previous) process.stdout.write("historical");
     else if (next(previous) === expected) process.stdout.write("advance");
     else throw new Error("daily production-day state transition is not consecutive");
-  '\'' -- "$previous_state_date" "$expected_date")
+  '\'' -- "$previous_state_date" "$expected_date" "$historical_mode")
 
   if [ "$transition" = replay ]; then
     cmp -s "$staged_state" "$public_dir/latest-state.v1.json" || {
@@ -423,6 +440,9 @@ fi
   fi
 
   install_immutable "$staged_state" "$state_public"
+  if [ "$transition" = historical ]; then
+    exit 0
+  fi
   pause_publication_failpoint after-state-before-latest
   if [ "$terminal_state" = complete ]; then
     cp "$dated_public" "$staging_dir/latest.v1.json"
