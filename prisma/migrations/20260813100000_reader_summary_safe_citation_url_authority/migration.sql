@@ -59,7 +59,7 @@ BEGIN
 
   v_host := CASE
     WHEN pg_catalog.left(v_host_and_port, 1) = '[' THEN
-      pg_catalog.substring(v_host_and_port FROM '^\[([^]]+)\]')
+      (pg_catalog.regexp_match(v_host_and_port, '^\[([^]]+)\]'))[1]
     ELSE pg_catalog.split_part(v_host_and_port, ':', 1)
   END;
   IF v_host IS NULL OR v_host = '' THEN
@@ -159,9 +159,9 @@ BEGIN
     v_definition, v_provider_needle, v_provider_replacement
   );
 
-  IF pg_catalog.position(v_source_lock_needle IN v_definition) <> 0
-    OR pg_catalog.position(v_feed_lock_needle IN v_definition) <> 0
-    OR pg_catalog.position(v_provider_needle IN v_definition) <> 0
+  IF pg_catalog.strpos(v_definition, v_source_lock_needle) <> 0
+    OR pg_catalog.strpos(v_definition, v_feed_lock_needle) <> 0
+    OR pg_catalog.strpos(v_definition, v_provider_needle) <> 0
     OR pg_catalog.length(v_definition) - pg_catalog.length(
       pg_catalog.replace(v_definition, v_source_feed_needle, '')
     ) <> 2 * pg_catalog.length(v_source_feed_needle)

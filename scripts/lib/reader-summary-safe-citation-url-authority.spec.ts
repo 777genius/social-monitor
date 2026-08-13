@@ -27,13 +27,13 @@ describe("reader summary safe citation URL authority migration", () => {
       "reader summary citation URL authority rewrite is not exact",
     );
     expect(sql).toContain(
-      "pg_catalog.position(v_source_lock_needle IN v_definition) <> 0",
+      "pg_catalog.strpos(v_definition, v_source_lock_needle) <> 0",
     );
     expect(sql).toContain(
-      "pg_catalog.position(v_feed_lock_needle IN v_definition) <> 0",
+      "pg_catalog.strpos(v_definition, v_feed_lock_needle) <> 0",
     );
     expect(sql).toContain(
-      "pg_catalog.position(v_provider_needle IN v_definition) <> 0",
+      "pg_catalog.strpos(v_definition, v_provider_needle) <> 0",
     );
     expect(evidenceSql.match(
       /source\."canonical_url" = citation\.value->>'canonicalUrl'/gu,
