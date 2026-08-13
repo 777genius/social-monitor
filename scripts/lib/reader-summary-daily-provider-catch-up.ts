@@ -282,8 +282,12 @@ const catchUpState = (params: {
     );
   }
   const provenCollectionFeedItemCount = collectionFeedItemCount as number;
+  const databaseGrewAfterFailedScan =
+    scans[0]!.status !== "succeeded" &&
+    params.databaseFeedItemCount > provenCollectionFeedItemCount;
   if (
     provenCollectionFeedItemCount !== params.databaseFeedItemCount &&
+    !databaseGrewAfterFailedScan &&
     !(
       scans[0]!.status === "succeeded" &&
       params.databaseFeedItemCount >= provenCollectionFeedItemCount
