@@ -271,7 +271,7 @@ run_reader_summary_production_history() (
 )
 
 run_reader_summary_production_history_from_stdin() {
-  local sha=$1 through='' extra=''
+  local sha=${1:-${sha:-}} through='' extra=''
   IFS= read -r through || fail 'historical reader-summary recovery-through date is missing'
   if IFS= read -r extra || [[ -n $extra ]]; then
     fail 'historical reader-summary authorization must be exactly one line'
