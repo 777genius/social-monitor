@@ -25,4 +25,17 @@ for invalid in 2026-07-22 2026-08-13 garbage; do
   fi
 done
 
+: > "$HISTORY_LOG"
+cat > "$FIXTURE/daily-run.sh" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "${HISTORY_LOG:?}"
+[[ $* != '--maintenance-date 2026-07-24' ]]
+EOF
+chmod 0755 "$FIXTURE/daily-run.sh"
+if bash "$FIXTURE/wrapper.sh" 2026-07-25 >/dev/null 2>&1; then
+  echo 'partial historical failure was reported as success' >&2
+  exit 1
+fi
+[[ $(cat "$HISTORY_LOG") == $'--maintenance-date 2026-07-23\n--maintenance-date 2026-07-24\n--maintenance-date 2026-07-25' ]]
+
 printf 'reader-summary production history wrapper tests passed\n'

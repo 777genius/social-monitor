@@ -25,8 +25,15 @@ yesterday=$(node -e 'process.stdout.write(new Date(Date.now()-86400000).toISOStr
 }
 
 date=$FIRST_RECOVERY_DATE
+failed_dates=()
 while [[ $date < $through || $date == "$through" ]]; do
-  "$DAILY_RUN" --maintenance-date "$date"
+  if ! "$DAILY_RUN" --maintenance-date "$date"; then
+    failed_dates+=("$date")
+  fi
   # shellcheck disable=SC2016
   date=$(node -e 'const value=new Date(`${process.argv[1]}T00:00:00.000Z`); value.setUTCDate(value.getUTCDate()+1); process.stdout.write(value.toISOString().slice(0,10))' "$date")
 done
+if ((${#failed_dates[@]} > 0)); then
+  printf 'historical reader-summary dates pending retry: %s\n' "${failed_dates[*]}" >&2
+  exit 1
+fi
