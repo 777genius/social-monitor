@@ -136,7 +136,7 @@ describe("AgentRuntimeReaderSummaryTopicLabeler", () => {
       purpose: "social_monitor.reader_summary.topic_map.label",
       timeoutMs: 600_000,
       metadata: {
-        promptVersion: "reader_summary.topic_map.agent_runtime.v16",
+        promptVersion: "reader_summary.topic_map.agent_runtime.v17",
         attemptNumber: "1",
         totalAttempts: "2",
       },
@@ -350,6 +350,80 @@ describe("AgentRuntimeReaderSummaryTopicLabeler", () => {
       expect.stringContaining("1 semantic group definitions were recovered"),
       expect.stringContaining("1 semantic group anchor sets were recovered"),
     ]);
+  });
+
+  it("never asks the model to label nodes the published map will discard", async () => {
+    const commands: AgentRuntimeTaskCommand[] = [];
+    const client: AgentRuntimeClientPort = {
+      async runTask(command) {
+        commands.push(command);
+        const nodes = JSON.parse(command.prompt).nodes as readonly {
+          readonly nodeId: string;
+          readonly fallbackLabel: string;
+        }[];
+
+        return withTestExecutionAttestation(command, {
+          status: "completed",
+          structuredOutput: {
+            nodeLabels: nodes.map((node) => ({
+              nodeId: node.nodeId,
+              subject: node.fallbackLabel,
+              parentSubject: "",
+              claimType: "other",
+              confidenceScore: 0.9,
+              groupId: "group:ungrouped",
+              keywords: [],
+            })),
+            groups: [],
+          },
+          warnings: [],
+        });
+      },
+      async checkHealth() {
+        return {
+          status: "serving",
+          runtimeEngine: "test",
+          runtimeVersion: "test",
+          warnings: [],
+        };
+      },
+    };
+    const candidates = Array.from({ length: 30 }, (_, index) => ({
+      nodeId: `topic:story:${index}`,
+      storyClusterId: `story:${index}`,
+      fallbackLabel: `Topic ${index}`,
+      score: 100 - index,
+      evidenceCount: 1,
+      providerKeys: ["rss"],
+      interestIds: ["ai"],
+      keywords: [`topic-${index}`],
+      labelCandidates: [],
+    }));
+    const labeler = new AgentRuntimeReaderSummaryTopicLabeler({
+      client,
+      maxCandidates: 30,
+    });
+
+    const result = await labeler.label({
+      tenantId: tenantId("tenant-published-node-limit"),
+      workspaceId: workspaceId("workspace-published-node-limit"),
+      scope: { type: "workspace" },
+      period: {
+        cadence: "daily",
+        startedAt: new Date("2026-06-01T00:00:00.000Z"),
+        endedAt: new Date("2026-06-02T00:00:00.000Z"),
+        timezone: "UTC",
+        periodKey: "2026-06-01",
+      },
+      requestedAt: new Date("2026-06-02T01:00:00.000Z"),
+      clusters: [],
+      selectedEvidence: [],
+      topStories: [],
+      candidates,
+    });
+
+    expect(JSON.parse(commands[0]?.prompt ?? "{}").nodes).toHaveLength(18);
+    expect(result.nodeLabels).toHaveLength(18);
   });
 });
 
