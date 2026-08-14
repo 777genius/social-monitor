@@ -182,6 +182,8 @@ export const evaluateReaderSummaryWeeklyEditorialQuality = (
     new Set(singleDaySectionDates).size >= 3
       ? 1
       : 0;
+  const stitchedDailySectionsAreProhibited =
+    stitchedDailySectionCount > 0 && !thematicFallbackIsGrounded;
   const claimIssues = unsupportedClaimIssues(
     textUnits,
     citationById,
@@ -216,7 +218,7 @@ export const evaluateReaderSummaryWeeklyEditorialQuality = (
       dayHeadingCount === 0 &&
       dailyChronologyMarkerCount < 3 &&
       stitchedDailyCount === 0 &&
-      stitchedDailySectionCount === 0,
+      !stitchedDailySectionsAreProhibited,
     readerTextAvoidsProviderInventory: providerInventoryCount === 0,
     readerTextAvoidsProcessProse:
       processProseCount === 0 && promptInjectionCount === 0,
@@ -273,7 +275,7 @@ export const evaluateReaderSummaryWeeklyEditorialQuality = (
     ...(stitchedDailyCount === 0
       ? []
       : ["Weekly editorial output reads as stitched daily summaries"]),
-    ...(stitchedDailySectionCount === 0
+    ...(!stitchedDailySectionsAreProhibited
       ? []
       : ["Weekly editorial output reads as stitched single-day sections"]),
     ...(qualityGates.readerTextAvoidsProviderInventory
@@ -308,7 +310,7 @@ export const evaluateReaderSummaryWeeklyEditorialQuality = (
       unsupportedClaimCount: claimIssues.length,
       prohibitedEditorialPatternCount:
         stitchedDailyCount +
-        stitchedDailySectionCount +
+        (stitchedDailySectionsAreProhibited ? 1 : 0) +
         (dailyChronologyMarkerCount >= 3 ? 1 : 0) +
         providerInventoryCount +
         processProseCount +

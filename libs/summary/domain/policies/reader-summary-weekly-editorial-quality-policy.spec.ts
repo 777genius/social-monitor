@@ -564,8 +564,9 @@ const thematicWeeklyOutput = (
   input: ReaderSummaryWeeklyModelInput,
 ): ReaderSummaryWeeklyModelOutput => {
   const citations = input.citations.map((item) => item.citationId);
-  const lead = input.citations[0]!;
-  const supporting = input.citations[1]!;
+    const lead = input.citations[0]!;
+    const supporting = input.citations[1]!;
+    const additional = input.citations[2]!;
   return {
     schemaVersion: readerSummaryWeeklyModelOutputSchemaVersion,
     sealId: input.sealId,
@@ -601,6 +602,16 @@ const thematicWeeklyOutput = (
         observedThrough: supporting.observedOn,
         citationIds: [supporting.citationId],
       },
+      {
+        storyId: additional.storyId,
+        headline: "Implementation constraints stayed explicit",
+        summary:
+          "The cited report presents implementation constraints as bounded operational context.",
+        status: "watch",
+        observedFrom: additional.observedOn,
+        observedThrough: additional.observedOn,
+        citationIds: [additional.citationId],
+      },
     ],
     sections: [
       {
@@ -626,6 +637,18 @@ const thematicWeeklyOutput = (
         observedFrom: supporting.observedOn,
         observedThrough: supporting.observedOn,
         citationIds: [supporting.citationId],
+      },
+      {
+        sectionId: "section:gamma-watch",
+        storyId: additional.storyId,
+        kind: "watch",
+        claimType: "snapshot",
+        heading: "Constraints stayed explicit",
+        text:
+          "The cited snapshot keeps implementation constraints concrete and bounded.",
+        observedFrom: additional.observedOn,
+        observedThrough: additional.observedOn,
+        citationIds: [additional.citationId],
       },
     ],
   };
