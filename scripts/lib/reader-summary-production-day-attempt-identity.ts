@@ -80,19 +80,39 @@ export const readerSummaryProductionDayAttemptIdentity = (
 const servingAuthority = (
   value: ReaderSummaryServingAuthority,
 ): ReaderSummaryServingAuthority => ({
-  summaryModelMode: value.summaryModelMode,
-  topicLabelerMode: value.topicLabelerMode,
-  provider: requiredText(value.provider, "provider"),
-  physicalModel: requiredText(value.physicalModel, "physical model"),
-  reasoningEffort: requiredText(value.reasoningEffort, "reasoning effort"),
-  runtimeEngine: requiredText(value.runtimeEngine, "runtime engine"),
-  runtimePackageVersion: requiredText(
-    value.runtimePackageVersion,
-    "runtime package version",
+  summaryGenerator: componentAuthority(value.summaryGenerator, "summary generator"),
+  topicLabeler: componentAuthority(value.topicLabeler, "topic labeler"),
+  topicRelationVerifier: componentAuthority(
+    value.topicRelationVerifier,
+    "topic relation verifier",
   ),
-  launcherSha256: value.runtimeEngine === "subscription-runtime-cli"
-    ? requiredSha256(value.launcherSha256)
-    : requiredText(value.launcherSha256, "launcher SHA-256"),
+  runtime: value.runtime === null
+    ? null
+    : {
+        engine: requiredText(value.runtime.engine, "runtime engine"),
+        packageVersion: requiredText(
+          value.runtime.packageVersion,
+          "runtime package version",
+        ),
+        launcherSha256: value.runtime.engine === "subscription-runtime-cli"
+          ? requiredSha256(value.runtime.launcherSha256)
+          : requiredText(value.runtime.launcherSha256, "launcher SHA-256"),
+      },
+});
+
+const componentAuthority = <Mode extends string>(
+  value: Readonly<{
+    mode: Mode;
+    provider: string;
+    physicalModel: string;
+    reasoningPolicy: string;
+  }>,
+  label: string,
+) => ({
+  mode: value.mode,
+  provider: requiredText(value.provider, `${label} provider`),
+  physicalModel: requiredText(value.physicalModel, `${label} physical model`),
+  reasoningPolicy: requiredText(value.reasoningPolicy, `${label} reasoning policy`),
 });
 
 export const readerSummaryProductionDayIdempotencyKey = (

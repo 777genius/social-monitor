@@ -52,14 +52,29 @@ const workspace = workspaceId("20000000-0000-4000-8000-000000000002");
 const periodKey =
   "daily:2026-08-13T00:00:00.000Z:2026-08-14T00:00:00.000Z:UTC";
 const servingAuthority = {
-  summaryModelMode: "agent-runtime" as const,
-  topicLabelerMode: "agent-runtime" as const,
-  provider: "codex",
-  physicalModel: "gpt-5.6-sol",
-  reasoningEffort: "xhigh",
-  runtimeEngine: "subscription-runtime-cli",
-  runtimePackageVersion: "1.2.3",
-  launcherSha256: "a".repeat(64),
+  summaryGenerator: {
+    mode: "agent-runtime" as const,
+    provider: "codex",
+    physicalModel: "gpt-5.6-sol",
+    reasoningPolicy: "xhigh",
+  },
+  topicLabeler: {
+    mode: "agent-runtime" as const,
+    provider: "codex",
+    physicalModel: "agent-runtime-reader-summary-topic-labeler",
+    reasoningPolicy: "runtime-default",
+  },
+  topicRelationVerifier: {
+    mode: "agent-runtime" as const,
+    provider: "codex",
+    physicalModel: "agent-runtime-reader-summary-topic-relation-verifier",
+    reasoningPolicy: "runtime-default",
+  },
+  runtime: {
+    engine: "subscription-runtime-cli",
+    packageVersion: "1.2.3",
+    launcherSha256: "a".repeat(64),
+  },
 };
 
 describe("reader summary DB publication reconciliation", () => {
@@ -264,9 +279,26 @@ describe("reader summary DB publication reconciliation", () => {
         }),
       ).toEqual(attestations);
       for (const changedAuthority of [
-        { ...servingAuthority, physicalModel: "gpt-5.7" },
-        { ...servingAuthority, runtimePackageVersion: "1.2.4" },
-        { ...servingAuthority, launcherSha256: "b".repeat(64) },
+        { ...servingAuthority, summaryGenerator: {
+          ...servingAuthority.summaryGenerator,
+          physicalModel: "gpt-5.7",
+        } },
+        { ...servingAuthority, topicLabeler: {
+          ...servingAuthority.topicLabeler,
+          physicalModel: "changed-topic-labeler",
+        } },
+        { ...servingAuthority, topicRelationVerifier: {
+          ...servingAuthority.topicRelationVerifier,
+          physicalModel: "changed-topic-relation-verifier",
+        } },
+        { ...servingAuthority, runtime: {
+          ...servingAuthority.runtime,
+          packageVersion: "1.2.4",
+        } },
+        { ...servingAuthority, runtime: {
+          ...servingAuthority.runtime,
+          launcherSha256: "b".repeat(64),
+        } },
       ]) {
         const changedIdentity = readerSummaryProductionDayAttemptIdentity({
           tenantId: tenant,

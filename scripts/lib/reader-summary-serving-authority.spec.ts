@@ -6,36 +6,87 @@ import {
 const checkedAt = "2026-08-14T10:00:00.000Z";
 
 describe("reader summary current serving authority", () => {
-  it("probes and records the effective live agent runtime before identity use", async () => {
-    const checkHealth = jest.fn(async () => ({
-      status: "serving" as const,
-      runtimeEngine: "subscription-runtime-cli" as const,
-      runtimeVersion: "1.4.2",
-      launcherSha256: "a".repeat(64),
-      warnings: [],
-    }));
+  it("records every effective agent-runtime component and the shared live runtime", async () => {
+    const checkHealth = servingHealth();
 
     await expect(resolveReaderSummaryServingAuthority({
       summaryModelMode: "agent-runtime",
       topicLabelerMode: "agent-runtime",
       env: {
         AGENT_RUNTIME_PROVIDER: "claude",
-        AGENT_RUNTIME_READER_SUMMARY_MODEL: "gpt-5.7",
+        AGENT_RUNTIME_READER_SUMMARY_MODEL: "summary-model",
+        AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_MODEL: "labeler-model",
+        AGENT_RUNTIME_READER_SUMMARY_TOPIC_RELATION_VERIFIER_MODEL:
+          "relation-model",
         AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT: "xhigh",
       },
       agentRuntimeClient: { checkHealth },
       checkedAt,
     })).resolves.toEqual({
-      summaryModelMode: "agent-runtime",
-      topicLabelerMode: "agent-runtime",
-      provider: "claude",
-      physicalModel: "gpt-5.7",
-      reasoningEffort: "xhigh",
-      runtimeEngine: "subscription-runtime-cli",
-      runtimePackageVersion: "1.4.2",
-      launcherSha256: "a".repeat(64),
+      summaryGenerator: {
+        mode: "agent-runtime",
+        provider: "claude",
+        physicalModel: "summary-model",
+        reasoningPolicy: "xhigh",
+      },
+      topicLabeler: {
+        mode: "agent-runtime",
+        provider: "claude",
+        physicalModel: "labeler-model",
+        reasoningPolicy: "runtime-default",
+      },
+      topicRelationVerifier: {
+        mode: "agent-runtime",
+        provider: "claude",
+        physicalModel: "relation-model",
+        reasoningPolicy: "runtime-default",
+      },
+      runtime: {
+        engine: "subscription-runtime-cli",
+        packageVersion: "1.4.2",
+        launcherSha256: "a".repeat(64),
+      },
     });
     expect(checkHealth).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses the exact production adapter defaults", async () => {
+    await expect(resolveReaderSummaryServingAuthority({
+      summaryModelMode: "agent-runtime",
+      topicLabelerMode: "agent-runtime",
+      env: {},
+      agentRuntimeClient: { checkHealth: servingHealth() },
+      checkedAt,
+    })).resolves.toMatchObject({
+      summaryGenerator: { physicalModel: "gpt-5.6-sol" },
+      topicLabeler: {
+        physicalModel: "agent-runtime-reader-summary-topic-labeler",
+      },
+      topicRelationVerifier: {
+        physicalModel: "agent-runtime-reader-summary-topic-relation-verifier",
+      },
+    });
+  });
+
+  it("retains OpenAI summary authority when topic components use agent runtime", async () => {
+    const authority = await resolveReaderSummaryServingAuthority({
+      summaryModelMode: "openai-responses",
+      topicLabelerMode: "agent-runtime",
+      env: { OPENAI_SUMMARY_MODEL: "openai-summary-model" },
+      agentRuntimeClient: { checkHealth: servingHealth() },
+      checkedAt,
+    });
+
+    expect(authority).toMatchObject({
+      summaryGenerator: {
+        mode: "openai-responses",
+        provider: "openai-responses",
+        physicalModel: "openai-summary-model",
+      },
+      topicLabeler: { mode: "agent-runtime", provider: "codex" },
+      topicRelationVerifier: { mode: "agent-runtime", provider: "codex" },
+      runtime: { packageVersion: "1.4.2" },
+    });
   });
 
   it("fails closed when current live runtime authority cannot be proven", async () => {
@@ -51,7 +102,7 @@ describe("reader summary current serving authority", () => {
   it.each([
     ["deterministic", "deterministic-reader-summary-v1"],
     ["openai-responses", "configured-openai-model"],
-  ] as const)("keeps %s direct and does not create or probe an agent client", async (
+  ] as const)("keeps %s direct without a live runtime", async (
     summaryModelMode,
     physicalModel,
   ) => {
@@ -64,10 +115,10 @@ describe("reader summary current serving authority", () => {
     });
 
     expect(authority).toMatchObject({
-      summaryModelMode,
-      physicalModel,
-      runtimeEngine: "in-process",
-      launcherSha256: "not-applicable",
+      summaryGenerator: { mode: summaryModelMode, physicalModel },
+      topicLabeler: { mode: "deterministic" },
+      topicRelationVerifier: { mode: "deterministic" },
+      runtime: null,
     });
     expect(readerSummaryServingAuthorityRequiresAgentRuntime({
       summaryModelMode,
@@ -75,3 +126,11 @@ describe("reader summary current serving authority", () => {
     })).toBe(false);
   });
 });
+
+const servingHealth = () => jest.fn(async () => ({
+  status: "serving" as const,
+  runtimeEngine: "subscription-runtime-cli" as const,
+  runtimeVersion: "1.4.2",
+  launcherSha256: "a".repeat(64),
+  warnings: [],
+}));

@@ -2,93 +2,175 @@ import type { AgentRuntimeClientPort } from "@social-monitor/summary/ports";
 
 import { probeProductionRuntimeLiveIdentity } from "./reader-summary-runtime-live-identity";
 
-export type ReaderSummaryServingAuthority = Readonly<{
-  summaryModelMode: "deterministic" | "openai-responses" | "agent-runtime";
-  topicLabelerMode: "deterministic" | "agent-runtime";
+type ReaderSummaryComponentAuthority<Mode extends string> = Readonly<{
+  mode: Mode;
   provider: string;
   physicalModel: string;
-  reasoningEffort: string;
-  runtimeEngine: string;
-  runtimePackageVersion: string;
-  launcherSha256: string;
+  reasoningPolicy: string;
 }>;
 
+export type ReaderSummaryServingAuthority = Readonly<{
+  summaryGenerator: ReaderSummaryComponentAuthority<
+    "deterministic" | "openai-responses" | "agent-runtime"
+  >;
+  topicLabeler: ReaderSummaryComponentAuthority<
+    "deterministic" | "agent-runtime"
+  >;
+  topicRelationVerifier: ReaderSummaryComponentAuthority<
+    "deterministic" | "agent-runtime"
+  >;
+  runtime: Readonly<{
+    engine: string;
+    packageVersion: string;
+    launcherSha256: string;
+  }> | null;
+}>;
+
+type SummaryModelMode = ReaderSummaryServingAuthority["summaryGenerator"]["mode"];
+type TopicLabelerMode = ReaderSummaryServingAuthority["topicLabeler"]["mode"];
+
 export const readerSummaryServingAuthorityRequiresAgentRuntime = (input: {
-  readonly summaryModelMode: ReaderSummaryServingAuthority["summaryModelMode"];
-  readonly topicLabelerMode: ReaderSummaryServingAuthority["topicLabelerMode"];
+  readonly summaryModelMode: SummaryModelMode;
+  readonly topicLabelerMode: TopicLabelerMode;
 }): boolean => input.summaryModelMode === "agent-runtime" ||
   input.topicLabelerMode === "agent-runtime";
 
 export const resolveReaderSummaryServingAuthority = async (input: {
-  readonly summaryModelMode: ReaderSummaryServingAuthority["summaryModelMode"];
-  readonly topicLabelerMode: ReaderSummaryServingAuthority["topicLabelerMode"];
+  readonly summaryModelMode: SummaryModelMode;
+  readonly topicLabelerMode: TopicLabelerMode;
   readonly env: Readonly<Record<string, string | undefined>>;
   readonly agentRuntimeClient: Pick<AgentRuntimeClientPort, "checkHealth"> | null;
   readonly checkedAt: string;
 }): Promise<ReaderSummaryServingAuthority> => {
   const usesAgentRuntime = readerSummaryServingAuthorityRequiresAgentRuntime(input);
-  if (!usesAgentRuntime) return directAuthority(input);
-  if (input.agentRuntimeClient === null) {
-    throw new Error("Current agent-runtime serving authority is required");
-  }
-  const live = await probeProductionRuntimeLiveIdentity({
-    client: input.agentRuntimeClient,
-    checkedAt: input.checkedAt,
+  const agentProvider = usesAgentRuntime
+    ? resolveAgentProvider(input.env.AGENT_RUNTIME_PROVIDER)
+    : null;
+  const runtime = usesAgentRuntime
+    ? await resolveRuntime(input.agentRuntimeClient, input.checkedAt)
+    : null;
+
+  return Object.freeze({
+    summaryGenerator: summaryAuthority(input, agentProvider),
+    topicLabeler: topicLabelerAuthority(input, agentProvider),
+    topicRelationVerifier: topicRelationVerifierAuthority(input, agentProvider),
+    runtime,
   });
-  const configuredProvider = input.env.AGENT_RUNTIME_PROVIDER;
-  const provider = configuredProvider === undefined ||
-      configuredProvider.trim().length === 0
-    ? "codex"
-    : configuredProvider;
-  if (provider !== "codex" && provider !== "claude") {
-    throw new Error("Current agent-runtime provider is invalid");
+};
+
+const summaryAuthority = (
+  input: Parameters<typeof resolveReaderSummaryServingAuthority>[0],
+  agentProvider: string | null,
+): ReaderSummaryServingAuthority["summaryGenerator"] => {
+  if (input.summaryModelMode === "agent-runtime") {
+    const reasoningPolicy = configured(
+      input.env.AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT ??
+        input.env.AGENT_RUNTIME_REASONING_EFFORT,
+      "xhigh",
+    );
+    if (reasoningPolicy !== "xhigh") {
+      throw new Error("Current reader summary reasoning effort is invalid");
+    }
+    return Object.freeze({
+      mode: input.summaryModelMode,
+      provider: requiredAgentProvider(agentProvider),
+      physicalModel: configured(
+        input.env.AGENT_RUNTIME_READER_SUMMARY_MODEL,
+        "gpt-5.6-sol",
+      ),
+      reasoningPolicy,
+    });
   }
-  const reasoningEffort = configured(
-    input.env.AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT ??
-      input.env.AGENT_RUNTIME_REASONING_EFFORT,
-    "xhigh",
-  );
-  if (reasoningEffort !== "xhigh") {
-    throw new Error("Current reader summary reasoning effort is invalid");
+  if (input.summaryModelMode === "openai-responses") {
+    return Object.freeze({
+      mode: input.summaryModelMode,
+      provider: "openai-responses",
+      physicalModel: configured(
+        input.env.OPENAI_READER_SUMMARY_MODEL ?? input.env.OPENAI_SUMMARY_MODEL,
+        "gpt-5.4-mini",
+      ),
+      reasoningPolicy: "not-applicable",
+    });
   }
   return Object.freeze({
-    summaryModelMode: input.summaryModelMode,
-    topicLabelerMode: input.topicLabelerMode,
-    provider,
-    physicalModel: input.summaryModelMode === "agent-runtime"
-      ? configured(input.env.AGENT_RUNTIME_READER_SUMMARY_MODEL, "gpt-5.6-sol")
-      : configured(
+    mode: input.summaryModelMode,
+    provider: "deterministic",
+    physicalModel: "deterministic-reader-summary-v1",
+    reasoningPolicy: "not-applicable",
+  });
+};
+
+const topicLabelerAuthority = (
+  input: Parameters<typeof resolveReaderSummaryServingAuthority>[0],
+  agentProvider: string | null,
+): ReaderSummaryServingAuthority["topicLabeler"] => Object.freeze(
+  input.topicLabelerMode === "agent-runtime"
+    ? {
+        mode: input.topicLabelerMode,
+        provider: requiredAgentProvider(agentProvider),
+        physicalModel: configured(
           input.env.AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_MODEL,
           "agent-runtime-reader-summary-topic-labeler",
         ),
-    reasoningEffort,
-    runtimeEngine: live.runtimeEngine,
-    runtimePackageVersion: live.runtimePackageVersion,
+        reasoningPolicy: "runtime-default",
+      }
+    : {
+        mode: input.topicLabelerMode,
+        provider: "deterministic",
+        physicalModel: "deterministic-reader-summary-topic-labeler-v1",
+        reasoningPolicy: "not-applicable",
+      },
+);
+
+const topicRelationVerifierAuthority = (
+  input: Parameters<typeof resolveReaderSummaryServingAuthority>[0],
+  agentProvider: string | null,
+): ReaderSummaryServingAuthority["topicRelationVerifier"] => Object.freeze(
+  input.topicLabelerMode === "agent-runtime"
+    ? {
+        mode: input.topicLabelerMode,
+        provider: requiredAgentProvider(agentProvider),
+        physicalModel: configured(
+          input.env.AGENT_RUNTIME_READER_SUMMARY_TOPIC_RELATION_VERIFIER_MODEL,
+          "agent-runtime-reader-summary-topic-relation-verifier",
+        ),
+        reasoningPolicy: "runtime-default",
+      }
+    : {
+        mode: input.topicLabelerMode,
+        provider: "deterministic",
+        physicalModel: "deterministic-reader-summary-topic-relation-verifier-v1",
+        reasoningPolicy: "not-applicable",
+      },
+);
+
+const resolveRuntime = async (
+  client: Pick<AgentRuntimeClientPort, "checkHealth"> | null,
+  checkedAt: string,
+): Promise<NonNullable<ReaderSummaryServingAuthority["runtime"]>> => {
+  if (client === null) {
+    throw new Error("Current agent-runtime serving authority is required");
+  }
+  const live = await probeProductionRuntimeLiveIdentity({ client, checkedAt });
+  return Object.freeze({
+    engine: live.runtimeEngine,
+    packageVersion: live.runtimePackageVersion,
     launcherSha256: live.launcherSha256,
   });
 };
 
-const directAuthority = (input: {
-  readonly summaryModelMode: ReaderSummaryServingAuthority["summaryModelMode"];
-  readonly topicLabelerMode: ReaderSummaryServingAuthority["topicLabelerMode"];
-  readonly env: Readonly<Record<string, string | undefined>>;
-}): ReaderSummaryServingAuthority => Object.freeze({
-  summaryModelMode: input.summaryModelMode,
-  topicLabelerMode: input.topicLabelerMode,
-  provider: input.summaryModelMode === "openai-responses"
-    ? "openai-responses"
-    : "deterministic",
-  physicalModel: input.summaryModelMode === "openai-responses"
-    ? configured(
-        input.env.OPENAI_READER_SUMMARY_MODEL ?? input.env.OPENAI_SUMMARY_MODEL,
-        "gpt-5.4-mini",
-      )
-    : "deterministic-reader-summary-v1",
-  reasoningEffort: "not-applicable",
-  runtimeEngine: "in-process",
-  runtimePackageVersion: "social-monitor-in-process-v1",
-  launcherSha256: "not-applicable",
-});
+const resolveAgentProvider = (configuredProvider: string | undefined): string => {
+  const provider = configured(configuredProvider, "codex");
+  if (provider !== "codex" && provider !== "claude") {
+    throw new Error("Current agent-runtime provider is invalid");
+  }
+  return provider;
+};
+
+const requiredAgentProvider = (provider: string | null): string => {
+  if (provider === null) throw new Error("Agent-runtime provider is required");
+  return provider;
+};
 
 const configured = (value: string | undefined, fallback: string): string => {
   const normalized = value?.trim();
