@@ -26,6 +26,16 @@ export const readerSummaryProductionRecoveryCanonicalJsonLimits =
     ...readerSummaryWeeklyCanonicalJsonLimits,
     maxTotalObjectKeys: 5_700,
   });
+
+// Historical daily artifacts are sealed provider records with a richer nested
+// shape. Keep their verification isolated from model and publication limits.
+export const readerSummaryWeeklyHistoricalArtifactCanonicalJsonLimits =
+  Object.freeze({
+    ...readerSummaryWeeklyCanonicalJsonLimits,
+    maxTotalObjectKeys: 12_000,
+    maxTotalArrayElements: 5_000,
+    maxNodes: 18_000,
+  });
 export type ReaderSummaryWeeklyCanonicalJson = Readonly<{
   json: string;
   sha256: string;
@@ -95,6 +105,15 @@ export const canonicalizeReaderSummaryProductionRecoveryJson = (
   canonicalizeReaderSummaryJsonWithLimits(value,
     `Reader summary production recovery ${label}`,
     readerSummaryProductionRecoveryCanonicalJsonLimits);
+export const canonicalizeReaderSummaryWeeklyHistoricalArtifactJson = (
+  value: unknown,
+  label = "historical artifact",
+): ReaderSummaryWeeklyCanonicalJson =>
+  canonicalizeReaderSummaryJsonWithLimits(
+    value,
+    `Reader summary weekly ${label}`,
+    readerSummaryWeeklyHistoricalArtifactCanonicalJsonLimits,
+  );
 
 const canonicalizeReaderSummaryJsonWithLimits = (
   value: unknown,

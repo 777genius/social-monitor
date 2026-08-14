@@ -1,10 +1,12 @@
 import {
   assertReaderSummaryWeeklyExactObject,
+  canonicalizeReaderSummaryWeeklyHistoricalArtifactJson,
   canonicalizeReaderSummaryWeeklyJson,
   deepFreezeReaderSummaryWeekly,
   exactReaderSummaryWeeklyHttpsUrl,
   exactReaderSummaryWeeklyProviderItemId,
   readerSummaryWeeklyCanonicalJsonLimits,
+  readerSummaryWeeklyHistoricalArtifactCanonicalJsonLimits,
   readerSummaryWeeklySha256,
 } from "./reader-summary-weekly-canonical-json";
 
@@ -47,6 +49,42 @@ describe("reader summary weekly canonical JSON", () => {
     first[0] = 0;
     expect(left.toBytes()[0]).toBe("{".charCodeAt(0));
     expect(Object.isFrozen(left)).toBe(true);
+  });
+
+  it("isolates bounded historical artifact graphs from normal weekly limits", () => {
+    const historicalArtifact = Array.from({ length: 100 }, (_, objectIndex) =>
+      Object.fromEntries(
+        Array.from({ length: 50 }, (_unused, keyIndex) => [
+          `${objectIndex}-${keyIndex}`,
+          null,
+        ]),
+      ),
+    );
+    const aboveHistoricalLimit = Array.from(
+      {
+        length:
+          Math.floor(
+            readerSummaryWeeklyHistoricalArtifactCanonicalJsonLimits
+              .maxTotalObjectKeys / 50,
+          ) + 1,
+      },
+      (_, objectIndex) =>
+        Object.fromEntries(
+          Array.from({ length: 50 }, (_unused, keyIndex) => [
+            `${objectIndex}-${keyIndex}`,
+            null,
+          ]),
+        ),
+    );
+
+    expect(() => canonicalizeReaderSummaryWeeklyJson(historicalArtifact))
+      .toThrow("total object key limit");
+    expect(canonicalizeReaderSummaryWeeklyHistoricalArtifactJson(
+      historicalArtifact,
+    ).sha256).toMatch(/^[0-9a-f]{64}$/u);
+    expect(() => canonicalizeReaderSummaryWeeklyHistoricalArtifactJson(
+      aboveHistoricalLimit,
+    )).toThrow("total object key limit");
   });
 
   it("deep-freezes constructed output graphs", () => {
