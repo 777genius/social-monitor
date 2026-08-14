@@ -100,6 +100,12 @@ const historicalGitHubOmissionReasonEnv =
 const datasetManifestPathEnv = "DURABLE_READER_SUMMARY_DATASET_MANIFEST_PATH";
 const datasetManifestSha256Env =
   "DURABLE_READER_SUMMARY_DATASET_MANIFEST_SHA256";
+const sourceReportSha256Env =
+  "DURABLE_READER_SUMMARY_SOURCE_REPORT_SHA256";
+const collectionArtifactSha256Env =
+  "DURABLE_READER_SUMMARY_COLLECTION_ARTIFACT_SHA256";
+const collectionQualityReportSha256Env =
+  "DURABLE_READER_SUMMARY_COLLECTION_QUALITY_REPORT_SHA256";
 const datasetRecoveryRootEnv = "DURABLE_READER_SUMMARY_RECOVERY_ROOT";
 const recoveryTimestampPolicyEnv =
   "DURABLE_READER_SUMMARY_RECOVERY_TIMESTAMP_POLICY";
@@ -176,6 +182,11 @@ async function main(): Promise<void> {
     mode: recoveryTimestampPolicy.active
       ? {
           kind: "historical-regeneration",
+          sourceReportSha256: requiredEnv(sourceReportSha256Env),
+          collectionArtifactSha256: requiredEnv(collectionArtifactSha256Env),
+          collectionQualityReportSha256: requiredEnv(
+            collectionQualityReportSha256Env,
+          ),
           datasetManifestSha256: requiredEnv(datasetManifestSha256Env),
           timestampPolicy: recoveryTimestampPolicy.policy,
           ...(historicalGitHubOmission === undefined

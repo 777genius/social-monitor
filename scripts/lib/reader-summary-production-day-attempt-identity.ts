@@ -8,6 +8,9 @@ export type ReaderSummaryProductionDayAttemptIdentityInput = Readonly<{
     | Readonly<{ kind: "live-production" }>
     | Readonly<{
         kind: "historical-regeneration";
+        sourceReportSha256: string;
+        collectionArtifactSha256: string;
+        collectionQualityReportSha256: string;
         datasetManifestSha256: string;
         timestampPolicy: "published_at" | "observed_at";
         historicalGitHubOmissionReason?: string;
@@ -27,6 +30,15 @@ export const readerSummaryProductionDayAttemptIdentity = (
         ? { kind: input.mode.kind }
         : {
             kind: input.mode.kind,
+            sourceReportSha256: requiredSha256(
+              input.mode.sourceReportSha256,
+            ),
+            collectionArtifactSha256: requiredSha256(
+              input.mode.collectionArtifactSha256,
+            ),
+            collectionQualityReportSha256: requiredSha256(
+              input.mode.collectionQualityReportSha256,
+            ),
             datasetManifestSha256: requiredSha256(
               input.mode.datasetManifestSha256,
             ),

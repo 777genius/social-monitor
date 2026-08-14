@@ -156,6 +156,49 @@ describe("production-day execution request", () => {
     });
   });
 
+  it("passes the complete regeneration authority to durable capture", () => {
+    const source = readFileSync(
+      join(process.cwd(), "scripts/run-reader-summary-production-day.ts"),
+      "utf8",
+    );
+
+    expect(source).toContain(
+      "DURABLE_READER_SUMMARY_SOURCE_REPORT_SHA256:\n                  executionRequest.sourceReportSha256",
+    );
+    expect(source).toContain(
+      "DURABLE_READER_SUMMARY_COLLECTION_ARTIFACT_SHA256:\n                  executionRequest.collectionArtifactSha256",
+    );
+    expect(source).toContain(
+      "DURABLE_READER_SUMMARY_COLLECTION_QUALITY_REPORT_SHA256:\n                  executionRequest.collectionQualityReportSha256",
+    );
+    expect(source).toContain(
+      "DURABLE_READER_SUMMARY_DATASET_MANIFEST_SHA256:\n                  executionRequest.datasetManifestSha256",
+    );
+  });
+
+  it("requires the complete regeneration authority when capture builds identity", () => {
+    const source = readFileSync(
+      join(
+        process.cwd(),
+        "scripts/capture-durable-reader-summary-from-postgres.ts",
+      ),
+      "utf8",
+    );
+
+    expect(source).toContain(
+      "sourceReportSha256: requiredEnv(sourceReportSha256Env)",
+    );
+    expect(source).toContain(
+      "collectionArtifactSha256: requiredEnv(collectionArtifactSha256Env)",
+    );
+    expect(source).toContain(
+      "collectionQualityReportSha256: requiredEnv(\n            collectionQualityReportSha256Env",
+    );
+    expect(source).toContain(
+      "datasetManifestSha256: requiredEnv(datasetManifestSha256Env)",
+    );
+  });
+
   it("accepts observed_at only inside bounded historical regeneration", () => {
     const request = resolveProductionDayExecutionRequest([
       "--regenerate-after-passed-collection",
