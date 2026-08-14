@@ -20,7 +20,6 @@ import type {
   ReaderSummaryProductionRecoveryGapDayAuthority,
   ReaderSummaryProductionRecoveryGapEvidence,
   ReaderSummaryProductionRecoveryGapEvidenceRow,
-  ReaderSummaryProductionRecoveryGapEvidenceState,
   ReaderSummaryProductionRecoveryGapProviderKey,
   ReaderSummaryProductionRecoveryGapScope,
 } from "./reader-summary-production-recovery-gap-authority.types";
@@ -891,7 +890,7 @@ const exactBoundedText = (
     value.length === 0 ||
     value.length > maximumLength ||
     value !== value.trim() ||
-    /[\u0000]/u.test(value)
+    value.includes("\0")
   ) {
     throw gapAuthorityError(`${label} is invalid`);
   }
@@ -909,7 +908,7 @@ const exactHistoricalBody = (
     typeof value !== "string" ||
     value.length === 0 ||
     value.length > maximumLength ||
-    /[\u0000]/u.test(value)
+    value.includes("\0")
   ) {
     throw gapAuthorityError(`${label} is invalid`);
   }

@@ -222,7 +222,7 @@ export const assertReaderSummaryDailyCanonicalRecoveryV4InvalidProductRetrySetMi
 };
 
 const functionSql = (sql: string, name: string, endMarker: string): string => {
-  const start = sql.indexOf(`FUNCTION public.\"${name}\"(`);
+  const start = sql.indexOf(`FUNCTION public."${name}"(`);
   const end = sql.indexOf(endMarker, start);
   if (start < 0 || end < 0 || end <= start) {
     throw new Error(`invalid-product retry-set function ${name} is missing`);

@@ -170,7 +170,10 @@ describe("reader summary weekly review producer", () => {
 const fakeStore = (
   existing: ReturnType<typeof manifestFor> | null,
 ): jest.Mocked<ReaderSummaryWeeklyReviewManifestPort> => ({
-  findBySeal: jest.fn(async (_query: FindReaderSummaryWeeklyReviewManifestQuery) => existing),
+  findBySeal: jest.fn(async (query: FindReaderSummaryWeeklyReviewManifestQuery) => {
+    void query;
+    return existing;
+  }),
   persist: jest.fn(async ({ manifest }: PersistReaderSummaryWeeklyReviewManifestCommand) => (
     { outcome: "persisted" as const, manifest }
   )),
@@ -205,12 +208,15 @@ const fakeRuntime = (
       },
     };
   }),
-  checkHealth: jest.fn(async (_service: string) => ({
-    status: "serving" as const,
-    runtimeEngine: "subscription-runtime-cli",
-    runtimeVersion: "1.2.3",
-    warnings: [],
-  })),
+  checkHealth: jest.fn(async (service: string) => {
+    void service;
+    return {
+      status: "serving" as const,
+      runtimeEngine: "subscription-runtime-cli",
+      runtimeVersion: "1.2.3",
+      warnings: [],
+    };
+  }),
 });
 
 const manifestFor = (source: ReaderSummaryWeeklyReviewAuthority) => {

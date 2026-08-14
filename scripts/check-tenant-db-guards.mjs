@@ -355,7 +355,7 @@ function assertRlsMigration() {
 function assertPublicationBootstrapProtectsForwardOwnerTables(publicationBootstrap) {
   const protectedTableLists = [
     ...publicationBootstrap.matchAll(
-      /relation\.relname NOT IN \(([\s\S]*?)\n      \)/g,
+      /relation\.relname NOT IN \(([\s\S]*?)\n {6}\)/g,
     ),
   ].map((match) =>
     new Set([...match[1].matchAll(/'([^']+)'/g)].map((tableMatch) => tableMatch[1])),
