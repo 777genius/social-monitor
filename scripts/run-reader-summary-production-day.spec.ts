@@ -1,13 +1,4 @@
-import { spawnSync } from "node:child_process";
-import {
-  chmodSync,
-  existsSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { resolveProductionDayExecutionRequest } from "./lib/reader-summary-production-day-reuse-provenance";
@@ -28,61 +19,18 @@ describe("production-day execution request", () => {
       "Production history collection scope is not 6101/6102",
     );
   });
-  it("preserves reports and exits on P3009 before runtime admission", () => {
-    const fixture = mkdtempSync(join(tmpdir(), "production-day-migrate-"));
-    const npmPath = join(fixture, "npm");
-    const callsPath = join(fixture, "calls");
-    const artifactPath = join(fixture, "artifacts");
-    writeFileSync(
-      npmPath,
-      `#!/usr/bin/env bash\nprintf '%s\\n' "$*" >> "$PRODUCTION_DAY_NPM_CALLS"\nprintf 'P3009 fixture\\n' >&2\nexit 1\n`,
+  it("leaves migrations exclusively in the release pipeline", () => {
+    const runner = readFileSync(
+      join(process.cwd(), "scripts/run-reader-summary-production-day.ts"),
+      "utf8",
     );
-    chmodSync(npmPath, 0o755);
-    const latestReport = join(
-      process.cwd(),
-      "ops/evals/reader-summary-production-day-run.v1.json",
+    const deploy = readFileSync(
+      join(process.cwd(), "ops/deploy/reader-summary-publication-deploy-lib.sh"),
+      "utf8",
     );
-    const reportBefore = readFileSync(latestReport);
-    try {
-      const result = spawnSync(
-        process.execPath,
-        [
-          "-r",
-          "ts-node/register/transpile-only",
-          "-r",
-          "tsconfig-paths/register",
-          "scripts/run-reader-summary-production-day.ts",
-          "--date",
-          "2099-12-31",
-          "--update",
-          "--summary-model",
-          "deterministic",
-        ],
-        {
-          cwd: process.cwd(),
-          encoding: "utf8",
-          env: {
-            ...process.env,
-            PATH: `${fixture}:${process.env.PATH ?? ""}`,
-            PRODUCTION_DAY_NPM_CALLS: callsPath,
-            READER_SUMMARY_PRODUCTION_DAY_ARTIFACT_DIR: artifactPath,
-            TS_NODE_COMPILER_OPTIONS: JSON.stringify({
-              rootDir: process.cwd(),
-            }),
-          },
-        },
-      );
 
-      expect(result.status).not.toBe(0);
-      expect(result.stderr).toContain("P3009 fixture");
-      expect(result.stderr).toContain("failed before production-day admission");
-      expect(result.stderr).not.toContain("must use subscription runtime");
-      expect(readFileSync(callsPath, "utf8")).toBe("run migrate:deploy\n");
-      expect(readFileSync(latestReport)).toEqual(reportBefore);
-      expect(existsSync(artifactPath)).toBe(false);
-    } finally {
-      rmSync(fixture, { recursive: true, force: true });
-    }
+    expect(runner).not.toContain("migrate:deploy");
+    expect(deploy).toContain("exec npm run migrate:deploy");
   });
 
   it("defaults to live production without reuse flags", () => {

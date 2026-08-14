@@ -229,6 +229,15 @@ fi
     *) echo "daily production-day catch-up date is invalid" >&2; exit 64 ;;
   esac
   requested_state="$public_dir/reader-summary-production-day-state.$requested_date.v1.json"
+  dated_name="reader-summary-production-day-run.$requested_date.v1.json"
+  proof_name="reader-summary-production-day-run.$requested_date.publication-proof.v1.json"
+  outcome_name="reader-summary-production-day-outcome.$requested_date.v1.json"
+  state_name="reader-summary-production-day-state.$requested_date.v1.json"
+  runtime_identity_name="runtime-live-identity-$requested_date.v1.json"
+  artifact_dir="$public_dir/.reader-summary-capture.$requested_date"
+  recovery_staging="$public_dir/.reader-summary-publication.$requested_date"
+  export READER_SUMMARY_PRODUCTION_DAY_ARTIFACT_DIR="$artifact_dir"
+  export DURABLE_READER_SUMMARY_PUBLICATION_RECOVERY_DIR="$public_dir/.reader-summary-db-publications"
   if [ "$historical_mode" = true ] && [ -e "$requested_state" ]; then
     terminal_date=$(node scripts/verify-reader-summary-production-day-state.mjs \
       --dated-state "$requested_state" \
@@ -267,7 +276,18 @@ fi
   rm -f \
     "$report_dir/reader-summary-production-day-outcome.$requested_date.v1.json"
 
-  if [ -n "${READER_SUMMARY_DAILY_RUN_PAUSE_WORKER:-}" ]; then
+  reconcile_staged=false
+  if [ -e "$recovery_staging/READY" ]; then
+    [ "$(cat "$recovery_staging/READY")" = terminal-set-v1 ] || {
+      echo "daily production-day recovery marker is invalid" >&2
+      exit 1
+    }
+    reconcile_staged=true
+  fi
+
+  if [ "$reconcile_staged" = true ]; then
+    echo "reconciling committed daily production-day terminal set for $requested_date"
+  elif [ -n "${READER_SUMMARY_DAILY_RUN_PAUSE_WORKER:-}" ]; then
     node scripts/run-with-timeout.mjs \
       --timeout-ms "$timeout_ms" \
       -- bash "$READER_SUMMARY_DAILY_RUN_PAUSE_WORKER" '"$DATE_FLAG"'
@@ -283,16 +303,17 @@ fi
   expected_date=$requested_date
 
   latest_candidate="$report_dir/reader-summary-production-day-run.v1.json"
-  dated_name="reader-summary-production-day-run.$expected_date.v1.json"
   dated_candidate="$report_dir/$dated_name"
-  proof_name="reader-summary-production-day-run.$expected_date.publication-proof.v1.json"
-  outcome_name="reader-summary-production-day-outcome.$expected_date.v1.json"
   outcome_candidate="$report_dir/$outcome_name"
-  state_name="reader-summary-production-day-state.$expected_date.v1.json"
-  if [ -n "${READER_SUMMARY_DAILY_RUN_PAUSE_WORKER:-}" ]; then
-    artifact_dir=$report_dir
-  else
-    artifact_dir=${READER_SUMMARY_PRODUCTION_DAY_ARTIFACT_DIR:-/tmp/social-monitor/reader-summary-production-day/$expected_date}
+  if [ -n "${READER_SUMMARY_DAILY_RUN_PAUSE_WORKER:-}" ] &&
+     [ "$reconcile_staged" = false ] && [ ! -e "$outcome_candidate" ]; then
+    mkdir -p "$artifact_dir"
+    cp "$report_dir/durable-reader-summary-$expected_date.v1.json" \
+      "$artifact_dir/durable-reader-summary-$expected_date.v1.json"
+    cp "$report_dir/frontend-reader-summary-$expected_date.fixture.v1.json" \
+      "$artifact_dir/frontend-reader-summary-$expected_date.fixture.v1.json"
+    cp "$report_dir/$runtime_identity_name" \
+      "$artifact_dir/$runtime_identity_name"
   fi
   evidence_artifact="$artifact_dir/durable-reader-summary-$expected_date.v1.json"
   frontend_artifact="$artifact_dir/frontend-reader-summary-$expected_date.fixture.v1.json"
@@ -300,15 +321,48 @@ fi
   runtime_identity_artifact="$artifact_dir/$runtime_identity_name"
 
   mkdir -p "$public_dir"
-  staging_dir=$(mktemp -d "$public_dir/.reader-summary-publication.XXXXXX")
-  trap '\''rm -rf "$staging_dir"'\'' EXIT HUP INT TERM
+  staging_dir=$recovery_staging
+  if [ "$reconcile_staged" = false ]; then
+    [ ! -e "$staging_dir" ] || {
+      echo "daily production-day recovery staging is incomplete" >&2
+      exit 1
+    }
+    staging_dir=$(mktemp -d "$public_dir/.reader-summary-publication-building.XXXXXX")
+  fi
   staged_report="$staging_dir/$dated_name"
   staged_proof="$staging_dir/$proof_name"
   staged_outcome="$staging_dir/$outcome_name"
   staged_state="$staging_dir/$state_name"
   staged_runtime_identity="$staging_dir/$runtime_identity_name"
   terminal_state=
-  if [ -e "$outcome_candidate" ]; then
+  if [ "$reconcile_staged" = true ]; then
+    if [ -e "$staged_outcome" ]; then
+      node scripts/verify-reader-summary-production-day-state.mjs \
+        --expected-date "$expected_date" \
+        --terminal-outcome "$staged_outcome" \
+        --state "$staged_state"
+      terminal_state=$(node -e '\''
+        const { readFileSync } = require("node:fs");
+        process.stdout.write(JSON.parse(readFileSync(process.argv[1], "utf8")).state);
+      '\'' -- "$staged_state")
+    else
+      node scripts/verify-reader-summary-production-day-publication.mjs \
+        --dated-report "$staged_report" \
+        --expected-date "$expected_date" \
+        --evidence-artifact "$evidence_artifact" \
+        --frontend-artifact "$frontend_artifact" \
+        --proof "$staged_proof"
+      node scripts/verify-reader-summary-production-day-state.mjs \
+        --expected-date "$expected_date" \
+        --publication-proof "$staged_proof" \
+        --state "$staged_state"
+      [ -s "$staged_runtime_identity" ] || {
+        echo "daily production-day recovery runtime identity is missing" >&2
+        exit 1
+      }
+      terminal_state=complete
+    fi
+  elif [ -e "$outcome_candidate" ]; then
     cp "$outcome_candidate" "$staged_outcome"
     chmod 0444 "$staged_outcome"
     node scripts/verify-reader-summary-production-day-state.mjs \
@@ -345,6 +399,17 @@ fi
     terminal_state=complete
   fi
   chmod 0444 "$staged_state"
+  if [ "$reconcile_staged" = false ]; then
+    printf "terminal-set-v1\n" > "$staging_dir/READY"
+    chmod 0444 "$staging_dir/READY"
+    mv "$staging_dir" "$recovery_staging"
+    staging_dir=$recovery_staging
+    staged_report="$staging_dir/$dated_name"
+    staged_proof="$staging_dir/$proof_name"
+    staged_outcome="$staging_dir/$outcome_name"
+    staged_state="$staging_dir/$state_name"
+    staged_runtime_identity="$staging_dir/$runtime_identity_name"
+  fi
 
   pause_publication_failpoint() {
     failpoint=$1
@@ -394,6 +459,7 @@ fi
         exit 1
       }
     fi
+    rm -rf "$staging_dir" "$artifact_dir"
     exit 0
   fi
 
@@ -441,6 +507,7 @@ fi
 
   install_immutable "$staged_state" "$state_public"
   if [ "$transition" = historical ]; then
+    rm -rf "$staging_dir" "$artifact_dir"
     exit 0
   fi
   pause_publication_failpoint after-state-before-latest
@@ -458,4 +525,5 @@ fi
   cp "$state_public" "$staging_dir/latest-state.v1.json"
   chmod 0444 "$staging_dir/latest-state.v1.json"
   mv -f "$staging_dir/latest-state.v1.json" "$public_dir/latest-state.v1.json"
+  rm -rf "$staging_dir" "$artifact_dir"
 '

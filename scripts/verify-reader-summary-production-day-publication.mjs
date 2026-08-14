@@ -9,7 +9,6 @@ const reportGeneratedBy = "npm run run:reader-summary-production-day";
 const evidenceArtifactId = "durable-reader-summary-postgres-evidence-v1";
 const frontendArtifactFormat = "frontend-reader-summary-live-fixture-v1";
 const requiredStepIds = [
-  "migrate",
   "collect",
   "collection-quality",
   "durable-reader-summary",
@@ -440,12 +439,16 @@ function validateInputs(inputs, expectedPeriod) {
 }
 
 function validateSteps(steps) {
-  if (!Array.isArray(steps) || steps.length !== requiredStepIds.length) {
+  const acceptedStepIds =
+    Array.isArray(steps) && steps.length === requiredStepIds.length + 1
+      ? ["migrate", ...requiredStepIds]
+      : requiredStepIds;
+  if (!Array.isArray(steps) || steps.length !== acceptedStepIds.length) {
     fail(
-      "dated production-day report must contain exactly nine required steps",
+      "dated production-day report must contain an exact supported step set",
     );
   }
-  for (const requiredId of requiredStepIds) {
+  for (const requiredId of acceptedStepIds) {
     const matches = steps.filter(
       (step) => isObject(step) && step.id === requiredId,
     );

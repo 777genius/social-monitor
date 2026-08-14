@@ -7,6 +7,8 @@ DAILY_SERVICE=$SCRIPT_DIR/social-monitor-daily.service
 DAILY_TIMER=$SCRIPT_DIR/social-monitor-daily.timer
 DAILY_ARTIFACTS_COMPOSE=$SCRIPT_DIR/compose.daily-artifacts.yml
 C1_READINESS=$SCRIPT_DIR/reader-summary-daily-c1.readiness
+PRODUCTION_DAY_RUNNER=$SCRIPT_DIR/../../../scripts/run-reader-summary-production-day.ts
+PUBLICATION_DEPLOY=$SCRIPT_DIR/../reader-summary-publication-deploy-lib.sh
 
 grep -Fx 'state=READY' "$C1_READINESS" >/dev/null
 grep -Fx 'requires=H_GREEN,C0_GREEN,C1_SCAN_TERMINAL_REPAIR_GREEN' \
@@ -27,6 +29,11 @@ grep -F 'scripts/verify-reader-summary-production-day-publication.mjs' \
 grep -F 'scripts/verify-reader-summary-production-day-state.mjs' \
   "$DAILY_RUN" >/dev/null
 grep -F 'latest-state.v1.json' "$DAILY_RUN" >/dev/null
+grep -F 'DURABLE_READER_SUMMARY_PUBLICATION_RECOVERY_DIR=' \
+  "$DAILY_RUN" >/dev/null
+grep -F '.reader-summary-publication.$requested_date' "$DAILY_RUN" >/dev/null
+! grep -F 'migrate:deploy' "$PRODUCTION_DAY_RUNNER"
+grep -F 'exec npm run migrate:deploy' "$PUBLICATION_DEPLOY" >/dev/null
 grep -F \
   'public_dir=${READER_SUMMARY_DAILY_RUN_PUBLIC_DIR:-/var/lib/social-monitor/artifacts/reports/reader-summary-production-v2}' \
   "$DAILY_RUN" >/dev/null

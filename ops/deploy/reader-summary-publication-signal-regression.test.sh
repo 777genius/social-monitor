@@ -186,12 +186,29 @@ report_before_latest_report=$report_before_latest_case/public/reader-summary-pro
 report_before_latest_proof=$report_before_latest_case/public/reader-summary-production-day-run.$EXPECTED_DATE.publication-proof.v1.json
 [[ -s $report_before_latest_report ]]
 [[ -s $report_before_latest_proof ]]
+[[ -s $report_before_latest_case/public/.reader-summary-db-publications/$EXPECTED_DATE.db-publication ]]
+[[ ! -e $report_before_latest_case/public/reader-summary-production-day-state.$EXPECTED_DATE.v1.json ]]
 node "$PROJECT_ROOT/scripts/verify-reader-summary-production-day-publication.mjs" \
   --dated-report "$report_before_latest_report" \
   --expected-date "$EXPECTED_DATE" \
   --evidence-artifact "$report_before_latest_case/reports/durable-reader-summary-$EXPECTED_DATE.v1.json" \
   --frontend-artifact "$report_before_latest_case/reports/frontend-reader-summary-$EXPECTED_DATE.fixture.v1.json" \
   --proof "$report_before_latest_proof" >/dev/null
+report_before_recovery_identity=$(file_identity \
+  "$report_before_latest_report" "$report_before_latest_proof")
+rm -f "$report_before_latest_case/ready" \
+  "$report_before_latest_case/failpoint-ready"
+run_daily "$report_before_latest_case" 30000 success \
+  >"$report_before_latest_case/reconcile.log" 2>&1
+grep -F 'reconciling committed daily production-day terminal set' \
+  "$report_before_latest_case/reconcile.log" >/dev/null
+[[ $(wc -l < "$report_before_latest_case/public/.reader-summary-db-publications/model-calls") -eq 1 ]]
+[[ $(file_identity \
+  "$report_before_latest_report" "$report_before_latest_proof") == \
+  "$report_before_recovery_identity" ]]
+[[ -s $report_before_latest_case/public/reader-summary-production-day-state.$EXPECTED_DATE.v1.json ]]
+cmp -s "$report_before_latest_report" \
+  "$report_before_latest_case/public/latest.v1.json"
 
 success_case=$FIXTURE/success
 prepare_case "$success_case"
