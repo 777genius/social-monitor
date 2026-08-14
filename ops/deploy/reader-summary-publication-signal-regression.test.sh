@@ -145,6 +145,53 @@ set -e
 ((sigkill_status != 0))
 assert_previous_latest_unchanged "$sigkill_case"
 
+db_crash_case=$FIXTURE/db-crash-before-filesystem
+prepare_case "$db_crash_case"
+set +e
+run_daily "$db_crash_case" 30000 crash-after-db-before-filesystem \
+  >"$db_crash_case/crash.log" 2>&1
+db_crash_status=$?
+set -e
+((db_crash_status != 0))
+[[ ! -e $db_crash_case/public/latest.v1.json ]]
+[[ ! -e $db_crash_case/public/latest-state.v1.json ]]
+[[ ! -e $db_crash_case/reports/reader-summary-production-day-run.v1.json ]]
+[[ ! -e $db_crash_case/public/reader-summary-production-day-run.$EXPECTED_DATE.v1.json ]]
+[[ ! -e $db_crash_case/public/reader-summary-production-day-run.$EXPECTED_DATE.publication-proof.v1.json ]]
+[[ ! -e $db_crash_case/public/reader-summary-production-day-state.$EXPECTED_DATE.v1.json ]]
+db_receipt=$db_crash_case/public/.reader-summary-db-publications/$EXPECTED_DATE.db-publication
+model_calls=$db_crash_case/public/.reader-summary-db-publications/model-calls
+[[ -s $db_receipt ]]
+[[ $(wc -l < "$model_calls") -eq 1 ]]
+rm -f "$db_crash_case/ready"
+run_daily "$db_crash_case" 30000 success \
+  >"$db_crash_case/replay.log" 2>&1
+db_report=$db_crash_case/public/reader-summary-production-day-run.$EXPECTED_DATE.v1.json
+db_proof=$db_crash_case/public/reader-summary-production-day-run.$EXPECTED_DATE.publication-proof.v1.json
+db_state=$db_crash_case/public/reader-summary-production-day-state.$EXPECTED_DATE.v1.json
+[[ -s $db_report && -s $db_proof && -s $db_state ]]
+[[ $(wc -l < "$model_calls") -eq 1 ]]
+node - "$db_receipt" "$db_report" <<'NODE'
+const { readFileSync } = require('node:fs');
+const [receiptPath, reportPath] = process.argv.slice(2);
+const receipt = Object.fromEntries(readFileSync(receiptPath, 'utf8')
+  .trim().split('\n').map((line) => line.split('=')));
+const report = JSON.parse(readFileSync(reportPath, 'utf8'));
+if (report.summary.readerSummaryJobId !== receipt.job ||
+    report.summary.readerSummaryId !== receipt.artifact) {
+  throw new Error('replayed terminal receipts changed durable job/artifact identity');
+}
+NODE
+cp "$db_report" "$db_crash_case/report.before"
+cp "$db_proof" "$db_crash_case/proof.before"
+cp "$db_state" "$db_crash_case/state.before"
+run_daily "$db_crash_case" 30000 success \
+  >"$db_crash_case/terminal-replay.log" 2>&1
+cmp -s "$db_crash_case/report.before" "$db_report"
+cmp -s "$db_crash_case/proof.before" "$db_proof"
+cmp -s "$db_crash_case/state.before" "$db_state"
+[[ $(wc -l < "$model_calls") -eq 1 ]]
+
 proof_first_case=$FIXTURE/proof-first-sigkill
 prepare_case "$proof_first_case"
 run_daily "$proof_first_case" 30000 success after-proof-before-report \

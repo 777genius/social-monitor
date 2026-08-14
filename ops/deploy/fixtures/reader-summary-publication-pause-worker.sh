@@ -10,7 +10,8 @@ publication_recovery_dir=${DURABLE_READER_SUMMARY_PUBLICATION_RECOVERY_DIR:?publ
 
 [[ $date_flag == --today || $date_flag == --yesterday ]]
 mkdir -p "$report_dir" "$(dirname "$ready")"
-if [[ $worker_mode == success || $worker_mode == invalid || $worker_mode == pause ]]; then
+if [[ $worker_mode == success || $worker_mode == invalid || $worker_mode == pause ||
+      $worker_mode == crash-after-db-before-filesystem ]]; then
   mkdir -p "$publication_recovery_dir"
   simulated_db_publication="$publication_recovery_dir/$expected_date.db-publication"
   if [[ ! -e $simulated_db_publication ]]; then
@@ -20,6 +21,9 @@ if [[ $worker_mode == success || $worker_mode == invalid || $worker_mode == paus
       > "$simulated_db_publication"
     printf 'model-call\n' >> "$publication_recovery_dir/model-calls"
   fi
+fi
+if [[ $worker_mode == crash-after-db-before-filesystem ]]; then
+  kill -KILL "$$"
 fi
 node - "$report_dir" "$expected_date" "$worker_mode" <<'NODE'
 const { createHash } = require('node:crypto');
