@@ -2,7 +2,6 @@ import type { ReaderSummaryWeeklyManifestScope } from "../domain/value-objects/r
 import type { ReaderSummaryWeeklyCanonicalProviderKey } from "../domain/value-objects/reader-summary-weekly-daily-certification";
 import type {
   readerSummaryWeeklyHistoricalGitHubAuthorizationIdentity,
-  readerSummaryWeeklyHistoricalGitHubDate,
   ReaderSummaryWeeklySealedInputManifest,
 } from "../domain/value-objects/reader-summary-weekly-input-manifest";
 
@@ -54,7 +53,7 @@ type ReaderSummaryWeeklyVerifiedModelDay = Readonly<{
   providerCounts: readonly ReaderSummaryWeeklyModelProviderCount[];
 }>;
 type ReaderSummaryWeeklyHistoricalModelDay = Readonly<{
-  date: typeof readerSummaryWeeklyHistoricalGitHubDate;
+  date: string;
   dailyCertificationId: string; dailyCertificationSha: string;
   dailyCertificationStatus: "certified"; githubBoardId: string;
   githubBoardSha: string; githubBoardStatus: "historical_unavailable";

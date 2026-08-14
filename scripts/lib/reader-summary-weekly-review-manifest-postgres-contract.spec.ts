@@ -90,7 +90,6 @@ function secureDefinition(): string {
   current_setting('transaction_isolation') <> 'serializable'
   FOR UPDATE
   FOR SHARE OF evidence_row
-  DATE '2026-07-23'
   historical_unavailable
   missing sealed evidence
   cannot duplicate a story on one date

@@ -708,12 +708,14 @@ const certificationBlockingReasons = (
     return reasons;
   }
 
-  const historicalJul23 =
-    certification.requestedUtcDate === "2026-07-23" &&
+  const honestHistoricalUnavailable =
     github.mode === "historical_unavailable" &&
-    githubCount === 0;
+    githubCount === 0 &&
+    certification.providerEvidence.every(
+      (evidence) => evidence.providerKey !== "github-trending-page",
+    );
   if (
-    !historicalJul23 &&
+    !honestHistoricalUnavailable &&
     (github.mode !== "verified" || githubCount !== 10)
   ) {
     reasons.push(

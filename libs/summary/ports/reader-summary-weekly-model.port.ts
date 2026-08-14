@@ -15,7 +15,6 @@ import {
 import {
   assertReaderSummaryWeeklySealedInputManifest,
   readerSummaryWeeklyHistoricalGitHubAuthorizationIdentity,
-  readerSummaryWeeklyHistoricalGitHubDate,
   readerSummaryWeeklyInputManifestSchemaVersion,
   type ReaderSummaryWeeklySealedInputManifest,
 } from "../domain/value-objects/reader-summary-weekly-input-manifest";
@@ -292,7 +291,7 @@ const modelDays = (
     return entry.githubAudit.status === "historical_unavailable"
       ? {
           ...day,
-          date: readerSummaryWeeklyHistoricalGitHubDate,
+          date: entry.requestedUtcDate,
           githubBoardStatus: "historical_unavailable" as const,
           githubAuthorizationIdentity:
             entry.githubAudit.authorizationIdentity,
@@ -333,7 +332,7 @@ const assertModelDays = (
       );
       if (
         !("githubAuthorizationIdentity" in day) ||
-        day.date !== readerSummaryWeeklyHistoricalGitHubDate ||
+        day.date !== utcDayAfter(weekStartedOn, index) ||
         day.githubAuthorizationIdentity !==
           readerSummaryWeeklyHistoricalGitHubAuthorizationIdentity ||
         day.githubBoardId !==

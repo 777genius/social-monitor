@@ -88,7 +88,7 @@ export const assertReaderSummaryWeeklyDailyCertificationBackfillPostgresContract
     );
     const grandfathered = await backfill(params, "2026-07-20");
     assertExactReplay(grandfathered, "2026-07-20");
-    await assertHistoricalAuthority(params.canonicalJsonAuditor);
+    await assertHistoricalAuthority(params.canonicalJsonAuditor, "2026-07-23");
     await assertNoSignalAuthority(params.client, "2026-07-26");
 
     await publishWeek(params, "2026-07-13", {
@@ -101,11 +101,9 @@ export const assertReaderSummaryWeeklyDailyCertificationBackfillPostgresContract
         overrides: { githubEvidenceMode: "historical_unavailable" },
       },
     });
-    await assertRejects(
-      () => backfill(params, "2026-07-13"),
-      "completed authority diverged",
-      "historical GitHub omission on the wrong date must fail closed",
-    );
+    const generalizedHistorical = await backfill(params, "2026-07-13");
+    assertExactReplay(generalizedHistorical, "2026-07-13");
+    await assertHistoricalAuthority(params.canonicalJsonAuditor, "2026-07-16");
 
     await publishWeek(params, "2026-05-04", {}, 6);
     await assertRejects(
@@ -615,6 +613,7 @@ const assertVerifiedWeekAuthority = async (
 
 const assertHistoricalAuthority = async (
   client: PoolClient,
+  date: string,
 ): Promise<void> => {
   const result = await client.query<{
     readonly github_count: string;
@@ -656,7 +655,8 @@ const assertHistoricalAuthority = async (
          'hex'
        ) AS seal_valid
      FROM reader_summary_weekly_publication_evidence
-     WHERE requested_utc_date = DATE '2026-07-23'`,
+     WHERE requested_utc_date = $1::date`,
+    [date],
   );
   assert(
     JSON.stringify(result.rows[0]) ===
@@ -670,7 +670,7 @@ const assertHistoricalAuthority = async (
         github_count: "0",
         seal_valid: true,
       }),
-    "Jul 23 historical exception must retain exact DB-owned zero GitHub authority",
+    `${date} historical exception must retain exact DB-owned zero GitHub authority`,
   );
 };
 

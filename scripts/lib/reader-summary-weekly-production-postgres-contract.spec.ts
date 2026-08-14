@@ -144,11 +144,13 @@ describe("reader summary weekly production postgres contract", () => {
     expect(state.blockingReasons).toEqual([]);
   });
 
-  it("accepts only the sealed Jul 23 historical GitHub exception", async () => {
+  it.each(["2026-07-22", "2026-07-23"])(
+    "accepts honest sealed historical GitHub unavailability for %s",
+    async (historicalDate) => {
     const rows = week.dates.map((date) =>
       rowForDate(
         date,
-        date === "2026-07-23"
+        date === historicalDate
           ? { githubMode: "historical_unavailable" }
           : undefined,
       ),
@@ -187,25 +189,18 @@ describe("reader summary weekly production postgres contract", () => {
     );
   });
 
-  it("fails closed on historical GitHub evidence for every other date", async () => {
-    const rows = week.dates.map((date) =>
-      rowForDate(
-        date,
-        date === "2026-07-22"
-          ? { githubMode: "historical_unavailable" }
-          : undefined,
-      ),
-    );
-    const state = await loadReaderSummaryWeeklyProductionDbState(
-      fakeClient(rows),
-      scope,
-      week,
-    );
-
-    expect(state.status).toBe("partial");
-    expect(state.blockingReasons).toContain(
-      "2026-07-22 lacks verified GitHub DB evidence",
-    );
+  it("fails closed when historical GitHub mode still carries GitHub provider evidence", async () => {
+    const rows = week.dates.map((date) => rowForDate(date));
+    const target = rowForDate("2026-07-22", {
+      githubMode: "historical_unavailable",
+    });
+    rows[2] = {
+      ...target,
+      provider_evidence: rowForDate("2026-07-22").provider_evidence,
+    };
+    await expect(
+      loadReaderSummaryWeeklyProductionDbState(fakeClient(rows), scope, week),
+    ).rejects.toThrow("Reader summary weekly DB certification authority diverged");
   });
 
   it("rejects a forged nested GitHub seal even when the outer seal is valid", async () => {

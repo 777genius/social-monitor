@@ -37,9 +37,8 @@ import type {
 
 export const readerSummaryWeeklyInputManifestSchemaVersion =
   "reader_summary.weekly_input_manifest.v1" as const;
-export const readerSummaryWeeklyHistoricalGitHubDate = "2026-07-23" as const;
 export const readerSummaryWeeklyHistoricalGitHubAuthorizationIdentity =
-  "reader_summary.production_recovery.github.2026-07-23.v2" as const;
+  "reader_summary.production_history.github.unavailable.v1" as const;
 
 const canonicalDayKeys = [
   "requestedUtcDate",
@@ -198,13 +197,14 @@ const assertHistoricalAuthority = (
     input.schemaVersion !== readerSummaryWeeklyPublicationEvidenceSchemaVersion ||
     input.authorizationIdentity !==
       readerSummaryWeeklyHistoricalGitHubAuthorizationIdentity ||
-    input.requestedUtcDate !== readerSummaryWeeklyHistoricalGitHubDate ||
+    exactReaderSummaryWeeklyUtcDay(input.requestedUtcDate) !==
+      input.requestedUtcDate ||
     input.semanticStatus !== "COMPLETED" ||
     github.schemaVersion !==
       readerSummaryWeeklyPublicationGitHubEvidenceSchemaVersion ||
     github.mode !== "historical_unavailable" ||
     github.providerKey !== readerSummaryWeeklyGitHubProviderKey ||
-    github.requestedUtcDay !== readerSummaryWeeklyHistoricalGitHubDate ||
+    github.requestedUtcDay !== input.requestedUtcDate ||
     github.evidenceCount !== 0 ||
     github.scanJobId !== null ||
     github.sourceBindingId !== null ||
@@ -255,8 +255,7 @@ export const canonicalHistoricalDailyCertification = (
   const certification = canonicalClone(input);
   assertCanonicalDailyCertification(certification, githubAudit, expected);
   if (
-    certification.requestedUtcDate !==
-      readerSummaryWeeklyHistoricalGitHubDate ||
+    certification.requestedUtcDate !== authority.requestedUtcDate ||
     certification.publicationId !== authority.publicationId ||
     certification.artifactId !== authority.artifactId ||
     certification.jobId !== authority.jobId ||

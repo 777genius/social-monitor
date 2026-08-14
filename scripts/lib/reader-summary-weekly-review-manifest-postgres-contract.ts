@@ -411,7 +411,7 @@ export const readerSummaryWeeklyReviewManifestCatalogIsSecure = (
     /current_setting\('transaction_isolation'\)\s*<>\s*'serializable'/iu.test(definition) &&
     /FOR\s+UPDATE/iu.test(definition) &&
     /FOR\s+SHARE\s+OF\s+evidence_row/iu.test(definition) &&
-    /DATE\s+'2026-07-23'/iu.test(definition) &&
+    !/DATE\s+'2026-07-23'/iu.test(definition) &&
     /historical_unavailable/iu.test(definition) &&
     /missing sealed evidence/iu.test(definition) &&
     /cannot duplicate a story on one date/iu.test(definition) &&
@@ -525,7 +525,9 @@ const createHistoricalAuthority = async (
       date,
       {
         githubEvidenceMode:
-          date === "2026-07-23" ? "historical_unavailable" : "verified",
+          date === "2026-07-23" || date === "2026-07-24"
+            ? "historical_unavailable"
+            : "verified",
       },
     );
     const outcome = await publish(client, readerSummaryPublicationDbOwnedRequest(fixture));
@@ -545,11 +547,13 @@ const createHistoricalAuthority = async (
   assert(
     state.status === "complete" &&
       state.blockingReasons.length === 0 &&
-      state.certifications.some((row) =>
-        row.requestedUtcDate === "2026-07-23" &&
-        row.githubEvidence.mode === "historical_unavailable",
+      ["2026-07-23", "2026-07-24"].every((date) =>
+        state.certifications.some((row) =>
+          row.requestedUtcDate === date &&
+          row.githubEvidence.mode === "historical_unavailable",
+        ),
       ),
-    "Jul 23 historical authority must be the sole accepted historical exception",
+    "historical authority must accept every honestly unavailable GitHub day",
   );
   return readerSummaryWeeklyReviewAuthorityFromProductionState(state);
 };
