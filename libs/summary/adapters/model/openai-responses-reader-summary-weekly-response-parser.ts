@@ -64,6 +64,15 @@ const expandedLegacyOutputKeys = [
   "headline", "takeaway", "synthesis", "claimType", "citationIds",
   "observedFrom", "observedThrough", "stories", "sections",
 ] as const;
+const sealedCompactOutputKeys = [
+  "schemaVersion", "sealId", "sealSha", "weekStartedOn", "weekEndedOn",
+  "headline", "takeaway", "synthesis", "citationIds", "observedFrom",
+  "observedThrough", "stories", "sections",
+] as const;
+const sealedCompactStoryKeys = [
+  "storyId", "status", "claimType", "observedFrom", "observedThrough",
+  "synthesis", "citationIds",
+] as const;
 const expandedLegacyStoryKeys = [
   "storyId", "headline", "synthesis", "status", "claimType",
   "citationIds", "observedFrom", "observedThrough",
@@ -91,6 +100,9 @@ const normalizeLegacyWeeklyModelOutput = (
   input: ReaderSummaryWeeklyModelInput,
   value: unknown,
 ): unknown => {
+  if (hasExactKeys(value, sealedCompactOutputKeys)) {
+    return normalizeSealedCompactWeeklyModelOutput(input, value);
+  }
   if (hasExactKeys(value, expandedLegacyOutputKeys)) {
     return normalizeExpandedLegacyWeeklyModelOutput(input, value);
   }
@@ -167,6 +179,94 @@ const normalizeLegacyWeeklyModelOutput = (
     synthesisCitationIds: [...rootCitationIds],
     stories: sections.map((section) => section.story),
     sections: sections.map((section) => section.section),
+  };
+};
+
+const normalizeSealedCompactWeeklyModelOutput = (
+  input: ReaderSummaryWeeklyModelInput,
+  value: Record<(typeof sealedCompactOutputKeys)[number], unknown>,
+): unknown => {
+  if (!Array.isArray(value.stories) || !Array.isArray(value.sections)) {
+    throw new Error("Sealed compact weekly stories and sections must be arrays");
+  }
+  const rootCitationIds = exactLegacyCitationRange(
+    input,
+    value,
+    "sealed compact weekly output",
+  );
+  const sections = value.sections.map((section, index) => {
+    if (!hasExactKeys(section, expandedLegacySectionKeys)) {
+      throw new Error(
+        `Sealed compact weekly section ${index + 1} must contain exactly the supported fields`,
+      );
+    }
+    const citationIds = exactLegacyCitationRange(
+      input,
+      section,
+      `sealed compact weekly section ${index + 1}`,
+    );
+    return {
+      sectionId: section.sectionId,
+      storyId: section.storyId,
+      kind: normalizeExpandedLegacySectionKind(section.kind),
+      claimType: exactLegacyClaimType(
+        section.claimType,
+        `sealed compact weekly section ${index + 1}`,
+      ),
+      heading: section.headline,
+      text: section.synthesis,
+      observedFrom: section.observedFrom,
+      observedThrough: section.observedThrough,
+      citationIds,
+    };
+  });
+  const stories = value.stories.map((story, index) => {
+    if (!hasExactKeys(story, sealedCompactStoryKeys)) {
+      throw new Error(
+        `Sealed compact weekly story ${index + 1} must contain exactly the supported fields`,
+      );
+    }
+    const citationIds = exactLegacyCitationRange(
+      input,
+      story,
+      `sealed compact weekly story ${index + 1}`,
+    );
+    exactLegacyClaimType(
+      story.claimType,
+      `sealed compact weekly story ${index + 1}`,
+    );
+    const heading = sections.find(
+      (section) => section.storyId === story.storyId,
+    )?.heading;
+    if (typeof heading !== "string") {
+      throw new Error(
+        `Sealed compact weekly story ${index + 1} lacks a matching section headline`,
+      );
+    }
+    return {
+      storyId: story.storyId,
+      headline: heading,
+      summary: story.synthesis,
+      status: normalizeExpandedLegacyStoryStatus(story.status),
+      observedFrom: story.observedFrom,
+      observedThrough: story.observedThrough,
+      citationIds,
+    };
+  });
+  return {
+    schemaVersion: value.schemaVersion,
+    sealId: value.sealId,
+    sealSha: value.sealSha,
+    weekStartedOn: value.weekStartedOn,
+    weekEndedOn: value.weekEndedOn,
+    headline: value.headline,
+    headlineCitationIds: [...rootCitationIds],
+    takeaway: value.takeaway,
+    takeawayCitationIds: [...rootCitationIds],
+    synthesis: value.synthesis,
+    synthesisCitationIds: [...rootCitationIds],
+    stories,
+    sections,
   };
 };
 

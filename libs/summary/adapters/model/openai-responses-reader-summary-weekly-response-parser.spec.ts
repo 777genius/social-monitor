@@ -101,6 +101,33 @@ describe("OpenAI reader summary weekly response parser", () => {
     })).toThrow("fabricates chronology");
   });
 
+  it("normalizes the exact sealed compact weekly envelope", () => {
+    const input = weeklyInput();
+    const current = weeklyOutput(input);
+    const compact = sealedCompactWeeklyOutput(input, current);
+
+    const parsed = parseOpenAiReaderSummaryWeeklyValue(input, compact);
+
+    expect(parsed).toMatchObject({
+      headline: current.headline,
+      headlineCitationIds: current.headlineCitationIds,
+      takeawayCitationIds: current.headlineCitationIds,
+      synthesisCitationIds: current.headlineCitationIds,
+      stories: [
+        { storyId: "story:alpha", headline: current.sections[0]!.heading },
+        { storyId: "story:beta", headline: current.sections[1]!.heading },
+      ],
+    });
+    expect(() => parseOpenAiReaderSummaryWeeklyValue(input, {
+      ...compact,
+      observedFrom: dates[1],
+    })).toThrow("fabricates chronology");
+    expect(() => parseOpenAiReaderSummaryWeeklyValue(input, {
+      ...compact,
+      unexpected: true,
+    })).toThrow("exactly");
+  });
+
   it("rejects malformed JSON, non-finite numbers and non-dense arrays", () => {
     const input = weeklyInput();
     const raw = JSON.stringify(weeklyOutput(input));
@@ -556,6 +583,43 @@ const expandedLegacyWeeklyOutput = (
   sections: output.sections.map((section, index) => ({
     sectionId: section.sectionId,
     kind: index === 0 ? section.kind : "story",
+    storyId: section.storyId,
+    headline: section.heading,
+    synthesis: section.text,
+    claimType: section.claimType,
+    citationIds: [...section.citationIds],
+    observedFrom: section.observedFrom,
+    observedThrough: section.observedThrough,
+  })),
+});
+
+const sealedCompactWeeklyOutput = (
+  input: ReaderSummaryWeeklyModelInput,
+  output: ReaderSummaryWeeklyModelOutput,
+) => ({
+  schemaVersion: output.schemaVersion,
+  sealId: output.sealId,
+  sealSha: output.sealSha,
+  weekStartedOn: output.weekStartedOn,
+  weekEndedOn: output.weekEndedOn,
+  headline: output.headline,
+  takeaway: output.takeaway,
+  synthesis: output.synthesis,
+  citationIds: [...output.headlineCitationIds],
+  observedFrom: input.citations[0]!.observedOn,
+  observedThrough: input.citations[3]!.observedOn,
+  stories: output.stories.map((story) => ({
+    storyId: story.storyId,
+    status: story.status,
+    claimType: "snapshot",
+    observedFrom: story.observedFrom,
+    observedThrough: story.observedThrough,
+    synthesis: story.summary,
+    citationIds: [...story.citationIds],
+  })),
+  sections: output.sections.map((section, index) => ({
+    sectionId: section.sectionId,
+    kind: index === 0 ? section.kind : "supporting",
     storyId: section.storyId,
     headline: section.heading,
     synthesis: section.text,
