@@ -2,14 +2,11 @@ import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
 import 'package:social_monitor_auth/social_monitor_auth.dart';
 import 'package:social_monitor_feed/social_monitor_feed.dart';
-import 'package:social_monitor_generated_api/social_monitor_generated_api.dart'
-    as generated;
 import 'package:social_monitor_interests/social_monitor_interests.dart';
 import 'package:social_monitor_settings/social_monitor_settings.dart';
 import 'package:social_monitor_sources/social_monitor_sources.dart';
 import 'package:social_monitor_summaries/social_monitor_summaries.dart';
 
-import '../routing/app_router.dart';
 import 'app_demo_feature_builders.dart';
 import 'app_runtime.dart';
 import 'app_theme_mode_controller.dart';
@@ -207,10 +204,7 @@ AppRouteWidgetBuilder summariesFeatureBuilder({
   required AppRuntimeController runtimeController,
 }) {
   if (useDemoRoutes) {
-    return (context, uri) => SummariesFeatureRoute(
-      onOpenWeeklySummary: () =>
-          GoRouter.of(context).go(AppRoutes.weeklySummary),
-    );
+    return (context, uri) => SummariesFeatureRoute();
   }
 
   return (context, uri) {
@@ -232,48 +226,16 @@ AppRouteWidgetBuilder summariesFeatureBuilder({
               context,
             ).go('/summaries/${Uri.encodeComponent(selectedSummaryId)}');
           },
-          onOpenWeeklySummary: () =>
-              GoRouter.of(context).go(AppRoutes.weeklySummary),
         );
       }
       return SummariesFeatureRoute.generatedApi(
         generatedApiRuntime: generatedApiRuntime,
         scope: scope,
         userId: runtime.session.userId,
-        onOpenWeeklySummary: () =>
-            GoRouter.of(context).go(AppRoutes.weeklySummary),
       );
     }
 
     return const RuntimeUnavailableFeaturePage(title: 'Summaries');
-  };
-}
-
-AppRouteWidgetBuilder weeklySummariesFeatureBuilder({
-  required bool useDemoRoutes,
-  required AppRuntimeController runtimeController,
-}) {
-  if (useDemoRoutes) {
-    return (context, uri) => const RuntimeUnavailableFeaturePage(
-      title: 'Weekly summary',
-    );
-  }
-
-  return (context, uri) {
-    final runtime = runtimeController.runtime;
-    final scope = runtime.workspace.scope;
-    final generatedApiRuntime = runtime.generatedApiRuntime;
-    final capability = runtime.capabilities.capability('summaries');
-    if (scope != null &&
-        scope.isValid &&
-        generatedApiRuntime is generated.GeneratedApiRuntime &&
-        capability.isEnabled) {
-      return WeeklySummariesFeatureRoute.generatedApi(
-        generatedApiRuntime: generatedApiRuntime,
-        scope: scope,
-      );
-    }
-    return const RuntimeUnavailableFeaturePage(title: 'Weekly summary');
   };
 }
 

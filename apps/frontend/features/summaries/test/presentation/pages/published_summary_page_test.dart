@@ -37,8 +37,6 @@ void main() {
       summaryId: summary.id,
     );
     addTearDown(store.dispose);
-    var openedWeeklySummary = false;
-
     final theme = AppTheme.light();
     await tester.pumpWidget(
       AppHeadlessScope(
@@ -46,12 +44,7 @@ void main() {
         appBuilder: (overlayBuilder) => MaterialApp(
           theme: theme,
           builder: overlayBuilder,
-          home: Scaffold(
-            body: PublishedSummaryPage(
-              store: store,
-              onOpenWeeklySummary: () => openedWeeklySummary = true,
-            ),
-          ),
+          home: Scaffold(body: PublishedSummaryPage(store: store)),
         ),
       ),
     );
@@ -66,8 +59,8 @@ void main() {
       findsOneWidget,
     );
     expect(find.byType(ReaderSummaryView), findsOneWidget);
-    await tester.tap(find.byKey(const ValueKey('open-weekly-summary')));
-    expect(openedWeeklySummary, isTrue);
+    expect(find.byKey(const ValueKey('open-weekly-summary')), findsNothing);
+    expect(find.text('Week'), findsOneWidget);
 
     await tester.drag(find.byType(CustomScrollView), const Offset(0, -1200));
     await tester.pumpAndSettle();
