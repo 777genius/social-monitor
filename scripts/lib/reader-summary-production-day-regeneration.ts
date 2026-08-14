@@ -293,8 +293,9 @@ function validateSourceAttempt(value: unknown, collectionDate: string): void {
   ) {
     throw new Error("Source production attempt is not a strict failed run");
   }
+  const steps = value.steps;
   for (const id of ["collect", "collection-quality"] as const) {
-    const matchingSteps = value.steps.filter(
+    const matchingSteps = steps.filter(
       (step) => isRecord(step) && step.id === id,
     );
     if (
@@ -305,7 +306,7 @@ function validateSourceAttempt(value: unknown, collectionDate: string): void {
       throw new Error(`Source production attempt did not pass ${id}`);
     }
   }
-  const migrationSteps = value.steps.filter(
+  const migrationSteps = steps.filter(
     (step) => isRecord(step) && step.id === "migrate",
   );
   if (
@@ -316,7 +317,7 @@ function validateSourceAttempt(value: unknown, collectionDate: string): void {
   ) {
     throw new Error("Source production attempt did not pass migrate");
   }
-  const summaryStep = value.steps.find(
+  const summaryStep = steps.find(
     (step) => isRecord(step) && step.id === "durable-reader-summary",
   );
   if (!isRecord(summaryStep) || summaryStep.status !== "failed") {
@@ -327,10 +328,10 @@ function validateSourceAttempt(value: unknown, collectionDate: string): void {
     ...(migrationSteps.length === 1 ? ["migrate"] : []),
   ];
   if (
-    value.steps.length !== expectedStepIds.length ||
+    steps.length !== expectedStepIds.length ||
     expectedStepIds.some(
       (id) =>
-        value.steps.filter((step) => isRecord(step) && step.id === id).length !==
+        steps.filter((step) => isRecord(step) && step.id === id).length !==
         1,
     )
   ) {
