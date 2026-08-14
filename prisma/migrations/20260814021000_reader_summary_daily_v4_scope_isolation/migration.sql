@@ -5,7 +5,13 @@
 BEGIN;
 
 SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+
 SET LOCAL ROLE "social_monitor_public_schema_owner";
+GRANT USAGE, CREATE ON SCHEMA public
+TO "social_monitor_reader_summary_publication_owner";
+RESET ROLE;
+
+SET LOCAL ROLE "social_monitor_reader_summary_publication_owner";
 
 CREATE OR REPLACE FUNCTION public."verify_reader_summary_daily_canonical_recovery_v4_provenance"(
   target_tenant_id UUID,
@@ -78,4 +84,9 @@ END;
 $validate_daily_v4_scope_isolation$;
 
 RESET ROLE;
+SET LOCAL ROLE "social_monitor_public_schema_owner";
+REVOKE CREATE ON SCHEMA public
+FROM "social_monitor_reader_summary_publication_owner";
+RESET ROLE;
+
 COMMIT;

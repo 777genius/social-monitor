@@ -6,6 +6,14 @@ const migration = readFileSync(resolve(
 ), "utf8");
 
 describe("Daily V4 recovery scope isolation", () => {
+  it("replaces the verifier through its owning publication role", () => {
+    expect(migration).toContain("GRANT USAGE, CREATE ON SCHEMA public");
+    expect(migration).toContain(
+      'SET LOCAL ROLE "social_monitor_reader_summary_publication_owner"',
+    );
+    expect(migration).toContain("REVOKE CREATE ON SCHEMA public");
+  });
+
   it("keeps the legacy recovery verifier on its reviewed scope", () => {
     expect(migration).toContain(
       "c_tenant_id CONSTANT UUID := '00000000-0000-7000-8000-000000000901'",
