@@ -310,9 +310,13 @@ grep -F 'npm run run:reader-summary-weekly-production; npm run run:reader-summar
   "$maintenance_lib" >/dev/null
 ! grep -F 'npm run backfill:reader-summary-weekly-daily-certifications' \
   "$maintenance_lib" >/dev/null
-grep -F -- '-e READER_SUMMARY_WEEKLY_PRODUCTION_TENANT_ID=00000000-0000-7000-8000-000000006101' \
+grep -F 'READER_SUMMARY_PRODUCTION_TENANT_ID=00000000-0000-7000-8000-000000006101' \
   "$maintenance_lib" >/dev/null
-grep -F -- '-e READER_SUMMARY_WEEKLY_PRODUCTION_WORKSPACE_ID=00000000-0000-7000-8000-000000006102' \
+grep -F -- '-e "READER_SUMMARY_WEEKLY_PRODUCTION_TENANT_ID=$READER_SUMMARY_PRODUCTION_TENANT_ID"' \
+  "$maintenance_lib" >/dev/null
+grep -F 'READER_SUMMARY_PRODUCTION_WORKSPACE_ID=00000000-0000-7000-8000-000000006102' \
+  "$maintenance_lib" >/dev/null
+grep -F -- '-e "READER_SUMMARY_WEEKLY_PRODUCTION_WORKSPACE_ID=$READER_SUMMARY_PRODUCTION_WORKSPACE_ID"' \
   "$maintenance_lib" >/dev/null
 grep -F -- '-e READER_SUMMARY_WEEKLY_PRODUCTION_FIRST_WEEK_START=2026-07-27' \
   "$maintenance_lib" >/dev/null
