@@ -1,5 +1,11 @@
 -- @social-monitor-forward-migration
 
+BEGIN;
+
+SET LOCAL ROLE "social_monitor_public_schema_owner";
+GRANT CREATE ON SCHEMA public
+TO "social_monitor_reader_summary_publication_owner";
+RESET ROLE;
 SET LOCAL ROLE "social_monitor_reader_summary_publication_owner";
 
 DO $migration$
@@ -56,3 +62,11 @@ $migration$;
 
 COMMENT ON FUNCTION "persist_reader_summary_weekly_artifact"(JSONB) IS
   'Atomically persists or exactly replays a certified weekly summary using review-selector citation proofs.';
+
+RESET ROLE;
+SET LOCAL ROLE "social_monitor_public_schema_owner";
+REVOKE CREATE ON SCHEMA public
+FROM "social_monitor_reader_summary_publication_owner";
+RESET ROLE;
+
+COMMIT;
