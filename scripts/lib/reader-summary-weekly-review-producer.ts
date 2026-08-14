@@ -108,14 +108,17 @@ export const runReaderSummaryWeeklyReviewProducer = async (
   if (result.structuredOutput === undefined) {
     throw new Error("Reader summary weekly review runtime did not return structured output");
   }
-  const selections = parseReaderSummaryWeeklyReviewResponse(result.structuredOutput);
+  const selections = parseReaderSummaryWeeklyReviewResponse(
+    result.structuredOutput,
+    authority.sealId,
+  );
   const normalizedResponse = Object.freeze({
     schemaVersion: readerSummaryWeeklyReviewResponseSchemaVersion,
     selections,
   });
   const modelResponseSha256 = canonicalizeReaderSummaryWeeklyJson(
-    normalizedResponse,
-    "weekly review model response",
+    result.structuredOutput,
+    "weekly review raw model response",
   ).sha256;
   await verifyAndRecordReaderSummaryExecution({
     command,

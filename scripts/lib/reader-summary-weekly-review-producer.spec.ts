@@ -102,6 +102,30 @@ describe("reader summary weekly review producer", () => {
     expect(store.persist).not.toHaveBeenCalled();
   });
 
+  it("binds an exact seal-bound observation envelope to its raw attested hash", async () => {
+    const source = authority();
+    const candidate = deriveReaderSummaryWeeklyReviewStoryCandidates(source)[0]!;
+    const structuredOutput = {
+      responseSchemaVersion: "reader_summary.weekly_review_response.v1",
+      sealId: source.sealId,
+      findings: [{
+        type: "observation",
+        story: candidate.story,
+        selector: candidate.citations[0]!.selector,
+      }],
+    };
+    const result = await runReaderSummaryWeeklyReviewProducer({
+      authorityLoader: { load: async () => source },
+      manifestStore: fakeStore(null),
+      agentRuntime: fakeRuntime(structuredOutput),
+    });
+
+    expect(result.manifest.modelResponseSha256).toBe(
+      canonicalJsonSha256(structuredOutput),
+    );
+    expect(result.manifest.observations).toHaveLength(1);
+  });
+
   it("preserves retryable subscription-runtime failures for the scheduler", async () => {
     const runtime = fakeRuntime();
     runtime.runTask.mockResolvedValue({
