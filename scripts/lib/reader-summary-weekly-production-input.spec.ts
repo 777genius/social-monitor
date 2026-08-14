@@ -94,6 +94,28 @@ describe("reader summary weekly production manifest input admission", () => {
     );
   });
 
+  it("binds historical evidence by publication day after delayed collection", () => {
+    const dbState = completeDbState();
+    const delayed = Object.freeze({
+      ...dbState,
+      certifications: Object.freeze(dbState.certifications.map((certification) =>
+        Object.freeze({
+          ...certification,
+          providerEvidence: Object.freeze(
+            certification.providerEvidence.map((evidence) => Object.freeze({
+              ...evidence,
+              observedAt: "2026-08-14T01:00:00.000Z",
+            })),
+          ),
+        }),
+      )),
+    });
+    const built = buildModelInputFromDbState(delayed, reviewManifestFor(delayed));
+
+    if (built.status !== "complete") throw new Error(built.reasons.join("; "));
+    expect(built.input.citations).toHaveLength(14);
+  });
+
   it("allows only the review manifest's after selector to carry evolution", () => {
     const dbState = completeDbState();
     const candidate = durableStoryCandidate(dbState);
