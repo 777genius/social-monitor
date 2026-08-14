@@ -111,15 +111,17 @@ const normalizeLegacyWeeklyModelOutput = (
       `legacy weekly output section ${index + 1} citations`,
     );
     return {
-      sectionId: section.sectionId,
-      storyId: section.storyId,
-      kind: normalizeLegacySectionKind(section.kind),
-      claimType: section.claimType,
-      heading: section.headline,
-      text: section.synthesis,
-      observedFrom: section.observedFrom,
-      observedThrough: section.observedThrough,
-      citationIds: [...citationIds],
+      section: {
+        sectionId: section.sectionId,
+        storyId: section.storyId,
+        kind: normalizeLegacySectionKind(section.kind),
+        claimType: section.claimType,
+        heading: section.headline,
+        text: section.synthesis,
+        observedFrom: section.observedFrom,
+        observedThrough: section.observedThrough,
+        citationIds: [...citationIds],
+      },
       story: {
         storyId: section.storyId,
         headline: section.headline,
@@ -148,7 +150,7 @@ const normalizeLegacyWeeklyModelOutput = (
     synthesis: value.synthesis,
     synthesisCitationIds: [...rootCitationIds],
     stories: sections.map((section) => section.story),
-    sections: sections.map(({ story: _story, ...section }) => section),
+    sections: sections.map((section) => section.section),
   };
 };
 
