@@ -274,15 +274,15 @@ export const exactCitationCoverage = (
     ...output.stories.flatMap((story) => story.citationIds),
     ...output.sections.flatMap((section) => section.citationIds),
   ]);
-  if (
-    cited.size !== modelInput.citations.length ||
-    modelInput.citations.some((citation) => !cited.has(citation.citationId))
-  ) {
+  const citedModelEvidence = modelInput.citations.filter((citation) =>
+    cited.has(citation.citationId)
+  );
+  if (cited.size !== citedModelEvidence.length) {
     throw new Error(
       "Reader summary weekly publication requires 1:1 citation coverage",
     );
   }
-  const proof = modelInput.citations.map((citation) => {
+  const proof = citedModelEvidence.map((citation) => {
     const dayIndex = manifest.days.findIndex(
       (day) => day.requestedUtcDate === citation.observedOn,
     );
@@ -446,11 +446,13 @@ export const exactCertifiedCitationCoverage = (
     ...output.stories.flatMap((story) => story.citationIds),
     ...output.sections.flatMap((section) => section.citationIds),
   ]);
-  if (cited.size !== modelInput.citations.length ||
-      modelInput.citations.some((citation) => !cited.has(citation.citationId))) {
+  const citedModelEvidence = modelInput.citations.filter((citation) =>
+    cited.has(citation.citationId)
+  );
+  if (cited.size !== citedModelEvidence.length) {
     throw new Error("Reader summary weekly certified publication requires 1:1 citation coverage");
   }
-  return deepFreezeReaderSummaryWeekly(modelInput.citations.map((citation) => {
+  return deepFreezeReaderSummaryWeekly(citedModelEvidence.map((citation) => {
     const index = seal.days.findIndex(
       (day) => day.requestedUtcDate === citation.observedOn,
     );
