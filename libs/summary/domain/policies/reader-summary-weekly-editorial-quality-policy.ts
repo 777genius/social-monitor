@@ -140,12 +140,27 @@ export const evaluateReaderSummaryWeeklyEditorialQuality = (
   const inputHasCrossDayStory = [...inputStoryDays.values()].some(
     (days) => days.size >= 2,
   );
+  const inputProviders = new Set(
+    input.citations.map((citation) => citation.providerKey),
+  );
+  const singleProviderSnapshotFallback =
+    !inputHasCrossDayStory &&
+    inputProviders.size === 1 &&
+    synthesisProviderCounts.size === 1 &&
+    synthesisDayCounts.size >= 3 &&
+    dominanceIsControlled(synthesisDayCounts) &&
+    output.sections.every((section) => section.claimType === "snapshot") &&
+    output.stories.every((story) =>
+      story.status === "new" || story.status === "watch",
+    );
   const thematicFallbackIsGrounded =
     !inputHasCrossDayStory &&
-    synthesisProviderCounts.size >= 2 &&
     synthesisDayCounts.size >= 3 &&
-    dominanceIsControlled(synthesisProviderCounts) &&
-    dominanceIsControlled(synthesisDayCounts);
+    dominanceIsControlled(synthesisDayCounts) &&
+    (singleProviderSnapshotFallback || (
+      synthesisProviderCounts.size >= 2 &&
+      dominanceIsControlled(synthesisProviderCounts)
+    ));
   const dominantDayCitationShare = dominantShare(
     dayCounts,
     resolvedCitations.length,
@@ -202,16 +217,18 @@ export const evaluateReaderSummaryWeeklyEditorialQuality = (
       storySynthesis.synthesizedCrossDayStoryCount > 0 ||
       thematicFallbackIsGrounded,
     factualContentIsCited,
-    citationsSpanMultipleProviders: providerCounts.size >= 2,
+    citationsSpanMultipleProviders:
+      providerCounts.size >= 2 || singleProviderSnapshotFallback,
     citationsSpanAtLeastThreeDays: dayCounts.size >= 3,
-    providerDominanceIsControlled: dominanceIsControlled(providerCounts),
+    providerDominanceIsControlled:
+      dominanceIsControlled(providerCounts) || singleProviderSnapshotFallback,
     dayDominanceIsControlled: dominanceIsControlled(dayCounts),
     synthesisCitationsSpanMultipleProviders:
-      synthesisProviderCounts.size >= 2,
+      synthesisProviderCounts.size >= 2 || singleProviderSnapshotFallback,
     synthesisCitationsSpanAtLeastThreeDays: synthesisDayCounts.size >= 3,
     synthesisProviderDominanceIsControlled: dominanceIsControlled(
       synthesisProviderCounts,
-    ),
+    ) || singleProviderSnapshotFallback,
     synthesisDayDominanceIsControlled:
       dominanceIsControlled(synthesisDayCounts),
     weeklySynthesisIsCoherent:
@@ -285,6 +302,9 @@ export const evaluateReaderSummaryWeeklyEditorialQuality = (
       ? []
       : ["Weekly editorial output contains model or process prose"]),
     ...claimIssues,
+    ...(singleProviderSnapshotFallback
+      ? ["Weekly summary uses sealed single-provider snapshot fallback"]
+      : []),
   ];
   const blockingPassed = Object.values(qualityGates).every(Boolean);
 

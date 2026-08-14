@@ -282,6 +282,36 @@ describe("reader summary weekly editorial quality policy", () => {
     });
   });
 
+  it("allows an explicit sealed single-provider snapshot fallback", () => {
+    const input = weeklyInput({
+      providers: ["rss", "rss", "rss", "rss"],
+      storyIds: [
+        "story:alpha",
+        "story:beta",
+        "story:gamma",
+        "story:delta",
+      ],
+    });
+    const result = evaluateReaderSummaryWeeklyEditorialQuality(
+      input,
+      thematicWeeklyOutput(input),
+    );
+
+    expect(result).toMatchObject({
+      publicationDecision: "allow",
+      blockingPassed: true,
+      metrics: { citedDayCount: 4, citedProviderCount: 1 },
+      qualityGates: {
+        weeklySynthesisModeIsGrounded: true,
+        synthesisCitationsSpanMultipleProviders: true,
+        synthesisCitationsSpanAtLeastThreeDays: true,
+      },
+    });
+    expect(result.issues).toEqual([
+      "Weekly summary uses sealed single-provider snapshot fallback",
+    ]);
+  });
+
   it("rejects duplicate same-story same-day observations", () => {
     const input = weeklyInput({ dayIndexes: [0, 0, 4, 6] });
     const result = evaluateReaderSummaryWeeklyEditorialQuality(

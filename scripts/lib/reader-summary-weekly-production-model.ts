@@ -88,7 +88,10 @@ export class AgentRuntimeReaderSummaryWeeklyTextModel
       input.tenantId,
       input.workspaceId,
       input.weekStartedOn,
-      createHash("sha256").update(input.sealSha).digest("hex").slice(0, 24),
+      createHash("sha256")
+        .update(`${input.sealSha}:${currentReaderSummaryWeeklyPromptRelease.id}`)
+        .digest("hex")
+        .slice(0, 24),
     ].join(":");
     return {
       requestId,
