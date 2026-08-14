@@ -22,6 +22,8 @@ export const readerSummaryWeeklyReviewInstructions = [
   "Use observation for a supported finding; evolution requires before and after selectors on different dates; resolution requires a terminal selector.",
 ].join("\n");
 
+export const readerSummaryWeeklyReviewPromptCandidateLimit = 256;
+
 export const buildReaderSummaryWeeklyReviewPrompt = (params: Readonly<{
   authority: ReaderSummaryWeeklyReviewAuthority;
   candidates: readonly ReaderSummaryWeeklyReviewStoryCandidate[];
@@ -38,7 +40,9 @@ export const buildReaderSummaryWeeklyReviewPrompt = (params: Readonly<{
     scope: params.authority.scope,
     weekStartedOn: params.authority.weekStartedOn,
     weekEndedOn: params.authority.weekEndedOn,
-    candidates: params.candidates.map((candidate) => ({
+    candidates: params.candidates
+      .slice(0, readerSummaryWeeklyReviewPromptCandidateLimit)
+      .map((candidate) => ({
       story: candidate.story,
       citations: candidate.citations.map((citation) => ({
         selector: citation.selector,
@@ -47,7 +51,7 @@ export const buildReaderSummaryWeeklyReviewPrompt = (params: Readonly<{
         title: citation.title,
         sourceText: citation.sourceText,
       })),
-    })),
+      })),
   });
   return deepFreezeReaderSummaryWeekly({
     systemPrompt: readerSummaryWeeklyReviewInstructions,
