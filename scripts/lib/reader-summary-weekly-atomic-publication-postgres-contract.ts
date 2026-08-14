@@ -7,7 +7,7 @@ import {
   assertPostgresRejectsContaining as assertRejectsContaining,
 } from "./reader-summary-publication-postgres-assertions";
 import { readerSummaryPublicationFixtureScope } from "./reader-summary-publication-postgres-fixture-scope";
-
+import { weeklyAtomicCitationSelector } from "./reader-summary-weekly-atomic-citation-selector";
 type WeeklyCertificationSeal = Readonly<{
   seal_id: string; seal_sha256: string;
   canonical_record: Readonly<{
@@ -373,7 +373,7 @@ const citationFromEvidenceRow = (
   row: WeeklyDailyEvidenceRow,
   provider: Readonly<Record<string, unknown>>,
 ): Readonly<Record<string, unknown>> => ({
-  citationId: provider.citationId,
+  citationId: weeklyAtomicCitationSelector(row, provider),
   requestedUtcDate: row.requested_utc_date,
   publicationId: row.publication_id,
   publicationEvidenceIdentity: row.publication_identity,
