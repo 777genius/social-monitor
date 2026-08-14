@@ -18,6 +18,70 @@ deploy_control_git_blob_digest() {
   git -C "$REPO" show "$sha:$path" | sha256sum | awk '{print $1}'
 }
 
+# Focused tests replace the mutable worktree after the reviewed blob is staged.
+deploy_control_after_reviewed_library_stage() { :; }
+DEPLOY_CONTROL_REVIEWED_LIBRARY_FD=18
+
+source_reviewed_deploy_library() {
+  local sha=$1 relative_path=$2 label=$3 tree_entry mode type object tree_path
+  local expected_digest staging_directory staged_path staged_digest library_fd
+  [[ $sha =~ ^[0-9a-f]{40}$ && -d $STATE && ! -L $STATE ]] || \
+    fail "$label staging prerequisites are invalid"
+  tree_entry=$(git -C "$REPO" ls-tree "$sha" -- "$relative_path") || \
+    fail "$label cannot be inspected at reviewed commit"
+  read -r mode type object tree_path <<< "$tree_entry"
+  [[ ($mode == 100644 || $mode == 100755) && $type == blob && \
+     $object =~ ^[0-9a-f]+$ && $tree_path == "$relative_path" ]] || \
+    fail "$label is not a regular blob at reviewed commit"
+  expected_digest=$(deploy_control_git_blob_digest "$sha" "$relative_path") || \
+    fail "$label digest cannot be read at reviewed commit"
+  staging_directory=$(mktemp -d "$STATE/reviewed-library.XXXXXX") || \
+    fail "$label staging directory cannot be created"
+  chmod 0700 "$staging_directory" || {
+    rmdir "$staging_directory"
+    fail "$label staging directory cannot be sealed"
+  }
+  staged_path=$staging_directory/library.sh
+  if ! git -C "$REPO" show "$sha:$relative_path" > "$staged_path"; then
+    rm -f "$staged_path"; rmdir "$staging_directory"
+    fail "$label reviewed blob cannot be staged"
+  fi
+  chmod 0400 "$staged_path" || {
+    rm -f "$staged_path"; rmdir "$staging_directory"
+    fail "$label staged blob cannot be sealed"
+  }
+  staged_digest=$(deploy_control_file_digest "$staged_path") || {
+    rm -f "$staged_path"; rmdir "$staging_directory"
+    fail "$label staged digest cannot be read"
+  }
+  [[ $staged_digest == "$expected_digest" ]] || {
+    rm -f "$staged_path"; rmdir "$staging_directory"
+    fail "$label staged digest differs from reviewed blob"
+  }
+  library_fd=$((DEPLOY_CONTROL_REVIEWED_LIBRARY_FD + 1))
+  DEPLOY_CONTROL_REVIEWED_LIBRARY_FD=$library_fd
+  eval "exec ${library_fd}<\"\$staged_path\"" || {
+    DEPLOY_CONTROL_REVIEWED_LIBRARY_FD=$((library_fd - 1))
+    rm -f "$staged_path"; rmdir "$staging_directory"
+    fail "$label staged inode cannot be opened"
+  }
+  rm -f "$staged_path"
+  rmdir "$staging_directory"
+  deploy_control_after_reviewed_library_stage "$relative_path" || {
+    eval "exec ${library_fd}<&-"
+    DEPLOY_CONTROL_REVIEWED_LIBRARY_FD=$((library_fd - 1))
+    fail "$label post-stage validation failed"
+  }
+  # shellcheck source=/dev/null
+  source "/dev/fd/$library_fd" || {
+    eval "exec ${library_fd}<&-"
+    DEPLOY_CONTROL_REVIEWED_LIBRARY_FD=$((library_fd - 1))
+    fail "$label reviewed blob could not be sourced"
+  }
+  eval "exec ${library_fd}<&-"
+  DEPLOY_CONTROL_REVIEWED_LIBRARY_FD=$((library_fd - 1))
+}
+
 DEPLOY_CONTROL_BRIDGE_LIBRARY_LOADED=false
 
 load_deploy_control_bridge_library() {

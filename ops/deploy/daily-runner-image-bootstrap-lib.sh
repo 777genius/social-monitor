@@ -211,16 +211,18 @@ daily_runner_bootstrap_verify_control_dockerfile() {
 
 daily_runner_bootstrap_verify_legacy_base_image() {
   local base_id=$1
+  local base_service=$2
   local deployment_project=${PROJECT:-}
   local container_id record
   local inspected_id image_id status running paused restarting dead oom_killed
   local error restart_count project service compose_image oneoff container_number extra
 
   [[ $base_id =~ ^sha256:[0-9a-f]{64}$ && \
-     $deployment_project == social-monitor-prod ]] || return 1
+     $deployment_project == social-monitor-prod && \
+     $base_service =~ ^(intelligence-worker|api)$ ]] || return 1
   container_id=$(docker container ls --no-trunc \
     --filter "label=com.docker.compose.project=$deployment_project" \
-    --filter 'label=com.docker.compose.service=intelligence-worker' \
+    --filter "label=com.docker.compose.service=$base_service" \
     --format '{{.ID}}' 2>/dev/null) || return 1
   [[ $container_id =~ ^[0-9a-f]{64}$ ]] || return 1
   record=$(docker inspect "$container_id" --format \
@@ -235,21 +237,34 @@ daily_runner_bootstrap_verify_legacy_base_image() {
      $status == running && $running == true && \
      $paused == false && $restarting == false && $dead == false && \
      $oom_killed == false && -z $error && $restart_count == 0 && \
-     $project == "$deployment_project" && $service == intelligence-worker && \
+     $project == "$deployment_project" && $service == "$base_service" && \
      $compose_image == "$image_id" && $oneoff == False && \
      $container_number == 1 && -z $extra ]]
 }
 
 daily_runner_bootstrap_base_image_id() {
   local previous_sha=$1
-  local base_tag identity image_id revision extra config
+  local validation_mode=${2:-initial}
+  local base_tag fallback_tag base_service=intelligence-worker
+  local identity image_id revision extra config
 
+  [[ $validation_mode == initial || $validation_mode == revalidate ]] || \
+    fail 'daily-runner base image validation mode is unexpected'
   base_tag=$(compose_image_name intelligence-worker)
   [[ $base_tag == social-monitor-prod-intelligence-worker:latest ]] || \
     fail 'daily-runner bootstrap base tag is unexpected'
-  identity=$(docker image inspect "$base_tag" --format \
+  fallback_tag=$(compose_image_name api)
+  [[ $fallback_tag == social-monitor-prod-api:latest ]] || \
+    fail 'daily-runner bootstrap fallback base tag is unexpected'
+  if ! identity=$(docker image inspect "$base_tag" --format \
     '{{.Id}}|{{with index .Config.Labels "org.opencontainers.image.revision"}}{{.}}{{end}}' \
-    2>/dev/null) || fail 'daily-runner base image identity cannot be inspected'
+  2>/dev/null); then
+    base_tag=$fallback_tag
+    base_service=api
+    identity=$(docker image inspect "$base_tag" --format \
+      '{{.Id}}|{{with index .Config.Labels "org.opencontainers.image.revision"}}{{.}}{{end}}' \
+      2>/dev/null) || fail 'daily-runner base image identity cannot be inspected'
+  fi
   [[ $identity != *$'\n'* ]] || \
     fail 'daily-runner base image identity is ambiguous'
   IFS='|' read -r image_id revision extra <<< "$identity"
@@ -259,8 +274,9 @@ daily_runner_bootstrap_base_image_id() {
     :
   elif [[ -n $revision ]]; then
     fail 'daily-runner base image identity or revision is unexpected'
-  else
-    daily_runner_bootstrap_verify_legacy_base_image "$image_id" || \
+  elif [[ $validation_mode == initial ]]; then
+    daily_runner_bootstrap_verify_legacy_base_image \
+      "$image_id" "$base_service" || \
       fail 'daily-runner unlabelled base image is not runtime-stable'
   fi
   config=$(backend_image_rescue_image_config "$image_id") || \
@@ -357,8 +373,10 @@ daily_runner_image_bootstrap_before_rescue() (
   local compose_tag state_file partial phase manifest_target
   local dockerfile_digest dockerfile_digest_after base_id base_id_after
   local workdir='' archive='' context='' temporary_tag='' candidate_id=''
+  local base_alias_tag=''
   local identity config singleton_fd revision extra
   local compose_created=false completed=false temporary_owned=false
+  local base_alias_created=false
 
   compose_tag=$(compose_image_name daily-runner)
   if backend_image_rescue_image_id "$compose_tag" >/dev/null; then
@@ -413,6 +431,10 @@ daily_runner_image_bootstrap_before_rescue() (
       daily_runner_bootstrap_remove_tag \
         "$temporary_tag" "$candidate_id" || cleanup_status=1
     fi
+    if [[ $base_alias_created == true ]]; then
+      daily_runner_bootstrap_remove_tag \
+        "$base_alias_tag" "$base_id" || cleanup_status=1
+    fi
     daily_runner_bootstrap_remove_workdir \
       "$workdir" "$previous_sha" || cleanup_status=1
     if ((cleanup_status != 0)); then
@@ -445,6 +467,16 @@ daily_runner_image_bootstrap_before_rescue() (
     fail 'daily-runner Dockerfile could not be validated'
   base_id=$(daily_runner_bootstrap_base_image_id "$previous_sha") || \
     fail 'daily-runner base image could not be validated'
+  base_alias_tag=$(compose_image_name intelligence-worker)
+  [[ $base_alias_tag == social-monitor-prod-intelligence-worker:latest ]] || \
+    fail 'daily-runner build base alias is unexpected'
+  if ! backend_image_rescue_image_id "$base_alias_tag" >/dev/null; then
+    docker image tag "$base_id" "$base_alias_tag" >/dev/null || \
+      fail 'daily-runner build base alias could not be created'
+    base_alias_created=true
+    [[ $(backend_image_rescue_image_id "$base_alias_tag") == "$base_id" ]] || \
+      fail 'daily-runner build base alias identity is unexpected'
+  fi
   daily_runner_bootstrap_create_archive "$previous_sha" "$archive" || \
     fail 'historical daily-runner archive could not be created'
   chmod 0600 "$archive" || fail 'historical daily-runner archive mode failed'
@@ -470,9 +502,15 @@ daily_runner_image_bootstrap_before_rescue() (
     fail 'historical daily-runner image config cannot be inspected'
   [[ $config == "$DAILY_RUNNER_BOOTSTRAP_IMAGE_CONFIG" ]] || \
     fail 'historical daily-runner image config is unexpected'
+  if [[ $base_alias_created == true ]]; then
+    daily_runner_bootstrap_remove_tag "$base_alias_tag" "$base_id" || \
+      fail 'daily-runner build base alias cleanup failed'
+    base_alias_created=false
+  fi
 
   daily_runner_bootstrap_verify_release "$previous_sha" "$target_sha"
-  base_id_after=$(daily_runner_bootstrap_base_image_id "$previous_sha") || \
+  base_id_after=$(daily_runner_bootstrap_base_image_id \
+    "$previous_sha" revalidate) || \
     fail 'daily-runner base image could not be revalidated'
   [[ $base_id_after == "$base_id" ]] || \
     fail 'daily-runner base image identity changed during historical build'

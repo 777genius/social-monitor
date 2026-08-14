@@ -219,6 +219,9 @@ CURRENT_ENTRYPOINT_SOURCE_CLOSURE=(
   ops/deploy/deploy-control-lib.sh
   ops/deploy/deploy-control-bridge-lib.sh
   ops/deploy/postgres-runtime-deploy-lib.sh
+  ops/deploy/postgres-runtime-weekly-timer-state-lib.sh
+  ops/deploy/postgres-runtime-daily-c1-readiness-lib.sh
+  ops/deploy/postgres-runtime-activation-boundary-lib.sh
   ops/deploy/backend-runtime-health-lib.sh
   ops/deploy/backend-image-rescue-lib.sh
   ops/deploy/docker-maintenance-lib.sh
@@ -382,6 +385,9 @@ A_CONTROLLER="$TRANSITION_CONTROL/github-production-deploy.sh" \
       ops/deploy/deploy-control-lib.sh
       ops/deploy/deploy-control-bridge-lib.sh
       ops/deploy/postgres-runtime-deploy-lib.sh
+      ops/deploy/postgres-runtime-weekly-timer-state-lib.sh
+      ops/deploy/postgres-runtime-daily-c1-readiness-lib.sh
+      ops/deploy/postgres-runtime-activation-boundary-lib.sh
       ops/deploy/backend-runtime-health-lib.sh
       ops/deploy/backend-image-rescue-lib.sh
       ops/deploy/docker-maintenance-lib.sh
