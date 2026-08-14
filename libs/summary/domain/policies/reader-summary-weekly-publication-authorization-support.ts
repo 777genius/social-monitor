@@ -9,6 +9,7 @@ import type {
 } from "../value-objects/reader-summary-weekly-certification-seal";
 import type { ReaderSummaryWeeklySealedInputManifest } from "../value-objects/reader-summary-weekly-input-manifest";
 import { readerSummaryWeeklyPublicationGitHubEvidenceSchemaVersion } from "../value-objects/reader-summary-weekly-publication-github-evidence";
+import { readerSummaryWeeklyHistoricalGitHubAuthorizationIdentity } from "../value-objects/reader-summary-weekly-input-manifest-canonical";
 import { deriveReaderSummaryWeeklyReviewCitationSelector } from "../value-objects/reader-summary-weekly-review-manifest";
 import {
   canonicalizeReaderSummaryWeeklyJson,
@@ -414,7 +415,7 @@ export const exactCertifiedAuthorities = (
       modelDay.githubBoardSha !== authority.githubEvidenceSha256 ||
       modelDay.githubBoardId !==
         `${readerSummaryWeeklyPublicationGitHubEvidenceSchemaVersion}:${authority.githubEvidenceSha256}` ||
-      modelDay.githubBoardStatus !== "verified" ||
+      !certifiedGitHubAuthorityMatches(modelDay) ||
       canonicalizeReaderSummaryWeeklyJson(providerCounts).json !==
         canonicalizeReaderSummaryWeeklyJson(modelDay.providerCounts).json
     ) {
@@ -426,6 +427,13 @@ export const exactCertifiedAuthorities = (
   });
   return deepFreezeReaderSummaryWeekly(ordered);
 };
+const certifiedGitHubAuthorityMatches = (
+  day: ReaderSummaryWeeklyArtifactProps["input"]["days"][number],
+): boolean =>
+  day.githubBoardStatus === "verified" ||
+  (day.githubBoardStatus === "historical_unavailable" &&
+    day.githubAuthorizationIdentity ===
+      readerSummaryWeeklyHistoricalGitHubAuthorizationIdentity);
 export const exactCertifiedCitationCoverage = (
   modelInput: ReaderSummaryWeeklyArtifactProps["input"],
   output: ReaderSummaryWeeklyArtifactSnapshot["output"],
