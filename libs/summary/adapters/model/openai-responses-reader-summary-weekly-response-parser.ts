@@ -59,6 +59,19 @@ const legacyOutputKeys = [
   "citationIds",
   "sections",
 ] as const;
+const expandedLegacyOutputKeys = [
+  "schemaVersion", "sealId", "sealSha", "weekStartedOn", "weekEndedOn",
+  "headline", "takeaway", "synthesis", "claimType", "citationIds",
+  "observedFrom", "observedThrough", "stories", "sections",
+] as const;
+const expandedLegacyStoryKeys = [
+  "storyId", "headline", "synthesis", "status", "claimType",
+  "citationIds", "observedFrom", "observedThrough",
+] as const;
+const expandedLegacySectionKeys = [
+  "sectionId", "kind", "storyId", "headline", "synthesis", "claimType",
+  "citationIds", "observedFrom", "observedThrough",
+] as const;
 
 const legacySectionKeys = [
   "sectionId",
@@ -78,6 +91,9 @@ const normalizeLegacyWeeklyModelOutput = (
   input: ReaderSummaryWeeklyModelInput,
   value: unknown,
 ): unknown => {
+  if (hasExactKeys(value, expandedLegacyOutputKeys)) {
+    return normalizeExpandedLegacyWeeklyModelOutput(input, value);
+  }
   if (!hasExactKeys(value, legacyOutputKeys)) {
     return value;
   }
@@ -153,6 +169,119 @@ const normalizeLegacyWeeklyModelOutput = (
     sections: sections.map((section) => section.section),
   };
 };
+
+const normalizeExpandedLegacyWeeklyModelOutput = (
+  input: ReaderSummaryWeeklyModelInput,
+  value: Record<(typeof expandedLegacyOutputKeys)[number], unknown>,
+): unknown => {
+  if (!Array.isArray(value.stories) || !Array.isArray(value.sections)) {
+    throw new Error("Expanded legacy weekly stories and sections must be arrays");
+  }
+  const rootCitationIds = exactLegacyCitationRange(
+    input,
+    value,
+    "expanded legacy weekly output",
+  );
+  exactLegacyClaimType(value.claimType, "expanded legacy weekly output");
+  const stories = value.stories.map((story, index) => {
+    if (!hasExactKeys(story, expandedLegacyStoryKeys)) {
+      throw new Error(
+        `Expanded legacy weekly story ${index + 1} must contain exactly the supported fields`,
+      );
+    }
+    const citationIds = exactLegacyCitationRange(
+      input,
+      story,
+      `expanded legacy weekly story ${index + 1}`,
+    );
+    exactLegacyClaimType(
+      story.claimType,
+      `expanded legacy weekly story ${index + 1}`,
+    );
+    return {
+      storyId: story.storyId,
+      headline: story.headline,
+      summary: story.synthesis,
+      status: normalizeExpandedLegacyStoryStatus(story.status),
+      observedFrom: story.observedFrom,
+      observedThrough: story.observedThrough,
+      citationIds,
+    };
+  });
+  const sections = value.sections.map((section, index) => {
+    if (!hasExactKeys(section, expandedLegacySectionKeys)) {
+      throw new Error(
+        `Expanded legacy weekly section ${index + 1} must contain exactly the supported fields`,
+      );
+    }
+    const citationIds = exactLegacyCitationRange(
+      input,
+      section,
+      `expanded legacy weekly section ${index + 1}`,
+    );
+    return {
+      sectionId: section.sectionId,
+      storyId: section.storyId,
+      kind: normalizeExpandedLegacySectionKind(section.kind),
+      claimType: exactLegacyClaimType(
+        section.claimType,
+        `expanded legacy weekly section ${index + 1}`,
+      ),
+      heading: section.headline,
+      text: section.synthesis,
+      observedFrom: section.observedFrom,
+      observedThrough: section.observedThrough,
+      citationIds,
+    };
+  });
+  return {
+    schemaVersion: value.schemaVersion,
+    sealId: value.sealId,
+    sealSha: value.sealSha,
+    weekStartedOn: value.weekStartedOn,
+    weekEndedOn: value.weekEndedOn,
+    headline: value.headline,
+    headlineCitationIds: [...rootCitationIds],
+    takeaway: value.takeaway,
+    takeawayCitationIds: [...rootCitationIds],
+    synthesis: value.synthesis,
+    synthesisCitationIds: [...rootCitationIds],
+    stories,
+    sections,
+  };
+};
+
+const exactLegacyCitationRange = (
+  input: ReaderSummaryWeeklyModelInput,
+  value: Readonly<Record<string, unknown>>,
+  label: string,
+): string[] => {
+  if (!Array.isArray(value.citationIds)) {
+    throw new Error(`${label} citations must be an array`);
+  }
+  const citationIds = exactStringArray(value.citationIds, `${label} citations`);
+  const range = citedRange(input, citationIds);
+  if (
+    value.observedFrom !== range.observedFrom ||
+    value.observedThrough !== range.observedThrough
+  ) {
+    throw new Error(`${label} fabricates chronology`);
+  }
+  return citationIds;
+};
+
+const exactLegacyClaimType = (value: unknown, label: string): string => {
+  if (value !== "snapshot" && value !== "evolution" && value !== "resolution") {
+    throw new Error(`${label} claim type is invalid`);
+  }
+  return value;
+};
+
+const normalizeExpandedLegacyStoryStatus = (value: unknown): unknown =>
+  value === "snapshot" ? "new" : normalizeLegacyStoryStatus(value);
+
+const normalizeExpandedLegacySectionKind = (value: unknown): unknown =>
+  value === "story" ? "development" : normalizeLegacySectionKind(value);
 
 const hasExactKeys = <const Keys extends readonly string[]>(
   value: unknown,

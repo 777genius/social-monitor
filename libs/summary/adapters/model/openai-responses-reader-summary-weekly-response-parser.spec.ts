@@ -76,6 +76,31 @@ describe("OpenAI reader summary weekly response parser", () => {
     ).toThrow("exactly");
   });
 
+  it("normalizes the exact expanded legacy weekly envelope", () => {
+    const input = weeklyInput();
+    const current = weeklyOutput(input);
+    const expanded = expandedLegacyWeeklyOutput(input, current);
+
+    const parsed = parseOpenAiReaderSummaryWeeklyValue(input, expanded);
+
+    expect(parsed).toMatchObject({
+      headline: current.headline,
+      headlineCitationIds: current.headlineCitationIds,
+      stories: [
+        { storyId: "story:alpha", status: "new" },
+        { storyId: "story:beta", status: "new" },
+      ],
+      sections: [
+        { storyId: "story:alpha", kind: "lead" },
+        { storyId: "story:beta", kind: "development" },
+      ],
+    });
+    expect(() => parseOpenAiReaderSummaryWeeklyValue(input, {
+      ...expanded,
+      observedThrough: dates[5],
+    })).toThrow("fabricates chronology");
+  });
+
   it("rejects malformed JSON, non-finite numbers and non-dense arrays", () => {
     const input = weeklyInput();
     const raw = JSON.stringify(weeklyOutput(input));
@@ -499,6 +524,45 @@ const legacyWeeklyOutput = (
     takeaway: output.stories[index]!.summary,
     synthesis: section.text,
     citationIds: [...section.citationIds],
+  })),
+});
+
+const expandedLegacyWeeklyOutput = (
+  input: ReaderSummaryWeeklyModelInput,
+  output: ReaderSummaryWeeklyModelOutput,
+) => ({
+  schemaVersion: output.schemaVersion,
+  sealId: output.sealId,
+  sealSha: output.sealSha,
+  weekStartedOn: output.weekStartedOn,
+  weekEndedOn: output.weekEndedOn,
+  headline: output.headline,
+  takeaway: output.takeaway,
+  synthesis: output.synthesis,
+  claimType: "snapshot",
+  citationIds: [...output.headlineCitationIds],
+  observedFrom: input.citations[0]!.observedOn,
+  observedThrough: input.citations[3]!.observedOn,
+  stories: output.stories.map((story) => ({
+    storyId: story.storyId,
+    headline: story.headline,
+    synthesis: story.summary,
+    status: "snapshot",
+    claimType: "snapshot",
+    citationIds: [...story.citationIds],
+    observedFrom: story.observedFrom,
+    observedThrough: story.observedThrough,
+  })),
+  sections: output.sections.map((section, index) => ({
+    sectionId: section.sectionId,
+    kind: index === 0 ? section.kind : "story",
+    storyId: section.storyId,
+    headline: section.heading,
+    synthesis: section.text,
+    claimType: section.claimType,
+    citationIds: [...section.citationIds],
+    observedFrom: section.observedFrom,
+    observedThrough: section.observedThrough,
   })),
 });
 
