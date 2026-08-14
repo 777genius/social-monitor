@@ -31,7 +31,7 @@ export type ReaderSummaryWeeklyEditorialQualityGates = Readonly<{
   exactlyOneLeadSection: boolean;
   stableStoryIdentityIsUsed: boolean;
   sameDayStoryObservationsAreUnique: boolean;
-  crossDayStoryIsSynthesized: boolean;
+  weeklySynthesisModeIsGrounded: boolean;
   factualContentIsCited: boolean;
   citationsSpanMultipleProviders: boolean;
   citationsSpanAtLeastThreeDays: boolean;
@@ -196,7 +196,7 @@ export const evaluateReaderSummaryWeeklyEditorialQuality = (
     stableStoryIdentityIsUsed: storySynthesis.stableStoryIdentityIsUsed,
     sameDayStoryObservationsAreUnique:
       storySynthesis.sameDayStoryObservationsAreUnique,
-    crossDayStoryIsSynthesized:
+    weeklySynthesisModeIsGrounded:
       storySynthesis.synthesizedCrossDayStoryCount > 0 ||
       thematicFallbackIsGrounded,
     factualContentIsCited,
@@ -232,7 +232,7 @@ export const evaluateReaderSummaryWeeklyEditorialQuality = (
     ...(qualityGates.sameDayStoryObservationsAreUnique
       ? []
       : ["Weekly evidence contains duplicate same-story same-day observations"]),
-    ...(qualityGates.crossDayStoryIsSynthesized
+    ...(qualityGates.weeklySynthesisModeIsGrounded
       ? []
       : [
           "Weekly lead and synthesis must carry one stable story across multiple days",

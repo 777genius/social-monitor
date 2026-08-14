@@ -244,7 +244,7 @@ describe("reader summary weekly editorial quality policy", () => {
 
     const result = evaluateReaderSummaryWeeklyEditorialQuality(input, output);
 
-    expect(result.qualityGates.crossDayStoryIsSynthesized).toBe(false);
+    expect(result.qualityGates.weeklySynthesisModeIsGrounded).toBe(false);
     expect(result.metrics.crossDayStoryCount).toBe(0);
     expect(result.issues).toContain(
       "Weekly lead and synthesis must carry one stable story across multiple days",
@@ -275,7 +275,7 @@ describe("reader summary weekly editorial quality policy", () => {
         citedProviderCount: 4,
       },
       qualityGates: {
-        crossDayStoryIsSynthesized: true,
+        weeklySynthesisModeIsGrounded: true,
         synthesisCitationsSpanMultipleProviders: true,
         synthesisCitationsSpanAtLeastThreeDays: true,
       },
