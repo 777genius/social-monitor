@@ -191,8 +191,8 @@ describe("production-day execution request", () => {
     expect(source).toContain(
       "collectionArtifactSha256: requiredEnv(collectionArtifactSha256Env)",
     );
-    expect(source).toContain(
-      "collectionQualityReportSha256: requiredEnv(\n            collectionQualityReportSha256Env",
+    expect(source).toMatch(
+      /collectionQualityReportSha256:\s*requiredEnv\(\s*collectionQualityReportSha256Env,?\s*\)/u,
     );
     expect(source).toContain(
       "datasetManifestSha256: requiredEnv(datasetManifestSha256Env)",
