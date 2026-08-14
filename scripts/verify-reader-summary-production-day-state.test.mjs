@@ -184,6 +184,23 @@ test("terminal outcome must prove no model, publication, or recollection", () =>
   });
 });
 
+test("terminal incomplete providers require a diagnostic reason", () => {
+  withFixture((directory) => {
+    const outcomePath = writeOutcome(directory, collectionDate, "partial");
+    const outcome = JSON.parse(readFileSync(outcomePath, "utf8"));
+    outcome.providerReadiness.providers[1].reasonCodes = [];
+    writeFileSync(outcomePath, `${JSON.stringify(outcome)}\n`);
+    assertFailure([
+      "--expected-date",
+      collectionDate,
+      "--terminal-outcome",
+      outcomePath,
+      "--state-out",
+      join(directory, "state.json"),
+    ]);
+  });
+});
+
 function writeLegacyPublication(directory, date) {
   const period = utcPeriod(date);
   const captureExecution = {
@@ -318,19 +335,30 @@ function writeOutcome(directory, date, outcome) {
       },
       providerReadiness: {
         diagnosticsOwner: "postgres_feed_items_published_window",
-        providers: [{
-          providerKey: "reddit",
-          state: outcome,
-          evidence:
-            outcome === "partial" ? "live_collection" : "explicit_unavailable",
-          databaseFeedItemCount: outcome === "partial" ? 45 : 0,
-          collectionFeedItemCount: outcome === "partial" ? 45 : 0,
-          minimumFeedItemCount: 50,
-          reasonCodes:
-            outcome === "partial"
-              ? ["target_shortfall"]
-              : ["provider_unavailable"],
-        }],
+        providers: [
+          {
+            providerKey: "hacker-news",
+            state: "complete",
+            evidence: "live_collection",
+            databaseFeedItemCount: 100,
+            collectionFeedItemCount: 100,
+            minimumFeedItemCount: 70,
+            reasonCodes: [],
+          },
+          {
+            providerKey: "reddit",
+            state: outcome,
+            evidence:
+              outcome === "partial" ? "live_collection" : "explicit_unavailable",
+            databaseFeedItemCount: outcome === "partial" ? 45 : 0,
+            collectionFeedItemCount: outcome === "partial" ? 45 : 0,
+            minimumFeedItemCount: 50,
+            reasonCodes:
+              outcome === "partial"
+                ? ["target_shortfall"]
+                : ["provider_unavailable"],
+          },
+        ],
       },
     }, null, 2)}\n`,
   );
