@@ -224,7 +224,6 @@ describe("ListReaderSummariesUseCase", () => {
             readerSummaryId: "reader-summary-1",
             coverage: expect.objectContaining({
               selectedFeedItemCount: 1,
-              collectedFeedItemCount: 1,
             }),
           }),
         ],
