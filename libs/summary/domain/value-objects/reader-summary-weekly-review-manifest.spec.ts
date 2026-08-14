@@ -203,6 +203,22 @@ describe("reader summary weekly review manifest", () => {
     expect(deriveReaderSummaryWeeklyReviewStoryCandidates(historical)).not.toHaveLength(0);
   });
 
+  it("accepts sealed provider evidence with a title and an empty optional source text", () => {
+    const source = authority();
+    const withoutBody = {
+      ...source,
+      days: source.days.map((day, index) => index === 0 ? {
+        ...day,
+        providerEvidence: day.providerEvidence.map((evidence) => ({
+          ...evidence,
+          sourceText: "",
+        })),
+      } : day),
+    };
+
+    expect(deriveReaderSummaryWeeklyReviewStoryCandidates(withoutBody)).not.toHaveLength(0);
+  });
+
   it("rejects evidence published outside its sealed publication day", () => {
     const source = authority();
     const escaped = {

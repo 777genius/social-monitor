@@ -261,7 +261,11 @@ const canonicalAuthorityEvidence = (input: ReaderSummaryWeeklyReviewAuthorityEvi
     ),
     sourceContentHash: exactReaderSummaryWeeklySha256(input.sourceContentHash, "weekly review source content hash"),
     publishedAt, observedAt, title: exactText(input.title, "weekly review title", 1_000),
-    sourceText: exactText(input.sourceText, "weekly review source text", 20_000),
+    sourceText: exactBoundedText(
+      input.sourceText,
+      "weekly review source text",
+      20_000,
+    ),
   });
 };
 
@@ -381,6 +385,10 @@ const exactGithubMode = (input: unknown): ReaderSummaryWeeklyReviewAuthorityDay[
 };
 const exactText = (input: unknown, label: string, maxLength: number): string => {
   if (typeof input !== "string" || input.trim().length === 0 || input.length > maxLength) throw new Error(`Reader summary ${label} is invalid`);
+  return input;
+};
+const exactBoundedText = (input: unknown, label: string, maxLength: number): string => {
+  if (typeof input !== "string" || input.length > maxLength) throw new Error(`Reader summary ${label} is invalid`);
   return input;
 };
 const utcDateAfter = (date: string, offset: number): string => new Date(Date.parse(`${date}T00:00:00.000Z`) + offset * 86_400_000).toISOString().slice(0, 10);
