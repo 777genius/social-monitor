@@ -2,11 +2,34 @@ import {
   assertReaderSummaryWeeklyExactObject,
   canonicalizeReaderSummaryWeeklyJson,
   deepFreezeReaderSummaryWeekly,
+  exactReaderSummaryWeeklyHttpsUrl,
+  exactReaderSummaryWeeklyProviderItemId,
   readerSummaryWeeklyCanonicalJsonLimits,
   readerSummaryWeeklySha256,
 } from "./reader-summary-weekly-canonical-json";
 
 describe("reader summary weekly canonical JSON", () => {
+  it("accepts bounded long HTTPS URLs without widening identifier limits", () => {
+    const url = `https://news.google.com/rss/articles/${"a".repeat(700)}`;
+
+    expect(exactReaderSummaryWeeklyHttpsUrl(url, "provider canonical URL")).toBe(
+      url,
+    );
+    expect(() =>
+      exactReaderSummaryWeeklyHttpsUrl(
+        `https://example.test/${"a".repeat(2_100)}`,
+        "provider canonical URL",
+      ),
+    ).toThrow("provider canonical URL is invalid");
+  });
+  it("accepts bounded opaque provider item ids longer than internal identities", () => {
+    expect(
+      exactReaderSummaryWeeklyProviderItemId("p".repeat(700), "provider item id"),
+    ).toHaveLength(700);
+    expect(() =>
+      exactReaderSummaryWeeklyProviderItemId("p".repeat(2_049), "provider item id"),
+    ).toThrow("provider item id is invalid");
+  });
   it("sorts keys, seals deterministic bytes and returns defensive byte copies", () => {
     const left = canonicalizeReaderSummaryWeeklyJson({
       z: [3, { y: true, x: "value" }],

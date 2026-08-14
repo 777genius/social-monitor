@@ -2,6 +2,8 @@ import {
   assertReaderSummaryWeeklyDenseArray, assertReaderSummaryWeeklyExactObject,
   canonicalizeReaderSummaryWeeklyJson, canonicalReaderSummaryWeeklyScope,
   deepFreezeReaderSummaryWeekly, exactReaderSummaryWeeklyIdentity,
+  exactReaderSummaryWeeklyHttpsUrl,
+  exactReaderSummaryWeeklyProviderItemId,
   exactReaderSummaryWeeklySha256, exactReaderSummaryWeeklyUtcDay,
   exactReaderSummaryWeeklyUtcTimestamp, readerSummaryWeeklyScopeKey,
   type ReaderSummaryWeeklyManifestScope,
@@ -244,7 +246,7 @@ const canonicalAuthorityEvidence = (input: ReaderSummaryWeeklyReviewAuthorityEvi
   if (!readerSummaryWeeklyCanonicalProviderKeys.includes(input.providerKey)) throw new Error("Reader summary weekly review provider is invalid");
   const publishedAt = exactReaderSummaryWeeklyUtcTimestamp(input.publishedAt, "weekly review provider publishedAt");
   const observedAt = exactReaderSummaryWeeklyUtcTimestamp(input.observedAt, "weekly review provider observedAt");
-  if (observedAt.slice(0, 10) !== expectedDate || Date.parse(publishedAt) > Date.parse(observedAt)) {
+  if (publishedAt.slice(0, 10) !== expectedDate) {
     throw new Error("Reader summary weekly review provider evidence is outside its sealed day");
   }
   return deepFreezeReaderSummaryWeekly({
@@ -252,8 +254,11 @@ const canonicalAuthorityEvidence = (input: ReaderSummaryWeeklyReviewAuthorityEvi
     feedItemId: exactReaderSummaryWeeklyIdentity(input.feedItemId, "weekly review feed item id"),
     sourceItemId: exactReaderSummaryWeeklyIdentity(input.sourceItemId, "weekly review source item id"),
     sourceBindingId: exactReaderSummaryWeeklyIdentity(input.sourceBindingId, "weekly review source binding id"),
-    providerItemId: exactReaderSummaryWeeklyIdentity(input.providerItemId, "weekly review provider item id"),
-    canonicalUrl: exactHttpsUrl(input.canonicalUrl),
+    providerItemId: exactReaderSummaryWeeklyProviderItemId(input.providerItemId, "weekly review provider item id"),
+    canonicalUrl: exactReaderSummaryWeeklyHttpsUrl(
+      input.canonicalUrl,
+      "weekly review canonical URL",
+    ),
     sourceContentHash: exactReaderSummaryWeeklySha256(input.sourceContentHash, "weekly review source content hash"),
     publishedAt, observedAt, title: exactText(input.title, "weekly review title", 1_000),
     sourceText: exactText(input.sourceText, "weekly review source text", 20_000),
@@ -373,13 +378,6 @@ const exactSemanticStatus = (input: unknown): "COMPLETED" | "NO_SIGNAL" => {
 const exactGithubMode = (input: unknown): ReaderSummaryWeeklyReviewAuthorityDay["githubMode"] => {
   if (input === "verified" || input === "ordinary_not_required" || input === "historical_unavailable") return input;
   throw new Error("Reader summary weekly review GitHub mode is invalid");
-};
-const exactHttpsUrl = (input: unknown): string => {
-  const value = exactReaderSummaryWeeklyIdentity(input, "weekly review canonical URL");
-  let parsed: URL;
-  try { parsed = new URL(value); } catch { throw new Error("Reader summary weekly review canonical URL is invalid"); }
-  if (parsed.protocol !== "https:" || parsed.username !== "" || parsed.password !== "" || parsed.hash !== "" || parsed.hostname.length === 0 || parsed.href !== value) throw new Error("Reader summary weekly review canonical URL is invalid");
-  return value;
 };
 const exactText = (input: unknown, label: string, maxLength: number): string => {
   if (typeof input !== "string" || input.trim().length === 0 || input.length > maxLength) throw new Error(`Reader summary ${label} is invalid`);

@@ -266,6 +266,60 @@ export const exactReaderSummaryWeeklyIdentity = (
   return value;
 };
 
+export const exactReaderSummaryWeeklyHttpsUrl = (
+  value: unknown,
+  label: string,
+): string => {
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    value.length > 2_048 ||
+    value !== value.trim() ||
+    [...value].some((character) => {
+      const codePoint = character.codePointAt(0);
+      return codePoint !== undefined && (codePoint <= 0x1f || codePoint === 0x7f);
+    })
+  ) {
+    throw new Error(`Reader summary weekly ${label} is invalid`);
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error(`Reader summary weekly ${label} is invalid`);
+  }
+  if (
+    parsed.protocol !== "https:" ||
+    parsed.username !== "" ||
+    parsed.password !== "" ||
+    parsed.hash !== "" ||
+    parsed.hostname.length === 0 ||
+    parsed.href !== value
+  ) {
+    throw new Error(`Reader summary weekly ${label} is invalid`);
+  }
+  return value;
+};
+
+export const exactReaderSummaryWeeklyProviderItemId = (
+  value: unknown,
+  label: string,
+): string => {
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    value.length > 2_048 ||
+    value !== value.trim() ||
+    [...value].some((character) => {
+      const codePoint = character.codePointAt(0);
+      return codePoint !== undefined && (codePoint <= 0x1f || codePoint === 0x7f);
+    })
+  ) {
+    throw new Error(`Reader summary weekly ${label} is invalid`);
+  }
+  return value;
+};
+
 export const exactReaderSummaryWeeklySha256 = (
   value: unknown,
   label: string,

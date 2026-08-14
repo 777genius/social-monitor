@@ -4,7 +4,9 @@ import {
   canonicalizeReaderSummaryWeeklyJson,
   canonicalReaderSummaryWeeklyScope,
   deepFreezeReaderSummaryWeekly,
+  exactReaderSummaryWeeklyHttpsUrl,
   exactReaderSummaryWeeklyIdentity,
+  exactReaderSummaryWeeklyProviderItemId,
   exactReaderSummaryWeeklySha256,
   exactReaderSummaryWeeklyUtcDay,
   exactReaderSummaryWeeklyUtcTimestamp,
@@ -281,7 +283,7 @@ const canonicalAuthorityEvidenceItem = (
       input.sourceBindingId,
       "story source binding id",
     ),
-    providerItemId: exactReaderSummaryWeeklyIdentity(
+    providerItemId: exactReaderSummaryWeeklyProviderItemId(
       input.providerItemId,
       "story provider item id",
     ),
@@ -332,28 +334,10 @@ const exactCitationField = (
 };
 
 const exactCanonicalUrl = (input: unknown): string => {
-  const value = exactReaderSummaryWeeklyIdentity(
+  return exactReaderSummaryWeeklyHttpsUrl(
     input,
     "story canonical URL",
   );
-  let parsed: URL;
-  try {
-    parsed = new URL(value);
-  } catch {
-    throw new Error("Reader summary weekly story canonical URL is invalid");
-  }
-  if (
-    parsed.protocol !== "https:" ||
-    parsed.username !== "" ||
-    parsed.password !== "" ||
-    parsed.hash !== "" ||
-    parsed.hostname.length === 0 ||
-    !parsed.hostname.includes(".") ||
-    parsed.href !== value
-  ) {
-    throw new Error("Reader summary weekly story canonical URL is invalid");
-  }
-  return value;
 };
 
 const assertSameDayEvidenceUniqueness = (
