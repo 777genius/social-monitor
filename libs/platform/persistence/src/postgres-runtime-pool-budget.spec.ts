@@ -641,12 +641,10 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       'scripts/lib/reader-summary-production-day-scope.ts',
     );
     const main = dispatcher.slice(dispatcher.indexOf('async function main()'));
-    const migrationIndex = main.indexOf('runNpm("migrate"');
     const scopeIndex = main.indexOf('await readProductionDayScope({');
     expect(dispatcher).toContain('import { spawnSync }');
-    expect(migrationIndex).toBeGreaterThanOrEqual(0);
+    expect(dispatcher).not.toMatch(/runNpm\(\s*["']migrate["']/);
     expect(scopeIndex).toBeGreaterThanOrEqual(0);
-    expect(migrationIndex).toBeLessThan(scopeIndex);
     expect(scopeReader).toMatch(/new Pool\(\{[\s\S]*?max: 1/);
     expect(scopeReader).toContain('await pool.end()');
     for (const path of [
