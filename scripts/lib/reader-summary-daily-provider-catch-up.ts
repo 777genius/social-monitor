@@ -75,8 +75,10 @@ export const planDailyProviderCatchUp = (params: {
     );
   }
   const allowUnprovenExistingRows =
-    params.allowUnprovenExistingRowsForExactFullCollection === true &&
-    previousReport === null;
+    previousReport === null &&
+    isExactFullProviderCollection(requiredProviderKeys) &&
+    (collectionPolicy.collectionPolicy === "previous_day" ||
+      params.allowUnprovenExistingRowsForExactFullCollection === true);
   if (
     previousReport !== null &&
     (previousReport.schemaVersion !== 1 ||
