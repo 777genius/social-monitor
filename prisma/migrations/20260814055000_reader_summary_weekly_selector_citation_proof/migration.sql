@@ -49,7 +49,10 @@ BEGIN
   );
   IF v_occurrences = 1 AND v_selector_occurrences = 0 THEN
     EXECUTE replace(v_definition, v_needle, v_replacement);
-  ELSIF v_occurrences = 0 AND v_selector_occurrences = 1 THEN
+  -- The selector expression intentionally retains one provider citationId
+  -- reference inside its canonical hash input. A replay therefore observes
+  -- one legacy-shaped substring together with the installed selector.
+  ELSIF v_occurrences = 1 AND v_selector_occurrences = 1 THEN
     NULL;
   ELSE
     RAISE EXCEPTION
