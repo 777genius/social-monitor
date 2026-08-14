@@ -5,7 +5,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { defaultPostgresRuntimePoolConfig } from "@social-monitor/platform-persistence";
 import { PrismaSummaryConnection } from "@social-monitor/summary/adapters/persistence/prisma/prisma-summary-connection";
-
 import { provisionReaderSummaryPublicationFixtureScope, readerSummaryPublicationBackendPid, requiredReaderSummaryPublicationAdminDatabaseUrl, setReaderSummaryPublicationSessionScope } from "./lib/reader-summary-publication-postgres-fixture-scope";
 import { applyOrderedReaderSummaryMigrations, assertReaderSummaryMigrationDatabaseMatchesSchema, createReaderSummaryPublicationMigrationWorkspace, installPublicationAndFollowingMigrations, preparePrePublicationMigrations, readerSummaryMigrationNames, removeReaderSummaryPublicationMigrationWorkspace } from "./lib/reader-summary-publication-postgres-migrations";
 import { assertReaderSummaryProductionRecoveryPostgresContract, type RecoveryPostgresClient, readerSummaryProductionRecoveryFixtureScope, seedReaderSummaryProductionRecoveryFixture } from "./lib/reader-summary-production-recovery-postgres-contract";
@@ -20,7 +19,7 @@ import { type CanonicalRecoveryAuthority, type CanonicalRecoveryFinalizer, type 
 import { ReaderSummaryDailyCanonicalRecoveryV4Executor } from "./lib/reader-summary-daily-canonical-recovery-v4-executor";
 import { createReaderSummaryDailyTerminalRuntimeConnection } from "./lib/reader-summary-daily-terminal-runtime-connection";
 import { createReaderSummaryDailyCanonicalRecoveryV4Finalizer } from "./run-reader-summary-daily-canonical-recovery";
-
+import { fixtureReaderSummaryServingAuthority } from "./lib/reader-summary-serving-authority-fixture";
 type RecoveryPoolClient = RecoveryPostgresClient &
   Readonly<{ release(): void }>;
 type RecoveryPool = RecoveryPostgresClient &
@@ -677,6 +676,7 @@ const main = async (): Promise<void> => {
           createReaderSummaryDailyCanonicalRecoveryV4Finalizer({
             prisma,
             publicDirectory,
+            resolveServingAuthority: fixtureReaderSummaryServingAuthority,
           });
         const recordedPublications: CanonicalRecoveryPublication[] = [];
         let pendingFinalizeReadback = false;

@@ -68,6 +68,14 @@ import { PostgresCanonicalRecoveryInvalidProductRetrySetAuthorizer } from "./lib
 import { runReaderSummaryDailyCanonicalRecoveryV4InvalidProduct } from "./lib/reader-summary-daily-canonical-recovery-v4-invalid-product-run-policy";
 import { parseDailyCanonicalRecoveryV4Invocation } from "./lib/reader-summary-daily-canonical-recovery-v4-invocation";
 import {
+  readerSummaryProductionDayAttemptIdentity,
+  readerSummaryProductionDayIdempotencyKey,
+} from "./lib/reader-summary-production-day-attempt-identity";
+import {
+  resolveReaderSummaryServingAuthority,
+  type ReaderSummaryServingAuthority,
+} from "./lib/reader-summary-serving-authority";
+import {
   printDailyScanTerminalRepairPreimage,
   runDailyScanTerminalRepair,
 } from "./lib/reader-summary-daily-canonical-recovery-v4-scan-terminal-repair-cli";
@@ -138,6 +146,13 @@ async function main(): Promise<void> {
       finalizer: createReaderSummaryDailyCanonicalRecoveryV4Finalizer({
         prisma,
         publicDirectory,
+        resolveServingAuthority: () => resolveReaderSummaryServingAuthority({
+          summaryModelMode: "agent-runtime",
+          topicLabelerMode: "deterministic",
+          env: process.env,
+          agentRuntimeClient: runtimeClient,
+          checkedAt: new Date().toISOString(),
+        }),
       }),
       now: () => new Date(),
     });
@@ -207,19 +222,28 @@ export const createReaderSummaryDailyCanonicalRecoveryV4Finalizer =
   (dependencies: {
     readonly prisma: PrismaSummaryConnection;
     readonly publicDirectory: string;
+    readonly resolveServingAuthority: () => Promise<
+      ReaderSummaryServingAuthority
+    >;
   }): CanonicalRecoveryFinalizer => {
-    const atomic = new PrismaReaderSummaryDailyCanonicalRecoveryV4Finalization(
-      dependencies.prisma,
-      capture,
-      (input, publication) =>
-        stageReaderSummaryDailyCanonicalRecoveryPublicFiles(
-          dependencies.publicDirectory,
-          input.work.modelJobIdentity,
-          input.work.requestedUtcDate,
-          publication,
-        ),
-    );
-    return { finalize: (input) => atomic.finalize(input) };
+    return {
+      finalize: async (input) => {
+        const servingAuthority = await dependencies.resolveServingAuthority();
+        const atomic = new PrismaReaderSummaryDailyCanonicalRecoveryV4Finalization(
+          dependencies.prisma,
+          (captureInput, transaction) =>
+            capture(captureInput, transaction, servingAuthority),
+          (stageInput, publication) =>
+            stageReaderSummaryDailyCanonicalRecoveryPublicFiles(
+              dependencies.publicDirectory,
+              stageInput.work.modelJobIdentity,
+              stageInput.work.requestedUtcDate,
+              publication,
+            ),
+        );
+        return atomic.finalize(input);
+      },
+    };
   };
 
 export const canonicalRecoveryCliExitCode = (
@@ -229,6 +253,7 @@ export const canonicalRecoveryCliExitCode = (
 const capture = async (
   input: Parameters<CanonicalRecoveryFinalizer["finalize"]>[0],
   transaction: PrismaReaderSummaryClient,
+  servingAuthority: ReaderSummaryServingAuthority,
 ) => {
   const completedAt = exactText(input.work.completedAt, "DB completion time");
   const operationClock: Clock = { now: () => new Date(completedAt) };
@@ -279,7 +304,21 @@ const capture = async (
     attestationSink: executionAttestations,
   });
   const queue = new CaptureQueue();
-  const ids = new DeterministicRecoveryIds(input.work.modelJobIdentity);
+  const attemptIdentity = readerSummaryProductionDayAttemptIdentity({
+    tenantId: input.work.tenantId,
+    workspaceId: input.work.workspaceId,
+    periodKey: dailyPeriodKey(input.work.requestedUtcDate),
+    servingAuthority,
+    sourceProvenance: {
+      kind: "persisted-daily-replay",
+      sourceAuthoritySha256: replay.authoritySha256,
+      originalModelJobIdentity: replay.modelJobIdentity,
+      originalReceiptSha256: createHash("sha256")
+        .update(replay.receiptBytes)
+        .digest("hex"),
+    },
+  });
+  const ids = new DeterministicRecoveryIds(attemptIdentity);
   const request = await new RequestReaderSummaryUseCase(
     jobs,
     queue,
@@ -296,7 +335,7 @@ const capture = async (
       endedAt: new Date(nextDate(input.work.requestedUtcDate)),
       timezone: "UTC",
     },
-    idempotencyKey: `reader-summary-daily:${input.work.modelJobIdentity}`,
+    idempotencyKey: readerSummaryProductionDayIdempotencyKey(attemptIdentity),
     correlationId: `reader-summary-daily:${input.work.modelJobIdentity}`,
   });
   if (!request.ok) throw request.error;
@@ -932,6 +971,9 @@ const exactSha = (value: unknown): string => {
 
 const nextDate = (date: string): string =>
   new Date(Date.parse(`${date}T00:00:00.000Z`) + 86_400_000).toISOString();
+
+const dailyPeriodKey = (date: string): string =>
+  `daily:${date}T00:00:00.000Z:${nextDate(date)}:UTC`;
 
 const positive = (value: string | undefined, fallback: number): number => {
   const parsed = value === undefined ? fallback : Number(value);

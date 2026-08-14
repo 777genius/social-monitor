@@ -51,6 +51,16 @@ const tenant = tenantId("10000000-0000-4000-8000-000000000001");
 const workspace = workspaceId("20000000-0000-4000-8000-000000000002");
 const periodKey =
   "daily:2026-08-13T00:00:00.000Z:2026-08-14T00:00:00.000Z:UTC";
+const servingAuthority = {
+  summaryModelMode: "agent-runtime" as const,
+  topicLabelerMode: "agent-runtime" as const,
+  provider: "codex",
+  physicalModel: "gpt-5.6-sol",
+  reasoningEffort: "xhigh",
+  runtimeEngine: "subscription-runtime-cli",
+  runtimePackageVersion: "1.2.3",
+  launcherSha256: "a".repeat(64),
+};
 
 describe("reader summary DB publication reconciliation", () => {
   it("reclaims a stale daily RUNNING job and replays it without a second model call", async () => {
@@ -95,7 +105,8 @@ describe("reader summary DB publication reconciliation", () => {
       tenantId: tenant,
       workspaceId: workspace,
       periodKey,
-      mode: { kind: "live-production" },
+      servingAuthority,
+      sourceProvenance: { kind: "live-production" },
     });
     const requested = await request.execute({
       tenantId: tenant,
@@ -177,7 +188,8 @@ describe("reader summary DB publication reconciliation", () => {
         tenantId: tenant,
         workspaceId: workspace,
         periodKey,
-        mode: { kind: "live-production" },
+        servingAuthority,
+        sourceProvenance: { kind: "live-production" },
       });
       const attestations = [executionAttestation()];
       const recoverable = createRecoverableReaderSummaryPublication({
@@ -251,6 +263,35 @@ describe("reader summary DB publication reconciliation", () => {
           readerSummaryArtifactId: replay.readerSummaryArtifactId!,
         }),
       ).toEqual(attestations);
+      for (const changedAuthority of [
+        { ...servingAuthority, physicalModel: "gpt-5.7" },
+        { ...servingAuthority, runtimePackageVersion: "1.2.4" },
+        { ...servingAuthority, launcherSha256: "b".repeat(64) },
+      ]) {
+        const changedIdentity = readerSummaryProductionDayAttemptIdentity({
+          tenantId: tenant,
+          workspaceId: workspace,
+          periodKey,
+          servingAuthority: changedAuthority,
+          sourceProvenance: { kind: "live-production" },
+        });
+        const changedRecovery = createRecoverableReaderSummaryPublication({
+          delegate: new InMemoryReaderSummaryPublication(jobs, artifacts, events),
+          recoveryDirectory: directory,
+          attemptIdentity: changedIdentity,
+          attestations: () => attestations,
+        });
+        expect(readerSummaryProductionDayIdempotencyKey(changedIdentity)).not.toBe(
+          readerSummaryProductionDayIdempotencyKey(attemptIdentity),
+        );
+        expect(() => changedRecovery.recovery?.load({
+          tenantId: tenant,
+          workspaceId: workspace,
+          periodKey,
+          readerSummaryJobId: replay.readerSummaryJobId!,
+          readerSummaryArtifactId: replay.readerSummaryArtifactId!,
+        })).toThrow();
+      }
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
