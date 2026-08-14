@@ -62,7 +62,7 @@ describe("daily canonical recovery v4 invalid-product retry set", () => {
       query: async () => {
         throw new Error("retry-set authorization must be serializable");
       },
-      serializable: async <T>(operation) => operation(transaction),
+      serializable: async (operation) => operation(transaction),
     };
 
     await expect(new PostgresCanonicalRecoveryInvalidProductRetrySetAuthorizer(client)

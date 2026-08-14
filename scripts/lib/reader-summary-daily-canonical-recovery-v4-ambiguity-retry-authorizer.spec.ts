@@ -28,7 +28,7 @@ describe("reader summary daily canonical recovery v4 ambiguity retry authorizer"
       query: async () => {
         throw new Error("authorization must use a serializable transaction");
       },
-      serializable: async <T>(operation) => operation(transaction),
+      serializable: async (operation) => operation(transaction),
     };
 
     await expect(new PostgresCanonicalRecoveryAmbiguityRetryAuthorizer(client)

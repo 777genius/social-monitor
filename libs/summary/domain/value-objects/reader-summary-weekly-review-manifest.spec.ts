@@ -186,6 +186,56 @@ describe("reader summary weekly review manifest", () => {
       "not honest about provider evidence",
     );
   });
+
+  it("accepts evidence collected after its sealed publication day", () => {
+    const source = authority();
+    const historical = {
+      ...source,
+      days: source.days.map((day, index) => index === 0 ? {
+        ...day,
+        providerEvidence: day.providerEvidence.map((evidence) => ({
+          ...evidence,
+          observedAt: "2026-08-14T09:00:00.000Z",
+        })),
+      } : day),
+    };
+
+    expect(deriveReaderSummaryWeeklyReviewStoryCandidates(historical)).not.toHaveLength(0);
+  });
+
+  it("accepts sealed provider evidence with a title and an empty optional source text", () => {
+    const source = authority();
+    const withoutBody = {
+      ...source,
+      days: source.days.map((day, index) => index === 0 ? {
+        ...day,
+        providerEvidence: day.providerEvidence.map((evidence) => ({
+          ...evidence,
+          sourceText: "",
+        })),
+      } : day),
+    };
+
+    expect(deriveReaderSummaryWeeklyReviewStoryCandidates(withoutBody)).not.toHaveLength(0);
+  });
+
+  it("rejects evidence published outside its sealed publication day", () => {
+    const source = authority();
+    const escaped = {
+      ...source,
+      days: source.days.map((day, index) => index === 0 ? {
+        ...day,
+        providerEvidence: day.providerEvidence.map((evidence) => ({
+          ...evidence,
+          publishedAt: "2026-07-21T08:00:00.000Z",
+        })),
+      } : day),
+    };
+
+    expect(() => deriveReaderSummaryWeeklyReviewStoryCandidates(escaped)).toThrow(
+      "outside its sealed day",
+    );
+  });
 });
 
 const authority = (): ReaderSummaryWeeklyReviewAuthority => {

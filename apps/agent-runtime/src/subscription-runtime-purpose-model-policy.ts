@@ -47,6 +47,7 @@ const profilesByPurpose: Readonly<
     dailyStructuredProfile,
   "social_monitor.reader_summary.verify_story_relations":
     dailyStructuredProfile,
+  "social_monitor.reader_summary.weekly.review": dailyStructuredProfile,
   "social_monitor.reader_summary.weekly.generate": weeklyTextProfile,
 });
 

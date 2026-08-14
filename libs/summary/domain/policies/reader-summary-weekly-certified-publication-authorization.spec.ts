@@ -6,6 +6,7 @@ import {
   readerSummaryWeeklyCertificationSealSchemaVersion,
   type ReaderSummaryWeeklyCertificationSealBinding,
 } from "../value-objects/reader-summary-weekly-certification-seal";
+import { readerSummaryWeeklyHistoricalGitHubAuthorizationIdentity } from "../value-objects/reader-summary-weekly-input-manifest-canonical";
 import {
   readerSummaryWeeklyPublicationGitHubEvidenceSchemaVersion,
 } from "../value-objects/reader-summary-weekly-publication-github-evidence";
@@ -67,6 +68,18 @@ describe("reader summary weekly certified publication authorization", () => {
     expect(new Set(fixture.command.modelInput.citations
       .filter((citation) => citation.providerKey === "rss")
       .map((citation) => citation.citationId)).size).toBe(2);
+  });
+
+  it("authorizes sealed historical GitHub-unavailable days", () => {
+    const fixture = certifiedFixture(undefined, false, true);
+    const details = readReaderSummaryWeeklyPublicationAuthorization(
+      authorizeCertified(fixture),
+    );
+
+    expect(details.proof.authorities).toHaveLength(7);
+    expect(fixture.command.modelInput.days.every((day) =>
+      day.githubBoardStatus === "historical_unavailable"
+    )).toBe(true);
   });
 
   it("fails closed for duplicate story handles and divergent model day counts", () => {
@@ -176,9 +189,10 @@ const commandForModelInput = (
 const certifiedFixture = (
   mutateModelBody?: (body: Record<string, unknown>) => void,
   reuseLocalCitationIds = false,
+  historicalGitHub = false,
 ) => {
   const bindings = dates.map((date, index) =>
-    storyBinding(date, index, reuseLocalCitationIds),
+    storyBinding(date, index, reuseLocalCitationIds, historicalGitHub),
   );
   const seal = certificationSeal(bindings);
   const modelInput = modelInputFor(seal, bindings, mutateModelBody);
@@ -219,12 +233,18 @@ const storyBinding = (
   date: string,
   index: number,
   reuseLocalCitationIds = false,
+  historicalGitHub = false,
 ): ReaderSummaryWeeklyStoryAuthorityBinding => {
   const publicationId = `publication:${date}`;
   const publicationEvidenceSha256 = canonicalizeReaderSummaryWeeklyJson({
     kind: "publication", date,
   }).sha256;
-  const evidence = authorityEvidence(date, index, reuseLocalCitationIds);
+  const evidence = authorityEvidence(
+    date,
+    index,
+    reuseLocalCitationIds,
+    historicalGitHub,
+  );
   const body = {
     schemaVersion: readerSummaryWeeklyStoryAuthoritySchemaVersion,
     tenantId: tenant,
@@ -262,6 +282,7 @@ const authorityEvidence = (
   date: string,
   dayIndex: number,
   reuseLocalCitationIds = false,
+  historicalGitHub = false,
 ): readonly ReaderSummaryWeeklyStoryAuthorityEvidence[] => {
   const citedIndex = citedDays.indexOf(dayIndex as (typeof citedDays)[number]);
   const providerKey = citedIndex >= 0 && reuseLocalCitationIds &&
@@ -271,16 +292,17 @@ const authorityEvidence = (
   const citationId = reuseLocalCitationIds && providerKey === "rss"
     ? "citation:reused-local-id"
     : `citation:${date}`;
+  const citedEvidence = citedIndex >= 0
+    ? evidenceItem(date, providerKey, citationId, 11)
+    : evidenceItem(date, "rss", `citation:${date}:uncited`, 11);
   return [
-    ...Array.from({ length: 10 }, (_, index) => evidenceItem(
+    ...Array.from({ length: historicalGitHub ? 0 : 10 }, (_, index) => evidenceItem(
       date,
       "github-trending-page",
       `github:${date}:${String(index + 1).padStart(2, "0")}`,
       index + 1,
     )),
-    ...(citedIndex >= 0
-      ? [evidenceItem(date, providerKey, citationId, 11)]
-      : []),
+    ...(citedIndex >= 0 || historicalGitHub ? [citedEvidence] : []),
   ];
 };
 
@@ -388,6 +410,9 @@ const modelInputFor = (
     weekStartedOn: dates[0],
     weekEndedOn: dates[6],
     days: bindings.map((binding, index) => {
+      const githubCount = binding.evidence.filter(
+        (item) => item.providerKey === "github-trending-page",
+      ).length;
       const citedProvider = bindings[index]!.evidence.find(
         (item) => item.providerKey !== "github-trending-page",
       )?.providerKey;
@@ -399,9 +424,16 @@ const modelInputFor = (
         githubBoardId:
           `${readerSummaryWeeklyPublicationGitHubEvidenceSchemaVersion}:${binding.githubEvidenceSha256}`,
         githubBoardSha: binding.githubEvidenceSha256,
-        githubBoardStatus: "verified",
+        githubBoardStatus:
+          githubCount === 0 ? "historical_unavailable" : "verified",
+        ...(githubCount === 0
+          ? {
+              githubAuthorizationIdentity:
+                readerSummaryWeeklyHistoricalGitHubAuthorizationIdentity,
+            }
+          : {}),
         providerCounts: [
-          { providerKey: "github-trending-page", count: 10 },
+          { providerKey: "github-trending-page", count: githubCount },
           {
             providerKey: "hacker-news",
             count: citedProvider === "hacker-news" ? 1 : 0,

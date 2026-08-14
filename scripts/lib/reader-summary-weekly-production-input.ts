@@ -337,7 +337,7 @@ const bindManifestCitations = (
       throw new Error("Reader summary weekly review citation authority diverged");
     }
     const matches = certification.providerEvidence.filter((evidence) =>
-      evidence.observedAt.slice(0, 10) === reviewed.requestedUtcDate &&
+      evidence.publishedAt.slice(0, 10) === reviewed.requestedUtcDate &&
       evidence.providerKey === reviewed.providerKey &&
       evidence.citationId === reviewed.citationId &&
       evidence.sourceItemId === reviewed.sourceItemId &&

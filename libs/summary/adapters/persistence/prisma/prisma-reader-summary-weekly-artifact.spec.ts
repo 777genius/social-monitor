@@ -28,8 +28,8 @@ describe("PrismaReaderSummaryArtifactRepository weekly persistence", () => {
 
       expect(prisma.requests).toEqual([payload, payload]);
       expect(prisma.transactionOptions).toEqual([
-        { isolationLevel: "Serializable" },
-        { isolationLevel: "Serializable" },
+        { timeout: 30_000, isolationLevel: "Serializable" },
+        { timeout: 30_000, isolationLevel: "Serializable" },
       ]);
     } finally {
       builder.mockRestore();

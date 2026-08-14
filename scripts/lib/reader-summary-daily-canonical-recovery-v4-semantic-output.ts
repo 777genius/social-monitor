@@ -398,7 +398,7 @@ const readJsonString = (input: string, cursor: { offset: number }): string => {
 };
 
 const skipWhitespace = (input: string, cursor: { offset: number }): void => {
-  while (/^[\u0009\u000a\u000d\u0020]$/u.test(input[cursor.offset] ?? "")) {
+  while (["\t", "\n", "\r", " "].includes(input[cursor.offset] ?? "")) {
     cursor.offset += 1;
   }
 };

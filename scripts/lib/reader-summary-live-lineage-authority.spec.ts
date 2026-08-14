@@ -87,7 +87,7 @@ describe("reader summary live lineage authority migration", () => {
       "evalDatasetVersion",
       "rankingPolicyVersion",
     ]) {
-      expect(replacement).toContain(`btrim(v_artifact.\"artifact_payload\"->''lineage''->>''${key}'') = ''''`);
+      expect(replacement).toContain(`btrim(v_artifact."artifact_payload"->''lineage''->>''${key}'') = ''''`);
     }
   });
 

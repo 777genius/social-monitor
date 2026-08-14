@@ -14,6 +14,7 @@ const dailyPurposes = [
   "social_monitor.reader_summary.topic_map.label",
   "social_monitor.reader_summary.topic_map.verify_relations",
   "social_monitor.reader_summary.verify_story_relations",
+  "social_monitor.reader_summary.weekly.review",
 ] as const;
 
 describe("subscription runtime purpose policy", () => {

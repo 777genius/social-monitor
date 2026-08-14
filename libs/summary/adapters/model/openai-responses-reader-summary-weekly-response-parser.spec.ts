@@ -38,6 +38,96 @@ describe("OpenAI reader summary weekly response parser", () => {
     expect(Object.isFrozen(first.stories)).toBe(true);
   });
 
+  it("normalizes the sealed legacy weekly envelope without inventing content", () => {
+    const input = weeklyInput();
+    const current = weeklyOutput(input);
+    const legacy = legacyWeeklyOutput(input, current);
+
+    const parsed = parseOpenAiReaderSummaryWeeklyValue(input, legacy);
+
+    expect(parsed).toMatchObject({
+      headline: current.headline,
+      headlineCitationIds: current.headlineCitationIds,
+      takeaway: current.takeaway,
+      takeawayCitationIds: current.headlineCitationIds,
+      synthesis: current.synthesis,
+      synthesisCitationIds: current.headlineCitationIds,
+      stories: [
+        { storyId: "story:alpha", status: "developing" },
+        { storyId: "story:beta", status: "watch" },
+      ],
+      sections: [
+        { storyId: "story:alpha", kind: "lead" },
+        { storyId: "story:beta", kind: "development" },
+      ],
+    });
+
+    expect(() =>
+      parseOpenAiReaderSummaryWeeklyValue(input, {
+        ...legacy,
+        observedThrough: dates[5],
+      }),
+    ).toThrow("fabricates root chronology");
+    expect(() =>
+      parseOpenAiReaderSummaryWeeklyValue(input, {
+        ...legacy,
+        unexpected: true,
+      }),
+    ).toThrow("exactly");
+  });
+
+  it("normalizes the exact expanded legacy weekly envelope", () => {
+    const input = weeklyInput();
+    const current = weeklyOutput(input);
+    const expanded = expandedLegacyWeeklyOutput(input, current);
+
+    const parsed = parseOpenAiReaderSummaryWeeklyValue(input, expanded);
+
+    expect(parsed).toMatchObject({
+      headline: current.headline,
+      headlineCitationIds: current.headlineCitationIds,
+      stories: [
+        { storyId: "story:alpha", status: "new" },
+        { storyId: "story:beta", status: "new" },
+      ],
+      sections: [
+        { storyId: "story:alpha", kind: "lead" },
+        { storyId: "story:beta", kind: "development" },
+      ],
+    });
+    expect(() => parseOpenAiReaderSummaryWeeklyValue(input, {
+      ...expanded,
+      observedThrough: dates[5],
+    })).toThrow("fabricates chronology");
+  });
+
+  it("normalizes the exact sealed compact weekly envelope", () => {
+    const input = weeklyInput();
+    const current = weeklyOutput(input);
+    const compact = sealedCompactWeeklyOutput(input, current);
+
+    const parsed = parseOpenAiReaderSummaryWeeklyValue(input, compact);
+
+    expect(parsed).toMatchObject({
+      headline: current.headline,
+      headlineCitationIds: current.headlineCitationIds,
+      takeawayCitationIds: current.headlineCitationIds,
+      synthesisCitationIds: current.headlineCitationIds,
+      stories: [
+        { storyId: "story:alpha", headline: current.sections[0]!.heading },
+        { storyId: "story:beta", headline: current.sections[1]!.heading },
+      ],
+    });
+    expect(() => parseOpenAiReaderSummaryWeeklyValue(input, {
+      ...compact,
+      observedFrom: dates[1],
+    })).toThrow("fabricates chronology");
+    expect(() => parseOpenAiReaderSummaryWeeklyValue(input, {
+      ...compact,
+      unexpected: true,
+    })).toThrow("exactly");
+  });
+
   it("rejects malformed JSON, non-finite numbers and non-dense arrays", () => {
     const input = weeklyInput();
     const raw = JSON.stringify(weeklyOutput(input));
@@ -432,6 +522,112 @@ const weeklyOutput = (
       citationIds: ["citation:03", "citation:04"],
     },
   ],
+});
+
+const legacyWeeklyOutput = (
+  input: ReaderSummaryWeeklyModelInput,
+  output: ReaderSummaryWeeklyModelOutput,
+) => ({
+  schemaVersion: output.schemaVersion,
+  sealId: output.sealId,
+  sealSha: output.sealSha,
+  weekStartedOn: output.weekStartedOn,
+  weekEndedOn: output.weekEndedOn,
+  observedFrom: input.citations[0]!.observedOn,
+  observedThrough: input.citations[input.citations.length - 1]!.observedOn,
+  headline: output.headline,
+  takeaway: output.takeaway,
+  synthesis: output.synthesis,
+  citationIds: [...output.headlineCitationIds],
+  sections: output.sections.map((section, index) => ({
+    sectionId: section.sectionId,
+    kind: index === 0 ? section.kind : "supporting",
+    storyId: section.storyId,
+    claimType: section.claimType,
+    status: index === 0 ? "developing" : "open",
+    observedFrom: section.observedFrom,
+    observedThrough: section.observedThrough,
+    headline: section.heading,
+    takeaway: output.stories[index]!.summary,
+    synthesis: section.text,
+    citationIds: [...section.citationIds],
+  })),
+});
+
+const expandedLegacyWeeklyOutput = (
+  input: ReaderSummaryWeeklyModelInput,
+  output: ReaderSummaryWeeklyModelOutput,
+) => ({
+  schemaVersion: output.schemaVersion,
+  sealId: output.sealId,
+  sealSha: output.sealSha,
+  weekStartedOn: output.weekStartedOn,
+  weekEndedOn: output.weekEndedOn,
+  headline: output.headline,
+  takeaway: output.takeaway,
+  synthesis: output.synthesis,
+  claimType: "snapshot",
+  citationIds: [...output.headlineCitationIds],
+  observedFrom: input.citations[0]!.observedOn,
+  observedThrough: input.citations[3]!.observedOn,
+  stories: output.stories.map((story) => ({
+    storyId: story.storyId,
+    headline: story.headline,
+    synthesis: story.summary,
+    status: "snapshot",
+    claimType: "snapshot",
+    citationIds: [...story.citationIds],
+    observedFrom: story.observedFrom,
+    observedThrough: story.observedThrough,
+  })),
+  sections: output.sections.map((section, index) => ({
+    sectionId: section.sectionId,
+    kind: index === 0 ? section.kind : "story",
+    storyId: section.storyId,
+    headline: section.heading,
+    synthesis: section.text,
+    claimType: section.claimType,
+    citationIds: [...section.citationIds],
+    observedFrom: section.observedFrom,
+    observedThrough: section.observedThrough,
+  })),
+});
+
+const sealedCompactWeeklyOutput = (
+  input: ReaderSummaryWeeklyModelInput,
+  output: ReaderSummaryWeeklyModelOutput,
+) => ({
+  schemaVersion: output.schemaVersion,
+  sealId: output.sealId,
+  sealSha: output.sealSha,
+  weekStartedOn: output.weekStartedOn,
+  weekEndedOn: output.weekEndedOn,
+  headline: output.headline,
+  takeaway: output.takeaway,
+  synthesis: output.synthesis,
+  citationIds: [...output.headlineCitationIds],
+  observedFrom: input.citations[0]!.observedOn,
+  observedThrough: input.citations[3]!.observedOn,
+  stories: output.stories.map((story) => ({
+    storyId: story.storyId,
+    status: story.status,
+    claimType: "snapshot",
+    observedFrom: story.observedFrom,
+    observedThrough: story.observedThrough,
+    synthesis: story.summary,
+    citationIds: [...story.citationIds],
+  })),
+  sections: output.sections.map((section, index) => ({
+    sectionId: section.sectionId,
+    kind: index === 0 ? section.kind : "supporting",
+    storyId: section.storyId,
+    headline: section.heading,
+    synthesis: section.text,
+    claimType: section.claimType,
+    citationIds: [...section.citationIds],
+    observedFrom: section.observedFrom,
+    observedThrough: section.observedThrough,
+  })),
 });
 
 const sevenSectionDiaryOutput = (

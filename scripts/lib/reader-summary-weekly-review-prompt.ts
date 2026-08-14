@@ -17,10 +17,13 @@ export type ReaderSummaryWeeklyReviewPrompt = Readonly<{
 export const readerSummaryWeeklyReviewInstructions = [
   "You review only the sealed weekly candidate stories supplied in the prompt.",
   "Return only the requested structured response.",
+  "The top-level object must contain exactly schemaVersion and selections; do not return responseSchemaVersion, sealId, findings, type, or selector fields.",
   "Every story and citation selector must be copied exactly from the supplied candidates.",
   "Do not create prose, story identities, citations, dates, hashes, or code bindings.",
   "Use observation for a supported finding; evolution requires before and after selectors on different dates; resolution requires a terminal selector.",
 ].join("\n");
+
+export const readerSummaryWeeklyReviewPromptCandidateLimit = 256;
 
 export const buildReaderSummaryWeeklyReviewPrompt = (params: Readonly<{
   authority: ReaderSummaryWeeklyReviewAuthority;
@@ -38,7 +41,9 @@ export const buildReaderSummaryWeeklyReviewPrompt = (params: Readonly<{
     scope: params.authority.scope,
     weekStartedOn: params.authority.weekStartedOn,
     weekEndedOn: params.authority.weekEndedOn,
-    candidates: params.candidates.map((candidate) => ({
+    candidates: params.candidates
+      .slice(0, readerSummaryWeeklyReviewPromptCandidateLimit)
+      .map((candidate) => ({
       story: candidate.story,
       citations: candidate.citations.map((citation) => ({
         selector: citation.selector,
@@ -47,7 +52,7 @@ export const buildReaderSummaryWeeklyReviewPrompt = (params: Readonly<{
         title: citation.title,
         sourceText: citation.sourceText,
       })),
-    })),
+      })),
   });
   return deepFreezeReaderSummaryWeekly({
     systemPrompt: readerSummaryWeeklyReviewInstructions,

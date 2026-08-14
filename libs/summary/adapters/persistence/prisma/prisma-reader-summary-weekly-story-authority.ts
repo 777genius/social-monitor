@@ -5,6 +5,7 @@ import {
 } from "../../../domain/value-objects/reader-summary-weekly-publication-evidence";
 import {
   assertReaderSummaryWeeklyExactObject,
+  canonicalizeReaderSummaryWeeklyHistoricalArtifactJson,
   canonicalizeReaderSummaryWeeklyJson,
   deepFreezeReaderSummaryWeekly,
   exactReaderSummaryWeeklyIdentity,
@@ -279,7 +280,10 @@ const assertPersistedHashes = (
   const reportArtifactPayload = artifactPayloadFromReport(row.report);
   const persistedHashes = [
     [
-      canonicalizeReaderSummaryWeeklyJson(row.report).sha256,
+      canonicalizeReaderSummaryWeeklyHistoricalArtifactJson(
+        row.report,
+        "persisted story publication report",
+      ).sha256,
       row.reportSha256,
       publication.reportSha256,
     ],
@@ -289,7 +293,10 @@ const assertPersistedHashes = (
       publication.proofSha256,
     ],
     [
-      canonicalizeReaderSummaryWeeklyJson(reportArtifactPayload).sha256,
+      canonicalizeReaderSummaryWeeklyHistoricalArtifactJson(
+        reportArtifactPayload,
+        "persisted story publication artifact payload",
+      ).sha256,
       row.artifactPayloadSha256,
       publication.artifactPayloadSha256,
     ],
@@ -396,7 +403,12 @@ const storyAuthorityBinding = (
     githubEvidenceSha256: publication.githubEvidence.sha256,
     semanticStatus: publication.semanticStatus,
     publishedAt: publication.publishedAt,
-    evidence: publication.providerEvidence.map(authorityEvidenceReference),
+    evidence: publication.providerEvidence
+      .filter((item) => factualEvidenceForRequestedDay(
+        item,
+        publication.requestedUtcDate,
+      ))
+      .map(authorityEvidenceReference),
   });
   const canonical = canonicalizeReaderSummaryWeeklyJson(
     body,
@@ -427,6 +439,12 @@ const authorityEvidenceReference = (
   publishedAt: input.publishedAt,
   observedAt: input.observedAt,
 });
+
+const factualEvidenceForRequestedDay = (
+  input: ReaderSummaryWeeklyPublicationProviderEvidence,
+  requestedUtcDate: string,
+): boolean =>
+  input.publishedAt.slice(0, 10) === requestedUtcDate;
 
 const createLoadedAuthority = (
   binding: ReaderSummaryWeeklyStoryAuthorityBinding,

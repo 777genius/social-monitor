@@ -55,13 +55,17 @@ const selectionBaseKeys = ["story", "label", "citationSelectors"] as const;
 
 export const parseReaderSummaryWeeklyReviewResponse = (
   input: unknown,
+  expectedSealId?: string,
 ): readonly ReaderSummaryWeeklyReviewSelection[] => {
+  const response = asRecord(input, "weekly review model response");
+  if (hasExactKeys(response, ["responseSchemaVersion", "sealId", "findings"])) {
+    return parseObservationFindings(response, expectedSealId);
+  }
   assertReaderSummaryWeeklyExactObject(
     input,
     responseKeys,
     "weekly review model response",
   );
-  const response = input as Readonly<Record<string, unknown>>;
   if (response.schemaVersion !== readerSummaryWeeklyReviewResponseSchemaVersion) {
     throw new Error("Reader summary weekly review response schema is invalid");
   }
@@ -77,10 +81,56 @@ export const parseReaderSummaryWeeklyReviewResponse = (
   );
 };
 
+const parseObservationFindings = (
+  response: Readonly<Record<string, unknown>>,
+  expectedSealId: string | undefined,
+): readonly ReaderSummaryWeeklyReviewSelection[] => {
+  if (
+    expectedSealId === undefined ||
+    response.responseSchemaVersion !== readerSummaryWeeklyReviewResponseSchemaVersion ||
+    exactReaderSummaryWeeklyIdentity(
+      response.sealId,
+      "weekly review model seal id",
+    ) !== expectedSealId
+  ) {
+    throw new Error("Reader summary weekly review response seal is invalid");
+  }
+  assertReaderSummaryWeeklyDenseArray(
+    response.findings,
+    "weekly review model findings",
+  );
+  if (response.findings.length > 64) {
+    throw new Error("Reader summary weekly review model findings are not bounded");
+  }
+  return deepFreezeReaderSummaryWeekly(response.findings.map((finding) => {
+    const record = asRecord(finding, "weekly review model finding");
+    assertReaderSummaryWeeklyExactObject(
+      record,
+      ["type", "story", "selector"],
+      "weekly review model finding",
+    );
+    if (record.type !== "observation") {
+      throw new Error("Reader summary weekly review model finding type is invalid");
+    }
+    return deepFreezeReaderSummaryWeekly({
+      story: exactStorySelector(record.story),
+      label: "observation" as const,
+      citationSelectors: [exactCitationSelector(record.selector)],
+    });
+  }));
+};
+
 const parseSelection = (
   input: unknown,
 ): ReaderSummaryWeeklyReviewSelection => {
   const record = asRecord(input, "weekly review model selection");
+  if (hasExactKeys(record, ["story", "observation"])) {
+    return deepFreezeReaderSummaryWeekly({
+      story: exactStorySelector(record.story),
+      label: "observation" as const,
+      citationSelectors: [exactCitationSelector(record.observation)],
+    });
+  }
   const label = exactLabel(record.label);
   const expectedKeys = label === "evolution"
     ? [...selectionBaseKeys, "beforeCitationSelector", "afterCitationSelector"]
@@ -130,6 +180,16 @@ const asRecord = (input: unknown, label: string): Readonly<Record<string, unknow
     throw new Error(`Reader summary ${label} is invalid`);
   }
   return input as Readonly<Record<string, unknown>>;
+};
+
+const hasExactKeys = (
+  input: Readonly<Record<string, unknown>>,
+  expected: readonly string[],
+): boolean => {
+  const actual = Object.keys(input).sort();
+  const sortedExpected = [...expected].sort();
+  return actual.length === sortedExpected.length &&
+    actual.every((key, index) => key === sortedExpected[index]);
 };
 
 const exactLabel = (input: unknown): ReaderSummaryWeeklyReviewLabel => {

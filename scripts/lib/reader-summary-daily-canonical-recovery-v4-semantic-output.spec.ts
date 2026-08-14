@@ -127,8 +127,9 @@ describe("daily canonical recovery v4 semantic output", () => {
 });
 
 function without(key: string): Record<string, unknown> {
-  const { [key]: _removed, ...rest } = validOutput();
-  return rest;
+  const output = { ...validOutput() };
+  Reflect.deleteProperty(output, key);
+  return output;
 }
 
 function authority(items: readonly Record<string, unknown>[]): Buffer {

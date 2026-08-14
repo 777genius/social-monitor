@@ -33,6 +33,61 @@ describe("reader summary weekly review response", () => {
     });
   });
 
+  it("normalizes the exact seal-bound observation findings envelope", () => {
+    const sealId = `reader_summary.weekly_certification_seal.v1:${"d".repeat(64)}`;
+    expect(parseReaderSummaryWeeklyReviewResponse({
+      responseSchemaVersion: "reader_summary.weekly_review_response.v1",
+      sealId,
+      findings: [{
+        type: "observation",
+        story,
+        selector: firstCitation,
+      }],
+    }, sealId)).toEqual([{
+      story,
+      label: "observation",
+      citationSelectors: [firstCitation],
+    }]);
+  });
+
+  it("normalizes the exact compact observation selection", () => {
+    expect(parseReaderSummaryWeeklyReviewResponse({
+      schemaVersion: "reader_summary.weekly_review_response.v1",
+      selections: [{ story, observation: firstCitation }],
+    })).toEqual([{
+      story,
+      label: "observation",
+      citationSelectors: [firstCitation],
+    }]);
+    expect(() => parseReaderSummaryWeeklyReviewResponse({
+      schemaVersion: "reader_summary.weekly_review_response.v1",
+      selections: [{
+        story,
+        observation: firstCitation,
+        prose: "not admitted",
+      }],
+    })).toThrow();
+  });
+
+  it("rejects observation findings for another seal or with extra fields", () => {
+    const sealId = `reader_summary.weekly_certification_seal.v1:${"d".repeat(64)}`;
+    expect(() => parseReaderSummaryWeeklyReviewResponse({
+      responseSchemaVersion: "reader_summary.weekly_review_response.v1",
+      sealId,
+      findings: [{ type: "observation", story, selector: firstCitation }],
+    }, `reader_summary.weekly_certification_seal.v1:${"e".repeat(64)}`)).toThrow();
+    expect(() => parseReaderSummaryWeeklyReviewResponse({
+      responseSchemaVersion: "reader_summary.weekly_review_response.v1",
+      sealId,
+      findings: [{
+        type: "observation",
+        story,
+        selector: firstCitation,
+        prose: "not admitted",
+      }],
+    }, sealId)).toThrow();
+  });
+
   it.each([
     {
       name: "invented prose",

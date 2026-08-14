@@ -31,7 +31,7 @@ export type ReaderSummaryWeeklyEditorialQualityGates = Readonly<{
   exactlyOneLeadSection: boolean;
   stableStoryIdentityIsUsed: boolean;
   sameDayStoryObservationsAreUnique: boolean;
-  crossDayStoryIsSynthesized: boolean;
+  weeklySynthesisModeIsGrounded: boolean;
   factualContentIsCited: boolean;
   citationsSpanMultipleProviders: boolean;
   citationsSpanAtLeastThreeDays: boolean;
@@ -131,6 +131,36 @@ export const evaluateReaderSummaryWeeklyEditorialQuality = (
     synthesisCitations,
     (citation) => citation.providerKey,
   );
+  const inputStoryDays = new Map<string, Set<string>>();
+  for (const citation of input.citations) {
+    const days = inputStoryDays.get(citation.storyId) ?? new Set<string>();
+    days.add(citation.observedOn);
+    inputStoryDays.set(citation.storyId, days);
+  }
+  const inputHasCrossDayStory = [...inputStoryDays.values()].some(
+    (days) => days.size >= 2,
+  );
+  const inputProviders = new Set(
+    input.citations.map((citation) => citation.providerKey),
+  );
+  const singleProviderSnapshotFallback =
+    !inputHasCrossDayStory &&
+    inputProviders.size === 1 &&
+    synthesisProviderCounts.size === 1 &&
+    synthesisDayCounts.size >= 3 &&
+    dominanceIsControlled(synthesisDayCounts) &&
+    output.sections.every((section) => section.claimType === "snapshot") &&
+    output.stories.every((story) =>
+      story.status === "new" || story.status === "watch",
+    );
+  const thematicFallbackIsGrounded =
+    !inputHasCrossDayStory &&
+    synthesisDayCounts.size >= 3 &&
+    dominanceIsControlled(synthesisDayCounts) &&
+    (singleProviderSnapshotFallback || (
+      synthesisProviderCounts.size >= 2 &&
+      dominanceIsControlled(synthesisProviderCounts)
+    ));
   const dominantDayCitationShare = dominantShare(
     dayCounts,
     resolvedCitations.length,
@@ -167,6 +197,8 @@ export const evaluateReaderSummaryWeeklyEditorialQuality = (
     new Set(singleDaySectionDates).size >= 3
       ? 1
       : 0;
+  const stitchedDailySectionsAreProhibited =
+    stitchedDailySectionCount > 0 && !thematicFallbackIsGrounded;
   const claimIssues = unsupportedClaimIssues(
     textUnits,
     citationById,
@@ -181,26 +213,29 @@ export const evaluateReaderSummaryWeeklyEditorialQuality = (
     stableStoryIdentityIsUsed: storySynthesis.stableStoryIdentityIsUsed,
     sameDayStoryObservationsAreUnique:
       storySynthesis.sameDayStoryObservationsAreUnique,
-    crossDayStoryIsSynthesized:
-      storySynthesis.synthesizedCrossDayStoryCount > 0,
+    weeklySynthesisModeIsGrounded:
+      storySynthesis.synthesizedCrossDayStoryCount > 0 ||
+      thematicFallbackIsGrounded,
     factualContentIsCited,
-    citationsSpanMultipleProviders: providerCounts.size >= 2,
+    citationsSpanMultipleProviders:
+      providerCounts.size >= 2 || singleProviderSnapshotFallback,
     citationsSpanAtLeastThreeDays: dayCounts.size >= 3,
-    providerDominanceIsControlled: dominanceIsControlled(providerCounts),
+    providerDominanceIsControlled:
+      dominanceIsControlled(providerCounts) || singleProviderSnapshotFallback,
     dayDominanceIsControlled: dominanceIsControlled(dayCounts),
     synthesisCitationsSpanMultipleProviders:
-      synthesisProviderCounts.size >= 2,
+      synthesisProviderCounts.size >= 2 || singleProviderSnapshotFallback,
     synthesisCitationsSpanAtLeastThreeDays: synthesisDayCounts.size >= 3,
     synthesisProviderDominanceIsControlled: dominanceIsControlled(
       synthesisProviderCounts,
-    ),
+    ) || singleProviderSnapshotFallback,
     synthesisDayDominanceIsControlled:
       dominanceIsControlled(synthesisDayCounts),
     weeklySynthesisIsCoherent:
       dayHeadingCount === 0 &&
       dailyChronologyMarkerCount < 3 &&
       stitchedDailyCount === 0 &&
-      stitchedDailySectionCount === 0,
+      !stitchedDailySectionsAreProhibited,
     readerTextAvoidsProviderInventory: providerInventoryCount === 0,
     readerTextAvoidsProcessProse:
       processProseCount === 0 && promptInjectionCount === 0,
@@ -216,7 +251,7 @@ export const evaluateReaderSummaryWeeklyEditorialQuality = (
     ...(qualityGates.sameDayStoryObservationsAreUnique
       ? []
       : ["Weekly evidence contains duplicate same-story same-day observations"]),
-    ...(qualityGates.crossDayStoryIsSynthesized
+    ...(qualityGates.weeklySynthesisModeIsGrounded
       ? []
       : [
           "Weekly lead and synthesis must carry one stable story across multiple days",
@@ -257,7 +292,7 @@ export const evaluateReaderSummaryWeeklyEditorialQuality = (
     ...(stitchedDailyCount === 0
       ? []
       : ["Weekly editorial output reads as stitched daily summaries"]),
-    ...(stitchedDailySectionCount === 0
+    ...(!stitchedDailySectionsAreProhibited
       ? []
       : ["Weekly editorial output reads as stitched single-day sections"]),
     ...(qualityGates.readerTextAvoidsProviderInventory
@@ -267,6 +302,9 @@ export const evaluateReaderSummaryWeeklyEditorialQuality = (
       ? []
       : ["Weekly editorial output contains model or process prose"]),
     ...claimIssues,
+    ...(singleProviderSnapshotFallback
+      ? ["Weekly summary uses sealed single-provider snapshot fallback"]
+      : []),
   ];
   const blockingPassed = Object.values(qualityGates).every(Boolean);
 
@@ -292,7 +330,7 @@ export const evaluateReaderSummaryWeeklyEditorialQuality = (
       unsupportedClaimCount: claimIssues.length,
       prohibitedEditorialPatternCount:
         stitchedDailyCount +
-        stitchedDailySectionCount +
+        (stitchedDailySectionsAreProhibited ? 1 : 0) +
         (dailyChronologyMarkerCount >= 3 ? 1 : 0) +
         providerInventoryCount +
         processProseCount +

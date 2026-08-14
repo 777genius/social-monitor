@@ -9,6 +9,7 @@ import type {
 } from "../value-objects/reader-summary-weekly-certification-seal";
 import type { ReaderSummaryWeeklySealedInputManifest } from "../value-objects/reader-summary-weekly-input-manifest";
 import { readerSummaryWeeklyPublicationGitHubEvidenceSchemaVersion } from "../value-objects/reader-summary-weekly-publication-github-evidence";
+import { readerSummaryWeeklyHistoricalGitHubAuthorizationIdentity } from "../value-objects/reader-summary-weekly-input-manifest-canonical";
 import { deriveReaderSummaryWeeklyReviewCitationSelector } from "../value-objects/reader-summary-weekly-review-manifest";
 import {
   canonicalizeReaderSummaryWeeklyJson,
@@ -273,15 +274,15 @@ export const exactCitationCoverage = (
     ...output.stories.flatMap((story) => story.citationIds),
     ...output.sections.flatMap((section) => section.citationIds),
   ]);
-  if (
-    cited.size !== modelInput.citations.length ||
-    modelInput.citations.some((citation) => !cited.has(citation.citationId))
-  ) {
+  const citedModelEvidence = modelInput.citations.filter((citation) =>
+    cited.has(citation.citationId)
+  );
+  if (cited.size !== citedModelEvidence.length) {
     throw new Error(
       "Reader summary weekly publication requires 1:1 citation coverage",
     );
   }
-  const proof = modelInput.citations.map((citation) => {
+  const proof = citedModelEvidence.map((citation) => {
     const dayIndex = manifest.days.findIndex(
       (day) => day.requestedUtcDate === citation.observedOn,
     );
@@ -414,7 +415,7 @@ export const exactCertifiedAuthorities = (
       modelDay.githubBoardSha !== authority.githubEvidenceSha256 ||
       modelDay.githubBoardId !==
         `${readerSummaryWeeklyPublicationGitHubEvidenceSchemaVersion}:${authority.githubEvidenceSha256}` ||
-      modelDay.githubBoardStatus !== "verified" ||
+      !certifiedGitHubAuthorityMatches(modelDay) ||
       canonicalizeReaderSummaryWeeklyJson(providerCounts).json !==
         canonicalizeReaderSummaryWeeklyJson(modelDay.providerCounts).json
     ) {
@@ -426,6 +427,13 @@ export const exactCertifiedAuthorities = (
   });
   return deepFreezeReaderSummaryWeekly(ordered);
 };
+const certifiedGitHubAuthorityMatches = (
+  day: ReaderSummaryWeeklyArtifactProps["input"]["days"][number],
+): boolean =>
+  day.githubBoardStatus === "verified" ||
+  (day.githubBoardStatus === "historical_unavailable" &&
+    day.githubAuthorizationIdentity ===
+      readerSummaryWeeklyHistoricalGitHubAuthorizationIdentity);
 export const exactCertifiedCitationCoverage = (
   modelInput: ReaderSummaryWeeklyArtifactProps["input"],
   output: ReaderSummaryWeeklyArtifactSnapshot["output"],
@@ -438,11 +446,13 @@ export const exactCertifiedCitationCoverage = (
     ...output.stories.flatMap((story) => story.citationIds),
     ...output.sections.flatMap((section) => section.citationIds),
   ]);
-  if (cited.size !== modelInput.citations.length ||
-      modelInput.citations.some((citation) => !cited.has(citation.citationId))) {
+  const citedModelEvidence = modelInput.citations.filter((citation) =>
+    cited.has(citation.citationId)
+  );
+  if (cited.size !== citedModelEvidence.length) {
     throw new Error("Reader summary weekly certified publication requires 1:1 citation coverage");
   }
-  return deepFreezeReaderSummaryWeekly(modelInput.citations.map((citation) => {
+  return deepFreezeReaderSummaryWeekly(citedModelEvidence.map((citation) => {
     const index = seal.days.findIndex(
       (day) => day.requestedUtcDate === citation.observedOn,
     );

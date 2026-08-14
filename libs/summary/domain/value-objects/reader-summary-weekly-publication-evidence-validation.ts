@@ -2,7 +2,9 @@ import {
   assertReaderSummaryWeeklyDenseArray,
   assertReaderSummaryWeeklyExactObject,
   deepFreezeReaderSummaryWeekly,
+  exactReaderSummaryWeeklyHttpsUrl,
   exactReaderSummaryWeeklyIdentity,
+  exactReaderSummaryWeeklyProviderItemId,
   exactReaderSummaryWeeklySha256,
   exactReaderSummaryWeeklyUtcTimestamp,
 } from "./reader-summary-weekly-canonical-json";
@@ -138,11 +140,11 @@ export const canonicalProviderEvidence = (
         "provider source binding id",
       ),
       providerKey: item.providerKey,
-      providerItemId: exactReaderSummaryWeeklyIdentity(
+      providerItemId: exactReaderSummaryWeeklyProviderItemId(
         item.providerItemId,
         "provider item id",
       ),
-      canonicalUrl: exactReaderSummaryWeeklyIdentity(
+      canonicalUrl: exactReaderSummaryWeeklyHttpsUrl(
         item.canonicalUrl,
         "provider canonical URL",
       ),

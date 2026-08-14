@@ -102,6 +102,30 @@ describe("reader summary weekly review producer", () => {
     expect(store.persist).not.toHaveBeenCalled();
   });
 
+  it("binds an exact seal-bound observation envelope to its raw attested hash", async () => {
+    const source = authority();
+    const candidate = deriveReaderSummaryWeeklyReviewStoryCandidates(source)[0]!;
+    const structuredOutput = {
+      responseSchemaVersion: "reader_summary.weekly_review_response.v1",
+      sealId: source.sealId,
+      findings: [{
+        type: "observation",
+        story: candidate.story,
+        selector: candidate.citations[0]!.selector,
+      }],
+    };
+    const result = await runReaderSummaryWeeklyReviewProducer({
+      authorityLoader: { load: async () => source },
+      manifestStore: fakeStore(null),
+      agentRuntime: fakeRuntime(structuredOutput),
+    });
+
+    expect(result.manifest.modelResponseSha256).toBe(
+      canonicalJsonSha256(structuredOutput),
+    );
+    expect(result.manifest.observations).toHaveLength(1);
+  });
+
   it("preserves retryable subscription-runtime failures for the scheduler", async () => {
     const runtime = fakeRuntime();
     runtime.runTask.mockResolvedValue({
@@ -146,7 +170,10 @@ describe("reader summary weekly review producer", () => {
 const fakeStore = (
   existing: ReturnType<typeof manifestFor> | null,
 ): jest.Mocked<ReaderSummaryWeeklyReviewManifestPort> => ({
-  findBySeal: jest.fn(async (_query: FindReaderSummaryWeeklyReviewManifestQuery) => existing),
+  findBySeal: jest.fn(async (query: FindReaderSummaryWeeklyReviewManifestQuery) => {
+    void query;
+    return existing;
+  }),
   persist: jest.fn(async ({ manifest }: PersistReaderSummaryWeeklyReviewManifestCommand) => (
     { outcome: "persisted" as const, manifest }
   )),
@@ -181,12 +208,15 @@ const fakeRuntime = (
       },
     };
   }),
-  checkHealth: jest.fn(async (_service: string) => ({
-    status: "serving" as const,
-    runtimeEngine: "subscription-runtime-cli",
-    runtimeVersion: "1.2.3",
-    warnings: [],
-  })),
+  checkHealth: jest.fn(async (service: string) => {
+    void service;
+    return {
+      status: "serving" as const,
+      runtimeEngine: "subscription-runtime-cli",
+      runtimeVersion: "1.2.3",
+      warnings: [],
+    };
+  }),
 });
 
 const manifestFor = (source: ReaderSummaryWeeklyReviewAuthority) => {
