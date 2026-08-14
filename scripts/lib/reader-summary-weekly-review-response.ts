@@ -124,6 +124,13 @@ const parseSelection = (
   input: unknown,
 ): ReaderSummaryWeeklyReviewSelection => {
   const record = asRecord(input, "weekly review model selection");
+  if (hasExactKeys(record, ["story", "observation"])) {
+    return deepFreezeReaderSummaryWeekly({
+      story: exactStorySelector(record.story),
+      label: "observation" as const,
+      citationSelectors: [exactCitationSelector(record.observation)],
+    });
+  }
   const label = exactLabel(record.label);
   const expectedKeys = label === "evolution"
     ? [...selectionBaseKeys, "beforeCitationSelector", "afterCitationSelector"]

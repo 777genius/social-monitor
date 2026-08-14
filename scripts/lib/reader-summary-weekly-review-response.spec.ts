@@ -50,6 +50,25 @@ describe("reader summary weekly review response", () => {
     }]);
   });
 
+  it("normalizes the exact compact observation selection", () => {
+    expect(parseReaderSummaryWeeklyReviewResponse({
+      schemaVersion: "reader_summary.weekly_review_response.v1",
+      selections: [{ story, observation: firstCitation }],
+    })).toEqual([{
+      story,
+      label: "observation",
+      citationSelectors: [firstCitation],
+    }]);
+    expect(() => parseReaderSummaryWeeklyReviewResponse({
+      schemaVersion: "reader_summary.weekly_review_response.v1",
+      selections: [{
+        story,
+        observation: firstCitation,
+        prose: "not admitted",
+      }],
+    })).toThrow();
+  });
+
   it("rejects observation findings for another seal or with extra fields", () => {
     const sealId = `reader_summary.weekly_certification_seal.v1:${"d".repeat(64)}`;
     expect(() => parseReaderSummaryWeeklyReviewResponse({
