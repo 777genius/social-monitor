@@ -138,18 +138,26 @@ export class ListReaderSummariesUseCase {
       observedThrough: snapshot.generatedAt,
     });
 
-    const content = await this.previewMediaEnricher.enrich({
-      artifact: readerSummary,
-      content: readerSummaryContentForArtifact(readerSummary),
-    });
-    const collectedCoverage =
-      await this.coverageCounter.countCollectedFeedItemCoverage({
-        tenantId: snapshot.tenantId,
-        workspaceId: snapshot.workspaceId,
-        scope: snapshot.scope,
-        period: snapshot.period,
-        observedThrough: snapshot.generatedAt,
-      });
+    const persistedContent = readerSummaryContentForArtifact(readerSummary);
+    const [content, collectedCoverage] = await Promise.all([
+      optionalEnrichment(
+        () => this.previewMediaEnricher.enrich({
+          artifact: readerSummary,
+          content: persistedContent,
+        }),
+        persistedContent,
+      ),
+      optionalEnrichment(
+        () => this.coverageCounter.countCollectedFeedItemCoverage({
+          tenantId: snapshot.tenantId,
+          workspaceId: snapshot.workspaceId,
+          scope: snapshot.scope,
+          period: snapshot.period,
+          observedThrough: snapshot.generatedAt,
+        }),
+        undefined,
+      ),
+    ]);
 
     return presentReaderSummaryArtifact(readerSummary, freshness, {
       content,
@@ -157,6 +165,17 @@ export class ListReaderSummariesUseCase {
     });
   }
 }
+
+const optionalEnrichment = async <T>(
+  enrich: () => Promise<T>,
+  fallback: T,
+): Promise<T> => {
+  try {
+    return await enrich();
+  } catch {
+    return fallback;
+  }
+};
 
 type NormalizedListReaderSummaryFilters = {
   readonly providerKey?: string;

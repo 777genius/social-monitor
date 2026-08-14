@@ -213,28 +213,41 @@ export class PrismaReaderSummaryArtifactRepository implements
   ): Promise<ListReaderSummaryArtifactsResult> {
     const offset = parseSummaryCursor(query.cursor);
     const where = readerSummaryArtifactWhere(query);
-    const [records, total] = await Promise.all([
-      this.prisma.readerSummaryArtifact.findMany({
+    const items: ReaderSummaryArtifact[] = [];
+    let scannedOffset = offset;
+    const total = await this.prisma.readerSummaryArtifact.count({ where });
+
+    while (scannedOffset < total && items.length < query.limit) {
+      const records = await this.prisma.readerSummaryArtifact.findMany({
         where,
         orderBy: [
           { periodStartedAt: "desc" },
           { createdAt: "desc" },
           { id: "desc" },
         ],
-        skip: offset,
+        skip: scannedOffset,
         take: query.limit,
-      }),
-      this.prisma.readerSummaryArtifact.count({ where }),
-    ]);
-    const items = records.map((record) =>
-      readerSummaryArtifactFromPrisma(record),
-    );
-    const nextOffset = offset + items.length;
+      });
+      if (records.length === 0) {
+        break;
+      }
+
+      for (const record of records) {
+        scannedOffset += 1;
+        const artifact = compatibleReaderSummaryArtifact(record);
+        if (artifact !== undefined) {
+          items.push(artifact);
+        }
+        if (items.length === query.limit) {
+          break;
+        }
+      }
+    }
 
     return {
       items,
       nextCursor:
-        nextOffset < total ? encodeSummaryCursor(nextOffset) : undefined,
+        scannedOffset < total ? encodeSummaryCursor(scannedOffset) : undefined,
     };
   }
 
@@ -572,6 +585,16 @@ const readerSummaryArtifactWhere = (
 const currentPublicationFilter = {
   is: { activeSlot: { isNot: null } },
 } as const;
+
+const compatibleReaderSummaryArtifact = (
+  record: PrismaReaderSummaryArtifactRecord,
+): ReaderSummaryArtifact | undefined => {
+  try {
+    return readerSummaryArtifactFromPrisma(record);
+  } catch {
+    return undefined;
+  }
+};
 
 const periodSummaryFromPrisma = (
   record: PrismaReaderSummaryPeriodSummaryRecord,

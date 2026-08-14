@@ -2,12 +2,15 @@ import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 
 import { ReaderSummaryArtifact, type ReaderSummaryScope } from "../../domain";
 import type {
+  EnrichReaderSummaryPreviewMediaCommand,
   ListReaderSummaryArtifactsQuery,
   ListReaderSummaryArtifactsResult,
   ListReaderSummaryPeriodSummariesResult,
   ReaderSummaryArtifactRepositoryPort,
+  ReaderSummaryCoverageCounterPort,
   ReaderSummaryFreshness,
   ReaderSummaryFreshnessProbePort,
+  ReaderSummaryPreviewMediaEnricherPort,
 } from "../../ports";
 import { ListReaderSummariesUseCase } from "./list-reader-summaries.use-case";
 
@@ -167,6 +170,85 @@ describe("ListReaderSummariesUseCase", () => {
       },
     });
   });
+
+  it("falls back to persisted content when optional preview enrichment fails", async () => {
+    const useCase = new ListReaderSummariesUseCase(
+      new FakeReaderSummaryArtifactRepository([
+        readerSummaryArtifact({ readerSummaryId: "reader-summary-1" }),
+      ]),
+      new FakeReaderSummaryFreshnessProbe(),
+      new FailingReaderSummaryPreviewMediaEnricher(),
+    );
+
+    const result = await useCase.execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      limit: 10,
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        items: [
+          expect.objectContaining({
+            readerSummaryId: "reader-summary-1",
+            headline: "Workspace AI tooling reader summary",
+          }),
+        ],
+        nextCursor: undefined,
+      },
+    });
+  });
+
+  it("falls back to artifact coverage when optional coverage enrichment fails", async () => {
+    const useCase = new ListReaderSummariesUseCase(
+      new FakeReaderSummaryArtifactRepository([
+        readerSummaryArtifact({ readerSummaryId: "reader-summary-1" }),
+      ]),
+      new FakeReaderSummaryFreshnessProbe(),
+      undefined,
+      new FailingReaderSummaryCoverageCounter(),
+    );
+
+    const result = await useCase.execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      limit: 10,
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        items: [
+          expect.objectContaining({
+            readerSummaryId: "reader-summary-1",
+            coverage: expect.objectContaining({
+              selectedFeedItemCount: 1,
+              collectedFeedItemCount: 1,
+            }),
+          }),
+        ],
+        nextCursor: undefined,
+      },
+    });
+  });
+
+  it("does not hide required artifact repository failures", async () => {
+    const repository = new FakeReaderSummaryArtifactRepository([]);
+    repository.listFailure = new Error("reader summary persistence unavailable");
+    const useCase = new ListReaderSummariesUseCase(
+      repository,
+      new FakeReaderSummaryFreshnessProbe(),
+    );
+
+    await expect(
+      useCase.execute({
+        tenantId: tenant,
+        workspaceId: workspace,
+        limit: 10,
+      }),
+    ).rejects.toThrow("reader summary persistence unavailable");
+  });
 });
 
 const tenant = tenantId("tenant-reader-summary-list");
@@ -272,6 +354,7 @@ const readerSummaryArtifact = (params: {
 
 class FakeReaderSummaryArtifactRepository implements ReaderSummaryArtifactRepositoryPort {
   readonly queries: ListReaderSummaryArtifactsQuery[] = [];
+  listFailure?: Error;
 
   constructor(private readonly artifacts: readonly ReaderSummaryArtifact[]) {}
 
@@ -284,6 +367,9 @@ class FakeReaderSummaryArtifactRepository implements ReaderSummaryArtifactReposi
     query: ListReaderSummaryArtifactsQuery,
   ): Promise<ListReaderSummaryArtifactsResult> {
     this.queries.push(query);
+    if (this.listFailure !== undefined) {
+      throw this.listFailure;
+    }
     const offset = query.cursor === undefined ? 0 : Number(query.cursor);
     const items = this.artifacts.slice(offset, offset + query.limit);
     const nextOffset = offset + items.length;
@@ -305,6 +391,27 @@ class FakeReaderSummaryArtifactRepository implements ReaderSummaryArtifactReposi
 
   async findRejectedDebugById(): Promise<null> {
     return null;
+  }
+}
+
+class FailingReaderSummaryPreviewMediaEnricher implements
+  ReaderSummaryPreviewMediaEnricherPort {
+  async enrich(
+    command: EnrichReaderSummaryPreviewMediaCommand,
+  ): Promise<never> {
+    void command;
+    throw new Error("preview media unavailable");
+  }
+}
+
+class FailingReaderSummaryCoverageCounter implements
+  ReaderSummaryCoverageCounterPort {
+  async countCollectedFeedItems(): Promise<never> {
+    throw new Error("coverage unavailable");
+  }
+
+  async countCollectedFeedItemCoverage(): Promise<never> {
+    throw new Error("coverage unavailable");
   }
 }
 

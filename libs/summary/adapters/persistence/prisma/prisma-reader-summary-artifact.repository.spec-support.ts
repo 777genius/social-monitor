@@ -158,6 +158,22 @@ export class FakeReaderSummaryPrisma {
     return this.records.get(id)?.qualitySignals;
   }
 
+  publish(id: string): void {
+    const record = this.records.get(id);
+    if (record === undefined) {
+      throw new Error(`Reader summary artifact ${id} does not exist`);
+    }
+    this.records.set(id, { ...record, status: "COMPLETED" });
+  }
+
+  replaceArtifactPayload(id: string, artifactPayload: unknown): void {
+    const record = this.records.get(id);
+    if (record === undefined) {
+      throw new Error(`Reader summary artifact ${id} does not exist`);
+    }
+    this.records.set(id, { ...record, artifactPayload });
+  }
+
   setDailyRecoveryVerification(verified: boolean | null): void {
     this.dailyRecoveryVerified = verified;
   }
