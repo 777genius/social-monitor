@@ -257,7 +257,7 @@ const canonicalAuthorityEvidenceItem = (
     "story evidence observedAt",
   );
   if (
-    observedAt.slice(0, 10) !== requestedUtcDate ||
+    publishedAt.slice(0, 10) !== requestedUtcDate ||
     Date.parse(publishedAt) > Date.parse(observedAt)
   ) {
     throw new Error(

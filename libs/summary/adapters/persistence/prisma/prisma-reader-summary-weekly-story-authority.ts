@@ -403,7 +403,12 @@ const storyAuthorityBinding = (
     githubEvidenceSha256: publication.githubEvidence.sha256,
     semanticStatus: publication.semanticStatus,
     publishedAt: publication.publishedAt,
-    evidence: publication.providerEvidence.map(authorityEvidenceReference),
+    evidence: publication.providerEvidence
+      .filter((item) => factualEvidenceForRequestedDay(
+        item,
+        publication.requestedUtcDate,
+      ))
+      .map(authorityEvidenceReference),
   });
   const canonical = canonicalizeReaderSummaryWeeklyJson(
     body,
@@ -434,6 +439,13 @@ const authorityEvidenceReference = (
   publishedAt: input.publishedAt,
   observedAt: input.observedAt,
 });
+
+const factualEvidenceForRequestedDay = (
+  input: ReaderSummaryWeeklyPublicationProviderEvidence,
+  requestedUtcDate: string,
+): boolean =>
+  input.publishedAt.slice(0, 10) === requestedUtcDate &&
+  Date.parse(input.publishedAt) <= Date.parse(input.observedAt);
 
 const createLoadedAuthority = (
   binding: ReaderSummaryWeeklyStoryAuthorityBinding,

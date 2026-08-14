@@ -328,6 +328,33 @@ describe("PrismaReaderSummaryWeeklyStoryAuthority", () => {
     expect(replay.evidence[0]?.sourceContentHash).toBe("a".repeat(64));
   });
 
+  it("keeps later-observed backfill evidence and excludes impossible chronology", async () => {
+    const row = publicationRow();
+    row.providerEvidence = [
+      { ...row.providerEvidence[0]!, observedAt: "2026-07-06T08:05:00.000Z" },
+      { ...row.providerEvidence[1]!, observedAt: "2026-07-04T08:05:00.000Z" },
+    ];
+    row.providerEvidenceSha256 =
+      canonicalizeReaderSummaryWeeklyJson(row.providerEvidence).sha256;
+    row.canonicalRecord = {
+      ...(row.canonicalRecord as Record<string, unknown>),
+      providerEvidence: row.providerEvidence,
+      providerEvidenceSha256: row.providerEvidenceSha256,
+    };
+    recanonicalizeEvidenceRow(row);
+
+    const adapter = authorityAdapter(new FakeAuthorityPrisma([row]));
+    const authority = await adapter.load(query);
+    const binding = adapter.readVerifiedBinding(authority!);
+
+    expect(binding.evidence.map((item) => item.citationId)).toEqual([
+      "citation-1",
+    ]);
+    expect(binding.evidence[0]?.observedAt).toBe(
+      "2026-07-06T08:05:00.000Z",
+    );
+  });
+
   it("replays exact durable bytes without sharing mutable row state", async () => {
     const row = publicationRow();
     const adapter = authorityAdapter(new FakeAuthorityPrisma([row]));

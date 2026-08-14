@@ -52,13 +52,21 @@ describe("reader summary weekly story authority boundary", () => {
     ).toThrow("binding seal is invalid");
   });
 
-  it("rejects cross-day evidence, chronology invention and ambiguous sources", () => {
+  it("accepts later backfill observation but rejects wrong-day publication, chronology invention and ambiguous sources", () => {
     const binding = authorityBinding();
     expect(() =>
       resealBinding(binding, {
         evidence: binding.evidence.map((item) => ({
           ...item,
           observedAt: "2026-07-06T08:05:00.000Z",
+        })),
+      }),
+    ).not.toThrow();
+    expect(() =>
+      resealBinding(binding, {
+        evidence: binding.evidence.map((item) => ({
+          ...item,
+          publishedAt: "2026-07-04T08:00:00.000Z",
         })),
       }),
     ).toThrow("not factual for the requested UTC date");
