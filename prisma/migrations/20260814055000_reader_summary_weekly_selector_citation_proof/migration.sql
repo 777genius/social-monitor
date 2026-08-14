@@ -1,5 +1,7 @@
 -- @social-monitor-forward-migration
 
+SET LOCAL ROLE "social_monitor_reader_summary_publication_owner";
+
 DO $migration$
 DECLARE
   v_definition TEXT;
