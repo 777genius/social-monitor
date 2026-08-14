@@ -42,22 +42,17 @@ void main() {
     expect(tester.getSize(header).width, 1280);
   });
 
-  testWidgets('invokes the app-owned weekly summary callback', (tester) async {
-    final store = _store(
-      [githubTrendingSummaryApiDto()],
-      workspaceSummary: githubTrendingReaderSummaryApiDto(),
-    );
+  testWidgets('uses the shared period selector without a weekly CTA', (
+    tester,
+  ) async {
+    final store = _store([
+      githubTrendingSummaryApiDto(),
+    ], workspaceSummary: githubTrendingReaderSummaryApiDto());
     addTearDown(store.dispose);
-    var opened = false;
+    await _pumpSizedFeature(tester, store: store);
 
-    await _pumpSizedFeature(
-      tester,
-      store: store,
-      onOpenWeeklySummary: () => opened = true,
-    );
-    await tester.tap(find.byKey(const ValueKey('open-weekly-summary')));
-
-    expect(opened, isTrue);
+    expect(find.byKey(const ValueKey('open-weekly-summary')), findsNothing);
+    expect(find.text('Week'), findsOneWidget);
   });
 }
 
@@ -108,7 +103,6 @@ final class _FakeReaderSourceLauncher implements ReaderSourceLauncher {
 Future<void> _pumpSizedFeature(
   WidgetTester tester, {
   required SummariesReviewStore store,
-  VoidCallback? onOpenWeeklySummary,
 }) async {
   const size = Size(1280, 820);
   tester.view.physicalSize = size;
@@ -126,11 +120,7 @@ Future<void> _pumpSizedFeature(
         home: MediaQuery(
           data: const MediaQueryData(size: size),
           child: Scaffold(
-            body: SummariesFeaturePage(
-              store: store,
-              autoload: false,
-              onOpenWeeklySummary: onOpenWeeklySummary,
-            ),
+            body: SummariesFeaturePage(store: store, autoload: false),
           ),
         ),
       ),
