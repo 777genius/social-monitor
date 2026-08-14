@@ -207,7 +207,11 @@ const canonicalReviewAuthority = (input: ReaderSummaryWeeklyReviewAuthority): Re
   if (new Set(days.map((day) => day.publicationId)).size !== days.length) throw new Error("Reader summary weekly review authority publications are ambiguous");
   return deepFreezeReaderSummaryWeekly({
     schemaVersion: readerSummaryWeeklyReviewAuthoritySchemaVersion, sealId, sealSha256, tenantId, workspaceId,
-    scope, scopeKey, weekStartedOn, weekEndedOn, days: days.map(({ providerEvidence: _providerEvidence, ...day }) => day),
+    scope, scopeKey, weekStartedOn, weekEndedOn, days: days.map((day) => {
+      const { providerEvidence, ...reviewAuthorityDay } = day;
+      void providerEvidence;
+      return reviewAuthorityDay;
+    }),
   });
 };
 

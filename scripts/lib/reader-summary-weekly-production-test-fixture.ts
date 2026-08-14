@@ -82,10 +82,12 @@ export const admittedRunnerInput = (
   reviewManifest: ReaderSummaryWeeklyReviewManifest;
 }> => Object.freeze({ dbState, reviewManifest: reviewManifestFor(dbState) });
 
-export const historicalGithubUnavailableDbState = (): ReaderSummaryWeeklyProductionDbState => {
+export const historicalGithubUnavailableDbState = (
+  requestedUtcDate = "2026-07-23",
+): ReaderSummaryWeeklyProductionDbState => {
   const base = completeDbState();
   const certifications = Object.freeze(base.certifications.map((certification) =>
-    certification.requestedUtcDate !== "2026-07-23"
+    certification.requestedUtcDate !== requestedUtcDate
       ? certification
       : Object.freeze({
           ...certification,
@@ -100,7 +102,7 @@ export const historicalGithubUnavailableDbState = (): ReaderSummaryWeeklyProduct
             mode: "historical_unavailable",
             evidenceCount: 0,
             repositories: Object.freeze([]),
-            sha256: sha("github:2026-07-23:historical-unavailable"),
+            sha256: sha(`github:${requestedUtcDate}:historical-unavailable`),
           }),
           providerEvidence: Object.freeze(
             certification.providerEvidence.filter((evidence) =>

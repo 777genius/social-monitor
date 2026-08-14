@@ -1,15 +1,23 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 
-const migration =
-  "prisma/migrations/20260813102000_reader_summary_github_provider_board_seal/migration.sql";
+const migrationName =
+  "20260813102000_reader_summary_github_provider_board_seal";
+const migration = `prisma/migrations/${migrationName}/migration.sql`;
 
 describe("reader summary GitHub provider board seal migration", () => {
   const sql = readFileSync(resolve(migration), "utf8");
 
-  it("is the latest guarded forward migration", () => {
-    expect(readdirSync(resolve("prisma/migrations")).sort().at(-1)).toBe(
-      "20260813102000_reader_summary_github_provider_board_seal",
+  it("remains the latest guarded publisher rewrite", () => {
+    const laterMigrationSql = readdirSync(resolve("prisma/migrations"))
+      .filter((name) => name > migrationName)
+      .sort()
+      .map((name) =>
+        readFileSync(resolve("prisma/migrations", name, "migration.sql"), "utf8"),
+      )
+      .join("\n");
+    expect(laterMigrationSql).not.toMatch(
+      /CREATE\s+OR\s+REPLACE\s+FUNCTION\s+(?:public\.)?"?publish_reader_summary"?/iu,
     );
     expect(sql).toContain("target diverged");
     expect(sql).toContain("rewrite is not exact");

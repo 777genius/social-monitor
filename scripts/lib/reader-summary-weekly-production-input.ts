@@ -573,12 +573,8 @@ const modelDays = (
       providerCounts: certification.providerCounts,
     };
     if (mode === "historical_unavailable") {
-      if (certification.requestedUtcDate !== "2026-07-23") {
-        throw new Error("Reader summary weekly historical GitHub authority escaped July 23");
-      }
       return Object.freeze({
         ...common,
-        date: "2026-07-23" as const,
         githubBoardStatus: "historical_unavailable" as const,
         githubAuthorizationIdentity:
           readerSummaryWeeklyHistoricalGitHubAuthorizationIdentity,

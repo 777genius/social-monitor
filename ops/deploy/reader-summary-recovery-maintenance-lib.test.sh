@@ -185,7 +185,7 @@ unset ASSERT_WEEKLY_LOCKS_HELD ASSERT_AUTH_LOCKS_HELD
 recovery_command='--profile daily run --rm --no-deps -e READER_SUMMARY_DAILY_TENANT_ID=00000000-0000-7000-8000-000000000901 -e READER_SUMMARY_DAILY_WORKSPACE_ID=00000000-0000-7000-8000-000000000902 -e READER_SUMMARY_DAILY_FIRST_UNRESOLVED_UTC_DATE=2026-07-23 -e READER_SUMMARY_DAILY_PUBLIC_DIRECTORY=/var/lib/social-monitor/artifacts/reports daily-runner sh -lc set -eu; npm run prepare:reader-summary-production-recovery-gap-authority; npm run run:reader-summary-daily-canonical-recovery'
 reconcile_command="-f $FINAL_MODEL_OVERLAY --profile app up -d --no-deps agent-runtime"
 recovery_command="-f $FINAL_MODEL_OVERLAY $recovery_command"
-weekly_command="-f $FINAL_MODEL_OVERLAY --profile daily run --rm --no-deps -e READER_SUMMARY_WEEKLY_PRODUCTION_TENANT_ID=00000000-0000-7000-8000-000000000901 -e READER_SUMMARY_WEEKLY_PRODUCTION_WORKSPACE_ID=00000000-0000-7000-8000-000000000902 -e READER_SUMMARY_WEEKLY_PRODUCTION_FIRST_WEEK_START=2026-07-27 -e READER_SUMMARY_WEEKLY_PRODUCTION_CATCH_UP_LIMIT=1 -e READER_SUMMARY_WEEKLY_PRODUCTION_ARTIFACT_DIR=/var/lib/social-monitor/artifacts/reader-summary-weekly-production daily-runner sh -lc set -eu; npm run run:reader-summary-weekly-production -- --week-start 2026-07-27; npm run run:reader-summary-weekly-production -- --replay --week-start 2026-07-27"
+weekly_command="-f $FINAL_MODEL_OVERLAY --profile daily run --rm --no-deps -e READER_SUMMARY_WEEKLY_PRODUCTION_TENANT_ID=00000000-0000-7000-8000-000000006101 -e READER_SUMMARY_WEEKLY_PRODUCTION_WORKSPACE_ID=00000000-0000-7000-8000-000000006102 -e READER_SUMMARY_WEEKLY_PRODUCTION_FIRST_WEEK_START=2026-07-27 -e READER_SUMMARY_WEEKLY_PRODUCTION_CATCH_UP_LIMIT=4 -e READER_SUMMARY_WEEKLY_PRODUCTION_ARTIFACT_DIR=/var/lib/social-monitor/artifacts/reader-summary-weekly-production daily-runner sh -lc set -eu; npm run run:reader-summary-weekly-production; npm run run:reader-summary-weekly-production -- --replay"
 mapfile -t compose_commands < <(grep -v '^source-env=' "$COMPOSE_LOG")
 [[ ${#compose_commands[@]} == 4 ]]
 [[ ${compose_commands[0]} == "$reconcile_command" ]]
@@ -198,7 +198,7 @@ mapfile -t compose_commands < <(grep -v '^source-env=' "$COMPOSE_LOG")
 ! grep -F 'READER_SUMMARY_PRODUCTION_RECOVERY_SOURCE_DATABASE_URL' \
   "$COMPOSE_LOG" >/dev/null
 ! grep -F 'backfill:reader-summary-weekly-daily-certifications' "$COMPOSE_LOG" >/dev/null
-grep -F 'npm run run:reader-summary-weekly-production -- --week-start 2026-07-27; npm run run:reader-summary-weekly-production -- --replay --week-start 2026-07-27' "$COMPOSE_LOG" >/dev/null
+grep -F 'npm run run:reader-summary-weekly-production; npm run run:reader-summary-weekly-production -- --replay' "$COMPOSE_LOG" >/dev/null
 ! grep -F 'postgresql://' "$COMPOSE_LOG" >/dev/null
 ! grep -F 'pg_restore' "$DOCKER_LOG" "$COMPOSE_LOG" >/dev/null
 ! grep -F 'social-monitor-reader-summary-recovery-source-' \
@@ -525,7 +525,7 @@ printf '%s\n' "$CONTROL_ONLY_SHA" > "$STATE/control.sha"
 : > "$COMPOSE_LOG"
 run_reader_summary_daily_runner_maintenance reader-summary-weekly-run
 [[ $(grep -Fc \
-  'daily-runner sh -lc set -eu; npm run run:reader-summary-weekly-production -- --week-start 2026-07-27; npm run run:reader-summary-weekly-production -- --replay --week-start 2026-07-27' \
+  'daily-runner sh -lc set -eu; npm run run:reader-summary-weekly-production; npm run run:reader-summary-weekly-production -- --replay' \
   "$COMPOSE_LOG") == 1 ]]
 
 # Control-only deploys are valid when the deployed backend/runtime marker is a

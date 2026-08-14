@@ -33,7 +33,6 @@ import {
   canonicalHistoricalAuthority,
   canonicalHistoricalDailyCertification,
   historicalGitHubAudit,
-  readerSummaryWeeklyHistoricalGitHubDate,
   readerSummaryWeeklyInputManifestSchemaVersion,
   type readerSummaryWeeklyHistoricalGitHubAuthorizationIdentity,
   utcDayAfter,
@@ -41,7 +40,6 @@ import {
 
 export {
   readerSummaryWeeklyHistoricalGitHubAuthorizationIdentity,
-  readerSummaryWeeklyHistoricalGitHubDate,
   readerSummaryWeeklyInputManifestSchemaVersion,
 } from "./reader-summary-weekly-input-manifest-canonical";
 
@@ -76,7 +74,7 @@ export type ReaderSummaryWeeklyHistoricalGitHubAudit =
 export type ReaderSummaryWeeklyHistoricalDailyCertification =
   ReaderSummaryWeeklyCanonicalDailyCertification &
     Readonly<{
-      requestedUtcDate: typeof readerSummaryWeeklyHistoricalGitHubDate;
+      requestedUtcDate: string;
     }>;
 export type ReaderSummaryWeeklyPersistedPublicationEvidence = Omit<
   ReaderSummaryWeeklyCanonicalPublicationEvidence,
@@ -94,7 +92,7 @@ type ReaderSummaryWeeklyCanonicalVerifiedInputDay = Readonly<{
   dailyCertification: ReaderSummaryWeeklyCanonicalDailyCertification;
 }>;
 type ReaderSummaryWeeklyCanonicalHistoricalInputDay = Readonly<{
-  requestedUtcDate: typeof readerSummaryWeeklyHistoricalGitHubDate;
+  requestedUtcDate: string;
   githubAudit: ReaderSummaryWeeklyHistoricalGitHubAudit;
   dailyCertification: ReaderSummaryWeeklyHistoricalDailyCertification;
   historicalAuthority: ReaderSummaryWeeklyHistoricalPublicationAuthority;
@@ -199,7 +197,7 @@ export const sealReaderSummaryWeeklyInputManifest = (
         { requestedUtcDate, tenantId, workspaceId, scope },
       );
       return deepFreezeReaderSummaryWeekly({
-        requestedUtcDate: readerSummaryWeeklyHistoricalGitHubDate,
+        requestedUtcDate,
         githubAudit,
         dailyCertification,
         historicalAuthority,

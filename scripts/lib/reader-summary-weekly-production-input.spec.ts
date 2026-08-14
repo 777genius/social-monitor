@@ -171,14 +171,16 @@ describe("reader summary weekly production manifest input admission", () => {
     });
   });
 
-  it("keeps the authorized 2026-07-23 historical GitHub omission in the model input", () => {
-    const dbState = historicalGithubUnavailableDbState();
+  it.each(["2026-07-23", "2026-07-24"])(
+    "keeps an honestly unavailable historical GitHub board for %s in the model input",
+    (requestedUtcDate) => {
+    const dbState = historicalGithubUnavailableDbState(requestedUtcDate);
     const built = buildModelInputFromDbState(dbState, reviewManifestFor(dbState));
 
     if (built.status !== "complete") throw new Error(built.reasons.join("; "));
     expect(built.status).toBe("complete");
-    expect(built.input.days[3]).toMatchObject({
-      date: "2026-07-23",
+    expect(built.input.days.find((day) => day.date === requestedUtcDate)).toMatchObject({
+      date: requestedUtcDate,
       githubBoardStatus: "historical_unavailable",
       githubAuthorizationIdentity:
         readerSummaryWeeklyHistoricalGitHubAuthorizationIdentity,
