@@ -11,6 +11,7 @@ import {
 } from "@social-monitor/shared-kernel";
 import { DeterministicReaderSummaryModelAdapter } from "@social-monitor/summary/adapters/model/deterministic-reader-summary-model.adapter";
 import { InMemorySummaryEventPublisher } from "@social-monitor/summary/adapters/messaging/in-memory-summary-event-publisher";
+import type { VerifiedReaderSummaryExecutionAttestation } from "@social-monitor/summary/adapters/model/reader-summary-execution-attestation";
 import { InMemoryReaderSummaryArtifactRepository } from "@social-monitor/summary/adapters/persistence/in-memory-reader-summary-artifact.repository";
 import { InMemoryReaderSummaryJobRepository } from "@social-monitor/summary/adapters/persistence/in-memory-reader-summary-job.repository";
 import { InMemoryReaderSummaryPolicyRepository } from "@social-monitor/summary/adapters/persistence/in-memory-reader-summary-policy.repository";
@@ -283,7 +284,7 @@ const evidenceSelection = (): ReaderSummaryModelInput["evidence"] => {
   };
 };
 
-const executionAttestation = () => ({
+const executionAttestation = (): VerifiedReaderSummaryExecutionAttestation => ({
   taskRole: "summary" as const,
   attempt: "primary",
   normalizedOutputSha256: "c".repeat(64),
