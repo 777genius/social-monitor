@@ -171,6 +171,10 @@ class FakeReaderSummaryJobRepository implements ReaderSummaryJobRepositoryPort {
   async claimForExecution(): Promise<ReaderSummaryJob | null> {
     return null;
   }
+
+  async saveExecutionOutcome(): Promise<boolean> {
+    return false;
+  }
 }
 
 describe("SchedulePeriodicReaderSummariesUseCase", () => {

@@ -114,14 +114,6 @@ async function main(): Promise<void> {
 
   const startedAt = new Date();
   const steps: StepReport[] = [];
-  const migrationStep = runNpm("migrate", ["run", "migrate:deploy"]);
-  if (migrationStep.status !== "passed") {
-    throw new Error(
-      `Required database migration failed before production-day admission ` +
-        `(exit=${migrationStep.exitCode ?? "unknown"})`,
-    );
-  }
-  steps.push(migrationStep);
   initializeProductionDayRuntime();
   if (summaryModel !== "agent-runtime") {
     throw new Error(
@@ -395,8 +387,17 @@ async function main(): Promise<void> {
             runtimeArtifactDirectory,
             `rejected-topic-map-${collectionDate}.v1.json`,
           ),
+          DURABLE_READER_SUMMARY_PUBLICATION_RECOVERY_DIR:
+            process.env.DURABLE_READER_SUMMARY_PUBLICATION_RECOVERY_DIR ??
+            join(runtimeArtifactDirectory, ".db-publication-recovery"),
           ...(executionRequest.mode === "historical-regeneration"
             ? {
+                DURABLE_READER_SUMMARY_SOURCE_REPORT_SHA256:
+                  executionRequest.sourceReportSha256,
+                DURABLE_READER_SUMMARY_COLLECTION_ARTIFACT_SHA256:
+                  executionRequest.collectionArtifactSha256,
+                DURABLE_READER_SUMMARY_COLLECTION_QUALITY_REPORT_SHA256:
+                  executionRequest.collectionQualityReportSha256,
                 DURABLE_READER_SUMMARY_DATASET_MANIFEST_PATH:
                   executionRequest.datasetManifestPath,
                 DURABLE_READER_SUMMARY_DATASET_MANIFEST_SHA256:

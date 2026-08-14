@@ -1,6 +1,7 @@
 import { eventId, tenantId, workspaceId } from "@social-monitor/shared-kernel";
 
 import {
+  ReaderSummaryJob,
   readerSummaryGitHubProjectionCollectionGraceMs,
   readerSummaryGitHubProjectionCollectionWarningThresholdMs,
 } from "../../domain";
@@ -176,7 +177,8 @@ describe("InMemoryReaderSummaryPublication", () => {
     );
     await expect(context.artifacts.findById(fixture.identity)).resolves.toBeNull();
     expect(context.events.all()).toEqual([]);
-    expect(context.jobs.all()).toEqual([]);
+    expect(context.jobs.all()).toHaveLength(1);
+    expect(context.jobs.all()[0]?.toSnapshot().status).toBe("running");
   });
 });
 
@@ -187,6 +189,17 @@ const createContext = async (
   const artifacts = new InMemoryReaderSummaryArtifactRepository();
   const events = new InMemorySummaryEventPublisher();
   for (const command of commands) {
+    const finalJob = command.finalJob.toSnapshot();
+    await jobs.save(
+      ReaderSummaryJob.rehydrate({
+        ...finalJob,
+        status: "running",
+        completedAt: undefined,
+        failedAt: undefined,
+        readerSummaryId: undefined,
+        failureReason: undefined,
+      }),
+    );
     await artifacts.save(command.artifact, {
       publicationDecision: command.publicationDecision,
       githubProjectionAudit: command.githubProjectionAudit,

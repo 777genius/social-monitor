@@ -30,7 +30,7 @@ describe("historical production-day regeneration", () => {
     }
   });
 
-  it("binds a passed collection attempt, artifact and quality report", () => {
+  it("accepts a new eight-step summary failure without daily migration", () => {
     const request = writeFixtures();
 
     const result = loadHistoricalRegeneration(loadParams(request));
@@ -72,6 +72,41 @@ describe("historical production-day regeneration", () => {
 
     expect(() => loadHistoricalRegeneration(loadParams(request))).toThrow(
       "Source production attempt did not pass collect",
+    );
+  });
+
+  it.each(["collect", "collection-quality"] as const)(
+    "rejects a new source attempt missing required step %s",
+    (missingStep) => {
+      const request = writeFixtures({ missingStep });
+
+      expect(() => loadHistoricalRegeneration(loadParams(request))).toThrow(
+        `Source production attempt did not pass ${missingStep}`,
+      );
+    },
+  );
+
+  it("rejects a new source attempt missing a downstream required step", () => {
+    const request = writeFixtures({ missingStep: "artifact-quality" });
+
+    expect(() => loadHistoricalRegeneration(loadParams(request))).toThrow(
+      "Source production attempt has an invalid step inventory",
+    );
+  });
+
+  it("accepts a legacy source attempt with a passed daily migration", () => {
+    const request = writeFixtures({ legacyMigrateStatus: "passed" });
+
+    expect(
+      loadHistoricalRegeneration(loadParams(request)).verifiedCollectionStep,
+    ).toMatchObject({ id: "collect", status: "passed", exitCode: 0 });
+  });
+
+  it("rejects a legacy source attempt whose daily migration failed", () => {
+    const request = writeFixtures({ legacyMigrateStatus: "failed" });
+
+    expect(() => loadHistoricalRegeneration(loadParams(request))).toThrow(
+      "Source production attempt did not pass migrate",
     );
   });
 
@@ -126,6 +161,11 @@ describe("historical production-day regeneration", () => {
     options: {
       readonly collectionDate?: string;
       readonly collectStatus?: "passed" | "failed";
+      readonly missingStep?:
+        | "collect"
+        | "collection-quality"
+        | "artifact-quality";
+      readonly legacyMigrateStatus?: "passed" | "failed";
       readonly qualityXCount?: number;
       readonly timestampPolicy?: "published_at" | "observed_at";
       readonly githubCount?: number;
@@ -161,20 +201,7 @@ describe("historical production-day regeneration", () => {
         allowDegraded: false,
         allowHistorical: false,
       },
-      steps: [
-        passedStep("migrate"),
-        options.collectStatus === "failed"
-          ? { ...passedStep("collect"), status: "failed", exitCode: 1 }
-          : passedStep("collect"),
-        passedStep("collection-quality"),
-        {
-          id: "durable-reader-summary",
-          command: "npm run capture:durable-reader-summary",
-          status: "failed",
-          durationMs: 1,
-          exitCode: 1,
-        },
-      ],
+      steps: sourceAttemptSteps(options),
     });
     writeJson(collectionArtifactPath, {
       schemaVersion: 1,
@@ -298,6 +325,45 @@ function passedStep(id: string) {
     durationMs: 1,
     exitCode: 0,
   };
+}
+
+function failedStep(id: string) {
+  return {
+    ...passedStep(id),
+    status: "failed",
+    exitCode: 1,
+  };
+}
+
+function sourceAttemptSteps(options: {
+  readonly collectStatus?: "passed" | "failed";
+  readonly missingStep?:
+    | "collect"
+    | "collection-quality"
+    | "artifact-quality";
+  readonly legacyMigrateStatus?: "passed" | "failed";
+}) {
+  const currentSteps = [
+    options.collectStatus === "failed"
+      ? failedStep("collect")
+      : passedStep("collect"),
+    passedStep("collection-quality"),
+    failedStep("durable-reader-summary"),
+    failedStep("artifact-quality"),
+    failedStep("quality-dashboard"),
+    failedStep("top-read-ranking"),
+    failedStep("source-quality-trace"),
+    failedStep("clean-day-e2e"),
+  ].filter((step) => step.id !== options.missingStep);
+  if (options.legacyMigrateStatus === undefined) {
+    return currentSteps;
+  }
+  return [
+    options.legacyMigrateStatus === "passed"
+      ? passedStep("migrate")
+      : failedStep("migrate"),
+    ...currentSteps,
+  ];
 }
 
 function writeJson(path: string, value: unknown): void {

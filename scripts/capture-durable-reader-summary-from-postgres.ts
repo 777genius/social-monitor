@@ -76,6 +76,19 @@ import {
   createReaderSummaryDailyCaptureContext,
   createReaderSummaryDailyPublicationExecutionWiring,
 } from "./lib/reader-summary-daily-publication-finalizer";
+import {
+  readerSummaryProductionDayAttemptIdentity,
+  readerSummaryProductionDayIdempotencyKey,
+  type ReaderSummaryProductionDayAttemptIdentityInput,
+} from "./lib/reader-summary-production-day-attempt-identity";
+import {
+  readerSummaryServingAuthorityRequiresAgentRuntime,
+  resolveReaderSummaryServingAuthority,
+} from "./lib/reader-summary-serving-authority";
+import {
+  assertReaderSummaryDbPublicationFailpointInactive,
+  createRecoverableReaderSummaryPublication,
+} from "./lib/reader-summary-db-publication-reconciliation";
 
 const databaseUrlEnv = "DATABASE_URL";
 const evidencePathEnv = "DURABLE_READER_SUMMARY_EVIDENCE_PATH";
@@ -92,9 +105,17 @@ const historicalGitHubOmissionReasonEnv =
 const datasetManifestPathEnv = "DURABLE_READER_SUMMARY_DATASET_MANIFEST_PATH";
 const datasetManifestSha256Env =
   "DURABLE_READER_SUMMARY_DATASET_MANIFEST_SHA256";
+const sourceReportSha256Env =
+  "DURABLE_READER_SUMMARY_SOURCE_REPORT_SHA256";
+const collectionArtifactSha256Env =
+  "DURABLE_READER_SUMMARY_COLLECTION_ARTIFACT_SHA256";
+const collectionQualityReportSha256Env =
+  "DURABLE_READER_SUMMARY_COLLECTION_QUALITY_REPORT_SHA256";
 const datasetRecoveryRootEnv = "DURABLE_READER_SUMMARY_RECOVERY_ROOT";
 const recoveryTimestampPolicyEnv =
   "DURABLE_READER_SUMMARY_RECOVERY_TIMESTAMP_POLICY";
+const publicationRecoveryDirectoryEnv =
+  "DURABLE_READER_SUMMARY_PUBLICATION_RECOVERY_DIR";
 loadDotenvIfPresent(".env");
 type DurableReaderSummaryModelMode =
   "deterministic" | "openai-responses" | "agent-runtime";
@@ -159,6 +180,32 @@ async function main(): Promise<void> {
       "Historical GitHub omission requires explicit historical recovery mode",
     );
   }
+  const sourceProvenance: ReaderSummaryProductionDayAttemptIdentityInput["sourceProvenance"] =
+    dailyReplay !== null
+      ? {
+          kind: "persisted-daily-replay",
+          sourceAuthoritySha256: dailyReplay.authoritySha256,
+          originalModelJobIdentity: dailyReplay.modelJobIdentity,
+          originalReceiptSha256: sha256Bytes(dailyReplay.receiptBytes),
+        }
+      : recoveryTimestampPolicy.active
+        ? {
+            kind: "historical-regeneration",
+            sourceReportSha256: requiredEnv(sourceReportSha256Env),
+            collectionArtifactSha256: requiredEnv(collectionArtifactSha256Env),
+            collectionQualityReportSha256: requiredEnv(
+              collectionQualityReportSha256Env,
+            ),
+            datasetManifestSha256: requiredEnv(datasetManifestSha256Env),
+            timestampPolicy: recoveryTimestampPolicy.policy,
+            ...(historicalGitHubOmission === undefined
+              ? {}
+              : {
+                  historicalGitHubOmissionReason:
+                    historicalGitHubOmission.reason,
+                }),
+          }
+        : { kind: "live-production" };
   const maxEvidenceItems = readIntegerEnv(
     "DURABLE_READER_SUMMARY_MAX_EVIDENCE_ITEMS",
     200,
@@ -174,8 +221,10 @@ async function main(): Promise<void> {
   const modelMode = readModelMode();
   const topicLabelerMode = readTopicLabelerMode();
   const agentRuntimeClient =
-    dailyReplay === null &&
-      (modelMode === "agent-runtime" || topicLabelerMode === "agent-runtime")
+    readerSummaryServingAuthorityRequiresAgentRuntime({
+      summaryModelMode: modelMode,
+      topicLabelerMode,
+    })
       ? buildAgentRuntimeClient()
       : null;
   const executionAttestations =
@@ -257,6 +306,21 @@ async function main(): Promise<void> {
         })
       : publicationWiring.inventory!;
 
+    const servingAuthority = await resolveReaderSummaryServingAuthority({
+      summaryModelMode: modelMode,
+      topicLabelerMode,
+      env: process.env,
+      agentRuntimeClient,
+      checkedAt: clock.now().toISOString(),
+    });
+    const attemptIdentity = readerSummaryProductionDayAttemptIdentity({
+      tenantId: tenant,
+      workspaceId: workspace,
+      periodKey: period.periodKey,
+      servingAuthority,
+      sourceProvenance,
+    });
+
     const requestReaderSummary = new RequestReaderSummaryUseCase(
       readerSummaryJobs,
       queue,
@@ -274,9 +338,7 @@ async function main(): Promise<void> {
         endedAt: periodEndedAt,
         timezone,
       },
-      idempotencyKey: dailyReplay === null
-        ? `durable-reader-summary:${period.periodKey}:${now.toISOString()}`
-        : `reader-summary-daily:${dailyReplay.modelJobIdentity}`,
+      idempotencyKey: readerSummaryProductionDayIdempotencyKey(attemptIdentity),
       correlationId: `corr-durable-reader-summary-${now.getTime()}`,
     });
     if (!request.ok) {
@@ -297,7 +359,7 @@ async function main(): Promise<void> {
             omissionAwareEvidenceSelector,
             datasetGuard,
           );
-    const publication = new PrismaReaderSummaryPublication(
+    const durablePublication = new PrismaReaderSummaryPublication(
       summaryConnection,
       datasetGuard === null
         ? undefined
@@ -306,6 +368,13 @@ async function main(): Promise<void> {
               transactionClient,
             ),
     );
+    const { publication, recovery: publicationRecovery } =
+      createRecoverableReaderSummaryPublication({
+        delegate: durablePublication,
+        recoveryDirectory: readEnv(publicationRecoveryDirectoryEnv),
+        attemptIdentity,
+        attestations: () => executionAttestations.all(),
+      });
     const executeReaderSummary = new ExecuteReaderSummaryJobUseCase(
       readerSummaryJobs,
       readerSummaryArtifacts,
@@ -344,6 +413,9 @@ async function main(): Promise<void> {
         "Durable reader summary execution did not produce an artifact id",
       );
     }
+    assertReaderSummaryDbPublicationFailpointInactive(
+      readEnv("READER_SUMMARY_DAILY_RUN_FAILPOINT"),
+    );
 
     const persistedJob = await readerSummaryJobs.findById({
       tenantId: tenant,
@@ -392,7 +464,16 @@ async function main(): Promise<void> {
       status: "fresh",
       checkedAt: clock.now(),
     });
-    const executionAttestationRecords = executionAttestations.all();
+    const executionAttestationRecords =
+      publicationRecovery === null
+        ? executionAttestations.all()
+        : publicationRecovery.load({
+            tenantId: tenant,
+            workspaceId: workspace,
+            periodKey: period.periodKey,
+            readerSummaryJobId: execution.value.readerSummaryJobId,
+            readerSummaryArtifactId: execution.value.readerSummaryId,
+          });
     const durableReadback = {
       summaryContentSha256: canonicalJsonSha256(frontendArtifact.content),
       topicMapSha256: canonicalJsonSha256(frontendArtifact.content.topicMap),
@@ -410,6 +491,13 @@ async function main(): Promise<void> {
         fixtureOnly: false,
         database: "postgres",
         modelMode,
+        servingAuthority,
+        productionDayAttempt: {
+          schemaVersion: 1,
+          identity: attemptIdentity,
+          requestCreated: request.value.created,
+          reconciledFromDbPublication: !request.value.created,
+        },
         historicalGitHubOmission:
           historicalGitHubOmission === undefined
             ? undefined
@@ -891,6 +979,9 @@ const deterministicUuid = (value: string): string => {
     hex.slice(20),
   ].join("-");
 };
+
+const sha256Bytes = (value: Buffer): string =>
+  createHash("sha256").update(value).digest("hex");
 
 void main().catch((error) => {
   const message = error instanceof Error ? error.message : String(error);

@@ -14,6 +14,45 @@ import { PrismaReaderSummaryArtifactRepository } from "./prisma-reader-summary-a
 import { FakeReaderSummaryPrisma } from "./prisma-reader-summary-artifact.repository.spec-support";
 
 describe("PrismaReaderSummaryArtifactRepository", () => {
+  it("skips an incompatible legacy artifact without breaking cursor pagination", async () => {
+    const prisma = new FakeReaderSummaryPrisma();
+    const repository = new PrismaReaderSummaryArtifactRepository(prisma.client);
+    const ids = [
+      "reader-summary-oldest",
+      "reader-summary-newest",
+      "reader-summary-incompatible",
+    ] as const;
+    for (const id of ids) {
+      await repository.save(
+        readerSummaryArtifact(id),
+        noEligibleGitHubBindingOptions(),
+      );
+      prisma.publish(id);
+    }
+    prisma.replaceArtifactPayload("reader-summary-incompatible", {
+      schemaVersion: "reader_summary.artifact.legacy",
+    });
+
+    const firstPage = await repository.list({
+      tenantId: tenant,
+      workspaceId: workspace,
+      limit: 1,
+    });
+    const secondPage = await repository.list({
+      tenantId: tenant,
+      workspaceId: workspace,
+      limit: 1,
+      cursor: firstPage.nextCursor,
+    });
+
+    expect(firstPage.items.map((item) => item.toSnapshot().readerSummaryId))
+      .toEqual(["reader-summary-newest"]);
+    expect(firstPage.nextCursor).toBeDefined();
+    expect(secondPage.items.map((item) => item.toSnapshot().readerSummaryId))
+      .toEqual(["reader-summary-oldest"]);
+    expect(secondPage.nextCursor).toBeUndefined();
+  });
+
   it("rejects a daily completed candidate without canonical GitHub proof but stages a genuine no-signal candidate", async () => {
     const prisma = new FakeReaderSummaryPrisma();
     const repository = new PrismaReaderSummaryArtifactRepository(prisma.client);

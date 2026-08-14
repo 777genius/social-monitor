@@ -6,9 +6,25 @@ report_dir=${READER_SUMMARY_DAILY_RUN_REPORT_DIR:?report directory is required}
 expected_date=${READER_SUMMARY_DAILY_RUN_EXPECTED_DATE:?expected date is required}
 ready=${READER_SUMMARY_DAILY_RUN_READY_FILE:?ready file is required}
 worker_mode=${READER_SUMMARY_DAILY_RUN_WORKER_MODE:-pause}
+publication_recovery_dir=${DURABLE_READER_SUMMARY_PUBLICATION_RECOVERY_DIR:?publication recovery directory is required}
 
 [[ $date_flag == --today || $date_flag == --yesterday ]]
 mkdir -p "$report_dir" "$(dirname "$ready")"
+if [[ $worker_mode == success || $worker_mode == invalid || $worker_mode == pause ||
+      $worker_mode == crash-after-db-before-filesystem ]]; then
+  mkdir -p "$publication_recovery_dir"
+  simulated_db_publication="$publication_recovery_dir/$expected_date.db-publication"
+  if [[ ! -e $simulated_db_publication ]]; then
+    printf '%s\n' \
+      'job=22222222-2222-4222-8222-222222222222' \
+      'artifact=11111111-1111-4111-8111-111111111111' \
+      > "$simulated_db_publication"
+    printf 'model-call\n' >> "$publication_recovery_dir/model-calls"
+  fi
+fi
+if [[ $worker_mode == crash-after-db-before-filesystem ]]; then
+  kill -KILL "$$"
+fi
 node - "$report_dir" "$expected_date" "$worker_mode" <<'NODE'
 const { createHash } = require('node:crypto');
 const { writeFileSync } = require('node:fs');
@@ -290,7 +306,6 @@ const evidenceBinding = {
   runtimeProvenance,
 };
 const stepIds = [
-  'migrate',
   'collect',
   'collection-quality',
   'durable-reader-summary',

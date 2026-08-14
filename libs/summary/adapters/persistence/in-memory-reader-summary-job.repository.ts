@@ -68,18 +68,55 @@ export class InMemoryReaderSummaryJobRepository implements ReaderSummaryJobRepos
     }
 
     const snapshot = job.toSnapshot();
-    if (snapshot.status !== "requested" && snapshot.status !== "failed") {
+    const staleRunning =
+      snapshot.status === "running" &&
+      snapshot.startedAt !== undefined &&
+      snapshot.startedAt < params.staleRunningStartedBefore;
+    if (
+      snapshot.status !== "requested" &&
+      snapshot.status !== "failed" &&
+      !staleRunning
+    ) {
       return null;
     }
 
     const executableJob =
       snapshot.status === "failed"
         ? job.retry({ requestedAt: params.requestedAt })
+        : staleRunning
+          ? job
+              .fail({
+                failedAt: params.requestedAt,
+                failureReason: "Reader summary execution lease expired",
+              })
+              .retry({ requestedAt: params.requestedAt })
         : job;
     const runningJob = executableJob.start({ startedAt: params.startedAt });
     await this.save(runningJob);
 
     return runningJob;
+  }
+
+  async saveExecutionOutcome(
+    params: Parameters<
+      ReaderSummaryJobRepositoryPort["saveExecutionOutcome"]
+    >[0],
+  ): Promise<boolean> {
+    const outcome = params.job.toSnapshot();
+    const key = `${outcome.tenantId}:${outcome.workspaceId}:${outcome.id}`;
+    const current = this.jobsById.get(key)?.toSnapshot();
+    if (
+      current?.status !== "running" ||
+      current.startedAt?.getTime() !== params.expectedStartedAt.getTime() ||
+      outcome.startedAt?.getTime() !== params.expectedStartedAt.getTime() ||
+      outcome.status === "running" ||
+      outcome.status === "requested"
+    ) {
+      return false;
+    }
+
+    await this.save(params.job);
+    return true;
   }
 
   all(): readonly ReaderSummaryJob[] {

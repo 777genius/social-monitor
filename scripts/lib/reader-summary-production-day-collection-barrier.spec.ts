@@ -104,7 +104,7 @@ describe("production-day collection barrier", () => {
     });
   });
 
-  it("passes only the exact nine executed production steps", () => {
+  it("passes only the exact eight executed production steps", () => {
     expect(exactProductionDayStepsPassed(passedSteps())).toBe(true);
   });
 

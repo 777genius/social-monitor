@@ -78,12 +78,14 @@ export const publishReaderSummaryJob = async (params: {
   if (publicationOutcome === "stale") {
     const message =
       "Reader summary publication was rejected as a stale generation";
-    await params.jobs.save(
-      params.runningJob.fail({
+    const runningSnapshot = params.runningJob.toSnapshot();
+    await params.jobs.saveExecutionOutcome({
+      job: params.runningJob.fail({
         failedAt: params.clock.now(),
         failureReason: message,
       }),
-    );
+      expectedStartedAt: runningSnapshot.startedAt!,
+    });
     return err(new DomainError("operation.conflict", message));
   }
 

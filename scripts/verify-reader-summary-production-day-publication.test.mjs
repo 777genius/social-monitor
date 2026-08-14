@@ -19,7 +19,6 @@ const readerSummaryId = "11111111-1111-4111-8111-111111111111";
 const readerSummaryJobId = "22222222-2222-4222-8222-222222222222";
 const evidenceArtifactId = "durable-reader-summary-postgres-evidence-v1";
 const requiredStepIds = [
-  "migrate",
   "collect",
   "collection-quality",
   "durable-reader-summary",
@@ -29,7 +28,7 @@ const requiredStepIds = [
   "source-quality-trace",
   "clean-day-e2e",
 ];
-test("accepts a fully live report with all nine real steps", () => {
+test("accepts a fully live report with all eight real steps", () => {
   withFixture(({ reportPath, proofPath }) => {
     const created = runVerifier(reportPath, proofPath, "--proof-out");
     assert.equal(created.status, 0, created.stderr);
@@ -49,6 +48,22 @@ test("accepts a fully live report with all nine real steps", () => {
       reasoningEffort: "xhigh",
       launcherSha256: "b".repeat(64),
     });
+  });
+});
+
+test("continues to verify immutable reports from the migration-owning runner", () => {
+  withFixture(({ reportPath, proofPath, report }) => {
+    report.steps.unshift({
+      id: "migrate",
+      command: "npm run migrate:deploy",
+      status: "passed",
+      durationMs: 1,
+      exitCode: 0,
+    });
+    writeFileSync(reportPath, `${JSON.stringify(report)}\n`);
+
+    const created = runVerifier(reportPath, proofPath, "--proof-out");
+    assert.equal(created.status, 0, created.stderr);
   });
 });
 

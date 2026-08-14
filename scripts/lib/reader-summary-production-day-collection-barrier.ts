@@ -9,7 +9,6 @@ export type ProductionDayStepReport = {
 };
 
 export const requiredProductionDayStepIds = [
-  "migrate",
   "collect",
   "collection-quality",
   "durable-reader-summary",

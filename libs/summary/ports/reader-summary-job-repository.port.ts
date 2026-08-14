@@ -19,11 +19,18 @@ export interface ReaderSummaryJobRepositoryPort {
     readonly workspaceId?: WorkspaceId;
     readonly limit: number;
   }): Promise<readonly ReaderSummaryJob[]>;
+  /** Claim REQUESTED/FAILED or RUNNING started strictly before the stale boundary. */
   claimForExecution(params: {
     readonly tenantId: TenantId;
     readonly workspaceId: WorkspaceId;
     readonly readerSummaryJobId: string;
     readonly requestedAt: Date;
     readonly startedAt: Date;
+    readonly staleRunningStartedBefore: Date;
   }): Promise<ReaderSummaryJob | null>;
+  /** Persist a terminal result only while the exact execution fence is active. */
+  saveExecutionOutcome(params: {
+    readonly job: ReaderSummaryJob;
+    readonly expectedStartedAt: Date;
+  }): Promise<boolean>;
 }

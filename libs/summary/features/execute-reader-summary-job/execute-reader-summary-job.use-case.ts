@@ -47,6 +47,12 @@ import type { ReaderSummaryHistoricalGitHubOmission } from "./reader-summary-pre
 import type { ExecuteReaderSummaryJobCommand } from "./execute-reader-summary-job.command";
 import type { ExecuteReaderSummaryJobResult } from "./execute-reader-summary-job.result";
 import { publishReaderSummaryJob } from "./publish-reader-summary-job";
+import { ReaderSummaryExecutionLeasePolicy } from "./reader-summary-execution-lease.policy";
+import {
+  claimReaderSummaryJobExecution,
+  readerSummaryExecutionClaimLost,
+  saveReaderSummaryExecutionOutcome,
+} from "./reader-summary-job-execution";
 
 type ExecuteReaderSummaryJobFailure = DomainError | Error;
 type ReaderSummaryModelPipelineResult = Result<
@@ -96,6 +102,7 @@ export class ExecuteReaderSummaryJobUseCase {
     private readonly githubProjectionReader: ReaderSummaryGitHubProjectionReaderPort = UNAVAILABLE_READER_SUMMARY_GITHUB_PROJECTION_READER,
     private readonly historicalGitHubOmission?: ReaderSummaryHistoricalGitHubOmission,
     private readonly recoveryProvenance?: ReaderSummaryDailyCanonicalRecoveryV4ProvenancePort,
+    private readonly executionLease: ReaderSummaryExecutionLeasePolicy = new ReaderSummaryExecutionLeasePolicy(),
   ) {}
 
   async execute(
@@ -136,22 +143,13 @@ export class ExecuteReaderSummaryJobUseCase {
       });
     }
 
-    if (snapshot.status === "running") {
-      return err(
-        new DomainError(
-          "operation.conflict",
-          "Reader summary job is already running",
-        ),
-      );
-    }
-
-    const startedAt = this.clock.now();
-    const runningJob = await this.readerSummaryJobs.claimForExecution({
+    const runningJob = await claimReaderSummaryJobExecution({
+      jobs: this.readerSummaryJobs,
+      clock: this.clock,
+      lease: this.executionLease,
       tenantId: command.tenantId,
       workspaceId: command.workspaceId,
       readerSummaryJobId: command.readerSummaryJobId,
-      requestedAt: startedAt,
-      startedAt,
     });
 
     if (runningJob === null) {
@@ -161,6 +159,10 @@ export class ExecuteReaderSummaryJobUseCase {
           "Reader summary job was claimed by another worker",
         ),
       );
+    }
+    const claimStartedAt = runningJob.toSnapshot().startedAt;
+    if (claimStartedAt === undefined) {
+      return readerSummaryExecutionClaimLost();
     }
 
     try {
@@ -174,7 +176,14 @@ export class ExecuteReaderSummaryJobUseCase {
           failedAt: this.clock.now(),
           failureReason: result.error.message,
         });
-        await this.readerSummaryJobs.save(failedJob);
+        const saved = await saveReaderSummaryExecutionOutcome(
+          this.readerSummaryJobs,
+          failedJob,
+          claimStartedAt,
+        );
+        if (!saved) {
+          return readerSummaryExecutionClaimLost();
+        }
 
         return err(
           new DomainError(
@@ -207,7 +216,14 @@ export class ExecuteReaderSummaryJobUseCase {
           readerSummaryId: artifactSnapshot.readerSummaryId,
           failureReason: `Reader summary artifact failed pre-publish quality gate: ${prepublication.publicationDecision.reasons.join("; ")}`,
         });
-        await this.readerSummaryJobs.save(rejectedJob);
+        const saved = await saveReaderSummaryExecutionOutcome(
+          this.readerSummaryJobs,
+          rejectedJob,
+          claimStartedAt,
+        );
+        if (!saved) {
+          return readerSummaryExecutionClaimLost();
+        }
 
         return ok({
           readerSummaryJobId: rejectedJob.toSnapshot().id,
@@ -248,7 +264,14 @@ export class ExecuteReaderSummaryJobUseCase {
         failedAt: this.clock.now(),
         failureReason: failure.message,
       });
-      await this.readerSummaryJobs.save(failedJob);
+      const saved = await saveReaderSummaryExecutionOutcome(
+        this.readerSummaryJobs,
+        failedJob,
+        claimStartedAt,
+      );
+      if (!saved) {
+        return readerSummaryExecutionClaimLost();
+      }
 
       return err(
         new DomainError("external.dependency_unavailable", failure.message, {

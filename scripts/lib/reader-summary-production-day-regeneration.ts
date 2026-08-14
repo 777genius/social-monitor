@@ -2,7 +2,10 @@ import { readFileSync } from "node:fs";
 
 import type { ReaderSummaryTimestampPolicy } from "@social-monitor/summary/ports";
 
-import type { ProductionDayStepReport } from "./reader-summary-production-day-collection-barrier";
+import {
+  requiredProductionDayStepIds,
+  type ProductionDayStepReport,
+} from "./reader-summary-production-day-collection-barrier";
 import {
   isRecord,
   productionDayUtcPeriod,
@@ -290,8 +293,9 @@ function validateSourceAttempt(value: unknown, collectionDate: string): void {
   ) {
     throw new Error("Source production attempt is not a strict failed run");
   }
-  for (const id of ["migrate", "collect", "collection-quality"] as const) {
-    const matchingSteps = value.steps.filter(
+  const steps = value.steps;
+  for (const id of ["collect", "collection-quality"] as const) {
+    const matchingSteps = steps.filter(
       (step) => isRecord(step) && step.id === id,
     );
     if (
@@ -302,11 +306,36 @@ function validateSourceAttempt(value: unknown, collectionDate: string): void {
       throw new Error(`Source production attempt did not pass ${id}`);
     }
   }
-  const summaryStep = value.steps.find(
+  const migrationSteps = steps.filter(
+    (step) => isRecord(step) && step.id === "migrate",
+  );
+  if (
+    migrationSteps.length > 0 &&
+    (migrationSteps.length !== 1 ||
+      migrationSteps[0]?.status !== "passed" ||
+      migrationSteps[0]?.exitCode !== 0)
+  ) {
+    throw new Error("Source production attempt did not pass migrate");
+  }
+  const summaryStep = steps.find(
     (step) => isRecord(step) && step.id === "durable-reader-summary",
   );
   if (!isRecord(summaryStep) || summaryStep.status !== "failed") {
     throw new Error("Source production attempt is not a summary-stage failure");
+  }
+  const expectedStepIds = [
+    ...requiredProductionDayStepIds,
+    ...(migrationSteps.length === 1 ? ["migrate"] : []),
+  ];
+  if (
+    steps.length !== expectedStepIds.length ||
+    expectedStepIds.some(
+      (id) =>
+        steps.filter((step) => isRecord(step) && step.id === id).length !==
+        1,
+    )
+  ) {
+    throw new Error("Source production attempt has an invalid step inventory");
   }
 }
 

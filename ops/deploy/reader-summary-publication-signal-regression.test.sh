@@ -145,6 +145,53 @@ set -e
 ((sigkill_status != 0))
 assert_previous_latest_unchanged "$sigkill_case"
 
+db_crash_case=$FIXTURE/db-crash-before-filesystem
+prepare_case "$db_crash_case"
+set +e
+run_daily "$db_crash_case" 30000 crash-after-db-before-filesystem \
+  >"$db_crash_case/crash.log" 2>&1
+db_crash_status=$?
+set -e
+((db_crash_status != 0))
+[[ ! -e $db_crash_case/public/latest.v1.json ]]
+[[ ! -e $db_crash_case/public/latest-state.v1.json ]]
+[[ ! -e $db_crash_case/reports/reader-summary-production-day-run.v1.json ]]
+[[ ! -e $db_crash_case/public/reader-summary-production-day-run.$EXPECTED_DATE.v1.json ]]
+[[ ! -e $db_crash_case/public/reader-summary-production-day-run.$EXPECTED_DATE.publication-proof.v1.json ]]
+[[ ! -e $db_crash_case/public/reader-summary-production-day-state.$EXPECTED_DATE.v1.json ]]
+db_receipt=$db_crash_case/public/.reader-summary-db-publications/$EXPECTED_DATE.db-publication
+model_calls=$db_crash_case/public/.reader-summary-db-publications/model-calls
+[[ -s $db_receipt ]]
+[[ $(wc -l < "$model_calls") -eq 1 ]]
+rm -f "$db_crash_case/ready"
+run_daily "$db_crash_case" 30000 success \
+  >"$db_crash_case/replay.log" 2>&1
+db_report=$db_crash_case/public/reader-summary-production-day-run.$EXPECTED_DATE.v1.json
+db_proof=$db_crash_case/public/reader-summary-production-day-run.$EXPECTED_DATE.publication-proof.v1.json
+db_state=$db_crash_case/public/reader-summary-production-day-state.$EXPECTED_DATE.v1.json
+[[ -s $db_report && -s $db_proof && -s $db_state ]]
+[[ $(wc -l < "$model_calls") -eq 1 ]]
+node - "$db_receipt" "$db_report" <<'NODE'
+const { readFileSync } = require('node:fs');
+const [receiptPath, reportPath] = process.argv.slice(2);
+const receipt = Object.fromEntries(readFileSync(receiptPath, 'utf8')
+  .trim().split('\n').map((line) => line.split('=')));
+const report = JSON.parse(readFileSync(reportPath, 'utf8'));
+if (report.summary.readerSummaryJobId !== receipt.job ||
+    report.summary.readerSummaryId !== receipt.artifact) {
+  throw new Error('replayed terminal receipts changed durable job/artifact identity');
+}
+NODE
+cp "$db_report" "$db_crash_case/report.before"
+cp "$db_proof" "$db_crash_case/proof.before"
+cp "$db_state" "$db_crash_case/state.before"
+run_daily "$db_crash_case" 30000 success \
+  >"$db_crash_case/terminal-replay.log" 2>&1
+cmp -s "$db_crash_case/report.before" "$db_report"
+cmp -s "$db_crash_case/proof.before" "$db_proof"
+cmp -s "$db_crash_case/state.before" "$db_state"
+[[ $(wc -l < "$model_calls") -eq 1 ]]
+
 proof_first_case=$FIXTURE/proof-first-sigkill
 prepare_case "$proof_first_case"
 run_daily "$proof_first_case" 30000 success after-proof-before-report \
@@ -186,12 +233,96 @@ report_before_latest_report=$report_before_latest_case/public/reader-summary-pro
 report_before_latest_proof=$report_before_latest_case/public/reader-summary-production-day-run.$EXPECTED_DATE.publication-proof.v1.json
 [[ -s $report_before_latest_report ]]
 [[ -s $report_before_latest_proof ]]
+[[ -s $report_before_latest_case/public/.reader-summary-db-publications/$EXPECTED_DATE.db-publication ]]
+[[ ! -e $report_before_latest_case/public/reader-summary-production-day-state.$EXPECTED_DATE.v1.json ]]
 node "$PROJECT_ROOT/scripts/verify-reader-summary-production-day-publication.mjs" \
   --dated-report "$report_before_latest_report" \
   --expected-date "$EXPECTED_DATE" \
   --evidence-artifact "$report_before_latest_case/reports/durable-reader-summary-$EXPECTED_DATE.v1.json" \
   --frontend-artifact "$report_before_latest_case/reports/frontend-reader-summary-$EXPECTED_DATE.fixture.v1.json" \
   --proof "$report_before_latest_proof" >/dev/null
+report_before_recovery_identity=$(file_identity \
+  "$report_before_latest_report" "$report_before_latest_proof")
+rm -f "$report_before_latest_case/ready" \
+  "$report_before_latest_case/failpoint-ready"
+run_daily "$report_before_latest_case" 30000 success \
+  >"$report_before_latest_case/reconcile.log" 2>&1
+grep -F 'reconciling committed daily production-day terminal set' \
+  "$report_before_latest_case/reconcile.log" >/dev/null
+[[ $(wc -l < "$report_before_latest_case/public/.reader-summary-db-publications/model-calls") -eq 1 ]]
+[[ $(file_identity \
+  "$report_before_latest_report" "$report_before_latest_proof") == \
+  "$report_before_recovery_identity" ]]
+[[ -s $report_before_latest_case/public/reader-summary-production-day-state.$EXPECTED_DATE.v1.json ]]
+cmp -s "$report_before_latest_report" \
+  "$report_before_latest_case/public/latest.v1.json"
+
+latest_state_cleanup_case=$FIXTURE/latest-state-before-cleanup-sigkill
+prepare_case "$latest_state_cleanup_case"
+run_daily "$latest_state_cleanup_case" 30000 success \
+  after-latest-state-before-cleanup \
+  >"$latest_state_cleanup_case/run.log" 2>&1 &
+daily_pid=$!
+wait_for_ready "$latest_state_cleanup_case/failpoint-ready"
+failpoint_pid=$(<"$latest_state_cleanup_case/failpoint-ready")
+kill -KILL "$failpoint_pid"
+set +e
+wait "$daily_pid"
+latest_state_cleanup_status=$?
+set -e
+((latest_state_cleanup_status != 0))
+latest_state_cleanup_report=$latest_state_cleanup_case/public/reader-summary-production-day-run.$EXPECTED_DATE.v1.json
+latest_state_cleanup_proof=$latest_state_cleanup_case/public/reader-summary-production-day-run.$EXPECTED_DATE.publication-proof.v1.json
+latest_state_cleanup_identity=$latest_state_cleanup_case/public/runtime-live-identity-$EXPECTED_DATE.v1.json
+latest_state_cleanup_state=$latest_state_cleanup_case/public/reader-summary-production-day-state.$EXPECTED_DATE.v1.json
+latest_state_cleanup_latest=$latest_state_cleanup_case/public/latest.v1.json
+latest_state_cleanup_cursor=$latest_state_cleanup_case/public/latest-state.v1.json
+latest_state_cleanup_staging=$latest_state_cleanup_case/public/.reader-summary-publication.$EXPECTED_DATE
+latest_state_cleanup_capture=$latest_state_cleanup_case/public/.reader-summary-capture.$EXPECTED_DATE
+[[ -s $latest_state_cleanup_report && -s $latest_state_cleanup_proof && \
+   -s $latest_state_cleanup_identity && -s $latest_state_cleanup_state && \
+   -s $latest_state_cleanup_latest && -s $latest_state_cleanup_cursor ]]
+[[ -d $latest_state_cleanup_staging && -d $latest_state_cleanup_capture ]]
+mkdir -p "$latest_state_cleanup_case/terminal-before" \
+  "$latest_state_cleanup_case/public/.reader-summary-publication.2026-07-15" \
+  "$latest_state_cleanup_case/public/.reader-summary-capture.2026-07-15"
+for terminal_receipt in \
+  "$latest_state_cleanup_report" \
+  "$latest_state_cleanup_proof" \
+  "$latest_state_cleanup_identity" \
+  "$latest_state_cleanup_state" \
+  "$latest_state_cleanup_latest" \
+  "$latest_state_cleanup_cursor"; do
+  cp "$terminal_receipt" \
+    "$latest_state_cleanup_case/terminal-before/$(basename "$terminal_receipt")"
+done
+printf 'unrelated staging\n' \
+  > "$latest_state_cleanup_case/public/.reader-summary-publication.2026-07-15/marker"
+printf 'unrelated capture\n' \
+  > "$latest_state_cleanup_case/public/.reader-summary-capture.2026-07-15/marker"
+model_calls=$latest_state_cleanup_case/public/.reader-summary-db-publications/model-calls
+[[ $(wc -l < "$model_calls") -eq 1 ]]
+rm -f "$latest_state_cleanup_case/ready" \
+  "$latest_state_cleanup_case/failpoint-ready"
+run_daily "$latest_state_cleanup_case" 30000 success \
+  >"$latest_state_cleanup_case/replay.log" 2>&1
+grep -F "daily production-day is already terminal for $EXPECTED_DATE" \
+  "$latest_state_cleanup_case/replay.log" >/dev/null
+[[ ! -e $latest_state_cleanup_case/ready ]]
+[[ $(wc -l < "$model_calls") -eq 1 ]]
+[[ ! -e $latest_state_cleanup_staging && ! -e $latest_state_cleanup_capture ]]
+[[ -s $latest_state_cleanup_case/public/.reader-summary-publication.2026-07-15/marker ]]
+[[ -s $latest_state_cleanup_case/public/.reader-summary-capture.2026-07-15/marker ]]
+for terminal_receipt in \
+  "$latest_state_cleanup_report" \
+  "$latest_state_cleanup_proof" \
+  "$latest_state_cleanup_identity" \
+  "$latest_state_cleanup_state" \
+  "$latest_state_cleanup_latest" \
+  "$latest_state_cleanup_cursor"; do
+  cmp -s "$latest_state_cleanup_case/terminal-before/$(basename "$terminal_receipt")" \
+    "$terminal_receipt"
+done
 
 success_case=$FIXTURE/success
 prepare_case "$success_case"
