@@ -251,6 +251,37 @@ describe("reader summary weekly editorial quality policy", () => {
     );
   });
 
+  it("allows grounded thematic synthesis when sealed input has no cross-day story", () => {
+    const input = weeklyInput({
+      storyIds: [
+        "story:alpha",
+        "story:beta",
+        "story:gamma",
+        "story:delta",
+      ],
+    });
+    const output = thematicWeeklyOutput(input);
+
+    const result = evaluateReaderSummaryWeeklyEditorialQuality(input, output);
+
+    expect(result.issues).toEqual([]);
+    expect(result).toMatchObject({
+      publicationDecision: "allow",
+      blockingPassed: true,
+      metrics: {
+        crossDayStoryCount: 0,
+        synthesizedCrossDayStoryCount: 0,
+        citedDayCount: 4,
+        citedProviderCount: 4,
+      },
+      qualityGates: {
+        crossDayStoryIsSynthesized: true,
+        synthesisCitationsSpanMultipleProviders: true,
+        synthesisCitationsSpanAtLeastThreeDays: true,
+      },
+    });
+  });
+
   it("rejects duplicate same-story same-day observations", () => {
     const input = weeklyInput({ dayIndexes: [0, 0, 4, 6] });
     const result = evaluateReaderSummaryWeeklyEditorialQuality(
@@ -373,6 +404,7 @@ type WeeklyInputOptions = Readonly<{
   dayIndexes?: readonly number[];
   evolutionSupported?: boolean;
   alphaObservationCount?: number;
+  storyIds?: readonly string[];
 }>;
 
 const weeklyInput = (
@@ -404,10 +436,12 @@ const weeklyInput = (
   }));
   const observations = providers.map((providerKey, index) => {
     const date = dates[dayIndexes[index]!]!;
+    const storyId =
+      options.storyIds?.[index] ??
+      (index < alphaObservationCount ? "story:alpha" : "story:beta");
     return {
       observationId: `observation:0${index + 1}`,
-      storyId:
-        index < alphaObservationCount ? "story:alpha" : "story:beta",
+      storyId,
       observedOn: date,
       providerKey,
       text: `Sealed observation ${index + 1} supplies weekly context.`,
@@ -431,10 +465,12 @@ const weeklyInput = (
     weekStartedOn: dates[0],
     weekEndedOn: dates[6],
     days,
-    stories: [
-      { storyId: "story:alpha", label: "Agent safety controls" },
-      { storyId: "story:beta", label: "Release questions" },
-    ],
+    stories: [...new Set(observations.map((item) => item.storyId))].map(
+      (storyId, index) => ({
+        storyId,
+        label: `Grounded weekly story ${index + 1}`,
+      }),
+    ).sort((left, right) => left.storyId.localeCompare(right.storyId)),
     observations,
     citations: observations.map((item, index) => ({
       citationId: item.citationIds[0]!,
@@ -523,6 +559,77 @@ const weeklyOutput = (
     },
   ],
 });
+
+const thematicWeeklyOutput = (
+  input: ReaderSummaryWeeklyModelInput,
+): ReaderSummaryWeeklyModelOutput => {
+  const citations = input.citations.map((item) => item.citationId);
+  const lead = input.citations[0]!;
+  const supporting = input.citations[1]!;
+  return {
+    schemaVersion: readerSummaryWeeklyModelOutputSchemaVersion,
+    sealId: input.sealId,
+    sealSha: input.sealSha,
+    weekStartedOn: input.weekStartedOn,
+    weekEndedOn: input.weekEndedOn,
+    headline: "Practical safeguards and release questions shaped attention",
+    headlineCitationIds: citations,
+    takeaway:
+      "The strongest independent signals concerned operational safeguards and unresolved release details.",
+    takeawayCitationIds: citations,
+    synthesis:
+      "Across independent reports, practical safeguards, release questions, and implementation constraints formed the clearest themes. The evidence supports shared attention while every report stays an independent snapshot.",
+    synthesisCitationIds: citations,
+    stories: [
+      {
+        storyId: lead.storyId,
+        headline: "Operational safeguards remained a practical concern",
+        summary:
+          "The cited report describes concrete safeguards and their stated operational limits.",
+        status: "watch",
+        observedFrom: lead.observedOn,
+        observedThrough: lead.observedOn,
+        citationIds: [lead.citationId],
+      },
+      {
+        storyId: supporting.storyId,
+        headline: "Release details remained an open question",
+        summary:
+          "The cited report raises release questions without establishing a final result or chronology.",
+        status: "watch",
+        observedFrom: supporting.observedOn,
+        observedThrough: supporting.observedOn,
+        citationIds: [supporting.citationId],
+      },
+    ],
+    sections: [
+      {
+        sectionId: "section:alpha-lead",
+        storyId: lead.storyId,
+        kind: "lead",
+        claimType: "snapshot",
+        heading: "Safeguards stayed concrete",
+        text:
+          "The cited snapshot focuses on operational safeguards and clearly bounded limitations.",
+        observedFrom: lead.observedOn,
+        observedThrough: lead.observedOn,
+        citationIds: [lead.citationId],
+      },
+      {
+        sectionId: "section:beta-development",
+        storyId: supporting.storyId,
+        kind: "development",
+        claimType: "snapshot",
+        heading: "Release questions stayed unresolved",
+        text:
+          "A separate cited snapshot highlights release questions while keeping conclusions explicitly open.",
+        observedFrom: supporting.observedOn,
+        observedThrough: supporting.observedOn,
+        citationIds: [supporting.citationId],
+      },
+    ],
+  };
+};
 
 const sevenSectionDiaryOutput = (
   input: ReaderSummaryWeeklyModelInput,

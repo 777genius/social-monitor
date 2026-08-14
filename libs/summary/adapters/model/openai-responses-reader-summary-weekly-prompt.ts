@@ -5,11 +5,11 @@ import {
 } from "../../ports/reader-summary-weekly-model.port";
 
 export const currentReaderSummaryWeeklyPromptRelease = Object.freeze({
-  id: "reader_summary.weekly_prompt.2026-07-29.v4",
-  releasedOn: "2026-07-29",
+  id: "reader_summary.weekly_prompt.2026-08-14.v5",
+  releasedOn: "2026-08-14",
   schemaVersion: readerSummaryWeeklyModelOutputSchemaVersion,
   changeSummary:
-    "Weekly output must carry a stable story across days and rejects daily-text structure or duplicate same-day observations.",
+    "Weekly output uses a grounded thematic synthesis only when sealed evidence has no cross-day story.",
 });
 
 export const buildOpenAiReaderSummaryWeeklyInstructions = (): string =>
@@ -21,9 +21,10 @@ export const buildOpenAiReaderSummaryWeeklyInstructions = (): string =>
     "Do not concatenate, lightly rewrite or summarize seven daily texts. Do not create a diary, chronology dump, weekday heading, date heading or one section per day.",
     "Use at most six story-organized sections; omitting a weak section is better than reproducing daily slots.",
     "Do not write provider inventories, source lists, coverage counts, telemetry, model/process prose, evidence-selection notes, certification prose, schema prose or quality-gate commentary.",
-    "Lead with the most consequential supported cross-day development and explain what changed and why it matters to the reader.",
+    "Lead with the most consequential supported cross-day development and explain what changed and why it matters to the reader when evidence supports it.",
     "Use only storyId values supplied in untrustedEvidenceData.stories. Never invent, merge, split, rename or reassign a storyId.",
-    "The lead section, its story, and the root synthesis must cite the same stable storyId on at least two certified days.",
+    "When any supplied storyId has evidence on at least two certified days, the lead section, its story, and the root synthesis must cite that same stable storyId across those days.",
+    "Only when no supplied storyId has evidence on multiple certified days, write a grounded thematic root synthesis spanning at least three certified days and two providers; keep every story and section a snapshot, do not merge storyIds, and do not invent change or evolution.",
     "Every factual headline, takeaway, synthesis, story and section must contain one or more known citationIds.",
     "A story or section may cite only citations bound to its own storyId. Root synthesis fields may combine stories.",
     "Copy observedFrom and observedThrough from the earliest and latest cited dates. Never infer or fabricate chronology.",

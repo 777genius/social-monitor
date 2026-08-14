@@ -131,6 +131,21 @@ export const evaluateReaderSummaryWeeklyEditorialQuality = (
     synthesisCitations,
     (citation) => citation.providerKey,
   );
+  const inputStoryDays = new Map<string, Set<string>>();
+  for (const citation of input.citations) {
+    const days = inputStoryDays.get(citation.storyId) ?? new Set<string>();
+    days.add(citation.observedOn);
+    inputStoryDays.set(citation.storyId, days);
+  }
+  const inputHasCrossDayStory = [...inputStoryDays.values()].some(
+    (days) => days.size >= 2,
+  );
+  const thematicFallbackIsGrounded =
+    !inputHasCrossDayStory &&
+    synthesisProviderCounts.size >= 2 &&
+    synthesisDayCounts.size >= 3 &&
+    dominanceIsControlled(synthesisProviderCounts) &&
+    dominanceIsControlled(synthesisDayCounts);
   const dominantDayCitationShare = dominantShare(
     dayCounts,
     resolvedCitations.length,
@@ -182,7 +197,8 @@ export const evaluateReaderSummaryWeeklyEditorialQuality = (
     sameDayStoryObservationsAreUnique:
       storySynthesis.sameDayStoryObservationsAreUnique,
     crossDayStoryIsSynthesized:
-      storySynthesis.synthesizedCrossDayStoryCount > 0,
+      storySynthesis.synthesizedCrossDayStoryCount > 0 ||
+      thematicFallbackIsGrounded,
     factualContentIsCited,
     citationsSpanMultipleProviders: providerCounts.size >= 2,
     citationsSpanAtLeastThreeDays: dayCounts.size >= 3,

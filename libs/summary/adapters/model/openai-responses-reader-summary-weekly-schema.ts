@@ -54,7 +54,7 @@ export const buildOpenAiReaderSummaryWeeklyJsonSchema = (
         minItems: 1,
         maxItems: Math.min(12, storyIds.length),
         description:
-          "Stable input story identities; at least the lead story must cite multiple certified days.",
+          "Stable input story identities; the lead story cites multiple days whenever sealed evidence contains a cross-day story.",
         uniqueItems: true,
         items: { $ref: "#/$defs/story" },
       },
@@ -112,7 +112,7 @@ export const buildOpenAiReaderSummaryWeeklyJsonSchema = (
           observedThrough: certifiedDateSchema(certifiedDates),
           citationIds: citationIdsSchema(citationIds, 24),
         },
-        "A story-organized section. The lead must carry its stable story across multiple certified days.",
+        "A story-organized section. The lead carries its stable story across multiple days when sealed evidence supports one; otherwise it remains a grounded snapshot.",
       ),
     },
   };
