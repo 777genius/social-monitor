@@ -90,7 +90,14 @@ export class InMemoryReaderSummaryPublication
     // Publish the only fallible outer collaborator first and expose the
     // artifact last so an event failure can never leave a visible summary.
     await this.events.publish(command.readyEvent);
-    await this.jobs.save(command.finalJob);
+    const finalSnapshot = command.finalJob.toSnapshot();
+    const executionSaved = await this.jobs.saveExecutionOutcome({
+      job: command.finalJob,
+      expectedStartedAt: finalSnapshot.startedAt!,
+    });
+    if (!executionSaved) {
+      return "stale";
+    }
     this.artifacts.commitPublication(command.artifact);
     this.proofByJobId.set(payload.readerSummaryJobId, {
       proofSha256: payload.proofSha256,

@@ -26,7 +26,6 @@ import type {
   ReaderSummaryContextProviderPort,
   ReaderSummaryEvidenceSelectorPort,
   ReaderSummaryGitHubProjectionReaderPort,
-  ReaderSummaryJobRepositoryPort,
   ReaderSummaryModelEstimate,
   ReaderSummaryModelFailure,
   ReaderSummaryModelPort,
@@ -39,6 +38,7 @@ import type {
   UserSummaryPreferenceReaderPort,
 } from "../../ports";
 import { ExecuteReaderSummaryJobUseCase } from "./execute-reader-summary-job.use-case";
+import { FakeReaderSummaryJobRepository } from "./execute-reader-summary-job.spec-support";
 
 class StaticIdGenerator implements IdGenerator {
   generate(): string {
@@ -563,50 +563,6 @@ const throwingTopicMapBuilder = (): BuildReaderSummaryTopicMapUseCase =>
       );
     },
   }) as unknown as BuildReaderSummaryTopicMapUseCase;
-
-class FakeReaderSummaryJobRepository implements ReaderSummaryJobRepositoryPort {
-  private readonly jobsById = new Map<string, ReaderSummaryJob>();
-
-  async save(job: ReaderSummaryJob): Promise<void> {
-    const snapshot = job.toSnapshot();
-    this.jobsById.set(
-      `${snapshot.tenantId}:${snapshot.workspaceId}:${snapshot.id}`,
-      job,
-    );
-  }
-
-  async findById(
-    params: Parameters<ReaderSummaryJobRepositoryPort["findById"]>[0],
-  ): Promise<ReaderSummaryJob | null> {
-    return (
-      this.jobsById.get(
-        `${params.tenantId}:${params.workspaceId}:${params.readerSummaryJobId}`,
-      ) ?? null
-    );
-  }
-
-  async findByIdempotencyKey(): Promise<ReaderSummaryJob | null> {
-    return null;
-  }
-
-  async findRequested(): Promise<readonly ReaderSummaryJob[]> {
-    return [];
-  }
-
-  async claimForExecution(
-    params: Parameters<ReaderSummaryJobRepositoryPort["claimForExecution"]>[0],
-  ): Promise<ReaderSummaryJob | null> {
-    const job = await this.findById(params);
-    if (job === null) {
-      return null;
-    }
-
-    const running = job.start({ startedAt: params.startedAt });
-    await this.save(running);
-
-    return running;
-  }
-}
 
 class FakeReaderSummaryArtifactRepository implements ReaderSummaryArtifactRepositoryPort {
   private readonly artifacts: ReaderSummaryArtifact[] = [];

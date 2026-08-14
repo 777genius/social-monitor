@@ -278,6 +278,10 @@ class FakeReaderSummaryJobRepository implements ReaderSummaryJobRepositoryPort {
   > {
     return null;
   }
+
+  async saveExecutionOutcome(): Promise<boolean> {
+    return false;
+  }
 }
 
 class FakeReaderSummaryJobQueue implements ReaderSummaryJobQueuePort {

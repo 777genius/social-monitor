@@ -53,6 +53,113 @@ const periodKey =
   "daily:2026-08-13T00:00:00.000Z:2026-08-14T00:00:00.000Z:UTC";
 
 describe("reader summary DB publication reconciliation", () => {
+  it("reclaims a stale daily RUNNING job and replays it without a second model call", async () => {
+    const jobs = new InMemoryReaderSummaryJobRepository();
+    const artifacts = new InMemoryReaderSummaryArtifactRepository();
+    const events = new InMemorySummaryEventPublisher();
+    const ids = new SequenceIdGenerator([
+      "30000000-0000-4000-8000-000000000013",
+      "40000000-0000-4000-8000-000000000014",
+      "50000000-0000-4000-8000-000000000015",
+    ]);
+    const clock = new FixedClock(now);
+    const model = countingModel(new DeterministicReaderSummaryModelAdapter());
+    const request = new RequestReaderSummaryUseCase(
+      jobs,
+      new CapturingQueue(),
+      new AllowingQuota(),
+      ids,
+      clock,
+    );
+    const publication = new InMemoryReaderSummaryPublication(
+      jobs,
+      artifacts,
+      events,
+    );
+    const freshExecutor = new ExecuteReaderSummaryJobUseCase(
+      jobs,
+      artifacts,
+      new InMemoryReaderSummaryPolicyRepository(),
+      { async select() { return evidenceSelection(); } },
+      model.port,
+      publication,
+      ids,
+      clock,
+      undefined,
+      undefined,
+      successfulEmptyTopicMapBuilder(),
+      new AlwaysPublishPolicy(),
+      zeroEligibleGitHubProjectionReader(),
+    );
+    const attemptIdentity = readerSummaryProductionDayAttemptIdentity({
+      tenantId: tenant,
+      workspaceId: workspace,
+      periodKey,
+      mode: { kind: "live-production" },
+    });
+    const requested = await request.execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      scope: { type: "workspace" },
+      cadence: "daily",
+      period: { startedAt: periodStartedAt, endedAt: periodEndedAt, timezone: "UTC" },
+      idempotencyKey: readerSummaryProductionDayIdempotencyKey(attemptIdentity),
+      correlationId: "reader-summary-stale-running-recovery",
+    });
+    if (!requested.ok) throw requested.error;
+    await jobs.claimForExecution({
+      tenantId: tenant,
+      workspaceId: workspace,
+      readerSummaryJobId: requested.value.readerSummaryJobId,
+      requestedAt: new Date("2026-08-13T07:30:00.000Z"),
+      startedAt: new Date("2026-08-13T07:30:00.000Z"),
+      staleRunningStartedBefore: new Date("2026-08-13T07:29:00.000Z"),
+    });
+
+    const fresh = await freshExecutor.execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      readerSummaryJobId: requested.value.readerSummaryJobId,
+    });
+    expect(fresh).toMatchObject({
+      ok: false,
+      error: { code: "operation.conflict" },
+    });
+    expect(model.calls()).toBe(0);
+    const recoveryExecutor = new ExecuteReaderSummaryJobUseCase(
+      jobs,
+      artifacts,
+      new InMemoryReaderSummaryPolicyRepository(),
+      { async select() { return evidenceSelection(); } },
+      model.port,
+      publication,
+      ids,
+      new FixedClock(new Date("2026-08-13T10:00:00.000Z")),
+      undefined,
+      undefined,
+      successfulEmptyTopicMapBuilder(),
+      new AlwaysPublishPolicy(),
+      zeroEligibleGitHubProjectionReader(),
+    );
+    const recovered = await recoveryExecutor.execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      readerSummaryJobId: requested.value.readerSummaryJobId,
+    });
+    const replay = await runProductionDayRequestExecution({
+      request,
+      execute: recoveryExecutor,
+      attemptIdentity,
+    });
+
+    expect(recovered).toMatchObject({ ok: true, value: { status: "no_signal" } });
+    expect(replay).toMatchObject({
+      requestCreated: false,
+      readerSummaryJobId: requested.value.readerSummaryJobId,
+    });
+    expect(model.calls()).toBe(1);
+  });
+
   it("replays the real request and execution use cases without another model call", async () => {
     const directory = mkdtempSync(join(tmpdir(), "summary-db-publication-"));
     try {

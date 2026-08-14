@@ -196,6 +196,7 @@ export type PrismaReaderSummaryClient = {
         readonly workspaceId: string;
         readonly id: string;
         readonly status: PrismaSummaryStatus;
+        readonly startedAt?: Date;
       };
       readonly data: {
         readonly status: PrismaSummaryStatus;

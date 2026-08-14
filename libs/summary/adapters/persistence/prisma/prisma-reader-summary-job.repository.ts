@@ -132,11 +132,21 @@ export class PrismaReaderSummaryJobRepository implements ReaderSummaryJobReposit
         tenantId: params.tenantId,
         workspaceId: params.workspaceId,
         id: params.readerSummaryJobId,
-        status: { in: ["REQUESTED", "FAILED"] },
       },
     });
 
     if (record === null) {
+      return null;
+    }
+    const staleRunning =
+      record.status === "RUNNING" &&
+      record.startedAt !== null &&
+      record.startedAt < params.staleRunningStartedBefore;
+    if (
+      record.status !== "REQUESTED" &&
+      record.status !== "FAILED" &&
+      !staleRunning
+    ) {
       return null;
     }
 
@@ -147,11 +157,16 @@ export class PrismaReaderSummaryJobRepository implements ReaderSummaryJobReposit
           workspaceId: params.workspaceId,
           id: params.readerSummaryJobId,
           status: record.status,
+          ...(record.status === "RUNNING" && record.startedAt !== null
+            ? { startedAt: record.startedAt }
+            : {}),
         },
         data: {
           status: "RUNNING",
+          // publish_reader_summary also compares requestedAt. Refreshing it
+          // on recovery fences publication by the interrupted process.
           requestedAt:
-            record.status === "FAILED"
+            record.status === "FAILED" || staleRunning
               ? params.requestedAt
               : record.requestedAt,
           startedAt: params.startedAt,
@@ -168,6 +183,44 @@ export class PrismaReaderSummaryJobRepository implements ReaderSummaryJobReposit
     }
 
     return this.findById(params);
+  }
+
+  async saveExecutionOutcome(
+    params: Parameters<
+      ReaderSummaryJobRepositoryPort["saveExecutionOutcome"]
+    >[0],
+  ): Promise<boolean> {
+    const snapshot = params.job.toSnapshot();
+    if (
+      snapshot.startedAt?.getTime() !== params.expectedStartedAt.getTime() ||
+      snapshot.status === "running" ||
+      snapshot.status === "requested"
+    ) {
+      return false;
+    }
+
+    const update = await withPrismaWriteRetry(() =>
+      this.prisma.readerSummaryJob.updateMany({
+        where: {
+          tenantId: snapshot.tenantId,
+          workspaceId: snapshot.workspaceId,
+          id: snapshot.id,
+          status: "RUNNING",
+          startedAt: params.expectedStartedAt,
+        },
+        data: {
+          status: readerSummaryJobStatusToPrisma(snapshot.status),
+          requestedAt: snapshot.requestedAt,
+          startedAt: params.expectedStartedAt,
+          completedAt: snapshot.completedAt ?? null,
+          failedAt: snapshot.failedAt ?? null,
+          readerSummaryArtifactId: snapshot.readerSummaryId ?? null,
+          failureReason: snapshot.failureReason ?? null,
+        },
+      }),
+    );
+
+    return update.count === 1;
   }
 }
 

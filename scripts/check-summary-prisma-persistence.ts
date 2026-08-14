@@ -520,6 +520,7 @@ async function main(): Promise<void> {
     readerSummaryJobId: "00000000-0000-7000-8000-000000000c01",
     requestedAt: new Date("2026-06-08T00:07:00.000Z"),
     startedAt: new Date("2026-06-08T00:07:00.000Z"),
+    staleRunningStartedBefore: new Date("2026-06-07T23:52:00.000Z"),
   });
   assert(
     retryClaim === null,
