@@ -380,7 +380,7 @@ function validateProvider(value) {
       value.minimumFeedItemCount,
     ].every((count) => Number.isInteger(count) && count >= 0) ||
     !Array.isArray(value.reasonCodes) ||
-    value.reasonCodes.length === 0 ||
+    (value.state !== "complete" && value.reasonCodes.length === 0) ||
     value.reasonCodes.some(
       (reason) => typeof reason !== "string" || reason.length === 0,
     )
