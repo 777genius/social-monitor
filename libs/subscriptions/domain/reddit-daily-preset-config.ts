@@ -68,7 +68,7 @@ export const redditDailyMultiPassConfig = {
   maxItems: 100,
   adaptivePagination: {
     enabled: true,
-    targetItems: 100,
+    targetItems: 150,
     maxPages: 4,
     minNewItemsPerPage: 2,
     maxDuplicateRate: 0.75,
@@ -78,7 +78,7 @@ export const redditDailyMultiPassConfig = {
     rollout: "real_binding_canary",
     topic: redditPrimarySearchQuery,
     maxLanesPerSource: 8,
-    maxItemsPerLane: 25,
+    maxItemsPerLane: 35,
     includeEnrichment: true,
   },
   scanPasses: [

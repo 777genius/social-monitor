@@ -30,7 +30,7 @@ describe("aiDeveloperSignalSourcePreset", () => {
         maxItems: 100,
         adaptivePagination: {
           enabled: true,
-          targetItems: 100,
+          targetItems: 150,
           maxPages: 4,
           minNewItemsPerPage: 2,
           maxDuplicateRate: 0.75,
@@ -40,7 +40,7 @@ describe("aiDeveloperSignalSourcePreset", () => {
           rollout: "real_binding_canary",
           topic: expect.stringContaining("Claude Code"),
           maxLanesPerSource: 8,
-          maxItemsPerLane: 25,
+          maxItemsPerLane: 35,
           includeEnrichment: true,
         },
       },
@@ -229,15 +229,15 @@ describe("aiDeveloperSignalSourcePreset", () => {
       targetValue: expect.stringContaining("OpenAI"),
     });
     expect(xConfig).toMatchObject({
-      maxItems: 80,
-      limitPerProduct: 20,
+      maxItems: 100,
+      limitPerProduct: 30,
       minLikes: 3,
     });
     expect(xConfig?.adaptivePagination).toMatchObject({
       enabled: true,
-      targetItems: 120,
-      maxPages: 2,
-      minNewItemsPerPage: 10,
+      targetItems: 180,
+      maxPages: 3,
+      minNewItemsPerPage: 8,
       maxDuplicateRate: 0.65,
     });
     expect(xEntry?.targetConfig).toMatchObject({
@@ -245,7 +245,7 @@ describe("aiDeveloperSignalSourcePreset", () => {
         enabled: true,
         rollout: "real_binding_canary",
         maxLanesPerSource: 8,
-        maxItemsPerLane: 25,
+        maxItemsPerLane: 35,
         includeEnrichment: false,
         maxSearchQueries: 8,
       },
