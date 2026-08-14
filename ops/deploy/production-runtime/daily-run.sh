@@ -246,11 +246,25 @@ fi
       echo "historical daily production-day terminal state is inconsistent" >&2
       exit 1
     }
+    rm -rf -- "$recovery_staging" "$artifact_dir"
     echo "daily production-day is already terminal for $requested_date"
     exit 0
   fi
   if [ "$historical_mode" = false ] && [ -n "$cursor_date" ] &&
      { [ "$requested_date" = "$cursor_date" ] || [ "$requested_date" \< "$cursor_date" ]; }; then
+    if [ -e "$recovery_staging" ] || [ -e "$artifact_dir" ]; then
+      terminal_date=$cursor_date
+      if [ "$requested_date" != "$cursor_date" ]; then
+        terminal_date=$(node scripts/verify-reader-summary-production-day-state.mjs \
+          --dated-state "$requested_state" \
+          --state-dir "$public_dir")
+      fi
+      [ "$terminal_date" = "$requested_date" ] || {
+        echo "daily production-day terminal cleanup state is inconsistent" >&2
+        exit 1
+      }
+      rm -rf -- "$recovery_staging" "$artifact_dir"
+    fi
     echo "daily production-day is already terminal for $requested_date"
     exit 0
   fi
@@ -525,5 +539,6 @@ fi
   cp "$state_public" "$staging_dir/latest-state.v1.json"
   chmod 0444 "$staging_dir/latest-state.v1.json"
   mv -f "$staging_dir/latest-state.v1.json" "$public_dir/latest-state.v1.json"
+  pause_publication_failpoint after-latest-state-before-cleanup
   rm -rf "$staging_dir" "$artifact_dir"
 '

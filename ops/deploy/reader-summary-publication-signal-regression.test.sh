@@ -257,6 +257,73 @@ grep -F 'reconciling committed daily production-day terminal set' \
 cmp -s "$report_before_latest_report" \
   "$report_before_latest_case/public/latest.v1.json"
 
+latest_state_cleanup_case=$FIXTURE/latest-state-before-cleanup-sigkill
+prepare_case "$latest_state_cleanup_case"
+run_daily "$latest_state_cleanup_case" 30000 success \
+  after-latest-state-before-cleanup \
+  >"$latest_state_cleanup_case/run.log" 2>&1 &
+daily_pid=$!
+wait_for_ready "$latest_state_cleanup_case/failpoint-ready"
+failpoint_pid=$(<"$latest_state_cleanup_case/failpoint-ready")
+kill -KILL "$failpoint_pid"
+set +e
+wait "$daily_pid"
+latest_state_cleanup_status=$?
+set -e
+((latest_state_cleanup_status != 0))
+latest_state_cleanup_report=$latest_state_cleanup_case/public/reader-summary-production-day-run.$EXPECTED_DATE.v1.json
+latest_state_cleanup_proof=$latest_state_cleanup_case/public/reader-summary-production-day-run.$EXPECTED_DATE.publication-proof.v1.json
+latest_state_cleanup_identity=$latest_state_cleanup_case/public/runtime-live-identity-$EXPECTED_DATE.v1.json
+latest_state_cleanup_state=$latest_state_cleanup_case/public/reader-summary-production-day-state.$EXPECTED_DATE.v1.json
+latest_state_cleanup_latest=$latest_state_cleanup_case/public/latest.v1.json
+latest_state_cleanup_cursor=$latest_state_cleanup_case/public/latest-state.v1.json
+latest_state_cleanup_staging=$latest_state_cleanup_case/public/.reader-summary-publication.$EXPECTED_DATE
+latest_state_cleanup_capture=$latest_state_cleanup_case/public/.reader-summary-capture.$EXPECTED_DATE
+[[ -s $latest_state_cleanup_report && -s $latest_state_cleanup_proof && \
+   -s $latest_state_cleanup_identity && -s $latest_state_cleanup_state && \
+   -s $latest_state_cleanup_latest && -s $latest_state_cleanup_cursor ]]
+[[ -d $latest_state_cleanup_staging && -d $latest_state_cleanup_capture ]]
+mkdir -p "$latest_state_cleanup_case/terminal-before" \
+  "$latest_state_cleanup_case/public/.reader-summary-publication.2026-07-15" \
+  "$latest_state_cleanup_case/public/.reader-summary-capture.2026-07-15"
+for terminal_receipt in \
+  "$latest_state_cleanup_report" \
+  "$latest_state_cleanup_proof" \
+  "$latest_state_cleanup_identity" \
+  "$latest_state_cleanup_state" \
+  "$latest_state_cleanup_latest" \
+  "$latest_state_cleanup_cursor"; do
+  cp "$terminal_receipt" \
+    "$latest_state_cleanup_case/terminal-before/$(basename "$terminal_receipt")"
+done
+printf 'unrelated staging\n' \
+  > "$latest_state_cleanup_case/public/.reader-summary-publication.2026-07-15/marker"
+printf 'unrelated capture\n' \
+  > "$latest_state_cleanup_case/public/.reader-summary-capture.2026-07-15/marker"
+model_calls=$latest_state_cleanup_case/public/.reader-summary-db-publications/model-calls
+[[ $(wc -l < "$model_calls") -eq 1 ]]
+rm -f "$latest_state_cleanup_case/ready" \
+  "$latest_state_cleanup_case/failpoint-ready"
+run_daily "$latest_state_cleanup_case" 30000 success \
+  >"$latest_state_cleanup_case/replay.log" 2>&1
+grep -F "daily production-day is already terminal for $EXPECTED_DATE" \
+  "$latest_state_cleanup_case/replay.log" >/dev/null
+[[ ! -e $latest_state_cleanup_case/ready ]]
+[[ $(wc -l < "$model_calls") -eq 1 ]]
+[[ ! -e $latest_state_cleanup_staging && ! -e $latest_state_cleanup_capture ]]
+[[ -s $latest_state_cleanup_case/public/.reader-summary-publication.2026-07-15/marker ]]
+[[ -s $latest_state_cleanup_case/public/.reader-summary-capture.2026-07-15/marker ]]
+for terminal_receipt in \
+  "$latest_state_cleanup_report" \
+  "$latest_state_cleanup_proof" \
+  "$latest_state_cleanup_identity" \
+  "$latest_state_cleanup_state" \
+  "$latest_state_cleanup_latest" \
+  "$latest_state_cleanup_cursor"; do
+  cmp -s "$latest_state_cleanup_case/terminal-before/$(basename "$terminal_receipt")" \
+    "$terminal_receipt"
+done
+
 success_case=$FIXTURE/success
 prepare_case "$success_case"
 run_daily "$success_case" 30000 success >"$success_case/run.log" 2>&1
