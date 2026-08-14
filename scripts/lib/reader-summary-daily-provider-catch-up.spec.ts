@@ -23,6 +23,34 @@ describe("daily reader-summary provider catch-up", () => {
     ).toEqual(defaultCleanRealDayCollectionProviderKeys);
   });
 
+  it("collects every provider for a new closed day when database rows predate the first receipt", () => {
+    const plan = planDailyProviderCatchUp({
+      collectionDate: "2026-07-26",
+      evaluatedAt,
+      existingReport: null,
+      databaseProviderCounts: {
+        "github-trending-page": 20,
+        "hacker-news": 174,
+        reddit: 143,
+        rss: 78,
+      },
+    });
+
+    expect(plan.collectionPolicy).toBe("previous_day");
+    expect(plan.barrierMessage).toBeNull();
+    expect(plan.providerKeysToCollect).toEqual(
+      defaultCleanRealDayCollectionProviderKeys,
+    );
+    expect(plan.providerStates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          providerKey: "hacker-news",
+          reasonCodes: ["database_rows_require_exact_full_collection"],
+        }),
+      ]),
+    );
+  });
+
   it("retries only providers that are missing, failed, or not ready", () => {
     const existingReport = report([
       readyScan("github-trending-page"),
