@@ -86,6 +86,7 @@ const citationKeys = [
   "publicationEvidenceIdentity", "providerKey", "feedItemId", "sourceItemId",
   "sourceBindingId", "providerItemId", "canonicalUrl", "sourceContentHash",
 ] as const;
+const weeklyAtomicPublicationTransactionTimeoutMs = 30_000;
 
 export const saveReaderSummaryWeeklyArtifact = async (
   client: PrismaSummaryClient,
@@ -94,13 +95,16 @@ export const saveReaderSummaryWeeklyArtifact = async (
   const payload = buildReaderSummaryWeeklyPublicationPersistencePayload(command);
   const serialized = JSON.stringify(payload);
   const rows = await withPrismaWriteRetry(() =>
-    runSerializableReaderSummaryTransaction(client, (prisma) =>
-      prisma.$queryRaw<
-        readonly ReaderSummaryWeeklyPublicationPersistenceSqlRow[]
-      >`
-        SELECT *
-        FROM "persist_reader_summary_weekly_artifact"(${serialized}::jsonb)
-      `,
+    runSerializableReaderSummaryTransaction(
+      client,
+      (prisma) =>
+        prisma.$queryRaw<
+          readonly ReaderSummaryWeeklyPublicationPersistenceSqlRow[]
+        >`
+          SELECT *
+          FROM "persist_reader_summary_weekly_artifact"(${serialized}::jsonb)
+        `,
+      { timeout: weeklyAtomicPublicationTransactionTimeoutMs },
     ),
   );
   const row = rows[0];
