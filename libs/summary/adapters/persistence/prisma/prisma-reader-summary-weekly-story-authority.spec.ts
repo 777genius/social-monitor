@@ -328,7 +328,7 @@ describe("PrismaReaderSummaryWeeklyStoryAuthority", () => {
     expect(replay.evidence[0]?.sourceContentHash).toBe("a".repeat(64));
   });
 
-  it("keeps later-observed backfill evidence and excludes impossible chronology", async () => {
+  it("keeps sealed backfill evidence based on its publication day", async () => {
     const row = publicationRow();
     row.providerEvidence = [
       { ...row.providerEvidence[0]!, observedAt: "2026-07-06T08:05:00.000Z" },
@@ -349,6 +349,7 @@ describe("PrismaReaderSummaryWeeklyStoryAuthority", () => {
 
     expect(binding.evidence.map((item) => item.citationId)).toEqual([
       "citation-1",
+      "citation-2",
     ]);
     expect(binding.evidence[0]?.observedAt).toBe(
       "2026-07-06T08:05:00.000Z",

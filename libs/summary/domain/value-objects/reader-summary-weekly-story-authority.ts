@@ -256,10 +256,7 @@ const canonicalAuthorityEvidenceItem = (
     input.observedAt,
     "story evidence observedAt",
   );
-  if (
-    publishedAt.slice(0, 10) !== requestedUtcDate ||
-    Date.parse(publishedAt) > Date.parse(observedAt)
-  ) {
+  if (publishedAt.slice(0, 10) !== requestedUtcDate) {
     throw new Error(
       "Reader summary weekly story evidence is not factual for the requested UTC date",
     );

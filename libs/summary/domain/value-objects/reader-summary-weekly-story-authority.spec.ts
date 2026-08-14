@@ -52,7 +52,7 @@ describe("reader summary weekly story authority boundary", () => {
     ).toThrow("binding seal is invalid");
   });
 
-  it("accepts later backfill observation but rejects wrong-day publication, chronology invention and ambiguous sources", () => {
+  it("uses publication day for backfill evidence and rejects wrong-day or ambiguous sources", () => {
     const binding = authorityBinding();
     expect(() =>
       resealBinding(binding, {
@@ -66,16 +66,15 @@ describe("reader summary weekly story authority boundary", () => {
       resealBinding(binding, {
         evidence: binding.evidence.map((item) => ({
           ...item,
-          publishedAt: "2026-07-04T08:00:00.000Z",
+          observedAt: "2026-07-04T08:05:00.000Z",
         })),
       }),
-    ).toThrow("not factual for the requested UTC date");
+    ).not.toThrow();
     expect(() =>
       resealBinding(binding, {
         evidence: binding.evidence.map((item) => ({
           ...item,
-          publishedAt: "2026-07-05T09:00:00.000Z",
-          observedAt: "2026-07-05T08:05:00.000Z",
+          publishedAt: "2026-07-04T08:00:00.000Z",
         })),
       }),
     ).toThrow("not factual for the requested UTC date");

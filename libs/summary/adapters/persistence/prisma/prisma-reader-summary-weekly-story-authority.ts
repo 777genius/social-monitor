@@ -444,8 +444,7 @@ const factualEvidenceForRequestedDay = (
   input: ReaderSummaryWeeklyPublicationProviderEvidence,
   requestedUtcDate: string,
 ): boolean =>
-  input.publishedAt.slice(0, 10) === requestedUtcDate &&
-  Date.parse(input.publishedAt) <= Date.parse(input.observedAt);
+  input.publishedAt.slice(0, 10) === requestedUtcDate;
 
 const createLoadedAuthority = (
   binding: ReaderSummaryWeeklyStoryAuthorityBinding,
