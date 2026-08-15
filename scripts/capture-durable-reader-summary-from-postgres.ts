@@ -99,6 +99,8 @@ const defaultTenantId = "11111111-1111-4111-8111-111111111111";
 const defaultWorkspaceId = "22222222-2222-4222-8222-222222222222";
 const periodStartedAtEnv = "DURABLE_READER_SUMMARY_PERIOD_STARTED_AT";
 const periodEndedAtEnv = "DURABLE_READER_SUMMARY_PERIOD_ENDED_AT";
+const liveObservationCutoffEnv =
+  "DURABLE_READER_SUMMARY_LIVE_OBSERVATION_CUTOFF";
 const cadenceEnv = "DURABLE_READER_SUMMARY_CADENCE";
 const historicalGitHubOmissionReasonEnv =
   "DURABLE_READER_SUMMARY_HISTORICAL_GITHUB_OMISSION_REASON";
@@ -180,6 +182,16 @@ async function main(): Promise<void> {
       "Historical GitHub omission requires explicit historical recovery mode",
     );
   }
+  const liveObservationCutoff = resolveLiveObservationCutoff({
+    value: readDateEnv(liveObservationCutoffEnv),
+    dailyReplayActive: dailyReplay !== null,
+    recoveryActive: recoveryTimestampPolicy.active,
+    cadence,
+    timezone,
+    periodStartedAt,
+    periodEndedAt,
+    now,
+  });
   const sourceProvenance: ReaderSummaryProductionDayAttemptIdentityInput["sourceProvenance"] =
     dailyReplay !== null
       ? {
@@ -205,7 +217,12 @@ async function main(): Promise<void> {
                     historicalGitHubOmission.reason,
                 }),
           }
-        : { kind: "live-production" };
+        : {
+            kind: "live-production",
+            ...(liveObservationCutoff === undefined
+              ? {}
+              : { observationCutoff: liveObservationCutoff.toISOString() }),
+          };
   const maxEvidenceItems = readIntegerEnv(
     "DURABLE_READER_SUMMARY_MAX_EVIDENCE_ITEMS",
     200,
@@ -902,6 +919,38 @@ const readDateEnv = (name: string): Date | undefined => {
   }
 
   return date;
+};
+
+const resolveLiveObservationCutoff = (params: {
+  readonly value: Date | undefined;
+  readonly dailyReplayActive: boolean;
+  readonly recoveryActive: boolean;
+  readonly cadence: DurableReaderSummaryCadence;
+  readonly timezone: string;
+  readonly periodStartedAt: Date;
+  readonly periodEndedAt: Date;
+  readonly now: Date;
+}): Date | undefined => {
+  if (params.value === undefined) {
+    return undefined;
+  }
+  if (
+    params.dailyReplayActive ||
+    params.recoveryActive ||
+    params.cadence !== "daily" ||
+    params.timezone !== "UTC" ||
+    params.periodEndedAt.getTime() - params.periodStartedAt.getTime() !==
+      86_400_000 ||
+    params.value.getTime() < params.periodStartedAt.getTime() ||
+    params.value.getTime() >= params.periodEndedAt.getTime() ||
+    params.value.getTime() > params.now.getTime()
+  ) {
+    throw new Error(
+      `${liveObservationCutoffEnv} requires a current exact UTC daily period`,
+    );
+  }
+
+  return params.value;
 };
 
 const readModelMode = (): DurableReaderSummaryModelMode => {

@@ -8,7 +8,10 @@ export type ReaderSummaryProductionDayAttemptIdentityInput = Readonly<{
   periodKey: string;
   servingAuthority: ReaderSummaryServingAuthority;
   sourceProvenance:
-    | Readonly<{ kind: "live-production" }>
+    | Readonly<{
+        kind: "live-production";
+        observationCutoff?: string;
+      }>
     | Readonly<{
         kind: "historical-regeneration";
         sourceReportSha256: string;
@@ -37,7 +40,16 @@ export const readerSummaryProductionDayAttemptIdentity = (
     servingAuthority: servingAuthority(input.servingAuthority),
     sourceProvenance:
       input.sourceProvenance.kind === "live-production"
-        ? { kind: input.sourceProvenance.kind }
+        ? {
+            kind: input.sourceProvenance.kind,
+            ...(input.sourceProvenance.observationCutoff === undefined
+              ? {}
+              : {
+                  observationCutoff: requiredIsoTimestamp(
+                    input.sourceProvenance.observationCutoff,
+                  ),
+                }),
+          }
         : input.sourceProvenance.kind === "persisted-daily-replay"
           ? {
               kind: input.sourceProvenance.kind,
@@ -132,6 +144,17 @@ const requiredSha256 = (value: string): string => {
   if (!/^[0-9a-f]{64}$/u.test(value)) {
     throw new Error("Reader summary production-day SHA-256 is invalid");
   }
+  return value;
+};
+
+const requiredIsoTimestamp = (value: string): string => {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime()) || parsed.toISOString() !== value) {
+    throw new Error(
+      "Reader summary production-day observation cutoff is invalid",
+    );
+  }
+
   return value;
 };
 
