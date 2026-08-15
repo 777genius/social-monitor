@@ -1,0 +1,13 @@
+[Unit]
+Description=Social Monitor rolling collection, metrics and reader summary publication
+After=social-monitor-prod.service network-online.target
+Requires=social-monitor-prod.service
+
+[Service]
+Type=oneshot
+ExecStart=/var/data/social-monitor/control/rolling-run.sh
+TimeoutStartSec=19800
+Restart=no
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=6

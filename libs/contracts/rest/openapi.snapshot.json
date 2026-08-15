@@ -3168,6 +3168,10 @@
           "freshness": {
             "$ref": "#/components/schemas/ReaderSummaryFreshnessDto"
           },
+          "generatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
           "headline": {
             "type": "string"
           },
@@ -4840,6 +4844,10 @@
           },
           "freshness": {
             "$ref": "#/components/schemas/ReaderSummaryFreshnessDto"
+          },
+          "generatedAt": {
+            "format": "date-time",
+            "type": "string"
           },
           "headline": {
             "type": "string"

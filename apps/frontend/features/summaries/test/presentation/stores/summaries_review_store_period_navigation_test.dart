@@ -204,6 +204,29 @@ void main() {
       );
     },
   );
+
+  test(
+    'shows the live partial period while viewing the latest summary',
+    () async {
+      final rollingPeriod = summaryPeriodApiDto(
+        startedAt: DateTime.utc(2026, 8, 15),
+        endedAt: DateTime.utc(2026, 8, 15, 8, 15),
+        periodKey: null,
+      );
+      final apiClient = InMemorySummariesApiClient(
+        items: [summaryApiDto()],
+        workspaceSummary: readerSummaryApiDto(period: rollingPeriod),
+      );
+      final store = _store(apiClient);
+
+      await store.loadWorkspaceSummary();
+
+      expect(store.selectedSummaryPeriod.startedAt, rollingPeriod.startedAt);
+      expect(store.selectedSummaryPeriod.endedAt, rollingPeriod.endedAt);
+      expect(store.isViewingLatestWorkspaceSummary, isTrue);
+      expect(store.isSelectedSummaryPeriodCurrent, isTrue);
+    },
+  );
 }
 
 SummariesReviewStore _store(InMemorySummariesApiClient apiClient) {

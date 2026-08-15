@@ -274,6 +274,7 @@ final class ReaderSummaryApiDto {
     required this.repeatedSignals,
     required this.citations,
     required this.period,
+    this.generatedAt,
     required this.sourceWindow,
     required this.freshnessLabel,
     required this.isDegraded,
@@ -289,6 +290,7 @@ final class ReaderSummaryApiDto {
   final List<RepeatedSignalApiDto> repeatedSignals;
   final List<SummaryCitationApiDto> citations;
   final SummaryPeriodApiDto period;
+  final DateTime? generatedAt;
   final SummaryWindowApiDto sourceWindow;
   final String freshnessLabel;
   final bool isDegraded;

@@ -44,6 +44,9 @@ export class ReaderSummaryArtifactResponseDto {
   @ApiProperty({ type: () => ReaderSummaryPeriodDto })
   declare readonly period: ReaderSummaryPeriodDto;
 
+  @ApiPropertyOptional({ format: "date-time" })
+  declare readonly generatedAt?: Date;
+
   @ApiPropertyOptional()
   declare readonly userId?: string;
 

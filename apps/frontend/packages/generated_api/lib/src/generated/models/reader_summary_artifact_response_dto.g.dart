@@ -83,6 +83,9 @@ ReaderSummaryArtifactResponseDto _$ReaderSummaryArtifactResponseDtoFromJson(
       : ReaderSummaryCoverageSummaryDto.fromJson(
           json['coverage'] as Map<String, dynamic>,
         ),
+  generatedAt: json['generatedAt'] == null
+      ? null
+      : DateTime.parse(json['generatedAt'] as String),
   noSignalReason: json['noSignalReason'] as String?,
   personalization: json['personalization'] == null
       ? null
@@ -102,6 +105,7 @@ Map<String, dynamic> _$ReaderSummaryArtifactResponseDtoToJson(
   'coverage': instance.coverage,
   'executiveSummary': instance.executiveSummary,
   'freshness': instance.freshness,
+  'generatedAt': instance.generatedAt?.toIso8601String(),
   'headline': instance.headline,
   'interestHighlights': instance.interestHighlights,
   'lineage': instance.lineage,
