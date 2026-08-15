@@ -5,6 +5,7 @@ import 'package:social_monitor_design_system/social_monitor_design_system.dart';
 import '../../domain/aggregates/reader_summary.dart';
 import '../formatters/summary_export_text.dart';
 import 'workspace_summary_period_toolbar.dart';
+import 'workspace_summary_refresh_status.dart';
 
 /// Wraps summary content with the period toolbar (navigation, presets,
 /// regenerate and export actions).
@@ -24,6 +25,8 @@ class WorkspaceSummaryPeriodShell extends StatelessWidget {
     required this.isGenerating,
     required this.exportSummary,
     required this.child,
+    this.showRefreshSchedule = false,
+    this.onRefreshDue,
     this.contentPadding = const EdgeInsets.only(top: AppSpacing.md),
   });
 
@@ -40,6 +43,8 @@ class WorkspaceSummaryPeriodShell extends StatelessWidget {
   final bool isGenerating;
   final ReaderSummary? exportSummary;
   final Widget child;
+  final bool showRefreshSchedule;
+  final VoidCallback? onRefreshDue;
   final EdgeInsets contentPadding;
 
   @override
@@ -49,22 +54,34 @@ class WorkspaceSummaryPeriodShell extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _WorkspaceSummaryHeaderBand(
-          child: WorkspaceSummaryPeriodToolbar(
-            selectedPeriod: selectedPeriod,
-            selectedPreset: selectedPreset,
-            availableSummaryPeriods: availableSummaryPeriods,
-            canNavigateToPreviousPeriod: canNavigateToPreviousPeriod,
-            canNavigateToNextPeriod: canNavigateToNextPeriod,
-            onPeriodChanged: onPeriodChanged,
-            onPreviousPeriod: onPreviousPeriod,
-            onNextPeriod: onNextPeriod,
-            onCalendarDateSelected: onCalendarDateSelected,
-            onGenerate: onGenerate,
-            isGenerating: isGenerating,
-            onExport: summary == null
-                ? null
-                : () => _exportSummary(context, summary),
-            collectionStatsSummary: summary,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              WorkspaceSummaryPeriodToolbar(
+                selectedPeriod: selectedPeriod,
+                selectedPreset: selectedPreset,
+                availableSummaryPeriods: availableSummaryPeriods,
+                canNavigateToPreviousPeriod: canNavigateToPreviousPeriod,
+                canNavigateToNextPeriod: canNavigateToNextPeriod,
+                onPeriodChanged: onPeriodChanged,
+                onPreviousPeriod: onPreviousPeriod,
+                onNextPeriod: onNextPeriod,
+                onCalendarDateSelected: onCalendarDateSelected,
+                onGenerate: onGenerate,
+                isGenerating: isGenerating,
+                onExport: summary == null
+                    ? null
+                    : () => _exportSummary(context, summary),
+                collectionStatsSummary: summary,
+              ),
+              if (showRefreshSchedule && summary != null) ...[
+                const SizedBox(height: AppSpacing.xs),
+                WorkspaceSummaryRefreshStatus(
+                  collectedAt: summary.generatedAt ?? summary.period.endedAt,
+                  onRefreshDue: onRefreshDue,
+                ),
+              ],
+            ],
           ),
         ),
         Padding(padding: contentPadding, child: child),

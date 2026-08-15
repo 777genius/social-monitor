@@ -147,6 +147,18 @@ install -m 0644 "$valid_activation" "$source_activation"
 assert_reconciliation_failure 'mutation classifier is unavailable'
 # shellcheck source=ops/deploy/postgres-runtime-deploy-lib.sh
 source "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh"
+for unit in \
+  social-monitor-daily.service \
+  social-monitor-daily.timer \
+  social-monitor-prod.service \
+  social-monitor-rolling.service \
+  social-monitor-rolling.timer \
+  social-monitor-weekly.service \
+  social-monitor-weekly.timer; do
+  install -m 0644 "$source_runtime/$unit" "$SYSTEMD_UNIT_DIR/$unit"
+done
+install -m 0755 "$source_runtime/daily-run.sh" "$CONTROL/daily-run.sh"
+install -m 0755 "$source_runtime/rolling-run.sh" "$CONTROL/rolling-run.sh"
 
 # Equal activation states do not turn a marker-diff-free classification into a
 # runtime-control deployment. An existing positive classification is retained.
@@ -188,14 +200,6 @@ install -m 0644 "$valid_activation" "$source_activation"
 # target and no component diff. The source is active while the installed legacy
 # runtime has no activation marker, so reconciliation alone must select runtime
 # control without changing the compatible backend release identity.
-for unit in \
-  social-monitor-daily.service \
-  social-monitor-prod.service \
-  social-monitor-weekly.service \
-  social-monitor-weekly.timer; do
-  install -m 0644 "$source_runtime/$unit" "$SYSTEMD_UNIT_DIR/$unit"
-done
-install -m 0755 "$source_runtime/daily-run.sh" "$CONTROL/daily-run.sh"
 git -C "$REPO" config user.email deploy-control-test@example.invalid
 git -C "$REPO" config user.name deploy-control-test
 git -C "$REPO" add .
@@ -884,6 +888,7 @@ systemctl() {
   printf '%s\n' "$*" >> "$systemctl_events"
   case $* in
     daemon-reload) ;;
+    'enable --now social-monitor-rolling.timer') ;;
     'show --property=FragmentPath --value '*)
       printf '%s/%s\n' "$SYSTEMD_UNIT_DIR" "${*: -1}"
       ;;
@@ -894,14 +899,26 @@ systemctl() {
     'show --property=UnitFileState --value social-monitor-weekly.timer')
       printf 'enabled\n'
       ;;
+    'show --property=UnitFileState --value social-monitor-rolling.timer')
+      printf 'enabled\n'
+      ;;
     'show --property=ActiveState --value social-monitor-github-premidnight-capture-v1.timer')
       cat "$timer_active_state"
       ;;
     'show --property=ActiveState --value social-monitor-weekly.timer')
       printf 'active\n'
       ;;
+    'show --property=ActiveState --value social-monitor-rolling.timer')
+      printf 'active\n'
+      ;;
+    'show --property=ActiveState --value social-monitor-rolling.service')
+      printf 'inactive\n'
+      ;;
     'show --property=NextElapseUSecRealtime --value social-monitor-weekly.timer')
       printf 'Sun 2026-08-09 06:00:00 UTC\n'
+      ;;
+    'show --property=NextElapseUSecRealtime --value social-monitor-rolling.timer')
+      printf 'Sun 2026-08-09 08:15:00 UTC\n'
       ;;
     'show --property=ActiveState --value social-monitor-github-premidnight-capture-v1.service')
       cat "$service_active_state"

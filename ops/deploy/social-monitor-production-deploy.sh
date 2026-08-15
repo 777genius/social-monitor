@@ -105,6 +105,8 @@ CONTROL_PATHS=(
 RUNTIME_CONTROL_PATHS=(
   ops/deploy/production-runtime/daily-c1-runtime.sh
   ops/deploy/production-runtime/daily-run.sh
+  ops/deploy/production-runtime/rolling-run.sh
+  ops/deploy/production-runtime/rolling-summary-receipt.mjs
   ops/deploy/production-runtime/compose.daily-artifacts.yml
   ops/deploy/production-runtime/reader-summary-daily-c1.readiness
   ops/deploy/postgres-runtime-daily-c1-readiness-lib.sh ops/deploy/postgres-runtime-weekly-timer-state-lib.sh ops/deploy/postgres-runtime-activation-boundary-lib.sh
@@ -113,6 +115,7 @@ RUNTIME_CONTROL_PATHS=(
   ops/deploy/production-runtime/social-monitor-github-premidnight-capture-v1.service
   ops/deploy/production-runtime/social-monitor-github-premidnight-capture-v1.timer
   ops/deploy/production-runtime/social-monitor-daily.service ops/deploy/production-runtime/social-monitor-daily.timer
+  ops/deploy/production-runtime/social-monitor-rolling.service ops/deploy/production-runtime/social-monitor-rolling.timer
   ops/deploy/production-runtime/social-monitor-reader-summary-production-day.service.d-10-daily-c1-owner.conf
   ops/deploy/production-runtime/social-monitor-weekly.service ops/deploy/production-runtime/social-monitor-weekly.timer
 )

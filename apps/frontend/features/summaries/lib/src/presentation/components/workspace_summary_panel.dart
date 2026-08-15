@@ -41,6 +41,8 @@ class WorkspaceSummaryPanel extends StatelessWidget {
     required this.onTopicRecommendationDecision,
     required this.onOpenUrl,
     this.includeTopPosts = true,
+    this.showRefreshSchedule = false,
+    this.onRefreshDue,
     this.contentPadding = const EdgeInsets.only(top: AppSpacing.md),
   });
 
@@ -85,6 +87,8 @@ class WorkspaceSummaryPanel extends StatelessWidget {
   onTopicRecommendationDecision;
   final void Function(ReaderSummary summary, String url) onOpenUrl;
   final bool includeTopPosts;
+  final bool showRefreshSchedule;
+  final VoidCallback? onRefreshDue;
   final EdgeInsets contentPadding;
 
   @override
@@ -249,6 +253,8 @@ class WorkspaceSummaryPanel extends StatelessWidget {
       onGenerate: onGenerate,
       isGenerating: isGenerating,
       exportSummary: exportSummary,
+      showRefreshSchedule: showRefreshSchedule,
+      onRefreshDue: onRefreshDue,
       contentPadding: contentPadding,
       child: child,
     );

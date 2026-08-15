@@ -63,12 +63,31 @@ postgres_runtime_control_mutation_scope() {
     return 1
   fi
   if [[ $source_mode != "$current_mode" && $source_mode != absent ]]; then
-    printf 'capture-only\n'
+    if postgres_runtime_base_control_matches_source; then
+      printf 'capture-only\n'
+    else
+      printf 'full\n'
+    fi
   elif [[ $source_mode != absent ]]; then
     printf 'full\n'
   else
     printf 'base\n'
   fi
+}
+
+postgres_runtime_base_control_matches_source() {
+  local source=$REPO/ops/deploy/production-runtime launcher unit
+  local -a launchers units
+  mapfile -t launchers < <(
+    postgres_runtime_control_launchers_for_scope base
+  )
+  mapfile -t units < <(postgres_runtime_control_units_for_scope base)
+  for launcher in "${launchers[@]}"; do
+    cmp -s "$source/$launcher" "$CONTROL/$launcher" || return 1
+  done
+  for unit in "${units[@]}"; do
+    cmp -s "$source/$unit" "$SYSTEMD_UNIT_DIR/$unit" || return 1
+  done
 }
 
 postgres_runtime_control_units_for_scope() {
@@ -78,6 +97,8 @@ postgres_runtime_control_units_for_scope() {
         social-monitor-daily.service \
         social-monitor-daily.timer \
         social-monitor-prod.service \
+        social-monitor-rolling.service \
+        social-monitor-rolling.timer \
         social-monitor-weekly.service \
         social-monitor-weekly.timer
       ;;
@@ -93,6 +114,8 @@ postgres_runtime_control_units_for_scope() {
         social-monitor-daily.service \
         social-monitor-daily.timer \
         social-monitor-prod.service \
+        social-monitor-rolling.service \
+        social-monitor-rolling.timer \
         social-monitor-weekly.service \
         social-monitor-weekly.timer
       ;;
@@ -105,10 +128,10 @@ postgres_runtime_control_units_for_scope() {
 
 postgres_runtime_control_launchers_for_scope() {
   case $1 in
-    base) printf '%s\n' daily-run.sh ;;
+    base) printf '%s\n' daily-run.sh rolling-run.sh ;;
     capture-only) printf '%s\n' github-premidnight-capture-v1.sh ;;
     full)
-      printf '%s\n' daily-run.sh github-premidnight-capture-v1.sh
+      printf '%s\n' daily-run.sh github-premidnight-capture-v1.sh rolling-run.sh
       ;;
     *)
       fail 'PostgreSQL runtime-control launcher scope is invalid'
@@ -244,6 +267,8 @@ rollback_postgres_runtime_control_activation() {
     restore_postgres_runtime_daily_handoff_states "$backup" || rollback_status=1
   [[ ! -f $backup/weekly-timer-state ]] ||
     restore_postgres_runtime_weekly_timer "$backup" || rollback_status=1
+  [[ ! -f $backup/rolling-timer-state ]] ||
+    restore_postgres_runtime_rolling_timer "$backup" || rollback_status=1
   [[ ! -f $backup/github-premidnight-timer-state ]] || \
     restore_github_premidnight_capture_timer "$backup" || rollback_status=1
   if ((rollback_status == 0)); then
@@ -337,6 +362,7 @@ activate_postgres_runtime_control_transaction() (
   printf '%s\n' "$scope" > "$backup/mutation-scope"
   if ((EUID == 0)) && [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} != 1 ]]; then
     snapshot_postgres_runtime_weekly_timer "$backup"
+    snapshot_postgres_runtime_rolling_timer "$backup"
     snapshot_postgres_runtime_daily_handoff "$backup" "$SYSTEMD_UNIT_DIR"
     if postgres_runtime_scope_includes_github_capture "$scope"; then
       snapshot_github_premidnight_capture_timer "$backup"
@@ -448,10 +474,16 @@ activate_postgres_runtime_control_transaction() (
     prepare_postgres_runtime_daily_c1_owner_before_exposure "$sha"
   fi
   for unit in "${units[@]}"; do
+    if cmp -s "$release/$unit" "$SYSTEMD_UNIT_DIR/$unit"; then
+      continue
+    fi
     install -m 0644 "$release/$unit" "$SYSTEMD_UNIT_DIR/$unit.next"
     mv -f "$SYSTEMD_UNIT_DIR/$unit.next" "$SYSTEMD_UNIT_DIR/$unit"
   done
   for launcher in "${launchers[@]}"; do
+    if cmp -s "$release/$launcher" "$CONTROL/$launcher"; then
+      continue
+    fi
     install -m 0755 "$release/$launcher" "$CONTROL/$launcher.next"
     mv -f "$CONTROL/$launcher.next" "$CONTROL/$launcher"
   done
@@ -564,6 +596,7 @@ verify_installed_postgres_runtime_control() {
       verify_effective_postgres_daily_topology
     fi
     reconcile_postgres_runtime_weekly_timer
+    reconcile_postgres_runtime_rolling_timer
   fi
 }
 
@@ -588,6 +621,7 @@ snapshot_postgres_runtime_control() {
   printf '%s\n' "$scope" > "$backup/mutation-scope"
   if ((EUID == 0)) && [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} != 1 ]]; then
     snapshot_postgres_runtime_weekly_timer "$backup"
+    snapshot_postgres_runtime_rolling_timer "$backup"
     snapshot_postgres_runtime_daily_handoff "$backup" "$SYSTEMD_UNIT_DIR"
     if postgres_runtime_scope_includes_github_capture "$scope"; then
       snapshot_github_premidnight_capture_timer "$backup"
@@ -691,6 +725,8 @@ restore_postgres_runtime_control() {
     restore_postgres_runtime_daily_handoff_states "$backup" || return 1
   [[ ! -f $backup/weekly-timer-state ]] ||
     restore_postgres_runtime_weekly_timer "$backup" || return 1
+  [[ ! -f $backup/rolling-timer-state ]] ||
+    restore_postgres_runtime_rolling_timer "$backup" || return 1
   [[ ! -f $backup/github-premidnight-timer-state ]] || \
     restore_github_premidnight_capture_timer "$backup" || return 1
   rm -rf "$backup"
