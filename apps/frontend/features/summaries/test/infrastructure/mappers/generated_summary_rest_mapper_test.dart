@@ -93,7 +93,6 @@ void main() {
         20,
       );
       expect(readerSummary.period.cadence, 'daily');
-      expect(readerSummary.generatedAt, DateTime.utc(2026, 6, 23, 10, 45));
       expect(readerSummary.sourceWindow.label, 'Evidence window');
       expect(
         readerSummary.sourceWindow.startedAt,
@@ -240,7 +239,6 @@ generated.ReaderSummaryArtifactResponseDto _readerSummaryArtifact() {
       status: generated.ReaderSummaryFreshnessDtoStatusStatus.fresh,
     ),
     headline: 'AI signal readerSummary',
-    generatedAt: DateTime.utc(2026, 6, 23, 10, 45),
     period: _readerSummaryPeriod(),
     lineage: const generated.ReaderSummaryLineageDto(
       evalDatasetVersion: 'reader_summary.eval.mvp.v1',

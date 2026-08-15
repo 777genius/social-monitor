@@ -3,8 +3,8 @@
 # Sourced by postgres-runtime-deploy-lib.sh. Owns the weekly systemd timer's
 # exact snapshot, rollback, and post-activation reconciliation contract.
 
-# This helper also owns the adjacent pre-midnight capture and rolling timers
-# because all three need the same deployment-transaction snapshot boundary.
+# This helper also owns the adjacent pre-midnight capture timer because both
+# timers need the same deployment-transaction snapshot/restore boundary.
 
 github_premidnight_capture_marker_mode() {
   local root=$1 marker
@@ -141,62 +141,4 @@ reconcile_postgres_runtime_weekly_timer() {
     { fail 'systemd weekly timer proof is unavailable'; return 1; }
   [[ $unit_state == enabled && $active_state == active && -n $next_trigger ]] ||
     { fail "systemd weekly timer proof is invalid: $unit_state/$active_state"; return 1; }
-}
-
-snapshot_postgres_runtime_rolling_timer() {
-  local backup=$1 unit_state active_state
-  unit_state=$(systemctl show --property=UnitFileState --value \
-    social-monitor-rolling.timer) || {
-    fail 'systemd rolling timer enablement is unavailable'
-    return 1
-  }
-  active_state=$(systemctl show --property=ActiveState --value \
-    social-monitor-rolling.timer) || {
-    fail 'systemd rolling timer active state is unavailable'
-    return 1
-  }
-  [[ "$unit_state $active_state" =~ ^(enabled\ active|disabled\ inactive|not-found\ inactive)$ ]] || {
-    fail "systemd rolling timer state is not rollback-safe: $unit_state/$active_state"
-    return 1
-  }
-  printf '%s %s\n' "$unit_state" "$active_state" > \
-    "$backup/rolling-timer-state"
-}
-
-restore_postgres_runtime_rolling_timer() {
-  local backup=$1 unit_state active_state timer
-  timer=social-monitor-rolling.timer
-  read -r unit_state active_state < "$backup/rolling-timer-state" || return 1
-  case "$unit_state/$active_state" in
-    enabled/active) systemctl enable --now "$timer" || return 1 ;;
-    disabled/inactive) systemctl disable --now "$timer" || return 1 ;;
-    not-found/inactive)
-      systemctl disable --now "$timer" >/dev/null 2>&1 || true
-      ;;
-    *) return 1 ;;
-  esac
-  [[ $(systemctl show --property=UnitFileState --value "$timer") == \
-      "$unit_state" && \
-     $(systemctl show --property=ActiveState --value "$timer") == \
-      "$active_state" ]]
-}
-
-reconcile_postgres_runtime_rolling_timer() {
-  local timer=social-monitor-rolling.timer
-  local unit_state active_state next_trigger service_state
-  systemctl enable --now "$timer" || {
-    fail 'systemd rolling timer could not be enabled and started'
-    return 1
-  }
-  unit_state=$(systemctl show --property=UnitFileState --value "$timer") || return 1
-  active_state=$(systemctl show --property=ActiveState --value "$timer") || return 1
-  next_trigger=$(systemctl show --property=NextElapseUSecRealtime --value \
-    "$timer") || return 1
-  service_state=$(systemctl show --property=ActiveState --value \
-    social-monitor-rolling.service) || return 1
-  [[ $unit_state == enabled && $active_state == active && \
-     -n $next_trigger && $service_state == inactive ]] || {
-    fail "systemd rolling timer activation proof is invalid: $unit_state/$active_state/$service_state"
-    return 1
-  }
 }

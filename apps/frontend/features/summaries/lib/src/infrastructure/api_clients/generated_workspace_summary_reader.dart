@@ -54,17 +54,22 @@ final class GeneratedWorkspaceSummaryReader {
   Future<Result<WorkspaceSummaryApiDto>> load(
     LoadWorkspaceSummaryApiRequest request,
   ) async {
-    if (request.allowLatestFallback) {
-      final latestResult = await _list(request, exactPeriod: false);
-      return latestResult.fold(
-        onSuccess: (dto) => Result.success(_workspaceSummaryFrom(dto)),
-        onFailure: Result<WorkspaceSummaryApiDto>.failure,
-      );
-    }
-
     final exactResult = await _list(request, exactPeriod: true);
     return exactResult.fold(
-      onSuccess: (dto) => Result.success(_workspaceSummaryFrom(dto)),
+      onSuccess: (dto) async {
+        if (dto.items.isNotEmpty) {
+          return Result.success(_workspaceSummaryFrom(dto));
+        }
+        if (!request.allowLatestFallback) {
+          return Result.success(_workspaceSummaryFrom(dto));
+        }
+        final latestResult = await _list(request, exactPeriod: false);
+        return latestResult.fold(
+          onSuccess: (latestDto) =>
+              Result.success(_workspaceSummaryFrom(latestDto)),
+          onFailure: Result<WorkspaceSummaryApiDto>.failure,
+        );
+      },
       onFailure: Result<WorkspaceSummaryApiDto>.failure,
     );
   }

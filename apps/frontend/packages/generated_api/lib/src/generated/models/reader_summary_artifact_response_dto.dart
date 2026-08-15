@@ -51,7 +51,6 @@ class ReaderSummaryArtifactResponseDto {
     required this.usage,
     required this.workspaceId,
     this.coverage,
-    this.generatedAt,
     this.noSignalReason,
     this.personalization,
     this.subscriptionId,
@@ -68,7 +67,6 @@ class ReaderSummaryArtifactResponseDto {
   final ReaderSummaryCoverageSummaryDto? coverage;
   final String executiveSummary;
   final ReaderSummaryFreshnessDto freshness;
-  final DateTime? generatedAt;
   final String headline;
   final List<ReaderSummaryInterestHighlightDto> interestHighlights;
   final ReaderSummaryLineageDto lineage;

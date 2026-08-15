@@ -17,6 +17,7 @@ DEPLOY_CONTROL_BRIDGE_SELF_PATH=ops/deploy/deploy-control-bridge-lib.sh
 DEPLOY_CONTROL_DAILY_FINAL_BASE=d494c143c242873bfac53f54c15b0f24df0ab33d
 DEPLOY_CONTROL_DAILY_FINAL_HELPER_BLOB=119726c2f2aff06798cade4dc3a127f24a2d2cc9
 DEPLOY_CONTROL_SCHEDULED_SUMMARY_CATCH_UP_BASE=e377453d5b440aacc8077e8af1345eb5a74aae7b
+DEPLOY_CONTROL_ROLLING_SUMMARY_FINAL_TREE=6a68fd8f88477811e220c042d5176e452241389f
 DEPLOY_CONTROL_DAILY_RECOVERY_BASE=cb1595d9bdca844d6a221d21fd3c53e6845cc4cf
 DEPLOY_CONTROL_DAILY_RECOVERY_BACKEND_RESCUE_BLOB=a4291fad8b1f36f0cbb0760f3dbca6e7603138bc
 DEPLOY_CONTROL_DAILY_RECOVERY_MIGRATE_TEST_BLOB=f62a83ce95cc768c4e888e7c576bad3bd6fdbced
@@ -187,12 +188,43 @@ deploy_control_is_reviewed_scheduled_summary_catch_up_transition() {
        "$target:$DEPLOY_CONTROL_BRIDGE_SELF_PATH" 2>/dev/null) ]]
 }
 
+deploy_control_is_reviewed_rolling_summary_transition() {
+  local bridge=$1 target=$2 repository=${REPO:-.}
+  local target_parent final_delta
+  local -a target_ancestry=()
+
+  git -C "$repository" cat-file -e \
+    "$DEPLOY_CONTROL_ROLLING_SUMMARY_FINAL_TREE^{commit}" \
+    2>/dev/null || return 1
+  target_parent=$(git -C "$repository" rev-parse "$target^" \
+    2>/dev/null) || return 1
+  read -r -a target_ancestry <<< "$(git -C "$repository" \
+    rev-list --parents -n 1 "$target" 2>/dev/null)" || return 1
+  git -C "$repository" merge-base --is-ancestor \
+    "$DEPLOY_CONTROL_ROLLING_SUMMARY_FINAL_TREE" "$target" \
+    2>/dev/null || return 1
+  [[ $target_parent == "$bridge" && ${#target_ancestry[@]} == 2 ]] || \
+    return 1
+  final_delta=$(git -C "$repository" diff --name-only --no-renames \
+    "$DEPLOY_CONTROL_ROLLING_SUMMARY_FINAL_TREE" "$target" -- \
+    2>/dev/null) || return 1
+  [[ $final_delta == "$DEPLOY_CONTROL_BRIDGE_SELF_PATH" && \
+     $(git -C "$repository" rev-parse \
+       "$bridge:$DEPLOY_CONTROL_BRIDGE_SELF_PATH" 2>/dev/null) == \
+       $(git -C "$repository" rev-parse \
+       "$target:$DEPLOY_CONTROL_BRIDGE_SELF_PATH" 2>/dev/null) ]]
+}
+
 deploy_control_reviewed_transition_matches() {
   local bridge=$1 target=$2
   if deploy_control_daily_final_transition_matches "$bridge" "$target"; then
     return 0
   fi
   if deploy_control_is_reviewed_scheduled_summary_catch_up_transition \
+      "$bridge" "$target"; then
+    return 0
+  fi
+  if deploy_control_is_reviewed_rolling_summary_transition \
       "$bridge" "$target"; then
     return 0
   fi
