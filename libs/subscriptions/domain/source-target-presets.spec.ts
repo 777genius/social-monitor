@@ -252,15 +252,16 @@ describe("aiDeveloperSignalSourcePreset", () => {
       },
     });
     expect(xConfig?.searchQueries).toEqual([
-      '"Claude Code" OR "OpenAI Codex" OR "Cursor AI" OR "Cursor editor" OR "AI coding" OR "coding agent"',
-      'MCP OR "MCP server" OR "model context protocol" OR "AI agent"',
-      'OpenAI OR Anthropic OR Claude OR Gemini OR "AI model" OR LLM',
-      'Flutter OR Dart OR TypeScript OR JavaScript OR "Node.js" OR Python OR Rust OR Golang OR "Go programming"',
-      'cybersecurity OR "AI security" OR "security vulnerability" OR infosec',
-      'LangChain OR "retrieval augmented generation" OR "RAG pipeline" OR "RAG system" OR "open source AI" OR "open source LLM" OR Ollama',
-      '"vibe coding" OR "developer tools" OR "agentic coding" OR "AI infrastructure"',
+      '"Claude Code" (release OR update OR workflow OR benchmark OR production OR GitHub OR skill OR MCP)',
+      '("OpenAI Codex" OR "Cursor AI" OR "Cursor editor") (release OR update OR workflow OR benchmark OR production)',
+      '(MCP OR "model context protocol") (server OR release OR integration OR security OR tool)',
+      '(OpenAI OR Anthropic OR Claude OR Gemini) (release OR model OR API OR benchmark OR research)',
+      '("AI agent" OR "coding agent") (release OR framework OR "open source" OR benchmark OR production)',
+      '(cybersecurity OR "AI security" OR infosec) (vulnerability OR research OR release OR benchmark OR tool)',
+      '(LangChain OR Ollama OR "RAG pipeline" OR "RAG system") (release OR benchmark OR production OR "open source")',
+      '("vibe coding" OR "agentic coding") (tool OR workflow OR release OR benchmark OR production)',
       '"AI regulation" OR "AI governance" OR "AI safety" OR "AI privacy" OR "AI copyright"',
-      '"AI GPU" OR "LLM inference" OR "AI chips" OR "AI data center" OR "model training" OR "AI benchmark" OR "LLM benchmark"',
+      '"LLM inference" OR "AI chips" OR "AI data center" OR "model training" OR "AI benchmark" OR "LLM benchmark"',
     ]);
     expect(rssUrls).toHaveLength(1);
     expect(rssUrls[0]).toContain("when%3A1d");
