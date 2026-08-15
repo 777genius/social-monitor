@@ -132,6 +132,8 @@ class _PublishedSummaryArticle extends StatelessWidget {
                 unawaited(store.selectCalendarDate(date)),
             isGenerating: false,
             exportSummary: summary,
+            showRefreshSchedule: store.isViewingLatestDailySummary,
+            onRefreshDue: () => unawaited(store.load()),
             contentPadding: articlePadding,
             child: ReaderSummaryView.readOnly(
               key: const ValueKey('published-reader-summary-view'),

@@ -77,7 +77,10 @@ class WorkspaceSummaryPeriodShell extends StatelessWidget {
               if (showRefreshSchedule && summary != null) ...[
                 const SizedBox(height: AppSpacing.xs),
                 WorkspaceSummaryRefreshStatus(
-                  collectedAt: summary.generatedAt ?? summary.period.endedAt,
+                  collectedAt:
+                      summary.summaryWindow.endsAt ??
+                      summary.generatedAt ??
+                      summary.period.endedAt,
                   onRefreshDue: onRefreshDue,
                 ),
               ],

@@ -69,6 +69,13 @@ final class PublishedSummaryStore extends ChangeNotifier {
         sameSummaryPeriodWindow(selectedPeriod, periods.last);
   }
 
+  bool get isViewingLatestDailySummary {
+    final requestedId = summaryId?.trim();
+    return (requestedId == null || requestedId.isEmpty) &&
+        selectedPeriodPreset == SummaryPeriodPreset.daily &&
+        isCurrentPeriod;
+  }
+
   Future<void> load() async {
     final generation = _generationGuard.markOperationStarted();
     final previous = switch (state) {

@@ -46,6 +46,7 @@ void main() {
     expect(readyPeriods, isNotEmpty);
     expect(_samePeriod(readyPeriods.last, summary.period), isTrue);
     expect(_samePeriod(store.selectedPeriod, summary.period), isTrue);
+    expect(store.isViewingLatestDailySummary, isFalse);
 
     history.complete(
       const Result.failure(
