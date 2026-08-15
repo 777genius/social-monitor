@@ -230,24 +230,24 @@ describe("aiDeveloperSignalSourcePreset", () => {
     });
     expect(xConfig).toMatchObject({
       maxItems: 100,
-      limitPerProduct: 30,
-      minLikes: 3,
+      limitPerProduct: 50,
+      minLikes: 1,
     });
     expect(xConfig?.adaptivePagination).toMatchObject({
       enabled: true,
-      targetItems: 180,
-      maxPages: 3,
-      minNewItemsPerPage: 8,
-      maxDuplicateRate: 0.65,
+      targetItems: 250,
+      maxPages: 4,
+      minNewItemsPerPage: 5,
+      maxDuplicateRate: 0.75,
     });
     expect(xEntry?.targetConfig).toMatchObject({
       sourceQueryPlanner: {
         enabled: true,
         rollout: "real_binding_canary",
-        maxLanesPerSource: 8,
-        maxItemsPerLane: 35,
+        maxLanesPerSource: 10,
+        maxItemsPerLane: 50,
         includeEnrichment: false,
-        maxSearchQueries: 8,
+        maxSearchQueries: 10,
       },
     });
     expect(xConfig?.searchQueries).toEqual([
@@ -258,6 +258,8 @@ describe("aiDeveloperSignalSourcePreset", () => {
       'cybersecurity OR "AI security" OR "security vulnerability" OR infosec',
       'LangChain OR RAG OR "open source AI" OR "open source LLM" OR Ollama',
       '"vibe coding" OR "developer tools" OR "agentic coding" OR "AI infrastructure"',
+      '"AI regulation" OR "AI governance" OR "AI safety" OR "AI privacy" OR "AI copyright"',
+      'GPU OR inference OR "AI chips" OR "data center" OR "model training" OR benchmark',
     ]);
     expect(rssUrls).toHaveLength(1);
     expect(rssUrls[0]).toContain("when%3A1d");
