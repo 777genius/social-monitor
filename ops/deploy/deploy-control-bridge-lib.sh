@@ -18,6 +18,8 @@ DEPLOY_CONTROL_DAILY_FINAL_BASE=d494c143c242873bfac53f54c15b0f24df0ab33d
 DEPLOY_CONTROL_DAILY_FINAL_HELPER_BLOB=119726c2f2aff06798cade4dc3a127f24a2d2cc9
 DEPLOY_CONTROL_SCHEDULED_SUMMARY_CATCH_UP_BASE=e377453d5b440aacc8077e8af1345eb5a74aae7b
 DEPLOY_CONTROL_ROLLING_SUMMARY_FINAL_TREE=6a68fd8f88477811e220c042d5176e452241389f
+DEPLOY_CONTROL_ROLLING_SUMMARY_HELPER_TEST_PATH=ops/deploy/deploy-control-bridge-runtime-helper.test.sh
+DEPLOY_CONTROL_ROLLING_SUMMARY_RABBITMQ_TEST_PATH=ops/deploy/rabbitmq-quorum-deploy-bridge-transition.test.sh
 DEPLOY_CONTROL_DAILY_RECOVERY_BASE=cb1595d9bdca844d6a221d21fd3c53e6845cc4cf
 DEPLOY_CONTROL_DAILY_RECOVERY_BACKEND_RESCUE_BLOB=a4291fad8b1f36f0cbb0760f3dbca6e7603138bc
 DEPLOY_CONTROL_DAILY_RECOVERY_MIGRATE_TEST_BLOB=f62a83ce95cc768c4e888e7c576bad3bd6fdbced
@@ -190,7 +192,7 @@ deploy_control_is_reviewed_scheduled_summary_catch_up_transition() {
 
 deploy_control_is_reviewed_rolling_summary_transition() {
   local bridge=$1 target=$2 repository=${REPO:-.}
-  local target_parent final_delta
+  local target_parent expected final_delta path
   local -a target_ancestry=()
 
   git -C "$repository" cat-file -e \
@@ -207,12 +209,19 @@ deploy_control_is_reviewed_rolling_summary_transition() {
     return 1
   final_delta=$(git -C "$repository" diff --name-only --no-renames \
     "$DEPLOY_CONTROL_ROLLING_SUMMARY_FINAL_TREE" "$target" -- \
-    2>/dev/null) || return 1
-  [[ $final_delta == "$DEPLOY_CONTROL_BRIDGE_SELF_PATH" && \
-     $(git -C "$repository" rev-parse \
-       "$bridge:$DEPLOY_CONTROL_BRIDGE_SELF_PATH" 2>/dev/null) == \
+    2>/dev/null | LC_ALL=C sort) || return 1
+  expected=$(printf '%s\n' \
+    "$DEPLOY_CONTROL_BRIDGE_SELF_PATH" \
+    "$DEPLOY_CONTROL_ROLLING_SUMMARY_HELPER_TEST_PATH" \
+    "$DEPLOY_CONTROL_ROLLING_SUMMARY_RABBITMQ_TEST_PATH" | \
+    LC_ALL=C sort)
+  [[ $final_delta == "$expected" ]] || return 1
+  while IFS= read -r path; do
+    [[ $(git -C "$repository" rev-parse \
+         "$bridge:$path" 2>/dev/null) == \
        $(git -C "$repository" rev-parse \
-       "$target:$DEPLOY_CONTROL_BRIDGE_SELF_PATH" 2>/dev/null) ]]
+         "$target:$path" 2>/dev/null) ]] || return 1
+  done <<< "$expected"
 }
 
 deploy_control_reviewed_transition_matches() {
