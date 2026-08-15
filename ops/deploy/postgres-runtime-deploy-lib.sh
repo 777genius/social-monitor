@@ -63,12 +63,31 @@ postgres_runtime_control_mutation_scope() {
     return 1
   fi
   if [[ $source_mode != "$current_mode" && $source_mode != absent ]]; then
-    printf 'capture-only\n'
+    if postgres_runtime_base_control_matches_source; then
+      printf 'capture-only\n'
+    else
+      printf 'full\n'
+    fi
   elif [[ $source_mode != absent ]]; then
     printf 'full\n'
   else
     printf 'base\n'
   fi
+}
+
+postgres_runtime_base_control_matches_source() {
+  local source=$REPO/ops/deploy/production-runtime launcher unit
+  local -a launchers units
+  mapfile -t launchers < <(
+    postgres_runtime_control_launchers_for_scope base
+  )
+  mapfile -t units < <(postgres_runtime_control_units_for_scope base)
+  for launcher in "${launchers[@]}"; do
+    cmp -s "$source/$launcher" "$CONTROL/$launcher" || return 1
+  done
+  for unit in "${units[@]}"; do
+    cmp -s "$source/$unit" "$SYSTEMD_UNIT_DIR/$unit" || return 1
+  done
 }
 
 postgres_runtime_control_units_for_scope() {
