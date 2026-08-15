@@ -474,10 +474,16 @@ activate_postgres_runtime_control_transaction() (
     prepare_postgres_runtime_daily_c1_owner_before_exposure "$sha"
   fi
   for unit in "${units[@]}"; do
+    if cmp -s "$release/$unit" "$SYSTEMD_UNIT_DIR/$unit"; then
+      continue
+    fi
     install -m 0644 "$release/$unit" "$SYSTEMD_UNIT_DIR/$unit.next"
     mv -f "$SYSTEMD_UNIT_DIR/$unit.next" "$SYSTEMD_UNIT_DIR/$unit"
   done
   for launcher in "${launchers[@]}"; do
+    if cmp -s "$release/$launcher" "$CONTROL/$launcher"; then
+      continue
+    fi
     install -m 0755 "$release/$launcher" "$CONTROL/$launcher.next"
     mv -f "$CONTROL/$launcher.next" "$CONTROL/$launcher"
   done

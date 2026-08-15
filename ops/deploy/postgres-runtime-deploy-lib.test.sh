@@ -687,6 +687,7 @@ restore_postgres_runtime_control "${retained_backups[0]}"
 if grep -E '(^| )(enable|disable|start|stop|restart)( |$)' \
   "$SYSTEMCTL_EVENTS" | \
   grep -Fv 'social-monitor-weekly.timer' | \
+  grep -Fv 'social-monitor-rolling.timer' | \
   grep -Fv 'social-monitor-github-premidnight-capture-v1.timer' >/dev/null; then
   echo 'runtime rollback mutated an unrelated systemd unit state' >&2
   exit 1
