@@ -86,6 +86,13 @@ import {
   resolveReaderSummaryServingAuthority,
 } from "./lib/reader-summary-serving-authority";
 import {
+  addUtcDays,
+  liveObservationCutoffEnv,
+  resolveLiveObservationCutoff,
+  resolveRecoveryTimestampPolicy,
+  startOfUtcDay,
+} from "./lib/reader-summary-capture-period-policy";
+import {
   assertReaderSummaryDbPublicationFailpointInactive,
   createRecoverableReaderSummaryPublication,
 } from "./lib/reader-summary-db-publication-reconciliation";
@@ -99,8 +106,6 @@ const defaultTenantId = "11111111-1111-4111-8111-111111111111";
 const defaultWorkspaceId = "22222222-2222-4222-8222-222222222222";
 const periodStartedAtEnv = "DURABLE_READER_SUMMARY_PERIOD_STARTED_AT";
 const periodEndedAtEnv = "DURABLE_READER_SUMMARY_PERIOD_ENDED_AT";
-const liveObservationCutoffEnv =
-  "DURABLE_READER_SUMMARY_LIVE_OBSERVATION_CUTOFF";
 const cadenceEnv = "DURABLE_READER_SUMMARY_CADENCE";
 const historicalGitHubOmissionReasonEnv =
   "DURABLE_READER_SUMMARY_HISTORICAL_GITHUB_OMISSION_REASON";
@@ -841,14 +846,6 @@ const writeOptionalJsonArtifact = (envName: string, value: unknown): void => {
   );
 };
 
-const startOfUtcDay = (date: Date): Date =>
-  new Date(
-    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()),
-  );
-
-const addUtcDays = (date: Date, days: number): Date =>
-  new Date(date.getTime() + days * 24 * 60 * 60 * 1000);
-
 const readCadence = (): DurableReaderSummaryCadence => {
   const value = readEnv(cadenceEnv) ?? "custom";
   if (
@@ -863,51 +860,6 @@ const readCadence = (): DurableReaderSummaryCadence => {
   throw new Error(`${cadenceEnv} must be daily, weekly, monthly or custom`);
 };
 
-const resolveRecoveryTimestampPolicy = (params: {
-  readonly argv: readonly string[];
-  readonly envValue?: string;
-  readonly cadence: DurableReaderSummaryCadence;
-  readonly timezone: string;
-  readonly periodStartedAt: Date;
-  readonly periodEndedAt: Date;
-  readonly now: Date;
-}): {
-  readonly active: boolean;
-  readonly policy: ReaderSummaryTimestampPolicy;
-} => {
-  const explicitlyHistorical = params.argv.includes("--historical-recovery");
-  if (!explicitlyHistorical && params.envValue === undefined) {
-    return { active: false, policy: "published_at" };
-  }
-  if (!explicitlyHistorical || params.envValue === undefined) {
-    throw new Error(
-      `Historical recovery requires both --historical-recovery and ${recoveryTimestampPolicyEnv}`,
-    );
-  }
-  if (
-    params.envValue !== "published_at" &&
-    params.envValue !== "observed_at"
-  ) {
-    throw new Error(
-      `${recoveryTimestampPolicyEnv} must be published_at or observed_at`,
-    );
-  }
-  if (
-    params.cadence !== "daily" ||
-    params.timezone !== "UTC" ||
-    params.periodStartedAt.toISOString() !==
-      `${params.periodStartedAt.toISOString().slice(0, 10)}T00:00:00.000Z` ||
-    params.periodEndedAt.getTime() - params.periodStartedAt.getTime() !==
-      86_400_000 ||
-    params.periodEndedAt.getTime() > params.now.getTime()
-  ) {
-    throw new Error(
-      "Historical recovery timestamp policy is restricted to one completed exact UTC day",
-    );
-  }
-  return { active: true, policy: params.envValue };
-};
-
 const readDateEnv = (name: string): Date | undefined => {
   const value = readEnv(name);
   if (value === undefined) {
@@ -919,38 +871,6 @@ const readDateEnv = (name: string): Date | undefined => {
   }
 
   return date;
-};
-
-const resolveLiveObservationCutoff = (params: {
-  readonly value: Date | undefined;
-  readonly dailyReplayActive: boolean;
-  readonly recoveryActive: boolean;
-  readonly cadence: DurableReaderSummaryCadence;
-  readonly timezone: string;
-  readonly periodStartedAt: Date;
-  readonly periodEndedAt: Date;
-  readonly now: Date;
-}): Date | undefined => {
-  if (params.value === undefined) {
-    return undefined;
-  }
-  if (
-    params.dailyReplayActive ||
-    params.recoveryActive ||
-    params.cadence !== "daily" ||
-    params.timezone !== "UTC" ||
-    params.periodEndedAt.getTime() - params.periodStartedAt.getTime() !==
-      86_400_000 ||
-    params.value.getTime() < params.periodStartedAt.getTime() ||
-    params.value.getTime() >= params.periodEndedAt.getTime() ||
-    params.value.getTime() > params.now.getTime()
-  ) {
-    throw new Error(
-      `${liveObservationCutoffEnv} requires a current exact UTC daily period`,
-    );
-  }
-
-  return params.value;
 };
 
 const readModelMode = (): DurableReaderSummaryModelMode => {
