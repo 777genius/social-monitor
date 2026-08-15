@@ -3,6 +3,8 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
+import process from "node:process";
+import { URL } from "node:url";
 
 const directory = mkdtempSync(join(tmpdir(), "rolling-summary-receipt-"));
 const script = new URL("./rolling-summary-receipt.mjs", import.meta.url);
@@ -86,4 +88,4 @@ function runFailure(...args) {
   assert.notEqual(result.status, 0);
 }
 
-console.log("rolling-summary-receipt tests passed");
+process.stdout.write("rolling-summary-receipt tests passed\n");

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { chmodSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import process from "node:process";
 
 const requiredProviders = [
   "github-trending-page",
