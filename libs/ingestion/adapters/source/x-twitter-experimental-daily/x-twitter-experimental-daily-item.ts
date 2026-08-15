@@ -4,6 +4,7 @@ import {
   type JsonObject,
 } from "@social-monitor/shared-kernel";
 
+import { sourceItemRelevanceScore } from "../../../domain";
 import type { FetchedSourceItem } from "../../../ports";
 import type { XExperimentalDailyScanConfig } from "./x-twitter-experimental-daily-config";
 import type {
@@ -74,6 +75,16 @@ export const xPostMatchesMetricThresholds = (
   (config.minRetweets === undefined ||
     metrics.retweets >= config.minRetweets) &&
   (config.minReplies === undefined || metrics.replies >= config.minReplies);
+
+export const xPostMatchesSearchQuery = (
+  post: XDailyCollectedPost,
+  searchQuery: string,
+  maxItems: number,
+): boolean =>
+  sourceItemRelevanceScore(
+    normalizeXPost(post, searchQuery, maxItems),
+    [searchQuery],
+  ) > 0;
 
 export const compareXCollectedPosts = (
   left: XDailyCollectedPost,

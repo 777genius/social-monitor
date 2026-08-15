@@ -291,6 +291,7 @@ const lowSignalQueryTokens = new Set([
   "the",
   "with",
   "from",
+  "go",
   "since",
   "until",
   "filter",

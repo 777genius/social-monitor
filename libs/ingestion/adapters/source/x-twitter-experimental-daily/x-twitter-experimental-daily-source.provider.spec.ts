@@ -124,6 +124,57 @@ describe("XTwitterSourceProvider", () => {
     ]);
   });
 
+  it("rejects viral posts without meaningful query overlap when enabled", async () => {
+    const collector = {
+      collectDailySearch: async () => ({
+        posts: [
+          xPost({
+            tweetId: "relevant",
+            text: "Rust agent runtime release",
+            likes: 30,
+            trendScore: 30,
+          }),
+          xPost({
+            tweetId: "viral-off-topic",
+            text: "Adventure cat is ready to go swimming",
+            likes: 10_000,
+            trendScore: 10_000,
+          }),
+        ],
+        warnings: [],
+      }),
+    } satisfies XDailyCollectorClientPort;
+    const provider = new XTwitterSourceProvider(collector, {
+      now: () => new Date("2026-06-27T00:00:00.000Z"),
+    });
+    const context = {
+      tenantId: tenantId("tenant-1"),
+      workspaceId: workspaceId("workspace-1"),
+      sourceBindingId: "binding-1",
+      scanJobId: "scan-1",
+      correlationId: "corr-1",
+      config: {
+        minLikes: 0,
+        requireQueryMatch: true,
+      },
+    };
+
+    const result = await provider.scan(
+      provider.planScan(
+        {
+          mode: "search",
+          query: 'Rust OR Golang OR "Go programming"',
+        },
+        context,
+      ),
+      context,
+    );
+
+    expect(result.items.map((item) => item.externalId)).toEqual([
+      "x-twitter:relevant",
+    ]);
+  });
+
   it("scans configured search queries separately and deduplicates posts", async () => {
     const collector = new MultiQueryCollector();
     const provider = new XTwitterSourceProvider(collector, {

@@ -231,7 +231,8 @@ describe("aiDeveloperSignalSourcePreset", () => {
     expect(xConfig).toMatchObject({
       maxItems: 100,
       limitPerProduct: 50,
-      minLikes: 1,
+      minLikes: 30,
+      requireQueryMatch: true,
     });
     expect(xConfig?.adaptivePagination).toMatchObject({
       enabled: true,
@@ -251,15 +252,15 @@ describe("aiDeveloperSignalSourcePreset", () => {
       },
     });
     expect(xConfig?.searchQueries).toEqual([
-      '"Claude Code" OR "OpenAI Codex" OR Cursor OR "Cursor AI" OR "AI coding" OR "coding agent"',
+      '"Claude Code" OR "OpenAI Codex" OR "Cursor AI" OR "Cursor editor" OR "AI coding" OR "coding agent"',
       'MCP OR "MCP server" OR "model context protocol" OR "AI agent"',
       'OpenAI OR Anthropic OR Claude OR Gemini OR "AI model" OR LLM',
-      'Flutter OR Dart OR TypeScript OR JavaScript OR "Node.js" OR Python OR Rust OR Go',
+      'Flutter OR Dart OR TypeScript OR JavaScript OR "Node.js" OR Python OR Rust OR Golang OR "Go programming"',
       'cybersecurity OR "AI security" OR "security vulnerability" OR infosec',
-      'LangChain OR RAG OR "open source AI" OR "open source LLM" OR Ollama',
+      'LangChain OR "retrieval augmented generation" OR "RAG pipeline" OR "RAG system" OR "open source AI" OR "open source LLM" OR Ollama',
       '"vibe coding" OR "developer tools" OR "agentic coding" OR "AI infrastructure"',
       '"AI regulation" OR "AI governance" OR "AI safety" OR "AI privacy" OR "AI copyright"',
-      'GPU OR inference OR "AI chips" OR "data center" OR "model training" OR benchmark',
+      '"AI GPU" OR "LLM inference" OR "AI chips" OR "AI data center" OR "model training" OR "AI benchmark" OR "LLM benchmark"',
     ]);
     expect(rssUrls).toHaveLength(1);
     expect(rssUrls[0]).toContain("when%3A1d");

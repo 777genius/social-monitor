@@ -18,6 +18,7 @@ export type XExperimentalDailyScanConfig = {
   readonly minLikes?: number;
   readonly minRetweets?: number;
   readonly minReplies?: number;
+  readonly requireQueryMatch: boolean;
 };
 
 export const parseConfig = (
@@ -63,6 +64,10 @@ export const parseConfig = (
       context.config?.minReplies,
       0,
       1_000_000,
+    ),
+    requireQueryMatch: readBoolean(
+      context.config?.requireQueryMatch,
+      false,
     ),
   };
 };
