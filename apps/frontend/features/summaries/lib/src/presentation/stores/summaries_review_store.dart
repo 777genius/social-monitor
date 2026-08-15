@@ -136,12 +136,26 @@ final class SummariesReviewStore extends ChangeNotifier {
   WorkspaceScope get scope => _scope;
 
   SummaryPeriod get selectedSummaryPeriod {
+    if (_selectedSummaryPeriodEndedAt == null) {
+      final latest = switch (workspaceSummaryState) {
+        ReadyViewState<WorkspaceSummarySnapshot>(:final value) => value.current,
+        LoadingViewState<WorkspaceSummarySnapshot>(:final previousValue) =>
+          previousValue?.current,
+        _ => null,
+      };
+      if (latest != null) {
+        return latest.period;
+      }
+    }
     return selectedSummaryPeriodPreset.resolve(
       periodEndedAt: _selectedSummaryPeriodEndedAt,
     );
   }
 
   bool get isSelectedSummaryPeriodCurrent {
+    if (_selectedSummaryPeriodEndedAt == null) {
+      return true;
+    }
     final latestAvailable = _latestAvailableSummaryPeriodForSelectedPreset;
     if (latestAvailable != null) {
       return _sameSummaryPeriodWindow(selectedSummaryPeriod, latestAvailable);

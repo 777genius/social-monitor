@@ -65,6 +65,9 @@ WEEKLY_TIMER_ENABLE_STATUS=0
 WEEKLY_TIMER_START_STATUS=0
 WEEKLY_TIMER_DISABLE_STATUS=0
 WEEKLY_TIMER_STOP_STATUS=0
+ROLLING_TIMER_NEXT_TRIGGER='Sat 2026-08-15 12:15:00 UTC'
+ROLLING_TIMER_UNIT_FILE_STATE=$FIXTURE/rolling-timer-unit-file-state
+ROLLING_TIMER_ACTIVE_STATE=$FIXTURE/rolling-timer-active-state
 LEGACY_DAILY_TIMER_ENABLED=true
 V6_DAILY_TIMER_ENABLED=false
 DAILY_HANDOFF_STATE_MODE=true
@@ -82,6 +85,8 @@ TIMER_ACTIVE_STATE=$FIXTURE/github-premidnight-timer-active-state
 FAKE_SYSTEMCTL=$SCRIPT_DIR/fixtures/github-premidnight-capture-fake-systemctl.sh
 printf 'disabled\n' > "$WEEKLY_TIMER_UNIT_FILE_STATE"
 printf 'inactive\n' > "$WEEKLY_TIMER_ACTIVE_STATE"
+printf 'disabled\n' > "$ROLLING_TIMER_UNIT_FILE_STATE"
+printf 'inactive\n' > "$ROLLING_TIMER_ACTIVE_STATE"
 printf 'disabled\n' > "$TIMER_UNIT_FILE_STATE"
 printf 'inactive\n' > "$TIMER_ACTIVE_STATE"
 install -d "$STATE" "$SYSTEMD_UNIT_DIR" "$CONTROL/old-runtime" \
@@ -106,6 +111,8 @@ base_units=(
   social-monitor-daily.service
   social-monitor-daily.timer
   social-monitor-prod.service
+  social-monitor-rolling.service
+  social-monitor-rolling.timer
   social-monitor-weekly.service
   social-monitor-weekly.timer
 )
@@ -136,6 +143,7 @@ systemctl() {
       return 0
       ;;
     'show --property=ActiveState --value social-monitor-daily.service'|\
+    'show --property=ActiveState --value social-monitor-rolling.service'|\
     'show --property=ActiveState --value social-monitor-reader-summary-production-day.service')
       printf 'inactive\n'
       return 0
@@ -192,6 +200,33 @@ systemctl() {
       printf '%s\n' "$*" >> "$SYSTEMCTL_EVENTS"
       printf '%s\n' "$WEEKLY_TIMER_NEXT_TRIGGER"
       return
+      ;;
+    'show --property=UnitFileState --value social-monitor-rolling.timer')
+      printf '%s\n' "$*" >> "$SYSTEMCTL_EVENTS"
+      cat "$ROLLING_TIMER_UNIT_FILE_STATE"
+      return
+      ;;
+    'show --property=ActiveState --value social-monitor-rolling.timer')
+      printf '%s\n' "$*" >> "$SYSTEMCTL_EVENTS"
+      cat "$ROLLING_TIMER_ACTIVE_STATE"
+      return
+      ;;
+    'show --property=NextElapseUSecRealtime --value social-monitor-rolling.timer')
+      printf '%s\n' "$*" >> "$SYSTEMCTL_EVENTS"
+      printf '%s\n' "$ROLLING_TIMER_NEXT_TRIGGER"
+      return
+      ;;
+    'enable --now social-monitor-rolling.timer')
+      printf '%s\n' "$*" >> "$SYSTEMCTL_EVENTS"
+      printf 'enabled\n' > "$ROLLING_TIMER_UNIT_FILE_STATE"
+      printf 'active\n' > "$ROLLING_TIMER_ACTIVE_STATE"
+      return 0
+      ;;
+    'disable --now social-monitor-rolling.timer')
+      printf '%s\n' "$*" >> "$SYSTEMCTL_EVENTS"
+      printf 'disabled\n' > "$ROLLING_TIMER_UNIT_FILE_STATE"
+      printf 'inactive\n' > "$ROLLING_TIMER_ACTIVE_STATE"
+      return 0
       ;;
     'enable social-monitor-weekly.timer')
       printf '%s\n' "$*" >> "$SYSTEMCTL_EVENTS"
@@ -340,7 +375,7 @@ for unit in "${capture_units[@]}"; do
   [[ ! -e $SYSTEMD_UNIT_DIR/$unit ]]
 done
 [[ ! -e $CONTROL/github-premidnight-capture-v1.sh ]]
-[[ $(find "$bridge_release" -mindepth 1 -maxdepth 1 | wc -l) == 12 ]]
+[[ $(find "$bridge_release" -mindepth 1 -maxdepth 1 | wc -l) == 15 ]]
 [[ $(stat -c '%a' "$bridge_release/$readiness_name") == 644 ]]
 cmp -s "$readiness_source" "$bridge_release/$readiness_name"
 cmp -s "$bridge_release/$readiness_name" \
@@ -403,7 +438,7 @@ printf 'enable-now-v1\n' > \
 [[ $(readlink -f "$POSTGRES_RUNTIME_CURRENT") == "$release" ]]
 [[ $(cat "$release/READY") == "$SHA" ]]
 [[ $(cat "$release/SOURCE_SHA") == "$SHA" ]]
-[[ $(find "$release" -mindepth 1 -maxdepth 1 | wc -l) == 16 ]]
+[[ $(find "$release" -mindepth 1 -maxdepth 1 | wc -l) == 19 ]]
 [[ $(stat -c '%a' "$release/$readiness_name") == 644 ]]
 cmp -s "$readiness_source" "$release/$readiness_name"
 cmp -s "$release/$readiness_name" \
@@ -421,6 +456,7 @@ grep -Fx 'Unit=social-monitor-daily.service' \
   "$release/social-monitor-daily.timer" >/dev/null
 [[ ${COMPOSE[-1]} == "$POSTGRES_RUNTIME_CURRENT/compose.postgres-runtime.yml" ]]
 cmp -s "$release/daily-run.sh" "$CONTROL/daily-run.sh"
+cmp -s "$release/rolling-run.sh" "$CONTROL/rolling-run.sh"
 cmp -s "$release/github-premidnight-capture-v1.sh" \
   "$CONTROL/github-premidnight-capture-v1.sh"
 for unit in "${units[@]}"; do
@@ -440,7 +476,7 @@ done
   "$unrelated_timer_inode" ]]
 [[ $(grep -E '(^| )(enable|disable|start|stop|restart)( |$)' \
   "$SYSTEMCTL_EVENTS") == \
-  $'enable --now social-monitor-github-premidnight-capture-v1.timer\nenable social-monitor-weekly.timer\nstart social-monitor-weekly.timer' ]]
+  $'enable --now social-monitor-github-premidnight-capture-v1.timer\nenable social-monitor-weekly.timer\nstart social-monitor-weekly.timer\nenable --now social-monitor-rolling.timer' ]]
 [[ $(<"$TIMER_UNIT_FILE_STATE") == enabled ]]
 [[ $(<"$TIMER_ACTIVE_STATE") == active ]]
 [[ $(<"$WEEKLY_TIMER_UNIT_FILE_STATE") == enabled ]]
