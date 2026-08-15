@@ -32,6 +32,7 @@ import {
   formatXCollectorWarning,
   normalizeXPost,
   xPostMatchesMetricThresholds,
+  xPostMatchesSearchQuery,
   xPostSignalScore,
 } from "./x-twitter-experimental-daily-item";
 import type {
@@ -151,8 +152,15 @@ export class XTwitterSourceProvider implements SourceProviderPort {
           paginationPolicy,
         });
 
-        for (const post of result.posts.filter((item) =>
-          xPostMatchesMetricThresholds(item.metrics, config),
+        for (const post of result.posts.filter(
+          (item) =>
+            xPostMatchesMetricThresholds(item.metrics, config) &&
+            (!config.requireQueryMatch ||
+              xPostMatchesSearchQuery(
+                item,
+                searchQuery,
+                result.queryTargetItems,
+              )),
         )) {
           const externalId = `${X_TWITTER_PROVIDER_KEY}:${post.tweetId}`;
           const existing = postsByExternalId.get(externalId);
