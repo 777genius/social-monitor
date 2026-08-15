@@ -190,12 +190,16 @@ install -m 0644 "$valid_activation" "$source_activation"
 # control without changing the compatible backend release identity.
 for unit in \
   social-monitor-daily.service \
+  social-monitor-daily.timer \
   social-monitor-prod.service \
+  social-monitor-rolling.service \
+  social-monitor-rolling.timer \
   social-monitor-weekly.service \
   social-monitor-weekly.timer; do
   install -m 0644 "$source_runtime/$unit" "$SYSTEMD_UNIT_DIR/$unit"
 done
 install -m 0755 "$source_runtime/daily-run.sh" "$CONTROL/daily-run.sh"
+install -m 0755 "$source_runtime/rolling-run.sh" "$CONTROL/rolling-run.sh"
 git -C "$REPO" config user.email deploy-control-test@example.invalid
 git -C "$REPO" config user.name deploy-control-test
 git -C "$REPO" add .
