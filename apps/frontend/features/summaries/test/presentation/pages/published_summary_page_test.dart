@@ -34,7 +34,6 @@ void main() {
       loadHistory: LoadWorkspaceSummaryHistoryUseCase(catalog),
       loadPublished: LoadPublishedSummaryUseCase(catalog),
       openReaderSource: const OpenReaderSourceUseCase(_SourceLauncher()),
-      summaryId: summary.id,
     );
     addTearDown(store.dispose);
     final theme = AppTheme.light();
@@ -59,6 +58,11 @@ void main() {
       findsOneWidget,
     );
     expect(find.byType(ReaderSummaryView), findsOneWidget);
+    expect(
+      find.textContaining('Collected through 2026-06-26 18:58 UTC'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('next update in'), findsOneWidget);
     expect(find.byKey(const ValueKey('open-weekly-summary')), findsNothing);
     expect(find.text('Week'), findsOneWidget);
 
