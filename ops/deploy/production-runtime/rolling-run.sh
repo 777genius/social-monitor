@@ -126,7 +126,9 @@ export SOCIAL_MONITOR_ROLLING_RUN_RECEIPT_HOST_PATH=$receipt_host_path
     export DURABLE_READER_SUMMARY_PERIOD_ENDED_AT="$(node -e '\''const day = new Date(`${process.argv[1]}T00:00:00.000Z`); day.setUTCDate(day.getUTCDate() + 1); process.stdout.write(day.toISOString());'\'' "$ROLLING_COLLECTION_DATE")"
     export DURABLE_READER_SUMMARY_LIVE_OBSERVATION_CUTOFF="$rolling_observation_cutoff"
     export DURABLE_READER_SUMMARY_MODEL=agent-runtime
-    export DURABLE_READER_SUMMARY_TOPIC_LABELER=agent-runtime
+    # Keep rolling publication available when one provider is partial. The
+    # canonical daily pipeline uses the same deterministic topic-map path.
+    export DURABLE_READER_SUMMARY_TOPIC_LABELER=deterministic
     export DURABLE_READER_SUMMARY_MAX_EVIDENCE_ITEMS=120
     export DURABLE_READER_SUMMARY_EVIDENCE_PATH="$evidence_path"
     export DURABLE_READER_SUMMARY_FRONTEND_FIXTURE_PATH="$frontend_path"
