@@ -173,19 +173,36 @@ if declare -F deploy_control_is_reviewed_daily_c1_bridge_transition >/dev/null; 
   verify_deploy_control_bridge_target_compatibility "$reviewed_bridge_sha"
 fi
 
-rolling_final_tree=$(git -C "$REPO" rev-parse HEAD)
+printf 'pinned helper test\n' > \
+  "$REPO/$DEPLOY_CONTROL_ROLLING_SUMMARY_HELPER_TEST_PATH"
+printf 'pinned RabbitMQ test\n' > \
+  "$REPO/$DEPLOY_CONTROL_ROLLING_SUMMARY_RABBITMQ_TEST_PATH"
+rolling_final_tree=$(commit_target_state 'test: seed rolling final test assets')
 DEPLOY_CONTROL_ROLLING_SUMMARY_FINAL_TREE=$rolling_final_tree
 printf '# reviewed rolling admission bridge\n' >> \
   "$REPO/$DEPLOY_CONTROL_BRIDGE_SELF_PATH"
+printf 'reviewed helper test\n' > \
+  "$REPO/$DEPLOY_CONTROL_ROLLING_SUMMARY_HELPER_TEST_PATH"
+printf 'reviewed RabbitMQ test\n' > \
+  "$REPO/$DEPLOY_CONTROL_ROLLING_SUMMARY_RABBITMQ_TEST_PATH"
 rolling_bridge_sha=$(commit_target_state 'test: rolling admission bridge')
 git -C "$REPO" commit --allow-empty -qm 'test: rolling final tree'
 rolling_target_sha=$(git -C "$REPO" rev-parse HEAD)
 deploy_control_is_reviewed_rolling_summary_transition \
   "$rolling_bridge_sha" "$rolling_target_sha"
+git -C "$REPO" checkout -q "$rolling_bridge_sha"
+printf 'mutated helper test\n' > \
+  "$REPO/$DEPLOY_CONTROL_ROLLING_SUMMARY_HELPER_TEST_PATH"
+rolling_mutated_sha=$(commit_target_state 'test: reject changed admitted asset')
+if deploy_control_is_reviewed_rolling_summary_transition \
+    "$rolling_bridge_sha" "$rolling_mutated_sha"; then
+  fail 'rolling transition accepted a target-mutated admitted asset'
+fi
+git -C "$REPO" checkout -q "$rolling_bridge_sha"
 printf 'unreviewed\n' > "$REPO/unreviewed-target-file"
 rolling_invalid_sha=$(commit_target_state 'test: reject rolling target drift')
 if deploy_control_is_reviewed_rolling_summary_transition \
-    "$rolling_target_sha" "$rolling_invalid_sha"; then
+    "$rolling_bridge_sha" "$rolling_invalid_sha"; then
   fail 'rolling transition accepted target drift outside the pinned final tree'
 fi
 printf 'deploy control bridge runtime helper tests passed\n'
