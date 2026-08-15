@@ -58,15 +58,62 @@ void main() {
       ),
     );
 
+    expect(find.text('12 reviewed'), findsOneWidget);
+    expect(find.text('8 used (67%) · 4 not selected'), findsOneWidget);
     expect(
-      find.textContaining('Degraded collection: 12 of 80 accepted'),
+      find.byTooltip(
+        '12 unique posts were reviewed. 8 posts were used in this summary. 4 posts were not selected. 2 top reads. 8 citations.',
+      ),
       findsOneWidget,
     );
     expect(
       find.byTooltip(
-        'Degraded collection: 12 of 80 accepted. 1 rate-limit event. Failure: rate_limited. Stopped: partial_retryable_failure',
+        'Degraded collection: 12 of 80 accepted. 16 candidates checked. 4 posts outside the summary date. 4 duplicate results. 10 new posts saved. Provider rate limit reached once. Collection stopped early after a temporary provider error.',
       ),
       findsOneWidget,
     );
+  });
+
+  testWidgets('shows reviewed, used and not-selected counts without overflow', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    final summary = const SummaryMapper().readerSummaryToDomain(
+      readerSummaryApiDto(
+        coverage: const ReaderSummaryCoverageApiDto(
+          collectedFeedItemCount: 66,
+          selectedFeedItemCount: 30,
+          topReadCount: 8,
+          citationCount: 30,
+          providerBreakdown: [
+            ReaderSummaryProviderCoverageApiDto(
+              providerKey: 'rss',
+              collectedFeedItemCount: 66,
+              selectedFeedItemCount: 30,
+              topReadCount: 8,
+              citationCount: 30,
+            ),
+          ],
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.dark(),
+        home: Scaffold(
+          body: ReaderSummaryCoverageBySourceBand(summary: summary),
+        ),
+      ),
+    );
+
+    expect(find.text('66 reviewed'), findsOneWidget);
+    expect(find.text('30 used (45%) · 36 not selected'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 }

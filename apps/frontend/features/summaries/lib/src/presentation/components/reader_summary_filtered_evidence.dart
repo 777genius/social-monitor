@@ -103,8 +103,8 @@ class _SourceFilterStats extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     return Tooltip(
       message: collectedCount == null
-          ? 'Selected evidence and read-first posts used by this summary'
-          : 'Posts collected and selected for this summary',
+          ? 'Posts used by this summary; total reviewed count is unavailable'
+          : 'Unique posts reviewed, used and not selected by this summary',
       child: Text(
         _summaryStatsLabel(
           collectedCount: collectedCount,
@@ -150,10 +150,13 @@ String _summaryStatsLabel({
 }) {
   final parts = <String>[];
   if (collectedCount != null && collectedCount > 0) {
-    parts.add('${_formatCount(collectedCount)} collected');
+    parts.add('${_formatCount(collectedCount)} reviewed');
   }
   if (selectedCount > 0) {
-    parts.add('${_formatCount(selectedCount)} selected for summary');
+    parts.add('${_formatCount(selectedCount)} used');
+  }
+  if (collectedCount != null && collectedCount > selectedCount) {
+    parts.add('${_formatCount(collectedCount - selectedCount)} not selected');
   }
   if (topReadCount > 0) {
     parts.add('${_formatCount(topReadCount)} top reads');

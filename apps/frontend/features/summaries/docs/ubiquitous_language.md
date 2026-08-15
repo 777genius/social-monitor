@@ -30,6 +30,13 @@ language.
 - Provider Metric: readable native provider metric such as Reddit score, HN
   points, GitHub stars, X likes, comments or upvote ratio.
 - Source Mix: provider coverage summary for the workspace summary.
+- Reviewed Post: a unique collected feed item that was available to Summary
+  selection for the covered period. It is not a raw provider response or a
+  repeated sighting of the same post.
+- Used in Summary: a Reviewed Post selected as Summary evidence.
+- Not Selected: a Reviewed Post that was available but was not used in the
+  Summary. This does not by itself mean that the post was spam, irrelevant or
+  low quality.
 - Trust & evidence: compact reader-facing summary of confidence, monitored
   source-group diversity, citations and reliability risks for a Summary. It
   opens the cited evidence details, hides raw internal scores from users and
