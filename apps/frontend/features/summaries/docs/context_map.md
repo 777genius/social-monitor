@@ -33,5 +33,11 @@
   user-facing presentation copy.
 - Summary domain consumes `signalScore` and `providerMetrics`; it must not know
   Reddit score, HN points, GitHub stars or X likes calculation rules.
+- Production scheduling owns the four-hour collection cadence. Presentation may
+  project that stable schedule as freshness copy, but it must not trigger or
+  claim completion of a backend collection.
+- Rolling Summary revisions and Final Daily Summaries share the same reader
+  layout. The latest revision is selected by the backend publication boundary;
+  historical Final Daily Summaries remain immutable.
 - `ReaderSummary*Dto -> ReaderSummary` is an anti-corruption mapper until the backend
   REST contract is renamed.

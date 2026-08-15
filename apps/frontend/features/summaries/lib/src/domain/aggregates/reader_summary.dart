@@ -57,6 +57,7 @@ final class ReaderSummary {
     required this.repeatedSignals,
     required this.citations,
     required this.period,
+    this.generatedAt,
     required this.summaryWindow,
     required this.freshnessLabel,
     required this.isDegraded,
@@ -72,6 +73,7 @@ final class ReaderSummary {
   final List<RepeatedSignal> repeatedSignals;
   final List<SummaryCitation> citations;
   final SummaryPeriod period;
+  final DateTime? generatedAt;
   final SummaryWindow summaryWindow;
   final String freshnessLabel;
   final bool isDegraded;
