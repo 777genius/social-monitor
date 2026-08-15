@@ -179,12 +179,9 @@ void main() {
         ),
         findsOneWidget,
       );
-      expect(find.text('180 collected', skipOffstage: false), findsOneWidget);
+      expect(find.text('180 reviewed', skipOffstage: false), findsOneWidget);
       expect(
-        find.text(
-          '28 selected (30%) · 1 top read · 2 citations',
-          skipOffstage: false,
-        ),
+        find.text('28 used (30%) · 64 not selected', skipOffstage: false),
         findsOneWidget,
       );
       await tester.scrollUntilVisible(

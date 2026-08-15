@@ -263,10 +263,10 @@ void main() {
       );
 
       expect(
-        find.text('255 collected · 80 selected for summary · 9 top reads'),
+        find.text('255 reviewed · 80 used · 175 not selected · 9 top reads'),
         findsOneWidget,
       );
-      expect(find.text('80 collected · 80 selected'), findsNothing);
+      expect(find.text('80 reviewed · 80 used'), findsNothing);
     },
   );
 

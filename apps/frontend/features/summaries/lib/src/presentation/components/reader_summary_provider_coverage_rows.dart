@@ -33,51 +33,81 @@ final class _ProviderCoverageRowData {
     return baseline > 0 ? baseline : topReadCount;
   }
 
+  int? get reviewedCount {
+    final collected = collectedFeedItemCount;
+    if (collected == null) {
+      return null;
+    }
+    return math.max(collected, selectedFeedItemCount);
+  }
+
+  int get notSelectedCount => math.max(
+    (reviewedCount ?? selectedFeedItemCount) - selectedFeedItemCount,
+    0,
+  );
+
   String get primaryCountText {
+    final reviewed = reviewedCount;
     if (collectionHealth?.state ==
-        ReaderSummaryCollectionCoverageState.unavailable) {
+            ReaderSummaryCollectionCoverageState.unavailable &&
+        (reviewed ?? 0) == 0) {
       return 'Unavailable';
     }
-    final collected = collectedFeedItemCount;
-    if (collected != null) {
-      return '${formatCompactCount(collected)} collected';
+    if (reviewed != null) {
+      return '${formatCompactCount(reviewed)} reviewed';
     }
-    return '${formatCompactCount(selectedFeedItemCount)} selected';
+    return '${formatCompactCount(selectedFeedItemCount)} used';
   }
 
   String get detailText {
-    final parts = <String>[];
-    final health = collectionHealth;
-    if (health != null &&
-        health.state != ReaderSummaryCollectionCoverageState.complete) {
-      parts.add(_collectionHealthText(health));
+    final reviewed = reviewedCount;
+    if (reviewed == null) {
+      return selectedFeedItemCount == 0
+          ? 'No posts used in summary'
+          : '${formatCompactCount(selectedFeedItemCount)} used in summary';
     }
-    if (collectedFeedItemCount != null) {
-      parts.add(_selectedCoverageText());
+    if (reviewed == 0) {
+      return 'No posts reviewed';
     }
-    if (topReadCount > 0) {
-      parts.add(_topReadsText(topReadCount));
-    }
-    if (citationCount > 0) {
-      parts.add('${formatCompactCount(citationCount)} citations');
-    }
-    if (lowRelevanceFeedItemCount > 0) {
-      parts.add('${formatCompactCount(lowRelevanceFeedItemCount)} low rel.');
-    }
-    if (mutedFeedItemCount > 0) {
-      parts.add('${formatCompactCount(mutedFeedItemCount)} muted');
-    }
-    return parts.isEmpty ? 'No selected evidence' : parts.join(' · ');
+    final percent = ((selectedFeedItemCount / reviewed) * 100).round();
+    return '${formatCompactCount(selectedFeedItemCount)} used ($percent%)'
+        ' · ${formatCompactCount(notSelectedCount)} not selected';
   }
 
-  String _selectedCoverageText() {
-    final selected = '${formatCompactCount(selectedFeedItemCount)} selected';
-    final collected = collectedFeedItemCount;
-    if (collected == null || collected <= 0 || selectedFeedItemCount <= 0) {
-      return selected;
+  String get detailTooltipText {
+    final reviewed = reviewedCount;
+    if (reviewed == null) {
+      return '${formatCompactCount(selectedFeedItemCount)} posts were used in '
+          'this summary. The total reviewed count is unavailable.';
     }
-    final percent = ((selectedFeedItemCount / collected) * 100).round();
-    return '$selected ($percent%)';
+    if (reviewed == 0) {
+      return 'No posts were available for this summary.';
+    }
+    final details = <String>[
+      '${_counted(reviewed, 'unique post', 'unique posts')} ${reviewed == 1 ? 'was' : 'were'} reviewed',
+      '${_counted(selectedFeedItemCount, 'post', 'posts')} ${selectedFeedItemCount == 1 ? 'was' : 'were'} used in this summary',
+      '${_counted(notSelectedCount, 'post', 'posts')} ${notSelectedCount == 1 ? 'was' : 'were'} not selected',
+    ];
+    if (topReadCount > 0) {
+      details.add(_topReadsText(topReadCount));
+    }
+    if (citationCount > 0) {
+      details.add(_counted(citationCount, 'citation', 'citations'));
+    }
+    if (lowRelevanceFeedItemCount > 0) {
+      details.add(
+        '${_counted(lowRelevanceFeedItemCount, 'post', 'posts')} marked low relevance',
+      );
+    }
+    if (mutedFeedItemCount > 0) {
+      details.add('${_counted(mutedFeedItemCount, 'post', 'posts')} muted');
+    }
+    if (userRatedFeedItemCount > 0) {
+      details.add(
+        '${_counted(userRatedFeedItemCount, 'post', 'posts')} rated by readers',
+      );
+    }
+    return '${details.join('. ')}.';
   }
 
   bool get hasEvidence {
@@ -196,6 +226,77 @@ String _collectionHealthText(ReaderSummaryProviderCollectionHealth health) {
   };
 }
 
+String _collectionHealthDetails(ReaderSummaryProviderCollectionHealth health) {
+  final details = <String>[
+    _collectionHealthText(health),
+    '${_counted(health.collectedItemCount, 'candidate', 'candidates')} checked',
+  ];
+  if (health.outsideWindowItemCount > 0) {
+    details.add(
+      '${_counted(health.outsideWindowItemCount, 'post', 'posts')} outside the summary date',
+    );
+  }
+  final duplicateCount =
+      health.paginationDuplicateItemCount + health.storageDuplicateItemCount;
+  if (duplicateCount > 0) {
+    details.add(
+      _counted(duplicateCount, 'duplicate result', 'duplicate results'),
+    );
+  }
+  if (health.insertedItemCount > 0) {
+    details.add(
+      '${_counted(health.insertedItemCount, 'new post', 'new posts')} saved',
+    );
+  }
+  if (health.rateLimitEventCount > 0) {
+    details.add(
+      health.rateLimitEventCount == 1
+          ? 'Provider rate limit reached once'
+          : 'Provider rate limit reached ${health.rateLimitEventCount} times',
+    );
+  }
+  details.addAll(
+    health.failureKinds
+        .where(
+          (kind) => kind != 'rate_limited' || health.rateLimitEventCount == 0,
+        )
+        .map(_collectionFailureText),
+  );
+  details.addAll(
+    health.paginationStopReasons
+        .map(_collectionStopReasonText)
+        .where((message) => message.isNotEmpty),
+  );
+  return '${details.join('. ')}.';
+}
+
+String _collectionFailureText(String failureKind) {
+  return switch (failureKind) {
+    'rate_limited' => 'Provider rate limit reached',
+    'auth_failed' => 'Provider sign-in failed',
+    'unavailable' => 'Provider was unavailable',
+    'invalid_query' => 'Collection query was invalid',
+    _ => 'Provider reported a collection error',
+  };
+}
+
+String _collectionStopReasonText(String stopReason) {
+  return switch (stopReason) {
+    'partial_retryable_failure' =>
+      'Collection stopped early after a temporary provider error',
+    'high_duplicate_rate' =>
+      'Collection stopped after results became mostly duplicates',
+    'low_new_item_yield' =>
+      'Collection stopped after it stopped finding new posts',
+    'max_pages' => 'Collection reached its page limit',
+    'no_next_cursor' => 'Provider had no more result pages',
+    'cursor_not_advanced' => 'Provider did not advance to a new result page',
+    'failed' => 'Collection did not complete',
+    'target_items' || 'single_page' => '',
+    _ => 'Collection stopped before the configured target',
+  };
+}
+
 List<_ProviderCoverageRowData> _sortProviderCoverageRows(
   List<_ProviderCoverageRowData> rows,
 ) {
@@ -236,6 +337,9 @@ String _topReadsText(int count) {
   final noun = count == 1 ? 'top read' : 'top reads';
   return '${formatCompactCount(count)} $noun';
 }
+
+String _counted(int count, String singular, String plural) =>
+    '${formatCompactCount(count)} ${count == 1 ? singular : plural}';
 
 Color _providerCoverageColor(String providerKey) {
   return switch (providerKey.trim().toLowerCase()) {

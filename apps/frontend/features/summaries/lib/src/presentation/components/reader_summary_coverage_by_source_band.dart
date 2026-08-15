@@ -153,14 +153,24 @@ class _ProviderCoverageRow extends StatelessWidget {
             ],
           ),
           const SizedBox(height: AppSpacing.xs),
-          Text(
-            row.detailText,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: textTheme.labelSmall?.copyWith(
-              color: colorScheme.onSurfaceVariant,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 0,
+          Tooltip(
+            message: row.detailTooltipText,
+            child: Semantics(
+              label: row.detailTooltipText,
+              excludeSemantics: true,
+              child: Text(
+                key: ValueKey(
+                  'reader-summary-provider-funnel-${row.providerKey}',
+                ),
+                row.detailText,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: textTheme.labelSmall?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0,
+                ),
+              ),
             ),
           ),
           const SizedBox(height: AppSpacing.xs),
@@ -183,10 +193,6 @@ class _ProviderCollectionHealthIndicator extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (health.state == ReaderSummaryCollectionCoverageState.complete) {
-      return const SizedBox.shrink();
-    }
-
     final colorScheme = Theme.of(context).colorScheme;
     final (icon, color) = switch (health.state) {
       ReaderSummaryCollectionCoverageState.partial => (
@@ -223,21 +229,7 @@ class _ProviderCollectionHealthIndicator extends StatelessWidget {
 
 String _providerCollectionHealthTooltip(
   ReaderSummaryProviderCollectionHealth health,
-) {
-  final details = <String>[_collectionHealthText(health)];
-  if (health.rateLimitEventCount > 0) {
-    details.add(
-      '${health.rateLimitEventCount} rate-limit ${health.rateLimitEventCount == 1 ? 'event' : 'events'}',
-    );
-  }
-  if (health.failureKinds.isNotEmpty) {
-    details.add('Failure: ${health.failureKinds.join(', ')}');
-  }
-  if (health.paginationStopReasons.isNotEmpty) {
-    details.add('Stopped: ${health.paginationStopReasons.join(', ')}');
-  }
-  return details.join('. ');
-}
+) => _collectionHealthDetails(health);
 
 class _ProviderCoverageBar extends StatelessWidget {
   const _ProviderCoverageBar({
