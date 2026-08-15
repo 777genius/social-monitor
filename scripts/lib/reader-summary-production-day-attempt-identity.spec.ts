@@ -69,6 +69,37 @@ describe("reader summary production-day attempt identity", () => {
     );
   });
 
+  it("isolates rolling live snapshots by observation cutoff", () => {
+    const first = {
+      ...liveIdentity,
+      sourceProvenance: {
+        kind: "live-production",
+        observationCutoff: "2026-08-13T08:15:00.000Z",
+      },
+    } satisfies ReaderSummaryProductionDayAttemptIdentityInput;
+    const second = {
+      ...first,
+      sourceProvenance: {
+        ...first.sourceProvenance,
+        observationCutoff: "2026-08-13T12:15:00.000Z",
+      },
+    } satisfies ReaderSummaryProductionDayAttemptIdentityInput;
+
+    expect(readerSummaryProductionDayAttemptIdentity(first)).not.toBe(
+      readerSummaryProductionDayAttemptIdentity(second),
+    );
+  });
+
+  it("rejects a non-canonical rolling observation cutoff", () => {
+    expect(() => readerSummaryProductionDayAttemptIdentity({
+      ...liveIdentity,
+      sourceProvenance: {
+        kind: "live-production",
+        observationCutoff: "2026-08-13T08:15:00Z",
+      },
+    })).toThrow("observation cutoff is invalid");
+  });
+
   it("produces the same regeneration identity for identical authority", () => {
     expect(
       readerSummaryProductionDayAttemptIdentity(regenerationIdentity),

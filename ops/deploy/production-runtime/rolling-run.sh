@@ -78,7 +78,11 @@ run_id=$(printf '%s' "$NOW" | tr -d ':.-')
 artifact_root="$ROOT/artifacts/rolling-summary"
 receipt_host_path="$artifact_root/rolling-summary.$run_id.receipt.v1.json"
 receipt_container_path="/var/lib/social-monitor/artifacts/rolling-summary/rolling-summary.$run_id.receipt.v1.json"
-mkdir -p "$artifact_root"
+if [[ ${SOCIAL_MONITOR_ROLLING_RUN_TEST_MODE:-} == 1 ]]; then
+  install -d -m 0750 "$artifact_root"
+else
+  install -d -m 0750 -o 1000 -g 1000 "$artifact_root"
+fi
 
 export SOCIAL_MONITOR_ROLLING_RUN_ID=$run_id
 export SOCIAL_MONITOR_ROLLING_RUN_RECEIPT_HOST_PATH=$receipt_host_path
@@ -113,22 +117,24 @@ export SOCIAL_MONITOR_ROLLING_RUN_RECEIPT_HOST_PATH=$receipt_host_path
     cp "$collection_source" "$collection_artifact.next"
     chmod 0444 "$collection_artifact.next"
     mv "$collection_artifact.next" "$collection_artifact"
+    rolling_observation_cutoff=$(date -u +%Y-%m-%dT%H:%M:%S.000Z)
 
     export DURABLE_READER_SUMMARY_TENANT_ID=00000000-0000-7000-8000-000000006101
     export DURABLE_READER_SUMMARY_WORKSPACE_ID=00000000-0000-7000-8000-000000006102
     export DURABLE_READER_SUMMARY_CADENCE=daily
     export DURABLE_READER_SUMMARY_PERIOD_STARTED_AT="$period_started_at"
-    export DURABLE_READER_SUMMARY_PERIOD_ENDED_AT="$ROLLING_PERIOD_ENDED_AT"
+    export DURABLE_READER_SUMMARY_PERIOD_ENDED_AT="$(node -e '\''const day = new Date(`${process.argv[1]}T00:00:00.000Z`); day.setUTCDate(day.getUTCDate() + 1); process.stdout.write(day.toISOString());'\'' "$ROLLING_COLLECTION_DATE")"
+    export DURABLE_READER_SUMMARY_LIVE_OBSERVATION_CUTOFF="$rolling_observation_cutoff"
     export DURABLE_READER_SUMMARY_MODEL=agent-runtime
     export DURABLE_READER_SUMMARY_TOPIC_LABELER=agent-runtime
-    export DURABLE_READER_SUMMARY_MAX_EVIDENCE_ITEMS=200
+    export DURABLE_READER_SUMMARY_MAX_EVIDENCE_ITEMS=120
     export DURABLE_READER_SUMMARY_EVIDENCE_PATH="$evidence_path"
     export DURABLE_READER_SUMMARY_FRONTEND_FIXTURE_PATH="$frontend_path"
     npm run capture:durable-reader-summary
 
     node ops/deploy/production-runtime/rolling-summary-receipt.mjs \
       write-receipt "$ROLLING_RECEIPT_PATH" "$evidence_path" "$collection_artifact" \
-      "$ROLLING_RUN_ID" "$ROLLING_COLLECTION_DATE" "$ROLLING_PERIOD_ENDED_AT" \
+      "$ROLLING_RUN_ID" "$ROLLING_COLLECTION_DATE" "$rolling_observation_cutoff" \
       "$collection_exit"
   '
 

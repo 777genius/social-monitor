@@ -36,7 +36,9 @@ grep -F -- '-e ROLLING_COLLECTION_DATE=2026-08-15' "$TEST_ROOT/docker.log" >/dev
 grep -F -- 'daily-runner sh -lc' "$TEST_ROOT/docker.log" >/dev/null
 grep -F -- "--providers \"\$required_providers\"" "$RUNNER" >/dev/null
 grep -F -- 'npm run capture:durable-reader-summary' "$RUNNER" >/dev/null
+grep -F -- 'DURABLE_READER_SUMMARY_MAX_EVIDENCE_ITEMS=120' "$RUNNER" >/dev/null
 grep -F -- 'DURABLE_READER_SUMMARY_PERIOD_ENDED_AT' "$RUNNER" >/dev/null
+grep -F -- 'DURABLE_READER_SUMMARY_LIVE_OBSERVATION_CUTOFF' "$RUNNER" >/dev/null
 grep -Fx 'ExecStart=/var/data/social-monitor/control/rolling-run.sh' \
   "$REPO/ops/deploy/production-runtime/social-monitor-rolling.service" >/dev/null
 grep -Fx 'OnCalendar=*-*-* 04,08,12,16,20:15:00 UTC' \
