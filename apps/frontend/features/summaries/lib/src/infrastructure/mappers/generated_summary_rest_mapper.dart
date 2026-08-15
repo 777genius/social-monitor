@@ -55,7 +55,6 @@ final class GeneratedSummaryRestMapper {
           .map(_readerSummaryCitation)
           .toList(growable: false),
       period: readerSummaryPeriod(dto.period),
-      generatedAt: dto.generatedAt,
       sourceWindow: SummaryWindowApiDto(
         label: 'Evidence window',
         startedAt: dto.sourceWindow.startedAt,

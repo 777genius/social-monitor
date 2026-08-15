@@ -21,7 +21,6 @@ ReaderSummaryApiDto readerSummaryForPeriod(
       timezone: period.timezone,
       periodKey: period.periodKey,
     ),
-    generatedAt: summary.generatedAt,
     sourceWindow: summary.sourceWindow,
     freshnessLabel: summary.freshnessLabel,
     isDegraded: summary.isDegraded,

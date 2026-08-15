@@ -44,13 +44,6 @@ language.
 - Reader Action: explicit action proposed to the user, such as reading a source,
   watching a repository or marking a top read relevant/not relevant.
 - Digest: scheduled collection of summaries for a workspace or user.
-- Rolling Summary: mutable current-day view served through immutable revisions.
-  A new revision may replace the visible revision after each scheduled
-  collection, but it never changes a finalized Daily Summary.
-- Final Daily Summary: the immutable closed-day Summary produced after the UTC
-  day ends. It is authoritative for historical navigation.
-- Summary Refresh Schedule: the user-visible collection cadence. The latest
-  Summary shows when its evidence was collected and the next scheduled refresh.
 - Weekly Summary Projection: Monday-Sunday summary surface whose artifact is
   displayable only when the REST projection is complete and certified.
 - Historical Evidence Limitation: explicit disclosure that named provider

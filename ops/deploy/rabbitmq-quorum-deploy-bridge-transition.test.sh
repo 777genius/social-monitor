@@ -92,13 +92,13 @@ assert_real_bridge_target_assets() {
     actual_digest=$(sha256sum "$actual_real" | awk '{print $1}')
     case $path in
       ops/deploy/social-monitor-production-deploy.sh)
-        expected_digest=ac82c9cfebf88646e9cdc21dcb822c8cc50409832da24a726cd9307cc2be8bcb
+        expected_digest=e76db96e9cc7bdb62cb09a3be509a7776e09a0499ff41a0d3769d8b499bde04f
         ;;
       ops/deploy/deploy-control-lib.sh)
         expected_digest=d18854822ef36d5571289e72c7691fff8db4a7d5c516787441a733d6960a88a9
         ;;
       ops/deploy/postgres-runtime-deploy-lib.sh)
-        expected_digest=6ac29042e94f9ef40498c70beeed37af13660fae629216d3ae2ea70270d0ffb1
+        expected_digest=261fb030bea2f203564c59e0c22db8058b310fb5d979c7db622938fe6045545a
         ;;
       ops/deploy/backend-image-rescue-lib.sh)
         expected_digest=68f13213e6d1662d943185df7cdd1c11678261e76977021f74493c4e6c643b59

@@ -194,8 +194,6 @@ class _SummariesBody extends StatelessWidget {
               ),
             ),
             includeTopPosts: false,
-            showRefreshSchedule: store.isViewingLatestWorkspaceSummary,
-            onRefreshDue: () => unawaited(store.loadWorkspaceSummary()),
             contentPadding: contentPadding,
           ),
         ),

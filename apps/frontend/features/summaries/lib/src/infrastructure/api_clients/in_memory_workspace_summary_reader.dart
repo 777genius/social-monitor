@@ -29,9 +29,6 @@ final class InMemoryWorkspaceSummaryReader {
     }
     final current = _workspaceSummary == null
         ? null
-        : request.allowLatestFallback &&
-              _workspaceSummary.period.cadence == request.period.cadence.name
-        ? _workspaceSummary
         : readerSummaryForPeriod(_workspaceSummary, request.period);
 
     return Result.success(

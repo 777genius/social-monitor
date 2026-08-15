@@ -79,7 +79,6 @@ describe("readerSummaryArtifactViewFromReaderSummaryView", () => {
         },
       ],
       qualityFlags: [],
-      generatedAt: new Date("2026-06-06T00:04:00.000Z"),
       confidence: {
         level: "medium",
         score: 0.7,
@@ -109,7 +108,6 @@ describe("readerSummaryArtifactViewFromReaderSummaryView", () => {
     ).toMatchObject({
       schemaVersion: "reader_summary.artifact.v1",
       readerSummaryId: "readerSummary-1",
-      generatedAt: new Date("2026-06-06T00:04:00.000Z"),
       citations: [
         {
           citationId: "citation-1",

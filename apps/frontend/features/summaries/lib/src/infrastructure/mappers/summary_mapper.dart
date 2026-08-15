@@ -45,7 +45,6 @@ final class SummaryMapper {
           .toList(growable: false),
       citations: dto.citations.map(_citationToDomain).toList(growable: false),
       period: period,
-      generatedAt: dto.generatedAt?.toUtc(),
       summaryWindow: SummaryWindow(
         label: _nonEmpty(dto.sourceWindow.label, fallback: 'Evidence window'),
         startsAt: dto.sourceWindow.startedAt.toUtc(),

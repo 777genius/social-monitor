@@ -1,9 +1,6 @@
 part of 'summaries_review_store.dart';
 
 extension SummariesReviewStoreWorkspaceSummaryWorkflow on SummariesReviewStore {
-  bool get isViewingLatestWorkspaceSummary =>
-      _selectedSummaryPeriodEndedAt == null;
-
   bool get isSummaryGenerationInProgress {
     final state = summaryJobState;
     return state is LoadingViewState<ReaderSummaryJobSnapshot> ||

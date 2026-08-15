@@ -82,7 +82,6 @@ ReaderSummary topPostsSummaryFixture({
     repeatedSignals: base.repeatedSignals,
     citations: base.citations,
     period: period ?? base.period,
-    generatedAt: base.generatedAt,
     summaryWindow: base.summaryWindow,
     freshnessLabel: base.freshnessLabel,
     isDegraded: base.isDegraded,
