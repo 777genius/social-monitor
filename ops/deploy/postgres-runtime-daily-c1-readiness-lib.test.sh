@@ -327,6 +327,9 @@ if prove_postgres_runtime_daily_c1_flip_idle >/dev/null 2>&1; then
   echo 'daily C1 handoff accepted an active v6 service' >&2
   exit 1
 fi
+reset_v6_topology
+LEGACY_SERVICE_STATE=failed V6_SERVICE_STATE=failed
+prove_postgres_runtime_daily_c1_flip_idle
 
 # A failure before the durable owner flip remains rollback-safe: legacy is only
 # enabled, never started, and V6 remains the effective owner.
