@@ -237,12 +237,6 @@ const collectionState = (params: {
     return "unavailable";
   }
   if (
-    params.rateLimitEventCount > 0 ||
-    params.stopReason === "partial_retryable_failure"
-  ) {
-    return "degraded";
-  }
-  if (
     params.targetItemCount !== undefined &&
     params.acceptedItemCount >= params.targetItemCount
   ) {
@@ -250,6 +244,12 @@ const collectionState = (params: {
   }
   if (params.targetItemCount === undefined) {
     return "complete";
+  }
+  if (
+    params.rateLimitEventCount > 0 ||
+    params.stopReason === "partial_retryable_failure"
+  ) {
+    return "degraded";
   }
   return "partial";
 };

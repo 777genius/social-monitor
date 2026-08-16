@@ -79,7 +79,9 @@ describe("production-day provider readiness admission", () => {
         },
       },
     });
-    report.qualityGates = {
+    (
+      report as { qualityGates: Readonly<Record<string, boolean>> }
+    ).qualityGates = {
       ...report.qualityGates,
       everyRequestedProviderMeetsBlockingCoveragePolicy: true,
     };
@@ -102,7 +104,7 @@ describe("production-day provider readiness admission", () => {
     });
   });
 
-  it("terminalizes the Jul 27 bounded shortfalls without admitting a summary", () => {
+  it("admits bounded shortfalls when the durable database quality report passes", () => {
     const report = collectionReport(githubProof, partialCounts);
     const result = resolveProductionDayProviderReadiness({
       collectionDate,
@@ -112,8 +114,10 @@ describe("production-day provider readiness admission", () => {
     });
 
     expect(result.status).toBe("partial");
-    expect(result.summaryPolicy).toBe("blocked");
-    expect(result.readiness.policy).toBe("blocked");
+    expect(result.summaryPolicy).toBe("allowed");
+    expect(result.readiness.ready).toBe(true);
+    expect(result.readiness.policy).toBe("explicit_partial");
+    expect(result.readiness.retrySchedule).toBeNull();
     expect(result.providers).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -215,7 +219,7 @@ describe("production-day provider readiness admission", () => {
     expect(result.providers).toEqual([]);
   });
 
-  it("uses monotonic DB growth after successful scan evidence without accepting decreases", () => {
+  it("uses the durable database count even when acquisition diagnostics differ", () => {
     const report = collectionReport(githubProof);
     const grown = resolveProductionDayProviderReadiness({
       collectionDate,
@@ -253,29 +257,29 @@ describe("production-day provider readiness admission", () => {
       }),
       collectionReport: report,
     });
-    expect(decreased.status).toBe("blocked");
-    expect(decreased.providers).toEqual([]);
+    expect(decreased.status).toBe("partial");
+    expect(decreased.summaryPolicy).toBe("allowed");
+    expect(decreased.providers).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          providerKey: "reddit",
+          databaseFeedItemCount: 99,
+          collectionFeedItemCount: 100,
+        }),
+      ]),
+    );
   });
 
-  it("fails closed for stale DB provenance, count mismatch, weak inventory, or unverified GitHub", () => {
+  it("fails closed for stale DB provenance or inventory below the production minimum", () => {
     const partial = collectionReport(githubProof, partialCounts);
     const stale = {
       ...qualityReport(partialCounts),
       collectionDate: "2026-07-26",
     };
-    const mismatched = qualityReport({
-      ...partialCounts,
-      reddit: 98,
-    });
     const weak = collectionReport(githubProof, {
       ...partialCounts,
       rss: 24,
     });
-    const noGitHubProof = collectionReport(githubProof, partialCounts);
-    replaceProviderScan(
-      noGitHubProof,
-      partialScan("github-trending-page", 10, 10),
-    );
 
     for (const candidate of [
       {
@@ -283,16 +287,8 @@ describe("production-day provider readiness admission", () => {
         collectionReport: partial,
       },
       {
-        qualityReport: mismatched,
-        collectionReport: partial,
-      },
-      {
         qualityReport: qualityReport(weak.targetWindow.providerCounts),
         collectionReport: weak,
-      },
-      {
-        qualityReport: qualityReport(partialCounts),
-        collectionReport: noGitHubProof,
       },
     ]) {
       expect(
@@ -303,6 +299,39 @@ describe("production-day provider readiness admission", () => {
         }).status,
       ).toBe("blocked");
     }
+  });
+
+  it("admits verified DB inventory when acquisition proof is incomplete", () => {
+    const report = collectionReport(githubProof, partialCounts);
+    replaceProviderScan(report, partialScan("github-trending-page", 10, 10));
+    const result = resolveProductionDayProviderReadiness({
+      collectionDate,
+      evaluatedAt,
+      qualityReport: qualityReport({ ...partialCounts, reddit: 98 }),
+      collectionReport: report,
+    });
+
+    expect(result.status).toBe("partial");
+    expect(result.summaryPolicy).toBe("allowed");
+    expect(result.barrierMessage).toBeNull();
+  });
+
+  it("blocks the fallback when any durable database quality gate fails", () => {
+    const report = collectionReport(githubProof, partialCounts);
+    const failedQuality = {
+      ...qualityReport(partialCounts),
+      qualityGates: { durableDatabaseWindowPassed: false },
+      collectionBlockingPassed: false,
+    };
+
+    const result = resolveProductionDayProviderReadiness({
+      collectionDate,
+      evaluatedAt,
+      qualityReport: failedQuality,
+      collectionReport: report,
+    });
+
+    expect(result.summaryPolicy).toBe("blocked");
   });
 });
 
@@ -320,6 +349,8 @@ const qualityReport = (
       endExclusive: "2026-07-28T00:00:00.000Z",
     },
   },
+  qualityGates: { durableDatabaseWindowPassed: true },
+  collectionBlockingPassed: true,
   providerReports: defaultCleanRealDayCollectionProviderKeys.flatMap(
     (providerKey) => {
       const count = counts[providerKey] ?? 0;
@@ -525,9 +556,7 @@ const replaceProviderScan = (
   scans[index] = replacement;
 };
 
-const targetCount = (
-  providerKey: CleanRealDayCollectionProviderKey,
-): number =>
+const targetCount = (providerKey: CleanRealDayCollectionProviderKey): number =>
   providerKey === "github-trending-page"
     ? 10
     : providerKey === "rss"

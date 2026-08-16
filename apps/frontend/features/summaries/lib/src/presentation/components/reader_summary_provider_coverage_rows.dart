@@ -248,25 +248,29 @@ String _collectionHealthDetails(ReaderSummaryProviderCollectionHealth health) {
       '${_counted(health.insertedItemCount, 'new post', 'new posts')} saved',
     );
   }
-  if (health.rateLimitEventCount > 0) {
+  final collectionIsComplete =
+      health.state == ReaderSummaryCollectionCoverageState.complete;
+  if (!collectionIsComplete && health.rateLimitEventCount > 0) {
     details.add(
       health.rateLimitEventCount == 1
           ? 'Provider rate limit reached once'
           : 'Provider rate limit reached ${health.rateLimitEventCount} times',
     );
   }
-  details.addAll(
-    health.failureKinds
-        .where(
-          (kind) => kind != 'rate_limited' || health.rateLimitEventCount == 0,
-        )
-        .map(_collectionFailureText),
-  );
-  details.addAll(
-    health.paginationStopReasons
-        .map(_collectionStopReasonText)
-        .where((message) => message.isNotEmpty),
-  );
+  if (!collectionIsComplete) {
+    details.addAll(
+      health.failureKinds
+          .where(
+            (kind) => kind != 'rate_limited' || health.rateLimitEventCount == 0,
+          )
+          .map(_collectionFailureText),
+    );
+    details.addAll(
+      health.paginationStopReasons
+          .map(_collectionStopReasonText)
+          .where((message) => message.isNotEmpty),
+    );
+  }
   return '${details.join('. ')}.';
 }
 

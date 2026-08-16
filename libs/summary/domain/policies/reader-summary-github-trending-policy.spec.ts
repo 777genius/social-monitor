@@ -39,8 +39,7 @@ describe("reader summary GitHub Trending policy", () => {
     };
     const currentWeakerSnapshot = {
       ...evidence("build-your-own-x-current", 1_068, undefined, 2),
-      canonicalUrl:
-        "https://github.com/codecrafters-io/build-your-own-x.git",
+      canonicalUrl: "https://github.com/codecrafters-io/build-your-own-x.git",
       title: "codecrafters-io/build-your-own-x",
       observedAt: new Date("2026-07-18T12:00:00.000Z"),
     };
@@ -55,12 +54,7 @@ describe("reader summary GitHub Trending policy", () => {
       observedAt: new Date("2026-07-18T12:00:00.000Z"),
     };
     const thirdRepository = evidence("third-repository", 1_050, undefined, 4);
-    const fourthRepository = evidence(
-      "fourth-repository",
-      1_040,
-      undefined,
-      5,
-    );
+    const fourthRepository = evidence("fourth-repository", 1_040, undefined, 5);
 
     const selected = selectGitHubTrendingHighlights([
       currentWeakerSnapshot,
@@ -252,6 +246,37 @@ describe("reader summary GitHub Trending policy", () => {
         (item) => item.feedItemId,
       ),
     ).toEqual(["latest-1", "latest-3"]);
+  });
+
+  it("keeps a complete earlier Top 10 when the latest scan is partial", () => {
+    const complete = Array.from({ length: 10 }, (_, index) => ({
+      ...evidence(
+        `complete-${index + 1}`,
+        1_500,
+        "github-trending-page",
+        index + 1,
+      ),
+      publishedAt: new Date("2026-07-10T12:00:00.000Z"),
+      observedAt: new Date("2026-07-10T12:05:00.000Z"),
+    }));
+    const partial = Array.from({ length: 8 }, (_, index) => ({
+      ...evidence(
+        `partial-${index + 1}`,
+        1_500,
+        "github-trending-page",
+        index + 1,
+      ),
+      publishedAt: new Date("2026-07-10T13:00:00.000Z"),
+      observedAt: new Date("2026-07-10T13:05:00.000Z"),
+    }));
+
+    expect(
+      selectGitHubTrendingDisplayRepositories([...complete, ...partial]).map(
+        (item) => item.feedItemId,
+      ),
+    ).toEqual(
+      Array.from({ length: 10 }, (_, index) => `complete-${index + 1}`),
+    );
   });
 
   it("rejects non-daily Trending windows", () => {

@@ -11,10 +11,7 @@ import {
 } from "./yesterday-social-collection-quality";
 
 export type ProductionDayProviderReadinessStatus =
-  | "complete"
-  | "partial"
-  | "unavailable"
-  | "blocked";
+  "complete" | "partial" | "unavailable" | "blocked";
 
 export type ProductionDayDatabaseQualityReport =
   YesterdaySocialCollectionQualityInput & {
@@ -30,6 +27,8 @@ export type ProductionDayDatabaseQualityReport =
         readonly endExclusive: string;
       };
     };
+    readonly qualityGates: Readonly<Record<string, boolean>>;
+    readonly collectionBlockingPassed: boolean;
   };
 
 export type ProductionDayProviderDiagnostic = {
@@ -80,9 +79,7 @@ export const resolveProductionDayProviderReadiness = (params: {
     expectedCollectionDate: params.collectionDate,
     evaluatedAt: params.evaluatedAt,
     report: databaseReportVerified ? params.qualityReport : null,
-    collectionReport: collectionReportVerified
-      ? params.collectionReport
-      : null,
+    collectionReport: collectionReportVerified ? params.collectionReport : null,
   });
   if (
     !databaseReportVerified ||
@@ -108,20 +105,38 @@ export const resolveProductionDayProviderReadiness = (params: {
     );
   }
 
-  const status = readinessStatus({
+  const strictStatus = readinessStatus({
     readiness,
     providers,
     collectionReport: params.collectionReport,
   });
+  const durableDatabaseFallback = databaseQualityAllowsSummary({
+    qualityReport: params.qualityReport,
+    collectionReport: params.collectionReport,
+    providers,
+  });
+  const status =
+    strictStatus === "complete"
+      ? strictStatus
+      : durableDatabaseFallback
+        ? "partial"
+        : strictStatus;
+  const summaryPolicy =
+    strictStatus === "complete" || durableDatabaseFallback
+      ? "allowed"
+      : "blocked";
   return {
     status,
-    summaryPolicy: status === "complete" ? "allowed" : "blocked",
+    summaryPolicy,
     collectionDate: params.collectionDate,
     diagnosticsOwner: "postgres_feed_items_published_window",
     providers,
-    readiness,
+    readiness:
+      summaryPolicy === "allowed"
+        ? summaryEligibleReadiness(readiness, providers, status)
+        : readiness,
     barrierMessage:
-      status === "blocked"
+      summaryPolicy === "blocked"
         ? (readiness.barrierMessage ??
           "Provider evidence is not eligible for a complete summary or terminal outcome")
         : null,
@@ -162,14 +177,7 @@ const buildProviderDiagnostics = (params: {
       states.length !== 1 ||
       qualityRows.length > 1 ||
       !isNonNegativeInteger(databaseFeedItemCount) ||
-      !isNonNegativeInteger(collectionFeedItemCount) ||
-      !(
-        databaseFeedItemCount === collectionFeedItemCount ||
-        (params.collectionReport.scans.find(
-          (scan) => scan.providerKey === providerKey,
-        )?.status === "succeeded" &&
-          databaseFeedItemCount >= collectionFeedItemCount)
-      )
+      !isNonNegativeInteger(collectionFeedItemCount)
     ) {
       return null;
     }
@@ -186,6 +194,43 @@ const buildProviderDiagnostics = (params: {
   }
   return providers;
 };
+
+const databaseQualityAllowsSummary = (params: {
+  readonly qualityReport: ProductionDayDatabaseQualityReport;
+  readonly collectionReport: CleanRealDayCollectionReport;
+  readonly providers: readonly ProductionDayProviderDiagnostic[];
+}): boolean =>
+  params.qualityReport.collectionBlockingPassed === true &&
+  Object.keys(params.qualityReport.qualityGates).length > 0 &&
+  Object.values(params.qualityReport.qualityGates).every(Boolean) &&
+  nonProviderCollectionGatesPass(params.collectionReport.qualityGates) &&
+  params.providers.length ===
+    defaultCleanRealDayCollectionProviderKeys.length &&
+  params.providers.every(
+    (provider) =>
+      provider.databaseFeedItemCount >= provider.minimumFeedItemCount,
+  );
+
+const summaryEligibleReadiness = (
+  readiness: YesterdaySocialProviderReadiness,
+  providers: readonly ProductionDayProviderDiagnostic[],
+  status: ProductionDayProviderReadinessStatus,
+): YesterdaySocialProviderReadiness => ({
+  ...readiness,
+  ready: true,
+  policy: status === "complete" ? "complete" : "explicit_partial",
+  readyProviderKeys: providers.map((provider) => provider.providerKey),
+  blockingProviderKeys: [],
+  missingProviderKeys: [],
+  duplicateProviderKeys: [],
+  emptyProviderKeys: [],
+  partialProviderKeys: providers
+    .filter((provider) => provider.state !== "complete")
+    .map((provider) => provider.providerKey),
+  unavailableProviderKeys: [],
+  retrySchedule: null,
+  barrierMessage: null,
+});
 
 const readinessStatus = (params: {
   readonly readiness: YesterdaySocialProviderReadiness;
@@ -220,9 +265,7 @@ const readinessStatus = (params: {
   if (!statesAreTerminal || !githubIsTerminallyVerified(params)) {
     return "blocked";
   }
-  return params.providers.some(
-    (provider) => provider.state === "unavailable",
-  )
+  return params.providers.some((provider) => provider.state === "unavailable")
     ? "unavailable"
     : params.providers.some((provider) => provider.state === "partial")
       ? "partial"
@@ -337,14 +380,14 @@ const databaseReportMatchesRequestedDay = (
   collectionDate: string,
 ): boolean =>
   report?.schemaVersion === 1 &&
-  report.artifactFormat ===
-    "yesterday-social-collection-quality-report-v1" &&
+  report.artifactFormat === "yesterday-social-collection-quality-report-v1" &&
   report.generatedBy === "npm run check:yesterday-social-collection-quality" &&
   report.collectionDate === collectionDate &&
   report.model?.liveNetwork === false &&
   report.inputs?.postgresFeedWindow?.startInclusive ===
     `${collectionDate}T00:00:00.000Z` &&
-  report.inputs?.postgresFeedWindow?.endExclusive === nextUtcDate(collectionDate);
+  report.inputs?.postgresFeedWindow?.endExclusive ===
+    nextUtcDate(collectionDate);
 
 const collectionReportMatchesRequestedDay = (
   report: CleanRealDayCollectionReport | null,
@@ -387,7 +430,9 @@ const requiredNonProviderCollectionGateNames = [
 const nonProviderCollectionGatesPass = (
   gates: Readonly<Record<string, boolean>>,
 ): boolean =>
-  requiredNonProviderCollectionGateNames.every((name) => gates[name] === true) &&
+  requiredNonProviderCollectionGateNames.every(
+    (name) => gates[name] === true,
+  ) &&
   Object.entries(gates).every(
     ([name, passed]) => providerCollectionGateNames.has(name) || passed,
   );

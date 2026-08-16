@@ -23,6 +23,7 @@ import {
 import { loadDotenvIfPresent } from "./lib/env-file";
 import { READER_SUMMARY_PRODUCTION_RUNTIME_POLICY } from "./lib/reader-summary-production-runtime-policy";
 import {
+  admitCollectionStepWithDurableDatabaseFallback,
   artifactQualityIsReadyForCleanDayE2e,
   blockedCleanDayE2eStep,
   blockedProductionDaySteps,
@@ -180,7 +181,7 @@ async function main(): Promise<void> {
     throw new Error("Production history collection scope is not 6101/6102");
   }
 
-  const collectionStep: StepReport = historicalRegeneration
+  let collectionStep: StepReport = historicalRegeneration
     ? historicalRegeneration.verifiedCollectionStep
     : skipLiveCollection
       ? {
@@ -207,8 +208,6 @@ async function main(): Promise<void> {
             : []),
           ...(allowHistorical ? [] : ["--wait-for-x-readiness"]),
         ]);
-  steps.push(collectionStep);
-
   mkdirSync(runtimeArtifactDirectory, { recursive: true });
   isolateCaptureArtifacts();
 
@@ -261,9 +260,16 @@ async function main(): Promise<void> {
   const requiredProvidersReady =
     providerAdmission?.summaryPolicy === "allowed" ||
     executionRequest.mode !== "live-production";
+  collectionStep = admitCollectionStepWithDurableDatabaseFallback({
+    step: collectionStep,
+    fallbackReady:
+      providerAdmission?.summaryPolicy === "allowed" &&
+      providerAdmission.status !== "complete" &&
+      collectionQualityStep.status === "passed",
+  });
   if (
     executionRequest.mode === "live-production" &&
-    providerAdmission?.status !== "complete"
+    providerAdmission?.summaryPolicy !== "allowed"
   ) {
     collectionQualityStep = {
       ...collectionQualityStep,
@@ -275,10 +281,12 @@ async function main(): Promise<void> {
       exitCode: 1,
     };
   }
+  steps.push(collectionStep);
   steps.push(collectionQualityStep);
   if (
-    providerAdmission?.status === "partial" ||
-    providerAdmission?.status === "unavailable"
+    providerAdmission?.summaryPolicy === "blocked" &&
+    (providerAdmission.status === "partial" ||
+      providerAdmission.status === "unavailable")
   ) {
     const safeMessage =
       `Production provider evidence for ${collectionDate} is ` +
