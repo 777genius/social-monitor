@@ -235,7 +235,36 @@ export const withProviderCollectionWindowProof = (params: {
       params.observation.rateLimitEventCount,
     ),
     slo,
+    freshness: {
+      ...params.observation.freshness,
+      ...(params.newestPublishedAt === undefined
+        ? {}
+        : {
+            newestAcceptedPublishedAt: params.newestPublishedAt.toISOString(),
+            lagToWindowEndSeconds: Math.max(
+              0,
+              Math.round(
+                (params.targetWindowEndedAt.getTime() -
+                  params.newestPublishedAt.getTime()) /
+                  1000,
+              ),
+            ),
+          }),
+    },
   };
+};
+
+export const providerCollectionFreshnessReferenceAt = (params: {
+  readonly observedAt: Date;
+  readonly targetWindowEndedAt: Date;
+}): Date => {
+  const observedAt = params.observedAt.getTime();
+  const targetWindowEndedAt = params.targetWindowEndedAt.getTime();
+  if (!Number.isFinite(observedAt) || !Number.isFinite(targetWindowEndedAt)) {
+    throw new Error("Provider collection freshness boundary must be valid");
+  }
+
+  return new Date(Math.min(observedAt, targetWindowEndedAt));
 };
 
 export const configuredProviderCollectionTargetItemCount = (
