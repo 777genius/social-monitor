@@ -123,7 +123,7 @@ export SOCIAL_MONITOR_ROLLING_RUN_RECEIPT_HOST_PATH=$receipt_host_path
     mv "$collection_artifact.next" "$collection_artifact"
     rolling_observation_cutoff=$(date -u +%Y-%m-%dT%H:%M:%S.000Z)
 
-    if [[ "$ROLLING_AUTH_READY" != true ]]; then
+    if [ "$ROLLING_AUTH_READY" != true ]; then
       echo "rolling collection saved; AI summary is pending an available subscription account" >&2
       exit 75
     fi
