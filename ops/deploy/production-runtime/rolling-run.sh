@@ -58,20 +58,23 @@ if [[ -z $NOW ]]; then
   NOW=$(date -u +%Y-%m-%dT%H:%M:%S.000Z)
 fi
 
-"$ROOT/control/refresh-codex-auth.sh"
-if [[ -f "$ROOT/runtime/auth-account-changed" ]]; then
-  stamp=$(date -u +%Y%m%dT%H%M%SZ)
-  if [[ -d "$ROOT/runtime/subscription-runtime/sessions" ]]; then
-    mv "$ROOT/runtime/subscription-runtime/sessions" \
-      "$ROOT/backups/subscription-runtime-sessions.$stamp"
+auth_ready=false
+if "$ROOT/control/refresh-codex-auth.sh"; then
+  auth_ready=true
+  if [[ -f "$ROOT/runtime/auth-account-changed" ]]; then
+    stamp=$(date -u +%Y%m%dT%H%M%SZ)
+    if [[ -d "$ROOT/runtime/subscription-runtime/sessions" ]]; then
+      mv "$ROOT/runtime/subscription-runtime/sessions" \
+        "$ROOT/backups/subscription-runtime-sessions.$stamp"
+    fi
+    install -d -m 0700 -o 1000 -g 1000 \
+      "$ROOT/runtime/subscription-runtime/sessions"
+    "${COMPOSE[@]}" restart agent-runtime
+    rm -f "$ROOT/runtime/auth-account-changed"
+    sleep 3
   fi
-  install -d -m 0700 -o 1000 -g 1000 \
-    "$ROOT/runtime/subscription-runtime/sessions"
-  "${COMPOSE[@]}" restart agent-runtime
-  rm -f "$ROOT/runtime/auth-account-changed"
-  sleep 3
+  "${COMPOSE[@]}" --profile app up -d --no-deps agent-runtime
 fi
-"${COMPOSE[@]}" --profile app up -d --no-deps agent-runtime
 
 collection_date=${NOW:0:10}
 run_id=$(printf '%s' "$NOW" | tr -d ':.-')
@@ -94,6 +97,7 @@ export SOCIAL_MONITOR_ROLLING_RUN_RECEIPT_HOST_PATH=$receipt_host_path
   -e "ROLLING_COLLECTION_DATE=$collection_date" \
   -e "ROLLING_PERIOD_ENDED_AT=$NOW" \
   -e "ROLLING_RECEIPT_PATH=$receipt_container_path" \
+  -e "ROLLING_AUTH_READY=$auth_ready" \
   daily-runner sh -lc '
     set -eu
 
@@ -118,6 +122,11 @@ export SOCIAL_MONITOR_ROLLING_RUN_RECEIPT_HOST_PATH=$receipt_host_path
     chmod 0444 "$collection_artifact.next"
     mv "$collection_artifact.next" "$collection_artifact"
     rolling_observation_cutoff=$(date -u +%Y-%m-%dT%H:%M:%S.000Z)
+
+    if [[ "$ROLLING_AUTH_READY" != true ]]; then
+      echo "rolling collection saved; AI summary is pending an available subscription account" >&2
+      exit 75
+    fi
 
     export DURABLE_READER_SUMMARY_TENANT_ID=00000000-0000-7000-8000-000000006101
     export DURABLE_READER_SUMMARY_WORKSPACE_ID=00000000-0000-7000-8000-000000006102

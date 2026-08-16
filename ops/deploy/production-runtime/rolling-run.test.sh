@@ -33,6 +33,7 @@ SOCIAL_MONITOR_ROLLING_RUN_TEST_NOW=2026-08-15T08:15:00.000Z \
 grep -F -- '--profile app up -d --no-deps agent-runtime' "$TEST_ROOT/docker.log" >/dev/null
 grep -F -- '--profile daily run --rm --no-deps' "$TEST_ROOT/docker.log" >/dev/null
 grep -F -- '-e ROLLING_COLLECTION_DATE=2026-08-15' "$TEST_ROOT/docker.log" >/dev/null
+grep -F -- '-e ROLLING_AUTH_READY=true' "$TEST_ROOT/docker.log" >/dev/null
 grep -F -- 'daily-runner sh -lc' "$TEST_ROOT/docker.log" >/dev/null
 grep -F -- "--providers \"\$required_providers\"" "$RUNNER" >/dev/null
 grep -F -- 'npm run capture:durable-reader-summary' "$RUNNER" >/dev/null
@@ -47,5 +48,24 @@ grep -Fx 'OnCalendar=*-*-* 04,08,12,16,20:15:00 UTC' \
   "$REPO/ops/deploy/production-runtime/social-monitor-rolling.timer" >/dev/null
 grep -Fx 'Persistent=true' \
   "$REPO/ops/deploy/production-runtime/social-monitor-rolling.timer" >/dev/null
+
+ln -sfn /usr/bin/false "$refresh"
+if SOCIAL_MONITOR_ROLLING_RUN_TEST_MODE=1 \
+  SOCIAL_MONITOR_ROLLING_RUN_TEST_ROOT=$TEST_ROOT \
+  SOCIAL_MONITOR_ROLLING_RUN_TEST_DOCKER=$fake_docker \
+  SOCIAL_MONITOR_ROLLING_RUN_TEST_FLOCK=$fake_flock \
+  SOCIAL_MONITOR_ROLLING_RUN_TEST_NOW=2026-08-15T12:15:00.000Z \
+    bash "$RUNNER"; then
+  echo 'rolling run accepted unavailable summary auth' >&2
+  exit 1
+fi
+grep -F -- '-e ROLLING_AUTH_READY=false' "$TEST_ROOT/docker.log" >/dev/null
+[[ $(grep -Fc -- '--profile app up -d --no-deps agent-runtime' \
+  "$TEST_ROOT/docker.log") == 1 ]]
+
+collection_line=$(grep -n 'npm run run:reader-summary-clean-real-day-collection' \
+  "$RUNNER" | cut -d: -f1)
+auth_guard_line=$(grep -n 'ROLLING_AUTH_READY.*!= true' "$RUNNER" | cut -d: -f1)
+((collection_line < auth_guard_line))
 
 echo 'rolling-run tests passed'
