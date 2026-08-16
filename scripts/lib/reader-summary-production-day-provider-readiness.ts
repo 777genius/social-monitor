@@ -228,6 +228,7 @@ const summaryEligibleReadiness = (
     .filter((provider) => provider.state !== "complete")
     .map((provider) => provider.providerKey),
   unavailableProviderKeys: [],
+  retrySchedule: null,
   barrierMessage: null,
 });
 

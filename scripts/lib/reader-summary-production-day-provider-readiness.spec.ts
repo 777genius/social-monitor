@@ -117,6 +117,7 @@ describe("production-day provider readiness admission", () => {
     expect(result.summaryPolicy).toBe("allowed");
     expect(result.readiness.ready).toBe(true);
     expect(result.readiness.policy).toBe("explicit_partial");
+    expect(result.readiness.retrySchedule).toBeNull();
     expect(result.providers).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
