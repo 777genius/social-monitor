@@ -12,12 +12,21 @@ void main() {
       );
     });
 
-    test('moves to the next slot after the scheduled minute', () {
+    test('moves to the first rolling slot after the nightly finalizer', () {
       expect(
         SummaryRefreshSchedule.nextScheduledAt(
           DateTime.parse('2026-08-15T20:15:00.000Z'),
         ),
-        DateTime.parse('2026-08-16T00:15:00.000Z'),
+        DateTime.parse('2026-08-16T04:15:00.000Z'),
+      );
+    });
+
+    test('uses the previous evening slot before the first daily run', () {
+      expect(
+        SummaryRefreshSchedule.latestScheduledAt(
+          DateTime.parse('2026-08-16T02:00:00.000Z'),
+        ),
+        DateTime.parse('2026-08-15T20:15:00.000Z'),
       );
     });
 

@@ -1,28 +1,28 @@
 final class SummaryRefreshSchedule {
   const SummaryRefreshSchedule._();
 
-  static const refreshInterval = Duration(hours: 4);
+  static const _scheduledHoursUtc = [4, 8, 12, 16, 20];
   static const scheduledMinuteUtc = 15;
 
   static DateTime nextScheduledAt(DateTime now) {
     final utc = now.toUtc();
-    final currentSlotHour =
-        (utc.hour ~/ refreshInterval.inHours) * refreshInterval.inHours;
-    var candidate = DateTime.utc(
-      utc.year,
-      utc.month,
-      utc.day,
-      currentSlotHour,
-      scheduledMinuteUtc,
-    );
-    if (!candidate.isAfter(utc)) {
-      candidate = candidate.add(refreshInterval);
+    for (final hour in _scheduledHoursUtc) {
+      final candidate = _slot(utc, hour);
+      if (candidate.isAfter(utc)) return candidate;
     }
-    return candidate;
+    final tomorrow = utc.add(const Duration(days: 1));
+    return _slot(tomorrow, _scheduledHoursUtc.first);
   }
 
-  static DateTime latestScheduledAt(DateTime now) =>
-      nextScheduledAt(now).subtract(refreshInterval);
+  static DateTime latestScheduledAt(DateTime now) {
+    final utc = now.toUtc();
+    for (final hour in _scheduledHoursUtc.reversed) {
+      final candidate = _slot(utc, hour);
+      if (!candidate.isAfter(utc)) return candidate;
+    }
+    final yesterday = utc.subtract(const Duration(days: 1));
+    return _slot(yesterday, _scheduledHoursUtc.last);
+  }
 
   static bool isUpdateDue({
     required DateTime now,
@@ -33,4 +33,7 @@ final class SummaryRefreshSchedule {
     final value = next.toUtc().difference(now.toUtc());
     return value.isNegative ? Duration.zero : value;
   }
+
+  static DateTime _slot(DateTime day, int hour) =>
+      DateTime.utc(day.year, day.month, day.day, hour, scheduledMinuteUtc);
 }
