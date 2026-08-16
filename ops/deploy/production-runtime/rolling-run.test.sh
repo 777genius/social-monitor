@@ -67,5 +67,13 @@ collection_line=$(grep -n 'npm run run:reader-summary-clean-real-day-collection'
   "$RUNNER" | cut -d: -f1)
 auth_guard_line=$(grep -n 'ROLLING_AUTH_READY.*!= true' "$RUNNER" | cut -d: -f1)
 ((collection_line < auth_guard_line))
+grep -F 'if [ "$ROLLING_AUTH_READY" != true ]; then' "$RUNNER" >/dev/null
+! grep -F 'if [[ "$ROLLING_AUTH_READY"' "$RUNNER" >/dev/null
+set +e
+ROLLING_AUTH_READY=false sh -ec \
+  'if [ "$ROLLING_AUTH_READY" != true ]; then exit 75; fi'
+auth_guard_status=$?
+set -e
+((auth_guard_status == 75))
 
 echo 'rolling-run tests passed'
