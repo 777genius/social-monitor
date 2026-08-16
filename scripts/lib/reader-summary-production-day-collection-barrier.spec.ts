@@ -1,4 +1,5 @@
 import {
+  admitCollectionStepWithDurableDatabaseFallback,
   artifactQualityIsReadyForCleanDayE2e,
   blockedCleanDayE2eStep,
   blockedProductionDaySteps,
@@ -9,6 +10,30 @@ import {
 } from "./reader-summary-production-day-collection-barrier";
 
 describe("production-day collection barrier", () => {
+  it("records an admitted provider shortfall without losing its raw exit", () => {
+    expect(
+      admitCollectionStepWithDurableDatabaseFallback({
+        step: {
+          id: "collect",
+          command: "npm run collect",
+          status: "failed",
+          durationMs: 10,
+          exitCode: 1,
+        },
+        fallbackReady: true,
+      }),
+    ).toEqual({
+      id: "collect",
+      command:
+        "npm run collect -- admitted by durable database quality fallback",
+      status: "passed",
+      durationMs: 10,
+      exitCode: 0,
+      admission: "durable_database_fallback",
+      underlyingExitCode: 1,
+    });
+  });
+
   it("allows one summary only after live collection and quality pass", () => {
     expect(
       collectionIsReadyForProductionSummary({

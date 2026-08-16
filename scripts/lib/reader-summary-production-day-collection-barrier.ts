@@ -6,6 +6,29 @@ export type ProductionDayStepReport = {
   readonly status: ProductionDayStepStatus;
   readonly durationMs: number;
   readonly exitCode: number | null;
+  readonly admission?: "durable_database_fallback";
+  readonly underlyingExitCode?: number | null;
+};
+
+export const admitCollectionStepWithDurableDatabaseFallback = (params: {
+  readonly step: ProductionDayStepReport;
+  readonly fallbackReady: boolean;
+}): ProductionDayStepReport => {
+  if (
+    !params.fallbackReady ||
+    params.step.id !== "collect" ||
+    params.step.status !== "failed"
+  ) {
+    return params.step;
+  }
+  return {
+    ...params.step,
+    command: `${params.step.command} -- admitted by durable database quality fallback`,
+    status: "passed",
+    exitCode: 0,
+    admission: "durable_database_fallback",
+    underlyingExitCode: params.step.exitCode,
+  };
 };
 
 export const requiredProductionDayStepIds = [

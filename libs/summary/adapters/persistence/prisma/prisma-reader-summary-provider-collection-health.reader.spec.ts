@@ -133,6 +133,39 @@ describe("PrismaReaderSummaryProviderCollectionHealthReader", () => {
     ]);
   });
 
+  it("reports complete when account failover reaches the final target", async () => {
+    const reader = new PrismaReaderSummaryProviderCollectionHealthReader(
+      new FakeRawQueryClient([
+        row("x-twitter", "binding-x", {
+          status: "succeeded",
+          targetItemCount: 100,
+          collectedItemCount: 120,
+          acceptedItemCount: 100,
+          insertedItemCount: 40,
+          outsideWindowItemCount: 0,
+          paginationDuplicateItemCount: 10,
+          storageDuplicateItemCount: 10,
+          pageCount: 3,
+          paginationStopReason: "partial_retryable_failure",
+          rateLimitEventCount: 1,
+          failureKind: "rate_limited",
+        }),
+      ]),
+    );
+
+    const result = await reader.readProviderCollectionHealth(query);
+
+    expect(result).toEqual([
+      expect.objectContaining({
+        providerKey: "x-twitter",
+        state: "complete",
+        targetItemCount: 100,
+        acceptedItemCount: 100,
+        rateLimitEventCount: 1,
+      }),
+    ]);
+  });
+
   it("freezes scan health at the artifact observation cutoff", async () => {
     const prisma = new FakeRawQueryClient([]);
     const reader = new PrismaReaderSummaryProviderCollectionHealthReader(

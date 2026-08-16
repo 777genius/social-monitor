@@ -43,7 +43,8 @@ export const resolveSelectedCandidate = (params: {
       ? [citation]
       : [];
   });
-  const citation = githubCitations.length === 1 ? githubCitations[0] : undefined;
+  const citation =
+    githubCitations.length === 1 ? githubCitations[0] : undefined;
   const postIdentity = canonicalGitHubRepositoryIdentity(
     params.post.canonicalUrl,
   );
@@ -152,7 +153,8 @@ export const projectionSetFindings = (
   ) {
     findings.push({
       code: "github_projection_gapped" as const,
-      reason: "Durable GitHub Top 10 projection must contain ranks #1 through #10.",
+      reason:
+        "Durable GitHub Top 10 projection must contain ranks #1 through #10.",
     });
   }
   return findings;
@@ -202,10 +204,8 @@ export const supplementalNarrativeFindings = (params: {
       (candidate) =>
         candidate.groupKey === params.selectedGroupKey &&
         (candidate.item.rank ?? 0) >= 1 &&
-        (candidate.item.rank ?? 0) <=
-          maxGitHubTrendingDisplayRepositories &&
-        (candidate.item.starsGained ?? 0) >
-          minimumGitHubTrendingStarsGained,
+        (candidate.item.rank ?? 0) <= maxGitHubTrendingDisplayRepositories &&
+        (candidate.item.starsGained ?? 0) > minimumGitHubTrendingStarsGained,
     )
     .sort(
       (left, right) =>
@@ -252,8 +252,7 @@ export const supplementalNarrativeFindings = (params: {
           candidate.item.sourceItemId === citation.sourceItemId &&
           candidate.groupKey === params.selectedGroupKey &&
           (candidate.item.rank ?? 0) >= 1 &&
-          (candidate.item.rank ?? 0) <=
-            maxGitHubTrendingDisplayRepositories &&
+          (candidate.item.rank ?? 0) <= maxGitHubTrendingDisplayRepositories &&
           (candidate.item.starsGained ?? 0) >
             minimumGitHubTrendingStarsGained &&
           canonicalGitHubRepositoryIdentity(citation.canonicalUrl) ===
@@ -280,8 +279,7 @@ export const supplementalNarrativeFindings = (params: {
         ) ||
       selected.some(
         (candidate, index) =>
-          candidate.item.feedItemId !==
-            expectedWatch[index]?.item.feedItemId ||
+          candidate.item.feedItemId !== expectedWatch[index]?.item.feedItemId ||
           candidate.item.sourceItemId !==
             expectedWatch[index]?.item.sourceItemId,
       )
@@ -333,11 +331,40 @@ export const latestProjectionGroupKey = (
   items: readonly ReaderSummaryGitHubProjectionItem[],
   sourceBindingId: string,
 ): string | undefined => {
+  const eligibleItems = items.filter(
+    (item) =>
+      item.sourceBindingId === sourceBindingId &&
+      item.checkedAt !== undefined &&
+      Number.isFinite(item.checkedAt.getTime()) &&
+      item.fetchStartedAt !== undefined &&
+      Number.isFinite(item.fetchStartedAt.getTime()) &&
+      Number.isFinite(item.observedAt.getTime()) &&
+      item.scanJobId !== undefined &&
+      item.scanJobId.trim().length > 0,
+  );
+  const groups = new Map<string, ReaderSummaryGitHubProjectionItem[]>();
+  for (const item of eligibleItems) {
+    const key = projectionGroupKey(item);
+    const group = groups.get(key) ?? [];
+    group.push(item);
+    groups.set(key, group);
+  }
+  const completeGroupKeys = new Set(
+    [...groups.entries()]
+      .filter(([, group]) => projectionGroupHasCompleteTopTen(group))
+      .map(([key]) => key),
+  );
+  const candidates =
+    completeGroupKeys.size === 0
+      ? eligibleItems
+      : eligibleItems.filter((item) =>
+          completeGroupKeys.has(projectionGroupKey(item)),
+        );
   let latestItem: ReaderSummaryGitHubProjectionItem | undefined;
   let latestFetchStartedAt = Number.NEGATIVE_INFINITY;
   let latestCheckedAt = Number.NEGATIVE_INFINITY;
   let latestObservedAt = Number.NEGATIVE_INFINITY;
-  for (const item of items) {
+  for (const item of candidates) {
     const checkedAt = item.checkedAt?.getTime();
     const fetchStartedAt = item.fetchStartedAt?.getTime();
     const observedAt = item.observedAt.getTime();
@@ -368,6 +395,21 @@ export const latestProjectionGroupKey = (
     }
   }
   return latestItem === undefined ? undefined : projectionGroupKey(latestItem);
+};
+
+const projectionGroupHasCompleteTopTen = (
+  items: readonly ReaderSummaryGitHubProjectionItem[],
+): boolean => {
+  if (items.length !== maxGitHubTrendingDisplayRepositories) {
+    return false;
+  }
+  const ranks = items.map((item) => item.rank);
+  return Array.from(
+    { length: maxGitHubTrendingDisplayRepositories },
+    (_, index) => index + 1,
+  ).every(
+    (rank) => ranks.filter((candidate) => candidate === rank).length === 1,
+  );
 };
 
 export const projectionGroupKey = (

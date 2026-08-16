@@ -187,26 +187,40 @@ const latestGitHubTrendingSnapshot = (
   }
   const groups = new Map<string, SummaryEvidenceItem[]>();
   for (const item of snapshotItems) {
-    const key = [
-      item.sourceBindingId,
-      item.publishedAt.toISOString(),
-    ].join("\u0000");
+    const key = [item.sourceBindingId, item.publishedAt.toISOString()].join(
+      "\u0000",
+    );
     const group = groups.get(key) ?? [];
     group.push(item);
     groups.set(key, group);
   }
+  const completeGroups = [...groups.entries()].filter(([, group]) =>
+    githubTrendingSnapshotHasCompleteTopTen(group),
+  );
+  const candidateGroups =
+    completeGroups.length === 0 ? [...groups.entries()] : completeGroups;
   return (
-    [...groups.entries()].sort(([leftKey, left], [rightKey, right]) => {
-      const checkedDelta =
-        latestSnapshotTime(right) - latestSnapshotTime(left);
+    candidateGroups.sort(([leftKey, left], [rightKey, right]) => {
+      const checkedDelta = latestSnapshotTime(right) - latestSnapshotTime(left);
       const observedDelta =
         latestObservedTime(right) - latestObservedTime(left);
-      return (
-        checkedDelta ||
-        observedDelta ||
-        rightKey.localeCompare(leftKey)
-      );
+      return checkedDelta || observedDelta || rightKey.localeCompare(leftKey);
     })[0]?.[1] ?? []
+  );
+};
+
+const githubTrendingSnapshotHasCompleteTopTen = (
+  items: readonly SummaryEvidenceItem[],
+): boolean => {
+  if (items.length !== maxGitHubTrendingDisplayRepositories) {
+    return false;
+  }
+  const ranks = items.map(githubTrendingRank);
+  return Array.from(
+    { length: maxGitHubTrendingDisplayRepositories },
+    (_, index) => index + 1,
+  ).every(
+    (rank) => ranks.filter((candidate) => candidate === rank).length === 1,
   );
 };
 

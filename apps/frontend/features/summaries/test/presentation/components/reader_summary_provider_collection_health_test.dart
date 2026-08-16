@@ -74,6 +74,64 @@ void main() {
     );
   });
 
+  testWidgets('hides recovered account errors after the final target is met', (
+    tester,
+  ) async {
+    const mapper = SummaryMapper();
+    final summary = mapper.readerSummaryToDomain(
+      readerSummaryApiDto(
+        coverage: const ReaderSummaryCoverageApiDto(
+          collectedFeedItemCount: 100,
+          selectedFeedItemCount: 30,
+          topReadCount: 8,
+          citationCount: 30,
+          collectionCoverageState: 'complete',
+          providerBreakdown: [
+            ReaderSummaryProviderCoverageApiDto(
+              providerKey: 'x-twitter',
+              collectedFeedItemCount: 100,
+              selectedFeedItemCount: 30,
+              topReadCount: 8,
+              citationCount: 30,
+              collectionHealth: ReaderSummaryProviderCollectionHealthApiDto(
+                state: 'complete',
+                scanCount: 1,
+                targetItemCount: 100,
+                collectedItemCount: 120,
+                acceptedItemCount: 100,
+                insertedItemCount: 40,
+                outsideWindowItemCount: 0,
+                paginationDuplicateItemCount: 10,
+                storageDuplicateItemCount: 10,
+                pageCount: 3,
+                paginationStopReasons: ['partial_retryable_failure'],
+                failureKinds: ['rate_limited'],
+                rateLimitEventCount: 1,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.dark(),
+        home: Scaffold(
+          body: ReaderSummaryCoverageBySourceBand(summary: summary),
+        ),
+      ),
+    );
+
+    expect(
+      find.byTooltip(
+        '100 of 100 accepted. 120 candidates checked. 20 duplicate results. 40 new posts saved.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.textContaining('rate limit'), findsNothing);
+  });
+
   testWidgets('shows reviewed, used and not-selected counts without overflow', (
     tester,
   ) async {

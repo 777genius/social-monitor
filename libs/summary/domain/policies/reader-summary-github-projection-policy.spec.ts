@@ -81,8 +81,8 @@ describe("reader summary GitHub projection policy", () => {
     expect(
       artifact
         .toSnapshot()
-        .content?.narrativeSections?.filter((section) =>
-          section.kind === "watch",
+        .content?.narrativeSections?.filter(
+          (section) => section.kind === "watch",
         ),
     ).toHaveLength(1);
   });
@@ -115,8 +115,8 @@ describe("reader summary GitHub projection policy", () => {
     expect(
       artifact
         .toSnapshot()
-        .content?.narrativeSections?.some((section) =>
-          section.kind === "watch",
+        .content?.narrativeSections?.some(
+          (section) => section.kind === "watch",
         ),
     ).toBe(false);
   });
@@ -352,6 +352,30 @@ describe("reader summary GitHub projection policy", () => {
 
     expect(evaluation.audit.violationCodes).toContain(
       "github_projection_stale",
+    );
+  });
+
+  it("keeps the latest complete board when a newer scan is only partial", () => {
+    const partialSnapshot = Array.from({ length: 8 }, (_, index) =>
+      projectionItem(index + 1, {
+        identityPrefix: "partial-owner/partial-repo",
+        idPrefix: "partial-github",
+        scanJobId: "scan-github-partial",
+        checkedAt: new Date("2026-07-10T13:00:00.000Z"),
+        observedAt: new Date("2026-07-10T13:05:00.000Z"),
+      }),
+    );
+
+    const evaluation = evaluate(boardArtifact(), [
+      ...projectionInput(),
+      ...partialSnapshot,
+    ]);
+
+    expect(evaluation.audit.status).toBe("verified");
+    expect(
+      evaluation.audit.bindings.map((binding) => binding.feedItemId),
+    ).toEqual(
+      Array.from({ length: 10 }, (_, index) => `github-feed-${index + 1}`),
     );
   });
 
@@ -602,9 +626,7 @@ describe("reader summary GitHub projection policy", () => {
     const items = projectionInput().map((item, index) => ({
       ...item,
       observedAt:
-        index === 9
-          ? new Date("2026-07-10T12:05:00.001Z")
-          : item.observedAt,
+        index === 9 ? new Date("2026-07-10T12:05:00.001Z") : item.observedAt,
     }));
 
     const evaluation = evaluate(boardArtifact(), items);
@@ -618,9 +640,7 @@ describe("reader summary GitHub projection policy", () => {
   it.each([299_999, 300_000, 300_001, 28_800_000] as const)(
     "accepts persistence delay without backdating source timestamps at %dms",
     (delayMs) => {
-      const collectedAt = new Date(
-        projectionDayEndedAt.getTime() + delayMs,
-      );
+      const collectedAt = new Date(projectionDayEndedAt.getTime() + delayMs);
       const evaluation = evaluate(
         boardArtifact(),
         projectionInput({
@@ -672,9 +692,7 @@ describe("reader summary GitHub projection policy", () => {
   ] as const)(
     "emits collection delay quality signal at %dms: %s",
     (delayMs, qualitySignal) => {
-      const collectedAt = new Date(
-        projectionDayEndedAt.getTime() + delayMs,
-      );
+      const collectedAt = new Date(projectionDayEndedAt.getTime() + delayMs);
       const evaluation = evaluate(
         boardArtifact(),
         projectionInput({
@@ -691,8 +709,7 @@ describe("reader summary GitHub projection policy", () => {
         status: "verified",
         telemetry: {
           github_projection_collection_delay_ms: delayMs,
-          collectionGraceMs:
-            readerSummaryGitHubProjectionCollectionGraceMs,
+          collectionGraceMs: readerSummaryGitHubProjectionCollectionGraceMs,
           warningThresholdMs:
             readerSummaryGitHubProjectionCollectionWarningThresholdMs,
           qualitySignal,
