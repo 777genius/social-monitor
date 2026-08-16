@@ -49,6 +49,7 @@ import { CleanRealDaySourceConfigReader } from "./clean-real-day-source-config-r
 import {
   configuredProviderCollectionTargetItemCount,
   durableSnapshotReuseProviderCollectionObservation,
+  providerCollectionFreshnessReferenceAt,
   successfulProviderCollectionObservation,
   unavailableProviderCollectionObservation,
 } from "./provider-collection-observability";
@@ -160,6 +161,10 @@ export const executeCleanRealDayProviderAcquisition = async (params: {
     params.runStartedAt,
     params.targetWindowEndedAt,
   );
+  const freshnessReferenceAt = providerCollectionFreshnessReferenceAt({
+    observedAt: params.runStartedAt,
+    targetWindowEndedAt: params.targetWindowEndedAt,
+  });
   const liveTargets = params.targets.filter(
     (target) => !shouldReuseDurableSnapshot(target, closedRequestedUtcDay),
   );
@@ -185,7 +190,7 @@ export const executeCleanRealDayProviderAcquisition = async (params: {
           target,
           liveRuntime.executeScan,
           liveRuntime.scanJobReporter,
-          params.targetWindowEndedAt,
+          freshnessReferenceAt,
         ),
       );
     },

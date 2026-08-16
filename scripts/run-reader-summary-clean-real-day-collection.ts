@@ -59,7 +59,10 @@ import {
   type CleanRealDaySourceBindingTarget as SourceBindingTarget,
 } from "./lib/clean-real-day-provider-acquisition";
 import { requireScanPolicyTargets } from "./lib/clean-real-day-scan-policy-targets";
-import { withProviderCollectionWindowProof } from "./lib/provider-collection-observability";
+import {
+  providerCollectionFreshnessReferenceAt,
+  withProviderCollectionWindowProof,
+} from "./lib/provider-collection-observability";
 import {
   explicitGitHubUnavailableIsTransparentPartialDailyInput,
   providerMeetsProductionBlockingPolicy,
@@ -631,6 +634,10 @@ function buildReport(params: {
   readonly targetWindow: CleanRealDayCollectionReport["freshWindow"];
 }): CleanRealDayCollectionReport {
   const targetWindowEndedAt = new Date(targetPublishedWindow.endExclusive);
+  const freshnessReferenceAt = providerCollectionFreshnessReferenceAt({
+    observedAt: params.completedAt,
+    targetWindowEndedAt,
+  });
   const collectedScanResults = params.scanResults.map((scan) => {
     if (scan.acquisitionMode === "durable_snapshot_reuse") {
       return scan;
@@ -647,7 +654,7 @@ function buildReport(params: {
         ...(newestItemAt === undefined
           ? {}
           : { newestPublishedAt: new Date(newestItemAt) }),
-        targetWindowEndedAt,
+        targetWindowEndedAt: freshnessReferenceAt,
       }),
     };
   });

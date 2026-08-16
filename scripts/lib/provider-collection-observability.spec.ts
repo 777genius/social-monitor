@@ -1,6 +1,7 @@
 import {
   configuredProviderCollectionTargetItemCount,
   durableSnapshotReuseProviderCollectionObservation,
+  providerCollectionFreshnessReferenceAt,
   successfulProviderCollectionObservation,
   unavailableProviderCollectionObservation,
   withProviderCollectionWindowProof,
@@ -128,6 +129,28 @@ describe("provider collection observability", () => {
       targetItemCount: 100,
       evaluatedItemCount: 100,
     });
+    expect(final.freshness).toEqual({
+      newestAcceptedPublishedAt: "2026-07-09T23:00:00.000Z",
+      lagToWindowEndSeconds: 3600,
+    });
+  });
+
+  it("caps current-day freshness at the observed part of the window", () => {
+    expect(
+      providerCollectionFreshnessReferenceAt({
+        observedAt: new Date("2026-07-09T12:00:00.000Z"),
+        targetWindowEndedAt: new Date("2026-07-10T00:00:00.000Z"),
+      }),
+    ).toEqual(new Date("2026-07-09T12:00:00.000Z"));
+  });
+
+  it("keeps the full window boundary once the requested day is closed", () => {
+    expect(
+      providerCollectionFreshnessReferenceAt({
+        observedAt: new Date("2026-07-10T00:05:00.000Z"),
+        targetWindowEndedAt: new Date("2026-07-10T00:00:00.000Z"),
+      }),
+    ).toEqual(new Date("2026-07-10T00:00:00.000Z"));
   });
 
   it("labels durable reuse without claiming a fetch, page, insert, or retry", () => {
