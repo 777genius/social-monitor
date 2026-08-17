@@ -434,4 +434,7 @@ Use this project only with data sources you are allowed to access and monitor. S
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+Original Social Monitor material is licensed under Apache License 2.0. See
+[LICENSE](LICENSE) and [NOTICE](NOTICE). Third-party and vendored components,
+including `vendor/*.tgz`, remain subject to their respective owners' terms and
+are not relicensed by this repository.

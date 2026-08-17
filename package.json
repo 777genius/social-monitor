@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "Backend/API-first social monitoring MVP platform.",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "scripts": {
     "build": "tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json",
     "check:agent-quality-rules": "node scripts/check-agent-quality-rules.mjs",
@@ -162,6 +162,7 @@
     "check:retention": "node scripts/check-retention.mjs",
     "check:retention-plan": "ts-node -r tsconfig-paths/register scripts/check-retention-plan.ts",
     "check:runtime-compose": "node scripts/check-runtime-compose.mjs",
+    "check:subscription-runtime-auth-pool-e2e": "node --test apps/agent-runtime/bin/codex-auth-pool-manifest.test.mjs apps/agent-runtime/bin/codex-auth-pool-routing.test.mjs apps/agent-runtime/bin/subscription-runtime-auth-pool.e2e.test.mjs apps/agent-runtime/bin/subscription-runtime-purpose-model-policy.test.mjs",
     "check:runtime-profile-guards": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=512 -- ts-node -r tsconfig-paths/register scripts/check-runtime-profile-guards.ts",
     "check:security-final-sweep": "node scripts/check-security-final-sweep.mjs",
     "check:staging-reliability-evidence": "node scripts/check-staging-reliability-evidence.mjs && node scripts/check-postgres-restore-evidence.mjs",

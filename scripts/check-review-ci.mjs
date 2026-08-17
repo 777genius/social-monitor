@@ -5,7 +5,19 @@ const workflowPath = ".github/workflows/pull-request.yml";
 const workflow = readFileSync(workflowPath, "utf8");
 const productionWorkflowPath = ".github/workflows/production-deploy.yml";
 const productionWorkflow = readFileSync(productionWorkflowPath, "utf8");
+const packageJson = JSON.parse(readFileSync("package.json", "utf8"));
 const violations = [];
+const subscriptionRuntimeAuthPoolE2eCommand =
+  "node --test apps/agent-runtime/bin/codex-auth-pool-manifest.test.mjs apps/agent-runtime/bin/codex-auth-pool-routing.test.mjs apps/agent-runtime/bin/subscription-runtime-auth-pool.e2e.test.mjs apps/agent-runtime/bin/subscription-runtime-purpose-model-policy.test.mjs";
+
+if (
+  packageJson.scripts?.["check:subscription-runtime-auth-pool-e2e"] !==
+  subscriptionRuntimeAuthPoolE2eCommand
+) {
+  violations.push(
+    "package.json: subscription runtime auth-pool e2e must enumerate only the reviewed deterministic sandbox tests",
+  );
+}
 
 const findJob = (source, jobId) => source.match(
   new RegExp(
@@ -35,6 +47,7 @@ const requiredFragments = [
   "npm run check:reader-summary-weekly-review-manifest-postgres18",
   "npm run check:container",
   "npm run check:runtime-compose",
+  "npm run check:subscription-runtime-auth-pool-e2e",
   "npm run check:production-deploy-lifecycle",
   "npm run test:e2e",
   "flutter test app",
@@ -98,6 +111,16 @@ if (
 ) {
   violations.push(
     `${productionWorkflowPath}: verify_reader_summary_publication must run the weekly review manifest PostgreSQL 18 contract`,
+  );
+}
+
+if (
+  !productionWorkflow.includes(
+    "npm run check:subscription-runtime-auth-pool-e2e",
+  )
+) {
+  violations.push(
+    `${productionWorkflowPath}: production deploy must run the sandbox subscription-runtime auth-pool e2e`,
   );
 }
 

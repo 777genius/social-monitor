@@ -118,6 +118,9 @@ jobs:
       - name: Run backend unit tests
         run: npm test
 
+      - name: Prove subscription runtime auth-pool failover
+        run: npm run check:subscription-runtime-auth-pool-e2e
+
   backend_e2e:
     name: Backend end-to-end tests
     runs-on: ubuntu-latest

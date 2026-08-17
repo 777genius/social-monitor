@@ -8,6 +8,14 @@ const codexAuthCompose = readFileSync(
   "docker-compose.agent-runtime-codex.yml",
   "utf8",
 ).replaceAll("\r\n", "\n");
+const productionAgentRuntimeCompose = readFileSync(
+  "ops/deploy/production-runtime/compose.agent-runtime-model.yml",
+  "utf8",
+).replaceAll("\r\n", "\n");
+const startAgentRuntime = readFileSync(
+  "scripts/start-agent-runtime.mjs",
+  "utf8",
+).replaceAll("\r\n", "\n");
 const envExample = readFileSync(".env.example", "utf8").replaceAll(
   "\r\n",
   "\n",
@@ -177,6 +185,31 @@ if (
   violations.push(
     "docker-compose.agent-runtime-codex.yml must not contain raw auth tokens",
   );
+}
+
+for (const marker of [
+  'AGENT_RUNTIME_CODEX_AUTH_JSON_PATH: ""',
+  'CODEX_AUTH_JSON_PATH: ""',
+  "AGENT_RUNTIME_CODEX_AUTH_POOL_ROOT: /run/social-monitor-codex-auth-pool",
+  "AGENT_RUNTIME_CODEX_AUTH_POOL_MANIFEST: /run/social-monitor-codex-auth-pool/current.json",
+  "/var/data/social-monitor/auth-pool:/run/social-monitor-codex-auth-pool:ro",
+]) {
+  if (!productionAgentRuntimeCompose.includes(marker)) {
+    violations.push(
+      `production agent-runtime overlay missing marker "${marker}"`,
+    );
+  }
+}
+
+for (const marker of [
+  '"AGENT_RUNTIME_CODEX_AUTH_POOL_ROOT"',
+  '"AGENT_RUNTIME_CODEX_AUTH_POOL_MANIFEST"',
+  "env.AGENT_RUNTIME_CODEX_AUTH_POOL_ROOT === undefined",
+  "env.AGENT_RUNTIME_CODEX_AUTH_POOL_MANIFEST === undefined",
+]) {
+  if (!startAgentRuntime.includes(marker)) {
+    violations.push(`start-agent-runtime missing auth-pool marker "${marker}"`);
+  }
 }
 
 if (violations.length > 0) {
