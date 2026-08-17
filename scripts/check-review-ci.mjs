@@ -35,6 +35,7 @@ const requiredFragments = [
   "npm run check:reader-summary-weekly-review-manifest-postgres18",
   "npm run check:container",
   "npm run check:runtime-compose",
+  "npm run check:subscription-runtime-auth-pool-e2e",
   "npm run check:production-deploy-lifecycle",
   "npm run test:e2e",
   "flutter test app",
@@ -98,6 +99,16 @@ if (
 ) {
   violations.push(
     `${productionWorkflowPath}: verify_reader_summary_publication must run the weekly review manifest PostgreSQL 18 contract`,
+  );
+}
+
+if (
+  !productionWorkflow.includes(
+    "npm run check:subscription-runtime-auth-pool-e2e",
+  )
+) {
+  violations.push(
+    `${productionWorkflowPath}: production deploy must run the sandbox subscription-runtime auth-pool e2e`,
   );
 }
 

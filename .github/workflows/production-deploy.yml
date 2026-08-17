@@ -411,6 +411,7 @@ jobs:
           npm run check:dependencies
           npm run check:container
           npm run check:runtime-compose
+          npm run check:subscription-runtime-auth-pool-e2e
           npm run check:runtime-profile-guards
           npm run check:migrations
           npm run check:tenant-db-guards

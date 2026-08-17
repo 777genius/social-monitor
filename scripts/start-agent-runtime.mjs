@@ -19,6 +19,8 @@ const allowedEnvKeys = [
   "SUBSCRIPTION_RUNTIME_LOCAL_ENCRYPTION_KEY_FILE",
   "AGENT_RUNTIME_CODEX_AUTH_JSON_PATH",
   "CODEX_AUTH_JSON_PATH",
+  "AGENT_RUNTIME_CODEX_AUTH_POOL_ROOT",
+  "AGENT_RUNTIME_CODEX_AUTH_POOL_MANIFEST",
   "AGENT_RUNTIME_CLAUDE_TOKEN_ENV",
   "AGENT_RUNTIME_MODEL",
   "AGENT_RUNTIME_REASONING_EFFORT",
@@ -36,6 +38,8 @@ const defaultCodexAuthPath = join(homedir(), ".codex", "auth.json");
 if (
   env.AGENT_RUNTIME_CODEX_AUTH_JSON_PATH === undefined &&
   env.CODEX_AUTH_JSON_PATH === undefined &&
+  env.AGENT_RUNTIME_CODEX_AUTH_POOL_ROOT === undefined &&
+  env.AGENT_RUNTIME_CODEX_AUTH_POOL_MANIFEST === undefined &&
   existsSync(defaultCodexAuthPath)
 ) {
   env.AGENT_RUNTIME_CODEX_AUTH_JSON_PATH = defaultCodexAuthPath;

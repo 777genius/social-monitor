@@ -47,6 +47,8 @@ Important env:
 - `AGENT_RUNTIME_REASONING_EFFORT`, required production effort (`xhigh`)
 - `AGENT_RUNTIME_TIMEOUT_MS`, generic Social Monitor task timeout fallback
 - `AGENT_RUNTIME_CODEX_AUTH_JSON_PATH`
+- `AGENT_RUNTIME_CODEX_AUTH_POOL_ROOT`, immutable pool snapshot root
+- `AGENT_RUNTIME_CODEX_AUTH_POOL_MANIFEST`, manifest path inside the pool root
 - `AGENT_RUNTIME_CLAUDE_TOKEN_ENV`, default `CLAUDE_CODE_OAUTH_TOKEN`
 
 Operational invariant: production summary launchers append
@@ -62,6 +64,45 @@ allowlist above from the repository `.env`; unrelated application credentials
 are not copied into the child process. It also uses the standard local durable
 state root under `XDG_STATE_HOME` (or `~/.local/state`) and the current
 `~/.codex/auth.json` when no explicit Codex auth path is configured.
+
+## Production Codex Auth Pool
+
+Production uses the reviewed
+`ops/deploy/production-runtime/compose.agent-runtime-model.yml` overlay. It
+clears the legacy single-account auth path, mounts
+`/var/data/social-monitor/auth-pool` read-only and points the bridge at the
+immutable current manifest. `ops/deploy/host/refresh-codex-auth.sh` owns
+atomic snapshot and manifest creation.
+
+The manifest contract is:
+
+```json
+{
+  "schemaVersion": 1,
+  "snapshotId": "<immutable-generation>",
+  "accounts": [
+    {
+      "id": "account-a",
+      "relativePath": "snapshots/<immutable-generation>/account-a/auth.json"
+    }
+  ]
+}
+```
+
+Both pool environment values must be configured together. When neither is
+present, the bridge preserves the legacy single-account behavior. Local
+startup does not auto-select `~/.codex/auth.json` when a pool is configured.
+
+Run the deterministic bridge gate with:
+
+```sh
+npm run check:subscription-runtime-auth-pool-e2e
+```
+
+The gate creates a temporary sandbox project and fake auth snapshots, sends
+one exact read-only task through the native subscription-runtime safe
+executor, simulates quota on the first account and proves completion on the
+second. It never reads host Codex auth or starts a real agent task.
 
 ## Local Codex Compose
 
