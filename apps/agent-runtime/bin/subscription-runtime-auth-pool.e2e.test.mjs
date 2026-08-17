@@ -130,6 +130,9 @@ test(
         assert.equal(threadAttempt.modelReasoningEffort, "xhigh");
         assert.equal(threadAttempt.sandboxMode, "read-only");
         assert.equal(threadAttempt.webSearch, "disabled");
+        assert.deepEqual(threadAttempt.environments, []);
+        assert.deepEqual(threadAttempt.dynamicTools, []);
+        assert.equal(threadAttempt.experimentalRawEvents, false);
         assert.deepEqual(threadAttempt.features, {
           apps: false,
           hooks: false,
@@ -346,6 +349,9 @@ if (command === "app-server") {
         modelReasoningEffort: request.params.config?.model_reasoning_effort,
         sandboxMode: request.params.config?.sandbox_mode,
         webSearch: request.params.config?.web_search,
+        environments: request.params.environments,
+        dynamicTools: request.params.dynamicTools,
+        experimentalRawEvents: request.params.experimentalRawEvents,
         features: request.params.config?.features,
       });
       send({
