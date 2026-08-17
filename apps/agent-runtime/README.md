@@ -102,7 +102,15 @@ npm run check:subscription-runtime-auth-pool-e2e
 The gate creates a temporary sandbox project and fake auth snapshots, sends
 one exact read-only task through the native subscription-runtime safe
 executor, simulates quota on the first account and proves completion on the
-second. It never reads host Codex auth or starts a real agent task.
+second. It also verifies native workspace, sandbox, approval, tool-disable,
+model and effort controls, and simulates refreshed materialized auth without
+allowing writeback to the immutable pool snapshots. It never reads host Codex
+auth or starts a real agent task.
+
+The vendored runtime currently uses `outputSchemaName` to select structured
+result parsing but sends `outputSchema: null` to native `turn/start`. This gate
+does not claim native JSON-schema enforcement; that requires a reviewed
+subscription-runtime artifact upgrade.
 
 ## Local Codex Compose
 

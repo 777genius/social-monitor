@@ -6,6 +6,7 @@ import {
   mkdir,
   readFile,
   rm,
+  stat,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -34,6 +35,9 @@ test(
     try {
       const beforeAuth = await Promise.all(
         fixture.authPaths.map((path) => readFile(path, "utf8")),
+      );
+      const beforeAuthModes = await Promise.all(
+        fixture.authPaths.map(async (path) => (await stat(path)).mode & 0o777),
       );
       const execution = await execFileAsync(
         process.execPath,
@@ -91,21 +95,50 @@ test(
         ok: true,
         account: "account-b",
       });
+      const turnAttempts = attempts.filter(({ command }) => command === "turn");
       assert.deepEqual(
-        attempts.map(({ account, command }) => ({ account, command })),
+        turnAttempts.map(({ account, command }) => ({ account, command })),
         [
           { account: "account-a", command: "turn" },
           { account: "account-b", command: "turn" },
         ],
       );
-      const appServerAttempts = attempts.filter(
-        ({ command }) => command === "turn",
-      );
-      assert.equal(appServerAttempts.length, 2);
       assert.equal(
-        appServerAttempts[0].promptSha256,
-        appServerAttempts[1].promptSha256,
+        turnAttempts[0].promptSha256,
+        turnAttempts[1].promptSha256,
       );
+      for (const turnAttempt of turnAttempts) {
+        assert.equal(turnAttempt.model, "gpt-5.6-sol");
+        assert.equal(turnAttempt.effort, "xhigh");
+        assert.equal(turnAttempt.approvalPolicy, "never");
+        assert.deepEqual(turnAttempt.environments, []);
+        assert.equal(turnAttempt.materializedAuthChanged, true);
+        const threadAttempt = attempts.find(
+          ({ account, command, threadId }) =>
+            account === turnAttempt.account &&
+            command === "thread" &&
+            threadId === turnAttempt.threadId,
+        );
+        assert.ok(
+          threadAttempt,
+          `missing thread/start for ${turnAttempt.account}`,
+        );
+        assert.equal(threadAttempt.model, "gpt-5.6-sol");
+        assert.equal(threadAttempt.approvalPolicy, "never");
+        assert.equal(threadAttempt.sandbox, "read-only");
+        assert.equal(threadAttempt.runtimeWorkspaceIsIsolated, true);
+        assert.equal(threadAttempt.modelReasoningEffort, "xhigh");
+        assert.equal(threadAttempt.sandboxMode, "read-only");
+        assert.equal(threadAttempt.webSearch, "disabled");
+        assert.deepEqual(threadAttempt.features, {
+          apps: false,
+          hooks: false,
+          memories: false,
+          multi_agent: false,
+          shell_snapshot: false,
+          skill_mcp_dependency_install: false,
+        });
+      }
 
       const canonicalRequest = JSON.parse(
         await readFile(fixture.requestPath, "utf8"),
@@ -121,7 +154,12 @@ test(
       const afterAuth = await Promise.all(
         fixture.authPaths.map((path) => readFile(path, "utf8")),
       );
+      const afterAuthModes = await Promise.all(
+        fixture.authPaths.map(async (path) => (await stat(path)).mode & 0o777),
+      );
       assert.deepEqual(afterAuth, beforeAuth);
+      assert.deepEqual(beforeAuthModes, [0o400, 0o400]);
+      assert.deepEqual(afterAuthModes, beforeAuthModes);
     } finally {
       await fixture.cleanup();
     }
@@ -184,7 +222,7 @@ async function createFixture() {
   const codexBinaryPath = join(root, "fake-codex.mjs");
   await writeFile(
     codexBinaryPath,
-    fakeCodexBinarySource(attemptLogPath),
+    fakeCodexBinarySource(attemptLogPath, stateRoot),
     "utf8",
   );
   await chmod(codexBinaryPath, 0o755);
@@ -271,18 +309,17 @@ function fakeCodexAuth(accountId) {
   };
 }
 
-function fakeCodexBinarySource(attemptLogPath) {
+function fakeCodexBinarySource(attemptLogPath, stateRoot) {
   return `#!/usr/bin/env node
 import { createHash } from "node:crypto";
-import { appendFile, readFile } from "node:fs/promises";
+import { appendFile, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 
 const args = process.argv.slice(2);
 const command = args[0] ?? "";
-const auth = JSON.parse(
-  await readFile(join(process.env.CODEX_HOME, "auth.json"), "utf8"),
-);
+const materializedAuthPath = join(process.env.CODEX_HOME, "auth.json");
+const auth = JSON.parse(await readFile(materializedAuthPath, "utf8"));
 const account = auth.tokens.account_id;
 
 if (command === "app-server") {
@@ -294,16 +331,45 @@ if (command === "app-server") {
       continue;
     }
     if (request.method === "thread/start") {
+      const threadId = "thread-" + account;
+      await recordAttempt({
+        account,
+        command: "thread",
+        threadId,
+        model: request.params.model,
+        approvalPolicy: request.params.approvalPolicy,
+        sandbox: request.params.sandbox,
+        runtimeWorkspaceIsIsolated:
+          request.params.cwd.startsWith(${JSON.stringify(`${stateRoot}/task-workspaces/`)}) &&
+          request.params.runtimeWorkspaceRoots?.length === 1 &&
+          request.params.runtimeWorkspaceRoots[0] === request.params.cwd,
+        modelReasoningEffort: request.params.config?.model_reasoning_effort,
+        sandboxMode: request.params.config?.sandbox_mode,
+        webSearch: request.params.config?.web_search,
+        features: request.params.config?.features,
+      });
       send({
         id: request.id,
-        result: { thread: { id: "thread-" + account } },
+        result: { thread: { id: threadId } },
       });
       continue;
     }
     if (request.method === "turn/start") {
       const turnId = "turn-" + account;
       const prompt = request.params.input[0].text;
-      await recordAttempt("turn", prompt);
+      const materializedAuthChanged = await refreshMaterializedAuth();
+      await recordAttempt({
+        account,
+        command: "turn",
+        threadId: request.params.threadId,
+        promptSha256: createHash("sha256").update(prompt).digest("hex"),
+        model: request.params.model,
+        effort: request.params.effort,
+        approvalPolicy: request.params.approvalPolicy,
+        environments: request.params.environments,
+        outputSchema: request.params.outputSchema,
+        materializedAuthChanged,
+      });
       send({ id: request.id, result: { turn: { id: turnId } } });
       if (account === "account-a") {
         send({
@@ -343,7 +409,11 @@ if (command === "app-server") {
   }
 } else if (command === "exec") {
   const prompt = await readFile(0, "utf8");
-  await recordAttempt("exec", prompt);
+  await recordAttempt({
+    account,
+    command: "exec",
+    promptSha256: createHash("sha256").update(prompt).digest("hex"),
+  });
   if (account === "account-a") {
     process.stderr.write("You've hit your usage limit\\n");
     process.exit(1);
@@ -366,11 +436,25 @@ function send(message) {
   process.stdout.write(JSON.stringify(message) + "\\n");
 }
 
-async function recordAttempt(commandName, prompt) {
-  const promptSha256 = createHash("sha256").update(prompt).digest("hex");
+async function refreshMaterializedAuth() {
+  const before = await readFile(materializedAuthPath, "utf8");
+  const refreshed = {
+    ...auth,
+    last_refresh: new Date().toISOString(),
+    tokens: {
+      ...auth.tokens,
+      access_token: "sandbox-refreshed-access-" + account,
+    },
+  };
+  const after = JSON.stringify(refreshed) + "\\n";
+  await writeFile(materializedAuthPath, after, "utf8");
+  return before !== after;
+}
+
+async function recordAttempt(attempt) {
   await appendFile(
     ${JSON.stringify(attemptLogPath)},
-    JSON.stringify({ account, command: commandName, promptSha256 }) + "\\n",
+    JSON.stringify(attempt) + "\\n",
     "utf8",
   );
 }
