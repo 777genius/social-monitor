@@ -17,6 +17,7 @@ export 'src/components/app_provider_logo.dart';
 export 'src/components/app_responsive_split_view.dart';
 export 'src/components/app_section_header.dart';
 export 'src/components/app_status_badge.dart';
+export 'src/components/app_web_find_in_page.dart';
 export 'src/components/app_workspace_switcher.dart';
 export 'src/responsive/app_breakpoints.dart';
 export 'src/theme/app_theme.dart';

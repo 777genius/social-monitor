@@ -1,4 +1,6 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:social_monitor_design_system/social_monitor_design_system.dart';
 import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
@@ -49,6 +51,18 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    expect(find.byType(AppWebFindInPage), findsOneWidget);
+    if (kIsWeb) {
+      await _sendFindShortcut(tester);
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'GitHub daily radar');
+      await tester.pump();
+
+      expect(find.text('1/1'), findsOneWidget);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+    }
     expect(
       find.byKey(const ValueKey('published-reader-summary-view')),
       findsOneWidget,
@@ -80,6 +94,17 @@ void main() {
       findsNothing,
     );
   });
+}
+
+Future<void> _sendFindShortcut(WidgetTester tester) async {
+  final modifier =
+      defaultTargetPlatform == TargetPlatform.macOS ||
+          defaultTargetPlatform == TargetPlatform.iOS
+      ? LogicalKeyboardKey.metaLeft
+      : LogicalKeyboardKey.controlLeft;
+  await tester.sendKeyDownEvent(modifier);
+  await tester.sendKeyEvent(LogicalKeyboardKey.keyF);
+  await tester.sendKeyUpEvent(modifier);
 }
 
 final class _SourceLauncher implements ReaderSourceLauncher {
