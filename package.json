@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "Backend/API-first social monitoring MVP platform.",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "scripts": {
     "build": "tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json",
     "check:agent-quality-rules": "node scripts/check-agent-quality-rules.mjs",
