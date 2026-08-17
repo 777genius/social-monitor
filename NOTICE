@@ -1,4 +1,9 @@
 Social Monitor
 Copyright 2026 777genius
 
-This product is licensed under the Apache License, Version 2.0.
+Original Social Monitor material is licensed under the Apache License,
+Version 2.0.
+
+Third-party and vendored components are excluded from that license unless
+their own licensing materials state otherwise. In particular, artifacts under
+vendor/*.tgz remain subject to the terms of their respective owners.
