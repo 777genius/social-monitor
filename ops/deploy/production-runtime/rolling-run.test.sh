@@ -9,16 +9,20 @@ trap 'rm -rf "$TEST_ROOT"' EXIT
 mkdir -p \
   "$TEST_ROOT/control/postgres-runtime-current" \
   "$TEST_ROOT/control/deploy-state" \
+  "$TEST_ROOT/runtime/x-collector" \
   "$TEST_ROOT/secrets" \
+  "$TEST_ROOT/secrets/db" \
   "$TEST_ROOT/artifacts/rolling-summary"
 sha=1111111111111111111111111111111111111111
 printf '%s\n' "$sha" > "$TEST_ROOT/control/postgres-runtime-current/READY"
 printf '%s\n' "$sha" > "$TEST_ROOT/control/deploy-state/backend.sha"
 touch "$TEST_ROOT/secrets/production.env"
+touch "$TEST_ROOT/secrets/db/ca-certificate.crt"
 ln -s "$REPO" "$TEST_ROOT/integration"
 
 fake_flock=/usr/bin/true
 fake_docker=$REPO/ops/deploy/production-runtime/test-fixtures/rolling-run-fake-docker.sh
+fake_ctr=$REPO/ops/deploy/production-runtime/test-fixtures/rolling-run-fake-ctr.sh
 refresh=$TEST_ROOT/control/refresh-codex-auth.sh
 ln -s /usr/bin/true "$refresh"
 export SOCIAL_MONITOR_ROLLING_RUN_TEST_LOG=$TEST_ROOT/docker.log
@@ -75,5 +79,31 @@ ROLLING_AUTH_READY=false sh -ec \
 auth_guard_status=$?
 set -e
 ((auth_guard_status == 75))
+
+ln -sfn /usr/bin/true "$refresh"
+SOCIAL_MONITOR_ROLLING_RUN_TEST_MODE=1 \
+SOCIAL_MONITOR_ROLLING_RUN_TEST_ROOT=$TEST_ROOT \
+SOCIAL_MONITOR_ROLLING_RUN_TEST_DOCKER=$fake_docker \
+SOCIAL_MONITOR_ROLLING_RUN_TEST_CTR=$fake_ctr \
+SOCIAL_MONITOR_ROLLING_RUN_TEST_FLOCK=$fake_flock \
+SOCIAL_MONITOR_ROLLING_RUN_TEST_NOW=2026-08-15T16:15:00.000Z \
+SOCIAL_MONITOR_ROLLING_RUNTIME=containerd \
+  bash "$RUNNER"
+grep -F -- '-n moby run --rm --net-host' "$TEST_ROOT/docker.log" >/dev/null
+grep -F -- '--env ROLLING_COLLECTION_DATE=2026-08-15' "$TEST_ROOT/docker.log" >/dev/null
+grep -F -- '--env ROLLING_AUTH_READY=true' "$TEST_ROOT/docker.log" >/dev/null
+grep -F -- 'docker.io/library/social-monitor-prod-daily-runner:latest' \
+  "$TEST_ROOT/docker.log" >/dev/null
+grep -Fx 'AGENT_RUNTIME_GRPC_ADDRESS=172.19.0.6:50052' \
+  "$TEST_ROOT/docker.log" >/dev/null
+grep -Fx 'X_COLLECTOR_GRPC_ADDRESS=127.0.0.1:50051' \
+  "$TEST_ROOT/docker.log" >/dev/null
+grep -Fx 'REDIS_URL=redis://172.19.0.3:6379' "$TEST_ROOT/docker.log" >/dev/null
+grep -Fx 'RABBITMQ_URL=amqp://user:password@172.19.0.2:5672' \
+  "$TEST_ROOT/docker.log" >/dev/null
+if compgen -G "$TEST_ROOT/runtime/rolling-containerd-*-env.*" >/dev/null; then
+  echo 'rolling containerd secret environment was not cleaned up' >&2
+  exit 1
+fi
 
 echo 'rolling-run tests passed'
