@@ -65,12 +65,12 @@ describe("clean real-day collection CLI", () => {
     ).toThrow("outside the daily maintenance upper bound");
   });
 
-  it("binds production history to 6101/6102 and an exact Aug12 artifact", () => {
+  it("binds production history to 6101/6102 through the exact Aug20 artifact", () => {
     const cli = withArgs(
       [
         "--update",
         "--date",
-        "2026-08-12",
+        "2026-08-20",
         "--provider-catch-up",
         "--allow-historical-provider-collection",
         "--allow-unproven-existing-window",
@@ -83,7 +83,7 @@ describe("clean real-day collection CLI", () => {
 
     expect(cli.maintenanceScope).toEqual(readerSummaryProductionHistoryScope);
     expect(cli.outputPath).toBe(
-      "/durable/production-history/reader-summary-clean-real-day-collection.2026-08-12.v1.json",
+      "/durable/production-history/reader-summary-clean-real-day-collection.2026-08-20.v1.json",
     );
     expect(cli.targetDiscoveryScopeValues).toEqual([
       readerSummaryProductionHistoryScope.tenantId,
@@ -91,13 +91,13 @@ describe("clean real-day collection CLI", () => {
     ]);
   });
 
-  it("rejects production history outside Jul23-Aug12", () => {
+  it("rejects production history outside Jul23-Aug20", () => {
     expect(() =>
       withArgs(
         [
           "--update",
           "--date",
-          "2026-08-13",
+          "2026-08-21",
           "--provider-catch-up",
           "--allow-historical-provider-collection",
           "--allow-unproven-existing-window",
