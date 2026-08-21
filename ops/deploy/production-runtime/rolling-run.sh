@@ -86,10 +86,14 @@ if "$ROOT/control/refresh-codex-auth.sh"; then
       rm -f "$ROOT/runtime/auth-account-changed"
       sleep 3
     else
-      # The host-network fallback cannot safely restart a Docker-managed
-      # runtime while the Docker task API is unavailable. Collection remains
-      # available, while publication waits for the normal runtime to recover.
-      auth_ready=false
+      restart_script=${SOCIAL_MONITOR_ROLLING_AGENT_RUNTIME_RESTART_SCRIPT:-}
+      if [[ -x $restart_script ]] && \
+         "$restart_script" --restart-agent-runtime; then
+        rm -f "$ROOT/runtime/auth-account-changed"
+        sleep 3
+      else
+        auth_ready=false
+      fi
     fi
   fi
   if [[ $ROLLING_RUNTIME == docker ]]; then

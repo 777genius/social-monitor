@@ -159,6 +159,8 @@ for unit in \
 done
 install -m 0755 "$source_runtime/daily-run.sh" "$CONTROL/daily-run.sh"
 install -m 0755 "$source_runtime/rolling-run.sh" "$CONTROL/rolling-run.sh"
+install -m 0755 "$source_runtime/rolling-containerd-fallback.sh" \
+  "$CONTROL/rolling-containerd-fallback.sh"
 
 # Equal activation states do not turn a marker-diff-free classification into a
 # runtime-control deployment. An existing positive classification is retained.

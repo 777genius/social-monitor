@@ -9,6 +9,8 @@ trap 'rm -rf "$TEST_ROOT"' EXIT
 mkdir -p \
   "$TEST_ROOT/control/postgres-runtime-current" \
   "$TEST_ROOT/control/deploy-state" \
+  "$TEST_ROOT/backups" \
+  "$TEST_ROOT/runtime/subscription-runtime/sessions" \
   "$TEST_ROOT/runtime/x-collector" \
   "$TEST_ROOT/secrets" \
   "$TEST_ROOT/secrets/db" \
@@ -23,6 +25,7 @@ ln -s "$REPO" "$TEST_ROOT/integration"
 fake_flock=/usr/bin/true
 fake_docker=$REPO/ops/deploy/production-runtime/test-fixtures/rolling-run-fake-docker.sh
 fake_ctr=$REPO/ops/deploy/production-runtime/test-fixtures/rolling-run-fake-ctr.sh
+fake_agent_restart=$REPO/ops/deploy/production-runtime/test-fixtures/rolling-run-fake-agent-restart.sh
 refresh=$TEST_ROOT/control/refresh-codex-auth.sh
 ln -s /usr/bin/true "$refresh"
 export SOCIAL_MONITOR_ROLLING_RUN_TEST_LOG=$TEST_ROOT/docker.log
@@ -105,5 +108,26 @@ if compgen -G "$TEST_ROOT/runtime/rolling-containerd-*-env.*" >/dev/null; then
   echo 'rolling containerd secret environment was not cleaned up' >&2
   exit 1
 fi
+
+touch "$TEST_ROOT/runtime/auth-account-changed"
+SOCIAL_MONITOR_ROLLING_RUN_TEST_MODE=1 \
+SOCIAL_MONITOR_ROLLING_RUN_TEST_ROOT=$TEST_ROOT \
+SOCIAL_MONITOR_ROLLING_RUN_TEST_DOCKER=$fake_docker \
+SOCIAL_MONITOR_ROLLING_RUN_TEST_CTR=$fake_ctr \
+SOCIAL_MONITOR_ROLLING_RUN_TEST_FLOCK=$fake_flock \
+SOCIAL_MONITOR_ROLLING_RUN_TEST_NOW=2026-08-15T20:15:00.000Z \
+SOCIAL_MONITOR_ROLLING_RUNTIME=containerd \
+SOCIAL_MONITOR_ROLLING_AGENT_RUNTIME_RESTART_SCRIPT=$fake_agent_restart \
+  bash "$RUNNER"
+grep -Fx -- '--restart-agent-runtime' "$TEST_ROOT/agent-restart.log" >/dev/null
+[[ ! -e $TEST_ROOT/runtime/auth-account-changed ]]
+[[ -d $TEST_ROOT/runtime/subscription-runtime/sessions ]]
+find "$TEST_ROOT/backups" -maxdepth 1 -type d \
+  -name 'subscription-runtime-sessions.*' | grep -q .
+
+fallback=$REPO/ops/deploy/production-runtime/rolling-containerd-fallback.sh
+grep -F 'AGENT_TASK_ID=social-monitor-agent-runtime-host-fallback' "$fallback" >/dev/null
+grep -F 'SOCIAL_MONITOR_ROLLING_AGENT_RUNTIME_IP=127.0.0.1' "$fallback" >/dev/null
+grep -F 'SOCIAL_MONITOR_ROLLING_AGENT_RUNTIME_RESTART_SCRIPT=' "$fallback" >/dev/null
 
 echo 'rolling-run tests passed'
