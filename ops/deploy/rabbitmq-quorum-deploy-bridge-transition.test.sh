@@ -61,7 +61,7 @@ BRIDGE_CONTROL_PATHS=(
 )
 
 assert_real_bridge_target_assets() {
-  local path entry mode type object tree_path expected_digest alternate_digest actual_digest actual_mode
+  local path entry mode type object tree_path expected_digest alternate_digest additional_digest actual_digest actual_mode
   local repository_root actual_path actual_real
 
   repository_root=$(readlink -f -- "$PROJECT_ROOT")
@@ -90,11 +90,13 @@ assert_real_bridge_target_assets() {
     }
     expected_digest=$(git -C "$PROJECT_ROOT" show "$BRIDGE_RELEASE_SHA:$path" | sha256sum | awk '{print $1}')
     alternate_digest=
+    additional_digest=
     actual_digest=$(sha256sum "$actual_real" | awk '{print $1}')
     case $path in
       ops/deploy/social-monitor-production-deploy.sh)
         expected_digest=e76db96e9cc7bdb62cb09a3be509a7776e09a0499ff41a0d3769d8b499bde04f
         alternate_digest=ac82c9cfebf88646e9cdc21dcb822c8cc50409832da24a726cd9307cc2be8bcb
+        additional_digest=87946adc8f17ff9844a7d3d18b5b2a8ae44bd58cb557ed4e036d47dae745a6d7
         ;;
       ops/deploy/deploy-control-lib.sh)
         expected_digest=d18854822ef36d5571289e72c7691fff8db4a7d5c516787441a733d6960a88a9
@@ -102,6 +104,7 @@ assert_real_bridge_target_assets() {
       ops/deploy/postgres-runtime-deploy-lib.sh)
         expected_digest=261fb030bea2f203564c59e0c22db8058b310fb5d979c7db622938fe6045545a
         alternate_digest=6ac29042e94f9ef40498c70beeed37af13660fae629216d3ae2ea70270d0ffb1
+        additional_digest=36bcf5685599e8546642c586899a6ed2aa123f4251925b70baf6a335a6a67ec6
         ;;
       ops/deploy/backend-image-rescue-lib.sh)
         expected_digest=68f13213e6d1662d943185df7cdd1c11678261e76977021f74493c4e6c643b59
@@ -123,6 +126,10 @@ assert_real_bridge_target_assets() {
         echo 'production C1 readiness asset exception is not exact' >&2
         exit 1
       }
+      [[ $(grep -Fxc '  ops/deploy/production-runtime/rolling-containerd-fallback.sh' "$actual_real") == 1 ]] || {
+        echo 'rolling containerd fallback asset exception is not exact' >&2
+        exit 1
+      }
       [[ $(grep -Fxc '  reader-summary-daily-scan-terminal-repair-c1) run_reader_summary_daily_scan_terminal_repair_c1_from_stdin ;;' "$actual_real") == 1 ]] || {
         echo 'production C1 repair dispatch exception is not exact' >&2
         exit 1
@@ -137,7 +144,8 @@ assert_real_bridge_target_assets() {
       }
     fi
     [[ $actual_digest == "$expected_digest" ||
-       (-n $alternate_digest && $actual_digest == "$alternate_digest") ]] || {
+       (-n $alternate_digest && $actual_digest == "$alternate_digest") ||
+       (-n $additional_digest && $actual_digest == "$additional_digest") ]] || {
       printf 'current bridge asset digest drifted from V4A4: %s\n' "$path" >&2
       exit 1
     }
