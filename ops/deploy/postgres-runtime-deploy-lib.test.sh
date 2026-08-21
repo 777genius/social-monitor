@@ -375,7 +375,7 @@ for unit in "${capture_units[@]}"; do
   [[ ! -e $SYSTEMD_UNIT_DIR/$unit ]]
 done
 [[ ! -e $CONTROL/github-premidnight-capture-v1.sh ]]
-[[ $(find "$bridge_release" -mindepth 1 -maxdepth 1 | wc -l) == 15 ]]
+[[ $(find "$bridge_release" -mindepth 1 -maxdepth 1 | wc -l) == 16 ]]
 [[ $(stat -c '%a' "$bridge_release/$readiness_name") == 644 ]]
 cmp -s "$readiness_source" "$bridge_release/$readiness_name"
 cmp -s "$bridge_release/$readiness_name" \
