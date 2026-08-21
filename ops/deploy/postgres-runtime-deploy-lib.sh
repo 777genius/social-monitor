@@ -128,13 +128,10 @@ postgres_runtime_control_units_for_scope() {
 
 postgres_runtime_control_launchers_for_scope() {
   case $1 in
-    base)
-      printf '%s\n' daily-run.sh rolling-run.sh rolling-containerd-fallback.sh
-      ;;
+    base) printf '%s\n' daily-run.sh rolling-run.sh ;;
     capture-only) printf '%s\n' github-premidnight-capture-v1.sh ;;
     full)
-      printf '%s\n' daily-run.sh github-premidnight-capture-v1.sh rolling-run.sh \
-        rolling-containerd-fallback.sh
+      printf '%s\n' daily-run.sh github-premidnight-capture-v1.sh rolling-run.sh
       ;;
     *)
       fail 'PostgreSQL runtime-control launcher scope is invalid'

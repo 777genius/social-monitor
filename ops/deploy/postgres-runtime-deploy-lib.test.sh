@@ -375,7 +375,7 @@ for unit in "${capture_units[@]}"; do
   [[ ! -e $SYSTEMD_UNIT_DIR/$unit ]]
 done
 [[ ! -e $CONTROL/github-premidnight-capture-v1.sh ]]
-[[ $(find "$bridge_release" -mindepth 1 -maxdepth 1 | wc -l) == 16 ]]
+[[ $(find "$bridge_release" -mindepth 1 -maxdepth 1 | wc -l) == 15 ]]
 [[ $(stat -c '%a' "$bridge_release/$readiness_name") == 644 ]]
 cmp -s "$readiness_source" "$bridge_release/$readiness_name"
 cmp -s "$bridge_release/$readiness_name" \
@@ -438,7 +438,7 @@ printf 'enable-now-v1\n' > \
 [[ $(readlink -f "$POSTGRES_RUNTIME_CURRENT") == "$release" ]]
 [[ $(cat "$release/READY") == "$SHA" ]]
 [[ $(cat "$release/SOURCE_SHA") == "$SHA" ]]
-[[ $(find "$release" -mindepth 1 -maxdepth 1 | wc -l) == 20 ]]
+[[ $(find "$release" -mindepth 1 -maxdepth 1 | wc -l) == 19 ]]
 [[ $(stat -c '%a' "$release/$readiness_name") == 644 ]]
 cmp -s "$readiness_source" "$release/$readiness_name"
 cmp -s "$release/$readiness_name" \
@@ -457,8 +457,6 @@ grep -Fx 'Unit=social-monitor-daily.service' \
 [[ ${COMPOSE[-1]} == "$POSTGRES_RUNTIME_CURRENT/compose.postgres-runtime.yml" ]]
 cmp -s "$release/daily-run.sh" "$CONTROL/daily-run.sh"
 cmp -s "$release/rolling-run.sh" "$CONTROL/rolling-run.sh"
-cmp -s "$release/rolling-containerd-fallback.sh" \
-  "$CONTROL/rolling-containerd-fallback.sh"
 cmp -s "$release/github-premidnight-capture-v1.sh" \
   "$CONTROL/github-premidnight-capture-v1.sh"
 for unit in "${units[@]}"; do

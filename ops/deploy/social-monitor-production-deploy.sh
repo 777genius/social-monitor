@@ -106,7 +106,6 @@ RUNTIME_CONTROL_PATHS=(
   ops/deploy/production-runtime/daily-c1-runtime.sh
   ops/deploy/production-runtime/daily-run.sh
   ops/deploy/production-runtime/rolling-run.sh
-  ops/deploy/production-runtime/rolling-containerd-fallback.sh
   ops/deploy/production-runtime/rolling-summary-receipt.mjs
   ops/deploy/production-runtime/compose.daily-artifacts.yml
   ops/deploy/production-runtime/reader-summary-daily-c1.readiness
