@@ -49,7 +49,7 @@ MAINTENANCE_DATE=${2:-}
 case "$DATE_FLAG" in
   --check-readiness|--today|--yesterday) ;;
   --maintenance-date)
-    [[ $# -eq 2 && $MAINTENANCE_DATE =~ ^2026-(07-(2[3-9]|3[01])|08-(0[1-9]|1[0-2]))$ ]] || {
+    [[ $# -eq 2 && $MAINTENANCE_DATE =~ ^2026-(07-(2[3-9]|3[01])|08-(0[1-9]|1[0-9]|20))$ ]] || {
       echo "historical daily production-day date is outside the reviewed recovery bound" >&2
       exit 64
     }

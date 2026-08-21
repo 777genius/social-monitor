@@ -111,7 +111,7 @@ grep -Fx -- '-n 9' "$fake_flock.calls" >/dev/null
 [[ $(wc -l <"$fake_flock.calls") -eq 1 ]]
 [[ ! -e "$work_marker" ]]
 
-for invalid in 2026-07-22 2026-08-13 not-a-date; do
+for invalid in 2026-07-22 2026-08-21 not-a-date; do
   set +e
   SOCIAL_MONITOR_DAILY_RUN_TEST_MODE=1 \
   SOCIAL_MONITOR_DAILY_RUN_TEST_ROOT="$test_root" \
@@ -124,5 +124,18 @@ for invalid in 2026-07-22 2026-08-13 not-a-date; do
   grep -Fx 'historical daily production-day date is outside the reviewed recovery bound' \
     "$test_root/invalid" >/dev/null
 done
+
+set +e
+SOCIAL_MONITOR_DAILY_RUN_TEST_MODE=1 \
+SOCIAL_MONITOR_DAILY_RUN_TEST_ROOT="$test_root" \
+SOCIAL_MONITOR_DAILY_RUN_TEST_FLOCK="$fake_flock" \
+SOCIAL_MONITOR_DAILY_RUN_TEST_DOCKER="$fake_docker" \
+  bash "$DAILY_RUN" --maintenance-date 2026-08-20 \
+    >"$test_root/valid-bound-stdout" 2>"$test_root/valid-bound-stderr"
+status=$?
+set -e
+[[ $status -eq 75 ]]
+grep -Fx 'daily production-day run already active' \
+  "$test_root/valid-bound-stderr" >/dev/null
 
 printf 'daily V6 reader-summary schedule wiring test passed\n'
