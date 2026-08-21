@@ -309,7 +309,7 @@
     "@google-cloud/bigquery": "^8.3.1",
     "@grpc/grpc-js": "^1.14.4",
     "@infinity-context/sdk": "file:vendor/infinity-context-sdk-0.1.0.tgz",
-    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "@mozilla/readability": "^0.6.0",
     "@nestjs/common": "^11.1.27",
     "@nestjs/core": "^11.1.27",
@@ -323,8 +323,8 @@
     "@opentelemetry/resources": "2.10.0",
     "@opentelemetry/sdk-metrics": "2.10.0",
     "@opentelemetry/semantic-conventions": "1.43.0",
-    "@prisma/adapter-pg": "^7.8.0",
-    "@prisma/client": "^7.8.0",
+    "@prisma/adapter-pg": "^7.9.1",
+    "@prisma/client": "^7.9.1",
     "@vioxen/subscription-runtime": "file:vendor/vioxen-subscription-runtime-0.1.0-main.2-sm.1.tgz",
     "amqplib": "^2.0.1",
     "class-transformer": "^0.5.1",
@@ -350,7 +350,7 @@
     "eslint": "^9.39.1",
     "grpc-tools": "^1.13.1",
     "jest": "^30.4.2",
-    "prisma": "^7.8.0",
+    "prisma": "^7.9.1",
     "socket.io-client": "^4.8.3",
     "supertest": "^7.2.2",
     "ts-jest": "^29.4.6",
@@ -372,14 +372,15 @@
     "@nestjs/swagger": {
       "js-yaml": "5.2.2"
     },
-    "@prisma/dev": "0.24.10",
+    "@prisma/dev": "0.24.17",
     "brace-expansion": "5.0.9",
-    "hono": "4.12.25",
+    "deepmerge-ts": "8.0.2",
+    "hono": "4.13.3",
     "fast-uri": "3.1.5",
     "form-data": "4.0.6",
     "ip-address": "10.4.0",
     "multer": "2.2.0",
     "socket.io-parser": "4.2.7",
-    "tar": "7.5.20"
+    "tar": "7.5.22"
   }
 }
