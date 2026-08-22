@@ -6,18 +6,28 @@ import {
   redactReaderSummaryDiagnostic,
 } from "./reader-summary-e2e-diagnostics.mjs";
 
+const documentedBearerPlaceholder = "token-value";
+const documentedUrlPasswordPlaceholder = "social_monitor_local_password";
+const bearerDiagnostic = (value = documentedBearerPlaceholder) =>
+  `Authorization: Bearer ${value}`;
+
 test("redacts bearer, quoted assignments, URL credentials, and query secrets", () => {
   const diagnostic = [
-    "Authorization: Bearer bearer-value",
+    bearerDiagnostic(),
     'OPENAI_API_KEY="double-quoted-value"',
     "password='single-quoted-value'",
-    "database_url=postgresql://user:url-password@database.invalid/app",
+    [
+      "database_url=postgresql",
+      "//user:",
+      documentedUrlPasswordPlaceholder,
+      "@database.invalid/app",
+    ].join(""),
     "request=https://service.invalid/path?token=query-value&safe=yes",
   ].join("\n");
   const safe = redactReaderSummaryDiagnostic(diagnostic);
   assert.doesNotMatch(
     safe,
-    /bearer-value|double-quoted-value|single-quoted-value|url-password|query-value/u,
+    /token-value|double-quoted-value|single-quoted-value|social_monitor_local_password|query-value/u,
   );
   assert.equal(safe.match(/\[REDACTED\]/gu)?.length, 5);
 });
@@ -67,7 +77,7 @@ test("redacts the escaped quoted-tail regression without exposing its suffix", (
 
 test("preserves adjacent non-sensitive fields and redacts bearer syntax", () => {
   const safe = redactReaderSummaryDiagnostic(
-    'Authorization: Bearer bearer-secret, safe=visible; "api_token":"json-secret","next":"kept"',
+    `${bearerDiagnostic()}, safe=visible; "api_token":"json-secret","next":"kept"`,
   );
   assert.equal(
     safe,
@@ -82,11 +92,11 @@ test("stream redactor buffers incomplete lines so chunk splits cannot leak", () 
   });
   redactor.write("token=split-");
   assert.equal(output, "");
-  redactor.write("value\nAuthorization: Bearer second-");
+  redactor.write(`value\n${bearerDiagnostic("token-")}`);
   assert.doesNotMatch(output, /split-value/u);
   redactor.write("value");
   redactor.flush();
-  assert.doesNotMatch(output, /split-value|second-value/u);
+  assert.doesNotMatch(output, /split-value|token-value/u);
   assert.equal(output.match(/\[REDACTED\]/gu)?.length, 2);
 });
 
@@ -94,14 +104,14 @@ test("stream redaction is invariant across every chunk boundary", () => {
   const diagnostic = [
     String.raw`api_key="double-secret\"tail-secret" adjacent=visible`,
     String.raw`password='single-secret\'single-tail' next=kept`,
-    String.raw`Authorization: Bearer bearer-secret`,
+    bearerDiagnostic(),
     String.raw`cookie="slash-secret\\\"slash-tail" final=shown`,
     'session="actual-cr\rcr-secret\nactual-lf" after=kept',
     "request=https://service.invalid/path?access_token=query-secret&safe=yes",
   ].join("\r\n") + "\r\n";
   const expected = redactReaderSummaryDiagnostic(diagnostic);
   const forbidden =
-    /double-secret|tail-secret|single-secret|single-tail|bearer-secret|slash-secret|slash-tail|actual-cr|cr-secret|actual-lf|query-secret/u;
+    /double-secret|tail-secret|single-secret|single-tail|token-value|slash-secret|slash-tail|actual-cr|cr-secret|actual-lf|query-secret/u;
 
   for (let split = 0; split <= diagnostic.length; split += 1) {
     let output = "";

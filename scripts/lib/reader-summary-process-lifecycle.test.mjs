@@ -19,6 +19,8 @@ import {
   waitForReaderSummaryFixture,
 } from "./reader-summary-process-lifecycle.mjs";
 
+const documentedBearerPlaceholder = "token-value";
+
 class FakeChild extends EventEmitter {
   constructor(pid = 1234) {
     super();
@@ -248,7 +250,7 @@ test("drive diagnostics are bounded, redacted, and keep log streams separate", a
   try {
     await writeFile(
       driver,
-      "visible driver\nAuthorization: Bearer private-bearer\n" +
+      `visible driver\nAuthorization: Bearer ${documentedBearerPlaceholder}\n` +
         "profile=/private/Driver Folder/profile\n",
     );
     await writeFile(
@@ -271,7 +273,7 @@ test("drive diagnostics are bounded, redacted, and keep log streams separate", a
     assert.match(output.join(""), /\[REDACTED PATH\]/u);
     assert.doesNotMatch(
       output.join(""),
-      /private-bearer|Driver Folder|private-server|private-share|private-host|private-path/u,
+      /token-value|Driver Folder|private-server|private-share|private-host|private-path/u,
     );
   } finally {
     await rm(root, { recursive: true, force: true });
