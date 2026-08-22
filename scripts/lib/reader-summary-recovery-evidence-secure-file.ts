@@ -147,11 +147,14 @@ const installSecureRecoveryEvidenceFileWithPolicy = (params: {
           constants.O_NOFOLLOW,
         0o400,
       );
-      createdStamp = assertSecureRegularFile(
-        fstatSync(descriptor, { bigint: true }),
+      const createdStat = fstatSync(descriptor, { bigint: true });
+      createdStamp = fileStamp(createdStat);
+      assertCreatedRegularFile(
+        createdStat,
         params.label,
         policy.effectiveUserId,
       );
+      fchmodSync(descriptor, 0o400);
     } catch (error) {
       if (errorCode(error) !== "EEXIST") throw error;
       const existing = readAnchoredRegularFile({
@@ -167,7 +170,6 @@ const installSecureRecoveryEvidenceFileWithPolicy = (params: {
 
     params.checkpoint?.("file_created");
     writeFileSync(descriptor, params.bytes);
-    fchmodSync(descriptor, 0o400);
     fsyncSync(descriptor);
     const installedStamp = assertSecureRegularFile(
       fstatSync(descriptor, { bigint: true }),
@@ -424,6 +426,17 @@ const assertSecureRegularFile = (
     fail(`${label} permissions must be exactly 0400`);
   }
   return fileStamp(stat);
+};
+
+const assertCreatedRegularFile = (
+  stat: BigIntStats,
+  label: string,
+  effectiveUserId: number,
+): void => {
+  if (!stat.isFile()) fail(`${label} must be a regular non-symlink file`);
+  if (stat.uid !== BigInt(effectiveUserId)) {
+    fail(`${label} owner must be uid ${effectiveUserId}`);
+  }
 };
 
 const openAnchoredLeaf = (

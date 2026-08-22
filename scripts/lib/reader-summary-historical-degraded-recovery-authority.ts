@@ -472,7 +472,9 @@ const validIsoDate = (value: string): boolean => {
 };
 
 const exactAllowedDate = (value: string): HistoricalDegradedRecoveryDate => {
-  if (!(value in allowedDays)) throw new Error("Historical degraded recovery date is not allowlisted");
+  if (!Object.prototype.hasOwnProperty.call(allowedDays, value)) {
+    throw new Error("Historical degraded recovery date is not allowlisted");
+  }
   return value as HistoricalDegradedRecoveryDate;
 };
 

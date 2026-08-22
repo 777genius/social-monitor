@@ -18,6 +18,7 @@ import {
   historicalDegradedRecoveryPublicationBinding,
   verifyHistoricalDegradedRecoveryPublicationSlot,
 } from "./reader-summary-historical-degraded-recovery-slot";
+import { PrismaHistoricalDegradedRecoveryLiveVerifier } from "./reader-summary-historical-degraded-recovery-live";
 
 describe("historical degraded recovery execution", () => {
   it("publishes once, replays the same receipt, and never mutates the source", async () => {
@@ -184,6 +185,50 @@ describe("historical degraded recovery execution", () => {
     })).resolves.toBe("empty");
     expect(sql).toContain("receipt.tenant_id =");
     expect(sql).toContain("receipt.workspace_id =");
+  });
+
+  it("classifies an exact replay before reading current dataset truth", async () => {
+    const source = sourceArtifact();
+    const files = fixtureFiles();
+    const prepared = authorityFor(source, files);
+    const built = buildHistoricalDegradedRecoveryCommand({
+      authority: prepared.authority,
+      authoritySha256: prepared.sha256,
+      live: await liveVerifier(source).verify({
+        authority: prepared.authority,
+        authoritySha256: prepared.sha256,
+        files,
+      }),
+    });
+    let queryCount = 0;
+    const client = {
+      $queryRaw: async () => {
+        queryCount += 1;
+        if (queryCount !== 1) {
+          throw new Error("current dataset must not be read during exact replay");
+        }
+        return [{
+          publicationCount: 1,
+          exactPublicationCount: 1,
+          exactOutboxCount: 1,
+          completedCandidateCount: 1,
+          slotCount: 1,
+          currentPublicationId: built.identities.artifactId,
+        }];
+      },
+    };
+    const verifier = new PrismaHistoricalDegradedRecoveryLiveVerifier(
+      client as never,
+    );
+
+    await expect(verifier.verifyPublicationSlot({
+      authority: prepared.authority,
+      authoritySha256: prepared.sha256,
+      command: built.command,
+      files,
+      preflightAt: new Date("2027-01-01T00:00:00.000Z"),
+    })).resolves.toBe("replay");
+    expect(queryCount).toBe(1);
   });
 });
 

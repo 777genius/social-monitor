@@ -122,19 +122,20 @@ export class PrismaHistoricalDegradedRecoveryLiveVerifier
     authoritySha256: string;
     files: HistoricalDegradedRecoveryFiles;
   }>): Promise<HistoricalDegradedRecoveryLiveVerification> {
-    const captured = await this.capture({
-      requestedUtcDate: params.authority.requestedUtcDate,
-      files: params.files,
-      authorizedAt: new Date(params.authority.authorizedAt),
-      observedThrough: new Date(params.authority.githubZero.observedThrough),
-      replay: {
-        publicationId: recoveryIdentities(params.authority.attempt.identity).artifactId,
-        authoritySha256: params.authoritySha256,
-      },
-    });
-    const current = prepareHistoricalDegradedRecoveryAuthority(captured);
-    if (current.sha256 !== params.authoritySha256) {
-      throw new Error("Historical degraded recovery live authority changed before use");
+    const startedAt = exactStart(params.authority.requestedUtcDate);
+    const sources = await this.readSourceCandidates(
+      startedAt,
+      new Date(startedAt.getTime() + 86_400_000),
+    );
+    if (
+      sources.length !== 1 ||
+      sources[0] === undefined ||
+      sourceRejectionSnapshotSha256(sources[0]) !==
+        params.authority.source.rejectionSnapshotSha256
+    ) {
+      throw new Error(
+        "Historical degraded recovery rejected source changed before use",
+      );
     }
     const record = await this.client.readerSummaryArtifact.findFirst({
       where: {
@@ -182,6 +183,26 @@ export class PrismaHistoricalDegradedRecoveryLiveVerifier
       files: params.files,
       preflightAt: params.preflightAt,
     });
+    if (currentSlot === "empty") {
+      const captured = await this.capture({
+        requestedUtcDate: params.authority.requestedUtcDate,
+        files: params.files,
+        authorizedAt: new Date(params.authority.authorizedAt),
+        observedThrough: new Date(params.authority.githubZero.observedThrough),
+        replay: {
+          publicationId: recoveryIdentities(
+            params.authority.attempt.identity,
+          ).artifactId,
+          authoritySha256: params.authoritySha256,
+        },
+      });
+      const current = prepareHistoricalDegradedRecoveryAuthority(captured);
+      if (current.sha256 !== params.authoritySha256) {
+        throw new Error(
+          "Historical degraded recovery live authority changed before use",
+        );
+      }
+    }
     return assertHistoricalDegradedRecoveryCurrentGitHubZero({
       slot: currentSlot,
       requestedUtcDate: params.authority.requestedUtcDate,
@@ -394,6 +415,18 @@ const sourceSnapshot = (row: SourceRow): HistoricalDegradedRecoverySourceSnapsho
     sourceRecordSha256: sha256(stableJson(row.sourceRecord)),
   };
 };
+
+const sourceRejectionSnapshotSha256 = (
+  source: HistoricalDegradedRecoverySourceSnapshot,
+): string => sha256(stableJson({
+  jobId: source.jobId,
+  artifactId: source.artifactId,
+  jobStatus: source.jobStatus,
+  artifactStatus: source.artifactStatus,
+  qualityFlags: source.qualityFlags,
+  publicationDecision: source.publicationDecision,
+  sourceRecordSha256: source.sourceRecordSha256,
+}));
 
 const rejectedDecision = (
   qualitySignals: unknown,

@@ -1,6 +1,7 @@
 import {
   assertHistoricalDegradedRecoveryXBackfillReceipt,
   historicalDegradedRecoveryEvidencePath,
+  historicalDegradedRecoveryExpectedDataset,
   historicalDegradedRecoveryReason,
   prepareHistoricalDegradedRecoveryAuthority,
   sha256,
@@ -9,6 +10,11 @@ import {
 } from "./reader-summary-historical-degraded-recovery-authority";
 
 describe("historical degraded recovery authority", () => {
+  it("rejects inherited property names as recovery dates", () => {
+    expect(() => historicalDegradedRecoveryExpectedDataset("constructor"))
+      .toThrow("not allowlisted");
+  });
+
   it.each([
     ["2026-08-18", 277],
     ["2026-08-19", 303],

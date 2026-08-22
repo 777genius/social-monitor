@@ -4,6 +4,7 @@ import {
   mkdirSync,
   mkdtempSync,
   renameSync,
+  statSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -126,6 +127,27 @@ describe("recovery evidence descriptor-anchored filesystem", () => {
       label: "fixture authority",
       bytes: Buffer.from("divergent\n"),
     })).toThrow("different bytes");
+  });
+
+  it("normalizes a restrictive umask before validating the new file", () => {
+    const directory = secureTemporaryDirectory("evidence-restrictive-umask-");
+    const filesystem = createRecoveryEvidenceFilesystemTestHarness(directory);
+    const exact = Buffer.from("exact canonical bytes\n");
+    const previousUmask = process.umask(0o777);
+    try {
+      expect(filesystem.install({
+        relativePath: "authority.json",
+        label: "fixture authority",
+        bytes: exact,
+      })).toBe("installed");
+    } finally {
+      process.umask(previousUmask);
+    }
+    expect(statSync(join(directory, "authority.json")).mode & 0o7777).toBe(0o400);
+    expect(filesystem.read({
+      relativePath: "authority.json",
+      label: "fixture authority",
+    })).toEqual(exact);
   });
 
   it("fixes production evidence to the uid-1000 artifact root", () => {
