@@ -14,6 +14,14 @@ export type HistoricalDegradedRecoveryPublicationBinding = Readonly<{
   readerSummaryJobId: string;
   readerSummaryArtifactId: string;
   outboxEventId: string;
+  outboxEventType: string;
+  outboxSchemaVersion: number;
+  outboxTenantId: string;
+  outboxWorkspaceId: string;
+  outboxPayloadJson: string;
+  outboxCorrelationId: string;
+  outboxCausationId: string;
+  outboxCreatedAt: string;
   periodKey: string;
   requestedUtcDate: string;
   requestedAt: string;
@@ -32,6 +40,8 @@ export type HistoricalDegradedRecoveryPublicationBinding = Readonly<{
 type PublicationSlotState = Readonly<{
   publicationCount: number;
   exactPublicationCount: number;
+  exactOutboxCount: number;
+  completedCandidateCount: number;
   slotCount: number;
   currentPublicationId: string | null;
 }>;
@@ -44,11 +54,26 @@ export const historicalDegradedRecoveryPublicationBinding = (
     publication,
     provenance: command.provenance,
   });
+  const readyEvent = publication.readyEvent;
+  const outboxPayload = {
+    ...(readyEvent.payload as Readonly<Record<string, unknown>>),
+    publicationProof: publication.exactProof,
+    reportSha256: publication.reportSha256,
+    proofSha256: publication.proofSha256,
+  };
   return Object.freeze({
     publicationId: publication.readerSummaryArtifactId,
     readerSummaryJobId: publication.readerSummaryJobId,
     readerSummaryArtifactId: publication.readerSummaryArtifactId,
     outboxEventId: command.publication.readyEvent.eventId,
+    outboxEventType: String(readyEvent.eventType),
+    outboxSchemaVersion: Number(readyEvent.schemaVersion),
+    outboxTenantId: publication.tenantId,
+    outboxWorkspaceId: publication.workspaceId,
+    outboxPayloadJson: JSON.stringify(outboxPayload),
+    outboxCorrelationId: String(readyEvent.correlationId),
+    outboxCausationId: String(readyEvent.causationId),
+    outboxCreatedAt: publication.publishedAt,
     periodKey: publication.periodKey,
     requestedUtcDate: publication.requestedUtcDate,
     requestedAt: publication.requestedAt,
@@ -72,9 +97,13 @@ export const assertHistoricalDegradedRecoveryPublicationSlot = (
   if (
     !Number.isSafeInteger(state.publicationCount) ||
     !Number.isSafeInteger(state.exactPublicationCount) ||
+    !Number.isSafeInteger(state.exactOutboxCount) ||
+    !Number.isSafeInteger(state.completedCandidateCount) ||
     !Number.isSafeInteger(state.slotCount) ||
     state.publicationCount < 0 ||
     state.exactPublicationCount < 0 ||
+    state.exactOutboxCount < 0 ||
+    state.completedCandidateCount < 0 ||
     state.slotCount < 0
   ) {
     throw new Error("Historical degraded recovery publication slot reader failed");
@@ -82,6 +111,8 @@ export const assertHistoricalDegradedRecoveryPublicationSlot = (
   if (
     state.publicationCount === 0 &&
     state.exactPublicationCount === 0 &&
+    state.exactOutboxCount === 0 &&
+    state.completedCandidateCount === 0 &&
     state.currentPublicationId === null
   ) {
     return "empty";
@@ -89,13 +120,15 @@ export const assertHistoricalDegradedRecoveryPublicationSlot = (
   if (
     state.publicationCount === 1 &&
     state.exactPublicationCount === 1 &&
+    state.exactOutboxCount === 1 &&
+    state.completedCandidateCount === 1 &&
     state.slotCount === 1 &&
     state.currentPublicationId === expectedPublicationId
   ) {
     return "replay";
   }
   throw new Error(
-    "Historical degraded recovery requires an empty slot or the exact publication and recovery receipt",
+    "Historical degraded recovery requires an empty slot or the exact terminal publication, outbox event, and recovery receipt",
   );
 };
 
@@ -151,6 +184,33 @@ export const verifyHistoricalDegradedRecoveryPublicationSlot = async (params: {
           AND receipt.receipt_sha256 = ${params.binding.receiptSha256}
           AND receipt.recorded_at = ${params.binding.publishedAt}::TIMESTAMPTZ)
         AS "exactPublicationCount",
+      (SELECT count(*)::INTEGER
+         FROM outbox_events AS event
+        WHERE event.id = ${params.binding.outboxEventId}::UUID
+          AND event.message_kind = 'EVENT'
+          AND event.event_type = ${params.binding.outboxEventType}
+          AND event.schema_version = ${params.binding.outboxSchemaVersion}
+          AND event.tenant_id = ${params.binding.outboxTenantId}::UUID
+          AND event.workspace_id = ${params.binding.outboxWorkspaceId}::UUID
+          AND event.payload = ${params.binding.outboxPayloadJson}::JSONB
+          AND event.correlation_id = ${params.binding.outboxCorrelationId}
+          AND event.causation_id = ${params.binding.outboxCausationId}
+          AND event.created_at = ${params.binding.outboxCreatedAt}::TIMESTAMPTZ)
+        AS "exactOutboxCount",
+      (SELECT count(*)::INTEGER
+         FROM reader_summary_jobs AS job
+         JOIN reader_summary_artifacts AS artifact
+           ON artifact.id = job.reader_summary_artifact_id
+          AND artifact.tenant_id = job.tenant_id
+          AND artifact.workspace_id = job.workspace_id
+        WHERE job.id = ${params.binding.readerSummaryJobId}::UUID
+          AND job.tenant_id = ${params.binding.outboxTenantId}::UUID
+          AND job.workspace_id = ${params.binding.outboxWorkspaceId}::UUID
+          AND job.status = 'COMPLETED'
+          AND job.completed_at = ${params.binding.publishedAt}::TIMESTAMPTZ
+          AND job.reader_summary_artifact_id =
+            ${params.binding.readerSummaryArtifactId}::UUID
+          AND artifact.status = 'COMPLETED') AS "completedCandidateCount",
       (SELECT count(*)::INTEGER
          FROM reader_summary_publication_slots AS slot
         WHERE slot.tenant_id = ${historicalDegradedRecoveryTenantId}::UUID

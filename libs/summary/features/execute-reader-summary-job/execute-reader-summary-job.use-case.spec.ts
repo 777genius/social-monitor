@@ -320,7 +320,7 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
     );
   });
 
-  it("publishes bounded historical omission with public limited-source quality", async () => {
+  it("preserves provider failure while disclosing historical limited sources", async () => {
     const tenant = tenantId("tenant-reader-summary-use-case");
     const workspace = workspaceId("workspace-reader-summary-use-case");
     const jobs = new FakeReaderSummaryJobRepository();
@@ -395,11 +395,11 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
         checkedAt: new Date("2026-06-28T08:05:00.000Z"),
       }),
     ).toMatchObject({
-      qualityFlags: ["limited_sources"],
+      qualityFlags: ["provider_failed", "limited_sources"],
       content: {
         qualityState: {
-          status: "limited_sources",
-          flags: ["limited_sources"],
+          status: "failed_provider",
+          flags: ["provider_failed", "limited_sources"],
         },
       },
     });

@@ -144,6 +144,77 @@ describe("PrismaReaderSummaryRecoveryFinalization", () => {
     expect(queryRaw).not.toHaveBeenCalled();
   });
 
+  it("stages the exact candidate inside the finalization transaction", async () => {
+    const fixture = createCandidateFixture();
+    mockPublicationPayload(fixture.publicationPayload);
+    const queryRaw = jest.fn(async (...args: readonly unknown[]) =>
+      String(args[0]).includes("artifact_insert")
+        ? [{ candidateExact: true }]
+        : sqlOutcome(args, "published"),
+    );
+    const finalization = new PrismaReaderSummaryRecoveryFinalization(
+      prismaClient(recoveryFinalizationTransaction(queryRaw), queryRaw),
+    );
+
+    await expect(finalization.finalize(fixture.command)).resolves.toBe(
+      "published",
+    );
+    expect(queryRaw).toHaveBeenCalledTimes(2);
+    expect(String(queryRaw.mock.calls[0]?.[0])).toContain("artifact_insert");
+    expect(String(queryRaw.mock.calls[0]?.[0])).toContain("job_insert");
+    expect(String(queryRaw.mock.calls[1]?.[0])).toContain(
+      "finalize_reader_summary_recovery",
+    );
+  });
+
+  it("rejects competing authority or divergent pre-existing candidates", async () => {
+    const fixture = createCandidateFixture();
+    mockPublicationPayload(fixture.publicationPayload);
+    const queryRaw = jest.fn(async () => [{ candidateExact: false }]);
+    const finalization = new PrismaReaderSummaryRecoveryFinalization(
+      prismaClient(recoveryFinalizationTransaction(queryRaw), queryRaw),
+    );
+
+    await expect(finalization.finalize(fixture.command)).rejects.toThrow(
+      "candidate conflicts with durable state",
+    );
+    expect(queryRaw).toHaveBeenCalledTimes(1);
+  });
+
+  it("rolls candidate staging back when finalization partially fails", async () => {
+    const fixture = createCandidateFixture();
+    mockPublicationPayload(fixture.publicationPayload);
+    const durableCandidates: string[] = [];
+    const queryRaw = jest.fn(async (...args: readonly unknown[]) => {
+      if (String(args[0]).includes("artifact_insert")) {
+        durableCandidates.push(fixture.publicationPayload.readerSummaryJobId);
+        return [{ candidateExact: true }];
+      }
+      throw new Error("fixture finalization partial failure");
+    });
+    const transaction = jest.fn(async <TValue>(
+      operation: (client: { readonly $queryRaw: typeof queryRaw }) => Promise<TValue>,
+      options?: PrismaSummaryTransactionOptions,
+    ): Promise<TValue> => {
+      expect(options).toEqual(expectedRecoveryFinalizationTransactionOptions);
+      const snapshot = [...durableCandidates];
+      try {
+        return await operation({ $queryRaw: queryRaw });
+      } catch (error) {
+        durableCandidates.splice(0, Infinity, ...snapshot);
+        throw error;
+      }
+    });
+    const finalization = new PrismaReaderSummaryRecoveryFinalization(
+      prismaClient(transaction, queryRaw),
+    );
+
+    await expect(finalization.finalize(fixture.command)).rejects.toThrow(
+      "partial failure",
+    );
+    expect(durableCandidates).toEqual([]);
+  });
+
   it("fails closed when PostgreSQL rejects conflicting provenance", async () => {
     const fixture = createFixture();
     mockPublicationPayload(fixture.publicationPayload);
@@ -163,7 +234,8 @@ describe("PrismaReaderSummaryRecoveryFinalization", () => {
   it("fails closed when the durable artifact authority is absent", async () => {
     const fixture = createFixture();
     mockPublicationPayload(fixture.publicationPayload);
-    const queryRaw = jest.fn(async (..._args: readonly unknown[]) => {
+    const queryRaw = jest.fn(async (...args: readonly unknown[]) => {
+      void args;
       throw new Error(
         "reader summary publication artifact authority is invalid",
       );
@@ -485,6 +557,25 @@ const createFixture = (): {
     command: {
       publication,
       provenance,
+    },
+  };
+};
+
+const createCandidateFixture = (): ReturnType<typeof createFixture> => {
+  const fixture = createFixture();
+  const finalJob = fixture.command.publication.finalJob.toSnapshot();
+  return {
+    ...fixture,
+    command: {
+      ...fixture.command,
+      candidate: {
+        runningJob: ReaderSummaryJob.rehydrate({
+          ...finalJob,
+          status: "running",
+          completedAt: undefined,
+          readerSummaryId: undefined,
+        }),
+      },
     },
   };
 };

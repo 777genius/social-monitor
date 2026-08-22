@@ -9,8 +9,6 @@ import {
   type ReaderSummaryReadyEvent,
 } from "@social-monitor/summary/domain";
 import type {
-  ReaderSummaryArtifactRepositoryPort,
-  ReaderSummaryJobRepositoryPort,
   ReaderSummaryRecoveryFinalizationCommand,
   ReaderSummaryRecoveryFinalizationPort,
 } from "@social-monitor/summary/ports";
@@ -55,8 +53,6 @@ export const executeHistoricalDegradedRecovery = async (params: Readonly<{
   authoritySha256: string;
   files: HistoricalDegradedRecoveryFiles;
   liveVerifier: HistoricalDegradedRecoveryLiveVerifier;
-  artifacts: Pick<ReaderSummaryArtifactRepositoryPort, "save">;
-  jobs: Pick<ReaderSummaryJobRepositoryPort, "save">;
   finalization: ReaderSummaryRecoveryFinalizationPort;
 }>): Promise<Readonly<{
   outcome: "published" | "replayed";
@@ -79,20 +75,11 @@ export const executeHistoricalDegradedRecovery = async (params: Readonly<{
     authoritySha256: params.authoritySha256,
     live,
   });
-  const { artifact, publicationDecision, githubProjectionAudit } =
-    built.command.publication;
-  const slotOutcome = await params.liveVerifier.verifyPublicationSlot({
+  await params.liveVerifier.verifyPublicationSlot({
     authority,
     authoritySha256: params.authoritySha256,
     command: built.command,
   });
-  if (slotOutcome === "empty") {
-    await params.artifacts.save(artifact, {
-      publicationDecision,
-      githubProjectionAudit,
-    });
-    await params.jobs.save(built.runningJob);
-  }
   const outcome = await params.finalization.finalize(built.command);
   return Object.freeze({
     outcome,
@@ -189,6 +176,7 @@ export const buildHistoricalDegradedRecoveryCommand = (params: Readonly<{
       readyEvent,
     },
     provenance: recoveryProvenance(authority, params.authoritySha256),
+    candidate: { runningJob },
   };
   return Object.freeze({ command, identities, runningJob });
 };

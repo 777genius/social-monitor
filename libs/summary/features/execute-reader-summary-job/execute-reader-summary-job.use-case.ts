@@ -357,8 +357,7 @@ export class ExecuteReaderSummaryJobUseCase {
             ...draftWithContext,
             qualityFlags: [
               ...draftWithContext.qualityFlags.filter(
-                (flag) =>
-                  flag !== "provider_failed" && flag !== "limited_sources",
+                (flag) => flag !== "limited_sources",
               ),
               this.historicalGitHubOmission.readerQuality,
             ],

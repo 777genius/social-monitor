@@ -4,14 +4,10 @@ import {
   defaultPostgresRuntimePoolConfig,
   runWithTenantDatabaseAccess,
 } from "@social-monitor/platform-persistence";
-import { GrpcAgentRuntimeClient } from "@social-monitor/summary/adapters/model/grpc-agent-runtime-client";
-import { PrismaReaderSummaryArtifactRepository } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-artifact.repository";
-import { PrismaReaderSummaryJobRepository } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-job.repository";
 import {
   PrismaReaderSummaryRecoveryFinalization,
 } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-recovery-finalization";
 import { PrismaSummaryConnection } from "@social-monitor/summary/adapters/persistence/prisma/prisma-summary-connection";
-import { SystemClock } from "@social-monitor/shared-kernel";
 
 import { loadDotenvIfPresent } from "./lib/env-file";
 import {
@@ -33,7 +29,6 @@ import {
   historicalDegradedRecoveryPublicationBinding,
   type HistoricalDegradedRecoveryPublicationBinding,
 } from "./lib/reader-summary-historical-degraded-recovery-slot";
-import { resolveReaderSummaryServingAuthority } from "./lib/reader-summary-serving-authority";
 
 type Command = "prepare" | "run" | "verify";
 
@@ -60,21 +55,6 @@ async function main(): Promise<void> {
   const connection = await PrismaSummaryConnection.create(
     defaultPostgresRuntimePoolConfig(databaseUrl, "daily-runner"),
   );
-  const runtimeClient = GrpcAgentRuntimeClient.connect({
-    address: requiredEnv("AGENT_RUNTIME_GRPC_ADDRESS"),
-    clock: new SystemClock(),
-    options: {
-      timeoutMs: 5_000,
-      serviceToken: optionalEnv("AGENT_RUNTIME_SERVICE_TOKEN"),
-    },
-  });
-  const readServingAuthority = () => resolveReaderSummaryServingAuthority({
-    summaryModelMode: "agent-runtime",
-    topicLabelerMode: "deterministic",
-    env: process.env,
-    agentRuntimeClient: runtimeClient,
-    checkedAt: new Date().toISOString(),
-  });
   try {
     await runWithTenantDatabaseAccess(
       {
@@ -82,10 +62,7 @@ async function main(): Promise<void> {
         workspaceId: historicalDegradedRecoveryWorkspaceId,
       },
       async () => {
-        const verifier = new PrismaHistoricalDegradedRecoveryLiveVerifier(
-          connection,
-          readServingAuthority,
-        );
+        const verifier = new PrismaHistoricalDegradedRecoveryLiveVerifier(connection);
         if (command === "prepare") {
           const authorizedAt = new Date();
           const prepared = prepareHistoricalDegradedRecoveryAuthority(
@@ -138,7 +115,6 @@ async function main(): Promise<void> {
           async (transaction, command) => {
             const guarded = new PrismaHistoricalDegradedRecoveryLiveVerifier(
               transaction,
-              readServingAuthority,
             );
             await guarded.verify({ authority, authoritySha256, files });
             await guarded.verifyPublicationSlot({
@@ -153,8 +129,6 @@ async function main(): Promise<void> {
           authoritySha256,
           files,
           liveVerifier: verifier,
-          artifacts: new PrismaReaderSummaryArtifactRepository(connection),
-          jobs: new PrismaReaderSummaryJobRepository(connection),
           finalization,
         });
         console.log(`outcome=${outcome.outcome}`);
@@ -198,11 +172,15 @@ const verifyPublishedRecovery = async (
       ON receipt.publication_id = publication.id
     JOIN reader_summary_artifacts AS recovered_artifact
       ON recovered_artifact.id = publication.reader_summary_artifact_id
+    JOIN reader_summary_jobs AS recovered_job
+      ON recovered_job.id = publication.reader_summary_job_id
+     AND recovered_job.tenant_id = publication.tenant_id
+     AND recovered_job.workspace_id = publication.workspace_id
     JOIN reader_summary_jobs AS source_job
       ON source_job.id = ${authority.source.jobId}::UUID
     JOIN reader_summary_artifacts AS source_artifact
       ON source_artifact.id = ${authority.source.artifactId}::UUID
-    LEFT JOIN outbox_events AS event ON event.id = publication.outbox_event_id
+    JOIN outbox_events AS event ON event.id = publication.outbox_event_id
     WHERE publication.id = ${identities.artifactId}::UUID
       AND publication.tenant_id = ${historicalDegradedRecoveryTenantId}::UUID
       AND publication.workspace_id = ${historicalDegradedRecoveryWorkspaceId}::UUID
@@ -219,6 +197,20 @@ const verifyPublishedRecovery = async (
       AND publication.proof_sha256 = ${binding.proofSha256}
       AND publication.exact_proof = ${binding.exactProofJson}::JSONB
       AND publication.published_at = ${binding.publishedAt}::TIMESTAMPTZ
+      AND recovered_job.status = 'COMPLETED'
+      AND recovered_job.completed_at = ${binding.publishedAt}::TIMESTAMPTZ
+      AND recovered_job.reader_summary_artifact_id =
+        ${binding.readerSummaryArtifactId}::UUID
+      AND recovered_artifact.status = 'COMPLETED'
+      AND event.message_kind = 'EVENT'
+      AND event.event_type = ${binding.outboxEventType}
+      AND event.schema_version = ${binding.outboxSchemaVersion}
+      AND event.tenant_id = ${binding.outboxTenantId}::UUID
+      AND event.workspace_id = ${binding.outboxWorkspaceId}::UUID
+      AND event.payload = ${binding.outboxPayloadJson}::JSONB
+      AND event.correlation_id = ${binding.outboxCorrelationId}
+      AND event.causation_id = ${binding.outboxCausationId}
+      AND event.created_at = ${binding.outboxCreatedAt}::TIMESTAMPTZ
       AND receipt.reader_summary_job_id = ${binding.readerSummaryJobId}::UUID
       AND receipt.reader_summary_artifact_id = ${binding.readerSummaryArtifactId}::UUID
       AND receipt.recovery_kind = 'SUMMARY_ONLY'
@@ -315,7 +307,7 @@ summary. Before prepare, the operator must separately retain and review the
 immutable additive X-backfill receipt (72 for Aug 18; 77 new for Aug 19); the
 closed generic recovery provenance schema has no collection-evidence-set field.
 
-Prepare (read-only DB/runtime capture; create-only authority install):
+Prepare (read-only DB capture; create-only authority install):
   npm run reader-summary:historical-degraded-recovery -- prepare --date DATE --authority DIR/DATE/authority.json --collection-artifact FILE --collection-quality-report FILE --dataset-manifest FILE
 
 Run (new job/artifact/publication only; same authority is idempotent):

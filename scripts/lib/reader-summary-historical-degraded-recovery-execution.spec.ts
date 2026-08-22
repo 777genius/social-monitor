@@ -1,4 +1,5 @@
 import { ReaderSummaryArtifact } from "@social-monitor/summary/domain";
+import type { ReaderSummaryJob } from "@social-monitor/summary/domain";
 import { githubBoardArtifact } from "@social-monitor/summary/domain/policies/reader-summary-github-projection-policy.spec-support";
 import type { ReaderSummaryRecoveryFinalizationPort } from "@social-monitor/summary/ports";
 import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
@@ -19,20 +20,12 @@ describe("historical degraded recovery execution", () => {
     const sourceBefore = source.toSnapshot();
     const files = fixtureFiles();
     const prepared = authorityFor(source, files);
-    const persistedArtifacts: ReaderSummaryArtifact[] = [];
-    const persistedJobs: unknown[] = [];
     const finalization = new IdempotentFinalization();
     const input = {
       authorityBytes: prepared.bytes,
       authoritySha256: prepared.sha256,
       files,
       liveVerifier: liveVerifier(source),
-      artifacts: {
-        save: async (artifact: ReaderSummaryArtifact) => {
-          persistedArtifacts.push(artifact);
-        },
-      },
-      jobs: { save: async (job: unknown) => { persistedJobs.push(job); } },
       finalization,
     };
 
@@ -48,13 +41,10 @@ describe("historical degraded recovery execution", () => {
     expect(finalization.publicationCount).toBe(1);
     expect(finalization.outboxCount).toBe(1);
     expect(finalization.modelCallCount).toBe(0);
-    expect(persistedArtifacts).toHaveLength(1);
-    expect(persistedJobs).toHaveLength(1);
     expect(
-      (persistedJobs[0] as { toSnapshot(): { status: string } })
-        .toSnapshot().status,
+      finalization.lastCandidateJob?.toSnapshot().status,
     ).toBe("running");
-    expect(persistedArtifacts[0]!.toSnapshot().qualityFlags).toEqual([
+    expect(finalization.lastArtifact?.toSnapshot().qualityFlags).toEqual([
       "limited_sources",
     ]);
     expect(finalization.lastAudit).toMatchObject({
@@ -91,8 +81,6 @@ describe("historical degraded recovery execution", () => {
           datasetManifestBytes: Buffer.from("mutated"),
         },
         liveVerifier: liveVerifier(source),
-        artifacts: { save },
-        jobs: { save },
         finalization: new IdempotentFinalization(),
       }),
     ).rejects.toThrow("mutation");
@@ -116,8 +104,6 @@ describe("historical degraded recovery execution", () => {
         authoritySha256: prepared.sha256,
         files,
         liveVerifier,
-        artifacts: { save },
-        jobs: { save },
         finalization: new IdempotentFinalization(),
       }),
     ).rejects.toThrow("empty public slot");
@@ -142,8 +128,6 @@ describe("historical degraded recovery execution", () => {
       authoritySha256: prepared.sha256,
       files,
       liveVerifier: liveVerifier(contaminated),
-      artifacts: { save },
-      jobs: { save },
       finalization: new IdempotentFinalization(),
     })).rejects.toThrow("source contains GitHub evidence");
     expect(save).not.toHaveBeenCalled();
@@ -156,6 +140,8 @@ class IdempotentFinalization {
   modelCallCount = 0;
   lastAudit: unknown;
   lastDecision: unknown;
+  lastArtifact: ReaderSummaryArtifact | undefined;
+  lastCandidateJob: ReaderSummaryJob | undefined;
   lastReadyEvent:
     | Parameters<ReaderSummaryRecoveryFinalizationPort["finalize"]>[0]["publication"]["readyEvent"]
     | undefined;
@@ -167,6 +153,8 @@ class IdempotentFinalization {
     const current = command.provenance.priorCollectionProof.sourceAttempt.sha256;
     this.lastAudit = command.publication.githubProjectionAudit;
     this.lastDecision = command.publication.publicationDecision;
+    this.lastArtifact = command.publication.artifact;
+    this.lastCandidateJob = command.candidate?.runningJob;
     this.lastReadyEvent = command.publication.readyEvent;
     if (this.identity === undefined) {
       this.identity = current;

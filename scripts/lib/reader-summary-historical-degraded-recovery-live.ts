@@ -50,17 +50,16 @@ type SlotRow = Readonly<{
 
 type UniqueRow = Readonly<{ uniqueCount: number }>;
 
-export type HistoricalDegradedRecoveryServingAuthorityReader = () =>
-  Promise<Readonly<Record<string, unknown>>>;
+const noModelCallServingContext = Object.freeze({
+  relevance: "informational",
+  modelCall: "not_required",
+  recoveryKind: "historical-degraded-summary-reuse",
+});
 
 export class PrismaHistoricalDegradedRecoveryLiveVerifier
   implements HistoricalDegradedRecoveryLiveVerifier
 {
-  constructor(
-    private readonly client: PrismaReaderSummaryClient,
-    private readonly readServingAuthority:
-      HistoricalDegradedRecoveryServingAuthorityReader,
-  ) {}
+  constructor(private readonly client: PrismaReaderSummaryClient) {}
 
   async capture(params: Readonly<{
     requestedUtcDate: string;
@@ -111,7 +110,7 @@ export class PrismaHistoricalDegradedRecoveryLiveVerifier
       datasetManifestBytes: params.files.datasetManifestBytes,
       dataset,
       githubZero,
-      servingAuthority: await this.readServingAuthority(),
+      servingAuthority: noModelCallServingContext,
       authorizedAt: params.authorizedAt,
     };
   }

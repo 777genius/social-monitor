@@ -1,5 +1,7 @@
 import {
   chmodSync,
+  chownSync,
+  lstatSync,
   mkdtempSync,
   mkdirSync,
   readFileSync,
@@ -66,6 +68,9 @@ describe("historical degraded recovery authority", () => {
     expect(installHistoricalDegradedRecoveryAuthority({ path, bytes: first.bytes }))
       .toBe("replayed");
     expect(readFileSync(path)).toEqual(first.bytes);
+    expect(lstatSync(path).mode & 0o7777).toBe(0o400);
+    expect(readSecureHistoricalDegradedRecoveryFile(path, "authority"))
+      .toEqual(first.bytes);
     expect(() =>
       installHistoricalDegradedRecoveryAuthority({ path, bytes: different.bytes }),
     ).toThrow("different bytes");
@@ -105,7 +110,7 @@ describe("historical degraded recovery authority", () => {
     );
   });
 
-  it("rejects symlinked and writable authority replay files", () => {
+  it("rejects symlinked, non-0400, and non-regular evidence files", () => {
     const directory = mkdtempSync(join(tmpdir(), "historical-degraded-input-"));
     const target = join(directory, "target.json");
     const link = join(directory, "authority.json");
@@ -117,12 +122,18 @@ describe("historical degraded recovery authority", () => {
     expect(() => installHistoricalDegradedRecoveryAuthority({
       path: link,
       bytes: prepared.bytes,
-    })).toThrow("non-symlink");
+    })).toThrow(/non-symlink|changed while it was read/u);
     chmodSync(target, 0o620);
     expect(() => installHistoricalDegradedRecoveryAuthority({
       path: target,
       bytes: prepared.bytes,
-    })).toThrow("group/world writable");
+    })).toThrow("permissions must be exactly 0400");
+    const nonRegular = join(directory, "non-regular.json");
+    mkdirSync(nonRegular, { mode: 0o400 });
+    expect(() => readSecureHistoricalDegradedRecoveryFile(
+      nonRegular,
+      "dataset manifest",
+    )).toThrow("regular non-symlink file");
     const realDirectory = join(directory, "real-directory");
     const linkedDirectory = join(directory, "linked-directory");
     mkdirSync(realDirectory);
@@ -133,14 +144,56 @@ describe("historical degraded recovery authority", () => {
     expect(() => readSecureHistoricalDegradedRecoveryFile(
       join(linkedDirectory, "input.json"),
       "dataset manifest",
-    )).toThrow("path must not contain symlinks");
+    )).toThrow(/symbolic link|non-directory ancestor/u);
     expect(() => ensureSecureHistoricalDegradedRecoveryAuthorityParent(
       join(linkedDirectory, "nested", "authority.json"),
-    )).toThrow("must not contain symlinks");
+    )).toThrow(/symbolic link|non-directory ancestor/u);
     expect(() => installHistoricalDegradedRecoveryAuthority({
       path: join(linkedDirectory, "authority.json"),
       bytes: prepared.bytes,
-    })).toThrow("must not contain symlinks");
+    })).toThrow(/symbolic link|non-directory ancestor/u);
+  });
+
+  it("rejects unsafe writable and wrongly owned evidence parents", () => {
+    const directory = mkdtempSync(join(tmpdir(), "historical-degraded-parent-"));
+    const writableParent = join(directory, "writable");
+    mkdirSync(writableParent, { mode: 0o700 });
+    const input = join(writableParent, "input.json");
+    writeFileSync(input, "{}\n", { mode: 0o400 });
+    chmodSync(writableParent, 0o777);
+
+    expect(() => readSecureHistoricalDegradedRecoveryFile(
+      input,
+      "dataset manifest",
+    )).toThrow("directory permissions are unsafe");
+    expect(() => installHistoricalDegradedRecoveryAuthority({
+      path: join(writableParent, "authority.json"),
+      bytes: Buffer.from("exact\n"),
+    })).toThrow("directory permissions are unsafe");
+
+    if (process.geteuid?.() === 0) {
+      chmodSync(writableParent, 0o700);
+      if (chownToNobodyIfSupported(writableParent)) {
+        expect(() => readSecureHistoricalDegradedRecoveryFile(
+          input,
+          "dataset manifest",
+        )).toThrow("directory owner is unsafe");
+        chownSync(writableParent, 0, 0);
+      }
+    }
+  });
+
+  it("rejects wrongly owned 0400 evidence files when ownership is testable", () => {
+    if (process.geteuid?.() !== 0) return;
+    const directory = mkdtempSync(join(tmpdir(), "historical-degraded-owner-"));
+    const input = join(directory, "input.json");
+    writeFileSync(input, "{}\n", { mode: 0o400 });
+    if (!chownToNobodyIfSupported(input)) return;
+
+    expect(() => readSecureHistoricalDegradedRecoveryFile(
+      input,
+      "dataset manifest",
+    )).toThrow("owner must match the effective user");
   });
 
   it.each([
@@ -217,6 +270,23 @@ describe("historical degraded recovery authority", () => {
     ).toThrow("GitHub zero");
   });
 });
+
+const chownToNobodyIfSupported = (path: string): boolean => {
+  try {
+    chownSync(path, 65534, 65534);
+    return true;
+  } catch (error) {
+    if (
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      (error.code === "EINVAL" || error.code === "EPERM")
+    ) {
+      return false;
+    }
+    throw error;
+  }
+};
 
 const preparation = (
   requestedUtcDate: "2026-08-18" | "2026-08-19",

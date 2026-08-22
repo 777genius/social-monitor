@@ -3,6 +3,7 @@ import type { ReaderSummaryGitHubProjectionItem } from "@social-monitor/summary/
 import { sha256 } from "./reader-summary-historical-degraded-recovery-authority";
 import {
   buildHistoricalDegradedGitHubZero,
+  PrismaHistoricalDegradedRecoveryLiveVerifier,
   verifyHistoricalDegradedRecoveryInputArtifacts,
 } from "./reader-summary-historical-degraded-recovery-live";
 import { assertHistoricalDegradedRecoveryPublicationSlot } from "./reader-summary-historical-degraded-recovery-slot";
@@ -11,6 +12,12 @@ describe("historical degraded recovery live GitHub zero", () => {
   const startedAt = new Date("2026-08-18T00:00:00.000Z");
   const endedAt = new Date("2026-08-19T00:00:00.000Z");
   const observedThrough = new Date("2026-08-22T12:00:00.000Z");
+
+  it("does not require an available agent runtime to construct recovery verification", () => {
+    expect(() => new PrismaHistoricalDegradedRecoveryLiveVerifier(
+      {} as never,
+    )).not.toThrow();
+  });
 
   it("means zero rows touch the requested day, not zero later rows or bindings", () => {
     const result = {
@@ -187,27 +194,51 @@ describe("historical degraded recovery live GitHub zero", () => {
     expect(assertHistoricalDegradedRecoveryPublicationSlot({
       publicationCount: 0,
       exactPublicationCount: 0,
+      exactOutboxCount: 0,
+      completedCandidateCount: 0,
       slotCount: 1,
       currentPublicationId: null,
     }, publicationId)).toBe("empty");
     expect(assertHistoricalDegradedRecoveryPublicationSlot({
       publicationCount: 1,
       exactPublicationCount: 1,
+      exactOutboxCount: 1,
+      completedCandidateCount: 1,
       slotCount: 1,
       currentPublicationId: publicationId,
     }, publicationId)).toBe("replay");
     expect(() => assertHistoricalDegradedRecoveryPublicationSlot({
       publicationCount: 1,
       exactPublicationCount: 0,
+      exactOutboxCount: 1,
+      completedCandidateCount: 1,
       slotCount: 1,
       currentPublicationId: publicationId,
-    }, publicationId)).toThrow("exact publication and recovery receipt");
+    }, publicationId)).toThrow("exact terminal publication");
     expect(() => assertHistoricalDegradedRecoveryPublicationSlot({
       publicationCount: 1,
       exactPublicationCount: 1,
+      exactOutboxCount: 1,
+      completedCandidateCount: 1,
       slotCount: 1,
       currentPublicationId: "00000000-0000-7000-8000-000000000002",
-    }, publicationId)).toThrow("exact publication and recovery receipt");
+    }, publicationId)).toThrow("exact terminal publication");
+  });
+
+  it.each([
+    ["corrupt outbox content", { exactOutboxCount: 0 }],
+    ["non-COMPLETED recovery candidate", { completedCandidateCount: 0 }],
+  ])("rejects %s during replay verification", (_label, mutation) => {
+    const publicationId = "00000000-0000-7000-8000-000000000001";
+    expect(() => assertHistoricalDegradedRecoveryPublicationSlot({
+      publicationCount: 1,
+      exactPublicationCount: 1,
+      exactOutboxCount: 1,
+      completedCandidateCount: 1,
+      slotCount: 1,
+      currentPublicationId: publicationId,
+      ...mutation,
+    }, publicationId)).toThrow("exact terminal publication");
   });
 });
 

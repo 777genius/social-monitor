@@ -1,12 +1,9 @@
 import { createHash } from "node:crypto";
 import {
-  lstatSync,
-  mkdirSync,
-  readFileSync,
-  realpathSync,
-  writeFileSync,
-} from "node:fs";
-import { dirname, resolve } from "node:path";
+  ensureSecureRecoveryEvidenceParent,
+  installSecureRecoveryEvidenceFile,
+  readSecureRecoveryEvidenceFile,
+} from "./reader-summary-recovery-evidence-secure-file";
 
 export const historicalDegradedRecoveryAuthorityFormat =
   "reader-summary-historical-degraded-recovery-authority-v1";
@@ -209,80 +206,24 @@ export const prepareHistoricalDegradedRecoveryAuthority = (
 export const installHistoricalDegradedRecoveryAuthority = (params: {
   readonly path: string;
   readonly bytes: Buffer;
-}): "installed" | "replayed" => {
-  ensureSecureHistoricalDegradedRecoveryAuthorityParent(params.path);
-  try {
-    const existing = readSecureHistoricalDegradedRecoveryFile(
-      params.path,
-      "authority",
-    );
-    if (!existing.equals(params.bytes)) {
-      throw new Error("Historical degraded recovery authority already exists with different bytes");
-    }
-    return "replayed";
-  } catch (error) {
-    if (!isMissingFile(error)) throw error;
-  }
-  writeFileSync(params.path, params.bytes, { flag: "wx", mode: 0o400 });
-  return "installed";
-};
+}): "installed" | "replayed" =>
+  installSecureRecoveryEvidenceFile({
+    ...params,
+    label: "Historical degraded recovery authority",
+  });
 
 export const readSecureHistoricalDegradedRecoveryFile = (
   path: string,
   label: string,
-): Buffer => {
-  const stat = lstatSync(path);
-  if (!stat.isFile() || stat.isSymbolicLink()) {
-    throw new Error(`Historical degraded recovery ${label} must be a regular non-symlink file`);
-  }
-  if (realpathSync(path) !== resolve(path)) {
-    throw new Error(
-      `Historical degraded recovery ${label} path must not contain symlinks`,
-    );
-  }
-  if ((stat.mode & 0o022) !== 0) {
-    throw new Error(`Historical degraded recovery ${label} must not be group/world writable`);
-  }
-  return readFileSync(path);
-};
+): Buffer =>
+  readSecureRecoveryEvidenceFile({
+    path,
+    label: `Historical degraded recovery ${label}`,
+  });
 
 export const ensureSecureHistoricalDegradedRecoveryAuthorityParent = (
   path: string,
-): void => {
-  const parent = dirname(resolve(path));
-  let existingAncestor = parent;
-  for (;;) {
-    try {
-      const stat = lstatSync(existingAncestor);
-      if (
-        !stat.isDirectory() ||
-        stat.isSymbolicLink() ||
-        realpathSync(existingAncestor) !== existingAncestor
-      ) {
-        throw new Error(
-          "Historical degraded recovery authority directory path must not contain symlinks",
-        );
-      }
-      break;
-    } catch (error) {
-      if (!isMissingFile(error)) throw error;
-      const next = dirname(existingAncestor);
-      if (next === existingAncestor) throw error;
-      existingAncestor = next;
-    }
-  }
-  mkdirSync(parent, { recursive: true, mode: 0o700 });
-  const created = lstatSync(parent);
-  if (
-    !created.isDirectory() ||
-    created.isSymbolicLink() ||
-    realpathSync(parent) !== parent
-  ) {
-    throw new Error(
-      "Historical degraded recovery authority directory path must not contain symlinks",
-    );
-  }
-};
+): void => ensureSecureRecoveryEvidenceParent(path);
 
 export const verifyHistoricalDegradedRecoveryAuthorityBytes = (params: {
   readonly bytes: Buffer;
@@ -388,12 +329,6 @@ const validIsoDate = (value: string): boolean => {
   const parsed = new Date(value);
   return Number.isFinite(parsed.getTime()) && parsed.toISOString() === value;
 };
-
-const isMissingFile = (error: unknown): boolean =>
-  typeof error === "object" &&
-  error !== null &&
-  "code" in error &&
-  error.code === "ENOENT";
 
 const exactAllowedDate = (value: string): HistoricalDegradedRecoveryDate => {
   if (!(value in allowedDays)) throw new Error("Historical degraded recovery date is not allowlisted");
