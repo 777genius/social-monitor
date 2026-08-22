@@ -350,10 +350,20 @@ export class ExecuteReaderSummaryJobUseCase {
     const draftWithContext = context.unavailable
       ? withReaderSummaryContextUnavailable(attempt.draft)
       : attempt.draft;
-    const draftWithContent = this.withReaderContent(
-      evidence,
-      draftWithContext,
-    );
+    const qualityDraft =
+      this.historicalGitHubOmission?.readerQuality === undefined
+        ? draftWithContext
+        : {
+            ...draftWithContext,
+            qualityFlags: [
+              ...draftWithContext.qualityFlags.filter(
+                (flag) =>
+                  flag !== "provider_failed" && flag !== "limited_sources",
+              ),
+              this.historicalGitHubOmission.readerQuality,
+            ],
+          };
+    const draftWithContent = this.withReaderContent(evidence, qualityDraft);
     const calibratedDraft = {
       ...draftWithContent,
       confidence: calibrateReaderSummaryConfidence({

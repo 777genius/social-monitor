@@ -157,6 +157,14 @@ describe("historical production-day regeneration", () => {
     });
   });
 
+  it("rejects omission when the exact-day dataset contains GitHub rows", () => {
+    const request = writeFixtures({ allowHistoricalGitHubOmission: true });
+
+    expect(() => loadHistoricalRegeneration(loadParams(request))).toThrow(
+      "Historical GitHub omission is forbidden when collected GitHub rows exist",
+    );
+  });
+
   function writeFixtures(
     options: {
       readonly collectionDate?: string;

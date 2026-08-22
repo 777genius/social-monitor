@@ -31,6 +31,8 @@ import {
 } from "./reader-summary-github-projection-set";
 import { maxGitHubTrendingDisplayRepositories } from "./reader-summary-github-trending-policy";
 
+export { githubProjectionItemTouchesDay } from "./reader-summary-github-projection-candidates";
+
 export {
   buildReaderSummaryGitHubProjectionCollectionTelemetry,
   exactUtcDay,

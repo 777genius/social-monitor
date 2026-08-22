@@ -185,7 +185,7 @@ describe("evaluateReaderSummaryPrepublication", () => {
     });
   });
 
-  it("permits only an explicit historical omission with no GitHub evidence", async () => {
+  it("permits historical omission with an eligible binding and only later rows", async () => {
     let readCount = 0;
     const artifact = artifactWithoutGitHubBoard();
     const decision = await evaluateReaderSummaryPrepublication({
@@ -195,17 +195,27 @@ describe("evaluateReaderSummaryPrepublication", () => {
       githubProjectionReader: {
         async read() {
           readCount += 1;
-          throw new Error("historical omission must not query projection");
+          return {
+            eligibleBindingIds: ["github-binding-a"],
+            items: githubProjectionInput({
+              fetchStartedAt: new Date("2026-07-11T00:01:00.000Z"),
+              checkedAt: new Date("2026-07-11T00:02:00.000Z"),
+              publishedAt: new Date("2026-07-11T00:02:00.000Z"),
+              observedAt: new Date("2026-07-11T00:03:00.000Z"),
+            }),
+            pageCount: 2,
+          };
         },
       },
       observedThrough,
       historicalGitHubOmission: {
         reason: "No timestamp-valid GitHub snapshot exists for this day.",
         authorizedAt: observedThrough,
+        readerQuality: "limited_sources",
       },
     });
 
-    expect(readCount).toBe(0);
+    expect(readCount).toBe(1);
     expect(decision.publicationDecision.status).toBe("published");
     expect(decision.githubProjectionAudit).toMatchObject({
       status: "not_required",
@@ -223,6 +233,184 @@ describe("evaluateReaderSummaryPrepublication", () => {
         audit: decision.githubProjectionAudit,
       }),
     ).toBe(true);
+  });
+
+  it("rejects observed_at omission when a checked-in-day Top10 is observed after midnight", async () => {
+    const afterMidnight = new Date("2026-07-11T00:05:00.000Z");
+    const decision = await evaluateReaderSummaryPrepublication({
+      artifact: artifactWithoutGitHubBoard(),
+      evidence: evidenceSelection,
+      publicationPolicy: publishingPolicy(),
+      githubProjectionReader: {
+        async read() {
+          return {
+            eligibleBindingIds: ["github-binding-a"],
+            items: githubProjectionInput({ observedAt: afterMidnight }),
+            pageCount: 2,
+          };
+        },
+      },
+      observedThrough,
+      historicalGitHubOmission: {
+        reason: "The observed-at manifest has no in-window GitHub rows.",
+        authorizedAt: observedThrough,
+        readerQuality: "limited_sources",
+      },
+    });
+
+    expect(decision.publicationDecision).toMatchObject({
+      status: "rejected",
+      reasonCodes: expect.arrayContaining(["github_projection_missing"]),
+    });
+    expect(decision.githubProjectionAudit).not.toHaveProperty(
+      "historicalOmission",
+    );
+    expect(decision.githubProjectionAudit.scannedItemCount).toBe(10);
+  });
+
+  it("fails closed when canonical zero cannot be read for omission", async () => {
+    const decision = await evaluateReaderSummaryPrepublication({
+      artifact: artifactWithoutGitHubBoard(),
+      evidence: evidenceSelection,
+      publicationPolicy: publishingPolicy(),
+      githubProjectionReader: unreachableProjectionReader(),
+      observedThrough,
+      historicalGitHubOmission: {
+        reason: "No timestamp-valid GitHub snapshot exists for this day.",
+        authorizedAt: observedThrough,
+        readerQuality: "limited_sources",
+      },
+    });
+
+    expect(decision.publicationDecision).toMatchObject({
+      status: "rejected",
+      reasonCodes: ["github_projection_unavailable"],
+    });
+  });
+
+  it("rejects a malformed requested-day row instead of omitting it", async () => {
+    const [completeItem] = githubProjectionInput({
+      observedAt: new Date("2026-07-11T00:05:00.000Z"),
+    });
+    const partialItem = { ...completeItem! };
+    delete partialItem.rank;
+    const decision = await evaluateReaderSummaryPrepublication({
+      artifact: artifactWithoutGitHubBoard(),
+      evidence: evidenceSelection,
+      publicationPolicy: publishingPolicy(),
+      githubProjectionReader: {
+        async read() {
+          return {
+            eligibleBindingIds: ["github-binding-a"],
+            items: [partialItem],
+            pageCount: 2,
+          };
+        },
+      },
+      observedThrough,
+      historicalGitHubOmission: {
+        reason: "No timestamp-valid GitHub snapshot exists for this day.",
+        authorizedAt: observedThrough,
+        readerQuality: "limited_sources",
+      },
+    });
+
+    expect(decision.publicationDecision.status).toBe("rejected");
+    expect(decision.githubProjectionAudit.violationCodes).toContain(
+      "github_projection_identity_invalid",
+    );
+    expect(decision.githubProjectionAudit).not.toHaveProperty(
+      "historicalOmission",
+    );
+  });
+
+  it.each([0, 1.5, Number.NaN])(
+    "rejects omission when canonical pageCount is invalid: %s",
+    async (pageCount) => {
+      const decision = await evaluateReaderSummaryPrepublication({
+        artifact: artifactWithoutGitHubBoard(),
+        evidence: evidenceSelection,
+        publicationPolicy: publishingPolicy(),
+        githubProjectionReader: {
+          async read() {
+            return { eligibleBindingIds: [], items: [], pageCount };
+          },
+        },
+        observedThrough,
+        historicalGitHubOmission: {
+          reason: "No timestamp-valid GitHub snapshot exists for this day.",
+          authorizedAt: observedThrough,
+          readerQuality: "limited_sources",
+        },
+      });
+
+      expect(decision.publicationDecision).toMatchObject({
+        status: "rejected",
+        reasonCodes: expect.arrayContaining(["github_projection_unavailable"]),
+      });
+      expect(decision.githubProjectionAudit).not.toHaveProperty(
+        "historicalOmission",
+      );
+    },
+  );
+
+  it.each([
+    [
+      new Date("2026-07-10T23:59:59.999Z"),
+      "No timestamp-valid GitHub snapshot exists for this day.",
+    ],
+    [
+      new Date("2026-07-11T02:00:00.000Z"),
+      "No timestamp-valid GitHub snapshot exists for this day.",
+    ],
+    [
+      new Date("2026-07-11T01:00:00.000Z"),
+      [
+        "authorization:",
+        ["Bear", "er"].join(""),
+        "placeholder",
+      ].join(" "),
+    ],
+  ])(
+    "rejects unsafe or out-of-bounds omission authorization: %s",
+    async (authorizedAt, reason) => {
+      const decision = await evaluateReaderSummaryPrepublication({
+        artifact: artifactWithoutGitHubBoard(),
+        evidence: evidenceSelection,
+        publicationPolicy: publishingPolicy(),
+        githubProjectionReader: unreachableProjectionReader(),
+        observedThrough,
+        historicalGitHubOmission: {
+          reason,
+          authorizedAt,
+          readerQuality: "limited_sources",
+        },
+      });
+
+      expect(decision.publicationDecision.status).toBe("rejected");
+    },
+  );
+
+  it("rejects omission for the UTC day still in progress", async () => {
+    const decision = await evaluateReaderSummaryPrepublication({
+      artifact: artifactWithoutGitHubBoard({
+        cadence: "daily",
+        startedAt: new Date("2026-07-11T00:00:00.000Z"),
+        endedAt: new Date("2026-07-12T00:00:00.000Z"),
+        periodKey: "daily:2026-07-11T00:00:00.000Z:2026-07-12T00:00:00.000Z:UTC",
+      }),
+      evidence: evidenceSelection,
+      publicationPolicy: publishingPolicy(),
+      githubProjectionReader: unreachableProjectionReader(),
+      observedThrough,
+      historicalGitHubOmission: {
+        reason: "No timestamp-valid GitHub snapshot exists for this day.",
+        authorizedAt: observedThrough,
+        readerQuality: "limited_sources",
+      },
+    });
+
+    expect(decision.publicationDecision.status).toBe("rejected");
   });
 
   it("fails closed without falling through to the ordinary projection reader when V4 provenance rejects", async () => {
