@@ -1,4 +1,7 @@
-import type { SummaryEvidenceSelection } from "@social-monitor/summary/domain";
+import {
+  buildReaderSummaryTopicMap,
+  type SummaryEvidenceSelection,
+} from "@social-monitor/summary/domain";
 
 import {
   omitGitHubEvidence,
@@ -21,6 +24,7 @@ describe("historical GitHub omission", () => {
     ).toEqual({
       reason: "No timestamp-valid GitHub snapshot exists.",
       authorizedAt,
+      readerQuality: "limited_sources",
     });
   });
 
@@ -45,20 +49,77 @@ describe("historical GitHub omission", () => {
     ).toThrow("one completed exact UTC day");
   });
 
-  it("removes GitHub evidence and its cluster while preserving social evidence", () => {
+  it("rebuilds a mixed cluster from its retained social evidence", () => {
     const selection = fixtureSelection();
     const omitted = omitGitHubEvidence(selection);
+    const retainedCluster = omitted.clusters[0];
 
     expect(omitted.selectedEvidence.map((item) => item.providerKey)).toEqual([
       "hacker-news",
     ]);
-    expect(omitted.clusters.map((cluster) => cluster.id)).toEqual([
-      "cluster-hn",
-    ]);
+    expect(retainedCluster).toMatchObject({
+      representativeFeedItemId: "feed-hn",
+      duplicateFeedItemIds: [],
+      interestIds: ["interest-ai"],
+      providerKeys: ["hacker-news"],
+      score: 1,
+      signalBreakdown: {
+        baseScore: 1,
+        crossProviderSupport: 0,
+        providerDiversityBoost: 0,
+        totalScore: 1,
+      },
+      observedAtRange: {
+        startedAt: new Date("2026-07-19T12:01:00.000Z"),
+        endedAt: new Date("2026-07-19T12:01:00.001Z"),
+      },
+      whyImportant: ["Relevant HN story"],
+    });
+    expect(retainedCluster?.id).toMatch(/^historical-retained:[a-f0-9]{64}$/u);
+    expect(retainedCluster?.storyKey).toMatch(
+      /^historical-retained:[a-f0-9]{64}$/u,
+    );
     expect(omitted.sourceWindow.selectedFeedItemIds).toEqual(["feed-hn"]);
-    expect(omitted.sourceWindow.storyClusterIds).toEqual(["cluster-hn"]);
+    expect(omitted.sourceWindow.storyClusterIds).toEqual([
+      retainedCluster?.id,
+    ]);
+    expect(omitted.sourceWindow.windowId).toMatch(
+      /^historical-github-omission:[a-f0-9]{64}$/u,
+    );
+    expect(omitted.sourceWindow).toMatchObject({
+      startedAt: new Date("2026-07-19T12:00:00.000Z"),
+      endedAt: new Date("2026-07-19T12:00:00.001Z"),
+    });
+
+    const topicMap = buildReaderSummaryTopicMap({
+      clusters: omitted.clusters,
+      selectedEvidence: omitted.selectedEvidence,
+      topStories: [],
+      citationMap: [
+        {
+          citationId: "citation-hn",
+          feedItemId: "feed-hn",
+          sourceItemId: "source-hn",
+          providerKey: "hacker-news",
+          field: "title",
+          canonicalUrl: "https://news.ycombinator.com/item?id=1",
+        },
+      ],
+    });
+    expect(topicMap.nodes).toEqual([
+      expect.objectContaining({
+        storyClusterIds: [retainedCluster?.id],
+        providerKeys: ["hacker-news"],
+        citationIds: ["citation-hn"],
+      }),
+    ]);
+    expect(JSON.stringify({ omitted, topicMap })).not.toContain(
+      githubSentinel,
+    );
   });
 });
+
+const githubSentinel = "GITHUB_ONLY_SENTINEL";
 
 const fixtureSelection = (): SummaryEvidenceSelection =>
   ({
@@ -68,36 +129,32 @@ const fixtureSelection = (): SummaryEvidenceSelection =>
       startedAt: new Date("2026-07-19T00:00:00.000Z"),
       endedAt: new Date("2026-07-20T00:00:00.000Z"),
       selectedFeedItemIds: ["feed-hn", "feed-github"],
-      storyClusterIds: ["cluster-hn", "cluster-github"],
+      storyClusterIds: ["cluster-mixed"],
     },
     clusters: [
       {
-        id: "cluster-hn",
-        storyKey: "hn-story",
-        representativeFeedItemId: "feed-hn",
-        duplicateFeedItemIds: [],
-        interestIds: ["interest-ai"],
-        providerKeys: ["hacker-news"],
-        score: 1,
-        observedAtRange: {
-          startedAt: new Date("2026-07-19T12:00:00.000Z"),
-          endedAt: new Date("2026-07-19T12:00:00.000Z"),
-        },
-        whyImportant: ["Relevant HN story"],
-      },
-      {
-        id: "cluster-github",
-        storyKey: "github-story",
+        id: `cluster-${githubSentinel}`,
+        storyKey: `github-repo:${githubSentinel}`,
+        rankingPolicyVersion: `ranking-${githubSentinel}`,
         representativeFeedItemId: "feed-github",
-        duplicateFeedItemIds: [],
-        interestIds: ["interest-ai"],
-        providerKeys: ["github-trending-page"],
-        score: 1,
-        observedAtRange: {
-          startedAt: new Date("2026-07-19T12:00:00.000Z"),
-          endedAt: new Date("2026-07-19T12:00:00.000Z"),
+        duplicateFeedItemIds: ["feed-hn"],
+        interestIds: [`interest-${githubSentinel}`, "interest-ai"],
+        providerKeys: ["github-trending-page", "hacker-news"],
+        score: 999,
+        signalBreakdown: {
+          baseScore: 999,
+          crossProviderSupport: 999,
+          sameProviderSupport: 999,
+          providerDiversityBoost: 999,
+          interestDiversityBoost: 999,
+          freshnessBoost: 999,
+          totalScore: 999,
         },
-        whyImportant: ["Trending repository"],
+        observedAtRange: {
+          startedAt: new Date("1999-01-01T00:00:00.000Z"),
+          endedAt: new Date("2099-01-01T00:00:00.000Z"),
+        },
+        whyImportant: [`Boosted by ${githubSentinel}`],
       },
     ],
     selectedEvidence: [
@@ -108,7 +165,9 @@ const fixtureSelection = (): SummaryEvidenceSelection =>
         interestId: "interest-ai",
         providerKey: "hacker-news",
         canonicalUrl: "https://news.ycombinator.com/item?id=1",
-        title: "HN story",
+        title: "Production monitoring runtime regression",
+        bodyPreview:
+          "Operators report a runtime regression in production monitoring.",
         publishedAt: new Date("2026-07-19T12:00:00.000Z"),
         observedAt: new Date("2026-07-19T12:01:00.000Z"),
         score: 1,

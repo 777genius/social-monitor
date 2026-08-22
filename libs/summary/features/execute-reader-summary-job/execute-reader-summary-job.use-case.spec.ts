@@ -12,6 +12,7 @@ import {
   type ReaderSummaryPublicationDecision,
   ReaderSummaryPublicationPolicy,
   ReaderSummaryJob,
+  primaryReaderSummaryEvidence,
   type ReaderSummaryPeriod,
   type ReaderSummaryPolicy,
   type SummaryEvidenceSelection,
@@ -19,6 +20,7 @@ import {
   workspaceReaderSummaryScope,
 } from "../../domain";
 import type { BuildReaderSummaryTopicMapUseCase } from "../build-reader-summary-topic-map/build-reader-summary-topic-map.use-case";
+import { presentReaderSummaryArtifact } from "../shared/reader-summary-artifact-presenter";
 import type {
   ListReaderSummaryPeriodSummariesResult,
   ProviderReaderSummaryAttempt,
@@ -318,7 +320,7 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
     );
   });
 
-  it("rebuilds reader content from evidence instead of trusting model content", async () => {
+  it("preserves provider failure while disclosing historical limited sources", async () => {
     const tenant = tenantId("tenant-reader-summary-use-case");
     const workspace = workspaceId("workspace-reader-summary-use-case");
     const jobs = new FakeReaderSummaryJobRepository();
@@ -331,7 +333,12 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
         tenantId: tenant,
         workspaceId: workspace,
         scope: workspaceReaderSummaryScope(),
-        period: readerSummaryPeriod,
+        period: {
+          ...readerSummaryPeriod,
+          cadence: "daily",
+          periodKey:
+            "daily:2026-06-26T00:00:00.000Z:2026-06-27T00:00:00.000Z:UTC",
+        },
         idempotencyKey: "reader-job-key-model-content",
         requestedAt: new Date("2026-06-26T08:00:00.000Z"),
       }),
@@ -343,7 +350,7 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
       new EmptyReaderSummaryPolicyRepository(),
       {
         async select() {
-          return makeReaderEvidenceSelection();
+          return primaryReaderSummaryEvidence(makeReaderEvidenceSelection());
         },
       },
       new CapturingReaderSummaryModel({
@@ -358,15 +365,22 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
             storyClusterId: "cluster-1",
           },
         ],
-      } as unknown as ProviderReaderSummaryAttempt["draft"]["content"]),
+      } as unknown as ProviderReaderSummaryAttempt["draft"]["content"], [
+        "provider_failed",
+      ]),
       new CapturingReaderSummaryPublication(jobs, artifacts, events),
       new StaticIdGenerator(),
-      new FixedClock(new Date("2026-06-26T08:05:00.000Z")),
+      new FixedClock(new Date("2026-06-28T08:05:00.000Z")),
       undefined,
       undefined,
       emptyTopicMapBuilder(),
       undefined,
       zeroEligibleGitHubProjectionReader(),
+      {
+        reason: "No timestamp-valid GitHub snapshot exists for this day.",
+        authorizedAt: new Date("2026-06-28T08:05:00.000Z"),
+        readerQuality: "limited_sources",
+      },
     ).execute({
       tenantId: tenant,
       workspaceId: workspace,
@@ -374,6 +388,27 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
     });
 
     expect(result.ok).toBe(true);
+    const artifact = artifacts.all()[0] as ReaderSummaryArtifact;
+    expect(
+      presentReaderSummaryArtifact(artifact, {
+        status: "fresh",
+        checkedAt: new Date("2026-06-28T08:05:00.000Z"),
+      }),
+    ).toMatchObject({
+      qualityFlags: ["provider_failed", "limited_sources"],
+      content: {
+        qualityState: {
+          status: "failed_provider",
+          flags: ["provider_failed", "limited_sources"],
+        },
+      },
+    });
+    expect(artifacts.audit()).toMatchObject({
+      status: "not_required",
+      historicalOmission: {
+        mode: "github_projection_unavailable_historical",
+      },
+    });
     expect(artifacts.all()[0]?.toSnapshot().content?.topReads[0]?.title).toBe(
       "Runtime regression discussion",
     );
@@ -568,6 +603,7 @@ class FakeReaderSummaryArtifactRepository implements ReaderSummaryArtifactReposi
   private readonly artifacts: ReaderSummaryArtifact[] = [];
   private readonly publicationDecisions: ReaderSummaryPublicationDecision[] =
     [];
+  private githubProjectionAudit: unknown;
 
   async save(
     artifact: ReaderSummaryArtifact,
@@ -577,6 +613,7 @@ class FakeReaderSummaryArtifactRepository implements ReaderSummaryArtifactReposi
     if (options?.publicationDecision !== undefined) {
       this.publicationDecisions.push(options.publicationDecision);
     }
+    this.githubProjectionAudit = options?.githubProjectionAudit;
   }
 
   async list(): Promise<
@@ -603,6 +640,10 @@ class FakeReaderSummaryArtifactRepository implements ReaderSummaryArtifactReposi
 
   decisions(): readonly ReaderSummaryPublicationDecision[] {
     return this.publicationDecisions;
+  }
+
+  audit(): unknown {
+    return this.githubProjectionAudit;
   }
 }
 
@@ -707,6 +748,7 @@ class CapturingReaderSummaryModel implements ReaderSummaryModelPort {
   constructor(
     private readonly generatedContent: ProviderReaderSummaryAttempt["draft"]["content"] =
       defaultGeneratedContent(),
+    private readonly qualityFlags: ProviderReaderSummaryAttempt["draft"]["qualityFlags"] = [],
   ) {}
 
   route(
@@ -786,7 +828,7 @@ class CapturingReaderSummaryModel implements ReaderSummaryModelPort {
             canonicalUrl: firstItem.canonicalUrl,
           },
         ],
-        qualityFlags: [],
+        qualityFlags: this.qualityFlags,
         confidence: {
           level: "medium",
           score: 0.7,
