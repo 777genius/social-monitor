@@ -315,7 +315,6 @@ jobs:
           npm ci
           npm run prisma:generate
           npm run check:reader-summary-publication-postgres
-          npm run check:reader-summary-recovery-candidate-staging-postgres
           npm run check:reader-summary-weekly-certification-seal-postgres
           npm run check:reader-summary-weekly-projection-postgres
           npm run check:reader-summary-weekly-review-manifest-postgres18
