@@ -17,6 +17,9 @@ grep -F '"$FLOCK_COMMAND" -w "$POSTGRES_ADMISSION_WAIT_SECONDS" 8' \
   "$DAILY_RUN" >/dev/null
 grep -Fx 'ExecStart=/var/data/social-monitor/control/daily-run.sh --yesterday' \
   "$DAILY_SERVICE" >/dev/null
+grep -F 'if [[ $DATE_FLAG == --yesterday && $DAILY_TEST_MODE != 1 ]]; then' \
+  "$DAILY_RUN" >/dev/null
+grep -F 'exec "$ROOT/control/rolling-run.sh"' "$DAILY_RUN" >/dev/null
 grep -Fx 'Unit=social-monitor-daily.service' "$DAILY_TIMER" >/dev/null
 grep -Fx 'Restart=no' "$DAILY_SERVICE" >/dev/null
 
