@@ -163,7 +163,7 @@ describe("PrismaReaderSummaryRecoveryFinalization", () => {
   it("fails closed when the durable artifact authority is absent", async () => {
     const fixture = createFixture();
     mockPublicationPayload(fixture.publicationPayload);
-    const queryRaw = jest.fn(async () => {
+    const queryRaw = jest.fn(async (..._args: readonly unknown[]) => {
       throw new Error(
         "reader summary publication artifact authority is invalid",
       );
