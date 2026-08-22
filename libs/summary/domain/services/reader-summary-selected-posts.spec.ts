@@ -185,6 +185,59 @@ describe("buildReaderSummarySelectedPosts", () => {
     );
     expect(posts).toHaveLength(10);
   });
+
+  it("preserves the exact GitHub Top 10 when a primary post links to one repository", () => {
+    const githubEvidenceItems = Array.from({ length: 10 }, (_, index) =>
+      githubEvidence(index + 1),
+    );
+    const duplicatePrimaryEvidence = {
+      ...evidence(),
+      feedItemId: "primary-duplicate-feed",
+      sourceItemId: "primary-duplicate-source",
+      canonicalUrl: githubEvidenceItems[2]!.canonicalUrl,
+      title: "Primary coverage of the third Trending repository",
+    };
+    const selectedEvidence = [
+      duplicatePrimaryEvidence,
+      ...githubEvidenceItems,
+    ];
+    const citationById = new Map<string, ReaderSummaryCitation>(
+      selectedEvidence.map(
+        (item, index) =>
+          [
+            `citation-${index + 1}`,
+            {
+              citationId: `citation-${index + 1}`,
+              feedItemId: item.feedItemId,
+              sourceItemId: item.sourceItemId,
+              providerKey: item.providerKey,
+              field: "canonicalUrl" as const,
+              canonicalUrl: item.canonicalUrl,
+            },
+          ] as const,
+      ),
+    );
+
+    const posts = buildReaderSummarySelectedPosts({
+      topReads: [],
+      citationById,
+      selectedEvidence,
+    });
+
+    expect(posts).toHaveLength(10);
+    expect(posts.map((post) => post.providerKey)).toEqual(
+      Array.from({ length: 10 }, () => "github-trending-page"),
+    );
+    expect(
+      posts.map((post) =>
+        Number(
+          post.providerMetrics
+            .find(({ label }) => label === "GitHub Trending today")
+            ?.value.match(/#(\d+)/u)?.[1],
+        ),
+      ),
+    ).toEqual(Array.from({ length: 10 }, (_, index) => index + 1));
+  });
 });
 
 const citation = (): ReaderSummaryCitation => ({

@@ -39,9 +39,18 @@ export const buildReaderSummarySelectedPosts = (params: {
       (citation) => [citation.feedItemId, citation] as const,
     ),
   );
-  const githubDisplayFeedItemIds = new Set(
-    selectGitHubTrendingDisplayRepositories(params.selectedEvidence ?? []).map(
-      (item) => item.feedItemId,
+  const githubDisplayRepositories = selectGitHubTrendingDisplayRepositories(
+    params.selectedEvidence ?? [],
+  );
+  const githubDisplayPosts = githubDisplayRepositories.flatMap((item) => {
+    const citation = citationByFeedItemId.get(item.feedItemId);
+    return citation === undefined
+      ? []
+      : [evidenceToSelectedPost(item, citation)];
+  });
+  const githubDisplayIdentityKeys = new Set(
+    githubDisplayPosts.flatMap((post) =>
+      readerItemIdentityKeys(post, params.citationById),
     ),
   );
   const posts: TopRead[] = [];
@@ -56,22 +65,29 @@ export const buildReaderSummarySelectedPosts = (params: {
     }
     posts.push(post);
   };
+  const pushUnlessReservedForGitHubDisplay = (post: TopRead): void => {
+    const keys = readerItemIdentityKeys(post, params.citationById);
+    if (keys.some((key) => githubDisplayIdentityKeys.has(key))) {
+      return;
+    }
+    push(post);
+  };
 
   for (const read of params.topReads) {
-    push(read);
+    pushUnlessReservedForGitHubDisplay(read);
   }
   for (const item of params.selectedEvidence ?? []) {
-    if (
-      isGitHubTrendingEvidence(item) &&
-      !githubDisplayFeedItemIds.has(item.feedItemId)
-    ) {
+    if (isGitHubTrendingEvidence(item)) {
       continue;
     }
     const citation = citationByFeedItemId.get(item.feedItemId);
     if (citation === undefined) {
       continue;
     }
-    push(evidenceToSelectedPost(item, citation));
+    pushUnlessReservedForGitHubDisplay(evidenceToSelectedPost(item, citation));
+  }
+  for (const post of githubDisplayPosts) {
+    push(post);
   }
 
   return posts;
