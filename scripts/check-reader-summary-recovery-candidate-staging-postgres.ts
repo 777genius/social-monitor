@@ -17,7 +17,7 @@ const suffix = randomBytes(10).toString("hex");
 const databaseName = `reader_summary_candidate_stage_${suffix}`;
 const serverUrl = requiredAdminUrl(process.env);
 const databaseUrl = withDatabase(serverUrl, databaseName);
-const server = new Pool({ connectionString: serverUrl, max: 1 });
+const server = new Pool({ connectionString: serverUrl, min: 0, max: 1 });
 let databaseCreated = false;
 
 const main = async (): Promise<void> => {
@@ -27,7 +27,7 @@ const main = async (): Promise<void> => {
   );
   await server.query(`CREATE DATABASE ${quoteIdentifier(databaseName)}`);
   databaseCreated = true;
-  const pool = new Pool({ connectionString: databaseUrl, max: 2 });
+  const pool = new Pool({ connectionString: databaseUrl, min: 0, max: 2 });
   try {
     await pool.query(schemaSql);
     await assertFreshFirstRunAndExactReplay(pool);

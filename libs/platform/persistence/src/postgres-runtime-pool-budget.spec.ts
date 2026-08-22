@@ -377,6 +377,8 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/check-reader-summary-publication-postgres.ts:Pool
       scripts/check-reader-summary-publication-postgres.ts:Pool
       scripts/check-reader-summary-quality-dashboard.ts:Pool
+      scripts/check-reader-summary-recovery-candidate-staging-postgres.ts:Pool
+      scripts/check-reader-summary-recovery-candidate-staging-postgres.ts:Pool
       scripts/check-reader-summary-source-quality-trace.ts:Pool
       scripts/check-reader-summary-top-read-ranking.ts:Pool
       scripts/check-reader-summary-topic-map-real-data.ts:Pool
@@ -453,6 +455,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/check-reader-summary-production-regeneration-smoke.ts
       scripts/check-reader-summary-publication-postgres.ts
       scripts/check-reader-summary-quality-dashboard.ts
+      scripts/check-reader-summary-recovery-candidate-staging-postgres.ts
       scripts/check-reader-summary-source-quality-trace.ts
       scripts/check-reader-summary-top-read-ranking.ts
       scripts/check-reader-summary-topic-map-real-data.ts
