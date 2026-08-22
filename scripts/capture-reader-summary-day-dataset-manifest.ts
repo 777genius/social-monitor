@@ -1,12 +1,13 @@
-import { chmodSync, writeFileSync } from "node:fs";
-
 import { defaultPostgresRuntimePoolConfig } from "@social-monitor/platform-persistence";
 import { PrismaSummaryConnection } from "@social-monitor/summary/adapters/persistence/prisma/prisma-summary-connection";
 import type { ReaderSummaryTimestampPolicy } from "@social-monitor/summary/ports";
 
 import { captureReaderSummaryDayDatasetManifest } from "./lib/reader-summary-day-dataset-manifest";
 import { loadDotenvIfPresent } from "./lib/env-file";
-import { assertRecoveryOutputPath } from "./lib/reader-summary-recovery-files";
+import {
+  historicalDegradedRecoveryEvidencePath,
+  installHistoricalDegradedRecoveryEvidence,
+} from "./lib/reader-summary-historical-degraded-recovery-authority";
 import { readProductionDayScope } from "./lib/reader-summary-production-day-scope";
 import {
   nextDate,
@@ -14,21 +15,22 @@ import {
   yesterdaySocialQualityDatabaseUrl,
 } from "./lib/yesterday-social-replay-support";
 
-loadDotenvIfPresent(".env");
-
-void main().catch((error) => {
-  console.error(error instanceof Error ? error.message : "Manifest capture failed");
-  process.exitCode = 1;
-});
+if (require.main === module) {
+  loadDotenvIfPresent(".env");
+  void main().catch((error) => {
+    console.error(error instanceof Error ? error.message : "Manifest capture failed");
+    process.exitCode = 1;
+  });
+}
 
 async function main(): Promise<void> {
+  assertCaptureReaderSummaryDatasetManifestArguments(process.argv.slice(2));
   const date = requiredOption("--date");
-  const recoveryRoot = requiredOption("--recovery-root");
   const timestampPolicy = recoveryTimestampPolicy();
-  const outputPath = assertRecoveryOutputPath({
-    recoveryRoot,
-    outputPath: requiredOption("--out"),
-  });
+  const outputPath = historicalDegradedRecoveryEvidencePath(
+    date,
+    "dataset-manifest",
+  );
   const startedAt = exactDate(`${date}T00:00:00.000Z`, "--date");
   const endedAt = exactDate(nextDate(date), "--date");
   const databaseUrl = yesterdaySocialQualityDatabaseUrl();
@@ -51,17 +53,41 @@ async function main(): Promise<void> {
       generatedAt: new Date(),
       timestampPolicy,
     });
-    writeFileSync(outputPath, `${JSON.stringify(manifest, null, 2)}\n`, {
-      encoding: "utf8",
-      flag: "wx",
-      mode: 0o400,
+    const bytes = Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+    const outcome = installHistoricalDegradedRecoveryEvidence({
+      requestedUtcDate: date,
+      artifact: "dataset-manifest",
+      bytes,
     });
-    chmodSync(outputPath, 0o400);
     console.log(
-      `Dataset manifest captured: rows=${manifest.dataset.feedRowCount} digest=${manifest.dataset.aggregateSha256}`,
+      `Dataset manifest ${outcome}: rows=${manifest.dataset.feedRowCount} digest=${manifest.dataset.aggregateSha256}`,
+    );
+    console.log(
+      `artifact_path=${outputPath}`,
     );
   } finally {
     await connection.close();
+  }
+}
+
+export function assertCaptureReaderSummaryDatasetManifestArguments(
+  args: readonly string[],
+): void {
+  const allowed = new Set(["--date", "--recovery-timestamp-policy"]);
+  for (let index = 0; index < args.length; index += 2) {
+    const option = args[index];
+    const value = args[index + 1];
+    if (
+      option === undefined ||
+      !allowed.has(option) ||
+      value === undefined ||
+      value.startsWith("--") ||
+      args.indexOf(option) !== index
+    ) {
+      throw new Error(
+        "Only --date and --recovery-timestamp-policy may be supplied exactly once",
+      );
+    }
   }
 }
 

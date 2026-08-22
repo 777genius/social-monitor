@@ -2,6 +2,7 @@ import type { ReaderSummaryGitHubProjectionItem } from "@social-monitor/summary/
 
 import { sha256 } from "./reader-summary-historical-degraded-recovery-authority";
 import {
+  assertHistoricalDegradedRecoveryCurrentPreflight,
   buildHistoricalDegradedGitHubZero,
   PrismaHistoricalDegradedRecoveryLiveVerifier,
   verifyHistoricalDegradedRecoveryInputArtifacts,
@@ -187,6 +188,35 @@ describe("historical degraded recovery live GitHub zero", () => {
         providerCounts: { ...dataset.providerCounts, reddit: 78, rss: 27 },
       },
     })).toThrow("fresh live truth");
+    expect(() => verifyHistoricalDegradedRecoveryInputArtifacts({
+      ...params,
+      requestedUtcDate: "2026-08-20",
+    })).toThrow("exactly 2026-08-18 or 2026-08-19");
+  });
+
+  it("requires current inputs for first publication but preserves exact replay", () => {
+    const files = {
+      collectionArtifactBytes: Buffer.from("collection"),
+      collectionQualityReportBytes: Buffer.from("quality"),
+      datasetManifestBytes: Buffer.from(JSON.stringify({
+        generatedAt: "2026-08-22T11:55:00.000Z",
+      })),
+    };
+    expect(assertHistoricalDegradedRecoveryCurrentPreflight({
+      slot: "empty",
+      files,
+      preflightAt: new Date("2026-08-22T12:00:00.000Z"),
+    })).toBe("empty");
+    expect(() => assertHistoricalDegradedRecoveryCurrentPreflight({
+      slot: "empty",
+      files,
+      preflightAt: new Date("2026-08-22T12:30:00.001Z"),
+    })).toThrow("current preflight inputs");
+    expect(assertHistoricalDegradedRecoveryCurrentPreflight({
+      slot: "replay",
+      files,
+      preflightAt: new Date("2027-01-01T00:00:00.000Z"),
+    })).toBe("replay");
   });
 
   it("allows only an empty slot or the exact deterministic replay", () => {

@@ -18,6 +18,7 @@ import {
   sha256,
   stableJson,
   type HistoricalDegradedRecoveryAuthority,
+  type HistoricalDegradedRecoveryDate,
   type HistoricalDegradedRecoveryDatasetSnapshot,
   type HistoricalDegradedRecoveryPreparation,
   type HistoricalDegradedRecoverySourceSnapshot,
@@ -155,9 +156,12 @@ export class PrismaHistoricalDegradedRecoveryLiveVerifier
     authority: HistoricalDegradedRecoveryAuthority;
     authoritySha256: string;
     command: ReaderSummaryRecoveryFinalizationCommand;
+    files: HistoricalDegradedRecoveryFiles;
+    preflightAt: Date;
   }>): Promise<"empty" | "replay"> {
     const binding = historicalDegradedRecoveryPublicationBinding(
       params.command,
+      params.authority.requestedUtcDate,
     );
     if (
       params.command.provenance.priorCollectionProof.sourceAttempt.sha256 !==
@@ -167,10 +171,15 @@ export class PrismaHistoricalDegradedRecoveryLiveVerifier
         "Historical degraded recovery publication does not bind the authority",
       );
     }
-    return verifyHistoricalDegradedRecoveryPublicationSlot({
+    const slot = await verifyHistoricalDegradedRecoveryPublicationSlot({
       client: this.client,
       authority: params.authority,
       binding,
+    });
+    return assertHistoricalDegradedRecoveryCurrentPreflight({
+      slot,
+      files: params.files,
+      preflightAt: params.preflightAt,
     });
   }
 
@@ -396,6 +405,7 @@ export const verifyHistoricalDegradedRecoveryInputArtifacts = (params: {
   readonly dataset: HistoricalDegradedRecoveryDatasetSnapshot;
   readonly authorizedAt: Date;
 }): void => {
+  exactAllowedTargetDate(params.requestedUtcDate);
   const collection = jsonRecord(params.files.collectionArtifactBytes, "collection artifact");
   const quality = jsonRecord(params.files.collectionQualityReportBytes, "collection quality report");
   const manifest = jsonRecord(params.files.datasetManifestBytes, "dataset manifest");
@@ -459,6 +469,28 @@ export const verifyHistoricalDegradedRecoveryInputArtifacts = (params: {
   }
 };
 
+export const assertHistoricalDegradedRecoveryCurrentPreflight = (params: {
+  readonly slot: "empty" | "replay";
+  readonly files: HistoricalDegradedRecoveryFiles;
+  readonly preflightAt: Date;
+}): "empty" | "replay" => {
+  if (params.slot === "replay") return params.slot;
+  const manifest = jsonRecord(params.files.datasetManifestBytes, "dataset manifest");
+  const generatedAt = new Date(String(manifest.generatedAt));
+  const preflightTime = params.preflightAt.getTime();
+  if (
+    !Number.isFinite(preflightTime) ||
+    !Number.isFinite(generatedAt.getTime()) ||
+    generatedAt.getTime() > preflightTime ||
+    preflightTime - generatedAt.getTime() > 1_800_000
+  ) {
+    throw new Error(
+      "Historical degraded recovery first publication requires current preflight inputs",
+    );
+  }
+  return params.slot;
+};
+
 const jsonRecord = (bytes: Buffer, label: string): Readonly<Record<string, unknown>> => {
   try { return record(JSON.parse(bytes.toString("utf8")), label); } catch (error) {
     if (error instanceof SyntaxError) throw new Error(`${label} is not JSON`);
@@ -481,9 +513,19 @@ const stringArray = (value: unknown, label: string): readonly string[] => {
 };
 
 const exactStart = (date: string): Date => {
+  exactAllowedTargetDate(date);
   const value = new Date(`${date}T00:00:00.000Z`);
   if (!Number.isFinite(value.getTime()) || value.toISOString().slice(0, 10) !== date) {
     throw new Error("Historical degraded recovery date is invalid");
+  }
+  return value;
+};
+
+const exactAllowedTargetDate = (value: string): HistoricalDegradedRecoveryDate => {
+  if (value !== "2026-08-18" && value !== "2026-08-19") {
+    throw new Error(
+      "Historical degraded recovery date must be exactly 2026-08-18 or 2026-08-19",
+    );
   }
   return value;
 };

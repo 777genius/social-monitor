@@ -1,4 +1,5 @@
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -10,8 +11,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
-  installSecureRecoveryEvidenceFile,
-  readSecureRecoveryEvidenceFile,
+  createRecoveryEvidenceFilesystemTestHarness,
+  recoveryEvidenceEffectiveUserId,
+  recoveryEvidenceRoot,
+  resolveRecoveryEvidencePath,
 } from "./reader-summary-recovery-evidence-secure-file";
 
 describe("recovery evidence descriptor-anchored filesystem", () => {
@@ -20,11 +23,12 @@ describe("recovery evidence descriptor-anchored filesystem", () => {
     const input = join(directory, "input.json");
     const openedInput = join(directory, "opened-input.json");
     const malicious = join(directory, "malicious.json");
+    const filesystem = createRecoveryEvidenceFilesystemTestHarness(directory);
     writeFileSync(input, "exact\n", { mode: 0o400 });
     writeFileSync(malicious, "malicious\n", { mode: 0o400 });
 
-    expect(() => readSecureRecoveryEvidenceFile({
-      path: input,
+    expect(() => filesystem.read({
+      relativePath: "input.json",
       label: "fixture input",
       checkpoint: (checkpoint) => {
         if (checkpoint !== "file_opened") return;
@@ -38,10 +42,11 @@ describe("recovery evidence descriptor-anchored filesystem", () => {
     const directory = secureTemporaryDirectory("evidence-leaf-replace-");
     const input = join(directory, "input.json");
     const openedInput = join(directory, "opened-input.json");
+    const filesystem = createRecoveryEvidenceFilesystemTestHarness(directory);
     writeFileSync(input, "exact\n", { mode: 0o400 });
 
-    expect(() => readSecureRecoveryEvidenceFile({
-      path: input,
+    expect(() => filesystem.read({
+      relativePath: "input.json",
       label: "fixture input",
       checkpoint: (checkpoint) => {
         if (checkpoint !== "file_read") return;
@@ -58,10 +63,10 @@ describe("recovery evidence descriptor-anchored filesystem", () => {
     const outside = join(directory, "outside");
     mkdirSync(parent, { mode: 0o700 });
     mkdirSync(outside, { mode: 0o700 });
-    const output = join(parent, "authority.json");
+    const filesystem = createRecoveryEvidenceFilesystemTestHarness(parent);
 
-    expect(() => installSecureRecoveryEvidenceFile({
-      path: output,
+    expect(() => filesystem.install({
+      relativePath: "authority.json",
       label: "fixture authority",
       bytes: Buffer.from("exact\n"),
       checkpoint: (checkpoint) => {
@@ -79,9 +84,10 @@ describe("recovery evidence descriptor-anchored filesystem", () => {
     const output = join(directory, "authority.json");
     const movedOutput = join(directory, "opened-authority.json");
     const replacement = Buffer.from("replacement\n");
+    const filesystem = createRecoveryEvidenceFilesystemTestHarness(directory);
 
-    expect(() => installSecureRecoveryEvidenceFile({
-      path: output,
+    expect(() => filesystem.install({
+      relativePath: "authority.json",
       label: "fixture authority",
       bytes: Buffer.from("exact\n"),
       checkpoint: (checkpoint) => {
@@ -90,36 +96,70 @@ describe("recovery evidence descriptor-anchored filesystem", () => {
         writeFileSync(output, replacement, { mode: 0o400 });
       },
     })).toThrow("changed while it was installed");
-    expect(readSecureRecoveryEvidenceFile({
-      path: output,
+    expect(filesystem.read({
+      relativePath: "authority.json",
       label: "replacement fixture",
     })).toEqual(replacement);
   });
 
   it("creates through O_EXCL and replays only exact secure bytes", () => {
     const directory = secureTemporaryDirectory("evidence-exact-replay-");
-    const output = join(directory, "nested", "authority.json");
     const exact = Buffer.from("exact canonical bytes\n");
+    const filesystem = createRecoveryEvidenceFilesystemTestHarness(directory);
 
-    expect(installSecureRecoveryEvidenceFile({
-      path: output,
+    expect(filesystem.install({
+      relativePath: "nested/authority.json",
       label: "fixture authority",
       bytes: exact,
     })).toBe("installed");
-    expect(installSecureRecoveryEvidenceFile({
-      path: output,
+    expect(filesystem.install({
+      relativePath: "nested/authority.json",
       label: "fixture authority",
       bytes: exact,
     })).toBe("replayed");
-    expect(readSecureRecoveryEvidenceFile({
-      path: output,
+    expect(filesystem.read({
+      relativePath: "nested/authority.json",
       label: "fixture authority",
     })).toEqual(exact);
-    expect(() => installSecureRecoveryEvidenceFile({
-      path: output,
+    expect(() => filesystem.install({
+      relativePath: "nested/authority.json",
       label: "fixture authority",
       bytes: Buffer.from("divergent\n"),
     })).toThrow("different bytes");
+  });
+
+  it("fixes production evidence to the uid-1000 artifact root", () => {
+    expect(recoveryEvidenceRoot).toBe("/var/lib/social-monitor/artifacts");
+    expect(recoveryEvidenceEffectiveUserId).toBe(1000);
+    expect(resolveRecoveryEvidencePath("bounded/input.json")).toBe(
+      "/var/lib/social-monitor/artifacts/bounded/input.json",
+    );
+    for (const path of [
+      "/tmp/input.json",
+      "../input.json",
+      "bounded/../input.json",
+      "bounded//input.json",
+    ]) {
+      expect(() => resolveRecoveryEvidencePath(path)).toThrow();
+    }
+  });
+
+  it("rejects unsafe root and input permissions", () => {
+    const directory = secureTemporaryDirectory("evidence-permissions-");
+    const filesystem = createRecoveryEvidenceFilesystemTestHarness(directory);
+    const input = join(directory, "input.json");
+    writeFileSync(input, "exact\n", { mode: 0o600 });
+    expect(() => filesystem.read({
+      relativePath: "input.json",
+      label: "fixture input",
+    })).toThrow("permissions must be exactly 0400");
+
+    chmodSync(input, 0o400);
+    chmodSync(directory, 0o750);
+    expect(() => filesystem.read({
+      relativePath: "input.json",
+      label: "fixture input",
+    })).toThrow("directory permissions must be exactly 0700");
   });
 });
 

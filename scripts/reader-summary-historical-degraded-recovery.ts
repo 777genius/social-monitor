@@ -1,5 +1,3 @@
-import { resolve } from "node:path";
-
 import {
   defaultPostgresRuntimePoolConfig,
   runWithTenantDatabaseAccess,
@@ -13,10 +11,16 @@ import { loadDotenvIfPresent } from "./lib/env-file";
 import {
   historicalDegradedRecoveryTenantId,
   historicalDegradedRecoveryWorkspaceId,
+  assertHistoricalDegradedRecoveryXBackfillReceipt,
+  historicalDegradedRecoveryEvidencePath,
+  installHistoricalDegradedRecoveryEvidence,
   installHistoricalDegradedRecoveryAuthority,
   prepareHistoricalDegradedRecoveryAuthority,
   readSecureHistoricalDegradedRecoveryFile,
+  sha256,
   verifyHistoricalDegradedRecoveryAuthorityBytes,
+  verifyHistoricalDegradedRecoveryXBackfillReceiptBytes,
+  type HistoricalDegradedRecoveryEvidenceArtifact,
 } from "./lib/reader-summary-historical-degraded-recovery-authority";
 import {
   buildHistoricalDegradedRecoveryCommand,
@@ -30,7 +34,15 @@ import {
   type HistoricalDegradedRecoveryPublicationBinding,
 } from "./lib/reader-summary-historical-degraded-recovery-slot";
 
-type Command = "prepare" | "run" | "verify";
+export type HistoricalDegradedRecoveryCliCommand =
+  | "install-input"
+  | "prepare"
+  | "run"
+  | "verify";
+type RecoveryInputArtifact = Exclude<
+  HistoricalDegradedRecoveryEvidenceArtifact,
+  "authority"
+>;
 
 if (require.main === module) {
   void main().catch((error: unknown) => {
@@ -48,8 +60,35 @@ async function main(): Promise<void> {
   const command = commandFrom(args[0]);
   const date = requiredOption(args, "--date");
   assertAllowedDate(date);
-  const authorityPath = resolve(requiredOption(args, "--authority"));
-  const files = readFiles(args);
+  assertHistoricalDegradedRecoveryCliArguments(args, command);
+  if (command === "install-input") {
+    const artifact = recoveryInputArtifact(
+      requiredOption(args, "--artifact"),
+    );
+    const bytes = await readBoundedStandardInput();
+    if (artifact === "x-backfill-receipt") {
+      verifyHistoricalDegradedRecoveryXBackfillReceiptBytes({
+        requestedUtcDate: date,
+        bytes,
+      });
+    }
+    const outcome = installHistoricalDegradedRecoveryEvidence({
+      requestedUtcDate: date,
+      artifact,
+      bytes,
+    });
+    console.log(`outcome=${outcome}`);
+    console.log(`artifact_sha256=${sha256(bytes)}`);
+    console.log(
+      `artifact_path=${historicalDegradedRecoveryEvidencePath(date, artifact)}`,
+    );
+    return;
+  }
+  const authorityPath = historicalDegradedRecoveryEvidencePath(
+    date,
+    "authority",
+  );
+  const { files, xBackfillReceiptBytes } = readFiles(date);
   loadDotenvIfPresent(".env");
   const databaseUrl = requiredEnv("DATABASE_URL");
   const connection = await PrismaSummaryConnection.create(
@@ -66,10 +105,17 @@ async function main(): Promise<void> {
         if (command === "prepare") {
           const authorizedAt = new Date();
           const prepared = prepareHistoricalDegradedRecoveryAuthority(
-            await verifier.capture({ requestedUtcDate: date, files, authorizedAt }),
+            {
+              ...await verifier.capture({
+                requestedUtcDate: date,
+                files,
+                authorizedAt,
+              }),
+              xBackfillReceiptBytes,
+            },
           );
           const outcome = installHistoricalDegradedRecoveryAuthority({
-            path: authorityPath,
+            requestedUtcDate: date,
             bytes: prepared.bytes,
           });
           console.log(`outcome=${outcome}`);
@@ -79,7 +125,7 @@ async function main(): Promise<void> {
         }
         const authoritySha256 = requiredSha256(args, "--authority-sha256");
         const authorityBytes = readSecureHistoricalDegradedRecoveryFile(
-          authorityPath,
+          date,
           "authority",
         );
         const authority = verifyHistoricalDegradedRecoveryAuthorityBytes({
@@ -89,6 +135,10 @@ async function main(): Promise<void> {
         if (authority.requestedUtcDate !== date) {
           throw new Error("Authority date does not match --date");
         }
+        assertHistoricalDegradedRecoveryXBackfillReceipt({
+          authority,
+          bytes: xBackfillReceiptBytes,
+        });
         if (command === "verify") {
           const live = await verifier.verify({ authority, authoritySha256, files });
           const built = buildHistoricalDegradedRecoveryCommand({
@@ -100,11 +150,16 @@ async function main(): Promise<void> {
             authority,
             authoritySha256,
             command: built.command,
+            files,
+            preflightAt: new Date(),
           });
           await verifyPublishedRecovery(
             connection,
             authority,
-            historicalDegradedRecoveryPublicationBinding(built.command),
+            historicalDegradedRecoveryPublicationBinding(
+              built.command,
+              authority.requestedUtcDate,
+            ),
           );
           console.log("outcome=verified");
           console.log(`attempt_identity=${authority.attempt.identity}`);
@@ -121,6 +176,8 @@ async function main(): Promise<void> {
               authority,
               authoritySha256,
               command,
+              files,
+              preflightAt: new Date(),
             });
           },
         );
@@ -128,6 +185,7 @@ async function main(): Promise<void> {
           authorityBytes,
           authoritySha256,
           files,
+          preflightAt: new Date(),
           liveVerifier: verifier,
           finalization,
         });
@@ -213,6 +271,8 @@ const verifyPublishedRecovery = async (
       AND event.created_at = ${binding.outboxCreatedAt}::TIMESTAMPTZ
       AND receipt.reader_summary_job_id = ${binding.readerSummaryJobId}::UUID
       AND receipt.reader_summary_artifact_id = ${binding.readerSummaryArtifactId}::UUID
+      AND receipt.tenant_id = ${historicalDegradedRecoveryTenantId}::UUID
+      AND receipt.workspace_id = ${historicalDegradedRecoveryWorkspaceId}::UUID
       AND receipt.recovery_kind = 'SUMMARY_ONLY'
       AND receipt.provenance = ${binding.provenanceJson}::JSONB
       AND receipt.provenance_sha256 = ${binding.provenanceSha256}
@@ -235,26 +295,105 @@ const verifyPublishedRecovery = async (
   }
 };
 
-const readFiles = (args: readonly string[]): HistoricalDegradedRecoveryFiles => ({
-  collectionArtifactBytes: readSecureHistoricalDegradedRecoveryFile(
-    resolve(requiredOption(args, "--collection-artifact")),
-    "collection artifact",
-  ),
-  collectionQualityReportBytes: readSecureHistoricalDegradedRecoveryFile(
-    resolve(requiredOption(args, "--collection-quality-report")),
-    "collection quality report",
-  ),
-  datasetManifestBytes: readSecureHistoricalDegradedRecoveryFile(
-    resolve(requiredOption(args, "--dataset-manifest")),
-    "dataset manifest",
+const readFiles = (requestedUtcDate: string): Readonly<{
+  files: HistoricalDegradedRecoveryFiles;
+  xBackfillReceiptBytes: Buffer;
+}> => ({
+  files: {
+    collectionArtifactBytes: readSecureHistoricalDegradedRecoveryFile(
+      requestedUtcDate,
+      "collection-artifact",
+    ),
+    collectionQualityReportBytes: readSecureHistoricalDegradedRecoveryFile(
+      requestedUtcDate,
+      "collection-quality-report",
+    ),
+    datasetManifestBytes: readSecureHistoricalDegradedRecoveryFile(
+      requestedUtcDate,
+      "dataset-manifest",
+    ),
+  },
+  xBackfillReceiptBytes: readSecureHistoricalDegradedRecoveryFile(
+    requestedUtcDate,
+    "x-backfill-receipt",
   ),
 });
 
-const commandFrom = (value: string | undefined): Command => {
-  if (value !== "prepare" && value !== "run" && value !== "verify") {
-    throw new Error("Command must be prepare, run, or verify");
+const commandFrom = (
+  value: string | undefined,
+): HistoricalDegradedRecoveryCliCommand => {
+  if (
+    value !== "install-input" &&
+    value !== "prepare" &&
+    value !== "run" &&
+    value !== "verify"
+  ) {
+    throw new Error("Command must be install-input, prepare, run, or verify");
   }
   return value;
+};
+
+const recoveryInputArtifact = (value: string): RecoveryInputArtifact => {
+  if (
+    value !== "collection-artifact" &&
+    value !== "collection-quality-report" &&
+    value !== "dataset-manifest" &&
+    value !== "x-backfill-receipt"
+  ) {
+    throw new Error(
+      "--artifact must be collection-artifact, collection-quality-report, dataset-manifest, or x-backfill-receipt",
+    );
+  }
+  return value;
+};
+
+export const assertHistoricalDegradedRecoveryCliArguments = (
+  args: readonly string[],
+  command: HistoricalDegradedRecoveryCliCommand,
+): void => {
+  const allowed = new Set(
+    command === "install-input"
+      ? ["--date", "--artifact"]
+      : command === "prepare"
+        ? ["--date"]
+        : ["--date", "--authority-sha256"],
+  );
+  const seen = new Set<string>();
+  for (let index = 1; index < args.length; index += 2) {
+    const option = args[index];
+    const value = args[index + 1];
+    if (
+      option === undefined ||
+      !allowed.has(option) ||
+      seen.has(option) ||
+      value === undefined ||
+      value.startsWith("--")
+    ) {
+      throw new Error(
+        `${command} received an unsupported, duplicate, or incomplete option`,
+      );
+    }
+    seen.add(option);
+  }
+  if (seen.size !== allowed.size) {
+    throw new Error(`${command} requires exactly ${[...allowed].join(" and ")}`);
+  }
+};
+
+const readBoundedStandardInput = async (): Promise<Buffer> => {
+  const maximumBytes = 64 * 1024 * 1024;
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of process.stdin) {
+    const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    size += bytes.length;
+    if (size > maximumBytes) {
+      throw new Error("Recovery evidence stdin exceeds 64 MiB");
+    }
+    chunks.push(bytes);
+  }
+  if (size === 0) throw new Error("Recovery evidence stdin must not be empty");
+  return Buffer.concat(chunks, size);
 };
 
 const assertAllowedDate = (value: string): void => {
@@ -289,32 +428,41 @@ const optionalEnv = (name: string): string | undefined => {
   return value === undefined || value.length === 0 ? undefined : value;
 };
 
-function recoveryHelpText(): string {
+export function recoveryHelpText(): string {
   return `Bounded Aug 18-19 historical degraded reader-summary recovery.
 
-Generate fresh inputs first (inside a dedicated evidence directory):
-  npm run capture:reader-summary-day-dataset-manifest -- --date DATE --recovery-root DIR --out DIR/DATE/dataset-manifest.json
-  sha256sum DIR/DATE/dataset-manifest.json
-  npm run check:yesterday-social-collection-quality -- --date DATE --update --historical-regeneration-current-snapshot --regeneration-dataset-manifest DIR/DATE/dataset-manifest.json --regeneration-dataset-manifest-sha256 MANIFEST_SHA --regeneration-tenant-id 00000000-0000-7000-8000-000000006101 --regeneration-workspace-id 00000000-0000-7000-8000-000000006102 --regeneration-timestamp-policy published_at
-  install -m 0400 ops/evals/yesterday-social-collection-quality-report.v1.json DIR/DATE/collection-quality-report.json
+This command must run as effective uid 1000. Evidence lives only below
+/var/lib/social-monitor/artifacts/reader-summary/historical-degraded-recovery/DATE.
+The fixed evidence root must already be uid 1000 mode 0700. Descendant
+directories are descriptor-anchored uid 1000 mode 0700; files are create-only,
+uid 1000 mode 0400, fsynced, non-symlink regular files.
+
+Create the fresh dataset manifest directly in the fixed evidence root:
+  npm run capture:reader-summary-day-dataset-manifest -- --date DATE
+
+Install every other immutable input create-only from stdin (max 64 MiB):
+  npm run reader-summary:historical-degraded-recovery -- install-input --date DATE --artifact collection-artifact < COLLECTION_ARTIFACT
+  npm run reader-summary:historical-degraded-recovery -- install-input --date DATE --artifact collection-quality-report < COLLECTION_QUALITY_REPORT
+  npm run reader-summary:historical-degraded-recovery -- install-input --date DATE --artifact x-backfill-receipt < X_BACKFILL_RECEIPT
 
 The collection artifact is the immutable base-collection receipt (Aug 18: 205;
 Aug 19: 226, including 10 X). It does not claim the post-backfill total. The
 exact fresh dataset manifest plus its hash-bound quality report are the
 authoritative final-data proof (Aug 18: 277; Aug 19: 303), while the authority's
 rejected source job/artifact record hash binds the exact reused no-model-call
-summary. Before prepare, the operator must separately retain and review the
-immutable additive X-backfill receipt (72 for Aug 18; 77 new for Aug 19); the
-closed generic recovery provenance schema has no collection-evidence-set field.
+summary. The immutable additive X-backfill receipt is mandatory (72 rows for
+Aug 18; 77 new rows for Aug 19). Its exact bytes and compiled row count are
+bound into authority v2; the authority SHA-256 then binds it transitively into
+the closed recovery provenance sourceAttempt.
 
 Prepare (read-only DB capture; create-only authority install):
-  npm run reader-summary:historical-degraded-recovery -- prepare --date DATE --authority DIR/DATE/authority.json --collection-artifact FILE --collection-quality-report FILE --dataset-manifest FILE
+  npm run reader-summary:historical-degraded-recovery -- prepare --date DATE
 
 Run (new job/artifact/publication only; same authority is idempotent):
-  npm run reader-summary:historical-degraded-recovery -- run --date DATE --authority FILE --authority-sha256 SHA --collection-artifact FILE --collection-quality-report FILE --dataset-manifest FILE
+  npm run reader-summary:historical-degraded-recovery -- run --date DATE --authority-sha256 SHA
 
 Verify (read-only; rechecks live truth/files/source and public receipt):
-  npm run reader-summary:historical-degraded-recovery -- verify --date DATE --authority FILE --authority-sha256 SHA --collection-artifact FILE --collection-quality-report FILE --dataset-manifest FILE
+  npm run reader-summary:historical-degraded-recovery -- verify --date DATE --authority-sha256 SHA
 
 DATE is restricted to 2026-08-18 or 2026-08-19 and the production workspace/UTC daily scope is compiled in. This command is not scheduled.`;
 }

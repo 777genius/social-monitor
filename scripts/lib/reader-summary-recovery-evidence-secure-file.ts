@@ -13,6 +13,53 @@ import {
 import type { BigIntStats } from "node:fs";
 import { basename, dirname, isAbsolute, parse, resolve, sep } from "node:path";
 
+export const recoveryEvidenceRoot = "/var/lib/social-monitor/artifacts";
+export const recoveryEvidenceEffectiveUserId = 1000;
+
+type RecoveryEvidenceFilesystemPolicy = Readonly<{
+  root: string;
+  effectiveUserId: number;
+}>;
+
+const productionPolicy: RecoveryEvidenceFilesystemPolicy = Object.freeze({
+  root: recoveryEvidenceRoot,
+  effectiveUserId: recoveryEvidenceEffectiveUserId,
+});
+
+export type RecoveryEvidenceFilesystemTestHarness = Readonly<{
+  read(params: {
+    readonly relativePath: string;
+    readonly label: string;
+    readonly checkpoint?: RecoveryEvidenceFilesystemCheckpointHandler;
+  }): Buffer;
+  install(params: {
+    readonly relativePath: string;
+    readonly label: string;
+    readonly bytes: Buffer;
+    readonly checkpoint?: RecoveryEvidenceFilesystemCheckpointHandler;
+  }): "installed" | "replayed";
+}>;
+
+export const createRecoveryEvidenceFilesystemTestHarness = (
+  root: string,
+): RecoveryEvidenceFilesystemTestHarness => {
+  if (process.env.NODE_ENV !== "test") {
+    fail("test filesystem policy is unavailable outside tests");
+  }
+  if (!isAbsolute(root) || resolve(root) !== root) {
+    fail("test filesystem root must be absolute and normalized");
+  }
+  const policy = Object.freeze({
+    root,
+    effectiveUserId: requiredEffectiveUserId(),
+  });
+  return Object.freeze({
+    read: (params) => readSecureRecoveryEvidenceFileWithPolicy(params, policy),
+    install: (params) =>
+      installSecureRecoveryEvidenceFileWithPolicy(params, policy),
+  });
+};
+
 export type RecoveryEvidenceFilesystemCheckpoint =
   | "parent_opened"
   | "file_opened"
@@ -38,16 +85,25 @@ type TrustedParent = Readonly<{
   path: string;
   leafName: string;
   stamp: FileStamp;
+  policy: RecoveryEvidenceFilesystemPolicy;
 }>;
 
 const procDescriptorRoot = "/proc/self/fd";
 
 export const readSecureRecoveryEvidenceFile = (params: {
-  readonly path: string;
+  readonly relativePath: string;
   readonly label: string;
   readonly checkpoint?: RecoveryEvidenceFilesystemCheckpointHandler;
 }): Buffer => {
-  const trustedParent = openTrustedParent(params.path, false);
+  return readSecureRecoveryEvidenceFileWithPolicy(params, productionPolicy);
+};
+
+const readSecureRecoveryEvidenceFileWithPolicy = (params: {
+  readonly relativePath: string;
+  readonly label: string;
+  readonly checkpoint?: RecoveryEvidenceFilesystemCheckpointHandler;
+}, policy: RecoveryEvidenceFilesystemPolicy): Buffer => {
+  const trustedParent = openTrustedParent(params.relativePath, false, policy);
   try {
     params.checkpoint?.("parent_opened");
     assertTrustedParentStillNamed(trustedParent);
@@ -62,12 +118,21 @@ export const readSecureRecoveryEvidenceFile = (params: {
 };
 
 export const installSecureRecoveryEvidenceFile = (params: {
-  readonly path: string;
+  readonly relativePath: string;
   readonly label: string;
   readonly bytes: Buffer;
   readonly checkpoint?: RecoveryEvidenceFilesystemCheckpointHandler;
 }): "installed" | "replayed" => {
-  const trustedParent = openTrustedParent(params.path, true);
+  return installSecureRecoveryEvidenceFileWithPolicy(params, productionPolicy);
+};
+
+const installSecureRecoveryEvidenceFileWithPolicy = (params: {
+  readonly relativePath: string;
+  readonly label: string;
+  readonly bytes: Buffer;
+  readonly checkpoint?: RecoveryEvidenceFilesystemCheckpointHandler;
+}, policy: RecoveryEvidenceFilesystemPolicy): "installed" | "replayed" => {
+  const trustedParent = openTrustedParent(params.relativePath, true, policy);
   let descriptor: number | undefined;
   let createdStamp: FileStamp | undefined;
   try {
@@ -85,6 +150,7 @@ export const installSecureRecoveryEvidenceFile = (params: {
       createdStamp = assertSecureRegularFile(
         fstatSync(descriptor, { bigint: true }),
         params.label,
+        policy.effectiveUserId,
       );
     } catch (error) {
       if (errorCode(error) !== "EEXIST") throw error;
@@ -106,6 +172,7 @@ export const installSecureRecoveryEvidenceFile = (params: {
     const installedStamp = assertSecureRegularFile(
       fstatSync(descriptor, { bigint: true }),
       params.label,
+      policy.effectiveUserId,
     );
     closeSync(descriptor);
     descriptor = undefined;
@@ -131,8 +198,10 @@ export const installSecureRecoveryEvidenceFile = (params: {
   }
 };
 
-export const ensureSecureRecoveryEvidenceParent = (path: string): void => {
-  const trustedParent = openTrustedParent(path, true);
+export const ensureSecureRecoveryEvidenceParent = (
+  relativePath: string,
+): void => {
+  const trustedParent = openTrustedParent(relativePath, true, productionPolicy);
   try {
     assertTrustedParentStillNamed(trustedParent);
   } finally {
@@ -155,6 +224,7 @@ const readAnchoredRegularFile = (params: {
     const before = assertSecureRegularFile(
       fstatSync(descriptor, { bigint: true }),
       params.label,
+      params.trustedParent.policy.effectiveUserId,
     );
     if (
       params.expectedStamp !== undefined &&
@@ -184,11 +254,13 @@ const readAnchoredRegularFile = (params: {
 };
 
 const openTrustedParent = (
-  path: string,
+  relativePath: string,
   createMissing: boolean,
+  policy: RecoveryEvidenceFilesystemPolicy,
 ): TrustedParent => {
   assertLinuxDescriptorFilesystem();
-  const absolute = exactAbsolutePath(path);
+  assertEffectiveUser(policy);
+  const absolute = resolveEvidencePath(relativePath, policy);
   const parentPath = dirname(absolute);
   const leafName = basename(absolute);
   assertSafeName(leafName);
@@ -198,13 +270,22 @@ const openTrustedParent = (
     constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
   );
   try {
-    assertSecureDirectory(fstatSync(descriptor, { bigint: true }), root);
+    assertSecureDirectory(
+      fstatSync(descriptor, { bigint: true }),
+      root,
+      false,
+      policy,
+    );
     const components = parentPath
       .slice(root.length)
       .split(sep)
       .filter(Boolean);
     let traversed = root;
-    for (const component of components) {
+    const evidenceRootComponents = policy.root
+      .slice(root.length)
+      .split(sep)
+      .filter(Boolean);
+    for (const [index, component] of components.entries()) {
       assertSafeName(component);
       try {
         const nextDescriptor = openAnchoredName(
@@ -217,7 +298,11 @@ const openTrustedParent = (
         closeSync(descriptor);
         descriptor = nextDescriptor;
       } catch (error) {
-        if (!createMissing || errorCode(error) !== "ENOENT") throw error;
+        if (
+          !createMissing ||
+          index < evidenceRootComponents.length ||
+          errorCode(error) !== "ENOENT"
+        ) throw error;
         mkdirSync(anchoredName(descriptor, component), { mode: 0o700 });
         const nextDescriptor = openAnchoredName(
           descriptor,
@@ -233,6 +318,8 @@ const openTrustedParent = (
       assertSecureDirectory(
         fstatSync(descriptor, { bigint: true }),
         traversed,
+        index >= evidenceRootComponents.length - 1,
+        policy,
       );
     }
     return Object.freeze({
@@ -240,6 +327,7 @@ const openTrustedParent = (
       path: parentPath,
       leafName,
       stamp: fileStamp(fstatSync(descriptor, { bigint: true })),
+      policy,
     });
   } catch (error) {
     closeSync(descriptor);
@@ -253,8 +341,12 @@ const openTrustedParent = (
 
 const assertTrustedParentStillNamed = (trustedParent: TrustedParent): void => {
   const probe = openTrustedParent(
-    resolve(trustedParent.path, trustedParent.leafName),
+    relativeEvidencePath(
+      resolve(trustedParent.path, trustedParent.leafName),
+      trustedParent.policy,
+    ),
     false,
+    trustedParent.policy,
   );
   try {
     if (!sameFileIdentity(trustedParent.stamp, probe.stamp)) {
@@ -279,6 +371,7 @@ const assertAnchoredLeafStillNamed = (
     const current = assertSecureRegularFile(
       fstatSync(descriptor, { bigint: true }),
       label,
+      trustedParent.policy.effectiveUserId,
     );
     if (!sameFileState(expected, current)) {
       fail(`${label} changed while it was read`);
@@ -294,13 +387,21 @@ const assertAnchoredLeafStillNamed = (
 const assertSecureDirectory = (
   stat: BigIntStats,
   path: string,
+  atOrBelowEvidenceRoot: boolean,
+  policy: RecoveryEvidenceFilesystemPolicy,
 ): void => {
   if (!stat.isDirectory()) fail("ancestor is not a directory");
-  const effectiveUserId = BigInt(requiredEffectiveUserId());
-  if (stat.uid !== 0n && stat.uid !== effectiveUserId) {
+  const effectiveUserId = BigInt(policy.effectiveUserId);
+  if (
+    (atOrBelowEvidenceRoot && stat.uid !== effectiveUserId) ||
+    (!atOrBelowEvidenceRoot && stat.uid !== 0n && stat.uid !== effectiveUserId)
+  ) {
     fail(`directory owner is unsafe: ${path}`);
   }
   const mode = stat.mode & 0o7777n;
+  if (atOrBelowEvidenceRoot && mode !== 0o700n) {
+    fail(`directory permissions must be exactly 0700: ${path}`);
+  }
   const isRootOwnedStickyDirectory =
     stat.uid === 0n &&
     (mode & 0o1000n) !== 0n &&
@@ -313,10 +414,11 @@ const assertSecureDirectory = (
 const assertSecureRegularFile = (
   stat: BigIntStats,
   label: string,
+  effectiveUserId = recoveryEvidenceEffectiveUserId,
 ): FileStamp => {
   if (!stat.isFile()) fail(`${label} must be a regular non-symlink file`);
-  if (stat.uid !== BigInt(requiredEffectiveUserId())) {
-    fail(`${label} owner must match the effective user`);
+  if (stat.uid !== BigInt(effectiveUserId)) {
+    fail(`${label} owner must be uid ${effectiveUserId}`);
   }
   if ((stat.mode & 0o7777n) !== 0o400n) {
     fail(`${label} permissions must be exactly 0400`);
@@ -378,11 +480,36 @@ const unlinkAnchoredIfSameFile = (
   }
 };
 
-const exactAbsolutePath = (path: string): string => {
-  if (!isAbsolute(path) || resolve(path) !== path) {
-    fail("path must be absolute and normalized");
+export const resolveRecoveryEvidencePath = (relativePath: string): string =>
+  resolveEvidencePath(relativePath, productionPolicy);
+
+const resolveEvidencePath = (
+  relativePath: string,
+  policy: RecoveryEvidenceFilesystemPolicy,
+): string => {
+  if (
+    relativePath.length === 0 ||
+    isAbsolute(relativePath) ||
+    relativePath.split(/[\\/]/u).some((entry) =>
+      entry.length === 0 || entry === "." || entry === "..")
+  ) {
+    fail("artifact path must be a normalized relative path");
   }
-  return path;
+  const resolved = resolve(policy.root, relativePath);
+  if (resolved === policy.root || !resolved.startsWith(`${policy.root}${sep}`)) {
+    fail("artifact path escapes the fixed evidence root");
+  }
+  return resolved;
+};
+
+const relativeEvidencePath = (
+  absolutePath: string,
+  policy: RecoveryEvidenceFilesystemPolicy,
+): string => {
+  if (!absolutePath.startsWith(`${policy.root}${sep}`)) {
+    fail("artifact path escapes the fixed evidence root");
+  }
+  return absolutePath.slice(policy.root.length + 1);
 };
 
 const assertSafeName = (name: string): void => {
@@ -407,6 +534,12 @@ const requiredEffectiveUserId = (): number => {
   const effectiveUserId = process.geteuid?.();
   if (effectiveUserId === undefined) fail("cannot determine effective user");
   return effectiveUserId;
+};
+
+const assertEffectiveUser = (policy: RecoveryEvidenceFilesystemPolicy): void => {
+  if (requiredEffectiveUserId() !== policy.effectiveUserId) {
+    fail(`requires effective uid ${policy.effectiveUserId}`);
+  }
 };
 
 const fileStamp = (stat: BigIntStats): FileStamp =>

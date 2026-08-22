@@ -31,6 +31,11 @@ export type ReaderSummaryRecoveryFinalizationTransactionGuard = (
 
 type RecoveryCandidateStageRow = Readonly<{ candidateExact: boolean }>;
 
+type RecoveryCandidateInsertRow = Readonly<{
+  artifactInserted: bigint;
+  jobInserted: bigint;
+}>;
+
 export class PrismaReaderSummaryRecoveryFinalization
   implements ReaderSummaryRecoveryFinalizationPort
 {
@@ -136,7 +141,7 @@ const stageRecoveryCandidate = async (
     requestedAt: job.requestedAt.toISOString(),
     startedAt: job.startedAt.toISOString(),
   });
-  const rows = await prisma.$queryRaw<readonly RecoveryCandidateStageRow[]>`
+  await prisma.$queryRaw<readonly RecoveryCandidateInsertRow[]>`
     WITH candidate AS (
       SELECT ${serializedPublication}::JSONB AS publication,
              ${serializedJob}::JSONB AS job
@@ -191,6 +196,15 @@ const stageRecoveryCandidate = async (
         (job->>'requestedAt')::TIMESTAMPTZ,
         (job->>'requestedAt')::TIMESTAMPTZ
       FROM candidate ON CONFLICT (id) DO NOTHING
+    )
+    SELECT
+      (SELECT COUNT(*) FROM artifact_insert) AS "artifactInserted",
+      (SELECT COUNT(*) FROM job_insert) AS "jobInserted"
+  `;
+  const rows = await prisma.$queryRaw<readonly RecoveryCandidateStageRow[]>`
+    WITH candidate AS (
+      SELECT ${serializedPublication}::JSONB AS publication,
+             ${serializedJob}::JSONB AS job
     )
     SELECT
       EXISTS (

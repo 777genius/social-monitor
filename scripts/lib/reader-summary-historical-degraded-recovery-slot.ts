@@ -7,6 +7,7 @@ import {
   historicalDegradedRecoveryTenantId,
   historicalDegradedRecoveryWorkspaceId,
   type HistoricalDegradedRecoveryAuthority,
+  type HistoricalDegradedRecoveryDate,
 } from "./reader-summary-historical-degraded-recovery-authority";
 
 export type HistoricalDegradedRecoveryPublicationBinding = Readonly<{
@@ -48,6 +49,7 @@ type PublicationSlotState = Readonly<{
 
 export const historicalDegradedRecoveryPublicationBinding = (
   command: ReaderSummaryRecoveryFinalizationCommand,
+  expectedRequestedUtcDate: HistoricalDegradedRecoveryDate,
 ): HistoricalDegradedRecoveryPublicationBinding => {
   const publication = buildReaderSummaryPublicationPayload(command.publication);
   const receipt = buildReaderSummaryRecoveryReceiptPayload({
@@ -55,6 +57,16 @@ export const historicalDegradedRecoveryPublicationBinding = (
     provenance: command.provenance,
   });
   const readyEvent = publication.readyEvent;
+  if (
+    publication.requestedUtcDate !== expectedRequestedUtcDate ||
+    publication.requestedAt.slice(0, 10) !== expectedRequestedUtcDate ||
+    publication.periodStartedAt.slice(0, 10) !== expectedRequestedUtcDate ||
+    publication.exactProof.requestedUtcDate !== expectedRequestedUtcDate
+  ) {
+    throw new Error(
+      "Historical degraded recovery proof and publication date do not match the allowlisted target",
+    );
+  }
   const outboxPayload = {
     ...(readyEvent.payload as Readonly<Record<string, unknown>>),
     publicationProof: publication.exactProof,
@@ -177,6 +189,8 @@ export const verifyHistoricalDegradedRecoveryPublicationSlot = async (params: {
           AND publication.published_at = ${params.binding.publishedAt}::TIMESTAMPTZ
           AND receipt.reader_summary_job_id = ${params.binding.readerSummaryJobId}::UUID
           AND receipt.reader_summary_artifact_id = ${params.binding.readerSummaryArtifactId}::UUID
+          AND receipt.tenant_id = ${params.binding.outboxTenantId}::UUID
+          AND receipt.workspace_id = ${params.binding.outboxWorkspaceId}::UUID
           AND receipt.recovery_kind = 'SUMMARY_ONLY'
           AND receipt.provenance = ${params.binding.provenanceJson}::JSONB
           AND receipt.provenance_sha256 = ${params.binding.provenanceSha256}

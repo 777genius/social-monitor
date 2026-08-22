@@ -45,6 +45,8 @@ export interface HistoricalDegradedRecoveryLiveVerifier {
     authority: HistoricalDegradedRecoveryAuthority;
     authoritySha256: string;
     command: ReaderSummaryRecoveryFinalizationCommand;
+    files: HistoricalDegradedRecoveryFiles;
+    preflightAt: Date;
   }>): Promise<"empty" | "replay">;
 }
 
@@ -52,6 +54,7 @@ export const executeHistoricalDegradedRecovery = async (params: Readonly<{
   authorityBytes: Buffer;
   authoritySha256: string;
   files: HistoricalDegradedRecoveryFiles;
+  preflightAt: Date;
   liveVerifier: HistoricalDegradedRecoveryLiveVerifier;
   finalization: ReaderSummaryRecoveryFinalizationPort;
 }>): Promise<Readonly<{
@@ -79,6 +82,8 @@ export const executeHistoricalDegradedRecovery = async (params: Readonly<{
     authority,
     authoritySha256: params.authoritySha256,
     command: built.command,
+    files: params.files,
+    preflightAt: params.preflightAt,
   });
   const outcome = await params.finalization.finalize(built.command);
   return Object.freeze({
@@ -130,6 +135,7 @@ export const buildHistoricalDegradedRecoveryCommand = (params: Readonly<{
         }),
   });
   const authorizedAt = new Date(authority.authorizedAt);
+  const requestedAt = new Date(`${authority.requestedUtcDate}T00:00:00.000Z`);
   const runningJob = ReaderSummaryJob.request({
     id: identities.jobId,
     tenantId: source.tenantId,
@@ -142,7 +148,7 @@ export const buildHistoricalDegradedRecoveryCommand = (params: Readonly<{
       : { subscriptionId: source.subscriptionId }),
     idempotencyKey:
       `reader-summary:historical-degraded-recovery:${authority.attempt.identity}`,
-    requestedAt: authorizedAt,
+    requestedAt,
   }).start({ startedAt: authorizedAt });
   const finalJob = runningJob.complete({
     completedAt: authorizedAt,

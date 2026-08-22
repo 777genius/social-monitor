@@ -1,22 +1,8 @@
 import {
-  chmodSync,
-  chownSync,
-  lstatSync,
-  mkdtempSync,
-  mkdirSync,
-  readFileSync,
-  symlinkSync,
-  writeFileSync,
-} from "node:fs";
-import { join } from "node:path";
-import { tmpdir } from "node:os";
-
-import {
-  ensureSecureHistoricalDegradedRecoveryAuthorityParent,
+  assertHistoricalDegradedRecoveryXBackfillReceipt,
+  historicalDegradedRecoveryEvidencePath,
   historicalDegradedRecoveryReason,
-  installHistoricalDegradedRecoveryAuthority,
   prepareHistoricalDegradedRecoveryAuthority,
-  readSecureHistoricalDegradedRecoveryFile,
   sha256,
   verifyHistoricalDegradedRecoveryAuthorityBytes,
   type HistoricalDegradedRecoveryPreparation,
@@ -33,7 +19,7 @@ describe("historical degraded recovery authority", () => {
 
     expect(prepared.authority).toMatchObject({
       artifactFormat:
-        "reader-summary-historical-degraded-recovery-authority-v1",
+        "reader-summary-historical-degraded-recovery-authority-v2",
       requestedUtcDate: date,
       expectedCounts: { live: count, unique: count },
       safeReason: historicalDegradedRecoveryReason,
@@ -42,6 +28,11 @@ describe("historical degraded recovery authority", () => {
         scannedItemCount: 160,
         touchingRequestedDayCount: 0,
         firstLaterObservation: "2026-08-20T00:01:00.000Z",
+      },
+      inputs: {
+        xBackfillReceipt: {
+          rowCount: date === "2026-08-18" ? 72 : 77,
+        },
       },
     });
     expect(
@@ -52,28 +43,62 @@ describe("historical degraded recovery authority", () => {
     ).toEqual(prepared.authority);
   });
 
-  it("installs create-only and replays only byte-identical authority", () => {
-    const directory = mkdtempSync(join(tmpdir(), "historical-degraded-"));
-    const path = join(directory, "authority.json");
-    const first = prepareHistoricalDegradedRecoveryAuthority(
-      preparation("2026-08-18", 277),
-    );
-    const different = prepareHistoricalDegradedRecoveryAuthority({
-      ...preparation("2026-08-18", 277),
-      authorizedAt: new Date("2026-08-22T12:01:00.000Z"),
+  it("binds the immutable X-backfill receipt into authority identity", () => {
+    const base = preparation("2026-08-18", 277);
+    const original = prepareHistoricalDegradedRecoveryAuthority(base);
+    const mutated = prepareHistoricalDegradedRecoveryAuthority({
+      ...base,
+      xBackfillReceiptBytes: xBackfillReceipt("2026-08-18", "mutated"),
     });
 
-    expect(installHistoricalDegradedRecoveryAuthority({ path, bytes: first.bytes }))
-      .toBe("installed");
-    expect(installHistoricalDegradedRecoveryAuthority({ path, bytes: first.bytes }))
-      .toBe("replayed");
-    expect(readFileSync(path)).toEqual(first.bytes);
-    expect(lstatSync(path).mode & 0o7777).toBe(0o400);
-    expect(readSecureHistoricalDegradedRecoveryFile(path, "authority"))
-      .toEqual(first.bytes);
-    expect(() =>
-      installHistoricalDegradedRecoveryAuthority({ path, bytes: different.bytes }),
-    ).toThrow("different bytes");
+    expect(original.authority.inputs.xBackfillReceipt).toEqual({
+      artifactFormat: "reader-summary-historical-x-backfill-receipt-v1",
+      rowCount: 72,
+      sha256: sha256(base.xBackfillReceiptBytes),
+    });
+    expect(mutated.sha256).not.toBe(original.sha256);
+    expect(mutated.authority.attempt.identity).not.toBe(
+      original.authority.attempt.identity,
+    );
+    expect(() => assertHistoricalDegradedRecoveryXBackfillReceipt({
+      authority: original.authority,
+      bytes: base.xBackfillReceiptBytes,
+    })).not.toThrow();
+    expect(() => assertHistoricalDegradedRecoveryXBackfillReceipt({
+      authority: original.authority,
+      bytes: xBackfillReceipt("2026-08-18", "mutated"),
+    })).toThrow("receipt binding");
+  });
+
+  it("rejects X-backfill receipts without the exact unique 72/77 rows", () => {
+    const base = preparation("2026-08-18", 277);
+    const parsed = JSON.parse(base.xBackfillReceiptBytes.toString("utf8")) as {
+      insertedRowCount: number;
+      rows: unknown[];
+    };
+    for (const receipt of [
+      { ...parsed, insertedRowCount: 71 },
+      { ...parsed, rows: parsed.rows.slice(0, 71) },
+      { ...parsed, rows: parsed.rows.map(() => ({ sourceItemId: "same" })) },
+    ]) {
+      expect(() => prepareHistoricalDegradedRecoveryAuthority({
+        ...base,
+        xBackfillReceiptBytes: Buffer.from(JSON.stringify(receipt)),
+      })).toThrow("receipt row contract");
+    }
+  });
+
+  it("derives every evidence file below the fixed artifact root", () => {
+    expect(historicalDegradedRecoveryEvidencePath(
+      "2026-08-19",
+      "x-backfill-receipt",
+    )).toBe(
+      "/var/lib/social-monitor/artifacts/reader-summary/historical-degraded-recovery/2026-08-19/x-backfill-receipt.json",
+    );
+    expect(() => historicalDegradedRecoveryEvidencePath(
+      "2026-08-20",
+      "authority",
+    )).toThrow("not allowlisted");
   });
 
   it("allows zero or any count of unrelated later GitHub rows", () => {
@@ -110,91 +135,6 @@ describe("historical degraded recovery authority", () => {
     );
   });
 
-  it("rejects symlinked, non-0400, and non-regular evidence files", () => {
-    const directory = mkdtempSync(join(tmpdir(), "historical-degraded-input-"));
-    const target = join(directory, "target.json");
-    const link = join(directory, "authority.json");
-    const prepared = prepareHistoricalDegradedRecoveryAuthority(
-      preparation("2026-08-18", 277),
-    );
-    writeFileSync(target, prepared.bytes, { mode: 0o400 });
-    symlinkSync(target, link);
-    expect(() => installHistoricalDegradedRecoveryAuthority({
-      path: link,
-      bytes: prepared.bytes,
-    })).toThrow(/non-symlink|changed while it was read/u);
-    chmodSync(target, 0o620);
-    expect(() => installHistoricalDegradedRecoveryAuthority({
-      path: target,
-      bytes: prepared.bytes,
-    })).toThrow("permissions must be exactly 0400");
-    const nonRegular = join(directory, "non-regular.json");
-    mkdirSync(nonRegular, { mode: 0o400 });
-    expect(() => readSecureHistoricalDegradedRecoveryFile(
-      nonRegular,
-      "dataset manifest",
-    )).toThrow("regular non-symlink file");
-    const realDirectory = join(directory, "real-directory");
-    const linkedDirectory = join(directory, "linked-directory");
-    mkdirSync(realDirectory);
-    writeFileSync(join(realDirectory, "input.json"), Buffer.from("{}"), {
-      mode: 0o400,
-    });
-    symlinkSync(realDirectory, linkedDirectory);
-    expect(() => readSecureHistoricalDegradedRecoveryFile(
-      join(linkedDirectory, "input.json"),
-      "dataset manifest",
-    )).toThrow(/symbolic link|non-directory ancestor/u);
-    expect(() => ensureSecureHistoricalDegradedRecoveryAuthorityParent(
-      join(linkedDirectory, "nested", "authority.json"),
-    )).toThrow(/symbolic link|non-directory ancestor/u);
-    expect(() => installHistoricalDegradedRecoveryAuthority({
-      path: join(linkedDirectory, "authority.json"),
-      bytes: prepared.bytes,
-    })).toThrow(/symbolic link|non-directory ancestor/u);
-  });
-
-  it("rejects unsafe writable and wrongly owned evidence parents", () => {
-    const directory = mkdtempSync(join(tmpdir(), "historical-degraded-parent-"));
-    const writableParent = join(directory, "writable");
-    mkdirSync(writableParent, { mode: 0o700 });
-    const input = join(writableParent, "input.json");
-    writeFileSync(input, "{}\n", { mode: 0o400 });
-    chmodSync(writableParent, 0o777);
-
-    expect(() => readSecureHistoricalDegradedRecoveryFile(
-      input,
-      "dataset manifest",
-    )).toThrow("directory permissions are unsafe");
-    expect(() => installHistoricalDegradedRecoveryAuthority({
-      path: join(writableParent, "authority.json"),
-      bytes: Buffer.from("exact\n"),
-    })).toThrow("directory permissions are unsafe");
-
-    if (process.geteuid?.() === 0) {
-      chmodSync(writableParent, 0o700);
-      if (chownToNobodyIfSupported(writableParent)) {
-        expect(() => readSecureHistoricalDegradedRecoveryFile(
-          input,
-          "dataset manifest",
-        )).toThrow("directory owner is unsafe");
-        chownSync(writableParent, 0, 0);
-      }
-    }
-  });
-
-  it("rejects wrongly owned 0400 evidence files when ownership is testable", () => {
-    if (process.geteuid?.() !== 0) return;
-    const directory = mkdtempSync(join(tmpdir(), "historical-degraded-owner-"));
-    const input = join(directory, "input.json");
-    writeFileSync(input, "{}\n", { mode: 0o400 });
-    if (!chownToNobodyIfSupported(input)) return;
-
-    expect(() => readSecureHistoricalDegradedRecoveryFile(
-      input,
-      "dataset manifest",
-    )).toThrow("owner must match the effective user");
-  });
 
   it.each([
     ["another date", { requestedUtcDate: "2026-08-20" }],
@@ -271,23 +211,6 @@ describe("historical degraded recovery authority", () => {
   });
 });
 
-const chownToNobodyIfSupported = (path: string): boolean => {
-  try {
-    chownSync(path, 65534, 65534);
-    return true;
-  } catch (error) {
-    if (
-      typeof error === "object" &&
-      error !== null &&
-      "code" in error &&
-      (error.code === "EINVAL" || error.code === "EPERM")
-    ) {
-      return false;
-    }
-    throw error;
-  }
-};
-
 const preparation = (
   requestedUtcDate: "2026-08-18" | "2026-08-19",
   count: number,
@@ -320,6 +243,7 @@ const preparation = (
   collectionArtifactBytes: Buffer.from("collection"),
   collectionQualityReportBytes: Buffer.from("quality"),
   datasetManifestBytes: Buffer.from("manifest"),
+  xBackfillReceiptBytes: xBackfillReceipt(requestedUtcDate),
   dataset: buildDataset(requestedUtcDate, count),
   githubZero: buildGithubZero(0),
   servingAuthority: {
@@ -332,6 +256,27 @@ const preparation = (
   },
   authorizedAt: new Date("2026-08-22T12:00:00.000Z"),
 });
+
+function xBackfillReceipt(
+  requestedUtcDate: "2026-08-18" | "2026-08-19",
+  suffix = "exact",
+): Buffer {
+  const insertedRowCount = requestedUtcDate === "2026-08-18" ? 72 : 77;
+  const baseRowCount = requestedUtcDate === "2026-08-18" ? 0 : 10;
+  return Buffer.from(JSON.stringify({
+    artifactFormat: "reader-summary-historical-x-backfill-receipt-v1",
+    tenantId: "00000000-0000-7000-8000-000000006101",
+    workspaceId: "00000000-0000-7000-8000-000000006102",
+    requestedUtcDate,
+    providerKey: "x-twitter",
+    baseRowCount,
+    insertedRowCount,
+    finalRowCount: baseRowCount + insertedRowCount,
+    rows: Array.from({ length: insertedRowCount }, (_, index) => ({
+      sourceItemId: `${requestedUtcDate}:${index}:${suffix}`,
+    })),
+  }));
+}
 
 function buildDataset(
   date: "2026-08-18" | "2026-08-19",

@@ -75,12 +75,22 @@ describe("PrismaReaderSummaryRecoveryFinalization", () => {
   );
 
   it("returns an idempotent replay for identical recovery provenance", async () => {
-    const fixture = createFixture();
+    const fixture = createCandidateFixture();
     mockPublicationPayload(fixture.publicationPayload);
-    let invocation = 0;
+    let finalizationInvocation = 0;
     const queryRaw = jest.fn(async (...args: readonly unknown[]) => {
-      invocation += 1;
-      return sqlOutcome(args, invocation === 1 ? "published" : "replayed");
+      const query = String(args[0]);
+      if (query.includes("artifact_insert")) {
+        return [{ artifactInserted: 0n, jobInserted: 0n }];
+      }
+      if (query.includes('AS "candidateExact"')) {
+        return [{ candidateExact: true }];
+      }
+      finalizationInvocation += 1;
+      return sqlOutcome(
+        args,
+        finalizationInvocation === 1 ? "published" : "replayed",
+      );
     });
     const finalization = new PrismaReaderSummaryRecoveryFinalization(
       prismaClient(recoveryFinalizationTransaction(queryRaw), queryRaw),
@@ -92,8 +102,9 @@ describe("PrismaReaderSummaryRecoveryFinalization", () => {
     await expect(finalization.finalize(fixture.command)).resolves.toBe(
       "replayed",
     );
-    expect(queryRaw).toHaveBeenCalledTimes(2);
-    expect(queryRaw.mock.calls[1]?.[2]).toBe(queryRaw.mock.calls[0]?.[2]);
+    expect(queryRaw).toHaveBeenCalledTimes(6);
+    expect(queryRaw.mock.calls[4]?.[0]).toBe(queryRaw.mock.calls[1]?.[0]);
+    expect(queryRaw.mock.calls[5]?.[2]).toBe(queryRaw.mock.calls[2]?.[2]);
   });
 
   it("runs the recovery guard inside the serializable transaction", async () => {
@@ -144,13 +155,15 @@ describe("PrismaReaderSummaryRecoveryFinalization", () => {
     expect(queryRaw).not.toHaveBeenCalled();
   });
 
-  it("stages the exact candidate inside the finalization transaction", async () => {
+  it("inserts then verifies the exact candidate in consecutive statements", async () => {
     const fixture = createCandidateFixture();
     mockPublicationPayload(fixture.publicationPayload);
     const queryRaw = jest.fn(async (...args: readonly unknown[]) =>
       String(args[0]).includes("artifact_insert")
-        ? [{ candidateExact: true }]
-        : sqlOutcome(args, "published"),
+        ? [{ artifactInserted: 1n, jobInserted: 1n }]
+        : String(args[0]).includes('AS "candidateExact"')
+          ? [{ candidateExact: true }]
+          : sqlOutcome(args, "published"),
     );
     const finalization = new PrismaReaderSummaryRecoveryFinalization(
       prismaClient(recoveryFinalizationTransaction(queryRaw), queryRaw),
@@ -159,10 +172,17 @@ describe("PrismaReaderSummaryRecoveryFinalization", () => {
     await expect(finalization.finalize(fixture.command)).resolves.toBe(
       "published",
     );
-    expect(queryRaw).toHaveBeenCalledTimes(2);
+    expect(queryRaw).toHaveBeenCalledTimes(3);
     expect(String(queryRaw.mock.calls[0]?.[0])).toContain("artifact_insert");
     expect(String(queryRaw.mock.calls[0]?.[0])).toContain("job_insert");
+    expect(String(queryRaw.mock.calls[0]?.[0])).not.toContain(
+      'AS "candidateExact"',
+    );
     expect(String(queryRaw.mock.calls[1]?.[0])).toContain(
+      'AS "candidateExact"',
+    );
+    expect(String(queryRaw.mock.calls[1]?.[0])).not.toContain("artifact_insert");
+    expect(String(queryRaw.mock.calls[2]?.[0])).toContain(
       "finalize_reader_summary_recovery",
     );
   });
@@ -170,7 +190,11 @@ describe("PrismaReaderSummaryRecoveryFinalization", () => {
   it("rejects competing authority or divergent pre-existing candidates", async () => {
     const fixture = createCandidateFixture();
     mockPublicationPayload(fixture.publicationPayload);
-    const queryRaw = jest.fn(async () => [{ candidateExact: false }]);
+    const queryRaw = jest.fn(async (...args: readonly unknown[]) =>
+      String(args[0]).includes("artifact_insert")
+        ? [{ artifactInserted: 0n, jobInserted: 1n }]
+        : [{ candidateExact: false }],
+    );
     const finalization = new PrismaReaderSummaryRecoveryFinalization(
       prismaClient(recoveryFinalizationTransaction(queryRaw), queryRaw),
     );
@@ -178,7 +202,11 @@ describe("PrismaReaderSummaryRecoveryFinalization", () => {
     await expect(finalization.finalize(fixture.command)).rejects.toThrow(
       "candidate conflicts with durable state",
     );
-    expect(queryRaw).toHaveBeenCalledTimes(1);
+    expect(queryRaw).toHaveBeenCalledTimes(2);
+    expect(String(queryRaw.mock.calls[0]?.[0])).toContain("artifact_insert");
+    expect(String(queryRaw.mock.calls[1]?.[0])).toContain(
+      'AS "candidateExact"',
+    );
   });
 
   it("rolls candidate staging back when finalization partially fails", async () => {
@@ -188,6 +216,9 @@ describe("PrismaReaderSummaryRecoveryFinalization", () => {
     const queryRaw = jest.fn(async (...args: readonly unknown[]) => {
       if (String(args[0]).includes("artifact_insert")) {
         durableCandidates.push(fixture.publicationPayload.readerSummaryJobId);
+        return [{ artifactInserted: 1n, jobInserted: 1n }];
+      }
+      if (String(args[0]).includes('AS "candidateExact"')) {
         return [{ candidateExact: true }];
       }
       throw new Error("fixture finalization partial failure");

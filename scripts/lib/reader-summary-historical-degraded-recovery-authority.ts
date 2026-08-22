@@ -1,22 +1,26 @@
 import { createHash } from "node:crypto";
 import {
-  ensureSecureRecoveryEvidenceParent,
   installSecureRecoveryEvidenceFile,
   readSecureRecoveryEvidenceFile,
+  resolveRecoveryEvidencePath,
 } from "./reader-summary-recovery-evidence-secure-file";
 
 export const historicalDegradedRecoveryAuthorityFormat =
-  "reader-summary-historical-degraded-recovery-authority-v1";
+  "reader-summary-historical-degraded-recovery-authority-v2";
 export const historicalDegradedRecoveryTenantId =
   "00000000-0000-7000-8000-000000006101";
 export const historicalDegradedRecoveryWorkspaceId =
   "00000000-0000-7000-8000-000000006102";
 export const historicalDegradedRecoveryReason =
   "The requested UTC day has no canonical GitHub projection; publish the already collected non-GitHub summary with limited source disclosure.";
+export const historicalDegradedRecoveryXBackfillReceiptFormat =
+  "reader-summary-historical-x-backfill-receipt-v1";
 
 const allowedDays = Object.freeze({
   "2026-08-18": Object.freeze({
     count: 277,
+    xBackfillRowCount: 72,
+    xBaseRowCount: 0,
     providerCounts: Object.freeze({
       "hacker-news": 100,
       reddit: 79,
@@ -26,6 +30,8 @@ const allowedDays = Object.freeze({
   }),
   "2026-08-19": Object.freeze({
     count: 303,
+    xBackfillRowCount: 77,
+    xBaseRowCount: 10,
     providerCounts: Object.freeze({
       "hacker-news": 99,
       reddit: 90,
@@ -41,6 +47,23 @@ const githubOnlyCodes = new Set([
 ]);
 
 export type HistoricalDegradedRecoveryDate = keyof typeof allowedDays;
+
+export type HistoricalDegradedRecoveryEvidenceArtifact =
+  | "authority"
+  | "collection-artifact"
+  | "collection-quality-report"
+  | "dataset-manifest"
+  | "x-backfill-receipt";
+
+const evidenceFileNames: Readonly<
+  Record<HistoricalDegradedRecoveryEvidenceArtifact, string>
+> = Object.freeze({
+  authority: "authority.json",
+  "collection-artifact": "collection-artifact.json",
+  "collection-quality-report": "collection-quality-report.json",
+  "dataset-manifest": "dataset-manifest.json",
+  "x-backfill-receipt": "x-backfill-receipt.json",
+});
 
 export const historicalDegradedRecoveryExpectedDataset = (value: string) =>
   allowedDays[exactAllowedDate(value)];
@@ -98,6 +121,11 @@ export type HistoricalDegradedRecoveryAuthority = Readonly<{
     collectionArtifactSha256: string;
     collectionQualityReportSha256: string;
     datasetManifestSha256: string;
+    xBackfillReceipt: Readonly<{
+      artifactFormat: typeof historicalDegradedRecoveryXBackfillReceiptFormat;
+      rowCount: number;
+      sha256: string;
+    }>;
   }>;
   dataset: HistoricalDegradedRecoveryDatasetSnapshot;
   githubZero: HistoricalDegradedRecoveryGitHubZero;
@@ -119,6 +147,7 @@ export type HistoricalDegradedRecoveryPreparation = Readonly<{
   collectionArtifactBytes: Buffer;
   collectionQualityReportBytes: Buffer;
   datasetManifestBytes: Buffer;
+  xBackfillReceiptBytes: Buffer;
   dataset: HistoricalDegradedRecoveryDatasetSnapshot;
   githubZero: HistoricalDegradedRecoveryGitHubZero;
   servingAuthority: Readonly<Record<string, unknown>>;
@@ -130,6 +159,10 @@ export const prepareHistoricalDegradedRecoveryAuthority = (
 ): Readonly<{ authority: HistoricalDegradedRecoveryAuthority; bytes: Buffer; sha256: string }> => {
   const requestedUtcDate = exactAllowedDate(input.requestedUtcDate);
   const expected = allowedDays[requestedUtcDate];
+  const xBackfillReceipt = verifyHistoricalDegradedRecoveryXBackfillReceiptBytes({
+    requestedUtcDate,
+    bytes: input.xBackfillReceiptBytes,
+  });
   if (input.sourceCandidates.length !== 1) {
     throw new Error("Historical degraded recovery requires exactly one linked rejected source job/artifact");
   }
@@ -183,6 +216,11 @@ export const prepareHistoricalDegradedRecoveryAuthority = (
       collectionArtifactSha256: sha256(input.collectionArtifactBytes),
       collectionQualityReportSha256: sha256(input.collectionQualityReportBytes),
       datasetManifestSha256: sha256(input.datasetManifestBytes),
+      xBackfillReceipt: {
+        artifactFormat: xBackfillReceipt.artifactFormat,
+        rowCount: xBackfillReceipt.insertedRowCount,
+        sha256: sha256(input.xBackfillReceiptBytes),
+      },
     },
     dataset: canonicalObject(input.dataset),
     githubZero: canonicalObject(input.githubZero),
@@ -204,26 +242,117 @@ export const prepareHistoricalDegradedRecoveryAuthority = (
 };
 
 export const installHistoricalDegradedRecoveryAuthority = (params: {
-  readonly path: string;
+  readonly requestedUtcDate: string;
+  readonly bytes: Buffer;
+}): "installed" | "replayed" =>
+  installHistoricalDegradedRecoveryEvidence({
+    requestedUtcDate: params.requestedUtcDate,
+    artifact: "authority",
+    bytes: params.bytes,
+  });
+
+export const installHistoricalDegradedRecoveryEvidence = (params: {
+  readonly requestedUtcDate: string;
+  readonly artifact: HistoricalDegradedRecoveryEvidenceArtifact;
   readonly bytes: Buffer;
 }): "installed" | "replayed" =>
   installSecureRecoveryEvidenceFile({
-    ...params,
-    label: "Historical degraded recovery authority",
+    relativePath: historicalDegradedRecoveryEvidenceRelativePath(
+      params.requestedUtcDate,
+      params.artifact,
+    ),
+    label: `Historical degraded recovery ${params.artifact}`,
+    bytes: params.bytes,
   });
 
 export const readSecureHistoricalDegradedRecoveryFile = (
-  path: string,
-  label: string,
+  requestedUtcDate: string,
+  artifact: HistoricalDegradedRecoveryEvidenceArtifact,
 ): Buffer =>
   readSecureRecoveryEvidenceFile({
-    path,
-    label: `Historical degraded recovery ${label}`,
+    relativePath: historicalDegradedRecoveryEvidenceRelativePath(
+      requestedUtcDate,
+      artifact,
+    ),
+    label: `Historical degraded recovery ${artifact}`,
   });
 
-export const ensureSecureHistoricalDegradedRecoveryAuthorityParent = (
-  path: string,
-): void => ensureSecureRecoveryEvidenceParent(path);
+export const historicalDegradedRecoveryEvidenceRelativePath = (
+  requestedUtcDate: string,
+  artifact: HistoricalDegradedRecoveryEvidenceArtifact,
+): string =>
+  `reader-summary/historical-degraded-recovery/${exactAllowedDate(requestedUtcDate)}/${evidenceFileNames[artifact]}`;
+
+export const historicalDegradedRecoveryEvidencePath = (
+  requestedUtcDate: string,
+  artifact: HistoricalDegradedRecoveryEvidenceArtifact,
+): string => resolveRecoveryEvidencePath(
+  historicalDegradedRecoveryEvidenceRelativePath(requestedUtcDate, artifact),
+);
+
+export const assertHistoricalDegradedRecoveryXBackfillReceipt = (params: {
+  readonly authority: HistoricalDegradedRecoveryAuthority;
+  readonly bytes: Buffer;
+}): void => {
+  const expected = allowedDays[params.authority.requestedUtcDate];
+  const receipt = verifyHistoricalDegradedRecoveryXBackfillReceiptBytes({
+    requestedUtcDate: params.authority.requestedUtcDate,
+    bytes: params.bytes,
+  });
+  if (
+    params.authority.inputs.xBackfillReceipt.artifactFormat !==
+      receipt.artifactFormat ||
+    params.authority.inputs.xBackfillReceipt.rowCount !==
+      expected.xBackfillRowCount ||
+    params.authority.inputs.xBackfillReceipt.sha256 !== sha256(params.bytes)
+  ) {
+    throw new Error(
+      "Historical degraded recovery X-backfill receipt binding is invalid",
+    );
+  }
+};
+
+export const verifyHistoricalDegradedRecoveryXBackfillReceiptBytes = (params: {
+  readonly requestedUtcDate: string;
+  readonly bytes: Buffer;
+}): Readonly<{
+  artifactFormat: typeof historicalDegradedRecoveryXBackfillReceiptFormat;
+  insertedRowCount: number;
+}> => {
+  const requestedUtcDate = exactAllowedDate(params.requestedUtcDate);
+  const expected = allowedDays[requestedUtcDate];
+  let value: unknown;
+  try {
+    value = JSON.parse(params.bytes.toString("utf8"));
+  } catch {
+    throw new Error("Historical degraded recovery X-backfill receipt is not JSON");
+  }
+  const receipt = canonicalObject(value);
+  const rows = receipt.rows;
+  if (
+    receipt.artifactFormat !== historicalDegradedRecoveryXBackfillReceiptFormat ||
+    receipt.tenantId !== historicalDegradedRecoveryTenantId ||
+    receipt.workspaceId !== historicalDegradedRecoveryWorkspaceId ||
+    receipt.requestedUtcDate !== requestedUtcDate ||
+    receipt.providerKey !== "x-twitter" ||
+    receipt.baseRowCount !== expected.xBaseRowCount ||
+    receipt.insertedRowCount !== expected.xBackfillRowCount ||
+    receipt.finalRowCount !== expected.providerCounts["x-twitter"] ||
+    !Array.isArray(rows) ||
+    rows.length !== expected.xBackfillRowCount ||
+    rows.some((row) =>
+      row === null || typeof row !== "object" || Array.isArray(row)) ||
+    new Set(rows.map((row) => stableJson(row))).size !== rows.length
+  ) {
+    throw new Error(
+      "Historical degraded recovery X-backfill receipt row contract is invalid",
+    );
+  }
+  return Object.freeze({
+    artifactFormat: historicalDegradedRecoveryXBackfillReceiptFormat,
+    insertedRowCount: expected.xBackfillRowCount,
+  });
+};
 
 export const verifyHistoricalDegradedRecoveryAuthorityBytes = (params: {
   readonly bytes: Buffer;
@@ -261,6 +390,18 @@ export const verifyHistoricalDegradedRecoveryAuthorityBytes = (params: {
       stableJson(allowedDays[date].providerCounts)
   ) {
     throw new Error("Historical degraded recovery authority dataset is invalid");
+  }
+  if (
+    record.inputs === undefined ||
+    record.inputs.xBackfillReceipt?.artifactFormat !==
+      historicalDegradedRecoveryXBackfillReceiptFormat ||
+    record.inputs.xBackfillReceipt?.rowCount !==
+      allowedDays[date].xBackfillRowCount ||
+    !sha256Pattern.test(record.inputs.xBackfillReceipt.sha256)
+  ) {
+    throw new Error(
+      "Historical degraded recovery X-backfill receipt binding is invalid",
+    );
   }
   assertGitHubZero(record.githubZero, date);
   const core = Object.fromEntries(

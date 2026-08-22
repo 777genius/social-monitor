@@ -9,10 +9,15 @@ import {
   sha256,
 } from "./reader-summary-historical-degraded-recovery-authority";
 import {
+  buildHistoricalDegradedRecoveryCommand,
   executeHistoricalDegradedRecovery,
   type HistoricalDegradedRecoveryFiles,
   type HistoricalDegradedRecoveryLiveVerifier,
 } from "./reader-summary-historical-degraded-recovery-execution";
+import {
+  historicalDegradedRecoveryPublicationBinding,
+  verifyHistoricalDegradedRecoveryPublicationSlot,
+} from "./reader-summary-historical-degraded-recovery-slot";
 
 describe("historical degraded recovery execution", () => {
   it("publishes once, replays the same receipt, and never mutates the source", async () => {
@@ -25,6 +30,7 @@ describe("historical degraded recovery execution", () => {
       authorityBytes: prepared.bytes,
       authoritySha256: prepared.sha256,
       files,
+      preflightAt: new Date("2026-08-22T12:00:00.000Z"),
       liveVerifier: liveVerifier(source),
       finalization,
     };
@@ -63,6 +69,10 @@ describe("historical degraded recovery execution", () => {
       correlationId: finalization.lastReadyEvent?.payload.readerSummaryJobId,
       causationId: finalization.lastReadyEvent?.payload.readerSummaryJobId,
     });
+    expect(finalization.lastBinding).toMatchObject({
+      requestedUtcDate: "2026-08-18",
+      requestedAt: "2026-08-18T00:00:00.000Z",
+    });
     expect(source.toSnapshot()).toEqual(sourceBefore);
   });
 
@@ -80,6 +90,7 @@ describe("historical degraded recovery execution", () => {
           ...files,
           datasetManifestBytes: Buffer.from("mutated"),
         },
+        preflightAt: new Date("2026-08-22T12:00:00.000Z"),
         liveVerifier: liveVerifier(source),
         finalization: new IdempotentFinalization(),
       }),
@@ -103,6 +114,7 @@ describe("historical degraded recovery execution", () => {
         authorityBytes: prepared.bytes,
         authoritySha256: prepared.sha256,
         files,
+        preflightAt: new Date("2026-08-22T12:00:00.000Z"),
         liveVerifier,
         finalization: new IdempotentFinalization(),
       }),
@@ -127,10 +139,51 @@ describe("historical degraded recovery execution", () => {
       authorityBytes: prepared.bytes,
       authoritySha256: prepared.sha256,
       files,
+      preflightAt: new Date("2026-08-22T12:00:00.000Z"),
       liveVerifier: liveVerifier(contaminated),
       finalization: new IdempotentFinalization(),
     })).rejects.toThrow("source contains GitHub evidence");
     expect(save).not.toHaveBeenCalled();
+  });
+
+  it("checks receipt scalar tenant and workspace scope in slot verification", async () => {
+    const source = sourceArtifact();
+    const files = fixtureFiles();
+    const prepared = authorityFor(source, files);
+    const built = buildHistoricalDegradedRecoveryCommand({
+      authority: prepared.authority,
+      authoritySha256: prepared.sha256,
+      live: await liveVerifier(source).verify({
+        authority: prepared.authority,
+        authoritySha256: prepared.sha256,
+        files,
+      }),
+    });
+    const binding = historicalDegradedRecoveryPublicationBinding(
+      built.command,
+      prepared.authority.requestedUtcDate,
+    );
+    let sql = "";
+    const client = {
+      $queryRaw: async (strings: TemplateStringsArray) => {
+        sql = strings.join("?");
+        return [{
+          publicationCount: 0,
+          exactPublicationCount: 0,
+          exactOutboxCount: 0,
+          completedCandidateCount: 0,
+          slotCount: 1,
+          currentPublicationId: null,
+        }];
+      },
+    };
+    await expect(verifyHistoricalDegradedRecoveryPublicationSlot({
+      client: client as never,
+      authority: prepared.authority,
+      binding,
+    })).resolves.toBe("empty");
+    expect(sql).toContain("receipt.tenant_id =");
+    expect(sql).toContain("receipt.workspace_id =");
   });
 });
 
@@ -145,6 +198,8 @@ class IdempotentFinalization {
   lastReadyEvent:
     | Parameters<ReaderSummaryRecoveryFinalizationPort["finalize"]>[0]["publication"]["readyEvent"]
     | undefined;
+  lastBinding: ReturnType<typeof historicalDegradedRecoveryPublicationBinding>
+    | undefined;
   private identity: string | undefined;
 
   async finalize(
@@ -156,6 +211,10 @@ class IdempotentFinalization {
     this.lastArtifact = command.publication.artifact;
     this.lastCandidateJob = command.candidate?.runningJob;
     this.lastReadyEvent = command.publication.readyEvent;
+    this.lastBinding = historicalDegradedRecoveryPublicationBinding(
+      command,
+      "2026-08-18",
+    );
     if (this.identity === undefined) {
       this.identity = current;
       this.publicationCount += 1;
@@ -235,6 +294,17 @@ const authorityFor = (
   existingPublicationCount: 0,
   activeSlotCount: 0,
   ...files,
+  xBackfillReceiptBytes: Buffer.from(JSON.stringify({
+    artifactFormat: "reader-summary-historical-x-backfill-receipt-v1",
+    tenantId: "00000000-0000-7000-8000-000000006101",
+    workspaceId: "00000000-0000-7000-8000-000000006102",
+    requestedUtcDate: "2026-08-18",
+    providerKey: "x-twitter",
+    baseRowCount: 0,
+    insertedRowCount: 72,
+    finalRowCount: 72,
+    rows: Array.from({ length: 72 }, (_, index) => ({ sourceItemId: index })),
+  })),
   dataset: {
     liveCount: 277,
     uniqueCount: 277,
