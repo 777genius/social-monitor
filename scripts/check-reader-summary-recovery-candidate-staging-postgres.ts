@@ -204,6 +204,7 @@ const candidateFixture = (
   const jobId = `10000000-0000-4000-8000-${idSuffix}`;
   const artifactId = `20000000-0000-4000-8000-${idSuffix}`;
   const requestedAt = new Date("2026-07-05T10:00:00.000Z");
+  const recoveryStartedAt = new Date("2026-07-05T12:00:00.000Z");
   const completedAt = new Date("2026-07-06T00:00:00.000Z");
   const period = {
     cadence: "daily" as const,
@@ -275,7 +276,7 @@ const candidateFixture = (
     status: "no_signal" as const,
     idempotencyKey: `candidate-stage:${jobId}`,
     requestedAt,
-    startedAt: requestedAt,
+    startedAt: recoveryStartedAt,
     completedAt,
     readerSummaryId: artifactId,
   };

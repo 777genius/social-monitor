@@ -112,6 +112,7 @@ const stageRecoveryCandidate = async (
 ): Promise<void> => {
   if (command.candidate === undefined) return;
   const job = command.candidate.runningJob.toSnapshot();
+  const finalJob = command.publication.finalJob.toSnapshot();
   const publication = buildReaderSummaryPublicationPayload(command.publication);
   if (
     job.status !== "running" ||
@@ -119,7 +120,7 @@ const stageRecoveryCandidate = async (
     job.tenantId !== publication.tenantId ||
     job.workspaceId !== publication.workspaceId ||
     job.requestedAt.toISOString() !== publication.requestedAt ||
-    job.startedAt?.toISOString() !== publication.requestedAt
+    job.startedAt?.toISOString() !== finalJob.startedAt?.toISOString()
   ) {
     throw new Error("Reader summary recovery candidate does not bind publication");
   }
@@ -175,6 +176,7 @@ const stageRecoveryCandidate = async (
         (publication->>'publishedAt')::TIMESTAMPTZ,
         (publication->>'publishedAt')::TIMESTAMPTZ
       FROM candidate ON CONFLICT (id) DO NOTHING
+      RETURNING 1
     ), job_insert AS (
       INSERT INTO reader_summary_jobs (
         id, tenant_id, workspace_id, scope_type, scope_key, interest_id,
@@ -196,6 +198,7 @@ const stageRecoveryCandidate = async (
         (job->>'requestedAt')::TIMESTAMPTZ,
         (job->>'requestedAt')::TIMESTAMPTZ
       FROM candidate ON CONFLICT (id) DO NOTHING
+      RETURNING 1
     )
     SELECT
       (SELECT COUNT(*) FROM artifact_insert) AS "artifactInserted",

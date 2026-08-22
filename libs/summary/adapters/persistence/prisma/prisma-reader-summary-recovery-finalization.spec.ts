@@ -662,7 +662,7 @@ const ordinaryPublicationCommand = (): ReaderSummaryPublicationCommand => {
     status: "completed",
     idempotencyKey: "reader-summary-recovery-ordinary-publication",
     requestedAt: new Date("2026-07-10T10:00:00.000Z"),
-    startedAt: new Date("2026-07-10T10:00:00.000Z"),
+    startedAt: new Date("2026-07-10T12:00:00.000Z"),
     completedAt,
     readerSummaryId: snapshot.readerSummaryId,
   });
