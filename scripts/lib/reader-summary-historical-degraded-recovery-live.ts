@@ -177,10 +177,16 @@ export class PrismaHistoricalDegradedRecoveryLiveVerifier
       authority: params.authority,
       binding,
     });
-    return assertHistoricalDegradedRecoveryCurrentPreflight({
+    const currentSlot = assertHistoricalDegradedRecoveryCurrentPreflight({
       slot,
       files: params.files,
       preflightAt: params.preflightAt,
+    });
+    return assertHistoricalDegradedRecoveryCurrentGitHubZero({
+      slot: currentSlot,
+      requestedUtcDate: params.authority.requestedUtcDate,
+      observedThrough: params.preflightAt,
+      assertZero: (bounds) => this.readGitHubZero(bounds),
     });
   }
 
@@ -489,6 +495,28 @@ export const assertHistoricalDegradedRecoveryCurrentPreflight = (params: {
       "Historical degraded recovery first publication requires current preflight inputs",
     );
   }
+  return params.slot;
+};
+
+export const assertHistoricalDegradedRecoveryCurrentGitHubZero = async (
+  params: Readonly<{
+    slot: "empty" | "replay";
+    requestedUtcDate: string;
+    observedThrough: Date;
+    assertZero: (bounds: Readonly<{
+      startedAt: Date;
+      endedAt: Date;
+      observedThrough: Date;
+    }>) => Promise<unknown>;
+  }>,
+): Promise<"empty" | "replay"> => {
+  if (params.slot === "replay") return params.slot;
+  const startedAt = exactStart(params.requestedUtcDate);
+  await params.assertZero({
+    startedAt,
+    endedAt: new Date(startedAt.getTime() + 86_400_000),
+    observedThrough: params.observedThrough,
+  });
   return params.slot;
 };
 

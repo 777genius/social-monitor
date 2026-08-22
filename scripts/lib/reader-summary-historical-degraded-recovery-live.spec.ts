@@ -2,6 +2,7 @@ import type { ReaderSummaryGitHubProjectionItem } from "@social-monitor/summary/
 
 import { sha256 } from "./reader-summary-historical-degraded-recovery-authority";
 import {
+  assertHistoricalDegradedRecoveryCurrentGitHubZero,
   assertHistoricalDegradedRecoveryCurrentPreflight,
   buildHistoricalDegradedGitHubZero,
   PrismaHistoricalDegradedRecoveryLiveVerifier,
@@ -219,6 +220,39 @@ describe("historical degraded recovery live GitHub zero", () => {
       files,
       preflightAt: new Date("2027-01-01T00:00:00.000Z"),
     })).toBe("replay");
+  });
+
+  it("checks GitHub through the current first-publish preflight but skips exact replay", async () => {
+    const observedThrough = new Date("2026-08-22T12:00:00.000Z");
+    const assertZero = jest.fn(async () => undefined);
+    await expect(assertHistoricalDegradedRecoveryCurrentGitHubZero({
+      slot: "empty",
+      requestedUtcDate: "2026-08-18",
+      observedThrough,
+      assertZero,
+    })).resolves.toBe("empty");
+    expect(assertZero).toHaveBeenCalledWith({
+      startedAt: new Date("2026-08-18T00:00:00.000Z"),
+      endedAt: new Date("2026-08-19T00:00:00.000Z"),
+      observedThrough,
+    });
+
+    assertZero.mockRejectedValueOnce(new Error("requested-day GitHub row"));
+    await expect(assertHistoricalDegradedRecoveryCurrentGitHubZero({
+      slot: "empty",
+      requestedUtcDate: "2026-08-18",
+      observedThrough,
+      assertZero,
+    })).rejects.toThrow("requested-day GitHub row");
+
+    assertZero.mockClear();
+    await expect(assertHistoricalDegradedRecoveryCurrentGitHubZero({
+      slot: "replay",
+      requestedUtcDate: "2026-08-18",
+      observedThrough: new Date("2027-01-01T00:00:00.000Z"),
+      assertZero,
+    })).resolves.toBe("replay");
+    expect(assertZero).not.toHaveBeenCalled();
   });
 
   it("allows only an empty slot or the exact deterministic replay", () => {
