@@ -30,7 +30,7 @@ describe("production-day execution request", () => {
     );
 
     expect(runner).not.toContain("migrate:deploy");
-    expect(deploy).toContain("exec npm run migrate:deploy");
+    expect(deploy).toContain("npm run migrate:deploy");
   });
 
   it("defaults to live production without reuse flags", () => {

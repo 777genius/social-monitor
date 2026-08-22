@@ -208,6 +208,55 @@ describe("Prisma feed signal baseline materialization", () => {
     ).rejects.toThrow("source item binding does not match");
   });
 
+  it("loads a fair bounded cohort window with one native ranked query", async () => {
+    const queryRaw = jest.fn(async (...queryArgs: readonly [string, ...unknown[]]) => {
+      expect(queryArgs.length).toBeGreaterThan(0);
+      return [
+      {
+        feedItemId: "feed-tiny",
+        interestId: "topic-1",
+        providerKey: "reddit",
+        sourceKey: "r/tiny-saas",
+        contentType: "post",
+        strength: 70,
+        publishedAt: now,
+        observedAt: now,
+      },
+      {
+        feedItemId: "feed-programming",
+        interestId: "topic-1",
+        providerKey: "reddit",
+        sourceKey: "r/programming",
+        contentType: "post",
+        strength: 1500,
+        publishedAt: now,
+        observedAt: now,
+      },
+      ];
+    });
+    const baseline = new PrismaFeedSignalBaselineRepository({
+      $queryRawUnsafe: queryRaw,
+    } as unknown as PrismaFeedClient);
+
+    await expect(baseline.listCohortSamples({
+      tenantId: tenantId("00000000-0000-7000-8000-000000000001"),
+      workspaceId: workspaceId("00000000-0000-7000-8000-000000000002"),
+      interestId: "00000000-0000-7000-8000-000000000003",
+      observedAfter: new Date("2026-06-01T00:00:00.000Z"),
+      limit: 2_000,
+      cohortFilters: [
+        { providerKey: "reddit", sourceKey: "r/tiny-saas", contentType: "post" },
+        { providerKey: "reddit", sourceKey: "r/programming", contentType: "post" },
+      ],
+    })).resolves.toEqual([
+      expect.objectContaining({ feedItemId: "feed-tiny" }),
+      expect.objectContaining({ feedItemId: "feed-programming" }),
+    ]);
+    expect(queryRaw).toHaveBeenCalledTimes(1);
+    expect(queryRaw.mock.calls[0]?.[0]).toContain("row_number() OVER");
+    expect(queryRaw.mock.calls[0]?.[0]).toContain("ORDER BY cohort_rank ASC");
+  });
+
   it("removes stale samples when a same-provider projected item no longer has comparable provider metrics", async () => {
     const prisma = new FakePrismaFeedClient();
     const ids = new SequenceIdGenerator([
@@ -376,7 +425,7 @@ class FakePrismaFeedClient implements PrismaFeedClient {
               title: args.update.title,
               bodyPreview: args.update.bodyPreview,
               authorHandle: args.update.authorHandle ?? null,
-              publishedAt: args.update.publishedAt,
+              publishedAt: existing.publishedAt,
               observedAt: existing.observedAt,
               providerMetadata:
                 args.update.providerMetadata === undefined

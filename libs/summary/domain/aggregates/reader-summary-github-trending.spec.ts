@@ -1,7 +1,7 @@
 import { buildReaderSummary } from "./reader-summary";
 
 describe("reader summary GitHub Trending projection", () => {
-  it("keeps the exact Top 10 and builds Watch from that same board", () => {
+  it("keeps legacy GitHub Trending page evidence out of every reader lane", () => {
     const ranks = [...Array.from({ length: 10 }, (_, index) => index + 1), 12];
     const readerSummary = buildReaderSummary({
       headline: "GitHub Trending today",
@@ -92,41 +92,10 @@ describe("reader summary GitHub Trending projection", () => {
       expect.objectContaining({
         id: "github-trending",
         kind: "watch",
-        text: [
-          "- **calesthio/openmontage** (#1): +3,703 stars today.",
-          "- **example/repository-2** (#2): +3,702 stars today.",
-          "- **example/repository-3** (#3): +3,701 stars today.",
-        ].join("\n"),
         citationIds: ["citation-1", "citation-2", "citation-3"],
       }),
     ]);
-    expect(readerSummary.selectedPosts).toHaveLength(10);
-    expect(readerSummary.selectedPosts?.map((post) => post.title)).toEqual([
-      "calesthio/OpenMontage",
-      ...Array.from(
-        { length: 9 },
-        (_, index) => `example/repository-${index + 2}`,
-      ),
-    ]);
-    expect(
-      readerSummary.selectedPosts?.map((post) =>
-        Number(
-          post.providerMetrics
-            .find(({ label }) => label === "GitHub Trending today")
-            ?.value.match(/#(\d+)/u)?.[1],
-        ),
-      ),
-    ).toEqual(Array.from({ length: 10 }, (_, index) => index + 1));
-    expect(
-      new Set(
-        readerSummary.selectedPosts?.map((post) => post.canonicalUrl) ?? [],
-      ).size,
-    ).toBe(10);
-    expect(
-      readerSummary.narrativeSections?.flatMap(
-        (section) => section.citationIds,
-      ),
-    ).not.toContain("citation-12");
+    expect(readerSummary.selectedPosts).toEqual([]);
   });
 
   it("removes authored Watch evidence outside the canonical Top 10", () => {
@@ -199,6 +168,16 @@ describe("reader summary GitHub Trending projection", () => {
           whyImportant: ["Agent isolation reduces local security risk."],
         },
       ],
+      sourceWindow: {
+        windowId: "github-trending-filter-window",
+        startedAt: new Date("2026-07-19T00:00:00.000Z"),
+        endedAt: new Date("2026-07-20T00:00:00.000Z"),
+        periodStartedAt: new Date("2026-07-19T00:00:00.000Z"),
+        periodEndedAt: new Date("2026-07-20T00:00:00.000Z"),
+        ingestionCutoff: new Date("2026-07-20T00:00:00.000Z"),
+        selectedFeedItemIds: ["feed-primary", "feed-github"],
+        storyClusterIds: ["cluster-primary"],
+      },
       selectedEvidence: [
         {
           feedItemId: "feed-primary",
@@ -213,6 +192,37 @@ describe("reader summary GitHub Trending projection", () => {
           observedAt: new Date("2026-07-19T09:00:00.000Z"),
           score: 2.4,
           whyImportant: ["Agent isolation reduces local security risk."],
+          providerMetricLabels: [{ label: "Score", value: "50" }],
+          contentQuality: {
+            qualityScore: 0.9,
+            interestRelevanceScore: 0.9,
+            engagementIntegrityScore: 0.9,
+            eligibleForSummary: true,
+            eligibleForTopRead: true,
+            needsLlmReview: false,
+            decision: "eligible",
+            flags: [],
+            reason: "Eligible production promotion fixture.",
+          },
+          promotionFacts: {
+            contentKind: "original_post",
+            canonicalIdentity: "story:agent-runtime-isolation",
+            officialAccount: false,
+            trustedAuthor: false,
+            safetyValid: true,
+            freshnessValid: true,
+            freshnessProvenance: {
+              status: "observed",
+              publishedAt: new Date("2026-07-19T08:00:00.000Z"),
+              observedAt: new Date("2026-07-19T09:00:00.000Z"),
+              ingestionCutoff: new Date("2026-07-20T00:00:00.000Z"),
+            },
+            metrics: {
+              provider: "reddit",
+              score: 50,
+              upvoteRatio: 0.6,
+            },
+          },
         },
         {
           feedItemId: "feed-github",

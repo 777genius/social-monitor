@@ -239,8 +239,12 @@ describe("reader summary weekly review admission", () => {
 const fakeManifestStore = (
   manifest: ReturnType<typeof reviewManifestFor> | null,
 ): jest.Mocked<ReaderSummaryWeeklyReviewManifestPort> => ({
-  findBySeal: jest.fn(async () => manifest),
-  persist: jest.fn(async () => {
+  findBySeal: jest.fn(async (query) => {
+    void query;
+    return manifest;
+  }),
+  persist: jest.fn(async (command) => {
+    void command;
     throw new Error("review admission attempted a manifest write");
   }),
 });
@@ -268,13 +272,18 @@ const persistedManifestRow = (manifest: ReturnType<typeof reviewManifestFor>) =>
 });
 
 const fakeRuntime = (): jest.Mocked<AgentRuntimeClientPort> => ({
-  runTask: jest.fn(async () => {
+  runTask: jest.fn(async (command, options) => {
+    void command;
+    void options;
     throw new Error("review admission attempted a provider call");
   }),
-  checkHealth: jest.fn(async () => ({
-    status: "serving",
-    runtimeEngine: "fixture",
-    runtimeVersion: "fixture",
-    warnings: [],
-  })),
+  checkHealth: jest.fn(async (service) => {
+    void service;
+    return {
+      status: "serving" as const,
+      runtimeEngine: "fixture",
+      runtimeVersion: "fixture",
+      warnings: [],
+    };
+  }),
 });

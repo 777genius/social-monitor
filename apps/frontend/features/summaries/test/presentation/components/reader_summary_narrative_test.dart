@@ -168,7 +168,7 @@ void main() {
     );
   });
 
-  testWidgets('renders a unique readable GitHub Watch card with citations', (
+  testWidgets('renders GitHub Trending in its isolated cited appendix', (
     tester,
   ) async {
     final summary = const SummaryMapper().readerSummaryToDomain(
@@ -241,7 +241,6 @@ void main() {
         .join('\n');
 
     expect(find.text('GitHub Trending'), findsOneWidget);
-    expect(find.text('Watch'), findsOneWidget);
     expect(
       RegExp(
         'codecrafters-io/build-your-own-x',

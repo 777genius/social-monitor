@@ -14,10 +14,40 @@ const dailyPurposes = [
   "social_monitor.reader_summary.topic_map.label",
   "social_monitor.reader_summary.topic_map.verify_relations",
   "social_monitor.reader_summary.verify_story_relations",
+  "social_monitor.reader_summary.verify_related_topic_relations",
   "social_monitor.reader_summary.weekly.review",
 ] as const;
 
 describe("subscription runtime purpose policy", () => {
+  it("admits only the exact dedicated related-topic relation markers", () => {
+    const exact = request({
+      purpose: "social_monitor.reader_summary.verify_related_topic_relations",
+      controlsJson: JSON.stringify({
+        outputSchemaName: "social_monitor_reader_summary_related_topic_relations",
+        schemaVersion: "reader_summary.related_topic_relation.v1",
+      }),
+      metadata: {
+        taskRole: "related_topic_relation",
+        verificationLane: "related_topic",
+      },
+    });
+    expect(() => admitSubscriptionRuntimeRequest(exact)).not.toThrow();
+
+    for (const malformed of [
+      { ...exact, controlsJson: JSON.stringify({
+        outputSchemaName: "social_monitor_reader_summary_story_relations",
+        schemaVersion: "reader_summary.related_topic_relation.v1",
+      }) },
+      { ...exact, controlsJson: JSON.stringify({
+        outputSchemaName: "social_monitor_reader_summary_related_topic_relations",
+        schemaVersion: "reader_summary.related_topic_relation.v2",
+      }) },
+      { ...exact, metadata: { ...exact.metadata, taskRole: "unknown_relation" } },
+    ]) {
+      expect(() => admitSubscriptionRuntimeRequest(malformed)).toThrow();
+    }
+  });
+
   it.each(dailyPurposes)(
     "keeps %s on the frozen daily structured-output profile",
     (purpose) => {
@@ -154,21 +184,39 @@ describe("subscription runtime purpose policy", () => {
 
 const request = (
   override: Partial<AgentRuntimeExecutionRequest> = {},
-): AgentRuntimeExecutionRequest => ({
-  requestId: "request-1",
-  tenantId: "tenant-1",
-  workspaceId: "workspace-1",
-  correlationId: "correlation-1",
-  provider: "codex",
-  purpose: "social_monitor.reader_summary.generate",
-  systemPrompt: "Return the requested result.",
-  prompt: "Summarize.",
-  outputSchemaJson: '{"type":"object"}',
-  controlsJson: "{}",
-  timeoutMs: 1_000,
-  metadata: {},
-  ...override,
-});
+): AgentRuntimeExecutionRequest => {
+  const purpose = override.purpose ?? "social_monitor.reader_summary.generate";
+  const relatedDefaults = purpose ===
+    "social_monitor.reader_summary.verify_related_topic_relations"
+    ? {
+        controlsJson: JSON.stringify({
+          outputSchemaName:
+            "social_monitor_reader_summary_related_topic_relations",
+          schemaVersion: "reader_summary.related_topic_relation.v1",
+        }),
+        metadata: {
+          taskRole: "related_topic_relation",
+          verificationLane: "related_topic",
+        },
+      }
+    : {};
+  return {
+    requestId: "request-1",
+    tenantId: "tenant-1",
+    workspaceId: "workspace-1",
+    correlationId: "correlation-1",
+    provider: "codex",
+    purpose,
+    systemPrompt: "Return the requested result.",
+    prompt: "Summarize.",
+    outputSchemaJson: '{"type":"object"}',
+    controlsJson: "{}",
+    timeoutMs: 1_000,
+    metadata: {},
+    ...relatedDefaults,
+    ...override,
+  };
+};
 
 const policyPath = join(
   process.cwd(),

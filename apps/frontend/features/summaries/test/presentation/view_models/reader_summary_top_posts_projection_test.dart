@@ -1,244 +1,308 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:social_monitor_summaries/src/domain/aggregates/reader_summary.dart';
+import 'package:social_monitor_summaries/src/domain/entities/summary_citation.dart';
 import 'package:social_monitor_summaries/src/presentation/view_models/reader_summary_top_posts_projection.dart';
 
 import '../../support/top_posts_test_fixtures.dart';
 
 void main() {
-  test('dedupes the full editorial sequence before taking eight', () {
-    final curated = [
-      for (var index = 0; index < 8; index += 1)
-        topPostFixture(
-          title: 'Editorial $index',
-          canonicalUrl: index < 2
-              ? 'https://news.example/shared-editorial'
-              : 'https://news.example/editorial/$index',
-        ),
-    ];
-    final summary = topPostsSummaryFixture(
-      topReads: [
-        ...curated,
-        topPostFixture(
-          title: 'Legacy duplicate of curated',
-          canonicalUrl: 'https://news.example/shared-editorial/',
-        ),
-        topPostFixture(
-          title: 'Legacy position 10',
-          canonicalUrl: 'https://news.example/legacy/10',
-        ),
-      ],
-      selectedPosts: [
-        topPostFixture(
-          title: 'Selected duplicate of curated',
-          canonicalUrl:
-              'https://NEWS.example/shared-editorial?utm_source=selected',
-        ),
-        topPostFixture(
-          title: 'Selected duplicate of legacy',
-          canonicalUrl: 'https://news.example/legacy/10/',
-        ),
-        topPostFixture(title: 'Selected A'),
-        topPostFixture(title: '  selected   a  ', providerKey: ' REDDIT '),
-        topPostFixture(title: 'Selected B'),
-      ],
+  test('projects Cursor HN and X evidence as one existing story card', () {
+    final projection = readerSummaryTopPostsProjection(
+      _summary(
+        stories: [
+          _story(
+            id: 'story:cursor-agents',
+            title: 'Cursor adds background agents',
+            citations: const ['cursor-hn', 'cursor-x'],
+            providers: const ['hacker-news', 'x-twitter'],
+          ),
+        ],
+        evidence: [
+          _evidence(
+            title: 'Cursor adds background agents',
+            provider: 'hacker-news',
+            citation: 'cursor-hn',
+            storyClusterId: 'story:cursor-agents',
+            authorized: true,
+            citationIds: const ['cursor-hn', 'cursor-x'],
+            confirmedProviderKeys: const ['hacker-news', 'x-twitter'],
+            metrics: const [ProviderMetric(label: 'Points', value: '24')],
+          ),
+        ],
+      ),
     );
 
-    final projection = readerSummaryTopPostsProjection(summary);
-
-    expect(projection.curatedPosts.map((item) => item.title), [
-      'Editorial 0',
-      for (var index = 2; index < 8; index += 1) 'Editorial $index',
-      'Legacy position 10',
-    ]);
-    expect(projection.moreSelectedPosts.map((item) => item.title), [
-      'Selected A',
-      'Selected B',
-    ]);
-    expect(projection.curatedPosts, hasLength(8));
-    expect(
-      projection.items.map(readerSummaryTopPostIdentity).toSet(),
-      hasLength(projection.items.length),
-    );
-    expect(projection.githubTrendingPosts, isEmpty);
+    expect(projection.additionalNotableStories, hasLength(1));
+    final story = projection.additionalNotableStories.single;
+    expect(story.title, 'Cursor adds background agents');
+    expect(story.citationIds, ['cursor-hn', 'cursor-x']);
+    expect(story.confirmedProviderKeys, ['hacker-news', 'x-twitter']);
   });
 
-  test('does not promote selected posts into the editorial top eight', () {
-    final summary = topPostsSummaryFixture(
-      topReads: [
-        topPostFixture(
-          title: 'Curated 0',
-          canonicalUrl: 'https://news.example/curated/0',
-        ),
-        topPostFixture(
-          title: 'Duplicate curated 0',
-          canonicalUrl: 'https://news.example/curated/0/',
-        ),
-        for (var index = 1; index < 3; index += 1)
-          topPostFixture(
-            title: 'Curated $index',
-            canonicalUrl: 'https://news.example/curated/$index',
+  test('projects official watermark RSS and metricless HN as one card', () {
+    final projection = readerSummaryTopPostsProjection(
+      _summary(
+        stories: [
+          _story(
+            id: 'story:watermark',
+            title: 'Watermark standard ships',
+            citations: const ['watermark-official', 'watermark-hn'],
+            providers: const ['rss', 'hacker-news'],
           ),
-      ],
-      selectedPosts: [
-        topPostFixture(
-          title: 'Selected duplicate of curated',
-          canonicalUrl: 'https://news.example/curated/0?utm_source=selected',
-        ),
-        for (var index = 0; index < 9; index += 1)
-          topPostFixture(
-            title: 'Selected $index',
-            canonicalUrl: 'https://news.example/selected/$index',
+        ],
+        evidence: [
+          _evidence(
+            title: 'Watermark standard ships',
+            provider: 'rss',
+            citation: 'watermark-official',
+            storyClusterId: 'story:watermark',
+            authorized: true,
+            citationIds: const ['watermark-official', 'watermark-hn'],
           ),
-      ],
+        ],
+      ),
     );
 
-    final projection = readerSummaryTopPostsProjection(summary);
+    expect(projection.additionalNotableStories, hasLength(1));
+    expect(projection.additionalNotableStories.single.citationIds, [
+      'watermark-official',
+      'watermark-hn',
+    ]);
+  });
 
-    expect(projection.curatedPosts.map((item) => item.title), [
-      'Curated 0',
-      'Curated 1',
-      'Curated 2',
-    ]);
-    expect(projection.moreSelectedPosts.map((item) => item.title), [
-      for (var index = 0; index < 9; index += 1) 'Selected $index',
-    ]);
-    expect(projection.items, hasLength(12));
+  test('one weak Reddit card makes the whole promotion board unavailable', () {
+    final projection = readerSummaryTopPostsProjection(
+      _summary(
+        stories: [
+          _story(
+            id: 'story:cursor',
+            title: 'Cursor background agents',
+            citations: const ['cursor-hn'],
+            providers: const ['hacker-news'],
+          ),
+          _story(
+            id: 'story:reddit-question',
+            title: 'Which editor should I use?',
+            citations: const ['reddit-question'],
+            providers: const ['reddit'],
+          ),
+        ],
+        evidence: [
+          _evidence(
+            title: 'Cursor background agents',
+            provider: 'hacker-news',
+            citation: 'cursor-hn',
+            storyClusterId: 'story:cursor',
+            authorized: true,
+            metrics: const [ProviderMetric(label: 'Points', value: '28')],
+          ),
+          _evidence(
+            title: 'Which editor should I use for agents?',
+            provider: 'reddit',
+            citation: 'reddit-question',
+            metrics: const [
+              ProviderMetric(label: 'Score', value: '4'),
+              ProviderMetric(label: 'Comments', value: '2'),
+            ],
+          ),
+        ],
+      ),
+    );
+
+    expect(projection.items, isEmpty);
+  });
+
+  test('allows an empty additional notable story board without backfill', () {
+    final projection = readerSummaryTopPostsProjection(
+      _summary(
+        stories: [
+          _story(
+            id: 'story:weak',
+            title: 'Weak discussion',
+            citations: const ['weak-reddit'],
+            providers: const ['reddit'],
+          ),
+        ],
+        evidence: [
+          _evidence(
+            title: 'Weak discussion post',
+            provider: 'reddit',
+            citation: 'weak-reddit',
+          ),
+        ],
+      ),
+    );
+
+    expect(projection.additionalNotableStories, isEmpty);
+  });
+
+  test('fails closed for a legacy selected post without card authority', () {
+    final projection = readerSummaryTopPostsProjection(
+      topPostsSummaryFixture(
+        topReads: const [],
+        selectedPosts: [
+          topPostFixture(
+            title: 'Legacy high-metric Reddit post',
+            providerMetrics: const [
+              ProviderMetric(label: 'Score', value: '5000'),
+            ],
+          ),
+        ],
+      ),
+    );
+
+    expect(projection.additionalNotableStories, isEmpty);
   });
 
   test(
-    'normalizes canonical tracking, invalid URLs, and fallback identity',
+    'rejects duplicate empty legacy GitHub identities before row keying',
     () {
-      final canonical = topPostFixture(
-        title: 'Canonical original',
-        canonicalUrl:
-            'HTTPS://News.Example/story/?story=7&utm_source=feed&'
-            'UTM_CAMPAIGN=launch&fbclid=a&gclid=b&igshid=c&mc_cid=d&mc_eid=e',
+      final duplicate = topPostFixture(
+        title: '',
+        cardKind: ReaderSummaryCardKind.supplementalTrend,
+        providerKey: 'github-trending-page',
       );
-      final canonicalDuplicate = topPostFixture(
-        title: 'Canonical duplicate',
-        canonicalUrl: 'https://news.example/story?story=7#reader',
-      );
-      final invalid = topPostFixture(
-        title: 'Invalid URL original',
-        canonicalUrl: '  NOT   A VALID URL  ',
-      );
-      final invalidDuplicate = topPostFixture(
-        title: 'Invalid URL duplicate',
-        canonicalUrl: 'not a valid url',
-      );
-      final fallback = topPostFixture(title: '  Same   Headline  ');
-      final fallbackDuplicate = topPostFixture(
-        title: 'same headline',
-        providerKey: ' REDDIT ',
+      final projection = readerSummaryTopPostsProjection(
+        topPostsSummaryFixture(
+          topReads: const [],
+          selectedPosts: [duplicate, duplicate],
+        ),
       );
 
       expect(
-        readerSummaryTopPostIdentity(canonical),
-        readerSummaryTopPostIdentity(canonicalDuplicate),
+        readerSummaryTopPostIdentity(duplicate),
+        'fallback:github-trending-page:',
       );
-      expect(
-        readerSummaryTopPostIdentity(invalid),
-        readerSummaryTopPostIdentity(invalidDuplicate),
-      );
-      expect(
-        readerSummaryTopPostIdentity(fallback),
-        readerSummaryTopPostIdentity(fallbackDuplicate),
-      );
+      expect(projection.items, isEmpty);
     },
   );
 
-  test('uses selectedPosts as the exclusive fail-closed GitHub source', () {
-    final topReadBoard = _githubBoard(prefix: 'top-read');
-    final selectedBoard = _githubBoard(prefix: 'selected');
+  test('does not combine metrics from different providers to qualify', () {
     final projection = readerSummaryTopPostsProjection(
-      topPostsSummaryFixture(
-        topReads: topReadBoard,
-        selectedPosts: selectedBoard,
+      _summary(
+        stories: [
+          _story(
+            id: 'story:mixed-weak',
+            title: 'Mixed weak reactions',
+            citations: const ['weak-x', 'weak-reddit'],
+            providers: const ['x-twitter', 'reddit'],
+          ),
+        ],
+        evidence: [
+          _evidence(
+            title: 'X reaction',
+            provider: 'x-twitter',
+            citation: 'weak-x',
+            metrics: const [ProviderMetric(label: 'Likes', value: '24')],
+          ),
+          _evidence(
+            title: 'Reddit reaction',
+            provider: 'reddit',
+            citation: 'weak-reddit',
+            metrics: const [ProviderMetric(label: 'Score', value: '19')],
+          ),
+        ],
       ),
     );
 
-    expect(projection.curatedPosts, isEmpty);
-    expect(projection.moreSelectedPosts, isEmpty);
-    expect(projection.githubTrendingPosts.map((item) => item.title), [
-      for (var rank = 1; rank <= 10; rank += 1) 'selected/repo-$rank',
-    ]);
+    expect(projection.additionalNotableStories, isEmpty);
+  });
 
-    final partialSelected = readerSummaryTopPostsProjection(
+  test('keeps backend lane membership without local cross-lane dedupe', () {
+    final curated = topPostFixture(
+      title: 'Curated story',
+      storyClusterId: 'story:curated',
+      cardKind: ReaderSummaryCardKind.curatedTopRead,
+      providerKey: 'hacker-news',
+      citationIds: const ['curated-hn'],
+      providerMetrics: const [ProviderMetric(label: 'Points', value: '40')],
+    );
+    final additional = topPostFixture(
+      title: 'Curated story',
+      storyClusterId: 'story:curated',
+      cardKind: ReaderSummaryCardKind.additionalNotableStory,
+      providerKey: 'hacker-news',
+      citationIds: const ['curated-hn'],
+      providerMetrics: const [ProviderMetric(label: 'Points', value: '40')],
+    );
+    final projection = readerSummaryTopPostsProjection(
       topPostsSummaryFixture(
-        topReads: topReadBoard,
-        selectedPosts: selectedBoard.take(9).toList(growable: false),
+        topReads: [curated],
+        selectedPosts: [additional],
+        topStories: [
+          _story(
+            id: 'story:curated',
+            title: 'Curated story',
+            citations: const ['curated-hn'],
+            providers: const ['hacker-news'],
+          ),
+        ],
+        citations: [_citation('curated-hn', 'hacker-news')],
       ),
     );
-    expect(partialSelected.githubTrendingPosts, isEmpty);
-  });
 
-  test('does not repair a missing selectedPosts board from topReads', () {
-    final projection = readerSummaryTopPostsProjection(
-      topPostsSummaryFixture(topReads: _githubBoard(prefix: 'fallback')),
-    );
-
-    expect(projection.curatedPosts, isEmpty);
-    expect(projection.moreSelectedPosts, isEmpty);
-    expect(projection.githubTrendingPosts, isEmpty);
-  });
-
-  test('recognizes an incidental equal-dataset rebuild', () {
-    ReaderSummaryTopPostsProjection project({bool append = false}) {
-      return readerSummaryTopPostsProjection(
-        topPostsSummaryFixture(
-          topReads: [
-            for (var index = 0; index < 9; index += 1)
-              topPostFixture(
-                title: 'Editorial $index',
-                canonicalUrl: 'https://news.example/$index',
-              ),
-          ],
-          selectedPosts: [
-            topPostFixture(title: 'Selected A'),
-            if (append) topPostFixture(title: 'Selected B'),
-          ],
-        ),
-      );
-    }
-
-    expect(project().hasSameDatasetAs(project()), isTrue);
-    expect(project().hasSameDatasetAs(project(append: true)), isFalse);
-  });
-
-  test('treats a source-order change as a new dataset', () {
-    ReaderSummaryTopPostsProjection project(List<String> titles) {
-      return readerSummaryTopPostsProjection(
-        topPostsSummaryFixture(
-          topReads: [
-            for (final title in titles)
-              topPostFixture(
-                title: title,
-                canonicalUrl: 'https://news.example/$title',
-              ),
-          ],
-        ),
-      );
-    }
-
-    expect(
-      project(const [
-        'first',
-        'second',
-      ]).hasSameDatasetAs(project(const ['second', 'first'])),
-      isFalse,
-    );
+    expect(projection.additionalNotableStories, [additional]);
   });
 }
 
-List<TopRead> _githubBoard({required String prefix}) {
-  return [
-    for (var rank = 1; rank <= 10; rank += 1)
-      topPostFixture(
-        title: '$prefix/repo-$rank',
-        providerKey: readerSummaryGitHubTrendingProviderKey,
-        canonicalUrl: 'https://github.com/$prefix/repo-$rank',
-        githubRank: rank,
-        citationIds: ['$prefix-citation-$rank'],
-      ),
-  ];
-}
+ReaderSummary _summary({
+  required List<SummaryStory> stories,
+  required List<TopRead> evidence,
+}) => topPostsSummaryFixture(
+  topReads: const [],
+  selectedPosts: evidence,
+  topStories: stories,
+  citations: [
+    for (final item in evidence)
+      for (final citationId in item.citationIds)
+        _citation(citationId, item.providerKey),
+  ],
+);
+
+SummaryStory _story({
+  required String id,
+  required String title,
+  required List<String> citations,
+  required List<String> providers,
+}) => SummaryStory(
+  storyClusterId: id,
+  title: title,
+  summary: '$title is notable across the cited sources.',
+  topicCount: 1,
+  providerCount: providers.length,
+  interestIds: const ['developer-tools'],
+  providerKeys: providers,
+  citationIds: citations,
+);
+
+TopRead _evidence({
+  required String title,
+  required String provider,
+  required String citation,
+  String? storyClusterId,
+  bool authorized = false,
+  List<String>? citationIds,
+  List<String>? confirmedProviderKeys,
+  List<ProviderMetric> metrics = const [],
+}) => topPostFixture(
+  title: title,
+  storyClusterId: storyClusterId,
+  cardKind: authorized
+      ? ReaderSummaryCardKind.additionalNotableStory
+      : ReaderSummaryCardKind.unsupported,
+  providerKey: provider,
+  canonicalUrl: 'https://$provider.example/$citation',
+  citationIds: citationIds ?? [citation],
+  confirmedProviderKeys: confirmedProviderKeys,
+  providerMetrics: metrics,
+);
+
+SummaryCitation _citation(String id, String provider) => SummaryCitation(
+  id: id,
+  sourceLabel: '$provider source',
+  safeSnippet: 'Synthetic citation detail.',
+  feedItemId: 'feed-$id',
+  sourceItemId: 'source-$id',
+  providerKey: provider,
+  canonicalUrl: 'https://$provider.example/$id',
+);

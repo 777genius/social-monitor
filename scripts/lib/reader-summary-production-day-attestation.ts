@@ -38,7 +38,11 @@ export type ProductionDayRuntimeProvenance =
 
 type ValidAttestationRecord = {
   readonly taskRole:
-    "summary" | "topic_label" | "topic_relation" | "story_relation";
+    | "summary"
+    | "topic_label"
+    | "topic_relation"
+    | "story_relation"
+    | "related_topic_relation";
   readonly attempt: string;
   readonly normalizedOutputSha256: string;
   readonly attestation: {
@@ -331,6 +335,8 @@ const purposeByRole = {
   topic_label: "social_monitor.reader_summary.topic_map.label",
   topic_relation: "social_monitor.reader_summary.topic_map.verify_relations",
   story_relation: "social_monitor.reader_summary.verify_story_relations",
+  related_topic_relation:
+    "social_monitor.reader_summary.verify_related_topic_relations",
 } as const;
 
 const validTopicIdentity = (
@@ -352,7 +358,8 @@ const isTaskRole = (
   value === "summary" ||
   value === "topic_label" ||
   value === "topic_relation" ||
-  value === "story_relation";
+  value === "story_relation" ||
+  value === "related_topic_relation";
 
 const nonEmpty = (value: unknown): value is string =>
   typeof value === "string" && value.trim().length > 0;

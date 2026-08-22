@@ -8,6 +8,7 @@ const sourceTestPatterns = [
   "libs/**/*.{ts,tsx,js,jsx,mjs,cjs,dart,py}",
   "test/**/*.{ts,tsx,js,jsx,mjs,cjs,dart,py}",
   "scripts/**/*.{ts,js,mjs,cjs,py}",
+  "ops/deploy/reader-summary-publication-*-lib.sh",
 ];
 
 const ignoredPathPatterns = [
@@ -37,13 +38,11 @@ const legacyLineCapDebt = new Map([
     "libs/monitoring/features/schedule-due-scans/schedule-due-scans.use-case.spec.ts",
     1995,
   ],
-  ["libs/summary/domain/aggregates/reader-summary.spec.ts", 1409],
   ["scripts/capture-durable-backend-e2e-loop.ts", 2348],
   ["scripts/check-autonomous-monitoring-loop-smoke.ts", 1650],
   ["scripts/check-credential-secret-runtime-flow.mjs", 1122],
   ["scripts/check-delivery-prisma-persistence.ts", 1291],
   ["scripts/check-external-beta-evidence-runner.mjs", 4268],
-  ["scripts/check-ingestion-feed-prisma-persistence.ts", 1013],
   ["scripts/check-live-multi-provider-summary-smoke.ts", 2465],
   ["scripts/check-reader-summary-quality-dashboard.ts", 2272],
   ["scripts/check-reader-summary-rest-smoke.ts", 1199],
@@ -56,7 +55,6 @@ const legacyLineCapDebt = new Map([
   ["scripts/check-summary-feedback-hardening.mjs", 1328],
   ["scripts/external-beta-evidence-runner.mjs", 2113],
   ["scripts/lib/docker-backend-evidence-harness.mjs", 1174],
-  ["test/e2e/feed.items.list.e2e-spec.ts", 1117],
 ]);
 
 function normalizePath(file) {

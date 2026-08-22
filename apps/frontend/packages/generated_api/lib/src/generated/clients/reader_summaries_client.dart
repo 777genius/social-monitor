@@ -100,7 +100,7 @@ abstract class ReaderSummariesClient {
   @GET('/reader-summaries/weekly')
   Future<ReaderSummaryWeeklyProjectionResponseDto>
   readerSummaryWeeklyProjectionControllerGet({
-    @Query('weekStartedOn') required String weekStartedOn,
+    @Query('weekStartedOn') required DateTime weekStartedOn,
     @Header('x-workspace-id') required String xWorkspaceId,
     @Header('x-tenant-id') required String xTenantId,
     @Header('authorization') String? authorization,

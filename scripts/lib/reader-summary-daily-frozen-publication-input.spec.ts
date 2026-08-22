@@ -226,11 +226,7 @@ describe("reader summary daily frozen publication input", () => {
       receiptBytes: forgedReceipt.receiptBytes,
       clock: fixedClock,
     })).toThrow(/frozen authority/u);
-    const structuredReceipt = authorityValue({
-      ...replay.authority,
-      canonicalBytes: replay.receiptBytes,
-      canonicalSha256: sha256(replay.receiptBytes),
-    });
+    const structuredReceipt = authorityValue({ canonicalBytes: replay.receiptBytes });
     record(record(structuredReceipt).attestation).selectedOutputKind = "structured_output";
     expect(() => createReaderSummaryDailyFrozenOutputTextWiring({
       ...replay,
@@ -238,7 +234,8 @@ describe("reader summary daily frozen publication input", () => {
       clock: fixedClock,
     })).toThrow(/receipt|attestation/u);
     expect(() => createReaderSummaryDailyPublicationExecutionWiring({
-      replay: { ...replay, outputKind: "structured_output" },
+      replay: { ...replay, authoritySha256: replay.sourceAuthoritySha256,
+        outputKind: "structured_output" },
       summaryClient: { $queryRaw: jest.fn() } as never,
       clock: fixedClock,
       attestationSink: { record: jest.fn(async () => undefined) },
@@ -598,11 +595,12 @@ const evidenceQuery = (requestedUtcDate: string, observedThrough: Date) => ({
   tenantId: tenantId(scope.tenantId),
   workspaceId: workspaceId(scope.workspaceId),
   scope: { type: "workspace" as const },
-  period: {
+  period: buildReaderSummaryPeriod({
+    cadence: "daily",
     startedAt: new Date(`${requestedUtcDate}T00:00:00.000Z`),
     endedAt: nextDay(requestedUtcDate),
     timezone: "UTC",
-  },
+  }),
   maxItems: 200,
   observedThrough,
 });

@@ -1,11 +1,41 @@
 import { status } from '@grpc/grpc-js';
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import {
+  XCollectedPost,
+  XEligibilityMetricsState,
+  XPostContentKind,
+  XSearchProduct,
+} from '@social-monitor/contracts/generated/grpc/x_collector/v1/x_collector';
 
 import { GrpcXDailyCollectorClient } from './grpc-x-daily-collector-client';
 
 describe('GrpcXDailyCollectorClient', () => {
   it('maps daily search requests and responses through the generated gRPC client', async () => {
     const calls: unknown[] = [];
+    const serializedPost = XCollectedPost.decode(XCollectedPost.encode({
+      tweetId: '123',
+      canonicalUrl: 'https://x.com/a/status/123',
+      text: 'hello',
+      authorHandle: 'a',
+      authorName: '',
+      publishedAt: new Date('2026-06-27T00:00:00.000Z'),
+      metrics: {
+        likes: '15',
+        retweets: '2',
+        replies: '3',
+        quotes: '0',
+        views: '1000',
+        quotesObserved: false,
+        viewsObserved: true,
+        likesObserved: true,
+        retweetsObserved: true,
+        eligibilityState: XEligibilityMetricsState.X_ELIGIBILITY_METRICS_STATE_OBSERVED,
+      },
+      mediaUrls: [],
+      sourceProduct: XSearchProduct.X_SEARCH_PRODUCT_TOP,
+      trendScore: 24,
+      contentKind: XPostContentKind.X_POST_CONTENT_KIND_ORIGINAL,
+    }).finish());
     const grpcClient = {
       collectDailySearch: (
         request: unknown,
@@ -21,26 +51,7 @@ describe('GrpcXDailyCollectorClient', () => {
         });
         callback(null, {
           schemaVersion: 1,
-          posts: [{
-            tweetId: '123',
-            canonicalUrl: 'https://x.com/a/status/123',
-            text: 'hello',
-            authorHandle: 'a',
-            authorName: '',
-            publishedAt: new Date('2026-06-27T00:00:00.000Z'),
-            metrics: {
-              likes: '15',
-              retweets: '2',
-              replies: '3',
-              quotes: '0',
-              views: '1000',
-              quotesObserved: false,
-              viewsObserved: true,
-            },
-            mediaUrls: [],
-            sourceProduct: 1,
-            trendScore: 24,
-          }],
+          posts: [serializedPost],
           nextCursor: 'cursor-1',
           warnings: [{ code: 'partial_raw_metrics', message: 'quotes missing' }],
           run: {
@@ -88,7 +99,9 @@ describe('GrpcXDailyCollectorClient', () => {
           replies: 3,
           quotes: undefined,
           views: 1000,
+          eligibilityState: 'observed',
         },
+        contentKind: 'original_post',
         sourceProduct: 'top',
       }],
       warnings: [{ code: 'partial_raw_metrics' }],

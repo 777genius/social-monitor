@@ -17,6 +17,7 @@ export type ReaderSummaryAttestedTaskRole =
   | "topic_label"
   | "topic_relation"
   | "story_relation"
+  | "related_topic_relation"
   | "weekly_review";
 
 export type VerifiedReaderSummaryExecutionAttestation = {

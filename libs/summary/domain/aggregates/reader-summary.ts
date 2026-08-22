@@ -2,9 +2,7 @@ import type { ReaderSummaryCitation } from "../entities/citation";
 import type { ReaderSummaryNarrativeSection } from "../entities/reader-summary-narrative-section";
 import { emptyReaderSummaryReliabilityReport } from "../entities/reader-summary-reliability";
 import type { ReaderSummarySnapshot } from "../entities/reader-summary-snapshot";
-import type { SourceMixEntry } from "../entities/source-mix-entry";
 import type {
-  ReaderTrendDelta,
   ReaderSummaryRisk,
   RepeatedSignal,
   TopRead,
@@ -21,28 +19,17 @@ import {
   buildSourceMix,
 } from "../policies/source-mix-quality-policy";
 import { buildInterestSections } from "../policies/reader-interest-section-policy";
-import {
-  selectUniqueTopReadCandidatePool,
-  selectUniqueTopReadCandidates,
-} from "../policies/top-read-selection-policy";
-import { selectRenderedTopReadCandidates } from "../policies/rendered-top-read-selection-policy";
-import { buildReaderSummaryEditorialPriorityProfile } from "../policies/reader-summary-editorial-priority-policy";
-import {
-  reconcileReaderSummaryNarrativeLead,
-  resolveReaderSummaryNarrativeLead,
-  uniqueReaderSummaryStoryPool,
-} from "../policies/reader-summary-story-identity-policy";
-import { enrichTopReadCandidateDescriptions } from "../policies/reader-summary-top-read-description-policy";
 import { buildReaderSummaryReliabilityReport } from "../policies/reader-summary-reliability-calibration-policy";
 import {
   buildSupplementalTrendNarrativeAppendix,
   isSupplementalTrendEvidence,
-  selectSupplementalTrendHighlights,
   withoutSupplementalTrendNarrativeSections,
   withSupplementalTrendNarrativeAppendix,
 } from "../policies/reader-summary-github-trending-policy";
 import type {
   StoryCluster,
+  ApprovedSameStoryRelation,
+  RelatedTopicRelation,
   SummaryEvidenceSelection,
   SummaryEvidenceItem,
   SummarySourceWindow,
@@ -50,9 +37,7 @@ import type {
 import type { ReaderSummaryQualityFlag } from "../value-objects/summary-quality";
 import {
   compactUnique,
-  nonEmpty,
   plural,
-  interestTitle,
   uniqueNonEmpty,
 } from "../value-objects/summary-text";
 import {
@@ -60,21 +45,12 @@ import {
   buildGroundedOneLineTakeaway,
   groundedReaderHeadline,
 } from "../services/reader-summary-support";
-import {
-  evidenceClusterMap,
-  storyToTopRead,
-} from "../services/reader-summary-top-read-builder";
 import { buildReaderSummaryMainTopics } from "../services/reader-summary-main-topics";
-import {
-  buildReaderSummarySelectedPosts,
-  buildReaderSummarySupplementalTrendSelectedPosts,
-} from "../services/reader-summary-selected-posts";
+import { buildReaderPostPromotionProjection } from "../services/reader-post-promotion-projection";
 import { fallbackReaderSummarySourceWindow } from "../services/reader-summary-fallback-source-window";
-import {
-  buildOpenQuestions,
-  providerNameForKey,
-} from "./reader-summary-open-questions";
+import { buildOpenQuestions } from "./reader-summary-open-questions";
 import { buildReaderSummaryClaimBoard } from "../services/reader-summary-claim-board";
+import { buildReaderSummaryTrendDelta } from "../services/reader-summary-trend-delta";
 
 export type ReaderSummaryFactoryInput = {
   readonly headline: string;
@@ -88,12 +64,13 @@ export type ReaderSummaryFactoryInput = {
   readonly storyClusters: readonly StoryCluster[];
   readonly sourceWindow?: SummarySourceWindow;
   readonly selectedEvidence?: readonly SummaryEvidenceItem[];
+  readonly relatedTopicRelations?: readonly RelatedTopicRelation[];
+  readonly approvedSameStoryRelations?: readonly ApprovedSameStoryRelation[];
   readonly topicMap?: ReaderSummaryTopicMap;
   readonly qualityFlags: readonly ReaderSummaryQualityFlag[];
   readonly noSignalReason?: string;
 };
 
-const maxReaderTopReads = 8;
 export class ReaderSummary {
   private constructor(private readonly snapshot: ReaderSummarySnapshot) {}
   static create(snapshot: ReaderSummarySnapshot): ReaderSummary {
@@ -101,118 +78,32 @@ export class ReaderSummary {
     return new ReaderSummary(snapshot);
   }
   static fromEvidence(input: ReaderSummaryFactoryInput): ReaderSummary {
-    if (input.topStories.length === 0) {
-      return ReaderSummary.create(buildNoSignalReaderSummary(input));
-    }
     const primarySelectedEvidence = (input.selectedEvidence ?? []).filter(
       (item) => !isSupplementalTrendEvidence(item),
     );
+    const promotion = buildReaderPostPromotionProjection({
+      evidence: primarySelectedEvidence,
+      clusters: input.storyClusters,
+      citations: input.citationMap,
+      sourceWindow: input.sourceWindow ??
+        fallbackReaderSummarySourceWindow(primarySelectedEvidence, input.storyClusters),
+      approvedSameStoryRelations: input.approvedSameStoryRelations,
+      relatedTopicRelations: input.relatedTopicRelations,
+    });
+    if (promotion.topReads.length === 0 && promotion.additionalPosts.length === 0) {
+      return ReaderSummary.create(buildNoSignalReaderSummary(input));
+    }
     const primaryInput = {
       ...input,
-      selectedEvidence: primarySelectedEvidence,
+      citationMap: promotion.admittedCitations,
+      storyClusters: promotion.admittedClusters,
+      selectedEvidence: promotion.admittedEvidence,
     };
-    const citationById = new Map(
-      input.citationMap.map(
-        (citation) => [citation.citationId, citation] as const,
-      ),
-    );
-    const evidenceByFeedItemId = new Map(
-      primarySelectedEvidence.map((item) => [item.feedItemId, item] as const),
-    );
-    const clusterById = new Map(
-      input.storyClusters.map((cluster) => [cluster.id, cluster] as const),
-    );
-    const evidenceByClusterId = evidenceClusterMap(
-      input.storyClusters,
-      evidenceByFeedItemId,
-    );
     const sourceMix = buildSourceMix(primaryInput);
-    const {
-      section: narrativeLeadSection,
-      story: narrativeLeadStory,
-      thematicSynthesisSupport,
-    } = resolveReaderSummaryNarrativeLead({
-      sections: input.narrativeSections ?? [],
-      stories: input.topStories,
-      citations: citationById,
-      evidence: evidenceByFeedItemId,
-      clusters: input.storyClusters,
-      clusterById,
-    });
-    const curatedReaderTopStories = selectUniqueTopReadCandidates(
-      input.topStories,
-      citationById,
-      evidenceByFeedItemId,
-      clusterById,
-      maxReaderTopReads,
+    const readerTopStories = input.topStories.filter((story) =>
+      promotion.topClusterIds.has(story.storyClusterId),
     );
-    if (curatedReaderTopStories.length === 0) {
-      return ReaderSummary.create(
-        buildNoSignalReaderSummary({
-          ...input,
-          noSignalReason:
-            "No cited source evidence passed the top-read quality gate.",
-        }),
-      );
-    }
-    const readerTopStoryPool = enrichTopReadCandidateDescriptions({
-      candidates: uniqueReaderSummaryStoryPool([
-        ...(narrativeLeadStory === undefined ? [] : [narrativeLeadStory]),
-        ...curatedReaderTopStories,
-        ...selectUniqueTopReadCandidatePool(
-          input.topStories,
-          citationById,
-          evidenceByFeedItemId,
-          clusterById,
-          maxReaderTopReads,
-        ),
-      ]),
-      modelStories: input.topStories,
-    });
-    const renderedTopReadCandidates = readerTopStoryPool.map((story) => {
-      const evidence = evidenceByClusterId.get(story.storyClusterId) ?? [];
-
-      return {
-        story,
-        topRead: storyToTopRead(
-          story,
-          citationById,
-          evidenceByFeedItemId,
-          clusterById,
-          evidenceByClusterId,
-        ),
-        evidence,
-        editorialPriority: buildReaderSummaryEditorialPriorityProfile({
-          story,
-          cluster: clusterById.get(story.storyClusterId),
-          evidence,
-          citationCount: story.citationIds.length,
-        }),
-      };
-    });
-    const selectedReaderTopReadCandidates = selectRenderedTopReadCandidates({
-      candidates: renderedTopReadCandidates,
-      sourceMix,
-      limit: maxReaderTopReads,
-      ...(narrativeLeadStory === undefined
-        ? {}
-        : { pinnedStoryClusterId: narrativeLeadStory.storyClusterId }),
-    });
-    const narrativeProjection = reconcileReaderSummaryNarrativeLead({
-      selected: selectedReaderTopReadCandidates,
-      rendered: renderedTopReadCandidates,
-      narrativeStory: narrativeLeadStory,
-      narrativeSection: narrativeLeadSection,
-      narrativeSections: input.narrativeSections ?? [],
-      inputHeadline: input.headline,
-    });
-    const readerTopReadCandidates = narrativeProjection.candidates;
-    const readerTopStories = readerTopReadCandidates.map(
-      (candidate) => candidate.story,
-    );
-    const topReads = readerTopReadCandidates.map(
-      (candidate) => candidate.topRead,
-    );
+    const topReads = promotion.topReads;
     const readerInput = {
       ...primaryInput,
       topStories: readerTopStories,
@@ -221,79 +112,123 @@ export class ReaderSummary {
       input.qualityFlags,
       sourceMix,
     );
-    const selectedPosts = buildReaderSummarySelectedPosts({
-      topReads,
-      selectedEvidence: input.selectedEvidence,
-      citationById,
-    });
-    const githubTrendingAppendix = buildSupplementalTrendNarrativeAppendix({
-      evidence: input.selectedEvidence ?? [],
-      citations: input.citationMap,
-    });
-    const { headline, narrativeSections } = narrativeProjection;
-    const publishedNarrativeSections = withSupplementalTrendNarrativeAppendix({
-      narrativeSections: withoutSupplementalTrendNarrativeSections(
-        narrativeSections,
-        input.citationMap,
-      ),
-      appendix: githubTrendingAppendix,
-    });
-    const primaryCitationMap = input.citationMap.filter(
-      (citation) =>
-        !isSupplementalTrendEvidence({ providerKey: citation.providerKey }),
+    const selectedPosts = promotion.additionalPosts;
+    const headline = input.headline;
+    const narrativeSections = input.narrativeSections ?? [];
+    const primaryCitationMap = promotion.admittedCitations;
+    const admittedCitationIds = new Set(
+      primaryCitationMap.map((citation) => citation.citationId),
     );
+    const admittedClusterIds = new Set(
+      promotion.admittedClusters.map((cluster) => cluster.id),
+    );
+    const admittedInterestHighlights = input.interestHighlights.flatMap((highlight) => {
+      const citationIds = highlight.citationIds.filter((citationId) =>
+        admittedCitationIds.has(citationId),
+      );
+      return citationIds.length === 0 ? [] : [{ ...highlight, citationIds }];
+    });
+    const admittedRepeatedSignals = input.repeatedSignals.flatMap((signal) => {
+      const citationIds = signal.citationIds.filter((citationId) =>
+        admittedCitationIds.has(citationId),
+      );
+      return !admittedClusterIds.has(signal.storyClusterId) || citationIds.length === 0
+        ? []
+        : [{ ...signal, citationIds }];
+    });
+    const admittedRisks = input.risksAndUnknowns.flatMap((risk) => {
+      const citationIds = (risk.citationIds ?? []).filter((citationId) =>
+        admittedCitationIds.has(citationId),
+      );
+      return citationIds.length === 0 ? [] : [{ ...risk, citationIds }];
+    });
+    const primaryNarrativeSections = withoutSupplementalTrendNarrativeSections(
+      narrativeSections, input.citationMap,
+    ).flatMap((section) => {
+      const citationIds = section.citationIds.filter((citationId) =>
+        admittedCitationIds.has(citationId),
+      );
+      return citationIds.length === 0 ? [] : [{ ...section, citationIds }];
+    });
+    const publishedNarrativeSections = withSupplementalTrendNarrativeAppendix({
+      narrativeSections: primaryNarrativeSections,
+      appendix: buildSupplementalTrendNarrativeAppendix({
+        evidence: input.selectedEvidence ?? [],
+        citations: input.citationMap,
+      }),
+    });
     return ReaderSummary.create({
       headline: groundedReaderHeadline({
         headline,
         sourceMix,
         topReads,
-        thematicSynthesisSupport,
+        ...(narrativeSections.some((section) =>
+          section.kind === "lead" && section.storyClusterId === undefined
+        )
+          ? {
+              thematicSynthesisSupport: {
+                clusterCount: promotion.admittedClusters.length,
+                providerCount: sourceMix.length,
+              },
+            }
+          : {}),
       }),
       oneLineTakeaway: buildGroundedOneLineTakeaway({
         executiveSummary: input.executiveSummary,
         topReads,
         sourceMix,
-        thematicSynthesisSupport,
       }),
-      bullets: buildReaderSummaryBullets(readerInput, topReads),
+      bullets: buildReaderSummaryBullets({
+        ...readerInput,
+        interestHighlights: admittedInterestHighlights,
+        repeatedSignals: admittedRepeatedSignals,
+        risksAndUnknowns: admittedRisks,
+      }, topReads),
       narrativeSections: publishedNarrativeSections,
       mainTopics: buildReaderSummaryMainTopics({
         headline,
         executiveSummary: input.executiveSummary,
         topReads,
         topStories: readerTopStories,
-        interestHighlights: input.interestHighlights,
-        repeatedSignals: input.repeatedSignals,
-        selectedEvidence: primarySelectedEvidence,
+        interestHighlights: admittedInterestHighlights,
+        repeatedSignals: admittedRepeatedSignals,
+        selectedEvidence: promotion.admittedEvidence,
       }),
       topicMap: input.topicMap ?? emptyReaderSummaryTopicMap(),
       qualityState,
-      interestSections: buildInterestSections(readerInput),
+      interestSections: buildInterestSections({
+        ...readerInput,
+        interestHighlights: admittedInterestHighlights,
+      }),
       sourceMix,
       topReads,
       selectedPosts,
       claimBoard: buildReaderSummaryClaimBoard({
         topReads,
         narrativeSections: publishedNarrativeSections,
-        risksAndUnknowns: input.risksAndUnknowns,
+        risksAndUnknowns: admittedRisks,
         citationMap: primaryCitationMap,
-        selectedEvidence: primarySelectedEvidence,
+        selectedEvidence: promotion.admittedEvidence,
       }),
       reliabilityReport: buildReaderSummaryReliabilityReport(
         reliabilitySelectionFromInput(primaryInput),
       ),
-      trendDelta: buildTrendDelta(readerInput, topReads, sourceMix),
+      trendDelta: buildReaderSummaryTrendDelta({
+        ...readerInput,
+        topReads,
+        sourceMix,
+      }),
       openQuestions: buildOpenQuestions(
         input.qualityFlags,
         sourceMix,
         topReads,
       ),
-      risks: input.risksAndUnknowns
+      risks: admittedRisks
         .map((risk) => risk.description)
         .filter((risk) => risk.trim().length > 0),
       nextActions: buildReaderActions({
         topReads,
-        interestHighlights: input.interestHighlights,
+        interestHighlights: admittedInterestHighlights,
         qualityState,
       }),
     });
@@ -331,32 +266,15 @@ const buildNoSignalReaderSummary = (
   const reason =
     input.noSignalReason ??
     "No eligible evidence was selected for this summary window.";
-  const githubTrendingHighlights = selectSupplementalTrendHighlights(
-    input.selectedEvidence ?? [],
-  );
-  const citationById = new Map(
-    input.citationMap.map(
-      (citation) => [citation.citationId, citation] as const,
-    ),
-  );
-  const githubTrendingSelectedPosts =
-    buildReaderSummarySupplementalTrendSelectedPosts({
-      selectedEvidence: input.selectedEvidence ?? [],
-      citationById,
-    });
-  const githubTrendingAppendix = buildSupplementalTrendNarrativeAppendix({
-    evidence: githubTrendingHighlights,
+  const appendix = buildSupplementalTrendNarrativeAppendix({
+    evidence: input.selectedEvidence ?? [],
     citations: input.citationMap,
   });
   return {
-    headline:
-      githubTrendingHighlights.length === 0
-        ? nonEmpty(input.headline, "No reliable workspace signal yet")
-        : "No reliable workspace signal yet",
+    headline: "No reliable workspace signal yet",
     oneLineTakeaway: reason,
     bullets: [reason],
-    narrativeSections:
-      githubTrendingAppendix === undefined ? [] : [githubTrendingAppendix],
+    narrativeSections: appendix === undefined ? [] : [appendix],
     qualityState: {
       status: "no_signal",
       flags: uniqueNonEmpty([
@@ -373,7 +291,7 @@ const buildNoSignalReaderSummary = (
     interestSections: [],
     sourceMix: [],
     topReads: [],
-    selectedPosts: githubTrendingSelectedPosts,
+    selectedPosts: [],
     claimBoard: [],
     reliabilityReport: emptyReaderSummaryReliabilityReport(),
     trendDelta: {
@@ -383,7 +301,7 @@ const buildNoSignalReaderSummary = (
       fadingSignals: [],
     },
     openQuestions: ["Collect more source evidence before making claims."],
-    risks: input.risksAndUnknowns.map((risk) => risk.description),
+    risks: [],
     nextActions: [
       {
         kind: "ignore_low_confidence",
@@ -435,40 +353,6 @@ const buildReaderSummaryBullets = (
     ? compacted.slice(0, 5)
     : [input.executiveSummary];
 };
-const buildTrendDelta = (
-  input: ReaderSummaryFactoryInput,
-  topReads: readonly TopRead[],
-  sourceMix: readonly SourceMixEntry[],
-): ReaderTrendDelta => {
-  const interestSignals = uniqueNonEmpty([
-    ...input.interestHighlights.map((highlight) => highlight.title),
-    ...input.topStories.flatMap((story) =>
-      story.interestIds.map(interestTitle),
-    ),
-  ]);
-  const totalReads = topReads.length;
-  const newSignal =
-    totalReads === 0
-      ? undefined
-      : sourceMix.length === 1
-        ? `${totalReads} ${providerNameForKey(sourceMix[0]?.providerKey, topReads)} item${plural(totalReads)} selected`
-        : `${totalReads} ${sourceMixSignalLabel(sourceMix)} item${plural(totalReads)} selected`;
-
-  return {
-    newSignals: compactUnique([newSignal]),
-    growingSignals: interestSignals.slice(0, 3),
-    repeatedSignals: input.repeatedSignals
-      .slice(0, 3)
-      .map((signal) => signal.title),
-    fadingSignals: [],
-  };
-};
-
-const sourceMixSignalLabel = (sourceMix: readonly SourceMixEntry[]): string =>
-  sourceMix.some((source) => source.crossSourceClusterCount > 0)
-    ? "cross-source"
-    : "multi-source";
-
 const assertReaderSummaryValid = (snapshot: ReaderSummarySnapshot): void => {
   if (snapshot.headline.trim().length === 0) {
     throw new Error("Reader summary headline must be non-empty");

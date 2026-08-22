@@ -9,6 +9,10 @@ import type {
   ReaderSummaryModelInput,
 } from "../../ports";
 import { AgentRuntimeReaderSummaryModelAdapter } from "./agent-runtime-reader-summary-model.adapter";
+import {
+  eligiblePromotionQuality,
+  redditPromotionFacts,
+} from "./reader-summary-model-promotion.spec-support";
 import { withTestExecutionAttestation } from "./reader-summary-execution-attestation.spec-support";
 import type { VerifiedReaderSummaryExecutionAttestation } from "./reader-summary-execution-attestation";
 import { currentReaderSummaryPromptRelease } from "./openai-responses-reader-summary-prompt";
@@ -87,7 +91,7 @@ describe("AgentRuntimeReaderSummaryModelAdapter", () => {
     });
   });
 
-  it("replaces an inconsistent generated headline with the planned lead", async () => {
+  it("keeps an explicitly source-framed generated headline grounded", async () => {
     const providerDraft = validReaderProviderDraft();
     providerDraft.headline =
       "Reddit discussion highlights developers routing GPT-5.6 Sol through Claude Code.";
@@ -114,7 +118,7 @@ describe("AgentRuntimeReaderSummaryModelAdapter", () => {
     const attempt = await adapter.generate(input, route);
 
     expect(attempt.draft.headline).toBe(
-      "Reports discuss Agent runtime reliability tradeoffs",
+      "Reddit discussion highlights developers routing GPT-5.6 Sol through Claude Code",
     );
     expect(attempt.draft.content?.headline).not.toMatch(/[.\u2026\u3002]$/u);
   });
@@ -436,6 +440,11 @@ const readerSummaryInput = (): ReaderSummaryModelInput => {
       observedAt,
       score: 2.4,
       whyImportant: ["Fresh item in the current monitoring window"],
+      contentQuality: eligiblePromotionQuality(),
+      promotionFacts: redditPromotionFacts(
+        "https://example.test/reddit/agent-runtime",
+        observedAt,
+      ),
     },
   ];
 
@@ -445,6 +454,9 @@ const readerSummaryInput = (): ReaderSummaryModelInput => {
       windowId: "workspace:agent-runtime-reader-summary",
       startedAt: observedAt,
       endedAt: observedAt,
+      periodStartedAt: new Date("2026-06-23T00:00:00.000Z"),
+      periodEndedAt: new Date("2026-06-24T00:00:00.000Z"),
+      ingestionCutoff: observedAt,
       selectedFeedItemIds: selectedEvidence.map((item) => item.feedItemId),
       storyClusterIds: ["story:agent-runtime-reader"],
     },

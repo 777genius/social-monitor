@@ -12,7 +12,6 @@ import {
 } from "./reader-summary-evidence.dto";
 import {
   ReaderSummaryConfidenceDto,
-  ReaderSummaryContextArtifactDto,
   ReaderSummaryFreshnessDto,
   ReaderSummaryLineageDto,
   ReaderSummaryPersonalizationDto,
@@ -58,9 +57,6 @@ export class ReaderSummaryArtifactResponseDto {
 
   @ApiProperty({ type: () => [ReaderSummaryStoryClusterDto] })
   declare readonly storyClusters: readonly ReaderSummaryStoryClusterDto[];
-
-  @ApiProperty({ type: () => [ReaderSummaryContextArtifactDto] })
-  declare readonly contextArtifacts: readonly ReaderSummaryContextArtifactDto[];
 
   @ApiPropertyOptional({ type: () => ReaderSummaryPersonalizationDto })
   declare readonly personalization?: ReaderSummaryPersonalizationDto;

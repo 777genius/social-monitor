@@ -7,6 +7,9 @@ export type SerializedReaderSummarySourceWindow = {
   readonly windowId?: unknown;
   readonly startedAt?: unknown;
   readonly endedAt?: unknown;
+  readonly periodStartedAt?: unknown;
+  readonly periodEndedAt?: unknown;
+  readonly ingestionCutoff?: unknown;
   readonly selectedFeedItemIds?: unknown;
   readonly storyClusterIds?: unknown;
 };
@@ -44,6 +47,9 @@ export type SerializedReaderSummaryArtifactPayload = {
   readonly generatedAt?: unknown;
   readonly sourceWindow?: SerializedReaderSummarySourceWindow | unknown;
   readonly storyClusters?: unknown;
+  readonly relatedTopicRelations?: unknown;
+  readonly promotionAttestations?: unknown;
+  readonly promotionEvidenceFacts?: unknown;
   readonly contextArtifacts?: unknown;
   readonly personalization?: unknown;
   readonly headline?: unknown;

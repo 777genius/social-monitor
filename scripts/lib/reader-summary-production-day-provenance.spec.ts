@@ -169,6 +169,30 @@ describe("production-day evidence provenance", () => {
     expect(inspect(artifact).binding).toBeNull();
   });
 
+  it("accepts the dedicated related-topic relation attestation and rejects unknown roles", () => {
+    const valid = evidence(frontendArtifact(), runtimeHealth, (raw) => {
+      raw.executionAttestations.push(executionAttestation(
+        "related_topic_relation",
+        "related-topic",
+        "reader-summary-related-topic-request",
+        "social_monitor.reader_summary.verify_related_topic_relations",
+      ));
+    });
+    expect(inspect(valid).violations).toEqual([]);
+
+    const unknown = evidence();
+    unknown.executionAttestations.push({
+      ...executionAttestation(
+        "related_topic_relation",
+        "related-topic",
+        "reader-summary-unknown-relation-request",
+        "social_monitor.reader_summary.verify_related_topic_relations",
+      ),
+      taskRole: "unknown_relation" as "related_topic_relation",
+    });
+    expect(inspect(unknown).binding).toBeNull();
+  });
+
   it("accepts immutable historical attestation bytes after a runtime upgrade", () => {
     const artifact = evidence(
       frontendArtifact(),
@@ -432,7 +456,7 @@ function executorAttestations() {
 }
 
 function executionAttestation(
-  taskRole: "summary" | "topic_label",
+  taskRole: "summary" | "topic_label" | "related_topic_relation",
   attempt: string,
   requestId: string,
   purpose: string,

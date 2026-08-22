@@ -5,6 +5,7 @@
 import 'package:json_annotation/json_annotation.dart';
 
 import 'reader_summary_preview_media_dto.dart';
+import 'reader_summary_promotion_attestation_dto.dart';
 import 'reader_summary_provider_metric_dto.dart';
 import 'reader_summary_reader_item_confidence_dto.dart';
 import 'reader_summary_reader_item_dto_primary_action_kind_primary_action_kind.dart';
@@ -30,6 +31,7 @@ class ReaderSummaryReaderItemDto {
     required this.whyNow,
     this.canonicalUrl,
     this.previewMedia,
+    this.promotionAttestation,
     this.publishedAt,
   });
 
@@ -45,6 +47,7 @@ class ReaderSummaryReaderItemDto {
   final ReaderSummaryPreviewMediaDto? previewMedia;
   final ReaderSummaryReaderItemDtoPrimaryActionKindPrimaryActionKind
   primaryActionKind;
+  final ReaderSummaryPromotionAttestationDto? promotionAttestation;
   final String providerKey;
   final List<ReaderSummaryProviderMetricDto> providerMetrics;
   final String providerName;

@@ -2,12 +2,12 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_graph_view/flutter_graph_view.dart'
     as flutter_graph_view;
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:graphview/GraphView.dart' as graphview;
+import 'package:markdown/markdown.dart' as markdown;
 import 'package:social_monitor_design_system/social_monitor_design_system.dart';
 import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 
@@ -21,7 +21,6 @@ import '../formatters/summary_period_formats.dart';
 import '../formatters/top_post_metrics.dart';
 import '../formatters/top_post_source_label.dart';
 import '../view_models/reader_summary_top_posts_projection.dart';
-import '../view_models/top_posts_continuation_window.dart';
 import 'reader_summary_citation_text.dart';
 import 'reader_summary_confirmation.dart';
 import 'reader_summary_next_actions.dart';
@@ -29,6 +28,7 @@ import 'reader_summary_preview_media.dart';
 import 'reader_summary_provider_label.dart';
 import 'reader_summary_provider_logo.dart';
 import 'reader_summary_reason_text.dart';
+import 'reader_summary_url_action_contract.dart';
 
 part 'reader_summary_ai_brief.dart';
 part 'reader_summary_citation_chip.dart';
@@ -65,6 +65,7 @@ part 'reader_summary_top_post_content_column.dart';
 part 'reader_summary_top_post_evidence_stack.dart';
 part 'reader_summary_top_post_metrics_row.dart';
 part 'reader_summary_top_post_preview_slot.dart';
+part 'reader_summary_top_post_provider_tile.dart';
 part 'reader_summary_top_post_rating_control.dart';
 part 'reader_summary_top_post_rating_reason_dialog.dart';
 part 'reader_summary_top_post_rating_slot.dart';

@@ -1,13 +1,8 @@
 part of 'reader_summary_brief_surface.dart';
 
-const _githubTrendingProviderKey = readerSummaryGitHubTrendingProviderKey;
+enum _TopPostBoard { topPosts, additionalStories }
 
-enum _TopPostSort { editorial, engagement }
-
-enum _TopPostBoard { topPosts, moreSelected, githubTrending }
-
-/// "Top posts" board: sortable, filterable editorial picks with an optional
-/// engagement view.
+/// "Top posts" board: filterable picks in the backend-attested order.
 class ReaderSummaryTopPosts extends StatefulWidget {
   const ReaderSummaryTopPosts({
     super.key,
@@ -38,7 +33,6 @@ class ReaderSummaryTopPosts extends StatefulWidget {
 }
 
 class _ReaderSummaryTopPostsState extends State<ReaderSummaryTopPosts> {
-  _TopPostSort _sort = _TopPostSort.editorial;
   late _TopPostBoard _board;
   final Set<String> _hiddenProviders = {};
   final ScrollController _postsScrollController = ScrollController();
@@ -68,20 +62,15 @@ class _ReaderSummaryTopPostsState extends State<ReaderSummaryTopPosts> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final topPostItems = widget.projection.curatedPosts;
-    final moreSelectedItems = widget.projection.moreSelectedPosts;
-    final githubTrendingItems = widget.projection.githubTrendingPosts;
+    final additionalStories = widget.projection.additionalNotableStories;
     final activeBoard = _board;
     final boardItems = switch (activeBoard) {
       _TopPostBoard.topPosts => topPostItems,
-      _TopPostBoard.moreSelected => moreSelectedItems,
-      _TopPostBoard.githubTrending => githubTrendingItems,
+      _TopPostBoard.additionalStories => additionalStories,
     };
-    final filtered = orderTopPosts(
-      boardItems.where((item) => !_hiddenProviders.contains(item.providerKey)),
-      byEngagement:
-          activeBoard == _TopPostBoard.topPosts &&
-          _sort == _TopPostSort.engagement,
-    );
+    final filtered = boardItems
+        .where((item) => !_hiddenProviders.contains(item.providerKey))
+        .toList(growable: false);
     final reservePreviewSpace = filtered.any(
       (item) => item.previewMedia != null,
     );
@@ -92,10 +81,8 @@ class _ReaderSummaryTopPostsState extends State<ReaderSummaryTopPosts> {
       children: [
         _TopPostsHeader(
           board: activeBoard,
-          sort: _sort,
           topPostCount: topPostItems.length,
-          moreSelectedPostCount: moreSelectedItems.length,
-          githubTrendingCount: githubTrendingItems.length,
+          additionalStoryCount: additionalStories.length,
           curatedTopPostCount: widget.projection.curatedPosts.length,
           selectedPostCount: widget.selectedPostCount,
           providerKeys: {
@@ -104,7 +91,6 @@ class _ReaderSummaryTopPostsState extends State<ReaderSummaryTopPosts> {
           hiddenProviders: _hiddenProviders,
           denseView: _denseView,
           onBoardChanged: _setBoard,
-          onSortChanged: _setSort,
           onProviderToggled: _toggleProvider,
           onDenseViewChanged: _setDenseView,
         ),
@@ -113,8 +99,8 @@ class _ReaderSummaryTopPostsState extends State<ReaderSummaryTopPosts> {
           Padding(
             padding: const EdgeInsets.symmetric(vertical: AppSpacing.lg),
             child: Text(
-              activeBoard == _TopPostBoard.githubTrending
-                  ? 'No GitHub Trending repositories in this summary window.'
+              activeBoard == _TopPostBoard.additionalStories
+                  ? 'No additional stories qualified in this summary window.'
                   : 'No posts match the current source filters.',
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -141,7 +127,7 @@ class _ReaderSummaryTopPostsState extends State<ReaderSummaryTopPosts> {
                   return _TopPostRow(
                     key: ValueKey(
                       'reader-summary-top-post-'
-                      '${readerSummaryTopPostIdentity(item)}-$index',
+                      '${readerSummaryTopPostIdentity(item)}',
                     ),
                     index: index,
                     item: item,
@@ -149,6 +135,7 @@ class _ReaderSummaryTopPostsState extends State<ReaderSummaryTopPosts> {
                     citationsById: widget.citationsById,
                     dense: _denseView,
                     reservePreviewSpace: reservePreviewSpace,
+                    showSignal: activeBoard != _TopPostBoard.additionalStories,
                     rating: widget.ratingFor?.call(item),
                     onRated: widget.onRated,
                     onOpenUrl: widget.onOpenUrl,
@@ -165,11 +152,6 @@ class _ReaderSummaryTopPostsState extends State<ReaderSummaryTopPosts> {
     setState(() {
       _board = board;
     });
-    _resetPostsScroll();
-  }
-
-  void _setSort(_TopPostSort sort) {
-    setState(() => _sort = sort);
     _resetPostsScroll();
   }
 
@@ -206,33 +188,27 @@ double _topPostsListViewportHeight(BuildContext context) {
 class _TopPostsHeader extends StatelessWidget {
   const _TopPostsHeader({
     required this.board,
-    required this.sort,
     required this.topPostCount,
-    required this.moreSelectedPostCount,
-    required this.githubTrendingCount,
+    required this.additionalStoryCount,
     required this.curatedTopPostCount,
     required this.selectedPostCount,
     required this.providerKeys,
     required this.hiddenProviders,
     required this.denseView,
     required this.onBoardChanged,
-    required this.onSortChanged,
     required this.onProviderToggled,
     required this.onDenseViewChanged,
   });
 
   final _TopPostBoard board;
-  final _TopPostSort sort;
   final int topPostCount;
-  final int moreSelectedPostCount;
-  final int githubTrendingCount;
+  final int additionalStoryCount;
   final int curatedTopPostCount;
   final int selectedPostCount;
   final List<String> providerKeys;
   final Set<String> hiddenProviders;
   final bool denseView;
   final ValueChanged<_TopPostBoard> onBoardChanged;
-  final ValueChanged<_TopPostSort> onSortChanged;
   final ValueChanged<String> onProviderToggled;
   final ValueChanged<bool> onDenseViewChanged;
 
@@ -257,20 +233,7 @@ class _TopPostsHeader extends StatelessWidget {
       runSpacing: AppSpacing.sm,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        if (board == _TopPostBoard.topPosts) ...[
-          Text(
-            'Sort by',
-            style: textTheme.labelSmall?.copyWith(
-              color: colorScheme.onSurfaceVariant,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 0,
-            ),
-          ),
-          _TopPostSortMenu(sort: sort, onSortChanged: onSortChanged),
-        ] else if (board == _TopPostBoard.moreSelected) ...[
-          const _MoreSelectedSortIndicator(),
-        ],
-        if (board != _TopPostBoard.githubTrending && providerKeys.isNotEmpty)
+        if (providerKeys.isNotEmpty)
           _TopPostFilterMenu(
             providerKeys: providerKeys,
             hiddenProviders: hiddenProviders,
@@ -290,8 +253,7 @@ class _TopPostsHeader extends StatelessWidget {
         _TopPostBoardToggle(
           board: board,
           topPostCount: topPostCount,
-          moreSelectedPostCount: moreSelectedPostCount,
-          githubTrendingCount: githubTrendingCount,
+          additionalStoryCount: additionalStoryCount,
           onChanged: onBoardChanged,
         ),
         const SizedBox(height: AppSpacing.sm),
@@ -328,28 +290,21 @@ _TopPostBoard _availableTopPostBoard(
   _TopPostBoard? preferred,
 }) {
   final hasTopPosts = projection.curatedPosts.isNotEmpty;
-  final hasMoreSelected = projection.moreSelectedPosts.isNotEmpty;
-  final hasGitHubTrending = projection.githubTrendingPosts.isNotEmpty;
+  final hasAdditionalStories = projection.additionalNotableStories.isNotEmpty;
 
   if (preferred == _TopPostBoard.topPosts && hasTopPosts) {
     return _TopPostBoard.topPosts;
   }
-  if (preferred == _TopPostBoard.moreSelected && hasMoreSelected) {
-    return _TopPostBoard.moreSelected;
-  }
-  if (preferred == _TopPostBoard.githubTrending && hasGitHubTrending) {
-    return _TopPostBoard.githubTrending;
+  if (preferred == _TopPostBoard.additionalStories && hasAdditionalStories) {
+    return _TopPostBoard.additionalStories;
   }
   if (hasTopPosts) {
     return _TopPostBoard.topPosts;
   }
-  if (hasMoreSelected) {
-    return _TopPostBoard.moreSelected;
+  if (hasAdditionalStories) {
+    return _TopPostBoard.additionalStories;
   }
-  if (hasGitHubTrending) {
-    return _TopPostBoard.githubTrending;
-  }
-  return preferred ?? _TopPostBoard.githubTrending;
+  return preferred ?? _TopPostBoard.topPosts;
 }
 
 String _topPostDateLabel(TopRead item, SummaryPeriod fallbackPeriod) {
@@ -372,9 +327,7 @@ String _topPostBoardSubtitle(
           ? '1 editorial pick from $selectedPostCount selected'
           : '$curatedTopPostCount editorial picks from '
                 '$selectedPostCount selected',
-    _TopPostBoard.moreSelected =>
-      'Additional selected evidence, ordered by Signal and support strength',
-    _TopPostBoard.githubTrending =>
-      'Top 10 repositories in GitHub Trending order',
+    _TopPostBoard.additionalStories =>
+      'Additional selected stories and explicitly related topics',
   };
 }

@@ -1,5 +1,7 @@
 import type { StoryRankingPolicy } from "../policies/story-ranking-policy";
 import type { SummaryEvidenceItem } from "../value-objects/summary-evidence-item";
+import { readerPostProviderFamily } from
+  "../policies/reader-post-promotion-policy";
 import { storyKey } from "./story-key-normalizer";
 import {
   sharedStoryTopicTokenCount,
@@ -184,6 +186,10 @@ export const isVerifiedStoryRelationGuardEligible = (
   candidate: SummaryEvidenceItem,
   policy: StoryRankingPolicy,
 ): boolean => {
+  if (readerPostProviderFamily(item.providerKey) ===
+      readerPostProviderFamily(candidate.providerKey)) {
+    return false;
+  }
   const sameAuthorSeries =
     item.providerKey === candidate.providerKey &&
     isVerifiedSameAuthorStorySeriesCandidate(item, candidate);

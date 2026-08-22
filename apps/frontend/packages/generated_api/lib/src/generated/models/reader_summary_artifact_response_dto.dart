@@ -7,7 +7,6 @@ import 'package:json_annotation/json_annotation.dart';
 import 'reader_summary_artifact_response_dto_quality_flags_quality_flags.dart';
 import 'reader_summary_citation_view_dto.dart';
 import 'reader_summary_confidence_dto.dart';
-import 'reader_summary_context_artifact_dto.dart';
 import 'reader_summary_coverage_summary_dto.dart';
 import 'reader_summary_freshness_dto.dart';
 import 'reader_summary_interest_highlight_dto.dart';
@@ -30,7 +29,6 @@ class ReaderSummaryArtifactResponseDto {
   const ReaderSummaryArtifactResponseDto({
     required this.citations,
     required this.confidence,
-    required this.contextArtifacts,
     required this.executiveSummary,
     required this.freshness,
     required this.headline,
@@ -64,7 +62,6 @@ class ReaderSummaryArtifactResponseDto {
 
   final List<ReaderSummaryCitationViewDto> citations;
   final ReaderSummaryConfidenceDto confidence;
-  final List<ReaderSummaryContextArtifactDto> contextArtifacts;
   final ReaderSummaryCoverageSummaryDto? coverage;
   final String executiveSummary;
   final ReaderSummaryFreshnessDto freshness;

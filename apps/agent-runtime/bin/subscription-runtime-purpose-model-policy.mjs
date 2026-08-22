@@ -23,6 +23,8 @@ const profilesByPurpose = Object.freeze({
     dailyStructuredProfile,
   "social_monitor.reader_summary.verify_story_relations":
     dailyStructuredProfile,
+  "social_monitor.reader_summary.verify_related_topic_relations":
+    dailyStructuredProfile,
   "social_monitor.reader_summary.weekly.review": dailyStructuredProfile,
   "social_monitor.reader_summary.weekly.generate": weeklyTextProfile,
 });
@@ -63,6 +65,7 @@ export const admitSubscriptionRuntimeWrapperRequest = (input) => {
     profile.reasoningEffort,
     "metadata.reasoningEffort",
   );
+  assertDedicatedRelatedTopicMarkers(purpose, controls, metadata);
   assertOptionalExactString(
     controls.responseFormat,
     profile.responseFormat,
@@ -119,6 +122,38 @@ export const admitSubscriptionRuntimeWrapperRequest = (input) => {
       },
     },
   };
+};
+
+const assertDedicatedRelatedTopicMarkers = (purpose, controls, metadata) => {
+  if (
+    purpose !== "social_monitor.reader_summary.verify_related_topic_relations"
+  ) return;
+  assertRequiredExactString(
+    controls.outputSchemaName,
+    "social_monitor_reader_summary_related_topic_relations",
+    "outputSchemaName",
+  );
+  assertRequiredExactString(
+    controls.schemaVersion,
+    "reader_summary.related_topic_relation.v1",
+    "schemaVersion",
+  );
+  assertRequiredExactString(
+    metadata.taskRole,
+    "related_topic_relation",
+    "metadata.taskRole",
+  );
+  assertRequiredExactString(
+    metadata.verificationLane,
+    "related_topic",
+    "metadata.verificationLane",
+  );
+};
+
+const assertRequiredExactString = (value, expected, label) => {
+  if (value !== expected) {
+    throw new Error(`${label} conflicts with purpose policy`);
+  }
 };
 
 const codexSubprocessEnvironmentKeys = new Set([

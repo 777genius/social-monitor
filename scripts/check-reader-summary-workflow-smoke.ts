@@ -3,12 +3,14 @@ import { InMemoryQueuePublisher } from "@social-monitor/platform-queue/adapters/
 import { WorkerRuntime } from "@social-monitor/platform-worker";
 import { ReaderSummaryJobQueuePublisherAdapter } from "@social-monitor/summary/adapters/messaging/reader-summary-job-queue.adapter";
 import { InMemorySummaryEventPublisher } from "@social-monitor/summary/adapters/messaging/in-memory-summary-event-publisher";
+import { ReaderSummaryPromotionMetricsRecorder } from "@social-monitor/summary/adapters/metrics/reader-summary-promotion-metrics.recorder";
 import { DeterministicReaderSummaryModelAdapter } from "@social-monitor/summary/adapters/model/deterministic-reader-summary-model.adapter";
 import { InMemoryReaderSummaryArtifactRepository } from "@social-monitor/summary/adapters/persistence/in-memory-reader-summary-artifact.repository";
 import { InMemoryReaderSummaryJobRepository } from "@social-monitor/summary/adapters/persistence/in-memory-reader-summary-job.repository";
 import { InMemoryReaderSummaryPublication } from "@social-monitor/summary/adapters/persistence/in-memory-reader-summary-publication";
 import { InMemoryReaderSummaryPolicyRepository } from "@social-monitor/summary/adapters/persistence/in-memory-reader-summary-policy.repository";
 import { ExecuteReaderSummaryJobUseCase } from "@social-monitor/summary/features/execute-reader-summary-job/execute-reader-summary-job.use-case";
+import { enabledReaderSummaryPromotionControl } from "@social-monitor/summary/features/execute-reader-summary-job/reader-summary-promotion-control";
 import { RequestReaderSummaryUseCase } from "@social-monitor/summary/features/request-reader-summary/request-reader-summary.use-case";
 import { ExecuteReaderSummaryJobCommandHandler } from "@social-monitor/summary/interfaces/queue/execute-reader-summary-job-command.handler";
 import {
@@ -39,6 +41,83 @@ class SequenceIdGenerator implements IdGenerator {
   }
 }
 
+const workflowContentQuality = () => ({
+  qualityScore: 0.9,
+  interestRelevanceScore: 0.9,
+  engagementIntegrityScore: 0.9,
+  eligibleForSummary: true,
+  eligibleForTopRead: true,
+  needsLlmReview: false,
+  decision: "eligible",
+  flags: [],
+  reason: "Workflow smoke evidence is publication eligible.",
+});
+
+const workflowFreshness = (publishedAt: string, observedAt: string) => ({
+  status: "observed" as const,
+  publishedAt: new Date(publishedAt),
+  observedAt: new Date(observedAt),
+  ingestionCutoff: new Date("2026-06-23T08:30:00.000Z"),
+});
+
+const workflowRedditPromotionFacts = () => ({
+  contentKind: "original_post" as const,
+  canonicalIdentity: "url:https://example.com/ai-tooling",
+  safetyValid: true,
+  freshnessValid: true,
+  freshnessProvenance: workflowFreshness(
+    "2026-06-23T08:00:00.000Z",
+    "2026-06-23T08:01:00.000Z",
+  ),
+  metricsState: "observed" as const,
+  metrics: {
+    provider: "reddit" as const,
+    score: 50,
+    comments: 8,
+    upvoteRatio: 0.6,
+  },
+});
+
+const workflowGitHubPromotionFacts = () => ({
+  contentKind: "repository" as const,
+  canonicalIdentity: "url:https://github.com/example/ai-tooling",
+  checkedAt: new Date("2026-06-23T08:30:00.000Z"),
+  authorityAttestation: {
+    status: "attested" as const,
+    official: true,
+    trusted: true,
+    attestedBy: "source_catalog" as const,
+  },
+  safetyValid: true,
+  freshnessValid: true,
+  freshnessProvenance: workflowFreshness(
+    "2026-06-23T08:02:00.000Z",
+    "2026-06-23T08:03:00.000Z",
+  ),
+  metricsState: "observed" as const,
+  metrics: {
+    provider: "github_radar" as const,
+    snapshotKind: "repository_growth" as const,
+    windowStartedAt: new Date("2026-06-22T08:30:00.000Z"),
+    windowEndedAt: new Date("2026-06-23T08:30:00.000Z"),
+    starsDelta: 25,
+    forksDelta: 0,
+  },
+});
+
+const workflowHackerNewsPromotionFacts = () => ({
+  contentKind: "story" as const,
+  canonicalIdentity: "url:https://example.com/database-reliability",
+  safetyValid: true,
+  freshnessValid: true,
+  freshnessProvenance: workflowFreshness(
+    "2026-06-23T08:04:00.000Z",
+    "2026-06-23T08:05:00.000Z",
+  ),
+  metricsState: "observed" as const,
+  metrics: { provider: "hacker_news" as const, points: 50 },
+});
+
 class SelectedReaderSummaryEvidenceSelector implements ReaderSummaryEvidenceSelectorPort {
   async select(): ReturnType<ReaderSummaryEvidenceSelectorPort["select"]> {
     return {
@@ -60,9 +139,11 @@ class SelectedReaderSummaryEvidenceSelector implements ReaderSummaryEvidenceSele
           "feed-reddit",
           "feed-github",
           "feed-database",
-          ...workflowGitHubTrendingEvidence().map((item) => item.feedItemId),
         ],
         storyClusterIds: ["story:ai-tooling", "story:database-reliability"],
+        periodStartedAt: new Date("2026-06-23T00:00:00.000Z"),
+        periodEndedAt: new Date("2026-06-30T00:00:00.000Z"),
+        ingestionCutoff: new Date("2026-06-23T08:30:00.000Z"),
       },
       clusters: [
         {
@@ -109,6 +190,8 @@ class SelectedReaderSummaryEvidenceSelector implements ReaderSummaryEvidenceSele
           observedAt: new Date("2026-06-23T08:01:00.000Z"),
           score: 2.4,
           whyImportant: ["Fresh item in the current monitoring window"],
+          contentQuality: workflowContentQuality(),
+          promotionFacts: workflowRedditPromotionFacts(),
         },
         {
           feedItemId: "feed-github",
@@ -124,6 +207,8 @@ class SelectedReaderSummaryEvidenceSelector implements ReaderSummaryEvidenceSele
           observedAt: new Date("2026-06-23T08:03:00.000Z"),
           score: 2.3,
           whyImportant: ["Independent repository evidence for the cluster"],
+          contentQuality: workflowContentQuality(),
+          promotionFacts: workflowGitHubPromotionFacts(),
         },
         {
           feedItemId: "feed-database",
@@ -139,9 +224,18 @@ class SelectedReaderSummaryEvidenceSelector implements ReaderSummaryEvidenceSele
           observedAt: new Date("2026-06-23T08:05:00.000Z"),
           score: 2.1,
           whyImportant: ["Distinct operational signal in the same window"],
+          contentQuality: workflowContentQuality(),
+          promotionFacts: workflowHackerNewsPromotionFacts(),
         },
-        ...workflowGitHubTrendingEvidence(),
       ],
+      approvedSameStoryRelations: [
+        {
+          leftFeedItemId: "feed-reddit",
+          rightFeedItemId: "feed-github",
+          confidence: 0.92,
+        },
+      ],
+      relatedTopicRelations: [],
     };
   }
 }
@@ -170,8 +264,8 @@ const assert: (condition: unknown, message: string) => asserts condition = (
 };
 
 async function main(): Promise<void> {
-  const tenant = tenantId("tenant-readerSummary-workflow-smoke");
-  const workspace = workspaceId("workspace-readerSummary-workflow-smoke");
+  const tenant = tenantId("00000000-0000-4000-8000-000000000101");
+  const workspace = workspaceId("00000000-0000-4000-8000-000000000102");
   const queue = new InMemoryQueuePublisher();
   const jobs = new InMemoryReaderSummaryJobRepository();
   const artifacts = new InMemoryReaderSummaryArtifactRepository();
@@ -196,6 +290,12 @@ async function main(): Promise<void> {
     userId: "readerSummary-workflow-user",
     idempotencyKey: "readerSummary-workflow-smoke",
     correlationId: "readerSummary-workflow-smoke",
+    cadence: "weekly",
+    period: {
+      startedAt: new Date("2026-06-23T00:00:00.000Z"),
+      endedAt: new Date("2026-06-30T00:00:00.000Z"),
+      timezone: "UTC",
+    },
   });
 
   assert(request.ok, "readerSummary workflow smoke must create a readerSummary job");
@@ -221,6 +321,12 @@ async function main(): Promise<void> {
         undefined,
         undefined,
         canonicalGitHubProjectionReader,
+        undefined,
+        undefined,
+        undefined,
+        enabledReaderSummaryPromotionControl(
+          new ReaderSummaryPromotionMetricsRecorder(metrics),
+        ),
       ),
       metrics,
       runtime,
@@ -312,17 +418,31 @@ async function main(): Promise<void> {
       artifact.content.topReads.length,
     "reader summary top reads must not contain duplicate source links",
   );
+  const promotedCards = [
+    ...artifact.content.topReads.map((card, slot) => ({
+      card,
+      placement: "top" as const,
+      slot,
+    })),
+    ...(artifact.content.selectedPosts ?? []).map((card, slot) => ({
+      card,
+      placement: "additional" as const,
+      slot,
+    })),
+  ];
   assert(
-    artifact.content.sourceMix.some(
-      (source) => source.providerKey === "github",
-    ),
-    "reader summary source mix must include clustered GitHub evidence",
-  );
-  assert(
-    (artifact.content.selectedPosts ?? []).filter(
-      (post) => post.providerKey === "github-trending-page",
-    ).length === 10,
-    "daily reader summary must publish exactly ten canonical GitHub Trending selected posts",
+    artifact.promotionAttestations?.length === promotedCards.length &&
+      promotedCards.every(({ card, placement, slot }) =>
+        artifact.promotionAttestations?.some(
+          (attestation) =>
+            attestation.candidateId === card.promotionCandidateId &&
+            attestation.placement === placement &&
+            attestation.slot === slot &&
+            JSON.stringify(attestation.citationIds) ===
+              JSON.stringify(card.citationIds),
+        ),
+      ),
+    "every visible reader card must retain one exact ordered-citation attestation",
   );
   assert(
     artifact.content.topReads.every(
@@ -340,7 +460,7 @@ async function main(): Promise<void> {
     "reader summary source mix must include Reddit evidence",
   );
   assert(
-    artifact.content.topReads[0]?.whyNow.includes("cross-source coverage"),
+    artifact.content.topReads[0]?.whyNow.includes("admitted provider"),
     "reader summary must explain why the top read matters now",
   );
   assert(

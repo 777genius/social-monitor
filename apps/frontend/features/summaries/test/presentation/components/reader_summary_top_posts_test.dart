@@ -15,6 +15,9 @@ import 'package:social_monitor_summaries/src/presentation/components/reader_summ
 
 import '../../support/summaries_test_fixtures.dart';
 
+part 'reader_summary_top_posts_test_trust.dart';
+part 'reader_summary_top_posts_test_app.dart';
+
 void main() {
   testWidgets('shows topic map on the reader summary page', (tester) async {
     final summary = const SummaryMapper().readerSummaryToDomain(
@@ -53,6 +56,11 @@ void main() {
         content: readerSummaryContentApiDto(
           topReads: [
             TopReadApiDto(
+              storyClusterId: 'story:older-post',
+              cardKind: 'curated_top_read',
+              promotionAttestation: topPromotionAttestationApiDto(
+                'story:older-post',
+              ),
               title: 'Older post should show its real date',
               providerKey: 'reddit',
               reason: 'Regression check for per-post publishedAt rendering.',
@@ -75,7 +83,9 @@ void main() {
     await tester.pumpWidget(_TestApp(summary: summary));
     await tester.pumpAndSettle();
 
-    final rowFinder = find.byKey(const ValueKey('reader-summary-top-post-0'));
+    final rowFinder = find.byKey(
+      const ValueKey('reader-summary-top-post-cluster:story:older-post'),
+    );
     expect(
       find.descendant(
         of: rowFinder,
@@ -103,7 +113,9 @@ void main() {
     await tester.pumpWidget(_TestApp(summary: summary));
     await tester.pumpAndSettle();
 
-    final rowFinder = find.byKey(const ValueKey('reader-summary-top-post-0'));
+    final rowFinder = find.byKey(
+      const ValueKey('reader-summary-top-post-cluster:story:ai-coding-tools'),
+    );
     final providerLogoFinder = find.descendant(
       of: rowFinder,
       matching: find.byType(AppProviderLogo),
@@ -122,8 +134,13 @@ void main() {
     final summary = const SummaryMapper().readerSummaryToDomain(
       readerSummaryApiDto(
         content: readerSummaryContentApiDto(
-          topReads: const [
+          topReads: [
             TopReadApiDto(
+              storyClusterId: 'story:hn-low-engagement',
+              cardKind: 'curated_top_read',
+              promotionAttestation: topPromotionAttestationApiDto(
+                'story:hn-low-engagement',
+              ),
               title: 'HN single-source low-engagement debate',
               providerKey: 'hacker-news',
               reason: 'A single HN item has close normalized signal.',
@@ -141,6 +158,11 @@ void main() {
               citationIds: ['bc-1'],
             ),
             TopReadApiDto(
+              storyClusterId: 'story:reddit-strong-engagement',
+              cardKind: 'curated_top_read',
+              promotionAttestation: topPromotionAttestationApiDto(
+                'story:reddit-strong-engagement',
+              ),
               title: 'Reddit same-source support with strong engagement',
               providerKey: 'reddit',
               reason: 'Two Reddit items support the story.',
@@ -162,6 +184,11 @@ void main() {
               citationIds: ['bc-2'],
             ),
             TopReadApiDto(
+              storyClusterId: 'story:cross-source-workflow',
+              cardKind: 'curated_top_read',
+              promotionAttestation: topPromotionAttestationApiDto(
+                'story:cross-source-workflow',
+              ),
               title: 'Cross-source workflow story',
               providerKey: 'x-twitter',
               reason: 'X and RSS both discuss the workflow.',
@@ -207,7 +234,9 @@ void main() {
     await tester.pumpWidget(_TestApp(summary: summary));
     await tester.pumpAndSettle();
 
-    final firstRow = find.byKey(const ValueKey('reader-summary-top-post-0'));
+    final firstRow = find.byKey(
+      const ValueKey('reader-summary-top-post-cluster:story:hn-low-engagement'),
+    );
     expect(
       find.descendant(
         of: firstRow,
@@ -241,8 +270,13 @@ void main() {
     final summary = const SummaryMapper().readerSummaryToDomain(
       readerSummaryApiDto(
         content: readerSummaryContentApiDto(
-          topReads: const [
+          topReads: [
             TopReadApiDto(
+              storyClusterId: 'story:actionable-feedback',
+              cardKind: 'curated_top_read',
+              promotionAttestation: topPromotionAttestationApiDto(
+                'story:actionable-feedback',
+              ),
               title: 'Reddit thread with actionable feedback',
               providerKey: 'reddit',
               reason: 'Users explain why the workflow matters.',
@@ -281,7 +315,11 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final rowFinder = find.byKey(const ValueKey('reader-summary-top-post-0'));
+    final rowFinder = find.byKey(
+      const ValueKey(
+        'reader-summary-top-post-cluster:story:actionable-feedback',
+      ),
+    );
     final ratingSlotFinder = find.descendant(
       of: rowFinder,
       matching: find.byKey(
@@ -334,8 +372,13 @@ void main() {
     final summary = const SummaryMapper().readerSummaryToDomain(
       readerSummaryApiDto(
         content: readerSummaryContentApiDto(
-          topReads: const [
+          topReads: [
             TopReadApiDto(
+              storyClusterId: 'story:weak-evidence',
+              cardKind: 'curated_top_read',
+              promotionAttestation: topPromotionAttestationApiDto(
+                'story:weak-evidence',
+              ),
               title: 'Reddit thread with weak evidence',
               providerKey: 'reddit',
               reason: 'The source does not support the claim.',
@@ -373,7 +416,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final rowFinder = find.byKey(const ValueKey('reader-summary-top-post-0'));
+    final rowFinder = find.byKey(
+      const ValueKey('reader-summary-top-post-cluster:story:weak-evidence'),
+    );
     final gesture = await tester.createGesture(kind: PointerDeviceKind.mouse);
     addTearDown(gesture.removePointer);
     await gesture.addPointer(location: Offset.zero);
@@ -408,175 +453,5 @@ void main() {
     expect(find.text('Saved'), findsOneWidget);
   });
 
-  testWidgets('shows compact trust summary and expands cited evidence', (
-    tester,
-  ) async {
-    String? openedUrl;
-    final summary = const SummaryMapper().readerSummaryToDomain(
-      readerSummaryApiDto(
-        content: readerSummaryContentApiDto(
-          claimBoard: const [
-            SummaryClaimApiDto(
-              claim: 'Reddit users report useful MCP agent workflows',
-              evidence: [
-                SummaryClaimEvidenceApiDto(
-                  title: 'Thread evidence about MCP agent workflows',
-                  providerKey: 'reddit',
-                  citationId: 'claim-citation',
-                  canonicalUrl: 'https://reddit.example/r/mcp/comments/1',
-                ),
-              ],
-              confidence: TopReadConfidenceApiDto(
-                level: 'medium',
-                score: 0.63,
-                rationale: 'Cited Reddit source with usable discussion.',
-              ),
-              risks: [
-                SummaryClaimRiskApiDto(
-                  kind: 'single_source',
-                  description:
-                      'Needs independent confirmation before treating it as verified.',
-                ),
-              ],
-              citationIds: ['claim-citation'],
-            ),
-          ],
-          reliabilityReport: const SummaryReliabilityReportApiDto(
-            mode: 'shadow',
-            policyVersion: 'reader_summary_reliability_shadow_v1',
-            riskLevel: 'medium',
-            riskScore: 0.52,
-            risks: [
-              SummaryReliabilityRiskApiDto(
-                kind: 'single_source',
-                level: 'medium',
-                score: 0.52,
-                description:
-                    'Important claims are not confirmed across providers yet.',
-              ),
-            ],
-          ),
-        ),
-        citations: [
-          summaryCitationApiDto(id: 'bc-1', providerKey: 'github-repo-radar'),
-          summaryCitationApiDto(
-            id: 'claim-citation',
-            sourceLabel: 'Reddit [1]',
-            providerKey: 'reddit',
-            canonicalUrl: 'https://reddit.example/r/mcp/comments/1',
-          ),
-        ],
-      ),
-    );
-
-    await tester.pumpWidget(
-      _TestApp(summary: summary, onOpenUrl: (url) => openedUrl = url),
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.text('Trust & evidence'), findsOneWidget);
-    expect(find.text('Needs confirmation'), findsWidgets);
-    expect(
-      find.text(
-        'Treat this as a lead until another independent source group confirms the key items.',
-      ),
-      findsOneWidget,
-    );
-    expect(find.text('Medium confidence'), findsOneWidget);
-    expect(find.text('1 source group'), findsOneWidget);
-    expect(find.text('Medium evidence risk'), findsOneWidget);
-    expect(
-      find.text('Reddit users report useful MCP agent workflows'),
-      findsNothing,
-    );
-    expect(find.textContaining('Thread evidence about MCP'), findsNothing);
-
-    await tester.tap(find.byKey(const ValueKey('reader-summary-trust-toggle')));
-    await tester.pumpAndSettle();
-
-    expect(
-      find.text('Reddit users report useful MCP agent workflows'),
-      findsOneWidget,
-    );
-    expect(find.textContaining('Thread evidence about MCP'), findsOneWidget);
-    expect(find.text('1 citation'), findsOneWidget);
-    expect(find.text('Not independently confirmed'), findsOneWidget);
-    expect(
-      find.text(
-        'Treat this as a lead until another independent source group confirms it.',
-      ),
-      findsOneWidget,
-    );
-
-    final sourceButton = find.byKey(
-      const ValueKey('reader-summary-trust-evidence-source-claim-citation'),
-    );
-    await tester.scrollUntilVisible(
-      sourceButton,
-      120,
-      scrollable: find.byType(Scrollable).first,
-    );
-    await tester.tap(sourceButton);
-    expect(openedUrl, 'https://reddit.example/r/mcp/comments/1');
-  });
-}
-
-class _TestApp extends StatelessWidget {
-  const _TestApp({
-    required this.summary,
-    this.onTopPostRating,
-    this.onOpenUrl,
-    this.showTopicMap = false,
-  });
-
-  final ReaderSummary summary;
-  final ValueChanged<String>? onOpenUrl;
-  final bool showTopicMap;
-  final Future<bool> Function(
-    TopRead item,
-    int rating,
-    PostRatingReason? reason,
-  )?
-  onTopPostRating;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = AppTheme.light();
-    final viewSummary = showTopicMap
-        ? summary
-        : readerSummaryWithoutTopicMap(summary);
-    return AppHeadlessScope(
-      theme: theme,
-      appBuilder: (overlayBuilder) => MaterialApp(
-        theme: theme,
-        builder: overlayBuilder,
-        home: Scaffold(
-          body: SingleChildScrollView(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: ReaderSummaryView(
-                summary: viewSummary,
-                isRefreshing: false,
-                readerActionState: const InitialViewState<ReaderActionResult>(),
-                topicRecommendationState:
-                    const InitialViewState<
-                      ReaderSummaryTopicRecommendationQueue
-                    >(),
-                activeReaderActionIdempotencyKey: null,
-                lastReaderActionIdempotencyKey: null,
-                onGenerate: () {},
-                intentForAction: (_) =>
-                    const UserActionIntent(id: 'test-action'),
-                onAction: (action, [reason]) {},
-                topPostRatingFor: (_) => null,
-                onTopPostRating: onTopPostRating ?? (_, _, _) async => true,
-                onTopicRecommendationDecision: (_, _) async {},
-                onOpenUrl: onOpenUrl ?? (_) {},
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
+  _registerTrustEvidenceTest();
 }

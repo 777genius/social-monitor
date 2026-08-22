@@ -51,6 +51,20 @@ test("accepts a fully live report with all eight real steps", () => {
   });
 });
 
+test("accepts the exact related-topic relation attestation inventory", () => {
+  withFixture(({ reportPath, proofPath }) => {
+    const result = runVerifier(reportPath, proofPath, "--proof-out");
+    assert.equal(result.status, 0, result.stderr);
+  }, { relatedTopicRole: "related_topic_relation" });
+});
+
+test("rejects an unknown relation attestation kind", () => {
+  withFixture(({ reportPath, proofPath }) => {
+    const result = runVerifier(reportPath, proofPath, "--proof-out");
+    assert.notEqual(result.status, 0);
+  }, { relatedTopicRole: "unknown_relation" });
+});
+
 test("continues to verify immutable reports from the migration-owning runner", () => {
   withFixture(({ reportPath, proofPath, report }) => {
     report.steps.unshift({
@@ -728,6 +742,19 @@ function buildExecutionAttestations(options) {
         purpose: "social_monitor.reader_summary.topic_map.label",
       },
     },
+    ...(options.relatedTopicRole === undefined
+      ? []
+      : [{
+          taskRole: options.relatedTopicRole,
+          attempt: "related-topic",
+          normalizedOutputSha256: "f".repeat(64),
+          attestation: {
+            ...common,
+            requestId: "related-topic-relation-request",
+            purpose:
+              "social_monitor.reader_summary.verify_related_topic_relations",
+          },
+        }]),
   ];
 }
 

@@ -36,7 +36,7 @@ describe("buildDeterministicReaderSummaryNarrative", () => {
           lead,
           secondary,
         },
-      } as ReaderSummaryModelInput,
+      } as unknown as ReaderSummaryModelInput,
       executiveSummary: "A provider-diverse daily synthesis.",
       citationMap,
       topStories: [],

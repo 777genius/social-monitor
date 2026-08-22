@@ -55,8 +55,8 @@ describe("FeedReaderSummaryCoverageCounter", () => {
       observedThrough,
     });
 
-    expect(feedItems.queries[0]?.observedBefore).toEqual(
-      new Date("2026-07-03T00:05:00.001Z"),
+    expect(feedItems.queries[0]?.observedAtOrBefore).toEqual(
+      new Date("2026-07-03T00:05:00.000Z"),
     );
   });
 

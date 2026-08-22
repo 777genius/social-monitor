@@ -7,18 +7,15 @@ import {
 } from "@social-monitor/shared-kernel";
 
 import {
-  emptyReaderSummaryTopicMap,
   type ReaderSummaryArtifact,
   type ReaderSummaryPublicationDecision,
   ReaderSummaryPublicationPolicy,
   ReaderSummaryJob,
   type ReaderSummaryPeriod,
   type ReaderSummaryPolicy,
-  type SummaryEvidenceSelection,
   interestReaderSummaryScope,
   workspaceReaderSummaryScope,
 } from "../../domain";
-import type { BuildReaderSummaryTopicMapUseCase } from "../build-reader-summary-topic-map/build-reader-summary-topic-map.use-case";
 import type {
   ListReaderSummaryPeriodSummariesResult,
   ProviderReaderSummaryAttempt,
@@ -38,7 +35,14 @@ import type {
   UserSummaryPreferenceReaderPort,
 } from "../../ports";
 import { ExecuteReaderSummaryJobUseCase } from "./execute-reader-summary-job.use-case";
+import {
+  enabledReaderSummaryPromotionControl,
+  type ReaderSummaryPromotionAggregateMetrics,
+} from "./reader-summary-promotion-control";
 import { FakeReaderSummaryJobRepository } from "./execute-reader-summary-job.spec-support";
+import {
+  makeReaderEvidenceSelection,
+} from "./execute-reader-summary-job-promotion-fixtures";
 
 class StaticIdGenerator implements IdGenerator {
   generate(): string {
@@ -91,6 +95,7 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
     const events = new CapturingSummaryEventPublisher();
     const model = new CapturingReaderSummaryModel();
     const publicationPolicy = new CapturingReaderSummaryPublicationPolicy();
+    const promotionMetrics: ReaderSummaryPromotionAggregateMetrics[] = [];
     const requestedAt = new Date("2026-06-26T08:00:00.000Z");
     let observedMaxEvidenceItems: number | undefined;
     let observedThrough: Date | undefined;
@@ -155,6 +160,12 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
       undefined,
       publicationPolicy,
       zeroEligibleGitHubProjectionReader(),
+      undefined,
+      undefined,
+      undefined,
+      enabledReaderSummaryPromotionControl({
+        record(value) { promotionMetrics.push(value); },
+      }),
     ).execute({
       tenantId: tenant,
       workspaceId: workspace,
@@ -169,6 +180,10 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
         readerSummaryId: "reader-summary-id-1",
       },
     });
+    expect(promotionMetrics.map((item) => item.lifecycle)).toEqual([
+      "evaluated",
+      "delivered",
+    ]);
 
     const snapshot = artifacts.all()[0]?.toSnapshot();
     expect(snapshot).toMatchObject({
@@ -201,6 +216,13 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
       },
     });
     expect(snapshot?.topStories).toHaveLength(1);
+    expect(snapshot?.promotionAttestations).toHaveLength(1);
+    expect(snapshot?.promotionAttestations?.[0]?.citationIds).toEqual(
+      snapshot?.content?.topReads[0]?.citationIds,
+    );
+    expect(snapshot?.promotionAttestations?.[0]?.citationIds[0]).not.toMatch(
+      /^promotion-preflight:/u,
+    );
     expect(observedMaxEvidenceItems).toBe(120);
     expect(observedThrough).toEqual(new Date("2026-06-26T08:05:00.000Z"));
     expect(snapshot?.generatedAt).toEqual(observedThrough);
@@ -302,6 +324,10 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
       undefined,
       undefined,
       zeroEligibleGitHubProjectionReader(),
+      undefined,
+      undefined,
+      undefined,
+      enabledReaderSummaryPromotionControl(),
     ).execute({
       tenantId: tenant,
       workspaceId: workspace,
@@ -318,225 +344,6 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
     );
   });
 
-  it("rebuilds reader content from evidence instead of trusting model content", async () => {
-    const tenant = tenantId("tenant-reader-summary-use-case");
-    const workspace = workspaceId("workspace-reader-summary-use-case");
-    const jobs = new FakeReaderSummaryJobRepository();
-    const artifacts = new FakeReaderSummaryArtifactRepository();
-    const events = new CapturingSummaryEventPublisher();
-
-    await jobs.save(
-      ReaderSummaryJob.request({
-        id: "reader-job-model-content",
-        tenantId: tenant,
-        workspaceId: workspace,
-        scope: workspaceReaderSummaryScope(),
-        period: readerSummaryPeriod,
-        idempotencyKey: "reader-job-key-model-content",
-        requestedAt: new Date("2026-06-26T08:00:00.000Z"),
-      }),
-    );
-
-    const result = await new ExecuteReaderSummaryJobUseCase(
-      jobs,
-      artifacts,
-      new EmptyReaderSummaryPolicyRepository(),
-      {
-        async select() {
-          return makeReaderEvidenceSelection();
-        },
-      },
-      new CapturingReaderSummaryModel({
-        topReads: [{ title: "Untrusted model top read" }],
-        narrativeSections: [
-          {
-            id: "lead",
-            kind: "lead",
-            title: "Overview",
-            text: "Runtime regression discussion is the main signal.",
-            citationIds: ["c1"],
-            storyClusterId: "cluster-1",
-          },
-        ],
-      } as unknown as ProviderReaderSummaryAttempt["draft"]["content"]),
-      new CapturingReaderSummaryPublication(jobs, artifacts, events),
-      new StaticIdGenerator(),
-      new FixedClock(new Date("2026-06-26T08:05:00.000Z")),
-      undefined,
-      undefined,
-      emptyTopicMapBuilder(),
-      undefined,
-      zeroEligibleGitHubProjectionReader(),
-    ).execute({
-      tenantId: tenant,
-      workspaceId: workspace,
-      readerSummaryJobId: "reader-job-model-content",
-    });
-
-    expect(result.ok).toBe(true);
-    expect(artifacts.all()[0]?.toSnapshot().content?.topReads[0]?.title).toBe(
-      "Runtime regression discussion",
-    );
-    expect(artifacts.all()[0]?.toSnapshot().content?.narrativeSections).toEqual(
-      [
-        {
-          id: "lead",
-          kind: "lead",
-          title: "Overview",
-          text: "Runtime regression discussion is the main signal.",
-          citationIds: ["c1"],
-          storyClusterId: "cluster-1",
-        },
-      ],
-    );
-  });
-
-  it("rejects a generated artifact before publish when top reads fail source quality", async () => {
-    const tenant = tenantId("tenant-reader-summary-use-case");
-    const workspace = workspaceId("workspace-reader-summary-use-case");
-    const jobs = new FakeReaderSummaryJobRepository();
-    const artifacts = new FakeReaderSummaryArtifactRepository();
-    const events = new CapturingSummaryEventPublisher();
-
-    await jobs.save(
-      ReaderSummaryJob.request({
-        id: "reader-job-rejected",
-        tenantId: tenant,
-        workspaceId: workspace,
-        scope: interestReaderSummaryScope("interest-reader-ai"),
-        period: readerSummaryPeriod,
-        idempotencyKey: "reader-job-key-rejected",
-        requestedAt: new Date("2026-06-26T08:00:00.000Z"),
-      }),
-    );
-
-    const result = await new ExecuteReaderSummaryJobUseCase(
-      jobs,
-      artifacts,
-      new EmptyReaderSummaryPolicyRepository(),
-      {
-        async select() {
-          return makeReaderEvidenceSelection({
-            firstContentQuality: {
-              qualityScore: 0.2,
-              interestRelevanceScore: 0.4,
-              engagementIntegrityScore: 0.4,
-              eligibleForSummary: true,
-              eligibleForTopRead: false,
-              needsLlmReview: true,
-              decision: "downrank",
-              flags: ["rumor_only"],
-              reason: "Rumor-only evidence is not safe as a top read.",
-            },
-          });
-        },
-      },
-      new CapturingReaderSummaryModel(),
-      new CapturingReaderSummaryPublication(jobs, artifacts, events),
-      new StaticIdGenerator(),
-      new FixedClock(new Date("2026-06-26T08:05:00.000Z")),
-      undefined,
-      undefined,
-      throwingTopicMapBuilder(),
-      undefined,
-      zeroEligibleGitHubProjectionReader(),
-    ).execute({
-      tenantId: tenant,
-      workspaceId: workspace,
-      readerSummaryJobId: "reader-job-rejected",
-    });
-
-    expect(result).toEqual({
-      ok: true,
-      value: {
-        readerSummaryJobId: "reader-job-rejected",
-        status: "quality_rejected",
-        readerSummaryId: "reader-summary-id-1",
-      },
-    });
-    expect(artifacts.all()).toHaveLength(1);
-    expect(artifacts.decisions()[0]).toMatchObject({
-      status: "rejected",
-      reasonCodes: ["editorial_quality", "top_read_ineligible_source"],
-    });
-    expect(artifacts.all()[0]?.toSnapshot().confidence).toMatchObject({
-      level: "low",
-      score: 0,
-    });
-    expect(
-      (
-        await jobs.findById({
-          tenantId: tenant,
-          workspaceId: workspace,
-          readerSummaryJobId: "reader-job-rejected",
-        })
-      )?.toSnapshot(),
-    ).toMatchObject({
-      status: "quality_rejected",
-      readerSummaryId: "reader-summary-id-1",
-      failureReason: expect.stringContaining("pre-publish quality gate"),
-    });
-    expect(events.all()).toEqual([]);
-  });
-
-  it("calibrates confidence before a preflight rejection and skips topic-map calls", async () => {
-    const tenant = tenantId("tenant-reader-summary-use-case");
-    const workspace = workspaceId("workspace-reader-summary-use-case");
-    const jobs = new FakeReaderSummaryJobRepository();
-    const artifacts = new FakeReaderSummaryArtifactRepository();
-    const events = new CapturingSummaryEventPublisher();
-    const publicationPolicy = new CapturingReaderSummaryPublicationPolicy(
-      forcedRejectionDecision(),
-    );
-
-    await jobs.save(
-      ReaderSummaryJob.request({
-        id: "reader-job-calibrated-rejection",
-        tenantId: tenant,
-        workspaceId: workspace,
-        scope: interestReaderSummaryScope("interest-reader-ai"),
-        period: readerSummaryPeriod,
-        idempotencyKey: "reader-job-key-calibrated-rejection",
-        requestedAt: new Date("2026-06-26T08:00:00.000Z"),
-      }),
-    );
-
-    const result = await new ExecuteReaderSummaryJobUseCase(
-      jobs,
-      artifacts,
-      new EmptyReaderSummaryPolicyRepository(),
-      {
-        async select() {
-          return makeReaderEvidenceSelection();
-        },
-      },
-      new CapturingReaderSummaryModel(),
-      new CapturingReaderSummaryPublication(jobs, artifacts, events),
-      new StaticIdGenerator(),
-      new FixedClock(new Date("2026-06-26T08:05:00.000Z")),
-      undefined,
-      undefined,
-      throwingTopicMapBuilder(),
-      publicationPolicy,
-      zeroEligibleGitHubProjectionReader(),
-    ).execute({
-      tenantId: tenant,
-      workspaceId: workspace,
-      readerSummaryJobId: "reader-job-calibrated-rejection",
-    });
-
-    expect(result).toMatchObject({
-      ok: true,
-      value: { status: "quality_rejected" },
-    });
-    expect(publicationPolicy.confidences).toEqual([
-      expect.objectContaining({ level: "low", score: 0.42 }),
-      expect.objectContaining({ level: "low", score: 0.42 }),
-    ]);
-    expect(artifacts.all()[0]?.toSnapshot().confidence).toEqual(
-      publicationPolicy.confidences[1],
-    );
-  });
 });
 
 const unused = <T>(): T => ({}) as T;
@@ -547,22 +354,6 @@ const zeroEligibleGitHubProjectionReader =
       return { eligibleBindingIds: [], items: [], pageCount: 1 };
     },
   });
-
-const emptyTopicMapBuilder = (): BuildReaderSummaryTopicMapUseCase =>
-  ({
-    async execute() {
-      return { ok: true, value: emptyReaderSummaryTopicMap() };
-    },
-  }) as unknown as BuildReaderSummaryTopicMapUseCase;
-
-const throwingTopicMapBuilder = (): BuildReaderSummaryTopicMapUseCase =>
-  ({
-    async execute() {
-      throw new Error(
-        "Topic-map generation must not run for a preflight-rejected summary",
-      );
-    },
-  }) as unknown as BuildReaderSummaryTopicMapUseCase;
 
 class FakeReaderSummaryArtifactRepository implements ReaderSummaryArtifactRepositoryPort {
   private readonly artifacts: ReaderSummaryArtifact[] = [];
@@ -674,26 +465,6 @@ class CapturingReaderSummaryPublicationPolicy extends ReaderSummaryPublicationPo
   }
 }
 
-const forcedRejectionDecision = (): ReaderSummaryPublicationDecision => ({
-  status: "rejected",
-  qualityPassed: false,
-  canonicalScore: 0,
-  shadow: {
-    mode: "shadow",
-    policyVersion: "reader_summary_publication_shadow_v1",
-    riskScore: 0,
-    signals: [],
-  },
-  reasonCodes: ["editorial_quality"],
-  reasons: ["Forced preflight rejection for confidence regression coverage."],
-  findings: [
-    {
-      code: "editorial_quality",
-      reason: "Forced preflight rejection for confidence regression coverage.",
-    },
-  ],
-});
-
 class CapturingReaderSummaryModel implements ReaderSummaryModelPort {
   private readonly policies: Parameters<ReaderSummaryModelPort["route"]>[1][] =
     [];
@@ -703,6 +474,9 @@ class CapturingReaderSummaryModel implements ReaderSummaryModelPort {
   private readonly coveragePlans: Parameters<
     ReaderSummaryModelPort["generate"]
   >[0]["coveragePlan"][] = [];
+  private readonly evidenceIds: string[][] = [];
+  private readonly evidencePayloads: string[] = [];
+  private readonly contextArtifactCounts: number[] = [];
 
   constructor(
     private readonly generatedContent: ProviderReaderSummaryAttempt["draft"]["content"] =
@@ -744,6 +518,9 @@ class CapturingReaderSummaryModel implements ReaderSummaryModelPort {
   ): Promise<ProviderReaderSummaryAttempt> {
     this.generationPolicies.push(input.policy);
     this.coveragePlans.push(input.coveragePlan);
+    this.evidenceIds.push(input.evidence.selectedEvidence.map((item) => item.feedItemId));
+    this.evidencePayloads.push(JSON.stringify(input.evidence));
+    this.contextArtifactCounts.push(input.contextArtifacts.length);
     const firstItem = input.evidence.selectedEvidence[0];
     const firstCluster = input.evidence.clusters[0];
     if (firstItem === undefined || firstCluster === undefined) {
@@ -807,6 +584,15 @@ class CapturingReaderSummaryModel implements ReaderSummaryModelPort {
     };
   }
 
+  generatedEvidenceIds(): readonly (readonly string[])[] {
+    return this.evidenceIds;
+  }
+  generatedEvidencePayloads(): readonly string[] {
+    return this.evidencePayloads;
+  }
+  generatedContextArtifactCounts(): readonly number[] {
+    return this.contextArtifactCounts;
+  }
   validateRawProviderResponse(): ReaderSummaryModelValidationResult {
     return { ok: true };
   }
@@ -818,7 +604,6 @@ class CapturingReaderSummaryModel implements ReaderSummaryModelPort {
       message: error instanceof Error ? error.message : "unknown test error",
     };
   }
-
   observedPolicies(): readonly Parameters<
     ReaderSummaryModelPort["route"]
   >[1][] {
@@ -853,103 +638,3 @@ const defaultGeneratedContent =
         },
       ],
     }) as unknown as ProviderReaderSummaryAttempt["draft"]["content"];
-
-const makeReaderEvidenceSelection = (
-  overrides: {
-    readonly firstContentQuality?: SummaryEvidenceSelection["selectedEvidence"][number]["contentQuality"];
-  } = {},
-): SummaryEvidenceSelection => ({
-  rankingPolicyVersion: "story-ranking.v1",
-  personalization: {
-    memoryGuidanceStatus: "available",
-    memoryGuidanceApplied: true,
-    providerPreferenceCount: 1,
-    keywordPreferenceCount: 2,
-    mutedKeywordCount: 0,
-    blockedProviderCount: 0,
-    signals: ["provider:reddit", "keyword:runtime-regression"],
-  },
-  sourceWindow: {
-    windowId: "window-1",
-    startedAt: new Date("2026-06-26T07:00:00.000Z"),
-    endedAt: new Date("2026-06-26T08:00:00.000Z"),
-    selectedFeedItemIds: ["feed-1", "feed-2"],
-    storyClusterIds: ["cluster-1", "cluster-2"],
-  },
-  clusters: [
-    {
-      id: "cluster-1",
-      storyKey: "runtime-regression",
-      representativeFeedItemId: "feed-1",
-      duplicateFeedItemIds: [],
-      interestIds: ["interest-reader-ai"],
-      providerKeys: ["reddit"],
-      score: 2.2,
-      observedAtRange: {
-        startedAt: new Date("2026-06-26T07:20:00.000Z"),
-        endedAt: new Date("2026-06-26T07:20:00.000Z"),
-      },
-      whyImportant: ["Matches user preference"],
-    },
-    {
-      id: "cluster-2",
-      storyKey: "github-release",
-      representativeFeedItemId: "feed-2",
-      duplicateFeedItemIds: [],
-      interestIds: ["interest-reader-ai"],
-      providerKeys: ["github-trending-page"],
-      score: 0.9,
-      observedAtRange: {
-        startedAt: new Date("2026-06-26T07:30:00.000Z"),
-        endedAt: new Date("2026-06-26T07:30:00.000Z"),
-      },
-      whyImportant: ["Strong source engagement signal"],
-    },
-  ],
-  selectedEvidence: [
-    {
-      feedItemId: "feed-1",
-      sourceItemId: "reddit-post-1",
-      sourceBindingId: "binding-reddit",
-      interestId: "interest-reader-ai",
-      providerKey: "reddit",
-      providerName: "Reddit",
-      canonicalUrl: "https://reddit.example.test/post-1",
-      title: "Runtime regression discussion",
-      bodyPreview: "Users are discussing a runtime regression.",
-      publishedAt: new Date("2026-06-26T07:10:00.000Z"),
-      observedAt: new Date("2026-06-26T07:20:00.000Z"),
-      score: 2.2,
-      whyImportant: ["Matches user preference"],
-      contentQuality:
-        overrides.firstContentQuality ?? eligibleReaderEvidenceQuality(),
-    },
-    {
-      feedItemId: "feed-2",
-      sourceItemId: "github-trending-1",
-      sourceBindingId: "binding-github",
-      interestId: "interest-reader-ai",
-      providerKey: "github-trending-page",
-      providerName: "GitHub Trending",
-      canonicalUrl: "https://github.com/example/project",
-      title: "Example project trends on GitHub",
-      publishedAt: new Date("2026-06-26T07:20:00.000Z"),
-      observedAt: new Date("2026-06-26T07:30:00.000Z"),
-      score: 0.9,
-      whyImportant: ["Strong source engagement signal"],
-      contentQuality: eligibleReaderEvidenceQuality(),
-    },
-  ],
-});
-
-const eligibleReaderEvidenceQuality = () => ({
-  qualityScore: 0.9,
-  interestRelevanceScore: 0.9,
-  engagementIntegrityScore: 0.9,
-  eligibleForSummary: true,
-  eligibleForTopRead: true,
-  needsLlmReview: false,
-  decision: "keep",
-  flags: [],
-  reason: "Eligible reader summary evidence.",
-});

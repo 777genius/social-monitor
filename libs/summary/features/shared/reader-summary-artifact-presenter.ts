@@ -7,6 +7,8 @@ import type {
   ReaderSummaryPeriod,
   ReaderInterestSection,
   ReaderSummaryTopicMap,
+  ReaderPostPromotionAttestation,
+  ReaderPostPromotionInput,
   StoryCluster,
   TopRead,
 } from "../../domain";
@@ -76,21 +78,82 @@ export type ReaderSummaryContextArtifactView = Omit<
   readonly generatedAt: string;
 };
 
+export type ReaderPostPromotionAttestationView = Omit<
+  ReaderPostPromotionAttestation,
+  | "publishedAt"
+  | "observedAt"
+  | "checkedAt"
+  | "periodStartedAt"
+  | "periodEndedAt"
+  | "ingestionCutoff"
+  | "metrics"
+  | "supportFacts"
+> & {
+  readonly publishedAt: string;
+  readonly observedAt: string;
+  readonly checkedAt?: string;
+  readonly periodStartedAt: string;
+  readonly periodEndedAt: string;
+  readonly ingestionCutoff: string;
+  readonly supportFacts: readonly ReaderPostPromotionInputView[];
+  readonly metrics?: ReaderPostPromotionAttestation["metrics"] extends infer T
+    ? T extends { readonly provider: "github_radar" }
+      ? Omit<T, "windowStartedAt" | "windowEndedAt"> & {
+          readonly windowStartedAt: string;
+          readonly windowEndedAt: string;
+        }
+      : T
+    : never;
+};
+
+type ReaderPostPromotionInputView = Omit<
+  ReaderPostPromotionInput,
+  | "publishedAt"
+  | "observedAt"
+  | "checkedAt"
+  | "periodStart"
+  | "periodEnd"
+  | "ingestionCutoff"
+  | "metrics"
+> & {
+  readonly publishedAt: string;
+  readonly observedAt: string;
+  readonly checkedAt?: string;
+  readonly periodStart: string;
+  readonly periodEnd: string;
+  readonly ingestionCutoff: string;
+  readonly metrics?: ReaderPostPromotionAttestationView["metrics"];
+};
+
 export type ReaderSummaryArtifactView = Omit<
   ReaderSummaryArtifactProps,
-  "period" | "sourceWindow" | "storyClusters" | "contextArtifacts" | "content"
+  | "period"
+  | "sourceWindow"
+  | "storyClusters"
+  | "contextArtifacts"
+  | "promotionAttestations"
+  | "promotionEvidenceFacts"
+  | "content"
 > & {
   readonly period: ReaderSummaryPeriodView;
   readonly content: ReaderSummaryContentView;
   readonly sourceWindow: Omit<
     ReaderSummaryArtifactProps["sourceWindow"],
-    "startedAt" | "endedAt"
+    | "startedAt"
+    | "endedAt"
+    | "periodStartedAt"
+    | "periodEndedAt"
+    | "ingestionCutoff"
   > & {
     readonly startedAt: string;
     readonly endedAt: string;
+    readonly periodStartedAt?: string;
+    readonly periodEndedAt?: string;
+    readonly ingestionCutoff?: string;
   };
   readonly storyClusters: readonly ReaderSummaryStoryClusterView[];
   readonly contextArtifacts: readonly ReaderSummaryContextArtifactView[];
+  readonly promotionAttestations: readonly ReaderPostPromotionAttestationView[];
   readonly citations: readonly ReaderSummaryCitationView[];
   readonly coverage: ReaderSummaryCoverageView;
   readonly freshness: ReaderSummaryFreshnessView;
@@ -136,15 +199,37 @@ export const presentReaderSummaryArtifact = (
     snapshot.confidence,
   );
   const freshnessView = presentFreshness(freshness);
-
+  const {
+    promotionEvidenceFacts: _promotionEvidenceFacts,
+    ...publicSnapshot
+  } = snapshot;
+  void _promotionEvidenceFacts;
+  const {
+    periodStartedAt: _periodStartedAt,
+    periodEndedAt: _periodEndedAt,
+    ingestionCutoff: _ingestionCutoff,
+    ...sourceWindow
+  } = snapshot.sourceWindow;
+  void _periodStartedAt;
+  void _periodEndedAt;
+  void _ingestionCutoff;
   return {
-    ...snapshot,
+    ...publicSnapshot,
     period: presentReaderSummaryPeriod(snapshot.period),
     content,
     sourceWindow: {
-      ...snapshot.sourceWindow,
+      ...sourceWindow,
       startedAt: snapshot.sourceWindow.startedAt.toISOString(),
       endedAt: snapshot.sourceWindow.endedAt.toISOString(),
+      ...(snapshot.sourceWindow.periodStartedAt === undefined
+        ? {}
+        : { periodStartedAt: snapshot.sourceWindow.periodStartedAt.toISOString() }),
+      ...(snapshot.sourceWindow.periodEndedAt === undefined
+        ? {}
+        : { periodEndedAt: snapshot.sourceWindow.periodEndedAt.toISOString() }),
+      ...(snapshot.sourceWindow.ingestionCutoff === undefined
+        ? {}
+        : { ingestionCutoff: snapshot.sourceWindow.ingestionCutoff.toISOString() }),
     },
     storyClusters: snapshot.storyClusters.map((cluster) => ({
       ...cluster,
@@ -158,6 +243,9 @@ export const presentReaderSummaryArtifact = (
       period: presentReaderSummaryPeriod(contextArtifact.period),
       generatedAt: contextArtifact.generatedAt.toISOString(),
     })),
+    promotionAttestations: (snapshot.promotionAttestations ?? []).map(
+      presentPromotionAttestation,
+    ),
     citations: snapshot.citationMap.map((citation, index) => ({
       citationId: citation.citationId,
       label: `[${index + 1}]`,
@@ -174,6 +262,78 @@ export const presentReaderSummaryArtifact = (
       options.collectedCoverage,
     ),
     freshness: freshnessView,
+  };
+};
+
+export const presentPromotionAttestation = (
+  attestation: ReaderPostPromotionAttestation,
+): ReaderPostPromotionAttestationView => {
+  const {
+    metrics,
+    publishedAt,
+    observedAt,
+    checkedAt,
+    periodStartedAt,
+    periodEndedAt,
+    ingestionCutoff,
+    supportFacts,
+    ...rest
+  } = attestation;
+  return {
+    ...rest,
+    publishedAt: publishedAt.toISOString(),
+    observedAt: observedAt.toISOString(),
+    periodStartedAt: periodStartedAt.toISOString(),
+    periodEndedAt: periodEndedAt.toISOString(),
+    ingestionCutoff: ingestionCutoff.toISOString(),
+    ...(checkedAt === undefined
+      ? {}
+      : { checkedAt: checkedAt.toISOString() }),
+    supportFacts: supportFacts.map(presentPromotionInput),
+    ...(metrics === undefined
+      ? {}
+      : metrics.provider === "github_radar"
+        ? {
+            metrics: {
+              ...metrics,
+              windowStartedAt: metrics.windowStartedAt.toISOString(),
+              windowEndedAt: metrics.windowEndedAt.toISOString(),
+            },
+          }
+        : { metrics }),
+  };
+};
+
+const presentPromotionInput = (
+  input: ReaderPostPromotionInput,
+): ReaderPostPromotionInputView => {
+  const {
+    publishedAt,
+    observedAt,
+    checkedAt,
+    periodStart,
+    periodEnd,
+    ingestionCutoff,
+    metrics,
+    ...rest
+  } = input;
+  return {
+  ...rest,
+  publishedAt: publishedAt.toISOString(),
+  observedAt: observedAt.toISOString(),
+  periodStart: periodStart.toISOString(),
+  periodEnd: periodEnd.toISOString(),
+  ingestionCutoff: ingestionCutoff.toISOString(),
+  ...(checkedAt === undefined
+    ? {}
+    : { checkedAt: checkedAt.toISOString() }),
+  ...(metrics === undefined ? {} : metrics.provider === "github_radar"
+    ? { metrics: {
+        ...metrics,
+        windowStartedAt: metrics.windowStartedAt.toISOString(),
+        windowEndedAt: metrics.windowEndedAt.toISOString(),
+      } }
+    : { metrics }),
   };
 };
 
@@ -205,7 +365,6 @@ const withReaderSummaryContentDefaults = (
   confidence: ReaderSummaryConfidence,
 ): ReaderSummaryContentView => {
   const topReads = content.topReads.map(sanitizeTopReadForPresentation);
-  const selectedPostSource = content.selectedPosts ?? content.topReads;
   const openQuestions = readerSummaryOpenQuestionsForPresentation(
     content,
     confidence,
@@ -217,7 +376,9 @@ const withReaderSummaryContentDefaults = (
     topicMap: content.topicMap ?? emptyReaderSummaryTopicMap(),
     openQuestions,
     topReads,
-    selectedPosts: selectedPostSource.map(sanitizeTopReadForPresentation),
+    selectedPosts: (content.selectedPosts ?? []).map(
+      sanitizeTopReadForPresentation,
+    ),
     interestSections: content.interestSections.map((section) => ({
       ...section,
       items: section.items.map(sanitizeTopReadForPresentation),

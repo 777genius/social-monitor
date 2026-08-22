@@ -29,6 +29,8 @@ import { FeedReaderSummaryTopicCollectionMetricsReader } from "../../adapters/ev
 import { RelevanceReaderSummaryEvidenceSelector } from "../../adapters/evidence/relevance-reader-summary-evidence.selector";
 import { SummaryMemoryReaderSummaryContextProvider } from "../../adapters/memory/summary-memory-reader-summary-context.provider";
 import { StoryRankingMetricsRecorder } from "../../adapters/metrics/story-ranking-metrics.recorder";
+import { ReaderSummaryPromotionMetricsRecorder } from
+  "../../adapters/metrics/reader-summary-promotion-metrics.recorder";
 import { ReaderSummaryJobQueuePublisherAdapter } from "../../adapters/messaging/reader-summary-job-queue.adapter";
 import { AgentRuntimeReaderSummaryModelAdapter } from "../../adapters/model/agent-runtime-reader-summary-model.adapter";
 import { AgentRuntimeReaderSummaryStoryRelationVerifier } from "../../adapters/model/agent-runtime-reader-summary-story-relation-verifier.adapter";
@@ -49,6 +51,10 @@ import type { PrismaSummaryClient } from "../../adapters/persistence/prisma/pris
 import { PrismaReaderSummaryTopicRecommendationDecisionRepository } from "../../adapters/persistence/prisma/prisma-reader-summary-topic-recommendation-decision.repository";
 import { BuildReaderSummaryTopicMapUseCase } from "../../features/build-reader-summary-topic-map/build-reader-summary-topic-map.use-case";
 import { ExecuteReaderSummaryJobUseCase } from "../../features/execute-reader-summary-job/execute-reader-summary-job.use-case";
+import {
+  disabledReaderSummaryPromotionControl,
+  enabledReaderSummaryPromotionControl,
+} from "../../features/execute-reader-summary-job/reader-summary-promotion-control";
 import { GetReaderSummaryJobStatusUseCase } from "../../features/get-reader-summary-job-status/get-reader-summary-job-status.use-case";
 import { GetReaderSummaryQualityRejectionUseCase } from "../../features/get-reader-summary-quality-rejection/get-reader-summary-quality-rejection.use-case";
 import { GetReaderSummaryUseCase } from "../../features/get-reader-summary/get-reader-summary.use-case";
@@ -86,6 +92,7 @@ import {
   READER_SUMMARY_JOB_QUEUE,
   READER_SUMMARY_JOB_REPOSITORY,
   READER_SUMMARY_MODEL_PROVIDER_MODE,
+  READER_SUMMARY_PROMOTION_MODE,
   READER_SUMMARY_OPENAI_RESPONSES_MODEL_OPTIONS,
   READER_SUMMARY_POLICY_REPOSITORY,
   READER_SUMMARY_PUBLICATION,
@@ -100,6 +107,7 @@ import {
   SUMMARY_RABBITMQ_JOB_QUEUE_OPTIONS,
   SUMMARY_RABBITMQ_QUEUE_CHANNEL,
   type ReaderSummaryModelProviderMode,
+  type ReaderSummaryPromotionMode,
   type ReaderSummaryTopicLabelerMode,
   type SummaryJobQueueMode,
   type SummaryPersistenceMode,
@@ -334,6 +342,8 @@ export const summaryReaderSummaryProviders: Provider[] = [
       userSummaryPreferences: UserSummaryPreferenceReaderPort,
       topicMapBuilder: BuildReaderSummaryTopicMapUseCase,
       githubProjectionReader: ReaderSummaryGitHubProjectionReaderPort,
+      promotionMode: ReaderSummaryPromotionMode,
+      metrics: MetricsRecorderPort,
     ) =>
       new ExecuteReaderSummaryJobUseCase(
         readerSummaryJobs,
@@ -349,6 +359,16 @@ export const summaryReaderSummaryProviders: Provider[] = [
         topicMapBuilder,
         undefined,
         githubProjectionReader,
+        undefined,
+        undefined,
+        undefined,
+        promotionMode === "enabled"
+          ? enabledReaderSummaryPromotionControl(
+              new ReaderSummaryPromotionMetricsRecorder(metrics),
+            )
+          : disabledReaderSummaryPromotionControl(
+              new ReaderSummaryPromotionMetricsRecorder(metrics),
+            ),
       ),
     inject: [
       READER_SUMMARY_JOB_REPOSITORY,
@@ -361,6 +381,8 @@ export const summaryReaderSummaryProviders: Provider[] = [
       SUMMARY_USER_SUMMARY_PREFERENCE_READER,
       BuildReaderSummaryTopicMapUseCase,
       READER_SUMMARY_GITHUB_PROJECTION_READER,
+      READER_SUMMARY_PROMOTION_MODE,
+      METRICS_RECORDER,
     ],
   },
   {

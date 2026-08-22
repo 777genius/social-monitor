@@ -346,6 +346,11 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/capture-durable-backend-e2e-loop.ts:Pool
       scripts/capture-reader-summary-multi-day-quality-corpus.ts:Pool
       scripts/capture-reader-summary-multi-day-quality-target-manifest.ts:Pool
+      scripts/check-feed-promotion-index-recovery-postgres.ts:Pool
+      scripts/check-feed-promotion-index-recovery.ts:Pool
+      scripts/check-feed-promotion-keyset-plan-postgres.ts:Pool
+      scripts/check-feed-promotion-keyset-plan-postgres.ts:Pool
+      scripts/check-feed-promotion-keyset-plan-postgres.ts:PrismaPg
       scripts/check-github-repo-radar-prisma-live-e2e.ts:Pool
       scripts/check-reader-summary-daily-delivery-c1-postgres.ts:Pool
       scripts/check-reader-summary-daily-delivery-c1-postgres.ts:Pool
@@ -444,6 +449,9 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/capture-durable-backend-e2e-loop.ts
       scripts/capture-reader-summary-multi-day-quality-corpus.ts
       scripts/capture-reader-summary-multi-day-quality-target-manifest.ts
+      scripts/check-feed-promotion-index-recovery-postgres.ts
+      scripts/check-feed-promotion-index-recovery.ts
+      scripts/check-feed-promotion-keyset-plan-postgres.ts
       scripts/check-github-repo-radar-prisma-live-e2e.ts
       scripts/check-reader-summary-daily-delivery-c1-postgres.ts
       scripts/check-reader-summary-daily-execution-cursor-postgres.ts
@@ -770,8 +778,8 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       publicationDeploy.indexOf(
         '"$secret" "$ca_certificate" "$runtime_role" pre',
       ),
-    ).toBeLessThan(publicationDeploy.indexOf('exec npm run migrate:deploy'));
-    expect(publicationDeploy.indexOf('exec npm run migrate:deploy')).toBeLessThan(
+    ).toBeLessThan(publicationDeploy.indexOf('npm run migrate:deploy'));
+    expect(publicationDeploy.indexOf('npm run migrate:deploy')).toBeLessThan(
       publicationDeploy.indexOf(
         '"$secret" "$ca_certificate" "$runtime_role" post',
       ),

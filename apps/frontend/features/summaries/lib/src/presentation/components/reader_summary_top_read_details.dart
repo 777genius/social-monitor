@@ -3,6 +3,7 @@ import 'package:social_monitor_design_system/social_monitor_design_system.dart';
 
 import '../../domain/aggregates/reader_summary.dart';
 import '../../domain/entities/summary_citation.dart';
+import '../view_models/reader_summary_top_posts_projection.dart';
 import 'reader_summary_citation_text.dart';
 import 'reader_summary_confirmation.dart';
 import 'reader_summary_external_link.dart';
@@ -80,6 +81,7 @@ class ReaderSummaryTopReadDetails extends StatelessWidget {
           const SizedBox(height: AppSpacing.xs),
           ReaderSummaryExternalLink(
             url: item.canonicalUrl!,
+            actionIdentity: 'card-${readerSummaryTopPostIdentity(item)}',
             onOpenUrl: onOpenUrl,
           ),
         ],
@@ -238,6 +240,7 @@ class _CitationDisclosure extends StatelessWidget {
                     if (citation.canonicalUrl != null)
                       ReaderSummaryExternalLink(
                         url: citation.canonicalUrl!,
+                        actionIdentity: 'citation-${citation.id}',
                         onOpenUrl: onOpenUrl,
                       ),
                   ],

@@ -47,6 +47,8 @@ const profilesByPurpose: Readonly<
     dailyStructuredProfile,
   "social_monitor.reader_summary.verify_story_relations":
     dailyStructuredProfile,
+  "social_monitor.reader_summary.verify_related_topic_relations":
+    dailyStructuredProfile,
   "social_monitor.reader_summary.weekly.review": dailyStructuredProfile,
   "social_monitor.reader_summary.weekly.generate": weeklyTextProfile,
 });
@@ -90,6 +92,7 @@ export const admitSubscriptionRuntimeRequest = (
     profile.reasoningEffort,
     "metadata.reasoningEffort",
   );
+  assertDedicatedRelatedTopicMarkers(request, controls);
   assertOutputControls(request, controls, outputSchema, profile);
 
   const canonicalControls = canonicalControlsForProfile(
@@ -136,6 +139,46 @@ export const admitSubscriptionRuntimeRequest = (
       },
     },
   };
+};
+
+const assertDedicatedRelatedTopicMarkers = (
+  request: AgentRuntimeExecutionRequest,
+  controls: Record<string, unknown>,
+): void => {
+  if (
+    request.purpose !==
+    "social_monitor.reader_summary.verify_related_topic_relations"
+  ) return;
+  assertRequiredExactString(
+    controls.outputSchemaName,
+    "social_monitor_reader_summary_related_topic_relations",
+    "outputSchemaName",
+  );
+  assertRequiredExactString(
+    controls.schemaVersion,
+    "reader_summary.related_topic_relation.v1",
+    "schemaVersion",
+  );
+  assertRequiredExactString(
+    request.metadata.taskRole,
+    "related_topic_relation",
+    "metadata.taskRole",
+  );
+  assertRequiredExactString(
+    request.metadata.verificationLane,
+    "related_topic",
+    "metadata.verificationLane",
+  );
+};
+
+const assertRequiredExactString = (
+  value: unknown,
+  expected: string,
+  label: string,
+): void => {
+  if (value !== expected) {
+    throw new Error(`${label} conflicts with purpose policy`);
+  }
 };
 
 export const configuredSubscriptionRuntimeDefaultsAreSafe = (input: {

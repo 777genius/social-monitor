@@ -1,22 +1,15 @@
 import '../../domain/aggregates/reader_summary.dart';
-import '../formatters/top_post_metrics.dart';
-import 'more_selected_posts_ranking.dart';
-
-const readerSummaryCuratedTopPostLimit = 8;
-const readerSummaryGitHubTrendingProviderKey = 'github-trending-page';
 
 final class ReaderSummaryTopPostsProjection {
   ReaderSummaryTopPostsProjection._({
     required this.curatedPosts,
-    required this.moreSelectedPosts,
-    required this.githubTrendingPosts,
+    required this.additionalNotableStories,
     required this.items,
     required List<String> datasetOrder,
   }) : _datasetOrder = datasetOrder;
 
   final List<TopRead> curatedPosts;
-  final List<TopRead> moreSelectedPosts;
-  final List<TopRead> githubTrendingPosts;
+  final List<TopRead> additionalNotableStories;
   final List<TopRead> items;
   final List<String> _datasetOrder;
 
@@ -38,131 +31,88 @@ final class ReaderSummaryTopPostsProjection {
 ReaderSummaryTopPostsProjection readerSummaryTopPostsProjection(
   ReaderSummary summary,
 ) {
-  final editorialTopReads = _stableUniquePosts(
-    summary.content.topReads.where((item) => !isGitHubTrendingTopPost(item)),
+  if (summary.content.promotionBoardAvailability ==
+      ReaderSummaryPromotionBoardAvailability.unavailable) {
+    return _unavailablePromotionProjection();
+  }
+  final curatedPosts = _authorizedPromotions(
+    summary.content.topReads,
+    placement: ReaderPostPromotionPlacement.top,
   );
-  final curatedPosts = editorialTopReads
-      .take(readerSummaryCuratedTopPostLimit)
-      .toList(growable: false);
-  final moreSelectedPosts = List<TopRead>.unmodifiable(
-    orderMoreSelectedPostsByUsefulness(
-      _stableUniquePosts(
-        [
-          ...editorialTopReads.skip(readerSummaryCuratedTopPostLimit),
-          ...summary.content.selectedPosts.where(
-            (item) => !isGitHubTrendingTopPost(item),
-          ),
-        ],
-        seenIdentities: {
-          for (final item in curatedPosts) readerSummaryTopPostIdentity(item),
-        },
-      ),
+  final additionalNotableStories = List<TopRead>.unmodifiable(
+    _authorizedPromotions(
+      summary.content.selectedPosts,
+      placement: ReaderPostPromotionPlacement.additional,
     ),
   );
-  final githubTrendingPosts = List<TopRead>.unmodifiable(
-    orderGitHubTrendingPosts(
-      summary.content.selectedPosts.where(isGitHubTrendingTopPost),
-    ),
-  );
+  if (curatedPosts.length != summary.content.topReads.length ||
+      additionalNotableStories.length != summary.content.selectedPosts.length) {
+    return _unavailablePromotionProjection();
+  }
   final items = List<TopRead>.unmodifiable([
     ...curatedPosts,
-    ...moreSelectedPosts,
-    ...githubTrendingPosts,
+    ...additionalNotableStories,
   ]);
 
   return ReaderSummaryTopPostsProjection._(
     curatedPosts: List<TopRead>.unmodifiable(curatedPosts),
-    moreSelectedPosts: moreSelectedPosts,
-    githubTrendingPosts: githubTrendingPosts,
+    additionalNotableStories: additionalNotableStories,
     items: items,
     datasetOrder: List<String>.unmodifiable([
       'curated:${curatedPosts.length}',
       for (final item in curatedPosts)
         'curated-post:${readerSummaryTopPostIdentity(item)}',
-      for (final item in moreSelectedPosts)
-        'more-selected:${readerSummaryTopPostIdentity(item)}',
-      for (final item in githubTrendingPosts)
-        'github:${readerSummaryTopPostIdentity(item)}',
+      for (final item in additionalNotableStories)
+        'additional-story:${readerSummaryTopPostIdentity(item)}',
     ]),
   );
 }
 
-bool isGitHubTrendingTopPost(TopRead item) =>
-    item.providerKey.trim().toLowerCase() ==
-    readerSummaryGitHubTrendingProviderKey;
+ReaderSummaryTopPostsProjection _unavailablePromotionProjection() =>
+    ReaderSummaryTopPostsProjection._(
+      curatedPosts: const [],
+      additionalNotableStories: const [],
+      items: const [],
+      datasetOrder: const ['promotion-board:unavailable'],
+    );
+
+List<TopRead> _authorizedPromotions(
+  Iterable<TopRead> items, {
+  required ReaderPostPromotionPlacement placement,
+}) {
+  final authorized = <TopRead>[];
+  for (final item in items) {
+    final attestation = item.promotionAttestation;
+    if (attestation == null ||
+        attestation.placement != placement ||
+        !_hasAuthorizedStoryMarker(item) ||
+        (placement == ReaderPostPromotionPlacement.top &&
+            item.cardKind != ReaderSummaryCardKind.curatedTopRead) ||
+        (placement == ReaderPostPromotionPlacement.additional &&
+            item.cardKind != ReaderSummaryCardKind.additionalNotableStory)) {
+      return const [];
+    }
+    authorized.add(item);
+  }
+  return List<TopRead>.unmodifiable(authorized);
+}
+
+bool _hasAuthorizedStoryMarker(TopRead item) {
+  final storyClusterId = item.storyClusterId?.trim();
+  return storyClusterId != null && storyClusterId.isNotEmpty;
+}
 
 String readerSummaryTopPostIdentity(TopRead item) {
+  final storyClusterId = item.storyClusterId?.trim();
+  if (storyClusterId != null && storyClusterId.isNotEmpty) {
+    return 'cluster:${_normalizedText(storyClusterId)}';
+  }
   final canonicalUrl = item.canonicalUrl;
   if (canonicalUrl != null && canonicalUrl.trim().isNotEmpty) {
     return 'url:${_normalizedCanonicalUrl(canonicalUrl)}';
   }
   return 'fallback:${_normalizedText(item.providerKey)}:'
       '${_normalizedText(item.title)}';
-}
-
-String readerSummaryGitHubRepositoryIdentity(TopRead item) {
-  final canonicalUrl = item.canonicalUrl;
-  if (canonicalUrl != null) {
-    final repository = _repositoryFromGitHubUrl(canonicalUrl);
-    if (repository != null) {
-      return repository;
-    }
-  }
-
-  final titleMatch = RegExp(
-    r'([a-zA-Z0-9_.-]+)/([a-zA-Z0-9_.-]+)',
-  ).firstMatch(item.title);
-  if (titleMatch != null) {
-    final owner = _normalizedRepositorySegment(titleMatch.group(1)!);
-    final repository = _normalizedRepositorySegment(titleMatch.group(2)!);
-    if (owner.isNotEmpty && repository.isNotEmpty) {
-      return '$owner/$repository';
-    }
-  }
-
-  return readerSummaryTopPostIdentity(item);
-}
-
-List<TopRead> _stableUniquePosts(
-  Iterable<TopRead> items, {
-  Set<String>? seenIdentities,
-}) {
-  final seen = {...?seenIdentities};
-  final unique = <TopRead>[];
-  for (final item in items) {
-    if (seen.add(readerSummaryTopPostIdentity(item))) {
-      unique.add(item);
-    }
-  }
-  return unique;
-}
-
-String? _repositoryFromGitHubUrl(String rawUrl) {
-  final uri = Uri.tryParse(rawUrl.trim());
-  if (uri == null) {
-    return null;
-  }
-  final host = uri.host.toLowerCase();
-  if (host != 'github.com' && host != 'www.github.com') {
-    return null;
-  }
-  final segments = uri.pathSegments
-      .where((segment) => segment.trim().isNotEmpty)
-      .toList(growable: false);
-  if (segments.length < 2) {
-    return null;
-  }
-  final owner = _normalizedRepositorySegment(segments[0]);
-  final repository = _normalizedRepositorySegment(segments[1]);
-  return owner.isEmpty || repository.isEmpty ? null : '$owner/$repository';
-}
-
-String _normalizedRepositorySegment(String value) {
-  return value
-      .trim()
-      .replaceFirst(RegExp(r'\.git$', caseSensitive: false), '')
-      .replaceFirst(RegExp(r'[.,:;]+$'), '')
-      .toLowerCase();
 }
 
 String _normalizedCanonicalUrl(String rawUrl) {

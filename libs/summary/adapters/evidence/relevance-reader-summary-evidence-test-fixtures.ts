@@ -58,6 +58,7 @@ export const readerSummaryRankedItemFixture = (
     clusterSize: 1,
     duplicateFeedItemIds: [],
     whyImportant: ["Fresh item in the current monitoring window"],
+    providerMetadata: defaultPromotionMetadata(providerKey),
     safety: {
       status: "allowed",
       categories: ["raw_payload_retention_disabled"],
@@ -79,6 +80,39 @@ export const readerSummaryRankedItemFixture = (
   };
 };
 
+const defaultPromotionMetadata = (
+  providerKey: string,
+): RankedFeedItemView["providerMetadata"] => {
+  switch (providerKey.trim().toLocaleLowerCase("en-US")) {
+    case "x":
+    case "twitter":
+    case "x-twitter":
+      return {
+        kind: "x_post", contentKind: "original_post", likes: 100, reposts: 20,
+      };
+    case "reddit":
+      return { kind: "reddit_post", score: 100, comments: 10 };
+    case "hn":
+    case "hacker-news":
+      return { kind: "hacker_news_story", points: 100, comments: 10 };
+    case "github":
+    case "github-repository":
+    case "github-repo-radar":
+      return {
+        kind: "github_repository_trend",
+        repository: { forksCount: 50 },
+        trend: {
+          primaryWindow: "24h",
+          checkedAt: "2026-06-23T10:00:00.000Z",
+          stars24h: 20,
+          forks24h: 5,
+        },
+      };
+    default:
+      return undefined;
+  }
+};
+
 export class FakeStoryRankingMetrics implements StoryRankingMetricsPort {
   readonly recorded: SummaryEvidenceSelection[] = [];
   readonly storyRelationMetrics: Parameters<
@@ -97,3 +131,11 @@ export class FakeStoryRankingMetrics implements StoryRankingMetricsPort {
     this.storyRelationMetrics.push(metric);
   }
 }
+
+export const emptyPromotionSnapshot = async () => ({
+  ok: true as const,
+  candidates: [],
+  sourceContent: [],
+  physicalRowsRead: 0,
+  exhausted: true as const,
+});

@@ -8,6 +8,10 @@ import '../api/summary_api_dto.dart';
 
 part 'summary_mapper_coverage.dart';
 part 'summary_mapper_reader_content.dart';
+part 'summary_mapper_reader_item.dart';
+part 'summary_mapper_reader_item_context.dart';
+part 'summary_mapper_reader_authority.dart';
+part 'reader_summary_related_topic_identity.dart';
 part 'summary_mapper_text_sanitizer.dart';
 part 'summary_mapper_topic_map.dart';
 
@@ -28,6 +32,16 @@ final class SummaryMapper {
 
   ReaderSummary readerSummaryToDomain(ReaderSummaryApiDto dto) {
     final period = summaryPeriodToDomain(dto.period);
+    final topStories = dto.topStories
+        .map(_summaryStoryToDomain)
+        .toList(growable: false);
+    final storyClusterIds = dto.storyClusterIds
+        .where((id) => id.trim().isNotEmpty)
+        .toSet();
+    final storyClusterAuthorities = _uniqueStoryClusterAuthorities(
+      dto.storyClusterAuthorities,
+    );
+    final citationsById = _uniqueSummaryCitations(dto.citations);
     return ReaderSummary(
       id: _nonEmpty(dto.id, fallback: 'summary-unknown'),
       title: _nonEmpty(dto.title, fallback: 'Workspace summary'),
@@ -36,10 +50,13 @@ final class SummaryMapper {
         fallback: 'No summary available',
       ),
       userId: _nonEmptyOrNull(dto.userId),
-      content: _readerSummaryContentToDomain(dto.content),
-      topStories: dto.topStories
-          .map(_summaryStoryToDomain)
-          .toList(growable: false),
+      content: _readerSummaryContentToDomain(
+        dto.content,
+        storyClusterIds,
+        storyClusterAuthorities,
+        citationsById,
+      ),
+      topStories: topStories,
       repeatedSignals: dto.repeatedSignals
           .map(_repeatedSignalToDomain)
           .toList(growable: false),
@@ -47,9 +64,11 @@ final class SummaryMapper {
       period: period,
       generatedAt: dto.generatedAt?.toUtc(),
       summaryWindow: SummaryWindow(
+        id: _nonEmptyOrNull(dto.sourceWindow.id),
         label: _nonEmpty(dto.sourceWindow.label, fallback: 'Evidence window'),
         startsAt: dto.sourceWindow.startedAt.toUtc(),
         endsAt: dto.sourceWindow.endedAt.toUtc(),
+        ingestionCutoff: dto.sourceWindow.ingestionCutoff?.toUtc(),
       ),
       freshnessLabel: _nonEmpty(dto.freshnessLabel, fallback: 'Unknown'),
       isDegraded: dto.isDegraded,
@@ -104,67 +123,6 @@ final class SummaryMapper {
       sourceItemId: _nonEmpty(dto.sourceItemId, fallback: dto.id),
       providerKey: _nonEmptyOrNull(dto.providerKey),
       canonicalUrl: _safeUrl(dto.canonicalUrl),
-    );
-  }
-
-  ReaderInterestSection _interestSectionToDomain(
-    ReaderInterestSectionApiDto dto,
-  ) {
-    return ReaderInterestSection(
-      interestId: _nonEmptyOrNull(dto.interestId),
-      title: _nonEmpty(dto.title, fallback: 'Interest signal'),
-      insight: _safeText(
-        dto.insight,
-        fallback: 'No interest insight available',
-      ),
-      items: dto.items.map(_readerItemToDomain).toList(growable: false),
-      citationIds: dto.citationIds,
-    );
-  }
-
-  TopRead _readerItemToDomain(TopReadApiDto dto) {
-    return TopRead(
-      title: _nonEmpty(dto.title, fallback: 'Untitled item'),
-      providerKey: _nonEmpty(dto.providerKey, fallback: 'unknown'),
-      reason: _safeText(
-        dto.reason,
-        fallback: 'Selected as relevant evidence',
-        maxLength: 720,
-      ),
-      matchedInterestIds: _safeTextList(dto.matchedInterestIds),
-      matchedRules: _safeTextList(dto.matchedRules),
-      signalScore: SignalScore.normalized(dto.signalScore),
-      confidence: TopReadConfidence(
-        level: _readerItemConfidenceLevel(dto.confidence.level),
-        score: dto.confidence.score < 0
-            ? 0
-            : dto.confidence.score > 1
-            ? 1
-            : dto.confidence.score,
-        rationale: _safeText(
-          dto.confidence.rationale,
-          fallback:
-              'This story has not been independently confirmed across monitored source groups yet.',
-        ),
-      ),
-      confirmedProviderKeys: _safeTextList(dto.confirmedProviderKeys),
-      providerMetrics: dto.providerMetrics
-          .map(
-            (metric) => ProviderMetric(
-              label: _nonEmpty(metric.label, fallback: 'Metric'),
-              value: _nonEmpty(metric.value, fallback: '0'),
-            ),
-          )
-          .toList(growable: false),
-      whyImportant: _safeTextList(dto.whyImportant, maxLength: 720),
-      whyNow: _safeText(
-        dto.whyNow,
-        fallback: 'Selected in the current summary window',
-      ),
-      publishedAt: dto.publishedAt,
-      citationIds: dto.citationIds,
-      canonicalUrl: _safeUrl(dto.canonicalUrl),
-      previewMedia: _previewMediaToDomain(dto.previewMedia),
     );
   }
 
@@ -262,11 +220,17 @@ final class SummaryMapper {
 
   SummaryStory _summaryStoryToDomain(SummaryStoryApiDto dto) {
     return SummaryStory(
+      storyClusterId: _nonEmpty(
+        dto.storyClusterId,
+        fallback: 'legacy:unmarked',
+      ),
       title: _nonEmpty(dto.title, fallback: 'Untitled story'),
       summary: _safeText(dto.summary, fallback: 'No story summary available'),
       topicCount: dto.topicCount,
       providerCount: dto.providerCount,
-      citationIds: dto.citationIds,
+      interestIds: _safeTextList(dto.interestIds),
+      providerKeys: _safeTextList(dto.providerKeys),
+      citationIds: _safeTextList(dto.citationIds),
     );
   }
 

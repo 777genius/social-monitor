@@ -8,9 +8,12 @@ import 'package:social_monitor_summaries/src/presentation/components/reader_summ
 import 'package:social_monitor_summaries/src/presentation/view_models/reader_summary_top_posts_projection.dart';
 
 import '../../support/summaries_test_fixtures.dart';
+import '../../support/top_posts_sliver_test_fixtures.dart';
+
+part 'reader_summary_top_posts_sliver_test_app.dart';
 
 void main() {
-  testWidgets('shows all boards and keeps top posts selected by default', (
+  testWidgets('shows backend promotion boards and keeps Top selected', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(320, 700);
@@ -22,8 +25,8 @@ void main() {
 
     final summary = const SummaryMapper().readerSummaryToDomain(
       readerSummaryApiDto(
-        content: readerSummaryContentApiDto(topReads: _topReads(1)),
-        citations: _citations(1),
+        content: readerSummaryContentApiDto(topReads: lazyTopReadApiDtos(1)),
+        citations: lazyCitationApiDtos(1),
       ),
     );
 
@@ -36,70 +39,20 @@ void main() {
     );
     expect(
       find.byKey(
-        const ValueKey('reader-summary-top-posts-board-more-selected'),
+        const ValueKey('reader-summary-top-posts-board-additional-stories'),
       ),
       findsOneWidget,
     );
     expect(
       find.byKey(const ValueKey('reader-summary-top-posts-board-github')),
-      findsOneWidget,
+      findsNothing,
     );
     expect(find.text('Lazy top post 0'), findsOneWidget);
     expect(tester.takeException(), isNull);
-
-    await tester.tap(
-      find.byKey(const ValueKey('reader-summary-top-posts-board-github')),
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.text('Lazy top post 0'), findsNothing);
-    expect(
-      find.text('No GitHub Trending repositories in this summary window.'),
-      findsOneWidget,
-    );
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('keeps posts after eight in More selected', (tester) async {
-    tester.view.physicalSize = const Size(1100, 700);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(() {
-      tester.view.resetPhysicalSize();
-      tester.view.resetDevicePixelRatio();
-    });
-
-    final summary = const SummaryMapper().readerSummaryToDomain(
-      readerSummaryApiDto(
-        content: readerSummaryContentApiDto(topReads: _topReads(36)),
-        citations: _citations(36),
-      ),
-    );
-
-    await tester.pumpWidget(_TestApp(summary: summary));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Lazy top post 30'), findsNothing);
-
-    await tester.tap(
-      find.byKey(
-        const ValueKey('reader-summary-top-posts-board-more-selected'),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    await tester.scrollUntilVisible(
-      find.text('Lazy top post 30'),
-      420,
-      scrollable: find.byType(Scrollable).first,
-      maxScrolls: 80,
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.text('Lazy top post 30'), findsOneWidget);
   });
 
   testWidgets(
-    'keeps backend editorial order and sorts only on engagement request',
+    'renders the backend-attested Additional lane without recapping',
     (tester) async {
       tester.view.physicalSize = const Size(1100, 700);
       tester.view.devicePixelRatio = 1;
@@ -110,172 +63,45 @@ void main() {
 
       final summary = const SummaryMapper().readerSummaryToDomain(
         readerSummaryApiDto(
+          storyClusterIds: [
+            for (var index = 0; index < 16; index += 1) 'story:lazy-$index',
+          ],
           content: readerSummaryContentApiDto(
-            topReads: _editorialOrderTopReads(),
+            topReads: lazyTopReadApiDtos(8),
+            selectedPosts: lazyAdditionalStoryApiDtos(8, startIndex: 8),
           ),
-          citations: _citations(2),
+          citations: lazyCitationApiDtos(16),
         ),
       );
 
       await tester.pumpWidget(_TestApp(summary: summary));
       await tester.pumpAndSettle();
 
-      expect(find.text('Editorial'), findsOneWidget);
-      final editorialWinner = find.text('Backend editorial winner');
-      final engagementWinner = find.text('Higher engagement runner-up');
-      expect(
-        tester.getTopLeft(editorialWinner).dy,
-        lessThan(tester.getTopLeft(engagementWinner).dy),
-      );
-
-      await tester.tap(
-        find.byKey(const ValueKey('reader-summary-top-posts-sort')),
-      );
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Engagement').last);
-      await tester.pumpAndSettle();
-
-      expect(
-        tester.getTopLeft(engagementWinner).dy,
-        lessThan(tester.getTopLeft(editorialWinner).dy),
-      );
-    },
-  );
-
-  testWidgets(
-    'continues selected posts after editorial reads and keeps GitHub separate',
-    (tester) async {
-      tester.view.physicalSize = const Size(1100, 900);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(() {
-        tester.view.resetPhysicalSize();
-        tester.view.resetDevicePixelRatio();
-      });
-
-      final editorialReads = _editorialOrderTopReads();
-      final selectedPosts = [
-        ...editorialReads,
-        _longTailSelectedPost(),
-        ..._githubTopReads(),
-      ];
-      final content = readerSummaryContentApiDto(topReads: editorialReads);
-      final summary = const SummaryMapper().readerSummaryToDomain(
-        readerSummaryApiDto(
-          content: _contentWithSelectedPosts(content, selectedPosts),
-          citations: _citations(2),
-          coverage: const ReaderSummaryCoverageApiDto(
-            collectedFeedItemCount: 3,
-            selectedFeedItemCount: 3,
-            topReadCount: 2,
-            citationCount: 2,
-          ),
-        ),
-      );
-
-      await tester.pumpWidget(_TestApp(summary: summary));
-      await tester.pumpAndSettle();
-
-      expect(find.bySemanticsLabel('Top posts, 2 items'), findsOneWidget);
-      expect(find.text('2 editorial picks from 3 selected'), findsOneWidget);
-      expect(find.text('Backend editorial winner'), findsOneWidget);
-      expect(find.text('Higher engagement runner-up'), findsOneWidget);
-      expect(find.text('Long-tail selected evidence'), findsNothing);
+      expect(find.text('Lazy top post 30'), findsNothing);
 
       await tester.tap(
         find.byKey(
-          const ValueKey('reader-summary-top-posts-board-more-selected'),
+          const ValueKey('reader-summary-top-posts-board-additional-stories'),
         ),
       );
       await tester.pumpAndSettle();
 
-      expect(
-        find.bySemanticsLabel('More selected posts, 1 items'),
-        findsOneWidget,
-      );
-      expect(find.text('Long-tail selected evidence'), findsOneWidget);
-      expect(find.text('Sorted by usefulness'), findsOneWidget);
-
-      await tester.ensureVisible(
-        find.byKey(const ValueKey('reader-summary-top-posts-board-github')),
-      );
-      await tester.pumpAndSettle();
-      await tester.tap(
-        find.byKey(const ValueKey('reader-summary-top-posts-board-github')),
+      await tester.scrollUntilVisible(
+        find.text('Lazy top post 15'),
+        320,
+        scrollable: find.byType(Scrollable).first,
       );
       await tester.pumpAndSettle();
 
-      expect(find.bySemanticsLabel('GitHub trends, 10 items'), findsOneWidget);
-      expect(find.text('owner/repo-1'), findsOneWidget);
-      expect(find.text('owner/repo-2'), findsOneWidget);
+      expect(find.text('Lazy top post 15'), findsOneWidget);
+      expect(find.text('Lazy top post 16'), findsNothing);
     },
   );
 
-  test('keeps selected continuation but rejects a partial GitHub board', () {
-    final selectedPosts = [_longTailSelectedPost(), _githubTopReads().first];
-    final summary = const SummaryMapper().readerSummaryToDomain(
-      readerSummaryApiDto(
-        content: _contentWithSelectedPosts(
-          readerSummaryContentApiDto(topReads: const []),
-          selectedPosts,
-        ),
-      ),
-    );
-
-    final projection = readerSummaryTopPostsProjection(summary);
-
-    expect(projection.curatedPosts, isEmpty);
-    expect(
-      projection.moreSelectedPosts.single.title,
-      'Long-tail selected evidence',
-    );
-    expect(projection.githubTrendingPosts, isEmpty);
-  });
-
-  testWidgets('falls back when a new day changes the available board', (
+  testWidgets('keeps backend-attested order without offering local reranking', (
     tester,
   ) async {
-    tester.view.physicalSize = const Size(1100, 900);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(() {
-      tester.view.resetPhysicalSize();
-      tester.view.resetDevicePixelRatio();
-    });
-
-    final postsOnly = const SummaryMapper().readerSummaryToDomain(
-      readerSummaryApiDto(
-        content: readerSummaryContentApiDto(topReads: _topReads(1)),
-        citations: _citations(1),
-      ),
-    );
-    final githubOnly = const SummaryMapper().readerSummaryToDomain(
-      readerSummaryApiDto(
-        content: _contentWithSelectedPosts(
-          readerSummaryContentApiDto(topReads: const []),
-          _githubTopReads(),
-        ),
-        citations: _githubCitations(),
-      ),
-    );
-
-    await tester.pumpWidget(_TestApp(summary: postsOnly));
-    await tester.pumpAndSettle();
-    expect(find.text('Lazy top post 0'), findsOneWidget);
-
-    await tester.pumpWidget(_TestApp(summary: githubOnly));
-    await tester.pumpAndSettle();
-    expect(find.text('owner/repo-1'), findsOneWidget);
-    expect(find.text('Lazy top post 0'), findsNothing);
-
-    await tester.pumpWidget(_TestApp(summary: postsOnly));
-    await tester.pumpAndSettle();
-    expect(find.text('Lazy top post 0'), findsOneWidget);
-    expect(find.text('owner/repo-1'), findsNothing);
-  });
-
-  testWidgets('shows GitHub top ten in rank order and hides local sorting', (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(1100, 900);
+    tester.view.physicalSize = const Size(1100, 700);
     tester.view.devicePixelRatio = 1;
     addTearDown(() {
       tester.view.resetPhysicalSize();
@@ -284,84 +110,111 @@ void main() {
 
     final summary = const SummaryMapper().readerSummaryToDomain(
       readerSummaryApiDto(
-        content: _contentWithSelectedPosts(
-          readerSummaryContentApiDto(topReads: const []),
-          _githubTopReads(),
+        content: readerSummaryContentApiDto(
+          topReads: _editorialOrderTopReads(),
         ),
-        citations: _githubCitations(),
+        citations: lazyCitationApiDtos(3),
       ),
     );
 
     await tester.pumpWidget(_TestApp(summary: summary));
     await tester.pumpAndSettle();
-    await tester.tap(
-      find.byKey(const ValueKey('reader-summary-top-posts-board-github')),
-    );
-    await tester.pumpAndSettle();
 
-    expect(find.bySemanticsLabel('GitHub trends, 10 items'), findsOneWidget);
-    expect(
-      find.text('Top 10 repositories in GitHub Trending order'),
-      findsOneWidget,
-    );
     expect(
       find.byKey(const ValueKey('reader-summary-top-posts-sort')),
       findsNothing,
     );
-    expect(find.text('owner/repo-11'), findsNothing);
-    expect(find.text('owner/repo-12'), findsNothing);
-    expect(
-      tester.getTopLeft(find.text('owner/repo-1')).dy,
-      lessThan(tester.getTopLeft(find.text('owner/repo-2')).dy),
+    final editorialWinner = find.text('Backend editorial winner');
+    final engagementWinner = find.text('Higher engagement runner-up');
+    final editorialRow = find.byKey(
+      const ValueKey(
+        'reader-summary-top-post-cluster:story:backend-editorial-winner',
+      ),
     );
-    expect(
-      tester.widget<Text>(find.text('owner/repo-1')).style?.fontWeight,
-      FontWeight.w900,
+    final engagementRow = find.byKey(
+      const ValueKey(
+        'reader-summary-top-post-cluster:story:higher-engagement-runner-up',
+      ),
     );
+    expect(editorialRow, findsOneWidget);
+    expect(engagementRow, findsOneWidget);
     expect(
-      tester.widget<Text>(find.text('owner/repo-2')).style?.fontWeight,
-      FontWeight.w700,
+      tester.getTopLeft(editorialWinner).dy,
+      lessThan(tester.getTopLeft(engagementWinner).dy),
     );
-    expect(tester.takeException(), isNull);
+
+    expect(
+      tester.getTopLeft(editorialWinner).dy,
+      lessThan(tester.getTopLeft(engagementWinner).dy),
+    );
+    expect(editorialRow, findsOneWidget);
+    expect(engagementRow, findsOneWidget);
+  });
+
+  testWidgets('renders the backend Additional lane separately from Top', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1100, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    final editorialReads = _editorialOrderTopReads();
+    final selectedPosts = [_longTailSelectedPost()];
+    final content = readerSummaryContentApiDto(topReads: editorialReads);
+    final summary = const SummaryMapper().readerSummaryToDomain(
+      readerSummaryApiDto(
+        content: _contentWithSelectedPosts(content, selectedPosts),
+        citations: lazyCitationApiDtos(3),
+        coverage: const ReaderSummaryCoverageApiDto(
+          collectedFeedItemCount: 3,
+          selectedFeedItemCount: 3,
+          topReadCount: 2,
+          citationCount: 2,
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(_TestApp(summary: summary));
+    await tester.pumpAndSettle();
+
+    expect(find.bySemanticsLabel('Top posts, 2 items'), findsOneWidget);
+    expect(find.text('2 editorial picks from 3 selected'), findsOneWidget);
+    expect(find.text('Backend editorial winner'), findsOneWidget);
+    expect(find.text('Higher engagement runner-up'), findsOneWidget);
+    expect(find.text('Long-tail selected evidence'), findsNothing);
+
+    await tester.tap(
+      find.byKey(
+        const ValueKey('reader-summary-top-posts-board-additional-stories'),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.bySemanticsLabel('Additional stories, 1 items'),
+      findsOneWidget,
+    );
+    expect(find.text('Long-tail selected evidence'), findsOneWidget);
+    expect(find.text('Sorted by usefulness'), findsNothing);
   });
 }
 
-List<TopReadApiDto> _githubTopReads() => List.generate(10, (index) => index + 1)
-    .map(
-      (rank) => TopReadApiDto(
-        title: 'owner/repo-$rank is #$rank on GitHub Trending',
-        providerKey: 'github-trending-page',
-        reason: 'Repository $rank is trending on GitHub today.',
-        matchedInterestIds: const ['ai-developer-tools'],
-        signalScore: (13 - rank).toDouble(),
-        confirmedProviderKeys: const ['github-trending-page'],
-        providerMetrics: [
-          const ProviderMetricApiDto(label: 'Stars', value: '12,000'),
-          ProviderMetricApiDto(
-            label: 'GitHub Trending today',
-            value: '#$rank, +${rank == 1 ? 1200 : 100} stars today',
-          ),
-        ],
-        canonicalUrl: 'https://github.com/owner/repo-$rank',
-        citationIds: ['github-c-$rank'],
-      ),
-    )
-    .toList(growable: false);
-
-List<SummaryCitationApiDto> _githubCitations() => List.generate(
-  12,
-  (index) => summaryCitationApiDto(
-    id: 'github-c-${index + 1}',
-    sourceLabel: 'GitHub Trending',
-    providerKey: 'github-trending-page',
-    canonicalUrl: 'https://github.com/owner/repo-${index + 1}',
-  ),
-);
-
 List<TopReadApiDto> _editorialOrderTopReads() => [
   const TopReadApiDto(
+    storyClusterId: 'story:backend-editorial-winner',
+    cardKind: 'curated_top_read',
+    promotionAttestation: ReaderPostPromotionAttestationApiDto(
+      candidateId: 'feed:backend-editorial-winner',
+      canonicalIdentity: 'story:backend-editorial-winner',
+      placement: 'top',
+      slot: 0,
+      decision: 'promote_top',
+    ),
     title: 'Backend editorial winner',
-    providerKey: 'x-twitter',
+    providerKey: 'reddit',
     reason: 'Backend ranking selected this relevant verified workflow signal.',
     matchedInterestIds: ['ai-developer-tools'],
     signalScore: 2.2,
@@ -370,13 +223,22 @@ List<TopReadApiDto> _editorialOrderTopReads() => [
       score: 0.62,
       rationale: 'Relevant source evidence.',
     ),
-    confirmedProviderKeys: ['x-twitter'],
+    confirmedProviderKeys: ['reddit'],
     providerMetrics: [ProviderMetricApiDto(label: 'Likes', value: '100')],
     citationIds: ['lazy-c-0'],
   ),
   const TopReadApiDto(
+    storyClusterId: 'story:higher-engagement-runner-up',
+    cardKind: 'curated_top_read',
+    promotionAttestation: ReaderPostPromotionAttestationApiDto(
+      candidateId: 'feed:higher-engagement-runner-up',
+      canonicalIdentity: 'story:higher-engagement-runner-up',
+      placement: 'top',
+      slot: 1,
+      decision: 'promote_top',
+    ),
     title: 'Higher engagement runner-up',
-    providerKey: 'hacker-news',
+    providerKey: 'reddit',
     reason: 'Useful secondary evidence with higher native engagement.',
     matchedInterestIds: ['ai-developer-tools'],
     signalScore: 2.6,
@@ -385,19 +247,29 @@ List<TopReadApiDto> _editorialOrderTopReads() => [
       score: 0.82,
       rationale: 'Multiple source groups surfaced the item.',
     ),
-    confirmedProviderKeys: ['hacker-news', 'reddit'],
+    confirmedProviderKeys: ['reddit'],
     providerMetrics: [ProviderMetricApiDto(label: 'Points', value: '10,000')],
     citationIds: ['lazy-c-1'],
   ),
 ];
 
 TopReadApiDto _longTailSelectedPost() => const TopReadApiDto(
+  storyClusterId: 'story:long-tail',
+  cardKind: 'additional_notable_story',
+  promotionAttestation: ReaderPostPromotionAttestationApiDto(
+    candidateId: 'feed:long-tail',
+    canonicalIdentity: 'story:long-tail',
+    placement: 'additional',
+    slot: 0,
+    decision: 'promote_additional',
+  ),
   title: 'Long-tail selected evidence',
   providerKey: 'reddit',
   reason: 'Selected evidence that is not an editorial top read.',
   matchedInterestIds: ['ai-developer-tools'],
   signalScore: 1.4,
-  citationIds: ['long-tail-citation'],
+  providerMetrics: [ProviderMetricApiDto(label: 'Score', value: '25')],
+  citationIds: ['lazy-c-2'],
 );
 
 ReaderSummaryContentApiDto _contentWithSelectedPosts(
@@ -422,79 +294,3 @@ ReaderSummaryContentApiDto _contentWithSelectedPosts(
   risks: content.risks,
   nextActions: content.nextActions,
 );
-
-List<TopReadApiDto> _topReads(int count) {
-  return List<TopReadApiDto>.generate(count, (index) {
-    return TopReadApiDto(
-      title: 'Lazy top post $index',
-      providerKey: 'reddit',
-      reason: 'Post $index explains why this signal matters.',
-      matchedInterestIds: const ['ai-developer-tools'],
-      signalScore: (count - index).toDouble(),
-      confidence: const TopReadConfidenceApiDto(
-        level: 'medium',
-        score: 0.55,
-        rationale: 'Same-source support.',
-      ),
-      confirmedProviderKeys: const ['reddit'],
-      providerMetrics: [
-        ProviderMetricApiDto(label: 'Likes', value: '${1000 - index}'),
-      ],
-      citationIds: ['lazy-c-$index'],
-    );
-  });
-}
-
-List<SummaryCitationApiDto> _citations(int count) {
-  return List<SummaryCitationApiDto>.generate(count, (index) {
-    return summaryCitationApiDto(
-      id: 'lazy-c-$index',
-      providerKey: 'reddit',
-      canonicalUrl: 'https://reddit.example/post/$index',
-    );
-  });
-}
-
-class _TestApp extends StatelessWidget {
-  const _TestApp({required this.summary});
-
-  final ReaderSummary summary;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = AppTheme.light();
-    final projection = readerSummaryTopPostsProjection(summary);
-    return AppHeadlessScope(
-      theme: theme,
-      appBuilder: (overlayBuilder) => MaterialApp(
-        theme: theme,
-        builder: overlayBuilder,
-        home: Scaffold(
-          body: CustomScrollView(
-            slivers: [
-              SliverPadding(
-                padding: const EdgeInsets.all(AppSpacing.md),
-                sliver: ReaderSummaryTopPostsSliver(
-                  projection: projection,
-                  selectedPostCount:
-                      summary.coverage?.selectedFeedItemCount ??
-                      (summary.content.selectedPosts.isNotEmpty
-                          ? summary.content.selectedPosts.length
-                          : summary.content.topReads.length),
-                  period: summary.period,
-                  citationsById: {
-                    for (final citation in summary.citations)
-                      citation.id: citation,
-                  },
-                  ratingFor: (_) => null,
-                  onRated: (_, _, _) async => true,
-                  onOpenUrl: (_) {},
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}

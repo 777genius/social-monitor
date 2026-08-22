@@ -31,6 +31,7 @@ export type ReaderSummaryHistoricalGitHubOmission = {
 export const evaluateReaderSummaryPrepublication = async (params: {
   readonly artifact: ReaderSummaryArtifact;
   readonly evidence: SummaryEvidenceSelection;
+  readonly editorialEvidence?: SummaryEvidenceSelection;
   readonly publicationPolicy: ReaderSummaryPublicationPolicy;
   readonly githubProjectionReader: ReaderSummaryGitHubProjectionReaderPort;
   readonly observedThrough: Date;
@@ -40,6 +41,7 @@ export const evaluateReaderSummaryPrepublication = async (params: {
   const publicationDecision = params.publicationPolicy.evaluate({
     artifact: params.artifact,
     evidence: params.evidence,
+    editorialEvidence: params.editorialEvidence,
   });
   const snapshot = params.artifact.toSnapshot();
   let projection: ReaderSummaryGitHubProjectionEvaluation;

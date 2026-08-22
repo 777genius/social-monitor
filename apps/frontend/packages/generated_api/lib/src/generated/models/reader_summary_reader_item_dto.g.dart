@@ -49,6 +49,11 @@ ReaderSummaryReaderItemDto _$ReaderSummaryReaderItemDtoFromJson(
       : ReaderSummaryPreviewMediaDto.fromJson(
           json['previewMedia'] as Map<String, dynamic>,
         ),
+  promotionAttestation: json['promotionAttestation'] == null
+      ? null
+      : ReaderSummaryPromotionAttestationDto.fromJson(
+          json['promotionAttestation'] as Map<String, dynamic>,
+        ),
   publishedAt: json['publishedAt'] == null
       ? null
       : DateTime.parse(json['publishedAt'] as String),
@@ -65,6 +70,7 @@ Map<String, dynamic> _$ReaderSummaryReaderItemDtoToJson(
   'matchedRules': instance.matchedRules,
   'previewMedia': instance.previewMedia,
   'primaryActionKind': instance.primaryActionKind,
+  'promotionAttestation': instance.promotionAttestation,
   'providerKey': instance.providerKey,
   'providerMetrics': instance.providerMetrics,
   'providerName': instance.providerName,

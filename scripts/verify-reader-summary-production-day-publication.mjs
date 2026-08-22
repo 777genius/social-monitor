@@ -312,6 +312,8 @@ function validateAttestationRecord(record) {
     topic_label: "social_monitor.reader_summary.topic_map.label",
     topic_relation: "social_monitor.reader_summary.topic_map.verify_relations",
     story_relation: "social_monitor.reader_summary.verify_story_relations",
+    related_topic_relation:
+      "social_monitor.reader_summary.verify_related_topic_relations",
   };
   const summaryPurpose =
     record.attempt === "primary"

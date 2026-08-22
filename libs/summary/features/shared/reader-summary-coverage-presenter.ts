@@ -85,8 +85,12 @@ export const buildReaderSummaryCoverageView = (
   freshness: ReaderSummaryFreshnessView,
   collectedCoverage: ReaderSummaryCollectedFeedItemCoverage | undefined,
 ): ReaderSummaryCoverageView => {
-  const selectedFeedItemCount =
-    snapshot.sourceWindow.selectedFeedItemIds.length;
+  const selectedFeedItemCount = new Set(
+    (snapshot.promotionAttestations ?? []).flatMap((attestation) => [
+      attestation.candidateId,
+      ...attestation.supportFacts.map((fact) => fact.candidateId),
+    ]),
+  ).size;
   const collectedFeedItemCount =
     collectedCoverage === undefined
       ? undefined

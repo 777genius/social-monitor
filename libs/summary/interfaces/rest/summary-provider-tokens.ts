@@ -24,6 +24,7 @@ export type SummaryModelProviderMode =
 export type ReaderSummaryModelProviderMode =
   "deterministic" | "openai-responses" | "agent-runtime";
 export type ReaderSummaryTopicLabelerMode = "deterministic" | "agent-runtime";
+export type ReaderSummaryPromotionMode = "disabled" | "enabled";
 export type SummaryMemoryMode = "disabled" | "memo-stack";
 export type SummaryYoutubeVideoSummaryProviderMode =
   "disabled" | "deterministic" | "google-gemini";
@@ -38,6 +39,9 @@ export const READER_SUMMARY_MODEL_PROVIDER_MODE = Symbol(
 );
 export const READER_SUMMARY_TOPIC_LABELER_MODE = Symbol(
   "READER_SUMMARY_TOPIC_LABELER_MODE",
+);
+export const READER_SUMMARY_PROMOTION_MODE = Symbol(
+  "READER_SUMMARY_PROMOTION_MODE",
 );
 export const READER_SUMMARY_OPENAI_RESPONSES_MODEL_OPTIONS = Symbol(
   "READER_SUMMARY_OPENAI_RESPONSES_MODEL_OPTIONS",
@@ -133,6 +137,19 @@ export const readerSummaryTopicLabelerModeProvider: Provider<ReaderSummaryTopicL
       resolveReaderSummaryTopicLabelerMode(process.env, readerSummaryMode),
     inject: [READER_SUMMARY_MODEL_PROVIDER_MODE],
   };
+
+export const readerSummaryPromotionModeProvider: Provider<ReaderSummaryPromotionMode> = {
+  provide: READER_SUMMARY_PROMOTION_MODE,
+  useFactory: (): ReaderSummaryPromotionMode =>
+    resolveReaderSummaryPromotionMode(process.env),
+};
+
+export const resolveReaderSummaryPromotionMode = (
+  env: NodeJS.ProcessEnv,
+): ReaderSummaryPromotionMode =>
+  env.READER_SUMMARY_PROMOTION_V1_ENABLED === "true"
+    ? "enabled"
+    : "disabled";
 
 export const readerSummaryOpenAiResponsesModelOptionsProvider: Provider<OpenAiResponsesReaderSummaryModelAdapterOptions> =
   {

@@ -22,6 +22,21 @@ enum XCollectorHealthStatus {
   X_COLLECTOR_HEALTH_STATUS_NOT_SERVING = 3;
 }
 
+enum XPostContentKind {
+  X_POST_CONTENT_KIND_UNSPECIFIED = 0;
+  X_POST_CONTENT_KIND_ORIGINAL = 1;
+  X_POST_CONTENT_KIND_REPLY = 2;
+  X_POST_CONTENT_KIND_QUOTE = 3;
+}
+
+enum XEligibilityMetricsState {
+  X_ELIGIBILITY_METRICS_STATE_UNSPECIFIED = 0;
+  X_ELIGIBILITY_METRICS_STATE_OBSERVED = 1;
+  X_ELIGIBILITY_METRICS_STATE_MISSING = 2;
+  X_ELIGIBILITY_METRICS_STATE_MALFORMED = 3;
+  X_ELIGIBILITY_METRICS_STATE_CONFLICT = 4;
+}
+
 message CollectDailySearchRequest {
   uint32 schema_version = 1;
   string request_id = 2;
@@ -62,6 +77,7 @@ message XCollectedPost {
   repeated string media_urls = 8;
   XSearchProduct source_product = 9;
   double trend_score = 10;
+  XPostContentKind content_kind = 11;
 }
 
 message XPostMetrics {
@@ -72,6 +88,9 @@ message XPostMetrics {
   uint64 views = 5;
   bool quotes_observed = 6;
   bool views_observed = 7;
+  bool likes_observed = 8;
+  bool retweets_observed = 9;
+  XEligibilityMetricsState eligibility_state = 10;
 }
 
 message XCollectorWarning {

@@ -88,7 +88,7 @@ describe("evaluateReaderSummaryPrepublication", () => {
     });
     expect(
       decision.githubProjectionAudit.bindings.map(({ rank }) => rank),
-    ).toEqual(Array.from({ length: 10 }, (_, index) => index + 1));
+    ).toEqual([1, 2, 3]);
     expect(
       new Set(
         decision.githubProjectionAudit.bindings.map(
@@ -162,7 +162,7 @@ describe("evaluateReaderSummaryPrepublication", () => {
     );
   });
 
-  it("rejects zero GitHub artifact evidence when an eligible binding exists", async () => {
+  it("permits an empty appendix when the durable Top 10 has no highlight", async () => {
     const decision = await evaluateReaderSummaryPrepublication({
       artifact: artifactWithoutGitHubBoard(),
       evidence: evidenceSelection,
@@ -171,7 +171,7 @@ describe("evaluateReaderSummaryPrepublication", () => {
         async read() {
           return {
             eligibleBindingIds: ["github-binding-a"],
-            items: projectionItems(),
+            items: githubProjectionInput(),
             pageCount: 2,
           };
         },
@@ -179,10 +179,8 @@ describe("evaluateReaderSummaryPrepublication", () => {
       observedThrough,
     });
 
-    expect(decision.publicationDecision).toMatchObject({
-      status: "rejected",
-      reasonCodes: expect.arrayContaining(["github_projection_missing"]),
-    });
+    expect(decision.publicationDecision.status).toBe("published");
+    expect(decision.githubProjectionAudit.bindings).toEqual([]);
   });
 
   it("permits only an explicit historical omission with no GitHub evidence", async () => {
@@ -421,7 +419,7 @@ describe("evaluateReaderSummaryPrepublication", () => {
     });
   });
 
-  it("rejects a partial GitHub selectedPosts board before persistence", async () => {
+  it("does not require legacy GitHub selectedPosts before persistence", async () => {
     const decision = await evaluateReaderSummaryPrepublication({
       artifact: githubArtifact(5),
       evidence: evidenceSelection,
@@ -438,10 +436,7 @@ describe("evaluateReaderSummaryPrepublication", () => {
       observedThrough,
     });
 
-    expect(decision.publicationDecision).toMatchObject({
-      status: "rejected",
-      reasonCodes: expect.arrayContaining(["github_projection_missing"]),
-    });
+    expect(decision.publicationDecision.status).toBe("published");
   });
 
   it("keeps a non-daily non-GitHub summary publishable without querying a daily board", async () => {
@@ -496,8 +491,12 @@ const publishingPolicy = (): ReaderSummaryPublicationPolicy =>
     },
   });
 
-const githubArtifact = (selectedPostCount = 10): ReaderSummaryArtifact =>
-  githubBoardArtifact({ selectedPostCount });
+const githubArtifact = (selectedPostCount = 0): ReaderSummaryArtifact =>
+  githubBoardArtifact({
+    selectedPostCount,
+    watchRanks: [1, 2, 3],
+    watchStarsGained: 1_101,
+  });
 
 const artifactWithoutGitHubBoard = (
   period: {
@@ -536,7 +535,10 @@ const ordinaryNoSignalArtifact = (): ReaderSummaryArtifact =>
   });
 
 const projectionItems = () =>
-  githubProjectionInput();
+  githubProjectionInput().map((item, index) => ({
+    ...item,
+    starsGained: index < 3 ? 1_101 : item.starsGained,
+  }));
 
 const matchingRecoveryV4 = () => ({
   schemaVersion: "reader_summary.daily_canonical_recovery_provenance.v3",

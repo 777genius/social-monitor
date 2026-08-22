@@ -17,6 +17,10 @@ import {
   deepFreezeReaderSummaryWeekly,
   readerSummaryWeeklyScopeKey,
 } from "../value-objects/reader-summary-weekly-canonical-json";
+export {
+  authorityProof,
+  certifiedAuthorityProof,
+} from "./reader-summary-weekly-publication-authority-proof";
 export const verifiedArtifact = (
   artifact: ReaderSummaryWeeklyArtifact,
   modelInput: ReaderSummaryWeeklyArtifactProps["input"],
@@ -336,19 +340,6 @@ export const exactCitationCoverage = (
   });
   return deepFreezeReaderSummaryWeekly(proof);
 };
-export const authorityProof = (
-  authority: ReaderSummaryWeeklyStoryAuthorityBinding,
-  day: ReaderSummaryWeeklySealedInputManifest["days"][number],
-) => ({
-  requestedUtcDate: authority.requestedUtcDate,
-  publicationId: authority.publicationId,
-  publicationEvidenceIdentity: authority.publicationEvidenceIdentity,
-  publicationEvidenceSha256: authority.publicationEvidenceSha256,
-  storyAuthorityIdentity: authority.identity,
-  storyAuthoritySha256: authority.sha256,
-  githubBoardIdentity: day.githubAudit.identity,
-  githubBoardSha256: day.githubAudit.sha256,
-});
 export const invalidAuthorization = (): Error => new Error(
   "Reader summary weekly publication authorization is forged or unavailable");
 export const assertCertifiedSealBinding = (
@@ -494,16 +485,3 @@ export const exactCertifiedCitationCoverage = (
     };
   }));
 };
-export const certifiedAuthorityProof = (
-  authority: ReaderSummaryWeeklyStoryAuthorityBinding,
-  day: ReaderSummaryWeeklyArtifactProps["input"]["days"][number],
-) => ({
-  requestedUtcDate: authority.requestedUtcDate,
-  publicationId: authority.publicationId,
-  publicationEvidenceIdentity: authority.publicationEvidenceIdentity,
-  publicationEvidenceSha256: authority.publicationEvidenceSha256,
-  storyAuthorityIdentity: authority.identity,
-  storyAuthoritySha256: authority.sha256,
-  githubBoardIdentity: day.githubBoardId,
-  githubBoardSha256: day.githubBoardSha,
-});

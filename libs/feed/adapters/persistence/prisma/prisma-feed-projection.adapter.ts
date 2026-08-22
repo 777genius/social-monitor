@@ -79,7 +79,6 @@ export class PrismaFeedProjectionAdapter implements FeedProjectionPort {
               title: plan.snapshot.title,
               bodyPreview: plan.bodyPreview,
               authorHandle: plan.snapshot.authorHandle ?? null,
-              publishedAt: plan.snapshot.publishedAt,
               providerMetadata: plan.providerMetadata,
             };
             const existingFeedItem = await transaction.feedItem.findFirst({
@@ -113,6 +112,7 @@ export class PrismaFeedProjectionAdapter implements FeedProjectionPort {
                       workspaceId: command.workspaceId,
                       interestId: command.interestId,
                       ...update,
+                      publishedAt: plan.snapshot.publishedAt,
                       observedAt: plan.snapshot.ingestedAt,
                       status: "VISIBLE",
                     },

@@ -709,7 +709,7 @@ const finalizedHistoricClaimRow = (
 ) => {
   const current = finalizedClaimRow();
   const receiptExact = {
-    ...(current.receiptExact as Record<string, unknown>),
+    ...(current.receiptExact as unknown as Record<string, unknown>),
     publicationId: expectation.readerSummaryArtifactId,
     readerSummaryJobId: expectation.readerSummaryJobId,
     readerSummaryArtifactId: expectation.readerSummaryArtifactId,

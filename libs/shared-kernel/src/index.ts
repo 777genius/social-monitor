@@ -6,5 +6,6 @@ export * from './ids';
 export * from './json';
 export * from './outbound-url-policy';
 export * from './redaction';
+export * from './reader-promotion-provider-aliases';
 export * from './result';
 export * from './tenant-scope';

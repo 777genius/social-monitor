@@ -2,6 +2,7 @@ import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 
 import {
   buildReaderSummaryCoveragePlan,
+  buildReaderPostPromotionProjection,
   ReaderSummaryArtifact,
   ReaderSummaryPublicationPolicy,
 } from "../../domain";
@@ -34,15 +35,15 @@ describe("DeterministicReaderSummaryModelAdapter", () => {
       (citation) => citation.providerKey,
     );
 
-    expect(citationProviders).toContain("github-issues");
+    expect(citationProviders).toContain("github-repo-radar");
     expect(
       attempt.draft.topStories.some((story) =>
-        story.providerKeys.includes("github-issues"),
+        story.providerKeys.includes("github-repo-radar"),
       ),
     ).toBe(true);
     expect(attempt.draft.content).toBeDefined();
     expect(attempt.draft.headline).toBe(
-      "4 monitored stories emerge across Hacker News, Reddit, RSS + 1 more",
+      "4 monitored stories emerge across Hacker News, Reddit, X Twitter + 1 more",
     );
     expect(attempt.draft.headline).not.toMatch(/^(?:Hacker News|Reddit|X)\b/u);
     expect(attempt.draft.headline).not.toContain(";");
@@ -50,7 +51,7 @@ describe("DeterministicReaderSummaryModelAdapter", () => {
     expect(attempt.draft.headline).not.toContain("disposable Linux VM");
     expect(
       attempt.draft.content?.topReads.map((item) => item.providerKey),
-    ).toContain("github-issues");
+    ).toContain("github-repo-radar");
     expect(
       attempt.draft.content?.topReads.map((item) => item.providerKey),
     ).not.toContain("github-trending-page");
@@ -135,9 +136,22 @@ const expectPublished = (
   input: ReaderSummaryModelInput,
   attempt: ProviderReaderSummaryAttempt,
 ): void => {
+  const readerSummaryId = "reader-summary-deterministic-test";
+  const promotion = buildReaderPostPromotionProjection({
+    evidence: input.evidence.selectedEvidence,
+    clusters: input.evidence.clusters,
+    citations: attempt.draft.citationMap,
+    sourceWindow: input.evidence.sourceWindow,
+    approvedSameStoryRelations: input.evidence.approvedSameStoryRelations,
+    relatedTopicRelations: input.evidence.relatedTopicRelations,
+    attestationBinding: {
+      artifactId: readerSummaryId,
+      sourceWindow: input.evidence.sourceWindow,
+    },
+  });
   const artifact = ReaderSummaryArtifact.create({
     schemaVersion: "reader_summary.artifact.v1",
-    readerSummaryId: "reader-summary-deterministic-test",
+    readerSummaryId,
     tenantId: input.tenantId,
     workspaceId: input.workspaceId,
     scope: input.scope,
@@ -146,6 +160,8 @@ const expectPublished = (
     storyClusters: input.evidence.clusters,
     contextArtifacts: input.contextArtifacts,
     ...attempt.draft,
+    promotionAttestations: promotion.attestations,
+    promotionEvidenceFacts: promotion.attestedEvidenceFacts,
   });
   const decision = new ReaderSummaryPublicationPolicy().evaluate({
     artifact,
@@ -225,13 +241,13 @@ const dailySynthesisReaderSummaryInput = (): ReaderSummaryModelInput => {
         "Teams compare model access, token budgets and predictable pricing.",
     },
     {
-      ...evidenceItem("rss", 3, 2.6),
+      ...evidenceItem("x-twitter", 3, 2.6),
       title: "Local inference orchestration reaches more workstations",
       bodyPreview:
         "A release routes local inference across independently managed devices.",
     },
     {
-      ...evidenceItem("github-issues", 4, 2.4),
+      ...evidenceItem("github-repo-radar", 4, 2.4),
       title: "Agent tool maintainers document safer defaults",
       bodyPreview:
         "Maintainers discuss permission boundaries and safer execution defaults.",
@@ -269,6 +285,9 @@ const readerSummaryEvidence = (
       endedAt:
         selectedEvidence.at(-1)?.observedAt ??
         new Date("2026-06-23T08:30:00.000Z"),
+      periodStartedAt: new Date("2026-06-23T00:00:00.000Z"),
+      periodEndedAt: new Date("2026-06-24T00:00:00.000Z"),
+      ingestionCutoff: new Date("2026-06-23T08:30:00.000Z"),
       selectedFeedItemIds: selectedEvidence.map((item) => item.feedItemId),
       storyClusterIds: clusters.map((cluster) => cluster.id),
     },
@@ -328,4 +347,80 @@ const evidenceItem = (
   ),
   score: score + 1,
   whyImportant: ["Fresh item in the current monitoring window"],
+  contentQuality: eligiblePromotionQuality(),
+  promotionFacts: promotionFacts(providerKey, index),
 });
+
+const eligiblePromotionQuality = () => ({
+  qualityScore: 0.9,
+  interestRelevanceScore: 0.9,
+  engagementIntegrityScore: 0.9,
+  eligibleForSummary: true,
+  eligibleForTopRead: true,
+  needsLlmReview: false,
+  decision: "eligible",
+  flags: [],
+  reason: "Promotion fixture",
+});
+
+const promotionFacts = (providerKey: string, index: number) => {
+  const canonicalIdentity = `url:https://example.test/${providerKey}/${index}`;
+  const common = {
+    canonicalIdentity,
+    safetyValid: true,
+    freshnessValid: true,
+    freshnessProvenance: {
+      status: "observed" as const,
+      publishedAt: new Date(
+        `2026-06-23T08:${String(index).padStart(2, "0")}:00.000Z`,
+      ),
+      observedAt: new Date(
+        `2026-06-23T08:${String(index).padStart(2, "0")}:30.000Z`,
+      ),
+      ingestionCutoff: new Date("2026-06-23T08:30:00.000Z"),
+    },
+    metricsState: "observed" as const,
+  };
+  if (providerKey === "hacker-news") return {
+    ...common,
+    contentKind: "story" as const,
+    metrics: { provider: "hacker_news" as const, points: 60 },
+  };
+  if (providerKey === "x-twitter") return {
+    ...common,
+    contentKind: "original_post" as const,
+    metrics: {
+      provider: "x" as const,
+      likes: 60,
+      reposts: 10,
+      weightedScore: 80,
+    },
+  };
+  if (providerKey === "github-repo-radar") {
+    const checkedAt = new Date(
+      `2026-06-23T08:${String(index).padStart(2, "0")}:30.000Z`,
+    );
+    return {
+      ...common,
+      contentKind: "repository" as const,
+      checkedAt,
+      metrics: {
+        provider: "github_radar" as const,
+        snapshotKind: "repository_growth" as const,
+        windowStartedAt: new Date(checkedAt.getTime() - 86_400_000),
+        windowEndedAt: checkedAt,
+        starsDelta: 50,
+        forksDelta: 3,
+      },
+    };
+  }
+  return {
+    ...common,
+    contentKind: "original_post" as const,
+    metrics: {
+      provider: "reddit" as const,
+      score: 25,
+      upvoteRatio: 0.55,
+    },
+  };
+};

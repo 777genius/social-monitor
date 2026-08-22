@@ -197,6 +197,8 @@ export const storyToTopRead = (
     });
 
   return {
+    storyClusterId: story.storyClusterId,
+    cardKind: "curated_top_read",
     title,
     providerKey: readerProviderKey,
     providerName,

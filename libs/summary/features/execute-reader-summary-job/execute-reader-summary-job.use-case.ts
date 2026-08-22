@@ -9,30 +9,24 @@ import {
 
 import {
   assertReaderSummaryCitationsAgainstEvidence,
+  admitReaderPostPromotionEvidence,
   buildReaderSummaryCoveragePlan,
-  buildReaderSummary,
   calibrateReaderSummaryConfidence,
   defaultReaderSummaryGenerationPolicy,
   ReaderSummaryArtifact,
   ReaderSummaryPublicationPolicy,
   primaryReaderSummaryEvidence,
   resolveEffectiveReaderSummaryPolicy,
-  type ReaderSummaryContextArtifact,
   type ReaderSummaryJob,
-  type SummaryEvidenceSelection,
 } from "../../domain";
 import {
   NOOP_READER_SUMMARY_CONTEXT_PROVIDER,
-  type ProviderReaderSummaryAttempt,
   type ReaderSummaryArtifactRepositoryPort,
   type ReaderSummaryContextProviderPort,
   type ReaderSummaryDailyCanonicalRecoveryV4ProvenancePort,
   type ReaderSummaryEvidenceSelectorPort,
   type ReaderSummaryJobRepositoryPort,
   type ReaderSummaryGitHubProjectionReaderPort,
-  type ReaderSummaryModelBudget,
-  type ReaderSummaryModelFailure,
-  type ReaderSummaryModelPolicy,
   type ReaderSummaryModelPort,
   type ReaderSummaryPolicyRepositoryPort,
   type ReaderSummaryPublicationPort,
@@ -46,44 +40,37 @@ import { evaluateReaderSummaryPrepublication } from "./reader-summary-prepublica
 import type { ReaderSummaryHistoricalGitHubOmission } from "./reader-summary-prepublication-gate";
 import type { ExecuteReaderSummaryJobCommand } from "./execute-reader-summary-job.command";
 import type { ExecuteReaderSummaryJobResult } from "./execute-reader-summary-job.result";
+import {
+  DISABLED_READER_SUMMARY_PROMOTION_CONTROL,
+  recordReaderSummaryPromotionLifecycle,
+  type ReaderSummaryPromotionControl,
+} from "./reader-summary-promotion-control";
 import { publishReaderSummaryJob } from "./publish-reader-summary-job";
 import { ReaderSummaryExecutionLeasePolicy } from "./reader-summary-execution-lease.policy";
+import { buildPromotionNoSignalArtifact } from "./reader-summary-promotion-no-signal";
+import {
+  buildReaderSummaryDraftWithPromotionContent,
+} from "./reader-summary-promotion-content";
 import {
   claimReaderSummaryJobExecution,
   readerSummaryExecutionClaimLost,
   saveReaderSummaryExecutionOutcome,
 } from "./reader-summary-job-execution";
+import {
+  defaultModelBudget,
+  defaultModelPolicy,
+  defaultReaderSummaryMaxEvidenceItems,
+  emptyPromotionSelection,
+  readerSummaryPreferenceInterestId,
+  type ReaderSummaryDraft,
+  type ReaderSummaryModelPipelineResult,
+  safeBuildReaderSummaryContext,
+  withReaderSummaryTopicMap,
+} from "./execute-reader-summary-job-support";
 
+import { buildReaderSummaryPromotionArtifactFields } from
+  "./reader-summary-promotion-artifact-fields";
 type ExecuteReaderSummaryJobFailure = DomainError | Error;
-type ReaderSummaryModelPipelineResult = Result<
-  {
-    readonly artifact: ReaderSummaryArtifact;
-    readonly evidence: SummaryEvidenceSelection;
-  },
-  ReaderSummaryModelFailure
->;
-type ReaderSummaryDraft = ProviderReaderSummaryAttempt["draft"];
-type ReaderSummaryDraftWithContent = Omit<ReaderSummaryDraft, "content"> & {
-  readonly content: NonNullable<ReaderSummaryDraft["content"]>;
-};
-type ReaderSummaryContextBuildResult = {
-  readonly artifacts: readonly ReaderSummaryContextArtifact[];
-  readonly unavailable: boolean;
-};
-
-const defaultModelPolicy: ReaderSummaryModelPolicy = {
-  preferredProvider: "deterministic-local",
-  maxInputTokens: 96_000,
-  maxOutputTokens: 16_000,
-  maxEstimatedCostUsd: 1,
-};
-
-const defaultModelBudget: ReaderSummaryModelBudget = {
-  remainingTokens: 160_000,
-  remainingCostUsd: 2,
-};
-
-const defaultReaderSummaryMaxEvidenceItems = 120;
 
 export class ExecuteReaderSummaryJobUseCase {
   constructor(
@@ -103,6 +90,8 @@ export class ExecuteReaderSummaryJobUseCase {
     private readonly historicalGitHubOmission?: ReaderSummaryHistoricalGitHubOmission,
     private readonly recoveryProvenance?: ReaderSummaryDailyCanonicalRecoveryV4ProvenancePort,
     private readonly executionLease: ReaderSummaryExecutionLeasePolicy = new ReaderSummaryExecutionLeasePolicy(),
+    private readonly promotionControl: ReaderSummaryPromotionControl =
+      DISABLED_READER_SUMMARY_PROMOTION_CONTROL,
   ) {}
 
   async execute(
@@ -199,6 +188,7 @@ export class ExecuteReaderSummaryJobUseCase {
       const prepublication = await evaluateReaderSummaryPrepublication({
         artifact: result.value.artifact,
         evidence: result.value.evidence,
+        editorialEvidence: result.value.editorialEvidence,
         publicationPolicy: this.publicationPolicy,
         githubProjectionReader: this.githubProjectionReader,
         observedThrough: this.clock.now(),
@@ -210,6 +200,11 @@ export class ExecuteReaderSummaryJobUseCase {
         githubProjectionAudit: prepublication.githubProjectionAudit,
       });
       if (prepublication.publicationDecision.status === "rejected") {
+        recordReaderSummaryPromotionLifecycle({
+          artifact: result.value.artifact,
+          control: this.promotionControl,
+          lifecycle: "rejected",
+        });
         const artifactSnapshot = result.value.artifact.toSnapshot();
         const rejectedJob = runningJob.rejectForQuality({
           rejectedAt: this.clock.now(),
@@ -232,7 +227,7 @@ export class ExecuteReaderSummaryJobUseCase {
         });
       }
 
-      return await publishReaderSummaryJob({
+      const publicationResult = await publishReaderSummaryJob({
         artifact: result.value.artifact,
         runningJob,
         publicationDecision: prepublication.publicationDecision,
@@ -242,6 +237,14 @@ export class ExecuteReaderSummaryJobUseCase {
         ids: this.ids,
         clock: this.clock,
       });
+      if (publicationResult.ok) {
+        recordReaderSummaryPromotionLifecycle({
+          artifact: result.value.artifact,
+          control: this.promotionControl,
+          lifecycle: "delivered",
+        });
+      }
+      return publicationResult;
     } catch (error) {
       const failure = this.readerSummaryModel.classifyError(error);
       const durableJob = await this.readerSummaryJobs.findById({
@@ -287,7 +290,7 @@ export class ExecuteReaderSummaryJobUseCase {
   ): Promise<ReaderSummaryModelPipelineResult> {
     const snapshot = job.toSnapshot();
     const generatedAt = this.clock.now();
-    const evidence = await this.evidenceSelector.select({
+    const selectedEvidence = await this.evidenceSelector.select({
       tenantId: snapshot.tenantId,
       workspaceId: snapshot.workspaceId,
       scope: snapshot.scope,
@@ -297,7 +300,61 @@ export class ExecuteReaderSummaryJobUseCase {
       maxItems: maxEvidenceItems,
       observedThrough: generatedAt,
     });
-    const primaryEvidence = primaryReaderSummaryEvidence(evidence);
+    const readerSummaryId = this.ids.generate();
+    if (!this.promotionControl.enabled) {
+      const disabledPrimaryEvidence = primaryReaderSummaryEvidence(
+        selectedEvidence,
+      );
+      this.promotionControl.metrics.record({
+        candidateCount: disabledPrimaryEvidence.selectedEvidence.length,
+        topCount: 0,
+        additionalCount: 0,
+        admittedEvidenceCount: 0,
+        omittedEvidenceCount: disabledPrimaryEvidence.selectedEvidence.length,
+        disabled: true,
+        lifecycle: "disabled",
+      });
+      const disabledEvidence = emptyPromotionSelection(selectedEvidence);
+      return ok({
+        evidence: disabledEvidence,
+        editorialEvidence: disabledEvidence,
+        artifact: buildPromotionNoSignalArtifact({
+          snapshot,
+          readerSummaryId,
+          generatedAt,
+          evidence: disabledEvidence,
+          promotionAttestations: [],
+          contextArtifacts: [],
+          noSignalReason:
+            "Reader post promotion is disabled for this deployment.",
+        }),
+      });
+    }
+    const admittedSelection = admitReaderPostPromotionEvidence(selectedEvidence);
+    const {
+      promotionCounts,
+      ...modelEvidence
+    } = admittedSelection;
+    const rawPrimaryEvidence = primaryReaderSummaryEvidence(selectedEvidence);
+    const admittedPrimaryEvidence = primaryReaderSummaryEvidence(modelEvidence);
+    this.promotionControl.metrics.record({
+      candidateCount: rawPrimaryEvidence.selectedEvidence.length,
+      topCount: promotionCounts.top,
+      additionalCount: promotionCounts.additional,
+      admittedEvidenceCount: admittedPrimaryEvidence.selectedEvidence.length,
+      omittedEvidenceCount: Math.max(
+        0,
+        rawPrimaryEvidence.selectedEvidence.length -
+          admittedPrimaryEvidence.selectedEvidence.length,
+      ),
+      disabled: false,
+      lifecycle: "evaluated",
+    });
+    // Publication is an independent oracle boundary. It must retain the raw,
+    // typed selector result so a production admission false negative cannot
+    // erase an expected boundary candidate before verification.
+    const publicationEvidence = selectedEvidence;
+    const primaryEvidence = primaryReaderSummaryEvidence(modelEvidence);
     const policy = await this.readerSummaryPolicies.findByScope({
       tenantId: snapshot.tenantId,
       workspaceId: snapshot.workspaceId,
@@ -313,7 +370,25 @@ export class ExecuteReaderSummaryJobUseCase {
             subscriptionId: snapshot.subscriptionId,
             interestId: readerSummaryPreferenceInterestId(snapshot),
           });
-    const context = await this.safeBuildContext(snapshot, primaryEvidence);
+    const context = await safeBuildReaderSummaryContext({
+      contextProvider: this.contextProvider,
+      snapshot,
+      evidence: primaryEvidence,
+    });
+    if (primaryEvidence.selectedEvidence.length === 0) {
+      return ok({
+        evidence: publicationEvidence,
+        editorialEvidence: modelEvidence,
+        artifact: buildPromotionNoSignalArtifact({
+          snapshot,
+          readerSummaryId,
+          generatedAt,
+          evidence: modelEvidence,
+          promotionAttestations: [],
+          contextArtifacts: context.artifacts,
+        }),
+      });
+    }
     const basePolicy =
       policy?.toGenerationPolicy() ?? defaultReaderSummaryGenerationPolicy();
     const input = {
@@ -323,9 +398,9 @@ export class ExecuteReaderSummaryJobUseCase {
       period: snapshot.period,
       userId: snapshot.userId,
       subscriptionId: snapshot.subscriptionId,
-      evidence,
+      evidence: modelEvidence,
       coveragePlan: buildReaderSummaryCoveragePlan(primaryEvidence),
-      contextArtifacts: context.artifacts,
+      contextArtifacts: [],
       policy: resolveEffectiveReaderSummaryPolicy(basePolicy, userPreference),
       requestedAt: snapshot.requestedAt,
     };
@@ -343,15 +418,15 @@ export class ExecuteReaderSummaryJobUseCase {
     }
 
     try {
-      assertReaderSummaryCitationsAgainstEvidence(attempt.draft, evidence);
+      assertReaderSummaryCitationsAgainstEvidence(attempt.draft, modelEvidence);
     } catch (error) {
       return err(this.readerSummaryModel.classifyError(error));
     }
     const draftWithContext = context.unavailable
       ? withReaderSummaryContextUnavailable(attempt.draft)
       : attempt.draft;
-    const draftWithContent = this.withReaderContent(
-      evidence,
+    const draftWithContent = buildReaderSummaryDraftWithPromotionContent(
+      modelEvidence,
       draftWithContext,
     );
     const calibratedDraft = {
@@ -361,127 +436,59 @@ export class ExecuteReaderSummaryJobUseCase {
         topReads: draftWithContent.content.topReads,
       }),
     };
-    const readerSummaryId = this.ids.generate();
-    const createArtifact = (draft: ReaderSummaryDraft): ReaderSummaryArtifact =>
-      ReaderSummaryArtifact.create({
-        schemaVersion: "reader_summary.artifact.v1",
-        readerSummaryId,
-        tenantId: snapshot.tenantId,
-        workspaceId: snapshot.workspaceId,
-        scope: snapshot.scope,
-        period: snapshot.period,
-        userId: snapshot.userId,
-        subscriptionId: snapshot.subscriptionId,
-        generatedAt,
-        sourceWindow: evidence.sourceWindow,
-        storyClusters: evidence.clusters,
-        contextArtifacts: context.artifacts,
-        personalization: evidence.personalization,
-        ...draft,
-      });
+    const createArtifact = (
+      draft: ReaderSummaryDraft,
+    ): ReaderSummaryArtifact => ReaderSummaryArtifact.create({
+      schemaVersion: "reader_summary.artifact.v1",
+      readerSummaryId,
+      tenantId: snapshot.tenantId,
+      workspaceId: snapshot.workspaceId,
+      scope: snapshot.scope,
+      period: snapshot.period,
+      userId: snapshot.userId,
+      subscriptionId: snapshot.subscriptionId,
+      generatedAt,
+      sourceWindow: modelEvidence.sourceWindow,
+      storyClusters: modelEvidence.clusters,
+      contextArtifacts: context.artifacts,
+      personalization: modelEvidence.personalization,
+      ...draft,
+      ...buildReaderSummaryPromotionArtifactFields({
+        artifactId: readerSummaryId,
+        modelEvidence,
+        draft,
+      }),
+    });
     const preflightArtifact = createArtifact(calibratedDraft);
     if (
       this.publicationPolicy.evaluate({
         artifact: preflightArtifact,
-        evidence,
+        evidence: publicationEvidence,
+        editorialEvidence: modelEvidence,
       }).status === "rejected"
     ) {
-      return ok({ artifact: preflightArtifact, evidence });
+      return ok({
+        artifact: preflightArtifact,
+        evidence: publicationEvidence,
+        editorialEvidence: modelEvidence,
+      });
     }
-    const draftResult = await this.withTopicMap(
+    const draftResult = await withReaderSummaryTopicMap({
+      topicMapBuilder: this.topicMapBuilder,
       snapshot,
-      evidence,
-      calibratedDraft,
-    );
+      evidence: modelEvidence,
+      draft: calibratedDraft,
+    });
     if (!draftResult.ok) {
       return err(this.readerSummaryModel.classifyError(draftResult.error));
     }
     const artifact = createArtifact(draftResult.value);
 
-    return ok({ artifact, evidence });
-  }
-
-  private async withTopicMap(
-    snapshot: ReturnType<ReaderSummaryJob["toSnapshot"]>,
-    evidence: SummaryEvidenceSelection,
-    draft: ReaderSummaryDraftWithContent,
-  ): Promise<Result<ReaderSummaryDraftWithContent, DomainError>> {
-    const primaryEvidence = primaryReaderSummaryEvidence(evidence);
-    const topicMapResult = await this.topicMapBuilder.execute({
-      tenantId: snapshot.tenantId,
-      workspaceId: snapshot.workspaceId,
-      scope: snapshot.scope,
-      period: snapshot.period,
-      requestedAt: snapshot.requestedAt,
-      clusters: primaryEvidence.clusters,
-      selectedEvidence: primaryEvidence.selectedEvidence,
-      topStories: draft.topStories,
-      citationMap: draft.citationMap,
-    });
-    if (!topicMapResult.ok) {
-      return err(topicMapResult.error);
-    }
     return ok({
-      ...draft,
-      content: {
-        ...draft.content,
-        topicMap: topicMapResult.value,
-      },
+      artifact,
+      evidence: publicationEvidence,
+      editorialEvidence: modelEvidence,
     });
   }
 
-  private withReaderContent(
-    evidence: SummaryEvidenceSelection,
-    draft: ReaderSummaryDraft,
-  ): ReaderSummaryDraftWithContent {
-    const content = buildReaderSummary({
-      headline: draft.headline,
-      executiveSummary: draft.executiveSummary,
-      narrativeSections: draft.content?.narrativeSections,
-      topStories: draft.topStories,
-      interestHighlights: draft.interestHighlights,
-      repeatedSignals: draft.repeatedSignals,
-      risksAndUnknowns: draft.risksAndUnknowns,
-      citationMap: draft.citationMap,
-      storyClusters: evidence.clusters,
-      sourceWindow: evidence.sourceWindow,
-      selectedEvidence: evidence.selectedEvidence,
-      qualityFlags: draft.qualityFlags,
-      noSignalReason: draft.noSignalReason,
-    });
-
-    return {
-      ...draft,
-      content,
-    };
-  }
-
-  private async safeBuildContext(
-    snapshot: ReturnType<ReaderSummaryJob["toSnapshot"]>,
-    evidence: SummaryEvidenceSelection,
-  ): Promise<ReaderSummaryContextBuildResult> {
-    try {
-      const artifacts = await this.contextProvider.buildContext({
-        tenantId: snapshot.tenantId,
-        workspaceId: snapshot.workspaceId,
-        scope: snapshot.scope,
-        period: snapshot.period,
-        userId: snapshot.userId,
-        subscriptionId: snapshot.subscriptionId,
-        evidence,
-        requestedAt: snapshot.requestedAt,
-      });
-
-      return { artifacts, unavailable: false };
-    } catch {
-      return { artifacts: [], unavailable: true };
-    }
-  }
 }
-
-const readerSummaryPreferenceInterestId = (
-  snapshot: ReturnType<ReaderSummaryJob["toSnapshot"]>,
-): string =>
-  snapshot.scope.type === "interest"
-    ? snapshot.scope.interestId
-    : "00000000-0000-7000-8000-000000000903";

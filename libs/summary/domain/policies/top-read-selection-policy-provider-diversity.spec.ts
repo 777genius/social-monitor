@@ -404,8 +404,7 @@ const providerMetrics = (
   }
   if (providerKey === "hacker-news") {
     return [
-      { label: "Points", value: `${800 - index * 20}` },
-      { label: "Comments", value: "90" },
+      { label: "Points", value: `${8_000 - index * 20}` },
     ];
   }
   if (providerKey === "x-twitter") {

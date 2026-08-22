@@ -54,6 +54,31 @@ describe("gRPC agent runtime client", () => {
       /attestation/u,
     );
   });
+
+  it("cancels the underlying unary call when the caller aborts", async () => {
+    const controller = new AbortController();
+    let cancelled = false;
+    const grpcClient = {
+      runAgentTask(): ClientUnaryCall {
+        return {
+          cancel: () => {
+            cancelled = true;
+          },
+        } as ClientUnaryCall;
+      },
+    } as unknown as AgentRuntimeServiceClient;
+    const client = new GrpcAgentRuntimeClient(
+      grpcClient,
+      { now: () => new Date("2026-07-17T00:00:00.000Z") },
+      { timeoutMs: 1_000 },
+    );
+
+    const pending = client.runTask(command(), { signal: controller.signal });
+    controller.abort();
+
+    await expect(pending).rejects.toThrow(/cancelled/u);
+    expect(cancelled).toBe(true);
+  });
 });
 
 const command = (): AgentRuntimeTaskCommand => ({

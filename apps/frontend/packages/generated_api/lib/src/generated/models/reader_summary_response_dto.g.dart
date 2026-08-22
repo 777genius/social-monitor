@@ -17,12 +17,6 @@ ReaderSummaryResponseDto _$ReaderSummaryResponseDtoFromJson(
   confidence: ReaderSummaryConfidenceDto.fromJson(
     json['confidence'] as Map<String, dynamic>,
   ),
-  contextArtifacts: (json['contextArtifacts'] as List<dynamic>)
-      .map(
-        (e) =>
-            ReaderSummaryContextArtifactDto.fromJson(e as Map<String, dynamic>),
-      )
-      .toList(),
   executiveSummary: json['executiveSummary'] as String,
   freshness: ReaderSummaryFreshnessDto.fromJson(
     json['freshness'] as Map<String, dynamic>,
@@ -100,7 +94,6 @@ Map<String, dynamic> _$ReaderSummaryResponseDtoToJson(
 ) => <String, dynamic>{
   'citations': instance.citations,
   'confidence': instance.confidence,
-  'contextArtifacts': instance.contextArtifacts,
   'coverage': instance.coverage,
   'executiveSummary': instance.executiveSummary,
   'freshness': instance.freshness,

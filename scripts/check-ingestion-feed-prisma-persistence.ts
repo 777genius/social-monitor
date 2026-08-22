@@ -32,6 +32,8 @@ import { PrismaScanLeaseAdapter } from "../libs/ingestion/adapters/persistence/p
 import { resolveIngestionSupportPersistenceMode } from "../libs/ingestion/interfaces/rest/ingestion-provider-tokens";
 import { resolveIngestionWorkerPersistenceMode } from "../apps/ingestion-worker/src/ingestion-worker-provider-tokens";
 import { updateFakeSourceItem } from "./support/update-fake-source-item";
+import { assert, assertThrows } from
+  "./support/check-ingestion-feed-prisma-persistence-assertions";
 
 const clock = new FixedClock(new Date("2026-06-07T00:00:00.000Z"));
 const tenant = tenantId("00000000-0000-7000-8000-000000000101");
@@ -797,7 +799,7 @@ class FakePrismaIngestionFeedClient
               title: args.update.title,
               bodyPreview: args.update.bodyPreview,
               authorHandle: args.update.authorHandle ?? null,
-              publishedAt: args.update.publishedAt,
+              publishedAt: existing.publishedAt,
               observedAt: existing.observedAt,
               providerMetadata:
                 args.update.providerMetadata === undefined
@@ -812,7 +814,7 @@ class FakePrismaIngestionFeedClient
     findMany: async (args) =>
       this.filterFeedItems(args.where)
         .sort(compareFeedRecords)
-        .slice(args.skip, args.skip + args.take),
+        .slice(args.skip ?? 0, (args.skip ?? 0) + args.take),
     count: async (args) => this.filterFeedItems(args.where).length,
     findFirst: async (args) =>
       this.filterFeedItems(args.where).find(
@@ -988,22 +990,6 @@ const compareFeedRecords = (
   }
 
   return right.id.localeCompare(left.id);
-};
-
-function assert(condition: unknown, message: string): asserts condition {
-  if (!condition) {
-    throw new Error(message);
-  }
-}
-
-const assertThrows = (operation: () => unknown, message: string): void => {
-  try {
-    operation();
-  } catch {
-    return;
-  }
-
-  throw new Error(message);
 };
 
 void main().catch((error) => {

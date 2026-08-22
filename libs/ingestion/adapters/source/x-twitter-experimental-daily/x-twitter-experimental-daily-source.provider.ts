@@ -12,7 +12,10 @@ import type {
   SourceProviderScanResult,
   SourceProviderValidationResult,
   SourceQuery,
+  XPromotionAuthorityRegistryPort,
 } from "../../../ports";
+import { DenyAllXPromotionAuthorityRegistry } from
+  "./static-x-promotion-authority-registry";
 import { readSourceItemRankingPlan } from "../source-item-ranking-config";
 import {
   readAdaptivePaginationPolicy,
@@ -66,6 +69,8 @@ export class XTwitterSourceProvider implements SourceProviderPort {
   constructor(
     private readonly collector: XDailyCollectorClientPort,
     private readonly clock: { now(): Date },
+    private readonly authorityRegistry: XPromotionAuthorityRegistryPort =
+      new DenyAllXPromotionAuthorityRegistry(),
   ) {}
 
   key(): string {
@@ -208,7 +213,16 @@ export class XTwitterSourceProvider implements SourceProviderPort {
     const normalizedItems = [...postsByExternalId.values()]
       .sort((left, right) => compareXCollectedPosts(left.post, right.post))
       .map((item) =>
-        normalizeXPost(item.post, item.searchQuery, item.maxItems),
+        normalizeXPost(
+          item.post,
+          item.searchQuery,
+          item.maxItems,
+          item.post.authorHandle === undefined
+            ? undefined
+            : this.authorityRegistry.resolveVerifiedIdentity(
+                item.post.authorHandle,
+              ) ?? undefined,
+        ),
       );
 
     const outputItemLimit = Math.max(

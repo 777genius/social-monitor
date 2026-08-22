@@ -23,6 +23,8 @@ import {
   storyTopicEventTokens,
   storyTopicSimilarity,
 } from "./story-topic-tokenizer";
+import { readerPostProviderFamily } from
+  "../policies/reader-post-promotion-policy";
 
 export type StoryRelationCandidate = {
   readonly leftFeedItemId: string;
@@ -81,17 +83,25 @@ export const buildStoryRelationCandidates = (params: {
       if (
         rightClusterId === undefined ||
         leftClusterId === rightClusterId ||
+        readerPostProviderFamily(left.providerKey) ===
+          readerPostProviderFamily(right.providerKey) ||
         !isVerifiedStoryRelationGuardEligible(left, right, policy) ||
         isDeterministicCrossProviderStoryMatch(left, right, policy)
       ) {
         continue;
       }
 
+      const canonical =
+        left.feedItemId.localeCompare(right.feedItemId) <= 0
+          ? { left, right, leftClusterId, rightClusterId }
+          : {
+              left: right,
+              right: left,
+              leftClusterId: rightClusterId,
+              rightClusterId: leftClusterId,
+            };
       const candidate = relationCandidate({
-        left,
-        right,
-        leftClusterId,
-        rightClusterId,
+        ...canonical,
         policy,
       });
       if (candidate !== undefined) {
@@ -101,54 +111,6 @@ export const buildStoryRelationCandidates = (params: {
   }
 
   return boundedCandidates(candidates);
-};
-
-export const approvedStoryRelationPairs = (params: {
-  readonly candidates: readonly StoryRelationCandidate[];
-  readonly decisions: readonly StoryRelationDecision[];
-  readonly minimumConfidence?: number;
-}): ReadonlySet<string> => {
-  if (params.candidates.length === 0) {
-    return new Set();
-  }
-  const minimumConfidence =
-    params.minimumConfidence ?? STORY_RELATION_APPROVAL_CONFIDENCE_MIN;
-  const expected = new Set(params.candidates.map(candidatePairKey));
-  const returned = new Set<string>();
-  const approved = new Set<string>();
-
-  for (const decision of params.decisions) {
-    const key = decisionPairKey(decision);
-    if (!expected.has(key) || returned.has(key)) {
-      throw new Error(
-        "Story relation verifier must decide each shortlisted pair exactly once",
-      );
-    }
-    if (
-      !Number.isFinite(decision.confidenceScore) ||
-      decision.confidenceScore < 0 ||
-      decision.confidenceScore > 1
-    ) {
-      throw new Error("Story relation confidence must be between zero and one");
-    }
-    returned.add(key);
-    if (decision.sameStory && decision.confidenceScore >= minimumConfidence) {
-      approved.add(
-        verifiedStoryRelationPairKey(
-          decision.leftFeedItemId,
-          decision.rightFeedItemId,
-        ),
-      );
-    }
-  }
-
-  if (returned.size !== expected.size) {
-    throw new Error(
-      "Story relation verifier must decide each shortlisted pair exactly once",
-    );
-  }
-
-  return approved;
 };
 
 const relationCandidate = (params: {
@@ -294,12 +256,6 @@ const candidatePairKey = (candidate: StoryRelationCandidate): string =>
   verifiedStoryRelationPairKey(
     candidate.leftFeedItemId,
     candidate.rightFeedItemId,
-  );
-
-const decisionPairKey = (decision: StoryRelationDecision): string =>
-  verifiedStoryRelationPairKey(
-    decision.leftFeedItemId,
-    decision.rightFeedItemId,
   );
 
 export const storyRelationCandidateClaimFacets = (

@@ -79,6 +79,9 @@ export type AgentRuntimeHealthResult = {
 };
 
 export interface AgentRuntimeClientPort {
-  runTask(command: AgentRuntimeTaskCommand): Promise<AgentRuntimeTaskResult>;
+  runTask(
+    command: AgentRuntimeTaskCommand,
+    options?: { readonly signal?: AbortSignal },
+  ): Promise<AgentRuntimeTaskResult>;
   checkHealth(service: string): Promise<AgentRuntimeHealthResult>;
 }

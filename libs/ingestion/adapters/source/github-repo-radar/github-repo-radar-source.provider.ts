@@ -217,6 +217,11 @@ const normalizeRepositoryTrend = (
       stars7d: candidate.stars7d,
       stars30d: candidate.stars30d,
       stars90d: candidate.stars90d,
+      forks24h: candidate.forks24h,
+      forks48h: candidate.forks48h,
+      forks7d: candidate.forks7d,
+      forks30d: candidate.forks30d,
+      forks90d: candidate.forks90d,
       rank: candidate.rank,
       primaryWindow: candidate.primaryWindow,
       checkedAt,
@@ -232,6 +237,7 @@ const normalizeRepositoryTrend = (
   const growth = [
     `+${candidate.stars24h} stars in 24h`,
     `+${candidate.stars48h} in 48h`,
+    `+${candidate.forks24h} forks in 24h`,
   ].join(', ');
 
   return {

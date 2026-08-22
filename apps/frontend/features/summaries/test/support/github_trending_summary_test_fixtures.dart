@@ -73,8 +73,11 @@ List<TopReadApiDto> canonicalGitHubTrendingSelectedPostApiDtos() {
     (index) {
       final rank = index + 1;
       final repository = _canonicalGitHubTrendingRepositories[index];
+      final citationId = canonicalGitHubTrendingCitationIds[index];
 
       return TopReadApiDto(
+        storyClusterId: 'supplemental:github-trending-page:feed-$citationId',
+        cardKind: 'supplemental_trend',
         title: repository.repository,
         providerKey: githubTrendingProviderKey,
         reason: '#$rank repository on github.com/trending today.',
@@ -102,7 +105,7 @@ List<TopReadApiDto> canonicalGitHubTrendingSelectedPostApiDtos() {
         ],
         whyNow: 'Current summary window includes GitHub Trending coverage.',
         canonicalUrl: 'https://github.com/${repository.repository}',
-        citationIds: [canonicalGitHubTrendingCitationIds[index]],
+        citationIds: [citationId],
       );
     },
     growable: false,

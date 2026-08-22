@@ -13,8 +13,9 @@ import { presentFeedItem } from '../shared/feed-item-presenter';
 import { buildFeedSourceBreakdown } from '../shared/feed-source-breakdown-presenter';
 import type { ListFeedItemsUseCaseQuery } from './list-feed-items.query';
 import type { ListFeedItemsUseCaseResult } from './list-feed-items.result';
+import type { FeedItemListEntry } from './list-feed-items.result';
 
-type ListFeedItemsFailure = DomainError | Error;
+type ListFeedItemsFailure = DomainError;
 
 const MAX_LIMIT = 100;
 const MAX_SEARCH_QUERY_LENGTH = 200;
@@ -51,7 +52,19 @@ export class ListFeedItemsUseCase {
     }
 
     const now = this.clock.now();
-    const result = await this.feedItems.list(query);
+    const listSignalCandidates = this.feedItems.listSignalCandidates;
+    const cursorOffset = listSignalCandidates === undefined
+      ? 0
+      : parseSignalCursor(query.cursor);
+    if (cursorOffset instanceof DomainError) {
+      return err(cursorOffset);
+    }
+    const signalCandidates = listSignalCandidates === undefined
+      ? undefined
+      : await listSignalCandidates.call(this.feedItems, query);
+    const result = signalCandidates === undefined
+      ? await this.feedItems.list(query)
+      : { items: signalCandidates };
     const baselineSamples = await loadFeedSignalBaselineSamples({
       signalBaseline: this.signalBaseline,
       tenantId: query.tenantId,
@@ -66,14 +79,17 @@ export class ListFeedItemsUseCase {
       now,
     });
 
-    const items = result.items.map((item) =>
+    const presentedItems = result.items.map((item) =>
       presentFeedItem(item, signalById.get(item.toSnapshot().id)),
     );
+    const rankedPage = signalCandidates === undefined
+      ? { items: presentedItems, nextCursor: result.nextCursor }
+      : paginateSignalCandidates(presentedItems, cursorOffset, query.limit);
 
     return ok({
-      items,
-      nextCursor: result.nextCursor,
-      sourceBreakdown: buildFeedSourceBreakdown(items),
+      items: rankedPage.items,
+      nextCursor: rankedPage.nextCursor,
+      sourceBreakdown: buildFeedSourceBreakdown(rankedPage.items),
     });
   }
 }
@@ -102,4 +118,45 @@ const validateListFilter = (query: ListFeedItemsUseCaseQuery): DomainError | und
   }
 
   return undefined;
+};
+
+const paginateSignalCandidates = (
+  items: readonly FeedItemListEntry[],
+  offset: number,
+  limit: number,
+): { readonly items: readonly FeedItemListEntry[]; readonly nextCursor?: string } => {
+  const ranked = [...items].sort(compareNormalizedFeedItems);
+  const page = ranked.slice(offset, offset + limit);
+  const nextOffset = offset + page.length;
+  return {
+    items: page,
+    nextCursor: nextOffset < ranked.length
+      ? encodeSignalCursor(nextOffset)
+      : undefined,
+  };
+};
+
+const compareNormalizedFeedItems = (
+  left: FeedItemListEntry,
+  right: FeedItemListEntry,
+): number =>
+  (right.normalizedSignal?.score ?? 0) -
+    (left.normalizedSignal?.score ?? 0) ||
+  right.publishedAt.localeCompare(left.publishedAt, 'en-US') ||
+  right.id.localeCompare(left.id, 'en-US');
+
+const encodeSignalCursor = (offset: number): string =>
+  Buffer.from(JSON.stringify({ offset })).toString('base64url');
+
+const parseSignalCursor = (cursor: string | undefined): number | DomainError => {
+  if (cursor === undefined) return 0;
+  try {
+    const value = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as {
+      readonly offset?: unknown;
+    };
+    if (Number.isSafeInteger(value.offset) && (value.offset as number) >= 0) {
+      return value.offset as number;
+    }
+  } catch { /* Invalid encoded cursors are returned as typed failures below. */ }
+  return new DomainError('validation.failed', 'Feed item cursor is invalid');
 };

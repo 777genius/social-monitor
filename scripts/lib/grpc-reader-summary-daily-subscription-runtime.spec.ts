@@ -86,7 +86,7 @@ describe("GrpcReaderSummaryDailySubscriptionRuntime", () => {
         },
       })),
       checkHealth: jest.fn(),
-    } satisfies jest.Mocked<AgentRuntimeClientPort>;
+    } as unknown as jest.Mocked<AgentRuntimeClientPort>;
     const result = await new GrpcReaderSummaryDailyCanonicalRecoveryRuntime(client)
       .run(canonicalRecoveryInput());
     expect(result.responseBytes.toString("utf8")).toBe(outputText);
@@ -178,7 +178,7 @@ const fakeClient = (output: Record<string, unknown>, selectedModel = "gpt-5.6-so
     },
   })),
   checkHealth: jest.fn(),
-}) satisfies jest.Mocked<AgentRuntimeClientPort>;
+}) as unknown as jest.Mocked<AgentRuntimeClientPort>;
 
 const canonicalRecoveryInput = () => ({
   ...scope,
@@ -257,7 +257,7 @@ const canonicalRecoveryClient = (outputText: string, selectedOutputSha256 = hash
     },
   })),
   checkHealth: jest.fn(),
-}) satisfies jest.Mocked<AgentRuntimeClientPort>;
+}) as unknown as jest.Mocked<AgentRuntimeClientPort>;
 
 const hash = (value: string): string => createHash("sha256")
   .update(value, "utf8")

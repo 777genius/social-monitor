@@ -12,6 +12,8 @@ ReaderSummaryApiDto readerSummaryForPeriod(
     userId: summary.userId,
     content: summary.content,
     topStories: summary.topStories,
+    storyClusterIds: summary.storyClusterIds,
+    storyClusterAuthorities: summary.storyClusterAuthorities,
     repeatedSignals: summary.repeatedSignals,
     citations: summary.citations,
     period: SummaryPeriodApiDto(
