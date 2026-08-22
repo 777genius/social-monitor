@@ -96,6 +96,54 @@ describe("PrismaReaderSummaryRecoveryFinalization", () => {
     expect(queryRaw.mock.calls[1]?.[2]).toBe(queryRaw.mock.calls[0]?.[2]);
   });
 
+  it("runs the recovery guard inside the serializable transaction", async () => {
+    const fixture = createFixture();
+    mockPublicationPayload(fixture.publicationPayload);
+    const queryRaw = jest.fn(async (...args: readonly unknown[]) =>
+      sqlOutcome(args, "published"),
+    );
+    const transaction = recoveryFinalizationTransaction(queryRaw);
+    const guard = jest.fn(async () => undefined);
+    const finalization = new PrismaReaderSummaryRecoveryFinalization(
+      prismaClient(transaction, queryRaw),
+      guard,
+    );
+
+    await expect(finalization.finalize(fixture.command)).resolves.toBe(
+      "published",
+    );
+    expect(guard).toHaveBeenCalledWith(
+      expect.objectContaining({ $queryRaw: expect.any(Function) }),
+      fixture.command,
+    );
+    expect(guard.mock.invocationCallOrder[0]).toBeLessThan(
+      queryRaw.mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it("does not call SQL finalization when the transaction guard fails", async () => {
+    const fixture = createFixture();
+    mockPublicationPayload(fixture.publicationPayload);
+    const queryRaw = jest.fn(async (...args: readonly unknown[]) =>
+      sqlOutcome(args, "published"),
+    );
+    const transaction = recoveryFinalizationTransaction(queryRaw);
+    const guard = jest.fn(async () => {
+      throw new Error("live publication slot changed");
+    });
+    const finalization = new PrismaReaderSummaryRecoveryFinalization(
+      prismaClient(transaction, queryRaw),
+      guard,
+    );
+
+    await expect(finalization.finalize(fixture.command)).rejects.toThrow(
+      "live publication slot changed",
+    );
+    expect(transaction).toHaveBeenCalledTimes(1);
+    expect(guard).toHaveBeenCalledTimes(1);
+    expect(queryRaw).not.toHaveBeenCalled();
+  });
+
   it("fails closed when PostgreSQL rejects conflicting provenance", async () => {
     const fixture = createFixture();
     mockPublicationPayload(fixture.publicationPayload);

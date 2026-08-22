@@ -24,10 +24,19 @@ const recoveryFinalizationTransactionOptions: PrismaSummaryTransactionOptions =
     timeout: 300_000,
   });
 
+export type ReaderSummaryRecoveryFinalizationTransactionGuard = (
+  client: PrismaReaderSummaryClient,
+  command: ReaderSummaryRecoveryFinalizationCommand,
+) => Promise<void>;
+
 export class PrismaReaderSummaryRecoveryFinalization
   implements ReaderSummaryRecoveryFinalizationPort
 {
-  constructor(private readonly prisma: PrismaSummaryClient) {}
+  constructor(
+    private readonly prisma: PrismaSummaryClient,
+    private readonly transactionGuard?:
+      ReaderSummaryRecoveryFinalizationTransactionGuard,
+  ) {}
 
   async finalize(
     command: ReaderSummaryRecoveryFinalizationCommand,
@@ -44,14 +53,16 @@ export class PrismaReaderSummaryRecoveryFinalization
     const rows = await withPrismaWriteRetry(() =>
       runSerializableReaderSummaryTransaction(
         this.prisma,
-        (prisma) =>
-          prisma.$queryRaw<readonly ReaderSummaryRecoveryFinalizationSqlRow[]>`
+        async (prisma) => {
+          await this.transactionGuard?.(prisma, command);
+          return prisma.$queryRaw<readonly ReaderSummaryRecoveryFinalizationSqlRow[]>`
             SELECT *
             FROM "finalize_reader_summary_recovery"(
               ${serializedPublication}::jsonb,
               ${serializedReceipt}::jsonb
             )
-          `,
+          `;
+        },
         recoveryFinalizationTransactionOptions,
       ),
     );

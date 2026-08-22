@@ -38,7 +38,7 @@ const projectionPageSize = 1_000;
 export class PrismaReaderSummaryGitHubProjectionReader
   implements ReaderSummaryGitHubProjectionReaderPort
 {
-  constructor(private readonly prisma: PrismaSummaryClient) {}
+  constructor(private readonly prisma: Pick<PrismaSummaryClient, "$queryRaw">) {}
 
   async read(
     query: ReadReaderSummaryGitHubProjectionQuery,
