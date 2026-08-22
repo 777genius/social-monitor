@@ -5,7 +5,8 @@ PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 # Canonical daily stages are owned by run-reader-summary-production-day.ts:
 # collection -> collection quality -> AI summary -> publication gates.
 
-if [[ ${SOCIAL_MONITOR_DAILY_RUN_TEST_MODE:-} == 1 ]]; then
+DAILY_TEST_MODE=${SOCIAL_MONITOR_DAILY_RUN_TEST_MODE:-0}
+if [[ $DAILY_TEST_MODE == 1 ]]; then
   ROOT=${SOCIAL_MONITOR_DAILY_RUN_TEST_ROOT:?daily-run test root is required}
   [[ $ROOT == /tmp/* ]] || {
     echo 'daily production-day test root must be below /tmp' >&2
@@ -61,6 +62,13 @@ case "$DATE_FLAG" in
     ;;
   *) echo "usage: $0 [--check-readiness|--today|--yesterday|--maintenance-date YYYY-MM-DD]" >&2; exit 64 ;;
 esac
+
+# The rolling pipeline is the production owner for scheduled collection,
+# summary generation and publication. Keep the reviewed midnight timer as its
+# sixth four-hour trigger while retaining explicit maintenance modes below.
+if [[ $DATE_FLAG == --yesterday && $DAILY_TEST_MODE != 1 ]]; then
+  exec "$ROOT/control/rolling-run.sh"
+fi
 
 [[ $POSTGRES_ADMISSION_WAIT_SECONDS =~ \
    ^([0-9]+([.][0-9]+)?|[.][0-9]+)$ ]] || {
