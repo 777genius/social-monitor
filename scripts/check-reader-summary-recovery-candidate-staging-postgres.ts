@@ -386,7 +386,7 @@ const cleanup = async (): Promise<void> => {
   await server.end();
 };
 
-const requiredAdminUrl = (env: NodeJS.ProcessEnv): string => {
+function requiredAdminUrl(env: NodeJS.ProcessEnv): string {
   const value = env.READER_SUMMARY_PUBLICATION_TEST_ADMIN_DATABASE_URL?.trim();
   if (value === undefined || value.length === 0) {
     throw new Error(
@@ -394,13 +394,13 @@ const requiredAdminUrl = (env: NodeJS.ProcessEnv): string => {
     );
   }
   return value;
-};
+}
 
-const withDatabase = (input: string, database: string): string => {
+function withDatabase(input: string, database: string): string {
   const value = new URL(input);
   value.pathname = `/${database}`;
   return value.toString();
-};
+}
 
 const quoteIdentifier = (input: string): string =>
   `"${input.replaceAll('"', '""')}"`;

@@ -109,6 +109,7 @@ export class PrismaHistoricalDegradedRecoveryLiveVerifier
       collectionArtifactBytes: params.files.collectionArtifactBytes,
       collectionQualityReportBytes: params.files.collectionQualityReportBytes,
       datasetManifestBytes: params.files.datasetManifestBytes,
+      xBackfillReceiptBytes: params.files.xBackfillReceiptBytes,
       dataset,
       githubZero,
       servingAuthority: noModelCallServingContext,
