@@ -298,8 +298,13 @@ const verifyPublishedRecovery = async (
 const readFiles = (requestedUtcDate: string): Readonly<{
   files: HistoricalDegradedRecoveryFiles;
   xBackfillReceiptBytes: Buffer;
-}> => ({
-  files: {
+}> => {
+  const xBackfillReceiptBytes = readSecureHistoricalDegradedRecoveryFile(
+    requestedUtcDate,
+    "x-backfill-receipt",
+  );
+  return {
+    files: {
     collectionArtifactBytes: readSecureHistoricalDegradedRecoveryFile(
       requestedUtcDate,
       "collection-artifact",
@@ -312,12 +317,11 @@ const readFiles = (requestedUtcDate: string): Readonly<{
       requestedUtcDate,
       "dataset-manifest",
     ),
-  },
-  xBackfillReceiptBytes: readSecureHistoricalDegradedRecoveryFile(
-    requestedUtcDate,
-    "x-backfill-receipt",
-  ),
-});
+      xBackfillReceiptBytes,
+    },
+    xBackfillReceiptBytes,
+  };
+};
 
 const commandFrom = (
   value: string | undefined,

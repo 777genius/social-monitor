@@ -25,6 +25,7 @@ export type HistoricalDegradedRecoveryFiles = Readonly<{
   collectionArtifactBytes: Buffer;
   collectionQualityReportBytes: Buffer;
   datasetManifestBytes: Buffer;
+  xBackfillReceiptBytes: Buffer;
 }>;
 
 export type HistoricalDegradedRecoveryLiveVerification = Readonly<{
