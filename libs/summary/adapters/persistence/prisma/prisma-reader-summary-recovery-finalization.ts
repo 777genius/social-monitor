@@ -113,14 +113,18 @@ const stageRecoveryCandidate = async (
   if (command.candidate === undefined) return;
   const job = command.candidate.runningJob.toSnapshot();
   const finalJob = command.publication.finalJob.toSnapshot();
+  const startedAt = job.startedAt;
+  const finalStartedAt = finalJob.startedAt;
   const publication = buildReaderSummaryPublicationPayload(command.publication);
   if (
     job.status !== "running" ||
+    startedAt === undefined ||
+    finalStartedAt === undefined ||
     job.id !== publication.readerSummaryJobId ||
     job.tenantId !== publication.tenantId ||
     job.workspaceId !== publication.workspaceId ||
     job.requestedAt.toISOString() !== publication.requestedAt ||
-    job.startedAt?.toISOString() !== finalJob.startedAt?.toISOString()
+    startedAt.toISOString() !== finalStartedAt.toISOString()
   ) {
     throw new Error("Reader summary recovery candidate does not bind publication");
   }
@@ -140,7 +144,7 @@ const stageRecoveryCandidate = async (
     subscriptionId: job.subscriptionId ?? null,
     idempotencyKey: job.idempotencyKey,
     requestedAt: job.requestedAt.toISOString(),
-    startedAt: job.startedAt.toISOString(),
+    startedAt: startedAt.toISOString(),
   });
   await prisma.$queryRaw<readonly RecoveryCandidateInsertRow[]>`
     WITH candidate AS (
