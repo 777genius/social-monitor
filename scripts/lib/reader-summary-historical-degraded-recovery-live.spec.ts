@@ -167,6 +167,7 @@ describe("historical degraded recovery live GitHub zero", () => {
         collectionArtifactBytes: collection,
         collectionQualityReportBytes: quality(dataset.aggregateSha256),
         datasetManifestBytes: manifest,
+        xBackfillReceiptBytes: Buffer.from("receipt"),
       },
       dataset,
       authorizedAt: new Date("2026-08-22T12:00:00.000Z"),
@@ -201,6 +202,7 @@ describe("historical degraded recovery live GitHub zero", () => {
       datasetManifestBytes: Buffer.from(JSON.stringify({
         generatedAt: "2026-08-22T11:55:00.000Z",
       })),
+      xBackfillReceiptBytes: Buffer.from("receipt"),
     };
     expect(assertHistoricalDegradedRecoveryCurrentPreflight({
       slot: "empty",

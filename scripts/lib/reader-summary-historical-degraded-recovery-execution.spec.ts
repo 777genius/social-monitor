@@ -294,17 +294,6 @@ const authorityFor = (
   existingPublicationCount: 0,
   activeSlotCount: 0,
   ...files,
-  xBackfillReceiptBytes: Buffer.from(JSON.stringify({
-    artifactFormat: "reader-summary-historical-x-backfill-receipt-v1",
-    tenantId: "00000000-0000-7000-8000-000000006101",
-    workspaceId: "00000000-0000-7000-8000-000000006102",
-    requestedUtcDate: "2026-08-18",
-    providerKey: "x-twitter",
-    baseRowCount: 0,
-    insertedRowCount: 72,
-    finalRowCount: 72,
-    rows: Array.from({ length: 72 }, (_, index) => ({ sourceItemId: index })),
-  })),
   dataset: {
     liveCount: 277,
     uniqueCount: 277,
@@ -334,6 +323,17 @@ const fixtureFiles = (): HistoricalDegradedRecoveryFiles => ({
   collectionArtifactBytes: Buffer.from("collection"),
   collectionQualityReportBytes: Buffer.from("quality"),
   datasetManifestBytes: Buffer.from("manifest"),
+  xBackfillReceiptBytes: Buffer.from(JSON.stringify({
+    artifactFormat: "reader-summary-historical-x-backfill-receipt-v1",
+    tenantId: "00000000-0000-7000-8000-000000006101",
+    workspaceId: "00000000-0000-7000-8000-000000006102",
+    requestedUtcDate: "2026-08-18",
+    providerKey: "x-twitter",
+    baseRowCount: 0,
+    insertedRowCount: 72,
+    finalRowCount: 72,
+    rows: Array.from({ length: 72 }, (_, index) => ({ sourceItemId: index })),
+  })),
 });
 
 const sourceArtifact = (): ReaderSummaryArtifact => {
@@ -345,6 +345,7 @@ const sourceArtifact = (): ReaderSummaryArtifact => {
   const editorialCitation = base.citationMap.find(
     (citation) => citation.providerKey === "rss",
   )!;
+  const baseContent = base.content!;
   const storyClusterId = "editorial-story";
   return ReaderSummaryArtifact.create({
     ...base,
@@ -373,9 +374,9 @@ const sourceArtifact = (): ReaderSummaryArtifact => {
       },
     ],
     content: {
-      ...base.content!,
+      ...baseContent,
       selectedPosts: [],
-      narrativeSections: base.content!.narrativeSections.filter(
+      narrativeSections: baseContent.narrativeSections.filter(
         (section) => section.id === "lead",
       ),
     },
