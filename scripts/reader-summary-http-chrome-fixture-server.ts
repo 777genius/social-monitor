@@ -1,10 +1,14 @@
+import { emitReaderSummaryFixtureStage } from
+  "./lib/reader-summary-fixture-stage-reporter";
+
 import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import type { AddressInfo } from "node:net";
 
 import { ValidationPipe } from "@nestjs/common";
+import type { INestApplication } from "@nestjs/common";
 import { APP_FILTER } from "@nestjs/core";
-import { Test } from "@nestjs/testing";
+import { Test, type TestingModule } from "@nestjs/testing";
 import { PGlite } from "@electric-sql/pglite";
 import { pgcrypto } from "@electric-sql/pglite/contrib/pgcrypto";
 import { PGLiteSocketServer } from "@electric-sql/pglite-socket";
@@ -42,6 +46,8 @@ import type {
 } from "@social-monitor/summary/ports";
 
 import { DomainErrorFilter } from "../apps/api-gateway/src/domain-error.filter";
+import { createReaderSummaryFixtureLifecycle } from
+  "./lib/reader-summary-fixture-resource-lifecycle";
 
 const fixtureTenantId = tenantId("00000000-0000-7000-8000-000000000701");
 const fixtureWorkspaceId = workspaceId("00000000-0000-7000-8000-000000000702");
@@ -51,7 +57,19 @@ const cutoff = new Date("2026-08-15T01:00:00.000Z");
 const fixtureJobId = "00000000-0000-7000-8000-000000000703";
 const fixtureArtifactId = "00000000-0000-7000-8000-000000000704";
 const repositoryRoot = process.cwd();
-let closeFixture: (() => Promise<void>) | undefined;
+let fixtureApp: INestApplication | undefined;
+let fixtureModule: TestingModule | undefined;
+let fixtureDatabaseServer: PGLiteSocketServer | undefined;
+let fixtureDatabase: PGlite | undefined;
+const fixtureLifecycle = createReaderSummaryFixtureLifecycle({
+  application: () => fixtureApp,
+  testingModule: () => fixtureModule,
+  databaseServer: () => fixtureDatabaseServer,
+  database: () => fixtureDatabase,
+  resourceCloseTimeoutMs: 5_000,
+  report: (message) => { process.stderr.write(message); },
+  exit: (code) => { process.exit(code); },
+});
 
 const evidence = [
   item("cursor-hn", "hacker-news", "Cursor agent update reaches HN", {
@@ -97,7 +115,7 @@ const evidence = [
   }, "repository", "story:github-48-additional", "https://github.com/fixture/additional-48"),
   item("duplicate-additional", "hacker-news", "Duplicate Additional must lose to Top", {
     provider: "hacker_news", points: 25,
-  }, "story", "story:cursor", "https://news.ycombinator.com/item?id=duplicate"),
+  }, "story", "story:spacex", "https://news.ycombinator.com/item?id=duplicate"),
   item("related-topic-eligible", "reddit", "Eligible related topic must stay absent", {
     provider: "reddit", score: 25, upvoteRatio: 0.55,
   }, "original_post", "related:eligible", "https://reddit.com/r/fixture/comments/related/story"),
@@ -135,11 +153,18 @@ const evidence = [
   }, "repository", "negative:github-minus-one", "https://github.com/fixture/minus-one"),
 ] as const satisfies readonly SummaryEvidenceItem[];
 
-const sameStoryRelations: readonly ApprovedSameStoryRelation[] = [{
-  leftFeedItemId: "cursor-hn",
-  rightFeedItemId: "cursor-x-official",
-  confidence: 0.92,
-}];
+const sameStoryRelations: readonly ApprovedSameStoryRelation[] = [
+  {
+    leftFeedItemId: "cursor-hn",
+    rightFeedItemId: "cursor-x-official",
+    confidence: 0.92,
+  },
+  {
+    leftFeedItemId: "spacex-github-24",
+    rightFeedItemId: "duplicate-additional",
+    confidence: 0.92,
+  },
+];
 
 const relatedTopicRelations = [{
   relationId: "related-topic:v1:reddit:weak-related:x-twitter:anthropic-watermark-x",
@@ -159,14 +184,23 @@ const relatedTopicRelations = [{
 }] as const;
 
 const clusters = evidence
-  .filter(({ feedItemId }) => feedItemId !== "cursor-x-official")
-  .map((entry) => entry.feedItemId === "cursor-hn"
-    ? {
-        ...cluster(entry),
-        duplicateFeedItemIds: ["cursor-x-official"],
-        providerKeys: ["hacker-news", "x-twitter"],
-      }
-    : cluster(entry));
+  .filter(({ feedItemId }) => ![
+    "cursor-x-official",
+    "duplicate-additional",
+  ].includes(feedItemId))
+  .map((entry) => {
+    if (entry.feedItemId === "cursor-hn") return {
+      ...cluster(entry),
+      duplicateFeedItemIds: ["cursor-x-official"],
+      providerKeys: ["hacker-news", "x-twitter"],
+    };
+    if (entry.feedItemId === "spacex-github-24") return {
+      ...cluster(entry),
+      duplicateFeedItemIds: ["duplicate-additional"],
+      providerKeys: ["github-repo-radar", "hacker-news"],
+    };
+    return cluster(entry);
+  });
 const sourceWindow = {
   windowId: "fixture-window",
   startedAt: periodStart,
@@ -196,21 +230,30 @@ const selection: SummaryEvidenceSelection = {
 };
 
 const start = async (): Promise<void> => {
+  emitReaderSummaryFixtureStage("pglite_construction_start");
   const database = await PGlite.create("memory://", {
     extensions: { pgcrypto },
   });
+  fixtureDatabase = database;
+  emitReaderSummaryFixtureStage("pglite_construction_end");
   const databaseServer = new PGLiteSocketServer({
     db: database,
     host: "127.0.0.1",
     port: 0,
     maxConnections: 20,
   });
+  fixtureDatabaseServer = databaseServer;
+  emitReaderSummaryFixtureStage("pglite_socket_start");
   await databaseServer.start();
+  emitReaderSummaryFixtureStage("pglite_socket_started");
   const databaseUrl = databaseUrlFrom(databaseServer.getServerConn());
+  emitReaderSummaryFixtureStage("prisma_db_push_start");
   await pushPrismaSchema(databaseUrl);
+  emitReaderSummaryFixtureStage("prisma_db_push_end");
   await installPublicationBoundary(database);
   configureFixtureRuntime(databaseUrl);
 
+  emitReaderSummaryFixtureStage("nest_module_compile_start");
   const moduleRef = await Test.createTestingModule({
     imports: [
       MetricsRuntimeModule.register({ serviceName: "reader-summary-e2e" }),
@@ -218,7 +261,11 @@ const start = async (): Promise<void> => {
     ],
     providers: [{ provide: APP_FILTER, useClass: DomainErrorFilter }],
   }).compile();
+  fixtureModule = moduleRef;
+  emitReaderSummaryFixtureStage("nest_module_compile_end");
   const app = moduleRef.createNestApplication();
+  fixtureApp = app;
+  emitReaderSummaryFixtureStage("nest_app_create");
   app.enableCors({
     origin: true,
     methods: ["GET", "OPTIONS"],
@@ -236,6 +283,7 @@ const start = async (): Promise<void> => {
   }));
   await app.init();
 
+  emitReaderSummaryFixtureStage("seeding_start");
   const jobs = moduleRef.get<ReaderSummaryJobRepositoryPort>(
     READER_SUMMARY_JOB_REPOSITORY,
     { strict: false },
@@ -316,32 +364,30 @@ const start = async (): Promise<void> => {
     workspaceId: fixtureWorkspaceId,
     readerSummaryId: fixtureArtifactId });
   if (persisted === null) throw new Error("Fixture artifact persistence failed");
+  emitReaderSummaryFixtureStage("seeding_end");
   if (process.env.READER_SUMMARY_FIXTURE_PRINT === "1") {
     process.stdout.write(`${JSON.stringify(persisted.toSnapshot())}\n`);
-    await app.close();
-    await databaseServer.stop();
-    await database.close();
+    await fixtureLifecycle.close();
     return;
   }
+  emitReaderSummaryFixtureStage("http_listen_start");
   await app.listen(0, "127.0.0.1");
+  emitReaderSummaryFixtureStage("http_listening");
   const address = app.getHttpServer().address() as AddressInfo;
-  closeFixture = async () => {
-    await app.close();
-    await databaseServer.stop();
-    await database.close();
-  };
+  emitReaderSummaryFixtureStage("ready");
   process.stdout.write(`${JSON.stringify({ status: "ready",
     baseUrl: `http://127.0.0.1:${address.port}` })}\n`);
 };
 
-void start().catch((error: unknown) => {
-  process.stderr.write(`${error instanceof Error ? error.stack : String(error)}\n`);
-  process.exitCode = 1;
-});
+void start().catch(() => fixtureLifecycle.handleStartupFailure());
 
 for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
   process.once(signal, () => {
-    void (closeFixture?.() ?? Promise.resolve()).finally(() => process.exit(0));
+    void fixtureLifecycle.close()
+      .catch(() => {
+        process.stderr.write("Reader summary fixture cleanup failed\n");
+      })
+      .finally(() => process.exit(0));
   });
 }
 
