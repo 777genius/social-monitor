@@ -26,6 +26,22 @@ const findJob = (source, jobId) => source.match(
   ),
 )?.[1];
 
+const requireScopedFlutterAppTests = (source, sourcePath) => {
+  if (!/^\s*flutter test app\/test\s*$/mu.test(source)) {
+    violations.push(
+      `${sourcePath}: ordinary Flutter app tests must target app/test`,
+    );
+  }
+  if (/^\s*flutter test app\s*$/mu.test(source)) {
+    violations.push(
+      `${sourcePath}: ordinary Flutter app tests must not discover app/test_driver or app/integration_test`,
+    );
+  }
+};
+
+requireScopedFlutterAppTests(workflow, workflowPath);
+requireScopedFlutterAppTests(productionWorkflow, productionWorkflowPath);
+
 const requiredFragments = [
   "permissions:\n  contents: read",
   "concurrency:",
@@ -50,7 +66,7 @@ const requiredFragments = [
   "npm run check:subscription-runtime-auth-pool-e2e",
   "npm run check:production-deploy-lifecycle",
   "npm run test:e2e",
-  "flutter test app",
+  "flutter test app/test",
 ];
 
 for (const fragment of requiredFragments) {

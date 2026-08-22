@@ -675,7 +675,7 @@ jobs:
           set -euo pipefail
           flutter pub get
           flutter analyze
-          flutter test app
+          flutter test app/test
           flutter test packages/design_system
           flutter test features/auth features/feed features/interests \
             features/settings features/sources features/summaries
