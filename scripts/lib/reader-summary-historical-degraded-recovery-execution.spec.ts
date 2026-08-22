@@ -376,7 +376,7 @@ const sourceArtifact = (): ReaderSummaryArtifact => {
     content: {
       ...baseContent,
       selectedPosts: [],
-      narrativeSections: baseContent.narrativeSections.filter(
+      narrativeSections: (baseContent.narrativeSections ?? []).filter(
         (section) => section.id === "lead",
       ),
     },
