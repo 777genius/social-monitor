@@ -527,7 +527,11 @@ export const verifyHistoricalDegradedRecoveryInputArtifacts = (params: {
   const manifestScope = record(manifest.scope, "manifest scope");
   const manifestPeriod = record(manifest.period, "manifest period");
   const collectionInputs = record(collection.inputs, "collection inputs");
-  const collectionScope = record(collectionInputs.scope, "collection scope");
+  const collectionModel = record(collection.model, "collection model");
+  const collectionPublishedWindow = record(
+    collectionInputs.targetPublishedWindow,
+    "collection published window",
+  );
   const collectionWindow = record(collection.targetWindow, "collection target window");
   const qualityInputs = record(quality.inputs, "quality inputs");
   const qualityFreshness = record(
@@ -541,12 +545,42 @@ export const verifyHistoricalDegradedRecoveryInputArtifacts = (params: {
   const baseCollection = params.requestedUtcDate === "2026-08-18"
     ? { count: 205, xCount: 0 }
     : { count: 226, xCount: 10 };
+  const expectedCollectionProviders = [
+    "hacker-news",
+    "reddit",
+    "rss",
+    "x-twitter",
+  ];
+  const expectedEndedAt = new Date(
+    Date.parse(`${params.requestedUtcDate}T00:00:00.000Z`) + 86_400_000,
+  ).toISOString();
   if (
+    collection.schemaVersion !== 1 ||
     collection.artifactFormat !== "reader-summary-clean-real-day-collection-v1" ||
+    collection.generatedBy !==
+      "npm run run:reader-summary-clean-real-day-collection" ||
     record(collection.run, "collection run").collectionDate !== params.requestedUtcDate ||
     collection.blockingPassed !== true ||
-    collectionScope.tenantId !== historicalDegradedRecoveryTenantId ||
-    collectionScope.workspaceId !== historicalDegradedRecoveryWorkspaceId ||
+    collectionInputs.database !== "local-postgres" ||
+    collectionInputs.xCollectorConfigured !== true ||
+    stableJson(stringArray(collectionInputs.providerKeys, "collection providers")) !==
+      stableJson(expectedCollectionProviders) ||
+    collectionPublishedWindow.startInclusive !==
+      `${params.requestedUtcDate}T00:00:00.000Z` ||
+    collectionPublishedWindow.endExclusive !== expectedEndedAt ||
+    collectionModel.mode !== "targeted_real_binding_collection" ||
+    collectionModel.liveNetwork !== true ||
+    stableJson(stringArray(
+      collectionModel.liveNetworkProviderKeys,
+      "collection live providers",
+    )) !== stableJson(expectedCollectionProviders) ||
+    stringArray(
+      collectionModel.durableSnapshotReuseProviderKeys,
+      "collection durable providers",
+    ).length !== 0 ||
+    collectionModel.rawProviderPayloadPersistedInReport !== false ||
+    collectionModel.rawPostTextPersistedInReport !== false ||
+    collectionModel.rawProviderConfigPersistedInReport !== false ||
     collectionWindow.feedItemCount !== baseCollection.count ||
     Number(
       record(collectionWindow.providerCounts, "collection provider counts")[
@@ -564,9 +598,7 @@ export const verifyHistoricalDegradedRecoveryInputArtifacts = (params: {
     manifestScope.tenantId !== historicalDegradedRecoveryTenantId ||
     manifestScope.workspaceId !== historicalDegradedRecoveryWorkspaceId ||
     manifestPeriod.startedAt !== `${params.requestedUtcDate}T00:00:00.000Z` ||
-    manifestPeriod.endedAt !== new Date(
-      Date.parse(`${params.requestedUtcDate}T00:00:00.000Z`) + 86_400_000,
-    ).toISOString() ||
+    manifestPeriod.endedAt !== expectedEndedAt ||
     manifestPeriod.timezone !== "UTC" ||
     manifestDataset.feedRowCount !== params.dataset.liveCount ||
     manifestDataset.aggregateSha256 !== params.dataset.aggregateSha256 ||
