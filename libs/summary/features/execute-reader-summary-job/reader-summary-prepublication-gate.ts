@@ -101,15 +101,45 @@ export const evaluateReaderSummaryPrepublication = async (params: {
           snapshot.period.endedAt,
         ),
       ).length;
-      projection = Number.isSafeInteger(durable.pageCount) &&
-          durable.pageCount >= 1 &&
-          requestedDayItemCount === 0
-        ? historicalOmissionReaderSummaryGitHubProjectionAudit({
-            artifact: params.artifact,
-            ...params.historicalGitHubOmission,
-            observedThrough: params.observedThrough,
-          })
-        : canonical;
+      if (
+        Number.isSafeInteger(durable.pageCount) &&
+        durable.pageCount >= 1 &&
+        requestedDayItemCount === 0
+      ) {
+        projection = historicalOmissionReaderSummaryGitHubProjectionAudit({
+          artifact: params.artifact,
+          ...params.historicalGitHubOmission,
+          observedThrough: params.observedThrough,
+        });
+      } else if (
+        requestedDayItemCount > 0 &&
+        !durable.items.some((item) =>
+          timestampIsWithin(
+            item.observedAt,
+            snapshot.period.startedAt,
+            snapshot.period.endedAt,
+          ),
+        )
+      ) {
+        const finding = {
+          code: "github_projection_missing" as const,
+          reason:
+            "Historical omission cannot ignore a requested-day GitHub projection whose observed_at is outside the requested UTC day.",
+        };
+        projection = {
+          audit: {
+            ...canonical.audit,
+            status: "rejected",
+            violationCodes: [
+              ...new Set([...canonical.audit.violationCodes, finding.code]),
+            ],
+            reasons: [...new Set([...canonical.audit.reasons, finding.reason])],
+          },
+          findings: [...canonical.findings, finding],
+        };
+      } else {
+        projection = canonical;
+      }
     } catch {
       projection = unavailableReaderSummaryGitHubProjectionAudit({
         artifact: params.artifact,
@@ -229,3 +259,15 @@ const isNonArrayRecord = (
   value: unknown,
 ): value is Readonly<Record<string, unknown>> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
+
+const timestampIsWithin = (
+  value: Date | undefined,
+  startedAt: Date,
+  endedAt: Date,
+): boolean => {
+  const timestamp = value?.getTime();
+  return timestamp !== undefined &&
+    Number.isFinite(timestamp) &&
+    timestamp >= startedAt.getTime() &&
+    timestamp < endedAt.getTime();
+};

@@ -411,6 +411,9 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
         authorizedAt: new Date("2026-06-28T08:05:00.000Z"),
         readerQuality: "limited_sources",
       },
+      undefined,
+      undefined,
+      enabledReaderSummaryPromotionControl(),
     ).execute({
       tenantId: tenant,
       workspaceId: workspace,
@@ -456,7 +459,7 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
     );
   });
 
-  it("rejects a generated artifact before publish when top reads fail source quality", async () => {
+  it("fails closed as no-signal before generation when evidence misses the promotion floor", async () => {
     const tenant = tenantId("tenant-reader-summary-use-case");
     const workspace = workspaceId("workspace-reader-summary-use-case");
     const jobs = new FakeReaderSummaryJobRepository();
@@ -505,6 +508,10 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
       throwingTopicMapBuilder(),
       undefined,
       zeroEligibleGitHubProjectionReader(),
+      undefined,
+      undefined,
+      undefined,
+      enabledReaderSummaryPromotionControl(),
     ).execute({
       tenantId: tenant,
       workspaceId: workspace,
@@ -515,17 +522,16 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
       ok: true,
       value: {
         readerSummaryJobId: "reader-job-rejected",
-        status: "quality_rejected",
+        status: "no_signal",
         readerSummaryId: "reader-summary-id-1",
       },
     });
-    expect(artifacts.all()).toHaveLength(1);
+    expect(artifacts.all()).toHaveLength(2);
     expect(artifacts.decisions()[0]).toMatchObject({
-      status: "rejected",
-      reasonCodes: ["editorial_quality", "top_read_ineligible_source"],
+      status: "published",
     });
     expect(artifacts.all()[0]?.toSnapshot().confidence).toMatchObject({
-      level: "low",
+      level: "none",
       score: 0,
     });
     expect(
@@ -537,11 +543,11 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
         })
       )?.toSnapshot(),
     ).toMatchObject({
-      status: "quality_rejected",
+      status: "no_signal",
       readerSummaryId: "reader-summary-id-1",
-      failureReason: expect.stringContaining("pre-publish quality gate"),
     });
-    expect(events.all()).toEqual([]);
+    expect(events.all()).toHaveLength(1);
+    expect(events.all()[0]?.payload).toMatchObject({ status: "no_signal" });
   });
 
   it("calibrates confidence before a preflight rejection and skips topic-map calls", async () => {
@@ -584,6 +590,10 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
       throwingTopicMapBuilder(),
       publicationPolicy,
       zeroEligibleGitHubProjectionReader(),
+      undefined,
+      undefined,
+      undefined,
+      enabledReaderSummaryPromotionControl(),
     ).execute({
       tenantId: tenant,
       workspaceId: workspace,
