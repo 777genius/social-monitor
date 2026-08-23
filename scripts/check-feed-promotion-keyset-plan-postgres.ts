@@ -7,12 +7,14 @@ import type { PrismaFeedClient } from "@social-monitor/feed/adapters/persistence
 import { defaultPostgresRuntimePoolConfig } from "@social-monitor/platform-persistence";
 import { loadPrismaRuntimeClient } from "@social-monitor/platform-persistence/prisma-runtime-client";
 import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
+import { guardRootClientDuringInteractiveTransaction } from "../libs/platform/persistence/src/postgres-runtime-pool-transaction-guard";
 
 const tenant = "00000000-0000-7000-8000-000000000901";
 const workspace = "00000000-0000-7000-8000-000000000902";
 const otherWorkspace = "00000000-0000-7000-8000-000000000912";
 const interest = "00000000-0000-7000-8000-000000000903";
 const otherInterest = "00000000-0000-7000-8000-000000000904";
+const otherWorkspaceInterest = "00000000-0000-7000-8000-000000000913";
 const noiseInterest = "00000000-0000-7000-8000-000000000914";
 const binding = "00000000-0000-7000-8000-000000000905";
 const start = new Date("2026-08-18T00:00:00.000Z");
@@ -20,25 +22,37 @@ const end = new Date("2026-08-20T00:00:00.000Z");
 const cutoff = new Date("2026-08-19T12:00:00.123Z");
 
 async function main(): Promise<void> {
-  const databaseUrl = requiredEnvironment("DATABASE_URL");
-  const pool = new Pool({ connectionString: databaseUrl, min: 0, max: 1 });
+  const fixtureDatabaseUrl = requiredEnvironment(
+    "FEED_PROMOTION_FIXTURE_DATABASE_URL",
+  );
+  const runtimeDatabaseUrl = requiredEnvironment("DATABASE_URL");
+  assert(
+    fixtureDatabaseUrl !== runtimeDatabaseUrl,
+    "feed promotion fixture and runtime database URLs must be distinct",
+  );
+  const fixturePool = new Pool({
+    connectionString: fixtureDatabaseUrl,
+    min: 0,
+    max: 1,
+  });
   const connection = await PrismaFeedConnection.create(
-    defaultPostgresRuntimePoolConfig(databaseUrl, "admin-tool"),
+    defaultPostgresRuntimePoolConfig(runtimeDatabaseUrl, "admin-tool"),
   );
   try {
-    await assertPostgres184(pool);
-    await seedProductionGraph(pool);
+    await assertPostgres184(fixturePool);
+    await seedProductionGraph(fixturePool);
+    await assertRuntimeRoleBoundary(fixturePool, runtimeDatabaseUrl);
     const repository = new PrismaFeedItemReadRepository(connection);
-    await assertMicrosecondPagingAndCutoff(pool, repository);
+    await assertMicrosecondPagingAndCutoff(fixturePool, repository);
     await assertScopesAndPolicies(repository);
-    await assertSelectivePublishedNoise(pool, repository);
-    await assertExactCeilings(pool, repository);
-    await assertRepeatableReadMutation(pool, connection);
-    await assertProductionPlans(databaseUrl, pool);
+    await assertSelectivePublishedNoise(fixturePool, repository);
+    await assertExactCeilings(fixturePool, repository);
+    await assertRepeatableReadMutation(fixturePool, connection);
+    await assertProductionPlans(runtimeDatabaseUrl, fixturePool);
     console.log("feed_promotion_production_postgres=ok repository=PrismaFeedItemReadRepository");
   } finally {
     await connection.close();
-    await pool.end();
+    await fixturePool.end();
   }
 }
 
@@ -75,10 +89,19 @@ const seedProductionGraph = async (pool: Pool): Promise<void> => {
     INSERT INTO interests (id, tenant_id, workspace_id, name, query) VALUES
       ($3, $1, $2, 'Promotion', 'promotion'),
       ($4, $1, $2, 'Other', 'other'),
-      ($5, $1, $2, 'Noise', 'noise')
+      ($5, $1, $2, 'Noise', 'noise'),
+      ($7, $1, $6, 'Other workspace', 'other-workspace')
       ON CONFLICT (id) DO NOTHING
     `,
-    [tenant, workspace, interest, otherInterest, noiseInterest],
+    [
+      tenant,
+      workspace,
+      interest,
+      otherInterest,
+      noiseInterest,
+      otherWorkspace,
+      otherWorkspaceInterest,
+    ],
   );
   await pool.query("DELETE FROM feed_items WHERE tenant_id = $1", [tenant]);
   await pool.query("DELETE FROM source_items WHERE tenant_id = $1", [tenant]);
@@ -101,7 +124,75 @@ const seedProductionGraph = async (pool: Pool): Promise<void> => {
   await seedRows(pool, { label: "other-interest", count: 3, provider: "reddit",
     workspace, interest: otherInterest, base: "2026-08-19T11:00:00Z", step: "1 second" });
   await seedRows(pool, { label: "other-workspace", count: 3, provider: "reddit",
-    workspace: otherWorkspace, interest, base: "2026-08-19T11:00:00Z", step: "1 second" });
+    workspace: otherWorkspace, interest: otherWorkspaceInterest,
+    base: "2026-08-19T11:00:00Z", step: "1 second" });
+};
+
+const assertRuntimeRoleBoundary = async (
+  fixturePool: Pool,
+  runtimeDatabaseUrl: string,
+): Promise<void> => {
+  const fixtureIdentity = await fixturePool.query<{ readonly role: string }>(
+    "SELECT current_user AS role",
+  );
+  const runtimePool = new Pool({
+    connectionString: runtimeDatabaseUrl,
+    min: 0,
+    max: 1,
+  });
+  const client = await runtimePool.connect();
+  try {
+    await client.query("BEGIN READ ONLY");
+    await client.query(
+      `SELECT set_config('social_monitor.tenant_id', $1, true),
+              set_config('social_monitor.workspace_id', $2, true),
+              set_config('social_monitor.system_access', 'false', true)`,
+      [tenant, workspace],
+    );
+    const boundary = await client.query<{
+      readonly bypass_rls: boolean;
+      readonly can_insert: boolean;
+      readonly can_table_update: boolean;
+      readonly can_update_id: boolean;
+      readonly fixture_rows: string;
+      readonly other_workspace_rows: string;
+      readonly role: string;
+      readonly superuser: boolean;
+      readonly system_access: string;
+    }>(`SELECT current_user AS role,
+               role.rolsuper AS superuser,
+               role.rolbypassrls AS bypass_rls,
+               current_setting('social_monitor.system_access') AS system_access,
+               has_table_privilege(current_user, 'public.feed_items', 'INSERT') AS can_insert,
+               has_table_privilege(current_user, 'public.feed_items', 'UPDATE') AS can_table_update,
+               has_column_privilege(current_user, 'public.feed_items', 'id', 'UPDATE') AS can_update_id,
+               (SELECT count(*) FROM feed_items WHERE tenant_id = $1) AS fixture_rows,
+               (SELECT count(*) FROM feed_items WHERE tenant_id = $1
+                  AND workspace_id = $2) AS other_workspace_rows
+          FROM pg_roles role
+         WHERE role.rolname = current_user`, [tenant, otherWorkspace]);
+    const row = boundary.rows[0];
+    assert(
+      row !== undefined &&
+        row.role !== fixtureIdentity.rows[0]?.role &&
+        row.superuser === false &&
+        row.bypass_rls === false &&
+        row.system_access === "false" &&
+        row.can_insert === false &&
+        row.can_table_update === false &&
+        row.can_update_id === true &&
+        Number(row.fixture_rows) > 0 &&
+        row.other_workspace_rows === "0",
+      "feed promotion repository runtime must be restricted by tenant/workspace RLS",
+    );
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+    await runtimePool.end();
+  }
 };
 
 const seedRows = async (pool: Pool, params: {
@@ -341,22 +432,28 @@ type QueryCaptureConstructor = new (args: {
 }) => QueryCaptureClient;
 
 const assertProductionPlans = async (
-  databaseUrl: string,
-  pool: Pool,
+  runtimeDatabaseUrl: string,
+  fixturePool: Pool,
 ): Promise<void> => {
-  await pool.query("ANALYZE feed_items");
+  await fixturePool.query("ANALYZE feed_items");
   const capturePool = new Pool({
-    connectionString: databaseUrl,
+    connectionString: runtimeDatabaseUrl,
+    min: 0,
+    max: 1,
+  });
+  const explainPool = new Pool({
+    connectionString: runtimeDatabaseUrl,
     min: 0,
     max: 1,
   });
   const PrismaClient = loadPrismaRuntimeClient<QueryCaptureConstructor>();
-  const client = new PrismaClient({
+  const rawClient = new PrismaClient({
     adapter: new PrismaPg(capturePool, { disposeExternalPool: false }),
     log: [{ emit: "event", level: "query" }],
   });
+  const client = guardRootClientDuringInteractiveTransaction(rawClient);
   const captured: PrismaQueryEvent[] = [];
-  client.$on("query", (event) => {
+  rawClient.$on("query", (event) => {
     if (/FROM\\s+"public"\\."feed_items"/u.test(event.query) &&
         /ORDER BY/u.test(event.query) && /LIMIT/u.test(event.query)) {
       captured.push(event);
@@ -376,10 +473,7 @@ const assertProductionPlans = async (
         const expected = `feed_items_${scope}_${timestampPolicy === "published_at" ? "published" : "observed"}_keyset_idx`;
         for (const [index, event] of captured.entries()) {
           const values = JSON.parse(event.params) as unknown[];
-          const plan = await pool.query<{ readonly "QUERY PLAN": unknown }>(
-            `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) ${event.query}`,
-            values,
-          );
+          const plan = await explainRuntimeQuery(explainPool, event, values);
           assertBoundedPlan(plan.rows[0]?.["QUERY PLAN"], expected,
             `${timestampPolicy}/${scope}/${index === 0 ? "first" : "subsequent"}`);
         }
@@ -388,6 +482,35 @@ const assertProductionPlans = async (
   } finally {
     await client.$disconnect();
     await capturePool.end();
+    await explainPool.end();
+  }
+};
+
+const explainRuntimeQuery = async (
+  pool: Pool,
+  event: PrismaQueryEvent,
+  values: readonly unknown[],
+) => {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN READ ONLY");
+    await client.query(
+      `SELECT set_config('social_monitor.tenant_id', $1, true),
+              set_config('social_monitor.workspace_id', $2, true),
+              set_config('social_monitor.system_access', 'false', true)`,
+      [tenant, workspace],
+    );
+    const plan = await client.query<{ readonly "QUERY PLAN": unknown }>(
+      `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) ${event.query}`,
+      [...values],
+    );
+    await client.query("COMMIT");
+    return plan;
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
   }
 };
 

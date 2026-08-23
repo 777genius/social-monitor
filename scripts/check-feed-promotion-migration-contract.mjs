@@ -30,6 +30,14 @@ const feedPromotionPostgres18Check = readFileSync(
   "scripts/check-feed-promotion-postgres18.ts",
   "utf8",
 );
+const repositoryRunner = functionBody(
+  productionFixtureCheck,
+  "runFeedPromotionRepositoryCheck",
+);
+const recoveryRunner = functionBody(
+  productionFixtureCheck,
+  "runFeedPromotionRecoveryCheck",
+);
 const expected = [
   "feed_items_workspace_published_keyset_idx",
   "feed_items_interest_published_keyset_idx",
@@ -121,6 +129,22 @@ if (!recovery.includes("migrate\", \"resolve\", \"--rolled-back\"") ||
 }
 if (!nativeRepositoryCheck.includes("PrismaFeedConnection.create") ||
     !nativeRepositoryCheck.includes("new PrismaFeedItemReadRepository") ||
+    !nativeRepositoryCheck.includes('"FEED_PROMOTION_FIXTURE_DATABASE_URL"') ||
+    !nativeRepositoryCheck.includes('runtimeDatabaseUrl = requiredEnvironment("DATABASE_URL")') ||
+    !nativeRepositoryCheck.includes("defaultPostgresRuntimePoolConfig(runtimeDatabaseUrl") ||
+    !nativeRepositoryCheck.includes("connectionString: fixtureDatabaseUrl") ||
+    !nativeRepositoryCheck.includes("connectionString: runtimeDatabaseUrl") ||
+    !nativeRepositoryCheck.includes("fixtureDatabaseUrl !== runtimeDatabaseUrl") ||
+    !nativeRepositoryCheck.includes("assertRuntimeRoleBoundary(fixturePool, runtimeDatabaseUrl)") ||
+    !nativeRepositoryCheck.includes("rolbypassrls") ||
+    !nativeRepositoryCheck.includes("has_table_privilege(current_user, 'public.feed_items', 'INSERT')") ||
+    !nativeRepositoryCheck.includes("has_column_privilege(current_user, 'public.feed_items', 'id', 'UPDATE')") ||
+    !nativeRepositoryCheck.includes("guardRootClientDuringInteractiveTransaction(rawClient)") ||
+    !nativeRepositoryCheck.includes("interest: otherWorkspaceInterest") ||
+    !nativeRepositoryCheck.includes("set_config('social_monitor.tenant_id', $1, true)") ||
+    !nativeRepositoryCheck.includes("set_config('social_monitor.workspace_id', $2, true)") ||
+    !nativeRepositoryCheck.includes("set_config('social_monitor.system_access', 'false', true)") ||
+    !nativeRepositoryCheck.includes("await fixturePool.query(\"ANALYZE feed_items\")") ||
     !nativeRepositoryCheck.includes("readPromotionSnapshot") ||
     !nativeRepositoryCheck.includes('"published_at"') ||
     !nativeRepositoryCheck.includes('"observed_at"') ||
@@ -132,11 +156,21 @@ if (!nativeRepositoryCheck.includes("PrismaFeedConnection.create") ||
     /CREATE\s+TABLE/iu.test(nativeRepositoryCheck)) {
   violations.push("native PostgreSQL CI must exercise the generated production repository without a fake schema");
 }
+if (/defaultPostgresRuntimePoolConfig\(fixtureDatabaseUrl/iu.test(nativeRepositoryCheck) ||
+    /seedProductionGraph\([^)]*(?:runtime|connection)/iu.test(nativeRepositoryCheck)) {
+  violations.push("feed promotion fixtures must not seed through the restricted runtime connection");
+}
 if (!feedPromotionPostgres18Check.includes('"feed-promotion"') ||
     !productionFixtureCheck.includes("assertFeedPromotionOwnerOrder") ||
     !productionFixtureCheck.includes("social_monitor_public_schema_owner") ||
-    !productionFixtureCheck.includes("check:feed-promotion-keyset-plan-postgres") ||
-    !productionFixtureCheck.includes("check:feed-promotion-index-recovery-postgres")) {
+    !repositoryRunner.includes("check:feed-promotion-keyset-plan-postgres") ||
+    !repositoryRunner.includes("DATABASE_URL: runtimeDatabaseUrl") ||
+    !repositoryRunner.includes("FEED_PROMOTION_FIXTURE_DATABASE_URL: targetDatabaseUrl") ||
+    repositoryRunner.includes("DATABASE_URL: adminDatabaseUrl") ||
+    !recoveryRunner.includes("check:feed-promotion-index-recovery-postgres") ||
+    !recoveryRunner.includes("DATABASE_URL: adminDatabaseUrl") ||
+    recoveryRunner.includes("runtimeDatabaseUrl") ||
+    recoveryRunner.includes("FEED_PROMOTION_FIXTURE_DATABASE_URL")) {
   violations.push("native PostgreSQL CI must follow the ordered production ownership transition");
 }
 for (const scenario of [
@@ -159,4 +193,11 @@ console.log("Feed promotion migration contract OK");
 
 function withoutComments(sql) {
   return sql.replace(/^\s*--.*$/gmu, "");
+}
+
+function functionBody(source, name) {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+  return source.match(
+    new RegExp(`const\\s+${escaped}\\s*=\\s*\\([^)]*\\)[^{=]*=>\\s*\\{([\\s\\S]*?)\\n\\};`, "u"),
+  )?.[1] ?? "";
 }

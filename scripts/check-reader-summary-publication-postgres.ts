@@ -223,8 +223,8 @@ export const runReaderSummaryPublicationPostgresContract = async (
     assertReaderSummaryMigrationDatabaseMatchesSchema(targetDatabaseUrl);
     if (contract === "feed-promotion") {
       await assertFeedPromotionOwnerOrder();
-      runFeedPromotionCheck("check:feed-promotion-keyset-plan-postgres");
-      runFeedPromotionCheck("check:feed-promotion-index-recovery-postgres");
+      runFeedPromotionRepositoryCheck();
+      runFeedPromotionRecoveryCheck();
       console.log(
         "Feed promotion ordered-bootstrap PostgreSQL 18 contract OK",
       );
@@ -433,7 +433,22 @@ const assertFeedPromotionOwnerOrder = async (): Promise<void> => {
     await admin.end();
   }
 };
-const runFeedPromotionCheck = (script: string): void => {
+const runFeedPromotionRepositoryCheck = (): void => {
+  const script = "check:feed-promotion-keyset-plan-postgres";
+  const result = spawnSync("npm", ["run", script], {
+    env: {
+      ...process.env,
+      DATABASE_URL: runtimeDatabaseUrl,
+      FEED_PROMOTION_FIXTURE_DATABASE_URL: targetDatabaseUrl,
+    },
+    stdio: "inherit",
+  });
+  if (result.status !== 0) {
+    throw new Error(`${script} failed in the ordered-bootstrap fixture`);
+  }
+};
+const runFeedPromotionRecoveryCheck = (): void => {
+  const script = "check:feed-promotion-index-recovery-postgres";
   const result = spawnSync("npm", ["run", script], {
     env: { ...process.env, DATABASE_URL: adminDatabaseUrl },
     stdio: "inherit",
