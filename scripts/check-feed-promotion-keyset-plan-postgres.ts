@@ -537,8 +537,8 @@ const assertBoundedPlan = (
     `${label} returned more than one bounded repository page`);
   const indexRows = nodes.filter((node) => String(node["Node Type"]).includes("Index"))
     .reduce((sum, node) => sum + Number(node["Actual Rows"] ?? 0), 0);
-  const buffers = nodes.reduce((sum, node) => sum +
-    Number(node["Shared Hit Blocks"] ?? 0) + Number(node["Shared Read Blocks"] ?? 0), 0);
+  const buffers = Number(root["Shared Hit Blocks"] ?? 0) +
+    Number(root["Shared Read Blocks"] ?? 0);
   const removed = nodes.reduce((sum, node) => sum +
     Number(node["Rows Removed by Filter"] ?? 0) +
     Number(node["Rows Removed by Index Recheck"] ?? 0), 0);

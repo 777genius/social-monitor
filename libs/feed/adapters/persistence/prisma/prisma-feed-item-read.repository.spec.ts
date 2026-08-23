@@ -46,7 +46,9 @@ describe("PrismaFeedItemReadRepository promotion snapshot", () => {
         $executeRawUnsafe: setReadOnly,
         $queryRawUnsafe: queryRaw as PrismaFeedClient["$queryRawUnsafe"],
         feedItem: {
-          findMany: async (args) => (args.where.id?.in ?? []).flatMap((id) => {
+          findMany: async (
+            args: Parameters<PrismaFeedClient["feedItem"]["findMany"]>[0],
+          ) => (args.where.id?.in ?? []).flatMap((id: string) => {
             const item = hydrated.get(id); return item === undefined ? [] : [item];
           }),
           count: async () => 201,
@@ -274,6 +276,9 @@ const snapshotCandidateIds = (
 const semanticFindMany = (
   records: readonly PrismaFeedItemRecord[],
 ): PrismaFeedClient["feedItem"]["findMany"] => async (args) => {
+  if (args.orderBy === undefined) {
+    throw new Error("Semantic keyset fixture requires deterministic ordering");
+  }
   const timestampKey = "publishedAt" in args.orderBy[0]
     ? "publishedAt" as const
     : "observedAt" as const;
@@ -336,7 +341,9 @@ const transactionRepository = (
         })) as RawResult;
       },
       feedItem: {
-        findMany: async (args) => (args.where.id?.in ?? []).flatMap((id) => {
+        findMany: async (
+          args: Parameters<PrismaFeedClient["feedItem"]["findMany"]>[0],
+        ) => (args.where.id?.in ?? []).flatMap((id: string) => {
           const item = hydrated.get(id); return item === undefined ? [] : [item];
         }),
         count: async () => 1,
@@ -380,6 +387,7 @@ const keysetPageArgs = (
     where: {
       tenantId: values[0] as string,
       workspaceId: values[1] as string,
+      status: "VISIBLE",
       interestId: (values[2] as string | null) ?? undefined,
       publishedAt: timestampPolicy === "published_at"
         ? { gte: values[3] as Date, lt: values[4] as Date }
@@ -389,7 +397,9 @@ const keysetPageArgs = (
             lte: values[5] as Date }
         : undefined,
     },
-    orderBy: [{ [timestampKey]: "desc" }, { id: "desc" }],
+    orderBy: timestampKey === "publishedAt"
+      ? [{ publishedAt: "desc" }, { id: "desc" }]
+      : [{ observedAt: "desc" }, { id: "desc" }],
     ...(afterId === null ? {} : { cursor: { id: afterId }, skip: 1 }),
     take: values[8] as number,
   };
