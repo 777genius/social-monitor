@@ -38,6 +38,7 @@ import { BuildReaderSummaryTopicMapUseCase } from "../build-reader-summary-topic
 import { withReaderSummaryContextUnavailable } from "./reader-summary-context-unavailable";
 import { evaluateReaderSummaryPrepublication } from "./reader-summary-prepublication-gate";
 import type { ReaderSummaryHistoricalGitHubOmission } from "./reader-summary-prepublication-gate";
+import { withReaderSummaryHistoricalOmissionQuality } from "./reader-summary-historical-omission-quality";
 import type { ExecuteReaderSummaryJobCommand } from "./execute-reader-summary-job.command";
 import type { ExecuteReaderSummaryJobResult } from "./execute-reader-summary-job.result";
 import {
@@ -425,18 +426,10 @@ export class ExecuteReaderSummaryJobUseCase {
     const draftWithContext = context.unavailable
       ? withReaderSummaryContextUnavailable(attempt.draft)
       : attempt.draft;
-    const qualityDraft =
-      this.historicalGitHubOmission?.readerQuality === undefined
-        ? draftWithContext
-        : {
-            ...draftWithContext,
-            qualityFlags: [
-              ...draftWithContext.qualityFlags.filter(
-                (flag) => flag !== "limited_sources",
-              ),
-              this.historicalGitHubOmission.readerQuality,
-            ],
-          };
+    const qualityDraft = withReaderSummaryHistoricalOmissionQuality(
+      draftWithContext,
+      this.historicalGitHubOmission,
+    );
     const draftWithContent = buildReaderSummaryDraftWithPromotionContent(
       modelEvidence,
       qualityDraft,
