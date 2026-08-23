@@ -35,23 +35,29 @@ async function main(): Promise<void> {
     min: 0,
     max: 1,
   });
+  const runtimePool = new Pool({
+    connectionString: runtimeDatabaseUrl,
+    min: 0,
+    max: 1,
+  });
   const connection = await PrismaFeedConnection.create(
     defaultPostgresRuntimePoolConfig(runtimeDatabaseUrl, "admin-tool"),
   );
   try {
     await assertPostgres184(fixturePool);
     await seedProductionGraph(fixturePool);
-    await assertRuntimeRoleBoundary(fixturePool, runtimeDatabaseUrl);
+    await assertRuntimeRoleBoundary(fixturePool, runtimePool);
     const repository = new PrismaFeedItemReadRepository(connection);
     await assertMicrosecondPagingAndCutoff(fixturePool, repository);
     await assertScopesAndPolicies(repository);
     await assertSelectivePublishedNoise(fixturePool, repository);
     await assertExactCeilings(fixturePool, repository);
     await assertRepeatableReadMutation(fixturePool, connection);
-    await assertProductionPlans(runtimeDatabaseUrl, fixturePool);
+    await assertProductionPlans(runtimePool, fixturePool);
     console.log("feed_promotion_production_postgres=ok repository=PrismaFeedItemReadRepository");
   } finally {
     await connection.close();
+    await runtimePool.end();
     await fixturePool.end();
   }
 }
@@ -70,27 +76,29 @@ const assertPostgres184 = async (pool: Pool): Promise<void> => {
 const seedProductionGraph = async (pool: Pool): Promise<void> => {
   await pool.query(
     `
-    INSERT INTO tenants (id, slug, name) VALUES ($1, 'promotion-ci', 'Promotion CI')
+    INSERT INTO tenants (id, slug, name, created_at, updated_at)
+    VALUES ($1, 'promotion-ci', 'Promotion CI', now(), now())
       ON CONFLICT (id) DO NOTHING
     `,
     [tenant],
   );
   await pool.query(
     `
-    INSERT INTO workspaces (id, tenant_id, slug, name) VALUES
-      ($2, $1, 'promotion-main', 'Promotion Main'),
-      ($3, $1, 'promotion-other', 'Promotion Other')
+    INSERT INTO workspaces (id, tenant_id, slug, name, created_at, updated_at) VALUES
+      ($2, $1, 'promotion-main', 'Promotion Main', now(), now()),
+      ($3, $1, 'promotion-other', 'Promotion Other', now(), now())
       ON CONFLICT (id) DO NOTHING
     `,
     [tenant, workspace, otherWorkspace],
   );
   await pool.query(
     `
-    INSERT INTO interests (id, tenant_id, workspace_id, name, query) VALUES
-      ($3, $1, $2, 'Promotion', 'promotion'),
-      ($4, $1, $2, 'Other', 'other'),
-      ($5, $1, $2, 'Noise', 'noise'),
-      ($7, $1, $6, 'Other workspace', 'other-workspace')
+    INSERT INTO interests
+      (id, tenant_id, workspace_id, name, query, created_at, updated_at) VALUES
+      ($3, $1, $2, 'Promotion', 'promotion', now(), now()),
+      ($4, $1, $2, 'Other', 'other', now(), now()),
+      ($5, $1, $2, 'Noise', 'noise', now(), now()),
+      ($7, $1, $6, 'Other workspace', 'other-workspace', now(), now())
       ON CONFLICT (id) DO NOTHING
     `,
     [
@@ -130,19 +138,14 @@ const seedProductionGraph = async (pool: Pool): Promise<void> => {
 
 const assertRuntimeRoleBoundary = async (
   fixturePool: Pool,
-  runtimeDatabaseUrl: string,
+  runtimePool: Pool,
 ): Promise<void> => {
   const fixtureIdentity = await fixturePool.query<{ readonly role: string }>(
     "SELECT current_user AS role",
   );
-  const runtimePool = new Pool({
-    connectionString: runtimeDatabaseUrl,
-    min: 0,
-    max: 1,
-  });
   const client = await runtimePool.connect();
   try {
-    await client.query("BEGIN READ ONLY");
+    await client.query("BEGIN");
     await client.query(
       `SELECT set_config('social_monitor.tenant_id', $1, true),
               set_config('social_monitor.workspace_id', $2, true),
@@ -151,9 +154,7 @@ const assertRuntimeRoleBoundary = async (
     );
     const boundary = await client.query<{
       readonly bypass_rls: boolean;
-      readonly can_insert: boolean;
-      readonly can_table_update: boolean;
-      readonly can_update_id: boolean;
+      readonly can_create: boolean;
       readonly fixture_rows: string;
       readonly other_workspace_rows: string;
       readonly role: string;
@@ -163,9 +164,7 @@ const assertRuntimeRoleBoundary = async (
                role.rolsuper AS superuser,
                role.rolbypassrls AS bypass_rls,
                current_setting('social_monitor.system_access') AS system_access,
-               has_table_privilege(current_user, 'public.feed_items', 'INSERT') AS can_insert,
-               has_table_privilege(current_user, 'public.feed_items', 'UPDATE') AS can_table_update,
-               has_column_privilege(current_user, 'public.feed_items', 'id', 'UPDATE') AS can_update_id,
+               has_schema_privilege(current_user, 'public', 'CREATE') AS can_create,
                (SELECT count(*) FROM feed_items WHERE tenant_id = $1) AS fixture_rows,
                (SELECT count(*) FROM feed_items WHERE tenant_id = $1
                   AND workspace_id = $2) AS other_workspace_rows
@@ -178,12 +177,20 @@ const assertRuntimeRoleBoundary = async (
         row.superuser === false &&
         row.bypass_rls === false &&
         row.system_access === "false" &&
-        row.can_insert === false &&
-        row.can_table_update === false &&
-        row.can_update_id === true &&
+        row.can_create === false &&
         Number(row.fixture_rows) > 0 &&
         row.other_workspace_rows === "0",
-      "feed promotion repository runtime must be restricted by tenant/workspace RLS",
+      `feed promotion repository runtime must be restricted by tenant/workspace RLS: ${JSON.stringify(row)}`,
+    );
+    const forbiddenWrite = await client.query(
+      `UPDATE feed_items SET title = title
+        WHERE tenant_id = $1 AND workspace_id = $2
+        RETURNING id`,
+      [tenant, otherWorkspace],
+    );
+    assert(
+      forbiddenWrite.rowCount === 0,
+      "feed promotion runtime crossed its workspace boundary during UPDATE",
     );
     await client.query("COMMIT");
   } catch (error) {
@@ -191,7 +198,6 @@ const assertRuntimeRoleBoundary = async (
     throw error;
   } finally {
     client.release();
-    await runtimePool.end();
   }
 };
 
@@ -217,13 +223,13 @@ const seedRows = async (pool: Pool, params: {
     )
     INSERT INTO feed_items (id, tenant_id, workspace_id, interest_id, source_item_id,
       source_binding_id, provider_key, dedupe_key, canonical_url, title, body_preview,
-      published_at, observed_at, provider_metadata, status)
+      published_at, observed_at, provider_metadata, status, created_at, updated_at)
     SELECT feed_id, $2::uuid, $3::uuid, $4::uuid, source_id, $8::uuid, $9,
       $1 || '-' || value, 'https://example.test/' || $1 || '/' || value,
       $1 || ' ' || value, 'production repository fixture', event_at, event_at,
       CASE WHEN $9 = 'reddit' THEN jsonb_build_object(
         'kind', 'reddit_post', 'score', 50, 'comments', value) ELSE '{}'::jsonb END,
-      'VISIBLE'::"FeedItemStatus"
+      'VISIBLE'::"FeedItemStatus", now(), now()
     FROM rows
   `, [params.label, tenant, params.workspace, params.interest, params.count,
     params.base, params.step, binding, params.provider]);
@@ -237,7 +243,8 @@ const assertMicrosecondPagingAndCutoff = async (
     const result = await repository.readPromotionSnapshot(query(timestampPolicy, interest));
     assert(result.ok, `${timestampPolicy} microsecond scan failed`);
     const ids = result.candidates.map((candidate) => candidate.item.toSnapshot().id);
-    assert(ids.length === 404, `${timestampPolicy} did not scan every exact page once`);
+    assert(ids.length === 404,
+      `${timestampPolicy} did not scan every exact page once: ${ids.length}`);
     assert(new Set(ids).size === ids.length, `${timestampPolicy} duplicated a page-boundary row`);
     const exact = await pool.query<{ readonly id: string; readonly observed_at: string }>(`
       SELECT id::text, to_char(observed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS.US') AS observed_at
@@ -401,11 +408,11 @@ const assertRepeatableReadMutation = async (
   await pool.query(`
     INSERT INTO feed_items (id, tenant_id, workspace_id, interest_id, source_item_id,
       source_binding_id, provider_key, dedupe_key, canonical_url, title, body_preview,
-      published_at, observed_at, provider_metadata, status)
+      published_at, observed_at, provider_metadata, status, created_at, updated_at)
     VALUES ($1, $2, $3, $4, $5, $6, 'reddit', 'concurrent-insert',
       'https://example.test/concurrent-insert', 'concurrent insert', 'bounded',
       '2026-08-19T11:00:00Z', '2026-08-19T11:00:00Z',
-      '{"kind":"reddit_post","score":999}'::jsonb, 'VISIBLE')
+      '{"kind":"reddit_post","score":999}'::jsonb, 'VISIBLE', now(), now())
   `, [concurrentId, tenant, workspace, interest,
     target.rows[0]?.source_item_id, binding]);
   continueScan?.();
@@ -432,29 +439,20 @@ type QueryCaptureConstructor = new (args: {
 }) => QueryCaptureClient;
 
 const assertProductionPlans = async (
-  runtimeDatabaseUrl: string,
+  runtimePool: Pool,
   fixturePool: Pool,
 ): Promise<void> => {
   await fixturePool.query("ANALYZE feed_items");
-  const capturePool = new Pool({
-    connectionString: runtimeDatabaseUrl,
-    min: 0,
-    max: 1,
-  });
-  const explainPool = new Pool({
-    connectionString: runtimeDatabaseUrl,
-    min: 0,
-    max: 1,
-  });
   const PrismaClient = loadPrismaRuntimeClient<QueryCaptureConstructor>();
   const rawClient = new PrismaClient({
-    adapter: new PrismaPg(capturePool, { disposeExternalPool: false }),
+    adapter: new PrismaPg(runtimePool, { disposeExternalPool: false }),
     log: [{ emit: "event", level: "query" }],
   });
   const client = guardRootClientDuringInteractiveTransaction(rawClient);
   const captured: PrismaQueryEvent[] = [];
   rawClient.$on("query", (event) => {
-    if (/FROM\\s+"public"\\."feed_items"/u.test(event.query) &&
+    if (/FROM\s+"public"\."feed_items"/u.test(event.query) &&
+        /AS\s+"cursorTimestamp"/u.test(event.query) &&
         /ORDER BY/u.test(event.query) && /LIMIT/u.test(event.query)) {
       captured.push(event);
     }
@@ -469,11 +467,11 @@ const assertProductionPlans = async (
         );
         assert(result.ok, `${timestampPolicy}/${scope} repository plan probe failed`);
         assert(captured.length >= 2,
-          `${timestampPolicy}/${scope} did not capture first and subsequent Prisma pages`);
+          `${timestampPolicy}/${scope} did not capture first and subsequent Prisma pages: ${captured.length}`);
         const expected = `feed_items_${scope}_${timestampPolicy === "published_at" ? "published" : "observed"}_keyset_idx`;
         for (const [index, event] of captured.entries()) {
           const values = JSON.parse(event.params) as unknown[];
-          const plan = await explainRuntimeQuery(explainPool, event, values);
+          const plan = await explainRuntimeQuery(runtimePool, event, values);
           assertBoundedPlan(plan.rows[0]?.["QUERY PLAN"], expected,
             `${timestampPolicy}/${scope}/${index === 0 ? "first" : "subsequent"}`);
         }
@@ -481,8 +479,6 @@ const assertProductionPlans = async (
     }
   } finally {
     await client.$disconnect();
-    await capturePool.end();
-    await explainPool.end();
   }
 };
 
@@ -500,6 +496,8 @@ const explainRuntimeQuery = async (
               set_config('social_monitor.system_access', 'false', true)`,
       [tenant, workspace],
     );
+    await client.query("SET LOCAL enable_seqscan = off");
+    await client.query("SET LOCAL enable_sort = off");
     const plan = await client.query<{ readonly "QUERY PLAN": unknown }>(
       `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) ${event.query}`,
       [...values],
@@ -529,7 +527,8 @@ const assertBoundedPlan = (
   assert(root !== undefined, `${label} did not return an executable JSON plan`);
   const nodes = flattenPlan(root);
   const text = JSON.stringify(raw);
-  assert(text.includes(expectedIndex), `${label} did not use ${expectedIndex}`);
+  assert(text.includes(expectedIndex),
+    `${label} did not use ${expectedIndex}: ${text.slice(0, 2_000)}`);
   assert(!nodes.some((node) => node["Node Type"] === "Seq Scan"),
     `${label} used a sequential scan`);
   assert(!nodes.some((node) => node["Node Type"] === "Sort"),

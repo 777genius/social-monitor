@@ -18,6 +18,10 @@ const nativeRepositoryCheck = readFileSync(
   "scripts/check-feed-promotion-keyset-plan-postgres.ts",
   "utf8",
 );
+const promotionRepository = readFileSync(
+  "libs/feed/adapters/persistence/prisma/prisma-feed-item-read.repository.ts",
+  "utf8",
+);
 const nativeRecoveryCheck = readFileSync(
   "scripts/check-feed-promotion-index-recovery-postgres.ts",
   "utf8",
@@ -92,6 +96,14 @@ if ((withoutComments(migration).match(
 ) ?? []).length !== 4) {
   violations.push("promotion migration must create exactly four query indexes");
 }
+if ((withoutComments(migration).match(
+  /WHERE\s+"status"\s*=\s*'VISIBLE'/giu,
+) ?? []).length !== 4) {
+  violations.push("promotion query indexes must exclude hidden feed rows");
+}
+if (/"(?:workspace|interest)_id"\s*,\s*"status"/iu.test(migration)) {
+  violations.push("partial promotion indexes must not break keyset order with a status key column");
+}
 if ((!workflow.includes("check:feed-promotion-keyset-plan-postgres") &&
      !workflow.includes("check:feed-promotion-postgres18")) ||
     !workflow.includes("postgres:18.4-alpine")) {
@@ -135,10 +147,11 @@ if (!nativeRepositoryCheck.includes("PrismaFeedConnection.create") ||
     !nativeRepositoryCheck.includes("connectionString: fixtureDatabaseUrl") ||
     !nativeRepositoryCheck.includes("connectionString: runtimeDatabaseUrl") ||
     !nativeRepositoryCheck.includes("fixtureDatabaseUrl !== runtimeDatabaseUrl") ||
-    !nativeRepositoryCheck.includes("assertRuntimeRoleBoundary(fixturePool, runtimeDatabaseUrl)") ||
+    !nativeRepositoryCheck.includes("assertRuntimeRoleBoundary(fixturePool, runtimePool)") ||
     !nativeRepositoryCheck.includes("rolbypassrls") ||
-    !nativeRepositoryCheck.includes("has_table_privilege(current_user, 'public.feed_items', 'INSERT')") ||
-    !nativeRepositoryCheck.includes("has_column_privilege(current_user, 'public.feed_items', 'id', 'UPDATE')") ||
+    !nativeRepositoryCheck.includes("has_schema_privilege(current_user, 'public', 'CREATE')") ||
+    !nativeRepositoryCheck.includes("UPDATE feed_items SET title = title") ||
+    !nativeRepositoryCheck.includes("forbiddenWrite.rowCount === 0") ||
     !nativeRepositoryCheck.includes("guardRootClientDuringInteractiveTransaction(rawClient)") ||
     !nativeRepositoryCheck.includes("interest: otherWorkspaceInterest") ||
     !nativeRepositoryCheck.includes("set_config('social_monitor.tenant_id', $1, true)") ||
@@ -156,9 +169,31 @@ if (!nativeRepositoryCheck.includes("PrismaFeedConnection.create") ||
     /CREATE\s+TABLE/iu.test(nativeRepositoryCheck)) {
   violations.push("native PostgreSQL CI must exercise the generated production repository without a fake schema");
 }
+const directPoolCount = (nativeRepositoryCheck.match(/new Pool\s*\(/gu) ?? []).length;
+const connectionClose = nativeRepositoryCheck.indexOf("await connection.close()");
+const runtimePoolClose = nativeRepositoryCheck.indexOf("await runtimePool.end()");
+const fixturePoolClose = nativeRepositoryCheck.indexOf("await fixturePool.end()");
+if (directPoolCount !== 2 ||
+    !nativeRepositoryCheck.includes("const runtimePool = new Pool({") ||
+    !nativeRepositoryCheck.includes("max: 1") ||
+    !nativeRepositoryCheck.includes("assertProductionPlans(runtimePool, fixturePool)") ||
+    !nativeRepositoryCheck.includes("new PrismaPg(runtimePool, { disposeExternalPool: false })") ||
+    !nativeRepositoryCheck.includes("explainRuntimeQuery(runtimePool, event, values)") ||
+    nativeRepositoryCheck.includes("capturePool") ||
+    nativeRepositoryCheck.includes("explainPool") ||
+    connectionClose < 0 || connectionClose >= runtimePoolClose ||
+    runtimePoolClose >= fixturePoolClose) {
+  violations.push("native PostgreSQL CI must stay within the three-connection pool budget");
+}
 if (/defaultPostgresRuntimePoolConfig\(fixtureDatabaseUrl/iu.test(nativeRepositoryCheck) ||
     /seedProductionGraph\([^)]*(?:runtime|connection)/iu.test(nativeRepositoryCheck)) {
   violations.push("feed promotion fixtures must not seed through the restricted runtime connection");
+}
+if (!promotionRepository.includes('SET LOCAL enable_seqscan = off') ||
+    !promotionRepository.includes('SET LOCAL enable_sort = off') ||
+    !nativeRepositoryCheck.includes('SET LOCAL enable_seqscan = off') ||
+    !nativeRepositoryCheck.includes('SET LOCAL enable_sort = off')) {
+  violations.push("promotion keyset runtime and native plan proof must share the RLS planner policy");
 }
 if (!feedPromotionPostgres18Check.includes('"feed-promotion"') ||
     !productionFixtureCheck.includes("assertFeedPromotionOwnerOrder") ||

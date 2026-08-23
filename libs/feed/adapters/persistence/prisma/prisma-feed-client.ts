@@ -117,7 +117,7 @@ export type PrismaFeedClient = {
           )[];
         }[];
       };
-      readonly orderBy: readonly [(
+      readonly orderBy?: readonly [(
         { readonly publishedAt: "desc" } |
         { readonly observedAt: "desc" }
       ), { readonly id: "desc" }];

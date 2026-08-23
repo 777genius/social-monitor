@@ -12,17 +12,17 @@ type RecognizedFailure = {
 
 const INDEXES = [
   index("feed_items_workspace_published_keyset_idx",
-    ["tenant_id", "workspace_id", "status", "published_at", "id"],
-    [false, false, false, true, true]),
+    ["tenant_id", "workspace_id", "published_at", "id"],
+    [false, false, true, true]),
   index("feed_items_interest_published_keyset_idx",
-    ["tenant_id", "workspace_id", "interest_id", "status", "published_at", "id"],
-    [false, false, false, false, true, true]),
-  index("feed_items_workspace_observed_keyset_idx",
-    ["tenant_id", "workspace_id", "status", "observed_at", "id"],
+    ["tenant_id", "workspace_id", "interest_id", "published_at", "id"],
     [false, false, false, true, true]),
+  index("feed_items_workspace_observed_keyset_idx",
+    ["tenant_id", "workspace_id", "observed_at", "id"],
+    [false, false, true, true]),
   index("feed_items_interest_observed_keyset_idx",
-    ["tenant_id", "workspace_id", "interest_id", "status", "observed_at", "id"],
-    [false, false, false, false, true, true]),
+    ["tenant_id", "workspace_id", "interest_id", "observed_at", "id"],
+    [false, false, false, true, true]),
 ] as const;
 
 type ExpectedIndex = (typeof INDEXES)[number];
@@ -75,7 +75,11 @@ async function main(): Promise<void> {
       }
       if (mode === "verify") {
         if (pending.length !== 0) {
-          throw new Error(`Promotion index verification failed: ${pending.map((item) => item.name).join(",")}`);
+          const details = pending.map((item) => ({
+            expected: item,
+            actual: state.get(item.name),
+          }));
+          throw new Error(`Promotion index verification failed: ${JSON.stringify(details)}`);
         }
         console.log("feed_promotion_indexes=verified count=4");
         return;
@@ -145,15 +149,15 @@ const inspect = async (client: PoolClient): Promise<ReadonlyMap<string, CatalogR
       idx.reloptions AS options,
       pg_get_expr(i.indpred, i.indrelid) AS predicate,
       pg_get_expr(i.indexprs, i.indrelid) AS expression,
-      ARRAY(SELECT att.attname FROM unnest(i.indkey) WITH ORDINALITY AS key(attnum, ord)
+      ARRAY(SELECT att.attname::text FROM unnest(i.indkey) WITH ORDINALITY AS key(attnum, ord)
         JOIN pg_attribute AS att ON att.attrelid = i.indrelid AND att.attnum = key.attnum
-        ORDER BY key.ord) AS columns,
+        ORDER BY key.ord)::text[] AS columns,
       ARRAY(SELECT (option & 1) = 1 FROM unnest(i.indoption) WITH ORDINALITY AS opt(option, ord)
         ORDER BY opt.ord) AS descending,
       ARRAY(SELECT (option & 2) = 2 FROM unnest(i.indoption) WITH ORDINALITY AS opt(option, ord)
         ORDER BY opt.ord) AS nulls_first,
-      ARRAY(SELECT opc.opcname FROM unnest(i.indclass) WITH ORDINALITY AS cls(opcoid, ord)
-        JOIN pg_opclass AS opc ON opc.oid = cls.opcoid ORDER BY cls.ord) AS opclasses
+      ARRAY(SELECT opc.opcname::text FROM unnest(i.indclass) WITH ORDINALITY AS cls(opcoid, ord)
+        JOIN pg_opclass AS opc ON opc.oid = cls.opcoid ORDER BY cls.ord)::text[] AS opclasses
     FROM pg_index AS i
     JOIN pg_class AS idx ON idx.oid = i.indexrelid
     JOIN pg_class AS tbl ON tbl.oid = i.indrelid
@@ -173,7 +177,7 @@ const matchesDefinition = (
   actual: CatalogRow,
   expected: ExpectedIndex,
 ): boolean =>
-  !actual.unique_index && actual.predicate === null && actual.expression === null &&
+  !actual.unique_index && isVisiblePredicate(actual.predicate) && actual.expression === null &&
   actual.access_method === "btree" && actual.key_count === expected.columns.length &&
   actual.options === null && equal(actual.columns, expected.columns) &&
   equal(actual.descending, expected.descending) &&
@@ -281,13 +285,15 @@ const escapeRegExp = (value: string): string =>
 function index(name: string, columns: readonly string[], descending: readonly boolean[]) {
   const columnSql = columns.map((column, position) =>
     `"${column}"${descending[position] === true ? " DESC" : ""}`).join(", ");
-  const opclasses = columns.map((column) => column === "status"
-    ? "enum_ops"
-    : column.endsWith("_at") ? "timestamptz_ops" : "uuid_ops");
+  const opclasses = columns.map((column) => column.endsWith("_at")
+    ? "timestamptz_ops" : "uuid_ops");
   return { name, columns, descending, opclasses,
-    createSql: `CREATE INDEX CONCURRENTLY "${name}" ON public."feed_items" (${columnSql})`,
+    createSql: `CREATE INDEX CONCURRENTLY "${name}" ON public."feed_items" (${columnSql}) WHERE "status" = 'VISIBLE'`,
   } as const;
 }
+const isVisiblePredicate = (predicate: string | null): boolean =>
+  predicate !== null &&
+  /^\(?status\s*=\s*'VISIBLE'::"FeedItemStatus"\)?$/u.test(predicate);
 const equal = <T>(left: readonly T[], right: readonly T[]): boolean =>
   left.length === right.length && left.every((value, index) => value === right[index]);
 const requiredEnvironment = (name: string): string => {

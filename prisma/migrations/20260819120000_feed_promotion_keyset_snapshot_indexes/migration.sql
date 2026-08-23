@@ -30,27 +30,34 @@ FROM (
 WHERE owner.table_owner = session_user
    OR owner.table_owner = 'social_monitor_public_schema_owner';
 
+-- Promotion snapshots never read hidden rows. Keep status in the partial
+-- predicate, not between the scope and timestamp keys, so PostgreSQL can
+-- satisfy the descending keyset order directly under RLS.
 CREATE INDEX CONCURRENTLY IF NOT EXISTS "feed_items_workspace_published_keyset_idx"
 ON "feed_items" (
-  "tenant_id", "workspace_id", "status", "published_at" DESC, "id" DESC
-);
+  "tenant_id", "workspace_id", "published_at" DESC, "id" DESC
+)
+WHERE "status" = 'VISIBLE';
 
 CREATE INDEX CONCURRENTLY IF NOT EXISTS "feed_items_interest_published_keyset_idx"
 ON "feed_items" (
-  "tenant_id", "workspace_id", "interest_id", "status",
+  "tenant_id", "workspace_id", "interest_id",
   "published_at" DESC, "id" DESC
-);
+)
+WHERE "status" = 'VISIBLE';
 
 CREATE INDEX CONCURRENTLY IF NOT EXISTS "feed_items_workspace_observed_keyset_idx"
 ON "feed_items" (
-  "tenant_id", "workspace_id", "status", "observed_at" DESC, "id" DESC
-);
+  "tenant_id", "workspace_id", "observed_at" DESC, "id" DESC
+)
+WHERE "status" = 'VISIBLE';
 
 CREATE INDEX CONCURRENTLY IF NOT EXISTS "feed_items_interest_observed_keyset_idx"
 ON "feed_items" (
-  "tenant_id", "workspace_id", "interest_id", "status",
+  "tenant_id", "workspace_id", "interest_id",
   "observed_at" DESC, "id" DESC
-);
+)
+WHERE "status" = 'VISIBLE';
 
 RESET ROLE;
 RESET statement_timeout;

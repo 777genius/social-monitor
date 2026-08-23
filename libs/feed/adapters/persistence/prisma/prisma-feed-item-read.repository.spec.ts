@@ -20,7 +20,20 @@ describe("PrismaFeedItemReadRepository promotion snapshot", () => {
       .mockResolvedValueOnce(records.slice(200));
     const transactionFindMany = findManyMock as unknown as
       PrismaFeedClient["feedItem"]["findMany"];
+    const hydrated = new Map<string, PrismaFeedItemRecord>();
     const setReadOnly = jest.fn().mockResolvedValue(0);
+    const queryRaw = jest.fn(async <Result>(query: string, ...values: unknown[]) => {
+      if (query.includes('AS "hasPotentialCandidates"')) {
+        return [{ hasPotentialCandidates: true }] as Result;
+      }
+      if (query.includes('AS "cursorTimestamp"')) {
+        const page = await transactionFindMany(keysetPageArgs(query, values));
+        for (const item of page) hydrated.set(item.id, item);
+        return page.map((item) => keysetRow(item, query)) as Result;
+      }
+      const ids = values[0] as readonly string[];
+      return ids.map(exactEvidence) as Result;
+    });
     const transaction = jest.fn(async (
       operation: (client: PrismaFeedClient) => Promise<unknown>,
       options: { readonly isolationLevel: string },
@@ -31,12 +44,13 @@ describe("PrismaFeedItemReadRepository promotion snapshot", () => {
       });
       return operation({
         $executeRawUnsafe: setReadOnly,
-        $queryRawUnsafe: async <Result>(query: string, ids: readonly string[]) =>
-          ids.map((id) => ({ id,
-            publishedAt: "2026-08-19T10:00:00.000000Z",
-            observedAt: "2026-08-19T10:00:00.000000Z",
-            observedThrough: true })) as Result,
-        feedItem: { findMany: transactionFindMany },
+        $queryRawUnsafe: queryRaw as PrismaFeedClient["$queryRawUnsafe"],
+        feedItem: {
+          findMany: async (args) => (args.where.id?.in ?? []).flatMap((id) => {
+            const item = hydrated.get(id); return item === undefined ? [] : [item];
+          }),
+          count: async () => 201,
+        },
       } as unknown as PrismaFeedClient);
     });
     const repository = new PrismaFeedItemReadRepository({
@@ -62,28 +76,76 @@ describe("PrismaFeedItemReadRepository promotion snapshot", () => {
       body: `Original source body for ${records[0]!.id}`,
     });
     expect(transaction).toHaveBeenCalledTimes(1);
-    expect(setReadOnly).toHaveBeenCalledWith("SET TRANSACTION READ ONLY");
+    expect(setReadOnly.mock.calls).toEqual([
+      ["SET TRANSACTION READ ONLY"],
+      ["SET LOCAL enable_seqscan = off"],
+      ["SET LOCAL enable_sort = off"],
+    ]);
     expect(transactionFindMany).toHaveBeenCalledTimes(2);
-    expect(setReadOnly.mock.invocationCallOrder[0]).toBeLessThan(
+    expect(setReadOnly.mock.invocationCallOrder[2]).toBeLessThan(
       findManyMock.mock.invocationCallOrder[0] as number,
     );
     expect(findManyMock.mock.calls[0]?.[0].orderBy).toEqual([
       { publishedAt: "desc" }, { id: "desc" },
     ]);
-    expect(findManyMock.mock.calls[0]?.[0].include).toEqual({
-      sourceItem: { select: { body: true } },
-    });
+    expect(findManyMock.mock.calls[0]?.[0].include).toBeUndefined();
     expect(findManyMock.mock.calls[1]?.[0]).toMatchObject({
       cursor: { id: records[199]!.id },
       skip: 1,
     });
     expect(findManyMock.mock.calls[1]?.[0].where.observedAt).toBeUndefined();
+    const keysetCalls = queryRaw.mock.calls.filter(([sql]) =>
+      sql.includes('AS "cursorTimestamp"'));
+    expect(keysetCalls).toHaveLength(2);
+    expect(keysetCalls[0]?.[0]).toContain(
+      'feed."status" = \'VISIBLE\'::"FeedItemStatus"',
+    );
+    expect(keysetCalls[0]?.[9]).toBe(200);
+    expect(keysetCalls[1]?.[8]).toBe(records[199]!.id);
   });
 
   it("fails closed when the transaction capability is unavailable", async () => {
     const repository = new PrismaFeedItemReadRepository({} as PrismaFeedClient);
     await expect(repository.readPromotionSnapshot(snapshotQuery()))
       .rejects.toThrow("Repeatable-read promotion snapshot is unavailable");
+  });
+
+  it("fails at the physical ceiling before paging candidate rows", async () => {
+    const findMany = jest.fn();
+    const queryRaw = jest.fn();
+    const repository = preflightRepository({
+      physicalRowsRead: 100_001,
+      hasPotentialCandidates: true,
+      findMany,
+      queryRaw,
+    });
+
+    await expect(repository.readPromotionSnapshot(snapshotQuery()))
+      .resolves.toMatchObject({
+        ok: false,
+        reason: "physical_row_ceiling_exceeded",
+        physicalRowsRead: 100_001,
+      });
+    expect(findMany).not.toHaveBeenCalled();
+    expect(queryRaw).not.toHaveBeenCalled();
+  });
+
+  it("does not hydrate an unsupported-provider-only window", async () => {
+    const findMany = jest.fn();
+    const repository = preflightRepository({
+      physicalRowsRead: 99_999,
+      hasPotentialCandidates: false,
+      findMany,
+    });
+
+    await expect(repository.readPromotionSnapshot(snapshotQuery()))
+      .resolves.toMatchObject({
+        ok: true,
+        candidates: [],
+        sourceContent: [],
+        physicalRowsRead: 99_999,
+      });
+    expect(findMany).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -251,20 +313,106 @@ const conformanceRecord = (
 
 const transactionRepository = (
   findMany: PrismaFeedClient["feedItem"]["findMany"],
-): PrismaFeedItemReadRepository => new PrismaFeedItemReadRepository({
+): PrismaFeedItemReadRepository => {
+  const hydrated = new Map<string, PrismaFeedItemRecord>();
+  return new PrismaFeedItemReadRepository({
+    $transaction: async <Result>(
+      operation: (transaction: PrismaFeedClient) => Promise<Result>,
+    ) => operation({
+      $executeRawUnsafe: async () => 0,
+      $queryRawUnsafe: async <RawResult>(query: string, ...values: unknown[]) => {
+        if (query.includes('AS "hasPotentialCandidates"')) {
+          return [{ hasPotentialCandidates: true }] as RawResult;
+        }
+        if (query.includes('AS "cursorTimestamp"')) {
+          const page = await findMany(keysetPageArgs(query, values));
+          for (const item of page) hydrated.set(item.id, item);
+          return page.map((item) => keysetRow(item, query)) as RawResult;
+        }
+        const ids = values[0] as readonly string[];
+        return ids.map((id) => ({
+          ...exactEvidence(id),
+          observedThrough: !id.startsWith("future-") && !postCutoffIds.has(id),
+        })) as RawResult;
+      },
+      feedItem: {
+        findMany: async (args) => (args.where.id?.in ?? []).flatMap((id) => {
+          const item = hydrated.get(id); return item === undefined ? [] : [item];
+        }),
+        count: async () => 1,
+      },
+    } as unknown as PrismaFeedClient),
+  } as unknown as PrismaFeedClient);
+};
+
+const preflightRepository = (params: {
+  readonly physicalRowsRead: number;
+  readonly hasPotentialCandidates: boolean;
+  readonly findMany: jest.Mock;
+  readonly queryRaw?: jest.Mock;
+}): PrismaFeedItemReadRepository => new PrismaFeedItemReadRepository({
   $transaction: async <Result>(
     operation: (transaction: PrismaFeedClient) => Promise<Result>,
   ) => operation({
     $executeRawUnsafe: async () => 0,
-    $queryRawUnsafe: async <Result>(query: string, ids: readonly string[]) =>
-      ids.map((id) => ({ id,
-        publishedAt: "2026-08-19T10:00:00.000000Z",
-        observedAt: "2026-08-19T10:00:00.000000Z",
-        observedThrough: !id.startsWith("future-") && !postCutoffIds.has(id),
-      })) as Result,
-    feedItem: { findMany },
+    $queryRawUnsafe: (params.queryRaw ?? jest.fn(async () => [{
+      hasPotentialCandidates: params.hasPotentialCandidates,
+    }])) as PrismaFeedClient["$queryRawUnsafe"],
+    feedItem: {
+      count: async () => params.physicalRowsRead,
+      findMany: params.findMany as PrismaFeedClient["feedItem"]["findMany"],
+    },
   } as unknown as PrismaFeedClient),
 } as unknown as PrismaFeedClient);
+
+const keysetPageArgs = (
+  query: string,
+  values: readonly unknown[],
+): Parameters<PrismaFeedClient["feedItem"]["findMany"]>[0] => {
+  const timestampPolicy = query.includes('ORDER BY feed."published_at"')
+    ? "published_at" as const
+    : "observed_at" as const;
+  const timestampKey = timestampPolicy === "published_at"
+    ? "publishedAt" as const
+    : "observedAt" as const;
+  const afterId = values[7] as string | null;
+  return {
+    where: {
+      tenantId: values[0] as string,
+      workspaceId: values[1] as string,
+      interestId: (values[2] as string | null) ?? undefined,
+      publishedAt: timestampPolicy === "published_at"
+        ? { gte: values[3] as Date, lt: values[4] as Date }
+        : undefined,
+      observedAt: timestampPolicy === "observed_at"
+        ? { gte: values[3] as Date, lt: values[4] as Date,
+            lte: values[5] as Date }
+        : undefined,
+    },
+    orderBy: [{ [timestampKey]: "desc" }, { id: "desc" }],
+    ...(afterId === null ? {} : { cursor: { id: afterId }, skip: 1 }),
+    take: values[8] as number,
+  };
+};
+
+const keysetRow = (item: PrismaFeedItemRecord, query: string) => ({
+  id: item.id,
+  cursorTimestamp: exactTimestamp(query.includes('ORDER BY feed."published_at"')
+    ? item.publishedAt
+    : item.observedAt),
+});
+
+const exactEvidence = (id: string) => ({
+  id,
+  sourceItemId: `source-${id}`,
+  body: `Original source body for ${id}`,
+  publishedAt: "2026-08-19T10:00:00.000000Z",
+  observedAt: "2026-08-19T10:00:00.000000Z",
+  observedThrough: true,
+});
+
+const exactTimestamp = (value: Date): string =>
+  value.toISOString().replace(".000Z", ".000000Z");
 
 const postCutoffIds = new Set<string>();
 

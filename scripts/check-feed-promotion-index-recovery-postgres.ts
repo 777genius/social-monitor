@@ -104,14 +104,17 @@ async function main(): Promise<void> {
       "mismatched earlier catalog index was automatically resolved");
     await ownerQuery(pool, `DROP INDEX CONCURRENTLY public."${indexes[1]}"`);
     await ownerQuery(pool, `CREATE INDEX CONCURRENTLY "${indexes[1]}" ON public.feed_items
-      (tenant_id, workspace_id, interest_id, status, published_at DESC, id DESC)`);
+      (tenant_id, workspace_id, interest_id, published_at DESC, id DESC)
+      WHERE status = 'VISIBLE'`);
     await ownerQuery(pool, `DROP INDEX CONCURRENTLY public."${indexes[2]}"`);
     assert(!run("recover", databaseUrl, false),
       "partial four-index catalog progression was automatically resolved");
     await ownerQuery(pool, `CREATE INDEX CONCURRENTLY "${indexes[2]}" ON public.feed_items
-      (tenant_id, workspace_id, status, observed_at DESC, id DESC)`);
+      (tenant_id, workspace_id, observed_at DESC, id DESC)
+      WHERE status = 'VISIBLE'`);
     await ownerQuery(pool, `CREATE INDEX CONCURRENTLY IF NOT EXISTS "${indexes[3]}"
-      ON public.feed_items (tenant_id, workspace_id, status, observed_at DESC, id DESC)`);
+      ON public.feed_items (tenant_id, workspace_id, interest_id, observed_at DESC, id DESC)
+      WHERE status = 'VISIBLE'`);
     await pool.query(`UPDATE _prisma_migrations SET logs=$2
       WHERE migration_name=$1`, [migration, recognizedLog(indexes[3])]);
     assert(!run("recover", databaseUrl, false),

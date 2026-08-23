@@ -1,3 +1,5 @@
+import { READER_PROMOTION_PROVIDER_ALIASES } from "@social-monitor/shared-kernel";
+
 import {
   classifyFeedPromotionEligibility,
   type FeedItem,
@@ -29,6 +31,10 @@ import {
 const PROVIDER_SIGNAL_SCAN_LIMIT = 1_000;
 const PROMOTION_INTERNAL_PAGE_SIZE = 200;
 const PROMOTION_TRANSACTION_TIMEOUT_MS = 30_000;
+const PROMOTION_PROVIDER_KEYS = [
+  ...Object.values(READER_PROMOTION_PROVIDER_ALIASES).flat(),
+  "github-trending-page",
+] as const;
 
 export class PrismaFeedItemReadRepository implements
   FeedItemReadRepositoryPort, PromotionFeedItemSnapshotRepositoryPort
@@ -149,19 +155,26 @@ const scanPromotionSnapshot = async (
   const sourceContent = [] as {
     feedItemId: string; sourceItemId: string; body: string;
   }[];
+  const preflight = await promotionScanPreflight(transaction, query);
+  if (preflight.physicalRowsRead > PROMOTION_PHYSICAL_ROW_CEILING) {
+    return { ok: false, reason: "physical_row_ceiling_exceeded",
+      physicalRowsRead: PROMOTION_PHYSICAL_ROW_CEILING + 1,
+      eligibleItemCount: 0, exhausted: false };
+  }
+  if (!preflight.hasPotentialCandidates) {
+    return { ok: true, candidates, supplementalItems, sourceContent,
+      physicalRowsRead: preflight.physicalRowsRead, exhausted: true };
+  }
+  await transaction.$executeRawUnsafe("SET LOCAL enable_seqscan = off");
+  await transaction.$executeRawUnsafe("SET LOCAL enable_sort = off");
   const visitedIds = new Set<string>();
   let physicalRowsRead = 0;
-  let afterId: string | undefined;
+  let after: PromotionKeysetCursor | undefined;
   while (physicalRowsRead <= PROMOTION_PHYSICAL_ROW_CEILING) {
     const remaining = PROMOTION_PHYSICAL_ROW_CEILING - physicalRowsRead;
     const take = Math.min(PROMOTION_INTERNAL_PAGE_SIZE, remaining + 1);
-    const records = await transaction.feedItem.findMany({
-      where: promotionWhere(query),
-      orderBy: promotionOrder(query),
-      ...(afterId === undefined ? {} : { cursor: { id: afterId }, skip: 1 }),
-      take,
-      include: { sourceItem: { select: { body: true } } },
-    });
+    const page = await readPromotionKeysetPage(transaction, query, after, take);
+    const records = await hydratePromotionPage(transaction, query, page);
     for (const record of records) {
       if (visitedIds.has(record.id)) {
         throw new Error("Promotion snapshot keyset returned a duplicate physical row");
@@ -178,39 +191,36 @@ const scanPromotionSnapshot = async (
         exhausted: false,
       };
     }
-    const exactTimestamps = await exactPageTimestamps(
+    const selectedRecords = records.filter((record) =>
+      isPromotionEvidenceCandidate(record));
+    const exactEvidence = await exactPageEvidence(
       transaction,
-      records.map((record) => record.id),
+      selectedRecords.map((record) => record.id),
       query.observedThrough,
     );
     for (const record of records) {
       const item = feedItemFromPrisma(record);
       const snapshot = item.toSnapshot();
+      const exact = exactEvidence.get(record.id);
       if (query.timestampPolicy === "published_at" &&
-          exactTimestamps.get(record.id)?.observedThrough !== true) {
+          exact?.observedThrough !== true) {
         continue;
       }
-      if (record.sourceItem === undefined ||
-          record.sourceItem.body === undefined) {
-        throw new Error("Promotion snapshot source content row is missing");
-      }
-      sourceContent.push({
-        feedItemId: record.id,
-        sourceItemId: record.sourceItemId,
-        body: record.sourceItem.body,
-      });
-      if (snapshot.providerKey.trim().toLowerCase() === "github-trending-page") {
-        supplementalItems.push(item);
-      }
+      const supplemental = isGitHubTrendingProvider(snapshot.providerKey);
       const canonical = classifyFeedPromotionEligibility({
         providerKey: snapshot.providerKey,
         providerMetadata: snapshot.providerMetadata,
       });
-      if (!canonical.eligible) continue;
-      const exact = exactTimestamps.get(record.id);
-      if (exact === undefined) {
-        throw new Error("Promotion snapshot exact timestamp row is missing");
+      if (!canonical.eligible && !supplemental) continue;
+      if (exact === undefined || exact.sourceItemId !== record.sourceItemId) {
+        throw new Error("Promotion snapshot source content row is missing");
       }
+      sourceContent.push({ feedItemId: record.id,
+        sourceItemId: exact.sourceItemId, body: exact.body });
+      if (supplemental) {
+        supplementalItems.push(item);
+      }
+      if (!canonical.eligible) continue;
       candidates.push({
         item,
         canonical,
@@ -229,7 +239,7 @@ const scanPromotionSnapshot = async (
         };
       }
     }
-    if (records.length < take) {
+    if (page.length < take) {
       return {
         ok: true,
         candidates,
@@ -239,12 +249,150 @@ const scanPromotionSnapshot = async (
         exhausted: true,
       };
     }
-    afterId = (records.at(-1) as PrismaFeedItemRecord).id;
+    const last = page.at(-1);
+    if (last === undefined) {
+      throw new Error("Promotion snapshot keyset page ended without a cursor");
+    }
+    after = { id: last.id, timestamp: last.cursorTimestamp };
   }
   throw new Error("Promotion snapshot scan invariant failed");
 };
 
-const exactPageTimestamps = async (
+type PromotionKeysetRow = {
+  readonly id: string;
+  readonly cursorTimestamp: string;
+};
+
+type PromotionKeysetCursor = {
+  readonly id: string;
+  readonly timestamp: string;
+};
+
+const readPromotionKeysetPage = async (
+  transaction: PrismaFeedClient,
+  query: ReadPromotionFeedItemSnapshotQuery,
+  after: PromotionKeysetCursor | undefined,
+  take: number,
+): Promise<readonly PromotionKeysetRow[]> => {
+  const timestampColumn = query.timestampPolicy === "published_at"
+    ? 'feed."published_at"'
+    : 'feed."observed_at"';
+  const observedCutoff = query.timestampPolicy === "observed_at"
+    ? "AND feed.\"observed_at\" <= $6::timestamptz"
+    : "AND $6::timestamptz IS NOT NULL";
+  const interestFilter = query.interestId === undefined
+    ? "AND $3::uuid IS NULL"
+    : "AND feed.\"interest_id\" = $3::uuid";
+  const rows = await transaction.$queryRawUnsafe!<readonly PromotionKeysetRow[]>(
+    `SELECT feed."id"::text AS "id",
+            to_char(${timestampColumn} AT TIME ZONE 'UTC',
+              'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS "cursorTimestamp"
+       FROM "public"."feed_items" AS feed
+      WHERE feed."tenant_id" = $1::uuid
+        AND feed."workspace_id" = $2::uuid
+        AND feed."status" = 'VISIBLE'::"FeedItemStatus"
+        ${interestFilter}
+        AND ${timestampColumn} >= $4::timestamptz
+        AND ${timestampColumn} < $5::timestamptz
+        ${observedCutoff}
+        AND ($7::timestamptz IS NULL OR
+          (${timestampColumn}, feed."id") < ($7::timestamptz, $8::uuid))
+      ORDER BY ${timestampColumn} DESC, feed."id" DESC
+      LIMIT $9`,
+    query.tenantId,
+    query.workspaceId,
+    query.interestId ?? null,
+    query.windowStartedAt,
+    query.windowEndedAt,
+    query.observedThrough,
+    after?.timestamp ?? null,
+    after?.id ?? null,
+    take,
+  );
+  if (rows.some((row) =>
+    typeof row.id !== "string" || typeof row.cursorTimestamp !== "string")) {
+    throw new Error("Promotion snapshot keyset row is malformed");
+  }
+  return rows;
+};
+
+const hydratePromotionPage = async (
+  transaction: PrismaFeedClient,
+  query: ReadPromotionFeedItemSnapshotQuery,
+  page: readonly PromotionKeysetRow[],
+): Promise<readonly PrismaFeedItemRecord[]> => {
+  if (page.length === 0) return [];
+  const ids = page.map((row) => row.id);
+  const records = await transaction.feedItem.findMany({
+    where: {
+      tenantId: query.tenantId,
+      workspaceId: query.workspaceId,
+      status: "VISIBLE",
+      id: { in: ids },
+    },
+    take: ids.length,
+  });
+  const byId = new Map(records.map((record) => [record.id, record] as const));
+  return ids.map((id) => {
+    const record = byId.get(id);
+    if (record === undefined) {
+      throw new Error("Promotion snapshot keyset row could not be hydrated");
+    }
+    return record;
+  });
+};
+
+const promotionScanPreflight = async (
+  transaction: PrismaFeedClient,
+  query: ReadPromotionFeedItemSnapshotQuery,
+): Promise<{
+  readonly physicalRowsRead: number;
+  readonly hasPotentialCandidates: boolean;
+}> => {
+  const physicalRowsRead = await transaction.feedItem.count({
+    where: promotionWhere(query),
+  });
+  if (!Number.isInteger(physicalRowsRead) || physicalRowsRead < 0) {
+    throw new Error("Promotion snapshot physical count is malformed");
+  }
+  if (physicalRowsRead > PROMOTION_PHYSICAL_ROW_CEILING) {
+    return { physicalRowsRead, hasPotentialCandidates: false };
+  }
+  const rows = await transaction.$queryRawUnsafe!<readonly {
+    readonly hasPotentialCandidates: boolean;
+  }[]>(
+    `SELECT EXISTS (
+       SELECT 1 FROM feed_items
+      WHERE tenant_id = $1::uuid
+        AND workspace_id = $2::uuid
+        AND status = 'VISIBLE'::"FeedItemStatus"
+        AND ($3::uuid IS NULL OR interest_id = $3::uuid)
+        AND (($7::text = 'published_at'
+              AND published_at >= $4::timestamptz
+              AND published_at < $5::timestamptz)
+          OR ($7::text = 'observed_at'
+              AND observed_at >= $4::timestamptz
+              AND observed_at < $5::timestamptz
+              AND observed_at <= $6::timestamptz))
+        AND lower(btrim(provider_key)) = ANY($8::text[])
+      ) AS "hasPotentialCandidates"`,
+    query.tenantId,
+    query.workspaceId,
+    query.interestId ?? null,
+    query.windowStartedAt,
+    query.windowEndedAt,
+    query.observedThrough,
+    query.timestampPolicy,
+    PROMOTION_PROVIDER_KEYS,
+  );
+  const row = rows[0];
+  if (row === undefined || typeof row.hasPotentialCandidates !== "boolean") {
+    throw new Error("Promotion snapshot preflight result is malformed");
+  }
+  return { physicalRowsRead, hasPotentialCandidates: row.hasPotentialCandidates };
+};
+
+const exactPageEvidence = async (
   transaction: PrismaFeedClient,
   ids: readonly string[],
   cutoff: Date,
@@ -252,6 +400,8 @@ const exactPageTimestamps = async (
   readonly publishedAt: string;
   readonly observedAt: string;
   readonly observedThrough: boolean;
+  readonly sourceItemId: string;
+  readonly body: string;
 }>> => {
   if (ids.length === 0) return new Map();
   const rows = await transaction.$queryRawUnsafe!<readonly {
@@ -259,20 +409,37 @@ const exactPageTimestamps = async (
     readonly publishedAt: string;
     readonly observedAt: string;
     readonly observedThrough: boolean;
+    readonly sourceItemId: string;
+    readonly body: string;
   }[]>(
-    `SELECT id::text AS id,
-            to_char(published_at AT TIME ZONE 'UTC',
+    `SELECT feed.id::text AS id,
+            feed.source_item_id::text AS "sourceItemId",
+            source.body,
+            to_char(feed.published_at AT TIME ZONE 'UTC',
               'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS "publishedAt",
-            to_char(observed_at AT TIME ZONE 'UTC',
+            to_char(feed.observed_at AT TIME ZONE 'UTC',
               'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS "observedAt",
-            observed_at <= $2::timestamptz AS "observedThrough"
-       FROM feed_items
-      WHERE id = ANY($1::uuid[])`,
+            feed.observed_at <= $2::timestamptz AS "observedThrough"
+       FROM feed_items feed
+       JOIN source_items source ON source.id = feed.source_item_id
+      WHERE feed.id = ANY($1::uuid[])`,
     ids,
     cutoff,
   );
   return new Map(rows.map((row) => [row.id, row] as const));
 };
+
+const isPromotionEvidenceCandidate = (record: PrismaFeedItemRecord): boolean => {
+  const snapshot = feedItemFromPrisma(record).toSnapshot();
+  return isGitHubTrendingProvider(snapshot.providerKey) ||
+    classifyFeedPromotionEligibility({
+      providerKey: snapshot.providerKey,
+      providerMetadata: snapshot.providerMetadata,
+    }).eligible;
+};
+
+const isGitHubTrendingProvider = (providerKey: string): boolean =>
+  providerKey.trim().toLowerCase() === "github-trending-page";
 
 const promotionWhere = (
   query: ReadPromotionFeedItemSnapshotQuery,
@@ -292,13 +459,6 @@ const promotionWhere = (
     ? { gte: query.windowStartedAt, lt: query.windowEndedAt }
     : undefined,
 });
-
-const promotionOrder = (
-  query: ReadPromotionFeedItemSnapshotQuery,
-): Parameters<PrismaFeedClient["feedItem"]["findMany"]>[0]["orderBy"] =>
-  query.timestampPolicy === "published_at"
-    ? [{ publishedAt: "desc" }, { id: "desc" }]
-    : [{ observedAt: "desc" }, { id: "desc" }];
 
 const commonWhere = (
   query: ListFeedItemSignalCandidatesQuery,
