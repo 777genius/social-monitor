@@ -17,7 +17,7 @@ describe("historical degraded recovery authority", () => {
 
   it.each([
     ["2026-08-18", 277],
-    ["2026-08-19", 303],
+    ["2026-08-19", 304],
   ] as const)("prepares canonical authority for %s", (date, count) => {
     const prepared = prepareHistoricalDegradedRecoveryAuthority(
       preparation(date, count),
@@ -294,7 +294,7 @@ function buildDataset(
   aggregateSha256: sha256(`dataset:${count}`),
   providerCounts: date === "2026-08-18"
     ? { "hacker-news": 100, reddit: 79, rss: 26, "x-twitter": 72 }
-    : { "hacker-news": 99, reddit: 90, rss: 27, "x-twitter": 87 },
+    : { "hacker-news": 99, reddit: 90, rss: 28, "x-twitter": 87 },
   };
 }
 

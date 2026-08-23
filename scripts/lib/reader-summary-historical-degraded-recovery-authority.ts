@@ -29,13 +29,13 @@ const allowedDays = Object.freeze({
     }),
   }),
   "2026-08-19": Object.freeze({
-    count: 303,
+    count: 304,
     xBackfillRowCount: 77,
     xBaseRowCount: 10,
     providerCounts: Object.freeze({
       "hacker-news": 99,
       reddit: 90,
-      rss: 27,
+      rss: 28,
       "x-twitter": 87,
     }),
   }),
