@@ -1,6 +1,7 @@
 import {
   evaluateReaderSummaryGitHubProjection,
   exactUtcDay,
+  githubProjectionItemTouchesDay,
   historicalOmissionReaderSummaryGitHubProjectionAudit,
   notApplicableReaderSummaryGitHubProjectionAudit,
   unavailableReaderSummaryGitHubProjectionAudit,
@@ -26,6 +27,7 @@ export type ReaderSummaryPrepublicationDecision = {
 export type ReaderSummaryHistoricalGitHubOmission = {
   readonly reason: string;
   readonly authorizedAt: Date;
+  readonly readerQuality?: "limited_sources";
 };
 
 export const evaluateReaderSummaryPrepublication = async (params: {
@@ -77,10 +79,44 @@ export const evaluateReaderSummaryPrepublication = async (params: {
       artifact: params.artifact,
     });
   } else if (params.historicalGitHubOmission !== undefined) {
-    projection = historicalOmissionReaderSummaryGitHubProjectionAudit({
-      artifact: params.artifact,
-      ...params.historicalGitHubOmission,
-    });
+    try {
+      const durable = await params.githubProjectionReader.read({
+        tenantId: snapshot.tenantId,
+        workspaceId: snapshot.workspaceId,
+        dayStartedAt: snapshot.period.startedAt,
+        dayEndedAt: snapshot.period.endedAt,
+        observedThrough: params.observedThrough,
+      });
+      const canonical = evaluateReaderSummaryGitHubProjection({
+        artifact: params.artifact,
+        eligibleBindingIds: durable.eligibleBindingIds,
+        items: durable.items,
+        pageCount: durable.pageCount,
+        observedThrough: params.observedThrough,
+      });
+      const requestedDayItemCount = durable.items.filter((item) =>
+        githubProjectionItemTouchesDay(
+          item,
+          snapshot.period.startedAt,
+          snapshot.period.endedAt,
+        ),
+      ).length;
+      projection = Number.isSafeInteger(durable.pageCount) &&
+          durable.pageCount >= 1 &&
+          requestedDayItemCount === 0
+        ? historicalOmissionReaderSummaryGitHubProjectionAudit({
+            artifact: params.artifact,
+            ...params.historicalGitHubOmission,
+            observedThrough: params.observedThrough,
+          })
+        : canonical;
+    } catch {
+      projection = unavailableReaderSummaryGitHubProjectionAudit({
+        artifact: params.artifact,
+        reason:
+          "Durable GitHub projection could not prove canonical zero before historical omission.",
+      });
+    }
   } else {
     try {
       const durable = await params.githubProjectionReader.read({

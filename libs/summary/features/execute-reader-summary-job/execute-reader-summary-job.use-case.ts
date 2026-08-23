@@ -425,9 +425,21 @@ export class ExecuteReaderSummaryJobUseCase {
     const draftWithContext = context.unavailable
       ? withReaderSummaryContextUnavailable(attempt.draft)
       : attempt.draft;
+    const qualityDraft =
+      this.historicalGitHubOmission?.readerQuality === undefined
+        ? draftWithContext
+        : {
+            ...draftWithContext,
+            qualityFlags: [
+              ...draftWithContext.qualityFlags.filter(
+                (flag) => flag !== "limited_sources",
+              ),
+              this.historicalGitHubOmission.readerQuality,
+            ],
+          };
     const draftWithContent = buildReaderSummaryDraftWithPromotionContent(
       modelEvidence,
-      draftWithContext,
+      qualityDraft,
     );
     const calibratedDraft = {
       ...draftWithContent,

@@ -2,6 +2,7 @@ import type {
   ReaderSummaryPublicationCommand,
   ReaderSummaryPublicationOutcome,
 } from "./reader-summary-publication.port";
+import type { ReaderSummaryJob } from "../domain";
 
 export type ReaderSummaryRecoveryArtifactDigest = Readonly<{
   artifactFormat: string;
@@ -30,6 +31,9 @@ export type ReaderSummaryRecoveryProvenance = Readonly<{
 export type ReaderSummaryRecoveryFinalizationCommand = Readonly<{
   publication: ReaderSummaryPublicationCommand;
   provenance: ReaderSummaryRecoveryProvenance;
+  candidate?: Readonly<{
+    runningJob: ReaderSummaryJob;
+  }>;
 }>;
 
 export type ReaderSummaryRecoveryFinalizationOutcome = Exclude<
