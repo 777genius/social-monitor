@@ -131,12 +131,36 @@ describe("historical degraded recovery live GitHub zero", () => {
       },
     }));
     const collection = Buffer.from(JSON.stringify({
+      schemaVersion: 1,
       artifactFormat: "reader-summary-clean-real-day-collection-v1",
+      generatedBy: "npm run run:reader-summary-clean-real-day-collection",
       run: { collectionDate: "2026-08-18" },
+      model: {
+        mode: "targeted_real_binding_collection",
+        liveNetwork: true,
+        liveNetworkProviderKeys: [
+          "hacker-news",
+          "reddit",
+          "rss",
+          "x-twitter",
+        ],
+        durableSnapshotReuseProviderKeys: [],
+        rawProviderPayloadPersistedInReport: false,
+        rawPostTextPersistedInReport: false,
+        rawProviderConfigPersistedInReport: false,
+      },
       inputs: {
-        scope: {
-          tenantId: "00000000-0000-7000-8000-000000006101",
-          workspaceId: "00000000-0000-7000-8000-000000006102",
+        database: "local-postgres",
+        providerKeys: [
+          "hacker-news",
+          "reddit",
+          "rss",
+          "x-twitter",
+        ],
+        xCollectorConfigured: true,
+        targetPublishedWindow: {
+          startInclusive: "2026-08-18T00:00:00.000Z",
+          endExclusive: "2026-08-19T00:00:00.000Z",
         },
       },
       targetWindow: {
@@ -232,6 +256,15 @@ describe("historical degraded recovery live GitHub zero", () => {
 
     expect(() => verifyHistoricalDegradedRecoveryInputArtifacts(params))
       .not.toThrow();
+    expect(() => verifyHistoricalDegradedRecoveryInputArtifacts({
+      ...params,
+      files: {
+        ...params.files,
+        collectionArtifactBytes: Buffer.from(
+          collection.toString("utf8").replace("local-postgres", "other-db"),
+        ),
+      },
+    })).toThrow("fresh live truth");
     expect(() => verifyHistoricalDegradedRecoveryInputArtifacts({
       ...params,
       files: {
