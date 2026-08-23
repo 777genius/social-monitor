@@ -208,6 +208,36 @@ test("rejects an incomplete generated import graph", async () => {
   });
 });
 
+test("ignores import-like text in generated comments and strings", async () => {
+  await withFixture(async (root) => {
+    await writeCli(root);
+    const result = await ensureReaderSummaryPrismaClient({
+      repositoryRoot: root,
+      report: () => undefined,
+      execute: async () => {
+        await writeFileWithParents(
+          root,
+          "prisma/generated/client/client.ts",
+          [
+            "/**",
+            " * import { PrismaClient } from './generated/prisma/client'",
+            " * export * from './missing-comment-example'",
+            " */",
+            "const example = 'require(\\\"./missing-string-example\\\")';",
+            "export { example };",
+            "",
+          ].join("\n"),
+        );
+        return {};
+      },
+    });
+    assert.deepEqual(result, {
+      entry: "prisma/generated/client/client.ts",
+      moduleCount: 1,
+    });
+  });
+});
+
 test("rejects a generated entry symlink", async (t) => {
   if (process.platform === "win32") return t.skip("symlink permissions vary");
   await withFixture(async (root) => {

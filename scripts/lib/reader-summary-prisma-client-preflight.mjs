@@ -2,6 +2,8 @@ import { constants } from "node:fs";
 import { access, lstat, readFile } from "node:fs/promises";
 import { dirname, extname, relative, resolve } from "node:path";
 
+import ts from "typescript";
+
 import {
   readerSummaryFailureDetails,
   redactReaderSummaryDiagnostic,
@@ -11,9 +13,42 @@ const clientEntry = "prisma/generated/client/client.ts";
 const prismaCliEntry = "node_modules/prisma/build/index.js";
 const codegenDatabaseUrl =
   "postgresql://reader_summary_codegen@127.0.0.1:5432/reader_summary_codegen";
-const relativeModulePattern =
-  /(?:\bfrom\s*|\bimport\s*|\brequire\(\s*)["'](\.{1,2}\/[^"']+)["']/gu;
 const supportedExtensions = [".ts", ".js", ".json"];
+
+const relativeModuleSpecifiers = (path, source) => {
+  const sourceFile = ts.createSourceFile(
+    path,
+    source,
+    ts.ScriptTarget.Latest,
+    false,
+    ts.ScriptKind.TS,
+  );
+  const specifiers = [];
+  const addSpecifier = (node) => {
+    if (node !== undefined && ts.isStringLiteralLike(node) && /^\.{1,2}\//u.test(node.text)) {
+      specifiers.push(node.text);
+    }
+  };
+  const visit = (node) => {
+    if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) {
+      addSpecifier(node.moduleSpecifier);
+    } else if (
+      ts.isImportEqualsDeclaration(node) &&
+      ts.isExternalModuleReference(node.moduleReference)
+    ) {
+      addSpecifier(node.moduleReference.expression);
+    } else if (
+      ts.isCallExpression(node) &&
+      (node.expression.kind === ts.SyntaxKind.ImportKeyword ||
+        (ts.isIdentifier(node.expression) && node.expression.text === "require"))
+    ) {
+      addSpecifier(node.arguments[0]);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  return specifiers;
+};
 
 const isWithin = (root, candidate) => {
   const pathFromRoot = relative(root, candidate);
@@ -60,11 +95,11 @@ const validateGeneratedGraph = async (repositoryRoot) => {
     if (visited.has(current)) continue;
     visited.add(current);
     const source = await readFile(current, "utf8");
-    for (const match of source.matchAll(relativeModulePattern)) {
-      const imported = await resolveRelativeModule(graphRoot, current, match[1]);
+    for (const specifier of relativeModuleSpecifiers(current, source)) {
+      const imported = await resolveRelativeModule(graphRoot, current, specifier);
       if (imported === undefined) {
         throw new Error(
-          `generated module ${relative(graphRoot, current)} has unresolved import ${JSON.stringify(match[1])}`,
+          `generated module ${relative(graphRoot, current)} has unresolved import ${JSON.stringify(specifier)}`,
         );
       }
       pending.push(imported);
