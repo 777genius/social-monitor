@@ -1,9 +1,38 @@
+import { spawnSync } from "node:child_process";
+import { resolve } from "node:path";
+
 import {
   assertHistoricalDegradedRecoveryCliArguments,
   recoveryHelpText,
 } from "./reader-summary-historical-degraded-recovery";
 
 describe("historical degraded recovery CLI evidence contract", () => {
+  it("initializes every CLI helper before the executable entrypoint runs", () => {
+    const result = spawnSync(
+      process.execPath,
+      [
+        "-r",
+        "ts-node/register",
+        "-r",
+        "tsconfig-paths/register",
+        resolve(__dirname, "reader-summary-historical-degraded-recovery.ts"),
+        "invalid-command",
+      ],
+      {
+        cwd: process.cwd(),
+        encoding: "utf8",
+        env: { ...process.env, NODE_ENV: "test" },
+        timeout: 30_000,
+      },
+    );
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "Command must be install-input, prepare, run, or verify",
+    );
+    expect(result.stderr).not.toContain("before initialization");
+  });
+
   it.each([
     ["prepare", ["prepare", "--date", "2026-08-18"]],
     ["run", ["run", "--date", "2026-08-18", "--authority-sha256", "a".repeat(64)]],

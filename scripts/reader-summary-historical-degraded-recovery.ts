@@ -44,13 +44,6 @@ type RecoveryInputArtifact = Exclude<
   "authority"
 >;
 
-if (require.main === module) {
-  void main().catch((error: unknown) => {
-    console.error(error instanceof Error ? error.message : String(error));
-    process.exitCode = 1;
-  });
-}
-
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   if (args.includes("--help") || args.length === 0) {
@@ -469,4 +462,11 @@ Verify (read-only; rechecks live truth/files/source and public receipt):
   npm run reader-summary:historical-degraded-recovery -- verify --date DATE --authority-sha256 SHA
 
 DATE is restricted to 2026-08-18 or 2026-08-19 and the production workspace/UTC daily scope is compiled in. This command is not scheduled.`;
+}
+
+if (require.main === module) {
+  void main().catch((error: unknown) => {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  });
 }
