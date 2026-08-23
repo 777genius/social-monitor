@@ -149,19 +149,75 @@ describe("historical degraded recovery live GitHub zero", () => {
       },
       blockingPassed: true,
     }));
-    const quality = (datasetSha256: string) => Buffer.from(JSON.stringify({
-      artifactFormat: "yesterday-social-collection-quality-report-v1",
-      collectionDate: "2026-08-18",
-      collectionBlockingPassed: true,
-      inputs: {
-        historicalRegenerationFreshness: {
-          mode: "historical_regeneration_current_snapshot",
-          generalAllowHistorical: false,
-          manifestFileSha256: sha256(manifest),
-          datasetSha256,
+    const qualityGates = {
+      globalXCollectionSucceeded: true,
+      postgresFeedItemsAvailable: true,
+      allExpectedPrimarySourcesPresent: true,
+      redditVisibleFeedItemsAtLeast50: true,
+      xTwitterVisibleFeedItemsMeetProductionMinimum: true,
+      everyPrimaryItemHasText: true,
+      everyPrimaryItemHasCanonicalUrl: true,
+      primaryDuplicateRateBelowFivePercent: true,
+      primaryEngagementMetadataCoverageAtLeast90Percent: true,
+      primaryFreshnessP90Below48Hours: true,
+      xCollectorLedgerAvailable: true,
+      xCollectorRunCountAtLeast20: true,
+      xCollectorCompletedRunRateMeetsProductionMinimum: true,
+      xCollectorUsableRunRateMeetsProductionMinimum: true,
+      xCollectorNoNonTerminalOrUnknownRuns: true,
+      xCollectorLedgerJsonValid: true,
+      xCollectorReturnedAtLeast500Tweets: true,
+      xCollectorHasTopAndLatest: true,
+      xCollectorHasStrictAndDiscoveryLanes: true,
+      xCollectorDistinctQueryHashesAtLeast4: true,
+      xAccountPoolStateAvailable: true,
+      xAccountPoolTracksPerAccount: true,
+      dayWindowAuditAvailable: true,
+      observedWindowFilterIsStrict: true,
+      duplicateAndLowRelevanceCountsReported: true,
+      summaryArtifactAbsenceIsExplicit: true,
+      noOrphanFeedInterestReferences: true,
+      noOrphanFeedSourceItemReferences: true,
+      noOrphanFeedSourceBindingReferences: true,
+      collectionIntegrityCleanForEval: true,
+      noRawSecretFragments: true,
+    };
+    const quality = (
+      datasetSha256: string,
+      options: Readonly<{
+        blockingPassed?: boolean;
+        gateOverrides?: Readonly<Record<string, boolean>>;
+        omitGate?: string;
+      }> = {},
+    ) => {
+      const gates: Record<string, boolean> = {
+        ...qualityGates,
+        ...options.gateOverrides,
+      };
+      if (options.omitGate !== undefined) delete gates[options.omitGate];
+      return Buffer.from(JSON.stringify({
+        schemaVersion: 1,
+        artifactFormat: "yesterday-social-collection-quality-report-v1",
+        collectionDate: "2026-08-18",
+        generatedBy: "npm run check:yesterday-social-collection-quality",
+        collectionBlockingPassed: options.blockingPassed ?? true,
+        summaryQualityVerified: false,
+        completionStatus:
+          "collection_quality_verified_summary_artifact_missing",
+        summaryArtifactCoverage: {
+          verificationStatus: "not_verified_missing_summary_artifact",
         },
-      },
-    }));
+        qualityGates: gates,
+        inputs: {
+          historicalRegenerationFreshness: {
+            mode: "historical_regeneration_current_snapshot",
+            generalAllowHistorical: false,
+            manifestFileSha256: sha256(manifest),
+            datasetSha256,
+          },
+        },
+      }));
+    };
     const params = {
       requestedUtcDate: "2026-08-18",
       files: {
@@ -176,6 +232,40 @@ describe("historical degraded recovery live GitHub zero", () => {
 
     expect(() => verifyHistoricalDegradedRecoveryInputArtifacts(params))
       .not.toThrow();
+    expect(() => verifyHistoricalDegradedRecoveryInputArtifacts({
+      ...params,
+      files: {
+        ...params.files,
+        collectionQualityReportBytes: quality(dataset.aggregateSha256, {
+          blockingPassed: false,
+          gateOverrides: { xCollectorHasStrictAndDiscoveryLanes: false },
+        }),
+      },
+    })).not.toThrow();
+    expect(() => verifyHistoricalDegradedRecoveryInputArtifacts({
+      ...params,
+      files: {
+        ...params.files,
+        collectionQualityReportBytes: quality(dataset.aggregateSha256, {
+          blockingPassed: false,
+          gateOverrides: {
+            xCollectorHasStrictAndDiscoveryLanes: false,
+            xCollectorHasTopAndLatest: false,
+          },
+        }),
+      },
+    })).toThrow("fresh live truth");
+    expect(() => verifyHistoricalDegradedRecoveryInputArtifacts({
+      ...params,
+      files: {
+        ...params.files,
+        collectionQualityReportBytes: quality(dataset.aggregateSha256, {
+          blockingPassed: false,
+          gateOverrides: { xCollectorHasStrictAndDiscoveryLanes: false },
+          omitGate: "noRawSecretFragments",
+        }),
+      },
+    })).toThrow("fresh live truth");
     expect(() => verifyHistoricalDegradedRecoveryInputArtifacts({
       ...params,
       files: {

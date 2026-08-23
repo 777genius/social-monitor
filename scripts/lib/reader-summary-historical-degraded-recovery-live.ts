@@ -57,6 +57,80 @@ const noModelCallServingContext = Object.freeze({
   recoveryKind: "historical-degraded-summary-reuse",
 });
 
+const historicalRecoveryQualityGateNames = [
+  "globalXCollectionSucceeded",
+  "postgresFeedItemsAvailable",
+  "allExpectedPrimarySourcesPresent",
+  "redditVisibleFeedItemsAtLeast50",
+  "xTwitterVisibleFeedItemsMeetProductionMinimum",
+  "everyPrimaryItemHasText",
+  "everyPrimaryItemHasCanonicalUrl",
+  "primaryDuplicateRateBelowFivePercent",
+  "primaryEngagementMetadataCoverageAtLeast90Percent",
+  "primaryFreshnessP90Below48Hours",
+  "xCollectorLedgerAvailable",
+  "xCollectorRunCountAtLeast20",
+  "xCollectorCompletedRunRateMeetsProductionMinimum",
+  "xCollectorUsableRunRateMeetsProductionMinimum",
+  "xCollectorNoNonTerminalOrUnknownRuns",
+  "xCollectorLedgerJsonValid",
+  "xCollectorReturnedAtLeast500Tweets",
+  "xCollectorHasTopAndLatest",
+  "xCollectorHasStrictAndDiscoveryLanes",
+  "xCollectorDistinctQueryHashesAtLeast4",
+  "xAccountPoolStateAvailable",
+  "xAccountPoolTracksPerAccount",
+  "dayWindowAuditAvailable",
+  "observedWindowFilterIsStrict",
+  "duplicateAndLowRelevanceCountsReported",
+  "summaryArtifactAbsenceIsExplicit",
+  "noOrphanFeedInterestReferences",
+  "noOrphanFeedSourceItemReferences",
+  "noOrphanFeedSourceBindingReferences",
+  "collectionIntegrityCleanForEval",
+  "noRawSecretFragments",
+] as const;
+
+const historicalRecoveryQualityReportPassed = (
+  quality: Readonly<Record<string, unknown>>,
+): boolean => {
+  if (
+    quality.schemaVersion !== 1 ||
+    quality.generatedBy !== "npm run check:yesterday-social-collection-quality" ||
+    quality.summaryQualityVerified !== false ||
+    quality.completionStatus !==
+      "collection_quality_verified_summary_artifact_missing"
+  ) {
+    return false;
+  }
+  const summaryArtifactCoverage = record(
+    quality.summaryArtifactCoverage,
+    "quality summary artifact coverage",
+  );
+  const qualityGates = record(quality.qualityGates, "quality gates");
+  const expectedGateNames = [...historicalRecoveryQualityGateNames].sort();
+  const actualGateNames = Object.keys(qualityGates).sort();
+  if (
+    summaryArtifactCoverage.verificationStatus !==
+      "not_verified_missing_summary_artifact" ||
+    stableJson(actualGateNames) !== stableJson(expectedGateNames) ||
+    Object.values(qualityGates).some((value) => typeof value !== "boolean")
+  ) {
+    return false;
+  }
+  const failedGateNames = Object.entries(qualityGates)
+    .filter(([, passed]) => passed === false)
+    .map(([name]) => name)
+    .sort();
+  return (
+    quality.collectionBlockingPassed === true && failedGateNames.length === 0
+  ) || (
+    quality.collectionBlockingPassed === false &&
+    stableJson(failedGateNames) ===
+      stableJson(["xCollectorHasStrictAndDiscoveryLanes"])
+  );
+};
+
 export class PrismaHistoricalDegradedRecoveryLiveVerifier
   implements HistoricalDegradedRecoveryLiveVerifier
 {
@@ -481,7 +555,7 @@ export const verifyHistoricalDegradedRecoveryInputArtifacts = (params: {
     ) !== baseCollection.xCount ||
     quality.artifactFormat !== "yesterday-social-collection-quality-report-v1" ||
     quality.collectionDate !== params.requestedUtcDate ||
-    quality.collectionBlockingPassed !== true ||
+    !historicalRecoveryQualityReportPassed(quality) ||
     qualityFreshness.mode !== "historical_regeneration_current_snapshot" ||
     qualityFreshness.generalAllowHistorical !== false ||
     qualityFreshness.manifestFileSha256 !== sha256(params.files.datasetManifestBytes) ||
