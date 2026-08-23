@@ -171,7 +171,29 @@ describe("historical degraded recovery live GitHub zero", () => {
           rss: 26,
         },
       },
-      blockingPassed: true,
+      qualityGates: {
+        targetBindingsPresent: true,
+        everyRequestedProviderSucceeded: false,
+        targetWindowFeedItemsAvailable: true,
+        everyRequestedProviderHasTargetItems: false,
+        noFreshOrphanInterestReferences: true,
+        noFreshOrphanSourceBindingReferences: true,
+        targetInterestSnapshotsPersisted: true,
+        targetSourceBindingSnapshotsPersisted: true,
+        freshSourceQueryLaneCoverageComplete: true,
+        freshMultipleQueryLanesObserved: true,
+        targetSourceQueryLaneCoverageComplete: true,
+        targetMultipleQueryLanesObserved: true,
+        providerCollectionObservabilityComplete: true,
+        providerAcquisitionModesAreConsistent: true,
+        everyRequestedProviderMeetsBlockingCoveragePolicy: false,
+        providerRetriesAreBounded: true,
+        durableSnapshotReuseIsSingleAttempt: true,
+        durableSnapshotProofMatchesRequestedDay: true,
+        partialProviderCoverageIsExplicit: true,
+        noRawSecretFragments: true,
+      },
+      blockingPassed: false,
     }));
     const qualityGates = {
       globalXCollectionSucceeded: true,
@@ -262,6 +284,18 @@ describe("historical degraded recovery live GitHub zero", () => {
         ...params.files,
         collectionArtifactBytes: Buffer.from(
           collection.toString("utf8").replace("local-postgres", "other-db"),
+        ),
+      },
+    })).toThrow("fresh live truth");
+    expect(() => verifyHistoricalDegradedRecoveryInputArtifacts({
+      ...params,
+      files: {
+        ...params.files,
+        collectionArtifactBytes: Buffer.from(
+          collection.toString("utf8").replace(
+            '"providerRetriesAreBounded":true',
+            '"providerRetriesAreBounded":false',
+          ),
         ),
       },
     })).toThrow("fresh live truth");

@@ -91,6 +91,57 @@ const historicalRecoveryQualityGateNames = [
   "noRawSecretFragments",
 ] as const;
 
+const historicalRecoveryCollectionGateNames = [
+  "targetBindingsPresent",
+  "everyRequestedProviderSucceeded",
+  "targetWindowFeedItemsAvailable",
+  "everyRequestedProviderHasTargetItems",
+  "noFreshOrphanInterestReferences",
+  "noFreshOrphanSourceBindingReferences",
+  "targetInterestSnapshotsPersisted",
+  "targetSourceBindingSnapshotsPersisted",
+  "freshSourceQueryLaneCoverageComplete",
+  "freshMultipleQueryLanesObserved",
+  "targetSourceQueryLaneCoverageComplete",
+  "targetMultipleQueryLanesObserved",
+  "providerCollectionObservabilityComplete",
+  "providerAcquisitionModesAreConsistent",
+  "everyRequestedProviderMeetsBlockingCoveragePolicy",
+  "providerRetriesAreBounded",
+  "durableSnapshotReuseIsSingleAttempt",
+  "durableSnapshotProofMatchesRequestedDay",
+  "partialProviderCoverageIsExplicit",
+  "noRawSecretFragments",
+] as const;
+
+const historicalRecoveryCollectionReportPassed = (
+  collection: Readonly<Record<string, unknown>>,
+  requestedUtcDate: string,
+): boolean => {
+  const qualityGates = record(collection.qualityGates, "collection quality gates");
+  const expectedGateNames = [...historicalRecoveryCollectionGateNames].sort();
+  const actualGateNames = Object.keys(qualityGates).sort();
+  if (
+    collection.blockingPassed !== false ||
+    stableJson(actualGateNames) !== stableJson(expectedGateNames) ||
+    Object.values(qualityGates).some((value) => typeof value !== "boolean")
+  ) {
+    return false;
+  }
+  const failedGateNames = Object.entries(qualityGates)
+    .filter(([, passed]) => passed === false)
+    .map(([name]) => name)
+    .sort();
+  const expectedFailedGateNames = requestedUtcDate === "2026-08-18"
+    ? [
+      "everyRequestedProviderHasTargetItems",
+      "everyRequestedProviderMeetsBlockingCoveragePolicy",
+      "everyRequestedProviderSucceeded",
+    ]
+    : ["everyRequestedProviderMeetsBlockingCoveragePolicy"];
+  return stableJson(failedGateNames) === stableJson(expectedFailedGateNames);
+};
+
 const historicalRecoveryQualityReportPassed = (
   quality: Readonly<Record<string, unknown>>,
 ): boolean => {
@@ -560,7 +611,7 @@ export const verifyHistoricalDegradedRecoveryInputArtifacts = (params: {
     collection.generatedBy !==
       "npm run run:reader-summary-clean-real-day-collection" ||
     record(collection.run, "collection run").collectionDate !== params.requestedUtcDate ||
-    collection.blockingPassed !== true ||
+    !historicalRecoveryCollectionReportPassed(collection, params.requestedUtcDate) ||
     collectionInputs.database !== "local-postgres" ||
     collectionInputs.xCollectorConfigured !== true ||
     stableJson(stringArray(collectionInputs.providerKeys, "collection providers")) !==
