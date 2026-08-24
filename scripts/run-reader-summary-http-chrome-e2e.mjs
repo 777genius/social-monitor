@@ -460,7 +460,6 @@ const run = async ({ config, supervisor, browserRun, remainingTimeoutMs }) => {
         timeoutMs: chromeDriverStartupTimeoutMs,
       }),
     });
-    const chromeDriver = driver.child;
     const driverPort = driver.port;
     process.stdout.write(
       `[reader-summary-e2e] chromedriver status=ready host=127.0.0.1 port=${driverPort}\n`,
