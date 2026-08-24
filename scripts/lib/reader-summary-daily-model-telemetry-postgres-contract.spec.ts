@@ -194,6 +194,29 @@ WHERE session_principal.rolname = session_user
     }
   });
 
+  it("admits only the production-canonical receipt and attestation shape", () => {
+    for (const binding of [
+      "requestedUtcDate", "sourceAuthoritySha256", "responseByteLength",
+      "modelJobIdentity", "responseSha256", "attestationSha256",
+    ]) {
+      expect(sql).toContain(binding);
+    }
+    expect(sql).toContain(
+      "FROM pg_catalog.jsonb_object_keys(v_receipt)) <> 9",
+    );
+    expect(sql).toContain(
+      "FROM pg_catalog.jsonb_object_keys(verified_attestation)) <> 12",
+    );
+    expect(sql).toContain(
+      "FROM pg_catalog.jsonb_object_keys(v_receipt->'executionUsage')) <> 5",
+    );
+    expect(sql).toContain("exact_attestation_bytes <> v_expected_attestation_bytes");
+    expect(sql).toContain("exact_receipt_bytes <> v_expected_receipt_bytes");
+    expect(sql).toContain("verified_attestation->>'selectedOutputKind'");
+    expect(sql).toContain("verified_attestation->>'runtimePackageVersion' !~");
+    expect(sql).toContain("pg_catalog.jsonb_typeof(field.value) <> 'string'");
+  });
+
   it("fails closed for unknown effects and only adopts exact expired reservations", () => {
     expect(sql).toContain("DO $guard_daily_model_job_upgrade_state$");
     expect(sql).toContain("has unknown provider effect");

@@ -214,6 +214,8 @@ SET search_path = pg_catalog AS $$
 DECLARE v_cursor public."reader_summary_daily_execution_cursors"%ROWTYPE;
 DECLARE v_job public."reader_summary_daily_model_jobs"%ROWTYPE;
 DECLARE v_receipt JSONB;
+DECLARE v_expected_attestation_bytes BYTEA;
+DECLARE v_expected_receipt_bytes BYTEA;
 BEGIN
   IF pg_catalog.current_setting('transaction_isolation') <> 'serializable' THEN
     RAISE EXCEPTION 'daily telemetry completion requires SERIALIZABLE';
@@ -251,6 +253,69 @@ BEGIN
   -- idempotent replay. A replay is successful only for inputs that could have
   -- validly produced the already-sealed row.
   v_receipt := pg_catalog.convert_from(exact_receipt_bytes, 'UTF8')::JSONB;
+  IF pg_catalog.jsonb_typeof(v_receipt) IS DISTINCT FROM 'object'
+    OR pg_catalog.jsonb_typeof(verified_attestation) IS DISTINCT FROM 'object'
+    OR pg_catalog.jsonb_typeof(v_receipt->'attestation')
+      IS DISTINCT FROM 'object'
+    OR pg_catalog.jsonb_typeof(v_receipt->'executionUsage')
+      IS DISTINCT FROM 'object' THEN
+    RAISE EXCEPTION 'daily response receipt envelope is invalid';
+  END IF;
+  IF (SELECT pg_catalog.count(*)
+      FROM pg_catalog.jsonb_object_keys(v_receipt)) <> 9
+    OR NOT v_receipt ?& ARRAY[
+      'schemaVersion', 'modelJobIdentity', 'requestedUtcDate',
+      'sourceAuthoritySha256', 'responseSha256', 'responseByteLength',
+      'attestationSha256', 'attestation', 'executionUsage'
+    ]
+    OR (SELECT pg_catalog.count(*)
+        FROM pg_catalog.jsonb_object_keys(verified_attestation)) <> 12
+    OR NOT verified_attestation ?& ARRAY[
+      'schemaVersion', 'requestId', 'purpose', 'canonicalRequestSha256',
+      'provider', 'model', 'reasoningEffort', 'runtimeEngine',
+      'runtimePackageVersion', 'launcherSha256', 'selectedOutputKind',
+      'selectedOutputSha256'
+    ]
+    OR (SELECT pg_catalog.count(*)
+        FROM pg_catalog.jsonb_object_keys(v_receipt->'executionUsage')) <> 5
+    OR NOT (v_receipt->'executionUsage') ?& ARRAY[
+      'inputTokens', 'outputTokens', 'totalTokens', 'usageSource', 'durationMs'
+    ] THEN
+    RAISE EXCEPTION 'daily response receipt key shape is invalid';
+  END IF;
+
+  v_expected_attestation_bytes := pg_catalog.convert_to(pg_catalog.concat(
+    '{"canonicalRequestSha256":', verified_attestation->'canonicalRequestSha256',
+    ',"launcherSha256":', verified_attestation->'launcherSha256',
+    ',"model":', verified_attestation->'model',
+    ',"provider":', verified_attestation->'provider',
+    ',"purpose":', verified_attestation->'purpose',
+    ',"reasoningEffort":', verified_attestation->'reasoningEffort',
+    ',"requestId":', verified_attestation->'requestId',
+    ',"runtimeEngine":', verified_attestation->'runtimeEngine',
+    ',"runtimePackageVersion":', verified_attestation->'runtimePackageVersion',
+    ',"schemaVersion":1,"selectedOutputKind":',
+    verified_attestation->'selectedOutputKind',
+    ',"selectedOutputSha256":', verified_attestation->'selectedOutputSha256', '}'
+  ), 'UTF8');
+  v_expected_receipt_bytes := pg_catalog.convert_to(pg_catalog.concat(
+    '{"attestation":', pg_catalog.convert_from(v_expected_attestation_bytes, 'UTF8'),
+    ',"attestationSha256":',
+    pg_catalog.to_jsonb(pg_catalog.btrim(exact_attestation_sha256)),
+    ',"executionUsage":{"durationMs":', observed_duration_ms,
+    ',"inputTokens":', observed_input_tokens,
+    ',"outputTokens":', observed_output_tokens,
+    ',"totalTokens":', observed_total_tokens,
+    ',"usageSource":', pg_catalog.to_jsonb(observed_usage_source),
+    '},"modelJobIdentity":', pg_catalog.to_jsonb(v_job."identity"),
+    ',"requestedUtcDate":', pg_catalog.to_jsonb(
+      pg_catalog.to_char(target_date, 'YYYY-MM-DD')),
+    ',"responseByteLength":', pg_catalog.octet_length(exact_response),
+    ',"responseSha256":',
+    pg_catalog.to_jsonb(pg_catalog.btrim(exact_response_sha256)),
+    ',"schemaVersion":2,"sourceAuthoritySha256":',
+    pg_catalog.to_jsonb(pg_catalog.btrim(v_job."source_authority_sha256")), '}'
+  ), 'UTF8');
   IF pg_catalog.btrim(exact_response_sha256) <>
       pg_catalog.encode(pg_catalog.sha256(exact_response), 'hex')
     OR pg_catalog.btrim(exact_attestation_sha256) <>
@@ -259,23 +324,43 @@ BEGIN
       pg_catalog.encode(pg_catalog.sha256(exact_receipt_bytes), 'hex')
     OR pg_catalog.convert_from(exact_attestation_bytes, 'UTF8')::JSONB <>
       verified_attestation
-    OR v_receipt->>'schemaVersion' IS DISTINCT FROM '2'
+    OR exact_attestation_bytes <> v_expected_attestation_bytes
+    OR exact_receipt_bytes <> v_expected_receipt_bytes
+    OR v_receipt->'schemaVersion' IS DISTINCT FROM '2'::JSONB
     OR v_receipt->>'modelJobIdentity' IS DISTINCT FROM v_job."identity"
+    OR v_receipt->>'requestedUtcDate' IS DISTINCT FROM
+      pg_catalog.to_char(target_date, 'YYYY-MM-DD')
+    OR v_receipt->>'sourceAuthoritySha256' IS DISTINCT FROM
+      pg_catalog.btrim(v_job."source_authority_sha256")
     OR v_receipt->>'responseSha256' IS DISTINCT FROM
       pg_catalog.btrim(exact_response_sha256)
+    OR v_receipt->'responseByteLength' IS DISTINCT FROM
+      pg_catalog.to_jsonb(pg_catalog.octet_length(exact_response))
     OR v_receipt->>'attestationSha256' IS DISTINCT FROM
       pg_catalog.btrim(exact_attestation_sha256)
     OR v_receipt->'attestation' IS DISTINCT FROM verified_attestation
-    OR (v_receipt->'executionUsage'->>'inputTokens')::BIGINT
-      IS DISTINCT FROM observed_input_tokens
-    OR (v_receipt->'executionUsage'->>'outputTokens')::BIGINT
-      IS DISTINCT FROM observed_output_tokens
-    OR (v_receipt->'executionUsage'->>'totalTokens')::BIGINT
-      IS DISTINCT FROM observed_total_tokens
+    OR v_receipt->'executionUsage'->'inputTokens' IS DISTINCT FROM
+      pg_catalog.to_jsonb(observed_input_tokens)
+    OR v_receipt->'executionUsage'->'outputTokens' IS DISTINCT FROM
+      pg_catalog.to_jsonb(observed_output_tokens)
+    OR v_receipt->'executionUsage'->'totalTokens' IS DISTINCT FROM
+      pg_catalog.to_jsonb(observed_total_tokens)
     OR v_receipt->'executionUsage'->>'usageSource'
       IS DISTINCT FROM observed_usage_source
-    OR (v_receipt->'executionUsage'->>'durationMs')::BIGINT
-      IS DISTINCT FROM observed_duration_ms
+    OR v_receipt->'executionUsage'->'durationMs' IS DISTINCT FROM
+      pg_catalog.to_jsonb(observed_duration_ms)
+    OR verified_attestation->'schemaVersion' IS DISTINCT FROM '1'::JSONB
+    OR EXISTS (
+      SELECT 1
+      FROM pg_catalog.jsonb_each(verified_attestation) AS field
+      WHERE field.key <> 'schemaVersion'
+        AND pg_catalog.jsonb_typeof(field.value) <> 'string'
+    )
+    OR pg_catalog.length(verified_attestation->>'requestId') < 1
+    OR verified_attestation->>'canonicalRequestSha256' !~ '^[0-9a-f]{64}$'
+    OR verified_attestation->>'launcherSha256' !~ '^[0-9a-f]{64}$'
+    OR verified_attestation->>'runtimePackageVersion' !~
+      '^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$'
     OR verified_attestation->>'provider' IS DISTINCT FROM v_job."provider"
     OR verified_attestation->>'model' IS DISTINCT FROM v_job."model"
     OR verified_attestation->>'reasoningEffort'
@@ -284,6 +369,8 @@ BEGIN
       IS DISTINCT FROM v_job."runtime_engine"
     OR verified_attestation->>'selectedOutputSha256' IS DISTINCT FROM
       pg_catalog.btrim(exact_response_sha256)
+    OR verified_attestation->>'selectedOutputKind' IS DISTINCT FROM
+      'structured_output'
     OR v_job."provider" IS DISTINCT FROM 'codex'
     OR v_job."model" IS DISTINCT FROM 'gpt-5.6-sol'
     OR v_job."reasoning_effort" IS DISTINCT FROM 'high'

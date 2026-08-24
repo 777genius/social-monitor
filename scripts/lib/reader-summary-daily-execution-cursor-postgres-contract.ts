@@ -1,5 +1,10 @@
 import { createHash } from "node:crypto";
 
+import {
+  dailyCompletionReceiptFixture,
+  replaceCompletionValue,
+} from "./reader-summary-daily-execution-cursor-receipt-contract";
+
 export type ReaderSummaryDailyPostgresClient = Readonly<{
   query<TRow extends Record<string, unknown> = Record<string, unknown>>(
     sql: string,
@@ -579,84 +584,38 @@ export const assertReaderSummaryDailyExecutionCursorPostgresContract = async (pa
   await serializable(params.first, `SELECT mark_reader_summary_daily_model_job_running(
     $1,$2,$3,$4,$5,$6)`, [scope.tenantId, scope.workspaceId, firstDate, owner, fence,
     new Date().toISOString()]);
-  const responseBytes = Buffer.from('{"daily":"complete"}', "utf8");
-  const responseSha = hash(responseBytes);
-  const attestation = {
-    schemaVersion: 1, requestId: "pg18-daily-1",
-    purpose: "social_monitor.reader_summary.generate.v2",
-    canonicalRequestSha256: "a".repeat(64), provider: "codex",
-    model: "gpt-5.6-sol", reasoningEffort: "high",
-    runtimeEngine: "subscription-runtime-cli", runtimePackageVersion: "1.2.3",
-    launcherSha256: "b".repeat(64), selectedOutputKind: "structured_output",
-    selectedOutputSha256: responseSha,
-  };
-  const attestationBytes = Buffer.from(JSON.stringify(attestation), "utf8");
-  const jobIdentity = hash(Buffer.from([
-    "reader-summary-daily:v2", scope.tenantId, scope.workspaceId, firstDate,
-    sealedSha, "codex", "gpt-5.6-sol", "high",
-  ].join("|"), "utf8"));
-  const receiptBytes = Buffer.from(JSON.stringify({
-    schemaVersion: 2,
-    modelJobIdentity: jobIdentity,
-    responseSha256: responseSha,
-    attestationSha256: hash(attestationBytes),
-    attestation,
-    executionUsage: {
-      inputTokens: 120,
-      outputTokens: 30,
-      totalTokens: 150,
-      usageSource: "PROVIDER_REPORTED",
-      durationMs: 250,
-    },
-  }), "utf8");
   const completionSql = `SELECT complete_reader_summary_daily_model_job_v2(
     $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`;
   const completionFinishedAt = new Date().toISOString();
-  const completionValues = [
-    scope.tenantId, scope.workspaceId, firstDate, owner, fence,
-    completionFinishedAt, responseBytes, responseSha,
-    attestation, attestationBytes, hash(attestationBytes), receiptBytes, hash(receiptBytes),
-    120, 30, 150, "PROVIDER_REPORTED", 250,
-  ] as const;
+  const completionFixture = dailyCompletionReceiptFixture({
+    tenantId: scope.tenantId,
+    workspaceId: scope.workspaceId,
+    requestedUtcDate: firstDate,
+    sourceAuthoritySha256: sealedSha,
+    worker: owner,
+    fence,
+    finishedAt: completionFinishedAt,
+  });
+  const { completionValues, receiptBytes } = completionFixture;
+  const responseBytes = requiredBuffer(completionValues[6]);
+  for (const [mutation, values] of completionFixture.negativeSealMutations) {
+    await expectRejected(serializable(params.first, completionSql, values),
+      `${mutation} must not seal a daily model job`);
+  }
+  const unsealed = await params.admin.query<{
+    state: string; receipt_bytes: Buffer | null;
+  }>(`SELECT state, receipt_bytes FROM reader_summary_daily_model_jobs
+      WHERE tenant_id = $1 AND workspace_id = $2
+        AND requested_utc_date = $3`,
+  [scope.tenantId, scope.workspaceId, firstDate]);
+  assert(unsealed.rows[0]?.state === "RUNNING" &&
+    unsealed.rows[0]?.receipt_bytes === null,
+  "invalid canonical receipt mutations crossed the RUNNING completion boundary");
   await serializable(params.first, completionSql, completionValues);
   await serializable(params.first, completionSql,
-    replaceValue(completionValues, 5, new Date(Date.now() + 1_000).toISOString()));
-  const canonicalReceipt = JSON.parse(
-    receiptBytes.toString("utf8"),
-  ) as Record<string, unknown>;
-  const replayMutations: ReadonlyArray<readonly [string, readonly unknown[]]> = [
-    ["response bytes", replaceValue(completionValues, 6, Buffer.from("changed"))],
-    ["response SHA", replaceValue(completionValues, 7, "e".repeat(64))],
-    ["receipt bytes", replaceValue(completionValues, 11,
-      Buffer.from(`${receiptBytes.toString("utf8")} `, "utf8"))],
-    ["receipt SHA", replaceValue(completionValues, 12, "e".repeat(64))],
-    ["attestation JSON", replaceValue(completionValues, 8,
-      { ...attestation, requestId: "divergent" })],
-    ["attestation bytes", replaceValue(completionValues, 9,
-      Buffer.from(`${attestationBytes.toString("utf8")} `, "utf8"))],
-    ["attestation SHA", replaceValue(completionValues, 10, "e".repeat(64))],
-    ["model identity", completionWithEnvelope(completionValues, {
-      ...canonicalReceipt,
-      modelJobIdentity: "e".repeat(64),
-    })],
-    ["purpose", completionWithAttestation(completionValues, {
-      ...attestation,
-      purpose: "social_monitor.reader_summary.generate.v1",
-    })],
-    ["telemetry", completionWithEnvelope(
-      replaceValue(completionValues, 17, 251), {
-        ...canonicalReceipt,
-        executionUsage: {
-          inputTokens: 120, outputTokens: 30, totalTokens: 150,
-          usageSource: "PROVIDER_REPORTED", durationMs: 251,
-        },
-      },
-    )],
-  ];
-  for (const [binding, values] of replayMutations) {
-    await expectRejected(serializable(params.first, completionSql, values),
-      `divergent ${binding} replay must conflict`);
-  }
+    replaceCompletionValue(
+      completionValues, 5, new Date(Date.now() + 1_000).toISOString(),
+    ));
   const completed = await params.admin.query<{
     state: string; response_bytes: Buffer; receipt_bytes: Buffer;
     next_unresolved_utc_date: string; input_tokens: string;
@@ -762,41 +721,6 @@ const expectRejected = async (
     return;
   }
   throw new Error(message);
-};
-
-const replaceValue = (
-  values: readonly unknown[],
-  index: number,
-  value: unknown,
-): readonly unknown[] => values.map((current, currentIndex) =>
-  currentIndex === index ? value : current);
-
-const completionWithEnvelope = (
-  values: readonly unknown[],
-  envelope: Record<string, unknown>,
-): readonly unknown[] => {
-  const bytes = Buffer.from(JSON.stringify(envelope), "utf8");
-  return replaceValue(replaceValue(values, 11, bytes), 12, hash(bytes));
-};
-
-const completionWithAttestation = (
-  values: readonly unknown[],
-  attestation: Record<string, unknown>,
-): readonly unknown[] => {
-  const attestationBytes = Buffer.from(JSON.stringify(attestation), "utf8");
-  const currentReceipt = JSON.parse(
-    requiredBuffer(values[11]).toString("utf8"),
-  ) as Record<string, unknown>;
-  const receipt = {
-    ...currentReceipt,
-    attestation,
-    attestationSha256: hash(attestationBytes),
-  } as Record<string, unknown>;
-  return completionWithEnvelope(
-    replaceValue(replaceValue(replaceValue(values, 8, attestation),
-      9, attestationBytes), 10, hash(attestationBytes)),
-    receipt,
-  );
 };
 
 type ClaimRow = Record<string, unknown> & {
