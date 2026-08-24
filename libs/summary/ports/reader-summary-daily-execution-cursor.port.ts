@@ -6,6 +6,22 @@ export type ReaderSummaryDailyModelJobState =
   | "COMPLETED"
   | "FAILED_AMBIGUOUS";
 
+export type ReaderSummaryDailyUsageSource =
+  | "PROVIDER_REPORTED"
+  | "ESTIMATED"
+  | "UNAVAILABLE"
+  | "HISTORICAL_INCOMPLETE";
+
+export type ReaderSummaryDailyModelTelemetry = Readonly<{
+  provider: string;
+  model: string;
+  reasoningEffort: string;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  usageSource: ReaderSummaryDailyUsageSource;
+  durationMs: number | null;
+}>;
+
 export type ReaderSummaryDailySourceAuthority = Readonly<{
   requestedUtcDate: string;
   ingestionCutoff: string;
@@ -100,6 +116,7 @@ export interface ReaderSummaryDailyExecutionCursorPort {
     readonly attestationSha256: string;
     readonly receiptBytes: Uint8Array;
     readonly receiptSha256: string;
+    readonly modelTelemetry: ReaderSummaryDailyModelTelemetry;
   }): Promise<void>;
   finalizePublication(input: {
     readonly tenantId: string;

@@ -58,6 +58,39 @@ test("accepts the exact related-topic relation attestation inventory", () => {
   }, { relatedTopicRole: "related_topic_relation" });
 });
 
+test("accepts provider telemetry bound to the daily job, receipt, and artifact", () => {
+  withFixture(({ reportPath, proofPath }) => {
+    const result = runVerifier(reportPath, proofPath, "--proof-out");
+    assert.equal(result.status, 0, result.stderr);
+  }, { dailyTelemetry: true });
+});
+
+for (const patch of [
+  { usageSource: "ESTIMATED" },
+  { durationMs: 0 },
+  { inputTokens: null },
+]) {
+  test(`rejects incomplete daily telemetry ${JSON.stringify(patch)}`, () => {
+    withFixture(({ reportPath, proofPath, report }) => {
+      Object.assign(report.model.modelExecution, patch);
+      writeFileSync(reportPath, `${JSON.stringify(report)}\n`);
+      const result = runVerifier(reportPath, proofPath, "--proof-out");
+      assert.notEqual(result.status, 0);
+    }, { dailyTelemetry: true });
+  });
+}
+
+test("rejects daily telemetry that disagrees with the runtime attestation", () => {
+  withFixture(({ reportPath, proofPath, report, evidence, evidencePath }) => {
+    report.model.modelExecution.provider = "claude";
+    evidence.provenance.dailySourceAuthority.modelExecution.provider = "claude";
+    writeFileSync(evidencePath, `${JSON.stringify(evidence)}\n`);
+    writeFileSync(reportPath, `${JSON.stringify(report)}\n`);
+    const result = runVerifier(reportPath, proofPath, "--proof-out");
+    assert.notEqual(result.status, 0);
+  }, { dailyTelemetry: true });
+});
+
 test("rejects an unknown relation attestation kind", () => {
   withFixture(({ reportPath, proofPath }) => {
     const result = runVerifier(reportPath, proofPath, "--proof-out");
@@ -392,6 +425,9 @@ function buildFrontend(options) {
         modelVersion: options.modelVersion ?? "codex:gpt-5.6-sol:xhigh",
         providerVersion: options.providerVersion ?? "agent-runtime",
       },
+      ...(options.dailyTelemetry
+        ? { usage: { inputTokens: 120, outputTokens: 30, estimatedCostUsd: 0 } }
+        : {}),
       content: {
         reliabilityReport: {
           risks: [],
@@ -424,6 +460,9 @@ function buildEvidence(frontend, frontendBytes, options) {
       database: "postgres",
       modelMode: "agent-runtime",
       datasetManifest: datasetGuardEvidence(),
+      ...(options.dailyTelemetry
+        ? { dailySourceAuthority: dailySourceAuthority() }
+        : {}),
     },
     period: utcPeriod(),
     result: {
@@ -547,6 +586,17 @@ function buildReport(evidenceBytes, frontendBytes, evidence) {
       attestationSetSha256: runtimeProvenance.attestationSetSha256,
       completedTaskCount: runtimeProvenance.completedTaskCount,
       topicLabeler: runtimeProvenance.topicLabeler,
+      modelExecution: evidence.provenance.dailySourceAuthority === undefined
+        ? null
+        : {
+            ...evidence.provenance.dailySourceAuthority.modelExecution,
+            modelJobIdentity:
+              evidence.provenance.dailySourceAuthority.modelJobIdentity,
+            receiptSha256:
+              evidence.provenance.dailySourceAuthority.receiptSha256,
+            readerSummaryJobId,
+            readerSummaryArtifactId: readerSummaryId,
+          },
       writesProductionData: true,
       allowDegraded: false,
       allowHistorical: false,
@@ -605,6 +655,23 @@ function buildReport(evidenceBytes, frontendBytes, evidence) {
       regenerationDatasetGuardVerified: true,
     },
     blockingPassed: true,
+  };
+}
+
+function dailySourceAuthority() {
+  return {
+    canonicalSha256: "7".repeat(64),
+    modelJobIdentity: "8".repeat(64),
+    receiptSha256: "9".repeat(64),
+    modelExecution: {
+      provider: "codex",
+      model: "gpt-5.6-sol",
+      reasoningEffort: "xhigh",
+      inputTokens: 120,
+      outputTokens: 30,
+      usageSource: "PROVIDER_REPORTED",
+      durationMs: 250,
+    },
   };
 }
 

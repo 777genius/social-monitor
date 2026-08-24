@@ -100,7 +100,6 @@ export class GrpcReaderSummaryDailySubscriptionRuntime
  * `output_text` so its exact bytes can be bound to the durable consumption row.
  */
 export class GrpcReaderSummaryDailyCanonicalRecoveryRuntime
-  implements ReaderSummaryDailySubscriptionRuntime
 {
   readonly runtimeEngine = "subscription-runtime-cli" as const;
 
@@ -258,11 +257,39 @@ const exactCompletedOutput = (
   if (sha256(responseBytes) !== attestation.selectedOutputSha256) {
     throw new Error("Daily subscription runtime output diverged from its attestation");
   }
+  const usage = result.usage;
+  const durationMs = (result as AgentRuntimeTaskResult & {
+    readonly durationMs?: number;
+  }).durationMs;
+  if (
+    usage === undefined ||
+    !nonNegativeSafeInteger(usage.inputTokens) ||
+    !nonNegativeSafeInteger(usage.outputTokens) ||
+    !nonNegativeSafeInteger(usage.totalTokens) ||
+    usage.totalTokens !== usage.inputTokens + usage.outputTokens ||
+    !positiveSafeInteger(durationMs)
+  ) {
+    throw new Error("Daily subscription runtime usage is unavailable");
+  }
   return {
     responseBytes,
     executionAttestation: Object.freeze({ ...attestation }),
+    modelTelemetry: Object.freeze({
+      provider: attestation.provider,
+      model: attestation.model,
+      reasoningEffort: attestation.reasoningEffort,
+      inputTokens: usage.inputTokens,
+      outputTokens: usage.outputTokens,
+      usageSource: "PROVIDER_REPORTED" as const,
+      durationMs,
+    }),
   };
 };
+
+const nonNegativeSafeInteger = (value: unknown): value is number =>
+  Number.isSafeInteger(value) && (value as number) >= 0;
+const positiveSafeInteger = (value: unknown): value is number =>
+  Number.isSafeInteger(value) && (value as number) > 0;
 
 const canonicalJsonBytes = (value: unknown): Buffer =>
   Buffer.from(JSON.stringify(toCanonicalJsonValue(value)), "utf8");

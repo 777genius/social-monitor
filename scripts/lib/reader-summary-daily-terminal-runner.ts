@@ -3,6 +3,7 @@ import type {
   ReaderSummaryDailyClaimResult,
   ReaderSummaryDailyExecutionCursorPort,
   ReaderSummaryDailyExecutionWork,
+  ReaderSummaryDailyModelTelemetry,
 } from "@social-monitor/summary/ports/reader-summary-daily-execution-cursor.port";
 
 import { buildReaderSummaryDailyModelJobReceipt } from "./reader-summary-daily-model-job-receipt";
@@ -23,6 +24,7 @@ export interface ReaderSummaryDailySubscriptionRuntime {
   }): Promise<{
     readonly responseBytes: Buffer;
     readonly executionAttestation: Readonly<Record<string, unknown>>;
+    readonly modelTelemetry: ReaderSummaryDailyModelTelemetry;
   }>;
 }
 
@@ -132,6 +134,7 @@ export class ReaderSummaryDailyTerminalRunner {
         modelJob: work.modelJob,
         responseBytes: execution.responseBytes,
         attestation: execution.executionAttestation,
+        modelTelemetry: execution.modelTelemetry,
       });
       await this.dependencies.cursor.complete({
         ...leaseInput(work, this.dependencies.now().toISOString()),
@@ -143,6 +146,7 @@ export class ReaderSummaryDailyTerminalRunner {
         attestationSha256: receipt.attestationSha256,
         receiptBytes: receipt.receiptBytes,
         receiptSha256: receipt.receiptSha256,
+        modelTelemetry: receipt.modelTelemetry,
       });
       await this.publishAndAdvance(
         work,

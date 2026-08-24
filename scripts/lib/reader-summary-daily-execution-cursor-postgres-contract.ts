@@ -79,14 +79,19 @@ export const assertReaderSummaryDailyExecutionCursorPostgresContract = async (pa
   assert(identity.rows[0]?.current_user === params.terminalRole,
     "daily contract first client is not the dedicated terminal role");
   const privileges = await params.first.query<{
-    table_access: boolean; claim_access: boolean;
+    table_access: boolean; claim_access: boolean; telemetry_complete_access: boolean;
   }>(`SELECT
       has_table_privilege(current_user,
         'reader_summary_daily_model_jobs', 'SELECT') AS table_access,
       has_function_privilege(current_user,
         'claim_reader_summary_daily_execution(uuid,uuid,text,date,timestamptz)',
-        'EXECUTE') AS claim_access`);
-  assert(privileges.rows[0]?.table_access === false && privileges.rows[0]?.claim_access === true,
+        'EXECUTE') AS claim_access,
+      has_function_privilege(current_user,
+        'complete_reader_summary_daily_model_job_v2(uuid,uuid,date,text,bigint,timestamptz,bytea,character,jsonb,bytea,character,bytea,character,bigint,bigint,text,bigint)',
+        'EXECUTE') AS telemetry_complete_access`);
+  assert(privileges.rows[0]?.table_access === false &&
+    privileges.rows[0]?.claim_access === true &&
+    privileges.rows[0]?.telemetry_complete_access === true,
     "daily terminal role separation is unsafe");
 
   const eligible = utcDate(new Date(Date.now() - 86_400_000));
@@ -141,21 +146,42 @@ export const assertReaderSummaryDailyExecutionCursorPostgresContract = async (pa
     sealedSha, "codex", "gpt-5.6-sol", "xhigh",
   ].join("|"), "utf8"));
   const receiptBytes = Buffer.from(JSON.stringify({
+    schemaVersion: 2,
     modelJobIdentity: jobIdentity,
     responseSha256: responseSha,
     attestationSha256: hash(attestationBytes),
     attestation,
+    executionUsage: {
+      inputTokens: 120,
+      outputTokens: 30,
+      usageSource: "PROVIDER_REPORTED",
+      durationMs: 250,
+    },
   }), "utf8");
-  await serializable(params.first, `SELECT complete_reader_summary_daily_model_job(
-    $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`, [
+  const completionSql = `SELECT complete_reader_summary_daily_model_job_v2(
+    $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`;
+  const completionValues = [
     scope.tenantId, scope.workspaceId, firstDate, owner, fence,
     new Date().toISOString(), responseBytes, responseSha,
     attestation, attestationBytes, hash(attestationBytes), receiptBytes, hash(receiptBytes),
-  ]);
+    120, 30, "PROVIDER_REPORTED", 250,
+  ] as const;
+  await serializable(params.first, completionSql, completionValues);
+  await serializable(params.first, completionSql, completionValues);
+  await expectRejected(
+    serializable(params.first, completionSql, [
+      ...completionValues.slice(0, 16), 251,
+    ]),
+    "divergent terminal telemetry replay must conflict",
+  );
   const completed = await params.admin.query<{
-    state: string; response_bytes: Buffer; receipt_bytes: Buffer; next_unresolved_utc_date: string;
+    state: string; response_bytes: Buffer; receipt_bytes: Buffer;
+    next_unresolved_utc_date: string; input_tokens: string;
+    output_tokens: string; usage_source: string; duration_ms: string;
   }>(`SELECT job.state, job.response_bytes, job.receipt_bytes,
-        cursor.next_unresolved_utc_date::text
+        cursor.next_unresolved_utc_date::text,
+        job.input_tokens::text, job.output_tokens::text,
+        job.usage_source, job.duration_ms::text
       FROM reader_summary_daily_model_jobs job
       JOIN reader_summary_daily_execution_cursors cursor USING (tenant_id, workspace_id)
       WHERE job.tenant_id = $1 AND job.workspace_id = $2
@@ -163,30 +189,46 @@ export const assertReaderSummaryDailyExecutionCursorPostgresContract = async (pa
   assert(completed.rows[0]?.state === "COMPLETED" &&
     requiredBuffer(completed.rows[0]?.response_bytes).equals(responseBytes) &&
     requiredBuffer(completed.rows[0]?.receipt_bytes).equals(receiptBytes) &&
-    completed.rows[0]?.next_unresolved_utc_date === firstDate,
+    completed.rows[0]?.next_unresolved_utc_date === firstDate &&
+    completed.rows[0]?.input_tokens === "120" &&
+    completed.rows[0]?.output_tokens === "30" &&
+    completed.rows[0]?.usage_source === "PROVIDER_REPORTED" &&
+    completed.rows[0]?.duration_ms === "250",
     "COMPLETED receipt must persist without cursor advancement");
 
   const canonical = await seedCanonicalPublication(params.admin, scope, firstDate);
-  await serializable(params.first, `SELECT finalize_reader_summary_daily_publication(
-    $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`, [
+  const finalizationSql = `SELECT finalize_reader_summary_daily_publication(
+    $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`;
+  const finalizationValues = [
     scope.tenantId, scope.workspaceId, firstDate, owner, fence,
     new Date().toISOString(), canonical.jobId, canonical.artifactId,
     canonical.artifactId, canonical.reportSha, canonical.proofSha,
     canonical.weeklySha, canonical.evidenceBytes, hash(canonical.evidenceBytes),
     canonical.frontendBytes, hash(canonical.frontendBytes),
-  ]);
+  ] as const;
+  await serializable(params.first, finalizationSql, finalizationValues);
+  await serializable(params.first, finalizationSql, finalizationValues);
   const finalized = await params.admin.query<{
     next_unresolved_utc_date: string; publication_id: string;
+    reader_summary_job_id: string; reader_summary_artifact_id: string;
+    input_tokens: string; output_tokens: string; duration_ms: string;
   }>(`SELECT cursor.next_unresolved_utc_date::text,
-        job.publication_id::text
+        job.publication_id::text, job.reader_summary_job_id::text,
+        job.reader_summary_artifact_id::text, job.input_tokens::text,
+        job.output_tokens::text, job.duration_ms::text
       FROM reader_summary_daily_execution_cursors cursor
       JOIN reader_summary_daily_model_jobs job USING (tenant_id, workspace_id)
       WHERE cursor.tenant_id = $1 AND cursor.workspace_id = $2
         AND job.requested_utc_date = $3`,
     [scope.tenantId, scope.workspaceId, firstDate]);
   assert(finalized.rows[0]?.next_unresolved_utc_date === addUtcDays(firstDate, 1) &&
-    finalized.rows[0]?.publication_id === canonical.artifactId,
-    "canonical verification did not advance exactly once");
+    finalized.rows[0]?.publication_id === canonical.artifactId &&
+    finalized.rows[0]?.reader_summary_job_id === canonical.jobId &&
+    finalized.rows[0]?.reader_summary_artifact_id === canonical.artifactId &&
+    finalized.rows[0]?.input_tokens === "120" &&
+    finalized.rows[0]?.output_tokens === "30" &&
+    finalized.rows[0]?.duration_ms === "250",
+    "canonical replay changed advancement, binding, or model telemetry");
 
   const oldScope = scopeIds("2");
   const recovery = await claimWithRetry(
@@ -220,6 +262,18 @@ export const assertReaderSummaryDailyExecutionCursorPostgresContract = async (pa
   assert(failedState.rows[0]?.state === "FAILED_AMBIGUOUS" &&
     failedState.rows[0]?.receipt_bytes === null,
     "ambiguous job acquired a receipt or unsafe state");
+};
+
+const expectRejected = async (
+  operation: Promise<unknown>,
+  message: string,
+): Promise<void> => {
+  try {
+    await operation;
+  } catch {
+    return;
+  }
+  throw new Error(message);
 };
 
 type ClaimRow = Record<string, unknown> & {

@@ -544,6 +544,8 @@ async function main(): Promise<void> {
                 schemaVersion: 1,
                 canonicalSha256: dailyReplay.authoritySha256,
                 modelJobIdentity: dailyReplay.modelJobIdentity,
+                receiptSha256: sha256Bytes(dailyReplay.receiptBytes),
+                modelExecution: dailyReplay.modelTelemetry,
               },
       },
       scope: {

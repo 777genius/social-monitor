@@ -7,15 +7,21 @@ import {
   readerSummaryDailyRuntimeEngine,
   type ReaderSummaryDailyModelJobIdentity,
 } from "@social-monitor/summary/domain/value-objects/reader-summary-daily-model-job";
+import type {
+  AgentRuntimeProvider,
+} from "@social-monitor/summary/ports/agent-runtime-client.port";
+import type {
+  ReaderSummaryDailyModelTelemetry,
+} from "@social-monitor/summary/ports/reader-summary-daily-execution-cursor.port";
 
 export type ReaderSummaryDailyRuntimeAttestation = Readonly<{
   schemaVersion: 1;
   requestId: string;
   purpose: string;
   canonicalRequestSha256: string;
-  provider: typeof readerSummaryDailyModelProvider;
-  model: typeof readerSummaryDailyModel;
-  reasoningEffort: typeof readerSummaryDailyReasoningEffort;
+  provider: AgentRuntimeProvider;
+  model: string;
+  reasoningEffort: string;
   runtimeEngine: typeof readerSummaryDailyRuntimeEngine;
   runtimePackageVersion: string;
   launcherSha256: string;
@@ -31,6 +37,7 @@ export type ReaderSummaryDailyModelJobReceipt = Readonly<{
   attestationSha256: string;
   receiptBytes: Buffer;
   receiptSha256: string;
+  modelTelemetry: ReaderSummaryDailyModelTelemetry;
 }>;
 
 /**
@@ -39,7 +46,7 @@ export type ReaderSummaryDailyModelJobReceipt = Readonly<{
  * server-canonical payload that may be replayed or published.
  */
 export type ReaderSummaryDailyCanonicalRecoveryReceipt =
-  ReaderSummaryDailyModelJobReceipt & Readonly<{
+  Omit<ReaderSummaryDailyModelJobReceipt, "modelTelemetry"> & Readonly<{
     canonicalOutputSha256: string;
     canonicalOutputByteLength: number;
     rawOutputSha256: string;
@@ -182,13 +189,18 @@ export const buildReaderSummaryDailyModelJobReceipt = (input: {
   readonly modelJob: ReaderSummaryDailyModelJobIdentity;
   readonly responseBytes: Buffer;
   readonly attestation: Readonly<Record<string, unknown>>;
+  readonly modelTelemetry: ReaderSummaryDailyModelTelemetry;
 }): ReaderSummaryDailyModelJobReceipt => {
   const responseBytes = Buffer.from(input.responseBytes);
   const responseSha256 = sha256(responseBytes);
   const attestation = verifyAttestation(input.attestation, input.modelJob, responseSha256);
+  const modelTelemetry = verifyCompletedModelTelemetry(
+    input.modelTelemetry,
+    attestation,
+  );
   const attestationBytes = canonicalBytes(attestation);
   const receiptRecord = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     modelJobIdentity: input.modelJob.value,
     requestedUtcDate: input.modelJob.requestedUtcDate,
     sourceAuthoritySha256: input.modelJob.sourceAuthoritySha256,
@@ -196,6 +208,12 @@ export const buildReaderSummaryDailyModelJobReceipt = (input: {
     responseByteLength: responseBytes.length,
     attestationSha256: sha256(attestationBytes),
     attestation,
+    executionUsage: {
+      inputTokens: modelTelemetry.inputTokens,
+      outputTokens: modelTelemetry.outputTokens,
+      usageSource: modelTelemetry.usageSource,
+      durationMs: modelTelemetry.durationMs,
+    },
   };
   const receiptBytes = canonicalBytes(receiptRecord);
   return Object.freeze({
@@ -206,8 +224,98 @@ export const buildReaderSummaryDailyModelJobReceipt = (input: {
     attestationSha256: receiptRecord.attestationSha256,
     receiptBytes,
     receiptSha256: sha256(receiptBytes),
+    modelTelemetry,
   });
 };
+
+export const readReaderSummaryDailyModelTelemetry = (
+  receiptBytes: Buffer,
+): ReaderSummaryDailyModelTelemetry => {
+  const receipt = parseJsonRecord(receiptBytes, "daily model receipt");
+  const attestation = asRecord(receipt.attestation);
+  const provider = nonEmptyText(attestation?.provider);
+  const model = nonEmptyText(attestation?.model);
+  const reasoningEffort = nonEmptyText(attestation?.reasoningEffort);
+  const executionUsage = asRecord(receipt.executionUsage);
+  if (
+    receipt.schemaVersion !== 2 || provider === null || model === null ||
+    reasoningEffort === null || executionUsage === null
+  ) {
+    return Object.freeze({
+      provider: provider ?? "unknown",
+      model: model ?? "unknown",
+      reasoningEffort: reasoningEffort ?? "unknown",
+      inputTokens: null,
+      outputTokens: null,
+      usageSource: "HISTORICAL_INCOMPLETE",
+      durationMs: null,
+    });
+  }
+  return verifyCompletedModelTelemetry({
+    provider,
+    model,
+    reasoningEffort,
+    inputTokens: executionUsage.inputTokens as number,
+    outputTokens: executionUsage.outputTokens as number,
+    usageSource: executionUsage.usageSource as ReaderSummaryDailyModelTelemetry["usageSource"],
+    durationMs: executionUsage.durationMs as number,
+  }, attestation!);
+};
+
+export const requireReaderSummaryDailyProviderTelemetry = (
+  receiptBytes: Buffer,
+): ReaderSummaryDailyModelTelemetry => {
+  const telemetry = readReaderSummaryDailyModelTelemetry(receiptBytes);
+  if (
+    telemetry.usageSource !== "PROVIDER_REPORTED" ||
+    telemetry.inputTokens === null || telemetry.outputTokens === null ||
+    telemetry.durationMs === null
+  ) {
+    throw new Error("Daily live publication requires provider-reported model telemetry");
+  }
+  return telemetry;
+};
+
+const verifyCompletedModelTelemetry = (
+  telemetry: ReaderSummaryDailyModelTelemetry,
+  attestation: Readonly<Record<string, unknown>>,
+): ReaderSummaryDailyModelTelemetry => {
+  const measured = telemetry.usageSource === "PROVIDER_REPORTED" ||
+    telemetry.usageSource === "ESTIMATED";
+  if (
+    telemetry.provider !== attestation.provider ||
+    telemetry.model !== attestation.model ||
+    telemetry.reasoningEffort !== attestation.reasoningEffort ||
+    !measured ||
+    !nonNegativeSafeInteger(telemetry.inputTokens) ||
+    !nonNegativeSafeInteger(telemetry.outputTokens) ||
+    !positiveSafeInteger(telemetry.durationMs)
+  ) {
+    throw new Error("Daily model job telemetry is incomplete or conflicts with attestation");
+  }
+  return Object.freeze({ ...telemetry });
+};
+
+const parseJsonRecord = (bytes: Buffer, label: string): Record<string, unknown> => {
+  try {
+    const value = JSON.parse(bytes.toString("utf8")) as unknown;
+    const result = asRecord(value);
+    if (result !== null) return result;
+  } catch {
+    // The safe error below intentionally omits receipt content and parser text.
+  }
+  throw new Error(`${label} is invalid`);
+};
+const asRecord = (value: unknown): Record<string, unknown> | null =>
+  typeof value === "object" && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+const nonEmptyText = (value: unknown): string | null =>
+  typeof value === "string" && value.trim().length > 0 ? value : null;
+const nonNegativeSafeInteger = (value: unknown): value is number =>
+  Number.isSafeInteger(value) && (value as number) >= 0;
+const positiveSafeInteger = (value: unknown): value is number =>
+  Number.isSafeInteger(value) && (value as number) > 0;
 
 const verifyAttestation = (
   input: Readonly<Record<string, unknown>>,

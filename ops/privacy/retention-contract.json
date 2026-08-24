@@ -344,6 +344,16 @@
       "purgeTrigger": "reader_summary_publication_graph_retention_completed"
     },
     {
+      "table": "reader_summary_daily_model_jobs",
+      "dataClass": "reader_summary_model_execution_observability",
+      "owner": "summary-owner",
+      "retentionDays": 365,
+      "deleteMode": "owner_authorized_graph_purge_after_retention",
+      "exportable": false,
+      "legalHoldAware": true,
+      "purgeTrigger": "reader_summary_publication_graph_retention_completed"
+    },
+    {
       "table": "reader_summary_production_recovery_days",
       "dataClass": "immutable_summary_recovery_evidence",
       "owner": "summary-owner",

@@ -43,6 +43,11 @@ describe("GrpcReaderSummaryDailySubscriptionRuntime", () => {
       reasoningEffort: "high",
     });
     expect(result.responseBytes.toString("utf8")).toBe('{"a":"exact","z":1}');
+    expect(result.modelTelemetry).toEqual({
+      provider: "codex", model: "gpt-5.6-sol", reasoningEffort: "xhigh",
+      inputTokens: 120, outputTokens: 30,
+      usageSource: "PROVIDER_REPORTED", durationMs: 25,
+    });
   });
 
   it("rejects non-attested, wrong-model, and aborted executions", async () => {
@@ -59,6 +64,37 @@ describe("GrpcReaderSummaryDailySubscriptionRuntime", () => {
       ...runtimeInput(), signal: aborted.signal,
     })).rejects.toThrow("lease lost");
     expect(client.runTask).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["missing", { usage: undefined }],
+    ["partial", { usage: { inputTokens: 1, outputTokens: 2 } }],
+    ["malformed", {
+      usage: {
+        inputTokens: 1, outputTokens: -2, totalTokens: -1,
+        estimatedCostUsd: 0,
+      },
+    }],
+    ["missing duration", { durationMs: undefined }],
+  ])("blocks completed live publication for %s usage", async (_label, patch) => {
+    const client = fakeClient({ value: true }, "gpt-5.6-sol", patch);
+    await expect(new GrpcReaderSummaryDailySubscriptionRuntime(client).run(
+      runtimeInput(),
+    )).rejects.toThrow(/usage is unavailable/u);
+  });
+
+  it("preserves a genuine provider-reported zero usage result", async () => {
+    const client = fakeClient({ value: true }, "gpt-5.6-sol", {
+      usage: {
+        inputTokens: 0, outputTokens: 0, totalTokens: 0,
+        estimatedCostUsd: 0,
+      },
+    });
+    await expect(new GrpcReaderSummaryDailySubscriptionRuntime(client).run(
+      runtimeInput(),
+    )).resolves.toMatchObject({
+      modelTelemetry: { inputTokens: 0, outputTokens: 0 },
+    });
   });
 
   it("uses the admitted output_text Codex subscription route for V4", async () => {
@@ -157,11 +193,20 @@ const runtimeInput = () => ({
   signal: new AbortController().signal,
 });
 
-const fakeClient = (output: Record<string, unknown>, selectedModel = "gpt-5.6-sol") => ({
+const fakeClient = (
+  output: Record<string, unknown>,
+  selectedModel = "gpt-5.6-sol",
+  resultPatch: Readonly<Record<string, unknown>> = {},
+) => ({
   runTask: jest.fn(async () => ({
     status: "completed" as const,
     structuredOutput: output,
     warnings: [],
+    usage: {
+      inputTokens: 120, outputTokens: 30, totalTokens: 150,
+      estimatedCostUsd: 0,
+    },
+    durationMs: 25,
     executionAttestation: {
       schemaVersion: 1 as const,
       requestId: "daily",
@@ -176,6 +221,7 @@ const fakeClient = (output: Record<string, unknown>, selectedModel = "gpt-5.6-so
       selectedOutputKind: "structured_output" as const,
       selectedOutputSha256: canonicalJsonSha256(output),
     },
+    ...resultPatch,
   })),
   checkHealth: jest.fn(),
 }) as unknown as jest.Mocked<AgentRuntimeClientPort>;

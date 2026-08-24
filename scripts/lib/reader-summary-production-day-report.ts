@@ -24,6 +24,7 @@ import {
   type ProductionDayUtcPeriod,
 } from "./reader-summary-production-day-provenance";
 import type { HistoricalRegenerationSourceProvenance } from "./reader-summary-production-day-regeneration";
+import { productionDayModelExecutionReport } from "./reader-summary-production-day-model-telemetry";
 import type { YesterdaySocialProviderReadiness } from "./yesterday-social-collection-quality";
 import {
   buildHistoricalRegenerationProvenance,
@@ -178,6 +179,11 @@ export function buildProductionDayReport(params: {
   const reusedCollection = params.executionMode !== "live-production";
   const freshSummaryCapture = params.executionMode !== "historical-reuse";
   const summary = buildSummary(params.durableEvidence, params.evidenceBinding);
+  const modelExecution = productionDayModelExecutionReport({
+    durableEvidence: params.durableEvidence,
+    readerSummaryJobId: summary.readerSummaryJobId,
+    readerSummaryArtifactId: summary.evidenceArtifactId,
+  });
   const reportIdentity =
     params.evidenceBinding === null ||
     !periodsEqual(params.evidenceBinding.requestedUtcPeriod, expectedPeriod)
@@ -330,6 +336,7 @@ export function buildProductionDayReport(params: {
       reusedCollection,
       freshSummaryCapture,
       ...runtimeModelFields(runtimeProvenance),
+      modelExecution,
       writesProductionData,
       allowDegraded: params.allowDegraded,
       allowHistorical: params.allowHistorical,

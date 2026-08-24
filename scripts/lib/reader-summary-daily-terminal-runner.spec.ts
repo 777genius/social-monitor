@@ -45,6 +45,12 @@ describe("ReaderSummaryDailyTerminalRunner", () => {
     expect(cursor.renewLease).toHaveBeenCalledTimes(1);
     expect(cursor.complete).toHaveBeenCalledWith(expect.objectContaining({
       completedAt: "2026-08-01T01:00:00.000Z",
+      modelTelemetry: expect.objectContaining({
+        inputTokens: 120,
+        outputTokens: 30,
+        usageSource: "PROVIDER_REPORTED",
+        durationMs: 25,
+      }),
     }));
     expect(cursor.finalizePublication).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -246,7 +252,15 @@ const fakeRuntime = (events: string[]) => ({
     void input;
     events.push("runtime");
     const responseBytes = Buffer.from('{"summary":"ok"}');
-    return { responseBytes, executionAttestation: attestation(responseBytes) };
+    return {
+      responseBytes,
+      executionAttestation: attestation(responseBytes),
+      modelTelemetry: {
+        provider: "codex", model: "gpt-5.6-sol", reasoningEffort: "xhigh",
+        inputTokens: 120, outputTokens: 30,
+        usageSource: "PROVIDER_REPORTED", durationMs: 25,
+      },
+    };
   }),
 }) satisfies jest.Mocked<ReaderSummaryDailySubscriptionRuntime>;
 

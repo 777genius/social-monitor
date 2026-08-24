@@ -5,6 +5,8 @@ import { readerSummaryDailyModelJobIdentity } from "@social-monitor/summary/doma
 import {
   buildReaderSummaryDailyCanonicalRecoveryReceipt,
   buildReaderSummaryDailyModelJobReceipt,
+  readReaderSummaryDailyModelTelemetry,
+  requireReaderSummaryDailyProviderTelemetry,
   verifyReaderSummaryDailyCanonicalRecoveryReceipt,
 } from "./reader-summary-daily-model-job-receipt";
 import { canonicalJsonBytes } from "./reader-summary-daily-canonical-recovery-v4";
@@ -23,11 +25,15 @@ describe("buildReaderSummaryDailyModelJobReceipt", () => {
       modelJob,
       responseBytes,
       attestation: attestation(responseBytes),
+      modelTelemetry: telemetry(),
     });
     expect(receipt.responseBytes.equals(responseBytes)).toBe(true);
     expect(receipt.responseSha256).toBe(hash(responseBytes));
     expect(hash(receipt.attestationBytes)).toBe(receipt.attestationSha256);
     expect(hash(receipt.receiptBytes)).toBe(receipt.receiptSha256);
+    expect(readReaderSummaryDailyModelTelemetry(receipt.receiptBytes)).toEqual(
+      telemetry(),
+    );
   });
 
   it.each([
@@ -42,7 +48,40 @@ describe("buildReaderSummaryDailyModelJobReceipt", () => {
       modelJob,
       responseBytes,
       attestation: { ...attestation(responseBytes), ...patch },
+      modelTelemetry: telemetry(),
     })).toThrow(/attestation/u);
+  });
+
+  it.each([
+    ["missing", undefined],
+    ["partial", { inputTokens: 12 }],
+    ["malformed", { inputTokens: "12", outputTokens: 3, durationMs: 8 }],
+  ])("keeps %s historical usage unavailable", (_label, executionUsage) => {
+    const receiptBytes = Buffer.from(JSON.stringify({
+      schemaVersion: 1,
+      attestation: attestation(Buffer.from("historical")),
+      ...(executionUsage === undefined ? {} : { executionUsage }),
+    }));
+    expect(readReaderSummaryDailyModelTelemetry(receiptBytes)).toMatchObject({
+      inputTokens: null,
+      outputTokens: null,
+      usageSource: "HISTORICAL_INCOMPLETE",
+      durationMs: null,
+    });
+    expect(() => requireReaderSummaryDailyProviderTelemetry(receiptBytes))
+      .toThrow(/provider-reported/u);
+  });
+
+  it("preserves genuine provider-reported zero counts without fabricating them", () => {
+    const responseBytes = Buffer.from("zero-usage");
+    const receipt = buildReaderSummaryDailyModelJobReceipt({
+      modelJob,
+      responseBytes,
+      attestation: attestation(responseBytes),
+      modelTelemetry: telemetry({ inputTokens: 0, outputTokens: 0 }),
+    });
+    expect(requireReaderSummaryDailyProviderTelemetry(receipt.receiptBytes))
+      .toMatchObject({ inputTokens: 0, outputTokens: 0, durationMs: 25 });
   });
 
   it("binds output_text to the consumed canonical recovery identity", () => {
@@ -126,3 +165,13 @@ const attestation = (responseBytes: Buffer) => ({
   selectedOutputSha256: hash(responseBytes),
 });
 const hash = (value: Buffer) => createHash("sha256").update(value).digest("hex");
+const telemetry = (patch = {}) => ({
+  provider: "codex",
+  model: "gpt-5.6-sol",
+  reasoningEffort: "xhigh",
+  inputTokens: 120,
+  outputTokens: 30,
+  usageSource: "PROVIDER_REPORTED" as const,
+  durationMs: 25,
+  ...patch,
+});

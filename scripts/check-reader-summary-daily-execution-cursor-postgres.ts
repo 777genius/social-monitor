@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 
 import { Pool, type PoolClient } from "pg";
@@ -10,6 +10,8 @@ import {
 } from "./lib/reader-summary-daily-execution-cursor-postgres-contract";
 
 const terminalRole = "social_monitor_reader_summary_daily_terminal";
+const schemaOwnerRole = "social_monitor_public_schema_owner";
+const definerRole = "social_monitor_reader_summary_daily_publication_definer";
 const suffix = randomBytes(10).toString("hex");
 const databaseName = `reader_summary_daily_cursor_${suffix}`;
 const migration = readFileSync(
@@ -20,11 +22,16 @@ const activationMigration = readFileSync(
   "prisma/migrations/20260802143000_reader_summary_daily_execution_publication_activation/migration.sql",
   "utf8",
 );
+const telemetryMigration = readFileSync(
+  "prisma/migrations/20260824120000_reader_summary_daily_model_job_telemetry/migration.sql",
+  "utf8",
+);
 const serverUrl = requiredAdminUrl(process.env);
 const targetUrl = databaseUrl(serverUrl, databaseName);
 const server = new Pool({ connectionString: serverUrl, max: 1 });
 let databaseCreated = false;
 let terminalRoleCreated = false;
+const auxiliaryRolesCreated: string[] = [];
 
 const main = async (): Promise<void> => {
   assertReaderSummaryDailyMigrationContract(migration);
@@ -43,6 +50,17 @@ const main = async (): Promise<void> => {
       NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS`);
     terminalRoleCreated = true;
   }
+  for (const auxiliaryRole of [schemaOwnerRole, definerRole]) {
+    const present = await server.query<{ present: boolean }>(
+      "SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = $1) AS present",
+      [auxiliaryRole],
+    );
+    if (present.rows[0]?.present !== true) {
+      await server.query(`CREATE ROLE ${quoteIdentifier(auxiliaryRole)} NOLOGIN
+        NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS`);
+      auxiliaryRolesCreated.push(auxiliaryRole);
+    }
+  }
   await server.query(`CREATE DATABASE ${quoteIdentifier(databaseName)}`);
   databaseCreated = true;
 
@@ -57,6 +75,29 @@ const main = async (): Promise<void> => {
     await admin.query(baseSchemaSql);
     await admin.query(migration);
     await admin.query(activationMigration);
+    const historicalScope = await seedHistoricalCompletedDailyJob(admin);
+    await admin.query(`ALTER SCHEMA public OWNER TO ${quoteIdentifier(schemaOwnerRole)}`);
+    await admin.query(`ALTER TABLE public.reader_summary_daily_model_jobs
+      OWNER TO ${quoteIdentifier(schemaOwnerRole)}`);
+    await admin.query(`GRANT SELECT, UPDATE
+      ON public.reader_summary_daily_execution_cursors,
+        public.reader_summary_daily_model_jobs
+      TO ${quoteIdentifier(definerRole)}`);
+    await admin.query(telemetryMigration);
+    const historical = await admin.query<{
+      usage_source: string;
+      input_tokens: string | null;
+      output_tokens: string | null;
+      duration_ms: string | null;
+    }>(`SELECT usage_source, input_tokens::text, output_tokens::text,
+        duration_ms::text
+      FROM public.reader_summary_daily_model_jobs
+      WHERE tenant_id = $1 AND workspace_id = $2`, [...historicalScope]);
+    assert(historical.rows[0]?.usage_source === "HISTORICAL_INCOMPLETE" &&
+      historical.rows[0]?.input_tokens === null &&
+      historical.rows[0]?.output_tokens === null &&
+      historical.rows[0]?.duration_ms === null,
+    "upgraded historical completion acquired fabricated telemetry");
     first = await firstPool.connect();
     second = await secondPool.connect();
     await Promise.all([
@@ -88,6 +129,9 @@ const cleanup = async (): Promise<void> => {
   }
   if (terminalRoleCreated) {
     await server.query(`DROP ROLE ${quoteIdentifier(terminalRole)}`);
+  }
+  for (const role of auxiliaryRolesCreated.reverse()) {
+    await server.query(`DROP ROLE ${quoteIdentifier(role)}`);
   }
   await server.end();
 };
@@ -146,6 +190,45 @@ const baseSchemaSql = `
     observed_at TIMESTAMPTZ NOT NULL,
     status TEXT NOT NULL
   );`;
+
+const seedHistoricalCompletedDailyJob = async (
+  admin: PoolClient,
+): Promise<readonly [string, string]> => {
+  const scope = [
+    "40000000-0000-4000-8000-000000000004",
+    "50000000-0000-4000-8000-000000000005",
+  ] as const;
+  const bytes = Buffer.from("{}", "utf8");
+  const sha = createHash("sha256").update(bytes).digest("hex");
+  const attestation = Buffer.from("{}", "utf8");
+  const receipt = Buffer.from('{"schemaVersion":1}', "utf8");
+  await admin.query(`INSERT INTO public.reader_summary_daily_source_authorities
+    (tenant_id, workspace_id, requested_utc_date, ingestion_cutoff,
+     canonical_record, canonical_bytes, canonical_sha256, created_at)
+    VALUES ($1, $2, DATE '2026-07-01', CURRENT_TIMESTAMP, '{}'::JSONB,
+      $3, $4, CURRENT_TIMESTAMP)`, [...scope, bytes, sha]);
+  await admin.query(`INSERT INTO public.reader_summary_daily_model_jobs
+    (tenant_id, workspace_id, requested_utc_date, identity,
+     source_authority_sha256, provider, model, reasoning_effort,
+     runtime_engine, state, reserved_at, running_at, completed_at,
+     response_bytes, response_sha256, attestation, attestation_bytes,
+     attestation_sha256, receipt_bytes, receipt_sha256)
+    VALUES ($1, $2, DATE '2026-07-01', $3, $4, 'codex', 'gpt-5.6-sol',
+      'xhigh', 'subscription-runtime-cli', 'COMPLETED', CURRENT_TIMESTAMP,
+      CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, $5, $6, '{}'::JSONB, $7, $8,
+      $9, $10)`, [
+    ...scope,
+    "d".repeat(64),
+    sha,
+    bytes,
+    sha,
+    attestation,
+    createHash("sha256").update(attestation).digest("hex"),
+    receipt,
+    createHash("sha256").update(receipt).digest("hex"),
+  ]);
+  return scope;
+};
 
 function requiredAdminUrl(env: NodeJS.ProcessEnv): string {
   const value = env.READER_SUMMARY_PUBLICATION_TEST_ADMIN_DATABASE_URL?.trim();
