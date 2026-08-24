@@ -25,9 +25,15 @@ type QueryClient = Readonly<{
 
 export const assertReaderSummaryDailyTelemetryReleaseDatabaseState = async (
   client: QueryClient,
-  params: Readonly<{ migrationAdminRole: string; telemetryMigration: string }>,
+  params: Readonly<{
+    defaultAclMigration: string;
+    migrationAdminRole: string;
+    telemetryMigration: string;
+  }>,
 ): Promise<void> => {
   const result = await client.query<{
+    default_acl_finished_count: string;
+    default_acl_migration_count: string;
     final_acl_exact: boolean;
     final_rls_count: string;
     finished_migration_count: string;
@@ -43,7 +49,12 @@ export const assertReaderSummaryDailyTelemetryReleaseDatabaseState = async (
       (SELECT count(*)::TEXT FROM public."_prisma_migrations"
        WHERE migration_name = $1 AND finished_at IS NOT NULL
          AND rolled_back_at IS NULL) AS finished_migration_count,
-      has_schema_privilege($2, 'public', 'CREATE')
+      (SELECT count(*)::TEXT FROM public."_prisma_migrations"
+       WHERE migration_name = $2) AS default_acl_migration_count,
+      (SELECT count(*)::TEXT FROM public."_prisma_migrations"
+       WHERE migration_name = $2 AND finished_at IS NOT NULL
+         AND rolled_back_at IS NULL) AS default_acl_finished_count,
+      has_schema_privilege($3, 'public', 'CREATE')
         AS migration_admin_has_schema_create,
       has_schema_privilege(
         'social_monitor_reader_summary_publication_owner', 'public', 'CREATE'
@@ -80,6 +91,22 @@ export const assertReaderSummaryDailyTelemetryReleaseDatabaseState = async (
         JOIN pg_catalog.pg_roles AS owner ON owner.oid = procedure.proowner
         WHERE procedure.oid =
           'public.complete_reader_summary_daily_model_job_v2(uuid,uuid,date,text,bigint,timestamp with time zone,bytea,character,jsonb,bytea,character,bytea,character,bigint,bigint,bigint,text,bigint)'::REGPROCEDURE
+      ) AND EXISTS (
+        SELECT 1 FROM pg_catalog.pg_default_acl AS defaults
+        WHERE defaults.defaclrole =
+            'social_monitor_reader_summary_daily_publication_definer'::REGROLE::OID
+          AND defaults.defaclnamespace = 0
+          AND defaults.defaclobjtype = 'f'
+          AND EXISTS (
+            SELECT 1 FROM pg_catalog.aclexplode(defaults.defaclacl) AS acl
+            WHERE acl.grantee = defaults.defaclrole
+              AND acl.privilege_type = 'EXECUTE'
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM pg_catalog.aclexplode(defaults.defaclacl) AS acl
+            WHERE acl.grantee <> defaults.defaclrole
+              OR acl.privilege_type <> 'EXECUTE'
+          )
       ) AND NOT EXISTS (
         SELECT 1 FROM pg_catalog.pg_default_acl AS defaults
         JOIN pg_catalog.pg_namespace AS namespace
@@ -100,6 +127,7 @@ export const assertReaderSummaryDailyTelemetryReleaseDatabaseState = async (
          ]) AND relation.relrowsecurity AND relation.relforcerowsecurity)
         AS final_rls_count`, [
     params.telemetryMigration,
+    params.defaultAclMigration,
     params.migrationAdminRole,
   ]);
   const row = result.rows[0];
@@ -108,6 +136,9 @@ export const assertReaderSummaryDailyTelemetryReleaseDatabaseState = async (
   assert(row?.telemetry_migration_count === "1" &&
     row.finished_migration_count === "1",
   "daily telemetry release must finish exactly one telemetry migration");
+  assert(row.default_acl_migration_count === "1" &&
+    row.default_acl_finished_count === "1",
+  "daily telemetry release must finish exactly one default ACL migration");
   assert(row.migration_admin_has_schema_create === false,
     "daily telemetry release migrator retained schema CREATE after hardening");
   assert(row.publication_owner_has_schema_create === false &&

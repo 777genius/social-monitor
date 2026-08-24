@@ -37,8 +37,10 @@ describe("reader summary daily telemetry PostgreSQL release", () => {
     expect(trace).toEqual(stages.slice(0, stages.indexOf(failedStage) + 1));
   });
 
-  it("requires PG18, one finished telemetry migration, and revoked migrator CREATE", async () => {
+  it("requires PG18, both finished migrations, and revoked migrator CREATE", async () => {
     const query = jest.fn().mockResolvedValue({ rows: [{
+      default_acl_finished_count: "1",
+      default_acl_migration_count: "1",
       final_acl_exact: true,
       final_rls_count: "5",
       finished_migration_count: "1",
@@ -51,12 +53,18 @@ describe("reader summary daily telemetry PostgreSQL release", () => {
 
     await expect(assertReaderSummaryDailyTelemetryReleaseDatabaseState(
       { query },
-      { migrationAdminRole: "fixture_migrator", telemetryMigration: "telemetry" },
+      {
+        defaultAclMigration: "default-acl",
+        migrationAdminRole: "fixture_migrator",
+        telemetryMigration: "telemetry",
+      },
     )).resolves.toBeUndefined();
     expect(query).toHaveBeenCalledTimes(1);
     expect(query).toHaveBeenCalledWith(expect.stringContaining(
       'FROM public."_prisma_migrations"',
-    ), ["telemetry", "fixture_migrator"]);
+    ), ["telemetry", "default-acl", "fixture_migrator"]);
+    expect(query.mock.calls[0]?.[0]).toContain("defaults.defaclnamespace = 0");
+    expect(query.mock.calls[0]?.[0]).toContain("namespace.nspname = 'public'");
   });
 
   it.each([
@@ -76,6 +84,8 @@ describe("reader summary daily telemetry PostgreSQL release", () => {
     diagnostic,
   ) => {
     const query = jest.fn().mockResolvedValue({ rows: [{
+      default_acl_finished_count: "1",
+      default_acl_migration_count: "1",
       final_acl_exact: finalAclExact,
       final_rls_count: finalRlsCount,
       finished_migration_count: finishedCount,
@@ -88,8 +98,26 @@ describe("reader summary daily telemetry PostgreSQL release", () => {
 
     await expect(assertReaderSummaryDailyTelemetryReleaseDatabaseState(
       { query },
-      { migrationAdminRole: "fixture_migrator", telemetryMigration: "telemetry" },
+      {
+        defaultAclMigration: "default-acl",
+        migrationAdminRole: "fixture_migrator",
+        telemetryMigration: "telemetry",
+      },
     )).rejects.toThrow(diagnostic);
+  });
+
+  it("rejects an absent forward default ACL repair", async () => {
+    const query = jest.fn().mockResolvedValue({ rows: [{
+      default_acl_finished_count: "0", default_acl_migration_count: "0",
+      final_acl_exact: true, final_rls_count: "5", finished_migration_count: "1",
+      migration_admin_has_schema_create: false,
+      publication_owner_has_schema_create: false, public_has_schema_create: false,
+      server_version: 180_000, telemetry_migration_count: "1",
+    }] });
+    await expect(assertReaderSummaryDailyTelemetryReleaseDatabaseState(
+      { query }, { defaultAclMigration: "default-acl",
+        migrationAdminRole: "fixture_migrator", telemetryMigration: "telemetry" },
+    )).rejects.toThrow("finish exactly one default ACL migration");
   });
 });
 
