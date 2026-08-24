@@ -3,6 +3,19 @@
 -- Existing rows remain explicitly historical/incomplete; no usage is inferred.
 BEGIN;
 
+CREATE TEMPORARY TABLE "reader_summary_daily_model_telemetry_session_roles" (
+  "session_user_oid" OID NOT NULL,
+  "current_user_oid" OID NOT NULL
+) ON COMMIT DROP;
+INSERT INTO "reader_summary_daily_model_telemetry_session_roles" (
+  "session_user_oid", "current_user_oid"
+)
+SELECT session_principal.oid, current_principal.oid
+FROM pg_catalog.pg_roles AS session_principal
+CROSS JOIN pg_catalog.pg_roles AS current_principal
+WHERE session_principal.rolname = session_user
+  AND current_principal.rolname = current_user;
+
 SET LOCAL ROLE social_monitor_public_schema_owner;
 
 ALTER TABLE public."reader_summary_daily_model_jobs"
@@ -188,14 +201,14 @@ GRANT social_monitor_reader_summary_daily_publication_definer
   TO social_monitor_public_schema_owner
   WITH ADMIN FALSE, INHERIT FALSE, SET TRUE GRANTED BY CURRENT_USER;
 SET LOCAL ROLE social_monitor_public_schema_owner;
+GRANT CREATE ON SCHEMA public
+  TO social_monitor_reader_summary_daily_publication_definer;
 ALTER FUNCTION public."complete_reader_summary_daily_model_job_v2"(
   UUID, UUID, DATE, TEXT, BIGINT, TIMESTAMPTZ, BYTEA, CHAR,
   JSONB, BYTEA, CHAR, BYTEA, CHAR, BIGINT, BIGINT, BIGINT, TEXT, BIGINT
 ) OWNER TO social_monitor_reader_summary_daily_publication_definer;
-RESET ROLE;
-REVOKE social_monitor_reader_summary_daily_publication_definer
-  FROM social_monitor_public_schema_owner GRANTED BY CURRENT_USER;
-
+REVOKE CREATE ON SCHEMA public
+  FROM social_monitor_reader_summary_daily_publication_definer;
 SET LOCAL ROLE social_monitor_reader_summary_daily_publication_definer;
 
 -- Historical rows remain readable and replayable through their persisted
@@ -219,18 +232,39 @@ RESET ROLE;
 -- Cut new daily reservations over to the active v2/high execution identity.
 -- The guarded definition rewrite preserves the existing claim concurrency,
 -- source-authority, fencing, and bounded-maintenance behavior byte-for-byte.
-SET LOCAL ROLE social_monitor_public_schema_owner;
 DO $daily_active_claim_profile$
 DECLARE
   v_definition TEXT;
+  v_owner_oid OID;
+  v_owner_name NAME;
+  v_session_user_oid OID;
+  v_boundary_current_user_oid OID;
   v_version_from CONSTANT TEXT := '''reader-summary-daily:v1''';
   v_version_to CONSTANT TEXT := '''reader-summary-daily:v2''';
   v_effort_from CONSTANT TEXT := '''xhigh''';
   v_effort_to CONSTANT TEXT := '''high''';
 BEGIN
-  SELECT pg_catalog.pg_get_functiondef(
-    'public.claim_reader_summary_daily_execution(uuid,uuid,text,date,timestamp with time zone)'::pg_catalog.regprocedure
-  ) INTO STRICT v_definition;
+  SELECT "session_user_oid", "current_user_oid"
+  INTO STRICT v_session_user_oid, v_boundary_current_user_oid
+  FROM pg_temp."reader_summary_daily_model_telemetry_session_roles";
+  SELECT proc.proowner, owner_role.rolname,
+    pg_catalog.pg_get_functiondef(proc.oid)
+  INTO STRICT v_owner_oid, v_owner_name, v_definition
+  FROM pg_catalog.pg_proc AS proc
+  JOIN pg_catalog.pg_roles AS owner_role ON owner_role.oid = proc.proowner
+  WHERE proc.oid =
+    'public.claim_reader_summary_daily_execution(uuid,uuid,text,date,timestamp with time zone)'::pg_catalog.regprocedure;
+  IF (v_owner_oid = ANY (ARRAY[
+    v_session_user_oid,
+    v_boundary_current_user_oid,
+    pg_catalog.to_regrole('social_monitor_public_schema_owner')::OID,
+    pg_catalog.to_regrole(
+      'social_monitor_reader_summary_daily_publication_definer'
+    )::OID
+  ])) IS NOT TRUE THEN
+    RAISE EXCEPTION 'daily active claim has unexpected owner';
+  END IF;
+  EXECUTE pg_catalog.format('SET LOCAL ROLE %I', v_owner_name);
   IF (pg_catalog.length(v_definition) - pg_catalog.length(
         pg_catalog.replace(v_definition, v_version_from, '')))
       / pg_catalog.length(v_version_from) <> 1
@@ -247,18 +281,41 @@ BEGIN
   );
 END;
 $daily_active_claim_profile$;
+RESET ROLE;
 
 DO $daily_bounded_active_claim_profile$
 DECLARE
   v_definition TEXT;
+  v_owner_oid OID;
+  v_owner_name NAME;
+  v_session_user_oid OID;
+  v_boundary_current_user_oid OID;
   v_version_from CONSTANT TEXT := '''reader-summary-daily:v1''';
   v_version_to CONSTANT TEXT := '''reader-summary-daily:v2''';
   v_effort_from CONSTANT TEXT := '''xhigh''';
   v_effort_to CONSTANT TEXT := '''high''';
 BEGIN
-  SELECT pg_catalog.pg_get_functiondef(
-    'public.claim_reader_summary_daily_execution_bounded_maintenance(uuid,uuid,text,date,timestamp with time zone)'::pg_catalog.regprocedure
-  ) INTO STRICT v_definition;
+  SELECT "session_user_oid", "current_user_oid"
+  INTO STRICT v_session_user_oid, v_boundary_current_user_oid
+  FROM pg_temp."reader_summary_daily_model_telemetry_session_roles";
+  SELECT proc.proowner, owner_role.rolname,
+    pg_catalog.pg_get_functiondef(proc.oid)
+  INTO STRICT v_owner_oid, v_owner_name, v_definition
+  FROM pg_catalog.pg_proc AS proc
+  JOIN pg_catalog.pg_roles AS owner_role ON owner_role.oid = proc.proowner
+  WHERE proc.oid =
+    'public.claim_reader_summary_daily_execution_bounded_maintenance(uuid,uuid,text,date,timestamp with time zone)'::pg_catalog.regprocedure;
+  IF (v_owner_oid = ANY (ARRAY[
+    v_session_user_oid,
+    v_boundary_current_user_oid,
+    pg_catalog.to_regrole('social_monitor_public_schema_owner')::OID,
+    pg_catalog.to_regrole(
+      'social_monitor_reader_summary_daily_publication_definer'
+    )::OID
+  ])) IS NOT TRUE THEN
+    RAISE EXCEPTION 'bounded daily active claim has unexpected owner';
+  END IF;
+  EXECUTE pg_catalog.format('SET LOCAL ROLE %I', v_owner_name);
   IF (pg_catalog.length(v_definition) - pg_catalog.length(
         pg_catalog.replace(v_definition, v_version_from, '')))
       / pg_catalog.length(v_version_from) <> 1
@@ -276,5 +333,7 @@ BEGIN
 END;
 $daily_bounded_active_claim_profile$;
 RESET ROLE;
+REVOKE social_monitor_reader_summary_daily_publication_definer
+  FROM social_monitor_public_schema_owner GRANTED BY CURRENT_USER;
 
 COMMIT;
