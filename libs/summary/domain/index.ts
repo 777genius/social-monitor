@@ -35,6 +35,11 @@ export * from "./policies/reader-summary-multi-day-quality-eval";
 export * from "./policies/reader-summary-multi-day-generation-profile";
 export * from "./policies/reader-summary-publication-policy";
 export * from "./policies/reader-summary-publication-generation-policy";
+export * from "./policies/reader-post-promotion-policy";
+export * from "./policies/reader-post-promotion-selection";
+export * from "./services/reader-post-promotion-attestation";
+export * from "./services/reader-post-promotion-projection";
+export * from "./services/reader-post-promotion-evidence-admission";
 export * from "./policies/reader-summary-schedule-window-policy";
 export * from "./policies/reader-summary-source-authority-policy";
 export * from "./policies/reader-summary-lead-eligibility-policy";
@@ -50,11 +55,17 @@ export * from "./policies/summary-evidence-pack-policy";
 export * from "./policies/summary-evidence-profile-policy";
 export * from "./policies/summary-feedback-eval-backlog-policy";
 export * from "./policies/story-ranking-policy";
+export * from "./policies/story-relation-eval-policy";
+export * from "./policies/story-relation-safe-recall-rollout-policy";
 export * from "./policies/top-read-selection-policy";
 export * from "./services/story-clustering.service";
 export * from "./services/story-cluster-membership";
 export * from "./services/story-relation-candidates";
+export * from "./services/story-relation-decision-trace";
+export * from "./services/story-relation-safe-recall-shadow";
+export * from "./services/story-relation-safe-recall-shadow-decision";
 export * from "./services/reader-summary-claim-board";
+export * from "./services/reader-summary-related-topics";
 export * from "./services/reader-summary-coverage-plan";
 export * from "./services/reader-summary-topic-map-builder";
 export * from "./services/reader-summary-topic-label-candidates";
@@ -71,6 +82,7 @@ export * from "./value-objects/provider-metric-label";
 export * from "./value-objects/preview-media";
 export * from "./value-objects/reader-summary-provider-identity";
 export * from "./value-objects/reader-summary-period";
+export * from "./value-objects/reader-summary-related-topic-relation";
 export * from "./value-objects/reader-summary-weekly-canonical-json";
 export * from "./value-objects/reader-summary-weekly-daily-certification";
 export * from "./value-objects/reader-summary-weekly-publication-evidence";
@@ -79,11 +91,16 @@ export * from "./value-objects/reader-summary-scope";
 export * from "./value-objects/signal-score";
 export type {
   StoryCluster,
+  ApprovedSameStoryRelation,
+  RelatedTopicRelation,
   StorySignalBreakdown,
   SummaryEvidenceConversationAncestor,
   SummaryEvidenceConversationContext,
   SummaryEvidenceConversationUnit,
   SummaryEvidenceItem,
+  SummaryEvidenceContentQuality,
+  SummaryEvidencePromotionFacts,
+  SummaryEvidencePromotionMetrics,
   SummaryEvidencePersonalization,
   SummaryEvidenceSelection,
   SummarySourceWindow as ReaderSummarySourceWindow,

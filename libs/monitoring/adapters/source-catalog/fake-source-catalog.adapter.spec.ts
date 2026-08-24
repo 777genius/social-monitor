@@ -34,6 +34,15 @@ describe('FakeSourceCatalogAdapter', () => {
     })).resolves.toEqual({ ok: true });
 
     await expect(catalog.validateBindingConfig('x-twitter', {
+      mode: 'search',
+      query: 'openai agents',
+      promotionAuthorityHandles: ['@OpenAI'],
+    })).resolves.toEqual({
+      ok: false,
+      reason: 'X/Twitter promotion authority is platform-controlled and cannot be configured by a workspace.',
+    });
+
+    await expect(catalog.validateBindingConfig('x-twitter', {
       mode: 'listing',
       query: 'openai agents',
     })).resolves.toEqual({
@@ -48,6 +57,15 @@ describe('FakeSourceCatalogAdapter', () => {
     })).resolves.toEqual({
       ok: false,
       reason: 'Unsupported X/Twitter search product: live',
+    });
+
+    await expect(catalog.validateBindingConfig('x-twitter', {
+      mode: 'search',
+      query: 'openai agents',
+      promotionAuthorityHandles: ['not-a-valid-handle'],
+    })).resolves.toEqual({
+      ok: false,
+      reason: 'X/Twitter promotion authority is platform-controlled and cannot be configured by a workspace.',
     });
   });
 

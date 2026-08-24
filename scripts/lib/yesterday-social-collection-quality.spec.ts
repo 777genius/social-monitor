@@ -349,7 +349,7 @@ function readyScan(
       storageDuplicateItemCount: 0,
       totalDuplicateItemCount: 0,
       pageCount: 1,
-      paginationStopReason: "target_reached",
+      paginationStopReason: "target_items",
       rateLimitEventCount: 0,
       coverageState: "complete",
       slo: {

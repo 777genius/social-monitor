@@ -16,11 +16,27 @@ language.
   quality state and `ReaderAction`.
 - Top Read: a user-readable item selected for review. It has a normalized
   `signalScore` plus provider-native `providerMetrics`.
-- More Selected Post: additional evidence selected for the Summary but not
-  promoted into the curated Top Reads. The UI keeps it in a separate section
-  and orders it by normalized Signal, independent source confirmation,
-  confidence and matched-interest breadth. Provider-native metrics are not
-  compared across platforms.
+- Promotion Attestation: the backend-signed-by-contract authorization carried
+  by every Promotion Policy V1 Top or Additional card. The frontend accepts
+  only the known schema, policy and digest versions, verifies the SHA-256
+  digest, and requires placement and decision to agree with the card lane.
+  Missing, malformed, unknown or contradictory attestations fail closed.
+- Additional Notable Story: an existing story cluster outside the curated Top
+  Reads that the backend explicitly authorizes after applying provider-native
+  notability policy. It appears at most once, carries its story-cluster id,
+  aggregates the cluster's citations and providers, and may be absent. The UI
+  preserves server order and neither guesses eligibility nor sorts by
+  normalized Signal. Unmarked legacy `selectedPosts`, including GitHub items,
+  are unsupported and fail closed. Only legacy `topReads` may use list-context
+  fallback for backward-compatible classification.
+- Related Topic: a non-transitive, non-credit card for one selected subject
+  story that the backend explicitly relates to a distinct official-authority
+  target story. It keeps the subject cluster id, stable relation id and target
+  cluster id, and displays only the subject source's title, URL, citation,
+  provider metrics and score. Noncanonical kinds or relation identity versions,
+  missing markers, raw or normalized duplicate identities, self-referencing
+  targets and dangling targets fail closed; presentation never infers or
+  traverses a relation.
 - Top Read Feedback Target: the concrete feed/source item identity used when a
   user rates a Top Read with 1-5 stars. It is recorded for review learning
   only and must not directly reorder results until a capped ranking policy
@@ -68,7 +84,19 @@ language.
 - Do not put normalized ranking labels like `Story signal`, `Base signal`,
   `Cross-source support`, `Confirmed by` or `Evidence items` into
   `ProviderMetric[]`.
-- Do not let Reddit/HN/GitHub/X scoring rules leak into the Summary context.
+- Provider-native Additional Notable Story floors belong to the backend Summary
+  policy. Flutter must consume the authorized card kind and must never infer
+  Additional authority from metrics, source copy or provider identity. Only
+  exact `topReads` list context may provide backward-compatible fallback for
+  unmarked legacy items; `selectedPosts` never receive that fallback,
+  regardless of provider identity.
+- Related Topic authority and direction belong to the backend domain. Flutter
+  must never infer a relation from titles, providers, metrics or a negative
+  same-story decision.
+- Promotion Policy V1 thresholds, ranking and refill decisions belong to the
+  backend. Flutter preserves authorized server order, applies only the eight
+  item lane caps and canonical deduplication with Top winning, and accepts
+  short or empty lanes.
 
 ## Rename Backlog
 

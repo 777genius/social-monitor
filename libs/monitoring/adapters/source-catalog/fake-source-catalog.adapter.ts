@@ -334,6 +334,13 @@ export class FakeSourceCatalogAdapter implements SourceCatalogPort {
         };
       }
 
+      if (config.promotionAuthorityHandles !== undefined) {
+        return {
+          ok: false,
+          reason: 'X/Twitter promotion authority is platform-controlled and cannot be configured by a workspace.',
+        };
+      }
+
       const integerValidation =
         validateBoundedInteger(config.windowHours, 'windowHours', 1, 72) ??
         validateBoundedInteger(config.maxItems, 'maxItems', 1, 100) ??

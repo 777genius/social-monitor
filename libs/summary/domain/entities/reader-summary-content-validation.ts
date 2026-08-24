@@ -3,7 +3,6 @@ import type {
   ReaderSummaryItem,
 } from "./reader-summary-artifact";
 import type { ReaderSummaryCitation } from "./citation";
-import type { ReaderSummaryTopicMapConfidence } from "./reader-summary-topic-map";
 import {
   assertUniqueReaderSummaryItems,
   assertUniqueReaderSummaryContentItems,
@@ -12,7 +11,15 @@ import {
 import { assertReaderSummaryContentShape } from "./reader-summary-content-shape";
 import { assertReaderSummaryClaim } from "./reader-summary-claim-validation";
 import { assertReaderSummaryNarrativeSections } from "./reader-summary-narrative-validation";
-import { readerSummaryProviderIdentity } from "../value-objects/reader-summary-provider-identity";
+import {
+  assertReaderSummaryReliabilityReport,
+  assertReaderSummaryTopicMap,
+} from "./reader-summary-content-supplemental-validation";
+import {
+  readerSummaryIndependentProviderFamily,
+  readerSummaryProviderIdentity,
+} from "../value-objects/reader-summary-provider-identity";
+import type { StoryCluster } from "../value-objects/summary-evidence-item";
 
 export const assertReaderSummaryContent = (
   content: ReaderSummaryContent,
@@ -20,6 +27,7 @@ export const assertReaderSummaryContent = (
   citationById: ReadonlyMap<string, ReaderSummaryCitation>,
   storyClusterProviderKeys: ReadonlySet<string>,
   storyClusterIds: ReadonlySet<string>,
+  storyClusters: readonly StoryCluster[],
 ): void => {
   const knownProviderKeys = new Set([
     ...storyClusterProviderKeys,
@@ -111,6 +119,30 @@ export const assertReaderSummaryContent = (
       knownProviderKeys,
       "Reader summary top read",
     );
+    if (
+      item.cardKind !== undefined &&
+      item.cardKind !== "curated_top_read" &&
+      item.cardKind !== "unsupported"
+    ) {
+      throw new Error("Reader summary top read card kind is unauthorized");
+    }
+    if (
+      item.cardKind === "curated_top_read" &&
+      (item.storyClusterId === undefined ||
+        !storyClusterIds.has(item.storyClusterId))
+    ) {
+      throw new Error(
+        "Reader summary top read card must reference an authorized story cluster",
+      );
+    }
+    if (item.cardKind === "curated_top_read") {
+      assertClusterCardEvidenceAuthority(
+        item,
+        storyClusters,
+        citationById,
+        "Reader summary top read",
+      );
+    }
   }
   for (const item of content.selectedPosts ?? []) {
     assertReaderItem(
@@ -119,6 +151,12 @@ export const assertReaderSummaryContent = (
       citationById,
       knownProviderKeys,
       "Reader summary selected post",
+    );
+    assertReaderSummarySelectedPostCardAuthority(
+      item,
+      storyClusterIds,
+      storyClusters,
+      citationById,
     );
   }
   assertUniqueReaderSummaryItems(
@@ -145,150 +183,128 @@ export const assertReaderSummaryContent = (
   }
 };
 
-const assertReaderSummaryTopicMap = (
-  topicMap: ReaderSummaryContent["topicMap"],
-  knownCitationIds: ReadonlySet<string>,
+const assertReaderSummarySelectedPostCardAuthority = (
+  item: ReaderSummaryItem,
   storyClusterIds: ReadonlySet<string>,
-): void => {
-  if (topicMap === undefined) {
-    return;
-  }
-  if (topicMap.schemaVersion !== "reader_summary.topic_map.v1") {
-    throw new Error("Reader summary topic map schema version is unsupported");
-  }
-  if (!["deterministic", "agent-runtime"].includes(topicMap.generatedBy)) {
-    throw new Error("Reader summary topic map generator is unsupported");
-  }
-  assertBoundedConfidence(topicMap.confidence, "Reader summary topic map");
-
-  const nodeIds = new Set(topicMap.nodes.map((node) => node.id));
-  const groupIds = new Set(topicMap.groups.map((group) => group.id));
-
-  for (const node of topicMap.nodes) {
-    if (
-      node.id.trim().length === 0 ||
-      node.label.trim().length === 0 ||
-      node.groupId.trim().length === 0 ||
-      node.storyClusterIds.length === 0 ||
-      node.providerKeys.length === 0 ||
-      node.interestIds.length === 0 ||
-      node.evidenceCount < 1 ||
-      !Number.isFinite(node.popularityScore) ||
-      node.popularityScore < 0 ||
-      node.popularityScore > 100 ||
-      !Number.isFinite(node.sizeWeight) ||
-      node.sizeWeight < 0 ||
-      node.sizeWeight > 1 ||
-      node.rationale.trim().length === 0
-    ) {
-      throw new Error("Reader summary topic map nodes are invalid");
-    }
-    for (const storyClusterId of node.storyClusterIds) {
-      if (!storyClusterIds.has(storyClusterId)) {
-        throw new Error(
-          "Reader summary topic map node references unknown story cluster",
-        );
-      }
-    }
-    assertCitationIds(
-      node.citationIds,
-      knownCitationIds,
-      "Reader summary topic map node",
-    );
-  }
-
-  for (const group of topicMap.groups) {
-    if (
-      group.id.trim().length === 0 ||
-      group.label.trim().length === 0 ||
-      group.colorKey.trim().length === 0 ||
-      group.nodeIds.length === 0
-    ) {
-      throw new Error("Reader summary topic map groups are invalid");
-    }
-    assertBoundedConfidence(group.confidence, "Reader summary topic map group");
-    for (const nodeId of group.nodeIds) {
-      if (!nodeIds.has(nodeId)) {
-        throw new Error(
-          "Reader summary topic map group references unknown node",
-        );
-      }
-    }
-  }
-
-  for (const node of topicMap.nodes) {
-    if (!groupIds.has(node.groupId)) {
-      throw new Error("Reader summary topic map node references unknown group");
-    }
-  }
-
-  for (const edge of topicMap.edges) {
-    if (
-      !nodeIds.has(edge.sourceNodeId) ||
-      !nodeIds.has(edge.targetNodeId) ||
-      edge.sourceNodeId === edge.targetNodeId ||
-      !Number.isFinite(edge.weight) ||
-      edge.weight < 0 ||
-      edge.weight > 1 ||
-      edge.reason.trim().length === 0
-    ) {
-      throw new Error("Reader summary topic map edges are invalid");
-    }
-  }
-};
-
-const assertBoundedConfidence = (
-  confidence: ReaderSummaryTopicMapConfidence,
-  label: string,
+  storyClusters: readonly StoryCluster[],
+  citationById: ReadonlyMap<string, ReaderSummaryCitation>,
 ): void => {
   if (
-    !["low", "medium", "high"].includes(confidence.level) ||
-    !Number.isFinite(confidence.score) ||
-    confidence.score < 0 ||
-    confidence.score > 1 ||
-    confidence.rationale.trim().length === 0
-  ) {
-    throw new Error(`${label} confidence is invalid`);
-  }
-};
-
-const assertReaderSummaryReliabilityReport = (
-  report: ReaderSummaryContent["reliabilityReport"],
-): void => {
-  if (
-    report.mode !== "shadow" ||
-    report.policyVersion.trim().length === 0 ||
-    !["low", "medium", "high"].includes(report.riskLevel) ||
-    !Number.isFinite(report.riskScore) ||
-    report.riskScore < 0 ||
-    report.riskScore > 1
+    (item.cardKind === "curated_top_read" ||
+      item.cardKind === "additional_notable_story" ||
+      item.cardKind === "related_topic") &&
+    (item.storyClusterId === undefined ||
+      !storyClusterIds.has(item.storyClusterId))
   ) {
     throw new Error(
-      "Reader summary reliability report must include shadow mode and bounded risk score",
+      "Reader summary selected post card must reference an authorized story cluster",
     );
   }
-
-  for (const risk of report.risks) {
+  if (item.cardKind === "related_topic") {
+    const relationId = item.relationId?.trim();
+    const targetStoryClusterId = item.targetStoryClusterId?.trim();
     if (
-      ![
-        "duplicate_risk",
-        "stale_evidence",
-        "single_source",
-        "weak_source",
-        "low_evidence_diversity",
-      ].includes(risk.kind) ||
-      !["low", "medium", "high"].includes(risk.level) ||
-      !Number.isFinite(risk.score) ||
-      risk.score < 0 ||
-      risk.score > 1 ||
-      risk.description.trim().length === 0
+      relationId === undefined || relationId.length === 0 ||
+      targetStoryClusterId === undefined || targetStoryClusterId.length === 0 ||
+      targetStoryClusterId === item.storyClusterId ||
+      !storyClusterIds.has(targetStoryClusterId)
     ) {
       throw new Error(
-        "Reader summary reliability risks must include kind, level and bounded score",
+        "Reader summary related topic must reference a distinct authorized target cluster",
       );
     }
+  } else if (item.relationId !== undefined || item.targetStoryClusterId !== undefined) {
+    throw new Error("Reader summary relation metadata requires a related topic card");
+  }
+  if (
+    item.cardKind === "curated_top_read" ||
+    item.cardKind === "additional_notable_story"
+  ) {
+    assertClusterCardEvidenceAuthority(
+      item,
+      storyClusters,
+      citationById,
+      "Reader summary selected post",
+    );
+  }
+  if (
+    item.cardKind === "supplemental_trend" &&
+    !item.storyClusterId?.startsWith("supplemental:github-trending-page:")
+  ) {
+    throw new Error(
+      "Reader summary GitHub card must carry its supplemental story marker",
+    );
   }
 };
+
+const assertClusterCardEvidenceAuthority = (
+  item: ReaderSummaryItem,
+  storyClusters: readonly StoryCluster[],
+  citationById: ReadonlyMap<string, ReaderSummaryCitation>,
+  label: string,
+): void => {
+  const cluster = storyClusters.find(
+    (candidate) => candidate.id === item.storyClusterId,
+  );
+  const clusterFeedItemIds = new Set(
+    cluster === undefined
+      ? []
+      : [cluster.representativeFeedItemId, ...cluster.duplicateFeedItemIds],
+  );
+  const citations = item.citationIds.map((citationId) =>
+    citationById.get(citationId),
+  );
+  const citationProviderKeys = new Set(
+    citations.flatMap((citation) =>
+      citation === undefined
+        ? []
+        : [normalizedProvider(citation.providerKey, citation.canonicalUrl)],
+    ),
+  );
+  const confirmedProviderKeys = new Set(
+    item.confirmedProviderKeys.map((providerKey) =>
+      normalizedProvider(providerKey),
+    ),
+  );
+  const clusterProviderKeys = new Set(
+    (cluster?.providerKeys ?? []).map((providerKey) =>
+      normalizedProvider(providerKey),
+    ),
+  );
+  const primaryProvider = normalizedProvider(item.providerKey);
+  if (
+    cluster === undefined ||
+    new Set(item.citationIds).size !== item.citationIds.length ||
+    citations.some((citation) =>
+      citation === undefined ||
+      !clusterFeedItemIds.has(citation.feedItemId) ||
+      !clusterProviderKeys.has(
+        normalizedProvider(citation.providerKey, citation.canonicalUrl),
+      )) ||
+    !citationProviderKeys.has(primaryProvider) ||
+    confirmedProviderKeys.size !== item.confirmedProviderKeys.length ||
+    confirmedProviderKeys.size !== citationProviderKeys.size ||
+    [...confirmedProviderKeys].some((provider) =>
+      !citationProviderKeys.has(provider)) ||
+    (item.canonicalUrl !== undefined &&
+      !citations.some((citation) =>
+        citation !== undefined &&
+        normalizedProvider(citation.providerKey, citation.canonicalUrl) ===
+          primaryProvider &&
+        citation.canonicalUrl === item.canonicalUrl))
+  ) {
+    throw new Error(`${label} card authority must match its cited cluster evidence`);
+  }
+};
+
+const normalizedProvider = (
+  value: string,
+  canonicalUrl?: string,
+): string =>
+  readerSummaryIndependentProviderFamily({
+    providerKey: value.trim().toLocaleLowerCase("en-US"),
+    canonicalUrl,
+  });
 
 const assertReaderItem = (
   item: ReaderSummaryItem,
@@ -356,8 +372,13 @@ const assertReaderItemProviderMatchesEvidence = (
     throw new Error(`${label} provider must match at least one citation`);
   }
 
+  const knownProviderFamilies = new Set([...knownProviderKeys].map(
+    (providerKey) => readerSummaryIndependentProviderFamily({ providerKey }),
+  ));
   for (const providerKey of item.confirmedProviderKeys) {
-    if (!knownProviderKeys.has(providerKey)) {
+    if (!knownProviderFamilies.has(
+      readerSummaryIndependentProviderFamily({ providerKey }),
+    )) {
       throw new Error(
         `${label} confirmed provider must exist in selected evidence`,
       );

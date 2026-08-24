@@ -42,6 +42,11 @@ type RepoCounts = {
   stars7d: number;
   stars30d: number;
   stars90d: number;
+  forks24h: number;
+  forks48h: number;
+  forks7d: number;
+  forks30d: number;
+  forks90d: number;
 };
 
 const defaultBaseUrl = 'https://data.gharchive.org';
@@ -128,8 +133,13 @@ export class PublicHttpGhArchiveGitHubRepoRadarClient implements GitHubRepoRadar
         stars7d: 0,
         stars30d: 0,
         stars90d: 0,
+        forks24h: 0,
+        forks48h: 0,
+        forks7d: 0,
+        forks30d: 0,
+        forks90d: 0,
       };
-      incrementWindows(record, createdAt, query.checkedAt);
+      incrementWindows(record, createdAt, query.checkedAt, event?.type);
       counts.set(fullName, record);
     }
   }
@@ -147,7 +157,7 @@ const parseEvent = (line: string): GitHubArchiveEvent | undefined => {
 };
 
 const readRepositoryName = (event: GitHubArchiveEvent | undefined): string | undefined => {
-  if (event?.type !== 'WatchEvent') {
+  if (event?.type !== 'WatchEvent' && event?.type !== 'ForkEvent') {
     return undefined;
   }
   const name = event.repo?.name;
@@ -170,20 +180,30 @@ const incrementWindows = (
   record: RepoCounts,
   eventAt: Date,
   checkedAt: Date,
+  eventType: unknown,
 ): void => {
-  if (eventAt >= hoursBefore(checkedAt, 24)) record.stars24h += 1;
-  if (eventAt >= hoursBefore(checkedAt, 48)) record.stars48h += 1;
-  if (eventAt >= hoursBefore(checkedAt, 24 * 7)) record.stars7d += 1;
-  if (eventAt >= hoursBefore(checkedAt, 24 * 30)) record.stars30d += 1;
-  if (eventAt >= hoursBefore(checkedAt, 24 * 90)) record.stars90d += 1;
+  const prefix = eventType === 'ForkEvent' ? 'forks' : 'stars';
+  if (eventAt >= hoursBefore(checkedAt, 24)) record[`${prefix}24h`] += 1;
+  if (eventAt >= hoursBefore(checkedAt, 48)) record[`${prefix}48h`] += 1;
+  if (eventAt >= hoursBefore(checkedAt, 24 * 7)) record[`${prefix}7d`] += 1;
+  if (eventAt >= hoursBefore(checkedAt, 24 * 30)) record[`${prefix}30d`] += 1;
+  if (eventAt >= hoursBefore(checkedAt, 24 * 90)) record[`${prefix}90d`] += 1;
 };
 
 const compareCounts = (left: RepoCounts, right: RepoCounts): number =>
-  right.stars24h - left.stars24h ||
-  right.stars48h - left.stars48h ||
-  right.stars7d - left.stars7d ||
-  right.stars30d - left.stars30d ||
-  right.stars90d - left.stars90d;
+  windowSignal(right.stars24h, right.forks24h) -
+    windowSignal(left.stars24h, left.forks24h) ||
+  windowSignal(right.stars48h, right.forks48h) -
+    windowSignal(left.stars48h, left.forks48h) ||
+  windowSignal(right.stars7d, right.forks7d) -
+    windowSignal(left.stars7d, left.forks7d) ||
+  windowSignal(right.stars30d, right.forks30d) -
+    windowSignal(left.stars30d, left.forks30d) ||
+  windowSignal(right.stars90d, right.forks90d) -
+    windowSignal(left.stars90d, left.forks90d);
+
+const windowSignal = (stars: number, forks: number): number =>
+  Math.max(stars, forks / 2);
 
 const matchesQuery = (fullName: string, query: string): boolean => {
   const normalizedQuery = query.trim().toLocaleLowerCase('en-US');
@@ -197,11 +217,11 @@ const primaryWindow = (
   windows: readonly GitHubRepositoryTrendWindow[],
 ): GitHubRepositoryTrendWindow => {
   const candidates = [
-    ['24h', scores.stars24h],
-    ['48h', scores.stars48h],
-    ['7d', scores.stars7d],
-    ['30d', scores.stars30d],
-    ['90d', scores.stars90d],
+    ['24h', windowSignal(scores.stars24h, scores.forks24h)],
+    ['48h', windowSignal(scores.stars48h, scores.forks48h)],
+    ['7d', windowSignal(scores.stars7d, scores.forks7d)],
+    ['30d', windowSignal(scores.stars30d, scores.forks30d)],
+    ['90d', windowSignal(scores.stars90d, scores.forks90d)],
   ] satisfies readonly (readonly [GitHubRepositoryTrendWindow, number])[];
   const filtered = candidates.filter(([window]) => windows.includes(window));
 

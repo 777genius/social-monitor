@@ -30,8 +30,10 @@ import 'package:social_monitor_summaries/src/presentation/workflows/summaries_re
 import '../../support/mixed_source_summaries_test_fixtures.dart';
 import '../../support/summaries_test_fixtures.dart';
 
+part 'summaries_feature_page_test_support.dart';
+
 void main() {
-  testWidgets('renders expanded summaries with source links', (tester) async {
+  testWidgets('does not render legacy supplemental cards', (tester) async {
     final store = _store([
       githubTrendingSummaryApiDto(),
     ], workspaceSummary: githubTrendingReaderSummaryApiDto());
@@ -64,7 +66,7 @@ void main() {
     );
     expect(
       find.text('Top 10 repositories in GitHub Trending order'),
-      findsOneWidget,
+      findsNothing,
     );
     expect(
       find.byKey(const ValueKey('workspace-summary-toolbar-generate')),
@@ -74,17 +76,7 @@ void main() {
       find.byKey(const ValueKey('workspace-summary-export')),
       findsOneWidget,
     );
-    await tester.scrollUntilVisible(
-      find.byKey(const ValueKey('reader-summary-top-post-0')),
-      500,
-      scrollable: find.byType(Scrollable).first,
-    );
-    await tester.pumpAndSettle();
-    expect(find.text('calesthio/OpenMontage'), findsWidgets);
-    expect(find.text('Stars'), findsWidgets);
-    expect(find.text('18K'), findsWidgets);
-    expect(find.text('Single source'), findsWidgets);
-    expect(find.text('Matching 1 interest'), findsWidgets);
+    expect(find.text('calesthio/OpenMontage'), findsNothing);
   });
 
   testWidgets('does not show source-list summary headlines as the lead', (
@@ -202,88 +194,6 @@ void main() {
     },
   );
 
-  testWidgets('separates GitHub Trending repositories from top posts', (
-    tester,
-  ) async {
-    final store = _store([
-      githubTrendingSummaryApiDto(),
-    ], workspaceSummary: mixedSourceReaderSummaryApiDto());
-    await _pumpSizedFeature(tester, store: store, size: const Size(1280, 820));
-    await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(
-      find.byKey(const ValueKey('reader-summary-top-posts-board-github')),
-      500,
-      scrollable: find.byType(Scrollable).first,
-    );
-    await tester.pumpAndSettle();
-    expect(find.text('Reddit thread on agent reliability'), findsOneWidget);
-    expect(find.text('calesthio/OpenMontage'), findsNothing);
-    await tester.tap(
-      find.byKey(const ValueKey('reader-summary-top-posts-board-github')),
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.text('GitHub trends'), findsOneWidget);
-    expect(
-      find.text('Top 10 repositories in GitHub Trending order'),
-      findsOneWidget,
-    );
-    expect(find.text('calesthio/OpenMontage'), findsOneWidget);
-    expect(find.text('Reddit thread on agent reliability'), findsNothing);
-
-    await tester.tap(
-      find.byKey(const ValueKey('reader-summary-top-posts-board-posts')),
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.text('Reddit thread on agent reliability'), findsOneWidget);
-    expect(find.text('calesthio/OpenMontage'), findsNothing);
-  });
-
-  testWidgets('provider chips filter the evidence list below the summary', (
-    tester,
-  ) async {
-    final store = _store([
-      githubTrendingSummaryApiDto(),
-    ], workspaceSummary: mixedSourceReaderSummaryApiDto());
-
-    await _pumpSizedFeature(tester, store: store, size: const Size(1280, 820));
-    await tester.pumpAndSettle();
-
-    await tester.scrollUntilVisible(
-      find.byKey(const ValueKey('reader-summary-top-posts-filters')),
-      500,
-      scrollable: find.byType(Scrollable).first,
-    );
-    await tester.ensureVisible(
-      find.byKey(const ValueKey('reader-summary-top-posts-filters')),
-    );
-    await tester.pumpAndSettle();
-    expect(find.text('Reddit thread on agent reliability'), findsOneWidget);
-    await tester.tap(
-      find.byKey(const ValueKey('reader-summary-top-posts-filters')),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(
-      find.widgetWithText(CheckedPopupMenuItem<String>, 'Reddit'),
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.text('Reddit thread on agent reliability'), findsNothing);
-    expect(find.text('HN discussion on model routing'), findsOneWidget);
-
-    await tester.tap(
-      find.byKey(const ValueKey('reader-summary-top-posts-filters')),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(
-      find.widgetWithText(CheckedPopupMenuItem<String>, 'Reddit'),
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.text('Reddit thread on agent reliability'), findsOneWidget);
-  });
-
   testWidgets('compact summaries open detail only after explicit selection', (
     tester,
   ) async {
@@ -393,16 +303,14 @@ void main() {
       findsOneWidget,
     );
 
-    await tester.scrollUntilVisible(
-      find.byKey(const ValueKey('reader-summary-top-post-0')),
-      500,
-      scrollable: find.byType(Scrollable).first,
-    );
-    await tester.pumpAndSettle();
-
     expect(
-      find.byKey(const ValueKey('reader-summary-top-post-0')),
-      findsOneWidget,
+      find.byKey(
+        const ValueKey(
+          'reader-summary-top-post-cluster:'
+          'supplemental:github-trending-page:feed-bc-1',
+        ),
+      ),
+      findsNothing,
     );
   });
 
@@ -424,7 +332,9 @@ void main() {
 
     expect(find.text('AI summary'), findsNothing);
     expect(
-      find.byKey(const ValueKey('reader-summary-top-post-0')),
+      find.byKey(
+        const ValueKey('reader-summary-top-post-cluster:story:repo-radar-1'),
+      ),
       findsOneWidget,
     );
 
@@ -432,7 +342,7 @@ void main() {
 
     await tester.tap(
       find.byKey(
-        const ValueKey('reader-summary-top-posts-board-more-selected'),
+        const ValueKey('reader-summary-top-posts-board-additional-stories'),
       ),
     );
     await tester.pumpAndSettle();
@@ -472,119 +382,5 @@ void main() {
     );
   });
 
-  testWidgets('compact failure and empty summary states stay visible', (
-    tester,
-  ) async {
-    final failedStore = _store([summaryApiDto()]);
-    failedStore.workspaceSummaryState =
-        const FailureViewState<WorkspaceSummarySnapshot>(
-          failure: UnexpectedFailure(
-            message: 'Provider evidence unavailable',
-            code: 'summaries.provider_failed',
-          ),
-        );
-
-    await _pumpSizedFeature(
-      tester,
-      store: failedStore,
-      size: const Size(390, 780),
-      autoload: false,
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.text('Summary unavailable'), findsOneWidget);
-    expect(find.text('Provider evidence unavailable'), findsOneWidget);
-
-    final emptyStore = _store([]);
-    emptyStore.workspaceSummaryState =
-        const EmptyViewState<WorkspaceSummarySnapshot>(
-          reason: 'summaries.empty',
-        );
-
-    await _pumpSizedFeature(
-      tester,
-      store: emptyStore,
-      size: const Size(390, 780),
-      autoload: false,
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.text('No workspace summary'), findsOneWidget);
-    expect(
-      find.text('Run a workspace summary after feed items are collected.'),
-      findsOneWidget,
-    );
-  });
-}
-
-SummariesReviewStore _store(
-  List<SummaryApiDto> items, {
-  ReaderSummaryApiDto? workspaceSummary,
-}) {
-  final catalog = GeneratedSummaryReviewCatalog(
-    apiClient: InMemorySummariesApiClient(
-      items: items,
-      workspaceSummary: workspaceSummary,
-    ),
-  );
-  return SummariesReviewStore(
-    dependencies: SummariesReviewStoreDependencies(
-      listSummaries: ListSummariesUseCase(catalog),
-      loadWorkspaceSummary: LoadWorkspaceSummaryUseCase(catalog),
-      loadWorkspaceSummaryHistory: LoadWorkspaceSummaryHistoryUseCase(catalog),
-      requestWorkspaceSummary: RequestWorkspaceSummaryUseCase(catalog),
-      loadWorkspaceSummaryJobStatus: LoadWorkspaceSummaryJobStatusUseCase(
-        catalog,
-      ),
-      loadSummaryDetail: LoadSummaryDetailUseCase(catalog),
-      loadTopicRecommendations: LoadTopicRecommendationsUseCase(catalog),
-      decideTopicRecommendation: DecideTopicRecommendationUseCase(catalog),
-      loadPostRatings: LoadPostRatingsUseCase(catalog),
-      regenerateSummary: RegenerateSummaryUseCase(catalog),
-      submitFeedback: SubmitSummaryFeedbackUseCase(catalog),
-      submitPostRating: SubmitPostRatingUseCase(catalog),
-      submitReaderAction: SubmitReaderActionUseCase(catalog),
-      openReaderSource: const OpenReaderSourceUseCase(
-        _FakeReaderSourceLauncher(),
-      ),
-    ),
-    scope: summaryWorkspaceScope,
-    userId: 'user-test',
-    summaryPollInterval: Duration.zero,
-  );
-}
-
-final class _FakeReaderSourceLauncher implements ReaderSourceLauncher {
-  const _FakeReaderSourceLauncher();
-  @override
-  Future<Result<Unit>> open(Uri uri) async => const Result.success(Unit.value);
-}
-
-Future<void> _pumpSizedFeature(
-  WidgetTester tester, {
-  required SummariesReviewStore store,
-  required Size size,
-  bool autoload = true,
-}) async {
-  tester.view.physicalSize = size;
-  tester.view.devicePixelRatio = 1;
-  addTearDown(tester.view.resetPhysicalSize);
-  addTearDown(tester.view.resetDevicePixelRatio);
-
-  final theme = AppTheme.light();
-  await tester.pumpWidget(
-    AppHeadlessScope(
-      theme: theme,
-      appBuilder: (overlayBuilder) => MaterialApp(
-        theme: theme,
-        builder: overlayBuilder,
-        home: MediaQuery(
-          data: MediaQueryData(size: size),
-          child: Scaffold(
-            body: SummariesFeaturePage(store: store, autoload: autoload),
-          ),
-        ),
-      ),
-    ),
-  );
+  _registerCompactFailureAndEmptyStateTest();
 }

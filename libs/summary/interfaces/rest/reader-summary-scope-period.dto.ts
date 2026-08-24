@@ -22,6 +22,9 @@ export class ReaderSummarySourceWindowDto {
   @ApiProperty({ format: "date-time" })
   declare readonly endedAt: string;
 
+  @ApiPropertyOptional({ format: "date-time" })
+  declare readonly ingestionCutoff?: string;
+
   @ApiProperty({ type: [String] })
   declare readonly selectedFeedItemIds: readonly string[];
 

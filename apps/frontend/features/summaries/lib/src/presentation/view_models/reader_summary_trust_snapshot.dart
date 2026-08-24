@@ -1,4 +1,5 @@
 import '../../domain/aggregates/reader_summary.dart';
+import '../../domain/value_objects/reader_summary_provider_family.dart';
 
 final class ReaderSummaryTrustSnapshot {
   const ReaderSummaryTrustSnapshot({
@@ -62,12 +63,9 @@ final class ReaderSummaryTrustSnapshot {
 
 Set<String> uniqueTrustEvidenceSourceGroups(
   Iterable<SummaryClaimEvidence> evidence,
-) {
-  return {
-    for (final item in evidence)
-      if (item.providerKey.trim().isNotEmpty) item.providerKey.trim(),
-  };
-}
+) => readerSummaryIndependentProviderFamilies(
+  evidence.map((item) => item.providerKey),
+);
 
 String lowestConfidenceLevel(Iterable<String> levels) {
   if (levels.contains('low')) {

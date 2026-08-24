@@ -1,10 +1,13 @@
 import 'package:social_monitor_summaries/src/domain/aggregates/reader_summary.dart';
+import 'package:social_monitor_summaries/src/domain/entities/summary_citation.dart';
 import 'package:social_monitor_summaries/src/infrastructure/mappers/summary_mapper.dart';
 
 import 'summaries_test_fixtures.dart';
 
 TopRead topPostFixture({
   required String title,
+  String? storyClusterId,
+  ReaderSummaryCardKind cardKind = ReaderSummaryCardKind.unsupported,
   String providerKey = 'reddit',
   String? canonicalUrl,
   int? githubRank,
@@ -15,8 +18,37 @@ TopRead topPostFixture({
   double confidenceScore = 0.6,
   List<String> matchedInterestIds = const ['ai-developer-tools'],
   List<String>? confirmedProviderKeys,
+  bool attested = true,
+  String? promotionCanonicalIdentity,
+  ReaderPostPromotionAttestation? promotionAttestationOverride,
 }) {
+  final defaultPromotionAttestation = switch (cardKind) {
+    ReaderSummaryCardKind.curatedTopRead when attested =>
+      ReaderPostPromotionAttestation(
+        candidateId: 'candidate:${storyClusterId ?? title}',
+        canonicalIdentity:
+            promotionCanonicalIdentity ?? 'story:${storyClusterId ?? title}',
+        placement: ReaderPostPromotionPlacement.top,
+        slot: 0,
+        decision: 'promote_top',
+      ),
+    ReaderSummaryCardKind.additionalNotableStory when attested =>
+      ReaderPostPromotionAttestation(
+        candidateId: 'candidate:${storyClusterId ?? title}',
+        canonicalIdentity:
+            promotionCanonicalIdentity ?? 'story:${storyClusterId ?? title}',
+        placement: ReaderPostPromotionPlacement.additional,
+        slot: 0,
+        decision: 'promote_additional',
+      ),
+    _ => null,
+  };
+  final promotionAttestation =
+      promotionAttestationOverride ?? defaultPromotionAttestation;
   return TopRead(
+    storyClusterId: storyClusterId,
+    cardKind: cardKind,
+    promotionAttestation: promotionAttestation,
     title: title,
     providerKey: providerKey,
     reason: '$title is relevant evidence.',
@@ -32,6 +64,8 @@ TopRead topPostFixture({
     providerMetrics:
         providerMetrics ??
         [
+          if (providerKey.trim().toLowerCase() == 'reddit')
+            const ProviderMetric(label: 'Score', value: '25'),
           if (githubRank != null)
             ProviderMetric(
               label: 'GitHub Trending today',
@@ -48,6 +82,8 @@ TopRead topPostFixture({
 ReaderSummary topPostsSummaryFixture({
   required List<TopRead> topReads,
   List<TopRead> selectedPosts = const [],
+  List<SummaryStory>? topStories,
+  List<SummaryCitation>? citations,
   SummaryPeriod? period,
 }) {
   final base = const SummaryMapper().readerSummaryToDomain(
@@ -78,9 +114,9 @@ ReaderSummary topPostsSummaryFixture({
       risks: content.risks,
       nextActions: content.nextActions,
     ),
-    topStories: base.topStories,
+    topStories: topStories ?? base.topStories,
     repeatedSignals: base.repeatedSignals,
-    citations: base.citations,
+    citations: citations ?? base.citations,
     period: period ?? base.period,
     generatedAt: base.generatedAt,
     summaryWindow: base.summaryWindow,

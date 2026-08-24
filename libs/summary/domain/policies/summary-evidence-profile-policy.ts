@@ -2,7 +2,10 @@ import type {
   SummaryEvidenceItem,
   SummaryEvidenceSelection,
 } from "../value-objects/summary-evidence-item";
-import { independentEvidenceProviderKeys } from "../value-objects/reader-summary-provider-identity";
+import {
+  independentEvidenceProviderKeys,
+  readerSummaryIndependentProviderFamilyCount,
+} from "../value-objects/reader-summary-provider-identity";
 
 export type SummaryEvidenceCoverageWarning =
   | "no_evidence"
@@ -93,7 +96,7 @@ const independentCrossProviderClusterCount = (
     return (
       (evidence.length >= 2
         ? independentEvidenceProviderKeys(evidence).length
-        : cluster.providerKeys.length) > 1
+        : readerSummaryIndependentProviderFamilyCount(cluster.providerKeys)) > 1
     );
   }).length;
 };

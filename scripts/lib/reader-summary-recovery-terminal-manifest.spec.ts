@@ -304,7 +304,7 @@ function fakeClient(
       if (!sql.includes("pg_control_system")) {
         afterEvidence?.();
       }
-      return { rows: selected as readonly TRow[] };
+      return { rows: selected as unknown as readonly TRow[] };
     },
   };
 }

@@ -4,11 +4,17 @@ import {
   workspaceId,
 } from "@social-monitor/shared-kernel";
 import {
+  buildReaderSummaryCoveragePlan,
   buildReaderSummaryPeriod,
+  defaultReaderSummaryGenerationPolicy,
   ReaderSummaryJob,
   type ReaderSummaryPublicationPolicy,
 } from "@social-monitor/summary/domain";
 import { ExecuteReaderSummaryJobUseCase } from "@social-monitor/summary/features/execute-reader-summary-job/execute-reader-summary-job.use-case";
+import {
+  NOOP_READER_SUMMARY_PROMOTION_METRICS,
+  readerSummaryPromotionControl,
+} from "@social-monitor/summary/features/execute-reader-summary-job/reader-summary-promotion-control";
 import type {
   ReaderSummaryArtifactRepositoryPort,
   ReaderSummaryJobRepositoryPort,
@@ -77,6 +83,56 @@ describe("reader summary daily frozen publication input", () => {
         },
       });
     }
+  });
+
+  it("normalizes historical replay with null rather than fabricated token usage", async () => {
+    const requestedUtcDate = "2026-07-24";
+    const replay = recoveryReplay(
+      requestedUtcDate,
+      "checked_at_collection_anchor",
+    );
+    const wiring = createReaderSummaryDailyPublicationExecutionWiring({
+      replay: {
+        ...replay,
+        authoritySha256: replay.sourceAuthoritySha256,
+        outputKind: "output_text",
+      },
+      summaryClient: { $queryRaw: jest.fn() } as never,
+      clock: fixedClock,
+      attestationSink: { record: async () => undefined },
+    });
+    const evidence = await wiring.evidenceSelector.select(
+      evidenceQuery(requestedUtcDate, nextDay(requestedUtcDate)),
+    );
+    const model = wiring.model!;
+    const input = {
+      ...scope,
+      tenantId: tenantId(scope.tenantId),
+      workspaceId: workspaceId(scope.workspaceId),
+      scope: { type: "workspace" as const },
+      period: buildReaderSummaryPeriod({
+        cadence: "daily",
+        startedAt: new Date(`${requestedUtcDate}T00:00:00.000Z`),
+        endedAt: nextDay(requestedUtcDate),
+        timezone: "UTC",
+      }),
+      evidence,
+      coveragePlan: buildReaderSummaryCoveragePlan(evidence),
+      contextArtifacts: [],
+      policy: defaultReaderSummaryGenerationPolicy(),
+      requestedAt: new Date(`${requestedUtcDate}T00:00:00.000Z`),
+    };
+    const route = model.route(input, {} as never, {} as never);
+
+    await expect(model.generate(input, route)).resolves.toMatchObject({
+      draft: {
+        usage: {
+          inputTokens: null,
+          outputTokens: null,
+          estimatedCostUsd: 0,
+        },
+      },
+    });
   });
 
   it.each(["2026-07-23", "2026-07-28", "2026-07-29", "2026-07-30"]) (
@@ -226,11 +282,7 @@ describe("reader summary daily frozen publication input", () => {
       receiptBytes: forgedReceipt.receiptBytes,
       clock: fixedClock,
     })).toThrow(/frozen authority/u);
-    const structuredReceipt = authorityValue({
-      ...replay.authority,
-      canonicalBytes: replay.receiptBytes,
-      canonicalSha256: sha256(replay.receiptBytes),
-    });
+    const structuredReceipt = authorityValue({ canonicalBytes: replay.receiptBytes });
     record(record(structuredReceipt).attestation).selectedOutputKind = "structured_output";
     expect(() => createReaderSummaryDailyFrozenOutputTextWiring({
       ...replay,
@@ -238,7 +290,8 @@ describe("reader summary daily frozen publication input", () => {
       clock: fixedClock,
     })).toThrow(/receipt|attestation/u);
     expect(() => createReaderSummaryDailyPublicationExecutionWiring({
-      replay: { ...replay, outputKind: "structured_output" },
+      replay: { ...replay, authoritySha256: replay.sourceAuthoritySha256,
+        outputKind: "structured_output" },
       summaryClient: { $queryRaw: jest.fn() } as never,
       clock: fixedClock,
       attestationSink: { record: jest.fn(async () => undefined) },
@@ -458,6 +511,7 @@ const executeVerifiedRecovery = async (
     publications,
     ids,
     clock,
+    readerSummaryPromotionControl(NOOP_READER_SUMMARY_PROMOTION_METRICS),
     undefined,
     undefined,
     wiring.topicMapBuilder,
@@ -598,11 +652,12 @@ const evidenceQuery = (requestedUtcDate: string, observedThrough: Date) => ({
   tenantId: tenantId(scope.tenantId),
   workspaceId: workspaceId(scope.workspaceId),
   scope: { type: "workspace" as const },
-  period: {
+  period: buildReaderSummaryPeriod({
+    cadence: "daily",
     startedAt: new Date(`${requestedUtcDate}T00:00:00.000Z`),
     endedAt: nextDay(requestedUtcDate),
     timezone: "UTC",
-  },
+  }),
   maxItems: 200,
   observedThrough,
 });

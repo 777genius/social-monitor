@@ -38,7 +38,9 @@ _TopPostSupportSignal _topPostSupportSignal({
     }
 
     final providerKey = _topPostEvidenceProviderKey(citation, item);
-    final normalizedProviderKey = providerKey.trim().toLowerCase();
+    final normalizedProviderKey = readerSummaryIndependentProviderFamily(
+      providerKey,
+    );
     if (normalizedProviderKey.isEmpty) {
       continue;
     }
@@ -94,7 +96,9 @@ String? _topPostPrimaryCitationId(
   TopRead item,
   Map<String, SummaryCitation> citationsById,
 ) {
-  final itemProviderKey = item.providerKey.trim().toLowerCase();
+  final itemProviderKey = readerSummaryIndependentProviderFamily(
+    item.providerKey,
+  );
   final itemCanonicalUrl = _nullableTrim(item.canonicalUrl)?.toLowerCase();
   String? firstResolvedCitationId;
   String? firstProviderMatchCitationId;
@@ -110,10 +114,12 @@ String? _topPostPrimaryCitationId(
     }
 
     firstResolvedCitationId ??= citationId;
-    final citationProviderKey = _topPostEvidenceProviderKey(
-      citation,
-      item,
-    ).trim().toLowerCase();
+    final citationProviderKey = readerSummaryIndependentProviderFamily(
+      _topPostEvidenceProviderKey(
+        citation,
+        item,
+      ),
+    );
     if (citationProviderKey != itemProviderKey) {
       continue;
     }

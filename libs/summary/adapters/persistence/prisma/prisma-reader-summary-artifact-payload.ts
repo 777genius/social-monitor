@@ -1,6 +1,7 @@
 import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 
 import {
+  ReaderSummaryArtifact,
   buildReaderSummaryPeriod,
   type ReaderSummaryArtifactProps,
   type ReaderSummaryCadence,
@@ -20,6 +21,7 @@ import {
   type ReaderSummaryInterestHighlight,
   type ReaderSummaryTopStory,
   type ReaderSummaryUsage,
+  type RelatedTopicRelation,
   type SummaryEvidencePersonalization,
   type StoryCluster,
 } from "../../../domain";
@@ -36,9 +38,12 @@ import type {
   SerializedReaderSummaryArtifactPayload,
   SerializedReaderSummaryContextArtifact,
   SerializedReaderSummaryPeriod,
-  SerializedReaderSummarySourceWindow,
   SerializedReaderSummaryStoryCluster,
 } from "./prisma-reader-summary-payload-types";
+import {
+  normalizePersistedPromotionBoard,
+} from "./prisma-reader-summary-promotion-attestation";
+import { normalizeReaderSummarySourceWindow } from "./prisma-reader-summary-source-window";
 
 export type PrismaReaderSummaryArtifactPayloadFallback = {
   readonly id: string;
@@ -85,21 +90,14 @@ export const normalizeReaderSummaryArtifactPayload = (
   }
 
   const value = payload as SerializedReaderSummaryArtifactPayload;
-  const sourceWindow = value.sourceWindow;
-
-  if (
-    sourceWindow === undefined ||
-    sourceWindow === null ||
-    typeof sourceWindow !== "object" ||
-    Array.isArray(sourceWindow)
-  ) {
-    throw new Error("Reader summary artifact source window payload is invalid");
-  }
-  const serializedSourceWindow =
-    sourceWindow as SerializedReaderSummarySourceWindow;
   const period = normalizeReaderSummaryPeriodPayload(value.period, fallback);
+  const promotionBoard = normalizePersistedPromotionBoard({
+    promotionAttestations: value.promotionAttestations,
+    promotionEvidenceFacts: value.promotionEvidenceFacts,
+    content: normalizeReaderSummaryContent(value.content ?? value.readerBrief),
+  });
 
-  return {
+  const normalized: ReaderSummaryArtifactProps = {
     schemaVersion: normalizeReaderSummaryArtifactSchemaVersion(
       value.schemaVersion,
     ),
@@ -118,32 +116,19 @@ export const normalizeReaderSummaryArtifactPayload = (
       value.generatedAt === undefined
         ? fallback.createdAt
         : requireDate(value.generatedAt, "Reader summary generation date"),
-    sourceWindow: {
-      windowId: requireString(
-        serializedSourceWindow.windowId,
-        "Reader summary source window id",
-      ),
-      startedAt: requireDate(
-        serializedSourceWindow.startedAt,
-        "Reader summary source window start",
-      ),
-      endedAt: requireDate(
-        serializedSourceWindow.endedAt,
-        "Reader summary source window end",
-      ),
-      selectedFeedItemIds: requireStringArray(
-        serializedSourceWindow.selectedFeedItemIds,
-        "Reader summary source window selected feed ids",
-      ),
-      storyClusterIds: requireStringArray(
-        serializedSourceWindow.storyClusterIds,
-        "Reader summary source window story cluster ids",
-      ),
-    },
+    sourceWindow: normalizeReaderSummarySourceWindow(value.sourceWindow),
     storyClusters: requireArray<SerializedReaderSummaryStoryCluster>(
       value.storyClusters,
       "Reader summary story clusters",
     ).map(normalizeReaderSummaryStoryCluster),
+    relatedTopicRelations: value.relatedTopicRelations === undefined
+      ? undefined
+      : Array.isArray(value.relatedTopicRelations)
+        ? value.relatedTopicRelations as readonly RelatedTopicRelation[]
+        : [],
+    promotionAttestations: promotionBoard.promotionAttestations,
+    promotionEvidenceFacts: promotionBoard.promotionEvidenceFacts,
+    promotionBoardState: promotionBoard.promotionBoardState,
     contextArtifacts: requireArray<SerializedReaderSummaryContextArtifact>(
       value.contextArtifacts,
       "Reader summary context artifacts",
@@ -159,7 +144,7 @@ export const normalizeReaderSummaryArtifactPayload = (
       value.executiveSummary ?? fallback.summaryText ?? "",
       "Reader summary text",
     ),
-    content: normalizeReaderSummaryContent(value.content ?? value.readerBrief),
+    content: promotionBoard.content,
     topStories: requireArray<ReaderSummaryTopStory>(
       value.topStories,
       "Reader summary top stories",
@@ -189,13 +174,81 @@ export const normalizeReaderSummaryArtifactPayload = (
       "Reader summary confidence",
     ),
     lineage: normalizeReaderSummaryLineage(value.lineage),
-    usage: requireObject<ReaderSummaryUsage>(
-      value.usage,
-      "Reader summary usage",
-    ),
+    usage: normalizeReaderSummaryUsage(value.usage),
     noSignalReason: normalizeOptionalString(value.noSignalReason),
   };
+
+  return failClosedRelatedTopicPayload(normalized);
 };
+
+const normalizeReaderSummaryUsage = (input: unknown): ReaderSummaryUsage => {
+  const value = requireObject<Record<string, unknown>>(
+    input,
+    "Reader summary usage",
+  );
+  const inputTokens = nullableTokenCount(value.inputTokens);
+  const outputTokens = nullableTokenCount(value.outputTokens);
+  if ((inputTokens === null) !== (outputTokens === null)) {
+    throw new Error(
+      "Reader summary token usage must be complete or unavailable",
+    );
+  }
+  if (
+    typeof value.estimatedCostUsd !== "number" ||
+    !Number.isFinite(value.estimatedCostUsd) ||
+    value.estimatedCostUsd < 0
+  ) {
+    throw new Error("Reader summary estimated cost must be non-negative");
+  }
+  return { inputTokens, outputTokens, estimatedCostUsd: value.estimatedCostUsd };
+};
+
+const nullableTokenCount = (value: unknown): number | null => {
+  if (value === null) return null;
+  if (Number.isSafeInteger(value) && (value as number) >= 0) {
+    return value as number;
+  }
+  throw new Error(
+    "Reader summary token usage must be a non-negative integer or null",
+  );
+};
+
+const failClosedRelatedTopicPayload = (
+  payload: ReaderSummaryArtifactProps,
+): ReaderSummaryArtifactProps => {
+  try {
+    ReaderSummaryArtifact.rehydrate(payload);
+    return payload;
+  } catch {
+    const withoutRelatedTopics: ReaderSummaryArtifactProps = {
+      ...payload,
+      relatedTopicRelations: [],
+      content: payload.content === undefined
+        ? undefined
+        : {
+            ...payload.content,
+            topReads: withoutRelatedTopicCards(payload.content.topReads),
+            selectedPosts: payload.content.selectedPosts === undefined
+              ? undefined
+              : withoutRelatedTopicCards(payload.content.selectedPosts),
+            interestSections: payload.content.interestSections.map((section) => ({
+              ...section,
+              items: withoutRelatedTopicCards(section.items),
+            })),
+          },
+    };
+    try {
+      ReaderSummaryArtifact.rehydrate(withoutRelatedTopics);
+      return withoutRelatedTopics;
+    } catch {
+      return payload;
+    }
+  }
+};
+
+const withoutRelatedTopicCards = <T extends { readonly cardKind?: string }>(
+  cards: readonly T[],
+): readonly T[] => cards.filter((card) => card.cardKind !== "related_topic");
 
 const normalizeReaderSummaryStoryCluster = (
   value: SerializedReaderSummaryStoryCluster,
@@ -353,7 +406,6 @@ const normalizeReaderSummaryContent = (
     topReads: content.topReads.map(normalizeReaderSummaryItem),
     selectedPosts: normalizeReaderSummarySelectedPosts(
       content.selectedPosts,
-      content.topReads,
     ),
     claimBoard: normalizeReaderSummaryClaimBoard(content.claimBoard),
     reliabilityReport:
@@ -374,14 +426,19 @@ const normalizeReaderSummaryMainTopics = (
 
 const normalizeReaderSummarySelectedPosts = (
   value: readonly ReaderSummaryItem[] | undefined,
-  fallbackTopReads: readonly ReaderSummaryItem[],
 ): readonly ReaderSummaryItem[] =>
-  (value ?? fallbackTopReads).map(normalizeReaderSummaryItem);
+  (value ?? []).map(normalizeReaderSummaryItem);
 
 const normalizeReaderSummaryItem = (
   item: ReaderSummaryItem,
 ): ReaderSummaryItem => ({
   ...item,
+  ...(item.storyClusterId?.trim()
+    ? { storyClusterId: item.storyClusterId.trim() }
+    : {}),
+  ...(item.cardKind === undefined
+    ? {}
+    : { cardKind: item.cardKind }),
   providerName: item.providerName ?? item.providerKey,
   primaryActionKind:
     item.primaryActionKind === "watch_repository"

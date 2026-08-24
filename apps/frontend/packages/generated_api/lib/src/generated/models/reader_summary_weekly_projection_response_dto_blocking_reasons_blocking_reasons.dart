@@ -22,7 +22,10 @@ enum ReaderSummaryWeeklyProjectionResponseDtoBlockingReasonsBlockingReasons {
 
   factory ReaderSummaryWeeklyProjectionResponseDtoBlockingReasonsBlockingReasons.fromJson(
     String json,
-  ) => values.firstWhere((e) => e.json == json, orElse: () => $unknown);
+  ) => values.firstWhere(
+    (e) => e.json == json,
+    orElse: () => $unknown,
+  );
 
   final String? json;
 
@@ -34,5 +37,6 @@ enum ReaderSummaryWeeklyProjectionResponseDtoBlockingReasonsBlockingReasons {
   /// Returns all defined enum values excluding the $unknown value.
   static List<
     ReaderSummaryWeeklyProjectionResponseDtoBlockingReasonsBlockingReasons
-  > get $valuesDefined => values.where((value) => value != $unknown).toList();
+  >
+  get $valuesDefined => values.where((value) => value != $unknown).toList();
 }

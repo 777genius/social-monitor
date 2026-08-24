@@ -1,4 +1,7 @@
-import type { ReaderSummaryArtifactProps } from "../../domain";
+import {
+  readerSummaryIndependentProviderFamilyCount,
+  type ReaderSummaryArtifactProps,
+} from "../../domain";
 import type { ReaderSummaryCollectedFeedItemCoverage } from "../../ports";
 import type {
   ReaderSummaryContentView,
@@ -85,8 +88,12 @@ export const buildReaderSummaryCoverageView = (
   freshness: ReaderSummaryFreshnessView,
   collectedCoverage: ReaderSummaryCollectedFeedItemCoverage | undefined,
 ): ReaderSummaryCoverageView => {
-  const selectedFeedItemCount =
-    snapshot.sourceWindow.selectedFeedItemIds.length;
+  const selectedFeedItemCount = new Set(
+    (snapshot.promotionAttestations ?? []).flatMap((attestation) => [
+      attestation.candidateId,
+      ...attestation.supportFacts.map((fact) => fact.candidateId),
+    ]),
+  ).size;
   const collectedFeedItemCount =
     collectedCoverage === undefined
       ? undefined
@@ -134,20 +141,26 @@ export const buildReaderSummaryCoverageView = (
     storyClusterCount: snapshot.storyClusters.length,
     topReadCount: content.topReads.length,
     citationCount: snapshot.citationMap.length,
-    providerCount: content.sourceMix.length,
+    providerCount: readerSummaryIndependentProviderFamilyCount(
+      content.sourceMix.map((source) => source.providerKey),
+    ),
     interestCount: interestIds.size,
     duplicateFeedItemCount: snapshot.storyClusters.reduce(
       (total, cluster) => total + cluster.duplicateFeedItemIds.length,
       0,
     ),
     crossSourceClusterCount: snapshot.storyClusters.filter(
-      (cluster) => cluster.providerKeys.length > 1,
+      (cluster) =>
+        readerSummaryIndependentProviderFamilyCount(cluster.providerKeys) > 1,
     ).length,
     hasCrossProviderEvidence: snapshot.storyClusters.some(
-      (cluster) => cluster.providerKeys.length > 1,
+      (cluster) =>
+        readerSummaryIndependentProviderFamilyCount(cluster.providerKeys) > 1,
     ),
     isSingleSource:
-      content.sourceMix.length <= 1 ||
+      readerSummaryIndependentProviderFamilyCount(
+        content.sourceMix.map((source) => source.providerKey),
+      ) <= 1 ||
       content.sourceMix.every((source) => source.singleSourceOnly),
     topProviderKeys,
     topInterestIds: [...interestIds.entries()]

@@ -13,9 +13,18 @@ void main() {
   ) async {
     final summary = const SummaryMapper().readerSummaryToDomain(
       readerSummaryApiDto(
+        citations: [
+          summaryCitationApiDto(
+            id: 'bc-1',
+            providerKey: 'rss',
+            canonicalUrl: 'https://example.test/rss-post',
+          ),
+        ],
         content: readerSummaryContentApiDto(
           topReads: const [
             TopReadApiDto(
+              storyClusterId: 'story:video-poster',
+              cardKind: 'curated_top_read',
               title: 'RSS post with a video poster',
               providerKey: 'rss',
               reason: 'The source item includes a real media thumbnail.',

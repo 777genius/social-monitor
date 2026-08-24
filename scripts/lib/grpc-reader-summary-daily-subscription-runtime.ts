@@ -1,6 +1,11 @@
 import { createHash } from "node:crypto";
 
 import { openAiReaderSummaryJsonSchema } from "@social-monitor/summary/adapters/model/openai-responses-reader-summary-schema";
+import {
+  activeReaderSummaryModel,
+  activeReaderSummaryPurposes,
+  activeReaderSummaryReasoningEffort,
+} from "@social-monitor/summary/adapters/model/active-reader-summary-generation-profile";
 import type {
   AgentRuntimeClientPort,
   AgentRuntimeTaskResult,
@@ -26,9 +31,12 @@ import {
   verifyReaderSummaryDailySourceAuthority,
 } from "./reader-summary-daily-source-authority-snapshot";
 
-const purpose = "social_monitor.reader_summary.generate";
-const model = "gpt-5.6-sol";
-const reasoningEffort = "xhigh";
+const purpose = activeReaderSummaryPurposes.generate;
+const model = activeReaderSummaryModel;
+const reasoningEffort = activeReaderSummaryReasoningEffort;
+const canonicalRecoveryPurpose =
+  "social_monitor.reader_summary.weekly.generate";
+const canonicalRecoveryReasoningEffort = "xhigh";
 const canonicalRecoveryOutputSchema = JSON.stringify(
   openAiReaderSummaryJsonSchema,
 );
@@ -92,7 +100,6 @@ export class GrpcReaderSummaryDailySubscriptionRuntime
  * `output_text` so its exact bytes can be bound to the durable consumption row.
  */
 export class GrpcReaderSummaryDailyCanonicalRecoveryRuntime
-  implements ReaderSummaryDailySubscriptionRuntime
 {
   readonly runtimeEngine = "subscription-runtime-cli" as const;
 
@@ -118,7 +125,7 @@ export class GrpcReaderSummaryDailyCanonicalRecoveryRuntime
         workspaceId: workspaceId(input.workspaceId),
         correlationId: `reader-summary-daily-recovery-v4:${input.modelJobIdentity}`,
         provider: "codex",
-        purpose: "social_monitor.reader_summary.weekly.generate",
+        purpose: canonicalRecoveryPurpose,
         systemPrompt: [
           "Generate exactly one canonical daily Social Monitor reader summary.",
           "The supplied immutable daily source authority v2 is complete.",
@@ -141,7 +148,7 @@ export class GrpcReaderSummaryDailyCanonicalRecoveryRuntime
         metadata: {
           adapter: "reader-summary-daily-canonical-recovery-v4",
           authoritySchemaVersion: "reader_summary.daily_source_authority.v2",
-          reasoningEffort,
+          reasoningEffort: canonicalRecoveryReasoningEffort,
           runtimeOutput: "output_text",
         },
       });
@@ -250,11 +257,38 @@ const exactCompletedOutput = (
   if (sha256(responseBytes) !== attestation.selectedOutputSha256) {
     throw new Error("Daily subscription runtime output diverged from its attestation");
   }
+  const usage = result.usage;
+  const durationMs = result.durationMs;
+  if (
+    usage === undefined ||
+    !nonNegativeSafeInteger(usage.inputTokens) ||
+    !nonNegativeSafeInteger(usage.outputTokens) ||
+    !nonNegativeSafeInteger(usage.totalTokens) ||
+    usage.totalTokens !== usage.inputTokens + usage.outputTokens ||
+    !positiveSafeInteger(durationMs)
+  ) {
+    throw new Error("Daily subscription runtime usage is unavailable");
+  }
   return {
     responseBytes,
     executionAttestation: Object.freeze({ ...attestation }),
+    modelTelemetry: Object.freeze({
+      provider: attestation.provider,
+      model: attestation.model,
+      reasoningEffort: attestation.reasoningEffort,
+      inputTokens: usage.inputTokens,
+      outputTokens: usage.outputTokens,
+      totalTokens: usage.totalTokens,
+      usageSource: "PROVIDER_REPORTED" as const,
+      durationMs,
+    }),
   };
 };
+
+const nonNegativeSafeInteger = (value: unknown): value is number =>
+  Number.isSafeInteger(value) && (value as number) >= 0;
+const positiveSafeInteger = (value: unknown): value is number =>
+  Number.isSafeInteger(value) && (value as number) > 0;
 
 const canonicalJsonBytes = (value: unknown): Buffer =>
   Buffer.from(JSON.stringify(toCanonicalJsonValue(value)), "utf8");

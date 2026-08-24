@@ -613,7 +613,7 @@ function readyScan(
       storageDuplicateItemCount: 0,
       totalDuplicateItemCount: 0,
       pageCount: 1,
-      paginationStopReason: "target_reached",
+      paginationStopReason: "target_items",
       rateLimitEventCount: 0,
       coverageState: "complete",
       slo: {
@@ -621,6 +621,7 @@ function readyScan(
         targetItemCount,
         evaluatedItemCount: targetItemCount,
         coverageRatio: 1,
+        maxFreshnessLagSeconds: 21_600,
         reasons: [],
         retryDisposition: "none",
       },
@@ -642,7 +643,7 @@ function failedScan(
         ...readyScan(providerKey).observability.slo,
         met: false,
         reasons: ["provider_unavailable"],
-        retryDisposition: "delayed",
+        retryDisposition: "deferred",
       },
     },
   };

@@ -58,6 +58,10 @@ export type PrismaConversationClient = {
         readonly tenantId: string;
         readonly workspaceId: string;
         readonly rootFeedItemId?: { readonly in: readonly string[] };
+        readonly observedAt?: {
+          readonly lte?: Date;
+          readonly lt?: Date;
+        };
       };
       readonly orderBy: readonly [
         { readonly rootFeedItemId: 'asc' },
@@ -88,7 +92,11 @@ export type PrismaConversationClient = {
         readonly tenantId: string;
         readonly workspaceId: string;
         readonly interestId?: string;
-        readonly observedAt: { readonly gt: Date };
+        readonly observedAt: {
+          readonly gt: Date;
+          readonly lte?: Date;
+          readonly lt?: Date;
+        };
         readonly OR?: readonly {
           readonly providerKey: string;
           readonly sourceKey: string;

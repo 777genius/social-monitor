@@ -18,7 +18,7 @@ _$ReaderSummaryWeeklyProjectionEvidenceLimitationDtoFromJson(
       ReaderSummaryWeeklyProjectionEvidenceLimitationDtoProviderKeyProviderKey.fromJson(
         json['providerKey'] as String,
       ),
-  requestedUtcDate: json['requestedUtcDate'] as String,
+  requestedUtcDate: DateTime.parse(json['requestedUtcDate'] as String),
 );
 
 Map<String, dynamic> _$ReaderSummaryWeeklyProjectionEvidenceLimitationDtoToJson(
@@ -26,5 +26,5 @@ Map<String, dynamic> _$ReaderSummaryWeeklyProjectionEvidenceLimitationDtoToJson(
 ) => <String, dynamic>{
   'evidenceState': instance.evidenceState,
   'providerKey': instance.providerKey,
-  'requestedUtcDate': instance.requestedUtcDate,
+  'requestedUtcDate': instance.requestedUtcDate.toIso8601String(),
 };

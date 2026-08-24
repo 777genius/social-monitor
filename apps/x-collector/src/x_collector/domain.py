@@ -10,6 +10,20 @@ class SearchProduct(str, Enum):
     LATEST = "latest"
 
 
+class XPostContentKind(str, Enum):
+    ORIGINAL = "original_post"
+    REPLY = "reply"
+    QUOTE = "quote"
+    UNKNOWN = "unknown"
+
+
+class XEligibilityMetricsState(str, Enum):
+    OBSERVED = "observed"
+    MISSING = "missing"
+    MALFORMED = "malformed"
+    CONFLICT = "conflict"
+
+
 @dataclass(frozen=True)
 class DailySearchRequest:
     request_id: str
@@ -38,6 +52,9 @@ class XPostMetrics:
     replies: int
     quotes: int | None = None
     views: int | None = None
+    likes_observed: bool = True
+    retweets_observed: bool = True
+    eligibility_state: XEligibilityMetricsState = XEligibilityMetricsState.OBSERVED
 
 
 @dataclass(frozen=True)
@@ -52,6 +69,7 @@ class XCollectedPost:
     media_urls: tuple[str, ...]
     source_product: SearchProduct
     trend_score: float
+    content_kind: XPostContentKind = XPostContentKind.UNKNOWN
 
 
 @dataclass(frozen=True)

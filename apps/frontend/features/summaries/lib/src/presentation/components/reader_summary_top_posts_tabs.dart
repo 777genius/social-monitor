@@ -4,15 +4,13 @@ class _TopPostBoardToggle extends StatelessWidget {
   const _TopPostBoardToggle({
     required this.board,
     required this.topPostCount,
-    required this.moreSelectedPostCount,
-    required this.githubTrendingCount,
+    required this.additionalStoryCount,
     required this.onChanged,
   });
 
   final _TopPostBoard board;
   final int topPostCount;
-  final int moreSelectedPostCount;
-  final int githubTrendingCount;
+  final int additionalStoryCount;
   final ValueChanged<_TopPostBoard> onChanged;
 
   @override
@@ -52,31 +50,15 @@ class _TopPostBoardToggle extends StatelessWidget {
                     Expanded(
                       child: _TopPostBoardToggleSegment(
                         key: const ValueKey(
-                          'reader-summary-top-posts-board-more-selected',
+                          'reader-summary-top-posts-board-additional-stories',
                         ),
-                        label: 'More selected posts',
-                        count: moreSelectedPostCount,
+                        label: 'Additional stories',
+                        count: additionalStoryCount,
                         showCount: showCounts,
-                        selected: board == _TopPostBoard.moreSelected,
+                        selected: board == _TopPostBoard.additionalStories,
                         leading: const Icon(Icons.playlist_add, size: 17),
-                        onPressed: () => onChanged(_TopPostBoard.moreSelected),
-                      ),
-                    ),
-                    Expanded(
-                      child: _TopPostBoardToggleSegment(
-                        key: const ValueKey(
-                          'reader-summary-top-posts-board-github',
-                        ),
-                        label: 'GitHub trends',
-                        count: githubTrendingCount,
-                        showCount: showCounts,
-                        selected: board == _TopPostBoard.githubTrending,
-                        leading: const ReaderSummaryProviderLogo(
-                          providerKey: _githubTrendingProviderKey,
-                          size: 17,
-                        ),
                         onPressed: () =>
-                            onChanged(_TopPostBoard.githubTrending),
+                            onChanged(_TopPostBoard.additionalStories),
                       ),
                     ),
                   ],

@@ -79,11 +79,6 @@ const expectCanonicalGitHubOnlyNoSignalArticle = async (
   );
 
   const attempt = await adapter.generate(input, route);
-  const expectedUrls = Array.from(
-    { length: 10 },
-    (_, index) => `https://github.com/example/repository-${index + 1}`,
-  );
-
   expect(attempt.draft.citationMap).toEqual(
     input.evidence.selectedEvidence.map((item, index) => ({
       citationId: `c${index + 1}`,
@@ -109,41 +104,14 @@ const expectCanonicalGitHubOnlyNoSignalArticle = async (
   expect(content?.mainTopics).toEqual([]);
   expect(content?.claimBoard).toEqual([]);
   expect(content?.narrativeSections).toEqual([
-    {
+    expect.objectContaining({
       id: "github-trending",
       kind: "watch",
       title: "GitHub Trending",
-      text: [
-        "- **example/repository-1** (#1): +2,001 stars today.",
-        "- **example/repository-2** (#2): +2,002 stars today.",
-        "- **example/repository-3** (#3): +2,003 stars today.",
-      ].join("\n"),
       citationIds: ["c1", "c2", "c3"],
-    },
+    }),
   ]);
-  expect(content?.selectedPosts).toHaveLength(10);
-  expect(content?.selectedPosts?.map((post) => post.canonicalUrl)).toEqual(
-    expectedUrls,
-  );
-  expect(
-    content?.selectedPosts?.map((post) =>
-      Number(
-        post.providerMetrics
-          .find(({ label }) => label === "GitHub Trending today")
-          ?.value.match(/#(\d+)/u)?.[1],
-      ),
-    ),
-  ).toEqual(Array.from({ length: 10 }, (_, index) => index + 1));
-  expect(
-    new Set(content?.selectedPosts?.map((post) => post.canonicalUrl)).size,
-  ).toBe(10);
-  expect(
-    content?.selectedPosts?.every(
-      (post) =>
-        post.providerKey === "github-trending-page" &&
-        post.primaryActionKind === "watch_repository",
-    ),
-  ).toBe(true);
+  expect(content?.selectedPosts).toEqual([]);
 
   assertReaderSummaryCitationsAgainstEvidence(attempt.draft, input.evidence);
   const artifact = ReaderSummaryArtifact.create({

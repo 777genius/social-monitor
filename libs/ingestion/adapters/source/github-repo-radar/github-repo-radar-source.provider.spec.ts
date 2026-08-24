@@ -129,6 +129,11 @@ const candidate = (fullName: string, rank: number): GitHubRepoRadarCandidate => 
   stars7d: 200,
   stars30d: 300,
   stars90d: 400,
+  forks24h: 10,
+  forks48h: 18,
+  forks7d: 40,
+  forks30d: 80,
+  forks90d: 150,
   rank,
   primaryWindow: '24h',
 });

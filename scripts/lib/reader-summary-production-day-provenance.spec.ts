@@ -54,6 +54,24 @@ describe("production-day evidence provenance", () => {
     );
   });
 
+  it("accepts only the versioned high identity for active generation", () => {
+    const frontend = frontendArtifact();
+    frontend.readerSummaryArtifact.lineage.modelVersion =
+      "codex:gpt-5.6-sol:high";
+    const artifact = evidence(frontend, runtimeHealth, (raw) => {
+      for (const record of raw.executionAttestations) {
+        record.attestation.purpose = `${record.attestation.purpose}.v2`;
+        record.attestation.reasoningEffort = "high";
+      }
+    });
+
+    expect(inspect(artifact, frontend).binding?.runtimeProvenance)
+      .toMatchObject({ reasoningEffort: "high" });
+
+    artifact.executionAttestations[0]!.attestation.reasoningEffort = "xhigh";
+    expect(inspect(artifact, frontend).binding).toBeNull();
+  });
+
   it.each([
     ["readerSummaryId", "summary-1"],
     ["readerSummaryJobId", "job-1"],
@@ -167,6 +185,30 @@ describe("production-day evidence provenance", () => {
     );
 
     expect(inspect(artifact).binding).toBeNull();
+  });
+
+  it("accepts the dedicated related-topic relation attestation and rejects unknown roles", () => {
+    const valid = evidence(frontendArtifact(), runtimeHealth, (raw) => {
+      raw.executionAttestations.push(executionAttestation(
+        "related_topic_relation",
+        "related-topic",
+        "reader-summary-related-topic-request",
+        "social_monitor.reader_summary.verify_related_topic_relations",
+      ));
+    });
+    expect(inspect(valid).violations).toEqual([]);
+
+    const unknown = evidence();
+    unknown.executionAttestations.push({
+      ...executionAttestation(
+        "related_topic_relation",
+        "related-topic",
+        "reader-summary-unknown-relation-request",
+        "social_monitor.reader_summary.verify_related_topic_relations",
+      ),
+      taskRole: "unknown_relation" as "related_topic_relation",
+    });
+    expect(inspect(unknown).binding).toBeNull();
   });
 
   it("accepts immutable historical attestation bytes after a runtime upgrade", () => {
@@ -432,7 +474,7 @@ function executorAttestations() {
 }
 
 function executionAttestation(
-  taskRole: "summary" | "topic_label",
+  taskRole: "summary" | "topic_label" | "related_topic_relation",
   attempt: string,
   requestId: string,
   purpose: string,

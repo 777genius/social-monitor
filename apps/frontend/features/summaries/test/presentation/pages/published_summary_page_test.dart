@@ -69,7 +69,7 @@ void main() {
     await tester.drag(find.byType(CustomScrollView), const Offset(0, -1200));
     await tester.pumpAndSettle();
 
-    expect(find.byType(ReaderSummaryTopPostsSliver), findsOneWidget);
+    expect(find.byType(ReaderSummaryTopPostsSliver), findsNothing);
     expect(find.text('Topic recommendations'), findsNothing);
     expect(
       find.byKey(const ValueKey('workspace-summary-toolbar-generate')),

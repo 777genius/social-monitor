@@ -33,15 +33,21 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      find.byKey(const ValueKey('reader-summary-citation-source-bc-1')),
+      find.byKey(
+        const ValueKey('reader-summary-url-action-citation-source-bc-1'),
+      ),
       findsOneWidget,
     );
     expect(
-      find.byKey(const ValueKey('reader-summary-citation-source-bc-2')),
+      find.byKey(
+        const ValueKey('reader-summary-url-action-citation-source-bc-2'),
+      ),
       findsOneWidget,
     );
     expect(
-      find.byKey(const ValueKey('reader-summary-citation-source-bc-3')),
+      find.byKey(
+        const ValueKey('reader-summary-url-action-citation-source-bc-3'),
+      ),
       findsNothing,
     );
     expect(find.byType(MenuItemButton), findsNWidgets(2));
@@ -126,6 +132,8 @@ ReaderSummary _clusteredSummary({required String secondaryUrl}) {
         ],
         topReads: [
           TopReadApiDto(
+            storyClusterId: 'story:representative-legal-claim',
+            cardKind: 'curated_top_read',
             title: _representativeTitle,
             providerKey: 'reddit',
             reason: 'The discussion adds context to the reported legal claim.',

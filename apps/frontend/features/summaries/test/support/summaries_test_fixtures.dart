@@ -9,9 +9,22 @@ import 'summaries_topic_map_test_fixtures.dart';
 export 'generated_summary_test_fixtures.dart';
 export 'github_trending_summary_test_fixtures.dart';
 
+part 'repo_radar_summary_test_fixtures.dart';
+part 'github_trending_reader_summary_test_fixtures.dart';
+
 const summaryWorkspaceScope = WorkspaceScope(
   tenantId: 'tenant-demo',
   workspaceId: 'workspace-demo',
+);
+
+ReaderPostPromotionAttestationApiDto topPromotionAttestationApiDto(
+  String storyClusterId,
+) => ReaderPostPromotionAttestationApiDto(
+  candidateId: 'fixture:$storyClusterId',
+  canonicalIdentity: storyClusterId,
+  placement: 'top',
+  slot: 0,
+  decision: 'promote_top',
 );
 
 ReaderSummaryApiDto readerSummaryApiDto({
@@ -30,6 +43,8 @@ ReaderSummaryApiDto readerSummaryApiDto({
       citationIds: ['bc-1'],
     ),
   ],
+  List<String>? storyClusterIds,
+  List<ReaderSummaryStoryClusterAuthorityApiDto>? storyClusterAuthorities,
   List<RepeatedSignalApiDto> repeatedSignals = const [],
   List<SummaryCitationApiDto>? citations,
   SummaryPeriodApiDto? period,
@@ -38,16 +53,39 @@ ReaderSummaryApiDto readerSummaryApiDto({
   String freshnessLabel = 'Fresh',
   bool isDegraded = false,
   ReaderSummaryCoverageApiDto? coverage,
+  bool bindPromotionAttestations = true,
 }) {
+  final resolvedCitations =
+      citations ??
+      [
+        summaryCitationApiDto(
+          id: 'bc-1',
+          feedItemId: 'feed-c-1',
+          sourceItemId: 'source-c-1',
+          providerKey: 'github-repo-radar',
+          canonicalUrl: 'https://github.com/example/ai-coding-tools',
+        ),
+      ];
+  final contentFixture = content ?? readerSummaryContentApiDto();
+  final resolvedContent = bindPromotionAttestations
+      ? _fixtureContentWithConfirmedProviders(contentFixture, resolvedCitations)
+      : contentFixture;
+  final inferredAuthorities = _fixtureStoryClusterAuthorities(
+    resolvedContent,
+    resolvedCitations,
+  );
   return ReaderSummaryApiDto(
     id: id,
     title: title,
     executiveSummary: executiveSummary,
     userId: userId,
-    content: content ?? readerSummaryContentApiDto(),
+    content: resolvedContent,
     topStories: topStories,
+    storyClusterIds: storyClusterIds ?? inferredAuthorities.keys.toList(),
+    storyClusterAuthorities:
+        storyClusterAuthorities ?? inferredAuthorities.values.toList(),
     repeatedSignals: repeatedSignals,
-    citations: citations ?? [summaryCitationApiDto(id: 'bc-1')],
+    citations: resolvedCitations,
     period: period ?? summaryPeriodApiDto(),
     generatedAt: generatedAt ?? DateTime.utc(2026, 6, 27, 0, 15),
     sourceWindow: sourceWindow ?? summaryWindowApiDto(),
@@ -55,6 +93,186 @@ ReaderSummaryApiDto readerSummaryApiDto({
     isDegraded: isDegraded,
     coverage: coverage,
   );
+}
+
+ReaderSummaryContentApiDto _fixtureContentWithConfirmedProviders(
+  ReaderSummaryContentApiDto content,
+  List<SummaryCitationApiDto> citations,
+) {
+  final citationsById = {
+    for (final citation in citations) citation.id: citation,
+  };
+  TopReadApiDto item(
+    TopReadApiDto value, {
+    required String placement,
+    required int slot,
+  }) {
+    final confirmedProviderKeys = value.citationIds
+        .map((id) => citationsById[id]?.providerKey?.trim())
+        .whereType<String>()
+        .where((provider) => provider.isNotEmpty)
+        .toSet()
+        .toList();
+    return TopReadApiDto(
+      storyClusterId: value.storyClusterId,
+      cardKind: value.cardKind,
+      relationId: value.relationId,
+      relationMarkerIds: value.relationMarkerIds,
+      targetStoryClusterId: value.targetStoryClusterId,
+      promotionAttestation: _fixtureBoundPromotionAttestation(
+        value,
+        placement: placement,
+        slot: slot,
+      ),
+      title: value.title,
+      providerKey: value.providerKey,
+      reason: value.reason,
+      citationIds: value.citationIds,
+      providerName: value.providerName,
+      primaryActionKind: value.primaryActionKind,
+      matchedInterestIds: value.matchedInterestIds,
+      matchedRules: value.matchedRules,
+      signalScore: value.signalScore,
+      confidence: value.confidence,
+      confirmedProviderKeys: confirmedProviderKeys,
+      providerMetrics: value.providerMetrics,
+      whyImportant: value.whyImportant,
+      whyNow: value.whyNow,
+      publishedAt: value.publishedAt,
+      canonicalUrl: value.canonicalUrl,
+      previewMedia: value.previewMedia,
+    );
+  }
+
+  return ReaderSummaryContentApiDto(
+    headline: content.headline,
+    oneLineTakeaway: content.oneLineTakeaway,
+    bullets: content.bullets,
+    narrativeSections: content.narrativeSections,
+    mainTopics: content.mainTopics,
+    topicMap: content.topicMap,
+    qualityState: content.qualityState,
+    interestSections: content.interestSections
+        .map(
+          (section) => ReaderInterestSectionApiDto(
+            title: section.title,
+            insight: section.insight,
+            items: section.items
+                .map((value) => item(value, placement: 'top', slot: 0))
+                .toList(),
+            citationIds: section.citationIds,
+            interestId: section.interestId,
+          ),
+        )
+        .toList(),
+    sourceMix: content.sourceMix,
+    topReads: content.topReads.indexed
+        .map((entry) => item(entry.$2, placement: 'top', slot: entry.$1))
+        .toList(),
+    selectedPosts: content.selectedPosts.indexed
+        .map((entry) => item(entry.$2, placement: 'additional', slot: entry.$1))
+        .toList(),
+    claimBoard: content.claimBoard,
+    reliabilityReport: content.reliabilityReport,
+    trendDelta: content.trendDelta,
+    openQuestions: content.openQuestions,
+    risks: content.risks,
+    nextActions: content.nextActions,
+  );
+}
+
+ReaderPostPromotionAttestationApiDto? _fixturePromotionAttestation(
+  TopReadApiDto item,
+) {
+  final storyClusterId = item.storyClusterId?.trim();
+  if (storyClusterId == null || storyClusterId.isEmpty) return null;
+  final placement = switch (item.cardKind) {
+    'curated_top_read' => 'top',
+    'additional_notable_story' => 'additional',
+    _ => null,
+  };
+  return placement == null
+      ? null
+      : ReaderPostPromotionAttestationApiDto(
+          candidateId: 'fixture:$storyClusterId',
+          canonicalIdentity: storyClusterId,
+          placement: placement,
+          slot: 0,
+          decision: placement == 'top' ? 'promote_top' : 'promote_additional',
+          citationIds: item.citationIds,
+        );
+}
+
+ReaderPostPromotionAttestationApiDto? _fixtureBoundPromotionAttestation(
+  TopReadApiDto item, {
+  required String placement,
+  required int slot,
+}) {
+  final attestation = item.promotionAttestation;
+  if (attestation == null) {
+    final generated = _fixturePromotionAttestation(item);
+    if (generated == null) return null;
+    return ReaderPostPromotionAttestationApiDto(
+      candidateId: '${generated.candidateId}:$placement:$slot',
+      canonicalIdentity: generated.canonicalIdentity,
+      placement: placement,
+      slot: slot,
+      decision: placement == 'top' ? 'promote_top' : 'promote_additional',
+      citationIds: generated.citationIds,
+    );
+  }
+  return ReaderPostPromotionAttestationApiDto(
+    candidateId: attestation.candidateId,
+    canonicalIdentity: attestation.canonicalIdentity,
+    placement: placement,
+    slot: slot,
+    decision: placement == 'top' ? 'promote_top' : 'promote_additional',
+    citationIds: attestation.citationIds.isEmpty
+        ? item.citationIds
+        : attestation.citationIds,
+  );
+}
+
+Map<String, ReaderSummaryStoryClusterAuthorityApiDto>
+_fixtureStoryClusterAuthorities(
+  ReaderSummaryContentApiDto content,
+  List<SummaryCitationApiDto> citations,
+) {
+  final citationsById = {
+    for (final citation in citations) citation.id: citation,
+  };
+  final feedItemIdsByCluster = <String, Set<String>>{};
+  final providerKeysByCluster = <String, Set<String>>{};
+  final items = [
+    ...content.topReads,
+    ...content.selectedPosts,
+    ...content.interestSections.expand((section) => section.items),
+  ];
+  for (final item in items) {
+    final clusterId = item.storyClusterId?.trim();
+    if (clusterId == null || clusterId.isEmpty) continue;
+    for (final citationId in item.citationIds) {
+      final citation = citationsById[citationId];
+      final providerKey = citation?.providerKey?.trim();
+      if (citation == null || providerKey == null || providerKey.isEmpty) {
+        continue;
+      }
+      feedItemIdsByCluster
+          .putIfAbsent(clusterId, () => <String>{})
+          .add(citation.feedItemId);
+      providerKeysByCluster
+          .putIfAbsent(clusterId, () => <String>{})
+          .add(providerKey);
+    }
+  }
+  return {
+    for (final entry in feedItemIdsByCluster.entries)
+      entry.key: ReaderSummaryStoryClusterAuthorityApiDto(
+        id: entry.key,
+        feedItemIds: entry.value.toList(),
+        providerKeys: providerKeysByCluster[entry.key]!.toList(),
+      ),
+  };
 }
 
 SummaryPeriodApiDto summaryPeriodApiDto({
@@ -136,11 +354,22 @@ ReaderSummaryContentApiDto readerSummaryContentApiDto({
   List<String> newSignals = const ['1 Repo Radar item selected'],
   ReaderSummaryQualityStateApiDto? qualityState,
   List<SourceMixEntryApiDto>? sourceMix,
+  List<ReaderInterestSectionApiDto>? interestSections,
   List<SummaryClaimApiDto> claimBoard = const [],
   SummaryReliabilityReportApiDto reliabilityReport =
       emptySummaryReliabilityReportApiDto,
   List<TopReadApiDto> topReads = const [
     TopReadApiDto(
+      storyClusterId: 'story:ai-coding-tools',
+      cardKind: 'curated_top_read',
+      promotionAttestation: ReaderPostPromotionAttestationApiDto(
+        candidateId: 'feed-c-1',
+        canonicalIdentity: 'url:https://github.com/example/ai-coding-tools',
+        placement: 'top',
+        slot: 0,
+        decision: 'promote_top',
+        citationIds: ['bc-1'],
+      ),
       title: 'AI coding tools',
       providerKey: 'github-repo-radar',
       reason: 'Developers discussed new agent workflows and IDE support.',
@@ -186,14 +415,16 @@ ReaderSummaryContentApiDto readerSummaryContentApiDto({
           warnings: ['Source coverage is limited and needs confirmation.'],
           isSingleSource: true,
         ),
-    interestSections: [
-      ReaderInterestSectionApiDto(
-        title: 'Developer tooling',
-        insight: 'Agent workflows and IDE support are the main discussion.',
-        items: topReads,
-        citationIds: const ['bc-1'],
-      ),
-    ],
+    interestSections:
+        interestSections ??
+        [
+          ReaderInterestSectionApiDto(
+            title: 'Developer tooling',
+            insight: 'Agent workflows and IDE support are the main discussion.',
+            items: topReads,
+            citationIds: const ['bc-1'],
+          ),
+        ],
     sourceMix:
         sourceMix ??
         [
@@ -211,7 +442,7 @@ ReaderSummaryContentApiDto readerSummaryContentApiDto({
           ),
         ],
     topReads: topReads,
-    selectedPosts: selectedPosts ?? topReads,
+    selectedPosts: selectedPosts ?? const [],
     claimBoard: claimBoard,
     reliabilityReport: reliabilityReport,
     trendDelta: ReaderTrendDeltaApiDto(
@@ -252,144 +483,5 @@ ReaderSummaryContentApiDto readerSummaryContentApiDto({
         citationIds: primaryCitationIds,
       ),
     ],
-  );
-}
-
-SummaryApiDto githubTrendingSummaryApiDto() {
-  return summaryApiDto(
-    title: 'GitHub Trending daily summary',
-    bodyText:
-        'GitHub Trending surfaced calesthio/OpenMontage, apple/container and ZhuLinsen/daily_stock_analysis from github.com/trending today. Repo Radar remains the historical growth view for 7d, 30d and 90d follow-up.',
-    citations: [
-      summaryCitationApiDto(
-        id: 'c-1',
-        sourceLabel:
-            'GitHub Trending - github.com/trending page [1] calesthio/OpenMontage',
-        rawSnippet: '18.4k stars, #1 today and +3.7k stars today.',
-        canonicalUrl: 'https://github.com/calesthio/OpenMontage',
-      ),
-      summaryCitationApiDto(
-        id: 'c-2',
-        sourceLabel:
-            'GitHub Trending - github.com/trending page [2] apple/container',
-        rawSnippet:
-            'Apple container tooling is #2 today with +1.7k stars today.',
-        canonicalUrl: 'https://github.com/apple/container',
-      ),
-      summaryCitationApiDto(
-        id: 'c-3',
-        sourceLabel:
-            'GitHub Trending - github.com/trending page [3] ZhuLinsen/daily_stock_analysis',
-        rawSnippet:
-            'LLM-powered stock analysis is a high-rank daily GitHub Trending project.',
-        canonicalUrl: 'https://github.com/ZhuLinsen/daily_stock_analysis',
-      ),
-    ],
-  );
-}
-
-ReaderSummaryApiDto githubTrendingReaderSummaryApiDto() {
-  final selectedPosts = canonicalGitHubTrendingSelectedPostApiDtos();
-
-  return readerSummaryApiDto(
-    title: 'AI signal summary',
-    executiveSummary:
-        'GitHub Trending page found concrete repositories worth reviewing today, while Repo Radar should be used for longer-window GH Archive growth checks.',
-    content: readerSummaryContentApiDto(
-      headline: 'GitHub daily radar',
-      oneLineTakeaway:
-          'GitHub Trending is the daily radar for what is breaking out today; Repo Radar is the historical analytics layer for 7d, 30d and 90d growth.',
-      sourceProviderKey: githubTrendingProviderKey,
-      newSignals: const ['10 GitHub Trending page items selected'],
-      sourceMix: const [
-        SourceMixEntryApiDto(
-          providerKey: githubTrendingProviderKey,
-          itemCount: 10,
-          citationCount: 10,
-          storyClusterCount: 10,
-          crossSourceClusterCount: 0,
-          singleSourceOnly: true,
-          interestIds: ['ai-developer-tools'],
-        ),
-      ],
-      topReads: const [],
-      selectedPosts: selectedPosts,
-    ),
-    topStories: const [
-      SummaryStoryApiDto(
-        title: 'OpenMontage leads today\'s GitHub Trending page',
-        summary:
-            'The daily radar is driven by the public github.com/trending page, not Repo Radar history.',
-        topicCount: 10,
-        providerCount: 1,
-        citationIds: canonicalGitHubTrendingCitationIds,
-      ),
-    ],
-    citations: canonicalGitHubTrendingCitationApiDtos(),
-    coverage: const ReaderSummaryCoverageApiDto(
-      collectedFeedItemCount: 22,
-      selectedFeedItemCount: 10,
-      topReadCount: 0,
-      citationCount: 10,
-      providerBreakdown: [
-        ReaderSummaryProviderCoverageApiDto(
-          providerKey: githubTrendingProviderKey,
-          collectedFeedItemCount: 22,
-          selectedFeedItemCount: 10,
-          topReadCount: 0,
-          citationCount: 10,
-        ),
-      ],
-    ),
-  );
-}
-
-ReaderSummaryApiDto repoRadarTopTenReaderSummaryApiDto() {
-  final topReads = List<TopReadApiDto>.generate(11, (index) {
-    final rank = index + 1;
-
-    return TopReadApiDto(
-      title: 'repo-radar/project-$rank',
-      providerKey: 'github-repo-radar',
-      reason: 'Repository $rank is gaining stars in the current window.',
-      matchedInterestIds: const ['ai-developer-tools'],
-      matchedRules: const [
-        'interest:ai-developer-tools',
-        'provider:github-repo-radar',
-      ],
-      signalScore: 1 - index / 20,
-      providerMetrics: [
-        ProviderMetricApiDto(label: 'Stars', value: '${54000 - index * 100}'),
-        ProviderMetricApiDto(label: 'Trend', value: '+${360 - index} / 48h'),
-      ],
-      whyImportant: [
-        'Repository $rank is gaining stars in the current window.',
-      ],
-      whyNow: 'Current summary window has Repo Radar coverage.',
-      canonicalUrl: 'https://github.com/repo-radar/project-$rank',
-      citationIds: ['bc-$rank'],
-    );
-  });
-
-  return readerSummaryApiDto(
-    title: 'Repo radar top ten readerSummary',
-    executiveSummary:
-        'GitHub Repo Radar found ten repositories worth reviewing today.',
-    content: readerSummaryContentApiDto(
-      headline: 'Repo radar top ten',
-      oneLineTakeaway:
-          'Review the ten strongest repository signals before drilling into the long tail.',
-      topReads: topReads,
-    ),
-    citations: List<SummaryCitationApiDto>.generate(11, (index) {
-      final rank = index + 1;
-
-      return summaryCitationApiDto(
-        id: 'bc-$rank',
-        sourceLabel: 'Repo Radar [$rank] repo-radar/project-$rank',
-        rawSnippet: 'Repository $rank is gaining stars in the current window.',
-        canonicalUrl: 'https://github.com/repo-radar/project-$rank',
-      );
-    }),
   );
 }

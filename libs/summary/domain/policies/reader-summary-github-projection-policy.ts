@@ -2,7 +2,6 @@ import type { ReaderSummaryArtifact } from "../entities/reader-summary-artifact"
 import {
   buildReaderSummaryGitHubProjectionCollectionTelemetry,
   exactUtcDay,
-  isGitHubReaderItem,
   nonEmpty,
   readerSummaryHasNoPrimaryGitHubEvidence,
   readerSummaryIsOrdinaryNoSignalWithoutEvidence,
@@ -25,8 +24,7 @@ import {
   projectionGroupEnvelopeIsCoherent,
   projectionGroupKey,
   projectionSetFindings,
-  resolveSelectedCandidate,
-  selectedPostsFollowProjection,
+  resolveAppendixCandidates,
   supplementalNarrativeFindings,
 } from "./reader-summary-github-projection-set";
 import { maxGitHubTrendingDisplayRepositories } from "./reader-summary-github-trending-policy";
@@ -255,16 +253,6 @@ export const evaluateReaderSummaryGitHubProjection = (params: {
     );
   }
 
-  const selectedPosts = (snapshot.content?.selectedPosts ?? []).filter(
-    isGitHubReaderItem,
-  );
-  if (selectedPosts.length !== maxGitHubTrendingDisplayRepositories) {
-    findings.push({
-      code: "github_projection_missing",
-      reason: `selectedPosts must contain exactly ${maxGitHubTrendingDisplayRepositories} GitHub Trending repositories and no supplemental GitHub entries.`,
-    });
-  }
-
   const citationById = new Map(
     snapshot.citationMap.map(
       (citation) => [citation.citationId, citation] as const,
@@ -277,79 +265,25 @@ export const evaluateReaderSummaryGitHubProjection = (params: {
         "GitHub Trending evidence is supplemental and cannot support primary headlines, bullets, topics, claims, source mix, or top reads.",
     });
   }
-  const selectedReferencesOlderGroup = selectedPosts.some((post) =>
-    post.citationIds.some((citationId) => {
-      const citation = citationById.get(citationId);
-      if (citation === undefined) {
-        return false;
-      }
-      return requestedDayItems.some((item) => {
-        const canonicalGroupKey = canonicalGroupKeyByBindingId.get(
-          item.sourceBindingId,
-        );
-        return (
-          eligibleBindingIdSet.has(item.sourceBindingId) &&
-          item.feedItemId === citation.feedItemId &&
-          item.sourceItemId === citation.sourceItemId &&
-          canonicalGroupKey !== undefined &&
-          projectionGroupKey(item) !== canonicalGroupKey
-        );
-      });
-    }),
-  );
-  if (selectedReferencesOlderGroup) {
-    findings.push({
-      code: "github_projection_stale",
-      reason:
-        "GitHub selectedPosts is bound to an older durable projection snapshot.",
-    });
-  }
-  const selectedCandidates = selectedPosts.flatMap((post, index) => {
-    const resolved = resolveSelectedCandidate({
-      post,
-      selectedPostIndex: index,
-      citationById,
-      candidates,
-    });
-    if (resolved === undefined) {
-      findings.push({
-        code: "github_projection_identity_invalid",
-        reason: `GitHub selectedPosts entry ${index + 1} does not bind one durable feed/source identity.`,
-      });
-      return [];
-    }
-    return [resolved];
-  });
-
-  const selectedGroupKeys = new Set(
-    selectedCandidates.map((candidate) => candidate.groupKey),
-  );
-  if (selectedGroupKeys.size > 1) {
-    findings.push({
-      code: "github_projection_mixed",
-      reason:
-        "GitHub selectedPosts mixes source bindings or projection snapshots.",
-    });
-  }
-  const selectedGroupKey =
-    selectedGroupKeys.size === 1 ? [...selectedGroupKeys][0] : undefined;
   const selectedBindingId =
     eligibleBindingIds.length === 1 ? eligibleBindingIds[0] : undefined;
   const latestGroupKey =
     selectedBindingId === undefined
       ? undefined
       : canonicalGroupKeyByBindingId.get(selectedBindingId);
-  if (
-    selectedGroupKey !== undefined &&
-    latestGroupKey !== undefined &&
-    selectedGroupKey !== latestGroupKey
-  ) {
-    findings.push({
-      code: "github_projection_stale",
-      reason:
-        "GitHub selectedPosts is bound to an older durable projection snapshot.",
-    });
-  }
+  const selectedGroupKey = latestGroupKey;
+  const selectedCandidates = selectedGroupKey === undefined
+    ? []
+    : resolveAppendixCandidates({
+        artifact: params.artifact,
+        citationById,
+        candidates,
+        selectedGroupKey,
+      });
+  if (selectedCandidates === undefined) findings.push({
+    code: "github_projection_identity_invalid",
+    reason: "GitHub Trending appendix does not bind the ordered durable projection.",
+  });
 
   const groupCandidates =
     selectedGroupKey === undefined
@@ -363,13 +297,6 @@ export const evaluateReaderSummaryGitHubProjection = (params: {
       candidate.item.rank <= maxGitHubTrendingDisplayRepositories,
   );
   findings.push(...projectionSetFindings(topTenCandidates));
-  if (!selectedPostsFollowProjection(selectedCandidates, topTenCandidates)) {
-    findings.push({
-      code: "github_projection_mixed",
-      reason:
-        "GitHub selectedPosts must preserve the durable canonical order #1 through #10.",
-    });
-  }
   findings.push(
     ...supplementalNarrativeFindings({
       artifact: params.artifact,
@@ -390,7 +317,7 @@ export const evaluateReaderSummaryGitHubProjection = (params: {
     });
   }
 
-  const bindings = selectedCandidates.map(projectionBinding);
+  const bindings = (selectedCandidates ?? []).map(projectionBinding);
   return {
     audit: baseAudit({
       status: "verified",
@@ -400,10 +327,10 @@ export const evaluateReaderSummaryGitHubProjection = (params: {
       eligibleBindingIds,
       observedThrough: params.observedThrough.toISOString(),
       projectionCheckedAt:
-        selectedCandidates[0]?.item.checkedAt?.toISOString(),
+        topTenCandidates[0]?.item.checkedAt?.toISOString(),
       telemetry: buildReaderSummaryGitHubProjectionCollectionTelemetry({
         dayEndedAt: day.endedAt,
-        observedAt: selectedCandidates.map(
+        observedAt: topTenCandidates.map(
           (candidate) => candidate.item.observedAt,
         ),
       }),

@@ -86,8 +86,8 @@ describe("publish weekly certified artifact use case", () => {
     expect(result.ok).toBe(true);
     expect(storyAuthority.load).toHaveBeenCalledTimes(7);
     expect(storyAuthority.load).toHaveBeenNthCalledWith(1, {
-      tenantId: useCaseCommand().modelInput.tenantId,
-      workspaceId: useCaseCommand().modelInput.workspaceId,
+      tenantId: "11111111-1111-4111-8111-111111111111",
+      workspaceId: "22222222-2222-4222-8222-222222222222",
       publicationId: seal.days[0]!.publicationId,
     });
     expect(saveWeekly).toHaveBeenCalledWith({

@@ -7,6 +7,11 @@ import {
   verifyAndRecordReaderSummaryExecution,
 } from "../../libs/summary/adapters/model/reader-summary-execution-attestation";
 import {
+  activeReaderSummaryModel,
+  activeReaderSummaryPurposes,
+  activeReaderSummaryReasoningEffort,
+} from "../../libs/summary/adapters/model/active-reader-summary-generation-profile";
+import {
   canonicalizeReaderSummaryWeeklyJson,
   exactReaderSummaryWeeklySha256,
   readerSummaryWeeklyScopeKey,
@@ -55,9 +60,9 @@ export type ReaderSummaryWeeklyReviewProducerParams = Readonly<{
   timeoutMs?: number;
 }>;
 
-const purpose = "social_monitor.reader_summary.weekly.review" as const;
-const model = "gpt-5.6-sol" as const;
-const reasoningEffort = "xhigh" as const;
+const purpose = activeReaderSummaryPurposes.weeklyReview;
+const model = activeReaderSummaryModel;
+const reasoningEffort = activeReaderSummaryReasoningEffort;
 
 export class ReaderSummaryWeeklyReviewManifestAuthorityError extends Error {
   constructor(message: string) {

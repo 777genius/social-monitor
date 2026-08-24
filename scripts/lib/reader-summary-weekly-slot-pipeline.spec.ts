@@ -190,6 +190,9 @@ describe("reader summary weekly slot pipeline", () => {
         return terminal;
       },
       persistReplayFailure: async (_request, outcome) => {
+        if (outcome.status !== "terminal") {
+          throw new Error("expected terminal replay outcome");
+        }
         await failReaderSummaryWeeklyExecutionReceiptAfterDurableOutput(
           database.client,
           publishing,
@@ -387,7 +390,7 @@ const receiptIntegrationDatabase = (publicationExists: boolean) => {
       values: readonly unknown[] = [],
     ) {
       if (sql.includes("job.cadence = 'daily'")) {
-        return { rows: [{ id: receiptAnchorJobId } as TRow] };
+        return { rows: [{ id: receiptAnchorJobId } as unknown as TRow] };
       }
       if (sql.includes("INSERT INTO reader_summary_jobs")) {
         insertValues = values;
@@ -397,10 +400,10 @@ const receiptIntegrationDatabase = (publicationExists: boolean) => {
         }
         const created = insertAvailable;
         insertAvailable = false;
-        return { rows: created ? [{ id: values[0] } as TRow] : [] };
+        return { rows: created ? [{ id: values[0] } as unknown as TRow] : [] };
       }
       if (sql.includes("FROM reader_summary_publications")) {
-        return { rows: publicationExists ? [{ id: "publication-1" } as TRow] : [] };
+        return { rows: publicationExists ? [{ id: "publication-1" } as unknown as TRow] : [] };
       }
       if (sql.includes("job.idempotency_key")) {
         return {
@@ -424,7 +427,7 @@ const receiptIntegrationDatabase = (publicationExists: boolean) => {
             failed_at: failedAt,
             reader_summary_artifact_id: null,
             failure_reason: failureReason,
-          } as TRow],
+          } as unknown as TRow],
         };
       }
       if (sql.includes("UPDATE reader_summary_jobs")) {
@@ -445,7 +448,7 @@ const receiptIntegrationDatabase = (publicationExists: boolean) => {
         } else {
           failureReason = values[3] as string;
         }
-        return { rows: [{ id: values[0] } as TRow] };
+        return { rows: [{ id: values[0] } as unknown as TRow] };
       }
       throw new Error("Unexpected receipt integration query");
     },

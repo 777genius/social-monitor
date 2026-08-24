@@ -3,7 +3,85 @@ part of 'summary_mapper.dart';
 extension on SummaryMapper {
   ReaderSummaryContent _readerSummaryContentToDomain(
     ReaderSummaryContentApiDto dto,
+    Set<String> storyClusterIds,
+    Map<String, ReaderSummaryStoryClusterAuthorityApiDto>
+    storyClusterAuthorities,
+    Map<String, SummaryCitationApiDto> citationsById,
   ) {
+    final readerItems = [
+      ...dto.topReads,
+      ...dto.selectedPosts,
+      ...dto.interestSections.expand((section) => section.items),
+    ];
+    final relationIds = readerItems
+        .expand(
+          (item) => item.relationMarkerIds.isEmpty
+              ? [item.relationId ?? '']
+              : item.relationMarkerIds,
+        )
+        .map((id) => id.trim())
+        .where((id) => id.isNotEmpty)
+        .toList(growable: false);
+    final relationIdCounts = <String, int>{};
+    for (final relationId in relationIds) {
+      relationIdCounts.update(
+        relationId,
+        (count) => count + 1,
+        ifAbsent: () => 1,
+      );
+    }
+    final duplicateRelationIds = relationIdCounts.entries
+        .where((entry) => entry.value > 1)
+        .map((entry) => entry.key)
+        .toSet();
+    final rawRelationIdsByCanonicalId = <String, Set<String>>{};
+    for (final relationId in relationIds) {
+      final identity = _normalizeReaderSummaryRelatedTopicIdentity(relationId);
+      if (identity == null) {
+        continue;
+      }
+      rawRelationIdsByCanonicalId
+          .putIfAbsent(identity.canonicalRelationId, () => <String>{})
+          .add(relationId);
+    }
+    final duplicateCanonicalRelationIds = rawRelationIdsByCanonicalId.entries
+        .where((entry) => entry.value.length > 1)
+        .map((entry) => entry.key)
+        .toSet();
+    final topReadContext = _ReaderItemContext(
+      _ReaderItemKind.topRead,
+      storyClusterIds,
+      duplicateRelationIds,
+      duplicateCanonicalRelationIds,
+      storyClusterAuthorities,
+      citationsById,
+    );
+    final selectedPostContext = _ReaderItemContext(
+      _ReaderItemKind.selectedPost,
+      storyClusterIds,
+      duplicateRelationIds,
+      duplicateCanonicalRelationIds,
+      storyClusterAuthorities,
+      citationsById,
+    );
+    final interestSectionContext = _ReaderItemContext(
+      _ReaderItemKind.interestSection,
+      storyClusterIds,
+      duplicateRelationIds,
+      duplicateCanonicalRelationIds,
+      storyClusterAuthorities,
+      citationsById,
+    );
+    final mappedTopReads = dto.topReads
+        .map((item) => _readerItemToDomain(item, context: topReadContext))
+        .toList(growable: false);
+    final mappedSelectedPosts = dto.selectedPosts
+        .map((item) => _readerItemToDomain(item, context: selectedPostContext))
+        .toList(growable: false);
+    final promotionBoardValid = _validPromotionBoard(
+      mappedTopReads,
+      mappedSelectedPosts,
+    );
     return ReaderSummaryContent(
       headline: _nonEmpty(dto.headline, fallback: 'Workspace summary'),
       oneLineTakeaway: _safeLongText(
@@ -35,13 +113,19 @@ extension on SummaryMapper {
         isSingleSource: dto.qualityState.isSingleSource,
       ),
       interestSections: dto.interestSections
-          .map(_interestSectionToDomain)
+          .map(
+            (section) => _interestSectionToDomain(
+              section,
+              context: interestSectionContext,
+            ),
+          )
           .toList(growable: false),
       sourceMix: dto.sourceMix.map(_sourceMixToDomain).toList(growable: false),
-      topReads: dto.topReads.map(_readerItemToDomain).toList(growable: false),
-      selectedPosts: dto.selectedPosts
-          .map(_readerItemToDomain)
-          .toList(growable: false),
+      topReads: promotionBoardValid ? mappedTopReads : const [],
+      selectedPosts: promotionBoardValid ? mappedSelectedPosts : const [],
+      promotionBoardAvailability: promotionBoardValid
+          ? ReaderSummaryPromotionBoardAvailability.available
+          : ReaderSummaryPromotionBoardAvailability.unavailable,
       claimBoard: dto.claimBoard
           .map((claim) => _summaryClaimToDomain(this, claim))
           .toList(growable: false),
@@ -62,6 +146,48 @@ extension on SummaryMapper {
           .toList(growable: false),
     );
   }
+}
+
+bool _validPromotionBoard(List<TopRead> topReads, List<TopRead> selectedPosts) {
+  if (topReads.length > 8 || selectedPosts.length > 8) return false;
+  final all = [...topReads, ...selectedPosts];
+  final attestations = all
+      .map((item) => item.promotionAttestation)
+      .whereType<ReaderPostPromotionAttestation>()
+      .toList(growable: false);
+  if (attestations.length != all.length ||
+      attestations.map((value) => value.candidateId).toSet().length !=
+          all.length ||
+      attestations.map((value) => value.canonicalIdentity).toSet().length !=
+          all.length) {
+    return false;
+  }
+  bool laneIsExact(
+    List<TopRead> items,
+    ReaderSummaryCardKind cardKind,
+    ReaderPostPromotionPlacement placement,
+    String decision,
+  ) => List.generate(items.length, (index) => index).every((index) {
+    final item = items[index];
+    final attestation = item.promotionAttestation;
+    return item.cardKind == cardKind &&
+        attestation != null &&
+        attestation.placement == placement &&
+        attestation.slot == index &&
+        attestation.decision == decision;
+  });
+  return laneIsExact(
+        topReads,
+        ReaderSummaryCardKind.curatedTopRead,
+        ReaderPostPromotionPlacement.top,
+        'promote_top',
+      ) &&
+      laneIsExact(
+        selectedPosts,
+        ReaderSummaryCardKind.additionalNotableStory,
+        ReaderPostPromotionPlacement.additional,
+        'promote_additional',
+      );
 }
 
 SummaryReliabilityReport _summaryReliabilityToDomain(

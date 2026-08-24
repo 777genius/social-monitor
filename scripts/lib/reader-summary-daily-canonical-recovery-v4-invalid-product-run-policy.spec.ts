@@ -36,7 +36,7 @@ describe("daily canonical recovery v4 invalid-product run policy", () => {
       runtimeVersion: "0.1.0-main.2",
       launcherSha256: "a".repeat(64),
       warnings: [],
-    });
+    } as never);
 
     await expect(
       runReaderSummaryDailyCanonicalRecoveryV4InvalidProduct(

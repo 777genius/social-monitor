@@ -125,26 +125,13 @@ const metricCountWeight = (label: string): number | undefined => {
       case "reposts":
       case "share":
       case "shares":
-      case "quote":
-      case "quotes":
         return 1.25;
-      case "comment":
-      case "comments":
-      case "reply":
-      case "replies":
       case "reaction":
       case "reactions":
         return 0.6;
-      case "bookmark":
-      case "bookmarks":
       case "fork":
       case "forks":
         return 0.35;
-      case "impression":
-      case "impressions":
-      case "view":
-      case "views":
-        return 0.05;
       default:
         continue;
     }

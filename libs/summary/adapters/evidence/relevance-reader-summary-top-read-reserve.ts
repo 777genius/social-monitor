@@ -3,13 +3,16 @@ import type {
   SummaryEvidenceSelection,
 } from "../../domain";
 import { isTopReadEligibleEvidence } from "../../domain/policies/top-read-eligibility-policy";
+import { readerSummaryIndependentProviderFamily } from
+  "../../domain/value-objects/reader-summary-provider-identity";
 
 export const crossProviderReserveIds = (
   selection: SummaryEvidenceSelection,
 ): ReadonlySet<string> => {
   const result = new Set<string>();
   for (const cluster of selection.clusters) {
-    if (cluster.providerKeys.length < 2) {
+    if (new Set(cluster.providerKeys.map((providerKey) =>
+      readerSummaryIndependentProviderFamily({ providerKey }))).size < 2) {
       continue;
     }
     const clusterIds = new Set([

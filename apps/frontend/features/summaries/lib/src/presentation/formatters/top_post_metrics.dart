@@ -249,45 +249,6 @@ String formatCompactMetricValue(String raw) {
   return formatCompactCount(value);
 }
 
-/// Rough engagement score used for the "Engagement" sort: the sum of all
-/// numeric provider metrics reported for the post.
-num topPostEngagementScore(TopRead read) {
-  num total = 0;
-  for (final metric in read.providerMetrics) {
-    for (final match in _numberWordPattern.allMatches(metric.value)) {
-      total += _rawMetricNumber(match.group(1)!);
-    }
-    final labeled = metric.value.trim();
-    if (RegExp(r'^[\d][\d,.]*[kKmM]?$').hasMatch(labeled)) {
-      total += _rawMetricNumber(labeled);
-    }
-  }
-  return total;
-}
-
-/// Keeps the backend editorial order for editorial view and applies a local sort
-/// only when the reader explicitly chooses engagement.
-List<TopRead> orderTopPosts(
-  Iterable<TopRead> items, {
-  required bool byEngagement,
-}) {
-  final ordered = items.toList(growable: false);
-  if (!byEngagement) {
-    return ordered;
-  }
-
-  final indexed = ordered.indexed.toList(growable: false)
-    ..sort((left, right) {
-      final engagementOrder = topPostEngagementScore(
-        right.$2,
-      ).compareTo(topPostEngagementScore(left.$2));
-      return engagementOrder != 0
-          ? engagementOrder
-          : left.$1.compareTo(right.$1);
-    });
-  return indexed.map((entry) => entry.$2).toList(growable: false);
-}
-
 num _rawMetricNumber(String raw) {
   final normalized = raw.trim().toLowerCase().replaceAll(',', '');
   var multiplier = 1;

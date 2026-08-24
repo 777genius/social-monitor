@@ -1,8 +1,4 @@
-import {
-  type FeedItem,
-  feedProviderMetricsFromMetadata,
-  feedProviderMetricStrength,
-} from "@social-monitor/feed/domain";
+import type { FeedItem } from "@social-monitor/feed/domain";
 import type { FeedItemReadRepositoryPort } from "@social-monitor/feed/ports";
 import {
   type Clock,
@@ -16,10 +12,10 @@ import {
 import {
   extractSignalKeywords,
   RankingPolicy,
-  type RankedRelevanceCandidate,
   type RankingMemoryGuidance,
   type RankingCandidate,
   SourceContentQualityPolicy,
+  SourceContentSafetyPolicy,
   type SourceContentQualityVerdict,
 } from "../../domain";
 import type {
@@ -31,17 +27,16 @@ import {
   NOOP_RELEVANCE_MEMORY_GUIDANCE_READER,
   NOOP_SOURCE_CONTENT_QUALITY_REVIEWER,
 } from "../../ports";
-import {
-  presentSourceContentQuality,
-  presentSourceContentSafety,
-  presentUserRelevanceProfile,
-} from "../shared/relevance-presenter";
+import { presentUserRelevanceProfile } from "../shared/relevance-presenter";
 import type { RankFeedItemsCommand } from "./rank-feed-items.command";
 import type {
   RankedFeedItemView,
   RankFeedItemsResult,
   RelevanceMemoryGuidanceView,
 } from "./rank-feed-items.result";
+import { presentRankedFeedItem, toRankingCandidate } from
+  "./rank-feed-item-projection";
+import { rankPromotionSnapshot } from "./rank-promotion-snapshot";
 
 type RankFeedItemsFailure = DomainError | Error;
 
@@ -59,11 +54,21 @@ export class RankFeedItemsUseCase {
     private readonly memoryGuidance: RelevanceMemoryGuidanceReaderPort = NOOP_RELEVANCE_MEMORY_GUIDANCE_READER,
     private readonly qualityPolicy = new SourceContentQualityPolicy(),
     private readonly qualityReviewer: SourceContentQualityReviewerPort = NOOP_SOURCE_CONTENT_QUALITY_REVIEWER,
+    private readonly safetyPolicy = new SourceContentSafetyPolicy(),
   ) {}
 
   async execute(
     command: RankFeedItemsCommand,
   ): Promise<Result<RankFeedItemsResult, RankFeedItemsFailure>> {
+    if (command.rankingProfile === "reader_post_promotion") {
+      return rankPromotionSnapshot({
+        command,
+        feedItems: this.feedItems,
+        clock: this.clock,
+        qualityPolicy: this.qualityPolicy,
+        safetyPolicy: this.safetyPolicy,
+      });
+    }
     const limit = normalizeLimit(command.limit);
 
     if (limit === null) {
@@ -84,7 +89,11 @@ export class RankFeedItemsUseCase {
             workspaceId: command.workspaceId,
             userId,
           });
-    const candidates = await this.listCandidateFeedItems(command);
+    const listedCandidates = await this.listCandidateFeedItems(command);
+    if (!listedCandidates.ok) {
+      return listedCandidates;
+    }
+    const candidates = listedCandidates.value;
     const generatedAt = this.clock.now();
     const snapshotsById = new Map(
       candidates.map((item) => {
@@ -149,14 +158,23 @@ export class RankFeedItemsUseCase {
 
   private async listCandidateFeedItems(
     command: RankFeedItemsCommand,
-  ): Promise<readonly FeedItem[]> {
+  ): Promise<Result<readonly FeedItem[], RankFeedItemsFailure>> {
     const items: FeedItem[] = [];
     let cursor: string | undefined;
+    let scannedCount = 0;
 
-    while (items.length < maxCandidateScan) {
+    while (true) {
+      const remainingRawScan = maxCandidateScan - scannedCount;
+      if (remainingRawScan <= 0) {
+        return err(new DomainError(
+          "operation.conflict",
+          "Promotion candidate scan could not exhaust eligible feed items",
+          { scannedCount, eligibleCandidateCount: items.length },
+        ));
+      }
       const pageLimit = Math.min(
         maxCandidatePageLimit,
-        maxCandidateScan - items.length,
+        remainingRawScan,
       );
       const page = await this.feedItems.list({
         tenantId: command.tenantId,
@@ -164,6 +182,7 @@ export class RankFeedItemsUseCase {
         interestId: normalizeOptional(command.interestId),
         observedAfter: command.observedAfter,
         observedAtOrAfter: command.observedAtOrAfter,
+        observedAtOrBefore: command.observedAtOrBefore,
         observedBefore: command.observedBefore,
         publishedAtOrAfter: command.publishedAtOrAfter,
         publishedBefore: command.publishedBefore,
@@ -171,14 +190,25 @@ export class RankFeedItemsUseCase {
         cursor,
       });
 
+      scannedCount += page.items.length;
       items.push(...page.items);
-      if (page.nextCursor === undefined || page.nextCursor === cursor) {
+      if (items.length > maxCandidateScan) {
+        items.length = maxCandidateScan;
+      }
+      if (page.nextCursor === undefined) {
         break;
       }
+      if (page.nextCursor === cursor || page.items.length === 0) {
+        return ok(items);
+      }
       cursor = page.nextCursor;
+
+      if (items.length >= maxCandidateScan) {
+        break;
+      }
     }
 
-    return items;
+    return ok(items);
   }
 
   private async buildMemoryGuidance(params: {
@@ -293,71 +323,6 @@ export class RankFeedItemsUseCase {
     }
   }
 }
-
-type FeedItemSnapshot = ReturnType<FeedItem["toSnapshot"]>;
-
-const toRankingCandidate = (item: FeedItem): RankingCandidate => {
-  const snapshot = item.toSnapshot();
-
-  return {
-    id: snapshot.id,
-    interestId: snapshot.interestId,
-    providerKey: snapshot.providerKey,
-    canonicalUrl: snapshot.canonicalUrl,
-    title: snapshot.title,
-    bodyPreview: snapshot.bodyPreview,
-    authorHandle: snapshot.authorHandle,
-    providerMetadata: snapshot.providerMetadata,
-    publishedAt: snapshot.publishedAt,
-    sourceSignalScore: providerSignalScore(
-      snapshot.providerKey,
-      snapshot.providerMetadata,
-    ),
-  };
-};
-
-const presentRankedFeedItem = (
-  item: RankedRelevanceCandidate,
-  snapshot: FeedItemSnapshot,
-  rank: number,
-): RankedFeedItemView => ({
-  feedItemId: snapshot.id,
-  sourceItemId: snapshot.sourceItemId,
-  sourceBindingId: snapshot.sourceBindingId,
-  interestId: snapshot.interestId,
-  providerKey: snapshot.providerKey,
-  canonicalUrl: item.safety.sanitizedCanonicalUrl ?? snapshot.canonicalUrl,
-  title: item.safety.sanitizedTitle,
-  bodyPreview: item.safety.sanitizedBodyPreview,
-  providerMetadata: snapshot.providerMetadata,
-  authorHandle: snapshot.authorHandle,
-  publishedAt: snapshot.publishedAt.toISOString(),
-  observedAt: snapshot.observedAt.toISOString(),
-  score: item.score,
-  rank,
-  clusterId: item.clusterId,
-  clusterSize: item.clusterSize,
-  duplicateFeedItemIds: item.duplicateCandidateIds,
-  whyImportant: item.whyImportant,
-  safety: presentSourceContentSafety(item.safety),
-  contentQuality: presentSourceContentQuality(item.contentQuality),
-});
-
-const providerSignalScore = (
-  providerKey: string,
-  providerMetadata: FeedItemSnapshot["providerMetadata"],
-): number => {
-  const metrics = feedProviderMetricsFromMetadata({
-    providerKey,
-    providerMetadata,
-  });
-
-  if (metrics === undefined) {
-    return 0;
-  }
-
-  return Math.min(0.85, feedProviderMetricStrength(metrics) / 10);
-};
 
 const isXProvider = (providerKey: string): boolean => {
   const normalized = providerKey.trim().toLocaleLowerCase("en-US");

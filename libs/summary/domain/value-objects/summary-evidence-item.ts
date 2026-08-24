@@ -1,5 +1,7 @@
 import type { ProviderMetric } from "./provider-metric-label";
 import type { PreviewMedia } from "./preview-media";
+import type { ReaderSummaryRelatedTopicRelationProps } from "./reader-summary-related-topic-relation";
+import type { ReaderPostPromotionAttestation } from "../policies/reader-post-promotion-policy-contract";
 
 export type SummaryEvidenceReaderActionKind =
   "read_source" | "watch_repository";
@@ -14,6 +16,69 @@ export type SummaryEvidenceContentQuality = {
   readonly decision: string;
   readonly flags: readonly string[];
   readonly reason: string;
+};
+
+export type SummaryEvidencePromotionMetrics =
+  | {
+      readonly provider: "x";
+      readonly likes: number;
+      readonly reposts: number;
+      readonly weightedScore: number;
+    }
+  | {
+      readonly provider: "reddit";
+      readonly score: number;
+      readonly upvoteRatio?: number;
+    }
+  | {
+      readonly provider: "hacker_news";
+      readonly points: number;
+    }
+  | {
+      readonly provider: "github_radar";
+      readonly snapshotKind: "repository_growth";
+      readonly windowStartedAt: Date;
+      readonly windowEndedAt: Date;
+      readonly starsDelta: number;
+      readonly forksDelta: number;
+    };
+
+export type SummaryEvidencePromotionFacts = {
+  readonly contentKind:
+    | "original_post"
+    | "story"
+    | "repository"
+    | "comment"
+    | "reply"
+    | "quote"
+    | "github_trending"
+    | "unknown";
+  readonly canonicalIdentity: string;
+  readonly checkedAt?: Date;
+  readonly authorityAttestation?: {
+    readonly status: "attested";
+    readonly official: boolean;
+    readonly trusted: boolean;
+    readonly attestedBy: "producer" | "source_catalog";
+  };
+  /** Legacy LLM quality hints; promotion authority never reads these fields. */
+  readonly officialAccount?: boolean;
+  readonly trustedAuthor?: boolean;
+  readonly safetyValid: boolean;
+  readonly freshnessValid: boolean;
+  readonly freshnessProvenance?:
+    | { readonly status: "unknown" }
+    | {
+        readonly status: "observed";
+        readonly publishedAt: Date;
+        readonly observedAt: Date;
+        readonly ingestionCutoff: Date;
+        readonly exactPublishedAt?: string;
+        readonly exactObservedAt?: string;
+        readonly exactIngestionCutoff?: string;
+      };
+  readonly metricsState?: "observed" | "missing" | "malformed" | "conflict";
+  readonly metrics?: SummaryEvidencePromotionMetrics;
 };
 
 export type SummaryEvidenceItem = {
@@ -38,6 +103,7 @@ export type SummaryEvidenceItem = {
   readonly previewMedia?: PreviewMedia;
   readonly conversationContext?: SummaryEvidenceConversationContext;
   readonly contentQuality?: SummaryEvidenceContentQuality;
+  readonly promotionFacts?: SummaryEvidencePromotionFacts;
   readonly readerActionKind?: SummaryEvidenceReaderActionKind;
   readonly matchedRules?: readonly string[];
   readonly storyKeyHint?: string;
@@ -119,7 +185,18 @@ export type SummaryEvidenceSelection = {
   readonly sourceWindow: SummarySourceWindow;
   readonly clusters: readonly StoryCluster[];
   readonly selectedEvidence: readonly SummaryEvidenceItem[];
+  readonly relatedTopicRelations?: readonly RelatedTopicRelation[];
+  readonly approvedSameStoryRelations?: readonly ApprovedSameStoryRelation[];
+  readonly promotionAttestations?: readonly ReaderPostPromotionAttestation[];
 };
+
+export type ApprovedSameStoryRelation = {
+  readonly leftFeedItemId: string;
+  readonly rightFeedItemId: string;
+  readonly confidence: number;
+};
+
+export type RelatedTopicRelation = ReaderSummaryRelatedTopicRelationProps;
 
 export type SummaryEvidencePersonalization = {
   readonly memoryGuidanceStatus:
@@ -138,4 +215,7 @@ export type SummarySourceWindow = {
   readonly endedAt: Date;
   readonly selectedFeedItemIds: readonly string[];
   readonly storyClusterIds: readonly string[];
+  readonly periodStartedAt?: Date;
+  readonly periodEndedAt?: Date;
+  readonly ingestionCutoff?: Date;
 };

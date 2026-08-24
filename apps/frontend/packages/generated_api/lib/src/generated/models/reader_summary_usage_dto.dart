@@ -18,8 +18,8 @@ class ReaderSummaryUsageDto {
       _$ReaderSummaryUsageDtoFromJson(json);
 
   final num estimatedCostUsd;
-  final num inputTokens;
-  final num outputTokens;
+  final num? inputTokens;
+  final num? outputTokens;
 
   Map<String, Object?> toJson() => _$ReaderSummaryUsageDtoToJson(this);
 }

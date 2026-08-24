@@ -1,10 +1,13 @@
 import 'package:social_monitor_generated_api/social_monitor_generated_api.dart'
     as generated;
 
+import '../../domain/value_objects/reader_summary_provider_family.dart';
 import '../api/summary_api_dto.dart';
+import 'reader_summary_artifact_binding.dart';
 import 'reader_summary_content_rest_mapper.dart';
 
 part 'generated_summary_rest_mapper_coverage.dart';
+part 'generated_summary_rest_mapper_reader_authority.dart';
 
 final class GeneratedSummaryRestMapper {
   const GeneratedSummaryRestMapper();
@@ -30,18 +33,21 @@ final class GeneratedSummaryRestMapper {
         noSignalReason: dto.noSignalReason,
       ),
       userId: dto.userId,
-      content: _readerSummaryContentMapper.map(dto.readerBrief),
-      topStories: dto.topStories
-          .map(
-            (story) => SummaryStoryApiDto(
-              title: story.title,
-              summary: story.summary,
-              topicCount: story.interestIds.length,
-              providerCount: story.providerKeys.length,
-              citationIds: story.citationIds,
-            ),
-          )
-          .toList(growable: false),
+      content: _readerSummaryContentMapper.map(
+        dto.readerBrief,
+        binding: ReaderSummaryArtifactBinding(
+          artifactId: dto.readerSummaryId,
+          sourceWindowId: dto.sourceWindow.windowId,
+          periodStart: dto.period.startedAt,
+          periodEnd: dto.period.endedAt,
+          ingestionCutoff: dto.sourceWindow.ingestionCutoff,
+        ),
+      ),
+      topStories: _readerSummaryTopStories(dto.topStories),
+      storyClusterIds: _readerSummaryStoryClusterIds(dto.storyClusters),
+      storyClusterAuthorities: _readerSummaryStoryClusterAuthorities(
+        dto.storyClusters,
+      ),
       repeatedSignals: dto.repeatedSignals
           .map(
             (signal) => RepeatedSignalApiDto(
@@ -57,9 +63,11 @@ final class GeneratedSummaryRestMapper {
       period: readerSummaryPeriod(dto.period),
       generatedAt: dto.generatedAt,
       sourceWindow: SummaryWindowApiDto(
+        id: dto.sourceWindow.windowId,
         label: 'Evidence window',
         startedAt: dto.sourceWindow.startedAt,
         endedAt: dto.sourceWindow.endedAt,
+        ingestionCutoff: dto.sourceWindow.ingestionCutoff,
       ),
       freshnessLabel: _readerSummaryFreshnessLabel(dto.freshness),
       isDegraded: dto.qualityFlags.any(_isDegradedReaderSummaryFlag),

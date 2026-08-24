@@ -18,8 +18,13 @@ void main() {
     final summary = const SummaryMapper().readerSummaryToDomain(
       readerSummaryApiDto(
         content: readerSummaryContentApiDto(
-          topReads: const [
+          topReads: [
             TopReadApiDto(
+              storyClusterId: 'story:compact-row',
+              cardKind: 'curated_top_read',
+              promotionAttestation: topPromotionAttestationApiDto(
+                'story:compact-row',
+              ),
               title: 'Compact mode single row post',
               providerKey: 'reddit',
               reason:

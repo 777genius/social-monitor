@@ -45,7 +45,9 @@ describe("daily canonical recovery v4 invalid-product retry set", () => {
     [[{ ...terminalSet()[0]!, requestedUtcDate: "2026-07-24" }]],
     [[{ ...terminalSet()[0]!, modelJobIdentity: "A".repeat(64) }]],
   ])("rejects a partial, widened, or malformed terminal set", (entries) => {
-    expect(() => canonicalInvalidProductRetrySetSha256(entries)).toThrow(/terminal set/u);
+    expect(() => canonicalInvalidProductRetrySetSha256(
+      entries as Parameters<typeof canonicalInvalidProductRetrySetSha256>[0],
+    )).toThrow(/terminal set/u);
   });
 
   it("uses a serializable call and accepts only the ordered six database rows", async () => {

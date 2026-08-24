@@ -1,63 +1,63 @@
 import type { FeedItemReadRepositoryPort } from "@social-monitor/feed/ports";
 import type { RankFeedItemsUseCase } from "@social-monitor/relevance/features/rank-feed-items/rank-feed-items.use-case";
-import type { RankedFeedItemView } from "@social-monitor/relevance/features/rank-feed-items/rank-feed-items.result";
-import {
-  SourceContentQualityPolicy,
-  SourceContentSafetyPolicy,
-} from "@social-monitor/relevance/domain";
 import type { Clock } from "@social-monitor/shared-kernel";
 
 import {
-  approvedStoryRelationPairs,
-  buildStoryRelationCandidates,
+  admitReaderPostPromotionEvidence,
+  admissibleReaderPostPromotionCandidateIds,
   isGitHubTrendingEvidence,
+  primaryReaderSummaryEvidence,
   selectGitHubTrendingSupplementalEvidence,
   StoryClusteringService,
   type SummaryEvidenceItem,
-  type SummaryEvidenceSelection,
 } from "../../domain";
-import { isTopReadEligibleEvidence } from "../../domain/policies/top-read-eligibility-policy";
 import {
   NOOP_STORY_RANKING_METRICS,
   type ReaderSummaryEvidenceSelectorPort,
   type ReaderSummaryStoryRelationVerifierPort,
   type StoryRankingMetricsPort,
 } from "../../ports";
-import { isDefaultReaderSummaryEvidenceProvider } from "./reader-summary-evidence-provider-filter";
-import { withGitHubTrendingCandidates } from "./relevance-reader-summary-github-trending-candidates";
+import {
+  scheduleReaderSummarySafeRecallShadowObservation,
+  verifiedReaderSummaryStoryRelations,
+} from "./relevance-reader-summary-story-relation-decisions";
+import {
+  RELATED_TOPIC_VERIFIER_TIMEOUT_MS,
+  verifiedReaderSummaryRelatedTopics,
+} from "./relevance-reader-summary-related-topics";
 
 import {
-  countItemsForProvider,
   expandedCandidateLimit,
   filterItemsByDefaultReaderSummaryProviders,
   filterItemsByReaderSummaryPeriod,
-  inclusiveObservedBefore,
   mapRankedItem,
-  mapSupplementFeedItem,
-  providerSupplementTargetForLimit,
   readerSummaryPeriodQuery,
-  readerSummaryProviderDiversityOrder,
   selectRankedEvidence,
 } from "./relevance-reader-summary-evidence-support";
 import {
-  countTopReadEligibleItemsForProvider,
   crossProviderReserveIds,
-  promoteTopReadCandidatesWithinProviders,
-  topReadCandidateReserveProviders,
-  topReadCandidateSupplementTargetForLimit,
 } from "./relevance-reader-summary-top-read-reserve";
+import {
+  promotionPolicySelection,
+  promotionSupportCandidates,
+} from "./relevance-reader-summary-promotion-candidates";
+
+/**
+ * Original source text is considered through 256k UTF-16 code units. The cap
+ * is applied before safety-policy sanitization to bound transient regex/string
+ * allocations; only the sanitized result can reach relation verification.
+ */
+export const READER_SUMMARY_ORIGINAL_SOURCE_TEXT_SAFETY_CAP = 256_000;
 
 export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvidenceSelectorPort {
   private readonly clusterer: StoryClusteringService;
-  private readonly qualityPolicy = new SourceContentQualityPolicy();
-  private readonly safetyPolicy = new SourceContentSafetyPolicy();
-
   constructor(
     private readonly rankFeedItems: RankFeedItemsUseCase,
     private readonly feedItems: FeedItemReadRepositoryPort,
     private readonly clock: Clock,
     private readonly storyRankingMetrics: StoryRankingMetricsPort = NOOP_STORY_RANKING_METRICS,
     private readonly storyRelationVerifier?: ReaderSummaryStoryRelationVerifierPort,
+    private readonly relatedTopicVerifierTimeoutMs = RELATED_TOPIC_VERIFIER_TIMEOUT_MS,
   ) {
     this.clusterer = new StoryClusteringService(clock);
   }
@@ -65,7 +65,11 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
   async select(
     params: Parameters<ReaderSummaryEvidenceSelectorPort["select"]>[0],
   ) {
-    const periodQuery = readerSummaryPeriodQuery(params);
+    const ingestionCutoff = new Date(
+      (params.observedThrough ?? this.clock.now()).getTime(),
+    );
+    const query = { ...params, observedThrough: ingestionCutoff };
+    const periodQuery = readerSummaryPeriodQuery(query);
     const ranked = await this.rankFeedItems.execute({
       tenantId: params.tenantId,
       workspaceId: params.workspaceId,
@@ -73,38 +77,37 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
         params.scope.type === "interest" ? params.scope.interestId : undefined,
       userId: params.userId,
       ...periodQuery,
+      observedAtOrBefore: ingestionCutoff,
+      rankingProfile: "reader_post_promotion",
       limit: expandedCandidateLimit(params.maxItems),
     });
 
     if (!ranked.ok) {
       throw ranked.error;
     }
-
     const expandedRankedItems = filterItemsByReaderSummaryPeriod(
-      await this.expandRankedItems(params, ranked.value.items),
+      ranked.value.items.map((item) => mapRankedItem(item, query.observedThrough)),
       params.period,
       params.timestampPolicy,
     );
+    const promotionCandidates = expandedRankedItems.filter((item) =>
+      item.promotionFacts?.metricsState === "observed" &&
+      item.promotionFacts.metrics !== undefined);
+    const promotionCandidateIds = new Set(
+      promotionCandidates.map((item) => item.feedItemId),
+    );
+
     const rankedItems = filterItemsByDefaultReaderSummaryProviders(
       expandedRankedItems,
     );
     const rankedGitHubTrendingItems = expandedRankedItems.filter(
       isGitHubTrendingEvidence,
     );
-    const candidateItems = await withGitHubTrendingCandidates({
-      query: params,
-      rankedItems: [
-        ...(await this.withTopReadCandidateSupplements(
-          params,
-          await this.withProviderDiversitySupplements(params, rankedItems),
-        )),
-        ...rankedGitHubTrendingItems,
-      ],
-      feedItems: this.feedItems,
-      qualityPolicy: this.qualityPolicy,
-      safetyPolicy: this.safetyPolicy,
-      clock: this.clock,
-    });
+    const candidateItems = uniqueEvidence([
+      ...promotionCandidates,
+      ...rankedItems,
+      ...rankedGitHubTrendingItems,
+    ]);
     const primaryCandidateItems = candidateItems.filter(
       (item) => !isGitHubTrendingEvidence(item),
     );
@@ -118,14 +121,50 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
       },
       items: primaryCandidateItems,
       limit: primaryCandidateItems.length,
+      now: ingestionCutoff,
     });
-    const approvedPairs = await this.verifiedStoryRelationPairs(
-      params,
-      primaryCandidateItems,
-      candidateSelection,
+    const promotionPolicyItems = primaryCandidateItems.filter((item) =>
+      promotionCandidateIds.has(item.feedItemId));
+    const promotionWindowSelection = {
+      ...candidateSelection,
+      sourceWindow: {
+        ...candidateSelection.sourceWindow,
+        periodStartedAt: params.period.startedAt,
+        periodEndedAt: params.period.endedAt,
+        ingestionCutoff,
+      },
+    };
+    const losslessPromotionSelection = promotionPolicySelection(
+      promotionWindowSelection,
+      promotionPolicyItems,
     );
+    const preliminaryPromotion = admitReaderPostPromotionEvidence({
+      ...losslessPromotionSelection,
+      sourceWindow: {
+        ...losslessPromotionSelection.sourceWindow,
+        periodStartedAt: params.period.startedAt,
+        periodEndedAt: params.period.endedAt,
+        ingestionCutoff,
+      },
+    });
+    const approvedRelations = await verifiedReaderSummaryStoryRelations({
+      query,
+      evidence: primaryCandidateItems,
+      deterministicSelection: candidateSelection,
+      requestedAt: ingestionCutoff,
+      verifier: this.storyRelationVerifier,
+      metrics: this.storyRankingMetrics,
+      additionalCandidates: promotionSupportCandidates({
+        evidence: primaryCandidateItems,
+        clusters: candidateSelection.clusters,
+        leadIds: new Set(preliminaryPromotion.selectedEvidence.map(
+          (item) => item.feedItemId,
+        )),
+        promotionCandidateIds,
+      }),
+    });
     const verifiedCandidateSelection =
-      approvedPairs.size === 0
+      approvedRelations.pairs.size === 0
         ? candidateSelection
         : this.clusterer.cluster({
             identity: {
@@ -135,13 +174,49 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
             },
             items: primaryCandidateItems,
             limit: primaryCandidateItems.length,
-            verifiedStoryRelationPairs: approvedPairs,
+            verifiedStoryRelationPairs: approvedRelations.pairs,
+            now: ingestionCutoff,
           });
-    const items = selectRankedEvidence(
-      primaryCandidateItems,
-      params.maxItems,
-      crossProviderReserveIds(verifiedCandidateSelection),
+    const verifiedPromotionSelection = promotionPolicySelection({
+      ...verifiedCandidateSelection,
+      sourceWindow: {
+        ...verifiedCandidateSelection.sourceWindow,
+        periodStartedAt: params.period.startedAt,
+        periodEndedAt: params.period.endedAt,
+        ingestionCutoff,
+      },
+    }, promotionPolicyItems);
+    const fullPromotionSelection = {
+      ...verifiedPromotionSelection,
+      approvedSameStoryRelations: approvedRelations.relations,
+    };
+    const authoritativePromotion = admitReaderPostPromotionEvidence(
+      fullPromotionSelection,
+    ).selectedEvidence.filter((item) =>
+      promotionCandidateIds.has(item.feedItemId) &&
+      !isGitHubTrendingEvidence(item));
+    const authoritativeIds = new Set(
+      authoritativePromotion.map((item) => item.feedItemId),
     );
+    const admissiblePromotionIds = admissibleReaderPostPromotionCandidateIds(
+      promotionPolicySelection(promotionWindowSelection, promotionPolicyItems),
+    );
+    const narrativeCandidates = primaryCandidateItems.filter((item) =>
+      !authoritativeIds.has(item.feedItemId) &&
+      (!promotionCandidateIds.has(item.feedItemId) ||
+        admissiblePromotionIds.has(item.feedItemId)),
+    );
+    const narrativeLimit = Math.max(
+      0,
+      params.maxItems - authoritativePromotion.length,
+    );
+    const narrativeItems = narrativeLimit === 0 ? [] : selectRankedEvidence(
+      narrativeCandidates,
+      narrativeLimit,
+      crossProviderReserveIds(verifiedCandidateSelection),
+      this.storyRelationVerifier !== undefined,
+    );
+    const items = [...authoritativePromotion, ...narrativeItems];
     const selection = this.clusterer.cluster({
       identity: {
         tenantId: params.tenantId,
@@ -149,20 +224,39 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
         scope: params.scope,
       },
       items,
-      limit: params.maxItems,
-      verifiedStoryRelationPairs: approvedPairs,
+      limit: items.length,
+      verifiedStoryRelationPairs: approvedRelations.pairs,
+      now: ingestionCutoff,
     });
-    const selectedEvidence = [
-      ...selection.selectedEvidence,
+    const selectedEvidence = uniqueEvidence([
+      ...authoritativePromotion,
+      ...narrativeItems,
       ...githubTrendingEvidence,
-    ];
-    const personalizedSelection = {
+    ]);
+    const finalSelection = {
       ...selection,
       sourceWindow: {
         ...selection.sourceWindow,
         selectedFeedItemIds: selectedEvidence.map((item) => item.feedItemId),
+        periodStartedAt: params.period.startedAt,
+        periodEndedAt: params.period.endedAt,
+        ingestionCutoff,
       },
       selectedEvidence,
+      approvedSameStoryRelations: approvedRelations.relations,
+    };
+    const relatedTopicRelations = await verifiedReaderSummaryRelatedTopics({
+      query,
+      selection: finalSelection,
+      requestedAt: ingestionCutoff,
+      verifier: this.storyRelationVerifier,
+      metrics: this.storyRankingMetrics,
+      now: () => ingestionCutoff,
+      timeoutMs: this.relatedTopicVerifierTimeoutMs,
+    });
+    const personalizedSelection = {
+      ...finalSelection,
+      relatedTopicRelations,
       personalization:
         ranked.value.memoryGuidance === undefined
           ? undefined
@@ -179,284 +273,39 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
               signals: ranked.value.memoryGuidance.signals,
             },
     };
-    this.storyRankingMetrics.recordStoryRanking(personalizedSelection);
+    this.recordTelemetry(() =>
+      this.storyRankingMetrics.recordStoryRanking(
+        primaryReaderSummaryEvidence(personalizedSelection),
+      ),
+    );
 
-    return this.withOriginalSourceText(params, personalizedSelection);
-  }
-
-  private async verifiedStoryRelationPairs(
-    params: Parameters<ReaderSummaryEvidenceSelectorPort["select"]>[0],
-    evidence: readonly SummaryEvidenceItem[],
-    deterministicSelection: SummaryEvidenceSelection,
-  ): Promise<ReadonlySet<string>> {
-    const candidates = buildStoryRelationCandidates({
-      selection: deterministicSelection,
-      evidence,
+    scheduleReaderSummarySafeRecallShadowObservation({
+      query,
+      evidence: primaryCandidateItems,
+      deterministicSelection: candidateSelection,
+      requestedAt: ingestionCutoff,
+      verifier: this.storyRelationVerifier,
+      metrics: this.storyRankingMetrics,
     });
-    if (this.storyRelationVerifier === undefined || candidates.length === 0) {
-      this.storyRankingMetrics.recordStoryRelationVerification({
-        status: "skipped",
-        candidateCount: candidates.length,
-        approvedCount: 0,
-      });
-      return new Set();
-    }
+    return personalizedSelection;
+  }
 
+  private recordTelemetry(record: () => void): void {
     try {
-      const decisions = await this.storyRelationVerifier.verify({
-        tenantId: params.tenantId,
-        workspaceId: params.workspaceId,
-        scope: params.scope,
-        period: params.period,
-        requestedAt: this.clock.now(),
-        clusters: deterministicSelection.clusters,
-        evidence,
-        candidates,
-      });
-      const approvedPairs = approvedStoryRelationPairs({
-        candidates,
-        decisions,
-      });
-      this.storyRankingMetrics.recordStoryRelationVerification({
-        status: "completed",
-        candidateCount: candidates.length,
-        approvedCount: approvedPairs.size,
-      });
-      return approvedPairs;
+      record();
     } catch {
-      this.storyRankingMetrics.recordStoryRelationVerification({
-        status: "failed_closed",
-        candidateCount: candidates.length,
-        approvedCount: 0,
-      });
-      return new Set();
+      // Observability must never alter evidence selection or relation decisions.
     }
   }
 
-  private async withOriginalSourceText(
-    params: Parameters<ReaderSummaryEvidenceSelectorPort["select"]>[0],
-    selection: SummaryEvidenceSelection,
-  ): Promise<SummaryEvidenceSelection> {
-    const readSourceContent = this.feedItems.readSourceContent;
-    if (
-      readSourceContent === undefined ||
-      selection.selectedEvidence.length === 0
-    ) {
-      return selection;
-    }
-
-    try {
-      const sourceContent = await readSourceContent.call(this.feedItems, {
-        tenantId: params.tenantId,
-        workspaceId: params.workspaceId,
-        feedItemIds: selection.selectedEvidence.map((item) => item.feedItemId),
-        observedBefore: observedBeforeFor(params.observedThrough),
-      });
-      const sourceTextByFeedItemId = new Map(
-        sourceContent.map((item) => [item.feedItemId, item] as const),
-      );
-
-      return {
-        ...selection,
-        selectedEvidence: selection.selectedEvidence.map((item) => {
-          const source = sourceTextByFeedItemId.get(item.feedItemId);
-          if (
-            source === undefined ||
-            source.sourceItemId !== item.sourceItemId
-          ) {
-            return item;
-          }
-          const safety = this.safetyPolicy.evaluate({
-            providerKey: item.providerKey,
-            title: item.title,
-            bodyPreview: source.body.slice(0, 50_000),
-            canonicalUrl: item.canonicalUrl,
-          });
-
-          return safety.sanitizedBodyPreview === undefined
-            ? item
-            : { ...item, sourceText: safety.sanitizedBodyPreview };
-        }),
-      };
-    } catch {
-      return selection;
-    }
-  }
-
-  private async expandRankedItems(
-    params: Parameters<ReaderSummaryEvidenceSelectorPort["select"]>[0],
-    rankedItems: readonly RankedFeedItemView[],
-  ): Promise<readonly SummaryEvidenceItem[]> {
-    const itemsById = new Map<string, SummaryEvidenceItem>();
-
-    for (const rankedItem of rankedItems) {
-      itemsById.set(rankedItem.feedItemId, mapRankedItem(rankedItem));
-
-      for (const duplicateFeedItemId of rankedItem.duplicateFeedItemIds) {
-        if (itemsById.has(duplicateFeedItemId)) {
-          continue;
-        }
-
-        const duplicate = await this.feedItems.findById({
-          tenantId: params.tenantId,
-          workspaceId: params.workspaceId,
-          feedItemId: duplicateFeedItemId,
-          observedBefore: observedBeforeFor(params.observedThrough),
-        });
-
-        if (duplicate === null) {
-          continue;
-        }
-
-        const supplement = mapSupplementFeedItem({
-          snapshot: duplicate.toSnapshot(),
-          qualityPolicy: this.qualityPolicy,
-          safetyPolicy: this.safetyPolicy,
-          now: this.clock.now(),
-        });
-        itemsById.set(duplicateFeedItemId, {
-          ...supplement,
-          score: Math.min(
-            supplement.score,
-            Math.max(0, rankedItem.score - 0.001),
-          ),
-          storyKeyHint: rankedItem.clusterId,
-        });
-      }
-    }
-
-    return [...itemsById.values()];
-  }
-
-  private async withProviderDiversitySupplements(
-    params: Parameters<ReaderSummaryEvidenceSelectorPort["select"]>[0],
-    rankedItems: readonly SummaryEvidenceItem[],
-  ): Promise<readonly SummaryEvidenceItem[]> {
-    const itemsById = new Map(
-      rankedItems.map((item) => [item.feedItemId, item] as const),
-    );
-    const target = providerSupplementTargetForLimit(params.maxItems);
-
-    for (const providerKey of readerSummaryProviderDiversityOrder) {
-      if (!isDefaultReaderSummaryEvidenceProvider(providerKey)) {
-        continue;
-      }
-
-      let providerCount = countItemsForProvider(
-        itemsById.values(),
-        providerKey,
-      );
-      if (providerCount >= target) {
-        continue;
-      }
-
-      const page = await this.feedItems.list({
-        tenantId: params.tenantId,
-        workspaceId: params.workspaceId,
-        interestId:
-          params.scope.type === "interest"
-            ? params.scope.interestId
-            : undefined,
-        providerKey,
-        ...readerSummaryPeriodQuery(params),
-        limit: target * 2,
-      });
-
-      for (const feedItem of page.items) {
-        if (providerCount >= target) {
-          break;
-        }
-
-        const snapshot = feedItem.toSnapshot();
-        if (itemsById.has(snapshot.id)) {
-          continue;
-        }
-
-        const supplement = mapSupplementFeedItem({
-          snapshot,
-          qualityPolicy: this.qualityPolicy,
-          safetyPolicy: this.safetyPolicy,
-          now: this.clock.now(),
-        });
-
-        if (supplement.contentQuality?.eligibleForSummary === false) {
-          continue;
-        }
-
-        itemsById.set(supplement.feedItemId, supplement);
-        providerCount += 1;
-      }
-    }
-
-    return [...itemsById.values()];
-  }
-
-  private async withTopReadCandidateSupplements(
-    params: Parameters<ReaderSummaryEvidenceSelectorPort["select"]>[0],
-    rankedItems: readonly SummaryEvidenceItem[],
-  ): Promise<readonly SummaryEvidenceItem[]> {
-    const itemsById = new Map(
-      rankedItems.map((item) => [item.feedItemId, item] as const),
-    );
-    const target = topReadCandidateSupplementTargetForLimit(params.maxItems);
-
-    for (const providerKey of topReadCandidateReserveProviders) {
-      let providerEligibleCount = countTopReadEligibleItemsForProvider(
-        itemsById.values(),
-        providerKey,
-      );
-      if (providerEligibleCount >= target) {
-        continue;
-      }
-
-      const page = await this.feedItems.list({
-        tenantId: params.tenantId,
-        workspaceId: params.workspaceId,
-        interestId:
-          params.scope.type === "interest"
-            ? params.scope.interestId
-            : undefined,
-        providerKey,
-        ...readerSummaryPeriodQuery(params),
-        limit: target * 4,
-      });
-
-      for (const feedItem of page.items) {
-        if (providerEligibleCount >= target) {
-          break;
-        }
-
-        const snapshot = feedItem.toSnapshot();
-        if (itemsById.has(snapshot.id)) {
-          continue;
-        }
-
-        const supplement = mapSupplementFeedItem({
-          snapshot,
-          qualityPolicy: this.qualityPolicy,
-          safetyPolicy: this.safetyPolicy,
-          now: this.clock.now(),
-        });
-
-        if (
-          supplement.contentQuality?.eligibleForSummary === false ||
-          !isTopReadEligibleEvidence(supplement)
-        ) {
-          continue;
-        }
-
-        itemsById.set(supplement.feedItemId, supplement);
-        providerEligibleCount += 1;
-      }
-    }
-
-    return promoteTopReadCandidatesWithinProviders([...itemsById.values()]);
-  }
 }
 
-const observedBeforeFor = (
-  observedThrough: Date | undefined,
-): Date | undefined =>
-  observedThrough === undefined
-    ? undefined
-    : inclusiveObservedBefore(observedThrough);
+const uniqueEvidence = (
+  items: readonly SummaryEvidenceItem[],
+): readonly SummaryEvidenceItem[] => {
+  const byId = new Map<string, SummaryEvidenceItem>();
+  for (const item of items) {
+    if (!byId.has(item.feedItemId)) byId.set(item.feedItemId, item);
+  }
+  return [...byId.values()];
+};

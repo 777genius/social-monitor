@@ -113,10 +113,14 @@ export class PrismaIngestionWorkerConnection implements PrismaIngestionWorkerCli
     options?: {
       readonly maxWait?: number;
       readonly timeout?: number;
-      readonly isolationLevel?: "ReadCommitted" | "Serializable";
+      readonly isolationLevel?: "ReadCommitted" | "RepeatableRead" | "Serializable";
     },
   ): Promise<T> {
-    return this.client.$transaction(operation, options);
+    const transaction = this.client.$transaction as unknown as (
+      work: typeof operation,
+      settings: typeof options,
+    ) => Promise<T>;
+    return transaction(operation, options);
   }
 
   close(): Promise<void> {

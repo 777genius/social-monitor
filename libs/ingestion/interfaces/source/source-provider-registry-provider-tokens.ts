@@ -27,6 +27,7 @@ export type SourceProviderRuntimeSettings = {
   readonly redditRefreshToken: RedditRefreshTokenProviderOptions;
   readonly scope: SourceProviderRuntimeScope;
   readonly xCollector: XCollectorRuntimeConfig | null;
+  readonly xPromotionAuthorityHandles: readonly string[];
 };
 
 export const INGESTION_SOURCE_PROVIDER_RUNTIME_SETTINGS = Symbol(
@@ -59,7 +60,35 @@ export const resolveSourceProviderRuntimeSettings = (
   redditRefreshToken: RedditRefreshTokenProvider.optionsFromEnvironment(env),
   scope: resolveSourceProviderRuntimeScope(env),
   xCollector: resolveXCollectorRuntimeConfig(env),
+  xPromotionAuthorityHandles: parseXPromotionAuthorityRegistry(
+    env.X_PROMOTION_AUTHORITY_REGISTRY_V1,
+  ),
 });
+
+export const parseXPromotionAuthorityRegistry = (
+  value: string | undefined,
+): readonly string[] => {
+  if (value === undefined || value.trim().length === 0) return [];
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return [];
+    }
+    const record = parsed as Record<string, unknown>;
+    if (Object.keys(record).length !== 2 ||
+      record.version !== "x_promotion_authority_registry.v1" ||
+      !Array.isArray(record.verifiedHandles) ||
+      record.verifiedHandles.some((item) =>
+      typeof item !== 'string' ||
+      !/^[a-zA-Z0-9_]{1,15}$/u.test(item.trim().replace(/^@/u, ''))
+    )) return [];
+    return [...new Set(record.verifiedHandles.map((item) =>
+      (item as string).trim().replace(/^@/u, '').toLowerCase(),
+    ))];
+  } catch {
+    return [];
+  }
+};
 
 const emptyToUndefined = (value: string | undefined): string | undefined => {
   const trimmed = value?.trim();

@@ -971,7 +971,7 @@ for catalog_token in \
   'pg_isready' \
   '--no-password'; do
   grep -F -- "$catalog_token" \
-    "$SCRIPT_DIR"/reader-summary-publication-{deploy-lib,system-runtime-deploy-lib}.sh >/dev/null
+    "$SCRIPT_DIR"/reader-summary-publication-{deploy-lib,system-runtime-deploy-lib,catalog-query-lib}.sh >/dev/null
 done
 
 # shellcheck disable=SC2016

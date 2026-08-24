@@ -39,6 +39,17 @@ export class PrismaFeedConnection implements PrismaFeedClient {
     this.feedSignalBaselineSample = this.client.feedSignalBaselineSample;
   }
 
+  $transaction<Result>(
+    operation: (transaction: PrismaFeedClient) => Promise<Result>,
+    options: {
+      readonly isolationLevel: "RepeatableRead" | "Serializable";
+      readonly maxWait?: number;
+      readonly timeout?: number;
+    },
+  ): Promise<Result> {
+    return this.client.$transaction!(operation, options);
+  }
+
   close(): Promise<void> {
     return this.runtime.close();
   }

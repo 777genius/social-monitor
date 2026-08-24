@@ -2,6 +2,7 @@ import type { AgentRuntimeExecutionRequest } from "./agent-runtime-executor.port
 
 export const productionAgentRuntimeModel = "gpt-5.6-sol";
 export const productionAgentRuntimeReasoningEffort = "xhigh";
+export const activeReaderSummaryReasoningEffort = "high";
 
 export type SubscriptionRuntimeOutputKind =
   | "structured_output"
@@ -10,7 +11,7 @@ export type SubscriptionRuntimeOutputKind =
 export type SubscriptionRuntimePurposeProfile = {
   readonly provider: "codex";
   readonly model: "gpt-5.6-sol";
-  readonly reasoningEffort: "xhigh";
+  readonly reasoningEffort: "high" | "xhigh";
   readonly outputKind: SubscriptionRuntimeOutputKind;
   readonly responseFormat: "json" | "text";
 };
@@ -20,7 +21,7 @@ export type AdmittedSubscriptionRuntimeRequest = {
   readonly canonicalRequest: Record<string, unknown>;
 };
 
-const dailyStructuredProfile = Object.freeze({
+const genericSummaryStructuredProfile = Object.freeze({
   provider: "codex",
   model: productionAgentRuntimeModel,
   reasoningEffort: productionAgentRuntimeReasoningEffort,
@@ -28,10 +29,28 @@ const dailyStructuredProfile = Object.freeze({
   responseFormat: "json",
 } as const satisfies SubscriptionRuntimePurposeProfile);
 
-const weeklyTextProfile = Object.freeze({
+const legacyReaderSummaryStructuredProfile = genericSummaryStructuredProfile;
+
+const activeReaderSummaryStructuredProfile = Object.freeze({
   provider: "codex",
-  model: "gpt-5.6-sol",
+  model: productionAgentRuntimeModel,
+  reasoningEffort: activeReaderSummaryReasoningEffort,
+  outputKind: "structured_output",
+  responseFormat: "json",
+} as const satisfies SubscriptionRuntimePurposeProfile);
+
+const legacyReaderSummaryTextProfile = Object.freeze({
+  provider: "codex",
+  model: productionAgentRuntimeModel,
   reasoningEffort: productionAgentRuntimeReasoningEffort,
+  outputKind: "output_text",
+  responseFormat: "text",
+} as const satisfies SubscriptionRuntimePurposeProfile);
+
+const activeReaderSummaryTextProfile = Object.freeze({
+  provider: "codex",
+  model: productionAgentRuntimeModel,
+  reasoningEffort: activeReaderSummaryReasoningEffort,
   outputKind: "output_text",
   responseFormat: "text",
 } as const satisfies SubscriptionRuntimePurposeProfile);
@@ -39,16 +58,29 @@ const weeklyTextProfile = Object.freeze({
 const profilesByPurpose: Readonly<
   Record<string, SubscriptionRuntimePurposeProfile>
 > = Object.freeze({
-  "social_monitor.summary.generate": dailyStructuredProfile,
-  "social_monitor.reader_summary.generate": dailyStructuredProfile,
-  "social_monitor.reader_summary.repair": dailyStructuredProfile,
-  "social_monitor.reader_summary.topic_map.label": dailyStructuredProfile,
+  "social_monitor.summary.generate": genericSummaryStructuredProfile,
+  "social_monitor.reader_summary.generate": legacyReaderSummaryStructuredProfile,
+  "social_monitor.reader_summary.repair": legacyReaderSummaryStructuredProfile,
+  "social_monitor.reader_summary.topic_map.label": legacyReaderSummaryStructuredProfile,
   "social_monitor.reader_summary.topic_map.verify_relations":
-    dailyStructuredProfile,
+    legacyReaderSummaryStructuredProfile,
   "social_monitor.reader_summary.verify_story_relations":
-    dailyStructuredProfile,
-  "social_monitor.reader_summary.weekly.review": dailyStructuredProfile,
-  "social_monitor.reader_summary.weekly.generate": weeklyTextProfile,
+    legacyReaderSummaryStructuredProfile,
+  "social_monitor.reader_summary.verify_related_topic_relations":
+    legacyReaderSummaryStructuredProfile,
+  "social_monitor.reader_summary.weekly.review": legacyReaderSummaryStructuredProfile,
+  "social_monitor.reader_summary.weekly.generate": legacyReaderSummaryTextProfile,
+  "social_monitor.reader_summary.generate.v2": activeReaderSummaryStructuredProfile,
+  "social_monitor.reader_summary.repair.v2": activeReaderSummaryStructuredProfile,
+  "social_monitor.reader_summary.topic_map.label.v2": activeReaderSummaryStructuredProfile,
+  "social_monitor.reader_summary.topic_map.verify_relations.v2":
+    activeReaderSummaryStructuredProfile,
+  "social_monitor.reader_summary.verify_story_relations.v2":
+    activeReaderSummaryStructuredProfile,
+  "social_monitor.reader_summary.verify_related_topic_relations.v2":
+    activeReaderSummaryStructuredProfile,
+  "social_monitor.reader_summary.weekly.review.v2": activeReaderSummaryStructuredProfile,
+  "social_monitor.reader_summary.weekly.generate.v2": activeReaderSummaryTextProfile,
 });
 
 export const subscriptionRuntimePurposeProfiles = (): Readonly<
@@ -90,6 +122,7 @@ export const admitSubscriptionRuntimeRequest = (
     profile.reasoningEffort,
     "metadata.reasoningEffort",
   );
+  assertDedicatedRelatedTopicMarkers(request, controls);
   assertOutputControls(request, controls, outputSchema, profile);
 
   const canonicalControls = canonicalControlsForProfile(
@@ -136,6 +169,48 @@ export const admitSubscriptionRuntimeRequest = (
       },
     },
   };
+};
+
+const assertDedicatedRelatedTopicMarkers = (
+  request: AgentRuntimeExecutionRequest,
+  controls: Record<string, unknown>,
+): void => {
+  if (
+    request.purpose !==
+      "social_monitor.reader_summary.verify_related_topic_relations" &&
+    request.purpose !==
+      "social_monitor.reader_summary.verify_related_topic_relations.v2"
+  ) return;
+  assertRequiredExactString(
+    controls.outputSchemaName,
+    "social_monitor_reader_summary_related_topic_relations",
+    "outputSchemaName",
+  );
+  assertRequiredExactString(
+    controls.schemaVersion,
+    "reader_summary.related_topic_relation.v1",
+    "schemaVersion",
+  );
+  assertRequiredExactString(
+    request.metadata.taskRole,
+    "related_topic_relation",
+    "metadata.taskRole",
+  );
+  assertRequiredExactString(
+    request.metadata.verificationLane,
+    "related_topic",
+    "metadata.verificationLane",
+  );
+};
+
+const assertRequiredExactString = (
+  value: unknown,
+  expected: string,
+  label: string,
+): void => {
+  if (value !== expected) {
+    throw new Error(`${label} conflicts with purpose policy`);
+  }
 };
 
 export const configuredSubscriptionRuntimeDefaultsAreSafe = (input: {

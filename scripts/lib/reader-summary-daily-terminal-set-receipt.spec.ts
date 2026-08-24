@@ -127,11 +127,12 @@ describe("reader summary daily terminal-set receipt", () => {
     const query = jest.fn(async () => ({ rows: rows() }));
 
     await expect(
-      readReaderSummaryDailyTerminalSetRows({ query }),
+      readReaderSummaryDailyTerminalSetRows({ query: query as never }),
     ).resolves.toEqual(rows());
 
     expect(query).toHaveBeenCalledTimes(1);
-    const [sql, values] = query.mock.calls[0]!;
+    const [sql, values] = query.mock.calls[0] as unknown as
+      [string, readonly unknown[]];
     expect(sql).toContain(
       "read_reader_summary_daily_canonical_recovery_v4_terminals",
     );

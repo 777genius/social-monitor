@@ -9,6 +9,7 @@ import {
   captureExecutionMatches,
   durableEvidenceBindingEqual,
   isProductionSubscriptionRuntimeProvenance,
+  isCurrentProductionSubscriptionRuntimeProvenance,
   periodsEqual,
   isRecord,
   productionDayReportArtifactFormat,
@@ -24,6 +25,7 @@ import {
   type ProductionDayUtcPeriod,
 } from "./reader-summary-production-day-provenance";
 import type { HistoricalRegenerationSourceProvenance } from "./reader-summary-production-day-regeneration";
+import { productionDayModelExecutionReport } from "./reader-summary-production-day-model-telemetry";
 import type { YesterdaySocialProviderReadiness } from "./yesterday-social-collection-quality";
 import {
   buildHistoricalRegenerationProvenance,
@@ -178,6 +180,11 @@ export function buildProductionDayReport(params: {
   const reusedCollection = params.executionMode !== "live-production";
   const freshSummaryCapture = params.executionMode !== "historical-reuse";
   const summary = buildSummary(params.durableEvidence, params.evidenceBinding);
+  const modelExecution = productionDayModelExecutionReport({
+    durableEvidence: params.durableEvidence, executionMode: params.executionMode,
+    readerSummaryJobId: summary.readerSummaryJobId,
+    readerSummaryArtifactId: summary.evidenceArtifactId,
+  });
   const reportIdentity =
     params.evidenceBinding === null ||
     !periodsEqual(params.evidenceBinding.requestedUtcPeriod, expectedPeriod)
@@ -226,7 +233,9 @@ export function buildProductionDayReport(params: {
   const runtimeProvenance = params.evidenceBinding?.runtimeProvenance ?? null;
   const runtimeProvenanceValid =
     runtimeProvenance !== null &&
-    isProductionSubscriptionRuntimeProvenance(runtimeProvenance);
+    (params.executionMode === "live-production"
+      ? isCurrentProductionSubscriptionRuntimeProvenance(runtimeProvenance)
+      : isProductionSubscriptionRuntimeProvenance(runtimeProvenance));
   const provenanceValid = provenanceMatches({
     provenance,
     executionMode: params.executionMode,
@@ -330,6 +339,7 @@ export function buildProductionDayReport(params: {
       reusedCollection,
       freshSummaryCapture,
       ...runtimeModelFields(runtimeProvenance),
+      modelExecution,
       writesProductionData,
       allowDegraded: params.allowDegraded,
       allowHistorical: params.allowHistorical,
@@ -787,13 +797,11 @@ function validSubscriptionRuntimeModel(
   binding: DurableEvidenceBinding,
   provenance: unknown,
 ): boolean {
-  if (
-    !isRecord(value) ||
-    !isProductionSubscriptionRuntimeProvenance(binding.runtimeProvenance)
-  ) {
-    return false;
-  }
   const mode = isRecord(provenance) ? provenance.mode : null;
+  const runtimeIdentityValid = mode === "live-production"
+    ? isCurrentProductionSubscriptionRuntimeProvenance(binding.runtimeProvenance)
+    : isProductionSubscriptionRuntimeProvenance(binding.runtimeProvenance);
+  if (!isRecord(value) || !runtimeIdentityValid) return false;
   const executionFlagsMatch =
     (mode === "live-production" &&
       value.liveCollection === true &&
@@ -972,10 +980,8 @@ function validXAccountAttributionContract(stats: unknown): boolean {
 }
 
 function optionalNonNegativeInteger(value: unknown): boolean {
-  return (
-    value === undefined ||
-    (typeof value === "number" && Number.isInteger(value) && value >= 0)
-  );
+  return value === undefined ||
+    (typeof value === "number" && Number.isInteger(value) && value >= 0);
 }
 
 function requireReportEqual(

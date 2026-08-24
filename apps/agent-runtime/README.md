@@ -2,7 +2,7 @@
 
 Internal gRPC boundary between Social Monitor summary adapters and
 `@vioxen/subscription-runtime`. The dependency is vendored as
-`vendor/vioxen-subscription-runtime-0.1.0-main.2-sm.1.tgz` so Docker and `npm ci`
+`vendor/vioxen-subscription-runtime-0.1.0-main.2-sm.2.tgz` so Docker and `npm ci`
 install the CLI binary deterministically.
 
 ## Protocol
@@ -26,13 +26,16 @@ apps/agent-runtime/bin/run-codex-subscription-runtime-agent-task.mjs --provider 
 
 The bridge delegates lifecycle, durable sessions and task execution to
 `@vioxen/subscription-runtime`, while enforcing the exact purpose route before
-constructing the Codex worker. Daily summary purposes use `gpt-5.6-sol`, `xhigh`
-and structured JSON output. `social_monitor.reader_summary.weekly.generate`
-uses `gpt-5.6-sol`, `xhigh` and `output_text`. These admitted routes use Codex
-subscription-account auth from the configured auth JSON; API-key credentials
-are removed from the runtime child environment. The CLI path can be overridden
-through `AGENT_RUNTIME_CLI_PATH`. Docker stores runtime session state in
-`/var/lib/subscription-runtime` via `AGENT_RUNTIME_STATE_ROOT`.
+constructing the Codex worker. Active `social_monitor.reader_summary.*.v2`
+routes use `gpt-5.6-sol` with `high` reasoning; structured routes use structured
+JSON output and `social_monitor.reader_summary.weekly.generate.v2` uses
+`output_text`. Frozen unversioned legacy and recovery routes remain pinned to
+`gpt-5.6-sol` with `xhigh` reasoning so historical execution contracts do not
+drift. These admitted routes use Codex subscription-account auth from the
+configured auth JSON; API-key credentials are removed from the runtime child
+environment. The CLI path can be overridden through `AGENT_RUNTIME_CLI_PATH`.
+Docker stores runtime session state in `/var/lib/subscription-runtime` via
+`AGENT_RUNTIME_STATE_ROOT`.
 
 Important env:
 
@@ -44,7 +47,8 @@ Important env:
   32-byte key used to decrypt durable subscription-runtime sessions
 - `AGENT_RUNTIME_PROVIDER`, `codex` or `claude`, selected by Social Monitor
 - `AGENT_RUNTIME_MODEL`, required production model (`gpt-5.6-sol`)
-- `AGENT_RUNTIME_REASONING_EFFORT`, required production effort (`xhigh`)
+- `AGENT_RUNTIME_REASONING_EFFORT`, generic/frozen-route production fallback
+  (`xhigh`); exact active reader-summary v2 route policy overrides it to `high`
 - `AGENT_RUNTIME_TIMEOUT_MS`, generic Social Monitor task timeout fallback
 - `AGENT_RUNTIME_CODEX_AUTH_JSON_PATH`
 - `AGENT_RUNTIME_CODEX_AUTH_POOL_ROOT`, immutable pool snapshot root

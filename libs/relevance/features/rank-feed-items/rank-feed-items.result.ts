@@ -26,10 +26,13 @@ export type RankedFeedItemView = {
   readonly canonicalUrl: string;
   readonly title: string;
   readonly bodyPreview?: string;
+  readonly sourceText?: string;
   readonly providerMetadata?: JsonObject;
   readonly authorHandle?: string;
   readonly publishedAt: string;
   readonly observedAt: string;
+  readonly exactPublishedAt?: string;
+  readonly exactObservedAt?: string;
   readonly score: number;
   readonly rank: number;
   readonly clusterId: string;

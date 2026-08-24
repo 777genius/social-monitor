@@ -142,11 +142,9 @@ class _ClaimTrustPreview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final score = (claim.confidence.score.clamp(0, 1) * 100).round();
-    final sourceCount = claim.evidence
-        .map((item) => item.providerKey.trim().toLowerCase())
-        .where((item) => item.isNotEmpty)
-        .toSet()
-        .length;
+    final sourceCount = readerSummaryIndependentProviderFamilies(
+      claim.evidence.map((item) => item.providerKey),
+    ).length;
     return ConstrainedBox(
       constraints: const BoxConstraints(minWidth: 300, maxWidth: 420),
       child: Padding(

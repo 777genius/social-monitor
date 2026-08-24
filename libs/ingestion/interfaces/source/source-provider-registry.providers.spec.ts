@@ -11,11 +11,30 @@ import { InMemorySourceProviderRegistry } from '../../adapters/source/in-memory-
 import { MonitoringSourceConfigReaderAdapter } from '../../adapters/source/monitoring-source-config-reader.adapter';
 import {
   INGESTION_SOURCE_PROVIDER_RUNTIME_SETTINGS,
+  parseXPromotionAuthorityRegistry,
   resolveSourceProviderRuntimeSettings,
 } from './source-provider-registry-provider-tokens';
 import { sourceProviderRegistryProviders } from './source-provider-registry.providers';
 
 describe('sourceProviderRegistryProviders', () => {
+  it('fails closed for absent or malformed platform X authority registries', () => {
+    expect(parseXPromotionAuthorityRegistry(undefined)).toEqual([]);
+    expect(parseXPromotionAuthorityRegistry('{"cursor_ai":true}')).toEqual([]);
+    expect(parseXPromotionAuthorityRegistry('["not-a-handle!"]')).toEqual([]);
+    expect(parseXPromotionAuthorityRegistry(
+      '{"version":"x_promotion_authority_registry.v0","verifiedHandles":["cursor_ai"]}',
+    )).toEqual([]);
+    expect(parseXPromotionAuthorityRegistry(
+      '{"version":"x_promotion_authority_registry.v1","verifiedHandles":["cursor_ai"],"tenant":"workspace"}',
+    )).toEqual([]);
+  });
+
+  it('accepts only exact verified handles from the versioned composition input', () => {
+    expect(parseXPromotionAuthorityRegistry(
+      '{"version":"x_promotion_authority_registry.v1","verifiedHandles":["@Cursor_AI","anthropic"]}',
+    ))
+      .toEqual(['cursor_ai', 'anthropic']);
+  });
   it('wires reusable source provider runtime outside the ingestion worker app', async () => {
     const moduleRef = await Test.createTestingModule({
       providers: [

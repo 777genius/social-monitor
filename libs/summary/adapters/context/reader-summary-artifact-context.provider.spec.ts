@@ -2,6 +2,7 @@ import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 
 import {
   exactUtcDay,
+  githubTrendingWatchText,
   ReaderSummaryArtifact,
   readerSummaryGitHubProjectionCollectionGraceMs,
   readerSummaryGitHubProjectionCollectionWarningThresholdMs,
@@ -242,7 +243,9 @@ const publishContextArtifact = async (
                 readerSummaryGitHubProjectionCollectionWarningThresholdMs,
               qualitySignal: "within_grace",
             },
-            bindings: githubContextCitations().map((citation, index) => ({
+            bindings: githubContextCitations()
+              .slice(0, 3)
+              .map((citation, index) => ({
               selectedPostIndex: index,
               rank: index + 1,
               citationId: citation.citationId,
@@ -254,14 +257,14 @@ const publishContextArtifact = async (
               scanJobId: "scan-github-context",
               repositoryIdentity: `context/repository-${index + 1}`,
               canonicalUrl: citation.canonicalUrl,
-              starsGained: 200 + index + 1,
+              starsGained: githubContextStarsGained(index + 1),
               fetchStartedAt: projectionCheckedAt.toISOString(),
               publishedAt: projectionCheckedAt.toISOString(),
               checkedAt: projectionCheckedAt.toISOString(),
               observedAt: projectionCheckedAt.toISOString(),
               sourceContentHash: "a".repeat(64),
               sourceProviderContentHash: "b".repeat(64),
-            })),
+              })),
             violationCodes: [],
             reasons: [],
           },
@@ -295,15 +298,36 @@ const artifactWithCanonicalGitHubBoard = (
           providerMetrics: [
             {
               label: "GitHub Trending today",
-              value: `#${index + 1}, +${200 + index + 1} stars today`,
+              value: `#${index + 1}, +${githubContextStarsGained(index + 1)} stars today`,
             },
           ],
         })),
-        narrativeSections: [],
+        narrativeSections: [
+          {
+            id: "github-trending",
+            kind: "watch" as const,
+            title: "GitHub Trending",
+            text: githubTrendingWatchText(
+              citations.slice(0, 3).map((_, index) => {
+                const rank = index + 1;
+                return {
+                  repositoryIdentity: `context/repository-${rank}`,
+                  rank,
+                  starsGained: githubContextStarsGained(rank),
+                };
+              }),
+            ),
+            citationIds: citations
+              .slice(0, 3)
+              .map((citation) => citation.citationId),
+          },
+        ],
       },
     }),
   } as unknown as ReaderSummaryArtifact;
 };
+
+const githubContextStarsGained = (rank: number): number => 1_200 + rank;
 
 const artifact = (
   overrides: Partial<ReaderSummaryArtifactProps> = {},

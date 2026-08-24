@@ -182,4 +182,32 @@ void main() {
     expect(trustClaimLacksIndependentConfirmation(claim), isFalse);
     expect(trustClaimNeedsConfirmation(claim), isTrue);
   });
+
+  test('does not describe X aliases as independent claim support', () {
+    final claim = SummaryClaim(
+      claim: 'Reader story',
+      evidence: const [
+        SummaryClaimEvidence(
+          title: 'X post',
+          providerKey: 'x-twitter',
+          citationId: 'c1',
+        ),
+        SummaryClaimEvidence(
+          title: 'Twitter alias post',
+          providerKey: 'twitter',
+          citationId: 'c2',
+        ),
+      ],
+      confidence: const TopReadConfidence(
+        level: 'medium',
+        score: 0.6,
+        rationale: 'Two same-family citations are available.',
+      ),
+      risks: const [],
+      citationIds: const ['c1', 'c2'],
+    );
+
+    expect(trustClaimSupportLabel(claim), 'Not independently confirmed');
+    expect(trustClaimLacksIndependentConfirmation(claim), isTrue);
+  });
 }

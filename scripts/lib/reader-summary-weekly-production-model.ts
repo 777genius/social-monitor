@@ -19,19 +19,24 @@ import type {
 } from "../../libs/summary/ports/reader-summary-weekly-model.port";
 import type {
   AgentRuntimeClientPort,
-  AgentRuntimeProvider,
   AgentRuntimeTaskCommand,
 } from "../../libs/summary/ports/agent-runtime-client.port";
+import {
+  activeReaderSummaryModel,
+  activeReaderSummaryProvider,
+  activeReaderSummaryPurposes,
+  activeReaderSummaryReasoningEffort,
+} from "../../libs/summary/adapters/model/active-reader-summary-generation-profile";
 
 import { readerSummaryWeeklySubscriptionRuntimeFailureFromResult } from "./reader-summary-weekly-execution-receipt";
 
-export const readerSummaryWeeklyProductionModel = "gpt-5.6-sol" as const;
+export const readerSummaryWeeklyProductionModel = activeReaderSummaryModel;
 
 export type ReaderSummaryWeeklyAgentRuntimeModelParams = Readonly<{
   client: AgentRuntimeClientPort;
-  provider?: AgentRuntimeProvider;
-  model?: string;
-  reasoningEffort?: "xhigh";
+  provider?: typeof activeReaderSummaryProvider;
+  model?: typeof activeReaderSummaryModel;
+  reasoningEffort?: typeof activeReaderSummaryReasoningEffort;
   timeoutMs?: number;
   maxOutputTokens?: number;
 }>;
@@ -39,16 +44,17 @@ export type ReaderSummaryWeeklyAgentRuntimeModelParams = Readonly<{
 export class AgentRuntimeReaderSummaryWeeklyTextModel
   implements ReaderSummaryWeeklyModelPort
 {
-  private readonly provider: AgentRuntimeProvider;
-  private readonly model: string;
-  private readonly reasoningEffort: "xhigh";
+  private readonly provider: typeof activeReaderSummaryProvider;
+  private readonly model: typeof activeReaderSummaryModel;
+  private readonly reasoningEffort: typeof activeReaderSummaryReasoningEffort;
   private readonly timeoutMs: number;
   private readonly maxOutputTokens: number;
 
   constructor(private readonly params: ReaderSummaryWeeklyAgentRuntimeModelParams) {
-    this.provider = params.provider ?? "codex";
+    this.provider = params.provider ?? activeReaderSummaryProvider;
     this.model = params.model ?? readerSummaryWeeklyProductionModel;
-    this.reasoningEffort = params.reasoningEffort ?? "xhigh";
+    this.reasoningEffort =
+      params.reasoningEffort ?? activeReaderSummaryReasoningEffort;
     this.timeoutMs = params.timeoutMs ?? 600_000;
     this.maxOutputTokens = params.maxOutputTokens ?? 16_000;
   }
@@ -70,13 +76,18 @@ export class AgentRuntimeReaderSummaryWeeklyTextModel
     }
     if (
       result.executionAttestation === undefined ||
+      result.executionAttestation.purpose !==
+        activeReaderSummaryPurposes.weeklyGenerate ||
       result.executionAttestation.provider !== "codex" ||
       result.executionAttestation.model !== readerSummaryWeeklyProductionModel ||
-      result.executionAttestation.reasoningEffort !== "xhigh" ||
+      result.executionAttestation.reasoningEffort !==
+        activeReaderSummaryReasoningEffort ||
+      result.executionAttestation.runtimeEngine !==
+        "subscription-runtime-cli" ||
       result.executionAttestation.selectedOutputKind !== "output_text"
     ) {
       throw new Error(
-        "Reader summary weekly agent-runtime attestation must prove codex gpt-5.6-sol xhigh output_text",
+        "Reader summary weekly agent-runtime attestation must prove codex gpt-5.6-sol high output_text",
       );
     }
     return parseOpenAiReaderSummaryWeeklyResponse(input, outputText);
@@ -99,7 +110,7 @@ export class AgentRuntimeReaderSummaryWeeklyTextModel
       workspaceId: workspaceId(input.workspaceId),
       correlationId: `${requestId}:correlation`,
       provider: this.provider,
-      purpose: "social_monitor.reader_summary.weekly.generate",
+      purpose: activeReaderSummaryPurposes.weeklyGenerate,
       systemPrompt: buildOpenAiReaderSummaryWeeklyInstructions(),
       prompt: buildOpenAiReaderSummaryWeeklyPromptPayload(input),
       outputSchema: buildOpenAiReaderSummaryWeeklyJsonSchema(input),
@@ -108,6 +119,7 @@ export class AgentRuntimeReaderSummaryWeeklyTextModel
         outputSchemaName: "reader_summary_weekly_output_v1",
         schemaVersion: "reader_summary.weekly_model_output.v1",
         model: this.model,
+        reasoningEffort: this.reasoningEffort,
         maxOutputTokens: this.maxOutputTokens,
       },
       timeoutMs: this.timeoutMs,

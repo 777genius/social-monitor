@@ -293,7 +293,7 @@ runtime_connect_line=$(grep -n -m1 'GrpcAgentRuntimeClient.connect' \
 [[ $replay_branch_line =~ ^[0-9]+$ && $runtime_connect_line =~ ^[0-9]+$ ]]
 (( replay_branch_line < runtime_connect_line ))
 grep -F 'model: "gpt-5.6-sol"' "$weekly_runner" >/dev/null
-grep -F 'reasoningEffort: "xhigh"' "$weekly_runner" >/dev/null
+grep -F 'reasoningEffort: "high"' "$weekly_runner" >/dev/null
 ! grep -Eq '(OPENAI|CODEX)_API_KEY' "$weekly_runner"
 
 grep -F 'DAILY_SINGLETON_LOCK' "$maintenance_lib" >/dev/null

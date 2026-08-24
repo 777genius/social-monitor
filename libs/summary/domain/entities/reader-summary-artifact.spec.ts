@@ -185,6 +185,31 @@ describe("ReaderSummaryArtifact", () => {
     });
   });
 
+  it("preserves explicitly unavailable historical token usage", () => {
+    const snapshot = ReaderSummaryArtifact.create(baseArtifact({
+      usage: {
+        inputTokens: null,
+        outputTokens: null,
+        estimatedCostUsd: 0,
+      },
+    })).toSnapshot();
+
+    expect(snapshot.usage).toEqual({
+      inputTokens: null,
+      outputTokens: null,
+      estimatedCostUsd: 0,
+    });
+  });
+
+  it.each([
+    { inputTokens: null, outputTokens: 0, estimatedCostUsd: 0 },
+    { inputTokens: 0, outputTokens: null, estimatedCostUsd: 0 },
+    { inputTokens: 1.5, outputTokens: 1, estimatedCostUsd: 0 },
+  ])("rejects partial or inexact token usage %#", (usage) => {
+    expect(() => ReaderSummaryArtifact.create(baseArtifact({ usage })))
+      .toThrow("paired non-negative integers or null");
+  });
+
   it("rejects source windows outside the reader summary period", () => {
     expect(() =>
       ReaderSummaryArtifact.create(
@@ -196,6 +221,55 @@ describe("ReaderSummaryArtifact", () => {
         }),
       ),
     ).toThrow("Reader summary source window must stay inside period");
+  });
+
+  it("rejects duplicate or mismatched source-window story cluster ids", () => {
+    const secondCluster = {
+      ...baseArtifact().storyClusters[0]!,
+      id: "story:two",
+      storyKey: "url:example.com/b",
+      representativeFeedItemId: "feed-2",
+      duplicateFeedItemIds: [],
+    };
+
+    for (const sourceWindowStoryClusterIds of [
+      ["story:one", "story:one"],
+      ["story:one", "story:forged"],
+    ]) {
+      expect(() =>
+        ReaderSummaryArtifact.create(
+          baseArtifact({
+            sourceWindow: {
+              ...baseArtifact().sourceWindow,
+              storyClusterIds: sourceWindowStoryClusterIds,
+            },
+            storyClusters: [baseArtifact().storyClusters[0]!, secondCluster],
+          }),
+        ),
+      ).toThrow(
+        "Reader summary source window must reference every story cluster",
+      );
+    }
+
+    expect(() =>
+      ReaderSummaryArtifact.create(
+        baseArtifact({
+          sourceWindow: {
+            ...baseArtifact().sourceWindow,
+            storyClusterIds: ["story:one", "story:one"],
+          },
+          storyClusters: [
+            baseArtifact().storyClusters[0]!,
+            {
+              ...secondCluster,
+              id: "story:one",
+            },
+          ],
+        }),
+      ),
+    ).toThrow(
+      "Reader summary source window must reference every story cluster",
+    );
   });
 
   it("rejects top reads that cite outside the citation map", () => {
@@ -236,6 +310,39 @@ describe("ReaderSummaryArtifact", () => {
       "Reader summary top read provider must match at least one citation",
     );
   });
+
+  it.each(["curated_top_read", "additional_notable_story"] as const)(
+    "rejects a forged %s card that reuses a valid cluster id",
+    (cardKind) => {
+      expect(() =>
+        ReaderSummaryArtifact.create(
+          baseArtifact({
+            citationMap: [
+              ...baseArtifact().citationMap,
+              {
+                citationId: "citation-forged",
+                feedItemId: "feed-outside-cluster",
+                sourceItemId: "source-forged",
+                providerKey: "reddit",
+                field: "title",
+              },
+            ],
+            content: readerContent({
+              selectedPosts: [
+                readerTopRead({
+                  title: "Forged weak content",
+                  cardKind,
+                  storyClusterId: "story:one",
+                  citationIds: ["citation-forged"],
+                  canonicalUrl: undefined,
+                }),
+              ],
+            }),
+          }),
+        ),
+      ).toThrow("card authority must match its cited cluster evidence");
+    },
+  );
 
   it("rejects reader content source mix providers outside selected evidence", () => {
     expect(() =>

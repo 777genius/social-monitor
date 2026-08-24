@@ -10,6 +10,8 @@ import 'package:social_monitor_summaries/src/presentation/components/reader_summ
 
 import '../../support/summaries_test_fixtures.dart';
 
+part 'reader_summary_brief_surface_test_support.dart';
+
 void main() {
   testWidgets('renders executive summary markdown without raw markers', (
     tester,
@@ -308,6 +310,8 @@ void main() {
           ],
           topReads: [
             TopReadApiDto(
+              storyClusterId: 'story:agent-routing',
+              cardKind: 'curated_top_read',
               title: 'Reddit post about agent routing',
               providerKey: 'reddit',
               reason: 'Reddit discussion backs the claim.',
@@ -315,6 +319,8 @@ void main() {
               canonicalUrl: 'https://reddit.com/r/programming/comments/a',
             ),
             TopReadApiDto(
+              storyClusterId: 'story:benchmark-clarity',
+              cardKind: 'curated_top_read',
               title: 'HN thread about benchmark clarity',
               providerKey: 'hacker-news',
               reason: 'HN discussion backs the claim.',
@@ -322,6 +328,8 @@ void main() {
               canonicalUrl: 'https://news.ycombinator.com/item?id=2',
             ),
             TopReadApiDto(
+              storyClusterId: 'story:launch-article',
+              cardKind: 'curated_top_read',
               title: 'RSS article about the launch',
               providerKey: 'rss',
               reason: 'RSS article backs the claim.',
@@ -396,20 +404,26 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.byKey(const ValueKey('reader-summary-citation-source-bc-1')),
+      find.byKey(
+        const ValueKey('reader-summary-url-action-citation-source-bc-1'),
+      ),
       findsOneWidget,
     );
     final secondSource = find.byKey(
-      const ValueKey('reader-summary-citation-source-bc-2'),
+      const ValueKey('reader-summary-url-action-citation-source-bc-2'),
     );
     expect(secondSource, findsOneWidget);
     expect(
-      find.byKey(const ValueKey('reader-summary-citation-source-bc-3')),
+      find.byKey(
+        const ValueKey('reader-summary-url-action-citation-source-bc-3'),
+      ),
       findsOneWidget,
     );
     expect(
       find.descendant(
-        of: find.byKey(const ValueKey('reader-summary-citation-source-bc-1')),
+        of: find.byKey(
+          const ValueKey('reader-summary-url-action-citation-source-bc-1'),
+        ),
         matching: find.text('Reddit post about agent routing'),
       ),
       findsAtLeastNWidgets(1),
@@ -423,21 +437,27 @@ void main() {
     );
     expect(
       find.descendant(
-        of: find.byKey(const ValueKey('reader-summary-citation-source-bc-3')),
+        of: find.byKey(
+          const ValueKey('reader-summary-url-action-citation-source-bc-3'),
+        ),
         matching: find.text('RSS article about the launch'),
       ),
       findsAtLeastNWidgets(1),
     );
     expect(
       find.descendant(
-        of: find.byKey(const ValueKey('reader-summary-citation-source-bc-1')),
+        of: find.byKey(
+          const ValueKey('reader-summary-url-action-citation-source-bc-1'),
+        ),
         matching: find.text('Reddit thread [1]'),
       ),
       findsNothing,
     );
     expect(
       find.descendant(
-        of: find.byKey(const ValueKey('reader-summary-citation-source-bc-1')),
+        of: find.byKey(
+          const ValueKey('reader-summary-url-action-citation-source-bc-1'),
+        ),
         matching: find.byType(ReaderSummaryProviderLogo),
       ),
       findsOneWidget,
@@ -449,103 +469,5 @@ void main() {
     expect(openedUrls, ['https://news.ycombinator.com/item?id=2']);
   });
 
-  testWidgets('opens cited source menu from inline citation badges', (
-    tester,
-  ) async {
-    const mapper = SummaryMapper();
-    final openedUrls = <String>[];
-    final summary = mapper.readerSummaryToDomain(
-      readerSummaryApiDto(
-        citations: [
-          summaryCitationApiDto(
-            id: 'bc-1',
-            sourceLabel: 'Reddit discussion [1]',
-            rawSnippet: 'A Reddit post with ranked comments backs this claim.',
-            canonicalUrl: 'https://reddit.com/r/LocalLLaMA/comments/example',
-          ),
-        ],
-      ),
-    );
-
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: AppTheme.dark(),
-        home: Scaffold(
-          body: SingleChildScrollView(
-            child: ReaderSummaryBriefSurface(
-              summary: summary,
-              citationsById: {
-                for (final citation in summary.citations) citation.id: citation,
-              },
-              isRefreshing: false,
-              onOpenUrl: openedUrls.add,
-            ),
-          ),
-        ),
-      ),
-    );
-
-    expect(
-      find.byKey(const ValueKey('reader-summary-citation-source-bc-1')),
-      findsNothing,
-    );
-
-    await _hoverCitationChip(
-      tester,
-      const ValueKey('reader-summary-lede-citation-bc-1'),
-    );
-
-    final sourceItem = find.byKey(
-      const ValueKey('reader-summary-citation-source-bc-1'),
-    );
-    expect(sourceItem, findsOneWidget);
-    expect(
-      find.descendant(of: sourceItem, matching: find.text('AI coding tools')),
-      findsOneWidget,
-    );
-    expect(
-      find.descendant(
-        of: sourceItem,
-        matching: find.text('Reddit discussion [1]'),
-      ),
-      findsNothing,
-    );
-    expect(
-      find.descendant(
-        of: sourceItem,
-        matching: find.text(
-          'A Reddit post with ranked comments backs this claim.',
-        ),
-      ),
-      findsOneWidget,
-    );
-    expect(
-      find.descendant(
-        of: sourceItem,
-        matching: find.text('https://reddit.com/r/LocalLLaMA/comments/example'),
-      ),
-      findsNothing,
-    );
-
-    await tester.tap(sourceItem);
-    await tester.pumpAndSettle();
-
-    expect(openedUrls, ['https://reddit.com/r/LocalLLaMA/comments/example']);
-  });
-}
-
-Future<void> _hoverCitationChip(
-  WidgetTester tester,
-  ValueKey<String> key,
-) async {
-  final citationChip = find.byKey(key);
-  expect(citationChip, findsOneWidget);
-
-  final gesture = await tester.createGesture(kind: PointerDeviceKind.mouse);
-  addTearDown(gesture.removePointer);
-  await gesture.addPointer(location: Offset.zero);
-  await tester.pump();
-  await gesture.moveTo(tester.getCenter(citationChip));
-  await tester.pump();
-  await tester.pump(const Duration(milliseconds: 50));
+  _registerInlineCitationSourceTest();
 }

@@ -655,6 +655,10 @@ model FeedItem {
   @@unique([tenantId, interestId, dedupeKey], map: "feed_items_tenant_interest_dedupe_key_key")
   @@index([tenantId, workspaceId, status, createdAt])
   @@index([tenantId, workspaceId, providerKey, observedAt])
+  @@index([tenantId, workspaceId, publishedAt(sort: Desc), id(sort: Desc)], map: "feed_items_workspace_published_keyset_idx")
+  @@index([tenantId, workspaceId, interestId, publishedAt(sort: Desc), id(sort: Desc)], map: "feed_items_interest_published_keyset_idx")
+  @@index([tenantId, workspaceId, observedAt(sort: Desc), id(sort: Desc)], map: "feed_items_workspace_observed_keyset_idx")
+  @@index([tenantId, workspaceId, interestId, observedAt(sort: Desc), id(sort: Desc)], map: "feed_items_interest_observed_keyset_idx")
   @@map("feed_items")
 }
 
@@ -1097,6 +1101,11 @@ model ReaderSummaryDailyModelJob {
   attestationSha256         String?  @map("attestation_sha256") @db.Char(64)
   receiptBytes              Bytes?   @map("receipt_bytes")
   receiptSha256             String?  @map("receipt_sha256") @db.Char(64)
+  inputTokens               BigInt?  @map("input_tokens")
+  outputTokens              BigInt?  @map("output_tokens")
+  totalTokens               BigInt?  @map("total_tokens")
+  usageSource               String   @default("UNAVAILABLE") @map("usage_source")
+  durationMs                BigInt?  @map("duration_ms")
   readerSummaryJobId        String?  @unique(map: "reader_summary_daily_model_jobs_job_key") @map("reader_summary_job_id") @db.Uuid
   readerSummaryArtifactId   String?  @unique(map: "reader_summary_daily_model_jobs_artifact_key") @map("reader_summary_artifact_id") @db.Uuid
   publicationId             String?  @unique(map: "reader_summary_daily_model_jobs_publication_key") @map("publication_id") @db.Uuid

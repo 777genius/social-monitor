@@ -10,6 +10,19 @@ import {
 } from "./reader-summary-production-recovery-gap.spec-support";
 
 describe("reader summary production recovery gap authority", () => {
+type RecoveryGapDayView = {
+  readonly requestedUtcDate: string;
+  readonly dominance: { readonly totalEvidenceCount: number };
+  readonly providerCoverage: readonly {
+    readonly providerKey: string;
+    readonly count: number;
+    readonly evidenceState: string;
+  }[];
+  readonly modelEligibility: {
+    readonly eligible: boolean;
+    readonly reasons: readonly string[];
+  };
+};
   it("produces byte-identical canonical plans through independent grouping paths", () => {
     const rows = exactRecoveryGapRows();
     const first = buildReaderSummaryProductionRecoveryGapPlan({
@@ -49,7 +62,8 @@ describe("reader summary production recovery gap authority", () => {
       rows: exactRecoveryGapRows(),
       producer: "ordered_filter",
     });
-    expect(plan.days.map((day) => ({
+    const days = plan.days as unknown as readonly RecoveryGapDayView[];
+    expect(days.map((day) => ({
       date: day.requestedUtcDate,
       total: day.dominance.totalEvidenceCount,
       counts: day.providerCoverage.map((coverage) => coverage.count),
@@ -58,7 +72,7 @@ describe("reader summary production recovery gap authority", () => {
       { date: "2026-07-30", total: 98, counts: [0, 0, 0, 34, 64] },
       { date: "2026-07-31", total: 57, counts: [10, 0, 0, 32, 15] },
     ]);
-    expect(plan.days).toEqual(expect.arrayContaining([
+    expect(days).toEqual(expect.arrayContaining([
       expect.objectContaining({
         requestedUtcDate: "2026-07-29",
         modelEligibility: expect.objectContaining({ eligible: false }),
@@ -116,7 +130,9 @@ describe("reader summary production recovery gap authority", () => {
       rows,
       producer: "ordered_filter",
     });
-    const day = plan.days[0]!;
+    const day = (
+      plan.days as unknown as readonly RecoveryGapDayView[]
+    )[0]!;
     expect(day.providerCoverage[0]).toMatchObject({
       providerKey: "github-trending-page",
       count: 0,
