@@ -173,14 +173,43 @@ export const normalizeReaderSummaryArtifactPayload = (
       "Reader summary confidence",
     ),
     lineage: normalizeReaderSummaryLineage(value.lineage),
-    usage: requireObject<ReaderSummaryUsage>(
-      value.usage,
-      "Reader summary usage",
-    ),
+    usage: normalizeReaderSummaryUsage(value.usage),
     noSignalReason: normalizeOptionalString(value.noSignalReason),
   };
 
   return failClosedRelatedTopicPayload(normalized);
+};
+
+const normalizeReaderSummaryUsage = (input: unknown): ReaderSummaryUsage => {
+  const value = requireObject<Record<string, unknown>>(
+    input,
+    "Reader summary usage",
+  );
+  const inputTokens = nullableTokenCount(value.inputTokens);
+  const outputTokens = nullableTokenCount(value.outputTokens);
+  if ((inputTokens === null) !== (outputTokens === null)) {
+    throw new Error(
+      "Reader summary token usage must be complete or unavailable",
+    );
+  }
+  if (
+    typeof value.estimatedCostUsd !== "number" ||
+    !Number.isFinite(value.estimatedCostUsd) ||
+    value.estimatedCostUsd < 0
+  ) {
+    throw new Error("Reader summary estimated cost must be non-negative");
+  }
+  return { inputTokens, outputTokens, estimatedCostUsd: value.estimatedCostUsd };
+};
+
+const nullableTokenCount = (value: unknown): number | null => {
+  if (value === null) return null;
+  if (Number.isSafeInteger(value) && (value as number) >= 0) {
+    return value as number;
+  }
+  throw new Error(
+    "Reader summary token usage must be a non-negative integer or null",
+  );
 };
 
 const failClosedRelatedTopicPayload = (

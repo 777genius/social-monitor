@@ -3,7 +3,8 @@ export function validateDailyModelExecution(
   evidence,
   frontend,
   binding,
-  reportContract = "current",
+  _reportContract = "current",
+  executionMode = "live-production",
 ) {
   const daily = evidence?.provenance?.dailySourceAuthority;
   if (daily === undefined) {
@@ -34,22 +35,23 @@ export function validateDailyModelExecution(
     nonNegativeInteger(value.totalTokens) &&
     value.totalTokens === value.inputTokens + value.outputTokens &&
     Number.isSafeInteger(value.durationMs) && value.durationMs >= 1;
+  const historicalExecution =
+    executionMode === "historical-regeneration" ||
+    executionMode === "historical-reuse";
   if (
     stableJson(value) !== stableJson(expected) ||
-    (reportContract === "current" ? !providerReported :
-      !providerReported && !historicalIncomplete) ||
+    (!providerReported && !(historicalExecution && historicalIncomplete)) ||
     !nonEmptyText(value.provider) || !nonEmptyText(value.model) ||
     !nonEmptyText(value.reasoningEffort) ||
     !isSha256(value.modelJobIdentity) || !isSha256(value.receiptSha256) ||
-    (reportContract === "current" &&
+    (executionMode === "live-production" &&
       (value.provider !== "codex" || value.model !== "gpt-5.6-sol" ||
         value.reasoningEffort !== "high")) ||
     value.provider !== runtime.provider ||
     value.model !== runtime.physicalModel ||
     value.reasoningEffort !== runtime.reasoningEffort ||
-    (providerReported &&
-      (artifactUsage?.inputTokens !== value.inputTokens ||
-        artifactUsage?.outputTokens !== value.outputTokens))
+    artifactUsage?.inputTokens !== value.inputTokens ||
+    artifactUsage?.outputTokens !== value.outputTokens
   ) {
     fail("daily model telemetry is incomplete or not artifact-bound");
   }

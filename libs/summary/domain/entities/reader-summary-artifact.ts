@@ -68,8 +68,8 @@ export type ReaderSummaryLineage = {
 };
 
 export type ReaderSummaryUsage = {
-  readonly inputTokens: number;
-  readonly outputTokens: number;
+  readonly inputTokens: number | null;
+  readonly outputTokens: number | null;
   readonly estimatedCostUsd: number;
 };
 

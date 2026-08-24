@@ -185,6 +185,31 @@ describe("ReaderSummaryArtifact", () => {
     });
   });
 
+  it("preserves explicitly unavailable historical token usage", () => {
+    const snapshot = ReaderSummaryArtifact.create(baseArtifact({
+      usage: {
+        inputTokens: null,
+        outputTokens: null,
+        estimatedCostUsd: 0,
+      },
+    })).toSnapshot();
+
+    expect(snapshot.usage).toEqual({
+      inputTokens: null,
+      outputTokens: null,
+      estimatedCostUsd: 0,
+    });
+  });
+
+  it.each([
+    { inputTokens: null, outputTokens: 0, estimatedCostUsd: 0 },
+    { inputTokens: 0, outputTokens: null, estimatedCostUsd: 0 },
+    { inputTokens: 1.5, outputTokens: 1, estimatedCostUsd: 0 },
+  ])("rejects partial or inexact token usage %#", (usage) => {
+    expect(() => ReaderSummaryArtifact.create(baseArtifact({ usage })))
+      .toThrow("paired non-negative integers or null");
+  });
+
   it("rejects source windows outside the reader summary period", () => {
     expect(() =>
       ReaderSummaryArtifact.create(

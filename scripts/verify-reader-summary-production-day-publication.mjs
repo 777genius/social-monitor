@@ -123,6 +123,7 @@ function validateReport(report, expectedDate, evidencePath, frontendPath) {
     frontend,
     binding,
     reportContract,
+    report.provenance.mode,
   );
   validateSummary(report.summary, binding);
   validateReportIdentity(report.reportIdentity, binding, expectedDate);

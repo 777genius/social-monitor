@@ -239,6 +239,40 @@ describe("prisma reader summary records", () => {
     ]);
   });
 
+  it("round-trips historical-incomplete token usage without fabricating zeroes", () => {
+    const serialized = serializeReaderSummaryArtifact(
+      ReaderSummaryArtifact.create(artifactProps({
+        usage: {
+          inputTokens: null,
+          outputTokens: null,
+          estimatedCostUsd: 0,
+        },
+      })),
+    );
+    const normalized = normalizeReaderSummaryArtifactPayload(serialized, {
+      id: "reader-summary-json-1",
+      tenantId: "tenant-reader-summary-json",
+      workspaceId: "workspace-reader-summary-json",
+      scopeType: "workspace",
+      interestId: null,
+      cadence: "daily",
+      periodStartedAt: new Date("2026-07-03T00:00:00.000Z"),
+      periodEndedAt: new Date("2026-07-04T00:00:00.000Z"),
+      periodTimezone: "UTC",
+      userId: null,
+      subscriptionId: null,
+      headline: "AI source signal is worth reading",
+      summaryText: "A monitored source produced a useful AI signal.",
+      createdAt: new Date("2026-07-04T00:05:00.000Z"),
+    });
+
+    expect(normalized.usage).toEqual({
+      inputTokens: null,
+      outputTokens: null,
+      estimatedCostUsd: 0,
+    });
+  });
+
   it("rehydrates legacy missing card markers as unsupported", () => {
     const serialized = serializeReaderSummaryArtifact(
       ReaderSummaryArtifact.create(artifactProps()),

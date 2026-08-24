@@ -351,6 +351,11 @@ const createReaderSummaryDailyPersistedResponseModel = (input: {
     outputTokens: modelTelemetry.outputTokens ?? 0,
     estimatedCostUsd: 0,
   });
+  const artifactUsage = () => ({
+    inputTokens: modelTelemetry.inputTokens,
+    outputTokens: modelTelemetry.outputTokens,
+    estimatedCostUsd: 0,
+  });
   return {
     route: () => route,
     estimate,
@@ -363,7 +368,7 @@ const createReaderSummaryDailyPersistedResponseModel = (input: {
         response,
         modelInput,
         selectedRoute,
-        estimate(),
+        artifactUsage(),
         "reader_summary.eval.mvp.v1",
       );
       await input.attestationSink.record(

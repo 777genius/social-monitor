@@ -5763,9 +5763,11 @@
             "type": "number"
           },
           "inputTokens": {
+            "nullable": true,
             "type": "number"
           },
           "outputTokens": {
+            "nullable": true,
             "type": "number"
           }
         },

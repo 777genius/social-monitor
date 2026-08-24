@@ -195,12 +195,21 @@ export const assertReaderSummaryArtifactValid = (
     throw new Error("No-signal reader summary must include a reason");
   }
 
+  const hasCompleteTokenUsage =
+    Number.isSafeInteger(props.usage.inputTokens) &&
+    (props.usage.inputTokens as number) >= 0 &&
+    Number.isSafeInteger(props.usage.outputTokens) &&
+    (props.usage.outputTokens as number) >= 0;
+  const hasHistoricalIncompleteTokenUsage =
+    props.usage.inputTokens === null && props.usage.outputTokens === null;
   if (
-    props.usage.inputTokens < 0 ||
-    props.usage.outputTokens < 0 ||
+    (!hasCompleteTokenUsage && !hasHistoricalIncompleteTokenUsage) ||
+    !Number.isFinite(props.usage.estimatedCostUsd) ||
     props.usage.estimatedCostUsd < 0
   ) {
-    throw new Error("Reader summary usage values must be non-negative");
+    throw new Error(
+      "Reader summary token usage must be paired non-negative integers or null",
+    );
   }
 
   if (props.confidence.score < 0 || props.confidence.score > 1) {

@@ -10,6 +10,8 @@ import {
   legacyLiveQualityGateNames,
   publicationQualityContract,
 } from "./lib/reader-summary-publication-quality-contract.mjs";
+import { validateDailyModelExecution } from
+  "./lib/reader-summary-production-day-model-telemetry-verifier.mjs";
 
 const verifierPath = resolve(
   "scripts/verify-reader-summary-production-day-publication.mjs",
@@ -63,6 +65,50 @@ test("accepts provider telemetry bound to the daily job, receipt, and artifact",
     const result = runVerifier(reportPath, proofPath, "--proof-out");
     assert.equal(result.status, 0, result.stderr);
   }, { dailyTelemetry: true });
+});
+
+test("accepts historical-incomplete telemetry only when the artifact is also null", () => {
+  withFixture(({ reportPath, proofPath, report, evidence }) => {
+    report.provenance = historicalRegenerationProvenance(
+      report.provenance.sourceEvidence,
+      evidence.provenance.datasetManifest,
+    );
+    report.model.liveCollection = false;
+    report.model.reusedCollection = true;
+    const result = runVerifier(reportPath, proofPath, "--proof-out", report);
+    assert.equal(result.status, 0, result.stderr);
+  }, { historicalDailyTelemetry: true });
+});
+
+test("rejects historical-incomplete audit telemetry paired with artifact 0/0", () => {
+  const authority = dailySourceAuthority(true);
+  const modelExecution = {
+    ...authority.modelExecution,
+    modelJobIdentity: authority.modelJobIdentity,
+    receiptSha256: authority.receiptSha256,
+    readerSummaryJobId,
+    readerSummaryArtifactId: readerSummaryId,
+  };
+  assert.throws(() => validateDailyModelExecution(
+    modelExecution,
+    { provenance: { dailySourceAuthority: authority } },
+    { readerSummaryArtifact: { usage: {
+      inputTokens: 0,
+      outputTokens: 0,
+      estimatedCostUsd: 0,
+    } } },
+    {
+      readerSummaryJobId,
+      readerSummaryId,
+      runtimeProvenance: {
+        provider: "codex",
+        physicalModel: "gpt-5.6-sol",
+        reasoningEffort: "high",
+      },
+    },
+    "current",
+    "historical-regeneration",
+  ), /not artifact-bound/u);
 });
 
 for (const patch of [
@@ -400,8 +446,11 @@ function withFixture(assertion, options = {}) {
   }
 }
 
-function runVerifier(reportPath, proofPath, proofOption) {
+function runVerifier(reportPath, proofPath, proofOption, reportOverride) {
   const directory = dirname(reportPath);
+  if (reportOverride !== undefined) {
+    writeFileSync(reportPath, `${JSON.stringify(reportOverride)}\n`);
+  }
   return spawnSync(
     process.execPath,
     [
@@ -436,8 +485,10 @@ function buildFrontend(options) {
             : "codex:gpt-5.6-sol:high"),
         providerVersion: options.providerVersion ?? "agent-runtime",
       },
-      ...(options.dailyTelemetry
-        ? { usage: { inputTokens: 120, outputTokens: 30, estimatedCostUsd: 0 } }
+      ...(options.dailyTelemetry || options.historicalDailyTelemetry
+        ? { usage: options.historicalDailyTelemetry
+          ? { inputTokens: null, outputTokens: null, estimatedCostUsd: 0 }
+          : { inputTokens: 120, outputTokens: 30, estimatedCostUsd: 0 } }
         : {}),
       content: {
         reliabilityReport: {
@@ -471,8 +522,10 @@ function buildEvidence(frontend, frontendBytes, options) {
       database: "postgres",
       modelMode: "agent-runtime",
       datasetManifest: datasetGuardEvidence(),
-      ...(options.dailyTelemetry
-        ? { dailySourceAuthority: dailySourceAuthority() }
+      ...(options.dailyTelemetry || options.historicalDailyTelemetry
+        ? { dailySourceAuthority: dailySourceAuthority(
+          options.historicalDailyTelemetry,
+        ) }
         : {}),
     },
     period: utcPeriod(),
@@ -669,12 +722,21 @@ function buildReport(evidenceBytes, frontendBytes, evidence) {
   };
 }
 
-function dailySourceAuthority() {
+function dailySourceAuthority(historicalIncomplete = false) {
   return {
     canonicalSha256: "7".repeat(64),
     modelJobIdentity: "8".repeat(64),
     receiptSha256: "9".repeat(64),
-    modelExecution: {
+    modelExecution: historicalIncomplete ? {
+      provider: "codex",
+      model: "gpt-5.6-sol",
+      reasoningEffort: "high",
+      inputTokens: null,
+      outputTokens: null,
+      totalTokens: null,
+      usageSource: "HISTORICAL_INCOMPLETE",
+      durationMs: null,
+    } : {
       provider: "codex",
       model: "gpt-5.6-sol",
       reasoningEffort: "high",

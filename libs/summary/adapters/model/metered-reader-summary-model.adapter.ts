@@ -47,26 +47,28 @@ export class MeteredReaderSummaryModelAdapter implements ReaderSummaryModelPort 
       const usage = attempt.draft.usage;
 
       this.recordRequest(route, "succeeded");
-      this.metrics.incrementCounter({
-        name: "summary_model_tokens_total",
-        value: usage.inputTokens,
-        labels: {
-          job_type: "reader_summary",
-          model: route.model,
-          provider: route.provider,
-          token_type: "input",
-        },
-      });
-      this.metrics.incrementCounter({
-        name: "summary_model_tokens_total",
-        value: usage.outputTokens,
-        labels: {
-          job_type: "reader_summary",
-          model: route.model,
-          provider: route.provider,
-          token_type: "output",
-        },
-      });
+      if (usage.inputTokens !== null && usage.outputTokens !== null) {
+        this.metrics.incrementCounter({
+          name: "summary_model_tokens_total",
+          value: usage.inputTokens,
+          labels: {
+            job_type: "reader_summary",
+            model: route.model,
+            provider: route.provider,
+            token_type: "input",
+          },
+        });
+        this.metrics.incrementCounter({
+          name: "summary_model_tokens_total",
+          value: usage.outputTokens,
+          labels: {
+            job_type: "reader_summary",
+            model: route.model,
+            provider: route.provider,
+            token_type: "output",
+          },
+        });
+      }
       this.metrics.incrementCounter({
         name: "summary_model_estimated_cost_usd",
         value: usage.estimatedCostUsd,
