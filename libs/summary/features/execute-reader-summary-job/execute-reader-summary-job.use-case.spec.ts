@@ -461,12 +461,13 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
     );
   });
 
-  it("fails closed as no-signal before generation when evidence misses the promotion floor", async () => {
+  it("keeps ordinary zero-primary-evidence execution model-free", async () => {
     const tenant = tenantId("tenant-reader-summary-use-case");
     const workspace = workspaceId("workspace-reader-summary-use-case");
     const jobs = new FakeReaderSummaryJobRepository();
     const artifacts = new FakeReaderSummaryArtifactRepository();
     const events = new CapturingSummaryEventPublisher();
+    const model = new CapturingReaderSummaryModel();
 
     await jobs.save(
       ReaderSummaryJob.request({
@@ -501,7 +502,7 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
           });
         },
       },
-      new CapturingReaderSummaryModel(),
+      model,
       new CapturingReaderSummaryPublication(jobs, artifacts, events),
       new StaticIdGenerator(),
       new FixedClock(new Date("2026-06-26T08:05:00.000Z")),
@@ -550,6 +551,7 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
     });
     expect(events.all()).toHaveLength(1);
     expect(events.all()[0]?.payload).toMatchObject({ status: "no_signal" });
+    expect(model.generatedEvidenceIds()).toEqual([]);
   });
 
   it("calibrates confidence before a preflight rejection and skips topic-map calls", async () => {

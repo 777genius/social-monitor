@@ -7,6 +7,7 @@ import {
   buildReaderSummaryCoveragePlan,
   buildReaderSummaryPeriod,
   defaultReaderSummaryGenerationPolicy,
+  type ReaderSummaryArtifact,
   ReaderSummaryJob,
   type ReaderSummaryPublicationPolicy,
 } from "@social-monitor/summary/domain";
@@ -18,6 +19,7 @@ import {
 import type {
   ReaderSummaryArtifactRepositoryPort,
   ReaderSummaryJobRepositoryPort,
+  ReaderSummaryModelPort,
   ReaderSummaryPolicyRepositoryPort,
   ReaderSummaryPublicationCommand,
   ReaderSummaryPublicationPort,
@@ -39,7 +41,7 @@ const scope = {
 const hash = (seed: string) => sha256(Buffer.from(seed, "utf8"));
 
 describe("reader summary daily frozen publication input", () => {
-  it("routes verified V4 provenance through Jul24 and every reviewed date", async () => {
+  it("invokes each sealed V4 no-signal model once and emits a V3 recovery audit", async () => {
     for (const requestedUtcDate of [
       "2026-07-24", "2026-07-25", "2026-07-26", "2026-07-27",
     ]) {
@@ -74,9 +76,16 @@ describe("reader summary daily frozen publication input", () => {
       expect(published.savedDecision).toMatchObject({ status: "published" });
       expect(published.result.value).toMatchObject({ status: "no_signal" });
       expect(published.publicationCommands).toHaveLength(1);
+      expect(published.modelInvocationCount).toBe(1);
+      expect(published.savedArtifact).toMatchObject({
+        headline: "Canonical day",
+        executiveSummary: "Immutable evidence only.",
+      });
       expect(published.savedAudit).toMatchObject({
         status: projectionMode === "historical_omission" ? "not_required" : "verified",
         recoveryV4: {
+          schemaVersion:
+            "reader_summary.daily_canonical_recovery_provenance.v3",
           recoveryVersion: "reader_summary.daily_canonical_recovery.v4",
           requestedUtcDate,
           selectedOutputKind: "output_text",
@@ -433,6 +442,15 @@ const executeVerifiedRecovery = async (
   if (wiring.model === undefined || wiring.topicMapBuilder === undefined) {
     throw new Error("verified Jul24 recovery wiring is incomplete");
   }
+  const persistedModel = wiring.model;
+  let modelInvocationCount = 0;
+  const model: ReaderSummaryModelPort = {
+    ...persistedModel,
+    generate: async (input, route) => {
+      modelInvocationCount += 1;
+      return persistedModel.generate(input, route);
+    },
+  };
   const period = buildReaderSummaryPeriod({
     cadence: "daily",
     startedAt: new Date(`${requestedUtcDate}T00:00:00.000Z`),
@@ -451,7 +469,7 @@ const executeVerifiedRecovery = async (
   const jobsById = new Map([[requested.toSnapshot().id, requested]]);
   const jobs: Pick<
     ReaderSummaryJobRepositoryPort,
-    "save" | "findById" | "claimForExecution"
+    "save" | "findById" | "claimForExecution" | "saveExecutionOutcome"
   > = {
     save: async (job) => {
       jobsById.set(job.toSnapshot().id, job);
@@ -465,11 +483,27 @@ const executeVerifiedRecovery = async (
       jobsById.set(readerSummaryJobId, running);
       return running;
     },
+    saveExecutionOutcome: async ({ job, expectedStartedAt }) => {
+      const snapshot = job.toSnapshot();
+      const current = jobsById.get(snapshot.id)?.toSnapshot();
+      if (
+        current?.status !== "running" ||
+        current.startedAt?.getTime() !== expectedStartedAt.getTime()
+      ) {
+        return false;
+      }
+      jobsById.set(snapshot.id, job);
+      return true;
+    },
   };
   let savedAudit: unknown;
+  let savedArtifact:
+    | ReturnType<ReaderSummaryArtifact["toSnapshot"]>
+    | undefined;
   let savedDecision: unknown;
   const artifacts: Pick<ReaderSummaryArtifactRepositoryPort, "save"> = {
     save: async (_artifact, options) => {
+      savedArtifact = _artifact.toSnapshot();
       savedAudit = options?.githubProjectionAudit;
       savedDecision = options?.publicationDecision;
     },
@@ -507,7 +541,7 @@ const executeVerifiedRecovery = async (
     artifacts as ReaderSummaryArtifactRepositoryPort,
     policies as ReaderSummaryPolicyRepositoryPort,
     wiring.evidenceSelector,
-    wiring.model,
+    model,
     publications,
     ids,
     clock,
@@ -525,7 +559,14 @@ const executeVerifiedRecovery = async (
     readerSummaryJobId: requested.toSnapshot().id,
     maxEvidenceItems: 200,
   });
-  return { result, publicationCommands, savedAudit, savedDecision };
+  return {
+    result,
+    publicationCommands,
+    savedAudit,
+    savedArtifact,
+    savedDecision,
+    modelInvocationCount,
+  };
 };
 
 const reviewedRecoveryDays = Object.freeze([

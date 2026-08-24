@@ -364,13 +364,23 @@ const createReaderSummaryDailyPersistedResponseModel = (input: {
         throw new Error("Daily persisted response may be consumed only once");
       }
       generated = true;
-      const draft = normalizeOpenAiReaderSummaryDraft(
+      const normalizedDraft = normalizeOpenAiReaderSummaryDraft(
         response,
         modelInput,
         selectedRoute,
         artifactUsage(),
         "reader_summary.eval.mvp.v1",
       );
+      const draft = outputKind === "output_text"
+        ? {
+            ...normalizedDraft,
+            headline: requiredText(response.headline, "output_text headline"),
+            executiveSummary: requiredText(
+              response.executiveSummary,
+              "output_text executive summary",
+            ),
+          }
+        : normalizedDraft;
       await input.attestationSink.record(
         receiptAttestation ?? {
           taskRole: "summary",
