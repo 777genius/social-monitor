@@ -43,7 +43,7 @@ describe("buildReaderSummaryDailyModelJobReceipt", () => {
     ["engine", { runtimeEngine: "other" }],
     ["response", { selectedOutputSha256: "0".repeat(64) }],
   ])("rejects a divergent %s attestation", (_label, patch) => {
-    const responseBytes = Buffer.from("response");
+    const responseBytes = Buffer.from('{"answer":true}', "utf8");
     expect(() => buildReaderSummaryDailyModelJobReceipt({
       modelJob,
       responseBytes,
@@ -74,7 +74,7 @@ describe("buildReaderSummaryDailyModelJobReceipt", () => {
   });
 
   it("preserves genuine provider-reported zero counts without fabricating them", () => {
-    const responseBytes = Buffer.from("zero-usage");
+    const responseBytes = Buffer.from('{"answer":"zero-usage"}', "utf8");
     const receipt = buildReaderSummaryDailyModelJobReceipt({
       modelJob,
       responseBytes,
@@ -87,6 +87,30 @@ describe("buildReaderSummaryDailyModelJobReceipt", () => {
     });
     expect(requireReaderSummaryDailyProviderTelemetry(receipt.receiptBytes))
       .toMatchObject({ inputTokens: 0, outputTokens: 0, durationMs: 25 });
+  });
+
+  it("rejects publication-ineligible telemetry and response payloads", () => {
+    const responseBytes = Buffer.from('{"answer":true}', "utf8");
+    expect(() => buildReaderSummaryDailyModelJobReceipt({
+      modelJob,
+      responseBytes,
+      attestation: attestation(responseBytes),
+      modelTelemetry: telemetry({ usageSource: "ESTIMATED" }),
+    })).toThrow(/provider-reported/u);
+
+    for (const invalidResponse of [
+      Buffer.from("not-json", "utf8"),
+      Buffer.from("[]", "utf8"),
+      Buffer.from('"answer"', "utf8"),
+      Buffer.from("null", "utf8"),
+    ]) {
+      expect(() => buildReaderSummaryDailyModelJobReceipt({
+        modelJob,
+        responseBytes: invalidResponse,
+        attestation: attestation(invalidResponse),
+        modelTelemetry: telemetry(),
+      })).toThrow(/response/u);
+    }
   });
 
   it("binds output_text to the consumed canonical recovery identity", () => {

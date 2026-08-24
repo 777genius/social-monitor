@@ -91,6 +91,21 @@ export const dailyCompletionReceiptFixture = (input: {
     ]);
   }
   negativeSealMutations.push(
+    ["estimated usage with canonical bindings", completionWithUsage(
+      completionValues, envelope, usage, "ESTIMATED",
+    )],
+    ["non-JSON response with canonical bindings", completionWithResponse(
+      completionValues, envelope, attestation, Buffer.from("not-json", "utf8"),
+    )],
+    ["array response with canonical bindings", completionWithResponse(
+      completionValues, envelope, attestation, Buffer.from("[]", "utf8"),
+    )],
+    ["scalar response with canonical bindings", completionWithResponse(
+      completionValues, envelope, attestation, Buffer.from('"complete"', "utf8"),
+    )],
+    ["null response with canonical bindings", completionWithResponse(
+      completionValues, envelope, attestation, Buffer.from("null", "utf8"),
+    )],
     ["extra receipt key", completionWithEnvelope(completionValues, {
       ...envelope, unexpected: true,
     })],
@@ -151,6 +166,42 @@ const completionWithAttestation = (
       values, 8, attestation), 9, attestationBytes), 10, hash(attestationBytes)),
     { ...envelope, attestation, attestationSha256: hash(attestationBytes) },
   );
+};
+
+const completionWithUsage = (
+  values: readonly unknown[],
+  envelope: Record<string, unknown>,
+  usage: Record<string, unknown>,
+  usageSource: string,
+): readonly unknown[] => completionWithEnvelope(
+  replaceCompletionValue(values, 16, usageSource),
+  { ...envelope, executionUsage: { ...usage, usageSource } },
+);
+
+const completionWithResponse = (
+  values: readonly unknown[],
+  envelope: Record<string, unknown>,
+  attestation: Record<string, unknown>,
+  responseBytes: Buffer,
+): readonly unknown[] => {
+  const responseSha256 = hash(responseBytes);
+  const reboundAttestation = {
+    ...attestation,
+    selectedOutputSha256: responseSha256,
+  };
+  const attestationBytes = canonicalJsonBytes(reboundAttestation);
+  const attestationSha256 = hash(attestationBytes);
+  const reboundValues = replaceCompletionValue(replaceCompletionValue(
+    replaceCompletionValue(replaceCompletionValue(replaceCompletionValue(
+      values, 6, responseBytes), 7, responseSha256), 8, reboundAttestation),
+    9, attestationBytes), 10, attestationSha256);
+  return completionWithEnvelope(reboundValues, {
+    ...envelope,
+    responseSha256,
+    responseByteLength: responseBytes.length,
+    attestation: reboundAttestation,
+    attestationSha256,
+  });
 };
 
 const withNoncanonicalReceipt = (values: readonly unknown[]): readonly unknown[] => {

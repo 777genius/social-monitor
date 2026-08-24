@@ -168,8 +168,13 @@ WHERE session_principal.rolname = session_user
     expect(sql).not.toMatch(/GRANT EXECUTE ON FUNCTION[\s\S]*?TO PUBLIC;/u);
   });
 
-  it("rejects unavailable completion and binds exact replay telemetry", () => {
-    expect(sql).toContain("observed_usage_source NOT IN ('PROVIDER_REPORTED', 'ESTIMATED')");
+  it("rejects publication-ineligible completion and binds exact replay telemetry", () => {
+    expect(sql).toContain(
+      "observed_usage_source IS DISTINCT FROM 'PROVIDER_REPORTED'",
+    );
+    expect(sql).not.toContain(
+      "observed_usage_source NOT IN ('PROVIDER_REPORTED', 'ESTIMATED')",
+    );
     expect(sql).toContain("v_job.\"input_tokens\" IS DISTINCT FROM observed_input_tokens");
     expect(sql).toContain("v_job.\"duration_ms\" IS DISTINCT FROM observed_duration_ms");
     expect(sql).toContain("v_job.\"total_tokens\" IS DISTINCT FROM observed_total_tokens");
@@ -215,6 +220,10 @@ WHERE session_principal.rolname = session_user
     expect(sql).toContain("verified_attestation->>'selectedOutputKind'");
     expect(sql).toContain("verified_attestation->>'runtimePackageVersion' !~");
     expect(sql).toContain("pg_catalog.jsonb_typeof(field.value) <> 'string'");
+    expect(sql).toContain(
+      "pg_catalog.jsonb_typeof(v_response) IS DISTINCT FROM 'object'",
+    );
+    expect(sql).toContain("daily structured response or receipt is not JSON");
   });
 
   it("fails closed for unknown effects and only adopts exact expired reservations", () => {

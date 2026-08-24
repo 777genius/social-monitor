@@ -213,6 +213,7 @@ RETURNS BOOLEAN LANGUAGE plpgsql VOLATILE STRICT SECURITY DEFINER
 SET search_path = pg_catalog AS $$
 DECLARE v_cursor public."reader_summary_daily_execution_cursors"%ROWTYPE;
 DECLARE v_job public."reader_summary_daily_model_jobs"%ROWTYPE;
+DECLARE v_response JSONB;
 DECLARE v_receipt JSONB;
 DECLARE v_expected_attestation_bytes BYTEA;
 DECLARE v_expected_receipt_bytes BYTEA;
@@ -227,7 +228,7 @@ BEGIN
      OR finished_at > pg_catalog.transaction_timestamp() + INTERVAL '5 minutes' THEN
     RAISE EXCEPTION 'daily telemetry completion time is not current';
   END IF;
-  IF observed_usage_source NOT IN ('PROVIDER_REPORTED', 'ESTIMATED')
+  IF observed_usage_source IS DISTINCT FROM 'PROVIDER_REPORTED'
      OR observed_input_tokens < 0 OR observed_output_tokens < 0
      OR observed_total_tokens <> observed_input_tokens + observed_output_tokens
      OR observed_input_tokens > 9007199254740991
@@ -252,8 +253,14 @@ BEGIN
   -- Validate the complete canonical envelope before either first completion or
   -- idempotent replay. A replay is successful only for inputs that could have
   -- validly produced the already-sealed row.
-  v_receipt := pg_catalog.convert_from(exact_receipt_bytes, 'UTF8')::JSONB;
-  IF pg_catalog.jsonb_typeof(v_receipt) IS DISTINCT FROM 'object'
+  BEGIN
+    v_response := pg_catalog.convert_from(exact_response, 'UTF8')::JSONB;
+    v_receipt := pg_catalog.convert_from(exact_receipt_bytes, 'UTF8')::JSONB;
+  EXCEPTION WHEN OTHERS THEN
+    RAISE EXCEPTION 'daily structured response or receipt is not JSON';
+  END;
+  IF pg_catalog.jsonb_typeof(v_response) IS DISTINCT FROM 'object'
+    OR pg_catalog.jsonb_typeof(v_receipt) IS DISTINCT FROM 'object'
     OR pg_catalog.jsonb_typeof(verified_attestation) IS DISTINCT FROM 'object'
     OR pg_catalog.jsonb_typeof(v_receipt->'attestation')
       IS DISTINCT FROM 'object'

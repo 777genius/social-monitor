@@ -192,12 +192,18 @@ export const buildReaderSummaryDailyModelJobReceipt = (input: {
   readonly modelTelemetry: ReaderSummaryDailyModelTelemetry;
 }): ReaderSummaryDailyModelJobReceipt => {
   const responseBytes = Buffer.from(input.responseBytes);
+  parseJsonRecord(responseBytes, "daily model response");
   const responseSha256 = sha256(responseBytes);
   const attestation = verifyAttestation(input.attestation, input.modelJob, responseSha256);
   const modelTelemetry = verifyCompletedModelTelemetry(
     input.modelTelemetry,
     attestation,
   );
+  if (modelTelemetry.usageSource !== "PROVIDER_REPORTED") {
+    throw new Error(
+      "Daily model job completion requires provider-reported telemetry",
+    );
+  }
   const attestationBytes = canonicalBytes(attestation);
   const receiptRecord = {
     schemaVersion: 2,
