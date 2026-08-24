@@ -28,6 +28,22 @@ describe("gRPC agent runtime client", () => {
       selectedOutputKind: "structured_output",
       runtimePackageVersion: "0.1.0-main.2",
     });
+    expect(result.usage).toEqual({
+      inputTokens: 12,
+      outputTokens: 5,
+      totalTokens: 17,
+      estimatedCostUsd: 0,
+    });
+    expect(result.durationMs).toBe(25);
+  });
+
+  it("rejects inconsistent provider usage totals", async () => {
+    const value = response();
+    value.usage!.totalTokens = 99;
+
+    await expect(clientFor(value).runTask(command())).rejects.toThrow(
+      /usage is malformed/u,
+    );
   });
 
   it.each([
@@ -103,8 +119,14 @@ const response = (): AgentRuntimeTaskResponse => {
     outputText: "",
     structuredOutputJson: JSON.stringify(structuredOutput),
     warnings: [],
-    usage: undefined,
+    usage: {
+      inputTokens: 12,
+      outputTokens: 5,
+      totalTokens: 17,
+      estimatedCostUsd: 0,
+    },
     failure: undefined,
+    durationMs: 25,
     executionAttestation: {
       schemaVersion: 1,
       requestId: "request-1",

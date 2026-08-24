@@ -47,6 +47,7 @@ export type AgentRuntimeExecutionResult = {
   readonly structuredOutput?: Record<string, unknown>;
   readonly warnings: readonly AgentRuntimeExecutionWarning[];
   readonly usage?: AgentRuntimeExecutionUsage;
+  readonly durationMs?: number;
   readonly failure?: AgentRuntimeExecutionFailure;
   readonly executionAttestation?: AgentRuntimeExecutionAttestation;
 };

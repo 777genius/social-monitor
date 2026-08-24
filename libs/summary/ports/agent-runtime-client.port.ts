@@ -64,6 +64,7 @@ export type AgentRuntimeTaskResult = {
   readonly structuredOutput?: Record<string, unknown>;
   readonly warnings: readonly AgentRuntimeWarning[];
   readonly usage?: AgentRuntimeUsage;
+  readonly durationMs?: number;
   readonly failure?: AgentRuntimeFailure;
   readonly executionAttestation?: AgentRuntimeExecutionAttestation;
 };

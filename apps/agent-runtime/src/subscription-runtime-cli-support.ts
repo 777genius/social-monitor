@@ -18,19 +18,23 @@ export const shouldRetryWithEphemeral = (
     result.failure?.code === "needs_reconnect") &&
   result.failure.reconnectRequired;
 
-const parseCliResult = (stdout: string): AgentRuntimeExecutionResult => {
+export const parseSubscriptionRuntimeCliResult = (
+  stdout: string,
+): AgentRuntimeExecutionResult => {
   const parsed = parseSubscriptionRuntimeJsonObject(
     stdout,
     "subscription-runtime result",
   );
   const status = parseStatus(parsed.status);
+  const telemetry = readOptionalRecord(parsed.telemetry);
 
   return {
     status,
     outputText: optionalOutputText(parsed.outputText),
     structuredOutput: readOptionalRecord(parsed.structuredOutput),
     warnings: readWarnings(parsed.warnings),
-    usage: readUsage(parsed.usage),
+    usage: readUsage(telemetry?.usage),
+    durationMs: nonNegativeSafeInteger(telemetry?.durationMs),
     failure: readFailure(parsed.failure),
   };
 };
@@ -39,7 +43,7 @@ const tryParseCliResult = (
   stdout: string,
 ): AgentRuntimeExecutionResult | undefined => {
   try {
-    return parseCliResult(stdout);
+    return parseSubscriptionRuntimeCliResult(stdout);
   } catch {
     return undefined;
   }
@@ -215,10 +219,22 @@ const readUsage = (value: unknown): AgentRuntimeExecutionUsage | undefined => {
     return undefined;
   }
 
+  const inputTokens = nonNegativeSafeInteger(record.inputTokens);
+  const outputTokens = nonNegativeSafeInteger(record.outputTokens);
+  const totalTokens = nonNegativeSafeInteger(record.totalTokens);
+  if (
+    inputTokens === undefined ||
+    outputTokens === undefined ||
+    totalTokens === undefined ||
+    totalTokens !== inputTokens + outputTokens
+  ) {
+    return undefined;
+  }
+
   return {
-    inputTokens: nonNegativeInteger(record.inputTokens),
-    outputTokens: nonNegativeInteger(record.outputTokens),
-    totalTokens: nonNegativeInteger(record.totalTokens),
+    inputTokens,
+    outputTokens,
+    totalTokens,
     estimatedCostUsd: nonNegativeNumber(record.estimatedCostUsd),
   };
 };
@@ -303,10 +319,10 @@ const retryableRuntimeCodes = new Set([
   "task_timeout",
 ]);
 
-const nonNegativeInteger = (value: unknown): number =>
-  typeof value === "number" && Number.isInteger(value) && value >= 0
+const nonNegativeSafeInteger = (value: unknown): number | undefined =>
+  typeof value === "number" && Number.isSafeInteger(value) && value >= 0
     ? value
-    : 0;
+    : undefined;
 
 const nonNegativeNumber = (value: unknown): number =>
   typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : 0;

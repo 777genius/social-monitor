@@ -75,6 +75,12 @@ describe("GrpcReaderSummaryDailySubscriptionRuntime", () => {
         estimatedCostUsd: 0,
       },
     }],
+    ["inconsistent total", {
+      usage: {
+        inputTokens: 1, outputTokens: 2, totalTokens: 4,
+        estimatedCostUsd: 0,
+      },
+    }],
     ["missing duration", { durationMs: undefined }],
   ])("blocks completed live publication for %s usage", async (_label, patch) => {
     const client = fakeClient({ value: true }, "gpt-5.6-sol", patch);

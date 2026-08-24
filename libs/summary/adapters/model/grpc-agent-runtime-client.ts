@@ -202,6 +202,8 @@ const fromGrpcTaskResponse = (
   if (response.schemaVersion !== schemaVersion) {
     throw new Error("Unsupported agent runtime response schema version");
   }
+  const usage = readGrpcUsage(response.usage);
+  const durationMs = readOptionalDurationMs(response.durationMs);
   const result: AgentRuntimeTaskResult = {
     status: fromGrpcTaskStatus(response.status),
     outputText: optionalOutputText(response.outputText),
@@ -210,15 +212,8 @@ const fromGrpcTaskResponse = (
       code: warning.code,
       message: warning.message,
     })),
-    usage:
-      response.usage === undefined
-        ? undefined
-        : {
-            inputTokens: response.usage.inputTokens,
-            outputTokens: response.usage.outputTokens,
-            totalTokens: response.usage.totalTokens,
-            estimatedCostUsd: response.usage.estimatedCostUsd,
-          },
+    usage,
+    durationMs,
     failure:
       response.failure === undefined
         ? undefined
@@ -251,6 +246,41 @@ const fromGrpcTaskResponse = (
   }
   return result;
 };
+
+const readGrpcUsage = (
+  value: AgentRuntimeTaskResponse["usage"],
+): AgentRuntimeTaskResult["usage"] => {
+  if (value === undefined) return undefined;
+  if (
+    !nonNegativeSafeInteger(value.inputTokens) ||
+    !nonNegativeSafeInteger(value.outputTokens) ||
+    !nonNegativeSafeInteger(value.totalTokens) ||
+    value.totalTokens !== value.inputTokens + value.outputTokens ||
+    !nonNegativeFiniteNumber(value.estimatedCostUsd)
+  ) {
+    throw new Error("Agent runtime usage is malformed");
+  }
+  return {
+    inputTokens: value.inputTokens,
+    outputTokens: value.outputTokens,
+    totalTokens: value.totalTokens,
+    estimatedCostUsd: value.estimatedCostUsd,
+  };
+};
+
+const readOptionalDurationMs = (value: number | undefined): number | undefined => {
+  if (value === undefined) return undefined;
+  if (!nonNegativeSafeInteger(value)) {
+    throw new Error("Agent runtime duration is malformed");
+  }
+  return value;
+};
+
+const nonNegativeSafeInteger = (value: unknown): value is number =>
+  Number.isSafeInteger(value) && (value as number) >= 0;
+
+const nonNegativeFiniteNumber = (value: unknown): value is number =>
+  typeof value === "number" && Number.isFinite(value) && value >= 0;
 
 const readExecutionAttestation = (
   response: AgentRuntimeTaskResponse,

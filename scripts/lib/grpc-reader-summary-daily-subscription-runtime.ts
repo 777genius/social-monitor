@@ -258,9 +258,7 @@ const exactCompletedOutput = (
     throw new Error("Daily subscription runtime output diverged from its attestation");
   }
   const usage = result.usage;
-  const durationMs = (result as AgentRuntimeTaskResult & {
-    readonly durationMs?: number;
-  }).durationMs;
+  const durationMs = result.durationMs;
   if (
     usage === undefined ||
     !nonNegativeSafeInteger(usage.inputTokens) ||
