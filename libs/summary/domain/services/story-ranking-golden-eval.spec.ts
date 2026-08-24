@@ -216,7 +216,8 @@ describe("story ranking golden eval", () => {
         { label: "Comments", value: "88" },
         { label: "Upvote ratio", value: "91%" },
       ],
-      whyNow: "Selected from 2 admitted providers in this summary window.",
+      whyNow:
+        "Selected from 2 admitted provider families in this summary window.",
     });
   });
 
