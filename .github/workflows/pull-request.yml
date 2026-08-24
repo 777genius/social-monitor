@@ -268,6 +268,7 @@ jobs:
           DATABASE_URL: postgresql://social_monitor_weekly_review_manifest_ci_admin:social_monitor_local_password@127.0.0.1:5432/social_monitor_weekly_review_manifest_ci_admin
           READER_SUMMARY_PUBLICATION_TEST_ADMIN_DATABASE_URL: postgresql://social_monitor_weekly_review_manifest_ci_admin:social_monitor_local_password@127.0.0.1:5432/social_monitor_weekly_review_manifest_ci_admin
         run: |
+          npm run check:reader-summary-daily-execution-cursor-postgres18
           npm run check:reader-summary-weekly-review-manifest-postgres18
           npm run check:reader-summary-recovery-candidate-staging-postgres
 

@@ -9,6 +9,8 @@ const packageJson = JSON.parse(readFileSync("package.json", "utf8"));
 const violations = [];
 const subscriptionRuntimeAuthPoolE2eCommand =
   "node --test apps/agent-runtime/bin/codex-auth-pool-manifest.test.mjs apps/agent-runtime/bin/codex-auth-pool-routing.test.mjs apps/agent-runtime/bin/subscription-runtime-auth-pool.e2e.test.mjs apps/agent-runtime/bin/subscription-runtime-purpose-model-policy.test.mjs";
+const dailyCursorPostgres18Command =
+  "node scripts/run-with-timeout.mjs --timeout-ms 180000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-reader-summary-daily-execution-cursor-postgres.ts";
 
 if (
   packageJson.scripts?.["check:subscription-runtime-auth-pool-e2e"] !==
@@ -16,6 +18,14 @@ if (
 ) {
   violations.push(
     "package.json: subscription runtime auth-pool e2e must enumerate only the reviewed deterministic sandbox tests",
+  );
+}
+if (
+  packageJson.scripts?.["check:reader-summary-daily-execution-cursor-postgres18"] !==
+  dailyCursorPostgres18Command
+) {
+  violations.push(
+    "package.json: daily execution cursor PostgreSQL 18 checker must remain timeout-bounded and executable",
   );
 }
 
@@ -60,6 +70,7 @@ const requiredFragments = [
   "npm run check:architecture",
   "npm run check:user-auth-boundary",
   "npm run check:tenant-rls-postgres",
+  "npm run check:reader-summary-daily-execution-cursor-postgres18",
   "npm run check:reader-summary-weekly-review-manifest-postgres18",
   "npm run check:container",
   "npm run check:runtime-compose",
@@ -107,6 +118,7 @@ for (const fragment of [
   "DATABASE_URL: postgresql://social_monitor_weekly_review_manifest_ci_admin:social_monitor_local_password@127.0.0.1:5432/social_monitor_weekly_review_manifest_ci_admin",
   "READER_SUMMARY_PUBLICATION_TEST_ADMIN_DATABASE_URL: postgresql://social_monitor_weekly_review_manifest_ci_admin:social_monitor_local_password@127.0.0.1:5432/social_monitor_weekly_review_manifest_ci_admin",
   "npm run check:reader-summary-weekly-review-manifest-postgres18",
+  "npm run check:reader-summary-daily-execution-cursor-postgres18",
 ]) {
   if (weeklyReviewManifestJob === undefined || !weeklyReviewManifestJob.includes(fragment)) {
     violations.push(

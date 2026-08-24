@@ -61,6 +61,144 @@ ALTER TABLE public."reader_summary_daily_model_jobs"
     END
   );
 
+-- A RUNNING v1 job may already have crossed the provider-effect boundary.
+-- Refuse the whole transactional migration rather than relabeling, retrying,
+-- or revoking the only completion authority for an unknown-effect execution.
+DO $guard_daily_model_job_upgrade_state$
+DECLARE
+  v_blocked RECORD;
+BEGIN
+  SELECT job."tenant_id", job."workspace_id", job."requested_utc_date",
+    job."state"
+  INTO v_blocked
+  FROM public."reader_summary_daily_model_jobs" AS job
+  WHERE job."state" = 'RUNNING'
+  ORDER BY job."tenant_id", job."workspace_id", job."requested_utc_date"
+  LIMIT 1;
+  IF FOUND THEN
+    RAISE EXCEPTION
+      'daily telemetry migration blocked: % job for tenant %, workspace %, date % has unknown provider effect; reconcile it through the existing ambiguity protocol before deploy',
+      v_blocked."state", v_blocked."tenant_id", v_blocked."workspace_id",
+      v_blocked."requested_utc_date";
+  END IF;
+END;
+$guard_daily_model_job_upgrade_state$;
+
+-- RESERVED is pre-effect by protocol, but an unexpired lease still belongs to
+-- a live worker that claimed the v1/xhigh binding. Require that worker to stop
+-- and the lease to expire before this migration can deterministically adopt it.
+DO $guard_live_daily_model_job_reservation$
+DECLARE
+  v_blocked RECORD;
+BEGIN
+  SELECT job."tenant_id", job."workspace_id", job."requested_utc_date"
+  INTO v_blocked
+  FROM public."reader_summary_daily_model_jobs" AS job
+  JOIN public."reader_summary_daily_execution_cursors" AS cursor_row
+    ON cursor_row."tenant_id" = job."tenant_id"
+   AND cursor_row."workspace_id" = job."workspace_id"
+  WHERE job."state" = 'RESERVED'
+    AND cursor_row."active_requested_utc_date" = job."requested_utc_date"
+    AND cursor_row."lease_expires_at" > pg_catalog.transaction_timestamp()
+  ORDER BY job."tenant_id", job."workspace_id", job."requested_utc_date"
+  LIMIT 1;
+  IF FOUND THEN
+    RAISE EXCEPTION
+      'daily telemetry migration blocked: RESERVED v1 job for tenant %, workspace %, date % still has a live lease; quiesce the daily terminal and wait for lease expiry before deploy',
+      v_blocked."tenant_id", v_blocked."workspace_id",
+      v_blocked."requested_utc_date";
+  END IF;
+END;
+$guard_live_daily_model_job_reservation$;
+
+-- Only a structurally exact, pre-effect v1 reservation can be adopted. This
+-- validates every immutable binding and the absence of response/publication
+-- evidence before changing its identity.
+DO $guard_adoptable_daily_model_job_reservation$
+DECLARE
+  v_blocked RECORD;
+BEGIN
+  SELECT job."tenant_id", job."workspace_id", job."requested_utc_date"
+  INTO v_blocked
+  FROM public."reader_summary_daily_model_jobs" AS job
+  LEFT JOIN public."reader_summary_daily_source_authorities" AS source
+    ON source."tenant_id" = job."tenant_id"
+   AND source."workspace_id" = job."workspace_id"
+   AND source."requested_utc_date" = job."requested_utc_date"
+  LEFT JOIN public."reader_summary_daily_execution_cursors" AS cursor_row
+    ON cursor_row."tenant_id" = job."tenant_id"
+   AND cursor_row."workspace_id" = job."workspace_id"
+  WHERE job."state" = 'RESERVED'
+    AND (
+      source."tenant_id" IS NULL
+      OR cursor_row."tenant_id" IS NULL
+      OR cursor_row."next_unresolved_utc_date" <> job."requested_utc_date"
+      OR cursor_row."active_requested_utc_date" IS NOT NULL
+        AND cursor_row."active_requested_utc_date" <> job."requested_utc_date"
+      OR pg_catalog.btrim(job."source_authority_sha256") <>
+        pg_catalog.btrim(source."canonical_sha256")
+      OR job."provider" IS DISTINCT FROM 'codex'
+      OR job."model" IS DISTINCT FROM 'gpt-5.6-sol'
+      OR job."reasoning_effort" IS DISTINCT FROM 'xhigh'
+      OR job."runtime_engine" IS DISTINCT FROM 'subscription-runtime-cli'
+      OR job."identity" IS DISTINCT FROM pg_catalog.encode(pg_catalog.sha256(
+        pg_catalog.convert_to(pg_catalog.concat_ws('|',
+          'reader-summary-daily:v1', job."tenant_id"::TEXT,
+          job."workspace_id"::TEXT,
+          pg_catalog.to_char(job."requested_utc_date", 'YYYY-MM-DD'),
+          pg_catalog.btrim(source."canonical_sha256"), 'codex',
+          'gpt-5.6-sol', 'xhigh'
+        ), 'UTF8')), 'hex')
+      OR job."running_at" IS NOT NULL OR job."completed_at" IS NOT NULL
+      OR job."failed_ambiguous_at" IS NOT NULL
+      OR job."response_bytes" IS NOT NULL OR job."response_sha256" IS NOT NULL
+      OR job."attestation" IS NOT NULL OR job."attestation_bytes" IS NOT NULL
+      OR job."attestation_sha256" IS NOT NULL
+      OR job."receipt_bytes" IS NOT NULL OR job."receipt_sha256" IS NOT NULL
+      OR job."reader_summary_job_id" IS NOT NULL
+      OR job."reader_summary_artifact_id" IS NOT NULL
+      OR job."publication_id" IS NOT NULL
+      OR job."publication_report_sha256" IS NOT NULL
+      OR job."publication_proof_sha256" IS NOT NULL
+      OR job."weekly_evidence_sha256" IS NOT NULL
+      OR job."public_evidence_sha256" IS NOT NULL
+      OR job."public_frontend_sha256" IS NOT NULL
+      OR job."publication_finalized_at" IS NOT NULL
+    )
+  ORDER BY job."tenant_id", job."workspace_id", job."requested_utc_date"
+  LIMIT 1;
+  IF FOUND THEN
+    RAISE EXCEPTION
+      'daily telemetry migration blocked: RESERVED v1 job for tenant %, workspace %, date % is not an exact pre-effect reservation',
+      v_blocked."tenant_id", v_blocked."workspace_id",
+      v_blocked."requested_utc_date";
+  END IF;
+END;
+$guard_adoptable_daily_model_job_reservation$;
+
+UPDATE public."reader_summary_daily_execution_cursors" AS cursor_row
+SET "active_requested_utc_date" = NULL, "lease_owner" = NULL,
+  "leased_at" = NULL, "lease_expires_at" = NULL,
+  "absolute_expires_at" = NULL,
+  "updated_at" = pg_catalog.transaction_timestamp()
+FROM public."reader_summary_daily_model_jobs" AS job
+WHERE job."tenant_id" = cursor_row."tenant_id"
+  AND job."workspace_id" = cursor_row."workspace_id"
+  AND job."requested_utc_date" = cursor_row."active_requested_utc_date"
+  AND job."state" = 'RESERVED';
+
+UPDATE public."reader_summary_daily_model_jobs" AS job
+SET "identity" = pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(
+      pg_catalog.concat_ws('|', 'reader-summary-daily:v2',
+        job."tenant_id"::TEXT, job."workspace_id"::TEXT,
+        pg_catalog.to_char(job."requested_utc_date", 'YYYY-MM-DD'),
+        pg_catalog.btrim(job."source_authority_sha256"), 'codex',
+        'gpt-5.6-sol', 'high'
+      ), 'UTF8')), 'hex'),
+  "reasoning_effort" = 'high',
+  "usage_source" = 'UNAVAILABLE'
+WHERE job."state" = 'RESERVED';
+
 CREATE FUNCTION public."complete_reader_summary_daily_model_job_v2"(
   target_tenant_id UUID, target_workspace_id UUID, target_date DATE,
   target_worker_id TEXT, target_fencing_token BIGINT, finished_at TIMESTAMPTZ,
@@ -109,29 +247,9 @@ BEGIN
     AND job."requested_utc_date" = target_date
   FOR UPDATE;
 
-  IF v_job."state" = 'COMPLETED' THEN
-    IF v_job."response_bytes" <> exact_response
-      OR v_job."receipt_bytes" <> exact_receipt_bytes
-      OR pg_catalog.btrim(v_job."attestation_sha256") <>
-        pg_catalog.btrim(exact_attestation_sha256)
-      OR v_job."input_tokens" IS DISTINCT FROM observed_input_tokens
-      OR v_job."output_tokens" IS DISTINCT FROM observed_output_tokens
-      OR v_job."total_tokens" IS DISTINCT FROM observed_total_tokens
-      OR v_job."usage_source" IS DISTINCT FROM observed_usage_source
-      OR v_job."duration_ms" IS DISTINCT FROM observed_duration_ms THEN
-      RAISE EXCEPTION 'daily COMPLETED telemetry replay diverged';
-    END IF;
-    RETURN TRUE;
-  END IF;
-  IF v_job."state" <> 'RUNNING'
-    OR v_cursor."active_requested_utc_date" <> target_date
-    OR v_cursor."lease_owner" <> target_worker_id
-    OR v_cursor."fencing_token" <> target_fencing_token
-    OR finished_at >= v_cursor."lease_expires_at"
-    OR finished_at >= v_cursor."absolute_expires_at" THEN
-    RAISE EXCEPTION 'daily telemetry completion has a stale fence or state';
-  END IF;
-
+  -- Validate the complete canonical envelope before either first completion or
+  -- idempotent replay. A replay is successful only for inputs that could have
+  -- validly produced the already-sealed row.
   v_receipt := pg_catalog.convert_from(exact_receipt_bytes, 'UTF8')::JSONB;
   IF pg_catalog.btrim(exact_response_sha256) <>
       pg_catalog.encode(pg_catalog.sha256(exact_response), 'hex')
@@ -173,6 +291,35 @@ BEGIN
     OR verified_attestation->>'purpose' IS DISTINCT FROM
       'social_monitor.reader_summary.generate.v2' THEN
     RAISE EXCEPTION 'daily response, receipt, attestation, or telemetry is invalid';
+  END IF;
+
+  IF v_job."state" = 'COMPLETED' THEN
+    IF v_job."response_bytes" <> exact_response
+      OR pg_catalog.btrim(v_job."response_sha256") <>
+        pg_catalog.btrim(exact_response_sha256)
+      OR v_job."attestation" <> verified_attestation
+      OR v_job."attestation_bytes" <> exact_attestation_bytes
+      OR v_job."receipt_bytes" <> exact_receipt_bytes
+      OR pg_catalog.btrim(v_job."attestation_sha256") <>
+        pg_catalog.btrim(exact_attestation_sha256)
+      OR pg_catalog.btrim(v_job."receipt_sha256") <>
+        pg_catalog.btrim(exact_receipt_sha256)
+      OR v_job."input_tokens" IS DISTINCT FROM observed_input_tokens
+      OR v_job."output_tokens" IS DISTINCT FROM observed_output_tokens
+      OR v_job."total_tokens" IS DISTINCT FROM observed_total_tokens
+      OR v_job."usage_source" IS DISTINCT FROM observed_usage_source
+      OR v_job."duration_ms" IS DISTINCT FROM observed_duration_ms THEN
+      RAISE EXCEPTION 'daily COMPLETED telemetry replay diverged';
+    END IF;
+    RETURN TRUE;
+  END IF;
+  IF v_job."state" <> 'RUNNING'
+    OR v_cursor."active_requested_utc_date" <> target_date
+    OR v_cursor."lease_owner" <> target_worker_id
+    OR v_cursor."fencing_token" <> target_fencing_token
+    OR finished_at >= v_cursor."lease_expires_at"
+    OR finished_at >= v_cursor."absolute_expires_at" THEN
+    RAISE EXCEPTION 'daily telemetry completion has a stale fence or state';
   END IF;
 
   UPDATE public."reader_summary_daily_model_jobs" SET

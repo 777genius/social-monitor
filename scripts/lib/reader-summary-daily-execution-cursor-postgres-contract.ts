@@ -7,6 +7,449 @@ export type ReaderSummaryDailyPostgresClient = Readonly<{
   ): Promise<Readonly<{ rows: readonly TRow[]; rowCount: number | null }>>;
 }>;
 
+const canonicalSchemaOwnerRole = "social_monitor_public_schema_owner";
+const canonicalPublicationOwnerRole =
+  "social_monitor_reader_summary_publication_owner";
+
+export const withCanonicalPublicationFixtureRole = async <T>(params: {
+  readonly admin: ReaderSummaryDailyPostgresClient;
+  readonly schemaOwnerRole: string;
+  readonly publicationOwnerRole: string;
+  readonly operation: () => Promise<T>;
+  readonly afterRestore: () => Promise<void>;
+}): Promise<T> => {
+  assert(params.schemaOwnerRole === canonicalSchemaOwnerRole,
+    "canonical publication fixture requires the fixed schema owner role");
+  assert(params.publicationOwnerRole === canonicalPublicationOwnerRole,
+    "canonical publication fixture requires the fixed publication owner role");
+  let operationFailed = false;
+  let operationError: unknown;
+  let operationResult!: T;
+  let restorationFailed = false;
+  let restorationError: unknown;
+  let afterRestoreFailed = false;
+  let afterRestoreError: unknown;
+  try {
+    await params.admin.query(
+      `SET ROLE ${quoteRoleIdentifier(params.publicationOwnerRole)}`,
+    );
+    operationResult = await params.operation();
+  } catch (error) {
+    operationFailed = true;
+    operationError = error;
+  } finally {
+    try {
+      await params.admin.query(
+        `SET ROLE ${quoteRoleIdentifier(params.schemaOwnerRole)}`,
+      );
+    } catch (error) {
+      restorationFailed = true;
+      restorationError = error;
+    }
+    if (!restorationFailed) {
+      try {
+        await params.afterRestore();
+      } catch (error) {
+        afterRestoreFailed = true;
+        afterRestoreError = error;
+      }
+    }
+  }
+  if (operationFailed) throw operationError;
+  if (restorationFailed) throw restorationError;
+  if (afterRestoreFailed) throw afterRestoreError;
+  return operationResult;
+};
+
+export const assertReaderSummaryDailyCheckerRoleBootstrapContract = (
+  source: string,
+): void => {
+  assert(source.includes(`CREATE ROLE \${quoteIdentifier(terminalRole)} LOGIN`),
+    "daily checker must create the terminal as a LOGIN role");
+  assert(source.includes("NOCREATEROLE NOINHERIT") &&
+    source.includes("NOREPLICATION NOBYPASSRLS"),
+    "daily checker roles must remain NOINHERIT and least privilege");
+  assert(source.includes(`await roleAdmin.query("SET createrole_self_grant = ''")`),
+    "daily checker must pin the PostgreSQL 18 creator membership mode");
+  assert(source.includes("NOLOGIN\n    NOSUPERUSER NOCREATEDB CREATEROLE INHERIT") &&
+    source.includes("SET SESSION AUTHORIZATION ${quoteIdentifier(migrationAdminRole)}"),
+  "daily checker migrations must use a distinct least-privilege migration admin");
+  const definerAudit = source.slice(
+    source.indexOf("NOT definer.rolcanlogin"),
+    source.indexOf("AS definer_safe") + "AS definer_safe".length,
+  );
+  assert(definerAudit.includes("count(*) = 1 AND count(*) FILTER (") &&
+    definerAudit.includes("member.rolname = session_user AND grantor.rolsuper") &&
+    definerAudit.includes(
+      "membership.admin_option AND NOT membership.inherit_option",
+    ) && definerAudit.includes("AND NOT membership.set_option) = 1"),
+  "daily checker must audit the exact definer bootstrap membership");
+  assert(definerAudit.includes("WHERE membership.member = definer.oid"),
+    "daily checker must reject outgoing definer memberships");
+  assert(source.includes("if (terminalRoleCreated)") &&
+    source.includes("for (const role of auxiliaryRolesCreated.reverse())") &&
+    source.includes("if (migrationAdminRoleCreated)"),
+  "daily checker cleanup must preserve pre-existing roles");
+};
+
+export const assertReaderSummaryDailyCheckerFixtureRoleContract = (
+  source: string,
+): void => {
+  const helperStart = source.indexOf("const withSchemaOwnerFixtureRole = async");
+  const telemetryHelperStart = source.indexOf(
+    "const applyTelemetryMigrationAsMigrationAdmin = async",
+  );
+  const helperSource = source.slice(helperStart, telemetryHelperStart);
+  const telemetryHelperSource = source.slice(
+    telemetryHelperStart,
+    source.indexOf("const roleExists = async", telemetryHelperStart),
+  );
+  assert(helperStart >= 0 && telemetryHelperStart > helperStart &&
+    helperSource.includes("assert(!schemaOwnerFixtureRoleActive") &&
+    helperSource.includes("schemaOwnerFixtureRoleActive = true") &&
+    helperSource.includes("SET ROLE ${quoteIdentifier(schemaOwnerRole)}") &&
+    helperSource.includes("finally {") &&
+    helperSource.includes('await admin.query("RESET ROLE")') &&
+    helperSource.includes("if (operationFailed)") &&
+    helperSource.indexOf("throw operationError") >
+      helperSource.indexOf('await admin.query("RESET ROLE")') &&
+    helperSource.includes("schemaOwnerFixtureRoleActive = false"),
+  "daily checker schema-owner fixture scope must reject overlap and reset fail-safe");
+  assert(telemetryHelperSource.includes("assert(!schemaOwnerFixtureRoleActive") &&
+    telemetryHelperSource.indexOf('await admin.query("RESET ROLE")') <
+      telemetryHelperSource.indexOf("await admin.query(telemetryMigration)"),
+  "daily checker telemetry migrations must reset to migration admin first");
+  assert(source.match(/admin\.query\(telemetryMigration\)/gu)?.length === 1 &&
+    source.match(/await applyTelemetryMigrationAsMigrationAdmin\(admin\)/gu)?.length === 3,
+  "daily checker must route every telemetry migration through the reset boundary");
+  assert(source.includes(`await admin.query("RESET ROLE");
+    await admin.query(boundedMaintenanceMigration);`),
+  "daily checker bounded maintenance migration must run after RESET ROLE");
+  assert(source.includes(`await withSchemaOwnerFixtureRole(admin, async (fixtureAdmin) => ({
+        historicalScope: await seedHistoricalCompletedDailyJob(fixtureAdmin),
+        upgradeScopes: await seedUpgradeStateDailyJobs(fixtureAdmin),
+      }))`) &&
+    source.match(
+      /await withSchemaOwnerFixtureRole\(admin, async \(fixtureAdmin\) =>/gu,
+    )?.length === 5,
+  "daily checker must bound all direct fixture operations as schema owner");
+  assert(source.includes(
+    `await withSchemaOwnerFixtureRole(admin, async (fixtureAdmin) => {
+      await assertReaderSummaryDailyExecutionCursorPostgresContract({`),
+  "daily checker PostgreSQL fixture contract must run in schema-owner scope");
+  const migrationAdminTableGrant = new RegExp(
+    "GRANT[\\s\\S]{0,120}ON(?: TABLE)? public\\." +
+      "(?:reader_summary_daily_[a-z_]+|reader_summary_(?:artifacts|publications|jobs)|" +
+      "reader_summary_weekly_publication_evidence|source_items|feed_items)" +
+      "[\\s\\S]{0,120}" +
+      "TO \\$\\{quoteIdentifier\\(migrationAdminRole\\)\\}",
+    "iu",
+  );
+  assert(!migrationAdminTableGrant.test(source),
+    "daily checker must not grant migration admin daily or canonical table privileges");
+};
+
+export const assertReaderSummaryDailyCheckerActivationOwnershipContract = (
+  source: string,
+): void => {
+  const schemaHandoff = source.indexOf(
+    "ALTER SCHEMA public OWNER TO ${quoteIdentifier(schemaOwnerRole)}",
+  );
+  const activation = source.indexOf(
+    "await executePostgresMigrationWithDiagnostics(admin, {",
+  );
+  const activationAcl = source.indexOf("await admin.query(activationAclMigration)");
+  assert(schemaHandoff >= 0 && activation > schemaHandoff && activationAcl > activation,
+    "daily checker activation phases must remain ordered");
+  const publicAclResetStatement = "REVOKE ALL ON SCHEMA public FROM PUBLIC;";
+  const publicAclReset = source.indexOf(publicAclResetStatement);
+  const migrationAdminUsageGrantPattern =
+    /GRANT USAGE ON SCHEMA public\s+TO \$\{quoteIdentifier\(migrationAdminRole\)\}/gu;
+  const migrationAdminUsageGrants = [
+    ...source.matchAll(migrationAdminUsageGrantPattern),
+  ];
+  const migrationAdminUsageGrant = migrationAdminUsageGrants[0]?.index ?? -1;
+  const definerUsageGrantPattern =
+    /GRANT USAGE ON SCHEMA public\s+TO \$\{quoteIdentifier\(definerRole\)\}/gu;
+  const definerUsageGrants = [...source.matchAll(definerUsageGrantPattern)];
+  const definerUsageGrant = definerUsageGrants[0]?.index ?? -1;
+  const activationAclPrivilegeBoundary = source.indexOf(
+    "activationAclSchemaPrivileges.rows[0]?.publication_owner_has_create === false",
+  );
+  const retainedActivationPrivilegeProof = source.indexOf(
+    "retainedActivationSchemaPrivileges",
+    activationAcl,
+  );
+  const retainedActivationUsage = source.indexOf(
+    "publication_owner_has_usage ===\n      true &&",
+    retainedActivationPrivilegeProof,
+  );
+  const fixtureDefinerCreateGrant =
+    /GRANT\s+(?:CREATE|USAGE\s*,\s*CREATE|CREATE\s*,\s*USAGE|ALL(?:\s+PRIVILEGES)?)\s+ON SCHEMA public\s+TO \$\{quoteIdentifier\(definerRole\)\}/iu;
+  const tableHandoff = source.indexOf(
+    "ALTER TABLE public.reader_summary_jobs\n" +
+      "        OWNER TO ${quoteIdentifier(schemaOwnerRole)}",
+  );
+  const temporaryPublicationGrant = source.indexOf(
+    "GRANT USAGE, CREATE ON SCHEMA public\n" +
+      "        TO ${quoteIdentifier(publicationOwnerRole)}",
+    schemaHandoff,
+  );
+  assert(source.split(publicAclResetStatement).length === 2 &&
+    publicAclReset > schemaHandoff,
+  "daily checker must revoke implicit PUBLIC schema access as the schema owner");
+  assert(migrationAdminUsageGrants.length === 1 &&
+    migrationAdminUsageGrant > publicAclReset &&
+    tableHandoff > migrationAdminUsageGrant &&
+    temporaryPublicationGrant > tableHandoff &&
+    activation > temporaryPublicationGrant,
+  "daily checker must order PUBLIC revoke, one migration-admin USAGE-only grant, " +
+    "table handoff, temporary publication-owner grant, and activation");
+  assert(source.includes(`SET ROLE \${quoteIdentifier(schemaOwnerRole)};
+      REVOKE ALL ON SCHEMA public FROM PUBLIC;
+      GRANT USAGE ON SCHEMA public
+        TO \${quoteIdentifier(migrationAdminRole)};
+      RESET ROLE`),
+  "daily checker schema owner must grant migration-admin USAGE immediately after " +
+    "the PUBLIC revoke");
+  assert(!/GRANT\s+(?:ALL(?:\s+PRIVILEGES)?|(?:USAGE|CREATE)(?:\s*,\s*(?:USAGE|CREATE))?)\s+ON\s+SCHEMA\s+public\s+TO\s+PUBLIC\b/iu
+    .test(source.slice(publicAclReset + 1)),
+  "daily checker must not re-grant PUBLIC schema privileges after bootstrap");
+  assert(!fixtureDefinerCreateGrant.test(source),
+    "daily checker fixture must not grant schema CREATE to the activation definer");
+  assert(definerUsageGrants.length === 1 &&
+    definerUsageGrant > publicAclReset &&
+    definerUsageGrant > activationAclPrivilegeBoundary &&
+    definerUsageGrant < activationAcl,
+  "daily checker must grant exactly one explicit definer USAGE-only fixture ACL " +
+    "after the PUBLIC revoke and before activation ACL migration");
+  assert(source.includes(`SET ROLE \${quoteIdentifier(schemaOwnerRole)};
+      GRANT USAGE ON SCHEMA public
+        TO \${quoteIdentifier(definerRole)};
+      RESET ROLE`),
+  "daily checker schema owner must directly grant the definer fixture USAGE-only");
+  assert(retainedActivationPrivilegeProof > activationAcl &&
+    retainedActivationUsage > retainedActivationPrivilegeProof &&
+    source.indexOf("publication_owner_has_create ===\n      false",
+      retainedActivationUsage) > retainedActivationUsage,
+  "daily checker must prove durable publication-owner USAGE without CREATE after " +
+    "activation ACL");
+  assert(!/REVOKE USAGE ON SCHEMA public\s+FROM \$\{quoteIdentifier\(publicationOwnerRole\)\}/iu
+    .test(source),
+  "daily checker must not revoke durable publication-owner schema USAGE");
+  for (const table of [
+    "reader_summary_daily_execution_cursors",
+    "reader_summary_daily_source_authorities",
+    "reader_summary_daily_model_jobs",
+    "source_items",
+    "feed_items",
+  ]) {
+    const handoffs = [...source.matchAll(new RegExp(
+      `ALTER TABLE public\\.${table}\\s+OWNER TO ` +
+        "\\$\\{quoteIdentifier\\(schemaOwnerRole\\)\\}",
+      "gu",
+    ))];
+    assert(handoffs.length === 1 && handoffs[0]!.index > schemaHandoff &&
+      handoffs[0]!.index < activation,
+    `daily checker must hand ${table} to the schema owner before activation`);
+  }
+  for (const signature of [
+    "reject_reader_summary_daily_source_authority_mutation()",
+    "claim_reader_summary_daily_execution(",
+    "renew_reader_summary_daily_execution_lease(",
+    "mark_reader_summary_daily_model_job_running(",
+  ]) {
+    const functionHandoff = source.indexOf(`ALTER FUNCTION public.${signature}`);
+    assert(functionHandoff > activation && functionHandoff < activationAcl,
+      `daily checker must hand ${signature} to the schema owner after activation`);
+  }
+  assert(!source.slice(schemaHandoff).includes(
+    "GRANT USAGE, CREATE ON SCHEMA public\n" +
+      "        TO ${quoteIdentifier(migrationAdminRole)}",
+  ), "daily checker must not restore schema CREATE to the migration admin");
+  assert(!source.includes("REFERENCES ON TABLE public.reader_summary_jobs"),
+    "daily checker must not grant migration-admin REFERENCES after table handoff");
+  assert(source.match(/executePostgresMigrationWithDiagnostics\(admin, \{/gu)?.length === 1 &&
+    !source.includes("locatePostgresMigrationFailureForTestDiagnostics") &&
+    !source.includes("activationParams"),
+  "daily checker must execute the whole activation migration exactly once");
+};
+
+export const assertReaderSummaryDailyCheckerCanonicalRlsContract = (
+  source: string,
+): void => {
+  const fixtureStart = source.indexOf("const baseSchemaSql = `");
+  const fixtureEnd = source.indexOf("`;", fixtureStart);
+  assert(fixtureStart >= 0 && fixtureEnd > fixtureStart,
+    "daily checker base schema fixture is missing");
+  const fixture = source.slice(fixtureStart, fixtureEnd);
+  const canonicalTables = [
+    "reader_summary_artifacts",
+    "reader_summary_publications",
+    "reader_summary_weekly_publication_evidence",
+    "reader_summary_jobs",
+  ] as const;
+  const rlsStatements = [...fixture.matchAll(
+    /ALTER TABLE ([a-z_]+) (ENABLE|FORCE) ROW LEVEL SECURITY;/gu,
+  )];
+  for (const table of canonicalTables) {
+    for (const boundary of ["ENABLE", "FORCE"] as const) {
+      assert(rlsStatements.filter((match) =>
+        match[1] === table && match[2] === boundary).length === 1,
+      `daily checker must ${boundary} RLS on canonical fixture table ${table}`);
+    }
+  }
+  assert(rlsStatements.length === canonicalTables.length * 2 &&
+    rlsStatements.every((match) => canonicalTables.includes(
+      match[1] as (typeof canonicalTables)[number],
+    )), "daily checker must apply RLS only to the four canonical fixture tables");
+  assert(fixture.includes(
+    "CREATE OR REPLACE FUNCTION public.social_monitor_rls_system_access()",
+  ) && fixture.includes(
+    "CREATE OR REPLACE FUNCTION public.social_monitor_rls_workspace_match(",
+  ), "daily checker canonical fixture must use the bounded production RLS helpers");
+  const policies = [...fixture.matchAll(
+    /CREATE POLICY tenant_isolation ON ([a-z_]+)\s+USING \(public\.social_monitor_rls_workspace_match\(tenant_id, workspace_id\)\)\s+WITH CHECK \(public\.social_monitor_rls_workspace_match\(tenant_id, workspace_id\)\);/gu,
+  )];
+  assert(policies.length === canonicalTables.length && policies.every((match) =>
+    canonicalTables.includes(match[1] as (typeof canonicalTables)[number])),
+  "daily checker must reproduce only the canonical workspace RLS policies");
+  assert(!/USING\s*\(\s*true\s*\)/iu.test(fixture),
+    "daily checker canonical fixture must not add permissive RLS policies");
+};
+
+export const assertReaderSummaryDailyCanonicalPublicationFixtureContract = (
+  checkerSource: string,
+  contractSource: string,
+): void => {
+  assert(checkerSource.includes("schemaOwnerRole,\n        publicationOwnerRole,"),
+    "daily checker must pass both fixed fixture owner roles to the runtime contract");
+  for (const table of [
+    "reader_summary_artifacts",
+    "reader_summary_publications",
+    "reader_summary_weekly_publication_evidence",
+  ]) {
+    assert(checkerSource.includes(
+      `ALTER TABLE public.${table}\n        OWNER TO \${quoteIdentifier(publicationOwnerRole)}`,
+    ), `daily checker must keep ${table} owned by the publication owner`);
+  }
+  const seedStart = contractSource.lastIndexOf("const seedCanonicalPublication = async");
+  const seedEnd = contractSource.indexOf("const scopeIds =", seedStart);
+  const seedSource = contractSource.slice(seedStart, seedEnd);
+  const transactionBegin = seedSource.indexOf('admin.query("BEGIN")');
+  const rlsScope = seedSource.indexOf("set_config('social_monitor.tenant_id'");
+  const roleBoundary = seedSource.indexOf("withCanonicalPublicationFixtureRole({");
+  const summaryJobInsert = seedSource.indexOf("INSERT INTO public.reader_summary_jobs");
+  const artifactInsert = seedSource.indexOf(
+    "INSERT INTO public.reader_summary_artifacts",
+  );
+  const evidenceInsert = seedSource.indexOf(
+    "INSERT INTO public.reader_summary_weekly_publication_evidence",
+  );
+  const afterRestoreBinding = seedSource.indexOf("afterRestore: async () => {");
+  const summaryJobUpdate = seedSource.indexOf("UPDATE public.reader_summary_jobs");
+  const commit = seedSource.indexOf('admin.query("COMMIT")');
+  const requiredQualifiedDml = [
+    "INSERT INTO public.reader_summary_jobs",
+    "INSERT INTO public.reader_summary_artifacts",
+    "INSERT INTO public.reader_summary_publications",
+    "INSERT INTO public.reader_summary_weekly_publication_evidence",
+    "UPDATE public.reader_summary_jobs",
+  ] as const;
+  const unqualifiedCanonicalDml = new RegExp(
+    "\\b(?:INSERT\\s+INTO|UPDATE)\\s+(?!public\\.)(?:\\x22)?(?:" +
+      "reader_summary_artifacts|reader_summary_publications|" +
+      "reader_summary_weekly_publication_evidence|reader_summary_jobs)(?:\\x22)?" +
+      "(?=\\s|\\()",
+    "iu",
+  );
+  assert(seedStart >= 0 && seedEnd > seedStart &&
+    seedSource.includes("schemaOwnerRole: params.schemaOwnerRole") &&
+    seedSource.includes("publicationOwnerRole: params.publicationOwnerRole") &&
+    requiredQualifiedDml.every((statement) => seedSource.includes(statement)) &&
+    !unqualifiedCanonicalDml.test(seedSource) &&
+    transactionBegin >= 0 && transactionBegin < rlsScope &&
+    rlsScope < summaryJobInsert && summaryJobInsert < roleBoundary &&
+    roleBoundary < artifactInsert && evidenceInsert > artifactInsert &&
+    afterRestoreBinding > evidenceInsert && summaryJobUpdate > afterRestoreBinding &&
+    commit > summaryJobUpdate,
+  "canonical publication seed must public-qualify canonical/job DML and bound only " +
+    "canonical DML as publication owner");
+  assert(seedSource.includes(`const frontendBytes = Buffer.from(JSON.stringify({
+    tenantId: scope.tenantId, workspaceId: scope.workspaceId,
+    readerSummaryArtifact: { readerSummaryId: artifactId },
+  }));`), "canonical publication frontend fixture must bind the canonical artifact");
+  const helperStart = contractSource.indexOf(
+    "export const withCanonicalPublicationFixtureRole = async",
+  );
+  const helperEnd = contractSource.indexOf(
+    "export const assertReaderSummaryDailyCheckerRoleBootstrapContract",
+    helperStart,
+  );
+  const helperSource = contractSource.slice(helperStart, helperEnd);
+  const publicationRoleSet = helperSource.indexOf(
+    "SET ROLE ${quoteRoleIdentifier(params.publicationOwnerRole)}",
+  );
+  const schemaRoleRestoration = helperSource.indexOf(
+    "SET ROLE ${quoteRoleIdentifier(params.schemaOwnerRole)}",
+    publicationRoleSet,
+  );
+  const canonicalOperation = helperSource.indexOf("params.operation()");
+  const afterRestoreOperation = helperSource.indexOf("params.afterRestore()");
+  const operationErrorThrow = helperSource.indexOf("throw operationError");
+  const restorationErrorThrow = helperSource.indexOf("throw restorationError");
+  assert(helperStart >= 0 && helperEnd > helperStart &&
+    publicationRoleSet >= 0 &&
+    canonicalOperation > publicationRoleSet &&
+    helperSource.includes("finally {") &&
+    schemaRoleRestoration > canonicalOperation &&
+    afterRestoreOperation > schemaRoleRestoration &&
+    operationErrorThrow > afterRestoreOperation &&
+    !helperSource.includes("RESET ROLE") &&
+    !/(?:GRANT|REVOKE)[^;`]*ON SCHEMA public/iu.test(helperSource) &&
+    restorationErrorThrow > operationErrorThrow &&
+    helperSource.indexOf("throw afterRestoreError") > restorationErrorThrow,
+  "canonical publication role boundary must not mutate schema ACLs and must switch " +
+    "to publication owner, restore schema owner, and bind the job before returning");
+  const runtimeContract = checkerSource.indexOf(
+    "await assertReaderSummaryDailyExecutionCursorPostgresContract({",
+  );
+  const retainedPrivilegeProof = checkerSource.indexOf(
+    "retainedPublicationOwnerSchemaPrivileges",
+    runtimeContract,
+  );
+  const migrationAdminPrivilegeCleanup = checkerSource.indexOf(
+    "REVOKE USAGE ON SCHEMA public\n        FROM ${quoteIdentifier(migrationAdminRole)}",
+    runtimeContract,
+  );
+  const retainedPrivilegeAssertion = checkerSource.indexOf(
+    "publication_owner_has_usage === true &&",
+    retainedPrivilegeProof,
+  );
+  assert(runtimeContract >= 0 && retainedPrivilegeProof > runtimeContract &&
+    retainedPrivilegeAssertion > retainedPrivilegeProof &&
+    retainedPrivilegeProof < migrationAdminPrivilegeCleanup &&
+    checkerSource.indexOf("publication_owner_has_create === false",
+      retainedPrivilegeAssertion) > retainedPrivilegeAssertion,
+  "daily runtime contract must prove publication owner retains durable schema " +
+    "USAGE without CREATE before cleanup");
+  assert(!/REVOKE USAGE ON SCHEMA public\s+FROM \$\{quoteIdentifier\(publicationOwnerRole\)\}/iu
+    .test(checkerSource),
+  "daily checker must not revoke durable publication-owner schema USAGE");
+  const forbiddenCanonicalGrant = new RegExp(
+    "GRANT[^;`]*public\\.\"?(?:reader_summary_artifacts|" +
+      "reader_summary_publications|reader_summary_weekly_publication_evidence)" +
+      "\"?[^;`]*TO\\s+" +
+      "\\$\\{quoteIdentifier\\((?:schemaOwnerRole|migrationAdminRole)\\)\\}",
+    "iu",
+  );
+  assert(!forbiddenCanonicalGrant.test(checkerSource),
+    "daily checker must not grant canonical DML to schema or migration admin");
+  assert(!/GRANT\s+(?:SELECT|INSERT|UPDATE|DELETE|TRUNCATE|REFERENCES|TRIGGER|ALL)[^;`]*ON(?:\s+TABLE)?\s+public\.reader_summary_(?:artifacts|publications|weekly_publication_evidence)/iu
+    .test(checkerSource),
+  "daily checker must not grant canonical table DML privileges");
+};
+
 export const assertReaderSummaryDailyMigrationContract = (sql: string): void => {
   assert(sql.includes("current_setting('transaction_isolation') <> 'serializable'"),
     "daily cursor migration must reject non-SERIALIZABLE transitions");
@@ -74,6 +517,8 @@ export const assertReaderSummaryDailyExecutionCursorPostgresContract = async (pa
   readonly first: ReaderSummaryDailyPostgresClient;
   readonly second: ReaderSummaryDailyPostgresClient;
   readonly terminalRole: string;
+  readonly schemaOwnerRole: string;
+  readonly publicationOwnerRole: string;
 }): Promise<void> => {
   const identity = await params.first.query<{ current_user: string }>("SELECT current_user");
   assert(identity.rows[0]?.current_user === params.terminalRole,
@@ -165,30 +610,62 @@ export const assertReaderSummaryDailyExecutionCursorPostgresContract = async (pa
     },
   }), "utf8");
   const completionSql = `SELECT complete_reader_summary_daily_model_job_v2(
-    $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`;
+    $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`;
+  const completionFinishedAt = new Date().toISOString();
   const completionValues = [
     scope.tenantId, scope.workspaceId, firstDate, owner, fence,
-    new Date().toISOString(), responseBytes, responseSha,
+    completionFinishedAt, responseBytes, responseSha,
     attestation, attestationBytes, hash(attestationBytes), receiptBytes, hash(receiptBytes),
     120, 30, 150, "PROVIDER_REPORTED", 250,
   ] as const;
   await serializable(params.first, completionSql, completionValues);
-  await serializable(params.first, completionSql, completionValues);
-  await expectRejected(
-    serializable(params.first, completionSql, [
-      ...completionValues.slice(0, 17), 251,
-    ]),
-    "divergent terminal telemetry replay must conflict",
-  );
+  await serializable(params.first, completionSql,
+    replaceValue(completionValues, 5, new Date(Date.now() + 1_000).toISOString()));
+  const canonicalReceipt = JSON.parse(
+    receiptBytes.toString("utf8"),
+  ) as Record<string, unknown>;
+  const replayMutations: ReadonlyArray<readonly [string, readonly unknown[]]> = [
+    ["response bytes", replaceValue(completionValues, 6, Buffer.from("changed"))],
+    ["response SHA", replaceValue(completionValues, 7, "e".repeat(64))],
+    ["receipt bytes", replaceValue(completionValues, 11,
+      Buffer.from(`${receiptBytes.toString("utf8")} `, "utf8"))],
+    ["receipt SHA", replaceValue(completionValues, 12, "e".repeat(64))],
+    ["attestation JSON", replaceValue(completionValues, 8,
+      { ...attestation, requestId: "divergent" })],
+    ["attestation bytes", replaceValue(completionValues, 9,
+      Buffer.from(`${attestationBytes.toString("utf8")} `, "utf8"))],
+    ["attestation SHA", replaceValue(completionValues, 10, "e".repeat(64))],
+    ["model identity", completionWithEnvelope(completionValues, {
+      ...canonicalReceipt,
+      modelJobIdentity: "e".repeat(64),
+    })],
+    ["purpose", completionWithAttestation(completionValues, {
+      ...attestation,
+      purpose: "social_monitor.reader_summary.generate.v1",
+    })],
+    ["telemetry", completionWithEnvelope(
+      replaceValue(completionValues, 17, 251), {
+        ...canonicalReceipt,
+        executionUsage: {
+          inputTokens: 120, outputTokens: 30, totalTokens: 150,
+          usageSource: "PROVIDER_REPORTED", durationMs: 251,
+        },
+      },
+    )],
+  ];
+  for (const [binding, values] of replayMutations) {
+    await expectRejected(serializable(params.first, completionSql, values),
+      `divergent ${binding} replay must conflict`);
+  }
   const completed = await params.admin.query<{
     state: string; response_bytes: Buffer; receipt_bytes: Buffer;
     next_unresolved_utc_date: string; input_tokens: string;
     output_tokens: string; total_tokens: string;
-    usage_source: string; duration_ms: string;
+    usage_source: string; duration_ms: string; completed_at: Date;
   }>(`SELECT job.state, job.response_bytes, job.receipt_bytes,
         cursor.next_unresolved_utc_date::text,
         job.input_tokens::text, job.output_tokens::text, job.total_tokens::text,
-        job.usage_source, job.duration_ms::text
+        job.usage_source, job.duration_ms::text, job.completed_at
       FROM reader_summary_daily_model_jobs job
       JOIN reader_summary_daily_execution_cursors cursor USING (tenant_id, workspace_id)
       WHERE job.tenant_id = $1 AND job.workspace_id = $2
@@ -201,10 +678,11 @@ export const assertReaderSummaryDailyExecutionCursorPostgresContract = async (pa
     completed.rows[0]?.output_tokens === "30" &&
     completed.rows[0]?.total_tokens === "150" &&
     completed.rows[0]?.usage_source === "PROVIDER_REPORTED" &&
-    completed.rows[0]?.duration_ms === "250",
-    "COMPLETED receipt must persist without cursor advancement");
+    completed.rows[0]?.duration_ms === "250" &&
+    completed.rows[0]?.completed_at.toISOString() === completionFinishedAt,
+    "COMPLETED receipt replay must perform no writes or cursor advancement");
 
-  const canonical = await seedCanonicalPublication(params.admin, scope, firstDate);
+  const canonical = await seedCanonicalPublication(params, scope, firstDate);
   const finalizationSql = `SELECT finalize_reader_summary_daily_publication(
     $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`;
   const finalizationValues = [
@@ -214,8 +692,8 @@ export const assertReaderSummaryDailyExecutionCursorPostgresContract = async (pa
     canonical.weeklySha, canonical.evidenceBytes, hash(canonical.evidenceBytes),
     canonical.frontendBytes, hash(canonical.frontendBytes),
   ] as const;
-  await serializable(params.first, finalizationSql, finalizationValues);
-  await serializable(params.first, finalizationSql, finalizationValues);
+  await serializable(params.first, finalizationSql, finalizationValues, scope);
+  await serializable(params.first, finalizationSql, finalizationValues, scope);
   const finalized = await params.admin.query<{
     next_unresolved_utc_date: string; publication_id: string;
     reader_summary_job_id: string; reader_summary_artifact_id: string;
@@ -286,6 +764,41 @@ const expectRejected = async (
   throw new Error(message);
 };
 
+const replaceValue = (
+  values: readonly unknown[],
+  index: number,
+  value: unknown,
+): readonly unknown[] => values.map((current, currentIndex) =>
+  currentIndex === index ? value : current);
+
+const completionWithEnvelope = (
+  values: readonly unknown[],
+  envelope: Record<string, unknown>,
+): readonly unknown[] => {
+  const bytes = Buffer.from(JSON.stringify(envelope), "utf8");
+  return replaceValue(replaceValue(values, 11, bytes), 12, hash(bytes));
+};
+
+const completionWithAttestation = (
+  values: readonly unknown[],
+  attestation: Record<string, unknown>,
+): readonly unknown[] => {
+  const attestationBytes = Buffer.from(JSON.stringify(attestation), "utf8");
+  const currentReceipt = JSON.parse(
+    requiredBuffer(values[11]).toString("utf8"),
+  ) as Record<string, unknown>;
+  const receipt = {
+    ...currentReceipt,
+    attestation,
+    attestationSha256: hash(attestationBytes),
+  } as Record<string, unknown>;
+  return completionWithEnvelope(
+    replaceValue(replaceValue(replaceValue(values, 8, attestation),
+      9, attestationBytes), 10, hash(attestationBytes)),
+    receipt,
+  );
+};
+
 type ClaimRow = Record<string, unknown> & {
   outcome: string; lease_owner?: string; fencing_token?: string;
   source_canonical_bytes?: Buffer; source_canonical_sha256?: string;
@@ -312,9 +825,17 @@ const serializable = async <TRow extends Record<string, unknown> = Record<string
   client: ReaderSummaryDailyPostgresClient,
   sql: string,
   values: readonly unknown[],
+  scope?: Readonly<{ tenantId: string; workspaceId: string }>,
 ) => {
   await client.query("BEGIN ISOLATION LEVEL SERIALIZABLE");
   try {
+    if (scope !== undefined) {
+      await client.query(
+        `SELECT set_config('social_monitor.tenant_id', $1, true),
+          set_config('social_monitor.workspace_id', $2, true)`,
+        [scope.tenantId, scope.workspaceId],
+      );
+    }
     const result = await client.query<TRow>(sql, values);
     await client.query("COMMIT");
     return result;
@@ -345,7 +866,11 @@ const seedSource = async (
       `https://example.invalid/${suffix}`, `Title ${suffix}`, `Body ${suffix}`, date]);
 };
 const seedCanonicalPublication = async (
-  admin: ReaderSummaryDailyPostgresClient,
+  params: Readonly<{
+    admin: ReaderSummaryDailyPostgresClient;
+    schemaOwnerRole: string;
+    publicationOwnerRole: string;
+  }>,
   scope: { tenantId: string; workspaceId: string },
   date: string,
 ) => {
@@ -355,31 +880,57 @@ const seedCanonicalPublication = async (
   const proofSha = "d".repeat(64);
   const weeklyBytes = Buffer.from(JSON.stringify({ schemaVersion: 1, requestedUtcDate: date }));
   const weeklySha = hash(weeklyBytes);
-  await admin.query(`INSERT INTO reader_summary_artifacts
-    (id, tenant_id, workspace_id, status) VALUES ($1,$2,$3,'COMPLETED')`,
-    [artifactId, scope.tenantId, scope.workspaceId]);
-  await admin.query(`INSERT INTO reader_summary_jobs
-    (id, tenant_id, workspace_id, status, reader_summary_artifact_id)
-    VALUES ($1,$2,$3,'COMPLETED',$4)`,
-    [jobId, scope.tenantId, scope.workspaceId, artifactId]);
-  await admin.query(`INSERT INTO reader_summary_publications
-    (id, tenant_id, workspace_id, requested_utc_date, cadence,
-     semantic_status, reader_summary_job_id, reader_summary_artifact_id,
-     report_sha256, proof_sha256)
-    VALUES ($1,$2,$3,$4,'daily','COMPLETED',$5,$1,$6,$7)`,
-    [artifactId, scope.tenantId, scope.workspaceId, date, jobId,
-      reportSha, proofSha]);
-  await admin.query(`INSERT INTO reader_summary_weekly_publication_evidence
-    (publication_id, reader_summary_job_id, reader_summary_artifact_id,
-     canonical_bytes, canonical_sha256)
-    VALUES ($1,$2,$1,$3,$4)`,
-    [artifactId, jobId, weeklyBytes, weeklySha]);
+  const admin = params.admin;
+  await admin.query("BEGIN");
+  try {
+    await admin.query(
+      `SELECT set_config('social_monitor.tenant_id', $1, true),
+        set_config('social_monitor.workspace_id', $2, true)`,
+      [scope.tenantId, scope.workspaceId],
+    );
+    await admin.query(`INSERT INTO public.reader_summary_jobs
+      (id, tenant_id, workspace_id, status)
+      VALUES ($1,$2,$3,'COMPLETED')`,
+      [jobId, scope.tenantId, scope.workspaceId]);
+    await withCanonicalPublicationFixtureRole({
+      admin,
+      schemaOwnerRole: params.schemaOwnerRole,
+      publicationOwnerRole: params.publicationOwnerRole,
+      operation: async () => {
+        await admin.query(`INSERT INTO public.reader_summary_artifacts
+          (id, tenant_id, workspace_id, status) VALUES ($1,$2,$3,'COMPLETED')`,
+        [artifactId, scope.tenantId, scope.workspaceId]);
+        await admin.query(`INSERT INTO public.reader_summary_publications
+          (id, tenant_id, workspace_id, requested_utc_date, cadence,
+           semantic_status, reader_summary_job_id, reader_summary_artifact_id,
+           report_sha256, proof_sha256)
+          VALUES ($1,$2,$3,$4,'daily','COMPLETED',$5,$1,$6,$7)`,
+        [artifactId, scope.tenantId, scope.workspaceId, date, jobId,
+          reportSha, proofSha]);
+        await admin.query(`INSERT INTO public.reader_summary_weekly_publication_evidence
+          (publication_id, reader_summary_job_id, reader_summary_artifact_id,
+           tenant_id, workspace_id, canonical_bytes, canonical_sha256)
+          VALUES ($1,$2,$1,$3,$4,$5,$6)`,
+        [artifactId, jobId, scope.tenantId, scope.workspaceId, weeklyBytes, weeklySha]);
+      },
+      afterRestore: async () => {
+        await admin.query(`UPDATE public.reader_summary_jobs
+          SET reader_summary_artifact_id = $2 WHERE id = $1`,
+        [jobId, artifactId]);
+      },
+    });
+    await admin.query("COMMIT");
+  } catch (error) {
+    await admin.query("ROLLBACK");
+    throw error;
+  }
   const evidenceBytes = Buffer.from(JSON.stringify({
     scope: { tenantId: scope.tenantId, workspaceId: scope.workspaceId },
     result: { readerSummaryJobId: jobId, readerSummaryId: artifactId },
   }));
   const frontendBytes = Buffer.from(JSON.stringify({
     tenantId: scope.tenantId, workspaceId: scope.workspaceId,
+    readerSummaryArtifact: { readerSummaryId: artifactId },
   }));
   return { jobId, artifactId, reportSha, proofSha, weeklySha,
     evidenceBytes, frontendBytes };
@@ -395,12 +946,14 @@ const addUtcDays = (date: string, days: number): string => {
 };
 const utcDate = (value: Date): string => value.toISOString().slice(0, 10);
 const hash = (value: Buffer): string => createHash("sha256").update(value).digest("hex");
-const requiredBuffer = (value: Buffer | undefined): Buffer => {
+const requiredBuffer = (value: unknown): Buffer => {
   assert(Buffer.isBuffer(value), "PostgreSQL contract expected bytea bytes");
   return value;
 };
 const retryable = (error: unknown): boolean =>
   typeof error === "object" && error !== null && "code" in error && error.code === "40001";
+const quoteRoleIdentifier = (input: string): string =>
+  `"${input.replaceAll('"', '""')}"`;
 const assert: (condition: unknown, message: string) => asserts condition = (
   condition,
   message,

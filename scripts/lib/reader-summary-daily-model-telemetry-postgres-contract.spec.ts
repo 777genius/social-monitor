@@ -176,6 +176,37 @@ WHERE session_principal.rolname = session_user
     expect(sql).toContain("observed_total_tokens <> observed_input_tokens + observed_output_tokens");
     expect(sql).toContain("v_receipt->'executionUsage'->>'usageSource'");
     expect(sql).toContain("daily COMPLETED telemetry replay diverged");
+    const canonicalValidation = sql.indexOf(
+      "v_receipt := pg_catalog.convert_from(exact_receipt_bytes, 'UTF8')::JSONB;",
+    );
+    const replayBranch = sql.indexOf("IF v_job.\"state\" = 'COMPLETED' THEN");
+    expect(canonicalValidation).toBeGreaterThan(-1);
+    expect(canonicalValidation).toBeLessThan(replayBranch);
+    for (const binding of [
+      'v_job."response_sha256"',
+      'v_job."attestation"',
+      'v_job."attestation_bytes"',
+      'v_job."attestation_sha256"',
+      'v_job."receipt_bytes"',
+      'v_job."receipt_sha256"',
+    ]) {
+      expect(sql.slice(replayBranch)).toContain(binding);
+    }
+  });
+
+  it("fails closed for unknown effects and only adopts exact expired reservations", () => {
+    expect(sql).toContain("DO $guard_daily_model_job_upgrade_state$");
+    expect(sql).toContain("has unknown provider effect");
+    expect(sql).toContain("DO $guard_live_daily_model_job_reservation$");
+    expect(sql).toContain("still has a live lease");
+    expect(sql).toContain("DO $guard_adoptable_daily_model_job_reservation$");
+    expect(sql).toContain("is not an exact pre-effect reservation");
+    expect(sql).toContain("job.\"state\" = 'RESERVED'");
+    expect(sql).toContain("'reader-summary-daily:v2'");
+    expect(sql).toContain("\"usage_source\" = 'UNAVAILABLE'");
+    expect(sql.indexOf("DO $guard_daily_model_job_upgrade_state$")).toBeLessThan(
+      sql.indexOf("REVOKE ALL ON FUNCTION public.\"complete_reader_summary_daily_model_job\""),
+    );
   });
 
   it("cuts both new daily claim paths over to the v2 high identity", () => {
