@@ -423,6 +423,20 @@ test("fixture server source fails closed on real runtime and legacy promotion mu
       /missing production contract/u,
     ],
     [
+      server.replace(
+        "moduleRef.get(ExecuteReaderSummaryJobUseCase",
+        "new ExecuteReaderSummaryJobUseCase",
+      ),
+      /production contract|production use-case factory/u,
+    ],
+    [
+      server.replace(
+        "  assertReaderSummaryHttpFixtureProductionWiring(\n    executeReaderSummary,",
+        "  void (\n    executeReaderSummary,",
+      ),
+      /missing production contract/u,
+    ],
+    [
       `${server}\nREADER_SUMMARY_PROMOTION_V1_ENABLED`,
       /legacy promotion identifier/u,
     ],

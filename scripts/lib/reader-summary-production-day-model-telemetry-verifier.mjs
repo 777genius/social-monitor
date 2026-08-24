@@ -1,4 +1,10 @@
-export function validateDailyModelExecution(value, evidence, frontend, binding) {
+export function validateDailyModelExecution(
+  value,
+  evidence,
+  frontend,
+  binding,
+  reportContract = "current",
+) {
   const daily = evidence?.provenance?.dailySourceAuthority;
   if (daily === undefined) {
     if (value !== null && value !== undefined) {
@@ -17,22 +23,33 @@ export function validateDailyModelExecution(value, evidence, frontend, binding) 
   };
   const artifactUsage = frontend?.readerSummaryArtifact?.usage;
   const runtime = binding.runtimeProvenance;
+  const historicalIncomplete =
+    value.usageSource === "HISTORICAL_INCOMPLETE" &&
+    value.inputTokens === null && value.outputTokens === null &&
+    value.totalTokens === null && value.durationMs === null;
+  const providerReported =
+    value.usageSource === "PROVIDER_REPORTED" &&
+    nonNegativeInteger(value.inputTokens) &&
+    nonNegativeInteger(value.outputTokens) &&
+    nonNegativeInteger(value.totalTokens) &&
+    value.totalTokens === value.inputTokens + value.outputTokens &&
+    Number.isSafeInteger(value.durationMs) && value.durationMs >= 1;
   if (
     stableJson(value) !== stableJson(expected) ||
-    value.usageSource !== "PROVIDER_REPORTED" ||
-    !nonNegativeInteger(value.inputTokens) ||
-    !nonNegativeInteger(value.outputTokens) ||
-    !nonNegativeInteger(value.totalTokens) ||
-    value.totalTokens !== value.inputTokens + value.outputTokens ||
-    !Number.isSafeInteger(value.durationMs) || value.durationMs < 1 ||
+    (reportContract === "current" ? !providerReported :
+      !providerReported && !historicalIncomplete) ||
     !nonEmptyText(value.provider) || !nonEmptyText(value.model) ||
     !nonEmptyText(value.reasoningEffort) ||
     !isSha256(value.modelJobIdentity) || !isSha256(value.receiptSha256) ||
+    (reportContract === "current" &&
+      (value.provider !== "codex" || value.model !== "gpt-5.6-sol" ||
+        value.reasoningEffort !== "high")) ||
     value.provider !== runtime.provider ||
     value.model !== runtime.physicalModel ||
     value.reasoningEffort !== runtime.reasoningEffort ||
-    artifactUsage?.inputTokens !== value.inputTokens ||
-    artifactUsage?.outputTokens !== value.outputTokens
+    (providerReported &&
+      (artifactUsage?.inputTokens !== value.inputTokens ||
+        artifactUsage?.outputTokens !== value.outputTokens))
   ) {
     fail("daily model telemetry is incomplete or not artifact-bound");
   }

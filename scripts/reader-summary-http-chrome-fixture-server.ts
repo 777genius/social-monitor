@@ -16,7 +16,9 @@ import { MetricsRuntimeModule } from
   "@social-monitor/platform-metrics/nest/metrics-runtime.module";
 
 import {
+  CryptoIdGenerator,
   FixedClock,
+  SystemClock,
   type IdGenerator,
   tenantId,
   workspaceId,
@@ -32,23 +34,16 @@ import {
   type SummaryEvidenceSelection,
 } from "@social-monitor/summary/domain";
 import { ExecuteReaderSummaryJobUseCase } from "@social-monitor/summary/features/execute-reader-summary-job/execute-reader-summary-job.use-case";
-import {
-  NOOP_READER_SUMMARY_PROMOTION_METRICS,
-  readerSummaryPromotionControl,
-} from "@social-monitor/summary/features/execute-reader-summary-job/reader-summary-promotion-control";
 import { SummaryRestModule } from "@social-monitor/summary/interfaces/rest/summary-rest.module";
 import {
   READER_SUMMARY_ARTIFACT_REPOSITORY,
+  READER_SUMMARY_EVIDENCE_SELECTOR,
   READER_SUMMARY_JOB_REPOSITORY,
-  READER_SUMMARY_POLICY_REPOSITORY,
-  READER_SUMMARY_PUBLICATION,
   SUMMARY_PRISMA_CLIENT,
 } from "@social-monitor/summary/interfaces/rest/summary-provider-tokens";
 import type {
   ReaderSummaryArtifactRepositoryPort,
   ReaderSummaryJobRepositoryPort,
-  ReaderSummaryPolicyRepositoryPort,
-  ReaderSummaryPublicationPort,
 } from "@social-monitor/summary/ports";
 
 import { DomainErrorFilter } from "../apps/api-gateway/src/domain-error.filter";
@@ -56,6 +51,7 @@ import { createReaderSummaryFixtureLifecycle } from
   "./lib/reader-summary-fixture-resource-lifecycle";
 import {
   assertReaderSummaryHttpFixturePersistence,
+  assertReaderSummaryHttpFixtureProductionWiring,
   ReaderSummaryAgentRuntimeFixture,
   readerSummaryHttpFixtureIdentity,
 } from "./lib/reader-summary-http-fixture-runtime";
@@ -276,6 +272,15 @@ const start = async (): Promise<void> => {
   moduleBuilder
     .overrideProvider(GrpcAgentRuntimeClient)
     .useValue(agentRuntimeFixture);
+  moduleBuilder
+    .overrideProvider(READER_SUMMARY_EVIDENCE_SELECTOR)
+    .useValue({ async select() { return selection; } });
+  moduleBuilder
+    .overrideProvider(CryptoIdGenerator)
+    .useValue({ generate: () => fixtureArtifactId } satisfies IdGenerator);
+  moduleBuilder
+    .overrideProvider(SystemClock)
+    .useValue(new FixedClock(cutoff));
   const moduleRef = await moduleBuilder.compile();
   fixtureModule = moduleRef;
   emitReaderSummaryFixtureStage("nest_module_compile_end");
@@ -308,14 +313,6 @@ const start = async (): Promise<void> => {
     READER_SUMMARY_ARTIFACT_REPOSITORY,
     { strict: false },
   );
-  const policies = moduleRef.get<ReaderSummaryPolicyRepositoryPort>(
-    READER_SUMMARY_POLICY_REPOSITORY,
-    { strict: false },
-  );
-  const publications = moduleRef.get<ReaderSummaryPublicationPort>(
-    READER_SUMMARY_PUBLICATION,
-    { strict: false },
-  );
   const selectedReaderSummaryModel = moduleRef.get(
     MeteredReaderSummaryModelAdapter,
     { strict: false },
@@ -336,29 +333,14 @@ const start = async (): Promise<void> => {
     idempotencyKey: "reader-summary-promotion-http-e2e",
     requestedAt: cutoff,
   }));
-  const result = await new ExecuteReaderSummaryJobUseCase(
-    jobs,
-    repository,
-    policies,
-    { async select() { return selection; } },
+  const executeReaderSummary = moduleRef.get(ExecuteReaderSummaryJobUseCase, {
+    strict: false,
+  });
+  assertReaderSummaryHttpFixtureProductionWiring(
+    executeReaderSummary,
     selectedReaderSummaryModel,
-    publications,
-    { generate: () => fixtureArtifactId } satisfies IdGenerator,
-    new FixedClock(cutoff),
-    readerSummaryPromotionControl(NOOP_READER_SUMMARY_PROMOTION_METRICS),
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    { async read() { return {
-      eligibleBindingIds: [],
-      items: [],
-      pageCount: 1,
-    }; } },
-    undefined,
-    undefined,
-    undefined,
-  ).execute({
+  );
+  const result = await executeReaderSummary.execute({
     tenantId: fixtureTenantId,
     workspaceId: fixtureWorkspaceId,
     readerSummaryJobId: fixtureJobId,

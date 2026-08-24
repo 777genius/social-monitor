@@ -9,6 +9,7 @@ import type {
   ReaderSummaryModelInput,
 } from "../../ports";
 import { AgentRuntimeReaderSummaryModelAdapter } from "./agent-runtime-reader-summary-model.adapter";
+import { frozenLegacyReaderSummaryRecoveryContract } from "./active-reader-summary-generation-profile";
 import {
   eligiblePromotionQuality,
   redditPromotionFacts,
@@ -84,6 +85,9 @@ describe("AgentRuntimeReaderSummaryModelAdapter", () => {
     );
     expect(client.commands[0]?.controls).toMatchObject({
       model: "gpt-5.6-sol",
+      reasoningEffort: "high",
+      toolsEnabled: false,
+      toolPolicy: "none",
     });
     expect(client.commands[0]?.timeoutMs).toBe(600_000);
     expect(client.commands[0]?.metadata).toMatchObject({
@@ -195,7 +199,7 @@ describe("AgentRuntimeReaderSummaryModelAdapter", () => {
     });
     const adapter = new AgentRuntimeReaderSummaryModelAdapter({
       client,
-      executionProfile: "legacy-recovery-v1",
+      legacyRecoveryContract: frozenLegacyReaderSummaryRecoveryContract,
       reasoningEffort: "xhigh",
     });
     const input = readerSummaryInput();

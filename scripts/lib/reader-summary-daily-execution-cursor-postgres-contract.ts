@@ -80,6 +80,7 @@ export const assertReaderSummaryDailyExecutionCursorPostgresContract = async (pa
     "daily contract first client is not the dedicated terminal role");
   const privileges = await params.first.query<{
     table_access: boolean; claim_access: boolean; telemetry_complete_access: boolean;
+    legacy_complete_access: boolean;
   }>(`SELECT
       has_table_privilege(current_user,
         'reader_summary_daily_model_jobs', 'SELECT') AS table_access,
@@ -88,10 +89,14 @@ export const assertReaderSummaryDailyExecutionCursorPostgresContract = async (pa
         'EXECUTE') AS claim_access,
       has_function_privilege(current_user,
         'complete_reader_summary_daily_model_job_v2(uuid,uuid,date,text,bigint,timestamptz,bytea,character,jsonb,bytea,character,bytea,character,bigint,bigint,bigint,text,bigint)',
-        'EXECUTE') AS telemetry_complete_access`);
+        'EXECUTE') AS telemetry_complete_access,
+      has_function_privilege(current_user,
+        'complete_reader_summary_daily_model_job(uuid,uuid,date,text,bigint,timestamptz,bytea,character,jsonb,bytea,character,bytea,character)',
+        'EXECUTE') AS legacy_complete_access`);
   assert(privileges.rows[0]?.table_access === false &&
     privileges.rows[0]?.claim_access === true &&
-    privileges.rows[0]?.telemetry_complete_access === true,
+    privileges.rows[0]?.telemetry_complete_access === true &&
+    privileges.rows[0]?.legacy_complete_access === false,
     "daily terminal role separation is unsafe");
 
   const eligible = utcDate(new Date(Date.now() - 86_400_000));

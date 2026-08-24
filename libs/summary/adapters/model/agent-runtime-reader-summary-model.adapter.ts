@@ -53,8 +53,8 @@ import {
   assertActiveReaderSummaryProvider,
   parseActiveReaderSummaryModel,
   parseActiveReaderSummaryReasoningEffort,
-  legacyReaderSummaryRecoveryPurposes,
-  type ReaderSummaryGenerationExecutionProfile,
+  frozenLegacyReaderSummaryRecoveryContract,
+  type FrozenLegacyReaderSummaryRecoveryContract,
 } from "./active-reader-summary-generation-profile";
 
 export type AgentRuntimeReaderSummaryModelAdapterOptions = {
@@ -63,7 +63,7 @@ export type AgentRuntimeReaderSummaryModelAdapterOptions = {
   readonly providerInstanceId?: string;
   readonly model?: string;
   readonly reasoningEffort?: "high" | "xhigh";
-  readonly executionProfile?: ReaderSummaryGenerationExecutionProfile;
+  readonly legacyRecoveryContract?: FrozenLegacyReaderSummaryRecoveryContract;
   readonly evalDatasetVersion?: string;
   readonly timeoutMs?: number;
   readonly maxOutputTokens?: number;
@@ -86,7 +86,7 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
   private readonly providerInstanceId?: string;
   private readonly model: string;
   private readonly reasoningEffort: "high" | "xhigh";
-  private readonly executionProfile: ReaderSummaryGenerationExecutionProfile;
+  private readonly legacyRecovery: boolean;
   private readonly evalDatasetVersion: string;
   private readonly timeoutMs: number;
   private readonly maxOutputTokens: number;
@@ -100,13 +100,19 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
       defaultAgentProvider;
     this.providerInstanceId = options.providerInstanceId;
     this.model = parseActiveReaderSummaryModel(options.model) ?? defaultModel;
-    this.executionProfile = options.executionProfile ?? "active-v2";
-    this.reasoningEffort = options.reasoningEffort ??
-      (this.executionProfile === "active-v2" ? defaultReasoningEffort : "xhigh");
+    this.legacyRecovery = options.legacyRecoveryContract !== undefined;
     if (
-      (this.executionProfile === "active-v2" &&
+      options.legacyRecoveryContract !== undefined &&
+      options.legacyRecoveryContract !== frozenLegacyReaderSummaryRecoveryContract
+    ) {
+      throw new Error("Reader summary legacy recovery contract is not canonical");
+    }
+    this.reasoningEffort = options.reasoningEffort ??
+      (this.legacyRecovery ? "xhigh" : defaultReasoningEffort);
+    if (
+      (!this.legacyRecovery &&
         this.reasoningEffort !== activeReaderSummaryReasoningEffort) ||
-      (this.executionProfile === "legacy-recovery-v1" &&
+      (this.legacyRecovery &&
         this.reasoningEffort !== "xhigh")
     ) {
       throw new Error("Reader summary execution profile and effort conflict");
@@ -218,7 +224,9 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
           taskRole: "summary",
           attempt,
           normalizedOutput: draft,
-          executionProfile: this.executionProfile,
+          legacyRecoveryContract: this.legacyRecovery
+            ? frozenLegacyReaderSummaryRecoveryContract
+            : undefined,
           sink: this.verifiedAttestationSink,
         });
 
@@ -260,12 +268,12 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
       provider: this.agentProvider,
       providerInstanceId: this.providerInstanceId,
       purpose: isRepair
-        ? this.executionProfile === "active-v2"
-          ? activeReaderSummaryPurposes.repair
-          : legacyReaderSummaryRecoveryPurposes.repair
-        : this.executionProfile === "active-v2"
-          ? activeReaderSummaryPurposes.generate
-          : legacyReaderSummaryRecoveryPurposes.generate,
+        ? this.legacyRecovery
+          ? frozenLegacyReaderSummaryRecoveryContract.purposes.repair
+          : activeReaderSummaryPurposes.repair
+        : this.legacyRecovery
+          ? frozenLegacyReaderSummaryRecoveryContract.purposes.generate
+          : activeReaderSummaryPurposes.generate,
       systemPrompt: isRepair
         ? `${buildOpenAiReaderSummaryInstructions(input)}\n${narrativeRepairInstruction}`
         : buildOpenAiReaderSummaryInstructions(input),
@@ -277,6 +285,8 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
         schemaVersion: selectedRoute.schemaVersion,
         model: this.model,
         reasoningEffort: this.reasoningEffort,
+        toolsEnabled: false,
+        toolPolicy: "none",
         maxOutputTokens: this.maxOutputTokens,
       },
       timeoutMs: this.timeoutMs,

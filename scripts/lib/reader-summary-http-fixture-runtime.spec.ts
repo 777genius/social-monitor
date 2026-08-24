@@ -21,11 +21,17 @@ describe("reader-summary HTTP fixture runtime contract", () => {
   it.each([
     ["wrong model", (value: MutableCommand) => { value.controls.model = "gpt-5.5"; }],
     ["missing model", (value: MutableCommand) => { delete value.controls.model; }],
-    ["xhigh effort", (value: MutableCommand) => {
+    ["xhigh metadata effort", (value: MutableCommand) => {
       value.metadata.reasoningEffort = "xhigh";
     }],
-    ["missing effort", (value: MutableCommand) => {
+    ["missing metadata effort", (value: MutableCommand) => {
       delete value.metadata.reasoningEffort;
+    }],
+    ["xhigh controls effort", (value: MutableCommand) => {
+      value.controls.reasoningEffort = "xhigh";
+    }],
+    ["missing controls effort", (value: MutableCommand) => {
+      delete value.controls.reasoningEffort;
     }],
     ["wrong provider", (value: MutableCommand) => { value.provider = "claude"; }],
     ["repair purpose", (value: MutableCommand) => {
@@ -39,6 +45,9 @@ describe("reader-summary HTTP fixture runtime contract", () => {
     }],
     ["tools enabled", (value: MutableCommand) => {
       value.controls.toolsEnabled = true;
+    }],
+    ["missing tool policy", (value: MutableCommand) => {
+      delete value.controls.toolPolicy;
     }],
     ["wrong output schema", (value: MutableCommand) => {
       value.outputSchema = { type: "string" };
@@ -174,6 +183,9 @@ const mutableCommand = () => ({
     outputSchemaName: "social_monitor_reader_summary_artifact",
     schemaVersion: "reader_summary.artifact.v1",
     model: "gpt-5.6-sol",
+    reasoningEffort: "high",
+    toolsEnabled: false,
+    toolPolicy: "none",
     maxOutputTokens: 16_000,
   } as MutableRecord,
   timeoutMs: 600_000,

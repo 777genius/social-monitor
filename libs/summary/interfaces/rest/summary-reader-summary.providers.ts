@@ -114,6 +114,8 @@ import { summaryReaderSummaryPersistenceProviders } from "./summary-reader-summa
 import { readerSummaryPublicationProvider } from "./summary-reader-summary-publication.provider";
 
 export const summaryReaderSummaryProviders: Provider[] = [
+  CryptoIdGenerator,
+  SystemClock,
   InMemoryReaderSummaryJobRepository,
   InMemoryReaderSummaryArtifactRepository,
   InMemoryReaderSummaryPolicyRepository,
@@ -340,6 +342,8 @@ export const summaryReaderSummaryProviders: Provider[] = [
       topicMapBuilder: BuildReaderSummaryTopicMapUseCase,
       githubProjectionReader: ReaderSummaryGitHubProjectionReaderPort,
       metrics: MetricsRecorderPort,
+      ids: CryptoIdGenerator,
+      clock: SystemClock,
     ) =>
       new ExecuteReaderSummaryJobUseCase(
         readerSummaryJobs,
@@ -348,8 +352,8 @@ export const summaryReaderSummaryProviders: Provider[] = [
         evidenceSelector,
         readerSummaryModel,
         publications,
-        new CryptoIdGenerator(),
-        new SystemClock(),
+        ids,
+        clock,
         readerSummaryPromotionControl(
           new ReaderSummaryPromotionMetricsRecorder(metrics),
         ),
@@ -374,6 +378,8 @@ export const summaryReaderSummaryProviders: Provider[] = [
       BuildReaderSummaryTopicMapUseCase,
       READER_SUMMARY_GITHUB_PROJECTION_READER,
       METRICS_RECORDER,
+      CryptoIdGenerator,
+      SystemClock,
     ],
   },
   {

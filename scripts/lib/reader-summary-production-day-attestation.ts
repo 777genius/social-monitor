@@ -257,6 +257,12 @@ export const isProductionSubscriptionRuntimeProvenance = (
   );
 };
 
+export const isCurrentProductionSubscriptionRuntimeProvenance = (
+  value: unknown,
+): value is ProductionDayRuntimeProvenance =>
+  isProductionSubscriptionRuntimeProvenance(value) &&
+  (value.execution === "not_executed" || value.reasoningEffort === "high");
+
 export const runtimeProvenanceEqual = (
   value: unknown,
   expected: ProductionDayRuntimeProvenance,

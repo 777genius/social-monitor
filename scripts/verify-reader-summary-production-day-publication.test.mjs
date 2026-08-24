@@ -45,7 +45,7 @@ test("accepts a fully live report with all eight real steps", () => {
       provider: "codex",
       runtime: "subscription-runtime-cli",
       runtimeVersion: "0.1.0-main.2",
-      reasoningEffort: "xhigh",
+      reasoningEffort: "high",
       launcherSha256: "b".repeat(64),
     });
   });
@@ -125,7 +125,15 @@ test("accepts an in-flight legacy live report with its exact quality contract", 
 
     const created = runVerifier(reportPath, proofPath, "--proof-out");
     assert.equal(created.status, 0, created.stderr);
-  });
+  }, { legacyIdentity: true });
+});
+
+test("current live verification rejects a fully self-consistent legacy identity", () => {
+  withFixture(({ reportPath, proofPath }) => {
+    const result = runVerifier(reportPath, proofPath, "--proof-out");
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /attestation|provenance/u);
+  }, { legacyIdentity: true });
 });
 
 test("rejects an incomplete legacy live quality contract", () => {
@@ -334,9 +342,9 @@ test("rejects historical regeneration whose dataset guard is not evidence-bound"
 });
 
 for (const options of [
-  { modelVersion: "claude:gpt-5.6-sol:xhigh" },
-  { modelVersion: "codex:gpt-5.5:xhigh" },
-  { modelVersion: "codex:gpt-5.6-sol:high" },
+  { modelVersion: "claude:gpt-5.6-sol:high" },
+  { modelVersion: "codex:gpt-5.5:high" },
+  { modelVersion: "codex:gpt-5.6-sol:xhigh" },
   { attestationOutputKind: "output_text" },
   { attestationRuntimeEngine: "direct" },
   { topicGeneratedBy: "deterministic" },
@@ -422,7 +430,10 @@ function buildFrontend(options) {
       readerSummaryId,
       period: utcPeriod(),
       lineage: {
-        modelVersion: options.modelVersion ?? "codex:gpt-5.6-sol:xhigh",
+        modelVersion: options.modelVersion ??
+          (options.legacyIdentity
+            ? "codex:gpt-5.6-sol:xhigh"
+            : "codex:gpt-5.6-sol:high"),
         providerVersion: options.providerVersion ?? "agent-runtime",
       },
       ...(options.dailyTelemetry
@@ -666,7 +677,7 @@ function dailySourceAuthority() {
     modelExecution: {
       provider: "codex",
       model: "gpt-5.6-sol",
-      reasoningEffort: "xhigh",
+      reasoningEffort: "high",
       inputTokens: 120,
       outputTokens: 30,
       totalTokens: 150,
@@ -780,7 +791,7 @@ function buildExecutionAttestations(options) {
     canonicalRequestSha256: "a".repeat(64),
     provider: "codex",
     model: "gpt-5.6-sol",
-    reasoningEffort: "xhigh",
+    reasoningEffort: options.legacyIdentity ? "xhigh" : "high",
     runtimeEngine:
       options.attestationRuntimeEngine ?? "subscription-runtime-cli",
     runtimePackageVersion: "0.1.0-main.2",
@@ -797,7 +808,9 @@ function buildExecutionAttestations(options) {
       attestation: {
         ...common,
         requestId: "summary-request",
-        purpose: "social_monitor.reader_summary.generate",
+        purpose: options.legacyIdentity
+          ? "social_monitor.reader_summary.generate"
+          : "social_monitor.reader_summary.generate.v2",
       },
     },
     {
@@ -807,7 +820,9 @@ function buildExecutionAttestations(options) {
       attestation: {
         ...common,
         requestId: "topic-label-request",
-        purpose: "social_monitor.reader_summary.topic_map.label",
+        purpose: options.legacyIdentity
+          ? "social_monitor.reader_summary.topic_map.label"
+          : "social_monitor.reader_summary.topic_map.label.v2",
       },
     },
     ...(options.relatedTopicRole === undefined
@@ -819,8 +834,9 @@ function buildExecutionAttestations(options) {
           attestation: {
             ...common,
             requestId: "related-topic-relation-request",
-            purpose:
-              "social_monitor.reader_summary.verify_related_topic_relations",
+            purpose: options.legacyIdentity
+              ? "social_monitor.reader_summary.verify_related_topic_relations"
+              : "social_monitor.reader_summary.verify_related_topic_relations.v2",
           },
         }]),
   ];

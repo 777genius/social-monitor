@@ -47,6 +47,7 @@ const execFileAsync = promisify(execFile);
 const fixtureStartupInactivityTimeoutMs = 300_000;
 const fixtureStartupHardCapMs = 600_000;
 const chromeDriverStartupTimeoutMs = 30_000;
+const chromeDriverAddressRetryLimit = 3;
 const terminalGraceMs = 10_000;
 
 const boundedTranscript = (value) => String(value).slice(-16_384);
@@ -239,6 +240,36 @@ const reserveLoopbackPort = async () => {
   return port;
 };
 
+export const startReaderSummaryChromeDriverWithRetry = async ({
+  reservePort,
+  launch,
+  waitForReady,
+  maxAttempts = chromeDriverAddressRetryLimit,
+}) => {
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const port = await reservePort();
+    const launched = launch(port);
+    try {
+      await waitForReady(launched.child, port);
+      return { child: launched.child, port };
+    } catch (error) {
+      const diagnostic = [
+        error instanceof Error ? error.message : String(error),
+        launched.transcript?.stdout ?? "",
+        launched.transcript?.stderr ?? "",
+      ].join("\n");
+      if (attempt >= maxAttempts || !addressAlreadyInUse(diagnostic)) {
+        throw error;
+      }
+    }
+  }
+  throw new Error("ChromeDriver address retry exhausted");
+};
+
+const addressAlreadyInUse = (value) =>
+  /\bEADDRINUSE\b|address already in use|bind\(\) failed[^\n]*(?:98|10048)/iu
+    .test(value);
+
 const waitForChromeDriver = async ({
   child,
   port,
@@ -405,26 +436,32 @@ const run = async ({ config, supervisor, browserRun, remainingTimeoutMs }) => {
       `[reader-summary-e2e] fixture status=ready route="GET /reader-summaries" baseUrl=${JSON.stringify(baseUrl)}\n`,
     );
 
-    const driverPort = await reserveLoopbackPort();
-    const chromeDriver = supervisor.spawn(
-      toolchain.chromeDriverExecutable,
-      [
-        `--port=${driverPort}`,
-        "--allowed-ips=127.0.0.1,::1",
-        `--log-path=${browserRun.chromeDriverLogPath}`,
-        "--verbose",
-      ],
-      {
-        cwd: appDirectory,
-        env: browserRun.environment,
+    const driver = await startReaderSummaryChromeDriverWithRetry({
+      reservePort: reserveLoopbackPort,
+      launch: (port) => {
+        const child = supervisor.spawn(
+          toolchain.chromeDriverExecutable,
+          [
+            `--port=${port}`,
+            "--allowed-ips=127.0.0.1,::1",
+            `--log-path=${browserRun.chromeDriverLogPath}`,
+            "--verbose",
+          ],
+          { cwd: appDirectory, env: browserRun.environment },
+        );
+        return {
+          child,
+          transcript: forwardRedactedReaderSummaryOutput(child),
+        };
       },
-    );
-    forwardRedactedReaderSummaryOutput(chromeDriver);
-    await waitForChromeDriver({
-      child: chromeDriver,
-      port: driverPort,
-      timeoutMs: chromeDriverStartupTimeoutMs,
+      waitForReady: (child, port) => waitForChromeDriver({
+        child,
+        port,
+        timeoutMs: chromeDriverStartupTimeoutMs,
+      }),
     });
+    const chromeDriver = driver.child;
+    const driverPort = driver.port;
     process.stdout.write(
       `[reader-summary-e2e] chromedriver status=ready host=127.0.0.1 port=${driverPort}\n`,
     );

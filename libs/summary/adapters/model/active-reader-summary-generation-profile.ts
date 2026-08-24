@@ -16,14 +16,17 @@ export const activeReaderSummaryPurposes = Object.freeze({
   weeklyGenerate: "social_monitor.reader_summary.weekly.generate.v2",
 } as const);
 
-export const legacyReaderSummaryRecoveryPurposes = Object.freeze({
-  generate: "social_monitor.reader_summary.generate",
-  repair: "social_monitor.reader_summary.repair",
+export const frozenLegacyReaderSummaryRecoveryContract = Object.freeze({
+  recoveryOnly: true,
+  reasoningEffort: "xhigh",
+  purposes: Object.freeze({
+    generate: "social_monitor.reader_summary.generate",
+    repair: "social_monitor.reader_summary.repair",
+  }),
 } as const);
 
-export type ReaderSummaryGenerationExecutionProfile =
-  | "active-v2"
-  | "legacy-recovery-v1";
+export type FrozenLegacyReaderSummaryRecoveryContract =
+  typeof frozenLegacyReaderSummaryRecoveryContract;
 
 export const parseActiveReaderSummaryModel = (
   value: string | undefined,

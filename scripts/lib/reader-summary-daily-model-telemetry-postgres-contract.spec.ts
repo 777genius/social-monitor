@@ -17,6 +17,7 @@ describe("reader summary daily model telemetry migration", () => {
     expect(sql).toContain("social_monitor_reader_summary_daily_terminal");
     expect(sql).toContain("verified_attestation->>'reasoningEffort'");
     expect(sql).toContain("v_job.\"reasoning_effort\"");
+    expect(sql).toContain("v_receipt->'attestation' IS DISTINCT FROM verified_attestation");
     expect(sql).not.toMatch(/reasoningEffort'\s+IS DISTINCT FROM\s+'(?:xhigh|high)'/u);
   });
 
@@ -36,5 +37,10 @@ describe("reader summary daily model telemetry migration", () => {
     expect(sql).toContain("'''reader-summary-daily:v2'''");
     expect(sql).toContain("'''high'''");
     expect(sql).toContain("expected v1/xhigh definition");
+    expect(sql).toMatch(
+      /REVOKE ALL ON FUNCTION public\."complete_reader_summary_daily_model_job"[\s\S]*?FROM social_monitor_reader_summary_daily_terminal/u,
+    );
+    expect(sql).toContain("verified_attestation->>'purpose' IS DISTINCT FROM");
+    expect(sql).toContain("'social_monitor.reader_summary.generate.v2'");
   });
 });

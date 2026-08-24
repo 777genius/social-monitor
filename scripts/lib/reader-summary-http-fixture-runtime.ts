@@ -3,6 +3,8 @@ import {
   selectedAgentRuntimeOutput,
 } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
 import { openAiReaderSummaryJsonSchema } from "@social-monitor/summary/adapters/model/openai-responses-reader-summary-schema";
+import { MeteredReaderSummaryModelAdapter } from "@social-monitor/summary/adapters/model/metered-reader-summary-model.adapter";
+import { ExecuteReaderSummaryJobUseCase } from "@social-monitor/summary/features/execute-reader-summary-job/execute-reader-summary-job.use-case";
 import type {
   AgentRuntimeClientPort,
   AgentRuntimeHealthResult,
@@ -120,6 +122,11 @@ export const assertReaderSummaryAgentRuntimeCommand = (
     "runtime controls.model must be gpt-5.6-sol",
   );
   fixtureInvariant(
+    command.controls.reasoningEffort ===
+      readerSummaryHttpFixtureIdentity.effort,
+    "runtime controls.reasoningEffort must be high",
+  );
+  fixtureInvariant(
     command.metadata?.reasoningEffort ===
       readerSummaryHttpFixtureIdentity.effort,
     "runtime metadata.reasoningEffort must be high",
@@ -146,6 +153,21 @@ export const assertReaderSummaryAgentRuntimeCommand = (
   fixtureInvariant(
     toolsAreDisabled(command.controls),
     "runtime controls must keep tools disabled",
+  );
+};
+
+export const assertReaderSummaryHttpFixtureProductionWiring = (
+  executeReaderSummary: ExecuteReaderSummaryJobUseCase,
+  selectedModel: MeteredReaderSummaryModelAdapter,
+): void => {
+  const wired = executeReaderSummary as unknown as {
+    readonly readerSummaryModel?: unknown;
+  };
+  fixtureInvariant(
+    executeReaderSummary instanceof ExecuteReaderSummaryJobUseCase &&
+      selectedModel instanceof MeteredReaderSummaryModelAdapter &&
+      wired.readerSummaryModel === selectedModel,
+    "execute use case and selected model must come from the production Nest factory",
   );
 };
 
@@ -247,19 +269,15 @@ const assertUsage = (usage: Readonly<Record<string, unknown>>): void => {
   fixtureInvariant(
     usage.inputTokens === readerSummaryHttpFixtureUsage.inputTokens &&
       usage.outputTokens === readerSummaryHttpFixtureUsage.outputTokens &&
+      usage.inputTokens + usage.outputTokens ===
+        readerSummaryHttpFixtureUsage.totalTokens &&
       usage.estimatedCostUsd === readerSummaryHttpFixtureUsage.estimatedCostUsd,
     "usage must preserve exact provider-reported 4321 input and 789 output tokens",
   );
 };
 
 const toolsAreDisabled = (controls: Readonly<Record<string, unknown>>): boolean =>
-  Object.entries(controls)
-    .filter(([name]) => name.toLocaleLowerCase("en-US").includes("tool"))
-    .every(([, value]) =>
-      value === false ||
-      value === "none" ||
-      (Array.isArray(value) && value.length === 0),
-    );
+  controls.toolsEnabled === false && controls.toolPolicy === "none";
 
 const objectValue = (
   value: unknown,

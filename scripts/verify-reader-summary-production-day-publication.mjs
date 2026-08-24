@@ -109,6 +109,7 @@ function validateReport(report, expectedDate, evidencePath, frontendPath) {
     frontend,
     frontendBytes,
     expectedPeriod,
+    reportContract,
   );
   validateModel(
     report.model,
@@ -121,6 +122,7 @@ function validateReport(report, expectedDate, evidencePath, frontendPath) {
     evidence,
     frontend,
     binding,
+    reportContract,
   );
   validateSummary(report.summary, binding);
   validateReportIdentity(report.reportIdentity, binding, expectedDate);
@@ -157,7 +159,10 @@ function validateModel(model, runtimeProvenance, provenance, reportContract) {
     stableJson(runtimeFields(model, runtimeProvenance)) !==
       stableJson(runtimeProvenance) ||
     !validNotExecutedModelFields(model, runtimeProvenance) ||
-    !isProductionRuntimeProvenance(runtimeProvenance) ||
+    !isProductionRuntimeProvenance(
+      runtimeProvenance,
+      reportContract !== "current",
+    ) ||
     model.writesProductionData !== true ||
     model.allowDegraded !== false ||
     model.allowHistorical !== false ||
@@ -212,7 +217,7 @@ function runtimeFields(model, provenance) {
   };
 }
 
-function runtimeProvenanceFromExecutorAttestations(evidence) {
+function runtimeProvenanceFromExecutorAttestations(evidence, allowLegacy) {
   if (!Array.isArray(evidence.executionAttestations)) {
     fail("evidence execution attestations are missing");
   }
@@ -228,7 +233,7 @@ function runtimeProvenanceFromExecutorAttestations(evidence) {
     fail("not_executed is valid only for selected=0 and no_signal");
   }
   const records = evidence.executionAttestations;
-  for (const record of records) validateAttestationRecord(record);
+  for (const record of records) validateAttestationRecord(record, allowLegacy);
   if (
     new Set(records.map((record) => record.attestation.requestId)).size !==
     records.length
@@ -311,7 +316,7 @@ function runtimeProvenanceFromExecutorAttestations(evidence) {
   };
 }
 
-function validateAttestationRecord(record) {
+function validateAttestationRecord(record, allowLegacy) {
   assertObject(record, "execution attestation record");
   assertObject(record.attestation, "execution attestation");
   const attestation = record.attestation;
@@ -351,7 +356,7 @@ function validateAttestationRecord(record) {
     : activePurposes[record.taskRole];
   const expectedEffort = attestation.purpose === activePurpose
     ? "high"
-    : attestation.purpose === legacyPurpose
+    : allowLegacy && attestation.purpose === legacyPurpose
       ? "xhigh"
       : undefined;
   if (
@@ -395,7 +400,7 @@ function validateFrontendRuntimeConsistency(frontend, runtimeProvenance) {
   }
 }
 
-function isProductionRuntimeProvenance(value) {
+function isProductionRuntimeProvenance(value, allowLegacy = false) {
   if (isObject(value) && value.execution === "not_executed") {
     return value.reason === "no_signal";
   }
@@ -408,7 +413,8 @@ function isProductionRuntimeProvenance(value) {
     value.provider === "codex" &&
     value.runtime === "subscription-runtime-cli" &&
     isConcreteVersion(value.runtimeVersion) &&
-    (value.reasoningEffort === "high" || value.reasoningEffort === "xhigh") &&
+    (value.reasoningEffort === "high" ||
+      (allowLegacy && value.reasoningEffort === "xhigh")) &&
     isSha256(value.launcherSha256) &&
     isSha256(value.summaryContentSha256) &&
     isSha256(value.topicMapSha256) &&
@@ -515,6 +521,7 @@ function validateEvidence(
   frontend,
   frontendBytes,
   expectedPeriod,
+  reportContract,
 ) {
   assertObject(evidence, "evidence artifact");
   assertObject(evidence.provenance, "evidence.provenance");
@@ -543,7 +550,10 @@ function validateEvidence(
   const capture = evidence.captureExecution;
   const runtimeHealth = capture.runtimeHealth;
   const frontendBinding = capture.frontendArtifact;
-  const runtimeProvenance = runtimeProvenanceFromExecutorAttestations(evidence);
+  const runtimeProvenance = runtimeProvenanceFromExecutorAttestations(
+    evidence,
+    reportContract !== "current",
+  );
   if (evidence.provenance.datasetManifest !== undefined) {
     validateDatasetGuardEvidence(evidence.provenance.datasetManifest);
   }
@@ -579,7 +589,10 @@ function validateEvidence(
     frontendBinding.byteLength !== frontendBytes.byteLength ||
     frontendBinding.generatedAt !== frontend.generatedAt ||
     stableJson(capture.runtimeResult) !== stableJson(runtimeProvenance) ||
-    !isProductionRuntimeProvenance(runtimeProvenance)
+    !isProductionRuntimeProvenance(
+      runtimeProvenance,
+      reportContract !== "current",
+    )
   ) {
     fail("durable evidence artifact provenance or UTC period is invalid");
   }

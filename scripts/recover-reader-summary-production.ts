@@ -453,6 +453,9 @@ async function main(): Promise<void> {
   const { AgentRuntimeReaderSummaryModelAdapter } = await import(
     "@social-monitor/summary/adapters/model/agent-runtime-reader-summary-model.adapter"
   );
+  const { frozenLegacyReaderSummaryRecoveryContract } = await import(
+    "@social-monitor/summary/adapters/model/active-reader-summary-generation-profile"
+  );
   const { GrpcAgentRuntimeClient } = await import(
     "@social-monitor/summary/adapters/model/grpc-agent-runtime-client"
   );
@@ -549,7 +552,8 @@ async function main(): Promise<void> {
               agentProvider: modelContract.provider,
               model: modelContract.model,
               reasoningEffort: modelContract.reasoningEffort,
-              executionProfile: "legacy-recovery-v1",
+              legacyRecoveryContract:
+                frozenLegacyReaderSummaryRecoveryContract,
               timeoutMs:
                 READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.summaryModelTimeoutMs,
             }),

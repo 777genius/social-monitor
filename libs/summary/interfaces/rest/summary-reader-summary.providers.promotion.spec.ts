@@ -32,7 +32,7 @@ describe("summaryReaderSummaryProviders promotion metrics wiring", () => {
     } as MetricsRecorderPort;
 
     const useCase = provider.useFactory!(
-      {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, metrics,
+      {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, metrics, {}, {},
     ) as ExecuteReaderSummaryJobUseCase;
     const promotionControl = (
       useCase as unknown as { promotionControl: ReaderSummaryPromotionControl }

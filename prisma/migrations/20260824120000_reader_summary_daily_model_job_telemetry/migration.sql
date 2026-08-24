@@ -134,6 +134,7 @@ BEGIN
       pg_catalog.btrim(exact_response_sha256)
     OR v_receipt->>'attestationSha256' IS DISTINCT FROM
       pg_catalog.btrim(exact_attestation_sha256)
+    OR v_receipt->'attestation' IS DISTINCT FROM verified_attestation
     OR (v_receipt->'executionUsage'->>'inputTokens')::BIGINT
       IS DISTINCT FROM observed_input_tokens
     OR (v_receipt->'executionUsage'->>'outputTokens')::BIGINT
@@ -151,7 +152,13 @@ BEGIN
     OR verified_attestation->>'runtimeEngine'
       IS DISTINCT FROM v_job."runtime_engine"
     OR verified_attestation->>'selectedOutputSha256' IS DISTINCT FROM
-      pg_catalog.btrim(exact_response_sha256) THEN
+      pg_catalog.btrim(exact_response_sha256)
+    OR v_job."provider" IS DISTINCT FROM 'codex'
+    OR v_job."model" IS DISTINCT FROM 'gpt-5.6-sol'
+    OR v_job."reasoning_effort" IS DISTINCT FROM 'high'
+    OR v_job."runtime_engine" IS DISTINCT FROM 'subscription-runtime-cli'
+    OR verified_attestation->>'purpose' IS DISTINCT FROM
+      'social_monitor.reader_summary.generate.v2' THEN
     RAISE EXCEPTION 'daily response, receipt, attestation, or telemetry is invalid';
   END IF;
 
@@ -190,6 +197,14 @@ REVOKE social_monitor_reader_summary_daily_publication_definer
   FROM social_monitor_public_schema_owner GRANTED BY CURRENT_USER;
 
 SET LOCAL ROLE social_monitor_reader_summary_daily_publication_definer;
+
+-- Historical rows remain readable and replayable through their persisted
+-- bytes, but the pre-telemetry completion authority cannot complete a new
+-- v2/high claim without the equality-bound telemetry contract above.
+REVOKE ALL ON FUNCTION public."complete_reader_summary_daily_model_job"(
+  UUID, UUID, DATE, TEXT, BIGINT, TIMESTAMPTZ, BYTEA, CHAR,
+  JSONB, BYTEA, CHAR, BYTEA, CHAR
+) FROM social_monitor_reader_summary_daily_terminal;
 
 REVOKE ALL ON FUNCTION public."complete_reader_summary_daily_model_job_v2"(
   UUID, UUID, DATE, TEXT, BIGINT, TIMESTAMPTZ, BYTEA, CHAR,

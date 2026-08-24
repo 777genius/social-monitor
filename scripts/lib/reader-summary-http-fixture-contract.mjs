@@ -6,6 +6,7 @@ const fixtureModelVersion = "codex:gpt-5.6-sol:high";
 const fixtureUsage = Object.freeze({
   inputTokens: 4_321,
   outputTokens: 789,
+  totalTokens: 5_110,
   estimatedCostUsd: 0,
 });
 const loopbackHosts = new Set(["127.0.0.1", "localhost", "[::1]"]);
@@ -188,6 +189,8 @@ const assertReaderSummaryFixtureTransport = (item, body) => {
   if (
     item?.usage?.inputTokens !== fixtureUsage.inputTokens ||
     item?.usage?.outputTokens !== fixtureUsage.outputTokens ||
+    item.usage.inputTokens + item.usage.outputTokens !==
+      fixtureUsage.totalTokens ||
     item?.usage?.estimatedCostUsd !== fixtureUsage.estimatedCostUsd
   ) {
     throw new Error(
@@ -312,6 +315,8 @@ export const assertReaderSummaryFixtureServerSource = (source) => {
     "AGENT_RUNTIME_READER_SUMMARY_MODEL = \"gpt-5.6-sol\"",
     "AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT = \"high\"",
     "MeteredReaderSummaryModelAdapter",
+    "moduleRef.get(ExecuteReaderSummaryJobUseCase",
+    "assertReaderSummaryHttpFixtureProductionWiring(\n    executeReaderSummary,",
     "assertReaderSummaryHttpFixturePersistence",
   ]) {
     if (!source.includes(required)) {
@@ -323,6 +328,11 @@ export const assertReaderSummaryFixtureServerSource = (source) => {
   if (source.includes("new DeterministicReaderSummaryModelAdapter")) {
     throw new Error(
       "Reader summary fixture must not bypass the production model selector",
+    );
+  }
+  if (source.includes("new ExecuteReaderSummaryJobUseCase")) {
+    throw new Error(
+      "Reader summary fixture must not bypass the production use-case factory",
     );
   }
 };

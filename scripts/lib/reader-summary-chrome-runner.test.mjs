@@ -12,6 +12,7 @@ import {
   executeReaderSummaryChromeRunner,
   forwardRedactedReaderSummaryOutput,
   runReaderSummaryChromeDrive,
+  startReaderSummaryChromeDriverWithRetry,
 } from "../run-reader-summary-http-chrome-e2e.mjs";
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -74,6 +75,45 @@ test("Flutter Drive uses unsafe SwiftShader only in its hermetic E2E browser arg
     args.filter((argument) => argument.includes("unsafe-swiftshader")).length,
     1,
   );
+});
+
+test("ChromeDriver retries only bounded address-in-use startup failures", async () => {
+  const ports = [4101, 4102];
+  let launches = 0;
+  const result = await startReaderSummaryChromeDriverWithRetry({
+    reservePort: async () => ports.shift(),
+    launch: (port) => {
+      launches += 1;
+      return {
+        child: { port },
+        transcript: {
+          stdout: "",
+          stderr: launches === 1 ? "bind() failed: Address already in use (98)" : "",
+        },
+      };
+    },
+    waitForReady: async () => {
+      if (launches === 1) throw new Error("ChromeDriver exited before readiness");
+    },
+  });
+  assert.equal(result.port, 4102);
+  assert.equal(launches, 2);
+});
+
+test("ChromeDriver never retries a non-address startup failure", async () => {
+  let launches = 0;
+  await assert.rejects(
+    startReaderSummaryChromeDriverWithRetry({
+      reservePort: async () => 4101,
+      launch: () => {
+        launches += 1;
+        return { child: {}, transcript: { stdout: "", stderr: "bad flags" } };
+      },
+      waitForReady: async () => { throw new Error("invalid argument"); },
+    }),
+    /invalid argument/u,
+  );
+  assert.equal(launches, 1);
 });
 
 test("Flutter Drive accepts only an explicit passing integration result", async () => {

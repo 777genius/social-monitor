@@ -13,6 +13,8 @@ export const productionDayModelExecutionReport = (input: {
   readonly durableEvidence: unknown;
   readonly readerSummaryJobId: string | null;
   readonly readerSummaryArtifactId: string | null;
+  readonly executionMode:
+    "live-production" | "historical-regeneration" | "historical-reuse";
 }): ModelExecutionReport | null => {
   const evidence = record(input.durableEvidence);
   const provenance = record(evidence?.provenance);
@@ -24,14 +26,29 @@ export const productionDayModelExecutionReport = (input: {
     input.readerSummaryArtifactId === null ||
     !sha(daily.modelJobIdentity) || !sha(daily.receiptSha256) ||
     !text(telemetry.provider) || !text(telemetry.model) ||
-    !text(telemetry.reasoningEffort) ||
+    !text(telemetry.reasoningEffort)
+  ) {
+    throw new Error("Daily production report model telemetry is incomplete");
+  }
+  const historicalIncomplete =
+    telemetry.usageSource === "HISTORICAL_INCOMPLETE" &&
+    telemetry.inputTokens === null && telemetry.outputTokens === null &&
+    telemetry.totalTokens === null && telemetry.durationMs === null;
+  const invalidProviderReported =
     telemetry.usageSource !== "PROVIDER_REPORTED" ||
     !nonNegativeInteger(telemetry.inputTokens) ||
     !nonNegativeInteger(telemetry.outputTokens) ||
     !nonNegativeInteger(telemetry.totalTokens) ||
     telemetry.totalTokens !==
       (telemetry.inputTokens as number) + (telemetry.outputTokens as number) ||
-    !positiveInteger(telemetry.durationMs)
+    !positiveInteger(telemetry.durationMs);
+  if (
+    (input.executionMode === "live-production" &&
+      (invalidProviderReported || telemetry.provider !== "codex" ||
+        telemetry.model !== "gpt-5.6-sol" ||
+        telemetry.reasoningEffort !== "high")) ||
+    (input.executionMode !== "live-production" &&
+      !historicalIncomplete && invalidProviderReported)
   ) {
     throw new Error("Daily production report model telemetry is incomplete");
   }
@@ -39,11 +56,12 @@ export const productionDayModelExecutionReport = (input: {
     provider: telemetry.provider as string,
     model: telemetry.model as string,
     reasoningEffort: telemetry.reasoningEffort as string,
-    inputTokens: telemetry.inputTokens as number,
-    outputTokens: telemetry.outputTokens as number,
-    totalTokens: telemetry.totalTokens as number,
-    usageSource: "PROVIDER_REPORTED",
-    durationMs: telemetry.durationMs as number,
+    inputTokens: telemetry.inputTokens as number | null,
+    outputTokens: telemetry.outputTokens as number | null,
+    totalTokens: telemetry.totalTokens as number | null,
+    usageSource: telemetry.usageSource as
+      "PROVIDER_REPORTED" | "HISTORICAL_INCOMPLETE",
+    durationMs: telemetry.durationMs as number | null,
     modelJobIdentity: daily.modelJobIdentity as string,
     receiptSha256: daily.receiptSha256 as string,
     readerSummaryJobId: input.readerSummaryJobId,

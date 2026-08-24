@@ -15,8 +15,8 @@ import {
   activeReaderSummaryModel,
   activeReaderSummaryProvider,
   activeReaderSummaryPurposes,
-  legacyReaderSummaryRecoveryPurposes,
-  type ReaderSummaryGenerationExecutionProfile,
+  frozenLegacyReaderSummaryRecoveryContract,
+  type FrozenLegacyReaderSummaryRecoveryContract,
 } from "./active-reader-summary-generation-profile";
 
 export type ReaderSummaryAttestedTaskRole =
@@ -46,7 +46,7 @@ export const verifyAndRecordReaderSummaryExecution = async (params: {
   readonly taskRole: ReaderSummaryAttestedTaskRole;
   readonly attempt: string;
   readonly normalizedOutput: unknown;
-  readonly executionProfile?: ReaderSummaryGenerationExecutionProfile;
+  readonly legacyRecoveryContract?: FrozenLegacyReaderSummaryRecoveryContract;
   readonly sink?: VerifiedReaderSummaryExecutionAttestationSink;
 }): Promise<void> => {
   const attestation = params.result.executionAttestation;
@@ -60,13 +60,13 @@ export const verifyAndRecordReaderSummaryExecution = async (params: {
     attestation.provider !== activeReaderSummaryProvider ||
     attestation.model !== activeReaderSummaryModel ||
     attestation.reasoningEffort !== expectedReasoningEffort(
-      params.executionProfile,
+      params.legacyRecoveryContract,
     ) ||
     !activeReaderSummaryPurposeMatches(
       params.taskRole,
       params.attempt,
       attestation.purpose,
-      params.executionProfile,
+      params.legacyRecoveryContract,
     ) ||
     attestation.runtimeEngine !== subscriptionRuntimeEngine ||
     !isConcreteRuntimePackageVersion(attestation.runtimePackageVersion) ||
@@ -91,13 +91,13 @@ const activeReaderSummaryPurposeMatches = (
   role: ReaderSummaryAttestedTaskRole,
   attempt: string,
   purpose: string,
-  executionProfile: ReaderSummaryGenerationExecutionProfile = "active-v2",
+  legacyRecoveryContract?: FrozenLegacyReaderSummaryRecoveryContract,
 ): boolean => ({
-  summary: executionProfile === "legacy-recovery-v1"
+  summary: legacyRecoveryContract === frozenLegacyReaderSummaryRecoveryContract
     ? attempt === "primary"
-      ? [legacyReaderSummaryRecoveryPurposes.generate]
+      ? [frozenLegacyReaderSummaryRecoveryContract.purposes.generate]
       : attempt === "repair"
-        ? [legacyReaderSummaryRecoveryPurposes.repair]
+        ? [frozenLegacyReaderSummaryRecoveryContract.purposes.repair]
         : []
     : attempt === "primary"
       ? [activeReaderSummaryPurposes.generate]
@@ -112,5 +112,8 @@ const activeReaderSummaryPurposeMatches = (
 } as const)[role].some((candidate: string) => candidate === purpose);
 
 const expectedReasoningEffort = (
-  executionProfile: ReaderSummaryGenerationExecutionProfile = "active-v2",
-): "high" | "xhigh" => executionProfile === "active-v2" ? "high" : "xhigh";
+  legacyRecoveryContract?: FrozenLegacyReaderSummaryRecoveryContract,
+): "high" | "xhigh" =>
+  legacyRecoveryContract === frozenLegacyReaderSummaryRecoveryContract
+    ? "xhigh"
+    : "high";

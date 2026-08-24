@@ -12,11 +12,12 @@ describe("production-day daily model telemetry", () => {
       durableEvidence: evidence(),
       readerSummaryJobId: jobId,
       readerSummaryArtifactId: artifactId,
+      executionMode: "live-production",
     });
     expect(report).toEqual({
       provider: "codex",
       model: "gpt-5.6-sol",
-      reasoningEffort: "medium-profile",
+      reasoningEffort: "high",
       inputTokens: 120,
       outputTokens: 30,
       totalTokens: 150,
@@ -46,6 +47,7 @@ describe("production-day daily model telemetry", () => {
       durableEvidence: value,
       readerSummaryJobId: jobId,
       readerSummaryArtifactId: artifactId,
+      executionMode: "live-production",
     })).toThrow(/telemetry is incomplete/u);
   });
 
@@ -54,7 +56,33 @@ describe("production-day daily model telemetry", () => {
       durableEvidence: { provenance: {} },
       readerSummaryJobId: jobId,
       readerSummaryArtifactId: artifactId,
+      executionMode: "live-production",
     })).toBeNull();
+  });
+
+  it("exposes unknown historical usage as nullable HISTORICAL_INCOMPLETE", () => {
+    const value = evidence();
+    Object.assign(value.provenance.dailySourceAuthority.modelExecution, {
+      reasoningEffort: "xhigh",
+      inputTokens: null,
+      outputTokens: null,
+      totalTokens: null,
+      usageSource: "HISTORICAL_INCOMPLETE",
+      durationMs: null,
+    });
+    expect(productionDayModelExecutionReport({
+      durableEvidence: value,
+      readerSummaryJobId: jobId,
+      readerSummaryArtifactId: artifactId,
+      executionMode: "historical-reuse",
+    })).toMatchObject({
+      reasoningEffort: "xhigh",
+      inputTokens: null,
+      outputTokens: null,
+      totalTokens: null,
+      usageSource: "HISTORICAL_INCOMPLETE",
+      durationMs: null,
+    });
   });
 });
 
@@ -66,7 +94,7 @@ const evidence = () => ({
       modelExecution: {
         provider: "codex",
         model: "gpt-5.6-sol",
-        reasoningEffort: "medium-profile",
+        reasoningEffort: "high",
         inputTokens: 120,
         outputTokens: 30,
         totalTokens: 150,
