@@ -1,4 +1,8 @@
-import type { ReaderPostPromotionAttestation } from "../../../domain";
+import type {
+  ReaderPostPromotionAttestation,
+  ReaderSummaryContent,
+} from "../../../domain";
+import { readerPostPromotionCardFields } from "../../../domain";
 import {
   requireArray,
   requireDate,
@@ -54,6 +58,62 @@ export const normalizePromotionEvidenceFacts = (
   value: unknown,
 ): ReaderPostPromotionAttestation["supportFacts"] =>
   value === undefined ? [] : normalizeSupportFacts(value);
+
+export const normalizePersistedPromotionBoard = (input: {
+  readonly promotionAttestations: unknown;
+  readonly promotionEvidenceFacts: unknown;
+  readonly content: ReaderSummaryContent | undefined;
+}): Readonly<{
+  promotionAttestations: readonly ReaderPostPromotionAttestation[];
+  promotionEvidenceFacts: ReaderPostPromotionAttestation["supportFacts"];
+  content: ReaderSummaryContent | undefined;
+  promotionBoardState?: "legacy_unavailable";
+}> => {
+  const promotionAttestations = normalizePromotionAttestations(
+    input.promotionAttestations,
+  );
+  const promotionEvidenceFacts = normalizePromotionEvidenceFacts(
+    input.promotionEvidenceFacts,
+  );
+  if (!isPrePromotionPersistedBoard(input)) {
+    return {
+      promotionAttestations,
+      promotionEvidenceFacts,
+      content: input.content,
+    };
+  }
+
+  return {
+    promotionAttestations: [],
+    promotionEvidenceFacts: [],
+    content: input.content,
+    promotionBoardState: "legacy_unavailable",
+  };
+};
+
+const isPrePromotionPersistedBoard = (input: {
+  readonly promotionAttestations: unknown;
+  readonly promotionEvidenceFacts: unknown;
+  readonly content: ReaderSummaryContent | undefined;
+}): boolean => {
+  if (
+    input.promotionAttestations !== undefined ||
+    input.promotionEvidenceFacts !== undefined
+  ) {
+    return false;
+  }
+
+  const content = input.content;
+  if (content === undefined) return true;
+  const cards = [
+    ...content.topReads,
+    ...(content.selectedPosts ?? []),
+    ...content.interestSections.flatMap((section) => section.items),
+  ];
+  return cards.every((card) => readerPostPromotionCardFields.every(
+    (field) => !Object.prototype.hasOwnProperty.call(card, field),
+  ));
+};
 
 const normalizeSupportFacts = (
   value: unknown,

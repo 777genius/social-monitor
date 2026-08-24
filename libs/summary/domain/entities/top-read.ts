@@ -24,6 +24,14 @@ export const readerSummaryCardKinds = [
 
 export type ReaderSummaryCardKind = (typeof readerSummaryCardKinds)[number];
 
+export const readerPostPromotionCardFields = [
+  "promotionMarker",
+  "promotionPolicyVersion",
+  "promotionTier",
+  "promotionCandidateId",
+  "promotionCanonicalIdentity",
+] as const;
+
 export type TopRead = {
   readonly storyClusterId?: string;
   readonly cardKind?: ReaderSummaryCardKind;

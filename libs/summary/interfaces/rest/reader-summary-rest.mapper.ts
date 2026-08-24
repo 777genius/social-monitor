@@ -3,6 +3,8 @@ import type { GetReaderSummaryJobStatusResult } from "../../features/get-reader-
 import type { GetReaderSummaryQualityRejectionResult } from "../../features/get-reader-summary-quality-rejection/get-reader-summary-quality-rejection.result";
 import { readerSummaryIndependentProviderFamily } from
   "../../domain/value-objects/reader-summary-provider-identity";
+import { readerPostPromotionCardFields } from
+  "../../domain/entities/top-read";
 import type { ReaderSummaryArtifactView as CanonicalReaderSummaryArtifactView } from "../../features/shared/reader-summary-artifact-presenter";
 import type {
   ReaderSummaryArtifactResponseDto,
@@ -37,8 +39,17 @@ export type {
 export const readerSummaryArtifactViewFromReaderSummaryView = (
   view: CanonicalReaderSummaryArtifactView,
 ): ReaderSummaryArtifactView => {
-  const readerCardAuthority = buildReaderCardRestAuthority(view);
-  if (readerCardAuthority === undefined) {
+  const hasLegacyPromotionBoardState =
+    view.promotionBoardState === "legacy_unavailable";
+  const legacyPromotionBoardUnavailable =
+    isLegacyPromotionBoardUnavailable(view);
+  if (hasLegacyPromotionBoardState && !legacyPromotionBoardUnavailable) {
+    throw new ReaderSummaryPromotionBoardMappingError();
+  }
+  const readerCardAuthority = legacyPromotionBoardUnavailable
+    ? undefined
+    : buildReaderCardRestAuthority(view);
+  if (!legacyPromotionBoardUnavailable && readerCardAuthority === undefined) {
     throw new ReaderSummaryPromotionBoardMappingError();
   }
   const {
@@ -50,12 +61,14 @@ export const readerSummaryArtifactViewFromReaderSummaryView = (
     relatedTopicRelations: ignoredRelatedTopicRelations,
     contextArtifacts: ignoredContextArtifacts,
     promotionAttestations: ignoredPromotionAttestations,
+    promotionBoardState: ignoredPromotionBoardState,
     ...rest
   } = view;
   void schemaVersion;
   void ignoredRelatedTopicRelations;
   void ignoredContextArtifacts;
   void ignoredPromotionAttestations;
+  void ignoredPromotionBoardState;
 
   return {
     ...rest,
@@ -64,16 +77,20 @@ export const readerSummaryArtifactViewFromReaderSummaryView = (
     readerBrief: {
       ...content,
       narrativeSections: content.narrativeSections ?? [],
-      topReads: readerSummaryReaderItemsView(
-        content.topReads,
-        readerCardAuthority,
-        "top",
-      ),
-      selectedPosts: readerSummaryReaderItemsView(
-        content.selectedPosts ?? [],
-        readerCardAuthority,
-        "additional",
-      ),
+      topReads: readerCardAuthority === undefined
+        ? []
+        : readerSummaryReaderItemsView(
+            content.topReads,
+            readerCardAuthority,
+            "top",
+          ),
+      selectedPosts: readerCardAuthority === undefined
+        ? []
+        : readerSummaryReaderItemsView(
+            content.selectedPosts ?? [],
+            readerCardAuthority,
+            "additional",
+          ),
       interestSections: content.interestSections.map((section) => ({
         ...section,
         items: [],
@@ -94,6 +111,25 @@ export const readerSummaryArtifactViewFromReaderSummaryView = (
                 : freshness.reason,
           },
   };
+};
+
+const isLegacyPromotionBoardUnavailable = (
+  view: CanonicalReaderSummaryArtifactView,
+): boolean => {
+  if (
+    view.promotionBoardState !== "legacy_unavailable" ||
+    view.promotionAttestations.length > 0
+  ) {
+    return false;
+  }
+  const cards = [
+    ...view.content.topReads,
+    ...(view.content.selectedPosts ?? []),
+    ...view.content.interestSections.flatMap((section) => section.items),
+  ];
+  return cards.every((card) => readerPostPromotionCardFields.every(
+    (field) => !Object.prototype.hasOwnProperty.call(card, field),
+  ));
 };
 
 export class ReaderSummaryPromotionBoardMappingError extends Error {

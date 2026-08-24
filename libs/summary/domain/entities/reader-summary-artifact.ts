@@ -94,6 +94,7 @@ export type ReaderSummaryArtifactProps = {
   readonly relatedTopicRelations?: readonly RelatedTopicRelation[];
   readonly promotionAttestations?: readonly ReaderPostPromotionAttestation[];
   readonly promotionEvidenceFacts?: readonly ReaderPostPromotionInput[];
+  readonly promotionBoardState?: "legacy_unavailable";
   readonly contextArtifacts: readonly ReaderSummaryContextArtifact[];
   readonly personalization?: SummaryEvidencePersonalization;
   readonly headline: string;
@@ -126,6 +127,7 @@ export type GeneratedReaderSummaryDraft = Omit<
   | "relatedTopicRelations"
   | "promotionAttestations"
   | "promotionEvidenceFacts"
+  | "promotionBoardState"
   | "contextArtifacts"
   | "personalization"
 > & {

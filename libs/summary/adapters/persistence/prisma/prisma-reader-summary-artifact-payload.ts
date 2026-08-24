@@ -41,8 +41,7 @@ import type {
   SerializedReaderSummaryStoryCluster,
 } from "./prisma-reader-summary-payload-types";
 import {
-  normalizePromotionAttestations,
-  normalizePromotionEvidenceFacts,
+  normalizePersistedPromotionBoard,
 } from "./prisma-reader-summary-promotion-attestation";
 import { normalizeReaderSummarySourceWindow } from "./prisma-reader-summary-source-window";
 
@@ -92,6 +91,11 @@ export const normalizeReaderSummaryArtifactPayload = (
 
   const value = payload as SerializedReaderSummaryArtifactPayload;
   const period = normalizeReaderSummaryPeriodPayload(value.period, fallback);
+  const promotionBoard = normalizePersistedPromotionBoard({
+    promotionAttestations: value.promotionAttestations,
+    promotionEvidenceFacts: value.promotionEvidenceFacts,
+    content: normalizeReaderSummaryContent(value.content ?? value.readerBrief),
+  });
 
   const normalized: ReaderSummaryArtifactProps = {
     schemaVersion: normalizeReaderSummaryArtifactSchemaVersion(
@@ -122,12 +126,9 @@ export const normalizeReaderSummaryArtifactPayload = (
       : Array.isArray(value.relatedTopicRelations)
         ? value.relatedTopicRelations as readonly RelatedTopicRelation[]
         : [],
-    promotionAttestations: normalizePromotionAttestations(
-      value.promotionAttestations,
-    ),
-    promotionEvidenceFacts: normalizePromotionEvidenceFacts(
-      value.promotionEvidenceFacts,
-    ),
+    promotionAttestations: promotionBoard.promotionAttestations,
+    promotionEvidenceFacts: promotionBoard.promotionEvidenceFacts,
+    promotionBoardState: promotionBoard.promotionBoardState,
     contextArtifacts: requireArray<SerializedReaderSummaryContextArtifact>(
       value.contextArtifacts,
       "Reader summary context artifacts",
@@ -143,7 +144,7 @@ export const normalizeReaderSummaryArtifactPayload = (
       value.executiveSummary ?? fallback.summaryText ?? "",
       "Reader summary text",
     ),
-    content: normalizeReaderSummaryContent(value.content ?? value.readerBrief),
+    content: promotionBoard.content,
     topStories: requireArray<ReaderSummaryTopStory>(
       value.topStories,
       "Reader summary top stories",

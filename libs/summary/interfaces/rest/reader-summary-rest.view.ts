@@ -46,6 +46,7 @@ export type ReaderSummaryArtifactView = Omit<
   | "relatedTopicRelations"
   | "contextArtifacts"
   | "promotionAttestations"
+  | "promotionBoardState"
 > & {
   readonly schemaVersion: "reader_summary.artifact.v1";
   readonly readerSummaryId: string;

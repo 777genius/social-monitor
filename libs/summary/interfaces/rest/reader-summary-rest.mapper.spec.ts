@@ -7,8 +7,15 @@ import {
   selectReaderPostPromotions,
   type ReaderPostPromotionInput,
 } from "../../domain";
+import { normalizeReaderSummaryArtifactPayload } from
+  "../../adapters/persistence/prisma/prisma-reader-summary-artifact-payload";
+import { serializeReaderSummaryArtifact } from
+  "../../adapters/persistence/prisma/prisma-reader-summary-json";
 import { presentReaderSummaryArtifact } from "../../features/shared/reader-summary-artifact-presenter";
-import { readerSummaryArtifactViewFromReaderSummaryView } from "./reader-summary-rest.mapper";
+import {
+  listReaderSummariesResponseFromReaderSummaries,
+  readerSummaryArtifactViewFromReaderSummaryView,
+} from "./reader-summary-rest.mapper";
 
 describe("readerSummaryArtifactViewFromReaderSummaryView", () => {
   it("preserves canonical URLs for UI citation links", () => {
@@ -320,6 +327,10 @@ describe("readerSummaryArtifactViewFromReaderSummaryView", () => {
       ...emptyBoardView,
       promotionAttestations: [persistedAttestation],
     })).toThrow("promotion board is invalid");
+    expect(() => readerSummaryArtifactViewFromReaderSummaryView({
+      ...readerSummaryView,
+      promotionBoardState: "legacy_unavailable" as const,
+    })).toThrow("promotion board is invalid");
 
     const overCapCards = Array.from({ length: 9 }, (_, slot) => ({
       ...readerSummaryView.content.topReads[0]!,
@@ -434,29 +445,73 @@ describe("readerSummaryArtifactViewFromReaderSummaryView", () => {
       })).toThrow("promotion board is invalid");
     }
 
-    const legacyView = {
-      ...readerSummaryView,
-      content: {
-        ...readerSummaryView.content,
-        topReads: [
-          { ...topRead, storyClusterId: undefined, cardKind: undefined },
-        ],
-        selectedPosts: [
-          { ...topRead, storyClusterId: undefined, cardKind: undefined },
-          {
-            ...topRead,
-            providerKey: "github-trending-page",
-            storyClusterId: undefined,
-            cardKind: undefined,
-          },
-        ],
-      },
-    };
+    const legacyPayload = JSON.parse(JSON.stringify(
+      serializeReaderSummaryArtifact(artifact),
+    )) as Record<string, unknown>;
+    delete legacyPayload.promotionAttestations;
+    delete legacyPayload.promotionEvidenceFacts;
+    stripPromotionOnlyFields(legacyPayload);
+    const legacyArtifact = ReaderSummaryArtifact.rehydrate(
+      normalizeReaderSummaryArtifactPayload(legacyPayload, {
+        id: "readerSummary-legacy",
+        tenantId: "tenant-1",
+        workspaceId: "workspace-1",
+        scopeType: "workspace",
+        interestId: null,
+        cadence: "daily",
+        periodStartedAt: new Date("2026-06-06T00:00:00.000Z"),
+        periodEndedAt: new Date("2026-06-07T00:00:00.000Z"),
+        periodTimezone: "UTC",
+        userId: null,
+        subscriptionId: null,
+        headline: "Legacy persisted summary",
+        summaryText: "The summary remains readable.",
+        createdAt: new Date("2026-06-06T00:04:00.000Z"),
+      }),
+    );
+    const legacyView = presentReaderSummaryArtifact(legacyArtifact, {
+      status: "fresh",
+      checkedAt: new Date("2026-06-06T00:05:00.000Z"),
+    });
 
-    expect(() => readerSummaryArtifactViewFromReaderSummaryView(legacyView))
-      .toThrow("promotion board is invalid");
+    expect(readerSummaryArtifactViewFromReaderSummaryView(legacyView))
+      .toMatchObject({
+        readerSummaryId: "readerSummary-legacy",
+        headline: "Repo radar readerSummary",
+        readerBrief: { topReads: [], selectedPosts: [] },
+      });
+    expect(listReaderSummariesResponseFromReaderSummaries({
+      items: [readerSummaryView, legacyView],
+    }).items).toEqual([
+      expect.objectContaining({ readerSummaryId: "readerSummary-1" }),
+      expect.objectContaining({
+        readerSummaryId: "readerSummary-legacy",
+        readerBrief: expect.objectContaining({
+          topReads: [],
+          selectedPosts: [],
+        }),
+      }),
+    ]);
   });
 });
+
+const stripPromotionOnlyFields = (payload: Record<string, unknown>): void => {
+  const content = payload.content as Record<string, unknown>;
+  const sections = content.interestSections as Record<string, unknown>[];
+  const cards = [
+    ...(content.topReads as Record<string, unknown>[]),
+    ...(content.selectedPosts as Record<string, unknown>[]),
+    ...sections.flatMap((section) =>
+      section.items as Record<string, unknown>[]),
+  ];
+  for (const card of cards) {
+    delete card.promotionMarker;
+    delete card.promotionPolicyVersion;
+    delete card.promotionTier;
+    delete card.promotionCandidateId;
+    delete card.promotionCanonicalIdentity;
+  }
+};
 
 const sourceWindow = {
   windowId: "window-1",

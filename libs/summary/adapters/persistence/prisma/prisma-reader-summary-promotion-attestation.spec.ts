@@ -1,10 +1,14 @@
 import {
   buildReaderPostPromotionAttestations,
   canonicalPromotionPayload,
+  emptyReaderSummaryReliabilityReport,
   promotionPayloadDigest,
   selectReaderPostPromotions,
 } from "../../../domain";
-import { normalizePromotionAttestations } from
+import {
+  normalizePersistedPromotionBoard,
+  normalizePromotionAttestations,
+} from
   "./prisma-reader-summary-promotion-attestation";
 
 describe("normalizePromotionAttestations", () => {
@@ -106,6 +110,111 @@ describe("normalizePromotionAttestations", () => {
       /exact schema|Invalid promotion field/u,
     );
   });
+
+  it("maps a genuinely pre-promotion persisted board to unavailable", () => {
+    const content = legacyContent();
+
+    const normalized = normalizePersistedPromotionBoard({
+      promotionAttestations: undefined,
+      promotionEvidenceFacts: undefined,
+      content,
+    });
+
+    expect(normalized).toMatchObject({
+      promotionAttestations: [],
+      promotionEvidenceFacts: [],
+      promotionBoardState: "legacy_unavailable",
+      content: {
+        topReads: [expect.objectContaining({
+          title: "Pre-promotion persisted card",
+        })],
+        selectedPosts: [expect.objectContaining({
+          title: "Pre-promotion persisted card",
+        })],
+        interestSections: [{
+          items: [expect.objectContaining({
+            title: "Pre-promotion persisted card",
+          })],
+        }],
+      },
+    });
+    expect(normalized.content).toMatchObject({
+      headline: "Legacy persisted summary",
+      bullets: ["The surrounding summary remains readable."],
+    });
+  });
+
+  it("does not classify stripped modern promotion provenance as legacy", () => {
+    const content = legacyContent();
+    const modernCard = {
+      ...content.topReads[0]!,
+      promotionMarker: "reader_post_promotion" as const,
+    };
+
+    const normalized = normalizePersistedPromotionBoard({
+      promotionAttestations: undefined,
+      promotionEvidenceFacts: undefined,
+      content: { ...content, topReads: [modernCard] },
+    });
+
+    expect(normalized.content?.topReads).toEqual([modernCard]);
+    expect(normalized.promotionAttestations).toEqual([]);
+  });
+});
+
+const legacyContent = () => ({
+  headline: "Legacy persisted summary",
+  oneLineTakeaway: "Legacy detail remains usable.",
+  bullets: ["The surrounding summary remains readable."],
+  mainTopics: ["compatibility"],
+  qualityState: {
+    status: "ready" as const,
+    flags: [],
+    warnings: [],
+    isSingleSource: true,
+  },
+  interestSections: [{
+    interestId: "compatibility",
+    title: "Compatibility",
+    insight: "Legacy evidence is withheld.",
+    items: [legacyCard()],
+    citationIds: ["citation-legacy"],
+  }],
+  sourceMix: [],
+  topReads: [legacyCard()],
+  selectedPosts: [legacyCard()],
+  claimBoard: [],
+  reliabilityReport: emptyReaderSummaryReliabilityReport(),
+  trendDelta: {
+    newSignals: [],
+    growingSignals: [],
+    repeatedSignals: [],
+    fadingSignals: [],
+  },
+  risks: [],
+  openQuestions: [],
+  nextActions: [],
+});
+
+const legacyCard = () => ({
+  title: "Pre-promotion persisted card",
+  providerKey: "rss",
+  providerName: "RSS",
+  primaryActionKind: "read_source" as const,
+  reason: "Persisted before promotion attestations existed.",
+  matchedInterestIds: ["compatibility"],
+  matchedRules: [],
+  signalScore: 0.5,
+  confidence: {
+    level: "medium" as const,
+    score: 0.5,
+    rationale: "Legacy payload.",
+  },
+  confirmedProviderKeys: ["rss"],
+  providerMetrics: [],
+  whyImportant: ["Compatibility"],
+  whyNow: "Historical persisted data.",
+  citationIds: ["citation-legacy"],
 });
 
 const supportFact = (item: Record<string, unknown>): Record<string, unknown> =>

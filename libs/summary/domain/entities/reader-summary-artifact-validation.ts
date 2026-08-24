@@ -8,9 +8,26 @@ import type { RelatedTopicRelation, StoryCluster } from "../value-objects/summar
 import { sameProviderMetrics } from "./reader-summary-artifact-validation-values";
 import { assertReaderSummaryPromotionAttestations } from
   "./reader-summary-promotion-attestation-validation";
+import { readerPostPromotionCardFields } from "./top-read";
 export const assertReaderSummaryArtifactValid = (
   props: ReaderSummaryArtifactProps,
 ): void => {
+  if (
+    props.promotionBoardState !== undefined &&
+    props.promotionBoardState !== "legacy_unavailable"
+  ) {
+    throw new Error("Reader summary promotion board state is invalid");
+  }
+  if (
+    props.promotionBoardState === "legacy_unavailable" &&
+    ((props.promotionAttestations?.length ?? 0) > 0 ||
+      (props.promotionEvidenceFacts?.length ?? 0) > 0 ||
+      hasPromotionOnlyCardFields(props))
+  ) {
+    throw new Error(
+      "Legacy reader summary promotion board cannot include promotion provenance",
+    );
+  }
   if (props.schemaVersion !== "reader_summary.artifact.v1") {
     throw new Error("Unsupported reader summary schema version");
   }
@@ -228,6 +245,21 @@ export const assertReaderSummaryArtifactValid = (
   if (props.confidence.rationale.trim().length === 0) {
     throw new Error("Reader summary confidence rationale must be non-empty");
   }
+};
+
+const hasPromotionOnlyCardFields = (
+  props: ReaderSummaryArtifactProps,
+): boolean => {
+  const content = props.content;
+  if (content === undefined) return false;
+  const cards = [
+    ...content.topReads,
+    ...(content.selectedPosts ?? []),
+    ...content.interestSections.flatMap((section) => section.items),
+  ];
+  return cards.some((card) => readerPostPromotionCardFields.some(
+    (field) => Object.prototype.hasOwnProperty.call(card, field),
+  ));
 };
 
 const assertRelatedTopicRelations = (
