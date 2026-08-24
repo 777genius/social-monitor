@@ -44,8 +44,8 @@ describe("GrpcReaderSummaryDailySubscriptionRuntime", () => {
     });
     expect(result.responseBytes.toString("utf8")).toBe('{"a":"exact","z":1}');
     expect(result.modelTelemetry).toEqual({
-      provider: "codex", model: "gpt-5.6-sol", reasoningEffort: "xhigh",
-      inputTokens: 120, outputTokens: 30,
+      provider: "codex", model: "gpt-5.6-sol", reasoningEffort: "high",
+      inputTokens: 120, outputTokens: 30, totalTokens: 150,
       usageSource: "PROVIDER_REPORTED", durationMs: 25,
     });
   });

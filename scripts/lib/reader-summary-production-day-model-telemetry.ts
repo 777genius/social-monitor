@@ -28,6 +28,9 @@ export const productionDayModelExecutionReport = (input: {
     telemetry.usageSource !== "PROVIDER_REPORTED" ||
     !nonNegativeInteger(telemetry.inputTokens) ||
     !nonNegativeInteger(telemetry.outputTokens) ||
+    !nonNegativeInteger(telemetry.totalTokens) ||
+    telemetry.totalTokens !==
+      (telemetry.inputTokens as number) + (telemetry.outputTokens as number) ||
     !positiveInteger(telemetry.durationMs)
   ) {
     throw new Error("Daily production report model telemetry is incomplete");
@@ -38,6 +41,7 @@ export const productionDayModelExecutionReport = (input: {
     reasoningEffort: telemetry.reasoningEffort as string,
     inputTokens: telemetry.inputTokens as number,
     outputTokens: telemetry.outputTokens as number,
+    totalTokens: telemetry.totalTokens as number,
     usageSource: "PROVIDER_REPORTED",
     durationMs: telemetry.durationMs as number,
     modelJobIdentity: daily.modelJobIdentity as string,

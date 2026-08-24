@@ -669,6 +669,7 @@ function dailySourceAuthority() {
       reasoningEffort: "xhigh",
       inputTokens: 120,
       outputTokens: 30,
+      totalTokens: 150,
       usageSource: "PROVIDER_REPORTED",
       durationMs: 250,
     },

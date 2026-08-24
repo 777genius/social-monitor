@@ -335,8 +335,6 @@ const createReaderSummaryDailyPersistedResponseModel = (input: {
   const structuredAttestation = receiptAttestation === undefined
     ? verifiedStructuredOutputAttestation(input, responseBytes)
     : undefined;
-  const persistedReasoningEffort = structuredAttestation?.reasoningEffort ===
-    "xhigh" ? "xhigh" : outputKind === "output_text" ? "xhigh" : "high";
   let generated = false;
   const route: ReaderSummaryModelRoute = {
     provider: "agent-runtime",

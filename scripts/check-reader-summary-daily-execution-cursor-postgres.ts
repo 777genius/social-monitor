@@ -22,6 +22,10 @@ const activationMigration = readFileSync(
   "prisma/migrations/20260802143000_reader_summary_daily_execution_publication_activation/migration.sql",
   "utf8",
 );
+const boundedMaintenanceMigration = readFileSync(
+  "prisma/migrations/20260804130400_reader_summary_daily_bounded_maintenance_claim/migration.sql",
+  "utf8",
+);
 const telemetryMigration = readFileSync(
   "prisma/migrations/20260824120000_reader_summary_daily_model_job_telemetry/migration.sql",
   "utf8",
@@ -75,6 +79,7 @@ const main = async (): Promise<void> => {
     await admin.query(baseSchemaSql);
     await admin.query(migration);
     await admin.query(activationMigration);
+    await admin.query(boundedMaintenanceMigration);
     const historicalScope = await seedHistoricalCompletedDailyJob(admin);
     await admin.query(`ALTER SCHEMA public OWNER TO ${quoteIdentifier(schemaOwnerRole)}`);
     await admin.query(`ALTER TABLE public.reader_summary_daily_model_jobs
@@ -88,14 +93,17 @@ const main = async (): Promise<void> => {
       usage_source: string;
       input_tokens: string | null;
       output_tokens: string | null;
+      total_tokens: string | null;
       duration_ms: string | null;
     }>(`SELECT usage_source, input_tokens::text, output_tokens::text,
+        total_tokens::text,
         duration_ms::text
       FROM public.reader_summary_daily_model_jobs
       WHERE tenant_id = $1 AND workspace_id = $2`, [...historicalScope]);
     assert(historical.rows[0]?.usage_source === "HISTORICAL_INCOMPLETE" &&
       historical.rows[0]?.input_tokens === null &&
       historical.rows[0]?.output_tokens === null &&
+      historical.rows[0]?.total_tokens === null &&
       historical.rows[0]?.duration_ms === null,
     "upgraded historical completion acquired fabricated telemetry");
     first = await firstPool.connect();

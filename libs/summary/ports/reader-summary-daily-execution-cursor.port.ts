@@ -18,6 +18,7 @@ export type ReaderSummaryDailyModelTelemetry = Readonly<{
   reasoningEffort: string;
   inputTokens: number | null;
   outputTokens: number | null;
+  totalTokens: number | null;
   usageSource: ReaderSummaryDailyUsageSource;
   durationMs: number | null;
 }>;

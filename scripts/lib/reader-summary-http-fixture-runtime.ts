@@ -98,7 +98,7 @@ export class ReaderSummaryAgentRuntimeFixture implements AgentRuntimeClientPort 
     );
     fixtureInvariant(
       this.commands[0]?.purpose ===
-        "social_monitor.reader_summary.generate",
+        "social_monitor.reader_summary.generate.v2",
       "the only runtime request must be reader-summary generation",
     );
   }
@@ -108,8 +108,8 @@ export const assertReaderSummaryAgentRuntimeCommand = (
   command: AgentRuntimeTaskCommand,
 ): void => {
   fixtureInvariant(
-    command.purpose === "social_monitor.reader_summary.generate",
-    "runtime purpose must be social_monitor.reader_summary.generate",
+    command.purpose === "social_monitor.reader_summary.generate.v2",
+    "runtime purpose must be social_monitor.reader_summary.generate.v2",
   );
   fixtureInvariant(
     command.provider === readerSummaryHttpFixtureIdentity.agentProvider,

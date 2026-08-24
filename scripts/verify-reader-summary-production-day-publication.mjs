@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { basename } from "node:path";
 import { publicationQualityContract } from "./lib/reader-summary-publication-quality-contract.mjs";
+import { validateDailyModelExecution } from "./lib/reader-summary-production-day-model-telemetry-verifier.mjs";
 
 const reportArtifactFormat = "reader-summary-production-day-run-v1";
 const reportGeneratedBy = "npm run run:reader-summary-production-day";
@@ -131,46 +132,6 @@ function validateReport(report, expectedDate, evidencePath, frontendPath) {
   );
   validateRun(report.run, binding.captureExecution);
   return binding;
-}
-
-function validateDailyModelExecution(value, evidence, frontend, binding) {
-  const daily = evidence?.provenance?.dailySourceAuthority;
-  if (daily === undefined) {
-    if (value !== null && value !== undefined) {
-      fail("non-daily report contains daily model telemetry");
-    }
-    return;
-  }
-  assertObject(value, "report.model.modelExecution");
-  assertObject(daily.modelExecution, "daily model execution");
-  const expected = {
-    ...daily.modelExecution,
-    modelJobIdentity: daily.modelJobIdentity,
-    receiptSha256: daily.receiptSha256,
-    readerSummaryJobId: binding.readerSummaryJobId,
-    readerSummaryArtifactId: binding.readerSummaryId,
-  };
-  const artifactUsage = frontend?.readerSummaryArtifact?.usage;
-  const runtime = binding.runtimeProvenance;
-  if (
-    stableJson(value) !== stableJson(expected) ||
-    value.usageSource !== "PROVIDER_REPORTED" ||
-    !Number.isSafeInteger(value.inputTokens) || value.inputTokens < 0 ||
-    !Number.isSafeInteger(value.outputTokens) || value.outputTokens < 0 ||
-    !Number.isSafeInteger(value.durationMs) || value.durationMs < 1 ||
-    typeof value.provider !== "string" || value.provider.length === 0 ||
-    typeof value.model !== "string" || value.model.length === 0 ||
-    typeof value.reasoningEffort !== "string" ||
-      value.reasoningEffort.length === 0 ||
-    !isSha256(value.modelJobIdentity) || !isSha256(value.receiptSha256)
-    || value.provider !== runtime.provider
-    || value.model !== runtime.physicalModel
-    || value.reasoningEffort !== runtime.reasoningEffort
-    || artifactUsage?.inputTokens !== value.inputTokens
-    || artifactUsage?.outputTokens !== value.outputTokens
-  ) {
-    fail("daily model telemetry is incomplete or not artifact-bound");
-  }
 }
 
 function validateModel(model, runtimeProvenance, provenance, reportContract) {

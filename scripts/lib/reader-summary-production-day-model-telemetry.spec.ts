@@ -19,6 +19,7 @@ describe("production-day daily model telemetry", () => {
       reasoningEffort: "medium-profile",
       inputTokens: 120,
       outputTokens: 30,
+      totalTokens: 150,
       usageSource: "PROVIDER_REPORTED",
       durationMs: 250,
       modelJobIdentity: "a".repeat(64),
@@ -34,6 +35,7 @@ describe("production-day daily model telemetry", () => {
     { durationMs: 0 },
     { inputTokens: null },
     { outputTokens: "30" },
+    { totalTokens: 151 },
   ])("blocks incomplete live telemetry %#", (patch) => {
     const value = evidence();
     Object.assign(
@@ -67,6 +69,7 @@ const evidence = () => ({
         reasoningEffort: "medium-profile",
         inputTokens: 120,
         outputTokens: 30,
+        totalTokens: 150,
         usageSource: "PROVIDER_REPORTED",
         durationMs: 250,
       },

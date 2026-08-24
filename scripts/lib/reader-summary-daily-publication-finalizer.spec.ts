@@ -165,7 +165,7 @@ describe("CanonicalReaderSummaryDailyPublicationFinalizer", () => {
       attestation: {
         schemaVersion: 1,
         requestId: "daily-stored",
-        purpose: "social_monitor.reader_summary.generate",
+        purpose: "social_monitor.reader_summary.generate.v2",
         canonicalRequestSha256: "a".repeat(64),
         provider: modelJob.provider,
         model: modelJob.model,
@@ -182,6 +182,7 @@ describe("CanonicalReaderSummaryDailyPublicationFinalizer", () => {
         reasoningEffort: modelJob.reasoningEffort,
         inputTokens: 120,
         outputTokens: 30,
+        totalTokens: 150,
         usageSource: "PROVIDER_REPORTED",
         durationMs: 250,
       },

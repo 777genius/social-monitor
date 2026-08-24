@@ -29,7 +29,10 @@ describe("reader-summary HTTP fixture runtime contract", () => {
     }],
     ["wrong provider", (value: MutableCommand) => { value.provider = "claude"; }],
     ["repair purpose", (value: MutableCommand) => {
-      value.purpose = "social_monitor.reader_summary.repair";
+      value.purpose = "social_monitor.reader_summary.repair.v2";
+    }],
+    ["legacy generate purpose", (value: MutableCommand) => {
+      value.purpose = "social_monitor.reader_summary.generate";
     }],
     ["interactive mode", (value: MutableCommand) => {
       value.controls.interactive = true;
@@ -56,7 +59,7 @@ describe("reader-summary HTTP fixture runtime contract", () => {
     expect(result.usage).toEqual(readerSummaryHttpFixtureUsage);
     expect(result.executionAttestation).toMatchObject({
       requestId: value.requestId,
-      purpose: "social_monitor.reader_summary.generate",
+      purpose: "social_monitor.reader_summary.generate.v2",
       provider: "codex",
       model: "gpt-5.6-sol",
       reasoningEffort: "high",
@@ -162,7 +165,7 @@ const mutableCommand = () => ({
   workspaceId: workspaceId("00000000-0000-7000-8000-000000000702"),
   correlationId: "reader-summary-fixture-correlation",
   provider: "codex" as "codex" | "claude",
-  purpose: "social_monitor.reader_summary.generate",
+  purpose: "social_monitor.reader_summary.generate.v2",
   systemPrompt: "Return only fixture JSON.",
   prompt: JSON.stringify(promptPayload()),
   outputSchema: structuredClone(openAiReaderSummaryJsonSchema) as MutableRecord,

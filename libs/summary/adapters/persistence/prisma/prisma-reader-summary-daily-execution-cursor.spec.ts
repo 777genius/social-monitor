@@ -129,8 +129,8 @@ describe("PrismaReaderSummaryDailyExecutionCursor", () => {
       attestationSha256: "c".repeat(64), receiptBytes: Buffer.from("receipt"),
       receiptSha256: "d".repeat(64),
       modelTelemetry: {
-        provider: "codex", model: "gpt-5.6-sol", reasoningEffort: "xhigh",
-        inputTokens: 120, outputTokens: 30,
+        provider: "codex", model: "gpt-5.6-sol", reasoningEffort: "high",
+        inputTokens: 120, outputTokens: 30, totalTokens: 150,
         usageSource: "PROVIDER_REPORTED", durationMs: 25,
       },
     });
@@ -156,8 +156,8 @@ describe("PrismaReaderSummaryDailyExecutionCursor", () => {
       expect.stringContaining("complete_reader_summary_daily_model_job_v2"),
       expect.stringContaining("finalize_reader_summary_daily_publication"),
     ]));
-    expect(sql.queries[2]?.values.slice(-4)).toEqual([
-      120, 30, "PROVIDER_REPORTED", 25,
+    expect(sql.queries[2]?.values.slice(-5)).toEqual([
+      120, 30, 150, "PROVIDER_REPORTED", 25,
     ]);
   });
 });

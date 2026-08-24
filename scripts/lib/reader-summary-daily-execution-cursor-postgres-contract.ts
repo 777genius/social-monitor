@@ -87,7 +87,7 @@ export const assertReaderSummaryDailyExecutionCursorPostgresContract = async (pa
         'claim_reader_summary_daily_execution(uuid,uuid,text,date,timestamptz)',
         'EXECUTE') AS claim_access,
       has_function_privilege(current_user,
-        'complete_reader_summary_daily_model_job_v2(uuid,uuid,date,text,bigint,timestamptz,bytea,character,jsonb,bytea,character,bytea,character,bigint,bigint,text,bigint)',
+        'complete_reader_summary_daily_model_job_v2(uuid,uuid,date,text,bigint,timestamptz,bytea,character,jsonb,bytea,character,bytea,character,bigint,bigint,bigint,text,bigint)',
         'EXECUTE') AS telemetry_complete_access`);
   assert(privileges.rows[0]?.table_access === false &&
     privileges.rows[0]?.claim_access === true &&
@@ -133,17 +133,17 @@ export const assertReaderSummaryDailyExecutionCursorPostgresContract = async (pa
   const responseSha = hash(responseBytes);
   const attestation = {
     schemaVersion: 1, requestId: "pg18-daily-1",
-    purpose: "social_monitor.reader_summary.generate",
+    purpose: "social_monitor.reader_summary.generate.v2",
     canonicalRequestSha256: "a".repeat(64), provider: "codex",
-    model: "gpt-5.6-sol", reasoningEffort: "xhigh",
+    model: "gpt-5.6-sol", reasoningEffort: "high",
     runtimeEngine: "subscription-runtime-cli", runtimePackageVersion: "1.2.3",
     launcherSha256: "b".repeat(64), selectedOutputKind: "structured_output",
     selectedOutputSha256: responseSha,
   };
   const attestationBytes = Buffer.from(JSON.stringify(attestation), "utf8");
   const jobIdentity = hash(Buffer.from([
-    "reader-summary-daily:v1", scope.tenantId, scope.workspaceId, firstDate,
-    sealedSha, "codex", "gpt-5.6-sol", "xhigh",
+    "reader-summary-daily:v2", scope.tenantId, scope.workspaceId, firstDate,
+    sealedSha, "codex", "gpt-5.6-sol", "high",
   ].join("|"), "utf8"));
   const receiptBytes = Buffer.from(JSON.stringify({
     schemaVersion: 2,
@@ -154,6 +154,7 @@ export const assertReaderSummaryDailyExecutionCursorPostgresContract = async (pa
     executionUsage: {
       inputTokens: 120,
       outputTokens: 30,
+      totalTokens: 150,
       usageSource: "PROVIDER_REPORTED",
       durationMs: 250,
     },
@@ -164,23 +165,24 @@ export const assertReaderSummaryDailyExecutionCursorPostgresContract = async (pa
     scope.tenantId, scope.workspaceId, firstDate, owner, fence,
     new Date().toISOString(), responseBytes, responseSha,
     attestation, attestationBytes, hash(attestationBytes), receiptBytes, hash(receiptBytes),
-    120, 30, "PROVIDER_REPORTED", 250,
+    120, 30, 150, "PROVIDER_REPORTED", 250,
   ] as const;
   await serializable(params.first, completionSql, completionValues);
   await serializable(params.first, completionSql, completionValues);
   await expectRejected(
     serializable(params.first, completionSql, [
-      ...completionValues.slice(0, 16), 251,
+      ...completionValues.slice(0, 17), 251,
     ]),
     "divergent terminal telemetry replay must conflict",
   );
   const completed = await params.admin.query<{
     state: string; response_bytes: Buffer; receipt_bytes: Buffer;
     next_unresolved_utc_date: string; input_tokens: string;
-    output_tokens: string; usage_source: string; duration_ms: string;
+    output_tokens: string; total_tokens: string;
+    usage_source: string; duration_ms: string;
   }>(`SELECT job.state, job.response_bytes, job.receipt_bytes,
         cursor.next_unresolved_utc_date::text,
-        job.input_tokens::text, job.output_tokens::text,
+        job.input_tokens::text, job.output_tokens::text, job.total_tokens::text,
         job.usage_source, job.duration_ms::text
       FROM reader_summary_daily_model_jobs job
       JOIN reader_summary_daily_execution_cursors cursor USING (tenant_id, workspace_id)
@@ -192,6 +194,7 @@ export const assertReaderSummaryDailyExecutionCursorPostgresContract = async (pa
     completed.rows[0]?.next_unresolved_utc_date === firstDate &&
     completed.rows[0]?.input_tokens === "120" &&
     completed.rows[0]?.output_tokens === "30" &&
+    completed.rows[0]?.total_tokens === "150" &&
     completed.rows[0]?.usage_source === "PROVIDER_REPORTED" &&
     completed.rows[0]?.duration_ms === "250",
     "COMPLETED receipt must persist without cursor advancement");
@@ -211,11 +214,12 @@ export const assertReaderSummaryDailyExecutionCursorPostgresContract = async (pa
   const finalized = await params.admin.query<{
     next_unresolved_utc_date: string; publication_id: string;
     reader_summary_job_id: string; reader_summary_artifact_id: string;
-    input_tokens: string; output_tokens: string; duration_ms: string;
+    input_tokens: string; output_tokens: string; total_tokens: string;
+    duration_ms: string;
   }>(`SELECT cursor.next_unresolved_utc_date::text,
         job.publication_id::text, job.reader_summary_job_id::text,
         job.reader_summary_artifact_id::text, job.input_tokens::text,
-        job.output_tokens::text, job.duration_ms::text
+        job.output_tokens::text, job.total_tokens::text, job.duration_ms::text
       FROM reader_summary_daily_execution_cursors cursor
       JOIN reader_summary_daily_model_jobs job USING (tenant_id, workspace_id)
       WHERE cursor.tenant_id = $1 AND cursor.workspace_id = $2
@@ -227,6 +231,7 @@ export const assertReaderSummaryDailyExecutionCursorPostgresContract = async (pa
     finalized.rows[0]?.reader_summary_artifact_id === canonical.artifactId &&
     finalized.rows[0]?.input_tokens === "120" &&
     finalized.rows[0]?.output_tokens === "30" &&
+    finalized.rows[0]?.total_tokens === "150" &&
     finalized.rows[0]?.duration_ms === "250",
     "canonical replay changed advancement, binding, or model telemetry");
 

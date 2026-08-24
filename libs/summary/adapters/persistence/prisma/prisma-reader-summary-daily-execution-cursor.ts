@@ -40,7 +40,7 @@ const completeSql = `
     $1::UUID, $2::UUID, $3::DATE, $4::TEXT, $5::BIGINT, $6::TIMESTAMPTZ,
     $7::BYTEA, $8::CHAR(64), $9::JSONB, $10::BYTEA, $11::CHAR(64),
     $12::BYTEA, $13::CHAR(64), $14::BIGINT, $15::BIGINT,
-    $16::TEXT, $17::BIGINT
+    $16::BIGINT, $17::TEXT, $18::BIGINT
   )`;
 const finalizeSql = `
   SELECT finalize_reader_summary_daily_publication(
@@ -175,6 +175,7 @@ export class PrismaReaderSummaryDailyExecutionCursor implements
         input.receiptSha256,
         input.modelTelemetry.inputTokens,
         input.modelTelemetry.outputTokens,
+        input.modelTelemetry.totalTokens,
         input.modelTelemetry.usageSource,
         input.modelTelemetry.durationMs,
       ]);

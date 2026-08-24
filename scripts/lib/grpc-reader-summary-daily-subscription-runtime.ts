@@ -280,6 +280,7 @@ const exactCompletedOutput = (
       reasoningEffort: attestation.reasoningEffort,
       inputTokens: usage.inputTokens,
       outputTokens: usage.outputTokens,
+      totalTokens: usage.totalTokens,
       usageSource: "PROVIDER_REPORTED" as const,
       durationMs,
     }),

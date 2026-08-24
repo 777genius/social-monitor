@@ -48,6 +48,7 @@ describe("ReaderSummaryDailyTerminalRunner", () => {
       modelTelemetry: expect.objectContaining({
         inputTokens: 120,
         outputTokens: 30,
+        totalTokens: 150,
         usageSource: "PROVIDER_REPORTED",
         durationMs: 25,
       }),
@@ -256,8 +257,8 @@ const fakeRuntime = (events: string[]) => ({
       responseBytes,
       executionAttestation: attestation(responseBytes),
       modelTelemetry: {
-        provider: "codex", model: "gpt-5.6-sol", reasoningEffort: "xhigh",
-        inputTokens: 120, outputTokens: 30,
+        provider: "codex", model: "gpt-5.6-sol", reasoningEffort: "high",
+        inputTokens: 120, outputTokens: 30, totalTokens: 150,
         usageSource: "PROVIDER_REPORTED", durationMs: 25,
       },
     };
@@ -265,9 +266,9 @@ const fakeRuntime = (events: string[]) => ({
 }) satisfies jest.Mocked<ReaderSummaryDailySubscriptionRuntime>;
 
 const attestation = (responseBytes: Buffer) => ({
-  schemaVersion: 1, requestId: "daily-1", purpose: "social_monitor.reader_summary.generate",
+  schemaVersion: 1, requestId: "daily-1", purpose: "social_monitor.reader_summary.generate.v2",
   canonicalRequestSha256: "a".repeat(64), provider: "codex", model: "gpt-5.6-sol",
-  reasoningEffort: "xhigh", runtimeEngine: "subscription-runtime-cli",
+  reasoningEffort: "high", runtimeEngine: "subscription-runtime-cli",
   runtimePackageVersion: "1.2.3", launcherSha256: "b".repeat(64),
   selectedOutputKind: "structured_output", selectedOutputSha256: hash(responseBytes),
 });

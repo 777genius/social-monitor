@@ -8,6 +8,7 @@ SET LOCAL ROLE social_monitor_public_schema_owner;
 ALTER TABLE public."reader_summary_daily_model_jobs"
   ADD COLUMN "input_tokens" BIGINT,
   ADD COLUMN "output_tokens" BIGINT,
+  ADD COLUMN "total_tokens" BIGINT,
   ADD COLUMN "usage_source" TEXT NOT NULL DEFAULT 'UNAVAILABLE',
   ADD COLUMN "duration_ms" BIGINT;
 
@@ -32,12 +33,17 @@ ALTER TABLE public."reader_summary_daily_model_jobs"
       WHEN 'PROVIDER_REPORTED' THEN
         "input_tokens" BETWEEN 0 AND 9007199254740991
         AND "output_tokens" BETWEEN 0 AND 9007199254740991
+        AND "total_tokens" BETWEEN 0 AND 9007199254740991
+        AND "total_tokens" = "input_tokens" + "output_tokens"
         AND "duration_ms" BETWEEN 1 AND 9007199254740991
       WHEN 'ESTIMATED' THEN
         "input_tokens" BETWEEN 0 AND 9007199254740991
         AND "output_tokens" BETWEEN 0 AND 9007199254740991
+        AND "total_tokens" BETWEEN 0 AND 9007199254740991
+        AND "total_tokens" = "input_tokens" + "output_tokens"
         AND "duration_ms" BETWEEN 1 AND 9007199254740991
       ELSE "input_tokens" IS NULL AND "output_tokens" IS NULL
+        AND "total_tokens" IS NULL
         AND "duration_ms" IS NULL
     END
   );
@@ -49,8 +55,8 @@ CREATE FUNCTION public."complete_reader_summary_daily_model_job_v2"(
   verified_attestation JSONB, exact_attestation_bytes BYTEA,
   exact_attestation_sha256 CHAR(64), exact_receipt_bytes BYTEA,
   exact_receipt_sha256 CHAR(64), observed_input_tokens BIGINT,
-  observed_output_tokens BIGINT, observed_usage_source TEXT,
-  observed_duration_ms BIGINT
+  observed_output_tokens BIGINT, observed_total_tokens BIGINT,
+  observed_usage_source TEXT, observed_duration_ms BIGINT
 )
 RETURNS BOOLEAN LANGUAGE plpgsql VOLATILE STRICT SECURITY DEFINER
 SET search_path = pg_catalog AS $$
@@ -70,8 +76,10 @@ BEGIN
   END IF;
   IF observed_usage_source NOT IN ('PROVIDER_REPORTED', 'ESTIMATED')
      OR observed_input_tokens < 0 OR observed_output_tokens < 0
+     OR observed_total_tokens <> observed_input_tokens + observed_output_tokens
      OR observed_input_tokens > 9007199254740991
      OR observed_output_tokens > 9007199254740991
+     OR observed_total_tokens > 9007199254740991
      OR observed_duration_ms < 1 OR observed_duration_ms > 9007199254740991 THEN
     RAISE EXCEPTION 'daily completion telemetry is unavailable or invalid';
   END IF;
@@ -95,6 +103,7 @@ BEGIN
         pg_catalog.btrim(exact_attestation_sha256)
       OR v_job."input_tokens" IS DISTINCT FROM observed_input_tokens
       OR v_job."output_tokens" IS DISTINCT FROM observed_output_tokens
+      OR v_job."total_tokens" IS DISTINCT FROM observed_total_tokens
       OR v_job."usage_source" IS DISTINCT FROM observed_usage_source
       OR v_job."duration_ms" IS DISTINCT FROM observed_duration_ms THEN
       RAISE EXCEPTION 'daily COMPLETED telemetry replay diverged';
@@ -129,6 +138,8 @@ BEGIN
       IS DISTINCT FROM observed_input_tokens
     OR (v_receipt->'executionUsage'->>'outputTokens')::BIGINT
       IS DISTINCT FROM observed_output_tokens
+    OR (v_receipt->'executionUsage'->>'totalTokens')::BIGINT
+      IS DISTINCT FROM observed_total_tokens
     OR v_receipt->'executionUsage'->>'usageSource'
       IS DISTINCT FROM observed_usage_source
     OR (v_receipt->'executionUsage'->>'durationMs')::BIGINT
@@ -155,6 +166,7 @@ BEGIN
     "receipt_sha256" = exact_receipt_sha256,
     "input_tokens" = observed_input_tokens,
     "output_tokens" = observed_output_tokens,
+    "total_tokens" = observed_total_tokens,
     "usage_source" = observed_usage_source,
     "duration_ms" = observed_duration_ms
   WHERE "tenant_id" = target_tenant_id
@@ -171,7 +183,7 @@ GRANT social_monitor_reader_summary_daily_publication_definer
 SET LOCAL ROLE social_monitor_public_schema_owner;
 ALTER FUNCTION public."complete_reader_summary_daily_model_job_v2"(
   UUID, UUID, DATE, TEXT, BIGINT, TIMESTAMPTZ, BYTEA, CHAR,
-  JSONB, BYTEA, CHAR, BYTEA, CHAR, BIGINT, BIGINT, TEXT, BIGINT
+  JSONB, BYTEA, CHAR, BYTEA, CHAR, BIGINT, BIGINT, BIGINT, TEXT, BIGINT
 ) OWNER TO social_monitor_reader_summary_daily_publication_definer;
 RESET ROLE;
 REVOKE social_monitor_reader_summary_daily_publication_definer
@@ -181,12 +193,73 @@ SET LOCAL ROLE social_monitor_reader_summary_daily_publication_definer;
 
 REVOKE ALL ON FUNCTION public."complete_reader_summary_daily_model_job_v2"(
   UUID, UUID, DATE, TEXT, BIGINT, TIMESTAMPTZ, BYTEA, CHAR,
-  JSONB, BYTEA, CHAR, BYTEA, CHAR, BIGINT, BIGINT, TEXT, BIGINT
+  JSONB, BYTEA, CHAR, BYTEA, CHAR, BIGINT, BIGINT, BIGINT, TEXT, BIGINT
 ) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public."complete_reader_summary_daily_model_job_v2"(
   UUID, UUID, DATE, TEXT, BIGINT, TIMESTAMPTZ, BYTEA, CHAR,
-  JSONB, BYTEA, CHAR, BYTEA, CHAR, BIGINT, BIGINT, TEXT, BIGINT
+  JSONB, BYTEA, CHAR, BYTEA, CHAR, BIGINT, BIGINT, BIGINT, TEXT, BIGINT
 ) TO social_monitor_reader_summary_daily_terminal;
+RESET ROLE;
+
+-- Cut new daily reservations over to the active v2/high execution identity.
+-- The guarded definition rewrite preserves the existing claim concurrency,
+-- source-authority, fencing, and bounded-maintenance behavior byte-for-byte.
+SET LOCAL ROLE social_monitor_public_schema_owner;
+DO $daily_active_claim_profile$
+DECLARE
+  v_definition TEXT;
+  v_version_from CONSTANT TEXT := '''reader-summary-daily:v1''';
+  v_version_to CONSTANT TEXT := '''reader-summary-daily:v2''';
+  v_effort_from CONSTANT TEXT := '''xhigh''';
+  v_effort_to CONSTANT TEXT := '''high''';
+BEGIN
+  SELECT pg_catalog.pg_get_functiondef(
+    'public.claim_reader_summary_daily_execution(uuid,uuid,text,date,timestamp with time zone)'::pg_catalog.regprocedure
+  ) INTO STRICT v_definition;
+  IF (pg_catalog.length(v_definition) - pg_catalog.length(
+        pg_catalog.replace(v_definition, v_version_from, '')))
+      / pg_catalog.length(v_version_from) <> 1
+    OR (pg_catalog.length(v_definition) - pg_catalog.length(
+          pg_catalog.replace(v_definition, v_effort_from, '')))
+      / pg_catalog.length(v_effort_from) <> 2
+    OR pg_catalog.strpos(v_definition, v_version_to) <> 0 THEN
+    RAISE EXCEPTION 'daily active claim profile is not the expected v1/xhigh definition';
+  END IF;
+  EXECUTE pg_catalog.replace(
+    pg_catalog.replace(v_definition, v_version_from, v_version_to),
+    v_effort_from,
+    v_effort_to
+  );
+END;
+$daily_active_claim_profile$;
+
+DO $daily_bounded_active_claim_profile$
+DECLARE
+  v_definition TEXT;
+  v_version_from CONSTANT TEXT := '''reader-summary-daily:v1''';
+  v_version_to CONSTANT TEXT := '''reader-summary-daily:v2''';
+  v_effort_from CONSTANT TEXT := '''xhigh''';
+  v_effort_to CONSTANT TEXT := '''high''';
+BEGIN
+  SELECT pg_catalog.pg_get_functiondef(
+    'public.claim_reader_summary_daily_execution_bounded_maintenance(uuid,uuid,text,date,timestamp with time zone)'::pg_catalog.regprocedure
+  ) INTO STRICT v_definition;
+  IF (pg_catalog.length(v_definition) - pg_catalog.length(
+        pg_catalog.replace(v_definition, v_version_from, '')))
+      / pg_catalog.length(v_version_from) <> 1
+    OR (pg_catalog.length(v_definition) - pg_catalog.length(
+          pg_catalog.replace(v_definition, v_effort_from, '')))
+      / pg_catalog.length(v_effort_from) <> 2
+    OR pg_catalog.strpos(v_definition, v_version_to) <> 0 THEN
+    RAISE EXCEPTION 'bounded daily active claim profile is not the expected v1/xhigh definition';
+  END IF;
+  EXECUTE pg_catalog.replace(
+    pg_catalog.replace(v_definition, v_version_from, v_version_to),
+    v_effort_from,
+    v_effort_to
+  );
+END;
+$daily_bounded_active_claim_profile$;
 RESET ROLE;
 
 COMMIT;

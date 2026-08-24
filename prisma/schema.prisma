@@ -1103,6 +1103,7 @@ model ReaderSummaryDailyModelJob {
   receiptSha256             String?  @map("receipt_sha256") @db.Char(64)
   inputTokens               BigInt?  @map("input_tokens")
   outputTokens              BigInt?  @map("output_tokens")
+  totalTokens               BigInt?  @map("total_tokens")
   usageSource               String   @default("UNAVAILABLE") @map("usage_source")
   durationMs                BigInt?  @map("duration_ms")
   readerSummaryJobId        String?  @unique(map: "reader_summary_daily_model_jobs_job_key") @map("reader_summary_job_id") @db.Uuid

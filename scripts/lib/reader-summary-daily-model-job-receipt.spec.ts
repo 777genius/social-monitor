@@ -39,7 +39,7 @@ describe("buildReaderSummaryDailyModelJobReceipt", () => {
   it.each([
     ["provider", { provider: "claude" }],
     ["model", { model: "gpt-5.5" }],
-    ["effort", { reasoningEffort: "high" }],
+    ["effort", { reasoningEffort: "xhigh" }],
     ["engine", { runtimeEngine: "other" }],
     ["response", { selectedOutputSha256: "0".repeat(64) }],
   ])("rejects a divergent %s attestation", (_label, patch) => {
@@ -65,6 +65,7 @@ describe("buildReaderSummaryDailyModelJobReceipt", () => {
     expect(readReaderSummaryDailyModelTelemetry(receiptBytes)).toMatchObject({
       inputTokens: null,
       outputTokens: null,
+      totalTokens: null,
       usageSource: "HISTORICAL_INCOMPLETE",
       durationMs: null,
     });
@@ -78,7 +79,11 @@ describe("buildReaderSummaryDailyModelJobReceipt", () => {
       modelJob,
       responseBytes,
       attestation: attestation(responseBytes),
-      modelTelemetry: telemetry({ inputTokens: 0, outputTokens: 0 }),
+      modelTelemetry: telemetry({
+        inputTokens: 0,
+        outputTokens: 0,
+        totalTokens: 0,
+      }),
     });
     expect(requireReaderSummaryDailyProviderTelemetry(receipt.receiptBytes))
       .toMatchObject({ inputTokens: 0, outputTokens: 0, durationMs: 25 });
@@ -96,6 +101,7 @@ describe("buildReaderSummaryDailyModelJobReceipt", () => {
       attestation: {
         ...attestation(responseBytes),
         purpose: "social_monitor.reader_summary.weekly.generate",
+        reasoningEffort: "xhigh",
         selectedOutputKind: "output_text",
       },
     });
@@ -126,6 +132,7 @@ describe("buildReaderSummaryDailyModelJobReceipt", () => {
       attestation: {
         ...attestation(rawOutputBytes),
         purpose: "social_monitor.reader_summary.weekly.generate",
+        reasoningEffort: "xhigh",
         selectedOutputKind: "output_text",
       },
     });
@@ -153,11 +160,11 @@ describe("buildReaderSummaryDailyModelJobReceipt", () => {
 const attestation = (responseBytes: Buffer) => ({
   schemaVersion: 1,
   requestId: "daily-job-1",
-  purpose: "social_monitor.reader_summary.generate",
+  purpose: "social_monitor.reader_summary.generate.v2",
   canonicalRequestSha256: "b".repeat(64),
   provider: "codex",
   model: "gpt-5.6-sol",
-  reasoningEffort: "xhigh",
+  reasoningEffort: "high",
   runtimeEngine: "subscription-runtime-cli",
   runtimePackageVersion: "1.2.3",
   launcherSha256: "c".repeat(64),
@@ -168,9 +175,10 @@ const hash = (value: Buffer) => createHash("sha256").update(value).digest("hex")
 const telemetry = (patch = {}) => ({
   provider: "codex",
   model: "gpt-5.6-sol",
-  reasoningEffort: "xhigh",
+  reasoningEffort: "high",
   inputTokens: 120,
   outputTokens: 30,
+  totalTokens: 150,
   usageSource: "PROVIDER_REPORTED" as const,
   durationMs: 25,
   ...patch,

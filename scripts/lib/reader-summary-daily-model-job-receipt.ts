@@ -211,6 +211,7 @@ export const buildReaderSummaryDailyModelJobReceipt = (input: {
     executionUsage: {
       inputTokens: modelTelemetry.inputTokens,
       outputTokens: modelTelemetry.outputTokens,
+      totalTokens: modelTelemetry.totalTokens,
       usageSource: modelTelemetry.usageSource,
       durationMs: modelTelemetry.durationMs,
     },
@@ -247,6 +248,7 @@ export const readReaderSummaryDailyModelTelemetry = (
       reasoningEffort: reasoningEffort ?? "unknown",
       inputTokens: null,
       outputTokens: null,
+      totalTokens: null,
       usageSource: "HISTORICAL_INCOMPLETE",
       durationMs: null,
     });
@@ -257,6 +259,7 @@ export const readReaderSummaryDailyModelTelemetry = (
     reasoningEffort,
     inputTokens: executionUsage.inputTokens as number,
     outputTokens: executionUsage.outputTokens as number,
+    totalTokens: executionUsage.totalTokens as number,
     usageSource: executionUsage.usageSource as ReaderSummaryDailyModelTelemetry["usageSource"],
     durationMs: executionUsage.durationMs as number,
   }, attestation!);
@@ -269,6 +272,7 @@ export const requireReaderSummaryDailyProviderTelemetry = (
   if (
     telemetry.usageSource !== "PROVIDER_REPORTED" ||
     telemetry.inputTokens === null || telemetry.outputTokens === null ||
+    telemetry.totalTokens === null ||
     telemetry.durationMs === null
   ) {
     throw new Error("Daily live publication requires provider-reported model telemetry");
@@ -289,6 +293,8 @@ const verifyCompletedModelTelemetry = (
     !measured ||
     !nonNegativeSafeInteger(telemetry.inputTokens) ||
     !nonNegativeSafeInteger(telemetry.outputTokens) ||
+    !nonNegativeSafeInteger(telemetry.totalTokens) ||
+    telemetry.totalTokens !== telemetry.inputTokens + telemetry.outputTokens ||
     !positiveSafeInteger(telemetry.durationMs)
   ) {
     throw new Error("Daily model job telemetry is incomplete or conflicts with attestation");
@@ -377,7 +383,7 @@ export const verifyReaderSummaryDailyCanonicalRecoveryRawAttestation = (
     input.purpose !== "social_monitor.reader_summary.weekly.generate" ||
     input.provider !== readerSummaryDailyModelProvider ||
     input.model !== readerSummaryDailyModel ||
-    input.reasoningEffort !== readerSummaryDailyReasoningEffort ||
+    input.reasoningEffort !== "xhigh" ||
     input.runtimeEngine !== readerSummaryDailyRuntimeEngine ||
     input.selectedOutputKind !== "output_text" ||
     input.selectedOutputSha256 !== rawOutputSha256 ||
