@@ -56,7 +56,7 @@ describe("PostgreSQL migration diagnostics", () => {
 
   it("preserves the database cause while redacting connection secrets", async () => {
     const cause = Object.assign(new Error(
-      "connection to postgresql://release_admin:dsn-secret@db.example.test/social " +
+      "connection to postgresql://release_admin:raw-password@db.example.test/social " +
       "failed with token=provider-secret",
     ), {
       code: "42501",
@@ -82,7 +82,7 @@ describe("PostgreSQL migration diagnostics", () => {
     });
     const message = thrown instanceof Error ? thrown.message : String(thrown);
     expect(message).toContain("sqlstate=42501");
-    expect(message).not.toContain("dsn-secret");
+    expect(message).not.toContain("raw-password");
     expect(message).not.toContain("provider-secret");
     expect(message).not.toContain("database-secret");
     expect(query).toHaveBeenCalledTimes(1);
