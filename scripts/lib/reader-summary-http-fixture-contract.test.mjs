@@ -1,14 +1,16 @@
 import assert from "node:assert/strict";
-import { createServer } from "node:http";
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import {
+  assertNoLegacyReaderSummaryPromotionIdentifiers,
+  assertReaderSummaryFixtureServerSource,
   parseReaderSummaryFixtureReadyLine,
   probeReaderSummaryFixture,
   readerSummaryFixtureEnvironment,
+  readerSummaryFixtureIdentity,
   readerSummaryFixtureScope,
 } from "./reader-summary-http-fixture-contract.mjs";
 
@@ -31,7 +33,12 @@ const additionalTitles = [
   "GitHub 48 hour exact additional",
 ];
 const fixtureItem = () => ({
-  readerSummaryId: "fixture",
+  readerSummaryId: readerSummaryFixtureIdentity.artifactId,
+  lineage: {
+    providerVersion: readerSummaryFixtureIdentity.providerVersion,
+    modelVersion: readerSummaryFixtureIdentity.modelVersion,
+  },
+  usage: { ...readerSummaryFixtureIdentity.usage },
   citations: [...topTitles, ...additionalTitles].map((_title, index) => ({
     citationId: `citation-${index}`,
     feedItemId: `feed-item-${index}`,
@@ -48,6 +55,11 @@ const fixtureItem = () => ({
       citationIds: [`citation-${topTitles.length + index}`],
     })),
   },
+});
+const fixtureJobStatus = () => ({
+  readerSummaryJobId: readerSummaryFixtureIdentity.jobId,
+  status: "completed",
+  readerSummaryId: readerSummaryFixtureIdentity.artifactId,
 });
 
 test("ready protocol accepts only a credential-free loopback HTTP origin", () => {
@@ -99,6 +111,10 @@ test("fixture environment replaces inherited production-facing runtime settings"
   };
   const child = readerSummaryFixtureEnvironment(parent);
   assert.deepEqual(Object.keys(child).sort(), [
+    "AGENT_RUNTIME_GRPC_ADDRESS",
+    "AGENT_RUNTIME_PROVIDER",
+    "AGENT_RUNTIME_READER_SUMMARY_MODEL",
+    "AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT",
     "DATABASE_URL",
     "PATH",
     "POSTGRES_RUNTIME_PROCESS",
@@ -121,9 +137,16 @@ test("fixture environment replaces inherited production-facing runtime settings"
   assert.equal(child.SOCIAL_MONITOR_METRICS_MODE, "in-memory");
   assert.equal(child.SUMMARY_MEMORY_MODE, "disabled");
   assert.equal(child.SUMMARY_MODEL_PROVIDER, "deterministic");
-  assert.equal(child.READER_SUMMARY_MODEL_PROVIDER, "deterministic");
+  assert.equal(child.READER_SUMMARY_MODEL_PROVIDER, "agent-runtime");
   assert.equal(child.READER_SUMMARY_TOPIC_LABELER, "deterministic");
   assert.equal(child.SUMMARY_YOUTUBE_VIDEO_SUMMARY_PROVIDER, "disabled");
+  assert.equal(child.AGENT_RUNTIME_PROVIDER, "codex");
+  assert.equal(child.AGENT_RUNTIME_READER_SUMMARY_MODEL, "gpt-5.6-sol");
+  assert.equal(
+    child.AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT,
+    "high",
+  );
+  assert.equal(child.AGENT_RUNTIME_GRPC_ADDRESS, "127.0.0.1:1");
   for (const forbidden of [
     "OTEL_EXPORTER_OTLP_ENDPOINT",
     "OTEL_EXPORTER_OTLP_HEADERS",
@@ -147,40 +170,47 @@ test("fixture environment replaces inherited production-facing runtime settings"
 });
 
 test("HTTP probe uses the current reader summaries route and fixture scope", async () => {
-  let observed;
-  const server = createServer((request, response) => {
-    observed = {
-      method: request.method,
-      url: request.url,
-      tenantId: request.headers["x-tenant-id"],
-      workspaceId: request.headers["x-workspace-id"],
-      workspaceRole: request.headers["x-workspace-role"],
-    };
-    response.writeHead(200, { "content-type": "application/json" });
-    response.end(JSON.stringify({ items: [fixtureItem()] }));
+  const observed = [];
+  const item = await probeReaderSummaryFixture({
+    baseUrl: "http://127.0.0.1:4567",
+    request: async (url, options) => {
+      const parsed = new URL(url);
+      const headers = options.headers;
+      observed.push({
+        method: "GET",
+        url: parsed.pathname,
+        tenantId: headers["x-tenant-id"],
+        workspaceId: headers["x-workspace-id"],
+        workspaceRole: headers["x-workspace-role"],
+      });
+      return {
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify(
+          parsed.pathname === "/reader-summaries"
+            ? { items: [fixtureItem()] }
+            : fixtureJobStatus(),
+        ),
+      };
+    },
   });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  try {
-    const address = server.address();
-    const item = await probeReaderSummaryFixture({
-      baseUrl: `http://127.0.0.1:${address.port}`,
-    });
-    assert.deepEqual(item, fixtureItem());
-    assert.deepEqual(observed, {
+  assert.deepEqual(item, fixtureItem());
+  assert.deepEqual(observed, [
+    {
       method: "GET",
       url: "/reader-summaries",
       tenantId: readerSummaryFixtureScope.tenantId,
       workspaceId: readerSummaryFixtureScope.workspaceId,
       workspaceRole: "viewer",
-    });
-  } finally {
-    await new Promise((resolve, reject) =>
-      server.close((error) => {
-        if (error) reject(error);
-        else resolve();
-      }),
-    );
-  }
+    },
+    {
+      method: "GET",
+      url: `/reader-summary-jobs/${readerSummaryFixtureIdentity.jobId}/status`,
+      tenantId: readerSummaryFixtureScope.tenantId,
+      workspaceId: readerSummaryFixtureScope.workspaceId,
+      workspaceRole: "viewer",
+    },
+  ]);
 });
 
 test("HTTP probe rejects malformed and non-success fixture responses", async () => {
@@ -263,6 +293,180 @@ test("HTTP probe rejects count order dedup rejection and URL regressions", async
       pattern,
     );
   }
+});
+
+test("HTTP probe rejects REST identity lineage usage and job binding loss", async () => {
+  const cases = [
+    {
+      label: "wrong item identity",
+      mutateItem: (item) => { item.readerSummaryId = "different-artifact"; },
+      pattern: /REST item identity/u,
+    },
+    {
+      label: "REST lineage loss",
+      mutateItem: (item) => { delete item.lineage; },
+      pattern: /REST lineage/u,
+    },
+    {
+      label: "wrong REST provider",
+      mutateItem: (item) => { item.lineage.providerVersion = "deterministic"; },
+      pattern: /REST lineage/u,
+    },
+    {
+      label: "xhigh REST effort",
+      mutateItem: (item) => {
+        item.lineage.modelVersion = "codex:gpt-5.6-sol:xhigh";
+      },
+      pattern: /REST lineage/u,
+    },
+    {
+      label: "missing usage",
+      mutateItem: (item) => { delete item.usage; },
+      pattern: /REST usage/u,
+    },
+    {
+      label: "malformed usage",
+      mutateItem: (item) => { item.usage.outputTokens = "789"; },
+      pattern: /REST usage/u,
+    },
+    {
+      label: "off-by-one usage",
+      mutateItem: (item) => { item.usage.inputTokens = 4_322; },
+      pattern: /REST usage/u,
+    },
+    {
+      label: "job status artifact mismatch",
+      mutateStatus: (status) => {
+        status.readerSummaryId = "different-artifact";
+      },
+      pattern: /job status did not bind/u,
+    },
+    {
+      label: "job status identity mismatch",
+      mutateStatus: (status) => { status.readerSummaryJobId = "different-job"; },
+      pattern: /job status did not bind/u,
+    },
+  ];
+  for (const testCase of cases) {
+    const item = fixtureItem();
+    const status = fixtureJobStatus();
+    testCase.mutateItem?.(item);
+    testCase.mutateStatus?.(status);
+    let requestCount = 0;
+    await assert.rejects(
+      probeReaderSummaryFixture({
+        baseUrl: "http://127.0.0.1:1234",
+        request: async () => {
+          requestCount += 1;
+          return {
+            ok: true,
+            status: 200,
+            text: async () => JSON.stringify(
+              requestCount === 1 ? { items: [item] } : status,
+            ),
+          };
+        },
+      }),
+      testCase.pattern,
+      testCase.label,
+    );
+  }
+});
+
+test("fixture server source fails closed on real runtime and legacy promotion mutations", async () => {
+  const server = await readFile(
+    resolve(
+      repositoryRoot,
+      "scripts/reader-summary-http-chrome-fixture-server.ts",
+    ),
+    "utf8",
+  );
+  assert.doesNotThrow(() => assertReaderSummaryFixtureServerSource(server));
+  for (const [mutation, pattern] of [
+    [
+      server.replace(".useValue(agentRuntimeFixture)", ".useValue(undefined)"),
+      /override gRPC/u,
+    ],
+    [
+      server.replace(
+        ".useValue(agentRuntimeFixture)",
+        ".useFactory(() => GrpcAgentRuntimeClient.connect({ address: \"127.0.0.1:1\" }))",
+      ),
+      /real gRPC connection/u,
+    ],
+    [
+      server.replace(
+        "READER_SUMMARY_MODEL_PROVIDER = \"agent-runtime\"",
+        "READER_SUMMARY_MODEL_PROVIDER = \"deterministic\"",
+      ),
+      /missing production contract/u,
+    ],
+    [
+      server.replace(
+        "READER_SUMMARY_MODEL_PROVIDER = \"agent-runtime\"",
+        "READER_SUMMARY_MODEL_PROVIDER = \"openai-responses\"",
+      ),
+      /missing production contract/u,
+    ],
+    [
+      server.replace(
+        "AGENT_RUNTIME_READER_SUMMARY_MODEL = \"gpt-5.6-sol\"",
+        "AGENT_RUNTIME_READER_SUMMARY_MODEL = \"gpt-5.5\"",
+      ),
+      /missing production contract/u,
+    ],
+    [
+      server.replace(
+        "AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT = \"high\"",
+        "AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT = \"xhigh\"",
+      ),
+      /missing production contract/u,
+    ],
+    [
+      `${server}\nREADER_SUMMARY_PROMOTION_V1_ENABLED`,
+      /legacy promotion identifier/u,
+    ],
+    [`${server}\npromotionControl.enabled`, /legacy promotion identifier/u],
+  ]) {
+    assert.throws(
+      () => assertReaderSummaryFixtureServerSource(mutation),
+      pattern,
+    );
+  }
+  for (const identifier of [
+    "READER_SUMMARY_PROMOTION_V1_ENABLED",
+    "READER_SUMMARY_PROMOTION_MODE",
+    "promotionControl.enabled",
+  ]) {
+    assert.throws(
+      () => assertNoLegacyReaderSummaryPromotionIdentifiers(identifier),
+      /forbids legacy promotion identifier/u,
+    );
+  }
+});
+
+test("tracked production source keeps legacy promotion identifiers removed", async () => {
+  const paths = (
+    await Promise.all(
+      ["apps", "libs", "scripts"].map(async (root) =>
+        (await readdir(resolve(repositoryRoot, root), { recursive: true }))
+          .map((path) => `${root}/${path}`),
+      ),
+    )
+  )
+    .flat()
+    .filter((path) => /\.(?:mjs|ts)$/u.test(path))
+    .filter((path) => !/\.(?:spec|test)\.(?:mjs|ts)$/u.test(path))
+    .filter((path) =>
+      path !== "scripts/lib/reader-summary-http-fixture-contract.mjs");
+  const productionSource = (
+    await Promise.all(
+      paths.map((path) => readFile(resolve(repositoryRoot, path), "utf8")),
+    )
+  ).join("\n");
+  assert.doesNotThrow(
+    () => assertNoLegacyReaderSummaryPromotionIdentifiers(productionSource),
+  );
 });
 
 test("runner completes codegen before fixture startup and drives the Chrome test", async () => {

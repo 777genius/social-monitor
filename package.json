@@ -102,7 +102,7 @@
     "frontend:serve-reader-summary-e2e-backend": "node scripts/run-with-timeout.mjs --timeout-ms 600000 --node-options --max-old-space-size=768 -- ts-node -r tsconfig-paths/register scripts/serve-frontend-reader-summary-e2e-backend.ts",
     "check:reader-summary-http-chrome-preflight": "node --test scripts/lib/reader-summary-prisma-client-preflight.test.mjs",
     "check:reader-summary-http-chrome-drive-runtime": "node --test scripts/lib/reader-summary-chrome-runtime.test.mjs scripts/lib/reader-summary-chrome-runner.test.mjs scripts/lib/reader-summary-e2e-diagnostics.test.mjs scripts/lib/reader-summary-process-lifecycle.test.mjs",
-    "check:reader-summary-http-chrome-fixture-contract": "node --test scripts/lib/reader-summary-http-fixture-contract.test.mjs",
+    "check:reader-summary-http-chrome-fixture-contract": "node --test scripts/lib/reader-summary-http-fixture-contract.test.mjs && jest --runInBand --runTestsByPath scripts/lib/reader-summary-http-fixture-runtime.spec.ts",
     "check:reader-summary-http-chrome-harness": "npm run check:reader-summary-http-chrome-preflight && npm run check:reader-summary-http-chrome-drive-runtime && npm run check:reader-summary-http-chrome-fixture-contract",
     "check:reader-summary-http-chrome-e2e": "npm run check:reader-summary-http-chrome-harness && node scripts/run-with-timeout.mjs --timeout-ms 2420000 -- node scripts/run-reader-summary-http-chrome-e2e.mjs",
     "check:frontend": "cd apps/frontend && fvm flutter analyze && fvm flutter test app/test && fvm flutter test packages/design_system && fvm dart test packages/shared_kernel && fvm dart test packages/generated_api",

@@ -21,7 +21,9 @@ import {
   tenantId,
   workspaceId,
 } from "@social-monitor/shared-kernel";
-import { DeterministicReaderSummaryModelAdapter } from "@social-monitor/summary/adapters/model/deterministic-reader-summary-model.adapter";
+import { GrpcAgentRuntimeClient } from "@social-monitor/summary/adapters/model/grpc-agent-runtime-client";
+import { MeteredReaderSummaryModelAdapter } from "@social-monitor/summary/adapters/model/metered-reader-summary-model.adapter";
+import type { PrismaSummaryClient } from "@social-monitor/summary/adapters/persistence/prisma/prisma-summary-client";
 import {
   type ApprovedSameStoryRelation,
   ReaderSummaryJob,
@@ -40,6 +42,7 @@ import {
   READER_SUMMARY_JOB_REPOSITORY,
   READER_SUMMARY_POLICY_REPOSITORY,
   READER_SUMMARY_PUBLICATION,
+  SUMMARY_PRISMA_CLIENT,
 } from "@social-monitor/summary/interfaces/rest/summary-provider-tokens";
 import type {
   ReaderSummaryArtifactRepositoryPort,
@@ -51,14 +54,19 @@ import type {
 import { DomainErrorFilter } from "../apps/api-gateway/src/domain-error.filter";
 import { createReaderSummaryFixtureLifecycle } from
   "./lib/reader-summary-fixture-resource-lifecycle";
+import {
+  assertReaderSummaryHttpFixturePersistence,
+  ReaderSummaryAgentRuntimeFixture,
+  readerSummaryHttpFixtureIdentity,
+} from "./lib/reader-summary-http-fixture-runtime";
 
 const fixtureTenantId = tenantId("00000000-0000-7000-8000-000000000701");
 const fixtureWorkspaceId = workspaceId("00000000-0000-7000-8000-000000000702");
 const periodStart = new Date("2026-08-14T00:00:00.000Z");
 const periodEnd = new Date("2026-08-15T00:00:00.000Z");
 const cutoff = new Date("2026-08-15T01:00:00.000Z");
-const fixtureJobId = "00000000-0000-7000-8000-000000000703";
-const fixtureArtifactId = "00000000-0000-7000-8000-000000000704";
+const fixtureJobId = readerSummaryHttpFixtureIdentity.jobId;
+const fixtureArtifactId = readerSummaryHttpFixtureIdentity.artifactId;
 const repositoryRoot = process.cwd();
 let fixtureApp: INestApplication | undefined;
 let fixtureModule: TestingModule | undefined;
@@ -257,13 +265,18 @@ const start = async (): Promise<void> => {
   configureFixtureRuntime(databaseUrl);
 
   emitReaderSummaryFixtureStage("nest_module_compile_start");
-  const moduleRef = await Test.createTestingModule({
+  const agentRuntimeFixture = new ReaderSummaryAgentRuntimeFixture();
+  const moduleBuilder = Test.createTestingModule({
     imports: [
       MetricsRuntimeModule.register({ serviceName: "reader-summary-e2e" }),
       SummaryRestModule,
     ],
     providers: [{ provide: APP_FILTER, useClass: DomainErrorFilter }],
-  }).compile();
+  });
+  moduleBuilder
+    .overrideProvider(GrpcAgentRuntimeClient)
+    .useValue(agentRuntimeFixture);
+  const moduleRef = await moduleBuilder.compile();
   fixtureModule = moduleRef;
   emitReaderSummaryFixtureStage("nest_module_compile_end");
   const app = moduleRef.createNestApplication();
@@ -303,6 +316,10 @@ const start = async (): Promise<void> => {
     READER_SUMMARY_PUBLICATION,
     { strict: false },
   );
+  const selectedReaderSummaryModel = moduleRef.get(
+    MeteredReaderSummaryModelAdapter,
+    { strict: false },
+  );
   await jobs.save(ReaderSummaryJob.request({
     id: fixtureJobId,
     tenantId: fixtureTenantId,
@@ -324,7 +341,7 @@ const start = async (): Promise<void> => {
     repository,
     policies,
     { async select() { return selection; } },
-    new DeterministicReaderSummaryModelAdapter(),
+    selectedReaderSummaryModel,
     publications,
     { generate: () => fixtureArtifactId } satisfies IdGenerator,
     new FixedClock(cutoff),
@@ -363,10 +380,60 @@ const start = async (): Promise<void> => {
       })}`,
     );
   }
+  agentRuntimeFixture.assertExactlyOneGenerateRequest();
   const persisted = await repository.findById({ tenantId: fixtureTenantId,
     workspaceId: fixtureWorkspaceId,
     readerSummaryId: fixtureArtifactId });
   if (persisted === null) throw new Error("Fixture artifact persistence failed");
+  const persistedJob = await jobs.findById({
+    tenantId: fixtureTenantId,
+    workspaceId: fixtureWorkspaceId,
+    readerSummaryJobId: fixtureJobId,
+  });
+  if (persistedJob === null) throw new Error("Fixture job persistence failed");
+  const prisma = moduleRef.get<PrismaSummaryClient | null>(
+    SUMMARY_PRISMA_CLIENT,
+    { strict: false },
+  );
+  if (prisma === null) throw new Error("Fixture Prisma client was not composed");
+  const [rawJob, rawArtifact, publicationRows] = await Promise.all([
+    prisma.readerSummaryJob.findFirst({
+      where: {
+        tenantId: fixtureTenantId,
+        workspaceId: fixtureWorkspaceId,
+        id: fixtureJobId,
+      },
+    }),
+    prisma.readerSummaryArtifact.findFirst({
+      where: {
+        tenantId: fixtureTenantId,
+        workspaceId: fixtureWorkspaceId,
+        id: fixtureArtifactId,
+      },
+    }),
+    prisma.$queryRaw<readonly FixturePublicationRow[]>`
+      SELECT
+        id::TEXT AS "publicationId",
+        reader_summary_job_id::TEXT AS "readerSummaryJobId",
+        reader_summary_artifact_id::TEXT AS "readerSummaryArtifactId",
+        model_version AS "modelVersion",
+        exact_proof AS "exactProof"
+      FROM reader_summary_publications
+      WHERE id = ${fixtureArtifactId}::UUID
+    `,
+  ]);
+  const publication = publicationRows[0];
+  if (rawJob === null || rawArtifact === null ||
+      publicationRows.length !== 1 || publication === undefined) {
+    throw new Error("Fixture raw persistence binding was incomplete");
+  }
+  assertReaderSummaryHttpFixturePersistence({
+    rawJob,
+    repositoryJob: persistedJob.toSnapshot(),
+    rawArtifact,
+    repositoryArtifact: persisted.toSnapshot(),
+    publication,
+  });
   emitReaderSummaryFixtureStage("seeding_end");
   if (process.env.READER_SUMMARY_FIXTURE_PRINT === "1") {
     process.stdout.write(`${JSON.stringify(persisted.toSnapshot())}\n`);
@@ -451,9 +518,21 @@ const configureFixtureRuntime = (databaseUrl: string): void => {
   process.env.SOCIAL_MONITOR_RUNTIME_PROFILE = "local-dev";
   process.env.SUMMARY_PERSISTENCE = "prisma";
   process.env.SUMMARY_JOB_QUEUE_MODE = "in-memory";
-  process.env.READER_SUMMARY_MODEL_PROVIDER = "deterministic";
+  process.env.READER_SUMMARY_MODEL_PROVIDER = "agent-runtime";
   process.env.READER_SUMMARY_TOPIC_LABELER = "deterministic";
+  process.env.AGENT_RUNTIME_PROVIDER = "codex";
+  process.env.AGENT_RUNTIME_READER_SUMMARY_MODEL = "gpt-5.6-sol";
+  process.env.AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT = "high";
+  process.env.AGENT_RUNTIME_GRPC_ADDRESS = "127.0.0.1:1";
 };
+
+type FixturePublicationRow = Readonly<{
+  publicationId: string;
+  readerSummaryJobId: string;
+  readerSummaryArtifactId: string;
+  modelVersion: string;
+  exactProof: unknown;
+}>;
 
 function item(
   id: string, providerKey: string, title: string,
