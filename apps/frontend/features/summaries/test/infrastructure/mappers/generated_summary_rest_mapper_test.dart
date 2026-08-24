@@ -34,7 +34,7 @@ void main() {
   });
 
   test(
-    'maps generated ReaderSummary reader payload into reader summary DTO',
+    'maps historical ReaderSummary payload without fabricating usage totals',
     () {
       const mapper = GeneratedSummaryRestMapper();
 
@@ -478,8 +478,8 @@ generated.ReaderSummaryArtifactResponseDto _readerSummaryArtifact() {
     ],
     usage: const generated.ReaderSummaryUsageDto(
       estimatedCostUsd: 0,
-      inputTokens: 100,
-      outputTokens: 40,
+      inputTokens: null,
+      outputTokens: null,
     ),
     workspaceId: 'workspace-1',
   );
