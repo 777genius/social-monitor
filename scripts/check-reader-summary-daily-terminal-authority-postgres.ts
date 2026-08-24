@@ -27,7 +27,7 @@ const day = new Date(); day.setUTCHours(0, 0, 0, 0); day.setUTCDate(day.getUTCDa
 const fixtureDates = Array.from({ length: 7 }, (_, offset) => { const value = new Date(day); value.setUTCDate(value.getUTCDate() + offset); return value.toISOString().slice(0, 10) });
 const claimSql = `SELECT * FROM claim_reader_summary_daily_terminal($1::UUID, $2::UUID, $3::UUID, $4::TEXT)`;
 const finalizeSql = `SELECT * FROM finalize_reader_summary_daily_terminal($1::UUID, $2::UUID, $3::DATE, $4::TEXT, $5::TEXT, $6::TEXT, $7::BIGINT)`;
-const readOnlyTables = ["reader_summary_publications", "reader_summary_publication_slots", "reader_summary_weekly_publication_evidence"] as const, directAccessDeniedTables = ["reader_summary_jobs", "reader_summary_production_recovery_leases", "reader_summary_production_recovery_days", "reader_summary_production_recovery_dry_runs", "reader_summary_recovery_receipts", "reader_summary_weekly_certification_seals"] as const, dailyTerminalMigration = "20260730120000_reader_summary_daily_terminal_authority", terminalCapabilityMigration = "20260801120000_reader_summary_daily_terminal_runtime_capability", terminalRole = "social_monitor_reader_summary_daily_terminal";
+const readOnlyTables = ["reader_summary_publications", "reader_summary_publication_slots", "reader_summary_weekly_publication_evidence"] as const, directAccessDeniedTables = ["reader_summary_jobs", "reader_summary_production_recovery_leases", "reader_summary_production_recovery_days", "reader_summary_production_recovery_dry_runs", "reader_summary_recovery_receipts", "reader_summary_weekly_certification_seals"] as const, dailyTerminalMigration = "20260730120000_reader_summary_daily_terminal_authority", terminalCapabilityMigration = "20260801120000_reader_summary_daily_terminal_runtime_capability", telemetryMigration = "20260824120000_reader_summary_daily_model_job_telemetry", terminalRole = "social_monitor_reader_summary_daily_terminal";
 const canonicalJson = (value: unknown): string => {
   if (value === null || typeof value !== "object") return JSON.stringify(value);
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
@@ -951,9 +951,8 @@ const main = async (): Promise<void> => {
       resolveRolledBackReaderSummaryMigration(adminDatabaseUrl, workspace, readerSummaryDailyActivationAclMigration);
       removeInstalledReaderSummaryMigration(workspace, readerSummaryDailyActivationAclMigration); installDailyActivationMigration(workspace, readerSummaryDailyActivationAclMigration); applyOrderedReaderSummaryMigrations(adminDatabaseUrl, workspace);
     } finally { await activationAdmin.end(); }
-    await privileges.runReaderSummaryPublicationBootstrapSql("post", adminDatabaseUrl, runtimeRole, systemRuntimeRole); installPublicationAndFollowingMigrations(workspace); applyOrderedReaderSummaryMigrations(adminDatabaseUrl, workspace);
+    await privileges.runReaderSummaryPublicationBootstrapSql("post", adminDatabaseUrl, runtimeRole, systemRuntimeRole); await privileges.runReaderSummaryPublicationBootstrapSql("pre", adminDatabaseUrl, runtimeRole, systemRuntimeRole); installPublicationAndFollowingMigrations(workspace); removeInstalledReaderSummaryMigration(workspace, telemetryMigration); applyOrderedReaderSummaryMigrations(adminDatabaseUrl, workspace);
     for (let replay = 0; replay < 2; replay += 1) { await privileges.runReaderSummaryPublicationBootstrapSql("pre", adminDatabaseUrl, runtimeRole, systemRuntimeRole); await privileges.runReaderSummaryPublicationBootstrapSql("post", adminDatabaseUrl, runtimeRole, systemRuntimeRole); }
-    assertReaderSummaryMigrationDatabaseMatchesSchema(targetDatabaseUrl);
     const auditorPool = new Pool({ connectionString: targetDatabaseUrl, max: 1 }); const runtimePool = new Pool({ connectionString: runtimeDatabaseUrl, max: 1 });
     const terminalPool = new Pool({ connectionString: terminalDatabaseUrl, max: 2 });
     try {
@@ -977,6 +976,7 @@ const main = async (): Promise<void> => {
     } finally {
       await runtimePool.end(); await terminalPool.end(); await auditorPool.end();
     }
+    await privileges.runReaderSummaryPublicationBootstrapSql("pre", adminDatabaseUrl, runtimeRole, systemRuntimeRole); cpSync(join("prisma/migrations", telemetryMigration), join(workspace.directory, "migrations", telemetryMigration), { recursive: true }); applyOrderedReaderSummaryMigrations(adminDatabaseUrl, workspace); await privileges.runReaderSummaryPublicationBootstrapSql("post", adminDatabaseUrl, runtimeRole, systemRuntimeRole); assertReaderSummaryMigrationDatabaseMatchesSchema(targetDatabaseUrl);
   } finally {
     removeReaderSummaryPublicationMigrationWorkspace(workspace);
     await privileges.dropPublicationFixtureDatabaseAndRoles({
