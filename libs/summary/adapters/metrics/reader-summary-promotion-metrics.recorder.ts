@@ -12,7 +12,6 @@ ReaderSummaryPromotionMetrics {
   record(value: ReaderSummaryPromotionAggregateMetrics): void {
     const labels = {
       policy_version: "v1",
-      disabled: value.disabled,
       lifecycle: value.lifecycle,
     };
     this.metrics.incrementCounter({

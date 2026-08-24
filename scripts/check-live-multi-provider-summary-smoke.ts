@@ -70,19 +70,14 @@ import { InMemoryReaderSummaryArtifactRepository } from "@social-monitor/summary
 import { InMemoryReaderSummaryJobRepository } from "@social-monitor/summary/adapters/persistence/in-memory-reader-summary-job.repository";
 import { InMemoryReaderSummaryPublication } from "@social-monitor/summary/adapters/persistence/in-memory-reader-summary-publication";
 import { InMemoryReaderSummaryPolicyRepository } from "@social-monitor/summary/adapters/persistence/in-memory-reader-summary-policy.repository";
+import { ReaderSummaryPromotionMetricsRecorder } from "@social-monitor/summary/adapters/metrics/reader-summary-promotion-metrics.recorder";
 import { InMemorySummaryArtifactRepository } from "@social-monitor/summary/adapters/persistence/in-memory-summary-artifact.repository";
 import { InMemorySummaryJobRepository } from "@social-monitor/summary/adapters/persistence/in-memory-summary-job.repository";
 import { InMemorySummaryPolicyRepository } from "@social-monitor/summary/adapters/persistence/in-memory-summary-policy.repository";
-import {
-  ReaderSummaryPolicy,
-  SummaryPolicy,
-} from "@social-monitor/summary/domain";
-import {
-  aiDeveloperSignalSourcePreset,
-  type SourceTargetPresetEntry,
-  type SourceTargetPresetSummaryPreference,
-} from "@social-monitor/subscriptions/domain";
+import { ReaderSummaryPolicy, SummaryPolicy } from "@social-monitor/summary/domain";
+import { aiDeveloperSignalSourcePreset, type SourceTargetPresetEntry, type SourceTargetPresetSummaryPreference } from "@social-monitor/subscriptions/domain";
 import { ExecuteReaderSummaryJobUseCase } from "@social-monitor/summary/features/execute-reader-summary-job/execute-reader-summary-job.use-case";
+import { readerSummaryPromotionControl } from "@social-monitor/summary/features/execute-reader-summary-job/reader-summary-promotion-control";
 import { ExecuteSummaryJobUseCase } from "@social-monitor/summary/features/execute-summary-job/execute-summary-job.use-case";
 import { RequestReaderSummaryUseCase } from "@social-monitor/summary/features/request-reader-summary/request-reader-summary.use-case";
 import { RequestSummaryUseCase } from "@social-monitor/summary/features/request-summary/request-summary.use-case";
@@ -1002,6 +997,7 @@ const main = async (): Promise<void> => {
     targetBySourceBinding,
     targets,
     clock,
+    metrics,
   });
 
   writeOptionalFrontendFixture({
@@ -1082,6 +1078,7 @@ const runLiveReaderSummarySmoke = async (params: {
   readonly targetBySourceBinding: ReadonlyMap<string, ScanTarget>;
   readonly targets: readonly ScanTarget[];
   readonly clock: Clock;
+  readonly metrics: InMemoryMetricsRecorder;
 }): Promise<LiveReaderSummarySmokeResult> => {
   const readerSummaryJobs = new InMemoryReaderSummaryJobRepository();
   const readerSummaryArtifacts = new InMemoryReaderSummaryArtifactRepository();
@@ -1175,6 +1172,7 @@ const runLiveReaderSummarySmoke = async (params: {
     new InMemoryReaderSummaryPublication(readerSummaryJobs, readerSummaryArtifacts, readerSummaryEvents),
     readerSummaryIds,
     params.clock,
+    readerSummaryPromotionControl(new ReaderSummaryPromotionMetricsRecorder(params.metrics)),
   );
   const readerSummary = unwrap(
     await executeReaderSummary.execute({

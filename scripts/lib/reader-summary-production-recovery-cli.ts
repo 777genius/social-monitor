@@ -7,6 +7,7 @@ import { PrismaReaderSummaryJobRepository } from "@social-monitor/summary/adapte
 import type { PrismaSummaryClient } from "@social-monitor/summary/adapters/persistence/prisma/prisma-summary-client";
 import { BuildReaderSummaryTopicMapUseCase } from "@social-monitor/summary/features/build-reader-summary-topic-map/build-reader-summary-topic-map.use-case";
 import { ExecuteReaderSummaryJobUseCase } from "@social-monitor/summary/features/execute-reader-summary-job/execute-reader-summary-job.use-case";
+import type { ReaderSummaryPromotionControl } from "@social-monitor/summary/features/execute-reader-summary-job/reader-summary-promotion-control";
 import type {
   ReaderSummaryArtifactRepositoryPort,
   ReaderSummaryEvidenceSelectorPort,
@@ -591,6 +592,7 @@ export type ProductionRecoveryDayExecutorDependencies = Readonly<{
   githubProjectionReader: ReaderSummaryGitHubProjectionReaderPort;
   ids: IdGenerator;
   clock: Clock;
+  promotionControl: ReaderSummaryPromotionControl;
   maxPrimaryEvidenceItems?: number;
 }>;
 
@@ -666,6 +668,7 @@ export const executeProductionRecoveryDay = async (
     publications,
     new FirstIdRecoveryGenerator(ids.readerSummaryId, params.ids),
     params.clock,
+    params.promotionControl,
     undefined,
     undefined,
     new BuildReaderSummaryTopicMapUseCase(),

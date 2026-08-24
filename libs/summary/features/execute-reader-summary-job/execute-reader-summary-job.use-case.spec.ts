@@ -38,7 +38,8 @@ import type {
 } from "../../ports";
 import { ExecuteReaderSummaryJobUseCase } from "./execute-reader-summary-job.use-case";
 import {
-  enabledReaderSummaryPromotionControl,
+  NOOP_READER_SUMMARY_PROMOTION_METRICS,
+  readerSummaryPromotionControl,
   type ReaderSummaryPromotionAggregateMetrics,
 } from "./reader-summary-promotion-control";
 import { FakeReaderSummaryJobRepository } from "./execute-reader-summary-job.spec-support";
@@ -75,6 +76,7 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
       unused(),
       new StaticIdGenerator(),
       new FixedClock(new Date("2026-06-23T08:31:00.000Z")),
+      readerSummaryPromotionControl(NOOP_READER_SUMMARY_PROMOTION_METRICS),
       unused<ReaderSummaryContextProviderPort>(),
     );
 
@@ -135,6 +137,9 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
       new CapturingReaderSummaryPublication(jobs, artifacts, events),
       new StaticIdGenerator(),
       new FixedClock(new Date("2026-06-26T08:05:00.000Z")),
+      readerSummaryPromotionControl({
+        record(value) { promotionMetrics.push(value); },
+      }),
       {
         async buildContext() {
           return [
@@ -169,9 +174,6 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
       undefined,
       undefined,
       undefined,
-      enabledReaderSummaryPromotionControl({
-        record(value) { promotionMetrics.push(value); },
-      }),
     ).execute({
       tenantId: tenant,
       workspaceId: workspace,
@@ -317,6 +319,7 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
       new CapturingReaderSummaryPublication(jobs, artifacts, events),
       new StaticIdGenerator(),
       new FixedClock(new Date("2026-06-26T08:05:00.000Z")),
+      readerSummaryPromotionControl(NOOP_READER_SUMMARY_PROMOTION_METRICS),
       undefined,
       {
         async findEffectivePreference(query) {
@@ -333,7 +336,6 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
       undefined,
       undefined,
       undefined,
-      enabledReaderSummaryPromotionControl(),
     ).execute({
       tenantId: tenant,
       workspaceId: workspace,
@@ -401,6 +403,7 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
       new CapturingReaderSummaryPublication(jobs, artifacts, events),
       new StaticIdGenerator(),
       new FixedClock(new Date("2026-06-28T08:05:00.000Z")),
+      readerSummaryPromotionControl(NOOP_READER_SUMMARY_PROMOTION_METRICS),
       undefined,
       undefined,
       emptyTopicMapBuilder(),
@@ -413,7 +416,6 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
       },
       undefined,
       undefined,
-      enabledReaderSummaryPromotionControl(),
     ).execute({
       tenantId: tenant,
       workspaceId: workspace,
@@ -503,6 +505,7 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
       new CapturingReaderSummaryPublication(jobs, artifacts, events),
       new StaticIdGenerator(),
       new FixedClock(new Date("2026-06-26T08:05:00.000Z")),
+      readerSummaryPromotionControl(NOOP_READER_SUMMARY_PROMOTION_METRICS),
       undefined,
       undefined,
       throwingTopicMapBuilder(),
@@ -511,7 +514,6 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
       undefined,
       undefined,
       undefined,
-      enabledReaderSummaryPromotionControl(),
     ).execute({
       tenantId: tenant,
       workspaceId: workspace,
@@ -585,6 +587,7 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
       new CapturingReaderSummaryPublication(jobs, artifacts, events),
       new StaticIdGenerator(),
       new FixedClock(new Date("2026-06-26T08:05:00.000Z")),
+      readerSummaryPromotionControl(NOOP_READER_SUMMARY_PROMOTION_METRICS),
       undefined,
       undefined,
       throwingTopicMapBuilder(),
@@ -593,7 +596,6 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
       undefined,
       undefined,
       undefined,
-      enabledReaderSummaryPromotionControl(),
     ).execute({
       tenantId: tenant,
       workspaceId: workspace,

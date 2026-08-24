@@ -30,7 +30,10 @@ import {
   type SummaryEvidenceSelection,
 } from "@social-monitor/summary/domain";
 import { ExecuteReaderSummaryJobUseCase } from "@social-monitor/summary/features/execute-reader-summary-job/execute-reader-summary-job.use-case";
-import { enabledReaderSummaryPromotionControl } from "@social-monitor/summary/features/execute-reader-summary-job/reader-summary-promotion-control";
+import {
+  NOOP_READER_SUMMARY_PROMOTION_METRICS,
+  readerSummaryPromotionControl,
+} from "@social-monitor/summary/features/execute-reader-summary-job/reader-summary-promotion-control";
 import { SummaryRestModule } from "@social-monitor/summary/interfaces/rest/summary-rest.module";
 import {
   READER_SUMMARY_ARTIFACT_REPOSITORY,
@@ -325,6 +328,7 @@ const start = async (): Promise<void> => {
     publications,
     { generate: () => fixtureArtifactId } satisfies IdGenerator,
     new FixedClock(cutoff),
+    readerSummaryPromotionControl(NOOP_READER_SUMMARY_PROMOTION_METRICS),
     undefined,
     undefined,
     undefined,
@@ -337,7 +341,6 @@ const start = async (): Promise<void> => {
     undefined,
     undefined,
     undefined,
-    enabledReaderSummaryPromotionControl(),
   ).execute({
     tenantId: fixtureTenantId,
     workspaceId: fixtureWorkspaceId,
@@ -450,7 +453,6 @@ const configureFixtureRuntime = (databaseUrl: string): void => {
   process.env.SUMMARY_JOB_QUEUE_MODE = "in-memory";
   process.env.READER_SUMMARY_MODEL_PROVIDER = "deterministic";
   process.env.READER_SUMMARY_TOPIC_LABELER = "deterministic";
-  process.env.READER_SUMMARY_PROMOTION_V1_ENABLED = "true";
 };
 
 function item(

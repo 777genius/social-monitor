@@ -1,6 +1,6 @@
 import type { ReaderSummaryArtifact } from "../../domain";
 import {
-  enabledReaderSummaryPromotionControl,
+  readerSummaryPromotionControl,
   recordReaderSummaryPromotionLifecycle,
   type ReaderSummaryPromotionAggregateMetrics,
 } from "./reader-summary-promotion-control";
@@ -8,7 +8,7 @@ import {
 describe("recordReaderSummaryPromotionLifecycle", () => {
   it("keeps supplemental GitHub entries out of aggregate promotion telemetry", () => {
     const records: ReaderSummaryPromotionAggregateMetrics[] = [];
-    const control = enabledReaderSummaryPromotionControl({
+    const control = readerSummaryPromotionControl({
       record: (metrics) => records.push(metrics),
     });
     const artifact = {

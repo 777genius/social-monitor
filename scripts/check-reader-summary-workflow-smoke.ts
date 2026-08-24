@@ -10,7 +10,7 @@ import { InMemoryReaderSummaryJobRepository } from "@social-monitor/summary/adap
 import { InMemoryReaderSummaryPublication } from "@social-monitor/summary/adapters/persistence/in-memory-reader-summary-publication";
 import { InMemoryReaderSummaryPolicyRepository } from "@social-monitor/summary/adapters/persistence/in-memory-reader-summary-policy.repository";
 import { ExecuteReaderSummaryJobUseCase } from "@social-monitor/summary/features/execute-reader-summary-job/execute-reader-summary-job.use-case";
-import { enabledReaderSummaryPromotionControl } from "@social-monitor/summary/features/execute-reader-summary-job/reader-summary-promotion-control";
+import { readerSummaryPromotionControl } from "@social-monitor/summary/features/execute-reader-summary-job/reader-summary-promotion-control";
 import { RequestReaderSummaryUseCase } from "@social-monitor/summary/features/request-reader-summary/request-reader-summary.use-case";
 import { ExecuteReaderSummaryJobCommandHandler } from "@social-monitor/summary/interfaces/queue/execute-reader-summary-job-command.handler";
 import {
@@ -316,6 +316,9 @@ async function main(): Promise<void> {
         new InMemoryReaderSummaryPublication(jobs, artifacts, events),
         ids,
         clock,
+        readerSummaryPromotionControl(
+          new ReaderSummaryPromotionMetricsRecorder(metrics),
+        ),
         undefined,
         new WorkflowUserSummaryPreferenceReader(),
         undefined,
@@ -324,9 +327,6 @@ async function main(): Promise<void> {
         undefined,
         undefined,
         undefined,
-        enabledReaderSummaryPromotionControl(
-          new ReaderSummaryPromotionMetricsRecorder(metrics),
-        ),
       ),
       metrics,
       runtime,

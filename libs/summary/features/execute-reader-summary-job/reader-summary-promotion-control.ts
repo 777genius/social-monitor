@@ -1,11 +1,12 @@
+import type { ReaderSummaryArtifact } from "../../domain";
+
 export type ReaderSummaryPromotionAggregateMetrics = {
   readonly candidateCount: number;
   readonly topCount: number;
   readonly additionalCount: number;
   readonly admittedEvidenceCount: number;
   readonly omittedEvidenceCount: number;
-  readonly disabled: boolean;
-  readonly lifecycle: "disabled" | "evaluated" | "rejected" | "delivered";
+  readonly lifecycle: "evaluated" | "rejected" | "delivered";
 };
 
 export interface ReaderSummaryPromotionMetrics {
@@ -13,27 +14,17 @@ export interface ReaderSummaryPromotionMetrics {
 }
 
 export type ReaderSummaryPromotionControl = {
-  readonly enabled: boolean;
   readonly metrics: ReaderSummaryPromotionMetrics;
 };
 
-const NOOP_READER_SUMMARY_PROMOTION_METRICS: ReaderSummaryPromotionMetrics = {
+export const NOOP_READER_SUMMARY_PROMOTION_METRICS:
+  ReaderSummaryPromotionMetrics = {
   record(): void {},
 };
 
-export const DISABLED_READER_SUMMARY_PROMOTION_CONTROL:
-ReaderSummaryPromotionControl = Object.freeze({
-  enabled: false,
-  metrics: NOOP_READER_SUMMARY_PROMOTION_METRICS,
-});
-
-export const enabledReaderSummaryPromotionControl = (
-  metrics: ReaderSummaryPromotionMetrics = NOOP_READER_SUMMARY_PROMOTION_METRICS,
-): ReaderSummaryPromotionControl => Object.freeze({ enabled: true, metrics });
-
-export const disabledReaderSummaryPromotionControl = (
+export const readerSummaryPromotionControl = (
   metrics: ReaderSummaryPromotionMetrics,
-): ReaderSummaryPromotionControl => Object.freeze({ enabled: false, metrics });
+): ReaderSummaryPromotionControl => Object.freeze({ metrics });
 
 export const recordReaderSummaryPromotionLifecycle = (params: {
   readonly artifact: ReaderSummaryArtifact;
@@ -54,8 +45,6 @@ export const recordReaderSummaryPromotionLifecycle = (params: {
     ).length,
     admittedEvidenceCount: admittedPromotionEvidenceIds.size,
     omittedEvidenceCount: 0,
-    disabled: !params.control.enabled,
     lifecycle: params.lifecycle,
   });
 };
-import type { ReaderSummaryArtifact } from "../../domain";

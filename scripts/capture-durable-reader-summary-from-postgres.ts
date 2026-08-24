@@ -3,6 +3,7 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 
 import { PrismaFeedConnection } from "@social-monitor/feed/adapters/persistence/prisma/prisma-feed-connection";
+import { InMemoryMetricsRecorder } from "@social-monitor/platform-metrics";
 import { defaultPostgresRuntimePoolConfig } from "@social-monitor/platform-persistence";
 import { PrismaFeedItemReadRepository } from "@social-monitor/feed/adapters/persistence/prisma/prisma-feed-item-read.repository";
 import { PrismaSummaryConnection } from "@social-monitor/summary/adapters/persistence/prisma/prisma-summary-connection";
@@ -20,6 +21,7 @@ import {
   resolveAgentRuntimeReaderSummaryTopicRelationVerifierOptions,
 } from "@social-monitor/summary/adapters/model/agent-runtime-reader-summary-topic-relation-verifier.adapter";
 import { DeterministicReaderSummaryModelAdapter } from "@social-monitor/summary/adapters/model/deterministic-reader-summary-model.adapter";
+import { ReaderSummaryPromotionMetricsRecorder } from "@social-monitor/summary/adapters/metrics/reader-summary-promotion-metrics.recorder";
 import { GrpcAgentRuntimeClient } from "@social-monitor/summary/adapters/model/grpc-agent-runtime-client";
 import {
   OpenAiResponsesReaderSummaryModelAdapter,
@@ -33,6 +35,7 @@ import {
   ReaderSummaryPolicy,
 } from "@social-monitor/summary/domain";
 import { ExecuteReaderSummaryJobUseCase } from "@social-monitor/summary/features/execute-reader-summary-job/execute-reader-summary-job.use-case";
+import { readerSummaryPromotionControl } from "@social-monitor/summary/features/execute-reader-summary-job/reader-summary-promotion-control";
 import { BuildReaderSummaryTopicMapUseCase } from "@social-monitor/summary/features/build-reader-summary-topic-map/build-reader-summary-topic-map.use-case";
 import { presentReaderSummaryArtifact } from "@social-monitor/summary/features/shared/reader-summary-artifact-presenter";
 import { RequestReaderSummaryUseCase } from "@social-monitor/summary/features/request-reader-summary/request-reader-summary.use-case";
@@ -397,6 +400,7 @@ async function main(): Promise<void> {
         attemptIdentity,
         attestations: () => executionAttestations.all(),
       });
+    const metrics = new InMemoryMetricsRecorder();
     const executeReaderSummary = new ExecuteReaderSummaryJobUseCase(
       readerSummaryJobs,
       readerSummaryArtifacts,
@@ -410,6 +414,9 @@ async function main(): Promise<void> {
       publication,
       ids,
       clock,
+      readerSummaryPromotionControl(
+        new ReaderSummaryPromotionMetricsRecorder(metrics),
+      ),
       undefined,
       undefined,
       publicationWiring.topicMapBuilder ?? buildTopicMapBuilder(

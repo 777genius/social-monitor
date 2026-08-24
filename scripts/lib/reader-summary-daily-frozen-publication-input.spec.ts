@@ -9,6 +9,10 @@ import {
   type ReaderSummaryPublicationPolicy,
 } from "@social-monitor/summary/domain";
 import { ExecuteReaderSummaryJobUseCase } from "@social-monitor/summary/features/execute-reader-summary-job/execute-reader-summary-job.use-case";
+import {
+  NOOP_READER_SUMMARY_PROMOTION_METRICS,
+  readerSummaryPromotionControl,
+} from "@social-monitor/summary/features/execute-reader-summary-job/reader-summary-promotion-control";
 import type {
   ReaderSummaryArtifactRepositoryPort,
   ReaderSummaryJobRepositoryPort,
@@ -455,6 +459,7 @@ const executeVerifiedRecovery = async (
     publications,
     ids,
     clock,
+    readerSummaryPromotionControl(NOOP_READER_SUMMARY_PROMOTION_METRICS),
     undefined,
     undefined,
     wiring.topicMapBuilder,

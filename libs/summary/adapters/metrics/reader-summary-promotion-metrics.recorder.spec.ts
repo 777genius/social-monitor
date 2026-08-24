@@ -15,7 +15,6 @@ describe("ReaderSummaryPromotionMetricsRecorder", () => {
       additionalCount: 1,
       admittedEvidenceCount: 3,
       omittedEvidenceCount: 2,
-      disabled: false,
       lifecycle: "evaluated",
     });
 

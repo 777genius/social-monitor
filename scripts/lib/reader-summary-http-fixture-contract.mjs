@@ -88,7 +88,6 @@ export const readerSummaryFixtureEnvironment = (environment = process.env) => ({
   READER_SUMMARY_MODEL_PROVIDER: "deterministic",
   READER_SUMMARY_TOPIC_LABELER: "deterministic",
   SUMMARY_YOUTUBE_VIDEO_SUMMARY_PROVIDER: "disabled",
-  READER_SUMMARY_PROMOTION_V1_ENABLED: "true",
   READER_SUMMARY_HTTP_E2E_FIXTURE: "1",
 });
 

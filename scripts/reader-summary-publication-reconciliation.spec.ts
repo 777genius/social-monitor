@@ -27,6 +27,10 @@ import type {
   SummaryQuotaPort,
 } from "@social-monitor/summary/ports";
 import { ExecuteReaderSummaryJobUseCase } from "@social-monitor/summary/features/execute-reader-summary-job/execute-reader-summary-job.use-case";
+import {
+  NOOP_READER_SUMMARY_PROMOTION_METRICS,
+  readerSummaryPromotionControl,
+} from "@social-monitor/summary/features/execute-reader-summary-job/reader-summary-promotion-control";
 import { RequestReaderSummaryUseCase } from "@social-monitor/summary/features/request-reader-summary/request-reader-summary.use-case";
 import type { BuildReaderSummaryTopicMapUseCase } from "@social-monitor/summary/features/build-reader-summary-topic-map/build-reader-summary-topic-map.use-case";
 import {
@@ -110,6 +114,7 @@ describe("reader summary DB publication reconciliation", () => {
       publication,
       ids,
       clock,
+      readerSummaryPromotionControl(NOOP_READER_SUMMARY_PROMOTION_METRICS),
       undefined,
       undefined,
       successfulEmptyTopicMapBuilder(),
@@ -161,6 +166,7 @@ describe("reader summary DB publication reconciliation", () => {
       publication,
       ids,
       new FixedClock(new Date("2026-08-13T10:00:00.000Z")),
+      readerSummaryPromotionControl(NOOP_READER_SUMMARY_PROMOTION_METRICS),
       undefined,
       undefined,
       successfulEmptyTopicMapBuilder(),
@@ -229,6 +235,7 @@ describe("reader summary DB publication reconciliation", () => {
         recoverable.publication,
         ids,
         clock,
+        readerSummaryPromotionControl(NOOP_READER_SUMMARY_PROMOTION_METRICS),
         undefined,
         undefined,
         successfulEmptyTopicMapBuilder(),

@@ -38,8 +38,8 @@ import {
 } from "./execute-reader-summary-job-promotion-control.spec-support";
 import { FakeReaderSummaryJobRepository } from "./execute-reader-summary-job.spec-support";
 import {
-  disabledReaderSummaryPromotionControl,
-  enabledReaderSummaryPromotionControl,
+  NOOP_READER_SUMMARY_PROMOTION_METRICS,
+  readerSummaryPromotionControl,
   type ReaderSummaryPromotionAggregateMetrics,
 } from "./reader-summary-promotion-control";
 
@@ -57,7 +57,7 @@ describe("ExecuteReaderSummaryJobUseCase promotion controls", () => {
         ...scenario,
         selectEvidence: async () => dailyTrendingSelection(withPrimary),
         githubProjectionReader: dailyTrendingProjectionReader(),
-        promotionControl: enabledReaderSummaryPromotionControl(),
+        promotionControl: readerSummaryPromotionControl(NOOP_READER_SUMMARY_PROMOTION_METRICS),
       });
       expect(scenario.artifacts.decisions()[0]).toMatchObject({
         status: "published",
@@ -82,12 +82,12 @@ describe("ExecuteReaderSummaryJobUseCase promotion controls", () => {
       expect(scenario.artifacts.decisions()[0]?.status).toBe("published");
     },
   );
-  it.each([false, true])(
-    "keeps the complete %s promotion metric sequence invariant for zero versus N supplemental GitHub entries",
-    async (enabled) => {
+  it(
+    "keeps the complete promotion metric sequence invariant for zero versus N supplemental GitHub entries",
+    async () => {
       const recordSequence = async (supplementalCount: number) => {
         const scenario = await arrangePromotionControlScenario(
-          `reader-job-telemetry-${enabled}-${supplementalCount}`,
+          `reader-job-telemetry-${supplementalCount}`,
         );
         const records: ReaderSummaryPromotionAggregateMetrics[] = [];
         await executePromotionControlScenario({
@@ -96,13 +96,9 @@ describe("ExecuteReaderSummaryJobUseCase promotion controls", () => {
             promotionSelectionWithSupplementalCount(supplementalCount),
           topicMapBuilder: promotionControlEmptyTopicMapBuilder(),
           githubProjectionReader: promotionControlZeroGitHubProjectionReader(),
-          promotionControl: enabled
-            ? enabledReaderSummaryPromotionControl({
-                record: (value) => records.push(value),
-              })
-            : disabledReaderSummaryPromotionControl({
-                record: (value) => records.push(value),
-              }),
+          promotionControl: readerSummaryPromotionControl({
+            record: (value) => records.push(value),
+          }),
         });
         return records;
       };
@@ -112,46 +108,10 @@ describe("ExecuteReaderSummaryJobUseCase promotion controls", () => {
 
       expect(withSupplemental).toEqual(withoutSupplemental);
       expect(withoutSupplemental.map(({ lifecycle }) => lifecycle)).toEqual(
-        enabled ? ["evaluated", "delivered"] : ["disabled", "delivered"],
+        ["evaluated", "delivered"],
       );
     },
   );
-
-  it("fails closed without the Promotion V1 deployment switch", async () => {
-    const scenario = await arrangePromotionControlScenario(
-      "reader-job-disabled",
-    );
-    const promotionMetrics: ReaderSummaryPromotionAggregateMetrics[] = [];
-
-    const result = await executePromotionControlScenario({
-      ...scenario,
-      promotionControl: disabledReaderSummaryPromotionControl({
-        record(value) {
-          promotionMetrics.push(value);
-        },
-      }),
-    });
-
-    expect(result).toMatchObject({
-      ok: true,
-      value: { status: "quality_rejected" },
-    });
-    expect(scenario.model.observedGenerationPolicies()).toEqual([]);
-    expect(promotionMetrics.map((item) => item.lifecycle)).toEqual([
-      "disabled",
-      "rejected",
-    ]);
-    expect(promotionMetrics[0]).toMatchObject({
-      candidateCount: 1,
-      admittedEvidenceCount: 0,
-      omittedEvidenceCount: 1,
-      disabled: true,
-    });
-    expect(scenario.artifacts.all()[0]?.toSnapshot()).toMatchObject({
-      promotionAttestations: [],
-      content: { topReads: [], selectedPosts: [] },
-    });
-  });
 
   it("deep-sanitizes admitted typed evidence before model input", async () => {
     const generatedContent = {
@@ -182,7 +142,7 @@ describe("ExecuteReaderSummaryJobUseCase promotion controls", () => {
       selectEvidence: async () => evidence,
       topicMapBuilder: promotionControlEmptyTopicMapBuilder(),
       githubProjectionReader: promotionControlZeroGitHubProjectionReader(),
-      promotionControl: enabledReaderSummaryPromotionControl(),
+      promotionControl: readerSummaryPromotionControl(NOOP_READER_SUMMARY_PROMOTION_METRICS),
     });
 
     expect(result.ok).toBe(true);
@@ -237,7 +197,7 @@ describe("ExecuteReaderSummaryJobUseCase promotion controls", () => {
         }),
       topicMapBuilder: promotionControlRejectingTopicMapBuilder(),
       githubProjectionReader: promotionControlZeroGitHubProjectionReader(),
-      promotionControl: enabledReaderSummaryPromotionControl(),
+      promotionControl: readerSummaryPromotionControl(NOOP_READER_SUMMARY_PROMOTION_METRICS),
     });
 
     expect(result).toEqual({
@@ -292,7 +252,7 @@ describe("ExecuteReaderSummaryJobUseCase promotion controls", () => {
       topicMapBuilder: promotionControlRejectingTopicMapBuilder(),
       githubProjectionReader: promotionControlZeroGitHubProjectionReader(),
       publicationPolicy,
-      promotionControl: enabledReaderSummaryPromotionControl(),
+      promotionControl: readerSummaryPromotionControl(NOOP_READER_SUMMARY_PROMOTION_METRICS),
     });
 
     expect(result).toMatchObject({
@@ -385,7 +345,7 @@ const dailyTrendingProjectionReader = (): ReaderSummaryGitHubProjectionReaderPor
   },
 });
 
-type PromotionControl = ReturnType<typeof enabledReaderSummaryPromotionControl>;
+type PromotionControl = ReturnType<typeof readerSummaryPromotionControl>;
 
 interface PromotionControlScenario {
   readonly tenant: ReturnType<typeof tenantId>;
@@ -456,6 +416,7 @@ const executePromotionControlScenario = async (
     ),
     new PromotionControlIdGenerator(),
     new FixedClock(new Date("2026-06-26T08:05:00.000Z")),
+    scenario.promotionControl,
     undefined,
     undefined,
     scenario.topicMapBuilder,
@@ -464,7 +425,6 @@ const executePromotionControlScenario = async (
     undefined,
     undefined,
     undefined,
-    scenario.promotionControl,
   ).execute({
     tenantId: scenario.tenant,
     workspaceId: scenario.workspace,

@@ -9,8 +9,10 @@ import {
 } from "node:fs";
 import { join, resolve } from "node:path";
 import { canonicalJsonSha256 } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
+import { InMemoryMetricsRecorder } from "@social-monitor/platform-metrics";
 import { defaultPostgresRuntimePoolConfig } from "@social-monitor/platform-persistence";
 import { GrpcAgentRuntimeClient } from "@social-monitor/summary/adapters/model/grpc-agent-runtime-client";
+import { ReaderSummaryPromotionMetricsRecorder } from "@social-monitor/summary/adapters/metrics/reader-summary-promotion-metrics.recorder";
 import type { VerifiedReaderSummaryExecutionAttestation } from "@social-monitor/summary/adapters/model/reader-summary-execution-attestation";
 import { PrismaReaderSummaryArtifactRepository } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-artifact.repository";
 import type { PrismaReaderSummaryClient } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-client";
@@ -20,6 +22,7 @@ import type { PrismaSummaryClient } from "@social-monitor/summary/adapters/persi
 import { PrismaSummaryConnection } from "@social-monitor/summary/adapters/persistence/prisma/prisma-summary-connection";
 import { ReaderSummaryPolicy } from "@social-monitor/summary/domain";
 import { ExecuteReaderSummaryJobUseCase } from "@social-monitor/summary/features/execute-reader-summary-job/execute-reader-summary-job.use-case";
+import { readerSummaryPromotionControl } from "@social-monitor/summary/features/execute-reader-summary-job/reader-summary-promotion-control";
 import { presentReaderSummaryArtifact } from "@social-monitor/summary/features/shared/reader-summary-artifact-presenter";
 import { RequestReaderSummaryUseCase } from "@social-monitor/summary/features/request-reader-summary/request-reader-summary.use-case";
 import type {
@@ -339,6 +342,7 @@ const capture = async (
     correlationId: `reader-summary-daily:${input.work.modelJobIdentity}`,
   });
   if (!request.ok) throw request.error;
+  const metrics = new InMemoryMetricsRecorder();
   const execution = await new ExecuteReaderSummaryJobUseCase(
     jobs,
     artifacts,
@@ -348,6 +352,9 @@ const capture = async (
     new PrismaReaderSummaryPublication(prisma),
     ids,
     frozenObservedThrough.clock,
+    readerSummaryPromotionControl(
+      new ReaderSummaryPromotionMetricsRecorder(metrics),
+    ),
     undefined,
     undefined,
     wiring.topicMapBuilder,

@@ -52,8 +52,7 @@ import { PrismaReaderSummaryTopicRecommendationDecisionRepository } from "../../
 import { BuildReaderSummaryTopicMapUseCase } from "../../features/build-reader-summary-topic-map/build-reader-summary-topic-map.use-case";
 import { ExecuteReaderSummaryJobUseCase } from "../../features/execute-reader-summary-job/execute-reader-summary-job.use-case";
 import {
-  disabledReaderSummaryPromotionControl,
-  enabledReaderSummaryPromotionControl,
+  readerSummaryPromotionControl,
 } from "../../features/execute-reader-summary-job/reader-summary-promotion-control";
 import { GetReaderSummaryJobStatusUseCase } from "../../features/get-reader-summary-job-status/get-reader-summary-job-status.use-case";
 import { GetReaderSummaryQualityRejectionUseCase } from "../../features/get-reader-summary-quality-rejection/get-reader-summary-quality-rejection.use-case";
@@ -92,7 +91,6 @@ import {
   READER_SUMMARY_JOB_QUEUE,
   READER_SUMMARY_JOB_REPOSITORY,
   READER_SUMMARY_MODEL_PROVIDER_MODE,
-  READER_SUMMARY_PROMOTION_MODE,
   READER_SUMMARY_OPENAI_RESPONSES_MODEL_OPTIONS,
   READER_SUMMARY_POLICY_REPOSITORY,
   READER_SUMMARY_PUBLICATION,
@@ -107,7 +105,6 @@ import {
   SUMMARY_RABBITMQ_JOB_QUEUE_OPTIONS,
   SUMMARY_RABBITMQ_QUEUE_CHANNEL,
   type ReaderSummaryModelProviderMode,
-  type ReaderSummaryPromotionMode,
   type ReaderSummaryTopicLabelerMode,
   type SummaryJobQueueMode,
   type SummaryPersistenceMode,
@@ -342,7 +339,6 @@ export const summaryReaderSummaryProviders: Provider[] = [
       userSummaryPreferences: UserSummaryPreferenceReaderPort,
       topicMapBuilder: BuildReaderSummaryTopicMapUseCase,
       githubProjectionReader: ReaderSummaryGitHubProjectionReaderPort,
-      promotionMode: ReaderSummaryPromotionMode,
       metrics: MetricsRecorderPort,
     ) =>
       new ExecuteReaderSummaryJobUseCase(
@@ -354,6 +350,9 @@ export const summaryReaderSummaryProviders: Provider[] = [
         publications,
         new CryptoIdGenerator(),
         new SystemClock(),
+        readerSummaryPromotionControl(
+          new ReaderSummaryPromotionMetricsRecorder(metrics),
+        ),
         contextProvider,
         userSummaryPreferences,
         topicMapBuilder,
@@ -362,13 +361,6 @@ export const summaryReaderSummaryProviders: Provider[] = [
         undefined,
         undefined,
         undefined,
-        promotionMode === "enabled"
-          ? enabledReaderSummaryPromotionControl(
-              new ReaderSummaryPromotionMetricsRecorder(metrics),
-            )
-          : disabledReaderSummaryPromotionControl(
-              new ReaderSummaryPromotionMetricsRecorder(metrics),
-            ),
       ),
     inject: [
       READER_SUMMARY_JOB_REPOSITORY,
@@ -381,7 +373,6 @@ export const summaryReaderSummaryProviders: Provider[] = [
       SUMMARY_USER_SUMMARY_PREFERENCE_READER,
       BuildReaderSummaryTopicMapUseCase,
       READER_SUMMARY_GITHUB_PROJECTION_READER,
-      READER_SUMMARY_PROMOTION_MODE,
       METRICS_RECORDER,
     ],
   },

@@ -16,6 +16,7 @@ import { PrismaFeedItemReadRepository } from "../libs/feed/adapters/persistence/
 import { InMemoryUserRelevanceProfileRepository } from "../libs/relevance/adapters/persistence/in-memory-user-relevance-profile.repository";
 import { RankFeedItemsUseCase } from "../libs/relevance/features/rank-feed-items/rank-feed-items.use-case";
 import { RelevanceReaderSummaryEvidenceSelector } from "../libs/summary/adapters/evidence/relevance-reader-summary-evidence.selector";
+import { ReaderSummaryPromotionMetricsRecorder } from "../libs/summary/adapters/metrics/reader-summary-promotion-metrics.recorder";
 import { StoryRankingMetricsRecorder } from "../libs/summary/adapters/metrics/story-ranking-metrics.recorder";
 import { InMemorySummaryEventPublisher } from "../libs/summary/adapters/messaging/in-memory-summary-event-publisher";
 import { DeterministicReaderSummaryModelAdapter } from "../libs/summary/adapters/model/deterministic-reader-summary-model.adapter";
@@ -31,6 +32,7 @@ import {
   ReaderSummaryPolicy,
 } from "../libs/summary/domain";
 import { ExecuteReaderSummaryJobUseCase } from "../libs/summary/features/execute-reader-summary-job/execute-reader-summary-job.use-case";
+import { readerSummaryPromotionControl } from "../libs/summary/features/execute-reader-summary-job/reader-summary-promotion-control";
 import { RequestReaderSummaryUseCase } from "../libs/summary/features/request-reader-summary/request-reader-summary.use-case";
 import {
   presentReaderSummaryArtifact,
@@ -422,11 +424,12 @@ async function regenerateSummary(
       new InMemoryUserRelevanceProfileRepository(),
       clock,
     );
+    const metrics = new InMemoryMetricsRecorder();
     const evidenceSelector = new RelevanceReaderSummaryEvidenceSelector(
       rankFeedItems,
       feedItems,
       clock,
-      new StoryRankingMetricsRecorder(new InMemoryMetricsRecorder()),
+      new StoryRankingMetricsRecorder(metrics),
     );
     const execution = await new ExecuteReaderSummaryJobUseCase(
       jobs,
@@ -437,6 +440,9 @@ async function regenerateSummary(
       new InMemoryReaderSummaryPublication(jobs, artifacts, events),
       ids,
       clock,
+      readerSummaryPromotionControl(
+        new ReaderSummaryPromotionMetricsRecorder(metrics),
+      ),
     ).execute({
       tenantId: scope.tenantId,
       workspaceId: scope.workspaceId,

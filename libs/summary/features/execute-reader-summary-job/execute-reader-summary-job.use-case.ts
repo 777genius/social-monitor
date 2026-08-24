@@ -42,7 +42,6 @@ import { withReaderSummaryHistoricalOmissionQuality } from "./reader-summary-his
 import type { ExecuteReaderSummaryJobCommand } from "./execute-reader-summary-job.command";
 import type { ExecuteReaderSummaryJobResult } from "./execute-reader-summary-job.result";
 import {
-  DISABLED_READER_SUMMARY_PROMOTION_CONTROL,
   recordReaderSummaryPromotionLifecycle,
   type ReaderSummaryPromotionControl,
 } from "./reader-summary-promotion-control";
@@ -61,7 +60,6 @@ import {
   defaultModelBudget,
   defaultModelPolicy,
   defaultReaderSummaryMaxEvidenceItems,
-  emptyPromotionSelection,
   readerSummaryPreferenceInterestId,
   type ReaderSummaryDraft,
   type ReaderSummaryModelPipelineResult,
@@ -83,6 +81,7 @@ export class ExecuteReaderSummaryJobUseCase {
     private readonly publications: ReaderSummaryPublicationPort,
     private readonly ids: IdGenerator,
     private readonly clock: Clock,
+    private readonly promotionControl: ReaderSummaryPromotionControl,
     private readonly contextProvider: ReaderSummaryContextProviderPort = NOOP_READER_SUMMARY_CONTEXT_PROVIDER,
     private readonly userSummaryPreferences: UserSummaryPreferenceReaderPort = NOOP_USER_SUMMARY_PREFERENCE_READER,
     private readonly topicMapBuilder: BuildReaderSummaryTopicMapUseCase = new BuildReaderSummaryTopicMapUseCase(),
@@ -91,8 +90,6 @@ export class ExecuteReaderSummaryJobUseCase {
     private readonly historicalGitHubOmission?: ReaderSummaryHistoricalGitHubOmission,
     private readonly recoveryProvenance?: ReaderSummaryDailyCanonicalRecoveryV4ProvenancePort,
     private readonly executionLease: ReaderSummaryExecutionLeasePolicy = new ReaderSummaryExecutionLeasePolicy(),
-    private readonly promotionControl: ReaderSummaryPromotionControl =
-      DISABLED_READER_SUMMARY_PROMOTION_CONTROL,
   ) {}
 
   async execute(
@@ -302,35 +299,6 @@ export class ExecuteReaderSummaryJobUseCase {
       observedThrough: generatedAt,
     });
     const readerSummaryId = this.ids.generate();
-    if (!this.promotionControl.enabled) {
-      const disabledPrimaryEvidence = primaryReaderSummaryEvidence(
-        selectedEvidence,
-      );
-      this.promotionControl.metrics.record({
-        candidateCount: disabledPrimaryEvidence.selectedEvidence.length,
-        topCount: 0,
-        additionalCount: 0,
-        admittedEvidenceCount: 0,
-        omittedEvidenceCount: disabledPrimaryEvidence.selectedEvidence.length,
-        disabled: true,
-        lifecycle: "disabled",
-      });
-      const disabledEvidence = emptyPromotionSelection(selectedEvidence);
-      return ok({
-        evidence: disabledEvidence,
-        editorialEvidence: disabledEvidence,
-        artifact: buildPromotionNoSignalArtifact({
-          snapshot,
-          readerSummaryId,
-          generatedAt,
-          evidence: disabledEvidence,
-          promotionAttestations: [],
-          contextArtifacts: [],
-          noSignalReason:
-            "Reader post promotion is disabled for this deployment.",
-        }),
-      });
-    }
     const admittedSelection = admitReaderPostPromotionEvidence(selectedEvidence);
     const {
       promotionCounts,
@@ -348,7 +316,6 @@ export class ExecuteReaderSummaryJobUseCase {
         rawPrimaryEvidence.selectedEvidence.length -
           admittedPrimaryEvidence.selectedEvidence.length,
       ),
-      disabled: false,
       lifecycle: "evaluated",
     });
     // Publication is an independent oracle boundary. It must retain the raw,

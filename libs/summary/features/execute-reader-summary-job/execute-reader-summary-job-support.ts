@@ -5,7 +5,6 @@ import {
   type ReaderSummaryContextArtifact,
   type ReaderSummaryJob,
   primaryReaderSummaryEvidence,
-  selectGitHubTrendingSupplementalEvidence,
   type SummaryEvidenceSelection,
 } from "../../domain";
 import {
@@ -52,32 +51,6 @@ export const readerSummaryPreferenceInterestId = (
   snapshot.scope.type === "interest"
     ? snapshot.scope.interestId
     : "00000000-0000-7000-8000-000000000903";
-
-export const emptyPromotionSelection = (
-  selection: SummaryEvidenceSelection,
-): SummaryEvidenceSelection => {
-  const selectedEvidence = selectGitHubTrendingSupplementalEvidence(
-    selection.selectedEvidence,
-  );
-  const selectedIds = new Set(selectedEvidence.map((item) => item.feedItemId));
-  const clusters = selection.clusters.filter((cluster) =>
-    [cluster.representativeFeedItemId, ...cluster.duplicateFeedItemIds]
-      .some((feedItemId) => selectedIds.has(feedItemId)),
-  );
-  return {
-    rankingPolicyVersion: selection.rankingPolicyVersion,
-    personalization: selection.personalization,
-    sourceWindow: {
-      ...selection.sourceWindow,
-      selectedFeedItemIds: selectedEvidence.map((item) => item.feedItemId),
-      storyClusterIds: clusters.map((cluster) => cluster.id),
-    },
-    clusters,
-    selectedEvidence,
-    approvedSameStoryRelations: [],
-    relatedTopicRelations: [],
-  };
-};
 
 export const safeBuildReaderSummaryContext = async (params: {
   readonly contextProvider: ReaderSummaryContextProviderPort;
