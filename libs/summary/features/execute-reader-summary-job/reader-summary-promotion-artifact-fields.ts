@@ -20,21 +20,23 @@ export const buildReaderSummaryPromotionArtifactFields = (params: {
   readonly modelEvidence: SummaryEvidenceSelection;
   readonly draft: ReaderSummaryDraft;
 }): PromotionArtifactFields => {
-  const promotionProjection = params.draft.content === undefined
-    ? undefined
-    : buildReaderPostPromotionProjection({
-        evidence: params.modelEvidence.selectedEvidence,
-        clusters: params.modelEvidence.clusters,
-        citations: params.draft.citationMap,
-        sourceWindow: params.modelEvidence.sourceWindow,
-        approvedSameStoryRelations:
-          params.modelEvidence.approvedSameStoryRelations,
-        relatedTopicRelations: params.modelEvidence.relatedTopicRelations,
-        attestationBinding: {
-          artifactId: params.artifactId,
+  const promotionProjection =
+    params.draft.content === undefined ||
+    params.modelEvidence.selectedEvidence.length === 0
+      ? undefined
+      : buildReaderPostPromotionProjection({
+          evidence: params.modelEvidence.selectedEvidence,
+          clusters: params.modelEvidence.clusters,
+          citations: params.draft.citationMap,
           sourceWindow: params.modelEvidence.sourceWindow,
-        },
-      });
+          approvedSameStoryRelations:
+            params.modelEvidence.approvedSameStoryRelations,
+          relatedTopicRelations: params.modelEvidence.relatedTopicRelations,
+          attestationBinding: {
+            artifactId: params.artifactId,
+            sourceWindow: params.modelEvidence.sourceWindow,
+          },
+        });
   return {
     promotionAttestations: promotionProjection?.attestations ?? [],
     promotionEvidenceFacts:

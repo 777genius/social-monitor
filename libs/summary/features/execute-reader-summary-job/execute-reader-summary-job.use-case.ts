@@ -48,9 +48,7 @@ import {
 import { publishReaderSummaryJob } from "./publish-reader-summary-job";
 import { ReaderSummaryExecutionLeasePolicy } from "./reader-summary-execution-lease.policy";
 import { buildPromotionNoSignalArtifact } from "./reader-summary-promotion-no-signal";
-import {
-  buildReaderSummaryDraftWithPromotionContent,
-} from "./reader-summary-promotion-content";
+import { buildReaderSummaryDraftWithPromotionContent } from "./reader-summary-promotion-content";
 import {
   claimReaderSummaryJobExecution,
   readerSummaryExecutionClaimLost,
@@ -343,7 +341,10 @@ export class ExecuteReaderSummaryJobUseCase {
       snapshot,
       evidence: primaryEvidence,
     });
-    if (primaryEvidence.selectedEvidence.length === 0) {
+    if (
+      primaryEvidence.selectedEvidence.length === 0 &&
+      this.recoveryProvenance === undefined
+    ) {
       return ok({
         evidence: publicationEvidence,
         editorialEvidence: modelEvidence,
