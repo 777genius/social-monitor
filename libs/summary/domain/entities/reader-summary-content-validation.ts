@@ -15,7 +15,10 @@ import {
   assertReaderSummaryReliabilityReport,
   assertReaderSummaryTopicMap,
 } from "./reader-summary-content-supplemental-validation";
-import { readerSummaryProviderIdentity } from "../value-objects/reader-summary-provider-identity";
+import {
+  readerSummaryIndependentProviderFamily,
+  readerSummaryProviderIdentity,
+} from "../value-objects/reader-summary-provider-identity";
 import type { StoryCluster } from "../value-objects/summary-evidence-item";
 
 export const assertReaderSummaryContent = (
@@ -298,10 +301,10 @@ const normalizedProvider = (
   value: string,
   canonicalUrl?: string,
 ): string =>
-  readerSummaryProviderIdentity({
+  readerSummaryIndependentProviderFamily({
     providerKey: value.trim().toLocaleLowerCase("en-US"),
     canonicalUrl,
-  }).providerKey;
+  });
 
 const assertReaderItem = (
   item: ReaderSummaryItem,
@@ -369,8 +372,13 @@ const assertReaderItemProviderMatchesEvidence = (
     throw new Error(`${label} provider must match at least one citation`);
   }
 
+  const knownProviderFamilies = new Set([...knownProviderKeys].map(
+    (providerKey) => readerSummaryIndependentProviderFamily({ providerKey }),
+  ));
   for (const providerKey of item.confirmedProviderKeys) {
-    if (!knownProviderKeys.has(providerKey)) {
+    if (!knownProviderFamilies.has(
+      readerSummaryIndependentProviderFamily({ providerKey }),
+    )) {
       throw new Error(
         `${label} confirmed provider must exist in selected evidence`,
       );

@@ -19,6 +19,8 @@ import type {
   SummarySourceWindow,
 } from "../value-objects/summary-evidence-item";
 import { normalizeSignalScore } from "../value-objects/signal-score";
+import { readerSummaryIndependentProviderFamily } from
+  "../value-objects/reader-summary-provider-identity";
 import { compactUnique } from "../value-objects/summary-text";
 import { buildMatchedRules } from "./reader-summary-source-lineage";
 import {
@@ -278,7 +280,8 @@ const promotedPost = (params: {
       requiredEvidence(params.evidenceById, support.candidateId),
     ),
   ];
-  const providerKeys = [...new Set(admitted.map((item) => item.providerKey))]
+  const confirmedProviderKeys = [...new Set(admitted.map((item) =>
+    readerSummaryIndependentProviderFamily(item)))]
     .sort((left, right) => left.localeCompare(right));
   const interestIds = compactUnique(admitted.map((item) => item.interestId));
   const whyImportant = compactUnique([
@@ -321,10 +324,10 @@ const promotedPost = (params: {
         ? "Confidence uses the admitted lead evidence only."
         : `Confidence uses the admitted lead and ${params.selected.support.length} authoritative same-story support source${params.selected.support.length === 1 ? "" : "s"}.`,
     },
-    confirmedProviderKeys: providerKeys,
+    confirmedProviderKeys,
     providerMetrics: uniqueProviderMetrics(admitted),
     whyImportant,
-    whyNow: `Selected from ${providerKeys.length} admitted provider${providerKeys.length === 1 ? "" : "s"} in this summary window.`,
+    whyNow: `Selected from ${confirmedProviderKeys.length} admitted provider famil${confirmedProviderKeys.length === 1 ? "y" : "ies"} in this summary window.`,
     publishedAt: lead.publishedAt,
     canonicalUrl: lead.canonicalUrl,
     previewMedia: lead.previewMedia,

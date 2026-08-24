@@ -130,7 +130,7 @@ describe("X authority promotion integration", () => {
     });
     expect(projection.topReads).toEqual([expect.objectContaining({
       promotionCandidateId: "cursor-hn",
-      confirmedProviderKeys: ["hacker-news", "x-twitter"],
+      confirmedProviderKeys: ["hacker-news", "x"],
       citationIds: [
         "citation:cursor-hn",
         `citation:${normalized.externalId}`,
@@ -142,5 +142,11 @@ describe("X authority promotion integration", () => {
       official: true,
       attestedBy: "source_catalog",
     });
+    expect(projection.admittedClusters[0]?.providerKeys).toEqual([
+      "hacker-news",
+      "x-twitter",
+    ]);
+    expect(projection.admittedCitations.map((citation) => citation.providerKey))
+      .toEqual(["hacker-news", "x-twitter"]);
   });
 });

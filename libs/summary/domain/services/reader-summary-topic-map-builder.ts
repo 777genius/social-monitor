@@ -14,6 +14,8 @@ import type {
   StoryCluster,
   SummaryEvidenceItem,
 } from "../value-objects/summary-evidence-item";
+import { readerSummaryIndependentProviderFamilyCount } from
+  "../value-objects/reader-summary-provider-identity";
 import { compactUnique, uniqueNonEmpty } from "../value-objects/summary-text";
 import {
   storyTopicAnchorTokens,
@@ -349,7 +351,10 @@ const normalizeNodePopularity = (
     const rawScore =
       node.popularityScore +
       Math.log1p(node.evidenceCount) * 0.18 +
-      Math.max(0, node.providerKeys.length - 1) * 0.15 +
+      Math.max(
+        0,
+        readerSummaryIndependentProviderFamilyCount(node.providerKeys) - 1,
+      ) * 0.15 +
       Math.max(0, node.interestIds.length - 1) * 0.08;
 
     return { node, rawScore };

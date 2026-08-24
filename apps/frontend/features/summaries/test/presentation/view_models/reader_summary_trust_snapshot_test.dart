@@ -95,6 +95,47 @@ void main() {
     expect(snapshot.sourceGroupCount, 2);
     expect(snapshot.needsConfirmation, isTrue);
   });
+
+  test('counts X aliases as one trust source group', () {
+    final aliasSnapshot = ReaderSummaryTrustSnapshot.from(
+      claims: [
+        claim(evidence: const [
+          SummaryClaimEvidence(
+            title: 'X evidence',
+            providerKey: 'x-twitter',
+            citationId: 'x-1',
+          ),
+          SummaryClaimEvidence(
+            title: 'Legacy Twitter evidence',
+            providerKey: 'twitter',
+            citationId: 'x-2',
+          ),
+        ]),
+      ],
+      report: emptySummaryReliabilityReport,
+    );
+    final crossSourceSnapshot = ReaderSummaryTrustSnapshot.from(
+      claims: [
+        claim(evidence: const [
+          SummaryClaimEvidence(
+            title: 'X evidence',
+            providerKey: 'x',
+            citationId: 'x-3',
+          ),
+          SummaryClaimEvidence(
+            title: 'Reddit evidence',
+            providerKey: 'reddit',
+            citationId: 'reddit-1',
+          ),
+        ]),
+      ],
+      report: emptySummaryReliabilityReport,
+    );
+
+    expect(aliasSnapshot.sourceGroupCount, 1);
+    expect(aliasSnapshot.needsConfirmation, isTrue);
+    expect(crossSourceSnapshot.sourceGroupCount, 2);
+  });
 }
 
 SummaryClaim claim({

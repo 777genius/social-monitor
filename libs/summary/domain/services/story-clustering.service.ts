@@ -6,6 +6,8 @@ import type {
   SummarySourceWindow,
   StoryCluster,
 } from "../value-objects/summary-evidence-item";
+import { readerSummaryIndependentProviderFamilyCount } from
+  "../value-objects/reader-summary-provider-identity";
 import {
   readerSummaryScopeKey,
   type ReaderSummaryScopeIdentity,
@@ -274,7 +276,8 @@ const compareStoryClusters = (
   }
 
   const providerCoverageDiff =
-    right.providerKeys.length - left.providerKeys.length;
+    readerSummaryIndependentProviderFamilyCount(right.providerKeys) -
+    readerSummaryIndependentProviderFamilyCount(left.providerKeys);
   if (providerCoverageDiff !== 0) {
     return providerCoverageDiff;
   }

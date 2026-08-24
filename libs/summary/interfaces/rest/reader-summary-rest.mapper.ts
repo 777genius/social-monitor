@@ -1,6 +1,8 @@
 import type { RequestReaderSummaryResult } from "../../features/request-reader-summary/request-reader-summary.result";
 import type { GetReaderSummaryJobStatusResult } from "../../features/get-reader-summary-job-status/get-reader-summary-job-status.result";
 import type { GetReaderSummaryQualityRejectionResult } from "../../features/get-reader-summary-quality-rejection/get-reader-summary-quality-rejection.result";
+import { readerSummaryIndependentProviderFamily } from
+  "../../domain/value-objects/reader-summary-provider-identity";
 import type { ReaderSummaryArtifactView as CanonicalReaderSummaryArtifactView } from "../../features/shared/reader-summary-artifact-presenter";
 import type {
   ReaderSummaryArtifactResponseDto,
@@ -359,7 +361,7 @@ const isAuthorizedClusterRestItem = (
 };
 
 const normalizedProvider = (value: string): string =>
-  value.trim().toLocaleLowerCase("en-US");
+  readerSummaryIndependentProviderFamily({ providerKey: value });
 
 const isReservedReaderMarker = (rule: string): boolean => {
   const normalized = rule.trim().toLowerCase();

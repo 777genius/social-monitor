@@ -8,7 +8,11 @@ import {
   compareReaderSummaryEditorialPriority,
   type ReaderSummaryEditorialPriorityProfile,
 } from "../policies/reader-summary-editorial-priority-policy";
-import { independentEvidenceProviderKeys } from "../value-objects/reader-summary-provider-identity";
+import {
+  independentEvidenceProviderKeys,
+  readerSummaryIndependentProviderFamily,
+  readerSummaryIndependentProviderFamilyCount,
+} from "../value-objects/reader-summary-provider-identity";
 import type { ReaderSummaryCoverageMode } from "../value-objects/reader-summary-coverage-mode";
 
 export type { ReaderSummaryCoverageMode } from "../value-objects/reader-summary-coverage-mode";
@@ -145,7 +149,9 @@ const coverageMode = (
 const hasProviderDiversity = (
   left: CoverageCandidate,
   right: CoverageCandidate,
-): boolean => new Set([...left.providerKeys, ...right.providerKeys]).size >= 2;
+): boolean => new Set([...left.providerKeys, ...right.providerKeys].map(
+  (providerKey) => readerSummaryIndependentProviderFamily({ providerKey }),
+)).size >= 2;
 
 const selectCoverageLead = (
   candidates: readonly CoverageCandidate[],
@@ -245,7 +251,8 @@ const compareCoverageCandidates = (
   ) ||
   right.score - left.score ||
   right.qualityScore - left.qualityScore ||
-  right.providerKeys.length - left.providerKeys.length ||
+  readerSummaryIndependentProviderFamilyCount(right.providerKeys) -
+    readerSummaryIndependentProviderFamilyCount(left.providerKeys) ||
   left.clusterId.localeCompare(right.clusterId);
 
 const nearDuplicate = (

@@ -9,7 +9,9 @@ List<SummaryStoryApiDto> _readerSummaryTopStories(
         title: story.title,
         summary: story.summary,
         topicCount: story.interestIds.length,
-        providerCount: story.providerKeys.length,
+        providerCount: readerSummaryIndependentProviderFamilies(
+          story.providerKeys,
+        ).length,
         interestIds: story.interestIds,
         providerKeys: story.providerKeys,
         citationIds: story.citationIds,

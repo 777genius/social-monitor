@@ -2,6 +2,7 @@ import '../../domain/aggregates/reader_summary.dart';
 import '../../domain/entities/generated_summary.dart';
 import '../../domain/entities/reader_summary_job_snapshot.dart';
 import '../../domain/entities/summary_citation.dart';
+import '../../domain/value_objects/reader_summary_provider_family.dart';
 import '../../domain/value_objects/summary_generation_status.dart';
 import '../../domain/value_objects/summary_id.dart';
 import '../api/summary_api_dto.dart';

@@ -34,7 +34,7 @@ describe("reader summary Promotion Policy V1 production path", () => {
     expect(summary.topReads[0]).toMatchObject({
       title: hn.title,
       providerKey: "hacker-news",
-      confirmedProviderKeys: ["hacker-news", "x-twitter"],
+      confirmedProviderKeys: ["hacker-news", "x"],
       citationIds: ["citation:cursor-hn", "citation:cursor-x-official"],
     });
     expect(summary.sourceMix).toEqual(expect.arrayContaining([
@@ -65,7 +65,7 @@ describe("reader summary Promotion Policy V1 production path", () => {
 
     expect(summary.topReads).toHaveLength(1);
     expect(summary.topReads[0]).toMatchObject({
-      confirmedProviderKeys: ["hacker-news", "x-twitter"],
+      confirmedProviderKeys: ["hacker-news", "x"],
       citationIds: [
         "citation:aug14-watermark-hn",
         "citation:aug14-watermark-official",

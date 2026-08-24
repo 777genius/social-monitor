@@ -120,6 +120,84 @@ describe("reader post promotion selection", () => {
     });
   });
 
+  it("keeps X aliases in one provider family inside the same cluster", () => {
+    const clusterId = "cluster:x-aliases";
+    const baseline = selectReaderPostPromotions([
+      promotionInput({
+        candidateId: "x-alias-lead",
+        provider: "x-twitter",
+        clusterId,
+        qualityScore: 0.9,
+      }),
+    ]);
+    const result = selectReaderPostPromotions([
+      promotionInput({
+        candidateId: "x-alias-lead",
+        provider: "x-twitter",
+        clusterId,
+        qualityScore: 0.9,
+      }),
+      promotionInput({
+        candidateId: "x-alias-twitter",
+        provider: "twitter",
+        citationId: "citation-twitter",
+        canonicalIdentity: "story:x-alias-twitter",
+        clusterId,
+        qualityScore: 0.8,
+      }),
+      promotionInput({
+        candidateId: "x-alias-short",
+        provider: "x",
+        citationId: "citation-x-short",
+        canonicalIdentity: "story:x-alias-short",
+        clusterId,
+        qualityScore: 0.7,
+      }),
+    ]);
+
+    expect(result.top[0]).toMatchObject({
+      providerCount: 1,
+      support: [],
+      citationIds: ["citation-x"],
+      confidence: baseline.top[0]?.confidence,
+    });
+    expect(result.decisions.slice(1)).toEqual([
+      expect.objectContaining({
+        candidateId: "x-alias-twitter",
+        decision: "context_only",
+        reason: "support_provider_not_independent",
+      }),
+      expect.objectContaining({
+        candidateId: "x-alias-short",
+        decision: "context_only",
+        reason: "support_provider_not_independent",
+      }),
+    ]);
+  });
+
+  it("admits Reddit as independent same-cluster support for X", () => {
+    const clusterId = "cluster:x-reddit";
+    const result = selectReaderPostPromotions([
+      promotionInput({ candidateId: "x-lead", clusterId }),
+      promotionInput({
+        candidateId: "reddit-support",
+        provider: "reddit",
+        contentKind: "original_post",
+        canonicalIdentity: "story:reddit-support",
+        citationId: "citation-reddit",
+        clusterId,
+        metrics: redditMetrics(80, 0.95, 30),
+      }),
+    ]);
+
+    expect(result.top).toHaveLength(1);
+    expect(result.top[0]).toMatchObject({
+      providerCount: 2,
+      citationIds: ["citation-reddit", "citation-x"],
+    });
+    expect(result.top[0]?.support).toHaveLength(1);
+  });
+
   it("omits low-signal Reddit posts and never promotes an official missing-metric lead", () => {
     const official = promotionInput({
       candidateId: "watermark-official",

@@ -104,4 +104,5 @@ bool _hasCanonicalClusterCardAuthority(
       canonicalUrlMatches;
 }
 
-String _normalizedReaderProvider(String value) => value.trim().toLowerCase();
+String _normalizedReaderProvider(String value) =>
+    readerSummaryIndependentProviderFamily(value);

@@ -1,6 +1,7 @@
 import 'package:social_monitor_generated_api/social_monitor_generated_api.dart'
     as generated;
 
+import '../../domain/value_objects/reader_summary_provider_family.dart';
 import '../api/summary_api_dto.dart';
 import 'reader_summary_artifact_binding.dart';
 import 'reader_summary_content_rest_mapper.dart';

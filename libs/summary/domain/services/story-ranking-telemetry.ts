@@ -10,7 +10,10 @@ import {
 } from "../policies/summary-evidence-profile-policy";
 import { buildReaderSummaryReliabilityReport } from "../policies/reader-summary-reliability-calibration-policy";
 import type { ReaderSummaryReliabilityReport } from "../entities/reader-summary-reliability";
-import { independentEvidenceProviderKeys } from "../value-objects/reader-summary-provider-identity";
+import {
+  independentEvidenceProviderKeys,
+  readerSummaryIndependentProviderFamilyCount,
+} from "../value-objects/reader-summary-provider-identity";
 
 export type StoryRankingTelemetrySnapshot = {
   readonly rankingPolicyVersion: string;
@@ -57,7 +60,9 @@ export const buildStoryRankingTelemetrySnapshot = (
         return (
           (evidence.length >= 2
             ? independentEvidenceProviderKeys(evidence).length
-            : cluster.providerKeys.length) > 1
+            : readerSummaryIndependentProviderFamilyCount(
+                cluster.providerKeys,
+              )) > 1
         );
       }).length,
       clusterCount,

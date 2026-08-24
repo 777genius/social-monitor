@@ -34,6 +34,8 @@ import type {
   SummaryEvidenceItem,
   SummarySourceWindow,
 } from "../value-objects/summary-evidence-item";
+import { readerSummaryIndependentProviderFamilyCount } from
+  "../value-objects/reader-summary-provider-identity";
 import type { ReaderSummaryQualityFlag } from "../value-objects/summary-quality";
 import {
   compactUnique,
@@ -168,7 +170,9 @@ export class ReaderSummary {
           ? {
               thematicSynthesisSupport: {
                 clusterCount: promotion.admittedClusters.length,
-                providerCount: sourceMix.length,
+                providerCount: readerSummaryIndependentProviderFamilyCount(
+                  sourceMix.map((source) => source.providerKey),
+                ),
               },
             }
           : {}),

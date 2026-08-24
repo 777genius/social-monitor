@@ -154,6 +154,16 @@ const semanticClusterSupport = (params: {
     const representative = representativeByCluster.get(semanticClusterKey(candidate.input));
     if (representative === undefined ||
         representative.input.candidateId === candidate.input.candidateId) continue;
+    if (readerPostProviderFamily(candidate.input.provider) ===
+        readerPostProviderFamily(representative.input.provider)) {
+      params.decisionsById.set(candidate.input.candidateId, {
+        ...candidate.evaluation,
+        decision: "context_only",
+        reason: "support_provider_not_independent",
+        authoritativeSameStory: false,
+      });
+      continue;
+    }
     const support = result.get(representative.input.candidateId) ?? [];
     support.push(candidate.input);
     result.set(representative.input.candidateId, support);

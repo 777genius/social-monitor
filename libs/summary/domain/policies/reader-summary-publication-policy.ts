@@ -1,6 +1,8 @@
 import type { ReaderSummaryArtifact, ReaderSummaryContent } from "../entities/reader-summary-artifact";
 import type { SummaryEvidenceSelection } from "../value-objects/summary-evidence-item";
 import type { ReaderSummaryCitation } from "../entities/citation";
+import { readerSummaryIndependentProviderFamilyCount } from
+  "../value-objects/reader-summary-provider-identity";
 import {
   buildReaderSummaryCoveragePlan,
   type ReaderSummaryCoveragePlan,
@@ -170,9 +172,9 @@ export class ReaderSummaryPublicationPolicy {
       rejectionCount: rejectionFindings.length,
       confidenceScore: snapshot.confidence.score,
       selectedEvidenceCount: params.evidence.selectedEvidence.length,
-      providerCount: new Set(
+      providerCount: readerSummaryIndependentProviderFamilyCount(
         params.evidence.selectedEvidence.map((item) => item.providerKey),
-      ).size,
+      ),
     });
 
     if (rejectionFindings.length > 0) {

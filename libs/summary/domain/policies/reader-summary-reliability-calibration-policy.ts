@@ -13,7 +13,10 @@ import type {
   SummaryEvidenceItem,
   SummaryEvidenceSelection,
 } from "../value-objects/summary-evidence-item";
-import { independentEvidenceProviderKeys } from "../value-objects/reader-summary-provider-identity";
+import {
+  independentEvidenceProviderKeys,
+  readerSummaryIndependentProviderFamily,
+} from "../value-objects/reader-summary-provider-identity";
 
 export const calibrateReaderSummaryConfidence = (params: {
   readonly confidence: ReaderSummaryConfidence;
@@ -160,7 +163,8 @@ const singleSourceRisk = (
     return (
       (evidence.length >= 2
         ? independentEvidenceProviderKeys(evidence).length
-        : new Set(cluster.providerKeys).size) > 1
+        : new Set(cluster.providerKeys.map((providerKey) =>
+            readerSummaryIndependentProviderFamily({ providerKey }))).size) > 1
     );
   }).length;
 
@@ -272,7 +276,8 @@ const newestEvidenceDate = (
 
 const providerKeys = (
   items: readonly SummaryEvidenceItem[],
-): ReadonlySet<string> => new Set(items.map((item) => item.providerKey));
+): ReadonlySet<string> => new Set(items.map((item) =>
+  readerSummaryIndependentProviderFamily(item)));
 
 const ratio = (value: number, total: number): number =>
   total <= 0 ? 0 : value / total;

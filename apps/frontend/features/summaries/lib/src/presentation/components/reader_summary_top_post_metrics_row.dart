@@ -229,10 +229,9 @@ _TopPostRelevanceBadge _topPostSupportStyle(
 }
 
 int _topPostConfirmedProviderCount(TopRead item) {
-  final keys = {
-    for (final key in item.confirmedProviderKeys)
-      if (key.trim().isNotEmpty) key.trim().toLowerCase(),
-  };
+  final keys = readerSummaryIndependentProviderFamilies(
+    item.confirmedProviderKeys,
+  );
 
   return keys.isEmpty ? 1 : keys.length;
 }
