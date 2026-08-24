@@ -199,7 +199,7 @@ describe("reader summary daily execution cursor PostgreSQL contract", () => {
     );
     expect(checker.match(
       /executePostgresMigrationWithDiagnostics\(admin, \{/gu,
-    )).toHaveLength(1);
+    )).toHaveLength(2);
     expect(checker).not.toContain("locatePostgresMigrationFailureForTestDiagnostics");
     expect(checker).not.toContain("activationParams");
     expect(() => assertReaderSummaryDailyCheckerActivationOwnershipContract(
@@ -448,7 +448,7 @@ describe("reader summary daily execution cursor PostgreSQL contract", () => {
     const overlapGuard = `assert(!schemaOwnerFixtureRoleActive,
     "schema-owner fixture role scope cannot be nested or run in parallel")`;
     const migrationReset = `await admin.query("RESET ROLE");
-  await admin.query(telemetryMigration);`;
+  await executePostgresMigrationWithDiagnostics(admin, {`;
     const boundedReset = `await admin.query("RESET ROLE");
     await admin.query(boundedMaintenanceMigration);`;
     const seedScope = `await withSchemaOwnerFixtureRole(admin, async (fixtureAdmin) => ({
@@ -463,7 +463,7 @@ describe("reader summary daily execution cursor PostgreSQL contract", () => {
     expect(() => assertReaderSummaryDailyCheckerFixtureRoleContract(
       checker.replace(
         migrationReset,
-        `await admin.query(telemetryMigration);
+        `await executePostgresMigrationWithDiagnostics(admin, {
   await admin.query("RESET ROLE");`,
       ),
     )).toThrow("reset to migration admin first");
@@ -472,7 +472,7 @@ describe("reader summary daily execution cursor PostgreSQL contract", () => {
         "await applyTelemetryMigrationAsMigrationAdmin(admin)",
         "await admin.query(telemetryMigration)",
       ),
-    )).toThrow("route every telemetry migration through the reset boundary");
+    )).toThrow("route every telemetry migration through diagnosed reset boundary");
     for (const table of [
       "reader_summary_daily_model_jobs",
       "reader_summary_publications",

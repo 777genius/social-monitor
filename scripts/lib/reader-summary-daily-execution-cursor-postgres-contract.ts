@@ -122,11 +122,16 @@ export const assertReaderSummaryDailyCheckerFixtureRoleContract = (
   "daily checker schema-owner fixture scope must reject overlap and reset fail-safe");
   assert(telemetryHelperSource.includes("assert(!schemaOwnerFixtureRoleActive") &&
     telemetryHelperSource.indexOf('await admin.query("RESET ROLE")') <
-      telemetryHelperSource.indexOf("await admin.query(telemetryMigration)"),
+      telemetryHelperSource.indexOf(
+        "await executePostgresMigrationWithDiagnostics(admin, {",
+      ) &&
+    telemetryHelperSource.includes(
+      '"20260824120000_reader_summary_daily_model_job_telemetry/migration.sql"',
+    ) && telemetryHelperSource.includes("sql: telemetryMigration"),
   "daily checker telemetry migrations must reset to migration admin first");
-  assert(source.match(/admin\.query\(telemetryMigration\)/gu)?.length === 1 &&
+  assert(!source.includes("admin.query(telemetryMigration)") &&
     source.match(/await applyTelemetryMigrationAsMigrationAdmin\(admin\)/gu)?.length === 3,
-  "daily checker must route every telemetry migration through the reset boundary");
+  "daily checker must route every telemetry migration through diagnosed reset boundary");
   assert(source.includes(`await admin.query("RESET ROLE");
     await admin.query(boundedMaintenanceMigration);`),
   "daily checker bounded maintenance migration must run after RESET ROLE");
@@ -274,7 +279,15 @@ export const assertReaderSummaryDailyCheckerActivationOwnershipContract = (
   ), "daily checker must not restore schema CREATE to the migration admin");
   assert(!source.includes("REFERENCES ON TABLE public.reader_summary_jobs"),
     "daily checker must not grant migration-admin REFERENCES after table handoff");
-  assert(source.match(/executePostgresMigrationWithDiagnostics\(admin, \{/gu)?.length === 1 &&
+  const activationDiagnostics = source.slice(
+    activation,
+    source.indexOf("await admin.query(activationAclMigration)", activation),
+  );
+  assert(source.match(/executePostgresMigrationWithDiagnostics\(admin, \{/gu)?.length === 2 &&
+    activationDiagnostics.match(
+      /executePostgresMigrationWithDiagnostics\(admin, \{/gu,
+    )?.length === 1 &&
+    activationDiagnostics.includes("sql: activationMigration") &&
     !source.includes("locatePostgresMigrationFailureForTestDiagnostics") &&
     !source.includes("activationParams"),
   "daily checker must execute the whole activation migration exactly once");

@@ -2,7 +2,7 @@ import { createHash, randomBytes, randomUUID } from "node:crypto"; import { spaw
 import { cpSync, readFileSync, rmSync } from "node:fs"; import { createRequire } from "node:module";
 import { join } from "node:path";
 import { provisionReaderSummaryPublicationFixtureScope, readerSummaryPublicationBackendPid, readerSummaryPublicationFixtureScope, requiredReaderSummaryPublicationAdminDatabaseUrl, setReaderSummaryPublicationSessionScope } from "./lib/reader-summary-publication-postgres-fixture-scope";
-import { applyOrderedReaderSummaryMigrations, assertDailyActivationIntermediateIsFailClosed, assertDailyActivationMigrationContract, assertDailyActivationRejectsNullishCompletionBindings, assertDailyActivationRejectsTemporaryForgeries, assertDailyActivationRuntimeSecurity, assertReaderSummaryMigrationDatabaseMatchesSchema, createReaderSummaryPublicationMigrationWorkspace, installDailyActivationMigration, installFailingDailyActivationAclMigration, installPublicationAndFollowingMigrations, installPublicationMigrationsBeforeDailyActivation, preparePrePublicationMigrations, readerSummaryDailyActivationAclMigration, readerSummaryDailyActivationMigration, removeInstalledReaderSummaryMigration, removeReaderSummaryPublicationMigrationWorkspace, resolveRolledBackReaderSummaryMigration, runOrderedReaderSummaryMigrations } from "./lib/reader-summary-publication-postgres-migrations";
+import { applyOrderedReaderSummaryMigrations, assertDailyActivationIntermediateIsFailClosed, assertDailyActivationMigrationContract, assertDailyActivationRejectsNullishCompletionBindings, assertDailyActivationRejectsTemporaryForgeries, assertDailyActivationRuntimeSecurity, assertReaderSummaryMigrationDatabaseMatchesSchema, createReaderSummaryPublicationMigrationWorkspace, installDailyActivationMigration, installFailingDailyActivationAclMigration, installPublicationAndFollowingMigrations, installPublicationMigrationsBeforeDailyActivation, preparePrePublicationMigrations, readerSummaryDailyActivationAclMigration, readerSummaryDailyActivationMigration, removeInstalledReaderSummaryMigration, removeReaderSummaryPublicationMigrationWorkspace, resolveRolledBackReaderSummaryMigration, runOrderedReaderSummaryMigrations } from "./lib/reader-summary-publication-postgres-migrations"; import { assertReaderSummaryDailyTelemetryReleaseDatabaseState, runReaderSummaryDailyTelemetryRelease } from "./lib/reader-summary-daily-telemetry-release";
 type Row = Readonly<Record<string, unknown>>; type QueryResult<T> = Readonly<{ rows: readonly T[] }>;
 type Client = Readonly<{ query<T = Record<string, unknown>>(sql: string, values?: readonly unknown[]): Promise<QueryResult<T>> }>;
 type PoolClient = Client & Readonly<{ release(): void }>; type Pool = Client & Readonly<{ connect(): Promise<PoolClient>; end(): Promise<void> }>;
@@ -951,32 +951,24 @@ const main = async (): Promise<void> => {
       resolveRolledBackReaderSummaryMigration(adminDatabaseUrl, workspace, readerSummaryDailyActivationAclMigration);
       removeInstalledReaderSummaryMigration(workspace, readerSummaryDailyActivationAclMigration); installDailyActivationMigration(workspace, readerSummaryDailyActivationAclMigration); applyOrderedReaderSummaryMigrations(adminDatabaseUrl, workspace);
     } finally { await activationAdmin.end(); }
-    await privileges.runReaderSummaryPublicationBootstrapSql("post", adminDatabaseUrl, runtimeRole, systemRuntimeRole); await privileges.runReaderSummaryPublicationBootstrapSql("pre", adminDatabaseUrl, runtimeRole, systemRuntimeRole); installPublicationAndFollowingMigrations(workspace); removeInstalledReaderSummaryMigration(workspace, telemetryMigration); applyOrderedReaderSummaryMigrations(adminDatabaseUrl, workspace);
-    for (let replay = 0; replay < 2; replay += 1) { await privileges.runReaderSummaryPublicationBootstrapSql("pre", adminDatabaseUrl, runtimeRole, systemRuntimeRole); await privileges.runReaderSummaryPublicationBootstrapSql("post", adminDatabaseUrl, runtimeRole, systemRuntimeRole); }
-    const auditorPool = new Pool({ connectionString: targetDatabaseUrl, max: 1 }); const runtimePool = new Pool({ connectionString: runtimeDatabaseUrl, max: 1 });
-    const terminalPool = new Pool({ connectionString: terminalDatabaseUrl, max: 2 });
-    try {
-      const auditor = await auditorPool.connect();
-      const application = await runtimePool.connect();
-      const first = await terminalPool.connect();
-      const second = await terminalPool.connect();
-      try {
-        await provisionReaderSummaryPublicationFixtureScope(auditor, scope);
-        await Promise.all([
-          setReaderSummaryPublicationSessionScope(application, scope),
-          setReaderSummaryPublicationSessionScope(first, scope),
-          setReaderSummaryPublicationSessionScope(second, scope),
-        ]);
-        await assertOrdinaryRuntime(application);
-        await assertAuthority(auditor, first, second, migrationAdminRole,
-          [runtimeRole, systemRuntimeRole]);
-      } finally {
-        auditor.release(); application.release(); first.release(); second.release();
-      }
-    } finally {
-      await runtimePool.end(); await terminalPool.end(); await auditorPool.end();
-    }
-    await privileges.runReaderSummaryPublicationBootstrapSql("pre", adminDatabaseUrl, runtimeRole, systemRuntimeRole); cpSync(join("prisma/migrations", telemetryMigration), join(workspace.directory, "migrations", telemetryMigration), { recursive: true }); applyOrderedReaderSummaryMigrations(adminDatabaseUrl, workspace); await privileges.runReaderSummaryPublicationBootstrapSql("post", adminDatabaseUrl, runtimeRole, systemRuntimeRole); assertReaderSummaryMigrationDatabaseMatchesSchema(targetDatabaseUrl);
+    await runReaderSummaryDailyTelemetryRelease({
+      preparePreTelemetryRelease: async () => { await privileges.runReaderSummaryPublicationBootstrapSql("post", adminDatabaseUrl, runtimeRole, systemRuntimeRole); await privileges.runReaderSummaryPublicationBootstrapSql("pre", adminDatabaseUrl, runtimeRole, systemRuntimeRole); installPublicationAndFollowingMigrations(workspace); removeInstalledReaderSummaryMigration(workspace, telemetryMigration); applyOrderedReaderSummaryMigrations(adminDatabaseUrl, workspace); },
+      verifyPreTelemetryAuthority: async () => {
+        for (let replay = 0; replay < 2; replay += 1) { await privileges.runReaderSummaryPublicationBootstrapSql("pre", adminDatabaseUrl, runtimeRole, systemRuntimeRole); await privileges.runReaderSummaryPublicationBootstrapSql("post", adminDatabaseUrl, runtimeRole, systemRuntimeRole); }
+        const auditorPool = new Pool({ connectionString: targetDatabaseUrl, max: 1 }), runtimePool = new Pool({ connectionString: runtimeDatabaseUrl, max: 1 }), terminalPool = new Pool({ connectionString: terminalDatabaseUrl, max: 2 });
+        try {
+          const auditor = await auditorPool.connect(), application = await runtimePool.connect(), first = await terminalPool.connect(), second = await terminalPool.connect();
+          try {
+            await provisionReaderSummaryPublicationFixtureScope(auditor, scope);
+            await Promise.all([setReaderSummaryPublicationSessionScope(application, scope), setReaderSummaryPublicationSessionScope(first, scope), setReaderSummaryPublicationSessionScope(second, scope)]);
+            await assertOrdinaryRuntime(application); await assertAuthority(auditor, first, second, migrationAdminRole, [runtimeRole, systemRuntimeRole]);
+          } finally { auditor.release(); application.release(); first.release(); second.release(); }
+        } finally { await runtimePool.end(); await terminalPool.end(); await auditorPool.end(); }
+      },
+      applyTelemetryMigration: async () => { await privileges.runReaderSummaryPublicationBootstrapSql("pre", adminDatabaseUrl, runtimeRole, systemRuntimeRole); cpSync(join("prisma/migrations", telemetryMigration), join(workspace.directory, "migrations", telemetryMigration), { recursive: true }); applyOrderedReaderSummaryMigrations(adminDatabaseUrl, workspace); },
+      hardenPostTelemetryRelease: () => privileges.runReaderSummaryPublicationBootstrapSql("post", adminDatabaseUrl, runtimeRole, systemRuntimeRole),
+      verifyFinalReleaseState: async () => { const verifier = new Pool({ connectionString: targetDatabaseUrl, max: 1 }); try { await assertReaderSummaryDailyTelemetryReleaseDatabaseState(verifier, { migrationAdminRole, telemetryMigration }); } finally { await verifier.end(); } assertReaderSummaryMigrationDatabaseMatchesSchema(targetDatabaseUrl); },
+    });
   } finally {
     removeReaderSummaryPublicationMigrationWorkspace(workspace);
     await privileges.dropPublicationFixtureDatabaseAndRoles({

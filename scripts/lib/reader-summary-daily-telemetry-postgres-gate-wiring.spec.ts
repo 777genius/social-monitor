@@ -1,51 +1,111 @@
-import { readFileSync } from "node:fs";
+import {
+  assertReaderSummaryDailyTelemetryReleaseDatabaseState,
+  type ReaderSummaryDailyTelemetryReleaseOperations,
+  runReaderSummaryDailyTelemetryRelease,
+} from "./reader-summary-daily-telemetry-release";
 
-describe("reader summary daily telemetry PostgreSQL gate wiring", () => {
-  it("reopens the ordered release migration boundary after staged hardening", () => {
-    const source = readFileSync(
-      "scripts/check-reader-summary-daily-terminal-authority-postgres.ts",
-      "utf8",
-    );
-    const stagedResume = [
-      'runReaderSummaryPublicationBootstrapSql("post",',
-      'runReaderSummaryPublicationBootstrapSql("pre",',
-      "installPublicationAndFollowingMigrations(workspace)",
-      "removeInstalledReaderSummaryMigration(workspace, telemetryMigration)",
-      "applyOrderedReaderSummaryMigrations(adminDatabaseUrl, workspace)",
-      "assertAuthority(auditor, first, second, migrationAdminRole,",
-      'runReaderSummaryPublicationBootstrapSql("pre",',
-      'cpSync(join("prisma/migrations", telemetryMigration)',
-      "applyOrderedReaderSummaryMigrations(adminDatabaseUrl, workspace)",
-      'runReaderSummaryPublicationBootstrapSql("post",',
-      "assertReaderSummaryMigrationDatabaseMatchesSchema(targetDatabaseUrl)",
-    ] as const;
+const stages = [
+  "preparePreTelemetryRelease",
+  "verifyPreTelemetryAuthority",
+  "applyTelemetryMigration",
+  "hardenPostTelemetryRelease",
+  "verifyFinalReleaseState",
+] as const;
 
-    let previousIndex = source.indexOf("resolveRolledBackReaderSummaryMigration(");
-    expect(previousIndex).toBeGreaterThanOrEqual(0);
-    for (const statement of stagedResume) {
-      const statementIndex = source.indexOf(statement, previousIndex + 1);
-      expect(statementIndex).toBeGreaterThan(previousIndex);
-      previousIndex = statementIndex;
-    }
+type Stage = typeof stages[number];
+
+describe("reader summary daily telemetry PostgreSQL release", () => {
+  it("reaches every stage and applies telemetry exactly once before final hardening", async () => {
+    const trace: Stage[] = [];
+
+    await runReaderSummaryDailyTelemetryRelease(operations(trace));
+
+    expect(trace).toEqual(stages);
+    expect(trace.filter((stage) => stage === "applyTelemetryMigration")).toHaveLength(1);
+    expect(trace.indexOf("applyTelemetryMigration"))
+      .toBeLessThan(trace.indexOf("hardenPostTelemetryRelease"));
+    expect(trace.at(-1)).toBe("verifyFinalReleaseState");
   });
 
-  it("keeps the exact cursor gate on PG18 with diagnosed telemetry SQL", () => {
-    const source = readFileSync(
-      "scripts/check-reader-summary-daily-execution-cursor-postgres.ts",
-      "utf8",
-    );
+  it.each(stages)("fails closed when %s fails", async (failedStage) => {
+    const trace: Stage[] = [];
 
-    expect(source).toContain(
-      '"prisma/migrations/20260824120000_reader_summary_daily_model_job_telemetry/migration.sql"',
-    );
-    expect(source).toContain(
-      "await executePostgresMigrationWithDiagnostics(admin, {",
-    );
-    expect(source).toContain(
-      '"daily execution cursor contract requires disposable PostgreSQL 18+"',
-    );
-    expect(source).toContain(
-      'console.log("Reader summary daily execution cursor PostgreSQL 18 gate OK")',
-    );
+    await expect(runReaderSummaryDailyTelemetryRelease(
+      operations(trace, failedStage),
+    )).rejects.toThrow(`failed:${failedStage}`);
+
+    expect(trace).toEqual(stages.slice(0, stages.indexOf(failedStage) + 1));
+  });
+
+  it("requires PG18, one finished telemetry migration, and revoked migrator CREATE", async () => {
+    const query = jest.fn().mockResolvedValue({ rows: [{
+      final_acl_exact: true,
+      final_rls_count: "5",
+      finished_migration_count: "1",
+      migration_admin_has_schema_create: false,
+      publication_owner_has_schema_create: false,
+      public_has_schema_create: false,
+      server_version: 180_002,
+      telemetry_migration_count: "1",
+    }] });
+
+    await expect(assertReaderSummaryDailyTelemetryReleaseDatabaseState(
+      { query },
+      { migrationAdminRole: "fixture_migrator", telemetryMigration: "telemetry" },
+    )).resolves.toBeUndefined();
+    expect(query).toHaveBeenCalledTimes(1);
+    expect(query).toHaveBeenCalledWith(expect.stringContaining(
+      'FROM public."_prisma_migrations"',
+    ), ["telemetry", "fixture_migrator"]);
+  });
+
+  it.each([
+    [179_999, "1", "1", false, true, "5", "requires disposable PostgreSQL 18+"],
+    [180_000, "2", "1", false, true, "5", "finish exactly one telemetry migration"],
+    [180_000, "1", "0", false, true, "5", "finish exactly one telemetry migration"],
+    [180_000, "1", "1", true, true, "5", "retained schema CREATE"],
+    [180_000, "1", "1", false, false, "5", "ACL/RLS state is unsafe"],
+    [180_000, "1", "1", false, true, "4", "ACL/RLS state is unsafe"],
+  ] as const)("rejects an unsafe final database state", async (
+    serverVersion,
+    telemetryCount,
+    finishedCount,
+    migratorCreate,
+    finalAclExact,
+    finalRlsCount,
+    diagnostic,
+  ) => {
+    const query = jest.fn().mockResolvedValue({ rows: [{
+      final_acl_exact: finalAclExact,
+      final_rls_count: finalRlsCount,
+      finished_migration_count: finishedCount,
+      migration_admin_has_schema_create: migratorCreate,
+      publication_owner_has_schema_create: false,
+      public_has_schema_create: false,
+      server_version: serverVersion,
+      telemetry_migration_count: telemetryCount,
+    }] });
+
+    await expect(assertReaderSummaryDailyTelemetryReleaseDatabaseState(
+      { query },
+      { migrationAdminRole: "fixture_migrator", telemetryMigration: "telemetry" },
+    )).rejects.toThrow(diagnostic);
   });
 });
+
+const operations = (
+  trace: Stage[],
+  failedStage?: Stage,
+): ReaderSummaryDailyTelemetryReleaseOperations => {
+  const run = async (stage: Stage): Promise<void> => {
+    trace.push(stage);
+    if (stage === failedStage) throw new Error(`failed:${stage}`);
+  };
+  return {
+    applyTelemetryMigration: () => run("applyTelemetryMigration"),
+    hardenPostTelemetryRelease: () => run("hardenPostTelemetryRelease"),
+    preparePreTelemetryRelease: () => run("preparePreTelemetryRelease"),
+    verifyFinalReleaseState: () => run("verifyFinalReleaseState"),
+    verifyPreTelemetryAuthority: () => run("verifyPreTelemetryAuthority"),
+  };
+};

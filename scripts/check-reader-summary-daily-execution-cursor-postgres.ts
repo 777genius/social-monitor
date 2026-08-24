@@ -475,7 +475,11 @@ const applyTelemetryMigrationAsMigrationAdmin = async (
   assert(!schemaOwnerFixtureRoleActive,
     "telemetry migration cannot run inside schema-owner fixture role scope");
   await admin.query("RESET ROLE");
-  await admin.query(telemetryMigration);
+  await executePostgresMigrationWithDiagnostics(admin, {
+    migrationLabel:
+      "20260824120000_reader_summary_daily_model_job_telemetry/migration.sql",
+    sql: telemetryMigration,
+  });
 };
 
 const roleExists = async (role: string, admin: PoolClient): Promise<boolean> => {

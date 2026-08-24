@@ -54,17 +54,37 @@ describe("PostgreSQL migration diagnostics", () => {
     expect(formatted).not.toContain("do-not-print");
   });
 
-  it("rethrows once with the original PostgreSQL error as the cause", async () => {
-    const cause = Object.assign(new Error("permission denied for schema public"), {
+  it("preserves the database cause while redacting connection secrets", async () => {
+    const cause = Object.assign(new Error(
+      "connection to postgresql://release_admin:dsn-secret@db.example.test/social " +
+      "failed with token=provider-secret",
+    ), {
       code: "42501",
       position: "1",
+      where: "password=database-secret",
     });
     const query = jest.fn().mockRejectedValue(cause);
 
-    await expect(executePostgresMigrationWithDiagnostics(
-      { query },
-      { migrationLabel: "activation/migration.sql", sql },
-    )).rejects.toMatchObject({ cause, message: expect.stringContaining("sqlstate=42501") });
+    let thrown: unknown;
+    try {
+      await executePostgresMigrationWithDiagnostics(
+        { query }, { migrationLabel: "telemetry/migration.sql", sql },
+      );
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toMatchObject({
+      cause,
+      message: expect.stringMatching(
+        /postgresql:\/\/\[REDACTED\]@db\.example\.test\/social/u,
+      ),
+    });
+    const message = thrown instanceof Error ? thrown.message : String(thrown);
+    expect(message).toContain("sqlstate=42501");
+    expect(message).not.toContain("dsn-secret");
+    expect(message).not.toContain("provider-secret");
+    expect(message).not.toContain("database-secret");
     expect(query).toHaveBeenCalledTimes(1);
     expect(query).toHaveBeenCalledWith(sql);
   });
