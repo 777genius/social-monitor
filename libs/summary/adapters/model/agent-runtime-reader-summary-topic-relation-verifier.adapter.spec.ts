@@ -44,7 +44,7 @@ describe("AgentRuntimeReaderSummaryTopicRelationVerifier", () => {
     ]);
     expect(client.commands[0]).toMatchObject({
       provider: "codex",
-      purpose: "social_monitor.reader_summary.topic_map.verify_relations",
+      purpose: "social_monitor.reader_summary.topic_map.verify_relations.v2",
       metadata: {
         promptVersion: "reader_summary.topic_relation.agent_runtime.v3",
         attemptNumber: "1",

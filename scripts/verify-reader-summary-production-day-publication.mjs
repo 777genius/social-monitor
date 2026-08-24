@@ -286,7 +286,7 @@ function runtimeProvenanceFromExecutorAttestations(evidence) {
     provider: "codex",
     runtime: "subscription-runtime-cli",
     runtimeVersion: identity.runtimePackageVersion,
-    reasoningEffort: "xhigh",
+    reasoningEffort: identity.reasoningEffort,
     launcherSha256: identity.launcherSha256,
     summaryContentSha256: readback.summaryContentSha256,
     topicMapSha256: readback.topicMapSha256,
@@ -298,7 +298,7 @@ function runtimeProvenanceFromExecutorAttestations(evidence) {
       provider: "codex",
       runtime: "subscription-runtime-cli",
       runtimeVersion: identity.runtimePackageVersion,
-      reasoningEffort: "xhigh",
+      reasoningEffort: identity.reasoningEffort,
       launcherSha256: identity.launcherSha256,
     },
   };
@@ -308,34 +308,57 @@ function validateAttestationRecord(record) {
   assertObject(record, "execution attestation record");
   assertObject(record.attestation, "execution attestation");
   const attestation = record.attestation;
-  const purposes = {
+  const legacyPurposes = {
     topic_label: "social_monitor.reader_summary.topic_map.label",
     topic_relation: "social_monitor.reader_summary.topic_map.verify_relations",
     story_relation: "social_monitor.reader_summary.verify_story_relations",
     related_topic_relation:
       "social_monitor.reader_summary.verify_related_topic_relations",
   };
-  const summaryPurpose =
+  const activePurposes = {
+    topic_label: "social_monitor.reader_summary.topic_map.label.v2",
+    topic_relation:
+      "social_monitor.reader_summary.topic_map.verify_relations.v2",
+    story_relation:
+      "social_monitor.reader_summary.verify_story_relations.v2",
+    related_topic_relation:
+      "social_monitor.reader_summary.verify_related_topic_relations.v2",
+  };
+  const legacySummaryPurpose =
     record.attempt === "primary"
       ? "social_monitor.reader_summary.generate"
       : record.attempt === "repair"
         ? "social_monitor.reader_summary.repair"
         : undefined;
-  const expectedPurpose =
-    record.taskRole === "summary" ? summaryPurpose : purposes[record.taskRole];
+  const activeSummaryPurpose =
+    record.attempt === "primary"
+      ? "social_monitor.reader_summary.generate.v2"
+      : record.attempt === "repair"
+        ? "social_monitor.reader_summary.repair.v2"
+        : undefined;
+  const legacyPurpose = record.taskRole === "summary"
+    ? legacySummaryPurpose
+    : legacyPurposes[record.taskRole];
+  const activePurpose = record.taskRole === "summary"
+    ? activeSummaryPurpose
+    : activePurposes[record.taskRole];
+  const expectedEffort = attestation.purpose === activePurpose
+    ? "high"
+    : attestation.purpose === legacyPurpose
+      ? "xhigh"
+      : undefined;
   if (
     typeof record.attempt !== "string" ||
     record.attempt.length === 0 ||
     !isSha256(record.normalizedOutputSha256) ||
-    expectedPurpose === undefined ||
+    expectedEffort === undefined ||
     attestation.schemaVersion !== 1 ||
     typeof attestation.requestId !== "string" ||
     attestation.requestId.length === 0 ||
-    attestation.purpose !== expectedPurpose ||
     !isSha256(attestation.canonicalRequestSha256) ||
     attestation.provider !== "codex" ||
     attestation.model !== "gpt-5.6-sol" ||
-    attestation.reasoningEffort !== "xhigh" ||
+    attestation.reasoningEffort !== expectedEffort ||
     attestation.runtimeEngine !== "subscription-runtime-cli" ||
     !isConcreteVersion(attestation.runtimePackageVersion) ||
     !isSha256(attestation.launcherSha256) ||
@@ -378,7 +401,7 @@ function isProductionRuntimeProvenance(value) {
     value.provider === "codex" &&
     value.runtime === "subscription-runtime-cli" &&
     isConcreteVersion(value.runtimeVersion) &&
-    value.reasoningEffort === "xhigh" &&
+    (value.reasoningEffort === "high" || value.reasoningEffort === "xhigh") &&
     isSha256(value.launcherSha256) &&
     isSha256(value.summaryContentSha256) &&
     isSha256(value.topicMapSha256) &&
@@ -390,7 +413,7 @@ function isProductionRuntimeProvenance(value) {
     value.topicLabeler.provider === "codex" &&
     value.topicLabeler.runtime === "subscription-runtime-cli" &&
     value.topicLabeler.runtimeVersion === value.runtimeVersion &&
-    value.topicLabeler.reasoningEffort === "xhigh" &&
+    value.topicLabeler.reasoningEffort === value.reasoningEffort &&
     value.topicLabeler.launcherSha256 === value.launcherSha256
   );
 }

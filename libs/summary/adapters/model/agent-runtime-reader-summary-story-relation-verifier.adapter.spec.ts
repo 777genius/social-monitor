@@ -42,7 +42,7 @@ describe("AgentRuntimeReaderSummaryStoryRelationVerifier", () => {
     ]);
     expect(client.commands[0]).toMatchObject({
       provider: "codex",
-      purpose: "social_monitor.reader_summary.verify_story_relations",
+      purpose: "social_monitor.reader_summary.verify_story_relations.v2",
       metadata: {
         promptVersion: "reader_summary.story_relation.agent_runtime.v2",
       },
@@ -167,7 +167,7 @@ describe("AgentRuntimeReaderSummaryStoryRelationVerifier", () => {
     expect(client.signals).toEqual([controller.signal]);
 
     expect(client.commands[0]).toMatchObject({
-      purpose: "social_monitor.reader_summary.verify_related_topic_relations",
+      purpose: "social_monitor.reader_summary.verify_related_topic_relations.v2",
       timeoutMs: 15_000,
       controls: {
         outputSchemaName: "social_monitor_reader_summary_related_topic_relations",
@@ -235,10 +235,10 @@ describe("AgentRuntimeReaderSummaryStoryRelationVerifier", () => {
 
     expect(client.commands[0]?.requestId).not.toBe(client.commands[1]?.requestId);
     expect(client.commands[0]?.purpose).toBe(
-      "social_monitor.reader_summary.verify_story_relations",
+      "social_monitor.reader_summary.verify_story_relations.v2",
     );
     expect(client.commands[1]).toMatchObject({
-      purpose: "social_monitor.reader_summary.verify_story_relations",
+      purpose: "social_monitor.reader_summary.verify_story_relations.v2",
       timeoutMs: 1_234,
       metadata: { verificationLane: "safe_recall_shadow" },
     });

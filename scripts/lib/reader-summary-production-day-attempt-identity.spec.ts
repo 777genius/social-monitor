@@ -14,19 +14,19 @@ const liveIdentity = {
       mode: "agent-runtime",
       provider: "codex",
       physicalModel: "gpt-5.6-sol",
-      reasoningPolicy: "xhigh",
+      reasoningPolicy: "high",
     },
     topicLabeler: {
       mode: "agent-runtime",
       provider: "codex",
-      physicalModel: "agent-runtime-reader-summary-topic-labeler",
-      reasoningPolicy: "runtime-default",
+      physicalModel: "gpt-5.6-sol",
+      reasoningPolicy: "high",
     },
     topicRelationVerifier: {
       mode: "agent-runtime",
       provider: "codex",
-      physicalModel: "agent-runtime-reader-summary-topic-relation-verifier",
-      reasoningPolicy: "runtime-default",
+      physicalModel: "gpt-5.6-sol",
+      reasoningPolicy: "high",
     },
     runtime: {
       engine: "subscription-runtime-cli",
@@ -159,7 +159,7 @@ describe("reader summary production-day attempt identity", () => {
     } }],
     ["reasoning policy", { summaryGenerator: {
       ...liveIdentity.servingAuthority.summaryGenerator,
-      reasoningPolicy: "high",
+      reasoningPolicy: "xhigh",
     } }],
     ["runtime engine", { runtime: {
       ...liveIdentity.servingAuthority.runtime!,

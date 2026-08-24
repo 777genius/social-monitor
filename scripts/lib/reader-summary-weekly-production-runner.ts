@@ -127,7 +127,7 @@ type ProofEnvelope = Readonly<{
     provider: "agent-runtime";
     agentProvider: "codex";
     model: "gpt-5.6-sol";
-    reasoningEffort: "xhigh";
+    reasoningEffort: "high";
     runtimeOutput: "output_text";
   };
   zeroProviderCalls: true;
@@ -350,7 +350,7 @@ const proofFor = (input: {
     provider: "agent-runtime",
     agentProvider: "codex",
     model: readerSummaryWeeklyProductionModel,
-    reasoningEffort: "xhigh",
+    reasoningEffort: "high",
     runtimeOutput: "output_text",
   }),
   zeroProviderCalls: true,
@@ -468,7 +468,7 @@ const validateArtifactPair = (
     proof.model?.provider !== "agent-runtime" ||
     proof.model?.agentProvider !== "codex" ||
     proof.model?.model !== readerSummaryWeeklyProductionModel ||
-    proof.model?.reasoningEffort !== "xhigh" ||
+    proof.model?.reasoningEffort !== "high" ||
     proof.model?.runtimeOutput !== "output_text" ||
     proof.zeroProviderCalls !== true
   ) {

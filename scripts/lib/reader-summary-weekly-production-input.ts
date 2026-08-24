@@ -226,10 +226,16 @@ const assertManifestExecutionAttestation = (
   const attestation = manifest.executionAttestation;
   if (
     attestation.schemaVersion !== 1 ||
-    attestation.purpose !== "social_monitor.reader_summary.weekly.review" ||
+    !(
+      (attestation.purpose ===
+        "social_monitor.reader_summary.weekly.review.v2" &&
+        attestation.reasoningEffort === "high") ||
+      (attestation.purpose ===
+        "social_monitor.reader_summary.weekly.review" &&
+        attestation.reasoningEffort === "xhigh")
+    ) ||
     attestation.provider !== "codex" ||
     attestation.model !== "gpt-5.6-sol" ||
-    attestation.reasoningEffort !== "xhigh" ||
     attestation.runtimeEngine !== "subscription-runtime-cli" ||
     attestation.selectedOutputKind !== "structured_output" ||
     !isSha(attestation.canonicalRequestSha256) ||

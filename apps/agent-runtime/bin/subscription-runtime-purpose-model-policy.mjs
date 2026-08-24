@@ -1,4 +1,4 @@
-const dailyStructuredProfile = Object.freeze({
+const genericSummaryStructuredProfile = Object.freeze({
   provider: "codex",
   model: "gpt-5.6-sol",
   reasoningEffort: "xhigh",
@@ -6,7 +6,17 @@ const dailyStructuredProfile = Object.freeze({
   responseFormat: "json",
 });
 
-const weeklyTextProfile = Object.freeze({
+const legacyReaderSummaryStructuredProfile = genericSummaryStructuredProfile;
+
+const activeReaderSummaryStructuredProfile = Object.freeze({
+  provider: "codex",
+  model: "gpt-5.6-sol",
+  reasoningEffort: "high",
+  outputKind: "structured_output",
+  responseFormat: "json",
+});
+
+const legacyReaderSummaryTextProfile = Object.freeze({
   provider: "codex",
   model: "gpt-5.6-sol",
   reasoningEffort: "xhigh",
@@ -14,19 +24,38 @@ const weeklyTextProfile = Object.freeze({
   responseFormat: "text",
 });
 
+const activeReaderSummaryTextProfile = Object.freeze({
+  provider: "codex",
+  model: "gpt-5.6-sol",
+  reasoningEffort: "high",
+  outputKind: "output_text",
+  responseFormat: "text",
+});
+
 const profilesByPurpose = Object.freeze({
-  "social_monitor.summary.generate": dailyStructuredProfile,
-  "social_monitor.reader_summary.generate": dailyStructuredProfile,
-  "social_monitor.reader_summary.repair": dailyStructuredProfile,
-  "social_monitor.reader_summary.topic_map.label": dailyStructuredProfile,
+  "social_monitor.summary.generate": genericSummaryStructuredProfile,
+  "social_monitor.reader_summary.generate": legacyReaderSummaryStructuredProfile,
+  "social_monitor.reader_summary.repair": legacyReaderSummaryStructuredProfile,
+  "social_monitor.reader_summary.topic_map.label": legacyReaderSummaryStructuredProfile,
   "social_monitor.reader_summary.topic_map.verify_relations":
-    dailyStructuredProfile,
+    legacyReaderSummaryStructuredProfile,
   "social_monitor.reader_summary.verify_story_relations":
-    dailyStructuredProfile,
+    legacyReaderSummaryStructuredProfile,
   "social_monitor.reader_summary.verify_related_topic_relations":
-    dailyStructuredProfile,
-  "social_monitor.reader_summary.weekly.review": dailyStructuredProfile,
-  "social_monitor.reader_summary.weekly.generate": weeklyTextProfile,
+    legacyReaderSummaryStructuredProfile,
+  "social_monitor.reader_summary.weekly.review": legacyReaderSummaryStructuredProfile,
+  "social_monitor.reader_summary.weekly.generate": legacyReaderSummaryTextProfile,
+  "social_monitor.reader_summary.generate.v2": activeReaderSummaryStructuredProfile,
+  "social_monitor.reader_summary.repair.v2": activeReaderSummaryStructuredProfile,
+  "social_monitor.reader_summary.topic_map.label.v2": activeReaderSummaryStructuredProfile,
+  "social_monitor.reader_summary.topic_map.verify_relations.v2":
+    activeReaderSummaryStructuredProfile,
+  "social_monitor.reader_summary.verify_story_relations.v2":
+    activeReaderSummaryStructuredProfile,
+  "social_monitor.reader_summary.verify_related_topic_relations.v2":
+    activeReaderSummaryStructuredProfile,
+  "social_monitor.reader_summary.weekly.review.v2": activeReaderSummaryStructuredProfile,
+  "social_monitor.reader_summary.weekly.generate.v2": activeReaderSummaryTextProfile,
 });
 
 export const subscriptionRuntimeWrapperPurposeProfiles = () =>
@@ -126,7 +155,8 @@ export const admitSubscriptionRuntimeWrapperRequest = (input) => {
 
 const assertDedicatedRelatedTopicMarkers = (purpose, controls, metadata) => {
   if (
-    purpose !== "social_monitor.reader_summary.verify_related_topic_relations"
+    purpose !== "social_monitor.reader_summary.verify_related_topic_relations" &&
+    purpose !== "social_monitor.reader_summary.verify_related_topic_relations.v2"
   ) return;
   assertRequiredExactString(
     controls.outputSchemaName,

@@ -45,7 +45,7 @@ describe("AgentRuntimeReaderSummaryModelAdapter", () => {
 
     await adapter.generate(input, route);
 
-    expect(route.model).toBe("codex:gpt-5.6-sol:xhigh");
+    expect(route.model).toBe("codex:gpt-5.6-sol:high");
     expect(route.promptVersion).toBe(currentReaderSummaryPromptRelease.id);
     expect(client.commands).toHaveLength(1);
     expect(adapter.estimate(input, route).outputTokens).toBe(3_200);
@@ -87,7 +87,7 @@ describe("AgentRuntimeReaderSummaryModelAdapter", () => {
     });
     expect(client.commands[0]?.timeoutMs).toBe(600_000);
     expect(client.commands[0]?.metadata).toMatchObject({
-      reasoningEffort: "xhigh",
+      reasoningEffort: "high",
     });
   });
 
@@ -181,9 +181,37 @@ describe("AgentRuntimeReaderSummaryModelAdapter", () => {
 
     await adapter.generate(input, route);
 
-    expect(route.model).toBe("codex:gpt-5.6-sol:xhigh");
+    expect(route.model).toBe("codex:gpt-5.6-sol:high");
     expect(client.commands[0]?.controls).toMatchObject({
       model: "gpt-5.6-sol",
+    });
+  });
+
+  it("keeps the frozen xhigh purpose available only to explicit recovery", async () => {
+    const client = new CapturingAgentRuntimeClient({
+      status: "completed",
+      structuredOutput: validReaderProviderDraft(),
+      warnings: [],
+    });
+    const adapter = new AgentRuntimeReaderSummaryModelAdapter({
+      client,
+      executionProfile: "legacy-recovery-v1",
+      reasoningEffort: "xhigh",
+    });
+    const input = readerSummaryInput();
+    const route = adapter.route(input, {
+      preferredProvider: "agent-runtime",
+      maxInputTokens: 24_000,
+      maxOutputTokens: 16_000,
+      maxEstimatedCostUsd: 1,
+    }, { remainingTokens: 40_000, remainingCostUsd: 1 });
+
+    await adapter.generate(input, route);
+
+    expect(route.model).toBe("codex:gpt-5.6-sol:xhigh");
+    expect(client.commands[0]).toMatchObject({
+      purpose: "social_monitor.reader_summary.generate",
+      controls: { reasoningEffort: "xhigh" },
     });
   });
 
@@ -339,11 +367,23 @@ describe("AgentRuntimeReaderSummaryModelAdapter", () => {
         status: "completed",
         structuredOutput: invalidDraft,
         warnings: [],
+        usage: {
+          inputTokens: 101,
+          outputTokens: 11,
+          totalTokens: 112,
+          estimatedCostUsd: 0.01,
+        },
       },
       {
         status: "completed",
         structuredOutput: validReaderProviderDraft(),
         warnings: [],
+        usage: {
+          inputTokens: 202,
+          outputTokens: 22,
+          totalTokens: 224,
+          estimatedCostUsd: 0.02,
+        },
       },
     ]);
     const adapter = new AgentRuntimeReaderSummaryModelAdapter({
@@ -367,11 +407,11 @@ describe("AgentRuntimeReaderSummaryModelAdapter", () => {
       { remainingTokens: 40_000, remainingCostUsd: 1 },
     );
 
-    await adapter.generate(input, route);
+    const attempt = await adapter.generate(input, route);
 
     expect(client.commands).toHaveLength(2);
     expect(client.commands[1]).toMatchObject({
-      purpose: "social_monitor.reader_summary.repair",
+      purpose: "social_monitor.reader_summary.repair.v2",
       metadata: expect.objectContaining({ attempt: "repair" }),
     });
     expect(client.commands[1]?.systemPrompt).toContain(
@@ -383,8 +423,13 @@ describe("AgentRuntimeReaderSummaryModelAdapter", () => {
       attempt: "repair",
       attestation: {
         requestId: client.commands[1]?.requestId,
-        purpose: "social_monitor.reader_summary.repair",
+        purpose: "social_monitor.reader_summary.repair.v2",
       },
+    });
+    expect(attempt.draft.usage).toEqual({
+      inputTokens: 303,
+      outputTokens: 33,
+      estimatedCostUsd: 0.03,
     });
   });
 });

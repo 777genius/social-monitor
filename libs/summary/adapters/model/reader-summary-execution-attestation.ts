@@ -11,6 +11,13 @@ import type {
   AgentRuntimeTaskCommand,
   AgentRuntimeTaskResult,
 } from "../../ports";
+import {
+  activeReaderSummaryModel,
+  activeReaderSummaryProvider,
+  activeReaderSummaryPurposes,
+  legacyReaderSummaryRecoveryPurposes,
+  type ReaderSummaryGenerationExecutionProfile,
+} from "./active-reader-summary-generation-profile";
 
 export type ReaderSummaryAttestedTaskRole =
   | "summary"
@@ -39,6 +46,7 @@ export const verifyAndRecordReaderSummaryExecution = async (params: {
   readonly taskRole: ReaderSummaryAttestedTaskRole;
   readonly attempt: string;
   readonly normalizedOutput: unknown;
+  readonly executionProfile?: ReaderSummaryGenerationExecutionProfile;
   readonly sink?: VerifiedReaderSummaryExecutionAttestationSink;
 }): Promise<void> => {
   const attestation = params.result.executionAttestation;
@@ -49,9 +57,17 @@ export const verifyAndRecordReaderSummaryExecution = async (params: {
     attestation.requestId !== params.command.requestId ||
     attestation.purpose !== params.command.purpose ||
     attestation.provider !== params.command.provider ||
-    attestation.provider !== "codex" ||
-    attestation.model !== "gpt-5.6-sol" ||
-    attestation.reasoningEffort !== "xhigh" ||
+    attestation.provider !== activeReaderSummaryProvider ||
+    attestation.model !== activeReaderSummaryModel ||
+    attestation.reasoningEffort !== expectedReasoningEffort(
+      params.executionProfile,
+    ) ||
+    !activeReaderSummaryPurposeMatches(
+      params.taskRole,
+      params.attempt,
+      attestation.purpose,
+      params.executionProfile,
+    ) ||
     attestation.runtimeEngine !== subscriptionRuntimeEngine ||
     !isConcreteRuntimePackageVersion(attestation.runtimePackageVersion) ||
     !isSha256Hex(attestation.canonicalRequestSha256) ||
@@ -70,3 +86,31 @@ export const verifyAndRecordReaderSummaryExecution = async (params: {
     attestation,
   });
 };
+
+const activeReaderSummaryPurposeMatches = (
+  role: ReaderSummaryAttestedTaskRole,
+  attempt: string,
+  purpose: string,
+  executionProfile: ReaderSummaryGenerationExecutionProfile = "active-v2",
+): boolean => ({
+  summary: executionProfile === "legacy-recovery-v1"
+    ? attempt === "primary"
+      ? [legacyReaderSummaryRecoveryPurposes.generate]
+      : attempt === "repair"
+        ? [legacyReaderSummaryRecoveryPurposes.repair]
+        : []
+    : attempt === "primary"
+      ? [activeReaderSummaryPurposes.generate]
+      : attempt === "repair"
+        ? [activeReaderSummaryPurposes.repair]
+        : [],
+  topic_label: [activeReaderSummaryPurposes.topicLabel],
+  topic_relation: [activeReaderSummaryPurposes.topicRelations],
+  story_relation: [activeReaderSummaryPurposes.storyRelations],
+  related_topic_relation: [activeReaderSummaryPurposes.relatedTopicRelations],
+  weekly_review: [activeReaderSummaryPurposes.weeklyReview],
+} as const)[role].some((candidate: string) => candidate === purpose);
+
+const expectedReasoningEffort = (
+  executionProfile: ReaderSummaryGenerationExecutionProfile = "active-v2",
+): "high" | "xhigh" => executionProfile === "active-v2" ? "high" : "xhigh";

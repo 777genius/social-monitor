@@ -54,6 +54,39 @@ test("MJS policy preserves structured schema names", () => {
   assert.equal(task.metadata.runtimeOutput, "structured_output");
 });
 
+test("active v2 admits high, rejects xhigh, and frozen recovery admits xhigh", () => {
+  const request = (purpose, reasoningEffort) => ({
+    provider: "codex",
+    model: "gpt-5.6-sol",
+    reasoningEffort,
+    request: {
+      context: { purpose },
+      task: {
+        controls: {
+          model: "gpt-5.6-sol",
+          reasoningEffort,
+          outputSchema: { type: "object" },
+          responseFormat: "json",
+        },
+        metadata: { reasoningEffort, runtimeOutput: "structured_output" },
+      },
+    },
+  });
+
+  assert.doesNotThrow(() => admitSubscriptionRuntimeWrapperRequest(
+    request("social_monitor.reader_summary.generate.v2", "high"),
+  ));
+  assert.throws(
+    () => admitSubscriptionRuntimeWrapperRequest(
+      request("social_monitor.reader_summary.generate.v2", "xhigh"),
+    ),
+    /runtime reasoning effort conflicts with purpose policy/u,
+  );
+  assert.doesNotThrow(() => admitSubscriptionRuntimeWrapperRequest(
+    request("social_monitor.reader_summary.generate", "xhigh"),
+  ));
+});
+
 test("Codex subprocess environment admits only safe execution basics", () => {
   const safeEnvironment = {
     PATH: "/usr/local/bin:/usr/bin:/bin",

@@ -66,18 +66,18 @@ const summaryAuthority = (
     const reasoningPolicy = configured(
       input.env.AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT ??
         input.env.AGENT_RUNTIME_REASONING_EFFORT,
-      "xhigh",
+      "high",
     );
-    if (reasoningPolicy !== "xhigh") {
+    if (reasoningPolicy !== "high") {
       throw new Error("Current reader summary reasoning effort is invalid");
     }
     return Object.freeze({
       mode: input.summaryModelMode,
       provider: requiredAgentProvider(agentProvider),
-      physicalModel: configured(
+      physicalModel: activePhysicalModel(configured(
         input.env.AGENT_RUNTIME_READER_SUMMARY_MODEL,
         "gpt-5.6-sol",
-      ),
+      )),
       reasoningPolicy,
     });
   }
@@ -108,11 +108,12 @@ const topicLabelerAuthority = (
     ? {
         mode: input.topicLabelerMode,
         provider: requiredAgentProvider(agentProvider),
-        physicalModel: configured(
-          input.env.AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_MODEL,
-          "agent-runtime-reader-summary-topic-labeler",
-        ),
-        reasoningPolicy: "runtime-default",
+        physicalModel: activePhysicalModel(configured(
+          input.env.AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_MODEL ??
+            input.env.AGENT_RUNTIME_READER_SUMMARY_MODEL,
+          "gpt-5.6-sol",
+        )),
+        reasoningPolicy: "high",
       }
     : {
         mode: input.topicLabelerMode,
@@ -130,11 +131,12 @@ const topicRelationVerifierAuthority = (
     ? {
         mode: input.topicLabelerMode,
         provider: requiredAgentProvider(agentProvider),
-        physicalModel: configured(
-          input.env.AGENT_RUNTIME_READER_SUMMARY_TOPIC_RELATION_VERIFIER_MODEL,
-          "agent-runtime-reader-summary-topic-relation-verifier",
-        ),
-        reasoningPolicy: "runtime-default",
+        physicalModel: activePhysicalModel(configured(
+          input.env.AGENT_RUNTIME_READER_SUMMARY_TOPIC_RELATION_VERIFIER_MODEL ??
+            input.env.AGENT_RUNTIME_READER_SUMMARY_MODEL,
+          "gpt-5.6-sol",
+        )),
+        reasoningPolicy: "high",
       }
     : {
         mode: input.topicLabelerMode,
@@ -161,8 +163,8 @@ const resolveRuntime = async (
 
 const resolveAgentProvider = (configuredProvider: string | undefined): string => {
   const provider = configured(configuredProvider, "codex");
-  if (provider !== "codex" && provider !== "claude") {
-    throw new Error("Current agent-runtime provider is invalid");
+  if (provider !== "codex") {
+    throw new Error("Current reader-summary agent-runtime provider must be codex");
   }
   return provider;
 };
@@ -170,6 +172,13 @@ const resolveAgentProvider = (configuredProvider: string | undefined): string =>
 const requiredAgentProvider = (provider: string | null): string => {
   if (provider === null) throw new Error("Agent-runtime provider is required");
   return provider;
+};
+
+const activePhysicalModel = (model: string): "gpt-5.6-sol" => {
+  if (model !== "gpt-5.6-sol") {
+    throw new Error("Current reader-summary physical model must be gpt-5.6-sol");
+  }
+  return model;
 };
 
 const configured = (value: string | undefined, fallback: string): string => {

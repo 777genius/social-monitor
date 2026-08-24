@@ -133,7 +133,7 @@ describe("AgentRuntimeReaderSummaryTopicLabeler", () => {
     expect(result.groups).toEqual([]);
     expect(client.commands[0]).toMatchObject({
       provider: "codex",
-      purpose: "social_monitor.reader_summary.topic_map.label",
+      purpose: "social_monitor.reader_summary.topic_map.label.v2",
       timeoutMs: 600_000,
       metadata: {
         promptVersion: "reader_summary.topic_map.agent_runtime.v21",

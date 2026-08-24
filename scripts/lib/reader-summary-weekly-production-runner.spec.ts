@@ -38,7 +38,7 @@ import {
 } from "./reader-summary-weekly-production-test-fixture";
 
 describe("agent-runtime reader summary weekly text model", () => {
-  it("accepts exact gpt-5.6-sol xhigh output_text runtime execution", async () => {
+  it("accepts exact gpt-5.6-sol high output_text runtime execution", async () => {
     const input = completeModelInput();
     const outputText = JSON.stringify(outputFor(input));
     const client = new FakeAgentRuntimeClient({
@@ -58,7 +58,7 @@ describe("agent-runtime reader summary weekly text model", () => {
       provider: "codex",
       controls: { model: "gpt-5.6-sol" },
       metadata: {
-        reasoningEffort: "xhigh",
+        reasoningEffort: "high",
         runtimeOutput: "output_text",
       },
     });
@@ -74,13 +74,13 @@ describe("agent-runtime reader summary weekly text model", () => {
 
     await expect(
       new AgentRuntimeReaderSummaryWeeklyTextModel({ client }).generate(input),
-    ).rejects.toThrow(/attestation must prove codex gpt-5\.6-sol xhigh output_text/u);
+    ).rejects.toThrow(/attestation must prove codex gpt-5\.6-sol high output_text/u);
   });
 
   it.each([
     ["provider", { provider: "claude" as const }],
     ["model", { model: "gpt-5.5" }],
-    ["reasoning effort", { reasoningEffort: "high" }],
+    ["reasoning effort", { reasoningEffort: "xhigh" }],
     [
       "selected output kind",
       { selectedOutputKind: "structured_output" as const },
@@ -99,7 +99,7 @@ describe("agent-runtime reader summary weekly text model", () => {
       await expect(
         new AgentRuntimeReaderSummaryWeeklyTextModel({ client }).generate(input),
       ).rejects.toThrow(
-        /attestation must prove codex gpt-5\.6-sol xhigh output_text/u,
+        /attestation must prove codex gpt-5\.6-sol high output_text/u,
       );
     },
   );
@@ -234,7 +234,7 @@ describe("reader summary weekly production runner", () => {
       provider: "agent-runtime",
       agentProvider: "codex",
       model: "gpt-5.6-sol",
-      reasoningEffort: "xhigh",
+      reasoningEffort: "high",
       runtimeOutput: "output_text",
     });
     expect(proof.zeroProviderCalls).toBe(true);
@@ -774,11 +774,11 @@ function productionExecutionAttestation(
   return {
     schemaVersion: 1,
     requestId: "reader-summary-weekly:test",
-    purpose: "social_monitor.reader_summary.weekly.generate",
+    purpose: "social_monitor.reader_summary.weekly.generate.v2",
     canonicalRequestSha256: sha("canonical-request"),
     provider: "codex",
     model: "gpt-5.6-sol",
-    reasoningEffort: "xhigh",
+    reasoningEffort: "high",
     runtimeEngine: "subscription-runtime-cli",
     runtimePackageVersion: "1.0.0",
     launcherSha256: sha("launcher"),

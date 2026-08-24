@@ -12,3 +12,4 @@ services:
   daily-runner:
     environment:
       AGENT_RUNTIME_READER_SUMMARY_MODEL: gpt-5.6-sol
+      AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT: high

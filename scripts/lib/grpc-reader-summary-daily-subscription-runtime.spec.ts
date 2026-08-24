@@ -19,7 +19,7 @@ const scope = {
 };
 
 describe("GrpcReaderSummaryDailySubscriptionRuntime", () => {
-  it("sends v1 authority bytes once through gpt-5.6-sol xhigh subscription runtime", async () => {
+  it("sends v1 authority bytes once through gpt-5.6-sol high subscription runtime", async () => {
     const output = { z: 1, a: "exact" };
     const client = fakeClient(output);
     const runtime = new GrpcReaderSummaryDailySubscriptionRuntime(client);
@@ -40,7 +40,7 @@ describe("GrpcReaderSummaryDailySubscriptionRuntime", () => {
     expect(command.controls).toMatchObject({ model: "gpt-5.6-sol" });
     expect(command.metadata).toMatchObject({
       authoritySchemaVersion: "reader_summary.daily_source_authority.v1",
-      reasoningEffort: "xhigh",
+      reasoningEffort: "high",
     });
     expect(result.responseBytes.toString("utf8")).toBe('{"a":"exact","z":1}');
   });
@@ -165,11 +165,11 @@ const fakeClient = (output: Record<string, unknown>, selectedModel = "gpt-5.6-so
     executionAttestation: {
       schemaVersion: 1 as const,
       requestId: "daily",
-      purpose: "social_monitor.reader_summary.generate",
+      purpose: "social_monitor.reader_summary.generate.v2",
       canonicalRequestSha256: "a".repeat(64),
       provider: "codex" as const,
       model: selectedModel,
-      reasoningEffort: "xhigh",
+      reasoningEffort: "high",
       runtimeEngine: "subscription-runtime-cli" as const,
       runtimePackageVersion: "1.2.3",
       launcherSha256: "b".repeat(64),

@@ -325,10 +325,12 @@ const createReaderSummaryDailyPersistedResponseModel = (input: {
   const structuredAttestation = receiptAttestation === undefined
     ? verifiedStructuredOutputAttestation(input, responseBytes)
     : undefined;
+  const persistedReasoningEffort = structuredAttestation?.reasoningEffort ===
+    "xhigh" ? "xhigh" : outputKind === "output_text" ? "xhigh" : "high";
   let generated = false;
   const route: ReaderSummaryModelRoute = {
     provider: "agent-runtime",
-    model: "codex:gpt-5.6-sol:xhigh",
+    model: `codex:gpt-5.6-sol:${persistedReasoningEffort}`,
     promptVersion: currentReaderSummaryPromptRelease.id,
     schemaVersion: "reader_summary.artifact.v1",
   };
@@ -451,9 +453,9 @@ const verifiedStructuredOutputAttestation = (
     receipt.sourceAuthoritySha256 !== input.sourceAuthoritySha256 ||
     receipt.responseSha256 !== sha256(responseBytes) ||
     attestation === null ||
+    !validPersistedStructuredExecutionIdentity(attestation) ||
     attestation.provider !== "codex" ||
     attestation.model !== "gpt-5.6-sol" ||
-    attestation.reasoningEffort !== "xhigh" ||
     attestation.runtimeEngine !== "subscription-runtime-cli" ||
     attestation.selectedOutputKind !== "structured_output" ||
     attestation.selectedOutputSha256 !== receipt.responseSha256
@@ -462,6 +464,14 @@ const verifiedStructuredOutputAttestation = (
   }
   return attestation;
 };
+
+const validPersistedStructuredExecutionIdentity = (
+  attestation: Record<string, unknown>,
+): boolean =>
+  (attestation.purpose === "social_monitor.reader_summary.generate.v2" &&
+    attestation.reasoningEffort === "high") ||
+  (attestation.purpose === "social_monitor.reader_summary.generate" &&
+    attestation.reasoningEffort === "xhigh");
 
 const strictOutputTextBytes = (responseBytes: Buffer): Buffer => {
   const bytes = parseStrictDailyOutputText(

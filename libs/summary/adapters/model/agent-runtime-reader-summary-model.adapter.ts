@@ -45,13 +45,25 @@ import {
   readAgentRuntimeObjectOutput,
   usageFromAgentRuntime,
 } from "./agent-runtime-model-support";
+import {
+  activeReaderSummaryModel,
+  activeReaderSummaryProvider,
+  activeReaderSummaryPurposes,
+  activeReaderSummaryReasoningEffort,
+  assertActiveReaderSummaryProvider,
+  parseActiveReaderSummaryModel,
+  parseActiveReaderSummaryReasoningEffort,
+  legacyReaderSummaryRecoveryPurposes,
+  type ReaderSummaryGenerationExecutionProfile,
+} from "./active-reader-summary-generation-profile";
 
 export type AgentRuntimeReaderSummaryModelAdapterOptions = {
   readonly client: AgentRuntimeClientPort;
   readonly agentProvider?: AgentRuntimeProvider;
   readonly providerInstanceId?: string;
   readonly model?: string;
-  readonly reasoningEffort?: "xhigh";
+  readonly reasoningEffort?: "high" | "xhigh";
+  readonly executionProfile?: ReaderSummaryGenerationExecutionProfile;
   readonly evalDatasetVersion?: string;
   readonly timeoutMs?: number;
   readonly maxOutputTokens?: number;
@@ -60,9 +72,9 @@ export type AgentRuntimeReaderSummaryModelAdapterOptions = {
 };
 
 const provider = "agent-runtime";
-const defaultAgentProvider: AgentRuntimeProvider = "codex";
-const defaultModel = "gpt-5.6-sol";
-const defaultReasoningEffort = "xhigh" as const;
+const defaultAgentProvider = activeReaderSummaryProvider;
+const defaultModel = activeReaderSummaryModel;
+const defaultReasoningEffort = activeReaderSummaryReasoningEffort;
 const defaultEvalDatasetVersion = "reader_summary.eval.mvp.v1";
 const defaultTimeoutMs = 600_000;
 const defaultMaxOutputTokens = 16_000;
@@ -70,10 +82,11 @@ const defaultInputTokenDivisor = 4;
 
 export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModelPort {
   private readonly client: AgentRuntimeClientPort;
-  private readonly agentProvider: AgentRuntimeProvider;
+  private readonly agentProvider: typeof activeReaderSummaryProvider;
   private readonly providerInstanceId?: string;
   private readonly model: string;
-  private readonly reasoningEffort: "xhigh";
+  private readonly reasoningEffort: "high" | "xhigh";
+  private readonly executionProfile: ReaderSummaryGenerationExecutionProfile;
   private readonly evalDatasetVersion: string;
   private readonly timeoutMs: number;
   private readonly maxOutputTokens: number;
@@ -82,10 +95,22 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
 
   constructor(options: AgentRuntimeReaderSummaryModelAdapterOptions) {
     this.client = options.client;
-    this.agentProvider = options.agentProvider ?? defaultAgentProvider;
+    this.agentProvider =
+      assertActiveReaderSummaryProvider(options.agentProvider) ??
+      defaultAgentProvider;
     this.providerInstanceId = options.providerInstanceId;
-    this.model = nonEmptyOrFallback(options.model, defaultModel);
-    this.reasoningEffort = options.reasoningEffort ?? defaultReasoningEffort;
+    this.model = parseActiveReaderSummaryModel(options.model) ?? defaultModel;
+    this.executionProfile = options.executionProfile ?? "active-v2";
+    this.reasoningEffort = options.reasoningEffort ??
+      (this.executionProfile === "active-v2" ? defaultReasoningEffort : "xhigh");
+    if (
+      (this.executionProfile === "active-v2" &&
+        this.reasoningEffort !== activeReaderSummaryReasoningEffort) ||
+      (this.executionProfile === "legacy-recovery-v1" &&
+        this.reasoningEffort !== "xhigh")
+    ) {
+      throw new Error("Reader summary execution profile and effort conflict");
+    }
     this.evalDatasetVersion = nonEmptyOrFallback(
       options.evalDatasetVersion,
       defaultEvalDatasetVersion,
@@ -165,24 +190,26 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
       return this.buildNoSignalAttempt(input, selectedRoute);
     }
 
+    let logicalRunUsage: ReaderSummaryModelEstimate | undefined;
     for (const attempt of ["primary", "repair"] as const) {
       const command = this.buildTaskCommand(input, selectedRoute, attempt);
       const result = await this.client.runTask(command);
+      const attemptUsage = usageFromAgentRuntime(
+        result.usage,
+        this.estimate(input, selectedRoute),
+      );
+      logicalRunUsage = sumReaderSummaryUsage(logicalRunUsage, attemptUsage);
       try {
         const rawDraft = readAgentRuntimeObjectOutput(
           result,
           parseOpenAiReaderSummaryJsonObject,
           "Reader summary",
         );
-        const usage = usageFromAgentRuntime(
-          result.usage,
-          this.estimate(input, selectedRoute),
-        );
         const draft = normalizeOpenAiReaderSummaryDraft(
           rawDraft,
           input,
           selectedRoute,
-          usage,
+          logicalRunUsage,
           this.evalDatasetVersion,
         );
         await verifyAndRecordReaderSummaryExecution({
@@ -191,6 +218,7 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
           taskRole: "summary",
           attempt,
           normalizedOutput: draft,
+          executionProfile: this.executionProfile,
           sink: this.verifiedAttestationSink,
         });
 
@@ -232,8 +260,12 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
       provider: this.agentProvider,
       providerInstanceId: this.providerInstanceId,
       purpose: isRepair
-        ? "social_monitor.reader_summary.repair"
-        : "social_monitor.reader_summary.generate",
+        ? this.executionProfile === "active-v2"
+          ? activeReaderSummaryPurposes.repair
+          : legacyReaderSummaryRecoveryPurposes.repair
+        : this.executionProfile === "active-v2"
+          ? activeReaderSummaryPurposes.generate
+          : legacyReaderSummaryRecoveryPurposes.generate,
       systemPrompt: isRepair
         ? `${buildOpenAiReaderSummaryInstructions(input)}\n${narrativeRepairInstruction}`
         : buildOpenAiReaderSummaryInstructions(input),
@@ -244,6 +276,7 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
         outputSchemaName: "social_monitor_reader_summary_artifact",
         schemaVersion: selectedRoute.schemaVersion,
         model: this.model,
+        reasoningEffort: this.reasoningEffort,
         maxOutputTokens: this.maxOutputTokens,
       },
       timeoutMs: this.timeoutMs,
@@ -373,8 +406,10 @@ export const resolveAgentRuntimeReaderSummaryModelOptions = (
     client,
     agentProvider: parseAgentRuntimeProvider(env.AGENT_RUNTIME_PROVIDER),
     providerInstanceId: env.AGENT_RUNTIME_PROVIDER_INSTANCE_ID,
-    model: env.AGENT_RUNTIME_READER_SUMMARY_MODEL,
-    reasoningEffort: parseReaderSummaryReasoningEffort(
+    model: parseActiveReaderSummaryModel(
+      env.AGENT_RUNTIME_READER_SUMMARY_MODEL,
+    ),
+    reasoningEffort: parseActiveReaderSummaryReasoningEffort(
       env.AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT ??
         env.AGENT_RUNTIME_REASONING_EFFORT,
     ),
@@ -389,30 +424,19 @@ export const resolveAgentRuntimeReaderSummaryModelOptions = (
   };
 };
 
-const parseReaderSummaryReasoningEffort = (
-  value: string | undefined,
-): "xhigh" | undefined => {
-  if (value === undefined || value.trim().length === 0) {
-    return undefined;
-  }
-  if (value.trim() !== "xhigh") {
-    throw new Error(
-      "AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT must be xhigh",
-    );
-  }
-
-  return "xhigh";
-};
-
 const parseAgentRuntimeProvider = (
   value: string | undefined,
-): AgentRuntimeProvider | undefined => {
-  if (value === undefined || value.trim().length === 0) {
-    return undefined;
-  }
-  if (value === "codex" || value === "claude") {
-    return value;
-  }
+): typeof activeReaderSummaryProvider | undefined =>
+  assertActiveReaderSummaryProvider(value);
 
-  throw new Error('AGENT_RUNTIME_PROVIDER must be "codex" or "claude"');
-};
+const sumReaderSummaryUsage = (
+  accumulated: ReaderSummaryModelEstimate | undefined,
+  attempt: ReaderSummaryModelEstimate,
+): ReaderSummaryModelEstimate => accumulated === undefined
+  ? attempt
+  : {
+      inputTokens: accumulated.inputTokens + attempt.inputTokens,
+      outputTokens: accumulated.outputTokens + attempt.outputTokens,
+      estimatedCostUsd:
+        accumulated.estimatedCostUsd + attempt.estimatedCostUsd,
+    };

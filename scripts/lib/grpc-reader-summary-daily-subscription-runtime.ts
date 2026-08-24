@@ -1,6 +1,11 @@
 import { createHash } from "node:crypto";
 
 import { openAiReaderSummaryJsonSchema } from "@social-monitor/summary/adapters/model/openai-responses-reader-summary-schema";
+import {
+  activeReaderSummaryModel,
+  activeReaderSummaryPurposes,
+  activeReaderSummaryReasoningEffort,
+} from "@social-monitor/summary/adapters/model/active-reader-summary-generation-profile";
 import type {
   AgentRuntimeClientPort,
   AgentRuntimeTaskResult,
@@ -26,9 +31,12 @@ import {
   verifyReaderSummaryDailySourceAuthority,
 } from "./reader-summary-daily-source-authority-snapshot";
 
-const purpose = "social_monitor.reader_summary.generate";
-const model = "gpt-5.6-sol";
-const reasoningEffort = "xhigh";
+const purpose = activeReaderSummaryPurposes.generate;
+const model = activeReaderSummaryModel;
+const reasoningEffort = activeReaderSummaryReasoningEffort;
+const canonicalRecoveryPurpose =
+  "social_monitor.reader_summary.weekly.generate";
+const canonicalRecoveryReasoningEffort = "xhigh";
 const canonicalRecoveryOutputSchema = JSON.stringify(
   openAiReaderSummaryJsonSchema,
 );
@@ -118,7 +126,7 @@ export class GrpcReaderSummaryDailyCanonicalRecoveryRuntime
         workspaceId: workspaceId(input.workspaceId),
         correlationId: `reader-summary-daily-recovery-v4:${input.modelJobIdentity}`,
         provider: "codex",
-        purpose: "social_monitor.reader_summary.weekly.generate",
+        purpose: canonicalRecoveryPurpose,
         systemPrompt: [
           "Generate exactly one canonical daily Social Monitor reader summary.",
           "The supplied immutable daily source authority v2 is complete.",
@@ -141,7 +149,7 @@ export class GrpcReaderSummaryDailyCanonicalRecoveryRuntime
         metadata: {
           adapter: "reader-summary-daily-canonical-recovery-v4",
           authoritySchemaVersion: "reader_summary.daily_source_authority.v2",
-          reasoningEffort,
+          reasoningEffort: canonicalRecoveryReasoningEffort,
           runtimeOutput: "output_text",
         },
       });

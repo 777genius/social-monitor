@@ -11,7 +11,7 @@ export type ProductionDayExecutedRuntimeProvenance = {
   readonly provider: "codex";
   readonly runtime: "subscription-runtime-cli";
   readonly runtimeVersion: string;
-  readonly reasoningEffort: "xhigh";
+  readonly reasoningEffort: "high" | "xhigh";
   readonly launcherSha256: string;
   readonly summaryContentSha256: string;
   readonly topicMapSha256: string;
@@ -23,7 +23,7 @@ export type ProductionDayExecutedRuntimeProvenance = {
     readonly provider: "codex";
     readonly runtime: "subscription-runtime-cli";
     readonly runtimeVersion: string;
-    readonly reasoningEffort: "xhigh";
+    readonly reasoningEffort: "high" | "xhigh";
     readonly launcherSha256: string;
   };
 };
@@ -52,7 +52,7 @@ type ValidAttestationRecord = {
     readonly canonicalRequestSha256: string;
     readonly provider: "codex";
     readonly model: "gpt-5.6-sol";
-    readonly reasoningEffort: "xhigh";
+    readonly reasoningEffort: "high" | "xhigh";
     readonly runtimeEngine: "subscription-runtime-cli";
     readonly runtimePackageVersion: string;
     readonly launcherSha256: string;
@@ -181,7 +181,7 @@ export const runtimeProvenanceFromExecutorAttestations = (
     provider: "codex",
     runtime: "subscription-runtime-cli",
     runtimeVersion: identity.runtimePackageVersion,
-    reasoningEffort: "xhigh",
+    reasoningEffort: identity.reasoningEffort,
     launcherSha256: identity.launcherSha256,
     summaryContentSha256: durableReadback.summaryContentSha256,
     topicMapSha256: durableReadback.topicMapSha256,
@@ -193,7 +193,7 @@ export const runtimeProvenanceFromExecutorAttestations = (
       provider: "codex",
       runtime: "subscription-runtime-cli",
       runtimeVersion: identity.runtimePackageVersion,
-      reasoningEffort: "xhigh",
+      reasoningEffort: identity.reasoningEffort,
       launcherSha256: identity.launcherSha256,
     },
   };
@@ -245,7 +245,7 @@ export const isProductionSubscriptionRuntimeProvenance = (
     value.provider === "codex" &&
     value.runtime === "subscription-runtime-cli" &&
     isConcreteRuntimePackageVersion(value.runtimeVersion) &&
-    value.reasoningEffort === "xhigh" &&
+    (value.reasoningEffort === "high" || value.reasoningEffort === "xhigh") &&
     isSha256Hex(value.launcherSha256) &&
     isSha256Hex(value.summaryContentSha256) &&
     isSha256Hex(value.topicMapSha256) &&
@@ -294,13 +294,14 @@ const validateRecord = (
     !isSha256Hex(attestation.canonicalRequestSha256) ||
     attestation.provider !== "codex" ||
     attestation.model !== "gpt-5.6-sol" ||
-    attestation.reasoningEffort !== "xhigh" ||
+    attestation.reasoningEffort !==
+      executionEffortForPurpose(taskRole, attempt, attestation.purpose) ||
     attestation.runtimeEngine !== "subscription-runtime-cli" ||
     !isConcreteRuntimePackageVersion(attestation.runtimePackageVersion) ||
     !isSha256Hex(attestation.launcherSha256) ||
     attestation.selectedOutputKind !== "structured_output" ||
     !isSha256Hex(attestation.selectedOutputSha256) ||
-    !purposeMatches(taskRole, attempt, attestation.purpose)
+    executionEffortForPurpose(taskRole, attempt, attestation.purpose) === null
   ) {
     violations.push(`${label} is malformed or mismatched`);
     return [];
@@ -315,28 +316,41 @@ const validateRecord = (
   ];
 };
 
-const purposeMatches = (
+const executionEffortForPurpose = (
   role: ValidAttestationRecord["taskRole"],
   attempt: string,
   purpose: unknown,
-): boolean => {
+): "high" | "xhigh" | null => {
   if (role === "summary") {
-    return (
-      (attempt === "primary" &&
-        purpose === "social_monitor.reader_summary.generate") ||
-      (attempt === "repair" &&
-        purpose === "social_monitor.reader_summary.repair")
-    );
+    if (attempt === "primary") {
+      if (purpose === "social_monitor.reader_summary.generate.v2") return "high";
+      if (purpose === "social_monitor.reader_summary.generate") return "xhigh";
+    }
+    if (attempt === "repair") {
+      if (purpose === "social_monitor.reader_summary.repair.v2") return "high";
+      if (purpose === "social_monitor.reader_summary.repair") return "xhigh";
+    }
+    return null;
   }
-  return purpose === purposeByRole[role];
+  if (purpose === activePurposeByRole[role]) return "high";
+  if (purpose === legacyPurposeByRole[role]) return "xhigh";
+  return null;
 };
 
-const purposeByRole = {
+const legacyPurposeByRole = {
   topic_label: "social_monitor.reader_summary.topic_map.label",
   topic_relation: "social_monitor.reader_summary.topic_map.verify_relations",
   story_relation: "social_monitor.reader_summary.verify_story_relations",
   related_topic_relation:
     "social_monitor.reader_summary.verify_related_topic_relations",
+} as const;
+
+const activePurposeByRole = {
+  topic_label: "social_monitor.reader_summary.topic_map.label.v2",
+  topic_relation: "social_monitor.reader_summary.topic_map.verify_relations.v2",
+  story_relation: "social_monitor.reader_summary.verify_story_relations.v2",
+  related_topic_relation:
+    "social_monitor.reader_summary.verify_related_topic_relations.v2",
 } as const;
 
 const validTopicIdentity = (

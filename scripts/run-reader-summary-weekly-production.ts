@@ -130,7 +130,7 @@ async function main(): Promise<void> {
       client: agentRuntime,
       provider: "codex",
       model: "gpt-5.6-sol",
-      reasoningEffort: "xhigh",
+      reasoningEffort: "high",
       timeoutMs: options.modelTimeoutMs,
     });
     const publisher: ReaderSummaryWeeklyProductionPublisher = {

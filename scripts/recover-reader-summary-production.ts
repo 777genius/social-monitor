@@ -549,6 +549,7 @@ async function main(): Promise<void> {
               agentProvider: modelContract.provider,
               model: modelContract.model,
               reasoningEffort: modelContract.reasoningEffort,
+              executionProfile: "legacy-recovery-v1",
               timeoutMs:
                 READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.summaryModelTimeoutMs,
             }),

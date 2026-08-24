@@ -54,6 +54,24 @@ describe("production-day evidence provenance", () => {
     );
   });
 
+  it("accepts only the versioned high identity for active generation", () => {
+    const frontend = frontendArtifact();
+    frontend.readerSummaryArtifact.lineage.modelVersion =
+      "codex:gpt-5.6-sol:high";
+    const artifact = evidence(frontend, runtimeHealth, (raw) => {
+      for (const record of raw.executionAttestations) {
+        record.attestation.purpose = `${record.attestation.purpose}.v2`;
+        record.attestation.reasoningEffort = "high";
+      }
+    });
+
+    expect(inspect(artifact, frontend).binding?.runtimeProvenance)
+      .toMatchObject({ reasoningEffort: "high" });
+
+    artifact.executionAttestations[0]!.attestation.reasoningEffort = "xhigh";
+    expect(inspect(artifact, frontend).binding).toBeNull();
+  });
+
   it.each([
     ["readerSummaryId", "summary-1"],
     ["readerSummaryJobId", "job-1"],
