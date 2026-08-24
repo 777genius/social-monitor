@@ -6,6 +6,7 @@ export function validateDailyModelExecution(
   _reportContract = "current",
   executionMode = "live-production",
 ) {
+  void _reportContract;
   const daily = evidence?.provenance?.dailySourceAuthority;
   if (daily === undefined) {
     if (value !== null && value !== undefined) {
