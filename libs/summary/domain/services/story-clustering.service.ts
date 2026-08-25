@@ -6,8 +6,6 @@ import type {
   SummarySourceWindow,
   StoryCluster,
 } from "../value-objects/summary-evidence-item";
-import { readerSummaryIndependentProviderFamilyCount } from
-  "../value-objects/reader-summary-provider-identity";
 import {
   readerSummaryScopeKey,
   type ReaderSummaryScopeIdentity,
@@ -35,14 +33,12 @@ export class StoryClusteringService {
     readonly items: readonly SummaryEvidenceItem[];
     readonly limit: number;
     readonly verifiedStoryRelationPairs?: ReadonlySet<string>;
-    readonly now?: Date;
   }): SummaryEvidenceSelection {
     const limit = normalizeLimit(params.limit, this.policy);
-    const now = new Date((params.now ?? this.clock.now()).getTime());
     const clusters = [
       ...buildClusters(
         params.items,
-        now,
+        this.clock.now(),
         this.policy,
         params.verifiedStoryRelationPairs,
       ),
@@ -61,7 +57,7 @@ export class StoryClusteringService {
         params.identity,
         clusters,
         selectedEvidence,
-        now,
+        this.clock,
       ),
       clusters,
       selectedEvidence,
@@ -102,13 +98,13 @@ const buildClusters = (
   }
 
   return groups.map((group) => {
+    const key = group.key;
     const clusterItems = group.items;
     const sorted = [...clusterItems].sort(compareRepresentativeEvidenceItems);
     const representative = sorted[0];
     if (representative === undefined) {
       throw new Error("Reader summary story cluster must contain evidence");
     }
-    const key = storyKey(representative, policy);
     const observedTimes = sorted.map((item) => item.observedAt.getTime());
     const signal = storyClusterSignal(clusterItems, now, policy);
 
@@ -227,10 +223,10 @@ const buildSourceWindow = (
   identity: ReaderSummaryScopeIdentity,
   clusters: readonly StoryCluster[],
   selectedEvidence: readonly SummaryEvidenceItem[],
-  now: Date,
+  clock: Clock,
 ): SummarySourceWindow => {
   if (clusters.length === 0 || selectedEvidence.length === 0) {
-    const endedAt = new Date(now.getTime());
+    const endedAt = clock.now();
     const startedAt = new Date(endedAt.getTime() - 1);
 
     return {
@@ -276,8 +272,7 @@ const compareStoryClusters = (
   }
 
   const providerCoverageDiff =
-    readerSummaryIndependentProviderFamilyCount(right.providerKeys) -
-    readerSummaryIndependentProviderFamilyCount(left.providerKeys);
+    right.providerKeys.length - left.providerKeys.length;
   if (providerCoverageDiff !== 0) {
     return providerCoverageDiff;
   }

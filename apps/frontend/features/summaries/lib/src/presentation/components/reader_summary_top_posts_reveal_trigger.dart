@@ -57,7 +57,7 @@ class _TopPostsRevealTriggerState extends State<_TopPostsRevealTrigger> {
       padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
       child: Center(
         child: Text(
-          'Additional stories available',
+          'More selected posts available',
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
             color: colorScheme.onSurfaceVariant,
             letterSpacing: 0,

@@ -5,15 +5,13 @@ import 'summaries_test_fixtures.dart';
 ReaderSummaryApiDto mixedSourceReaderSummaryApiDto() {
   const topReads = [
     TopReadApiDto(
-      storyClusterId: 'story:agent-reliability',
-      cardKind: 'curated_top_read',
       title: 'Reddit thread on agent reliability',
       providerKey: 'reddit',
       reason: 'High-engagement Reddit discussion with concrete failures.',
       matchedInterestIds: ['ai-developer-tools'],
       matchedRules: ['provider:reddit', 'interest:ai-developer-tools'],
       signalScore: 0.94,
-      confirmedProviderKeys: ['reddit'],
+      confirmedProviderKeys: ['reddit', githubTrendingProviderKey],
       providerMetrics: [
         ProviderMetricApiDto(
           label: 'Reddit evidence',
@@ -28,8 +26,28 @@ ReaderSummaryApiDto mixedSourceReaderSummaryApiDto() {
       citationIds: ['editorial-reddit-1', 'editorial-reddit-2'],
     ),
     TopReadApiDto(
-      storyClusterId: 'story:model-routing',
-      cardKind: 'curated_top_read',
+      title: 'calesthio/OpenMontage',
+      providerKey: githubTrendingProviderKey,
+      reason: 'Daily GitHub Trending repository in the AI workflow space.',
+      matchedInterestIds: ['ai-developer-tools'],
+      matchedRules: [
+        'provider:github-trending-page',
+        'interest:ai-developer-tools',
+      ],
+      signalScore: 0.89,
+      providerMetrics: [
+        ProviderMetricApiDto(label: 'Stars', value: '18,398'),
+        ProviderMetricApiDto(
+          label: 'GitHub Trending today',
+          value: '#1, +3,703 stars today',
+        ),
+      ],
+      whyImportant: ['Shows repository attention around AI workflows.'],
+      whyNow: 'Current summary window includes GitHub Trending coverage.',
+      canonicalUrl: 'https://github.com/calesthio/OpenMontage',
+      citationIds: ['bc-1'],
+    ),
+    TopReadApiDto(
       title: 'HN discussion on model routing',
       providerKey: 'hacker-news',
       reason: 'Hacker News discussion adds technical review context.',
@@ -46,6 +64,11 @@ ReaderSummaryApiDto mixedSourceReaderSummaryApiDto() {
       citationIds: ['editorial-hacker-news-1', 'editorial-hacker-news-2'],
     ),
   ];
+  final selectedPosts = [
+    ...topReads.where((item) => item.providerKey != githubTrendingProviderKey),
+    ...canonicalGitHubTrendingSelectedPostApiDtos(),
+  ];
+
   return readerSummaryApiDto(
     title: 'Mixed AI source summary',
     executiveSummary:
@@ -71,6 +94,15 @@ ReaderSummaryApiDto mixedSourceReaderSummaryApiDto() {
           interestIds: ['ai-developer-tools'],
         ),
         SourceMixEntryApiDto(
+          providerKey: githubTrendingProviderKey,
+          itemCount: 10,
+          citationCount: 10,
+          storyClusterCount: 10,
+          crossSourceClusterCount: 1,
+          singleSourceOnly: false,
+          interestIds: ['ai-developer-tools'],
+        ),
+        SourceMixEntryApiDto(
           providerKey: 'hacker-news',
           itemCount: 2,
           citationCount: 2,
@@ -81,7 +113,7 @@ ReaderSummaryApiDto mixedSourceReaderSummaryApiDto() {
         ),
       ],
       topReads: topReads,
-      selectedPosts: const [],
+      selectedPosts: selectedPosts,
     ),
     citations: [
       summaryCitationApiDto(
@@ -117,7 +149,7 @@ ReaderSummaryApiDto mixedSourceReaderSummaryApiDto() {
     coverage: const ReaderSummaryCoverageApiDto(
       collectedFeedItemCount: 469,
       selectedFeedItemCount: 68,
-      topReadCount: 2,
+      topReadCount: 3,
       citationCount: 14,
       providerBreakdown: [
         ReaderSummaryProviderCoverageApiDto(
@@ -145,7 +177,7 @@ ReaderSummaryApiDto mixedSourceReaderSummaryApiDto() {
           providerKey: githubTrendingProviderKey,
           collectedFeedItemCount: 22,
           selectedFeedItemCount: 10,
-          topReadCount: 0,
+          topReadCount: 1,
           citationCount: 10,
         ),
       ],

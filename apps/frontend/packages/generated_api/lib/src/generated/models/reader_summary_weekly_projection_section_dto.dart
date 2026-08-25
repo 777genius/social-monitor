@@ -31,8 +31,8 @@ class ReaderSummaryWeeklyProjectionSectionDto {
   final ReaderSummaryWeeklyProjectionSectionDtoClaimTypeClaimType claimType;
   final String heading;
   final ReaderSummaryWeeklyProjectionSectionDtoKindKind kind;
-  final DateTime observedFrom;
-  final DateTime observedThrough;
+  final String observedFrom;
+  final String observedThrough;
   final String sectionId;
   final String storyId;
   final String text;

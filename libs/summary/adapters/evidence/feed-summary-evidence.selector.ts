@@ -1,8 +1,4 @@
-import type { FeedItem } from '@social-monitor/feed/domain';
-import {
-  MAX_FEED_ITEM_PAGE_LIMIT,
-  type FeedItemReadRepositoryPort,
-} from '@social-monitor/feed/ports';
+import type { FeedItemReadRepositoryPort } from '@social-monitor/feed/ports';
 import {
   SourceContentQualityPolicy,
   SourceContentSafetyPolicy,
@@ -27,25 +23,14 @@ export class FeedSummaryEvidenceSelector implements SummaryEvidenceSelectorPort 
     params: Parameters<SummaryEvidenceSelectorPort['select']>[0],
   ): Promise<SummaryEvidenceSelection> {
     const evidenceLimit = normalizeLimit(params.maxItems);
-    const candidates: FeedItem[] = [];
-    let cursor: string | undefined;
-    while (candidates.length < MAX_CANDIDATE_ITEMS) {
-      const page = await this.feedItems.list({
-        tenantId: params.tenantId,
-        workspaceId: params.workspaceId,
-        interestId: params.interestId,
-        limit: Math.min(
-          MAX_FEED_ITEM_PAGE_LIMIT,
-          MAX_CANDIDATE_ITEMS - candidates.length,
-        ),
-        cursor,
-      });
-      candidates.push(...page.items);
-      if (page.nextCursor === undefined || page.nextCursor === cursor) break;
-      cursor = page.nextCursor;
-    }
+    const result = await this.feedItems.list({
+      tenantId: params.tenantId,
+      workspaceId: params.workspaceId,
+      interestId: params.interestId,
+      limit: MAX_CANDIDATE_ITEMS,
+    });
     const items = selectProviderBalancedEvidence(
-      candidates.flatMap((item): readonly SummaryEvidenceItem[] => {
+      result.items.flatMap((item): readonly SummaryEvidenceItem[] => {
         const snapshot = item.toSnapshot();
         const safety = this.safetyPolicy.evaluate(snapshot);
         const quality = this.qualityPolicy.evaluate({

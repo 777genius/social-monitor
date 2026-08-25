@@ -21,13 +21,6 @@ describe("RelevanceReaderSummaryEvidenceSelector observed empty window", () => {
         ),
       } as unknown as RankFeedItemsUseCase,
       {
-        readPromotionSnapshot: jest.fn(async () => ({
-          ok: true as const,
-          candidates: [],
-          sourceContent: [],
-          physicalRowsRead: 0,
-          exhausted: true as const,
-        })),
         list: jest.fn(async () => ({ items: [] })),
         findById: jest.fn(async () => null),
       },

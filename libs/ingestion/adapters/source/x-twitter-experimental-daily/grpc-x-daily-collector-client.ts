@@ -8,8 +8,6 @@ import {
   type CollectDailySearchRequest,
   type CollectDailySearchResponse,
   XCollectorServiceClient,
-  XEligibilityMetricsState,
-  XPostContentKind,
   XSearchProduct,
 } from '@social-monitor/contracts/generated/grpc/x_collector/v1/x_collector';
 
@@ -149,44 +147,22 @@ const fromGrpcPost = (
     mediaUrls: post.mediaUrls,
     sourceProduct,
     trendScore: Number.isFinite(post.trendScore) ? post.trendScore : 0,
-    contentKind: fromGrpcContentKind(post.contentKind),
   }];
 };
 
 const fromGrpcMetrics = (
   metrics: NonNullable<CollectDailySearchResponse['posts'][number]['metrics']>,
 ): XDailyPostMetrics => ({
-  likes: metrics.likesObserved ? readUnsignedInteger(metrics.likes) : undefined,
-  retweets: metrics.retweetsObserved
-    ? readUnsignedInteger(metrics.retweets)
-    : undefined,
-  replies: readUnsignedInteger(metrics.replies) ?? 0,
+  likes: readUnsignedInteger(metrics.likes),
+  retweets: readUnsignedInteger(metrics.retweets),
+  replies: readUnsignedInteger(metrics.replies),
   quotes: metrics.quotesObserved
     ? readUnsignedInteger(metrics.quotes)
     : undefined,
   views: metrics.viewsObserved
     ? readUnsignedInteger(metrics.views)
     : undefined,
-  eligibilityState: fromGrpcEligibilityState(metrics.eligibilityState),
 });
-
-const fromGrpcEligibilityState = (
-  value: XEligibilityMetricsState,
-): XDailyPostMetrics["eligibilityState"] => {
-  switch (value) {
-    case XEligibilityMetricsState.X_ELIGIBILITY_METRICS_STATE_OBSERVED:
-      return "observed";
-    case XEligibilityMetricsState.X_ELIGIBILITY_METRICS_STATE_MISSING:
-      return "missing";
-    case XEligibilityMetricsState.X_ELIGIBILITY_METRICS_STATE_MALFORMED:
-      return "malformed";
-    case XEligibilityMetricsState.X_ELIGIBILITY_METRICS_STATE_CONFLICT:
-      return "conflict";
-    case XEligibilityMetricsState.X_ELIGIBILITY_METRICS_STATE_UNSPECIFIED:
-    case XEligibilityMetricsState.UNRECOGNIZED:
-      return undefined;
-  }
-};
 
 const fromGrpcRun = (
   run: NonNullable<CollectDailySearchResponse['run']>,
@@ -226,33 +202,17 @@ const fromGrpcSearchProduct = (
   }
 };
 
-const fromGrpcContentKind = (
-  value: XPostContentKind,
-): XDailyCollectedPost["contentKind"] => {
-  switch (value) {
-    case XPostContentKind.X_POST_CONTENT_KIND_ORIGINAL:
-      return "original_post";
-    case XPostContentKind.X_POST_CONTENT_KIND_REPLY:
-      return "reply";
-    case XPostContentKind.X_POST_CONTENT_KIND_QUOTE:
-      return "quote";
-    case XPostContentKind.X_POST_CONTENT_KIND_UNSPECIFIED:
-    case XPostContentKind.UNRECOGNIZED:
-      return undefined;
-  }
-};
-
 const optionalString = (value: string): string | undefined => {
   const trimmed = value.trim();
   return trimmed.length === 0 ? undefined : trimmed;
 };
 
-const readUnsignedInteger = (value: string): number | undefined => {
+const readUnsignedInteger = (value: string): number => {
   if (!/^\d+$/u.test(value)) {
-    return undefined;
+    return 0;
   }
 
   const parsed = Number(value);
 
-  return Number.isSafeInteger(parsed) ? parsed : undefined;
+  return Number.isSafeInteger(parsed) ? parsed : Number.MAX_SAFE_INTEGER;
 };

@@ -458,7 +458,7 @@ const partialScan = (
     totalDuplicateItemCount: 0,
     pageCount: 1,
     paginationStopReason:
-      count === target ? "target_items" : "no_next_cursor",
+      count === target ? "target_reached" : "no_next_cursor",
     rateLimitEventCount: 0,
     coverageState: count === target ? "complete" : "partial",
     slo: {
@@ -466,7 +466,6 @@ const partialScan = (
       targetItemCount: target,
       evaluatedItemCount: count,
       coverageRatio: count / target,
-      maxFreshnessLagSeconds: 21_600,
       reasons: count === target ? [] : ["target_shortfall"],
       retryDisposition: count === target ? "none" : "immediate",
     },

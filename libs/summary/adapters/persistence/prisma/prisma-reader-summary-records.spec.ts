@@ -6,7 +6,6 @@ import {
 } from "../../../domain";
 import { emptyReaderSummaryReliabilityReport } from "../../../domain/entities/reader-summary-reliability";
 import {
-  normalizeReaderSummaryArtifactPayload,
   readerSummaryCitationsToPrisma,
   serializeReaderSummaryArtifact,
 } from "./prisma-reader-summary-records";
@@ -103,8 +102,6 @@ const readerContent = (): NonNullable<
   ReaderSummaryArtifactProps["content"]
 > => {
   const item = {
-    storyClusterId: "story:json",
-    cardKind: "curated_top_read" as const,
     title: "AI source signal",
     providerKey: "reddit",
     providerName: "Reddit",
@@ -151,9 +148,7 @@ const readerContent = (): NonNullable<
       },
     ],
     topReads: [item],
-    selectedPosts: [
-      { ...item, cardKind: "additional_notable_story" as const },
-    ],
+    selectedPosts: [item],
     claimBoard: [],
     reliabilityReport: emptyReaderSummaryReliabilityReport(),
     trendDelta: {
@@ -169,36 +164,6 @@ const readerContent = (): NonNullable<
 };
 
 describe("prisma reader summary records", () => {
-  it("rejects a curated marker outside the artifact cluster authority", () => {
-    const content = readerContent();
-    const forged = {
-      ...content.topReads[0]!,
-      storyClusterId: "story:forged",
-      cardKind: "curated_top_read" as const,
-    };
-
-    expect(() =>
-      ReaderSummaryArtifact.create(
-        artifactProps({ content: { ...content, topReads: [forged] } }),
-      ),
-    ).toThrow("authorized story cluster");
-  });
-
-  it("rejects an additional-story marker outside the artifact cluster authority", () => {
-    const content = readerContent();
-    const forged = {
-      ...content.selectedPosts![0]!,
-      storyClusterId: "story:forged",
-      cardKind: "additional_notable_story" as const,
-    };
-
-    expect(() =>
-      ReaderSummaryArtifact.create(
-        artifactProps({ content: { ...content, selectedPosts: [forged] } }),
-      ),
-    ).toThrow("authorized story cluster");
-  });
-
   it("serializes reader summary artifacts into Prisma JSON-safe payloads", () => {
     const artifact = ReaderSummaryArtifact.create(artifactProps());
 
@@ -224,92 +189,10 @@ describe("prisma reader summary records", () => {
           },
         },
       ],
-      content: {
-        selectedPosts: [
-          {
-            storyClusterId: "story:json",
-            cardKind: "additional_notable_story",
-          },
-        ],
-      },
     });
     expect(payload.userId).toBeUndefined();
     expect(readerSummaryCitationsToPrisma(artifact)).toEqual([
       expect.objectContaining({ citationId: "c1" }),
     ]);
-  });
-
-  it("round-trips historical-incomplete token usage without fabricating zeroes", () => {
-    const serialized = serializeReaderSummaryArtifact(
-      ReaderSummaryArtifact.create(artifactProps({
-        usage: {
-          inputTokens: null,
-          outputTokens: null,
-          estimatedCostUsd: 0,
-        },
-      })),
-    );
-    const normalized = normalizeReaderSummaryArtifactPayload(serialized, {
-      id: "reader-summary-json-1",
-      tenantId: "tenant-reader-summary-json",
-      workspaceId: "workspace-reader-summary-json",
-      scopeType: "workspace",
-      interestId: null,
-      cadence: "daily",
-      periodStartedAt: new Date("2026-07-03T00:00:00.000Z"),
-      periodEndedAt: new Date("2026-07-04T00:00:00.000Z"),
-      periodTimezone: "UTC",
-      userId: null,
-      subscriptionId: null,
-      headline: "AI source signal is worth reading",
-      summaryText: "A monitored source produced a useful AI signal.",
-      createdAt: new Date("2026-07-04T00:05:00.000Z"),
-    });
-
-    expect(normalized.usage).toEqual({
-      inputTokens: null,
-      outputTokens: null,
-      estimatedCostUsd: 0,
-    });
-  });
-
-  it("rehydrates legacy missing card markers as unsupported", () => {
-    const serialized = serializeReaderSummaryArtifact(
-      ReaderSummaryArtifact.create(artifactProps()),
-    ) as Record<string, unknown>;
-    const content = serialized.content as {
-      topReads: Array<Record<string, unknown>>;
-      selectedPosts: Array<Record<string, unknown>>;
-    };
-    delete content.topReads[0]?.storyClusterId;
-    delete content.topReads[0]?.cardKind;
-    delete content.selectedPosts[0]?.storyClusterId;
-    delete content.selectedPosts[0]?.cardKind;
-
-    const normalized = normalizeReaderSummaryArtifactPayload(serialized, {
-      id: "reader-summary-json-1",
-      tenantId: "tenant-reader-summary-json",
-      workspaceId: "workspace-reader-summary-json",
-      scopeType: "workspace",
-      interestId: null,
-      cadence: "daily",
-      periodStartedAt: new Date("2026-07-03T00:00:00.000Z"),
-      periodEndedAt: new Date("2026-07-04T00:00:00.000Z"),
-      periodTimezone: "UTC",
-      userId: null,
-      subscriptionId: null,
-      headline: "AI source signal is worth reading",
-      summaryText: "A monitored source produced a useful AI signal.",
-      createdAt: new Date("2026-07-04T00:05:00.000Z"),
-    });
-
-    expect(normalized.content?.topReads[0]).not.toHaveProperty("storyClusterId");
-    expect(normalized.content?.topReads[0]).not.toHaveProperty("cardKind");
-    expect(normalized.content?.selectedPosts?.[0]).not.toHaveProperty(
-      "storyClusterId",
-    );
-    expect(normalized.content?.selectedPosts?.[0]).not.toHaveProperty(
-      "cardKind",
-    );
   });
 });

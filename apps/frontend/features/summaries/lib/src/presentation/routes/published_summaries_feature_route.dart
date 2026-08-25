@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:modularity_flutter/modularity_flutter.dart';
 import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
@@ -14,13 +12,11 @@ class PublishedSummariesFeatureRoute extends StatelessWidget {
     required WorkspaceScope scope,
     String? summaryId,
     void Function(String summaryId)? onSummarySelected,
-    FutureOr<void> Function(Uri uri)? onOpenReaderSource,
   }) : _module = PublishedSummariesFeatureModule(
          generatedApiRuntime: generatedApiRuntime,
          scope: scope,
          summaryId: summaryId,
          onSummarySelected: onSummarySelected,
-         onOpenReaderSource: onOpenReaderSource,
        );
 
   final PublishedSummariesFeatureModule _module;

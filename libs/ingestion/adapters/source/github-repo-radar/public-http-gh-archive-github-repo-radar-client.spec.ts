@@ -43,48 +43,10 @@ describe('PublicHttpGhArchiveGitHubRepoRadarClient', () => {
         stars7d: 3,
         stars30d: 3,
         stars90d: 3,
-        forks24h: 0,
-        forks48h: 0,
-        forks7d: 0,
-        forks30d: 0,
-        forks90d: 0,
         rank: 1,
         primaryWindow: '24h',
       },
     ]);
-  });
-
-  it('keeps fork-only repositories eligible for bounded radar ordering', async () => {
-    const fetcher = new FakeArchiveFetcher({
-      'https://data.gharchive.org/2026-06-24-11.json.gz': archive([
-        watch('stars-only/repo', '2026-06-24T11:10:00Z'),
-        fork('forks-only/repo', '2026-06-24T11:15:00Z'),
-        fork('forks-only/repo', '2026-06-24T11:20:00Z'),
-        fork('forks-only/repo', '2026-06-24T11:25:00Z'),
-      ]),
-    });
-    const client = new PublicHttpGhArchiveGitHubRepoRadarClient({
-      fetchImpl: fetcher.fetch,
-      maxArchiveHours: 24,
-    });
-
-    const candidates = await client.findTrendingRepositories({
-      query: '',
-      topics: [],
-      languages: [],
-      windows: ['24h'],
-      minStars: 0,
-      limit: 1,
-      checkedAt: new Date('2026-06-24T12:30:00.000Z'),
-      source: 'gh_archive_public_http_plus_github_live',
-    });
-
-    expect(candidates).toEqual([expect.objectContaining({
-      fullName: 'forks-only/repo',
-      stars24h: 0,
-      forks24h: 3,
-      primaryWindow: '24h',
-    })]);
   });
 
   it('skips not-yet-published hourly archives and requires BigQuery for longer windows', async () => {
@@ -120,12 +82,6 @@ describe('PublicHttpGhArchiveGitHubRepoRadarClient', () => {
 
 const watch = (repo: string, createdAt: string): Record<string, unknown> => ({
   type: 'WatchEvent',
-  repo: { name: repo },
-  created_at: createdAt,
-});
-
-const fork = (repo: string, createdAt: string): Record<string, unknown> => ({
-  type: 'ForkEvent',
   repo: { name: repo },
   created_at: createdAt,
 });

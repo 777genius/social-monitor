@@ -10,11 +10,6 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 import { GrpcAgentRuntimeClient } from "@social-monitor/summary/adapters/model/grpc-agent-runtime-client";
-import {
-  activeReaderSummaryModel,
-  activeReaderSummaryProvider,
-  activeReaderSummaryReasoningEffort,
-} from "@social-monitor/summary/adapters/model/active-reader-summary-generation-profile";
 import { PrismaReaderSummaryDailyExecutionCursor } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-daily-execution-cursor";
 import type {
   ReaderSummaryDailyExecutionCursorPort,
@@ -75,32 +70,9 @@ export const assertReaderSummaryDailyBoundedMaintenanceAuthorization = (
   );
 };
 
-export const assertReaderSummaryDailyTerminalExecutionProfile = (
-  env: Readonly<Record<string, string | undefined>>,
-): void => {
-  const provider = effective(env.AGENT_RUNTIME_PROVIDER, activeReaderSummaryProvider);
-  const model = effective(
-    env.AGENT_RUNTIME_READER_SUMMARY_MODEL,
-    activeReaderSummaryModel,
-  );
-  const effort = effective(
-    env.AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT ??
-      env.AGENT_RUNTIME_REASONING_EFFORT,
-    activeReaderSummaryReasoningEffort,
-  );
-  if (
-    provider !== activeReaderSummaryProvider ||
-    model !== activeReaderSummaryModel ||
-    effort !== activeReaderSummaryReasoningEffort
-  ) {
-    throw new Error("Daily terminal execution profile must be codex/gpt-5.6-sol/high");
-  }
-};
-
 const main = async (): Promise<void> => {
   loadDotenvIfPresent(".env");
   assertReaderSummaryDailyBoundedMaintenanceAuthorization(process.env);
-  assertReaderSummaryDailyTerminalExecutionProfile(process.env);
   assertReaderSummaryDailyMaintenanceScope({
     tenantId: requiredEnv(process.env, "READER_SUMMARY_DAILY_TENANT_ID"),
     workspaceId: requiredEnv(process.env, "READER_SUMMARY_DAILY_WORKSPACE_ID"),
@@ -406,9 +378,6 @@ const requiredText = (value: unknown, label: string): string => {
   }
   return value;
 };
-
-const effective = (value: string | undefined, fallback: string): string =>
-  value?.trim() || fallback;
 
 const requiredSha = (value: unknown, label: string): string => {
   const result = requiredText(value, label);

@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 
 export const readerSummaryDailyModelProvider = "codex" as const;
 export const readerSummaryDailyModel = "gpt-5.6-sol" as const;
-export const readerSummaryDailyReasoningEffort = "high" as const;
+export const readerSummaryDailyReasoningEffort = "xhigh" as const;
 export const readerSummaryDailyRuntimeEngine =
   "subscription-runtime-cli" as const;
 
@@ -36,7 +36,7 @@ export const readerSummaryDailyModelJobIdentity = (input: {
     throw new Error("Daily model job source authority SHA-256 is invalid");
   }
   const identityPreimage = [
-    "reader-summary-daily:v2",
+    "reader-summary-daily:v1",
     input.tenantId,
     input.workspaceId,
     input.requestedUtcDate,

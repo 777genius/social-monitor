@@ -55,19 +55,13 @@ final class SummaryStoryApiDto {
     required this.summary,
     required this.topicCount,
     required this.providerCount,
-    this.citationIds = const [],
-    this.storyClusterId,
-    this.interestIds = const [],
-    this.providerKeys = const [],
+    required this.citationIds,
   });
 
-  final String? storyClusterId;
   final String title;
   final String summary;
   final int topicCount;
   final int providerCount;
-  final List<String> interestIds;
-  final List<String> providerKeys;
   final List<String> citationIds;
 }
 
@@ -75,7 +69,7 @@ final class RepeatedSignalApiDto {
   const RepeatedSignalApiDto({
     required this.title,
     required this.interestIds,
-    this.citationIds = const [],
+    required this.citationIds,
   });
 
   final String title;
@@ -85,12 +79,6 @@ final class RepeatedSignalApiDto {
 
 final class TopReadApiDto {
   const TopReadApiDto({
-    this.storyClusterId,
-    this.cardKind,
-    this.relationId,
-    this.relationMarkerIds = const [],
-    this.targetStoryClusterId,
-    this.promotionAttestation,
     required this.title,
     required this.providerKey,
     required this.reason,
@@ -115,12 +103,6 @@ final class TopReadApiDto {
     this.previewMedia,
   });
 
-  final String? storyClusterId;
-  final String? cardKind;
-  final String? relationId;
-  final List<String> relationMarkerIds;
-  final String? targetStoryClusterId;
-  final ReaderPostPromotionAttestationApiDto? promotionAttestation;
   final String title;
   final String providerKey;
   final String? providerName;
@@ -138,24 +120,6 @@ final class TopReadApiDto {
   final List<String> citationIds;
   final String? canonicalUrl;
   final PreviewMediaApiDto? previewMedia;
-}
-
-final class ReaderPostPromotionAttestationApiDto {
-  const ReaderPostPromotionAttestationApiDto({
-    required this.candidateId,
-    required this.canonicalIdentity,
-    required this.placement,
-    required this.slot,
-    required this.decision,
-    this.citationIds = const [],
-  });
-
-  final String candidateId;
-  final String canonicalIdentity;
-  final String placement;
-  final int slot;
-  final String decision;
-  final List<String> citationIds;
 }
 
 final class PreviewMediaApiDto {
@@ -289,18 +253,14 @@ final class SummaryPeriodApiDto {
 
 final class SummaryWindowApiDto {
   const SummaryWindowApiDto({
-    this.id,
     required this.label,
     required this.startedAt,
     required this.endedAt,
-    this.ingestionCutoff,
   });
 
-  final String? id;
   final String label;
   final DateTime startedAt;
   final DateTime endedAt;
-  final DateTime? ingestionCutoff;
 }
 
 final class ReaderSummaryApiDto {
@@ -311,8 +271,6 @@ final class ReaderSummaryApiDto {
     required this.userId,
     required this.content,
     required this.topStories,
-    this.storyClusterIds = const [],
-    this.storyClusterAuthorities = const [],
     required this.repeatedSignals,
     required this.citations,
     required this.period,
@@ -329,8 +287,6 @@ final class ReaderSummaryApiDto {
   final String? userId;
   final ReaderSummaryContentApiDto content;
   final List<SummaryStoryApiDto> topStories;
-  final List<String> storyClusterIds;
-  final List<ReaderSummaryStoryClusterAuthorityApiDto> storyClusterAuthorities;
   final List<RepeatedSignalApiDto> repeatedSignals;
   final List<SummaryCitationApiDto> citations;
   final SummaryPeriodApiDto period;
@@ -339,18 +295,6 @@ final class ReaderSummaryApiDto {
   final String freshnessLabel;
   final bool isDegraded;
   final ReaderSummaryCoverageApiDto? coverage;
-}
-
-final class ReaderSummaryStoryClusterAuthorityApiDto {
-  const ReaderSummaryStoryClusterAuthorityApiDto({
-    required this.id,
-    required this.feedItemIds,
-    required this.providerKeys,
-  });
-
-  final String id;
-  final List<String> feedItemIds;
-  final List<String> providerKeys;
 }
 
 final class WorkspaceSummaryApiDto {

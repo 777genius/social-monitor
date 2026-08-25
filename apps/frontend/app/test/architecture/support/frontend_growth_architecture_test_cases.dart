@@ -167,9 +167,7 @@ void registerFrontendGrowthArchitectureTests() {
       '$frontendRoot/app/lib/main_marionette.dart',
     ).readAsStringSync();
     if (!appMarionetteMain.contains('AppCompositionRoot.production()')) {
-      violations.add(
-        'app Marionette main must use the production composition path',
-      );
+      violations.add('app Marionette main must use the production composition path');
     }
     if (!appMarionetteMain.contains('usePathUrlStrategy();')) {
       violations.add('app Marionette main must support direct web deep links');
@@ -336,8 +334,7 @@ bool _allowsGeneratedApiImportInFeature(String path) {
       path.contains('/test/infrastructure/api_clients/') ||
       path.contains('/test/infrastructure/anti_corruption/') ||
       path.contains('/test/infrastructure/data_sources/') ||
-      path.contains('/test/infrastructure/mappers/') ||
-      path.contains('/integration_test/infrastructure/mappers/');
+      path.contains('/test/infrastructure/mappers/');
 }
 
 bool _isInnerFeatureLayer(String path) {

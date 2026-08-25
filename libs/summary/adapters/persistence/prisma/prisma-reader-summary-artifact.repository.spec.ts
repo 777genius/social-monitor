@@ -1,24 +1,17 @@
 import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 
 import {
-  githubTrendingWatchText,
   ReaderSummaryArtifact,
   type ReaderSummaryGitHubProjectionAudit,
 } from "../../../domain";
-import type { ReaderSummaryWeeklyEditorialQualityResult } from "../../../domain/policies/reader-summary-weekly-editorial-quality-policy";
 import type { ReaderSummaryWeeklyPublicationAuthorization } from "../../../domain/policies/reader-summary-weekly-publication-authorization";
 import * as weeklyAuthorizationPolicy from "../../../domain/policies/reader-summary-weekly-publication-authorization";
+import { emptyReaderSummaryReliabilityReport } from "../../../domain/entities/reader-summary-reliability";
 import {
-  type ReaderSummaryDailyCanonicalRecoveryV4Audit,
-  type ReaderSummaryDailyCanonicalRecoveryV4BindingV2,
-  type ReaderSummaryDailyCanonicalRecoveryV4BindingV3,
+  type ReaderSummaryDailyCanonicalRecoveryV4Binding,
 } from "../../../ports";
 import { PrismaReaderSummaryArtifactRepository } from "./prisma-reader-summary-artifact.repository";
 import { FakeReaderSummaryPrisma } from "./prisma-reader-summary-artifact.repository.spec-support";
-import {
-  readerSummaryArtifact,
-  topRead,
-} from "./prisma-reader-summary-artifact-fixture.spec-support";
 
 describe("PrismaReaderSummaryArtifactRepository", () => {
   it("skips an incompatible legacy artifact without breaking cursor pagination", async () => {
@@ -160,7 +153,7 @@ describe("PrismaReaderSummaryArtifactRepository", () => {
   it("stages V4 recovery only after PostgreSQL re-verifies its strict provenance", async () => {
     const prisma = new FakeReaderSummaryPrisma();
     const repository = new PrismaReaderSummaryArtifactRepository(prisma.client);
-    const binding: ReaderSummaryDailyCanonicalRecoveryV4BindingV3 = {
+    const binding: ReaderSummaryDailyCanonicalRecoveryV4Binding = {
       schemaVersion: "reader_summary.daily_canonical_recovery_provenance.v3",
       recoveryVersion: "reader_summary.daily_canonical_recovery.v4",
       selectedOutputKind: "output_text",
@@ -177,7 +170,9 @@ describe("PrismaReaderSummaryArtifactRepository", () => {
       rawOutputByteLength: 17,
       githubProjectionSha256: "d".repeat(64),
     };
-    const audit = (): ReaderSummaryDailyCanonicalRecoveryV4Audit => ({
+    const audit = (): ReaderSummaryGitHubProjectionAudit & {
+      readonly recoveryV4: ReaderSummaryDailyCanonicalRecoveryV4Binding;
+    } => ({
       schemaVersion: "reader_summary.github_projection.v1",
       status: "verified",
       requestedUtcDay: binding.requestedUtcDate,
@@ -203,16 +198,17 @@ describe("PrismaReaderSummaryArtifactRepository", () => {
       recoveryReaderSummaryArtifact("reader-summary-verified-v4-recovery"),
       { githubProjectionAudit: audit() },
     );
-    const malformedAudit: ReaderSummaryDailyCanonicalRecoveryV4Audit = {
-      ...audit(),
-      recoveryV4: {
-        ...binding,
-        rawOutputSha256: "e".repeat(63),
-      },
-    };
     await expect(repository.save(
       recoveryReaderSummaryArtifact("reader-summary-malformed-v4-recovery"),
-      { githubProjectionAudit: malformedAudit },
+      {
+        githubProjectionAudit: {
+          ...audit(),
+          recoveryV4: {
+            ...binding,
+            rawOutputSha256: "e".repeat(63),
+          },
+        },
+      },
     )).rejects.toThrow(/provenance binding is invalid/u);
 
     expect(prisma.statusFor("reader-summary-forged-ordinary-audit")).toBeUndefined();
@@ -227,7 +223,7 @@ describe("PrismaReaderSummaryArtifactRepository", () => {
   it("preserves the ordinary V2 13-field recovery audit parser", async () => {
     const prisma = new FakeReaderSummaryPrisma();
     const repository = new PrismaReaderSummaryArtifactRepository(prisma.client);
-    const binding: ReaderSummaryDailyCanonicalRecoveryV4BindingV2 = {
+    const binding: ReaderSummaryDailyCanonicalRecoveryV4Binding = {
       schemaVersion: "reader_summary.daily_canonical_recovery_provenance.v2",
       recoveryVersion: "reader_summary.daily_canonical_recovery.v4",
       selectedOutputKind: "output_text",
@@ -242,18 +238,12 @@ describe("PrismaReaderSummaryArtifactRepository", () => {
       outputTextByteLength: 17,
       githubProjectionSha256: "d".repeat(64),
     };
-    const githubProjectionAudit =
-      noEligibleGitHubBindingOptions().githubProjectionAudit;
-    if (githubProjectionAudit === undefined) {
-      throw new Error("Expected a GitHub projection audit fixture.");
-    }
-    const recoveryAudit: ReaderSummaryDailyCanonicalRecoveryV4Audit = {
-      ...githubProjectionAudit,
-      recoveryV4: binding,
-    };
     prisma.setDailyRecoveryVerification(true);
     await repository.save(recoveryReaderSummaryArtifact("reader-summary-v2-recovery"), {
-      githubProjectionAudit: recoveryAudit,
+      githubProjectionAudit: {
+        ...noEligibleGitHubBindingOptions().githubProjectionAudit,
+        recoveryV4: binding,
+      },
     });
 
     expect(prisma.statusFor("reader-summary-v2-recovery")).toBe("RUNNING");
@@ -289,7 +279,7 @@ describe("PrismaReaderSummaryArtifactRepository", () => {
     expect(prisma.dailyRecoveryVerificationQueryCount).toBe(2);
   });
 
-  it("preserves nonempty top reads beside the exact verified GitHub audit", async () => {
+  it("stages and records the exact verified GitHub audit", async () => {
     const prisma = new FakeReaderSummaryPrisma();
     const repository = new PrismaReaderSummaryArtifactRepository(prisma.client);
     const githubProjectionAudit = verifiedGitHubProjectionAudit();
@@ -305,7 +295,7 @@ describe("PrismaReaderSummaryArtifactRepository", () => {
     ).toMatchObject({ githubProjectionAudit });
     expect(
       githubProjectionAudit.bindings.map((binding) => binding.rank),
-    ).toEqual([1, 2, 3]);
+    ).toEqual(Array.from({ length: 10 }, (_, index) => index + 1));
     expect(
       new Set(
         githubProjectionAudit.bindings.map((binding) => binding.scanJobId),
@@ -319,27 +309,6 @@ describe("PrismaReaderSummaryArtifactRepository", () => {
           binding.checkedAt <= binding.observedAt,
       ),
     ).toBe(true);
-    prisma.publish("reader-summary-verified-github");
-    const restored = await repository.findById({
-      tenantId: tenant,
-      workspaceId: workspace,
-      readerSummaryId: "reader-summary-verified-github",
-    });
-    expect(restored?.toSnapshot().content).toMatchObject({
-      topReads: [
-        expect.objectContaining({
-          storyClusterId: "story-1",
-          cardKind: "curated_top_read",
-        }),
-      ],
-      selectedPosts: expect.arrayContaining([
-        expect.objectContaining({
-          storyClusterId:
-            "supplemental:github-trending-page:github-feed-1",
-          cardKind: "supplemental_trend",
-        }),
-      ]),
-    });
   });
 
   it("rejects a candidate without durable zero-binding proof", async () => {
@@ -405,47 +374,7 @@ const weeklyAuthorizationDetails = (): ReturnType<
   typeof weeklyAuthorizationPolicy.readReaderSummaryWeeklyPublicationAuthorization
 > => {
   const citation = weeklyCitationProof();
-  const editorialQuality: ReaderSummaryWeeklyEditorialQualityResult = {
-    policyVersion: "reader_summary.weekly_editorial_quality.v2",
-    publicationDecision: "allow",
-    metrics: {
-      leadSectionCount: 1,
-      crossDayStoryCount: 0,
-      synthesizedCrossDayStoryCount: 0,
-      duplicateSameDayStoryObservationCount: 0,
-      citedDayCount: 1,
-      citedProviderCount: 1,
-      dominantDayCitationShare: 1,
-      dominantProviderCitationShare: 1,
-      dayHeadingCount: 0,
-      dailyChronologyMarkerCount: 0,
-      singleDaySectionCount: 1,
-      unsupportedClaimCount: 0,
-      prohibitedEditorialPatternCount: 0,
-    },
-    qualityGates: {
-      exactlyOneLeadSection: true,
-      stableStoryIdentityIsUsed: true,
-      sameDayStoryObservationsAreUnique: true,
-      weeklySynthesisModeIsGrounded: true,
-      factualContentIsCited: true,
-      citationsSpanMultipleProviders: true,
-      citationsSpanAtLeastThreeDays: true,
-      providerDominanceIsControlled: true,
-      dayDominanceIsControlled: true,
-      synthesisCitationsSpanMultipleProviders: true,
-      synthesisCitationsSpanAtLeastThreeDays: true,
-      synthesisProviderDominanceIsControlled: true,
-      synthesisDayDominanceIsControlled: true,
-      weeklySynthesisIsCoherent: true,
-      readerTextAvoidsProviderInventory: true,
-      readerTextAvoidsProcessProse: true,
-      claimLanguageIsSupported: true,
-    },
-    issues: [],
-    blockingPassed: true,
-  };
-  return {
+  return ({
     artifactId: "weekly-artifact-prisma",
     artifact: {
       output: {
@@ -482,11 +411,25 @@ const weeklyAuthorizationDetails = (): ReturnType<
           citationIds: [citation.citationId],
         }],
       },
-      editorialQuality,
+      editorialQuality: {
+        policyVersion: "reader_summary.weekly_editorial_quality.v2",
+        publicationDecision: "allow",
+        metrics: {},
+        qualityGates: {},
+        issues: [],
+        blockingPassed: true,
+      },
     },
     qualitySignals: {
       kind: "weekly",
-      editorialQuality,
+      editorialQuality: {
+        policyVersion: "reader_summary.weekly_editorial_quality.v2",
+        publicationDecision: "allow",
+        metrics: {},
+        qualityGates: {},
+        issues: [],
+        blockingPassed: true,
+      },
     },
     proof: {
       schemaVersion: "reader_summary.weekly_publication_proof.v1",
@@ -510,7 +453,9 @@ const weeklyAuthorizationDetails = (): ReturnType<
         `reader_summary.weekly_publication_authorization.v1:${"e".repeat(64)}`,
       sha256: "e".repeat(64),
     },
-  };
+  }) as ReturnType<
+    typeof weeklyAuthorizationPolicy.readReaderSummaryWeeklyPublicationAuthorization
+  >;
 };
 
 const weeklyCitationProof = () => ({
@@ -597,6 +542,124 @@ const period = {
   timezone: "UTC",
   periodKey: "daily:2026-07-05T00:00:00.000Z:2026-07-06T00:00:00.000Z:UTC",
 };
+
+const readerSummaryArtifact = (
+  readerSummaryId: string,
+  modelVersion = "deterministic-local.v1",
+): ReaderSummaryArtifact =>
+  ReaderSummaryArtifact.create({
+    schemaVersion: "reader_summary.artifact.v1",
+    readerSummaryId,
+    tenantId: tenant,
+    workspaceId: workspace,
+    scope: { type: "workspace" },
+    period,
+    sourceWindow: {
+      windowId: "reader-window",
+      startedAt: new Date("2026-07-05T08:00:00.000Z"),
+      endedAt: new Date("2026-07-05T09:00:00.000Z"),
+      selectedFeedItemIds: ["feed-1"],
+      storyClusterIds: ["story-1"],
+    },
+    storyClusters: [
+      {
+        id: "story-1",
+        storyKey: "url:example.test/story",
+        representativeFeedItemId: "feed-1",
+        duplicateFeedItemIds: [],
+        interestIds: ["interest-ai"],
+        providerKeys: ["rss"],
+        score: 1.2,
+        observedAtRange: {
+          startedAt: new Date("2026-07-05T08:00:00.000Z"),
+          endedAt: new Date("2026-07-05T09:00:00.000Z"),
+        },
+        whyImportant: ["Relevant source item."],
+      },
+    ],
+    contextArtifacts: [],
+    headline: "Reader source signal",
+    executiveSummary: "A reader source signal was selected.",
+    content: {
+      headline: "Reader source signal",
+      oneLineTakeaway: "A reader source signal was selected.",
+      bullets: ["A cited source item is relevant."],
+      mainTopics: ["AI"],
+      qualityState: {
+        status: "ready",
+        flags: [],
+        warnings: [],
+        isSingleSource: true,
+      },
+      interestSections: [],
+      sourceMix: [
+        {
+          providerKey: "rss",
+          itemCount: 1,
+          citationCount: 1,
+          storyClusterCount: 1,
+          crossSourceClusterCount: 0,
+          singleSourceOnly: true,
+          interestIds: ["interest-ai"],
+        },
+      ],
+      topReads: [topRead()],
+      selectedPosts: [topRead()],
+      claimBoard: [],
+      reliabilityReport: emptyReaderSummaryReliabilityReport(),
+      trendDelta: {
+        newSignals: ["1 RSS item selected"],
+        growingSignals: [],
+        repeatedSignals: [],
+        fadingSignals: [],
+      },
+      risks: [],
+      openQuestions: ["Is there confirming source evidence?"],
+      nextActions: [],
+    },
+    topStories: [
+      {
+        storyClusterId: "story-1",
+        title: "Reader source signal",
+        summary: "A cited source item is relevant.",
+        interestIds: ["interest-ai"],
+        providerKeys: ["rss"],
+        citationIds: ["citation-1"],
+      },
+    ],
+    interestHighlights: [],
+    repeatedSignals: [],
+    risksAndUnknowns: [],
+    citationMap: [
+      {
+        citationId: "citation-1",
+        feedItemId: "feed-1",
+        sourceItemId: "source-1",
+        providerKey: "rss",
+        field: "bodyPreview",
+        canonicalUrl: "https://example.test/story",
+      },
+    ],
+    qualityFlags: [],
+    confidence: {
+      level: "high",
+      score: 0.9,
+      rationale: "The source item is cited.",
+    },
+    lineage: {
+      promptVersion: "reader-summary.prompt.test.v1",
+      schemaVersion: "reader_summary.artifact.v1",
+      modelVersion,
+      providerVersion: "local",
+      rulesVersion: "reader-summary.rules.v1",
+      evalDatasetVersion: "reader-summary.eval.v1",
+    },
+    usage: {
+      inputTokens: 100,
+      outputTokens: 40,
+      estimatedCostUsd: 0,
+    },
+  });
 
 const recoveryReaderSummaryArtifact = (
   readerSummaryId: string,
@@ -702,8 +765,6 @@ const githubReaderSummaryArtifact = (
     const rank = index + 1;
     return {
       ...topRead(),
-      storyClusterId: `supplemental:github-trending-page:github-feed-${rank}`,
-      cardKind: "supplemental_trend" as const,
       title: `owner/repository-${rank}`,
       providerKey: "github-trending-page",
       providerName: "GitHub Trending",
@@ -712,7 +773,7 @@ const githubReaderSummaryArtifact = (
       providerMetrics: [
         {
           label: "GitHub Trending today",
-          value: `#${rank}, +${githubStarsGained(rank)} stars today`,
+          value: `#${rank}, +${200 + rank} stars today`,
         },
       ],
       canonicalUrl: `https://github.com/owner/repository-${rank}`,
@@ -724,33 +785,65 @@ const githubReaderSummaryArtifact = (
     ...snapshot,
     sourceWindow: {
       ...snapshot.sourceWindow,
-      selectedFeedItemIds: [
-        "feed-1",
-        ...Array.from(
-          { length: 10 },
-          (_, index) => `github-feed-${index + 1}`,
-        ),
-      ],
+      selectedFeedItemIds: Array.from(
+        { length: 10 },
+        (_, index) => `feed-${index + 1}`,
+      ),
+      storyClusterIds: [],
     },
+    storyClusters: [],
+    headline: "No reliable workspace signal yet",
+    executiveSummary:
+      "No primary evidence passed selection for this summary window.",
     content: {
       ...snapshot.content!,
-      selectedPosts: [...snapshot.content!.topReads, ...githubSelectedPosts],
-      narrativeSections: [
-        ...(snapshot.content!.narrativeSections ?? []),
-        githubTrendingAppendix(),
+      headline: "No reliable workspace signal yet",
+      oneLineTakeaway:
+        "No primary evidence passed selection for this summary window.",
+      bullets: [
+        "No primary evidence passed selection for this summary window.",
       ],
+      mainTopics: [],
+      qualityState: {
+        status: "no_signal",
+        flags: ["no_signal", "limited_sources"],
+        warnings: ["No primary evidence passed selection."],
+        isSingleSource: false,
+      },
+      interestSections: [],
+      sourceMix: [],
+      topReads: [],
+      selectedPosts: githubSelectedPosts,
+      claimBoard: [],
+      trendDelta: {
+        newSignals: [],
+        growingSignals: [],
+        repeatedSignals: [],
+        fadingSignals: [],
+      },
+      risks: [],
+      openQuestions: ["Collect more primary evidence before making claims."],
+      nextActions: [],
     },
-    citationMap: [
-      ...snapshot.citationMap,
-      ...githubSelectedPosts.map((post, index) => ({
-        ...snapshot.citationMap[0]!,
-        citationId: post.citationIds[0]!,
-        feedItemId: `github-feed-${index + 1}`,
-        sourceItemId: `github-source-${index + 1}`,
-        providerKey: "github-trending-page",
-        canonicalUrl: post.canonicalUrl,
-      })),
-    ],
+    topStories: [],
+    interestHighlights: [],
+    repeatedSignals: [],
+    risksAndUnknowns: [],
+    citationMap: githubSelectedPosts.map((post, index) => ({
+      ...snapshot.citationMap[0]!,
+      citationId: post.citationIds[0]!,
+      feedItemId: `feed-${index + 1}`,
+      sourceItemId: `source-${index + 1}`,
+      providerKey: "github-trending-page",
+      canonicalUrl: post.canonicalUrl,
+    })),
+    qualityFlags: ["no_signal", "limited_sources"],
+    confidence: {
+      level: "none",
+      score: 0,
+      rationale: "No primary evidence passed selection.",
+    },
+    noSignalReason: "No primary evidence passed selection.",
   });
 };
 
@@ -770,21 +863,21 @@ const verifiedGitHubProjectionAudit =
       warningThresholdMs: 240_000,
       qualitySignal: "within_grace",
     },
-    bindings: Array.from({ length: 3 }, (_, index) => {
+    bindings: Array.from({ length: 10 }, (_, index) => {
       const rank = index + 1;
       return {
         selectedPostIndex: index,
         rank,
         citationId: `github-citation-${rank}`,
-        feedItemId: `github-feed-${rank}`,
-        sourceItemId: `github-source-${rank}`,
+        feedItemId: `feed-${rank}`,
+        sourceItemId: `source-${rank}`,
         sourceBindingId: "github-binding",
         providerKey: "github-trending-page",
         metadataKind: "github_trending_page_repository",
         scanJobId: "scan-github-reader-summary-prisma",
         repositoryIdentity: `owner/repository-${rank}`,
         canonicalUrl: `https://github.com/owner/repository-${rank}`,
-        starsGained: githubStarsGained(rank),
+        starsGained: 200 + rank,
         fetchStartedAt: "2026-07-05T12:00:00.000Z",
         publishedAt: "2026-07-05T12:00:00.000Z",
         checkedAt: "2026-07-05T12:00:00.000Z",
@@ -797,24 +890,26 @@ const verifiedGitHubProjectionAudit =
     reasons: [],
   });
 
-const githubStarsGained = (rank: number): number => 1_200 + rank;
-
-const githubTrendingAppendix = () => ({
-  id: "github-trending",
-  kind: "watch" as const,
-  title: "GitHub Trending",
-  text: githubTrendingWatchText(
-    Array.from({ length: 3 }, (_, index) => {
-      const rank = index + 1;
-      return {
-        repositoryIdentity: `owner/repository-${rank}`,
-        rank,
-        starsGained: githubStarsGained(rank),
-      };
-    }),
-  ),
-  citationIds: Array.from(
-    { length: 3 },
-    (_, index) => `github-citation-${index + 1}`,
-  ),
+const topRead = () => ({
+  storyClusterId: "story-1",
+  title: "Reader source signal",
+  providerKey: "rss",
+  providerName: "RSS",
+  primaryActionKind: "read_source" as const,
+  reason: "It is relevant to the monitored topic.",
+  matchedInterestIds: ["interest-ai"],
+  matchedRules: ["ai"],
+  signalScore: 1.2,
+  confidence: {
+    level: "medium" as const,
+    score: 0.64,
+    rationale: "The source item is cited.",
+  },
+  confirmedProviderKeys: ["rss"],
+  providerMetrics: [],
+  whyImportant: ["Relevant source item."],
+  whyNow: "It appeared in the current summary window.",
+  canonicalUrl: "https://example.test/story",
+  citationIds: ["citation-1"],
+  previewMedia: undefined,
 });

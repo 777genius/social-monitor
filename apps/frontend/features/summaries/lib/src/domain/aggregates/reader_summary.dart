@@ -28,7 +28,6 @@ export '../entities/summary_story.dart';
 export '../entities/top_read.dart';
 export '../value_objects/preview_media.dart';
 export '../value_objects/provider_metric_label.dart';
-export '../value_objects/reader_post_promotion_attestation.dart';
 export '../value_objects/reader_summary_coverage.dart';
 export '../value_objects/signal_score.dart';
 export '../value_objects/summary_period.dart';
@@ -100,8 +99,6 @@ final class ReaderSummaryContent {
     required this.openQuestions,
     required this.risks,
     required this.nextActions,
-    this.promotionBoardAvailability =
-        ReaderSummaryPromotionBoardAvailability.available,
   });
 
   final String headline;
@@ -121,7 +118,4 @@ final class ReaderSummaryContent {
   final List<String> openQuestions;
   final List<String> risks;
   final List<ReaderAction> nextActions;
-  final ReaderSummaryPromotionBoardAvailability promotionBoardAvailability;
 }
-
-enum ReaderSummaryPromotionBoardAvailability { available, unavailable }

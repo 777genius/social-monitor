@@ -63,12 +63,16 @@ export class ConversationEvidenceContextReader {
     }
 
     const options = { ...defaultOptions, ...this.options };
+    const observedBefore =
+      params.observedThrough === undefined
+        ? undefined
+        : new Date(params.observedThrough.getTime() + 1);
     const units = await this.conversationUnits.listByRootFeedItemIds({
       tenantId: params.tenantId,
       workspaceId: params.workspaceId,
       rootFeedItemIds,
       limitPerRoot: options.readLimitPerRoot,
-      observedAtOrBefore: params.observedThrough,
+      observedBefore,
     });
 
     if (units.length === 0) {
@@ -83,7 +87,7 @@ export class ConversationEvidenceContextReader {
       observedAfter: new Date(
         now.getTime() - options.baselineLookbackDays * 24 * 60 * 60 * 1000,
       ),
-      observedAtOrBefore: params.observedThrough,
+      observedBefore,
       limit: options.baselineSampleLimit,
     });
     const bundles = this.builder.build({

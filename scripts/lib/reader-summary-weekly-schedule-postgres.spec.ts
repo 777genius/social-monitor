@@ -115,6 +115,6 @@ const client = (
     values: readonly unknown[] = [],
   ) {
     calls?.push({ sql, values });
-    return { rows: rows as unknown as readonly TRow[] };
+    return { rows: rows as readonly TRow[] };
   },
 });

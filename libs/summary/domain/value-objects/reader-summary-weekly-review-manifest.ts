@@ -56,8 +56,8 @@ export type ReaderSummaryWeeklyReviewSelection = Readonly<{
   beforeCitationSelector?: string; afterCitationSelector?: string; terminalCitationSelector?: string;
 }>;
 export type ReaderSummaryWeeklyReviewExecutionAttestation = Readonly<{
-  schemaVersion: 1; requestId: string; purpose: "social_monitor.reader_summary.weekly.review" | "social_monitor.reader_summary.weekly.review.v2";
-  canonicalRequestSha256: string; provider: "codex"; model: "gpt-5.6-sol"; reasoningEffort: "high" | "xhigh";
+  schemaVersion: 1; requestId: string; purpose: "social_monitor.reader_summary.weekly.review";
+  canonicalRequestSha256: string; provider: "codex"; model: "gpt-5.6-sol"; reasoningEffort: "xhigh";
   runtimeEngine: "subscription-runtime-cli"; runtimePackageVersion: string; launcherSha256: string;
   selectedOutputKind: "structured_output"; selectedOutputSha256: string;
 }>;
@@ -342,7 +342,7 @@ const reviewedObservations = (selections: readonly ReaderSummaryWeeklyReviewSele
 
 const canonicalExecutionAttestation = (input: ReaderSummaryWeeklyReviewExecutionAttestation, modelResponseSha256: string): ReaderSummaryWeeklyReviewExecutionAttestation => {
   assertReaderSummaryWeeklyExactObject(input, ["schemaVersion", "requestId", "purpose", "canonicalRequestSha256", "provider", "model", "reasoningEffort", "runtimeEngine", "runtimePackageVersion", "launcherSha256", "selectedOutputKind", "selectedOutputSha256"], "weekly review execution attestation", { allowAuthoritativeHashes: true });
-  if (input.schemaVersion !== 1 || !validWeeklyReviewExecutionIdentity(input) || input.provider !== "codex" || input.model !== "gpt-5.6-sol" || input.runtimeEngine !== "subscription-runtime-cli" || input.selectedOutputKind !== "structured_output" || exactReaderSummaryWeeklySha256(input.selectedOutputSha256, "weekly review selected output hash") !== modelResponseSha256) {
+  if (input.schemaVersion !== 1 || input.purpose !== "social_monitor.reader_summary.weekly.review" || input.provider !== "codex" || input.model !== "gpt-5.6-sol" || input.reasoningEffort !== "xhigh" || input.runtimeEngine !== "subscription-runtime-cli" || input.selectedOutputKind !== "structured_output" || exactReaderSummaryWeeklySha256(input.selectedOutputSha256, "weekly review selected output hash") !== modelResponseSha256) {
     throw new Error("Reader summary weekly review execution attestation is invalid");
   }
   return deepFreezeReaderSummaryWeekly({
@@ -354,14 +354,6 @@ const canonicalExecutionAttestation = (input: ReaderSummaryWeeklyReviewExecution
     selectedOutputKind: input.selectedOutputKind, selectedOutputSha256: modelResponseSha256,
   });
 };
-
-const validWeeklyReviewExecutionIdentity = (
-  input: ReaderSummaryWeeklyReviewExecutionAttestation,
-): boolean =>
-  (input.purpose === "social_monitor.reader_summary.weekly.review.v2" &&
-    input.reasoningEffort === "high") ||
-  (input.purpose === "social_monitor.reader_summary.weekly.review" &&
-    input.reasoningEffort === "xhigh");
 
 const assertUniqueStoryDates = (citations: readonly ReaderSummaryWeeklyReviewedCitation[]): void => {
   const keys = citations.map((citation) => `${citation.storyId}\u0000${citation.requestedUtcDate}`);

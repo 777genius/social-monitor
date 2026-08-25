@@ -24,7 +24,9 @@ install -d "$REPO/apps/frontend" "$REPO/apps/api-gateway" \
 cp "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR"/postgres-runtime-{weekly-timer-state,daily-c1-readiness,activation-boundary}-lib.sh \
   "$REPO/ops/deploy/"
-cp "$SCRIPT_DIR/deploy-control-lib.sh" "$SCRIPT_DIR/deploy-control-bridge-lib.sh" "$REPO/ops/deploy/"
+cp "$SCRIPT_DIR/deploy-control-lib.sh" "$SCRIPT_DIR/deploy-control-bridge-lib.sh" \
+  "$SCRIPT_DIR/production-control-bridge-preinstall-lib.sh" "$REPO/ops/deploy/"
+cp "$SCRIPT_DIR/production-host-policy-lib.sh" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/backend-runtime-health-lib.sh" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/backend-image-rescue-lib.sh" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/docker-maintenance-lib.sh" "$REPO/ops/deploy/"
@@ -72,6 +74,24 @@ run_entrypoint() {
   SOCIAL_MONITOR_DEPLOY_STAGING="$STAGING" \
     bash "$ENTRYPOINT" "$@"
 }
+marker_mode=$(
+  COMMIT_FUNCTION=$(sed -n '/^commit_postgres_pool_bootstrap() {$/,/^}$/p' "$ENTRYPOINT") \
+  STATE="$STATE" TARGET_SHA="$TARGET_SHA" bash -c '
+    set -euo pipefail
+    eval "$COMMIT_FUNCTION"
+    fail() { exit 1; }
+    postgres_pool_bootstrap_installed() {
+      [[ -f $STATE/postgres-pool-bootstrap.sha &&
+         $(< "$STATE/postgres-pool-bootstrap.sha") == "$1" ]]
+    }
+    rm -f "$STATE/postgres-pool-bootstrap.sha"
+    umask 077
+    commit_postgres_pool_bootstrap "$TARGET_SHA"
+    stat -c "%a" "$STATE/postgres-pool-bootstrap.sha"
+  '
+)
+[[ $marker_mode == 644 ]] || fail 'real PostgreSQL bootstrap marker ignored its required mode'
+printf '%s\n' "$BASE_SHA" > "$STATE/postgres-pool-bootstrap.sha"
 plan=$(run_entrypoint plan "$TARGET_SHA")
 grep -Fx 'frontend=true' <<< "$plan" >/dev/null
 grep -Fx 'backend=false' <<< "$plan" >/dev/null

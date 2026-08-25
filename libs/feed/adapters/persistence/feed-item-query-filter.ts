@@ -3,15 +3,13 @@ import type { JsonObject, JsonValue } from '@social-monitor/shared-kernel';
 import type { FeedItem } from '../../domain';
 import type { ListFeedItemsQuery } from '../../ports';
 
-type FeedItemReadFilters = Omit<ListFeedItemsQuery, 'limit' | 'cursor'>;
-
-export const requiresFeedItemScanFilter = (query: FeedItemReadFilters): boolean =>
+export const requiresFeedItemScanFilter = (query: ListFeedItemsQuery): boolean =>
   hasSearch(query.searchQuery) ||
   hasFilter(query.repositoryTrendWindow) ||
   hasFilter(query.repositoryLanguage) ||
   hasFilter(query.repositoryTopic);
 
-export const matchesFeedItemReadFilters = (item: FeedItem, query: FeedItemReadFilters): boolean => {
+export const matchesFeedItemReadFilters = (item: FeedItem, query: ListFeedItemsQuery): boolean => {
   const snapshot = item.toSnapshot();
 
   if (query.providerKey !== undefined && snapshot.providerKey !== query.providerKey) {
@@ -47,7 +45,7 @@ const matchesSearch = (item: FeedItem, searchQuery: string | undefined): boolean
 
 const matchesRepositoryTrendFilters = (
   metadata: JsonObject | undefined,
-  query: FeedItemReadFilters,
+  query: ListFeedItemsQuery,
 ): boolean => {
   if (
     !hasFilter(query.repositoryTrendWindow) &&

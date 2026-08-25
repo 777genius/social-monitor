@@ -73,7 +73,7 @@ BACKEND_PATHS=(
   prisma.config.ts
   prisma
   vendor
-  libs
+  libs ':(exclude)libs/summary/domain/aggregates/reader-summary-github-trending.spec.ts' ':(exclude)libs/summary/domain/aggregates/reader-summary-narrative-lead.spec.ts' ':(exclude)libs/summary/domain/aggregates/reader-summary.spec.ts'
   ':(exclude)libs/contracts/rest/openapi.snapshot.json'
   apps/api-gateway
   apps/agent-runtime
@@ -86,16 +86,16 @@ BACKEND_PATHS=(
   apps/social-research-runtime
   apps/social-research-grpc
   apps/social-research-mcp
-  scripts
+  scripts ':(exclude)scripts/check-ingestion-feed-prisma-persistence.ts' ':(exclude)scripts/check-source-line-cap.mjs' ':(exclude)scripts/support/check-ingestion-feed-prisma-persistence-assertions.ts'
   ops/evals
   ops/observability
   ops/deploy/backend-runtime-health-lib.sh
   ops/deploy/rabbitmq-quorum-health.sh
   ops/deploy/rabbitmq-quorum-recovery.sh
-  ops/deploy/reader-summary-publication-deploy-lib.sh ops/deploy/reader-summary-publication-system-dsn-bootstrap-lib.sh ops/deploy/reader-summary-publication-system-runtime-deploy-lib.sh
+  ops/deploy/reader-summary-publication-deploy-lib.sh ':(exclude)ops/deploy/reader-summary-publication-deploy-lib.sh' ops/deploy/reader-summary-publication-system-dsn-bootstrap-lib.sh ops/deploy/reader-summary-publication-system-runtime-deploy-lib.sh
   ops/deploy/reader-summary-publication-pre-migration.sql
   ops/deploy/reader-summary-publication-post-migration.sql
-  test
+  test ':(exclude)test/e2e/feed.items.list.e2e-spec.ts' ':(exclude)test/e2e/support/feed-items-list-seeders.ts'
 )
 CONTROL_PATHS=(
   .github/workflows/production-deploy.yml
@@ -137,41 +137,20 @@ fail() {
   exit 1
 }
 
-verify_host_policy() {
-  [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} == 1 ]] && return 0
-  ((EUID == 0)) || return 0
-  [[ $(stat -c '%U:%G:%a' "$CONTROL/github-production-deploy.sh") == root:root:755 ]] || \
-    fail 'root deploy entrypoint ownership or mode is invalid'
-  [[ $(stat -c '%U:%G:%a' "$CONTROL/github-production-deploy-wrapper.sh") == root:root:755 ]] || \
-    fail 'SSH deploy wrapper ownership or mode is invalid'
-  if id -nG social-monitor-deploy | tr ' ' '\n' | grep -qx docker; then
-    fail 'deploy user must not belong to the docker group'
-  fi
-  local sudoers=/etc/sudoers.d/social-monitor-deploy
-  [[ $(stat -c '%U:%G:%a' "$sudoers") == root:root:440 ]] || \
-    fail 'deploy sudoers ownership or mode is invalid'
-  [[ $(cat "$sudoers") == 'social-monitor-deploy ALL=(root) NOPASSWD: /var/data/social-monitor/control/github-production-deploy.sh *' ]] || \
-    fail 'deploy sudoers content is not project-scoped'
-  visudo -cf "$sudoers" >/dev/null || fail 'deploy sudoers policy is invalid'
-  local sudo_commands
-  sudo_commands=$(LC_ALL=C sudo -l -U social-monitor-deploy | \
-    sed -n '/may run the following commands/,$p' | tail -n +2 | sed '/^[[:space:]]*$/d; s/^[[:space:]]*//')
-  [[ $sudo_commands == '(root) NOPASSWD: /var/data/social-monitor/control/github-production-deploy.sh *' ]] || \
-    fail 'deploy user has unexpected sudo authority'
-  local ssh_policy
-  ssh_policy=$(sshd -T -C user=social-monitor-deploy,host=localhost,addr=127.0.0.1)
-  for expectation in \
-    'passwordauthentication no' \
-    'kbdinteractiveauthentication no' \
-    'disableforwarding yes' \
-    'allowagentforwarding no' \
-    'allowtcpforwarding no' \
-    'x11forwarding no' \
-    'permittty no' \
-    'forcecommand /var/data/social-monitor/control/github-production-deploy-wrapper.sh'; do
-    grep -Fx "$expectation" <<< "$ssh_policy" >/dev/null || fail "missing SSH policy: $expectation"
-  done
-}
+# The authenticated bridge driver preloads this helper from its independently
+# verified checkout while REPO still points at the old integration release.
+# Direct/ordinary deploys never accept that source-time override.
+if [[ ${BASH_SOURCE[0]} != "$0" && \
+      -n ${PRODUCTION_CONTROL_BRIDGE_CHECKOUT:-} ]]; then
+  [[ ${PRODUCTION_CONTROL_BRIDGE_TRUSTED_SOURCE:-} == 1 && \
+     ${BASH_SOURCE[0]} == /dev/fd/* && \
+     $(type -t verify_production_deploy_host_policy) == function ]] || \
+    fail 'authenticated bridge host policy was not preloaded'
+else
+  # shellcheck source=ops/deploy/production-host-policy-lib.sh
+  source "$REPO/ops/deploy/production-host-policy-lib.sh"
+fi
+verify_host_policy() { verify_production_deploy_host_policy; }
 
 validate_sha() {
   [[ ${1:-} =~ ^[0-9a-f]{40}$ ]] || fail 'commit must be a full lowercase SHA'
@@ -973,7 +952,10 @@ commit_postgres_pool_bootstrap() {
   if [[ $mode == normal ]] && postgres_pool_bootstrap_installed "$sha"; then return 0; fi
   [[ ! -e $next && ! -L $next ]] || fail 'PostgreSQL bootstrap marker temporary path is invalid'
   printf '%s\n' "$sha" > "$next"
+  chmod 0644 "$next"
+  sync -d "$next"
   mv -f "$next" "$marker"
+  sync -d "$marker" "$STATE"
   if [[ ! -f $marker || -L $marker ]] || ! postgres_pool_bootstrap_installed "$sha"; then
     fail 'PostgreSQL bootstrap marker did not commit the installed entrypoint'
   fi
@@ -990,6 +972,10 @@ case ${action:-} in
   plan) print_plan "$sha" ;;
   upload) upload_frontend "$sha" ;;
   deploy) deploy_release "$sha" ;;
+  control-bridge-receipt)
+    load_deploy_control_bridge_library
+    print_production_control_bridge_receipt "$sha"
+    ;;
   disk-report) print_docker_disk_report ;;
   project-disk-cleanup) cleanup_project_docker_storage ;;
   reader-summary-recover-missing-days|reader-summary-weekly-run|reader-summary-daily-terminal-set-receipt-v1|reader-summary-daily-scan-terminal-preimage-c1)

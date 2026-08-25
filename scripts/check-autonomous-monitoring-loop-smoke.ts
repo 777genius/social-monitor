@@ -32,14 +32,20 @@ import { UpsertUserRelevanceProfileUseCase } from "@social-monitor/relevance/fea
 import {
   type DomainError,
   type EventEnvelope,
-  FixedClock, type IdGenerator, ok, type Result, tenantId, type TenantId, workspaceId, type WorkspaceId,
+  FixedClock,
+  type IdGenerator,
+  ok,
+  type Result,
+  tenantId,
+  type TenantId,
+  workspaceId,
+  type WorkspaceId,
 } from "@social-monitor/shared-kernel";
 import { RelevanceReaderSummaryEvidenceSelector } from "@social-monitor/summary/adapters/evidence/relevance-reader-summary-evidence.selector";
 import { RelevanceSummaryEvidenceSelector } from "@social-monitor/summary/adapters/evidence/relevance-summary-evidence.selector";
 import { DeterministicReaderSummaryModelAdapter } from "@social-monitor/summary/adapters/model/deterministic-reader-summary-model.adapter";
 import { DeterministicSummaryModelAdapter } from "@social-monitor/summary/adapters/model/deterministic-summary-model.adapter";
 import { InMemorySummaryEventPublisher } from "@social-monitor/summary/adapters/messaging/in-memory-summary-event-publisher";
-import { ReaderSummaryPromotionMetricsRecorder } from "@social-monitor/summary/adapters/metrics/reader-summary-promotion-metrics.recorder";
 import { InMemorySummaryJobQueueAdapter } from "@social-monitor/summary/adapters/messaging/in-memory-summary-job-queue.adapter";
 import { ReaderSummaryJobQueuePublisherAdapter } from "@social-monitor/summary/adapters/messaging/reader-summary-job-queue.adapter";
 import { NoopUserSummaryPreferenceReader } from "@social-monitor/summary/adapters/preferences/noop-user-summary-preference.reader";
@@ -53,7 +59,6 @@ import { InMemorySummaryJobRepository } from "@social-monitor/summary/adapters/p
 import { InMemorySummaryPolicyRepository } from "@social-monitor/summary/adapters/persistence/in-memory-summary-policy.repository";
 import { SummaryPolicy } from "@social-monitor/summary/domain";
 import { ExecuteReaderSummaryJobUseCase } from "@social-monitor/summary/features/execute-reader-summary-job/execute-reader-summary-job.use-case";
-import { readerSummaryPromotionControl } from "@social-monitor/summary/features/execute-reader-summary-job/reader-summary-promotion-control";
 import { ExecuteSummaryJobUseCase } from "@social-monitor/summary/features/execute-summary-job/execute-summary-job.use-case";
 import { RequestReaderSummaryUseCase } from "@social-monitor/summary/features/request-reader-summary/request-reader-summary.use-case";
 import { RequestSummaryUseCase } from "@social-monitor/summary/features/request-summary/request-summary.use-case";
@@ -493,7 +498,6 @@ async function main(): Promise<void> {
         new InMemoryReaderSummaryPublication(readerSummaryJobs, readerSummaryArtifacts, readerSummaryEvents),
         ids,
         clock,
-        readerSummaryPromotionControl(new ReaderSummaryPromotionMetricsRecorder(metrics)),
       ),
       metrics,
       readerRuntime,

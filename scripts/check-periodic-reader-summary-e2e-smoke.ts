@@ -3,7 +3,6 @@ import { InMemoryQueuePublisher } from "@social-monitor/platform-queue/adapters/
 import { WorkerRuntime } from "@social-monitor/platform-worker";
 import { ReaderSummaryJobQueuePublisherAdapter } from "@social-monitor/summary/adapters/messaging/reader-summary-job-queue.adapter";
 import { InMemorySummaryEventPublisher } from "@social-monitor/summary/adapters/messaging/in-memory-summary-event-publisher";
-import { ReaderSummaryPromotionMetricsRecorder } from "@social-monitor/summary/adapters/metrics/reader-summary-promotion-metrics.recorder";
 import { DeterministicReaderSummaryModelAdapter } from "@social-monitor/summary/adapters/model/deterministic-reader-summary-model.adapter";
 import { InMemoryReaderSummaryArtifactRepository } from "@social-monitor/summary/adapters/persistence/in-memory-reader-summary-artifact.repository";
 import { InMemoryReaderSummaryJobRepository } from "@social-monitor/summary/adapters/persistence/in-memory-reader-summary-job.repository";
@@ -14,7 +13,6 @@ import {
   defaultReaderSummaryGenerationPolicy,
 } from "@social-monitor/summary/domain";
 import { ExecuteReaderSummaryJobUseCase } from "@social-monitor/summary/features/execute-reader-summary-job/execute-reader-summary-job.use-case";
-import { readerSummaryPromotionControl } from "@social-monitor/summary/features/execute-reader-summary-job/reader-summary-promotion-control";
 import { RequestReaderSummaryUseCase } from "@social-monitor/summary/features/request-reader-summary/request-reader-summary.use-case";
 import { SchedulePeriodicReaderSummariesUseCase } from "@social-monitor/summary/features/schedule-periodic-reader-summaries/schedule-periodic-reader-summaries.use-case";
 import { ExecuteReaderSummaryJobCommandHandler } from "@social-monitor/summary/interfaces/queue/execute-reader-summary-job-command.handler";
@@ -215,9 +213,6 @@ async function main(): Promise<void> {
         new InMemoryReaderSummaryPublication(jobs, artifacts, events),
         ids,
         new FixedClock(new Date("2026-07-15T06:05:00.000Z")),
-        readerSummaryPromotionControl(
-          new ReaderSummaryPromotionMetricsRecorder(metrics),
-        ),
       ),
       metrics,
       runtime,

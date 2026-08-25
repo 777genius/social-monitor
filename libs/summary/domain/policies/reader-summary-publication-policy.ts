@@ -1,8 +1,9 @@
-import type { ReaderSummaryArtifact, ReaderSummaryContent } from "../entities/reader-summary-artifact";
+import type {
+  ReaderSummaryArtifact,
+  ReaderSummaryContent,
+} from "../entities/reader-summary-artifact";
+import type { TopRead } from "../entities/top-read";
 import type { SummaryEvidenceSelection } from "../value-objects/summary-evidence-item";
-import type { ReaderSummaryCitation } from "../entities/citation";
-import { readerSummaryIndependentProviderFamilyCount } from
-  "../value-objects/reader-summary-provider-identity";
 import {
   buildReaderSummaryCoveragePlan,
   type ReaderSummaryCoveragePlan,
@@ -14,15 +15,8 @@ import type {
   ReaderSummaryPublicationRejectionFinding,
 } from "./reader-summary-publication-decision";
 import { publicationShadowReport } from "./reader-summary-publication-shadow";
-import { promotionPublicationFindings } from "./reader-summary-promotion-publication-verification";
-import { readerSummaryPromotionPublicationOracle } from
-  "./reader-summary-promotion-publication-oracle";
+import { isTopReadEligibleEvidence } from "./top-read-eligibility-policy";
 
-import {
-  collectReaderSummaryTechnicalLeaks,
-  collectReaderSummaryUserFacingTechnicalLeaks,
-} from "./reader-summary-publication-technical-leaks";
-export { collectReaderSummaryUserFacingTechnicalLeaks } from "./reader-summary-publication-technical-leaks";
 export { withReaderSummaryPublicationRejections } from "./reader-summary-publication-decision";
 export type {
   ReaderSummaryPublicationDecision,
@@ -37,7 +31,6 @@ export class ReaderSummaryPublicationPolicy {
   evaluate(params: {
     readonly artifact: ReaderSummaryArtifact;
     readonly evidence: SummaryEvidenceSelection;
-    readonly editorialEvidence?: SummaryEvidenceSelection;
   }): ReaderSummaryPublicationDecision {
     const snapshot = params.artifact.toSnapshot();
     const noSignal = isValidNoSignalArtifact(snapshot);
@@ -52,7 +45,7 @@ export class ReaderSummaryPublicationPolicy {
       ),
     );
     const technicalLeaks = unique([
-      ...collectReaderSummaryTechnicalLeaks([snapshot.headline, snapshot.executiveSummary]),
+      ...collectTechnicalLeaks([snapshot.headline, snapshot.executiveSummary]),
       ...(snapshot.content === undefined
         ? []
         : collectReaderSummaryUserFacingTechnicalLeaks(snapshot.content)),
@@ -60,24 +53,6 @@ export class ReaderSummaryPublicationPolicy {
     const topReads = topReadReferences(snapshot);
     const shadow = publicationShadowReport(params);
     const rejectionFindings: ReaderSummaryPublicationRejectionFinding[] = [];
-
-    const verification = readerSummaryPromotionPublicationOracle({
-      evidence: params.evidence.selectedEvidence,
-      citations: independentPromotionCitations(
-        params.evidence.selectedEvidence,
-        snapshot.citationMap,
-      ),
-      sourceWindow: params.evidence.sourceWindow,
-      clusters: params.evidence.clusters,
-      approvedSameStoryRelations: params.evidence.approvedSameStoryRelations,
-      relatedTopicRelations: params.evidence.relatedTopicRelations,
-    });
-    rejectionFindings.push(...promotionPublicationFindings({
-      expectedTop: verification.top,
-      expectedAdditional: verification.additional,
-      actualTop: snapshot.content?.topReads ?? [],
-      actualSelected: snapshot.content?.selectedPosts ?? [],
-    }));
 
     if (!noSignal && topReads.length === 0) {
       rejectionFindings.push({
@@ -103,9 +78,7 @@ export class ReaderSummaryPublicationPolicy {
 
     if (!noSignal) {
       const coveragePlan = buildReaderSummaryCoveragePlan(
-        primaryReaderSummaryEvidence(
-          params.editorialEvidence ?? params.evidence,
-        ),
+        primaryReaderSummaryEvidence(params.evidence),
       );
       const editorialQuality = evaluateReaderSummaryArtifactEditorialQuality(
         editorialQualityInput(
@@ -164,6 +137,18 @@ export class ReaderSummaryPublicationPolicy {
           continue;
         }
 
+        if (!isTopReadEligibleEvidence(evidence)) {
+          rejectionFindings.push({
+            code: "top_read_ineligible_source",
+            reason: `Top read "${topRead.title}" references ineligible ${evidence.providerKey} evidence.`,
+            topReadTitle: topRead.title,
+            citationId: citation.citationId,
+            feedItemId: citation.feedItemId,
+            sourceItemId: citation.sourceItemId,
+            providerKey: evidence.providerKey,
+            canonicalUrl: evidence.canonicalUrl,
+          });
+        }
       }
     }
 
@@ -172,9 +157,9 @@ export class ReaderSummaryPublicationPolicy {
       rejectionCount: rejectionFindings.length,
       confidenceScore: snapshot.confidence.score,
       selectedEvidenceCount: params.evidence.selectedEvidence.length,
-      providerCount: readerSummaryIndependentProviderFamilyCount(
+      providerCount: new Set(
         params.evidence.selectedEvidence.map((item) => item.providerKey),
-      ),
+      ).size,
     });
 
     if (rejectionFindings.length > 0) {
@@ -201,29 +186,26 @@ export class ReaderSummaryPublicationPolicy {
   }
 }
 
-const independentPromotionCitations = (
-  evidence: SummaryEvidenceSelection["selectedEvidence"],
-  citations: readonly ReaderSummaryCitation[],
-): readonly ReaderSummaryCitation[] => evidence.map((item) => {
-  const citation = [...citations].sort((left, right) =>
-    left.citationId.localeCompare(right.citationId)
-  ).find((candidate) =>
-    candidate.feedItemId === item.feedItemId &&
-    candidate.sourceItemId === item.sourceItemId &&
-    candidate.providerKey === item.providerKey &&
-    (candidate.canonicalUrl === undefined ||
-      candidate.canonicalUrl === item.canonicalUrl)
-  );
-  return citation ?? {
-    citationId: `publication-expected:${item.feedItemId}`,
-    feedItemId: item.feedItemId,
-    sourceItemId: item.sourceItemId,
-    providerKey: item.providerKey,
-    field: "canonicalUrl",
-    canonicalUrl: item.canonicalUrl,
-  };
-});
+export const collectReaderSummaryUserFacingTechnicalLeaks = (
+  content: ReaderSummaryContent,
+): readonly string[] => {
+  const values = [
+    content.headline,
+    content.oneLineTakeaway,
+    ...content.bullets,
+    ...(content.narrativeSections ?? []).flatMap((section) => [
+      section.title,
+      section.text,
+    ]),
+    ...content.risks,
+    ...content.openQuestions,
+    ...content.nextActions.flatMap((item) => [item.label, item.reason]),
+    ...content.topReads.flatMap(topReadUserFacingText),
+    ...(content.selectedPosts ?? []).flatMap(topReadUserFacingText),
+  ];
 
+  return collectTechnicalLeaks(values);
+};
 
 const isValidNoSignalArtifact = (
   snapshot: ReturnType<ReaderSummaryArtifact["toSnapshot"]>,
@@ -421,6 +403,12 @@ const topReadReferences = (
   }));
 };
 
+const topReadUserFacingText = (item: TopRead): readonly string[] => [
+  item.title,
+  item.reason,
+  item.whyNow,
+  ...item.whyImportant,
+];
 
 const canonicalPublicationScore = (params: {
   readonly topReadCount: number;
@@ -443,6 +431,25 @@ const canonicalPublicationScore = (params: {
   );
 };
 
+const technicalLeakPatterns = [
+  /\bsource item\b/i,
+  /\bcanonicalurl\b/i,
+  /\bsource-binding\b/i,
+  /\bsourcebinding\b/i,
+  /\binterest:[0-9a-f-]{8,}\b/i,
+  /\bprovider:[a-z0-9_-]+\b/i,
+  /\bfeed_item\b/i,
+  /\bsource_item\b/i,
+  /\breadersummary\b/i,
+  /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/i,
+];
+
+const collectTechnicalLeaks = (values: readonly string[]): readonly string[] =>
+  unique(
+    values.filter((value) =>
+      technicalLeakPatterns.some((pattern) => pattern.test(value)),
+    ),
+  );
 
 const distinctDefined = (
   values: readonly (string | undefined)[],

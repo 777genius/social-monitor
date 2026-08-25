@@ -19,8 +19,8 @@ export class RelevanceSummaryEvidenceSelector implements SummaryEvidenceSelector
       userId: params.userId,
       interestId: params.interestId,
       limit: params.maxItems,
-      observedAtOrAfter: evidenceWindow.startedAt,
-      observedAtOrBefore: evidenceWindow.endedAt,
+      observedAfter: inclusiveObservedAfter(evidenceWindow.startedAt),
+      observedBefore: inclusiveObservedBefore(evidenceWindow.endedAt),
     });
 
     if (!ranked.ok) {
@@ -65,6 +65,12 @@ const rollingDailyEvidenceWindow = (clock: Clock) => {
     endedAt,
   };
 };
+
+const inclusiveObservedAfter = (startedAt: Date): Date =>
+  new Date(startedAt.getTime() - 1);
+
+const inclusiveObservedBefore = (endedAt: Date): Date =>
+  new Date(endedAt.getTime() + 1);
 
 const buildSourceWindow = (
   params: Parameters<SummaryEvidenceSelectorPort['select']>[0],

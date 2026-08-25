@@ -38,8 +38,6 @@ from .domain import (
     XCollectorUnavailableError,
     XCollectorWarning,
     XPostMetrics,
-    XPostContentKind,
-    XEligibilityMetricsState,
 )
 from .ports import (
     AccountPoolLedgerPort,
@@ -784,19 +782,10 @@ def post_from_scweet_record(
     if canonical_url is None:
         return None
 
-    likes_raw = record.get("likes")
-    retweets_raw = record.get("retweets")
-    likes = read_optional_int(likes_raw)
-    retweets = read_optional_int(retweets_raw)
     metrics = XPostMetrics(
-        likes=likes or 0,
-        retweets=retweets or 0,
+        likes=read_int(record.get("likes")),
+        retweets=read_int(record.get("retweets")),
         replies=read_int(record.get("comments")),
-        likes_observed=likes is not None,
-        retweets_observed=retweets is not None,
-        eligibility_state=eligibility_metrics_state(
-            ((likes_raw, likes), (retweets_raw, retweets)),
-        ),
     )
 
     return XCollectedPost(
@@ -810,7 +799,6 @@ def post_from_scweet_record(
         media_urls=read_media_urls(record.get("media")),
         source_product=product,
         trend_score=trend_score(metrics),
-        content_kind=content_kind_from_scweet_record(record),
     )
 
 
@@ -852,54 +840,6 @@ def read_int(value: Any) -> int:
         return int(value)
 
     return 0
-
-
-def read_optional_int(value: Any) -> int | None:
-    if isinstance(value, bool):
-        return None
-    if isinstance(value, int) and value >= 0:
-        return value
-    if isinstance(value, str) and value.isdigit():
-        return int(value)
-    return None
-
-
-def content_kind_from_scweet_record(record: Mapping[str, Any]) -> XPostContentKind:
-    explicit = read_string(record.get("content_kind"))
-    if explicit in {"original_post", "original"}:
-        return XPostContentKind.ORIGINAL
-    if explicit == "reply":
-        return XPostContentKind.REPLY
-    if explicit == "quote":
-        return XPostContentKind.QUOTE
-    if explicit is not None:
-        return XPostContentKind.UNKNOWN
-
-    if read_string(record.get("in_reply_to_status_id")) is not None or (
-        "replying_to" in record and bool(record.get("replying_to"))
-    ):
-        return XPostContentKind.REPLY
-    if any(
-        read_string(record.get(field)) is not None
-        for field in ("quoted_status_id", "quoted_status", "quote_url")
-    ):
-        return XPostContentKind.QUOTE
-    # The upstream record must explicitly attest originality. Absence is unknown.
-    if record.get("is_original") is True:
-        return XPostContentKind.ORIGINAL
-    if "replying_to" in record and not record.get("replying_to"):
-        return XPostContentKind.ORIGINAL
-    return XPostContentKind.UNKNOWN
-
-
-def eligibility_metrics_state(
-    observations: tuple[tuple[Any, int | None], ...],
-) -> XEligibilityMetricsState:
-    if any(raw is not None and parsed is None for raw, parsed in observations):
-        return XEligibilityMetricsState.MALFORMED
-    if any(raw is None for raw, _ in observations):
-        return XEligibilityMetricsState.MISSING
-    return XEligibilityMetricsState.OBSERVED
 
 
 def read_media_urls(value: Any) -> tuple[str, ...]:

@@ -7,15 +7,12 @@ import { normalizeGitHubRepositoryFullName } from "../value-objects/github-repos
 import {
   githubTrendingNarrativeSectionId,
   githubTrendingProviderKey,
-  maxGitHubTrendingHighlights,
   maxGitHubTrendingDisplayRepositories,
 } from "./reader-summary-github-trending-policy";
 import {
   buildReaderSummaryGitHubProjectionCollectionTelemetry,
   exactUtcDay,
   githubProjectionTimesAreBounded,
-  readerSummaryGitHubProjectionCollectionGraceMs,
-  readerSummaryGitHubProjectionCollectionWarningThresholdMs,
   type ReaderSummaryGitHubProjectionCollectionTelemetry,
 } from "./reader-summary-github-projection-collection-window";
 import { verifiedGitHubWatchFollowsBindings } from "./reader-summary-github-projection-verification";
@@ -326,7 +323,15 @@ export const readerSummaryHasVerifiedGitHubProjection = (params: {
     !exactIsoInstant(params.audit.observedThrough) ||
     !Number.isFinite(observedThrough.getTime()) ||
     projectionCheckedAt.getTime() > observedThrough.getTime() ||
-    params.audit.bindings.length > maxGitHubTrendingHighlights
+    params.audit.bindings.length !== maxGitHubTrendingDisplayRepositories
+  ) {
+    return false;
+  }
+  const selectedPosts = (snapshot.content?.selectedPosts ?? []).filter(
+    isGitHubReaderItem,
+  );
+  if (
+    selectedPosts.length !== maxGitHubTrendingDisplayRepositories
   ) {
     return false;
   }
@@ -347,13 +352,11 @@ export const readerSummaryHasVerifiedGitHubProjection = (params: {
     hasDuplicates(bindings.map((binding) => binding.feedItemId)) ||
     hasDuplicates(bindings.map((binding) => binding.sourceItemId)) ||
     hasDuplicates(bindings.map((binding) => binding.repositoryIdentity)) ||
-    (bindings.length > 0 && (
-      new Set(bindings.map((binding) => binding.scanJobId)).size !== 1 ||
-      new Set(bindings.map((binding) => binding.fetchStartedAt)).size !== 1 ||
-      new Set(bindings.map((binding) => binding.publishedAt)).size !== 1 ||
-      new Set(bindings.map((binding) => binding.checkedAt)).size !== 1 ||
-      new Set(bindings.map((binding) => binding.observedAt)).size !== 1
-    )) ||
+    new Set(bindings.map((binding) => binding.scanJobId)).size !== 1 ||
+    new Set(bindings.map((binding) => binding.fetchStartedAt)).size !== 1 ||
+    new Set(bindings.map((binding) => binding.publishedAt)).size !== 1 ||
+    new Set(bindings.map((binding) => binding.checkedAt)).size !== 1 ||
+    new Set(bindings.map((binding) => binding.observedAt)).size !== 1 ||
     bindings.some((binding) => binding.sourceBindingId !== eligibleBindingId) ||
     bindings.some(
       (binding) =>
@@ -369,19 +372,28 @@ export const readerSummaryHasVerifiedGitHubProjection = (params: {
       artifact: params.artifact,
       bindings,
     }) ||
-    !(bindings.length === 0
-      ? validCollectionTelemetry(params.audit.telemetry)
-      : sameCollectionTelemetry(params.audit.telemetry, expectedTelemetry))
+    !sameCollectionTelemetry(params.audit.telemetry, expectedTelemetry)
   ) {
     return false;
   }
 
-  return bindings.every((binding, index) => {
-    const citation = citationById.get(binding.citationId);
+  return selectedPosts.every((post, index) => {
+    const binding = bindings[index];
+    const identity = canonicalGitHubRepositoryIdentity(post.canonicalUrl);
+    const citation =
+      post.citationIds.length === 1
+        ? citationById.get(post.citationIds[0]!)
+        : undefined;
     return (
+      binding !== undefined &&
       citation !== undefined &&
       isGitHubCitation(citation) &&
       binding.selectedPostIndex === index &&
+      binding.rank === index + 1 &&
+      binding.repositoryIdentity === identity &&
+      binding.canonicalUrl === post.canonicalUrl &&
+      post.citationIds.length === 1 &&
+      binding.citationId === post.citationIds[0] &&
       binding.feedItemId === citation.feedItemId &&
       binding.sourceItemId === citation.sourceItemId &&
       binding.canonicalUrl === citation.canonicalUrl &&
@@ -395,6 +407,8 @@ export const readerSummaryHasVerifiedGitHubProjection = (params: {
         checkedAt: new Date(binding.checkedAt),
         observedAt: new Date(binding.observedAt),
       }) &&
+      selectedPostGitHubMetric(post, "rank") === binding.rank &&
+      selectedPostGitHubMetric(post, "stars") === binding.starsGained &&
       nonEmpty(binding.feedItemId) &&
       nonEmpty(binding.sourceItemId) &&
       nonEmpty(binding.sourceBindingId) &&
@@ -472,20 +486,6 @@ const sameCollectionTelemetry = (
   actual.collectionGraceMs === expected.collectionGraceMs &&
   actual.warningThresholdMs === expected.warningThresholdMs &&
   actual.qualitySignal === expected.qualitySignal;
-
-const validCollectionTelemetry = (
-  value: ReaderSummaryGitHubProjectionCollectionTelemetry | undefined,
-): boolean => value !== undefined &&
-  Number.isSafeInteger(value.github_projection_collection_delay_ms) &&
-  value.github_projection_collection_delay_ms >= 0 &&
-  value.collectionGraceMs === readerSummaryGitHubProjectionCollectionGraceMs &&
-  value.warningThresholdMs ===
-    readerSummaryGitHubProjectionCollectionWarningThresholdMs &&
-  value.qualitySignal ===
-    (value.github_projection_collection_delay_ms >= value.warningThresholdMs
-      ? "github_projection_collection_delay_warning"
-      : "within_grace");
-
 
 export const hasDuplicates = <TValue>(values: readonly TValue[]): boolean =>
   new Set(values).size !== values.length;

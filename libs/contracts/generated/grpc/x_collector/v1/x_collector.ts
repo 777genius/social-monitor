@@ -106,102 +106,6 @@ export function xCollectorHealthStatusToJSON(object: XCollectorHealthStatus): st
   }
 }
 
-export enum XPostContentKind {
-  X_POST_CONTENT_KIND_UNSPECIFIED = 0,
-  X_POST_CONTENT_KIND_ORIGINAL = 1,
-  X_POST_CONTENT_KIND_REPLY = 2,
-  X_POST_CONTENT_KIND_QUOTE = 3,
-  UNRECOGNIZED = -1,
-}
-
-export function xPostContentKindFromJSON(object: any): XPostContentKind {
-  switch (object) {
-    case 0:
-    case "X_POST_CONTENT_KIND_UNSPECIFIED":
-      return XPostContentKind.X_POST_CONTENT_KIND_UNSPECIFIED;
-    case 1:
-    case "X_POST_CONTENT_KIND_ORIGINAL":
-      return XPostContentKind.X_POST_CONTENT_KIND_ORIGINAL;
-    case 2:
-    case "X_POST_CONTENT_KIND_REPLY":
-      return XPostContentKind.X_POST_CONTENT_KIND_REPLY;
-    case 3:
-    case "X_POST_CONTENT_KIND_QUOTE":
-      return XPostContentKind.X_POST_CONTENT_KIND_QUOTE;
-    case -1:
-    case "UNRECOGNIZED":
-    default:
-      return XPostContentKind.UNRECOGNIZED;
-  }
-}
-
-export function xPostContentKindToJSON(object: XPostContentKind): string {
-  switch (object) {
-    case XPostContentKind.X_POST_CONTENT_KIND_UNSPECIFIED:
-      return "X_POST_CONTENT_KIND_UNSPECIFIED";
-    case XPostContentKind.X_POST_CONTENT_KIND_ORIGINAL:
-      return "X_POST_CONTENT_KIND_ORIGINAL";
-    case XPostContentKind.X_POST_CONTENT_KIND_REPLY:
-      return "X_POST_CONTENT_KIND_REPLY";
-    case XPostContentKind.X_POST_CONTENT_KIND_QUOTE:
-      return "X_POST_CONTENT_KIND_QUOTE";
-    case XPostContentKind.UNRECOGNIZED:
-    default:
-      return "UNRECOGNIZED";
-  }
-}
-
-export enum XEligibilityMetricsState {
-  X_ELIGIBILITY_METRICS_STATE_UNSPECIFIED = 0,
-  X_ELIGIBILITY_METRICS_STATE_OBSERVED = 1,
-  X_ELIGIBILITY_METRICS_STATE_MISSING = 2,
-  X_ELIGIBILITY_METRICS_STATE_MALFORMED = 3,
-  X_ELIGIBILITY_METRICS_STATE_CONFLICT = 4,
-  UNRECOGNIZED = -1,
-}
-
-export function xEligibilityMetricsStateFromJSON(object: any): XEligibilityMetricsState {
-  switch (object) {
-    case 0:
-    case "X_ELIGIBILITY_METRICS_STATE_UNSPECIFIED":
-      return XEligibilityMetricsState.X_ELIGIBILITY_METRICS_STATE_UNSPECIFIED;
-    case 1:
-    case "X_ELIGIBILITY_METRICS_STATE_OBSERVED":
-      return XEligibilityMetricsState.X_ELIGIBILITY_METRICS_STATE_OBSERVED;
-    case 2:
-    case "X_ELIGIBILITY_METRICS_STATE_MISSING":
-      return XEligibilityMetricsState.X_ELIGIBILITY_METRICS_STATE_MISSING;
-    case 3:
-    case "X_ELIGIBILITY_METRICS_STATE_MALFORMED":
-      return XEligibilityMetricsState.X_ELIGIBILITY_METRICS_STATE_MALFORMED;
-    case 4:
-    case "X_ELIGIBILITY_METRICS_STATE_CONFLICT":
-      return XEligibilityMetricsState.X_ELIGIBILITY_METRICS_STATE_CONFLICT;
-    case -1:
-    case "UNRECOGNIZED":
-    default:
-      return XEligibilityMetricsState.UNRECOGNIZED;
-  }
-}
-
-export function xEligibilityMetricsStateToJSON(object: XEligibilityMetricsState): string {
-  switch (object) {
-    case XEligibilityMetricsState.X_ELIGIBILITY_METRICS_STATE_UNSPECIFIED:
-      return "X_ELIGIBILITY_METRICS_STATE_UNSPECIFIED";
-    case XEligibilityMetricsState.X_ELIGIBILITY_METRICS_STATE_OBSERVED:
-      return "X_ELIGIBILITY_METRICS_STATE_OBSERVED";
-    case XEligibilityMetricsState.X_ELIGIBILITY_METRICS_STATE_MISSING:
-      return "X_ELIGIBILITY_METRICS_STATE_MISSING";
-    case XEligibilityMetricsState.X_ELIGIBILITY_METRICS_STATE_MALFORMED:
-      return "X_ELIGIBILITY_METRICS_STATE_MALFORMED";
-    case XEligibilityMetricsState.X_ELIGIBILITY_METRICS_STATE_CONFLICT:
-      return "X_ELIGIBILITY_METRICS_STATE_CONFLICT";
-    case XEligibilityMetricsState.UNRECOGNIZED:
-    default:
-      return "UNRECOGNIZED";
-  }
-}
-
 export interface CollectDailySearchRequest {
   schemaVersion: number;
   requestId: string;
@@ -242,7 +146,6 @@ export interface XCollectedPost {
   mediaUrls: string[];
   sourceProduct: XSearchProduct;
   trendScore: number;
-  contentKind: XPostContentKind;
 }
 
 export interface XPostMetrics {
@@ -253,9 +156,6 @@ export interface XPostMetrics {
   views: string;
   quotesObserved: boolean;
   viewsObserved: boolean;
-  likesObserved: boolean;
-  retweetsObserved: boolean;
-  eligibilityState: XEligibilityMetricsState;
 }
 
 export interface XCollectorWarning {
@@ -854,7 +754,6 @@ function createBaseXCollectedPost(): XCollectedPost {
     mediaUrls: [],
     sourceProduct: 0,
     trendScore: 0,
-    contentKind: 0,
   };
 }
 
@@ -889,9 +788,6 @@ export const XCollectedPost: MessageFns<XCollectedPost> = {
     }
     if (message.trendScore !== 0) {
       writer.uint32(81).double(message.trendScore);
-    }
-    if (message.contentKind !== 0) {
-      writer.uint32(88).int32(message.contentKind);
     }
     return writer;
   },
@@ -983,14 +879,6 @@ export const XCollectedPost: MessageFns<XCollectedPost> = {
           message.trendScore = reader.double();
           continue;
         }
-        case 11: {
-          if (tag !== 88) {
-            break;
-          }
-
-          message.contentKind = reader.int32() as any;
-          continue;
-        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -1044,11 +932,6 @@ export const XCollectedPost: MessageFns<XCollectedPost> = {
         : isSet(object.trend_score)
         ? globalThis.Number(object.trend_score)
         : 0,
-      contentKind: isSet(object.contentKind)
-        ? xPostContentKindFromJSON(object.contentKind)
-        : isSet(object.content_kind)
-        ? xPostContentKindFromJSON(object.content_kind)
-        : 0,
     };
   },
 
@@ -1084,9 +967,6 @@ export const XCollectedPost: MessageFns<XCollectedPost> = {
     if (message.trendScore !== 0) {
       obj.trendScore = message.trendScore;
     }
-    if (message.contentKind !== 0) {
-      obj.contentKind = xPostContentKindToJSON(message.contentKind);
-    }
     return obj;
   },
 
@@ -1107,7 +987,6 @@ export const XCollectedPost: MessageFns<XCollectedPost> = {
     message.mediaUrls = object.mediaUrls?.map((e) => e) || [];
     message.sourceProduct = object.sourceProduct ?? 0;
     message.trendScore = object.trendScore ?? 0;
-    message.contentKind = object.contentKind ?? 0;
     return message;
   },
 };
@@ -1121,9 +1000,6 @@ function createBaseXPostMetrics(): XPostMetrics {
     views: "0",
     quotesObserved: false,
     viewsObserved: false,
-    likesObserved: false,
-    retweetsObserved: false,
-    eligibilityState: 0,
   };
 }
 
@@ -1149,15 +1025,6 @@ export const XPostMetrics: MessageFns<XPostMetrics> = {
     }
     if (message.viewsObserved !== false) {
       writer.uint32(56).bool(message.viewsObserved);
-    }
-    if (message.likesObserved !== false) {
-      writer.uint32(64).bool(message.likesObserved);
-    }
-    if (message.retweetsObserved !== false) {
-      writer.uint32(72).bool(message.retweetsObserved);
-    }
-    if (message.eligibilityState !== 0) {
-      writer.uint32(80).int32(message.eligibilityState);
     }
     return writer;
   },
@@ -1225,30 +1092,6 @@ export const XPostMetrics: MessageFns<XPostMetrics> = {
           message.viewsObserved = reader.bool();
           continue;
         }
-        case 8: {
-          if (tag !== 64) {
-            break;
-          }
-
-          message.likesObserved = reader.bool();
-          continue;
-        }
-        case 9: {
-          if (tag !== 72) {
-            break;
-          }
-
-          message.retweetsObserved = reader.bool();
-          continue;
-        }
-        case 10: {
-          if (tag !== 80) {
-            break;
-          }
-
-          message.eligibilityState = reader.int32() as any;
-          continue;
-        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -1275,21 +1118,6 @@ export const XPostMetrics: MessageFns<XPostMetrics> = {
         : isSet(object.views_observed)
         ? globalThis.Boolean(object.views_observed)
         : false,
-      likesObserved: isSet(object.likesObserved)
-        ? globalThis.Boolean(object.likesObserved)
-        : isSet(object.likes_observed)
-        ? globalThis.Boolean(object.likes_observed)
-        : false,
-      retweetsObserved: isSet(object.retweetsObserved)
-        ? globalThis.Boolean(object.retweetsObserved)
-        : isSet(object.retweets_observed)
-        ? globalThis.Boolean(object.retweets_observed)
-        : false,
-      eligibilityState: isSet(object.eligibilityState)
-        ? xEligibilityMetricsStateFromJSON(object.eligibilityState)
-        : isSet(object.eligibility_state)
-        ? xEligibilityMetricsStateFromJSON(object.eligibility_state)
-        : 0,
     };
   },
 
@@ -1316,15 +1144,6 @@ export const XPostMetrics: MessageFns<XPostMetrics> = {
     if (message.viewsObserved !== false) {
       obj.viewsObserved = message.viewsObserved;
     }
-    if (message.likesObserved !== false) {
-      obj.likesObserved = message.likesObserved;
-    }
-    if (message.retweetsObserved !== false) {
-      obj.retweetsObserved = message.retweetsObserved;
-    }
-    if (message.eligibilityState !== 0) {
-      obj.eligibilityState = xEligibilityMetricsStateToJSON(message.eligibilityState);
-    }
     return obj;
   },
 
@@ -1340,9 +1159,6 @@ export const XPostMetrics: MessageFns<XPostMetrics> = {
     message.views = object.views ?? "0";
     message.quotesObserved = object.quotesObserved ?? false;
     message.viewsObserved = object.viewsObserved ?? false;
-    message.likesObserved = object.likesObserved ?? false;
-    message.retweetsObserved = object.retweetsObserved ?? false;
-    message.eligibilityState = object.eligibilityState ?? 0;
     return message;
   },
 };

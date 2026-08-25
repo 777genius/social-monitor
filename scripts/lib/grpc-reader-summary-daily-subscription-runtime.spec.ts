@@ -19,7 +19,7 @@ const scope = {
 };
 
 describe("GrpcReaderSummaryDailySubscriptionRuntime", () => {
-  it("sends v1 authority bytes once through gpt-5.6-sol high subscription runtime", async () => {
+  it("sends v1 authority bytes once through gpt-5.6-sol xhigh subscription runtime", async () => {
     const output = { z: 1, a: "exact" };
     const client = fakeClient(output);
     const runtime = new GrpcReaderSummaryDailySubscriptionRuntime(client);
@@ -40,14 +40,9 @@ describe("GrpcReaderSummaryDailySubscriptionRuntime", () => {
     expect(command.controls).toMatchObject({ model: "gpt-5.6-sol" });
     expect(command.metadata).toMatchObject({
       authoritySchemaVersion: "reader_summary.daily_source_authority.v1",
-      reasoningEffort: "high",
+      reasoningEffort: "xhigh",
     });
     expect(result.responseBytes.toString("utf8")).toBe('{"a":"exact","z":1}');
-    expect(result.modelTelemetry).toEqual({
-      provider: "codex", model: "gpt-5.6-sol", reasoningEffort: "high",
-      inputTokens: 120, outputTokens: 30, totalTokens: 150,
-      usageSource: "PROVIDER_REPORTED", durationMs: 25,
-    });
   });
 
   it("rejects non-attested, wrong-model, and aborted executions", async () => {
@@ -64,43 +59,6 @@ describe("GrpcReaderSummaryDailySubscriptionRuntime", () => {
       ...runtimeInput(), signal: aborted.signal,
     })).rejects.toThrow("lease lost");
     expect(client.runTask).not.toHaveBeenCalled();
-  });
-
-  it.each([
-    ["missing", { usage: undefined }],
-    ["partial", { usage: { inputTokens: 1, outputTokens: 2 } }],
-    ["malformed", {
-      usage: {
-        inputTokens: 1, outputTokens: -2, totalTokens: -1,
-        estimatedCostUsd: 0,
-      },
-    }],
-    ["inconsistent total", {
-      usage: {
-        inputTokens: 1, outputTokens: 2, totalTokens: 4,
-        estimatedCostUsd: 0,
-      },
-    }],
-    ["missing duration", { durationMs: undefined }],
-  ])("blocks completed live publication for %s usage", async (_label, patch) => {
-    const client = fakeClient({ value: true }, "gpt-5.6-sol", patch);
-    await expect(new GrpcReaderSummaryDailySubscriptionRuntime(client).run(
-      runtimeInput(),
-    )).rejects.toThrow(/usage is unavailable/u);
-  });
-
-  it("preserves a genuine provider-reported zero usage result", async () => {
-    const client = fakeClient({ value: true }, "gpt-5.6-sol", {
-      usage: {
-        inputTokens: 0, outputTokens: 0, totalTokens: 0,
-        estimatedCostUsd: 0,
-      },
-    });
-    await expect(new GrpcReaderSummaryDailySubscriptionRuntime(client).run(
-      runtimeInput(),
-    )).resolves.toMatchObject({
-      modelTelemetry: { inputTokens: 0, outputTokens: 0 },
-    });
   });
 
   it("uses the admitted output_text Codex subscription route for V4", async () => {
@@ -128,7 +86,7 @@ describe("GrpcReaderSummaryDailySubscriptionRuntime", () => {
         },
       })),
       checkHealth: jest.fn(),
-    } as unknown as jest.Mocked<AgentRuntimeClientPort>;
+    } satisfies jest.Mocked<AgentRuntimeClientPort>;
     const result = await new GrpcReaderSummaryDailyCanonicalRecoveryRuntime(client)
       .run(canonicalRecoveryInput());
     expect(result.responseBytes.toString("utf8")).toBe(outputText);
@@ -199,38 +157,28 @@ const runtimeInput = () => ({
   signal: new AbortController().signal,
 });
 
-const fakeClient = (
-  output: Record<string, unknown>,
-  selectedModel = "gpt-5.6-sol",
-  resultPatch: Readonly<Record<string, unknown>> = {},
-) => ({
+const fakeClient = (output: Record<string, unknown>, selectedModel = "gpt-5.6-sol") => ({
   runTask: jest.fn(async () => ({
     status: "completed" as const,
     structuredOutput: output,
     warnings: [],
-    usage: {
-      inputTokens: 120, outputTokens: 30, totalTokens: 150,
-      estimatedCostUsd: 0,
-    },
-    durationMs: 25,
     executionAttestation: {
       schemaVersion: 1 as const,
       requestId: "daily",
-      purpose: "social_monitor.reader_summary.generate.v2",
+      purpose: "social_monitor.reader_summary.generate",
       canonicalRequestSha256: "a".repeat(64),
       provider: "codex" as const,
       model: selectedModel,
-      reasoningEffort: "high",
+      reasoningEffort: "xhigh",
       runtimeEngine: "subscription-runtime-cli" as const,
       runtimePackageVersion: "1.2.3",
       launcherSha256: "b".repeat(64),
       selectedOutputKind: "structured_output" as const,
       selectedOutputSha256: canonicalJsonSha256(output),
     },
-    ...resultPatch,
   })),
   checkHealth: jest.fn(),
-}) as unknown as jest.Mocked<AgentRuntimeClientPort>;
+}) satisfies jest.Mocked<AgentRuntimeClientPort>;
 
 const canonicalRecoveryInput = () => ({
   ...scope,
@@ -309,7 +257,7 @@ const canonicalRecoveryClient = (outputText: string, selectedOutputSha256 = hash
     },
   })),
   checkHealth: jest.fn(),
-}) as unknown as jest.Mocked<AgentRuntimeClientPort>;
+}) satisfies jest.Mocked<AgentRuntimeClientPort>;
 
 const hash = (value: string): string => createHash("sha256")
   .update(value, "utf8")

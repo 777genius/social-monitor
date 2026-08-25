@@ -45,37 +45,22 @@ class _ReadCard extends StatelessWidget {
       includeRank: includeRankMetric,
     ).isNotEmpty;
     final showSeparateLeading = showLeadingRank;
-    final titleLink = Semantics(
-      link: url != null,
-      label: url == null
-          ? null
-          : readerSummaryUrlActionSemantics(
-              'brief-read',
-              readerSummaryTopPostIdentity(read),
-            ),
-      child: InkWell(
-        key: url == null
-            ? null
-            : readerSummaryUrlActionKey(
-                'brief-read',
-                readerSummaryTopPostIdentity(read),
-              ),
-        onTap: url == null ? null : () => onOpenUrl(url),
-        child: Text(
-          read.title,
-          maxLines: compact ? 1 : (featured ? 3 : 2),
-          overflow: TextOverflow.ellipsis,
-          style:
-              (featured
-                      ? Theme.of(context).textTheme.titleMedium
-                      : Theme.of(context).textTheme.titleSmall)
-                  ?.copyWith(
-                    color: Theme.of(context).colorScheme.primary,
-                    fontWeight: FontWeight.w900,
-                    decoration: TextDecoration.underline,
-                    letterSpacing: 0,
-                  ),
-        ),
+    final titleLink = InkWell(
+      onTap: url == null ? null : () => onOpenUrl(url),
+      child: Text(
+        read.title,
+        maxLines: compact ? 1 : (featured ? 3 : 2),
+        overflow: TextOverflow.ellipsis,
+        style:
+            (featured
+                    ? Theme.of(context).textTheme.titleMedium
+                    : Theme.of(context).textTheme.titleSmall)
+                ?.copyWith(
+                  color: Theme.of(context).colorScheme.primary,
+                  fontWeight: FontWeight.w900,
+                  decoration: TextDecoration.underline,
+                  letterSpacing: 0,
+                ),
       ),
     );
     final contentPadding = compact

@@ -16,8 +16,6 @@ void main() {
         content: readerSummaryContentApiDto(
           topReads: const [
             TopReadApiDto(
-              storyClusterId: 'story:openai-product-update',
-              cardKind: 'curated_top_read',
               title: 'OpenAI product update',
               providerKey: 'x-twitter',
               reason: 'Official product announcement.',

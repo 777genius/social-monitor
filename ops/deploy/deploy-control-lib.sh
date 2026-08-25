@@ -883,6 +883,18 @@ deploy_frontend() {
 
 deploy_release() {
   local sha=$1 atomic_state
+  load_deploy_control_bridge_library
+  exec 9>"$DEPLOY_LOCK"
+  flock -w 3600 9 || fail 'timed out waiting for deployment lock'
+  exec 8>"$POSTGRES_ADMISSION_LOCK"
+  acquire_postgres_admission_with_daily_priority 8
+  fetch_main
+  validate_main_commit "$sha"
+  if declare -F production_control_bridge_completed_noop >/dev/null && \
+     production_control_bridge_completed_noop "$sha"; then
+    return 0
+  fi
+  verify_production_control_bridge_pre_mutation_state "$sha"
   if postgres_pool_atomic_legacy_state; then
     deploy_postgres_pool_atomic_control_bootstrap "$sha" || \
       fail 'atomic PostgreSQL bootstrap loader failed'
@@ -892,13 +904,6 @@ deploy_release() {
     ((atomic_state == 1)) || \
       fail 'PostgreSQL atomic repair marker state is invalid'
   fi
-  load_deploy_control_bridge_library
-  exec 9>"$DEPLOY_LOCK"
-  flock -w 3600 9 || fail 'timed out waiting for deployment lock'
-  exec 8>"$POSTGRES_ADMISSION_LOCK"
-  acquire_postgres_admission_with_daily_priority 8
-  fetch_main
-  validate_main_commit "$sha"
   install -d -m 0755 "$STATE" "$STAGING" "$RELEASES"
   local current
   current=$(git -C "$REPO" rev-parse HEAD)

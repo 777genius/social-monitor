@@ -3,7 +3,6 @@ import type {
   ReaderSummaryDailyClaimResult,
   ReaderSummaryDailyExecutionCursorPort,
   ReaderSummaryDailyExecutionWork,
-  ReaderSummaryDailyModelTelemetry,
 } from "@social-monitor/summary/ports/reader-summary-daily-execution-cursor.port";
 
 import { buildReaderSummaryDailyModelJobReceipt } from "./reader-summary-daily-model-job-receipt";
@@ -24,7 +23,6 @@ export interface ReaderSummaryDailySubscriptionRuntime {
   }): Promise<{
     readonly responseBytes: Buffer;
     readonly executionAttestation: Readonly<Record<string, unknown>>;
-    readonly modelTelemetry: ReaderSummaryDailyModelTelemetry;
   }>;
 }
 
@@ -46,7 +44,6 @@ type ReaderSummaryDailyCompletedResult = Readonly<{
   requestedUtcDate: string;
   responseBytes: Buffer;
   receiptBytes: Buffer;
-  publication: ReaderSummaryDailyCanonicalPublication;
 }>;
 
 export type ReaderSummaryDailyTerminalResult =
@@ -86,12 +83,8 @@ export class ReaderSummaryDailyTerminalRunner {
     });
     if (work.modelJobState === "COMPLETED") {
       const replay = completedReplay(work);
-      const publication = await this.publishAndAdvance(
-        work,
-        replay.responseBytes,
-        replay.receiptBytes,
-      );
-      return { ...replay, publication };
+      await this.publishAndAdvance(work, replay.responseBytes, replay.receiptBytes);
+      return replay;
     }
     if (work.modelJobState !== "RESERVED") {
       return { kind: "failed_ambiguous", requestedUtcDate: work.requestedUtcDate };
@@ -139,7 +132,6 @@ export class ReaderSummaryDailyTerminalRunner {
         modelJob: work.modelJob,
         responseBytes: execution.responseBytes,
         attestation: execution.executionAttestation,
-        modelTelemetry: execution.modelTelemetry,
       });
       await this.dependencies.cursor.complete({
         ...leaseInput(work, this.dependencies.now().toISOString()),
@@ -151,9 +143,8 @@ export class ReaderSummaryDailyTerminalRunner {
         attestationSha256: receipt.attestationSha256,
         receiptBytes: receipt.receiptBytes,
         receiptSha256: receipt.receiptSha256,
-        modelTelemetry: receipt.modelTelemetry,
       });
-      const publication = await this.publishAndAdvance(
+      await this.publishAndAdvance(
         work,
         receipt.responseBytes,
         receipt.receiptBytes,
@@ -164,7 +155,6 @@ export class ReaderSummaryDailyTerminalRunner {
         requestedUtcDate: work.requestedUtcDate,
         responseBytes: receipt.responseBytes,
         receiptBytes: receipt.receiptBytes,
-        publication,
       };
     } finally {
       stopRenewals();
@@ -176,7 +166,7 @@ export class ReaderSummaryDailyTerminalRunner {
     work: ReaderSummaryDailyExecutionWork,
     responseBytes: Buffer,
     receiptBytes: Buffer,
-  ): Promise<ReaderSummaryDailyCanonicalPublication> {
+  ): Promise<void> {
     const publication = await this.dependencies.publication.publish({
       work,
       responseBytes,
@@ -191,13 +181,12 @@ export class ReaderSummaryDailyTerminalRunner {
       finalizedAt: this.dependencies.now().toISOString(),
       publication,
     });
-    return publication;
   }
 }
 
 const completedReplay = (
   work: ReaderSummaryDailyExecutionWork,
-): Omit<ReaderSummaryDailyCompletedResult, "publication"> => {
+): ReaderSummaryDailyCompletedResult => {
   if (work.completedResponseBytes === undefined || work.completedReceiptBytes === undefined) {
     throw new Error("Daily COMPLETED job is missing exact replay bytes");
   }

@@ -12,7 +12,6 @@ class _TopPostRow extends StatefulWidget {
     required this.onOpenUrl,
     this.dense = false,
     this.reservePreviewSpace = false,
-    this.showSignal = true,
   });
 
   final int index;
@@ -29,7 +28,6 @@ class _TopPostRow extends StatefulWidget {
   final ValueChanged<String> onOpenUrl;
   final bool dense;
   final bool reservePreviewSpace;
-  final bool showSignal;
 
   @override
   State<_TopPostRow> createState() => _TopPostRowState();
@@ -86,38 +84,18 @@ class _TopPostRowState extends State<_TopPostRow> {
       child: Focus(
         focusNode: _focusNode,
         onFocusChange: _setFocused,
-        child: Semantics(
-          container: true,
-          explicitChildNodes: true,
-          link: url != null,
-          label: url != null
-              ? readerSummaryUrlActionSemantics(
-                  'post-card',
-                  readerSummaryTopPostIdentity(widget.item),
-                )
-              : widget.item.cardKind == ReaderSummaryCardKind.relatedTopic
-              ? 'Related topic: ${widget.item.title}'
-              : null,
-          child: Material(
-            key: ValueKey(
-              'reader-summary-top-post-row-'
-              '${readerSummaryTopPostIdentity(widget.item)}',
-            ),
-            color: widget.index.isOdd ? stripeColor : Colors.transparent,
-            child: InkWell(
-              key: readerSummaryUrlActionKey(
-                'post-card',
-                readerSummaryTopPostIdentity(widget.item),
+        child: Material(
+          key: ValueKey('reader-summary-top-post-${widget.index}'),
+          color: widget.index.isOdd ? stripeColor : Colors.transparent,
+          child: InkWell(
+            onTap: url == null ? null : () => widget.onOpenUrl(url),
+            hoverColor: colorScheme.primary.withValues(alpha: 0.03),
+            child: Padding(
+              padding: EdgeInsets.symmetric(
+                horizontal: AppSpacing.sm,
+                vertical: widget.dense ? AppSpacing.sm + 2 : AppSpacing.md,
               ),
-              onTap: url == null ? null : () => widget.onOpenUrl(url),
-              hoverColor: colorScheme.primary.withValues(alpha: 0.03),
-              child: Padding(
-                padding: EdgeInsets.symmetric(
-                  horizontal: AppSpacing.sm,
-                  vertical: widget.dense ? AppSpacing.sm + 2 : AppSpacing.md,
-                ),
-                child: _buildRow(context, metrics),
-              ),
+              child: _buildRow(context, metrics),
             ),
           ),
         ),
@@ -173,7 +151,6 @@ class _TopPostRowState extends State<_TopPostRow> {
         final relevance = _TopPostRelevanceColumn(
           item: widget.item,
           supportSignal: supportSignal,
-          showSignal: widget.showSignal,
         );
         final menu = _TopPostMenu(
           item: widget.item,
@@ -369,6 +346,47 @@ class _TopPostSourceColumn extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _TopPostProviderTile extends StatelessWidget {
+  const _TopPostProviderTile({required this.providerKey});
+
+  final String providerKey;
+
+  @override
+  Widget build(BuildContext context) {
+    final normalized = providerKey.trim().toLowerCase();
+    final isDarkTile =
+        normalized == 'x-twitter' ||
+        normalized == 'twitter' ||
+        normalized.startsWith('github');
+    if (!isDarkTile) {
+      return SizedBox.square(
+        dimension: 34,
+        child: Center(
+          child: ReaderSummaryProviderLogo(providerKey: providerKey, size: 30),
+        ),
+      );
+    }
+    final theme = Theme.of(context);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: AppColors.chartInk,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: SizedBox.square(
+        dimension: 34,
+        child: Center(
+          child: Theme(
+            data: theme.copyWith(
+              colorScheme: theme.colorScheme.copyWith(onSurface: Colors.white),
+            ),
+            child: ReaderSummaryProviderLogo(providerKey: providerKey),
+          ),
+        ),
+      ),
     );
   }
 }

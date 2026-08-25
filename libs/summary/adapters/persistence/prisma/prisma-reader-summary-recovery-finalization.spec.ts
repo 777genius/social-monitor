@@ -279,8 +279,7 @@ describe("PrismaReaderSummaryRecoveryFinalization", () => {
       "publication artifact authority is invalid",
     );
     expect(queryRaw).toHaveBeenCalledTimes(1);
-    const firstCall = queryRaw.mock.calls[0] as readonly unknown[] | undefined;
-    expect(String(firstCall?.[0])).toContain(
+    expect(String(queryRaw.mock.calls[0]?.[0])).toContain(
       "finalize_reader_summary_recovery",
     );
   });

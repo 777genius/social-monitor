@@ -5,8 +5,6 @@ import 'package:social_monitor_summaries/src/infrastructure/mappers/generated_su
 
 import 'generated_reader_summary_topic_map_fixture.dart';
 
-part 'generated_summary_rest_mapper_test_fixtures.dart';
-
 void main() {
   test('maps generated summary artifact into feature DTO', () {
     const mapper = GeneratedSummaryRestMapper();
@@ -34,7 +32,7 @@ void main() {
   });
 
   test(
-    'maps historical ReaderSummary payload without fabricating usage totals',
+    'maps generated ReaderSummary reader payload into reader summary DTO',
     () {
       const mapper = GeneratedSummaryRestMapper();
 
@@ -60,14 +58,6 @@ void main() {
       expect(
         readerSummary.content.selectedPosts.single.canonicalUrl,
         contains('github.com/calesthio/OpenMontage'),
-      );
-      expect(
-        readerSummary.content.selectedPosts.single.cardKind,
-        'supplemental_trend',
-      );
-      expect(
-        readerSummary.content.selectedPosts.single.storyClusterId,
-        'supplemental:github-trending-page:feed-openmontage',
       );
       expect(
         readerSummary.content.topReads.single.providerName,
@@ -207,6 +197,7 @@ generated.ReaderSummaryArtifactResponseDto _readerSummaryArtifact() {
       rationale: 'Enough evidence for a readerSummary.',
       score: 0.7,
     ),
+    contextArtifacts: const [],
     coverage: generated.ReaderSummaryCoverageSummaryDto(
       citationCount: 7,
       collectedFeedItemCount: 20,
@@ -288,12 +279,7 @@ generated.ReaderSummaryArtifactResponseDto _readerSummaryArtifact() {
               .watchRepository,
           reason: '#1 on github.com/trending today.',
           matchedInterestIds: ['ai-tools'],
-          matchedRules: [
-            'interest:ai-tools',
-            'provider:github-trending-page',
-            'reader-card-kind:supplemental_trend',
-            'reader-story-cluster:supplemental:github-trending-page:feed-openmontage',
-          ],
+          matchedRules: ['interest:ai-tools', 'provider:github-trending-page'],
           signalScore: 1,
           confidence: generated.ReaderSummaryReaderItemConfidenceDto(
             level:
@@ -332,8 +318,6 @@ generated.ReaderSummaryArtifactResponseDto _readerSummaryArtifact() {
               matchedRules: [
                 'interest:ai-tools',
                 'provider:github-trending-page',
-                'reader-card-kind:curated_top_read',
-                'reader-story-cluster:story:openmontage',
               ],
               signalScore: 1,
               confidence: generated.ReaderSummaryReaderItemConfidenceDto(
@@ -381,12 +365,7 @@ generated.ReaderSummaryArtifactResponseDto _readerSummaryArtifact() {
               .watchRepository,
           reason: '#1 on github.com/trending today.',
           matchedInterestIds: ['ai-tools'],
-          matchedRules: [
-            'interest:ai-tools',
-            'provider:github-trending-page',
-            'reader-card-kind:curated_top_read',
-            'reader-story-cluster:story:openmontage',
-          ],
+          matchedRules: ['interest:ai-tools', 'provider:github-trending-page'],
           signalScore: 1,
           confidence: generated.ReaderSummaryReaderItemConfidenceDto(
             level:
@@ -478,8 +457,69 @@ generated.ReaderSummaryArtifactResponseDto _readerSummaryArtifact() {
     ],
     usage: const generated.ReaderSummaryUsageDto(
       estimatedCostUsd: 0,
-      inputTokens: null,
-      outputTokens: null,
+      inputTokens: 100,
+      outputTokens: 40,
+    ),
+    workspaceId: 'workspace-1',
+  );
+}
+
+generated.SummaryArtifactResponseDto _summaryArtifact() {
+  final now = DateTime.utc(2026, 6, 23, 9, 50);
+  return generated.SummaryArtifactResponseDto(
+    citations: const [
+      generated.SummaryCitationViewDto(
+        canonicalUrl: 'https://github.com/openai/codex',
+        citationId: 'c1',
+        feedItemId: 'feed-item-1',
+        field: generated.SummaryCitationViewDtoFieldField.title,
+        label: '[1]',
+        providerKey: 'github',
+        sourceItemId: 'source-item-1',
+      ),
+    ],
+    confidence: const generated.SummaryConfidenceDto(
+      level: generated.SummaryConfidenceDtoLevelLevel.medium,
+      rationale: 'Enough evidence for MVP summary',
+      score: 0.7,
+    ),
+    executiveSummary: 'Current executive summary uses 20 selected item(s).',
+    freshness: generated.SummaryFreshnessDto(
+      checkedAt: now,
+      status: generated.SummaryFreshnessDtoStatusStatus.fresh,
+    ),
+    headline: 'AI library trend pulse',
+    keyPoints: const [
+      generated.SummaryKeyPointDto(
+        citationIds: ['c1'],
+        claim: 'LangGraph release velocity increased.',
+      ),
+    ],
+    lineage: const generated.SummaryLineageDto(
+      evalDatasetVersion: 'summary.eval.mvp.v1',
+      modelVersion: 'deterministic-local',
+      promptVersion: 'summary.prompt.v1',
+      providerVersion: 'deterministic-local',
+      rulesVersion: 'summary.rules.policy.v1',
+      schemaVersion: 'summary.artifact.v1',
+    ),
+    qualityFlags: const [],
+    risksAndUnknowns: const [],
+    schemaVersion: 'summary.artifact.v1',
+    sourceHighlights: const ['GitHub issues are the dominant source.'],
+    sourceWindow: generated.SummarySourceWindowDto(
+      endedAt: now,
+      selectedFeedItemIds: const ['feed-item-1'],
+      startedAt: now.subtract(const Duration(minutes: 30)),
+      windowId: 'window-1',
+    ),
+    summaryId: 'summary-1',
+    tenantId: 'tenant-1',
+    interestId: 'topic-1',
+    usage: const generated.SummaryUsageDto(
+      estimatedCostUsd: 0,
+      inputTokens: 100,
+      outputTokens: 40,
     ),
     workspaceId: 'workspace-1',
   );

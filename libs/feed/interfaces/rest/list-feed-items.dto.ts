@@ -9,11 +9,8 @@ export class FeedMetricDeltaDto {
   @ApiProperty()
   declare readonly window: string;
 
-  @ApiPropertyOptional()
-  declare readonly value?: number;
-
-  @ApiPropertyOptional({ enum: ['observed', 'missing', 'malformed'] })
-  declare readonly observation?: 'observed' | 'missing' | 'malformed';
+  @ApiProperty()
+  declare readonly value: number;
 }
 
 export class RedditPostProviderMetricsDto {
@@ -209,11 +206,11 @@ export class XPostProviderMetricsDto {
   @ApiProperty({ enum: ['post'] })
   declare readonly contentType: 'post';
 
-  @ApiPropertyOptional()
-  declare readonly likes?: number;
+  @ApiProperty()
+  declare readonly likes: number;
 
-  @ApiPropertyOptional()
-  declare readonly reposts?: number;
+  @ApiProperty()
+  declare readonly reposts: number;
 
   @ApiProperty()
   declare readonly replies: number;
