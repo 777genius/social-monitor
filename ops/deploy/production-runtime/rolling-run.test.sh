@@ -14,6 +14,7 @@ mkdir -p \
   "$TEST_ROOT/runtime/x-collector" \
   "$TEST_ROOT/secrets" \
   "$TEST_ROOT/secrets/db" \
+  "$TEST_ROOT/artifacts/evals" \
   "$TEST_ROOT/artifacts/rolling-summary"
 sha=1111111111111111111111111111111111111111
 printf '%s\n' "$sha" > "$TEST_ROOT/control/postgres-runtime-current/READY"
@@ -29,6 +30,9 @@ fake_agent_restart=$REPO/ops/deploy/production-runtime/test-fixtures/rolling-run
 refresh=$TEST_ROOT/control/refresh-codex-auth.sh
 ln -s /usr/bin/true "$refresh"
 export SOCIAL_MONITOR_ROLLING_RUN_TEST_LOG=$TEST_ROOT/docker.log
+prior_alias=$TEST_ROOT/artifacts/evals/reader-summary-clean-real-day-collection.v1.json
+printf '%s\n' '{"run":{"collectionDate":"2026-08-14"},"sentinel":"prior-day"}' > "$prior_alias"
+prior_alias_bytes=$(sha256sum "$prior_alias" | cut -d' ' -f1)
 
 SOCIAL_MONITOR_ROLLING_RUN_TEST_MODE=1 \
 SOCIAL_MONITOR_ROLLING_RUN_TEST_ROOT=$TEST_ROOT \
@@ -42,6 +46,14 @@ grep -F -- '--profile daily run --rm --no-deps' "$TEST_ROOT/docker.log" >/dev/nu
 grep -F -- '-e ROLLING_COLLECTION_DATE=2026-08-15' "$TEST_ROOT/docker.log" >/dev/null
 grep -F -- '-e ROLLING_AUTH_READY=true' "$TEST_ROOT/docker.log" >/dev/null
 grep -F -- 'daily-runner sh -lc' "$TEST_ROOT/docker.log" >/dev/null
+grep -F -- '--exact-date-artifact-directory "$collection_directory"' "$RUNNER" >/dev/null
+grep -F -- 'reader-summary-clean-real-day-collection.$ROLLING_COLLECTION_DATE.v1.json' "$RUNNER" >/dev/null
+! grep -F -- 'collection_source=ops/evals/reader-summary-clean-real-day-collection.v1.json' "$RUNNER" >/dev/null
+[[ $(sha256sum "$prior_alias" | cut -d' ' -f1) == "$prior_alias_bytes" ]]
+exact_collection=$TEST_ROOT/artifacts/rolling-summary/collections/reader-summary-clean-real-day-collection.2026-08-15.v1.json
+node "$REPO/ops/deploy/production-runtime/rolling-summary-receipt.mjs" \
+  validate-collection "$exact_collection" 2026-08-15
+grep -Fx 'collection-created 2026-08-15' "$TEST_ROOT/docker.log" >/dev/null
 grep -F -- "--providers \"\$required_providers\"" "$RUNNER" >/dev/null
 grep -F -- 'npm run capture:durable-reader-summary' "$RUNNER" >/dev/null
 grep -F -- 'DURABLE_READER_SUMMARY_MODEL=agent-runtime' "$RUNNER" >/dev/null
@@ -92,6 +104,7 @@ SOCIAL_MONITOR_ROLLING_RUN_TEST_FLOCK=$fake_flock \
 SOCIAL_MONITOR_ROLLING_RUN_TEST_NOW=2026-08-15T16:15:00.000Z \
 SOCIAL_MONITOR_ROLLING_RUNTIME=containerd \
   bash "$RUNNER"
+grep -Fx 'collection-reused 2026-08-15' "$TEST_ROOT/docker.log" >/dev/null
 grep -F -- '-n moby run --rm --net-host' "$TEST_ROOT/docker.log" >/dev/null
 grep -F -- '--env ROLLING_COLLECTION_DATE=2026-08-15' "$TEST_ROOT/docker.log" >/dev/null
 grep -F -- '--env ROLLING_AUTH_READY=true' "$TEST_ROOT/docker.log" >/dev/null

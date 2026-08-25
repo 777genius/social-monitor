@@ -121,18 +121,20 @@ container_body=$(cat <<'ROLLING_CONTAINER_BODY'
     set -eu
 
     artifact_root=/var/lib/social-monitor/artifacts/rolling-summary
-    collection_source=ops/evals/reader-summary-clean-real-day-collection.v1.json
+    collection_directory="$artifact_root/collections"
+    collection_source="$collection_directory/reader-summary-clean-real-day-collection.$ROLLING_COLLECTION_DATE.v1.json"
     collection_artifact="$artifact_root/rolling-summary.$ROLLING_RUN_ID.collection.v1.json"
     evidence_path="$artifact_root/rolling-summary.$ROLLING_RUN_ID.evidence.v1.json"
     frontend_path="$artifact_root/rolling-summary.$ROLLING_RUN_ID.frontend.v1.json"
     period_started_at="${ROLLING_COLLECTION_DATE}T00:00:00.000Z"
     required_providers=github-trending-page,hacker-news,reddit,rss,x-twitter
 
-    mkdir -p "$artifact_root"
+    mkdir -p "$collection_directory"
     collection_exit=0
     npm run run:reader-summary-clean-real-day-collection -- \
       --update \
       --date "$ROLLING_COLLECTION_DATE" \
+      --exact-date-artifact-directory "$collection_directory" \
       --providers "$required_providers" || collection_exit=$?
 
     node ops/deploy/production-runtime/rolling-summary-receipt.mjs \
