@@ -240,7 +240,7 @@ cmp -s "$db_crash_case/state.before" "$db_state"
 [[ $(wc -l < "$model_calls") -eq 1 ]]
 
 proof_first_case=$FIXTURE/proof-first-sigkill
-CURRENT_CASE=proof-first-sigkill
+CURRENT_CASE='proof-first-sigkill'
 prepare_case "$proof_first_case"
 ALLOW_EXPECTED_FAILURE=1 run_daily \
   "$proof_first_case" 30000 success after-proof-before-report \
@@ -522,7 +522,7 @@ cmp -s "$unavailable_state" "$unavailable_case/public/latest-state.v1.json"
 [[ ! -e $unavailable_case/public/reader-summary-production-day-run.$EXPECTED_DATE.publication-proof.v1.json ]]
 
 recovery_case=$FIXTURE/state-before-latest-sigkill
-CURRENT_CASE=state-before-latest-sigkill
+CURRENT_CASE='state-before-latest-sigkill'
 prepare_case "$recovery_case"
 ALLOW_EXPECTED_FAILURE=1 run_daily \
   "$recovery_case" 30000 partial after-state-before-latest \
