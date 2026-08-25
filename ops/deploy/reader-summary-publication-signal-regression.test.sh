@@ -32,12 +32,16 @@ RELEASE_SHA=0123456789abcdef0123456789abcdef01234567
 
 CURRENT_CASE=diagnostic-routing
 diagnostic_probe=$FIXTURE/diagnostic-probe
+diagnostic_stdout=$FIXTURE/diagnostic-stdout
 diagnostic_redirected=$FIXTURE/diagnostic-redirected
-report_unexpected_failure 97 123 \
-  3>"$diagnostic_probe" 2>"$diagnostic_redirected"
-grep -Fx \
-  'publication signal regression failed: case=diagnostic-routing line=123 status=97' \
+set +e
+(false >"$diagnostic_stdout" 2>"$diagnostic_redirected") 3>"$diagnostic_probe"
+diagnostic_status=$?
+set -e
+((diagnostic_status != 0))
+grep -F 'publication signal regression failed: case=diagnostic-routing line=' \
   "$diagnostic_probe" >/dev/null
+[[ ! -s $diagnostic_stdout ]]
 [[ ! -s $diagnostic_redirected ]]
 CURRENT_CASE=static-contract
 
