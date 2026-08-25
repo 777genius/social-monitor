@@ -121,25 +121,42 @@ container_body=$(cat <<'ROLLING_CONTAINER_BODY'
     set -eu
 
     artifact_root=/var/lib/social-monitor/artifacts/rolling-summary
-    collection_source=ops/evals/reader-summary-clean-real-day-collection.v1.json
+    collection_directory="$artifact_root/collections"
+    collection_staging_directory="$collection_directory/runs/$ROLLING_RUN_ID"
+    collection_source="$collection_directory/reader-summary-clean-real-day-collection.$ROLLING_COLLECTION_DATE.v1.json"
+    collection_staging_source="$collection_staging_directory/reader-summary-clean-real-day-collection.$ROLLING_COLLECTION_DATE.v1.json"
     collection_artifact="$artifact_root/rolling-summary.$ROLLING_RUN_ID.collection.v1.json"
     evidence_path="$artifact_root/rolling-summary.$ROLLING_RUN_ID.evidence.v1.json"
     frontend_path="$artifact_root/rolling-summary.$ROLLING_RUN_ID.frontend.v1.json"
     period_started_at="${ROLLING_COLLECTION_DATE}T00:00:00.000Z"
     required_providers=github-trending-page,hacker-news,reddit,rss,x-twitter
 
-    mkdir -p "$artifact_root"
+    mkdir -p "$collection_staging_directory"
+    rm -f "$collection_staging_source" \
+      "$collection_source.next.$ROLLING_RUN_ID" \
+      "$collection_artifact.next"
     collection_exit=0
     npm run run:reader-summary-clean-real-day-collection -- \
       --update \
       --date "$ROLLING_COLLECTION_DATE" \
+      --exact-date-artifact-directory "$collection_staging_directory" \
       --providers "$required_providers" || collection_exit=$?
 
+    if [ "$collection_exit" -ne 0 ]; then
+      echo "rolling collection failed for current pass $ROLLING_RUN_ID (exit $collection_exit)" >&2
+      exit "$collection_exit"
+    fi
+
     node ops/deploy/production-runtime/rolling-summary-receipt.mjs \
-      validate-collection "$collection_source" "$ROLLING_COLLECTION_DATE"
-    cp "$collection_source" "$collection_artifact.next"
+      validate-collection "$collection_staging_source" "$ROLLING_COLLECTION_DATE"
+    cp "$collection_staging_source" "$collection_source.next.$ROLLING_RUN_ID"
+    chmod 0444 "$collection_source.next.$ROLLING_RUN_ID"
+    mv "$collection_source.next.$ROLLING_RUN_ID" "$collection_source"
+    cp "$collection_staging_source" "$collection_artifact.next"
     chmod 0444 "$collection_artifact.next"
     mv "$collection_artifact.next" "$collection_artifact"
+    rm -f "$collection_staging_source"
+    rmdir "$collection_staging_directory" 2>/dev/null || true
     rolling_observation_cutoff=$(date -u +%Y-%m-%dT%H:%M:%S.000Z)
 
     if [ "$ROLLING_AUTH_READY" != true ]; then

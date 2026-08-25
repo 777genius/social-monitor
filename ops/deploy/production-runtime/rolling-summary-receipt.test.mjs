@@ -14,6 +14,7 @@ const collectionPath = join(directory, "collection.json");
 const evidencePath = join(directory, "evidence.json");
 const receiptPath = join(directory, "receipt.json");
 const invalidReceiptPath = join(directory, "invalid-receipt.json");
+const priorCollectionPath = join(directory, "collection.2026-08-14.json");
 
 try {
   writeFileSync(
@@ -48,8 +49,26 @@ try {
       redaction: { secretsIncluded: false },
     }),
   );
+  writeFileSync(
+    priorCollectionPath,
+    JSON.stringify({
+      ...JSON.parse(readFileSync(collectionPath, "utf8")),
+      run: { collectionDate: "2026-08-14" },
+    }),
+  );
 
   run("validate-collection", collectionPath, date);
+  runFailure("validate-collection", priorCollectionPath, date);
+  const nonterminalCollection = JSON.parse(
+    readFileSync(collectionPath, "utf8"),
+  );
+  nonterminalCollection.scans[0].status = "running";
+  const nonterminalCollectionPath = join(directory, "collection.running.json");
+  writeFileSync(
+    nonterminalCollectionPath,
+    JSON.stringify(nonterminalCollection),
+  );
+  runFailure("validate-collection", nonterminalCollectionPath, date);
   run(
     "write-receipt",
     receiptPath,
@@ -58,9 +77,29 @@ try {
     runId,
     date,
     "2026-08-15T08:15:00.000Z",
-    "1",
+    "0",
   );
   run("validate-receipt", receiptPath, runId, date);
+  runFailure(
+    "write-receipt",
+    join(directory, "failed-collection-receipt.json"),
+    evidencePath,
+    collectionPath,
+    runId,
+    date,
+    "2026-08-15T12:15:00.000Z",
+    "1",
+  );
+  runFailure(
+    "write-receipt",
+    join(directory, "stale-receipt.json"),
+    evidencePath,
+    priorCollectionPath,
+    runId,
+    date,
+    "2026-08-15T08:15:00.000Z",
+    "0",
+  );
 
   const receipt = JSON.parse(readFileSync(receiptPath, "utf8"));
   assert.equal(receipt.collection.finalDayQualityGatePassed, false);

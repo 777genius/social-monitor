@@ -107,6 +107,7 @@ const {
   targetCollectionDate,
   requestedProviderKeys,
   outputPath,
+  exactDateArtifact,
   targetPublishedWindow,
   targetPublishedWindowConfig,
   maintenanceScope,
@@ -151,6 +152,7 @@ async function main(): Promise<void> {
     writeCollectionArtifactAtomically({
       path: outputPath,
       report,
+      requireExactDatePath: exactDateArtifact,
       ...(maintenanceScope === undefined
         ? {}
         : { expectedScope: maintenanceScope }),
@@ -264,6 +266,7 @@ async function tryRunCollection(): Promise<
       ? readExactDayCollectionArtifact({
           path: outputPath,
           collectionDate: targetCollectionDate,
+          requireExactDatePath: exactDateArtifact,
           ...(maintenanceScope === undefined
             ? {}
             : { expectedScope: maintenanceScope }),
@@ -871,14 +874,17 @@ function validateExistingReport(): void {
   }
 
   const report =
-    maintenanceScope === undefined
+    maintenanceScope === undefined && !exactDateArtifact
       ? (JSON.parse(
           readFileSync(outputPath, "utf8"),
         ) as CleanRealDayCollectionReport)
       : readExactDayCollectionArtifact({
           path: outputPath,
           collectionDate: targetCollectionDate,
-          expectedScope: maintenanceScope,
+          requireExactDatePath: exactDateArtifact,
+          ...(maintenanceScope === undefined
+            ? {}
+            : { expectedScope: maintenanceScope }),
         });
   if (report === null)
     throw new Error(

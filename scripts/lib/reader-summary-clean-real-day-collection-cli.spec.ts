@@ -17,6 +17,26 @@ describe("clean real-day collection CLI", () => {
     );
     expect(cli.targetDiscoveryScopePredicate).toBe("");
     expect(cli.targetDiscoveryScopeValues).toEqual([]);
+    expect(cli.exactDateArtifact).toBe(false);
+  });
+
+  it("binds scheduled collection output to the requested date without maintenance scope", () => {
+    const cli = withArgs(
+      [
+        "--update",
+        "--date",
+        "2026-08-25",
+        "--exact-date-artifact-directory",
+        "/durable/rolling-summary/collections",
+      ],
+      () => readCli(),
+    );
+
+    expect(cli.outputPath).toBe(
+      "/durable/rolling-summary/collections/reader-summary-clean-real-day-collection.2026-08-25.v1.json",
+    );
+    expect(cli.exactDateArtifact).toBe(true);
+    expect(cli.maintenanceScope).toBeUndefined();
   });
 
   it("requires the canonical scope and exact per-day artifact for bounded maintenance", () => {
