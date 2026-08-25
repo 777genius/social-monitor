@@ -9,6 +9,7 @@ import {
   assertReaderSummaryDailyCanonicalPublicationFixtureContract,
   assertReaderSummaryDailyCheckerFixtureRoleContract,
   assertReaderSummaryDailyCheckerRoleBootstrapContract,
+  assertReaderSummaryDailyProductionOwnerTopologyFixtureContract,
   assertReaderSummaryDailyExecutionCursorPostgresContract,
   assertReaderSummaryDailyActivationMigrationContract,
   assertReaderSummaryDailyMigrationContract,
@@ -17,6 +18,8 @@ import {
   executePostgresMigrationWithDiagnostics,
 } from
   "./lib/postgres-migration-diagnostics";
+import { grantAndAssertReaderSummaryDailyProductionOwnerTopology } from
+  "./lib/reader-summary-daily-production-owner-topology-postgres";
 
 const terminalRole = "social_monitor_reader_summary_daily_terminal";
 const schemaOwnerRole = "social_monitor_public_schema_owner";
@@ -51,6 +54,9 @@ const checkerSource = readFileSync(
   "scripts/check-reader-summary-daily-execution-cursor-postgres.ts",
   "utf8",
 );
+const productionOwnerTopologyFixtureSource = readFileSync(
+  "scripts/lib/reader-summary-daily-production-owner-topology-postgres.ts", "utf8",
+);
 const serverUrl = requiredAdminUrl(process.env);
 const targetUrl = databaseUrl(serverUrl, databaseName);
 const server = new Pool({ connectionString: serverUrl, max: 1 });
@@ -71,6 +77,9 @@ const main = async (): Promise<void> => {
   );
   assertReaderSummaryDailyCheckerFixtureRoleContract(checkerSource);
   assertReaderSummaryDailyCheckerRoleBootstrapContract(checkerSource);
+  assertReaderSummaryDailyProductionOwnerTopologyFixtureContract(
+    productionOwnerTopologyFixtureSource,
+  );
   assertReaderSummaryDailyMigrationContract(migration);
   assertReaderSummaryDailyActivationMigrationContract(activationMigration);
   const version = await server.query<{ version: number }>(
@@ -236,9 +245,6 @@ const main = async (): Promise<void> => {
     await admin.query(`
       ALTER FUNCTION public.reject_reader_summary_daily_source_authority_mutation()
         OWNER TO ${quoteIdentifier(schemaOwnerRole)};
-      ALTER FUNCTION public.claim_reader_summary_daily_execution(
-        UUID, UUID, TEXT, DATE, TIMESTAMPTZ
-      ) OWNER TO ${quoteIdentifier(schemaOwnerRole)};
       ALTER FUNCTION public.renew_reader_summary_daily_execution_lease(
         UUID, UUID, DATE, TEXT, BIGINT, TIMESTAMPTZ
       ) OWNER TO ${quoteIdentifier(schemaOwnerRole)};
@@ -246,6 +252,7 @@ const main = async (): Promise<void> => {
         UUID, UUID, DATE, TEXT, BIGINT, TIMESTAMPTZ
       ) OWNER TO ${quoteIdentifier(schemaOwnerRole)};
     `);
+    await transferActiveClaimOwner(admin, firstPool, migrationAdminRole);
     const activationAclSchemaPrivileges = await admin.query<{
       publication_owner_has_usage: boolean;
       publication_owner_has_create: boolean;
@@ -276,6 +283,9 @@ const main = async (): Promise<void> => {
       false, "daily activation publication owner lost durable schema USAGE or retained CREATE");
     await admin.query("RESET ROLE");
     await admin.query(boundedMaintenanceMigration);
+    await grantAndAssertReaderSummaryDailyProductionOwnerTopology({
+      admin, migrationAdminRole, schemaOwnerRole,
+    });
     const { historicalScope, upgradeScopes } =
       await withSchemaOwnerFixtureRole(admin, async (fixtureAdmin) => ({
         historicalScope: await seedHistoricalCompletedDailyJob(fixtureAdmin),
@@ -330,7 +340,73 @@ const main = async (): Promise<void> => {
         WHERE tenant_id = $1 AND workspace_id = $2`,
       [upgradeScopes.reserved.tenantId, upgradeScopes.reserved.workspaceId]);
     });
+    await transferActiveClaimOwner(admin, firstPool, publicationOwnerRole);
+    let unexpectedOwnerFailure = "";
+    try {
+      await applyTelemetryMigrationAsMigrationAdmin(admin);
+    } catch (error) {
+      unexpectedOwnerFailure = error instanceof Error ? error.message : String(error);
+      await admin.query("ROLLBACK");
+    }
+    const unexpectedOwnerRollback = await admin.query<{
+      completion_function: string | null;
+      owner_has_create: boolean;
+    }>(`SELECT pg_catalog.to_regprocedure(
+          'public.complete_reader_summary_daily_model_job_v2(uuid,uuid,date,text,bigint,timestamptz,bytea,character,jsonb,bytea,character,bytea,character,bigint,bigint,bigint,text,bigint)'
+        )::TEXT AS completion_function,
+        pg_catalog.has_schema_privilege($1, 'public', 'CREATE')
+          AS owner_has_create`, [publicationOwnerRole]);
+    assert(unexpectedOwnerFailure.includes("daily active claim has unexpected owner") &&
+      unexpectedOwnerRollback.rows[0]?.completion_function === null &&
+      unexpectedOwnerRollback.rows[0]?.owner_has_create === false,
+    "unaccepted daily claim owner did not abort without durable migration effects");
+    await transferActiveClaimOwner(admin, firstPool, migrationAdminRole);
     await applyTelemetryMigrationAsMigrationAdmin(admin);
+    const rewrittenClaimProfiles = await admin.query<{
+      active_definition: string;
+      active_owner: string;
+      active_owner_has_create: boolean;
+      bounded_definition: string;
+      bounded_owner: string;
+      definer_has_create: boolean;
+    }>(`SELECT
+        pg_catalog.pg_get_functiondef(
+          'public.claim_reader_summary_daily_execution(uuid,uuid,text,date,timestamp with time zone)'::pg_catalog.regprocedure
+        ) AS active_definition,
+        pg_catalog.pg_get_userbyid(active_claim.proowner) AS active_owner,
+        pg_catalog.has_schema_privilege($1, 'public', 'CREATE')
+          AS active_owner_has_create,
+        pg_catalog.pg_get_functiondef(
+          'public.claim_reader_summary_daily_execution_bounded_maintenance(uuid,uuid,text,date,timestamp with time zone)'::pg_catalog.regprocedure
+        ) AS bounded_definition,
+        pg_catalog.pg_get_userbyid(bounded_claim.proowner) AS bounded_owner,
+        pg_catalog.has_schema_privilege($2, 'public', 'CREATE')
+          AS definer_has_create
+      FROM pg_catalog.pg_proc AS active_claim
+      CROSS JOIN pg_catalog.pg_proc AS bounded_claim
+      WHERE active_claim.oid =
+          'public.claim_reader_summary_daily_execution(uuid,uuid,text,date,timestamp with time zone)'::pg_catalog.regprocedure
+        AND bounded_claim.oid =
+          'public.claim_reader_summary_daily_execution_bounded_maintenance(uuid,uuid,text,date,timestamp with time zone)'::pg_catalog.regprocedure`,
+    [migrationAdminRole, definerRole]);
+    for (const [claim, definition] of [
+      ["active", rewrittenClaimProfiles.rows[0]?.active_definition],
+      ["bounded", rewrittenClaimProfiles.rows[0]?.bounded_definition],
+    ] as const) {
+      assert(definition?.includes("'reader-summary-daily:v2'") === true &&
+        definition.includes("'reader-summary-daily:v1'") === false &&
+        definition.split("'high'").length - 1 === 2 &&
+        definition.includes("'xhigh'") === false,
+      `${claim} daily claim was not rewritten from v1/xhigh to v2/high`);
+    }
+    assert(
+      rewrittenClaimProfiles.rows[0]?.active_owner === migrationAdminRole &&
+        rewrittenClaimProfiles.rows[0]?.bounded_owner === schemaOwnerRole &&
+        rewrittenClaimProfiles.rows[0]?.active_owner_has_create === false &&
+        rewrittenClaimProfiles.rows[0]?.definer_has_create === false,
+      "daily telemetry migration changed mixed ownership or retained accepted-owner CREATE",
+    );
+    await transferActiveClaimOwner(admin, firstPool, schemaOwnerRole);
     await withSchemaOwnerFixtureRole(admin, async (fixtureAdmin) => {
       const historical = await fixtureAdmin.query<{
         usage_source: string;
@@ -410,7 +486,6 @@ const main = async (): Promise<void> => {
   }
   console.log("Reader summary daily execution cursor PostgreSQL 18 gate OK");
 };
-
 const cleanup = async (): Promise<void> => {
   if (databaseCreated) {
     await server.query(
@@ -430,7 +505,6 @@ const cleanup = async (): Promise<void> => {
   }
   await server.end();
 };
-
 let schemaOwnerFixtureRoleActive = false;
 
 const withSchemaOwnerFixtureRole = async <T>(
@@ -482,6 +556,25 @@ const applyTelemetryMigrationAsMigrationAdmin = async (
   });
 };
 
+const transferActiveClaimOwner = async (
+  admin: PoolClient,
+  bootstrapTarget: Pool,
+  ownerRole: string,
+): Promise<void> => {
+  const result = await admin.query<{
+    current_owner: string; owner_has_create: boolean;
+  }>(`SELECT pg_catalog.pg_get_userbyid(proowner) AS current_owner,
+      pg_catalog.has_schema_privilege(proowner, 'public', 'CREATE') AS owner_has_create
+    FROM pg_catalog.pg_proc WHERE oid =
+      'public.claim_reader_summary_daily_execution(uuid,uuid,text,date,timestamp with time zone)'::pg_catalog.regprocedure`);
+  const currentOwner = result.rows[0]?.current_owner;
+  assert(currentOwner !== undefined && result.rows[0]?.owner_has_create === false,
+    "active-claim fixture transfer requires the current owner without schema CREATE");
+  await bootstrapTarget.query(`
+    ALTER FUNCTION public.claim_reader_summary_daily_execution(
+      UUID, UUID, TEXT, DATE, TIMESTAMPTZ
+    ) OWNER TO ${quoteIdentifier(ownerRole)}`);
+};
 const roleExists = async (role: string, admin: PoolClient): Promise<boolean> => {
   const result = await admin.query<{ present: boolean }>(
     "SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = $1) AS present",
@@ -514,7 +607,6 @@ const assertRoleCanResolveActivationRelation = async (
   assert(failure === undefined,
     `${diagnostic}: ${failure instanceof Error ? failure.message : String(failure)}`);
 };
-
 const assertBootstrapSessionIsSuperuser = async (): Promise<void> => {
   const result = await server.query<{ safe: boolean }>(`SELECT role.rolsuper AS safe
     FROM pg_catalog.pg_roles AS role WHERE role.rolname = session_user`);
