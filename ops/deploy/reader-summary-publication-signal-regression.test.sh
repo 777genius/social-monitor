@@ -13,7 +13,8 @@ WORKER=$FIXTURE/reader-summary-publication-pause-worker.sh
 install -m 0755 "$WORKER_SOURCE" "$WORKER"
 
 CURRENT_CASE=static-contract
-trap 'status=$?; printf "publication signal regression failed: case=%s line=%s status=%s\n" "$CURRENT_CASE" "$LINENO" "$status" >&2' ERR
+ALLOW_EXPECTED_FAILURE=0
+trap 'status=$?; if ((ALLOW_EXPECTED_FAILURE == 0)); then printf "publication signal regression failed: case=%s line=%s status=%s\n" "$CURRENT_CASE" "$LINENO" "$status" >&2; fi' ERR
 
 EXPECTED_DATE=2026-07-16
 RELEASE_SHA=0123456789abcdef0123456789abcdef01234567
@@ -118,26 +119,31 @@ run_daily() {
 timeout_case=$FIXTURE/timeout
 CURRENT_CASE=timeout
 prepare_case "$timeout_case"
+ALLOW_EXPECTED_FAILURE=1
 set +e
 run_daily "$timeout_case" 1000 >"$timeout_case/run.log" 2>&1
 timeout_status=$?
 set -e
+ALLOW_EXPECTED_FAILURE=0
 ((timeout_status == 124))
 assert_previous_latest_unchanged "$timeout_case"
 
 invalid_case=$FIXTURE/invalid
 CURRENT_CASE=invalid
 prepare_case "$invalid_case"
+ALLOW_EXPECTED_FAILURE=1
 set +e
 run_daily "$invalid_case" 30000 invalid >"$invalid_case/run.log" 2>&1
 invalid_status=$?
 set -e
+ALLOW_EXPECTED_FAILURE=0
 ((invalid_status != 0))
 assert_previous_latest_unchanged "$invalid_case"
 
 sigkill_case=$FIXTURE/sigkill
 CURRENT_CASE=sigkill
 prepare_case "$sigkill_case"
+ALLOW_EXPECTED_FAILURE=1
 run_daily "$sigkill_case" 30000 >"$sigkill_case/run.log" 2>&1 &
 daily_pid=$!
 wait_for_ready "$sigkill_case/ready"
@@ -147,17 +153,20 @@ set +e
 wait "$daily_pid"
 sigkill_status=$?
 set -e
+ALLOW_EXPECTED_FAILURE=0
 ((sigkill_status != 0))
 assert_previous_latest_unchanged "$sigkill_case"
 
 db_crash_case=$FIXTURE/db-crash-before-filesystem
 CURRENT_CASE=db-crash-before-filesystem
 prepare_case "$db_crash_case"
+ALLOW_EXPECTED_FAILURE=1
 set +e
 run_daily "$db_crash_case" 30000 crash-after-db-before-filesystem \
   >"$db_crash_case/crash.log" 2>&1
 db_crash_status=$?
 set -e
+ALLOW_EXPECTED_FAILURE=0
 ((db_crash_status != 0))
 [[ ! -e $db_crash_case/public/latest.v1.json ]]
 [[ ! -e $db_crash_case/public/latest-state.v1.json ]]
@@ -201,6 +210,7 @@ cmp -s "$db_crash_case/state.before" "$db_state"
 proof_first_case=$FIXTURE/proof-first-sigkill
 CURRENT_CASE=proof-first-sigkill
 prepare_case "$proof_first_case"
+ALLOW_EXPECTED_FAILURE=1
 run_daily "$proof_first_case" 30000 success after-proof-before-report \
   >"$proof_first_case/run.log" 2>&1 &
 daily_pid=$!
@@ -211,6 +221,7 @@ set +e
 wait "$daily_pid"
 proof_first_status=$?
 set -e
+ALLOW_EXPECTED_FAILURE=0
 ((proof_first_status != 0))
 [[ ! -e $proof_first_case/public/latest.v1.json ]]
 [[ ! -e $proof_first_case/public/latest-state.v1.json ]]
@@ -224,6 +235,7 @@ node -e 'JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"))' \
 report_before_latest_case=$FIXTURE/report-before-latest-sigkill
 CURRENT_CASE=report-before-latest-sigkill
 prepare_case "$report_before_latest_case"
+ALLOW_EXPECTED_FAILURE=1
 run_daily "$report_before_latest_case" 30000 success after-report-before-latest \
   >"$report_before_latest_case/run.log" 2>&1 &
 daily_pid=$!
@@ -234,6 +246,7 @@ set +e
 wait "$daily_pid"
 report_before_latest_status=$?
 set -e
+ALLOW_EXPECTED_FAILURE=0
 ((report_before_latest_status != 0))
 [[ ! -e $report_before_latest_case/public/latest.v1.json ]]
 [[ ! -e $report_before_latest_case/public/latest-state.v1.json ]]
@@ -268,6 +281,7 @@ cmp -s "$report_before_latest_report" \
 latest_state_cleanup_case=$FIXTURE/latest-state-before-cleanup-sigkill
 CURRENT_CASE=latest-state-before-cleanup-sigkill
 prepare_case "$latest_state_cleanup_case"
+ALLOW_EXPECTED_FAILURE=1
 run_daily "$latest_state_cleanup_case" 30000 success \
   after-latest-state-before-cleanup \
   >"$latest_state_cleanup_case/run.log" 2>&1 &
@@ -279,6 +293,7 @@ set +e
 wait "$daily_pid"
 latest_state_cleanup_status=$?
 set -e
+ALLOW_EXPECTED_FAILURE=0
 ((latest_state_cleanup_status != 0))
 latest_state_cleanup_report=$latest_state_cleanup_case/public/reader-summary-production-day-run.$EXPECTED_DATE.v1.json
 latest_state_cleanup_proof=$latest_state_cleanup_case/public/reader-summary-production-day-run.$EXPECTED_DATE.publication-proof.v1.json
@@ -443,11 +458,13 @@ run_daily "$legacy_case" 30000 success '' 2026-07-22 \
 rm "$legacy_case/public/latest-state.v1.json"
 rm "$legacy_case/public/reader-summary-production-day-state.2026-07-22.v1.json"
 rm -f "$legacy_case/ready"
+ALLOW_EXPECTED_FAILURE=1
 set +e
 run_daily "$legacy_case" 30000 success '' '' 2026-07-30 --yesterday \
   >"$legacy_case/migration.log" 2>&1
 legacy_status=$?
 set -e
+ALLOW_EXPECTED_FAILURE=0
 ((legacy_status != 0))
 [[ ! -e $legacy_case/public/reader-summary-production-day-run.2026-07-23.v1.json ]]
 [[ ! -e $legacy_case/public/reader-summary-production-day-run.2026-07-29.v1.json ]]
@@ -473,6 +490,7 @@ cmp -s "$unavailable_state" "$unavailable_case/public/latest-state.v1.json"
 recovery_case=$FIXTURE/state-before-latest-sigkill
 CURRENT_CASE=state-before-latest-sigkill
 prepare_case "$recovery_case"
+ALLOW_EXPECTED_FAILURE=1
 run_daily "$recovery_case" 30000 partial after-state-before-latest \
   >"$recovery_case/initial.log" 2>&1 &
 daily_pid=$!
@@ -483,6 +501,7 @@ set +e
 wait "$daily_pid"
 recovery_status=$?
 set -e
+ALLOW_EXPECTED_FAILURE=0
 ((recovery_status != 0))
 [[ -s $recovery_case/public/reader-summary-production-day-state.$EXPECTED_DATE.v1.json ]]
 [[ ! -e $recovery_case/public/latest-state.v1.json ]]
@@ -510,11 +529,13 @@ malformed_case=$FIXTURE/malformed-legacy
 CURRENT_CASE=malformed-legacy
 prepare_case "$malformed_case"
 printf '{malformed legacy\n' >"$malformed_case/public/latest.v1.json"
+ALLOW_EXPECTED_FAILURE=1
 set +e
 run_daily "$malformed_case" 30000 success '' '' 2026-07-30 --yesterday \
   >"$malformed_case/run.log" 2>&1
 malformed_status=$?
 set -e
+ALLOW_EXPECTED_FAILURE=0
 ((malformed_status != 0))
 [[ ! -e $malformed_case/ready ]]
 [[ ! -e $malformed_case/public/latest-state.v1.json ]]
@@ -548,11 +569,13 @@ prepare_case "$conflict_case"
 conflicting_state=$conflict_case/public/reader-summary-production-day-state.$EXPECTED_DATE.v1.json
 printf 'conflicting-immutable-state\n' >"$conflicting_state"
 cp "$conflicting_state" "$conflict_case/expected-conflicting-state"
+ALLOW_EXPECTED_FAILURE=1
 set +e
 run_daily "$conflict_case" 30000 success \
   >"$conflict_case/run.log" 2>&1
 conflict_status=$?
 set -e
+ALLOW_EXPECTED_FAILURE=0
 ((conflict_status != 0))
 cmp -s "$conflict_case/expected-conflicting-state" "$conflicting_state"
 [[ ! -e $conflict_case/public/latest.v1.json ]]
