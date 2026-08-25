@@ -77,9 +77,19 @@ try {
     runId,
     date,
     "2026-08-15T08:15:00.000Z",
-    "1",
+    "0",
   );
   run("validate-receipt", receiptPath, runId, date);
+  runFailure(
+    "write-receipt",
+    join(directory, "failed-collection-receipt.json"),
+    evidencePath,
+    collectionPath,
+    runId,
+    date,
+    "2026-08-15T12:15:00.000Z",
+    "1",
+  );
   runFailure(
     "write-receipt",
     join(directory, "stale-receipt.json"),
