@@ -34,10 +34,15 @@ CURRENT_CASE=diagnostic-routing
 diagnostic_probe=$FIXTURE/diagnostic-probe
 diagnostic_stdout=$FIXTURE/diagnostic-stdout
 diagnostic_redirected=$FIXTURE/diagnostic-redirected
+ALLOW_EXPECTED_FAILURE=1
 set +e
-(false >"$diagnostic_stdout" 2>"$diagnostic_redirected") 3>"$diagnostic_probe"
+(
+  ALLOW_EXPECTED_FAILURE=0
+  false >"$diagnostic_stdout" 2>"$diagnostic_redirected"
+) 3>"$diagnostic_probe"
 diagnostic_status=$?
 set -e
+ALLOW_EXPECTED_FAILURE=0
 ((diagnostic_status != 0))
 grep -F 'publication signal regression failed: case=diagnostic-routing line=' \
   "$diagnostic_probe" >/dev/null
