@@ -468,7 +468,7 @@ describe("reader summary top read builder", () => {
     );
 
     expect(topRead.citationIds).toEqual(["citation-x"]);
-    expect(topRead.confirmedProviderKeys).toEqual(["x"]);
+    expect(topRead.confirmedProviderKeys).toEqual(["x-twitter"]);
     expect(topRead.reason).not.toContain("unrelated Reddit post");
   });
 
@@ -854,7 +854,7 @@ describe("reader summary top read builder", () => {
     expect(topRead.confidence.level).toBe("medium");
     expect(topRead.confidence.score).toBe(0.62);
     expect(topRead.confidence.rationale).toContain("first-party official");
-    expect(topRead.confirmedProviderKeys).toEqual(["x"]);
+    expect(topRead.confirmedProviderKeys).toEqual(["x-twitter"]);
   });
 
   it("omits empty optional engagement metrics from top reads", () => {

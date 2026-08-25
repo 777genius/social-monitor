@@ -86,6 +86,12 @@ DEPLOY_CONTROL_BRIDGE_LIBRARY_LOADED=false
 
 load_deploy_control_bridge_library() {
   [[ $DEPLOY_CONTROL_BRIDGE_LIBRARY_LOADED == true ]] && return 0
+  if [[ ${PRODUCTION_CONTROL_BRIDGE_TRUSTED_SOURCE:-} == 1 ]]; then
+    production_control_bridge_source_reviewed \
+      ops/deploy/deploy-control-bridge-lib.sh 'deploy control bridge library'
+    DEPLOY_CONTROL_BRIDGE_LIBRARY_LOADED=true
+    return
+  fi
   local deploy_control_library_directory deploy_control_bridge_library
   deploy_control_library_directory=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
   deploy_control_bridge_library=$deploy_control_library_directory/deploy-control-bridge-lib.sh
@@ -883,22 +889,33 @@ deploy_frontend() {
 
 deploy_release() {
   local sha=$1 atomic_state
-  if postgres_pool_atomic_legacy_state; then
-    deploy_postgres_pool_atomic_control_bootstrap "$sha" || \
-      fail 'atomic PostgreSQL bootstrap loader failed'
-    return
-  else
-    atomic_state=$?
-    ((atomic_state == 1)) || \
-      fail 'PostgreSQL atomic repair marker state is invalid'
-  fi
   load_deploy_control_bridge_library
   exec 9>"$DEPLOY_LOCK"
   flock -w 3600 9 || fail 'timed out waiting for deployment lock'
   exec 8>"$POSTGRES_ADMISSION_LOCK"
   acquire_postgres_admission_with_daily_priority 8
+  # Direct SHA invocations may name a commit that is not in the local object
+  # database yet. Fetch and validate it before any candidate-specific bridge
+  # preflight so an absent object cannot bypass fail-closed admission.
   fetch_main
   validate_main_commit "$sha"
+  verify_production_control_bridge_pre_mutation_state "$sha"
+  if postgres_pool_atomic_legacy_state; then
+    atomic_state=0
+  else
+    atomic_state=$?
+    ((atomic_state == 1)) || \
+      fail 'PostgreSQL atomic repair marker state is invalid'
+  fi
+  if ((atomic_state == 0)); then
+    deploy_postgres_pool_atomic_control_bootstrap "$sha" || \
+      fail 'atomic PostgreSQL bootstrap loader failed'
+    return
+  fi
+  if declare -F production_control_bridge_completed_noop >/dev/null && \
+     production_control_bridge_completed_noop "$sha"; then
+    return 0
+  fi
   install -d -m 0755 "$STATE" "$STAGING" "$RELEASES"
   local current
   current=$(git -C "$REPO" rev-parse HEAD)

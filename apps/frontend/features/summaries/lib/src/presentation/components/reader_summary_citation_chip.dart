@@ -80,26 +80,18 @@ class _CitationChipState extends State<_CitationChip> {
                 MouseRegion(
                   onEnter: (_) => _openMenu(),
                   onExit: (_) => _scheduleClose(),
-                  child: Semantics(
-                    key: readerSummaryUrlActionKey(
-                      'citation-source',
-                      citation.id,
+                  child: MenuItemButton(
+                    key: ValueKey(
+                      'reader-summary-citation-source-${citation.id}',
                     ),
-                    link: true,
-                    label: readerSummaryUrlActionSemantics(
-                      'citation-source',
-                      citation.id,
-                    ),
-                    child: MenuItemButton(
-                      onPressed:
-                          citation.canonicalUrl != null &&
-                              citation.canonicalUrl!.trim().isNotEmpty
-                          ? () => widget.onOpenUrl(citation.canonicalUrl!)
-                          : null,
-                      child: _CitationSourcePreview(
-                        citation: citation,
-                        source: widget.citationSourceById[citation.id],
-                      ),
+                    onPressed:
+                        citation.canonicalUrl != null &&
+                            citation.canonicalUrl!.trim().isNotEmpty
+                        ? () => widget.onOpenUrl(citation.canonicalUrl!)
+                        : null,
+                    child: _CitationSourcePreview(
+                      citation: citation,
+                      source: widget.citationSourceById[citation.id],
                     ),
                   ),
                 ),
@@ -114,9 +106,6 @@ class _CitationChipState extends State<_CitationChip> {
           onExit: (_) => _scheduleClose(),
           cursor: SystemMouseCursors.click,
           child: InkWell(
-            key: ValueKey(
-              'reader-summary-url-menu-citation-${widget.citation.id}',
-            ),
             onTap: _toggleMenu,
             borderRadius: BorderRadius.circular(6),
             child: DecoratedBox(

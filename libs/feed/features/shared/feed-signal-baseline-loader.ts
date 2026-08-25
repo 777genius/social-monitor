@@ -76,17 +76,14 @@ const loadSamplesForTopic = async (params: {
     return topicSamples;
   }
 
-  const exactQuery = {
+  const exactCohortSamples = await params.signalBaseline.listSamples({
     tenantId: params.tenantId,
     workspaceId: params.workspaceId,
     interestId: params.interestId,
     observedAfter: params.observedAfter,
     limit: MAX_HISTORICAL_BASELINE_ITEMS,
     cohortFilters,
-  };
-  const exactCohortSamples = params.signalBaseline.listCohortSamples === undefined
-    ? await params.signalBaseline.listSamples(exactQuery)
-    : await params.signalBaseline.listCohortSamples(exactQuery);
+  });
 
   return dedupeBaselineSamples([
     ...topicSamples,

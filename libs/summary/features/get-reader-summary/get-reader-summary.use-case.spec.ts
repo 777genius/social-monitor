@@ -43,7 +43,11 @@ describe("GetReaderSummaryUseCase", () => {
         readerSummaryId: "reader-summary-1",
         headline: "Workspace AI tooling reader summary",
         content: expect.objectContaining({
-          selectedPosts: [],
+          selectedPosts: [
+            expect.objectContaining({
+              matchedRules: ["ai-tooling"],
+            }),
+          ],
           topReads: [
             expect.objectContaining({
               matchedRules: ["ai-tooling"],
@@ -62,7 +66,7 @@ describe("GetReaderSummaryUseCase", () => {
           lowRelevanceFeedItemCount: 0,
           mutedFeedItemCount: 0,
           userRatedFeedItemCount: 0,
-          selectedFeedItemCount: 0,
+          selectedFeedItemCount: 1,
           storyClusterCount: 1,
           topReadCount: 1,
           citationCount: 1,
@@ -156,7 +160,7 @@ describe("GetReaderSummaryUseCase", () => {
     });
   });
 
-  it("does not count unpromoted evidence as selected coverage", async () => {
+  it("does not present collected coverage below selected evidence count", async () => {
     const useCase = new GetReaderSummaryUseCase(
       new FakeReaderSummaryArtifactRepository([
         readerSummaryArtifact("reader-summary-1"),
@@ -177,7 +181,7 @@ describe("GetReaderSummaryUseCase", () => {
       return;
     }
 
-    expect(result.value.coverage.collectedFeedItemCount).toBe(0);
+    expect(result.value.coverage.collectedFeedItemCount).toBe(1);
     expect(
       result.value.coverage.providerBreakdown.find(
         (provider) => provider.providerKey === "reddit",

@@ -104,41 +104,28 @@ describe("feedProviderMetricsFromMetadata", () => {
       trendingDelta: {
         window: "24h",
         value: 210,
-        observation: "observed",
       },
       trendDeltas: [
         {
           window: "24h",
           value: 210,
-          observation: "observed",
         },
         {
           window: "48h",
           value: 360,
-          observation: "observed",
         },
         {
           window: "7d",
           value: 1200,
-          observation: "observed",
         },
         {
           window: "30d",
           value: 4800,
-          observation: "observed",
         },
         {
           window: "90d",
           value: 11000,
-          observation: "observed",
         },
-      ],
-      forkTrendDeltas: [
-        { window: "24h", observation: "missing" },
-        { window: "48h", observation: "missing" },
-        { window: "7d", observation: "missing" },
-        { window: "30d", observation: "missing" },
-        { window: "90d", observation: "missing" },
       ],
     });
     expect(

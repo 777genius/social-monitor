@@ -141,10 +141,9 @@ export class PrismaConversationUnitRepository
         tenantId: query.tenantId,
         workspaceId: query.workspaceId,
         rootFeedItemId: { in: query.rootFeedItemIds },
-        observedAt: dateRange({
-          lte: query.observedAtOrBefore,
-          lt: query.observedBefore,
-        }),
+        ...(query.observedBefore === undefined
+          ? {}
+          : { observedAt: { lt: query.observedBefore } }),
       },
       orderBy: [
         { rootFeedItemId: 'asc' },
@@ -177,9 +176,6 @@ export class PrismaConversationUnitRepository
         ...(query.interestId === undefined ? {} : { interestId: query.interestId }),
         observedAt: {
           gt: query.observedAfter,
-          ...(query.observedAtOrBefore === undefined
-            ? {}
-            : { lte: query.observedAtOrBefore }),
           ...(query.observedBefore === undefined
             ? {}
             : { lt: query.observedBefore }),
@@ -201,11 +197,6 @@ export class PrismaConversationUnitRepository
     return records.map(conversationSignalBaselineSampleFromPrisma);
   }
 }
-
-const dateRange = (range: {
-  readonly lte?: Date;
-  readonly lt?: Date;
-}) => range.lte === undefined && range.lt === undefined ? undefined : range;
 
 const baselineSampleWrite = (sample: ConversationSignalBaselineSample) => ({
   interestId: sample.interestId,

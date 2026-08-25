@@ -217,7 +217,6 @@ const toGrpcTaskResponse = (
           selectedOutputSha256:
             result.executionAttestation.selectedOutputSha256,
         },
-  durationMs: result.durationMs,
 });
 
 const fromGrpcProvider = (

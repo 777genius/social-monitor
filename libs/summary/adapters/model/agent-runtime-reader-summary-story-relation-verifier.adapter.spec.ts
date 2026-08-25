@@ -42,7 +42,7 @@ describe("AgentRuntimeReaderSummaryStoryRelationVerifier", () => {
     ]);
     expect(client.commands[0]).toMatchObject({
       provider: "codex",
-      purpose: "social_monitor.reader_summary.verify_story_relations.v2",
+      purpose: "social_monitor.reader_summary.verify_story_relations",
       metadata: {
         promptVersion: "reader_summary.story_relation.agent_runtime.v2",
       },
@@ -62,217 +62,20 @@ describe("AgentRuntimeReaderSummaryStoryRelationVerifier", () => {
       },
     });
     expect(promptPair.left.bodyPreview.length).toBeLessThanOrEqual(640);
-    expect(promptPair.left.sourceText.length).toBeLessThanOrEqual(4_096);
-    expect(promptPair.left.sourceText).toContain("bounded incident evidence");
   });
 
-  it("includes relevant source evidence beyond the old 50000 preview", async () => {
-    const client = new CapturingAgentRuntimeClient({
-      status: "completed",
-      structuredOutput: { decisions: [] },
-      warnings: [],
+  it("rejects unknown, duplicate, or incomplete decisions", async () => {
+    const verifier = new AgentRuntimeReaderSummaryStoryRelationVerifier({
+      client: new CapturingAgentRuntimeClient({
+        status: "completed",
+        structuredOutput: { decisions: [] },
+        warnings: [],
+      }),
     });
-    const verifier = new AgentRuntimeReaderSummaryStoryRelationVerifier({ client });
-    const verifierInput = input();
-    const relevantTail = "typescript compiler rewrite deployment evidence";
-    const longEvidence = verifierInput.evidence.map((item, index) =>
-      index === 0
-        ? { ...item, sourceText: `${"sanitized context ".repeat(4_000)}${relevantTail}` }
-        : item,
+
+    await expect(verifier.verify(input())).rejects.toThrow(
+      "must decide every requested pair exactly once",
     );
-
-    await verifier.verify({ ...verifierInput, evidence: longEvidence });
-
-    const promptPair = JSON.parse(client.commands[0]?.prompt ?? "{}").pairs[0];
-    expect(promptPair.left.sourceText).toContain(relevantTail);
-    expect(promptPair.left.sourceText.length).toBeLessThanOrEqual(4_096);
-  });
-
-  it("preserves unknown binary properties for fail-closed domain validation", async () => {
-    const decisions = [
-      {
-        leftFeedItemId: "feed:hn",
-        rightFeedItemId: "feed:rss",
-        sameStory: "not-a-boolean",
-        confidenceScore: 4,
-        unexpected: true,
-      },
-    ];
-    const verifier = new AgentRuntimeReaderSummaryStoryRelationVerifier({
-      client: new CapturingAgentRuntimeClient({
-        status: "completed",
-        structuredOutput: { decisions },
-        warnings: [],
-      }),
-    });
-
-    await expect(verifier.verify(input())).resolves.toEqual(decisions);
-  });
-
-  it("omits an absent optional rationale from normalized binary decisions", async () => {
-    const verifier = new AgentRuntimeReaderSummaryStoryRelationVerifier({
-      client: new CapturingAgentRuntimeClient({
-        status: "completed",
-        structuredOutput: {
-          decisions: [{
-            leftFeedItemId: "feed:hn",
-            rightFeedItemId: "feed:rss",
-            sameStory: false,
-            confidenceScore: 0.97,
-          }],
-        },
-        warnings: [],
-      }),
-    });
-
-    const decisions = await verifier.verify(input());
-
-    expect(decisions).toEqual([{
-      leftFeedItemId: "feed:hn",
-      rightFeedItemId: "feed:rss",
-      sameStory: false,
-      confidenceScore: 0.97,
-    }]);
-    expect(decisions[0]).not.toHaveProperty("rationale");
-  });
-
-  it("uses the explicit tri-state schema for the post-selection related lane", async () => {
-    const decision = {
-      leftFeedItemId: "feed:hn",
-      rightFeedItemId: "feed:rss",
-      relation: "related_topic",
-      confidenceScore: 0.98,
-      rationale: "The Reddit subject discusses the official topic as a question.",
-    };
-    const client = new CapturingAgentRuntimeClient({
-      status: "completed",
-      structuredOutput: { decisions: [decision] },
-      warnings: [],
-    });
-    const verifier = new AgentRuntimeReaderSummaryStoryRelationVerifier({ client });
-    const base = input();
-    const controller = new AbortController();
-    await expect(verifier.verify({
-      ...base,
-      verificationLane: "related_topic",
-      signal: controller.signal,
-      candidates: [{
-        ...base.candidates[0]!,
-        subjectFeedItemId: "feed:hn",
-        officialAnchorFeedItemId: "feed:rss",
-        subjectStoryClusterId: "story:hn",
-        targetStoryClusterId: "story:rss",
-      }],
-    })).resolves.toEqual([decision]);
-    expect(client.signals).toEqual([controller.signal]);
-
-    expect(client.commands[0]).toMatchObject({
-      purpose: "social_monitor.reader_summary.verify_related_topic_relations.v2",
-      timeoutMs: 15_000,
-      controls: {
-        outputSchemaName: "social_monitor_reader_summary_related_topic_relations",
-        schemaVersion: "reader_summary.related_topic_relation.v1",
-      },
-      metadata: {
-        verificationLane: "related_topic",
-        promptVersion: "reader_summary.related_topic_relation.agent_runtime.v1",
-        taskRole: "related_topic_relation",
-      },
-      outputSchema: {
-        properties: {
-          decisions: { items: { properties: {
-            relation: { enum: ["same_story", "related_topic", "unrelated"] },
-          } } },
-        },
-      },
-    });
-    expect(JSON.parse(client.commands[0]!.prompt).constraints).toMatchObject({
-      explicitTriStateRequired: true,
-      relatedTopicIsNonTransitive: true,
-    });
-  });
-
-  it("isolates shadow task identity and metadata from the production lane", async () => {
-    const client = new CapturingAgentRuntimeClient({
-      status: "completed",
-      structuredOutput: {
-        decisions: [{
-          leftFeedItemId: "feed:hn",
-          rightFeedItemId: "feed:rss",
-          sameStory: false,
-          confidenceScore: 0.99,
-        }],
-      },
-      warnings: [],
-    });
-    const productionAttestations: unknown[] = [];
-    const verifier = new AgentRuntimeReaderSummaryStoryRelationVerifier({
-      client,
-      verifiedAttestationSink: {
-        record: (attestation) => {
-          productionAttestations.push(attestation);
-        },
-      },
-    });
-
-    await verifier.verify({ ...input(), candidates: [] });
-    await verifier.verify({
-      ...input(),
-      candidates: [],
-      verificationLane: "safe_recall_shadow",
-    });
-
-    expect(client.commands).toHaveLength(0);
-
-    const productionInput = input();
-    const shadowInput = {
-      ...input(),
-      verificationLane: "safe_recall_shadow" as const,
-      timeoutMs: 1_234,
-    };
-    await verifier.verify(productionInput);
-    await verifier.verify(shadowInput);
-
-    expect(client.commands[0]?.requestId).not.toBe(client.commands[1]?.requestId);
-    expect(client.commands[0]?.purpose).toBe(
-      "social_monitor.reader_summary.verify_story_relations.v2",
-    );
-    expect(client.commands[1]).toMatchObject({
-      purpose: "social_monitor.reader_summary.verify_story_relations.v2",
-      timeoutMs: 1_234,
-      metadata: { verificationLane: "safe_recall_shadow" },
-    });
-    expect(productionAttestations).toHaveLength(1);
-  });
-
-  it.each([
-    ["missing decisions", {}, "envelope_missing_decisions"],
-    [
-      "unknown envelope property",
-      { decisions: [], commentary: "extra" },
-      "envelope_unknown_property",
-    ],
-  ] as const)("rejects an envelope with %s", async (_name, envelope, reason) => {
-    const verifier = new AgentRuntimeReaderSummaryStoryRelationVerifier({
-      client: new CapturingAgentRuntimeClient({
-        status: "completed",
-        structuredOutput: envelope,
-        warnings: [],
-      }),
-    });
-
-    const base = input();
-    await expect(verifier.verify({
-      ...base,
-      verificationLane: "related_topic",
-      candidates: [{
-        ...base.candidates[0]!,
-        subjectFeedItemId: "feed:hn",
-        officialAnchorFeedItemId: "feed:rss",
-        subjectStoryClusterId: "story:hn",
-        targetStoryClusterId: "story:rss",
-      }],
-    })).rejects.toMatchObject({ reason });
   });
 });
 
@@ -323,7 +126,6 @@ const evidence = (feedItemId: string, providerKey: string, title: string) => ({
   bodyPreview: "The engineering team published implementation details. ".repeat(
     30,
   ),
-  sourceText: `${"Original long-post context. ".repeat(45)}bounded incident evidence ${"must remain bounded. ".repeat(300)}`,
   publishedAt: new Date("2026-07-11T08:00:00.000Z"),
   observedAt: new Date("2026-07-11T08:01:00.000Z"),
   score: 2,
@@ -332,16 +134,13 @@ const evidence = (feedItemId: string, providerKey: string, title: string) => ({
 
 class CapturingAgentRuntimeClient implements AgentRuntimeClientPort {
   readonly commands: AgentRuntimeTaskCommand[] = [];
-  readonly signals: (AbortSignal | undefined)[] = [];
 
   constructor(private readonly result: AgentRuntimeTaskResult) {}
 
   async runTask(
     command: AgentRuntimeTaskCommand,
-    options?: { readonly signal?: AbortSignal },
   ): Promise<AgentRuntimeTaskResult> {
     this.commands.push(command);
-    this.signals.push(options?.signal);
     return withTestExecutionAttestation(command, this.result);
   }
 

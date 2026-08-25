@@ -1,8 +1,4 @@
-import {
-  credentials,
-  type ChannelCredentials,
-  type ClientUnaryCall,
-} from "@grpc/grpc-js";
+import { credentials, type ChannelCredentials } from "@grpc/grpc-js";
 import {
   AgentRuntimeHealthStatus as GrpcAgentRuntimeHealthStatus,
   AgentRuntimeProvider as GrpcAgentRuntimeProvider,
@@ -75,11 +71,7 @@ export class GrpcAgentRuntimeClient implements AgentRuntimeClientPort {
 
   async runTask(
     command: AgentRuntimeTaskCommand,
-    options?: { readonly signal?: AbortSignal },
   ): Promise<AgentRuntimeTaskResult> {
-    if (options?.signal?.aborted === true) {
-      throw new Error("Agent runtime gRPC task was cancelled");
-    }
     const metadata = createGrpcRequestMetadata({
       correlationId: command.correlationId,
       serviceToken: this.options.serviceToken,
@@ -90,22 +82,7 @@ export class GrpcAgentRuntimeClient implements AgentRuntimeClientPort {
     );
 
     return new Promise((resolve, reject) => {
-      const callState: { value?: ClientUnaryCall } = {};
-      let settled = false;
-      const finish = (complete: () => void): void => {
-        if (settled) return;
-        settled = true;
-        if (options?.signal !== undefined) {
-          options.signal.removeEventListener("abort", abort);
-        }
-        complete();
-      };
-      const abort = (): void => {
-        callState.value?.cancel();
-        finish(() => reject(new Error("Agent runtime gRPC task was cancelled")));
-      };
-      options?.signal?.addEventListener("abort", abort, { once: true });
-      callState.value = this.client.runAgentTask(
+      this.client.runAgentTask(
         {
           schemaVersion,
           requestId: command.requestId,
@@ -127,19 +104,17 @@ export class GrpcAgentRuntimeClient implements AgentRuntimeClientPort {
         { deadline },
         (error, response) => {
           if (error !== null) {
-            finish(() => reject(error));
+            reject(error);
             return;
           }
 
           try {
-            const result = fromGrpcTaskResponse(response, command);
-            finish(() => resolve(result));
+            resolve(fromGrpcTaskResponse(response, command));
           } catch (parseError) {
-            finish(() => reject(parseError));
+            reject(parseError);
           }
         },
       );
-      if (options?.signal?.aborted === true) abort();
     });
   }
 
@@ -202,8 +177,6 @@ const fromGrpcTaskResponse = (
   if (response.schemaVersion !== schemaVersion) {
     throw new Error("Unsupported agent runtime response schema version");
   }
-  const usage = readGrpcUsage(response.usage);
-  const durationMs = readOptionalDurationMs(response.durationMs);
   const result: AgentRuntimeTaskResult = {
     status: fromGrpcTaskStatus(response.status),
     outputText: optionalOutputText(response.outputText),
@@ -212,8 +185,15 @@ const fromGrpcTaskResponse = (
       code: warning.code,
       message: warning.message,
     })),
-    usage,
-    durationMs,
+    usage:
+      response.usage === undefined
+        ? undefined
+        : {
+            inputTokens: response.usage.inputTokens,
+            outputTokens: response.usage.outputTokens,
+            totalTokens: response.usage.totalTokens,
+            estimatedCostUsd: response.usage.estimatedCostUsd,
+          },
     failure:
       response.failure === undefined
         ? undefined
@@ -246,41 +226,6 @@ const fromGrpcTaskResponse = (
   }
   return result;
 };
-
-const readGrpcUsage = (
-  value: AgentRuntimeTaskResponse["usage"],
-): AgentRuntimeTaskResult["usage"] => {
-  if (value === undefined) return undefined;
-  if (
-    !nonNegativeSafeInteger(value.inputTokens) ||
-    !nonNegativeSafeInteger(value.outputTokens) ||
-    !nonNegativeSafeInteger(value.totalTokens) ||
-    value.totalTokens !== value.inputTokens + value.outputTokens ||
-    !nonNegativeFiniteNumber(value.estimatedCostUsd)
-  ) {
-    throw new Error("Agent runtime usage is malformed");
-  }
-  return {
-    inputTokens: value.inputTokens,
-    outputTokens: value.outputTokens,
-    totalTokens: value.totalTokens,
-    estimatedCostUsd: value.estimatedCostUsd,
-  };
-};
-
-const readOptionalDurationMs = (value: number | undefined): number | undefined => {
-  if (value === undefined) return undefined;
-  if (!nonNegativeSafeInteger(value)) {
-    throw new Error("Agent runtime duration is malformed");
-  }
-  return value;
-};
-
-const nonNegativeSafeInteger = (value: unknown): value is number =>
-  Number.isSafeInteger(value) && (value as number) >= 0;
-
-const nonNegativeFiniteNumber = (value: unknown): value is number =>
-  typeof value === "number" && Number.isFinite(value) && value >= 0;
 
 const readExecutionAttestation = (
   response: AgentRuntimeTaskResponse,

@@ -101,11 +101,7 @@ class _ExecutiveSkeletonBody extends StatelessWidget {
         if (!wide) {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              copy,
-              const SizedBox(height: AppSpacing.lg),
-              rail,
-            ],
+            children: [copy, const SizedBox(height: AppSpacing.lg), rail],
           );
         }
         return Row(

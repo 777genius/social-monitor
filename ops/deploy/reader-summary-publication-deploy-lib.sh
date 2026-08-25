@@ -15,7 +15,20 @@ READER_SUMMARY_PUBLICATION_DATABASE_HOST=dbaas-db-8050451-do-user-39622063-0.e.d
 READER_SUMMARY_PUBLICATION_DATABASE_PORT=25060
 READER_SUMMARY_PUBLICATION_VALIDATION_ATTEMPTS=3
 READER_SUMMARY_PUBLICATION_VALIDATION_RETRY_SECONDS=2
-if declare -F source_reviewed_deploy_library >/dev/null && \
+if [[ ${PRODUCTION_CONTROL_BRIDGE_TRUSTED_SOURCE:-} == 1 ]]; then
+  production_control_bridge_source_reviewed \
+    ops/deploy/reader-summary-publication-system-dsn-bootstrap-lib.sh \
+    'reader summary publication system DSN bootstrap library'
+  production_control_bridge_source_reviewed \
+    ops/deploy/reader-summary-publication-prebootstrap-lib.sh \
+    'reader summary publication prebootstrap library'
+  production_control_bridge_source_reviewed \
+    ops/deploy/reader-summary-publication-catalog-query-lib.sh \
+    'reader summary publication catalog query library'
+  production_control_bridge_source_reviewed \
+    ops/deploy/reader-summary-original-cutoff-correction-lib.sh \
+    'reader summary original cutoff correction library'
+elif declare -F source_reviewed_deploy_library >/dev/null && \
    [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} != 1 ]]; then
   reader_summary_publication_support_sha=$(git -C "$REPO" rev-parse HEAD) || \
     fail 'publication support commit cannot be resolved'
@@ -68,6 +81,15 @@ load_target_postgres_backup_deploy_library() {
 
   [[ $target_sha =~ ^[0-9a-f]{40}$ ]] || \
     fail 'target PostgreSQL backup deploy library SHA is invalid'
+  if [[ ${PRODUCTION_CONTROL_BRIDGE_TRUSTED_SOURCE:-} == 1 ]]; then
+    [[ $target_sha == "$PRODUCTION_CONTROL_BRIDGE_TARGET" ]] || \
+      fail 'trusted PostgreSQL backup library target differs from bridge target'
+    production_control_bridge_source_reviewed "$relative_path" \
+      'target PostgreSQL backup deploy library'
+    declare -F create_pre_migration_database_backup >/dev/null || \
+      fail 'target PostgreSQL backup deploy library is missing its backup entrypoint'
+    return
+  fi
   [[ -f $backup_library && ! -L $backup_library ]] || \
     fail 'target PostgreSQL backup deploy library is not a regular non-symlink file'
   backup_real=$(readlink -f -- "$backup_library") || \

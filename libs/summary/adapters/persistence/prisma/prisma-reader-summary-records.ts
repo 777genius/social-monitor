@@ -23,9 +23,6 @@ import {
 } from "./prisma-reader-summary-artifact-payload";
 import type { PrismaSummaryStatus } from "./prisma-summary-records";
 export {
-  normalizeReaderSummaryArtifactPayload,
-} from "./prisma-reader-summary-artifact-payload";
-export {
   readerSummaryCitationsToPrisma,
   readerSummaryQualitySignalsToPrisma,
   serializeReaderSummaryArtifact,

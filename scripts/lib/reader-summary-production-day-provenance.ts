@@ -5,18 +5,13 @@ import { canonicalJsonSha256 } from "@social-monitor/contracts/grpc/agent_runtim
 
 import {
   isProductionSubscriptionRuntimeProvenance,
-  isCurrentProductionSubscriptionRuntimeProvenance,
   runtimeProvenanceEqual,
   runtimeProvenanceFromExecutorAttestations,
   validateFrontendRuntimeConsistency,
   type ProductionDayRuntimeProvenance,
 } from "./reader-summary-production-day-attestation";
 
-export {
-  isCurrentProductionSubscriptionRuntimeProvenance,
-  isProductionSubscriptionRuntimeProvenance,
-  runtimeProvenanceEqual,
-};
+export { isProductionSubscriptionRuntimeProvenance, runtimeProvenanceEqual };
 export type { ProductionDayRuntimeProvenance };
 
 export const productionDayReportArtifactFormat =

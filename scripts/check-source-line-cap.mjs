@@ -4,11 +4,18 @@ const maxLoc = 1000;
 const violations = [];
 
 const sourceTestPatterns = [
+  "**/*.{yml,yaml}",
+  ".github/**/*.{yml,yaml}",
   "apps/**/*.{ts,tsx,js,jsx,mjs,cjs,dart,py}",
   "libs/**/*.{ts,tsx,js,jsx,mjs,cjs,dart,py}",
   "test/**/*.{ts,tsx,js,jsx,mjs,cjs,dart,py}",
   "scripts/**/*.{ts,js,mjs,cjs,py}",
   "ops/deploy/reader-summary-publication-*-lib.sh",
+  "ops/deploy/deploy-control{,-bridge}-lib.sh",
+  "ops/deploy/postgres-runtime-*-lib.sh",
+  "ops/deploy/github-production-deploy-client.sh",
+  "ops/deploy/production-{control-bridge-*,host-policy-lib}.sh",
+  "ops/deploy/social-monitor-production-deploy.sh",
 ];
 
 const ignoredPathPatterns = [
@@ -22,6 +29,7 @@ const ignoredPathPatterns = [
   /(^|\/)generated\//,
   /(^|\/)generated_api\/lib\/src\/generated\//,
   /(^|\/)prisma\/generated\//,
+  /(^|\/)pnpm-lock\.yaml$/,
   /\.g\.dart$/,
   /\.freezed\.dart$/,
   /\.pb\.dart$/,
@@ -81,6 +89,15 @@ const sourceTestFiles = Array.from(
   .sort();
 
 const seenFiles = new Set(sourceTestFiles);
+
+for (const requiredYaml of [
+  ".github/workflows/production-deploy.yml",
+  ".github/workflows/pull-request.yml",
+]) {
+  if (!seenFiles.has(requiredYaml)) {
+    addViolation(requiredYaml, "workflow YAML is outside the executable line-cap scan");
+  }
+}
 
 for (const [file, debtLimit] of legacyLineCapDebt) {
   if (!existsSync(file)) {

@@ -5,6 +5,7 @@ import {
 } from "../../domain";
 import type {
   AgentRuntimeClientPort,
+  AgentRuntimeProvider,
   ReaderSummaryTopicLabelerInput,
   ReaderSummaryTopicLabelerPort,
   ReaderSummaryTopicMapAttemptContext,
@@ -30,22 +31,12 @@ import {
   verifyAndRecordReaderSummaryExecution,
   type VerifiedReaderSummaryExecutionAttestationSink,
 } from "./reader-summary-execution-attestation";
-import {
-  activeReaderSummaryModel,
-  activeReaderSummaryProvider,
-  activeReaderSummaryPurposes,
-  activeReaderSummaryReasoningEffort,
-  assertActiveReaderSummaryProvider,
-  parseActiveReaderSummaryModel,
-  parseActiveReaderSummaryReasoningEffort,
-} from "./active-reader-summary-generation-profile";
 
 export type AgentRuntimeReaderSummaryTopicLabelerOptions = {
   readonly client: AgentRuntimeClientPort;
-  readonly agentProvider?: typeof activeReaderSummaryProvider;
+  readonly agentProvider?: AgentRuntimeProvider;
   readonly providerInstanceId?: string;
-  readonly model?: typeof activeReaderSummaryModel;
-  readonly reasoningEffort?: typeof activeReaderSummaryReasoningEffort;
+  readonly model?: string;
   readonly promptVersion?: string;
   readonly timeoutMs?: number;
   readonly maxOutputTokens?: number;
@@ -53,8 +44,8 @@ export type AgentRuntimeReaderSummaryTopicLabelerOptions = {
   readonly verifiedAttestationSink?: VerifiedReaderSummaryExecutionAttestationSink;
 };
 
-const defaultAgentProvider = activeReaderSummaryProvider;
-const defaultModel = activeReaderSummaryModel;
+const defaultAgentProvider: AgentRuntimeProvider = "codex";
+const defaultModel = "agent-runtime-reader-summary-topic-labeler";
 const defaultPromptVersion = "reader_summary.topic_map.agent_runtime.v21";
 const defaultTimeoutMs = 600_000;
 const defaultMaxOutputTokens = 6_000;
@@ -62,10 +53,9 @@ const defaultMaxCandidates = 30;
 
 export class AgentRuntimeReaderSummaryTopicLabeler implements ReaderSummaryTopicLabelerPort {
   private readonly client: AgentRuntimeClientPort;
-  private readonly agentProvider: typeof activeReaderSummaryProvider;
+  private readonly agentProvider: AgentRuntimeProvider;
   private readonly providerInstanceId?: string;
   private readonly model: string;
-  private readonly reasoningEffort: typeof activeReaderSummaryReasoningEffort;
   private readonly promptVersion: string;
   private readonly timeoutMs: number;
   private readonly maxOutputTokens: number;
@@ -76,9 +66,7 @@ export class AgentRuntimeReaderSummaryTopicLabeler implements ReaderSummaryTopic
     this.client = options.client;
     this.agentProvider = options.agentProvider ?? defaultAgentProvider;
     this.providerInstanceId = options.providerInstanceId;
-    this.model = options.model ?? defaultModel;
-    this.reasoningEffort =
-      options.reasoningEffort ?? activeReaderSummaryReasoningEffort;
+    this.model = nonEmptyOrFallback(options.model, defaultModel);
     this.promptVersion = nonEmptyOrFallback(
       options.promptVersion,
       defaultPromptVersion,
@@ -125,7 +113,7 @@ export class AgentRuntimeReaderSummaryTopicLabeler implements ReaderSummaryTopic
       ),
       provider: this.agentProvider,
       providerInstanceId: this.providerInstanceId,
-      purpose: activeReaderSummaryPurposes.topicLabel,
+      purpose: "social_monitor.reader_summary.topic_map.label",
       systemPrompt: agentRuntimeReaderSummaryTopicLabelerInstructions,
       prompt: buildAgentRuntimeReaderSummaryTopicLabelPrompt(
         input,
@@ -137,8 +125,7 @@ export class AgentRuntimeReaderSummaryTopicLabeler implements ReaderSummaryTopic
         interactive: false,
         outputSchemaName: "social_monitor_reader_summary_topic_map_labels",
         schemaVersion: "reader_summary.topic_map.v1",
-        model: this.model,
-        reasoningEffort: this.reasoningEffort,
+        ...runtimeModelControl(this.model, defaultModel),
         maxOutputTokens: this.maxOutputTokens,
       },
       timeoutMs: this.timeoutMs,
@@ -182,18 +169,9 @@ export const resolveAgentRuntimeReaderSummaryTopicLabelerOptions = (
   client: AgentRuntimeClientPort,
 ): AgentRuntimeReaderSummaryTopicLabelerOptions => ({
   client,
-    agentProvider: assertActiveReaderSummaryProvider(
-      env.AGENT_RUNTIME_PROVIDER,
-    ),
+  agentProvider: parseAgentRuntimeProvider(env.AGENT_RUNTIME_PROVIDER),
   providerInstanceId: env.AGENT_RUNTIME_PROVIDER_INSTANCE_ID,
-    model: parseActiveReaderSummaryModel(
-      env.AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_MODEL ??
-        env.AGENT_RUNTIME_READER_SUMMARY_MODEL,
-    ),
-    reasoningEffort: parseActiveReaderSummaryReasoningEffort(
-      env.AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT ??
-        env.AGENT_RUNTIME_REASONING_EFFORT,
-    ),
+  model: env.AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_MODEL,
   promptVersion: env.AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_PROMPT_VERSION,
   timeoutMs: parsePositiveInteger(
     env.AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_TIMEOUT_MS ??
@@ -206,3 +184,22 @@ export const resolveAgentRuntimeReaderSummaryTopicLabelerOptions = (
     env.AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_MAX_CANDIDATES,
   ),
 });
+
+const parseAgentRuntimeProvider = (
+  value: string | undefined,
+): AgentRuntimeProvider | undefined => {
+  if (value === undefined || value.trim().length === 0) {
+    return undefined;
+  }
+  if (value === "codex" || value === "claude") {
+    return value;
+  }
+
+  throw new Error('AGENT_RUNTIME_PROVIDER must be "codex" or "claude"');
+};
+
+const runtimeModelControl = (
+  model: string,
+  defaultModelAlias: string,
+): { readonly model?: string } =>
+  model === defaultModelAlias ? {} : { model };

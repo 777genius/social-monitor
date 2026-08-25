@@ -51,7 +51,7 @@ TEST_COUNT=0
 
 mkdir -p "$ROOT/secrets/db" "$REPO/ops/deploy" "$STATE" "$FAKE_BIN"
 printf '%s\n' 'test-only-ca-certificate' > "$CA_CERTIFICATE"
-cp "$SCRIPT_DIR"/{deploy-control-lib.sh,deploy-control-bridge-lib.sh,postgres-runtime-deploy-lib.sh,postgres-runtime-weekly-timer-state-lib.sh,postgres-runtime-daily-c1-readiness-lib.sh,postgres-runtime-activation-boundary-lib.sh,backend-runtime-health-lib.sh,backend-image-rescue-lib.sh,x-collector-image-deploy-lib.sh,reader-summary-recovery-maintenance-lib.sh,social-monitor-production-deploy.sh,postgres-backup-deploy-lib.sh,reader-summary-publication-system-runtime-deploy-lib.sh} \
+cp "$SCRIPT_DIR"/{deploy-control-lib.sh,deploy-control-bridge-lib.sh,production-host-policy-lib.sh,postgres-runtime-deploy-lib.sh,postgres-runtime-weekly-timer-state-lib.sh,postgres-runtime-daily-c1-readiness-lib.sh,postgres-runtime-activation-boundary-lib.sh,backend-runtime-health-lib.sh,backend-image-rescue-lib.sh,x-collector-image-deploy-lib.sh,reader-summary-recovery-maintenance-lib.sh,social-monitor-production-deploy.sh,postgres-backup-deploy-lib.sh,reader-summary-publication-system-runtime-deploy-lib.sh} \
   "$REPO/ops/deploy/"
 git init -q -b main "$REPO"
 git -C "$REPO" config user.name 'Publication Migrator Validation'

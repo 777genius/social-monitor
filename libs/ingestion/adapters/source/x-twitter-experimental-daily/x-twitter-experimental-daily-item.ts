@@ -7,7 +7,6 @@ import {
 import { sourceItemRelevanceScore } from "../../../domain";
 import type { FetchedSourceItem } from "../../../ports";
 import type { XExperimentalDailyScanConfig } from "./x-twitter-experimental-daily-config";
-import type { VerifiedXPromotionAuthorityIdentity } from "../../../ports";
 import type {
   XDailyCollectedPost,
   XDailyCollectorWarning,
@@ -20,7 +19,6 @@ export const normalizeXPost = (
   post: XDailyCollectedPost,
   searchQuery: string,
   maxItems: number,
-  verifiedAuthority?: VerifiedXPromotionAuthorityIdentity,
 ): FetchedSourceItem => ({
   externalId: `${providerKey}:${post.tweetId}`,
   canonicalUrl: post.canonicalUrl,
@@ -30,7 +28,6 @@ export const normalizeXPost = (
   publishedAt: post.publishedAt,
   metadata: normalizeJsonObject({
     kind: "x_post",
-    ...(post.contentKind === undefined ? {} : { contentKind: post.contentKind }),
     provider: providerKey,
     tweetId: post.tweetId,
     ...(post.authorHandle === undefined
@@ -45,8 +42,8 @@ export const normalizeXPost = (
     },
     sourceProduct: post.sourceProduct,
     trendScore: post.trendScore,
-    ...(post.metrics.likes === undefined ? {} : { likes: post.metrics.likes }),
-    ...(post.metrics.retweets === undefined ? {} : { retweets: post.metrics.retweets }),
+    likes: post.metrics.likes,
+    retweets: post.metrics.retweets,
     replies: post.metrics.replies,
     ...(post.metrics.quotes === undefined
       ? {}
@@ -55,8 +52,8 @@ export const normalizeXPost = (
       ? {}
       : { impressions: post.metrics.views }),
     publicMetrics: {
-      ...(post.metrics.likes === undefined ? {} : { like_count: post.metrics.likes }),
-      ...(post.metrics.retweets === undefined ? {} : { retweet_count: post.metrics.retweets }),
+      like_count: post.metrics.likes,
+      retweet_count: post.metrics.retweets,
       reply_count: post.metrics.replies,
       ...(post.metrics.quotes === undefined
         ? {}
@@ -66,17 +63,6 @@ export const normalizeXPost = (
         : { impression_count: post.metrics.views }),
     },
     metrics: xPostMetricsMetadata(post.metrics),
-    promotionMetricsState: post.metrics.eligibilityState ?? "missing",
-    ...(post.authorHandle !== undefined && verifiedAuthority !== undefined &&
-      verifiedAuthority.canonicalHandle ===
-        post.authorHandle.trim().replace(/^@/u, "").toLowerCase() ? {
-      promotionAuthority: {
-        status: "attested",
-        official: true,
-        trusted: true,
-        attestedBy: "source_catalog",
-      },
-    } : {}),
     mediaUrls: post.mediaUrls,
   }),
 });
@@ -85,10 +71,9 @@ export const xPostMatchesMetricThresholds = (
   metrics: XDailyPostMetrics,
   config: XExperimentalDailyScanConfig,
 ): boolean =>
-  (config.minLikes === undefined ||
-    (metrics.likes !== undefined && metrics.likes >= config.minLikes)) &&
+  (config.minLikes === undefined || metrics.likes >= config.minLikes) &&
   (config.minRetweets === undefined ||
-    (metrics.retweets !== undefined && metrics.retweets >= config.minRetweets)) &&
+    metrics.retweets >= config.minRetweets) &&
   (config.minReplies === undefined || metrics.replies >= config.minReplies);
 
 export const xPostMatchesSearchQuery = (
@@ -114,8 +99,8 @@ export const compareXCollectedPosts = (
 
 export const xPostSignalScore = (post: XDailyCollectedPost): number =>
   post.trendScore +
-  (post.metrics.likes ?? 0) +
-  (post.metrics.retweets ?? 0) * 2 +
+  post.metrics.likes +
+  post.metrics.retweets * 2 +
   post.metrics.replies * 1.5 +
   (post.metrics.quotes ?? 0) * 2;
 
@@ -130,8 +115,8 @@ export const formatXCollectorWarning = (
 
 const xPostMetricsMetadata = (metrics: XDailyPostMetrics): JsonObject =>
   normalizeJsonObject({
-    ...(metrics.likes === undefined ? {} : { likes: metrics.likes }),
-    ...(metrics.retweets === undefined ? {} : { retweets: metrics.retweets }),
+    likes: metrics.likes,
+    retweets: metrics.retweets,
     replies: metrics.replies,
     ...(metrics.quotes === undefined ? {} : { quotes: metrics.quotes }),
     ...(metrics.views === undefined ? {} : { views: metrics.views }),

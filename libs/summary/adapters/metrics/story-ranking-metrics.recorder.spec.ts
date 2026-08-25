@@ -1,10 +1,7 @@
 import { InMemoryMetricsRecorder } from "@social-monitor/platform-metrics";
 
 import {
-  STORY_RELATION_CANDIDATE_POLICY_VERSION,
   STORY_RANKING_POLICY_V1,
-  aggregateStoryRelationDecisionTraces,
-  type StoryRelationDecisionTrace,
   type SummaryEvidenceSelection,
 } from "../../domain";
 import { StoryRankingMetricsRecorder } from "./story-ranking-metrics.recorder";
@@ -30,127 +27,6 @@ describe("StoryRankingMetricsRecorder", () => {
     expect(
       metrics.latestGaugeValue("summary_story_relation_approved_total", labels),
     ).toBe(2);
-  });
-
-  it("records aggregate related-topic outcome and latency", () => {
-    const metrics = new InMemoryMetricsRecorder();
-    const recorder = new StoryRankingMetricsRecorder(metrics);
-
-    recorder.recordRelatedTopicVerification({
-      status: "timed_out",
-      candidateCount: 3,
-      approvedCount: 0,
-      latencyMs: 15_000,
-    });
-
-    const labels = { outcome: "timed_out" };
-    expect(metrics.counterValue(
-      "summary_related_topic_verification_outcomes_total",
-      labels,
-    )).toBe(1);
-    expect(metrics.latestGaugeValue(
-      "summary_related_topic_verification_latency_ms",
-      labels,
-    )).toBe(15_000);
-    expect(metrics.latestGaugeValue(
-      "summary_related_topic_verification_candidates_total",
-      labels,
-    )).toBe(3);
-  });
-
-  it("aggregates decision traces by bounded disposition and versions only", () => {
-    const metrics = new InMemoryMetricsRecorder();
-    const recorder = new StoryRankingMetricsRecorder(metrics);
-    const trace: StoryRelationDecisionTrace = {
-      pairId: "high-cardinality-left\u0000high-cardinality-right",
-      rankingPolicyVersion: STORY_RANKING_POLICY_V1.version,
-      candidatePolicyVersion: STORY_RELATION_CANDIDATE_POLICY_VERSION,
-      approvalThreshold: 0.92,
-      shortlistRank: 1,
-      features: {
-        sharedTopicTokenCount: 3,
-        sharedAnchorTokenCount: 1,
-        sharedEventTokenCount: 1,
-        sharedSpecificProductTokenCount: 1,
-        topicSimilarity: 0.4,
-      },
-      disposition: "approved",
-      sameStory: true,
-      confidenceScore: 0.97,
-      rationalePresent: true,
-      rationaleCharacterCount: 23,
-      applied: true,
-    };
-
-    recorder.recordStoryRelationDecisionAggregates(
-      aggregateStoryRelationDecisionTraces([trace, trace]),
-    );
-
-    const labels = {
-      disposition: "approved",
-      failure_reason: "none",
-      ranking_policy_version: STORY_RANKING_POLICY_V1.version,
-      candidate_policy_version: STORY_RELATION_CANDIDATE_POLICY_VERSION,
-    };
-    expect(
-      metrics.counterValue("summary_story_relation_decisions_total", labels),
-    ).toBe(2);
-    const serializedMetrics = JSON.stringify(
-      metrics.counters("summary_story_relation_decisions_total"),
-    );
-    expect(serializedMetrics).not.toContain("high-cardinality");
-    expect(serializedMetrics).not.toContain("rationale");
-  });
-
-  it("keeps safe-recall shadow counters aggregate-only and isolated", () => {
-    const metrics = new InMemoryMetricsRecorder();
-    const recorder = new StoryRankingMetricsRecorder(metrics);
-
-    recorder.recordStoryRelationSafeRecallShadowGeneration([
-      {
-        reasonCode: "title_normalized_entity_event_evidence",
-        candidatePolicyVersion:
-          "reader_summary.story_relation.safe_recall_shadow.v2",
-        count: 2,
-      },
-    ]);
-    recorder.recordStoryRelationSafeRecallShadowDecisions([
-      {
-        shadowReasonCode: "title_normalized_entity_event_evidence",
-        disposition: "approved",
-        rankingPolicyVersion: STORY_RANKING_POLICY_V1.version,
-        candidatePolicyVersion:
-          "reader_summary.story_relation.safe_recall_shadow.v2",
-        count: 1,
-      },
-    ]);
-
-    expect(
-      metrics.counterValue(
-        "summary_story_relation_safe_recall_shadow_candidates_total",
-        {
-          reason_code: "title_normalized_entity_event_evidence",
-          candidate_policy_version:
-            "reader_summary.story_relation.safe_recall_shadow.v2",
-        },
-      ),
-    ).toBe(2);
-    expect(
-      metrics.counterValue(
-        "summary_story_relation_safe_recall_shadow_decisions_total",
-        {
-          reason_code: "title_normalized_entity_event_evidence",
-          disposition: "approved",
-          failure_reason: "none",
-          ranking_policy_version: STORY_RANKING_POLICY_V1.version,
-          candidate_policy_version:
-            "reader_summary.story_relation.safe_recall_shadow.v2",
-        },
-      ),
-    ).toBe(1);
-    expect(
-      metrics.counters("summary_story_relation_decisions_total"),
-    ).toEqual([]);
   });
 
   it("records production ranking and dedup gauges with the policy version label", () => {

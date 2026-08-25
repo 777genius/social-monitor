@@ -12,11 +12,11 @@ describe("daily canonical recovery v4 invocation", () => {
   });
 
   it.each([
-    [["invalid-product-retry-set-v1"]],
-    [["invalid-product-retry-set-v2", "a".repeat(64)]],
-    [["invalid-product-retry-set-v1", "A".repeat(64)]],
-    [["invalid-product-retry-set-v1", "a".repeat(64), "extra"]],
-  ] as const)("rejects malformed or widened mode %j", (argv) => {
+    ["invalid-product-retry-set-v1"],
+    ["invalid-product-retry-set-v2", "a".repeat(64)],
+    ["invalid-product-retry-set-v1", "A".repeat(64)],
+    ["invalid-product-retry-set-v1", "a".repeat(64), "extra"],
+  ])("rejects malformed or widened mode %j", (argv) => {
     expect(() => parseDailyCanonicalRecoveryV4Invocation(argv)).toThrow(/invocation/u);
   });
 });

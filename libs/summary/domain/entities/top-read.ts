@@ -14,34 +14,7 @@ export type TopReadConfidence = {
   readonly rationale: string;
 };
 
-export const readerSummaryCardKinds = [
-  "curated_top_read",
-  "additional_notable_story",
-  "related_topic",
-  "supplemental_trend",
-  "unsupported",
-] as const;
-
-export type ReaderSummaryCardKind = (typeof readerSummaryCardKinds)[number];
-
-export const readerPostPromotionCardFields = [
-  "promotionMarker",
-  "promotionPolicyVersion",
-  "promotionTier",
-  "promotionCandidateId",
-  "promotionCanonicalIdentity",
-] as const;
-
 export type TopRead = {
-  readonly storyClusterId?: string;
-  readonly cardKind?: ReaderSummaryCardKind;
-  readonly promotionMarker?: "reader_post_promotion";
-  readonly promotionPolicyVersion?: "reader_post_promotion.v1";
-  readonly promotionTier?: "top" | "additional";
-  readonly promotionCandidateId?: string;
-  readonly promotionCanonicalIdentity?: string;
-  readonly relationId?: string;
-  readonly targetStoryClusterId?: string;
   readonly title: string;
   readonly providerKey: string;
   readonly providerName: string;

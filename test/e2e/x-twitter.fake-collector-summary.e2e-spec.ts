@@ -142,9 +142,9 @@ describe('X/Twitter fake collector summary flow (e2e)', () => {
       providerKey: 'x-twitter',
       providerMetadata: expect.objectContaining({
         kind: 'x_post',
-        contentKind: 'original_post',
-        likes: 120,
-        reposts: 30,
+        publicMetrics: expect.objectContaining({
+          like_count: 120,
+        }),
       }),
     }));
 
@@ -225,12 +225,10 @@ describe('X/Twitter fake collector summary flow (e2e)', () => {
           replies: 6,
           quotes: 2,
           views: 9_000,
-          eligibilityState: 'observed',
         },
         mediaUrls: [],
         sourceProduct: 'top',
         trendScore: 70,
-        contentKind: 'original_post',
       },
       {
         tweetId: 'quality-crypto',
@@ -245,12 +243,10 @@ describe('X/Twitter fake collector summary flow (e2e)', () => {
           replies: 140,
           quotes: 30,
           views: 80_000,
-          eligibilityState: 'observed',
         },
         mediaUrls: [],
         sourceProduct: 'top',
         trendScore: 99,
-        contentKind: 'original_post',
       },
       {
         tweetId: 'quality-tco',
@@ -265,12 +261,10 @@ describe('X/Twitter fake collector summary flow (e2e)', () => {
           replies: 40,
           quotes: 12,
           views: 120_000,
-          eligibilityState: 'observed',
         },
         mediaUrls: [],
         sourceProduct: 'top',
         trendScore: 98,
-        contentKind: 'original_post',
       },
     ]);
     const feedItems = new InMemoryFeedItemReadRepository();
@@ -453,12 +447,10 @@ const defaultFakeXPosts: readonly XDailyCollectedPost[] = [
       replies: 8,
       quotes: 4,
       views: 12_000,
-      eligibilityState: 'observed',
     },
     mediaUrls: [],
     sourceProduct: 'top',
     trendScore: 88,
-    contentKind: 'original_post',
   },
   {
     tweetId: '200',
@@ -471,11 +463,9 @@ const defaultFakeXPosts: readonly XDailyCollectedPost[] = [
       likes: 22,
       retweets: 5,
       replies: 2,
-      eligibilityState: 'observed',
     },
     mediaUrls: [],
     sourceProduct: 'latest',
     trendScore: 31,
-    contentKind: 'original_post',
   },
 ];

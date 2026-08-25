@@ -48,11 +48,7 @@ import {
 } from "./reader-summary-daily-source-authority-snapshot";
 import { createReaderSummaryDailyFrozenOutputTextWiring } from "./reader-summary-daily-frozen-publication-input";
 import { parseStrictDailyOutputText } from "./reader-summary-daily-canonical-recovery-v4";
-import {
-  readReaderSummaryDailyModelTelemetry,
-  requireReaderSummaryDailyProviderTelemetry,
-  verifyReaderSummaryDailyCanonicalRecoveryReceipt,
-} from "./reader-summary-daily-model-job-receipt";
+import { verifyReaderSummaryDailyCanonicalRecoveryReceipt } from "./reader-summary-daily-model-job-receipt";
 
 const dailyResponsePathEnv = "DURABLE_READER_SUMMARY_DAILY_RESPONSE_PATH";
 const dailyReceiptPathEnv = "DURABLE_READER_SUMMARY_DAILY_RECEIPT_PATH";
@@ -68,7 +64,6 @@ export type ReaderSummaryDailyReplayInput = Readonly<{
   modelJobIdentity: string;
   authority: VerifiedReaderSummaryDailySourceAuthority;
   outputKind: "structured_output" | "output_text";
-  modelTelemetry?: ReturnType<typeof readReaderSummaryDailyModelTelemetry>;
 }>;
 
 export const createReaderSummaryDailyCaptureContext = (input: {
@@ -130,7 +125,6 @@ export const loadReaderSummaryDailyReplayInput = (
   if (!/^[0-9a-f]{64}$/u.test(modelJobIdentity)) {
     throw new Error("Daily model job identity is invalid");
   }
-  const modelTelemetry = readReaderSummaryDailyModelTelemetry(receiptBytes);
   return Object.freeze({
     responseBytes,
     receiptBytes,
@@ -139,7 +133,6 @@ export const loadReaderSummaryDailyReplayInput = (
     modelJobIdentity,
     authority: verified,
     outputKind: "structured_output",
-    modelTelemetry,
   });
 };
 
@@ -315,9 +308,6 @@ const createReaderSummaryDailyPersistedResponseModel = (input: {
   readonly expectedOutputKind?: "structured_output" | "output_text";
 }): ReaderSummaryModelPort => {
   const outputKind = input.expectedOutputKind ?? "structured_output";
-  const modelTelemetry = outputKind === "structured_output"
-    ? requireReaderSummaryDailyProviderTelemetry(input.receiptBytes)
-    : readReaderSummaryDailyModelTelemetry(input.receiptBytes);
   const outputTextBytes = outputKind === "output_text"
     ? strictOutputTextBytes(input.responseBytes)
     : undefined;
@@ -338,22 +328,13 @@ const createReaderSummaryDailyPersistedResponseModel = (input: {
   let generated = false;
   const route: ReaderSummaryModelRoute = {
     provider: "agent-runtime",
-    model: [
-      modelTelemetry.provider,
-      modelTelemetry.model,
-      modelTelemetry.reasoningEffort,
-    ].join(":"),
+    model: "codex:gpt-5.6-sol:xhigh",
     promptVersion: currentReaderSummaryPromptRelease.id,
     schemaVersion: "reader_summary.artifact.v1",
   };
   const estimate = (): ReaderSummaryModelEstimate => ({
-    inputTokens: modelTelemetry.inputTokens ?? 0,
-    outputTokens: modelTelemetry.outputTokens ?? 0,
-    estimatedCostUsd: 0,
-  });
-  const artifactUsage = () => ({
-    inputTokens: modelTelemetry.inputTokens,
-    outputTokens: modelTelemetry.outputTokens,
+    inputTokens: 0,
+    outputTokens: 0,
     estimatedCostUsd: 0,
   });
   return {
@@ -364,23 +345,13 @@ const createReaderSummaryDailyPersistedResponseModel = (input: {
         throw new Error("Daily persisted response may be consumed only once");
       }
       generated = true;
-      const normalizedDraft = normalizeOpenAiReaderSummaryDraft(
+      const draft = normalizeOpenAiReaderSummaryDraft(
         response,
         modelInput,
         selectedRoute,
-        artifactUsage(),
+        estimate(),
         "reader_summary.eval.mvp.v1",
       );
-      const draft = outputKind === "output_text"
-        ? {
-            ...normalizedDraft,
-            headline: requiredText(response.headline, "output_text headline"),
-            executiveSummary: requiredText(
-              response.executiveSummary,
-              "output_text executive summary",
-            ),
-          }
-        : normalizedDraft;
       await input.attestationSink.record(
         receiptAttestation ?? {
           taskRole: "summary",
@@ -473,22 +444,16 @@ const verifiedStructuredOutputAttestation = (
 ): Record<string, unknown> => {
   const receipt = parseRecord(input.receiptBytes, "model receipt");
   const attestation = record(receipt.attestation);
-  const telemetry = requireReaderSummaryDailyProviderTelemetry(
-    input.receiptBytes,
-  );
   if (
-    receipt.schemaVersion !== 2 ||
+    receipt.schemaVersion !== 1 ||
     receipt.modelJobIdentity !== input.modelJobIdentity ||
     receipt.requestedUtcDate !== input.requestedUtcDate ||
     receipt.sourceAuthoritySha256 !== input.sourceAuthoritySha256 ||
     receipt.responseSha256 !== sha256(responseBytes) ||
     attestation === null ||
-    !validPersistedStructuredExecutionIdentity(attestation) ||
     attestation.provider !== "codex" ||
     attestation.model !== "gpt-5.6-sol" ||
-    attestation.provider !== telemetry.provider ||
-    attestation.model !== telemetry.model ||
-    attestation.reasoningEffort !== telemetry.reasoningEffort ||
+    attestation.reasoningEffort !== "xhigh" ||
     attestation.runtimeEngine !== "subscription-runtime-cli" ||
     attestation.selectedOutputKind !== "structured_output" ||
     attestation.selectedOutputSha256 !== receipt.responseSha256
@@ -497,14 +462,6 @@ const verifiedStructuredOutputAttestation = (
   }
   return attestation;
 };
-
-const validPersistedStructuredExecutionIdentity = (
-  attestation: Record<string, unknown>,
-): boolean =>
-  (attestation.purpose === "social_monitor.reader_summary.generate.v2" &&
-    attestation.reasoningEffort === "high") ||
-  (attestation.purpose === "social_monitor.reader_summary.generate" &&
-    attestation.reasoningEffort === "xhigh");
 
 const strictOutputTextBytes = (responseBytes: Buffer): Buffer => {
   const bytes = parseStrictDailyOutputText(

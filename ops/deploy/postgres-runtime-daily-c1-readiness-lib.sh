@@ -653,7 +653,7 @@ wait_postgres_runtime_daily_c1_services_idle() {
     for service in \
       "$POSTGRES_RUNTIME_DAILY_SERVICE" "$POSTGRES_RUNTIME_DAILY_V6_SERVICE"; do
       state=$(systemctl show --property=ActiveState --value "$service") || return
-      [[ $state == inactive || $state == failed ]] || all_idle=false
+      [[ $state == inactive ]] || all_idle=false
     done
     [[ $all_idle == true ]] && return 0
     sleep 1

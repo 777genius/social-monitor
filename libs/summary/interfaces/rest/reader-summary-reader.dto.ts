@@ -6,8 +6,6 @@ import {
   readerSummaryReaderPrimaryActionKinds,
   readerSummaryReaderQualityStatuses,
 } from "./reader-summary-contract.constants";
-import { ReaderSummaryPromotionAttestationDto } from
-  "./reader-summary-promotion-attestation.dto";
 
 export class ReaderSummaryProviderMetricDto {
   @ApiProperty()
@@ -43,9 +41,6 @@ export class ReaderSummaryPreviewMediaDto {
 }
 
 export class ReaderSummaryReaderItemDto {
-  @ApiPropertyOptional({ type: () => ReaderSummaryPromotionAttestationDto })
-  declare readonly promotionAttestation?: ReaderSummaryPromotionAttestationDto;
-
   @ApiProperty()
   declare readonly title: string;
 

@@ -211,7 +211,7 @@ const weeklyStoryGraph = (): Readonly<{
       sourceSha256: citation.sourceSha256,
     })),
     citations,
-  } as unknown as ReaderSummaryWeeklyModelInput;
+  } as ReaderSummaryWeeklyModelInput;
   const output = {
     synthesisCitationIds: citations.map((citation) => citation.citationId),
     stories: [
@@ -238,7 +238,7 @@ const weeklyStoryGraph = (): Readonly<{
         citationIds: citations.map((citation) => citation.citationId),
       },
     ],
-  } as unknown as ReaderSummaryWeeklyModelOutput;
+  } as ReaderSummaryWeeklyModelOutput;
   return { input, output };
 };
 

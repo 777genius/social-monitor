@@ -5,6 +5,12 @@ export const isInsidePeriod = (
   date.getTime() >= period.startedAt.getTime() &&
   date.getTime() < period.endedAt.getTime();
 
+export const inclusiveObservedAfter = (startedAt: Date): Date =>
+  new Date(startedAt.getTime() - 1);
+
+export const inclusiveObservedBefore = (endedAt: Date): Date =>
+  new Date(endedAt.getTime() + 1);
+
 export const providerBalancedQuotaForLimit = (params: {
   readonly limit: number;
   readonly activeProviderCount: number;

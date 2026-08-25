@@ -35,7 +35,6 @@ export type ReaderSummaryCleanRealDayCollectionCli = Readonly<{
   targetCollectionDate: string;
   requestedProviderKeys: readonly CleanRealDayCollectionProviderKey[];
   outputPath: string;
-  exactDateArtifact: boolean;
   targetPublishedWindow: Readonly<{
     startInclusive: string;
     endExclusive: string;
@@ -69,17 +68,6 @@ export const readReaderSummaryCleanRealDayCollectionCli = (params: {
     collectionDateOptionOrDefault(dateOnly(params.collectionPolicyEvaluatedAt));
   const requestedProviderKeys = readProviderKeys();
   const artifactDirectory = readOption("--artifact-directory");
-  const exactDateArtifactDirectory = readOption(
-    "--exact-date-artifact-directory",
-  );
-  if (
-    artifactDirectory !== undefined &&
-    exactDateArtifactDirectory !== undefined
-  ) {
-    throw new Error(
-      "--artifact-directory and --exact-date-artifact-directory are exclusive",
-    );
-  }
   const productionHistoryFirstAttempt = process.argv.includes(
     "--production-history-scope",
   );
@@ -208,18 +196,12 @@ export const readReaderSummaryCleanRealDayCollectionCli = (params: {
     targetCollectionDate,
     requestedProviderKeys,
     outputPath:
-      exactDateArtifactDirectory !== undefined
-        ? readerSummaryDailyCollectionArtifactPath({
-            directory: exactDateArtifactDirectory,
+      artifactDirectory === undefined
+        ? "ops/evals/reader-summary-clean-real-day-collection.v1.json"
+        : readerSummaryDailyCollectionArtifactPath({
+            directory: artifactDirectory,
             collectionDate: targetCollectionDate,
-          })
-        : artifactDirectory === undefined
-          ? "ops/evals/reader-summary-clean-real-day-collection.v1.json"
-          : readerSummaryDailyCollectionArtifactPath({
-              directory: artifactDirectory,
-              collectionDate: targetCollectionDate,
-            }),
-    exactDateArtifact: exactDateArtifactDirectory !== undefined,
+          }),
     targetPublishedWindow,
     targetPublishedWindowConfig: {
       ...targetPublishedWindow,

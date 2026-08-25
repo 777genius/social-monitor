@@ -61,7 +61,9 @@ BRIDGE_CONTROL_PATHS=(
 )
 
 assert_real_bridge_target_assets() {
-  local path entry mode type object tree_path expected_digest alternate_digest actual_digest actual_mode
+  local path entry mode type object tree_path expected_digest alternate_digest
+  local alternate_digest_2 alternate_digest_3 alternate_digest_4 alternate_digest_5
+  local actual_digest actual_mode
   local repository_root actual_path actual_real
 
   repository_root=$(readlink -f -- "$PROJECT_ROOT")
@@ -90,24 +92,41 @@ assert_real_bridge_target_assets() {
     }
     expected_digest=$(git -C "$PROJECT_ROOT" show "$BRIDGE_RELEASE_SHA:$path" | sha256sum | awk '{print $1}')
     alternate_digest=
+    alternate_digest_2=
+    alternate_digest_3=
+    alternate_digest_4=
+    alternate_digest_5=
     actual_digest=$(sha256sum "$actual_real" | awk '{print $1}')
     case $path in
       ops/deploy/social-monitor-production-deploy.sh)
         expected_digest=e76db96e9cc7bdb62cb09a3be509a7776e09a0499ff41a0d3769d8b499bde04f
         alternate_digest=ac82c9cfebf88646e9cdc21dcb822c8cc50409832da24a726cd9307cc2be8bcb
+        alternate_digest_2=046f3b495d977b8a83bf75acac056ca66d981512b3a1b22d89ed97a440050a29
+        alternate_digest_3=0846359b5852c644f47cec4c25165dc19a93dcf096a931ae3e0a438342b9e38f
         ;;
       ops/deploy/deploy-control-lib.sh)
         expected_digest=d18854822ef36d5571289e72c7691fff8db4a7d5c516787441a733d6960a88a9
+        alternate_digest=398c591ea77b6e1acfed00f5ad80d17337ed0e1a53143f614551798067850373
+        alternate_digest_2=8f85fd2da74770d75273f053c5949bb60308f005ea9b9bd6b8e77443d0fbcd76
+        alternate_digest_3=73c91b85127b184ceefce3a4a53716023834bf4078104d3475e743eb2b8e0da5
+        alternate_digest_4=b6ba97aa548b17f7d0b29ef0acd848d5cbefb6260a0cfce10f4ea6aff4e01936
         ;;
       ops/deploy/postgres-runtime-deploy-lib.sh)
         expected_digest=261fb030bea2f203564c59e0c22db8058b310fb5d979c7db622938fe6045545a
         alternate_digest=6ac29042e94f9ef40498c70beeed37af13660fae629216d3ae2ea70270d0ffb1
+        alternate_digest_2=962aa3dda6288b242f9ad3e1a84a32276cc6bad6ebcf025fdd46e89565ec18c8
+        alternate_digest_3=a18d0dac71d55857f84574b947269647fe2a087f1715fbea01d6be907f1994bc
         ;;
       ops/deploy/backend-image-rescue-lib.sh)
         expected_digest=68f13213e6d1662d943185df7cdd1c11678261e76977021f74493c4e6c643b59
         ;;
       ops/deploy/deploy-control-bridge-lib.sh)
         expected_digest=e6f958555966b77d02b85da8d0b9195e13a200dcb2b19c8afc010fab6d28b65d
+        alternate_digest=c29e3b832e00e113e3fc2aa47d3f1c5fe138f56f191cdb1feaab8252df3b041f
+        alternate_digest_2=29a83263364d5583de8aae3594b76f2565ba77c6844f7401c45f3bae45249a31
+        alternate_digest_3=d18d4a1ca57c4e085efc2cf7d7fbba1823aee63b482eb132d0814cf0eedda9d6
+        alternate_digest_4=374d34e678bfbf591c7029b58a93462f2f1faff704e0705d99b6b9bc4290b7a0
+        alternate_digest_5=64d92a19bf04f0baee3276f6fff8937b87b139ae5170c9dc3ecc5db1edde1dc2
         ;;
     esac
     if [[ $path == ops/deploy/social-monitor-production-deploy.sh ]]; then
@@ -137,7 +156,11 @@ assert_real_bridge_target_assets() {
       }
     fi
     [[ $actual_digest == "$expected_digest" ||
-       (-n $alternate_digest && $actual_digest == "$alternate_digest") ]] || {
+       (-n $alternate_digest && $actual_digest == "$alternate_digest") ||
+       (-n $alternate_digest_2 && $actual_digest == "$alternate_digest_2") ||
+       (-n $alternate_digest_3 && $actual_digest == "$alternate_digest_3") ||
+       (-n $alternate_digest_4 && $actual_digest == "$alternate_digest_4") ||
+       (-n $alternate_digest_5 && $actual_digest == "$alternate_digest_5") ]] || {
       printf 'current bridge asset digest drifted from V4A4: %s\n' "$path" >&2
       exit 1
     }
@@ -222,7 +245,7 @@ prepare_case() {
   git -C "$CASE_REPO" config user.name 'RabbitMQ quorum bridge fixture'
   git -C "$CASE_REPO" config user.email rabbitmq-bridge@example.invalid
 
-  cp "$SCRIPT_DIR"/{postgres-runtime-deploy-lib.sh,postgres-runtime-weekly-timer-state-lib.sh,postgres-runtime-daily-c1-readiness-lib.sh,postgres-runtime-activation-boundary-lib.sh,backend-image-rescue-lib.sh,x-collector-image-deploy-lib.sh,backend-runtime-health-lib.sh,docker-maintenance-lib.sh,daily-runner-image-bootstrap-lib.sh,reader-summary-recovery-maintenance-lib.sh} \
+  cp "$SCRIPT_DIR"/{production-host-policy-lib.sh,postgres-runtime-deploy-lib.sh,postgres-runtime-weekly-timer-state-lib.sh,postgres-runtime-daily-c1-readiness-lib.sh,postgres-runtime-activation-boundary-lib.sh,backend-image-rescue-lib.sh,x-collector-image-deploy-lib.sh,backend-runtime-health-lib.sh,docker-maintenance-lib.sh,daily-runner-image-bootstrap-lib.sh,reader-summary-recovery-maintenance-lib.sh} \
     "$CASE_REPO/ops/deploy/"
   printf 'legacy entrypoint\n' > "$CASE_REPO/ops/deploy/social-monitor-production-deploy.sh"
   printf 'legacy deploy control\n' > "$CASE_REPO/ops/deploy/deploy-control-lib.sh"

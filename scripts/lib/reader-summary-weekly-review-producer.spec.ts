@@ -44,7 +44,7 @@ describe("reader summary weekly review producer", () => {
     expect(store.persist).not.toHaveBeenCalled();
   });
 
-  it("uses only Codex gpt-5.6-sol high selectors and persists after attestation", async () => {
+  it("uses only Codex gpt-5.6-sol xhigh selectors and persists after attestation", async () => {
     const source = authority();
     const candidate = deriveReaderSummaryWeeklyReviewStoryCandidates(source)[0]!;
     const structuredOutput = {
@@ -68,9 +68,9 @@ describe("reader summary weekly review producer", () => {
     const command = (runtime.runTask as jest.Mock).mock.calls[0]?.[0] as AgentRuntimeTaskCommand;
     expect(command).toMatchObject({
       provider: "codex",
-      purpose: "social_monitor.reader_summary.weekly.review.v2",
-      controls: { model: "gpt-5.6-sol", reasoningEffort: "high" },
-      metadata: { reasoningEffort: "high", runtimeOutput: "structured_output" },
+      purpose: "social_monitor.reader_summary.weekly.review",
+      controls: { model: "gpt-5.6-sol", reasoningEffort: "xhigh" },
+      metadata: { reasoningEffort: "xhigh", runtimeOutput: "structured_output" },
     });
     expect(result).toMatchObject({
       outcome: "persisted",
@@ -198,7 +198,7 @@ const fakeRuntime = (
         canonicalRequestSha256: sha("request"),
         provider: "codex" as const,
         model: "gpt-5.6-sol",
-        reasoningEffort: "high",
+        reasoningEffort: "xhigh",
         runtimeEngine: "subscription-runtime-cli" as const,
         runtimePackageVersion: "1.2.3",
         launcherSha256: sha("launcher"),
@@ -273,11 +273,11 @@ const authority = (): ReaderSummaryWeeklyReviewAuthority => ({
 const attestation = (selectedOutputSha256: string) => ({
   schemaVersion: 1 as const,
   requestId: "reader-summary-weekly-review:stored",
-  purpose: "social_monitor.reader_summary.weekly.review.v2" as const,
+  purpose: "social_monitor.reader_summary.weekly.review" as const,
   canonicalRequestSha256: sha("request"),
   provider: "codex" as const,
   model: "gpt-5.6-sol" as const,
-  reasoningEffort: "high" as const,
+  reasoningEffort: "xhigh" as const,
   runtimeEngine: "subscription-runtime-cli" as const,
   runtimePackageVersion: "1.2.3",
   launcherSha256: sha("launcher"),

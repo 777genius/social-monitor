@@ -118,7 +118,7 @@ From `apps/frontend`:
 
 ```sh
 fvm flutter analyze
-fvm flutter test app/test
+fvm flutter test app
 fvm flutter test app/test/architecture/frontend_architecture_boundaries_test.dart
 ```
 

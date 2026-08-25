@@ -5,7 +5,6 @@ import type {
 import {
   independentEvidenceItems,
   independentEvidenceProviderKeys,
-  readerSummaryIndependentProviderFamily,
   readerSummaryProviderIdentity,
 } from "../value-objects/reader-summary-provider-identity";
 import {
@@ -34,30 +33,24 @@ export const buildWhyNow = (
   providerKeys: readonly string[],
   evidence: readonly SummaryEvidenceItem[],
 ): string => {
-  const independentEvidence = independentEvidenceItems(evidence);
-  const evidenceIdentities = independentEvidence.map((item) => ({
-    family: readerSummaryIndependentProviderFamily(item),
-    identity: readerSummaryProviderIdentity(item),
-  }));
+  const evidenceIdentities = independentEvidenceItems(evidence).map((item) =>
+    readerSummaryProviderIdentity(item),
+  );
   const clusterProviderKeys = multiProviderClusterKeys(cluster);
   const providerNamesByKey = new Map(
     evidenceIdentities.map(
-      ({ family, identity }) => [family, identity.providerName] as const,
+      (identity) => [identity.providerKey, identity.providerName] as const,
     ),
   );
   const providers = uniqueNonEmpty(
     evidenceIdentities.length > 0
       ? [
-          ...providerKeys.map((providerKey) =>
-            readerSummaryIndependentProviderFamily({ providerKey })),
-          ...evidenceIdentities.map(({ family }) => family),
+          ...providerKeys,
+          ...evidenceIdentities.map((identity) => identity.providerKey),
         ]
       : clusterProviderKeys.length > 0
         ? clusterProviderKeys
-        : [...(cluster?.providerKeys ?? []), ...providerKeys].map(
-            (providerKey) =>
-              readerSummaryIndependentProviderFamily({ providerKey }),
-          ),
+        : [...(cluster?.providerKeys ?? []), ...providerKeys],
   ).map((providerKey) => providerNamesByKey.get(providerKey) ?? providerKey);
   const duplicateCount = cluster?.duplicateFeedItemIds.length ?? 0;
   const interestCount =
@@ -89,24 +82,16 @@ export const confirmedProviderKeys = (params: {
       ? evidenceProviderKeys
       : clusterProviderKeys.length > 0
         ? clusterProviderKeys
-        : [readerSummaryIndependentProviderFamily({
-            providerKey: params.providerKey,
-          })],
+        : [params.providerKey],
   );
 
-  return providerKeys.length > 0
-    ? providerKeys
-    : [readerSummaryIndependentProviderFamily({
-        providerKey: params.providerKey,
-      })];
+  return providerKeys.length > 0 ? providerKeys : [params.providerKey];
 };
 
 export const multiProviderClusterKeys = (
   cluster: StoryCluster | undefined,
 ): readonly string[] => {
-  const providerKeys = compactUnique((cluster?.providerKeys ?? []).map(
-    (providerKey) => readerSummaryIndependentProviderFamily({ providerKey }),
-  ));
+  const providerKeys = compactUnique(cluster?.providerKeys ?? []);
 
   return providerKeys.length > 1 ? providerKeys : [];
 };

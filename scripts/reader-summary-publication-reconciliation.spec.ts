@@ -27,10 +27,6 @@ import type {
   SummaryQuotaPort,
 } from "@social-monitor/summary/ports";
 import { ExecuteReaderSummaryJobUseCase } from "@social-monitor/summary/features/execute-reader-summary-job/execute-reader-summary-job.use-case";
-import {
-  NOOP_READER_SUMMARY_PROMOTION_METRICS,
-  readerSummaryPromotionControl,
-} from "@social-monitor/summary/features/execute-reader-summary-job/reader-summary-promotion-control";
 import { RequestReaderSummaryUseCase } from "@social-monitor/summary/features/request-reader-summary/request-reader-summary.use-case";
 import type { BuildReaderSummaryTopicMapUseCase } from "@social-monitor/summary/features/build-reader-summary-topic-map/build-reader-summary-topic-map.use-case";
 import {
@@ -82,7 +78,7 @@ const servingAuthority = {
 };
 
 describe("reader summary DB publication reconciliation", () => {
-  it("reclaims and replays empty evidence without a model call", async () => {
+  it("reclaims a stale daily RUNNING job and replays it without a second model call", async () => {
     const jobs = new InMemoryReaderSummaryJobRepository();
     const artifacts = new InMemoryReaderSummaryArtifactRepository();
     const events = new InMemorySummaryEventPublisher();
@@ -114,7 +110,6 @@ describe("reader summary DB publication reconciliation", () => {
       publication,
       ids,
       clock,
-      readerSummaryPromotionControl(NOOP_READER_SUMMARY_PROMOTION_METRICS),
       undefined,
       undefined,
       successfulEmptyTopicMapBuilder(),
@@ -166,7 +161,6 @@ describe("reader summary DB publication reconciliation", () => {
       publication,
       ids,
       new FixedClock(new Date("2026-08-13T10:00:00.000Z")),
-      readerSummaryPromotionControl(NOOP_READER_SUMMARY_PROMOTION_METRICS),
       undefined,
       undefined,
       successfulEmptyTopicMapBuilder(),
@@ -189,10 +183,10 @@ describe("reader summary DB publication reconciliation", () => {
       requestCreated: false,
       readerSummaryJobId: requested.value.readerSummaryJobId,
     });
-    expect(model.calls()).toBe(0);
+    expect(model.calls()).toBe(1);
   });
 
-  it("replays a persisted empty-evidence publication without a model call", async () => {
+  it("replays the real request and execution use cases without another model call", async () => {
     const directory = mkdtempSync(join(tmpdir(), "summary-db-publication-"));
     try {
       const jobs = new InMemoryReaderSummaryJobRepository();
@@ -235,7 +229,6 @@ describe("reader summary DB publication reconciliation", () => {
         recoverable.publication,
         ids,
         clock,
-        readerSummaryPromotionControl(NOOP_READER_SUMMARY_PROMOTION_METRICS),
         undefined,
         undefined,
         successfulEmptyTopicMapBuilder(),
@@ -250,7 +243,7 @@ describe("reader summary DB publication reconciliation", () => {
         failpoint: "after-db-before-state",
       });
       expect(first.error).toMatch(/after DB publication before terminal state/u);
-      expect(model.calls()).toBe(0);
+      expect(model.calls()).toBe(1);
 
       const firstJob = jobs.all()[0]?.toSnapshot();
       const firstArtifact = artifacts.all()[0]?.toSnapshot();
@@ -274,7 +267,7 @@ describe("reader summary DB publication reconciliation", () => {
         readerSummaryJobId: firstJob?.id,
         readerSummaryArtifactId: firstArtifact?.readerSummaryId,
       });
-      expect(model.calls()).toBe(0);
+      expect(model.calls()).toBe(1);
       expect(onlyRecoveryReceipt(directory).equals(recoveryBytesBefore)).toBe(true);
       expect(
         recoverable.recovery?.load({

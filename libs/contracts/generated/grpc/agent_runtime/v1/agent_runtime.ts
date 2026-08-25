@@ -221,7 +221,6 @@ export interface AgentRuntimeTaskResponse {
   usage: AgentRuntimeUsage | undefined;
   failure: AgentRuntimeFailure | undefined;
   executionAttestation: AgentRuntimeExecutionAttestation | undefined;
-  durationMs?: number | undefined;
 }
 
 export interface AgentRuntimeExecutionAttestation {
@@ -728,7 +727,6 @@ function createBaseAgentRuntimeTaskResponse(): AgentRuntimeTaskResponse {
     usage: undefined,
     failure: undefined,
     executionAttestation: undefined,
-    durationMs: undefined,
   };
 }
 
@@ -757,9 +755,6 @@ export const AgentRuntimeTaskResponse: MessageFns<AgentRuntimeTaskResponse> = {
     }
     if (message.executionAttestation !== undefined) {
       AgentRuntimeExecutionAttestation.encode(message.executionAttestation, writer.uint32(66).fork()).join();
-    }
-    if (message.durationMs !== undefined) {
-      writer.uint32(72).uint32(message.durationMs);
     }
     return writer;
   },
@@ -835,14 +830,6 @@ export const AgentRuntimeTaskResponse: MessageFns<AgentRuntimeTaskResponse> = {
           message.executionAttestation = AgentRuntimeExecutionAttestation.decode(reader, reader.uint32());
           continue;
         }
-        case 9: {
-          if (tag !== 72) {
-            break;
-          }
-
-          message.durationMs = reader.uint32();
-          continue;
-        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -880,11 +867,6 @@ export const AgentRuntimeTaskResponse: MessageFns<AgentRuntimeTaskResponse> = {
         : isSet(object.execution_attestation)
         ? AgentRuntimeExecutionAttestation.fromJSON(object.execution_attestation)
         : undefined,
-      durationMs: isSet(object.durationMs)
-        ? globalThis.Number(object.durationMs)
-        : isSet(object.duration_ms)
-        ? globalThis.Number(object.duration_ms)
-        : undefined,
     };
   },
 
@@ -914,9 +896,6 @@ export const AgentRuntimeTaskResponse: MessageFns<AgentRuntimeTaskResponse> = {
     if (message.executionAttestation !== undefined) {
       obj.executionAttestation = AgentRuntimeExecutionAttestation.toJSON(message.executionAttestation);
     }
-    if (message.durationMs !== undefined) {
-      obj.durationMs = Math.round(message.durationMs);
-    }
     return obj;
   },
 
@@ -939,7 +918,6 @@ export const AgentRuntimeTaskResponse: MessageFns<AgentRuntimeTaskResponse> = {
     message.executionAttestation = (object.executionAttestation !== undefined && object.executionAttestation !== null)
       ? AgentRuntimeExecutionAttestation.fromPartial(object.executionAttestation)
       : undefined;
-    message.durationMs = object.durationMs ?? undefined;
     return message;
   },
 };

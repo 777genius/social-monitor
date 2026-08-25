@@ -26,13 +26,8 @@ void main() {
       final summary = const SummaryMapper().readerSummaryToDomain(
         readerSummaryApiDto(
           content: readerSummaryContentApiDto(
-            topReads: [
+            topReads: const [
               TopReadApiDto(
-                storyClusterId: 'story:cross-source-agent-workflow',
-                cardKind: 'curated_top_read',
-                promotionAttestation: topPromotionAttestationApiDto(
-                  'story:cross-source-agent-workflow',
-                ),
                 title: 'Cross-source agent workflow story',
                 providerKey: 'x-twitter',
                 reason: 'X and Reddit point at the same agent workflow story.',
@@ -70,11 +65,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final rowFinder = find.byKey(
-        const ValueKey(
-          'reader-summary-top-post-cluster:story:cross-source-agent-workflow',
-        ),
-      );
+      final rowFinder = find.byKey(const ValueKey('reader-summary-top-post-0'));
       expect(
         find.descendant(
           of: rowFinder,
@@ -115,7 +106,7 @@ void main() {
       await tester.tap(
         find.byKey(
           const ValueKey(
-            'reader-summary-url-action-evidence-source-evidence-reddit',
+            'reader-summary-top-post-evidence-source-evidence-reddit',
           ),
         ),
       );
@@ -125,7 +116,7 @@ void main() {
     },
   );
 
-  testWidgets('downgrades trust when only one provider citation resolves', (
+  testWidgets('keeps confirmed cross-source support with one resolved citation', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(1280, 900);
@@ -138,13 +129,8 @@ void main() {
     final summary = const SummaryMapper().readerSummaryToDomain(
       readerSummaryApiDto(
         content: readerSummaryContentApiDto(
-          topReads: [
+          topReads: const [
             TopReadApiDto(
-              storyClusterId: 'story:claude-telemetry',
-              cardKind: 'curated_top_read',
-              promotionAttestation: topPromotionAttestationApiDto(
-                'story:claude-telemetry',
-              ),
               title: 'Claude Code tracker raises telemetry questions',
               providerKey: 'rss',
               reason:
@@ -160,11 +146,6 @@ void main() {
               citationIds: ['missing-cross-source-citation'],
             ),
             TopReadApiDto(
-              storyClusterId: 'story:token-pricing',
-              cardKind: 'curated_top_read',
-              promotionAttestation: topPromotionAttestationApiDto(
-                'story:token-pricing',
-              ),
               title: 'Token pricing and agent cost measurement get scrutiny',
               providerKey: 'hacker-news',
               reason:
@@ -207,9 +188,7 @@ void main() {
     await tester.pumpWidget(_TestApp(summary: summary));
     await tester.pumpAndSettle();
 
-    final firstRow = find.byKey(
-      const ValueKey('reader-summary-top-post-cluster:story:claude-telemetry'),
-    );
+    final firstRow = find.byKey(const ValueKey('reader-summary-top-post-0'));
     expect(
       find.descendant(
         of: firstRow,
@@ -218,7 +197,10 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.descendant(of: firstRow, matching: find.text('Single source')),
+      find.descendant(
+        of: firstRow,
+        matching: find.text('Cross-source · 2 sources'),
+      ),
       findsOneWidget,
     );
     expect(
@@ -233,9 +215,7 @@ void main() {
       findsNothing,
     );
 
-    final secondRow = find.byKey(
-      const ValueKey('reader-summary-top-post-cluster:story:token-pricing'),
-    );
+    final secondRow = find.byKey(const ValueKey('reader-summary-top-post-1'));
     expect(
       find.descendant(
         of: secondRow,
@@ -267,13 +247,8 @@ void main() {
     final summary = const SummaryMapper().readerSummaryToDomain(
       readerSummaryApiDto(
         content: readerSummaryContentApiDto(
-          topReads: [
+          topReads: const [
             TopReadApiDto(
-              storyClusterId: 'story:reddit-agent-workflow',
-              cardKind: 'curated_top_read',
-              promotionAttestation: topPromotionAttestationApiDto(
-                'story:reddit-agent-workflow',
-              ),
               title: 'Reddit agent workflow trend',
               providerKey: 'reddit',
               reason: 'Two Reddit threads discuss the same workflow trend.',
@@ -309,11 +284,7 @@ void main() {
     await tester.pumpWidget(_TestApp(summary: summary));
     await tester.pumpAndSettle();
 
-    final rowFinder = find.byKey(
-      const ValueKey(
-        'reader-summary-top-post-cluster:story:reddit-agent-workflow',
-      ),
-    );
+    final rowFinder = find.byKey(const ValueKey('reader-summary-top-post-0'));
     expect(
       find.descendant(
         of: rowFinder,
@@ -357,13 +328,8 @@ void main() {
       final summary = const SummaryMapper().readerSummaryToDomain(
         readerSummaryApiDto(
           content: readerSummaryContentApiDto(
-            topReads: [
+            topReads: const [
               TopReadApiDto(
-                storyClusterId: 'story:medium-confidence',
-                cardKind: 'curated_top_read',
-                promotionAttestation: topPromotionAttestationApiDto(
-                  'story:medium-confidence',
-                ),
                 title: 'One medium-confidence source',
                 providerKey: 'hacker-news',
                 reason: 'One source can be plausible without corroboration.',
@@ -393,11 +359,7 @@ void main() {
       await tester.pumpWidget(_TestApp(summary: summary));
       await tester.pumpAndSettle();
 
-      final rowFinder = find.byKey(
-        const ValueKey(
-          'reader-summary-top-post-cluster:story:medium-confidence',
-        ),
-      );
+      final rowFinder = find.byKey(const ValueKey('reader-summary-top-post-0'));
       expect(
         find.descendant(of: rowFinder, matching: find.text('Single source')),
         findsOneWidget,
@@ -416,6 +378,7 @@ void main() {
         ),
         findsNothing,
       );
+
     },
   );
 }

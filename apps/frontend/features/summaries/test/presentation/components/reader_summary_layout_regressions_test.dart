@@ -29,9 +29,7 @@ void main() {
     await tester.pumpWidget(_TestApp(summary: summary));
     await tester.pumpAndSettle();
 
-    final rowFinder = find.byKey(
-      const ValueKey('reader-summary-top-post-cluster:story:launch-screenshot'),
-    );
+    final rowFinder = find.byKey(const ValueKey('reader-summary-top-post-0'));
     expect(rowFinder, findsOneWidget);
     expect(
       find.descendant(of: rowFinder, matching: find.byType(Image)),
@@ -111,11 +109,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      find.byKey(
-        const ValueKey(
-          'reader-summary-top-post-cluster:story:launch-screenshot',
-        ),
-      ),
+      find.byKey(const ValueKey('reader-summary-top-post-0')),
       findsOneWidget,
     );
     expect(find.byType(Image), findsOneWidget);
@@ -184,8 +178,6 @@ void main() {
         content: readerSummaryContentApiDto(
           topReads: const [
             TopReadApiDto(
-              storyClusterId: 'story:work-agent',
-              cardKind: 'curated_top_read',
               title: 'A work agent for longer operational projects',
               providerKey: 'x-twitter',
               reason: description,
@@ -284,8 +276,6 @@ ReaderSummary _summaryWithPreview() {
       content: readerSummaryContentApiDto(
         topReads: const [
           TopReadApiDto(
-            storyClusterId: 'story:launch-screenshot',
-            cardKind: 'curated_top_read',
             title: 'X post with launch screenshot',
             providerKey: 'x-twitter',
             reason: 'The original source includes a real post image.',
@@ -311,11 +301,7 @@ ReaderSummary _summaryWithPreview() {
         ],
       ),
       citations: [
-        summaryCitationApiDto(
-          id: 'media-citation',
-          providerKey: 'x-twitter',
-          canonicalUrl: 'https://x.com/example/status/123',
-        ),
+        summaryCitationApiDto(id: 'media-citation', providerKey: 'x-twitter'),
       ],
     ),
   );

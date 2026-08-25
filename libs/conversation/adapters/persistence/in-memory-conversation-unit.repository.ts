@@ -56,8 +56,6 @@ export class InMemoryConversationUnitRepository
         snapshot.tenantId !== query.tenantId ||
         snapshot.workspaceId !== query.workspaceId ||
         !rootIds.has(snapshot.rootFeedItemId) ||
-        (query.observedAtOrBefore !== undefined &&
-          snapshot.observedAt.getTime() > query.observedAtOrBefore.getTime()) ||
         (query.observedBefore !== undefined &&
           snapshot.observedAt.getTime() >= query.observedBefore.getTime())
       ) {
@@ -88,10 +86,8 @@ export class InMemoryConversationUnitRepository
           snapshot.observedAt.getTime() > query.observedAfter.getTime();
 
         const beforeCutoff =
-          (query.observedAtOrBefore === undefined ||
-            snapshot.observedAt.getTime() <= query.observedAtOrBefore.getTime()) &&
-          (query.observedBefore === undefined ||
-            snapshot.observedAt.getTime() < query.observedBefore.getTime());
+          query.observedBefore === undefined ||
+          snapshot.observedAt.getTime() < query.observedBefore.getTime();
 
         if (!inScope || !beforeCutoff) {
           return [];

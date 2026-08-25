@@ -605,9 +605,6 @@ const modelEvidence = (
     citations: observations.map((observation, index) => {
       const source =
         manifest.days[selectedDays[index]!]!.githubAudit.repositories[0]!;
-      if (!("sourceEvidence" in source)) {
-        throw new Error("Expected an evidence-bearing GitHub repository");
-      }
       return {
         citationId: observation.citationIds[0]!,
         observationId: observation.observationId,

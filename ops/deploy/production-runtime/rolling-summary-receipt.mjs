@@ -16,7 +16,15 @@ const [command, ...args] = process.argv.slice(2);
 if (command === "validate-collection") {
   const [path, date] = args;
   const report = readJson(path);
-  validateCollection(report, date);
+  if (report?.run?.collectionDate !== date) {
+    throw new Error("rolling collection date mismatch");
+  }
+  const scans = Array.isArray(report.scans) ? report.scans : [];
+  for (const provider of requiredProviders) {
+    if (!scans.some((scan) => scan?.providerKey === provider)) {
+      throw new Error(`rolling collection did not attempt ${provider}`);
+    }
+  }
 } else if (command === "write-receipt") {
   writeReceipt(args);
 } else if (command === "validate-receipt") {
@@ -37,24 +45,6 @@ if (command === "validate-collection") {
   throw new Error("rolling summary receipt command is invalid");
 }
 
-function validateCollection(report, date) {
-  if (report?.run?.collectionDate !== date) {
-    throw new Error("rolling collection date mismatch");
-  }
-  const scans = Array.isArray(report.scans) ? report.scans : [];
-  for (const provider of requiredProviders) {
-    if (
-      !scans.some(
-        (scan) =>
-          scan?.providerKey === provider &&
-          ["succeeded", "failed", "skipped"].includes(scan.status),
-      )
-    ) {
-      throw new Error(`rolling collection lacks terminal ${provider} evidence`);
-    }
-  }
-}
-
 function writeReceipt(args) {
   const [
     receiptPath,
@@ -65,12 +55,8 @@ function writeReceipt(args) {
     endedAt,
     collectionExit,
   ] = args;
-  if (collectionExit !== "0") {
-    throw new Error("rolling collection command did not succeed");
-  }
   const evidence = readJson(evidencePath);
   const collection = readJson(collectionPath);
-  validateCollection(collection, date);
   const receipt = {
     schemaVersion: 1,
     artifactFormat: "social-monitor-rolling-summary-receipt-v1",

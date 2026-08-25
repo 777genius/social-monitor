@@ -15,9 +15,7 @@ import {
   CanonicalReaderSummaryDailyPublicationFinalizer,
   createReaderSummaryDailyAuthorityEvidenceSelector,
   createReaderSummaryDailyCaptureContext,
-  createReaderSummaryDailyPublicationWiring,
 } from "./reader-summary-daily-publication-finalizer";
-import { buildReaderSummaryDailyModelJobReceipt } from "./reader-summary-daily-model-job-receipt";
 
 const tenantId = "10000000-0000-4000-8000-000000000001";
 const workspaceId = "20000000-0000-4000-8000-000000000002";
@@ -95,12 +93,7 @@ describe("CanonicalReaderSummaryDailyPublicationFinalizer", () => {
     }));
     writeFileSync(authorityPath, authorityBytes);
     writeFileSync(responsePath, "response");
-    writeFileSync(receiptPath, JSON.stringify({
-      schemaVersion: 1,
-      attestation: {
-        provider: "codex", model: "gpt-5.6-sol", reasoningEffort: "xhigh",
-      },
-    }));
+    writeFileSync(receiptPath, "receipt");
     const operationalClock = new FixedClock(
       new Date("2026-08-02T09:30:00.000Z"),
     );
@@ -154,63 +147,6 @@ describe("CanonicalReaderSummaryDailyPublicationFinalizer", () => {
     expect(select).toHaveBeenCalledWith(expect.objectContaining({
       observedThrough: new Date("2026-08-01T01:00:00.000Z"),
     }));
-  });
-
-  it("replays stored provider usage without a model call or zero estimate", () => {
-    const responseBytes = Buffer.from('{"headline":"stored"}');
-    const modelJob = work().modelJob;
-    const receipt = buildReaderSummaryDailyModelJobReceipt({
-      modelJob,
-      responseBytes,
-      attestation: {
-        schemaVersion: 1,
-        requestId: "daily-stored",
-        purpose: "social_monitor.reader_summary.generate.v2",
-        canonicalRequestSha256: "a".repeat(64),
-        provider: modelJob.provider,
-        model: modelJob.model,
-        reasoningEffort: modelJob.reasoningEffort,
-        runtimeEngine: modelJob.runtimeEngine,
-        runtimePackageVersion: "1.2.3",
-        launcherSha256: "b".repeat(64),
-        selectedOutputKind: "structured_output",
-        selectedOutputSha256: hash(responseBytes),
-      },
-      modelTelemetry: {
-        provider: modelJob.provider,
-        model: modelJob.model,
-        reasoningEffort: modelJob.reasoningEffort,
-        inputTokens: 120,
-        outputTokens: 30,
-        totalTokens: 150,
-        usageSource: "PROVIDER_REPORTED",
-        durationMs: 250,
-      },
-    });
-    const replay = {
-      responseBytes,
-      receiptBytes: receipt.receiptBytes,
-      authoritySha256: work().sourceAuthority.canonicalSha256,
-      ingestionCutoff: work().sourceAuthority.ingestionCutoff,
-      modelJobIdentity: modelJob.value,
-      authority: { ...work().sourceAuthority, items: [] } as never,
-      outputKind: "structured_output" as const,
-      modelTelemetry: receipt.modelTelemetry,
-    };
-    const wiring = createReaderSummaryDailyPublicationWiring({
-      replay,
-      evidenceSelector: { select: jest.fn() } as never,
-      githubProjectionReader: { read: jest.fn() } as never,
-      attestationSink: { record: jest.fn() },
-    });
-
-    expect(wiring.model.estimate({} as never, {} as never)).toMatchObject({
-      inputTokens: 120,
-      outputTokens: 30,
-    });
-    expect(wiring.model.route({} as never, {} as never, {} as never).model).toBe(
-      [modelJob.provider, modelJob.model, modelJob.reasoningEffort].join(":"),
-    );
   });
 });
 

@@ -1,9 +1,8 @@
 import {
-  buildReaderPostPromotionProjection,
   evaluateReaderSummaryGitHubProjection,
   notApplicableReaderSummaryGitHubProjectionAudit,
   ReaderSummaryPublicationPolicy,
-  ReaderSummaryArtifact,
+  type ReaderSummaryArtifact,
   type ReaderSummaryGitHubProjectionAudit,
   ReaderSummaryJob,
   type SummaryEvidenceSelection,
@@ -132,207 +131,6 @@ export const requireNotApplicableProjection = (
   return projection.audit;
 };
 
-const promotionEvidenceForArtifact = (
-  artifact: ReaderSummaryArtifact,
-): SummaryEvidenceSelection => {
-  const snapshot = artifact.toSnapshot();
-  const citation = snapshot.citationMap.find(
-    (candidate) => candidate.citationId === 'citation-github',
-  );
-  const redditCitation = snapshot.citationMap.find(
-    (candidate) => candidate.citationId === 'citation-reddit',
-  );
-  if (citation?.canonicalUrl === undefined) {
-    throw new Error('REST smoke promotion requires the canonical GitHub citation');
-  }
-  if (redditCitation?.canonicalUrl === undefined) {
-    throw new Error('REST smoke promotion requires the canonical Reddit citation');
-  }
-  const sourceWindow = {
-    ...snapshot.sourceWindow,
-    selectedFeedItemIds: snapshot.sourceWindow.selectedFeedItemIds.filter(
-      (feedItemId) => !feedItemId.startsWith('github-trending-feed-'),
-    ),
-    periodStartedAt: snapshot.period.startedAt,
-    periodEndedAt: snapshot.period.endedAt,
-    ingestionCutoff: snapshot.sourceWindow.endedAt,
-  };
-  const checkedAt = sourceWindow.endedAt;
-  const publishedAt = sourceWindow.startedAt;
-  return {
-    rankingPolicyVersion:
-      snapshot.lineage.rankingPolicyVersion ?? 'story_ranking_v1',
-    personalization: snapshot.personalization,
-    sourceWindow,
-    clusters: snapshot.storyClusters.map((cluster) =>
-      cluster.id === 'story:ai-tooling'
-        ? {
-            ...cluster,
-            representativeFeedItemId: citation.feedItemId,
-            duplicateFeedItemIds: [redditCitation.feedItemId],
-            providerKeys: [citation.providerKey, redditCitation.providerKey],
-          }
-        : cluster,
-    ),
-    selectedEvidence: [
-      {
-        feedItemId: citation.feedItemId,
-        sourceItemId: citation.sourceItemId,
-        sourceBindingId: 'reader-summary-rest-smoke-github-repo-radar',
-        interestId: 'topic-github',
-        providerKey: citation.providerKey,
-        providerName: 'GitHub Repo Radar',
-        canonicalUrl: citation.canonicalUrl,
-        title: 'OpenAI Codex is a high-signal AI tooling read',
-        bodyPreview: 'Independent sources show practical AI tooling momentum.',
-        publishedAt,
-        observedAt: checkedAt,
-        score: 2.4,
-        whyImportant: [
-          'It matches the user preference for practical AI developer tooling.',
-        ],
-        providerMetricLabels: [
-          { label: 'Trend 24h', value: '+50' },
-        ],
-        readerActionKind: 'watch_repository',
-        contentQuality: {
-          qualityScore: 0.9,
-          interestRelevanceScore: 0.9,
-          engagementIntegrityScore: 0.9,
-          eligibleForSummary: true,
-          eligibleForTopRead: true,
-          needsLlmReview: false,
-          decision: 'eligible',
-          flags: [],
-          reason: 'Deterministic REST smoke evidence is publication eligible.',
-        },
-        promotionFacts: {
-          contentKind: 'repository',
-          canonicalIdentity: `url:${citation.canonicalUrl}`,
-          checkedAt,
-          safetyValid: true,
-          freshnessValid: true,
-          freshnessProvenance: {
-            status: 'observed',
-            publishedAt,
-            observedAt: checkedAt,
-            ingestionCutoff: checkedAt,
-          },
-          metricsState: 'observed',
-          metrics: {
-            provider: 'github_radar',
-            snapshotKind: 'repository_growth',
-            windowStartedAt: new Date(checkedAt.getTime() - 24 * 60 * 60 * 1_000),
-            windowEndedAt: checkedAt,
-            starsDelta: 50,
-            forksDelta: 0,
-          },
-        },
-      },
-      {
-        feedItemId: redditCitation.feedItemId,
-        sourceItemId: redditCitation.sourceItemId,
-        sourceBindingId: 'reader-summary-rest-smoke-reddit',
-        interestId: 'topic-ai',
-        providerKey: redditCitation.providerKey,
-        providerName: 'Reddit',
-        canonicalUrl: redditCitation.canonicalUrl,
-        title: 'Independent discussion confirms the Codex story',
-        bodyPreview: 'Fresh Reddit discussion independently supports the repository story.',
-        publishedAt,
-        observedAt: checkedAt,
-        score: 2.1,
-        whyImportant: [
-          'Fresh Reddit discussion independently supports the same story.',
-        ],
-        providerMetricLabels: [
-          { label: 'Reddit score', value: '25' },
-          { label: 'Reddit upvote ratio', value: '0.55' },
-        ],
-        contentQuality: {
-          qualityScore: 0.9,
-          interestRelevanceScore: 0.9,
-          engagementIntegrityScore: 0.9,
-          eligibleForSummary: true,
-          eligibleForTopRead: true,
-          needsLlmReview: false,
-          decision: 'eligible',
-          flags: [],
-          reason: 'Independent REST smoke support is publication eligible.',
-        },
-        promotionFacts: {
-          contentKind: 'original_post',
-          canonicalIdentity: `url:${redditCitation.canonicalUrl}`,
-          authorityAttestation: {
-            status: 'attested',
-            official: true,
-            trusted: true,
-            attestedBy: 'source_catalog',
-          },
-          safetyValid: true,
-          freshnessValid: true,
-          freshnessProvenance: {
-            status: 'observed',
-            publishedAt,
-            observedAt: checkedAt,
-            ingestionCutoff: checkedAt,
-          },
-          metricsState: 'observed',
-          metrics: {
-            provider: 'reddit',
-            score: 25,
-            upvoteRatio: 0.55,
-          },
-        },
-      },
-    ],
-    approvedSameStoryRelations: [
-      {
-        leftFeedItemId: citation.feedItemId,
-        rightFeedItemId: redditCitation.feedItemId,
-        confidence: 0.92,
-      },
-    ],
-    relatedTopicRelations: [],
-  };
-};
-
-export const promoteRestSmokeArtifact = (
-  artifact: ReaderSummaryArtifact,
-): ReaderSummaryArtifact => {
-  const snapshot = artifact.toSnapshot();
-  const evidence = promotionEvidenceForArtifact(artifact);
-  const citationMap = snapshot.citationMap.filter(
-    (citation) => citation.providerKey !== 'github-trending-page',
-  );
-  const projection = buildReaderPostPromotionProjection({
-    evidence: evidence.selectedEvidence,
-    clusters: evidence.clusters,
-    citations: citationMap,
-    sourceWindow: evidence.sourceWindow,
-    approvedSameStoryRelations: evidence.approvedSameStoryRelations,
-    relatedTopicRelations: evidence.relatedTopicRelations,
-    attestationBinding: {
-      artifactId: snapshot.readerSummaryId,
-      sourceWindow: evidence.sourceWindow,
-    },
-  });
-  return ReaderSummaryArtifact.create({
-    ...snapshot,
-    sourceWindow: evidence.sourceWindow,
-    storyClusters: evidence.clusters,
-    citationMap,
-    content: {
-      ...snapshot.content!,
-      topReads: projection.topReads,
-      selectedPosts: projection.additionalPosts,
-    },
-    promotionAttestations: projection.attestations,
-    promotionEvidenceFacts: projection.attestedEvidenceFacts,
-    relatedTopicRelations: [],
-  });
-};
-
 export const publishFixture = async (params: {
   readonly artifact: ReaderSummaryArtifact;
   readonly projectionAudit: ReaderSummaryGitHubProjectionAudit;
@@ -383,7 +181,62 @@ export const publishFixture = async (params: {
 const requirePublishableDecision = (
   artifact: ReaderSummaryArtifact,
 ): PublishableReaderSummaryPublicationDecision => {
-  const evidence = promotionEvidenceForArtifact(artifact);
+  const snapshot = artifact.toSnapshot();
+  const rankingPolicyVersion = snapshot.lineage.rankingPolicyVersion;
+  if (rankingPolicyVersion === undefined) {
+    throw new Error('REST smoke publication evidence requires ranking lineage');
+  }
+  const topReadCitationIds = new Set(
+    (snapshot.content?.topReads ?? []).flatMap((topRead) =>
+      topRead.citationIds,
+    ),
+  );
+  const selectedEvidence = snapshot.citationMap
+    .filter((citation) => topReadCitationIds.has(citation.citationId))
+    .map((citation) => {
+      if (citation.canonicalUrl === undefined) {
+        throw new Error('REST smoke publication evidence requires canonical URLs');
+      }
+      const cluster = snapshot.storyClusters.find(
+        (candidate) =>
+          candidate.representativeFeedItemId === citation.feedItemId ||
+          candidate.duplicateFeedItemIds.includes(citation.feedItemId),
+      );
+      return {
+        feedItemId: citation.feedItemId,
+        sourceItemId: citation.sourceItemId,
+        sourceBindingId: `reader-summary-rest-smoke-${citation.providerKey}`,
+        interestId: cluster?.interestIds[0] ?? 'topic-ai',
+        providerKey: citation.providerKey,
+        providerName:
+          citation.providerKey === 'reddit' ? 'Reddit' : 'GitHub Repo Radar',
+        canonicalUrl: citation.canonicalUrl,
+        title: 'OpenAI Codex is a high-signal AI tooling read',
+        bodyPreview: 'Independent sources show practical AI tooling momentum.',
+        publishedAt: snapshot.sourceWindow.startedAt,
+        observedAt: snapshot.sourceWindow.endedAt,
+        score: cluster?.score ?? 1,
+        whyImportant: ['It supports the summary lead with eligible evidence.'],
+        contentQuality: {
+          qualityScore: 0.9,
+          interestRelevanceScore: 0.9,
+          engagementIntegrityScore: 0.9,
+          eligibleForSummary: true,
+          eligibleForTopRead: true,
+          needsLlmReview: false,
+          decision: 'eligible',
+          flags: [],
+          reason: 'Deterministic REST smoke evidence is publication eligible.',
+        },
+      };
+    });
+  const evidence = {
+    rankingPolicyVersion,
+    personalization: snapshot.personalization,
+    sourceWindow: snapshot.sourceWindow,
+    clusters: snapshot.storyClusters,
+    selectedEvidence,
+  } satisfies SummaryEvidenceSelection;
   const decision = new ReaderSummaryPublicationPolicy().evaluate({
     artifact,
     evidence,

@@ -1,12 +1,8 @@
-import {
-  classifyFeedPromotionEligibility,
-  FeedItem,
-} from "@social-monitor/feed/domain";
+import { FeedItem } from "@social-monitor/feed/domain";
 import type {
   FeedItemReadRepositoryPort,
   ListFeedItemsQuery,
   ListFeedItemsResult,
-  ReadPromotionFeedItemSnapshotQuery,
 } from "@social-monitor/feed/ports";
 import {
   FixedClock,
@@ -294,9 +290,8 @@ describe("RankFeedItemsUseCase", () => {
         "https://reddit.example/r/MachineLearning/comments/reliability",
       publishedAt: new Date("2026-06-22T09:40:00.000Z"),
       providerMetadata: {
-        kind: "reddit_post",
         subreddit: "MachineLearning",
-        score: 100_000,
+        score: 540,
         numComments: 126,
         upvoteRatio: 0.91,
       },
@@ -362,7 +357,6 @@ describe("RankFeedItemsUseCase", () => {
       canonicalUrl: "https://reddit.example/r/MachineLearning/comments/major",
       publishedAt: new Date("2026-06-22T06:00:00.000Z"),
       providerMetadata: {
-        kind: "reddit_post",
         subreddit: "MachineLearning",
         score: 2400,
         numComments: 510,
@@ -587,222 +581,6 @@ describe("RankFeedItemsUseCase", () => {
     ]);
     expect(result.value.items[0]?.contentQuality.eligibleForTopRead).toBe(true);
   });
-  it("excludes forbidden conversation units before promotion ranking truncation", async () => {
-    const tenant = tenantId("tenant-promotion-ranking");
-    const workspace = workspaceId("workspace-promotion-ranking");
-    const feedItems = new FakeFeedItemReadRepository();
-    addFeedItem(feedItems, {
-      id: "noisy-comment",
-      tenantId: tenant,
-      workspaceId: workspace,
-      interestId: "interest-ai",
-      providerKey: "reddit",
-      title: "Noisy reply about an AI release",
-      bodyPreview: "Conversation context only.",
-      canonicalUrl: "https://reddit.test/comments/noisy/comment",
-      publishedAt: new Date("2026-08-18T11:00:00.000Z"),
-      providerMetadata: {
-        kind: "reddit_comment",
-        role: "reply",
-        score: 1_000_000,
-        replies: 500_000,
-        depth: 2,
-      },
-    });
-    addFeedItem(feedItems, {
-      id: "qualified-original",
-      tenantId: tenant,
-      workspaceId: workspace,
-      interestId: "interest-ai",
-      providerKey: "reddit",
-      title: "Original AI release announcement",
-      bodyPreview: "The original post contains the release details.",
-      canonicalUrl: "https://reddit.test/comments/original",
-      publishedAt: new Date("2026-08-18T10:00:00.000Z"),
-      providerMetadata: { kind: "reddit_post", score: 50, comments: 0 },
-    });
-    const useCase = new RankFeedItemsUseCase(
-      feedItems,
-      new FakeUserRelevanceProfileRepository(),
-      new FixedClock(new Date("2026-08-18T12:00:00.000Z")),
-    );
-
-    const result = await useCase.execute({
-      tenantId: tenant,
-      workspaceId: workspace,
-      limit: 1,
-      rankingProfile: "reader_post_promotion",
-      publishedAtOrAfter: new Date("2026-08-18T00:00:00.000Z"),
-      publishedBefore: new Date("2026-08-19T00:00:00.000Z"),
-      observedBefore: new Date("2026-08-19T00:00:00.000Z"),
-    });
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.value.items.map((item) => item.feedItemId)).toEqual([
-      "qualified-original",
-    ]);
-    expect(result.value.items[0]?.sourceText).toBe(
-      "The original post contains the release details.",
-    );
-  });
-
-  it("fails closed when a promotion repository hides reads beyond the raw ceiling page", async () => {
-    const tenant = tenantId("tenant-promotion-raw-read-bound");
-    const workspace = workspaceId("workspace-promotion-raw-read-bound");
-    const feedItems = new FakeFeedItemReadRepository();
-    addFeedItem(feedItems, {
-      id: "qualified-raw-bound-original",
-      tenantId: tenant,
-      workspaceId: workspace,
-      interestId: "interest-ai",
-      providerKey: "reddit",
-      title: "Original release evidence",
-      bodyPreview: "Validated original evidence.",
-      canonicalUrl: "https://reddit.test/comments/raw-bound",
-      publishedAt: new Date("2026-08-18T10:00:00.000Z"),
-      providerMetadata: { kind: "reddit_post", score: 50, comments: 0 },
-    });
-    const repository: FeedItemReadRepositoryPort = {
-      list: (query) => feedItems.list(query),
-      readPromotionSnapshot: async () => ({
-        ok: false,
-        reason: "physical_row_ceiling_exceeded",
-        physicalRowsRead: 100_001,
-        eligibleItemCount: 1,
-        exhausted: false,
-      }),
-      findById: async () => null,
-    };
-
-    const result = await new RankFeedItemsUseCase(
-      repository,
-      new FakeUserRelevanceProfileRepository(),
-      new FixedClock(new Date("2026-08-18T12:00:00.000Z")),
-    ).execute({
-      tenantId: tenant,
-      workspaceId: workspace,
-      limit: 1,
-      rankingProfile: "reader_post_promotion",
-      publishedAtOrAfter: new Date("2026-08-18T00:00:00.000Z"),
-      publishedBefore: new Date("2026-08-19T00:00:00.000Z"),
-      observedBefore: new Date("2026-08-19T00:00:00.000Z"),
-    });
-
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.error.message).toBe(
-      "Promotion candidate snapshot exceeded its bounded scan",
-    );
-  });
-
-  it.each([
-    [{ code: "P2028" }, "promotion_snapshot_timeout"],
-    [new Error("connection closed"), "promotion_snapshot_transaction_failed"],
-  ] as const)("maps promotion transaction failure to %s", async (failure, reason) => {
-    const repository: FeedItemReadRepositoryPort = {
-      list: async () => ({ items: [] }),
-      readPromotionSnapshot: async () => { throw failure; },
-      findById: async () => null,
-    };
-    const result = await new RankFeedItemsUseCase(
-      repository,
-      new FakeUserRelevanceProfileRepository(),
-      new FixedClock(new Date("2026-08-18T13:00:00.000Z")),
-    ).execute({
-      tenantId: tenantId("tenant-promotion-transaction-failure"),
-      workspaceId: workspaceId("workspace-promotion-transaction-failure"),
-      limit: 1,
-      rankingProfile: "reader_post_promotion",
-      publishedAtOrAfter: new Date("2026-08-18T00:00:00.000Z"),
-      publishedBefore: new Date("2026-08-19T00:00:00.000Z"),
-      observedBefore: new Date("2026-08-19T00:00:00.000Z"),
-    });
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.error).toMatchObject({
-      code: "operation.conflict",
-      details: { reason },
-    });
-  });
-
-  it("fails closed when 1,000 eligible originals are followed by a stronger eligible original", async () => {
-    const tenant = tenantId("tenant-promotion-exact-bound");
-    const workspace = workspaceId("workspace-promotion-exact-bound");
-    const feedItems = new FakeFeedItemReadRepository();
-    for (let index = 0; index < 1_001; index += 1) {
-      addFeedItem(feedItems, {
-        id: `eligible-${index.toString().padStart(4, "0")}`,
-        tenantId: tenant,
-        workspaceId: workspace,
-        interestId: "interest-ai",
-        providerKey: "reddit",
-        title: `Eligible original ${index}`,
-        bodyPreview: "Validated original evidence.",
-        canonicalUrl: `https://reddit.test/comments/${index}`,
-        publishedAt: new Date(Date.UTC(2026, 7, 18, 12) - index * 1_000),
-        providerMetadata: {
-          kind: "reddit_post",
-          score: index === 1_000 ? 1_000_000 : 1,
-          comments: 0,
-        },
-      });
-    }
-
-    const result = await new RankFeedItemsUseCase(
-      feedItems,
-      new FakeUserRelevanceProfileRepository(),
-      new FixedClock(new Date("2026-08-18T13:00:00.000Z")),
-    ).execute({
-      tenantId: tenant,
-      workspaceId: workspace,
-      limit: 1,
-      rankingProfile: "reader_post_promotion",
-      publishedAtOrAfter: new Date("2026-08-18T00:00:00.000Z"),
-      publishedBefore: new Date("2026-08-19T00:00:00.000Z"),
-      observedBefore: new Date("2026-08-19T00:00:00.000Z"),
-    });
-
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.error.message).toBe(
-      "Promotion candidate snapshot exceeded its bounded scan",
-    );
-  });
-
-  it("accepts honest exhaustion on exactly 100,000 physical reads", async () => {
-    const tenant = tenantId("tenant-promotion-physical-boundary");
-    const workspace = workspaceId("workspace-promotion-physical-boundary");
-    const repository: FeedItemReadRepositoryPort = {
-      list: async () => ({ items: [] }),
-      readPromotionSnapshot: async () => ({
-        ok: true,
-        candidates: [],
-        sourceContent: [],
-        physicalRowsRead: 100_000,
-        exhausted: true,
-      }),
-      findById: async () => null,
-    };
-
-    const result = await new RankFeedItemsUseCase(
-      repository,
-      new FakeUserRelevanceProfileRepository(),
-      new FixedClock(new Date("2026-08-18T13:00:00.000Z")),
-    ).execute({
-      tenantId: tenant,
-      workspaceId: workspace,
-      limit: 1,
-      rankingProfile: "reader_post_promotion",
-      publishedAtOrAfter: new Date("2026-08-18T00:00:00.000Z"),
-      publishedBefore: new Date("2026-08-19T00:00:00.000Z"),
-      observedBefore: new Date("2026-08-19T00:00:00.000Z"),
-    });
-
-    expect(result.ok).toBe(true);
-    expect(result.ok ? result.value.items : []).toEqual([]);
-  });
-
 });
 
 const addFeedItem = (
@@ -871,70 +649,12 @@ class FakeFeedItemReadRepository implements FeedItemReadRepositoryPort {
           right.toSnapshot().publishedAt.getTime() -
           left.toSnapshot().publishedAt.getTime(),
       );
-    const records = items.slice(offset, offset + query.limit + 1);
-    const page = records.slice(0, query.limit);
+    const page = items.slice(offset, offset + query.limit);
     const nextOffset = offset + page.length;
 
     return {
       items: page,
-      nextCursor: records.length === query.limit + 1
-        ? String(nextOffset)
-        : undefined,
-    };
-  }
-
-  async readPromotionSnapshot(query: ReadPromotionFeedItemSnapshotQuery) {
-    const ordered = [...this.items].filter((item) => {
-      const snapshot = item.toSnapshot();
-      const timestamp = query.timestampPolicy === "published_at"
-        ? snapshot.publishedAt
-        : snapshot.observedAt;
-      return snapshot.tenantId === query.tenantId &&
-        snapshot.workspaceId === query.workspaceId &&
-        (query.interestId === undefined ||
-          snapshot.interestId === query.interestId) &&
-        timestamp >= query.windowStartedAt && timestamp < query.windowEndedAt &&
-        snapshot.observedAt <= query.observedThrough;
-    }).sort((left, right) => {
-      const leftSnapshot = left.toSnapshot();
-      const rightSnapshot = right.toSnapshot();
-      const leftTimestamp = query.timestampPolicy === "published_at"
-        ? leftSnapshot.publishedAt
-        : leftSnapshot.observedAt;
-      const rightTimestamp = query.timestampPolicy === "published_at"
-        ? rightSnapshot.publishedAt
-        : rightSnapshot.observedAt;
-      return rightTimestamp.getTime() - leftTimestamp.getTime() ||
-        rightSnapshot.id.localeCompare(leftSnapshot.id);
-    });
-    const candidates = ordered.flatMap((item) => {
-      const snapshot = item.toSnapshot();
-      const canonical = classifyFeedPromotionEligibility({
-        providerKey: snapshot.providerKey,
-        providerMetadata: snapshot.providerMetadata,
-      });
-      return canonical.eligible ? [{ item, canonical }] : [];
-    });
-    if (candidates.length > 1_000) return {
-      ok: false as const,
-      reason: "eligible_item_ceiling_exceeded" as const,
-      physicalRowsRead: ordered.length,
-      eligibleItemCount: candidates.length,
-      exhausted: true,
-    };
-    return {
-      ok: true as const,
-      candidates,
-      sourceContent: ordered.map((item) => {
-        const snapshot = item.toSnapshot();
-        return {
-          feedItemId: snapshot.id,
-          sourceItemId: snapshot.sourceItemId,
-          body: snapshot.bodyPreview,
-        };
-      }),
-      physicalRowsRead: ordered.length,
-      exhausted: true as const,
+      nextCursor: nextOffset < items.length ? String(nextOffset) : undefined,
     };
   }
 

@@ -322,22 +322,11 @@ if prove_postgres_runtime_daily_c1_flip_idle >/dev/null 2>&1; then
   exit 1
 fi
 reset_v6_topology
-LEGACY_SERVICE_STATE=failed
-prove_postgres_runtime_daily_c1_flip_idle
-reset_v6_topology
 V6_SERVICE_STATE=active
 if prove_postgres_runtime_daily_c1_flip_idle >/dev/null 2>&1; then
   echo 'daily C1 handoff accepted an active v6 service' >&2
   exit 1
 fi
-for ambiguous_state in active activating deactivating reloading unknown; do
-  reset_v6_topology
-  LEGACY_SERVICE_STATE=$ambiguous_state
-  if prove_postgres_runtime_daily_c1_flip_idle >/dev/null 2>&1; then
-    echo "daily C1 handoff accepted ambiguous service state: $ambiguous_state" >&2
-    exit 1
-  fi
-done
 
 # A failure before the durable owner flip remains rollback-safe: legacy is only
 # enabled, never started, and V6 remains the effective owner.

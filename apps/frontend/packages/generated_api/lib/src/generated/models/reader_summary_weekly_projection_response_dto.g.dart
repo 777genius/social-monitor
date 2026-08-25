@@ -27,7 +27,7 @@ _$ReaderSummaryWeeklyProjectionResponseDtoFromJson(
       .toList(),
   certifiedDailyEvidenceDates:
       (json['certifiedDailyEvidenceDates'] as List<dynamic>)
-          .map((e) => DateTime.parse(e as String))
+          .map((e) => e as String)
           .toList(),
   evidenceLimitations: (json['evidenceLimitations'] as List<dynamic>)
       .map(
@@ -38,7 +38,7 @@ _$ReaderSummaryWeeklyProjectionResponseDtoFromJson(
       .toList(),
   missingDailyEvidenceDates:
       (json['missingDailyEvidenceDates'] as List<dynamic>)
-          .map((e) => DateTime.parse(e as String))
+          .map((e) => e as String)
           .toList(),
   schemaVersion:
       ReaderSummaryWeeklyProjectionResponseDtoSchemaVersionSchemaVersion.fromJson(
@@ -48,8 +48,8 @@ _$ReaderSummaryWeeklyProjectionResponseDtoFromJson(
     json['status'] as String,
   ),
   tenantId: json['tenantId'] as String,
-  weekEndedOn: DateTime.parse(json['weekEndedOn'] as String),
-  weekStartedOn: DateTime.parse(json['weekStartedOn'] as String),
+  weekEndedOn: json['weekEndedOn'] as String,
+  weekStartedOn: json['weekStartedOn'] as String,
   workspaceId: json['workspaceId'] as String,
 );
 
@@ -60,17 +60,13 @@ Map<String, dynamic> _$ReaderSummaryWeeklyProjectionResponseDtoToJson(
       instance.activeWeeklyCertifiedArtifactPresent,
   'artifact': instance.artifact,
   'blockingReasons': instance.blockingReasons,
-  'certifiedDailyEvidenceDates': instance.certifiedDailyEvidenceDates
-      .map((e) => e.toIso8601String())
-      .toList(),
+  'certifiedDailyEvidenceDates': instance.certifiedDailyEvidenceDates,
   'evidenceLimitations': instance.evidenceLimitations,
-  'missingDailyEvidenceDates': instance.missingDailyEvidenceDates
-      .map((e) => e.toIso8601String())
-      .toList(),
+  'missingDailyEvidenceDates': instance.missingDailyEvidenceDates,
   'schemaVersion': instance.schemaVersion,
   'status': instance.status,
   'tenantId': instance.tenantId,
-  'weekEndedOn': instance.weekEndedOn.toIso8601String(),
-  'weekStartedOn': instance.weekStartedOn.toIso8601String(),
+  'weekEndedOn': instance.weekEndedOn,
+  'weekStartedOn': instance.weekStartedOn,
   'workspaceId': instance.workspaceId,
 };

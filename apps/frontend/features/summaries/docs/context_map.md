@@ -31,27 +31,8 @@
   artifact payloads before presentation.
 - Map backend/API ReaderSummary terminology to Summary before it reaches
   user-facing presentation copy.
-- Until a regenerated transport adds dedicated reader-card fields, REST carries
-  the same contract through reserved `reader-card-kind:` and
-  `reader-story-cluster:` entries in the existing `matchedRules` array.
-  Related Topic cards additionally require exactly one
-  `reader-related-topic-relation:` and `reader-related-topic-target:` marker.
-  The infrastructure mapper accepts only canonical card kinds and canonical
-  `related-topic:v1` identities, consumes those entries before
-  domain/presentation use, rejects raw or normalized identity collisions across
-  the full reader brief, and validates both clusters against the artifact
-  cluster set.
-- Summary domain consumes mapped `signalScore` and `providerMetrics`, never raw
-  provider payloads. It trusts the backend's explicit story-cluster identity
-  and authorized card kind; it does not reinterpret provider metrics to decide
-  whether an Additional Notable Story is eligible.
-- Promotion Policy V1 cards cross the REST boundary with a typed promotion
-  attestation. The infrastructure anti-corruption layer verifies the exact
-  schema, policy, digest version and SHA-256 digest before mapping it. The
-  presentation projection checks placement/decision agreement, preserves
-  server order, caps each lane at eight and deduplicates canonical identities
-  with Top taking precedence. It never reconstructs thresholds, reranks or
-  refills a lane.
+- Summary domain consumes `signalScore` and `providerMetrics`; it must not know
+  Reddit score, HN points, GitHub stars or X likes calculation rules.
 - Production scheduling owns the four-hour collection cadence. Presentation may
   project that stable schedule as freshness copy, but it must not trigger or
   claim completion of a backend collection.

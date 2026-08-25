@@ -133,7 +133,40 @@ void main() {
       isFalse,
     );
   });
+
+  test('changes order only for engagement and keeps source order on ties', () {
+    final first = _postWithLikes('Editorial first', 100);
+    final second = _postWithLikes('Editorial second', 100);
+    final high = _postWithLikes('Engagement winner', 500);
+    final posts = [first, second, high];
+
+    expect(orderTopPosts(posts, byEngagement: false), posts);
+    expect(orderTopPosts(posts, byEngagement: true).map((post) => post.title), [
+      'Engagement winner',
+      'Editorial first',
+      'Editorial second',
+    ]);
+  });
 }
+
+TopRead _postWithLikes(String title, int likes) => TopRead(
+  title: title,
+  providerKey: 'x-twitter',
+  reason: 'Editorial evidence.',
+  matchedInterestIds: const ['ai-developer-tools'],
+  matchedRules: const [],
+  signalScore: SignalScore.normalized(1),
+  confidence: const TopReadConfidence(
+    level: 'medium',
+    score: 0.6,
+    rationale: 'Provider evidence.',
+  ),
+  confirmedProviderKeys: const ['x-twitter'],
+  providerMetrics: [ProviderMetric(label: 'Likes', value: '$likes Likes')],
+  whyImportant: const [],
+  whyNow: 'Current window.',
+  citationIds: const [],
+);
 
 TopRead _githubTrend(
   int rank, {
