@@ -49,6 +49,84 @@ describe("PrismaSourceEngagementProjectionAdapter", () => {
     );
     expect(prisma.retentionDeleteCalls).toBe(2);
   });
+
+  it("keeps the native-upsert create candidate valid before updating cadence", async () => {
+    const prisma = new FakeEngagementPrisma();
+    const adapter = new PrismaSourceEngagementProjectionAdapter(prisma, {
+      generate: () => `id-${prisma.nextId++}`,
+    });
+
+    await adapter.project(
+      hackerNewsCommand({
+        observedAt: "2026-07-10T12:00:00Z",
+        points: 10,
+      }),
+    );
+    const cadence = {
+      lastObservationAt: prisma.snapshot?.lastObservationAt,
+      nextObservationDueAt: prisma.snapshot?.nextObservationDueAt,
+    };
+
+    await adapter.project(
+      hackerNewsCommand({
+        observedAt: "2026-07-10T12:10:00Z",
+        points: 11,
+      }),
+    );
+
+    expect(prisma.snapshot).toMatchObject({
+      points: 11n,
+      firstObservedAt: new Date("2026-07-10T12:00:00Z"),
+      lastChangedAt: new Date("2026-07-10T12:10:00Z"),
+      lastObservedAt: new Date("2026-07-10T12:10:00Z"),
+      ...cadence,
+    });
+    expect(prisma.snapshotUpsertCreateCandidates[1]).toMatchObject({
+      firstObservedAt: new Date("2026-07-10T12:10:00Z"),
+      lastChangedAt: new Date("2026-07-10T12:10:00Z"),
+      lastObservedAt: new Date("2026-07-10T12:10:00Z"),
+      lastObservationAt: new Date("2026-07-10T12:10:00Z"),
+    });
+    expect(prisma.snapshotConstraintViolations).toBe(0);
+  });
+
+  it("keeps native-upsert correctness when a new snapshot wins the race", async () => {
+    const prisma = new FakeEngagementPrisma();
+    const adapter = new PrismaSourceEngagementProjectionAdapter(prisma, {
+      generate: () => `id-${prisma.nextId++}`,
+    });
+
+    await adapter.project(
+      hackerNewsCommand({
+        observedAt: "2026-07-10T12:00:00Z",
+        points: 10,
+      }),
+    );
+    const cadence = {
+      lastObservationAt: prisma.snapshot?.lastObservationAt,
+      nextObservationDueAt: prisma.snapshot?.nextObservationDueAt,
+    };
+    prisma.hideSnapshotFromNextFind = true;
+
+    await adapter.project(
+      hackerNewsCommand({
+        observedAt: "2026-07-10T12:10:00Z",
+        points: 11,
+      }),
+    );
+
+    expect(prisma.serializationConflicts).toBe(1);
+    expect(prisma.isolationLevels.every((level) => level === "Serializable")).toBe(
+      true,
+    );
+    expect(prisma.snapshot).toMatchObject({
+      points: 11n,
+      firstObservedAt: new Date("2026-07-10T12:00:00Z"),
+      lastObservedAt: new Date("2026-07-10T12:10:00Z"),
+      ...cadence,
+    });
+    expect(prisma.snapshotConstraintViolations).toBe(0);
+  });
 });
 
 const command = (
@@ -75,9 +153,42 @@ const command = (
   ],
 });
 
+const hackerNewsCommand = (params: {
+  readonly observedAt: string;
+  readonly points: number;
+}) => ({
+  tenantId: "tenant" as never,
+  workspaceId: "workspace" as never,
+  sourceBindingId: "00000000-0000-4000-8000-000000000004",
+  scanJobId: "00000000-0000-4000-8000-000000000005",
+  providerKey: "hacker-news",
+  observedAt: new Date(params.observedAt),
+  samples: [
+    {
+      externalId: "hacker-news:1",
+      sourceItemId: "source-1",
+      publishedAt: new Date("2026-07-10T11:00:00Z"),
+      metrics: { points: params.points, comments: 3 },
+      metricsFingerprint: `comments:3|points:${params.points}`,
+      providerMetadataPatch: {
+        kind: "hacker_news_story",
+        points: params.points,
+        comments: 3,
+      },
+      refreshReadModels: false,
+    },
+  ],
+});
+
 class FakeEngagementPrisma implements PrismaSourceEngagementClient {
   nextId = 1;
   snapshot: PrismaSourceEngagementSnapshotRecord | null = null;
+  snapshotConstraintViolations = 0;
+  snapshotUpsertCreateCandidates: PrismaSourceEngagementSnapshotRecord[] = [];
+  hideSnapshotFromNextFind = false;
+  serializationConflicts = 0;
+  readonly isolationLevels: string[] = [];
+  private snapshotWasHidden = false;
   observations: unknown[] = [];
   rollup: PrismaSourceEngagementDailyRollupRecord | null = null;
   baselineObservedAt: Date | null = null;
@@ -174,10 +285,29 @@ class FakeEngagementPrisma implements PrismaSourceEngagementClient {
   };
 
   readonly sourceItemEngagementSnapshot: PrismaSourceEngagementClient["sourceItemEngagementSnapshot"] = {
-    findUnique: async () => this.snapshot,
+    findUnique: async () => {
+      if (this.hideSnapshotFromNextFind) {
+        this.hideSnapshotFromNextFind = false;
+        this.snapshotWasHidden = true;
+        return null;
+      }
+      return this.snapshot;
+    },
     upsert: async (args) => {
+      const createCandidate = { ...args.create };
+      this.snapshotUpsertCreateCandidates.push(createCandidate);
+      if (!snapshotTimesAreValid(createCandidate)) {
+        this.snapshotConstraintViolations += 1;
+        throw { code: "23514" };
+      }
+      if (this.snapshotWasHidden && this.snapshot !== null) {
+        this.serializationConflicts += 1;
+        this.snapshotWasHidden = false;
+        throw { code: "P2034" };
+      }
+      this.snapshotWasHidden = false;
       this.snapshot = this.snapshot === null
-        ? { ...args.create }
+        ? createCandidate
         : { ...this.snapshot, ...args.update };
       return this.snapshot;
     },
@@ -217,7 +347,18 @@ class FakeEngagementPrisma implements PrismaSourceEngagementClient {
 
   async $transaction<T>(
     operation: (client: PrismaSourceEngagementTransactionClient) => Promise<T>,
+    options?: { readonly isolationLevel?: "ReadCommitted" | "Serializable" },
   ): Promise<T> {
+    this.isolationLevels.push(options?.isolationLevel ?? "ReadCommitted");
     return operation(this);
   }
 }
+
+const snapshotTimesAreValid = (
+  snapshot: PrismaSourceEngagementSnapshotRecord,
+): boolean =>
+  snapshot.firstObservedAt <= snapshot.lastChangedAt &&
+  snapshot.lastChangedAt <= snapshot.lastObservedAt &&
+  snapshot.firstObservedAt <= snapshot.lastObservationAt &&
+  snapshot.lastObservationAt <= snapshot.lastObservedAt &&
+  snapshot.lastObservationAt <= snapshot.nextObservationDueAt;

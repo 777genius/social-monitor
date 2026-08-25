@@ -268,8 +268,11 @@ export class PrismaSourceEngagementProjectionAdapter
           firstObservedAt: command.observedAt,
           lastObservedAt: command.observedAt,
           lastChangedAt: command.observedAt,
-          lastObservationAt: observationAt,
-          nextObservationDueAt: nextDueAt,
+          lastObservationAt: command.observedAt,
+          nextObservationDueAt: nextEngagementObservationDueAt({
+            publishedAt: sample.publishedAt,
+            observedAt: command.observedAt,
+          }),
         },
       });
       await updateSourceItem({
