@@ -448,8 +448,6 @@ ALTER FUNCTION public."complete_reader_summary_daily_model_job_v2"(
   UUID, UUID, DATE, TEXT, BIGINT, TIMESTAMPTZ, BYTEA, CHAR,
   JSONB, BYTEA, CHAR, BYTEA, CHAR, BIGINT, BIGINT, BIGINT, TEXT, BIGINT
 ) OWNER TO social_monitor_reader_summary_daily_publication_definer;
-REVOKE CREATE ON SCHEMA public
-  FROM social_monitor_reader_summary_daily_publication_definer;
 SET LOCAL ROLE social_monitor_reader_summary_daily_publication_definer;
 
 -- Historical rows remain readable and replayable through their persisted
@@ -478,6 +476,7 @@ DECLARE
   v_definition TEXT;
   v_owner_oid OID;
   v_owner_name NAME;
+  v_owner_had_schema_create BOOLEAN;
   v_session_user_oid OID;
   v_boundary_current_user_oid OID;
   v_version_from CONSTANT TEXT := '''reader-summary-daily:v1''';
@@ -505,7 +504,6 @@ BEGIN
   ])) IS NOT TRUE THEN
     RAISE EXCEPTION 'daily active claim has unexpected owner';
   END IF;
-  EXECUTE pg_catalog.format('SET LOCAL ROLE %I', v_owner_name);
   IF (pg_catalog.length(v_definition) - pg_catalog.length(
         pg_catalog.replace(v_definition, v_version_from, '')))
       / pg_catalog.length(v_version_from) <> 1
@@ -515,11 +513,29 @@ BEGIN
     OR pg_catalog.strpos(v_definition, v_version_to) <> 0 THEN
     RAISE EXCEPTION 'daily active claim profile is not the expected v1/xhigh definition';
   END IF;
+  v_owner_had_schema_create := pg_catalog.has_schema_privilege(
+    v_owner_oid, 'public', 'CREATE'
+  );
+  IF NOT v_owner_had_schema_create THEN
+    EXECUTE 'SET LOCAL ROLE social_monitor_public_schema_owner';
+    EXECUTE pg_catalog.format(
+      'GRANT CREATE ON SCHEMA public TO %I GRANTED BY CURRENT_USER',
+      v_owner_name
+    );
+  END IF;
+  EXECUTE pg_catalog.format('SET LOCAL ROLE %I', v_owner_name);
   EXECUTE pg_catalog.replace(
     pg_catalog.replace(v_definition, v_version_from, v_version_to),
     v_effort_from,
     v_effort_to
   );
+  IF NOT v_owner_had_schema_create THEN
+    EXECUTE 'SET LOCAL ROLE social_monitor_public_schema_owner';
+    EXECUTE pg_catalog.format(
+      'REVOKE CREATE ON SCHEMA public FROM %I GRANTED BY CURRENT_USER',
+      v_owner_name
+    );
+  END IF;
 END;
 $daily_active_claim_profile$;
 RESET ROLE;
@@ -529,6 +545,7 @@ DECLARE
   v_definition TEXT;
   v_owner_oid OID;
   v_owner_name NAME;
+  v_owner_had_schema_create BOOLEAN;
   v_session_user_oid OID;
   v_boundary_current_user_oid OID;
   v_version_from CONSTANT TEXT := '''reader-summary-daily:v1''';
@@ -556,7 +573,6 @@ BEGIN
   ])) IS NOT TRUE THEN
     RAISE EXCEPTION 'bounded daily active claim has unexpected owner';
   END IF;
-  EXECUTE pg_catalog.format('SET LOCAL ROLE %I', v_owner_name);
   IF (pg_catalog.length(v_definition) - pg_catalog.length(
         pg_catalog.replace(v_definition, v_version_from, '')))
       / pg_catalog.length(v_version_from) <> 1
@@ -566,13 +582,35 @@ BEGIN
     OR pg_catalog.strpos(v_definition, v_version_to) <> 0 THEN
     RAISE EXCEPTION 'bounded daily active claim profile is not the expected v1/xhigh definition';
   END IF;
+  v_owner_had_schema_create := pg_catalog.has_schema_privilege(
+    v_owner_oid, 'public', 'CREATE'
+  );
+  IF NOT v_owner_had_schema_create THEN
+    EXECUTE 'SET LOCAL ROLE social_monitor_public_schema_owner';
+    EXECUTE pg_catalog.format(
+      'GRANT CREATE ON SCHEMA public TO %I GRANTED BY CURRENT_USER',
+      v_owner_name
+    );
+  END IF;
+  EXECUTE pg_catalog.format('SET LOCAL ROLE %I', v_owner_name);
   EXECUTE pg_catalog.replace(
     pg_catalog.replace(v_definition, v_version_from, v_version_to),
     v_effort_from,
     v_effort_to
   );
+  IF NOT v_owner_had_schema_create THEN
+    EXECUTE 'SET LOCAL ROLE social_monitor_public_schema_owner';
+    EXECUTE pg_catalog.format(
+      'REVOKE CREATE ON SCHEMA public FROM %I GRANTED BY CURRENT_USER',
+      v_owner_name
+    );
+  END IF;
 END;
 $daily_bounded_active_claim_profile$;
+RESET ROLE;
+SET LOCAL ROLE social_monitor_public_schema_owner;
+REVOKE CREATE ON SCHEMA public
+  FROM social_monitor_reader_summary_daily_publication_definer;
 RESET ROLE;
 REVOKE social_monitor_reader_summary_daily_publication_definer
   FROM social_monitor_public_schema_owner GRANTED BY CURRENT_USER;

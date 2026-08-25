@@ -7,6 +7,7 @@ import {
   assertReaderSummaryDailyCheckerCanonicalRlsContract,
   assertReaderSummaryDailyCheckerFixtureRoleContract,
   assertReaderSummaryDailyCheckerRoleBootstrapContract,
+  assertReaderSummaryDailyProductionOwnerTopologyFixtureContract,
   assertReaderSummaryDailyActivationMigrationContract,
   assertReaderSummaryDailyMigrationContract,
   withCanonicalPublicationFixtureRole,
@@ -212,6 +213,29 @@ describe("reader summary daily execution cursor PostgreSQL contract", () => {
       `${checker}\nREVOKE USAGE ON SCHEMA public ` +
         "FROM ${quoteIdentifier(publicationOwnerRole)};",
     )).toThrow("must not revoke durable publication-owner schema USAGE");
+  });
+
+  it("pins production mixed-owner table ACLs before the PG18 migration", () => {
+    const source = readFileSync(
+      "scripts/lib/reader-summary-daily-production-owner-topology-postgres.ts",
+      "utf8",
+    );
+    expect(() => assertReaderSummaryDailyProductionOwnerTopologyFixtureContract(source))
+      .not.toThrow();
+    for (const mutation of [
+      "GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE",
+      "GRANTED BY CURRENT_USER",
+      "acl.grantor = cursor_relation.relowner",
+      "acl.grantor = job_relation.relowner",
+      "row.active_owner_has_create === false",
+      "row.cursor_acl_exact === true",
+      "row.job_acl_exact === true",
+      "row.bounded_owner_has_create === true",
+    ]) {
+      expect(() => assertReaderSummaryDailyProductionOwnerTopologyFixtureContract(
+        source.replace(mutation, "removed"),
+      )).toThrow("grant and prove exact owner table ACLs");
+    }
   });
 
   it("rejects a dormant daily table handoff moved after activation", () => {
