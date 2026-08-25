@@ -14,10 +14,41 @@ install -m 0755 "$WORKER_SOURCE" "$WORKER"
 
 CURRENT_CASE=static-contract
 ALLOW_EXPECTED_FAILURE=0
-trap 'status=$?; if ((ALLOW_EXPECTED_FAILURE == 0)); then printf "publication signal regression failed: case=%s line=%s status=%s\n" "$CURRENT_CASE" "$LINENO" "$status" >&2; fi' ERR
+exec 3>&2
+
+# Keep unexpected-failure diagnostics outside per-case redirected logs.
+report_unexpected_failure() {
+  local status=$1
+  local line=$2
+  if ((ALLOW_EXPECTED_FAILURE == 0)); then
+    printf 'publication signal regression failed: case=%s line=%s status=%s\n' \
+      "$CURRENT_CASE" "$line" "$status" >&3
+  fi
+}
+trap 'report_unexpected_failure "$?" "$LINENO"' ERR
 
 EXPECTED_DATE=2026-07-16
 RELEASE_SHA=0123456789abcdef0123456789abcdef01234567
+
+CURRENT_CASE=diagnostic-routing
+diagnostic_probe=$FIXTURE/diagnostic-probe
+diagnostic_stdout=$FIXTURE/diagnostic-stdout
+diagnostic_redirected=$FIXTURE/diagnostic-redirected
+ALLOW_EXPECTED_FAILURE=1
+set +e
+(
+  ALLOW_EXPECTED_FAILURE=0
+  false >"$diagnostic_stdout" 2>"$diagnostic_redirected"
+) 3>"$diagnostic_probe"
+diagnostic_status=$?
+set -e
+ALLOW_EXPECTED_FAILURE=0
+((diagnostic_status != 0))
+grep -F 'publication signal regression failed: case=diagnostic-routing line=' \
+  "$diagnostic_probe" >/dev/null
+[[ ! -s $diagnostic_stdout ]]
+[[ ! -s $diagnostic_redirected ]]
+CURRENT_CASE=static-contract
 
 file_identity() {
   if stat -c '%n:%i:%Y' "$@" 2>/dev/null; then
@@ -143,12 +174,13 @@ assert_previous_latest_unchanged "$invalid_case"
 sigkill_case=$FIXTURE/sigkill
 CURRENT_CASE=sigkill
 prepare_case "$sigkill_case"
-ALLOW_EXPECTED_FAILURE=1
-run_daily "$sigkill_case" 30000 >"$sigkill_case/run.log" 2>&1 &
+ALLOW_EXPECTED_FAILURE=1 run_daily "$sigkill_case" 30000 \
+  >"$sigkill_case/run.log" 2>&1 &
 daily_pid=$!
 wait_for_ready "$sigkill_case/ready"
 worker_pid=$(<"$sigkill_case/ready")
 kill -KILL "$worker_pid"
+ALLOW_EXPECTED_FAILURE=1
 set +e
 wait "$daily_pid"
 sigkill_status=$?
@@ -210,13 +242,14 @@ cmp -s "$db_crash_case/state.before" "$db_state"
 proof_first_case=$FIXTURE/proof-first-sigkill
 CURRENT_CASE=proof-first-sigkill
 prepare_case "$proof_first_case"
-ALLOW_EXPECTED_FAILURE=1
-run_daily "$proof_first_case" 30000 success after-proof-before-report \
+ALLOW_EXPECTED_FAILURE=1 run_daily \
+  "$proof_first_case" 30000 success after-proof-before-report \
   >"$proof_first_case/run.log" 2>&1 &
 daily_pid=$!
 wait_for_ready "$proof_first_case/failpoint-ready"
 failpoint_pid=$(<"$proof_first_case/failpoint-ready")
 kill -KILL "$failpoint_pid"
+ALLOW_EXPECTED_FAILURE=1
 set +e
 wait "$daily_pid"
 proof_first_status=$?
@@ -235,13 +268,14 @@ node -e 'JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"))' \
 report_before_latest_case=$FIXTURE/report-before-latest-sigkill
 CURRENT_CASE=report-before-latest-sigkill
 prepare_case "$report_before_latest_case"
-ALLOW_EXPECTED_FAILURE=1
-run_daily "$report_before_latest_case" 30000 success after-report-before-latest \
+ALLOW_EXPECTED_FAILURE=1 run_daily \
+  "$report_before_latest_case" 30000 success after-report-before-latest \
   >"$report_before_latest_case/run.log" 2>&1 &
 daily_pid=$!
 wait_for_ready "$report_before_latest_case/failpoint-ready"
 failpoint_pid=$(<"$report_before_latest_case/failpoint-ready")
 kill -KILL "$failpoint_pid"
+ALLOW_EXPECTED_FAILURE=1
 set +e
 wait "$daily_pid"
 report_before_latest_status=$?
@@ -281,14 +315,14 @@ cmp -s "$report_before_latest_report" \
 latest_state_cleanup_case=$FIXTURE/latest-state-before-cleanup-sigkill
 CURRENT_CASE=latest-state-before-cleanup-sigkill
 prepare_case "$latest_state_cleanup_case"
-ALLOW_EXPECTED_FAILURE=1
-run_daily "$latest_state_cleanup_case" 30000 success \
+ALLOW_EXPECTED_FAILURE=1 run_daily "$latest_state_cleanup_case" 30000 success \
   after-latest-state-before-cleanup \
   >"$latest_state_cleanup_case/run.log" 2>&1 &
 daily_pid=$!
 wait_for_ready "$latest_state_cleanup_case/failpoint-ready"
 failpoint_pid=$(<"$latest_state_cleanup_case/failpoint-ready")
 kill -KILL "$failpoint_pid"
+ALLOW_EXPECTED_FAILURE=1
 set +e
 wait "$daily_pid"
 latest_state_cleanup_status=$?
@@ -490,13 +524,14 @@ cmp -s "$unavailable_state" "$unavailable_case/public/latest-state.v1.json"
 recovery_case=$FIXTURE/state-before-latest-sigkill
 CURRENT_CASE=state-before-latest-sigkill
 prepare_case "$recovery_case"
-ALLOW_EXPECTED_FAILURE=1
-run_daily "$recovery_case" 30000 partial after-state-before-latest \
+ALLOW_EXPECTED_FAILURE=1 run_daily \
+  "$recovery_case" 30000 partial after-state-before-latest \
   >"$recovery_case/initial.log" 2>&1 &
 daily_pid=$!
 wait_for_ready "$recovery_case/failpoint-ready"
 failpoint_pid=$(<"$recovery_case/failpoint-ready")
 kill -KILL "$failpoint_pid"
+ALLOW_EXPECTED_FAILURE=1
 set +e
 wait "$daily_pid"
 recovery_status=$?
