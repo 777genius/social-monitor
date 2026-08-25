@@ -26,12 +26,22 @@ backend_health_load_rabbitmq_quorum_recovery() {
     }
   done
   if ! declare -F rabbitmq_quorum_health_verify_worker_container >/dev/null; then
-    # shellcheck source=ops/deploy/rabbitmq-quorum-health.sh
-    source "$BACKEND_RABBITMQ_QUORUM_HEALTH_SCRIPT" || return 1
+    if [[ ${PRODUCTION_CONTROL_BRIDGE_TRUSTED_SOURCE:-} == 1 ]]; then
+      production_control_bridge_source_reviewed \
+        ops/deploy/rabbitmq-quorum-health.sh 'RabbitMQ quorum health library' || return 1
+    else
+      # shellcheck source=/dev/null
+      source "$BACKEND_RABBITMQ_QUORUM_HEALTH_SCRIPT" || return 1
+    fi
   fi
   if ! declare -F rabbitmq_quorum_recovery_ensure_steady >/dev/null; then
-    # shellcheck source=ops/deploy/rabbitmq-quorum-recovery.sh
-    source "$BACKEND_RABBITMQ_QUORUM_RECOVERY_SCRIPT" || return 1
+    if [[ ${PRODUCTION_CONTROL_BRIDGE_TRUSTED_SOURCE:-} == 1 ]]; then
+      production_control_bridge_source_reviewed \
+        ops/deploy/rabbitmq-quorum-recovery.sh 'RabbitMQ quorum recovery library' || return 1
+    else
+      # shellcheck source=/dev/null
+      source "$BACKEND_RABBITMQ_QUORUM_RECOVERY_SCRIPT" || return 1
+    fi
   fi
   declare -F rabbitmq_quorum_recovery_ensure_steady >/dev/null && \
     declare -F rabbitmq_quorum_health_verify_worker_container >/dev/null

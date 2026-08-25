@@ -2,6 +2,16 @@
 
 # Focused host policy shared by the installed deploy entrypoint and the
 # authenticated production control-bridge bootstrap.
+production_deploy_source_library() {
+  local relative_path=$1 label=$2
+  if [[ ${PRODUCTION_CONTROL_BRIDGE_TRUSTED_SOURCE:-} == 1 ]]; then
+    production_control_bridge_source_reviewed "$relative_path" "$label"
+  else
+    # shellcheck source=/dev/null
+    source "$REPO/$relative_path"
+  fi
+}
+
 verify_production_deploy_host_policy() {
   [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} == 1 ]] && return 0
   ((EUID == 0)) || fail 'production deploy must run as root'

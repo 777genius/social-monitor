@@ -127,6 +127,7 @@
     "check:live-reddit-app-oauth": "node scripts/run-with-timeout.mjs --timeout-ms 45000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-live-reddit-app-oauth.ts",
     "check:live-reddit-oauth": "node scripts/run-with-timeout.mjs --timeout-ms 45000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-live-reddit-oauth.ts",
     "check:ingestion-feed-persistence": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-ingestion-feed-prisma-persistence.ts",
+    "check:feed-promotion-index-recovery": "ts-node -r tsconfig-paths/register scripts/check-feed-promotion-index-recovery.ts",
     "check:monitoring-persistence": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-monitoring-prisma-persistence.ts",
     "check:monitoring-read-rest": "node scripts/run-with-timeout.mjs --timeout-ms 90000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-monitoring-read-rest-smoke.ts",
     "check:interest-source-daily-history-rest": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-interest-source-daily-history-rest-smoke.ts",

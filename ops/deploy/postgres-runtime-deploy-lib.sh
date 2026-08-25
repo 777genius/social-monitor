@@ -8,6 +8,10 @@ ROOT=${ROOT:?caller must define ROOT before sourcing postgres-runtime-deploy-lib
 load_postgres_runtime_reviewed_helper() {
   local relative_path=$1 label=$2 helper entry mode type object tree_path
   local reviewed_digest actual_digest
+  if [[ ${PRODUCTION_CONTROL_BRIDGE_TRUSTED_SOURCE:-} == 1 ]]; then
+    production_control_bridge_source_reviewed "$relative_path" "$label"
+    return
+  fi
   if [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} == 1 || \
         ${POSTGRES_RUNTIME_DAILY_C1_HELPER_TEST_MODE:-} == 1 ]]; then
     helper=${BASH_SOURCE[0]%/*}/${relative_path##*/}

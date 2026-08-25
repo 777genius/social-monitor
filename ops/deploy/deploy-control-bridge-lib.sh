@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2034 # Constants are consumed by libraries sourced below.
 
 # Sourced by deploy-control-lib.sh after the deploy entrypoint has defined
 # REPO and fail(). Release A installs this bridge before a later RabbitMQ
@@ -21,6 +22,7 @@ DEPLOY_CONTROL_ROLLING_SUMMARY_FINAL_TREE=6a68fd8f88477811e220c042d5176e45224138
 DEPLOY_CONTROL_ROLLING_SUMMARY_HELPER_TEST_PATH=ops/deploy/deploy-control-bridge-runtime-helper.test.sh
 DEPLOY_CONTROL_ROLLING_SUMMARY_RABBITMQ_TEST_PATH=ops/deploy/rabbitmq-quorum-deploy-bridge-transition.test.sh
 DEPLOY_CONTROL_PRODUCTION_BRIDGE_BASE=92afd97328c5412324c99be635de2c41db589d53
+DEPLOY_CONTROL_PRODUCTION_BRIDGE_REMEDIATION_BASE=afe98ef350bef08ae781be51996e3f3405bb4b30
 DEPLOY_CONTROL_PRODUCTION_BACKEND_MARKER=09a79687e042e36d4ec9c1f33f0367527f044181
 DEPLOY_CONTROL_PRODUCTION_FRONTEND_MARKER=eaac8ad433bc9741f493e61354b3dfe1c3161224
 DEPLOY_CONTROL_PRODUCTION_CONTROL_MARKER=3f4a561e9fd6626bbd1a1e1ca73f2ec7eb34c8f8
@@ -258,6 +260,39 @@ deploy_control_production_bridge_preserved_paths() {
     "$DEPLOY_CONTROL_PRODUCTION_BRIDGE_TEST_PATH"
 }
 
+deploy_control_production_bridge_remediation_paths() {
+  printf '%s\n' \
+    ops/deploy/backend-runtime-health-lib.sh \
+    ops/deploy/deploy-control-bridge-lib.sh \
+    ops/deploy/deploy-control-bridge-runtime-helper.test.sh \
+    ops/deploy/deploy-control-lib.sh \
+    ops/deploy/postgres-runtime-deploy-lib.sh \
+    ops/deploy/production-control-bridge-preinstall-driver.sh \
+    ops/deploy/production-control-bridge-preinstall-lib.sh \
+    ops/deploy/production-control-bridge-preinstall.test.sh \
+    ops/deploy/production-control-bridge-feed-recovery-contract.test.sh \
+    ops/deploy/production-host-policy-lib.sh \
+    ops/deploy/rabbitmq-quorum-deploy-bridge-transition.test.sh \
+    ops/deploy/reader-summary-publication-deploy-lib.sh \
+    ops/deploy/social-monitor-production-deploy.sh \
+    package.json \
+    scripts/check-feed-promotion-index-recovery.ts
+}
+
+deploy_control_is_exact_production_bridge_remediation() {
+  local target=$1 repository=${REPO:-.} expected actual path entry mode type object tree_path extra
+  expected=$(deploy_control_production_bridge_remediation_paths | LC_ALL=C sort)
+  actual=$(git -C "$repository" diff --name-only --no-renames \
+    "$DEPLOY_CONTROL_PRODUCTION_BRIDGE_REMEDIATION_BASE" "$target" -- | LC_ALL=C sort) || return 1
+  [[ $actual == "$expected" ]] || return 1
+  while IFS= read -r path; do
+    entry=$(git -C "$repository" ls-tree "$target" -- "$path") || return 1
+    read -r mode type object tree_path extra <<< "$entry"
+    [[ -z $extra && ($mode == 100644 || $mode == 100755) && \
+       $type == blob && $object =~ ^[0-9a-f]{40}$ && $tree_path == "$path" ]] || return 1
+  done <<< "$expected"
+}
+
 deploy_control_production_bridge_source_paths() {
   deploy_control_production_bridge_preserved_paths
   printf '%s\n' \
@@ -368,10 +403,19 @@ deploy_control_production_bridge_quality_paths() {
 }
 
 deploy_control_production_bridge_backend_exclusions() {
-  local path
+  local bridge=${1:-} path parent
   while IFS= read -r path; do
     printf ':(exclude)%s\n' "$path"
   done < <(deploy_control_production_bridge_quality_paths)
+  if [[ -n $bridge ]]; then
+    parent=$(git -C "${REPO:-.}" rev-parse "$bridge^" 2>/dev/null || true)
+    if [[ $parent == "$DEPLOY_CONTROL_PRODUCTION_BRIDGE_REMEDIATION_BASE" ]]; then
+      printf ':(exclude)%s\n' \
+        ops/deploy/backend-runtime-health-lib.sh \
+        package.json \
+        scripts/check-feed-promotion-index-recovery.ts
+    fi
+  fi
 }
 
 deploy_control_production_bridge_path_declarations() {
@@ -403,7 +447,7 @@ deploy_control_production_bridge_expected_tree() (
   eval "$declarations"
   while IFS= read -r path; do
     backend_exclusions+=("$path")
-  done < <(deploy_control_production_bridge_backend_exclusions)
+  done < <(deploy_control_production_bridge_backend_exclusions "$bridge")
   ((${#FRONTEND_PATHS[@]} > 0 && ${#BACKEND_PATHS[@]} > 0 && \
      ${#CONTROL_PATHS[@]} > 0 && ${#RUNTIME_CONTROL_PATHS[@]} > 0)) || return 1
 
@@ -502,6 +546,10 @@ deploy_control_is_exact_production_bridge() {
     rev-list --parents -n 1 "$bridge" 2>/dev/null)" || return 1
   ((${#ancestry[@]} == 2)) || return 1
   parent=${ancestry[1]}
+  if [[ $parent == "$DEPLOY_CONTROL_PRODUCTION_BRIDGE_REMEDIATION_BASE" ]]; then
+    deploy_control_is_exact_production_bridge_remediation "$bridge"
+    return
+  fi
   [[ $parent == "$DEPLOY_CONTROL_PRODUCTION_BRIDGE_BASE" ]] || return 1
   expected=$(deploy_control_production_bridge_expected_tree "$bridge") || return 1
   actual=$(git -C "$repository" rev-parse "$bridge^{tree}" 2>/dev/null) || return 1
@@ -516,7 +564,8 @@ deploy_control_is_production_bridge_candidate() {
     rev-list --parents -n 1 "$target" 2>/dev/null)" || return 1
   ((${#ancestry[@]} == 2)) || return 1
   parent=${ancestry[1]}
-  [[ $parent == "$DEPLOY_CONTROL_PRODUCTION_BRIDGE_BASE" ]]
+  [[ $parent == "$DEPLOY_CONTROL_PRODUCTION_BRIDGE_BASE" || \
+     $parent == "$DEPLOY_CONTROL_PRODUCTION_BRIDGE_REMEDIATION_BASE" ]]
 }
 
 deploy_control_production_bridge_classification() (
@@ -528,7 +577,7 @@ deploy_control_production_bridge_classification() (
   eval "$declarations"
   while IFS= read -r path; do
     backend_exclusions+=("$path")
-  done < <(deploy_control_production_bridge_backend_exclusions)
+  done < <(deploy_control_production_bridge_backend_exclusions "$bridge")
   git -C "$repository" diff --quiet \
     "$DEPLOY_CONTROL_PRODUCTION_FRONTEND_MARKER" "$bridge" -- \
     "${FRONTEND_PATHS[@]}" || return 1
@@ -642,6 +691,18 @@ load_target_reader_summary_publication_deploy_library() {
   local publication_library=$REPO/$relative_path
   local repository_root publication_real mode reviewed_digest actual_digest
   local target_entry target_mode target_type target_object target_path
+
+  if [[ ${PRODUCTION_CONTROL_BRIDGE_TRUSTED_SOURCE:-} == 1 ]]; then
+    [[ $sha == "$PRODUCTION_CONTROL_BRIDGE_TARGET" ]] || \
+      fail 'target publication deploy library SHA differs from the sealed target'
+    ! declare -F deploy_reader_summary_publication_migrations >/dev/null || \
+      fail 'publication migration entrypoint was loaded before target validation'
+    production_control_bridge_source_reviewed "$relative_path" \
+      'target publication deploy library'
+    declare -F deploy_reader_summary_publication_migrations >/dev/null || \
+      fail 'target publication deploy library is missing its migration entrypoint'
+    return
+  fi
 
   repository_root=$(readlink -f "$REPO") || \
     fail 'integration repository path cannot be resolved'
@@ -896,6 +957,18 @@ load_target_rabbitmq_quorum_backend_health() {
 
   [[ $sha =~ ^[0-9a-f]{40}$ ]] || \
     fail 'target RabbitMQ quorum health SHA is invalid'
+  if [[ ${PRODUCTION_CONTROL_BRIDGE_TRUSTED_SOURCE:-} == 1 ]]; then
+    [[ $sha == "$PRODUCTION_CONTROL_BRIDGE_TARGET" ]] || \
+      fail 'target backend health SHA differs from the sealed target'
+    unset -f verify_backend verify_backend_with_retry
+    production_control_bridge_source_reviewed "$RABBITMQ_QUORUM_HEALTH_LIBRARY_PATH" \
+      'target backend health library'
+    declare -F verify_backend >/dev/null || \
+      fail 'target backend health library is missing its verification entrypoint'
+    declare -F verify_backend_with_retry >/dev/null || \
+      fail 'target backend health library is missing its retry entrypoint'
+    return
+  fi
   verify_target_rabbitmq_quorum_asset "$sha" \
     "$RABBITMQ_QUORUM_HEALTH_LIBRARY_PATH" 'target backend health library' 100644
   verify_target_rabbitmq_quorum_asset "$sha" \
@@ -912,9 +985,13 @@ load_target_rabbitmq_quorum_backend_health() {
 }
 
 production_control_bridge_preinstall_library=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/production-control-bridge-preinstall-lib.sh
-if [[ -f $production_control_bridge_preinstall_library && \
+if [[ ${PRODUCTION_CONTROL_BRIDGE_TRUSTED_SOURCE:-} == 1 ]]; then
+  production_control_bridge_source_reviewed \
+    ops/deploy/production-control-bridge-preinstall-lib.sh \
+    'production control bridge preinstall library'
+elif [[ -f $production_control_bridge_preinstall_library && \
       ! -L $production_control_bridge_preinstall_library ]]; then
-  # shellcheck source=ops/deploy/production-control-bridge-preinstall-lib.sh
+  # shellcheck source=/dev/null
   source "$production_control_bridge_preinstall_library"
 fi
 unset production_control_bridge_preinstall_library

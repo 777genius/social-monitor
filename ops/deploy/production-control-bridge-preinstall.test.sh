@@ -8,7 +8,7 @@ export GIT_COMMITTER_EMAIL=$GIT_AUTHOR_EMAIL
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 PROJECT_REPO=$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel)
-BASE=92afd97328c5412324c99be635de2c41db589d53
+BASE=afe98ef350bef08ae781be51996e3f3405bb4b30
 OLD_HEAD=72e17ded1e54ebd77772929fd5047ef6816dded2
 OLD_FRONTEND=eaac8ad433bc9741f493e61354b3dfe1c3161224
 OLD_BACKEND=09a79687e042e36d4ec9c1f33f0367527f044181
@@ -23,8 +23,12 @@ SOURCE_REPO=$FIXTURE/reviewed-source
 git clone -q "$PROJECT_REPO" "$SOURCE_REPO"
 if ! git -C "$PROJECT_REPO" diff --quiet HEAD --; then
   git -C "$PROJECT_REPO" diff --binary HEAD -- | git -C "$SOURCE_REPO" apply
+  cp "$PROJECT_REPO/scripts/check-feed-promotion-index-recovery.ts" \
+    "$SOURCE_REPO/scripts/check-feed-promotion-index-recovery.ts"
+  cp "$PROJECT_REPO/ops/deploy/production-control-bridge-feed-recovery-contract.test.sh" \
+    "$SOURCE_REPO/ops/deploy/production-control-bridge-feed-recovery-contract.test.sh"
   git -C "$SOURCE_REPO" add -A
-  git -C "$SOURCE_REPO" commit -q --amend --no-edit
+  git -C "$SOURCE_REPO" commit -qm 'test: synthesize production bridge remediation'
 fi
 TARGET=$(git -C "$SOURCE_REPO" rev-parse HEAD)
 TREE=$(git -C "$SOURCE_REPO" rev-parse 'HEAD^{tree}')
@@ -87,23 +91,8 @@ chmod 0755 "$TRUSTED"
 
 cat > "$HOOK" <<'TEST_HOOK'
 acquire_postgres_admission_with_daily_priority() { flock -w 10 "$1"; }
-advance_integration() {
-  [[ $(git -C "$REPO" rev-parse HEAD) == 72e17ded1e54ebd77772929fd5047ef6816dded2 && \
-     $(type -t verify_production_deploy_host_policy) == function ]] || \
-    fail 'real driver did not load from the authenticated checkout before advance'
-  printf 'authenticated-load-before-old-integration-advance\n' >> "$PRODUCTION_CONTROL_BRIDGE_TEST_STAGES"
-  git -C "$REPO" checkout -q "$1"
-  printf 'integration\n' >> "$PRODUCTION_CONTROL_BRIDGE_TEST_STAGES"
-}
 initialize_deploy_control_bridge() { printf 'initialize\n' >> "$PRODUCTION_CONTROL_BRIDGE_TEST_STAGES"; }
 verify_deploy_control_bridge_compatibility() { printf 'sealed\n' >> "$PRODUCTION_CONTROL_BRIDGE_TEST_STAGES"; }
-sync_control_script() {
-  install -m 0755 "$REPO/ops/deploy/social-monitor-production-deploy.sh" \
-    "$CONTROL/github-production-deploy.sh"
-  install -m 0755 "$REPO/ops/deploy/social-monitor-production-ssh-wrapper.sh" \
-    "$CONTROL/github-production-deploy-wrapper.sh"
-  printf 'sync\n' >> "$PRODUCTION_CONTROL_BRIDGE_TEST_STAGES"
-}
 deploy_release_runtime_transaction() {
   [[ $2 == false && $3 == false ]] || return 1
   printf 'runtime-no-activation:%s:%s\n' "$2" "$3" >> "$PRODUCTION_CONTROL_BRIDGE_TEST_STAGES"
@@ -135,8 +124,10 @@ reset_host() {
   git -C "$INTEGRATION" show "$OLD_POOL:ops/deploy/social-monitor-production-ssh-wrapper.sh" \
     > "$CONTROL/github-production-deploy-wrapper.sh"
   chmod 0755 "$CONTROL/github-production-deploy.sh" "$CONTROL/github-production-deploy-wrapper.sh"
-  printf 'auth-sentinel\n' > "$CONTROL/refresh-codex-auth.sh"
-  printf 'x-sentinel\n' > "$CONTROL/x-collector.Dockerfile"
+  git -C "$INTEGRATION" show "$OLD_CONTROL:ops/deploy/host/refresh-codex-auth.sh" \
+    > "$CONTROL/refresh-codex-auth.sh"
+  git -C "$INTEGRATION" show "$OLD_CONTROL:ops/deploy/production-runtime/x-collector.Dockerfile" \
+    > "$CONTROL/x-collector.Dockerfile"
   chmod 0700 "$CONTROL/refresh-codex-auth.sh"
   chmod 0644 "$CONTROL/x-collector.Dockerfile"
   printf '%s\n' "$OLD_FRONTEND" > "$STATE/frontend.sha"
@@ -160,6 +151,7 @@ run_trusted() {
   PRODUCTION_CONTROL_BRIDGE_TEST_MUTATE_AFTER_STAGE="${PRODUCTION_CONTROL_BRIDGE_TEST_MUTATE_AFTER_STAGE:-}" \
   PRODUCTION_CONTROL_BRIDGE_TEST_REPLACE_JOURNAL="${PRODUCTION_CONTROL_BRIDGE_TEST_REPLACE_JOURNAL:-}" \
   PRODUCTION_CONTROL_BRIDGE_ABORT_AFTER_MUTATION="${PRODUCTION_CONTROL_BRIDGE_ABORT_AFTER_MUTATION:-}" \
+  PRODUCTION_CONTROL_BRIDGE_ABORT_AFTER_CONTROL_FILE="${PRODUCTION_CONTROL_BRIDGE_ABORT_AFTER_CONTROL_FILE:-}" \
   "$TRUSTED" "$CHECKOUT" "$TARGET" "$BASE" "$TREE" "$DRIVER_BLOB" "$DRIVER_MODE"
 }
 
@@ -210,7 +202,7 @@ if (cd "$SOURCE_REPO" && bash "$GATE" workflow_dispatch \
   fail 'wrong exact-SHA acknowledgement was admitted'
 fi
 if (cd "$SOURCE_REPO" && bash "$GATE" workflow_dispatch \
-    "production-control-bridge-bootstrap-complete:$BASE" "$BASE") >/dev/null 2>&1; then
+    "production-control-bridge-bootstrap-complete:$OLD_HEAD" "$OLD_HEAD") >/dev/null 2>&1; then
   fail 'bridge acknowledgement was admitted for a non-bridge target'
 fi
 workflow=$SOURCE_REPO/.github/workflows/production-deploy.yml
@@ -219,6 +211,21 @@ ssh_line=$(awk -v gate="$gate_line" 'NR > gate && /Configure restricted producti
 receipt_line=$(awk -v gate="$gate_line" 'NR > gate && /Capture exact control-bridge completion evidence/ { print NR; exit }' "$workflow")
 [[ $gate_line -lt $ssh_line && $ssh_line -lt $receipt_line ]] || \
   fail 'workflow bridge gate or receipt inspection is ordered unsafely'
+
+# A journal may only be created from the exact clean reviewed integration.
+# Pre-existing tracked drift is not confused with a resumable bridge crash.
+reset_host
+drift_path=ops/deploy/deploy-control-lib.sh
+printf '\n# pre-existing integration drift\n' >> "$INTEGRATION/$drift_path"
+integration_before=$(git -C "$INTEGRATION" status --porcelain=v1; \
+  sha256sum "$INTEGRATION/$drift_path")
+if run_trusted >/dev/null 2>&1; then fail 'dirty pre-mutation integration was admitted'; fi
+integration_after=$(git -C "$INTEGRATION" status --porcelain=v1; \
+  sha256sum "$INTEGRATION/$drift_path")
+[[ $integration_after == "$integration_before" && \
+   ! -e $STATE/production-control-bridge-$TARGET.transaction ]] || \
+  fail 'dirty pre-mutation integration rejection changed host state'
+git -C "$INTEGRATION" checkout -- "$drift_path"
 
 # Each kill window occurs after the host mutation and before its journal phase
 # commit. The retry must reconcile the exact new state and complete.
@@ -236,12 +243,59 @@ for boundary in INTEGRATION_ADVANCED CONTROL_SYNCED RUNTIME_VERIFIED \
      $(<"$STATE/control.sha") == "$TARGET" && \
      $(<"$STATE/postgres-pool-bootstrap.sha") == "$TARGET" ]] || \
     fail "resume after $boundary produced the wrong poststate"
-  [[ $(grep -c '^integration$' "$STAGES") == 1 && \
-     $(grep -c '^authenticated-load-before-old-integration-advance$' "$STAGES") == 1 && \
-     $(grep -c '^sync$' "$STAGES") == 1 && \
-     $(grep -c '^pool$' "$STAGES") == 1 && \
+  [[ $(grep -c '^pool$' "$STAGES") == 1 && \
      $(grep '^runtime-no-activation:' "$STAGES" | sort -u) == 'runtime-no-activation:false:false' ]] || \
     fail "resume after $boundary duplicated an activating phase"
+done
+
+# SIGKILL in the real integration mutation leaves HEAD old and the index/worktree
+# partially advanced. The next locked invocation deterministically repairs it.
+reset_host
+set +e
+PRODUCTION_CONTROL_BRIDGE_ABORT_AFTER_MUTATION=INTEGRATION_INDEX_REWRITTEN \
+  run_trusted >/dev/null 2>&1
+abrupt_status=$?
+set -e
+((abrupt_status == 137)) || fail "integration SIGKILL fixture returned $abrupt_status"
+[[ $(git -C "$INTEGRATION" rev-parse HEAD) == "$OLD_HEAD" && \
+   -n $(git -C "$INTEGRATION" status --porcelain=v1) ]] || \
+  fail 'integration SIGKILL did not produce the expected resumable dirty state'
+stale_index_lock=$(git -C "$INTEGRATION" rev-parse \
+  --path-format=absolute --git-path index.lock)
+: > "$stale_index_lock"
+chmod 0600 "$stale_index_lock"
+run_trusted >/dev/null
+[[ $(git -C "$INTEGRATION" rev-parse HEAD) == "$TARGET" && \
+   ! -e $stale_index_lock && \
+   -z $(git -C "$INTEGRATION" status --porcelain=v1 --untracked-files=all) ]] || \
+  fail 'integration SIGKILL recovery did not restore the exact target'
+
+# Every control destination is copied from an already-open reviewed descriptor.
+# Kill after each real durable rename and prove the mixed state resumes safely.
+for control_path in \
+  ops/deploy/social-monitor-production-deploy.sh \
+  ops/deploy/social-monitor-production-ssh-wrapper.sh \
+  ops/deploy/host/refresh-codex-auth.sh \
+  ops/deploy/production-runtime/x-collector.Dockerfile; do
+  reset_host
+  case $control_path in
+    ops/deploy/social-monitor-production-deploy.sh)
+      chmod 0644 "$CONTROL/github-production-deploy.sh" ;;
+    ops/deploy/social-monitor-production-ssh-wrapper.sh)
+      chmod 0644 "$CONTROL/github-production-deploy-wrapper.sh" ;;
+    ops/deploy/host/refresh-codex-auth.sh)
+      chmod 0644 "$CONTROL/refresh-codex-auth.sh" ;;
+    ops/deploy/production-runtime/x-collector.Dockerfile)
+      chmod 0600 "$CONTROL/x-collector.Dockerfile" ;;
+  esac
+  set +e
+  PRODUCTION_CONTROL_BRIDGE_ABORT_AFTER_CONTROL_FILE=$control_path \
+    run_trusted >/dev/null 2>&1
+  abrupt_status=$?
+  set -e
+  ((abrupt_status == 137)) || \
+    fail "control sync SIGKILL fixture returned $abrupt_status for $control_path"
+  run_trusted >/dev/null
 done
 
 # SIGKILL after a synced marker rename leaves the older journal phase durable;
@@ -266,6 +320,11 @@ PRODUCTION_CONTROL_BRIDGE_TEST_MUTATE_AFTER_STAGE=ops/deploy/production-host-pol
   run_trusted >/dev/null
 [[ -z $(git -C "$CHECKOUT" status --porcelain=v1 --untracked-files=all) ]] || \
   fail 'reviewed source mutation fixture did not restore the candidate checkout'
+reset_host
+PRODUCTION_CONTROL_BRIDGE_TEST_MUTATE_AFTER_STAGE=ops/deploy/postgres-runtime-weekly-timer-state-lib.sh \
+  run_trusted >/dev/null
+[[ -z $(git -C "$CHECKOUT" status --porcelain=v1 --untracked-files=all) ]] || \
+  fail 'transitive reviewed source mutation fixture did not restore the candidate checkout'
 
 # O_NOFOLLOW lock opens reject symlinks without truncating their targets or
 # advancing any repository, marker, control, or journal state.
@@ -278,6 +337,43 @@ lock_before=$(snapshot_bridge_host; stat -c '%d:%i:%f:%s:%Y:%Z' "$lock_target"; 
 if run_trusted >/dev/null 2>&1; then fail 'symlinked deployment lock was admitted'; fi
 lock_after=$(snapshot_bridge_host; stat -c '%d:%i:%f:%s:%Y:%Z' "$lock_target"; sha256sum "$lock_target")
 [[ $lock_after == "$lock_before" ]] || fail 'symlinked deployment lock changed host state'
+
+# Linux lock descriptors must be single-link regular inodes; a hard link can
+# otherwise let an untrusted name alias a trusted lock and defeat lock scope.
+reset_host
+hardlink_alias=$CONTROL/production-deploy.lock.alias
+ln "$CONTROL/production-deploy.lock" "$hardlink_alias"
+lock_before=$(snapshot_bridge_host; stat -c '%d:%i:%h' "$CONTROL/production-deploy.lock" "$hardlink_alias")
+if run_trusted >/dev/null 2>&1; then fail 'hard-linked deployment lock was admitted'; fi
+lock_after=$(snapshot_bridge_host; stat -c '%d:%i:%h' "$CONTROL/production-deploy.lock" "$hardlink_alias")
+[[ $lock_after == "$lock_before" ]] || fail 'hard-linked lock rejection changed host state'
+
+# The two lock names may not alias the same inode. This independently proves
+# that deployment and PostgreSQL admission cannot collapse into one lock scope.
+reset_host
+rm "$CONTROL/daily-run.lock"
+ln "$CONTROL/production-deploy.lock" "$CONTROL/daily-run.lock"
+lock_before=$(snapshot_bridge_host; stat -c '%d:%i:%h' \
+  "$CONTROL/production-deploy.lock" "$CONTROL/daily-run.lock")
+if run_trusted >/dev/null 2>&1; then fail 'aliased deployment locks were admitted'; fi
+lock_after=$(snapshot_bridge_host; stat -c '%d:%i:%h' \
+  "$CONTROL/production-deploy.lock" "$CONTROL/daily-run.lock")
+[[ $lock_after == "$lock_before" ]] || fail 'aliased lock rejection changed host state'
+
+# Every mutable host endpoint is rejected when its directory itself is
+# group-writable; the driver checks the complete chain before sourcing target
+# libraries or opening locks.
+for unsafe_directory in "$ROOT" "$ROOT/runtime" "$CONTROL" "$INTEGRATION" \
+  "$STATE" "$STAGING" "$RELEASES"; do
+  reset_host
+  chmod g+w "$unsafe_directory"
+  unsafe_before=$(snapshot_bridge_host)
+  if run_trusted >/dev/null 2>&1; then fail "group-writable directory was admitted: $unsafe_directory"; fi
+  unsafe_after=$(snapshot_bridge_host)
+  [[ $unsafe_after == "$unsafe_before" ]] || \
+    fail "unsafe directory rejection changed host state: $unsafe_directory"
+  chmod g-w "$unsafe_directory"
+done
 
 # An exact but non-monotonic mixture is rejected and remains resumable after
 # the unexpected state is repaired.

@@ -211,12 +211,6 @@ PRODUCTION_SOURCE_REPO=$FIXTURE/production-source
 git clone -q "$SOURCE_REPO" "$PRODUCTION_SOURCE_REPO"
 git -C "$PRODUCTION_SOURCE_REPO" config user.email deploy-control-bridge-test@example.invalid
 git -C "$PRODUCTION_SOURCE_REPO" config user.name deploy-control-bridge-test
-if ! git -C "$SOURCE_REPO" diff --quiet HEAD --; then
-  git -C "$SOURCE_REPO" diff --binary HEAD -- | \
-    git -C "$PRODUCTION_SOURCE_REPO" apply
-  git -C "$PRODUCTION_SOURCE_REPO" add -A
-  git -C "$PRODUCTION_SOURCE_REPO" commit -q --amend --no-edit
-fi
 REPO=$PRODUCTION_SOURCE_REPO
 production_index_sequence=0
 

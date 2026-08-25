@@ -62,7 +62,7 @@ BRIDGE_CONTROL_PATHS=(
 
 assert_real_bridge_target_assets() {
   local path entry mode type object tree_path expected_digest alternate_digest
-  local alternate_digest_2 alternate_digest_3 actual_digest actual_mode
+  local alternate_digest_2 alternate_digest_3 alternate_digest_4 actual_digest actual_mode
   local repository_root actual_path actual_real
 
   repository_root=$(readlink -f -- "$PROJECT_ROOT")
@@ -93,21 +93,25 @@ assert_real_bridge_target_assets() {
     alternate_digest=
     alternate_digest_2=
     alternate_digest_3=
+    alternate_digest_4=
     actual_digest=$(sha256sum "$actual_real" | awk '{print $1}')
     case $path in
       ops/deploy/social-monitor-production-deploy.sh)
         expected_digest=e76db96e9cc7bdb62cb09a3be509a7776e09a0499ff41a0d3769d8b499bde04f
         alternate_digest=ac82c9cfebf88646e9cdc21dcb822c8cc50409832da24a726cd9307cc2be8bcb
         alternate_digest_2=046f3b495d977b8a83bf75acac056ca66d981512b3a1b22d89ed97a440050a29
+        alternate_digest_3=0846359b5852c644f47cec4c25165dc19a93dcf096a931ae3e0a438342b9e38f
         ;;
       ops/deploy/deploy-control-lib.sh)
         expected_digest=d18854822ef36d5571289e72c7691fff8db4a7d5c516787441a733d6960a88a9
         alternate_digest=398c591ea77b6e1acfed00f5ad80d17337ed0e1a53143f614551798067850373
         alternate_digest_2=8f85fd2da74770d75273f053c5949bb60308f005ea9b9bd6b8e77443d0fbcd76
+        alternate_digest_3=73c91b85127b184ceefce3a4a53716023834bf4078104d3475e743eb2b8e0da5
         ;;
       ops/deploy/postgres-runtime-deploy-lib.sh)
         expected_digest=261fb030bea2f203564c59e0c22db8058b310fb5d979c7db622938fe6045545a
         alternate_digest=6ac29042e94f9ef40498c70beeed37af13660fae629216d3ae2ea70270d0ffb1
+        alternate_digest_2=962aa3dda6288b242f9ad3e1a84a32276cc6bad6ebcf025fdd46e89565ec18c8
         ;;
       ops/deploy/backend-image-rescue-lib.sh)
         expected_digest=68f13213e6d1662d943185df7cdd1c11678261e76977021f74493c4e6c643b59
@@ -117,6 +121,7 @@ assert_real_bridge_target_assets() {
         alternate_digest=c29e3b832e00e113e3fc2aa47d3f1c5fe138f56f191cdb1feaab8252df3b041f
         alternate_digest_2=29a83263364d5583de8aae3594b76f2565ba77c6844f7401c45f3bae45249a31
         alternate_digest_3=d18d4a1ca57c4e085efc2cf7d7fbba1823aee63b482eb132d0814cf0eedda9d6
+        alternate_digest_4=374d34e678bfbf591c7029b58a93462f2f1faff704e0705d99b6b9bc4290b7a0
         ;;
     esac
     if [[ $path == ops/deploy/social-monitor-production-deploy.sh ]]; then
@@ -148,7 +153,8 @@ assert_real_bridge_target_assets() {
     [[ $actual_digest == "$expected_digest" ||
        (-n $alternate_digest && $actual_digest == "$alternate_digest") ||
        (-n $alternate_digest_2 && $actual_digest == "$alternate_digest_2") ||
-       (-n $alternate_digest_3 && $actual_digest == "$alternate_digest_3") ]] || {
+       (-n $alternate_digest_3 && $actual_digest == "$alternate_digest_3") ||
+       (-n $alternate_digest_4 && $actual_digest == "$alternate_digest_4") ]] || {
       printf 'current bridge asset digest drifted from V4A4: %s\n' "$path" >&2
       exit 1
     }

@@ -144,7 +144,8 @@ if [[ ${BASH_SOURCE[0]} != "$0" && \
       -n ${PRODUCTION_CONTROL_BRIDGE_CHECKOUT:-} ]]; then
   [[ ${PRODUCTION_CONTROL_BRIDGE_TRUSTED_SOURCE:-} == 1 && \
      ${BASH_SOURCE[0]} == /dev/fd/* && \
-     $(type -t verify_production_deploy_host_policy) == function ]] || \
+     $(type -t verify_production_deploy_host_policy) == function && \
+     $(type -t production_control_bridge_source_reviewed) == function ]] || \
     fail 'authenticated bridge host policy was not preloaded'
 else
   # shellcheck source=ops/deploy/production-host-policy-lib.sh
@@ -171,7 +172,7 @@ validate_main_commit() {
 DEPLOY_CONTROL_LIBRARY_AVAILABLE=false
 if [[ -f $REPO/ops/deploy/deploy-control-lib.sh ]]; then
   # shellcheck source=ops/deploy/deploy-control-lib.sh
-  source "$REPO/ops/deploy/deploy-control-lib.sh"
+  production_deploy_source_library ops/deploy/deploy-control-lib.sh 'deploy control library'
   DEPLOY_CONTROL_LIBRARY_AVAILABLE=true
 else
   acquire_postgres_admission_with_daily_priority() {
@@ -203,13 +204,20 @@ else
   }
 fi
 # shellcheck source=ops/deploy/postgres-runtime-deploy-lib.sh
-source "$REPO/ops/deploy/postgres-runtime-deploy-lib.sh"
+production_deploy_source_library ops/deploy/postgres-runtime-deploy-lib.sh \
+  'PostgreSQL runtime deploy library'
 # shellcheck source=ops/deploy/backend-runtime-health-lib.sh
-source "$REPO/ops/deploy/backend-runtime-health-lib.sh"
+production_deploy_source_library ops/deploy/backend-runtime-health-lib.sh \
+  'backend runtime health library'
 # shellcheck source=ops/deploy/backend-image-rescue-lib.sh
-source "$REPO/ops/deploy/backend-image-rescue-lib.sh"
+production_deploy_source_library ops/deploy/backend-image-rescue-lib.sh \
+  'backend image rescue library'
 source_deploy_library() {
   local library=$1 label=$2 path=$REPO/ops/deploy/$1 reviewed_sha
+  if [[ ${PRODUCTION_CONTROL_BRIDGE_TRUSTED_SOURCE:-} == 1 ]]; then
+    production_control_bridge_source_reviewed "ops/deploy/$library" "$label"
+    return
+  fi
   if [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} == 1 ]]; then
     [[ -f $path && ! -L $path ]] || path=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$library
     [[ -f $path && ! -L $path ]] || fail "$label is not a regular file"
@@ -226,7 +234,8 @@ source_deploy_library \
   daily-runner-image-bootstrap-lib.sh \
   'daily-runner image bootstrap library'
 # shellcheck source=ops/deploy/x-collector-image-deploy-lib.sh
-source "$REPO/ops/deploy/x-collector-image-deploy-lib.sh"
+production_deploy_source_library ops/deploy/x-collector-image-deploy-lib.sh \
+  'X collector image deploy library'
 source_deploy_library \
   reader-summary-recovery-maintenance-lib.sh \
   'reader-summary recovery maintenance library'

@@ -36,7 +36,8 @@ deploy_control_production_bridge_exact_marker() {
 }
 
 deploy_control_production_bridge_exact_installed_file() {
-  local sha=$1 path=$2 installed=$3 label=$4 expected actual before after
+  local sha=$1 path=$2 installed=$3 label=$4 installed_mode=${5:-755}
+  local expected actual before after
   [[ -f $installed && ! -L $installed ]] || fail "$label is not a regular file"
   before=$(deploy_control_bridge_file_identity "$installed") || fail "$label cannot be inventoried"
   expected=$(git -C "$REPO" rev-parse "$sha:$path") || fail "$label reviewed blob is unavailable"
@@ -44,10 +45,10 @@ deploy_control_production_bridge_exact_installed_file() {
   after=$(deploy_control_bridge_file_identity "$installed") || fail "$label cannot be re-inventoried"
   [[ $actual == "$expected" && $after == "$before" ]] || fail "$label differs from reviewed bytes"
   if [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} != 1 ]]; then
-    [[ $(stat -c '%U:%G:%a' "$installed") == root:root:755 ]] || \
+    [[ $(stat -c '%U:%G:%a' "$installed") == "root:root:$installed_mode" ]] || \
       fail "$label ownership or mode is invalid"
   else
-    [[ $(stat -c '%a' "$installed") == 755 ]] || fail "$label mode is invalid"
+    [[ $(stat -c '%a' "$installed") == "$installed_mode" ]] || fail "$label mode is invalid"
   fi
 }
 
@@ -55,12 +56,14 @@ production_control_bridge_require_lock_descriptor() {
   local descriptor=$1 path=$2 label=$3 descriptor_identity path_identity
   [[ -f $path && ! -L $path && -e /dev/fd/$descriptor ]] || \
     fail "$label path is not a regular non-symlink file"
-  descriptor_identity=$(stat -Lc '%d:%i:%f:%u:%g' "/dev/fd/$descriptor") || \
+  descriptor_identity=$(stat -Lc '%d:%i:%f:%u:%g:%h' "/dev/fd/$descriptor") || \
     fail "$label descriptor cannot be inventoried"
-  path_identity=$(stat -c '%d:%i:%f:%u:%g' "$path") || \
+  path_identity=$(stat -c '%d:%i:%f:%u:%g:%h' "$path") || \
     fail "$label path cannot be inventoried"
   [[ $descriptor_identity == "$path_identity" ]] || \
     fail "$label descriptor does not bind the named inode"
+  [[ $(stat -Lc '%h' "/dev/fd/$descriptor") == 1 ]] || \
+    fail "$label must not be hard linked"
   if [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} != 1 ]]; then
     [[ $(stat -c '%U:%G' "$path") == root:root ]] || fail "$label ownership is invalid"
   fi
@@ -74,10 +77,105 @@ production_control_bridge_acquire_locks() {
   [[ -d $CONTROL && ! -L $CONTROL ]] || fail 'control directory is not exact'
   [[ ${PRODUCTION_CONTROL_BRIDGE_LOCK_FDS_READY:-} == 1 ]] || \
     fail 'production bridge lock descriptors were not opened safely'
+  production_control_bridge_validate_host_directory_chains
   production_control_bridge_require_lock_descriptor 9 "$DEPLOY_LOCK" 'deployment lock'
   flock -w 3600 9 || fail 'timed out waiting for deployment lock'
   production_control_bridge_require_lock_descriptor 8 "$POSTGRES_ADMISSION_LOCK" 'PostgreSQL admission lock'
+  [[ $(stat -Lc '%d:%i' /dev/fd/9) != $(stat -Lc '%d:%i' /dev/fd/8) ]] || \
+    fail 'production bridge locks must have distinct identities'
   acquire_postgres_admission_with_daily_priority 8
+}
+
+production_control_bridge_sync_filesystem() {
+  local path=$1
+  if [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} == 1 ]]; then
+    python3 - "$path" <<'PY' || fail "production bridge test filesystem sync failed: $path"
+import os
+import sys
+descriptor = os.open(sys.argv[1], os.O_RDONLY | os.O_DIRECTORY)
+try:
+    os.fsync(descriptor)
+finally:
+    os.close(descriptor)
+PY
+    return
+  fi
+  sync -f "$path" || fail "production bridge filesystem sync failed: $path"
+}
+
+production_control_bridge_repair_integration() {
+  local target=$1 tree=$2 current index_lock untracked
+  current=$(git -C "$REPO" rev-parse --verify 'HEAD^{commit}') || \
+    fail 'integration HEAD cannot be read for repair'
+  [[ $current == "$DEPLOY_CONTROL_PRODUCTION_INTEGRATION_HEAD" || \
+     $current == "$target" ]] || fail 'integration HEAD is outside the resumable transition'
+  untracked=$(git -C "$REPO" ls-files --others --exclude-standard) || \
+    fail 'integration untracked state cannot be inspected'
+  [[ -z $untracked ]] || fail 'integration contains untracked files outside bridge repair'
+  index_lock=$(git -C "$REPO" rev-parse --path-format=absolute --git-path index.lock) || \
+    fail 'integration index lock path cannot be resolved'
+  if [[ -e $index_lock || -L $index_lock ]]; then
+    [[ -f $index_lock && ! -L $index_lock && $(stat -c '%u:%h' "$index_lock") == "$EUID:1" ]] || \
+      fail 'stale integration index lock is unsafe'
+    rm -f -- "$index_lock"
+  fi
+  git -C "$REPO" read-tree --reset -u "$target" || \
+    fail 'integration index and worktree could not be repaired'
+  production_control_bridge_abort_after_mutation INTEGRATION_INDEX_REWRITTEN
+  if [[ $current != "$target" ]]; then
+    git -C "$REPO" update-ref HEAD "$target" "$current" || \
+      fail 'integration reference could not be advanced atomically'
+  fi
+  production_control_bridge_sync_filesystem "$REPO"
+  [[ $(git -C "$REPO" rev-parse HEAD) == "$target" && \
+     $(git -C "$REPO" rev-parse 'HEAD^{tree}') == "$tree" && \
+     -z $(git -C "$REPO" status --porcelain=v1 --untracked-files=all) ]] || \
+    fail 'integration repair did not reach the exact target tree'
+}
+
+production_control_bridge_install_descriptor() {
+  local descriptor=$1 destination=$2 installed_mode=$3 reviewed_path=$4 label=$5
+  local expected actual next expected_uid=$EUID
+  [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} == 1 ]] || expected_uid=0
+  expected=$(git -C "$REPO" rev-parse "$PRODUCTION_CONTROL_BRIDGE_TARGET:$reviewed_path") || \
+    fail "$label reviewed blob is unavailable"
+  actual=$(git -C "$REPO" hash-object --no-filters "$destination" 2>/dev/null || true)
+  if [[ -f $destination && ! -L $destination && $actual == "$expected" && \
+        $(stat -c '%u:%a' "$destination" 2>/dev/null || true) == "$expected_uid:$installed_mode" ]]; then
+    return 0
+  fi
+  next=$(mktemp "${destination}.bridge.XXXXXX") || fail "$label temp could not be created"
+  trap 'rm -f "$next"' RETURN
+  cat "/dev/fd/$descriptor" > "$next" || fail "$label reviewed descriptor could not be copied"
+  chmod "0$installed_mode" "$next"
+  if [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} != 1 ]]; then
+    chown root:root "$next"
+  fi
+  production_control_bridge_fsync_file_and_parent "$next"
+  mv -f "$next" "$destination"
+  production_control_bridge_fsync_file_and_parent "$destination"
+  trap - RETURN
+  actual=$(git -C "$REPO" hash-object --no-filters "$destination") || \
+    fail "$label installed digest cannot be read"
+  [[ $actual == "$expected" ]] || fail "$label differs from its open reviewed descriptor"
+  [[ ${PRODUCTION_CONTROL_BRIDGE_ABORT_AFTER_CONTROL_FILE:-} != "$reviewed_path" ]] || \
+    kill -KILL "$BASHPID"
+}
+
+production_control_bridge_sync_control() {
+  production_control_bridge_install_descriptor 21 \
+    "$CONTROL/github-production-deploy.sh" 755 \
+    ops/deploy/social-monitor-production-deploy.sh 'deploy entrypoint'
+  production_control_bridge_install_descriptor 35 \
+    "$CONTROL/github-production-deploy-wrapper.sh" 755 \
+    ops/deploy/social-monitor-production-ssh-wrapper.sh 'deploy wrapper'
+  production_control_bridge_install_descriptor 36 \
+    "$CONTROL/refresh-codex-auth.sh" 700 \
+    ops/deploy/host/refresh-codex-auth.sh 'authentication refresh helper'
+  production_control_bridge_install_descriptor 37 \
+    "$CONTROL/x-collector.Dockerfile" 644 \
+    ops/deploy/production-runtime/x-collector.Dockerfile 'X collector Dockerfile'
+  production_control_bridge_sync_filesystem "$CONTROL"
 }
 
 production_control_bridge_fsync_file_and_parent() {
@@ -248,54 +346,70 @@ production_control_bridge_validate_immutable_markers() {
 }
 
 production_control_bridge_validate_phase_state() {
-  local phase=$1 target=$2 current entry_sha wrapper_sha pool control
+  local phase=$1 target=$2 current entry_sha wrapper_sha auth_sha x_sha pool control
   production_control_bridge_validate_immutable_markers "$phase" "$target"
   current=$(git -C "$REPO" rev-parse --verify 'HEAD^{commit}') || fail 'integration HEAD is unavailable'
   entry_sha=$(git -C "$REPO" hash-object --no-filters "$CONTROL/github-production-deploy.sh" 2>/dev/null || true)
   wrapper_sha=$(git -C "$REPO" hash-object --no-filters "$CONTROL/github-production-deploy-wrapper.sh" 2>/dev/null || true)
+  auth_sha=$(git -C "$REPO" hash-object --no-filters "$CONTROL/refresh-codex-auth.sh" 2>/dev/null || true)
+  x_sha=$(git -C "$REPO" hash-object --no-filters "$CONTROL/x-collector.Dockerfile" 2>/dev/null || true)
   pool=$(production_control_bridge_marker_value "$STATE/postgres-pool-bootstrap.sha" || true)
   control=$(production_control_bridge_marker_value "$STATE/control.sha" || true)
-  local old_entry old_wrapper new_entry new_wrapper
+  local old_entry old_wrapper old_auth old_x new_entry new_wrapper new_auth new_x
   old_entry=$(git -C "$REPO" rev-parse "$DEPLOY_CONTROL_PRODUCTION_POSTGRES_BOOTSTRAP_MARKER:ops/deploy/social-monitor-production-deploy.sh")
   old_wrapper=$(git -C "$REPO" rev-parse "$DEPLOY_CONTROL_PRODUCTION_POSTGRES_BOOTSTRAP_MARKER:ops/deploy/social-monitor-production-ssh-wrapper.sh")
   new_entry=$(git -C "$REPO" rev-parse "$target:ops/deploy/social-monitor-production-deploy.sh")
   new_wrapper=$(git -C "$REPO" rev-parse "$target:ops/deploy/social-monitor-production-ssh-wrapper.sh")
+  old_auth=$(git -C "$REPO" rev-parse "$DEPLOY_CONTROL_PRODUCTION_CONTROL_MARKER:ops/deploy/host/refresh-codex-auth.sh")
+  old_x=$(git -C "$REPO" rev-parse "$DEPLOY_CONTROL_PRODUCTION_CONTROL_MARKER:ops/deploy/production-runtime/x-collector.Dockerfile")
+  new_auth=$(git -C "$REPO" rev-parse "$target:ops/deploy/host/refresh-codex-auth.sh")
+  new_x=$(git -C "$REPO" rev-parse "$target:ops/deploy/production-runtime/x-collector.Dockerfile")
   case $phase in
     PREPARED)
       [[ $current == "$DEPLOY_CONTROL_PRODUCTION_INTEGRATION_HEAD" && $entry_sha == "$old_entry" && \
          $wrapper_sha == "$old_wrapper" && $pool == "$DEPLOY_CONTROL_PRODUCTION_POSTGRES_BOOTSTRAP_MARKER" && \
-         $control == "$DEPLOY_CONTROL_PRODUCTION_CONTROL_MARKER" ]] ;;
+         $control == "$DEPLOY_CONTROL_PRODUCTION_CONTROL_MARKER" && \
+         $auth_sha == "$old_auth" && $x_sha == "$old_x" ]] ;;
     INTEGRATION_ADVANCE_PENDING)
       [[ ($current == "$DEPLOY_CONTROL_PRODUCTION_INTEGRATION_HEAD" || $current == "$target") && \
          $entry_sha == "$old_entry" && $wrapper_sha == "$old_wrapper" && \
          $pool == "$DEPLOY_CONTROL_PRODUCTION_POSTGRES_BOOTSTRAP_MARKER" && \
-         $control == "$DEPLOY_CONTROL_PRODUCTION_CONTROL_MARKER" ]] ;;
+         $control == "$DEPLOY_CONTROL_PRODUCTION_CONTROL_MARKER" && \
+         $auth_sha == "$old_auth" && $x_sha == "$old_x" ]] ;;
     INTEGRATION_ADVANCED)
       [[ $current == "$target" && $pool == "$DEPLOY_CONTROL_PRODUCTION_POSTGRES_BOOTSTRAP_MARKER" && \
          $control == "$DEPLOY_CONTROL_PRODUCTION_CONTROL_MARKER" && \
-         $entry_sha == "$old_entry" && $wrapper_sha == "$old_wrapper" ]] ;;
+         $entry_sha == "$old_entry" && $wrapper_sha == "$old_wrapper" && \
+         $auth_sha == "$old_auth" && $x_sha == "$old_x" ]] ;;
     CONTROL_SYNC_PENDING)
       [[ $current == "$target" && $pool == "$DEPLOY_CONTROL_PRODUCTION_POSTGRES_BOOTSTRAP_MARKER" && \
          $control == "$DEPLOY_CONTROL_PRODUCTION_CONTROL_MARKER" && \
-         (($entry_sha == "$old_entry" && $wrapper_sha == "$old_wrapper") || \
-          ($entry_sha == "$new_entry" && $wrapper_sha == "$new_wrapper")) ]] ;;
+         ($entry_sha == "$old_entry" || $entry_sha == "$new_entry") && \
+         ($wrapper_sha == "$old_wrapper" || $wrapper_sha == "$new_wrapper") && \
+         ($auth_sha == "$old_auth" || $auth_sha == "$new_auth") && \
+         ($x_sha == "$old_x" || $x_sha == "$new_x") ]] ;;
     CONTROL_SYNCED|RUNTIME_VERIFY_PENDING|RUNTIME_VERIFIED)
       [[ $current == "$target" && $pool == "$DEPLOY_CONTROL_PRODUCTION_POSTGRES_BOOTSTRAP_MARKER" && \
          $control == "$DEPLOY_CONTROL_PRODUCTION_CONTROL_MARKER" && \
-         $entry_sha == "$new_entry" && $wrapper_sha == "$new_wrapper" ]] ;;
+         $entry_sha == "$new_entry" && $wrapper_sha == "$new_wrapper" && \
+         $auth_sha == "$new_auth" && $x_sha == "$new_x" ]] ;;
     POOL_MARKER_PENDING)
       [[ $current == "$target" && $entry_sha == "$new_entry" && $wrapper_sha == "$new_wrapper" && \
+         $auth_sha == "$new_auth" && $x_sha == "$new_x" && \
          ($pool == "$DEPLOY_CONTROL_PRODUCTION_POSTGRES_BOOTSTRAP_MARKER" || $pool == "$target") && \
          $control == "$DEPLOY_CONTROL_PRODUCTION_CONTROL_MARKER" ]] ;;
     POOL_MARKER_COMMITTED)
       [[ $current == "$target" && $entry_sha == "$new_entry" && $wrapper_sha == "$new_wrapper" && \
+         $auth_sha == "$new_auth" && $x_sha == "$new_x" && \
          $pool == "$target" && $control == "$DEPLOY_CONTROL_PRODUCTION_CONTROL_MARKER" ]] ;;
     CONTROL_MARKER_PENDING)
       [[ $current == "$target" && $entry_sha == "$new_entry" && $wrapper_sha == "$new_wrapper" && \
+         $auth_sha == "$new_auth" && $x_sha == "$new_x" && \
          $pool == "$target" && \
          ($control == "$DEPLOY_CONTROL_PRODUCTION_CONTROL_MARKER" || $control == "$target") ]] ;;
     CONTROL_MARKER_COMMITTED|RECEIPT_PENDING|RECEIPT_COMMITTED|COMPLETE)
       [[ $current == "$target" && $entry_sha == "$new_entry" && $wrapper_sha == "$new_wrapper" && \
+         $auth_sha == "$new_auth" && $x_sha == "$new_x" && \
          $pool == "$target" && $control == "$target" ]] ;;
   esac || fail "production bridge host state is invalid for phase $phase"
 }
@@ -328,7 +442,7 @@ production_control_bridge_poststate_text() {
   wrapper=$(git -C "$REPO" hash-object --no-filters "$CONTROL/github-production-deploy-wrapper.sh")
   printf 'version=%s\ntarget=%s\ntree=%s\nparent=%s\nfrontend=%s\nbackend=%s\nx_collector=%s\nruntime_control=%s\ncontrol=%s\nintegration=%s\nfrontend_marker=%s\nbackend_marker=%s\ncontrol_marker=%s\npool_marker=%s\nentrypoint_blob=%s\nwrapper_blob=%s\n' \
     "$PRODUCTION_CONTROL_BRIDGE_JOURNAL_VERSION" "$target" "$tree" \
-    "$DEPLOY_CONTROL_PRODUCTION_BRIDGE_BASE" \
+    "$(git -C "$REPO" rev-parse "$target^")" \
     "$(awk -F= '$1=="frontend"{print $2}' <<< "$classification")" \
     "$(awk -F= '$1=="backend"{print $2}' <<< "$classification")" \
     "$(awk -F= '$1=="x_collector"{print $2}' <<< "$classification")" \
@@ -359,6 +473,10 @@ production_control_bridge_verify_host_poststate() {
     "$CONTROL/github-production-deploy.sh" 'installed deploy entrypoint'
   deploy_control_production_bridge_exact_installed_file "$target" ops/deploy/social-monitor-production-ssh-wrapper.sh \
     "$CONTROL/github-production-deploy-wrapper.sh" 'installed deploy wrapper'
+  deploy_control_production_bridge_exact_installed_file "$target" ops/deploy/host/refresh-codex-auth.sh \
+    "$CONTROL/refresh-codex-auth.sh" 'installed authentication refresh helper' 700
+  deploy_control_production_bridge_exact_installed_file "$target" ops/deploy/production-runtime/x-collector.Dockerfile \
+    "$CONTROL/x-collector.Dockerfile" 'installed X collector Dockerfile' 644
   [[ $(deploy_control_production_bridge_classification "$target") == $'frontend=false\nbackend=false\nx_collector=false\nruntime_control=false\ncontrol=true' ]] || \
     fail 'production bridge poststate classification drifted'
 }
@@ -410,6 +528,13 @@ production_control_bridge_verify_receipt() {
 }
 
 verify_production_control_bridge_host_pre_mutation_state() {
+  local integration_tree
+  integration_tree=$(git -C "$REPO" rev-parse \
+    "$DEPLOY_CONTROL_PRODUCTION_INTEGRATION_HEAD^{tree}") || \
+    fail 'pre-mutation integration tree cannot be resolved'
+  production_control_bridge_verify_repository_poststate "$REPO" \
+    "$DEPLOY_CONTROL_PRODUCTION_INTEGRATION_HEAD" "$integration_tree" \
+    'pre-mutation integration'
   deploy_control_production_bridge_exact_marker "$STATE/frontend.sha" "$DEPLOY_CONTROL_PRODUCTION_FRONTEND_MARKER" frontend
   deploy_control_production_bridge_exact_marker "$STATE/backend.sha" "$DEPLOY_CONTROL_PRODUCTION_BACKEND_MARKER" backend
   deploy_control_production_bridge_exact_marker "$STATE/control.sha" "$DEPLOY_CONTROL_PRODUCTION_CONTROL_MARKER" control
@@ -446,7 +571,7 @@ production_control_bridge_completed_noop() {
 }
 
 deploy_production_control_bridge_preinstall() {
-  local target=$1 tree=$2 journal phase current installed expected marker next
+  local target=$1 tree=$2 journal phase current marker next
   PRODUCTION_CONTROL_BRIDGE_TARGET=$target
   export PRODUCTION_CONTROL_BRIDGE_TARGET
   deploy_control_is_exact_production_bridge "$target" || fail 'production bridge target cannot be authenticated exactly'
@@ -470,12 +595,12 @@ deploy_production_control_bridge_preinstall() {
           INTEGRATION_ADVANCE_PENDING "$target" "$tree" ;;
       INTEGRATION_ADVANCE_PENDING)
         current=$(git -C "$REPO" rev-parse HEAD)
-        if [[ $current == "$DEPLOY_CONTROL_PRODUCTION_INTEGRATION_HEAD" ]]; then
-          production_control_bridge_validate_phase_state INTEGRATION_ADVANCE_PENDING "$target"
-          advance_integration "$target"
+        production_control_bridge_validate_phase_state INTEGRATION_ADVANCE_PENDING "$target"
+        production_control_bridge_repair_integration "$target" "$tree"
+        [[ $current == "$target" ]] || \
           production_control_bridge_abort_after_mutation INTEGRATION_ADVANCED
+        [[ $current == "$target" ]] || \
           production_control_bridge_fail_after_mutation INTEGRATION_ADVANCED
-        fi
         production_control_bridge_advance_phase "$journal" INTEGRATION_ADVANCE_PENDING \
           INTEGRATION_ADVANCED "$target" "$tree"
         production_control_bridge_fail_after INTEGRATION_ADVANCED ;;
@@ -483,16 +608,12 @@ deploy_production_control_bridge_preinstall() {
         production_control_bridge_advance_phase "$journal" INTEGRATION_ADVANCED \
           CONTROL_SYNC_PENDING "$target" "$tree" ;;
       CONTROL_SYNC_PENDING)
-        installed=$(git -C "$REPO" hash-object --no-filters "$CONTROL/github-production-deploy.sh")
-        expected=$(git -C "$REPO" rev-parse "$target:ops/deploy/social-monitor-production-deploy.sh")
-        if [[ $installed != "$expected" ]]; then
-          production_control_bridge_validate_phase_state CONTROL_SYNC_PENDING "$target"
-          initialize_deploy_control_bridge
-          verify_deploy_control_bridge_compatibility
-          sync_control_script "$target"
-          production_control_bridge_abort_after_mutation CONTROL_SYNCED
-          production_control_bridge_fail_after_mutation CONTROL_SYNCED
-        fi
+        production_control_bridge_validate_phase_state CONTROL_SYNC_PENDING "$target"
+        initialize_deploy_control_bridge
+        verify_deploy_control_bridge_compatibility
+        production_control_bridge_sync_control
+        production_control_bridge_abort_after_mutation CONTROL_SYNCED
+        production_control_bridge_fail_after_mutation CONTROL_SYNCED
         production_control_bridge_advance_phase "$journal" CONTROL_SYNC_PENDING \
           CONTROL_SYNCED "$target" "$tree"
         production_control_bridge_fail_after CONTROL_SYNCED ;;
