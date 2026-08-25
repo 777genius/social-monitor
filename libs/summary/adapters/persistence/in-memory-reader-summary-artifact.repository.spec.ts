@@ -310,7 +310,7 @@ const weeklyAuthorizationDetails = (): ReturnType<
       authorizationId: "weekly-authorization-memory",
       citations: [citation],
     },
-  }) as unknown as ReturnType<
+  }) as ReturnType<
     typeof weeklyAuthorizationPolicy.readReaderSummaryWeeklyPublicationAuthorization
   >;
 };

@@ -9,9 +9,9 @@ import {
   verifiedStoryRelationPairKey,
 } from "./story-cluster-membership";
 import {
+  approvedStoryRelationPairs,
   buildStoryRelationCandidates,
 } from "./story-relation-candidates";
-import { approvedStoryRelationPairs } from "./story-relation-decision-trace";
 import { storyKey } from "./story-key-normalizer";
 
 const clock = { now: () => new Date("2026-07-08T00:00:00.000Z") };
@@ -149,7 +149,7 @@ describe("real reader-summary clustering regressions", () => {
     expect(selection.clusters[0]?.duplicateFeedItemIds).toHaveLength(1);
   });
 
-  it("keeps the real same-provider Anthropic J-space series contextual", () => {
+  it("shortlists and safely clusters the real Anthropic J-space thread", () => {
     const items = jSpaceEvidence();
     const clusterer = new StoryClusteringService(clock);
     const deterministic = clusterer.cluster({ identity, items, limit: 10 });
@@ -165,34 +165,27 @@ describe("real reader-summary clustering regressions", () => {
       ),
     );
     expect(deterministic.clusters).toHaveLength(3);
-    expect(guardResults).toEqual([false, false, false]);
-    expect(candidates).toEqual([]);
-    const forcedSameStoryPairs = new Set(
-      itemPairs(items).map(([left, right]) =>
-        verifiedStoryRelationPairKey(left.feedItemId, right.feedItemId),
-      ),
-    );
+    expect(guardResults).toEqual([true, true, true]);
+    expect(candidates).toHaveLength(3);
+
+    const approved = approvedStoryRelationPairs({
+      candidates,
+      decisions: candidates.map((candidate) => ({
+        leftFeedItemId: candidate.leftFeedItemId,
+        rightFeedItemId: candidate.rightFeedItemId,
+        sameStory: true,
+        confidenceScore: 0.97,
+      })),
+    });
     const verified = clusterer.cluster({
       identity,
       items,
       limit: 10,
-      verifiedStoryRelationPairs: forcedSameStoryPairs,
+      verifiedStoryRelationPairs: approved,
     });
-    const reversed = clusterer.cluster({
-      identity,
-      items: [...items].reverse(),
-      limit: 10,
-      verifiedStoryRelationPairs: forcedSameStoryPairs,
-    });
-    expect(verified.clusters).toHaveLength(3);
-    expect(
-      verified.clusters.every(
-        (cluster) => cluster.duplicateFeedItemIds.length === 0,
-      ),
-    ).toBe(true);
-    expect(verified.clusters.map((cluster) => cluster.id).sort()).toEqual(
-      reversed.clusters.map((cluster) => cluster.id).sort(),
-    );
+
+    expect(verified.clusters).toHaveLength(1);
+    expect(verified.clusters[0]?.duplicateFeedItemIds).toHaveLength(2);
   });
 
   it("shortlists Reddit, HN, and X coverage of one Kimi K3 security story", () => {

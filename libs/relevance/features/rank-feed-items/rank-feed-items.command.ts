@@ -8,9 +8,7 @@ export type RankFeedItemsCommand = {
   readonly limit: number;
   readonly observedAfter?: Date;
   readonly observedAtOrAfter?: Date;
-  readonly observedAtOrBefore?: Date;
   readonly observedBefore?: Date;
   readonly publishedAtOrAfter?: Date;
   readonly publishedBefore?: Date;
-  readonly rankingProfile?: "reader_post_promotion";
 };

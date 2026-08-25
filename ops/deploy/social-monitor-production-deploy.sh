@@ -73,7 +73,7 @@ BACKEND_PATHS=(
   prisma.config.ts
   prisma
   vendor
-  libs
+  libs ':(exclude)libs/summary/domain/aggregates/reader-summary-github-trending.spec.ts' ':(exclude)libs/summary/domain/aggregates/reader-summary-narrative-lead.spec.ts' ':(exclude)libs/summary/domain/aggregates/reader-summary.spec.ts'
   ':(exclude)libs/contracts/rest/openapi.snapshot.json'
   apps/api-gateway
   apps/agent-runtime
@@ -86,16 +86,16 @@ BACKEND_PATHS=(
   apps/social-research-runtime
   apps/social-research-grpc
   apps/social-research-mcp
-  scripts
+  scripts ':(exclude)scripts/check-ingestion-feed-prisma-persistence.ts' ':(exclude)scripts/check-source-line-cap.mjs' ':(exclude)scripts/support/check-ingestion-feed-prisma-persistence-assertions.ts'
   ops/evals
   ops/observability
   ops/deploy/backend-runtime-health-lib.sh
   ops/deploy/rabbitmq-quorum-health.sh
   ops/deploy/rabbitmq-quorum-recovery.sh
-  ops/deploy/reader-summary-publication-deploy-lib.sh ops/deploy/reader-summary-publication-system-dsn-bootstrap-lib.sh ops/deploy/reader-summary-publication-system-runtime-deploy-lib.sh
+  ops/deploy/reader-summary-publication-deploy-lib.sh ':(exclude)ops/deploy/reader-summary-publication-deploy-lib.sh' ops/deploy/reader-summary-publication-system-dsn-bootstrap-lib.sh ops/deploy/reader-summary-publication-system-runtime-deploy-lib.sh
   ops/deploy/reader-summary-publication-pre-migration.sql
   ops/deploy/reader-summary-publication-post-migration.sql
-  test
+  test ':(exclude)test/e2e/feed.items.list.e2e-spec.ts' ':(exclude)test/e2e/support/feed-items-list-seeders.ts'
 )
 CONTROL_PATHS=(
   .github/workflows/production-deploy.yml

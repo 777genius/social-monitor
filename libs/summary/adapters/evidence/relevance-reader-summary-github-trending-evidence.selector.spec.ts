@@ -25,13 +25,6 @@ describe("RelevanceReaderSummaryEvidenceSelector GitHub display evidence", () =>
       ),
     } as unknown as RankFeedItemsUseCase;
     const feedItems: FeedItemReadRepositoryPort = {
-      readPromotionSnapshot: jest.fn(async () => ({
-        ok: true,
-        candidates: [],
-        sourceContent: [],
-        physicalRowsRead: 0,
-        exhausted: true,
-      } as const)),
       list: jest.fn(async () => ({ items: [] })),
       findById: jest.fn(async () => null),
     };

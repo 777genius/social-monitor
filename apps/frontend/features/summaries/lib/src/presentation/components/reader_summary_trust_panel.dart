@@ -5,7 +5,6 @@ import '../../domain/aggregates/reader_summary.dart';
 import '../../domain/entities/summary_citation.dart';
 import '../formatters/reader_summary_trust_copy.dart';
 import '../view_models/reader_summary_trust_snapshot.dart';
-import 'reader_summary_url_action_contract.dart';
 
 part 'reader_summary_trust_summary_line.dart';
 
@@ -325,22 +324,14 @@ class _EvidenceLine extends StatelessWidget {
             ),
           ),
           if (url != null)
-            Semantics(
-              key: readerSummaryUrlActionKey(
-                'trust-evidence',
-                evidence.citationId,
+            IconButton(
+              key: ValueKey(
+                'reader-summary-trust-evidence-source-${evidence.citationId}',
               ),
-              link: true,
-              label: readerSummaryUrlActionSemantics(
-                'trust-evidence',
-                evidence.citationId,
-              ),
-              child: IconButton(
-                tooltip: 'Open source',
-                visualDensity: VisualDensity.compact,
-                onPressed: () => onOpenUrl(url),
-                icon: const Icon(Icons.open_in_new_outlined, size: 16),
-              ),
+              tooltip: 'Open source',
+              visualDensity: VisualDensity.compact,
+              onPressed: () => onOpenUrl(url),
+              icon: const Icon(Icons.open_in_new_outlined, size: 16),
             ),
         ],
       ),

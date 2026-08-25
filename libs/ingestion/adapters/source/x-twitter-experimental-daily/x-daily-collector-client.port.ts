@@ -40,17 +40,14 @@ export type XDailyCollectedPost = {
   readonly mediaUrls: readonly string[];
   readonly sourceProduct: XDailySearchProduct;
   readonly trendScore: number;
-  /** Missing provenance is intentionally not treated as an original post. */
-  readonly contentKind?: "original_post" | "reply" | "quote";
 };
 
 export type XDailyPostMetrics = {
-  readonly likes?: number;
-  readonly retweets?: number;
+  readonly likes: number;
+  readonly retweets: number;
   readonly replies: number;
   readonly quotes?: number;
   readonly views?: number;
-  readonly eligibilityState?: "observed" | "missing" | "malformed" | "conflict";
 };
 
 export type XDailyCollectorWarning = {

@@ -4,6 +4,7 @@ import {
 } from "../../domain";
 import type {
   AgentRuntimeClientPort,
+  AgentRuntimeProvider,
   ReaderSummaryTopicMapAttemptContext,
   ReaderSummaryTopicRelationVerifierInput,
   ReaderSummaryTopicRelationVerifierPort,
@@ -28,31 +29,25 @@ import {
   verifyAndRecordReaderSummaryExecution,
   type VerifiedReaderSummaryExecutionAttestationSink,
 } from "./reader-summary-execution-attestation";
-import {
-  activeReaderSummaryModel,
-  activeReaderSummaryPurposes,
-  activeReaderSummaryReasoningEffort,
-  parseActiveReaderSummaryModel,
-} from "./active-reader-summary-generation-profile";
 
 export type AgentRuntimeReaderSummaryTopicRelationVerifierOptions = Pick<
   AgentRuntimeReaderSummaryTopicLabelerOptions,
   "client" | "agentProvider" | "providerInstanceId" | "verifiedAttestationSink"
 > & {
-  readonly model?: typeof activeReaderSummaryModel;
+  readonly model?: string;
   readonly promptVersion?: string;
   readonly timeoutMs?: number;
   readonly maxOutputTokens?: number;
 };
 
-const defaultModel = activeReaderSummaryModel;
+const defaultModel = "agent-runtime-reader-summary-topic-relation-verifier";
 const defaultPromptVersion = "reader_summary.topic_relation.agent_runtime.v3";
 const defaultTimeoutMs = 300_000;
 const defaultMaxOutputTokens = 4_000;
 
 export class AgentRuntimeReaderSummaryTopicRelationVerifier implements ReaderSummaryTopicRelationVerifierPort {
   private readonly client: AgentRuntimeClientPort;
-  private readonly provider: "codex";
+  private readonly provider: AgentRuntimeProvider;
   private readonly providerInstanceId?: string;
   private readonly model: string;
   private readonly promptVersion: string;
@@ -64,7 +59,7 @@ export class AgentRuntimeReaderSummaryTopicRelationVerifier implements ReaderSum
     this.client = options.client;
     this.provider = options.agentProvider ?? "codex";
     this.providerInstanceId = options.providerInstanceId;
-    this.model = options.model ?? defaultModel;
+    this.model = nonEmptyOrFallback(options.model, defaultModel);
     this.promptVersion = nonEmptyOrFallback(
       options.promptVersion,
       defaultPromptVersion,
@@ -106,7 +101,7 @@ export class AgentRuntimeReaderSummaryTopicRelationVerifier implements ReaderSum
       ),
       provider: this.provider,
       providerInstanceId: this.providerInstanceId,
-      purpose: activeReaderSummaryPurposes.topicRelations,
+      purpose: "social_monitor.reader_summary.topic_map.verify_relations",
       systemPrompt: agentRuntimeReaderSummaryTopicRelationVerifierInstructions,
       prompt: buildAgentRuntimeReaderSummaryTopicRelationVerifierPrompt(input),
       outputSchema: agentRuntimeReaderSummaryTopicRelationVerifierJsonSchema,
@@ -114,8 +109,7 @@ export class AgentRuntimeReaderSummaryTopicRelationVerifier implements ReaderSum
         interactive: false,
         outputSchemaName: "social_monitor_reader_summary_topic_relations",
         schemaVersion: "reader_summary.topic_relation.v1",
-        model: this.model,
-        reasoningEffort: activeReaderSummaryReasoningEffort,
+        ...(this.model === defaultModel ? {} : { model: this.model }),
         maxOutputTokens: this.maxOutputTokens,
       },
       timeoutMs: this.timeoutMs,
@@ -164,10 +158,7 @@ export const resolveAgentRuntimeReaderSummaryTopicRelationVerifierOptions = (
     client,
     agentProvider: shared.agentProvider,
     providerInstanceId: shared.providerInstanceId,
-    model: parseActiveReaderSummaryModel(
-      env.AGENT_RUNTIME_READER_SUMMARY_TOPIC_RELATION_VERIFIER_MODEL ??
-        env.AGENT_RUNTIME_READER_SUMMARY_MODEL,
-    ),
+    model: env.AGENT_RUNTIME_READER_SUMMARY_TOPIC_RELATION_VERIFIER_MODEL,
     promptVersion:
       env.AGENT_RUNTIME_READER_SUMMARY_TOPIC_RELATION_VERIFIER_PROMPT_VERSION,
     timeoutMs: parsePositiveInteger(

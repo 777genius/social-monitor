@@ -2,7 +2,7 @@ import type { StoryRankingPolicy } from "../policies/story-ranking-policy";
 import {
   independentEvidenceItems,
   independentEvidenceProviderKeys,
-  readerSummaryIndependentProviderFamily,
+  readerSummaryProviderIdentity,
 } from "../value-objects/reader-summary-provider-identity";
 import type {
   StoryCluster,
@@ -30,13 +30,13 @@ export const storyClusterSignal = (
   const strongestByProvider = new Map<string, number>();
 
   for (const item of independentEvidence) {
-    const providerKey = readerSummaryIndependentProviderFamily(item);
+    const providerKey = readerSummaryProviderIdentity(item).providerKey;
     const current = strongestByProvider.get(providerKey) ?? 0;
     strongestByProvider.set(providerKey, Math.max(current, item.score));
   }
 
   const signalLeaderProviderKey =
-    readerSummaryIndependentProviderFamily(signalLeader);
+    readerSummaryProviderIdentity(signalLeader).providerKey;
   const otherProviderSupport = [...strongestByProvider.entries()]
     .filter(([providerKey]) => providerKey !== signalLeaderProviderKey)
     .map(([, score]) => Math.max(0, score))
@@ -54,7 +54,7 @@ export const storyClusterSignal = (
   const sameProviderDuplicateCount =
     independentEvidence.filter(
       (item) =>
-        readerSummaryIndependentProviderFamily(item) ===
+        readerSummaryProviderIdentity(item).providerKey ===
         signalLeaderProviderKey,
     ).length - 1;
   const sameProviderSupport = Math.min(

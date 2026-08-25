@@ -1,5 +1,4 @@
 import { randomBytes, randomUUID } from "node:crypto";
-import { spawnSync } from "node:child_process";
 import { Pool, type PoolClient } from "pg";
 import {
   provisionReaderSummaryPublicationFixtureScope,
@@ -106,7 +105,6 @@ let fixtureMigrationAdminRoleCreated = false;
 let fixtureRuntimeRoleCreated = false;
 let fixtureDailyTerminalRoleCreated = false;
 export type ReaderSummaryPublicationPostgresContract =
-  | "feed-promotion"
   | "publication"
   | "weekly-certification-seal"
   | "weekly-atomic-publication"
@@ -221,15 +219,6 @@ export const runReaderSummaryPublicationPostgresContract = async (
       runtimeRole,
     );
     assertReaderSummaryMigrationDatabaseMatchesSchema(targetDatabaseUrl);
-    if (contract === "feed-promotion") {
-      await assertFeedPromotionOwnerOrder();
-      runFeedPromotionRepositoryCheck();
-      runFeedPromotionRecoveryCheck();
-      console.log(
-        "Feed promotion ordered-bootstrap PostgreSQL 18 contract OK",
-      );
-      return;
-    }
     const auditorPool = new Pool({
       connectionString: targetDatabaseUrl,
       max: 1,
@@ -404,58 +393,6 @@ export const runReaderSummaryPublicationPostgresContract = async (
   console.log(
     "Reader summary PostgreSQL privilege, upgrade, replay, and concurrency gate OK",
   );
-};
-const assertFeedPromotionOwnerOrder = async (): Promise<void> => {
-  const admin = new Pool({ connectionString: adminDatabaseUrl, max: 1 });
-  try {
-    const result = await admin.query<{
-      readonly feed_owner: string;
-      readonly safe_set_membership: boolean;
-    }>(`SELECT
-        pg_get_userbyid(relation.relowner) AS feed_owner,
-        EXISTS (
-          SELECT 1 FROM pg_auth_members membership
-          JOIN pg_roles granted ON granted.oid = membership.roleid
-          JOIN pg_roles member ON member.oid = membership.member
-          WHERE granted.rolname = 'social_monitor_public_schema_owner'
-            AND member.rolname = current_user
-            AND NOT membership.admin_option
-            AND NOT membership.inherit_option
-            AND membership.set_option
-        ) AS safe_set_membership
-      FROM pg_class relation WHERE relation.oid = 'public.feed_items'::regclass`);
-    assert(
-      result.rows[0]?.feed_owner === "social_monitor_public_schema_owner" &&
-        result.rows[0]?.safe_set_membership === true,
-      "feed promotion indexes must follow the production table-owner transition",
-    );
-  } finally {
-    await admin.end();
-  }
-};
-const runFeedPromotionRepositoryCheck = (): void => {
-  const script = "check:feed-promotion-keyset-plan-postgres";
-  const result = spawnSync("npm", ["run", script], {
-    env: {
-      ...process.env,
-      DATABASE_URL: runtimeDatabaseUrl,
-      FEED_PROMOTION_FIXTURE_DATABASE_URL: targetDatabaseUrl,
-    },
-    stdio: "inherit",
-  });
-  if (result.status !== 0) {
-    throw new Error(`${script} failed in the ordered-bootstrap fixture`);
-  }
-};
-const runFeedPromotionRecoveryCheck = (): void => {
-  const script = "check:feed-promotion-index-recovery-postgres";
-  const result = spawnSync("npm", ["run", script], {
-    env: { ...process.env, DATABASE_URL: adminDatabaseUrl },
-    stdio: "inherit",
-  });
-  if (result.status !== 0) {
-    throw new Error(`${script} failed in the ordered-bootstrap fixture`);
-  }
 };
 const assertOrderedUpgrade = async (client: PoolClient): Promise<void> => {
   const expected = readerSummaryMigrationNames();

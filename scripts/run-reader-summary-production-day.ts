@@ -365,7 +365,7 @@ async function main(): Promise<void> {
           DURABLE_READER_SUMMARY_MODEL: summaryModel,
           AGENT_RUNTIME_READER_SUMMARY_MODEL: "gpt-5.6-sol",
           AGENT_RUNTIME_PROVIDER: "codex",
-          AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT: "high",
+          AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT: "xhigh",
           AGENT_RUNTIME_READER_SUMMARY_TIMEOUT_MS: String(
             READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.summaryModelTimeoutMs,
           ),

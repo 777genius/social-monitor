@@ -159,7 +159,7 @@ describe("reader summary production recovery CLI", () => {
           ...binding,
           days: binding.days.filter(
             (day) => day.requestedUtcDate !== "2026-07-28",
-          ) as unknown as typeof binding.days,
+          ),
         },
         executionGuard: { claim },
         executeDay,

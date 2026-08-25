@@ -8,47 +8,18 @@ import {
 } from "./subscription-runtime-purpose-model-policy";
 
 const dailyPurposes = [
-  "social_monitor.reader_summary.generate.v2",
-  "social_monitor.reader_summary.repair.v2",
-  "social_monitor.reader_summary.topic_map.label.v2",
-  "social_monitor.reader_summary.topic_map.verify_relations.v2",
-  "social_monitor.reader_summary.verify_story_relations.v2",
-  "social_monitor.reader_summary.verify_related_topic_relations.v2",
-  "social_monitor.reader_summary.weekly.review.v2",
+  "social_monitor.summary.generate",
+  "social_monitor.reader_summary.generate",
+  "social_monitor.reader_summary.repair",
+  "social_monitor.reader_summary.topic_map.label",
+  "social_monitor.reader_summary.topic_map.verify_relations",
+  "social_monitor.reader_summary.verify_story_relations",
+  "social_monitor.reader_summary.weekly.review",
 ] as const;
 
 describe("subscription runtime purpose policy", () => {
-  it("admits only the exact dedicated related-topic relation markers", () => {
-    const exact = request({
-      purpose: "social_monitor.reader_summary.verify_related_topic_relations.v2",
-      controlsJson: JSON.stringify({
-        outputSchemaName: "social_monitor_reader_summary_related_topic_relations",
-        schemaVersion: "reader_summary.related_topic_relation.v1",
-      }),
-      metadata: {
-        taskRole: "related_topic_relation",
-        verificationLane: "related_topic",
-      },
-    });
-    expect(() => admitSubscriptionRuntimeRequest(exact)).not.toThrow();
-
-    for (const malformed of [
-      { ...exact, controlsJson: JSON.stringify({
-        outputSchemaName: "social_monitor_reader_summary_story_relations",
-        schemaVersion: "reader_summary.related_topic_relation.v1",
-      }) },
-      { ...exact, controlsJson: JSON.stringify({
-        outputSchemaName: "social_monitor_reader_summary_related_topic_relations",
-        schemaVersion: "reader_summary.related_topic_relation.v2",
-      }) },
-      { ...exact, metadata: { ...exact.metadata, taskRole: "unknown_relation" } },
-    ]) {
-      expect(() => admitSubscriptionRuntimeRequest(malformed)).toThrow();
-    }
-  });
-
   it.each(dailyPurposes)(
-    "keeps %s on the active reader-summary structured-output profile",
+    "keeps %s on the frozen daily structured-output profile",
     (purpose) => {
       const admission = admitSubscriptionRuntimeRequest(request({ purpose }));
       const task = admission.canonicalRequest.task as Record<string, unknown>;
@@ -57,22 +28,22 @@ describe("subscription runtime purpose policy", () => {
       expect(admission.profile).toEqual({
         provider: "codex",
         model: "gpt-5.6-sol",
-        reasoningEffort: "high",
+        reasoningEffort: "xhigh",
         outputKind: "structured_output",
         responseFormat: "json",
       });
       expect(controls).toMatchObject({
         model: "gpt-5.6-sol",
-        reasoningEffort: "high",
+        reasoningEffort: "xhigh",
         responseFormat: "json",
         outputSchema: { type: "object" },
       });
     },
   );
 
-  it("injects the active weekly text profile when exact controls are absent", () => {
+  it("injects the frozen weekly text profile when exact controls are absent", () => {
     const admission = admitSubscriptionRuntimeRequest(
-      request({ purpose: "social_monitor.reader_summary.weekly.generate.v2" }),
+      request({ purpose: "social_monitor.reader_summary.weekly.generate" }),
     );
     const task = admission.canonicalRequest.task as Record<string, unknown>;
     const controls = task.controls as Record<string, unknown>;
@@ -80,13 +51,13 @@ describe("subscription runtime purpose policy", () => {
     expect(admission.profile).toEqual({
       provider: "codex",
       model: "gpt-5.6-sol",
-      reasoningEffort: "high",
+      reasoningEffort: "xhigh",
       outputKind: "output_text",
       responseFormat: "text",
     });
     expect(controls).toMatchObject({
       model: "gpt-5.6-sol",
-      reasoningEffort: "high",
+      reasoningEffort: "xhigh",
       responseFormat: "text",
     });
     expect(controls.outputSchema).toBeUndefined();
@@ -103,7 +74,7 @@ describe("subscription runtime purpose policy", () => {
     expect(structuredControls.outputSchema).toEqual({ type: "object" });
 
     const text = admitSubscriptionRuntimeRequest(request({
-      purpose: "social_monitor.reader_summary.weekly.generate.v2",
+      purpose: "social_monitor.reader_summary.weekly.generate",
       controlsJson: '{"outputSchemaName":"weekly-summary"}',
     }));
     const textTask = text.canonicalRequest.task as Record<string, unknown>;
@@ -119,7 +90,7 @@ describe("subscription runtime purpose policy", () => {
     ["unknown purpose", { purpose: "social_monitor.reader_summary.unknown" }],
     ["provider", { provider: "claude" as const }],
     ["model", { controlsJson: '{"model":"gpt-5.5"}' }],
-    ["effort", { metadata: { reasoningEffort: "xhigh" } }],
+    ["effort", { metadata: { reasoningEffort: "high" } }],
     ["output kind", { metadata: { runtimeOutput: "output_text" } }],
     ["output format", { controlsJson: '{"responseFormat":"xml"}' }],
     [
@@ -129,7 +100,7 @@ describe("subscription runtime purpose policy", () => {
     [
       "weekly structured control",
       {
-        purpose: "social_monitor.reader_summary.weekly.generate.v2",
+        purpose: "social_monitor.reader_summary.weekly.generate",
         controlsJson: '{"outputSchema":{"type":"object"}}',
       },
     ],
@@ -137,28 +108,6 @@ describe("subscription runtime purpose policy", () => {
     ["invalid schema", { outputSchemaJson: "[]" }],
   ])("rejects a conflicting or unsupported %s", (_label, override) => {
     expect(() => admitSubscriptionRuntimeRequest(request(override))).toThrow();
-  });
-
-  it("cuts active high execution over without weakening frozen xhigh recovery", () => {
-    const active = request({
-      purpose: "social_monitor.reader_summary.generate.v2",
-      metadata: { reasoningEffort: "high" },
-    });
-    expect(() => admitSubscriptionRuntimeRequest(active)).not.toThrow();
-    expect(() => admitSubscriptionRuntimeRequest({
-      ...active,
-      metadata: { reasoningEffort: "xhigh" },
-    })).toThrow("reasoningEffort conflicts with purpose policy");
-
-    const historicalRecovery = request({
-      purpose: "social_monitor.reader_summary.generate",
-      metadata: { reasoningEffort: "xhigh" },
-    });
-    expect(() => admitSubscriptionRuntimeRequest(historicalRecovery)).not.toThrow();
-    expect(() => admitSubscriptionRuntimeRequest({
-      ...historicalRecovery,
-      metadata: { reasoningEffort: "high" },
-    })).toThrow("reasoningEffort conflicts with purpose policy");
   });
 
   it("keeps the independent MJS wrapper policy in exact parity", () => {
@@ -187,7 +136,7 @@ describe("subscription runtime purpose policy", () => {
     ["unknown purpose", { purpose: "social_monitor.unknown" }],
     ["provider", { provider: "claude" }],
     ["model", { model: "gpt-4" }],
-    ["effort", { reasoningEffort: "xhigh" }],
+    ["effort", { reasoningEffort: "high" }],
     ["output format", { responseFormat: "text" }],
     ["output kind", { runtimeOutput: "output_text" }],
   ])("keeps MJS rejection parity for %s", (_label, override) => {
@@ -205,44 +154,25 @@ describe("subscription runtime purpose policy", () => {
 
 const request = (
   override: Partial<AgentRuntimeExecutionRequest> = {},
-): AgentRuntimeExecutionRequest => {
-  const purpose = override.purpose ?? "social_monitor.reader_summary.generate.v2";
-  const relatedDefaults = purpose ===
-      "social_monitor.reader_summary.verify_related_topic_relations" ||
-    purpose === "social_monitor.reader_summary.verify_related_topic_relations.v2"
-    ? {
-        controlsJson: JSON.stringify({
-          outputSchemaName:
-            "social_monitor_reader_summary_related_topic_relations",
-          schemaVersion: "reader_summary.related_topic_relation.v1",
-        }),
-        metadata: {
-          taskRole: "related_topic_relation",
-          verificationLane: "related_topic",
-        },
-      }
-    : {};
-  return {
-    requestId: "request-1",
-    tenantId: "tenant-1",
-    workspaceId: "workspace-1",
-    correlationId: "correlation-1",
-    provider: "codex",
-    purpose,
-    systemPrompt: "Return the requested result.",
-    prompt: "Summarize.",
-    outputSchemaJson: '{"type":"object"}',
-    controlsJson: "{}",
-    timeoutMs: 1_000,
-    metadata: {},
-    ...relatedDefaults,
-    ...override,
-  };
-};
+): AgentRuntimeExecutionRequest => ({
+  requestId: "request-1",
+  tenantId: "tenant-1",
+  workspaceId: "workspace-1",
+  correlationId: "correlation-1",
+  provider: "codex",
+  purpose: "social_monitor.reader_summary.generate",
+  systemPrompt: "Return the requested result.",
+  prompt: "Summarize.",
+  outputSchemaJson: '{"type":"object"}',
+  controlsJson: "{}",
+  timeoutMs: 1_000,
+  metadata: {},
+  ...override,
+});
 
 const policyPath = join(
-  __dirname,
-  "../bin/subscription-runtime-purpose-model-policy.mjs",
+  process.cwd(),
+  "apps/agent-runtime/bin/subscription-runtime-purpose-model-policy.mjs",
 );
 
 const readMjsProfiles = (): Record<string, unknown> =>
@@ -306,15 +236,6 @@ const runMjsPolicy = <T>(expression: string, input: unknown = {}): T => {
   );
   if (result.status !== 0) {
     throw new Error(result.stderr || "MJS purpose policy check failed");
-  }
-  if (result.stdout.length === 0) {
-    throw new Error(JSON.stringify({
-      status: result.status,
-      signal: result.signal,
-      error: result.error?.message,
-      executable: process.execPath,
-      policyPath,
-    }));
   }
   return JSON.parse(result.stdout) as T;
 };

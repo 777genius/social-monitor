@@ -139,7 +139,7 @@ const buildHumanReaderHeadline = (
   }
   if (
     lead.confirmedProviderKeys.length <= 1 &&
-    lead.confidence.level !== "high"
+    lead.confidence.level === "low"
   ) {
     const cautiousReason = [lead.reason, ...lead.whyImportant].find((value) =>
       /\b(?:allegation|needs? confirmation|not (?:independently )?confirmed|should not be treated as confirmation|uncertain|unverified)\b/iu.test(

@@ -61,7 +61,8 @@ BRIDGE_CONTROL_PATHS=(
 )
 
 assert_real_bridge_target_assets() {
-  local path entry mode type object tree_path expected_digest alternate_digest actual_digest actual_mode
+  local path entry mode type object tree_path expected_digest alternate_digest
+  local alternate_digest_2 actual_digest actual_mode
   local repository_root actual_path actual_real
 
   repository_root=$(readlink -f -- "$PROJECT_ROOT")
@@ -90,14 +91,17 @@ assert_real_bridge_target_assets() {
     }
     expected_digest=$(git -C "$PROJECT_ROOT" show "$BRIDGE_RELEASE_SHA:$path" | sha256sum | awk '{print $1}')
     alternate_digest=
+    alternate_digest_2=
     actual_digest=$(sha256sum "$actual_real" | awk '{print $1}')
     case $path in
       ops/deploy/social-monitor-production-deploy.sh)
         expected_digest=e76db96e9cc7bdb62cb09a3be509a7776e09a0499ff41a0d3769d8b499bde04f
         alternate_digest=ac82c9cfebf88646e9cdc21dcb822c8cc50409832da24a726cd9307cc2be8bcb
+        alternate_digest_2=a20f2cdfede977a7eea9386770370ad430e95032f414a810a60c62e6395c6030
         ;;
       ops/deploy/deploy-control-lib.sh)
         expected_digest=d18854822ef36d5571289e72c7691fff8db4a7d5c516787441a733d6960a88a9
+        alternate_digest=398c591ea77b6e1acfed00f5ad80d17337ed0e1a53143f614551798067850373
         ;;
       ops/deploy/postgres-runtime-deploy-lib.sh)
         expected_digest=261fb030bea2f203564c59e0c22db8058b310fb5d979c7db622938fe6045545a
@@ -108,6 +112,8 @@ assert_real_bridge_target_assets() {
         ;;
       ops/deploy/deploy-control-bridge-lib.sh)
         expected_digest=e6f958555966b77d02b85da8d0b9195e13a200dcb2b19c8afc010fab6d28b65d
+        alternate_digest=c29e3b832e00e113e3fc2aa47d3f1c5fe138f56f191cdb1feaab8252df3b041f
+        alternate_digest_2=29a83263364d5583de8aae3594b76f2565ba77c6844f7401c45f3bae45249a31
         ;;
     esac
     if [[ $path == ops/deploy/social-monitor-production-deploy.sh ]]; then
@@ -137,7 +143,8 @@ assert_real_bridge_target_assets() {
       }
     fi
     [[ $actual_digest == "$expected_digest" ||
-       (-n $alternate_digest && $actual_digest == "$alternate_digest") ]] || {
+       (-n $alternate_digest && $actual_digest == "$alternate_digest") ||
+       (-n $alternate_digest_2 && $actual_digest == "$alternate_digest_2") ]] || {
       printf 'current bridge asset digest drifted from V4A4: %s\n' "$path" >&2
       exit 1
     }

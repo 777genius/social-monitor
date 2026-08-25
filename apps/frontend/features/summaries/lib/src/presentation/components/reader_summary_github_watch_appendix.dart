@@ -8,6 +8,7 @@ class _ReaderSummaryGitHubWatchAppendix extends StatelessWidget {
     required this.citationSourceById,
     required this.onOpenUrl,
   });
+
   final ReaderSummaryNarrativeSection section;
   final List<GitHubTrendingWatchLine> lines;
   final Map<String, SummaryCitation> citationsById;
@@ -70,19 +71,19 @@ class _ReaderSummaryGitHubWatchAppendix extends StatelessWidget {
   }
 
   List<String> _citationIdsFor(GitHubTrendingWatchLine line) {
-    final matching = <String>[];
-    final visited = <String>{};
+    final matchingCitationIds = <String>[];
+    final visitedCitationIds = <String>{};
     for (final citationId in section.citationIds) {
-      if (!visited.add(citationId)) {
+      if (!visitedCitationIds.add(citationId)) {
         continue;
       }
       final citation = citationsById[citationId];
       if (normalizedGitHubRepositoryUrlIdentity(citation?.canonicalUrl) ==
           line.repositoryIdentity) {
-        matching.add(citationId);
+        matchingCitationIds.add(citationId);
       }
     }
-    return matching.length == 1 ? matching : const [];
+    return matchingCitationIds.length == 1 ? matchingCitationIds : const [];
   }
 }
 
@@ -96,6 +97,7 @@ class _ReaderSummaryGitHubWatchLine extends StatelessWidget {
     required this.citationSourceById,
     required this.onOpenUrl,
   });
+
   final String keyBase;
   final GitHubTrendingWatchLine line;
   final List<String> citationIds;
@@ -104,51 +106,49 @@ class _ReaderSummaryGitHubWatchLine extends StatelessWidget {
   final ValueChanged<String> onOpenUrl;
 
   @override
-  Widget build(BuildContext context) => Semantics(
-    label: line.visibleText,
-    child: Padding(
-      padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
-      child: Row(
-        children: [
-          Expanded(
-            child: ExcludeSemantics(
-              child: Text.rich(
-                key: ValueKey('$keyBase-text'),
-                TextSpan(
-                  children: [
-                    TextSpan(
-                      text: line.repository,
-                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0,
-                      ),
-                    ),
-                    TextSpan(
-                      text: '\n${line.metric}',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        height: 1.35,
-                        letterSpacing: 0,
-                      ),
-                    ),
-                  ],
+  Widget build(BuildContext context) {
+    final repositoryStyle = Theme.of(context).textTheme.bodyLarge?.copyWith(
+      fontWeight: FontWeight.w800,
+      letterSpacing: 0,
+    );
+    final metricStyle = Theme.of(
+      context,
+    ).textTheme.bodyMedium?.copyWith(height: 1.35, letterSpacing: 0);
+    return Semantics(
+      label: line.visibleText,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Expanded(
+              child: ExcludeSemantics(
+                child: Text.rich(
+                  key: ValueKey('$keyBase-text'),
+                  TextSpan(
+                    children: [
+                      TextSpan(text: line.repository, style: repositoryStyle),
+                      TextSpan(text: '\n${line.metric}', style: metricStyle),
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
-          if (citationIds.isNotEmpty) ...[
-            const SizedBox(width: AppSpacing.xs),
-            _BriefCitationTrail(
-              key: ValueKey('$keyBase-trail'),
-              keyBase: keyBase,
-              citationIds: citationIds,
-              citationsById: citationsById,
-              citationSourceById: citationSourceById,
-              onOpenUrl: onOpenUrl,
-              inline: true,
-            ),
+            if (citationIds.isNotEmpty) ...[
+              const SizedBox(width: AppSpacing.xs),
+              _BriefCitationTrail(
+                key: ValueKey('$keyBase-trail'),
+                keyBase: keyBase,
+                citationIds: citationIds,
+                citationsById: citationsById,
+                citationSourceById: citationSourceById,
+                onOpenUrl: onOpenUrl,
+                inline: true,
+              ),
+            ],
           ],
-        ],
+        ),
       ),
-    ),
-  );
+    );
+  }
 }

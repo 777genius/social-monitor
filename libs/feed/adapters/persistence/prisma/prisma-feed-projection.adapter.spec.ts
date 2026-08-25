@@ -36,7 +36,7 @@ describe("PrismaFeedProjectionAdapter", () => {
     ["explicit update", true],
     ["upsert update fallback", false],
   ])(
-    "keeps feed ordering timestamps create-only through %s and refreshes the current baseline",
+    "keeps feed observedAt create-only through %s and refreshes the current baseline",
     async (_path, supportsExplicitUpdate) => {
       const prisma = new FakePrismaFeedClient(supportsExplicitUpdate);
       const projection = new PrismaFeedProjectionAdapter(
@@ -95,6 +95,7 @@ describe("PrismaFeedProjectionAdapter", () => {
         title: "Reprojected title",
         bodyPreview: "Reprojected body",
         authorHandle: "updated-author",
+        publishedAt: new Date("2026-07-16T00:05:00.000Z"),
         providerMetadata: expect.objectContaining({
           subreddit: "startups",
           score: 400,
@@ -103,12 +104,11 @@ describe("PrismaFeedProjectionAdapter", () => {
         }),
       });
       expect(prisma.feedUpdateData).not.toHaveProperty("observedAt");
-      expect(prisma.feedUpdateData).not.toHaveProperty("publishedAt");
       expect(prisma.feedItemRecord).toMatchObject({
         title: "Reprojected title",
         bodyPreview: "Reprojected body",
         authorHandle: "updated-author",
-        publishedAt: new Date("2026-07-15T23:55:00.000Z"),
+        publishedAt: new Date("2026-07-16T00:05:00.000Z"),
         observedAt: firstObservedAt,
         providerMetadata: expect.objectContaining({
           score: 400,

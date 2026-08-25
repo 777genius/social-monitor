@@ -10,11 +10,6 @@ describe('BigQueryGitHubRepoRadarClient', () => {
         stars_7d: '520',
         stars_30d: '1400',
         stars_90d: '2700',
-        forks_24h: '240',
-        forks_48h: '242',
-        forks_7d: '600',
-        forks_30d: '1500',
-        forks_90d: '2800',
       },
       {
         full_name: 'acme/slow-burn',
@@ -23,11 +18,6 @@ describe('BigQueryGitHubRepoRadarClient', () => {
         stars_7d: 70,
         stars_30d: 120,
         stars_90d: 180,
-        forks_24h: 0,
-        forks_48h: 0,
-        forks_7d: 20,
-        forks_30d: 30,
-        forks_90d: 40,
       },
     ]);
     const client = new BigQueryGitHubRepoRadarClient({
@@ -66,9 +56,8 @@ describe('BigQueryGitHubRepoRadarClient', () => {
     expect(bigQuery.lastQueryJob?.query).toContain('INTERVAL 90 DAY');
     expect(bigQuery.lastQueryJob?.query).not.toContain('0 AS stars_7d');
     expect(bigQuery.lastQueryJob?.query).toContain(
-      'GREATEST(stars_24h, forks_24h / 2.0) DESC',
+      'ORDER BY stars_24h DESC, stars_48h DESC, stars_7d DESC, stars_30d DESC, stars_90d DESC',
     );
-    expect(bigQuery.lastQueryJob?.query).toContain('OR forks_24h > 0');
 
     expect(bigQuery.lastTimeoutMs).toBe(789);
     expect(candidates).toEqual([
@@ -79,11 +68,6 @@ describe('BigQueryGitHubRepoRadarClient', () => {
         stars7d: 520,
         stars30d: 1400,
         stars90d: 2700,
-        forks24h: 240,
-        forks48h: 242,
-        forks7d: 600,
-        forks30d: 1500,
-        forks90d: 2800,
         rank: 1,
         primaryWindow: '24h',
       },
@@ -94,11 +78,6 @@ describe('BigQueryGitHubRepoRadarClient', () => {
         stars7d: 70,
         stars30d: 120,
         stars90d: 180,
-        forks24h: 0,
-        forks48h: 0,
-        forks7d: 20,
-        forks30d: 30,
-        forks90d: 40,
         rank: 2,
         primaryWindow: '7d',
       },
@@ -114,11 +93,6 @@ describe('BigQueryGitHubRepoRadarClient', () => {
         stars_7d: 100,
         stars_30d: 300,
         stars_90d: 900,
-        forks_24h: 0,
-        forks_48h: 0,
-        forks_7d: 0,
-        forks_30d: 0,
-        forks_90d: 0,
       },
     ]);
     const client = new BigQueryGitHubRepoRadarClient({

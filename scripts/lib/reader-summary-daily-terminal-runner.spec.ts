@@ -17,7 +17,7 @@ const tenantId = "10000000-0000-4000-8000-000000000001";
 const workspaceId = "20000000-0000-4000-8000-000000000002";
 
 describe("ReaderSummaryDailyTerminalRunner", () => {
-  it("binds one deterministic daily pipeline across receipt, telemetry, publication, and terminal result", async () => {
+  it("durably marks RUNNING, calls once, renews at five minutes, and completes", async () => {
     const events: string[] = [];
     const cursor = fakeCursor(work(), events);
     const runtime = fakeRuntime(events);
@@ -37,13 +37,6 @@ describe("ReaderSummaryDailyTerminalRunner", () => {
 
     const result = await runner.runOne(input());
     expect(result).toMatchObject({ kind: "completed", requestedUtcDate: "2026-07-31" });
-    expect(result).toMatchObject({
-      publication: {
-        readerSummaryJobId: "30000000-0000-4000-8000-000000000003",
-        readerSummaryArtifactId: "40000000-0000-4000-8000-000000000004",
-        publicationId: "40000000-0000-4000-8000-000000000004",
-      },
-    });
     expect(runtime.run).toHaveBeenCalledTimes(1);
     expect(events).toEqual([
       "claim", "running", "runtime", "renew", "complete", "publish",
@@ -52,33 +45,7 @@ describe("ReaderSummaryDailyTerminalRunner", () => {
     expect(cursor.renewLease).toHaveBeenCalledTimes(1);
     expect(cursor.complete).toHaveBeenCalledWith(expect.objectContaining({
       completedAt: "2026-08-01T01:00:00.000Z",
-      modelTelemetry: expect.objectContaining({
-        inputTokens: 120,
-        outputTokens: 30,
-        totalTokens: 150,
-        usageSource: "PROVIDER_REPORTED",
-        durationMs: 25,
-      }),
     }));
-    const completion = cursor.complete.mock.calls[0]![0];
-    const receipt = JSON.parse(
-      Buffer.from(completion.receiptBytes).toString("utf8"),
-    ) as Record<string, unknown>;
-    expect(receipt).toMatchObject({
-      modelJobIdentity: work().modelJob.value,
-      attestation: completion.attestation,
-      executionUsage: {
-        inputTokens: 120,
-        outputTokens: 30,
-        totalTokens: 150,
-        usageSource: "PROVIDER_REPORTED",
-        durationMs: 25,
-      },
-    });
-    expect(Buffer.from(completion.attestationBytes).toString("utf8"))
-      .toBe(JSON.stringify(completion.attestation, Object.keys(
-        completion.attestation,
-      ).sort()));
     expect(cursor.finalizePublication).toHaveBeenCalledWith(
       expect.objectContaining({
         finalizedAt: "2026-08-01T01:00:00.000Z",
@@ -279,22 +246,14 @@ const fakeRuntime = (events: string[]) => ({
     void input;
     events.push("runtime");
     const responseBytes = Buffer.from('{"summary":"ok"}');
-    return {
-      responseBytes,
-      executionAttestation: attestation(responseBytes),
-      modelTelemetry: {
-        provider: "codex", model: "gpt-5.6-sol", reasoningEffort: "high",
-        inputTokens: 120, outputTokens: 30, totalTokens: 150,
-        usageSource: "PROVIDER_REPORTED", durationMs: 25,
-      },
-    };
+    return { responseBytes, executionAttestation: attestation(responseBytes) };
   }),
 }) satisfies jest.Mocked<ReaderSummaryDailySubscriptionRuntime>;
 
 const attestation = (responseBytes: Buffer) => ({
-  schemaVersion: 1, requestId: "daily-1", purpose: "social_monitor.reader_summary.generate.v2",
+  schemaVersion: 1, requestId: "daily-1", purpose: "social_monitor.reader_summary.generate",
   canonicalRequestSha256: "a".repeat(64), provider: "codex", model: "gpt-5.6-sol",
-  reasoningEffort: "high", runtimeEngine: "subscription-runtime-cli",
+  reasoningEffort: "xhigh", runtimeEngine: "subscription-runtime-cli",
   runtimePackageVersion: "1.2.3", launcherSha256: "b".repeat(64),
   selectedOutputKind: "structured_output", selectedOutputSha256: hash(responseBytes),
 });

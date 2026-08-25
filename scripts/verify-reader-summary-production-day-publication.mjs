@@ -3,7 +3,6 @@ import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { basename } from "node:path";
 import { publicationQualityContract } from "./lib/reader-summary-publication-quality-contract.mjs";
-import { validateDailyModelExecution } from "./lib/reader-summary-production-day-model-telemetry-verifier.mjs";
 
 const reportArtifactFormat = "reader-summary-production-day-run-v1";
 const reportGeneratedBy = "npm run run:reader-summary-production-day";
@@ -109,21 +108,12 @@ function validateReport(report, expectedDate, evidencePath, frontendPath) {
     frontend,
     frontendBytes,
     expectedPeriod,
-    reportContract,
   );
   validateModel(
     report.model,
     binding.runtimeProvenance,
     report.provenance,
     reportContract,
-  );
-  validateDailyModelExecution(
-    report.model.modelExecution,
-    evidence,
-    frontend,
-    binding,
-    reportContract,
-    report.provenance.mode,
   );
   validateSummary(report.summary, binding);
   validateReportIdentity(report.reportIdentity, binding, expectedDate);
@@ -160,10 +150,7 @@ function validateModel(model, runtimeProvenance, provenance, reportContract) {
     stableJson(runtimeFields(model, runtimeProvenance)) !==
       stableJson(runtimeProvenance) ||
     !validNotExecutedModelFields(model, runtimeProvenance) ||
-    !isProductionRuntimeProvenance(
-      runtimeProvenance,
-      reportContract !== "current",
-    ) ||
+    !isProductionRuntimeProvenance(runtimeProvenance) ||
     model.writesProductionData !== true ||
     model.allowDegraded !== false ||
     model.allowHistorical !== false ||
@@ -218,7 +205,7 @@ function runtimeFields(model, provenance) {
   };
 }
 
-function runtimeProvenanceFromExecutorAttestations(evidence, allowLegacy) {
+function runtimeProvenanceFromExecutorAttestations(evidence) {
   if (!Array.isArray(evidence.executionAttestations)) {
     fail("evidence execution attestations are missing");
   }
@@ -234,7 +221,7 @@ function runtimeProvenanceFromExecutorAttestations(evidence, allowLegacy) {
     fail("not_executed is valid only for selected=0 and no_signal");
   }
   const records = evidence.executionAttestations;
-  for (const record of records) validateAttestationRecord(record, allowLegacy);
+  for (const record of records) validateAttestationRecord(record);
   if (
     new Set(records.map((record) => record.attestation.requestId)).size !==
     records.length
@@ -299,7 +286,7 @@ function runtimeProvenanceFromExecutorAttestations(evidence, allowLegacy) {
     provider: "codex",
     runtime: "subscription-runtime-cli",
     runtimeVersion: identity.runtimePackageVersion,
-    reasoningEffort: identity.reasoningEffort,
+    reasoningEffort: "xhigh",
     launcherSha256: identity.launcherSha256,
     summaryContentSha256: readback.summaryContentSha256,
     topicMapSha256: readback.topicMapSha256,
@@ -311,67 +298,42 @@ function runtimeProvenanceFromExecutorAttestations(evidence, allowLegacy) {
       provider: "codex",
       runtime: "subscription-runtime-cli",
       runtimeVersion: identity.runtimePackageVersion,
-      reasoningEffort: identity.reasoningEffort,
+      reasoningEffort: "xhigh",
       launcherSha256: identity.launcherSha256,
     },
   };
 }
 
-function validateAttestationRecord(record, allowLegacy) {
+function validateAttestationRecord(record) {
   assertObject(record, "execution attestation record");
   assertObject(record.attestation, "execution attestation");
   const attestation = record.attestation;
-  const legacyPurposes = {
+  const purposes = {
     topic_label: "social_monitor.reader_summary.topic_map.label",
     topic_relation: "social_monitor.reader_summary.topic_map.verify_relations",
     story_relation: "social_monitor.reader_summary.verify_story_relations",
-    related_topic_relation:
-      "social_monitor.reader_summary.verify_related_topic_relations",
   };
-  const activePurposes = {
-    topic_label: "social_monitor.reader_summary.topic_map.label.v2",
-    topic_relation:
-      "social_monitor.reader_summary.topic_map.verify_relations.v2",
-    story_relation:
-      "social_monitor.reader_summary.verify_story_relations.v2",
-    related_topic_relation:
-      "social_monitor.reader_summary.verify_related_topic_relations.v2",
-  };
-  const legacySummaryPurpose =
+  const summaryPurpose =
     record.attempt === "primary"
       ? "social_monitor.reader_summary.generate"
       : record.attempt === "repair"
         ? "social_monitor.reader_summary.repair"
         : undefined;
-  const activeSummaryPurpose =
-    record.attempt === "primary"
-      ? "social_monitor.reader_summary.generate.v2"
-      : record.attempt === "repair"
-        ? "social_monitor.reader_summary.repair.v2"
-        : undefined;
-  const legacyPurpose = record.taskRole === "summary"
-    ? legacySummaryPurpose
-    : legacyPurposes[record.taskRole];
-  const activePurpose = record.taskRole === "summary"
-    ? activeSummaryPurpose
-    : activePurposes[record.taskRole];
-  const expectedEffort = attestation.purpose === activePurpose
-    ? "high"
-    : allowLegacy && attestation.purpose === legacyPurpose
-      ? "xhigh"
-      : undefined;
+  const expectedPurpose =
+    record.taskRole === "summary" ? summaryPurpose : purposes[record.taskRole];
   if (
     typeof record.attempt !== "string" ||
     record.attempt.length === 0 ||
     !isSha256(record.normalizedOutputSha256) ||
-    expectedEffort === undefined ||
+    expectedPurpose === undefined ||
     attestation.schemaVersion !== 1 ||
     typeof attestation.requestId !== "string" ||
     attestation.requestId.length === 0 ||
+    attestation.purpose !== expectedPurpose ||
     !isSha256(attestation.canonicalRequestSha256) ||
     attestation.provider !== "codex" ||
     attestation.model !== "gpt-5.6-sol" ||
-    attestation.reasoningEffort !== expectedEffort ||
+    attestation.reasoningEffort !== "xhigh" ||
     attestation.runtimeEngine !== "subscription-runtime-cli" ||
     !isConcreteVersion(attestation.runtimePackageVersion) ||
     !isSha256(attestation.launcherSha256) ||
@@ -401,7 +363,7 @@ function validateFrontendRuntimeConsistency(frontend, runtimeProvenance) {
   }
 }
 
-function isProductionRuntimeProvenance(value, allowLegacy = false) {
+function isProductionRuntimeProvenance(value) {
   if (isObject(value) && value.execution === "not_executed") {
     return value.reason === "no_signal";
   }
@@ -414,8 +376,7 @@ function isProductionRuntimeProvenance(value, allowLegacy = false) {
     value.provider === "codex" &&
     value.runtime === "subscription-runtime-cli" &&
     isConcreteVersion(value.runtimeVersion) &&
-    (value.reasoningEffort === "high" ||
-      (allowLegacy && value.reasoningEffort === "xhigh")) &&
+    value.reasoningEffort === "xhigh" &&
     isSha256(value.launcherSha256) &&
     isSha256(value.summaryContentSha256) &&
     isSha256(value.topicMapSha256) &&
@@ -427,7 +388,7 @@ function isProductionRuntimeProvenance(value, allowLegacy = false) {
     value.topicLabeler.provider === "codex" &&
     value.topicLabeler.runtime === "subscription-runtime-cli" &&
     value.topicLabeler.runtimeVersion === value.runtimeVersion &&
-    value.topicLabeler.reasoningEffort === value.reasoningEffort &&
+    value.topicLabeler.reasoningEffort === "xhigh" &&
     value.topicLabeler.launcherSha256 === value.launcherSha256
   );
 }
@@ -522,7 +483,6 @@ function validateEvidence(
   frontend,
   frontendBytes,
   expectedPeriod,
-  reportContract,
 ) {
   assertObject(evidence, "evidence artifact");
   assertObject(evidence.provenance, "evidence.provenance");
@@ -551,10 +511,7 @@ function validateEvidence(
   const capture = evidence.captureExecution;
   const runtimeHealth = capture.runtimeHealth;
   const frontendBinding = capture.frontendArtifact;
-  const runtimeProvenance = runtimeProvenanceFromExecutorAttestations(
-    evidence,
-    reportContract !== "current",
-  );
+  const runtimeProvenance = runtimeProvenanceFromExecutorAttestations(evidence);
   if (evidence.provenance.datasetManifest !== undefined) {
     validateDatasetGuardEvidence(evidence.provenance.datasetManifest);
   }
@@ -590,10 +547,7 @@ function validateEvidence(
     frontendBinding.byteLength !== frontendBytes.byteLength ||
     frontendBinding.generatedAt !== frontend.generatedAt ||
     stableJson(capture.runtimeResult) !== stableJson(runtimeProvenance) ||
-    !isProductionRuntimeProvenance(
-      runtimeProvenance,
-      reportContract !== "current",
-    )
+    !isProductionRuntimeProvenance(runtimeProvenance)
   ) {
     fail("durable evidence artifact provenance or UTC period is invalid");
   }

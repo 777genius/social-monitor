@@ -189,7 +189,7 @@ class _ReaderSummariesClient implements ReaderSummariesClient {
   @override
   Future<ReaderSummaryWeeklyProjectionResponseDto>
   readerSummaryWeeklyProjectionControllerGet({
-    required DateTime weekStartedOn,
+    required String weekStartedOn,
     required String xWorkspaceId,
     required String xTenantId,
     String? authorization,
@@ -197,7 +197,7 @@ class _ReaderSummariesClient implements ReaderSummariesClient {
   }) async {
     final _extra = <String, dynamic>{};
     final queryParameters = <String, dynamic>{
-      r'weekStartedOn': weekStartedOn.toIso8601String(),
+      r'weekStartedOn': weekStartedOn,
     };
     queryParameters.removeWhere((k, v) => v == null);
     final _headers = <String, dynamic>{
@@ -221,7 +221,9 @@ class _ReaderSummariesClient implements ReaderSummariesClient {
     final _result = await _dio.fetch<Map<String, Object?>>(_options);
     late ReaderSummaryWeeklyProjectionResponseDto _value;
     try {
-      _value = ReaderSummaryWeeklyProjectionResponseDto.fromJson(_result.data!);
+      _value = ReaderSummaryWeeklyProjectionResponseDto.fromJson(
+        _result.data!,
+      );
     } on Object catch (e, s) {
       errorLogger?.logError(e, s, _options, response: _result);
       rethrow;

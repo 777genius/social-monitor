@@ -10,8 +10,8 @@ ReaderSummaryUsageDto _$ReaderSummaryUsageDtoFromJson(
   Map<String, dynamic> json,
 ) => ReaderSummaryUsageDto(
   estimatedCostUsd: json['estimatedCostUsd'] as num,
-  inputTokens: json['inputTokens'] as num?,
-  outputTokens: json['outputTokens'] as num?,
+  inputTokens: json['inputTokens'] as num,
+  outputTokens: json['outputTokens'] as num,
 );
 
 Map<String, dynamic> _$ReaderSummaryUsageDtoToJson(

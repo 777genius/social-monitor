@@ -13,33 +13,33 @@ describe("reader summary current serving authority", () => {
       summaryModelMode: "agent-runtime",
       topicLabelerMode: "agent-runtime",
       env: {
-        AGENT_RUNTIME_PROVIDER: "codex",
-        AGENT_RUNTIME_READER_SUMMARY_MODEL: "gpt-5.6-sol",
-        AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_MODEL: "gpt-5.6-sol",
+        AGENT_RUNTIME_PROVIDER: "claude",
+        AGENT_RUNTIME_READER_SUMMARY_MODEL: "summary-model",
+        AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_MODEL: "labeler-model",
         AGENT_RUNTIME_READER_SUMMARY_TOPIC_RELATION_VERIFIER_MODEL:
-          "gpt-5.6-sol",
-        AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT: "high",
+          "relation-model",
+        AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT: "xhigh",
       },
       agentRuntimeClient: { checkHealth },
       checkedAt,
     })).resolves.toEqual({
       summaryGenerator: {
         mode: "agent-runtime",
-        provider: "codex",
-        physicalModel: "gpt-5.6-sol",
-        reasoningPolicy: "high",
+        provider: "claude",
+        physicalModel: "summary-model",
+        reasoningPolicy: "xhigh",
       },
       topicLabeler: {
         mode: "agent-runtime",
-        provider: "codex",
-        physicalModel: "gpt-5.6-sol",
-        reasoningPolicy: "high",
+        provider: "claude",
+        physicalModel: "labeler-model",
+        reasoningPolicy: "runtime-default",
       },
       topicRelationVerifier: {
         mode: "agent-runtime",
-        provider: "codex",
-        physicalModel: "gpt-5.6-sol",
-        reasoningPolicy: "high",
+        provider: "claude",
+        physicalModel: "relation-model",
+        reasoningPolicy: "runtime-default",
       },
       runtime: {
         engine: "subscription-runtime-cli",
@@ -60,10 +60,10 @@ describe("reader summary current serving authority", () => {
     })).resolves.toMatchObject({
       summaryGenerator: { physicalModel: "gpt-5.6-sol" },
       topicLabeler: {
-        physicalModel: "gpt-5.6-sol",
+        physicalModel: "agent-runtime-reader-summary-topic-labeler",
       },
       topicRelationVerifier: {
-        physicalModel: "gpt-5.6-sol",
+        physicalModel: "agent-runtime-reader-summary-topic-relation-verifier",
       },
     });
   });
@@ -97,18 +97,6 @@ describe("reader summary current serving authority", () => {
       agentRuntimeClient: null,
       checkedAt,
     })).rejects.toThrow("Current agent-runtime serving authority is required");
-  });
-
-  it("fails before probing when the active provider is not codex", async () => {
-    const checkHealth = servingHealth();
-    await expect(resolveReaderSummaryServingAuthority({
-      summaryModelMode: "agent-runtime",
-      topicLabelerMode: "agent-runtime",
-      env: { AGENT_RUNTIME_PROVIDER: "claude" },
-      agentRuntimeClient: { checkHealth },
-      checkedAt,
-    })).rejects.toThrow("provider must be codex");
-    expect(checkHealth).not.toHaveBeenCalled();
   });
 
   it.each([

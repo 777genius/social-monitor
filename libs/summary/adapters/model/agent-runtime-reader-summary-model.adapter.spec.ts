@@ -9,11 +9,6 @@ import type {
   ReaderSummaryModelInput,
 } from "../../ports";
 import { AgentRuntimeReaderSummaryModelAdapter } from "./agent-runtime-reader-summary-model.adapter";
-import { frozenLegacyReaderSummaryRecoveryContract } from "./active-reader-summary-generation-profile";
-import {
-  eligiblePromotionQuality,
-  redditPromotionFacts,
-} from "./reader-summary-model-promotion.spec-support";
 import { withTestExecutionAttestation } from "./reader-summary-execution-attestation.spec-support";
 import type { VerifiedReaderSummaryExecutionAttestation } from "./reader-summary-execution-attestation";
 import { currentReaderSummaryPromptRelease } from "./openai-responses-reader-summary-prompt";
@@ -46,7 +41,7 @@ describe("AgentRuntimeReaderSummaryModelAdapter", () => {
 
     await adapter.generate(input, route);
 
-    expect(route.model).toBe("codex:gpt-5.6-sol:high");
+    expect(route.model).toBe("codex:gpt-5.6-sol:xhigh");
     expect(route.promptVersion).toBe(currentReaderSummaryPromptRelease.id);
     expect(client.commands).toHaveLength(1);
     expect(adapter.estimate(input, route).outputTokens).toBe(3_200);
@@ -85,17 +80,14 @@ describe("AgentRuntimeReaderSummaryModelAdapter", () => {
     );
     expect(client.commands[0]?.controls).toMatchObject({
       model: "gpt-5.6-sol",
-      reasoningEffort: "high",
-      toolsEnabled: false,
-      toolPolicy: "none",
     });
     expect(client.commands[0]?.timeoutMs).toBe(600_000);
     expect(client.commands[0]?.metadata).toMatchObject({
-      reasoningEffort: "high",
+      reasoningEffort: "xhigh",
     });
   });
 
-  it("keeps an explicitly source-framed generated headline grounded", async () => {
+  it("replaces an inconsistent generated headline with the planned lead", async () => {
     const providerDraft = validReaderProviderDraft();
     providerDraft.headline =
       "Reddit discussion highlights developers routing GPT-5.6 Sol through Claude Code.";
@@ -122,7 +114,7 @@ describe("AgentRuntimeReaderSummaryModelAdapter", () => {
     const attempt = await adapter.generate(input, route);
 
     expect(attempt.draft.headline).toBe(
-      "Reddit discussion highlights developers routing GPT-5.6 Sol through Claude Code",
+      "Reports discuss Agent runtime reliability tradeoffs",
     );
     expect(attempt.draft.content?.headline).not.toMatch(/[.\u2026\u3002]$/u);
   });
@@ -185,37 +177,9 @@ describe("AgentRuntimeReaderSummaryModelAdapter", () => {
 
     await adapter.generate(input, route);
 
-    expect(route.model).toBe("codex:gpt-5.6-sol:high");
+    expect(route.model).toBe("codex:gpt-5.6-sol:xhigh");
     expect(client.commands[0]?.controls).toMatchObject({
       model: "gpt-5.6-sol",
-    });
-  });
-
-  it("keeps the frozen xhigh purpose available only to explicit recovery", async () => {
-    const client = new CapturingAgentRuntimeClient({
-      status: "completed",
-      structuredOutput: validReaderProviderDraft(),
-      warnings: [],
-    });
-    const adapter = new AgentRuntimeReaderSummaryModelAdapter({
-      client,
-      legacyRecoveryContract: frozenLegacyReaderSummaryRecoveryContract,
-      reasoningEffort: "xhigh",
-    });
-    const input = readerSummaryInput();
-    const route = adapter.route(input, {
-      preferredProvider: "agent-runtime",
-      maxInputTokens: 24_000,
-      maxOutputTokens: 16_000,
-      maxEstimatedCostUsd: 1,
-    }, { remainingTokens: 40_000, remainingCostUsd: 1 });
-
-    await adapter.generate(input, route);
-
-    expect(route.model).toBe("codex:gpt-5.6-sol:xhigh");
-    expect(client.commands[0]).toMatchObject({
-      purpose: "social_monitor.reader_summary.generate",
-      controls: { reasoningEffort: "xhigh" },
     });
   });
 
@@ -371,23 +335,11 @@ describe("AgentRuntimeReaderSummaryModelAdapter", () => {
         status: "completed",
         structuredOutput: invalidDraft,
         warnings: [],
-        usage: {
-          inputTokens: 101,
-          outputTokens: 11,
-          totalTokens: 112,
-          estimatedCostUsd: 0.01,
-        },
       },
       {
         status: "completed",
         structuredOutput: validReaderProviderDraft(),
         warnings: [],
-        usage: {
-          inputTokens: 202,
-          outputTokens: 22,
-          totalTokens: 224,
-          estimatedCostUsd: 0.02,
-        },
       },
     ]);
     const adapter = new AgentRuntimeReaderSummaryModelAdapter({
@@ -411,11 +363,11 @@ describe("AgentRuntimeReaderSummaryModelAdapter", () => {
       { remainingTokens: 40_000, remainingCostUsd: 1 },
     );
 
-    const attempt = await adapter.generate(input, route);
+    await adapter.generate(input, route);
 
     expect(client.commands).toHaveLength(2);
     expect(client.commands[1]).toMatchObject({
-      purpose: "social_monitor.reader_summary.repair.v2",
+      purpose: "social_monitor.reader_summary.repair",
       metadata: expect.objectContaining({ attempt: "repair" }),
     });
     expect(client.commands[1]?.systemPrompt).toContain(
@@ -427,13 +379,8 @@ describe("AgentRuntimeReaderSummaryModelAdapter", () => {
       attempt: "repair",
       attestation: {
         requestId: client.commands[1]?.requestId,
-        purpose: "social_monitor.reader_summary.repair.v2",
+        purpose: "social_monitor.reader_summary.repair",
       },
-    });
-    expect(attempt.draft.usage).toEqual({
-      inputTokens: 303,
-      outputTokens: 33,
-      estimatedCostUsd: 0.03,
     });
   });
 });
@@ -489,11 +436,6 @@ const readerSummaryInput = (): ReaderSummaryModelInput => {
       observedAt,
       score: 2.4,
       whyImportant: ["Fresh item in the current monitoring window"],
-      contentQuality: eligiblePromotionQuality(),
-      promotionFacts: redditPromotionFacts(
-        "https://example.test/reddit/agent-runtime",
-        observedAt,
-      ),
     },
   ];
 
@@ -503,9 +445,6 @@ const readerSummaryInput = (): ReaderSummaryModelInput => {
       windowId: "workspace:agent-runtime-reader-summary",
       startedAt: observedAt,
       endedAt: observedAt,
-      periodStartedAt: new Date("2026-06-23T00:00:00.000Z"),
-      periodEndedAt: new Date("2026-06-24T00:00:00.000Z"),
-      ingestionCutoff: observedAt,
       selectedFeedItemIds: selectedEvidence.map((item) => item.feedItemId),
       storyClusterIds: ["story:agent-runtime-reader"],
     },

@@ -32,10 +32,7 @@ describe("reader summary weekly review manifest PostgreSQL catalog contract", ()
   ] as const)("fails closed for insecure %s", (_label, override) => {
     expect(
       readerSummaryWeeklyReviewManifestCatalogIsSecure(
-        {
-          ...secureSnapshot(),
-          ...override,
-        } as ReaderSummaryWeeklyReviewManifestCatalogSnapshot,
+        { ...secureSnapshot(), ...override },
         1,
       ),
     ).toBe(false);

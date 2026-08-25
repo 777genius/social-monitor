@@ -1,15 +1,9 @@
 import '../value_objects/preview_media.dart';
 import '../value_objects/provider_metric_label.dart';
-import '../value_objects/reader_post_promotion_attestation.dart';
 import '../value_objects/signal_score.dart';
 
 final class TopRead {
   const TopRead({
-    this.storyClusterId,
-    this.cardKind = ReaderSummaryCardKind.unsupported,
-    this.relationId,
-    this.targetStoryClusterId,
-    this.promotionAttestation,
     required this.title,
     required this.providerKey,
     required this.reason,
@@ -27,11 +21,6 @@ final class TopRead {
     this.previewMedia,
   });
 
-  final String? storyClusterId;
-  final ReaderSummaryCardKind cardKind;
-  final String? relationId;
-  final String? targetStoryClusterId;
-  final ReaderPostPromotionAttestation? promotionAttestation;
   final String title;
   final String providerKey;
   final String reason;
@@ -47,14 +36,6 @@ final class TopRead {
   final DateTime? publishedAt;
   final String? canonicalUrl;
   final PreviewMedia? previewMedia;
-}
-
-enum ReaderSummaryCardKind {
-  curatedTopRead,
-  additionalNotableStory,
-  relatedTopic,
-  supplementalTrend,
-  unsupported,
 }
 
 final class TopReadConfidence {

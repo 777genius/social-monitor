@@ -1,7 +1,5 @@
 import type { ReaderSummaryArtifact } from "../entities/reader-summary-artifact";
 import type { SummaryEvidenceSelection } from "../value-objects/summary-evidence-item";
-import { readerSummaryIndependentProviderFamily } from
-  "../value-objects/reader-summary-provider-identity";
 import type {
   ReaderSummaryPublicationShadowReport,
   ReaderSummaryPublicationShadowSignal,
@@ -13,8 +11,7 @@ export const publicationShadowReport = (params: {
 }): ReaderSummaryPublicationShadowReport => {
   const snapshot = params.artifact.toSnapshot();
   const evidence = params.evidence.selectedEvidence;
-  const providerCounts = countBy(evidence.map((item) =>
-    readerSummaryIndependentProviderFamily(item)));
+  const providerCounts = countBy(evidence.map((item) => item.providerKey));
   const providerCount = providerCounts.size;
   const maxProviderCount = Math.max(0, ...providerCounts.values());
   const providerSkew =

@@ -20,6 +20,16 @@ DEPLOY_CONTROL_SCHEDULED_SUMMARY_CATCH_UP_BASE=e377453d5b440aacc8077e8af1345eb5a
 DEPLOY_CONTROL_ROLLING_SUMMARY_FINAL_TREE=6a68fd8f88477811e220c042d5176e452241389f
 DEPLOY_CONTROL_ROLLING_SUMMARY_HELPER_TEST_PATH=ops/deploy/deploy-control-bridge-runtime-helper.test.sh
 DEPLOY_CONTROL_ROLLING_SUMMARY_RABBITMQ_TEST_PATH=ops/deploy/rabbitmq-quorum-deploy-bridge-transition.test.sh
+DEPLOY_CONTROL_PRODUCTION_BRIDGE_BASE=92afd97328c5412324c99be635de2c41db589d53
+DEPLOY_CONTROL_PRODUCTION_BACKEND_MARKER=09a79687e042e36d4ec9c1f33f0367527f044181
+DEPLOY_CONTROL_PRODUCTION_FRONTEND_MARKER=eaac8ad433bc9741f493e61354b3dfe1c3161224
+DEPLOY_CONTROL_PRODUCTION_CONTROL_MARKER=3f4a561e9fd6626bbd1a1e1ca73f2ec7eb34c8f8
+DEPLOY_CONTROL_PRODUCTION_INTEGRATION_HEAD=72e17ded1e54ebd77772929fd5047ef6816dded2
+DEPLOY_CONTROL_PRODUCTION_POSTGRES_BOOTSTRAP_MARKER=6fefa9da5446d5e467badcc7239fdc5a6170a756
+DEPLOY_CONTROL_PRODUCTION_BRIDGE_ENTRYPOINT_BLOB=f80758303b8c56f67996efefa442960a21239a6d
+DEPLOY_CONTROL_PRODUCTION_BRIDGE_TEST_PATH=ops/deploy/deploy-control-bridge-runtime-helper.test.sh
+DEPLOY_CONTROL_PRODUCTION_RABBITMQ_TEST_PATH=ops/deploy/rabbitmq-quorum-deploy-bridge-transition.test.sh
+DEPLOY_CONTROL_PRODUCTION_DAILY_C1_TEST_PATH=ops/deploy/postgres-runtime-daily-c1-readiness-lib.test.sh
 DEPLOY_CONTROL_DAILY_RECOVERY_BASE=cb1595d9bdca844d6a221d21fd3c53e6845cc4cf
 DEPLOY_CONTROL_DAILY_RECOVERY_BACKEND_RESCUE_BLOB=a4291fad8b1f36f0cbb0760f3dbca6e7603138bc
 DEPLOY_CONTROL_DAILY_RECOVERY_MIGRATE_TEST_BLOB=f62a83ce95cc768c4e888e7c576bad3bd6fdbced
@@ -224,6 +234,294 @@ deploy_control_is_reviewed_rolling_summary_transition() {
   done <<< "$expected"
 }
 
+deploy_control_production_bridge_preserved_paths() {
+  printf '%s\n' \
+    "$DEPLOY_CONTROL_BRIDGE_SELF_PATH" \
+    "$DEPLOY_CONTROL_PRODUCTION_BRIDGE_TEST_PATH" \
+    "$DEPLOY_CONTROL_PRODUCTION_RABBITMQ_TEST_PATH"
+}
+
+deploy_control_production_bridge_source_paths() {
+  deploy_control_production_bridge_preserved_paths
+  printf '%s\n' \
+    "$DEPLOY_CONTROL_BRIDGE_ENTRYPOINT_PATH" \
+    "$DEPLOY_CONTROL_BRIDGE_LIBRARY_PATH"
+}
+
+deploy_control_production_bridge_quality_paths() {
+  printf '%s\n' \
+    libs/summary/domain/aggregates/reader-summary-github-trending.spec.ts \
+    libs/summary/domain/aggregates/reader-summary-narrative-lead.spec.ts \
+    libs/summary/domain/aggregates/reader-summary.spec.ts \
+    ops/deploy/reader-summary-publication-deploy-lib.sh \
+    scripts/check-ingestion-feed-prisma-persistence.ts \
+    scripts/check-source-line-cap.mjs \
+    scripts/support/check-ingestion-feed-prisma-persistence-assertions.ts \
+    test/e2e/feed.items.list.e2e-spec.ts \
+    test/e2e/support/feed-items-list-seeders.ts
+}
+
+deploy_control_production_bridge_backend_exclusions() {
+  local path
+  while IFS= read -r path; do
+    printf ':(exclude)%s\n' "$path"
+  done < <(deploy_control_production_bridge_quality_paths)
+}
+
+deploy_control_production_bridge_path_declarations() {
+  local repository=${REPO:-.}
+
+  git -C "$repository" show \
+    "$DEPLOY_CONTROL_PRODUCTION_BRIDGE_BASE:$DEPLOY_CONTROL_BRIDGE_ENTRYPOINT_PATH" |
+    sed -n \
+      -e '/^FRONTEND_PATHS=(/,/^)/p' \
+      -e '/^BACKEND_PATHS=(/,/^)/p' \
+      -e '/^CONTROL_PATHS=(/,/^)/p' \
+      -e '/^RUNTIME_CONTROL_PATHS=(/,/^)/p'
+}
+
+deploy_control_production_bridge_expected_tree() (
+  local bridge=$1 repository=${REPO:-.} index path entry mode type object tree_path
+  local paths_file entries_file declarations marker metadata extra
+  local -a FRONTEND_PATHS=() BACKEND_PATHS=() CONTROL_PATHS=()
+  local -a RUNTIME_CONTROL_PATHS=() backend_exclusions=()
+
+  for marker in \
+    "$DEPLOY_CONTROL_PRODUCTION_BRIDGE_BASE" \
+    "$DEPLOY_CONTROL_PRODUCTION_FRONTEND_MARKER" \
+    "$DEPLOY_CONTROL_PRODUCTION_BACKEND_MARKER" \
+    "$DEPLOY_CONTROL_PRODUCTION_CONTROL_MARKER" "$bridge"; do
+    git -C "$repository" cat-file -e "$marker^{commit}" 2>/dev/null || return 1
+  done
+  declarations=$(deploy_control_production_bridge_path_declarations) || return 1
+  eval "$declarations"
+  while IFS= read -r path; do
+    backend_exclusions+=("$path")
+  done < <(deploy_control_production_bridge_backend_exclusions)
+  ((${#FRONTEND_PATHS[@]} > 0 && ${#BACKEND_PATHS[@]} > 0 && \
+     ${#CONTROL_PATHS[@]} > 0 && ${#RUNTIME_CONTROL_PATHS[@]} > 0)) || return 1
+
+  index=$(mktemp "${TMPDIR:-/tmp}/production-bridge-index.XXXXXX") || return 1
+  paths_file=$(mktemp "${TMPDIR:-/tmp}/production-bridge-paths.XXXXXX") || {
+    rm -f "$index"
+    return 1
+  }
+  entries_file=$(mktemp "${TMPDIR:-/tmp}/production-bridge-entries.XXXXXX") || {
+    rm -f "$index" "$paths_file"
+    return 1
+  }
+  trap 'rm -f "$index" "$paths_file" "$entries_file"' EXIT
+  rm -f "$index"
+  GIT_INDEX_FILE=$index git -C "$repository" read-tree \
+    "$DEPLOY_CONTROL_PRODUCTION_BRIDGE_BASE" || return 1
+
+  overlay_paths() {
+    local overlay_marker=$1 overlay_path excluded skip
+    local -a include_paths=() exclude_paths=()
+    shift
+    for overlay_path in "$@"; do
+      if [[ $overlay_path == ':('* ]]; then
+        [[ $overlay_path == ':(exclude)'* ]] || return 1
+        excluded=${overlay_path#':(exclude)'}
+        [[ -n $excluded && $excluded != *'*'* && \
+           $excluded != *'?'* && $excluded != *'['* ]] || return 1
+        exclude_paths+=("$excluded")
+      else
+        include_paths+=("$overlay_path")
+      fi
+    done
+    ((${#include_paths[@]} > 0)) || return 1
+    GIT_INDEX_FILE=$index git -C "$repository" ls-files -z -- "$@" \
+      > "$paths_file" || return 1
+    GIT_INDEX_FILE=$index git -C "$repository" update-index \
+      --force-remove -z --stdin < "$paths_file" || return 1
+    git -C "$repository" ls-tree -r -z "$overlay_marker" -- \
+      "${include_paths[@]}" \
+      > "$entries_file" || return 1
+    : > "$paths_file"
+    while IFS= read -r -d '' entry; do
+      [[ $entry == *$'\t'* ]] || return 1
+      metadata=${entry%%$'\t'*}
+      tree_path=${entry#*$'\t'}
+      mode='' type='' object='' extra=''
+      read -r mode type object extra <<< "$metadata"
+      [[ -z $extra && $type == blob && \
+         $mode =~ ^(100644|100755|120000)$ && \
+         $object =~ ^[0-9a-f]{40}$ && -n $tree_path ]] || return 1
+      skip=false
+      for excluded in "${exclude_paths[@]}"; do
+        if [[ $tree_path == "$excluded" || $tree_path == "$excluded/"* ]]; then
+          skip=true
+          break
+        fi
+      done
+      [[ $skip == true ]] || printf '%s\0' "$entry" >> "$paths_file"
+    done < "$entries_file"
+    GIT_INDEX_FILE=$index git -C "$repository" update-index \
+      -z --index-info < "$paths_file"
+  }
+
+  overlay_paths "$DEPLOY_CONTROL_PRODUCTION_FRONTEND_MARKER" \
+    "${FRONTEND_PATHS[@]}" || return 1
+  overlay_paths "$DEPLOY_CONTROL_PRODUCTION_BACKEND_MARKER" \
+    "${BACKEND_PATHS[@]}" "${backend_exclusions[@]}" || return 1
+  overlay_paths "$DEPLOY_CONTROL_PRODUCTION_CONTROL_MARKER" \
+    "${RUNTIME_CONTROL_PATHS[@]}" || return 1
+  overlay_paths "$DEPLOY_CONTROL_PRODUCTION_CONTROL_MARKER" \
+    "$DEPLOY_CONTROL_PRODUCTION_DAILY_C1_TEST_PATH" || return 1
+  while IFS= read -r path; do
+    overlay_paths "$DEPLOY_CONTROL_PRODUCTION_BRIDGE_BASE" "$path" || return 1
+  done < <(deploy_control_production_bridge_quality_paths)
+
+  [[ $(git -C "$repository" rev-parse \
+       "$bridge:$DEPLOY_CONTROL_BRIDGE_ENTRYPOINT_PATH" 2>/dev/null) == \
+     "$DEPLOY_CONTROL_PRODUCTION_BRIDGE_ENTRYPOINT_BLOB" ]] || return 1
+
+  while IFS= read -r path; do
+    GIT_INDEX_FILE=$index git -C "$repository" update-index \
+      --force-remove -- "$path" || return 1
+    entry=$(git -C "$repository" ls-tree "$bridge" -- "$path") || return 1
+    read -r mode type object tree_path <<< "$entry"
+    [[ $type == blob && $tree_path == "$path" ]] || return 1
+    GIT_INDEX_FILE=$index git -C "$repository" update-index \
+      --add --cacheinfo "$mode,$object,$path" || return 1
+  done < <(deploy_control_production_bridge_source_paths)
+
+  GIT_INDEX_FILE=$index git -C "$repository" write-tree
+)
+
+deploy_control_is_exact_production_bridge() {
+  local bridge=$1 repository=${REPO:-.} expected actual parent
+  local -a ancestry=()
+
+  read -r -a ancestry <<< "$(git -C "$repository" \
+    rev-list --parents -n 1 "$bridge" 2>/dev/null)" || return 1
+  ((${#ancestry[@]} == 2)) || return 1
+  parent=${ancestry[1]}
+  [[ $parent == "$DEPLOY_CONTROL_PRODUCTION_BRIDGE_BASE" ]] || return 1
+  expected=$(deploy_control_production_bridge_expected_tree "$bridge") || return 1
+  actual=$(git -C "$repository" rev-parse "$bridge^{tree}" 2>/dev/null) || return 1
+  [[ $actual == "$expected" ]]
+}
+
+deploy_control_is_production_bridge_candidate() {
+  local target=$1 repository=${REPO:-.} parent
+  local -a ancestry=()
+
+  read -r -a ancestry <<< "$(git -C "$repository" \
+    rev-list --parents -n 1 "$target" 2>/dev/null)" || return 1
+  ((${#ancestry[@]} == 2)) || return 1
+  parent=${ancestry[1]}
+  [[ $parent == "$DEPLOY_CONTROL_PRODUCTION_BRIDGE_BASE" ]]
+}
+
+deploy_control_production_bridge_classification() (
+  local bridge=$1 repository=${REPO:-.} declarations
+  local -a FRONTEND_PATHS=() BACKEND_PATHS=() CONTROL_PATHS=()
+  local -a RUNTIME_CONTROL_PATHS=() backend_exclusions=()
+
+  declarations=$(deploy_control_production_bridge_path_declarations) || return 1
+  eval "$declarations"
+  while IFS= read -r path; do
+    backend_exclusions+=("$path")
+  done < <(deploy_control_production_bridge_backend_exclusions)
+  git -C "$repository" diff --quiet \
+    "$DEPLOY_CONTROL_PRODUCTION_FRONTEND_MARKER" "$bridge" -- \
+    "${FRONTEND_PATHS[@]}" || return 1
+  git -C "$repository" diff --quiet \
+    "$DEPLOY_CONTROL_PRODUCTION_BACKEND_MARKER" "$bridge" -- \
+    "${BACKEND_PATHS[@]}" "${backend_exclusions[@]}" || return 1
+  git -C "$repository" diff --quiet \
+    "$DEPLOY_CONTROL_PRODUCTION_BACKEND_MARKER" "$bridge" -- \
+    apps/x-collector ops/deploy/production-runtime/x-collector.Dockerfile || return 1
+  git -C "$repository" diff --quiet \
+    "$DEPLOY_CONTROL_PRODUCTION_CONTROL_MARKER" "$bridge" -- \
+    "${RUNTIME_CONTROL_PATHS[@]}" || return 1
+  ! git -C "$repository" diff --quiet \
+    "$DEPLOY_CONTROL_PRODUCTION_CONTROL_MARKER" "$bridge" -- \
+    "${CONTROL_PATHS[@]}" || return 1
+  printf '%s\n' \
+    'frontend=false' 'backend=false' 'x_collector=false' \
+    'runtime_control=false' 'control=true'
+)
+
+deploy_control_production_bridge_exact_marker() {
+  local marker=$1 expected=$2 label=$3 value size identity_before identity_after
+
+  [[ -f $marker && ! -L $marker ]] || \
+    fail "$label marker is not a regular non-symlink file"
+  identity_before=$(deploy_control_bridge_file_identity "$marker") || \
+    fail "$label marker identity cannot be inventoried"
+  size=$(wc -c < "$marker") || fail "$label marker size cannot be read"
+  [[ $size == 41 ]] || fail "$label marker is malformed"
+  IFS= read -r value < "$marker" || fail "$label marker cannot be read"
+  [[ $value == "$expected" ]] || fail "$label marker is not the reviewed bridge pre-state"
+  identity_after=$(deploy_control_bridge_file_identity "$marker") || \
+    fail "$label marker identity cannot be re-inventoried"
+  [[ $identity_after == "$identity_before" ]] || \
+    fail "$label marker changed during bridge preflight"
+  git -C "$REPO" cat-file -e "$value^{commit}" 2>/dev/null || \
+    fail "$label marker commit is unavailable"
+}
+
+verify_production_control_bridge_pre_mutation_state() {
+  local target=$1 current
+
+  deploy_control_is_production_bridge_candidate "$target" || return 0
+  deploy_control_is_exact_production_bridge "$target" || \
+    fail 'production bridge target cannot be authenticated exactly'
+  deploy_control_production_bridge_exact_marker \
+    "$STATE/frontend.sha" "$DEPLOY_CONTROL_PRODUCTION_FRONTEND_MARKER" frontend
+  deploy_control_production_bridge_exact_marker \
+    "$STATE/backend.sha" "$DEPLOY_CONTROL_PRODUCTION_BACKEND_MARKER" backend
+  deploy_control_production_bridge_exact_marker \
+    "$STATE/control.sha" "$DEPLOY_CONTROL_PRODUCTION_CONTROL_MARKER" control
+  current=$(git -C "$REPO" rev-parse --verify 'HEAD^{commit}') || \
+    fail 'production bridge integration HEAD is unavailable'
+  [[ $current == "$DEPLOY_CONTROL_PRODUCTION_INTEGRATION_HEAD" ]] || \
+    fail 'production bridge integration HEAD is not the reviewed pre-state'
+  deploy_control_production_bridge_exact_marker \
+    "$STATE/postgres-pool-bootstrap.sha" \
+    "$DEPLOY_CONTROL_PRODUCTION_POSTGRES_BOOTSTRAP_MARKER" \
+    'PostgreSQL bootstrap'
+  postgres_pool_bootstrap_installed \
+    "$DEPLOY_CONTROL_PRODUCTION_INTEGRATION_HEAD" || \
+    fail 'production bridge installed bootstrap/control state is not exact'
+}
+
+deploy_control_is_reviewed_production_bridge_transition() {
+  local bridge=$1 target=$2 repository=${REPO:-.}
+  local bridge_parent target_parent expected final_delta path
+  local -a bridge_ancestry=() target_ancestry=()
+
+  git -C "$repository" cat-file -e \
+    "$DEPLOY_CONTROL_PRODUCTION_BRIDGE_BASE^{commit}" \
+    2>/dev/null || return 1
+  bridge_parent=$(git -C "$repository" rev-parse "$bridge^" \
+    2>/dev/null) || return 1
+  target_parent=$(git -C "$repository" rev-parse "$target^" \
+    2>/dev/null) || return 1
+  read -r -a bridge_ancestry <<< "$(git -C "$repository" \
+    rev-list --parents -n 1 "$bridge" 2>/dev/null)" || return 1
+  read -r -a target_ancestry <<< "$(git -C "$repository" \
+    rev-list --parents -n 1 "$target" 2>/dev/null)" || return 1
+  [[ $bridge_parent == "$DEPLOY_CONTROL_PRODUCTION_BRIDGE_BASE" && \
+     ${#bridge_ancestry[@]} == 2 && \
+     $target_parent == "$bridge" && ${#target_ancestry[@]} == 2 ]] || \
+    return 1
+  expected=$(deploy_control_production_bridge_preserved_paths | LC_ALL=C sort)
+  final_delta=$(git -C "$repository" diff --name-only --no-renames \
+    "$DEPLOY_CONTROL_PRODUCTION_BRIDGE_BASE" "$target" -- \
+    2>/dev/null | LC_ALL=C sort) || return 1
+  [[ $final_delta == "$expected" ]] || return 1
+  while IFS= read -r path; do
+    [[ $(git -C "$repository" ls-tree "$bridge" -- "$path" 2>/dev/null) == \
+       $(git -C "$repository" ls-tree "$target" -- "$path" 2>/dev/null) ]] || \
+      return 1
+  done <<< "$expected"
+  deploy_control_is_exact_production_bridge "$bridge"
+}
+
 deploy_control_reviewed_transition_matches() {
   local bridge=$1 target=$2
   if deploy_control_daily_final_transition_matches "$bridge" "$target"; then
@@ -234,6 +532,10 @@ deploy_control_reviewed_transition_matches() {
     return 0
   fi
   if deploy_control_is_reviewed_rolling_summary_transition \
+      "$bridge" "$target"; then
+    return 0
+  fi
+  if deploy_control_is_reviewed_production_bridge_transition \
       "$bridge" "$target"; then
     return 0
   fi

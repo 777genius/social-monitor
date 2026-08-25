@@ -4,23 +4,16 @@
 
 import 'package:json_annotation/json_annotation.dart';
 
-import 'feed_metric_delta_dto_observation_observation.dart';
-
 part 'feed_metric_delta_dto.g.dart';
 
 @JsonSerializable()
 class FeedMetricDeltaDto {
-  const FeedMetricDeltaDto({
-    required this.window,
-    this.observation,
-    this.value,
-  });
+  const FeedMetricDeltaDto({required this.value, required this.window});
 
   factory FeedMetricDeltaDto.fromJson(Map<String, Object?> json) =>
       _$FeedMetricDeltaDtoFromJson(json);
 
-  final FeedMetricDeltaDtoObservationObservation? observation;
-  final num? value;
+  final num value;
   final String window;
 
   Map<String, Object?> toJson() => _$FeedMetricDeltaDtoToJson(this);

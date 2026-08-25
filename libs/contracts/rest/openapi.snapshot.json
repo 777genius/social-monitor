@@ -825,14 +825,6 @@
       },
       "FeedMetricDeltaDto": {
         "properties": {
-          "observation": {
-            "enum": [
-              "observed",
-              "missing",
-              "malformed"
-            ],
-            "type": "string"
-          },
           "value": {
             "type": "number"
           },
@@ -841,7 +833,8 @@
           }
         },
         "required": [
-          "window"
+          "window",
+          "value"
         ],
         "type": "object"
       },
@@ -3160,6 +3153,12 @@
           "confidence": {
             "$ref": "#/components/schemas/ReaderSummaryConfidenceDto"
           },
+          "contextArtifacts": {
+            "items": {
+              "$ref": "#/components/schemas/ReaderSummaryContextArtifactDto"
+            },
+            "type": "array"
+          },
           "coverage": {
             "$ref": "#/components/schemas/ReaderSummaryCoverageSummaryDto"
           },
@@ -3273,6 +3272,7 @@
           "period",
           "sourceWindow",
           "storyClusters",
+          "contextArtifacts",
           "headline",
           "executiveSummary",
           "readerBrief",
@@ -3432,6 +3432,43 @@
           "level",
           "score",
           "rationale"
+        ],
+        "type": "object"
+      },
+      "ReaderSummaryContextArtifactDto": {
+        "properties": {
+          "artifactId": {
+            "type": "string"
+          },
+          "freshness": {
+            "enum": [
+              "fresh",
+              "stale",
+              "unknown"
+            ],
+            "type": "string"
+          },
+          "generatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "period": {
+            "$ref": "#/components/schemas/ReaderSummaryPeriodDto"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/ReaderSummaryScopeDto"
+          },
+          "summaryText": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "artifactId",
+          "scope",
+          "period",
+          "summaryText",
+          "generatedAt",
+          "freshness"
         ],
         "type": "object"
       },
@@ -4001,87 +4038,6 @@
         "required": [
           "kind",
           "url"
-        ],
-        "type": "object"
-      },
-      "ReaderSummaryPromotionAttestationDto": {
-        "properties": {
-          "artifactId": {
-            "type": "string"
-          },
-          "candidateId": {
-            "type": "string"
-          },
-          "canonicalIdentity": {
-            "type": "string"
-          },
-          "canonicalPayload": {
-            "type": "string"
-          },
-          "citationIds": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "decision": {
-            "enum": [
-              "promote_top",
-              "promote_additional"
-            ],
-            "type": "string"
-          },
-          "digest": {
-            "pattern": "^[0-9a-f]{64}$",
-            "type": "string"
-          },
-          "digestVersion": {
-            "enum": [
-              "reader_post_promotion_digest.sha256.v1"
-            ],
-            "type": "string"
-          },
-          "placement": {
-            "enum": [
-              "top",
-              "additional"
-            ],
-            "type": "string"
-          },
-          "policyVersion": {
-            "enum": [
-              "reader_post_promotion.v1"
-            ],
-            "type": "string"
-          },
-          "schemaVersion": {
-            "enum": [
-              "reader_post_promotion_attestation.v1"
-            ],
-            "type": "string"
-          },
-          "slot": {
-            "minimum": 0,
-            "type": "number"
-          },
-          "sourceWindowId": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "schemaVersion",
-          "policyVersion",
-          "digestVersion",
-          "digest",
-          "canonicalPayload",
-          "artifactId",
-          "sourceWindowId",
-          "slot",
-          "candidateId",
-          "canonicalIdentity",
-          "placement",
-          "decision",
-          "citationIds"
         ],
         "type": "object"
       },
@@ -4658,9 +4614,6 @@
             ],
             "type": "string"
           },
-          "promotionAttestation": {
-            "$ref": "#/components/schemas/ReaderSummaryPromotionAttestationDto"
-          },
           "providerKey": {
             "type": "string"
           },
@@ -4877,6 +4830,12 @@
           "confidence": {
             "$ref": "#/components/schemas/ReaderSummaryConfidenceDto"
           },
+          "contextArtifacts": {
+            "items": {
+              "$ref": "#/components/schemas/ReaderSummaryContextArtifactDto"
+            },
+            "type": "array"
+          },
           "coverage": {
             "$ref": "#/components/schemas/ReaderSummaryCoverageSummaryDto"
           },
@@ -4990,6 +4949,7 @@
           "period",
           "sourceWindow",
           "storyClusters",
+          "contextArtifacts",
           "headline",
           "executiveSummary",
           "readerBrief",
@@ -5091,10 +5051,6 @@
       "ReaderSummarySourceWindowDto": {
         "properties": {
           "endedAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "ingestionCutoff": {
             "format": "date-time",
             "type": "string"
           },
@@ -5763,11 +5719,9 @@
             "type": "number"
           },
           "inputTokens": {
-            "nullable": true,
             "type": "number"
           },
           "outputTokens": {
-            "nullable": true,
             "type": "number"
           }
         },
@@ -9902,6 +9856,8 @@
           "providerKey",
           "sourceKey",
           "contentType",
+          "likes",
+          "reposts",
           "replies",
           "quotes",
           "bookmarks",

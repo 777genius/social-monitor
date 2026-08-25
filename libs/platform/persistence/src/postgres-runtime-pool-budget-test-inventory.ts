@@ -31,7 +31,7 @@ export const PUBLICATION_POSTGRES_TEST_POOL_MAXIMUMS = new Map<
   ['scripts/check-reader-summary-production-recovery-postgres.ts', []],
   [
     'scripts/check-reader-summary-publication-postgres.ts',
-    [1, 1, 2, 4, 1, 1],
+    [1, 1, 2, 4, 1],
   ],
   ['scripts/check-tenant-rls-postgres.ts', [1, 1, 1, 1]],
   ['scripts/reader-summary-publication-postgres-legacy.ts', [1]],

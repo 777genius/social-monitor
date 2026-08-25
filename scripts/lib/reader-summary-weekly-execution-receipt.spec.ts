@@ -336,7 +336,7 @@ const receiptClient = (
     ) {
       calls.push(sql);
       if (sql.includes("job.cadence = 'daily'")) {
-        return { rows: [{ id: anchorJobId } as unknown as TRow] };
+        return { rows: [{ id: anchorJobId } as TRow] };
       }
       if (sql.includes("INSERT INTO reader_summary_jobs")) {
         insertValues = values;
@@ -346,7 +346,7 @@ const receiptClient = (
         }
         const created = insertAvailable;
         insertAvailable = false;
-        return { rows: created ? [{ id: values[0] } as unknown as TRow] : [] };
+        return { rows: created ? [{ id: values[0] } as TRow] : [] };
       }
       if (sql.includes("job.idempotency_key")) {
         const row = {
@@ -369,11 +369,11 @@ const receiptClient = (
           failed_at: failedAt,
           reader_summary_artifact_id: null,
           failure_reason: failureReason,
-        } as unknown as TRow;
+        } as TRow;
         return { rows: ambiguous ? [row, row] : [row] };
       }
       if (sql.includes("FROM reader_summary_publications")) {
-        return { rows: publicationExists ? [{ id: "publication-1" } as unknown as TRow] : [] };
+        return { rows: publicationExists ? [{ id: "publication-1" } as TRow] : [] };
       }
       if (sql.includes("UPDATE reader_summary_jobs")) {
         if (sql.includes("SET status = 'COMPLETED'")) {
@@ -392,7 +392,7 @@ const receiptClient = (
         } else {
           failureReason = values[3] as string;
         }
-        return { rows: [{ id: values[0] } as unknown as TRow] };
+        return { rows: [{ id: values[0] } as TRow] };
       }
       throw new Error("Unexpected receipt query");
     },

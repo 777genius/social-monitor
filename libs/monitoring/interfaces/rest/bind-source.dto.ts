@@ -27,9 +27,7 @@ export class BindSourceResponseDto {
 
 export const normalizeSourceBindingConfig = (config: Readonly<Record<string, unknown>>): SourceBindingConfig =>
   Object.fromEntries(
-    Object.entries(config)
-      .filter(([key]) => key !== 'promotionAuthorityHandles')
-      .map(([key, value]) => [key, normalizeConfigValue(value)]),
+    Object.entries(config).map(([key, value]) => [key, normalizeConfigValue(value)]),
   );
 
 const normalizeConfigValue = (value: unknown): SourceBindingConfigValue => {

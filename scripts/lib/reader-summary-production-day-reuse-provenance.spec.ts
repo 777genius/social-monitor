@@ -225,7 +225,7 @@ function evidenceFixture() {
       readerSummaryId: "11111111-1111-4111-8111-111111111111",
       period: productionDayUtcPeriod(collectionDate),
       lineage: {
-        modelVersion: "codex:gpt-5.6-sol:high",
+        modelVersion: "codex:gpt-5.6-sol:xhigh",
         providerVersion: "agent-runtime",
       },
       content: { topicMap: { generatedBy: "agent-runtime" } },

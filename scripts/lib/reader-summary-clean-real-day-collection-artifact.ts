@@ -56,13 +56,11 @@ export const readExactDayCollectionArtifact = (params: {
   readonly path: string;
   readonly collectionDate: string;
   readonly expectedScope?: ReaderSummaryDailyMaintenanceScope;
-  readonly requireExactDatePath?: boolean;
 }): CleanRealDayCollectionReport | null => {
   assertExpectedMaintenanceScope(params.expectedScope);
   assertSafeCollectionArtifactPath(params.path);
   if (
-    (params.expectedScope !== undefined ||
-      params.requireExactDatePath === true) &&
+    params.expectedScope !== undefined &&
     basename(params.path) !==
       readerSummaryDailyCollectionArtifactFileName(params.collectionDate)
   ) {
@@ -112,14 +110,12 @@ export const writeCollectionArtifactAtomically = (params: {
   readonly path: string;
   readonly report: CleanRealDayCollectionReport;
   readonly expectedScope?: ReaderSummaryDailyMaintenanceScope;
-  readonly requireExactDatePath?: boolean;
 }): void => {
   assertExpectedMaintenanceScope(params.expectedScope);
   assertSafeCollectionArtifactPath(params.path);
   assertExactDayIdentity(params.report, params.report.run.collectionDate);
   if (
-    (params.expectedScope !== undefined ||
-      params.requireExactDatePath === true) &&
+    params.expectedScope !== undefined &&
     basename(params.path) !==
       readerSummaryDailyCollectionArtifactFileName(
         params.report.run.collectionDate,

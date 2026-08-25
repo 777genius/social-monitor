@@ -5,8 +5,6 @@ import type {
   ReaderSummaryMultiDayQualityResult,
   ReaderSummaryMultiDayQualityThresholds,
 } from "./reader-summary-multi-day-quality-eval";
-import { readerSummaryIndependentProviderFamily } from
-  "../value-objects/reader-summary-provider-identity";
 
 export const storyPairCounts = (
   expectations: ReaderSummaryMultiDayGoldDay["storyExpectations"],
@@ -76,8 +74,7 @@ export const crossSourceCounts = (params: {
     );
     const predictedCrossSource =
       predictedClusters.size === 1 &&
-      new Set((predictedCluster?.providerKeys ?? []).map((providerKey) =>
-        readerSummaryIndependentProviderFamily({ providerKey }))).size > 1;
+      new Set(predictedCluster?.providerKeys ?? []).size > 1;
     if (expectedCrossSource && predictedCrossSource) {
       truePositive += 1;
     } else if (expectedCrossSource) {

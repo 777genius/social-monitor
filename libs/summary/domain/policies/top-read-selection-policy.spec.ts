@@ -87,10 +87,12 @@ describe("selectUniqueTopReadCandidates", () => {
       ]),
       evidence([
         evidenceItem("feed-weak-hn", "hacker-news", [
-          ["Points", "25"],
+          ["Points", "5"],
+          ["Comments", "9"],
         ]),
         evidenceItem("feed-strong-hn", "hacker-news", [
           ["Points", "338"],
+          ["Comments", "44"],
         ]),
       ]),
       clusters(["weak-hn", "strong-hn"]),
@@ -115,13 +117,15 @@ describe("selectUniqueTopReadCandidates", () => {
       evidence([
         {
           ...evidenceItem("feed-x", "x-twitter", [
-            ["Likes", "200"],
+            ["Likes", "2,000"],
+            ["Replies", "90"],
           ]),
           score: 2.21,
         },
         {
           ...evidenceItem("feed-hn", "hacker-news", [
-            ["Points", "3,400"],
+            ["Points", "340"],
+            ["Comments", "170"],
           ]),
           score: 2.27,
         },
@@ -208,7 +212,8 @@ describe("selectUniqueTopReadCandidates", () => {
           ["Reposts", "72"],
         ]),
         evidenceItem("feed-hn-1", "hacker-news", [
-          ["Points", "727"],
+          ["Score", "727"],
+          ["Comments", "140"],
         ]),
         evidenceItem("feed-rss-1", "rss", []),
       ]),

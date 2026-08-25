@@ -64,7 +64,6 @@ export type AgentRuntimeTaskResult = {
   readonly structuredOutput?: Record<string, unknown>;
   readonly warnings: readonly AgentRuntimeWarning[];
   readonly usage?: AgentRuntimeUsage;
-  readonly durationMs?: number;
   readonly failure?: AgentRuntimeFailure;
   readonly executionAttestation?: AgentRuntimeExecutionAttestation;
 };
@@ -80,9 +79,6 @@ export type AgentRuntimeHealthResult = {
 };
 
 export interface AgentRuntimeClientPort {
-  runTask(
-    command: AgentRuntimeTaskCommand,
-    options?: { readonly signal?: AbortSignal },
-  ): Promise<AgentRuntimeTaskResult>;
+  runTask(command: AgentRuntimeTaskCommand): Promise<AgentRuntimeTaskResult>;
   checkHealth(service: string): Promise<AgentRuntimeHealthResult>;
 }
