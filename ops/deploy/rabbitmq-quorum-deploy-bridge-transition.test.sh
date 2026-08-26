@@ -110,7 +110,7 @@ assert_real_bridge_target_assets() {
       ops/deploy/deploy-control-bridge-lib.sh)
         expected_digest=e6f958555966b77d02b85da8d0b9195e13a200dcb2b19c8afc010fab6d28b65d
         alternate_digest=d6f3b562e3445dce3ac3d21364793b43afa53fe56011c0b73d02fac721040cf7
-        reviewed_digest=50314ae70cc67d7c860bcf4fe9c7e15253b862e1a89e0dea7a30560f1a61b6b7
+        reviewed_digest=90887f9ba5083d0253dba060624eea2cb3053191b5136f128f82c8bbd5f92813
         ;;
     esac
     if [[ $path == ops/deploy/social-monitor-production-deploy.sh ]]; then

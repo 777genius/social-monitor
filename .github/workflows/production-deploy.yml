@@ -606,6 +606,7 @@ jobs:
           if [[ $bridge_phase == false ]]; then
             bash ops/deploy/github-production-deploy-client.test.sh
           fi
+          bash ops/deploy/production-release-b-bridge-order.test.sh
           bash ops/deploy/production-release-a-transition.test.sh
           bash ops/deploy/postgres-pool-atomic-bootstrap-lib.test.sh
           bash ops/deploy/social-monitor-production-ssh-wrapper.test.sh
@@ -904,15 +905,15 @@ jobs:
         with: {fetch-depth: 0}
       - name: Validate graph and immutable manifests before Release B SSH
         run: bash ops/deploy/production-release-a-transition.sh validate "$GITHUB_SHA"
-      - name: Deploy reviewed bridge and reopen restricted SSH
+      - name: Reconcile the old controller, deploy its reviewed bridge, and reopen SSH
         env:
           DEPLOY_KEY: ${{ secrets.PRODUCTION_SSH_PRIVATE_KEY }}
           KNOWN_HOSTS: ${{ secrets.PRODUCTION_SSH_KNOWN_HOSTS }}
         run: |
           set -euo pipefail
-          client=ops/deploy/github-production-deploy-client.sh; bridge_release=85c5d22febf1e7ce5fa5967d2460ccb73ca96a9d
-          bash "$client" configure
-          bash "$client" install-release-b-bridge "$bridge_release"
+          client=ops/deploy/github-production-deploy-client.sh; controller_release=8b4aeb31e855ed379349a4e4827600009e174132; bridge_release=b3c51bcd5e98c90f6a0a384f19e1c811d7f89fb3
+          bash "$client" configure; bash "$client" reconcile-release-b-controller "$controller_release" "$bridge_release"
+          bash "$client" cleanup; bash "$client" configure; bash "$client" install-release-b-bridge "$bridge_release"
           bash "$client" cleanup; bash "$client" configure
       - name: Freshly require A-complete or B-complete
         id: b_state

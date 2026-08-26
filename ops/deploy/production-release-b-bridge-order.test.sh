@@ -1,323 +1,234 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 PROJECT_ROOT=$(cd "$SCRIPT_DIR/../.." && pwd)
 SOURCE_REPO=${PRODUCTION_RELEASE_B_TEST_SOURCE_REPO:-$PROJECT_ROOT}
 WORKFLOW=$PROJECT_ROOT/.github/workflows/production-deploy.yml
-BASE=72e17ded1e54ebd77772929fd5047ef6816dded2
-FAILED_RELEASE=92afd97328c5412324c99be635de2c41db589d53
-BRIDGE=85c5d22febf1e7ce5fa5967d2460ccb73ca96a9d
+CLIENT=$PROJECT_ROOT/ops/deploy/github-production-deploy-client.sh
+BASE=8b4aeb31e855ed379349a4e4827600009e174132
+REJECTED=68d6910f7874be89e2d5418dede5be6129e8af3a
+REJECTED_BRIDGE=85c5d22febf1e7ce5fa5967d2460ccb73ca96a9d
+BRIDGE=b3c51bcd5e98c90f6a0a384f19e1c811d7f89fb3
+BRIDGE_TREE=02e84aebaf70c32a7127efcd08bd76ac9d5b094f
+BRIDGE_BLOB=988b9f1c20766fd550c8db2f1c2a553e35275aee
 BACKEND_MARKER=09a79687e042e36d4ec9c1f33f0367527f044181
 CONTROL_MARKER=3f4a561e9fd6626bbd1a1e1ca73f2ec7eb34c8f8
 FRONTEND_MARKER=eaac8ad433bc9741f493e61354b3dfe1c3161224
 POOL_MARKER=6fefa9da5446d5e467badcc7239fdc5a6170a756
+BRIDGE_PATH=ops/deploy/deploy-control-bridge-lib.sh
 FIXTURE=$(mktemp -d "${TMPDIR:-/tmp}/release-b-bridge-order.XXXXXX")
 trap 'rm -rf "$FIXTURE"' EXIT
-REPO=$FIXTURE/repo
+GRAPH_REPO=$FIXTURE/graph
 
-git clone -q --shared "$SOURCE_REPO" "$REPO"
-git -C "$REPO" config user.name 'Release B Bridge Test'
-git -C "$REPO" config user.email release-b-bridge@example.invalid
-SOURCE_TIP=$(git -C "$REPO" rev-parse HEAD)
-read -r -a source_tip_ancestry <<< "$(git -C "$REPO" \
-  rev-list --parents -n 1 "$SOURCE_TIP")"
-REVIEWED_HEAD=$SOURCE_TIP
-if [[ ${#source_tip_ancestry[@]} == 3 && \
-      ${source_tip_ancestry[1]} == "$FAILED_RELEASE" && \
-      $(git -C "$REPO" rev-parse "$SOURCE_TIP^{tree}") == \
-        $(git -C "$REPO" rev-parse "${source_tip_ancestry[2]}^{tree}") ]]; then
-  REVIEWED_HEAD=${source_tip_ancestry[2]}
-fi
-
-# The pinned side parent must be obtainable from the reviewed repository, not
-# merely present in the current object's incidental local cache.
-git -C "$REPO" fetch -q "$SOURCE_REPO" "$BRIDGE"
-[[ $(git -C "$REPO" rev-parse FETCH_HEAD) == "$BRIDGE" ]]
-for commit in "$BASE" "$FAILED_RELEASE" "$BRIDGE" "$REVIEWED_HEAD"; do
-  git -C "$REPO" cat-file -e "$commit^{commit}"
+git clone -q --shared "$SOURCE_REPO" "$GRAPH_REPO"
+TARGET=$(git -C "$GRAPH_REPO" rev-parse HEAD)
+for commit in "$BASE" "$REJECTED" "$REJECTED_BRIDGE" "$BRIDGE" "$TARGET"; do
+  git -C "$GRAPH_REPO" cat-file -e "$commit^{commit}"
 done
 
-# shellcheck source=ops/deploy/deploy-control-bridge-lib.sh
-source "$SCRIPT_DIR/deploy-control-bridge-lib.sh"
-fail() {
-  printf 'deploy-error: %s\n' "$*" >&2
-  return 1
-}
-deploy_control_file_digest() {
-  sha256sum "$1" | awk '{print $1}'
-}
-deploy_control_git_blob_digest() {
-  git -C "$REPO" show "$1:$2" | sha256sum | awk '{print $1}'
-}
-read -r -a head_ancestry <<< "$(git -C "$REPO" \
-  rev-list --parents -n 1 "$REVIEWED_HEAD")"
-[[ ${#head_ancestry[@]} == 2 ]]
-JOIN=${head_ancestry[1]}
-read -r -a join_ancestry <<< "$(git -C "$REPO" \
-  rev-list --parents -n 1 "$JOIN")"
-[[ ${#join_ancestry[@]} == 3 && \
-   ${join_ancestry[1]} == "$FAILED_RELEASE" && \
-   ${join_ancestry[2]} == "$BRIDGE" ]]
-read -r -a bridge_ancestry <<< "$(git -C "$REPO" \
+# The repair is an exact side bridge from the controller that is actually
+# installed in production, followed by one target merge of the rejected tree
+# and that bridge. The bridge commit changes one regular 0644 blob only.
+read -r -a bridge_parents <<< "$(git -C "$GRAPH_REPO" \
   rev-list --parents -n 1 "$BRIDGE")"
-[[ ${#bridge_ancestry[@]} == 2 && ${bridge_ancestry[1]} == "$BASE" ]]
-[[ $(git -C "$REPO" diff --name-only --no-renames "$BASE" "$BRIDGE") == \
-   ops/deploy/deploy-control-bridge-lib.sh ]]
-[[ $(git -C "$REPO" diff --name-only --no-renames \
-     "$FAILED_RELEASE" "$JOIN") == \
-   ops/deploy/deploy-control-bridge-lib.sh ]]
-expected_head_delta=$(printf '%s\n' \
-  .github/workflows/production-deploy.yml \
-  ops/deploy/production-release-b-bridge-order.test.sh \
-  ops/deploy/rabbitmq-quorum-deploy-bridge-transition.test.sh | LC_ALL=C sort)
-actual_head_delta=$(git -C "$REPO" diff --name-only --no-renames \
-  "$JOIN" "$REVIEWED_HEAD" | LC_ALL=C sort)
-[[ $actual_head_delta == "$expected_head_delta" ]]
-[[ $(git -C "$REPO" ls-tree "$BRIDGE" -- \
-     ops/deploy/deploy-control-bridge-lib.sh | awk '{print $1, $2}') == \
-   '100644 blob' ]]
-git -C "$REPO" merge-base --is-ancestor "$BRIDGE" "$REVIEWED_HEAD"
+[[ ${#bridge_parents[@]} == 2 && \
+   ${bridge_parents[0]} == "$BRIDGE" && \
+   ${bridge_parents[1]} == "$BASE" ]]
+[[ $(git -C "$GRAPH_REPO" rev-parse "$BRIDGE^{tree}") == "$BRIDGE_TREE" ]]
+[[ $(git -C "$GRAPH_REPO" diff --name-only --no-renames \
+     "$BASE" "$BRIDGE") == "$BRIDGE_PATH" ]]
+read -r bridge_mode bridge_type bridge_blob bridge_path <<< "$(
+  git -C "$GRAPH_REPO" ls-tree "$BRIDGE" -- "$BRIDGE_PATH"
+)"
+[[ $bridge_mode == 100644 && $bridge_type == blob && \
+   $bridge_blob == "$BRIDGE_BLOB" && $bridge_path == "$BRIDGE_PATH" ]]
 
-# Reproduce the exact staggered production marker state. These classifications
-# force target bridge validation even though the bridge itself changes only the
-# deploy-control bridge library.
-path_declarations=$(git -C "$REPO" show \
-  "$BRIDGE:ops/deploy/social-monitor-production-deploy.sh" | sed -n \
-  -e '/^FRONTEND_PATHS=(/,/^)/p' \
-  -e '/^BACKEND_PATHS=(/,/^)/p' \
-  -e '/^CONTROL_PATHS=(/,/^)/p' \
-  -e '/^RUNTIME_CONTROL_PATHS=(/,/^)/p')
-eval "$path_declarations"
-marker_paths_changed() {
-  local marker=$1 target=$2
-  shift 2
-  git -C "$REPO" merge-base --is-ancestor "$marker" "$target" &&
-    ! git -C "$REPO" diff --quiet "$marker" "$target" -- "$@"
-}
-marker_paths_changed "$FRONTEND_MARKER" "$BRIDGE" "${FRONTEND_PATHS[@]}"
-marker_paths_changed "$BACKEND_MARKER" "$BRIDGE" "${BACKEND_PATHS[@]}"
-marker_paths_changed "$CONTROL_MARKER" "$BRIDGE" "${CONTROL_PATHS[@]}"
-marker_paths_changed "$BACKEND_MARKER" "$BRIDGE" \
-  apps/x-collector ops/deploy/production-runtime/x-collector.Dockerfile
-if marker_paths_changed \
-    "$CONTROL_MARKER" "$BRIDGE" "${RUNTIME_CONTROL_PATHS[@]}"; then
-  echo 'staggered control marker unexpectedly classifies runtime control' >&2
-  exit 1
-fi
-git -C "$REPO" merge-base --is-ancestor "$POOL_MARKER" "$BRIDGE"
-if marker_paths_changed "$POOL_MARKER" "$BRIDGE" \
-    ops/deploy/postgres-pool-atomic-bootstrap-lib.sh \
-    ops/deploy/postgres-runtime-deploy-lib.sh \
-    ops/deploy/verify-postgres-runtime-topology.py \
-    ops/deploy/production-runtime/compose.postgres-runtime.yml; then
-  echo 'staggered pool marker unexpectedly classifies pool assets' >&2
-  exit 1
-fi
-
-# Pin all of the side bridge's independent identities, then prove commits that
-# preserve only a subset of them remain closed.
-[[ $(git -C "$REPO" rev-parse "$BRIDGE^{tree}") == \
-   "$DEPLOY_CONTROL_FAILED_IDLE_RELEASE_BRIDGE_TREE" ]]
-[[ $(git -C "$REPO" rev-parse \
-     "$BRIDGE:$DEPLOY_CONTROL_BRIDGE_SELF_PATH") == \
-   "$DEPLOY_CONTROL_FAILED_IDLE_RELEASE_BRIDGE_BLOB" ]]
-deploy_control_is_exact_failed_idle_release_bridge "$BRIDGE"
-
-candidate_index=$FIXTURE/candidate.index
-unrelated_blob=$(printf 'unrelated Release B candidate\n' | \
-  git -C "$REPO" hash-object -w --stdin)
-rm -f "$candidate_index"
-GIT_INDEX_FILE=$candidate_index git -C "$REPO" read-tree "$BASE"
-GIT_INDEX_FILE=$candidate_index git -C "$REPO" update-index \
-  --add --cacheinfo "100644,$unrelated_blob,unrelated-release-b-candidate"
-unrelated_tree=$(GIT_INDEX_FILE=$candidate_index git -C "$REPO" write-tree)
-UNRELATED_BRIDGE=$(printf 'test: unrelated bridge candidate\n' | \
-  git -C "$REPO" commit-tree "$unrelated_tree" -p "$BASE")
-
-tampered_blob=$({
-  git -C "$REPO" show "$BRIDGE:$DEPLOY_CONTROL_BRIDGE_SELF_PATH"
-  printf '\n# tampered bridge candidate\n'
-} | git -C "$REPO" hash-object -w --stdin)
-rm -f "$candidate_index"
-GIT_INDEX_FILE=$candidate_index git -C "$REPO" read-tree "$BASE"
-GIT_INDEX_FILE=$candidate_index git -C "$REPO" update-index \
-  --cacheinfo "100644,$tampered_blob,$DEPLOY_CONTROL_BRIDGE_SELF_PATH"
-tampered_tree=$(GIT_INDEX_FILE=$candidate_index git -C "$REPO" write-tree)
-TAMPERED_BRIDGE=$(printf 'test: tampered bridge candidate\n' | \
-  git -C "$REPO" commit-tree "$tampered_tree" -p "$BASE")
-
-rm -f "$candidate_index"
-GIT_INDEX_FILE=$candidate_index git -C "$REPO" read-tree "$BASE"
-GIT_INDEX_FILE=$candidate_index git -C "$REPO" update-index \
-  --cacheinfo \
-  "100755,$DEPLOY_CONTROL_FAILED_IDLE_RELEASE_BRIDGE_BLOB,$DEPLOY_CONTROL_BRIDGE_SELF_PATH"
-wrong_mode_tree=$(GIT_INDEX_FILE=$candidate_index git -C "$REPO" write-tree)
-WRONG_MODE_BRIDGE=$(printf 'test: wrong-mode bridge candidate\n' | \
-  git -C "$REPO" commit-tree "$wrong_mode_tree" -p "$BASE")
-
-MIXED_BRIDGE=$(printf 'test: mixed bridge candidate\n' | \
-  git -C "$REPO" commit-tree "$JOIN^{tree}" -p "$BASE")
-WRONG_PARENT_BRIDGE=$(printf 'test: wrong-parent bridge candidate\n' | \
-  git -C "$REPO" commit-tree "$BRIDGE^{tree}" -p "$FAILED_RELEASE")
-for rejected in \
-  "$UNRELATED_BRIDGE" "$TAMPERED_BRIDGE" \
-  "$WRONG_MODE_BRIDGE" "$MIXED_BRIDGE" "$WRONG_PARENT_BRIDGE"; do
-  if deploy_control_is_exact_failed_idle_release_bridge "$rejected" || \
-     deploy_control_reviewed_transition_matches "$BASE" "$rejected"; then
-    echo "unreviewed side bridge candidate was admitted: $rejected" >&2
-    exit 1
-  fi
-done
-
-# Exercise the independent pins after allowing each candidate through the SHA
-# and, where needed, tree checks. This proves rejection is not only SHA-based.
-reviewed_bridge_pin=$DEPLOY_CONTROL_FAILED_IDLE_RELEASE_BRIDGE
-reviewed_tree_pin=$DEPLOY_CONTROL_FAILED_IDLE_RELEASE_BRIDGE_TREE
-assert_rejected_after_candidate_pins() {
-  local candidate=$1 candidate_tree=$2 reason=$3
-  DEPLOY_CONTROL_FAILED_IDLE_RELEASE_BRIDGE=$candidate
-  DEPLOY_CONTROL_FAILED_IDLE_RELEASE_BRIDGE_TREE=$candidate_tree
-  if deploy_control_is_exact_failed_idle_release_bridge "$candidate"; then
-    echo "side bridge bypassed its $reason pin" >&2
-    exit 1
-  fi
-  DEPLOY_CONTROL_FAILED_IDLE_RELEASE_BRIDGE=$reviewed_bridge_pin
-  DEPLOY_CONTROL_FAILED_IDLE_RELEASE_BRIDGE_TREE=$reviewed_tree_pin
-}
-assert_rejected_after_candidate_pins \
-  "$WRONG_PARENT_BRIDGE" "$reviewed_tree_pin" parent
-assert_rejected_after_candidate_pins \
-  "$UNRELATED_BRIDGE" "$unrelated_tree" path
-assert_rejected_after_candidate_pins \
-  "$TAMPERED_BRIDGE" "$tampered_tree" blob
-assert_rejected_after_candidate_pins \
-  "$WRONG_MODE_BRIDGE" "$wrong_mode_tree" mode
-
-# With only the SHA pin relaxed, the tampered tree remains independently shut.
-DEPLOY_CONTROL_FAILED_IDLE_RELEASE_BRIDGE=$TAMPERED_BRIDGE
-if deploy_control_is_exact_failed_idle_release_bridge "$TAMPERED_BRIDGE"; then
-  echo 'side bridge bypassed its tree pin' >&2
-  exit 1
-fi
-DEPLOY_CONTROL_FAILED_IDLE_RELEASE_BRIDGE=$reviewed_bridge_pin
-
-# The historical controller reproduces run 32920718523's fail-closed error.
-# The current admission accepts the same immutable bridge before checkout,
-# after checkout, and again after reinitialization (crash-resume/retry).
-git -C "$REPO" checkout -q "$BASE"
-historical_controller=$FIXTURE/historical-deploy-control-bridge-lib.sh
-git -C "$REPO" show "$BASE:$DEPLOY_CONTROL_BRIDGE_SELF_PATH" > \
-  "$historical_controller"
-if historical_error=$(
-  (
-    fail() {
-      printf 'deploy-error: %s\n' "$*" >&2
-      exit 1
-    }
-    # shellcheck source=/dev/null
-    source "$historical_controller"
-    initialize_deploy_control_bridge
-    verify_deploy_control_bridge_target_compatibility "$BRIDGE"
-  ) 2>&1
-); then
-  echo 'historical controller unexpectedly admitted the reviewed bridge' >&2
-  exit 1
-fi
-grep -F 'deploy control changed with backend or runtime assets; deploy the bridge release first' \
-  <<< "$historical_error" >/dev/null
-
-initialize_deploy_control_bridge
-verify_deploy_control_bridge_target_compatibility "$BRIDGE"
-git -C "$REPO" checkout -q "$BRIDGE"
-verify_deploy_control_bridge_compatibility
-initialize_deploy_control_bridge
-verify_deploy_control_bridge_target_compatibility "$BRIDGE"
-verify_deploy_control_bridge_compatibility
-
-TARGET=$(printf 'test: simulate exact GitHub merge\n' | git -C "$REPO" \
-  commit-tree "$(git -C "$REPO" rev-parse "$REVIEWED_HEAD^{tree}")" \
-  -p "$FAILED_RELEASE" -p "$REVIEWED_HEAD")
-if deploy_control_reviewed_transition_matches "$BASE" "$TARGET"; then
-  echo 'failed Release B unexpectedly bypasses its required bridge' >&2
-  exit 1
-fi
-if deploy_control_reviewed_transition_matches "$BRIDGE" "$REVIEWED_HEAD"; then
-  echo 'failed-idle bridge admitted the unmerged reviewed head' >&2
-  exit 1
-fi
-deploy_control_reviewed_transition_matches "$BRIDGE" "$TARGET"
-git -C "$REPO" merge-base --is-ancestor "$FAILED_RELEASE" "$TARGET"
-git -C "$REPO" merge-base --is-ancestor "$BRIDGE" "$TARGET"
-read -r -a target_ancestry <<< "$(git -C "$REPO" \
+read -r -a target_parents <<< "$(git -C "$GRAPH_REPO" \
   rev-list --parents -n 1 "$TARGET")"
-[[ ${#target_ancestry[@]} == 3 && \
-   ${target_ancestry[1]} == "$FAILED_RELEASE" && \
-   ${target_ancestry[2]} == "$REVIEWED_HEAD" ]]
-[[ $(git -C "$REPO" rev-parse "$TARGET^{tree}") == \
-   $(git -C "$REPO" rev-parse "$REVIEWED_HEAD^{tree}") ]]
+[[ ${#target_parents[@]} == 3 && \
+   ${target_parents[1]} == "$REJECTED" && \
+   ${target_parents[2]} == "$BRIDGE" ]]
+git -C "$GRAPH_REPO" merge-base --is-ancestor "$BRIDGE" "$TARGET"
+[[ $(git -C "$GRAPH_REPO" rev-parse "$TARGET:$BRIDGE_PATH") == \
+   "$BRIDGE_BLOB" ]]
 
-if [[ $SOURCE_TIP != "$REVIEWED_HEAD" ]]; then
-  deploy_control_reviewed_transition_matches "$BRIDGE" "$SOURCE_TIP"
-fi
+expected_target_delta=$(printf '%s\n' \
+  .github/workflows/production-deploy.yml \
+  ops/deploy/deploy-control-bridge-lib.sh \
+  ops/deploy/github-production-deploy-client.sh \
+  ops/deploy/github-production-deploy-client.test.sh \
+  ops/deploy/production-release-b-bridge-order.test.sh \
+  ops/deploy/rabbitmq-quorum-deploy-bridge-transition.test.sh | \
+  LC_ALL=C sort)
+actual_target_delta=$(git -C "$GRAPH_REPO" diff --name-only --no-renames \
+  "$REJECTED" "$TARGET" | LC_ALL=C sort)
+[[ $actual_target_delta == "$expected_target_delta" ]]
+while IFS= read -r path; do
+  expected_mode=100644
+  case $path in
+    ops/deploy/github-production-deploy-client.sh|ops/deploy/github-production-deploy-client.test.sh|ops/deploy/production-release-b-bridge-order.test.sh)
+      expected_mode=100755
+      ;;
+  esac
+  entry=$(git -C "$GRAPH_REPO" ls-tree "$TARGET" -- "$path")
+  read -r mode type object tree_path extra <<< "$entry"
+  [[ -z ${extra:-} && $mode == "$expected_mode" && $type == blob && \
+     $object =~ ^[0-9a-f]{40}$ && $tree_path == "$path" ]]
+done <<< "$expected_target_delta"
 
-git -C "$REPO" checkout -q "$TARGET"
-printf '\n# unreviewed same-path drift\n' >> \
-  "$REPO/.github/workflows/production-deploy.yml"
-git -C "$REPO" add .github/workflows/production-deploy.yml
-git -C "$REPO" commit -qm 'test: add same-path Release B drift'
-SAME_PATH_DRIFT_TARGET=$(git -C "$REPO" rev-parse HEAD)
-if deploy_control_reviewed_transition_matches \
-    "$BRIDGE" "$SAME_PATH_DRIFT_TARGET"; then
-  echo 'failed-idle bridge admitted same-allowlisted-path drift' >&2
-  exit 1
-fi
+[[ $(grep -Fxc \
+  'RELEASE_B_CONTROLLER_SHA=8b4aeb31e855ed379349a4e4827600009e174132' \
+  "$CLIENT") == 1 ]]
+[[ $(grep -Fxc \
+  'RELEASE_B_BRIDGE_SHA=b3c51bcd5e98c90f6a0a384f19e1c811d7f89fb3' \
+  "$CLIENT") == 1 ]]
+[[ $(grep -Fo \
+  'controller_release=8b4aeb31e855ed379349a4e4827600009e174132' \
+  "$WORKFLOW" | wc -l) == 1 ]]
+[[ $(grep -Fo \
+  'bridge_release=b3c51bcd5e98c90f6a0a384f19e1c811d7f89fb3' \
+  "$WORKFLOW" | wc -l) == 1 ]]
 
-git -C "$REPO" checkout -q "$TARGET"
-printf 'unreviewed Release B drift\n' > "$REPO/unreviewed-release-b-drift"
-git -C "$REPO" add unreviewed-release-b-drift
-git -C "$REPO" commit -qm 'test: add unreviewed Release B drift'
-DRIFT_TARGET=$(git -C "$REPO" rev-parse HEAD)
-if deploy_control_reviewed_transition_matches "$BRIDGE" "$DRIFT_TARGET"; then
-  echo 'failed-idle bridge admitted unreviewed Release B drift' >&2
-  exit 1
-fi
-
-WRONG_TOPOLOGY_TARGET=$(printf 'test: wrong GitHub parent order\n' | \
-  git -C "$REPO" commit-tree \
-  "$(git -C "$REPO" rev-parse "$REVIEWED_HEAD^{tree}")" \
-  -p "$REVIEWED_HEAD" -p "$FAILED_RELEASE")
-if deploy_control_reviewed_transition_matches \
-    "$BRIDGE" "$WRONG_TOPOLOGY_TARGET"; then
-  echo 'failed-idle bridge admitted the wrong GitHub parent topology' >&2
-  exit 1
-fi
-
-python3 - "$WORKFLOW" "$BRIDGE" <<'PY'
+python3 - "$WORKFLOW" <<'PY'
 import pathlib
 import sys
 
 workflow = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")
-bridge = sys.argv[2]
-if "ops/deploy/production-release-b-bridge-order.test.sh" not in workflow:
-    raise SystemExit("Release B exact-topology regression is absent from CI")
-deploy = workflow[workflow.index("  deploy:"):workflow.index("  acceptance:")]
-bridge_step = deploy[
-    deploy.index("Deploy reviewed bridge and reopen restricted SSH"):
-    deploy.index("Freshly require A-complete or B-complete")
-]
-commands = (
-    f"bridge_release={bridge}",
-    'bash "$client" configure',
+commands = [
+    'bash "$client" reconcile-release-b-controller "$controller_release" "$bridge_release"',
+    'bash "$client" cleanup; bash "$client" configure',
     'bash "$client" install-release-b-bridge "$bridge_release"',
-    'bash "$client" cleanup',
-    'bash "$client" configure',
-)
+    'bash ops/deploy/github-production-deploy-client.sh deploy "$GITHUB_SHA"',
+]
 cursor = 0
 for command in commands:
-    cursor = bridge_step.index(command, cursor) + len(command)
-if deploy.index('install-release-b-bridge "$bridge_release"') > deploy.index('deploy "$GITHUB_SHA"'):
-    raise SystemExit("Release B target runs before its reviewed control bridge")
+    cursor = workflow.index(command, cursor) + len(command)
+test_command = "          bash ops/deploy/production-release-b-bridge-order.test.sh"
+if workflow.count(test_command) != 1:
+    raise SystemExit("Release B topology regression is not executed exactly once")
+if workflow.index(test_command) < workflow.index("shellcheck -S warning -x"):
+    raise SystemExit("Release B topology regression appears only in static checks")
 PY
 
-printf 'Production Release B bridge ordering tests passed\n'
+prepare_runtime_repo() {
+  local repo=$FIXTURE/$1/repo root=$FIXTURE/$1/root
+  git clone -q --shared "$SOURCE_REPO" "$repo"
+  git -C "$repo" checkout -q "$BASE"
+  install -d "$root/control/deploy-state" "$root/runtime/deploy-staging" \
+    "$root/runtime/frontend-releases" "$root/runtime/systemd"
+  printf '%s\n' "$FRONTEND_MARKER" > \
+    "$root/control/deploy-state/frontend.sha"
+  printf '%s\n' "$BACKEND_MARKER" > \
+    "$root/control/deploy-state/backend.sha"
+  printf '%s\n' "$CONTROL_MARKER" > \
+    "$root/control/deploy-state/control.sha"
+  printf '%s\n' "$POOL_MARKER" > \
+    "$root/control/deploy-state/postgres-pool-bootstrap.sha"
+}
+
+run_actual_controller() (
+  set -euo pipefail
+  local repo=$1 root=$2 target=$3 expected_head=$4 event_log=$5
+  local state=$root/control/deploy-state current_head current_control_blob
+  current_head=$(git -C "$repo" rev-parse HEAD)
+  current_control_blob=$(git -C "$repo" rev-parse \
+    "HEAD:ops/deploy/deploy-control-lib.sh")
+  [[ $current_head == "$expected_head" ]]
+  printf 'controller=%s control_blob=%s target=%s\n' \
+    "$current_head" "$current_control_blob" "$target" >> "$event_log"
+
+  export SOCIAL_MONITOR_DEPLOY_TEST_MODE=1
+  export SOCIAL_MONITOR_DEPLOY_ROOT=$root
+  export SOCIAL_MONITOR_DEPLOY_REPO=$repo
+  export SOCIAL_MONITOR_DEPLOY_CONTROL=$root/control
+  export SOCIAL_MONITOR_DEPLOY_STATE=$state
+  export SOCIAL_MONITOR_DEPLOY_STAGING=$root/runtime/deploy-staging
+  export SOCIAL_MONITOR_DEPLOY_RELEASES=$root/runtime/frontend-releases
+  export SOCIAL_MONITOR_DEPLOY_PROJECT=release-b-controller-regression
+  # shellcheck source=ops/deploy/social-monitor-production-deploy.sh
+  source "$repo/ops/deploy/social-monitor-production-deploy.sh"
+
+  [[ $DEPLOY_CONTROL_BRIDGE_INITIALIZED_HEAD == "$expected_head" ]]
+  postgres_pool_atomic_legacy_state() { return 1; }
+  postgres_pool_bootstrap_installed() { return 0; }
+  reconcile_current_postgres_pool_bootstrap() { :; }
+  reconcile_completed_backend_image_rescues() { :; }
+  acquire_postgres_admission_with_daily_priority() { :; }
+  fetch_main() { :; }
+  validate_main_commit() {
+    [[ $1 == "$target" ]]
+    git -C "$repo" cat-file -e "$1^{commit}"
+  }
+  reconcile_github_premidnight_capture_runtime_control() {
+    printf '%s\n' "$1"
+  }
+  load_target_rabbitmq_quorum_backend_health() { :; }
+  load_target_reader_summary_publication_deploy_library() { :; }
+  sync_control_script() { :; }
+  deploy_release_runtime_transaction() {
+    printf 'runtime=%s backend=%s runtime_control=%s\n' \
+      "$1" "$2" "$3" >> "$event_log"
+    [[ $2 == false ]] || printf '%s\n' "$1" > "$state/backend.sha"
+  }
+  deploy_frontend() {
+    printf 'frontend=%s\n' "$1" >> "$event_log"
+    printf '%s\n' "$1" > "$state/frontend.sha"
+  }
+  commit_postgres_pool_bootstrap() {
+    printf '%s\n' "$1" > "$state/postgres-pool-bootstrap.sha"
+  }
+
+  deploy_release "$target"
+)
+
+# Reproduce the rejected topology with the real 8b4 deploy-control code. The
+# ancestor bridge is a server-side no-op, then the rejected target fails before
+# integration advancement because the old bridge verifier is still loaded.
+prepare_runtime_repo rejected
+rejected_repo=$FIXTURE/rejected/repo
+rejected_root=$FIXTURE/rejected/root
+rejected_events=$FIXTURE/rejected/events
+run_actual_controller "$rejected_repo" "$rejected_root" \
+  "$REJECTED_BRIDGE" "$BASE" "$rejected_events" >/dev/null
+[[ $(git -C "$rejected_repo" rev-parse HEAD) == "$BASE" ]]
+set +e
+rejected_error=$(run_actual_controller "$rejected_repo" "$rejected_root" \
+  "$REJECTED" "$BASE" "$rejected_events" 2>&1)
+rejected_status=$?
+set -e
+((rejected_status != 0))
+grep -F 'deploy control changed with backend or runtime assets; deploy the bridge release first' \
+  <<< "$rejected_error" >/dev/null
+[[ $(git -C "$rejected_repo" rev-parse HEAD) == "$BASE" ]]
+
+# Reconcile the exact old controller first. Its actual deploy-control code then
+# admits the direct bridge through the ordinary control-only path. A fresh
+# invocation loads the bridge commit's controller and advances the patched
+# target once, with backend/frontend identities left unchanged.
+prepare_runtime_repo repaired
+repaired_repo=$FIXTURE/repaired/repo
+repaired_root=$FIXTURE/repaired/root
+repaired_state=$repaired_root/control/deploy-state
+repaired_events=$FIXTURE/repaired/events
+run_actual_controller "$repaired_repo" "$repaired_root" \
+  "$BASE" "$BASE" "$repaired_events" >/dev/null
+for marker in frontend backend control postgres-pool-bootstrap; do
+  [[ $(<"$repaired_state/$marker.sha") == "$BASE" ]]
+done
+run_actual_controller "$repaired_repo" "$repaired_root" \
+  "$BRIDGE" "$BASE" "$repaired_events" >/dev/null
+[[ $(git -C "$repaired_repo" rev-parse HEAD) == "$BRIDGE" ]]
+[[ $(<"$repaired_state/backend.sha") == "$BASE" ]]
+[[ $(<"$repaired_state/frontend.sha") == "$BASE" ]]
+[[ $(<"$repaired_state/control.sha") == "$BRIDGE" ]]
+run_actual_controller "$repaired_repo" "$repaired_root" \
+  "$TARGET" "$BRIDGE" "$repaired_events" >/dev/null
+[[ $(git -C "$repaired_repo" rev-parse HEAD) == "$TARGET" ]]
+[[ $(<"$repaired_state/backend.sha") == "$BASE" ]]
+[[ $(<"$repaired_state/frontend.sha") == "$BASE" ]]
+[[ $(<"$repaired_state/control.sha") == "$TARGET" ]]
+[[ $(<"$repaired_state/postgres-pool-bootstrap.sha") == "$TARGET" ]]
+[[ $(grep -cF "controller=$BASE " "$repaired_events") == 2 ]]
+[[ $(grep -cF "controller=$BRIDGE " "$repaired_events") == 1 ]]
