@@ -217,7 +217,6 @@ git -C "$GRAPH_REPO" rev-list --first-parent "$TARGET" | \
 expected_review_delta=$(printf '%s\n' \
   .github/workflows/production-deploy.yml \
   .github/workflows/pull-request.yml \
-  ops/deploy/github-production-deploy-client.test.sh \
   ops/deploy/production-deploy-shell-files.sh \
   ops/deploy/production-deploy-shell-files.test.sh \
   ops/deploy/production-release-b-bridge-order.test.sh \
