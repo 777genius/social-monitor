@@ -160,6 +160,28 @@ try {
       (collection) =>
         (collection.scans[0].observability.paginationStopReason = "unknown"),
     ],
+    [
+      "missing successful freshness lag",
+      (collection) =>
+        delete collection.scans[0].observability.slo.freshnessLagSeconds,
+    ],
+    [
+      "missing successful freshness proof",
+      (collection) => (collection.scans[0].observability.freshness = {}),
+    ],
+    [
+      "contradictory retry disposition",
+      (collection) =>
+        (collection.scans[0].observability.slo.retryDisposition = "immediate"),
+    ],
+    [
+      "contradictory window total",
+      (collection) => (collection.targetWindow.feedItemCount = 123),
+    ],
+    [
+      "foreign window provider",
+      (collection) => (collection.targetWindow.providerCounts.foreign = 0),
+    ],
     ["target-less", (collection) => collection.targets.pop()],
     ["fresh-window-less", (collection) => delete collection.freshWindow],
     [

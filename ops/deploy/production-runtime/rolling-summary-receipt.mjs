@@ -329,7 +329,11 @@ function isCompleteObservation(observation, acquisitionMode) {
     isNonnegativeInteger(observation.rateLimitEventCount) &&
     coverageStates.includes(observation.coverageState) &&
     isCompleteSlo(observation.slo, targetItemCount) &&
-    isCompleteFreshness(observation.freshness, observation.slo)
+    isCompleteFreshness(
+      observation.freshness,
+      observation.slo,
+      observation.acceptedItemCount,
+    )
   );
 }
 
@@ -352,32 +356,52 @@ function isCompleteSlo(slo, targetItemCount) {
     reasons.every((reason) => sloReasons.includes(reason)) &&
     new Set(reasons).size === reasons.length &&
     slo.met === (reasons.length === 0) &&
-    retryDispositions.includes(slo.retryDisposition)
+    retryDispositions.includes(slo.retryDisposition) &&
+    slo.retryDisposition === expectedRetryDisposition(reasons)
   );
 }
 
-function isCompleteFreshness(freshness, slo) {
+function expectedRetryDisposition(reasons) {
+  if (reasons.length === 0 || reasons.includes("target_missing")) return "none";
+  return reasons.includes("rate_limited") ? "deferred" : "immediate";
+}
+
+function isCompleteFreshness(freshness, slo, acceptedItemCount) {
   if (!isRecord(freshness)) return false;
   const oldest = freshness.oldestAcceptedPublishedAt;
   const newest = freshness.newestAcceptedPublishedAt;
   const lag = freshness.lagToWindowEndSeconds;
+  const hasAnyFreshness =
+    oldest !== undefined || newest !== undefined || lag !== undefined;
   return (
     (oldest === undefined || isIsoTimestamp(oldest)) &&
     (newest === undefined || isIsoTimestamp(newest)) &&
     (oldest === undefined ||
       newest === undefined ||
       new Date(oldest).valueOf() <= new Date(newest).valueOf()) &&
-    (newest === undefined
-      ? lag === undefined
-      : isNonnegativeInteger(lag) && lag === slo.freshnessLagSeconds)
+    (acceptedItemCount === 0 || hasAnyFreshness) &&
+    (hasAnyFreshness
+      ? isIsoTimestamp(newest) &&
+        isNonnegativeInteger(lag) &&
+        lag === slo.freshnessLagSeconds
+      : slo.freshnessLagSeconds === undefined)
   );
 }
 
 function isCompleteWindow(window) {
+  if (!isRecord(window) || !isNumericRecord(window.providerCounts, true)) {
+    return false;
+  }
+  const providerTotal = Object.values(window.providerCounts).reduce(
+    (total, count) => total + count,
+    0,
+  );
   return (
-    isRecord(window) &&
     isNonnegativeInteger(window.feedItemCount) &&
-    isNumericRecord(window.providerCounts, true) &&
+    window.feedItemCount === providerTotal &&
+    Object.keys(window.providerCounts).every((key) =>
+      requiredProviders.includes(key),
+    ) &&
     isStringRecord(window.newestItemAtByProvider) &&
     isNumericRecord(window.sourceQueryLaneCoverageByProvider, false) &&
     isNumericRecord(window.distinctSourceQueryLaneCountByProvider, true) &&
