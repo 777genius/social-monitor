@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { writeFileSync } from "node:fs";
+import process from "node:process";
 
 const [kind, path, runId, collectionDate, degradedValue] =
   process.argv.slice(2);

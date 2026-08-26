@@ -160,7 +160,7 @@ try {
   assert.equal(receipt.collection.providers.length, 5);
   assert.equal(receipt.publication.readerSummaryId, "summary-id");
 
-  for (const [label, mutate] of [
+  for (const [, mutate] of [
     ["collection-less", (value) => delete value.collection],
     ["schema-less", (value) => delete value.schemaVersion],
     ["format-less", (value) => delete value.artifactFormat],
@@ -173,7 +173,7 @@ try {
     ["incomplete provider", (value) => delete value.collection.providers[0].coverageState],
     ["untruthful quality", (value) => (value.collection.finalDayQualityGatePassed = true)],
   ]) {
-    const invalid = structuredClone(degradedReceipt);
+    const invalid = JSON.parse(JSON.stringify(degradedReceipt));
     mutate(invalid);
     writeFileSync(invalidReceiptPath, JSON.stringify(invalid));
     runFailure("validate-receipt", invalidReceiptPath, runId, date);
