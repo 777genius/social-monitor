@@ -14,6 +14,7 @@ RUN npm ci
 COPY tsconfig.json tsconfig.build.json ./
 COPY prisma.config.ts ./
 COPY prisma ./prisma
+COPY scripts/check-feed-promotion-index-recovery.ts ./scripts/
 COPY apps ./apps
 COPY libs ./libs
 
