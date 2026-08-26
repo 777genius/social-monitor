@@ -8,6 +8,9 @@ BRIDGE_RELEASE_SHA=$(git -C "$PROJECT_ROOT" rev-parse '472d835c^{commit}')
 FIXTURE=$(mktemp -d "${TMPDIR:-/tmp}/rabbitmq-quorum-deploy-bridge.XXXXXX")
 trap 'rm -rf "$FIXTURE"' EXIT
 
+# shellcheck source=ops/deploy/production-deploy-shell-files.sh
+source "$SCRIPT_DIR/production-deploy-shell-files.sh"
+
 if ! command stat -c '%a' "$SCRIPT_DIR/social-monitor-production-deploy.sh" >/dev/null 2>&1; then
   # Production runs GNU coreutils. Keep this deterministic fixture runnable on
   # macOS as well, where BSD stat uses a different format interface.
@@ -445,9 +448,13 @@ grep -Fx "  $HEALTH_LIBRARY" <<< "$backend_path_block" >/dev/null
 grep -Fx "  $QUORUM_SCRIPT" <<< "$backend_path_block" >/dev/null
 grep -Fx "  $RECOVERY_SCRIPT" <<< "$backend_path_block" >/dev/null
 workflow=$SCRIPT_DIR/../../.github/workflows/production-deploy.yml
-workflow_deploy_shell_files=$(sed -n '/^          deploy_shell_files=(/,/^          )/p' "$workflow")
-grep -Fx '            ops/deploy/rabbitmq-quorum-deploy-bridge-transition.test.sh' \
-  <<< "$workflow_deploy_shell_files" >/dev/null
+transition_test=ops/deploy/rabbitmq-quorum-deploy-bridge-transition.test.sh
+mapfile -t bridge_deploy_shell_files < <(production_deploy_shell_files true)
+mapfile -t non_bridge_deploy_shell_files < <(production_deploy_shell_files false)
+printf '%s\n' "${bridge_deploy_shell_files[@]}" | \
+  grep -Fx "$transition_test" >/dev/null
+printf '%s\n' "${non_bridge_deploy_shell_files[@]}" | \
+  grep -Fx "$transition_test" >/dev/null
 if grep -F "$RECOVERY_SCRIPT" "$workflow" >/dev/null; then
   echo 'V4A4 workflow must not require the future RabbitMQ recovery script' >&2
   exit 1

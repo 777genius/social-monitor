@@ -220,7 +220,8 @@ expected_review_delta=$(printf '%s\n' \
   ops/deploy/github-production-deploy-client.test.sh \
   ops/deploy/production-deploy-shell-files.sh \
   ops/deploy/production-deploy-shell-files.test.sh \
-  ops/deploy/production-release-b-bridge-order.test.sh | LC_ALL=C sort)
+  ops/deploy/production-release-b-bridge-order.test.sh \
+  ops/deploy/rabbitmq-quorum-deploy-bridge-transition.test.sh | LC_ALL=C sort)
 actual_review_delta=$(git -C "$GRAPH_REPO" diff --name-only --no-renames \
   "$REVIEW_PARENT" "$TARGET" | LC_ALL=C sort)
 [[ $actual_review_delta == "$expected_review_delta" ]]
