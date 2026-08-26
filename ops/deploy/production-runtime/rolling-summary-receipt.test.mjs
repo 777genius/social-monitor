@@ -54,6 +54,43 @@ try {
   );
   runFailure("validate-collection", priorCollectionPath, date);
 
+  const accumulatedCollectionPath = join(
+    directory,
+    "collection.accumulated.json",
+  );
+  const accumulatedCollection = collectionFixture();
+  accumulatedCollection.scans[0].observability.slo.evaluatedItemCount = 25;
+  accumulatedCollection.targetWindow.providerCounts["github-trending-page"] =
+    25;
+  accumulatedCollection.targetWindow.feedItemCount += 15;
+  writeFileSync(
+    accumulatedCollectionPath,
+    JSON.stringify(accumulatedCollection),
+  );
+  run("validate-collection", accumulatedCollectionPath, date);
+
+  const deduplicatedCollectionPath = join(
+    directory,
+    "collection.deduplicated.json",
+  );
+  const deduplicatedCollection = collectionFixture();
+  deduplicatedCollection.scans[0].observability.slo.evaluatedItemCount = 5;
+  deduplicatedCollection.scans[0].observability.slo.coverageRatio = 0.5;
+  deduplicatedCollection.scans[0].observability.slo.met = false;
+  deduplicatedCollection.scans[0].observability.slo.reasons = [
+    "target_shortfall",
+  ];
+  deduplicatedCollection.scans[0].observability.slo.retryDisposition =
+    "immediate";
+  deduplicatedCollection.targetWindow.providerCounts["github-trending-page"] =
+    5;
+  deduplicatedCollection.targetWindow.feedItemCount -= 5;
+  writeFileSync(
+    deduplicatedCollectionPath,
+    JSON.stringify(deduplicatedCollection),
+  );
+  run("validate-collection", deduplicatedCollectionPath, date);
+
   for (const [label, mutate] of [
     ["schema-less", (collection) => delete collection.schemaVersion],
     ["wrong schema", (collection) => (collection.schemaVersion = 2)],

@@ -413,7 +413,7 @@ function isCompleteObservation(
     isCompleteFreshness(
       observation.freshness,
       observation.slo,
-      observation.acceptedItemCount,
+      observation.slo.evaluatedItemCount,
       collectionDate,
       collectionCompletedAt,
     )
@@ -423,8 +423,7 @@ function isCompleteObservation(
 function isCompleteSlo(slo, observation) {
   if (
     !isRecord(slo) ||
-    slo.targetItemCount !== observation.targetItemCount ||
-    slo.evaluatedItemCount !== observation.acceptedItemCount
+    slo.targetItemCount !== observation.targetItemCount
   ) {
     return false;
   }
@@ -454,10 +453,10 @@ function expectedSloReasons(observation, slo) {
   const reasons = [];
   if (observation.targetItemCount === null || observation.targetItemCount <= 0) {
     reasons.push("target_missing");
-  } else if (observation.acceptedItemCount < observation.targetItemCount) {
+  } else if (slo.evaluatedItemCount < observation.targetItemCount) {
     reasons.push("target_shortfall");
   }
-  if (observation.acceptedItemCount > 0) {
+  if (slo.evaluatedItemCount > 0) {
     if (slo.freshnessLagSeconds === undefined) {
       reasons.push("freshness_missing");
     } else if (slo.freshnessLagSeconds > slo.maxFreshnessLagSeconds) {
@@ -474,7 +473,7 @@ function expectedSloReasons(observation, slo) {
     reasons.push("partial_retryable_failure");
   }
   if (
-    observation.acceptedItemCount === 0 &&
+    slo.evaluatedItemCount === 0 &&
     ["failed", "skipped"].includes(observation.paginationStopReason)
   ) {
     reasons.push("provider_unavailable");
