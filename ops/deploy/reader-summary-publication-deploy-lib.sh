@@ -35,6 +35,13 @@ if declare -F source_reviewed_deploy_library >/dev/null && \
       ops/deploy/reader-summary-original-cutoff-correction-lib.sh \
       'reader summary original cutoff correction library'
   fi
+  if git -C "$REPO" cat-file -e \
+      "$reader_summary_publication_support_sha:ops/deploy/reader-summary-telemetry-migration-recovery-lib.sh" \
+      2>/dev/null; then
+    source_reviewed_deploy_library "$reader_summary_publication_support_sha" \
+      ops/deploy/reader-summary-telemetry-migration-recovery-lib.sh \
+      'reader summary telemetry migration recovery library'
+  fi
   unset reader_summary_publication_support_sha
 else
   reader_summary_publication_support_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -47,6 +54,10 @@ else
   if [[ -f $reader_summary_publication_support_dir/reader-summary-original-cutoff-correction-lib.sh ]]; then
     # shellcheck source=ops/deploy/reader-summary-original-cutoff-correction-lib.sh
     source "$reader_summary_publication_support_dir/reader-summary-original-cutoff-correction-lib.sh"
+  fi
+  if [[ -f $reader_summary_publication_support_dir/reader-summary-telemetry-migration-recovery-lib.sh ]]; then
+    # shellcheck source=ops/deploy/reader-summary-telemetry-migration-recovery-lib.sh
+    source "$reader_summary_publication_support_dir/reader-summary-telemetry-migration-recovery-lib.sh"
   fi
   unset reader_summary_publication_support_dir
 fi
@@ -425,6 +436,10 @@ deploy_reader_summary_publication_migrations() (
     "$secret" "$ca_certificate" "$runtime_role" pre || return
 
   resolve_reader_summary_original_cutoff_failure || return
+
+  if declare -F resolve_reader_summary_telemetry_migration_failure >/dev/null; then
+    resolve_reader_summary_telemetry_migration_failure || return
+  fi
 
   feed_promotion_index_state=$(reader_summary_feed_promotion_index_state \
     "$secret" "$ca_certificate") || return

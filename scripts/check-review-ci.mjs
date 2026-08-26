@@ -71,6 +71,7 @@ const requiredFragments = [
   "npm run check:user-auth-boundary",
   "npm run check:tenant-rls-postgres",
   "npm run check:reader-summary-daily-execution-cursor-postgres18",
+  "npm run check:reader-summary-daily-terminal-authority-postgres",
   "npm run check:reader-summary-weekly-review-manifest-postgres18",
   "npm run check:container",
   "npm run check:runtime-compose",
@@ -119,6 +120,7 @@ for (const fragment of [
   "READER_SUMMARY_PUBLICATION_TEST_ADMIN_DATABASE_URL: postgresql://social_monitor_weekly_review_manifest_ci_admin:social_monitor_local_password@127.0.0.1:5432/social_monitor_weekly_review_manifest_ci_admin",
   "npm run check:reader-summary-weekly-review-manifest-postgres18",
   "npm run check:reader-summary-daily-execution-cursor-postgres18",
+  "npm run check:reader-summary-daily-terminal-authority-postgres",
 ]) {
   if (weeklyReviewManifestJob === undefined || !weeklyReviewManifestJob.includes(fragment)) {
     violations.push(

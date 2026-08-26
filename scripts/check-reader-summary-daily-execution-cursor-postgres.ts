@@ -57,6 +57,9 @@ const checkerSource = readFileSync(
 const productionOwnerTopologyFixtureSource = readFileSync(
   "scripts/lib/reader-summary-daily-production-owner-topology-postgres.ts", "utf8",
 );
+const publicationPostMigrationSql = readFileSync(
+  "ops/deploy/reader-summary-publication-post-migration.sql", "utf8",
+);
 const serverUrl = requiredAdminUrl(process.env);
 const targetUrl = databaseUrl(serverUrl, databaseName);
 const server = new Pool({ connectionString: serverUrl, max: 1 });
@@ -284,7 +287,8 @@ const main = async (): Promise<void> => {
     await admin.query("RESET ROLE");
     await admin.query(boundedMaintenanceMigration);
     await grantAndAssertReaderSummaryDailyProductionOwnerTopology({
-      admin, migrationAdminRole, schemaOwnerRole,
+      admin, migrationAdminRole, postMigrationSql: publicationPostMigrationSql,
+      schemaOwnerRole,
     });
     const { historicalScope, upgradeScopes } =
       await withSchemaOwnerFixtureRole(admin, async (fixtureAdmin) => ({
@@ -569,7 +573,8 @@ const transferActiveClaimOwner = async (
       'public.claim_reader_summary_daily_execution(uuid,uuid,text,date,timestamp with time zone)'::pg_catalog.regprocedure`);
   const currentOwner = result.rows[0]?.current_owner;
   assert(currentOwner !== undefined && result.rows[0]?.owner_has_create === false,
-    "active-claim fixture transfer requires the current owner without schema CREATE");
+    "active-claim fixture transfer requires the current owner without schema CREATE " +
+      `(currentOwner=${currentOwner ?? "missing"})`);
   await bootstrapTarget.query(`
     ALTER FUNCTION public.claim_reader_summary_daily_execution(
       UUID, UUID, TEXT, DATE, TIMESTAMPTZ

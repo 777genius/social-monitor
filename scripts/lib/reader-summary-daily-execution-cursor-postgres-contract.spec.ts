@@ -12,6 +12,8 @@ import {
   assertReaderSummaryDailyMigrationContract,
   withCanonicalPublicationFixtureRole,
 } from "./reader-summary-daily-execution-cursor-postgres-contract";
+import { readerSummaryDailyProductionOwnerAclSql } from
+  "./reader-summary-daily-production-owner-topology-postgres";
 
 const migrationPath =
   "prisma/migrations/20260802100000_reader_summary_daily_execution_cursor/migration.sql";
@@ -223,19 +225,52 @@ describe("reader summary daily execution cursor PostgreSQL contract", () => {
     expect(() => assertReaderSummaryDailyProductionOwnerTopologyFixtureContract(source))
       .not.toThrow();
     for (const mutation of [
-      "GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE",
-      "GRANTED BY CURRENT_USER",
-      "acl.grantor = cursor_relation.relowner",
-      "acl.grantor = job_relation.relowner",
+      "readerSummaryDailyProductionOwnerAclSql(",
+      "reader_summary_daily_source_authorities",
+      "('feed_items', ARRAY['SELECT']::TEXT[])",
+      "('source_items', ARRAY['SELECT']::TEXT[])",
+      "acl.grantor <> relation.relowner OR acl.is_grantable",
       "row.active_owner_has_create === false",
-      "row.cursor_acl_exact === true",
-      "row.job_acl_exact === true",
+      'row.relation_count === "5"',
+      "row.relation_acls_exact === true",
       "row.bounded_owner_has_create === true",
     ]) {
       expect(() => assertReaderSummaryDailyProductionOwnerTopologyFixtureContract(
-        source.replace(mutation, "removed"),
+        source.replaceAll(mutation, "removed"),
       )).toThrow("grant and prove exact owner table ACLs");
     }
+    const productionSql = readFileSync(
+      "ops/deploy/reader-summary-publication-post-migration.sql", "utf8",
+    );
+    const aclSql = readerSummaryDailyProductionOwnerAclSql(productionSql);
+    expect(aclSql).toContain("GRANT SELECT, INSERT, UPDATE ON TABLE");
+    expect(aclSql).toContain("GRANT SELECT, INSERT ON TABLE");
+    expect(aclSql).toContain(
+      'GRANT SELECT ON TABLE public."feed_items", public."source_items"',
+    );
+    expect(aclSql).not.toContain("DELETE");
+    expect(() => readerSummaryDailyProductionOwnerAclSql(
+      productionSql.replace(
+        "GRANT SELECT, INSERT, UPDATE ON TABLE",
+        "GRANT SELECT, INSERT, UPDATE ON TABLE\n    -- DELETE is forbidden",
+      ),
+    )).toThrow("unexpectedly grants DELETE");
+  });
+
+  it("rejects production topology setup moved after telemetry starts", () => {
+    const checker = readFileSync(
+      "scripts/check-reader-summary-daily-execution-cursor-postgres.ts", "utf8",
+    );
+    const call = `    await grantAndAssertReaderSummaryDailyProductionOwnerTopology({
+      admin, migrationAdminRole, postMigrationSql: publicationPostMigrationSql,
+      schemaOwnerRole,
+    });`;
+    const firstAttempt = "    try {\n      await applyTelemetryMigrationAsMigrationAdmin(admin);";
+    const mutated = checker.replace(call, "").replace(
+      firstAttempt, `${firstAttempt}\n${call}`,
+    );
+    expect(() => assertReaderSummaryDailyCheckerActivationOwnershipContract(mutated))
+      .toThrow("production mixed-owner topology");
   });
 
   it("rejects a dormant daily table handoff moved after activation", () => {

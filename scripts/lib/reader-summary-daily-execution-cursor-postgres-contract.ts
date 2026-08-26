@@ -288,6 +288,15 @@ export const assertReaderSummaryDailyCheckerActivationOwnershipContract = (
       ?.length === 1,
   "daily checker must reproduce and restore the mixed and unaccepted owner topologies");
   const mixedOwnerProof = source.indexOf("rewrittenClaimProfiles");
+  const boundedMaintenance = source.indexOf(
+    "await admin.query(boundedMaintenanceMigration);",
+  );
+  const productionTopology = source.indexOf(
+    "await grantAndAssertReaderSummaryDailyProductionOwnerTopology({",
+  );
+  const firstTelemetryAttempt = source.indexOf(
+    "await applyTelemetryMigrationAsMigrationAdmin(admin)",
+  );
   const runtimeOwnerHandoff = source.indexOf(
     "await transferActiveClaimOwner(admin, firstPool, schemaOwnerRole);",
   );
@@ -296,14 +305,16 @@ export const assertReaderSummaryDailyCheckerActivationOwnershipContract = (
   );
   assert(mixedOwnerProof > activeClaimHandoff && runtimeOwnerHandoff > mixedOwnerProof &&
     runtimeContract > runtimeOwnerHandoff &&
-    source.includes("grantAndAssertReaderSummaryDailyProductionOwnerTopology({\n" +
-      "      admin, migrationAdminRole, schemaOwnerRole,\n" +
-      "    });"),
+    boundedMaintenance >= 0 && productionTopology > boundedMaintenance &&
+    firstTelemetryAttempt > productionTopology &&
+    source.includes("postMigrationSql: publicationPostMigrationSql"),
   "daily checker must reproduce and prove the production mixed-owner topology");
   assert(transferHelper.includes(
     "pg_catalog.pg_get_userbyid(proowner) AS current_owner",
   ) && transferHelper.includes(
     "owner_has_create === false",
+  ) && transferHelper.includes(
+    '`(currentOwner=${currentOwner ?? "missing"})`',
   ) && transferHelper.includes(
     "bootstrapTarget: Pool",
   ) && transferHelper.includes(
@@ -330,24 +341,29 @@ export const assertReaderSummaryDailyCheckerActivationOwnershipContract = (
 export const assertReaderSummaryDailyProductionOwnerTopologyFixtureContract = (
   source: string,
 ): void => {
-  const grant = source.indexOf("GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE");
+  const grant = source.indexOf(
+    "await admin.query(readerSummaryDailyProductionOwnerAclSql(",
+  );
   const topology = source.indexOf("const topology = await admin.query");
   const proof = source.indexOf("const row = topology.rows[0]");
   assert(grant >= 0 && topology > grant && proof > topology &&
-    source.includes("SET ROLE ${quoteIdentifier(schemaOwnerRole)};") &&
-    source.includes("TO ${quoteIdentifier(migrationAdminRole)} GRANTED BY CURRENT_USER") &&
-    source.includes("public.reader_summary_daily_execution_cursors") &&
-    source.includes("public.reader_summary_daily_model_jobs") &&
-    source.match(/pg_catalog\.count\(\*\) = 4/gu)?.length === 2 &&
-    source.match(/ARRAY\['SELECT', 'INSERT', 'UPDATE', 'DELETE'\]/gu)?.length === 2 &&
-    source.includes("acl.grantor = cursor_relation.relowner") &&
-    source.includes("acl.grantor = job_relation.relowner") &&
-    source.match(/NOT pg_catalog\.bool_or\(acl\.is_grantable\)/gu)?.length === 2 &&
+    source.includes("export const readerSummaryDailyProductionOwnerAclSql") &&
+    source.includes("DO $grant_legacy_daily_function_owner_acl$") &&
+    source.includes("production bootstrap must contain exactly one daily owner ACL block") &&
+    source.includes("assert(!block.includes(\"DELETE\")") &&
+    source.includes("postMigrationSql, migrationAdminRole, schemaOwnerRole") &&
+    source.includes("reader_summary_daily_execution_cursors") &&
+    source.includes("reader_summary_daily_model_jobs") &&
+    source.includes("reader_summary_daily_source_authorities") &&
+    source.includes("('feed_items', ARRAY['SELECT']::TEXT[])") &&
+    source.includes("('source_items', ARRAY['SELECT']::TEXT[])") &&
+    source.match(/ARRAY\['INSERT','SELECT','UPDATE'\]::TEXT\[\]/gu)?.length === 2 &&
+    source.includes("ARRAY['INSERT','SELECT']::TEXT[]") &&
+    source.includes("acl.grantor <> relation.relowner OR acl.is_grantable") &&
     source.includes("row.active_owner_has_create === false") &&
-    source.includes("row.cursor_owner === schemaOwnerRole") &&
-    source.includes("row.cursor_acl_exact === true") &&
-    source.includes("row.job_owner === schemaOwnerRole") &&
-    source.includes("row.job_acl_exact === true") &&
+    source.includes('row.relation_count === "5"') &&
+    source.includes("row.relation_owners_exact === true") &&
+    source.includes("row.relation_acls_exact === true") &&
     source.includes("row.bounded_owner === schemaOwnerRole") &&
     source.includes("row.bounded_owner_has_create === true") &&
     source.includes("row.fixture_current_user === migrationAdminRole") &&
