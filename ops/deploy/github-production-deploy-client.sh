@@ -6,6 +6,7 @@ PATH=/usr/local/bin:/usr/bin:/bin
 ZERO_SHA=0000000000000000000000000000000000000000
 POSTGRES_POOL_BOOTSTRAP_VERSION=postgres-pool-v1
 DAILY_C1_BRIDGE_POLICY_SHA=944fdb6da3071f70a69c7048c9fcdf1c2552603e
+RELEASE_B_FAILED_IDLE_BRIDGE_SHA=85c5d22febf1e7ce5fa5967d2460ccb73ca96a9d
 SSH_DIRECTORY=${DEPLOY_SSH_DIRECTORY:-${HOME:?HOME is required}/.ssh}
 SSH_KEY_PATH=${DEPLOY_SSH_KEY_PATH:-$SSH_DIRECTORY/social-monitor-production}
 SSH_KNOWN_HOSTS_PATH=${DEPLOY_SSH_KNOWN_HOSTS_PATH:-$SSH_DIRECTORY/known_hosts}
@@ -611,6 +612,19 @@ install_daily_c1_bridge_policy() {
     fail "daily C1 bridge policy install failed with status $status"
 }
 
+install_release_b_failed_idle_bridge() {
+  local sha=$1 status
+  [[ $sha == "$RELEASE_B_FAILED_IDLE_BRIDGE_SHA" ]] || \
+    fail 'Release B failed-idle bridge SHA is not the reviewed pin'
+  if run_remote deploy "$sha"; then
+    status=0
+  else
+    status=$?
+  fi
+  ((status == 0 || status == 255)) || \
+    fail "Release B failed-idle bridge install failed with status $status"
+}
+
 upload_frontend() {
   local sha=$1
   local archive=${2:-}
@@ -660,6 +674,12 @@ case $action in
     validate_sha "$2"
     validate_remote_environment
     install_daily_c1_bridge_policy "$2"
+    ;;
+  install-release-b-failed-idle-bridge)
+    [[ $# == 2 ]] || fail 'install-release-b-failed-idle-bridge requires its pinned SHA'
+    validate_sha "$2"
+    validate_remote_environment
+    install_release_b_failed_idle_bridge "$2"
     ;;
   maintenance)
     [[ $# == 3 || $# == 4 || $# == 5 || $# == 6 ]] || \

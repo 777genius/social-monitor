@@ -605,6 +605,7 @@ jobs:
           bash ops/deploy/x-collector-image-deploy-lib.test.sh
           if [[ $bridge_phase == false ]]; then
             bash ops/deploy/github-production-deploy-client.test.sh
+            bash ops/deploy/production-release-b-bridge-order.test.sh
           fi
           bash ops/deploy/production-release-a-transition.test.sh
           bash ops/deploy/postgres-pool-atomic-bootstrap-lib.test.sh
@@ -904,15 +905,15 @@ jobs:
         with: {fetch-depth: 0}
       - name: Validate graph and immutable manifests before Release B SSH
         run: bash ops/deploy/production-release-a-transition.sh validate "$GITHUB_SHA"
-      - name: Deploy reviewed bridge and reopen restricted SSH
+      - name: Install reviewed failed-idle bridge and reopen restricted SSH
         env:
           DEPLOY_KEY: ${{ secrets.PRODUCTION_SSH_PRIVATE_KEY }}
           KNOWN_HOSTS: ${{ secrets.PRODUCTION_SSH_KNOWN_HOSTS }}
         run: |
           set -euo pipefail
-          client=ops/deploy/github-production-deploy-client.sh; bridge_release=85c5d22febf1e7ce5fa5967d2460ccb73ca96a9d
+          client=ops/deploy/github-production-deploy-client.sh; release_b_failed_idle_bridge_sha=85c5d22febf1e7ce5fa5967d2460ccb73ca96a9d
           bash "$client" configure
-          bash "$client" deploy "$bridge_release"
+          bash "$client" install-release-b-failed-idle-bridge "$release_b_failed_idle_bridge_sha"
           bash "$client" cleanup; bash "$client" configure
       - name: Freshly require A-complete or B-complete
         id: b_state
