@@ -44,7 +44,6 @@ const legacyLineCapDebt = new Map([
   ["scripts/check-delivery-prisma-persistence.ts", 1291],
   ["scripts/check-external-beta-evidence-runner.mjs", 4268],
   ["scripts/check-live-multi-provider-summary-smoke.ts", 2465],
-  ["scripts/check-reader-summary-quality-dashboard.ts", 2272],
   ["scripts/check-reader-summary-rest-smoke.ts", 1199],
   ["scripts/check-release-artifact-evidence.mjs", 1062],
   ["scripts/check-security-final-sweep.mjs", 1332],
