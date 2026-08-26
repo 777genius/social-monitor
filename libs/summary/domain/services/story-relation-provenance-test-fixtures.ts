@@ -1,4 +1,4 @@
-import type { ApprovedSameStoryRelation } from
+import type { ApprovedSameStoryRelation, SummarySourceWindow } from
   "../value-objects/summary-evidence-item";
 import {
   buildStoryRelationCandidateVerificationProof,
@@ -12,6 +12,8 @@ import type { StoryRelationCandidate } from "./story-relation-candidates";
 import { verifiedStoryRelationPairKey } from "./story-cluster-membership";
 import { readerSummaryScopeKey, type ReaderSummaryScope } from
   "../value-objects/reader-summary-scope";
+import { bindAuthenticatedStoryRelationExecutionProof } from
+  "./story-relation-proof-authority";
 
 export const attestedStoryRelationBatchProofFixture = (params: {
   readonly tenantId: unknown;
@@ -29,6 +31,8 @@ export const attestedStoryRelationBatchProofFixture = (params: {
     scopeKey: readerSummaryScopeKey(params.scope),
     requestedAt: params.requestedAt,
     verificationLane: params.verificationLane,
+    selection: params.selection,
+    candidates: params.candidates,
   });
   const selectedOutputSha256 = canonicalStoryRelationProofSha256({
     decisions: params.decisions,
@@ -51,7 +55,8 @@ export const attestedStoryRelationBatchProofFixture = (params: {
     selectedOutputKind: "structured_output" as const,
     selectedOutputSha256,
   };
-  return buildStoryRelationExecutionProof({
+  return bindAuthenticatedStoryRelationExecutionProof(
+    buildStoryRelationExecutionProof({
     verificationLane: params.verificationLane,
     promptVersion: "reader_summary.story_relation.agent_runtime.v2",
     selection: params.selection,
@@ -62,8 +67,9 @@ export const attestedStoryRelationBatchProofFixture = (params: {
     executionAttestation,
     executionAttestationSha256:
       canonicalStoryRelationProofSha256(executionAttestation),
-    selectedOutputSha256,
-  });
+      selectedOutputSha256,
+    }),
+  );
 };
 
 export const attestedStoryRelationFixture = (params: {
@@ -73,6 +79,7 @@ export const attestedStoryRelationFixture = (params: {
   readonly verificationLane?: "semantic_primary" | "guarded_recall_primary";
   readonly rankingPolicyVersion?: string;
   readonly candidatePolicyVersion?: string;
+  readonly sourceWindow?: SummarySourceWindow;
 }): ApprovedSameStoryRelation => {
   const verificationLane = params.verificationLane ?? "semantic_primary";
   const rankingPolicyVersion = params.rankingPolicyVersion ?? "story_ranking_v10";
@@ -89,9 +96,25 @@ export const attestedStoryRelationFixture = (params: {
     confidenceScore: confidence,
   }];
   const selectedOutputSha256 = canonicalStoryRelationProofSha256({ decisions });
+  const sourceWindow = params.sourceWindow ?? {
+    windowId: `story-relation-fixture:${canonicalPairId}`,
+    startedAt: new Date("2026-08-20T00:00:00.000Z"),
+    endedAt: new Date("2026-08-21T00:00:00.000Z"),
+    selectedFeedItemIds: [params.leftFeedItemId, params.rightFeedItemId],
+    storyClusterIds: [candidate.leftClusterId, candidate.rightClusterId],
+  };
+  const selection = { rankingPolicyVersion, sourceWindow };
   const executionAttestation = {
     schemaVersion: 1 as const,
-    requestId: `story-relation-fixture:${canonicalPairId}`,
+    requestId: storyRelationExecutionRequestId({
+      tenantId: "story-relation-fixture-tenant",
+      workspaceId: "story-relation-fixture-workspace",
+      scopeKey: "story-relation-fixture-scope",
+      requestedAt: sourceWindow.endedAt,
+      verificationLane,
+      selection,
+      candidates: [candidate],
+    }),
     purpose: "social_monitor.reader_summary.verify_story_relations.v2",
     canonicalRequestSha256: canonicalStoryRelationProofSha256({
       canonicalPairId, rankingPolicyVersion, verificationLane,
@@ -107,27 +130,20 @@ export const attestedStoryRelationFixture = (params: {
     selectedOutputKind: "structured_output" as const,
     selectedOutputSha256,
   };
-  const executionProof = buildStoryRelationExecutionProof({
+  const executionProof = bindAuthenticatedStoryRelationExecutionProof(
+    buildStoryRelationExecutionProof({
     verificationLane,
     promptVersion: "reader_summary.story_relation.agent_runtime.v2",
-    selection: {
-      rankingPolicyVersion,
-      sourceWindow: {
-        windowId: `story-relation-fixture:${canonicalPairId}`,
-        startedAt: new Date("2026-08-20T00:00:00.000Z"),
-        endedAt: new Date("2026-08-21T00:00:00.000Z"),
-        selectedFeedItemIds: [params.leftFeedItemId, params.rightFeedItemId],
-        storyClusterIds: [candidate.leftClusterId, candidate.rightClusterId],
-      },
-    },
+    selection,
     candidates: [candidate],
     decisions,
     normalizedOutputSha256: canonicalStoryRelationProofSha256(decisions),
     executionAttestation,
     executionAttestationSha256:
       canonicalStoryRelationProofSha256(executionAttestation),
-    selectedOutputSha256,
-  });
+      selectedOutputSha256,
+    }),
+  );
   return {
     canonicalPairId,
     leftFeedItemId: params.leftFeedItemId,
@@ -146,6 +162,8 @@ export const attestedStoryRelationFixture = (params: {
     verificationProof: buildStoryRelationCandidateVerificationProof({
       executionProof,
       canonicalPairId,
+      leftFeedItemId: params.leftFeedItemId,
+      rightFeedItemId: params.rightFeedItemId,
       featureDigest,
       confidenceScore: confidence,
     }),

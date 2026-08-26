@@ -2,6 +2,7 @@ import {
   readerSummaryScopeKey,
   buildStoryRelationExecutionProof,
   storyRelationExecutionRequestId,
+  type StoryRelationExecutionProof,
 } from "../../domain";
 import type {
   AgentRuntimeClientPort,
@@ -71,6 +72,8 @@ export class AgentRuntimeReaderSummaryStoryRelationVerifier implements ReaderSum
   private readonly timeoutMs: number;
   private readonly maxOutputTokens: number;
   private readonly verifiedAttestationSink?: VerifiedReaderSummaryExecutionAttestationSink;
+  private readonly authenticatedExecutionProofs =
+    new WeakSet<StoryRelationExecutionProof>();
 
   constructor(options: AgentRuntimeReaderSummaryStoryRelationVerifierOptions) {
     this.client = options.client;
@@ -125,6 +128,8 @@ export class AgentRuntimeReaderSummaryStoryRelationVerifier implements ReaderSum
             scopeKey,
             requestedAt: input.requestedAt,
             verificationLane: input.verificationLane,
+            selection: requiredProofSelection(input),
+            candidates: input.candidates,
           }),
       tenantId: input.tenantId,
       workspaceId: input.workspaceId,
@@ -213,11 +218,21 @@ export class AgentRuntimeReaderSummaryStoryRelationVerifier implements ReaderSum
             executionProof.executionAttestationSha256,
           selectedOutputSha256: executionProof.selectedOutputSha256,
         });
+    if (!relatedTopicLane) {
+      this.authenticatedExecutionProofs.add(
+        proof as StoryRelationExecutionProof,
+      );
+    }
     return {
       verificationLane: input.verificationLane,
       decisions: decisions as VerifiedStoryRelationDecisionBatch["decisions"],
       proof,
     };
+  }
+
+  authenticatesExecutionProof(proof: unknown): boolean {
+    return typeof proof === "object" && proof !== null &&
+      this.authenticatedExecutionProofs.has(proof as StoryRelationExecutionProof);
   }
 }
 

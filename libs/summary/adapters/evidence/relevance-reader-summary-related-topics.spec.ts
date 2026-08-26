@@ -1,4 +1,6 @@
 import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
+import { canonicalJsonSha256 } from
+  "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
 
 import {
   aug14RelatedTopicSelection,
@@ -72,7 +74,8 @@ describe("verifiedReaderSummaryRelatedTopics", () => {
       },
       selection: aug14RelatedTopicSelection(),
       requestedAt: new Date("2026-08-15T00:01:00.000Z"),
-      verifier: { verify: async (input) => ({
+      verifier: { authenticatesExecutionProof: () => false,
+        verify: async (input) => ({
         verificationLane: input.verificationLane,
         decisions: input.candidates.map((candidate) => ({
           leftFeedItemId: candidate.leftFeedItemId,
@@ -110,6 +113,7 @@ describe("verifiedReaderSummaryRelatedTopics", () => {
       timeoutMs: 1,
       metrics,
       verifier: {
+        authenticatesExecutionProof: () => false,
         verify: async (input) => {
           signal = input.signal;
           return new Promise<VerifiedStoryRelationDecisionBatch>(
@@ -147,12 +151,16 @@ class ExplicitRelatedTopicVerifier implements ReaderSummaryStoryRelationVerifier
       proof: verifiedProof,
     };
   }
+
+  authenticatesExecutionProof(): boolean { return false; }
 }
 
 const verifiedProof = {
-  normalizedOutputSha256: "a".repeat(64),
-  executionAttestationSha256: "b".repeat(64),
-  selectedOutputSha256: "c".repeat(64),
+  normalizedOutputSha256: canonicalJsonSha256({ fixture: "normalized-output" }),
+  executionAttestationSha256: canonicalJsonSha256({
+    fixture: "execution-attestation",
+  }),
+  selectedOutputSha256: canonicalJsonSha256({ fixture: "selected-output" }),
 };
 
 class CapturingRelatedTopicMetrics implements StoryRankingMetricsPort {

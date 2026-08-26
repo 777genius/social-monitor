@@ -258,6 +258,7 @@ type DecisionFactory = (
 
 class FakeVerifier implements ReaderSummaryStoryRelationVerifierPort {
   readonly inputs: ReaderSummaryStoryRelationVerifierInput[] = [];
+  private readonly authenticatedProofs = new WeakSet<object>();
 
   constructor(
     private readonly validProof: boolean,
@@ -278,12 +279,20 @@ class FakeVerifier implements ReaderSummaryStoryRelationVerifierPort {
           executionAttestationSha256: sha("b"),
           selectedOutputSha256: sha("c"),
         });
+    if (typeof proof === "object" && proof !== null && this.validProof) {
+      this.authenticatedProofs.add(proof);
+    }
     return {
       verificationLane: input.verificationLane,
       decisions,
       proof: this.mutateProof === undefined || !("proofVersion" in proof)
         ? proof : this.mutateProof(proof),
     };
+  }
+
+  authenticatesExecutionProof(proof: unknown): boolean {
+    return typeof proof === "object" && proof !== null &&
+      this.authenticatedProofs.has(proof);
   }
 }
 
@@ -293,6 +302,7 @@ class PendingCertifiedVerifier implements ReaderSummaryStoryRelationVerifierPort
     this.inputs.push(input);
     return new Promise(() => undefined);
   }
+  authenticatesExecutionProof(): boolean { return false; }
 }
 
 const proofFor = (
@@ -307,6 +317,8 @@ const proofFor = (
     scopeKey: readerSummaryScopeKey(input.scope),
     requestedAt: input.requestedAt,
     verificationLane: input.verificationLane,
+    selection: input.proofSelection,
+    candidates: input.candidates,
   });
   const selectedOutputSha256 = canonicalStoryRelationProofSha256({ decisions });
   const executionAttestation = {

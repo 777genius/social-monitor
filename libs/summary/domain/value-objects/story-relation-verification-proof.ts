@@ -1,5 +1,5 @@
 export const STORY_RELATION_EXECUTION_PROOF_VERSION =
-  "reader_summary.story_relation.execution_proof.v2" as const;
+  "reader_summary.story_relation.execution_proof.v3" as const;
 export const STORY_RELATION_VERIFIER_IMPLEMENTATION =
   "agent_runtime_reader_summary_story_relation_verifier.v1" as const;
 
@@ -21,6 +21,8 @@ export type StoryRelationRuntimeExecutionAttestation = Readonly<{
 export type StoryRelationCandidateProofBinding = Readonly<{
   shortlistRank: number;
   canonicalPairId: string;
+  leftFeedItemId: string;
+  rightFeedItemId: string;
   featureDigest: string;
 }>;
 
@@ -29,6 +31,8 @@ export type StoryRelationDecisionProofBinding = Readonly<
   | {
       valid: true;
       canonicalPairId: string;
+      leftFeedItemId: string;
+      rightFeedItemId: string;
       sameStory: boolean;
       confidenceScore: number;
       decisionSha256: string;
@@ -60,6 +64,8 @@ export type StoryRelationExecutionProof = Readonly<{
 export type StoryRelationCandidateVerificationProof = Readonly<{
   executionProof: StoryRelationExecutionProof;
   canonicalPairId: string;
+  leftFeedItemId: string;
+  rightFeedItemId: string;
   featureDigest: string;
   normalizedDecision: Readonly<{
     sameStory: true;

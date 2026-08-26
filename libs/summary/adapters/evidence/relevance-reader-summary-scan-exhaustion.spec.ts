@@ -372,6 +372,7 @@ describe("reader-summary promotion upstream scan exhaustion", () => {
 
 class ExactSupportVerifier implements ReaderSummaryStoryRelationVerifierPort {
   readonly requestedPairs: string[] = [];
+  private readonly authenticatedProofs = new WeakSet<object>();
 
   async verify(input: ReaderSummaryStoryRelationVerifierInput) {
     this.requestedPairs.push(...input.candidates.map((candidate) =>
@@ -392,20 +393,27 @@ class ExactSupportVerifier implements ReaderSummaryStoryRelationVerifierPort {
     });
     if (input.verificationLane === "related_topic" ||
         input.proofSelection === undefined) throw new Error("Unexpected lane");
+    const proof = attestedStoryRelationBatchProofFixture({
+      tenantId: input.tenantId,
+      workspaceId: input.workspaceId,
+      scope: input.scope,
+      requestedAt: input.requestedAt,
+      verificationLane: input.verificationLane,
+      selection: input.proofSelection,
+      candidates: input.candidates,
+      decisions,
+    });
+    this.authenticatedProofs.add(proof);
     return {
       verificationLane: input.verificationLane,
       decisions,
-      proof: attestedStoryRelationBatchProofFixture({
-        tenantId: input.tenantId,
-        workspaceId: input.workspaceId,
-        scope: input.scope,
-        requestedAt: input.requestedAt,
-        verificationLane: input.verificationLane,
-        selection: input.proofSelection,
-        candidates: input.candidates,
-        decisions,
-      }),
+      proof,
     };
+  }
+
+  authenticatesExecutionProof(proof: unknown): boolean {
+    return typeof proof === "object" && proof !== null &&
+      this.authenticatedProofs.has(proof);
   }
 }
 

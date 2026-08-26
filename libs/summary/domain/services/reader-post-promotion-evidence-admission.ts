@@ -10,6 +10,12 @@ import type {
 } from "../value-objects/summary-evidence-item";
 import { buildReaderPostPromotionProjection } from
   "./reader-post-promotion-projection";
+import { hasValidStoryRelationProvenance } from
+  "./story-relation-provenance";
+import { rebuildStoryClustersForPromotionAdmission } from
+  "./story-clustering.service";
+import { verifiedStoryRelationPairKey } from
+  "./story-cluster-membership";
 import { selectGitHubTrendingSupplementalEvidence } from
   "../policies/reader-summary-github-trending-policy";
 
@@ -23,6 +29,18 @@ type AdmittedPromotionEvidence = Omit<
 export const admitReaderPostPromotionEvidence = (
   selection: SummaryEvidenceSelection,
 ): AdmittedPromotionEvidence => {
+  const provenRelations = (selection.approvedSameStoryRelations ?? [])
+    .filter((relation) => hasValidStoryRelationProvenance(
+      relation,
+      selection.sourceWindow,
+    ));
+  const authorityBoundClusters = rebuildStoryClustersForPromotionAdmission({
+    items: selection.selectedEvidence,
+    verifiedStoryRelationPairs: new Set(provenRelations.map((relation) =>
+      verifiedStoryRelationPairKey(relation.leftFeedItemId,
+        relation.rightFeedItemId))),
+    now: selection.sourceWindow.endedAt,
+  });
   const provisionalCitations = selection.selectedEvidence.map((item) => ({
     citationId: `promotion-preflight:${item.feedItemId}`,
     feedItemId: item.feedItemId,
@@ -33,10 +51,10 @@ export const admitReaderPostPromotionEvidence = (
   }));
   const projection = buildReaderPostPromotionProjection({
     evidence: selection.selectedEvidence,
-    clusters: selection.clusters,
+    clusters: authorityBoundClusters,
     citations: provisionalCitations,
     sourceWindow: selection.sourceWindow,
-    approvedSameStoryRelations: selection.approvedSameStoryRelations,
+    approvedSameStoryRelations: provenRelations,
     relatedTopicRelations: selection.relatedTopicRelations,
   });
   const supplementalEvidence = selectGitHubTrendingSupplementalEvidence(
@@ -96,7 +114,7 @@ export const admitReaderPostPromotionEvidence = (
       whyImportant: cluster.whyImportant.map((reason) => reason),
     })),
     selectedEvidence: admittedEvidence,
-    approvedSameStoryRelations: (selection.approvedSameStoryRelations ?? [])
+    approvedSameStoryRelations: provenRelations
       .filter((relation) => admittedIds.has(relation.leftFeedItemId) &&
         admittedIds.has(relation.rightFeedItemId))
       .map((relation) => ({

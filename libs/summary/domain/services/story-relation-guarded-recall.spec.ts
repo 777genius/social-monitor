@@ -1,6 +1,7 @@
 import type { SummaryEvidenceItem, SummaryEvidenceSelection } from "../index";
 import { buildGuardedRecallCandidates } from "./story-relation-guarded-recall";
 import { storyRelationHardNegative } from "./story-relation-hard-negative";
+import { storyEventSignature } from "./story-event-signature";
 import { STORY_RANKING_POLICY_V1 } from "../policies/story-ranking-policy";
 
 describe("guarded primary story recall", () => {
@@ -85,6 +86,60 @@ describe("guarded primary story recall", () => {
       const right = item("right", "hacker-news", sameDirectionTitle);
       expect(storyRelationHardNegative({ left, right,
         policy: STORY_RANKING_POLICY_V1 })).toBeUndefined();
+    });
+
+  it.each([
+    ["acquisition", "Cursor acquired SpaceX operations",
+      "SpaceX operations were acquired by Cursor",
+      "Acquisition of SpaceX operations by Cursor"],
+    ["control", "Cursor controlled SpaceX operations",
+      "SpaceX operations were controlled by Cursor",
+      "Control of SpaceX operations by Cursor"],
+    ["investment", "Cursor invested in SpaceX operations",
+      "SpaceX operations were invested in by Cursor",
+      "Investment by Cursor in SpaceX operations"],
+    ["merger", "Cursor merged SpaceX operations",
+      "SpaceX operations were merged by Cursor",
+      "Merger of SpaceX operations by Cursor"],
+    ["partnership", "Cursor partnered SpaceX operations",
+      "SpaceX operations were partnered by Cursor",
+      "Partnership of SpaceX operations by Cursor"],
+  ])("merges equivalent active/passive/nominalized %s roles",
+    (_event, active, passive, nominal) => {
+      for (const equivalent of [passive, nominal]) {
+        const left = item("left", "x-twitter", active);
+        const right = item("right", "hacker-news", equivalent);
+        expect(storyEventSignature(equivalent)?.eventRoles)
+          .toEqual(storyEventSignature(active)?.eventRoles);
+        expect(storyRelationHardNegative({ left, right,
+          policy: STORY_RANKING_POLICY_V1 })).toBeUndefined();
+        expect(generation(left, right).aggregates).toContainEqual({
+          reasonCode: "excluded_existing_deterministic",
+          candidatePolicyVersion:
+            "reader_summary.story_relation.guarded_recall.v1",
+          count: 1,
+        });
+      }
+    });
+
+  it.each([
+    ["acquisition", "Cursor acquired SpaceX operations",
+      "Cursor operations were acquired by SpaceX"],
+    ["control", "Cursor controlled SpaceX operations",
+      "Cursor operations were controlled by SpaceX"],
+    ["investment", "Cursor invested in SpaceX operations",
+      "Cursor operations were invested in by SpaceX"],
+    ["merger", "Cursor merged SpaceX operations",
+      "Cursor operations were merged by SpaceX"],
+    ["partnership", "Cursor partnered SpaceX operations",
+      "Cursor operations were partnered by SpaceX"],
+  ])("vetoes opposite passive %s roles before verification",
+    (_event, active, opposite) => {
+      const left = item("left", "x-twitter", active);
+      const right = item("right", "hacker-news", opposite);
+      expect(storyRelationHardNegative({ left, right,
+        policy: STORY_RANKING_POLICY_V1 })).toBe("directional_role_conflict");
+      expect(generation(left, right).candidates).toHaveLength(0);
     });
 
   it.each([

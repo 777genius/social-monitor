@@ -1,4 +1,4 @@
-import type { ApprovedSameStoryRelation } from
+import type { ApprovedSameStoryRelation, SummarySourceWindow } from
   "../value-objects/summary-evidence-item";
 import { STORY_RELATION_APPROVAL_CONFIDENCE_MIN } from
   "./story-relation-candidates";
@@ -9,11 +9,15 @@ import {
   STORY_RELATION_GUARDED_RECALL_POLICY_VERSION,
 } from "./story-relation-guarded-recall";
 import { verifiedStoryRelationPairKey } from "./story-cluster-membership";
-import { validStoryRelationCandidateVerificationProof } from
+import {
+  validStoryRelationCandidateVerificationProof,
+  validStoryRelationExecutionProof,
+} from
   "./story-relation-verification-proof";
 
 export const hasValidStoryRelationProvenance = (
   relation: ApprovedSameStoryRelation,
+  sourceWindow?: SummarySourceWindow,
 ): boolean => {
   if (!nonBlank(relation.leftFeedItemId) ||
       !nonBlank(relation.rightFeedItemId) ||
@@ -41,6 +45,8 @@ export const hasValidStoryRelationProvenance = (
       expectedCandidatePolicy &&
     validStoryRelationCandidateVerificationProof(proof) &&
     proof.canonicalPairId === relation.canonicalPairId &&
+    proof.leftFeedItemId === relation.leftFeedItemId &&
+    proof.rightFeedItemId === relation.rightFeedItemId &&
     proof.featureDigest === relation.featureDigest &&
     proof.normalizedDecision.confidenceScore === relation.confidence &&
     proof.executionProof.verificationLane === relation.verificationLane &&
@@ -50,6 +56,13 @@ export const hasValidStoryRelationProvenance = (
     proof.executionProof.normalizedOutputSha256 ===
       relation.normalizedOutputSha256 &&
     proof.executionProof.selectedOutputSha256 === relation.selectedOutputSha256 &&
+    (sourceWindow === undefined || validStoryRelationExecutionProof({
+      proof: proof.executionProof,
+      selection: {
+        rankingPolicyVersion: relation.rankingPolicyVersion,
+        sourceWindow,
+      },
+    })) &&
     [relation.featureDigest, relation.executionAttestationSha256,
       relation.normalizedOutputSha256, relation.selectedOutputSha256]
       .every((hash) => typeof hash === "string" &&

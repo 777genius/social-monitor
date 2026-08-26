@@ -14,6 +14,11 @@ import {
 } from "../value-objects/story-relation-verification-proof";
 import type { SummarySourceWindow } from
   "../value-objects/summary-evidence-item";
+import {
+  bindAuthenticatedStoryRelationCandidateProof,
+  hasAuthenticatedStoryRelationCandidateProof,
+  hasAuthenticatedStoryRelationExecutionProof,
+} from "./story-relation-proof-authority";
 
 export type StoryRelationProofSelectionContext = Readonly<{
   rankingPolicyVersion: string;
@@ -62,6 +67,8 @@ export const storyRelationCandidateProofBindings = (
   (candidate, index) => ({
     shortlistRank: index + 1,
     canonicalPairId: candidatePairId(candidate),
+    leftFeedItemId: candidate.leftFeedItemId,
+    rightFeedItemId: candidate.rightFeedItemId,
     featureDigest: storyRelationCandidateFeatureDigest(candidate),
   }));
 
@@ -76,6 +83,8 @@ export const storyRelationDecisionProofBindings = (
     valid: true,
     canonicalPairId: verifiedStoryRelationPairKey(
       decision.leftFeedItemId.trim(), decision.rightFeedItemId.trim()),
+    leftFeedItemId: decision.leftFeedItemId.trim(),
+    rightFeedItemId: decision.rightFeedItemId.trim(),
     sameStory: decision.sameStory,
     confidenceScore: decision.confidenceScore,
     decisionSha256,
@@ -113,25 +122,36 @@ export const buildStoryRelationExecutionProof = (params: {
     executionAttestationSha256: params.executionAttestationSha256,
     selectedOutputSha256: params.selectedOutputSha256,
   };
-  return { ...body, proofSha256: canonicalSha256(body) };
+  return deepFreeze({ ...body, proofSha256: canonicalSha256(body) });
 };
 
 export const buildStoryRelationCandidateVerificationProof = (params: {
   readonly executionProof: StoryRelationExecutionProof;
   readonly canonicalPairId: string;
+  readonly leftFeedItemId: string;
+  readonly rightFeedItemId: string;
   readonly featureDigest: string;
   readonly confidenceScore: number;
 }): StoryRelationCandidateVerificationProof => {
   const body = {
     executionProof: params.executionProof,
     canonicalPairId: params.canonicalPairId,
+    leftFeedItemId: params.leftFeedItemId,
+    rightFeedItemId: params.rightFeedItemId,
     featureDigest: params.featureDigest,
     normalizedDecision: {
       sameStory: true as const,
       confidenceScore: params.confidenceScore,
     },
   };
-  const proof = { ...body, candidateProofSha256: canonicalSha256(body) };
+  if (!hasAuthenticatedStoryRelationExecutionProof(params.executionProof)) {
+    throw new Error("Story relation execution proof has no trusted authority");
+  }
+  const proof = deepFreeze({
+    ...body,
+    candidateProofSha256: canonicalSha256(body),
+  });
+  bindAuthenticatedStoryRelationCandidateProof(proof);
   if (!validStoryRelationCandidateVerificationProof(proof)) {
     throw new Error("Story relation candidate proof is not execution-bound");
   }
@@ -142,13 +162,16 @@ export const validStoryRelationCandidateVerificationProof = (
   value: unknown,
 ): value is StoryRelationCandidateVerificationProof => {
   if (!record(value) || !record(value.executionProof) ||
-      !nonBlank(value.canonicalPairId) || !isSha256(value.featureDigest) ||
+      !nonBlank(value.canonicalPairId) || !nonBlank(value.leftFeedItemId) ||
+      !nonBlank(value.rightFeedItemId) || !isSha256(value.featureDigest) ||
       !record(value.normalizedDecision) ||
       value.normalizedDecision.sameStory !== true ||
       typeof value.normalizedDecision.confidenceScore !== "number" ||
       !Number.isFinite(value.normalizedDecision.confidenceScore) ||
       !isSha256(value.candidateProofSha256) ||
-      !validStoryRelationExecutionProof({ proof: value.executionProof })) {
+      !validStoryRelationExecutionProof({ proof: value.executionProof }) ||
+      !hasAuthenticatedStoryRelationExecutionProof(value.executionProof) ||
+      !hasAuthenticatedStoryRelationCandidateProof(value)) {
     return false;
   }
   const proof = value as StoryRelationCandidateVerificationProof;
@@ -156,9 +179,13 @@ export const validStoryRelationCandidateVerificationProof = (
   return candidateProofSha256 === canonicalSha256(body) &&
     proof.executionProof.candidateBindings.some((candidate) =>
       candidate.canonicalPairId === proof.canonicalPairId &&
+      candidate.leftFeedItemId === proof.leftFeedItemId &&
+      candidate.rightFeedItemId === proof.rightFeedItemId &&
       candidate.featureDigest === proof.featureDigest) &&
     proof.executionProof.decisionBindings.some((decision) => decision.valid &&
-      decision.canonicalPairId === proof.canonicalPairId && decision.sameStory &&
+      decision.canonicalPairId === proof.canonicalPairId &&
+      decision.leftFeedItemId === proof.leftFeedItemId &&
+      decision.rightFeedItemId === proof.rightFeedItemId && decision.sameStory &&
       decision.confidenceScore === proof.normalizedDecision.confidenceScore);
 };
 
@@ -202,13 +229,20 @@ export const storyRelationExecutionRequestId = (params: {
   readonly scopeKey: string;
   readonly requestedAt: Date;
   readonly verificationLane: "semantic_primary" | "guarded_recall_primary";
+  readonly selection: StoryRelationProofSelectionContext;
+  readonly candidates: readonly StoryRelationCandidate[];
 }): string => {
-  const requestScopeKey = params.verificationLane === "guarded_recall_primary"
-    ? `${params.scopeKey}:guarded-recall-primary` : params.scopeKey;
-  return ["reader-summary-story-relations", params.tenantId, params.workspaceId,
-    requestScopeKey, params.requestedAt.toISOString()]
-    .map((part) => String(part).replace(/[^a-zA-Z0-9:._-]+/gu, "_"))
-    .join(":").slice(0, 240);
+  const digest = lengthDelimitedSha256([
+    "reader-summary-story-relations.request-identity.v2",
+    String(params.tenantId),
+    String(params.workspaceId),
+    params.scopeKey,
+    iso(params.requestedAt),
+    params.verificationLane,
+    storyRelationSelectionSha256(params.selection),
+    canonicalSha256(storyRelationCandidateProofBindings(params.candidates)),
+  ]);
+  return `reader-summary-story-relations:v2:${digest}`;
 };
 
 export const canonicalStoryRelationProofSha256 = (value: unknown): string =>
@@ -265,6 +299,9 @@ const validDecisionOutcome = (value: unknown): value is StoryRelationDecision =>
 const validDecisionBinding = (value: unknown): boolean => record(value) &&
   isSha256(value.decisionSha256) && (value.valid === false ||
     (value.valid === true && nonBlank(value.canonicalPairId) &&
+      nonBlank(value.leftFeedItemId) && nonBlank(value.rightFeedItemId) &&
+      value.canonicalPairId === verifiedStoryRelationPairKey(
+        value.leftFeedItemId, value.rightFeedItemId) &&
       typeof value.sameStory === "boolean" &&
       typeof value.confidenceScore === "number" &&
       Number.isFinite(value.confidenceScore) && value.confidenceScore >= 0 &&
@@ -274,7 +311,11 @@ const uniqueCandidateBindings = (values: readonly unknown[]): boolean => {
   const pairs = new Set<string>();
   return values.every((value, index) => {
     if (!record(value) || value.shortlistRank !== index + 1 ||
-        !nonBlank(value.canonicalPairId) || !isSha256(value.featureDigest) ||
+        !nonBlank(value.canonicalPairId) || !nonBlank(value.leftFeedItemId) ||
+        !nonBlank(value.rightFeedItemId) || value.leftFeedItemId ===
+          value.rightFeedItemId || value.canonicalPairId !==
+          verifiedStoryRelationPairKey(value.leftFeedItemId,
+            value.rightFeedItemId) || !isSha256(value.featureDigest) ||
         pairs.has(value.canonicalPairId)) return false;
     pairs.add(value.canonicalPairId);
     return true;
@@ -318,6 +359,25 @@ const proofKeys = ["candidateBindings", "decisionBindings",
 
 const canonicalSha256 = (value: unknown): string => createHash("sha256")
   .update(JSON.stringify(canonicalValue(value)), "utf8").digest("hex");
+const lengthDelimitedSha256 = (parts: readonly string[]): string => {
+  const hash = createHash("sha256");
+  for (const part of parts) {
+    const bytes = Buffer.from(part, "utf8");
+    const length = Buffer.allocUnsafe(4);
+    length.writeUInt32BE(bytes.length);
+    hash.update(length);
+    hash.update(bytes);
+  }
+  return hash.digest("hex");
+};
+
+const deepFreeze = <T>(value: T): T => {
+  if (value !== null && typeof value === "object" && !Object.isFrozen(value)) {
+    Object.freeze(value);
+    Object.values(value).forEach((item) => deepFreeze(item));
+  }
+  return value;
+};
 const canonicalValue = (value: unknown): unknown => {
   if (value === null || typeof value === "string" ||
       typeof value === "boolean") return value;

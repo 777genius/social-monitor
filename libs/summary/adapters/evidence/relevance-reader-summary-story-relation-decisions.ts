@@ -27,6 +27,8 @@ import {
   type SummaryEvidenceSelection,
   type StoryRelationExecutionProof,
 } from "../../domain";
+import { bindAuthenticatedStoryRelationExecutionProof } from
+  "../../domain/services/story-relation-proof-authority";
 import {
   InvalidStoryRelationDecisionBatchError,
   type ReaderSummaryEvidenceSelectorPort,
@@ -270,6 +272,8 @@ const appliedRelation = (params: {
     verificationProof: buildStoryRelationCandidateVerificationProof({
       executionProof: params.proof,
       canonicalPairId,
+      leftFeedItemId: params.candidate.leftFeedItemId,
+      rightFeedItemId: params.candidate.rightFeedItemId,
       featureDigest,
       confidenceScore: params.confidence,
     }),
@@ -280,13 +284,14 @@ const assertVerifiedBatch = (
   batch: VerifiedStoryRelationDecisionBatch,
   params: Pick<Parameters<typeof verifyLane>[0],
     "lane" | "query" | "requestedAt" | "deterministicSelection" |
-    "candidates">,
+    "candidates" | "verifier">,
 ): StoryRelationExecutionProof => {
   const proofSelection = {
     rankingPolicyVersion: params.deterministicSelection.rankingPolicyVersion,
     sourceWindow: params.deterministicSelection.sourceWindow,
   };
   if (batch.verificationLane !== params.lane ||
+      !params.verifier?.authenticatesExecutionProof(batch.proof) ||
       !validStoryRelationExecutionProof({
         proof: batch.proof,
         verificationLane: params.lane,
@@ -299,11 +304,15 @@ const assertVerifiedBatch = (
           scopeKey: readerSummaryScopeKey(params.query.scope),
           requestedAt: params.requestedAt,
           verificationLane: params.lane,
+          selection: proofSelection,
+          candidates: params.candidates,
         }),
       })) {
     throw new Error("Story relation verification proof is invalid");
   }
-  return batch.proof as StoryRelationExecutionProof;
+  return bindAuthenticatedStoryRelationExecutionProof(
+    batch.proof as StoryRelationExecutionProof,
+  );
 };
 
 const withTimeout = async <T>(

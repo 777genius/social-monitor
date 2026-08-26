@@ -1,6 +1,14 @@
 import { buildReaderSummary } from "../aggregates/reader-summary";
 import { admitReaderPostPromotionEvidence } from
   "./reader-post-promotion-evidence-admission";
+import {
+  attestedStoryRelationFixture,
+} from "./story-relation-provenance-test-fixtures";
+import {
+  canonicalStoryRelationProofSha256,
+  type StoryRelationCandidateVerificationProof,
+  type StoryRelationExecutionProof,
+} from "./story-relation-verification-proof";
 import type { SummaryEvidenceItem, SummaryEvidenceSelection } from
   "../value-objects/summary-evidence-item";
 
@@ -58,7 +66,158 @@ describe("admitReaderPostPromotionEvidence supplemental appendix", () => {
       }),
     ]);
   });
+
+  it("requires an authority-bound proof before preserving a guarded relation", () => {
+    const selection = fixtureSelection();
+    const relation = guardedRelation(selection);
+    const admitted = admitReaderPostPromotionEvidence({
+      ...selection,
+      approvedSameStoryRelations: [relation],
+    });
+    expect(admitted.approvedSameStoryRelations).toEqual([relation]);
+
+    const { verificationProof: _omitted, ...withoutProof } = relation;
+    void _omitted;
+    const poisonedCluster = {
+      ...selection.clusters[0]!,
+      duplicateFeedItemIds: ["github:trending"],
+      providerKeys: ["hacker-news", "github-trending-page"],
+    };
+    const omittedAdmission = admitReaderPostPromotionEvidence({
+      ...selection,
+      clusters: [poisonedCluster],
+      approvedSameStoryRelations: [withoutProof],
+    });
+    expect(omittedAdmission.approvedSameStoryRelations).toEqual([]);
+    expect(omittedAdmission.clusters.flatMap((cluster) =>
+      cluster.duplicateFeedItemIds)).not.toContain("github:trending");
+  });
+
+  it.each([
+    ["candidate copy", (proof: StoryRelationCandidateVerificationProof) => ({
+      ...proof,
+    })],
+    ["candidate swap", (proof: StoryRelationCandidateVerificationProof) =>
+      rehashCandidate({ ...proof, canonicalPairId: "copied\u0000pair" })],
+    ["reordered pair", (proof: StoryRelationCandidateVerificationProof) =>
+      rehashCandidate({ ...proof,
+        leftFeedItemId: proof.rightFeedItemId,
+        rightFeedItemId: proof.leftFeedItemId })],
+    ["feature", (proof: StoryRelationCandidateVerificationProof) =>
+      rehashCandidate({ ...proof, featureDigest: digest("changed-feature") })],
+    ["decision", (proof: StoryRelationCandidateVerificationProof) =>
+      rehashCandidate({ ...proof, normalizedDecision: {
+        ...proof.normalizedDecision, sameStory: false,
+      } as never })],
+    ["confidence", (proof: StoryRelationCandidateVerificationProof) =>
+      rehashCandidate({ ...proof, normalizedDecision: {
+        ...proof.normalizedDecision, confidenceScore: 0.981,
+      } })],
+    ["proof version", executionMutation((proof) => ({ ...proof,
+      proofVersion: "forged-proof-version" as never }))],
+    ["lane", executionMutation((proof) => ({ ...proof,
+      verificationLane: "semantic_primary" }))],
+    ["implementation", executionMutation((proof) => ({ ...proof,
+      verifierImplementation: "forged-implementation" as never }))],
+    ["model policy", executionMutation((proof) => ({ ...proof,
+      verifierPolicy: { ...proof.verifierPolicy,
+        promptVersion: "forged-prompt" } }))],
+    ["ranking policy", executionMutation((proof) => ({ ...proof,
+      rankingPolicyVersion: "forged-ranking" }))],
+    ["selection window", executionMutation((proof) => ({ ...proof,
+      selectionSha256: digest("forged-window") }))],
+    ["candidate ordering", executionMutation((proof) => ({ ...proof,
+      candidateBindings: proof.candidateBindings.map((binding) => ({
+        ...binding,
+        leftFeedItemId: binding.rightFeedItemId,
+        rightFeedItemId: binding.leftFeedItemId,
+      })) }))],
+    ["candidate feature", executionMutation((proof) => ({ ...proof,
+      candidateBindings: proof.candidateBindings.map((binding) => ({
+        ...binding, featureDigest: digest("forged-candidate-feature"),
+      })) }))],
+    ["decision output", executionMutation((proof) => ({ ...proof,
+      decisionBindings: proof.decisionBindings.map((binding) =>
+        binding.valid ? { ...binding, sameStory: false } : binding) }))],
+    ["decision confidence", executionMutation((proof) => ({ ...proof,
+      decisionBindings: proof.decisionBindings.map((binding) =>
+        binding.valid ? { ...binding, confidenceScore: 0.982 } : binding) }))],
+    ["normalized output", executionMutation((proof) => ({ ...proof,
+      normalizedOutputSha256: digest("forged-normalized-output") }))],
+    ["execution identity", executionMutation((proof) => ({ ...proof,
+      executionAttestation: { ...proof.executionAttestation,
+        requestId: "forged-request" },
+      executionAttestationSha256: canonicalStoryRelationProofSha256({
+        ...proof.executionAttestation,
+        requestId: "forged-request",
+      }) }))],
+    ["execution attestation", executionMutation((proof) => ({ ...proof,
+      executionAttestationSha256: digest("forged-attestation") }))],
+    ["selected output", executionMutation((proof) => ({ ...proof,
+      selectedOutputSha256: digest("forged-selected-output"),
+      executionAttestation: { ...proof.executionAttestation,
+        selectedOutputSha256: digest("forged-selected-output") },
+      executionAttestationSha256: canonicalStoryRelationProofSha256({
+        ...proof.executionAttestation,
+        selectedOutputSha256: digest("forged-selected-output"),
+      }) }))],
+    ["forged authority", executionMutation((proof) => ({ ...proof }))],
+  ] as const)("rejects a fully rehashed %s mutation", (_name, mutate) => {
+    const selection = fixtureSelection();
+    const relation = guardedRelation(selection);
+    const proof = relation.verificationProof!;
+    expect(admitReaderPostPromotionEvidence({
+      ...selection,
+      approvedSameStoryRelations: [{
+        ...relation,
+        verificationProof: mutate(proof) as StoryRelationCandidateVerificationProof,
+      }],
+    }).approvedSameStoryRelations).toEqual([]);
+  });
 });
+
+const guardedRelation = (selection: SummaryEvidenceSelection) =>
+  attestedStoryRelationFixture({
+    leftFeedItemId: "hn:top",
+    rightFeedItemId: "github:trending",
+    confidence: 0.99,
+    verificationLane: "guarded_recall_primary",
+    rankingPolicyVersion: selection.rankingPolicyVersion,
+    sourceWindow: selection.sourceWindow,
+  });
+
+const digest = (label: string): string =>
+  canonicalStoryRelationProofSha256({ fixture: label });
+
+const rehashCandidate = (
+  proof: StoryRelationCandidateVerificationProof,
+): StoryRelationCandidateVerificationProof => ({
+  ...proof,
+  candidateProofSha256: canonicalStoryRelationProofSha256({
+    ...proof,
+    candidateProofSha256: undefined,
+  }),
+});
+
+function executionMutation(
+  mutate: (proof: StoryRelationExecutionProof) => StoryRelationExecutionProof,
+): (candidateProof: StoryRelationCandidateVerificationProof) =>
+  StoryRelationCandidateVerificationProof {
+  return (candidateProof: StoryRelationCandidateVerificationProof) => {
+  const executionProof = mutate(candidateProof.executionProof);
+  const rehashedExecution = {
+    ...executionProof,
+    proofSha256: canonicalStoryRelationProofSha256({
+      ...executionProof,
+      proofSha256: undefined,
+    }),
+  } as StoryRelationExecutionProof;
+    return rehashCandidate({
+      ...candidateProof,
+      executionProof: rehashedExecution,
+    });
+  };
+}
 
 const fixtureSelection = (): SummaryEvidenceSelection => {
   const publishedAt = new Date("2026-08-14T10:00:00.000Z");

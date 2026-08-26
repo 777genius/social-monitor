@@ -1,4 +1,6 @@
 import type { FeedItemReadRepositoryPort } from "@social-monitor/feed/ports";
+import { canonicalJsonSha256 } from
+  "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
 import type { RankFeedItemsUseCase } from "@social-monitor/relevance/features/rank-feed-items/rank-feed-items.use-case";
 import type { RankedFeedItemView } from "@social-monitor/relevance/features/rank-feed-items/rank-feed-items.result";
 import { ok, tenantId, workspaceId, type Clock } from "@social-monitor/shared-kernel";
@@ -150,12 +152,16 @@ class ProductionPathVerifier implements ReaderSummaryStoryRelationVerifierPort {
       proof: verifiedProof,
     };
   }
+
+  authenticatesExecutionProof(): boolean { return false; }
 }
 
 const verifiedProof = {
-  normalizedOutputSha256: "a".repeat(64),
-  executionAttestationSha256: "b".repeat(64),
-  selectedOutputSha256: "c".repeat(64),
+  normalizedOutputSha256: canonicalJsonSha256({ fixture: "normalized-output" }),
+  executionAttestationSha256: canonicalJsonSha256({
+    fixture: "execution-attestation",
+  }),
+  selectedOutputSha256: canonicalJsonSha256({ fixture: "selected-output" }),
 };
 
 const officialAndNewsPair = (left: string, right: string): boolean =>

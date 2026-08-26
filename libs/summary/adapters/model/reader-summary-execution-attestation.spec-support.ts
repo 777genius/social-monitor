@@ -1,4 +1,7 @@
-import { selectedAgentRuntimeOutput } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
+import {
+  canonicalJsonSha256,
+  selectedAgentRuntimeOutput,
+} from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
 
 import type {
   AgentRuntimeTaskCommand,
@@ -19,7 +22,11 @@ export const withTestExecutionAttestation = (
       schemaVersion: 1,
       requestId: command.requestId,
       purpose: command.purpose,
-      canonicalRequestSha256: "a".repeat(64),
+      canonicalRequestSha256: canonicalJsonSha256({
+        fixture: "reader-summary-command",
+        requestId: command.requestId,
+        purpose: command.purpose,
+      }),
       provider: command.provider,
       model: "gpt-5.6-sol",
       reasoningEffort:
@@ -28,7 +35,10 @@ export const withTestExecutionAttestation = (
           : (command.metadata?.reasoningEffort ?? "high"),
       runtimeEngine: "subscription-runtime-cli",
       runtimePackageVersion: "0.1.0-main.2",
-      launcherSha256: "b".repeat(64),
+      launcherSha256: canonicalJsonSha256({
+        fixture: "subscription-runtime-launcher",
+        runtimePackageVersion: "0.1.0-main.2",
+      }),
       selectedOutputKind: selected.kind,
       selectedOutputSha256: selected.sha256,
     },

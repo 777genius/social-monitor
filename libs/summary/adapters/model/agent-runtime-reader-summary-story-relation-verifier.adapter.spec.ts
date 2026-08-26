@@ -47,7 +47,7 @@ describe("AgentRuntimeReaderSummaryStoryRelationVerifier", () => {
         rationale: "Both report the same compiler rewrite.",
       }],
       proof: {
-        proofVersion: "reader_summary.story_relation.execution_proof.v2",
+        proofVersion: "reader_summary.story_relation.execution_proof.v3",
         normalizedOutputSha256: expect.stringMatching(/^[0-9a-f]{64}$/u),
         executionAttestationSha256: expect.stringMatching(/^[0-9a-f]{64}$/u),
         selectedOutputSha256: expect.stringMatching(/^[0-9a-f]{64}$/u),
@@ -65,8 +65,11 @@ describe("AgentRuntimeReaderSummaryStoryRelationVerifier", () => {
         scopeKey: readerSummaryScopeKey(verifierInput.scope),
         requestedAt: verifierInput.requestedAt,
         verificationLane: "semantic_primary",
+        selection: verifierInput.proofSelection!,
+        candidates: verifierInput.candidates,
       }),
     })).toBe(true);
+    expect(verifier.authenticatesExecutionProof(batch.proof)).toBe(true);
     expect(client.commands[0]).toMatchObject({
       provider: "codex",
       purpose: "social_monitor.reader_summary.verify_story_relations.v2",

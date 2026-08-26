@@ -220,16 +220,22 @@ const eventRolesFromTokens = (
   tokens.forEach((token, eventIndex) => {
     const event = roleEventByLemma.get(token.normalized);
     if (event === undefined) return;
-    const byIndex = nextTokenIndex(tokens, eventIndex, "by");
+    const byIndex = agentMarkerIndex(tokens, eventIndex, nominalEventForms.has(
+      token.raw.toLocaleLowerCase("en-US")));
     const relationIndex = relationMarkerIndex(tokens, eventIndex, event);
     const nominal = nominalEventForms.has(token.raw.toLocaleLowerCase("en-US"));
     let actorAnchor: string | undefined;
     let objectAnchor: string | undefined;
     if (byIndex !== undefined) {
-      actorAnchor = strongAnchorAfter(tokens, byIndex);
+      actorAnchor = relationIndex !== undefined && byIndex < relationIndex
+        ? strongAnchorAfter(tokens, byIndex, relationIndex)
+        : strongAnchorAfter(tokens, byIndex);
       objectAnchor = relationIndex === undefined
         ? strongAnchorBefore(tokens, eventIndex)
-        : strongAnchorAfter(tokens, relationIndex, byIndex);
+        : relationIndex < byIndex
+          ? strongAnchorAfter(tokens, relationIndex, byIndex) ??
+            strongAnchorBefore(tokens, eventIndex)
+          : strongAnchorAfter(tokens, relationIndex);
     } else {
       actorAnchor = strongAnchorBefore(tokens, eventIndex);
       objectAnchor = relationIndex === undefined || !nominal
@@ -291,6 +297,25 @@ const nextTokenIndex = (
     token.normalized === expected);
   return index < 0 ? undefined : index;
 };
+
+const agentMarkerIndex = (
+  tokens: readonly LexicalToken[],
+  eventIndex: number,
+  nominal: boolean,
+): number | undefined => {
+  if (!nominal && !passiveAuxiliaryBefore(tokens, eventIndex)) return undefined;
+  return nextTokenIndex(tokens, eventIndex, "by");
+};
+
+const passiveAuxiliaryBefore = (
+  tokens: readonly LexicalToken[],
+  eventIndex: number,
+): boolean => tokens.slice(Math.max(0, eventIndex - 3), eventIndex)
+  .some((token) => passiveAuxiliaries.has(token.normalized));
+
+const passiveAuxiliaries = new Set([
+  "am", "are", "be", "been", "being", "is", "was", "were",
+]);
 
 const strongAnchorBefore = (
   tokens: readonly LexicalToken[],
