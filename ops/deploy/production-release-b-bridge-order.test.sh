@@ -14,19 +14,148 @@ REJECTED_BRIDGE=85c5d22febf1e7ce5fa5967d2460ccb73ca96a9d
 BRIDGE=db4537fea87a5c184a9f926867a6e6aa763ff9bd
 BRIDGE_TREE=f998252edb25e6e2411ddc351806ba8170114c61
 BRIDGE_BLOB=70a87f730ff47c1071a7855a1177fd5d1601ee5c
+TARGET=bce12683c9309e037614f4808a0fc75caddc9864
 BRIDGE_PATH=ops/deploy/deploy-control-bridge-lib.sh
 BACKEND_MARKER=09a79687e042e36d4ec9c1f33f0367527f044181
 CONTROL_MARKER=3f4a561e9fd6626bbd1a1e1ca73f2ec7eb34c8f8
 FRONTEND_MARKER=eaac8ad433bc9741f493e61354b3dfe1c3161224
 POOL_MARKER=6fefa9da5446d5e467badcc7239fdc5a6170a756
-FIXTURE=$(mktemp -d "${TMPDIR:-/tmp}/release-b-current-main.XXXXXX")
-trap 'rm -rf "$FIXTURE"' EXIT
+FIXTURE_TEMP_PARENT=$(cd "${TMPDIR:-/tmp}" && pwd -P)
+FIXTURE=$(mktemp -d "$FIXTURE_TEMP_PARENT/release-b-current-main.XXXXXX")
+declare -a FIXTURE_CHILD_PIDS=() FIXTURE_CHILD_GROUPS=()
+declare -a FIXTURE_CHILD_LABELS=()
+
+register_fixture_child() {
+  local pid=$1 group=$2 label=$3
+  [[ $pid =~ ^[1-9][0-9]*$ && $group =~ ^[1-9][0-9]*$ ]] || {
+    printf 'fixture-cleanup-error: invalid child identity for %s\n' "$label" >&2
+    return 1
+  }
+  FIXTURE_CHILD_PIDS+=("$pid")
+  FIXTURE_CHILD_GROUPS+=("$group")
+  FIXTURE_CHILD_LABELS+=("$label")
+}
+
+wait_for_fixture_children() {
+  local index pid group label child_status deadline
+  for index in "${!FIXTURE_CHILD_PIDS[@]}"; do
+    pid=${FIXTURE_CHILD_PIDS[$index]}
+    group=${FIXTURE_CHILD_GROUPS[$index]}
+    label=${FIXTURE_CHILD_LABELS[$index]}
+    if ! timeout 10 tail --pid="$pid" -f /dev/null; then
+      printf 'fixture-cleanup-error: timed out waiting for %s (pid=%s pgid=%s)\n' \
+        "$label" "$pid" "$group" >&2
+      return 1
+    fi
+    if wait "$pid"; then
+      child_status=0
+    else
+      child_status=$?
+    fi
+    if ((child_status != 0)); then
+      printf 'fixture-cleanup-error: %s exited with status %s (pid=%s pgid=%s)\n' \
+        "$label" "$child_status" "$pid" "$group" >&2
+      return 1
+    fi
+    deadline=$((SECONDS + 10))
+    while kill -0 -- "-$group" 2>/dev/null; do
+      if ((SECONDS >= deadline)); then
+        printf 'fixture-cleanup-error: timed out waiting for %s process group %s\n' \
+          "$label" "$group" >&2
+        return 1
+      fi
+      sleep 0.1
+    done
+  done
+  FIXTURE_CHILD_PIDS=()
+  FIXTURE_CHILD_GROUPS=()
+  FIXTURE_CHILD_LABELS=()
+}
+
+remove_fixture_tree() {
+  local fixture=$1 prefix=$2 parent base
+  parent=$(dirname "$fixture")
+  base=$(basename "$fixture")
+  [[ $parent == "$FIXTURE_TEMP_PARENT" && -d $fixture && ! -L $fixture ]] || {
+    printf 'fixture-cleanup-error: refusing unvalidated fixture path: %s\n' \
+      "$fixture" >&2
+    return 1
+  }
+  case "$base" in
+    "$prefix".[[:alnum:]][[:alnum:]][[:alnum:]][[:alnum:]][[:alnum:]][[:alnum:]]) ;;
+    *)
+      printf 'fixture-cleanup-error: refusing unexpected fixture name: %s\n' \
+        "$fixture" >&2
+      return 1
+      ;;
+  esac
+  rm -rf -- "$fixture" || {
+    printf 'fixture-cleanup-error: could not remove fixture tree: %s\n' \
+      "$fixture" >&2
+    return 1
+  }
+  [[ ! -e $fixture && ! -L $fixture ]] || {
+    printf 'fixture-cleanup-error: fixture tree still exists after removal: %s\n' \
+      "$fixture" >&2
+    return 1
+  }
+}
+
+cleanup_fixture() {
+  local test_status=$? cleanup_status=0
+  trap - EXIT
+  wait_for_fixture_children || cleanup_status=$?
+  if ((cleanup_status == 0)); then
+    remove_fixture_tree "$FIXTURE" release-b-current-main || cleanup_status=$?
+  else
+    printf 'fixture-cleanup-error: retaining fixture after child failure: %s\n' \
+      "$FIXTURE" >&2
+  fi
+  if ((test_status == 0 && cleanup_status != 0)); then
+    test_status=$cleanup_status
+  fi
+  exit "$test_status"
+}
+
+configure_fixture_repository() {
+  local repository=$1
+  # Fast-forward merges run automatic maintenance. Keep its GC attached so the
+  # owning Git process cannot return while a detached writer still uses repo.
+  git -C "$repository" config gc.autoDetach false
+  [[ $(git -C "$repository" config --bool gc.autoDetach) == false ]]
+}
+
+exercise_fixture_cleanup_race() {
+  local race_fixture completion child_pid
+  race_fixture=$(mktemp -d \
+    "$FIXTURE_TEMP_PARENT/release-b-cleanup-race.XXXXXX")
+  completion=$FIXTURE/cleanup-race-child-complete
+  # The group leader exits before its delayed writer. Removing first recreates
+  # the old race deterministically; group-aware cleanup waits, then removes.
+  setsid bash -c '
+    (
+      sleep 0.1
+      install -d "$1/repo"
+      printf "%s\n" complete > "$1/repo/maintenance-complete"
+      : > "$2"
+    ) &
+  ' release-b-cleanup-child "$race_fixture" "$completion" &
+  child_pid=$!
+  register_fixture_child "$child_pid" "$child_pid" \
+    'deterministic concurrent fixture mutator'
+  wait_for_fixture_children
+  remove_fixture_tree "$race_fixture" release-b-cleanup-race
+  [[ -f $completion && ! -e $race_fixture && ! -L $race_fixture ]]
+}
+
+trap cleanup_fixture EXIT
+exercise_fixture_cleanup_race
 GRAPH_REPO=$FIXTURE/graph
 
-git clone -q --shared "$SOURCE_REPO" "$GRAPH_REPO"
+git -c gc.autoDetach=false clone -q --shared "$SOURCE_REPO" "$GRAPH_REPO"
+configure_fixture_repository "$GRAPH_REPO"
 git -C "$GRAPH_REPO" config user.name 'Release B Current Main Test'
 git -C "$GRAPH_REPO" config user.email release-b-current-main@example.invalid
-TARGET=$(git -C "$GRAPH_REPO" rev-parse HEAD)
 for commit in "$BASE" "$CURRENT_MAIN" "$REJECTED" "$REJECTED_BRIDGE" \
   "$BRIDGE" "$TARGET"; do
   git -C "$GRAPH_REPO" cat-file -e "$commit^{commit}"
@@ -141,7 +270,8 @@ PY
 prepare_runtime_repo() {
   local label=$1 head=$2
   local repo=$FIXTURE/$label/repo root=$FIXTURE/$label/root
-  git clone -q --shared "$SOURCE_REPO" "$repo"
+  git -c gc.autoDetach=false clone -q --shared "$SOURCE_REPO" "$repo"
+  configure_fixture_repository "$repo"
   git -C "$repo" checkout -q "$head"
   install -d "$root/control/deploy-state" "$root/runtime/deploy-staging" \
     "$root/runtime/frontend-releases" "$root/runtime/systemd"
