@@ -193,12 +193,39 @@ grep -F 'AND member_createrole AND grantor_super' "$PREFLIGHT" >/dev/null
 grep -F 'missing runtime inheritance membership' "$POSTGRES_FIXTURE" >/dev/null
 grep -F 'runtime inheritance membership option drift' "$POSTGRES_FIXTURE" >/dev/null
 grep -F 'extra role membership edge' "$POSTGRES_FIXTURE" >/dev/null
+grep -F 'missing schema PUBLIC usage ACL' "$POSTGRES_FIXTURE" >/dev/null
+grep -F 'missing application runtime table ACL' "$POSTGRES_FIXTURE" >/dev/null
+grep -F 'extra application runtime table ACL' "$POSTGRES_FIXTURE" >/dev/null
+grep -F 'missing publication capability column ACL' "$POSTGRES_FIXTURE" >/dev/null
+grep -F 'extra publication capability column ACL' "$POSTGRES_FIXTURE" >/dev/null
+grep -F '1936879981, 1502026084' "$POSTGRES_FIXTURE" >/dev/null
+grep -F ') AS acquired,' "$POSTGRES_FIXTURE" >/dev/null
+! grep -F 'AND pg_catalog.pg_try_advisory_lock(1936879981, 1502026084)' \
+  "$POSTGRES_FIXTURE" >/dev/null
+grep -F 'mutationRow?.acquired === true' "$POSTGRES_FIXTURE" >/dev/null
 grep -F 'GRANT %I TO %I WITH INHERIT FALSE GRANTED BY CURRENT_USER' \
   "$POSTGRES_FIXTURE" >/dev/null
 grep -F 'effective role/object privileges drifted' "$PREFLIGHT" >/dev/null
+grep -F "privilege = 'USAGE' OR role_oid = v_schema_owner" "$PREFLIGHT" >/dev/null
+grep -F 'AND count(*) = 7' "$PREFLIGHT" >/dev/null
+grep -F "acl.grantee = 0 AND acl.privilege_type = 'USAGE'" "$PREFLIGHT" >/dev/null
+grep -F "ARRAY['DELETE','INSERT','SELECT','UPDATE']::TEXT[]" \
+  "$PREFLIGHT" >/dev/null
 grep -F 'v_v2_functions <> 0' "$PREFLIGHT" >/dev/null
 grep -F 'acl.grantee = v_definer' "$PREFLIGHT" >/dev/null
 grep -F 'reader_summary_daily_model_jobs_identity_check' "$PREFLIGHT" >/dev/null
+grep -F "pg_has_role(v_session, v_database_owner, 'SET')" \
+  "$ATTESTATION_AUTHORIZE" >/dev/null
+[[ $(grep -Fc "format('SET LOCAL ROLE %I', v_database_owner)" \
+  "$ATTESTATION_AUTHORIZE") == 2 ]]
+grep -F "'REVOKE CREATE ON DATABASE %I FROM %I'" \
+  "$ATTESTATION_AUTHORIZE" >/dev/null
+[[ $(grep -Fc 'activity.backend_start = v_guard_start::TIMESTAMPTZ' \
+  "$ATTESTATION_AUTHORIZE") == 1 ]]
+[[ $(grep -Fc 'lock.pid = v_guard_pid::INTEGER' \
+  "$ATTESTATION_AUTHORIZE") == 2 ]]
+grep -F 'SECURITY DEFINER changes current_user to the NOLOGIN attestor on PG18' \
+  "$ATTESTATION_AUTHORIZE" >/dev/null
 grep -F 'telemetry recovery production owner ACL invariants drifted' \
   "$PREFLIGHT" >/dev/null
 grep -F 'telemetry recovery schema owner or exact nspacl drifted' \

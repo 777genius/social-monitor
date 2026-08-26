@@ -5,6 +5,7 @@
 DO $telemetry_recovery_attestation_bootstrap$
 DECLARE
   v_attestor CONSTANT NAME := 'social_monitor_telemetry_recovery_attestor';
+  v_database_owner NAME;
   v_migration_owner NAME;
   v_session NAME := session_user;
 BEGIN
@@ -26,10 +27,20 @@ BEGIN
       'GRANTED BY CURRENT_USER',
     v_attestor, v_session
   );
+  SELECT pg_catalog.pg_get_userbyid(database.datdba)
+  INTO STRICT v_database_owner
+  FROM pg_catalog.pg_database AS database
+  WHERE database.datname = pg_catalog.current_database();
+  IF NOT pg_catalog.pg_has_role(v_session, v_database_owner, 'SET') THEN
+    RAISE EXCEPTION
+      'telemetry recovery cannot assume the database owner';
+  END IF;
+  EXECUTE pg_catalog.format('SET LOCAL ROLE %I', v_database_owner);
   EXECUTE pg_catalog.format(
     'GRANT CREATE ON DATABASE %I TO %I',
     pg_catalog.current_database(), v_attestor
   );
+  EXECUTE 'RESET ROLE';
   EXECUTE pg_catalog.format('SET LOCAL ROLE %I', v_attestor);
   CREATE SCHEMA social_monitor_telemetry_recovery
     AUTHORIZATION social_monitor_telemetry_recovery_attestor;
@@ -127,17 +138,17 @@ BEGIN
       OR v_nonce !~ '^[0-9a-f]{24}$'
       OR v_guard_application IS DISTINCT FROM
         'social-monitor/telemetry-guard/' || v_nonce
+      -- SECURITY DEFINER changes current_user to the NOLOGIN attestor on PG18,
+      -- so pg_stat_activity redacts the migration-admin guard's identity here.
+      -- The immediately preceding invoker check proves the full backend tuple;
+      -- pin that proven holder by PID and require global lock uniqueness while
+      -- the protected transition executes.
       OR (SELECT count(*) FROM pg_catalog.pg_locks AS lock
-          JOIN pg_catalog.pg_stat_activity AS activity
-            ON activity.pid = lock.pid
           WHERE lock.locktype = 'advisory'
             AND lock.classid = 1936879981::OID
             AND lock.objid = 1502026082::OID AND lock.objsubid = 2
             AND lock.granted AND lock.pid = v_guard_pid::INTEGER
-            AND activity.backend_start = v_guard_start::TIMESTAMPTZ
-            AND activity.datname = pg_catalog.current_database()
-            AND activity.usename = session_user
-            AND activity.application_name = v_guard_application) <> 1
+          ) <> 1
       OR (SELECT count(*) FROM pg_catalog.pg_locks AS lock
           WHERE lock.locktype = 'advisory'
             AND lock.classid = 1936879981::OID
@@ -390,10 +401,12 @@ BEGIN
   GRANT SELECT ON TABLE public."_prisma_migrations"
     TO social_monitor_telemetry_recovery_attestor;
   RESET ROLE;
+  EXECUTE pg_catalog.format('SET LOCAL ROLE %I', v_database_owner);
   EXECUTE pg_catalog.format(
     'REVOKE CREATE ON DATABASE %I FROM %I',
     pg_catalog.current_database(), v_attestor
   );
+  EXECUTE 'RESET ROLE';
   EXECUTE pg_catalog.format(
     'REVOKE %I FROM %I GRANTED BY CURRENT_USER', v_attestor, v_session
   );

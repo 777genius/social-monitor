@@ -952,6 +952,7 @@ const main = async (): Promise<void> => {
       resolveRolledBackReaderSummaryMigration(adminDatabaseUrl, workspace, readerSummaryDailyActivationAclMigration);
       removeInstalledReaderSummaryMigration(workspace, readerSummaryDailyActivationAclMigration); installDailyActivationMigration(workspace, readerSummaryDailyActivationAclMigration); applyOrderedReaderSummaryMigrations(adminDatabaseUrl, workspace);
     } finally { await activationAdmin.end(); }
+    const historyOwner = new Pool({ connectionString: targetDatabaseUrl, max: 1 }); try { await historyOwner.query(`ALTER TABLE public."_prisma_migrations" OWNER TO ${privileges.quotePostgresIdentifier(migrationAdminRole)}`); } finally { await historyOwner.end(); }
     await runReaderSummaryDailyTelemetryRelease({
       preparePreTelemetryRelease: async () => { await privileges.runReaderSummaryPublicationBootstrapSql("post", adminDatabaseUrl, runtimeRole, systemRuntimeRole); await privileges.runReaderSummaryPublicationBootstrapSql("pre", adminDatabaseUrl, runtimeRole, systemRuntimeRole); installPublicationAndFollowingMigrations(workspace); for (const migration of [telemetryMigration, defaultAclMigration]) removeInstalledReaderSummaryMigration(workspace, migration); applyOrderedReaderSummaryMigrations(adminDatabaseUrl, workspace); },
       verifyPreTelemetryAuthority: async () => {
@@ -993,7 +994,5 @@ const main = async (): Promise<void> => {
   }
   console.log("Reader summary daily terminal PostgreSQL authority gate OK");
 };
-function assert(condition: unknown, message: string): asserts condition {
-  if (!condition) throw new Error(message);
-}
+function assert(condition: unknown, message: string): asserts condition { if (!condition) throw new Error(message); }
 void main().catch((error: unknown) => { console.error(error); process.exitCode = 1; });

@@ -356,6 +356,12 @@ BEGIN
       THEN membership.member ELSE membership.roleid END
     FROM roles JOIN pg_catalog.pg_auth_members AS membership
       ON membership.roleid = roles.role_oid OR membership.member = roles.role_oid
+  ), application_runtime(role_oid) AS (
+    SELECT membership.member
+    FROM pg_catalog.pg_auth_members AS membership
+    JOIN pg_catalog.pg_roles AS member ON member.oid = membership.member
+    WHERE membership.roleid = v_publication_runtime
+      AND membership.member <> v_active_owner AND member.rolcanlogin
   ), tables(object_name) AS (VALUES
     ('public.reader_summary_daily_execution_cursors'),
     ('public.reader_summary_daily_model_jobs'),
@@ -377,21 +383,27 @@ BEGIN
         OR (object_name IN ('public.feed_items', 'public.source_items')
           AND privilege = 'SELECT')
       )) OR (role_oid = v_definer
-        AND object_name = 'public.reader_summary_daily_model_jobs'
+        AND object_name IN (
+          'public.reader_summary_daily_execution_cursors',
+          'public.reader_summary_daily_model_jobs'
+        )
         AND privilege IN ('SELECT', 'UPDATE'))
       OR (role_oid = v_publication_owner
-        AND object_name = 'public.reader_summary_daily_model_jobs'
-        AND privilege = 'SELECT') AS expected,
+        AND object_name IN (
+          'public.reader_summary_daily_model_jobs',
+          'public.feed_items', 'public.source_items'
+        ) AND privilege = 'SELECT')
+      OR (privilege IN ('DELETE', 'INSERT', 'SELECT', 'UPDATE')
+        AND pg_catalog.pg_has_role(
+          role_oid, (SELECT role_oid FROM application_runtime), 'USAGE'
+        )) AS expected,
       pg_catalog.has_table_privilege(
         role_oid, object_name, privilege
       ) AS observed
     FROM roles CROSS JOIN tables CROSS JOIN table_privileges
   ), schemas AS (
     SELECT role_oid, privilege,
-      role_oid = v_schema_owner
-        OR (privilege = 'USAGE' AND role_oid IN (
-          v_active_owner, v_publication_owner, v_terminal, v_definer
-        )) AS expected,
+      privilege = 'USAGE' OR role_oid = v_schema_owner AS expected,
       pg_catalog.has_schema_privilege(role_oid, 'public', privilege)
         AS observed
     FROM roles CROSS JOIN (VALUES ('CREATE'), ('USAGE')) AS p(privilege)
@@ -421,11 +433,20 @@ BEGIN
         ) AND privilege.privilege = 'UPDATE')
       ))
       OR (roles.role_oid = v_definer
-        AND relation.relname = 'reader_summary_daily_model_jobs'
+        AND relation.relname IN (
+          'reader_summary_daily_execution_cursors',
+          'reader_summary_daily_model_jobs'
+        )
         AND privilege.privilege IN ('SELECT', 'UPDATE'))
-      OR (relation.relname = 'reader_summary_daily_model_jobs'
+      OR (relation.relname IN (
+          'reader_summary_daily_model_jobs', 'feed_items', 'source_items'
+        )
         AND roles.role_oid = v_publication_owner
         AND privilege.privilege = 'SELECT')
+      OR (privilege.privilege IN ('SELECT', 'UPDATE')
+        AND pg_catalog.pg_has_role(
+          roles.role_oid, (SELECT role_oid FROM application_runtime), 'USAGE'
+        ))
       OR (relation.relname IN ('feed_items', 'source_items')
         AND (roles.role_oid = v_publication_owner OR pg_catalog.pg_has_role(
           roles.role_oid, v_publication_runtime, 'USAGE'
@@ -470,11 +491,12 @@ BEGIN
   END IF;
 
   SELECT namespace.nspowner = v_schema_owner AND namespace.nspacl IS NOT NULL
-    AND count(*) = 6
-    AND count(*) FILTER (WHERE acl.grantee = 0) = 0
+    AND count(*) = 7
+    AND count(*) FILTER (WHERE acl.grantee = 0
+      AND acl.privilege_type = 'USAGE' AND NOT acl.is_grantable) = 1
     AND count(*) FILTER (WHERE acl.grantee = v_schema_owner
       AND acl.privilege_type IN ('CREATE', 'USAGE')
-      AND acl.is_grantable) = 2
+      AND NOT acl.is_grantable) = 2
     AND count(*) FILTER (WHERE acl.grantee = v_active_owner
       AND acl.privilege_type = 'USAGE' AND NOT acl.is_grantable) = 1
     AND count(*) FILTER (WHERE acl.grantee =
@@ -489,7 +511,9 @@ BEGIN
     AND pg_catalog.bool_and(
       (acl.grantee = v_schema_owner
         AND acl.privilege_type IN ('CREATE', 'USAGE')
-        AND acl.is_grantable)
+        AND NOT acl.is_grantable)
+      OR (acl.grantee = 0 AND acl.privilege_type = 'USAGE'
+        AND NOT acl.is_grantable)
       OR (acl.grantee = v_active_owner AND acl.privilege_type = 'USAGE'
         AND NOT acl.is_grantable)
       OR (grantee.rolname IN (
@@ -546,6 +570,7 @@ BEGIN
         8 + pg_catalog.cardinality(expected.privileges)
           + expected.definer_privilege_count
           + expected.publication_owner_privilege_count
+          + pg_catalog.cardinality(expected.application_runtime_privileges)
       OR COALESCE((SELECT pg_catalog.array_agg(
         acl.privilege_type ORDER BY acl.privilege_type
       ) FROM pg_catalog.aclexplode(relation.relacl) AS acl
@@ -569,6 +594,16 @@ BEGIN
       ), ARRAY[]::TEXT[]) <> CASE
         WHEN expected.publication_owner_privilege_count = 1
           THEN ARRAY['SELECT']::TEXT[] ELSE ARRAY[]::TEXT[] END
+      OR COALESCE((SELECT pg_catalog.array_agg(
+        acl.privilege_type ORDER BY acl.privilege_type
+      ) FROM pg_catalog.aclexplode(relation.relacl) AS acl
+        WHERE acl.grantee IN (
+          SELECT membership.member
+          FROM pg_catalog.pg_auth_members AS membership
+          JOIN pg_catalog.pg_roles AS member ON member.oid = membership.member
+          WHERE membership.roleid = v_publication_runtime
+            AND membership.member <> v_active_owner AND member.rolcanlogin
+        )), ARRAY[]::TEXT[]) <> expected.application_runtime_privileges
       OR EXISTS (SELECT 1 FROM pg_catalog.aclexplode(relation.relacl) AS acl
         WHERE acl.grantor <> relation.relowner OR acl.is_grantable)
       OR (expected.relation_name = 'feed_items' AND (
@@ -613,14 +648,22 @@ BEGIN
         WHERE attribute.attrelid = relation.oid)))
   INTO STRICT v_acl_rows, v_acl_mismatches
   FROM (VALUES
-    ('reader_summary_daily_execution_cursors', ARRAY['INSERT','SELECT','UPDATE']::TEXT[], 2, 0),
-    ('reader_summary_daily_model_jobs', ARRAY['INSERT','SELECT','UPDATE']::TEXT[], 2, 1),
-    ('reader_summary_daily_source_authorities', ARRAY['INSERT','SELECT']::TEXT[], 0, 0),
-    ('feed_items', ARRAY['SELECT']::TEXT[], 0, 0),
-    ('source_items', ARRAY['SELECT']::TEXT[], 0, 0)
+    ('reader_summary_daily_execution_cursors',
+      ARRAY['INSERT','SELECT','UPDATE']::TEXT[], 2, 0,
+      ARRAY['DELETE','INSERT','SELECT','UPDATE']::TEXT[]),
+    ('reader_summary_daily_model_jobs',
+      ARRAY['INSERT','SELECT','UPDATE']::TEXT[], 2, 1,
+      ARRAY['DELETE','INSERT','SELECT','UPDATE']::TEXT[]),
+    ('reader_summary_daily_source_authorities',
+      ARRAY['INSERT','SELECT']::TEXT[], 0, 0,
+      ARRAY['DELETE','INSERT','SELECT','UPDATE']::TEXT[]),
+    ('feed_items', ARRAY['SELECT']::TEXT[], 0, 1,
+      ARRAY['DELETE','INSERT','SELECT','UPDATE']::TEXT[]),
+    ('source_items', ARRAY['SELECT']::TEXT[], 0, 1,
+      ARRAY['DELETE','INSERT','SELECT','UPDATE']::TEXT[])
   ) AS expected(
     relation_name, privileges, definer_privilege_count,
-    publication_owner_privilege_count
+    publication_owner_privilege_count, application_runtime_privileges
   )
   LEFT JOIN pg_catalog.pg_class AS relation
     ON relation.relname = expected.relation_name

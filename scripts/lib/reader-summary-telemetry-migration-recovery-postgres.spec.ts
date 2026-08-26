@@ -77,6 +77,9 @@ SET LOCAL ROLE social_monitor_reader_summary_daily_publication_definer;`);
       "AND NOT grantor_super AND grantor_createrole",
       "AND member_createrole AND grantor_super",
       "telemetry recovery effective role/object privileges drifted",
+      "privilege = 'USAGE' OR role_oid = v_schema_owner",
+      "AND count(*) = 7",
+      "acl.grantee = 0 AND acl.privilege_type = 'USAGE'",
       "telemetry recovery schema owner or exact nspacl drifted",
       "telemetry recovery relevant sequence owner, ACL, or default state drifted",
       "telemetry recovery production owner ACL invariants drifted",
@@ -89,8 +92,9 @@ SET LOCAL ROLE social_monitor_reader_summary_daily_publication_definer;`);
       "ea468303e63270fba8598848dfa8f642df8aad2436c0c1b2a8f57284e817f2b3",
       "ARRAY['INSERT','SELECT','UPDATE']::TEXT[]",
       "ARRAY['INSERT','SELECT']::TEXT[]",
-      "('feed_items', ARRAY['SELECT']::TEXT[], 0, 0)",
-      "('source_items', ARRAY['SELECT']::TEXT[], 0, 0)",
+      "ARRAY['DELETE','INSERT','SELECT','UPDATE']::TEXT[]",
+      "('feed_items', ARRAY['SELECT']::TEXT[], 0, 1,",
+      "('source_items', ARRAY['SELECT']::TEXT[], 0, 1,",
     ]) {
       expect(probe).toContain(contract);
     }
@@ -151,6 +155,10 @@ SET LOCAL ROLE social_monitor_reader_summary_daily_publication_definer;`);
         "scripts/lib/reader-summary-telemetry-migration-recovery-postgres.ts",
         "utf8",
       );
+      const postgresGate = readFileSync(
+        "scripts/check-reader-summary-daily-terminal-authority-postgres.ts",
+        "utf8",
+      );
       const authorization = readFileSync(
         "ops/deploy/reader-summary-telemetry-recovery-attestation-authorize.sql",
         "utf8",
@@ -163,10 +171,25 @@ SET LOCAL ROLE social_monitor_reader_summary_daily_publication_definer;`);
       expect(source).toContain("v_mutation_count");
       expect(source).toContain("v_recovery_backend_count");
       expect(source).not.toContain("v_quiet_ticks");
+      expect(source).toContain(
+        "1936879981, 1502026084\n        ) AS acquired",
+      );
+      expect(source).not.toContain(
+        "AND pg_catalog.pg_try_advisory_lock(1936879981, 1502026084)",
+      );
+      expect(source).toContain("mutationRow?.acquired === true");
+      expect(postgresGate).toContain(
+        'ALTER TABLE public."_prisma_migrations" OWNER TO ${privileges.quotePostgresIdentifier(migrationAdminRole)}',
+      );
       expect(source).toContain("assertCompletedAttestationIsImmutable");
       expect(source).toContain("missing runtime inheritance membership");
       expect(source).toContain("runtime inheritance membership option drift");
       expect(source).toContain("extra role membership edge");
+      expect(source).toContain("missing schema PUBLIC usage ACL");
+      expect(source).toContain("missing application runtime table ACL");
+      expect(source).toContain("extra application runtime table ACL");
+      expect(source).toContain("missing publication capability column ACL");
+      expect(source).toContain("extra publication capability column ACL");
       expect(source).toContain(
         "GRANT %I TO %I WITH INHERIT FALSE GRANTED BY CURRENT_USER",
       );
@@ -192,6 +215,24 @@ SET LOCAL ROLE social_monitor_reader_summary_daily_publication_definer;`);
       expect(authorization).toContain("activity.usename = session_user");
       expect(authorization).toContain(
         "activity.application_name = v_guard_application",
+      );
+      expect(authorization.split(
+        "activity.backend_start = v_guard_start::TIMESTAMPTZ",
+      )).toHaveLength(2);
+      expect(authorization.split(
+        "lock.pid = v_guard_pid::INTEGER",
+      )).toHaveLength(3);
+      expect(authorization).toContain(
+        "SECURITY DEFINER changes current_user to the NOLOGIN attestor on PG18",
+      );
+      expect(authorization).toContain(
+        "pg_has_role(v_session, v_database_owner, 'SET')",
+      );
+      expect(authorization).toContain(
+        "format('SET LOCAL ROLE %I', v_database_owner)",
+      );
+      expect(authorization).toContain(
+        "'REVOKE CREATE ON DATABASE %I FROM %I'",
       );
       expect(authorization).toContain("WHERE migration_name = v_name AND state = 'AUTHORIZED'");
       expect(authorization).toContain("WHERE migration_name = v_name AND state = 'RESOLVED'");

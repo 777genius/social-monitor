@@ -297,14 +297,25 @@ const catalogMutations = [
       EXECUTE pg_catalog.format('GRANT %I TO social_monitor_public_schema_owner '
         'WITH ADMIN FALSE, INHERIT FALSE, SET TRUE GRANTED BY CURRENT_USER',
         v_database_owner);
+      EXECUTE pg_catalog.format('SET LOCAL ROLE %I', v_database_owner);
+      EXECUTE pg_catalog.format('GRANT CREATE ON DATABASE %I TO '
+        'social_monitor_public_schema_owner', pg_catalog.current_database());
+      EXECUTE 'RESET ROLE';
       EXECUTE 'SET LOCAL ROLE social_monitor_public_schema_owner';
       EXECUTE pg_catalog.format('ALTER SCHEMA public OWNER TO %I',
         v_database_owner);
+      EXECUTE 'RESET ROLE';
+      EXECUTE pg_catalog.format('SET LOCAL ROLE %I', v_database_owner);
+      EXECUTE pg_catalog.format('REVOKE CREATE ON DATABASE %I FROM '
+        'social_monitor_public_schema_owner', pg_catalog.current_database());
       EXECUTE 'RESET ROLE';
       EXECUTE pg_catalog.format('REVOKE %I FROM '
         'social_monitor_public_schema_owner GRANTED BY CURRENT_USER',
         v_database_owner);
     END $schema_owner_drift$`],
+  ["missing schema PUBLIC usage ACL", `SET LOCAL ROLE
+    social_monitor_public_schema_owner;
+    REVOKE USAGE ON SCHEMA public FROM PUBLIC; RESET ROLE`],
   ["schema PUBLIC ACL", `SET LOCAL ROLE social_monitor_public_schema_owner;
     GRANT CREATE ON SCHEMA public TO PUBLIC; RESET ROLE`],
   ["table owner", `DO $table_owner_drift$
@@ -334,6 +345,36 @@ const catalogMutations = [
   ["table unrelated ACL", `SET LOCAL ROLE social_monitor_public_schema_owner;
     GRANT SELECT ON TABLE public.reader_summary_daily_model_jobs
       TO social_monitor_reader_summary_daily_terminal; RESET ROLE`],
+  ["missing application runtime table ACL", `SET LOCAL ROLE
+    social_monitor_public_schema_owner; DO $missing_runtime_acl$
+    DECLARE v_runtime NAME; BEGIN SELECT member.rolname INTO STRICT v_runtime
+      FROM pg_catalog.pg_auth_members AS membership
+      JOIN pg_catalog.pg_roles AS member ON member.oid = membership.member
+      WHERE membership.roleid =
+        'social_monitor_reader_summary_publication_runtime'::pg_catalog.regrole
+        AND member.rolname <> session_user AND member.rolcanlogin;
+      EXECUTE pg_catalog.format('REVOKE DELETE ON TABLE '
+        'public.reader_summary_daily_model_jobs FROM %I', v_runtime);
+    END $missing_runtime_acl$; RESET ROLE`],
+  ["extra application runtime table ACL", `SET LOCAL ROLE
+    social_monitor_public_schema_owner; DO $extra_runtime_acl$
+    DECLARE v_runtime NAME; BEGIN SELECT member.rolname INTO STRICT v_runtime
+      FROM pg_catalog.pg_auth_members AS membership
+      JOIN pg_catalog.pg_roles AS member ON member.oid = membership.member
+      WHERE membership.roleid =
+        'social_monitor_reader_summary_publication_runtime'::pg_catalog.regrole
+        AND member.rolname <> session_user AND member.rolcanlogin;
+      EXECUTE pg_catalog.format('GRANT TRUNCATE ON TABLE '
+        'public.reader_summary_daily_model_jobs TO %I', v_runtime);
+    END $extra_runtime_acl$; RESET ROLE`],
+  ["missing publication capability column ACL", `SET LOCAL ROLE
+    social_monitor_public_schema_owner; REVOKE SELECT (body_preview)
+    ON TABLE public.feed_items FROM
+      social_monitor_reader_summary_publication_runtime; RESET ROLE`],
+  ["extra publication capability column ACL", `SET LOCAL ROLE
+    social_monitor_public_schema_owner; GRANT SELECT (created_at)
+    ON TABLE public.feed_items TO
+      social_monitor_reader_summary_publication_runtime; RESET ROLE`],
   ["sequence owner and PUBLIC ACL", `SET LOCAL ROLE social_monitor_public_schema_owner;
     CREATE SEQUENCE public.reader_summary_daily_model_jobs_token_sequence;
     GRANT USAGE ON SEQUENCE
@@ -572,17 +613,20 @@ const resolveWithGuardWatchdog = async (params: Readonly<{
   const mutation = await mutationPool.connect();
   try {
     const mutationIdentity = await mutation.query<{
+      acquired: boolean;
       backend_started_at: string;
       pid: number;
-    }>(`SELECT activity.backend_start::TEXT AS backend_started_at,
+    }>(`SELECT pg_catalog.pg_try_advisory_lock(
+          1936879981, 1502026084
+        ) AS acquired,
+        activity.backend_start::TEXT AS backend_started_at,
         pg_catalog.pg_backend_pid() AS pid
       FROM pg_catalog.pg_stat_activity AS activity
       WHERE activity.pid = pg_catalog.pg_backend_pid()
-        AND pg_catalog.set_config('application_name', $1, false) = $1
-        AND pg_catalog.pg_try_advisory_lock(1936879981, 1502026084)`,
+        AND pg_catalog.set_config('application_name', $1, false) = $1`,
     [mutationApplication]);
     const mutationRow = mutationIdentity.rows[0];
-    assert(Number.isInteger(mutationRow?.pid) &&
+    assert(mutationRow?.acquired === true && Number.isInteger(mutationRow.pid) &&
       typeof mutationRow?.backend_started_at === "string",
     "telemetry recovery mutation lease could not be bound");
     const watcherIdentity = await watcher.query<{ pid: number }>(
