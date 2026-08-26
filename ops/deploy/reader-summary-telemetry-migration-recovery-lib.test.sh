@@ -176,6 +176,10 @@ grep -F 'v_guard_count <> 1' "$PREFLIGHT" >/dev/null
 grep -F 'FROM pg_catalog.pg_constraint AS constraint_row' "$PREFLIGHT" >/dev/null
 if grep -Fx '  FROM pg_catalog.pg_constraint AS constraint' \
   "$PREFLIGHT" >/dev/null; then exit 1; fi
+[[ $(grep -Fc "OR acl.privilege_type NOT IN ('SELECT','UPDATE')))))" \
+  "$PREFLIGHT") == 2 ]]
+grep -B1 -Fx '$reader_summary_telemetry_recovery_authorization$;' \
+  "$PREFLIGHT" | grep -Fx 'END;' >/dev/null
 grep -F 'v_function_catalog_exact IS DISTINCT FROM TRUE' "$PREFLIGHT" >/dev/null
 grep -F 'v_membership_catalog_exact IS DISTINCT FROM TRUE' "$PREFLIGHT" >/dev/null
 grep -F 'complete role membership closure drifted' "$PREFLIGHT" >/dev/null

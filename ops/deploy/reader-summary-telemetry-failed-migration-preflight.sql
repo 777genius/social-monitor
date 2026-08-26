@@ -553,7 +553,7 @@ BEGIN
               'body_preview','author_handle','status','published_at','observed_at'
             ]::NAME[])) OR (acl.privilege_type = 'UPDATE'
               AND attribute.attname <> 'id')
-            OR acl.privilege_type NOT IN ('SELECT','UPDATE'))))
+            OR acl.privilege_type NOT IN ('SELECT','UPDATE')))))
       OR (expected.relation_name = 'source_items' AND (
         (SELECT count(*) FROM pg_catalog.pg_attribute AS attribute
           CROSS JOIN LATERAL pg_catalog.aclexplode(attribute.attacl) AS acl
@@ -571,7 +571,7 @@ BEGIN
               'provider_content_hash','observed_at','metadata'
             ]::NAME[])) OR (acl.privilege_type = 'UPDATE'
               AND attribute.attname <> 'id')
-            OR acl.privilege_type NOT IN ('SELECT','UPDATE'))))
+            OR acl.privilege_type NOT IN ('SELECT','UPDATE')))))
       OR (expected.relation_name NOT IN ('feed_items','source_items') AND EXISTS (
         SELECT 1 FROM pg_catalog.pg_attribute AS attribute
         CROSS JOIN LATERAL pg_catalog.aclexplode(attribute.attacl) AS acl
@@ -595,7 +595,7 @@ BEGIN
   IF v_acl_rows <> 5 OR v_acl_mismatches <> 0 THEN
     RAISE EXCEPTION 'telemetry recovery production owner ACL invariants drifted';
   END IF;
-END
+END;
 $reader_summary_telemetry_recovery_authorization$;
 
 SELECT 'authorized' AS case;

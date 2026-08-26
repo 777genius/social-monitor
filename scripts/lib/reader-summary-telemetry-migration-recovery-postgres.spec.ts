@@ -94,15 +94,25 @@ SET LOCAL ROLE social_monitor_reader_summary_daily_publication_definer;`);
     expect(probe).not.toContain("logs ~*");
   });
 
-  it("uses a PostgreSQL 18-safe alias in the exact preflight statement", () => {
+  it("rejects known PostgreSQL 18 structural and reserved-alias regressions", () => {
     const probe = readFileSync(
       "ops/deploy/reader-summary-telemetry-failed-migration-preflight.sql", "utf8",
     );
-    expect(probe).toContain(
-      "FROM pg_catalog.pg_constraint AS constraint_row",
-    );
-    expect(probe).toContain("WHERE constraint_row.conname");
-    expect(probe).not.toContain("AS constraint\n");
+    const tag = "$reader_summary_telemetry_recovery_authorization$";
+    const aclPredicateTerminator =
+      "OR acl.privilege_type NOT IN ('SELECT','UPDATE')))))";
+    expect(probe.split(aclPredicateTerminator)).toHaveLength(3);
+    expect(hasCompletePreflightStructure(probe)).toBe(true);
+    expect(hasCompletePreflightStructure(
+      probe.replace(aclPredicateTerminator, aclPredicateTerminator.slice(0, -1)),
+    )).toBe(false);
+    expect(hasCompletePreflightStructure(
+      probe.replace(`END;\n${tag};`, `END\n${tag};`),
+    )).toBe(false);
+    expect(hasPostgres18SafeConstraintAlias(probe)).toBe(true);
+    expect(hasPostgres18SafeConstraintAlias(
+      probe.replaceAll("constraint_row", "constraint"),
+    )).toBe(false);
   });
 
   it("pins each recovery SQL blob and rejects appended authorization text", () => {
@@ -421,3 +431,29 @@ const deferred = <T>(): Readonly<{
 
 const digest = (input: string): string =>
   createHash("sha256").update(input).digest("hex");
+
+const hasCompletePreflightStructure = (sql: string): boolean => {
+  const tag = "$reader_summary_telemetry_recovery_authorization$";
+  const fragments = sql.split(tag);
+  const body = fragments[1];
+  if (fragments.length !== 3 || body === undefined || !/END;\s*$/u.test(body)) {
+    return false;
+  }
+  const code = body
+    .replace(/\$([a-z_][a-z_0-9]*)\$[\s\S]*?\$\1\$/giu, "")
+    .replace(/--[^\n]*/gu, "")
+    .replace(/\/\*[\s\S]*?\*\//gu, "")
+    .replace(/'(?:''|[^'])*'/gu, "")
+    .replace(/"(?:""|[^"])*"/gu, "");
+  let depth = 0;
+  for (const character of code) {
+    if (character === "(") depth += 1;
+    if (character === ")" && --depth < 0) return false;
+  }
+  return depth === 0;
+};
+
+const hasPostgres18SafeConstraintAlias = (sql: string): boolean =>
+  sql.includes("FROM pg_catalog.pg_constraint AS constraint_row") &&
+  sql.includes("WHERE constraint_row.conname") &&
+  !sql.includes("AS constraint\n");
