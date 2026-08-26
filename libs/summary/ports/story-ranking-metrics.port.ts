@@ -1,14 +1,17 @@
 import type {
-  StoryRelationSafeRecallShadowDecisionAggregate,
-  StoryRelationSafeRecallShadowGenerationAggregate,
+  GuardedRecallGenerationAggregate,
   StoryRelationDecisionAggregate,
   SummaryEvidenceSelection,
 } from "../domain";
 
 export type StoryRelationVerificationMetric = {
+  readonly lane: "semantic_primary" | "guarded_recall_primary";
   readonly status: "skipped" | "completed" | "failed_closed";
   readonly candidateCount: number;
   readonly approvedCount: number;
+  readonly rejectedCount: number;
+  readonly latencyMs: number;
+  readonly attested: boolean;
 };
 
 export type RelatedTopicVerificationMetric = Readonly<{
@@ -30,13 +33,9 @@ export interface StoryRankingMetricsPort {
   recordStoryRelationDecisionAggregates?(
     aggregates: readonly StoryRelationDecisionAggregate[],
   ): void;
-  /** Shadow-only, aggregate-only telemetry with no pair ids or source text. */
-  recordStoryRelationSafeRecallShadowGeneration?(
-    aggregates: readonly StoryRelationSafeRecallShadowGenerationAggregate[],
-  ): void;
-  /** Shadow-only decision telemetry isolated from production verification. */
-  recordStoryRelationSafeRecallShadowDecisions?(
-    aggregates: readonly StoryRelationSafeRecallShadowDecisionAggregate[],
+  /** Aggregate-only telemetry with no pair ids or source text. */
+  recordGuardedRecallGeneration?(
+    aggregates: readonly GuardedRecallGenerationAggregate[],
   ): void;
 }
 
@@ -45,6 +44,5 @@ export const NOOP_STORY_RANKING_METRICS: StoryRankingMetricsPort = {
   recordStoryRelationVerification: () => undefined,
   recordRelatedTopicVerification: () => undefined,
   recordStoryRelationDecisionAggregates: () => undefined,
-  recordStoryRelationSafeRecallShadowGeneration: () => undefined,
-  recordStoryRelationSafeRecallShadowDecisions: () => undefined,
+  recordGuardedRecallGeneration: () => undefined,
 };

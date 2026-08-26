@@ -1,0 +1,203 @@
+import type { SummaryEvidenceItem, SummaryEvidenceSelection } from "../index";
+import { buildGuardedRecallCandidates } from "./story-relation-guarded-recall";
+import { storyRelationHardNegative } from "./story-relation-hard-negative";
+import { STORY_RANKING_POLICY_V1 } from "../policies/story-ranking-policy";
+
+describe("guarded primary story recall", () => {
+  it.each([
+    ["Acme announces confirmed Beta acquisition",
+      "Acme acquired Beta in confirmed deal"],
+  ])("shortlists %s ↔ %s", (leftTitle, rightTitle) => {
+    expect(generation(item("left", "x-twitter", leftTitle),
+      item("right", "hacker-news", rightTitle)).candidates).toHaveLength(1);
+  });
+
+  it("shortlists the production Cursor and SpaceX wording", () => {
+    const left = { ...item("left", "hacker-news", "Cursor deployed at SpaceX latest"),
+      bodyPreview: "An official note contains no copied announcement prose." };
+    const right = { ...item("right", "x-twitter", "SpaceX deploying Cursor for engineers"),
+      bodyPreview: "SpaceX confirms the deployment in separate wrapper metadata." };
+    expect(storyRelationHardNegative({ left, right,
+      policy: STORY_RANKING_POLICY_V1 })).toBeUndefined();
+    expect(generation(left, right).candidates).toHaveLength(1);
+  });
+
+  it.each([
+    ["Could Claude watermark Code output happen?",
+      "Claude Code output watermarked in release"],
+    ["Acme announces Alpha acquisition", "Acme announces Beta acquisition"],
+    ["Acme acquired Beta from Alpha", "Acme acquired Beta from Gamma"],
+    ["Acme release Platform update", "Acme release Platform update"],
+    ["Acme did not release Platform 2.0", "Acme released Platform 2.0"],
+    ["Acme released Platform 2.0", "Acme released Platform 3.0"],
+  ])("rejects a deterministic hard negative", (leftTitle, rightTitle) => {
+    expect(generation(item("left", "x-twitter", leftTitle),
+      item("right", "hacker-news", rightTitle)).candidates).toHaveLength(0);
+  });
+
+  it("accepts a missing body when complete declarative titles carry the event", () => {
+    expect(generation(
+      item("left", "x-twitter",
+        "Cursor deployed at SpaceX production engineering migration schedule"),
+      item("right", "hacker-news",
+        "SpaceX deploying Cursor staff coding fleet rollout"),
+    ).candidates).toHaveLength(1);
+  });
+
+  it("treats 30 hours as inclusive and 30 hours plus one millisecond as closed", () => {
+    const left = item("left", "x-twitter",
+      "Cursor deployed at SpaceX production engineering migration schedule");
+    const boundary = item("right", "hacker-news",
+      "SpaceX deploying Cursor staff coding fleet rollout",
+      30 * 60 * 60 * 1_000);
+    expect(generation(left, boundary).candidates).toHaveLength(1);
+    expect(generation(left, { ...boundary,
+      publishedAt: new Date(boundary.publishedAt.getTime() + 1) }).candidates)
+      .toHaveLength(0);
+  });
+
+  it("fails closed for a missing title, invalid timestamp, same provider alias and URL conflict", () => {
+    const left = item("left", "x-twitter", "SpaceX deployed Cursor production");
+    const right = item("right", "twitter", "Cursor deploying at SpaceX production");
+    expect(generation(left, right).candidates).toHaveLength(0);
+    expect(generation(left, { ...right, providerKey: "hacker-news", title: "" })
+      .candidates).toHaveLength(0);
+    expect(generation(left, { ...right, providerKey: "hacker-news",
+      publishedAt: new Date(Number.NaN) }).candidates).toHaveLength(0);
+    expect(generation(
+      { ...left, canonicalUrl: "https://example.test/one" },
+      { ...right, providerKey: "hacker-news",
+        canonicalUrl: "https://example.test/two" },
+    ).candidates).toHaveLength(0);
+  });
+
+  it("uses canonical provider families, including RSS origin aliases", () => {
+    const rssHackerNews = {
+      ...item("left", "rss", "Cursor deployed at SpaceX latest"),
+      canonicalUrl: "https://news.ycombinator.com/item?id=42",
+    };
+    expect(generation(rssHackerNews,
+      item("right", "hacker-news", "SpaceX deploying Cursor for engineers"))
+      .candidates).toHaveLength(0);
+    expect(generation({ ...rssHackerNews,
+      canonicalUrl: "https://acme.example.test/releases/platform" },
+    item("right", "x-twitter", "SpaceX deploying Cursor for engineers"))
+      .candidates).toHaveLength(1);
+  });
+
+  it("rejects conflicting canonical repositories", () => {
+    const left = { ...item("left", "reddit", "Acme released Platform today"),
+      canonicalUrl: "https://github.com/acme/alpha" };
+    const right = { ...item("right", "x-twitter",
+      "Platform released by Acme today"),
+    canonicalUrl: "https://github.com/acme/beta" };
+    expect(storyRelationHardNegative({ left, right,
+      policy: STORY_RANKING_POLICY_V1 })).toBe("canonical_identity_conflict");
+  });
+
+  it.each([
+    ["Acme released Platform in US", "Platform released by Acme in EU"],
+    ["Acme released Platform confirmed", "Platform release by Acme failed"],
+  ])("rejects location and outcome contradictions", (leftTitle, rightTitle) => {
+    expect(storyRelationHardNegative({
+      left: item("left", "reddit", leftTitle),
+      right: item("right", "x-twitter", rightTitle),
+      policy: STORY_RANKING_POLICY_V1,
+    })).toBe("contradictory_detail");
+  });
+
+  it("rejects rumor, broad-topic, same-author, quote-origin, facet and date conflicts", () => {
+    const candidate = (left: SummaryEvidenceItem, right: SummaryEvidenceItem) =>
+      generation(left, right).candidates;
+    expect(candidate(
+      item("left", "x-twitter", "OpenAI AI company technology news update"),
+      item("right", "reddit", "OpenAI AI company technology news update"),
+    )).toHaveLength(0);
+    expect(candidate(
+      item("left", "x-twitter", "Acme rumor Beta acquisition"),
+      item("right", "reddit", "Acme acquired Beta confirmed"),
+    )).toHaveLength(0);
+    expect(candidate(
+      { ...item("left", "x-twitter", "Acme acquired Beta confirmed"),
+        authorHandle: "same-author" },
+      { ...item("right", "reddit", "Beta acquisition by Acme confirmed"),
+        authorHandle: "same-author" },
+    )).toHaveLength(0);
+    expect(candidate(
+      { ...item("left", "x-twitter", "Acme acquired Beta confirmed"),
+        promotionFacts: { contentKind: "quote", canonicalIdentity: "left",
+          safetyValid: true, freshnessValid: true } },
+      item("right", "reddit", "Beta acquisition by Acme confirmed"),
+    )).toHaveLength(0);
+    expect(candidate(
+      item("left", "x-twitter", "Acme released Platform review"),
+      item("right", "reddit", "Platform released by Acme tutorial"),
+    )).toHaveLength(0);
+    expect(candidate(
+      item("left", "x-twitter", "Acme released Platform in 2025"),
+      item("right", "reddit", "Platform released by Acme in 2026"),
+    )).toHaveLength(0);
+  });
+
+  it("clears a question only with a matching independent declarative body sentence", () => {
+    const question = {
+      ...item("left", "reddit", "Could Claude Code watermark output happen?"),
+      bodyPreview: "Claude Code watermark output confirmed.",
+    };
+    const announcement = item("right", "x-twitter",
+      "Claude Code output watermarked today");
+    expect(storyRelationHardNegative({ left: question, right: announcement,
+      policy: STORY_RANKING_POLICY_V1 })).toBeUndefined();
+    expect(storyRelationHardNegative({ left: { ...question,
+      bodyPreview: "People discussed similar output." }, right: announcement,
+      policy: STORY_RANKING_POLICY_V1 })).toBe("speculative_modality");
+  });
+});
+
+const generation = (left: SummaryEvidenceItem, right: SummaryEvidenceItem) =>
+  buildGuardedRecallCandidates({
+    selection: selection(left, right),
+    evidence: [left, right],
+    primaryCandidates: [],
+  });
+
+const selection = (
+  left: SummaryEvidenceItem,
+  right: SummaryEvidenceItem,
+): SummaryEvidenceSelection => ({
+  rankingPolicyVersion: "story-ranking-v1",
+  sourceWindow: {
+    windowId: "window", startedAt: left.publishedAt, endedAt: new Date(
+      Math.max(left.publishedAt.getTime(), right.publishedAt.getTime()) + 1),
+    selectedFeedItemIds: [left.feedItemId, right.feedItemId],
+    storyClusterIds: ["cluster:left", "cluster:right"],
+  },
+  clusters: [left, right].map((value) => ({
+    id: `cluster:${value.feedItemId}`,
+    storyKey: `story:${value.feedItemId}`,
+    representativeFeedItemId: value.feedItemId,
+    duplicateFeedItemIds: [], interestIds: [value.interestId],
+    providerKeys: [value.providerKey], score: value.score,
+    observedAtRange: { startedAt: value.observedAt,
+      endedAt: new Date(value.observedAt.getTime() + 1) },
+    whyImportant: [],
+  })),
+  selectedEvidence: [left, right],
+});
+
+const item = (
+  feedItemId: string,
+  providerKey: string,
+  title: string,
+  offsetMs = 0,
+): SummaryEvidenceItem => ({
+  feedItemId, providerKey, title,
+  sourceItemId: `source:${feedItemId}`,
+  sourceBindingId: `binding:${feedItemId}`,
+  interestId: "interest",
+  canonicalUrl: `https://${providerKey}.example.test/${feedItemId}`,
+  publishedAt: new Date(Date.UTC(2026, 7, 20) + offsetMs),
+  observedAt: new Date(Date.UTC(2026, 7, 20) + offsetMs),
+  score: 1,
+  whyImportant: [],
+});

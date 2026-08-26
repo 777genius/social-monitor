@@ -264,7 +264,8 @@ describe("reader-summary promotion upstream scan exhaustion", () => {
       tenantId: tenant,
       workspaceId: workspace,
       providerKey: "x-twitter",
-      title: "Agent runtime transaction snapshot launches",
+      title: "Cursor deployed at SpaceX latest",
+      canonicalUrl: "https://x.com/acme/status/primary-recall",
       publishedAt: new Date("2026-08-18T08:00:00.000Z"),
       providerMetadata: {
         kind: "x_post",
@@ -283,7 +284,8 @@ describe("reader-summary promotion upstream scan exhaustion", () => {
       tenantId: tenant,
       workspaceId: workspace,
       providerKey: "hacker-news",
-      title: "Agent runtime transaction snapshot launches",
+      title: "SpaceX deploying Cursor for engineers",
+      canonicalUrl: "https://news.ycombinator.com/item?id=424242",
       publishedAt: new Date("2026-08-18T07:59:00.000Z"),
       providerMetadata: {
         kind: "hacker_news_story",
@@ -301,12 +303,13 @@ describe("reader-summary promotion upstream scan exhaustion", () => {
       new InMemoryUserRelevanceProfileRepository(),
       new FixedClock(now),
     );
+    const verifier = new ExactSupportVerifier();
     const selection = await new RelevanceReaderSummaryEvidenceSelector(
       ranker,
       repository,
       new FixedClock(now),
       new FakeStoryRankingMetrics(),
-      new ExactSupportVerifier(),
+      verifier,
     ).select({
       tenantId: tenant,
       workspaceId: workspace,
@@ -336,10 +339,14 @@ describe("reader-summary promotion upstream scan exhaustion", () => {
       approvedSameStoryRelations: selection.approvedSameStoryRelations,
     });
 
+    expect(verifier.requestedPairs).toContain(
+      "authoritative-winner-below-caps\u0000independent-support-below-caps");
     expect(selection.approvedSameStoryRelations).toEqual(expect.arrayContaining([
       expect.objectContaining({
         leftFeedItemId: expect.stringMatching(/authoritative|independent/u),
         rightFeedItemId: expect.stringMatching(/authoritative|independent/u),
+        verificationLane: "semantic_primary",
+        executionAttestationSha256: "b".repeat(64),
       }),
     ]));
     expect(projection.topReads[0]?.promotionCandidateId)
@@ -357,8 +364,15 @@ describe("reader-summary promotion upstream scan exhaustion", () => {
 });
 
 class ExactSupportVerifier implements ReaderSummaryStoryRelationVerifierPort {
+  readonly guardedPrimaryRecallCertification = "agent_runtime_attested_v1" as const;
+  readonly requestedPairs: string[] = [];
+
   async verify(input: ReaderSummaryStoryRelationVerifierInput) {
-    return input.candidates.map((candidate) => {
+    this.requestedPairs.push(...input.candidates.map((candidate) =>
+      [candidate.leftFeedItemId, candidate.rightFeedItemId].sort().join("\u0000")));
+    return {
+      verificationLane: input.verificationLane,
+      decisions: input.candidates.map((candidate) => {
       const ids = new Set([
         candidate.leftFeedItemId,
         candidate.rightFeedItemId,
@@ -371,7 +385,13 @@ class ExactSupportVerifier implements ReaderSummaryStoryRelationVerifierPort {
         sameStory: exact,
         confidenceScore: exact ? 0.99 : 0.1,
       };
-    });
+      }),
+      proof: {
+        normalizedOutputSha256: "a".repeat(64),
+        executionAttestationSha256: "b".repeat(64),
+        selectedOutputSha256: "c".repeat(64),
+      },
+    };
   }
 }
 
@@ -467,6 +487,7 @@ const publishOriginal = (
     readonly workspaceId: ReturnType<typeof workspaceId>;
     readonly providerKey: string;
     readonly title: string;
+    readonly canonicalUrl?: string;
     readonly publishedAt: Date;
     readonly providerMetadata: JsonObject;
   },
@@ -475,7 +496,7 @@ const publishOriginal = (
   interestId: "interest-ai",
   sourceItemId: `${params.id}:source`,
   sourceBindingId: `${params.id}:binding`,
-  canonicalUrl: `https://fixture.test/original/${params.id}`,
+  canonicalUrl: params.canonicalUrl ?? `https://fixture.test/original/${params.id}`,
   bodyPreview: "Original release evidence eligible for reader promotion.",
   observedAt: new Date(params.publishedAt.getTime() + 60_000),
 }));

@@ -55,6 +55,22 @@ export const frozenStoryRelationTranscripts: readonly FrozenStoryRelationTranscr
     },
   },
   {
+    transcriptId: "synthetic-runtime-008",
+    pair: {
+      leftFeedItemId: "confirmed-acquisition-announcement-and-report:left",
+      rightFeedItemId: "confirmed-acquisition-announcement-and-report:right",
+    },
+    structuredOutput: {
+      decisions: [{
+        leftFeedItemId: "confirmed-acquisition-announcement-and-report:left",
+        rightFeedItemId: "confirmed-acquisition-announcement-and-report:right",
+        sameStory: true,
+        confidenceScore: 0.99,
+        rationale: "Both report the same confirmed Acme acquisition of Beta.",
+      }],
+    },
+  },
+  {
     transcriptId: "synthetic-runtime-003",
     pair: {
       leftFeedItemId:

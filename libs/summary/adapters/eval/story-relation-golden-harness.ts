@@ -4,23 +4,14 @@ import type { RankFeedItemsUseCase } from "@social-monitor/relevance/features/ra
 import { ok, tenantId, workspaceId } from "@social-monitor/shared-kernel";
 
 import {
-  buildStoryRelationCandidates,
   evaluateStoryRelationGoldenCases,
   type StoryRelationEvalPrediction,
   type StoryRelationEvalResult,
   type StoryRelationGoldenCase,
-  type SummaryEvidenceItem,
   type SummaryEvidenceSelection,
 } from "../../domain";
-import {
-  NOOP_STORY_RANKING_METRICS,
-  type AgentRuntimeClientPort,
-} from "../../ports";
+import { NOOP_STORY_RANKING_METRICS, type AgentRuntimeClientPort } from "../../ports";
 import { RelevanceReaderSummaryEvidenceSelector } from "../evidence/relevance-reader-summary-evidence.selector";
-import {
-  observeSafeRecallShadow,
-  verifiedReaderSummaryStoryRelationPairs,
-} from "../evidence/relevance-reader-summary-story-relation-decisions";
 import { AgentRuntimeReaderSummaryStoryRelationVerifier } from "../model/agent-runtime-reader-summary-story-relation-verifier.adapter";
 
 const observedAt = new Date("2026-07-20T12:00:00.000Z");
@@ -59,36 +50,13 @@ export const runStoryRelationGoldenBaseline = async (params: {
       ranker(rankedItemsFor(evalCase)),
       emptyFeedRepository(),
       { now: () => observedAt },
+      NOOP_STORY_RANKING_METRICS,
+      verifier,
     );
     const selection = await selector.select(query);
-    const evidence = evidenceFor(evalCase);
-    const primaryCandidates = buildStoryRelationCandidates({
-      selection,
-      evidence,
-    });
-    const approvedPrimaryPairs = await verifiedReaderSummaryStoryRelationPairs({
-      query,
-      evidence,
-      deterministicSelection: selection,
-      requestedAt: observedAt,
-      verifier,
-      metrics: NOOP_STORY_RANKING_METRICS,
-    });
-    const traces = await observeSafeRecallShadow({
-      query,
-      evidence,
-      deterministicSelection: selection,
-      requestedAt: observedAt,
-      verifier,
-      metrics: NOOP_STORY_RANKING_METRICS,
-      primaryCandidates,
-    });
     predictions.push({
       caseId: evalCase.caseId,
-      sameStory:
-        deterministicPairMerged(selection, evalCase.caseId) ||
-        approvedPrimaryPairs.size > 0 ||
-        traces.some((trace) => trace.wouldApprove),
+      sameStory: deterministicPairMerged(selection, evalCase.caseId),
     });
   }
 
@@ -110,33 +78,6 @@ const deterministicPairMerged = (
       .length === pairIds.size,
   );
 };
-
-const evidenceFor = (
-  evalCase: StoryRelationGoldenCase,
-): readonly SummaryEvidenceItem[] => [
-  summaryEvidence(evalCase.caseId, "left", evalCase.left, 2),
-  summaryEvidence(evalCase.caseId, "right", evalCase.right, 1),
-];
-
-const summaryEvidence = (
-  caseId: string,
-  side: "left" | "right",
-  evidence: StoryRelationGoldenCase["left"],
-  score: number,
-): SummaryEvidenceItem => ({
-  feedItemId: `${caseId}:${side}`,
-  sourceItemId: `source:${caseId}:${side}`,
-  sourceBindingId: `binding:${caseId}:${side}`,
-  interestId: "story-relation-golden",
-  providerKey: evidence.providerKey,
-  canonicalUrl: `https://${evidence.providerKey}.example.test/${caseId}/${side}`,
-  title: evidence.title,
-  bodyPreview: evidence.bodyPreview,
-  publishedAt: observedAt,
-  observedAt,
-  score,
-  whyImportant: ["Frozen story relation evaluation evidence"],
-});
 
 const rankedItemsFor = (
   evalCase: StoryRelationGoldenCase,

@@ -414,9 +414,17 @@ const approvedRelation = (
   right: SummaryEvidenceItem,
   confidence: number,
 ): ApprovedSameStoryRelation => ({
+  canonicalPairId: [left.feedItemId, right.feedItemId].sort().join("\u0000"),
   leftFeedItemId: left.feedItemId,
   rightFeedItemId: right.feedItemId,
   confidence,
+  verificationLane: "semantic_primary",
+  candidatePolicyVersion: "reader_summary.story_relation.candidate.v1",
+  rankingPolicyVersion: "story_ranking_v10",
+  featureDigest: "a".repeat(64),
+  executionAttestationSha256: "b".repeat(64),
+  normalizedOutputSha256: "c".repeat(64),
+  selectedOutputSha256: "d".repeat(64),
 });
 
 const metricLabels = (

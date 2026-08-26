@@ -162,14 +162,30 @@ const evidence = [
 
 const sameStoryRelations: readonly ApprovedSameStoryRelation[] = [
   {
+    canonicalPairId: "cursor-hn\u0000cursor-x-official",
     leftFeedItemId: "cursor-hn",
     rightFeedItemId: "cursor-x-official",
     confidence: 0.92,
+    verificationLane: "semantic_primary",
+    candidatePolicyVersion: "reader_summary.story_relation.candidate.v1",
+    rankingPolicyVersion: "story_ranking_v10",
+    featureDigest: "a".repeat(64),
+    executionAttestationSha256: "b".repeat(64),
+    normalizedOutputSha256: "c".repeat(64),
+    selectedOutputSha256: "d".repeat(64),
   },
   {
+    canonicalPairId: "duplicate-additional\u0000spacex-github-24",
     leftFeedItemId: "spacex-github-24",
     rightFeedItemId: "duplicate-additional",
     confidence: 0.92,
+    verificationLane: "semantic_primary",
+    candidatePolicyVersion: "reader_summary.story_relation.candidate.v1",
+    rankingPolicyVersion: "story_ranking_v10",
+    featureDigest: "e".repeat(64),
+    executionAttestationSha256: "f".repeat(64),
+    normalizedOutputSha256: "1".repeat(64),
+    selectedOutputSha256: "2".repeat(64),
   },
 ];
 

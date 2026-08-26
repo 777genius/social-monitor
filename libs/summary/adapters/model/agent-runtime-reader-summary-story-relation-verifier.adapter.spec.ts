@@ -30,16 +30,24 @@ describe("AgentRuntimeReaderSummaryStoryRelationVerifier", () => {
     const verifier = new AgentRuntimeReaderSummaryStoryRelationVerifier({
       client,
     });
+    expect(verifier.guardedPrimaryRecallCertification)
+      .toBe("agent_runtime_attested_v1");
 
-    await expect(verifier.verify(input())).resolves.toEqual([
-      {
+    await expect(verifier.verify(input())).resolves.toMatchObject({
+      verificationLane: "semantic_primary",
+      decisions: [{
         leftFeedItemId: "feed:hn",
         rightFeedItemId: "feed:rss",
         sameStory: true,
         confidenceScore: 0.96,
         rationale: "Both report the same compiler rewrite.",
+      }],
+      proof: {
+        normalizedOutputSha256: expect.stringMatching(/^[0-9a-f]{64}$/u),
+        executionAttestationSha256: expect.stringMatching(/^[0-9a-f]{64}$/u),
+        selectedOutputSha256: expect.stringMatching(/^[0-9a-f]{64}$/u),
       },
-    ]);
+    });
     expect(client.commands[0]).toMatchObject({
       provider: "codex",
       purpose: "social_monitor.reader_summary.verify_story_relations.v2",
@@ -106,7 +114,7 @@ describe("AgentRuntimeReaderSummaryStoryRelationVerifier", () => {
       }),
     });
 
-    await expect(verifier.verify(input())).resolves.toEqual(decisions);
+    await expect(verifier.verify(input())).resolves.toMatchObject({ decisions });
   });
 
   it("omits an absent optional rationale from normalized binary decisions", async () => {
@@ -125,15 +133,15 @@ describe("AgentRuntimeReaderSummaryStoryRelationVerifier", () => {
       }),
     });
 
-    const decisions = await verifier.verify(input());
+    const batch = await verifier.verify(input());
 
-    expect(decisions).toEqual([{
+    expect(batch.decisions).toEqual([{
       leftFeedItemId: "feed:hn",
       rightFeedItemId: "feed:rss",
       sameStory: false,
       confidenceScore: 0.97,
     }]);
-    expect(decisions[0]).not.toHaveProperty("rationale");
+    expect(batch.decisions[0]).not.toHaveProperty("rationale");
   });
 
   it("uses the explicit tri-state schema for the post-selection related lane", async () => {
@@ -163,7 +171,10 @@ describe("AgentRuntimeReaderSummaryStoryRelationVerifier", () => {
         subjectStoryClusterId: "story:hn",
         targetStoryClusterId: "story:rss",
       }],
-    })).resolves.toEqual([decision]);
+    })).resolves.toMatchObject({
+      verificationLane: "related_topic",
+      decisions: [decision],
+    });
     expect(client.signals).toEqual([controller.signal]);
 
     expect(client.commands[0]).toMatchObject({
@@ -192,7 +203,7 @@ describe("AgentRuntimeReaderSummaryStoryRelationVerifier", () => {
     });
   });
 
-  it("isolates shadow task identity and metadata from the production lane", async () => {
+  it("isolates guarded primary identity while attesting both primary lanes", async () => {
     const client = new CapturingAgentRuntimeClient({
       status: "completed",
       structuredOutput: {
@@ -215,23 +226,14 @@ describe("AgentRuntimeReaderSummaryStoryRelationVerifier", () => {
       },
     });
 
-    await verifier.verify({ ...input(), candidates: [] });
-    await verifier.verify({
-      ...input(),
-      candidates: [],
-      verificationLane: "safe_recall_shadow",
-    });
-
-    expect(client.commands).toHaveLength(0);
-
     const productionInput = input();
-    const shadowInput = {
+    const guardedInput = {
       ...input(),
-      verificationLane: "safe_recall_shadow" as const,
+      verificationLane: "guarded_recall_primary" as const,
       timeoutMs: 1_234,
     };
     await verifier.verify(productionInput);
-    await verifier.verify(shadowInput);
+    await verifier.verify(guardedInput);
 
     expect(client.commands[0]?.requestId).not.toBe(client.commands[1]?.requestId);
     expect(client.commands[0]?.purpose).toBe(
@@ -240,9 +242,9 @@ describe("AgentRuntimeReaderSummaryStoryRelationVerifier", () => {
     expect(client.commands[1]).toMatchObject({
       purpose: "social_monitor.reader_summary.verify_story_relations.v2",
       timeoutMs: 1_234,
-      metadata: { verificationLane: "safe_recall_shadow" },
+      metadata: { verificationLane: "guarded_recall_primary" },
     });
-    expect(productionAttestations).toHaveLength(1);
+    expect(productionAttestations).toHaveLength(2);
   });
 
   it.each([
@@ -288,6 +290,7 @@ const input = (): ReaderSummaryStoryRelationVerifierInput => ({
     periodKey: "2026-07-11",
   },
   requestedAt: new Date("2026-07-12T01:00:00.000Z"),
+  verificationLane: "semantic_primary",
   clusters: [],
   evidence: [
     evidence(

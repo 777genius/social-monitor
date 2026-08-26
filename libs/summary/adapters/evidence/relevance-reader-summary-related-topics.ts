@@ -36,7 +36,7 @@ export const verifiedReaderSummaryRelatedTopics = async (params: {
   const timeoutMs = params.timeoutMs ?? RELATED_TOPIC_VERIFIER_TIMEOUT_MS;
   const controller = new AbortController();
   try {
-    const decisions = await withRelatedTopicTimeout(params.verifier.verify({
+    const batch = await withRelatedTopicTimeout(params.verifier.verify({
       tenantId: params.query.tenantId,
       workspaceId: params.query.workspaceId,
       scope: params.query.scope,
@@ -49,12 +49,13 @@ export const verifiedReaderSummaryRelatedTopics = async (params: {
       timeoutMs,
       signal: controller.signal,
     }), timeoutMs, controller);
-    if (!isValidRelatedTopicVerdictBatch({ candidates, decisions })) {
+    if (batch.verificationLane !== "related_topic" ||
+        !isValidRelatedTopicVerdictBatch({ candidates, decisions: batch.decisions })) {
       throw new Error("Related topic verifier returned an invalid decision batch");
     }
     const relations = reconcileRelatedTopicVerdicts({
       candidates,
-      decisions,
+      decisions: batch.decisions,
       evidence: params.selection.selectedEvidence,
       clusters: params.selection.clusters,
     });

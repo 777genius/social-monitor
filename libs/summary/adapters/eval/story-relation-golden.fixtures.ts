@@ -1,7 +1,7 @@
 import type { StoryRelationGoldenCase } from "../../domain";
 
 export const STORY_RELATION_GOLDEN_DATASET_VERSION =
-  "reader_summary.story_relation.golden.v1";
+  "reader_summary.story_relation.golden.v2";
 
 /** Frozen eval inputs only; these fixtures do not alter runtime topic behavior. */
 export const storyRelationGoldenCases: readonly StoryRelationGoldenCase[] = [
@@ -17,9 +17,9 @@ export const storyRelationGoldenCases: readonly StoryRelationGoldenCase[] = [
     },
     right: {
       providerKey: "x-twitter",
-      title: "Latest Cursor deploying for engineers",
+      title: "SpaceX deploying Cursor for engineers",
       bodyPreview:
-        "SpaceX confirms the rollout in separate wrapper metadata.",
+        "SpaceX confirms the deployment in separate wrapper metadata.",
     },
   },
   {
@@ -34,9 +34,24 @@ export const storyRelationGoldenCases: readonly StoryRelationGoldenCase[] = [
     },
     right: {
       providerKey: "hacker-news",
-      title: "Claude watermark mechanism reaches developers",
+      title: "Anthropic explains Claude watermark mechanism",
       bodyPreview:
         "The engineering team explains its verification pipeline.",
+    },
+  },
+  {
+    caseId: "confirmed-acquisition-announcement-and-report",
+    expected: "same_story",
+    relatedOnlyHardNegative: false,
+    left: {
+      providerKey: "x-twitter",
+      title: "Acme announces confirmed Beta acquisition",
+      bodyPreview: "Acme says the Beta acquisition completed after approval.",
+    },
+    right: {
+      providerKey: "hacker-news",
+      title: "Acme acquired Beta in confirmed deal",
+      bodyPreview: "The report covers the completed Acme Beta acquisition.",
     },
   },
   {

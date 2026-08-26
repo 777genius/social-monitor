@@ -191,9 +191,17 @@ export type SummaryEvidenceSelection = {
 };
 
 export type ApprovedSameStoryRelation = {
+  readonly canonicalPairId: string;
   readonly leftFeedItemId: string;
   readonly rightFeedItemId: string;
   readonly confidence: number;
+  readonly verificationLane: "semantic_primary" | "guarded_recall_primary";
+  readonly candidatePolicyVersion: string;
+  readonly rankingPolicyVersion: string;
+  readonly featureDigest: string;
+  readonly executionAttestationSha256: string;
+  readonly normalizedOutputSha256: string;
+  readonly selectedOutputSha256: string;
 };
 
 export type RelatedTopicRelation = ReaderSummaryRelatedTopicRelationProps;

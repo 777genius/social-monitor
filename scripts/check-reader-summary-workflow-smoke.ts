@@ -230,9 +230,17 @@ class SelectedReaderSummaryEvidenceSelector implements ReaderSummaryEvidenceSele
       ],
       approvedSameStoryRelations: [
         {
+          canonicalPairId: "feed-github\u0000feed-reddit",
           leftFeedItemId: "feed-reddit",
           rightFeedItemId: "feed-github",
           confidence: 0.92,
+          verificationLane: "semantic_primary",
+          candidatePolicyVersion: "reader_summary.story_relation.candidate.v1",
+          rankingPolicyVersion: "story_ranking_v10",
+          featureDigest: "a".repeat(64),
+          executionAttestationSha256: "b".repeat(64),
+          normalizedOutputSha256: "c".repeat(64),
+          selectedOutputSha256: "d".repeat(64),
         },
       ],
       relatedTopicRelations: [],

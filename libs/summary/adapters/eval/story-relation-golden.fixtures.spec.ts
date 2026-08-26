@@ -21,6 +21,7 @@ describe("story relation golden eval", () => {
     expect(storyRelationGoldenCases.map((evalCase) => evalCase.caseId)).toEqual([
       "cursor-spacex-deployment",
       "anthropic-watermark-announcement-and-explainer",
+      "confirmed-acquisition-announcement-and-report",
       "claude-code-watermark-question-and-announcement",
       "gpt-rollout-and-first-impressions",
       "fable-access-window-and-simulator",
@@ -29,7 +30,7 @@ describe("story relation golden eval", () => {
     ]);
     expect(
       storyRelationGoldenCases.filter((evalCase) => evalCase.expected === "same_story"),
-    ).toHaveLength(2);
+    ).toHaveLength(3);
     expect(
       storyRelationGoldenCases.filter(
         (evalCase) => evalCase.relatedOnlyHardNegative,
@@ -54,7 +55,7 @@ describe("story relation golden eval", () => {
     expect(serializedTranscripts).not.toContain("positive");
   });
 
-  it("evaluates shadow wouldApprove traces through the strict production adapter", async () => {
+  it("evaluates only real selector clusters and applied primary relations", async () => {
     const client = new RecordedGoldenAgentRuntimeClient();
     const result = await runStoryRelationGoldenBaseline({
       datasetVersion: STORY_RELATION_GOLDEN_DATASET_VERSION,
@@ -65,8 +66,9 @@ describe("story relation golden eval", () => {
     expect(result.caseResults.map((caseResult) => caseResult.caseId)).toEqual(
       storyRelationGoldenCases.map((evalCase) => evalCase.caseId),
     );
+    expect(result.caseResults.filter((caseResult) => !caseResult.correct)).toEqual([]);
     expect(result.metrics).toEqual({
-      truePositiveCount: 2,
+      truePositiveCount: 3,
       falsePositiveCount: 0,
       falseNegativeCount: 0,
       trueNegativeCount: 5,
@@ -74,19 +76,10 @@ describe("story relation golden eval", () => {
       recall: 1,
       relatedOnlyFalseMergeCount: 0,
     });
-    expect(client.requestedCaseIds).toContain(
+    expect(client.requestedCaseIds).not.toContain(
       "claude-code-watermark-question-and-announcement",
     );
-    expect(client.primaryRequestedCaseIds).toEqual([
-      "anthropic-watermark-announcement-and-explainer",
-      "claude-code-watermark-question-and-announcement",
-    ]);
-    expect(client.shadowRequestedCaseIds).toEqual([
-      "cursor-spacex-deployment",
-    ]);
-    expect(client.shadowRequestedCaseIds).not.toContain(
-      "anthropic-watermark-announcement-and-explainer",
-    );
+    expect(client.guardedRequestedCaseIds).toContain("cursor-spacex-deployment");
   });
 
   it("omits undefined precision and recall denominators", () => {
@@ -138,7 +131,7 @@ describe("story relation golden eval", () => {
 class RecordedGoldenAgentRuntimeClient implements AgentRuntimeClientPort {
   readonly requestedCaseIds: string[] = [];
   readonly primaryRequestedCaseIds: string[] = [];
-  readonly shadowRequestedCaseIds: string[] = [];
+  readonly guardedRequestedCaseIds: string[] = [];
 
   async runTask(
     command: AgentRuntimeTaskCommand,
@@ -153,8 +146,8 @@ class RecordedGoldenAgentRuntimeClient implements AgentRuntimeClientPort {
       pair.leftFeedItemId.replace(/:left$/, ""),
     );
     this.requestedCaseIds.push(...caseIds);
-    if (command.metadata?.verificationLane === "safe_recall_shadow") {
-      this.shadowRequestedCaseIds.push(...caseIds);
+    if (command.metadata?.verificationLane === "guarded_recall_primary") {
+      this.guardedRequestedCaseIds.push(...caseIds);
     } else {
       this.primaryRequestedCaseIds.push(...caseIds);
     }

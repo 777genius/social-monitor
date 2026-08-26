@@ -17,10 +17,8 @@ import {
   type ReaderSummaryStoryRelationVerifierPort,
   type StoryRankingMetricsPort,
 } from "../../ports";
-import {
-  scheduleReaderSummarySafeRecallShadowObservation,
-  verifiedReaderSummaryStoryRelations,
-} from "./relevance-reader-summary-story-relation-decisions";
+import { verifiedReaderSummaryStoryRelations } from
+  "./relevance-reader-summary-story-relation-decisions";
 import {
   RELATED_TOPIC_VERIFIER_TIMEOUT_MS,
   verifiedReaderSummaryRelatedTopics,
@@ -177,6 +175,12 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
             verifiedStoryRelationPairs: approvedRelations.pairs,
             now: ingestionCutoff,
           });
+    const candidateAppliedRelations = appliedRelationsForClusters(
+      approvedRelations.relations,
+      verifiedCandidateSelection.clusters,
+    );
+    const candidateAppliedPairs = new Set(candidateAppliedRelations.map(
+      (relation) => relation.canonicalPairId));
     const verifiedPromotionSelection = promotionPolicySelection({
       ...verifiedCandidateSelection,
       sourceWindow: {
@@ -188,7 +192,7 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
     }, promotionPolicyItems);
     const fullPromotionSelection = {
       ...verifiedPromotionSelection,
-      approvedSameStoryRelations: approvedRelations.relations,
+      approvedSameStoryRelations: candidateAppliedRelations,
     };
     const authoritativePromotion = admitReaderPostPromotionEvidence(
       fullPromotionSelection,
@@ -225,7 +229,7 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
       },
       items,
       limit: items.length,
-      verifiedStoryRelationPairs: approvedRelations.pairs,
+      verifiedStoryRelationPairs: candidateAppliedPairs,
       now: ingestionCutoff,
     });
     const selectedEvidence = uniqueEvidence([
@@ -243,7 +247,10 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
         ingestionCutoff,
       },
       selectedEvidence,
-      approvedSameStoryRelations: approvedRelations.relations,
+      approvedSameStoryRelations: appliedRelationsForClusters(
+        candidateAppliedRelations,
+        selection.clusters,
+      ),
     };
     const relatedTopicRelations = await verifiedReaderSummaryRelatedTopics({
       query,
@@ -279,14 +286,6 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
       ),
     );
 
-    scheduleReaderSummarySafeRecallShadowObservation({
-      query,
-      evidence: primaryCandidateItems,
-      deterministicSelection: candidateSelection,
-      requestedAt: ingestionCutoff,
-      verifier: this.storyRelationVerifier,
-      metrics: this.storyRankingMetrics,
-    });
     return personalizedSelection;
   }
 
@@ -308,4 +307,22 @@ const uniqueEvidence = (
     if (!byId.has(item.feedItemId)) byId.set(item.feedItemId, item);
   }
   return [...byId.values()];
+};
+
+const appliedRelationsForClusters = <T extends {
+  readonly leftFeedItemId: string;
+  readonly rightFeedItemId: string;
+}>(relations: readonly T[], clusters: readonly {
+  readonly representativeFeedItemId: string;
+  readonly duplicateFeedItemIds: readonly string[];
+}[]): readonly T[] => {
+  const clusterByItem = new Map<string, number>();
+  clusters.forEach((cluster, index) => {
+    for (const id of [cluster.representativeFeedItemId,
+      ...cluster.duplicateFeedItemIds]) clusterByItem.set(id, index);
+  });
+  return relations.filter((relation) =>
+    clusterByItem.get(relation.leftFeedItemId) !== undefined &&
+    clusterByItem.get(relation.leftFeedItemId) ===
+      clusterByItem.get(relation.rightFeedItemId));
 };

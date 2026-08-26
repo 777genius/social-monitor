@@ -100,9 +100,17 @@ export const admitReaderPostPromotionEvidence = (
       .filter((relation) => admittedIds.has(relation.leftFeedItemId) &&
         admittedIds.has(relation.rightFeedItemId))
       .map((relation) => ({
+        canonicalPairId: relation.canonicalPairId,
         leftFeedItemId: relation.leftFeedItemId,
         rightFeedItemId: relation.rightFeedItemId,
         confidence: relation.confidence,
+        verificationLane: relation.verificationLane,
+        candidatePolicyVersion: relation.candidatePolicyVersion,
+        rankingPolicyVersion: relation.rankingPolicyVersion,
+        featureDigest: relation.featureDigest,
+        executionAttestationSha256: relation.executionAttestationSha256,
+        normalizedOutputSha256: relation.normalizedOutputSha256,
+        selectedOutputSha256: relation.selectedOutputSha256,
       })),
     relatedTopicRelations: [],
     promotionCounts: {

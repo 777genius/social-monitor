@@ -5,6 +5,7 @@ import type {
   AgentRuntimeClientPort,
   ReaderSummaryStoryRelationVerifierInput,
   ReaderSummaryStoryRelationVerifierPort,
+  VerifiedStoryRelationDecisionBatch,
 } from "../../ports";
 import { InvalidStoryRelationDecisionBatchError } from "../../ports";
 import {
@@ -58,6 +59,7 @@ const defaultTimeoutMs = 300_000;
 const defaultMaxOutputTokens = 6_000;
 
 export class AgentRuntimeReaderSummaryStoryRelationVerifier implements ReaderSummaryStoryRelationVerifierPort {
+  readonly guardedPrimaryRecallCertification = "agent_runtime_attested_v1" as const;
   private readonly client: AgentRuntimeClientPort;
   private readonly provider: "codex";
   private readonly providerInstanceId?: string;
@@ -100,13 +102,13 @@ export class AgentRuntimeReaderSummaryStoryRelationVerifier implements ReaderSum
 
   async verify(
     input: ReaderSummaryStoryRelationVerifierInput,
-  ): Promise<readonly unknown[]> {
+  ): Promise<VerifiedStoryRelationDecisionBatch> {
     if (input.candidates.length === 0) {
-      return [];
+      throw new Error("Story relation verifier requires a nonempty candidate batch");
     }
     const scopeKey = readerSummaryScopeKey(input.scope);
-    const requestScopeKey = input.verificationLane === "safe_recall_shadow"
-      ? `${scopeKey}:safe-recall-shadow`
+    const requestScopeKey = input.verificationLane === "guarded_recall_primary"
+      ? `${scopeKey}:guarded-recall-primary`
       : input.verificationLane === "related_topic"
         ? `${scopeKey}:related-topic`
         : scopeKey;
@@ -160,7 +162,7 @@ export class AgentRuntimeReaderSummaryStoryRelationVerifier implements ReaderSum
       },
       timeoutMs: relatedTopicLane
         ? (input.timeoutMs ?? this.relatedTopicTimeoutMs)
-        : input.verificationLane === "safe_recall_shadow"
+        : input.verificationLane === "guarded_recall_primary"
           ? (input.timeoutMs ?? this.timeoutMs)
           : this.timeoutMs,
       metadata: {
@@ -186,18 +188,19 @@ export class AgentRuntimeReaderSummaryStoryRelationVerifier implements ReaderSum
     const decisions = relatedTopicLane
       ? readDecisionEnvelope(raw)
       : normalizeBinaryDecisions(raw);
-    await verifyAndRecordReaderSummaryExecution({
+    const proof = await verifyAndRecordReaderSummaryExecution({
       command,
       result,
       taskRole: relatedTopicLane ? "related_topic_relation" : "story_relation",
-      attempt: relatedTopicLane ? "related-topic" : "primary",
+      attempt: relatedTopicLane ? "related-topic" : input.verificationLane,
       normalizedOutput: decisions,
-      sink:
-        input.verificationLane === "safe_recall_shadow"
-          ? undefined
-          : this.verifiedAttestationSink,
+      sink: this.verifiedAttestationSink,
     });
-    return decisions;
+    return {
+      verificationLane: input.verificationLane,
+      decisions: decisions as VerifiedStoryRelationDecisionBatch["decisions"],
+      proof,
+    };
   }
 }
 

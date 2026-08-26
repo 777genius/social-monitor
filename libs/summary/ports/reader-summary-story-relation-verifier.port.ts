@@ -3,9 +3,11 @@ import type { TenantId, WorkspaceId } from "@social-monitor/shared-kernel";
 import type {
   ReaderSummaryPeriod,
   ReaderSummaryScope,
+  RelatedTopicVerdict,
   RelatedTopicCandidate,
   StoryCluster,
   StoryRelationCandidate,
+  StoryRelationDecision,
   SummaryEvidenceItem,
 } from "../domain";
 
@@ -18,17 +20,32 @@ export type ReaderSummaryStoryRelationVerifierInput = {
   readonly clusters: readonly StoryCluster[];
   readonly evidence: readonly SummaryEvidenceItem[];
   readonly candidates: readonly (StoryRelationCandidate | RelatedTopicCandidate)[];
-  /** Omitted for the unchanged production verification lane. */
-  readonly verificationLane?: "safe_recall_shadow" | "related_topic";
-  /** Shadow callers provide their independent execution bound. */
+  readonly verificationLane:
+    | "semantic_primary"
+    | "guarded_recall_primary"
+    | "related_topic";
   readonly timeoutMs?: number;
   readonly signal?: AbortSignal;
 };
 
+export type VerifiedStoryRelationExecutionProof = Readonly<{
+  normalizedOutputSha256: string;
+  executionAttestationSha256: string;
+  selectedOutputSha256: string;
+}>;
+
+export type VerifiedStoryRelationDecisionBatch = Readonly<{
+  verificationLane: ReaderSummaryStoryRelationVerifierInput["verificationLane"];
+  decisions: readonly (StoryRelationDecision | RelatedTopicVerdict)[];
+  proof: VerifiedStoryRelationExecutionProof;
+}>;
+
 export interface ReaderSummaryStoryRelationVerifierPort {
+  /** Only the certified agent-runtime adapter may opt into guarded primary recall. */
+  readonly guardedPrimaryRecallCertification?: "agent_runtime_attested_v1";
   verify(
     input: ReaderSummaryStoryRelationVerifierInput,
-  ): Promise<readonly unknown[]>;
+  ): Promise<VerifiedStoryRelationDecisionBatch>;
 }
 
 export type InvalidStoryRelationDecisionEnvelopeReason =
@@ -47,5 +64,13 @@ export class InvalidStoryRelationDecisionBatchError extends Error {
 
 export const NOOP_READER_SUMMARY_STORY_RELATION_VERIFIER: ReaderSummaryStoryRelationVerifierPort =
   {
-    verify: async () => [],
+    verify: async (input) => ({
+      verificationLane: input.verificationLane,
+      decisions: [],
+      proof: {
+        normalizedOutputSha256: "0".repeat(64),
+        executionAttestationSha256: "0".repeat(64),
+        selectedOutputSha256: "0".repeat(64),
+      },
+    }),
   };

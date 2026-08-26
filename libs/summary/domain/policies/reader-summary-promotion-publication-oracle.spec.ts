@@ -29,6 +29,33 @@ describe("ReaderSummaryPublicationPolicy Promotion V1 oracle", () => {
       "citation-publication-2",
     ]);
   });
+  it("rejects recall support with missing execution provenance", () => {
+    const fixture = trustedNonOfficialSupportPublicationFixture();
+    const relation = fixture.evidence.approvedSameStoryRelations?.[0];
+    if (relation === undefined) throw new Error("Expected relation fixture");
+    const { executionAttestationSha256: _missing, ...unproven } = relation;
+    void _missing;
+    const result = readerSummaryPromotionPublicationOracle({
+      evidence: fixture.evidence.selectedEvidence,
+      citations: fixture.artifact.toSnapshot().citationMap,
+      sourceWindow: fixture.evidence.sourceWindow,
+      approvedSameStoryRelations: [unproven] as never,
+    });
+    expect(result.top[0]?.citationIds).toEqual(["citation-publication-1"]);
+  });
+  it("fails malformed recall provenance closed without throwing", () => {
+    const fixture = trustedNonOfficialSupportPublicationFixture();
+    const relation = fixture.evidence.approvedSameStoryRelations?.[0];
+    if (relation === undefined) throw new Error("Expected relation fixture");
+    const result = readerSummaryPromotionPublicationOracle({
+      evidence: fixture.evidence.selectedEvidence,
+      citations: fixture.artifact.toSnapshot().citationMap,
+      sourceWindow: fixture.evidence.sourceWindow,
+      approvedSameStoryRelations: [{ ...relation,
+        rankingPolicyVersion: undefined }] as never,
+    });
+    expect(result.top[0]?.citationIds).toEqual(["citation-publication-1"]);
+  });
   it("does not let official provenance replace a zero engagement rating", () => {
     const fixture = promotionPublicationFixture(25);
     const evidence = fixture.evidence.selectedEvidence.map((item, index) =>

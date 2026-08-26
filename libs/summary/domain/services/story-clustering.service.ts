@@ -6,7 +6,8 @@ import type {
   SummarySourceWindow,
   StoryCluster,
 } from "../value-objects/summary-evidence-item";
-import { readerSummaryIndependentProviderFamilyCount } from
+import { readerSummaryIndependentProviderFamily,
+  readerSummaryIndependentProviderFamilyCount } from
   "../value-objects/reader-summary-provider-identity";
 import {
   readerSummaryScopeKey,
@@ -21,6 +22,7 @@ import {
   belongsToVerifiedStoryCluster,
   hasCrossProviderClaimFacetConflict,
 } from "./story-cluster-membership";
+import { storyRelationHardNegative } from "./story-relation-hard-negative";
 import { storyKey } from "./story-key-normalizer";
 import { storyClusterSignal } from "./story-cluster-signal";
 
@@ -75,14 +77,15 @@ const buildClusters = (
   policy: StoryRankingPolicy,
   verifiedStoryRelationPairs: ReadonlySet<string> | undefined,
 ): readonly StoryCluster[] => {
-  const groups: {
+  const baseGroups: {
     readonly key: string;
     readonly items: SummaryEvidenceItem[];
   }[] = [];
 
-  for (const item of items) {
+  for (const item of [...items].sort((left, right) =>
+    left.feedItemId.localeCompare(right.feedItemId))) {
     const key = storyKey(item, policy);
-    const group = groups.find(
+    const group = baseGroups.find(
       (candidate) =>
         (candidate.key === key &&
           !hasCrossProviderClaimFacetConflict(item, candidate.items, policy)) ||
@@ -90,16 +93,18 @@ const buildClusters = (
           item,
           candidate.items,
           policy,
-          verifiedStoryRelationPairs,
         ),
     );
 
     if (group === undefined) {
-      groups.push({ key, items: [item] });
+      baseGroups.push({ key, items: [item] });
     } else {
       group.items.push(item);
     }
   }
+
+  const groups = modelAssistedGroups(baseGroups, verifiedStoryRelationPairs,
+    policy);
 
   return groups.map((group) => {
     const clusterItems = group.items;
@@ -135,6 +140,107 @@ const buildClusters = (
     } satisfies StoryCluster;
   });
 };
+
+type BaseStoryGroup = Readonly<{
+  key: string;
+  items: readonly SummaryEvidenceItem[];
+}>;
+
+const modelAssistedGroups = (
+  baseGroups: readonly BaseStoryGroup[],
+  verifiedPairs: ReadonlySet<string> | undefined,
+  policy: StoryRankingPolicy,
+): readonly BaseStoryGroup[] => {
+  if (verifiedPairs === undefined || verifiedPairs.size === 0) return baseGroups;
+  const baseByItem = new Map<string, number>();
+  baseGroups.forEach((group, index) => group.items.forEach((item) =>
+    baseByItem.set(item.feedItemId, index)));
+  const attestedBasePairs = new Set<string>();
+  for (const pair of verifiedPairs) {
+    const [leftId, rightId] = pair.split("\u0000");
+    if (leftId === undefined || rightId === undefined) continue;
+    const leftBase = baseByItem.get(leftId);
+    const rightBase = baseByItem.get(rightId);
+    if (leftBase === undefined || rightBase === undefined || leftBase === rightBase) continue;
+    attestedBasePairs.add(basePairId(leftBase, rightBase));
+  }
+  const components = baseGroups.map((_group, index) => [index]);
+  for (const edge of [...attestedBasePairs].sort()) {
+    const [leftRaw, rightRaw] = edge.split(":");
+    const left = Number(leftRaw);
+    const right = Number(rightRaw);
+    const leftComponentIndex = components.findIndex((value) => value.includes(left));
+    const rightComponentIndex = components.findIndex((value) => value.includes(right));
+    if (leftComponentIndex < 0 || rightComponentIndex < 0 ||
+        leftComponentIndex === rightComponentIndex) continue;
+    const proposed = [...components[leftComponentIndex]!,
+      ...components[rightComponentIndex]!].sort((a, b) => a - b);
+    if (!modelComponentEligible(proposed, baseGroups, attestedBasePairs, policy)) {
+      continue;
+    }
+    const keepIndex = Math.min(leftComponentIndex, rightComponentIndex);
+    const dropIndex = Math.max(leftComponentIndex, rightComponentIndex);
+    components[keepIndex] = proposed;
+    components.splice(dropIndex, 1);
+  }
+  return components.map((component) => {
+    const mergedItems = component.flatMap((index) => baseGroups[index]?.items ?? [])
+      .sort((left, right) => left.feedItemId.localeCompare(right.feedItemId));
+    const firstBase = baseGroups[component[0] ?? -1];
+    if (firstBase === undefined) throw new Error("Story base component is empty");
+    return { key: firstBase.key, items: mergedItems };
+  }).sort((left, right) => left.items[0]!.feedItemId.localeCompare(
+    right.items[0]!.feedItemId));
+};
+
+const modelComponentEligible = (
+  component: readonly number[],
+  baseGroups: readonly BaseStoryGroup[],
+  attestedBasePairs: ReadonlySet<string>,
+  policy: StoryRankingPolicy,
+): boolean => {
+  if (component.length > 4) return false;
+  const groups = component.flatMap((index) => baseGroups[index] ?? []);
+  if (groups.some((group) => independentFamilies(group.items).size > 4)) {
+    return false;
+  }
+  const items = groups.flatMap((group) => group.items);
+  if (independentFamilies(items).size > 4) return false;
+  for (let left = 0; left < component.length; left += 1) {
+    for (let right = left + 1; right < component.length; right += 1) {
+      const leftBase = component[left];
+      const rightBase = component[right];
+      if (leftBase === undefined || rightBase === undefined ||
+          !attestedBasePairs.has(basePairId(leftBase, rightBase))) return false;
+    }
+  }
+  for (let left = 0; left < items.length; left += 1) {
+    for (let right = left + 1; right < items.length; right += 1) {
+      const leftItem = items[left];
+      const rightItem = items[right];
+      if (leftItem === undefined || rightItem === undefined) continue;
+      const leftBase = component.find((base) =>
+        baseGroups[base]?.items.includes(leftItem));
+      const rightBase = component.find((base) =>
+        baseGroups[base]?.items.includes(rightItem));
+      if (leftBase === rightBase) continue;
+      if (storyRelationHardNegative({
+        left: leftItem,
+        right: rightItem,
+        policy,
+      }) !== undefined) return false;
+    }
+  }
+  return true;
+};
+
+const independentFamilies = (
+  items: readonly SummaryEvidenceItem[],
+): ReadonlySet<string> => new Set(items.map((item) =>
+  readerSummaryIndependentProviderFamily(item)));
+
+const basePairId = (left: number, right: number): string =>
+  [left, right].sort((a, b) => a - b).join(":");
 
 const isUserFacingStoryReason = (value: string): boolean => {
   const trimmed = value.trim();
@@ -291,7 +397,7 @@ const compareStoryClusters = (
   return (
     right.observedAtRange.endedAt.getTime() -
     left.observedAtRange.endedAt.getTime()
-  );
+  ) || left.id.localeCompare(right.id);
 };
 
 const uniqueSorted = (values: readonly string[]): readonly string[] =>

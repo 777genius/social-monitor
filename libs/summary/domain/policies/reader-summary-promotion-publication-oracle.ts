@@ -10,6 +10,8 @@ import { READER_POST_PROMOTION_POLICY_V1 } from
   "./reader-post-promotion-policy-contract";
 import { readerPostPromotionTimestampMicros } from
   "./reader-post-promotion-policy";
+import { hasValidStoryRelationProvenance } from
+  "../services/story-relation-provenance";
 
 export type PromotionOracleCard = {
   readonly candidateId: string;
@@ -257,7 +259,8 @@ const independentSameStorySupport = (params: {
     readonly independentlyAdditionalEligible: boolean;
   }>();
   for (const relation of params.relations) {
-    if (!unit(relation.confidence)) continue;
+    if (!unit(relation.confidence) ||
+        !hasValidStoryRelationProvenance(relation)) continue;
     const left = params.evaluatedById.get(relation.leftFeedItemId);
     const right = params.evaluatedById.get(relation.rightFeedItemId);
     if (left === undefined || right === undefined ||

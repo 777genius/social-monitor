@@ -4,9 +4,8 @@ import {
   buildStoryRankingTelemetrySnapshot,
   readerSummaryReliabilityRiskKinds,
   summaryEvidenceCoverageWarnings,
+  type GuardedRecallGenerationAggregate,
   type StoryRelationDecisionAggregate,
-  type StoryRelationSafeRecallShadowDecisionAggregate,
-  type StoryRelationSafeRecallShadowGenerationAggregate,
   type SummaryEvidenceSelection,
 } from "../../domain";
 import type {
@@ -150,7 +149,11 @@ export class StoryRankingMetricsRecorder implements StoryRankingMetricsPort {
   recordStoryRelationVerification(
     metric: StoryRelationVerificationMetric,
   ): void {
-    const labels = { status: metric.status };
+    const labels = {
+      status: metric.status,
+      verification_lane: metric.lane,
+      attested: String(metric.attested),
+    };
     this.metrics.recordGauge({
       name: "summary_story_relation_candidates_total",
       value: metric.candidateCount,
@@ -159,6 +162,16 @@ export class StoryRankingMetricsRecorder implements StoryRankingMetricsPort {
     this.metrics.recordGauge({
       name: "summary_story_relation_approved_total",
       value: metric.approvedCount,
+      labels,
+    });
+    this.metrics.recordGauge({
+      name: "summary_story_relation_rejected_total",
+      value: metric.rejectedCount,
+      labels,
+    });
+    this.metrics.recordGauge({
+      name: "summary_story_relation_verification_latency_ms",
+      value: metric.latencyMs,
       labels,
     });
   }
@@ -203,12 +216,12 @@ export class StoryRankingMetricsRecorder implements StoryRankingMetricsPort {
     }
   }
 
-  recordStoryRelationSafeRecallShadowGeneration(
-    aggregates: readonly StoryRelationSafeRecallShadowGenerationAggregate[],
+  recordGuardedRecallGeneration(
+    aggregates: readonly GuardedRecallGenerationAggregate[],
   ): void {
     for (const aggregate of aggregates) {
       this.metrics.incrementCounter({
-        name: "summary_story_relation_safe_recall_shadow_candidates_total",
+        name: "summary_story_relation_guarded_recall_candidates_total",
         value: aggregate.count,
         labels: {
           reason_code: aggregate.reasonCode,
@@ -218,21 +231,4 @@ export class StoryRankingMetricsRecorder implements StoryRankingMetricsPort {
     }
   }
 
-  recordStoryRelationSafeRecallShadowDecisions(
-    aggregates: readonly StoryRelationSafeRecallShadowDecisionAggregate[],
-  ): void {
-    for (const aggregate of aggregates) {
-      this.metrics.incrementCounter({
-        name: "summary_story_relation_safe_recall_shadow_decisions_total",
-        value: aggregate.count,
-        labels: {
-          reason_code: aggregate.shadowReasonCode,
-          disposition: aggregate.disposition,
-          failure_reason: aggregate.failureReason ?? "none",
-          ranking_policy_version: aggregate.rankingPolicyVersion,
-          candidate_policy_version: aggregate.candidatePolicyVersion,
-        },
-      });
-    }
-  }
 }

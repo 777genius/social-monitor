@@ -18,6 +18,7 @@ import type {
   SummaryEvidenceItem,
   SummarySourceWindow,
 } from "../value-objects/summary-evidence-item";
+import { hasValidStoryRelationProvenance } from "./story-relation-provenance";
 import { normalizeSignalScore } from "../value-objects/signal-score";
 import { readerSummaryIndependentProviderFamily } from
   "../value-objects/reader-summary-provider-identity";
@@ -343,6 +344,7 @@ const promotionRelations = (params: {
 }): ReadonlyMap<string, ReaderPostPromotionInput["relation"]> => {
   const result = new Map<string, NonNullable<ReaderPostPromotionInput["relation"]>>();
   for (const relation of params.approvedSameStoryRelations) {
+    if (!hasValidStoryRelationProvenance(relation)) continue;
     const left = params.evidenceById.get(relation.leftFeedItemId);
     const right = params.evidenceById.get(relation.rightFeedItemId);
     if (left === undefined || right === undefined ||

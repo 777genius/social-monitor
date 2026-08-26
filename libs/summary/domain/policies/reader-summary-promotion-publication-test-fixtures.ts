@@ -2,6 +2,8 @@ import {
   ReaderSummaryArtifact,
   type ReaderSummaryContent,
 } from "../entities/reader-summary-artifact";
+import type { SummaryEvidenceSelection } from
+  "../value-objects/summary-evidence-item";
 import { buildReaderPostPromotionProjection } from
   "../services/reader-post-promotion-projection";
 import {
@@ -43,7 +45,7 @@ export const exactObservedPromotionPublicationFixture = (
   exactObservedAt: string,
 ) => {
   const source = dailyEvidenceSelection(50);
-  const evidence = {
+  const evidence: SummaryEvidenceSelection = {
     ...source,
     selectedEvidence: source.selectedEvidence.map((item, index) => {
       if (index !== 0) return item;
@@ -86,7 +88,7 @@ export const exactObservedPromotionPublicationFixture = (
 
 export const trustedNonOfficialSupportPublicationFixture = () => {
   const source = dailyEvidenceSelection(25);
-  const evidence = {
+  const evidence: SummaryEvidenceSelection = {
     ...source,
     selectedEvidence: source.selectedEvidence.map((item) =>
       item.feedItemId !== "feed-publication-2" ? item : {
@@ -103,9 +105,17 @@ export const trustedNonOfficialSupportPublicationFixture = () => {
       },
     ),
     approvedSameStoryRelations: [{
+      canonicalPairId: "feed-publication-1\u0000feed-publication-2",
       leftFeedItemId: "feed-publication-1",
       rightFeedItemId: "feed-publication-2",
       confidence: 0.95,
+      verificationLane: "semantic_primary",
+      candidatePolicyVersion: "reader_summary.story_relation.candidate.v1",
+      rankingPolicyVersion: "story_ranking_v10",
+      featureDigest: "a".repeat(64),
+      executionAttestationSha256: "b".repeat(64),
+      normalizedOutputSha256: "c".repeat(64),
+      selectedOutputSha256: "d".repeat(64),
     }],
   };
   const base = dailySynthesisArtifact();

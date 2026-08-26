@@ -9,6 +9,7 @@ import type {
   ReaderSummaryStoryRelationVerifierPort,
   RelatedTopicVerificationMetric,
   StoryRankingMetricsPort,
+  VerifiedStoryRelationDecisionBatch,
 } from "../../ports";
 import { verifiedReaderSummaryRelatedTopics } from "./relevance-reader-summary-related-topics";
 
@@ -71,12 +72,16 @@ describe("verifiedReaderSummaryRelatedTopics", () => {
       },
       selection: aug14RelatedTopicSelection(),
       requestedAt: new Date("2026-08-15T00:01:00.000Z"),
-      verifier: { verify: async (input) => input.candidates.map((candidate) => ({
-        leftFeedItemId: candidate.leftFeedItemId,
-        rightFeedItemId: candidate.rightFeedItemId,
-        sameStory: false,
-        confidenceScore: 0.99,
-      })) },
+      verifier: { verify: async (input) => ({
+        verificationLane: input.verificationLane,
+        decisions: input.candidates.map((candidate) => ({
+          leftFeedItemId: candidate.leftFeedItemId,
+          rightFeedItemId: candidate.rightFeedItemId,
+          sameStory: false,
+          confidenceScore: 0.99,
+        })),
+        proof: verifiedProof,
+      }) },
     });
 
     expect(relations).toEqual([]);
@@ -107,7 +112,8 @@ describe("verifiedReaderSummaryRelatedTopics", () => {
       verifier: {
         verify: async (input) => {
           signal = input.signal;
-          return new Promise<readonly unknown[]>(() => undefined);
+          return new Promise<VerifiedStoryRelationDecisionBatch>(
+            () => undefined);
         },
       },
     });
@@ -129,15 +135,25 @@ class ExplicitRelatedTopicVerifier implements ReaderSummaryStoryRelationVerifier
 
   async verify(input: ReaderSummaryStoryRelationVerifierInput) {
     this.input = input;
-    return input.candidates.map((candidate) => ({
-      leftFeedItemId: candidate.leftFeedItemId,
-      rightFeedItemId: candidate.rightFeedItemId,
-      relation: "related_topic",
-      confidenceScore: 0.99,
-      rationale: "The Reddit question discusses the official watermark topic.",
-    }));
+    return {
+      verificationLane: input.verificationLane,
+      decisions: input.candidates.map((candidate) => ({
+        leftFeedItemId: candidate.leftFeedItemId,
+        rightFeedItemId: candidate.rightFeedItemId,
+        relation: "related_topic" as const,
+        confidenceScore: 0.99,
+        rationale: "The Reddit question discusses the official watermark topic.",
+      })),
+      proof: verifiedProof,
+    };
   }
 }
+
+const verifiedProof = {
+  normalizedOutputSha256: "a".repeat(64),
+  executionAttestationSha256: "b".repeat(64),
+  selectedOutputSha256: "c".repeat(64),
+};
 
 class CapturingRelatedTopicMetrics implements StoryRankingMetricsPort {
   readonly related: RelatedTopicVerificationMetric[] = [];

@@ -34,6 +34,12 @@ export type VerifiedReaderSummaryExecutionAttestation = {
   readonly attestation: AgentRuntimeExecutionAttestation;
 };
 
+export type VerifiedReaderSummaryExecutionProof = Readonly<{
+  normalizedOutputSha256: string;
+  executionAttestationSha256: string;
+  selectedOutputSha256: string;
+}>;
+
 export interface VerifiedReaderSummaryExecutionAttestationSink {
   record(
     value: VerifiedReaderSummaryExecutionAttestation,
@@ -48,7 +54,7 @@ export const verifyAndRecordReaderSummaryExecution = async (params: {
   readonly normalizedOutput: unknown;
   readonly legacyRecoveryContract?: FrozenLegacyReaderSummaryRecoveryContract;
   readonly sink?: VerifiedReaderSummaryExecutionAttestationSink;
-}): Promise<void> => {
+}): Promise<VerifiedReaderSummaryExecutionProof> => {
   const attestation = params.result.executionAttestation;
   if (
     params.result.status !== "completed" ||
@@ -79,12 +85,18 @@ export const verifyAndRecordReaderSummaryExecution = async (params: {
     throw new Error("Reader summary execution attestation is invalid");
   }
 
+  const normalizedOutputSha256 = canonicalJsonSha256(params.normalizedOutput);
   await params.sink?.record({
     taskRole: params.taskRole,
     attempt: params.attempt,
-    normalizedOutputSha256: canonicalJsonSha256(params.normalizedOutput),
+    normalizedOutputSha256,
     attestation,
   });
+  return {
+    normalizedOutputSha256,
+    executionAttestationSha256: canonicalJsonSha256(attestation),
+    selectedOutputSha256: attestation.selectedOutputSha256,
+  };
 };
 
 const activeReaderSummaryPurposeMatches = (

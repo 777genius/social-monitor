@@ -7,6 +7,7 @@ import { aug14RelatedTopicEvidence } from "../../test-fixtures/aug-14-related-to
 import type {
   ReaderSummaryStoryRelationVerifierInput,
   ReaderSummaryStoryRelationVerifierPort,
+  VerifiedStoryRelationDecisionBatch,
 } from "../../ports";
 import { RelevanceReaderSummaryEvidenceSelector } from "./relevance-reader-summary-evidence.selector";
 
@@ -111,30 +112,51 @@ class ProductionPathVerifier implements ReaderSummaryStoryRelationVerifierPort {
 
   relatedSignal?: AbortSignal;
 
-  async verify(input: ReaderSummaryStoryRelationVerifierInput) {
+  async verify(
+    input: ReaderSummaryStoryRelationVerifierInput,
+  ): Promise<VerifiedStoryRelationDecisionBatch> {
     if (input.verificationLane !== "related_topic") {
-      return input.candidates.map((candidate) => ({
-        leftFeedItemId: candidate.leftFeedItemId,
-        rightFeedItemId: candidate.rightFeedItemId,
-        sameStory: officialAndNewsPair(candidate.leftFeedItemId, candidate.rightFeedItemId),
-        confidenceScore: 0.99,
-      }));
+      return {
+        verificationLane: input.verificationLane,
+        decisions: input.candidates.map((candidate) => ({
+          leftFeedItemId: candidate.leftFeedItemId,
+          rightFeedItemId: candidate.rightFeedItemId,
+          sameStory: officialAndNewsPair(candidate.leftFeedItemId, candidate.rightFeedItemId),
+          confidenceScore: 0.99,
+        })),
+        proof: verifiedProof,
+      };
     }
     this.relatedSignal = input.signal;
     if (this.mode === "timeout") {
-      return new Promise<readonly unknown[]>(() => undefined);
+      return new Promise<VerifiedStoryRelationDecisionBatch>(() => undefined);
     }
-    if (this.mode === "malformed") return [{ unexpected: true }];
-    const relation = this.mode === "unrelated" ? "unrelated" : "related_topic";
+    if (this.mode === "malformed") return {
+      verificationLane: input.verificationLane,
+      decisions: [{ unexpected: true }] as never,
+      proof: verifiedProof,
+    };
+    const relation: "unrelated" | "related_topic" =
+      this.mode === "unrelated" ? "unrelated" : "related_topic";
     const decisions = input.candidates.map((candidate) => ({
       leftFeedItemId: candidate.leftFeedItemId,
       rightFeedItemId: candidate.rightFeedItemId,
       relation,
       confidenceScore: 0.99,
     }));
-    return this.mode === "duplicate" ? [...decisions, ...decisions] : decisions;
+    return {
+      verificationLane: input.verificationLane,
+      decisions: this.mode === "duplicate" ? [...decisions, ...decisions] : decisions,
+      proof: verifiedProof,
+    };
   }
 }
+
+const verifiedProof = {
+  normalizedOutputSha256: "a".repeat(64),
+  executionAttestationSha256: "b".repeat(64),
+  selectedOutputSha256: "c".repeat(64),
+};
 
 const officialAndNewsPair = (left: string, right: string): boolean =>
   new Set([left, right]).size === 2 &&

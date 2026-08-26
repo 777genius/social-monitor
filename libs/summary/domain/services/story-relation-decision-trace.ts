@@ -14,6 +14,7 @@ export type StoryRelationDecisionDisposition =
   | "approved"
   | "rejected_same_story_false"
   | "rejected_below_confidence"
+  | "rejected_deterministic_revalidation"
   | "verifier_failed_closed";
 
 export type StoryRelationDecisionFailureReason =
@@ -39,7 +40,7 @@ export type StoryRelationDecisionTrace = {
   /** In-memory identity only. Metrics adapters must never use this as a label. */
   readonly pairId: string;
   readonly rankingPolicyVersion: string;
-  readonly candidatePolicyVersion: typeof STORY_RELATION_CANDIDATE_POLICY_VERSION;
+  readonly candidatePolicyVersion: string;
   readonly approvalThreshold: number;
   readonly shortlistRank: number;
   readonly features: {
@@ -69,7 +70,7 @@ export type StoryRelationDecisionAggregate = {
   readonly disposition: StoryRelationDecisionDisposition;
   readonly failureReason?: StoryRelationDecisionFailureReason;
   readonly rankingPolicyVersion: string;
-  readonly candidatePolicyVersion: typeof STORY_RELATION_CANDIDATE_POLICY_VERSION;
+  readonly candidatePolicyVersion: string;
   readonly count: number;
 };
 
@@ -78,6 +79,7 @@ export const reconcileStoryRelationDecisions = (params: {
   readonly decisions: readonly unknown[];
   readonly rankingPolicyVersion: string;
   readonly approvalThreshold: number;
+  readonly candidatePolicyVersion?: string;
 }): StoryRelationDecisionBatch => {
   const candidatesByPair = new Map(
     params.candidates.map((candidate) => [candidatePairId(candidate), candidate]),
@@ -141,6 +143,8 @@ export const reconcileStoryRelationDecisions = (params: {
           candidate,
           shortlistRank: index + 1,
           rankingPolicyVersion: params.rankingPolicyVersion,
+          candidatePolicyVersion: params.candidatePolicyVersion ??
+            STORY_RELATION_CANDIDATE_POLICY_VERSION,
           approvalThreshold: params.approvalThreshold,
           disposition: "verifier_failed_closed",
           failureReason,
@@ -167,6 +171,8 @@ export const reconcileStoryRelationDecisions = (params: {
       candidate,
       shortlistRank: index + 1,
       rankingPolicyVersion: params.rankingPolicyVersion,
+      candidatePolicyVersion: params.candidatePolicyVersion ??
+        STORY_RELATION_CANDIDATE_POLICY_VERSION,
       approvalThreshold: params.approvalThreshold,
       disposition: applied
         ? "approved"
@@ -216,6 +222,7 @@ export const terminalStoryRelationDecisionTraces = (params: {
   readonly candidates: readonly StoryRelationCandidate[];
   readonly rankingPolicyVersion: string;
   readonly approvalThreshold: number;
+  readonly candidatePolicyVersion?: string;
   readonly disposition:
     | "verifier_unavailable"
     | "verifier_skipped"
@@ -227,6 +234,8 @@ export const terminalStoryRelationDecisionTraces = (params: {
       candidate,
       shortlistRank: index + 1,
       rankingPolicyVersion: params.rankingPolicyVersion,
+      candidatePolicyVersion: params.candidatePolicyVersion ??
+        STORY_RELATION_CANDIDATE_POLICY_VERSION,
       approvalThreshold: params.approvalThreshold,
       disposition: params.disposition,
       failureReason: params.failureReason,
@@ -238,6 +247,7 @@ const traceFor = (params: {
   readonly candidate: StoryRelationCandidate;
   readonly shortlistRank: number;
   readonly rankingPolicyVersion: string;
+  readonly candidatePolicyVersion: string;
   readonly approvalThreshold: number;
   readonly disposition: StoryRelationDecisionDisposition;
   readonly failureReason?: StoryRelationDecisionFailureReason;
@@ -246,7 +256,7 @@ const traceFor = (params: {
 }): StoryRelationDecisionTrace => ({
   pairId: candidatePairId(params.candidate),
   rankingPolicyVersion: params.rankingPolicyVersion,
-  candidatePolicyVersion: STORY_RELATION_CANDIDATE_POLICY_VERSION,
+  candidatePolicyVersion: params.candidatePolicyVersion,
   approvalThreshold: params.approvalThreshold,
   shortlistRank: params.shortlistRank,
   features: {

@@ -15,12 +15,20 @@ describe("StoryRankingMetricsRecorder", () => {
     const recorder = new StoryRankingMetricsRecorder(metrics);
 
     recorder.recordStoryRelationVerification({
+      lane: "guarded_recall_primary",
       status: "completed",
       candidateCount: 7,
       approvedCount: 2,
+      rejectedCount: 5,
+      latencyMs: 123,
+      attested: true,
     });
 
-    const labels = { status: "completed" };
+    const labels = {
+      status: "completed",
+      verification_lane: "guarded_recall_primary",
+      attested: "true",
+    };
     expect(
       metrics.latestGaugeValue(
         "summary_story_relation_candidates_total",
@@ -30,6 +38,10 @@ describe("StoryRankingMetricsRecorder", () => {
     expect(
       metrics.latestGaugeValue("summary_story_relation_approved_total", labels),
     ).toBe(2);
+    expect(metrics.latestGaugeValue(
+      "summary_story_relation_rejected_total", labels)).toBe(5);
+    expect(metrics.latestGaugeValue(
+      "summary_story_relation_verification_latency_ms", labels)).toBe(123);
   });
 
   it("records aggregate related-topic outcome and latency", () => {
@@ -102,52 +114,29 @@ describe("StoryRankingMetricsRecorder", () => {
     expect(serializedMetrics).not.toContain("rationale");
   });
 
-  it("keeps safe-recall shadow counters aggregate-only and isolated", () => {
+  it("keeps guarded-recall generation counters aggregate-only", () => {
     const metrics = new InMemoryMetricsRecorder();
     const recorder = new StoryRankingMetricsRecorder(metrics);
 
-    recorder.recordStoryRelationSafeRecallShadowGeneration([
+    recorder.recordGuardedRecallGeneration([
       {
-        reasonCode: "title_normalized_entity_event_evidence",
+        reasonCode: "candidate",
         candidatePolicyVersion:
-          "reader_summary.story_relation.safe_recall_shadow.v2",
+          "reader_summary.story_relation.guarded_recall.v1",
         count: 2,
-      },
-    ]);
-    recorder.recordStoryRelationSafeRecallShadowDecisions([
-      {
-        shadowReasonCode: "title_normalized_entity_event_evidence",
-        disposition: "approved",
-        rankingPolicyVersion: STORY_RANKING_POLICY_V1.version,
-        candidatePolicyVersion:
-          "reader_summary.story_relation.safe_recall_shadow.v2",
-        count: 1,
       },
     ]);
 
     expect(
       metrics.counterValue(
-        "summary_story_relation_safe_recall_shadow_candidates_total",
+        "summary_story_relation_guarded_recall_candidates_total",
         {
-          reason_code: "title_normalized_entity_event_evidence",
+          reason_code: "candidate",
           candidate_policy_version:
-            "reader_summary.story_relation.safe_recall_shadow.v2",
+            "reader_summary.story_relation.guarded_recall.v1",
         },
       ),
     ).toBe(2);
-    expect(
-      metrics.counterValue(
-        "summary_story_relation_safe_recall_shadow_decisions_total",
-        {
-          reason_code: "title_normalized_entity_event_evidence",
-          disposition: "approved",
-          failure_reason: "none",
-          ranking_policy_version: STORY_RANKING_POLICY_V1.version,
-          candidate_policy_version:
-            "reader_summary.story_relation.safe_recall_shadow.v2",
-        },
-      ),
-    ).toBe(1);
     expect(
       metrics.counters("summary_story_relation_decisions_total"),
     ).toEqual([]);
