@@ -5,7 +5,8 @@ PATH=/usr/local/bin:/usr/bin:/bin
 
 ZERO_SHA=0000000000000000000000000000000000000000
 POSTGRES_POOL_BOOTSTRAP_VERSION=postgres-pool-v1
-RELEASE_B_BRIDGE_SHA=85c5d22febf1e7ce5fa5967d2460ccb73ca96a9d
+RELEASE_B_CONTROLLER_SHA=8b4aeb31e855ed379349a4e4827600009e174132
+RELEASE_B_BRIDGE_SHA=b3c51bcd5e98c90f6a0a384f19e1c811d7f89fb3
 DAILY_C1_BRIDGE_POLICY_SHA=944fdb6da3071f70a69c7048c9fcdf1c2552603e
 SSH_DIRECTORY=${DEPLOY_SSH_DIRECTORY:-${HOME:?HOME is required}/.ssh}
 SSH_KEY_PATH=${DEPLOY_SSH_KEY_PATH:-$SSH_DIRECTORY/social-monitor-production}
@@ -546,6 +547,14 @@ plan_is_fully_reconciled() {
      $PLAN_BACKEND_BASE != "$ZERO_SHA" ]]
 }
 
+plan_is_exact_release_b_bridge_transition() {
+  [[ $PLAN_FRONTEND == false && $PLAN_BACKEND == false && \
+     $PLAN_CONTROL == true && $PLAN_X_COLLECTOR == false && \
+     $PLAN_POSTGRES_POOL_BOOTSTRAP == "$POSTGRES_POOL_BOOTSTRAP_VERSION" && \
+     $PLAN_POSTGRES_POOL_BOOTSTRAP_SHA != "$ZERO_SHA" && \
+     $PLAN_BACKEND_BASE == "$RELEASE_B_CONTROLLER_SHA" ]]
+}
+
 reconcile_deploy_plan() {
   local sha=$1
   local attempt status
@@ -599,20 +608,51 @@ deploy_release() {
   }
 }
 
-install_release_b_bridge() {
-  local sha=$1 status
-  [[ $sha == "$RELEASE_B_BRIDGE_SHA" ]] || \
+reconcile_release_b_controller() {
+  local sha=$1 bridge=$2 status
+  [[ $sha == "$RELEASE_B_CONTROLLER_SHA" ]] || \
+    fail 'Release B controller SHA is not the reviewed pin'
+  [[ $bridge == "$RELEASE_B_BRIDGE_SHA" ]] || \
     fail 'Release B bridge SHA is not the reviewed pin'
-  # This exact side bridge can already be an ancestor of the integration
-  # checkout while older component markers intentionally remain staggered.
-  # The ordinary target plan therefore cannot attest this server-side no-op.
-  if run_remote deploy "$sha"; then
+  if capture_plan "$bridge"; then
     status=0
   else
     status=$?
   fi
-  ((status == 0 || status == 255)) || \
-    fail "Release B bridge install failed with status $status"
+  ((status == 0)) || \
+    fail "Release B bridge preflight plan failed with status $status"
+  print_plan
+  if plan_is_fully_reconciled || \
+     plan_is_exact_release_b_bridge_transition; then
+    return 0
+  fi
+  if capture_plan "$sha"; then
+    status=0
+  else
+    status=$?
+  fi
+  ((status == 0)) || \
+    fail "Release B controller plan failed with status $status"
+  print_plan
+  plan_is_fully_reconciled && return 0
+  deploy_once "$sha"
+}
+
+install_release_b_bridge() {
+  local sha=$1 status
+  [[ $sha == "$RELEASE_B_BRIDGE_SHA" ]] || \
+    fail 'Release B bridge SHA is not the reviewed pin'
+  if capture_plan "$sha"; then
+    status=0
+  else
+    status=$?
+  fi
+  ((status == 0)) || fail "Release B bridge plan failed with status $status"
+  print_plan
+  plan_is_fully_reconciled && return 0
+  plan_is_exact_release_b_bridge_transition || \
+    fail 'Release B bridge plan is not the exact fresh control-only transition'
+  deploy_once "$sha"
 }
 
 install_daily_c1_bridge_policy() {
@@ -671,6 +711,13 @@ case $action in
     validate_sha "$2"
     validate_remote_environment
     deploy_release "$2"
+    ;;
+  reconcile-release-b-controller)
+    [[ $# == 3 ]] || fail 'reconcile-release-b-controller requires its controller and bridge pins'
+    validate_sha "$2"
+    validate_sha "$3"
+    validate_remote_environment
+    reconcile_release_b_controller "$2" "$3"
     ;;
   install-release-b-bridge)
     [[ $# == 2 ]] || fail 'install-release-b-bridge requires its pinned SHA'

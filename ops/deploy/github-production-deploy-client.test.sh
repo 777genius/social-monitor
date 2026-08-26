@@ -109,15 +109,59 @@ fake_ssh() {
     normal_success:"deploy $TARGET_SHA"|normal_success:"deploy 944fdb6da3071f70a69c7048c9fcdf1c2552603e")
       printf 'deployed=%s\n' "$TARGET_SHA"
       ;;
-    release_b_ancestor_noop:"deploy $RELEASE_B_BRIDGE_SHA")
-      printf 'already-deployed-or-newer=%s\n' "$RELEASE_B_INTEGRATION_SHA"
-      ;;
-    release_b_ancestor_noop:"plan $RELEASE_B_BRIDGE_SHA")
+    release_b_controller_pending:"plan $RELEASE_B_BRIDGE_SHA"|release_b_controller_disconnect:"plan $RELEASE_B_BRIDGE_SHA")
       print_fake_plan true true true false "$RELEASE_B_POOL_MARKER" \
         "$RELEASE_B_BACKEND_MARKER"
       ;;
-    release_b_disconnect:"deploy $RELEASE_B_BRIDGE_SHA") exit 255 ;;
-    release_b_failure:"deploy $RELEASE_B_BRIDGE_SHA") exit 42 ;;
+    release_b_controller_complete:"plan $RELEASE_B_BRIDGE_SHA")
+      print_fake_plan false false false false "$RELEASE_B_CONTROLLER_SHA" \
+        "$RELEASE_B_CONTROLLER_SHA"
+      ;;
+    release_b_controller_ready:"plan $RELEASE_B_BRIDGE_SHA")
+      print_fake_plan false false true false "$RELEASE_B_CONTROLLER_SHA" \
+        "$RELEASE_B_CONTROLLER_SHA"
+      ;;
+    release_b_controller_pending:"plan $RELEASE_B_CONTROLLER_SHA"|release_b_controller_disconnect:"plan $RELEASE_B_CONTROLLER_SHA")
+      count=$(grep -cFx "plan $RELEASE_B_CONTROLLER_SHA" "$FAKE_SSH_LOG")
+      if ((count == 1)); then
+        print_fake_plan true true true false "$RELEASE_B_POOL_MARKER" \
+          "$RELEASE_B_BACKEND_MARKER"
+      else
+        print_fake_plan false false false false "$RELEASE_B_CONTROLLER_SHA" \
+          "$RELEASE_B_CONTROLLER_SHA"
+      fi
+      ;;
+    release_b_controller_pending:"deploy $RELEASE_B_CONTROLLER_SHA")
+      printf 'deployed=%s\n' "$RELEASE_B_CONTROLLER_SHA"
+      ;;
+    release_b_controller_disconnect:"deploy $RELEASE_B_CONTROLLER_SHA") exit 255 ;;
+    release_b_bridge_pending:"plan $RELEASE_B_BRIDGE_SHA"|release_b_bridge_disconnect:"plan $RELEASE_B_BRIDGE_SHA")
+      count=$(grep -cFx "plan $RELEASE_B_BRIDGE_SHA" "$FAKE_SSH_LOG")
+      if ((count == 1)); then
+        print_fake_plan false false true false "$RELEASE_B_CONTROLLER_SHA" \
+          "$RELEASE_B_CONTROLLER_SHA"
+      else
+        print_fake_plan false false false false "$RELEASE_B_BRIDGE_SHA" \
+          "$RELEASE_B_CONTROLLER_SHA"
+      fi
+      ;;
+    release_b_bridge_complete:"plan $RELEASE_B_BRIDGE_SHA")
+      print_fake_plan false false false false "$RELEASE_B_BRIDGE_SHA" \
+        "$RELEASE_B_CONTROLLER_SHA"
+      ;;
+    release_b_bridge_bad_plan:"plan $RELEASE_B_BRIDGE_SHA")
+      print_fake_plan false true true false "$RELEASE_B_CONTROLLER_SHA" \
+        "$RELEASE_B_BACKEND_MARKER"
+      ;;
+    release_b_bridge_failure:"plan $RELEASE_B_BRIDGE_SHA")
+      print_fake_plan false false true false "$RELEASE_B_CONTROLLER_SHA" \
+        "$RELEASE_B_CONTROLLER_SHA"
+      ;;
+    release_b_bridge_pending:"deploy $RELEASE_B_BRIDGE_SHA")
+      printf 'deployed=%s\n' "$RELEASE_B_BRIDGE_SHA"
+      ;;
+    release_b_bridge_disconnect:"deploy $RELEASE_B_BRIDGE_SHA") exit 255 ;;
+    release_b_bridge_failure:"deploy $RELEASE_B_BRIDGE_SHA") exit 42 ;;
     atomic_success:"deploy $TARGET_SHA")
       printf 'postgres-pool-bootstrap=%s replay=false\n' "$TARGET_SHA"
       ;;
@@ -205,8 +249,8 @@ trap 'rm -rf "$FIXTURE"' EXIT
 TARGET_SHA=1234567890abcdef1234567890abcdef12345678
 BACKEND_SHA=4f47fac7faed7dc24110f4a43e88820d776b8a40
 CURRENT_BACKEND_SHA=617e284607f3dde74c27164af2b981770b9a62ed
-RELEASE_B_BRIDGE_SHA=85c5d22febf1e7ce5fa5967d2460ccb73ca96a9d
-RELEASE_B_INTEGRATION_SHA=8b4aeb31e855ed379349a4e4827600009e174132
+RELEASE_B_CONTROLLER_SHA=8b4aeb31e855ed379349a4e4827600009e174132
+RELEASE_B_BRIDGE_SHA=b3c51bcd5e98c90f6a0a384f19e1c811d7f89fb3
 RELEASE_B_BACKEND_MARKER=09a79687e042e36d4ec9c1f33f0367527f044181
 RELEASE_B_POOL_MARKER=6fefa9da5446d5e467badcc7239fdc5a6170a756
 MODEL_JOB_IDENTITY=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
@@ -225,8 +269,8 @@ DEPLOY_SSH_KNOWN_HOSTS_PATH=$FIXTURE/ssh/pinned-known-hosts
 DEPLOY_HOST=production.example.invalid
 DEPLOY_USER=social-monitor-deploy
 
-export TARGET_SHA BACKEND_SHA CURRENT_BACKEND_SHA RELEASE_B_BRIDGE_SHA
-export RELEASE_B_INTEGRATION_SHA RELEASE_B_BACKEND_MARKER RELEASE_B_POOL_MARKER
+export TARGET_SHA BACKEND_SHA CURRENT_BACKEND_SHA RELEASE_B_CONTROLLER_SHA
+export RELEASE_B_BRIDGE_SHA RELEASE_B_BACKEND_MARKER RELEASE_B_POOL_MARKER
 export MODEL_JOB_IDENTITY AUTHORITY_SHA256 TERMINAL_SET_SHA256
 export FAKE_SSH_LOG FAKE_SSH_STATE FAKE_UPLOAD_PATH
 export DEPLOY_SSH_DIRECTORY DEPLOY_SSH_KEY_PATH DEPLOY_SSH_KNOWN_HOSTS_PATH
@@ -545,28 +589,55 @@ run_client normal_success deploy "$TARGET_SHA" >/dev/null
 assert_call_count 1 "deploy $TARGET_SHA"
 assert_call_count 1 "plan $TARGET_SHA"
 
-# The generic deploy reproduces the production failure: the server correctly
-# reports an ancestor no-op, but staggered markers keep the bridge plan pending.
-assert_fails release_b_ancestor_noop deploy "$RELEASE_B_BRIDGE_SHA"
-assert_call_count 1 "deploy $RELEASE_B_BRIDGE_SHA"
-assert_call_count 3 "plan $RELEASE_B_BRIDGE_SHA"
+# Every production mutation follows a fresh plan. The old controller is
+# reconciled exactly once when pending and skipped on a complete replay.
+run_client release_b_controller_pending reconcile-release-b-controller \
+  "$RELEASE_B_CONTROLLER_SHA" "$RELEASE_B_BRIDGE_SHA" >/dev/null
+assert_call_count 1 "deploy $RELEASE_B_CONTROLLER_SHA"
+assert_call_count 2 "plan $RELEASE_B_CONTROLLER_SHA"
+assert_call_count 1 "plan $RELEASE_B_BRIDGE_SHA"
+run_client release_b_controller_complete reconcile-release-b-controller \
+  "$RELEASE_B_CONTROLLER_SHA" "$RELEASE_B_BRIDGE_SHA" >/dev/null
+assert_call_count 0 "deploy $RELEASE_B_CONTROLLER_SHA"
+assert_call_count 0 "plan $RELEASE_B_CONTROLLER_SHA"
+assert_call_count 1 "plan $RELEASE_B_BRIDGE_SHA"
+run_client release_b_controller_ready reconcile-release-b-controller \
+  "$RELEASE_B_CONTROLLER_SHA" "$RELEASE_B_BRIDGE_SHA" >/dev/null
+assert_call_count 0 "deploy $RELEASE_B_CONTROLLER_SHA"
+assert_call_count 0 "plan $RELEASE_B_CONTROLLER_SHA"
+assert_call_count 1 "plan $RELEASE_B_BRIDGE_SHA"
+run_client release_b_controller_disconnect reconcile-release-b-controller \
+  "$RELEASE_B_CONTROLLER_SHA" "$RELEASE_B_BRIDGE_SHA" >/dev/null
+assert_call_count 1 "deploy $RELEASE_B_CONTROLLER_SHA"
+assert_call_count 2 "plan $RELEASE_B_CONTROLLER_SHA"
+assert_call_count 1 "plan $RELEASE_B_BRIDGE_SHA"
+assert_fails release_b_controller_complete reconcile-release-b-controller \
+  "$TARGET_SHA" "$RELEASE_B_BRIDGE_SHA"
+assert_call_count 0 "deploy $TARGET_SHA"
 
-# The exact reviewed action admits only the immutable bridge and deliberately
-# does not reinterpret the target plan. A workflow retry remains the same no-op.
-for _ in first crash-resume; do
-  run_client release_b_ancestor_noop install-release-b-bridge \
-    "$RELEASE_B_BRIDGE_SHA" >/dev/null
-  assert_call_count 1 "deploy $RELEASE_B_BRIDGE_SHA"
-  assert_call_count 0 "plan $RELEASE_B_BRIDGE_SHA"
-done
-run_client release_b_disconnect install-release-b-bridge \
+# The bridge is admitted only from the fully reconciled 8b4 controller state.
+# A disconnect is reconciled by plans and never repeats the deploy command.
+run_client release_b_bridge_pending install-release-b-bridge \
   "$RELEASE_B_BRIDGE_SHA" >/dev/null
 assert_call_count 1 "deploy $RELEASE_B_BRIDGE_SHA"
-assert_call_count 0 "plan $RELEASE_B_BRIDGE_SHA"
-assert_fails release_b_failure install-release-b-bridge "$RELEASE_B_BRIDGE_SHA"
+assert_call_count 2 "plan $RELEASE_B_BRIDGE_SHA"
+run_client release_b_bridge_complete install-release-b-bridge \
+  "$RELEASE_B_BRIDGE_SHA" >/dev/null
+assert_call_count 0 "deploy $RELEASE_B_BRIDGE_SHA"
+assert_call_count 1 "plan $RELEASE_B_BRIDGE_SHA"
+run_client release_b_bridge_disconnect install-release-b-bridge \
+  "$RELEASE_B_BRIDGE_SHA" >/dev/null
 assert_call_count 1 "deploy $RELEASE_B_BRIDGE_SHA"
-assert_call_count 0 "plan $RELEASE_B_BRIDGE_SHA"
-assert_fails release_b_ancestor_noop install-release-b-bridge "$TARGET_SHA"
+assert_call_count 2 "plan $RELEASE_B_BRIDGE_SHA"
+assert_fails release_b_bridge_failure install-release-b-bridge \
+  "$RELEASE_B_BRIDGE_SHA"
+assert_call_count 1 "deploy $RELEASE_B_BRIDGE_SHA"
+assert_call_count 1 "plan $RELEASE_B_BRIDGE_SHA"
+assert_fails release_b_bridge_bad_plan install-release-b-bridge \
+  "$RELEASE_B_BRIDGE_SHA"
+assert_call_count 0 "deploy $RELEASE_B_BRIDGE_SHA"
+assert_call_count 1 "plan $RELEASE_B_BRIDGE_SHA"
+assert_fails release_b_bridge_complete install-release-b-bridge "$TARGET_SHA"
 assert_call_count 0 "deploy $TARGET_SHA"
 
 run_client normal_success install-daily-c1-bridge-policy \

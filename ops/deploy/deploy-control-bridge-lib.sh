@@ -229,10 +229,10 @@ deploy_control_is_reviewed_rolling_summary_transition() {
   done <<< "$expected"
 }
 
-# Release B's reviewed control bridge is a side child of the integration that
-# production still has checked out. Pin the commit as well as its parent, tree,
-# sole changed path, mode and blob: a same-path rewrite or a mixed tree must not
-# gain admission merely because it resembles the reviewed bridge.
+# Pin the historical failed-idle bridge by every immutable Git identity. This
+# bridge-only hardening release is installed after the exact 8b4 controller is
+# fully reconciled, so the old controller admits it through the ordinary
+# control-only path without relying on this policy to install itself.
 deploy_control_is_exact_failed_idle_release_bridge() {
   local bridge=$1 repository=${REPO:-.}
   local actual_tree delta entry mode type object tree_path extra
