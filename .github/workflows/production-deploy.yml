@@ -894,22 +894,28 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 120
     environment: production
+    env:
+      DEPLOY_HOST: ${{ vars.PRODUCTION_SSH_HOST }}
+      DEPLOY_USER: ${{ vars.PRODUCTION_SSH_USER }}
     steps:
       - name: Check out the release commit
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
         with: {fetch-depth: 0}
       - name: Validate graph and immutable manifests before Release B SSH
         run: bash ops/deploy/production-release-a-transition.sh validate "$GITHUB_SHA"
-      - name: Configure restricted production SSH
+      - name: Deploy reviewed bridge and reopen restricted SSH
         env:
           DEPLOY_KEY: ${{ secrets.PRODUCTION_SSH_PRIVATE_KEY }}
           KNOWN_HOSTS: ${{ secrets.PRODUCTION_SSH_KNOWN_HOSTS }}
-        run: bash ops/deploy/github-production-deploy-client.sh configure
+        run: |
+          set -euo pipefail
+          client=ops/deploy/github-production-deploy-client.sh; bridge_release=cbd78b45e8ca9d30f496dc47eab7b7288073ea65
+          bash "$client" configure
+          bash "$client" deploy "$bridge_release"
+          bash "$client" cleanup
+          bash "$client" configure
       - name: Freshly require A-complete or B-complete
         id: b_state
-        env:
-          DEPLOY_HOST: ${{ vars.PRODUCTION_SSH_HOST }}
-          DEPLOY_USER: ${{ vars.PRODUCTION_SSH_USER }}
         run: |
           set -euo pipefail
           target_plan="$RUNNER_TEMP/recovery-target-before-deploy.plan"
@@ -938,17 +944,11 @@ jobs:
           path: ${{ runner.temp }}/frontend-artifact
       - name: Upload immutable frontend release
         if: needs.plan.outputs.frontend == 'true'
-        env:
-          DEPLOY_HOST: ${{ vars.PRODUCTION_SSH_HOST }}
-          DEPLOY_USER: ${{ vars.PRODUCTION_SSH_USER }}
         run: >-
           bash ops/deploy/github-production-deploy-client.sh upload "$GITHUB_SHA"
           "$RUNNER_TEMP/frontend-artifact/social-monitor-frontend-release.tgz"
       - name: Deploy changed components
         if: steps.b_state.outputs.transition_state != 'target-complete'
-        env:
-          DEPLOY_HOST: ${{ vars.PRODUCTION_SSH_HOST }}
-          DEPLOY_USER: ${{ vars.PRODUCTION_SSH_USER }}
         run: bash ops/deploy/github-production-deploy-client.sh deploy "$GITHUB_SHA"
       - name: Remove production SSH material
         if: always()
