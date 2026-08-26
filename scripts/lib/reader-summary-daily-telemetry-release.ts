@@ -1,3 +1,18 @@
+import { readFileSync } from "node:fs";
+
+import {
+  classifyReaderSummaryTelemetryMigrationHistory,
+  type ReaderSummaryTelemetryHistoryState,
+  type ReaderSummaryTelemetryMigrationRow,
+  readerSummaryTelemetryMigration,
+} from "./reader-summary-telemetry-migration-history";
+
+export {
+  readerSummaryTelemetryCorrectedChecksum,
+  readerSummaryTelemetryMigration,
+  readerSummaryTelemetryOldChecksum,
+} from "./reader-summary-telemetry-migration-history";
+
 export type ReaderSummaryDailyTelemetryReleaseOperations = Readonly<{
   applyTelemetryMigration(): Promise<void>;
   hardenPostTelemetryRelease(): Promise<void>;
@@ -23,13 +38,6 @@ type QueryClient = Readonly<{
   ): Promise<Readonly<{ rows: readonly TRow[] }>>;
 }>;
 
-export const readerSummaryTelemetryMigration =
-  "20260824120000_reader_summary_daily_model_job_telemetry";
-export const readerSummaryTelemetryOldChecksum =
-  "e3e5b65d71d47942513478849dd745835f16c72175eb2ef821e245af02b79cad";
-export const readerSummaryTelemetryCorrectedChecksum =
-  "575ece3521b26d769c5f65aae4d4a47ba33502695ac866030524319808812250";
-
 export const assertReaderSummaryDailyTelemetryReleaseDatabaseState = async (
   client: QueryClient,
   params: Readonly<{
@@ -40,6 +48,7 @@ export const assertReaderSummaryDailyTelemetryReleaseDatabaseState = async (
 ): Promise<void> => {
   assert(params.telemetryMigration === readerSummaryTelemetryMigration,
     "daily telemetry release verifier is bound to the reviewed migration");
+  const telemetryHistory = await readExactTelemetryHistory(client);
   const result = await client.query<{
     default_acl_finished_count: string;
     default_acl_migration_count: string;
@@ -49,42 +58,14 @@ export const assertReaderSummaryDailyTelemetryReleaseDatabaseState = async (
     publication_owner_has_schema_create: boolean;
     public_has_schema_create: boolean;
     server_version: number;
-    telemetry_history: "clean" | "recovered" | "invalid";
-    telemetry_migration_count: string;
   }>(`SELECT
       current_setting('server_version_num')::INTEGER AS server_version,
       (SELECT count(*)::TEXT FROM public."_prisma_migrations"
-       WHERE migration_name = $1) AS telemetry_migration_count,
-      (SELECT CASE
-        WHEN count(*) = 1
-          AND (array_agg(checksum ORDER BY started_at, id))[1] = $4
-          AND (array_agg(finished_at IS NOT NULL ORDER BY started_at, id))[1]
-          AND NOT (array_agg(rolled_back_at IS NOT NULL
-            ORDER BY started_at, id))[1]
-          THEN 'clean'
-        WHEN count(*) = 2
-          AND (array_agg(checksum ORDER BY started_at, id))[1] = $5
-          AND NOT (array_agg(finished_at IS NOT NULL
-            ORDER BY started_at, id))[1]
-          AND (array_agg(rolled_back_at IS NOT NULL
-            ORDER BY started_at, id))[1]
-          AND (array_agg(checksum ORDER BY started_at, id))[2] = $4
-          AND (array_agg(finished_at IS NOT NULL
-            ORDER BY started_at, id))[2]
-          AND NOT (array_agg(rolled_back_at IS NOT NULL
-            ORDER BY started_at, id))[2]
-          AND (array_agg(started_at ORDER BY started_at, id))[1] <
-            (array_agg(started_at ORDER BY started_at, id))[2]
-          THEN 'recovered'
-        ELSE 'invalid'
-       END FROM public."_prisma_migrations"
-       WHERE migration_name = $1) AS telemetry_history,
+       WHERE migration_name = $1) AS default_acl_migration_count,
       (SELECT count(*)::TEXT FROM public."_prisma_migrations"
-       WHERE migration_name = $2) AS default_acl_migration_count,
-      (SELECT count(*)::TEXT FROM public."_prisma_migrations"
-       WHERE migration_name = $2 AND finished_at IS NOT NULL
+       WHERE migration_name = $1 AND finished_at IS NOT NULL
          AND rolled_back_at IS NULL) AS default_acl_finished_count,
-      has_schema_privilege($3, 'public', 'CREATE')
+      has_schema_privilege($2, 'public', 'CREATE')
         AS migration_admin_has_schema_create,
       has_schema_privilege(
         'social_monitor_reader_summary_publication_owner', 'public', 'CREATE'
@@ -156,19 +137,15 @@ export const assertReaderSummaryDailyTelemetryReleaseDatabaseState = async (
            'reader_summary_jobs'
          ]) AND relation.relrowsecurity AND relation.relforcerowsecurity)
         AS final_rls_count`, [
-    params.telemetryMigration,
     params.defaultAclMigration,
     params.migrationAdminRole,
-    readerSummaryTelemetryCorrectedChecksum,
-    readerSummaryTelemetryOldChecksum,
   ]);
   const row = result.rows[0];
+  assert(row !== undefined,
+    "daily telemetry release final database query returned no row");
   assert((row?.server_version ?? 0) >= 180_000,
     "daily telemetry release requires disposable PostgreSQL 18+");
-  assert((row?.telemetry_migration_count === "1" &&
-      row.telemetry_history === "clean") ||
-    (row?.telemetry_migration_count === "2" &&
-      row.telemetry_history === "recovered"),
+  assert(telemetryHistory === "corrected" || telemetryHistory === "recovered",
   "daily telemetry release requires one exact clean row or exact recovered history");
   assert(row.default_acl_migration_count === "1" &&
     row.default_acl_finished_count === "1",
@@ -179,6 +156,32 @@ export const assertReaderSummaryDailyTelemetryReleaseDatabaseState = async (
     row.public_has_schema_create === false && row.final_acl_exact === true &&
     row.final_rls_count === "5",
   "daily telemetry release final post-bootstrap ACL/RLS state is unsafe");
+};
+
+const readExactTelemetryHistory = async (
+  client: QueryClient,
+): Promise<ReaderSummaryTelemetryHistoryState> => {
+  const sql = readFileSync(
+    "ops/deploy/reader-summary-telemetry-migration-state.sql", "utf8",
+  );
+  const [sqlResult, rowResult] = await Promise.all([
+    client.query<{ telemetry_history: ReaderSummaryTelemetryHistoryState }>(sql),
+    client.query<ReaderSummaryTelemetryMigrationRow>(
+      `SELECT id, checksum, started_at, finished_at, rolled_back_at,
+        applied_steps_count, logs
+       FROM public."_prisma_migrations"
+       WHERE migration_name = $1
+       ORDER BY started_at, id`,
+      [readerSummaryTelemetryMigration],
+    ),
+  ]);
+  const classified = classifyReaderSummaryTelemetryMigrationHistory(
+    rowResult.rows,
+  );
+  assert(sqlResult.rows.length === 1 &&
+    sqlResult.rows[0]?.telemetry_history === classified,
+  "daily telemetry SQL and TypeScript history classifiers diverged");
+  return classified;
 };
 
 function assert(condition: unknown, message: string): asserts condition {

@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 
 import {
   terminalAuthorityCommandViolations,
+  terminalPostgres18JobViolations,
   terminalRecoveryWiringViolations,
 } from "./lib/review-ci-terminal-recovery-contract.mjs";
 
@@ -13,6 +14,9 @@ const productionWorkflow = readFileSync(productionWorkflowPath, "utf8");
 const packageJson = JSON.parse(readFileSync("package.json", "utf8"));
 const terminalAuthoritySource = readFileSync(
   "scripts/check-reader-summary-daily-terminal-authority-postgres.ts", "utf8",
+);
+const telemetryReleaseSource = readFileSync(
+  "scripts/lib/reader-summary-daily-telemetry-release.ts", "utf8",
 );
 const violations = [];
 const subscriptionRuntimeAuthPoolE2eCommand =
@@ -29,7 +33,10 @@ if (
   );
 }
 violations.push(...terminalAuthorityCommandViolations(packageJson));
-violations.push(...terminalRecoveryWiringViolations(terminalAuthoritySource));
+violations.push(...terminalRecoveryWiringViolations(
+  terminalAuthoritySource, telemetryReleaseSource,
+));
+violations.push(...terminalPostgres18JobViolations(workflow));
 if (
   packageJson.scripts?.["check:reader-summary-daily-execution-cursor-postgres18"] !==
   dailyCursorPostgres18Command

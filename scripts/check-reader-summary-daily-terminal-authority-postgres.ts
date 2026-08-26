@@ -966,7 +966,14 @@ const main = async (): Promise<void> => {
           } finally { auditor.release(); application.release(); first.release(); second.release(); }
         } finally { await runtimePool.end(); await terminalPool.end(); await auditorPool.end(); }
       },
-      applyTelemetryMigration: async () => { await privileges.runReaderSummaryPublicationBootstrapSql("pre", adminDatabaseUrl, runtimeRole, systemRuntimeRole); const recoveryPool = new Pool({ connectionString: adminDatabaseUrl, max: 1 }); try { const admin = await recoveryPool.connect(); try { await runReaderSummaryTelemetryMigrationRecoveryPostgres18({ admin, adminDatabaseUrl, defaultAclMigration, workspace }); } finally { admin.release(); } } finally { await recoveryPool.end(); } },
+      applyTelemetryMigration: async () => {
+        await privileges.runReaderSummaryPublicationBootstrapSql("pre", adminDatabaseUrl, runtimeRole, systemRuntimeRole);
+        await runReaderSummaryTelemetryMigrationRecoveryPostgres18({
+          adminDatabaseUrl,
+          defaultAclMigration,
+          workspace,
+        });
+      },
       hardenPostTelemetryRelease: () => privileges.runReaderSummaryPublicationBootstrapSql("post", adminDatabaseUrl, runtimeRole, systemRuntimeRole),
       verifyFinalReleaseState: async () => { const verifier = new Pool({ connectionString: targetDatabaseUrl, max: 1 }); try { await assertReaderSummaryDailyTelemetryReleaseDatabaseState(verifier, { defaultAclMigration, migrationAdminRole, telemetryMigration }); } finally { await verifier.end(); } assertReaderSummaryMigrationDatabaseMatchesSchema(targetDatabaseUrl); },
     });

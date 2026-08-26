@@ -53,6 +53,49 @@ if run_case recovery-required authorized invalid >/dev/null; then exit 1; fi
 if run_case recovery-required authorized resolved 41 >/dev/null; then exit 1; fi
 if run_case invalid >/dev/null; then exit 1; fi
 
+run_watchdog_case() (
+  local mode=$1 events=$2
+  od() { printf '01 23 45 67 89 ab cd ef 01 23 45 67\n'; }
+  reader_summary_telemetry_hold_database_guard() {
+    printf 'guard-held|4321|2026-08-24 12:00:00+00|0123456789abcdef01234567\n'
+    while true; do sleep 1; done
+  }
+  reader_summary_telemetry_release_database_guard() {
+    kill "$guard_pid" 2>/dev/null || true
+  }
+  reader_summary_telemetry_watch_database_guard() {
+    printf 'watchdog-held|4322\n'
+    case $mode in
+      success) sleep 0.12 ;;
+      watcher_done) sleep 0.03 ;;
+      during|after) sleep 0.03; return 65 ;;
+      *) return 64 ;;
+    esac
+  }
+  guarded_mutation() {
+    printf 'start\n' >>"$events"
+    if [[ $mode == after ]]; then printf 'mutation\n' >>"$events"; fi
+    sleep 0.08
+    if [[ $mode != after ]]; then printf 'mutation\n' >>"$events"; fi
+  }
+  with_reader_summary_telemetry_database_guard guarded_mutation
+)
+
+watchdog_events=$(mktemp)
+mutated=$(mktemp)
+trap 'rm -f -- "$watchdog_events" "$mutated"' EXIT
+run_watchdog_case success "$watchdog_events"
+[[ $(grep -c '^mutation$' "$watchdog_events") == 1 ]]
+: >"$watchdog_events"
+run_watchdog_case watcher_done "$watchdog_events"
+[[ $(grep -c '^mutation$' "$watchdog_events") == 1 ]]
+: >"$watchdog_events"
+if run_watchdog_case during "$watchdog_events"; then exit 1; fi
+if grep -q '^mutation$' "$watchdog_events"; then exit 1; fi
+: >"$watchdog_events"
+if run_watchdog_case after "$watchdog_events"; then exit 1; fi
+[[ $(grep -c '^mutation$' "$watchdog_events") == 1 ]]
+
 grep -F 'migration=20260824120000_reader_summary_daily_model_job_telemetry' \
   "$LIBRARY" >/dev/null
 # shellcheck disable=SC2016
@@ -62,7 +105,13 @@ grep -F 'authorize_reader_summary_telemetry_recovery || return' "$LIBRARY" >/dev
 grep -F 'verify_reader_summary_telemetry_recovery_postflight' "$LIBRARY" >/dev/null
 grep -F 'with_reader_summary_telemetry_database_guard' "$LIBRARY" >/dev/null
 grep -F 'pg_try_advisory_lock' "$LIBRARY" >/dev/null
-grep -F 'social-monitor/telemetry-migration-recovery-guard' "$LIBRARY" >/dev/null
+grep -F 'social-monitor/telemetry-recovery-guard' "$LIBRARY" >/dev/null
+grep -F 'social-monitor/telemetry-recovery-resolve' "$LIBRARY" >/dev/null
+grep -F 'pg_terminate_backend(activity.pid)' "$LIBRARY" >/dev/null
+grep -F 'pg_stat_clear_snapshot' "$LIBRARY" >/dev/null
+grep -F 'watchdog-held|' "$LIBRARY" >/dev/null
+grep -F 'kill -KILL -- "-$mutation_pid"' "$LIBRARY" >/dev/null
+grep -F 'trap cleanup_reader_summary_telemetry_guard EXIT' "$LIBRARY" >/dev/null
 
 grep -F 'v_normalized_logs IS DISTINCT FROM v_expected_logs' "$PREFLIGHT" >/dev/null
 grep -F 'Database error code: 42501' "$PREFLIGHT" >/dev/null
@@ -73,25 +122,27 @@ if grep -F "permission denied for schema public'" "$PREFLIGHT" >/dev/null; then
   exit 1
 fi
 grep -F 'v_guard_count <> 1' "$PREFLIGHT" >/dev/null
-grep -F 'v_legacy_acl_exact IS DISTINCT FROM TRUE' "$PREFLIGHT" >/dev/null
-grep -F 'v_membership_count <> 0' "$PREFLIGHT" >/dev/null
+grep -F 'v_function_catalog_exact IS DISTINCT FROM TRUE' "$PREFLIGHT" >/dev/null
+grep -F 'v_membership_catalog_exact IS DISTINCT FROM TRUE' "$PREFLIGHT" >/dev/null
 grep -F 'v_v2_functions <> 0' "$PREFLIGHT" >/dev/null
-grep -F 'pg_catalog.has_schema_privilege(v_definer' "$PREFLIGHT" >/dev/null
+grep -F 'acl.grantee = v_definer' "$PREFLIGHT" >/dev/null
 grep -F 'reader_summary_daily_model_jobs_identity_check' "$PREFLIGHT" >/dev/null
 grep -F 'telemetry recovery production owner ACL invariants drifted' \
   "$PREFLIGHT" >/dev/null
+grep -F 'telemetry recovery schema owner or exact nspacl drifted' \
+  "$PREFLIGHT" >/dev/null
+grep -F 'telemetry recovery relevant sequence owner, ACL, or default state drifted' \
+  "$PREFLIGHT" >/dev/null
+grep -F '5a256df7c312b06182ad56d4100df8c80067a7fd149aa34b4e3862e237502255' \
+  "$PREFLIGHT" >/dev/null
 grep -F 'ARRAY['"'"'INSERT'"'"','"'"'SELECT'"'"','"'"'UPDATE'"'"']::TEXT[]' \
   "$PREFLIGHT" >/dev/null
-if grep -F "ARRAY['DELETE'" "$PREFLIGHT" >/dev/null; then exit 1; fi
-
 [[ $(sha256sum "$STATE_SQL" | cut -d' ' -f1) == \
   "$READER_SUMMARY_TELEMETRY_STATE_SHA256" ]]
 [[ $(sha256sum "$PREFLIGHT" | cut -d' ' -f1) == \
   "$READER_SUMMARY_TELEMETRY_PREFLIGHT_SHA256" ]]
 [[ $(sha256sum "$POSTFLIGHT" | cut -d' ' -f1) == \
   "$READER_SUMMARY_TELEMETRY_POSTFLIGHT_SHA256" ]]
-mutated=$(mktemp)
-trap 'rm -f -- "$mutated"' EXIT
 cp "$PREFLIGHT" "$mutated"
 printf '%s\n' '-- appended mutation' >>"$mutated"
 [[ $(sha256sum "$mutated" | cut -d' ' -f1) != \

@@ -26,16 +26,19 @@ $reviewed_failure$;
   v_identity_constraints BIGINT;
   v_telemetry_constraints BIGINT;
   v_v2_functions BIGINT;
-  v_legacy_function OID;
-  v_legacy_acl_exact BOOLEAN;
-  v_active_definition TEXT;
-  v_bounded_definition TEXT;
   v_active_owner OID;
-  v_bounded_owner OID;
   v_schema_owner OID;
   v_definer OID;
   v_guard_count BIGINT;
-  v_membership_count BIGINT;
+  v_guard_pid_text TEXT;
+  v_guard_backend_start_text TEXT;
+  v_guard_application TEXT;
+  v_guard_nonce TEXT;
+  v_function_catalog_exact BOOLEAN;
+  v_membership_catalog_exact BOOLEAN;
+  v_schema_catalog_exact BOOLEAN;
+  v_sequence_catalog_exact BOOLEAN;
+  v_acl_rows BIGINT;
   v_acl_mismatches BIGINT;
 BEGIN
   IF pg_catalog.to_regclass('public._prisma_migrations') IS NULL THEN
@@ -51,7 +54,8 @@ BEGIN
   INTO STRICT v_rows, v_unfinished, v_normalized_logs
   FROM public."_prisma_migrations"
   WHERE migration_name = v_name AND checksum = v_old_checksum
-    AND applied_steps_count = 0 AND logs IS NOT NULL;
+    AND applied_steps_count = 0 AND logs IS NOT NULL
+    AND started_at <= pg_catalog.statement_timestamp();
 
   IF v_rows <> 1 OR v_unfinished <> 1
     OR v_normalized_logs IS DISTINCT FROM v_expected_logs
@@ -63,18 +67,43 @@ BEGIN
       'telemetry recovery is not authorized for the exact reviewed failure';
   END IF;
 
-  -- The guard is a database-scoped, session advisory lock held by the shell
-  -- orchestrator continuously across this probe, Prisma resolve, and postflight.
+  v_guard_pid_text := pg_catalog.current_setting(
+    'social_monitor.telemetry_guard_pid', TRUE
+  );
+  v_guard_backend_start_text := pg_catalog.current_setting(
+    'social_monitor.telemetry_guard_backend_start', TRUE
+  );
+  v_guard_application := pg_catalog.current_setting(
+    'social_monitor.telemetry_guard_application', TRUE
+  );
+  v_guard_nonce := pg_catalog.current_setting(
+    'social_monitor.telemetry_guard_nonce', TRUE
+  );
+  IF v_guard_pid_text !~ '^[1-9][0-9]*$'
+    OR v_guard_backend_start_text IS NULL
+    OR v_guard_nonce !~ '^[0-9a-f]{24}$'
+    OR v_guard_application IS DISTINCT FROM
+      'social-monitor/telemetry-recovery-guard/' || v_guard_nonce THEN
+    RAISE EXCEPTION 'telemetry recovery guard binding is invalid';
+  END IF;
+
+  -- Bind authorization to one exact backend incarnation and nonce, not an
+  -- application-name lookalike. The server-side watchdog keeps this same
+  -- predicate live while Prisma resolve owns its database connection.
   SELECT count(*) INTO STRICT v_guard_count
   FROM pg_catalog.pg_locks AS lock
   JOIN pg_catalog.pg_stat_activity AS activity ON activity.pid = lock.pid
   WHERE lock.locktype = 'advisory' AND lock.classid = 1936879981::OID
     AND lock.objid = 1502026082::OID AND lock.objsubid = 2
-    AND lock.granted AND lock.pid <> pg_catalog.pg_backend_pid()
+    AND lock.granted AND lock.pid = v_guard_pid_text::INTEGER
+    AND activity.backend_start = v_guard_backend_start_text::TIMESTAMPTZ
     AND activity.datname = pg_catalog.current_database()
-    AND activity.application_name =
-      'social-monitor/telemetry-migration-recovery-guard';
-  IF v_guard_count <> 1 THEN
+    AND activity.application_name = v_guard_application;
+  IF v_guard_count <> 1 OR (SELECT count(*) FROM pg_catalog.pg_locks AS lock
+      WHERE lock.locktype = 'advisory'
+        AND lock.classid = 1936879981::OID
+        AND lock.objid = 1502026082::OID AND lock.objsubid = 2
+        AND lock.granted) <> 1 THEN
     RAISE EXCEPTION 'telemetry recovery database guard is not held exactly once';
   END IF;
 
@@ -110,91 +139,243 @@ BEGIN
   WHERE oid = pg_catalog.to_regprocedure(
     'public.complete_reader_summary_daily_model_job_v2(uuid,uuid,date,text,bigint,timestamp with time zone,bytea,character,jsonb,bytea,character,bytea,character,bigint,bigint,bigint,text,bigint)'
   );
-  v_legacy_function := pg_catalog.to_regprocedure(
-    'public.complete_reader_summary_daily_model_job(uuid,uuid,date,text,bigint,timestamp with time zone,bytea,character,jsonb,bytea,character,bytea,character)'
-  );
   IF v_telemetry_columns <> 0 OR v_identity_constraints <> 1
     OR v_telemetry_constraints <> 0 OR v_v2_functions <> 0
-    OR v_legacy_function IS NULL THEN
+    OR pg_catalog.to_regprocedure(
+      'public.complete_reader_summary_daily_model_job(uuid,uuid,date,text,bigint,timestamp with time zone,bytea,character,jsonb,bytea,character,bytea,character)'
+    ) IS NULL THEN
     RAISE EXCEPTION 'telemetry recovery object rollback invariants drifted';
   END IF;
 
-  SELECT count(*) FILTER (WHERE acl.grantee =
-      'social_monitor_reader_summary_daily_terminal'::pg_catalog.regrole::OID
-    ) = 1 AND bool_and(
+  v_active_owner := session_user::pg_catalog.regrole::OID;
+  v_schema_owner :=
+    'social_monitor_public_schema_owner'::pg_catalog.regrole::OID;
+  v_definer :=
+    'social_monitor_reader_summary_daily_publication_definer'::pg_catalog.regrole::OID;
+  SELECT count(*) = 3 AND pg_catalog.bool_and(
+    procedure.prokind = 'f' AND language.lanname = 'plpgsql'
+    AND procedure.provolatile = 'v' AND procedure.proisstrict
+    AND procedure.prosecdef AND NOT procedure.proleakproof
+    AND procedure.proparallel = 'u'
+    AND procedure.proowner = expected.owner_oid
+    AND procedure.proconfig = expected.config
+    AND pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(
+      pg_catalog.pg_get_functiondef(procedure.oid), 'UTF8'
+    )), 'hex') = expected.definition_sha256
+    AND (SELECT count(*) = 2 AND pg_catalog.bool_and(
       acl.grantee IN (procedure.proowner,
         'social_monitor_reader_summary_daily_terminal'::pg_catalog.regrole::OID)
       AND acl.grantor = procedure.proowner
       AND acl.privilege_type = 'EXECUTE' AND NOT acl.is_grantable
-    ) INTO STRICT v_legacy_acl_exact
-  FROM pg_catalog.pg_proc AS procedure
-  CROSS JOIN LATERAL pg_catalog.aclexplode(procedure.proacl) AS acl
-  WHERE procedure.oid = v_legacy_function;
-  IF v_legacy_acl_exact IS DISTINCT FROM TRUE THEN
-    RAISE EXCEPTION 'telemetry recovery legacy terminal EXECUTE ACL drifted';
-  END IF;
-
-  SELECT pg_catalog.pg_get_functiondef(active_claim.oid), active_claim.proowner,
-    pg_catalog.pg_get_functiondef(bounded_claim.oid), bounded_claim.proowner,
-    'social_monitor_public_schema_owner'::pg_catalog.regrole::OID,
-    'social_monitor_reader_summary_daily_publication_definer'::pg_catalog.regrole::OID
-  INTO STRICT v_active_definition, v_active_owner,
-    v_bounded_definition, v_bounded_owner, v_schema_owner, v_definer
-  FROM pg_catalog.pg_proc AS active_claim
-  CROSS JOIN pg_catalog.pg_proc AS bounded_claim
-  WHERE active_claim.oid =
-      'public.claim_reader_summary_daily_execution(uuid,uuid,text,date,timestamp with time zone)'::pg_catalog.regprocedure
-    AND bounded_claim.oid =
-      'public.claim_reader_summary_daily_execution_bounded_maintenance(uuid,uuid,text,date,timestamp with time zone)'::pg_catalog.regprocedure;
-  IF v_active_owner <> session_user::pg_catalog.regrole::OID
-    OR v_bounded_owner <> v_schema_owner
-    OR pg_catalog.has_schema_privilege(v_active_owner, 'public', 'CREATE')
-    OR NOT pg_catalog.has_schema_privilege(v_bounded_owner, 'public', 'CREATE')
-    OR pg_catalog.has_schema_privilege(v_definer, 'public', 'CREATE')
-    OR (pg_catalog.length(v_active_definition) - pg_catalog.length(
-      pg_catalog.replace(v_active_definition, '''reader-summary-daily:v1''', '')
-    )) / pg_catalog.length('''reader-summary-daily:v1''') <> 1
-    OR (pg_catalog.length(v_bounded_definition) - pg_catalog.length(
-      pg_catalog.replace(v_bounded_definition, '''reader-summary-daily:v1''', '')
-    )) / pg_catalog.length('''reader-summary-daily:v1''') <> 1
-    OR pg_catalog.strpos(v_active_definition, '''reader-summary-daily:v2''') <> 0
-    OR pg_catalog.strpos(v_bounded_definition, '''reader-summary-daily:v2''') <> 0
-    OR (pg_catalog.length(v_active_definition) - pg_catalog.length(
-      pg_catalog.replace(v_active_definition, '''xhigh''', '')
-    )) / pg_catalog.length('''xhigh''') <> 2
-    OR (pg_catalog.length(v_bounded_definition) - pg_catalog.length(
-      pg_catalog.replace(v_bounded_definition, '''xhigh''', '')
-    )) / pg_catalog.length('''xhigh''') <> 2 THEN
-    RAISE EXCEPTION 'telemetry recovery owner, CREATE, or v1 claim state drifted';
-  END IF;
-
-  SELECT count(*) INTO STRICT v_membership_count
-  FROM pg_catalog.pg_auth_members
-  WHERE roleid = v_definer AND member = v_schema_owner;
-  IF v_membership_count <> 0 THEN
-    RAISE EXCEPTION 'telemetry recovery temporary definer membership survived';
-  END IF;
-
-  SELECT count(*) INTO STRICT v_acl_mismatches
+    ) AND count(*) FILTER (WHERE acl.grantee =
+      'social_monitor_reader_summary_daily_terminal'::pg_catalog.regrole::OID
+    ) = 1 FROM pg_catalog.aclexplode(procedure.proacl) AS acl)
+  ) INTO STRICT v_function_catalog_exact
   FROM (VALUES
-    ('reader_summary_daily_execution_cursors', ARRAY['INSERT','SELECT','UPDATE']::TEXT[]),
-    ('reader_summary_daily_model_jobs', ARRAY['INSERT','SELECT','UPDATE']::TEXT[]),
-    ('reader_summary_daily_source_authorities', ARRAY['INSERT','SELECT']::TEXT[]),
-    ('feed_items', ARRAY['SELECT']::TEXT[]),
-    ('source_items', ARRAY['SELECT']::TEXT[])
-  ) AS expected(relation_name, privileges)
-  JOIN pg_catalog.pg_class AS relation ON relation.relname = expected.relation_name
+    ('public.claim_reader_summary_daily_execution(uuid,uuid,text,date,timestamp with time zone)'::pg_catalog.regprocedure::OID,
+      v_active_owner, ARRAY['search_path=pg_catalog, public']::TEXT[],
+      '5a256df7c312b06182ad56d4100df8c80067a7fd149aa34b4e3862e237502255'),
+    ('public.claim_reader_summary_daily_execution_bounded_maintenance(uuid,uuid,text,date,timestamp with time zone)'::pg_catalog.regprocedure::OID,
+      v_schema_owner, ARRAY['search_path=pg_catalog']::TEXT[],
+      'edc719fa83b67fa8b4b8b4250614efe055cdd12f210000c778b03214ac90cb4d'),
+    ('public.complete_reader_summary_daily_model_job(uuid,uuid,date,text,bigint,timestamp with time zone,bytea,character,jsonb,bytea,character,bytea,character)'::pg_catalog.regprocedure::OID,
+      v_definer, ARRAY['search_path=pg_catalog']::TEXT[],
+      'ea468303e63270fba8598848dfa8f642df8aad2436c0c1b2a8f57284e817f2b3')
+  ) AS expected(function_oid, owner_oid, config, definition_sha256)
+  JOIN pg_catalog.pg_proc AS procedure
+    ON procedure.oid = expected.function_oid
+  JOIN pg_catalog.pg_language AS language
+    ON language.oid = procedure.prolang;
+  IF v_function_catalog_exact IS DISTINCT FROM TRUE THEN
+    RAISE EXCEPTION
+      'telemetry recovery function owner, ACL, metadata, or definition drifted';
+  END IF;
+
+  SELECT count(*) = 3 AND count(*) FILTER (
+      WHERE membership.roleid = v_schema_owner
+        AND membership.member = v_active_owner
+        AND grantor.rolsuper AND membership.admin_option
+        AND NOT membership.inherit_option AND NOT membership.set_option
+    ) = 1 AND count(*) FILTER (
+      WHERE membership.roleid = v_schema_owner
+        AND membership.member = v_active_owner
+        AND membership.grantor = v_active_owner
+        AND NOT membership.admin_option AND NOT membership.inherit_option
+        AND membership.set_option
+    ) = 1 AND count(*) FILTER (
+      WHERE membership.roleid = v_definer
+        AND membership.member = v_active_owner
+        AND grantor.rolsuper AND membership.admin_option
+        AND NOT membership.inherit_option AND NOT membership.set_option
+    ) = 1
+  INTO STRICT v_membership_catalog_exact
+  FROM pg_catalog.pg_auth_members AS membership
+  JOIN pg_catalog.pg_roles AS grantor ON grantor.oid = membership.grantor
+  WHERE membership.roleid IN (v_schema_owner, v_definer)
+    OR membership.member IN (v_schema_owner, v_definer);
+  IF v_membership_catalog_exact IS DISTINCT FROM TRUE THEN
+    RAISE EXCEPTION 'telemetry recovery relevant role membership edges drifted';
+  END IF;
+
+  SELECT namespace.nspowner = v_schema_owner AND namespace.nspacl IS NOT NULL
+    AND count(*) = 6
+    AND count(*) FILTER (WHERE acl.grantee = 0) = 0
+    AND count(*) FILTER (WHERE acl.grantee = v_schema_owner
+      AND acl.privilege_type IN ('CREATE', 'USAGE')
+      AND acl.is_grantable) = 2
+    AND count(*) FILTER (WHERE acl.grantee = v_active_owner
+      AND acl.privilege_type = 'USAGE' AND NOT acl.is_grantable) = 1
+    AND count(*) FILTER (WHERE acl.grantee =
+      'social_monitor_reader_summary_publication_owner'::pg_catalog.regrole::OID
+      AND acl.privilege_type = 'USAGE' AND NOT acl.is_grantable) = 1
+    AND count(*) FILTER (WHERE acl.grantee =
+      'social_monitor_reader_summary_daily_terminal'::pg_catalog.regrole::OID
+      AND acl.privilege_type = 'USAGE' AND NOT acl.is_grantable) = 1
+    AND count(*) FILTER (WHERE acl.grantee = v_definer
+      AND acl.privilege_type = 'USAGE' AND NOT acl.is_grantable) = 1
+    AND pg_catalog.bool_and(acl.grantor = v_schema_owner)
+    AND pg_catalog.bool_and(
+      (acl.grantee = v_schema_owner
+        AND acl.privilege_type IN ('CREATE', 'USAGE')
+        AND acl.is_grantable)
+      OR (acl.grantee = v_active_owner AND acl.privilege_type = 'USAGE'
+        AND NOT acl.is_grantable)
+      OR (grantee.rolname IN (
+          'social_monitor_reader_summary_publication_owner',
+          'social_monitor_reader_summary_daily_terminal',
+          'social_monitor_reader_summary_daily_publication_definer'
+        ) AND acl.privilege_type = 'USAGE' AND NOT acl.is_grantable)
+    ) INTO STRICT v_schema_catalog_exact
+  FROM pg_catalog.pg_namespace AS namespace
+  CROSS JOIN LATERAL pg_catalog.aclexplode(namespace.nspacl) AS acl
+  LEFT JOIN pg_catalog.pg_roles AS grantee ON grantee.oid = acl.grantee
+  WHERE namespace.nspname = 'public'
+  GROUP BY namespace.nspowner, namespace.nspacl;
+  IF v_schema_catalog_exact IS DISTINCT FROM TRUE THEN
+    RAISE EXCEPTION 'telemetry recovery schema owner or exact nspacl drifted';
+  END IF;
+
+  SELECT count(*) = 0 AND NOT EXISTS (
+      SELECT 1
+      FROM pg_catalog.pg_attrdef AS default_value
+      WHERE default_value.adrelid = ANY(ARRAY[
+          'public.reader_summary_daily_execution_cursors'::pg_catalog.regclass,
+          'public.reader_summary_daily_model_jobs'::pg_catalog.regclass,
+          'public.reader_summary_daily_source_authorities'::pg_catalog.regclass
+        ]::OID[])
+        AND pg_catalog.pg_get_expr(
+          default_value.adbin, default_value.adrelid
+        ) ~ '(^|[^a-z_])nextval[[:space:]]*[(]'
+    ) INTO STRICT v_sequence_catalog_exact
+  FROM pg_catalog.pg_class AS sequence
   JOIN pg_catalog.pg_namespace AS namespace
+    ON namespace.oid = sequence.relnamespace
+  WHERE namespace.nspname = 'public' AND sequence.relkind = 'S'
+    AND (sequence.relname LIKE 'reader_summary_daily_model_jobs%telemetry%'
+      OR sequence.relname LIKE 'reader_summary_daily_model_jobs%token%'
+      OR EXISTS (SELECT 1 FROM pg_catalog.pg_depend AS dependency
+        WHERE dependency.classid = 'pg_catalog.pg_class'::pg_catalog.regclass
+          AND dependency.objid = sequence.oid
+          AND dependency.refclassid =
+            'pg_catalog.pg_class'::pg_catalog.regclass
+          AND dependency.refobjid = ANY(ARRAY[
+            'public.reader_summary_daily_execution_cursors'::pg_catalog.regclass,
+            'public.reader_summary_daily_model_jobs'::pg_catalog.regclass,
+            'public.reader_summary_daily_source_authorities'::pg_catalog.regclass
+          ]::OID[])));
+  IF v_sequence_catalog_exact IS DISTINCT FROM TRUE THEN
+    RAISE EXCEPTION
+      'telemetry recovery relevant sequence owner, ACL, or default state drifted';
+  END IF;
+
+  SELECT count(*), count(*) FILTER (WHERE relation.oid IS NULL
+      OR relation.relowner <> v_schema_owner
+      OR (SELECT count(*) FROM pg_catalog.aclexplode(relation.relacl)) <>
+        8 + pg_catalog.cardinality(expected.privileges)
+          + expected.definer_privilege_count
+          + expected.publication_owner_privilege_count
+      OR COALESCE((SELECT pg_catalog.array_agg(
+        acl.privilege_type ORDER BY acl.privilege_type
+      ) FROM pg_catalog.aclexplode(relation.relacl) AS acl
+        WHERE acl.grantee = relation.relowner), ARRAY[]::TEXT[]) <>
+        ARRAY['DELETE','INSERT','MAINTAIN','REFERENCES','SELECT','TRIGGER','TRUNCATE','UPDATE']::TEXT[]
+      OR COALESCE((SELECT pg_catalog.array_agg(
+        acl.privilege_type ORDER BY acl.privilege_type
+      ) FROM pg_catalog.aclexplode(relation.relacl) AS acl
+        WHERE acl.grantee = v_active_owner), ARRAY[]::TEXT[]) <> expected.privileges
+      OR COALESCE((SELECT pg_catalog.array_agg(
+        acl.privilege_type ORDER BY acl.privilege_type
+      ) FROM pg_catalog.aclexplode(relation.relacl) AS acl
+        WHERE acl.grantee = v_definer), ARRAY[]::TEXT[]) <>
+        CASE WHEN expected.definer_privilege_count = 2
+          THEN ARRAY['SELECT','UPDATE']::TEXT[] ELSE ARRAY[]::TEXT[] END
+      OR COALESCE((SELECT pg_catalog.array_agg(
+        acl.privilege_type ORDER BY acl.privilege_type
+      ) FROM pg_catalog.aclexplode(relation.relacl) AS acl
+        WHERE acl.grantee =
+          'social_monitor_reader_summary_publication_owner'::pg_catalog.regrole::OID
+      ), ARRAY[]::TEXT[]) <> CASE
+        WHEN expected.publication_owner_privilege_count = 1
+          THEN ARRAY['SELECT']::TEXT[] ELSE ARRAY[]::TEXT[] END
+      OR EXISTS (SELECT 1 FROM pg_catalog.aclexplode(relation.relacl) AS acl
+        WHERE acl.grantor <> relation.relowner OR acl.is_grantable)
+      OR (expected.relation_name = 'feed_items' AND (
+        (SELECT count(*) FROM pg_catalog.pg_attribute AS attribute
+          CROSS JOIN LATERAL pg_catalog.aclexplode(attribute.attacl) AS acl
+          WHERE attribute.attrelid = relation.oid) <> 30
+        OR EXISTS (SELECT 1 FROM pg_catalog.pg_attribute AS attribute
+          CROSS JOIN LATERAL pg_catalog.aclexplode(attribute.attacl) AS acl
+          WHERE attribute.attrelid = relation.oid AND (
+            acl.grantor <> relation.relowner OR acl.is_grantable
+            OR acl.grantee NOT IN (
+              'social_monitor_reader_summary_publication_owner'::pg_catalog.regrole::OID,
+              'social_monitor_reader_summary_publication_runtime'::pg_catalog.regrole::OID
+            ) OR (acl.privilege_type = 'SELECT' AND attribute.attname <> ALL(ARRAY[
+              'id','tenant_id','workspace_id','interest_id','source_item_id',
+              'source_binding_id','provider_key','canonical_url','title',
+              'body_preview','author_handle','status','published_at','observed_at'
+            ]::NAME[])) OR (acl.privilege_type = 'UPDATE'
+              AND attribute.attname <> 'id')
+            OR acl.privilege_type NOT IN ('SELECT','UPDATE'))))
+      OR (expected.relation_name = 'source_items' AND (
+        (SELECT count(*) FROM pg_catalog.pg_attribute AS attribute
+          CROSS JOIN LATERAL pg_catalog.aclexplode(attribute.attacl) AS acl
+          WHERE attribute.attrelid = relation.oid) <> 26
+        OR EXISTS (SELECT 1 FROM pg_catalog.pg_attribute AS attribute
+          CROSS JOIN LATERAL pg_catalog.aclexplode(attribute.attacl) AS acl
+          WHERE attribute.attrelid = relation.oid AND (
+            acl.grantor <> relation.relowner OR acl.is_grantable
+            OR acl.grantee NOT IN (
+              'social_monitor_reader_summary_publication_owner'::pg_catalog.regrole::OID,
+              'social_monitor_reader_summary_publication_runtime'::pg_catalog.regrole::OID
+            ) OR (acl.privilege_type = 'SELECT' AND attribute.attname <> ALL(ARRAY[
+              'id','tenant_id','workspace_id','source_binding_id','provider_key',
+              'provider_item_id','canonical_url','body','content_hash',
+              'provider_content_hash','observed_at','metadata'
+            ]::NAME[])) OR (acl.privilege_type = 'UPDATE'
+              AND attribute.attname <> 'id')
+            OR acl.privilege_type NOT IN ('SELECT','UPDATE'))))
+      OR (expected.relation_name NOT IN ('feed_items','source_items') AND EXISTS (
+        SELECT 1 FROM pg_catalog.pg_attribute AS attribute
+        CROSS JOIN LATERAL pg_catalog.aclexplode(attribute.attacl) AS acl
+        WHERE attribute.attrelid = relation.oid)))
+  INTO STRICT v_acl_rows, v_acl_mismatches
+  FROM (VALUES
+    ('reader_summary_daily_execution_cursors', ARRAY['INSERT','SELECT','UPDATE']::TEXT[], 2, 0),
+    ('reader_summary_daily_model_jobs', ARRAY['INSERT','SELECT','UPDATE']::TEXT[], 2, 1),
+    ('reader_summary_daily_source_authorities', ARRAY['INSERT','SELECT']::TEXT[], 0, 0),
+    ('feed_items', ARRAY['SELECT']::TEXT[], 0, 0),
+    ('source_items', ARRAY['SELECT']::TEXT[], 0, 0)
+  ) AS expected(
+    relation_name, privileges, definer_privilege_count,
+    publication_owner_privilege_count
+  )
+  LEFT JOIN pg_catalog.pg_class AS relation
+    ON relation.relname = expected.relation_name
+  LEFT JOIN pg_catalog.pg_namespace AS namespace
     ON namespace.oid = relation.relnamespace AND namespace.nspname = 'public'
-  WHERE relation.relowner <> v_schema_owner
-    OR COALESCE((SELECT pg_catalog.array_agg(
-      acl.privilege_type ORDER BY acl.privilege_type
-    ) FROM pg_catalog.aclexplode(relation.relacl) AS acl
-      WHERE acl.grantee = v_active_owner), ARRAY[]::TEXT[]) <> expected.privileges
-    OR EXISTS (SELECT 1 FROM pg_catalog.aclexplode(relation.relacl) AS acl
-      WHERE acl.grantee = v_active_owner
-        AND (acl.grantor <> relation.relowner OR acl.is_grantable));
-  IF v_acl_mismatches <> 0 THEN
+  WHERE namespace.oid IS NOT NULL OR relation.oid IS NULL;
+  IF v_acl_rows <> 5 OR v_acl_mismatches <> 0 THEN
     RAISE EXCEPTION 'telemetry recovery production owner ACL invariants drifted';
   END IF;
 END
