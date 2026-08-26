@@ -1,4 +1,5 @@
 import { existsSync, globSync, readFileSync } from 'node:fs';
+import { dirname, relative } from 'node:path';
 
 const normalizePath = (value) => value.replaceAll('\\', '/');
 
@@ -44,18 +45,55 @@ if (!String(contract.mvpRuntimeDecision?.allowedRuntime ?? '').includes('durable
 }
 
 const moduleContracts = new Map();
+const declaredAdapterSourceFiles = new Map();
 for (const moduleContract of contract.runtimeModules ?? []) {
   const moduleFile = normalizePath(moduleContract.moduleFile);
   if (moduleContracts.has(moduleFile)) {
     violations.push(`${contractPath}: duplicate runtime module "${moduleContract.moduleFile}"`);
   }
+  const adapterSourceFiles = (moduleContract.adapterSourceFiles ?? []).map(
+    normalizePath,
+  );
   moduleContracts.set(moduleFile, {
     ...moduleContract,
     moduleFile,
+    adapterSourceFiles,
   });
 
   if (!existsSync(moduleContract.moduleFile)) {
     violations.push(`${contractPath}: runtime module "${moduleContract.moduleFile}" does not exist`);
+  }
+
+  for (const sourceFile of adapterSourceFiles) {
+    if (!existsSync(sourceFile)) {
+      violations.push(
+        `${contractPath}: adapter source "${sourceFile}" for runtime module "${moduleFile}" does not exist`,
+      );
+    }
+    const existingOwner = declaredAdapterSourceFiles.get(sourceFile);
+    if (existingOwner) {
+      violations.push(
+        `${contractPath}: adapter source "${sourceFile}" is declared by both "${existingOwner}" and "${moduleFile}"`,
+      );
+    } else {
+      declaredAdapterSourceFiles.set(sourceFile, moduleFile);
+    }
+    if (existsSync(moduleFile) && existsSync(sourceFile)) {
+      const importPath = normalizePath(relative(dirname(moduleFile), sourceFile))
+        .replace(/\.ts$/, '');
+      const importSpecifier = importPath.startsWith('.')
+        ? importPath
+        : `./${importPath}`;
+      const moduleSource = readFileSync(moduleFile, 'utf8');
+      if (
+        !moduleSource.includes(`'${importSpecifier}'`) &&
+        !moduleSource.includes(`"${importSpecifier}"`)
+      ) {
+        violations.push(
+          `${contractPath}: adapter source "${sourceFile}" is not directly imported by runtime module "${moduleFile}"`,
+        );
+      }
+    }
   }
 
   for (const field of ['context', 'owner', 'risk', 'durableReplacementPlan']) {
@@ -85,9 +123,16 @@ for (const moduleContract of contract.runtimeModules ?? []) {
 
 for (const moduleFile of runtimeModuleFiles) {
   const normalizedModuleFile = normalizePath(moduleFile);
-  const source = readFileSync(moduleFile, 'utf8');
-  const discovered = uniqueMatches(source, statefulInMemoryPattern);
   const moduleContract = moduleContracts.get(normalizedModuleFile);
+  const sourceFiles = [
+    normalizedModuleFile,
+    ...(moduleContract?.adapterSourceFiles ?? []),
+  ];
+  const source = sourceFiles
+    .filter((sourceFile) => existsSync(sourceFile))
+    .map((sourceFile) => readFileSync(sourceFile, 'utf8'))
+    .join('\n');
+  const discovered = uniqueMatches(source, statefulInMemoryPattern);
 
   if (discovered.length === 0) {
     continue;
