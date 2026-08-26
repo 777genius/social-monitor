@@ -134,7 +134,19 @@ fake_ssh() {
       print_fake_plan false true true false "$RELEASE_B_CONTROLLER_SHA" \
         "$RELEASE_B_CONTROLLER_SHA"
       ;;
-    release_b_from_8b:"plan $RELEASE_B_REVIEWED_TARGET_SHA"|release_b_bridge_disconnect:"plan $RELEASE_B_REVIEWED_TARGET_SHA"|release_b_controller_repair:"plan $RELEASE_B_REVIEWED_TARGET_SHA")
+    release_b_controller_repair:"plan $RELEASE_B_REVIEWED_TARGET_SHA")
+      if grep -qFx "deploy $RELEASE_B_REVIEWED_TARGET_SHA" "$FAKE_SSH_LOG"; then
+        print_fake_plan false false false false "$RELEASE_B_CONTROLLER_SHA" \
+          "$RELEASE_B_CONTROLLER_SHA"
+      elif grep -qFx "deploy $RELEASE_B_CONTROLLER_SHA" "$FAKE_SSH_LOG"; then
+        print_fake_plan false true true false "$RELEASE_B_CONTROLLER_SHA" \
+          "$RELEASE_B_CONTROLLER_SHA"
+      else
+        print_fake_plan true true true true "$RELEASE_B_POOL_MARKER" \
+          "$RELEASE_B_BACKEND_MARKER"
+      fi
+      ;;
+    release_b_from_8b:"plan $RELEASE_B_REVIEWED_TARGET_SHA"|release_b_bridge_disconnect:"plan $RELEASE_B_REVIEWED_TARGET_SHA")
       if grep -qFx "deploy $RELEASE_B_REVIEWED_TARGET_SHA" "$FAKE_SSH_LOG"; then
         print_fake_plan false false false false "$RELEASE_B_REVIEWED_TARGET_SHA" \
           "$RELEASE_B_CONTROLLER_SHA"
@@ -143,7 +155,11 @@ fake_ssh() {
           "$RELEASE_B_CONTROLLER_SHA"
       fi
       ;;
-    release_b_from_8b:"plan $RELEASE_B_CURRENT_MAIN_SHA"|release_b_bridge_disconnect:"plan $RELEASE_B_CURRENT_MAIN_SHA"|release_b_controller_repair:"plan $RELEASE_B_CURRENT_MAIN_SHA")
+    release_b_controller_repair:"plan $RELEASE_B_CURRENT_MAIN_SHA")
+      print_fake_plan true true true true "$RELEASE_B_POOL_MARKER" \
+        "$RELEASE_B_BACKEND_MARKER"
+      ;;
+    release_b_from_8b:"plan $RELEASE_B_CURRENT_MAIN_SHA"|release_b_bridge_disconnect:"plan $RELEASE_B_CURRENT_MAIN_SHA")
       print_fake_plan false true true false "$RELEASE_B_CONTROLLER_SHA" \
         "$RELEASE_B_CONTROLLER_SHA"
       ;;
@@ -335,12 +351,15 @@ install -m 0700 "$0" "$FAKE_SSH"
   plan_is_exact_release_b_target_transition
   # shellcheck disable=SC2034 # Read by the sourced target-plan predicate.
   PLAN_POSTGRES_POOL_REPAIR=true
-  ! plan_is_exact_release_b_target_transition
+  plan_is_exact_release_b_target_transition && exit 1
   # shellcheck disable=SC2034 # Read by the sourced current-main predicate.
   PLAN_POSTGRES_POOL_REPAIR=false
   parse_plan "$(printf 'frontend=false\nbackend=false\nbackend_base=%s\ncontrol=true\nx_collector=false\npostgres_pool_bootstrap=postgres-pool-v1\npostgres_pool_bootstrap_sha=%s\n' \
     "$RELEASE_B_CURRENT_MAIN_SHA" "$RELEASE_B_CURRENT_MAIN_SHA")"
   plan_is_exact_release_b_current_main_target_transition
+  parse_plan "$(printf 'frontend=true\nbackend=true\nbackend_base=%s\ncontrol=true\nx_collector=true\npostgres_pool_bootstrap=postgres-pool-v1\npostgres_pool_bootstrap_sha=%s\n' \
+    "$RELEASE_B_BACKEND_MARKER" "$RELEASE_B_POOL_MARKER")"
+  plan_is_exact_release_b_legacy_transition
 )
 
 run_client() {

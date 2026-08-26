@@ -7,6 +7,8 @@ ZERO_SHA=0000000000000000000000000000000000000000
 POSTGRES_POOL_BOOTSTRAP_VERSION=postgres-pool-v1
 RELEASE_B_CONTROLLER_SHA=8b4aeb31e855ed379349a4e4827600009e174132
 RELEASE_B_CURRENT_MAIN_SHA=77313ea03a3bac7d2298f4021d58124c810d291f
+RELEASE_B_LEGACY_BACKEND_SHA=09a79687e042e36d4ec9c1f33f0367527f044181
+RELEASE_B_LEGACY_POOL_SHA=6fefa9da5446d5e467badcc7239fdc5a6170a756
 RELEASE_B_BRIDGE_SHA=b89950632b0cefa4f7b58b687cdfd6e6cd912a04
 RELEASE_B_BRIDGE_TREE=0f2edeb95bbb658cebdb1aecdcda24026eca7d19
 RELEASE_B_BRIDGE_BLOB=e02f7b7684f75121521065b43148708d545ab806
@@ -580,6 +582,15 @@ plan_is_exact_release_b_current_main_target_transition() {
      $PLAN_POSTGRES_POOL_REPAIR == false ]]
 }
 
+plan_is_exact_release_b_legacy_transition() {
+  [[ $PLAN_FRONTEND == true && $PLAN_BACKEND == true && \
+     $PLAN_BACKEND_BASE == "$RELEASE_B_LEGACY_BACKEND_SHA" && \
+     $PLAN_CONTROL == true && $PLAN_X_COLLECTOR == true && \
+     $PLAN_POSTGRES_POOL_BOOTSTRAP == "$POSTGRES_POOL_BOOTSTRAP_VERSION" && \
+     $PLAN_POSTGRES_POOL_BOOTSTRAP_SHA == "$RELEASE_B_LEGACY_POOL_SHA" && \
+     $PLAN_POSTGRES_POOL_REPAIR == false ]]
+}
+
 verify_release_b_bridge_identity() {
   local sha=$1 repository=${GITHUB_WORKSPACE:-.}
   local actual_tree delta entry mode type object path extra
@@ -734,6 +745,7 @@ deploy_release_b_reviewed_target() {
 prepare_release_b_bridge() {
   local sha=$1 bridge=$2 current_main=$3 bridge_target=$4 requested_target=$5 status
   local target_plan_exact=false current_main_target_plan_exact=false
+  local legacy_target_plan_exact=false
   [[ $sha == "$RELEASE_B_CONTROLLER_SHA" ]] || \
     fail 'Release B controller SHA is not the reviewed pin'
   [[ $current_main == "$RELEASE_B_CURRENT_MAIN_SHA" ]] || \
@@ -747,6 +759,8 @@ prepare_release_b_bridge() {
     plan_is_exact_release_b_target_transition && target_plan_exact=true
     plan_is_exact_release_b_current_main_target_transition && \
       current_main_target_plan_exact=true
+    plan_is_exact_release_b_legacy_transition && \
+      legacy_target_plan_exact=true
   else
     status=$?
     ((status == 1)) || fail "Release B target preflight plan failed with status $status"
@@ -759,13 +773,16 @@ prepare_release_b_bridge() {
       deploy_release_b_reviewed_target "$bridge_target"
       return 0
     fi
-    plan_is_exact_release_b_target_transition || \
-      fail 'Release B current-main plan is not the exact controller transition'
+    if ! plan_is_exact_release_b_target_transition; then
+      { plan_is_exact_release_b_legacy_transition && \
+        [[ $legacy_target_plan_exact == true ]]; } || \
+        fail 'Release B current-main plan is not an admitted exact transition'
+    fi
   else
     status=$?
     ((status == 1)) || fail "Release B current-main plan failed with status $status"
   fi
-  [[ $target_plan_exact == true ]] || \
+  [[ $target_plan_exact == true || $legacy_target_plan_exact == true ]] || \
     fail 'Release B target plan is not the exact controller transition'
   if capture_plan "$bridge"; then
     print_plan

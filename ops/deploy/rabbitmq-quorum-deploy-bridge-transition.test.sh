@@ -62,7 +62,8 @@ BRIDGE_CONTROL_PATHS=(
 
 assert_real_bridge_target_assets() {
   local path entry mode type object tree_path expected_digest alternate_digest reviewed_digest
-  local release_b_candidate_digest release_b_sealed_digest actual_digest actual_mode
+  local release_b_candidate_digest release_b_sealed_digest rolling_repair_digest
+  local actual_digest actual_mode
   local repository_root actual_path actual_real
 
   repository_root=$(readlink -f -- "$PROJECT_ROOT")
@@ -94,11 +95,13 @@ assert_real_bridge_target_assets() {
     reviewed_digest=
     release_b_candidate_digest=
     release_b_sealed_digest=
+    rolling_repair_digest=
     actual_digest=$(sha256sum "$actual_real" | awk '{print $1}')
     case $path in
       ops/deploy/social-monitor-production-deploy.sh)
         expected_digest=ac82c9cfebf88646e9cdc21dcb822c8cc50409832da24a726cd9307cc2be8bcb
-        alternate_digest=d57866ed7cedfca383188173121c3cb550ec6b7dc909601d813353a0cd394bbf
+        alternate_digest=101b80c5c0ee6ea5ff4e908e5661a7c2bbd03ad2048fb7eb8b5d26966b0e4860
+        reviewed_digest=cc869266046dbe9edc590e83944e93bab8ebdf19e8ef66f4917c896bbd48fcde
         ;;
       ops/deploy/deploy-control-lib.sh)
         expected_digest=d18854822ef36d5571289e72c7691fff8db4a7d5c516787441a733d6960a88a9
@@ -116,6 +119,7 @@ assert_real_bridge_target_assets() {
         reviewed_digest=14ab26a66e982128770947a9b66a764cd4cef6eca1bb017c13f97819ae611a7a
         release_b_candidate_digest=bea119047fbbd2295185c84e0adeb773dc852e63b951daf5c7a831356a73a371
         release_b_sealed_digest=1718617b4bbb92f4dbfd92a59fcc482ef7a098734730b8460d21aaced44386c2
+        rolling_repair_digest=1945f2b07f110d16694affc15c66b4589d294b81a4e593a9680dacf11fbc5d4d
         ;;
     esac
     if [[ $path == ops/deploy/social-monitor-production-deploy.sh ]]; then
@@ -143,12 +147,21 @@ assert_real_bridge_target_assets() {
         echo 'OpenAPI snapshot backend-classification exception is not exact' >&2
         exit 1
       }
+      [[ $(grep -Fc 'ops/deploy/production-runtime/rolling-summary-container-run.sh' "$actual_real") == 2 ]] || {
+        echo 'rolling container runner image-classification exception is not exact' >&2
+        exit 1
+      }
+      [[ $(grep -Fc 'ops/deploy/production-runtime/rolling-summary-receipt.mjs' "$actual_real") == 3 ]] || {
+        echo 'rolling receipt image/runtime-classification exception is not exact' >&2
+        exit 1
+      }
     fi
     [[ $actual_digest == "$expected_digest" ||
        (-n $alternate_digest && $actual_digest == "$alternate_digest") ||
        (-n $reviewed_digest && $actual_digest == "$reviewed_digest") ||
        (-n $release_b_candidate_digest && $actual_digest == "$release_b_candidate_digest") ||
-       (-n $release_b_sealed_digest && $actual_digest == "$release_b_sealed_digest") ]] || {
+       (-n $release_b_sealed_digest && $actual_digest == "$release_b_sealed_digest") ||
+       (-n $rolling_repair_digest && $actual_digest == "$rolling_repair_digest") ]] || {
       printf 'current bridge asset digest drifted from V4A4: %s\n' "$path" >&2
       exit 1
     }

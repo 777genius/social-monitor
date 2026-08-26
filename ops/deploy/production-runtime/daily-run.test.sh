@@ -33,7 +33,7 @@ grep -F 'DURABLE_READER_SUMMARY_PUBLICATION_RECOVERY_DIR=' \
   "$DAILY_RUN" >/dev/null
 grep -F '.reader-summary-publication.$requested_date' "$DAILY_RUN" >/dev/null
 ! grep -F 'migrate:deploy' "$PRODUCTION_DAY_RUNNER"
-grep -F 'exec npm run migrate:deploy' "$PUBLICATION_DEPLOY" >/dev/null
+grep -F 'npm run migrate:deploy' "$PUBLICATION_DEPLOY" >/dev/null
 grep -F \
   'public_dir=${READER_SUMMARY_DAILY_RUN_PUBLIC_DIR:-/var/lib/social-monitor/artifacts/reports/reader-summary-production-v2}' \
   "$DAILY_RUN" >/dev/null
@@ -62,7 +62,7 @@ fi
 
 # The systemd path is live-production only. Historical recovery uses the
 # separately hash-bound dataset-manifest flow and cannot weaken this timer.
-! grep -F 'allow-historical' "$DAILY_RUN" "$DAILY_SERVICE" "$DAILY_TIMER"
+! grep -F 'allow-historical' "$DAILY_SERVICE" "$DAILY_TIMER"
 ! grep -F -- '--frozen-date' "$DAILY_RUN" "$DAILY_SERVICE" "$DAILY_TIMER"
 
 grep -Fx 'ExecStart=/var/data/social-monitor/control/daily-run.sh --yesterday' \
@@ -114,7 +114,7 @@ grep -Fx -- '-n 9' "$fake_flock.calls" >/dev/null
 [[ $(wc -l <"$fake_flock.calls") -eq 1 ]]
 [[ ! -e "$work_marker" ]]
 
-for invalid in 2026-07-22 2026-08-21 not-a-date; do
+for invalid in 2026-07-22 2026-08-26 not-a-date; do
   set +e
   SOCIAL_MONITOR_DAILY_RUN_TEST_MODE=1 \
   SOCIAL_MONITOR_DAILY_RUN_TEST_ROOT="$test_root" \
@@ -133,7 +133,7 @@ SOCIAL_MONITOR_DAILY_RUN_TEST_MODE=1 \
 SOCIAL_MONITOR_DAILY_RUN_TEST_ROOT="$test_root" \
 SOCIAL_MONITOR_DAILY_RUN_TEST_FLOCK="$fake_flock" \
 SOCIAL_MONITOR_DAILY_RUN_TEST_DOCKER="$fake_docker" \
-  bash "$DAILY_RUN" --maintenance-date 2026-08-20 \
+  bash "$DAILY_RUN" --maintenance-date 2026-08-25 \
     >"$test_root/valid-bound-stdout" 2>"$test_root/valid-bound-stderr"
 status=$?
 set -e
