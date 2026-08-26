@@ -1,10 +1,12 @@
 import { readFileSync } from "node:fs";
+import { finalStageCopiesFeedPromotionRecovery } from "./lib/feed-promotion-migrate-dockerfile.mjs";
 
 const migrationPath =
   "prisma/migrations/20260819120000_feed_promotion_keyset_snapshot_indexes/migration.sql";
 const migration = readFileSync(migrationPath, "utf8");
 const migrationSql = withoutComments(migration);
 const schema = readFileSync("prisma/schema.prisma", "utf8");
+const dockerfile = readFileSync("Dockerfile", "utf8");
 const workflow = readFileSync(".github/workflows/pull-request.yml", "utf8");
 const deploy = readFileSync(
   "ops/deploy/reader-summary-publication-deploy-lib.sh",
@@ -116,6 +118,9 @@ if (!deploy.includes("check:feed-promotion-index-recovery -- inspect") ||
     deploy.includes("FEED_PROMOTION_FILESYSTEM_EVIDENCE_FILE") ||
     deploy.includes("ps -q postgres")) {
   violations.push("external managed PostgreSQL deploy must not infer capacity from app-host or Compose filesystems");
+}
+if (!finalStageCopiesFeedPromotionRecovery(dockerfile)) {
+  violations.push("migrate image must include its feed promotion recovery script");
 }
 if (!recovery.includes("assumeFeedItemsOwner(client)") ||
     !recovery.includes("session_user AS login_role") ||

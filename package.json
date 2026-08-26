@@ -137,7 +137,7 @@
     "check:feed-promotion-keyset-plan-postgres": "node scripts/run-with-timeout.mjs --timeout-ms 300000 --node-options --max-old-space-size=512 -- ts-node -r tsconfig-paths/register scripts/check-feed-promotion-keyset-plan-postgres.ts",
     "check:feed-promotion-index-recovery-postgres": "node scripts/run-with-timeout.mjs --timeout-ms 300000 --node-options --max-old-space-size=512 -- ts-node -r tsconfig-paths/register scripts/check-feed-promotion-index-recovery-postgres.ts",
     "check:feed-promotion-postgres18": "node scripts/run-with-timeout.mjs --timeout-ms 1500000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-feed-promotion-postgres18.ts",
-    "check:feed-promotion-migration-contract": "node scripts/check-feed-promotion-migration-contract.mjs",
+    "check:feed-promotion-migration-contract": "node --test scripts/lib/feed-promotion-migrate-dockerfile.test.mjs && node scripts/check-feed-promotion-migration-contract.mjs",
     "check:feed-promotion-index-recovery": "ts-node -r tsconfig-paths/register scripts/check-feed-promotion-index-recovery.ts",
     "check:monitoring-persistence": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-monitoring-prisma-persistence.ts",
     "check:monitoring-read-rest": "node scripts/run-with-timeout.mjs --timeout-ms 90000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-monitoring-read-rest-smoke.ts",
