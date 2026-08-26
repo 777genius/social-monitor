@@ -847,7 +847,7 @@ function resealRow(
     canonical_record: canonicalRecord,
     canonical_sha256: canonicalSha256,
     identity: `${readerSummaryWeeklyPublicationEvidenceSchemaVersion}:${canonicalSha256}`,
-  } as unknown as ReturnType<typeof rowForDate>;
+  };
 }
 
 function githubEvidenceFor(

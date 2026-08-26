@@ -22,10 +22,7 @@ export const withTestExecutionAttestation = (
       canonicalRequestSha256: "a".repeat(64),
       provider: command.provider,
       model: "gpt-5.6-sol",
-      reasoningEffort:
-        typeof command.controls.reasoningEffort === "string"
-          ? command.controls.reasoningEffort
-          : (command.metadata?.reasoningEffort ?? "high"),
+      reasoningEffort: "xhigh",
       runtimeEngine: "subscription-runtime-cli",
       runtimePackageVersion: "0.1.0-main.2",
       launcherSha256: "b".repeat(64),

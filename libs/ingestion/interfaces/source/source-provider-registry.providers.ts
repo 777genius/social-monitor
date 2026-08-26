@@ -39,7 +39,6 @@ import { SocialResearchSourceQueryPlannerAdapter } from '../../adapters/source/s
 import { sourceReadinessProfilesForRuntime } from '../../adapters/source/source-readiness-profiles';
 import { selectRuntimeSourceProviders } from '../../adapters/source/source-provider-runtime-scope';
 import { GrpcXDailyCollectorClient } from '../../adapters/source/x-twitter-experimental-daily/grpc-x-daily-collector-client';
-import { StaticXPromotionAuthorityRegistry } from '../../adapters/source/x-twitter-experimental-daily/static-x-promotion-authority-registry';
 import {
   X_TWITTER_EXPERIMENTAL_DAILY_PROVIDER_KEY,
   X_TWITTER_PROVIDER_KEY,
@@ -188,13 +187,7 @@ export const sourceProviderRegistryProviders: readonly Provider[] = [
         },
       });
 
-      return new XTwitterSourceProvider(
-        collectorClient,
-        clock,
-        new StaticXPromotionAuthorityRegistry(
-          settings.xPromotionAuthorityHandles,
-        ),
-      );
+      return new XTwitterSourceProvider(collectorClient, clock);
     },
     inject: [INGESTION_SOURCE_PROVIDER_RUNTIME_SETTINGS],
   },

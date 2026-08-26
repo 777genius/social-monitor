@@ -13,6 +13,7 @@ import type {
 import { NOOP_READER_SUMMARY_PROVIDER_COLLECTION_HEALTH_READER } from "../../ports";
 import { statsForFeedItemMetadata } from "./feed-item-collection-stats";
 import { isDefaultReaderSummaryEvidenceProvider } from "./reader-summary-evidence-provider-filter";
+import { inclusiveObservedBefore } from "./relevance-reader-summary-evidence-support";
 
 const PAGE_LIMIT = 100;
 const MAX_PAGES = 1000;
@@ -33,6 +34,10 @@ export class FeedReaderSummaryCoverageCounter implements ReaderSummaryCoverageCo
   async countCollectedFeedItemCoverage(
     query: CountReaderSummaryCollectedFeedItemsQuery,
   ): Promise<ReaderSummaryCollectedFeedItemCoverage | undefined> {
+    const observedBefore =
+      query.observedThrough === undefined
+        ? undefined
+        : inclusiveObservedBefore(query.observedThrough);
     let cursor: string | undefined;
     let total = 0;
     const totals = emptyCoverageCounts();
@@ -50,7 +55,7 @@ export class FeedReaderSummaryCoverageCounter implements ReaderSummaryCoverageCo
           query.scope.type === "interest" ? query.scope.interestId : undefined,
         publishedAtOrAfter: query.period.startedAt,
         publishedBefore: query.period.endedAt,
-        observedAtOrBefore: query.observedThrough,
+        observedBefore,
         limit: PAGE_LIMIT,
         cursor,
       });

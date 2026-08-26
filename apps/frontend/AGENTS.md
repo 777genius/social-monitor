@@ -54,8 +54,7 @@ Run the smallest checks that prove the frontend change:
 - Full frontend platform gate: `npm run check:frontend`.
 - Architecture/rule change: `fvm flutter test app/test/architecture/frontend_architecture_boundaries_test.dart`.
 - Dart source change: `fvm flutter analyze`.
-- App shell change: `fvm flutter test app/test` (the package also contains
-  Flutter Drive entrypoints that require the E2E harness).
+- App shell change: `fvm flutter test app`.
 - Design-system/shared-kernel/generated-api change: run the affected package tests plus the architecture test.
 
 ## Live Dev Runtime

@@ -1,4 +1,3 @@
-import { readerPromotionProviderFamily } from "@social-monitor/shared-kernel";
 import type { SummaryEvidenceItem } from "./summary-evidence-item";
 import { compactUnique } from "./summary-text";
 
@@ -41,33 +40,9 @@ export const independentEvidenceProviderKeys = (
 ): readonly string[] =>
   compactUnique(
     independentEvidenceItems(evidence).map(
-      (item) => readerSummaryIndependentProviderFamily(item),
+      (item) => readerSummaryProviderIdentity(item).providerKey,
     ),
   );
-
-/** Canonical identity used only when provider independence is evaluated. */
-export const readerSummaryIndependentProviderFamily = (params: {
-  readonly providerKey: string;
-  readonly canonicalUrl?: string;
-}): string => {
-  const providerKey = readerSummaryProviderIdentity({
-    ...params,
-    providerKey: params.providerKey.trim().toLocaleLowerCase("en-US"),
-  }).providerKey;
-  const family = readerPromotionProviderFamily(providerKey);
-  if (family === "hacker_news") return "hacker-news";
-  if (family === "github_radar") return "github-repo-radar";
-  return family ?? providerKey;
-};
-
-export const readerSummaryIndependentProviderFamilies = (
-  providerKeys: readonly string[],
-): readonly string[] => compactUnique(providerKeys.map((providerKey) =>
-  readerSummaryIndependentProviderFamily({ providerKey })));
-
-export const readerSummaryIndependentProviderFamilyCount = (
-  providerKeys: readonly string[],
-): number => readerSummaryIndependentProviderFamilies(providerKeys).length;
 
 export const independentEvidenceItems = (
   evidence: readonly SummaryEvidenceItem[],

@@ -1,7 +1,5 @@
 import type { ReaderSummaryNarrativeSectionKind } from "../entities/reader-summary-narrative-section";
 import type { ReaderSummaryCoverageMode } from "../value-objects/reader-summary-coverage-mode";
-import { readerSummaryIndependentProviderFamily } from
-  "../value-objects/reader-summary-provider-identity";
 
 export type ReaderSummaryEditorialCitationSupport = {
   readonly citationId: string;
@@ -239,7 +237,7 @@ const isNonEmptyString = (value: string | undefined): value is string =>
   value !== undefined && value.length > 0;
 
 const normalizeProvider = (value: string): string =>
-  readerSummaryIndependentProviderFamily({ providerKey: value });
+  value.trim().toLocaleLowerCase("en-US");
 
 const normalizeReaderText = (value: string): string =>
   value

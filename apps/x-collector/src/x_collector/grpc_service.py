@@ -21,8 +21,6 @@ from .domain import (
     XCollectorUnavailableError,
     XCollectorWarning,
     XPostMetrics,
-    XPostContentKind,
-    XEligibilityMetricsState,
 )
 from .health import XCollectorHealthMonitor
 from .ports import DailySearchCollectorPort
@@ -182,7 +180,6 @@ def post_to_proto(post: XCollectedPost) -> x_collector_pb2.XCollectedPost:
         media_urls=list(post.media_urls),
         source_product=search_product_to_proto(post.source_product),
         trend_score=post.trend_score,
-        content_kind=content_kind_to_proto(post.content_kind),
     )
 
 
@@ -195,34 +192,7 @@ def metrics_to_proto(metrics: XPostMetrics) -> x_collector_pb2.XPostMetrics:
         views=max(metrics.views or 0, 0),
         quotes_observed=metrics.quotes is not None,
         views_observed=metrics.views is not None,
-        likes_observed=metrics.likes_observed,
-        retweets_observed=metrics.retweets_observed,
-        eligibility_state=eligibility_metrics_state_to_proto(metrics.eligibility_state),
     )
-
-
-def content_kind_to_proto(content_kind: XPostContentKind) -> int:
-    match content_kind:
-        case XPostContentKind.ORIGINAL:
-            return x_collector_pb2.X_POST_CONTENT_KIND_ORIGINAL
-        case XPostContentKind.REPLY:
-            return x_collector_pb2.X_POST_CONTENT_KIND_REPLY
-        case XPostContentKind.QUOTE:
-            return x_collector_pb2.X_POST_CONTENT_KIND_QUOTE
-        case XPostContentKind.UNKNOWN:
-            return x_collector_pb2.X_POST_CONTENT_KIND_UNSPECIFIED
-
-
-def eligibility_metrics_state_to_proto(state: XEligibilityMetricsState) -> int:
-    match state:
-        case XEligibilityMetricsState.OBSERVED:
-            return x_collector_pb2.X_ELIGIBILITY_METRICS_STATE_OBSERVED
-        case XEligibilityMetricsState.MISSING:
-            return x_collector_pb2.X_ELIGIBILITY_METRICS_STATE_MISSING
-        case XEligibilityMetricsState.MALFORMED:
-            return x_collector_pb2.X_ELIGIBILITY_METRICS_STATE_MALFORMED
-        case XEligibilityMetricsState.CONFLICT:
-            return x_collector_pb2.X_ELIGIBILITY_METRICS_STATE_CONFLICT
 
 
 def warning_to_proto(

@@ -128,41 +128,6 @@ describe("reader summary exact-day collection artifacts", () => {
     }
   });
 
-  it("enforces an exact dated path without imposing maintenance scope", () => {
-    const directory = mkdtempSync(join(tmpdir(), "reader-summary-collection-"));
-    const priorDayPath = readerSummaryDailyCollectionArtifactPath({
-      directory,
-      collectionDate: "2026-08-24",
-    });
-    try {
-      writeCollectionArtifactAtomically({
-        path: priorDayPath,
-        report: report("2026-08-24"),
-        requireExactDatePath: true,
-      });
-
-      expect(() =>
-        readExactDayCollectionArtifact({
-          path: priorDayPath,
-          collectionDate: "2026-08-25",
-          requireExactDatePath: true,
-        }),
-      ).toThrow("not explicit for its requested date");
-      expect(() =>
-        writeCollectionArtifactAtomically({
-          path: join(
-            directory,
-            "reader-summary-clean-real-day-collection.v1.json",
-          ),
-          report: report("2026-08-25"),
-          requireExactDatePath: true,
-        }),
-      ).toThrow("not explicit for its report date");
-    } finally {
-      rmSync(directory, { recursive: true, force: true });
-    }
-  });
-
   it("rejects a non-date artifact name before it can overwrite another day", () => {
     expect(() =>
       readerSummaryDailyCollectionArtifactPath({

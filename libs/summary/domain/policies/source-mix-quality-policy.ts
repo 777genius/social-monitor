@@ -9,10 +9,7 @@ import type {
   ReaderSummaryQualityState,
 } from "../value-objects/summary-quality";
 import { compactUnique, uniqueNonEmpty } from "../value-objects/summary-text";
-import {
-  independentEvidenceProviderKeys,
-  readerSummaryIndependentProviderFamilyCount,
-} from "../value-objects/reader-summary-provider-identity";
+import { independentEvidenceProviderKeys } from "../value-objects/reader-summary-provider-identity";
 import { isSupplementalTrendEvidence } from "./reader-summary-github-trending-policy";
 
 export type SourceMixQualityPolicyInput = {
@@ -68,7 +65,7 @@ export const buildSourceMix = (
     const isCrossSource =
       (clusterEvidence.length >= 2
         ? independentEvidenceProviderKeys(clusterEvidence).length
-        : readerSummaryIndependentProviderFamilyCount(cluster.providerKeys)) > 1;
+        : cluster.providerKeys.length) > 1;
     for (const providerKey of cluster.providerKeys) {
       if (isSupplementalTrendEvidence({ providerKey })) {
         continue;

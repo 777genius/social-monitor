@@ -71,7 +71,9 @@ const createExecutionAttestation = async (params: {
       exactAdmission.profile.reasoningEffort ||
     params.profile.outputKind !== exactAdmission.profile.outputKind ||
     params.profile.responseFormat !== exactAdmission.profile.responseFormat ||
-    params.profile.model !== productionAgentRuntimeModel
+    params.profile.reasoningEffort !== productionAgentRuntimeReasoningEffort ||
+    (params.profile.model !== productionAgentRuntimeModel &&
+      params.profile.model !== "gpt-5.6-sol")
   ) {
     throw new Error("Agent runtime execution identity is not production-safe");
   }

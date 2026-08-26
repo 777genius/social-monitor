@@ -35,13 +35,6 @@ describe("createAgentRuntimeGrpcService", () => {
       status: "completed",
       structuredOutput: { headline: "ok" },
       warnings: [{ code: "test.warning", message: "Heads up" }],
-      usage: {
-        inputTokens: 12,
-        outputTokens: 5,
-        totalTokens: 17,
-        estimatedCostUsd: 0,
-      },
-      durationMs: 25,
       executionAttestation: executionAttestation(),
     });
     const service = createAgentRuntimeGrpcService(executor, {
@@ -62,12 +55,6 @@ describe("createAgentRuntimeGrpcService", () => {
       status: AgentRuntimeTaskStatus.AGENT_RUNTIME_TASK_STATUS_COMPLETED,
       structuredOutputJson: JSON.stringify({ headline: "ok" }),
       warnings: [{ code: "test.warning", message: "Heads up" }],
-      usage: expect.objectContaining({
-        inputTokens: 12,
-        outputTokens: 5,
-        totalTokens: 17,
-      }),
-      durationMs: 25,
       executionAttestation: expect.objectContaining({
         requestId: "request-1",
         runtimePackageVersion: "0.1.0-main.2",

@@ -19,21 +19,9 @@ import {
 const projectionDayEndedAt = new Date("2026-07-11T00:00:00.000Z");
 
 describe("reader summary GitHub projection policy", () => {
-  it("verifies the ordered appendix against one exact durable rank #1 through #10 board", () => {
-    const artifact = boardArtifact({
-      watchRanks: [1, 2, 3],
-      watchText: [
-        "- **owner/repo-1** (#1): +1,001 stars today.",
-        "- **owner/repo-2** (#2): +1,002 stars today.",
-        "- **owner/repo-3** (#3): +1,003 stars today.",
-      ].join("\n"),
-    });
-    const evaluation = evaluate(
-      artifact,
-      projectionInput().map((item) => item.rank !== undefined && item.rank <= 3
-        ? { ...item, starsGained: 1_000 + item.rank }
-        : item),
-    );
+  it("verifies one exact durable rank #1 through #10 board and records fingerprints", () => {
+    const artifact = boardArtifact();
+    const evaluation = evaluate(artifact, projectionInput());
 
     expect(evaluation.findings).toEqual([]);
     expect(evaluation.audit).toMatchObject({
@@ -44,9 +32,9 @@ describe("reader summary GitHub projection policy", () => {
       eligibleBindingIds: ["github-binding-a"],
       projectionCheckedAt: "2026-07-10T12:00:00.000Z",
     });
-    expect(evaluation.audit.bindings).toHaveLength(3);
+    expect(evaluation.audit.bindings).toHaveLength(10);
     expect(evaluation.audit.bindings.map((binding) => binding.rank)).toEqual([
-      1, 2, 3,
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
     ]);
     expect(evaluation.audit.bindings[0]).toMatchObject({
       feedItemId: "github-feed-1",
@@ -69,7 +57,7 @@ describe("reader summary GitHub projection policy", () => {
     const evaluation = evaluate(artifact, projectionInput());
 
     expect(evaluation.audit.status).toBe("verified");
-    expect(evaluation.audit.bindings).toHaveLength(0);
+    expect(evaluation.audit.bindings).toHaveLength(10);
     expect(
       readerSummaryHasVerifiedGitHubProjection({
         artifact,
@@ -89,7 +77,7 @@ describe("reader summary GitHub projection policy", () => {
 
     expect(evaluation.audit.status).toBe("verified");
     expect(evaluation.audit.scannedItemCount).toBe(10);
-    expect(evaluation.audit.bindings).toHaveLength(1);
+    expect(evaluation.audit.bindings).toHaveLength(10);
     expect(
       artifact
         .toSnapshot()
@@ -170,13 +158,16 @@ describe("reader summary GitHub projection policy", () => {
     );
   });
 
-  it("does not require a legacy selectedPosts board when the durable board is complete", () => {
+  it("rejects a partial selectedPosts board when an eligible binding exists", () => {
     const evaluation = evaluate(
       boardArtifact({ selectedPostCount: 5 }),
       projectionInput(),
     );
 
-    expect(evaluation.audit.status).toBe("verified");
+    expect(evaluation.audit.status).toBe("rejected");
+    expect(evaluation.audit.violationCodes).toContain(
+      "github_projection_missing",
+    );
   });
 
   it.each(["missing", "divergent"] as const)(
@@ -312,12 +303,16 @@ describe("reader summary GitHub projection policy", () => {
     ]);
     const gapped = evaluate(boardArtifact(), projectionInput().slice(0, 9));
 
-    expect(duplicated.audit.violationCodes).toContain(
-      "github_projection_duplicate",
+    expect(duplicated.audit.violationCodes).toEqual(
+      expect.arrayContaining([
+        "github_projection_duplicate",
+        "github_projection_mixed",
+      ]),
     );
     expect(gapped.audit.violationCodes).toEqual(
       expect.arrayContaining([
         "github_projection_gapped",
+        "github_projection_identity_invalid",
       ]),
     );
   });
@@ -338,7 +333,7 @@ describe("reader summary GitHub projection policy", () => {
     );
   });
 
-  it("uses the newest complete durable snapshot", () => {
+  it("rejects a complete older snapshot when a newer binding snapshot exists", () => {
     const selectedSnapshot = projectionInput();
     const newerSnapshot = Array.from({ length: 10 }, (_, index) =>
       projectionItem(index + 1, {
@@ -355,10 +350,9 @@ describe("reader summary GitHub projection policy", () => {
       ...newerSnapshot,
     ]);
 
-    expect(evaluation.audit).toMatchObject({
-      status: "verified",
-      projectionCheckedAt: "2026-07-10T13:00:00.000Z",
-    });
+    expect(evaluation.audit.violationCodes).toContain(
+      "github_projection_stale",
+    );
   });
 
   it("keeps the latest complete board when a newer scan is only partial", () => {
@@ -378,6 +372,11 @@ describe("reader summary GitHub projection policy", () => {
     ]);
 
     expect(evaluation.audit.status).toBe("verified");
+    expect(
+      evaluation.audit.bindings.map((binding) => binding.feedItemId),
+    ).toEqual(
+      Array.from({ length: 10 }, (_, index) => `github-feed-${index + 1}`),
+    );
   });
 
   it("uses checkedAt rather than a late observation to choose the canonical board", () => {
@@ -424,7 +423,7 @@ describe("reader summary GitHub projection policy", () => {
     );
 
     expect(evaluation.audit.status).toBe("verified");
-    expect(evaluation.audit.bindings).toEqual([]);
+    expect(evaluation.audit.bindings[0]?.feedItemId).toBe("github-feed-1");
   });
 
   it("validates the coherent latest snapshot without rejecting stale invalid history", () => {
@@ -467,11 +466,13 @@ describe("reader summary GitHub projection policy", () => {
       scannedItemCount: 20,
       projectionCheckedAt: latestCheckedAt.toISOString(),
     });
-    expect(evaluation.audit.bindings).toEqual([]);
+    expect(evaluation.audit.bindings.map((binding) => binding.rank)).toEqual([
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+    ]);
     expect(
       evaluation.audit.bindings.map((binding) => binding.feedItemId),
     ).toEqual(
-      [],
+      Array.from({ length: 10 }, (_, index) => `github-feed-${index + 1}`),
     );
   });
 
@@ -490,7 +491,7 @@ describe("reader summary GitHub projection policy", () => {
       }),
     );
 
-    const evaluation = evaluate(boardArtifact({ watchRank: 1 }), [
+    const evaluation = evaluate(boardArtifact(), [
       ...coherentHistory,
       ...incoherentLatest,
     ]);
@@ -499,7 +500,7 @@ describe("reader summary GitHub projection policy", () => {
     expect(evaluation.audit.violationCodes).toEqual(
       expect.arrayContaining([
         "github_projection_identity_invalid",
-        "github_projection_mixed",
+        "github_projection_stale",
       ]),
     );
   });
@@ -518,7 +519,7 @@ describe("reader summary GitHub projection policy", () => {
       ...(index === 9 ? { publishedAt: new Date("invalid") } : {}),
     }));
 
-    const evaluation = evaluate(boardArtifact({ watchRank: 1 }), [
+    const evaluation = evaluate(boardArtifact(), [
       ...projectionInput(),
       ...malformedLatest,
     ]);
@@ -527,7 +528,7 @@ describe("reader summary GitHub projection policy", () => {
     expect(evaluation.audit.violationCodes).toEqual(
       expect.arrayContaining([
         "github_projection_identity_invalid",
-        "github_projection_mixed",
+        "github_projection_stale",
       ]),
     );
   });
@@ -564,6 +565,12 @@ describe("reader summary GitHub projection policy", () => {
         warningThresholdMs: 240_000,
         qualitySignal: "github_projection_collection_delay_warning",
       },
+    });
+    expect(evaluation.audit.bindings[0]).toMatchObject({
+      fetchStartedAt: fetchStartedAt.toISOString(),
+      publishedAt: publishedAt.toISOString(),
+      checkedAt: checkedAt.toISOString(),
+      observedAt: observedAt.toISOString(),
     });
     expect(
       readerSummaryHasVerifiedGitHubProjection({
@@ -811,13 +818,15 @@ describe("reader summary GitHub projection policy", () => {
     ]);
   });
 
-  it("ignores legacy selectedPost citation identities", () => {
+  it("rejects a selected post that carries any extra citation identity", () => {
     const evaluation = evaluate(
       boardArtifact({ firstSelectedPostHasExtraCitation: true }),
       projectionInput(),
     );
 
-    expect(evaluation.audit.status).toBe("verified");
+    expect(evaluation.audit.violationCodes).toContain(
+      "github_projection_identity_invalid",
+    );
   });
 
   it("requires both durable source item fingerprints", () => {
@@ -859,7 +868,6 @@ describe("reader summary GitHub projection policy", () => {
           telemetry: {
             ...evaluation.audit.telemetry!,
             github_projection_collection_delay_ms: 1,
-            qualitySignal: "github_projection_collection_delay_warning",
           },
         },
       }),

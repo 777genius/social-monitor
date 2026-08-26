@@ -5,8 +5,6 @@ import {
   type ReaderSummaryTopicMapGroup,
   type ReaderSummaryTopicMapNode,
 } from "../entities/reader-summary-topic-map";
-import { readerSummaryIndependentProviderFamilyCount } from
-  "../value-objects/reader-summary-provider-identity";
 import {
   isReaderSummaryTopicMapUngrouped,
   supportedReaderSummaryTopicMapGroupAnchors,
@@ -85,8 +83,7 @@ export const readerSummaryTopicMapConfidence = (
   generatedBy: ReaderSummaryTopicMapGenerator | undefined,
 ): ReaderSummaryTopicMap["confidence"] => {
   const crossSourceNodeCount = nodes.filter(
-    (node) =>
-      readerSummaryIndependentProviderFamilyCount(node.providerKeys) > 1,
+    (node) => node.providerKeys.length > 1,
   ).length;
   const groupedNodeCount = nodes.filter(
     (node) => !isReaderSummaryTopicMapUngrouped(node.groupId),

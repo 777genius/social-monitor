@@ -33,14 +33,13 @@ describe("relevance reader summary evidence support", () => {
     expect(readerSummaryPeriodQuery(base)).toEqual({
       publishedAtOrAfter: readerSummaryEvidenceTestPeriod.startedAt,
       publishedBefore: readerSummaryEvidenceTestPeriod.endedAt,
-      observedAtOrBefore: new Date("2026-06-25T00:00:00.000Z"),
+      observedBefore: new Date("2026-06-25T00:00:00.001Z"),
     });
     expect(
       readerSummaryPeriodQuery({ ...base, timestampPolicy: "observed_at" }),
     ).toEqual({
       observedAtOrAfter: readerSummaryEvidenceTestPeriod.startedAt,
       observedBefore: readerSummaryEvidenceTestPeriod.endedAt,
-      observedAtOrBefore: new Date("2026-06-25T00:00:00.000Z"),
     });
   });
 });

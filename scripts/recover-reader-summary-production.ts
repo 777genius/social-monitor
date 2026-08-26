@@ -453,23 +453,11 @@ async function main(): Promise<void> {
   const { AgentRuntimeReaderSummaryModelAdapter } = await import(
     "@social-monitor/summary/adapters/model/agent-runtime-reader-summary-model.adapter"
   );
-  const { frozenLegacyReaderSummaryRecoveryContract } = await import(
-    "@social-monitor/summary/adapters/model/active-reader-summary-generation-profile"
-  );
   const { GrpcAgentRuntimeClient } = await import(
     "@social-monitor/summary/adapters/model/grpc-agent-runtime-client"
   );
   const { CryptoIdGenerator, SystemClock } = await import(
     "@social-monitor/shared-kernel"
-  );
-  const { InMemoryMetricsRecorder } = await import(
-    "@social-monitor/platform-metrics"
-  );
-  const { ReaderSummaryPromotionMetricsRecorder } = await import(
-    "@social-monitor/summary/adapters/metrics/reader-summary-promotion-metrics.recorder"
-  );
-  const { readerSummaryPromotionControl } = await import(
-    "@social-monitor/summary/features/execute-reader-summary-job/reader-summary-promotion-control"
   );
   const { READER_SUMMARY_PRODUCTION_RUNTIME_POLICY } = await import(
     "./lib/reader-summary-production-runtime-policy"
@@ -520,10 +508,6 @@ async function main(): Promise<void> {
       const githubProjectionReader =
         createPersistedRecoveryGitHubProjectionReader(binding);
       const clock = new SystemClock();
-      const metrics = new InMemoryMetricsRecorder();
-      const promotionControl = readerSummaryPromotionControl(
-        new ReaderSummaryPromotionMetricsRecorder(metrics),
-      );
       const modelContract = assertReaderSummaryProductionRecoveryModelSelection({
         provider: "codex",
         model: "gpt-5.6-sol",
@@ -552,8 +536,6 @@ async function main(): Promise<void> {
               agentProvider: modelContract.provider,
               model: modelContract.model,
               reasoningEffort: modelContract.reasoningEffort,
-              legacyRecoveryContract:
-                frozenLegacyReaderSummaryRecoveryContract,
               timeoutMs:
                 READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.summaryModelTimeoutMs,
             }),
@@ -564,7 +546,6 @@ async function main(): Promise<void> {
             githubProjectionReader,
             ids: new CryptoIdGenerator(),
             clock,
-            promotionControl,
           },
           connection,
         );

@@ -3,10 +3,7 @@ import type {
   SummaryEvidenceSelection,
   StoryCluster,
 } from "../value-objects/summary-evidence-item";
-import {
-  independentEvidenceProviderKeys,
-  readerSummaryIndependentProviderFamily,
-} from "../value-objects/reader-summary-provider-identity";
+import { independentEvidenceProviderKeys } from "../value-objects/reader-summary-provider-identity";
 import { hasFirstPartyOfficialEvidence } from "./reader-summary-source-authority-policy";
 import { isReaderSummaryLeadEligibleEvidence } from "./reader-summary-lead-eligibility-policy";
 
@@ -142,8 +139,7 @@ const countIndependentCrossProviderClusters = (
     const providerKeys =
       clusterEvidence.length >= 2
         ? independentEvidenceProviderKeys(clusterEvidence)
-        : cluster.providerKeys.map((providerKey) =>
-            readerSummaryIndependentProviderFamily({ providerKey }));
+        : cluster.providerKeys;
 
     return new Set(providerKeys).size > 1;
   }).length;

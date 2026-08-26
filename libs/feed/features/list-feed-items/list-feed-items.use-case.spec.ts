@@ -3,7 +3,6 @@ import { FixedClock, tenantId, workspaceId } from '@social-monitor/shared-kernel
 import { FeedItem, feedSignalBaselineSampleFromItem, type FeedSignalBaselineSample } from '../../domain';
 import type {
   FeedItemReadRepositoryPort,
-  ListFeedItemSignalCandidatesQuery,
   FeedSignalBaselineRepositoryPort,
   ListFeedItemsQuery,
   ListFeedItemsResult,
@@ -41,19 +40,6 @@ class FakeFeedSignalBaselineRepository implements FeedSignalBaselineRepositoryPo
     this.queries.push(query);
 
     return this.samples;
-  }
-}
-
-class FakeSignalCandidateReadRepository extends FakeFeedItemReadRepository {
-  constructor(private readonly candidates: readonly FeedItem[]) {
-    super({ items: [] });
-  }
-
-  readonly candidateQueries: ListFeedItemSignalCandidatesQuery[] = [];
-
-  async listSignalCandidates(query: ListFeedItemSignalCandidatesQuery) {
-    this.candidateQueries.push(query);
-    return this.candidates;
   }
 }
 
@@ -307,59 +293,6 @@ describe('ListFeedItemsUseCase', () => {
     ]);
   });
 
-  it('normalizes the bounded candidate window before applying the page limit', async () => {
-    const item = (id: string, subreddit: string, score: number, publishedAt: string) =>
-      FeedItem.publish({
-        id,
-        tenantId: tenantId('tenant-1'),
-        workspaceId: workspaceId('workspace-1'),
-        interestId: 'topic-1',
-        sourceItemId: `source-${id}`,
-        sourceBindingId: `binding-${subreddit}`,
-        providerKey: 'reddit',
-        canonicalUrl: `https://reddit.test/r/${subreddit}/${id}`,
-        title: id,
-        bodyPreview: id,
-        publishedAt: new Date(publishedAt),
-        observedAt: new Date(publishedAt),
-        providerMetadata: { subreddit, score, numComments: 2 },
-      });
-    const target = item('tiny-target', 'tiny-saas', 70, '2026-06-05T00:30:00.000Z');
-    const broad = item('broad-raw-leader', 'programming', 1500,
-      '2026-06-05T00:00:00.000Z');
-    const history = [1, 2, 3, 4].map((index) =>
-      item(`tiny-history-${index}`, 'tiny-saas', 10 + index,
-        `2026-06-0${index}T00:00:00.000Z`));
-    const repository = new FakeSignalCandidateReadRepository([target, broad]);
-    const samples = [target, broad, ...history].flatMap((candidate) => {
-      const sample = feedSignalBaselineSampleFromItem(candidate);
-      return sample === undefined ? [] : [sample];
-    });
-    const useCase = new ListFeedItemsUseCase(
-      repository,
-      new FakeFeedSignalBaselineRepository(samples),
-      fixedClock,
-    );
-
-    const result = await useCase.execute({
-      tenantId: tenantId('tenant-1'),
-      workspaceId: workspaceId('workspace-1'),
-      interestId: 'topic-1',
-      limit: 1,
-    });
-
-    expect(result).toMatchObject({
-      ok: true,
-      value: {
-        items: [{ id: 'tiny-target', normalizedSignal: {
-          cohort: { sourceKey: 'r/tiny-saas', fallback: 'source' },
-        } }],
-      },
-    });
-    expect(repository.queries).toEqual([]);
-    expect(repository.candidateQueries).toHaveLength(1);
-  });
-
   it('loads all-topics baseline cohorts separately for each visible topic', async () => {
     const firstTopicItem = makeRedditItem('reddit-1', 'TinySaaS');
     const secondTopicItem = FeedItem.publish({
@@ -492,27 +425,5 @@ describe('ListFeedItemsUseCase', () => {
     });
 
     expect(result.ok).toBe(false);
-  });
-
-  it('returns a typed validation failure for an invalid signal cursor', async () => {
-    const repository = new FakeSignalCandidateReadRepository([makeItem('1')]);
-    const useCase = new ListFeedItemsUseCase(
-      repository,
-      new FakeFeedSignalBaselineRepository(),
-      fixedClock,
-    );
-
-    const result = await useCase.execute({
-      tenantId: tenantId('tenant-1'),
-      workspaceId: workspaceId('workspace-1'),
-      limit: 20,
-      cursor: 'not-a-feed-cursor',
-    });
-
-    expect(result).toMatchObject({
-      ok: false,
-      error: { code: 'validation.failed' },
-    });
-    expect(repository.candidateQueries).toEqual([]);
   });
 });

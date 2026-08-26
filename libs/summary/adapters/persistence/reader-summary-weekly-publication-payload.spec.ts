@@ -131,7 +131,7 @@ const authorizationDetails = (): ReturnType<
       },
     },
     proof,
-  } as unknown as ReturnType<
+  } as ReturnType<
     typeof weeklyAuthorizationPolicy.readReaderSummaryWeeklyPublicationAuthorization
   >;
 };

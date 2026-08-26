@@ -81,36 +81,6 @@ export const resolveSelectedCandidate = (params: {
       };
 };
 
-export const resolveAppendixCandidates = (params: {
-  readonly artifact: ReaderSummaryArtifact;
-  readonly citationById: ReadonlyMap<string, ReaderSummaryCitation>;
-  readonly candidates: readonly ProjectionCandidate[];
-  readonly selectedGroupKey: string;
-}): readonly SelectedProjectionCandidate[] | undefined => {
-  const section = (params.artifact.toSnapshot().content?.narrativeSections ?? [])
-    .find((candidate) => candidate.id === githubTrendingNarrativeSectionId);
-  if (section === undefined) return [];
-  const resolved = section.citationIds.map((citationId, selectedPostIndex) => {
-    const citation = params.citationById.get(citationId);
-    if (citation === undefined || !isGitHubCitation(citation)) return undefined;
-    const matches = params.candidates.filter((candidate) =>
-      candidate.groupKey === params.selectedGroupKey &&
-      candidate.item.feedItemId === citation.feedItemId &&
-      candidate.item.sourceItemId === citation.sourceItemId &&
-      canonicalGitHubRepositoryIdentity(citation.canonicalUrl) ===
-        candidate.repositoryIdentity,
-    );
-    return matches.length === 1 ? {
-      ...matches[0]!,
-      selectedPostIndex,
-      citationId,
-    } : undefined;
-  });
-  return resolved.every((candidate) => candidate !== undefined)
-    ? resolved as readonly SelectedProjectionCandidate[]
-    : undefined;
-};
-
 export const projectionSetFindings = (
   candidates: readonly ProjectionCandidate[],
 ): readonly {

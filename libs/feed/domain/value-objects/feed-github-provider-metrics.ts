@@ -48,11 +48,9 @@ export const githubRepositoryMetrics = (
     source: readString(trend.source),
     trendingDelta: {
       window: primaryWindow,
-      ...(delta.value === undefined ? {} : { value: delta.value }),
-      observation: delta.observation,
+      value: delta,
     },
     trendDeltas: githubTrendDeltas(trend),
-    forkTrendDeltas: githubForkTrendDeltas(trend),
   };
 };
 
@@ -97,46 +95,17 @@ const githubTrendDeltas = (trend: JsonObject): readonly FeedMetricDelta[] =>
       ["30d", "stars30d"],
       ["90d", "stars90d"],
     ] as const
-  ).map(([window, field]) => {
-    const value = readNonNegativeInteger(trend[field]);
-    return {
-      window,
-      ...(value === undefined ? {} : { value }),
-      observation: trend[field] === undefined
-        ? "missing" as const
-        : value === undefined
-          ? "malformed" as const
-          : "observed" as const,
-    };
-  });
-
-const githubForkTrendDeltas = (trend: JsonObject): readonly FeedMetricDelta[] =>
-  ([
-    ["24h", "forks24h"],
-    ["48h", "forks48h"],
-    ["7d", "forks7d"],
-    ["30d", "forks30d"],
-    ["90d", "forks90d"],
-  ] as const).map(([window, field]) => {
-    const value = readNonNegativeInteger(trend[field]);
-    return {
-      window,
-      ...(value === undefined ? {} : { value }),
-      observation: trend[field] === undefined
-        ? "missing" as const
-        : value === undefined ? "malformed" as const : "observed" as const,
-    };
-  });
+  ).map(([window, field]) => ({
+    window,
+    value: readNonNegativeInteger(trend[field]) ?? 0,
+  }));
 
 const readTrendingPageWindow = (
   value: JsonValue | undefined,
 ): GitHubTrendingPageWindow =>
   value === "weekly" || value === "monthly" ? value : "daily";
 
-const githubTrendDelta = (
-  trend: JsonObject,
-  primaryWindow: string,
-): { readonly value?: number; readonly observation: "observed" | "missing" | "malformed" } => {
+const githubTrendDelta = (trend: JsonObject, primaryWindow: string): number => {
   const trendField =
     {
       "24h": "stars24h",
@@ -146,12 +115,7 @@ const githubTrendDelta = (
       "90d": "stars90d",
     }[primaryWindow] ?? "stars48h";
 
-  const raw = trend[trendField];
-  const value = readNonNegativeInteger(raw);
-  return {
-    ...(value === undefined ? {} : { value }),
-    observation: raw === undefined ? "missing" : value === undefined ? "malformed" : "observed",
-  };
+  return readNonNegativeInteger(trend[trendField]) ?? 0;
 };
 
 const readStringArray = (value: JsonValue | undefined): readonly string[] =>

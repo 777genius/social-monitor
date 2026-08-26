@@ -207,123 +207,8 @@ git -C "$REPO" commit --allow-empty -qm 'test: reconciled runtime target'
 target_sha=$(git -C "$REPO" rev-parse HEAD)
 backend_marker_sha=617e284607f3dde74c27164af2b981770b9a62ed
 
-# The exact legacy marker state is target-independent. Once detected, every
-# invalid repair must stop in the atomic loader without entering ordinary
-# deployment or changing any integration/backend/runtime host surface.
-atomic_route_root=$FIXTURE/atomic-route-host
-atomic_route_log=$FIXTURE/atomic-route.log
-atomic_route_surfaces=(
-  "$REPO/atomic-route-integration.state"
-  "$atomic_route_root/backend.state"
-  "$atomic_route_root/runtime.state"
-  "$atomic_route_root/service.state"
-  "$atomic_route_root/container.state"
-  "$atomic_route_root/image.state"
-  "$atomic_route_root/process.state"
-)
-install -d "$atomic_route_root"
-
-atomic_route_surface_state() {
-  local surface
-  for surface in "${atomic_route_surfaces[@]}" "$STATE/backend.sha"; do
-    stat -c '%n|%d:%i:%f:%s:%y:%z' "$surface"
-    sha256sum "$surface"
-  done
-  if [[ -e $STATE/postgres-pool-bootstrap.sha || \
-        -L $STATE/postgres-pool-bootstrap.sha ]]; then
-    stat -c '%n|%d:%i:%f:%s:%y:%z' "$STATE/postgres-pool-bootstrap.sha"
-    sha256sum "$STATE/postgres-pool-bootstrap.sha"
-  fi
-}
-
-prepare_atomic_route_case() {
-  local mode=$1 surface
-  rm -f "$STATE/postgres-pool-bootstrap.sha"
-  printf '%s\n' "$POSTGRES_POOL_ATOMIC_REPAIR_BACKEND_SHA" \
-    > "$STATE/backend.sha"
-  for surface in "${atomic_route_surfaces[@]}"; do
-    printf 'preserved:%s\n' "$(basename "$surface")" > "$surface"
-  done
-  case $mode in
-    malformed-backend) printf 'malformed\n' > "$STATE/backend.sha" ;;
-    malformed-bootstrap)
-      printf 'malformed\n' > "$STATE/postgres-pool-bootstrap.sha"
-      ;;
-  esac
-  : > "$atomic_route_log"
-}
-
-invoke_invalid_atomic_route() (
-  set -Eeuo pipefail
-  local mode=$1 surface
-
-  ordinary_deploy_started() {
-    printf 'ordinary\n' >> "$atomic_route_log"
-    for surface in "${atomic_route_surfaces[@]}" "$STATE/backend.sha"; do
-      printf 'mutated-by-ordinary-deploy\n' > "$surface"
-    done
-    fail 'ordinary deploy was reached for invalid atomic repair'
-  }
-  fetch_main() { ordinary_deploy_started; }
-  verify_postgres_pool_atomic_repair_target() {
-    case $mode in
-      invalid-target) fail 'atomic repair target is invalid' ;;
-      invalid-contract) fail 'atomic repair contract is invalid' ;;
-      verifier-failure) return 70 ;;
-      missing-blob) return 0 ;;
-      *) fail 'atomic repair verifier must not run for malformed markers' ;;
-    esac
-  }
-  postgres_pool_bootstrap_recovery_commit_blob() {
-    [[ $mode == missing-blob ]] || \
-      fail 'atomic repair blob loader reached an unexpected case'
-    fail 'atomic PostgreSQL bootstrap library is missing at reviewed commit'
-  }
-  deploy_release "$target_sha"
-)
-
-assert_invalid_atomic_route() {
-  local mode=$1 expected=$2 before output status
-  prepare_atomic_route_case "$mode"
-  before=$(atomic_route_surface_state)
-  set +e
-  output=$(invoke_invalid_atomic_route "$mode" 2>&1)
-  status=$?
-  set -e
-  ((status != 0))
-  grep -F "$expected" <<< "$output" >/dev/null
-  [[ ! -s $atomic_route_log ]]
-  [[ $(atomic_route_surface_state) == "$before" ]]
-  [[ ! -e $STATE/.postgres-pool-atomic-bootstrap-loader-$target_sha && \
-     ! -L $STATE/.postgres-pool-atomic-bootstrap-loader-$target_sha ]]
-}
-
-assert_invalid_atomic_route malformed-backend 'backend marker is malformed'
-assert_invalid_atomic_route malformed-bootstrap \
-  'PostgreSQL bootstrap marker is malformed'
-assert_invalid_atomic_route invalid-target 'atomic repair target is invalid'
-assert_invalid_atomic_route invalid-contract 'atomic repair contract is invalid'
-assert_invalid_atomic_route missing-blob \
-  'atomic PostgreSQL bootstrap library is missing at reviewed commit'
-assert_invalid_atomic_route verifier-failure \
-  'atomic PostgreSQL bootstrap target validation failed'
-
-rm -f "$STATE/postgres-pool-bootstrap.sha" "$STATE/backend.sha"
-if postgres_pool_atomic_legacy_state; then
-  fail 'marker-free non-legacy state entered atomic repair'
-fi
-printf '%s\n' "$target_sha" > "$STATE/backend.sha"
-if postgres_pool_atomic_legacy_state; then
-  fail 'non-adoption backend entered atomic repair'
-fi
-printf '%s\n' "$target_sha" > "$STATE/postgres-pool-bootstrap.sha"
-printf '%s\n' "$POSTGRES_POOL_ATOMIC_REPAIR_BACKEND_SHA" > "$STATE/backend.sha"
-if postgres_pool_atomic_legacy_state; then
-  fail 'installed bootstrap state entered atomic repair'
-fi
-rm -f "$STATE/postgres-pool-bootstrap.sha" "$STATE/backend.sha"
-rm -f "${atomic_route_surfaces[@]}"
-rmdir "$atomic_route_root"
+# shellcheck source=ops/deploy/deploy-control-atomic-route-test-cases.sh
+source "$SCRIPT_DIR/deploy-control-atomic-route-test-cases.sh"
 
 # The stale-control exception proves only the unique first-parent commit that
 # introduced the installed blob. A legitimate backend commit before that
@@ -834,6 +719,10 @@ systemctl_events=$FIXTURE/systemctl-events
 timer_unit_file_state=$FIXTURE/timer-unit-file-state
 timer_active_state=$FIXTURE/timer-active-state
 service_active_state=$FIXTURE/service-active-state
+legacy_daily_unit_file_state=enabled
+legacy_daily_active_state=active
+v6_daily_unit_file_state=disabled
+v6_daily_active_state=inactive
 : > "$systemctl_events"
 printf 'disabled\n' > "$timer_unit_file_state"
 printf 'inactive\n' > "$timer_active_state"
@@ -889,8 +778,22 @@ systemctl() {
   case $* in
     daemon-reload) ;;
     'enable --now social-monitor-rolling.timer') ;;
+    'show --property=InvocationID --value social-monitor-daily.service')
+      printf '\n'
+      ;;
+    'show --property=ExecMainStartTimestampMonotonic --value social-monitor-daily.service')
+      printf '0\n'
+      ;;
+    'show --property=Unit --value social-monitor-daily.timer')
+      printf 'social-monitor-daily.service\n'
+      ;;
     'show --property=FragmentPath --value '*)
       printf '%s/%s\n' "$SYSTEMD_UNIT_DIR" "${*: -1}"
+      ;;
+    'show --property=DropInPaths --value social-monitor-reader-summary-production-day.service')
+      printf '%s/%s/%s\n' "$SYSTEMD_UNIT_DIR" \
+        "$POSTGRES_RUNTIME_DAILY_C1_V6_DROPIN_DIRECTORY" \
+        "$POSTGRES_RUNTIME_DAILY_C1_V6_DROPIN"
       ;;
     'show --property=DropInPaths --value '*) ;;
     'show --property=UnitFileState --value social-monitor-github-premidnight-capture-v1.timer')
@@ -898,6 +801,12 @@ systemctl() {
       ;;
     'show --property=UnitFileState --value social-monitor-weekly.timer')
       printf 'enabled\n'
+      ;;
+    'show --property=UnitFileState --value social-monitor-daily.timer')
+      printf '%s\n' "$legacy_daily_unit_file_state"
+      ;;
+    'show --property=UnitFileState --value social-monitor-reader-summary-production-day.timer')
+      printf '%s\n' "$v6_daily_unit_file_state"
       ;;
     'show --property=UnitFileState --value social-monitor-rolling.timer')
       printf 'enabled\n'
@@ -908,20 +817,60 @@ systemctl() {
     'show --property=ActiveState --value social-monitor-weekly.timer')
       printf 'active\n'
       ;;
+    'show --property=ActiveState --value social-monitor-daily.timer')
+      printf '%s\n' "$legacy_daily_active_state"
+      ;;
+    'show --property=ActiveState --value social-monitor-reader-summary-production-day.timer')
+      printf '%s\n' "$v6_daily_active_state"
+      ;;
     'show --property=ActiveState --value social-monitor-rolling.timer')
       printf 'active\n'
       ;;
     'show --property=ActiveState --value social-monitor-rolling.service')
       printf 'inactive\n'
       ;;
+    'show --property=ActiveState --value social-monitor-daily.service'|\
+    'show --property=ActiveState --value social-monitor-reader-summary-production-day.service')
+      printf 'inactive\n'
+      ;;
     'show --property=NextElapseUSecRealtime --value social-monitor-weekly.timer')
       printf 'Sun 2026-08-09 06:00:00 UTC\n'
+      ;;
+    'show --property=NextElapseUSecRealtime --value social-monitor-daily.timer')
+      printf 'Sun 2026-08-09 07:00:00 UTC\n'
+      ;;
+    'show --property=NextElapseUSecRealtime --value social-monitor-reader-summary-production-day.timer')
+      printf '\n'
       ;;
     'show --property=NextElapseUSecRealtime --value social-monitor-rolling.timer')
       printf 'Sun 2026-08-09 08:15:00 UTC\n'
       ;;
     'show --property=ActiveState --value social-monitor-github-premidnight-capture-v1.service')
       cat "$service_active_state"
+      ;;
+    'enable social-monitor-daily.timer')
+      legacy_daily_unit_file_state=enabled
+      ;;
+    'disable social-monitor-daily.timer')
+      legacy_daily_unit_file_state=disabled
+      ;;
+    'start social-monitor-daily.timer')
+      legacy_daily_active_state=active
+      ;;
+    'stop social-monitor-daily.timer')
+      legacy_daily_active_state=inactive
+      ;;
+    'enable social-monitor-reader-summary-production-day.timer')
+      v6_daily_unit_file_state=enabled
+      ;;
+    'disable social-monitor-reader-summary-production-day.timer')
+      v6_daily_unit_file_state=disabled
+      ;;
+    'start social-monitor-reader-summary-production-day.timer')
+      v6_daily_active_state=active
+      ;;
+    'stop social-monitor-reader-summary-production-day.timer')
+      v6_daily_active_state=inactive
       ;;
     *)
       fail "unexpected systemctl command: $*"
@@ -975,9 +924,12 @@ grep -Fx 'Persistent=false' \
 [[ $(<"$timer_unit_file_state") == disabled ]]
 [[ $(<"$timer_active_state") == inactive ]]
 [[ $(<"$service_active_state") == inactive ]]
-if grep -Eq '(^| )(enable|disable|start|stop|restart)( |$)' \
-  "$systemctl_events"; then
-  echo 'reconciled runtime deployment mutated a systemd unit state' >&2
+unexpected_systemctl_mutations=$(grep -E \
+  '(^| )(enable|disable|start|stop|restart)( |$)' "$systemctl_events" | \
+  grep -Ev '^((enable|disable|start|stop) social-monitor-(daily|reader-summary-production-day)\.timer|enable --now social-monitor-rolling\.timer)$' || true)
+if [[ -n $unexpected_systemctl_mutations ]]; then
+  printf 'reconciled runtime deployment mutated an unrelated systemd unit state:\n%s\n' \
+    "$unexpected_systemctl_mutations" >&2
   exit 1
 fi
 if ((EUID == 0)); then

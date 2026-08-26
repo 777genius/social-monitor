@@ -643,6 +643,12 @@ case $action in
     validate_remote_environment
     inspect_plan "$2"
     ;;
+  inspect-control-bridge-receipt)
+    [[ $# == 2 ]] || fail 'inspect-control-bridge-receipt requires a target SHA'
+    validate_sha "$2"
+    validate_remote_environment
+    run_remote control-bridge-receipt "$2"
+    ;;
   upload)
     [[ $# == 3 ]] || fail 'upload requires a target SHA and archive'
     validate_sha "$2"

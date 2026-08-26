@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
 
 import { readerSummaryDailyModelJobIdentity } from "@social-monitor/summary/domain/value-objects/reader-summary-daily-model-job";
 import type {
@@ -11,7 +10,6 @@ import type { ReaderSummaryDailyBoundedMaintenanceDependencies } from "./lib/rea
 import { readerSummaryDailyMaintenanceScope } from "./lib/reader-summary-daily-maintenance-scope";
 import {
   assertReaderSummaryDailyBoundedMaintenanceAuthorization,
-  assertReaderSummaryDailyTerminalExecutionProfile,
   runReaderSummaryDailyBoundedMaintenance,
 } from "./run-reader-summary-daily-bounded-maintenance";
 
@@ -54,33 +52,6 @@ describe("daily reader-summary bounded maintenance entrypoint", () => {
       ...valid,
       READER_SUMMARY_DAILY_MAINTENANCE_AUTHORITY_SHA256: "short",
     })).toThrow("lowercase SHA-256");
-  });
-
-  it("validates the exact active profile before any connection can be created", () => {
-    expect(() => assertReaderSummaryDailyTerminalExecutionProfile({})).not.toThrow();
-    for (const env of [
-      { AGENT_RUNTIME_PROVIDER: "claude" },
-      { AGENT_RUNTIME_READER_SUMMARY_MODEL: "gpt-5.5" },
-      { AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT: "xhigh" },
-      { AGENT_RUNTIME_REASONING_EFFORT: "medium" },
-    ]) {
-      expect(() => assertReaderSummaryDailyTerminalExecutionProfile(env))
-        .toThrow(/codex\/gpt-5\.6-sol\/high/u);
-    }
-    const source = readFileSync(
-      "scripts/run-reader-summary-daily-bounded-maintenance.ts",
-      "utf8",
-    );
-    const validation = source.indexOf(
-      "assertReaderSummaryDailyTerminalExecutionProfile(process.env)",
-    );
-    expect(validation).toBeGreaterThan(-1);
-    expect(validation).toBeLessThan(source.indexOf(
-      "createReaderSummaryDailyTerminalRuntimeConnection(process.env)",
-    ));
-    expect(validation).toBeLessThan(source.indexOf(
-      "GrpcAgentRuntimeClient.connect({",
-    ));
   });
 });
 

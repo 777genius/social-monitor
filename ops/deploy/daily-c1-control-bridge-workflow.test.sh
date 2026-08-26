@@ -87,11 +87,11 @@ fi
 workflow=$PROJECT_ROOT/.github/workflows/production-deploy.yml
 grep -F 'daily_c1_bridge_base=e3b5b5d89b3586668e36f987f03672415b5a0f37' \
   "$workflow" >/dev/null
-grep -F 'daily_c1_bridge_expected=$(cat' "$workflow" >/dev/null || \
-  fail 'workflow does not define the sealed bridge manifest in its authoritative plan'
-[[ $(sed -n "/daily_c1_bridge_expected=\$(cat <<'EOF'/,/^[[:space:]]*EOF$/p" "$workflow" | \
-  grep -Ec '^[[:space:]]+(\.github|ops)/') == 29 ]] || \
-  fail 'workflow sealed bridge manifest count drifted'
+grep -F 'source ops/deploy/deploy-control-bridge-lib.sh' "$workflow" >/dev/null || \
+  fail 'workflow does not load the split sealed bridge manifest owner'
+grep -F 'daily_c1_bridge_expected=$(deploy_control_daily_c1_bridge_release_paths | LC_ALL=C sort)' \
+  "$workflow" >/dev/null || \
+  fail 'workflow does not consume the sealed bridge manifest from its shell owner'
 grep -F 'daily_c1_bridge_actual=$(git diff --name-only --no-renames' "$workflow" >/dev/null || \
   fail 'workflow does not calculate the exact reviewed bridge diff'
 grep -F '[[ $daily_c1_bridge_actual == "$daily_c1_bridge_expected" ]]' "$workflow" >/dev/null || \
@@ -110,7 +110,7 @@ grep -F 'transition_state=repair-required' "$workflow" >/dev/null || \
   fail 'bridge cannot schedule bounded repair for a missing PostgreSQL bootstrap'
 grep -F 'daily_c1_atomic_repair=61018b1d' "$workflow" >/dev/null || \
   fail 'bridge does not pin the descendant atomic PostgreSQL repair commit'
-grep -F 'backend-gate=postgres-pool-release deferred-to-bounded-B2-repair' \
+grep -F 'backend-gate=postgres-pool-release deferred-to-bounded-repair' \
   "$workflow" >/dev/null || fail 'bridge CI blocks the reviewed bounded bootstrap repair'
 grep -F 'shellcheck -S warning -x "${deploy_shell_files[@]}"' \
   "$workflow" >/dev/null || fail 'workflow treats informational shellcheck findings as release failures'

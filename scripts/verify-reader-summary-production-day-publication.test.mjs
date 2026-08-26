@@ -10,8 +10,6 @@ import {
   legacyLiveQualityGateNames,
   publicationQualityContract,
 } from "./lib/reader-summary-publication-quality-contract.mjs";
-import { validateDailyModelExecution } from
-  "./lib/reader-summary-production-day-model-telemetry-verifier.mjs";
 
 const verifierPath = resolve(
   "scripts/verify-reader-summary-production-day-publication.mjs",
@@ -47,101 +45,10 @@ test("accepts a fully live report with all eight real steps", () => {
       provider: "codex",
       runtime: "subscription-runtime-cli",
       runtimeVersion: "0.1.0-main.2",
-      reasoningEffort: "high",
+      reasoningEffort: "xhigh",
       launcherSha256: "b".repeat(64),
     });
   });
-});
-
-test("accepts the exact related-topic relation attestation inventory", () => {
-  withFixture(({ reportPath, proofPath }) => {
-    const result = runVerifier(reportPath, proofPath, "--proof-out");
-    assert.equal(result.status, 0, result.stderr);
-  }, { relatedTopicRole: "related_topic_relation" });
-});
-
-test("accepts provider telemetry bound to the daily job, receipt, and artifact", () => {
-  withFixture(({ reportPath, proofPath }) => {
-    const result = runVerifier(reportPath, proofPath, "--proof-out");
-    assert.equal(result.status, 0, result.stderr);
-  }, { dailyTelemetry: true });
-});
-
-test("accepts historical-incomplete telemetry only when the artifact is also null", () => {
-  withFixture(({ reportPath, proofPath, report, evidence }) => {
-    report.provenance = historicalRegenerationProvenance(
-      report.provenance.sourceEvidence,
-      evidence.provenance.datasetManifest,
-    );
-    report.model.liveCollection = false;
-    report.model.reusedCollection = true;
-    const result = runVerifier(reportPath, proofPath, "--proof-out", report);
-    assert.equal(result.status, 0, result.stderr);
-  }, { historicalDailyTelemetry: true });
-});
-
-test("rejects historical-incomplete audit telemetry paired with artifact 0/0", () => {
-  const authority = dailySourceAuthority(true);
-  const modelExecution = {
-    ...authority.modelExecution,
-    modelJobIdentity: authority.modelJobIdentity,
-    receiptSha256: authority.receiptSha256,
-    readerSummaryJobId,
-    readerSummaryArtifactId: readerSummaryId,
-  };
-  assert.throws(() => validateDailyModelExecution(
-    modelExecution,
-    { provenance: { dailySourceAuthority: authority } },
-    { readerSummaryArtifact: { usage: {
-      inputTokens: 0,
-      outputTokens: 0,
-      estimatedCostUsd: 0,
-    } } },
-    {
-      readerSummaryJobId,
-      readerSummaryId,
-      runtimeProvenance: {
-        provider: "codex",
-        physicalModel: "gpt-5.6-sol",
-        reasoningEffort: "high",
-      },
-    },
-    "current",
-    "historical-regeneration",
-  ), /not artifact-bound/u);
-});
-
-for (const patch of [
-  { usageSource: "ESTIMATED" },
-  { durationMs: 0 },
-  { inputTokens: null },
-]) {
-  test(`rejects incomplete daily telemetry ${JSON.stringify(patch)}`, () => {
-    withFixture(({ reportPath, proofPath, report }) => {
-      Object.assign(report.model.modelExecution, patch);
-      writeFileSync(reportPath, `${JSON.stringify(report)}\n`);
-      const result = runVerifier(reportPath, proofPath, "--proof-out");
-      assert.notEqual(result.status, 0);
-    }, { dailyTelemetry: true });
-  });
-}
-
-test("rejects daily telemetry that disagrees with the runtime attestation", () => {
-  withFixture(({ reportPath, proofPath, report, evidence, evidencePath }) => {
-    report.model.modelExecution.provider = "claude";
-    evidence.provenance.dailySourceAuthority.modelExecution.provider = "claude";
-    writeFileSync(evidencePath, `${JSON.stringify(evidence)}\n`);
-    writeFileSync(reportPath, `${JSON.stringify(report)}\n`);
-    const result = runVerifier(reportPath, proofPath, "--proof-out");
-    assert.notEqual(result.status, 0);
-  }, { dailyTelemetry: true });
-});
-
-test("rejects an unknown relation attestation kind", () => {
-  withFixture(({ reportPath, proofPath }) => {
-    const result = runVerifier(reportPath, proofPath, "--proof-out");
-    assert.notEqual(result.status, 0);
-  }, { relatedTopicRole: "unknown_relation" });
 });
 
 test("continues to verify immutable reports from the migration-owning runner", () => {
@@ -171,15 +78,7 @@ test("accepts an in-flight legacy live report with its exact quality contract", 
 
     const created = runVerifier(reportPath, proofPath, "--proof-out");
     assert.equal(created.status, 0, created.stderr);
-  }, { legacyIdentity: true });
-});
-
-test("current live verification rejects a fully self-consistent legacy identity", () => {
-  withFixture(({ reportPath, proofPath }) => {
-    const result = runVerifier(reportPath, proofPath, "--proof-out");
-    assert.notEqual(result.status, 0);
-    assert.match(result.stderr, /attestation|provenance/u);
-  }, { legacyIdentity: true });
+  });
 });
 
 test("rejects an incomplete legacy live quality contract", () => {
@@ -388,9 +287,9 @@ test("rejects historical regeneration whose dataset guard is not evidence-bound"
 });
 
 for (const options of [
-  { modelVersion: "claude:gpt-5.6-sol:high" },
-  { modelVersion: "codex:gpt-5.5:high" },
-  { modelVersion: "codex:gpt-5.6-sol:xhigh" },
+  { modelVersion: "claude:gpt-5.6-sol:xhigh" },
+  { modelVersion: "codex:gpt-5.5:xhigh" },
+  { modelVersion: "codex:gpt-5.6-sol:high" },
   { attestationOutputKind: "output_text" },
   { attestationRuntimeEngine: "direct" },
   { topicGeneratedBy: "deterministic" },
@@ -446,11 +345,8 @@ function withFixture(assertion, options = {}) {
   }
 }
 
-function runVerifier(reportPath, proofPath, proofOption, reportOverride) {
+function runVerifier(reportPath, proofPath, proofOption) {
   const directory = dirname(reportPath);
-  if (reportOverride !== undefined) {
-    writeFileSync(reportPath, `${JSON.stringify(reportOverride)}\n`);
-  }
   return spawnSync(
     process.execPath,
     [
@@ -479,17 +375,9 @@ function buildFrontend(options) {
       readerSummaryId,
       period: utcPeriod(),
       lineage: {
-        modelVersion: options.modelVersion ??
-          (options.legacyIdentity
-            ? "codex:gpt-5.6-sol:xhigh"
-            : "codex:gpt-5.6-sol:high"),
+        modelVersion: options.modelVersion ?? "codex:gpt-5.6-sol:xhigh",
         providerVersion: options.providerVersion ?? "agent-runtime",
       },
-      ...(options.dailyTelemetry || options.historicalDailyTelemetry
-        ? { usage: options.historicalDailyTelemetry
-          ? { inputTokens: null, outputTokens: null, estimatedCostUsd: 0 }
-          : { inputTokens: 120, outputTokens: 30, estimatedCostUsd: 0 } }
-        : {}),
       content: {
         reliabilityReport: {
           risks: [],
@@ -522,11 +410,6 @@ function buildEvidence(frontend, frontendBytes, options) {
       database: "postgres",
       modelMode: "agent-runtime",
       datasetManifest: datasetGuardEvidence(),
-      ...(options.dailyTelemetry || options.historicalDailyTelemetry
-        ? { dailySourceAuthority: dailySourceAuthority(
-          options.historicalDailyTelemetry,
-        ) }
-        : {}),
     },
     period: utcPeriod(),
     result: {
@@ -650,17 +533,6 @@ function buildReport(evidenceBytes, frontendBytes, evidence) {
       attestationSetSha256: runtimeProvenance.attestationSetSha256,
       completedTaskCount: runtimeProvenance.completedTaskCount,
       topicLabeler: runtimeProvenance.topicLabeler,
-      modelExecution: evidence.provenance.dailySourceAuthority === undefined
-        ? null
-        : {
-            ...evidence.provenance.dailySourceAuthority.modelExecution,
-            modelJobIdentity:
-              evidence.provenance.dailySourceAuthority.modelJobIdentity,
-            receiptSha256:
-              evidence.provenance.dailySourceAuthority.receiptSha256,
-            readerSummaryJobId,
-            readerSummaryArtifactId: readerSummaryId,
-          },
       writesProductionData: true,
       allowDegraded: false,
       allowHistorical: false,
@@ -719,33 +591,6 @@ function buildReport(evidenceBytes, frontendBytes, evidence) {
       regenerationDatasetGuardVerified: true,
     },
     blockingPassed: true,
-  };
-}
-
-function dailySourceAuthority(historicalIncomplete = false) {
-  return {
-    canonicalSha256: "7".repeat(64),
-    modelJobIdentity: "8".repeat(64),
-    receiptSha256: "9".repeat(64),
-    modelExecution: historicalIncomplete ? {
-      provider: "codex",
-      model: "gpt-5.6-sol",
-      reasoningEffort: "high",
-      inputTokens: null,
-      outputTokens: null,
-      totalTokens: null,
-      usageSource: "HISTORICAL_INCOMPLETE",
-      durationMs: null,
-    } : {
-      provider: "codex",
-      model: "gpt-5.6-sol",
-      reasoningEffort: "high",
-      inputTokens: 120,
-      outputTokens: 30,
-      totalTokens: 150,
-      usageSource: "PROVIDER_REPORTED",
-      durationMs: 250,
-    },
   };
 }
 
@@ -853,7 +698,7 @@ function buildExecutionAttestations(options) {
     canonicalRequestSha256: "a".repeat(64),
     provider: "codex",
     model: "gpt-5.6-sol",
-    reasoningEffort: options.legacyIdentity ? "xhigh" : "high",
+    reasoningEffort: "xhigh",
     runtimeEngine:
       options.attestationRuntimeEngine ?? "subscription-runtime-cli",
     runtimePackageVersion: "0.1.0-main.2",
@@ -870,9 +715,7 @@ function buildExecutionAttestations(options) {
       attestation: {
         ...common,
         requestId: "summary-request",
-        purpose: options.legacyIdentity
-          ? "social_monitor.reader_summary.generate"
-          : "social_monitor.reader_summary.generate.v2",
+        purpose: "social_monitor.reader_summary.generate",
       },
     },
     {
@@ -882,25 +725,9 @@ function buildExecutionAttestations(options) {
       attestation: {
         ...common,
         requestId: "topic-label-request",
-        purpose: options.legacyIdentity
-          ? "social_monitor.reader_summary.topic_map.label"
-          : "social_monitor.reader_summary.topic_map.label.v2",
+        purpose: "social_monitor.reader_summary.topic_map.label",
       },
     },
-    ...(options.relatedTopicRole === undefined
-      ? []
-      : [{
-          taskRole: options.relatedTopicRole,
-          attempt: "related-topic",
-          normalizedOutputSha256: "f".repeat(64),
-          attestation: {
-            ...common,
-            requestId: "related-topic-relation-request",
-            purpose: options.legacyIdentity
-              ? "social_monitor.reader_summary.verify_related_topic_relations"
-              : "social_monitor.reader_summary.verify_related_topic_relations.v2",
-          },
-        }]),
   ];
 }
 

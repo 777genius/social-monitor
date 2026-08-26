@@ -19,12 +19,12 @@ class XPostProviderMetricsDto {
     required this.contentType,
     required this.impressions,
     required this.kind,
+    required this.likes,
     required this.providerKey,
     required this.quotes,
     required this.replies,
+    required this.reposts,
     required this.sourceKey,
-    this.likes,
-    this.reposts,
   });
 
   factory XPostProviderMetricsDto.fromJson(Map<String, Object?> json) =>
@@ -34,11 +34,11 @@ class XPostProviderMetricsDto {
   final XPostProviderMetricsDtoContentTypeContentType contentType;
   final num impressions;
   final XPostProviderMetricsDtoKindKind kind;
-  final num? likes;
+  final num likes;
   final XPostProviderMetricsDtoProviderKeyProviderKey providerKey;
   final num quotes;
   final num replies;
-  final num? reposts;
+  final num reposts;
   final String sourceKey;
 
   Map<String, Object?> toJson() => _$XPostProviderMetricsDtoToJson(this);

@@ -32,7 +32,7 @@ describe("publishReaderSummaryJob V4 recovery boundary", () => {
       runningJob: runningJob(),
       publicationDecision: publicationDecision,
       githubProjectionAudit: audit,
-      jobs: { save: async () => undefined } as unknown as ReaderSummaryJobRepositoryPort,
+      jobs: { save: async () => undefined } as ReaderSummaryJobRepositoryPort,
       publications,
       ids: { generate: () => "reader-summary-ready-event" },
       clock: { now: () => completedAt },
@@ -74,7 +74,7 @@ const publicationDecision = {
   canonicalScore: 1,
   shadow: {
     mode: "shadow" as const,
-    policyVersion: "reader_summary_publication_shadow_v1" as const,
+    policyVersion: "reader_summary_publication_shadow_v1",
     riskScore: 0,
     signals: [],
   },

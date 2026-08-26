@@ -101,20 +101,15 @@ class _TopPostEvidenceSourceRow extends StatelessWidget {
       return row;
     }
 
-    return Semantics(
-      link: true,
-      label: readerSummaryUrlActionSemantics(
-        'evidence-source',
-        item.citationId,
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          key: readerSummaryUrlActionKey('evidence-source', item.citationId),
-          onTap: () => onOpenUrl(url),
-          borderRadius: BorderRadius.circular(8),
-          child: row,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        key: ValueKey(
+          'reader-summary-top-post-evidence-source-${item.citationId}',
         ),
+        onTap: () => onOpenUrl(url),
+        borderRadius: BorderRadius.circular(8),
+        child: row,
       ),
     );
   }

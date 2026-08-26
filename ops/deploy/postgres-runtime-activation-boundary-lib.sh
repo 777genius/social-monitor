@@ -1,5 +1,57 @@
 #!/usr/bin/env bash
 
+# These filesystem boundaries are shared by activation and rollback. Keeping
+# them with the activation-boundary helper prevents the runtime transaction
+# library from becoming another over-cap deployment monolith.
+postgres_runtime_base_control_matches_source() {
+  local source=$REPO/ops/deploy/production-runtime launcher unit
+  local -a launchers units
+  mapfile -t launchers < <(
+    postgres_runtime_control_launchers_for_scope base
+  )
+  mapfile -t units < <(postgres_runtime_control_units_for_scope base)
+  for launcher in "${launchers[@]}"; do
+    cmp -s "$source/$launcher" "$CONTROL/$launcher" || return 1
+  done
+  for unit in "${units[@]}"; do
+    cmp -s "$source/$unit" "$SYSTEMD_UNIT_DIR/$unit" || return 1
+  done
+}
+
+require_postgres_runtime_regular_source() {
+  local path=$1 expected_mode=$2
+  [[ -f $path && ! -L $path ]] || {
+    fail "PostgreSQL runtime source is not a regular file: $path"
+    return 1
+  }
+  [[ $(stat -c '%a' "$path") == "$expected_mode" ]] || {
+    fail "PostgreSQL runtime source mode is invalid: $path"
+    return 1
+  }
+}
+
+require_postgres_runtime_regular_release_file() {
+  local path=$1 expected_mode=${2:-}
+  [[ -f $path && ! -L $path ]] || {
+    fail "immutable PostgreSQL runtime release entry is not a regular file: $path"
+    return 1
+  }
+  if [[ -n $expected_mode && $(stat -c '%a' "$path") != "$expected_mode" ]]; then
+    fail "immutable PostgreSQL runtime release mode is invalid: $path"
+    return 1
+  fi
+}
+
+require_postgres_runtime_safe_mutation_target() {
+  local path=$1
+  if [[ -e $path || -L $path ]]; then
+    [[ -f $path && ! -L $path ]] || {
+      fail "PostgreSQL runtime mutation target is not a regular file: $path"
+      return 1
+    }
+  fi
+}
+
 # Sourced by postgres-runtime-deploy-lib.sh after the daily C1 helper. This
 # file owns release-exposure exclusion and the outer forward-only boundary.
 

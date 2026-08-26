@@ -20,8 +20,7 @@ export type FeedProviderMetrics =
 
 export type FeedMetricDelta = {
   readonly window: string;
-  readonly value?: number;
-  readonly observation?: "observed" | "missing" | "malformed";
+  readonly value: number;
 };
 
 export type RedditPostMetrics = {
@@ -63,7 +62,6 @@ export type GitHubRepositoryMetrics = {
   readonly source?: string;
   readonly trendingDelta: FeedMetricDelta;
   readonly trendDeltas: readonly FeedMetricDelta[];
-  readonly forkTrendDeltas: readonly FeedMetricDelta[];
 };
 
 export type GitHubTrendingRepositoryMetrics = {
@@ -105,8 +103,8 @@ export type XPostMetrics = {
   readonly providerKey: 'x-twitter';
   readonly sourceKey: string;
   readonly contentType: 'post';
-  readonly likes?: number;
-  readonly reposts?: number;
+  readonly likes: number;
+  readonly reposts: number;
   readonly replies: number;
   readonly quotes: number;
   readonly bookmarks: number;
@@ -168,7 +166,7 @@ export const feedProviderMetricStrength = (
       return (
         Math.log1p(stars24h) * 0.45 +
         Math.log1p(stars48h) * 0.25 +
-        Math.log1p(metrics.trendingDelta.value ?? 0) * 0.2 +
+        Math.log1p(metrics.trendingDelta.value) * 0.2 +
         Math.log1p(metrics.stars) * 0.1 +
         Math.log1p(metrics.forks) * 0.1
       );
@@ -201,8 +199,8 @@ export const feedProviderMetricStrength = (
     }
     case 'x_post':
       return Math.log1p(
-        (metrics.likes ?? 0) +
-          (metrics.reposts ?? 0) * 2 +
+        metrics.likes +
+          metrics.reposts * 2 +
           metrics.replies * 0.5 +
           metrics.quotes * 1.5 +
           metrics.bookmarks * 0.4,
@@ -391,8 +389,8 @@ const xPostMetrics = (
       searchQuery: readString(metadata.searchQuery),
     }),
     contentType: 'post',
-    ...(likes === undefined ? {} : { likes }),
-    ...(reposts === undefined ? {} : { reposts }),
+    likes: likes ?? 0,
+    reposts: reposts ?? 0,
     replies: replies ?? 0,
     quotes: quotes ?? 0,
     bookmarks: bookmarks ?? 0,

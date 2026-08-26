@@ -262,13 +262,13 @@ _$GetFeedItemResponseDtoProviderMetricsProviderMetricsXPostFromJson(
   ),
   impressions: json['impressions'] as num,
   kind: XPostProviderMetricsDtoKindKind.fromJson(json['kind'] as String),
-  likes: json['likes'] as num?,
+  likes: json['likes'] as num,
   providerKey: XPostProviderMetricsDtoProviderKeyProviderKey.fromJson(
     json['providerKey'] as String,
   ),
   quotes: json['quotes'] as num,
   replies: json['replies'] as num,
-  reposts: json['reposts'] as num?,
+  reposts: json['reposts'] as num,
   sourceKey: json['sourceKey'] as String,
 );
 

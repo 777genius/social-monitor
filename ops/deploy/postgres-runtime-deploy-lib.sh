@@ -8,6 +8,10 @@ ROOT=${ROOT:?caller must define ROOT before sourcing postgres-runtime-deploy-lib
 load_postgres_runtime_reviewed_helper() {
   local relative_path=$1 label=$2 helper entry mode type object tree_path
   local reviewed_digest actual_digest
+  if [[ ${PRODUCTION_CONTROL_BRIDGE_TRUSTED_SOURCE:-} == 1 ]]; then
+    production_control_bridge_source_reviewed "$relative_path" "$label"
+    return
+  fi
   if [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} == 1 || \
         ${POSTGRES_RUNTIME_DAILY_C1_HELPER_TEST_MODE:-} == 1 ]]; then
     helper=${BASH_SOURCE[0]%/*}/${relative_path##*/}
@@ -75,21 +79,6 @@ postgres_runtime_control_mutation_scope() {
   fi
 }
 
-postgres_runtime_base_control_matches_source() {
-  local source=$REPO/ops/deploy/production-runtime launcher unit
-  local -a launchers units
-  mapfile -t launchers < <(
-    postgres_runtime_control_launchers_for_scope base
-  )
-  mapfile -t units < <(postgres_runtime_control_units_for_scope base)
-  for launcher in "${launchers[@]}"; do
-    cmp -s "$source/$launcher" "$CONTROL/$launcher" || return 1
-  done
-  for unit in "${units[@]}"; do
-    cmp -s "$source/$unit" "$SYSTEMD_UNIT_DIR/$unit" || return 1
-  done
-}
-
 postgres_runtime_control_units_for_scope() {
   case $1 in
     base)
@@ -138,42 +127,6 @@ postgres_runtime_control_launchers_for_scope() {
       return 1
       ;;
   esac
-}
-
-require_postgres_runtime_regular_source() {
-  local path=$1
-  local expected_mode=$2
-  [[ -f $path && ! -L $path ]] || {
-    fail "PostgreSQL runtime source is not a regular file: $path"
-    return 1
-  }
-  [[ $(stat -c '%a' "$path") == "$expected_mode" ]] || {
-    fail "PostgreSQL runtime source mode is invalid: $path"
-    return 1
-  }
-}
-
-require_postgres_runtime_regular_release_file() {
-  local path=$1
-  local expected_mode=${2:-}
-  [[ -f $path && ! -L $path ]] || {
-    fail "immutable PostgreSQL runtime release entry is not a regular file: $path"
-    return 1
-  }
-  if [[ -n $expected_mode && $(stat -c '%a' "$path") != "$expected_mode" ]]; then
-    fail "immutable PostgreSQL runtime release mode is invalid: $path"
-    return 1
-  fi
-}
-
-require_postgres_runtime_safe_mutation_target() {
-  local path=$1
-  if [[ -e $path || -L $path ]]; then
-    [[ -f $path && ! -L $path ]] || {
-      fail "PostgreSQL runtime mutation target is not a regular file: $path"
-      return 1
-    }
-  fi
 }
 
 activate_postgres_runtime_control() {

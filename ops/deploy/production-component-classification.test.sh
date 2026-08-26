@@ -15,7 +15,7 @@ git -C "$REPO" config user.name 'Component Classification Test'
 git -C "$REPO" config user.email classification@example.invalid
 mkdir -p "$REPO/libs/contracts/rest" "$REPO/libs/contracts/other" "$STATE" "$STAGING"
 mkdir -p "$REPO/ops/deploy"
-cp "$SCRIPT_DIR"/{postgres-runtime-deploy-lib.sh,postgres-runtime-daily-c1-readiness-lib.sh,postgres-runtime-weekly-timer-state-lib.sh,postgres-runtime-activation-boundary-lib.sh,backend-runtime-health-lib.sh,backend-image-rescue-lib.sh,x-collector-image-deploy-lib.sh} \
+cp "$SCRIPT_DIR"/{production-host-policy-lib.sh,postgres-runtime-deploy-lib.sh,postgres-runtime-daily-c1-readiness-lib.sh,postgres-runtime-weekly-timer-state-lib.sh,postgres-runtime-activation-boundary-lib.sh,backend-runtime-health-lib.sh,backend-image-rescue-lib.sh,x-collector-image-deploy-lib.sh} \
   "$REPO/ops/deploy/"
 printf 'snapshot-a\n' > "$REPO/libs/contracts/rest/openapi.snapshot.json"
 git -C "$REPO" add .

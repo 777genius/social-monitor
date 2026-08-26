@@ -6,9 +6,9 @@ import 'package:json_annotation/json_annotation.dart';
 
 @JsonEnum()
 enum ReaderSummaryWeeklyProjectionStoryDtoStatusStatus {
-  /// The name has been replaced because it contains a keyword. Original name: `new`.
+  /// Incorrect name has been replaced. Original name: `new`.
   @JsonValue('new')
-  valueNew('new'),
+  undefined0('new'),
   @JsonValue('developing')
   developing('developing'),
   @JsonValue('resolved')
@@ -23,10 +23,7 @@ enum ReaderSummaryWeeklyProjectionStoryDtoStatusStatus {
 
   factory ReaderSummaryWeeklyProjectionStoryDtoStatusStatus.fromJson(
     String json,
-  ) => values.firstWhere(
-    (e) => e.json == json,
-    orElse: () => $unknown,
-  );
+  ) => values.firstWhere((e) => e.json == json, orElse: () => $unknown);
 
   final String? json;
 

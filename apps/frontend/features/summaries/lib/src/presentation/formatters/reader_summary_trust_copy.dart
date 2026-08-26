@@ -1,5 +1,4 @@
 import '../../domain/aggregates/reader_summary.dart';
-import '../../domain/value_objects/reader_summary_provider_family.dart';
 import '../view_models/reader_summary_trust_snapshot.dart';
 
 String trustConfidenceBadgeLabel(String level) {
@@ -64,9 +63,10 @@ bool trustClaimLacksIndependentConfirmation(SummaryClaim claim) {
 }
 
 int uniqueClaimSourceGroupCount(SummaryClaim claim) {
-  return readerSummaryIndependentProviderFamilies(
-    claim.evidence.map((evidence) => evidence.providerKey),
-  ).length;
+  return {
+    for (final evidence in claim.evidence)
+      if (evidence.providerKey.trim().isNotEmpty) evidence.providerKey.trim(),
+  }.length;
 }
 
 String trustConfidenceExplanation(TopReadConfidence confidence) {

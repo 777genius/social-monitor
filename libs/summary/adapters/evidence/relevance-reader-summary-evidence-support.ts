@@ -1,18 +1,17 @@
 import {
-  classifyFeedPromotionEligibility,
-  feedPromotionMetricStrength,
   feedProviderMetricsFromMetadata,
   feedProviderMetricStrength,
+  formatFeedProviderMetrics,
+  summarizeFeedProviderMetrics,
   type FeedItem,
-  type FeedPromotionCanonicalMetrics,
-  type FeedPromotionEligibility,
 } from "@social-monitor/feed/domain";
 import type { RankedFeedItemView } from "@social-monitor/relevance/features/rank-feed-items/rank-feed-items.result";
 import type {
   SourceContentQualityPolicy,
   SourceContentSafetyPolicy,
 } from "@social-monitor/relevance/domain";
-import { readerPromotionProviderFamily } from "@social-monitor/shared-kernel";
+import type { JsonObject } from "@social-monitor/shared-kernel";
+
 import type { SummaryEvidenceItem } from "../../domain";
 import { isReaderSummaryEvidenceEligible } from "../../domain/policies/reader-summary-evidence-eligibility-policy";
 import { previewMediaFromProviderMetadata } from "./provider-preview-media";
@@ -22,30 +21,22 @@ import type {
   ReaderSummaryTimestampPolicy,
 } from "../../ports";
 import {
+  inclusiveObservedBefore,
+  isHackerNewsCanonicalUrl,
   isInsidePeriod,
   normalizeProviderKey,
   providerBalancedQuotaForLimit,
   roundScore,
 } from "./relevance-reader-summary-evidence-normalization";
-import { readerPostPromotionFacts } from "./reader-post-promotion-facts";
-import {
-  providerMetricFacts,
-  providerNameForEvidence,
-  readerActionKindForProvider,
-  sourceOriginUrlFromProviderMetadata,
-} from "./reader-summary-provider-evidence";
+
 export {
-  providerMetricFacts,
-  providerNameForEvidence,
-  providerNameForProvider,
-  readerActionKindForProvider,
-  sourceOriginUrlFromProviderMetadata,
-} from "./reader-summary-provider-evidence";
-export {
+  inclusiveObservedAfter,
+  inclusiveObservedBefore,
   normalizeProviderKey,
   providerBalancedQuotaForLimit,
   roundScore,
 } from "./relevance-reader-summary-evidence-normalization";
+
 export const maxReaderSummaryEvidenceItems = 200;
 export const maxReaderSummaryCandidateItems = 200;
 export const readerSummaryProviderDiversityOrder = [
@@ -55,15 +46,10 @@ export const readerSummaryProviderDiversityOrder = [
   "rss",
   "github-repo-radar",
 ];
+
 export const mapRankedItem = (
   item: RankedFeedItemView,
-  ingestionCutoff?: Date,
-): SummaryEvidenceItem => {
-  const canonicalPromotion = classifyFeedPromotionEligibility({
-    providerKey: item.providerKey,
-    providerMetadata: item.providerMetadata,
-  });
-  return {
+): SummaryEvidenceItem => ({
   feedItemId: item.feedItemId,
   sourceItemId: item.sourceItemId,
   sourceBindingId: item.sourceBindingId,
@@ -80,26 +66,12 @@ export const mapRankedItem = (
   }),
   title: item.title,
   bodyPreview: item.bodyPreview,
-  sourceText: item.sourceText,
   authorHandle: item.authorHandle,
   publishedAt: new Date(item.publishedAt),
   observedAt: new Date(item.observedAt),
   score: item.score,
   whyImportant: item.whyImportant,
   contentQuality: item.contentQuality,
-  promotionFacts: readerPostPromotionFacts({
-    providerKey: item.providerKey,
-    canonicalUrl: item.canonicalUrl,
-    providerMetadata: item.providerMetadata,
-    contentQuality: item.contentQuality,
-    safetyStatus: item.safety.status,
-    publishedAt: new Date(item.publishedAt),
-    observedAt: new Date(item.observedAt),
-    ingestionCutoff,
-    exactPublishedAt: item.exactPublishedAt,
-    exactObservedAt: item.exactObservedAt,
-    canonicalPromotion,
-  }),
   readerActionKind: readerActionKindForProvider(item.providerKey),
   ...providerMetricFacts({
     providerKey: item.providerKey,
@@ -112,8 +84,86 @@ export const mapRankedItem = (
     canonicalUrl: item.canonicalUrl,
   }),
   storyKeyHint: item.clusterId,
+});
+
+export const providerMetricFacts = (params: {
+  readonly providerKey: string;
+  readonly providerMetadata?: JsonObject;
+}): Pick<
+  SummaryEvidenceItem,
+  "providerMetricLabels" | "providerMetricSummary"
+> => {
+  const metrics = feedProviderMetricsFromMetadata(params);
+
+  return {
+    providerMetricLabels: formatFeedProviderMetrics(metrics),
+    providerMetricSummary: summarizeFeedProviderMetrics(metrics),
   };
 };
+
+export const sourceOriginUrlFromProviderMetadata = (params: {
+  readonly providerKey: string;
+  readonly providerMetadata?: JsonObject;
+}): string | undefined => {
+  const providerKey = normalizeProviderKey(params.providerKey);
+  if (providerKey !== "hacker-news" && providerKey !== "hn") {
+    return undefined;
+  }
+  const externalUrl = params.providerMetadata?.externalUrl;
+  if (typeof externalUrl !== "string") {
+    return undefined;
+  }
+
+  try {
+    const url = new URL(externalUrl);
+    return url.protocol === "http:" || url.protocol === "https:"
+      ? url.toString()
+      : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+export const readerActionKindForProvider = (
+  providerKey: string,
+): SummaryEvidenceItem["readerActionKind"] =>
+  providerKey === "github-repo-radar" || providerKey === "github-trending-page"
+    ? "watch_repository"
+    : "read_source";
+
+export const providerNameForProvider = (providerKey: string): string => {
+  switch (providerKey.toLowerCase()) {
+    case "github-trending-page":
+      return "GitHub Trending";
+    case "github-repo-radar":
+      return "Repo Radar";
+    case "github-issues":
+    case "github":
+      return "GitHub";
+    case "hacker-news":
+    case "hn":
+      return "Hacker News";
+    case "reddit":
+      return "Reddit";
+    case "x-twitter":
+    case "twitter":
+      return "X/Twitter";
+    case "rss":
+      return "RSS";
+    default:
+      return providerKey;
+  }
+};
+
+export const providerNameForEvidence = (params: {
+  readonly providerKey: string;
+  readonly canonicalUrl?: string;
+}): string =>
+  params.providerKey.toLowerCase() === "rss" &&
+  isHackerNewsCanonicalUrl(params.canonicalUrl)
+    ? "Hacker News via RSS"
+    : providerNameForProvider(params.providerKey);
+
 export const expandedCandidateLimit = (limit: number): number => {
   if (!Number.isInteger(limit) || limit < 1) {
     return 1;
@@ -126,13 +176,9 @@ export const selectRankedEvidence = (
   items: readonly SummaryEvidenceItem[],
   limit: number,
   priorityFeedItemIds: ReadonlySet<string> = new Set(),
-  allowContextProviders = false,
 ): readonly SummaryEvidenceItem[] => {
   const normalizedLimit = normalizeSelectionLimit(limit);
-  const eligibleItems = items.filter((item) =>
-    isEligibleForEvidence(item) &&
-      isBoundedPromotionCandidate(item, allowContextProviders),
-  );
+  const eligibleItems = items.filter(isEligibleForEvidence);
 
   return selectProviderDiverseEvidence(
     eligibleItems,
@@ -199,22 +245,6 @@ const prioritizeProviderItems = (
 export const isEligibleForEvidence = (item: SummaryEvidenceItem): boolean =>
   isReaderSummaryEvidenceEligible(item);
 
-const isBoundedPromotionCandidate = (
-  item: SummaryEvidenceItem,
-  allowContextProviders: boolean,
-): boolean => {
-  const facts = item.promotionFacts;
-  if (facts === undefined) return true;
-  if (facts.contentKind === "comment" || facts.contentKind === "reply" ||
-      facts.contentKind === "quote") return false;
-  if (facts.contentKind === "unknown" &&
-      (facts.metricsState === "malformed" || facts.metricsState === "conflict")) {
-    return false;
-  }
-  return facts.contentKind !== "unknown" || allowContextProviders ||
-    readerPromotionProviderFamily(item.providerKey) !== undefined;
-};
-
 export const filterItemsByDefaultReaderSummaryProviders = (
   items: readonly SummaryEvidenceItem[],
 ): readonly SummaryEvidenceItem[] =>
@@ -238,7 +268,6 @@ export const readerSummaryPeriodQuery = (
   params: Parameters<ReaderSummaryEvidenceSelectorPort["select"]>[0],
 ): {
   readonly observedAtOrAfter?: Date;
-  readonly observedAtOrBefore?: Date;
   readonly observedBefore?: Date;
   readonly publishedAtOrAfter?: Date;
   readonly publishedBefore?: Date;
@@ -247,14 +276,16 @@ export const readerSummaryPeriodQuery = (
     return {
       observedAtOrAfter: params.period.startedAt,
       observedBefore: params.period.endedAt,
-      observedAtOrBefore: params.observedThrough,
     };
   }
 
   return {
     publishedAtOrAfter: params.period.startedAt,
     publishedBefore: params.period.endedAt,
-    observedAtOrBefore: params.observedThrough,
+    observedBefore:
+      params.observedThrough === undefined
+        ? undefined
+        : inclusiveObservedBefore(params.observedThrough),
   };
 };
 
@@ -327,13 +358,7 @@ export const mapSupplementFeedItem = (params: {
   readonly qualityPolicy: SourceContentQualityPolicy;
   readonly safetyPolicy: SourceContentSafetyPolicy;
   readonly now: Date;
-  readonly canonicalPromotion?: FeedPromotionEligibility;
 }): SummaryEvidenceItem => {
-  const canonicalPromotion = params.canonicalPromotion ??
-    classifyFeedPromotionEligibility({
-      providerKey: params.snapshot.providerKey,
-      providerMetadata: params.snapshot.providerMetadata,
-    });
   const safety = params.safetyPolicy.evaluate({
     providerKey: params.snapshot.providerKey,
     title: params.snapshot.title,
@@ -352,11 +377,6 @@ export const mapSupplementFeedItem = (params: {
     snapshot: params.snapshot,
     contentQuality: quality,
     now: params.now,
-    canonicalMetrics: canonicalPromotion.eligible
-      ? canonicalPromotion.metrics
-      : readerPromotionProviderFamily(params.snapshot.providerKey) === undefined
-        ? undefined
-        : null,
   });
 
   return {
@@ -387,17 +407,6 @@ export const mapSupplementFeedItem = (params: {
       safetyStatus: safety.status,
     }),
     contentQuality: quality,
-    promotionFacts: readerPostPromotionFacts({
-      providerKey: params.snapshot.providerKey,
-      canonicalUrl: safety.sanitizedCanonicalUrl ?? params.snapshot.canonicalUrl,
-      providerMetadata: params.snapshot.providerMetadata,
-      contentQuality: quality,
-      safetyStatus: safety.status,
-      publishedAt: params.snapshot.publishedAt,
-      observedAt: params.snapshot.observedAt,
-      ingestionCutoff: params.now,
-      canonicalPromotion,
-    }),
     readerActionKind: readerActionKindForProvider(params.snapshot.providerKey),
     ...providerMetricFacts({
       providerKey: params.snapshot.providerKey,
@@ -417,17 +426,15 @@ export const supplementEvidenceScore = (params: {
   readonly snapshot: ReturnType<FeedItem["toSnapshot"]>;
   readonly contentQuality: SummaryEvidenceItem["contentQuality"];
   readonly now: Date;
-  readonly canonicalMetrics?: FeedPromotionCanonicalMetrics | null;
 }): number => {
-  const strength = params.canonicalMetrics === null
-    ? 0
-    : params.canonicalMetrics === undefined
-      ? genericMetricStrength(feedProviderMetricsFromMetadata({
-          providerKey: params.snapshot.providerKey,
-          providerMetadata: params.snapshot.providerMetadata,
-        }))
-      : feedPromotionMetricStrength(params.canonicalMetrics);
-  const sourceSignalScore = Math.min(0.85, strength / 10);
+  const metrics = feedProviderMetricsFromMetadata({
+    providerKey: params.snapshot.providerKey,
+    providerMetadata: params.snapshot.providerMetadata,
+  });
+  const sourceSignalScore =
+    metrics === undefined
+      ? 0
+      : Math.min(0.85, feedProviderMetricStrength(metrics) / 10);
   const qualityAdjustedSourceSignalScore =
     sourceSignalScore *
     (params.contentQuality?.qualityScore ?? 1) *
@@ -441,10 +448,6 @@ export const supplementEvidenceScore = (params: {
 
   return roundScore(1 + qualityAdjustedSourceSignalScore + recencyScore);
 };
-
-const genericMetricStrength = (
-  metrics: ReturnType<typeof feedProviderMetricsFromMetadata>,
-): number => metrics === undefined ? 0 : feedProviderMetricStrength(metrics);
 
 export const supplementWhyImportant = (params: {
   readonly score: number;

@@ -65,7 +65,7 @@ test(
             LANG: "C.UTF-8",
             AGENT_RUNTIME_CODEX_AUTH_POOL_ROOT: fixture.poolRoot,
             AGENT_RUNTIME_CODEX_AUTH_POOL_MANIFEST: "current.json",
-            AGENT_RUNTIME_REASONING_EFFORT: "high",
+            AGENT_RUNTIME_REASONING_EFFORT: "xhigh",
             SUBSCRIPTION_RUNTIME_LOCAL_ENCRYPTION_KEY:
               Buffer.alloc(32, 7).toString("base64"),
           },
@@ -109,7 +109,7 @@ test(
       );
       for (const turnAttempt of turnAttempts) {
         assert.equal(turnAttempt.model, "gpt-5.6-sol");
-        assert.equal(turnAttempt.effort, "high");
+        assert.equal(turnAttempt.effort, "xhigh");
         assert.equal(turnAttempt.approvalPolicy, "never");
         assert.deepEqual(turnAttempt.environments, []);
         assert.equal(turnAttempt.materializedAuthChanged, true);
@@ -127,7 +127,7 @@ test(
         assert.equal(threadAttempt.approvalPolicy, "never");
         assert.equal(threadAttempt.sandbox, "read-only");
         assert.equal(threadAttempt.runtimeWorkspaceIsIsolated, true);
-        assert.equal(threadAttempt.modelReasoningEffort, "high");
+        assert.equal(threadAttempt.modelReasoningEffort, "xhigh");
         assert.equal(threadAttempt.sandboxMode, "read-only");
         assert.equal(threadAttempt.webSearch, "disabled");
         assert.deepEqual(threadAttempt.environments, []);
@@ -147,7 +147,7 @@ test(
         await readFile(fixture.requestPath, "utf8"),
       );
       assert.equal(canonicalRequest.task.controls.model, "gpt-5.6-sol");
-      assert.equal(canonicalRequest.task.controls.reasoningEffort, "high");
+      assert.equal(canonicalRequest.task.controls.reasoningEffort, "xhigh");
       assert.equal(canonicalRequest.task.controls.responseFormat, "json");
       assert.equal(
         canonicalRequest.task.metadata.runtimeOutput,
@@ -292,7 +292,7 @@ function agentTaskRequest(runId) {
     },
     context: {
       application: "social-monitor",
-      purpose: "social_monitor.reader_summary.generate.v2",
+      purpose: "social_monitor.summary.generate",
       correlationId: "sandbox-auth-pool-e2e",
     },
   };

@@ -35,11 +35,6 @@ export type GitHubRepositoryTrendMetadataInput = {
     readonly stars7d: number;
     readonly stars30d: number;
     readonly stars90d: number;
-    readonly forks24h: number;
-    readonly forks48h: number;
-    readonly forks7d: number;
-    readonly forks30d: number;
-    readonly forks90d: number;
     readonly rank: number;
     readonly primaryWindow: GitHubRepositoryTrendWindow;
     readonly checkedAt: Date;
@@ -73,11 +68,6 @@ export type GitHubRepositoryTrendMetadata = {
     readonly stars7d: number;
     readonly stars30d: number;
     readonly stars90d: number;
-    readonly forks24h: number;
-    readonly forks48h: number;
-    readonly forks7d: number;
-    readonly forks30d: number;
-    readonly forks90d: number;
     readonly rank: number;
     readonly primaryWindow: GitHubRepositoryTrendWindow;
     readonly checkedAt: string;
@@ -117,11 +107,6 @@ export const githubRepositoryTrendMetadata = (
       stars7d: input.trend.stars7d,
       stars30d: input.trend.stars30d,
       stars90d: input.trend.stars90d,
-      forks24h: input.trend.forks24h,
-      forks48h: input.trend.forks48h,
-      forks7d: input.trend.forks7d,
-      forks30d: input.trend.forks30d,
-      forks90d: input.trend.forks90d,
       rank: input.trend.rank,
       primaryWindow: input.trend.primaryWindow,
       checkedAt: input.trend.checkedAt.toISOString(),
@@ -183,11 +168,6 @@ export const parseGitHubRepositoryTrendMetadata = (
       stars7d: readNonNegativeInteger(trend.stars7d),
       stars30d: readNonNegativeInteger(trend.stars30d),
       stars90d: readNonNegativeInteger(trend.stars90d),
-      forks24h: readNonNegativeInteger(trend.forks24h),
-      forks48h: readNonNegativeInteger(trend.forks48h),
-      forks7d: readNonNegativeInteger(trend.forks7d),
-      forks30d: readNonNegativeInteger(trend.forks30d),
-      forks90d: readNonNegativeInteger(trend.forks90d),
       rank: readPositiveInteger(trend.rank),
       primaryWindow,
       checkedAt,

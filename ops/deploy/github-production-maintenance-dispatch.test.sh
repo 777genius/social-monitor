@@ -138,7 +138,7 @@ for invalid in wrong-confirmation wrong-date foreign-input; do
 done
 
 grep -F 'bash ops/deploy/github-production-maintenance-dispatch.sh' "$WORKFLOW" >/dev/null
-[[ $(grep -Fc 'uses: actions/upload-artifact@' "$WORKFLOW") == 2 ]]
+[[ $(grep -Fc 'uses: actions/upload-artifact@' "$WORKFLOW") == 3 ]]
 [[ $(grep -Fc 'name: Store unique immutable maintenance artifact' "$WORKFLOW") == 1 ]]
 # Literal GitHub expressions are asserted.
 # shellcheck disable=SC2016

@@ -1,7 +1,6 @@
 import { eventId, tenantId, workspaceId } from "@social-monitor/shared-kernel";
 
 import {
-  githubTrendingWatchText,
   ReaderSummaryJob,
   readerSummaryGitHubProjectionCollectionGraceMs,
   readerSummaryGitHubProjectionCollectionWarningThresholdMs,
@@ -268,7 +267,7 @@ const createFixture = (params: {
       providerMetrics: [
         {
           label: "GitHub Trending today",
-          value: `#${rank}, +${githubStarsGained(rank)} stars today`,
+          value: `#${rank}, +${200 + rank} stars today`,
         },
       ],
     };
@@ -311,29 +310,7 @@ const createFixture = (params: {
           selectedPosts: [],
           narrativeSections: [],
         }
-      : {
-          selectedPosts: githubSelectedPosts,
-          narrativeSections: [
-            {
-              id: "github-trending",
-              kind: "watch" as const,
-              title: "GitHub Trending",
-              text: githubTrendingWatchText(
-                githubSelectedPosts.slice(0, 3).map((_, index) => {
-                  const rank = index + 1;
-                  return {
-                    repositoryIdentity: `owner/repository-${rank}`,
-                    rank,
-                    starsGained: githubStarsGained(rank),
-                  };
-                }),
-              ),
-              citationIds: githubCitations
-                .slice(0, 3)
-                .map((citation) => citation.citationId),
-            },
-          ],
-        },
+      : { selectedPosts: githubSelectedPosts },
     qualityFlags: noSignal ? ["no_signal"] : [],
     confidence: {
       level: noSignal ? "none" : "medium",
@@ -432,7 +409,7 @@ const createFixture = (params: {
                 ? ("github_projection_collection_delay_warning" as const)
                 : ("within_grace" as const),
           },
-          bindings: githubCitations.slice(0, 3).map((citation, index) => {
+          bindings: githubCitations.map((citation, index) => {
             const rank = index + 1;
             return {
               selectedPostIndex: index,
@@ -446,7 +423,7 @@ const createFixture = (params: {
               scanJobId: `github-publication-scan-${params.sequence}`,
               repositoryIdentity: `owner/repository-${rank}`,
               canonicalUrl: citation.canonicalUrl,
-              starsGained: githubStarsGained(rank),
+              starsGained: 200 + rank,
               fetchStartedAt: githubFetchStartedAt.toISOString(),
               publishedAt: githubCheckedAt.toISOString(),
               checkedAt: githubCheckedAt.toISOString(),
@@ -472,5 +449,3 @@ const createFixture = (params: {
     },
   };
 };
-
-const githubStarsGained = (rank: number): number => 1_200 + rank;

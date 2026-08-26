@@ -2,17 +2,11 @@ import 'package:social_monitor_generated_api/social_monitor_generated_api.dart'
     as generated;
 
 import '../api/summary_api_dto.dart';
-import 'reader_post_promotion_attestation_rest_mapper.dart';
-import 'reader_summary_artifact_binding.dart';
-import 'reader_summary_reserved_marker.dart';
 
 final class ReaderSummaryContentRestMapper {
   const ReaderSummaryContentRestMapper();
 
-  ReaderSummaryContentApiDto map(
-    generated.ReaderSummaryReaderBriefDto dto, {
-    required ReaderSummaryArtifactBinding binding,
-  }) {
+  ReaderSummaryContentApiDto map(generated.ReaderSummaryReaderBriefDto dto) {
     return ReaderSummaryContentApiDto(
       headline: dto.headline,
       oneLineTakeaway: dto.oneLineTakeaway,
@@ -41,15 +35,11 @@ final class ReaderSummaryContentRestMapper {
         isSingleSource: dto.qualityState.isSingleSource,
       ),
       interestSections: dto.interestSections
-          .map((section) => _interestSection(section, binding))
+          .map(_interestSection)
           .toList(growable: false),
       sourceMix: dto.sourceMix.map(_sourceMixEntry).toList(growable: false),
-      topReads: dto.topReads
-          .map((item) => _readerItem(item, binding))
-          .toList(growable: false),
-      selectedPosts: dto.selectedPosts
-          .map((item) => _readerItem(item, binding))
-          .toList(growable: false),
+      topReads: dto.topReads.map(_readerItem).toList(growable: false),
+      selectedPosts: dto.selectedPosts.map(_readerItem).toList(growable: false),
       claimBoard: dto.claimBoard.map(_claim).toList(growable: false),
       reliabilityReport: _reliabilityReport(dto.reliabilityReport),
       trendDelta: ReaderTrendDeltaApiDto(
@@ -183,84 +173,25 @@ final class ReaderSummaryContentRestMapper {
 
   ReaderInterestSectionApiDto _interestSection(
     generated.ReaderSummaryReaderInterestSectionDto dto,
-    ReaderSummaryArtifactBinding binding,
   ) {
     return ReaderInterestSectionApiDto(
       interestId: dto.interestId,
       title: dto.title,
       insight: dto.insight,
-      items: dto.items
-          .map((item) => _readerItem(item, binding))
-          .toList(growable: false),
+      items: dto.items.map(_readerItem).toList(growable: false),
       citationIds: dto.citationIds,
     );
   }
 
-  TopReadApiDto _readerItem(
-    generated.ReaderSummaryReaderItemDto dto,
-    ReaderSummaryArtifactBinding binding,
-  ) {
-    final storyClusterMarker = _reservedMarker(
-      dto.matchedRules,
-      'reader-story-cluster:',
-    );
-    final cardKindMarker = _reservedMarker(
-      dto.matchedRules,
-      'reader-card-kind:',
-    );
-    final relationIdMarker = _reservedMarker(
-      dto.matchedRules,
-      'reader-related-topic-relation:',
-    );
-    final targetClusterMarker = _reservedMarker(
-      dto.matchedRules,
-      'reader-related-topic-target:',
-    );
-    final malformedMarkerSet =
-        [
-          storyClusterMarker,
-          cardKindMarker,
-          relationIdMarker,
-          targetClusterMarker,
-        ].any((marker) => marker.isPresent && !marker.isValid) ||
-        (cardKindMarker.isPresent &&
-            !_canonicalReaderCardKinds.contains(cardKindMarker.value)) ||
-        (cardKindMarker.value == 'related_topic' &&
-            (!storyClusterMarker.isValid ||
-                !relationIdMarker.isValid ||
-                !targetClusterMarker.isValid));
-
+  TopReadApiDto _readerItem(generated.ReaderSummaryReaderItemDto dto) {
     return TopReadApiDto(
-      storyClusterId: storyClusterMarker.value,
-      cardKind: malformedMarkerSet ? 'unsupported' : cardKindMarker.value,
-      relationId: malformedMarkerSet ? null : relationIdMarker.value,
-      relationMarkerIds: _reservedMarkerValues(
-        dto.matchedRules,
-        'reader-related-topic-relation:',
-      ),
-      targetStoryClusterId: malformedMarkerSet
-          ? null
-          : targetClusterMarker.value,
-      promotionAttestation: mapReaderPostPromotionAttestation(
-        dto.promotionAttestation,
-        cardProviderKey: dto.providerKey,
-        cardPublishedAt: dto.publishedAt,
-        cardCitationIds: dto.citationIds,
-        enclosingArtifactId: binding.artifactId,
-        enclosingSourceWindowId: binding.sourceWindowId,
-        enclosingPeriodStart: binding.periodStart,
-        enclosingPeriodEnd: binding.periodEnd,
-        enclosingIngestionCutoff: binding.ingestionCutoff,
-      ),
       title: dto.title,
       providerKey: dto.providerKey,
       providerName: dto.providerName,
       primaryActionKind: dto.primaryActionKind.json ?? 'read_source',
       reason: dto.reason,
       matchedInterestIds: dto.matchedInterestIds,
-      matchedRules: dto.matchedRules
-          .where((rule) => !_isReservedReaderMarker(rule))
-          .toList(growable: false),
+      matchedRules: dto.matchedRules,
       signalScore: _safeScore(dto.signalScore),
       confidence: TopReadConfidenceApiDto(
         level: dto.confidence.level.json ?? 'low',
@@ -281,51 +212,6 @@ final class ReaderSummaryContentRestMapper {
       previewMedia: _previewMedia(dto.previewMedia),
       citationIds: dto.citationIds,
     );
-  }
-
-  ReaderSummaryReservedMarker _reservedMarker(
-    List<String> rules,
-    String prefix,
-  ) {
-    final normalizedPrefix = prefix.toLowerCase();
-    final occurrences = rules
-        .where((rule) => rule.trim().toLowerCase().startsWith(normalizedPrefix))
-        .toList(growable: false);
-    if (occurrences.isEmpty) {
-      return const ReaderSummaryReservedMarker.absent();
-    }
-    if (occurrences.length != 1) {
-      return const ReaderSummaryReservedMarker.invalid();
-    }
-    final raw = occurrences.single;
-    if (!raw.startsWith(prefix)) {
-      return const ReaderSummaryReservedMarker.invalid();
-    }
-    final rawValue = raw.substring(prefix.length);
-    final value = rawValue.trim();
-    return value.isEmpty || rawValue != value
-        ? const ReaderSummaryReservedMarker.invalid()
-        : ReaderSummaryReservedMarker.valid(value);
-  }
-
-  List<String> _reservedMarkerValues(List<String> rules, String prefix) {
-    final normalizedPrefix = prefix.toLowerCase();
-    return rules
-        .map((rule) => rule.trim())
-        .where((rule) => rule.toLowerCase().startsWith(normalizedPrefix))
-        .map((rule) => rule.substring(prefix.length).trim())
-        .where((value) => value.isNotEmpty)
-        .toList(growable: false);
-  }
-
-  bool _isReservedReaderMarker(String rule) {
-    final normalized = rule.trim().toLowerCase();
-    return const [
-      'reader-card-kind:',
-      'reader-story-cluster:',
-      'reader-related-topic-relation:',
-      'reader-related-topic-target:',
-    ].any(normalized.startsWith);
   }
 
   PreviewMediaApiDto? _previewMedia(
@@ -391,10 +277,3 @@ final class ReaderSummaryContentRestMapper {
     return value.toDouble();
   }
 }
-
-const _canonicalReaderCardKinds = {
-  'curated_top_read',
-  'additional_notable_story',
-  'related_topic',
-  'supplemental_trend',
-};
