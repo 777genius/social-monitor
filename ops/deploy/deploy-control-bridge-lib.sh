@@ -21,6 +21,7 @@ DEPLOY_CONTROL_ROLLING_SUMMARY_FINAL_TREE=6a68fd8f88477811e220c042d5176e45224138
 DEPLOY_CONTROL_ROLLING_SUMMARY_HELPER_TEST_PATH=ops/deploy/deploy-control-bridge-runtime-helper.test.sh
 DEPLOY_CONTROL_ROLLING_SUMMARY_RABBITMQ_TEST_PATH=ops/deploy/rabbitmq-quorum-deploy-bridge-transition.test.sh
 DEPLOY_CONTROL_ROLLING_REPAIR_BASE=1e411aeabd05502a1533a9536d8a75961bbdc929
+DEPLOY_CONTROL_ROLLING_REPAIR_BRIDGE=b8869d84d9fa5228ce68f963fe0b01377bb4cc9a
 DEPLOY_CONTROL_ROLLING_REPAIR_TARGET=187335ca1881c0974218560d6147a21bcad8aa0c
 DEPLOY_CONTROL_ROLLING_REPAIR_TARGET_TREE=e25961c93dcfd09b669b1a2ab1c61274259346ee
 DEPLOY_CONTROL_FAILED_IDLE_RELEASE_BASE=72e17ded1e54ebd77772929fd5047ef6816dded2
@@ -404,19 +405,29 @@ deploy_control_is_reviewed_failed_idle_release_transition() {
 # admitted release is pinned by both commit and tree identity.
 deploy_control_is_reviewed_rolling_repair_transition() {
   local bridge=$1 target=$2 repository=${REPO:-.}
-  local bridge_delta target_tree
+  local bridge_delta expected_delta target_tree
   local -a bridge_ancestry=()
 
   [[ $target == "$DEPLOY_CONTROL_ROLLING_REPAIR_TARGET" ]] || return 1
   read -r -a bridge_ancestry <<< "$(git -C "$repository" \
     rev-list --parents -n 1 "$bridge" 2>/dev/null)" || return 1
-  [[ ${#bridge_ancestry[@]} == 2 && \
-     ${bridge_ancestry[1]} == "$DEPLOY_CONTROL_ROLLING_REPAIR_BASE" ]] || \
-    return 1
-  bridge_delta=$(git -C "$repository" diff --name-only --no-renames \
-    "$DEPLOY_CONTROL_ROLLING_REPAIR_BASE" "$bridge" -- 2>/dev/null) || \
-    return 1
-  [[ $bridge_delta == "$DEPLOY_CONTROL_BRIDGE_SELF_PATH" ]] || return 1
+  [[ ${#bridge_ancestry[@]} == 2 ]] || return 1
+  if [[ $bridge == "$DEPLOY_CONTROL_ROLLING_REPAIR_BRIDGE" && \
+        ${bridge_ancestry[1]} == "$DEPLOY_CONTROL_ROLLING_REPAIR_BASE" ]]; then
+    bridge_delta=$(git -C "$repository" diff --name-only --no-renames \
+      "$DEPLOY_CONTROL_ROLLING_REPAIR_BASE" "$bridge" -- 2>/dev/null) || \
+      return 1
+    [[ $bridge_delta == "$DEPLOY_CONTROL_BRIDGE_SELF_PATH" ]] || return 1
+  else
+    [[ ${bridge_ancestry[1]} == "$DEPLOY_CONTROL_ROLLING_REPAIR_BRIDGE" ]] || \
+      return 1
+    expected_delta=$(printf '%s\n' "$DEPLOY_CONTROL_BRIDGE_SELF_PATH" \
+      "$DEPLOY_CONTROL_BRIDGE_ENTRYPOINT_PATH" | LC_ALL=C sort)
+    bridge_delta=$(git -C "$repository" diff --name-only --no-renames \
+      "$DEPLOY_CONTROL_ROLLING_REPAIR_BRIDGE" "$bridge" -- 2>/dev/null | \
+      LC_ALL=C sort) || return 1
+    [[ $bridge_delta == "$expected_delta" ]] || return 1
+  fi
   target_tree=$(git -C "$repository" rev-parse "$target^{tree}" \
     2>/dev/null) || return 1
   [[ $target_tree == "$DEPLOY_CONTROL_ROLLING_REPAIR_TARGET_TREE" ]]
