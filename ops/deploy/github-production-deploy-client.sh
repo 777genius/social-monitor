@@ -5,6 +5,7 @@ PATH=/usr/local/bin:/usr/bin:/bin
 
 ZERO_SHA=0000000000000000000000000000000000000000
 POSTGRES_POOL_BOOTSTRAP_VERSION=postgres-pool-v1
+RELEASE_B_BRIDGE_SHA=85c5d22febf1e7ce5fa5967d2460ccb73ca96a9d
 DAILY_C1_BRIDGE_POLICY_SHA=944fdb6da3071f70a69c7048c9fcdf1c2552603e
 SSH_DIRECTORY=${DEPLOY_SSH_DIRECTORY:-${HOME:?HOME is required}/.ssh}
 SSH_KEY_PATH=${DEPLOY_SSH_KEY_PATH:-$SSH_DIRECTORY/social-monitor-production}
@@ -598,6 +599,22 @@ deploy_release() {
   }
 }
 
+install_release_b_bridge() {
+  local sha=$1 status
+  [[ $sha == "$RELEASE_B_BRIDGE_SHA" ]] || \
+    fail 'Release B bridge SHA is not the reviewed pin'
+  # This exact side bridge can already be an ancestor of the integration
+  # checkout while older component markers intentionally remain staggered.
+  # The ordinary target plan therefore cannot attest this server-side no-op.
+  if run_remote deploy "$sha"; then
+    status=0
+  else
+    status=$?
+  fi
+  ((status == 0 || status == 255)) || \
+    fail "Release B bridge install failed with status $status"
+}
+
 install_daily_c1_bridge_policy() {
   local sha=$1 status
   [[ $sha == "$DAILY_C1_BRIDGE_POLICY_SHA" ]] || \
@@ -654,6 +671,12 @@ case $action in
     validate_sha "$2"
     validate_remote_environment
     deploy_release "$2"
+    ;;
+  install-release-b-bridge)
+    [[ $# == 2 ]] || fail 'install-release-b-bridge requires its pinned SHA'
+    validate_sha "$2"
+    validate_remote_environment
+    install_release_b_bridge "$2"
     ;;
   install-daily-c1-bridge-policy)
     [[ $# == 2 ]] || fail 'install-daily-c1-bridge-policy requires its pinned SHA'

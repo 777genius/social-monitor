@@ -912,7 +912,7 @@ jobs:
           set -euo pipefail
           client=ops/deploy/github-production-deploy-client.sh; bridge_release=85c5d22febf1e7ce5fa5967d2460ccb73ca96a9d
           bash "$client" configure
-          bash "$client" deploy "$bridge_release"
+          bash "$client" install-release-b-bridge "$bridge_release"
           bash "$client" cleanup; bash "$client" configure
       - name: Freshly require A-complete or B-complete
         id: b_state
