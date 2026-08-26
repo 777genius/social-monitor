@@ -263,14 +263,18 @@ export const assertReaderSummaryDailyCheckerActivationOwnershipContract = (
       handoffs[0]!.index < activation,
     `daily checker must hand ${table} to the schema owner before activation`);
   }
+  const sourceAuthorityGuardHandoff = source.indexOf(
+    "ALTER FUNCTION public.reject_reader_summary_daily_source_authority_mutation()",
+  );
+  assert(sourceAuthorityGuardHandoff > activation &&
+    sourceAuthorityGuardHandoff < activationAcl,
+  "daily checker must hand the source-authority guard to the schema owner after activation");
   for (const signature of [
-    "reject_reader_summary_daily_source_authority_mutation()",
     "renew_reader_summary_daily_execution_lease(",
     "mark_reader_summary_daily_model_job_running(",
   ]) {
-    const functionHandoff = source.indexOf(`ALTER FUNCTION public.${signature}`);
-    assert(functionHandoff > activation && functionHandoff < activationAcl,
-      `daily checker must hand ${signature} to the schema owner after activation`);
+    assert(!source.includes(`ALTER FUNCTION public.${signature}`),
+      `daily checker must preserve the common legacy function owner for ${signature}`);
   }
   const activeClaimHandoff = source.indexOf(
     "await transferActiveClaimOwner(admin, firstPool, migrationAdminRole);",

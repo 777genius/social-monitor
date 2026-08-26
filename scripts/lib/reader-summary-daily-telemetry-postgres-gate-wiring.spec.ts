@@ -38,16 +38,19 @@ describe("reader summary daily telemetry PostgreSQL release", () => {
   it("requires PG18, exact history, hardening, ACLs, and RLS", async () => {
     const query = releaseQuery();
     await expect(verify(query)).resolves.toBeUndefined();
-    expect(query).toHaveBeenCalledTimes(3);
+    expect(query).toHaveBeenCalledTimes(4);
     expect(query.mock.calls[0]?.[0]).toContain("Read-only exact deployment classifier");
     expect(query.mock.calls[1]).toEqual([
       expect.stringContaining('FROM public."_prisma_migrations"'),
       [readerSummaryTelemetryMigration],
     ]);
-    expect(query.mock.calls[2]?.[1]).toEqual([
+    expect(query.mock.calls[2]?.[0]).toContain(
+      "social_monitor_telemetry_recovery.migration_attestations",
+    );
+    expect(query.mock.calls[3]?.[1]).toEqual([
       "default-acl", "fixture_migrator",
     ]);
-    expect(query.mock.calls[2]?.[0]).toContain("defaults.defaclnamespace = 0");
+    expect(query.mock.calls[3]?.[0]).toContain("defaults.defaclnamespace = 0");
   });
 
   it.each([
@@ -87,6 +90,21 @@ describe("reader summary daily telemetry PostgreSQL release", () => {
     await expect(verify(releaseQuery(row)))
       .rejects.toThrow("finish exactly one default ACL migration");
   });
+
+  it("rejects recovered rows with missing or forged attestation", async () => {
+    await expect(verify(releaseQuery(
+      undefined, "recovered", recoveredRows(), "absent",
+    ))).rejects.toThrow("exact clean row or exact recovered");
+    await expect(verify(releaseQuery(
+      undefined, "recovered", recoveredRows(), "invalid",
+    ))).rejects.toThrow("exact clean row or exact recovered");
+  });
+
+  it("rejects partial attestation artifacts with corrected history", async () => {
+    await expect(verify(releaseQuery(
+      undefined, "corrected", correctedRows(), "invalid",
+    ))).rejects.toThrow("exact clean row or exact recovered");
+  });
 });
 
 const verify = (query: jest.Mock) =>
@@ -103,6 +121,8 @@ const releaseQuery = (
   finalRow = safeFinalRow(),
   historyState: "corrected" | "invalid" | "recovered" = "corrected",
   historyRows: readonly ReaderSummaryTelemetryMigrationRow[] = correctedRows(),
+  attestation: "absent" | "invalid" | "verified" =
+    historyState === "recovered" ? "verified" : "absent",
 ) => jest.fn(async (sql: string, _values?: readonly unknown[]) => {
   void _values;
   if (sql.includes("Read-only exact deployment classifier")) {
@@ -110,6 +130,14 @@ const releaseQuery = (
   }
   if (sql.includes("SELECT id, checksum, started_at")) {
     return { rows: historyRows };
+  }
+  if (sql.includes("Read-only verification of the complete recovery receipt")) {
+    if (attestation === "invalid") throw new Error("forged receipt");
+    return [{ rows: [] }, { rows: [{ case: "recovered" }] }];
+  }
+  if (sql.includes("to_regclass") &&
+      sql.includes("social_monitor_telemetry_recovery")) {
+    return { rows: [{ absent: attestation === "absent" }] };
   }
   return { rows: [finalRow] };
 });

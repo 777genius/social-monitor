@@ -1,13 +1,16 @@
 import { createHash } from "node:crypto";
+import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
 
 import {
   isReviewedTelemetryFailureLog,
   oldReaderSummaryTelemetryMigrationSql,
   reviewedTelemetryFailureLog,
+  signalTelemetryMutationProcessGroup,
   superviseGuardedTelemetryResolve,
   telemetryCorrectedChecksum,
   telemetryOldChecksum,
+  waitForTelemetryMutationProcessGroupReaped,
 } from "./reader-summary-telemetry-migration-recovery-postgres";
 
 const migrationPath =
@@ -66,13 +69,14 @@ SET LOCAL ROLE social_monitor_reader_summary_daily_publication_definer;`);
       "routine: Some(\"aclcheck_error\")",
       "telemetry recovery object rollback invariants drifted",
       "telemetry recovery function owner, ACL, metadata, or definition drifted",
-      "telemetry recovery relevant role membership edges drifted",
+      "telemetry recovery complete role membership closure drifted",
+      "telemetry recovery effective role/object privileges drifted",
       "telemetry recovery schema owner or exact nspacl drifted",
       "telemetry recovery relevant sequence owner, ACL, or default state drifted",
       "telemetry recovery production owner ACL invariants drifted",
       "telemetry recovery database guard is not held exactly once",
       "activity.backend_start = v_guard_backend_start_text::TIMESTAMPTZ",
-      "social-monitor/telemetry-recovery-guard/",
+      "social-monitor/telemetry-guard/",
       "pg_catalog.pg_get_functiondef(procedure.oid)",
       "5a256df7c312b06182ad56d4100df8c80067a7fd149aa34b4e3862e237502255",
       "edc719fa83b67fa8b4b8b4250614efe055cdd12f210000c778b03214ac90cb4d",
@@ -98,6 +102,12 @@ SET LOCAL ROLE social_monitor_reader_summary_daily_publication_definer;`);
       ["reader-summary-telemetry-migration-state.sql", "STATE"],
       ["reader-summary-telemetry-failed-migration-preflight.sql", "PREFLIGHT"],
       ["reader-summary-telemetry-migration-postflight.sql", "POSTFLIGHT"],
+      ["reader-summary-telemetry-recovery-attestation-authorize.sql",
+        "ATTESTATION_AUTHORIZE"],
+      ["reader-summary-telemetry-recovery-attestation-complete.sql",
+        "ATTESTATION_COMPLETE"],
+      ["reader-summary-telemetry-recovery-attestation-verify.sql",
+        "ATTESTATION_VERIFY"],
     ] as const) {
       const sql = readFileSync(`ops/deploy/${file}`, "utf8");
       const pinned = library.match(new RegExp(
@@ -107,6 +117,56 @@ SET LOCAL ROLE social_monitor_reader_summary_daily_publication_definer;`);
       expect(digest(`${sql}\nERROR: appended unrelated failure`)).not.toBe(pinned);
     }
   });
+
+  it("pins durable one-time receipt and continuous mutation-lease monitoring",
+    () => {
+      const source = readFileSync(
+        "scripts/lib/reader-summary-telemetry-migration-recovery-postgres.ts",
+        "utf8",
+      );
+      const authorization = readFileSync(
+        "ops/deploy/reader-summary-telemetry-recovery-attestation-authorize.sql",
+        "utf8",
+      );
+      const verification = readFileSync(
+        "ops/deploy/reader-summary-telemetry-recovery-attestation-verify.sql",
+        "utf8",
+      );
+      expect(source).toContain("1502026084");
+      expect(source).toContain("v_mutation_count");
+      expect(source).toContain("v_recovery_backend_count");
+      expect(source).not.toContain("v_quiet_ticks");
+      expect(source).toContain("assertCompletedAttestationIsImmutable");
+      expect(source).toContain("completed telemetry recovery attestation accepted a replay transition");
+      expect(source).toContain("ordinary deployment identity accepted attestation");
+      expect(source).toContain('INSERT INTO public."_prisma_migrations"');
+      expect(source).toContain("isExactHistoricalTelemetryFailure");
+      expect(source).toContain(
+        "PL/pgSQL function inline_code_block line 43 at EXECUTE",
+      );
+      expect(source).not.toMatch(
+        /(?:UPDATE|DELETE FROM) public\."_prisma_migrations"/u,
+      );
+      expect(authorization).toContain(
+        "social_monitor_telemetry_recovery_attestor",
+      );
+      expect(authorization).toContain(
+        "social_monitor_telemetry_recovery.read_attestation()",
+      );
+      expect(authorization).toContain(
+        "activity.backend_start = v_guard_start::TIMESTAMPTZ",
+      );
+      expect(authorization).toContain("activity.usename = session_user");
+      expect(authorization).toContain(
+        "activity.application_name = v_guard_application",
+      );
+      expect(authorization).toContain("WHERE migration_name = v_name AND state = 'AUTHORIZED'");
+      expect(authorization).toContain("WHERE migration_name = v_name AND state = 'RESOLVED'");
+      expect(verification).toContain("attestation multiplicity is invalid");
+      expect(verification).toContain("receipt_sha256");
+      expect(verification).toContain("database_oid");
+      expect(verification).toContain("jsonb_populate_record");
+    });
 
   it("holds one advisory guard across authorization, resolve, and postflight", () => {
     const source = readFileSync(
@@ -125,7 +185,11 @@ SET LOCAL ROLE social_monitor_reader_summary_daily_publication_definer;`);
     expect(positions).toEqual([...positions].sort((left, right) => left - right));
     expect(acquire).toBeGreaterThan(-1);
     expect(source).toContain("process.once(signal, handler)");
-    expect(source).toContain("signalChildProcessGroup(child.pid, \"SIGTERM\")");
+    expect(source).toContain(
+      "signalTelemetryMutationProcessGroup(child.pid, \"SIGTERM\")",
+    );
+    expect(source).toContain("if (processGroupReaped) return");
+    expect(source).not.toContain("if (child.exitCode !== null) return");
   });
 
   it("removes only bootstrap CREATE/grant-option residue before old replay", () => {
@@ -135,7 +199,9 @@ SET LOCAL ROLE social_monitor_reader_summary_daily_publication_definer;`);
     const prepare = source.indexOf(
       "await prepareReviewedTelemetryFailureAcl(params.admin)",
     );
-    const replay = source.indexOf("const failed = runOrderedReaderSummaryMigrations");
+    const replay = source.indexOf(
+      "await params.admin.query(oldReaderSummaryTelemetryMigrationSql(corrected))",
+    );
     expect(prepare).toBeGreaterThan(-1);
     expect(replay).toBeGreaterThan(prepare);
     expect(source).toContain(
@@ -152,6 +218,7 @@ SET LOCAL ROLE social_monitor_reader_summary_daily_publication_definer;`);
       let terminations = 0;
       let verifies = 0;
       const operation = superviseGuardedTelemetryResolve({
+        finishWatchdogAfterChild: async () => undefined,
         startChild: () => {
           starts += 1;
           return {
@@ -183,7 +250,9 @@ SET LOCAL ROLE social_monitor_reader_summary_daily_publication_definer;`);
   it("verifies the bound holder after exactly one successful child", async () => {
     let starts = 0;
     let verifies = 0;
+    const watchdog = deferred<void>();
     await expect(superviseGuardedTelemetryResolve({
+      finishWatchdogAfterChild: async () => { watchdog.resolve(); },
       startChild: () => {
         starts += 1;
         return {
@@ -192,12 +261,137 @@ SET LOCAL ROLE social_monitor_reader_summary_daily_publication_definer;`);
         };
       },
       verifySameHolder: async () => { verifies += 1; },
-      watchdog: Promise.resolve(),
+      watchdog: watchdog.promise,
       watchdogReady: Promise.resolve(),
     })).resolves.toBeUndefined();
     expect(starts).toBe(1);
     expect(verifies).toBe(1);
   });
+
+  it("forbids early watchdog success while the child or process group is alive",
+    async () => {
+      const child = deferred<{
+        status: number;
+        stderr: string;
+        stdout: string;
+      }>();
+      let terminations = 0;
+      await expect(superviseGuardedTelemetryResolve({
+        finishWatchdogAfterChild: async () => undefined,
+        startChild: () => ({
+          completion: child.promise,
+          terminate: async () => {
+            terminations += 1;
+            child.resolve({ status: 143, stderr: "terminated", stdout: "" });
+          },
+        }),
+        verifySameHolder: async () => undefined,
+        watchdog: Promise.resolve(),
+        watchdogReady: Promise.resolve(),
+      })).rejects.toThrow("watchdog ended before Prisma resolve");
+      expect(terminations).toBe(1);
+    });
+
+  it.each(["delayed reconnect", "quiet gap"])(
+    "keeps monitoring a %s until the child is definitively reaped",
+    async () => {
+      const child = deferred<{
+        status: number;
+        stderr: string;
+        stdout: string;
+      }>();
+      const watchdog = deferred<void>();
+      let settled = false;
+      const operation = superviseGuardedTelemetryResolve({
+        finishWatchdogAfterChild: async () => { watchdog.resolve(); },
+        startChild: () => ({
+          completion: child.promise,
+          terminate: async () => undefined,
+        }),
+        verifySameHolder: async () => undefined,
+        watchdog: watchdog.promise,
+        watchdogReady: Promise.resolve(),
+      }).finally(() => { settled = true; });
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(settled).toBe(false);
+      child.resolve({ status: 0, stderr: "", stdout: "resolved" });
+      await expect(operation).resolves.toBeUndefined();
+    },
+  );
+
+  it.each(["second backend", "boundary race"])(
+    "terminates exactly one mutation on %s watchdog failure",
+    async (failure) => {
+      const child = deferred<{
+        status: number;
+        stderr: string;
+        stdout: string;
+      }>();
+      const watchdog = deferred<void>();
+      let starts = 0;
+      let terminations = 0;
+      const operation = superviseGuardedTelemetryResolve({
+        finishWatchdogAfterChild: async () => undefined,
+        startChild: () => {
+          starts += 1;
+          return {
+            completion: child.promise,
+            terminate: async () => {
+              terminations += 1;
+              child.resolve({ status: 143, stderr: "terminated", stdout: "" });
+            },
+          };
+        },
+        verifySameHolder: async () => undefined,
+        watchdog: watchdog.promise,
+        watchdogReady: Promise.resolve(),
+      });
+      if (failure === "boundary race") {
+        child.resolve({ status: 0, stderr: "", stdout: "resolved" });
+        await Promise.resolve();
+      }
+      watchdog.reject(new Error(failure));
+      await expect(operation).rejects.toThrow(failure);
+      expect(starts).toBe(1);
+      expect(terminations).toBe(1);
+    },
+  );
+
+  it("terminates descendants even after the process-group leader exits",
+    async () => {
+      if (process.platform === "win32") return;
+      const child = spawn("/bin/sh", [
+        "-c", "sleep 30 </dev/null >/dev/null 2>&1 & exit 0",
+      ], { detached: true, stdio: "ignore" });
+      const pid = child.pid;
+      expect(pid).toBeDefined();
+      await new Promise<void>((resolve, reject) => {
+        child.once("error", reject);
+        child.once("close", () => resolve());
+      });
+      let reaped = false;
+      const completion = waitForTelemetryMutationProcessGroupReaped(pid)
+        .then(() => { reaped = true; });
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      expect(reaped).toBe(false);
+      let timeout: NodeJS.Timeout | undefined;
+      try {
+        signalTelemetryMutationProcessGroup(pid, "SIGTERM");
+        await Promise.race([
+          completion,
+          new Promise<never>((_resolve, reject) => {
+            timeout = setTimeout(() => reject(new Error(
+              "descendant process group was not reaped",
+            )), 2_000);
+          }),
+        ]);
+      } finally {
+        if (timeout !== undefined) clearTimeout(timeout);
+        signalTelemetryMutationProcessGroup(pid, "SIGKILL");
+      }
+      expect(reaped).toBe(true);
+    }, 5_000);
 });
 
 const deferred = <T>(): Readonly<{

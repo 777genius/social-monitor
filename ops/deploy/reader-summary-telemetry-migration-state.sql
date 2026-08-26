@@ -55,15 +55,34 @@ $reviewed_failure$::TEXT AS failure_logs
       '575ece3521b26d769c5f65aae4d4a47ba33502695ac866030524319808812250'
     ) AS corrected_started_at
   FROM telemetry_history
+), attestation_artifacts AS (
+  SELECT pg_catalog.to_regrole(
+      'social_monitor_telemetry_recovery_attestor'
+    ) IS NULL
+    AND pg_catalog.to_regnamespace(
+      'social_monitor_telemetry_recovery'
+    ) IS NULL
+    AND pg_catalog.to_regclass(
+      'social_monitor_telemetry_recovery.migration_attestations'
+    ) IS NULL
+    AND pg_catalog.to_regprocedure(
+      'social_monitor_telemetry_recovery.record_attestation(text)'
+    ) IS NULL
+    AND pg_catalog.to_regprocedure(
+      'social_monitor_telemetry_recovery.read_attestation()'
+    ) IS NULL
+    AND pg_catalog.to_regprocedure(
+      'social_monitor_telemetry_recovery.assert_guard()'
+    ) IS NULL AS absent
 )
 SELECT CASE
-  WHEN row_count = 0 THEN 'clean'
+  WHEN row_count = 0 AND absent THEN 'clean'
   WHEN row_count = 1 AND unfinished_failure_count = 1
-    THEN 'recovery-required'
-  WHEN row_count = 1 AND resolved_failure_count = 1 THEN 'resolved'
-  WHEN row_count = 1 AND corrected_count = 1 THEN 'corrected'
+    AND absent THEN 'recovery-required'
+  WHEN row_count = 1 AND resolved_failure_count = 1 THEN 'invalid'
+  WHEN row_count = 1 AND corrected_count = 1 AND absent THEN 'corrected'
   WHEN row_count = 2 AND resolved_failure_count = 1 AND corrected_count = 1
     AND failure_rolled_back_at <= corrected_started_at THEN 'recovered'
   ELSE 'invalid'
 END AS telemetry_history
-FROM classified;
+FROM classified CROSS JOIN attestation_artifacts;

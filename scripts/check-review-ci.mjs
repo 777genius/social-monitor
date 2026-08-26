@@ -71,8 +71,6 @@ requireScopedFlutterAppTests(productionWorkflow, productionWorkflowPath);
 
 const requiredFragments = [
   "permissions:\n  contents: read",
-  "concurrency:",
-  "cancel-in-progress: true",
   "DATABASE_URL: postgresql://social_monitor_ci:",
   "static_quality:",
   "security_contracts:",
@@ -104,6 +102,12 @@ for (const fragment of requiredFragments) {
       `${workflowPath}: missing required review gate "${fragment}"`,
     );
   }
+}
+
+if (/^concurrency:/mu.test(workflow)) {
+  violations.push(
+    `${workflowPath}: mandatory PostgreSQL 18 review work must not be cancelled by workflow concurrency`,
+  );
 }
 
 for (const jobId of [

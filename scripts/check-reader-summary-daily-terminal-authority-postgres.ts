@@ -989,7 +989,7 @@ const main = async (): Promise<void> => {
       systemRuntimeRole,
       systemRuntimeRoleCreated: fixtureSystemRuntimeRoleCreated,
     });
-    await serverAdmin.end();
+    await serverAdmin.query("DROP ROLE IF EXISTS social_monitor_telemetry_recovery_attestor").finally(() => serverAdmin.end());
   }
   console.log("Reader summary daily terminal PostgreSQL authority gate OK");
 };

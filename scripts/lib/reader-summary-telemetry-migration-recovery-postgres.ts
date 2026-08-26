@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
 import { cpSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -133,13 +133,26 @@ const runRecoveryWithAdmin = async (
     oldReaderSummaryTelemetryMigrationSql(corrected));
   await prepareReviewedTelemetryFailureAcl(params.admin);
 
-  const failed = runOrderedReaderSummaryMigrations(
-    params.adminDatabaseUrl, params.workspace,
-  );
-  const failedOutput = `${failed.stdout}${failed.stderr}`;
-  assert(failed.status !== 0 &&
-    failedOutput.includes("permission denied for schema public"),
-  "old telemetry migration must fail at its reviewed schema permission boundary");
+  let historicalFailure: unknown;
+  try {
+    await params.admin.query(oldReaderSummaryTelemetryMigrationSql(corrected));
+  } catch (error: unknown) {
+    historicalFailure = error;
+  } finally {
+    await params.admin.query("ROLLBACK").catch(() => undefined);
+  }
+  assert(isExactHistoricalTelemetryFailure(historicalFailure),
+    "old telemetry migration must fail at its reviewed schema permission boundary");
+  // Prisma 7 cannot persist its failure log after this historical migration's
+  // explicit transaction aborts. Install the captured production row exactly;
+  // fixture setup never updates or resolves the catalog row it is proving.
+  await params.admin.query(`INSERT INTO public."_prisma_migrations" (
+      id, checksum, started_at, finished_at, migration_name, logs,
+      rolled_back_at, applied_steps_count
+    ) VALUES ($1, $2, pg_catalog.clock_timestamp(), NULL, $3, $4, NULL, 0)`, [
+    randomUUID(), telemetryOldChecksum, telemetryMigration,
+    reviewedTelemetryFailureLog,
+  ]);
   const failedRow = await params.admin.query<ReaderSummaryTelemetryMigrationRow>(
     `SELECT id, checksum, started_at, finished_at, rolled_back_at,
       applied_steps_count, logs
@@ -171,6 +184,10 @@ const runRecoveryWithAdmin = async (
     assert(await recoveryProbe(params.admin,
       "reader-summary-telemetry-failed-migration-preflight.sql") === "authorized",
     "telemetry recovery catalog mutation fixtures did not roll back exactly");
+    assert(await recoveryProbe(params.admin,
+      "reader-summary-telemetry-recovery-attestation-authorize.sql") ===
+      "authorized",
+    "telemetry recovery did not create its exact guarded authorization receipt");
     await resolveWithGuardWatchdog({
       admin: params.admin,
       adminDatabaseUrl: params.adminDatabaseUrl,
@@ -181,6 +198,22 @@ const runRecoveryWithAdmin = async (
       "reader-summary-telemetry-migration-postflight.sql") === "resolved",
     "bounded telemetry recovery did not prove the exact rollback marker under guard");
     await assertSameGuardHolder(guard, binding);
+    writeFileSync(join(target, "migration.sql"), corrected);
+    applyOrderedReaderSummaryMigrations(params.adminDatabaseUrl, params.workspace);
+    await assertBoundGuardFromAdmin(params.admin, binding);
+    assert(await recoveryProbe(params.admin,
+      "reader-summary-telemetry-recovery-attestation-complete.sql") ===
+      "completed",
+    "telemetry recovery did not complete its one-time guarded receipt");
+    assert(await recoveryProbe(params.admin,
+      "reader-summary-telemetry-recovery-attestation-verify.sql") ===
+      "recovered",
+    "telemetry recovery durable receipt verification failed");
+    await assertCompletedAttestationIsImmutable(params.admin);
+    assert(await recoveryProbe(params.admin,
+      "reader-summary-telemetry-recovery-attestation-verify.sql") ===
+      "recovered",
+    "rejected attestation replay/write attempts changed the durable receipt");
   } finally {
     await guard.query(
       "SELECT pg_advisory_unlock(1936879981, 1502026082)",
@@ -188,9 +221,6 @@ const runRecoveryWithAdmin = async (
     guard.release();
     await guardPool.end();
   }
-  writeFileSync(join(target, "migration.sql"), corrected);
-  applyOrderedReaderSummaryMigrations(params.adminDatabaseUrl, params.workspace);
-
   const rows = await params.admin.query<ReaderSummaryTelemetryMigrationRow>(
     `SELECT id, checksum, started_at, finished_at, rolled_back_at,
       applied_steps_count, logs
@@ -199,6 +229,44 @@ const runRecoveryWithAdmin = async (
   );
   assert(classifyReaderSummaryTelemetryMigrationHistory(rows.rows) === "recovered",
   "corrected telemetry retry did not preserve exact Prisma recovery history");
+};
+
+const assertCompletedAttestationIsImmutable = async (
+  admin: QueryClient,
+): Promise<void> => {
+  let replayRejected = false;
+  try {
+    await recoveryProbe(
+      admin, "reader-summary-telemetry-recovery-attestation-complete.sql",
+    );
+  } catch {
+    replayRejected = true;
+  }
+  assert(replayRejected,
+    "completed telemetry recovery attestation accepted a replay transition");
+
+  for (const [label, statement] of [
+    ["forged update", `UPDATE
+      social_monitor_telemetry_recovery.migration_attestations
+      SET receipt_sha256 = repeat('0', 64)`],
+    ["duplicate insert", `INSERT INTO
+      social_monitor_telemetry_recovery.migration_attestations
+      SELECT * FROM social_monitor_telemetry_recovery.migration_attestations`],
+    ["receipt deletion", `DELETE FROM
+      social_monitor_telemetry_recovery.migration_attestations`],
+  ] as const) {
+    await admin.query("BEGIN");
+    let rejected = false;
+    try {
+      await admin.query(statement);
+    } catch {
+      rejected = true;
+    } finally {
+      await admin.query("ROLLBACK").catch(() => undefined);
+    }
+    assert(rejected,
+      `ordinary deployment identity accepted attestation ${label}`);
+  }
 };
 
 const prepareReviewedTelemetryFailureAcl = async (
@@ -296,6 +364,24 @@ const catalogMutations = [
       social_monitor_reader_summary_daily_publication_definer
       TO social_monitor_public_schema_owner
       WITH ADMIN FALSE, INHERIT FALSE, SET TRUE GRANTED BY CURRENT_USER`],
+  ["direct inbound terminal membership", `
+    CREATE ROLE telemetry_recovery_unrelated_inbound NOLOGIN;
+    GRANT social_monitor_reader_summary_daily_terminal
+      TO telemetry_recovery_unrelated_inbound
+      WITH ADMIN FALSE, INHERIT FALSE, SET FALSE GRANTED BY CURRENT_USER`],
+  ["inverse terminal to publication owner membership", `GRANT
+      social_monitor_reader_summary_publication_owner
+      TO social_monitor_reader_summary_daily_terminal
+      WITH ADMIN FALSE, INHERIT FALSE, SET TRUE GRANTED BY CURRENT_USER`],
+  ["transitive unrelated terminal membership", `
+    CREATE ROLE telemetry_recovery_unrelated_bridge_a NOLOGIN;
+    CREATE ROLE telemetry_recovery_unrelated_bridge_b NOLOGIN;
+    GRANT social_monitor_reader_summary_daily_terminal
+      TO telemetry_recovery_unrelated_bridge_a
+      WITH ADMIN FALSE, INHERIT FALSE, SET FALSE GRANTED BY CURRENT_USER;
+    GRANT telemetry_recovery_unrelated_bridge_a
+      TO telemetry_recovery_unrelated_bridge_b
+      WITH ADMIN FALSE, INHERIT FALSE, SET FALSE GRANTED BY CURRENT_USER`],
 ] as const;
 
 const assertCatalogMutationsAreRejected = async (
@@ -325,6 +411,7 @@ type GuardBinding = Readonly<{
   backendPid: number;
   backendStartedAt: string;
   nonce: string;
+  sessionRoleName: string;
 }>;
 
 type ResolveResult = Readonly<{
@@ -339,6 +426,7 @@ type ResolveChild = Readonly<{
 }>;
 
 export const superviseGuardedTelemetryResolve = async (operations: Readonly<{
+  finishWatchdogAfterChild(): Promise<void>;
   startChild(): ResolveChild;
   verifySameHolder(): Promise<void>;
   watchdog: Promise<void>;
@@ -353,6 +441,7 @@ export const superviseGuardedTelemetryResolve = async (operations: Readonly<{
     ]);
     assert(first.kind === "child",
       "telemetry recovery watchdog ended before Prisma resolve");
+    await operations.finishWatchdogAfterChild();
     await operations.watchdog;
     await operations.verifySameHolder();
     assert(first.result.status === 0,
@@ -367,29 +456,33 @@ const acquireGuardBinding = async (
   guard: QueryClient,
 ): Promise<GuardBinding> => {
   const nonce = randomBytes(12).toString("hex");
-  const applicationName = `social-monitor/telemetry-recovery-guard/${nonce}`;
+  const applicationName = `social-monitor/telemetry-guard/${nonce}`;
   const acquired = await guard.query<{
     acquired: boolean;
     backend_pid: number;
     backend_started_at: string;
+    session_role_name: string;
   }>(`SELECT pg_catalog.pg_try_advisory_lock(
         1936879981, 1502026082
       ) AS acquired,
       pg_catalog.pg_backend_pid() AS backend_pid,
-      activity.backend_start::TEXT AS backend_started_at
+      activity.backend_start::TEXT AS backend_started_at,
+      session_user::TEXT AS session_role_name
     FROM pg_catalog.pg_stat_activity AS activity
     WHERE activity.pid = pg_catalog.pg_backend_pid()
       AND pg_catalog.set_config('application_name', $1, false) = $1`,
   [applicationName]);
   const row = acquired.rows[0];
   assert(row?.acquired === true && Number.isInteger(row.backend_pid) &&
-    typeof row.backend_started_at === "string",
+    typeof row.backend_started_at === "string" &&
+    typeof row.session_role_name === "string",
   "telemetry recovery PG18 fixture could not bind its database guard");
   return {
     applicationName,
     backendPid: row.backend_pid,
     backendStartedAt: row.backend_started_at,
     nonce,
+    sessionRoleName: row.session_role_name,
   };
 };
 
@@ -424,13 +517,34 @@ const resolveWithGuardWatchdog = async (params: Readonly<{
   workspace: ReaderSummaryPublicationMigrationWorkspace;
 }>): Promise<void> => {
   const resolverApplication =
-    `social-monitor/telemetry-recovery-resolve/${params.binding.nonce}`;
+    `social-monitor/telemetry-resolve/${params.binding.nonce}`;
+  const mutationApplication =
+    `social-monitor/telemetry-mutation/${params.binding.nonce}`;
   const watcherPool = new Pool({
     connectionString: params.adminDatabaseUrl,
     max: 1,
   });
+  const mutationPool = new Pool({
+    connectionString: params.adminDatabaseUrl,
+    max: 1,
+  });
   const watcher = await watcherPool.connect();
+  const mutation = await mutationPool.connect();
   try {
+    const mutationIdentity = await mutation.query<{
+      backend_started_at: string;
+      pid: number;
+    }>(`SELECT activity.backend_start::TEXT AS backend_started_at,
+        pg_catalog.pg_backend_pid() AS pid
+      FROM pg_catalog.pg_stat_activity AS activity
+      WHERE activity.pid = pg_catalog.pg_backend_pid()
+        AND pg_catalog.set_config('application_name', $1, false) = $1
+        AND pg_catalog.pg_try_advisory_lock(1936879981, 1502026084)`,
+    [mutationApplication]);
+    const mutationRow = mutationIdentity.rows[0];
+    assert(Number.isInteger(mutationRow?.pid) &&
+      typeof mutationRow?.backend_started_at === "string",
+    "telemetry recovery mutation lease could not be bound");
     const watcherIdentity = await watcher.query<{ pid: number }>(
       "SELECT pg_catalog.pg_backend_pid() AS pid",
     );
@@ -438,7 +552,11 @@ const resolveWithGuardWatchdog = async (params: Readonly<{
     assert(Number.isInteger(watcherPid),
       "telemetry recovery watchdog has no exact backend identity");
     const watchdog = watcher.query(watchdogSql(
-      params.binding, resolverApplication,
+      params.binding, resolverApplication, {
+        applicationName: mutationApplication,
+        backendPid: mutationRow.pid,
+        backendStartedAt: mutationRow.backend_started_at,
+      },
     )).then(() => undefined);
     const ready = Promise.race([
       waitForWatchdogReady(params.admin, watcherPid as number),
@@ -447,6 +565,13 @@ const resolveWithGuardWatchdog = async (params: Readonly<{
       }),
     ]);
     await superviseGuardedTelemetryResolve({
+      finishWatchdogAfterChild: async () => {
+        const released = await mutation.query<{ released: boolean }>(
+          "SELECT pg_catalog.pg_advisory_unlock(1936879981, 1502026084) AS released",
+        );
+        assert(released.rows[0]?.released === true,
+          "telemetry recovery mutation lease was not released exactly once");
+      },
       startChild: () => startPrismaResolve({
         adminDatabaseUrl: params.adminDatabaseUrl,
         resolverApplication,
@@ -459,6 +584,11 @@ const resolveWithGuardWatchdog = async (params: Readonly<{
       watchdogReady: ready,
     });
   } finally {
+    await mutation.query(
+      "SELECT pg_catalog.pg_advisory_unlock(1936879981, 1502026084)",
+    ).catch(() => undefined);
+    mutation.release();
+    await mutationPool.end();
     watcher.release();
     await watcherPool.end();
   }
@@ -467,12 +597,18 @@ const resolveWithGuardWatchdog = async (params: Readonly<{
 const watchdogSql = (
   binding: GuardBinding,
   resolverApplication: string,
+  mutation: Readonly<{
+    applicationName: string;
+    backendPid: number;
+    backendStartedAt: string;
+  }>,
 ): string => `DO $telemetry_guard_watchdog$
 DECLARE
   v_holder_count BIGINT;
+  v_mutation_count BIGINT;
+  v_recovery_backend_count BIGINT;
   v_resolver_count BIGINT;
   v_resolver_seen BOOLEAN := FALSE;
-  v_quiet_ticks INTEGER := 0;
   v_started_at TIMESTAMPTZ := pg_catalog.clock_timestamp();
 BEGIN
   PERFORM pg_catalog.pg_advisory_xact_lock(1936879981, 1502026083);
@@ -491,6 +627,21 @@ BEGIN
     FROM pg_catalog.pg_stat_activity AS activity
     WHERE activity.datname = pg_catalog.current_database()
       AND activity.application_name = ${quoteLiteral(resolverApplication)};
+    SELECT count(*) INTO STRICT v_recovery_backend_count
+    FROM pg_catalog.pg_stat_activity AS activity
+    WHERE activity.datname = pg_catalog.current_database()
+      AND activity.application_name LIKE
+        'social-monitor/telemetry-resolve/%';
+    SELECT count(*) INTO STRICT v_mutation_count
+    FROM pg_catalog.pg_locks AS lock
+    JOIN pg_catalog.pg_stat_activity AS activity ON activity.pid = lock.pid
+    WHERE lock.locktype = 'advisory'
+      AND lock.classid = 1936879981::OID
+      AND lock.objid = 1502026084::OID AND lock.objsubid = 2
+      AND lock.granted AND lock.pid = ${mutation.backendPid}
+      AND activity.backend_start =
+        ${quoteLiteral(mutation.backendStartedAt)}::TIMESTAMPTZ
+      AND activity.application_name = ${quoteLiteral(mutation.applicationName)};
     IF v_holder_count <> 1 OR (SELECT count(*) FROM pg_catalog.pg_locks AS lock
       WHERE lock.locktype = 'advisory'
         AND lock.classid = 1936879981::OID
@@ -502,14 +653,41 @@ BEGIN
         AND activity.application_name = ${quoteLiteral(resolverApplication)};
       RAISE EXCEPTION 'telemetry recovery guard lost; resolver backends terminated';
     END IF;
+    IF v_recovery_backend_count <> v_resolver_count OR v_resolver_count > 1
+      OR EXISTS (
+        SELECT 1 FROM pg_catalog.pg_stat_activity AS activity
+        WHERE activity.datname = pg_catalog.current_database()
+          AND activity.application_name = ${quoteLiteral(resolverApplication)}
+          AND activity.usename IS DISTINCT FROM
+            ${quoteLiteral(binding.sessionRoleName)}
+      ) THEN
+      PERFORM pg_catalog.pg_terminate_backend(activity.pid)
+      FROM pg_catalog.pg_stat_activity AS activity
+      WHERE activity.datname = pg_catalog.current_database()
+        AND activity.application_name LIKE
+          'social-monitor/telemetry-resolve/%';
+      RAISE EXCEPTION
+        'telemetry recovery resolver identity or multiplicity changed';
+    END IF;
     IF v_resolver_count > 0 THEN
       v_resolver_seen := TRUE;
-      v_quiet_ticks := 0;
-    ELSIF v_resolver_seen THEN
-      v_quiet_ticks := v_quiet_ticks + 1;
-      IF v_quiet_ticks >= 5 THEN RETURN; END IF;
     ELSIF pg_catalog.clock_timestamp() > v_started_at + INTERVAL '10 seconds' THEN
-      RAISE EXCEPTION 'telemetry recovery resolver backend was never observed';
+      IF NOT v_resolver_seen THEN
+        RAISE EXCEPTION 'telemetry recovery resolver backend was never observed';
+      END IF;
+    END IF;
+    IF v_mutation_count = 0 THEN
+      IF NOT v_resolver_seen OR v_resolver_count <> 0 THEN
+        RAISE EXCEPTION 'telemetry recovery mutation ended with resolver drift';
+      END IF;
+      RETURN;
+    ELSIF v_mutation_count <> 1 OR (SELECT count(*)
+      FROM pg_catalog.pg_locks AS lock
+      WHERE lock.locktype = 'advisory'
+        AND lock.classid = 1936879981::OID
+        AND lock.objid = 1502026084::OID AND lock.objsubid = 2
+        AND lock.granted) <> 1 THEN
+      RAISE EXCEPTION 'telemetry recovery mutation lease changed';
     END IF;
     PERFORM pg_catalog.pg_sleep(0.001);
   END LOOP;
@@ -558,13 +736,26 @@ const startPrismaResolve = (params: Readonly<{
   });
   let stderr = "";
   let stdout = "";
+  let processGroupReaped = false;
   child.stderr?.on("data", (chunk: Buffer) => { stderr += chunk.toString(); });
   child.stdout?.on("data", (chunk: Buffer) => { stdout += chunk.toString(); });
   const completion = new Promise<ResolveResult>((resolve) => {
     child.once("error", (error) => resolve({
       status: null, stderr: `${stderr}${error.message}`, stdout,
     }));
-    child.once("close", (status) => resolve({ status, stderr, stdout }));
+    child.once("close", (status) => {
+      void waitForTelemetryMutationProcessGroupReaped(child.pid).then(
+        () => {
+          processGroupReaped = true;
+          resolve({ status, stderr, stdout });
+        },
+        (error: unknown) => resolve({
+          status: null,
+          stderr: `${stderr}${error instanceof Error ? error.message : String(error)}`,
+          stdout,
+        }),
+      );
+    });
   });
   const signalHandlers = new Map<NodeJS.Signals, () => void>();
   const removeSignalHandlers = (): void => {
@@ -576,7 +767,7 @@ const startPrismaResolve = (params: Readonly<{
   for (const signal of ["SIGHUP", "SIGINT", "SIGTERM"] as const) {
     const handler = (): void => {
       try {
-        signalChildProcessGroup(child.pid, "SIGTERM");
+        signalTelemetryMutationProcessGroup(child.pid, "SIGTERM");
       } finally {
         removeSignalHandlers();
         process.kill(process.pid, signal);
@@ -589,16 +780,35 @@ const startPrismaResolve = (params: Readonly<{
   return {
     completion,
     terminate: async () => {
-      if (child.exitCode !== null) return;
-      signalChildProcessGroup(child.pid, "SIGTERM");
+      if (processGroupReaped) return;
+      signalTelemetryMutationProcessGroup(child.pid, "SIGTERM");
       await Promise.race([completion, delay(250)]);
-      if (child.exitCode === null) signalChildProcessGroup(child.pid, "SIGKILL");
+      if (!processGroupReaped) {
+        signalTelemetryMutationProcessGroup(child.pid, "SIGKILL");
+      }
       await completion;
     },
   };
 };
 
-const signalChildProcessGroup = (
+export const waitForTelemetryMutationProcessGroupReaped = async (
+  pid: number | undefined,
+): Promise<void> => {
+  if (pid === undefined || process.platform === "win32") return;
+  for (;;) {
+    try {
+      process.kill(-pid, 0);
+    } catch (error: unknown) {
+      if (isNodeErrorCode(error, "ESRCH")) {
+        return;
+      }
+      throw error;
+    }
+    await delay(5);
+  }
+};
+
+export const signalTelemetryMutationProcessGroup = (
   pid: number | undefined,
   signal: NodeJS.Signals,
 ): void => {
@@ -606,11 +816,27 @@ const signalChildProcessGroup = (
   try {
     process.kill(process.platform === "win32" ? pid : -pid, signal);
   } catch (error: unknown) {
-    if (!(error instanceof Error && "code" in error && error.code === "ESRCH")) {
+    if (!isNodeErrorCode(error, "ESRCH")) {
       throw error;
     }
   }
 };
+
+const isNodeErrorCode = (error: unknown, code: string): boolean =>
+  typeof error === "object" && error !== null && "code" in error &&
+  error.code === code;
+
+const isExactHistoricalTelemetryFailure = (error: unknown): boolean =>
+  typeof error === "object" && error !== null &&
+  "code" in error && error.code === "42501" &&
+  "message" in error && error.message === "permission denied for schema public" &&
+  "routine" in error && error.routine === "aclcheck_error" &&
+  "where" in error && typeof error.where === "string" &&
+  error.where.startsWith(
+    "SQL statement \"CREATE OR REPLACE FUNCTION public.claim_reader_summary_daily_execution",
+  ) && error.where.endsWith(
+    "PL/pgSQL function inline_code_block line 43 at EXECUTE",
+  );
 
 const assertBoundGuardFromAdmin = async (
   admin: QueryClient,

@@ -131,8 +131,8 @@ describe("reader summary daily execution cursor PostgreSQL contract", () => {
           "\\$\\{quoteIdentifier\\(schemaOwnerRole\\)\\}",
         "gu",
       ))].map((match) => match.index));
-    const dailyFunctionHandoff = checker.indexOf(
-      "ALTER FUNCTION public.mark_reader_summary_daily_model_job_running(",
+    const sourceAuthorityGuardHandoff = checker.indexOf(
+      "ALTER FUNCTION public.reject_reader_summary_daily_source_authority_mutation()",
     );
     const migrationAdminUsageRevoke = checker.indexOf(
       "REVOKE USAGE ON SCHEMA public\n" +
@@ -178,8 +178,14 @@ describe("reader summary daily execution cursor PostgreSQL contract", () => {
     expect(definerUsageGrant).toBeGreaterThan(publicAclReset);
     expect(definerUsageGrant).toBeGreaterThan(aclCreateBoundary);
     expect(definerUsageGrant).toBeLessThan(activationAcl);
-    expect(dailyFunctionHandoff).toBeGreaterThan(activation);
-    expect(dailyFunctionHandoff).toBeLessThan(activationAcl);
+    expect(sourceAuthorityGuardHandoff).toBeGreaterThan(activation);
+    expect(sourceAuthorityGuardHandoff).toBeLessThan(activationAcl);
+    expect(checker).not.toContain(
+      "ALTER FUNCTION public.renew_reader_summary_daily_execution_lease(",
+    );
+    expect(checker).not.toContain(
+      "ALTER FUNCTION public.mark_reader_summary_daily_model_job_running(",
+    );
     expect(migrationAdminUsageRevoke).toBeGreaterThan(executionContract);
     expect(migrationAdminUsageRevoke).toBeLessThan(completion);
     expect(teardownBoundary).toBeGreaterThan(activationAcl);

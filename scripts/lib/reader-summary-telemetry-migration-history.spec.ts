@@ -3,8 +3,12 @@ import { readFileSync } from "node:fs";
 
 import {
   classifyReaderSummaryTelemetryMigrationHistory,
+  classifyReaderSummaryTelemetryDeployment,
+  isExactReaderSummaryTelemetryRecoveryAttestation,
+  type ReaderSummaryTelemetryRecoveryAttestation,
   type ReaderSummaryTelemetryMigrationRow,
   readerSummaryTelemetryCorrectedChecksum,
+  readerSummaryTelemetryMigration,
   readerSummaryTelemetryOldChecksum,
   reviewedTelemetryFailureLog,
 } from "./reader-summary-telemetry-migration-history";
@@ -43,12 +47,77 @@ describe("reader summary telemetry migration history", () => {
     expect(classifyReaderSummaryTelemetryMigrationHistory([failedRow()]))
       .toBe("recovery-required");
     expect(classifyReaderSummaryTelemetryMigrationHistory([resolved]))
-      .toBe("resolved");
+      .toBe("invalid");
     expect(classifyReaderSummaryTelemetryMigrationHistory([correctedRow()]))
       .toBe("corrected");
     expect(classifyReaderSummaryTelemetryMigrationHistory([
       correctedRow(), resolved,
     ])).toBe("recovered");
+  });
+
+  it("requires the exact durable receipt for recovered history", () => {
+    const resolved = { ...failedRow(), rolled_back_at: rolledBack };
+    const recovered = [resolved, correctedRow()];
+    expect(classifyReaderSummaryTelemetryDeployment(recovered, "absent"))
+      .toBe("invalid");
+    expect(classifyReaderSummaryTelemetryDeployment(recovered, "invalid"))
+      .toBe("invalid");
+    expect(classifyReaderSummaryTelemetryDeployment(recovered, "verified"))
+      .toBe("recovered");
+    expect(classifyReaderSummaryTelemetryDeployment([resolved], "verified"))
+      .toBe("invalid");
+    expect(classifyReaderSummaryTelemetryDeployment(
+      [correctedRow()], "verified",
+    )).toBe("invalid");
+    expect(classifyReaderSummaryTelemetryDeployment(
+      [correctedRow()], "invalid",
+    )).toBe("invalid");
+  });
+
+  it("rejects missing, forged, duplicate, and mismatched recovery receipts", () => {
+    const resolved = { ...failedRow(), rolled_back_at: rolledBack };
+    const recovered = [resolved, correctedRow()];
+    const receipt: ReaderSummaryTelemetryRecoveryAttestation = {
+      authorizedAt: started,
+      completedAt: "2026-08-24T12:04:00.000Z",
+      correctedChecksum: readerSummaryTelemetryCorrectedChecksum,
+      correctedFinishedAt: correctedFinished,
+      correctedMigrationId: correctedRow().id,
+      correctedStartedAt: correctedStarted,
+      databaseName: "telemetry_recovery_fixture",
+      databaseOid: 42,
+      digestValid: true,
+      migrationName:
+        "20260824120000_reader_summary_daily_model_job_telemetry",
+      oldChecksum: readerSummaryTelemetryOldChecksum,
+      oldMigrationId: failedRow().id,
+      recoveryNonce: "0123456789abcdef01234567",
+      resolvedAt: rolledBack,
+      schemaVersion: "reader_summary.telemetry_recovery.v1",
+      state: "COMPLETED",
+    };
+    const database = { name: "telemetry_recovery_fixture", oid: 42 };
+    expect(isExactReaderSummaryTelemetryRecoveryAttestation(
+      recovered, [], database,
+    )).toBe(false);
+    expect(isExactReaderSummaryTelemetryRecoveryAttestation(
+      recovered, [receipt], database,
+    )).toBe(true);
+    for (const forged of [
+      { ...receipt, digestValid: false },
+      { ...receipt, recoveryNonce: "0".repeat(24) + "x" },
+      { ...receipt, oldChecksum: "0".repeat(64) },
+      { ...receipt, correctedMigrationId: "forged" },
+      { ...receipt, databaseOid: 43 },
+      { ...receipt, state: "RESOLVED" },
+    ]) {
+      expect(isExactReaderSummaryTelemetryRecoveryAttestation(
+        recovered, [forged], database,
+      )).toBe(false);
+    }
+    expect(isExactReaderSummaryTelemetryRecoveryAttestation(
+      recovered, [receipt, receipt], database,
+    )).toBe(false);
   });
 
   it.each([
@@ -134,6 +203,15 @@ describe("reader summary telemetry migration history", () => {
         fixtures.map(classifyReaderSummaryTelemetryMigrationHistory),
       );
     }, 30_000);
+
+  it("rejects partial attestation artifacts outside recovered history", () => {
+    const executed = spawnSync(process.execPath, [
+      "--input-type=module", "--eval", partialArtifactRunner,
+    ], { cwd: process.cwd(), encoding: "utf8" });
+    expect(executed.status).toBe(0);
+    expect(executed.stderr).toBe("");
+    expect(executed.stdout).toBe("invalid");
+  }, 30_000);
 });
 
 const sqlClassifierRunner = String.raw`
@@ -155,4 +233,22 @@ for (const rows of fixtures) {
 }
 await database.close();
 process.stdout.write(JSON.stringify(states));
+`;
+
+const partialArtifactRunner = String.raw`
+import { PGlite } from "@electric-sql/pglite";
+import { readFileSync } from "node:fs";
+const database = new PGlite();
+await database.exec('CREATE TABLE public."_prisma_migrations" (id TEXT NOT NULL, checksum TEXT NOT NULL, started_at TIMESTAMPTZ NOT NULL, finished_at TIMESTAMPTZ, migration_name TEXT NOT NULL, logs TEXT, rolled_back_at TIMESTAMPTZ, applied_steps_count INTEGER NOT NULL)');
+await database.query('INSERT INTO public."_prisma_migrations" VALUES ($1, $2, $3, $4, $5, NULL, NULL, 1)', [
+  'corrected', '${readerSummaryTelemetryCorrectedChecksum}',
+  '${correctedStarted}', '${correctedFinished}',
+  '${readerSummaryTelemetryMigration}',
+]);
+await database.exec('CREATE SCHEMA social_monitor_telemetry_recovery');
+const result = await database.query(readFileSync(
+  "ops/deploy/reader-summary-telemetry-migration-state.sql", "utf8",
+));
+await database.close();
+process.stdout.write(result.rows[0].telemetry_history);
 `;

@@ -248,12 +248,6 @@ const main = async (): Promise<void> => {
     await admin.query(`
       ALTER FUNCTION public.reject_reader_summary_daily_source_authority_mutation()
         OWNER TO ${quoteIdentifier(schemaOwnerRole)};
-      ALTER FUNCTION public.renew_reader_summary_daily_execution_lease(
-        UUID, UUID, DATE, TEXT, BIGINT, TIMESTAMPTZ
-      ) OWNER TO ${quoteIdentifier(schemaOwnerRole)};
-      ALTER FUNCTION public.mark_reader_summary_daily_model_job_running(
-        UUID, UUID, DATE, TEXT, BIGINT, TIMESTAMPTZ
-      ) OWNER TO ${quoteIdentifier(schemaOwnerRole)};
     `);
     await transferActiveClaimOwner(admin, firstPool, migrationAdminRole);
     const activationAclSchemaPrivileges = await admin.query<{

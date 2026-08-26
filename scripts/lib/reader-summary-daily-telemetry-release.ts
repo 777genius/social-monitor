@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 
 import {
   classifyReaderSummaryTelemetryMigrationHistory,
+  classifyReaderSummaryTelemetryDeployment,
   type ReaderSummaryTelemetryHistoryState,
   type ReaderSummaryTelemetryMigrationRow,
   readerSummaryTelemetryMigration,
@@ -181,7 +182,53 @@ const readExactTelemetryHistory = async (
   assert(sqlResult.rows.length === 1 &&
     sqlResult.rows[0]?.telemetry_history === classified,
   "daily telemetry SQL and TypeScript history classifiers diverged");
-  return classified;
+  const attestation = await readTelemetryRecoveryAttestation(
+    client, classified,
+  );
+  return classifyReaderSummaryTelemetryDeployment(rowResult.rows, attestation);
+};
+
+const readTelemetryRecoveryAttestation = async (
+  client: QueryClient,
+  history: ReaderSummaryTelemetryHistoryState,
+): Promise<"absent" | "invalid" | "verified"> => {
+  const presence = await client.query<{ absent: boolean }>(`SELECT
+    pg_catalog.to_regrole(
+      'social_monitor_telemetry_recovery_attestor'
+    ) IS NULL
+    AND pg_catalog.to_regnamespace(
+      'social_monitor_telemetry_recovery'
+    ) IS NULL
+    AND pg_catalog.to_regclass(
+      'social_monitor_telemetry_recovery.migration_attestations'
+    ) IS NULL
+    AND pg_catalog.to_regprocedure(
+      'social_monitor_telemetry_recovery.record_attestation(text)'
+    ) IS NULL
+    AND pg_catalog.to_regprocedure(
+      'social_monitor_telemetry_recovery.read_attestation()'
+    ) IS NULL
+    AND pg_catalog.to_regprocedure(
+      'social_monitor_telemetry_recovery.assert_guard()'
+    ) IS NULL AS absent`);
+  const absent = presence.rows.length === 1 && presence.rows[0]?.absent === true;
+  if (history !== "recovered") return absent ? "absent" : "invalid";
+  if (absent) return "invalid";
+  try {
+    const result = await client.query(
+      readFileSync(
+        "ops/deploy/reader-summary-telemetry-recovery-attestation-verify.sql",
+        "utf8",
+      ),
+    ) as unknown as readonly {
+      rows: readonly { case: string }[];
+    }[];
+    return result.at(-1)?.rows[0]?.case === "recovered"
+      ? "verified"
+      : "invalid";
+  } catch {
+    return "invalid";
+  }
 };
 
 function assert(condition: unknown, message: string): asserts condition {

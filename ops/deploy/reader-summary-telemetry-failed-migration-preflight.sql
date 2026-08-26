@@ -29,6 +29,10 @@ $reviewed_failure$;
   v_active_owner OID;
   v_schema_owner OID;
   v_definer OID;
+  v_publication_owner OID;
+  v_publication_runtime OID;
+  v_tenant_runtime OID;
+  v_terminal OID;
   v_guard_count BIGINT;
   v_guard_pid_text TEXT;
   v_guard_backend_start_text TEXT;
@@ -36,6 +40,7 @@ $reviewed_failure$;
   v_guard_nonce TEXT;
   v_function_catalog_exact BOOLEAN;
   v_membership_catalog_exact BOOLEAN;
+  v_effective_acl_exact BOOLEAN;
   v_schema_catalog_exact BOOLEAN;
   v_sequence_catalog_exact BOOLEAN;
   v_acl_rows BIGINT;
@@ -83,7 +88,7 @@ BEGIN
     OR v_guard_backend_start_text IS NULL
     OR v_guard_nonce !~ '^[0-9a-f]{24}$'
     OR v_guard_application IS DISTINCT FROM
-      'social-monitor/telemetry-recovery-guard/' || v_guard_nonce THEN
+      'social-monitor/telemetry-guard/' || v_guard_nonce THEN
     RAISE EXCEPTION 'telemetry recovery guard binding is invalid';
   END IF;
 
@@ -152,6 +157,14 @@ BEGIN
     'social_monitor_public_schema_owner'::pg_catalog.regrole::OID;
   v_definer :=
     'social_monitor_reader_summary_daily_publication_definer'::pg_catalog.regrole::OID;
+  v_publication_owner :=
+    'social_monitor_reader_summary_publication_owner'::pg_catalog.regrole::OID;
+  v_publication_runtime :=
+    'social_monitor_reader_summary_publication_runtime'::pg_catalog.regrole::OID;
+  v_tenant_runtime :=
+    'social_monitor_tenant_system_runtime'::pg_catalog.regrole::OID;
+  v_terminal :=
+    'social_monitor_reader_summary_daily_terminal'::pg_catalog.regrole::OID;
   SELECT count(*) = 3 AND pg_catalog.bool_and(
     procedure.prokind = 'f' AND language.lanname = 'plpgsql'
     AND procedure.provolatile = 'v' AND procedure.proisstrict
@@ -191,10 +204,39 @@ BEGIN
       'telemetry recovery function owner, ACL, metadata, or definition drifted';
   END IF;
 
-  SELECT count(*) = 3 AND count(*) FILTER (
+  WITH RECURSIVE seed(role_oid) AS (
+    SELECT DISTINCT role_oid FROM (VALUES
+      (v_active_owner), (v_schema_owner), (v_publication_owner),
+      (v_publication_runtime), (v_tenant_runtime), (v_terminal), (v_definer)
+    ) AS seeded(role_oid)
+  ), closure(role_oid) AS (
+    SELECT role_oid FROM seed
+    UNION
+    SELECT CASE WHEN membership.roleid = closure.role_oid
+      THEN membership.member ELSE membership.roleid END
+    FROM closure
+    JOIN pg_catalog.pg_auth_members AS membership
+      ON membership.roleid = closure.role_oid
+      OR membership.member = closure.role_oid
+  ), edges AS (
+    SELECT membership.*, member.rolname AS member_name,
+      member.rolcanlogin AS member_login,
+      granted.rolname AS granted_name,
+      grantor.rolname AS grantor_name, grantor.rolsuper AS grantor_super
+    FROM pg_catalog.pg_auth_members AS membership
+    JOIN closure ON closure.role_oid = membership.roleid
+    JOIN pg_catalog.pg_roles AS member ON member.oid = membership.member
+    JOIN pg_catalog.pg_roles AS granted ON granted.oid = membership.roleid
+    JOIN pg_catalog.pg_roles AS grantor ON grantor.oid = membership.grantor
+  ), dynamic_members AS (
+    SELECT DISTINCT member FROM edges
+    WHERE roleid IN (v_publication_runtime, v_tenant_runtime)
+      AND member <> v_active_owner
+  )
+  SELECT count(*) = 12 AND count(*) FILTER (
       WHERE membership.roleid = v_schema_owner
         AND membership.member = v_active_owner
-        AND grantor.rolsuper AND membership.admin_option
+        AND grantor_super AND membership.admin_option
         AND NOT membership.inherit_option AND NOT membership.set_option
     ) = 1 AND count(*) FILTER (
       WHERE membership.roleid = v_schema_owner
@@ -205,16 +247,191 @@ BEGIN
     ) = 1 AND count(*) FILTER (
       WHERE membership.roleid = v_definer
         AND membership.member = v_active_owner
-        AND grantor.rolsuper AND membership.admin_option
+        AND grantor_super AND membership.admin_option
         AND NOT membership.inherit_option AND NOT membership.set_option
-    ) = 1
+    ) = 1 AND count(*) FILTER (
+      WHERE membership.roleid = v_publication_owner
+        AND membership.member = v_active_owner
+        AND grantor_super AND membership.admin_option
+        AND NOT membership.inherit_option AND NOT membership.set_option
+    ) = 1 AND count(*) FILTER (
+      WHERE membership.roleid = v_publication_owner
+        AND membership.member = v_active_owner
+        AND membership.grantor = v_active_owner
+        AND NOT membership.admin_option AND NOT membership.inherit_option
+        AND membership.set_option
+    ) = 1 AND count(*) FILTER (
+      WHERE membership.roleid = v_terminal
+        AND membership.member = v_active_owner
+        AND grantor_super AND membership.admin_option
+        AND NOT membership.inherit_option AND NOT membership.set_option
+    ) = 1 AND count(*) FILTER (
+      WHERE membership.roleid = v_publication_runtime
+        AND membership.member = v_active_owner
+        AND grantor_super AND membership.admin_option
+        AND NOT membership.inherit_option AND NOT membership.set_option
+    ) = 1 AND count(*) FILTER (
+      WHERE membership.roleid = v_publication_runtime
+        AND membership.member <> v_active_owner AND member_login
+        AND NOT membership.admin_option AND membership.inherit_option
+        AND NOT membership.set_option
+    ) = 1 AND count(*) FILTER (
+      WHERE membership.roleid = v_tenant_runtime
+        AND membership.member = v_active_owner
+        AND grantor_super AND membership.admin_option
+        AND NOT membership.inherit_option AND NOT membership.set_option
+    ) = 1 AND count(*) FILTER (
+      WHERE membership.roleid = v_tenant_runtime
+        AND membership.member <> v_active_owner AND member_login
+        AND NOT membership.admin_option AND membership.inherit_option
+        AND NOT membership.set_option
+    ) = 1 AND count(*) FILTER (
+      WHERE membership.roleid IN (SELECT member FROM dynamic_members)
+        AND membership.member = v_active_owner
+        AND membership.admin_option AND NOT membership.inherit_option
+        AND membership.set_option
+    ) = 2 AND NOT pg_catalog.bool_or(NOT (
+      (membership.roleid = v_schema_owner
+        AND membership.member = v_active_owner)
+      OR (membership.roleid = v_publication_owner
+        AND membership.member = v_active_owner)
+      OR (membership.roleid = v_definer
+        AND membership.member = v_active_owner)
+      OR (membership.roleid = v_terminal
+        AND membership.member = v_active_owner)
+      OR (membership.roleid IN (v_publication_runtime, v_tenant_runtime)
+        AND (membership.member = v_active_owner OR member_login))
+      OR (membership.roleid IN (SELECT member FROM dynamic_members)
+        AND membership.member = v_active_owner)
+    ))
   INTO STRICT v_membership_catalog_exact
-  FROM pg_catalog.pg_auth_members AS membership
-  JOIN pg_catalog.pg_roles AS grantor ON grantor.oid = membership.grantor
-  WHERE membership.roleid IN (v_schema_owner, v_definer)
-    OR membership.member IN (v_schema_owner, v_definer);
+  FROM edges AS membership;
   IF v_membership_catalog_exact IS DISTINCT FROM TRUE THEN
-    RAISE EXCEPTION 'telemetry recovery relevant role membership edges drifted';
+    RAISE EXCEPTION
+      'telemetry recovery complete role membership closure drifted';
+  END IF;
+
+  WITH RECURSIVE seed(role_oid) AS (VALUES
+    (v_active_owner), (v_schema_owner), (v_publication_owner),
+    (v_publication_runtime), (v_tenant_runtime), (v_terminal), (v_definer)
+  ), roles(role_oid) AS (
+    SELECT role_oid FROM seed
+    UNION
+    SELECT CASE WHEN membership.roleid = roles.role_oid
+      THEN membership.member ELSE membership.roleid END
+    FROM roles JOIN pg_catalog.pg_auth_members AS membership
+      ON membership.roleid = roles.role_oid OR membership.member = roles.role_oid
+  ), tables(object_name) AS (VALUES
+    ('public.reader_summary_daily_execution_cursors'),
+    ('public.reader_summary_daily_model_jobs'),
+    ('public.reader_summary_daily_source_authorities'),
+    ('public.feed_items'), ('public.source_items')
+  ), table_privileges(privilege) AS (VALUES
+    ('DELETE'), ('INSERT'), ('MAINTAIN'), ('REFERENCES'),
+    ('SELECT'), ('TRIGGER'), ('TRUNCATE'), ('UPDATE')
+  ), table_matrix AS (
+    SELECT role_oid, object_name, privilege,
+      role_oid = v_schema_owner
+      OR (role_oid = v_active_owner AND (
+        (object_name IN (
+          'public.reader_summary_daily_execution_cursors',
+          'public.reader_summary_daily_model_jobs'
+        ) AND privilege IN ('INSERT', 'SELECT', 'UPDATE'))
+        OR (object_name = 'public.reader_summary_daily_source_authorities'
+          AND privilege IN ('INSERT', 'SELECT'))
+        OR (object_name IN ('public.feed_items', 'public.source_items')
+          AND privilege = 'SELECT')
+      )) OR (role_oid = v_definer
+        AND object_name = 'public.reader_summary_daily_model_jobs'
+        AND privilege IN ('SELECT', 'UPDATE'))
+      OR (role_oid = v_publication_owner
+        AND object_name = 'public.reader_summary_daily_model_jobs'
+        AND privilege = 'SELECT') AS expected,
+      pg_catalog.has_table_privilege(
+        role_oid, object_name, privilege
+      ) AS observed
+    FROM roles CROSS JOIN tables CROSS JOIN table_privileges
+  ), schemas AS (
+    SELECT role_oid, privilege,
+      role_oid = v_schema_owner
+        OR (privilege = 'USAGE' AND role_oid IN (
+          v_active_owner, v_publication_owner, v_terminal, v_definer
+        )) AS expected,
+      pg_catalog.has_schema_privilege(role_oid, 'public', privilege)
+        AS observed
+    FROM roles CROSS JOIN (VALUES ('CREATE'), ('USAGE')) AS p(privilege)
+  ), functions(object_name, owner_oid) AS (VALUES
+    ('public.claim_reader_summary_daily_execution(uuid,uuid,text,date,timestamp with time zone)', v_active_owner),
+    ('public.claim_reader_summary_daily_execution_bounded_maintenance(uuid,uuid,text,date,timestamp with time zone)', v_schema_owner),
+    ('public.complete_reader_summary_daily_model_job(uuid,uuid,date,text,bigint,timestamp with time zone,bytea,character,jsonb,bytea,character,bytea,character)', v_definer)
+  ), function_matrix AS (
+    SELECT role_oid, object_name,
+      role_oid IN (owner_oid, v_terminal) AS expected,
+      pg_catalog.has_function_privilege(role_oid, object_name, 'EXECUTE')
+        AS observed
+    FROM roles CROSS JOIN functions
+  ), columns AS (
+    SELECT roles.role_oid,
+      pg_catalog.format('public.%I', relation.relname) AS object_name,
+      attribute.attname, privilege.privilege,
+      pg_catalog.has_column_privilege(
+        roles.role_oid, relation.oid, attribute.attnum, privilege.privilege
+      ) AS observed,
+      (roles.role_oid = v_schema_owner)
+      OR (roles.role_oid = v_active_owner AND (
+        privilege.privilege = 'SELECT'
+        OR (relation.relname IN (
+          'reader_summary_daily_execution_cursors',
+          'reader_summary_daily_model_jobs'
+        ) AND privilege.privilege = 'UPDATE')
+      ))
+      OR (roles.role_oid = v_definer
+        AND relation.relname = 'reader_summary_daily_model_jobs'
+        AND privilege.privilege IN ('SELECT', 'UPDATE'))
+      OR (relation.relname = 'reader_summary_daily_model_jobs'
+        AND roles.role_oid = v_publication_owner
+        AND privilege.privilege = 'SELECT')
+      OR (relation.relname IN ('feed_items', 'source_items')
+        AND (roles.role_oid = v_publication_owner OR pg_catalog.pg_has_role(
+          roles.role_oid, v_publication_runtime, 'USAGE'
+        ))
+        AND ((privilege.privilege = 'SELECT' AND attribute.attname = ANY(
+          CASE relation.relname
+            WHEN 'feed_items' THEN ARRAY[
+              'id','tenant_id','workspace_id','interest_id','source_item_id',
+              'source_binding_id','provider_key','canonical_url','title',
+              'body_preview','author_handle','status','published_at','observed_at'
+            ]::NAME[]
+            ELSE ARRAY[
+              'id','tenant_id','workspace_id','source_binding_id','provider_key',
+              'provider_item_id','canonical_url','body','content_hash',
+              'provider_content_hash','observed_at','metadata'
+            ]::NAME[]
+          END
+        )) OR (privilege.privilege = 'UPDATE' AND attribute.attname = 'id')))
+        AS expected
+    FROM roles
+    CROSS JOIN (VALUES ('SELECT'), ('UPDATE')) AS privilege(privilege)
+    JOIN pg_catalog.pg_class AS relation ON relation.relname IN (
+      'reader_summary_daily_execution_cursors',
+      'reader_summary_daily_model_jobs',
+      'reader_summary_daily_source_authorities', 'feed_items', 'source_items'
+    )
+    JOIN pg_catalog.pg_namespace AS namespace
+      ON namespace.oid = relation.relnamespace AND namespace.nspname = 'public'
+    JOIN pg_catalog.pg_attribute AS attribute ON attribute.attrelid = relation.oid
+      AND attribute.attnum > 0 AND NOT attribute.attisdropped
+  ), all_checks AS (
+    SELECT expected, observed FROM table_matrix
+    UNION ALL SELECT expected, observed FROM schemas
+    UNION ALL SELECT expected, observed FROM function_matrix
+    UNION ALL SELECT expected, observed FROM columns
+  )
+  SELECT pg_catalog.bool_and(observed IS NOT DISTINCT FROM expected)
+  INTO STRICT v_effective_acl_exact FROM all_checks;
+  IF v_effective_acl_exact IS DISTINCT FROM TRUE THEN
+    RAISE EXCEPTION
+      'telemetry recovery effective role/object privileges drifted';
   END IF;
 
   SELECT namespace.nspowner = v_schema_owner AND namespace.nspacl IS NOT NULL

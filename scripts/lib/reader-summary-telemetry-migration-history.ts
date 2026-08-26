@@ -35,6 +35,25 @@ export type ReaderSummaryTelemetryMigrationRow = Readonly<{
   started_at: Date | string;
 }>;
 
+export type ReaderSummaryTelemetryRecoveryAttestation = Readonly<{
+  authorizedAt: string;
+  completedAt: string;
+  correctedChecksum: string;
+  correctedFinishedAt: string;
+  correctedMigrationId: string;
+  correctedStartedAt: string;
+  databaseName: string;
+  databaseOid: number;
+  digestValid: boolean;
+  migrationName: string;
+  oldChecksum: string;
+  oldMigrationId: string;
+  recoveryNonce: string;
+  resolvedAt: string;
+  schemaVersion: string;
+  state: string;
+}>;
+
 export const normalizeReviewedTelemetryFailureLog = (logs: string): string =>
   logs.replaceAll("\r\n", "\n")
     .replace(/line: Some\([0-9]+\)/gu, "line: Some(<server-line>)")
@@ -53,7 +72,10 @@ export const classifyReaderSummaryTelemetryMigrationHistory = (
     if (row !== undefined && isExactUnfinishedFailure(row)) {
       return "recovery-required";
     }
-    if (row !== undefined && isExactResolvedFailure(row)) return "resolved";
+    // A rollback marker is never an authorized terminal state. Only the
+    // complete two-row history plus its separately verified durable receipt
+    // can be accepted by deployment/release callers.
+    if (row !== undefined && isExactResolvedFailure(row)) return "invalid";
     if (row !== undefined && isExactCorrectedSuccess(row)) return "corrected";
     return "invalid";
   }
@@ -67,6 +89,54 @@ export const classifyReaderSummaryTelemetryMigrationHistory = (
     timestamp(historical.rolled_back_at) <= timestamp(corrected.started_at)
     ? "recovered"
     : "invalid";
+};
+
+export const classifyReaderSummaryTelemetryDeployment = (
+  rows: readonly ReaderSummaryTelemetryMigrationRow[],
+  attestation: "absent" | "invalid" | "verified",
+): ReaderSummaryTelemetryHistoryState => {
+  const history = classifyReaderSummaryTelemetryMigrationHistory(rows);
+  if (history === "recovered") {
+    return attestation === "verified" ? "recovered" : "invalid";
+  }
+  if (history === "clean" || history === "corrected" ||
+      history === "recovery-required") {
+    return attestation === "absent" ? history : "invalid";
+  }
+  return "invalid";
+};
+
+export const isExactReaderSummaryTelemetryRecoveryAttestation = (
+  history: readonly ReaderSummaryTelemetryMigrationRow[],
+  attestations: readonly ReaderSummaryTelemetryRecoveryAttestation[],
+  database: Readonly<{ name: string; oid: number }>,
+): boolean => {
+  if (classifyReaderSummaryTelemetryMigrationHistory(history) !== "recovered" ||
+      attestations.length !== 1) return false;
+  const attestation = attestations[0];
+  const old = history.find((row) =>
+    row.checksum === readerSummaryTelemetryOldChecksum);
+  const corrected = history.find((row) =>
+    row.checksum === readerSummaryTelemetryCorrectedChecksum);
+  return attestation !== undefined && old !== undefined &&
+    corrected !== undefined && attestation.digestValid &&
+    attestation.schemaVersion === "reader_summary.telemetry_recovery.v1" &&
+    attestation.state === "COMPLETED" &&
+    attestation.migrationName === readerSummaryTelemetryMigration &&
+    attestation.databaseOid === database.oid &&
+    attestation.databaseName === database.name &&
+    attestation.oldMigrationId === old.id &&
+    attestation.correctedMigrationId === corrected.id &&
+    attestation.oldChecksum === readerSummaryTelemetryOldChecksum &&
+    attestation.correctedChecksum === readerSummaryTelemetryCorrectedChecksum &&
+    /^[0-9a-f]{24}$/u.test(attestation.recoveryNonce) &&
+    timestamp(attestation.authorizedAt) <= timestamp(attestation.resolvedAt) &&
+    timestamp(attestation.resolvedAt) <= timestamp(corrected.started_at) &&
+    timestamp(corrected.started_at) === timestamp(attestation.correctedStartedAt) &&
+    timestamp(corrected.finished_at) ===
+      timestamp(attestation.correctedFinishedAt) &&
+    timestamp(attestation.correctedFinishedAt) <=
+      timestamp(attestation.completedAt);
 };
 
 const isExactFailureBase = (row: ReaderSummaryTelemetryMigrationRow): boolean =>

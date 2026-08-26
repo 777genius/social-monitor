@@ -429,6 +429,36 @@ deploy_reader_summary_publication_migrations() (
   local runtime_role=$READER_SUMMARY_PUBLICATION_RUNTIME_ROLE
   local feed_promotion_index_state
 
+  apply_reader_summary_publication_migration_batch() {
+    feed_promotion_index_state=$(reader_summary_feed_promotion_index_state \
+      "$secret" "$ca_certificate") || return
+    if [[ $feed_promotion_index_state != pending && \
+          $feed_promotion_index_state != all_valid ]]; then
+      return 1
+    fi
+
+    # Production PostgreSQL is an external managed service. The deployment host
+    # has no authoritative storage-capacity signal, so host/container df output
+    # must never be treated as database headroom. Recovery is bounded to the four
+    # known concurrent indexes and preserves unrecognized migration failures.
+
+    # shellcheck disable=SC2016 # Expansion occurs in the child shell.
+    "${COMPOSE[@]}" --profile app run -T --rm --no-deps \
+      --user 0:0 \
+      -v "$secret:/run/secrets/reader-summary-publication-admin-url:ro" \
+      -v "$ca_certificate:/run/social-monitor-db/ca-certificate.crt:ro" \
+      migrate sh -c '
+        set -eu
+        DATABASE_URL=$(cat /run/secrets/reader-summary-publication-admin-url)
+        export DATABASE_URL
+        npm run check:feed-promotion-index-recovery -- recover
+        npm run migrate:deploy
+        npm run check:feed-promotion-index-recovery -- verify
+      ' || return
+
+    [[ $(reader_summary_original_cutoff_probe post) == corrected ]]
+  }
+
   reader_summary_publication_migrator_preflight ||
     fail 'reader summary publication migrator validation failed'
 
@@ -438,36 +468,11 @@ deploy_reader_summary_publication_migrations() (
   resolve_reader_summary_original_cutoff_failure || return
 
   if declare -F resolve_reader_summary_telemetry_migration_failure >/dev/null; then
-    resolve_reader_summary_telemetry_migration_failure || return
+    resolve_reader_summary_telemetry_migration_failure \
+      apply_reader_summary_publication_migration_batch || return
+  else
+    apply_reader_summary_publication_migration_batch || return
   fi
-
-  feed_promotion_index_state=$(reader_summary_feed_promotion_index_state \
-    "$secret" "$ca_certificate") || return
-  if [[ $feed_promotion_index_state != pending && \
-        $feed_promotion_index_state != all_valid ]]; then
-    return 1
-  fi
-
-  # Production PostgreSQL is an external managed service. The deployment host
-  # has no authoritative storage-capacity signal, so host/container df output
-  # must never be treated as database headroom. Recovery is bounded to the four
-  # known concurrent indexes and preserves unrecognized migration failures.
-
-  # shellcheck disable=SC2016 # Expansion occurs in the child shell.
-  "${COMPOSE[@]}" --profile app run -T --rm --no-deps \
-    --user 0:0 \
-    -v "$secret:/run/secrets/reader-summary-publication-admin-url:ro" \
-    -v "$ca_certificate:/run/social-monitor-db/ca-certificate.crt:ro" \
-    migrate sh -c '
-      set -eu
-      DATABASE_URL=$(cat /run/secrets/reader-summary-publication-admin-url)
-      export DATABASE_URL
-      npm run check:feed-promotion-index-recovery -- recover
-      npm run migrate:deploy
-      npm run check:feed-promotion-index-recovery -- verify
-    ' || return
-
-  [[ $(reader_summary_original_cutoff_probe post) == corrected ]] || return
 
   run_reader_summary_publication_admin_sql \
     "$secret" "$ca_certificate" "$runtime_role" post || return

@@ -32,7 +32,7 @@ BEGIN
     OR v_guard_backend_start_text IS NULL
     OR v_guard_nonce !~ '^[0-9a-f]{24}$'
     OR v_guard_application IS DISTINCT FROM
-      'social-monitor/telemetry-recovery-guard/' || v_guard_nonce THEN
+      'social-monitor/telemetry-guard/' || v_guard_nonce THEN
     RAISE EXCEPTION 'telemetry recovery postflight guard binding is invalid';
   END IF;
   SELECT count(*) INTO STRICT v_guard_count
@@ -73,4 +73,4 @@ BEGIN
 END
 $reader_summary_telemetry_recovery_postflight$;
 
-SELECT 'resolved' AS case;
+SELECT social_monitor_telemetry_recovery.record_attestation('RESOLVE') AS case;
