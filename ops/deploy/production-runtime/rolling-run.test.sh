@@ -106,6 +106,7 @@ node -e '
   const receipt = require(process.argv[1]);
   if (receipt.period.endedAt !== "2026-08-15T23:59:59.999Z") process.exit(1);
 ' "$midnight_receipt"
+pre_failure_collection_bytes=$(sha256sum "$exact_collection" | cut -d' ' -f1)
 
 if SOCIAL_MONITOR_ROLLING_RUN_TEST_MODE=1 \
   SOCIAL_MONITOR_ROLLING_RUN_TEST_ROOT=$TEST_ROOT \
@@ -118,7 +119,7 @@ if SOCIAL_MONITOR_ROLLING_RUN_TEST_MODE=1 \
   exit 1
 fi
 grep -Fx 'collection-failed 20260815T131500000Z 2026-08-15' "$TEST_ROOT/docker.log" >/dev/null
-[[ $(sha256sum "$exact_collection" | cut -d' ' -f1) == "$degraded_collection_bytes" ]]
+[[ $(sha256sum "$exact_collection" | cut -d' ' -f1) == "$pre_failure_collection_bytes" ]]
 [[ ! -e $TEST_ROOT/artifacts/rolling-summary/rolling-summary.20260815T131500000Z.collection.v1.json ]]
 [[ ! -e $TEST_ROOT/artifacts/rolling-summary/rolling-summary.20260815T131500000Z.receipt.v1.json ]]
 [[ ! -e $TEST_ROOT/artifacts/rolling-summary/collections/runs/20260815T131500000Z/reader-summary-clean-real-day-collection.2026-08-15.v1.json ]]
