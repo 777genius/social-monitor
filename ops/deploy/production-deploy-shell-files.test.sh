@@ -23,7 +23,7 @@ assert_array_equals() {
     fail "$label count: expected ${#expected_ref[@]}, received ${#actual_ref[@]}"
   for index in "${!expected_ref[@]}"; do
     [[ ${actual_ref[$index]} == "${expected_ref[$index]}" ]] ||
-      fail "$label[$index]: expected ${expected_ref[$index]}, received ${actual_ref[$index]}"
+      fail "${label}[${index}]: expected ${expected_ref[$index]}, received ${actual_ref[$index]}"
   done
 }
 
@@ -95,9 +95,12 @@ expected_final_only=(
   ops/deploy/fixtures/reader-summary-publication-fake-docker.sh
   ops/deploy/fixtures/reader-summary-publication-pause-worker.sh
 )
+# shellcheck disable=SC2034 # Read indirectly through assert_array_equals namerefs.
 expected_non_bridge=("${expected_bridge[@]}" "${expected_final_only[@]}")
 
+# shellcheck disable=SC2034 # Read indirectly through assert_array_equals namerefs.
 mapfile -t actual_bridge < <(production_deploy_shell_files true)
+# shellcheck disable=SC2034 # Read indirectly through assert_array_equals namerefs.
 mapfile -t actual_non_bridge < <(production_deploy_shell_files false)
 assert_array_equals bridge expected_bridge actual_bridge
 assert_array_equals non-bridge expected_non_bridge actual_non_bridge
