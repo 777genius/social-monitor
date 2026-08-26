@@ -16,6 +16,7 @@ BRIDGE=b89950632b0cefa4f7b58b687cdfd6e6cd912a04
 BRIDGE_TREE=0f2edeb95bbb658cebdb1aecdcda24026eca7d19
 BRIDGE_BLOB=e02f7b7684f75121521065b43148708d545ab806
 CANONICAL_RELEASE_B2=e3b5b5d89b3586668e36f987f03672415b5a0f37
+CANONICAL_TARGET=05744f99b2d13e47a64a7ff12ea2ab8893f5e88a
 BRIDGE_PATH=ops/deploy/deploy-control-bridge-lib.sh
 BACKEND_MARKER=09a79687e042e36d4ec9c1f33f0367527f044181
 CONTROL_MARKER=3f4a561e9fd6626bbd1a1e1ca73f2ec7eb34c8f8
@@ -153,7 +154,13 @@ trap cleanup_fixture EXIT
 exercise_fixture_cleanup_race
 GRAPH_REPO=$FIXTURE/graph
 
-TARGET=$(git -C "$SOURCE_REPO" rev-parse HEAD)
+SOURCE_HEAD=$(git -C "$SOURCE_REPO" rev-parse HEAD)
+TARGET=$CANONICAL_TARGET
+git -C "$SOURCE_REPO" merge-base --is-ancestor "$TARGET" "$SOURCE_HEAD" || {
+  printf 'canonical Release B target %s is not an ancestor of source HEAD %s\n' \
+    "$TARGET" "$SOURCE_HEAD" >&2
+  exit 1
+}
 git -c gc.autoDetach=false clone -q --shared "$SOURCE_REPO" "$GRAPH_REPO"
 configure_fixture_repository "$GRAPH_REPO"
 git -C "$GRAPH_REPO" config user.name 'Release B Current Main Test'
