@@ -5,6 +5,8 @@ PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 PROJECT_ROOT=$(cd "$SCRIPT_DIR/../.." && pwd)
 BRIDGE_RELEASE_SHA=$(git -C "$PROJECT_ROOT" rev-parse '472d835c^{commit}')
+ROLLING_ENTRYPOINT_BRIDGE_SHA=$(git -C "$PROJECT_ROOT" rev-parse '0be002ec^{commit}')
+ROLLING_ENTRYPOINT_BRIDGE_PARENT=922a38d56d27b2da3ce356190bd2416e5e991271
 FIXTURE=$(mktemp -d "${TMPDIR:-/tmp}/rabbitmq-quorum-deploy-bridge.XXXXXX")
 trap 'rm -rf "$FIXTURE"' EXIT
 
@@ -59,6 +61,31 @@ BRIDGE_CONTROL_PATHS=(
   ops/deploy/x-collector-image-deploy-lib.sh
   ops/deploy/deploy-control-bridge-lib.sh
 )
+
+assert_rolling_entrypoint_bridge() {
+  local parent delta bridge_blob current_blob
+  parent=$(git -C "$PROJECT_ROOT" rev-parse "$ROLLING_ENTRYPOINT_BRIDGE_SHA^")
+  [[ $parent == "$ROLLING_ENTRYPOINT_BRIDGE_PARENT" ]] || {
+    echo 'rolling entrypoint bridge parent drifted' >&2
+    exit 1
+  }
+  delta=$(git -C "$PROJECT_ROOT" diff --name-only --no-renames \
+    "$parent" "$ROLLING_ENTRYPOINT_BRIDGE_SHA" --)
+  [[ $delta == ops/deploy/social-monitor-production-deploy.sh ]] || {
+    echo 'rolling entrypoint bridge is not control-only' >&2
+    exit 1
+  }
+  bridge_blob=$(git -C "$PROJECT_ROOT" rev-parse \
+    "$ROLLING_ENTRYPOINT_BRIDGE_SHA:ops/deploy/social-monitor-production-deploy.sh")
+  current_blob=$(git -C "$PROJECT_ROOT" rev-parse \
+    "HEAD:ops/deploy/social-monitor-production-deploy.sh")
+  [[ $bridge_blob == "$current_blob" ]] || {
+    echo 'rolling entrypoint bridge does not match the current release' >&2
+    exit 1
+  }
+}
+
+assert_rolling_entrypoint_bridge
 
 assert_real_bridge_target_assets() {
   local path entry mode type object tree_path expected_digest alternate_digest reviewed_digest
