@@ -3,6 +3,7 @@ set -euo pipefail
 
 REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)
 RUNNER=$REPO/ops/deploy/production-runtime/rolling-run.sh
+CONTAINER_RUNNER=$REPO/ops/deploy/production-runtime/rolling-summary-container-run.sh
 TEST_ROOT=$(mktemp -d /tmp/social-monitor-rolling-run.XXXXXX)
 trap 'rm -rf "$TEST_ROOT"' EXIT
 
@@ -46,22 +47,22 @@ grep -F -- '--profile daily run --rm --no-deps' "$TEST_ROOT/docker.log" >/dev/nu
 grep -F -- '-e ROLLING_COLLECTION_DATE=2026-08-15' "$TEST_ROOT/docker.log" >/dev/null
 grep -F -- '-e ROLLING_AUTH_READY=true' "$TEST_ROOT/docker.log" >/dev/null
 grep -F -- 'daily-runner sh -lc' "$TEST_ROOT/docker.log" >/dev/null
-grep -F -- '--exact-date-artifact-directory "$collection_staging_directory"' "$RUNNER" >/dev/null
-grep -F -- 'reader-summary-clean-real-day-collection.$ROLLING_COLLECTION_DATE.v1.json' "$RUNNER" >/dev/null
-grep -F -- 'collection_directory/runs/$ROLLING_RUN_ID' "$RUNNER" >/dev/null
-! grep -F -- 'collection_source=ops/evals/reader-summary-clean-real-day-collection.v1.json' "$RUNNER" >/dev/null
+grep -F -- '--exact-date-artifact-directory "$collection_staging_directory"' "$CONTAINER_RUNNER" >/dev/null
+grep -F -- 'reader-summary-clean-real-day-collection.$ROLLING_COLLECTION_DATE.v1.json' "$CONTAINER_RUNNER" >/dev/null
+grep -F -- 'collection_directory/runs/$ROLLING_RUN_ID' "$CONTAINER_RUNNER" >/dev/null
+! grep -F -- 'collection_source=ops/evals/reader-summary-clean-real-day-collection.v1.json' "$CONTAINER_RUNNER" >/dev/null
 [[ $(sha256sum "$prior_alias" | cut -d' ' -f1) == "$prior_alias_bytes" ]]
 exact_collection=$TEST_ROOT/artifacts/rolling-summary/collections/reader-summary-clean-real-day-collection.2026-08-15.v1.json
 node "$REPO/ops/deploy/production-runtime/rolling-summary-receipt.mjs" \
   validate-collection "$exact_collection" 2026-08-15
 grep -Fx 'collection-created 20260815T081500000Z 2026-08-15' "$TEST_ROOT/docker.log" >/dev/null
-grep -F -- "--providers \"\$required_providers\"" "$RUNNER" >/dev/null
-grep -F -- 'npm run capture:durable-reader-summary' "$RUNNER" >/dev/null
-grep -F -- 'DURABLE_READER_SUMMARY_MODEL=agent-runtime' "$RUNNER" >/dev/null
-grep -F -- 'DURABLE_READER_SUMMARY_TOPIC_LABELER=deterministic' "$RUNNER" >/dev/null
-grep -F -- 'DURABLE_READER_SUMMARY_MAX_EVIDENCE_ITEMS=120' "$RUNNER" >/dev/null
-grep -F -- 'DURABLE_READER_SUMMARY_PERIOD_ENDED_AT' "$RUNNER" >/dev/null
-grep -F -- 'DURABLE_READER_SUMMARY_LIVE_OBSERVATION_CUTOFF' "$RUNNER" >/dev/null
+grep -F -- "--providers \"\$required_providers\"" "$CONTAINER_RUNNER" >/dev/null
+grep -F -- 'npm run capture:durable-reader-summary' "$CONTAINER_RUNNER" >/dev/null
+grep -F -- 'DURABLE_READER_SUMMARY_MODEL=agent-runtime' "$CONTAINER_RUNNER" >/dev/null
+grep -F -- 'DURABLE_READER_SUMMARY_TOPIC_LABELER=deterministic' "$CONTAINER_RUNNER" >/dev/null
+grep -F -- 'DURABLE_READER_SUMMARY_MAX_EVIDENCE_ITEMS=120' "$CONTAINER_RUNNER" >/dev/null
+grep -F -- 'DURABLE_READER_SUMMARY_PERIOD_ENDED_AT' "$CONTAINER_RUNNER" >/dev/null
+grep -F -- 'DURABLE_READER_SUMMARY_LIVE_OBSERVATION_CUTOFF' "$CONTAINER_RUNNER" >/dev/null
 grep -Fx 'ExecStart=/var/data/social-monitor/control/rolling-run.sh' \
   "$REPO/ops/deploy/production-runtime/social-monitor-rolling.service" >/dev/null
 grep -Fx 'OnCalendar=*-*-* 04,08,12,16,20:15:00 UTC' \
@@ -122,26 +123,26 @@ grep -F -- '-e ROLLING_AUTH_READY=false' "$TEST_ROOT/docker.log" >/dev/null
   "$TEST_ROOT/docker.log") == 3 ]]
 
 collection_line=$(grep -n 'npm run run:reader-summary-clean-real-day-collection' \
-  "$RUNNER" | cut -d: -f1)
+  "$CONTAINER_RUNNER" | cut -d: -f1)
 collection_staging_clear_line=$(grep -n 'rm -f "\$collection_staging_source"' \
-  "$RUNNER" | head -1 | cut -d: -f1)
+  "$CONTAINER_RUNNER" | head -1 | cut -d: -f1)
 collection_validation_line=$(grep -n 'collection_validation_exit=0' \
-  "$RUNNER" | cut -d: -f1)
+  "$CONTAINER_RUNNER" | cut -d: -f1)
 collection_failure_guard_line=$(grep -n '"\$collection_validation_exit" -ne 0' \
-  "$RUNNER" | cut -d: -f1)
+  "$CONTAINER_RUNNER" | cut -d: -f1)
 collection_degraded_line=$(grep -n 'publishing from terminal current-pass evidence' \
-  "$RUNNER" | cut -d: -f1)
+  "$CONTAINER_RUNNER" | cut -d: -f1)
 collection_promotion_line=$(grep -n 'cp "\$collection_staging_source" "\$collection_source' \
-  "$RUNNER" | cut -d: -f1)
-auth_guard_line=$(grep -n 'ROLLING_AUTH_READY.*!= true' "$RUNNER" | cut -d: -f1)
+  "$CONTAINER_RUNNER" | cut -d: -f1)
+auth_guard_line=$(grep -n 'ROLLING_AUTH_READY.*!= true' "$CONTAINER_RUNNER" | cut -d: -f1)
 ((collection_staging_clear_line < collection_line))
 ((collection_line < collection_validation_line))
 ((collection_validation_line < collection_failure_guard_line))
 ((collection_failure_guard_line < collection_degraded_line))
 ((collection_degraded_line < collection_promotion_line))
 ((collection_line < auth_guard_line))
-grep -F 'if [ "$ROLLING_AUTH_READY" != true ]; then' "$RUNNER" >/dev/null
-! grep -F 'if [[ "$ROLLING_AUTH_READY"' "$RUNNER" >/dev/null
+grep -F 'if [ "$ROLLING_AUTH_READY" != true ]; then' "$CONTAINER_RUNNER" >/dev/null
+! grep -F 'if [[ "$ROLLING_AUTH_READY"' "$CONTAINER_RUNNER" >/dev/null
 set +e
 ROLLING_AUTH_READY=false sh -ec \
   'if [ "$ROLLING_AUTH_READY" != true ]; then exit 75; fi'

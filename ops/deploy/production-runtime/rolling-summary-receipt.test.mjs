@@ -8,6 +8,10 @@ import { URL } from "node:url";
 
 const directory = mkdtempSync(join(tmpdir(), "rolling-summary-receipt-"));
 const script = new URL("./rolling-summary-receipt.mjs", import.meta.url);
+const fixtureWriter = new URL(
+  "./test-fixtures/rolling-run-fake-artifact.mjs",
+  import.meta.url,
+);
 const date = "2026-08-15";
 const runId = "20260815T081500000Z";
 const collectionPath = join(directory, "collection.json");
@@ -15,8 +19,20 @@ const evidencePath = join(directory, "evidence.json");
 const receiptPath = join(directory, "receipt.json");
 const invalidReceiptPath = join(directory, "invalid-receipt.json");
 const priorCollectionPath = join(directory, "collection.2026-08-14.json");
+const fixtureCollectionPath = join(directory, "collection.fixture.json");
+let canonicalCollection;
 
 try {
+  runFixture(
+    "collection",
+    fixtureCollectionPath,
+    runId,
+    date,
+    "true",
+  );
+  canonicalCollection = JSON.parse(
+    readFileSync(fixtureCollectionPath, "utf8"),
+  );
   writeFileSync(collectionPath, JSON.stringify(collectionFixture()));
   writeFileSync(
     evidencePath,
@@ -77,6 +93,12 @@ try {
     ],
     ["nonterminal scan", (collection) => (collection.scans[0].status = "running")],
     ["malformed scan", (collection) => delete collection.scans[0].fetched],
+    ["projected-less scan", (collection) => delete collection.scans[0].projected],
+    ["warning-less scan", (collection) => delete collection.scans[0].warningCount],
+    ["attempt-less scan", (collection) => delete collection.scans[0].attemptCount],
+    ["mode-less scan", (collection) => delete collection.scans[0].acquisitionMode],
+    ["target-less", (collection) => collection.targets.pop()],
+    ["fresh-window-less", (collection) => delete collection.freshWindow],
     [
       "unsafe payload privacy",
       (collection) =>
@@ -172,6 +194,10 @@ try {
     ["nonterminal provider", (value) => (value.collection.providers[0].status = "running")],
     ["incomplete provider", (value) => delete value.collection.providers[0].coverageState],
     ["untruthful quality", (value) => (value.collection.finalDayQualityGatePassed = true)],
+    ["period-less", (value) => delete value.period],
+    ["summary-less", (value) => delete value.summary],
+    ["empty publication id", (value) => (value.publication.readerSummaryId = "")],
+    ["unsafe redaction", (value) => (value.redaction.secretsIncluded = true)],
   ]) {
     const invalid = JSON.parse(JSON.stringify(degradedReceipt));
     mutate(invalid);
@@ -187,44 +213,7 @@ try {
 }
 
 function collectionFixture() {
-  const providerKeys = [
-    "github-trending-page",
-    "hacker-news",
-    "reddit",
-    "rss",
-    "x-twitter",
-  ];
-  return {
-    schemaVersion: 1,
-    artifactFormat: "reader-summary-clean-real-day-collection-v1",
-    generatedBy: "npm run run:reader-summary-clean-real-day-collection",
-    model: {
-      rawProviderPayloadPersistedInReport: false,
-      rawPostTextPersistedInReport: false,
-      rawProviderConfigPersistedInReport: false,
-    },
-    inputs: {
-      database: "local-postgres",
-      providerKeys,
-      targetPublishedWindow: {
-        startInclusive: `${date}T00:00:00.000Z`,
-        endExclusive: "2026-08-16T00:00:00.000Z",
-      },
-    },
-    run: { collectionDate: date },
-    scans: providerKeys.map((providerKey) => ({
-      providerKey,
-      status: providerKey === "reddit" ? "failed" : "succeeded",
-      fetched: providerKey === "reddit" ? 0 : 10,
-      inserted: providerKey === "reddit" ? 0 : 5,
-      skippedDuplicates: providerKey === "reddit" ? 0 : 5,
-      observability: {
-        coverageState: providerKey === "reddit" ? "unavailable" : "partial",
-      },
-    })),
-    qualityGates: { noRawSecretFragments: true },
-    blockingPassed: false,
-  };
+  return JSON.parse(JSON.stringify(canonicalCollection));
 }
 
 function assertCollectionRejected(label, mutate) {
@@ -240,6 +229,13 @@ function assertCollectionRejected(label, mutate) {
 
 function run(...args) {
   const result = spawnSync(process.execPath, [script.pathname, ...args], {
+    encoding: "utf8",
+  });
+  assert.equal(result.status, 0, result.stderr);
+}
+
+function runFixture(...args) {
+  const result = spawnSync(process.execPath, [fixtureWriter.pathname, ...args], {
     encoding: "utf8",
   });
   assert.equal(result.status, 0, result.stderr);

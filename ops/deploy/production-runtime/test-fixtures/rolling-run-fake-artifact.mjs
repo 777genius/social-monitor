@@ -13,12 +13,17 @@ const providerKeys = [
   "rss",
   "x-twitter",
 ];
-const providers = providerKeys.map((providerKey) => ({
+const providers = providerKeys.map((providerKey, index) => ({
   providerKey,
+  bindingFingerprint: `binding-${index}`,
+  acquisitionMode: "live_collection",
+  attemptCount: 1,
   status: degraded && providerKey === "reddit" ? "failed" : "succeeded",
   fetched: degraded && providerKey === "reddit" ? 0 : 10,
   inserted: degraded && providerKey === "reddit" ? 0 : 5,
+  projected: degraded && providerKey === "reddit" ? 0 : 10,
   skippedDuplicates: degraded && providerKey === "reddit" ? 0 : 5,
+  warningCount: degraded && providerKey === "reddit" ? 1 : 0,
   coverageState:
     degraded && providerKey === "reddit" ? "unavailable" : "complete",
 }));
@@ -29,6 +34,10 @@ if (kind === "collection") {
     artifactFormat: "reader-summary-clean-real-day-collection-v1",
     generatedBy: "npm run run:reader-summary-clean-real-day-collection",
     model: {
+      mode: "targeted_real_binding_collection",
+      liveNetwork: true,
+      liveNetworkProviderKeys: providerKeys,
+      durableSnapshotReuseProviderKeys: [],
       rawProviderPayloadPersistedInReport: false,
       rawPostTextPersistedInReport: false,
       rawProviderConfigPersistedInReport: false,
@@ -36,50 +45,90 @@ if (kind === "collection") {
     inputs: {
       database: "local-postgres",
       providerKeys,
+      xCollectorConfigured: true,
       targetPublishedWindow: {
         startInclusive: `${collectionDate}T00:00:00.000Z`,
         endExclusive: nextUtcDate(collectionDate),
       },
     },
-    run: { collectionDate },
+    run: {
+      startedAt: `${collectionDate}T08:15:00.000Z`,
+      completedAt: `${collectionDate}T08:16:00.000Z`,
+      collectionDate,
+    },
+    targets: providerKeys.map((providerKey, index) => ({
+      providerKey,
+      bindingFingerprint: `binding-${index}`,
+      interestFingerprint: "interest",
+      workspaceFingerprint: "workspace",
+      plannerEnabled: providerKey === "reddit" || providerKey === "x-twitter",
+      canaryRollout: providerKey === "reddit" || providerKey === "x-twitter",
+    })),
     scans: providers.map(({ coverageState, ...provider }) => ({
       ...provider,
-      observability: { coverageState },
+      observability: observation(provider, coverageState),
     })),
+    freshWindow: windowProof(),
+    targetWindow: windowProof(),
     qualityGates: { noRawSecretFragments: true },
     blockingPassed: !degraded,
   });
-} else if (kind === "receipt") {
+} else if (kind === "evidence") {
   write({
-    schemaVersion: 1,
-    artifactFormat: "social-monitor-rolling-summary-receipt-v1",
-    runId,
-    collectionDate,
-    period: {
-      startedAt: `${collectionDate}T00:00:00.000Z`,
-      endedAt: `${collectionDate}T20:15:00.000Z`,
-    },
-    completedAt: `${collectionDate}T20:16:00.000Z`,
-    status: "SUCCESS",
-    collection: {
-      commandExitCode: degraded ? 1 : 0,
-      finalDayQualityGatePassed: !degraded,
-      providers,
-    },
-    summary: {
-      readerSummaryJobId: "test-job",
-      readerSummaryId: "test-summary",
-      status: "completed",
-    },
-    publication: {
-      readerSummaryJobId: "test-job",
-      readerSummaryId: "test-summary",
+    result: {
+      readerSummaryJobId: `job-${runId}`,
+      readerSummaryId: `summary-${runId}`,
       status: "completed",
     },
     redaction: { secretsIncluded: false },
   });
 } else {
   throw new Error("fake rolling artifact kind is invalid");
+}
+
+function observation(provider, coverageState) {
+  return {
+    acquisitionMode: provider.acquisitionMode,
+    targetItemCount: 10,
+    collectedItemCount: provider.fetched,
+    acceptedItemCount: provider.projected,
+    insertedItemCount: provider.inserted,
+    outsideWindowItemCount: 0,
+    paginationDuplicateItemCount: 0,
+    storageDuplicateItemCount: provider.skippedDuplicates,
+    totalDuplicateItemCount: provider.skippedDuplicates,
+    pageCount: provider.status === "failed" ? 0 : 1,
+    paginationStopReason: provider.status === "failed" ? "failed" : "single_page",
+    rateLimitEventCount: 0,
+    coverageState,
+    slo: {
+      met: provider.status !== "failed",
+      targetItemCount: 10,
+      evaluatedItemCount: provider.projected,
+      coverageRatio: provider.projected / 10,
+      freshnessLagSeconds: 0,
+      maxFreshnessLagSeconds: 21600,
+      reasons: provider.status === "failed" ? ["provider_failure"] : [],
+      retryDisposition: provider.status === "failed" ? "blocked" : "none",
+    },
+    freshness: {},
+  };
+}
+
+function windowProof() {
+  return {
+    feedItemCount: 0,
+    providerCounts: {},
+    newestItemAtByProvider: {},
+    sourceQueryLaneCoverageByProvider: {},
+    distinctSourceQueryLaneCountByProvider: {},
+    orphanInterestCount: 0,
+    orphanSourceBindingCount: 0,
+    interestSnapshotCoverage: 1,
+    sourceBindingSnapshotCoverage: 1,
+    sourceQueryLaneCoverage: 1,
+    distinctSourceQueryLaneCount: 0,
+  };
 }
 
 function write(value) {
