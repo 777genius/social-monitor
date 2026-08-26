@@ -61,7 +61,8 @@ BRIDGE_CONTROL_PATHS=(
 )
 
 assert_real_bridge_target_assets() {
-  local path entry mode type object tree_path expected_digest alternate_digest actual_digest actual_mode
+  local path entry mode type object tree_path expected_digest alternate_digest reviewed_digest
+  local release_b_candidate_digest release_b_sealed_digest actual_digest actual_mode
   local repository_root actual_path actual_real
 
   repository_root=$(readlink -f -- "$PROJECT_ROOT")
@@ -90,6 +91,9 @@ assert_real_bridge_target_assets() {
     }
     expected_digest=$(git -C "$PROJECT_ROOT" show "$BRIDGE_RELEASE_SHA:$path" | sha256sum | awk '{print $1}')
     alternate_digest=
+    reviewed_digest=
+    release_b_candidate_digest=
+    release_b_sealed_digest=
     actual_digest=$(sha256sum "$actual_real" | awk '{print $1}')
     case $path in
       ops/deploy/social-monitor-production-deploy.sh)
@@ -109,6 +113,9 @@ assert_real_bridge_target_assets() {
       ops/deploy/deploy-control-bridge-lib.sh)
         expected_digest=e6f958555966b77d02b85da8d0b9195e13a200dcb2b19c8afc010fab6d28b65d
         alternate_digest=d6f3b562e3445dce3ac3d21364793b43afa53fe56011c0b73d02fac721040cf7
+        reviewed_digest=14ab26a66e982128770947a9b66a764cd4cef6eca1bb017c13f97819ae611a7a
+        release_b_candidate_digest=bea119047fbbd2295185c84e0adeb773dc852e63b951daf5c7a831356a73a371
+        release_b_sealed_digest=1718617b4bbb92f4dbfd92a59fcc482ef7a098734730b8460d21aaced44386c2
         ;;
     esac
     if [[ $path == ops/deploy/social-monitor-production-deploy.sh ]]; then
@@ -146,7 +153,10 @@ assert_real_bridge_target_assets() {
       }
     fi
     [[ $actual_digest == "$expected_digest" ||
-       (-n $alternate_digest && $actual_digest == "$alternate_digest") ]] || {
+       (-n $alternate_digest && $actual_digest == "$alternate_digest") ||
+       (-n $reviewed_digest && $actual_digest == "$reviewed_digest") ||
+       (-n $release_b_candidate_digest && $actual_digest == "$release_b_candidate_digest") ||
+       (-n $release_b_sealed_digest && $actual_digest == "$release_b_sealed_digest") ]] || {
       printf 'current bridge asset digest drifted from V4A4: %s\n' "$path" >&2
       exit 1
     }

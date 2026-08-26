@@ -5,8 +5,13 @@ PATH=/usr/local/bin:/usr/bin:/bin
 
 ZERO_SHA=0000000000000000000000000000000000000000
 POSTGRES_POOL_BOOTSTRAP_VERSION=postgres-pool-v1
+RELEASE_B_CONTROLLER_SHA=8b4aeb31e855ed379349a4e4827600009e174132
+RELEASE_B_CURRENT_MAIN_SHA=77313ea03a3bac7d2298f4021d58124c810d291f
+RELEASE_B_BRIDGE_SHA=b89950632b0cefa4f7b58b687cdfd6e6cd912a04
+RELEASE_B_BRIDGE_TREE=0f2edeb95bbb658cebdb1aecdcda24026eca7d19
+RELEASE_B_BRIDGE_BLOB=e02f7b7684f75121521065b43148708d545ab806
+RELEASE_B_BRIDGE_PATH=ops/deploy/deploy-control-bridge-lib.sh
 DAILY_C1_BRIDGE_POLICY_SHA=944fdb6da3071f70a69c7048c9fcdf1c2552603e
-RELEASE_B_FAILED_IDLE_BRIDGE_SHA=85c5d22febf1e7ce5fa5967d2460ccb73ca96a9d
 SSH_DIRECTORY=${DEPLOY_SSH_DIRECTORY:-${HOME:?HOME is required}/.ssh}
 SSH_KEY_PATH=${DEPLOY_SSH_KEY_PATH:-$SSH_DIRECTORY/social-monitor-production}
 SSH_KNOWN_HOSTS_PATH=${DEPLOY_SSH_KNOWN_HOSTS_PATH:-$SSH_DIRECTORY/known_hosts}
@@ -546,6 +551,55 @@ plan_is_fully_reconciled() {
      $PLAN_BACKEND_BASE != "$ZERO_SHA" ]]
 }
 
+plan_is_exact_release_b_bridge_transition() {
+  [[ $PLAN_FRONTEND == false && $PLAN_BACKEND == false && \
+     $PLAN_CONTROL == true && $PLAN_X_COLLECTOR == false && \
+     $PLAN_POSTGRES_POOL_BOOTSTRAP == "$POSTGRES_POOL_BOOTSTRAP_VERSION" && \
+     $PLAN_POSTGRES_POOL_BOOTSTRAP_SHA == "$RELEASE_B_CONTROLLER_SHA" && \
+     $PLAN_BACKEND_BASE == "$RELEASE_B_CONTROLLER_SHA" ]]
+}
+
+plan_is_exact_release_b_target_transition() {
+  [[ $PLAN_FRONTEND == false && $PLAN_BACKEND == true && \
+     $PLAN_BACKEND_BASE == "$RELEASE_B_CONTROLLER_SHA" && \
+     $PLAN_CONTROL == true && $PLAN_X_COLLECTOR == false && \
+     $PLAN_POSTGRES_POOL_BOOTSTRAP == "$POSTGRES_POOL_BOOTSTRAP_VERSION" && \
+     $PLAN_POSTGRES_POOL_BOOTSTRAP_SHA == "$RELEASE_B_CONTROLLER_SHA" && \
+     $PLAN_POSTGRES_POOL_REPAIR == false ]]
+}
+
+verify_release_b_bridge_identity() {
+  local sha=$1 repository=${GITHUB_WORKSPACE:-.}
+  local actual_tree delta entry mode type object path extra
+  local -a ancestry=()
+
+  [[ $sha == "$RELEASE_B_BRIDGE_SHA" ]] || \
+    fail 'Release B bridge SHA is not the reviewed pin'
+  read -r -a ancestry <<< "$(git -C "$repository" \
+    rev-list --parents -n 1 "$sha" 2>/dev/null)" || \
+    fail 'Release B bridge ancestry cannot be inspected'
+  [[ ${#ancestry[@]} == 2 && ${ancestry[0]} == "$sha" && \
+     ${ancestry[1]} == "$RELEASE_B_CONTROLLER_SHA" ]] || \
+    fail 'Release B bridge is not the exact controller child'
+  actual_tree=$(git -C "$repository" rev-parse "$sha^{tree}" 2>/dev/null) || \
+    fail 'Release B bridge tree cannot be inspected'
+  [[ $actual_tree == "$RELEASE_B_BRIDGE_TREE" ]] || \
+    fail 'Release B bridge tree does not match its reviewed pin'
+  delta=$(git -C "$repository" diff --name-only --no-renames \
+    "$RELEASE_B_CONTROLLER_SHA" "$sha" -- 2>/dev/null) || \
+    fail 'Release B bridge delta cannot be inspected'
+  [[ $delta == "$RELEASE_B_BRIDGE_PATH" ]] || \
+    fail 'Release B bridge changes more than its reviewed controller policy'
+  entry=$(git -C "$repository" ls-tree "$sha" -- \
+    "$RELEASE_B_BRIDGE_PATH" 2>/dev/null) || \
+    fail 'Release B bridge policy blob cannot be inspected'
+  read -r mode type object path extra <<< "$entry"
+  [[ -z ${extra:-} && $mode == 100644 && $type == blob && \
+     $object == "$RELEASE_B_BRIDGE_BLOB" && \
+     $path == "$RELEASE_B_BRIDGE_PATH" ]] || \
+    fail 'Release B bridge policy blob does not match its reviewed pin'
+}
+
 reconcile_deploy_plan() {
   local sha=$1
   local attempt status
@@ -599,6 +653,68 @@ deploy_release() {
   }
 }
 
+prepare_release_b_bridge() {
+  local sha=$1 bridge=$2 current_main=$3 target=$4 status
+  local target_plan_exact=false
+  [[ $sha == "$RELEASE_B_CONTROLLER_SHA" ]] || \
+    fail 'Release B controller SHA is not the reviewed pin'
+  [[ $current_main == "$RELEASE_B_CURRENT_MAIN_SHA" ]] || \
+    fail 'Release B current-main SHA is not the reviewed pin'
+  verify_release_b_bridge_identity "$bridge"
+
+  if capture_plan "$target"; then
+    print_plan
+    plan_is_fully_reconciled && return 0
+    plan_is_exact_release_b_target_transition && target_plan_exact=true
+  else
+    status=$?
+    ((status == 1)) || fail "Release B target preflight plan failed with status $status"
+  fi
+  if capture_plan "$current_main"; then
+    print_plan
+    plan_is_fully_reconciled && return 0
+    plan_is_exact_release_b_target_transition || \
+      fail 'Release B current-main plan is not the exact controller transition'
+  else
+    status=$?
+    ((status == 1)) || fail "Release B current-main plan failed with status $status"
+  fi
+  [[ $target_plan_exact == true ]] || \
+    fail 'Release B target plan is not the exact controller transition'
+  if capture_plan "$bridge"; then
+    print_plan
+    plan_is_fully_reconciled && return 0
+    if plan_is_exact_release_b_bridge_transition; then
+      deploy_once "$bridge"
+      return 0
+    fi
+  else
+    status=$?
+    ((status == 1)) || \
+      fail "Release B bridge preflight plan failed with status $status"
+  fi
+  if capture_plan "$sha"; then
+    status=0
+  else
+    status=$?
+  fi
+  ((status == 0)) || \
+    fail "Release B controller plan failed with status $status"
+  print_plan
+  plan_is_fully_reconciled || deploy_once "$sha"
+  if capture_plan "$bridge"; then
+    status=0
+  else
+    status=$?
+  fi
+  ((status == 0)) || fail "Release B bridge plan failed with status $status"
+  print_plan
+  plan_is_fully_reconciled && return 0
+  plan_is_exact_release_b_bridge_transition || \
+    fail 'Release B bridge plan is not the exact fresh control-only transition'
+  deploy_once "$bridge"
+}
+
 install_daily_c1_bridge_policy() {
   local sha=$1 status
   [[ $sha == "$DAILY_C1_BRIDGE_POLICY_SHA" ]] || \
@@ -610,19 +726,6 @@ install_daily_c1_bridge_policy() {
   fi
   ((status == 0 || status == 255)) || \
     fail "daily C1 bridge policy install failed with status $status"
-}
-
-install_release_b_failed_idle_bridge() {
-  local sha=$1 status
-  [[ $sha == "$RELEASE_B_FAILED_IDLE_BRIDGE_SHA" ]] || \
-    fail 'Release B failed-idle bridge SHA is not the reviewed pin'
-  if run_remote deploy "$sha"; then
-    status=0
-  else
-    status=$?
-  fi
-  ((status == 0 || status == 255)) || \
-    fail "Release B failed-idle bridge install failed with status $status"
 }
 
 upload_frontend() {
@@ -669,17 +772,20 @@ case $action in
     validate_remote_environment
     deploy_release "$2"
     ;;
+  prepare-release-b-bridge)
+    [[ $# == 5 ]] || fail 'prepare-release-b-bridge requires controller, bridge, current-main, and target pins'
+    validate_sha "$2"
+    validate_sha "$3"
+    validate_sha "$4"
+    validate_sha "$5"
+    validate_remote_environment
+    prepare_release_b_bridge "$2" "$3" "$4" "$5"
+    ;;
   install-daily-c1-bridge-policy)
     [[ $# == 2 ]] || fail 'install-daily-c1-bridge-policy requires its pinned SHA'
     validate_sha "$2"
     validate_remote_environment
     install_daily_c1_bridge_policy "$2"
-    ;;
-  install-release-b-failed-idle-bridge)
-    [[ $# == 2 ]] || fail 'install-release-b-failed-idle-bridge requires its pinned SHA'
-    validate_sha "$2"
-    validate_remote_environment
-    install_release_b_failed_idle_bridge "$2"
     ;;
   maintenance)
     [[ $# == 3 || $# == 4 || $# == 5 || $# == 6 ]] || \
