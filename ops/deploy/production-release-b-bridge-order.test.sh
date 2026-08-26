@@ -274,6 +274,8 @@ DEPLOY_SSH_DIRECTORY=$FIXTURE/client-ssh
 # shellcheck source=ops/deploy/github-production-deploy-client.sh
 source "$CLIENT"
 GITHUB_WORKSPACE=$GRAPH_REPO verify_release_b_reviewed_target_identity \
+  "$BRIDGE_TARGET" "$BRIDGE_TARGET"
+GITHUB_WORKSPACE=$GRAPH_REPO verify_release_b_reviewed_target_identity \
   "$BRIDGE_TARGET" "$TARGET"
 if (GITHUB_WORKSPACE=$GRAPH_REPO verify_release_b_reviewed_target_identity \
     "$drift_target" "$TARGET") 2>/dev/null; then
@@ -314,6 +316,27 @@ import pathlib
 import sys
 
 workflow = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")
+local_gate = 'run: bash ops/deploy/github-production-deploy-client.sh verify-release-b-target "$GITHUB_SHA"'
+if workflow.count(local_gate) != 2:
+    raise SystemExit("local Release B identity gate must cover both workflow roots")
+
+def job(name, next_name):
+    start = workflow.index(f"  {name}:\n")
+    end = workflow.index(f"  {next_name}:\n", start)
+    return workflow[start:end]
+
+for root_name, next_name in (("production_maintenance", "plan"),
+                             ("plan", "verify_reader_summary_publication")):
+    root = job(root_name, next_name)
+    if root.count(local_gate) != 1:
+        raise SystemExit(f"{root_name} must execute exactly one local identity gate")
+    configure = "run: bash ops/deploy/github-production-deploy-client.sh configure"
+    if root.index(local_gate) > root.index(configure):
+        raise SystemExit(f"{root_name} contacts production before identity verification")
+
+release_a = job("release_a", "deploy")
+if "      - plan\n" not in release_a:
+    raise SystemExit("Release A production mutation is not gated by the verified plan job")
 commands = [
     'bash "$client" prepare-release-b-bridge "$controller_release" "$bridge_release" "$current_main" "$bridge_target" "$GITHUB_SHA"',
     'bash "$client" cleanup; bash "$client" configure',
