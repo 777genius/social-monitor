@@ -106,15 +106,70 @@ fake_ssh() {
     maintenance_success:"disk-report $TARGET_SHA"|maintenance_success:"project-disk-cleanup $TARGET_SHA"|maintenance_success:"reader-summary-recover-missing-days $TARGET_SHA"|maintenance_success:"reader-summary-weekly-run $TARGET_SHA"|maintenance_success:"reader-summary-production-history $TARGET_SHA 2026-08-11"|maintenance_success:"reader-summary-daily-terminal-set-receipt-v1 $TARGET_SHA"|maintenance_success:"reader-summary-daily-scan-terminal-preimage-c1 $TARGET_SHA"|maintenance_success:"reader-summary-daily-canonical-recovery-v4 $TARGET_SHA invalid-product-retry-set-v1 $TERMINAL_SET_SHA256"|maintenance_success:"reader-summary-daily-canonical-recovery-v4 $TARGET_SHA reader-summary-daily-canonical-recovery-v4 $MODEL_JOB_IDENTITY $AUTHORITY_SHA256"|maintenance_success:"reader-summary-daily-scan-terminal-repair-c1 $TARGET_SHA reader-summary-daily-scan-terminal-repair-c1 $TERMINAL_SET_SHA256"|maintenance_success:"reader-summary-daily-delivery-c1-run $TARGET_SHA reader-summary-daily-delivery-c1-run 2026-08-10"|maintenance_success:"reader-summary-daily-delivery-c1-contain $TARGET_SHA reader-summary-daily-delivery-c1-contain $TARGET_SHA")
       printf 'maintenance=%s\n' "${command%% *}"
       ;;
-    normal_success:"deploy $TARGET_SHA"|normal_success:"deploy 944fdb6da3071f70a69c7048c9fcdf1c2552603e"|normal_success:"deploy $RELEASE_B_FAILED_IDLE_BRIDGE_SHA")
+    normal_success:"deploy $TARGET_SHA"|normal_success:"deploy 944fdb6da3071f70a69c7048c9fcdf1c2552603e")
       printf 'deployed=%s\n' "$TARGET_SHA"
       ;;
-    bridge_disconnect:"deploy $RELEASE_B_FAILED_IDLE_BRIDGE_SHA")
-      exit 255
+    release_b_replay:"plan $TARGET_SHA")
+      print_fake_plan false false false false "$TARGET_SHA" "$TARGET_SHA"
       ;;
-    bridge_non_255:"deploy $RELEASE_B_FAILED_IDLE_BRIDGE_SHA")
-      exit 42
+    release_b_current_main:"plan $TARGET_SHA")
+      print_fake_plan false false true false "$RELEASE_B_CURRENT_MAIN_SHA" \
+        "$RELEASE_B_CURRENT_MAIN_SHA"
       ;;
+    release_b_current_main:"plan $RELEASE_B_CURRENT_MAIN_SHA")
+      print_fake_plan false false false false "$RELEASE_B_CURRENT_MAIN_SHA" \
+        "$RELEASE_B_CURRENT_MAIN_SHA"
+      ;;
+    release_b_from_8b:"plan $TARGET_SHA"|release_b_bridge_disconnect:"plan $TARGET_SHA"|release_b_controller_repair:"plan $TARGET_SHA")
+      print_fake_plan false true true false "$RELEASE_B_CONTROLLER_SHA" \
+        "$RELEASE_B_CONTROLLER_SHA"
+      ;;
+    release_b_from_8b:"plan $RELEASE_B_CURRENT_MAIN_SHA"|release_b_bridge_disconnect:"plan $RELEASE_B_CURRENT_MAIN_SHA"|release_b_controller_repair:"plan $RELEASE_B_CURRENT_MAIN_SHA")
+      print_fake_plan false true true false "$RELEASE_B_CONTROLLER_SHA" \
+        "$RELEASE_B_CONTROLLER_SHA"
+      ;;
+    release_b_from_8b:"plan $RELEASE_B_BRIDGE_SHA"|release_b_bridge_disconnect:"plan $RELEASE_B_BRIDGE_SHA")
+      count=$(grep -cFx "deploy $RELEASE_B_BRIDGE_SHA" "$FAKE_SSH_LOG" || true)
+      if ((count == 0)); then
+        print_fake_plan false false true false "$RELEASE_B_CONTROLLER_SHA" \
+          "$RELEASE_B_CONTROLLER_SHA"
+      else
+        print_fake_plan false false false false "$RELEASE_B_BRIDGE_SHA" \
+          "$RELEASE_B_CONTROLLER_SHA"
+      fi
+      ;;
+    release_b_controller_repair:"plan $RELEASE_B_BRIDGE_SHA")
+      if grep -qFx "deploy $RELEASE_B_BRIDGE_SHA" "$FAKE_SSH_LOG"; then
+        print_fake_plan false false false false "$RELEASE_B_BRIDGE_SHA" \
+          "$RELEASE_B_CONTROLLER_SHA"
+      elif grep -qFx "deploy $RELEASE_B_CONTROLLER_SHA" "$FAKE_SSH_LOG"; then
+        print_fake_plan false false true false "$RELEASE_B_CONTROLLER_SHA" \
+          "$RELEASE_B_CONTROLLER_SHA"
+      else
+        print_fake_plan false true true false "$RELEASE_B_POOL_MARKER" \
+          "$RELEASE_B_BACKEND_MARKER"
+      fi
+      ;;
+    release_b_controller_repair:"plan $RELEASE_B_CONTROLLER_SHA")
+      if grep -qFx "deploy $RELEASE_B_CONTROLLER_SHA" "$FAKE_SSH_LOG"; then
+        print_fake_plan false false false false "$RELEASE_B_CONTROLLER_SHA" \
+          "$RELEASE_B_CONTROLLER_SHA"
+      else
+        print_fake_plan true true true false "$RELEASE_B_POOL_MARKER" \
+          "$RELEASE_B_BACKEND_MARKER"
+      fi
+      ;;
+    release_b_from_8b:"deploy $RELEASE_B_BRIDGE_SHA"|release_b_controller_repair:"deploy $RELEASE_B_BRIDGE_SHA")
+      printf 'deployed=%s\n' "$RELEASE_B_BRIDGE_SHA"
+      ;;
+    release_b_bridge_disconnect:"deploy $RELEASE_B_BRIDGE_SHA") exit 255 ;;
+    release_b_controller_repair:"deploy $RELEASE_B_CONTROLLER_SHA")
+      printf 'deployed=%s\n' "$RELEASE_B_CONTROLLER_SHA"
+      ;;
+    release_b_partial:"plan $TARGET_SHA")
+      printf 'frontend=false\nbackend=true\n'
+      ;;
+    release_b_rejected:"plan $TARGET_SHA"|release_b_rejected:"plan $RELEASE_B_CURRENT_MAIN_SHA"|release_b_rejected:"plan $RELEASE_B_BRIDGE_SHA") exit 1 ;;
     atomic_success:"deploy $TARGET_SHA")
       printf 'postgres-pool-bootstrap=%s replay=false\n' "$TARGET_SHA"
       ;;
@@ -202,7 +257,11 @@ trap 'rm -rf "$FIXTURE"' EXIT
 TARGET_SHA=1234567890abcdef1234567890abcdef12345678
 BACKEND_SHA=4f47fac7faed7dc24110f4a43e88820d776b8a40
 CURRENT_BACKEND_SHA=617e284607f3dde74c27164af2b981770b9a62ed
-RELEASE_B_FAILED_IDLE_BRIDGE_SHA=85c5d22febf1e7ce5fa5967d2460ccb73ca96a9d
+RELEASE_B_CONTROLLER_SHA=8b4aeb31e855ed379349a4e4827600009e174132
+RELEASE_B_CURRENT_MAIN_SHA=d7d0fc88e6a7bcd8e9929e35efd74002a7601449
+RELEASE_B_BRIDGE_SHA=db4537fea87a5c184a9f926867a6e6aa763ff9bd
+RELEASE_B_BACKEND_MARKER=09a79687e042e36d4ec9c1f33f0367527f044181
+RELEASE_B_POOL_MARKER=6fefa9da5446d5e467badcc7239fdc5a6170a756
 MODEL_JOB_IDENTITY=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 AUTHORITY_SHA256=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 TERMINAL_SET_SHA256=cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
@@ -219,7 +278,9 @@ DEPLOY_SSH_KNOWN_HOSTS_PATH=$FIXTURE/ssh/pinned-known-hosts
 DEPLOY_HOST=production.example.invalid
 DEPLOY_USER=social-monitor-deploy
 
-export TARGET_SHA BACKEND_SHA CURRENT_BACKEND_SHA RELEASE_B_FAILED_IDLE_BRIDGE_SHA
+export TARGET_SHA BACKEND_SHA CURRENT_BACKEND_SHA RELEASE_B_CONTROLLER_SHA
+export RELEASE_B_CURRENT_MAIN_SHA RELEASE_B_BRIDGE_SHA
+export RELEASE_B_BACKEND_MARKER RELEASE_B_POOL_MARKER
 export MODEL_JOB_IDENTITY AUTHORITY_SHA256 TERMINAL_SET_SHA256
 export FAKE_SSH_LOG FAKE_SSH_STATE FAKE_UPLOAD_PATH
 export DEPLOY_SSH_DIRECTORY DEPLOY_SSH_KEY_PATH DEPLOY_SSH_KNOWN_HOSTS_PATH
@@ -538,6 +599,34 @@ run_client normal_success deploy "$TARGET_SHA" >/dev/null
 assert_call_count 1 "deploy $TARGET_SHA"
 assert_call_count 1 "plan $TARGET_SHA"
 
+# Every bridge/controller mutation follows a plan and is issued at most once.
+prepare_args=(prepare-release-b-bridge "$RELEASE_B_CONTROLLER_SHA" \
+  "$RELEASE_B_BRIDGE_SHA" "$RELEASE_B_CURRENT_MAIN_SHA" "$TARGET_SHA")
+run_client release_b_from_8b "${prepare_args[@]}" >/dev/null
+assert_call_count 1 "deploy $RELEASE_B_BRIDGE_SHA"
+assert_call_count 2 "plan $RELEASE_B_BRIDGE_SHA"
+assert_call_count 0 "deploy $RELEASE_B_CONTROLLER_SHA"
+run_client release_b_bridge_disconnect "${prepare_args[@]}" >/dev/null
+assert_call_count 1 "deploy $RELEASE_B_BRIDGE_SHA"
+assert_call_count 2 "plan $RELEASE_B_BRIDGE_SHA"
+run_client release_b_controller_repair "${prepare_args[@]}" >/dev/null
+assert_call_count 1 "deploy $RELEASE_B_CONTROLLER_SHA"
+assert_call_count 1 "deploy $RELEASE_B_BRIDGE_SHA"
+assert_call_count 2 "plan $RELEASE_B_CONTROLLER_SHA"
+run_client release_b_current_main "${prepare_args[@]}" >/dev/null
+assert_call_count 0 "deploy $RELEASE_B_BRIDGE_SHA"
+assert_call_count 1 "plan $RELEASE_B_CURRENT_MAIN_SHA"
+run_client release_b_replay "${prepare_args[@]}" >/dev/null
+assert_call_count 0 "deploy $RELEASE_B_BRIDGE_SHA"
+assert_call_count 0 "deploy $TARGET_SHA"
+assert_fails release_b_partial "${prepare_args[@]}"
+assert_call_count 0 "deploy $RELEASE_B_BRIDGE_SHA"
+assert_fails release_b_rejected "${prepare_args[@]}"
+assert_call_count 0 "deploy $RELEASE_B_BRIDGE_SHA"
+assert_fails release_b_replay prepare-release-b-bridge "$TARGET_SHA" \
+  "$RELEASE_B_BRIDGE_SHA" "$RELEASE_B_CURRENT_MAIN_SHA" "$TARGET_SHA"
+[[ ! -s $FAKE_SSH_LOG ]]
+
 run_client normal_success install-daily-c1-bridge-policy \
   944fdb6da3071f70a69c7048c9fcdf1c2552603e >/dev/null
 assert_call_count 1 \
@@ -547,25 +636,6 @@ assert_call_count 0 \
 
 assert_fails normal_success install-daily-c1-bridge-policy "$TARGET_SHA"
 assert_call_count 0 "deploy $TARGET_SHA"
-
-run_client normal_success install-release-b-failed-idle-bridge \
-  "$RELEASE_B_FAILED_IDLE_BRIDGE_SHA" >/dev/null
-assert_call_count 1 "deploy $RELEASE_B_FAILED_IDLE_BRIDGE_SHA"
-assert_call_count 0 "plan $RELEASE_B_FAILED_IDLE_BRIDGE_SHA"
-
-run_client bridge_disconnect install-release-b-failed-idle-bridge \
-  "$RELEASE_B_FAILED_IDLE_BRIDGE_SHA" >/dev/null
-assert_call_count 1 "deploy $RELEASE_B_FAILED_IDLE_BRIDGE_SHA"
-assert_call_count 0 "plan $RELEASE_B_FAILED_IDLE_BRIDGE_SHA"
-
-assert_fails normal_success install-release-b-failed-idle-bridge "$TARGET_SHA"
-[[ ! -s $FAKE_SSH_LOG ]]
-assert_call_count 0 "deploy $TARGET_SHA"
-
-assert_fails bridge_non_255 install-release-b-failed-idle-bridge \
-  "$RELEASE_B_FAILED_IDLE_BRIDGE_SHA"
-assert_call_count 1 "deploy $RELEASE_B_FAILED_IDLE_BRIDGE_SHA"
-assert_call_count 0 "plan $RELEASE_B_FAILED_IDLE_BRIDGE_SHA"
 
 run_client disconnect_eventual deploy "$TARGET_SHA" >/dev/null
 assert_call_count 1 "deploy $TARGET_SHA"

@@ -22,6 +22,11 @@ DEPLOY_CONTROL_ROLLING_SUMMARY_HELPER_TEST_PATH=ops/deploy/deploy-control-bridge
 DEPLOY_CONTROL_ROLLING_SUMMARY_RABBITMQ_TEST_PATH=ops/deploy/rabbitmq-quorum-deploy-bridge-transition.test.sh
 DEPLOY_CONTROL_FAILED_IDLE_RELEASE_BASE=72e17ded1e54ebd77772929fd5047ef6816dded2
 DEPLOY_CONTROL_FAILED_IDLE_RELEASE=92afd97328c5412324c99be635de2c41db589d53
+DEPLOY_CONTROL_FAILED_IDLE_RELEASE_BRIDGE=85c5d22febf1e7ce5fa5967d2460ccb73ca96a9d
+DEPLOY_CONTROL_FAILED_IDLE_RELEASE_BRIDGE_TREE=903f5e8d944c6d703b2bf282d0046ba5066894b1
+DEPLOY_CONTROL_FAILED_IDLE_RELEASE_BRIDGE_BLOB=a6407769622a4da1bd677ff83c9db6ad2c710662
+DEPLOY_CONTROL_RELEASE_B_CONTROLLER=8b4aeb31e855ed379349a4e4827600009e174132
+DEPLOY_CONTROL_RELEASE_B_CURRENT_MAIN=d7d0fc88e6a7bcd8e9929e35efd74002a7601449
 DEPLOY_CONTROL_DAILY_RECOVERY_BASE=cb1595d9bdca844d6a221d21fd3c53e6845cc4cf
 DEPLOY_CONTROL_DAILY_RECOVERY_BACKEND_RESCUE_BLOB=a4291fad8b1f36f0cbb0760f3dbca6e7603138bc
 DEPLOY_CONTROL_DAILY_RECOVERY_MIGRATE_TEST_BLOB=f62a83ce95cc768c4e888e7c576bad3bd6fdbced
@@ -226,6 +231,88 @@ deploy_control_is_reviewed_rolling_summary_transition() {
   done <<< "$expected"
 }
 
+# Pin the historical failed-idle bridge by every immutable Git identity. This
+# bridge-only hardening release is installed after the exact 8b4 controller is
+# fully reconciled, so the old controller admits it through the ordinary
+# control-only path without relying on this policy to install itself.
+deploy_control_is_exact_failed_idle_release_bridge() {
+  local bridge=$1 repository=${REPO:-.}
+  local actual_tree delta entry mode type object tree_path extra
+  local -a ancestry=()
+
+  [[ $bridge == "$DEPLOY_CONTROL_FAILED_IDLE_RELEASE_BRIDGE" ]] || return 1
+  read -r -a ancestry <<< "$(git -C "$repository" \
+    rev-list --parents -n 1 "$bridge" 2>/dev/null)" || return 1
+  [[ ${#ancestry[@]} == 2 && \
+     ${ancestry[0]} == "$bridge" && \
+     ${ancestry[1]} == "$DEPLOY_CONTROL_FAILED_IDLE_RELEASE_BASE" ]] || \
+    return 1
+  actual_tree=$(git -C "$repository" rev-parse \
+    "$bridge^{tree}" 2>/dev/null) || return 1
+  [[ $actual_tree == "$DEPLOY_CONTROL_FAILED_IDLE_RELEASE_BRIDGE_TREE" ]] || \
+    return 1
+  delta=$(git -C "$repository" diff --name-only --no-renames \
+    "$DEPLOY_CONTROL_FAILED_IDLE_RELEASE_BASE" "$bridge" -- \
+    2>/dev/null) || return 1
+  [[ $delta == "$DEPLOY_CONTROL_BRIDGE_SELF_PATH" ]] || return 1
+  entry=$(git -C "$repository" ls-tree "$bridge" -- \
+    "$DEPLOY_CONTROL_BRIDGE_SELF_PATH" 2>/dev/null) || return 1
+  read -r mode type object tree_path extra <<< "$entry"
+  [[ -z ${extra:-} && $mode == 100644 && $type == blob && \
+     $object == "$DEPLOY_CONTROL_FAILED_IDLE_RELEASE_BRIDGE_BLOB" && \
+     $tree_path == "$DEPLOY_CONTROL_BRIDGE_SELF_PATH" ]]
+}
+
+deploy_control_is_reviewed_failed_idle_release_bridge_transition() {
+  local current=$1 target=$2
+
+  [[ $current == "$DEPLOY_CONTROL_FAILED_IDLE_RELEASE_BASE" ]] || return 1
+  deploy_control_is_exact_failed_idle_release_bridge "$target"
+}
+
+# The current-main Release B target is an exact two-parent integration: the
+# reviewed current main first and this controller-only bridge second. Requiring
+# both parents and the complete path delta keeps inherited rolling/backend work
+# intact while closing stale, rejected, wrapper, and extra-path candidates.
+deploy_control_is_reviewed_current_main_release_b_transition() {
+  local bridge=$1 target=$2 repository=${REPO:-.}
+  local bridge_delta target_delta expected
+  local -a bridge_ancestry=() target_ancestry=()
+
+  read -r -a bridge_ancestry <<< "$(git -C "$repository" \
+    rev-list --parents -n 1 "$bridge" 2>/dev/null)" || return 1
+  [[ ${#bridge_ancestry[@]} == 2 && \
+     ${bridge_ancestry[0]} == "$bridge" && \
+     ${bridge_ancestry[1]} == "$DEPLOY_CONTROL_RELEASE_B_CONTROLLER" ]] || \
+    return 1
+  bridge_delta=$(git -C "$repository" diff --name-only --no-renames \
+    "$DEPLOY_CONTROL_RELEASE_B_CONTROLLER" "$bridge" -- 2>/dev/null) || \
+    return 1
+  [[ $bridge_delta == "$DEPLOY_CONTROL_BRIDGE_SELF_PATH" ]] || return 1
+
+  read -r -a target_ancestry <<< "$(git -C "$repository" \
+    rev-list --parents -n 1 "$target" 2>/dev/null)" || return 1
+  [[ ${#target_ancestry[@]} == 3 && \
+     ${target_ancestry[1]} == "$DEPLOY_CONTROL_RELEASE_B_CURRENT_MAIN" && \
+     ${target_ancestry[2]} == "$bridge" ]] || return 1
+  [[ $(git -C "$repository" rev-parse \
+       "$target:$DEPLOY_CONTROL_BRIDGE_SELF_PATH" 2>/dev/null) == \
+     $(git -C "$repository" rev-parse \
+       "$bridge:$DEPLOY_CONTROL_BRIDGE_SELF_PATH" 2>/dev/null) ]] || return 1
+  expected=$(printf '%s\n' \
+    .github/workflows/production-deploy.yml \
+    "$DEPLOY_CONTROL_BRIDGE_SELF_PATH" \
+    ops/deploy/github-production-deploy-client.sh \
+    ops/deploy/github-production-deploy-client.test.sh \
+    ops/deploy/production-release-b-bridge-order.test.sh \
+    ops/ingestion/source-provider-certification.json \
+    "$DEPLOY_CONTROL_ROLLING_SUMMARY_RABBITMQ_TEST_PATH" | LC_ALL=C sort)
+  target_delta=$(git -C "$repository" diff --name-only --no-renames \
+    "$DEPLOY_CONTROL_RELEASE_B_CURRENT_MAIN" "$target" -- 2>/dev/null | \
+    LC_ALL=C sort) || return 1
+  [[ $target_delta == "$expected" ]]
+}
+
 # The failed release already exists on main, so its control-only bridge is a
 # side parent from the pre-release main. GitHub must merge the reviewed PR head
 # directly into that failed release. Every intermediate parent and path delta is
@@ -238,6 +325,7 @@ deploy_control_is_reviewed_failed_idle_release_transition() {
   local -a bridge_ancestry=() join_ancestry=() head_ancestry=()
   local -a target_ancestry=()
 
+  deploy_control_is_exact_failed_idle_release_bridge "$bridge" || return 1
   git -C "$repository" cat-file -e \
     "$DEPLOY_CONTROL_FAILED_IDLE_RELEASE_BASE^{commit}" 2>/dev/null || return 1
   git -C "$repository" cat-file -e \
@@ -310,6 +398,14 @@ deploy_control_is_reviewed_failed_idle_release_transition() {
 
 deploy_control_reviewed_transition_matches() {
   local bridge=$1 target=$2
+  if deploy_control_is_reviewed_current_main_release_b_transition \
+      "$bridge" "$target"; then
+    return 0
+  fi
+  if deploy_control_is_reviewed_failed_idle_release_bridge_transition \
+      "$bridge" "$target"; then
+    return 0
+  fi
   if deploy_control_daily_final_transition_matches "$bridge" "$target"; then
     return 0
   fi

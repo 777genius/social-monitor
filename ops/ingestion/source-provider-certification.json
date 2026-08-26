@@ -277,7 +277,7 @@
       "quotaModel": "per_app",
       "itemCount": 3,
       "warningCount": 0,
-      "firstExternalId": "github-trending-page:daily:calesthio/OpenMontage:2026-06-24T12:00:00.000Z",
+      "firstExternalId": "github-trending-page:daily:scan-job-cert-github-trending-page:calesthio/OpenMontage",
       "nextCursor": "2026-06-24T12:00:00.000Z",
       "repeatedScanItemCount": 3,
       "failureKind": "unavailable",
