@@ -62,7 +62,8 @@ BRIDGE_CONTROL_PATHS=(
 
 assert_real_bridge_target_assets() {
   local path entry mode type object tree_path expected_digest alternate_digest reviewed_digest
-  local release_b_candidate_digest release_b_sealed_digest actual_digest actual_mode
+  local release_b_candidate_digest release_b_sealed_digest rolling_repair_digest
+  local actual_digest actual_mode
   local repository_root actual_path actual_real
 
   repository_root=$(readlink -f -- "$PROJECT_ROOT")
@@ -94,6 +95,7 @@ assert_real_bridge_target_assets() {
     reviewed_digest=
     release_b_candidate_digest=
     release_b_sealed_digest=
+    rolling_repair_digest=
     actual_digest=$(sha256sum "$actual_real" | awk '{print $1}')
     case $path in
       ops/deploy/social-monitor-production-deploy.sh)
@@ -116,6 +118,7 @@ assert_real_bridge_target_assets() {
         reviewed_digest=14ab26a66e982128770947a9b66a764cd4cef6eca1bb017c13f97819ae611a7a
         release_b_candidate_digest=bea119047fbbd2295185c84e0adeb773dc852e63b951daf5c7a831356a73a371
         release_b_sealed_digest=1718617b4bbb92f4dbfd92a59fcc482ef7a098734730b8460d21aaced44386c2
+        rolling_repair_digest=93128bd947b77c0920605c206f0ed20aa7f07ffd71b11c4ec5b6418a7a168781
         ;;
     esac
     if [[ $path == ops/deploy/social-monitor-production-deploy.sh ]]; then
@@ -156,7 +159,8 @@ assert_real_bridge_target_assets() {
        (-n $alternate_digest && $actual_digest == "$alternate_digest") ||
        (-n $reviewed_digest && $actual_digest == "$reviewed_digest") ||
        (-n $release_b_candidate_digest && $actual_digest == "$release_b_candidate_digest") ||
-       (-n $release_b_sealed_digest && $actual_digest == "$release_b_sealed_digest") ]] || {
+       (-n $release_b_sealed_digest && $actual_digest == "$release_b_sealed_digest") ||
+       (-n $rolling_repair_digest && $actual_digest == "$rolling_repair_digest") ]] || {
       printf 'current bridge asset digest drifted from V4A4: %s\n' "$path" >&2
       exit 1
     }
