@@ -314,7 +314,7 @@ install -m 0700 "$0" "$FAKE_SSH"
   plan_is_exact_release_b_bridge_transition
   parse_plan "$(printf 'frontend=false\nbackend=false\nbackend_base=%s\ncontrol=true\nx_collector=false\npostgres_pool_bootstrap=postgres-pool-v1\npostgres_pool_bootstrap_sha=%s\n' \
     "$RELEASE_B_CONTROLLER_SHA" "$RELEASE_B_BRIDGE_SHA")"
-  ! plan_is_exact_release_b_bridge_transition
+  plan_is_exact_release_b_bridge_transition && exit 1
   parse_plan "$(printf 'frontend=false\nbackend=true\nbackend_base=%s\ncontrol=true\nx_collector=false\npostgres_pool_bootstrap=postgres-pool-v1\npostgres_pool_bootstrap_sha=%s\n' \
     "$RELEASE_B_CONTROLLER_SHA" "$RELEASE_B_CONTROLLER_SHA")"
   plan_is_exact_release_b_target_transition
