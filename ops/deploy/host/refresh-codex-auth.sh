@@ -126,6 +126,25 @@ resolve_approved_account_auth() {
   printf '%s\n' "$selected"
 }
 
+remove_auth_pool_directory() {
+  local target=$1 resolved snapshot_name
+  [[ -d $target && ! -L $target ]] || \
+    fail 'auth pool cleanup target is missing or unsafe'
+  resolved=$(realpath -e "$target") || \
+    fail 'cannot canonicalize auth pool cleanup target'
+  case "$resolved" in
+    "$POOL_SNAPSHOT_ROOT"/.snapshot.*) ;;
+    "$POOL_SNAPSHOT_ROOT"/snapshots/*)
+      snapshot_name=${resolved##*/}
+      [[ $snapshot_name =~ ^[0-9a-f]{64}$ ]] || \
+        fail 'auth pool cleanup snapshot name is invalid'
+      ;;
+    *) fail 'auth pool cleanup target is outside the snapshot root' ;;
+  esac
+  find "$resolved" -xdev -mindepth 1 -depth -delete
+  rmdir -- "$resolved"
+}
+
 materialize_auth_pool_snapshot() {
   local stage_dir digest_input generation snapshot_dir account selected
   local manifest_next manifest_changed=true
@@ -161,7 +180,7 @@ materialize_auth_pool_snapshot() {
     (( $(find "$snapshot_dir" -mindepth 2 -maxdepth 2 -type f \
       -name auth.json | wc -l) == ${#available_accounts[@]} )) || \
       fail 'existing auth pool snapshot contains unexpected auth files'
-    rm -rf -- "$stage_dir"
+    remove_auth_pool_directory "$stage_dir"
   else
     [[ ! -e $snapshot_dir && ! -L $snapshot_dir ]] || \
       fail 'auth pool snapshot destination is unsafe'
@@ -212,7 +231,7 @@ prune_expired_auth_pool_snapshots() {
     [[ $generation != "$current_generation" ]] || continue
     modified_at=$(stat -c '%Y' "$snapshot" 2>/dev/null || stat -f '%m' "$snapshot")
     ((now - modified_at >= retention_seconds)) || continue
-    rm -rf -- "$snapshot"
+    remove_auth_pool_directory "$snapshot"
   done < <(find "$POOL_SNAPSHOT_ROOT/snapshots" -mindepth 1 -maxdepth 1 \
     -type d -print0)
 }
