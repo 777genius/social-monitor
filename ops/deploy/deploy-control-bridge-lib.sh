@@ -20,6 +20,8 @@ DEPLOY_CONTROL_SCHEDULED_SUMMARY_CATCH_UP_BASE=e377453d5b440aacc8077e8af1345eb5a
 DEPLOY_CONTROL_ROLLING_SUMMARY_FINAL_TREE=6a68fd8f88477811e220c042d5176e452241389f
 DEPLOY_CONTROL_ROLLING_SUMMARY_HELPER_TEST_PATH=ops/deploy/deploy-control-bridge-runtime-helper.test.sh
 DEPLOY_CONTROL_ROLLING_SUMMARY_RABBITMQ_TEST_PATH=ops/deploy/rabbitmq-quorum-deploy-bridge-transition.test.sh
+DEPLOY_CONTROL_FAILED_IDLE_RELEASE_BASE=72e17ded1e54ebd77772929fd5047ef6816dded2
+DEPLOY_CONTROL_FAILED_IDLE_RELEASE=92afd97328c5412324c99be635de2c41db589d53
 DEPLOY_CONTROL_DAILY_RECOVERY_BASE=cb1595d9bdca844d6a221d21fd3c53e6845cc4cf
 DEPLOY_CONTROL_DAILY_RECOVERY_BACKEND_RESCUE_BLOB=a4291fad8b1f36f0cbb0760f3dbca6e7603138bc
 DEPLOY_CONTROL_DAILY_RECOVERY_MIGRATE_TEST_BLOB=f62a83ce95cc768c4e888e7c576bad3bd6fdbced
@@ -224,6 +226,88 @@ deploy_control_is_reviewed_rolling_summary_transition() {
   done <<< "$expected"
 }
 
+# The failed release already exists on main, so its control-only bridge is a
+# side parent from the pre-release main. GitHub must merge the reviewed PR head
+# directly into that failed release. Every intermediate parent and path delta is
+# exact so neither an extra commit nor drift on an allowlisted path is admitted.
+deploy_control_is_reviewed_failed_idle_release_transition() {
+  local bridge=$1 target=$2 repository=${REPO:-.}
+  local reviewed_head join bridge_delta join_delta head_delta target_delta
+  local expected_head_delta expected_target_delta failed_release_delta
+  local join_bridge_delta target_tree reviewed_head_tree
+  local -a bridge_ancestry=() join_ancestry=() head_ancestry=()
+  local -a target_ancestry=()
+
+  git -C "$repository" cat-file -e \
+    "$DEPLOY_CONTROL_FAILED_IDLE_RELEASE_BASE^{commit}" 2>/dev/null || return 1
+  git -C "$repository" cat-file -e \
+    "$DEPLOY_CONTROL_FAILED_IDLE_RELEASE^{commit}" 2>/dev/null || return 1
+  read -r -a bridge_ancestry <<< "$(git -C "$repository" \
+    rev-list --parents -n 1 "$bridge" 2>/dev/null)" || return 1
+  [[ ${#bridge_ancestry[@]} == 2 && \
+     ${bridge_ancestry[1]} == "$DEPLOY_CONTROL_FAILED_IDLE_RELEASE_BASE" ]] || \
+    return 1
+  bridge_delta=$(git -C "$repository" diff --name-only --no-renames \
+    "$DEPLOY_CONTROL_FAILED_IDLE_RELEASE_BASE" "$bridge" -- 2>/dev/null) || \
+    return 1
+  [[ $bridge_delta == "$DEPLOY_CONTROL_BRIDGE_SELF_PATH" ]] || return 1
+
+  read -r -a target_ancestry <<< "$(git -C "$repository" \
+    rev-list --parents -n 1 "$target" 2>/dev/null)" || return 1
+  [[ ${#target_ancestry[@]} == 3 && \
+     ${target_ancestry[1]} == "$DEPLOY_CONTROL_FAILED_IDLE_RELEASE" ]] || \
+    return 1
+  reviewed_head=${target_ancestry[2]}
+  target_tree=$(git -C "$repository" rev-parse "$target^{tree}" 2>/dev/null) || \
+    return 1
+  reviewed_head_tree=$(git -C "$repository" \
+    rev-parse "$reviewed_head^{tree}" 2>/dev/null) || return 1
+  [[ $target_tree == "$reviewed_head_tree" ]] || return 1
+
+  read -r -a head_ancestry <<< "$(git -C "$repository" \
+    rev-list --parents -n 1 "$reviewed_head" 2>/dev/null)" || return 1
+  [[ ${#head_ancestry[@]} == 2 ]] || return 1
+  join=${head_ancestry[1]}
+  expected_head_delta=$(printf '%s\n' \
+    .github/workflows/production-deploy.yml \
+    ops/deploy/production-release-b-bridge-order.test.sh \
+    "$DEPLOY_CONTROL_ROLLING_SUMMARY_RABBITMQ_TEST_PATH" | LC_ALL=C sort)
+  head_delta=$(git -C "$repository" diff --name-only --no-renames \
+    "$join" "$reviewed_head" -- 2>/dev/null | LC_ALL=C sort) || return 1
+  [[ $head_delta == "$expected_head_delta" ]] || return 1
+
+  read -r -a join_ancestry <<< "$(git -C "$repository" \
+    rev-list --parents -n 1 "$join" 2>/dev/null)" || return 1
+  [[ ${#join_ancestry[@]} == 3 && \
+     ${join_ancestry[1]} == "$DEPLOY_CONTROL_FAILED_IDLE_RELEASE" && \
+     ${join_ancestry[2]} == "$bridge" ]] || return 1
+  join_delta=$(git -C "$repository" diff --name-only --no-renames \
+    "$DEPLOY_CONTROL_FAILED_IDLE_RELEASE" "$join" -- 2>/dev/null) || \
+    return 1
+  [[ $join_delta == "$DEPLOY_CONTROL_BRIDGE_SELF_PATH" ]] || return 1
+  [[ $(git -C "$repository" rev-parse \
+       "$bridge:$DEPLOY_CONTROL_BRIDGE_SELF_PATH" 2>/dev/null) == \
+     $(git -C "$repository" rev-parse \
+       "$join:$DEPLOY_CONTROL_BRIDGE_SELF_PATH" 2>/dev/null) ]] || return 1
+  failed_release_delta=$(git -C "$repository" diff --name-only --no-renames \
+    "$DEPLOY_CONTROL_FAILED_IDLE_RELEASE_BASE" \
+    "$DEPLOY_CONTROL_FAILED_IDLE_RELEASE" -- 2>/dev/null | LC_ALL=C sort) || \
+    return 1
+  join_bridge_delta=$(git -C "$repository" diff --name-only --no-renames \
+    "$bridge" "$join" -- 2>/dev/null | LC_ALL=C sort) || return 1
+  [[ $join_bridge_delta == "$failed_release_delta" ]] || return 1
+
+  expected_target_delta=$(printf '%s\n' \
+    .github/workflows/production-deploy.yml \
+    ops/deploy/production-release-b-bridge-order.test.sh \
+    "$DEPLOY_CONTROL_BRIDGE_SELF_PATH" \
+    "$DEPLOY_CONTROL_ROLLING_SUMMARY_RABBITMQ_TEST_PATH" | LC_ALL=C sort)
+  target_delta=$(git -C "$repository" diff --name-only --no-renames \
+    "$DEPLOY_CONTROL_FAILED_IDLE_RELEASE" "$target" -- 2>/dev/null | \
+    LC_ALL=C sort) || return 1
+  [[ $target_delta == "$expected_target_delta" ]]
+}
+
 deploy_control_reviewed_transition_matches() {
   local bridge=$1 target=$2
   if deploy_control_daily_final_transition_matches "$bridge" "$target"; then
@@ -234,6 +318,10 @@ deploy_control_reviewed_transition_matches() {
     return 0
   fi
   if deploy_control_is_reviewed_rolling_summary_transition \
+      "$bridge" "$target"; then
+    return 0
+  fi
+  if deploy_control_is_reviewed_failed_idle_release_transition \
       "$bridge" "$target"; then
     return 0
   fi
