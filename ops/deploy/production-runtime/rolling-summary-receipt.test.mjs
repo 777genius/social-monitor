@@ -80,9 +80,10 @@ try {
     "0",
   );
   run("validate-receipt", receiptPath, runId, date);
-  runFailure(
+  const degradedReceiptPath = join(directory, "degraded-receipt.json");
+  run(
     "write-receipt",
-    join(directory, "failed-collection-receipt.json"),
+    degradedReceiptPath,
     evidencePath,
     collectionPath,
     runId,
@@ -90,6 +91,7 @@ try {
     "2026-08-15T12:15:00.000Z",
     "1",
   );
+  run("validate-receipt", degradedReceiptPath, runId, date);
   runFailure(
     "write-receipt",
     join(directory, "stale-receipt.json"),
@@ -102,6 +104,10 @@ try {
   );
 
   const receipt = JSON.parse(readFileSync(receiptPath, "utf8"));
+  const degradedReceipt = JSON.parse(
+    readFileSync(degradedReceiptPath, "utf8"),
+  );
+  assert.equal(degradedReceipt.collection.commandExitCode, 1);
   assert.equal(receipt.collection.finalDayQualityGatePassed, false);
   assert.equal(receipt.collection.providers.length, 5);
   assert.equal(receipt.publication.readerSummaryId, "summary-id");

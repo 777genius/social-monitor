@@ -142,13 +142,20 @@ container_body=$(cat <<'ROLLING_CONTAINER_BODY'
       --exact-date-artifact-directory "$collection_staging_directory" \
       --providers "$required_providers" || collection_exit=$?
 
-    if [ "$collection_exit" -ne 0 ]; then
-      echo "rolling collection failed for current pass $ROLLING_RUN_ID (exit $collection_exit)" >&2
-      exit "$collection_exit"
-    fi
-
+    collection_validation_exit=0
     node ops/deploy/production-runtime/rolling-summary-receipt.mjs \
-      validate-collection "$collection_staging_source" "$ROLLING_COLLECTION_DATE"
+      validate-collection "$collection_staging_source" "$ROLLING_COLLECTION_DATE" || \
+      collection_validation_exit=$?
+    if [ "$collection_validation_exit" -ne 0 ]; then
+      echo "rolling collection produced no valid current-pass artifact for $ROLLING_RUN_ID" >&2
+      if [ "$collection_exit" -ne 0 ]; then
+        exit "$collection_exit"
+      fi
+      exit "$collection_validation_exit"
+    fi
+    if [ "$collection_exit" -ne 0 ]; then
+      echo "rolling collection is degraded for $ROLLING_RUN_ID (exit $collection_exit); publishing from terminal current-pass evidence" >&2
+    fi
     cp "$collection_staging_source" "$collection_source.next.$ROLLING_RUN_ID"
     chmod 0444 "$collection_source.next.$ROLLING_RUN_ID"
     mv "$collection_source.next.$ROLLING_RUN_ID" "$collection_source"

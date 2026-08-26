@@ -70,48 +70,67 @@ grep -Fx 'Persistent=true' \
   "$REPO/ops/deploy/production-runtime/social-monitor-rolling.timer" >/dev/null
 
 successful_collection_bytes=$(sha256sum "$exact_collection" | cut -d' ' -f1)
+SOCIAL_MONITOR_ROLLING_RUN_TEST_MODE=1 \
+SOCIAL_MONITOR_ROLLING_RUN_TEST_ROOT=$TEST_ROOT \
+SOCIAL_MONITOR_ROLLING_RUN_TEST_DOCKER=$fake_docker \
+SOCIAL_MONITOR_ROLLING_RUN_TEST_FLOCK=$fake_flock \
+SOCIAL_MONITOR_ROLLING_RUN_TEST_NOW=2026-08-15T12:15:00.000Z \
+SOCIAL_MONITOR_ROLLING_RUN_TEST_DEGRADED_COLLECTION_RUN_ID=20260815T121500000Z \
+  bash "$RUNNER"
+grep -Fx 'collection-degraded 20260815T121500000Z 2026-08-15' "$TEST_ROOT/docker.log" >/dev/null
+degraded_collection_bytes=$(sha256sum "$exact_collection" | cut -d' ' -f1)
+[[ $degraded_collection_bytes != "$successful_collection_bytes" ]]
+[[ -e $TEST_ROOT/artifacts/rolling-summary/rolling-summary.20260815T121500000Z.collection.v1.json ]]
+[[ -e $TEST_ROOT/artifacts/rolling-summary/rolling-summary.20260815T121500000Z.receipt.v1.json ]]
+
 if SOCIAL_MONITOR_ROLLING_RUN_TEST_MODE=1 \
   SOCIAL_MONITOR_ROLLING_RUN_TEST_ROOT=$TEST_ROOT \
   SOCIAL_MONITOR_ROLLING_RUN_TEST_DOCKER=$fake_docker \
   SOCIAL_MONITOR_ROLLING_RUN_TEST_FLOCK=$fake_flock \
-  SOCIAL_MONITOR_ROLLING_RUN_TEST_NOW=2026-08-15T12:15:00.000Z \
-  SOCIAL_MONITOR_ROLLING_RUN_TEST_FAIL_COLLECTION_RUN_ID=20260815T121500000Z \
+  SOCIAL_MONITOR_ROLLING_RUN_TEST_NOW=2026-08-15T13:15:00.000Z \
+  SOCIAL_MONITOR_ROLLING_RUN_TEST_FAIL_COLLECTION_RUN_ID=20260815T131500000Z \
     bash "$RUNNER"; then
   echo 'rolling run published a stale same-day collection after current collection failure' >&2
   exit 1
 fi
-grep -Fx 'collection-failed 20260815T121500000Z 2026-08-15' "$TEST_ROOT/docker.log" >/dev/null
-[[ $(sha256sum "$exact_collection" | cut -d' ' -f1) == "$successful_collection_bytes" ]]
-[[ ! -e $TEST_ROOT/artifacts/rolling-summary/rolling-summary.20260815T121500000Z.collection.v1.json ]]
-[[ ! -e $TEST_ROOT/artifacts/rolling-summary/rolling-summary.20260815T121500000Z.receipt.v1.json ]]
-[[ ! -e $TEST_ROOT/artifacts/rolling-summary/collections/runs/20260815T121500000Z/reader-summary-clean-real-day-collection.2026-08-15.v1.json ]]
+grep -Fx 'collection-failed 20260815T131500000Z 2026-08-15' "$TEST_ROOT/docker.log" >/dev/null
+[[ $(sha256sum "$exact_collection" | cut -d' ' -f1) == "$degraded_collection_bytes" ]]
+[[ ! -e $TEST_ROOT/artifacts/rolling-summary/rolling-summary.20260815T131500000Z.collection.v1.json ]]
+[[ ! -e $TEST_ROOT/artifacts/rolling-summary/rolling-summary.20260815T131500000Z.receipt.v1.json ]]
+[[ ! -e $TEST_ROOT/artifacts/rolling-summary/collections/runs/20260815T131500000Z/reader-summary-clean-real-day-collection.2026-08-15.v1.json ]]
 
 ln -sfn /usr/bin/false "$refresh"
 if SOCIAL_MONITOR_ROLLING_RUN_TEST_MODE=1 \
   SOCIAL_MONITOR_ROLLING_RUN_TEST_ROOT=$TEST_ROOT \
   SOCIAL_MONITOR_ROLLING_RUN_TEST_DOCKER=$fake_docker \
   SOCIAL_MONITOR_ROLLING_RUN_TEST_FLOCK=$fake_flock \
-  SOCIAL_MONITOR_ROLLING_RUN_TEST_NOW=2026-08-15T13:15:00.000Z \
+  SOCIAL_MONITOR_ROLLING_RUN_TEST_NOW=2026-08-15T14:15:00.000Z \
     bash "$RUNNER"; then
   echo 'rolling run accepted unavailable summary auth' >&2
   exit 1
 fi
 grep -F -- '-e ROLLING_AUTH_READY=false' "$TEST_ROOT/docker.log" >/dev/null
 [[ $(grep -Fc -- '--profile app up -d --no-deps agent-runtime' \
-  "$TEST_ROOT/docker.log") == 2 ]]
+  "$TEST_ROOT/docker.log") == 3 ]]
 
 collection_line=$(grep -n 'npm run run:reader-summary-clean-real-day-collection' \
   "$RUNNER" | cut -d: -f1)
 collection_staging_clear_line=$(grep -n 'rm -f "\$collection_staging_source"' \
   "$RUNNER" | head -1 | cut -d: -f1)
-collection_failure_guard_line=$(grep -n '"\$collection_exit" -ne 0' \
+collection_validation_line=$(grep -n 'collection_validation_exit=0' \
+  "$RUNNER" | cut -d: -f1)
+collection_failure_guard_line=$(grep -n '"\$collection_validation_exit" -ne 0' \
+  "$RUNNER" | cut -d: -f1)
+collection_degraded_line=$(grep -n 'publishing from terminal current-pass evidence' \
   "$RUNNER" | cut -d: -f1)
 collection_promotion_line=$(grep -n 'cp "\$collection_staging_source" "\$collection_source' \
   "$RUNNER" | cut -d: -f1)
 auth_guard_line=$(grep -n 'ROLLING_AUTH_READY.*!= true' "$RUNNER" | cut -d: -f1)
 ((collection_staging_clear_line < collection_line))
-((collection_line < collection_failure_guard_line))
-((collection_failure_guard_line < collection_promotion_line))
+((collection_line < collection_validation_line))
+((collection_validation_line < collection_failure_guard_line))
+((collection_failure_guard_line < collection_degraded_line))
+((collection_degraded_line < collection_promotion_line))
 ((collection_line < auth_guard_line))
 grep -F 'if [ "$ROLLING_AUTH_READY" != true ]; then' "$RUNNER" >/dev/null
 ! grep -F 'if [[ "$ROLLING_AUTH_READY"' "$RUNNER" >/dev/null

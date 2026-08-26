@@ -585,9 +585,8 @@ jobs:
           fi
           echo "backend-gate=deploy-shell-tests bridge=$bridge_phase"
           if [[ $bridge_phase == true ]]; then
-            # Final runtime assets are deliberately absent from the control-only
-            # bridge. Run the bridge-safe controller closure here; the complete
-            # controller and client suites run with the BLOCKED final release.
+            # The control-only bridge runs the bridge-safe controller closure;
+            # complete controller/client suites run with the BLOCKED final release.
             bash ops/deploy/deploy-control-bridge-runtime-helper.test.sh
             bash ops/deploy/deploy-control-reviewed-library-source.test.sh
             bash ops/deploy/daily-c1-control-bridge-workflow.test.sh
