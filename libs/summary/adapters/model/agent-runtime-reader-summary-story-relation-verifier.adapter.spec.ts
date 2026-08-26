@@ -1,4 +1,9 @@
 import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
+import {
+  readerSummaryScopeKey,
+  storyRelationExecutionRequestId,
+  validStoryRelationExecutionProof,
+} from "../../domain";
 
 import type {
   AgentRuntimeClientPort,
@@ -30,10 +35,9 @@ describe("AgentRuntimeReaderSummaryStoryRelationVerifier", () => {
     const verifier = new AgentRuntimeReaderSummaryStoryRelationVerifier({
       client,
     });
-    expect(verifier.guardedPrimaryRecallCertification)
-      .toBe("agent_runtime_attested_v1");
-
-    await expect(verifier.verify(input())).resolves.toMatchObject({
+    const verifierInput = input();
+    const batch = await verifier.verify(verifierInput);
+    expect(batch).toMatchObject({
       verificationLane: "semantic_primary",
       decisions: [{
         leftFeedItemId: "feed:hn",
@@ -43,11 +47,26 @@ describe("AgentRuntimeReaderSummaryStoryRelationVerifier", () => {
         rationale: "Both report the same compiler rewrite.",
       }],
       proof: {
+        proofVersion: "reader_summary.story_relation.execution_proof.v2",
         normalizedOutputSha256: expect.stringMatching(/^[0-9a-f]{64}$/u),
         executionAttestationSha256: expect.stringMatching(/^[0-9a-f]{64}$/u),
         selectedOutputSha256: expect.stringMatching(/^[0-9a-f]{64}$/u),
       },
     });
+    expect(validStoryRelationExecutionProof({
+      proof: batch.proof,
+      verificationLane: "semantic_primary",
+      selection: verifierInput.proofSelection,
+      candidates: verifierInput.candidates,
+      decisions: batch.decisions,
+      expectedRequestId: storyRelationExecutionRequestId({
+        tenantId: verifierInput.tenantId,
+        workspaceId: verifierInput.workspaceId,
+        scopeKey: readerSummaryScopeKey(verifierInput.scope),
+        requestedAt: verifierInput.requestedAt,
+        verificationLane: "semantic_primary",
+      }),
+    })).toBe(true);
     expect(client.commands[0]).toMatchObject({
       provider: "codex",
       purpose: "social_monitor.reader_summary.verify_story_relations.v2",
@@ -291,6 +310,16 @@ const input = (): ReaderSummaryStoryRelationVerifierInput => ({
   },
   requestedAt: new Date("2026-07-12T01:00:00.000Z"),
   verificationLane: "semantic_primary",
+  proofSelection: {
+    rankingPolicyVersion: "story_ranking_v10",
+    sourceWindow: {
+      windowId: "story-verifier-window",
+      startedAt: new Date("2026-07-11T00:00:00.000Z"),
+      endedAt: new Date("2026-07-12T00:00:00.000Z"),
+      selectedFeedItemIds: ["feed:hn", "feed:rss"],
+      storyClusterIds: ["story:hn", "story:rss"],
+    },
+  },
   clusters: [],
   evidence: [
     evidence(

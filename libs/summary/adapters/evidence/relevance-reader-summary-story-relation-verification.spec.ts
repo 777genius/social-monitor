@@ -1,10 +1,15 @@
 import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 
-import type {
-  StoryRelationDecision,
-  StoryRelationDecisionAggregate,
-  SummaryEvidenceItem,
-  SummaryEvidenceSelection,
+import {
+  buildStoryRelationExecutionProof,
+  canonicalStoryRelationProofSha256,
+  readerSummaryScopeKey,
+  storyRelationExecutionRequestId,
+  type StoryRelationDecision,
+  type StoryRelationDecisionAggregate,
+  type StoryRelationExecutionProof,
+  type SummaryEvidenceItem,
+  type SummaryEvidenceSelection,
 } from "../../domain";
 import type {
   ReaderSummaryStoryRelationVerifierInput,
@@ -26,7 +31,7 @@ const period = {
 };
 
 describe("guarded primary story relation verification", () => {
-  it("runs guarded recall by default for the certified agent-runtime verifier", async () => {
+  it("runs guarded recall with candidate-bound runtime proof", async () => {
     const verifier = new FakeVerifier(true, approveAll);
     const result = await run(verifier);
 
@@ -41,20 +46,23 @@ describe("guarded primary story relation verification", () => {
         candidatePolicyVersion:
           "reader_summary.story_relation.guarded_recall.v1",
         featureDigest: expect.stringMatching(/^[0-9a-f]{64}$/u),
-        executionAttestationSha256: sha("b"),
-        normalizedOutputSha256: sha("a"),
-        selectedOutputSha256: sha("c"),
+        executionAttestationSha256: expect.stringMatching(/^[0-9a-f]{64}$/u),
+        normalizedOutputSha256: expect.stringMatching(/^[0-9a-f]{64}$/u),
+        selectedOutputSha256: expect.stringMatching(/^[0-9a-f]{64}$/u),
+        verificationProof: expect.objectContaining({
+          candidateProofSha256: expect.stringMatching(/^[0-9a-f]{64}$/u),
+        }),
       }),
     ]);
   });
 
-  it("fails guarded recall closed for every non-certified verifier mode", async () => {
+  it("fails guarded recall closed for a format-only forged proof", async () => {
     const verifier = new FakeVerifier(false, approveAll);
     await expect(run(verifier)).resolves.toEqual({
       pairs: new Set(),
       relations: [],
     });
-    expect(verifier.inputs).toEqual([]);
+    expect(verifier.inputs).toHaveLength(1);
   });
 
   it.each([
@@ -89,6 +97,44 @@ describe("guarded primary story relation verification", () => {
       executionAttestationSha256: sha("b"),
       selectedOutputSha256: sha("c"),
     });
+    await expect(run(verifier)).resolves.toMatchObject({ relations: [] });
+  });
+
+  it("rejects an omitted decision proof", async () => {
+    const verifier = new FakeVerifier(true, approveAll, {} as never);
+    await expect(run(verifier)).resolves.toMatchObject({ relations: [] });
+  });
+
+  it.each([
+    ["candidate swap", (proof: StoryRelationExecutionProof) => rehashProof({
+      ...proof,
+      candidateBindings: proof.candidateBindings.map((binding, index) =>
+        index === 0 ? { ...binding, canonicalPairId: "other-left\u0000other-right" }
+          : binding),
+    })],
+    ["feature digest mutation", (proof: StoryRelationExecutionProof) =>
+      rehashProof({ ...proof, candidateBindings: proof.candidateBindings.map(
+        (binding, index) => index === 0
+          ? { ...binding, featureDigest: sha("f") } : binding) })],
+    ["decision mutation", (proof: StoryRelationExecutionProof) =>
+      rehashProof({ ...proof, decisionBindings: proof.decisionBindings.map(
+        (binding, index) => index === 0 && binding.valid
+          ? { ...binding, confidenceScore: 0.98 } : binding) })],
+    ["selection mutation", (proof: StoryRelationExecutionProof) =>
+      rehashProof({ ...proof, selectionSha256: sha("e") })],
+    ["ranking policy mutation", (proof: StoryRelationExecutionProof) =>
+      rehashProof({ ...proof, rankingPolicyVersion: "mutated-ranking-policy" })],
+    ["execution attestation mutation", (proof: StoryRelationExecutionProof) => {
+      const executionAttestation = {
+        ...proof.executionAttestation,
+        requestId: `${proof.executionAttestation.requestId}:copied`,
+      };
+      return rehashProof({ ...proof, executionAttestation,
+        executionAttestationSha256:
+          canonicalStoryRelationProofSha256(executionAttestation) });
+    }],
+  ] as const)("rejects a rehashed %s", async (_name, mutateProof) => {
+    const verifier = new FakeVerifier(true, approveAll, undefined, mutateProof);
     await expect(run(verifier)).resolves.toMatchObject({ relations: [] });
   });
 
@@ -157,6 +203,20 @@ describe("guarded primary story relation verification", () => {
       evidence("left", "reddit", "Acme acquired Alpha today"),
       evidence("right", "x-twitter", "Acme acquired Beta today"),
     ]],
+    ["opposite active acquisition direction", [
+      evidence("left", "reddit", "Cursor acquired SpaceX assets in deal"),
+      evidence("right", "x-twitter", "SpaceX acquired Cursor assets in deal"),
+    ]],
+    ["opposite passive acquisition direction", [
+      evidence("left", "reddit", "Cursor acquired SpaceX assets in deal"),
+      evidence("right", "x-twitter",
+        "Cursor assets were acquired by SpaceX in deal"),
+    ]],
+    ["opposite nominalized acquisition direction", [
+      evidence("left", "reddit", "Cursor acquired SpaceX assets in deal"),
+      evidence("right", "x-twitter",
+        "SpaceX acquisition of Cursor operations"),
+    ]],
     ["same-provider aliases", [
       evidence("left", "x-twitter", "Acme released Platform today"),
       evidence("right", "twitter", "Platform released by Acme today"),
@@ -199,38 +259,95 @@ type DecisionFactory = (
 class FakeVerifier implements ReaderSummaryStoryRelationVerifierPort {
   readonly inputs: ReaderSummaryStoryRelationVerifierInput[] = [];
 
-  get guardedPrimaryRecallCertification() {
-    return this.certified ? "agent_runtime_attested_v1" as const : undefined;
-  }
-
   constructor(
-    private readonly certified: boolean,
+    private readonly validProof: boolean,
     private readonly decisions: DecisionFactory,
-    private readonly proof: VerifiedStoryRelationDecisionBatch["proof"] = {
-      normalizedOutputSha256: sha("a"),
-      executionAttestationSha256: sha("b"),
-      selectedOutputSha256: sha("c"),
-    },
+    private readonly proof?: VerifiedStoryRelationDecisionBatch["proof"],
+    private readonly mutateProof?: (
+      proof: StoryRelationExecutionProof,
+    ) => StoryRelationExecutionProof,
   ) {}
 
   async verify(input: ReaderSummaryStoryRelationVerifierInput) {
     this.inputs.push(input);
+    const decisions = this.decisions(input);
+    const proof = this.proof ?? (this.validProof
+      ? proofFor(input, decisions)
+      : {
+          normalizedOutputSha256: sha("a"),
+          executionAttestationSha256: sha("b"),
+          selectedOutputSha256: sha("c"),
+        });
     return {
       verificationLane: input.verificationLane,
-      decisions: this.decisions(input),
-      proof: this.proof,
+      decisions,
+      proof: this.mutateProof === undefined || !("proofVersion" in proof)
+        ? proof : this.mutateProof(proof),
     };
   }
 }
 
 class PendingCertifiedVerifier implements ReaderSummaryStoryRelationVerifierPort {
-  readonly guardedPrimaryRecallCertification = "agent_runtime_attested_v1" as const;
   readonly inputs: ReaderSummaryStoryRelationVerifierInput[] = [];
   verify(input: ReaderSummaryStoryRelationVerifierInput): Promise<VerifiedStoryRelationDecisionBatch> {
     this.inputs.push(input);
     return new Promise(() => undefined);
   }
 }
+
+const proofFor = (
+  input: ReaderSummaryStoryRelationVerifierInput,
+  decisions: readonly StoryRelationDecision[],
+) => {
+  if (input.verificationLane === "related_topic" ||
+      input.proofSelection === undefined) throw new Error("Expected story proof input");
+  const requestId = storyRelationExecutionRequestId({
+    tenantId: input.tenantId,
+    workspaceId: input.workspaceId,
+    scopeKey: readerSummaryScopeKey(input.scope),
+    requestedAt: input.requestedAt,
+    verificationLane: input.verificationLane,
+  });
+  const selectedOutputSha256 = canonicalStoryRelationProofSha256({ decisions });
+  const executionAttestation = {
+    schemaVersion: 1 as const,
+    requestId,
+    purpose: "social_monitor.reader_summary.verify_story_relations.v2",
+    canonicalRequestSha256: canonicalStoryRelationProofSha256({
+      requestId, proofSelection: input.proofSelection,
+    }),
+    provider: "codex" as const,
+    model: "gpt-5.6-sol",
+    reasoningEffort: "high",
+    runtimeEngine: "subscription-runtime-cli" as const,
+    runtimePackageVersion: "0.1.0-test.1",
+    launcherSha256: canonicalStoryRelationProofSha256({ launcher: "test" }),
+    selectedOutputKind: "structured_output" as const,
+    selectedOutputSha256,
+  };
+  return buildStoryRelationExecutionProof({
+    verificationLane: input.verificationLane,
+    promptVersion: "reader_summary.story_relation.agent_runtime.v2",
+    selection: input.proofSelection,
+    candidates: input.candidates,
+    decisions,
+    normalizedOutputSha256: canonicalStoryRelationProofSha256(decisions),
+    executionAttestation,
+    executionAttestationSha256:
+      canonicalStoryRelationProofSha256(executionAttestation),
+    selectedOutputSha256,
+  });
+};
+
+const rehashProof = (
+  proof: StoryRelationExecutionProof,
+): StoryRelationExecutionProof => ({
+  ...proof,
+  proofSha256: canonicalStoryRelationProofSha256({
+    ...proof,
+    proofSha256: undefined,
+  }),
+});
 
 const approveAll: DecisionFactory = (input) => input.candidates.map((candidate) => ({
   leftFeedItemId: candidate.leftFeedItemId,

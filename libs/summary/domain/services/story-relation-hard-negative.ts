@@ -13,6 +13,7 @@ import {
   sharedExactTokens,
   speculativeQuestionClearedByBody,
   storyEventSignature,
+  storyEventRolesConflict,
 } from "./story-event-signature";
 
 export type StoryRelationHardNegativeReason =
@@ -20,6 +21,7 @@ export type StoryRelationHardNegativeReason =
   | "claim_facet_conflict"
   | "content_origin_not_primary"
   | "contradictory_detail"
+  | "directional_role_conflict"
   | "event_object_mismatch"
   | "facet_mismatch"
   | "negation_or_polarity"
@@ -52,7 +54,7 @@ export const storyRelationHardNegative = (params: {
   }
   const leftText = `${left.title} ${left.bodyPreview ?? ""} ${left.sourceText ?? ""}`;
   const rightText = `${right.title} ${right.bodyPreview ?? ""} ${right.sourceText ?? ""}`;
-  if (claimHasNegation(left) || claimHasNegation(right)) {
+  if (claimHasNegation(left) !== claimHasNegation(right)) {
     return "negation_or_polarity";
   }
   if (!speculativePairCleared(left, right)) return "speculative_modality";
@@ -62,9 +64,15 @@ export const storyRelationHardNegative = (params: {
   if (contradictoryDetails(leftText, rightText)) {
     return "contradictory_detail";
   }
+  if (differentEventIdentity(leftText, rightText)) {
+    return "event_object_mismatch";
+  }
   const leftSignature = storyEventSignature(left.title);
   const rightSignature = storyEventSignature(right.title);
   if (leftSignature !== undefined && rightSignature !== undefined) {
+    if (storyEventRolesConflict(leftSignature, rightSignature)) {
+      return "directional_role_conflict";
+    }
     const events = sharedExactTokens(
       leftSignature.eventPredicates,
       rightSignature.eventPredicates,
@@ -73,9 +81,12 @@ export const storyRelationHardNegative = (params: {
       leftSignature.strongAnchors,
       rightSignature.strongAnchors,
     );
-    if (events.length === 0 || anchors.length < 2 ||
-        exclusiveAnchorsConflict(leftSignature.strongAnchors,
-          rightSignature.strongAnchors)) {
+    if (events.length > 0 && anchors.length > 0 && exclusiveAnchorsConflict(
+      leftSignature.strongAnchors, rightSignature.strongAnchors)) {
+      return "event_object_mismatch";
+    }
+    if (anchors.length >= 1 && exclusiveMaterialAnchorsConflict(
+      leftSignature.strongAnchors, rightSignature.strongAnchors)) {
       return "event_object_mismatch";
     }
   }
@@ -90,6 +101,18 @@ const exclusiveAnchorsConflict = (
   const rightSet = new Set(right);
   return left.some((anchor) => !rightSet.has(anchor)) &&
     right.some((anchor) => !leftSet.has(anchor));
+};
+
+const exclusiveMaterialAnchorsConflict = (
+  left: readonly string[],
+  right: readonly string[],
+): boolean => {
+  const leftSet = new Set(left);
+  const rightSet = new Set(right);
+  return left.some((anchor) => !rightSet.has(anchor) &&
+    !genericHeadlineAnchors.has(anchor)) &&
+    right.some((anchor) => !leftSet.has(anchor) &&
+      !genericHeadlineAnchors.has(anchor));
 };
 
 const speculativePairCleared = (
@@ -153,6 +176,18 @@ const contradictoryDetails = (left: string, right: string): boolean =>
   detailSetsConflict(locationTokens(left), locationTokens(right)) ||
   outcomeConflict(left, right);
 
+const differentEventIdentity = (left: string, right: string): boolean => {
+  const leftFacets = eventIdentityFacets(left);
+  const rightFacets = eventIdentityFacets(right);
+  return leftFacets.length > 0 && rightFacets.length > 0 &&
+    sharedExactTokens(leftFacets, rightFacets).length === 0;
+};
+
+const eventIdentityFacets = (value: string): readonly string[] => ([
+  ["authentication", /\b(?:callback|oauth|redirect\s+uris?|sign[ -]?in)\b/iu],
+  ["prompt_injection", /\b(?:crafted\s+instructions?|prompt\s+injection|tool\s+data)\b/iu],
+] as const).flatMap(([facet, pattern]) => pattern.test(value) ? [facet] : []);
+
 const versionTokens = (value: string): readonly string[] =>
   [...value.matchAll(/\b(?:v(?:ersion)?\s*)?\d+(?:\.\d+)+(?:[-\w]+)?\b/giu)]
     .map((match) => match[0].toLocaleLowerCase("en-US").replace(/\s+/gu, ""));
@@ -187,3 +222,8 @@ const sameNonBlank = (left: string | undefined, right: string | undefined): bool
   return normalizedLeft !== undefined && normalizedLeft !== "" &&
     normalizedLeft === normalizedRight;
 };
+
+const genericHeadlineAnchors = new Set([
+  "analysis", "early", "findings", "new", "post", "production",
+  "researcher", "researchers", "study", "technical", "unexpected", "x",
+]);

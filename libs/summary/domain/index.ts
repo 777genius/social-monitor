@@ -65,6 +65,7 @@ export * from "./services/story-event-signature";
 export * from "./services/story-relation-guarded-recall";
 export * from "./services/story-relation-hard-negative";
 export * from "./services/story-relation-provenance";
+export * from "./services/story-relation-verification-proof";
 export * from "./services/reader-summary-claim-board";
 export * from "./services/reader-summary-related-topics";
 export * from "./services/reader-summary-coverage-plan";
@@ -90,6 +91,7 @@ export * from "./value-objects/reader-summary-weekly-publication-evidence";
 export * from "./value-objects/reader-summary-weekly-publication-github-evidence";
 export * from "./value-objects/reader-summary-scope";
 export * from "./value-objects/signal-score";
+export * from "./value-objects/story-relation-verification-proof";
 export type {
   StoryCluster,
   ApprovedSameStoryRelation,

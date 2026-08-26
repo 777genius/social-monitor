@@ -111,6 +111,7 @@ export const admitReaderPostPromotionEvidence = (
         executionAttestationSha256: relation.executionAttestationSha256,
         normalizedOutputSha256: relation.normalizedOutputSha256,
         selectedOutputSha256: relation.selectedOutputSha256,
+        verificationProof: relation.verificationProof,
       })),
     relatedTopicRelations: [],
     promotionCounts: {

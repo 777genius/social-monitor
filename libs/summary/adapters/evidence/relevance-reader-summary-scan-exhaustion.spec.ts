@@ -10,7 +10,11 @@ import {
 } from "@social-monitor/shared-kernel";
 
 import { RelevanceReaderSummaryEvidenceSelector } from "./relevance-reader-summary-evidence.selector";
-import { buildReaderPostPromotionProjection } from "../../domain";
+import {
+  buildReaderPostPromotionProjection,
+} from "../../domain";
+import { attestedStoryRelationBatchProofFixture } from
+  "../../domain/services/story-relation-provenance-test-fixtures";
 import type {
   ReaderSummaryStoryRelationVerifierInput,
   ReaderSummaryStoryRelationVerifierPort,
@@ -346,7 +350,10 @@ describe("reader-summary promotion upstream scan exhaustion", () => {
         leftFeedItemId: expect.stringMatching(/authoritative|independent/u),
         rightFeedItemId: expect.stringMatching(/authoritative|independent/u),
         verificationLane: "semantic_primary",
-        executionAttestationSha256: "b".repeat(64),
+        executionAttestationSha256: expect.stringMatching(/^[0-9a-f]{64}$/u),
+        verificationProof: expect.objectContaining({
+          candidateProofSha256: expect.stringMatching(/^[0-9a-f]{64}$/u),
+        }),
       }),
     ]));
     expect(projection.topReads[0]?.promotionCandidateId)
@@ -364,15 +371,12 @@ describe("reader-summary promotion upstream scan exhaustion", () => {
 });
 
 class ExactSupportVerifier implements ReaderSummaryStoryRelationVerifierPort {
-  readonly guardedPrimaryRecallCertification = "agent_runtime_attested_v1" as const;
   readonly requestedPairs: string[] = [];
 
   async verify(input: ReaderSummaryStoryRelationVerifierInput) {
     this.requestedPairs.push(...input.candidates.map((candidate) =>
       [candidate.leftFeedItemId, candidate.rightFeedItemId].sort().join("\u0000")));
-    return {
-      verificationLane: input.verificationLane,
-      decisions: input.candidates.map((candidate) => {
+    const decisions = input.candidates.map((candidate) => {
       const ids = new Set([
         candidate.leftFeedItemId,
         candidate.rightFeedItemId,
@@ -385,12 +389,22 @@ class ExactSupportVerifier implements ReaderSummaryStoryRelationVerifierPort {
         sameStory: exact,
         confidenceScore: exact ? 0.99 : 0.1,
       };
+    });
+    if (input.verificationLane === "related_topic" ||
+        input.proofSelection === undefined) throw new Error("Unexpected lane");
+    return {
+      verificationLane: input.verificationLane,
+      decisions,
+      proof: attestedStoryRelationBatchProofFixture({
+        tenantId: input.tenantId,
+        workspaceId: input.workspaceId,
+        scope: input.scope,
+        requestedAt: input.requestedAt,
+        verificationLane: input.verificationLane,
+        selection: input.proofSelection,
+        candidates: input.candidates,
+        decisions,
       }),
-      proof: {
-        normalizedOutputSha256: "a".repeat(64),
-        executionAttestationSha256: "b".repeat(64),
-        selectedOutputSha256: "c".repeat(64),
-      },
     };
   }
 }

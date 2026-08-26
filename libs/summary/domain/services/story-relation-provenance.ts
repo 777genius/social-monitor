@@ -9,6 +9,8 @@ import {
   STORY_RELATION_GUARDED_RECALL_POLICY_VERSION,
 } from "./story-relation-guarded-recall";
 import { verifiedStoryRelationPairKey } from "./story-cluster-membership";
+import { validStoryRelationCandidateVerificationProof } from
+  "./story-relation-verification-proof";
 
 export const hasValidStoryRelationProvenance = (
   relation: ApprovedSameStoryRelation,
@@ -28,6 +30,8 @@ export const hasValidStoryRelationProvenance = (
     : relation.verificationLane === "semantic_primary"
       ? STORY_RELATION_CANDIDATE_POLICY_VERSION
       : undefined;
+  const proof = relation.verificationProof;
+  if (proof === undefined) return false;
   return minimumConfidence !== undefined && expectedCandidatePolicy !== undefined &&
     relation.canonicalPairId === verifiedStoryRelationPairKey(
       relation.leftFeedItemId, relation.rightFeedItemId) &&
@@ -35,6 +39,17 @@ export const hasValidStoryRelationProvenance = (
     Number.isFinite(relation.confidence) && relation.confidence >= minimumConfidence &&
     relation.confidence <= 1 && relation.candidatePolicyVersion ===
       expectedCandidatePolicy &&
+    validStoryRelationCandidateVerificationProof(proof) &&
+    proof.canonicalPairId === relation.canonicalPairId &&
+    proof.featureDigest === relation.featureDigest &&
+    proof.normalizedDecision.confidenceScore === relation.confidence &&
+    proof.executionProof.verificationLane === relation.verificationLane &&
+    proof.executionProof.rankingPolicyVersion === relation.rankingPolicyVersion &&
+    proof.executionProof.executionAttestationSha256 ===
+      relation.executionAttestationSha256 &&
+    proof.executionProof.normalizedOutputSha256 ===
+      relation.normalizedOutputSha256 &&
+    proof.executionProof.selectedOutputSha256 === relation.selectedOutputSha256 &&
     [relation.featureDigest, relation.executionAttestationSha256,
       relation.normalizedOutputSha256, relation.selectedOutputSha256]
       .every((hash) => typeof hash === "string" &&

@@ -18,6 +18,7 @@ import {
   storyEventSignature,
   storyTitleSimilarity,
   type StoryEventLemma,
+  type StoryEventRole,
 } from "./story-event-signature";
 import { storyRelationHardNegative } from "./story-relation-hard-negative";
 
@@ -28,8 +29,9 @@ export const STORY_RELATION_GUARDED_RECALL_CONFIDENCE_MIN = 0.98;
 
 export type GuardedRecallCandidate = StoryRelationCandidate & Readonly<{
   eventPredicate: StoryEventLemma;
-  strongAnchor: string;
+  anchor: string;
   objectAnchor: string;
+  eventRole?: StoryEventRole;
   featureDigest: string;
 }>;
 
@@ -164,14 +166,17 @@ const guardedCandidate = (params: {
     rightSignature.titleTokens);
   const similarity = storyTitleSimilarity(leftSignature, rightSignature);
   const eventPredicate = sharedEvents.length === 1 ? sharedEvents[0] : undefined;
-  const strongAnchor = sharedStrongAnchors[0];
-  const objectAnchor = sharedStrongAnchors.find((token) => token !== strongAnchor);
+  const eventRole = sharedEventRole(leftSignature.eventRoles,
+    rightSignature.eventRoles);
+  const anchor = eventRole?.actorAnchor ?? sharedStrongAnchors[0];
+  const objectAnchor = eventRole?.objectAnchor ??
+    sharedStrongAnchors.find((token) => token !== anchor);
   if (hardNegative !== undefined || eventPredicate === undefined ||
-      strongAnchor === undefined || objectAnchor === undefined ||
+      anchor === undefined || objectAnchor === undefined ||
       similarity < 0.14 ||
-      !speculativeQuestionClearedByBody(params.left, leftSignature, strongAnchor,
+      !speculativeQuestionClearedByBody(params.left, leftSignature, anchor,
         objectAnchor, eventPredicate) ||
-      !speculativeQuestionClearedByBody(params.right, rightSignature, strongAnchor,
+      !speculativeQuestionClearedByBody(params.right, rightSignature, anchor,
         objectAnchor, eventPredicate)) return undefined;
   const canonical = params.left.feedItemId.localeCompare(params.right.feedItemId) <= 0
     ? params
@@ -186,8 +191,9 @@ const guardedCandidate = (params: {
     pairId: verifiedStoryRelationPairKey(canonical.left.feedItemId,
       canonical.right.feedItemId),
     eventPredicate,
-    strongAnchor,
+    anchor,
     objectAnchor,
+    eventRole,
     sharedTitleTokens,
     similarity,
   };
@@ -199,15 +205,25 @@ const guardedCandidate = (params: {
     sharedTopicTokens: sharedTitleTokens,
     sharedAnchorTokens: sharedStrongAnchors,
     sharedEventTokens: [eventPredicate],
-    sharedSpecificProductTokens: [strongAnchor],
+    sharedSpecificProductTokens: [anchor],
     topicSimilarity: similarity,
     eventPredicate,
-    strongAnchor,
+    anchor,
     objectAnchor,
+    ...(eventRole === undefined ? {} : { eventRole }),
     featureDigest: createHash("sha256").update(JSON.stringify(features), "utf8")
       .digest("hex"),
   };
 };
+
+const sharedEventRole = (
+  left: readonly StoryEventRole[],
+  right: readonly StoryEventRole[],
+): StoryEventRole | undefined => left.find((leftRole) => right.some((rightRole) =>
+  leftRole.event === rightRole.event &&
+  leftRole.actorAnchor === rightRole.actorAnchor &&
+  leftRole.objectAnchor === rightRole.objectAnchor &&
+  leftRole.direction === rightRole.direction));
 
 const compareCandidates = (left: GuardedRecallCandidate,
   right: GuardedRecallCandidate): number =>

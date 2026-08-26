@@ -22,6 +22,71 @@ describe("guarded primary story recall", () => {
     expect(generation(left, right).candidates).toHaveLength(1);
   });
 
+  it("does not treat event-lemma non-overlap alone as a universal negative", () => {
+    const left = item("left", "x-twitter",
+      "Acme announces Platform release");
+    const right = item("right", "hacker-news",
+      "Acme ships Platform update");
+    expect(storyRelationHardNegative({ left, right,
+      policy: STORY_RANKING_POLICY_V1 })).toBeUndefined();
+  });
+
+  it.each([
+    ["opposite active claim", "SpaceX acquired Cursor assets in deal"],
+    ["opposite passive claim", "Cursor assets were acquired by SpaceX in deal"],
+    ["opposite nominalized claim", "SpaceX acquisition of Cursor operations"],
+  ])("vetoes an exact directional acquisition conflict: %s",
+    (_name, oppositeTitle) => {
+      const left = item("left", "x-twitter",
+        "Cursor acquired SpaceX assets in deal");
+      const right = item("right", "hacker-news", oppositeTitle);
+      expect(storyRelationHardNegative({ left, right,
+        policy: STORY_RANKING_POLICY_V1 })).toBe("directional_role_conflict");
+      expect(generation(left, right).candidates).toHaveLength(0);
+    });
+
+  it.each([
+    ["control", "Cursor controlled SpaceX operations",
+      "SpaceX control of Cursor operations"],
+    ["investment", "Cursor invested in SpaceX operations",
+      "SpaceX investment in Cursor operations"],
+    ["merger", "Cursor merged SpaceX operations",
+      "SpaceX merger of Cursor operations"],
+    ["partnership", "Cursor partnered SpaceX operations",
+      "SpaceX partnership of Cursor operations"],
+  ])("vetoes opposite %s roles", (_event, leftTitle, rightTitle) => {
+    expect(storyRelationHardNegative({
+      left: item("left", "x-twitter", leftTitle),
+      right: item("right", "hacker-news", rightTitle),
+      policy: STORY_RANKING_POLICY_V1,
+    })).toBe("directional_role_conflict");
+  });
+
+  it.each([
+    ["merger", "Cursor merged with SpaceX",
+      "SpaceX merger with Cursor"],
+    ["partnership", "Cursor partnered with SpaceX",
+      "SpaceX partnership with Cursor"],
+  ])("keeps symmetric %s roles", (_event, leftTitle, rightTitle) => {
+    expect(storyRelationHardNegative({
+      left: item("left", "x-twitter", leftTitle),
+      right: item("right", "hacker-news", rightTitle),
+      policy: STORY_RANKING_POLICY_V1,
+    })).toBeUndefined();
+  });
+
+  it.each([
+    "SpaceX assets were acquired by Cursor in deal",
+    "Cursor acquisition of SpaceX operations",
+  ])("keeps same-direction active/passive/nominalized acquisition wording: %s",
+    (sameDirectionTitle) => {
+      const left = item("left", "x-twitter",
+        "Cursor acquired SpaceX assets in deal");
+      const right = item("right", "hacker-news", sameDirectionTitle);
+      expect(storyRelationHardNegative({ left, right,
+        policy: STORY_RANKING_POLICY_V1 })).toBeUndefined();
+    });
+
   it.each([
     ["Could Claude watermark Code output happen?",
       "Claude Code output watermarked in release"],

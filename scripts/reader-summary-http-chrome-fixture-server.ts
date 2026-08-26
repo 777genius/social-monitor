@@ -33,6 +33,8 @@ import {
   type SummaryEvidenceItem,
   type SummaryEvidenceSelection,
 } from "@social-monitor/summary/domain";
+import { attestedStoryRelationFixture } from
+  "@social-monitor/summary/domain/services/story-relation-provenance-test-fixtures";
 import { ExecuteReaderSummaryJobUseCase } from "@social-monitor/summary/features/execute-reader-summary-job/execute-reader-summary-job.use-case";
 import { SummaryRestModule } from "@social-monitor/summary/interfaces/rest/summary-rest.module";
 import {
@@ -161,32 +163,16 @@ const evidence = [
 ] as const satisfies readonly SummaryEvidenceItem[];
 
 const sameStoryRelations: readonly ApprovedSameStoryRelation[] = [
-  {
-    canonicalPairId: "cursor-hn\u0000cursor-x-official",
+  attestedStoryRelationFixture({
     leftFeedItemId: "cursor-hn",
     rightFeedItemId: "cursor-x-official",
     confidence: 0.92,
-    verificationLane: "semantic_primary",
-    candidatePolicyVersion: "reader_summary.story_relation.candidate.v1",
-    rankingPolicyVersion: "story_ranking_v10",
-    featureDigest: "a".repeat(64),
-    executionAttestationSha256: "b".repeat(64),
-    normalizedOutputSha256: "c".repeat(64),
-    selectedOutputSha256: "d".repeat(64),
-  },
-  {
-    canonicalPairId: "duplicate-additional\u0000spacex-github-24",
+  }),
+  attestedStoryRelationFixture({
     leftFeedItemId: "spacex-github-24",
     rightFeedItemId: "duplicate-additional",
     confidence: 0.92,
-    verificationLane: "semantic_primary",
-    candidatePolicyVersion: "reader_summary.story_relation.candidate.v1",
-    rankingPolicyVersion: "story_ranking_v10",
-    featureDigest: "e".repeat(64),
-    executionAttestationSha256: "f".repeat(64),
-    normalizedOutputSha256: "1".repeat(64),
-    selectedOutputSha256: "2".repeat(64),
-  },
+  }),
 ];
 
 const relatedTopicRelations = [{

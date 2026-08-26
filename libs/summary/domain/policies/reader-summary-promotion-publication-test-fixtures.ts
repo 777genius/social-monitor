@@ -6,6 +6,8 @@ import type { SummaryEvidenceSelection } from
   "../value-objects/summary-evidence-item";
 import { buildReaderPostPromotionProjection } from
   "../services/reader-post-promotion-projection";
+import { attestedStoryRelationFixture } from
+  "../services/story-relation-provenance-test-fixtures";
 import {
   dailyEvidenceSelection,
   dailySynthesisArtifact,
@@ -104,19 +106,11 @@ export const trustedNonOfficialSupportPublicationFixture = () => {
         },
       },
     ),
-    approvedSameStoryRelations: [{
-      canonicalPairId: "feed-publication-1\u0000feed-publication-2",
+    approvedSameStoryRelations: [attestedStoryRelationFixture({
       leftFeedItemId: "feed-publication-1",
       rightFeedItemId: "feed-publication-2",
       confidence: 0.95,
-      verificationLane: "semantic_primary",
-      candidatePolicyVersion: "reader_summary.story_relation.candidate.v1",
-      rankingPolicyVersion: "story_ranking_v10",
-      featureDigest: "a".repeat(64),
-      executionAttestationSha256: "b".repeat(64),
-      normalizedOutputSha256: "c".repeat(64),
-      selectedOutputSha256: "d".repeat(64),
-    }],
+    })],
   };
   const base = dailySynthesisArtifact();
   const snapshot = base.toSnapshot();

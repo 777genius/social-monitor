@@ -1,18 +1,22 @@
-import { createHash } from "node:crypto";
 import { performance } from "node:perf_hooks";
 
 import {
   aggregateStoryRelationDecisionTraces,
+  buildStoryRelationCandidateVerificationProof,
   buildGuardedRecallCandidates,
   buildStoryRelationCandidates,
   guardedRecallCandidateStillEligible,
   reconcileStoryRelationDecisions,
+  readerSummaryScopeKey,
   STORY_RANKING_POLICY_V1,
   STORY_RELATION_APPROVAL_CONFIDENCE_MIN,
   STORY_RELATION_CANDIDATE_POLICY_VERSION,
   STORY_RELATION_GUARDED_RECALL_CONFIDENCE_MIN,
   STORY_RELATION_GUARDED_RECALL_POLICY_VERSION,
   storyRelationHardNegative,
+  storyRelationCandidateFeatureDigest,
+  storyRelationExecutionRequestId,
+  validStoryRelationExecutionProof,
   terminalStoryRelationDecisionTraces,
   verifiedStoryRelationPairKey,
   type ApprovedSameStoryRelation,
@@ -21,6 +25,7 @@ import {
   type StoryRelationDecision,
   type SummaryEvidenceItem,
   type SummaryEvidenceSelection,
+  type StoryRelationExecutionProof,
 } from "../../domain";
 import {
   InvalidStoryRelationDecisionBatchError,
@@ -67,8 +72,7 @@ export const verifiedReaderSummaryStoryRelations = async (params: {
     }),
     ...(params.additionalCandidates ?? []),
   ]), evidenceById);
-  const guardedGeneration = params.verifier?.guardedPrimaryRecallCertification ===
-      "agent_runtime_attested_v1"
+  const guardedGeneration = params.verifier !== undefined
     ? buildGuardedRecallCandidates({
         selection: params.deterministicSelection,
         evidence: params.evidence,
@@ -147,6 +151,10 @@ const verifyLane = async (params: {
       clusters: params.deterministicSelection.clusters,
       evidence: params.evidence,
       candidates: params.candidates,
+      proofSelection: {
+        rankingPolicyVersion: params.deterministicSelection.rankingPolicyVersion,
+        sourceWindow: params.deterministicSelection.sourceWindow,
+      },
       verificationLane: params.lane,
       ...(params.timeoutMs === undefined ? {} : { signal: controller.signal }),
       ...(params.timeoutMs === undefined ? {} : { timeoutMs: params.timeoutMs }),
@@ -154,7 +162,7 @@ const verifyLane = async (params: {
     const batch = params.timeoutMs === undefined
       ? await params.verifier.verify(input)
       : await withTimeout(params.verifier.verify(input), params.timeoutMs, controller);
-    assertVerifiedBatch(batch, params.lane);
+    const proof = assertVerifiedBatch(batch, params);
     const decisionBatch = reconcileStoryRelationDecisions({
       candidates: params.candidates,
       decisions: batch.decisions as readonly StoryRelationDecision[],
@@ -174,7 +182,7 @@ const verifyLane = async (params: {
         lane: params.lane,
         candidatePolicyVersion: params.candidatePolicyVersion,
         rankingPolicyVersion: params.deterministicSelection.rankingPolicyVersion,
-        proof: batch.proof,
+        proof,
       })];
     });
     const appliedPairIds = new Set(relations.map((relation) =>
@@ -243,9 +251,10 @@ const appliedRelation = (params: {
   readonly lane: RelationLane;
   readonly candidatePolicyVersion: string;
   readonly rankingPolicyVersion: string;
-  readonly proof: VerifiedStoryRelationDecisionBatch["proof"];
+  readonly proof: StoryRelationExecutionProof;
 }): ApprovedSameStoryRelation => {
   const canonicalPairId = candidatePairId(params.candidate);
+  const featureDigest = storyRelationCandidateFeatureDigest(params.candidate);
   return {
     canonicalPairId,
     leftFeedItemId: params.candidate.leftFeedItemId,
@@ -254,35 +263,47 @@ const appliedRelation = (params: {
     verificationLane: params.lane,
     candidatePolicyVersion: params.candidatePolicyVersion,
     rankingPolicyVersion: params.rankingPolicyVersion,
-    featureDigest: "featureDigest" in params.candidate
-      ? params.candidate.featureDigest
-      : semanticFeatureDigest(params.candidate),
+    featureDigest,
     executionAttestationSha256: params.proof.executionAttestationSha256,
     normalizedOutputSha256: params.proof.normalizedOutputSha256,
     selectedOutputSha256: params.proof.selectedOutputSha256,
+    verificationProof: buildStoryRelationCandidateVerificationProof({
+      executionProof: params.proof,
+      canonicalPairId,
+      featureDigest,
+      confidenceScore: params.confidence,
+    }),
   };
 };
 
-const semanticFeatureDigest = (candidate: StoryRelationCandidate): string =>
-  createHash("sha256").update(JSON.stringify({
-    pairId: candidatePairId(candidate),
-    sharedTopicTokens: candidate.sharedTopicTokens,
-    sharedAnchorTokens: candidate.sharedAnchorTokens,
-    sharedEventTokens: candidate.sharedEventTokens,
-    sharedSpecificProductTokens: candidate.sharedSpecificProductTokens,
-    topicSimilarity: candidate.topicSimilarity,
-  }), "utf8").digest("hex");
-
 const assertVerifiedBatch = (
   batch: VerifiedStoryRelationDecisionBatch,
-  lane: RelationLane,
-): void => {
-  const hashes = [batch.proof.executionAttestationSha256,
-    batch.proof.normalizedOutputSha256, batch.proof.selectedOutputSha256];
-  if (batch.verificationLane !== lane ||
-      hashes.some((hash) => !/^[0-9a-f]{64}$/u.test(hash))) {
+  params: Pick<Parameters<typeof verifyLane>[0],
+    "lane" | "query" | "requestedAt" | "deterministicSelection" |
+    "candidates">,
+): StoryRelationExecutionProof => {
+  const proofSelection = {
+    rankingPolicyVersion: params.deterministicSelection.rankingPolicyVersion,
+    sourceWindow: params.deterministicSelection.sourceWindow,
+  };
+  if (batch.verificationLane !== params.lane ||
+      !validStoryRelationExecutionProof({
+        proof: batch.proof,
+        verificationLane: params.lane,
+        selection: proofSelection,
+        candidates: params.candidates,
+        decisions: batch.decisions,
+        expectedRequestId: storyRelationExecutionRequestId({
+          tenantId: params.query.tenantId,
+          workspaceId: params.query.workspaceId,
+          scopeKey: readerSummaryScopeKey(params.query.scope),
+          requestedAt: params.requestedAt,
+          verificationLane: params.lane,
+        }),
+      })) {
     throw new Error("Story relation verification proof is invalid");
   }
+  return batch.proof as StoryRelationExecutionProof;
 };
 
 const withTimeout = async <T>(

@@ -4,6 +4,10 @@ import { readerPostProviderFamily } from
   "../policies/reader-post-promotion-policy";
 import { storyKey } from "./story-key-normalizer";
 import {
+  storyEventRolesConflict,
+  storyEventSignature,
+} from "./story-event-signature";
+import {
   sharedStoryTopicTokenCount,
   storyClaimFacetTokens,
   storyIdentityAnchorTokens,
@@ -61,6 +65,7 @@ export const isDeterministicCrossProviderStoryMatch = (
   if (item.providerKey === head.providerKey) {
     return false;
   }
+  if (hasDirectionalStoryRoleConflict(item, head)) return false;
   const itemKey = storyKey(item, policy);
   const headKey = storyKey(head, policy);
   if (itemKey !== headKey && canonicalStoryKeysConflict(itemKey, headKey)) {
@@ -190,6 +195,7 @@ export const isVerifiedStoryRelationGuardEligible = (
       readerPostProviderFamily(candidate.providerKey)) {
     return false;
   }
+  if (hasDirectionalStoryRoleConflict(item, candidate)) return false;
   const sameAuthorSeries =
     item.providerKey === candidate.providerKey &&
     isVerifiedSameAuthorStorySeriesCandidate(item, candidate);
@@ -269,6 +275,16 @@ export const isVerifiedStoryRelationGuardEligible = (
     : hasConcreteSubject &&
         hasConcreteContext &&
         sharedTopicTokens >= minimumSharedTopicTokens;
+};
+
+export const hasDirectionalStoryRoleConflict = (
+  left: SummaryEvidenceItem,
+  right: SummaryEvidenceItem,
+): boolean => {
+  const leftSignature = storyEventSignature(left.title);
+  const rightSignature = storyEventSignature(right.title);
+  return leftSignature !== undefined && rightSignature !== undefined &&
+    storyEventRolesConflict(leftSignature, rightSignature);
 };
 
 const VERIFIED_STORY_RELATION_MAX_TIME_DISTANCE_MS = 30 * 60 * 60 * 1000;

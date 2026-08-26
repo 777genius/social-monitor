@@ -2,6 +2,8 @@ import type { ProviderMetric } from "./provider-metric-label";
 import type { PreviewMedia } from "./preview-media";
 import type { ReaderSummaryRelatedTopicRelationProps } from "./reader-summary-related-topic-relation";
 import type { ReaderPostPromotionAttestation } from "../policies/reader-post-promotion-policy-contract";
+import type { StoryRelationCandidateVerificationProof } from
+  "./story-relation-verification-proof";
 
 export type SummaryEvidenceReaderActionKind =
   "read_source" | "watch_repository";
@@ -202,6 +204,7 @@ export type ApprovedSameStoryRelation = {
   readonly executionAttestationSha256: string;
   readonly normalizedOutputSha256: string;
   readonly selectedOutputSha256: string;
+  readonly verificationProof?: StoryRelationCandidateVerificationProof;
 };
 
 export type RelatedTopicRelation = ReaderSummaryRelatedTopicRelationProps;

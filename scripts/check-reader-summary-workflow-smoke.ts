@@ -21,6 +21,8 @@ import {
   workspaceId,
 } from "@social-monitor/shared-kernel";
 import type { ReaderSummaryItem } from "@social-monitor/summary/domain";
+import { attestedStoryRelationFixture } from
+  "@social-monitor/summary/domain/services/story-relation-provenance-test-fixtures";
 import type {
   ReaderSummaryEvidenceSelectorPort,
   ReaderSummaryGitHubProjectionReaderPort,
@@ -229,19 +231,11 @@ class SelectedReaderSummaryEvidenceSelector implements ReaderSummaryEvidenceSele
         },
       ],
       approvedSameStoryRelations: [
-        {
-          canonicalPairId: "feed-github\u0000feed-reddit",
+        attestedStoryRelationFixture({
           leftFeedItemId: "feed-reddit",
           rightFeedItemId: "feed-github",
           confidence: 0.92,
-          verificationLane: "semantic_primary",
-          candidatePolicyVersion: "reader_summary.story_relation.candidate.v1",
-          rankingPolicyVersion: "story_ranking_v10",
-          featureDigest: "a".repeat(64),
-          executionAttestationSha256: "b".repeat(64),
-          normalizedOutputSha256: "c".repeat(64),
-          selectedOutputSha256: "d".repeat(64),
-        },
+        }),
       ],
       relatedTopicRelations: [],
     };

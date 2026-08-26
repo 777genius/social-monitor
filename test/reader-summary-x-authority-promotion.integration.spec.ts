@@ -6,6 +6,8 @@ import { readerPostPromotionFacts } from
   "@social-monitor/summary/adapters/evidence/reader-post-promotion-facts";
 import { buildReaderPostPromotionProjection } from
   "@social-monitor/summary/domain/services/reader-post-promotion-projection";
+import { attestedStoryRelationFixture } from
+  "@social-monitor/summary/domain/services/story-relation-provenance-test-fixtures";
 
 describe("X authority promotion integration", () => {
   it("carries a catalog-authenticated normalized record through facts into same-story support", () => {
@@ -116,20 +118,11 @@ describe("X authority promotion integration", () => {
         selectedFeedItemIds: evidence.map((item) => item.feedItemId),
         storyClusterIds: evidence.map((item) => `cluster:${item.feedItemId}`),
       },
-      approvedSameStoryRelations: [{
-        canonicalPairId: ["cursor-hn", normalized.externalId]
-          .sort().join("\u0000"),
+      approvedSameStoryRelations: [attestedStoryRelationFixture({
         leftFeedItemId: "cursor-hn",
         rightFeedItemId: normalized.externalId,
         confidence: 0.95,
-        verificationLane: "semantic_primary",
-        candidatePolicyVersion: "reader_summary.story_relation.candidate.v1",
-        rankingPolicyVersion: "story_ranking_v10",
-        featureDigest: "a".repeat(64),
-        executionAttestationSha256: "b".repeat(64),
-        normalizedOutputSha256: "c".repeat(64),
-        selectedOutputSha256: "d".repeat(64),
-      }],
+      })],
     });
 
     expect(officialFacts.authorityAttestation).toMatchObject({

@@ -1,9 +1,9 @@
 import type { SummaryEvidenceItem } from "../value-objects/summary-evidence-item";
 
 export const STORY_EVENT_LEMMAS = [
-  "acquire", "announce", "ban", "deploy", "disclose", "fund", "launch",
-  "merge", "outage", "patch", "raise", "recall", "release", "reveal",
-  "rollout", "ship", "sue", "watermark",
+  "acquire", "announce", "ban", "control", "deploy", "disclose", "fund",
+  "invest", "launch", "merge", "outage", "partner", "patch", "raise",
+  "recall", "release", "reveal", "rollout", "ship", "sue", "watermark",
 ] as const;
 
 export type StoryEventLemma = typeof STORY_EVENT_LEMMAS[number];
@@ -13,6 +13,14 @@ export type StoryEventSignature = Readonly<{
   strongAnchors: readonly string[];
   eventPredicates: readonly StoryEventLemma[];
   qualifiers: readonly string[];
+  eventRoles: readonly StoryEventRole[];
+}>;
+
+export type StoryEventRole = Readonly<{
+  event: "acquisition" | "control" | "investment" | "merger" | "partnership";
+  actorAnchor: string;
+  objectAnchor: string;
+  direction: "directed" | "symmetric";
 }>;
 
 export const storyEventSignature = (
@@ -30,8 +38,24 @@ export const storyEventSignature = (
     isStrongAnchor(raw, normalized) ? [normalized] : []));
   const qualifiers = uniqueSorted(rawTokens.flatMap(({ normalized }) =>
     qualifierToken(normalized) ? [normalized] : []));
-  return { titleTokens, strongAnchors, eventPredicates, qualifiers };
+  return {
+    titleTokens,
+    strongAnchors,
+    eventPredicates,
+    qualifiers,
+    eventRoles: eventRolesFromTokens(rawTokens),
+  };
 };
+
+export const storyEventRolesConflict = (
+  left: StoryEventSignature,
+  right: StoryEventSignature,
+): boolean => left.eventRoles.some((leftRole) =>
+  right.eventRoles.some((rightRole) =>
+    leftRole.event === rightRole.event &&
+    leftRole.direction === "directed" && rightRole.direction === "directed" &&
+    leftRole.actorAnchor === rightRole.objectAnchor &&
+    leftRole.objectAnchor === rightRole.actorAnchor));
 
 export const storyTitleSimilarity = (
   left: StoryEventSignature,
@@ -90,11 +114,14 @@ export const hasNegation = (value: string): boolean =>
   /\b(?:cannot|didn['’]?t|doesn['’]?t|hasn['’]?t|isn['’]?t|never|no|not|won['’]?t|without)\b/iu
     .test(value);
 
-const lexicalTokens = (value: string): readonly Readonly<{
+type LexicalToken = Readonly<{
   raw: string;
   normalized: string;
-}>[] => (value.normalize("NFKC")
-  .match(/[\p{Letter}\p{Number}][\p{Letter}\p{Number}+#.-]*/gu) ?? [])
+}>;
+
+const lexicalTokens = (value: string): readonly LexicalToken[] =>
+  (value.normalize("NFKC")
+  .match(/[\p{Letter}\p{Number}][\p{Letter}\p{Number}+#.]*/gu) ?? [])
   .map((raw) => ({ raw, normalized: normalizeToken(raw) }));
 
 const normalizeToken = (raw: string): string => {
@@ -125,11 +152,20 @@ const eventLemmaByForm = new Map<string, StoryEventLemma>([
   ["deployment", "deploy"], ["deploys", "deploy"],
   ["disclose", "disclose"], ["disclosed", "disclose"],
   ["discloses", "disclose"], ["disclosure", "disclose"],
+  ["control", "control"], ["controlled", "control"],
+  ["controlling", "control"], ["controls", "control"],
   ["fund", "fund"], ["funded", "fund"], ["funding", "fund"], ["funds", "fund"],
+  ["invest", "invest"], ["invested", "invest"],
+  ["investing", "invest"], ["investment", "invest"],
+  ["investments", "invest"], ["invests", "invest"],
   ["launch", "launch"], ["launched", "launch"], ["launches", "launch"],
   ["launching", "launch"], ["merge", "merge"], ["merged", "merge"],
   ["merger", "merge"], ["merges", "merge"], ["merging", "merge"],
   ["outage", "outage"], ["outages", "outage"],
+  ["unavailable", "outage"], ["unavailability", "outage"],
+  ["partner", "partner"], ["partnered", "partner"],
+  ["partnering", "partner"], ["partners", "partner"],
+  ["partnership", "partner"], ["partnerships", "partner"],
   ["patch", "patch"], ["patched", "patch"], ["patches", "patch"],
   ["patching", "patch"], ["raise", "raise"], ["raised", "raise"],
   ["raises", "raise"], ["raising", "raise"], ["recall", "recall"],
@@ -176,3 +212,95 @@ const qualifierWords = new Set([
 
 const uniqueSorted = (values: readonly string[]): readonly string[] =>
   [...new Set(values)].sort((left, right) => left.localeCompare(right));
+
+const eventRolesFromTokens = (
+  tokens: readonly LexicalToken[],
+): readonly StoryEventRole[] => {
+  const roles: StoryEventRole[] = [];
+  tokens.forEach((token, eventIndex) => {
+    const event = roleEventByLemma.get(token.normalized);
+    if (event === undefined) return;
+    const byIndex = nextTokenIndex(tokens, eventIndex, "by");
+    const relationIndex = relationMarkerIndex(tokens, eventIndex, event);
+    const nominal = nominalEventForms.has(token.raw.toLocaleLowerCase("en-US"));
+    let actorAnchor: string | undefined;
+    let objectAnchor: string | undefined;
+    if (byIndex !== undefined) {
+      actorAnchor = strongAnchorAfter(tokens, byIndex);
+      objectAnchor = relationIndex === undefined
+        ? strongAnchorBefore(tokens, eventIndex)
+        : strongAnchorAfter(tokens, relationIndex, byIndex);
+    } else {
+      actorAnchor = strongAnchorBefore(tokens, eventIndex);
+      objectAnchor = relationIndex === undefined || !nominal
+        ? strongAnchorAfter(tokens, relationIndex ?? eventIndex)
+        : strongAnchorAfter(tokens, relationIndex);
+    }
+    if (actorAnchor === undefined || objectAnchor === undefined ||
+        actorAnchor === objectAnchor) return;
+    const relationMarker = relationIndex === undefined
+      ? undefined : tokens[relationIndex]?.normalized;
+    const direction = (event === "merger" || event === "partnership") &&
+        relationMarker === "with"
+      ? "symmetric" as const : "directed" as const;
+    const anchors = [actorAnchor, objectAnchor].sort();
+    roles.push(direction === "symmetric"
+      ? { event, actorAnchor: anchors[0]!, objectAnchor: anchors[1]!, direction }
+      : { event, actorAnchor, objectAnchor, direction });
+  });
+  return roles.filter((role, index) => roles.findIndex((candidate) =>
+    candidate.event === role.event && candidate.actorAnchor === role.actorAnchor &&
+    candidate.objectAnchor === role.objectAnchor &&
+    candidate.direction === role.direction) === index);
+};
+
+const roleEventByLemma = new Map<string, StoryEventRole["event"]>([
+  ["acquire", "acquisition"], ["control", "control"],
+  ["fund", "investment"], ["invest", "investment"],
+  ["merge", "merger"], ["partner", "partnership"],
+]);
+const nominalEventForms = new Set([
+  "acquisition", "control", "funding", "investment", "investments",
+  "merger", "partnership", "partnerships",
+]);
+const roleRelationMarkers = new Map<StoryEventRole["event"], readonly string[]>([
+  ["acquisition", ["of"]], ["control", ["of"]],
+  ["investment", ["in", "into", "of"]], ["merger", ["with", "of"]],
+  ["partnership", ["with", "of"]],
+]);
+
+const relationMarkerIndex = (
+  tokens: readonly LexicalToken[],
+  eventIndex: number,
+  event: StoryEventRole["event"],
+): number | undefined => {
+  const markers = roleRelationMarkers.get(event) ?? [];
+  const index = tokens.findIndex((token, candidateIndex) =>
+    candidateIndex > eventIndex && candidateIndex <= eventIndex + 4 &&
+    markers.includes(token.normalized));
+  return index < 0 ? undefined : index;
+};
+
+const nextTokenIndex = (
+  tokens: readonly LexicalToken[],
+  eventIndex: number,
+  expected: string,
+): number | undefined => {
+  const index = tokens.findIndex((token, candidateIndex) =>
+    candidateIndex > eventIndex && candidateIndex <= eventIndex + 6 &&
+    token.normalized === expected);
+  return index < 0 ? undefined : index;
+};
+
+const strongAnchorBefore = (
+  tokens: readonly LexicalToken[],
+  index: number,
+): string | undefined => [...tokens.slice(0, index)].reverse().find((token) =>
+  isStrongAnchor(token.raw, token.normalized))?.normalized;
+
+const strongAnchorAfter = (
+  tokens: readonly LexicalToken[],
+  index: number,
+  beforeIndex = tokens.length,
+): string | undefined => tokens.slice(index + 1, beforeIndex).find((token) =>
+  isStrongAnchor(token.raw, token.normalized))?.normalized;

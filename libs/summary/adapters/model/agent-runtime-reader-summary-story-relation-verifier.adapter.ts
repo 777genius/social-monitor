@@ -1,5 +1,7 @@
 import {
   readerSummaryScopeKey,
+  buildStoryRelationExecutionProof,
+  storyRelationExecutionRequestId,
 } from "../../domain";
 import type {
   AgentRuntimeClientPort,
@@ -59,7 +61,6 @@ const defaultTimeoutMs = 300_000;
 const defaultMaxOutputTokens = 6_000;
 
 export class AgentRuntimeReaderSummaryStoryRelationVerifier implements ReaderSummaryStoryRelationVerifierPort {
-  readonly guardedPrimaryRecallCertification = "agent_runtime_attested_v1" as const;
   private readonly client: AgentRuntimeClientPort;
   private readonly provider: "codex";
   private readonly providerInstanceId?: string;
@@ -114,15 +115,17 @@ export class AgentRuntimeReaderSummaryStoryRelationVerifier implements ReaderSum
         : scopeKey;
     const relatedTopicLane = input.verificationLane === "related_topic";
     const command = {
-      requestId: buildAgentRuntimeRequestId(
-        relatedTopicLane
-          ? "reader-summary-related-topic-relations"
-          : "reader-summary-story-relations",
-        input.tenantId,
-        input.workspaceId,
-        requestScopeKey,
-        input.requestedAt,
-      ),
+      requestId: relatedTopicLane
+        ? buildAgentRuntimeRequestId(
+            "reader-summary-related-topic-relations", input.tenantId,
+            input.workspaceId, requestScopeKey, input.requestedAt)
+        : storyRelationExecutionRequestId({
+            tenantId: input.tenantId,
+            workspaceId: input.workspaceId,
+            scopeKey,
+            requestedAt: input.requestedAt,
+            verificationLane: input.verificationLane,
+          }),
       tenantId: input.tenantId,
       workspaceId: input.workspaceId,
       correlationId: buildAgentRuntimeRequestId(
@@ -188,7 +191,7 @@ export class AgentRuntimeReaderSummaryStoryRelationVerifier implements ReaderSum
     const decisions = relatedTopicLane
       ? readDecisionEnvelope(raw)
       : normalizeBinaryDecisions(raw);
-    const proof = await verifyAndRecordReaderSummaryExecution({
+    const executionProof = await verifyAndRecordReaderSummaryExecution({
       command,
       result,
       taskRole: relatedTopicLane ? "related_topic_relation" : "story_relation",
@@ -196,6 +199,20 @@ export class AgentRuntimeReaderSummaryStoryRelationVerifier implements ReaderSum
       normalizedOutput: decisions,
       sink: this.verifiedAttestationSink,
     });
+    const proof = relatedTopicLane
+      ? executionProof
+      : buildStoryRelationExecutionProof({
+          verificationLane: input.verificationLane,
+          promptVersion: this.promptVersion,
+          selection: requiredProofSelection(input),
+          candidates: input.candidates,
+          decisions,
+          normalizedOutputSha256: executionProof.normalizedOutputSha256,
+          executionAttestation: requiredExecutionAttestation(result),
+          executionAttestationSha256:
+            executionProof.executionAttestationSha256,
+          selectedOutputSha256: executionProof.selectedOutputSha256,
+        });
     return {
       verificationLane: input.verificationLane,
       decisions: decisions as VerifiedStoryRelationDecisionBatch["decisions"],
@@ -233,6 +250,24 @@ export const resolveAgentRuntimeReaderSummaryStoryRelationVerifierOptions = (
       env.AGENT_RUNTIME_READER_SUMMARY_STORY_RELATION_VERIFIER_MAX_OUTPUT_TOKENS,
     ),
   };
+};
+
+const requiredProofSelection = (
+  input: ReaderSummaryStoryRelationVerifierInput,
+) => {
+  if (input.proofSelection === undefined) {
+    throw new Error("Story relation verifier proof selection is required");
+  }
+  return input.proofSelection;
+};
+
+const requiredExecutionAttestation = (
+  result: Awaited<ReturnType<AgentRuntimeClientPort["runTask"]>>,
+) => {
+  if (result.executionAttestation === undefined) {
+    throw new Error("Story relation verifier execution attestation is required");
+  }
+  return result.executionAttestation;
 };
 
 const readDecisionEnvelope = (

@@ -8,6 +8,8 @@ import type {
   StoryCluster,
   StoryRelationCandidate,
   StoryRelationDecision,
+  StoryRelationExecutionProof,
+  StoryRelationProofSelectionContext,
   SummaryEvidenceItem,
 } from "../domain";
 
@@ -20,6 +22,7 @@ export type ReaderSummaryStoryRelationVerifierInput = {
   readonly clusters: readonly StoryCluster[];
   readonly evidence: readonly SummaryEvidenceItem[];
   readonly candidates: readonly (StoryRelationCandidate | RelatedTopicCandidate)[];
+  readonly proofSelection?: StoryRelationProofSelectionContext;
   readonly verificationLane:
     | "semantic_primary"
     | "guarded_recall_primary"
@@ -28,11 +31,15 @@ export type ReaderSummaryStoryRelationVerifierInput = {
   readonly signal?: AbortSignal;
 };
 
-export type VerifiedStoryRelationExecutionProof = Readonly<{
+export type LegacyRelatedTopicExecutionProof = Readonly<{
   normalizedOutputSha256: string;
   executionAttestationSha256: string;
   selectedOutputSha256: string;
 }>;
+
+export type VerifiedStoryRelationExecutionProof =
+  | StoryRelationExecutionProof
+  | LegacyRelatedTopicExecutionProof;
 
 export type VerifiedStoryRelationDecisionBatch = Readonly<{
   verificationLane: ReaderSummaryStoryRelationVerifierInput["verificationLane"];
@@ -41,8 +48,6 @@ export type VerifiedStoryRelationDecisionBatch = Readonly<{
 }>;
 
 export interface ReaderSummaryStoryRelationVerifierPort {
-  /** Only the certified agent-runtime adapter may opt into guarded primary recall. */
-  readonly guardedPrimaryRecallCertification?: "agent_runtime_attested_v1";
   verify(
     input: ReaderSummaryStoryRelationVerifierInput,
   ): Promise<VerifiedStoryRelationDecisionBatch>;
