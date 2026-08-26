@@ -90,22 +90,32 @@ export const exactObservedPromotionPublicationFixture = (
 
 export const trustedNonOfficialSupportPublicationFixture = () => {
   const source = dailyEvidenceSelection(25);
-  const evidence: SummaryEvidenceSelection = {
-    ...source,
-    selectedEvidence: source.selectedEvidence.map((item) =>
-      item.feedItemId !== "feed-publication-2" ? item : {
-        ...item,
-        promotionFacts: {
-          ...item.promotionFacts!,
-          authorityAttestation: {
-            status: "attested" as const,
-            official: false,
-            trusted: true,
-            attestedBy: "source_catalog" as const,
-          },
+  const selectedEvidence = source.selectedEvidence.map((item) =>
+    item.feedItemId !== "feed-publication-2" ? item : {
+      ...item,
+      promotionFacts: {
+        ...item.promotionFacts!,
+        authorityAttestation: {
+          status: "attested" as const,
+          official: false,
+          trusted: true,
+          attestedBy: "source_catalog" as const,
         },
       },
-    ),
+    });
+  const selectorCluster = {
+    ...source.clusters[0]!,
+    duplicateFeedItemIds: ["feed-publication-2"],
+    providerKeys: [...new Set(selectedEvidence.map((item) => item.providerKey))],
+  };
+  const evidence: SummaryEvidenceSelection = {
+    ...source,
+    selectedEvidence,
+    clusters: [selectorCluster],
+    sourceWindow: {
+      ...source.sourceWindow,
+      storyClusterIds: [selectorCluster.id],
+    },
     approvedSameStoryRelations: [attestedStoryRelationFixture({
       leftFeedItemId: "feed-publication-1",
       rightFeedItemId: "feed-publication-2",

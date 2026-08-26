@@ -31,8 +31,14 @@ import {
   SUMMARY_AGENT_RUNTIME_SUMMARY_MODEL_OPTIONS,
   type SummaryAgentRuntimeClientOptions,
 } from "./summary-agent-runtime-provider-tokens";
+import {
+  READER_SUMMARY_STORY_RELATION_PROOF_AUTHORITY,
+  readerSummaryStoryRelationProofAuthorityProvider,
+  type StoryRelationProofAuthority,
+} from "./summary-story-relation-proof-authority.provider";
 
 export const summaryAgentRuntimeProviders: readonly Provider[] = [
+  readerSummaryStoryRelationProofAuthorityProvider,
   {
     provide: GrpcAgentRuntimeClient,
     useFactory: (
@@ -69,10 +75,16 @@ export const summaryAgentRuntimeProviders: readonly Provider[] = [
   {
     provide: AgentRuntimeReaderSummaryStoryRelationVerifier,
     useFactory: (
-      options: AgentRuntimeReaderSummaryStoryRelationVerifierOptions,
-    ) => new AgentRuntimeReaderSummaryStoryRelationVerifier(options),
+      options: Omit<AgentRuntimeReaderSummaryStoryRelationVerifierOptions,
+        "executionProofIssuer">,
+      authority: StoryRelationProofAuthority,
+    ) => new AgentRuntimeReaderSummaryStoryRelationVerifier({
+      ...options,
+      executionProofIssuer: authority.executionProofIssuer,
+    }),
     inject: [
       SUMMARY_AGENT_RUNTIME_READER_SUMMARY_STORY_RELATION_VERIFIER_OPTIONS,
+      READER_SUMMARY_STORY_RELATION_PROOF_AUTHORITY,
     ],
   },
   {

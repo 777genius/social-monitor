@@ -71,18 +71,6 @@ export class StoryClusteringService {
   }
 }
 
-export const rebuildStoryClustersForPromotionAdmission = (params: {
-  readonly items: readonly SummaryEvidenceItem[];
-  readonly verifiedStoryRelationPairs: ReadonlySet<string>;
-  readonly now: Date;
-  readonly policy?: StoryRankingPolicy;
-}): readonly StoryCluster[] => [...buildClusters(
-  params.items,
-  new Date(params.now.getTime()),
-  params.policy ?? STORY_RANKING_POLICY_V1,
-  params.verifiedStoryRelationPairs,
-)].sort(compareStoryClusters);
-
 const buildClusters = (
   items: readonly SummaryEvidenceItem[],
   now: Date,

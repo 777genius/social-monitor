@@ -288,11 +288,19 @@ const build = (
   approvedSameStoryRelations: readonly ApprovedSameStoryRelation[] = [],
   relatedTopicRelations: Parameters<typeof buildReaderSummary>[0]["relatedTopicRelations"] = [],
   citationMap: readonly ReaderSummaryCitation[] = evidenceItems.map(citation),
-) => buildReaderSummary({
+): ReturnType<typeof buildReaderSummary> => {
+  const storyClusters = selectorClusters(
+    evidenceItems,
+    approvedSameStoryRelations,
+  );
+  const clusterIdByItem = new Map(storyClusters.flatMap((item) =>
+    [item.representativeFeedItemId, ...item.duplicateFeedItemIds].map((id) =>
+      [id, item.id] as const)));
+  return buildReaderSummary({
   headline: "Promotion Policy V1 summary",
   executiveSummary: "Only admitted post evidence is reader-visible.",
   topStories: evidenceItems.map((item) => ({
-    storyClusterId: `cluster:${item.feedItemId}`,
+    storyClusterId: clusterIdByItem.get(item.feedItemId)!,
     title: item.title,
     summary: item.title,
     interestIds: [item.interestId],
@@ -303,7 +311,7 @@ const build = (
   repeatedSignals: [],
   risksAndUnknowns: [],
   citationMap,
-  storyClusters: evidenceItems.map(cluster),
+  storyClusters,
   sourceWindow: {
     windowId: "window:aug-14",
     startedAt: new Date("2026-08-14T00:00:00.000Z"),
@@ -312,13 +320,48 @@ const build = (
     periodEndedAt: new Date("2026-08-15T00:00:00.000Z"),
     ingestionCutoff: new Date("2026-08-15T01:00:00.000Z"),
     selectedFeedItemIds: evidenceItems.map((item) => item.feedItemId),
-    storyClusterIds: evidenceItems.map((item) => `cluster:${item.feedItemId}`),
+    storyClusterIds: storyClusters.map((item) => item.id),
   },
   selectedEvidence: evidenceItems,
   approvedSameStoryRelations,
   relatedTopicRelations,
   qualityFlags: [],
-});
+  });
+};
+
+const selectorClusters = (
+  items: readonly SummaryEvidenceItem[],
+  relations: readonly ApprovedSameStoryRelation[],
+): readonly StoryCluster[] => {
+  const groupById = new Map(items.map((item) =>
+    [item.feedItemId, item.feedItemId] as const));
+  const itemById = new Map(items.map((item) => [item.feedItemId, item] as const));
+  for (const relation of relations) {
+    const left = itemById.get(relation.leftFeedItemId);
+    const right = itemById.get(relation.rightFeedItemId);
+    if (left === undefined || right === undefined ||
+        left.providerKey === right.providerKey) continue;
+    const leftGroup = groupById.get(relation.leftFeedItemId);
+    const rightGroup = groupById.get(relation.rightFeedItemId);
+    if (leftGroup === undefined || rightGroup === undefined) continue;
+    for (const [id, group] of groupById) {
+      if (group === rightGroup) groupById.set(id, leftGroup);
+    }
+  }
+  const grouped = new Map<string, SummaryEvidenceItem[]>();
+  for (const item of items) {
+    const group = groupById.get(item.feedItemId)!;
+    const members = grouped.get(group) ?? [];
+    members.push(item);
+    grouped.set(group, members);
+  }
+  return [...grouped.values()].map((members) => ({
+    ...cluster(members[0]!),
+    duplicateFeedItemIds: members.slice(1).map((item) => item.feedItemId),
+    interestIds: [...new Set(members.map((item) => item.interestId))],
+    providerKeys: [...new Set(members.map((item) => item.providerKey))],
+  }));
+};
 
 const evidence = (params: {
   readonly id: string;

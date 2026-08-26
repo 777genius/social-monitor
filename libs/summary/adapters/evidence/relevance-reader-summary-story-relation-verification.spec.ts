@@ -20,6 +20,11 @@ import type {
 import { NOOP_STORY_RANKING_METRICS } from "../../ports";
 import { verifiedReaderSummaryStoryRelations } from
   "./relevance-reader-summary-story-relation-decisions";
+import {
+  createStoryRelationProofAuthority,
+  issueStoryRelationExecutionProof,
+  type StoryRelationProofAuthority,
+} from "../../domain/services/story-relation-proof-authority";
 
 const now = new Date("2026-08-20T12:00:00.000Z");
 const period = {
@@ -63,6 +68,52 @@ describe("guarded primary story relation verification", () => {
       relations: [],
     });
     expect(verifier.inputs).toHaveLength(1);
+  });
+
+  it("does not trust a permissive verifier-port boolean", async () => {
+    const authority = createStoryRelationProofAuthority();
+    const permissive = {
+      authenticatesExecutionProof: () => true,
+      verify: async (input: ReaderSummaryStoryRelationVerifierInput) => {
+        const decisions = approveAll(input);
+        return {
+          verificationLane: input.verificationLane,
+          decisions,
+          proof: proofFor(input, decisions),
+        };
+      },
+    } as ReaderSummaryStoryRelationVerifierPort;
+    await expect(run(permissive, undefined, cursorEvidence,
+      NOOP_STORY_RANKING_METRICS, authority)).resolves.toMatchObject({
+      relations: [],
+    });
+  });
+
+  it("rejects an untrusted direct-import issuer object", () => {
+    expect(() => issueStoryRelationExecutionProof(
+      {} as never,
+      {} as StoryRelationExecutionProof,
+    )).toThrow("Untrusted story relation proof issuer");
+  });
+
+  it("does not let another authority rebind an exact proof object", () => {
+    const original = createStoryRelationProofAuthority();
+    const separate = createStoryRelationProofAuthority();
+    const proof = {} as StoryRelationExecutionProof;
+    issueStoryRelationExecutionProof(original.executionProofIssuer, proof);
+    expect(() => issueStoryRelationExecutionProof(
+      separate.executionProofIssuer,
+      proof,
+    )).toThrow("Story relation execution proof already has another authority");
+  });
+
+  it("rejects a proof issued by a separately-created authority", async () => {
+    const verifier = new FakeVerifier(true, approveAll);
+    const separateAuthority = createStoryRelationProofAuthority();
+    await expect(run(verifier, undefined, cursorEvidence,
+      NOOP_STORY_RANKING_METRICS, separateAuthority)).resolves.toMatchObject({
+      relations: [],
+    });
   });
 
   it.each([
@@ -133,6 +184,8 @@ describe("guarded primary story relation verification", () => {
         executionAttestationSha256:
           canonicalStoryRelationProofSha256(executionAttestation) });
     }],
+    ["copy-JSON proof", (proof: StoryRelationExecutionProof) =>
+      JSON.parse(JSON.stringify(proof)) as StoryRelationExecutionProof],
   ] as const)("rejects a rehashed %s", async (_name, mutateProof) => {
     const verifier = new FakeVerifier(true, approveAll, undefined, mutateProof);
     await expect(run(verifier)).resolves.toMatchObject({ relations: [] });
@@ -258,7 +311,7 @@ type DecisionFactory = (
 
 class FakeVerifier implements ReaderSummaryStoryRelationVerifierPort {
   readonly inputs: ReaderSummaryStoryRelationVerifierInput[] = [];
-  private readonly authenticatedProofs = new WeakSet<object>();
+  readonly proofAuthority = createStoryRelationProofAuthority();
 
   constructor(
     private readonly validProof: boolean,
@@ -279,8 +332,11 @@ class FakeVerifier implements ReaderSummaryStoryRelationVerifierPort {
           executionAttestationSha256: sha("b"),
           selectedOutputSha256: sha("c"),
         });
-    if (typeof proof === "object" && proof !== null && this.validProof) {
-      this.authenticatedProofs.add(proof);
+    if ("proofVersion" in proof && this.validProof) {
+      issueStoryRelationExecutionProof(
+        this.proofAuthority.executionProofIssuer,
+        proof,
+      );
     }
     return {
       verificationLane: input.verificationLane,
@@ -290,10 +346,6 @@ class FakeVerifier implements ReaderSummaryStoryRelationVerifierPort {
     };
   }
 
-  authenticatesExecutionProof(proof: unknown): boolean {
-    return typeof proof === "object" && proof !== null &&
-      this.authenticatedProofs.has(proof);
-  }
 }
 
 class PendingCertifiedVerifier implements ReaderSummaryStoryRelationVerifierPort {
@@ -302,7 +354,6 @@ class PendingCertifiedVerifier implements ReaderSummaryStoryRelationVerifierPort
     this.inputs.push(input);
     return new Promise(() => undefined);
   }
-  authenticatesExecutionProof(): boolean { return false; }
 }
 
 const proofFor = (
@@ -389,6 +440,7 @@ const run = (
   guardedRecallTimeoutMs?: number,
   items: readonly SummaryEvidenceItem[] = cursorEvidence,
   metrics: StoryRankingMetricsPort = NOOP_STORY_RANKING_METRICS,
+  proofAuthority?: StoryRelationProofAuthority,
 ) => verifiedReaderSummaryStoryRelations({
   query: {
     tenantId: tenantId("tenant-guarded-recall"),
@@ -401,6 +453,8 @@ const run = (
   deterministicSelection: selection(items),
   requestedAt: now,
   verifier,
+  proofAuthority: proofAuthority ??
+    (verifier instanceof FakeVerifier ? verifier.proofAuthority : undefined),
   metrics,
   ...(guardedRecallTimeoutMs === undefined ? {} : { guardedRecallTimeoutMs }),
 });

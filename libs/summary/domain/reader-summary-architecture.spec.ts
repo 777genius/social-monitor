@@ -1,5 +1,5 @@
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { join, relative } from "node:path";
 import ts from "typescript";
 
 const readerSummaryCoreFiles = [
@@ -422,6 +422,62 @@ describe("ReaderSummary domain architecture", () => {
     expect(violations).toEqual([]);
   });
 
+  it("keeps story-relation authority creation out of public and untrusted APIs", () => {
+    const summaryRoot = join(domainRoot, "..");
+    const allowedFactoryConsumers = new Set([
+      "adapters/eval/story-relation-golden-harness.ts",
+      "domain/services/story-relation-provenance-test-fixtures.ts",
+      "interfaces/rest/summary-story-relation-proof-authority.provider.ts",
+    ]);
+    const violations = typescriptFiles(summaryRoot).flatMap((file) => {
+      const relativePath = relative(summaryRoot, file).replaceAll("\\", "/");
+      if (relativePath.endsWith(".spec.ts") || relativePath ===
+          "domain/services/story-relation-proof-authority.ts") return [];
+      const source = readFileSync(file, "utf8");
+      const fileViolations = source.includes("createStoryRelationProofAuthority") &&
+          !allowedFactoryConsumers.has(relativePath)
+        ? [`${relativePath} imports the private proof-authority factory`]
+        : [];
+      const allowedAuthorityConsumers = new Set([
+        "adapters/model/agent-runtime-reader-summary-story-relation-verifier.adapter.ts",
+        "adapters/evidence/relevance-reader-summary-story-relation-decisions.ts",
+        "domain/services/story-relation-provenance.ts",
+        "domain/services/story-relation-verification-proof.ts",
+        "domain/services/reader-post-promotion-evidence-admission.ts",
+        "domain/services/story-relation-provenance-test-fixtures.ts",
+        "interfaces/rest/summary-agent-runtime.providers.ts",
+        "interfaces/rest/summary-reader-summary.providers.ts",
+        "interfaces/rest/summary-story-relation-proof-authority.provider.ts",
+        "features/execute-reader-summary-job/execute-reader-summary-job.use-case.ts",
+      ]);
+      if (source.includes("story-relation-proof-authority") &&
+          !allowedAuthorityConsumers.has(relativePath) &&
+          !allowedFactoryConsumers.has(relativePath)) {
+        fileViolations.push(
+          `${relativePath} deep-imports private story-relation authority`,
+        );
+      }
+      return fileViolations;
+    });
+    const publicSurface = [sourceFor("index.ts"),
+      sourceFor("../ports/index.ts")].join("\n");
+    if (publicSurface.includes("story-relation-proof-authority")) {
+      violations.push("story relation proof authority is publicly re-exported");
+    }
+    if (sourceFor("../ports/reader-summary-story-relation-verifier.port.ts")
+      .includes("authenticatesExecutionProof")) {
+      violations.push("story relation verifier port can forge proof authority");
+    }
+    expect(violations).toEqual([]);
+  });
+
+  it("does not expose a promotion-admission reclustering backdoor", () => {
+    expect(sourceFor("services/story-clustering.service.ts"))
+      .not.toContain("rebuildStoryClustersForPromotionAdmission");
+    expect(sourceFor("services/reader-post-promotion-evidence-admission.ts"))
+      .not.toContain("StoryClusteringService");
+  });
+
   it("keeps canonical ReaderSummary REST mapping outside canonical application", () => {
     expect(
       existsSync(
@@ -539,6 +595,14 @@ const sourceFor = (relativePath: string): string => {
 
   return readFileSync(path, "utf8");
 };
+
+const typescriptFiles = (root: string): readonly string[] =>
+  readdirSync(root, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(root, entry.name);
+    return entry.isDirectory()
+      ? typescriptFiles(path)
+      : entry.isFile() && entry.name.endsWith(".ts") ? [path] : [];
+  });
 
 const importPaths = (source: string): readonly string[] =>
   [...source.matchAll(/from ['"]([^'"]+)['"]/g)].map((match) => match[1] ?? "");

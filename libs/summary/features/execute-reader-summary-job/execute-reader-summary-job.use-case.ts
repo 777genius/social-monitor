@@ -19,6 +19,8 @@ import {
   resolveEffectiveReaderSummaryPolicy,
   type ReaderSummaryJob,
 } from "../../domain";
+import type { StoryRelationProofVerifier } from
+  "../../domain/services/story-relation-proof-authority";
 import {
   NOOP_READER_SUMMARY_CONTEXT_PROVIDER,
   type ReaderSummaryArtifactRepositoryPort,
@@ -88,6 +90,7 @@ export class ExecuteReaderSummaryJobUseCase {
     private readonly historicalGitHubOmission?: ReaderSummaryHistoricalGitHubOmission,
     private readonly recoveryProvenance?: ReaderSummaryDailyCanonicalRecoveryV4ProvenancePort,
     private readonly executionLease: ReaderSummaryExecutionLeasePolicy = new ReaderSummaryExecutionLeasePolicy(),
+    private readonly storyRelationProofVerifier?: StoryRelationProofVerifier,
   ) {}
 
   async execute(
@@ -297,7 +300,10 @@ export class ExecuteReaderSummaryJobUseCase {
       observedThrough: generatedAt,
     });
     const readerSummaryId = this.ids.generate();
-    const admittedSelection = admitReaderPostPromotionEvidence(selectedEvidence);
+    const admittedSelection = admitReaderPostPromotionEvidence(
+      selectedEvidence,
+      this.storyRelationProofVerifier,
+    );
     const {
       promotionCounts,
       ...modelEvidence

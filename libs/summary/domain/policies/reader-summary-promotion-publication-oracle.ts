@@ -69,9 +69,17 @@ export const readerSummaryPromotionPublicationOracle = (params: {
   const relationSupport = independentSameStorySupport({
     relations: params.approvedSameStoryRelations ?? [],
     evaluatedById,
+    clusterByFeedItemId,
   });
-  const supportIds = new Set([...relationSupport.values()].map((item) =>
-    item.support.item.feedItemId));
+  const supportIds = new Set([
+    ...[...relationSupport.values()].map((item) =>
+      item.support.item.feedItemId),
+    ...rejectedSameStorySupportIds({
+      relations: params.approvedSameStoryRelations ?? [],
+      evaluatedById,
+      clusterByFeedItemId,
+    }),
+  ]);
   const representatives = new Map<string, Candidate>();
   const candidatesByGroup = new Map<string, Candidate[]>();
   for (const candidate of evaluated) {
@@ -246,6 +254,7 @@ const independentEngagement = (
 const independentSameStorySupport = (params: {
   readonly relations: readonly ApprovedSameStoryRelation[];
   readonly evaluatedById: ReadonlyMap<string, Candidate>;
+  readonly clusterByFeedItemId: ReadonlyMap<string, string>;
 }): ReadonlyMap<string, {
   readonly lead: Candidate;
   readonly support: Candidate;
@@ -259,8 +268,13 @@ const independentSameStorySupport = (params: {
     readonly independentlyAdditionalEligible: boolean;
   }>();
   for (const relation of params.relations) {
+    const leftClusterId = params.clusterByFeedItemId.get(
+      relation.leftFeedItemId,
+    );
     if (!unit(relation.confidence) ||
-        !hasValidStoryRelationProvenance(relation)) continue;
+        !hasValidStoryRelationProvenance(relation) ||
+        leftClusterId === undefined || leftClusterId !==
+          params.clusterByFeedItemId.get(relation.rightFeedItemId)) continue;
     const left = params.evaluatedById.get(relation.leftFeedItemId);
     const right = params.evaluatedById.get(relation.rightFeedItemId);
     if (left === undefined || right === undefined ||
@@ -277,6 +291,28 @@ const independentSameStorySupport = (params: {
           support.engagementPlacement !== null,
       });
     }
+  }
+  return result;
+};
+
+const rejectedSameStorySupportIds = (params: {
+  readonly relations: readonly ApprovedSameStoryRelation[];
+  readonly evaluatedById: ReadonlyMap<string, Candidate>;
+  readonly clusterByFeedItemId: ReadonlyMap<string, string>;
+}): ReadonlySet<string> => {
+  const result = new Set<string>();
+  for (const relation of params.relations) {
+    if (hasValidStoryRelationProvenance(relation)) continue;
+    const left = params.evaluatedById.get(relation.leftFeedItemId);
+    const right = params.evaluatedById.get(relation.rightFeedItemId);
+    const leftClusterId = params.clusterByFeedItemId.get(
+      relation.leftFeedItemId,
+    );
+    if (left === undefined || right === undefined || leftClusterId === undefined ||
+        leftClusterId !== params.clusterByFeedItemId.get(
+          relation.rightFeedItemId)) continue;
+    const lead = compareRelationLead(left, right) <= 0 ? left : right;
+    result.add(lead === left ? right.item.feedItemId : left.item.feedItemId);
   }
   return result;
 };

@@ -113,7 +113,10 @@ export const summaryAgentRuntimeReaderSummaryTopicRelationVerifierOptionsProvide
     inject: [GrpcAgentRuntimeClient],
   };
 
-export const summaryAgentRuntimeReaderSummaryStoryRelationVerifierOptionsProvider: Provider<AgentRuntimeReaderSummaryStoryRelationVerifierOptions> =
+export const summaryAgentRuntimeReaderSummaryStoryRelationVerifierOptionsProvider: Provider<Omit<
+  AgentRuntimeReaderSummaryStoryRelationVerifierOptions,
+  "executionProofIssuer"
+>> =
   {
     provide:
       SUMMARY_AGENT_RUNTIME_READER_SUMMARY_STORY_RELATION_VERIFIER_OPTIONS,

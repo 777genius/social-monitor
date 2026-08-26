@@ -3,12 +3,17 @@ import { admitReaderPostPromotionEvidence } from
   "./reader-post-promotion-evidence-admission";
 import {
   attestedStoryRelationFixture,
+  storyRelationTestProofAuthority,
 } from "./story-relation-provenance-test-fixtures";
+import { createStoryRelationProofAuthority } from
+  "./story-relation-proof-authority";
 import {
   canonicalStoryRelationProofSha256,
-  type StoryRelationCandidateVerificationProof,
-  type StoryRelationExecutionProof,
 } from "./story-relation-verification-proof";
+import type {
+  StoryRelationCandidateVerificationProof,
+  StoryRelationExecutionProof,
+} from "../value-objects/story-relation-verification-proof";
 import type { SummaryEvidenceItem, SummaryEvidenceSelection } from
   "../value-objects/summary-evidence-item";
 
@@ -68,7 +73,7 @@ describe("admitReaderPostPromotionEvidence supplemental appendix", () => {
   });
 
   it("requires an authority-bound proof before preserving a guarded relation", () => {
-    const selection = fixtureSelection();
+    const selection = guardedFixtureSelection();
     const relation = guardedRelation(selection);
     const admitted = admitReaderPostPromotionEvidence({
       ...selection,
@@ -89,8 +94,185 @@ describe("admitReaderPostPromotionEvidence supplemental appendix", () => {
       approvedSameStoryRelations: [withoutProof],
     });
     expect(omittedAdmission.approvedSameStoryRelations).toEqual([]);
-    expect(omittedAdmission.clusters.flatMap((cluster) =>
-      cluster.duplicateFeedItemIds)).not.toContain("github:trending");
+    expect(omittedAdmission.clusters.map((cluster) => cluster.id)).toEqual([
+      poisonedCluster.id,
+    ]);
+  });
+
+  it("keeps proof binding independent from promotion presentation fields", () => {
+    const selection = guardedFixtureSelection();
+    const relation = guardedRelation(selection);
+    const admitted = admitReaderPostPromotionEvidence({
+      ...selection,
+      sourceWindow: {
+        ...selection.sourceWindow,
+        periodStartedAt: new Date("2026-08-14T00:00:00.000Z"),
+        periodEndedAt: new Date("2026-08-15T00:00:00.000Z"),
+        ingestionCutoff: new Date("2026-08-14T12:00:00.000Z"),
+        storyClusterIds: ["selector-cluster:stable"],
+      },
+      clusters: selection.clusters.map((cluster) => ({
+        ...cluster,
+        id: "selector-cluster:stable",
+      })),
+      approvedSameStoryRelations: [relation],
+    });
+    expect(admitted.approvedSameStoryRelations).toEqual([relation]);
+    expect(admitted.clusters.map((cluster) => cluster.id)).toEqual([
+      "selector-cluster:stable",
+    ]);
+  });
+
+  it("never suffixes a valid selector cluster when multiple members promote", () => {
+    const selection = fixtureSelection();
+    const [lead, supplemental] = selection.selectedEvidence;
+    if (lead === undefined || supplemental === undefined) {
+      throw new Error("Expected two promotion fixtures");
+    }
+    const support = {
+      ...supplemental,
+      providerKey: "x-twitter",
+      providerName: "X",
+      contentQuality: quality,
+      promotionFacts: {
+        contentKind: "original_post" as const,
+        canonicalIdentity: "story:second-promoted-member",
+        authorityAttestation: {
+          status: "attested" as const,
+          official: false,
+          trusted: true,
+          attestedBy: "source_catalog" as const,
+        },
+        safetyValid: true,
+        freshnessValid: true,
+        freshnessProvenance: {
+          status: "observed" as const,
+          publishedAt: supplemental.publishedAt,
+          observedAt: supplemental.observedAt,
+          ingestionCutoff: selection.sourceWindow.ingestionCutoff!,
+        },
+        metricsState: "observed" as const,
+        metrics: {
+          provider: "x" as const,
+          likes: 15,
+          reposts: 10,
+          weightedScore: 35,
+        },
+      },
+    };
+    const clusterId = "selector-cluster:never-renamed";
+    const admitted = admitReaderPostPromotionEvidence({
+      ...selection,
+      selectedEvidence: [lead, support],
+      clusters: [{
+        ...selection.clusters[0]!,
+        id: clusterId,
+        duplicateFeedItemIds: [support.feedItemId],
+        providerKeys: [lead.providerKey, support.providerKey],
+      }],
+      sourceWindow: {
+        ...selection.sourceWindow,
+        storyClusterIds: [clusterId],
+      },
+    });
+
+    expect(admitted.selectedEvidence.map((item) => item.feedItemId)).toEqual([
+      lead.feedItemId,
+      support.feedItemId,
+    ]);
+    expect(admitted.clusters).toHaveLength(1);
+    expect(admitted.clusters[0]).toMatchObject({
+      id: clusterId,
+      representativeFeedItemId: lead.feedItemId,
+      duplicateFeedItemIds: [support.feedItemId],
+    });
+  });
+
+  it.each([
+    ["missing endpoint", (selection: SummaryEvidenceSelection) => ({
+      ...selection,
+      sourceWindow: { ...selection.sourceWindow,
+        selectedFeedItemIds: ["hn:top"] },
+    })],
+    ["stale publication", (selection: SummaryEvidenceSelection) => ({
+      ...selection,
+      selectedEvidence: selection.selectedEvidence.map((item) =>
+        item.feedItemId === "github:trending" ? { ...item,
+          publishedAt: new Date("2026-08-13T23:59:59.999Z") } : item),
+    })],
+    ["publication past the period", (selection: SummaryEvidenceSelection) => ({
+      ...selection,
+      selectedEvidence: selection.selectedEvidence.map((item) =>
+        item.feedItemId === "github:trending" ? { ...item,
+          publishedAt: new Date("2026-08-15T00:00:00.000Z") } : item),
+    })],
+    ["post-cutoff observation", (selection: SummaryEvidenceSelection) => ({
+      ...selection,
+      selectedEvidence: selection.selectedEvidence.map((item) =>
+        item.feedItemId === "github:trending" ? { ...item,
+          observedAt: new Date("2026-08-14T12:00:00.001Z") } : item),
+    })],
+    ["observation before publication", (selection: SummaryEvidenceSelection) => ({
+      ...selection,
+      selectedEvidence: selection.selectedEvidence.map((item) =>
+        item.feedItemId === "github:trending" ? { ...item,
+          observedAt: new Date("2026-08-14T09:59:59.999Z") } : item),
+    })],
+    ["partial period", (selection: SummaryEvidenceSelection) => ({
+      ...selection,
+      sourceWindow: {
+        ...selection.sourceWindow,
+        periodEndedAt: undefined,
+      },
+    })],
+    ["selector cluster mismatch", (selection: SummaryEvidenceSelection) => ({
+      ...selection,
+      clusters: fixtureSelection().clusters,
+      sourceWindow: {
+        ...selection.sourceWindow,
+        storyClusterIds: fixtureSelection().sourceWindow.storyClusterIds,
+      },
+    })],
+  ] as const)("rejects promotion-incompatible proof endpoints: %s",
+    (_name, mutate) => {
+      const selection = guardedFixtureSelection();
+      const relation = guardedRelation(selection);
+      expect(admitReaderPostPromotionEvidence({
+        ...mutate(selection),
+        approvedSameStoryRelations: [relation],
+      }).approvedSameStoryRelations).toEqual([]);
+    });
+
+  it("fails closed after proof serialization loses process authority", () => {
+    const selection = guardedFixtureSelection();
+    const relation = guardedRelation(selection);
+    const serialized = JSON.parse(JSON.stringify(
+      relation.verificationProof)) as StoryRelationCandidateVerificationProof;
+    expect(admitReaderPostPromotionEvidence({
+      ...selection,
+      approvedSameStoryRelations: [{
+        ...relation,
+        verificationProof: serialized,
+      }],
+    }).approvedSameStoryRelations).toEqual([]);
+  });
+
+  it("rejects a relation issued by a separately-created authority", () => {
+    const selection = guardedFixtureSelection();
+    const relation = attestedStoryRelationFixture({
+      leftFeedItemId: "hn:top",
+      rightFeedItemId: "github:trending",
+      confidence: 0.99,
+      verificationLane: "guarded_recall_primary",
+      rankingPolicyVersion: selection.rankingPolicyVersion,
+      sourceWindow: selection.sourceWindow,
+      proofAuthority: createStoryRelationProofAuthority(),
+    });
+    expect(admitReaderPostPromotionEvidence({
+      ...selection,
+      approvedSameStoryRelations: [relation],
+    }, storyRelationTestProofAuthority.proofVerifier)
+      .approvedSameStoryRelations).toEqual([]);
   });
 
   it.each([
@@ -163,7 +345,7 @@ describe("admitReaderPostPromotionEvidence supplemental appendix", () => {
       }) }))],
     ["forged authority", executionMutation((proof) => ({ ...proof }))],
   ] as const)("rejects a fully rehashed %s mutation", (_name, mutate) => {
-    const selection = fixtureSelection();
+    const selection = guardedFixtureSelection();
     const relation = guardedRelation(selection);
     const proof = relation.verificationProof!;
     expect(admitReaderPostPromotionEvidence({
@@ -183,7 +365,13 @@ const guardedRelation = (selection: SummaryEvidenceSelection) =>
     confidence: 0.99,
     verificationLane: "guarded_recall_primary",
     rankingPolicyVersion: selection.rankingPolicyVersion,
-    sourceWindow: selection.sourceWindow,
+    sourceWindow: {
+      windowId: selection.sourceWindow.windowId,
+      startedAt: selection.sourceWindow.startedAt,
+      endedAt: selection.sourceWindow.endedAt,
+      selectedFeedItemIds: selection.sourceWindow.selectedFeedItemIds,
+      storyClusterIds: ["candidate:left", "candidate:right"],
+    },
   });
 
 const digest = (label: string): string =>
@@ -293,6 +481,27 @@ const fixtureSelection = (): SummaryEvidenceSelection => {
       selectedFeedItemIds: selectedEvidence.map((item) => item.feedItemId),
       storyClusterIds: selectedEvidence.map((item) =>
         `cluster:${item.feedItemId}`),
+    },
+  };
+};
+
+const guardedFixtureSelection = (): SummaryEvidenceSelection => {
+  const selection = fixtureSelection();
+  const [primary, supplemental] = selection.selectedEvidence;
+  if (primary === undefined || supplemental === undefined) {
+    throw new Error("Guarded relation fixture requires two endpoints");
+  }
+  return {
+    ...selection,
+    clusters: [{
+      ...selection.clusters[0]!,
+      id: "selector-cluster:stable",
+      duplicateFeedItemIds: [supplemental.feedItemId],
+      providerKeys: [primary.providerKey, supplemental.providerKey],
+    }],
+    sourceWindow: {
+      ...selection.sourceWindow,
+      storyClusterIds: ["selector-cluster:stable"],
     },
   };
 };

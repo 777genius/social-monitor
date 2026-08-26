@@ -19,6 +19,8 @@ import {
 } from "../../ports";
 import { verifiedReaderSummaryStoryRelations } from
   "./relevance-reader-summary-story-relation-decisions";
+import type { StoryRelationDecisionProofAuthority } from
+  "./relevance-reader-summary-story-relation-decisions";
 import {
   RELATED_TOPIC_VERIFIER_TIMEOUT_MS,
   verifiedReaderSummaryRelatedTopics,
@@ -56,6 +58,7 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
     private readonly storyRankingMetrics: StoryRankingMetricsPort = NOOP_STORY_RANKING_METRICS,
     private readonly storyRelationVerifier?: ReaderSummaryStoryRelationVerifierPort,
     private readonly relatedTopicVerifierTimeoutMs = RELATED_TOPIC_VERIFIER_TIMEOUT_MS,
+    private readonly storyRelationProofAuthority?: StoryRelationDecisionProofAuthority,
   ) {
     this.clusterer = new StoryClusteringService(clock);
   }
@@ -152,6 +155,7 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
       requestedAt: ingestionCutoff,
       verifier: this.storyRelationVerifier,
       metrics: this.storyRankingMetrics,
+      proofAuthority: this.storyRelationProofAuthority,
       additionalCandidates: promotionSupportCandidates({
         evidence: primaryCandidateItems,
         clusters: candidateSelection.clusters,
@@ -196,6 +200,7 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
     };
     const authoritativePromotion = admitReaderPostPromotionEvidence(
       fullPromotionSelection,
+      this.storyRelationProofAuthority?.proofVerifier,
     ).selectedEvidence.filter((item) =>
       promotionCandidateIds.has(item.feedItemId) &&
       !isGitHubTrendingEvidence(item));
@@ -237,7 +242,7 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
       ...narrativeItems,
       ...githubTrendingEvidence,
     ]);
-    const finalSelection = {
+    const untrustedFinalSelection = {
       ...selection,
       sourceWindow: {
         ...selection.sourceWindow,
@@ -252,6 +257,15 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
         selection.clusters,
       ),
     };
+    const finalSelection = this.storyRelationProofAuthority === undefined
+      ? untrustedFinalSelection
+      : {
+          ...untrustedFinalSelection,
+          approvedSameStoryRelations: admitReaderPostPromotionEvidence(
+            untrustedFinalSelection,
+            this.storyRelationProofAuthority.proofVerifier,
+          ).approvedSameStoryRelations,
+        };
     const relatedTopicRelations = await verifiedReaderSummaryRelatedTopics({
       query,
       selection: finalSelection,

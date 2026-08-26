@@ -13,7 +13,10 @@ import { RelevanceReaderSummaryEvidenceSelector } from "./relevance-reader-summa
 import {
   buildReaderPostPromotionProjection,
 } from "../../domain";
-import { attestedStoryRelationBatchProofFixture } from
+import {
+  attestedStoryRelationBatchProofFixture,
+  storyRelationTestProofAuthority,
+} from
   "../../domain/services/story-relation-provenance-test-fixtures";
 import type {
   ReaderSummaryStoryRelationVerifierInput,
@@ -314,6 +317,8 @@ describe("reader-summary promotion upstream scan exhaustion", () => {
       new FixedClock(now),
       new FakeStoryRankingMetrics(),
       verifier,
+      undefined,
+      storyRelationTestProofAuthority,
     ).select({
       tenantId: tenant,
       workspaceId: workspace,
@@ -372,7 +377,6 @@ describe("reader-summary promotion upstream scan exhaustion", () => {
 
 class ExactSupportVerifier implements ReaderSummaryStoryRelationVerifierPort {
   readonly requestedPairs: string[] = [];
-  private readonly authenticatedProofs = new WeakSet<object>();
 
   async verify(input: ReaderSummaryStoryRelationVerifierInput) {
     this.requestedPairs.push(...input.candidates.map((candidate) =>
@@ -403,7 +407,6 @@ class ExactSupportVerifier implements ReaderSummaryStoryRelationVerifierPort {
       candidates: input.candidates,
       decisions,
     });
-    this.authenticatedProofs.add(proof);
     return {
       verificationLane: input.verificationLane,
       decisions,
@@ -411,10 +414,6 @@ class ExactSupportVerifier implements ReaderSummaryStoryRelationVerifierPort {
     };
   }
 
-  authenticatesExecutionProof(proof: unknown): boolean {
-    return typeof proof === "object" && proof !== null &&
-      this.authenticatedProofs.has(proof);
-  }
 }
 
 const githubTrend = (stars24h: number, forks24h: number): JsonObject => ({

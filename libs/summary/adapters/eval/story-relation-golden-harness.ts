@@ -13,6 +13,8 @@ import {
 import { NOOP_STORY_RANKING_METRICS, type AgentRuntimeClientPort } from "../../ports";
 import { RelevanceReaderSummaryEvidenceSelector } from "../evidence/relevance-reader-summary-evidence.selector";
 import { AgentRuntimeReaderSummaryStoryRelationVerifier } from "../model/agent-runtime-reader-summary-story-relation-verifier.adapter";
+import { createStoryRelationProofAuthority } from
+  "../../domain/services/story-relation-proof-authority";
 
 const observedAt = new Date("2026-07-20T12:00:00.000Z");
 const identity = {
@@ -30,8 +32,10 @@ export const runStoryRelationGoldenBaseline = async (params: {
   readonly cases: readonly StoryRelationGoldenCase[];
   readonly client: AgentRuntimeClientPort;
 }): Promise<StoryRelationEvalResult> => {
+  const proofAuthority = createStoryRelationProofAuthority();
   const verifier = new AgentRuntimeReaderSummaryStoryRelationVerifier({
     client: params.client,
+    executionProofIssuer: proofAuthority.executionProofIssuer,
   });
   const predictions: StoryRelationEvalPrediction[] = [];
   for (const evalCase of params.cases) {
@@ -52,6 +56,8 @@ export const runStoryRelationGoldenBaseline = async (params: {
       { now: () => observedAt },
       NOOP_STORY_RANKING_METRICS,
       verifier,
+      undefined,
+      proofAuthority,
     );
     const selection = await selector.select(query);
     predictions.push({

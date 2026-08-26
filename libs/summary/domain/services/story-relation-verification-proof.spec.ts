@@ -31,6 +31,33 @@ describe("story relation execution request identity", () => {
     expect(requestId({ scopeKey: "caf\u00e9" }))
       .not.toBe(requestId({ scopeKey: "cafe\u0301" }));
   });
+
+  it("preserves every accepted UTF-16 code unit in request fields", () => {
+    const replacement = requestId({ scopeKey: "scope-\uFFFD" });
+    const unpairedHigh = requestId({ scopeKey: "scope-\uD800" });
+    const unpairedLow = requestId({ scopeKey: "scope-\uDC00" });
+    expect(new Set([replacement, unpairedHigh, unpairedLow]).size).toBe(3);
+  });
+
+  it("binds selection membership while ignoring presentation-only fields", () => {
+    expect(requestId({ selection: selectionWith({
+      selectedFeedItemIds: ["left", "changed"],
+    }) })).not.toBe(requestId({}));
+    expect(requestId({ selection: selectionWith({
+      selectedFeedItemIds: ["right", "left"],
+    }) })).not.toBe(requestId({}));
+    expect(requestId({ selection: selectionWith({
+      storyClusterIds: ["presentation-only-change"],
+      periodStartedAt: new Date("2026-08-19T00:00:00.000Z"),
+      periodEndedAt: new Date("2026-08-22T00:00:00.000Z"),
+      ingestionCutoff: new Date("2026-08-21T23:00:00.000Z"),
+    }) })).toBe(requestId({}));
+  });
+
+  it("binds candidate features as well as pair selection", () => {
+    const changed = { ...candidate("left", "right"), topicSimilarity: 0.5 };
+    expect(requestId({ candidates: [changed] })).not.toBe(requestId({}));
+  });
 });
 
 const selection: StoryRelationProofSelectionContext = {
@@ -49,14 +76,22 @@ const requestId = (overrides: Partial<{
   workspaceId: string;
   scopeKey: string;
   candidates: readonly StoryRelationCandidate[];
+  selection: StoryRelationProofSelectionContext;
 }>): string => storyRelationExecutionRequestId({
   tenantId: overrides.tenantId ?? "tenant",
   workspaceId: overrides.workspaceId ?? "workspace",
   scopeKey: overrides.scopeKey ?? "scope",
   requestedAt: new Date("2026-08-21T01:02:03.004Z"),
   verificationLane: "guarded_recall_primary",
-  selection,
+  selection: overrides.selection ?? selection,
   candidates: overrides.candidates ?? [candidate("left", "right")],
+});
+
+const selectionWith = (
+  sourceWindow: Partial<StoryRelationProofSelectionContext["sourceWindow"]>,
+): StoryRelationProofSelectionContext => ({
+  ...selection,
+  sourceWindow: { ...selection.sourceWindow, ...sourceWindow },
 });
 
 const candidate = (

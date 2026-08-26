@@ -24,6 +24,8 @@ import { readerSummaryIndependentProviderFamily } from
   "../value-objects/reader-summary-provider-identity";
 import { compactUnique } from "../value-objects/summary-text";
 import { buildMatchedRules } from "./reader-summary-source-lineage";
+import { projectAdmittedReaderPostClusters } from
+  "./reader-post-promotion-cluster-projection";
 import {
   buildReaderPostPromotionAttestations,
   type ReaderPostPromotionAttestationBinding,
@@ -50,6 +52,7 @@ export const buildReaderPostPromotionProjection = (params: {
   readonly citations: readonly ReaderSummaryCitation[];
   readonly sourceWindow: SummarySourceWindow;
   readonly approvedSameStoryRelations?: readonly ApprovedSameStoryRelation[];
+  readonly rejectedSameStoryRelations?: readonly ApprovedSameStoryRelation[];
   readonly relatedTopicRelations?: readonly RelatedTopicRelation[];
   readonly attestationBinding?: ReaderPostPromotionAttestationBinding;
 }): ReaderPostPromotionProjection => {
@@ -119,6 +122,7 @@ export const buildReaderPostPromotionProjection = (params: {
     evidenceById,
     inputByEvidenceId: new Map(baseInputs.map((input) => [input.candidateId, input])),
     approvedSameStoryRelations: params.approvedSameStoryRelations ?? [],
+    rejectedSameStoryRelations: params.rejectedSameStoryRelations ?? [],
     relatedTopicRelations: params.relatedTopicRelations ?? [],
   });
   const inputs = baseInputs.map((input): ReaderPostPromotionInput => {
@@ -166,7 +170,7 @@ export const buildReaderPostPromotionProjection = (params: {
       admittedIds.has(citation.feedItemId) &&
       admittedCitationIds.has(citation.citationId),
     ),
-    admittedClusters: projectAdmittedClusters(
+    admittedClusters: projectAdmittedReaderPostClusters(
       params.clusters,
       admittedEvidence,
       [...selection.top, ...selection.additional],
@@ -219,51 +223,6 @@ const promotionFreshnessIsValid = (params: {
       ? params.publishedAt.getTime() <= params.observedAt.getTime() &&
         params.observedAt.getTime() <= params.ingestionCutoff.getTime()
       : exactPublished <= exactObserved && exactObserved <= exactCutoff);
-};
-
-const projectAdmittedClusters = (
-  clusters: readonly StoryCluster[],
-  admittedEvidence: readonly SummaryEvidenceItem[],
-  selected: readonly SelectedReaderPostPromotion[],
-): readonly StoryCluster[] => {
-  const evidenceById = new Map(admittedEvidence.map((item) =>
-    [item.feedItemId, item] as const,
-  ));
-  const clusterById = new Map(clusters.map((cluster) => [cluster.id, cluster]));
-  const usedClusterIds = new Set<string>();
-  return selected.map((promotion): StoryCluster => {
-    const members = [promotion.candidate, ...promotion.support].map((input) =>
-      requiredEvidence(evidenceById, input.candidateId),
-    );
-    const representative = members[0]!;
-    const original = promotion.candidate.clusterId === undefined
-      ? undefined
-      : clusterById.get(promotion.candidate.clusterId);
-    const preferredId = original?.id ??
-      `promotion:${promotion.candidate.canonicalIdentity}`;
-    const id = usedClusterIds.has(preferredId)
-      ? `${preferredId}:${promotion.candidate.candidateId}`
-      : preferredId;
-    usedClusterIds.add(id);
-    const observedAt = members.map((item) => item.observedAt.getTime());
-    return {
-      id,
-      storyKey: original?.storyKey ?? promotion.candidate.canonicalIdentity,
-      ...(original?.rankingPolicyVersion === undefined
-        ? {}
-        : { rankingPolicyVersion: original.rankingPolicyVersion }),
-      representativeFeedItemId: representative.feedItemId,
-      duplicateFeedItemIds: members.slice(1).map((item) => item.feedItemId),
-      interestIds: compactUnique(members.map((item) => item.interestId)),
-      providerKeys: compactUnique(members.map((item) => item.providerKey)),
-      score: Math.max(...members.map((item) => item.score)),
-      observedAtRange: {
-        startedAt: new Date(Math.min(...observedAt)),
-        endedAt: new Date(Math.max(...observedAt)),
-      },
-      whyImportant: compactUnique(members.flatMap((item) => item.whyImportant)),
-    };
-  });
 };
 
 const promotedPost = (params: {
@@ -340,6 +299,7 @@ const promotionRelations = (params: {
   readonly evidenceById: ReadonlyMap<string, SummaryEvidenceItem>;
   readonly inputByEvidenceId: ReadonlyMap<string, ReaderPostPromotionInput>;
   readonly approvedSameStoryRelations: readonly ApprovedSameStoryRelation[];
+  readonly rejectedSameStoryRelations: readonly ApprovedSameStoryRelation[];
   readonly relatedTopicRelations: readonly RelatedTopicRelation[];
 }): ReadonlyMap<string, ReaderPostPromotionInput["relation"]> => {
   const result = new Map<string, NonNullable<ReaderPostPromotionInput["relation"]>>();
@@ -352,7 +312,9 @@ const promotionRelations = (params: {
           readerPostProviderFamily(right.providerKey)) continue;
     const leftInput = params.inputByEvidenceId.get(left.feedItemId);
     const rightInput = params.inputByEvidenceId.get(right.feedItemId);
-    if (leftInput === undefined || rightInput === undefined) continue;
+    if (leftInput === undefined || rightInput === undefined ||
+        leftInput.clusterId === undefined ||
+        leftInput.clusterId !== rightInput.clusterId) continue;
     const lead = baselineRelationLead(left, right, leftInput, rightInput);
     if (lead === undefined) continue;
     const support = lead === left ? right : left;
@@ -367,6 +329,31 @@ const promotionRelations = (params: {
         approved: true,
       });
     }
+  }
+  for (const relation of params.rejectedSameStoryRelations) {
+    const left = params.evidenceById.get(relation.leftFeedItemId);
+    const right = params.evidenceById.get(relation.rightFeedItemId);
+    const leftInput = left === undefined
+      ? undefined : params.inputByEvidenceId.get(left.feedItemId);
+    const rightInput = right === undefined
+      ? undefined : params.inputByEvidenceId.get(right.feedItemId);
+    if (left === undefined || right === undefined || leftInput === undefined ||
+        rightInput === undefined || leftInput.clusterId === undefined ||
+        leftInput.clusterId !== rightInput.clusterId) continue;
+    const lead = baselineRelationLead(left, right, leftInput, rightInput);
+    if (lead === undefined) continue;
+    const support = lead === left ? right : left;
+    if (result.has(support.feedItemId)) continue;
+    const targetIdentity = lead.promotionFacts?.canonicalIdentity ?? "";
+    if (targetIdentity.length === 0) continue;
+    result.set(support.feedItemId, {
+      kind: "same_story",
+      targetCanonicalIdentity: targetIdentity,
+      confidence: Number.isFinite(relation.confidence) &&
+          relation.confidence >= 0 && relation.confidence <= 1
+        ? relation.confidence : 0,
+      approved: false,
+    });
   }
   for (const relation of params.relatedTopicRelations) {
     if (result.has(relation.subjectFeedItemId)) continue;

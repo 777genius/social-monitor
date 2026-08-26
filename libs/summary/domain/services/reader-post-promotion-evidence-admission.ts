@@ -12,10 +12,12 @@ import { buildReaderPostPromotionProjection } from
   "./reader-post-promotion-projection";
 import { hasValidStoryRelationProvenance } from
   "./story-relation-provenance";
-import { rebuildStoryClustersForPromotionAdmission } from
-  "./story-clustering.service";
-import { verifiedStoryRelationPairKey } from
-  "./story-cluster-membership";
+import {
+  authorizeStoryRelationCandidateProofForPromotion,
+  type StoryRelationProofVerifier,
+} from "./story-relation-proof-authority";
+import { storyRelationCompatibleWithPromotionSelection } from
+  "./story-relation-promotion-compatibility";
 import { selectGitHubTrendingSupplementalEvidence } from
   "../policies/reader-summary-github-trending-policy";
 
@@ -28,19 +30,14 @@ type AdmittedPromotionEvidence = Omit<
 
 export const admitReaderPostPromotionEvidence = (
   selection: SummaryEvidenceSelection,
+  proofVerifier?: StoryRelationProofVerifier,
 ): AdmittedPromotionEvidence => {
-  const provenRelations = (selection.approvedSameStoryRelations ?? [])
-    .filter((relation) => hasValidStoryRelationProvenance(
-      relation,
-      selection.sourceWindow,
-    ));
-  const authorityBoundClusters = rebuildStoryClustersForPromotionAdmission({
-    items: selection.selectedEvidence,
-    verifiedStoryRelationPairs: new Set(provenRelations.map((relation) =>
-      verifiedStoryRelationPairKey(relation.leftFeedItemId,
-        relation.rightFeedItemId))),
-    now: selection.sourceWindow.endedAt,
-  });
+  const submittedRelations = selection.approvedSameStoryRelations ?? [];
+  const provenRelations = submittedRelations.filter((relation) =>
+    authorizePromotionRelation(relation, selection, proofVerifier));
+  const provenRelationSet = new Set(provenRelations);
+  const rejectedRelations = submittedRelations.filter((relation) =>
+    !provenRelationSet.has(relation));
   const provisionalCitations = selection.selectedEvidence.map((item) => ({
     citationId: `promotion-preflight:${item.feedItemId}`,
     feedItemId: item.feedItemId,
@@ -51,10 +48,11 @@ export const admitReaderPostPromotionEvidence = (
   }));
   const projection = buildReaderPostPromotionProjection({
     evidence: selection.selectedEvidence,
-    clusters: authorityBoundClusters,
+    clusters: selection.clusters,
     citations: provisionalCitations,
     sourceWindow: selection.sourceWindow,
     approvedSameStoryRelations: provenRelations,
+    rejectedSameStoryRelations: rejectedRelations,
     relatedTopicRelations: selection.relatedTopicRelations,
   });
   const supplementalEvidence = selectGitHubTrendingSupplementalEvidence(
@@ -139,6 +137,19 @@ export const admitReaderPostPromotionEvidence = (
   };
 };
 
+const authorizePromotionRelation = (
+  relation: NonNullable<SummaryEvidenceSelection["approvedSameStoryRelations"]>[number],
+  selection: SummaryEvidenceSelection,
+  proofVerifier: StoryRelationProofVerifier | undefined,
+): boolean => {
+  if (!storyRelationCompatibleWithPromotionSelection(relation, selection) ||
+      !hasValidStoryRelationProvenance(relation, proofVerifier)) return false;
+  if (proofVerifier === undefined) return true;
+  return relation.verificationProof !== undefined &&
+    authorizeStoryRelationCandidateProofForPromotion(
+      proofVerifier, relation.verificationProof);
+};
+
 export const admissibleReaderPostPromotionCandidateIds = (
   selection: SummaryEvidenceSelection,
 ): ReadonlySet<string> => {
@@ -154,7 +165,8 @@ export const admissibleReaderPostPromotionCandidateIds = (
       canonicalUrl: item.canonicalUrl,
     })),
     sourceWindow: selection.sourceWindow,
-    approvedSameStoryRelations: selection.approvedSameStoryRelations,
+    // This pre-verification projection must not apply advisory relation effects.
+    approvedSameStoryRelations: [],
     relatedTopicRelations: selection.relatedTopicRelations,
   });
   return new Set(projection.evaluatedEvidence.flatMap((evaluation) =>

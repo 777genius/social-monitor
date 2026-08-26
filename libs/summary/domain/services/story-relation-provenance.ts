@@ -1,4 +1,4 @@
-import type { ApprovedSameStoryRelation, SummarySourceWindow } from
+import type { ApprovedSameStoryRelation } from
   "../value-objects/summary-evidence-item";
 import { STORY_RELATION_APPROVAL_CONFIDENCE_MIN } from
   "./story-relation-candidates";
@@ -9,15 +9,17 @@ import {
   STORY_RELATION_GUARDED_RECALL_POLICY_VERSION,
 } from "./story-relation-guarded-recall";
 import { verifiedStoryRelationPairKey } from "./story-cluster-membership";
-import {
-  validStoryRelationCandidateVerificationProof,
-  validStoryRelationExecutionProof,
-} from
+import { validStoryRelationCandidateVerificationProof } from
   "./story-relation-verification-proof";
+import {
+  authenticatesStoryRelationCandidateProof,
+  hasPromotionAuthorizedStoryRelationCandidateProof,
+  type StoryRelationProofVerifier,
+} from "./story-relation-proof-authority";
 
 export const hasValidStoryRelationProvenance = (
   relation: ApprovedSameStoryRelation,
-  sourceWindow?: SummarySourceWindow,
+  proofVerifier?: StoryRelationProofVerifier,
 ): boolean => {
   if (!nonBlank(relation.leftFeedItemId) ||
       !nonBlank(relation.rightFeedItemId) ||
@@ -44,6 +46,9 @@ export const hasValidStoryRelationProvenance = (
     relation.confidence <= 1 && relation.candidatePolicyVersion ===
       expectedCandidatePolicy &&
     validStoryRelationCandidateVerificationProof(proof) &&
+    (proofVerifier === undefined
+      ? hasPromotionAuthorizedStoryRelationCandidateProof(proof)
+      : authenticatesStoryRelationCandidateProof(proofVerifier, proof)) &&
     proof.canonicalPairId === relation.canonicalPairId &&
     proof.leftFeedItemId === relation.leftFeedItemId &&
     proof.rightFeedItemId === relation.rightFeedItemId &&
@@ -56,13 +61,6 @@ export const hasValidStoryRelationProvenance = (
     proof.executionProof.normalizedOutputSha256 ===
       relation.normalizedOutputSha256 &&
     proof.executionProof.selectedOutputSha256 === relation.selectedOutputSha256 &&
-    (sourceWindow === undefined || validStoryRelationExecutionProof({
-      proof: proof.executionProof,
-      selection: {
-        rankingPolicyVersion: relation.rankingPolicyVersion,
-        sourceWindow,
-      },
-    })) &&
     [relation.featureDigest, relation.executionAttestationSha256,
       relation.normalizedOutputSha256, relation.selectedOutputSha256]
       .every((hash) => typeof hash === "string" &&

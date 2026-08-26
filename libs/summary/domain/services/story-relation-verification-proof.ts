@@ -15,9 +15,9 @@ import {
 import type { SummarySourceWindow } from
   "../value-objects/summary-evidence-item";
 import {
-  bindAuthenticatedStoryRelationCandidateProof,
-  hasAuthenticatedStoryRelationCandidateProof,
-  hasAuthenticatedStoryRelationExecutionProof,
+  hasIssuedStoryRelationCandidateProof,
+  issueStoryRelationCandidateProof,
+  type StoryRelationCandidateProofIssuer,
 } from "./story-relation-proof-authority";
 
 export type StoryRelationProofSelectionContext = Readonly<{
@@ -48,16 +48,6 @@ export const storyRelationSelectionSha256 = (
     startedAt: iso(context.sourceWindow.startedAt),
     endedAt: iso(context.sourceWindow.endedAt),
     selectedFeedItemIds: context.sourceWindow.selectedFeedItemIds,
-    storyClusterIds: context.sourceWindow.storyClusterIds,
-    ...(context.sourceWindow.periodStartedAt === undefined ? {} : {
-      periodStartedAt: iso(context.sourceWindow.periodStartedAt),
-    }),
-    ...(context.sourceWindow.periodEndedAt === undefined ? {} : {
-      periodEndedAt: iso(context.sourceWindow.periodEndedAt),
-    }),
-    ...(context.sourceWindow.ingestionCutoff === undefined ? {} : {
-      ingestionCutoff: iso(context.sourceWindow.ingestionCutoff),
-    }),
   },
 });
 
@@ -126,6 +116,7 @@ export const buildStoryRelationExecutionProof = (params: {
 };
 
 export const buildStoryRelationCandidateVerificationProof = (params: {
+  readonly proofIssuer: StoryRelationCandidateProofIssuer;
   readonly executionProof: StoryRelationExecutionProof;
   readonly canonicalPairId: string;
   readonly leftFeedItemId: string;
@@ -144,14 +135,11 @@ export const buildStoryRelationCandidateVerificationProof = (params: {
       confidenceScore: params.confidenceScore,
     },
   };
-  if (!hasAuthenticatedStoryRelationExecutionProof(params.executionProof)) {
-    throw new Error("Story relation execution proof has no trusted authority");
-  }
   const proof = deepFreeze({
     ...body,
     candidateProofSha256: canonicalSha256(body),
   });
-  bindAuthenticatedStoryRelationCandidateProof(proof);
+  issueStoryRelationCandidateProof(params.proofIssuer, proof);
   if (!validStoryRelationCandidateVerificationProof(proof)) {
     throw new Error("Story relation candidate proof is not execution-bound");
   }
@@ -170,8 +158,7 @@ export const validStoryRelationCandidateVerificationProof = (
       !Number.isFinite(value.normalizedDecision.confidenceScore) ||
       !isSha256(value.candidateProofSha256) ||
       !validStoryRelationExecutionProof({ proof: value.executionProof }) ||
-      !hasAuthenticatedStoryRelationExecutionProof(value.executionProof) ||
-      !hasAuthenticatedStoryRelationCandidateProof(value)) {
+      !hasIssuedStoryRelationCandidateProof(value)) {
     return false;
   }
   const proof = value as StoryRelationCandidateVerificationProof;
@@ -362,13 +349,27 @@ const canonicalSha256 = (value: unknown): string => createHash("sha256")
 const lengthDelimitedSha256 = (parts: readonly string[]): string => {
   const hash = createHash("sha256");
   for (const part of parts) {
-    const bytes = Buffer.from(part, "utf8");
     const length = Buffer.allocUnsafe(4);
-    length.writeUInt32BE(bytes.length);
+    length.writeUInt32BE(part.length);
     hash.update(length);
-    hash.update(bytes);
+    updateWithUtf16CodeUnits(hash, part);
   }
   return hash.digest("hex");
+};
+
+const updateWithUtf16CodeUnits = (
+  hash: ReturnType<typeof createHash>,
+  value: string,
+): void => {
+  const maxChunkCodeUnits = 4_096;
+  for (let offset = 0; offset < value.length; offset += maxChunkCodeUnits) {
+    const count = Math.min(maxChunkCodeUnits, value.length - offset);
+    const bytes = Buffer.allocUnsafe(count * 2);
+    for (let index = 0; index < count; index += 1) {
+      bytes.writeUInt16BE(value.charCodeAt(offset + index), index * 2);
+    }
+    hash.update(bytes);
+  }
 };
 
 const deepFreeze = <T>(value: T): T => {

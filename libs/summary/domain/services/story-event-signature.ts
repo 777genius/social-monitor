@@ -182,6 +182,7 @@ const eventLemmaByForm = new Map<string, StoryEventLemma>([
 
 const isStrongAnchor = (raw: string, token: string): boolean =>
   token.length >= 3 && !strongAnchorExclusions.has(token) &&
+  !/^\d+(?:\.\d+)?[kmbt]$/iu.test(raw) &&
   !eventLemmaByForm.has(raw.toLocaleLowerCase("en-US")) &&
   (/\p{Lowercase_Letter}\p{Uppercase_Letter}/u.test(raw) ||
     /[\p{Letter}][\p{Number}]|[\p{Number}][\p{Letter}]/u.test(raw) ||
@@ -220,38 +221,28 @@ const eventRolesFromTokens = (
   tokens.forEach((token, eventIndex) => {
     const event = roleEventByLemma.get(token.normalized);
     if (event === undefined) return;
-    const byIndex = agentMarkerIndex(tokens, eventIndex, nominalEventForms.has(
-      token.raw.toLocaleLowerCase("en-US")));
-    const relationIndex = relationMarkerIndex(tokens, eventIndex, event);
-    const nominal = nominalEventForms.has(token.raw.toLocaleLowerCase("en-US"));
-    let actorAnchor: string | undefined;
-    let objectAnchor: string | undefined;
-    if (byIndex !== undefined) {
-      actorAnchor = relationIndex !== undefined && byIndex < relationIndex
-        ? strongAnchorAfter(tokens, byIndex, relationIndex)
-        : strongAnchorAfter(tokens, byIndex);
-      objectAnchor = relationIndex === undefined
-        ? strongAnchorBefore(tokens, eventIndex)
-        : relationIndex < byIndex
-          ? strongAnchorAfter(tokens, relationIndex, byIndex) ??
-            strongAnchorBefore(tokens, eventIndex)
-          : strongAnchorAfter(tokens, relationIndex);
-    } else {
-      actorAnchor = strongAnchorBefore(tokens, eventIndex);
-      objectAnchor = relationIndex === undefined || !nominal
-        ? strongAnchorAfter(tokens, relationIndex ?? eventIndex)
-        : strongAnchorAfter(tokens, relationIndex);
-    }
+    const rawForm = token.raw.toLocaleLowerCase("en-US");
+    const nominal = nominalEventForms.has(rawForm);
+    const passive = !nominal && pastParticipleEventForms.has(rawForm) &&
+      passiveAuxiliaryBefore(tokens, eventIndex);
+    const roleAnchors = passive
+      ? passiveRoleAnchors(tokens, eventIndex)
+      : nominal
+        ? nominalRoleAnchors(tokens, eventIndex, event)
+        : activeRoleAnchors(tokens, eventIndex, event);
+    const { actorAnchor, objectAnchor } = roleAnchors;
     if (actorAnchor === undefined || objectAnchor === undefined ||
         actorAnchor === objectAnchor) return;
-    const relationMarker = relationIndex === undefined
-      ? undefined : tokens[relationIndex]?.normalized;
+    const relationMarker = relationMarkerIndices(tokens, eventIndex, event)
+      .map((index) => tokens[index]?.normalized)
+      .find((marker) => marker === "with");
     const direction = (event === "merger" || event === "partnership") &&
         relationMarker === "with"
       ? "symmetric" as const : "directed" as const;
-    const anchors = [actorAnchor, objectAnchor].sort();
+    const sortedAnchors = [actorAnchor, objectAnchor].sort();
     roles.push(direction === "symmetric"
-      ? { event, actorAnchor: anchors[0]!, objectAnchor: anchors[1]!, direction }
+      ? { event, actorAnchor: sortedAnchors[0]!,
+          objectAnchor: sortedAnchors[1]!, direction }
       : { event, actorAnchor, objectAnchor, direction });
   });
   return roles.filter((role, index) => roles.findIndex((candidate) =>
@@ -287,6 +278,17 @@ const relationMarkerIndex = (
   return index < 0 ? undefined : index;
 };
 
+const relationMarkerIndices = (
+  tokens: readonly LexicalToken[],
+  eventIndex: number,
+  event: StoryEventRole["event"],
+): readonly number[] => {
+  const markers = roleRelationMarkers.get(event) ?? [];
+  return tokens.flatMap((token, candidateIndex) =>
+    candidateIndex > eventIndex && candidateIndex <= eventIndex + 8 &&
+      markers.includes(token.normalized) ? [candidateIndex] : []);
+};
+
 const nextTokenIndex = (
   tokens: readonly LexicalToken[],
   eventIndex: number,
@@ -298,24 +300,95 @@ const nextTokenIndex = (
   return index < 0 ? undefined : index;
 };
 
-const agentMarkerIndex = (
+const markerIndexAfter = (
   tokens: readonly LexicalToken[],
   eventIndex: number,
-  nominal: boolean,
-): number | undefined => {
-  if (!nominal && !passiveAuxiliaryBefore(tokens, eventIndex)) return undefined;
-  return nextTokenIndex(tokens, eventIndex, "by");
-};
+  marker: string,
+): number | undefined => nextTokenIndex(tokens, eventIndex, marker);
 
 const passiveAuxiliaryBefore = (
   tokens: readonly LexicalToken[],
   eventIndex: number,
-): boolean => tokens.slice(Math.max(0, eventIndex - 3), eventIndex)
-  .some((token) => passiveAuxiliaries.has(token.normalized));
+): boolean => {
+  const preceding = tokens[eventIndex - 1];
+  return preceding !== undefined && passiveAuxiliaries.has(preceding.normalized);
+};
 
 const passiveAuxiliaries = new Set([
-  "am", "are", "be", "been", "being", "is", "was", "were",
+  "am", "are", "be", "been", "being", "get", "gets", "got", "gotten",
+  "is", "was", "were",
 ]);
+
+const pastParticipleEventForms = new Set([
+  "acquired", "controlled", "funded", "invested", "merged", "partnered",
+]);
+
+const passiveRoleAnchors = (
+  tokens: readonly LexicalToken[],
+  eventIndex: number,
+): Readonly<{ actorAnchor?: string; objectAnchor?: string }> => {
+  const byIndex = markerIndexAfter(tokens, eventIndex, "by");
+  if (byIndex === undefined) return {};
+  return {
+    actorAnchor: strongAnchorAfter(tokens, byIndex),
+    objectAnchor: strongAnchorBefore(tokens, eventIndex - 1),
+  };
+};
+
+const activeRoleAnchors = (
+  tokens: readonly LexicalToken[],
+  eventIndex: number,
+  event: StoryEventRole["event"],
+): Readonly<{ actorAnchor?: string; objectAnchor?: string }> => {
+  const byIndex = markerIndexAfter(tokens, eventIndex, "by");
+  const relationIndex = relationMarkerIndex(tokens, eventIndex, event);
+  const objectStart = relationIndex ?? eventIndex;
+  return {
+    actorAnchor: strongAnchorBefore(tokens, eventIndex),
+    objectAnchor: strongAnchorAfter(tokens, objectStart, byIndex),
+  };
+};
+
+const nominalRoleAnchors = (
+  tokens: readonly LexicalToken[],
+  eventIndex: number,
+  event: StoryEventRole["event"],
+): Readonly<{ actorAnchor?: string; objectAnchor?: string }> => {
+  const actorBefore = strongAnchorBefore(tokens, eventIndex);
+  const byIndex = markerIndexAfter(tokens, eventIndex, "by");
+  const markers = relationMarkerIndices(tokens, eventIndex, event);
+  if (actorBefore !== undefined) {
+    return {
+      actorAnchor: actorBefore,
+      objectAnchor: firstAnchorAfterMarkers(tokens, markers, byIndex),
+    };
+  }
+  if (byIndex === undefined) return {};
+  const afterAgentMarkers = markers.filter((index) => index > byIndex);
+  const beforeAgentMarkers = markers.filter((index) => index < byIndex);
+  return {
+    actorAnchor: strongAnchorAfter(tokens, byIndex,
+      afterAgentMarkers[0] ?? tokens.length),
+    objectAnchor: firstAnchorAfterMarkers(tokens,
+      afterAgentMarkers.length > 0 ? afterAgentMarkers : beforeAgentMarkers,
+      afterAgentMarkers.length > 0 ? undefined : byIndex),
+  };
+};
+
+const firstAnchorAfterMarkers = (
+  tokens: readonly LexicalToken[],
+  markers: readonly number[],
+  finalBoundary?: number,
+): string | undefined => {
+  for (let index = 0; index < markers.length; index += 1) {
+    const marker = markers[index];
+    if (marker === undefined) continue;
+    const boundary = markers[index + 1] ?? finalBoundary ?? tokens.length;
+    const anchor = strongAnchorAfter(tokens, marker, boundary);
+    if (anchor !== undefined) return anchor;
+  }
+  return undefined;
+};
 
 const strongAnchorBefore = (
   tokens: readonly LexicalToken[],

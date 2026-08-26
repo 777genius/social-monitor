@@ -112,6 +112,11 @@ import {
 import { readerSummaryCoverageProvider } from "./summary-reader-summary-coverage.provider";
 import { summaryReaderSummaryPersistenceProviders } from "./summary-reader-summary-persistence.providers";
 import { readerSummaryPublicationProvider } from "./summary-reader-summary-publication.provider";
+import {
+  READER_SUMMARY_STORY_RELATION_PROOF_AUTHORITY,
+  type StoryRelationProofAuthority,
+} from
+  "./summary-story-relation-proof-authority.provider";
 
 export const summaryReaderSummaryProviders: Provider[] = [
   CryptoIdGenerator,
@@ -163,6 +168,7 @@ export const summaryReaderSummaryProviders: Provider[] = [
       metrics: StoryRankingMetricsPort,
       modelMode: ReaderSummaryModelProviderMode,
       storyRelationVerifier: AgentRuntimeReaderSummaryStoryRelationVerifier,
+      storyRelationProofAuthority: StoryRelationProofAuthority,
     ) =>
       new RelevanceReaderSummaryEvidenceSelector(
         rankFeedItems,
@@ -170,6 +176,10 @@ export const summaryReaderSummaryProviders: Provider[] = [
         new SystemClock(),
         metrics,
         modelMode === "agent-runtime" ? storyRelationVerifier : undefined,
+        undefined,
+        modelMode === "agent-runtime"
+          ? storyRelationProofAuthority
+          : undefined,
       ),
     inject: [
       RankFeedItemsUseCase,
@@ -177,6 +187,7 @@ export const summaryReaderSummaryProviders: Provider[] = [
       StoryRankingMetricsRecorder,
       READER_SUMMARY_MODEL_PROVIDER_MODE,
       AgentRuntimeReaderSummaryStoryRelationVerifier,
+      READER_SUMMARY_STORY_RELATION_PROOF_AUTHORITY,
     ],
   },
   {
@@ -344,6 +355,7 @@ export const summaryReaderSummaryProviders: Provider[] = [
       metrics: MetricsRecorderPort,
       ids: CryptoIdGenerator,
       clock: SystemClock,
+      storyRelationProofAuthority: StoryRelationProofAuthority,
     ) =>
       new ExecuteReaderSummaryJobUseCase(
         readerSummaryJobs,
@@ -365,6 +377,7 @@ export const summaryReaderSummaryProviders: Provider[] = [
         undefined,
         undefined,
         undefined,
+        storyRelationProofAuthority.proofVerifier,
       ),
     inject: [
       READER_SUMMARY_JOB_REPOSITORY,
@@ -380,6 +393,7 @@ export const summaryReaderSummaryProviders: Provider[] = [
       METRICS_RECORDER,
       CryptoIdGenerator,
       SystemClock,
+      READER_SUMMARY_STORY_RELATION_PROOF_AUTHORITY,
     ],
   },
   {

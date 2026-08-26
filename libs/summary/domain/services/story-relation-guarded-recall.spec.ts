@@ -89,6 +89,42 @@ describe("guarded primary story recall", () => {
     });
 
   it.each([
+    "Cursor acquired SpaceX",
+    "SpaceX got acquired by Cursor",
+    "SpaceX gets acquired by Cursor",
+    "SpaceX has gotten acquired by Cursor",
+    "SpaceX may get acquired by Cursor",
+    "Investment of $10m by Cursor in SpaceX",
+    "Cursor acquisition of SpaceX approved by Microsoft",
+    "Cursor is acquiring SpaceX by Microsoft-backed tender",
+  ])("parses the directed Cursor to SpaceX role safely: %s", (title) => {
+    expect(storyEventSignature(title)?.eventRoles).toContainEqual({
+      event: title.startsWith("Investment") ? "investment" : "acquisition",
+      actorAnchor: "cursor",
+      objectAnchor: "spacex",
+      direction: "directed",
+    });
+  });
+
+  it("keeps the opposite get-passive direction distinct", () => {
+    expect(storyEventSignature("Cursor got acquired by SpaceX")?.eventRoles)
+      .toContainEqual({
+        event: "acquisition",
+        actorAnchor: "spacex",
+        objectAnchor: "cursor",
+        direction: "directed",
+      });
+  });
+
+  it("does not use an unrelated by-phrase as a progressive passive agent", () => {
+    expect(storyEventSignature(
+      "Cursor is acquiring SpaceX by Microsoft-backed tender",
+    )?.eventRoles).not.toContainEqual(expect.objectContaining({
+      actorAnchor: "microsoft",
+    }));
+  });
+
+  it.each([
     ["acquisition", "Cursor acquired SpaceX operations",
       "SpaceX operations were acquired by Cursor",
       "Acquisition of SpaceX operations by Cursor"],

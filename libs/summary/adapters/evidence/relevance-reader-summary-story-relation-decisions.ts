@@ -27,8 +27,11 @@ import {
   type SummaryEvidenceSelection,
   type StoryRelationExecutionProof,
 } from "../../domain";
-import { bindAuthenticatedStoryRelationExecutionProof } from
-  "../../domain/services/story-relation-proof-authority";
+import {
+  authenticatesStoryRelationExecutionProof,
+  type StoryRelationCandidateProofIssuer,
+  type StoryRelationProofVerifier,
+} from "../../domain/services/story-relation-proof-authority";
 import {
   InvalidStoryRelationDecisionBatchError,
   type ReaderSummaryEvidenceSelectorPort,
@@ -44,6 +47,10 @@ type VerifiedRelations = Readonly<{
   pairs: ReadonlySet<string>;
   relations: readonly ApprovedSameStoryRelation[];
 }>;
+export type StoryRelationDecisionProofAuthority = Readonly<{
+  candidateProofIssuer: StoryRelationCandidateProofIssuer;
+  proofVerifier: StoryRelationProofVerifier;
+}>;
 
 export const verifiedReaderSummaryStoryRelationPairs = async (params: {
   readonly query: Parameters<ReaderSummaryEvidenceSelectorPort["select"]>[0];
@@ -52,6 +59,7 @@ export const verifiedReaderSummaryStoryRelationPairs = async (params: {
   readonly requestedAt: Date;
   readonly verifier?: ReaderSummaryStoryRelationVerifierPort;
   readonly metrics: StoryRankingMetricsPort;
+  readonly proofAuthority?: StoryRelationDecisionProofAuthority;
 }): Promise<ReadonlySet<string>> =>
   (await verifiedReaderSummaryStoryRelations(params)).pairs;
 
@@ -64,6 +72,7 @@ export const verifiedReaderSummaryStoryRelations = async (params: {
   readonly metrics: StoryRankingMetricsPort;
   readonly additionalCandidates?: readonly StoryRelationCandidate[];
   readonly guardedRecallTimeoutMs?: number;
+  readonly proofAuthority?: StoryRelationDecisionProofAuthority;
 }): Promise<VerifiedRelations> => {
   const evidenceById = new Map(params.evidence.map((item) =>
     [item.feedItemId, item] as const));
@@ -127,6 +136,7 @@ const verifyLane = async (params: {
   readonly threshold: number;
   readonly candidatePolicyVersion: string;
   readonly timeoutMs?: number;
+  readonly proofAuthority?: StoryRelationDecisionProofAuthority;
 }): Promise<VerifiedRelations> => {
   const startedAt = performance.now();
   if (params.verifier === undefined || params.candidates.length === 0) {
@@ -185,6 +195,7 @@ const verifyLane = async (params: {
         candidatePolicyVersion: params.candidatePolicyVersion,
         rankingPolicyVersion: params.deterministicSelection.rankingPolicyVersion,
         proof,
+        proofIssuer: params.proofAuthority?.candidateProofIssuer,
       })];
     });
     const appliedPairIds = new Set(relations.map((relation) =>
@@ -254,7 +265,11 @@ const appliedRelation = (params: {
   readonly candidatePolicyVersion: string;
   readonly rankingPolicyVersion: string;
   readonly proof: StoryRelationExecutionProof;
+  readonly proofIssuer?: StoryRelationCandidateProofIssuer;
 }): ApprovedSameStoryRelation => {
+  if (params.proofIssuer === undefined) {
+    throw new Error("Story relation candidate proof issuer is unavailable");
+  }
   const canonicalPairId = candidatePairId(params.candidate);
   const featureDigest = storyRelationCandidateFeatureDigest(params.candidate);
   return {
@@ -270,6 +285,7 @@ const appliedRelation = (params: {
     normalizedOutputSha256: params.proof.normalizedOutputSha256,
     selectedOutputSha256: params.proof.selectedOutputSha256,
     verificationProof: buildStoryRelationCandidateVerificationProof({
+      proofIssuer: params.proofIssuer,
       executionProof: params.proof,
       canonicalPairId,
       leftFeedItemId: params.candidate.leftFeedItemId,
@@ -284,14 +300,18 @@ const assertVerifiedBatch = (
   batch: VerifiedStoryRelationDecisionBatch,
   params: Pick<Parameters<typeof verifyLane>[0],
     "lane" | "query" | "requestedAt" | "deterministicSelection" |
-    "candidates" | "verifier">,
+    "candidates" | "proofAuthority">,
 ): StoryRelationExecutionProof => {
   const proofSelection = {
     rankingPolicyVersion: params.deterministicSelection.rankingPolicyVersion,
     sourceWindow: params.deterministicSelection.sourceWindow,
   };
   if (batch.verificationLane !== params.lane ||
-      !params.verifier?.authenticatesExecutionProof(batch.proof) ||
+      params.proofAuthority === undefined ||
+      !authenticatesStoryRelationExecutionProof(
+        params.proofAuthority.proofVerifier,
+        batch.proof,
+      ) ||
       !validStoryRelationExecutionProof({
         proof: batch.proof,
         verificationLane: params.lane,
@@ -310,9 +330,7 @@ const assertVerifiedBatch = (
       })) {
     throw new Error("Story relation verification proof is invalid");
   }
-  return bindAuthenticatedStoryRelationExecutionProof(
-    batch.proof as StoryRelationExecutionProof,
-  );
+  return batch.proof as StoryRelationExecutionProof;
 };
 
 const withTimeout = async <T>(

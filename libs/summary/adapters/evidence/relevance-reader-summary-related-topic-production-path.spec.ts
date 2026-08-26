@@ -153,7 +153,6 @@ class ProductionPathVerifier implements ReaderSummaryStoryRelationVerifierPort {
     };
   }
 
-  authenticatesExecutionProof(): boolean { return false; }
 }
 
 const verifiedProof = {

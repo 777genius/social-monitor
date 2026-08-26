@@ -74,8 +74,7 @@ describe("verifiedReaderSummaryRelatedTopics", () => {
       },
       selection: aug14RelatedTopicSelection(),
       requestedAt: new Date("2026-08-15T00:01:00.000Z"),
-      verifier: { authenticatesExecutionProof: () => false,
-        verify: async (input) => ({
+      verifier: { verify: async (input) => ({
         verificationLane: input.verificationLane,
         decisions: input.candidates.map((candidate) => ({
           leftFeedItemId: candidate.leftFeedItemId,
@@ -113,7 +112,6 @@ describe("verifiedReaderSummaryRelatedTopics", () => {
       timeoutMs: 1,
       metrics,
       verifier: {
-        authenticatesExecutionProof: () => false,
         verify: async (input) => {
           signal = input.signal;
           return new Promise<VerifiedStoryRelationDecisionBatch>(
@@ -152,7 +150,6 @@ class ExplicitRelatedTopicVerifier implements ReaderSummaryStoryRelationVerifier
     };
   }
 
-  authenticatesExecutionProof(): boolean { return false; }
 }
 
 const verifiedProof = {

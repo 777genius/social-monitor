@@ -4,6 +4,10 @@ import {
   storyRelationExecutionRequestId,
   type StoryRelationExecutionProof,
 } from "../../domain";
+import {
+  issueStoryRelationExecutionProof,
+  type StoryRelationExecutionProofIssuer,
+} from "../../domain/services/story-relation-proof-authority";
 import type {
   AgentRuntimeClientPort,
   ReaderSummaryStoryRelationVerifierInput,
@@ -46,6 +50,7 @@ export type AgentRuntimeReaderSummaryStoryRelationVerifierOptions = Pick<
   AgentRuntimeReaderSummaryModelAdapterOptions,
   "client" | "agentProvider" | "providerInstanceId" | "verifiedAttestationSink"
 > & {
+  readonly executionProofIssuer: StoryRelationExecutionProofIssuer;
   readonly model?: typeof activeReaderSummaryModel;
   readonly promptVersion?: string;
   readonly timeoutMs?: number;
@@ -72,8 +77,7 @@ export class AgentRuntimeReaderSummaryStoryRelationVerifier implements ReaderSum
   private readonly timeoutMs: number;
   private readonly maxOutputTokens: number;
   private readonly verifiedAttestationSink?: VerifiedReaderSummaryExecutionAttestationSink;
-  private readonly authenticatedExecutionProofs =
-    new WeakSet<StoryRelationExecutionProof>();
+  private readonly executionProofIssuer: StoryRelationExecutionProofIssuer;
 
   constructor(options: AgentRuntimeReaderSummaryStoryRelationVerifierOptions) {
     this.client = options.client;
@@ -102,6 +106,7 @@ export class AgentRuntimeReaderSummaryStoryRelationVerifier implements ReaderSum
       defaultRelatedTopicTimeoutMs,
     );
     this.verifiedAttestationSink = options.verifiedAttestationSink;
+    this.executionProofIssuer = options.executionProofIssuer;
   }
 
   async verify(
@@ -219,7 +224,8 @@ export class AgentRuntimeReaderSummaryStoryRelationVerifier implements ReaderSum
           selectedOutputSha256: executionProof.selectedOutputSha256,
         });
     if (!relatedTopicLane) {
-      this.authenticatedExecutionProofs.add(
+      issueStoryRelationExecutionProof(
+        this.executionProofIssuer,
         proof as StoryRelationExecutionProof,
       );
     }
@@ -230,16 +236,13 @@ export class AgentRuntimeReaderSummaryStoryRelationVerifier implements ReaderSum
     };
   }
 
-  authenticatesExecutionProof(proof: unknown): boolean {
-    return typeof proof === "object" && proof !== null &&
-      this.authenticatedExecutionProofs.has(proof as StoryRelationExecutionProof);
-  }
 }
 
 export const resolveAgentRuntimeReaderSummaryStoryRelationVerifierOptions = (
   env: NodeJS.ProcessEnv,
   client: AgentRuntimeClientPort,
-): AgentRuntimeReaderSummaryStoryRelationVerifierOptions => {
+): Omit<AgentRuntimeReaderSummaryStoryRelationVerifierOptions,
+  "executionProofIssuer"> => {
   const shared = resolveAgentRuntimeReaderSummaryModelOptions(env, client);
   return {
     client,

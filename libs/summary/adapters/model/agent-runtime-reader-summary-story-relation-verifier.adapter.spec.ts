@@ -14,9 +14,18 @@ import type {
 } from "../../ports";
 import { AgentRuntimeReaderSummaryStoryRelationVerifier } from "./agent-runtime-reader-summary-story-relation-verifier.adapter";
 import { withTestExecutionAttestation } from "./reader-summary-execution-attestation.spec-support";
+import {
+  authenticatesStoryRelationExecutionProof,
+  createStoryRelationProofAuthority,
+} from
+  "../../domain/services/story-relation-proof-authority";
+
+const executionProofIssuer = () =>
+  createStoryRelationProofAuthority().executionProofIssuer;
 
 describe("AgentRuntimeReaderSummaryStoryRelationVerifier", () => {
   it("uses subscription runtime and decides every shortlisted pair", async () => {
+    const proofAuthority = createStoryRelationProofAuthority();
     const client = new CapturingAgentRuntimeClient({
       status: "completed",
       structuredOutput: {
@@ -34,6 +43,7 @@ describe("AgentRuntimeReaderSummaryStoryRelationVerifier", () => {
     });
     const verifier = new AgentRuntimeReaderSummaryStoryRelationVerifier({
       client,
+      executionProofIssuer: proofAuthority.executionProofIssuer,
     });
     const verifierInput = input();
     const batch = await verifier.verify(verifierInput);
@@ -69,7 +79,8 @@ describe("AgentRuntimeReaderSummaryStoryRelationVerifier", () => {
         candidates: verifierInput.candidates,
       }),
     })).toBe(true);
-    expect(verifier.authenticatesExecutionProof(batch.proof)).toBe(true);
+    expect(authenticatesStoryRelationExecutionProof(
+      proofAuthority.proofVerifier, batch.proof)).toBe(true);
     expect(client.commands[0]).toMatchObject({
       provider: "codex",
       purpose: "social_monitor.reader_summary.verify_story_relations.v2",
@@ -102,7 +113,10 @@ describe("AgentRuntimeReaderSummaryStoryRelationVerifier", () => {
       structuredOutput: { decisions: [] },
       warnings: [],
     });
-    const verifier = new AgentRuntimeReaderSummaryStoryRelationVerifier({ client });
+    const verifier = new AgentRuntimeReaderSummaryStoryRelationVerifier({
+      client,
+      executionProofIssuer: executionProofIssuer(),
+    });
     const verifierInput = input();
     const relevantTail = "typescript compiler rewrite deployment evidence";
     const longEvidence = verifierInput.evidence.map((item, index) =>
@@ -129,6 +143,7 @@ describe("AgentRuntimeReaderSummaryStoryRelationVerifier", () => {
       },
     ];
     const verifier = new AgentRuntimeReaderSummaryStoryRelationVerifier({
+      executionProofIssuer: executionProofIssuer(),
       client: new CapturingAgentRuntimeClient({
         status: "completed",
         structuredOutput: { decisions },
@@ -141,6 +156,7 @@ describe("AgentRuntimeReaderSummaryStoryRelationVerifier", () => {
 
   it("omits an absent optional rationale from normalized binary decisions", async () => {
     const verifier = new AgentRuntimeReaderSummaryStoryRelationVerifier({
+      executionProofIssuer: executionProofIssuer(),
       client: new CapturingAgentRuntimeClient({
         status: "completed",
         structuredOutput: {
@@ -179,7 +195,10 @@ describe("AgentRuntimeReaderSummaryStoryRelationVerifier", () => {
       structuredOutput: { decisions: [decision] },
       warnings: [],
     });
-    const verifier = new AgentRuntimeReaderSummaryStoryRelationVerifier({ client });
+    const verifier = new AgentRuntimeReaderSummaryStoryRelationVerifier({
+      client,
+      executionProofIssuer: executionProofIssuer(),
+    });
     const base = input();
     const controller = new AbortController();
     await expect(verifier.verify({
@@ -241,6 +260,7 @@ describe("AgentRuntimeReaderSummaryStoryRelationVerifier", () => {
     const productionAttestations: unknown[] = [];
     const verifier = new AgentRuntimeReaderSummaryStoryRelationVerifier({
       client,
+      executionProofIssuer: executionProofIssuer(),
       verifiedAttestationSink: {
         record: (attestation) => {
           productionAttestations.push(attestation);
@@ -278,6 +298,7 @@ describe("AgentRuntimeReaderSummaryStoryRelationVerifier", () => {
     ],
   ] as const)("rejects an envelope with %s", async (_name, envelope, reason) => {
     const verifier = new AgentRuntimeReaderSummaryStoryRelationVerifier({
+      executionProofIssuer: executionProofIssuer(),
       client: new CapturingAgentRuntimeClient({
         status: "completed",
         structuredOutput: envelope,

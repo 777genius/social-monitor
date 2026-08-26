@@ -12,8 +12,15 @@ import type { StoryRelationCandidate } from "./story-relation-candidates";
 import { verifiedStoryRelationPairKey } from "./story-cluster-membership";
 import { readerSummaryScopeKey, type ReaderSummaryScope } from
   "../value-objects/reader-summary-scope";
-import { bindAuthenticatedStoryRelationExecutionProof } from
-  "./story-relation-proof-authority";
+import {
+  createStoryRelationProofAuthority,
+  authorizeStoryRelationCandidateProofForPromotion,
+  issueStoryRelationExecutionProof,
+  type StoryRelationProofAuthority,
+} from "./story-relation-proof-authority";
+
+export const storyRelationTestProofAuthority =
+  createStoryRelationProofAuthority();
 
 export const attestedStoryRelationBatchProofFixture = (params: {
   readonly tenantId: unknown;
@@ -24,6 +31,7 @@ export const attestedStoryRelationBatchProofFixture = (params: {
   readonly selection: StoryRelationProofSelectionContext;
   readonly candidates: readonly StoryRelationCandidate[];
   readonly decisions: readonly unknown[];
+  readonly proofAuthority?: StoryRelationProofAuthority;
 }) => {
   const requestId = storyRelationExecutionRequestId({
     tenantId: params.tenantId,
@@ -55,7 +63,9 @@ export const attestedStoryRelationBatchProofFixture = (params: {
     selectedOutputKind: "structured_output" as const,
     selectedOutputSha256,
   };
-  return bindAuthenticatedStoryRelationExecutionProof(
+  return issueStoryRelationExecutionProof(
+    (params.proofAuthority ?? storyRelationTestProofAuthority)
+      .executionProofIssuer,
     buildStoryRelationExecutionProof({
     verificationLane: params.verificationLane,
     promptVersion: "reader_summary.story_relation.agent_runtime.v2",
@@ -80,6 +90,7 @@ export const attestedStoryRelationFixture = (params: {
   readonly rankingPolicyVersion?: string;
   readonly candidatePolicyVersion?: string;
   readonly sourceWindow?: SummarySourceWindow;
+  readonly proofAuthority?: StoryRelationProofAuthority;
 }): ApprovedSameStoryRelation => {
   const verificationLane = params.verificationLane ?? "semantic_primary";
   const rankingPolicyVersion = params.rankingPolicyVersion ?? "story_ranking_v10";
@@ -103,6 +114,7 @@ export const attestedStoryRelationFixture = (params: {
     selectedFeedItemIds: [params.leftFeedItemId, params.rightFeedItemId],
     storyClusterIds: [candidate.leftClusterId, candidate.rightClusterId],
   };
+  const proofAuthority = params.proofAuthority ?? storyRelationTestProofAuthority;
   const selection = { rankingPolicyVersion, sourceWindow };
   const executionAttestation = {
     schemaVersion: 1 as const,
@@ -130,7 +142,8 @@ export const attestedStoryRelationFixture = (params: {
     selectedOutputKind: "structured_output" as const,
     selectedOutputSha256,
   };
-  const executionProof = bindAuthenticatedStoryRelationExecutionProof(
+  const executionProof = issueStoryRelationExecutionProof(
+    proofAuthority.executionProofIssuer,
     buildStoryRelationExecutionProof({
     verificationLane,
     promptVersion: "reader_summary.story_relation.agent_runtime.v2",
@@ -143,6 +156,19 @@ export const attestedStoryRelationFixture = (params: {
       canonicalStoryRelationProofSha256(executionAttestation),
       selectedOutputSha256,
     }),
+  );
+  const verificationProof = buildStoryRelationCandidateVerificationProof({
+    proofIssuer: proofAuthority.candidateProofIssuer,
+    executionProof,
+    canonicalPairId,
+    leftFeedItemId: params.leftFeedItemId,
+    rightFeedItemId: params.rightFeedItemId,
+    featureDigest,
+    confidenceScore: confidence,
+  });
+  authorizeStoryRelationCandidateProofForPromotion(
+    proofAuthority.proofVerifier,
+    verificationProof,
   );
   return {
     canonicalPairId,
@@ -159,14 +185,7 @@ export const attestedStoryRelationFixture = (params: {
     executionAttestationSha256: executionProof.executionAttestationSha256,
     normalizedOutputSha256: executionProof.normalizedOutputSha256,
     selectedOutputSha256: executionProof.selectedOutputSha256,
-    verificationProof: buildStoryRelationCandidateVerificationProof({
-      executionProof,
-      canonicalPairId,
-      leftFeedItemId: params.leftFeedItemId,
-      rightFeedItemId: params.rightFeedItemId,
-      featureDigest,
-      confidenceScore: confidence,
-    }),
+    verificationProof,
   };
 };
 

@@ -51,8 +51,6 @@ export interface ReaderSummaryStoryRelationVerifierPort {
   verify(
     input: ReaderSummaryStoryRelationVerifierInput,
   ): Promise<VerifiedStoryRelationDecisionBatch>;
-  /** True only for the exact proof object emitted by this trusted execution. */
-  authenticatesExecutionProof(proof: unknown): boolean;
 }
 
 export type InvalidStoryRelationDecisionEnvelopeReason =
@@ -71,7 +69,6 @@ export class InvalidStoryRelationDecisionBatchError extends Error {
 
 export const NOOP_READER_SUMMARY_STORY_RELATION_VERIFIER: ReaderSummaryStoryRelationVerifierPort =
   {
-    authenticatesExecutionProof: () => false,
     verify: async (input) => ({
       verificationLane: input.verificationLane,
       decisions: [],

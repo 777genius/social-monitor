@@ -21,6 +21,7 @@ describe("ReaderSummaryPublicationPolicy Promotion V1 oracle", () => {
       evidence: fixture.evidence.selectedEvidence,
       citations: fixture.artifact.toSnapshot().citationMap,
       sourceWindow: fixture.evidence.sourceWindow,
+      clusters: fixture.evidence.clusters,
       approvedSameStoryRelations:
         fixture.evidence.approvedSameStoryRelations,
     });
@@ -28,6 +29,30 @@ describe("ReaderSummaryPublicationPolicy Promotion V1 oracle", () => {
       "citation-publication-1",
       "citation-publication-2",
     ]);
+  });
+  it("rejects authenticated support across distinct selector clusters", () => {
+    const fixture = trustedNonOfficialSupportPublicationFixture();
+    const cluster = fixture.evidence.clusters[0]!;
+    const [left, right] = fixture.evidence.selectedEvidence;
+    if (left === undefined || right === undefined) {
+      throw new Error("Expected cross-source evidence fixtures");
+    }
+    const result = readerSummaryPromotionPublicationOracle({
+      evidence: fixture.evidence.selectedEvidence,
+      citations: fixture.artifact.toSnapshot().citationMap,
+      sourceWindow: fixture.evidence.sourceWindow,
+      clusters: [
+        { ...cluster, id: `${cluster.id}:left`,
+          representativeFeedItemId: left.feedItemId,
+          duplicateFeedItemIds: [], providerKeys: [left.providerKey] },
+        { ...cluster, id: `${cluster.id}:right`,
+          representativeFeedItemId: right.feedItemId,
+          duplicateFeedItemIds: [], providerKeys: [right.providerKey] },
+      ],
+      approvedSameStoryRelations:
+        fixture.evidence.approvedSameStoryRelations,
+    });
+    expect(result.top[0]?.citationIds).toEqual(["citation-publication-1"]);
   });
   it("rejects recall support with missing execution provenance", () => {
     const fixture = trustedNonOfficialSupportPublicationFixture();
@@ -39,6 +64,7 @@ describe("ReaderSummaryPublicationPolicy Promotion V1 oracle", () => {
       evidence: fixture.evidence.selectedEvidence,
       citations: fixture.artifact.toSnapshot().citationMap,
       sourceWindow: fixture.evidence.sourceWindow,
+      clusters: fixture.evidence.clusters,
       approvedSameStoryRelations: [unproven] as never,
     });
     expect(result.top[0]?.citationIds).toEqual(["citation-publication-1"]);
@@ -51,6 +77,7 @@ describe("ReaderSummaryPublicationPolicy Promotion V1 oracle", () => {
       evidence: fixture.evidence.selectedEvidence,
       citations: fixture.artifact.toSnapshot().citationMap,
       sourceWindow: fixture.evidence.sourceWindow,
+      clusters: fixture.evidence.clusters,
       approvedSameStoryRelations: [{ ...relation,
         rankingPolicyVersion: undefined }] as never,
     });
