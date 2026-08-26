@@ -56,5 +56,24 @@ void main() {
         isFalse,
       );
     });
+
+    test('accepts a collection watermark shortly before its slot', () {
+      final now = DateTime.parse('2026-08-15T18:05:00.000Z');
+
+      expect(
+        SummaryRefreshSchedule.isUpdateDue(
+          now: now,
+          collectedAt: DateTime.parse('2026-08-15T16:13:00.000Z'),
+        ),
+        isFalse,
+      );
+      expect(
+        SummaryRefreshSchedule.isUpdateDue(
+          now: now,
+          collectedAt: DateTime.parse('2026-08-15T16:09:59.000Z'),
+        ),
+        isTrue,
+      );
+    });
   });
 }
