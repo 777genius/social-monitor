@@ -402,7 +402,13 @@ component_changed() {
   if git -C "$REPO" merge-base --is-ancestor "$target" "$marker"; then
     return 1
   fi
-  git -C "$REPO" merge-base --is-ancestor "$marker" "$target" || fail "$component marker diverged from target"
+  if ! git -C "$REPO" merge-base --is-ancestor "$marker" "$target"; then
+    if [[ $component == control ]] && \
+       deploy_control_reviewed_transition_matches "$marker" "$target"; then
+      return 0
+    fi
+    fail "$component marker diverged from target"
+  fi
   ! git -C "$REPO" diff --quiet "$marker" "$target" -- "$@"
 }
 

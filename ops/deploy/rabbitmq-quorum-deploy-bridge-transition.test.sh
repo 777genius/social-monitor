@@ -101,6 +101,7 @@ assert_real_bridge_target_assets() {
       ops/deploy/social-monitor-production-deploy.sh)
         expected_digest=ac82c9cfebf88646e9cdc21dcb822c8cc50409832da24a726cd9307cc2be8bcb
         alternate_digest=101b80c5c0ee6ea5ff4e908e5661a7c2bbd03ad2048fb7eb8b5d26966b0e4860
+        reviewed_digest=cc869266046dbe9edc590e83944e93bab8ebdf19e8ef66f4917c896bbd48fcde
         ;;
       ops/deploy/deploy-control-lib.sh)
         expected_digest=d18854822ef36d5571289e72c7691fff8db4a7d5c516787441a733d6960a88a9
@@ -118,7 +119,7 @@ assert_real_bridge_target_assets() {
         reviewed_digest=14ab26a66e982128770947a9b66a764cd4cef6eca1bb017c13f97819ae611a7a
         release_b_candidate_digest=bea119047fbbd2295185c84e0adeb773dc852e63b951daf5c7a831356a73a371
         release_b_sealed_digest=1718617b4bbb92f4dbfd92a59fcc482ef7a098734730b8460d21aaced44386c2
-        rolling_repair_digest=93128bd947b77c0920605c206f0ed20aa7f07ffd71b11c4ec5b6418a7a168781
+        rolling_repair_digest=1945f2b07f110d16694affc15c66b4589d294b81a4e593a9680dacf11fbc5d4d
         ;;
     esac
     if [[ $path == ops/deploy/social-monitor-production-deploy.sh ]]; then
