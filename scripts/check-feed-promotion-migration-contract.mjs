@@ -6,6 +6,11 @@ const migration = readFileSync(migrationPath, "utf8");
 const migrationSql = withoutComments(migration);
 const schema = readFileSync("prisma/schema.prisma", "utf8");
 const workflow = readFileSync(".github/workflows/pull-request.yml", "utf8");
+const dockerfile = readFileSync("Dockerfile", "utf8");
+const productionDeploy = readFileSync(
+  "ops/deploy/social-monitor-production-deploy.sh",
+  "utf8",
+);
 const deploy = readFileSync(
   "ops/deploy/reader-summary-publication-deploy-lib.sh",
   "utf8",
@@ -108,6 +113,31 @@ if ((!workflow.includes("check:feed-promotion-keyset-plan-postgres") &&
      !workflow.includes("check:feed-promotion-postgres18")) ||
     !workflow.includes("postgres:18.4-alpine")) {
   violations.push("required PR CI must run the native PostgreSQL promotion plan gate");
+}
+const buildStep = dockerfile.indexOf(
+  'RUN DATABASE_URL="${PRISMA_GENERATE_DATABASE_URL}" npm run prisma:generate && npm run build',
+);
+const scriptsCopyStep = dockerfile.indexOf("COPY scripts ./scripts");
+const commonPaths = productionDeploy.match(
+  /local -a common_paths=\(([^\n)]*)\)/u,
+)?.[1];
+const scriptChangeClassifier = [
+  "script_change_services() {",
+  '  changed_between "$1" "$2" scripts || return 0',
+  "  printf '%s\\n' migrate daily-runner",
+  "}",
+].join("\n");
+if ((dockerfile.match(/^COPY scripts \.\/scripts$/gmu) ?? []).length !== 1 ||
+    buildStep === -1 || scriptsCopyStep < buildStep ||
+    !/BACKEND_PATHS=\([\s\S]*?\n  scripts\n[\s\S]*?\n\)/u.test(productionDeploy) ||
+    commonPaths === undefined || /\bscripts\b/u.test(commonPaths) ||
+    !productionDeploy.includes(scriptChangeClassifier) ||
+    (productionDeploy.match(/changed_between[^\n]*\bscripts\b/gu) ?? []).length !== 1 ||
+    !productionDeploy.includes(
+      'while IFS= read -r service; do services+=("$service"); done < <(script_change_services "$from" "$to")',
+    ) ||
+    !/if changed_between "\$from" "\$to" ops\/evals test; then\n      services\+=\(daily-runner\)\n    fi/u.test(productionDeploy)) {
+  violations.push("production migration images must package scripts after compilation and target script changes to migrate and daily-runner");
 }
 if (!deploy.includes("check:feed-promotion-index-recovery -- inspect") ||
     !deploy.includes("check:feed-promotion-index-recovery -- recover") ||

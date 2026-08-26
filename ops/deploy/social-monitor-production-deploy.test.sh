@@ -17,7 +17,7 @@ git init -q -b main "$REPO"
 git -C "$REPO" config user.name 'Deploy Contract Test'
 git -C "$REPO" config user.email deploy-contract@example.invalid
 git -C "$REPO" remote add origin "$ORIGIN"
-install -d "$REPO/apps/frontend" "$REPO/apps/api-gateway" \
+install -d "$REPO/apps/frontend" "$REPO/apps/api-gateway" "$REPO/scripts" \
   "$REPO/apps/x-collector" "$REPO/ops/deploy" "$REPO/ops/recovery" \
   "$REPO/prisma/migrations"/{20260716170000_reader_summary_fail_closed_publication,20260731153000_reader_summary_production_recovery_original_cutoff_authority} \
   "$STATE" "$STAGING"
@@ -72,6 +72,14 @@ run_entrypoint() {
   SOCIAL_MONITOR_DEPLOY_STAGING="$STAGING" \
     bash "$ENTRYPOINT" "$@"
 }
+backend_services_between() {
+  local from=$1 to=$2
+  SOCIAL_MONITOR_DEPLOY_TEST_MODE=1 \
+  SOCIAL_MONITOR_DEPLOY_ROOT="$ROOT" SOCIAL_MONITOR_DEPLOY_REPO="$REPO" \
+  SOCIAL_MONITOR_DEPLOY_CONTROL="$CONTROL" SOCIAL_MONITOR_DEPLOY_STATE="$STATE" \
+  SOCIAL_MONITOR_DEPLOY_STAGING="$STAGING" FROM_SHA="$from" TO_SHA="$to" \
+    bash -c 'source "$1"; backend_services "$FROM_SHA" "$TO_SHA"' _ "$ENTRYPOINT"
+}
 plan=$(run_entrypoint plan "$TARGET_SHA")
 grep -Fx 'frontend=true' <<< "$plan" >/dev/null
 grep -Fx 'backend=false' <<< "$plan" >/dev/null
@@ -83,6 +91,17 @@ grep -Fx "postgres_pool_bootstrap_sha=$BASE_SHA" <<< "$plan" >/dev/null
 printf '%s\n' "$TARGET_SHA" > "$STATE/frontend.sha"
 plan=$(run_entrypoint plan "$TARGET_SHA")
 grep -Fx 'frontend=false' <<< "$plan" >/dev/null
+printf 'export {};\n' > "$REPO/scripts/check-feed-promotion-index-recovery.ts"
+git -C "$REPO" add scripts/check-feed-promotion-index-recovery.ts
+git -C "$REPO" commit -qm 'test: migration recovery script change'
+git -C "$REPO" push -q origin main
+SCRIPT_TARGET_SHA=$(git -C "$REPO" rev-parse HEAD)
+script_plan=$(run_entrypoint plan "$SCRIPT_TARGET_SHA")
+grep -Fx 'frontend=false' <<< "$script_plan" >/dev/null
+grep -Fx 'backend=true' <<< "$script_plan" >/dev/null
+expected_script_services=$'migrate\ndaily-runner'
+[[ $(backend_services_between "$TARGET_SHA" "$SCRIPT_TARGET_SHA") == "$expected_script_services" ]]
+printf '%s\n' "$SCRIPT_TARGET_SHA" > "$STATE/backend.sha"
 if run_entrypoint plan invalid-sha >/dev/null 2>&1; then
   echo 'invalid SHA was accepted' >&2
   exit 1
@@ -112,20 +131,7 @@ printf '\n-- publication mapping contract\n' >> \
 git -C "$REPO" add ops/deploy/reader-summary-publication-pre-migration.sql
 git -C "$REPO" commit -qm 'test: publication migration contract change'
 PUBLICATION_TARGET_SHA=$(git -C "$REPO" rev-parse HEAD)
-publication_services=$(
-  SOCIAL_MONITOR_DEPLOY_TEST_MODE=1 \
-  SOCIAL_MONITOR_DEPLOY_ROOT="$ROOT" \
-  SOCIAL_MONITOR_DEPLOY_REPO="$REPO" \
-  SOCIAL_MONITOR_DEPLOY_CONTROL="$CONTROL" \
-  SOCIAL_MONITOR_DEPLOY_STATE="$STATE" \
-  SOCIAL_MONITOR_DEPLOY_STAGING="$STAGING" \
-  CONTROL_TARGET_SHA="$CONTROL_TARGET_SHA" \
-  PUBLICATION_TARGET_SHA="$PUBLICATION_TARGET_SHA" \
-    bash -c '
-      source "$1"
-      backend_services "$CONTROL_TARGET_SHA" "$PUBLICATION_TARGET_SHA"
-    ' _ "$ENTRYPOINT"
-)
+publication_services=$(backend_services_between "$CONTROL_TARGET_SHA" "$PUBLICATION_TARGET_SHA")
 [[ $publication_services == migrate ]]
 git -C "$REPO" checkout -q main
 # Observability-only changes must explicitly recreate the collector because the
@@ -137,19 +143,7 @@ printf 'service: {pipelines: {metrics: {}}}\n' > \
 git -C "$REPO" add ops/observability/otel-collector.yml
 git -C "$REPO" commit -qm 'test: collector config change'
 OTEL_TARGET_SHA=$(git -C "$REPO" rev-parse HEAD)
-otel_services=$(
-  SOCIAL_MONITOR_DEPLOY_TEST_MODE=1 \
-  SOCIAL_MONITOR_DEPLOY_ROOT="$ROOT" \
-  SOCIAL_MONITOR_DEPLOY_REPO="$REPO" \
-  SOCIAL_MONITOR_DEPLOY_CONTROL="$CONTROL" \
-  SOCIAL_MONITOR_DEPLOY_STATE="$STATE" \
-  SOCIAL_MONITOR_DEPLOY_STAGING="$STAGING" \
-  CONTROL_TARGET_SHA="$CONTROL_TARGET_SHA" OTEL_TARGET_SHA="$OTEL_TARGET_SHA" \
-    bash -c '
-      source "$1"
-      backend_services "$CONTROL_TARGET_SHA" "$OTEL_TARGET_SHA"
-    ' _ "$ENTRYPOINT"
-)
+otel_services=$(backend_services_between "$CONTROL_TARGET_SHA" "$OTEL_TARGET_SHA")
 [[ $otel_services == otel-collector ]]
 git -C "$REPO" checkout -q main
 grep -F "if printf '%s\\n' \"\${persistent[@]}\" | grep -qx api && ! refresh_frontend_api_proxy; then" \

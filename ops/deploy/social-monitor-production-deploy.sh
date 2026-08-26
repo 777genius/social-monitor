@@ -57,10 +57,7 @@ else
   SYSTEMD_UNIT_DIR=$ROOT/runtime/systemd
 fi
 
-FRONTEND_PATHS=(
-  apps/frontend
-  libs/contracts/rest
-)
+FRONTEND_PATHS=(apps/frontend libs/contracts/rest)
 
 BACKEND_PATHS=(
   Dockerfile
@@ -75,17 +72,11 @@ BACKEND_PATHS=(
   vendor
   libs
   ':(exclude)libs/contracts/rest/openapi.snapshot.json'
-  apps/api-gateway
-  apps/agent-runtime
-  apps/ingestion-worker
-  apps/intelligence-worker
-  apps/delivery-service
-  apps/event-relay
+  apps/api-gateway apps/agent-runtime apps/ingestion-worker
+  apps/intelligence-worker apps/delivery-service apps/event-relay
   apps/x-collector
   ops/deploy/production-runtime/x-collector.Dockerfile
-  apps/social-research-runtime
-  apps/social-research-grpc
-  apps/social-research-mcp
+  apps/social-research-runtime apps/social-research-grpc apps/social-research-mcp
   scripts
   ops/evals
   ops/observability
@@ -562,6 +553,11 @@ changed_between() {
   ! git -C "$REPO" diff --quiet "$from" "$to" -- "$@"
 }
 
+script_change_services() {
+  changed_between "$1" "$2" scripts || return 0
+  printf '%s\n' migrate daily-runner
+}
+
 backend_services() {
   local from=$1
   local to=$2
@@ -593,7 +589,8 @@ backend_services() {
       ops/deploy/reader-summary-publication-post-migration.sql; then
       services+=(migrate)
     fi
-    if changed_between "$from" "$to" scripts ops/evals test; then
+    while IFS= read -r service; do services+=("$service"); done < <(script_change_services "$from" "$to")
+    if changed_between "$from" "$to" ops/evals test; then
       services+=(daily-runner)
     fi
     if changed_between "$from" "$to" ops/observability; then
