@@ -335,7 +335,7 @@ install -m 0700 "$0" "$FAKE_SSH"
   plan_is_exact_release_b_target_transition
   # shellcheck disable=SC2034 # Read by the sourced target-plan predicate.
   PLAN_POSTGRES_POOL_REPAIR=true
-  ! plan_is_exact_release_b_target_transition
+  plan_is_exact_release_b_target_transition && exit 1
   # shellcheck disable=SC2034 # Read by the sourced current-main predicate.
   PLAN_POSTGRES_POOL_REPAIR=false
   parse_plan "$(printf 'frontend=false\nbackend=false\nbackend_base=%s\ncontrol=true\nx_collector=false\npostgres_pool_bootstrap=postgres-pool-v1\npostgres_pool_bootstrap_sha=%s\n' \
