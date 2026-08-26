@@ -349,6 +349,8 @@ export const assertReaderSummaryDailyProductionOwnerTopologyFixtureContract = (
   assert(grant >= 0 && topology > grant && proof > topology &&
     source.includes("export const readerSummaryDailyProductionOwnerAclSql") &&
     source.includes("DO $grant_legacy_daily_function_owner_acl$") &&
+    source.includes("authoritativeAclBlockSha256") &&
+    source.includes("daily owner ACL block digest drifted") &&
     source.includes("production bootstrap must contain exactly one daily owner ACL block") &&
     source.includes("assert(!block.includes(\"DELETE\")") &&
     source.includes("postMigrationSql, migrationAdminRole, schemaOwnerRole") &&
@@ -368,7 +370,8 @@ export const assertReaderSummaryDailyProductionOwnerTopologyFixtureContract = (
     source.includes("row.bounded_owner_has_create === true") &&
     source.includes("row.fixture_current_user === migrationAdminRole") &&
     source.includes("row.fixture_session_user === migrationAdminRole"),
-  "daily production topology fixture must grant and prove exact owner table ACLs");
+  "daily production topology fixture must grant and prove exact owner table ACLs " +
+    "by transforming and executing the authoritative block");
 };
 
 export const assertReaderSummaryDailyCheckerCanonicalRlsContract = (

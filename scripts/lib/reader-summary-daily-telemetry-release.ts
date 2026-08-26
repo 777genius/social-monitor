@@ -23,6 +23,13 @@ type QueryClient = Readonly<{
   ): Promise<Readonly<{ rows: readonly TRow[] }>>;
 }>;
 
+export const readerSummaryTelemetryMigration =
+  "20260824120000_reader_summary_daily_model_job_telemetry";
+export const readerSummaryTelemetryOldChecksum =
+  "e3e5b65d71d47942513478849dd745835f16c72175eb2ef821e245af02b79cad";
+export const readerSummaryTelemetryCorrectedChecksum =
+  "575ece3521b26d769c5f65aae4d4a47ba33502695ac866030524319808812250";
+
 export const assertReaderSummaryDailyTelemetryReleaseDatabaseState = async (
   client: QueryClient,
   params: Readonly<{
@@ -31,24 +38,47 @@ export const assertReaderSummaryDailyTelemetryReleaseDatabaseState = async (
     telemetryMigration: string;
   }>,
 ): Promise<void> => {
+  assert(params.telemetryMigration === readerSummaryTelemetryMigration,
+    "daily telemetry release verifier is bound to the reviewed migration");
   const result = await client.query<{
     default_acl_finished_count: string;
     default_acl_migration_count: string;
     final_acl_exact: boolean;
     final_rls_count: string;
-    finished_migration_count: string;
     migration_admin_has_schema_create: boolean;
     publication_owner_has_schema_create: boolean;
     public_has_schema_create: boolean;
     server_version: number;
+    telemetry_history: "clean" | "recovered" | "invalid";
     telemetry_migration_count: string;
   }>(`SELECT
       current_setting('server_version_num')::INTEGER AS server_version,
       (SELECT count(*)::TEXT FROM public."_prisma_migrations"
        WHERE migration_name = $1) AS telemetry_migration_count,
-      (SELECT count(*)::TEXT FROM public."_prisma_migrations"
-       WHERE migration_name = $1 AND finished_at IS NOT NULL
-         AND rolled_back_at IS NULL) AS finished_migration_count,
+      (SELECT CASE
+        WHEN count(*) = 1
+          AND (array_agg(checksum ORDER BY started_at, id))[1] = $4
+          AND (array_agg(finished_at IS NOT NULL ORDER BY started_at, id))[1]
+          AND NOT (array_agg(rolled_back_at IS NOT NULL
+            ORDER BY started_at, id))[1]
+          THEN 'clean'
+        WHEN count(*) = 2
+          AND (array_agg(checksum ORDER BY started_at, id))[1] = $5
+          AND NOT (array_agg(finished_at IS NOT NULL
+            ORDER BY started_at, id))[1]
+          AND (array_agg(rolled_back_at IS NOT NULL
+            ORDER BY started_at, id))[1]
+          AND (array_agg(checksum ORDER BY started_at, id))[2] = $4
+          AND (array_agg(finished_at IS NOT NULL
+            ORDER BY started_at, id))[2]
+          AND NOT (array_agg(rolled_back_at IS NOT NULL
+            ORDER BY started_at, id))[2]
+          AND (array_agg(started_at ORDER BY started_at, id))[1] <
+            (array_agg(started_at ORDER BY started_at, id))[2]
+          THEN 'recovered'
+        ELSE 'invalid'
+       END FROM public."_prisma_migrations"
+       WHERE migration_name = $1) AS telemetry_history,
       (SELECT count(*)::TEXT FROM public."_prisma_migrations"
        WHERE migration_name = $2) AS default_acl_migration_count,
       (SELECT count(*)::TEXT FROM public."_prisma_migrations"
@@ -129,13 +159,17 @@ export const assertReaderSummaryDailyTelemetryReleaseDatabaseState = async (
     params.telemetryMigration,
     params.defaultAclMigration,
     params.migrationAdminRole,
+    readerSummaryTelemetryCorrectedChecksum,
+    readerSummaryTelemetryOldChecksum,
   ]);
   const row = result.rows[0];
   assert((row?.server_version ?? 0) >= 180_000,
     "daily telemetry release requires disposable PostgreSQL 18+");
-  assert(row?.telemetry_migration_count === "1" &&
-    row.finished_migration_count === "1",
-  "daily telemetry release must finish exactly one telemetry migration");
+  assert((row?.telemetry_migration_count === "1" &&
+      row.telemetry_history === "clean") ||
+    (row?.telemetry_migration_count === "2" &&
+      row.telemetry_history === "recovered"),
+  "daily telemetry release requires one exact clean row or exact recovered history");
   assert(row.default_acl_migration_count === "1" &&
     row.default_acl_finished_count === "1",
   "daily telemetry release must finish exactly one default ACL migration");

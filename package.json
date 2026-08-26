@@ -43,7 +43,7 @@
     "check:notification-preference-rest": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-notification-preference-rest-smoke.ts",
     "check:personalized-relevance-engine": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-personalized-relevance-engine-smoke.ts",
     "check:relevance-persistence": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-relevance-prisma-persistence.ts",
-    "check:review-ci": "node scripts/check-review-ci.mjs",
+    "check:review-ci": "node --test scripts/lib/review-ci-terminal-recovery-contract.test.mjs && node scripts/check-review-ci.mjs",
     "check:relevance-memory-runtime-canary": "node scripts/run-with-timeout.mjs --timeout-ms 90000 --node-options --max-old-space-size=768 -- ts-node -r tsconfig-paths/register scripts/check-relevance-memory-runtime-canary.ts",
     "check:relevance-memory-runtime-canary-evidence": "node scripts/check-relevance-memory-runtime-canary-evidence.mjs",
     "check:delivery-replay": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-delivery-replay-safety.ts",

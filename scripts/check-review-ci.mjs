@@ -1,11 +1,19 @@
 #!/usr/bin/env node
 import { readFileSync } from "node:fs";
 
+import {
+  terminalAuthorityCommandViolations,
+  terminalRecoveryWiringViolations,
+} from "./lib/review-ci-terminal-recovery-contract.mjs";
+
 const workflowPath = ".github/workflows/pull-request.yml";
 const workflow = readFileSync(workflowPath, "utf8");
 const productionWorkflowPath = ".github/workflows/production-deploy.yml";
 const productionWorkflow = readFileSync(productionWorkflowPath, "utf8");
 const packageJson = JSON.parse(readFileSync("package.json", "utf8"));
+const terminalAuthoritySource = readFileSync(
+  "scripts/check-reader-summary-daily-terminal-authority-postgres.ts", "utf8",
+);
 const violations = [];
 const subscriptionRuntimeAuthPoolE2eCommand =
   "node --test apps/agent-runtime/bin/codex-auth-pool-manifest.test.mjs apps/agent-runtime/bin/codex-auth-pool-routing.test.mjs apps/agent-runtime/bin/subscription-runtime-auth-pool.e2e.test.mjs apps/agent-runtime/bin/subscription-runtime-purpose-model-policy.test.mjs";
@@ -20,6 +28,8 @@ if (
     "package.json: subscription runtime auth-pool e2e must enumerate only the reviewed deterministic sandbox tests",
   );
 }
+violations.push(...terminalAuthorityCommandViolations(packageJson));
+violations.push(...terminalRecoveryWiringViolations(terminalAuthoritySource));
 if (
   packageJson.scripts?.["check:reader-summary-daily-execution-cursor-postgres18"] !==
   dailyCursorPostgres18Command

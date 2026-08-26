@@ -243,18 +243,29 @@ describe("reader summary daily execution cursor PostgreSQL contract", () => {
       "ops/deploy/reader-summary-publication-post-migration.sql", "utf8",
     );
     const aclSql = readerSummaryDailyProductionOwnerAclSql(productionSql);
+    expect(aclSql).toContain("DO $grant_legacy_daily_function_owner_acl$");
     expect(aclSql).toContain("GRANT SELECT, INSERT, UPDATE ON TABLE");
     expect(aclSql).toContain("GRANT SELECT, INSERT ON TABLE");
     expect(aclSql).toContain(
       'GRANT SELECT ON TABLE public."feed_items", public."source_items"',
     );
     expect(aclSql).not.toContain("DELETE");
+    expect(aclSql).toContain(
+      "v_legacy_function_owner <> 'fixture_migration_admin'::NAME",
+    );
     expect(() => readerSummaryDailyProductionOwnerAclSql(
       productionSql.replace(
         "GRANT SELECT, INSERT, UPDATE ON TABLE",
         "GRANT SELECT, INSERT, UPDATE ON TABLE\n    -- DELETE is forbidden",
       ),
     )).toThrow("unexpectedly grants DELETE");
+    expect(() => readerSummaryDailyProductionOwnerAclSql(
+      productionSql.replace(
+        "GRANT SELECT, INSERT, UPDATE ON TABLE",
+        "REVOKE UPDATE ON TABLE public.reader_summary_daily_model_jobs " +
+          "FROM CURRENT_USER;\n  GRANT SELECT, INSERT, UPDATE ON TABLE",
+      ),
+    )).toThrow("ACL block digest drifted");
   });
 
   it("rejects production topology setup moved after telemetry starts", () => {

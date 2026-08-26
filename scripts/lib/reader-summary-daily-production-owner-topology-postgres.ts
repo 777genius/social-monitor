@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import type { PoolClient } from "pg";
 
 type ProductionOwnerTopologyFixture = {
@@ -21,12 +23,21 @@ type ProductionOwnerTopology = {
 
 const aclBlockStart = "DO $grant_legacy_daily_function_owner_acl$";
 const aclBlockEnd = "$grant_legacy_daily_function_owner_acl$;";
+const authoritativeAclBlockSha256 =
+  "0b38f6943d4776ca616091774a31f7719075f9130be466a3cb02b1561a268b65";
+const legacyOwnerAssignment = `  v_legacy_function_owner := pg_catalog.pg_get_userbyid(
+    v_function_owner_oids[1]
+  );`;
 
 export const readerSummaryDailyProductionOwnerAclSql = (
   postMigrationSql: string,
   migrationAdminRole = "fixture_migration_admin",
   schemaOwnerRole = "social_monitor_public_schema_owner",
 ): string => {
+  assertRoleName(migrationAdminRole, "migration admin");
+  assertRoleName(schemaOwnerRole, "schema owner");
+  assert(migrationAdminRole !== schemaOwnerRole,
+    "production bootstrap fixture roles must remain distinct");
   const start = postMigrationSql.indexOf(aclBlockStart);
   const end = postMigrationSql.indexOf(aclBlockEnd, start);
   assert(start >= 0 && end > start &&
@@ -47,17 +58,19 @@ export const readerSummaryDailyProductionOwnerAclSql = (
   }
   assert(!block.includes("DELETE"),
     "production bootstrap daily owner ACL block unexpectedly grants DELETE");
-  return `SET ROLE ${quoteIdentifier(schemaOwnerRole)};
-    GRANT SELECT, INSERT, UPDATE ON TABLE
-      public."reader_summary_daily_execution_cursors",
-      public."reader_summary_daily_model_jobs"
-    TO ${quoteIdentifier(migrationAdminRole)} GRANTED BY CURRENT_USER;
-    GRANT SELECT, INSERT ON TABLE
-      public."reader_summary_daily_source_authorities"
-    TO ${quoteIdentifier(migrationAdminRole)} GRANTED BY CURRENT_USER;
-    GRANT SELECT ON TABLE public."feed_items", public."source_items"
-    TO ${quoteIdentifier(migrationAdminRole)} GRANTED BY CURRENT_USER;
-    RESET ROLE`;
+  assert(createHash("sha256").update(block).digest("hex") ===
+    authoritativeAclBlockSha256,
+  "production bootstrap daily owner ACL block digest drifted");
+  assert(count(block, legacyOwnerAssignment) === 1 &&
+    count(block, "social_monitor_public_schema_owner") === 2,
+  "production bootstrap daily owner ACL substitution shape drifted");
+  const boundOwnerAssignment = `${legacyOwnerAssignment}
+  IF v_legacy_function_owner <> ${quoteLiteral(migrationAdminRole)}::NAME THEN
+    RAISE EXCEPTION 'fixture legacy daily function owner is not reviewed';
+  END IF;`;
+  return block
+    .replace(legacyOwnerAssignment, boundOwnerAssignment)
+    .replaceAll("social_monitor_public_schema_owner", schemaOwnerRole);
 };
 
 export const grantAndAssertReaderSummaryDailyProductionOwnerTopology = async ({
@@ -123,5 +136,11 @@ function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
 }
 
-const quoteIdentifier = (input: string): string =>
-  `"${input.replaceAll('"', '""')}"`;
+const assertRoleName = (role: string, label: string): void => {
+  assert(/^[a-z][a-z0-9_]{0,62}$/u.test(role),
+    `production bootstrap fixture ${label} role is invalid`);
+};
+const count = (source: string, fragment: string): number =>
+  source.split(fragment).length - 1;
+const quoteLiteral = (input: string): string =>
+  `'${input.replaceAll("'", "''")}'`;

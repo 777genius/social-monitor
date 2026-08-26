@@ -1,5 +1,6 @@
 import {
   assertReaderSummaryDailyTelemetryReleaseDatabaseState,
+  readerSummaryTelemetryMigration,
   type ReaderSummaryDailyTelemetryReleaseOperations,
   runReaderSummaryDailyTelemetryRelease,
 } from "./reader-summary-daily-telemetry-release";
@@ -43,11 +44,11 @@ describe("reader summary daily telemetry PostgreSQL release", () => {
       default_acl_migration_count: "1",
       final_acl_exact: true,
       final_rls_count: "5",
-      finished_migration_count: "1",
       migration_admin_has_schema_create: false,
       publication_owner_has_schema_create: false,
       public_has_schema_create: false,
       server_version: 180_002,
+      telemetry_history: "clean",
       telemetry_migration_count: "1",
     }] });
 
@@ -56,28 +57,34 @@ describe("reader summary daily telemetry PostgreSQL release", () => {
       {
         defaultAclMigration: "default-acl",
         migrationAdminRole: "fixture_migrator",
-        telemetryMigration: "telemetry",
+        telemetryMigration: readerSummaryTelemetryMigration,
       },
     )).resolves.toBeUndefined();
     expect(query).toHaveBeenCalledTimes(1);
     expect(query).toHaveBeenCalledWith(expect.stringContaining(
       'FROM public."_prisma_migrations"',
-    ), ["telemetry", "default-acl", "fixture_migrator"]);
+    ), [
+      readerSummaryTelemetryMigration, "default-acl", "fixture_migrator",
+      "575ece3521b26d769c5f65aae4d4a47ba33502695ac866030524319808812250",
+      "e3e5b65d71d47942513478849dd745835f16c72175eb2ef821e245af02b79cad",
+    ]);
     expect(query.mock.calls[0]?.[0]).toContain("defaults.defaclnamespace = 0");
     expect(query.mock.calls[0]?.[0]).toContain("namespace.nspname = 'public'");
   });
 
   it.each([
-    [179_999, "1", "1", false, true, "5", "requires disposable PostgreSQL 18+"],
-    [180_000, "2", "1", false, true, "5", "finish exactly one telemetry migration"],
-    [180_000, "1", "0", false, true, "5", "finish exactly one telemetry migration"],
-    [180_000, "1", "1", true, true, "5", "retained schema CREATE"],
-    [180_000, "1", "1", false, false, "5", "ACL/RLS state is unsafe"],
-    [180_000, "1", "1", false, true, "4", "ACL/RLS state is unsafe"],
+    [179_999, "1", "clean", false, true, "5", "requires disposable PostgreSQL 18+"],
+    [180_000, "3", "invalid", false, true, "5", "exact clean row or exact recovered"],
+    [180_000, "2", "clean", false, true, "5", "exact clean row or exact recovered"],
+    [180_000, "1", "recovered", false, true, "5", "exact clean row or exact recovered"],
+    [180_000, "1", "invalid", false, true, "5", "exact clean row or exact recovered"],
+    [180_000, "1", "clean", true, true, "5", "retained schema CREATE"],
+    [180_000, "1", "clean", false, false, "5", "ACL/RLS state is unsafe"],
+    [180_000, "1", "clean", false, true, "4", "ACL/RLS state is unsafe"],
   ] as const)("rejects an unsafe final database state", async (
     serverVersion,
     telemetryCount,
-    finishedCount,
+    telemetryHistory,
     migratorCreate,
     finalAclExact,
     finalRlsCount,
@@ -88,11 +95,11 @@ describe("reader summary daily telemetry PostgreSQL release", () => {
       default_acl_migration_count: "1",
       final_acl_exact: finalAclExact,
       final_rls_count: finalRlsCount,
-      finished_migration_count: finishedCount,
       migration_admin_has_schema_create: migratorCreate,
       publication_owner_has_schema_create: false,
       public_has_schema_create: false,
       server_version: serverVersion,
+      telemetry_history: telemetryHistory,
       telemetry_migration_count: telemetryCount,
     }] });
 
@@ -101,22 +108,46 @@ describe("reader summary daily telemetry PostgreSQL release", () => {
       {
         defaultAclMigration: "default-acl",
         migrationAdminRole: "fixture_migrator",
-        telemetryMigration: "telemetry",
+        telemetryMigration: readerSummaryTelemetryMigration,
       },
     )).rejects.toThrow(diagnostic);
+  });
+
+  it.each([
+    ["1", "clean"],
+    ["2", "recovered"],
+  ] as const)("accepts the exact %s-row telemetry lifecycle", async (
+    telemetryCount,
+    telemetryHistory,
+  ) => {
+    const query = jest.fn().mockResolvedValue({ rows: [{
+      default_acl_finished_count: "1", default_acl_migration_count: "1",
+      final_acl_exact: true, final_rls_count: "5",
+      migration_admin_has_schema_create: false,
+      publication_owner_has_schema_create: false, public_has_schema_create: false,
+      server_version: 180_000, telemetry_history: telemetryHistory,
+      telemetry_migration_count: telemetryCount,
+    }] });
+    await expect(assertReaderSummaryDailyTelemetryReleaseDatabaseState(
+      { query }, { defaultAclMigration: "default-acl",
+        migrationAdminRole: "fixture_migrator",
+        telemetryMigration: readerSummaryTelemetryMigration },
+    )).resolves.toBeUndefined();
   });
 
   it("rejects an absent forward default ACL repair", async () => {
     const query = jest.fn().mockResolvedValue({ rows: [{
       default_acl_finished_count: "0", default_acl_migration_count: "0",
-      final_acl_exact: true, final_rls_count: "5", finished_migration_count: "1",
+      final_acl_exact: true, final_rls_count: "5",
       migration_admin_has_schema_create: false,
       publication_owner_has_schema_create: false, public_has_schema_create: false,
-      server_version: 180_000, telemetry_migration_count: "1",
+      server_version: 180_000, telemetry_history: "clean",
+      telemetry_migration_count: "1",
     }] });
     await expect(assertReaderSummaryDailyTelemetryReleaseDatabaseState(
       { query }, { defaultAclMigration: "default-acl",
-        migrationAdminRole: "fixture_migrator", telemetryMigration: "telemetry" },
+        migrationAdminRole: "fixture_migrator",
+        telemetryMigration: readerSummaryTelemetryMigration },
     )).rejects.toThrow("finish exactly one default ACL migration");
   });
 });

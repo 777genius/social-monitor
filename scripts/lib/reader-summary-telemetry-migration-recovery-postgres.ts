@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 import { cpSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { Pool } from "pg";
+
 import {
   applyOrderedReaderSummaryMigrations,
   type ReaderSummaryPublicationMigrationWorkspace,
@@ -22,6 +24,22 @@ export const telemetryOldChecksum =
   "e3e5b65d71d47942513478849dd745835f16c72175eb2ef821e245af02b79cad";
 export const telemetryCorrectedChecksum =
   "575ece3521b26d769c5f65aae4d4a47ba33502695ac866030524319808812250";
+export const reviewedTelemetryFailureLog = `A migration failed to apply. New migrations cannot be applied before the error is recovered from. Read more about how to resolve migration issues in a production database: https://pris.ly/d/migrate-resolve
+
+Migration name: 20260824120000_reader_summary_daily_model_job_telemetry
+
+Database error code: 42501
+
+Database error:
+ERROR: permission denied for schema public
+
+DbError { severity: "ERROR", parsed_severity: Some(Error), code: SqlState(E42501), message: "permission denied for schema public", detail: None, hint: None, position: None, where_: None, schema: None, table: None, column: None, datatype: None, constraint: None, file: Some("aclchk.c"), line: Some(<server-line>), routine: Some("aclcheck_error") }
+`;
+
+export const isReviewedTelemetryFailureLog = (logs: string): boolean =>
+  logs.replaceAll("\r\n", "\n")
+    .replace(/line: Some\([0-9]+\)/gu, "line: Some(<server-line>)")
+    .replace(/\n+$/u, "\n") === reviewedTelemetryFailureLog;
 
 const temporaryCreateProfile = `  v_owner_had_schema_create := pg_catalog.has_schema_privilege(
     v_owner_oid, 'public', 'CREATE'
@@ -113,6 +131,19 @@ export const runReaderSummaryTelemetryMigrationRecoveryPostgres18 = async (
   assert(failed.status !== 0 &&
     failedOutput.includes("permission denied for schema public"),
   "old telemetry migration must fail at its reviewed schema permission boundary");
+  const failedRow = await params.admin.query<{
+    checksum: string; finished_at: Date | null; logs: string | null;
+    rolled_back_at: Date | null;
+  }>(`SELECT checksum, finished_at, logs, rolled_back_at
+    FROM public."_prisma_migrations" WHERE migration_name = $1`,
+  [telemetryMigration]);
+  const exactFailure = failedRow.rows[0];
+  assert(failedRow.rows.length === 1 &&
+    exactFailure?.checksum === telemetryOldChecksum &&
+    exactFailure.finished_at === null && exactFailure.rolled_back_at === null &&
+    typeof exactFailure.logs === "string" &&
+    isReviewedTelemetryFailureLog(exactFailure.logs),
+  "old telemetry migration must retain the exact reviewed Prisma failure row");
   const blocked = runOrderedReaderSummaryMigrations(
     params.adminDatabaseUrl, params.workspace,
   );
@@ -120,13 +151,34 @@ export const runReaderSummaryTelemetryMigrationRecoveryPostgres18 = async (
     `${blocked.stdout}${blocked.stderr}`.includes("P3009"),
   "unfinished old telemetry migration must block Prisma with P3009");
 
-  assert(await recoveryProbe(params.admin) === "resolve",
-    "bounded telemetry recovery did not recognize the exact unfinished old row");
-  resolveRolledBackReaderSummaryMigration(
-    params.adminDatabaseUrl, params.workspace, telemetryMigration,
-  );
-  assert(await recoveryProbe(params.admin) === "resolved",
-    "bounded telemetry recovery did not prove the exact rollback marker");
+  const guardPool = new Pool({
+    application_name: "social-monitor/telemetry-migration-recovery-guard",
+    connectionString: params.adminDatabaseUrl,
+    max: 1,
+  });
+  const guard = await guardPool.connect();
+  try {
+    const acquired = await guard.query<{ acquired: boolean }>(
+      "SELECT pg_try_advisory_lock(1936879981, 1502026082) AS acquired",
+    );
+    assert(acquired.rows[0]?.acquired === true,
+      "telemetry recovery PG18 fixture could not acquire its database guard");
+    assert(await recoveryProbe(params.admin,
+      "reader-summary-telemetry-failed-migration-preflight.sql") === "authorized",
+    "bounded telemetry recovery did not authorize the exact unfinished old row");
+    resolveRolledBackReaderSummaryMigration(
+      params.adminDatabaseUrl, params.workspace, telemetryMigration,
+    );
+    assert(await recoveryProbe(params.admin,
+      "reader-summary-telemetry-migration-postflight.sql") === "resolved",
+    "bounded telemetry recovery did not prove the exact rollback marker under guard");
+  } finally {
+    await guard.query(
+      "SELECT pg_advisory_unlock(1936879981, 1502026082)",
+    ).catch(() => undefined);
+    guard.release();
+    await guardPool.end();
+  }
   writeFileSync(join(target, "migration.sql"), corrected);
   applyOrderedReaderSummaryMigrations(params.adminDatabaseUrl, params.workspace);
 
@@ -144,9 +196,12 @@ export const runReaderSummaryTelemetryMigrationRecoveryPostgres18 = async (
   "corrected telemetry retry did not preserve exact Prisma recovery history");
 };
 
-const recoveryProbe = async (admin: QueryClient): Promise<string> => {
+const recoveryProbe = async (
+  admin: QueryClient,
+  file: string,
+): Promise<string> => {
   const sql = readFileSync(
-    "ops/deploy/reader-summary-telemetry-failed-migration-preflight.sql", "utf8",
+    join("ops/deploy", file), "utf8",
   );
   const results = await admin.query(sql) as unknown as
     { rows: readonly { case: string }[] }[];
