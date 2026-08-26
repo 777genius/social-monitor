@@ -108,6 +108,7 @@ assert_real_bridge_target_assets() {
         ;;
       ops/deploy/deploy-control-bridge-lib.sh)
         expected_digest=e6f958555966b77d02b85da8d0b9195e13a200dcb2b19c8afc010fab6d28b65d
+        alternate_digest=d6f3b562e3445dce3ac3d21364793b43afa53fe56011c0b73d02fac721040cf7
         ;;
     esac
     if [[ $path == ops/deploy/social-monitor-production-deploy.sh ]]; then
@@ -348,6 +349,8 @@ run_release_b() (
     install -d "$backup"
     printf '%s\n' "$backup"
   }
+  # Invoked indirectly by deploy_release after the fixture sources the target.
+  # shellcheck disable=SC2317
   rollback_backend_and_runtime_control() { return 1; }
   cleanup_stopped_project_containers() { :; }
   backend_image_rescue_prepare() { :; }
