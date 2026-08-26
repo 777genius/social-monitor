@@ -4,6 +4,9 @@ final class SummaryRefreshSchedule {
   static const _scheduledHoursUtc = [4, 8, 12, 16, 20];
   static const scheduledMinuteUtc = 15;
 
+  /// Collection can finish shortly before its nominal publication slot.
+  static const collectionLeadTolerance = Duration(minutes: 5);
+
   static DateTime nextScheduledAt(DateTime now) {
     final utc = now.toUtc();
     for (final hour in _scheduledHoursUtc) {
@@ -27,7 +30,11 @@ final class SummaryRefreshSchedule {
   static bool isUpdateDue({
     required DateTime now,
     required DateTime collectedAt,
-  }) => collectedAt.toUtc().isBefore(latestScheduledAt(now));
+  }) {
+    final latestSlot = latestScheduledAt(now);
+    final freshnessCutoff = latestSlot.subtract(collectionLeadTolerance);
+    return collectedAt.toUtc().isBefore(freshnessCutoff);
+  }
 
   static Duration remaining({required DateTime now, required DateTime next}) {
     final value = next.toUtc().difference(now.toUtc());

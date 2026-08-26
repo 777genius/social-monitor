@@ -51,4 +51,24 @@ void main() {
     expect(find.textContaining('updating now'), findsOneWidget);
     expect(refreshes, 1);
   });
+
+  testWidgets('does not report updating for a just-collected slot', (
+    tester,
+  ) async {
+    var refreshes = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: WorkspaceSummaryRefreshStatus(
+          collectedAt: DateTime.parse('2026-08-15T16:13:00.000Z'),
+          clock: () => DateTime.parse('2026-08-15T18:05:00.000Z'),
+          onRefreshDue: () => refreshes += 1,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.textContaining('updating now'), findsNothing);
+    expect(find.textContaining('next update in 02:10:00'), findsOneWidget);
+    expect(refreshes, 0);
+  });
 }
