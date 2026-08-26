@@ -378,6 +378,20 @@ assert_call_count() {
   }
 }
 
+# The workflow's local gate accepts the exact reviewed target and its real
+# requested descendant, but rejects current-main before any SSH call is made.
+for release_b_requested_target in \
+  "$RELEASE_B_REVIEWED_TARGET_SHA" "$TARGET_SHA"; do
+  HOME='' DEPLOY_SSH_DIRECTORY='' DEPLOY_HOST='' DEPLOY_USER='' \
+    GITHUB_WORKSPACE=$SCRIPT_DIR/../.. run_client release_b_local_identity \
+      verify-release-b-target "$release_b_requested_target"
+  [[ ! -s $FAKE_SSH_LOG ]]
+done
+HOME='' DEPLOY_SSH_DIRECTORY='' DEPLOY_HOST='' DEPLOY_USER='' \
+  GITHUB_WORKSPACE=$SCRIPT_DIR/../.. assert_fails release_b_local_identity \
+    verify-release-b-target "$RELEASE_B_CURRENT_MAIN_SHA"
+[[ ! -s $FAKE_SSH_LOG ]]
+
 DEPLOY_KEY=fake-private-key KNOWN_HOSTS=fake-known-hosts bash "$CLIENT" configure
 [[ $(stat -c '%a' "$DEPLOY_SSH_DIRECTORY") == 700 ]]
 [[ $(stat -c '%a' "$DEPLOY_SSH_KEY_PATH") == 600 ]]

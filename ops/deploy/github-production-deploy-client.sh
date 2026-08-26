@@ -14,7 +14,7 @@ RELEASE_B_BRIDGE_PATH=ops/deploy/deploy-control-bridge-lib.sh
 RELEASE_B_REVIEWED_TARGET_SHA=05744f99b2d13e47a64a7ff12ea2ab8893f5e88a
 RELEASE_B_REVIEWED_TARGET_TREE=237c34068c057d2dfb5efaf9d606028cdaf18525
 DAILY_C1_BRIDGE_POLICY_SHA=944fdb6da3071f70a69c7048c9fcdf1c2552603e
-SSH_DIRECTORY=${DEPLOY_SSH_DIRECTORY:-${HOME:?HOME is required}/.ssh}
+SSH_DIRECTORY=${DEPLOY_SSH_DIRECTORY:-${HOME:+$HOME/.ssh}}
 SSH_KEY_PATH=${DEPLOY_SSH_KEY_PATH:-$SSH_DIRECTORY/social-monitor-production}
 SSH_KNOWN_HOSTS_PATH=${DEPLOY_SSH_KNOWN_HOSTS_PATH:-$SSH_DIRECTORY/known_hosts}
 SSH_BIN=${DEPLOY_SSH_BIN:-ssh}
@@ -85,6 +85,7 @@ validate_remote_environment() {
 }
 
 configure_ssh() {
+  [[ -n $SSH_DIRECTORY ]] || fail 'HOME or DEPLOY_SSH_DIRECTORY is required'
   [[ -n ${DEPLOY_KEY:-} ]] || fail 'DEPLOY_KEY is required'
   [[ -n ${KNOWN_HOSTS:-} ]] || fail 'KNOWN_HOSTS is required'
   install -d -m 0700 "$SSH_DIRECTORY"
@@ -852,6 +853,12 @@ case $action in
     validate_sha "$2"
     validate_remote_environment
     inspect_plan "$2"
+    ;;
+  verify-release-b-target)
+    [[ $# == 2 ]] || fail 'verify-release-b-target requires a requested target SHA'
+    validate_sha "$2"
+    verify_release_b_reviewed_target_identity \
+      "$RELEASE_B_REVIEWED_TARGET_SHA" "$2"
     ;;
   upload)
     [[ $# == 3 ]] || fail 'upload requires a target SHA and archive'
