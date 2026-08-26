@@ -70,6 +70,12 @@ SET LOCAL ROLE social_monitor_reader_summary_daily_publication_definer;`);
       "telemetry recovery object rollback invariants drifted",
       "telemetry recovery function owner, ACL, metadata, or definition drifted",
       "telemetry recovery complete role membership closure drifted",
+      "SELECT count(*) = 14 AND count(*) FILTER (",
+      "application_runtime(role_oid) AS (",
+      "system_runtime(role_oid) AS (",
+      "runtime_provisioner(role_oid) AS (",
+      "AND NOT grantor_super AND grantor_createrole",
+      "AND member_createrole AND grantor_super",
       "telemetry recovery effective role/object privileges drifted",
       "telemetry recovery schema owner or exact nspacl drifted",
       "telemetry recovery relevant sequence owner, ACL, or default state drifted",
@@ -158,6 +164,12 @@ SET LOCAL ROLE social_monitor_reader_summary_daily_publication_definer;`);
       expect(source).toContain("v_recovery_backend_count");
       expect(source).not.toContain("v_quiet_ticks");
       expect(source).toContain("assertCompletedAttestationIsImmutable");
+      expect(source).toContain("missing runtime inheritance membership");
+      expect(source).toContain("runtime inheritance membership option drift");
+      expect(source).toContain("extra role membership edge");
+      expect(source).toContain(
+        "GRANT %I TO %I WITH INHERIT FALSE GRANTED BY CURRENT_USER",
+      );
       expect(source).toContain("completed telemetry recovery attestation accepted a replay transition");
       expect(source).toContain("ordinary deployment identity accepted attestation");
       expect(source).toContain('INSERT INTO public."_prisma_migrations"');

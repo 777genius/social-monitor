@@ -360,7 +360,47 @@ const catalogMutations = [
       public.claim_reader_summary_daily_execution(
         UUID, UUID, TEXT, DATE, TIMESTAMPTZ
       ) TO PUBLIC`],
-  ["role membership", `GRANT
+  ["missing runtime inheritance membership", `DO $missing_membership$
+    DECLARE v_application_runtime NAME; v_system_runtime NAME; BEGIN
+      SELECT member.rolname INTO STRICT v_application_runtime
+      FROM pg_catalog.pg_auth_members AS membership
+      JOIN pg_catalog.pg_roles AS granted ON granted.oid = membership.roleid
+      JOIN pg_catalog.pg_roles AS member ON member.oid = membership.member
+      WHERE granted.rolname =
+        'social_monitor_reader_summary_publication_runtime'
+        AND member.rolname <> current_user AND member.rolcanlogin;
+      SELECT member.rolname INTO STRICT v_system_runtime
+      FROM pg_catalog.pg_auth_members AS membership
+      JOIN pg_catalog.pg_roles AS granted ON granted.oid = membership.roleid
+      JOIN pg_catalog.pg_roles AS member ON member.oid = membership.member
+      WHERE granted.rolname = 'social_monitor_tenant_system_runtime'
+        AND member.rolname <> current_user AND member.rolcanlogin;
+      EXECUTE pg_catalog.format(
+        'REVOKE %I FROM %I GRANTED BY CURRENT_USER',
+        v_application_runtime, v_system_runtime
+      );
+    END $missing_membership$`],
+  ["runtime inheritance membership option drift", `DO $membership_option_drift$
+    DECLARE v_application_runtime NAME; v_system_runtime NAME; BEGIN
+      SELECT member.rolname INTO STRICT v_application_runtime
+      FROM pg_catalog.pg_auth_members AS membership
+      JOIN pg_catalog.pg_roles AS granted ON granted.oid = membership.roleid
+      JOIN pg_catalog.pg_roles AS member ON member.oid = membership.member
+      WHERE granted.rolname =
+        'social_monitor_reader_summary_publication_runtime'
+        AND member.rolname <> current_user AND member.rolcanlogin;
+      SELECT member.rolname INTO STRICT v_system_runtime
+      FROM pg_catalog.pg_auth_members AS membership
+      JOIN pg_catalog.pg_roles AS granted ON granted.oid = membership.roleid
+      JOIN pg_catalog.pg_roles AS member ON member.oid = membership.member
+      WHERE granted.rolname = 'social_monitor_tenant_system_runtime'
+        AND member.rolname <> current_user AND member.rolcanlogin;
+      EXECUTE pg_catalog.format(
+        'GRANT %I TO %I WITH INHERIT FALSE GRANTED BY CURRENT_USER',
+        v_application_runtime, v_system_runtime
+      );
+    END $membership_option_drift$`],
+  ["extra role membership edge", `GRANT
       social_monitor_reader_summary_daily_publication_definer
       TO social_monitor_public_schema_owner
       WITH ADMIN FALSE, INHERIT FALSE, SET TRUE GRANTED BY CURRENT_USER`],

@@ -221,19 +221,29 @@ BEGIN
   ), edges AS (
     SELECT membership.*, member.rolname AS member_name,
       member.rolcanlogin AS member_login,
+      member.rolcreaterole AS member_createrole,
       granted.rolname AS granted_name,
-      grantor.rolname AS grantor_name, grantor.rolsuper AS grantor_super
+      grantor.rolname AS grantor_name, grantor.rolsuper AS grantor_super,
+      grantor.rolcreaterole AS grantor_createrole
     FROM pg_catalog.pg_auth_members AS membership
     JOIN closure ON closure.role_oid = membership.roleid
     JOIN pg_catalog.pg_roles AS member ON member.oid = membership.member
     JOIN pg_catalog.pg_roles AS granted ON granted.oid = membership.roleid
     JOIN pg_catalog.pg_roles AS grantor ON grantor.oid = membership.grantor
-  ), dynamic_members AS (
+  ), application_runtime(role_oid) AS (
     SELECT DISTINCT member FROM edges
-    WHERE roleid IN (v_publication_runtime, v_tenant_runtime)
-      AND member <> v_active_owner
+    WHERE roleid = v_publication_runtime
+      AND member <> v_active_owner AND member_login
+  ), system_runtime(role_oid) AS (
+    SELECT DISTINCT member FROM edges
+    WHERE roleid = v_tenant_runtime
+      AND member <> v_active_owner AND member_login
+  ), runtime_provisioner(role_oid) AS (
+    SELECT DISTINCT grantor FROM edges
+    WHERE roleid IN (SELECT role_oid FROM application_runtime)
+      AND member = v_active_owner AND grantor <> v_active_owner
   )
-  SELECT count(*) = 12 AND count(*) FILTER (
+  SELECT count(*) = 14 AND count(*) FILTER (
       WHERE membership.roleid = v_schema_owner
         AND membership.member = v_active_owner
         AND grantor_super AND membership.admin_option
@@ -272,7 +282,8 @@ BEGIN
         AND NOT membership.inherit_option AND NOT membership.set_option
     ) = 1 AND count(*) FILTER (
       WHERE membership.roleid = v_publication_runtime
-        AND membership.member <> v_active_owner AND member_login
+        AND membership.member IN (SELECT role_oid FROM application_runtime)
+        AND membership.grantor = v_active_owner
         AND NOT membership.admin_option AND membership.inherit_option
         AND NOT membership.set_option
     ) = 1 AND count(*) FILTER (
@@ -282,15 +293,35 @@ BEGIN
         AND NOT membership.inherit_option AND NOT membership.set_option
     ) = 1 AND count(*) FILTER (
       WHERE membership.roleid = v_tenant_runtime
-        AND membership.member <> v_active_owner AND member_login
+        AND membership.member IN (SELECT role_oid FROM system_runtime)
+        AND membership.grantor = v_active_owner
         AND NOT membership.admin_option AND membership.inherit_option
         AND NOT membership.set_option
     ) = 1 AND count(*) FILTER (
-      WHERE membership.roleid IN (SELECT member FROM dynamic_members)
+      WHERE membership.roleid IN (SELECT role_oid FROM application_runtime)
         AND membership.member = v_active_owner
+        AND membership.grantor IN (SELECT role_oid FROM runtime_provisioner)
+        AND NOT grantor_super AND grantor_createrole
         AND membership.admin_option AND NOT membership.inherit_option
         AND membership.set_option
-    ) = 2 AND NOT pg_catalog.bool_or(NOT (
+    ) = 1 AND count(*) FILTER (
+      WHERE membership.roleid IN (SELECT role_oid FROM system_runtime)
+        AND membership.member = v_active_owner AND grantor_super
+        AND membership.admin_option AND NOT membership.inherit_option
+        AND NOT membership.set_option
+    ) = 1 AND count(*) FILTER (
+      WHERE membership.roleid IN (SELECT role_oid FROM application_runtime)
+        AND membership.member IN (SELECT role_oid FROM system_runtime)
+        AND membership.grantor = v_active_owner
+        AND NOT membership.admin_option AND membership.inherit_option
+        AND NOT membership.set_option
+    ) = 1 AND count(*) FILTER (
+      WHERE membership.roleid IN (SELECT role_oid FROM application_runtime)
+        AND membership.member IN (SELECT role_oid FROM runtime_provisioner)
+        AND member_createrole AND grantor_super
+        AND membership.admin_option AND NOT membership.inherit_option
+        AND NOT membership.set_option
+    ) = 1 AND NOT pg_catalog.bool_or(NOT (
       (membership.roleid = v_schema_owner
         AND membership.member = v_active_owner)
       OR (membership.roleid = v_publication_owner
@@ -301,7 +332,11 @@ BEGIN
         AND membership.member = v_active_owner)
       OR (membership.roleid IN (v_publication_runtime, v_tenant_runtime)
         AND (membership.member = v_active_owner OR member_login))
-      OR (membership.roleid IN (SELECT member FROM dynamic_members)
+      OR (membership.roleid IN (SELECT role_oid FROM application_runtime)
+        AND (membership.member = v_active_owner
+          OR membership.member IN (SELECT role_oid FROM system_runtime)
+          OR membership.member IN (SELECT role_oid FROM runtime_provisioner)))
+      OR (membership.roleid IN (SELECT role_oid FROM system_runtime)
         AND membership.member = v_active_owner)
     ))
   INTO STRICT v_membership_catalog_exact

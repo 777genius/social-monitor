@@ -11,6 +11,7 @@ ATTESTATION_AUTHORIZE=$SCRIPT_DIR/reader-summary-telemetry-recovery-attestation-
 ATTESTATION_COMPLETE=$SCRIPT_DIR/reader-summary-telemetry-recovery-attestation-complete.sql
 ATTESTATION_VERIFY=$SCRIPT_DIR/reader-summary-telemetry-recovery-attestation-verify.sql
 PUBLICATION=$SCRIPT_DIR/reader-summary-publication-deploy-lib.sh
+POSTGRES_FIXTURE=$REPO/scripts/lib/reader-summary-telemetry-migration-recovery-postgres.ts
 
 fail() { return 1; }
 # shellcheck source=ops/deploy/reader-summary-telemetry-migration-recovery-lib.sh
@@ -183,6 +184,17 @@ grep -B1 -Fx '$reader_summary_telemetry_recovery_authorization$;' \
 grep -F 'v_function_catalog_exact IS DISTINCT FROM TRUE' "$PREFLIGHT" >/dev/null
 grep -F 'v_membership_catalog_exact IS DISTINCT FROM TRUE' "$PREFLIGHT" >/dev/null
 grep -F 'complete role membership closure drifted' "$PREFLIGHT" >/dev/null
+grep -F 'SELECT count(*) = 14 AND count(*) FILTER (' "$PREFLIGHT" >/dev/null
+grep -F 'application_runtime(role_oid) AS (' "$PREFLIGHT" >/dev/null
+grep -F 'system_runtime(role_oid) AS (' "$PREFLIGHT" >/dev/null
+grep -F 'runtime_provisioner(role_oid) AS (' "$PREFLIGHT" >/dev/null
+grep -F 'AND NOT grantor_super AND grantor_createrole' "$PREFLIGHT" >/dev/null
+grep -F 'AND member_createrole AND grantor_super' "$PREFLIGHT" >/dev/null
+grep -F 'missing runtime inheritance membership' "$POSTGRES_FIXTURE" >/dev/null
+grep -F 'runtime inheritance membership option drift' "$POSTGRES_FIXTURE" >/dev/null
+grep -F 'extra role membership edge' "$POSTGRES_FIXTURE" >/dev/null
+grep -F 'GRANT %I TO %I WITH INHERIT FALSE GRANTED BY CURRENT_USER' \
+  "$POSTGRES_FIXTURE" >/dev/null
 grep -F 'effective role/object privileges drifted' "$PREFLIGHT" >/dev/null
 grep -F 'v_v2_functions <> 0' "$PREFLIGHT" >/dev/null
 grep -F 'acl.grantee = v_definer' "$PREFLIGHT" >/dev/null
