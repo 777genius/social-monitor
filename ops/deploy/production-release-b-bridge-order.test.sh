@@ -136,6 +136,7 @@ exercise_fixture_cleanup_race() {
   completion=$FIXTURE/cleanup-race-child-complete
   # The group leader exits before its delayed writer. Removing first recreates
   # the old race deterministically; group-aware cleanup waits, then removes.
+  # shellcheck disable=SC2016 # Positional parameters expand in the child shell.
   setsid bash -c '
     (
       sleep 0.1
@@ -223,6 +224,7 @@ git -C "$GRAPH_REPO" rev-list --first-parent "$TARGET" | \
 # Exercise the bridge acceptance policy against the real graph and negative
 # stale/rejected topologies.
 REPO=$GRAPH_REPO
+# shellcheck disable=SC2317 # Called indirectly by sourced deploy helpers.
 fail() { printf 'test-error: %s\n' "$*" >&2; return 1; }
 # shellcheck source=ops/deploy/deploy-control-bridge-lib.sh
 source "$GRAPH_REPO/ops/deploy/deploy-control-bridge-lib.sh"
@@ -379,7 +381,9 @@ prepare_runtime_repo() {
 run_actual_controller() (
   set -euo pipefail
   local repo=$1 root=$2 target=$3 expected_head=$4 event_log=$5
+  local expected_frontend_change=${6:-}
   local state=$root/control/deploy-state
+  local starting_frontend expected_frontend expected_backend expected_control
   [[ $(git -C "$repo" rev-parse HEAD) == "$expected_head" ]]
   printf 'controller=%s target=%s\n' "$expected_head" "$target" >> "$event_log"
   export SOCIAL_MONITOR_DEPLOY_TEST_MODE=1
@@ -393,6 +397,29 @@ run_actual_controller() (
   # shellcheck source=ops/deploy/social-monitor-production-deploy.sh
   source "$repo/ops/deploy/social-monitor-production-deploy.sh"
   [[ $DEPLOY_CONTROL_BRIDGE_INITIALIZED_HEAD == "$expected_head" ]]
+  expected_component_marker() {
+    local component=$1 requested_target=$2 starting_marker
+    shift 2
+    starting_marker=$(marker_value "$component")
+    if component_changed "$component" "$requested_target" "$@"; then
+      printf '%s\n' "$requested_target"
+    else
+      printf '%s\n' "$starting_marker"
+    fi
+  }
+  starting_frontend=$(marker_value frontend)
+  expected_frontend=$(expected_component_marker \
+    frontend "$target" "${FRONTEND_PATHS[@]}")
+  expected_backend=$(expected_component_marker \
+    backend "$target" "${BACKEND_PATHS[@]}")
+  expected_control=$(expected_component_marker \
+    control "$target" "${CONTROL_PATHS[@]}")
+  case $expected_frontend_change in
+    true) [[ $expected_frontend == "$target" && $starting_frontend != "$target" ]] ;;
+    false) [[ $expected_frontend == "$starting_frontend" ]] ;;
+    '') ;;
+    *) fail 'test frontend marker expectation is invalid' ;;
+  esac
   postgres_pool_atomic_legacy_state() { return 1; }
   postgres_pool_bootstrap_installed() { return 0; }
   reconcile_current_postgres_pool_bootstrap() { :; }
@@ -414,6 +441,10 @@ run_actual_controller() (
     printf '%s\n' "$1" > "$state/postgres-pool-bootstrap.sha"
   }
   deploy_release "$target"
+  [[ $(marker_value frontend) == "$expected_frontend" ]]
+  [[ $(marker_value backend) == "$expected_backend" ]]
+  [[ $(marker_value control) == "$expected_control" ]]
+  [[ $(marker_value postgres-pool-bootstrap) == "$target" ]]
 )
 
 # The obsolete bridge can still serve only its historical target; it cannot be
@@ -448,13 +479,14 @@ run_actual_controller "$repaired_repo" "$repaired_root" \
 [[ $(<"$repaired_state/backend.sha") == "$BASE" ]]
 [[ $(<"$repaired_state/frontend.sha") == "$BASE" ]]
 run_actual_controller "$repaired_repo" "$repaired_root" \
-  "$BRIDGE_TARGET" "$BRIDGE" "$repaired_events" >/dev/null
+  "$BRIDGE_TARGET" "$BRIDGE" "$repaired_events" false >/dev/null
 [[ $(git -C "$repaired_repo" rev-parse HEAD) == "$BRIDGE_TARGET" ]]
+# The reviewed target has no frontend delta from the exact starting marker;
+# run_actual_controller derives and verifies that the marker does not advance.
 run_actual_controller "$repaired_repo" "$repaired_root" \
-  "$TARGET" "$BRIDGE_TARGET" "$repaired_events" >/dev/null
+  "$TARGET" "$BRIDGE_TARGET" "$repaired_events" true >/dev/null
 [[ $(git -C "$repaired_repo" rev-parse HEAD) == "$TARGET" ]]
 [[ $(<"$repaired_state/backend.sha") == "$BRIDGE_TARGET" ]]
-[[ $(<"$repaired_state/frontend.sha") == "$BASE" ]]
 [[ $(<"$repaired_state/control.sha") == "$TARGET" ]]
 [[ $(<"$repaired_state/postgres-pool-bootstrap.sha") == "$TARGET" ]]
 
@@ -468,13 +500,15 @@ for component in frontend backend control postgres-pool-bootstrap; do
   printf '%s\n' "$CURRENT_MAIN" > "$advanced_state/$component.sha"
 done
 run_actual_controller "$advanced_repo" "$advanced_root" \
-  "$BRIDGE_TARGET" "$CURRENT_MAIN" "$FIXTURE/advanced/events" >/dev/null
+  "$BRIDGE_TARGET" "$CURRENT_MAIN" "$FIXTURE/advanced/events" false >/dev/null
 [[ $(git -C "$advanced_repo" rev-parse HEAD) == "$BRIDGE_TARGET" ]]
+# The descendant has a real frontend delta from the reviewed target;
+# run_actual_controller derives and verifies that the marker advances.
 run_actual_controller "$advanced_repo" "$advanced_root" \
-  "$TARGET" "$BRIDGE_TARGET" "$FIXTURE/advanced/events" >/dev/null
+  "$TARGET" "$BRIDGE_TARGET" "$FIXTURE/advanced/events" true >/dev/null
 [[ $(git -C "$advanced_repo" rev-parse HEAD) == "$TARGET" ]]
 [[ $(<"$advanced_state/backend.sha") == "$CURRENT_MAIN" ]]
-[[ $(<"$advanced_state/frontend.sha") == "$CURRENT_MAIN" ]]
 [[ $(<"$advanced_state/control.sha") == "$TARGET" ]]
+[[ $(<"$advanced_state/postgres-pool-bootstrap.sha") == "$TARGET" ]]
 
 printf 'Production Release B exact cleanup-preserving topology tests passed\n'
