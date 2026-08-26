@@ -1,5 +1,11 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -23,16 +29,8 @@ const fixtureCollectionPath = join(directory, "collection.fixture.json");
 let canonicalCollection;
 
 try {
-  runFixture(
-    "collection",
-    fixtureCollectionPath,
-    runId,
-    date,
-    "true",
-  );
-  canonicalCollection = JSON.parse(
-    readFileSync(fixtureCollectionPath, "utf8"),
-  );
+  runFixture("collection", fixtureCollectionPath, runId, date, "true");
+  canonicalCollection = JSON.parse(readFileSync(fixtureCollectionPath, "utf8"));
   writeFileSync(collectionPath, JSON.stringify(collectionFixture()));
   writeFileSync(
     evidencePath,
@@ -42,7 +40,11 @@ try {
         readerSummaryId: "summary-id",
         status: "completed",
       },
-      redaction: { secretsIncluded: false },
+      redaction: {
+        secretsIncluded: false,
+        rawProviderPayloadIncluded: false,
+        tokenValuesIncluded: false,
+      },
     }),
   );
   writeFileSync(
@@ -75,28 +77,89 @@ try {
       (collection) =>
         (collection.inputs.scope = {
           tenantId: "00000000-0000-7000-8000-000000006101",
-          workspaceId: "foreign",
+          workspaceId: "00000000-0000-7000-8000-000000006103",
         }),
     ],
+    ["null scope", (collection) => (collection.inputs.scope = null)],
     [
       "wrong window",
       (collection) =>
         (collection.inputs.targetPublishedWindow.endExclusive =
           "2026-08-17T00:00:00.000Z"),
     ],
-    ["duplicate provider", (collection) => (collection.scans[4].providerKey = "rss")],
-    ["unknown provider", (collection) => (collection.scans[4].providerKey = "unknown")],
+    [
+      "duplicate provider",
+      (collection) => (collection.scans[4].providerKey = "rss"),
+    ],
+    [
+      "unknown provider",
+      (collection) => (collection.scans[4].providerKey = "unknown"),
+    ],
     ["missing provider", (collection) => collection.scans.pop()],
     [
       "duplicate requested provider",
       (collection) => (collection.inputs.providerKeys[4] = "rss"),
     ],
-    ["nonterminal scan", (collection) => (collection.scans[0].status = "running")],
+    [
+      "nonterminal scan",
+      (collection) => (collection.scans[0].status = "running"),
+    ],
     ["malformed scan", (collection) => delete collection.scans[0].fetched],
-    ["projected-less scan", (collection) => delete collection.scans[0].projected],
-    ["warning-less scan", (collection) => delete collection.scans[0].warningCount],
-    ["attempt-less scan", (collection) => delete collection.scans[0].attemptCount],
-    ["mode-less scan", (collection) => delete collection.scans[0].acquisitionMode],
+    [
+      "projected-less scan",
+      (collection) => delete collection.scans[0].projected,
+    ],
+    [
+      "warning-less scan",
+      (collection) => delete collection.scans[0].warningCount,
+    ],
+    [
+      "attempt-less scan",
+      (collection) => delete collection.scans[0].attemptCount,
+    ],
+    [
+      "mode-less scan",
+      (collection) => delete collection.scans[0].acquisitionMode,
+    ],
+    [
+      "mismatched binding",
+      (collection) =>
+        (collection.scans[0].bindingFingerprint = "other-binding"),
+    ],
+    [
+      "mismatched acquisition partition",
+      (collection) => {
+        collection.model.liveNetworkProviderKeys = providerKeysWithoutGithub();
+        collection.model.durableSnapshotReuseProviderKeys = [
+          "github-trending-page",
+        ];
+      },
+    ],
+    [
+      "missing SLO target",
+      (collection) =>
+        delete collection.scans[0].observability.slo.targetItemCount,
+    ],
+    [
+      "missing SLO coverage",
+      (collection) =>
+        delete collection.scans[0].observability.slo.coverageRatio,
+    ],
+    [
+      "unknown SLO reason",
+      (collection) =>
+        (collection.scans[0].observability.slo.reasons = ["unknown_reason"]),
+    ],
+    [
+      "unknown retry disposition",
+      (collection) =>
+        (collection.scans[0].observability.slo.retryDisposition = "blocked"),
+    ],
+    [
+      "unknown pagination stop",
+      (collection) =>
+        (collection.scans[0].observability.paginationStopReason = "unknown"),
+    ],
     ["target-less", (collection) => collection.targets.pop()],
     ["fresh-window-less", (collection) => delete collection.freshWindow],
     [
@@ -127,6 +190,19 @@ try {
   passingCollection.scans[2].status = "succeeded";
   passingCollection.scans[2].observability.coverageState = "complete";
   writeFileSync(passingCollectionPath, JSON.stringify(passingCollection));
+  run(
+    "write-receipt",
+    receiptPath,
+    evidencePath,
+    passingCollectionPath,
+    runId,
+    date,
+    "2026-08-15T08:15:00.000Z",
+    "0",
+  );
+  run("validate-receipt", receiptPath, runId, date);
+  writeFileSync(`${receiptPath}.next`, "stale\n", { mode: 0o600 });
+  chmodSync(`${receiptPath}.next`, 0o444);
   run(
     "write-receipt",
     receiptPath,
@@ -173,9 +249,7 @@ try {
   );
 
   const receipt = JSON.parse(readFileSync(receiptPath, "utf8"));
-  const degradedReceipt = JSON.parse(
-    readFileSync(degradedReceiptPath, "utf8"),
-  );
+  const degradedReceipt = JSON.parse(readFileSync(degradedReceiptPath, "utf8"));
   assert.equal(degradedReceipt.collection.commandExitCode, 1);
   assert.equal(degradedReceipt.collection.finalDayQualityGatePassed, false);
   assert.equal(receipt.collection.finalDayQualityGatePassed, true);
@@ -187,17 +261,46 @@ try {
     ["schema-less", (value) => delete value.schemaVersion],
     ["format-less", (value) => delete value.artifactFormat],
     ["exit-less", (value) => delete value.collection.commandExitCode],
-    ["untruthful exit type", (value) => (value.collection.commandExitCode = "1")],
-    ["quality-less", (value) => delete value.collection.finalDayQualityGatePassed],
+    [
+      "untruthful exit type",
+      (value) => (value.collection.commandExitCode = "1"),
+    ],
+    [
+      "quality-less",
+      (value) => delete value.collection.finalDayQualityGatePassed,
+    ],
     ["provider-less", (value) => value.collection.providers.pop()],
-    ["duplicate provider", (value) => (value.collection.providers[4].providerKey = "rss")],
-    ["nonterminal provider", (value) => (value.collection.providers[0].status = "running")],
-    ["incomplete provider", (value) => delete value.collection.providers[0].coverageState],
-    ["untruthful quality", (value) => (value.collection.finalDayQualityGatePassed = true)],
+    [
+      "duplicate provider",
+      (value) => (value.collection.providers[4].providerKey = "rss"),
+    ],
+    [
+      "nonterminal provider",
+      (value) => (value.collection.providers[0].status = "running"),
+    ],
+    [
+      "incomplete provider",
+      (value) => delete value.collection.providers[0].coverageState,
+    ],
+    [
+      "untruthful quality",
+      (value) => (value.collection.finalDayQualityGatePassed = true),
+    ],
     ["period-less", (value) => delete value.period],
     ["summary-less", (value) => delete value.summary],
-    ["empty publication id", (value) => (value.publication.readerSummaryId = "")],
+    [
+      "empty publication id",
+      (value) => (value.publication.readerSummaryId = ""),
+    ],
     ["unsafe redaction", (value) => (value.redaction.secretsIncluded = true)],
+    [
+      "unsafe provider payload redaction",
+      (value) => (value.redaction.rawProviderPayloadIncluded = true),
+    ],
+    [
+      "unsafe token redaction",
+      (value) => (value.redaction.tokenValuesIncluded = true),
+    ],
   ]) {
     const invalid = JSON.parse(JSON.stringify(degradedReceipt));
     mutate(invalid);
@@ -208,12 +311,18 @@ try {
   receipt.publication.status = "running";
   writeFileSync(invalidReceiptPath, JSON.stringify(receipt));
   runFailure("validate-receipt", invalidReceiptPath, runId, date);
+  writeFileSync(invalidReceiptPath, "null\n");
+  runFailure("validate-receipt", invalidReceiptPath, runId, date);
 } finally {
   rmSync(directory, { recursive: true, force: true });
 }
 
 function collectionFixture() {
   return JSON.parse(JSON.stringify(canonicalCollection));
+}
+
+function providerKeysWithoutGithub() {
+  return ["hacker-news", "reddit", "rss", "x-twitter"];
 }
 
 function assertCollectionRejected(label, mutate) {
@@ -235,9 +344,13 @@ function run(...args) {
 }
 
 function runFixture(...args) {
-  const result = spawnSync(process.execPath, [fixtureWriter.pathname, ...args], {
-    encoding: "utf8",
-  });
+  const result = spawnSync(
+    process.execPath,
+    [fixtureWriter.pathname, ...args],
+    {
+      encoding: "utf8",
+    },
+  );
   assert.equal(result.status, 0, result.stderr);
 }
 

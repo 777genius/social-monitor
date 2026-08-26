@@ -80,7 +80,11 @@ if (kind === "collection") {
       readerSummaryId: `summary-${runId}`,
       status: "completed",
     },
-    redaction: { secretsIncluded: false },
+    redaction: {
+      secretsIncluded: false,
+      rawProviderPayloadIncluded: false,
+      tokenValuesIncluded: false,
+    },
   });
 } else {
   throw new Error("fake rolling artifact kind is invalid");
@@ -98,7 +102,8 @@ function observation(provider, coverageState) {
     storageDuplicateItemCount: provider.skippedDuplicates,
     totalDuplicateItemCount: provider.skippedDuplicates,
     pageCount: provider.status === "failed" ? 0 : 1,
-    paginationStopReason: provider.status === "failed" ? "failed" : "single_page",
+    paginationStopReason:
+      provider.status === "failed" ? "failed" : "single_page",
     rateLimitEventCount: 0,
     coverageState,
     slo: {
@@ -106,12 +111,22 @@ function observation(provider, coverageState) {
       targetItemCount: 10,
       evaluatedItemCount: provider.projected,
       coverageRatio: provider.projected / 10,
-      freshnessLagSeconds: 0,
+      ...(provider.status === "failed" ? {} : { freshnessLagSeconds: 0 }),
       maxFreshnessLagSeconds: 21600,
-      reasons: provider.status === "failed" ? ["provider_failure"] : [],
-      retryDisposition: provider.status === "failed" ? "blocked" : "none",
+      reasons:
+        provider.status === "failed"
+          ? ["target_shortfall", "provider_unavailable"]
+          : [],
+      retryDisposition: provider.status === "failed" ? "immediate" : "none",
     },
-    freshness: {},
+    freshness:
+      provider.status === "failed"
+        ? {}
+        : {
+            oldestAcceptedPublishedAt: `${collectionDate}T08:15:00.000Z`,
+            newestAcceptedPublishedAt: `${collectionDate}T08:15:00.000Z`,
+            lagToWindowEndSeconds: 0,
+          },
   };
 }
 

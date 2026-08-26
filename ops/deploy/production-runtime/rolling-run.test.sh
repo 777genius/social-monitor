@@ -92,6 +92,21 @@ node -e '
       receipt.collection.finalDayQualityGatePassed !== false) process.exit(1);
 ' "$degraded_receipt"
 
+SOCIAL_MONITOR_ROLLING_RUN_TEST_MODE=1 \
+SOCIAL_MONITOR_ROLLING_RUN_TEST_ROOT=$TEST_ROOT \
+SOCIAL_MONITOR_ROLLING_RUN_TEST_DOCKER=$fake_docker \
+SOCIAL_MONITOR_ROLLING_RUN_TEST_FLOCK=$fake_flock \
+SOCIAL_MONITOR_ROLLING_RUN_TEST_NOW=2026-08-15T23:59:00.000Z \
+SOCIAL_MONITOR_ROLLING_RUN_TEST_CONTAINER_NOW=2026-08-16T00:01:00.000Z \
+  bash "$RUNNER"
+midnight_receipt=$TEST_ROOT/artifacts/rolling-summary/rolling-summary.20260815T235900000Z.receipt.v1.json
+node "$REPO/ops/deploy/production-runtime/rolling-summary-receipt.mjs" \
+  validate-receipt "$midnight_receipt" 20260815T235900000Z 2026-08-15
+node -e '
+  const receipt = require(process.argv[1]);
+  if (receipt.period.endedAt !== "2026-08-15T23:59:59.999Z") process.exit(1);
+' "$midnight_receipt"
+
 if SOCIAL_MONITOR_ROLLING_RUN_TEST_MODE=1 \
   SOCIAL_MONITOR_ROLLING_RUN_TEST_ROOT=$TEST_ROOT \
   SOCIAL_MONITOR_ROLLING_RUN_TEST_DOCKER=$fake_docker \
@@ -120,7 +135,7 @@ if SOCIAL_MONITOR_ROLLING_RUN_TEST_MODE=1 \
 fi
 grep -F -- '-e ROLLING_AUTH_READY=false' "$TEST_ROOT/docker.log" >/dev/null
 [[ $(grep -Fc -- '--profile app up -d --no-deps agent-runtime' \
-  "$TEST_ROOT/docker.log") == 3 ]]
+  "$TEST_ROOT/docker.log") == 4 ]]
 
 collection_line=$(grep -n 'npm run run:reader-summary-clean-real-day-collection' \
   "$CONTAINER_RUNNER" | cut -d: -f1)

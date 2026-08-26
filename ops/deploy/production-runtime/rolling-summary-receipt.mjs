@@ -1,6 +1,12 @@
 #!/usr/bin/env node
 
-import { chmodSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import process from "node:process";
 
 const requiredProviders = [
@@ -12,8 +18,31 @@ const requiredProviders = [
 ];
 const terminalStatuses = ["succeeded", "failed", "skipped"];
 const coverageStates = ["complete", "partial", "degraded", "unavailable"];
-const collectionArtifactFormat =
-  "reader-summary-clean-real-day-collection-v1";
+const acquisitionModes = ["live_collection", "durable_snapshot_reuse"];
+const paginationStopReasons = [
+  "single_page",
+  "target_items",
+  "no_next_cursor",
+  "cursor_not_advanced",
+  "low_new_item_yield",
+  "high_duplicate_rate",
+  "max_pages",
+  "partial_retryable_failure",
+  "durable_snapshot_reuse",
+  "failed",
+  "skipped",
+];
+const sloReasons = [
+  "target_missing",
+  "target_shortfall",
+  "freshness_missing",
+  "freshness_lag_exceeded",
+  "rate_limited",
+  "partial_retryable_failure",
+  "provider_unavailable",
+];
+const retryDispositions = ["none", "immediate", "deferred"];
+const collectionArtifactFormat = "reader-summary-clean-real-day-collection-v1";
 const collectionGeneratedBy =
   "npm run run:reader-summary-clean-real-day-collection";
 const receiptArtifactFormat = "social-monitor-rolling-summary-receipt-v1";
@@ -37,9 +66,11 @@ if (command === "validate-collection") {
 }
 
 function validateReceipt(receipt, runId, date) {
+  if (!isRecord(receipt)) {
+    throw new Error("rolling summary receipt is inconsistent");
+  }
   const publicationStatus = receipt.publication?.status;
   if (
-    !isRecord(receipt) ||
     receipt.schemaVersion !== 1 ||
     receipt.artifactFormat !== receiptArtifactFormat ||
     receipt.runId !== runId ||
@@ -90,6 +121,11 @@ function validateCollection(report, date) {
     typeof report.blockingPassed !== "boolean" ||
     !hasExactTargets(report.targets) ||
     !hasExactTerminalProviders(report.scans, false) ||
+    !hasConsistentCollectionBindings(
+      report.model,
+      report.targets,
+      report.scans,
+    ) ||
     !isCompleteWindow(report.freshWindow) ||
     !isCompleteWindow(report.targetWindow)
   ) {
@@ -147,18 +183,42 @@ function writeReceipt(args) {
   };
   validateReceipt(receipt, runId, date);
   const next = `${receiptPath}.next`;
-  writeFileSync(next, `${JSON.stringify(receipt, null, 2)}\n`, { mode: 0o444 });
+  rmSync(next, { force: true });
+  writeFileSync(next, `${JSON.stringify(receipt, null, 2)}\n`, {
+    flag: "wx",
+    mode: 0o600,
+  });
   chmodSync(next, 0o444);
   renameSync(next, receiptPath);
 }
 
 function hasValidOptionalScope(scope) {
   return (
-    scope == null ||
+    scope === undefined ||
     (isRecord(scope) &&
       scope.tenantId === productionScope.tenantId &&
       scope.workspaceId === productionScope.workspaceId)
   );
+}
+
+function hasConsistentCollectionBindings(model, targets, scans) {
+  if (!isRecord(model) || !Array.isArray(targets) || !Array.isArray(scans)) {
+    return false;
+  }
+  return requiredProviders.every((providerKey) => {
+    const target = targets.find((entry) => entry.providerKey === providerKey);
+    const scan = scans.find((entry) => entry.providerKey === providerKey);
+    if (!isRecord(target) || !isRecord(scan)) return false;
+    const expectedAcquisitionMode = model.liveNetworkProviderKeys.includes(
+      providerKey,
+    )
+      ? "live_collection"
+      : "durable_snapshot_reuse";
+    return (
+      scan.bindingFingerprint === target.bindingFingerprint &&
+      scan.acquisitionMode === expectedAcquisitionMode
+    );
+  });
 }
 
 function hasExactAcquisitionModel(model) {
@@ -176,7 +236,7 @@ function hasExactAcquisitionModel(model) {
     ...model.durableSnapshotReuseProviderKeys,
   ];
   return (
-    model.liveNetwork === (model.liveNetworkProviderKeys.length > 0) &&
+    model.liveNetwork === model.liveNetworkProviderKeys.length > 0 &&
     hasExactProviderKeys(providerKeys)
   );
 }
@@ -207,8 +267,8 @@ function hasExactProviderKeys(providerKeys) {
     providerKeys.length === requiredProviders.length &&
     requiredProviders.every(
       (provider) =>
-        providerKeys.filter((providerKey) => providerKey === provider).length ===
-        1,
+        providerKeys.filter((providerKey) => providerKey === provider)
+          .length === 1,
     )
   );
 }
@@ -235,9 +295,7 @@ function hasExactTerminalProviders(providers, receipt) {
 function isCompleteCollectionScan(scan) {
   return (
     isNonemptyString(scan.bindingFingerprint) &&
-    ["live_collection", "durable_snapshot_reuse"].includes(
-      scan.acquisitionMode,
-    ) &&
+    acquisitionModes.includes(scan.acquisitionMode) &&
     Number.isInteger(scan.attemptCount) &&
     scan.attemptCount >= 1 &&
     scan.attemptCount <= 3 &&
@@ -255,8 +313,7 @@ function isCompleteObservation(observation, acquisitionMode) {
   const targetItemCount = observation.targetItemCount;
   return (
     (targetItemCount === null || isNonnegativeInteger(targetItemCount)) &&
-    (observation.acquisitionMode === undefined ||
-      observation.acquisitionMode === acquisitionMode) &&
+    observation.acquisitionMode === acquisitionMode &&
     isNonnegativeInteger(observation.collectedItemCount) &&
     isNonnegativeInteger(observation.acceptedItemCount) &&
     isNonnegativeInteger(observation.insertedItemCount) &&
@@ -268,14 +325,51 @@ function isCompleteObservation(observation, acquisitionMode) {
       observation.paginationDuplicateItemCount +
         observation.storageDuplicateItemCount &&
     isNonnegativeInteger(observation.pageCount) &&
-    isNonemptyString(observation.paginationStopReason) &&
+    paginationStopReasons.includes(observation.paginationStopReason) &&
     isNonnegativeInteger(observation.rateLimitEventCount) &&
     coverageStates.includes(observation.coverageState) &&
-    isRecord(observation.slo) &&
-    typeof observation.slo.met === "boolean" &&
-    Array.isArray(observation.slo.reasons) &&
-    isNonemptyString(observation.slo.retryDisposition) &&
-    isRecord(observation.freshness)
+    isCompleteSlo(observation.slo, targetItemCount) &&
+    isCompleteFreshness(observation.freshness, observation.slo)
+  );
+}
+
+function isCompleteSlo(slo, targetItemCount) {
+  if (!isRecord(slo) || slo.targetItemCount !== targetItemCount) return false;
+  const reasons = slo.reasons;
+  const expectedCoverage =
+    targetItemCount === null || targetItemCount <= 0
+      ? 0
+      : Math.min(1, slo.evaluatedItemCount / targetItemCount);
+  return (
+    typeof slo.met === "boolean" &&
+    isNonnegativeInteger(slo.evaluatedItemCount) &&
+    isRatio(slo.coverageRatio) &&
+    Math.abs(slo.coverageRatio - expectedCoverage) < Number.EPSILON * 4 &&
+    (slo.freshnessLagSeconds === undefined ||
+      isNonnegativeInteger(slo.freshnessLagSeconds)) &&
+    isNonnegativeInteger(slo.maxFreshnessLagSeconds) &&
+    Array.isArray(reasons) &&
+    reasons.every((reason) => sloReasons.includes(reason)) &&
+    new Set(reasons).size === reasons.length &&
+    slo.met === (reasons.length === 0) &&
+    retryDispositions.includes(slo.retryDisposition)
+  );
+}
+
+function isCompleteFreshness(freshness, slo) {
+  if (!isRecord(freshness)) return false;
+  const oldest = freshness.oldestAcceptedPublishedAt;
+  const newest = freshness.newestAcceptedPublishedAt;
+  const lag = freshness.lagToWindowEndSeconds;
+  return (
+    (oldest === undefined || isIsoTimestamp(oldest)) &&
+    (newest === undefined || isIsoTimestamp(newest)) &&
+    (oldest === undefined ||
+      newest === undefined ||
+      new Date(oldest).valueOf() <= new Date(newest).valueOf()) &&
+    (newest === undefined
+      ? lag === undefined
+      : isNonnegativeInteger(lag) && lag === slo.freshnessLagSeconds)
   );
 }
 
@@ -329,7 +423,9 @@ function isValidSummaryEvidence(evidence) {
     isNonemptyString(evidence.result.readerSummaryId) &&
     ["completed", "no_signal"].includes(evidence.result.status) &&
     isRecord(evidence.redaction) &&
-    evidence.redaction.secretsIncluded === false
+    evidence.redaction.secretsIncluded === false &&
+    evidence.redaction.rawProviderPayloadIncluded === false &&
+    evidence.redaction.tokenValuesIncluded === false
   );
 }
 
@@ -338,7 +434,8 @@ function isValidReceiptPeriod(period, completedAt, date) {
     isRecord(period) &&
     period.startedAt === `${date}T00:00:00.000Z` &&
     isOrderedIsoPeriod(period.startedAt, period.endedAt) &&
-    new Date(period.endedAt).valueOf() < new Date(nextUtcDate(date)).valueOf() &&
+    new Date(period.endedAt).valueOf() <
+      new Date(nextUtcDate(date)).valueOf() &&
     isOrderedIsoPeriod(period.endedAt, completedAt)
   );
 }
@@ -380,6 +477,10 @@ function isNonnegativeNumber(value) {
   return typeof value === "number" && Number.isFinite(value) && value >= 0;
 }
 
+function isRatio(value) {
+  return isNonnegativeNumber(value) && value <= 1;
+}
+
 function isNonemptyString(value) {
   return typeof value === "string" && value.trim().length > 0;
 }
@@ -393,7 +494,10 @@ function nextUtcDate(date) {
     throw new Error("rolling collection date is invalid");
   }
   const value = new Date(`${date}T00:00:00.000Z`);
-  if (Number.isNaN(value.valueOf()) || value.toISOString().slice(0, 10) !== date) {
+  if (
+    Number.isNaN(value.valueOf()) ||
+    value.toISOString().slice(0, 10) !== date
+  ) {
     throw new Error("rolling collection date is invalid");
   }
   value.setUTCDate(value.getUTCDate() + 1);

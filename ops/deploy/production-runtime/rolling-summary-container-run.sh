@@ -67,7 +67,12 @@ chmod 0444 "$collection_artifact.next"
 mv "$collection_artifact.next" "$collection_artifact"
 rm -f "$collection_staging_source"
 rmdir "$collection_staging_directory" 2>/dev/null || true
-rolling_observation_cutoff=${SOCIAL_MONITOR_ROLLING_CONTAINER_TEST_NOW:-$(date -u +%Y-%m-%dT%H:%M:%S.000Z)}
+rolling_observation_now=${SOCIAL_MONITOR_ROLLING_CONTAINER_TEST_NOW:-$(date -u +%Y-%m-%dT%H:%M:%S.000Z)}
+rolling_observation_cutoff=$(node -e '
+  const observed = new Date(process.argv[1]);
+  const dayEnd = new Date(`${process.argv[2]}T23:59:59.999Z`);
+  process.stdout.write(new Date(Math.min(observed, dayEnd)).toISOString());
+' "$rolling_observation_now" "$ROLLING_COLLECTION_DATE")
 
 if [ "$ROLLING_AUTH_READY" != true ]; then
   echo 'rolling collection saved; AI summary is pending an available subscription account' >&2
