@@ -283,6 +283,20 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Verify the exact production deploy shell surface
+        run: |
+          set -euo pipefail
+          # shellcheck source=ops/deploy/production-deploy-shell-files.sh
+          source ops/deploy/production-deploy-shell-files.sh
+          mapfile -t deploy_shell_files < <(
+            production_deploy_shell_files false
+          )
+          bash -n "${deploy_shell_files[@]}"
+          shellcheck -S warning -x "${deploy_shell_files[@]}"
+          bash ops/deploy/production-deploy-shell-files.test.sh
+          bash ops/deploy/github-production-deploy-client.test.sh
+          bash ops/deploy/production-release-b-bridge-order.test.sh
+
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
