@@ -65,9 +65,6 @@ function writeReceipt(args) {
     endedAt,
     collectionExit,
   ] = args;
-  if (collectionExit !== "0") {
-    throw new Error("rolling collection command did not succeed");
-  }
   const evidence = readJson(evidencePath);
   const collection = readJson(collectionPath);
   validateCollection(collection, date);

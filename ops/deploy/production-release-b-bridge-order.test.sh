@@ -8,6 +8,7 @@ WORKFLOW=$PROJECT_ROOT/.github/workflows/production-deploy.yml
 BASE=72e17ded1e54ebd77772929fd5047ef6816dded2
 FAILED_RELEASE=92afd97328c5412324c99be635de2c41db589d53
 BRIDGE=85c5d22febf1e7ce5fa5967d2460ccb73ca96a9d
+INTEGRATED_RELEASE=8b4aeb31e855ed379349a4e4827600009e174132
 FIXTURE=$(mktemp -d "${TMPDIR:-/tmp}/release-b-bridge-order.XXXXXX")
 trap 'rm -rf "$FIXTURE"' EXIT
 REPO=$FIXTURE/repo
@@ -16,21 +17,21 @@ git clone -q --shared "$SOURCE_REPO" "$REPO"
 git -C "$REPO" config user.name 'Release B Bridge Test'
 git -C "$REPO" config user.email release-b-bridge@example.invalid
 SOURCE_TIP=$(git -C "$REPO" rev-parse HEAD)
-read -r -a source_tip_ancestry <<< "$(git -C "$REPO" \
-  rev-list --parents -n 1 "$SOURCE_TIP")"
-REVIEWED_HEAD=$SOURCE_TIP
-if [[ ${#source_tip_ancestry[@]} == 3 && \
-      ${source_tip_ancestry[1]} == "$FAILED_RELEASE" && \
-      $(git -C "$REPO" rev-parse "$SOURCE_TIP^{tree}") == \
-        $(git -C "$REPO" rev-parse "${source_tip_ancestry[2]}^{tree}") ]]; then
-  REVIEWED_HEAD=${source_tip_ancestry[2]}
-fi
+read -r -a integrated_ancestry <<< "$(git -C "$REPO" \
+  rev-list --parents -n 1 "$INTEGRATED_RELEASE")"
+[[ ${#integrated_ancestry[@]} == 3 && \
+   ${integrated_ancestry[1]} == "$FAILED_RELEASE" ]]
+REVIEWED_HEAD=${integrated_ancestry[2]}
+[[ $(git -C "$REPO" rev-parse "$INTEGRATED_RELEASE^{tree}") == \
+   $(git -C "$REPO" rev-parse "$REVIEWED_HEAD^{tree}") ]]
+git -C "$REPO" merge-base --is-ancestor "$INTEGRATED_RELEASE" "$SOURCE_TIP"
 
 # The pinned side parent must be obtainable from the reviewed repository, not
 # merely present in the current object's incidental local cache.
 git -C "$REPO" fetch -q "$SOURCE_REPO" "$BRIDGE"
 [[ $(git -C "$REPO" rev-parse FETCH_HEAD) == "$BRIDGE" ]]
-for commit in "$BASE" "$FAILED_RELEASE" "$BRIDGE" "$REVIEWED_HEAD"; do
+for commit in "$BASE" "$FAILED_RELEASE" "$BRIDGE" "$INTEGRATED_RELEASE" \
+  "$REVIEWED_HEAD"; do
   git -C "$REPO" cat-file -e "$commit^{commit}"
 done
 
@@ -87,9 +88,7 @@ read -r -a target_ancestry <<< "$(git -C "$REPO" \
 [[ $(git -C "$REPO" rev-parse "$TARGET^{tree}") == \
    $(git -C "$REPO" rev-parse "$REVIEWED_HEAD^{tree}") ]]
 
-if [[ $SOURCE_TIP != "$REVIEWED_HEAD" ]]; then
-  deploy_control_reviewed_transition_matches "$BRIDGE" "$SOURCE_TIP"
-fi
+deploy_control_reviewed_transition_matches "$BRIDGE" "$INTEGRATED_RELEASE"
 
 git -C "$REPO" checkout -q "$TARGET"
 printf '\n# unreviewed same-path drift\n' >> \
@@ -129,25 +128,42 @@ import sys
 
 workflow = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")
 bridge = sys.argv[2]
-if "ops/deploy/production-release-b-bridge-order.test.sh" not in workflow:
-    raise SystemExit("Release B exact-topology regression is absent from CI")
+if "bash ops/deploy/production-release-b-bridge-order.test.sh" not in workflow:
+    raise SystemExit("Release B exact-topology regression is not executed in CI")
 deploy = workflow[workflow.index("  deploy:"):workflow.index("  acceptance:")]
+bridge_step_name = "Install reviewed failed-idle bridge and reopen restricted SSH"
+fresh_step_name = "Freshly require A-complete or B-complete"
 bridge_step = deploy[
-    deploy.index("Deploy reviewed bridge and reopen restricted SSH"):
-    deploy.index("Freshly require A-complete or B-complete")
+    deploy.index(bridge_step_name):deploy.index(fresh_step_name)
 ]
 commands = (
-    f"bridge_release={bridge}",
+    f"release_b_failed_idle_bridge_sha={bridge}",
     'bash "$client" configure',
-    'bash "$client" deploy "$bridge_release"',
+    'bash "$client" install-release-b-failed-idle-bridge "$release_b_failed_idle_bridge_sha"',
     'bash "$client" cleanup',
     'bash "$client" configure',
 )
 cursor = 0
 for command in commands:
     cursor = bridge_step.index(command, cursor) + len(command)
-if deploy.index('deploy "$bridge_release"') > deploy.index('deploy "$GITHUB_SHA"'):
-    raise SystemExit("Release B target runs before its reviewed control bridge")
+fresh_step_start = deploy.index(fresh_step_name)
+fresh_step_end = deploy.index("Download immutable frontend artifact", fresh_step_start)
+fresh_step = deploy[fresh_step_start:fresh_step_end]
+for command in (
+    'inspect-plan "$GITHUB_SHA"',
+    'state "$GITHUB_SHA" TARGET',
+    'inspect-plan "$release_b2"',
+    'state "$GITHUB_SHA" B2',
+    'transition_state=target-pending',
+    'transition_state=target-complete',
+    'transition_state=A-complete',
+    'transition_state=B-complete',
+):
+    if command not in fresh_step:
+        raise SystemExit(f"fresh Release B state inspection is missing: {command}")
+for command in ('upload "$GITHUB_SHA"', 'deploy "$GITHUB_SHA"'):
+    if deploy.index(command) < fresh_step_end:
+        raise SystemExit(f"Release B target action runs before fresh state inspection: {command}")
 PY
 
 printf 'Production Release B bridge ordering tests passed\n'

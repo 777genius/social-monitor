@@ -106,8 +106,14 @@ fake_ssh() {
     maintenance_success:"disk-report $TARGET_SHA"|maintenance_success:"project-disk-cleanup $TARGET_SHA"|maintenance_success:"reader-summary-recover-missing-days $TARGET_SHA"|maintenance_success:"reader-summary-weekly-run $TARGET_SHA"|maintenance_success:"reader-summary-production-history $TARGET_SHA 2026-08-11"|maintenance_success:"reader-summary-daily-terminal-set-receipt-v1 $TARGET_SHA"|maintenance_success:"reader-summary-daily-scan-terminal-preimage-c1 $TARGET_SHA"|maintenance_success:"reader-summary-daily-canonical-recovery-v4 $TARGET_SHA invalid-product-retry-set-v1 $TERMINAL_SET_SHA256"|maintenance_success:"reader-summary-daily-canonical-recovery-v4 $TARGET_SHA reader-summary-daily-canonical-recovery-v4 $MODEL_JOB_IDENTITY $AUTHORITY_SHA256"|maintenance_success:"reader-summary-daily-scan-terminal-repair-c1 $TARGET_SHA reader-summary-daily-scan-terminal-repair-c1 $TERMINAL_SET_SHA256"|maintenance_success:"reader-summary-daily-delivery-c1-run $TARGET_SHA reader-summary-daily-delivery-c1-run 2026-08-10"|maintenance_success:"reader-summary-daily-delivery-c1-contain $TARGET_SHA reader-summary-daily-delivery-c1-contain $TARGET_SHA")
       printf 'maintenance=%s\n' "${command%% *}"
       ;;
-    normal_success:"deploy $TARGET_SHA"|normal_success:"deploy 944fdb6da3071f70a69c7048c9fcdf1c2552603e")
+    normal_success:"deploy $TARGET_SHA"|normal_success:"deploy 944fdb6da3071f70a69c7048c9fcdf1c2552603e"|normal_success:"deploy $RELEASE_B_FAILED_IDLE_BRIDGE_SHA")
       printf 'deployed=%s\n' "$TARGET_SHA"
+      ;;
+    bridge_disconnect:"deploy $RELEASE_B_FAILED_IDLE_BRIDGE_SHA")
+      exit 255
+      ;;
+    bridge_non_255:"deploy $RELEASE_B_FAILED_IDLE_BRIDGE_SHA")
+      exit 42
       ;;
     atomic_success:"deploy $TARGET_SHA")
       printf 'postgres-pool-bootstrap=%s replay=false\n' "$TARGET_SHA"
@@ -196,6 +202,7 @@ trap 'rm -rf "$FIXTURE"' EXIT
 TARGET_SHA=1234567890abcdef1234567890abcdef12345678
 BACKEND_SHA=4f47fac7faed7dc24110f4a43e88820d776b8a40
 CURRENT_BACKEND_SHA=617e284607f3dde74c27164af2b981770b9a62ed
+RELEASE_B_FAILED_IDLE_BRIDGE_SHA=85c5d22febf1e7ce5fa5967d2460ccb73ca96a9d
 MODEL_JOB_IDENTITY=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 AUTHORITY_SHA256=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 TERMINAL_SET_SHA256=cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
@@ -212,7 +219,8 @@ DEPLOY_SSH_KNOWN_HOSTS_PATH=$FIXTURE/ssh/pinned-known-hosts
 DEPLOY_HOST=production.example.invalid
 DEPLOY_USER=social-monitor-deploy
 
-export TARGET_SHA BACKEND_SHA CURRENT_BACKEND_SHA MODEL_JOB_IDENTITY AUTHORITY_SHA256 TERMINAL_SET_SHA256
+export TARGET_SHA BACKEND_SHA CURRENT_BACKEND_SHA RELEASE_B_FAILED_IDLE_BRIDGE_SHA
+export MODEL_JOB_IDENTITY AUTHORITY_SHA256 TERMINAL_SET_SHA256
 export FAKE_SSH_LOG FAKE_SSH_STATE FAKE_UPLOAD_PATH
 export DEPLOY_SSH_DIRECTORY DEPLOY_SSH_KEY_PATH DEPLOY_SSH_KNOWN_HOSTS_PATH
 export DEPLOY_HOST DEPLOY_USER GITHUB_OUTPUT
@@ -539,6 +547,25 @@ assert_call_count 0 \
 
 assert_fails normal_success install-daily-c1-bridge-policy "$TARGET_SHA"
 assert_call_count 0 "deploy $TARGET_SHA"
+
+run_client normal_success install-release-b-failed-idle-bridge \
+  "$RELEASE_B_FAILED_IDLE_BRIDGE_SHA" >/dev/null
+assert_call_count 1 "deploy $RELEASE_B_FAILED_IDLE_BRIDGE_SHA"
+assert_call_count 0 "plan $RELEASE_B_FAILED_IDLE_BRIDGE_SHA"
+
+run_client bridge_disconnect install-release-b-failed-idle-bridge \
+  "$RELEASE_B_FAILED_IDLE_BRIDGE_SHA" >/dev/null
+assert_call_count 1 "deploy $RELEASE_B_FAILED_IDLE_BRIDGE_SHA"
+assert_call_count 0 "plan $RELEASE_B_FAILED_IDLE_BRIDGE_SHA"
+
+assert_fails normal_success install-release-b-failed-idle-bridge "$TARGET_SHA"
+[[ ! -s $FAKE_SSH_LOG ]]
+assert_call_count 0 "deploy $TARGET_SHA"
+
+assert_fails bridge_non_255 install-release-b-failed-idle-bridge \
+  "$RELEASE_B_FAILED_IDLE_BRIDGE_SHA"
+assert_call_count 1 "deploy $RELEASE_B_FAILED_IDLE_BRIDGE_SHA"
+assert_call_count 0 "plan $RELEASE_B_FAILED_IDLE_BRIDGE_SHA"
 
 run_client disconnect_eventual deploy "$TARGET_SHA" >/dev/null
 assert_call_count 1 "deploy $TARGET_SHA"
