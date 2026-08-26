@@ -20,6 +20,9 @@ DEPLOY_CONTROL_SCHEDULED_SUMMARY_CATCH_UP_BASE=e377453d5b440aacc8077e8af1345eb5a
 DEPLOY_CONTROL_ROLLING_SUMMARY_FINAL_TREE=6a68fd8f88477811e220c042d5176e452241389f
 DEPLOY_CONTROL_ROLLING_SUMMARY_HELPER_TEST_PATH=ops/deploy/deploy-control-bridge-runtime-helper.test.sh
 DEPLOY_CONTROL_ROLLING_SUMMARY_RABBITMQ_TEST_PATH=ops/deploy/rabbitmq-quorum-deploy-bridge-transition.test.sh
+DEPLOY_CONTROL_ROLLING_REPAIR_BASE=1e411aeabd05502a1533a9536d8a75961bbdc929
+DEPLOY_CONTROL_ROLLING_REPAIR_TARGET=187335ca1881c0974218560d6147a21bcad8aa0c
+DEPLOY_CONTROL_ROLLING_REPAIR_TARGET_TREE=e25961c93dcfd09b669b1a2ab1c61274259346ee
 DEPLOY_CONTROL_FAILED_IDLE_RELEASE_BASE=72e17ded1e54ebd77772929fd5047ef6816dded2
 DEPLOY_CONTROL_FAILED_IDLE_RELEASE=92afd97328c5412324c99be635de2c41db589d53
 DEPLOY_CONTROL_FAILED_IDLE_RELEASE_BRIDGE=85c5d22febf1e7ce5fa5967d2460ccb73ca96a9d
@@ -395,8 +398,36 @@ deploy_control_is_reviewed_failed_idle_release_transition() {
   [[ $target_delta == "$expected_target_delta" ]]
 }
 
+# Recover the exact reviewed rolling release after its synthetic transition
+# fixture proved too narrow for the real first-parent production graph. The
+# installed bridge is still constrained to one control-only commit, while the
+# admitted release is pinned by both commit and tree identity.
+deploy_control_is_reviewed_rolling_repair_transition() {
+  local bridge=$1 target=$2 repository=${REPO:-.}
+  local bridge_delta target_tree
+  local -a bridge_ancestry=()
+
+  [[ $target == "$DEPLOY_CONTROL_ROLLING_REPAIR_TARGET" ]] || return 1
+  read -r -a bridge_ancestry <<< "$(git -C "$repository" \
+    rev-list --parents -n 1 "$bridge" 2>/dev/null)" || return 1
+  [[ ${#bridge_ancestry[@]} == 2 && \
+     ${bridge_ancestry[1]} == "$DEPLOY_CONTROL_ROLLING_REPAIR_BASE" ]] || \
+    return 1
+  bridge_delta=$(git -C "$repository" diff --name-only --no-renames \
+    "$DEPLOY_CONTROL_ROLLING_REPAIR_BASE" "$bridge" -- 2>/dev/null) || \
+    return 1
+  [[ $bridge_delta == "$DEPLOY_CONTROL_BRIDGE_SELF_PATH" ]] || return 1
+  target_tree=$(git -C "$repository" rev-parse "$target^{tree}" \
+    2>/dev/null) || return 1
+  [[ $target_tree == "$DEPLOY_CONTROL_ROLLING_REPAIR_TARGET_TREE" ]]
+}
+
 deploy_control_reviewed_transition_matches() {
   local bridge=$1 target=$2
+  if deploy_control_is_reviewed_rolling_repair_transition \
+      "$bridge" "$target"; then
+    return 0
+  fi
   if deploy_control_is_reviewed_current_main_release_b_transition \
       "$bridge" "$target"; then
     return 0
