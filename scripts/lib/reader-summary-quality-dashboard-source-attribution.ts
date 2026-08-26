@@ -34,7 +34,11 @@ export function dashboardFeedSourceKey(item: DashboardFeedItemRow): string {
     return dashboardProviderSourceKey("x-twitter", item);
   }
 
-  return parseHost(item.canonicalUrl) ?? item.authorHandle ?? "unknown";
+  return (
+    parseHost(item.canonicalUrl) ??
+    item.authorHandle ??
+    "unknown"
+  ).toLowerCase();
 }
 
 export function dashboardSourceProduct(metadata: unknown): string | undefined {

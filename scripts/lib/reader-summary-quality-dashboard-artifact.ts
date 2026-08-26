@@ -52,9 +52,9 @@ export function validateExistingReaderSummaryQualityDashboard(params: {
     );
   }
 
-  const report = JSON.parse(
+  const report: unknown = JSON.parse(
     readFileSync(readerSummaryQualityDashboardOutputPath, "utf8"),
-  ) as ReaderSummaryQualityDashboardReport;
+  );
 
   if (!isExistingReaderSummaryQualityDashboardValid(report, params)) {
     throw new Error(
@@ -68,9 +68,18 @@ export function validateExistingReaderSummaryQualityDashboard(params: {
 }
 
 export function isExistingReaderSummaryQualityDashboardValid(
-  report: ReaderSummaryQualityDashboardReport,
+  report: unknown,
   params: { readonly allowDegraded: boolean },
-): boolean {
+): report is { readonly inputs: { readonly dayCount: number } } {
+  if (
+    !isRecord(report) ||
+    !isRecord(report.model) ||
+    !isRecord(report.inputs) ||
+    !isRecord(report.qualityGates)
+  ) {
+    return false;
+  }
+
   return (
     report.schemaVersion === 1 &&
     report.artifactFormat === "reader-summary-quality-dashboard-v1" &&
@@ -78,9 +87,14 @@ export function isExistingReaderSummaryQualityDashboardValid(
     report.model.liveNetwork === false &&
     report.model.rawPostTextPersistedInReport === false &&
     report.model.rawUserFeedbackPersistedInReport === false &&
+    typeof report.inputs.dayCount === "number" &&
     report.inputs.dayCount > 0 &&
     (report.blockingPassed === true || params.allowDegraded) &&
     report.qualityGates.noRawSecretFragments === true &&
     noRawSecretFragments(report)
   );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }

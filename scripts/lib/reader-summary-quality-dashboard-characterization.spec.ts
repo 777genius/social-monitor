@@ -19,6 +19,8 @@ import {
   curatedTopReadCountPasses,
   topReadProviderSkewPasses,
 } from "./reader-summary-quality-dashboard-presentation";
+import type { DashboardFeedItemRow } from "./reader-summary-quality-dashboard-published-window";
+import { dashboardFeedSourceKey } from "./reader-summary-quality-dashboard-source-attribution";
 
 const artifactPath = "ops/evals/reader-summary-quality-dashboard.v1.json";
 
@@ -62,6 +64,36 @@ describe("reader summary quality dashboard characterization", () => {
         allowDegraded: false,
       }),
     ).toBe(false);
+  });
+
+  it.each([
+    ["model", { ...artifact, model: undefined }],
+    ["inputs", { ...artifact, inputs: null }],
+    ["quality gates", { ...artifact, qualityGates: undefined }],
+  ])("rejects a malformed artifact with invalid %s", (_label, malformed) => {
+    expect(
+      isExistingReaderSummaryQualityDashboardValid(malformed, {
+        allowDegraded: false,
+      }),
+    ).toBe(false);
+  });
+
+  it("normalizes fallback author source keys", () => {
+    expect(
+      dashboardFeedSourceKey({
+        id: "feed-item",
+        sourceItemId: "source-item",
+        sourceBindingId: "source-binding",
+        interestId: "interest",
+        providerKey: "rss",
+        canonicalUrl: "not-a-url",
+        authorHandle: "MixedCaseSource",
+        title: "Source title",
+        publishedAt: new Date("2026-08-26T00:00:00.000Z"),
+        observedAt: new Date("2026-08-26T00:00:00.000Z"),
+        providerMetadata: {},
+      } satisfies DashboardFeedItemRow),
+    ).toBe("mixedcasesource");
   });
 
   it.each([
