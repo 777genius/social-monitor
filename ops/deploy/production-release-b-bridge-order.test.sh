@@ -18,6 +18,7 @@ BRIDGE_BLOB=e02f7b7684f75121521065b43148708d545ab806
 BRIDGE_TARGET=05744f99b2d13e47a64a7ff12ea2ab8893f5e88a
 BRIDGE_TARGET_TREE=237c34068c057d2dfb5efaf9d606028cdaf18525
 CANONICAL_RELEASE_B2=e3b5b5d89b3586668e36f987f03672415b5a0f37
+REVIEW_PARENT=1e411aeabd05502a1533a9536d8a75961bbdc929
 BRIDGE_PATH=ops/deploy/deploy-control-bridge-lib.sh
 BACKEND_MARKER=09a79687e042e36d4ec9c1f33f0367527f044181
 CONTROL_MARKER=3f4a561e9fd6626bbd1a1e1ca73f2ec7eb34c8f8
@@ -213,6 +214,16 @@ inherited_path=ops/ingestion/source-provider-certification.json
 # first-parent history; its later ordinary-controller delta is not bridge policy.
 git -C "$GRAPH_REPO" rev-list --first-parent "$TARGET" | \
   grep -Fx "$BRIDGE_TARGET" >/dev/null
+expected_review_delta=$(printf '%s\n' \
+  .github/workflows/production-deploy.yml \
+  .github/workflows/pull-request.yml \
+  ops/deploy/github-production-deploy-client.test.sh \
+  ops/deploy/production-deploy-shell-files.sh \
+  ops/deploy/production-deploy-shell-files.test.sh \
+  ops/deploy/production-release-b-bridge-order.test.sh | LC_ALL=C sort)
+actual_review_delta=$(git -C "$GRAPH_REPO" diff --name-only --no-renames \
+  "$REVIEW_PARENT" "$TARGET" | LC_ALL=C sort)
+[[ $actual_review_delta == "$expected_review_delta" ]]
 
 # Exercise the bridge acceptance policy against the real graph and negative
 # stale/rejected topologies.
@@ -375,6 +386,7 @@ run_actual_controller() (
   set -euo pipefail
   local repo=$1 root=$2 target=$3 expected_head=$4 event_log=$5
   local expected_frontend_change=${6:-}
+  local expected_backend_change=${7:-}
   local state=$root/control/deploy-state
   local starting_frontend expected_frontend expected_backend expected_control
   [[ $(git -C "$repo" rev-parse HEAD) == "$expected_head" ]]
@@ -413,6 +425,12 @@ run_actual_controller() (
     '') ;;
     *) fail 'test frontend marker expectation is invalid' ;;
   esac
+  case $expected_backend_change in
+    true) [[ $expected_backend == "$target" ]] ;;
+    false) [[ $expected_backend == "$(marker_value backend)" ]] ;;
+    '') ;;
+    *) fail 'test backend marker expectation is invalid' ;;
+  esac
   postgres_pool_atomic_legacy_state() { return 1; }
   postgres_pool_bootstrap_installed() { return 0; }
   reconcile_current_postgres_pool_bootstrap() { :; }
@@ -439,6 +457,37 @@ run_actual_controller() (
   [[ $(marker_value control) == "$expected_control" ]]
   [[ $(marker_value postgres-pool-bootstrap) == "$target" ]]
 )
+
+assert_review_patch_component_classification() (
+  set -euo pipefail
+  local root=$FIXTURE/review-classification/root
+  local state=$root/control/deploy-state
+  install -d "$state" "$root/runtime/deploy-staging" \
+    "$root/runtime/frontend-releases"
+  for component in frontend backend control; do
+    printf '%s\n' "$REVIEW_PARENT" > "$state/$component.sha"
+  done
+  export SOCIAL_MONITOR_DEPLOY_TEST_MODE=1
+  export SOCIAL_MONITOR_DEPLOY_ROOT=$root
+  export SOCIAL_MONITOR_DEPLOY_REPO=$GRAPH_REPO
+  export SOCIAL_MONITOR_DEPLOY_CONTROL=$root/control
+  export SOCIAL_MONITOR_DEPLOY_STATE=$state
+  export SOCIAL_MONITOR_DEPLOY_STAGING=$root/runtime/deploy-staging
+  export SOCIAL_MONITOR_DEPLOY_RELEASES=$root/runtime/frontend-releases
+  export SOCIAL_MONITOR_DEPLOY_PROJECT=release-b-review-classification-test
+  # shellcheck source=ops/deploy/social-monitor-production-deploy.sh
+  source "$GRAPH_REPO/ops/deploy/social-monitor-production-deploy.sh"
+  if component_changed frontend "$TARGET" "${FRONTEND_PATHS[@]}"; then
+    fail 'final review patch was frontend classified'
+  fi
+  if component_changed backend "$TARGET" "${BACKEND_PATHS[@]}"; then
+    fail 'final review patch was backend classified'
+  fi
+  component_changed control "$TARGET" "${CONTROL_PATHS[@]}" ||
+    fail 'final review patch was not control classified'
+)
+
+assert_review_patch_component_classification
 
 # The obsolete bridge can still serve only its historical target; it cannot be
 # used as the operational bridge for this new graph.
@@ -477,7 +526,7 @@ run_actual_controller "$repaired_repo" "$repaired_root" \
 # The reviewed target has no frontend delta from the exact starting marker;
 # run_actual_controller derives and verifies that the marker does not advance.
 run_actual_controller "$repaired_repo" "$repaired_root" \
-  "$TARGET" "$BRIDGE_TARGET" "$repaired_events" true >/dev/null
+  "$TARGET" "$BRIDGE_TARGET" "$repaired_events" true false >/dev/null
 [[ $(git -C "$repaired_repo" rev-parse HEAD) == "$TARGET" ]]
 [[ $(<"$repaired_state/backend.sha") == "$BRIDGE_TARGET" ]]
 [[ $(<"$repaired_state/control.sha") == "$TARGET" ]]
@@ -498,7 +547,7 @@ run_actual_controller "$advanced_repo" "$advanced_root" \
 # The descendant has a real frontend delta from the reviewed target;
 # run_actual_controller derives and verifies that the marker advances.
 run_actual_controller "$advanced_repo" "$advanced_root" \
-  "$TARGET" "$BRIDGE_TARGET" "$FIXTURE/advanced/events" true >/dev/null
+  "$TARGET" "$BRIDGE_TARGET" "$FIXTURE/advanced/events" true false >/dev/null
 [[ $(git -C "$advanced_repo" rev-parse HEAD) == "$TARGET" ]]
 [[ $(<"$advanced_state/backend.sha") == "$CURRENT_MAIN" ]]
 [[ $(<"$advanced_state/control.sha") == "$TARGET" ]]
