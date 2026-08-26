@@ -81,7 +81,15 @@ grep -Fx 'collection-degraded 20260815T121500000Z 2026-08-15' "$TEST_ROOT/docker
 degraded_collection_bytes=$(sha256sum "$exact_collection" | cut -d' ' -f1)
 [[ $degraded_collection_bytes != "$successful_collection_bytes" ]]
 [[ -e $TEST_ROOT/artifacts/rolling-summary/rolling-summary.20260815T121500000Z.collection.v1.json ]]
-[[ -e $TEST_ROOT/artifacts/rolling-summary/rolling-summary.20260815T121500000Z.receipt.v1.json ]]
+degraded_receipt=$TEST_ROOT/artifacts/rolling-summary/rolling-summary.20260815T121500000Z.receipt.v1.json
+[[ -e $degraded_receipt ]]
+node "$REPO/ops/deploy/production-runtime/rolling-summary-receipt.mjs" \
+  validate-receipt "$degraded_receipt" 20260815T121500000Z 2026-08-15
+node -e '
+  const receipt = require(process.argv[1]);
+  if (receipt.collection.commandExitCode !== 1 ||
+      receipt.collection.finalDayQualityGatePassed !== false) process.exit(1);
+' "$degraded_receipt"
 
 if SOCIAL_MONITOR_ROLLING_RUN_TEST_MODE=1 \
   SOCIAL_MONITOR_ROLLING_RUN_TEST_ROOT=$TEST_ROOT \
@@ -175,9 +183,21 @@ SOCIAL_MONITOR_ROLLING_RUN_TEST_DOCKER=$fake_docker \
 SOCIAL_MONITOR_ROLLING_RUN_TEST_CTR=$fake_ctr \
 SOCIAL_MONITOR_ROLLING_RUN_TEST_FLOCK=$fake_flock \
 SOCIAL_MONITOR_ROLLING_RUN_TEST_NOW=2026-08-15T20:15:00.000Z \
+SOCIAL_MONITOR_ROLLING_RUN_TEST_DEGRADED_COLLECTION_RUN_ID=20260815T201500000Z \
 SOCIAL_MONITOR_ROLLING_RUNTIME=containerd \
 SOCIAL_MONITOR_ROLLING_AGENT_RUNTIME_RESTART_SCRIPT=$fake_agent_restart \
   bash "$RUNNER"
+grep -Fx 'collection-degraded 20260815T201500000Z 2026-08-15' \
+  "$TEST_ROOT/docker.log" >/dev/null
+containerd_degraded_receipt=$TEST_ROOT/artifacts/rolling-summary/rolling-summary.20260815T201500000Z.receipt.v1.json
+node "$REPO/ops/deploy/production-runtime/rolling-summary-receipt.mjs" \
+  validate-receipt "$containerd_degraded_receipt" \
+  20260815T201500000Z 2026-08-15
+node -e '
+  const receipt = require(process.argv[1]);
+  if (receipt.collection.commandExitCode !== 1 ||
+      receipt.collection.finalDayQualityGatePassed !== false) process.exit(1);
+' "$containerd_degraded_receipt"
 grep -Fx -- '--restart-agent-runtime' "$TEST_ROOT/agent-restart.log" >/dev/null
 [[ ! -e $TEST_ROOT/runtime/auth-account-changed ]]
 [[ -d $TEST_ROOT/runtime/subscription-runtime/sessions ]]

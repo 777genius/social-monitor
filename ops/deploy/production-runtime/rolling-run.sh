@@ -79,8 +79,12 @@ if "$ROOT/control/refresh-codex-auth.sh"; then
       mv "$ROOT/runtime/subscription-runtime/sessions" \
         "$ROOT/backups/subscription-runtime-sessions.$stamp"
     fi
-    install -d -m 0700 -o 1000 -g 1000 \
-      "$ROOT/runtime/subscription-runtime/sessions"
+    if [[ ${SOCIAL_MONITOR_ROLLING_RUN_TEST_MODE:-} == 1 ]]; then
+      install -d -m 0700 "$ROOT/runtime/subscription-runtime/sessions"
+    else
+      install -d -m 0700 -o 1000 -g 1000 \
+        "$ROOT/runtime/subscription-runtime/sessions"
+    fi
     if [[ $ROLLING_RUNTIME == docker ]]; then
       "${COMPOSE[@]}" restart agent-runtime
       rm -f "$ROOT/runtime/auth-account-changed"

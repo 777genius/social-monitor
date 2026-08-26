@@ -592,7 +592,7 @@ jobs:
             bash ops/deploy/daily-c1-control-bridge-workflow.test.sh
             bash ops/deploy/reader-summary-publication-prebootstrap-lib.test.sh
           else
-            bash ops/deploy/social-monitor-production-deploy.test.sh
+            node ops/deploy/production-runtime/rolling-summary-receipt.test.mjs && bash ops/deploy/production-runtime/rolling-run.test.sh && bash ops/deploy/social-monitor-production-deploy.test.sh
             bash ops/deploy/deploy-control-lib.test.sh
             bash ops/deploy/daily-deploy-lock-race.test.sh
             bash ops/deploy/postgres-runtime-deploy-lib.test.sh
