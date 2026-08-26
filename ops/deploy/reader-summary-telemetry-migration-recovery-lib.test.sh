@@ -173,6 +173,9 @@ if grep -F "permission denied for schema public'" "$PREFLIGHT" >/dev/null; then
   exit 1
 fi
 grep -F 'v_guard_count <> 1' "$PREFLIGHT" >/dev/null
+grep -F 'FROM pg_catalog.pg_constraint AS constraint_row' "$PREFLIGHT" >/dev/null
+if grep -Fx '  FROM pg_catalog.pg_constraint AS constraint' \
+  "$PREFLIGHT" >/dev/null; then exit 1; fi
 grep -F 'v_function_catalog_exact IS DISTINCT FROM TRUE' "$PREFLIGHT" >/dev/null
 grep -F 'v_membership_catalog_exact IS DISTINCT FROM TRUE' "$PREFLIGHT" >/dev/null
 grep -F 'complete role membership closure drifted' "$PREFLIGHT" >/dev/null

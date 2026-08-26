@@ -94,6 +94,17 @@ SET LOCAL ROLE social_monitor_reader_summary_daily_publication_definer;`);
     expect(probe).not.toContain("logs ~*");
   });
 
+  it("uses a PostgreSQL 18-safe alias in the exact preflight statement", () => {
+    const probe = readFileSync(
+      "ops/deploy/reader-summary-telemetry-failed-migration-preflight.sql", "utf8",
+    );
+    expect(probe).toContain(
+      "FROM pg_catalog.pg_constraint AS constraint_row",
+    );
+    expect(probe).toContain("WHERE constraint_row.conname");
+    expect(probe).not.toContain("AS constraint\n");
+  });
+
   it("pins each recovery SQL blob and rejects appended authorization text", () => {
     const library = readFileSync(
       "ops/deploy/reader-summary-telemetry-migration-recovery-lib.sh", "utf8",

@@ -121,23 +121,23 @@ BEGIN
       'usage_source', 'duration_ms'
     ]) AND attribute.attnum > 0 AND NOT attribute.attisdropped;
   SELECT count(*) FILTER (
-      WHERE constraint.conname = 'reader_summary_daily_model_jobs_identity_check'
-        AND constraint.convalidated
-        AND pg_catalog.pg_get_constraintdef(constraint.oid) LIKE
+      WHERE constraint_row.conname = 'reader_summary_daily_model_jobs_identity_check'
+        AND constraint_row.convalidated
+        AND pg_catalog.pg_get_constraintdef(constraint_row.oid) LIKE
           '%provider = ''codex''%'
-        AND pg_catalog.pg_get_constraintdef(constraint.oid) LIKE
+        AND pg_catalog.pg_get_constraintdef(constraint_row.oid) LIKE
           '%model = ''gpt-5.6-sol''%'
-        AND pg_catalog.pg_get_constraintdef(constraint.oid) LIKE
+        AND pg_catalog.pg_get_constraintdef(constraint_row.oid) LIKE
           '%reasoning_effort = ''xhigh''%'
-        AND pg_catalog.pg_get_constraintdef(constraint.oid) LIKE
+        AND pg_catalog.pg_get_constraintdef(constraint_row.oid) LIKE
           '%runtime_engine = ''subscription-runtime-cli''%'
     ), count(*) FILTER (
-      WHERE constraint.conname =
+      WHERE constraint_row.conname =
         'reader_summary_daily_model_jobs_telemetry_check'
     )
   INTO STRICT v_identity_constraints, v_telemetry_constraints
-  FROM pg_catalog.pg_constraint AS constraint
-  WHERE constraint.conrelid =
+  FROM pg_catalog.pg_constraint AS constraint_row
+  WHERE constraint_row.conrelid =
     'public.reader_summary_daily_model_jobs'::pg_catalog.regclass;
   SELECT count(*) INTO STRICT v_v2_functions
   FROM pg_catalog.pg_proc
