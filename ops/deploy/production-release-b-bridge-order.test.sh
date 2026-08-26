@@ -523,12 +523,12 @@ run_actual_controller "$repaired_repo" "$repaired_root" \
 run_actual_controller "$repaired_repo" "$repaired_root" \
   "$BRIDGE_TARGET" "$BRIDGE" "$repaired_events" false >/dev/null
 [[ $(git -C "$repaired_repo" rev-parse HEAD) == "$BRIDGE_TARGET" ]]
-# The reviewed target has no frontend delta from the exact starting marker;
-# run_actual_controller derives and verifies that the marker does not advance.
+# The requested descendant carries the newer-main frontend and backend deltas;
+# run_actual_controller derives and verifies that both markers advance.
 run_actual_controller "$repaired_repo" "$repaired_root" \
-  "$TARGET" "$BRIDGE_TARGET" "$repaired_events" true false >/dev/null
+  "$TARGET" "$BRIDGE_TARGET" "$repaired_events" true true >/dev/null
 [[ $(git -C "$repaired_repo" rev-parse HEAD) == "$TARGET" ]]
-[[ $(<"$repaired_state/backend.sha") == "$BRIDGE_TARGET" ]]
+[[ $(<"$repaired_state/backend.sha") == "$TARGET" ]]
 [[ $(<"$repaired_state/control.sha") == "$TARGET" ]]
 [[ $(<"$repaired_state/postgres-pool-bootstrap.sha") == "$TARGET" ]]
 
@@ -544,12 +544,12 @@ done
 run_actual_controller "$advanced_repo" "$advanced_root" \
   "$BRIDGE_TARGET" "$CURRENT_MAIN" "$FIXTURE/advanced/events" false >/dev/null
 [[ $(git -C "$advanced_repo" rev-parse HEAD) == "$BRIDGE_TARGET" ]]
-# The descendant has a real frontend delta from the reviewed target;
-# run_actual_controller derives and verifies that the marker advances.
+# The descendant has real frontend and backend deltas from the reviewed target;
+# run_actual_controller derives and verifies that both markers advance.
 run_actual_controller "$advanced_repo" "$advanced_root" \
-  "$TARGET" "$BRIDGE_TARGET" "$FIXTURE/advanced/events" true false >/dev/null
+  "$TARGET" "$BRIDGE_TARGET" "$FIXTURE/advanced/events" true true >/dev/null
 [[ $(git -C "$advanced_repo" rev-parse HEAD) == "$TARGET" ]]
-[[ $(<"$advanced_state/backend.sha") == "$CURRENT_MAIN" ]]
+[[ $(<"$advanced_state/backend.sha") == "$TARGET" ]]
 [[ $(<"$advanced_state/control.sha") == "$TARGET" ]]
 [[ $(<"$advanced_state/postgres-pool-bootstrap.sha") == "$TARGET" ]]
 
