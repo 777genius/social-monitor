@@ -15,6 +15,8 @@ OLD_TARGET=bce12683c9309e037614f4808a0fc75caddc9864
 BRIDGE=b89950632b0cefa4f7b58b687cdfd6e6cd912a04
 BRIDGE_TREE=0f2edeb95bbb658cebdb1aecdcda24026eca7d19
 BRIDGE_BLOB=e02f7b7684f75121521065b43148708d545ab806
+BRIDGE_TARGET=05744f99b2d13e47a64a7ff12ea2ab8893f5e88a
+BRIDGE_TARGET_TREE=237c34068c057d2dfb5efaf9d606028cdaf18525
 CANONICAL_RELEASE_B2=e3b5b5d89b3586668e36f987f03672415b5a0f37
 BRIDGE_PATH=ops/deploy/deploy-control-bridge-lib.sh
 BACKEND_MARKER=09a79687e042e36d4ec9c1f33f0367527f044181
@@ -159,7 +161,7 @@ configure_fixture_repository "$GRAPH_REPO"
 git -C "$GRAPH_REPO" config user.name 'Release B Current Main Test'
 git -C "$GRAPH_REPO" config user.email release-b-current-main@example.invalid
 for commit in "$BASE" "$CURRENT_MAIN" "$OLD_CURRENT_MAIN" "$OLD_BRIDGE" \
-  "$OLD_TARGET" "$BRIDGE" "$CANONICAL_RELEASE_B2" "$TARGET"; do
+  "$OLD_TARGET" "$BRIDGE" "$BRIDGE_TARGET" "$CANONICAL_RELEASE_B2" "$TARGET"; do
   git -C "$GRAPH_REPO" cat-file -e "$commit^{commit}"
 done
 
@@ -178,17 +180,19 @@ read -r bridge_mode bridge_type bridge_blob bridge_path bridge_extra <<< "$(
    $bridge_type == blob && $bridge_blob == "$BRIDGE_BLOB" && \
    $bridge_path == "$BRIDGE_PATH" ]]
 
-# The deploy target is the exact cleanup-preserving two-parent integration.
+# The bridge target is the exact cleanup-preserving two-parent integration.
 read -r -a target_parents <<< "$(git -C "$GRAPH_REPO" \
-  rev-list --parents -n 1 "$TARGET")"
-[[ ${#target_parents[@]} == 3 && \
+  rev-list --parents -n 1 "$BRIDGE_TARGET")"
+[[ ${#target_parents[@]} == 3 && ${target_parents[0]} == "$BRIDGE_TARGET" && \
    ${target_parents[1]} == "$CURRENT_MAIN" && \
    ${target_parents[2]} == "$BRIDGE" ]]
-git -C "$GRAPH_REPO" merge-base --is-ancestor "$CURRENT_MAIN" "$TARGET"
-git -C "$GRAPH_REPO" merge-base --is-ancestor "$BRIDGE" "$TARGET"
-git -C "$GRAPH_REPO" rev-list --first-parent "$TARGET" | \
+[[ $(git -C "$GRAPH_REPO" rev-parse "$BRIDGE_TARGET^{tree}") == \
+   "$BRIDGE_TARGET_TREE" ]]
+git -C "$GRAPH_REPO" merge-base --is-ancestor "$CURRENT_MAIN" "$BRIDGE_TARGET"
+git -C "$GRAPH_REPO" merge-base --is-ancestor "$BRIDGE" "$BRIDGE_TARGET"
+git -C "$GRAPH_REPO" rev-list --first-parent "$BRIDGE_TARGET" | \
   grep -Fx "$CANONICAL_RELEASE_B2" >/dev/null
-[[ $(git -C "$GRAPH_REPO" rev-parse "$TARGET:$BRIDGE_PATH") == \
+[[ $(git -C "$GRAPH_REPO" rev-parse "$BRIDGE_TARGET:$BRIDGE_PATH") == \
    "$BRIDGE_BLOB" ]]
 expected_target_delta=$(printf '%s\n' \
   .github/workflows/production-deploy.yml \
@@ -198,11 +202,16 @@ expected_target_delta=$(printf '%s\n' \
   ops/deploy/production-release-b-bridge-order.test.sh \
   ops/deploy/rabbitmq-quorum-deploy-bridge-transition.test.sh | LC_ALL=C sort)
 actual_target_delta=$(git -C "$GRAPH_REPO" diff --name-only --no-renames \
-  "$CURRENT_MAIN" "$TARGET" | LC_ALL=C sort)
+  "$CURRENT_MAIN" "$BRIDGE_TARGET" | LC_ALL=C sort)
 [[ $actual_target_delta == "$expected_target_delta" ]]
 inherited_path=ops/ingestion/source-provider-certification.json
 [[ $(git -C "$GRAPH_REPO" rev-parse "$CURRENT_MAIN:$inherited_path") == \
-   $(git -C "$GRAPH_REPO" rev-parse "$TARGET:$inherited_path") ]]
+   $(git -C "$GRAPH_REPO" rev-parse "$BRIDGE_TARGET:$inherited_path") ]]
+
+# The requested target is distinct and must retain the reviewed target on its
+# first-parent history; its later ordinary-controller delta is not bridge policy.
+git -C "$GRAPH_REPO" rev-list --first-parent "$TARGET" | \
+  grep -Fx "$BRIDGE_TARGET" >/dev/null
 
 # Exercise the bridge acceptance policy against the real graph and negative
 # stale/rejected topologies.
@@ -210,12 +219,12 @@ REPO=$GRAPH_REPO
 fail() { printf 'test-error: %s\n' "$*" >&2; return 1; }
 # shellcheck source=ops/deploy/deploy-control-bridge-lib.sh
 source "$GRAPH_REPO/ops/deploy/deploy-control-bridge-lib.sh"
-deploy_control_reviewed_transition_matches "$BRIDGE" "$TARGET"
+deploy_control_reviewed_transition_matches "$BRIDGE" "$BRIDGE_TARGET"
 if deploy_control_reviewed_transition_matches "$OLD_BRIDGE" "$OLD_TARGET"; then
   echo 'obsolete bce/db topology was admitted by the new bridge' >&2
   exit 1
 fi
-if deploy_control_reviewed_transition_matches "$OLD_BRIDGE" "$TARGET"; then
+if deploy_control_reviewed_transition_matches "$OLD_BRIDGE" "$BRIDGE_TARGET"; then
   echo 'obsolete bridge was admitted for the new target' >&2
   exit 1
 fi
@@ -224,21 +233,21 @@ if deploy_control_reviewed_transition_matches "$BRIDGE" "$CURRENT_MAIN"; then
   exit 1
 fi
 swapped_target=$(printf 'test: swapped Release B parents\n' | \
-  git -C "$GRAPH_REPO" commit-tree "$TARGET^{tree}" \
+  git -C "$GRAPH_REPO" commit-tree "$BRIDGE_TARGET^{tree}" \
     -p "$BRIDGE" -p "$CURRENT_MAIN")
 if deploy_control_reviewed_transition_matches "$BRIDGE" "$swapped_target"; then
   echo 'swapped target parents were admitted' >&2
   exit 1
 fi
 wrapper_target=$(printf 'test: wrapped Release B target\n' | \
-  git -C "$GRAPH_REPO" commit-tree "$TARGET^{tree}" -p "$TARGET")
+  git -C "$GRAPH_REPO" commit-tree "$BRIDGE_TARGET^{tree}" -p "$BRIDGE_TARGET")
 if deploy_control_reviewed_transition_matches "$BRIDGE" "$wrapper_target"; then
   echo 'wrapper target was admitted' >&2
   exit 1
 fi
 extra_blob=$(printf 'extra target drift\n' | git -C "$GRAPH_REPO" hash-object -w --stdin)
 extra_index=$FIXTURE/extra.index
-GIT_INDEX_FILE=$extra_index git -C "$GRAPH_REPO" read-tree "$TARGET"
+GIT_INDEX_FILE=$extra_index git -C "$GRAPH_REPO" read-tree "$BRIDGE_TARGET"
 GIT_INDEX_FILE=$extra_index git -C "$GRAPH_REPO" update-index \
   --add --cacheinfo "100644,$extra_blob,unreviewed-release-b-drift"
 extra_tree=$(GIT_INDEX_FILE=$extra_index git -C "$GRAPH_REPO" write-tree)
@@ -248,18 +257,57 @@ if deploy_control_reviewed_transition_matches "$BRIDGE" "$extra_target"; then
   echo 'extra-path current-main topology was admitted' >&2
   exit 1
 fi
+drift_blob=$(printf 'allowlisted byte drift\n' | \
+  git -C "$GRAPH_REPO" hash-object -w --stdin)
+drift_index=$FIXTURE/drift.index
+GIT_INDEX_FILE=$drift_index git -C "$GRAPH_REPO" read-tree "$BRIDGE_TARGET"
+GIT_INDEX_FILE=$drift_index git -C "$GRAPH_REPO" update-index --cacheinfo \
+  "100644,$drift_blob,.github/workflows/production-deploy.yml"
+drift_tree=$(GIT_INDEX_FILE=$drift_index git -C "$GRAPH_REPO" write-tree)
+drift_target=$(printf 'test: allowlisted target byte drift\n' | \
+  git -C "$GRAPH_REPO" commit-tree "$drift_tree" \
+    -p "$CURRENT_MAIN" -p "$BRIDGE")
+
+# The client independently pins the reviewed target and rejects requested
+# commits that contain it only through a side parent.
+DEPLOY_SSH_DIRECTORY=$FIXTURE/client-ssh
+# shellcheck source=ops/deploy/github-production-deploy-client.sh
+source "$CLIENT"
+GITHUB_WORKSPACE=$GRAPH_REPO verify_release_b_reviewed_target_identity \
+  "$BRIDGE_TARGET" "$TARGET"
+if (GITHUB_WORKSPACE=$GRAPH_REPO verify_release_b_reviewed_target_identity \
+    "$drift_target" "$TARGET") 2>/dev/null; then
+  echo 'allowlisted-byte drift was admitted' >&2
+  exit 1
+fi
+side_parent_target=$(printf 'test: side-parent-only requested target\n' | \
+  git -C "$GRAPH_REPO" commit-tree "$BRIDGE_TARGET^{tree}" \
+    -p "$CURRENT_MAIN" -p "$BRIDGE_TARGET")
+if (GITHUB_WORKSPACE=$GRAPH_REPO verify_release_b_reviewed_target_identity \
+    "$BRIDGE_TARGET" "$side_parent_target") 2>/dev/null; then
+  echo 'side-parent-only requested target was admitted' >&2
+  exit 1
+fi
+if (GITHUB_WORKSPACE=$GRAPH_REPO verify_release_b_reviewed_target_identity \
+    "$BRIDGE_TARGET" "$CURRENT_MAIN") 2>/dev/null; then
+  echo 'requested sibling of the reviewed target was admitted' >&2
+  exit 1
+fi
 
 for exact_pin in \
   "RELEASE_B_CONTROLLER_SHA=$BASE" \
   "RELEASE_B_CURRENT_MAIN_SHA=$CURRENT_MAIN" \
   "RELEASE_B_BRIDGE_SHA=$BRIDGE" \
   "RELEASE_B_BRIDGE_TREE=$BRIDGE_TREE" \
-  "RELEASE_B_BRIDGE_BLOB=$BRIDGE_BLOB"; do
+  "RELEASE_B_BRIDGE_BLOB=$BRIDGE_BLOB" \
+  "RELEASE_B_REVIEWED_TARGET_SHA=$BRIDGE_TARGET" \
+  "RELEASE_B_REVIEWED_TARGET_TREE=$BRIDGE_TARGET_TREE"; do
   grep -Fqx "$exact_pin" "$CLIENT"
 done
 [[ $(grep -Fo "controller_release=$BASE" "$WORKFLOW" | wc -l) == 1 ]]
 [[ $(grep -Fo "current_main=$CURRENT_MAIN" "$WORKFLOW" | wc -l) == 1 ]]
 [[ $(grep -Fo "bridge_release=$BRIDGE" "$WORKFLOW" | wc -l) == 1 ]]
+[[ $(grep -Fo "bridge_target=$BRIDGE_TARGET" "$WORKFLOW" | wc -l) == 1 ]]
 
 python3 - "$WORKFLOW" <<'PY'
 import pathlib
@@ -267,7 +315,7 @@ import sys
 
 workflow = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")
 commands = [
-    'bash "$client" prepare-release-b-bridge "$controller_release" "$bridge_release" "$current_main" "$GITHUB_SHA"',
+    'bash "$client" prepare-release-b-bridge "$controller_release" "$bridge_release" "$current_main" "$bridge_target" "$GITHUB_SHA"',
     'bash "$client" cleanup; bash "$client" configure',
     'inspect-plan "$GITHUB_SHA"',
     'bash ops/deploy/github-production-deploy-client.sh deploy "$GITHUB_SHA"',
@@ -353,7 +401,7 @@ grep -F 'deploy control changed with backend or runtime assets; deploy the bridg
   <<< "$obsolete_error" >/dev/null
 [[ $(git -C "$obsolete_repo" rev-parse HEAD) == "$OLD_BRIDGE" ]]
 
-# Real 8b4 controller -> exact bridge -> current-main-descendant target.
+# Real 8b4 controller -> exact bridge -> reviewed target -> requested target.
 prepare_runtime_repo repaired "$BASE"
 repaired_repo=$FIXTURE/repaired/repo
 repaired_root=$FIXTURE/repaired/root
@@ -370,9 +418,12 @@ run_actual_controller "$repaired_repo" "$repaired_root" \
 [[ $(<"$repaired_state/backend.sha") == "$BASE" ]]
 [[ $(<"$repaired_state/frontend.sha") == "$BASE" ]]
 run_actual_controller "$repaired_repo" "$repaired_root" \
-  "$TARGET" "$BRIDGE" "$repaired_events" >/dev/null
+  "$BRIDGE_TARGET" "$BRIDGE" "$repaired_events" >/dev/null
+[[ $(git -C "$repaired_repo" rev-parse HEAD) == "$BRIDGE_TARGET" ]]
+run_actual_controller "$repaired_repo" "$repaired_root" \
+  "$TARGET" "$BRIDGE_TARGET" "$repaired_events" >/dev/null
 [[ $(git -C "$repaired_repo" rev-parse HEAD) == "$TARGET" ]]
-[[ $(<"$repaired_state/backend.sha") == "$TARGET" ]]
+[[ $(<"$repaired_state/backend.sha") == "$BRIDGE_TARGET" ]]
 [[ $(<"$repaired_state/frontend.sha") == "$BASE" ]]
 [[ $(<"$repaired_state/control.sha") == "$TARGET" ]]
 [[ $(<"$repaired_state/postgres-pool-bootstrap.sha") == "$TARGET" ]]
@@ -387,7 +438,10 @@ for component in frontend backend control postgres-pool-bootstrap; do
   printf '%s\n' "$CURRENT_MAIN" > "$advanced_state/$component.sha"
 done
 run_actual_controller "$advanced_repo" "$advanced_root" \
-  "$TARGET" "$CURRENT_MAIN" "$FIXTURE/advanced/events" >/dev/null
+  "$BRIDGE_TARGET" "$CURRENT_MAIN" "$FIXTURE/advanced/events" >/dev/null
+[[ $(git -C "$advanced_repo" rev-parse HEAD) == "$BRIDGE_TARGET" ]]
+run_actual_controller "$advanced_repo" "$advanced_root" \
+  "$TARGET" "$BRIDGE_TARGET" "$FIXTURE/advanced/events" >/dev/null
 [[ $(git -C "$advanced_repo" rev-parse HEAD) == "$TARGET" ]]
 [[ $(<"$advanced_state/backend.sha") == "$CURRENT_MAIN" ]]
 [[ $(<"$advanced_state/frontend.sha") == "$CURRENT_MAIN" ]]
