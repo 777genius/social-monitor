@@ -120,6 +120,14 @@ fake_ssh() {
       print_fake_plan false false false false "$RELEASE_B_CURRENT_MAIN_SHA" \
         "$RELEASE_B_CURRENT_MAIN_SHA"
       ;;
+    release_b_stale_target:"plan $TARGET_SHA")
+      print_fake_plan false true true false "$RELEASE_B_POOL_MARKER" \
+        "$RELEASE_B_BACKEND_MARKER"
+      ;;
+    release_b_stale_target:"plan $RELEASE_B_CURRENT_MAIN_SHA")
+      print_fake_plan false true true false "$RELEASE_B_CONTROLLER_SHA" \
+        "$RELEASE_B_CONTROLLER_SHA"
+      ;;
     release_b_from_8b:"plan $TARGET_SHA"|release_b_bridge_disconnect:"plan $TARGET_SHA"|release_b_controller_repair:"plan $TARGET_SHA")
       print_fake_plan false true true false "$RELEASE_B_CONTROLLER_SHA" \
         "$RELEASE_B_CONTROLLER_SHA"
@@ -258,8 +266,8 @@ TARGET_SHA=1234567890abcdef1234567890abcdef12345678
 BACKEND_SHA=4f47fac7faed7dc24110f4a43e88820d776b8a40
 CURRENT_BACKEND_SHA=617e284607f3dde74c27164af2b981770b9a62ed
 RELEASE_B_CONTROLLER_SHA=8b4aeb31e855ed379349a4e4827600009e174132
-RELEASE_B_CURRENT_MAIN_SHA=d7d0fc88e6a7bcd8e9929e35efd74002a7601449
-RELEASE_B_BRIDGE_SHA=db4537fea87a5c184a9f926867a6e6aa763ff9bd
+RELEASE_B_CURRENT_MAIN_SHA=77313ea03a3bac7d2298f4021d58124c810d291f
+RELEASE_B_BRIDGE_SHA=b89950632b0cefa4f7b58b687cdfd6e6cd912a04
 RELEASE_B_BACKEND_MARKER=09a79687e042e36d4ec9c1f33f0367527f044181
 RELEASE_B_POOL_MARKER=6fefa9da5446d5e467badcc7239fdc5a6170a756
 MODEL_JOB_IDENTITY=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
@@ -301,6 +309,18 @@ install -m 0700 "$0" "$FAKE_SSH"
   ((DEFAULT_PLAN_READ_INTERVAL_SECONDS == 3))
   ((DEFAULT_RECONCILE_WINDOW_SECONDS >= MINIMUM_RECONCILE_WINDOW_SECONDS))
   ((DEFAULT_RECONCILE_WINDOW_SECONDS > KNOWN_BACKEND_SOAK_SECONDS))
+  parse_plan "$(printf 'frontend=false\nbackend=false\nbackend_base=%s\ncontrol=true\nx_collector=false\npostgres_pool_bootstrap=postgres-pool-v1\npostgres_pool_bootstrap_sha=%s\n' \
+    "$RELEASE_B_CONTROLLER_SHA" "$RELEASE_B_CONTROLLER_SHA")"
+  plan_is_exact_release_b_bridge_transition
+  parse_plan "$(printf 'frontend=false\nbackend=false\nbackend_base=%s\ncontrol=true\nx_collector=false\npostgres_pool_bootstrap=postgres-pool-v1\npostgres_pool_bootstrap_sha=%s\n' \
+    "$RELEASE_B_CONTROLLER_SHA" "$RELEASE_B_BRIDGE_SHA")"
+  ! plan_is_exact_release_b_bridge_transition
+  parse_plan "$(printf 'frontend=false\nbackend=true\nbackend_base=%s\ncontrol=true\nx_collector=false\npostgres_pool_bootstrap=postgres-pool-v1\npostgres_pool_bootstrap_sha=%s\n' \
+    "$RELEASE_B_CONTROLLER_SHA" "$RELEASE_B_CONTROLLER_SHA")"
+  plan_is_exact_release_b_target_transition
+  # shellcheck disable=SC2034 # Read by the sourced target-plan predicate.
+  PLAN_POSTGRES_POOL_REPAIR=true
+  ! plan_is_exact_release_b_target_transition
 )
 
 run_client() {
@@ -620,6 +640,9 @@ run_client release_b_replay "${prepare_args[@]}" >/dev/null
 assert_call_count 0 "deploy $RELEASE_B_BRIDGE_SHA"
 assert_call_count 0 "deploy $TARGET_SHA"
 assert_fails release_b_partial "${prepare_args[@]}"
+assert_call_count 0 "deploy $RELEASE_B_BRIDGE_SHA"
+assert_fails release_b_stale_target "${prepare_args[@]}"
+assert_call_count 0 "plan $RELEASE_B_BRIDGE_SHA"
 assert_call_count 0 "deploy $RELEASE_B_BRIDGE_SHA"
 assert_fails release_b_rejected "${prepare_args[@]}"
 assert_call_count 0 "deploy $RELEASE_B_BRIDGE_SHA"

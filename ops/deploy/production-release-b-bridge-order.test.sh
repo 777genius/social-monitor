@@ -8,13 +8,14 @@ SOURCE_REPO=${PRODUCTION_RELEASE_B_TEST_SOURCE_REPO:-$PROJECT_ROOT}
 WORKFLOW=$PROJECT_ROOT/.github/workflows/production-deploy.yml
 CLIENT=$PROJECT_ROOT/ops/deploy/github-production-deploy-client.sh
 BASE=8b4aeb31e855ed379349a4e4827600009e174132
-CURRENT_MAIN=d7d0fc88e6a7bcd8e9929e35efd74002a7601449
-REJECTED=68d6910f7874be89e2d5418dede5be6129e8af3a
-REJECTED_BRIDGE=85c5d22febf1e7ce5fa5967d2460ccb73ca96a9d
-BRIDGE=db4537fea87a5c184a9f926867a6e6aa763ff9bd
-BRIDGE_TREE=f998252edb25e6e2411ddc351806ba8170114c61
-BRIDGE_BLOB=70a87f730ff47c1071a7855a1177fd5d1601ee5c
-TARGET=bce12683c9309e037614f4808a0fc75caddc9864
+CURRENT_MAIN=77313ea03a3bac7d2298f4021d58124c810d291f
+OLD_CURRENT_MAIN=d7d0fc88e6a7bcd8e9929e35efd74002a7601449
+OLD_BRIDGE=db4537fea87a5c184a9f926867a6e6aa763ff9bd
+OLD_TARGET=bce12683c9309e037614f4808a0fc75caddc9864
+BRIDGE=b89950632b0cefa4f7b58b687cdfd6e6cd912a04
+BRIDGE_TREE=0f2edeb95bbb658cebdb1aecdcda24026eca7d19
+BRIDGE_BLOB=e02f7b7684f75121521065b43148708d545ab806
+CANONICAL_RELEASE_B2=e3b5b5d89b3586668e36f987f03672415b5a0f37
 BRIDGE_PATH=ops/deploy/deploy-control-bridge-lib.sh
 BACKEND_MARKER=09a79687e042e36d4ec9c1f33f0367527f044181
 CONTROL_MARKER=3f4a561e9fd6626bbd1a1e1ca73f2ec7eb34c8f8
@@ -152,12 +153,13 @@ trap cleanup_fixture EXIT
 exercise_fixture_cleanup_race
 GRAPH_REPO=$FIXTURE/graph
 
+TARGET=$(git -C "$SOURCE_REPO" rev-parse HEAD)
 git -c gc.autoDetach=false clone -q --shared "$SOURCE_REPO" "$GRAPH_REPO"
 configure_fixture_repository "$GRAPH_REPO"
 git -C "$GRAPH_REPO" config user.name 'Release B Current Main Test'
 git -C "$GRAPH_REPO" config user.email release-b-current-main@example.invalid
-for commit in "$BASE" "$CURRENT_MAIN" "$REJECTED" "$REJECTED_BRIDGE" \
-  "$BRIDGE" "$TARGET"; do
+for commit in "$BASE" "$CURRENT_MAIN" "$OLD_CURRENT_MAIN" "$OLD_BRIDGE" \
+  "$OLD_TARGET" "$BRIDGE" "$CANONICAL_RELEASE_B2" "$TARGET"; do
   git -C "$GRAPH_REPO" cat-file -e "$commit^{commit}"
 done
 
@@ -176,8 +178,7 @@ read -r bridge_mode bridge_type bridge_blob bridge_path bridge_extra <<< "$(
    $bridge_type == blob && $bridge_blob == "$BRIDGE_BLOB" && \
    $bridge_path == "$BRIDGE_PATH" ]]
 
-# The deploy target is a real current-main integration, not a wrapper around
-# the rejected sibling or the approved target's obsolete graph.
+# The deploy target is the exact cleanup-preserving two-parent integration.
 read -r -a target_parents <<< "$(git -C "$GRAPH_REPO" \
   rev-list --parents -n 1 "$TARGET")"
 [[ ${#target_parents[@]} == 3 && \
@@ -185,10 +186,8 @@ read -r -a target_parents <<< "$(git -C "$GRAPH_REPO" \
    ${target_parents[2]} == "$BRIDGE" ]]
 git -C "$GRAPH_REPO" merge-base --is-ancestor "$CURRENT_MAIN" "$TARGET"
 git -C "$GRAPH_REPO" merge-base --is-ancestor "$BRIDGE" "$TARGET"
-if git -C "$GRAPH_REPO" merge-base --is-ancestor "$REJECTED" "$TARGET"; then
-  echo 'rejected Release B sibling is an ancestor of the candidate' >&2
-  exit 1
-fi
+git -C "$GRAPH_REPO" rev-list --first-parent "$TARGET" | \
+  grep -Fx "$CANONICAL_RELEASE_B2" >/dev/null
 [[ $(git -C "$GRAPH_REPO" rev-parse "$TARGET:$BRIDGE_PATH") == \
    "$BRIDGE_BLOB" ]]
 expected_target_delta=$(printf '%s\n' \
@@ -197,12 +196,13 @@ expected_target_delta=$(printf '%s\n' \
   ops/deploy/github-production-deploy-client.sh \
   ops/deploy/github-production-deploy-client.test.sh \
   ops/deploy/production-release-b-bridge-order.test.sh \
-  ops/ingestion/source-provider-certification.json \
-  ops/deploy/rabbitmq-quorum-deploy-bridge-transition.test.sh | \
-  LC_ALL=C sort)
+  ops/deploy/rabbitmq-quorum-deploy-bridge-transition.test.sh | LC_ALL=C sort)
 actual_target_delta=$(git -C "$GRAPH_REPO" diff --name-only --no-renames \
   "$CURRENT_MAIN" "$TARGET" | LC_ALL=C sort)
 [[ $actual_target_delta == "$expected_target_delta" ]]
+inherited_path=ops/ingestion/source-provider-certification.json
+[[ $(git -C "$GRAPH_REPO" rev-parse "$CURRENT_MAIN:$inherited_path") == \
+   $(git -C "$GRAPH_REPO" rev-parse "$TARGET:$inherited_path") ]]
 
 # Exercise the bridge acceptance policy against the real graph and negative
 # stale/rejected topologies.
@@ -211,14 +211,29 @@ fail() { printf 'test-error: %s\n' "$*" >&2; return 1; }
 # shellcheck source=ops/deploy/deploy-control-bridge-lib.sh
 source "$GRAPH_REPO/ops/deploy/deploy-control-bridge-lib.sh"
 deploy_control_reviewed_transition_matches "$BRIDGE" "$TARGET"
-if deploy_control_reviewed_transition_matches "$REJECTED_BRIDGE" "$REJECTED"; then
-  echo 'rejected sibling topology was admitted' >&2
+if deploy_control_reviewed_transition_matches "$OLD_BRIDGE" "$OLD_TARGET"; then
+  echo 'obsolete bce/db topology was admitted by the new bridge' >&2
   exit 1
 fi
-stale_target=$(printf 'test: stale current-main target\n' | git -C "$GRAPH_REPO" \
-  commit-tree "$TARGET^{tree}" -p "$BASE" -p "$BRIDGE")
-if deploy_control_reviewed_transition_matches "$BRIDGE" "$stale_target"; then
-  echo 'stale current-main topology was admitted' >&2
+if deploy_control_reviewed_transition_matches "$OLD_BRIDGE" "$TARGET"; then
+  echo 'obsolete bridge was admitted for the new target' >&2
+  exit 1
+fi
+if deploy_control_reviewed_transition_matches "$BRIDGE" "$CURRENT_MAIN"; then
+  echo 'direct current-main commit was admitted as the new target' >&2
+  exit 1
+fi
+swapped_target=$(printf 'test: swapped Release B parents\n' | \
+  git -C "$GRAPH_REPO" commit-tree "$TARGET^{tree}" \
+    -p "$BRIDGE" -p "$CURRENT_MAIN")
+if deploy_control_reviewed_transition_matches "$BRIDGE" "$swapped_target"; then
+  echo 'swapped target parents were admitted' >&2
+  exit 1
+fi
+wrapper_target=$(printf 'test: wrapped Release B target\n' | \
+  git -C "$GRAPH_REPO" commit-tree "$TARGET^{tree}" -p "$TARGET")
+if deploy_control_reviewed_transition_matches "$BRIDGE" "$wrapper_target"; then
+  echo 'wrapper target was admitted' >&2
   exit 1
 fi
 extra_blob=$(printf 'extra target drift\n' | git -C "$GRAPH_REPO" hash-object -w --stdin)
@@ -323,21 +338,20 @@ run_actual_controller() (
   deploy_release "$target"
 )
 
-# The real old controller rejects the obsolete sibling after its old bridge.
-prepare_runtime_repo rejected "$BASE"
-rejected_repo=$FIXTURE/rejected/repo
-rejected_root=$FIXTURE/rejected/root
-run_actual_controller "$rejected_repo" "$rejected_root" \
-  "$REJECTED_BRIDGE" "$BASE" "$FIXTURE/rejected/events" >/dev/null
+# The obsolete bridge can still serve only its historical target; it cannot be
+# used as the operational bridge for this new graph.
+prepare_runtime_repo obsolete "$OLD_BRIDGE"
+obsolete_repo=$FIXTURE/obsolete/repo
+obsolete_root=$FIXTURE/obsolete/root
 set +e
-rejected_error=$(run_actual_controller "$rejected_repo" "$rejected_root" \
-  "$REJECTED" "$BASE" "$FIXTURE/rejected/events" 2>&1)
-rejected_status=$?
+obsolete_error=$(run_actual_controller "$obsolete_repo" "$obsolete_root" \
+  "$TARGET" "$OLD_BRIDGE" "$FIXTURE/obsolete/events" 2>&1)
+obsolete_status=$?
 set -e
-((rejected_status != 0))
+((obsolete_status != 0))
 grep -F 'deploy control changed with backend or runtime assets; deploy the bridge release first' \
-  <<< "$rejected_error" >/dev/null
-[[ $(git -C "$rejected_repo" rev-parse HEAD) == "$BASE" ]]
+  <<< "$obsolete_error" >/dev/null
+[[ $(git -C "$obsolete_repo" rev-parse HEAD) == "$OLD_BRIDGE" ]]
 
 # Real 8b4 controller -> exact bridge -> current-main-descendant target.
 prepare_runtime_repo repaired "$BASE"
@@ -379,4 +393,4 @@ run_actual_controller "$advanced_repo" "$advanced_root" \
 [[ $(<"$advanced_state/frontend.sha") == "$CURRENT_MAIN" ]]
 [[ $(<"$advanced_state/control.sha") == "$TARGET" ]]
 
-printf 'Production Release B current-main topology tests passed\n'
+printf 'Production Release B exact cleanup-preserving topology tests passed\n'

@@ -910,8 +910,8 @@ jobs:
           KNOWN_HOSTS: ${{ secrets.PRODUCTION_SSH_KNOWN_HOSTS }}
         run: |
           set -euo pipefail
-          client=ops/deploy/github-production-deploy-client.sh; controller_release=8b4aeb31e855ed379349a4e4827600009e174132; bridge_release=db4537fea87a5c184a9f926867a6e6aa763ff9bd
-          current_main=d7d0fc88e6a7bcd8e9929e35efd74002a7601449; bash "$client" configure
+          client=ops/deploy/github-production-deploy-client.sh; controller_release=8b4aeb31e855ed379349a4e4827600009e174132; bridge_release=b89950632b0cefa4f7b58b687cdfd6e6cd912a04
+          current_main=77313ea03a3bac7d2298f4021d58124c810d291f; bash "$client" configure
           bash "$client" prepare-release-b-bridge "$controller_release" "$bridge_release" "$current_main" "$GITHUB_SHA"
           bash "$client" cleanup; bash "$client" configure
       - name: Freshly require A-complete or B-complete

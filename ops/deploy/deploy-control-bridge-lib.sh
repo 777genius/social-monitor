@@ -26,7 +26,7 @@ DEPLOY_CONTROL_FAILED_IDLE_RELEASE_BRIDGE=85c5d22febf1e7ce5fa5967d2460ccb73ca96a
 DEPLOY_CONTROL_FAILED_IDLE_RELEASE_BRIDGE_TREE=903f5e8d944c6d703b2bf282d0046ba5066894b1
 DEPLOY_CONTROL_FAILED_IDLE_RELEASE_BRIDGE_BLOB=a6407769622a4da1bd677ff83c9db6ad2c710662
 DEPLOY_CONTROL_RELEASE_B_CONTROLLER=8b4aeb31e855ed379349a4e4827600009e174132
-DEPLOY_CONTROL_RELEASE_B_CURRENT_MAIN=d7d0fc88e6a7bcd8e9929e35efd74002a7601449
+DEPLOY_CONTROL_RELEASE_B_CURRENT_MAIN=77313ea03a3bac7d2298f4021d58124c810d291f
 DEPLOY_CONTROL_DAILY_RECOVERY_BASE=cb1595d9bdca844d6a221d21fd3c53e6845cc4cf
 DEPLOY_CONTROL_DAILY_RECOVERY_BACKEND_RESCUE_BLOB=a4291fad8b1f36f0cbb0760f3dbca6e7603138bc
 DEPLOY_CONTROL_DAILY_RECOVERY_MIGRATE_TEST_BLOB=f62a83ce95cc768c4e888e7c576bad3bd6fdbced
@@ -305,7 +305,6 @@ deploy_control_is_reviewed_current_main_release_b_transition() {
     ops/deploy/github-production-deploy-client.sh \
     ops/deploy/github-production-deploy-client.test.sh \
     ops/deploy/production-release-b-bridge-order.test.sh \
-    ops/ingestion/source-provider-certification.json \
     "$DEPLOY_CONTROL_ROLLING_SUMMARY_RABBITMQ_TEST_PATH" | LC_ALL=C sort)
   target_delta=$(git -C "$repository" diff --name-only --no-renames \
     "$DEPLOY_CONTROL_RELEASE_B_CURRENT_MAIN" "$target" -- 2>/dev/null | \
