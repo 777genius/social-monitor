@@ -18,6 +18,7 @@ BRIDGE_BLOB=e02f7b7684f75121521065b43148708d545ab806
 BRIDGE_TARGET=05744f99b2d13e47a64a7ff12ea2ab8893f5e88a
 BRIDGE_TARGET_TREE=237c34068c057d2dfb5efaf9d606028cdaf18525
 CANONICAL_RELEASE_B2=e3b5b5d89b3586668e36f987f03672415b5a0f37
+CANONICAL_TARGET=05744f99b2d13e47a64a7ff12ea2ab8893f5e88a
 REVIEW_PARENT=187335ca1881c0974218560d6147a21bcad8aa0c
 BRIDGE_PATH=ops/deploy/deploy-control-bridge-lib.sh
 BACKEND_MARKER=09a79687e042e36d4ec9c1f33f0367527f044181
@@ -157,13 +158,20 @@ trap cleanup_fixture EXIT
 exercise_fixture_cleanup_race
 GRAPH_REPO=$FIXTURE/graph
 
-TARGET=$(git -C "$SOURCE_REPO" rev-parse HEAD)
+REVIEW_TARGET=$(git -C "$SOURCE_REPO" rev-parse HEAD)
+TARGET=$CANONICAL_TARGET
+git -C "$SOURCE_REPO" merge-base --is-ancestor "$TARGET" "$REVIEW_TARGET" || {
+  printf 'canonical Release B target %s is not an ancestor of review target %s\n' \
+    "$TARGET" "$REVIEW_TARGET" >&2
+  exit 1
+}
 git -c gc.autoDetach=false clone -q --shared "$SOURCE_REPO" "$GRAPH_REPO"
 configure_fixture_repository "$GRAPH_REPO"
 git -C "$GRAPH_REPO" config user.name 'Release B Current Main Test'
 git -C "$GRAPH_REPO" config user.email release-b-current-main@example.invalid
 for commit in "$BASE" "$CURRENT_MAIN" "$OLD_CURRENT_MAIN" "$OLD_BRIDGE" \
-  "$OLD_TARGET" "$BRIDGE" "$BRIDGE_TARGET" "$CANONICAL_RELEASE_B2" "$TARGET"; do
+  "$OLD_TARGET" "$BRIDGE" "$BRIDGE_TARGET" "$CANONICAL_RELEASE_B2" \
+  "$TARGET" "$REVIEW_TARGET"; do
   git -C "$GRAPH_REPO" cat-file -e "$commit^{commit}"
 done
 
@@ -212,7 +220,7 @@ inherited_path=ops/ingestion/source-provider-certification.json
 
 # The requested target is distinct and must retain the reviewed target on its
 # first-parent history; its later ordinary-controller delta is not bridge policy.
-git -C "$GRAPH_REPO" rev-list --first-parent "$TARGET" | \
+git -C "$GRAPH_REPO" rev-list --first-parent "$REVIEW_TARGET" | \
   grep -Fx "$BRIDGE_TARGET" >/dev/null
 expected_review_delta=$(printf '%s\n' \
   .github/workflows/production-deploy.yml \
@@ -222,7 +230,7 @@ expected_review_delta=$(printf '%s\n' \
   ops/deploy/production-release-b-bridge-order.test.sh \
   ops/deploy/rabbitmq-quorum-deploy-bridge-transition.test.sh | LC_ALL=C sort)
 actual_review_delta=$(git -C "$GRAPH_REPO" diff --name-only --no-renames \
-  "$REVIEW_PARENT" "$TARGET" | LC_ALL=C sort)
+  "$REVIEW_PARENT" "$REVIEW_TARGET" | LC_ALL=C sort)
 [[ $actual_review_delta == "$expected_review_delta" ]]
 
 # Exercise the bridge acceptance policy against the real graph and negative
@@ -477,13 +485,13 @@ assert_review_patch_component_classification() (
   export SOCIAL_MONITOR_DEPLOY_PROJECT=release-b-review-classification-test
   # shellcheck source=ops/deploy/social-monitor-production-deploy.sh
   source "$GRAPH_REPO/ops/deploy/social-monitor-production-deploy.sh"
-  if component_changed frontend "$TARGET" "${FRONTEND_PATHS[@]}"; then
+  if component_changed frontend "$REVIEW_TARGET" "${FRONTEND_PATHS[@]}"; then
     fail 'final review patch was frontend classified'
   fi
-  if component_changed backend "$TARGET" "${BACKEND_PATHS[@]}"; then
+  if component_changed backend "$REVIEW_TARGET" "${BACKEND_PATHS[@]}"; then
     fail 'final review patch was backend classified'
   fi
-  component_changed control "$TARGET" "${CONTROL_PATHS[@]}" ||
+  component_changed control "$REVIEW_TARGET" "${CONTROL_PATHS[@]}" ||
     fail 'final review patch was not control classified'
 )
 
@@ -523,12 +531,12 @@ run_actual_controller "$repaired_repo" "$repaired_root" \
 run_actual_controller "$repaired_repo" "$repaired_root" \
   "$BRIDGE_TARGET" "$BRIDGE" "$repaired_events" false >/dev/null
 [[ $(git -C "$repaired_repo" rev-parse HEAD) == "$BRIDGE_TARGET" ]]
-# The requested descendant carries the newer-main frontend and backend deltas;
-# run_actual_controller derives and verifies that both markers advance.
+# Replaying the canonical target from its exact commit has no component delta;
+# run_actual_controller derives and verifies that markers do not advance.
 run_actual_controller "$repaired_repo" "$repaired_root" \
-  "$TARGET" "$BRIDGE_TARGET" "$repaired_events" true true >/dev/null
+  "$TARGET" "$BRIDGE_TARGET" "$repaired_events" false false >/dev/null
 [[ $(git -C "$repaired_repo" rev-parse HEAD) == "$TARGET" ]]
-[[ $(<"$repaired_state/backend.sha") == "$TARGET" ]]
+[[ $(<"$repaired_state/backend.sha") == "$BRIDGE_TARGET" ]]
 [[ $(<"$repaired_state/control.sha") == "$TARGET" ]]
 [[ $(<"$repaired_state/postgres-pool-bootstrap.sha") == "$TARGET" ]]
 
@@ -544,12 +552,12 @@ done
 run_actual_controller "$advanced_repo" "$advanced_root" \
   "$BRIDGE_TARGET" "$CURRENT_MAIN" "$FIXTURE/advanced/events" false >/dev/null
 [[ $(git -C "$advanced_repo" rev-parse HEAD) == "$BRIDGE_TARGET" ]]
-# The descendant has real frontend and backend deltas from the reviewed target;
-# run_actual_controller derives and verifies that both markers advance.
+# Replaying the canonical target after the current-main fast-forward keeps the
+# newer component markers while the controller remains on the reviewed target.
 run_actual_controller "$advanced_repo" "$advanced_root" \
-  "$TARGET" "$BRIDGE_TARGET" "$FIXTURE/advanced/events" true true >/dev/null
+  "$TARGET" "$BRIDGE_TARGET" "$FIXTURE/advanced/events" false false >/dev/null
 [[ $(git -C "$advanced_repo" rev-parse HEAD) == "$TARGET" ]]
-[[ $(<"$advanced_state/backend.sha") == "$TARGET" ]]
+[[ $(<"$advanced_state/backend.sha") == "$CURRENT_MAIN" ]]
 [[ $(<"$advanced_state/control.sha") == "$TARGET" ]]
 [[ $(<"$advanced_state/postgres-pool-bootstrap.sha") == "$TARGET" ]]
 
