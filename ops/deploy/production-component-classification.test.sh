@@ -76,6 +76,19 @@ mapfile -t unrelated_services < <(
 [[ ${unrelated_services[*]} == daily-runner ]]
 
 git -C "$REPO" checkout -q main
+mkdir -p "$REPO/ops/deploy/production-runtime"
+printf '#!/bin/sh\n' > \
+  "$REPO/ops/deploy/production-runtime/rolling-summary-container-run.sh"
+git -C "$REPO" add ops/deploy/production-runtime/rolling-summary-container-run.sh
+git -C "$REPO" commit -qm rolling-container-runner
+ROLLING_CONTAINER_RUNNER=$(git -C "$REPO" rev-parse HEAD)
+component_changed backend "$ROLLING_CONTAINER_RUNNER" "${BACKEND_PATHS[@]}"
+mapfile -t rolling_container_services < <(
+  backend_services "$LIBS_ADJACENT" "$ROLLING_CONTAINER_RUNNER"
+)
+[[ ${rolling_container_services[*]} == daily-runner ]]
+
+git -C "$REPO" checkout -q main
 mkdir -p "$REPO/scripts"
 printf 'export {};\n' > \
   "$REPO/scripts/check-feed-promotion-index-recovery.ts"

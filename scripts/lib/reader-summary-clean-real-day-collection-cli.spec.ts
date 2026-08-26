@@ -20,7 +20,7 @@ describe("clean real-day collection CLI", () => {
     expect(cli.exactDateArtifact).toBe(false);
   });
 
-  it("binds scheduled collection output to the requested date without maintenance scope", () => {
+  it("binds scheduled collection output to the production scope and requested date", () => {
     const cli = withArgs(
       [
         "--update",
@@ -28,6 +28,7 @@ describe("clean real-day collection CLI", () => {
         "2026-08-25",
         "--exact-date-artifact-directory",
         "/durable/rolling-summary/collections",
+        "--production-scheduled-scope",
       ],
       () => readCli(),
     );
@@ -36,7 +37,17 @@ describe("clean real-day collection CLI", () => {
       "/durable/rolling-summary/collections/reader-summary-clean-real-day-collection.2026-08-25.v1.json",
     );
     expect(cli.exactDateArtifact).toBe(true);
-    expect(cli.maintenanceScope).toBeUndefined();
+    expect(cli.maintenanceScope).toEqual(readerSummaryProductionHistoryScope);
+    expect(cli.targetDiscoveryScopeValues).toEqual([
+      readerSummaryProductionHistoryScope.tenantId,
+      readerSummaryProductionHistoryScope.workspaceId,
+    ]);
+  });
+
+  it("rejects an unscoped production scheduled flag", () => {
+    expect(() =>
+      withArgs(["--update", "--production-scheduled-scope"], () => readCli()),
+    ).toThrow("requires update and an exact date artifact directory");
   });
 
   it("requires the canonical scope and exact per-day artifact for bounded maintenance", () => {
