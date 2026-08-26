@@ -98,7 +98,7 @@ assert_real_bridge_target_assets() {
     case $path in
       ops/deploy/social-monitor-production-deploy.sh)
         expected_digest=ac82c9cfebf88646e9cdc21dcb822c8cc50409832da24a726cd9307cc2be8bcb
-        alternate_digest=d57866ed7cedfca383188173121c3cb550ec6b7dc909601d813353a0cd394bbf
+        alternate_digest=101b80c5c0ee6ea5ff4e908e5661a7c2bbd03ad2048fb7eb8b5d26966b0e4860
         ;;
       ops/deploy/deploy-control-lib.sh)
         expected_digest=d18854822ef36d5571289e72c7691fff8db4a7d5c516787441a733d6960a88a9
@@ -141,6 +141,14 @@ assert_real_bridge_target_assets() {
       }
       [[ $(grep -Fxc "  ':(exclude)libs/contracts/rest/openapi.snapshot.json'" "$actual_real") == 1 ]] || {
         echo 'OpenAPI snapshot backend-classification exception is not exact' >&2
+        exit 1
+      }
+      [[ $(grep -Fc 'ops/deploy/production-runtime/rolling-summary-container-run.sh' "$actual_real") == 2 ]] || {
+        echo 'rolling container runner image-classification exception is not exact' >&2
+        exit 1
+      }
+      [[ $(grep -Fc 'ops/deploy/production-runtime/rolling-summary-receipt.mjs' "$actual_real") == 3 ]] || {
+        echo 'rolling receipt image/runtime-classification exception is not exact' >&2
         exit 1
       }
     fi

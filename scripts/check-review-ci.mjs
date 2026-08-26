@@ -11,6 +11,10 @@ const subscriptionRuntimeAuthPoolE2eCommand =
   "node --test apps/agent-runtime/bin/codex-auth-pool-manifest.test.mjs apps/agent-runtime/bin/codex-auth-pool-routing.test.mjs apps/agent-runtime/bin/subscription-runtime-auth-pool.e2e.test.mjs apps/agent-runtime/bin/subscription-runtime-purpose-model-policy.test.mjs";
 const dailyCursorPostgres18Command =
   "node scripts/run-with-timeout.mjs --timeout-ms 180000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-reader-summary-daily-execution-cursor-postgres.ts";
+const rollingReceiptTest =
+  "node ops/deploy/production-runtime/rolling-summary-receipt.test.mjs";
+const rollingRunTest =
+  "bash ops/deploy/production-runtime/rolling-run.test.sh";
 
 if (
   packageJson.scripts?.["check:subscription-runtime-auth-pool-e2e"] !==
@@ -19,6 +23,18 @@ if (
   violations.push(
     "package.json: subscription runtime auth-pool e2e must enumerate only the reviewed deterministic sandbox tests",
   );
+}
+for (const command of [rollingReceiptTest, rollingRunTest]) {
+  if (
+    !packageJson.scripts?.["check:production-deploy-lifecycle"]?.includes(
+      command,
+    ) ||
+    !productionWorkflow.includes(command)
+  ) {
+    violations.push(
+      `production rolling contract test must run in lifecycle script and workflow: ${command}`,
+    );
+  }
 }
 if (
   packageJson.scripts?.["check:reader-summary-daily-execution-cursor-postgres18"] !==

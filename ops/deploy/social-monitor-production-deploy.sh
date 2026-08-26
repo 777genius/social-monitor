@@ -83,6 +83,8 @@ BACKEND_PATHS=(
   apps/event-relay
   apps/x-collector
   ops/deploy/production-runtime/x-collector.Dockerfile
+  ops/deploy/production-runtime/rolling-summary-container-run.sh
+  ops/deploy/production-runtime/rolling-summary-receipt.mjs
   apps/social-research-runtime
   apps/social-research-grpc
   apps/social-research-mcp
@@ -592,7 +594,10 @@ backend_services() {
       services+=(migrate)
     fi
     if changed_between "$from" "$to" scripts/check-feed-promotion-index-recovery.ts; then services+=(migrate); fi
-    if changed_between "$from" "$to" scripts ops/evals test; then
+    if changed_between "$from" "$to" \
+      scripts ops/evals test \
+      ops/deploy/production-runtime/rolling-summary-container-run.sh \
+      ops/deploy/production-runtime/rolling-summary-receipt.mjs; then
       services+=(daily-runner)
     fi
     if changed_between "$from" "$to" ops/observability; then services+=(otel-collector); fi
