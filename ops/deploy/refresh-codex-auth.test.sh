@@ -165,7 +165,23 @@ if [[ -n ${SOCIAL_MONITOR_TEST_FLOCK_LOG:-} ]]; then
 fi
 exec "${SOCIAL_MONITOR_TEST_SYSTEM_FLOCK:?}" "$@"
 SH
-chmod 0755 "$BIN/subscription-runtime-codex-goal" "$BIN/codex" "$BIN/flock"
+cat > "$BIN/rm" <<'SH'
+#!/usr/bin/env bash
+recursive=false
+for argument in "$@"; do
+  case "$argument" in
+    --recursive | -*r* | -*R*) recursive=true ;;
+  esac
+done
+if [[ $recursive == true ]]; then
+  for argument in "$@"; do
+    [[ $argument != "$SOCIAL_MONITOR_AUTH_POOL_SNAPSHOT_ROOT"/* ]] || exit 72
+  done
+fi
+exec /bin/rm "$@"
+SH
+chmod 0755 "$BIN/subscription-runtime-codex-goal" "$BIN/codex" "$BIN/flock" \
+  "$BIN/rm"
 
 run_refresh() {
 PATH="$BIN:$PATH" \
