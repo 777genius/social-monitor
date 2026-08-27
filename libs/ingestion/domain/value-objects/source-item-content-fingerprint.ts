@@ -2,6 +2,10 @@ import { createHash } from "node:crypto";
 
 import type { SourceItemProps } from "../entities/source-item";
 import {
+  GITHUB_TRENDING_PAGE_PROVIDER_KEY,
+  parseGitHubTrendingPageRepositoryMetadata,
+} from "./github-trending-page";
+import {
   buildSourceEngagementMetrics,
   sourceMetadataWithoutEngagementAndVolatileProvenance,
 } from "./source-engagement-metrics";
@@ -25,6 +29,14 @@ export const sourceItemProviderContentHash = (params: {
   readonly providerKey: string;
   readonly snapshot: SourceItemProps;
 }): string => {
+  if (params.providerKey === GITHUB_TRENDING_PAGE_PROVIDER_KEY) {
+    const metadata = parseGitHubTrendingPageRepositoryMetadata(
+      params.snapshot.metadata,
+    );
+    if (metadata !== null) {
+      return metadata.trending.snapshotContentHash;
+    }
+  }
   const engagement = buildSourceEngagementMetrics({
     providerKey: params.providerKey,
     metadata: params.snapshot.metadata,

@@ -305,7 +305,7 @@ describe("PrismaReaderSummaryArtifactRepository", () => {
     ).toMatchObject({ githubProjectionAudit });
     expect(
       githubProjectionAudit.bindings.map((binding) => binding.rank),
-    ).toEqual([1, 2, 3]);
+    ).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
     expect(
       new Set(
         githubProjectionAudit.bindings.map((binding) => binding.scanJobId),
@@ -770,7 +770,7 @@ const verifiedGitHubProjectionAudit =
       warningThresholdMs: 240_000,
       qualitySignal: "within_grace",
     },
-    bindings: Array.from({ length: 3 }, (_, index) => {
+    bindings: Array.from({ length: 10 }, (_, index) => {
       const rank = index + 1;
       return {
         selectedPostIndex: index,

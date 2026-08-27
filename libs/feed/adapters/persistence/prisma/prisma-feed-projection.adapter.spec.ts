@@ -374,6 +374,7 @@ const githubProjectionSourceItem = (
         scanJobId: "scan-github-race",
         fetchStartedAt: new Date("2026-07-16T07:58:00.000Z"),
         checkedAt,
+        snapshotContentHash: "b".repeat(64),
         source: "fixture_github_trending_html",
       },
     }),

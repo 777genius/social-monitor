@@ -7,7 +7,6 @@ import { normalizeGitHubRepositoryFullName } from "../value-objects/github-repos
 import {
   githubTrendingNarrativeSectionId,
   githubTrendingProviderKey,
-  maxGitHubTrendingHighlights,
   maxGitHubTrendingDisplayRepositories,
 } from "./reader-summary-github-trending-policy";
 import {
@@ -326,7 +325,7 @@ export const readerSummaryHasVerifiedGitHubProjection = (params: {
     !exactIsoInstant(params.audit.observedThrough) ||
     !Number.isFinite(observedThrough.getTime()) ||
     projectionCheckedAt.getTime() > observedThrough.getTime() ||
-    params.audit.bindings.length > maxGitHubTrendingHighlights
+    params.audit.bindings.length !== maxGitHubTrendingDisplayRepositories
   ) {
     return false;
   }
