@@ -317,6 +317,12 @@ function assertRlsMigration() {
     if (serviceBlock === undefined || !serviceBlock.includes('SYSTEM_DATABASE_URL')) {
       violations.push(`${productionRuntimeComposePath}: ${service} must use SYSTEM_DATABASE_URL`);
     }
+    if (
+      service === 'daily-runner' &&
+      !serviceBlock?.includes('POSTGRES_RUNTIME_POOL_CONNECTION_TIMEOUT_MS: "30000"')
+    ) {
+      violations.push(`${productionRuntimeComposePath}: daily-runner must tolerate 30s PostgreSQL admission latency`);
+    }
   }
   const apiBlock = productionRuntimeComposeWithSentinel.match(
     /^ {2}api:\n([\s\S]*?)(?=^ {2}[a-z_][a-z0-9_-]*:)/m,
