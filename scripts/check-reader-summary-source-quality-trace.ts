@@ -7,7 +7,11 @@ import { defaultPostgresRuntimePoolConfig } from "@social-monitor/platform-persi
 import { PrismaFeedConnection } from "../libs/feed/adapters/persistence/prisma/prisma-feed-connection";
 import { PrismaFeedItemReadRepository } from "../libs/feed/adapters/persistence/prisma/prisma-feed-item-read.repository";
 import { InMemoryUserRelevanceProfileRepository } from "../libs/relevance/adapters/persistence/in-memory-user-relevance-profile.repository";
-import { SourceContentQualityPolicy } from "../libs/relevance/domain";
+import {
+  SourceContentQualityPolicy,
+  SourceContentSafetyPolicy,
+} from "../libs/relevance/domain";
+import { promotionSafeProviderMetadata } from "../libs/relevance/features/rank-feed-items/rank-feed-item-projection";
 import { hasReaderSummaryEvidenceHardBlock } from "../libs/summary/domain/policies/reader-summary-evidence-eligibility-policy";
 import { RankFeedItemsUseCase } from "../libs/relevance/features/rank-feed-items/rank-feed-items.use-case";
 import { readerSummaryArtifactFromPrisma } from "../libs/summary/adapters/persistence/prisma/prisma-reader-summary-records";
@@ -532,19 +536,29 @@ function buildLaneTrace(params: {
   readonly topReadFeedItemIds: ReadonlySet<string>;
 }): LaneTrace {
   const qualityPolicy = new SourceContentQualityPolicy();
+  const safetyPolicy = new SourceContentSafetyPolicy();
   const descriptor = laneDescriptor(
     params.providerKey,
     params.items[0]?.providerMetadata,
   );
   const itemTraces = params.items.map((item) => {
     const ranked = params.rankedById.get(item.id);
-    const verdict = qualityPolicy.evaluate({
+    const safety = safetyPolicy.evaluate({
       providerKey: item.providerKey,
       title: item.title,
       bodyPreview: item.bodyPreview ?? undefined,
       canonicalUrl: item.canonicalUrl,
+    });
+    const verdict = qualityPolicy.evaluate({
+      providerKey: item.providerKey,
+      title: safety.sanitizedTitle,
+      bodyPreview: safety.sanitizedBodyPreview,
+      canonicalUrl: safety.sanitizedCanonicalUrl ?? item.canonicalUrl,
       authorHandle: item.authorHandle ?? undefined,
-      providerMetadata: asJsonObject(item.providerMetadata),
+      providerMetadata: promotionSafeProviderMetadata(
+        item.providerKey,
+        asJsonObject(item.providerMetadata),
+      ),
     });
     const selected = params.selectedFeedItemIds.has(item.id);
     const topRead = params.topReadFeedItemIds.has(item.id);
