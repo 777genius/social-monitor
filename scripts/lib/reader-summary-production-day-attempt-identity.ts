@@ -33,7 +33,7 @@ export type ReaderSummaryProductionDayAttemptIdentityInput = Readonly<{
 // semantics change. A production-day retry must not silently reuse an artifact
 // produced under an older publication policy.
 export const readerSummaryProductionDayArtifactPolicyVersion =
-  "reader_summary.artifact_policy.v3";
+  "reader_summary.artifact_policy.v4";
 
 export const readerSummaryProductionDayAttemptIdentity = (
   input: ReaderSummaryProductionDayAttemptIdentityInput,

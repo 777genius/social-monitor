@@ -58,6 +58,9 @@ const isLowInformationReaderTitle = (value: string): boolean => {
       normalized,
     ) ||
     /^(?:good|great|nice) work(?: [\p{L}\p{N}]+){0,3}$/u.test(normalized) ||
+    /^(?:this|that|it) is (?:awesome|amazing|great|nice)(?: marketing| work)?$/u.test(
+      normalized,
+    ) ||
     /\bmegathread\b/u.test(normalized)
   );
 };

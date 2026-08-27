@@ -116,6 +116,60 @@ describe("admitReaderPostPromotionEvidence supplemental appendix", () => {
       "OpenAI introduced a lower-cost business plan for teams with a two-seat minimum",
     );
   });
+
+  it("replaces an unrenderable lead with the next reader-facing candidate", () => {
+    const fixture = fixtureSelection();
+    const primary = fixture.selectedEvidence[0]!;
+    const unrenderable = {
+      ...primary,
+      feedItemId: "reddit:unrenderable",
+      sourceItemId: "reddit:unrenderable",
+      providerKey: "reddit",
+      canonicalUrl: "https://reddit.com/r/openai/unrenderable",
+      title: "Nice Work OpenAI",
+      bodyPreview: "I was just vibe coding as usual and wanted to share this.",
+      score: 10,
+      promotionFacts: {
+        ...primary.promotionFacts!,
+        canonicalIdentity: "story:unrenderable",
+        metrics: { provider: "reddit", score: 500 },
+      },
+    } satisfies SummaryEvidenceItem;
+    const evidence = [unrenderable, ...fixture.selectedEvidence];
+    const projection = buildReaderPostPromotionProjection({
+      evidence,
+      clusters: [
+        {
+          ...fixture.clusters[0]!,
+          id: "cluster:unrenderable",
+          storyKey: "reddit:unrenderable",
+          representativeFeedItemId: unrenderable.feedItemId,
+          providerKeys: ["reddit"],
+          score: unrenderable.score,
+        },
+        ...fixture.clusters,
+      ],
+      sourceWindow: fixture.sourceWindow,
+      citations: evidence.map((item) => ({
+        citationId: `citation:${item.feedItemId}`,
+        feedItemId: item.feedItemId,
+        sourceItemId: item.sourceItemId,
+        providerKey: item.providerKey,
+        field: "canonicalUrl" as const,
+        canonicalUrl: item.canonicalUrl,
+      })),
+    });
+
+    expect(projection.topReads.map((item) => item.title)).toContain(
+      "Agent release reaches developers",
+    );
+    expect(projection.topReads.map((item) => item.promotionCandidateId))
+      .not.toContain(unrenderable.feedItemId);
+    expect(projection.evaluatedEvidence).toContainEqual({
+      candidateId: unrenderable.feedItemId,
+      decision: "reject",
+    });
+  });
 });
 
 const fixtureSelection = (): SummaryEvidenceSelection => {
