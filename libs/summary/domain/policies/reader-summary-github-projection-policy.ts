@@ -30,6 +30,7 @@ import {
   supplementalNarrativeFindings,
 } from "./reader-summary-github-projection-set";
 import { maxGitHubTrendingDisplayRepositories } from "./reader-summary-github-trending-policy";
+import { ordinaryNoSignalGitHubProjectionEvaluation } from "./reader-summary-github-projection-no-signal";
 
 export { githubProjectionItemTouchesDay } from "./reader-summary-github-projection-candidates";
 
@@ -118,11 +119,9 @@ export const evaluateReaderSummaryGitHubProjection = (params: {
     snapshot.period.endedAt,
     snapshot.period.timezone,
   );
-  const eligibleBindingIds = [
-    ...unique(
-      params.eligibleBindingIds.filter((bindingId) => nonEmpty(bindingId)),
-    ),
-  ].sort();
+  const eligibleBindingIds = unique(
+    params.eligibleBindingIds.filter((bindingId) => nonEmpty(bindingId)),
+  ).sort();
   if (day === undefined) {
     return rejectedEvaluation({
       artifact: params.artifact,
@@ -136,6 +135,12 @@ export const evaluateReaderSummaryGitHubProjection = (params: {
             "GitHub Top 10 publication requires one exact UTC calendar day.",
         },
       ],
+    });
+  }
+  if (ordinaryNoSignal) {
+    return ordinaryNoSignalGitHubProjectionEvaluation({
+      requestedUtcDay: day.day,
+      pageCount: params.pageCount,
     });
   }
 
@@ -475,7 +480,7 @@ const baseAudit = (params: {
   reasons: params.reasons ?? [],
 });
 
-const unique = <TValue>(values: readonly TValue[]): readonly TValue[] => [
+const unique = <TValue>(values: readonly TValue[]): TValue[] => [
   ...new Set(values),
 ];
 

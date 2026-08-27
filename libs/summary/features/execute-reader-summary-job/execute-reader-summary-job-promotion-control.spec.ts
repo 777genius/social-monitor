@@ -69,18 +69,22 @@ describe("ExecuteReaderSummaryJobUseCase promotion controls", () => {
         value: { status: withPrimary ? "completed" : "no_signal" },
       });
       const published = scenario.artifacts.all()[0]?.toSnapshot();
-      expect(published?.content?.narrativeSections).toContainEqual(
-        expect.objectContaining({
-          id: "github-trending",
-          citationIds: withPrimary
-            ? ["github-citation-1", "github-citation-2", "github-citation-3"]
-            : [
-                "supplemental:1:github-feed-1",
-                "supplemental:2:github-feed-2",
-                "supplemental:3:github-feed-3",
-              ],
-        }),
-      );
+      if (withPrimary) {
+        expect(published?.content?.narrativeSections).toContainEqual(
+          expect.objectContaining({
+            id: "github-trending",
+            citationIds: [
+              "github-citation-1",
+              "github-citation-2",
+              "github-citation-3",
+            ],
+          }),
+        );
+      } else {
+        expect(published?.citationMap).toEqual([]);
+        expect(published?.content?.narrativeSections).toEqual([]);
+        expect(published?.content?.selectedPosts).toEqual([]);
+      }
       expect(scenario.artifacts.decisions()[0]?.status).toBe("published");
     },
   );
