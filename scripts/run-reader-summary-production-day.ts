@@ -168,10 +168,11 @@ async function main(): Promise<void> {
         })
       : null;
   const historicalCollection = allowHistoricalProviderCollection
-    ? productionHistoryCollection({
-        directory: process.env.READER_SUMMARY_PRODUCTION_HISTORY_COLLECTION_DIR,
-        collectionDate,
-      })
+      ? productionHistoryCollection({
+          directory: process.env.READER_SUMMARY_PRODUCTION_HISTORY_COLLECTION_DIR,
+          collectionDate,
+          evaluatedAt: startedAt,
+        })
     : null;
   if (
     historicalCollection !== null &&
