@@ -63,7 +63,7 @@ const promotionAdditionalCards = (
       additional.push(item);
       continue;
     }
-    if (item.cardKind === "supplemental_trend" && isGitHubReaderItem(item)) {
+    if (isGitHubReaderItem(item)) {
       continue;
     }
     throw new ReaderSummaryPromotionBoardMappingError();

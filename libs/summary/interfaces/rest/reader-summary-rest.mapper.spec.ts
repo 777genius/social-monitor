@@ -267,6 +267,21 @@ describe("readerSummaryArtifactViewFromReaderSummaryView", () => {
     expect(responseWithSupplementalAppendix.readerBrief.selectedPosts)
       .toEqual([]);
 
+    const responseWithLegacySupplementalAppendix =
+      readerSummaryArtifactViewFromReaderSummaryView({
+        ...readerSummaryView,
+        content: {
+          ...readerSummaryView.content,
+          selectedPosts: [{
+            ...supplementalCard,
+            providerKey: "github-trending-page",
+            storyClusterId: "supplemental:github-trending-page:legacy-feed",
+          }],
+        },
+      });
+    expect(responseWithLegacySupplementalAppendix.readerBrief.selectedPosts)
+      .toEqual([]);
+
     const persistedAttestation = readerSummaryView.promotionAttestations[0]!;
     for (const mutation of [
       { canonicalPayload: `${persistedAttestation.canonicalPayload} ` },
