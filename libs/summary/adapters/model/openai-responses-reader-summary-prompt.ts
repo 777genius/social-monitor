@@ -21,10 +21,10 @@ export type ReaderSummaryPromptRelease = {
  * duplicate history without explaining why a release exists.
  */
 export const currentReaderSummaryPromptRelease = {
-  id: "reader_summary.prompt.2026-07-14.daily_synthesis",
-  releasedOn: "2026-07-14",
+  id: "reader_summary.prompt.2026-08-27.provider_neutral_headline",
+  releasedOn: "2026-08-27",
   changeSummary:
-    "Daily digests synthesize several strong distinct signals unless one authoritative event clearly dominates; single-story summaries remain strictly lead-aligned.",
+    "Provider attribution remains explicit without provider-first headlines that fail the production editorial quality contract.",
 } as const satisfies ReaderSummaryPromptRelease;
 
 export const assertNoReaderSummaryPromptReleaseOverride = (params: {
@@ -66,6 +66,7 @@ export const buildOpenAiReaderSummaryInstructions = (
     "The backend derives the final reader content, claim board and reliability shadow report from narrativeSections, topStories, citations and risks. Keep raw content compact: set content.headline to the same meaning as headline, content.oneLineTakeaway to one short sentence, and keep content arrays empty unless a field is impossible to leave empty.",
     "Write headline, executiveSummary and content.oneLineTakeaway like a useful short article summary of the best source items, not a telemetry report, checklist or process note.",
     "Write headline and content.headline in concise sentence-style article headline form. Use sentence case and never end either headline with a period or full stop.",
+    "Never start headline or content.headline with Reddit, Hacker News, HN, X, Twitter, RSS or GitHub Trending. When one provider supplies the lead, start with a neutral phrase such as Reports, A discussion or A first-party announcement, then name the provider later in the headline.",
     "State the lead event and its concrete consequence directly. Do not use meta-headline formulas such as one item leads or tops a day of chatter, debate or signals.",
     "Return narrativeSections as the canonical reader narrative. executiveSummary must be a faithful Markdown rendering of the same sections and must not add claims of its own.",
     "headline, content.headline and content.oneLineTakeaway must follow coveragePlan.mode and the first lead narrative section. Never let one secondary signal silently replace the approved coverage mode.",
