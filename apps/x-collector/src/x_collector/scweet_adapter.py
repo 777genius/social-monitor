@@ -889,7 +889,40 @@ def content_kind_from_scweet_record(record: Mapping[str, Any]) -> XPostContentKi
         return XPostContentKind.ORIGINAL
     if "replying_to" in record and not record.get("replying_to"):
         return XPostContentKind.ORIGINAL
-    return XPostContentKind.UNKNOWN
+    return content_kind_from_scweet_raw(record.get("raw"))
+
+
+def content_kind_from_scweet_raw(value: Any) -> XPostContentKind:
+    raw = read_mapping(value)
+    tweet = read_mapping(raw.get("tweet")) or raw
+    legacy = read_mapping(tweet.get("legacy"))
+    if not legacy:
+        return XPostContentKind.UNKNOWN
+
+    reply_fields = (
+        "in_reply_to_status_id",
+        "in_reply_to_status_id_str",
+    )
+    if any(read_string(legacy.get(field)) is not None for field in reply_fields):
+        return XPostContentKind.REPLY
+
+    quoted = tweet.get("quoted_status_result")
+    if (isinstance(quoted, Mapping) and bool(quoted)) or (
+        legacy.get("is_quote_status") is True
+    ):
+        return XPostContentKind.QUOTE
+
+    retweeted = legacy.get("retweeted_status_result")
+    if isinstance(retweeted, Mapping) and bool(retweeted):
+        return XPostContentKind.UNKNOWN
+
+    has_explicit_reply_state = any(field in legacy for field in reply_fields)
+    has_explicit_quote_state = legacy.get("is_quote_status") is False
+    return (
+        XPostContentKind.ORIGINAL
+        if has_explicit_reply_state and has_explicit_quote_state
+        else XPostContentKind.UNKNOWN
+    )
 
 
 def eligibility_metrics_state(
