@@ -1,9 +1,10 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, lstatSync, readFileSync } from 'node:fs';
 
 const policyPath = 'ops/security/container-release-policy.json';
 const packagePath = 'package.json';
 const policy = JSON.parse(readFileSync(policyPath, 'utf8'));
 const packageJson = JSON.parse(readFileSync(packagePath, 'utf8'));
+const pullRequestWorkflow = readFileSync('.github/workflows/pull-request.yml', 'utf8');
 const violations = [];
 
 if (policy.schemaVersion !== 1) {
@@ -40,6 +41,53 @@ if (npmCiIndex === -1 || nodeEnvIndex === -1 || buildIndex === -1) {
   violations.push(
     `${policy.dockerfile}: NODE_ENV=production must be set after npm ci/build because MVP runtime uses ts-node and Prisma CLI`,
   );
+}
+
+const instructions = dockerInstructions(dockerfile);
+const compiledBuildIndex = instructions.findIndex(({ opcode, arguments: args }) =>
+  opcode === 'RUN' && args.includes('npm run build'));
+const scriptsCopies = instructions
+  .map((instruction, index) => ({ ...instruction, index }))
+  .filter(({ opcode, arguments: args }) =>
+    opcode === 'COPY' && args.replaceAll(/\s+/gu, ' ').trim() === 'scripts ./scripts');
+const runtimeUserIndex = instructions.findIndex(({ opcode, arguments: args }) =>
+  opcode === 'USER' && args === 'node');
+if (scriptsCopies.length !== 1 || compiledBuildIndex === -1 ||
+    scriptsCopies[0].index <= compiledBuildIndex ||
+    runtimeUserIndex === -1 || scriptsCopies[0].index >= runtimeUserIndex) {
+  violations.push(
+    `${policy.dockerfile}: scripts must be copied exactly once after compilation and before USER node`,
+  );
+}
+
+const recoveryPath = 'scripts/check-feed-promotion-index-recovery.ts';
+if (!existsSync(recoveryPath) || !lstatSync(recoveryPath).isFile() ||
+    (lstatSync(recoveryPath).mode & 0o444) === 0) {
+  violations.push(`${recoveryPath}: migration recovery source must be a readable regular file`);
+}
+const dockerignoreRules = dockerignore.split(/\r?\n/u)
+  .map((line) => line.trim())
+  .filter((line) => line !== '' && !line.startsWith('#') && !line.startsWith('!'));
+if (dockerignoreRules.some((rule) => [
+  'scripts', 'scripts/', 'scripts/**', '**/scripts/**', recoveryPath,
+].includes(rule))) {
+  violations.push(`${policy.dockerignore}: migration scripts must remain in the Docker build context`);
+}
+
+for (const dependency of ['ts-node', 'tsconfig-paths', 'typescript']) {
+  if (!packageJson.devDependencies?.[dependency]) {
+    violations.push(`${packagePath}: image runtime requires devDependency ${dependency}`);
+  }
+}
+if (!packageJson.dependencies?.pg) {
+  violations.push(`${packagePath}: image runtime requires dependency pg`);
+}
+if (packageJson.scripts?.['check:migration-image-runtime'] !==
+    'node scripts/check-migration-image-runtime.mjs') {
+  violations.push(`${packagePath}: migration image runtime smoke command is missing`);
+}
+if (!pullRequestWorkflow.includes('npm run check:migration-image-runtime')) {
+  violations.push('.github/workflows/pull-request.yml: migration image runtime smoke is not wired into CI');
 }
 
 for (const ignored of ['.git', 'node_modules', 'dist', 'coverage']) {
@@ -79,3 +127,20 @@ if (violations.length > 0) {
 }
 
 console.log('Container release contract OK');
+
+function dockerInstructions(source) {
+  const instructions = [];
+  let continued = '';
+  for (const rawLine of source.split(/\r?\n/u)) {
+    const line = rawLine.trim();
+    if (line === '' || line.startsWith('#')) continue;
+    continued += `${continued === '' ? '' : ' '}${line.replace(/\\$/u, '').trim()}`;
+    if (line.endsWith('\\')) continue;
+    const match = continued.match(/^([A-Z]+)\s+([\s\S]+)$/iu);
+    if (match) {
+      instructions.push({ opcode: match[1].toUpperCase(), arguments: match[2].trim() });
+    }
+    continued = '';
+  }
+  return instructions;
+}

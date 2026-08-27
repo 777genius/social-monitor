@@ -3,8 +3,10 @@
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+# shellcheck source=ops/deploy/reader-summary-publication-migrator-validation.test-support.sh
+source "$SCRIPT_DIR/reader-summary-publication-migrator-validation.test-support.sh"
 LIBRARY=$SCRIPT_DIR/reader-summary-publication-deploy-lib.sh DEPLOY_ENTRYPOINT=$SCRIPT_DIR/social-monitor-production-deploy.sh
-FIXTURE=$(mktemp -d "/tmp/publication-migrator-validation.XXXXXX")
+FIXTURE=$(mktemp -d "${TMPDIR:-/tmp}/publication-migrator-validation.XXXXXX")
 FIXTURE=$(cd "$FIXTURE" && pwd -P)
 trap 'rm -rf "$FIXTURE"' EXIT
 
@@ -51,7 +53,7 @@ TEST_COUNT=0
 
 mkdir -p "$ROOT/secrets/db" "$REPO/ops/deploy" "$STATE" "$FAKE_BIN"
 printf '%s\n' 'test-only-ca-certificate' > "$CA_CERTIFICATE"
-cp "$SCRIPT_DIR"/{deploy-control-lib.sh,deploy-control-bridge-lib.sh,postgres-runtime-deploy-lib.sh,postgres-runtime-weekly-timer-state-lib.sh,postgres-runtime-daily-c1-readiness-lib.sh,postgres-runtime-activation-boundary-lib.sh,backend-runtime-health-lib.sh,backend-image-rescue-lib.sh,x-collector-image-deploy-lib.sh,reader-summary-recovery-maintenance-lib.sh,social-monitor-production-deploy.sh,postgres-backup-deploy-lib.sh,reader-summary-publication-system-runtime-deploy-lib.sh} \
+cp "$SCRIPT_DIR"/{production-component-classification-lib.sh,deploy-control-lib.sh,deploy-control-bridge-lib.sh,postgres-runtime-deploy-lib.sh,postgres-runtime-weekly-timer-state-lib.sh,postgres-runtime-daily-c1-readiness-lib.sh,postgres-runtime-activation-boundary-lib.sh,backend-runtime-health-lib.sh,backend-image-rescue-lib.sh,x-collector-image-deploy-lib.sh,reader-summary-recovery-maintenance-lib.sh,social-monitor-production-deploy.sh,postgres-backup-deploy-lib.sh,reader-summary-publication-system-runtime-deploy-lib.sh} \
   "$REPO/ops/deploy/"
 git init -q -b main "$REPO"
 git -C "$REPO" config user.name 'Publication Migrator Validation'
@@ -348,21 +350,6 @@ write_admin_url() {
   chmod 0600 "$SECRET" 2>/dev/null || true
   printf '%s' "$value" > "$SECRET"
   chmod 0400 "$SECRET"
-}
-
-publication_url_with_password() {
-  local password=$1
-  printf '%s%s:%s@%s:25060/social_monitor?%s\n' \
-    'postgresql://' "$MIGRATOR_ROLE" "$password" "$DATABASE_HOST" \
-    'connect_timeout=10&sslmode=verify-full&sslrootcert=%2Frun%2Fsocial-monitor-db%2Fca-certificate.crt'
-}
-
-runtime_url_for() {
-  local role=$1
-  local password=$2
-  printf 'postgresql://%s:%s@%s:25060/social_monitor?%s\n' \
-    "$role" "$password" "$DATABASE_HOST" \
-    'connect_timeout=10&sslmode=verify-full&sslrootcert=%2Frun%2Fsocial-monitor-db%2Fca-certificate.crt'
 }
 
 write_production_env() {

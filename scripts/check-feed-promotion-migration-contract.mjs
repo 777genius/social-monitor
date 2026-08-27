@@ -6,6 +6,9 @@ const migration = readFileSync(migrationPath, "utf8");
 const migrationSql = withoutComments(migration);
 const schema = readFileSync("prisma/schema.prisma", "utf8");
 const workflow = readFileSync(".github/workflows/pull-request.yml", "utf8");
+const dockerfile = readFileSync("Dockerfile", "utf8");
+const dockerignore = readFileSync(".dockerignore", "utf8");
+const packageJson = JSON.parse(readFileSync("package.json", "utf8"));
 const deploy = readFileSync(
   "ops/deploy/reader-summary-publication-deploy-lib.sh",
   "utf8",
@@ -108,6 +111,36 @@ if ((!workflow.includes("check:feed-promotion-keyset-plan-postgres") &&
      !workflow.includes("check:feed-promotion-postgres18")) ||
     !workflow.includes("postgres:18.4-alpine")) {
   violations.push("required PR CI must run the native PostgreSQL promotion plan gate");
+}
+const dockerSteps = dockerInstructions(dockerfile);
+const buildStep = dockerSteps.findIndex(({ opcode, args }) =>
+  opcode === "RUN" && args.includes("npm run build"));
+const scriptsSteps = dockerSteps
+  .map((step, index) => ({ ...step, index }))
+  .filter(({ opcode, args }) =>
+    opcode === "COPY" && args.replaceAll(/\s+/gu, " ").trim() ===
+      "scripts ./scripts");
+const nodeUserStep = dockerSteps.findIndex(({ opcode, args }) =>
+  opcode === "USER" && args === "node");
+const ignoredBuildInputs = dockerignore.split(/\r?\n/u)
+  .map((line) => line.trim())
+  .filter((line) => line !== "" && !line.startsWith("#") &&
+    !line.startsWith("!"));
+if (scriptsSteps.length !== 1 || buildStep === -1 ||
+    scriptsSteps[0].index <= buildStep || nodeUserStep === -1 ||
+    scriptsSteps[0].index >= nodeUserStep ||
+    ignoredBuildInputs.some((rule) => [
+      "scripts", "scripts/", "scripts/**", "**/scripts/**",
+      "scripts/check-feed-promotion-index-recovery.ts",
+    ].includes(rule)) ||
+    !packageJson.dependencies?.pg ||
+    !packageJson.devDependencies?.["ts-node"] ||
+    !packageJson.devDependencies?.["tsconfig-paths"] ||
+    !recovery.includes("if (require.main === module)") ||
+    !workflow.includes("npm run check:migration-image-runtime")) {
+  violations.push(
+    "feed promotion migration image must package a loadable recovery script and prove it in container CI",
+  );
 }
 if (!deploy.includes("check:feed-promotion-index-recovery -- inspect") ||
     !deploy.includes("check:feed-promotion-index-recovery -- recover") ||
@@ -235,4 +268,23 @@ function functionBody(source, name) {
   return source.match(
     new RegExp(`const\\s+${escaped}\\s*=\\s*\\([^)]*\\)[^{=]*=>\\s*\\{([\\s\\S]*?)\\n\\};`, "u"),
   )?.[1] ?? "";
+}
+
+function dockerInstructions(source) {
+  const instructions = [];
+  let continued = "";
+  for (const rawLine of source.split(/\r?\n/u)) {
+    const line = rawLine.trim();
+    if (line === "" || line.startsWith("#")) continue;
+    continued += `${continued === "" ? "" : " "}${
+      line.replace(/\\$/u, "").trim()
+    }`;
+    if (line.endsWith("\\")) continue;
+    const match = continued.match(/^([A-Z]+)\s+([\s\S]+)$/iu);
+    if (match) {
+      instructions.push({ opcode: match[1].toUpperCase(), args: match[2].trim() });
+    }
+    continued = "";
+  }
+  return instructions;
 }

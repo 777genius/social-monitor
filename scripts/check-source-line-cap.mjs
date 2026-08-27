@@ -8,7 +8,7 @@ const sourceTestPatterns = [
   "libs/**/*.{ts,tsx,js,jsx,mjs,cjs,dart,py}",
   "test/**/*.{ts,tsx,js,jsx,mjs,cjs,dart,py}",
   "scripts/**/*.{ts,js,mjs,cjs,py}",
-  "ops/deploy/reader-summary-publication-*-lib.sh",
+  "ops/deploy/**/*.sh",
 ];
 
 const ignoredPathPatterns = [
@@ -29,6 +29,10 @@ const ignoredPathPatterns = [
 ];
 
 const legacyLineCapDebt = new Map([
+  ["ops/deploy/backend-image-rescue-lib.sh", 1005],
+  ["ops/deploy/backend-image-rescue-lib.test.sh", 1139],
+  ["ops/deploy/postgres-runtime-deploy-lib.sh", 1035],
+  ["ops/deploy/postgres-runtime-deploy-lib.test.sh", 1025],
   [
     "libs/monitoring/features/list-interest-source-daily-history/list-interest-source-daily-history.use-case.spec.ts",
     1055,

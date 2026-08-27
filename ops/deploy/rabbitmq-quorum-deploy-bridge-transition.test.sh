@@ -61,8 +61,8 @@ BRIDGE_CONTROL_PATHS=(
 )
 
 assert_real_bridge_target_assets() {
-  local path entry mode type object tree_path expected_digest alternate_digest reviewed_digest actual_digest actual_mode
-  local repository_root actual_path actual_real
+  local path entry mode type object tree_path expected_digest alternate_digest reviewed_digest phase_c_digest actual_digest actual_mode
+  local repository_root actual_path actual_real classification_source
 
   repository_root=$(readlink -f -- "$PROJECT_ROOT")
   for path in "${BRIDGE_CONTROL_PATHS[@]}"; do
@@ -91,11 +91,13 @@ assert_real_bridge_target_assets() {
     expected_digest=$(git -C "$PROJECT_ROOT" show "$BRIDGE_RELEASE_SHA:$path" | sha256sum | awk '{print $1}')
     alternate_digest=
     reviewed_digest=
+    phase_c_digest=
     actual_digest=$(sha256sum "$actual_real" | awk '{print $1}')
     case $path in
       ops/deploy/social-monitor-production-deploy.sh)
         expected_digest=e76db96e9cc7bdb62cb09a3be509a7776e09a0499ff41a0d3769d8b499bde04f
         alternate_digest=ac82c9cfebf88646e9cdc21dcb822c8cc50409832da24a726cd9307cc2be8bcb
+        phase_c_digest=c6127ca94ac89f38e00bff7cf2600ef0a03fe55fa5509d8e2b6f63e4dca0a2a1
         ;;
       ops/deploy/deploy-control-lib.sh)
         expected_digest=d18854822ef36d5571289e72c7691fff8db4a7d5c516787441a733d6960a88a9
@@ -122,7 +124,14 @@ assert_real_bridge_target_assets() {
         echo 'production C1 preimage dispatch exception is not exact' >&2
         exit 1
       }
-      [[ $(grep -Fxc '  ops/deploy/production-runtime/reader-summary-daily-c1.readiness' "$actual_real") == 1 ]] || {
+      classification_source=$PROJECT_ROOT/ops/deploy/production-component-classification-lib.sh
+      [[ -f $classification_source && ! -L $classification_source &&
+         $(sha256sum "$classification_source" | awk '{ print $1 }') == \
+           47b350232765eb9f3b4883fba9117f1b159ee46a17a585891fecb28c1951e4fa ]] || {
+        echo 'production component classification split is not exact' >&2
+        exit 1
+      }
+      [[ $(grep -Fxc '  ops/deploy/production-runtime/reader-summary-daily-c1.readiness' "$classification_source") == 1 ]] || {
         echo 'production C1 readiness asset exception is not exact' >&2
         exit 1
       }
@@ -134,13 +143,14 @@ assert_real_bridge_target_assets() {
         echo 'production fail-closed allowlist exception is not exact' >&2
         exit 1
       }
-      [[ $(grep -Fxc "  ':(exclude)libs/contracts/rest/openapi.snapshot.json'" "$actual_real") == 1 ]] || {
+      [[ $(grep -Fxc "  ':(exclude)libs/contracts/rest/openapi.snapshot.json'" "$classification_source") == 1 ]] || {
         echo 'OpenAPI snapshot backend-classification exception is not exact' >&2
         exit 1
       }
     fi
     [[ $actual_digest == "$expected_digest" ||
        (-n $alternate_digest && $actual_digest == "$alternate_digest") ||
+       (-n $phase_c_digest && $actual_digest == "$phase_c_digest") ||
        (-n $reviewed_digest && $actual_digest == "$reviewed_digest") ]] || {
       printf 'current bridge asset digest drifted from V4A4: %s\n' "$path" >&2
       exit 1
@@ -432,7 +442,7 @@ assert_bridge_backend_rejection() {
 }
 
 backend_path_block=$(sed -n '/^BACKEND_PATHS=(/,/^)/p' \
-  "$SCRIPT_DIR/social-monitor-production-deploy.sh")
+  "$SCRIPT_DIR/production-component-classification-lib.sh")
 assert_real_bridge_target_assets
 grep -Fx "  $HEALTH_LIBRARY" <<< "$backend_path_block" >/dev/null
 grep -Fx "  $QUORUM_SCRIPT" <<< "$backend_path_block" >/dev/null

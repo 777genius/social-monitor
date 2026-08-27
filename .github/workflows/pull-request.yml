@@ -292,6 +292,7 @@ jobs:
         run: |
           set -euo pipefail
           npm run check:container
+          npm run check:migration-image-runtime
           npm run check:runtime-compose
           npm run check:production-deploy-lifecycle
 

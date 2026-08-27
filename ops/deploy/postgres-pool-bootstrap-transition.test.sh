@@ -3,6 +3,8 @@ set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 PROJECT_ROOT=$(cd "$SCRIPT_DIR/../.." && pwd)
+# shellcheck source=ops/deploy/postgres-pool-bootstrap-transition.test-support.sh
+source "$SCRIPT_DIR/postgres-pool-bootstrap-transition.test-support.sh"
 BASE=$(
   python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["adoptionBaseCommit"])' \
     "$SCRIPT_DIR/postgres-pool-release-contract.json"
@@ -12,29 +14,7 @@ FIXTURE=$(mktemp -d "${TMPDIR:-/tmp}/postgres-pool-bootstrap-transition.XXXXXX")
 trap 'rm -rf "$FIXTURE"' EXIT
 
 TEST_PHASE=fixture-setup
-report_error() {
-  local status=$1
-  local line=$2
-  local command=$3
-  printf 'bootstrap-transition-error: phase=%s line=%s status=%s command=%q\n' \
-    "$TEST_PHASE" "$line" "$status" "$command" >&2
-}
 trap 'report_error "$?" "$LINENO" "$BASH_COMMAND"' ERR
-
-write_target_quorum_health_fixture() {
-  local repository=$1
-  local script=$repository/ops/deploy/rabbitmq-quorum-health.sh
-  local recovery_script=$repository/ops/deploy/rabbitmq-quorum-recovery.sh
-
-  printf '%s\n' \
-    '#!/usr/bin/env bash' \
-    'rabbitmq_quorum_health_probe() { :; }' > "$script"
-  chmod 0755 "$script"
-  printf '%s\n' \
-    '#!/usr/bin/env bash' \
-    'rabbitmq_quorum_recovery_probe() { :; }' > "$recovery_script"
-  chmod 0755 "$recovery_script"
-}
 
 REPO=$FIXTURE/repo
 ORIGIN=$FIXTURE/origin.git
@@ -450,6 +430,7 @@ STALE_CONTROL_SHA=$(git -C "$REPO" rev-parse HEAD)
 git -C "$REPO" diff --name-only "$BASE_SHA" "$STALE_CONTROL_SHA" -- \
   | grep -Fx 'apps/api-gateway/stale-control-gap.txt' >/dev/null
 cp "$PROJECT_ROOT/ops/deploy/social-monitor-production-deploy.sh" \
+  "$PROJECT_ROOT/ops/deploy/production-component-classification-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/deploy-control-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/deploy-control-bridge-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/postgres-runtime-deploy-lib.sh" \
@@ -941,6 +922,7 @@ git -C "$REPO" checkout -q main
 
 git -C "$REPO" checkout -qb non-ancestor-current "$TARGET_SHA"
 cp "$PROJECT_ROOT/ops/deploy/social-monitor-production-deploy.sh" \
+  "$PROJECT_ROOT/ops/deploy/production-component-classification-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/deploy-control-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/deploy-control-bridge-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/postgres-runtime-deploy-lib.sh" \

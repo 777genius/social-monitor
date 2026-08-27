@@ -21,7 +21,8 @@ install -d "$REPO/apps/frontend" "$REPO/apps/api-gateway" \
   "$REPO/apps/x-collector" "$REPO/ops/deploy" "$REPO/ops/recovery" \
   "$REPO/prisma/migrations"/{20260716170000_reader_summary_fail_closed_publication,20260731153000_reader_summary_production_recovery_original_cutoff_authority} \
   "$STATE" "$STAGING"
-cp "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh" "$REPO/ops/deploy/"
+cp "$SCRIPT_DIR"/{production-component-classification-lib.sh,postgres-runtime-deploy-lib.sh} \
+  "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR"/postgres-runtime-{weekly-timer-state,daily-c1-readiness,activation-boundary}-lib.sh \
   "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/deploy-control-lib.sh" "$SCRIPT_DIR/deploy-control-bridge-lib.sh" "$REPO/ops/deploy/"
@@ -841,7 +842,7 @@ grep -F 'social-monitor-github-premidnight-capture-v1.timer' \
   "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh" >/dev/null
 grep -F 'DropInPaths' "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh" >/dev/null
 grep -F 'social-monitor-github-premidnight-capture-v1.timer' \
-  "$ENTRYPOINT" >/dev/null
+  "$SCRIPT_DIR/production-component-classification-lib.sh" >/dev/null
 grep -F 'dailyTimerOwner' \
   "$SCRIPT_DIR/postgres-pool-release-contract.json" >/dev/null
 bash "$SCRIPT_DIR/production-runtime/daily-runtime-contract.test.sh"

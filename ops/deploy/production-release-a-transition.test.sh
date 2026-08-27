@@ -49,7 +49,8 @@ for path in \
   ops/deploy/production-runtime/reader-summary-daily-c1.readiness \
   ops/deploy/production-runtime/social-monitor-daily.timer; do
   [[ $(grep -Fxc "  $path" "$TRANSITION") == 1 ]]
-  grep -F " $path" "$SCRIPT_DIR/social-monitor-production-deploy.sh" >/dev/null
+  grep -F " $path" \
+    "$SCRIPT_DIR/production-component-classification-lib.sh" >/dev/null
 done
 TARGET=$(printf 'test: target descendant\n' |
   git commit-tree "$(git rev-parse "$FIXED_B2^{tree}")" -p "$FIXED_B2")
