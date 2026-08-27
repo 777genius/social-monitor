@@ -8,6 +8,10 @@ import {
   type ReaderPostPromotionInput,
   type ReaderPostPromotionResult,
 } from "./reader-post-promotion-policy";
+import {
+  topReadPrimaryMinimumForLimit,
+  topReadProviderCapForLimit,
+} from "./top-read-provider-diversity-policy";
 
 export type SelectedReaderPostPromotion = {
   readonly policyVersion: typeof READER_POST_PROMOTION_POLICY_VERSION;
@@ -79,9 +83,24 @@ export const selectReaderPostPromotions = (
     left: EvaluatedCandidate,
     right: EvaluatedCandidate,
   ): number => compareCandidates(left, right);
-  const top = diverseCapped(canonicalRepresentatives
+  const topCandidates = canonicalRepresentatives
     .filter(({ evaluation }) => evaluation.decision === "promote_top")
-    .sort(compareWithSupport), READER_POST_PROMOTION_POLICY_V1.maxTop);
+    .sort(compareWithSupport);
+  const topProviderCount = new Set(topCandidates.flatMap(({ input }) => {
+    const provider = readerPostProviderFamily(input.provider);
+    return provider === undefined ? [] : [provider];
+  })).size;
+  const top = diverseCapped(
+    topCandidates,
+    READER_POST_PROMOTION_POLICY_V1.maxTop,
+    topReadProviderCapForLimit({
+      limit: promotionRankingAuditLimit,
+      activeProviderCount: topProviderCount,
+      primaryMinimum: topReadPrimaryMinimumForLimit(
+        promotionRankingAuditLimit,
+      ),
+    }),
+  );
   const additional = diverseCapped(canonicalRepresentatives
     .filter(({ evaluation }) => evaluation.decision === "promote_additional")
     .sort(compareWithSupport), READER_POST_PROMOTION_POLICY_V1.maxAdditional);
@@ -186,6 +205,7 @@ const semanticClusterSupport = (params: {
 const diverseCapped = (
   sorted: readonly EvaluatedCandidate[],
   cap: number,
+  providerCap = cap,
 ): readonly EvaluatedCandidate[] => {
   const selected: EvaluatedCandidate[] = [];
   const selectedIds = new Set<string>();
@@ -200,11 +220,25 @@ const diverseCapped = (
   }
   for (const candidate of sorted) {
     if (selectedIds.has(candidate.input.candidateId)) continue;
+    const provider = readerPostProviderFamily(candidate.input.provider);
+    if (provider === undefined) continue;
+    const providerCount = selected.reduce(
+      (count, selectedCandidate) =>
+        readerPostProviderFamily(selectedCandidate.input.provider) === provider
+          ? count + 1
+          : count,
+      0,
+    );
+    if (providerCount >= providerCap) continue;
     selected.push(candidate);
     if (selected.length === cap) break;
   }
   return selected;
 };
+
+// The production ranking audit evaluates the reader surface against a
+// ten-slot editorial window, even though promotion v1 exposes at most eight.
+const promotionRankingAuditLimit = 10;
 
 const uniqueInputs = (
   inputs: readonly ReaderPostPromotionInput[],

@@ -14,6 +14,8 @@ import {
   sameOrderedStrings,
 } from "./reader-summary-rest-attestation";
 import type { ReaderSummaryCitationView } from "./reader-summary-rest.view";
+import { isGitHubReaderItem } from
+  "../../domain/policies/reader-summary-github-projection-audit";
 
 export type ReaderSummaryPromotionBoardRestView = Readonly<{
   topReads: readonly ReaderSummaryReaderItemDto[];
@@ -33,7 +35,8 @@ export const readerSummaryPromotionBoardRestView = (
   if (legacyPromotionBoardUnavailable) {
     return { topReads: [], selectedPosts: [] };
   }
-  const authority = buildReaderCardRestAuthority(view);
+  const additionalCards = promotionAdditionalCards(view);
+  const authority = buildReaderCardRestAuthority(view, additionalCards);
   if (authority === undefined) {
     throw new ReaderSummaryPromotionBoardMappingError();
   }
@@ -44,11 +47,28 @@ export const readerSummaryPromotionBoardRestView = (
       "top",
     ),
     selectedPosts: readerSummaryReaderItemsView(
-      view.content.selectedPosts ?? [],
+      additionalCards,
       authority,
       "additional",
     ),
   };
+};
+
+const promotionAdditionalCards = (
+  view: ReaderSummaryArtifactView,
+): readonly ReaderSummaryArtifactView["content"]["topReads"][number][] => {
+  const additional = [];
+  for (const item of view.content.selectedPosts ?? []) {
+    if (item.cardKind === "additional_notable_story") {
+      additional.push(item);
+      continue;
+    }
+    if (item.cardKind === "supplemental_trend" && isGitHubReaderItem(item)) {
+      continue;
+    }
+    throw new ReaderSummaryPromotionBoardMappingError();
+  }
+  return additional;
 };
 
 const isLegacyPromotionBoardUnavailable = (
@@ -169,6 +189,7 @@ type ReaderCardRestAuthority = Readonly<{
 
 const buildReaderCardRestAuthority = (
   view: ReaderSummaryArtifactView,
+  additionalCards: readonly ReaderSummaryArtifactView["content"]["topReads"][number][],
 ): ReaderCardRestAuthority | undefined => {
   try {
     const clusterById = new Map(view.storyClusters.map((cluster) => [cluster.id, cluster]));
@@ -191,7 +212,6 @@ const buildReaderCardRestAuthority = (
       (attestation) => [attestation.candidateId, attestation] as const,
     ));
     const topCards = view.content.topReads;
-    const additionalCards = view.content.selectedPosts ?? [];
     if (topCards.length > 8 || additionalCards.length > 8) return undefined;
     const promotionCards = [...topCards, ...additionalCards];
     const promotionCandidateIds = promotionCards.map((item) =>

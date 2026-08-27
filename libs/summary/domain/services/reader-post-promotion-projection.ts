@@ -23,6 +23,7 @@ import { readerSummaryIndependentProviderFamily } from
   "../value-objects/reader-summary-provider-identity";
 import { compactUnique } from "../value-objects/summary-text";
 import { buildMatchedRules } from "./reader-summary-source-lineage";
+import { evidenceReaderTitle } from "./reader-summary-top-read-title";
 import {
   buildReaderPostPromotionAttestations,
   type ReaderPostPromotionAttestationBinding,
@@ -299,7 +300,7 @@ const promotedPost = (params: {
     promotionTier: params.cardKind === "curated_top_read" ? "top" : "additional",
     promotionCandidateId: params.selected.candidate.candidateId,
     promotionCanonicalIdentity: params.selected.candidate.canonicalIdentity,
-    title: lead.title,
+    title: evidenceReaderTitle(lead),
     providerKey: lead.providerKey,
     providerName: lead.providerName ?? lead.providerKey,
     primaryActionKind: lead.readerActionKind ?? "read_source",

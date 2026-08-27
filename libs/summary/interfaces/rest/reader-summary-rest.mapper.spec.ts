@@ -238,6 +238,35 @@ describe("readerSummaryArtifactViewFromReaderSummaryView", () => {
     );
     expect(response.readerBrief.topReads[0]).not.toHaveProperty("cardKind");
 
+    const {
+      promotionMarker: ignoredPromotionMarker,
+      promotionPolicyVersion: ignoredPromotionPolicyVersion,
+      promotionTier: ignoredPromotionTier,
+      promotionCandidateId: ignoredPromotionCandidateId,
+      promotionCanonicalIdentity: ignoredPromotionCanonicalIdentity,
+      ...supplementalCard
+    } = readerSummaryView.content.topReads[0]!;
+    void ignoredPromotionMarker;
+    void ignoredPromotionPolicyVersion;
+    void ignoredPromotionTier;
+    void ignoredPromotionCandidateId;
+    void ignoredPromotionCanonicalIdentity;
+    const responseWithSupplementalAppendix =
+      readerSummaryArtifactViewFromReaderSummaryView({
+        ...readerSummaryView,
+        content: {
+          ...readerSummaryView.content,
+          selectedPosts: [{
+            ...supplementalCard,
+            cardKind: "supplemental_trend",
+            providerKey: "github-trending-page",
+            storyClusterId: "supplemental:github-trending-page:feed-extra",
+          }],
+        },
+      });
+    expect(responseWithSupplementalAppendix.readerBrief.selectedPosts)
+      .toEqual([]);
+
     const persistedAttestation = readerSummaryView.promotionAttestations[0]!;
     for (const mutation of [
       { canonicalPayload: `${persistedAttestation.canonicalPayload} ` },
