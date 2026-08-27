@@ -8,6 +8,7 @@ import type { JsonObject } from "@social-monitor/shared-kernel";
 import { readerSummaryArtifactFromPrisma } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-records";
 import { presentReaderSummaryArtifact } from "@social-monitor/summary/features/shared/reader-summary-artifact-presenter";
 import type { ReaderSummaryFreshness } from "@social-monitor/summary/ports";
+import { readerSummaryPromotionBoardRestView } from "@social-monitor/summary/interfaces/rest/reader-summary-promotion-board-rest.mapper";
 
 import {
   collectionDateOptionOrDefault,
@@ -107,6 +108,7 @@ type ArtifactQualityReport = {
     readonly selectedPostDuplicateCanonicalUrlCount: number;
     readonly selectedPostsRepresentTopReadPreview: boolean;
     readonly selectedPostsRepresentDedupedSelectedEvidence: boolean;
+    readonly promotionBoardMatchesAttestedEvidence: boolean;
     readonly selectedPostsMismatchDocumented: boolean;
   };
   readonly summaryStructure: {
@@ -283,13 +285,20 @@ async function buildReport(): Promise<ArtifactQualityReport> {
     const view = presentReaderSummaryArtifact(artifact, freshness, {
       collectedCoverage,
     });
+    const promotionBoard = readerSummaryPromotionBoardRestView(view);
+    const promotedFeedItemIds = uniqueStrings(
+      view.promotionAttestations.flatMap((attestation) => [
+        attestation.candidateId,
+        ...attestation.supportFacts.map((fact) => fact.candidateId),
+      ]),
+    );
     const selectedFeedItemProvenance =
       await artifactStore.readSelectedFeedItemProvenance({
         ...artifactScope,
-        feedItemIds: view.sourceWindow.selectedFeedItemIds,
+        feedItemIds: promotedFeedItemIds,
       });
     const selectedFeedItemScopeEvidence = {
-      selectedFeedItemIds: view.sourceWindow.selectedFeedItemIds,
+      selectedFeedItemIds: promotedFeedItemIds,
       feedItems: selectedFeedItemProvenance,
       scope: {
         tenantId: record.tenantId,
@@ -303,13 +312,13 @@ async function buildReport(): Promise<ArtifactQualityReport> {
       view.citations.map((item) => [item.citationId, item] as const),
     );
     const citationIds = new Set(view.citations.map((item) => item.citationId));
-    const selectedPosts = content.selectedPosts;
-    const topReads = content.topReads;
+    const selectedPosts = promotionBoard.selectedPosts;
+    const topReads = promotionBoard.topReads;
     const topReadCitationFeedItemIds = uniqueStrings(
       topReads.flatMap((read) =>
-        read.citationIds
-          .map((citationId) => citationById.get(citationId)?.feedItemId)
-          .filter((value): value is string => value !== undefined),
+        read.promotionAttestation === undefined
+          ? []
+          : [read.promotionAttestation.candidateId],
       ),
     );
     const topReadFeedItems = await artifactStore.readFeedItemsByIds({
@@ -342,13 +351,13 @@ async function buildReport(): Promise<ArtifactQualityReport> {
       selectedPosts.length > 0 &&
       selectedPosts.length <= coverage.selectedFeedItemCount &&
       selectedPosts.every(hasCanonicalUrl) &&
-      selectedPostDuplicateCanonicalUrlCount === 0 &&
-      coverage.citationCount === coverage.selectedFeedItemCount;
+      selectedPostDuplicateCanonicalUrlCount === 0;
+    const promotionBoardMatchesAttestedEvidence =
+      topReads.length + selectedPosts.length ===
+        view.promotionAttestations.length &&
+      promotedFeedItemIds.length === coverage.selectedFeedItemCount;
     const selectedPostsMismatchDocumented =
-      selectedPosts.length === coverage.selectedFeedItemCount ||
-      selectedPostsRepresentTopReadPreview ||
-      selectedPostsRepresentDedupedSelectedEvidence ||
-      reliabilityMentionsDedupeOrFilter(content.reliabilityReport);
+      promotionBoardMatchesAttestedEvidence;
     const userFacingTechnicalLeaks = collectUserFacingTechnicalLeaks(content);
     const uiPayloadTechnicalTagCount = countUiPayloadTechnicalTags([
       ...topReads,
@@ -492,6 +501,7 @@ async function buildReport(): Promise<ArtifactQualityReport> {
         selectedPostDuplicateCanonicalUrlCount,
         selectedPostsRepresentTopReadPreview,
         selectedPostsRepresentDedupedSelectedEvidence,
+        promotionBoardMatchesAttestedEvidence,
         selectedPostsMismatchDocumented,
       },
       summaryStructure: {
@@ -523,9 +533,8 @@ async function buildReport(): Promise<ArtifactQualityReport> {
           latestVisible.periodKey === dailyPeriodKey(collectionDate),
         artifactStatusIsVisible:
           record.status === "COMPLETED" || record.status === "NO_SIGNAL",
-        coverageSelectedMatchesSourceWindow:
-          coverage.selectedFeedItemCount ===
-          view.sourceWindow.selectedFeedItemIds.length,
+        coverageSelectedMatchesPromotionAttestations:
+          coverage.selectedFeedItemCount === promotedFeedItemIds.length,
         selectedFeedItemProvenanceMatchesArtifactScope:
           selectedFeedItemProvenanceMatchesScope(
             selectedFeedItemScopeEvidence,
@@ -603,6 +612,7 @@ async function buildReport(): Promise<ArtifactQualityReport> {
           selectedPosts.length < coverage.selectedFeedItemCount,
         selectedPostsRepresentTopReadPreview,
         selectedPostsRepresentDedupedSelectedEvidence,
+        promotionBoardMatchesAttestedEvidence,
         crossSourceEvidencePresent: coverage.crossSourceClusterCount > 0,
         historicalLatestVisibleGateBypassed: allowHistorical,
         dirtyCollectionAllowedForInspection:
@@ -690,6 +700,9 @@ function primarySourceCounts(
 
 function buildTopReadSourceQuality(params: {
   readonly topReads: readonly {
+    readonly promotionAttestation?: {
+      readonly candidateId: string;
+    };
     readonly citationIds: readonly string[];
   }[];
   readonly citationById: ReadonlyMap<
@@ -705,46 +718,42 @@ function buildTopReadSourceQuality(params: {
   const feedItemById = new Map(
     params.feedItems.map((item) => [item.id, item] as const),
   );
-  const rows = params.topReads.flatMap((read) =>
-    read.citationIds
-      .map((citationId) => {
-        const citation = params.citationById.get(citationId);
-        const feedItem =
-          citation === undefined
-            ? undefined
-            : feedItemById.get(citation.feedItemId);
-        if (citation === undefined || feedItem === undefined) {
-          return undefined;
-        }
+  const rows = params.topReads.flatMap((read) => {
+    const candidateId = read.promotionAttestation?.candidateId;
+    if (candidateId === undefined) {
+      return [];
+    }
+    const citation = read.citationIds
+      .map((citationId) => params.citationById.get(citationId))
+      .find((item) => item?.feedItemId === candidateId);
+    const feedItem = feedItemById.get(candidateId);
+    if (citation === undefined || feedItem === undefined) {
+      return [];
+    }
 
-        const verdict = qualityPolicy.evaluate({
-          providerKey: feedItem.providerKey,
-          title: feedItem.title,
-          bodyPreview: feedItem.bodyPreview ?? undefined,
-          canonicalUrl: feedItem.canonicalUrl,
-          authorHandle: feedItem.authorHandle ?? undefined,
-          providerMetadata: asJsonObject(feedItem.providerMetadata),
-        });
+    const verdict = qualityPolicy.evaluate({
+      providerKey: feedItem.providerKey,
+      title: feedItem.title,
+      bodyPreview: feedItem.bodyPreview ?? undefined,
+      canonicalUrl: feedItem.canonicalUrl,
+      authorHandle: feedItem.authorHandle ?? undefined,
+      providerMetadata: asJsonObject(feedItem.providerMetadata),
+    });
 
-        return {
-          citationFingerprint: fingerprint(citation.citationId),
-          feedItemFingerprint: fingerprint(citation.feedItemId),
-          providerKey: feedItem.providerKey,
-          decision: verdict.decision,
-          eligibleForSummary: verdict.eligibleForSummary,
-          eligibleForTopRead: verdict.eligibleForTopRead,
-          qualityScore: verdict.qualityScore,
-          interestRelevanceScore: verdict.interestRelevanceScore,
-          engagementIntegrityScore: verdict.engagementIntegrityScore,
-          flags: verdict.flags,
-        };
-      })
-      .filter((item): item is NonNullable<typeof item> => item !== undefined),
-  );
-  const topReadCitationFeedItemCount = params.topReads.reduce(
-    (count, read) => count + read.citationIds.length,
-    0,
-  );
+    return [{
+      citationFingerprint: fingerprint(citation.citationId),
+      feedItemFingerprint: fingerprint(citation.feedItemId),
+      providerKey: feedItem.providerKey,
+      decision: verdict.decision,
+      eligibleForSummary: verdict.eligibleForSummary,
+      eligibleForTopRead: verdict.eligibleForTopRead,
+      qualityScore: verdict.qualityScore,
+      interestRelevanceScore: verdict.interestRelevanceScore,
+      engagementIntegrityScore: verdict.engagementIntegrityScore,
+      flags: verdict.flags,
+    }];
+  });
+  const topReadCitationFeedItemCount = params.topReads.length;
 
   return {
     topReadCitationFeedItemCount,
@@ -775,19 +784,6 @@ function uniqueStrings(values: readonly string[]): readonly string[] {
 
 function hasCanonicalUrl(item: { readonly canonicalUrl?: string }): boolean {
   return /^https?:\/\//i.test(item.canonicalUrl?.trim() ?? "");
-}
-
-function reliabilityMentionsDedupeOrFilter(value: {
-  readonly risks: readonly {
-    readonly kind: string;
-    readonly description: string;
-  }[];
-}): boolean {
-  return value.risks.some((risk) =>
-    /\b(duplicate|dedupe|filter|collapse)\b/i.test(
-      `${risk.kind} ${risk.description}`,
-    ),
-  );
 }
 
 function collectUserFacingTechnicalLeaks(content: {

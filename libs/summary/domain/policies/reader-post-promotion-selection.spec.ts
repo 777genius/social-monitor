@@ -480,9 +480,13 @@ describe("reader post promotion selection", () => {
 
       const selected = selectReaderPostPromotions([...x, alternative])[lane];
 
-      expect(selected).toHaveLength(8);
+      expect(selected).toHaveLength(lane === "top" ? 7 : 8);
       expect(selected.map((item) => item.candidate.candidateId))
         .toContain(`${lane}-reddit-alternative`);
+      if (lane === "top") {
+        expect(selected.filter((item) => item.candidate.provider === "x"))
+          .toHaveLength(6);
+      }
       expect(selectReaderPostPromotions([alternative, ...x])[lane])
         .toEqual(selected);
     },

@@ -45,10 +45,9 @@ export const isPrimaryReaderSummaryArticleProvider = (
 const isSupplementalReaderSummaryProvider = (providerKey: string): boolean =>
   normalizedProviderKey(providerKey) === "github-trending-page";
 
-// The source window is the full scoped selection. The provider breakdown is
-// the source-mix projection: unique primary feed items grouped by provider.
-// Reader selectedPosts are identity-deduped and supplemental-display-capped,
-// so they are intentionally not evidence for this invariant.
+// Promotion attestations are the selected coverage authority. Citations may
+// additionally include a separately verified supplemental appendix, so only
+// citations bound to promoted feed items participate in this invariant.
 export const selectedCoverageMatchesProviderBreakdown = (
   coverage: {
     readonly selectedFeedItemCount: number;
@@ -228,7 +227,7 @@ const selectedCitationProviders = (
   for (const citation of citations) {
     const feedItemId = citation.feedItemId.trim();
     if (!selectedFeedItemIds.has(feedItemId)) {
-      return undefined;
+      continue;
     }
     const providerKey = normalizedProviderKey(citation.providerKey);
     const current = providerByFeedItemId.get(feedItemId);

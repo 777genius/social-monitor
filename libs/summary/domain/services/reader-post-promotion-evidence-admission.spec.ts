@@ -1,6 +1,8 @@
 import { buildReaderSummary } from "../aggregates/reader-summary";
 import { admitReaderPostPromotionEvidence } from
   "./reader-post-promotion-evidence-admission";
+import { buildReaderPostPromotionProjection } from
+  "./reader-post-promotion-projection";
 import type { SummaryEvidenceItem, SummaryEvidenceSelection } from
   "../value-objects/summary-evidence-item";
 
@@ -57,6 +59,31 @@ describe("admitReaderPostPromotionEvidence supplemental appendix", () => {
         citationIds: ["citation:github"],
       }),
     ]);
+  });
+
+  it("publishes a reader-facing title instead of provider boilerplate", () => {
+    const fixture = fixtureSelection();
+    const evidence = fixture.selectedEvidence.map((item) =>
+      item.feedItemId === "hn:top"
+        ? { ...item, title: "X post by @builder: Agent release reaches developers" }
+        : item,
+    );
+    const projection = buildReaderPostPromotionProjection({
+      evidence,
+      clusters: fixture.clusters,
+      sourceWindow: fixture.sourceWindow,
+      citations: evidence.map((item) => ({
+        citationId: `citation:${item.feedItemId}`,
+        feedItemId: item.feedItemId,
+        sourceItemId: item.sourceItemId,
+        providerKey: item.providerKey,
+        field: "canonicalUrl" as const,
+        canonicalUrl: item.canonicalUrl,
+      })),
+    });
+
+    expect(projection.topReads[0]?.title)
+      .toBe("Agent release reaches developers");
   });
 });
 
