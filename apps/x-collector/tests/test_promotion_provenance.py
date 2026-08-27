@@ -33,6 +33,61 @@ def test_content_provenance_is_explicit_and_unknown_fails_closed() -> None:
     )
 
 
+def test_content_provenance_reads_scweet_53_raw_legacy() -> None:
+    original = {
+        "raw": {
+            "tweet": {
+                "legacy": {
+                    "in_reply_to_status_id_str": None,
+                    "is_quote_status": False,
+                },
+            },
+        },
+    }
+    reply = {
+        "raw": {
+            "legacy": {
+                "in_reply_to_status_id_str": "1956000000000000001",
+                "is_quote_status": False,
+            },
+        },
+    }
+    quote = {
+        "raw": {
+            "legacy": {
+                "in_reply_to_status_id_str": None,
+                "is_quote_status": True,
+            },
+        },
+    }
+    retweet = {
+        "raw": {
+            "legacy": {
+                "in_reply_to_status_id_str": None,
+                "is_quote_status": False,
+                "retweeted_status_result": {"result": {"rest_id": "1"}},
+            },
+        },
+    }
+
+    assert content_kind_from_scweet_record(original) is XPostContentKind.ORIGINAL
+    assert content_kind_from_scweet_record(reply) is XPostContentKind.REPLY
+    assert content_kind_from_scweet_record(quote) is XPostContentKind.QUOTE
+    assert content_kind_from_scweet_record(retweet) is XPostContentKind.UNKNOWN
+
+
+def test_content_provenance_requires_explicit_raw_originality_fields() -> None:
+    assert content_kind_from_scweet_record({"raw": {"legacy": {}}}) is (
+        XPostContentKind.UNKNOWN
+    )
+    assert content_kind_from_scweet_record({
+        "raw": {"legacy": {"in_reply_to_status_id_str": None}},
+    }) is XPostContentKind.UNKNOWN
+    assert content_kind_from_scweet_record({
+        "raw": {"legacy": {"is_quote_status": False}},
+    }) is XPostContentKind.UNKNOWN
+
+
 def test_required_metric_presence_is_not_defaulted_to_zero() -> None:
     assert eligibility_metrics_state(((None, None), (10, 10))) is (
         XEligibilityMetricsState.MISSING
