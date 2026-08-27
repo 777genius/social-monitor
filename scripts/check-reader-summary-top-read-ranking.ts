@@ -23,7 +23,7 @@ import {
   presentReaderSummaryArtifact,
   readerSummaryContentForArtifact,
 } from "@social-monitor/summary/features/shared/reader-summary-artifact-presenter";
-import { readerSummaryProviderIdentity } from "@social-monitor/summary/domain/value-objects/reader-summary-provider-identity";
+import { readerSummaryIndependentProviderFamily } from "@social-monitor/summary/domain/value-objects/reader-summary-provider-identity";
 
 import {
   collectionDateOptionOrDefault,
@@ -238,7 +238,7 @@ async function buildReportFromDatabase(
     const citationProviderById = new Map(
       view.citations.map((citation) => [
         citation.citationId,
-        readerSummaryProviderIdentity(citation).providerKey,
+        rankingCitationProviderFamily(citation),
       ]),
     );
     const windowStart = dayStart(collectionDate);
@@ -553,6 +553,11 @@ const defaultAtomicReportOperations: AtomicTopReadRankingReportOperations = {
     renameSync(sourcePath, targetPath),
   removeFile: (path) => rmSync(path, { force: true }),
 };
+
+export const rankingCitationProviderFamily = (citation: {
+  readonly providerKey: string;
+  readonly canonicalUrl?: string;
+}): string => readerSummaryIndependentProviderFamily(citation);
 
 function rounded(value: number): number {
   return Number(value.toFixed(3));
