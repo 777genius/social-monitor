@@ -701,7 +701,6 @@ function isValidSummaryResult(result) {
     isNonnegativeInteger(result.topReadCount) &&
     result.topReadCount <= result.selectedFeedItemCount &&
     isNonnegativeInteger(result.citationCount) &&
-    result.citationCount <= result.selectedFeedItemCount &&
     isNonnegativeInteger(result.providerCount) &&
     Array.isArray(result.topProviderKeys) &&
     result.topProviderKeys.length === result.providerCount &&
