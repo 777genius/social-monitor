@@ -111,7 +111,16 @@ const expectCanonicalGitHubOnlyNoSignalArticle = async (
       citationIds: ["c1", "c2", "c3"],
     }),
   ]);
-  expect(content?.selectedPosts).toEqual([]);
+  expect(content?.selectedPosts).toHaveLength(10);
+  expect(content?.selectedPosts?.map((post) => post.title)).toEqual(
+    Array.from(
+      { length: 10 },
+      (_, index) => `example/repository-${index + 1}`,
+    ),
+  );
+  expect(content?.selectedPosts?.map((post) => post.citationIds)).toEqual(
+    Array.from({ length: 10 }, (_, index) => [`c${index + 1}`]),
+  );
 
   assertReaderSummaryCitationsAgainstEvidence(attempt.draft, input.evidence);
   const artifact = ReaderSummaryArtifact.create({
