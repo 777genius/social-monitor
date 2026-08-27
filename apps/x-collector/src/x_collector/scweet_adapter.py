@@ -720,6 +720,7 @@ def run_scweet_search_pass(
         since=since,
         until=until,
         lang=request.language,
+        tweet_type="originals_only",
         display_type=scweet_display_type(search_pass.product),
         limit=search_pass.limit,
         min_likes=search_pass.min_likes,
@@ -916,11 +917,13 @@ def content_kind_from_scweet_raw(value: Any) -> XPostContentKind:
     if isinstance(retweeted, Mapping) and bool(retweeted):
         return XPostContentKind.UNKNOWN
 
-    has_explicit_reply_state = any(field in legacy for field in reply_fields)
     has_explicit_quote_state = legacy.get("is_quote_status") is False
+    has_reply_parent = any(
+        read_string(legacy.get(field)) is not None for field in reply_fields
+    )
     return (
         XPostContentKind.ORIGINAL
-        if has_explicit_reply_state and has_explicit_quote_state
+        if has_explicit_quote_state and not has_reply_parent
         else XPostContentKind.UNKNOWN
     )
 

@@ -85,7 +85,7 @@ def test_content_provenance_requires_explicit_raw_originality_fields() -> None:
     }) is XPostContentKind.UNKNOWN
     assert content_kind_from_scweet_record({
         "raw": {"legacy": {"is_quote_status": False}},
-    }) is XPostContentKind.UNKNOWN
+    }) is XPostContentKind.ORIGINAL
 
 
 def test_required_metric_presence_is_not_defaulted_to_zero() -> None:
