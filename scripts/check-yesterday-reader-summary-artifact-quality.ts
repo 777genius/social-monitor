@@ -3,7 +3,11 @@ import { dirname } from "node:path";
 
 import { Pool } from "pg";
 
-import { SourceContentQualityPolicy } from "@social-monitor/relevance/domain";
+import {
+  SourceContentQualityPolicy,
+  SourceContentSafetyPolicy,
+} from "@social-monitor/relevance/domain";
+import { promotionSafeProviderMetadata } from "@social-monitor/relevance/features/rank-feed-items/rank-feed-item-projection";
 import type { JsonObject } from "@social-monitor/shared-kernel";
 import { readerSummaryArtifactFromPrisma } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-records";
 import { presentReaderSummaryArtifact } from "@social-monitor/summary/features/shared/reader-summary-artifact-presenter";
@@ -176,6 +180,7 @@ const databaseUrl = yesterdaySocialQualityDatabaseUrl();
 const primarySources = ["reddit", "x-twitter"] as const;
 const badGamingFalsePositiveNeedle =
   "game industry is making me incredibly depressed";
+const promotionSourceTextSafetyCap = 256_000;
 
 void main();
 
@@ -715,6 +720,7 @@ function buildTopReadSourceQuality(params: {
   readonly feedItems: readonly TopReadFeedItemQualityRow[];
 }): ArtifactQualityReport["sourceQuality"] {
   const qualityPolicy = new SourceContentQualityPolicy();
+  const safetyPolicy = new SourceContentSafetyPolicy();
   const feedItemById = new Map(
     params.feedItems.map((item) => [item.id, item] as const),
   );
@@ -731,13 +737,22 @@ function buildTopReadSourceQuality(params: {
       return [];
     }
 
-    const verdict = qualityPolicy.evaluate({
+    const safety = safetyPolicy.evaluate({
       providerKey: feedItem.providerKey,
       title: feedItem.title,
-      bodyPreview: feedItem.bodyPreview ?? undefined,
+      bodyPreview: feedItem.sourceBody.slice(0, promotionSourceTextSafetyCap),
       canonicalUrl: feedItem.canonicalUrl,
+    });
+    const verdict = qualityPolicy.evaluate({
+      providerKey: feedItem.providerKey,
+      title: safety.sanitizedTitle,
+      bodyPreview: safety.sanitizedBodyPreview,
+      canonicalUrl: safety.sanitizedCanonicalUrl ?? feedItem.canonicalUrl,
       authorHandle: feedItem.authorHandle ?? undefined,
-      providerMetadata: asJsonObject(feedItem.providerMetadata),
+      providerMetadata: promotionSafeProviderMetadata(
+        feedItem.providerKey,
+        asJsonObject(feedItem.providerMetadata),
+      ),
     });
 
     return [{

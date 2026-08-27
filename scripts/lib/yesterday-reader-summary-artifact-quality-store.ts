@@ -36,6 +36,7 @@ export type TopReadFeedItemQualityRow = {
   readonly authorHandle: string | null;
   readonly title: string;
   readonly bodyPreview: string | null;
+  readonly sourceBody: string;
   readonly providerMetadata: unknown;
 };
 
@@ -295,17 +296,22 @@ export class YesterdayReaderSummaryArtifactQualityStore {
     const result = await this.pool.query<TopReadFeedItemQualityRow>(
       `
         select
-          id::text as "id",
-          provider_key as "providerKey",
-          canonical_url as "canonicalUrl",
-          author_handle as "authorHandle",
-          title,
-          body_preview as "bodyPreview",
-          provider_metadata as "providerMetadata"
-        from feed_items
-        where tenant_id = $1::uuid
-          and workspace_id = $2::uuid
-          and id = any($3::uuid[])
+          fi.id::text as "id",
+          fi.provider_key as "providerKey",
+          fi.canonical_url as "canonicalUrl",
+          fi.author_handle as "authorHandle",
+          fi.title,
+          fi.body_preview as "bodyPreview",
+          si.body as "sourceBody",
+          fi.provider_metadata as "providerMetadata"
+        from feed_items fi
+        join source_items si
+          on si.id = fi.source_item_id
+         and si.tenant_id = fi.tenant_id
+         and si.workspace_id = fi.workspace_id
+        where fi.tenant_id = $1::uuid
+          and fi.workspace_id = $2::uuid
+          and fi.id = any($3::uuid[])
       `,
       [params.tenantId, params.workspaceId, params.feedItemIds],
     );

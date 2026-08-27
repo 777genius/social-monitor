@@ -74,6 +74,47 @@ describe("reader summary top read title", () => {
     expect(title).toBe("Claude Code users question another access extension");
   });
 
+  it.each([
+    {
+      sourceTitle: "Nice Work OpenAI",
+      summary:
+        "OpenAI introduced a lower-cost business plan for teams with a two-seat minimum.",
+      expected:
+        "OpenAI introduced a lower-cost business plan for teams with a two-seat minimum",
+    },
+    {
+      sourceTitle: "I am unsure what I gave my copilot to make it hallucinate?",
+      summary:
+        "GitHub Copilot hallucinated a nonexistent package while proposing a dependency change.",
+      expected:
+        "GitHub Copilot hallucinated a nonexistent package while proposing a dependency change",
+    },
+    {
+      sourceTitle:
+        "New $100 Business Plan (2 seat minimum). They finally did it. My team just switched over. This is why 5h limits are back.",
+      summary:
+        "OpenAI's new business plan costs $100 and requires at least two seats.",
+      expected:
+        "OpenAI's new business plan costs $100 and requires at least two seats",
+    },
+  ])(
+    "derives a concrete title from evidence text for an unpolished source hook",
+    ({ sourceTitle, summary, expected }) => {
+      const title = buildTopReadTitle({
+        storyTitle: sourceTitle,
+        storySummary: summary,
+        primaryEvidence: evidence({
+          providerKey: "reddit",
+          title: sourceTitle,
+          bodyPreview: summary,
+        }),
+        evidence: [],
+      });
+
+      expect(title).toBe(expected);
+    },
+  );
+
   it("repairs an obvious agreement error in a native English title", () => {
     const title = buildTopReadTitle({
       storyTitle: "AI research productivity study",

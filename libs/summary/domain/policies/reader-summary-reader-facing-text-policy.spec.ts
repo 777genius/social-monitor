@@ -10,6 +10,7 @@ describe("reader summary reader-facing text policy", () => {
   it("rejects low-information teaser titles", () => {
     expect(isUnpolishedReaderTitle("Check this out")).toBe(true);
     expect(isUnpolishedReaderTitle("Take a look!")).toBe(true);
+    expect(isUnpolishedReaderTitle("Nice Work OpenAI")).toBe(true);
     expect(
       isUnpolishedReaderTitle(
         "Happy coding this weekend, Claude Code fans! https://t.co/example",
