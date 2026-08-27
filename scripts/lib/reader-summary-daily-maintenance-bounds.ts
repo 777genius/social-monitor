@@ -12,7 +12,7 @@ export const readerSummaryDailyJul31Aug3MaintenanceBounds: ReaderSummaryDailyMai
 export const readerSummaryProductionHistoryMaintenanceBounds: ReaderSummaryDailyMaintenanceBounds =
   Object.freeze({
     lowerInclusive: "2026-07-23",
-    upperInclusive: "2026-08-20",
+    upperInclusive: "2026-08-26",
   });
 
 export const assertReaderSummaryDailyMaintenanceBounds = (
