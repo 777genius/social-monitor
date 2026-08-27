@@ -42,9 +42,9 @@ describe("InMemoryReaderSummaryPublication", () => {
           },
         }),
       ).rejects.toThrow("idempotency conflict");
-      await expect(
-        context.artifacts.findById(fixture.identity),
-      ).resolves.toBe(fixture.command.artifact);
+      await expect(context.artifacts.findById(fixture.identity)).resolves.toBe(
+        fixture.command.artifact,
+      );
       expect(context.events.all()).toHaveLength(1);
       expect(context.jobs.all()).toHaveLength(1);
     },
@@ -69,7 +69,9 @@ describe("InMemoryReaderSummaryPublication", () => {
     await expect(context.artifacts.findById(left.identity)).resolves.toBe(
       left.command.artifact,
     );
-    await expect(context.artifacts.findById(right.identity)).resolves.toBeNull();
+    await expect(
+      context.artifacts.findById(right.identity),
+    ).resolves.toBeNull();
   });
 
   it("rejects a mismatched ready event before a candidate becomes visible", async () => {
@@ -86,7 +88,9 @@ describe("InMemoryReaderSummaryPublication", () => {
     await expect(context.publication.publish(invalid)).rejects.toThrow(
       "exact publication binding",
     );
-    await expect(context.artifacts.findById(fixture.identity)).resolves.toBeNull();
+    await expect(
+      context.artifacts.findById(fixture.identity),
+    ).resolves.toBeNull();
     expect(context.events.all()).toHaveLength(0);
   });
 
@@ -152,8 +156,7 @@ describe("InMemoryReaderSummaryPublication", () => {
         telemetry: {
           github_projection_collection_delay_ms:
             readerSummaryGitHubProjectionCollectionWarningThresholdMs,
-          collectionGraceMs:
-            readerSummaryGitHubProjectionCollectionGraceMs,
+          collectionGraceMs: readerSummaryGitHubProjectionCollectionGraceMs,
           warningThresholdMs:
             readerSummaryGitHubProjectionCollectionWarningThresholdMs,
           qualitySignal: "github_projection_collection_delay_warning",
@@ -176,7 +179,9 @@ describe("InMemoryReaderSummaryPublication", () => {
     await expect(context.publication.publish(invalid)).rejects.toThrow(
       "exact verified GitHub projection audit",
     );
-    await expect(context.artifacts.findById(fixture.identity)).resolves.toBeNull();
+    await expect(
+      context.artifacts.findById(fixture.identity),
+    ).resolves.toBeNull();
     expect(context.events.all()).toEqual([]);
     expect(context.jobs.all()).toHaveLength(1);
     expect(context.jobs.all()[0]?.toSnapshot().status).toBe("running");
@@ -232,14 +237,14 @@ const createFixture = (params: {
   const jobId = `10000000-0000-4000-8000-${suffix}`;
   const artifactId = `20000000-0000-4000-8000-${suffix}`;
   const eventId = `30000000-0000-4000-8000-${suffix}`;
-  const requestedAt = params.requestedAt ?? new Date("2026-07-05T10:00:00.000Z");
+  const requestedAt =
+    params.requestedAt ?? new Date("2026-07-05T10:00:00.000Z");
   const period = {
     cadence: "daily" as const,
     startedAt: new Date("2026-07-05T00:00:00.000Z"),
     endedAt: new Date("2026-07-06T00:00:00.000Z"),
     timezone: "UTC",
-    periodKey:
-      "daily:2026-07-05T00:00:00.000Z:2026-07-06T00:00:00.000Z:UTC",
+    periodKey: "daily:2026-07-05T00:00:00.000Z:2026-07-06T00:00:00.000Z:UTC",
   };
   const scope = { type: "workspace" as const };
   const noSignal = params.semanticStatus === "NO_SIGNAL";
@@ -432,7 +437,7 @@ const createFixture = (params: {
                 ? ("github_projection_collection_delay_warning" as const)
                 : ("within_grace" as const),
           },
-          bindings: githubCitations.slice(0, 3).map((citation, index) => {
+          bindings: githubCitations.map((citation, index) => {
             const rank = index + 1;
             return {
               selectedPostIndex: index,

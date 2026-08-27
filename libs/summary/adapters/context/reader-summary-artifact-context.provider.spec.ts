@@ -237,15 +237,12 @@ const publishContextArtifact = async (
             projectionCheckedAt: projectionCheckedAt.toISOString(),
             telemetry: {
               github_projection_collection_delay_ms: 0,
-              collectionGraceMs:
-                readerSummaryGitHubProjectionCollectionGraceMs,
+              collectionGraceMs: readerSummaryGitHubProjectionCollectionGraceMs,
               warningThresholdMs:
                 readerSummaryGitHubProjectionCollectionWarningThresholdMs,
               qualitySignal: "within_grace",
             },
-            bindings: githubContextCitations()
-              .slice(0, 3)
-              .map((citation, index) => ({
+            bindings: githubContextCitations().map((citation, index) => ({
               selectedPostIndex: index,
               rank: index + 1,
               citationId: citation.citationId,
@@ -264,7 +261,7 @@ const publishContextArtifact = async (
               observedAt: projectionCheckedAt.toISOString(),
               sourceContentHash: "a".repeat(64),
               sourceProviderContentHash: "b".repeat(64),
-              })),
+            })),
             violationCodes: [],
             reasons: [],
           },

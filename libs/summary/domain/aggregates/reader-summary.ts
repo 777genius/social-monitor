@@ -34,8 +34,7 @@ import type {
   SummaryEvidenceItem,
   SummarySourceWindow,
 } from "../value-objects/summary-evidence-item";
-import { readerSummaryIndependentProviderFamilyCount } from
-  "../value-objects/reader-summary-provider-identity";
+import { readerSummaryIndependentProviderFamilyCount } from "../value-objects/reader-summary-provider-identity";
 import type { ReaderSummaryQualityFlag } from "../value-objects/summary-quality";
 import {
   compactUnique,
@@ -53,6 +52,7 @@ import { fallbackReaderSummarySourceWindow } from "../services/reader-summary-fa
 import { buildOpenQuestions } from "./reader-summary-open-questions";
 import { buildReaderSummaryClaimBoard } from "../services/reader-summary-claim-board";
 import { buildReaderSummaryTrendDelta } from "../services/reader-summary-trend-delta";
+import { buildReaderSummarySupplementalTrendSelectedPosts } from "../services/reader-summary-supplemental-selected-posts";
 
 export type ReaderSummaryFactoryInput = {
   readonly headline: string;
@@ -87,12 +87,19 @@ export class ReaderSummary {
       evidence: primarySelectedEvidence,
       clusters: input.storyClusters,
       citations: input.citationMap,
-      sourceWindow: input.sourceWindow ??
-        fallbackReaderSummarySourceWindow(primarySelectedEvidence, input.storyClusters),
+      sourceWindow:
+        input.sourceWindow ??
+        fallbackReaderSummarySourceWindow(
+          primarySelectedEvidence,
+          input.storyClusters,
+        ),
       approvedSameStoryRelations: input.approvedSameStoryRelations,
       relatedTopicRelations: input.relatedTopicRelations,
     });
-    if (promotion.topReads.length === 0 && promotion.additionalPosts.length === 0) {
+    if (
+      promotion.topReads.length === 0 &&
+      promotion.additionalPosts.length === 0
+    ) {
       return ReaderSummary.create(buildNoSignalReaderSummary(input));
     }
     const primaryInput = {
@@ -114,7 +121,13 @@ export class ReaderSummary {
       input.qualityFlags,
       sourceMix,
     );
-    const selectedPosts = promotion.additionalPosts;
+    const selectedPosts = [
+      ...promotion.additionalPosts,
+      ...buildReaderSummarySupplementalTrendSelectedPosts({
+        selectedEvidence: input.selectedEvidence ?? [],
+        citations: input.citationMap,
+      }),
+    ];
     const headline = input.headline;
     const narrativeSections = input.narrativeSections ?? [];
     const primaryCitationMap = promotion.admittedCitations;
@@ -124,17 +137,20 @@ export class ReaderSummary {
     const admittedClusterIds = new Set(
       promotion.admittedClusters.map((cluster) => cluster.id),
     );
-    const admittedInterestHighlights = input.interestHighlights.flatMap((highlight) => {
-      const citationIds = highlight.citationIds.filter((citationId) =>
-        admittedCitationIds.has(citationId),
-      );
-      return citationIds.length === 0 ? [] : [{ ...highlight, citationIds }];
-    });
+    const admittedInterestHighlights = input.interestHighlights.flatMap(
+      (highlight) => {
+        const citationIds = highlight.citationIds.filter((citationId) =>
+          admittedCitationIds.has(citationId),
+        );
+        return citationIds.length === 0 ? [] : [{ ...highlight, citationIds }];
+      },
+    );
     const admittedRepeatedSignals = input.repeatedSignals.flatMap((signal) => {
       const citationIds = signal.citationIds.filter((citationId) =>
         admittedCitationIds.has(citationId),
       );
-      return !admittedClusterIds.has(signal.storyClusterId) || citationIds.length === 0
+      return !admittedClusterIds.has(signal.storyClusterId) ||
+        citationIds.length === 0
         ? []
         : [{ ...signal, citationIds }];
     });
@@ -145,7 +161,8 @@ export class ReaderSummary {
       return citationIds.length === 0 ? [] : [{ ...risk, citationIds }];
     });
     const primaryNarrativeSections = withoutSupplementalTrendNarrativeSections(
-      narrativeSections, input.citationMap,
+      narrativeSections,
+      input.citationMap,
     ).flatMap((section) => {
       const citationIds = section.citationIds.filter((citationId) =>
         admittedCitationIds.has(citationId),
@@ -164,8 +181,9 @@ export class ReaderSummary {
         headline,
         sourceMix,
         topReads,
-        ...(narrativeSections.some((section) =>
-          section.kind === "lead" && section.storyClusterId === undefined
+        ...(narrativeSections.some(
+          (section) =>
+            section.kind === "lead" && section.storyClusterId === undefined,
         )
           ? {
               thematicSynthesisSupport: {
@@ -182,12 +200,15 @@ export class ReaderSummary {
         topReads,
         sourceMix,
       }),
-      bullets: buildReaderSummaryBullets({
-        ...readerInput,
-        interestHighlights: admittedInterestHighlights,
-        repeatedSignals: admittedRepeatedSignals,
-        risksAndUnknowns: admittedRisks,
-      }, topReads),
+      bullets: buildReaderSummaryBullets(
+        {
+          ...readerInput,
+          interestHighlights: admittedInterestHighlights,
+          repeatedSignals: admittedRepeatedSignals,
+          risksAndUnknowns: admittedRisks,
+        },
+        topReads,
+      ),
       narrativeSections: publishedNarrativeSections,
       mainTopics: buildReaderSummaryMainTopics({
         headline,
@@ -274,6 +295,10 @@ const buildNoSignalReaderSummary = (
     evidence: input.selectedEvidence ?? [],
     citations: input.citationMap,
   });
+  const selectedPosts = buildReaderSummarySupplementalTrendSelectedPosts({
+    selectedEvidence: input.selectedEvidence ?? [],
+    citations: input.citationMap,
+  });
   return {
     headline: "No reliable workspace signal yet",
     oneLineTakeaway: reason,
@@ -295,7 +320,7 @@ const buildNoSignalReaderSummary = (
     interestSections: [],
     sourceMix: [],
     topReads: [],
-    selectedPosts: [],
+    selectedPosts,
     claimBoard: [],
     reliabilityReport: emptyReaderSummaryReliabilityReport(),
     trendDelta: {
@@ -330,7 +355,10 @@ const reliabilitySelectionFromInput = (
       input.storyClusters[0]?.rankingPolicyVersion ?? "unknown",
     sourceWindow:
       input.sourceWindow ??
-      fallbackReaderSummarySourceWindow(input.selectedEvidence, input.storyClusters),
+      fallbackReaderSummarySourceWindow(
+        input.selectedEvidence,
+        input.storyClusters,
+      ),
     clusters: input.storyClusters,
     selectedEvidence: input.selectedEvidence,
   };

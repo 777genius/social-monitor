@@ -1,22 +1,24 @@
-import type { ReaderSummaryArtifact, ReaderSummaryContent } from "../entities/reader-summary-artifact";
+import type {
+  ReaderSummaryArtifact,
+  ReaderSummaryContent,
+} from "../entities/reader-summary-artifact";
 import type { SummaryEvidenceSelection } from "../value-objects/summary-evidence-item";
 import type { ReaderSummaryCitation } from "../entities/citation";
-import { readerSummaryIndependentProviderFamilyCount } from
-  "../value-objects/reader-summary-provider-identity";
+import { readerSummaryIndependentProviderFamilyCount } from "../value-objects/reader-summary-provider-identity";
 import {
   buildReaderSummaryCoveragePlan,
   type ReaderSummaryCoveragePlan,
 } from "../services/reader-summary-coverage-plan";
 import { evaluateReaderSummaryArtifactEditorialQuality } from "./reader-summary-artifact-editorial-quality-policy";
 import { primaryReaderSummaryEvidence } from "./reader-summary-github-trending-policy";
+import { isGitHubReaderItem } from "./reader-summary-github-projection-audit";
 import type {
   ReaderSummaryPublicationDecision,
   ReaderSummaryPublicationRejectionFinding,
 } from "./reader-summary-publication-decision";
 import { publicationShadowReport } from "./reader-summary-publication-shadow";
 import { promotionPublicationFindings } from "./reader-summary-promotion-publication-verification";
-import { readerSummaryPromotionPublicationOracle } from
-  "./reader-summary-promotion-publication-oracle";
+import { readerSummaryPromotionPublicationOracle } from "./reader-summary-promotion-publication-oracle";
 
 import {
   collectReaderSummaryTechnicalLeaks,
@@ -52,7 +54,10 @@ export class ReaderSummaryPublicationPolicy {
       ),
     );
     const technicalLeaks = unique([
-      ...collectReaderSummaryTechnicalLeaks([snapshot.headline, snapshot.executiveSummary]),
+      ...collectReaderSummaryTechnicalLeaks([
+        snapshot.headline,
+        snapshot.executiveSummary,
+      ]),
       ...(snapshot.content === undefined
         ? []
         : collectReaderSummaryUserFacingTechnicalLeaks(snapshot.content)),
@@ -72,12 +77,16 @@ export class ReaderSummaryPublicationPolicy {
       approvedSameStoryRelations: params.evidence.approvedSameStoryRelations,
       relatedTopicRelations: params.evidence.relatedTopicRelations,
     });
-    rejectionFindings.push(...promotionPublicationFindings({
-      expectedTop: verification.top,
-      expectedAdditional: verification.additional,
-      actualTop: snapshot.content?.topReads ?? [],
-      actualSelected: snapshot.content?.selectedPosts ?? [],
-    }));
+    rejectionFindings.push(
+      ...promotionPublicationFindings({
+        expectedTop: verification.top,
+        expectedAdditional: verification.additional,
+        actualTop: snapshot.content?.topReads ?? [],
+        actualSelected: (snapshot.content?.selectedPosts ?? []).filter(
+          (item) => !isGitHubReaderItem(item),
+        ),
+      }),
+    );
 
     if (!noSignal && topReads.length === 0) {
       rejectionFindings.push({
@@ -108,10 +117,7 @@ export class ReaderSummaryPublicationPolicy {
         ),
       );
       const editorialQuality = evaluateReaderSummaryArtifactEditorialQuality(
-        editorialQualityInput(
-          snapshot,
-          coveragePlan.mode,
-        ),
+        editorialQualityInput(snapshot, coveragePlan.mode),
       );
       for (const issue of editorialQuality.issues) {
         rejectionFindings.push({
@@ -163,7 +169,6 @@ export class ReaderSummaryPublicationPolicy {
           });
           continue;
         }
-
       }
     }
 
@@ -204,26 +209,29 @@ export class ReaderSummaryPublicationPolicy {
 const independentPromotionCitations = (
   evidence: SummaryEvidenceSelection["selectedEvidence"],
   citations: readonly ReaderSummaryCitation[],
-): readonly ReaderSummaryCitation[] => evidence.map((item) => {
-  const citation = [...citations].sort((left, right) =>
-    left.citationId.localeCompare(right.citationId)
-  ).find((candidate) =>
-    candidate.feedItemId === item.feedItemId &&
-    candidate.sourceItemId === item.sourceItemId &&
-    candidate.providerKey === item.providerKey &&
-    (candidate.canonicalUrl === undefined ||
-      candidate.canonicalUrl === item.canonicalUrl)
-  );
-  return citation ?? {
-    citationId: `publication-expected:${item.feedItemId}`,
-    feedItemId: item.feedItemId,
-    sourceItemId: item.sourceItemId,
-    providerKey: item.providerKey,
-    field: "canonicalUrl",
-    canonicalUrl: item.canonicalUrl,
-  };
-});
-
+): readonly ReaderSummaryCitation[] =>
+  evidence.map((item) => {
+    const citation = [...citations]
+      .sort((left, right) => left.citationId.localeCompare(right.citationId))
+      .find(
+        (candidate) =>
+          candidate.feedItemId === item.feedItemId &&
+          candidate.sourceItemId === item.sourceItemId &&
+          candidate.providerKey === item.providerKey &&
+          (candidate.canonicalUrl === undefined ||
+            candidate.canonicalUrl === item.canonicalUrl),
+      );
+    return (
+      citation ?? {
+        citationId: `publication-expected:${item.feedItemId}`,
+        feedItemId: item.feedItemId,
+        sourceItemId: item.sourceItemId,
+        providerKey: item.providerKey,
+        field: "canonicalUrl",
+        canonicalUrl: item.canonicalUrl,
+      }
+    );
+  });
 
 const isValidNoSignalArtifact = (
   snapshot: ReturnType<ReaderSummaryArtifact["toSnapshot"]>,
@@ -299,8 +307,7 @@ const coveragePlanIssues = (
           : []),
         ...(sectionClusterId !== undefined &&
         section.citationIds.some(
-          (citationId) =>
-            clusterIdForCitation(citationId) !== sectionClusterId,
+          (citationId) => clusterIdForCitation(citationId) !== sectionClusterId,
         )
           ? ["Secondary signal cites evidence from another story cluster"]
           : []),
@@ -329,7 +336,8 @@ const coveragePlanIssues = (
     ...mainNarrativeCitationClusterIds
       .filter((clusterId) => !plannedClusterIds.has(clusterId))
       .map(
-        () => "Main narrative cites a story outside the deterministic coverage plan",
+        () =>
+          "Main narrative cites a story outside the deterministic coverage plan",
       ),
     ...secondaryIssues,
   ]);
@@ -421,7 +429,6 @@ const topReadReferences = (
   }));
 };
 
-
 const canonicalPublicationScore = (params: {
   readonly topReadCount: number;
   readonly rejectionCount: number;
@@ -443,13 +450,10 @@ const canonicalPublicationScore = (params: {
   );
 };
 
-
 const distinctDefined = (
   values: readonly (string | undefined)[],
 ): readonly string[] => [
-  ...new Set(
-    values.filter((value): value is string => value !== undefined),
-  ),
+  ...new Set(values.filter((value): value is string => value !== undefined)),
 ];
 
 const unique = <TValue>(values: readonly TValue[]): readonly TValue[] => [
