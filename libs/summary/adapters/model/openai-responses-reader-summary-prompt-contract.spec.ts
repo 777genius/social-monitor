@@ -67,6 +67,12 @@ describe("OpenAI reader summary prompt contract", () => {
     expect(instructions).toContain(
       "never end either headline with a period or full stop",
     );
+    expect(instructions).toContain(
+      "Never start headline or content.headline with Reddit, Hacker News, HN, X, Twitter, RSS or GitHub Trending",
+    );
+    expect(instructions).toContain(
+      "start with a neutral phrase such as Reports, A discussion or A first-party announcement",
+    );
     expect(instructions).toContain("Do not use meta-headline formulas");
     expect(instructions).toContain(
       "Otherwise source-frame the headline as reports of, reported or alleged",
