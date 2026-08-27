@@ -96,7 +96,9 @@ describe("reader summary GitHub Trending projection", () => {
       }),
     ]);
     expect(readerSummary.selectedPosts).toHaveLength(10);
-    expect(readerSummary.selectedPosts.map((post) => post.title)).toEqual(
+    expect(
+      (readerSummary.selectedPosts ?? []).map((post) => post.title),
+    ).toEqual(
       Array.from({ length: 10 }, (_, index) =>
         index === 0
           ? "calesthio/OpenMontage"
