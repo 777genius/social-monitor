@@ -11,8 +11,99 @@ import {
 } from
   "../../../domain/services/reader-post-promotion-attestation";
 import { ReaderSummaryArtifact } from "../../../domain/entities/reader-summary-artifact";
+import { assertReaderSummaryPromotionAttestations } from
+  "../../../domain/entities/reader-summary-promotion-attestation-validation";
 
 describe("ReaderSummaryArtifact promotion immutability", () => {
+  it("validates semantic-cluster support in the persisted peer context", () => {
+    const base = readerSummaryArtifact("artifact-contextual-attestation")
+      .toSnapshot();
+    const periodStart = new Date("2026-07-05T00:00:00.000Z");
+    const periodEnd = new Date("2026-07-06T00:00:00.000Z");
+    const publishedAt = new Date("2026-07-05T08:00:00.000Z");
+    const observedAt = new Date("2026-07-05T08:05:00.000Z");
+    const cutoff = new Date("2026-07-05T09:00:00.000Z");
+    const common = {
+      clusterId: "cluster:runtime-release",
+      publishedAt,
+      observedAt,
+      periodStart,
+      periodEnd,
+      ingestionCutoff: cutoff,
+      freshnessValid: true,
+      qualityScore: 0.9,
+      relevanceScore: 0.9,
+      integrityScore: 0.9,
+      qualityValid: true,
+      safetyValid: true,
+      citationValid: true,
+      metricsState: "observed" as const,
+    };
+    const selection = selectReaderPostPromotions([{
+      ...common,
+      candidateId: "feed-context-lead",
+      provider: "reddit",
+      contentKind: "original_post",
+      canonicalIdentity: "story:runtime-release-reddit",
+      citationId: "citation-context-lead",
+      metrics: { provider: "reddit", score: 500, upvoteRatio: 0.95 },
+    }, {
+      ...common,
+      candidateId: "feed-context-support",
+      provider: "hacker-news",
+      contentKind: "story",
+      canonicalIdentity: "story:runtime-release-hn",
+      citationId: "citation-context-support",
+      metrics: { provider: "hacker_news", points: 50 },
+    }]);
+    const selected = selection.top[0]!;
+    expect(selected.support).toHaveLength(1);
+    const sourceWindow = {
+      ...base.sourceWindow,
+      selectedFeedItemIds: ["feed-context-lead", "feed-context-support"],
+      periodStartedAt: periodStart,
+      periodEndedAt: periodEnd,
+      ingestionCutoff: cutoff,
+    };
+    const attestations = buildReaderPostPromotionAttestations(selection, {
+      artifactId: base.readerSummaryId,
+      sourceWindow,
+    });
+
+    expect(() => assertReaderSummaryPromotionAttestations({
+      ...base,
+      sourceWindow,
+      citationMap: [{
+        citationId: "citation-context-lead",
+        feedItemId: "feed-context-lead",
+        sourceItemId: "source-context-lead",
+        providerKey: "reddit",
+        field: "canonicalUrl",
+      }, {
+        citationId: "citation-context-support",
+        feedItemId: "feed-context-support",
+        sourceItemId: "source-context-support",
+        providerKey: "hacker-news",
+        field: "canonicalUrl",
+      }],
+      content: {
+        ...base.content!,
+        topReads: [{
+          ...topRead(),
+          promotionMarker: "reader_post_promotion",
+          promotionPolicyVersion: "reader_post_promotion.v1",
+          promotionTier: "top",
+          promotionCandidateId: selected.candidate.candidateId,
+          promotionCanonicalIdentity: selected.candidate.canonicalIdentity,
+          citationIds: selected.citationIds,
+        }],
+        selectedPosts: [],
+      },
+      promotionAttestations: attestations,
+      promotionEvidenceFacts: [selected.candidate, ...selected.support],
+    }, attestations)).not.toThrow();
+  });
+
   it("isolates nested signed support facts from input and snapshot mutation", () => {
     const base = readerSummaryArtifact("artifact-promotion-immutability")
       .toSnapshot();
