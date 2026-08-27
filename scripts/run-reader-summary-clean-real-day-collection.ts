@@ -8,7 +8,7 @@ import type {
 import { Pool, type QueryResultRow } from "pg";
 import {
   acquirePrismaPgRuntimeConnection,
-  defaultPostgresRuntimePoolConfig,
+  resolvePostgresRuntimePoolConfig,
   runWithTenantDatabaseAccess,
   type PostgresRuntimePoolConfig,
   type PrismaPgRuntimeClientConstructor,
@@ -220,16 +220,19 @@ async function tryRunCollection(): Promise<
   | undefined
 > {
   const startedAt = new Date();
+  const runtimeConfig = resolvePostgresRuntimePoolConfig({
+    ...process.env,
+    DATABASE_URL: databaseUrl,
+    POSTGRES_RUNTIME_PROCESS: "daily-runner",
+    POSTGRES_RUNTIME_POOL_MIN: process.env.POSTGRES_RUNTIME_POOL_MIN ?? "0",
+    POSTGRES_RUNTIME_POOL_MAX: process.env.POSTGRES_RUNTIME_POOL_MAX ?? "2",
+  });
   const pool = new Pool({
     connectionString: databaseUrl,
     min: 0,
     max: 1,
-    connectionTimeoutMillis: 2_000,
+    connectionTimeoutMillis: runtimeConfig.connectionTimeoutMillis,
   });
-  const runtimeConfig = defaultPostgresRuntimePoolConfig(
-    databaseUrl,
-    "daily-runner",
-  );
   let targetDiscovery:
     PrismaPgRuntimeConnectionLease<TargetDiscoveryRuntimeClient> | undefined;
   let connection: PrismaIngestionWorkerConnection | undefined;

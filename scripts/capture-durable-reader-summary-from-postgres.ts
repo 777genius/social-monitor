@@ -4,7 +4,7 @@ import { dirname } from "node:path";
 
 import { PrismaFeedConnection } from "@social-monitor/feed/adapters/persistence/prisma/prisma-feed-connection";
 import { InMemoryMetricsRecorder } from "@social-monitor/platform-metrics";
-import { defaultPostgresRuntimePoolConfig } from "@social-monitor/platform-persistence";
+import { resolvePostgresRuntimePoolConfig } from "@social-monitor/platform-persistence";
 import { PrismaFeedItemReadRepository } from "@social-monitor/feed/adapters/persistence/prisma/prisma-feed-item-read.repository";
 import { PrismaSummaryConnection } from "@social-monitor/summary/adapters/persistence/prisma/prisma-summary-connection";
 import { PrismaReaderSummaryPublication } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-publication";
@@ -255,10 +255,13 @@ async function main(): Promise<void> {
   const executionAttestations =
     new DurableReaderSummaryExecutionAttestationCapture();
 
-  const runtimePoolConfig = defaultPostgresRuntimePoolConfig(
-    databaseUrl,
-    "daily-runner",
-  );
+  const runtimePoolConfig = resolvePostgresRuntimePoolConfig({
+    ...process.env,
+    DATABASE_URL: databaseUrl,
+    POSTGRES_RUNTIME_PROCESS: "daily-runner",
+    POSTGRES_RUNTIME_POOL_MIN: process.env.POSTGRES_RUNTIME_POOL_MIN ?? "0",
+    POSTGRES_RUNTIME_POOL_MAX: process.env.POSTGRES_RUNTIME_POOL_MAX ?? "2",
+  });
   const feedConnection = await PrismaFeedConnection.create(runtimePoolConfig);
   const summaryConnection =
     await PrismaSummaryConnection.create(runtimePoolConfig);

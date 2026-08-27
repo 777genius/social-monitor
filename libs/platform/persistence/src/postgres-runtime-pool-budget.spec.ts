@@ -664,12 +664,16 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       'scripts/capture-durable-reader-summary-from-postgres.ts',
       'scripts/check-reader-summary-source-quality-trace.ts',
     ]) {
-      expect(readSource(path)).toContain(
-        'defaultPostgresRuntimePoolConfig',
-      );
-      expect(readSource(path)).toMatch(
-        /defaultPostgresRuntimePoolConfig\([\s\S]*?["']daily-runner["']\s*,?\s*\)/,
-      );
+      const source = readSource(path);
+      const usesDefaultBudget =
+        /defaultPostgresRuntimePoolConfig\([\s\S]*?["']daily-runner["']\s*,?\s*\)/.test(
+          source,
+        );
+      const usesValidatedRuntimeBudget =
+        /resolvePostgresRuntimePoolConfig\(\{[\s\S]*?POSTGRES_RUNTIME_PROCESS:\s*["']daily-runner["']/.test(
+          source,
+        );
+      expect(usesDefaultBudget || usesValidatedRuntimeBudget).toBe(true);
     }
   });
 
