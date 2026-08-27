@@ -22,7 +22,10 @@ import type {
   GitHubTrendingPageClientPort,
   GitHubTrendingPageRepository,
 } from "./github-trending-page-client.port";
-import { canonicalGitHubTrendingRepositories } from "./github-trending-page-canonical-board";
+import {
+  canonicalGitHubTrendingRepositories,
+  githubTrendingCanonicalBoardContentHash,
+} from "./github-trending-page-canonical-board";
 import {
   assertGitHubTrendingSnapshotTimeInWindow,
   githubTrendingDailySnapshotWindow,
@@ -137,6 +140,8 @@ export class GitHubTrendingPageSourceProvider implements SourceProviderPort {
       repositories.filter(isUsableTrendingRepository),
       plan.maxItems,
     );
+    const snapshotContentHash =
+      githubTrendingCanonicalBoardContentHash(validRepositories);
 
     return {
       items: validRepositories.map((repository) =>
@@ -146,6 +151,7 @@ export class GitHubTrendingPageSourceProvider implements SourceProviderPort {
           scanJobId,
           fetchStartedAt,
           checkedAt,
+          snapshotContentHash,
           source: config.source,
         }),
       ),
@@ -236,6 +242,7 @@ const normalizeRepository = (params: {
   readonly scanJobId: string;
   readonly fetchStartedAt: Date;
   readonly checkedAt: Date;
+  readonly snapshotContentHash: string;
   readonly source: GitHubTrendingPageRepositoryMetadataInput["trending"]["source"];
 }): FetchedSourceItem => {
   const {
@@ -244,6 +251,7 @@ const normalizeRepository = (params: {
     scanJobId,
     fetchStartedAt,
     checkedAt,
+    snapshotContentHash,
     source,
   } = params;
   const metadata = githubTrendingPageRepositoryMetadata({
@@ -262,6 +270,7 @@ const normalizeRepository = (params: {
       scanJobId,
       fetchStartedAt,
       checkedAt,
+      snapshotContentHash,
       source,
     },
   });

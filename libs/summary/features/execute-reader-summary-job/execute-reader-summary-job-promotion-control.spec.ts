@@ -57,7 +57,9 @@ describe("ExecuteReaderSummaryJobUseCase promotion controls", () => {
         ...scenario,
         selectEvidence: async () => dailyTrendingSelection(withPrimary),
         githubProjectionReader: dailyTrendingProjectionReader(),
-        promotionControl: readerSummaryPromotionControl(NOOP_READER_SUMMARY_PROMOTION_METRICS),
+        promotionControl: readerSummaryPromotionControl(
+          NOOP_READER_SUMMARY_PROMOTION_METRICS,
+        ),
       });
       expect(scenario.artifacts.decisions()[0]).toMatchObject({
         status: "published",
@@ -82,36 +84,34 @@ describe("ExecuteReaderSummaryJobUseCase promotion controls", () => {
       expect(scenario.artifacts.decisions()[0]?.status).toBe("published");
     },
   );
-  it(
-    "keeps the complete promotion metric sequence invariant for zero versus N supplemental GitHub entries",
-    async () => {
-      const recordSequence = async (supplementalCount: number) => {
-        const scenario = await arrangePromotionControlScenario(
-          `reader-job-telemetry-${supplementalCount}`,
-        );
-        const records: ReaderSummaryPromotionAggregateMetrics[] = [];
-        await executePromotionControlScenario({
-          ...scenario,
-          selectEvidence: async () =>
-            promotionSelectionWithSupplementalCount(supplementalCount),
-          topicMapBuilder: promotionControlEmptyTopicMapBuilder(),
-          githubProjectionReader: promotionControlZeroGitHubProjectionReader(),
-          promotionControl: readerSummaryPromotionControl({
-            record: (value) => records.push(value),
-          }),
-        });
-        return records;
-      };
-
-      const withoutSupplemental = await recordSequence(0);
-      const withSupplemental = await recordSequence(5);
-
-      expect(withSupplemental).toEqual(withoutSupplemental);
-      expect(withoutSupplemental.map(({ lifecycle }) => lifecycle)).toEqual(
-        ["evaluated", "delivered"],
+  it("keeps the complete promotion metric sequence invariant for zero versus N supplemental GitHub entries", async () => {
+    const recordSequence = async (supplementalCount: number) => {
+      const scenario = await arrangePromotionControlScenario(
+        `reader-job-telemetry-${supplementalCount}`,
       );
-    },
-  );
+      const records: ReaderSummaryPromotionAggregateMetrics[] = [];
+      await executePromotionControlScenario({
+        ...scenario,
+        selectEvidence: async () =>
+          promotionSelectionWithSupplementalCount(supplementalCount),
+        topicMapBuilder: promotionControlEmptyTopicMapBuilder(),
+        githubProjectionReader: promotionControlZeroGitHubProjectionReader(),
+        promotionControl: readerSummaryPromotionControl({
+          record: (value) => records.push(value),
+        }),
+      });
+      return records;
+    };
+
+    const withoutSupplemental = await recordSequence(0);
+    const withSupplemental = await recordSequence(5);
+
+    expect(withSupplemental).toEqual(withoutSupplemental);
+    expect(withoutSupplemental.map(({ lifecycle }) => lifecycle)).toEqual([
+      "evaluated",
+      "delivered",
+    ]);
+  });
 
   it("deep-sanitizes admitted typed evidence before model input", async () => {
     const generatedContent = {
@@ -142,7 +142,9 @@ describe("ExecuteReaderSummaryJobUseCase promotion controls", () => {
       selectEvidence: async () => evidence,
       topicMapBuilder: promotionControlEmptyTopicMapBuilder(),
       githubProjectionReader: promotionControlZeroGitHubProjectionReader(),
-      promotionControl: readerSummaryPromotionControl(NOOP_READER_SUMMARY_PROMOTION_METRICS),
+      promotionControl: readerSummaryPromotionControl(
+        NOOP_READER_SUMMARY_PROMOTION_METRICS,
+      ),
     });
 
     expect(result.ok).toBe(true);
@@ -197,7 +199,9 @@ describe("ExecuteReaderSummaryJobUseCase promotion controls", () => {
         }),
       topicMapBuilder: promotionControlRejectingTopicMapBuilder(),
       githubProjectionReader: promotionControlZeroGitHubProjectionReader(),
-      promotionControl: readerSummaryPromotionControl(NOOP_READER_SUMMARY_PROMOTION_METRICS),
+      promotionControl: readerSummaryPromotionControl(
+        NOOP_READER_SUMMARY_PROMOTION_METRICS,
+      ),
     });
 
     expect(result).toEqual({
@@ -252,7 +256,9 @@ describe("ExecuteReaderSummaryJobUseCase promotion controls", () => {
       topicMapBuilder: promotionControlRejectingTopicMapBuilder(),
       githubProjectionReader: promotionControlZeroGitHubProjectionReader(),
       publicationPolicy,
-      promotionControl: readerSummaryPromotionControl(NOOP_READER_SUMMARY_PROMOTION_METRICS),
+      promotionControl: readerSummaryPromotionControl(
+        NOOP_READER_SUMMARY_PROMOTION_METRICS,
+      ),
     });
 
     expect(result).toMatchObject({
@@ -271,19 +277,21 @@ describe("ExecuteReaderSummaryJobUseCase promotion controls", () => {
 
 const dailyTrendingSelection = (withPrimary: boolean) => {
   const base = makeReaderEvidenceSelection({
-    ...(withPrimary ? {} : {
-      firstContentQuality: {
-        qualityScore: 0.2,
-        interestRelevanceScore: 0.2,
-        engagementIntegrityScore: 0.2,
-        eligibleForSummary: false,
-        eligibleForTopRead: false,
-        needsLlmReview: false,
-        decision: "reject",
-        flags: ["low_quality"],
-        reason: "No primary signal",
-      },
-    }),
+    ...(withPrimary
+      ? {}
+      : {
+          firstContentQuality: {
+            qualityScore: 0.2,
+            interestRelevanceScore: 0.2,
+            engagementIntegrityScore: 0.2,
+            eligibleForSummary: false,
+            eligibleForTopRead: false,
+            needsLlmReview: false,
+            decision: "reject",
+            flags: ["low_quality"],
+            reason: "No primary signal",
+          },
+        }),
   });
   const primary = base.selectedEvidence[0]!;
   const primaryCluster = base.clusters[0]!;
@@ -294,10 +302,12 @@ const dailyTrendingSelection = (withPrimary: boolean) => {
     sourceItemId: `github-source-${index + 1}`,
     sourceBindingId: "github-binding-daily",
     canonicalUrl: `https://github.com/owner/repo-${index + 1}`,
-    providerMetricLabels: [{
-      label: "GitHub Trending today",
-      value: `#${index + 1} · +${index < 3 ? 1_101 : 100 + index} stars today`,
-    }],
+    providerMetricLabels: [
+      {
+        label: "GitHub Trending today",
+        value: `#${index + 1} · +${index < 3 ? 1_101 : 100 + index} stars today`,
+      },
+    ],
   }));
   const trendClusters = trends.map((item, index) => ({
     ...base.clusters[1]!,
@@ -308,42 +318,49 @@ const dailyTrendingSelection = (withPrimary: boolean) => {
     ...base,
     sourceWindow: {
       ...base.sourceWindow,
-      selectedFeedItemIds: [primary.feedItemId, ...trends.map((item) => item.feedItemId)],
-      storyClusterIds: [primaryCluster.id, ...trendClusters.map((item) => item.id)],
+      selectedFeedItemIds: [
+        primary.feedItemId,
+        ...trends.map((item) => item.feedItemId),
+      ],
+      storyClusterIds: [
+        primaryCluster.id,
+        ...trendClusters.map((item) => item.id),
+      ],
     },
     clusters: [primaryCluster, ...trendClusters],
     selectedEvidence: [primary, ...trends],
   };
 };
 
-const dailyTrendingProjectionReader = (): ReaderSummaryGitHubProjectionReaderPort => ({
-  async read() {
-    const checkedAt = new Date("2026-06-26T07:20:00.000Z");
-    return {
-      eligibleBindingIds: ["github-binding-daily"],
-      pageCount: 1,
-      items: Array.from({ length: 10 }, (_, index) => ({
-        feedItemId: `github-feed-${index + 1}`,
-        sourceItemId: `github-source-${index + 1}`,
-        sourceBindingId: "github-binding-daily",
-        providerKey: "github-trending-page",
-        metadataKind: "github_trending_page_repository",
-        scanJobId: "github-scan-daily",
-        canonicalUrl: `https://github.com/owner/repo-${index + 1}`,
-        repositoryFullName: `owner/repo-${index + 1}`,
-        rank: index + 1,
-        starsGained: index < 3 ? 1_101 : 100 + index,
-        window: "daily",
-        fetchStartedAt: new Date("2026-06-26T07:19:00.000Z"),
-        checkedAt,
-        publishedAt: checkedAt,
-        observedAt: new Date("2026-06-26T07:30:00.000Z"),
-        sourceContentHash: "a".repeat(64),
-        sourceProviderContentHash: "b".repeat(64),
-      })),
-    };
-  },
-});
+const dailyTrendingProjectionReader =
+  (): ReaderSummaryGitHubProjectionReaderPort => ({
+    async read() {
+      const checkedAt = new Date("2026-06-26T07:20:00.000Z");
+      return {
+        eligibleBindingIds: ["github-binding-daily"],
+        pageCount: 1,
+        items: Array.from({ length: 10 }, (_, index) => ({
+          feedItemId: `github-feed-${index + 1}`,
+          sourceItemId: `github-source-${index + 1}`,
+          sourceBindingId: "github-binding-daily",
+          providerKey: "github-trending-page",
+          metadataKind: "github_trending_page_repository",
+          scanJobId: "github-scan-daily",
+          canonicalUrl: `https://github.com/owner/repo-${index + 1}`,
+          repositoryFullName: `owner/repo-${index + 1}`,
+          rank: index + 1,
+          starsGained: index < 3 ? 1_101 : 100 + index,
+          window: "daily",
+          fetchStartedAt: new Date("2026-06-26T07:19:00.000Z"),
+          checkedAt,
+          publishedAt: checkedAt,
+          observedAt: new Date("2026-06-26T07:30:00.000Z"),
+          sourceContentHash: "a".repeat(64),
+          sourceProviderContentHash: "b".repeat(64),
+        })),
+      };
+    },
+  });
 
 type PromotionControl = ReturnType<typeof readerSummaryPromotionControl>;
 
@@ -405,8 +422,7 @@ const executePromotionControlScenario = async (
     new PromotionControlPolicyRepository(),
     {
       select:
-        scenario.selectEvidence ??
-        (async () => makeReaderEvidenceSelection()),
+        scenario.selectEvidence ?? (async () => makeReaderEvidenceSelection()),
     },
     scenario.model,
     new PromotionControlPublication(

@@ -2,6 +2,7 @@ import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 
 import {
   githubTrendingPageRepositoryMetadata,
+  sourceItemProviderContentHash,
   SourceItem,
 } from "../../../domain";
 import { InMemorySourceItemRepository } from "../in-memory-source-item.repository";
@@ -217,6 +218,13 @@ describe("PrismaSourceItemRepository", () => {
     const memorySnapshot = memoryRetry.items[0]!.persistedItem.toSnapshot();
     const prismaSnapshot = prismaRetry.items[0]!.persistedItem.toSnapshot();
 
+    expect(
+      sourceItemProviderContentHash({
+        providerKey: "github-trending-page",
+        snapshot: first.toSnapshot(),
+      }),
+    ).toBe("b".repeat(64));
+
     expect(memoryRetry).toMatchObject({
       inserted: 0,
       contentUpdated: 0,
@@ -418,6 +426,7 @@ const githubSnapshotSourceItem = (params: {
         scanJobId: "scan-github-parity",
         fetchStartedAt,
         checkedAt: params.checkedAt,
+        snapshotContentHash: "b".repeat(64),
         source: "fixture_github_trending_html",
       },
     }),

@@ -1,7 +1,7 @@
 import { buildReaderSummary } from "./reader-summary";
 
 describe("reader summary GitHub Trending projection", () => {
-  it("keeps legacy GitHub Trending page evidence out of every reader lane", () => {
+  it("materializes the canonical GitHub Trending Top 10 without promoting it to editorial lanes", () => {
     const ranks = [...Array.from({ length: 10 }, (_, index) => index + 1), 12];
     const readerSummary = buildReaderSummary({
       headline: "GitHub Trending today",
@@ -95,7 +95,16 @@ describe("reader summary GitHub Trending projection", () => {
         citationIds: ["citation-1", "citation-2", "citation-3"],
       }),
     ]);
-    expect(readerSummary.selectedPosts).toEqual([]);
+    expect(readerSummary.selectedPosts).toHaveLength(10);
+    expect(
+      (readerSummary.selectedPosts ?? []).map((post) => post.title),
+    ).toEqual(
+      Array.from({ length: 10 }, (_, index) =>
+        index === 0
+          ? "calesthio/OpenMontage"
+          : `example/repository-${index + 1}`,
+      ),
+    );
   });
 
   it("removes authored Watch evidence outside the canonical Top 10", () => {

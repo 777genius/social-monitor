@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import type { GitHubTrendingPageRepository } from "./github-trending-page-client.port";
 
 export const maxGitHubTrendingCanonicalRepositories = 10;
@@ -37,6 +39,26 @@ export const canonicalGitHubTrendingRepositories = (
     )
     .map((repository, index) => ({ ...repository, rank: index + 1 }));
 };
+
+export const githubTrendingCanonicalBoardContentHash = (
+  repositories: readonly GitHubTrendingPageRepository[],
+): string =>
+  createHash("sha256")
+    .update(
+      JSON.stringify(
+        repositories.map((repository) => ({
+          fullName: repository.fullName,
+          url: repository.url,
+          description: repository.description ?? null,
+          language: repository.language ?? null,
+          totalStars: repository.totalStars,
+          forksCount: repository.forksCount,
+          rank: repository.rank,
+          starsGained: repository.starsGained,
+        })),
+      ),
+    )
+    .digest("hex");
 
 const compareDuplicateRepository = (
   left: GitHubTrendingPageRepository,
