@@ -302,7 +302,9 @@ const promotedPost = (params: {
     promotionCanonicalIdentity: params.selected.candidate.canonicalIdentity,
     title: buildTopReadTitle({
       storyTitle: lead.title,
-      storySummary: promotionStorySummary(lead, params.selected),
+      storySummary:
+        [lead.bodyPreview, ...params.selected.whyImportant, ...lead.whyImportant]
+          .find((value) => value?.trim().length !== 0) ?? lead.title,
       primaryEvidence: lead,
       evidence: admitted,
     }),
@@ -340,13 +342,6 @@ const promotedPost = (params: {
     citationIds: params.selected.citationIds,
   };
 };
-
-const promotionStorySummary = (
-  lead: SummaryEvidenceItem,
-  selected: SelectedReaderPostPromotion,
-): string =>
-  [lead.bodyPreview, ...selected.whyImportant, ...lead.whyImportant]
-    .find((value) => value?.trim().length !== 0) ?? lead.title;
 
 const promotionRelations = (params: {
   readonly evidenceById: ReadonlyMap<string, SummaryEvidenceItem>;
