@@ -87,7 +87,7 @@ if (kind === "collection") {
     headline: "Fixture rolling summary",
     selectedFeedItemCount: 10,
     topReadCount: 2,
-    citationCount: 10,
+    citationCount: 12,
     providerCount: 1,
     topProviderKeys: ["reddit"],
     qualityFlags: [],
