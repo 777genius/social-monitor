@@ -3,12 +3,18 @@ import type { ReaderSummaryContent } from "../entities/reader-summary-artifact";
 import { ReaderSummaryPublicationPolicy } from "./reader-summary-publication-policy";
 import { readerSummaryPromotionPublicationOracle } from
   "./reader-summary-promotion-publication-oracle";
+import { buildReaderPostPromotionProjection } from
+  "../services/reader-post-promotion-projection";
+import type { SummaryEvidenceItem } from
+  "../value-objects/summary-evidence-item";
 import {
   promotionPublicationFixture,
   exactObservedPromotionPublicationFixture,
   trustedNonOfficialSupportPublicationFixture,
   withUncheckedPublicationCards,
 } from "./reader-summary-promotion-publication-test-fixtures";
+import { dailyEvidenceSelection } from
+  "./reader-summary-publication-policy-test-fixtures";
 
 const policy = new ReaderSummaryPublicationPolicy();
 
@@ -103,6 +109,96 @@ describe("ReaderSummaryPublicationPolicy Promotion V1 oracle", () => {
     expect(result.top.map((item) => item.candidateId)).toEqual([
       evidence[1]!.feedItemId,
       evidence[0]!.feedItemId,
+    ]);
+  });
+
+  it("applies the production provider cap to independent Top verification", () => {
+    const source = dailyEvidenceSelection(50);
+    const makeCandidate = (
+      provider: "reddit" | "hacker-news" | "x-twitter",
+      index: number,
+    ): SummaryEvidenceItem => {
+      const template = provider === "hacker-news"
+        ? source.selectedEvidence[1]!
+        : source.selectedEvidence[0]!;
+      const canonicalUrl = provider === "reddit"
+        ? `https://reddit.example.test/post/${index}`
+        : provider === "hacker-news"
+          ? `https://news.example.test/item/${index}`
+          : `https://x.com/example/status/${index}`;
+      const metrics: NonNullable<
+        NonNullable<SummaryEvidenceItem["promotionFacts"]>["metrics"]
+      > = provider === "reddit"
+        ? { provider: "reddit", score: 50, upvoteRatio: 0.9 }
+        : provider === "hacker-news"
+          ? { provider: "hacker_news", points: 50 }
+          : { provider: "x", likes: 100, reposts: 50, weightedScore: 200 };
+      return {
+        ...template,
+        feedItemId: `feed-${provider}-${index}`,
+        sourceItemId: `source-${provider}-${index}`,
+        sourceBindingId: `binding-${provider}-${index}`,
+        providerKey: provider,
+        providerName: provider,
+        canonicalUrl,
+        title: `${provider} candidate ${index}`,
+        contentQuality: {
+          ...template.contentQuality!,
+          qualityScore: provider === "reddit" ? 1 :
+            provider === "hacker-news" ? 0.8 : 0.7,
+        },
+        promotionFacts: {
+          ...template.promotionFacts!,
+          contentKind: provider === "hacker-news" ? "story" : "original_post",
+          canonicalIdentity: `url:${canonicalUrl}`,
+          metrics,
+        },
+      };
+    };
+    const evidence = [
+      ...Array.from({ length: 6 }, (_, index) =>
+        makeCandidate("reddit", index)),
+      ...Array.from({ length: 3 }, (_, index) =>
+        makeCandidate("hacker-news", index)),
+      makeCandidate("x-twitter", 0),
+    ];
+    const citations = evidence.map((item, index) => ({
+      citationId: `citation-provider-cap-${index}`,
+      feedItemId: item.feedItemId,
+      sourceItemId: item.sourceItemId,
+      providerKey: item.providerKey,
+      field: "title" as const,
+      canonicalUrl: item.canonicalUrl,
+    }));
+    const sourceWindow = {
+      ...source.sourceWindow,
+      selectedFeedItemIds: evidence.map((item) => item.feedItemId),
+      storyClusterIds: [],
+    };
+    const projection = buildReaderPostPromotionProjection({
+      evidence,
+      clusters: [],
+      citations,
+      sourceWindow,
+    });
+    const oracle = readerSummaryPromotionPublicationOracle({
+      evidence,
+      citations,
+      sourceWindow,
+    });
+
+    expect(oracle.top.map((item) => item.candidateId)).toEqual(
+      projection.topReads.map((item) => item.promotionCandidateId),
+    );
+    expect(projection.topReads.map((item) => item.providerKey)).toEqual([
+      "reddit",
+      "hacker-news",
+      "x-twitter",
+      "reddit",
+      "reddit",
+      "reddit",
+      "hacker-news",
+      "hacker-news",
     ]);
   });
 

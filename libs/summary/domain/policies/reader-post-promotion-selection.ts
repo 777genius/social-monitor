@@ -9,8 +9,7 @@ import {
   type ReaderPostPromotionResult,
 } from "./reader-post-promotion-policy";
 import {
-  topReadPrimaryMinimumForLimit,
-  topReadProviderCapForLimit,
+  readerPostPromotionTopProviderCap,
 } from "./top-read-provider-diversity-policy";
 
 export type SelectedReaderPostPromotion = {
@@ -93,13 +92,7 @@ export const selectReaderPostPromotions = (
   const top = diverseCapped(
     topCandidates,
     READER_POST_PROMOTION_POLICY_V1.maxTop,
-    topReadProviderCapForLimit({
-      limit: promotionRankingAuditLimit,
-      activeProviderCount: topProviderCount,
-      primaryMinimum: topReadPrimaryMinimumForLimit(
-        promotionRankingAuditLimit,
-      ),
-    }),
+    readerPostPromotionTopProviderCap(topProviderCount),
   );
   const additional = diverseCapped(canonicalRepresentatives
     .filter(({ evaluation }) => evaluation.decision === "promote_additional")
@@ -235,10 +228,6 @@ const diverseCapped = (
   }
   return selected;
 };
-
-// The production ranking audit evaluates the reader surface against a
-// ten-slot editorial window, even though promotion v1 exposes at most eight.
-const promotionRankingAuditLimit = 10;
 
 const uniqueInputs = (
   inputs: readonly ReaderPostPromotionInput[],
