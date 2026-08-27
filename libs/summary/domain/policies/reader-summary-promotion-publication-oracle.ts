@@ -10,6 +10,8 @@ import { READER_POST_PROMOTION_POLICY_V1 } from
   "./reader-post-promotion-policy-contract";
 import { readerPostPromotionTimestampMicros } from
   "./reader-post-promotion-policy";
+import { readerPostPromotionTopProviderCap } from
+  "./top-read-provider-diversity-policy";
 
 export type PromotionOracleCard = {
   readonly candidateId: string;
@@ -115,9 +117,18 @@ export const readerSummaryPromotionPublicationOracle = (params: {
     ])].sort((a, b) => a.localeCompare(b)),
   });
   const selected = [...representatives.values()];
+  const topCandidates = selected.filter((item) => item.placement === "top")
+    .sort(compareRank);
+  const topProviderCount = new Set(topCandidates.flatMap((item) => {
+    const provider = independentProviderFamily(item.item.providerKey);
+    return provider === null ? [] : [provider];
+  })).size;
   return {
-    top: diverseOracle(selected.filter((item) => item.placement === "top")
-      .sort(compareRank), READER_POST_PROMOTION_POLICY_V1.maxTop)
+    top: diverseOracle(
+      topCandidates,
+      READER_POST_PROMOTION_POLICY_V1.maxTop,
+      readerPostPromotionTopProviderCap(topProviderCount),
+    )
       .map(materialize),
     additional: diverseOracle(selected.filter((item) => item.placement === "additional")
       .sort(compareRank), READER_POST_PROMOTION_POLICY_V1.maxAdditional)
@@ -351,6 +362,7 @@ const comparePublishedMicros = (
 const diverseOracle = (
   sorted: readonly Candidate[],
   cap: number,
+  providerCap = cap,
 ): readonly Candidate[] => {
   const selected: Candidate[] = [];
   const selectedIds = new Set<string>();
@@ -365,6 +377,16 @@ const diverseOracle = (
   }
   for (const candidate of sorted) {
     if (selectedIds.has(candidate.item.feedItemId)) continue;
+    const provider = independentProviderFamily(candidate.item.providerKey);
+    if (provider === null) continue;
+    const providerCount = selected.reduce(
+      (count, selectedCandidate) =>
+        independentProviderFamily(selectedCandidate.item.providerKey) === provider
+          ? count + 1
+          : count,
+      0,
+    );
+    if (providerCount >= providerCap) continue;
     selected.push(candidate);
     if (selected.length === cap) break;
   }
