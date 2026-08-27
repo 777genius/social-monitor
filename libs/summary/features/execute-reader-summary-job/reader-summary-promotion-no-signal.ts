@@ -20,14 +20,7 @@ export const buildPromotionNoSignalArtifact = (params: {
   readonly noSignalReason?: string;
 }): ReaderSummaryArtifact => {
   const noSignalReason = params.noSignalReason ?? defaultNoSignalReason;
-  const citationMap = params.evidence.selectedEvidence.map((item, index) => ({
-    citationId: `supplemental:${index + 1}:${item.feedItemId}`,
-    feedItemId: item.feedItemId,
-    sourceItemId: item.sourceItemId,
-    providerKey: item.providerKey,
-    field: "canonicalUrl" as const,
-    canonicalUrl: item.canonicalUrl,
-  }));
+  const citationMap = [] as const;
   const content = buildReaderSummary({
     headline: "No reliable workspace signal yet",
     executiveSummary: noSignalReason,
@@ -38,7 +31,7 @@ export const buildPromotionNoSignalArtifact = (params: {
     citationMap,
     storyClusters: params.evidence.clusters,
     sourceWindow: params.evidence.sourceWindow,
-    selectedEvidence: params.evidence.selectedEvidence,
+    selectedEvidence: [],
     qualityFlags: ["no_signal"],
     noSignalReason,
   });
