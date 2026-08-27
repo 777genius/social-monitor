@@ -29,11 +29,18 @@ export type ReaderSummaryProductionDayAttemptIdentityInput = Readonly<{
       }>;
 }>;
 
+// Bump this whenever persisted reader-summary selection or presentation
+// semantics change. A production-day retry must not silently reuse an artifact
+// produced under an older publication policy.
+export const readerSummaryProductionDayArtifactPolicyVersion =
+  "reader_summary.artifact_policy.v2";
+
 export const readerSummaryProductionDayAttemptIdentity = (
   input: ReaderSummaryProductionDayAttemptIdentityInput,
 ): string =>
   sha256(JSON.stringify({
     schemaVersion: "reader_summary.production_day_attempt.v2",
+    artifactPolicyVersion: readerSummaryProductionDayArtifactPolicyVersion,
     tenantId: requiredText(input.tenantId, "tenant"),
     workspaceId: requiredText(input.workspaceId, "workspace"),
     periodKey: requiredText(input.periodKey, "period"),

@@ -1,4 +1,5 @@
 import {
+  readerSummaryProductionDayArtifactPolicyVersion,
   readerSummaryProductionDayAttemptIdentity,
   readerSummaryProductionDayIdempotencyKey,
   type ReaderSummaryProductionDayAttemptIdentityInput,
@@ -57,6 +58,12 @@ const authorityHashFields = [
 ] as const;
 
 describe("reader summary production-day attempt identity", () => {
+  it("binds retries to the current persisted artifact policy", () => {
+    expect(readerSummaryProductionDayArtifactPolicyVersion).toBe(
+      "reader_summary.artifact_policy.v2",
+    );
+  });
+
   it("preserves the stable natural-day identity", () => {
     const identity = readerSummaryProductionDayAttemptIdentity(liveIdentity);
 
