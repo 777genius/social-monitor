@@ -85,6 +85,37 @@ describe("admitReaderPostPromotionEvidence supplemental appendix", () => {
     expect(projection.topReads[0]?.title)
       .toBe("Agent release reaches developers");
   });
+
+  it("derives a reader-facing promotion title from the source body", () => {
+    const fixture = fixtureSelection();
+    const evidence = fixture.selectedEvidence.map((item) =>
+      item.feedItemId === "hn:top"
+        ? {
+            ...item,
+            title: "Nice Work OpenAI",
+            bodyPreview:
+              "OpenAI introduced a lower-cost business plan for teams with a two-seat minimum.",
+          }
+        : item,
+    );
+    const projection = buildReaderPostPromotionProjection({
+      evidence,
+      clusters: fixture.clusters,
+      sourceWindow: fixture.sourceWindow,
+      citations: evidence.map((item) => ({
+        citationId: `citation:${item.feedItemId}`,
+        feedItemId: item.feedItemId,
+        sourceItemId: item.sourceItemId,
+        providerKey: item.providerKey,
+        field: "canonicalUrl" as const,
+        canonicalUrl: item.canonicalUrl,
+      })),
+    });
+
+    expect(projection.topReads[0]?.title).toBe(
+      "OpenAI introduced a lower-cost business plan for teams with a two-seat minimum",
+    );
+  });
 });
 
 const fixtureSelection = (): SummaryEvidenceSelection => {

@@ -209,6 +209,7 @@ describe("YesterdayReaderSummaryArtifactQualityStore", () => {
         authorHandle: "example-author",
         title: "Example title",
         bodyPreview: "Example preview",
+        sourceBody: "Full original source body",
         providerMetadata: { score: 42 },
       },
     ];
@@ -221,11 +222,16 @@ describe("YesterdayReaderSummaryArtifactQualityStore", () => {
     ).resolves.toEqual(rows);
 
     const sql = querySql(query);
-    expect(sql).toContain('id::text as "id"');
-    expect(sql).toContain('provider_key as "providerKey"');
-    expect(sql).toContain("tenant_id = $1::uuid");
-    expect(sql).toContain("workspace_id = $2::uuid");
-    expect(sql).toContain("id = any($3::uuid[])");
+    expect(sql).toContain('fi.id::text as "id"');
+    expect(sql).toContain('fi.provider_key as "providerKey"');
+    expect(sql).toContain('si.body as "sourceBody"');
+    expect(sql).toContain("join source_items si");
+    expect(sql).toContain("si.id = fi.source_item_id");
+    expect(sql).toContain("si.tenant_id = fi.tenant_id");
+    expect(sql).toContain("si.workspace_id = fi.workspace_id");
+    expect(sql).toContain("fi.tenant_id = $1::uuid");
+    expect(sql).toContain("fi.workspace_id = $2::uuid");
+    expect(sql).toContain("fi.id = any($3::uuid[])");
     expect(query.mock.calls[0]?.[1]).toEqual([
       tenantId,
       workspaceId,
