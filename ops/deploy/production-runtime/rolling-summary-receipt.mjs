@@ -691,6 +691,7 @@ function isExactDailyPeriod(period, date) {
 }
 
 function isValidSummaryResult(result) {
+  const noSignal = result?.status === "no_signal";
   return (
     isRecord(result) &&
     isUuid(result.readerSummaryJobId) &&
@@ -708,9 +709,15 @@ function isValidSummaryResult(result) {
     result.topProviderKeys.every((key) => requiredProviders.includes(key)) &&
     Array.isArray(result.qualityFlags) &&
     result.qualityFlags.every(isNonemptyString) &&
-    (result.status === "completed"
-      ? result.selectedFeedItemCount > 0
-      : result.selectedFeedItemCount === 0)
+    (noSignal
+      ? result.selectedFeedItemCount === 0 &&
+        result.topReadCount === 0 &&
+        result.citationCount === 0 &&
+        result.providerCount === 0 &&
+        result.topProviderKeys.length === 0 &&
+        result.qualityFlags.includes("no_signal")
+      : result.selectedFeedItemCount > 0 &&
+        !result.qualityFlags.includes("no_signal"))
   );
 }
 
@@ -758,6 +765,7 @@ function isValidAttestationSet(attestations, result, authority) {
 
 function isValidFrontendArtifact(frontend, evidence, date) {
   const artifact = frontend?.readerSummaryArtifact;
+  const noSignal = evidence.result.status === "no_signal";
   const expectedModelVersion = [
     evidence.provenance.servingAuthority.summaryGenerator.provider,
     evidence.provenance.servingAuthority.summaryGenerator.physicalModel,
@@ -778,8 +786,12 @@ function isValidFrontendArtifact(frontend, evidence, date) {
     isExactDailyPeriod(artifact.period, date) &&
     artifact.scope?.type === "workspace" &&
     isRecord(artifact.lineage) &&
-    artifact.lineage.modelVersion === expectedModelVersion &&
-    artifact.lineage.providerVersion === "agent-runtime" &&
+    (noSignal
+      ? artifact.lineage.modelVersion === "not_invoked" &&
+        artifact.lineage.providerVersion === "deterministic" &&
+        artifact.content?.topicMap?.generatedBy === "deterministic"
+      : artifact.lineage.modelVersion === expectedModelVersion &&
+        artifact.lineage.providerVersion === "agent-runtime") &&
     isNonemptyString(artifact.lineage.schemaVersion) &&
     isRecord(artifact.content) &&
     isRecord(artifact.content.topicMap) &&

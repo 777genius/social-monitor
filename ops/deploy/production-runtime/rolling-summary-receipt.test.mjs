@@ -369,6 +369,66 @@ try {
   writeFileSync(evidencePath, JSON.stringify(validEvidence));
   writeFileSync(frontendPath, JSON.stringify(validFrontend));
 
+  const noSignalEvidencePath = join(directory, "no-signal-evidence.json");
+  const noSignalFrontendPath = join(directory, "no-signal-frontend.json");
+  const noSignalReceiptPath = join(directory, "no-signal-receipt.json");
+  runFixture(
+    "no-signal-evidence",
+    noSignalEvidencePath,
+    runId,
+    date,
+    noSignalFrontendPath,
+  );
+  run(
+    "write-receipt",
+    noSignalReceiptPath,
+    noSignalEvidencePath,
+    noSignalFrontendPath,
+    collectionPath,
+    runId,
+    date,
+    "2026-08-15T00:15:00.000Z",
+    "1",
+  );
+  run("validate-receipt", noSignalReceiptPath, runId, date);
+  const noSignalReceipt = JSON.parse(
+    readFileSync(noSignalReceiptPath, "utf8"),
+  );
+  assert.equal(noSignalReceipt.summary.status, "no_signal");
+  assert.equal(noSignalReceipt.summary.selectedFeedItemCount, 0);
+  for (const [label, mutate] of [
+    ["no-signal-citations", (value) => (value.summary.citationCount = 1)],
+    ["no-signal-provider", (value) => (value.summary.providerCount = 1)],
+    ["no-signal-flag", (value) => (value.summary.qualityFlags = [])],
+  ]) {
+    const invalid = JSON.parse(JSON.stringify(noSignalReceipt));
+    mutate(invalid);
+    const invalidPath = join(directory, `${label}.json`);
+    writeFileSync(invalidPath, JSON.stringify(invalid));
+    runFailure("validate-receipt", invalidPath, runId, date);
+  }
+
+  const invalidNoSignalFrontend = JSON.parse(
+    readFileSync(noSignalFrontendPath, "utf8"),
+  );
+  invalidNoSignalFrontend.readerSummaryArtifact.lineage.modelVersion =
+    "codex:gpt-5.6-sol:xhigh";
+  writeFileSync(
+    noSignalFrontendPath,
+    JSON.stringify(invalidNoSignalFrontend),
+  );
+  runFailure(
+    "write-receipt",
+    join(directory, "invalid-no-signal-lineage.json"),
+    noSignalEvidencePath,
+    noSignalFrontendPath,
+    collectionPath,
+    runId,
+    date,
+    "2026-08-15T00:15:00.000Z",
+    "1",
+  );
+
   const degradedReceiptPath = join(directory, "degraded-receipt.json");
   run(
     "write-receipt",
