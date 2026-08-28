@@ -257,6 +257,14 @@ final class GeneratedSummaryReviewCatalog implements SummaryReviewCatalog {
           availablePeriods: dto.availablePeriods
               .map(_mapper.summaryPeriodToDomain)
               .toList(growable: false),
+          availableSummaryReferences: dto.availableSummaryReferences
+              .map(
+                (reference) => PublishedSummaryReference(
+                  summaryId: reference.summaryId,
+                  period: _mapper.summaryPeriodToDomain(reference.period),
+                ),
+              )
+              .toList(growable: false),
           availablePeriodsAreComplete: dto.availablePeriodsAreComplete,
         ),
       ),

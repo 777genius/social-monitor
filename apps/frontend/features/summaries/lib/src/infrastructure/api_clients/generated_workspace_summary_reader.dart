@@ -75,9 +75,13 @@ final class GeneratedWorkspaceSummaryReader {
     final periodsResult = await _listPeriods(request, limit: _historyLimit);
     return periodsResult.fold(
       onSuccess: (periodsDto) {
+        final references = _availableReferencesFromPeriodSummaries(periodsDto);
         return Result.success(
           WorkspaceSummaryApiDto(
-            availablePeriods: _availablePeriodsFromPeriodSummaries(periodsDto),
+            availablePeriods: references
+                .map((reference) => reference.period)
+                .toList(growable: false),
+            availableSummaryReferences: references,
             availablePeriodsAreComplete: true,
           ),
         );
@@ -138,6 +142,14 @@ final class GeneratedWorkspaceSummaryReader {
     return WorkspaceSummaryApiDto(
       current: current,
       availablePeriods: periods,
+      availableSummaryReferences: current == null
+          ? const []
+          : [
+              PublishedSummaryReferenceApiDto(
+                summaryId: current.id,
+                period: current.period,
+              ),
+            ],
       availablePeriodsAreComplete: availablePeriodsAreComplete,
     );
   }
@@ -160,16 +172,21 @@ final class GeneratedWorkspaceSummaryReader {
     return periodsByKey.values.toList(growable: false);
   }
 
-  List<SummaryPeriodApiDto> _availablePeriodsFromPeriodSummaries(
+  List<PublishedSummaryReferenceApiDto> _availableReferencesFromPeriodSummaries(
     generated.ListReaderSummaryPeriodsResponseDto dto,
   ) {
-    final periodsByKey = <String, SummaryPeriodApiDto>{};
+    final referencesByKey = <String, PublishedSummaryReferenceApiDto>{};
     for (final item in dto.items) {
       final period = _mapper.readerSummaryPeriod(item.period);
-      periodsByKey[_periodIdentity(period)] = period;
+      referencesByKey[_periodIdentity(
+        period,
+      )] = PublishedSummaryReferenceApiDto(
+        summaryId: item.readerSummaryId,
+        period: period,
+      );
     }
 
-    return periodsByKey.values.toList(growable: false);
+    return referencesByKey.values.toList(growable: false);
   }
 
   generated.Cadence _listCadence(SummaryPeriodCadence cadence) {

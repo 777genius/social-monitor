@@ -221,11 +221,6 @@ AppRouteWidgetBuilder summariesFeatureBuilder({
           generatedApiRuntime: generatedApiRuntime,
           scope: scope,
           summaryId: summaryId == null || summaryId.isEmpty ? null : summaryId,
-          onSummarySelected: (selectedSummaryId) {
-            GoRouter.of(
-              context,
-            ).go('/summaries/${Uri.encodeComponent(selectedSummaryId)}');
-          },
         );
       }
       return SummariesFeatureRoute.generatedApi(

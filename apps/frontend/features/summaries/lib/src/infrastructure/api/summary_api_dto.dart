@@ -1,6 +1,7 @@
 part 'summary_reader_quality_api_dto.dart';
 part 'reader_summary_content_api_dto.dart';
 part 'reader_summary_coverage_api_dto.dart';
+part 'workspace_summary_api_dto.dart';
 
 final class SummaryCitationApiDto {
   const SummaryCitationApiDto({
@@ -351,18 +352,6 @@ final class ReaderSummaryStoryClusterAuthorityApiDto {
   final String id;
   final List<String> feedItemIds;
   final List<String> providerKeys;
-}
-
-final class WorkspaceSummaryApiDto {
-  const WorkspaceSummaryApiDto({
-    this.current,
-    this.availablePeriods = const [],
-    this.availablePeriodsAreComplete = false,
-  });
-
-  final ReaderSummaryApiDto? current;
-  final List<SummaryPeriodApiDto> availablePeriods;
-  final bool availablePeriodsAreComplete;
 }
 
 final class ReaderSummaryJobApiDto {

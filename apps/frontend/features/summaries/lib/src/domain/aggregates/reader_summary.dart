@@ -10,6 +10,7 @@ import '../entities/summary_claim.dart';
 import '../entities/summary_reliability.dart';
 import '../entities/summary_story.dart';
 import '../entities/top_read.dart';
+import '../value_objects/published_summary_reference.dart';
 import '../value_objects/reader_summary_coverage.dart';
 import '../value_objects/summary_period.dart';
 import '../value_objects/summary_quality.dart';
@@ -28,6 +29,7 @@ export '../entities/summary_story.dart';
 export '../entities/top_read.dart';
 export '../value_objects/preview_media.dart';
 export '../value_objects/provider_metric_label.dart';
+export '../value_objects/published_summary_reference.dart';
 export '../value_objects/reader_post_promotion_attestation.dart';
 export '../value_objects/reader_summary_coverage.dart';
 export '../value_objects/signal_score.dart';
@@ -39,11 +41,13 @@ final class WorkspaceSummarySnapshot {
   const WorkspaceSummarySnapshot({
     this.current,
     this.availablePeriods = const [],
+    this.availableSummaryReferences = const [],
     this.availablePeriodsAreComplete = false,
   });
 
   final ReaderSummary? current;
   final List<SummaryPeriod> availablePeriods;
+  final List<PublishedSummaryReference> availableSummaryReferences;
   final bool availablePeriodsAreComplete;
 }
 
