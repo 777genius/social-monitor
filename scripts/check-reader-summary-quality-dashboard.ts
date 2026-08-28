@@ -48,6 +48,7 @@ import {
 } from "./lib/reader-summary-claim-quality";
 import {
   isEligiblePrimaryTopReadInput,
+  primarySummaryProviderBreadthEnough,
   primarySummaryRepresentationEnough,
   readerFacingPrimaryCandidateCount,
 } from "./lib/reader-summary-primary-source-quality";
@@ -587,12 +588,14 @@ async function buildDayReport(
       topReadCount: summary.topReadCount,
       topReadQuality,
     }),
-    summaryHasPrimarySourcesSelected: primarySources.every(
-      (source) => (summary.primarySelectedCounts[source] ?? 0) >= 1,
-    ),
-    summaryHasPrimarySourcesInTopReads: primarySources.every(
-      (source) => (summary.primaryTopReadCounts[source] ?? 0) >= 1,
-    ),
+    summaryHasPrimarySourceSelected: primarySummaryProviderBreadthEnough({
+      primarySources,
+      providerCounts: summary.primarySelectedCounts,
+    }),
+    summaryHasPrimarySourceInTopReads: primarySummaryProviderBreadthEnough({
+      primarySources,
+      providerCounts: summary.primaryTopReadCounts,
+    }),
     noTechnicalLeakage: summary.technicalLeakCount === 0,
     topReadProviderSkewControlled: topReadProviderSkewPasses(summary),
     topReadQualityPasses: Object.values(topReadQuality.gates).every(Boolean),

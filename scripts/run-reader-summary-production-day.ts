@@ -366,6 +366,9 @@ async function main(): Promise<void> {
           DURABLE_READER_SUMMARY_MODEL: summaryModel,
           AGENT_RUNTIME_READER_SUMMARY_MODEL: "gpt-5.6-sol",
           AGENT_RUNTIME_PROVIDER: "codex",
+          AGENT_RUNTIME_GRPC_TIMEOUT_MS: String(
+            READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.runtimeHealthTimeoutMs,
+          ),
           AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT: "high",
           AGENT_RUNTIME_READER_SUMMARY_TIMEOUT_MS: String(
             READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.summaryModelTimeoutMs,
@@ -753,7 +756,8 @@ async function readActualRuntimeHealth(): Promise<ProductionDayRuntimeHealth> {
     address,
     clock: new SystemClock(),
     options: {
-      timeoutMs: 5_000,
+      timeoutMs:
+        READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.runtimeHealthTimeoutMs,
       serviceToken:
         process.env.AGENT_RUNTIME_SERVICE_TOKEN?.trim() || undefined,
     },

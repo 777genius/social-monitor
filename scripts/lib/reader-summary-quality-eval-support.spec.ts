@@ -6,7 +6,28 @@ import {
   dailyPeriodKey,
   readExactReaderSummaryArtifact,
   readLatestReaderSummaryArtifact,
+  visibleArtifactDoesNotPrecedeTarget,
 } from "./reader-summary-quality-eval-support";
+
+describe("visibleArtifactDoesNotPrecedeTarget", () => {
+  it("accepts a newer rolling artifact beside an exact requested daily", () => {
+    expect(
+      visibleArtifactDoesNotPrecedeTarget({
+        targetPeriodStartedAt: "2026-08-27T00:00:00.000Z",
+        visiblePeriodStartedAt: "2026-08-28T00:00:00.000Z",
+      }),
+    ).toBe(true);
+  });
+
+  it("rejects a latest-visible artifact older than the requested daily", () => {
+    expect(
+      visibleArtifactDoesNotPrecedeTarget({
+        targetPeriodStartedAt: "2026-08-27T00:00:00.000Z",
+        visiblePeriodStartedAt: "2026-08-26T00:00:00.000Z",
+      }),
+    ).toBe(false);
+  });
+});
 
 describe("readLatestReaderSummaryArtifact", () => {
   it("reads only the latest published artifact", async () => {

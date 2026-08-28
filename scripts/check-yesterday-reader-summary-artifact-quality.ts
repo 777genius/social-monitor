@@ -30,6 +30,7 @@ import {
 import {
   dailyPeriodKey,
   isLocalDataSourceUnavailable,
+  visibleArtifactDoesNotPrecedeTarget,
 } from "./lib/reader-summary-quality-eval-support";
 import {
   selectedCoverageMatchesProviderBreakdown,
@@ -533,9 +534,12 @@ async function buildReport(): Promise<ArtifactQualityReport> {
       qualityGates: {
         artifactPeriodMatchesRequestedDate:
           record.periodKey === dailyPeriodKey(collectionDate),
-        latestVisibleArtifactPeriodMatchesRequestedDate:
+        latestVisibleArtifactDoesNotPrecedeRequestedDate:
           allowHistorical ||
-          latestVisible.periodKey === dailyPeriodKey(collectionDate),
+          visibleArtifactDoesNotPrecedeTarget({
+            targetPeriodStartedAt: record.periodStartedAt,
+            visiblePeriodStartedAt: latestVisible.periodStartedAt,
+          }),
         artifactStatusIsVisible:
           record.status === "COMPLETED" || record.status === "NO_SIGNAL",
         coverageSelectedMatchesPromotionAttestations:
@@ -620,6 +624,10 @@ async function buildReport(): Promise<ArtifactQualityReport> {
         promotionBoardMatchesAttestedEvidence,
         crossSourceEvidencePresent: coverage.crossSourceClusterCount > 0,
         historicalLatestVisibleGateBypassed: allowHistorical,
+        newerVisibleArtifactCoexistsWithRequestedDaily:
+          latestVisible.periodKey !== record.periodKey &&
+          new Date(latestVisible.periodStartedAt).getTime() >
+            new Date(record.periodStartedAt).getTime(),
         dirtyCollectionAllowedForInspection:
           collectionIntegrity.status === "collection_integrity_failed" &&
           allowDirtyCollection,

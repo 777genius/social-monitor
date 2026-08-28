@@ -69,3 +69,11 @@ export const primarySummaryRepresentationEnough = (params: {
     params.selectedCount >= 5 && params.topReadCount >= requiredTopReads
   );
 };
+
+export const primarySummaryProviderBreadthEnough = (params: {
+  readonly primarySources: readonly string[];
+  readonly providerCounts: Readonly<Record<string, number>>;
+}): boolean =>
+  params.primarySources.some(
+    (source) => (params.providerCounts[source] ?? 0) >= 1,
+  );
