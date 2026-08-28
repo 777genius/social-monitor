@@ -45,6 +45,7 @@ import {
 import {
   collectionArtifactPassesBlockingValidation,
   readExactDayCollectionArtifact,
+  refreshCollectionArtifactTargetWindow,
   writeCollectionArtifactAtomically,
 } from "./lib/reader-summary-clean-real-day-collection-artifact";
 import {
@@ -297,7 +298,19 @@ async function tryRunCollection(): Promise<
       throw new Error(plan.barrierMessage);
     }
     if (plan.providerKeysToCollect.length === 0) {
-      return { kind: "no_collection" };
+      if (plan.previousReport === null) {
+        throw new Error(
+          `Provider catch-up has no reusable report for ${targetCollectionDate}`,
+        );
+      }
+      return {
+        kind: "collected",
+        plan,
+        report: refreshCollectionArtifactTargetWindow({
+          report: plan.previousReport,
+          targetWindow: databaseWindow,
+        }),
+      };
     }
     const providerKeys = plan.providerKeysToCollect;
     const targets = allTargets.filter((target) =>

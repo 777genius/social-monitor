@@ -2,8 +2,10 @@ import type { TopRead } from "@social-monitor/summary/domain";
 
 import {
   primarySummaryProviderBreadthEnough,
+  primarySummaryRepresentationBreadthEnough,
   primarySummaryRepresentationEnough,
   readerFacingPrimaryCandidateCount,
+  summaryEvidenceCoverageEnough,
 } from "./reader-summary-primary-source-quality";
 
 describe("reader summary primary source quality", () => {
@@ -22,6 +24,32 @@ describe("reader summary primary source quality", () => {
         primarySources: ["reddit", "x-twitter"],
         providerCounts: { "hacker-news": 8 },
       }),
+    ).toBe(false);
+  });
+
+  it("accepts one strongly represented primary provider", () => {
+    expect(
+      primarySummaryRepresentationBreadthEnough([
+        {
+          selectedCount: 10,
+          topReadCount: 4,
+          readerFacingTopReadCandidateCount: 20,
+        },
+        {
+          selectedCount: 2,
+          topReadCount: 1,
+          readerFacingTopReadCandidateCount: 20,
+        },
+      ]),
+    ).toBe(true);
+    expect(
+      primarySummaryRepresentationBreadthEnough([
+        {
+          selectedCount: 2,
+          topReadCount: 1,
+          readerFacingTopReadCandidateCount: 20,
+        },
+      ]),
     ).toBe(false);
   });
 
@@ -60,6 +88,30 @@ describe("reader summary primary source quality", () => {
         selectedCount: 30,
         topReadCount: 1,
         readerFacingTopReadCandidateCount: readerFacingCandidateCount,
+      }),
+    ).toBe(false);
+  });
+
+  it("requires evidence for every story plus breadth beyond top reads", () => {
+    expect(
+      summaryEvidenceCoverageEnough({
+        selectedEvidenceCount: 16,
+        storyClusterCount: 16,
+        topReadCount: 8,
+      }),
+    ).toBe(true);
+    expect(
+      summaryEvidenceCoverageEnough({
+        selectedEvidenceCount: 15,
+        storyClusterCount: 16,
+        topReadCount: 8,
+      }),
+    ).toBe(false);
+    expect(
+      summaryEvidenceCoverageEnough({
+        selectedEvidenceCount: 8,
+        storyClusterCount: 8,
+        topReadCount: 8,
       }),
     ).toBe(false);
   });

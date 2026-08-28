@@ -70,6 +70,12 @@ export const primarySummaryRepresentationEnough = (params: {
   );
 };
 
+export const primarySummaryRepresentationBreadthEnough = (
+  reports: readonly Parameters<
+    typeof primarySummaryRepresentationEnough
+  >[0][],
+): boolean => reports.some(primarySummaryRepresentationEnough);
+
 export const primarySummaryProviderBreadthEnough = (params: {
   readonly primarySources: readonly string[];
   readonly providerCounts: Readonly<Record<string, number>>;
@@ -77,3 +83,11 @@ export const primarySummaryProviderBreadthEnough = (params: {
   params.primarySources.some(
     (source) => (params.providerCounts[source] ?? 0) >= 1,
   );
+
+export const summaryEvidenceCoverageEnough = (params: {
+  readonly selectedEvidenceCount: number;
+  readonly storyClusterCount: number;
+  readonly topReadCount: number;
+}): boolean =>
+  params.selectedEvidenceCount >= params.storyClusterCount &&
+  params.selectedEvidenceCount >= params.topReadCount * 2;
