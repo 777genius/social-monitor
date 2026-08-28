@@ -232,6 +232,27 @@ describe("ListReaderSummariesUseCase", () => {
     });
   });
 
+  it("bounds presentation fan-out for small production database pools", async () => {
+    const freshness = new ConcurrentFreshnessProbe();
+    const useCase = new ListReaderSummariesUseCase(
+      new FakeReaderSummaryArtifactRepository([
+        readerSummaryArtifact({ readerSummaryId: "reader-summary-1" }),
+        readerSummaryArtifact({ readerSummaryId: "reader-summary-2" }),
+        readerSummaryArtifact({ readerSummaryId: "reader-summary-3" }),
+      ]),
+      freshness,
+    );
+
+    const result = await useCase.execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      limit: 3,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(freshness.maximumConcurrentEvaluations).toBe(1);
+  });
+
   it("does not hide required artifact repository failures", async () => {
     const repository = new FakeReaderSummaryArtifactRepository([]);
     repository.listFailure = new Error("reader summary persistence unavailable");
@@ -430,5 +451,24 @@ class FakeReaderSummaryFreshnessProbe implements ReaderSummaryFreshnessProbePort
         checkedAt: new Date("2026-06-23T08:40:00.000Z"),
       }
     );
+  }
+}
+
+class ConcurrentFreshnessProbe implements ReaderSummaryFreshnessProbePort {
+  private activeEvaluations = 0;
+  maximumConcurrentEvaluations = 0;
+
+  async evaluate(): Promise<ReaderSummaryFreshness> {
+    this.activeEvaluations += 1;
+    this.maximumConcurrentEvaluations = Math.max(
+      this.maximumConcurrentEvaluations,
+      this.activeEvaluations,
+    );
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    this.activeEvaluations -= 1;
+    return {
+      status: "fresh",
+      checkedAt: new Date("2026-06-23T08:40:00.000Z"),
+    };
   }
 }
