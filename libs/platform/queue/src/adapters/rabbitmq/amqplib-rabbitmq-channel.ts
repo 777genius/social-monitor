@@ -17,6 +17,10 @@ import type {
 export type AmqplibRabbitMqChannelOptions = {
   readonly url: string;
   readonly socketOptions?: SocketOptions;
+  readonly connect?: (
+    url: string,
+    socketOptions?: SocketOptions,
+  ) => Promise<ChannelModel>;
 };
 
 export class AmqplibRabbitMqChannel implements RabbitMqQueueChannelPort {
@@ -109,22 +113,65 @@ export class AmqplibRabbitMqChannel implements RabbitMqQueueChannelPort {
   }
 
   private async channel(): Promise<ConfirmChannel> {
-    this.channelPromise ??= this.connection().then(async (connection) => {
+    const active = this.channelPromise;
+    if (active !== undefined) {
+      return active;
+    }
+
+    const pending = this.connection().then(async (connection) => {
       const channel = await connection.createConfirmChannel();
       channel.on('return', (message) => {
         this.returnedMessages.push(toReturnedMessage(message));
       });
+      channel.on('error', () => this.invalidateChannel(pending));
+      channel.on('close', () => this.invalidateChannel(pending));
 
       return channel;
     });
+    this.channelPromise = pending;
+    void pending.catch(() => this.invalidateChannel(pending));
 
-    return this.channelPromise;
+    return pending;
   }
 
   private async connection(): Promise<ChannelModel> {
-    this.connectionPromise ??= connect(this.options.url, this.options.socketOptions);
+    const active = this.connectionPromise;
+    if (active !== undefined) {
+      return active;
+    }
 
-    return this.connectionPromise;
+    const connectToBroker = this.options.connect ?? connect;
+    const pending = connectToBroker(
+      this.options.url,
+      this.options.socketOptions,
+    ).then((connection) => {
+      connection.on('error', () => this.invalidateConnection(pending));
+      connection.on('close', () => this.invalidateConnection(pending));
+      return connection;
+    });
+    this.connectionPromise = pending;
+    void pending.catch(() => this.invalidateConnection(pending));
+
+    return pending;
+  }
+
+  private invalidateChannel(pending: Promise<ConfirmChannel>): void {
+    if (this.channelPromise !== pending) {
+      return;
+    }
+
+    this.channelPromise = undefined;
+    this.returnedMessages.length = 0;
+  }
+
+  private invalidateConnection(pending: Promise<ChannelModel>): void {
+    if (this.connectionPromise !== pending) {
+      return;
+    }
+
+    this.connectionPromise = undefined;
+    this.channelPromise = undefined;
+    this.returnedMessages.length = 0;
   }
 
   private takeReturnedMessage(
