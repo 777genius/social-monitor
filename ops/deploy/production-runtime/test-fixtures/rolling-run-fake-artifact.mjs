@@ -78,19 +78,22 @@ if (kind === "collection") {
     qualityGates: qualityGates(degraded),
     blockingPassed: !degraded,
   });
-} else if (kind === "evidence") {
+} else if (kind === "evidence" || kind === "no-signal-evidence") {
   const frontendPath = degradedValue;
+  const noSignal = kind === "no-signal-evidence";
   const result = {
     readerSummaryJobId: "11111111-1111-4111-8111-111111111111",
     readerSummaryId: "22222222-2222-4222-8222-222222222222",
-    status: "completed",
-    headline: "Fixture rolling summary",
-    selectedFeedItemCount: 10,
-    topReadCount: 2,
-    citationCount: 12,
-    providerCount: 1,
-    topProviderKeys: ["reddit"],
-    qualityFlags: [],
+    status: noSignal ? "no_signal" : "completed",
+    headline: noSignal
+      ? "No reliable workspace signal yet"
+      : "Fixture rolling summary",
+    selectedFeedItemCount: noSignal ? 0 : 10,
+    topReadCount: noSignal ? 0 : 2,
+    citationCount: noSignal ? 0 : 12,
+    providerCount: noSignal ? 0 : 1,
+    topProviderKeys: noSignal ? [] : ["reddit"],
+    qualityFlags: noSignal ? ["no_signal"] : [],
   };
   const authority = {
     summaryGenerator: {
@@ -117,29 +120,38 @@ if (kind === "collection") {
       launcherSha256: "d".repeat(64),
     },
   };
-  const executionAttestations = [
-    {
-      taskRole: "summary",
-      attempt: "primary",
-      normalizedOutputSha256: "b".repeat(64),
-      attestation: {
-        schemaVersion: 1,
-        requestId: `fixture-${runId}`,
-        purpose: "social_monitor.reader_summary.generate",
-        canonicalRequestSha256: "c".repeat(64),
-        provider: "codex",
-        model: "gpt-5.6-sol",
-        reasoningEffort: "xhigh",
-        runtimeEngine: "subscription-runtime-cli",
-        runtimePackageVersion: "fixture-runtime-1",
-        launcherSha256: "d".repeat(64),
-        selectedOutputKind: "structured_output",
-        selectedOutputSha256: "e".repeat(64),
-      },
-    },
-  ];
+  const executionAttestations = noSignal
+    ? []
+    : [
+        {
+          taskRole: "summary",
+          attempt: "primary",
+          normalizedOutputSha256: "b".repeat(64),
+          attestation: {
+            schemaVersion: 1,
+            requestId: `fixture-${runId}`,
+            purpose: "social_monitor.reader_summary.generate",
+            canonicalRequestSha256: "c".repeat(64),
+            provider: "codex",
+            model: "gpt-5.6-sol",
+            reasoningEffort: "xhigh",
+            runtimeEngine: "subscription-runtime-cli",
+            runtimePackageVersion: "fixture-runtime-1",
+            launcherSha256: "d".repeat(64),
+            selectedOutputKind: "structured_output",
+            selectedOutputSha256: "e".repeat(64),
+          },
+        },
+      ];
   const period = dailyPeriod(collectionDate);
-  const content = { narrative: "fixture", topicMap: { nodes: [], edges: [] } };
+  const content = {
+    narrative: "fixture",
+    topicMap: {
+      nodes: [],
+      edges: [],
+      ...(noSignal ? { generatedBy: "deterministic" } : {}),
+    },
+  };
   const redaction = {
     secretsIncluded: false,
     rawProviderPayloadIncluded: false,
@@ -195,11 +207,13 @@ if (kind === "collection") {
         period,
         scope: { type: "workspace" },
         lineage: {
-          modelVersion: "codex:gpt-5.6-sol:xhigh",
+          modelVersion: noSignal
+            ? "not_invoked"
+            : "codex:gpt-5.6-sol:xhigh",
           rulesVersion: "fixture-rules",
           promptVersion: "fixture-prompt",
           schemaVersion: "reader_summary.artifact.v1",
-          providerVersion: "agent-runtime",
+          providerVersion: noSignal ? "deterministic" : "agent-runtime",
           evalDatasetVersion: "fixture-eval",
           rankingPolicyVersion: "fixture-ranking",
         },
