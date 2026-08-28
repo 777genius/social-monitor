@@ -18,28 +18,13 @@ FROM (
 WHERE owner.table_owner = session_user
    OR owner.table_owner = 'social_monitor_public_schema_owner';
 
--- A cancelled concurrent build can leave a same-name catalog entry that
--- IF NOT EXISTS would otherwise accept as usable. Fail closed so the operator
--- can drop that invalid index concurrently before retrying this migration.
-DO $$
-BEGIN
-  IF to_regclass('public.scan_jobs_reader_summary_window_latest_idx') IS NOT NULL
-     AND NOT EXISTS (
-       SELECT 1
-       FROM pg_index
-       WHERE indexrelid =
-         to_regclass('public.scan_jobs_reader_summary_window_latest_idx')
-         AND indrelid = 'public.scan_jobs'::regclass
-         AND indisvalid AND indisready AND indislive
-     ) THEN
-    RAISE EXCEPTION USING
-      ERRCODE = '55000',
-      MESSAGE = 'scan_jobs reader-summary index is invalid; drop it concurrently before retry';
-  END IF;
-END
-$$;
+-- A cancelled concurrent build can leave a same-name invalid catalog entry.
+-- Rebuild this new performance index on retry instead of accepting that entry.
+-- Both statements remain transaction-free as required by PostgreSQL.
+DROP INDEX CONCURRENTLY IF EXISTS
+  "scan_jobs_reader_summary_window_latest_idx";
 
-CREATE INDEX CONCURRENTLY IF NOT EXISTS
+CREATE INDEX CONCURRENTLY
   "scan_jobs_reader_summary_window_latest_idx"
 ON "scan_jobs" (
   "tenant_id",
