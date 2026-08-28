@@ -1,6 +1,15 @@
-import { Pool } from "pg";
+import {
+  acquirePrismaPgRuntimeConnection,
+  defaultPostgresRuntimePoolConfig,
+  runWithSystemDatabaseAccess,
+  type PrismaPgRuntimeClientConstructor,
+} from "@social-monitor/platform-persistence";
+import { loadPrismaRuntimeClient } from "@social-monitor/platform-persistence/prisma-runtime-client";
 
-import { readCurrentPublicArtifactSnapshot } from "./lib/reader-summary-current-publication-bindings";
+import {
+  buildCurrentPublicArtifactSnapshot,
+  currentPublicArtifactBindingsQuery,
+} from "./lib/reader-summary-current-publication-bindings";
 import { readerSummaryProductionDayScope } from "./lib/reader-summary-production-day-scope";
 import { yesterdaySocialQualityDatabaseUrl } from "./lib/yesterday-social-replay-support";
 
@@ -32,31 +41,77 @@ export async function verifyPublishedProductionDayGap(params: {
   const dates = publicationGapDates(params.afterDate, params.targetDate);
   if (dates.length === 0) return dates;
 
-  const pool = new Pool({
-    connectionString: params.databaseUrl,
-    min: 0,
-    max: 1,
-    connectionTimeoutMillis: 20_000,
-    options: "-c social_monitor.system_access=true",
-  });
+  const PrismaClient =
+    loadPrismaRuntimeClient<
+      PrismaPgRuntimeClientConstructor<PublicationGapRuntimeClient>
+    >();
+  const connection = await acquirePrismaPgRuntimeConnection(
+    defaultPostgresRuntimePoolConfig(params.databaseUrl, "daily-runner"),
+    PrismaClient,
+  );
   try {
-    for (const collectionDate of dates) {
-      await readCurrentPublicArtifactSnapshot({
-        pool,
-        databaseUrl: params.databaseUrl,
-        scope: {
-          ...readerSummaryProductionDayScope,
-          scopeType: "workspace",
-          scopeKey: "workspace",
-        },
-        collectionDates: [collectionDate],
-      });
-    }
+    await runWithSystemDatabaseAccess(
+      "verify published daily summary cursor gap",
+      () =>
+        connection.client.$transaction(
+          async (transaction) => {
+            await transaction.$executeRawUnsafe(
+              "SET LOCAL statement_timeout = '60s'",
+            );
+            for (const collectionDate of dates) {
+              const rows = await transaction.$queryRawUnsafe<
+                Parameters<typeof buildCurrentPublicArtifactSnapshot>[0]["rows"]
+              >(
+                currentPublicArtifactBindingsQuery,
+                readerSummaryProductionDayScope.tenantId,
+                readerSummaryProductionDayScope.workspaceId,
+                "workspace",
+                [collectionDate],
+              );
+              buildCurrentPublicArtifactSnapshot({
+                rows,
+                databaseUrl: params.databaseUrl,
+                scope: {
+                  ...readerSummaryProductionDayScope,
+                  scopeType: "workspace",
+                  scopeKey: "workspace",
+                },
+                collectionDates: [collectionDate],
+              });
+            }
+          },
+          {
+            isolationLevel: "RepeatableRead",
+            maxWait: 30_000,
+            timeout: 180_000,
+          },
+        ),
+    );
   } finally {
-    await pool.end().catch(() => undefined);
+    await connection.close().catch(() => undefined);
   }
   return dates;
 }
+
+type PublicationGapTransactionClient = {
+  $executeRawUnsafe(
+    query: string,
+    ...values: readonly unknown[]
+  ): Promise<number>;
+  $queryRawUnsafe<T>(query: string, ...values: readonly unknown[]): Promise<T>;
+};
+
+type PublicationGapRuntimeClient = PublicationGapTransactionClient & {
+  $disconnect(): Promise<void>;
+  $transaction<T>(
+    operation: (client: PublicationGapTransactionClient) => Promise<T>,
+    options: {
+      readonly isolationLevel: "RepeatableRead";
+      readonly maxWait: number;
+      readonly timeout: number;
+    },
+  ): Promise<T>;
+};
 
 async function main(): Promise<void> {
   const afterDate = readOption("--after-date");
