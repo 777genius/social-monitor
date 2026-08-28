@@ -28,7 +28,7 @@ BEGIN
        SELECT 1
        FROM pg_index
        WHERE indexrelid =
-         'public.scan_jobs_reader_summary_window_latest_idx'::regclass
+         to_regclass('public.scan_jobs_reader_summary_window_latest_idx')
          AND indrelid = 'public.scan_jobs'::regclass
          AND indisvalid AND indisready AND indislive
      ) THEN
