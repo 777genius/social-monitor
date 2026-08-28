@@ -15,10 +15,8 @@ import { promotionSafeProviderMetadata } from "../libs/relevance/features/rank-f
 import { hasReaderSummaryEvidenceHardBlock } from "../libs/summary/domain/policies/reader-summary-evidence-eligibility-policy";
 import { RankFeedItemsUseCase } from "../libs/relevance/features/rank-feed-items/rank-feed-items.use-case";
 import { readerSummaryArtifactFromPrisma } from "../libs/summary/adapters/persistence/prisma/prisma-reader-summary-records";
-import {
-  presentReaderSummaryArtifact,
-  type ReaderSummaryArtifactView,
-} from "../libs/summary/features/shared/reader-summary-artifact-presenter";
+import { presentReaderSummaryArtifact } from "../libs/summary/features/shared/reader-summary-artifact-presenter";
+import { readerSummaryPromotionBoardRestView } from "../libs/summary/interfaces/rest/reader-summary-promotion-board-rest.mapper";
 import { FixedClock, type JsonObject } from "@social-monitor/shared-kernel";
 
 import {
@@ -191,7 +189,9 @@ const update = process.argv.includes("--update");
 const artifactOnly = process.argv.includes("--artifact-only");
 const explicitDate = readOption("--date");
 
-void main();
+if (require.main === module) {
+  void main();
+}
 
 async function main(): Promise<void> {
   if (artifactOnly) {
@@ -280,6 +280,7 @@ async function buildReport(pool: Pool): Promise<SourceQualityTraceReport> {
     readerSummaryArtifactFromPrisma(artifactRecord),
     { status: "fresh", checkedAt: new Date(`${collectionDate}T23:59:59.000Z`) },
   );
+  const promotionBoard = readerSummaryPromotionBoardRestView(view);
   const feedItems = await readFeedItems(pool, scope, collectionDate);
   const ranked = await rankFeedItems(scope, collectionDate);
   const rankedById = new Map(
@@ -293,7 +294,9 @@ async function buildReport(pool: Pool): Promise<SourceQualityTraceReport> {
     ]),
   );
   const selectedFeedItemIds = new Set(view.sourceWindow.selectedFeedItemIds);
-  const topReadFeedItemIds = topReadCitationFeedItemIds(view);
+  const topReadFeedItemIds = topReadPromotionCandidateFeedItemIds(
+    promotionBoard.topReads,
+  );
   const sources = {
     "hacker-news": buildSourceTrace({
       providerKey: "hacker-news",
@@ -735,18 +738,17 @@ async function latestCleanDate(pool: Pool): Promise<string> {
   return cleanDate;
 }
 
-function topReadCitationFeedItemIds(
-  view: ReaderSummaryArtifactView,
+export function topReadPromotionCandidateFeedItemIds(
+  topReads: readonly {
+    readonly promotionAttestation?: { readonly candidateId: string };
+    readonly citationIds?: readonly string[];
+  }[],
 ): ReadonlySet<string> {
-  const citationById = new Map(
-    view.citations.map((citation) => [citation.citationId, citation] as const),
-  );
-
   return new Set(
-    view.content.topReads.flatMap((read) =>
-      read.citationIds
-        .map((citationId) => citationById.get(citationId)?.feedItemId)
-        .filter(isDefined),
+    topReads.flatMap((read) =>
+      read.promotionAttestation === undefined
+        ? []
+        : [read.promotionAttestation.candidateId],
     ),
   );
 }
