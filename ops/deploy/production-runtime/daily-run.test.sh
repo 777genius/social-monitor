@@ -28,6 +28,9 @@ grep -F 'scripts/verify-reader-summary-production-day-publication.mjs' \
   "$DAILY_RUN" >/dev/null
 grep -F 'scripts/verify-reader-summary-production-day-state.mjs' \
   "$DAILY_RUN" >/dev/null
+grep -F 'scripts/check-reader-summary-production-day-publication-gap.ts' \
+  "$DAILY_RUN" >/dev/null
+grep -F 'advance_verified_gap' "$DAILY_RUN" >/dev/null
 grep -F 'latest-state.v1.json' "$DAILY_RUN" >/dev/null
 grep -F 'DURABLE_READER_SUMMARY_PUBLICATION_RECOVERY_DIR=' \
   "$DAILY_RUN" >/dev/null

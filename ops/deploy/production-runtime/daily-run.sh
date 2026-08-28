@@ -270,8 +270,25 @@ fi
     exit 0
   fi
   if [ "$historical_mode" = false ]; then
+    gap_verified=false
+    if [ -n "$cursor_date" ]; then
+      expected_next=$(node -e '\''
+        const value = new Date(`${process.argv[1]}T00:00:00.000Z`);
+        value.setUTCDate(value.getUTCDate() + 1);
+        process.stdout.write(value.toISOString().slice(0, 10));
+      '\'' -- "$cursor_date")
+      if [ "$expected_next" != "$requested_date" ]; then
+        node scripts/run-with-timeout.mjs \
+          --timeout-ms 180000 \
+          --node-options --max-old-space-size=768 \
+          -- ./node_modules/.bin/ts-node -r tsconfig-paths/register \
+          scripts/check-reader-summary-production-day-publication-gap.ts \
+          --after-date "$cursor_date" --target-date "$requested_date"
+        gap_verified=true
+      fi
+    fi
     node -e '\''
-    const [previous, expected] = process.argv.slice(1);
+    const [previous, expected, gapVerified] = process.argv.slice(1);
     const validDate = (value) =>
       typeof value === "string" &&
       /^\d{4}-\d{2}-\d{2}$/.test(value) &&
@@ -282,10 +299,12 @@ fi
     if (previous === "") process.exit(0);
     const next = new Date(`${previous}T00:00:00.000Z`);
     next.setUTCDate(next.getUTCDate() + 1);
-    if (next.toISOString().slice(0, 10) !== expected) {
+    if (next.toISOString().slice(0, 10) !== expected && gapVerified !== "true") {
       throw new Error("requested daily state transition is not consecutive");
     }
-    '\'' -- "$cursor_date" "$requested_date"
+    '\'' -- "$cursor_date" "$requested_date" "$gap_verified"
+  else
+    gap_verified=false
   fi
   export READER_SUMMARY_DAILY_RUN_EXPECTED_DATE=$requested_date
   rm -f \
@@ -450,7 +469,7 @@ fi
       --state-dir "$public_dir")
   fi
   transition=$(node -e '\''
-    const [previous, expected, historicalMode] = process.argv.slice(1);
+    const [previous, expected, historicalMode, gapVerified] = process.argv.slice(1);
     const next = (date) => {
       const value = new Date(`${date}T00:00:00.000Z`);
       value.setUTCDate(value.getUTCDate() + 1);
@@ -460,8 +479,9 @@ fi
     else if (previous === expected) process.stdout.write("replay");
     else if (historicalMode === "true" && expected < previous) process.stdout.write("historical");
     else if (next(previous) === expected) process.stdout.write("advance");
+    else if (gapVerified === "true" && previous < expected) process.stdout.write("advance_verified_gap");
     else throw new Error("daily production-day state transition is not consecutive");
-  '\'' -- "$previous_state_date" "$expected_date" "$historical_mode")
+  '\'' -- "$previous_state_date" "$expected_date" "$historical_mode" "$gap_verified")
 
   if [ "$transition" = replay ]; then
     cmp -s "$staged_state" "$public_dir/latest-state.v1.json" || {
