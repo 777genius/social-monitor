@@ -10,9 +10,11 @@ import { dirname, join } from "node:path";
 
 import type { CleanRealDayCollectionReport } from "./clean-real-day-collection-report";
 import {
+  collectionArtifactPassesBlockingValidation,
   readerSummaryDailyCollectionArtifactPath,
   readerSummaryDailyCollectionArtifactTemporaryPath,
   readExactDayCollectionArtifact,
+  refreshCollectionArtifactTargetWindow,
   writeCollectionArtifactAtomically,
 } from "./reader-summary-clean-real-day-collection-artifact";
 import { readerSummaryDailyMaintenanceScope } from "./reader-summary-daily-maintenance-scope";
@@ -226,6 +228,29 @@ describe("reader summary exact-day collection artifacts", () => {
       rmSync(directory, { recursive: true, force: true });
     }
   });
+
+  it("refreshes cumulative exact-day proof without repeating provider calls", () => {
+    const existing = refreshableReport();
+    const refreshed = refreshCollectionArtifactTargetWindow({
+      report: existing,
+      targetWindow: {
+        ...existing.targetWindow,
+        feedItemCount: 137,
+        providerCounts: { "x-twitter": 137 },
+        newestItemAtByProvider: {
+          "x-twitter": "2026-08-27T23:58:00.000Z",
+        },
+      },
+    });
+
+    expect(refreshed.targetWindow.providerCounts["x-twitter"]).toBe(137);
+    expect(refreshed.scans[0]?.observability.slo).toMatchObject({
+      evaluatedItemCount: 137,
+      coverageRatio: 1,
+      reasons: ["rate_limited"],
+    });
+    expect(collectionArtifactPassesBlockingValidation(refreshed)).toBe(true);
+  });
 });
 
 function report(
@@ -255,4 +280,117 @@ function nextUtcDate(collectionDate: string): string {
   const value = new Date(`${collectionDate}T00:00:00.000Z`);
   value.setUTCDate(value.getUTCDate() + 1);
   return value.toISOString();
+}
+
+function refreshableReport(): CleanRealDayCollectionReport {
+  const collectionDate = "2026-08-27";
+  const window = {
+    feedItemCount: 34,
+    providerCounts: { "x-twitter": 34 },
+    newestItemAtByProvider: {
+      "x-twitter": "2026-08-27T23:58:00.000Z",
+    },
+    sourceQueryLaneCoverageByProvider: { "x-twitter": 1 },
+    distinctSourceQueryLaneCountByProvider: { "x-twitter": 7 },
+    orphanInterestCount: 0,
+    orphanSourceBindingCount: 0,
+    interestSnapshotCoverage: 1,
+    sourceBindingSnapshotCoverage: 1,
+    sourceQueryLaneCoverage: 1,
+    distinctSourceQueryLaneCount: 7,
+  };
+  const qualityGates = {
+    everyRequestedProviderSucceeded: true,
+    everyRequestedProviderHasTargetItems: true,
+    everyRequestedProviderMeetsCollectionSlo: false,
+    everyRequestedProviderMeetsBlockingCoveragePolicy: false,
+    durableSnapshotProofMatchesRequestedDay: true,
+    providerRetriesAreBounded: true,
+    noRawSecretFragments: true,
+  };
+
+  return {
+    schemaVersion: 1,
+    artifactFormat: "reader-summary-clean-real-day-collection-v1",
+    generatedBy: "npm run run:reader-summary-clean-real-day-collection",
+    model: {
+      mode: "targeted_real_binding_collection",
+      liveNetwork: true,
+      liveNetworkProviderKeys: ["x-twitter"],
+      durableSnapshotReuseProviderKeys: [],
+      rawProviderPayloadPersistedInReport: false,
+      rawPostTextPersistedInReport: false,
+      rawProviderConfigPersistedInReport: false,
+    },
+    inputs: {
+      database: "local-postgres",
+      providerKeys: ["x-twitter"],
+      xCollectorConfigured: true,
+      targetPublishedWindow: {
+        startInclusive: `${collectionDate}T00:00:00.000Z`,
+        endExclusive: nextUtcDate(collectionDate),
+      },
+    },
+    run: {
+      startedAt: "2026-08-28T00:15:00.000Z",
+      completedAt: "2026-08-28T00:17:00.000Z",
+      collectionDate,
+    },
+    targets: [
+      {
+        providerKey: "x-twitter",
+        bindingFingerprint: "binding",
+        interestFingerprint: "interest",
+        workspaceFingerprint: "workspace",
+        plannerEnabled: true,
+        canaryRollout: true,
+      },
+    ],
+    scans: [
+      {
+        providerKey: "x-twitter",
+        bindingFingerprint: "binding",
+        acquisitionMode: "live_collection",
+        attemptCount: 1,
+        status: "succeeded",
+        fetched: 34,
+        inserted: 34,
+        projected: 34,
+        skippedDuplicates: 0,
+        warningCount: 1,
+        observability: {
+          targetItemCount: 100,
+          collectedItemCount: 34,
+          acceptedItemCount: 34,
+          insertedItemCount: 34,
+          outsideWindowItemCount: 0,
+          paginationDuplicateItemCount: 0,
+          storageDuplicateItemCount: 0,
+          totalDuplicateItemCount: 0,
+          pageCount: 3,
+          paginationStopReason: "target_items",
+          rateLimitEventCount: 1,
+          coverageState: "degraded",
+          slo: {
+            met: false,
+            targetItemCount: 100,
+            evaluatedItemCount: 34,
+            coverageRatio: 0.34,
+            freshnessLagSeconds: 120,
+            maxFreshnessLagSeconds: 21_600,
+            reasons: ["target_shortfall", "rate_limited"],
+            retryDisposition: "deferred",
+          },
+          freshness: {
+            newestAcceptedPublishedAt: "2026-08-27T23:58:00.000Z",
+            lagToWindowEndSeconds: 120,
+          },
+        },
+      },
+    ],
+    freshWindow: window,
+    targetWindow: window,
+    qualityGates,
+    blockingPassed: false,
+  };
 }

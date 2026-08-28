@@ -49,6 +49,7 @@ import {
 import {
   isEligiblePrimaryTopReadInput,
   primarySummaryProviderBreadthEnough,
+  primarySummaryRepresentationBreadthEnough,
   primarySummaryRepresentationEnough,
   readerFacingPrimaryCandidateCount,
 } from "./lib/reader-summary-primary-source-quality";
@@ -1066,6 +1067,10 @@ async function buildCollectionStrategy(params: {
     feedItems: params.feedItems,
     primaryReports,
   });
+  const redditRepresentationEnough =
+    primarySummaryRepresentationEnough(reddit);
+  const xTwitterRepresentationEnough =
+    primarySummaryRepresentationEnough(xTwitter);
   const gates = {
     redditCollectedEnough: reddit.collectedCount >= 25,
     xTwitterCollectedEnough:
@@ -1074,14 +1079,15 @@ async function buildCollectionStrategy(params: {
     redditEligibleCandidatesEnough: reddit.eligibleTopReadCandidateCount >= 8,
     xTwitterEligibleCandidatesEnough:
       xTwitter.eligibleTopReadCandidateCount >= 8,
-    redditSummaryRepresentationEnough:
-      primarySummaryRepresentationEnough(reddit),
-    xTwitterSummaryRepresentationEnough:
-      primarySummaryRepresentationEnough(xTwitter),
+    primarySummaryRepresentationEnough:
+      primarySummaryRepresentationBreadthEnough([reddit, xTwitter]),
     redditSourceSkewControlled: reddit.sourceSkewRatio <= 0.75,
     xTwitterSourceSkewControlled: xTwitter.sourceSkewRatio <= 0.75,
   };
   const warningSignals = {
+    redditSummaryRepresentationInsufficient: !redditRepresentationEnough,
+    xTwitterSummaryRepresentationInsufficient:
+      !xTwitterRepresentationEnough,
     redditQueryLanesMissing: reddit.queryLaneCount < 2,
     xTwitterQueryLanesMissing: xTwitter.queryLaneCount < 2,
     redditTopNewLatestMixMissing: reddit.productLaneCount < 2,

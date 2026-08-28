@@ -16,7 +16,10 @@ import type { CleanRealDayCollectionReport } from "./clean-real-day-collection-r
 import {
   explicitGitHubUnavailableIsTransparentPartialDailyInput,
   providerMeetsProductionBlockingPolicy,
+  recalculateProductionBlockingPolicyGates,
 } from "./production-collection-quality-policy";
+import { withProviderCollectionWindowProof } from "./provider-collection-observability";
+import { allQualityGatesPassed } from "./quality-gates";
 import { noRawSecretFragments } from "./yesterday-social-replay-support";
 import {
   assertReaderSummaryDailyMaintenanceScope,
@@ -193,6 +196,53 @@ export const collectionArtifactPassesBlockingValidation = (
   report.qualityGates.noRawSecretFragments === true &&
   report.blockingPassed === true &&
   noRawSecretFragments(report);
+
+export const refreshCollectionArtifactTargetWindow = (params: {
+  readonly report: CleanRealDayCollectionReport;
+  readonly targetWindow: CleanRealDayCollectionReport["targetWindow"];
+}): CleanRealDayCollectionReport => {
+  const targetWindowEndedAt = new Date(
+    params.report.inputs.targetPublishedWindow.endExclusive,
+  );
+  const scans = params.report.scans.map((scan) => {
+    if (scan.acquisitionMode === "durable_snapshot_reuse") return scan;
+    const newestPublishedAt =
+      params.targetWindow.newestItemAtByProvider[scan.providerKey];
+
+    return {
+      ...scan,
+      observability: withProviderCollectionWindowProof({
+        observation: scan.observability,
+        windowItemCount:
+          params.targetWindow.providerCounts[scan.providerKey] ?? 0,
+        ...(newestPublishedAt === undefined
+          ? {}
+          : { newestPublishedAt: new Date(newestPublishedAt) }),
+        targetWindowEndedAt,
+      }),
+    };
+  });
+  const provisional = {
+    ...params.report,
+    scans,
+    targetWindow: params.targetWindow,
+    qualityGates: recalculateProductionBlockingPolicyGates(
+      params.report.qualityGates,
+      scans,
+      params.targetWindow.providerCounts,
+    ),
+  };
+  const qualityGates = {
+    ...provisional.qualityGates,
+    noRawSecretFragments: noRawSecretFragments(provisional),
+  };
+
+  return {
+    ...provisional,
+    qualityGates,
+    blockingPassed: allQualityGatesPassed(qualityGates),
+  };
+};
 
 const assertExactDayIdentity = (
   report: CleanRealDayCollectionReport,

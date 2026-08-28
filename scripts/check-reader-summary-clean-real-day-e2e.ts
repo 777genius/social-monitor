@@ -7,6 +7,7 @@ import {
   roundMetric,
 } from "./lib/yesterday-social-replay-support";
 import { targetWindowHasEveryPrimaryProvider } from "./lib/reader-summary-clean-real-day-e2e-policy";
+import { summaryEvidenceCoverageEnough } from "./lib/reader-summary-primary-source-quality";
 
 type PrimaryProviderKey = "reddit" | "x-twitter";
 type ProviderKey =
@@ -605,7 +606,11 @@ function buildReportWithoutSecretGate(
         latestDay.summary.artifactStatus === "present",
       latestCleanDayHasEnoughTopReads: latestDay.summary.topReadCount >= 8,
       latestCleanDayHasEnoughSelectedEvidence:
-        latestDay.summary.selectedFeedItemCount >= 30,
+        summaryEvidenceCoverageEnough({
+          selectedEvidenceCount: latestDay.summary.selectedFeedItemCount,
+          storyClusterCount: latestDay.summary.storyClusterCount,
+          topReadCount: latestDay.summary.topReadCount,
+        }),
       latestCleanDayPrimarySourcesSelected: primarySources.every(
         (source) => summaryPrimarySelectedCounts[source] > 0,
       ),
