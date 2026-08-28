@@ -60,6 +60,7 @@ import {
 } from "./lib/clean-real-day-provider-acquisition";
 import { requireScanPolicyTargets } from "./lib/clean-real-day-scan-policy-targets";
 import {
+  configuredProviderCollectionTargetItemCount,
   providerCollectionFreshnessReferenceAt,
   withProviderCollectionWindowProof,
 } from "./lib/provider-collection-observability";
@@ -67,6 +68,7 @@ import {
   explicitGitHubUnavailableIsTransparentPartialDailyInput,
   providerMeetsProductionBlockingPolicy,
   recalculateProductionBlockingPolicyGates,
+  xTargetWindowAlreadyMeetsProductionPolicy,
 } from "./lib/production-collection-quality-policy";
 import { PrismaGitHubTrendingDurableSnapshotReader } from "./lib/github-trending-durable-snapshot-reuse";
 
@@ -301,8 +303,24 @@ async function tryRunCollection(): Promise<
     const targets = allTargets.filter((target) =>
       providerKeys.includes(target.providerKey),
     );
+    const xTarget = targets.find(
+      (target) => target.providerKey === "x-twitter",
+    );
+    const xTargetWindowAlreadyReady =
+      xTarget !== undefined &&
+      xTargetWindowAlreadyMeetsProductionPolicy({
+        visibleItemCount: databaseWindow.providerCounts["x-twitter"] ?? 0,
+        targetItemCount: configuredProviderCollectionTargetItemCount(
+          xTarget.config,
+        ),
+        newestPublishedAt:
+          databaseWindow.newestItemAtByProvider["x-twitter"],
+        targetWindowEndedAt: new Date(targetPublishedWindow.endExclusive),
+      });
     const spendXReadinessBudget =
-      waitForXReadiness && catchUpCanSpendXReadinessBudget(plan);
+      waitForXReadiness &&
+      !xTargetWindowAlreadyReady &&
+      catchUpCanSpendXReadinessBudget(plan);
     const scanResults = await executeCleanRealDayProviderAcquisition({
       targets,
       connection,

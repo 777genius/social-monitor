@@ -247,7 +247,11 @@ export const providerMeetsProductionBlockingPolicy = (
     return (
       observation.slo.evaluatedItemCount >=
         productionCollectionThresholds.xTwitterVisibleFeedItems &&
-      meetsBoundedInventoryPolicy(observation, 0.8)
+      observation.slo.coverageRatio >= 0.8 &&
+      observation.slo.reasons.every(
+        (reason) =>
+          reason === "target_shortfall" || reason === "rate_limited",
+      )
     );
   }
 
@@ -260,6 +264,41 @@ const meetsBoundedInventoryPolicy = (
 ): boolean =>
   observation.slo.coverageRatio >= minimumCoverageRatio &&
   observation.slo.reasons.every((reason) => reason === "target_shortfall");
+
+export const xTargetWindowAlreadyMeetsProductionPolicy = (params: {
+  readonly visibleItemCount: number;
+  readonly targetItemCount: number | undefined;
+  readonly newestPublishedAt: string | undefined;
+  readonly targetWindowEndedAt: Date;
+  readonly maxFreshnessLagSeconds?: number;
+}): boolean => {
+  const targetItemCount = params.targetItemCount;
+  const newestPublishedAt =
+    params.newestPublishedAt === undefined
+      ? undefined
+      : new Date(params.newestPublishedAt);
+  const freshnessLagSeconds =
+    newestPublishedAt === undefined ||
+    !Number.isFinite(newestPublishedAt.getTime())
+      ? Number.POSITIVE_INFINITY
+      : Math.max(
+          0,
+          Math.round(
+            (params.targetWindowEndedAt.getTime() -
+              newestPublishedAt.getTime()) /
+              1000,
+          ),
+        );
+
+  return (
+    targetItemCount !== undefined &&
+    targetItemCount > 0 &&
+    params.visibleItemCount >=
+      productionCollectionThresholds.xTwitterVisibleFeedItems &&
+    params.visibleItemCount / targetItemCount >= 0.8 &&
+    freshnessLagSeconds <= (params.maxFreshnessLagSeconds ?? 21_600)
+  );
+};
 
 const nonGitHubDailyProviderKeys = [
   "hacker-news",
