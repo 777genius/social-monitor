@@ -48,9 +48,7 @@ grep -F 'historicalMode === "true" && expected < previous' "$DAILY_RUN" >/dev/nu
 grep -F 'if [ "$transition" = historical ]; then' "$DAILY_RUN" >/dev/null
 grep -F -- '--dated-state "$requested_state"' "$DAILY_RUN" >/dev/null
 grep -F 'DATE_FLAG=${1:---yesterday}' "$DAILY_RUN" >/dev/null
-grep -F 'if [[ $DATE_FLAG == --yesterday && $DAILY_TEST_MODE != 1 ]]; then' \
-  "$DAILY_RUN" >/dev/null
-grep -F 'exec "$ROOT/control/rolling-run.sh"' "$DAILY_RUN" >/dev/null
+! grep -F 'exec "$ROOT/control/rolling-run.sh"' "$DAILY_RUN" >/dev/null
 ! grep -Eq 'READER_SUMMARY.*(MAINTENANCE|HISTORICAL).*DATE_FLAG' "$DAILY_RUN"
 
 if grep -Eq \

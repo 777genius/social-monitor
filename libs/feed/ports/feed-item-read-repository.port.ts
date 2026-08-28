@@ -41,6 +41,14 @@ export type ListFeedItemSignalCandidatesQuery = Omit<
   "limit" | "cursor"
 >;
 
+export type FindLatestFeedItemSignalQuery = Omit<
+  ListFeedItemSignalCandidatesQuery,
+  | "searchQuery"
+  | "repositoryTrendWindow"
+  | "repositoryLanguage"
+  | "repositoryTopic"
+>;
+
 export type ReadPromotionFeedItemSnapshotQuery = {
   readonly tenantId: TenantId;
   readonly workspaceId: WorkspaceId;
@@ -119,6 +127,10 @@ export interface FeedItemReadRepositoryPort {
   listSignalCandidates?(
     query: ListFeedItemSignalCandidatesQuery,
   ): Promise<readonly FeedItem[]>;
+  /** Returns the newest matching signal without hydrating the bounded cohort. */
+  findLatestSignalCandidate?(
+    query: FindLatestFeedItemSignalQuery,
+  ): Promise<FeedItem | null>;
   readPromotionSnapshot?(
     query: ReadPromotionFeedItemSnapshotQuery,
   ): Promise<PromotionFeedItemSnapshotResult>;

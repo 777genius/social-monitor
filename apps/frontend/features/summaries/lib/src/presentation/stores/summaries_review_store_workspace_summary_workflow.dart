@@ -215,7 +215,6 @@ extension SummariesReviewStoreWorkspaceSummaryWorkflow on SummariesReviewStore {
   Future<void> _reloadSelectedWorkspaceSummaryPeriod() async {
     _summaryGenerationGuard.invalidate();
     _postRatingGenerationGuard.invalidate();
-    workspaceSummaryState = const InitialViewState<WorkspaceSummarySnapshot>();
     postRatingState = const InitialViewState<Map<String, PostRating>>();
     summaryJobState = const InitialViewState<ReaderSummaryJobSnapshot>();
     _notifyStateChanged();
@@ -228,12 +227,16 @@ Future<void> _loadWorkspaceSummaryForStore(
   SummariesReviewStore store,
   int generation,
 ) async {
-  final previous = switch (store.workspaceSummaryState) {
+  final previousSnapshot = switch (store.workspaceSummaryState) {
     ReadyViewState<WorkspaceSummarySnapshot>(:final value) => value,
     LoadingViewState<WorkspaceSummarySnapshot>(:final previousValue) =>
       previousValue,
     _ => null,
   };
+  final previous = _summarySnapshotForSelectedPreset(
+    previousSnapshot,
+    store.selectedSummaryPeriodPreset,
+  );
   store.workspaceSummaryState = LoadingViewState<WorkspaceSummarySnapshot>(
     previousValue: previous,
   );
@@ -273,21 +276,26 @@ Future<void> _loadWorkspaceSummaryForStore(
 
   store.workspaceSummaryState = result.fold(
     onSuccess: (snapshot) {
-      final current = snapshot.current;
+      final mergedSnapshot = WorkspaceSummarySnapshot(
+        current: snapshot.current,
+        availablePeriods: _mergeSummarySnapshotPeriods(previous, snapshot),
+        availablePeriodsAreComplete: snapshot.availablePeriodsAreComplete,
+      );
+      final current = mergedSnapshot.current;
       if (current == null) {
-        return ReadyViewState<WorkspaceSummarySnapshot>(snapshot);
+        return ReadyViewState<WorkspaceSummarySnapshot>(mergedSnapshot);
       }
       if (_periodMatchesPreset(
             current.period,
             store.selectedSummaryPeriodPreset,
           ) &&
-          !_snapshotSummaryPeriods(snapshot).any(
+          !_snapshotSummaryPeriods(mergedSnapshot).any(
             (period) =>
                 _sameSummaryPeriodWindow(period, store.selectedSummaryPeriod),
           )) {
         store._selectedSummaryPeriodEndedAt = current.period.endedAt;
       }
-      return ReadyViewState<WorkspaceSummarySnapshot>(snapshot);
+      return ReadyViewState<WorkspaceSummarySnapshot>(mergedSnapshot);
     },
     onFailure: (failure) =>
         FailureViewState<WorkspaceSummarySnapshot>(failure: failure),

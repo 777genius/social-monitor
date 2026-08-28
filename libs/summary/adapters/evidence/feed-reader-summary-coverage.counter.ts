@@ -1,4 +1,8 @@
-import type { FeedItemReadRepositoryPort } from "@social-monitor/feed/ports";
+import type { FeedItem } from "@social-monitor/feed/domain";
+import type {
+  FeedItemReadRepositoryPort,
+  ListFeedItemSignalCandidatesQuery,
+} from "@social-monitor/feed/ports";
 
 import type {
   CountReaderSummaryCollectedFeedItemsQuery,
@@ -34,82 +38,28 @@ export class FeedReaderSummaryCoverageCounter implements ReaderSummaryCoverageCo
     query: CountReaderSummaryCollectedFeedItemsQuery,
   ): Promise<ReaderSummaryCollectedFeedItemCoverage | undefined> {
     let cursor: string | undefined;
-    let total = 0;
-    const totals = emptyCoverageCounts();
-    const providerCounts = new Map<string, CoverageBucket>();
-    const topicCounts = new Map<string, CoverageBucket>();
-    const queryCounts = new Map<string, CoverageBucket>();
+    const accumulator = emptyCoverageAccumulator();
     const collectionHealthPromise =
       this.collectionHealth.readProviderCollectionHealth(query);
+    const candidateReader = this.feedItems.listSignalCandidates;
+    const feedQuery = coverageFeedItemQuery(query);
+
+    if (candidateReader !== undefined) {
+      const items = await candidateReader.call(this.feedItems, feedQuery);
+      recordCoverageItems(items, accumulator);
+      return coverageResult(accumulator, await collectionHealthPromise);
+    }
 
     for (let page = 0; page < MAX_PAGES; page += 1) {
       const result = await this.feedItems.list({
-        tenantId: query.tenantId,
-        workspaceId: query.workspaceId,
-        interestId:
-          query.scope.type === "interest" ? query.scope.interestId : undefined,
-        publishedAtOrAfter: query.period.startedAt,
-        publishedBefore: query.period.endedAt,
-        observedAtOrBefore: query.observedThrough,
+        ...feedQuery,
         limit: PAGE_LIMIT,
         cursor,
       });
-      for (const item of result.items) {
-        const snapshot = item.toSnapshot();
-        const providerKey = snapshot.providerKey;
-        if (!isDefaultReaderSummaryEvidenceProvider(providerKey)) {
-          continue;
-        }
-        const stats = statsForFeedItemMetadata(snapshot.providerMetadata);
-
-        total += 1;
-        incrementBucket(totals, stats);
-        incrementNamedBucket(providerCounts, providerKey, stats);
-        incrementNamedBucket(topicCounts, snapshot.interestId, stats, {
-          label: stats.topicLabel,
-        });
-        for (const searchQuery of stats.searchQueries) {
-          incrementNamedBucket(queryCounts, searchQuery, stats);
-        }
-      }
+      recordCoverageItems(result.items, accumulator);
 
       if (result.nextCursor === undefined) {
-        return {
-          collectedFeedItemCount: total,
-          lowRelevanceFeedItemCount: totals.lowRelevanceFeedItemCount,
-          mutedFeedItemCount: totals.mutedFeedItemCount,
-          userRatedFeedItemCount: totals.userRatedFeedItemCount,
-          providerBreakdown: mergeProviderCollectionHealth(
-            coverageRows(providerCounts).map(
-              ([
-                providerKey,
-                bucket,
-              ]): ReaderSummaryCollectedProviderCoverage => ({
-                providerKey,
-                ...bucket,
-              }),
-            ),
-            await collectionHealthPromise,
-          ),
-          topicBreakdown: coverageRows(topicCounts).map(
-            ([topicKey, bucket]): ReaderSummaryCollectedTopicCoverage => ({
-              topicKey,
-              ...(bucket.label === undefined
-                ? {}
-                : { topicLabel: bucket.label }),
-              collectedFeedItemCount: bucket.collectedFeedItemCount,
-              lowRelevanceFeedItemCount: bucket.lowRelevanceFeedItemCount,
-              mutedFeedItemCount: bucket.mutedFeedItemCount,
-              userRatedFeedItemCount: bucket.userRatedFeedItemCount,
-            }),
-          ),
-          queryBreakdown: coverageRows(queryCounts).map(
-            ([queryText, bucket]): ReaderSummaryCollectedQueryCoverage => ({
-              query: queryText,
-              ...bucket,
-            }),
-          ),
-        };
+        return coverageResult(accumulator, await collectionHealthPromise);
       }
 
       if (result.nextCursor === cursor) {
@@ -124,6 +74,14 @@ export class FeedReaderSummaryCoverageCounter implements ReaderSummaryCoverageCo
 
 type FeedItemCollectionStats = ReturnType<typeof statsForFeedItemMetadata>;
 
+type CoverageAccumulator = {
+  total: number;
+  readonly totals: CoverageBucket;
+  readonly providerCounts: Map<string, CoverageBucket>;
+  readonly topicCounts: Map<string, CoverageBucket>;
+  readonly queryCounts: Map<string, CoverageBucket>;
+};
+
 type CoverageBucket = {
   collectedFeedItemCount: number;
   lowRelevanceFeedItemCount: number;
@@ -137,6 +95,89 @@ const emptyCoverageCounts = (): CoverageBucket => ({
   lowRelevanceFeedItemCount: 0,
   mutedFeedItemCount: 0,
   userRatedFeedItemCount: 0,
+});
+
+const emptyCoverageAccumulator = (): CoverageAccumulator => ({
+  total: 0,
+  totals: emptyCoverageCounts(),
+  providerCounts: new Map(),
+  topicCounts: new Map(),
+  queryCounts: new Map(),
+});
+
+const coverageFeedItemQuery = (
+  query: CountReaderSummaryCollectedFeedItemsQuery,
+): ListFeedItemSignalCandidatesQuery => ({
+  tenantId: query.tenantId,
+  workspaceId: query.workspaceId,
+  interestId:
+    query.scope.type === "interest" ? query.scope.interestId : undefined,
+  publishedAtOrAfter: query.period.startedAt,
+  publishedBefore: query.period.endedAt,
+  observedAtOrBefore: query.observedThrough,
+});
+
+const recordCoverageItems = (
+  items: readonly FeedItem[],
+  accumulator: CoverageAccumulator,
+): void => {
+  for (const item of items) {
+    const snapshot = item.toSnapshot();
+    const providerKey = snapshot.providerKey;
+    if (!isDefaultReaderSummaryEvidenceProvider(providerKey)) {
+      continue;
+    }
+    const stats = statsForFeedItemMetadata(snapshot.providerMetadata);
+
+    accumulator.total += 1;
+    incrementBucket(accumulator.totals, stats);
+    incrementNamedBucket(accumulator.providerCounts, providerKey, stats);
+    incrementNamedBucket(
+      accumulator.topicCounts,
+      snapshot.interestId,
+      stats,
+      { label: stats.topicLabel },
+    );
+    for (const searchQuery of stats.searchQueries) {
+      incrementNamedBucket(accumulator.queryCounts, searchQuery, stats);
+    }
+  }
+};
+
+const coverageResult = (
+  accumulator: CoverageAccumulator,
+  collectionHealth: readonly ReaderSummaryProviderCollectionHealth[],
+): ReaderSummaryCollectedFeedItemCoverage => ({
+  collectedFeedItemCount: accumulator.total,
+  lowRelevanceFeedItemCount:
+    accumulator.totals.lowRelevanceFeedItemCount,
+  mutedFeedItemCount: accumulator.totals.mutedFeedItemCount,
+  userRatedFeedItemCount: accumulator.totals.userRatedFeedItemCount,
+  providerBreakdown: mergeProviderCollectionHealth(
+    coverageRows(accumulator.providerCounts).map(
+      ([providerKey, bucket]): ReaderSummaryCollectedProviderCoverage => ({
+        providerKey,
+        ...bucket,
+      }),
+    ),
+    collectionHealth,
+  ),
+  topicBreakdown: coverageRows(accumulator.topicCounts).map(
+    ([topicKey, bucket]): ReaderSummaryCollectedTopicCoverage => ({
+      topicKey,
+      ...(bucket.label === undefined ? {} : { topicLabel: bucket.label }),
+      collectedFeedItemCount: bucket.collectedFeedItemCount,
+      lowRelevanceFeedItemCount: bucket.lowRelevanceFeedItemCount,
+      mutedFeedItemCount: bucket.mutedFeedItemCount,
+      userRatedFeedItemCount: bucket.userRatedFeedItemCount,
+    }),
+  ),
+  queryBreakdown: coverageRows(accumulator.queryCounts).map(
+    ([queryText, bucket]): ReaderSummaryCollectedQueryCoverage => ({
+      query: queryText,
+      ...bucket,
+    }),
+  ),
 });
 
 const incrementNamedBucket = (

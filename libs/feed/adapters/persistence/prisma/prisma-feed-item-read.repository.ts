@@ -11,6 +11,7 @@ import {
   PROMOTION_ELIGIBLE_ITEM_CEILING,
   PROMOTION_PHYSICAL_ROW_CEILING,
   type FeedItemReadRepositoryPort,
+  type FindLatestFeedItemSignalQuery,
   type ListFeedItemsQuery,
   type ListFeedItemsResult,
   type ListFeedItemSignalCandidatesQuery,
@@ -71,6 +72,18 @@ export class PrismaFeedItemReadRepository implements
     });
     return records.map(feedItemFromPrisma)
       .filter((item) => matchesFeedItemReadFilters(item, query));
+  }
+
+  async findLatestSignalCandidate(
+    query: FindLatestFeedItemSignalQuery,
+  ): Promise<FeedItem | null> {
+    const record = await this.prisma.feedItem.findFirst({
+      where: latestSignalWhere(query),
+      orderBy: [{ observedAt: "desc" }, { id: "desc" }],
+    });
+    if (record === null) return null;
+    const item = feedItemFromPrisma(record);
+    return matchesFeedItemReadFilters(item, query) ? item : null;
   }
 
   async readPromotionSnapshot(
@@ -384,6 +397,26 @@ const promotionWhere = (
 const commonWhere = (
   query: ListFeedItemSignalCandidatesQuery,
 ): Parameters<PrismaFeedClient["feedItem"]["findMany"]>[0]["where"] => ({
+  tenantId: query.tenantId,
+  workspaceId: query.workspaceId,
+  status: "VISIBLE",
+  interestId: query.interestId,
+  observedAt: dateRange({
+    gte: query.observedAtOrAfter,
+    gt: query.observedAfter,
+    lte: query.observedAtOrBefore,
+    lt: query.observedBefore,
+  }),
+  publishedAt: dateRange({
+    gte: query.publishedAtOrAfter,
+    lt: query.publishedBefore,
+  }),
+  providerKey: query.providerKey,
+});
+
+const latestSignalWhere = (
+  query: FindLatestFeedItemSignalQuery,
+): Parameters<PrismaFeedClient["feedItem"]["findFirst"]>[0]["where"] => ({
   tenantId: query.tenantId,
   workspaceId: query.workspaceId,
   status: "VISIBLE",

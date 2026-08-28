@@ -154,10 +154,21 @@ export type PrismaFeedClient = {
         readonly sourceItemId?: string;
         readonly status: "VISIBLE";
         readonly observedAt?: {
+          readonly gte?: Date;
+          readonly gt?: Date;
           readonly lte?: Date;
           readonly lt?: Date;
         };
+        readonly publishedAt?: {
+          readonly gte?: Date;
+          readonly lt?: Date;
+        };
+        readonly providerKey?: string;
       };
+      readonly orderBy?: readonly [
+        { readonly observedAt: "desc" },
+        { readonly id: "desc" },
+      ];
     }): Promise<PrismaFeedItemRecord | null>;
   };
   readonly feedSignalBaselineSample: {

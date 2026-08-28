@@ -3,6 +3,7 @@ import type {
   FeedItemReadRepositoryPort,
   ListFeedItemsQuery,
   ListFeedItemsResult,
+  ListFeedItemSignalCandidatesQuery,
 } from "@social-monitor/feed/ports";
 import {
   type JsonObject,
@@ -40,6 +41,33 @@ describe("FeedReaderSummaryCoverageCounter", () => {
     ]);
     expect(feedItems.queries[0]?.observedAfter).toBeUndefined();
     expect(feedItems.queries[0]?.observedBefore).toBeUndefined();
+  });
+
+  it("uses one bounded candidate scan when the repository supports it", async () => {
+    const feedItems = new SignalCandidateFeedItems([
+      fakeFeedItem("reddit", 0),
+      fakeFeedItem("rss", 1),
+      fakeFeedItem("github-trending-page", 2),
+    ]);
+    const counter = new FeedReaderSummaryCoverageCounter(feedItems);
+
+    const result = await counter.countCollectedFeedItems({
+      tenantId: tenant,
+      workspaceId: workspace,
+      scope: { type: "workspace" },
+      period,
+    });
+
+    expect(result).toBe(2);
+    expect(feedItems.listCalls).toBe(0);
+    expect(feedItems.candidateQueries).toEqual([
+      expect.objectContaining({
+        tenantId: tenant,
+        workspaceId: workspace,
+        publishedAtOrAfter: period.startedAt,
+        publishedBefore: period.endedAt,
+      }),
+    ]);
   });
 
   it("freezes coverage at the artifact observation cutoff", async () => {
@@ -386,6 +414,45 @@ class FakeFeedItems implements FeedItemReadRepositoryPort {
     return null;
   }
 }
+
+class SignalCandidateFeedItems implements FeedItemReadRepositoryPort {
+  readonly candidateQueries: ListFeedItemSignalCandidatesQuery[] = [];
+  listCalls = 0;
+
+  constructor(private readonly items: readonly FeedItem[]) {}
+
+  async list(query: ListFeedItemsQuery): Promise<ListFeedItemsResult> {
+    this.listCalls += 1;
+    return { items: this.items.slice(0, query.limit) };
+  }
+
+  async listSignalCandidates(
+    query: ListFeedItemSignalCandidatesQuery,
+  ): Promise<readonly FeedItem[]> {
+    this.candidateQueries.push(query);
+    return this.items;
+  }
+
+  async findById(): Promise<FeedItem | null> {
+    return null;
+  }
+}
+
+const fakeFeedItem = (providerKey: string, index: number): FeedItem =>
+  FeedItem.publish({
+    id: `candidate-feed-${index}`,
+    tenantId: tenant,
+    workspaceId: workspace,
+    interestId: "interest-ai",
+    sourceItemId: `candidate-source-${index}`,
+    sourceBindingId: `candidate-binding-${providerKey}`,
+    providerKey,
+    canonicalUrl: `https://example.test/candidate/${index}`,
+    title: `${providerKey} candidate`,
+    bodyPreview: "Summary coverage candidate.",
+    publishedAt: period.startedAt,
+    observedAt: period.startedAt,
+  });
 
 type FakeFeedItemInput = {
   readonly providerKey: string;

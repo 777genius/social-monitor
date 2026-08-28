@@ -99,6 +99,10 @@ class ReaderSummaryView extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (isRefreshing) ...[
+            const _ReaderSummaryRefreshStatus(),
+            const SizedBox(height: AppSpacing.sm),
+          ],
           _ExecutiveBoardCard(
             summary: summary,
             citationsById: citationsById,
@@ -136,6 +140,25 @@ class ReaderSummaryView extends StatelessWidget {
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+class _ReaderSummaryRefreshStatus extends StatelessWidget {
+  const _ReaderSummaryRefreshStatus();
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      liveRegion: true,
+      label: 'Updating selected summary',
+      child: const Align(
+        alignment: Alignment.centerRight,
+        child: AppStatusBadge(
+          key: ValueKey('reader-summary-refreshing'),
+          label: 'Refreshing',
+        ),
       ),
     );
   }
