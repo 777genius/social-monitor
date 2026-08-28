@@ -55,6 +55,7 @@ type FeedItemRow = {
   readonly authorHandle: string | null;
   readonly title: string;
   readonly bodyPreview: string | null;
+  readonly sourceBody: string;
   readonly publishedAt: Date;
   readonly observedAt: Date;
   readonly providerMetadata: unknown;
@@ -174,6 +175,7 @@ type ItemTrace = {
 };
 
 const rankLimit = 200;
+const promotionSourceTextSafetyCap = 256_000;
 const readerSources = ["hacker-news", "reddit", "rss", "x-twitter"] as const;
 const primarySources = ["reddit", "x-twitter"] as const;
 const xTwitterLaneFamilies = [
@@ -549,7 +551,7 @@ function buildLaneTrace(params: {
     const safety = safetyPolicy.evaluate({
       providerKey: item.providerKey,
       title: item.title,
-      bodyPreview: item.bodyPreview ?? undefined,
+      bodyPreview: sourceQualityBodyPreview(item),
       canonicalUrl: item.canonicalUrl,
     });
     const verdict = qualityPolicy.evaluate({
@@ -680,26 +682,31 @@ async function readFeedItems(
   const result = await pool.query<FeedItemRow>(
     `
       select
-        id::text as "id",
-        source_item_id::text as "sourceItemId",
-        source_binding_id::text as "sourceBindingId",
-        interest_id::text as "interestId",
-        provider_key as "providerKey",
-        canonical_url as "canonicalUrl",
-        author_handle as "authorHandle",
-        title,
-        body_preview as "bodyPreview",
-        published_at as "publishedAt",
-        observed_at as "observedAt",
-        provider_metadata as "providerMetadata"
-      from feed_items
-      where tenant_id = $1::uuid
-        and workspace_id = $2::uuid
-        and status = 'VISIBLE'
-        and published_at >= $3::timestamptz
-        and published_at < $4::timestamptz
-        and provider_key in ('hacker-news', 'reddit', 'rss', 'x-twitter')
-      order by provider_key, observed_at, id
+        fi.id::text as "id",
+        fi.source_item_id::text as "sourceItemId",
+        fi.source_binding_id::text as "sourceBindingId",
+        fi.interest_id::text as "interestId",
+        fi.provider_key as "providerKey",
+        fi.canonical_url as "canonicalUrl",
+        fi.author_handle as "authorHandle",
+        fi.title,
+        fi.body_preview as "bodyPreview",
+        si.body as "sourceBody",
+        fi.published_at as "publishedAt",
+        fi.observed_at as "observedAt",
+        fi.provider_metadata as "providerMetadata"
+      from feed_items fi
+      join source_items si
+        on si.id = fi.source_item_id
+       and si.tenant_id = fi.tenant_id
+       and si.workspace_id = fi.workspace_id
+      where fi.tenant_id = $1::uuid
+        and fi.workspace_id = $2::uuid
+        and fi.status = 'VISIBLE'
+        and fi.published_at >= $3::timestamptz
+        and fi.published_at < $4::timestamptz
+        and fi.provider_key in ('hacker-news', 'reddit', 'rss', 'x-twitter')
+      order by fi.provider_key, fi.observed_at, fi.id
     `,
     [
       scope.tenantId,
@@ -751,6 +758,17 @@ export function topReadPromotionCandidateFeedItemIds(
         : [read.promotionAttestation.candidateId],
     ),
   );
+}
+
+export function sourceQualityBodyPreview(
+  item: Pick<FeedItemRow, "bodyPreview" | "sourceBody">,
+): string | undefined {
+  const sourceText = item.sourceBody.trim().length > 0
+    ? item.sourceBody
+    : (item.bodyPreview ?? "");
+  return sourceText.length === 0
+    ? undefined
+    : sourceText.slice(0, promotionSourceTextSafetyCap);
 }
 
 function itemFilterReasons(params: {
