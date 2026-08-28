@@ -109,16 +109,125 @@ void main() {
 
       await store.showNextPeriod();
 
-      expect(catalog.workspaceQueries, hasLength(2));
-      expect(catalog.workspaceQueries.last.allowLatestFallback, isFalse);
-      expect(
-        _samePeriod(catalog.workspaceQueries.last.period, july10.period),
-        isTrue,
-      );
+      expect(catalog.workspaceQueries, hasLength(1));
+      expect(catalog.publishedQueries, [july10.id, july10.id]);
       expect(_readySummary(store).id, july10.id);
       expect(selectedSummaryIds, [july9.id, july10.id]);
     },
   );
+
+  test('uses lightweight period references for adjacent summaries', () async {
+    final july9 = _dailySummary('summary-july-09', 2026, 7, 9);
+    final july10 = _dailySummary('summary-july-10', 2026, 7, 10);
+    final catalog = _PublishedSummaryCatalog(
+      publishedResult: Future.value(
+        Result.success(WorkspaceSummarySnapshot(current: july10)),
+      ),
+      publishedSummaries: {july9.id: july9, july10.id: july10},
+      historyResult: Future.value(
+        Result.success(
+          WorkspaceSummarySnapshot(
+            availablePeriods: [july9.period, july10.period],
+            availableSummaryReferences: [
+              PublishedSummaryReference(
+                summaryId: july9.id,
+                period: july9.period,
+              ),
+              PublishedSummaryReference(
+                summaryId: july10.id,
+                period: july10.period,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    final store = _store(catalog, summaryId: july10.id);
+    addTearDown(store.dispose);
+    await store.load();
+
+    await store.showPreviousPeriod();
+
+    expect(catalog.workspaceQueries, isEmpty);
+    expect(catalog.publishedQueries, [july10.id, july9.id]);
+    expect(_readySummary(store).id, july9.id);
+  });
+
+  test('loads the latest summary directly from the period catalog', () async {
+    final july9 = _dailySummary('summary-july-09', 2026, 7, 9);
+    final july10 = _dailySummary('summary-july-10', 2026, 7, 10);
+    final references = [
+      PublishedSummaryReference(summaryId: july9.id, period: july9.period),
+      PublishedSummaryReference(summaryId: july10.id, period: july10.period),
+    ];
+    final catalog = _PublishedSummaryCatalog(
+      publishedResult: Future.value(
+        const Result.success(WorkspaceSummarySnapshot()),
+      ),
+      publishedSummaries: {july9.id: july9, july10.id: july10},
+      historyResult: Future.value(
+        Result.success(
+          WorkspaceSummarySnapshot(
+            availablePeriods: references
+                .map((reference) => reference.period)
+                .toList(growable: false),
+            availableSummaryReferences: references,
+            availablePeriodsAreComplete: true,
+          ),
+        ),
+      ),
+    );
+    final store = _store(catalog);
+    addTearDown(store.dispose);
+
+    await store.load();
+
+    expect(catalog.workspaceQueries, isEmpty);
+    expect(catalog.publishedQueries, [july10.id]);
+    expect(_readySummary(store).id, july10.id);
+    expect(store.availablePeriods, hasLength(2));
+  });
+
+  test('keeps the article visible while referenced detail loads', () async {
+    final july9 = _dailySummary('summary-july-09', 2026, 7, 9);
+    final july10 = _dailySummary('summary-july-10', 2026, 7, 10);
+    final deferredJuly9 = Completer<Result<WorkspaceSummarySnapshot>>();
+    final references = [
+      PublishedSummaryReference(summaryId: july9.id, period: july9.period),
+      PublishedSummaryReference(summaryId: july10.id, period: july10.period),
+    ];
+    final catalog = _PublishedSummaryCatalog(
+      publishedResult: Future.value(
+        Result.success(WorkspaceSummarySnapshot(current: july10)),
+      ),
+      publishedResults: {july9.id: deferredJuly9.future},
+      historyResult: Future.value(
+        Result.success(
+          WorkspaceSummarySnapshot(
+            availablePeriods: references
+                .map((reference) => reference.period)
+                .toList(growable: false),
+            availableSummaryReferences: references,
+          ),
+        ),
+      ),
+    );
+    final store = _store(catalog, summaryId: july10.id);
+    addTearDown(store.dispose);
+    await store.load();
+
+    final navigation = store.showPreviousPeriod();
+    await Future<void>.delayed(Duration.zero);
+
+    final loading = store.state as LoadingViewState<ReaderSummary>;
+    expect(loading.previousValue?.id, july10.id);
+
+    deferredJuly9.complete(
+      Result.success(WorkspaceSummarySnapshot(current: july9)),
+    );
+    await navigation;
+    expect(_readySummary(store).id, july9.id);
+  });
 
   test(
     'dispose prevents a deferred published result from becoming ready',
@@ -180,7 +289,7 @@ void main() {
 
 PublishedSummaryStore _store(
   _PublishedSummaryCatalog catalog, {
-  required String summaryId,
+  String? summaryId,
   void Function(String summaryId)? onSummarySelected,
 }) {
   return PublishedSummaryStore(
@@ -237,18 +346,35 @@ final class _PublishedSummaryCatalog extends Fake
     required this.publishedResult,
     required this.historyResult,
     this.periodSummaries = const [],
+    this.publishedSummaries = const {},
+    this.publishedResults = const {},
   });
 
   final Future<Result<WorkspaceSummarySnapshot>> publishedResult;
   final Future<Result<WorkspaceSummarySnapshot>> historyResult;
   final List<ReaderSummary> periodSummaries;
+  final Map<String, ReaderSummary> publishedSummaries;
+  final Map<String, Future<Result<WorkspaceSummarySnapshot>>> publishedResults;
+  final List<String> publishedQueries = [];
   final List<LoadWorkspaceSummaryQuery> workspaceQueries = [];
   final List<LoadWorkspaceSummaryQuery> historyQueries = [];
 
   @override
   Future<Result<WorkspaceSummarySnapshot>> loadPublishedSummary(
     LoadPublishedSummaryQuery query,
-  ) => publishedResult;
+  ) {
+    publishedQueries.add(query.summaryId);
+    final deferred = publishedResults[query.summaryId];
+    if (deferred != null) {
+      return deferred;
+    }
+    final summary = publishedSummaries[query.summaryId];
+    return summary == null
+        ? publishedResult
+        : Future.value(
+            Result.success(WorkspaceSummarySnapshot(current: summary)),
+          );
+  }
 
   @override
   Future<Result<WorkspaceSummarySnapshot>> loadWorkspaceSummaryHistory(

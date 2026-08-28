@@ -45,6 +45,7 @@ final class PublishedSummaryStore extends ChangeNotifier {
   AsyncViewState<ReaderSummary> state = const InitialViewState<ReaderSummary>();
   SummaryPeriodPreset selectedPeriodPreset = SummaryPeriodPreset.daily;
   List<SummaryPeriod> availablePeriods = const [];
+  List<PublishedSummaryReference> availableSummaryReferences = const [];
   DateTime? _selectedPeriodEndedAt;
 
   SummaryPeriod get selectedPeriod =>
@@ -87,16 +88,44 @@ final class PublishedSummaryStore extends ChangeNotifier {
     notifyListeners();
 
     final requestedId = summaryId?.trim();
-    final result = requestedId != null && requestedId.isNotEmpty
-        ? await _loadPublished(
-            LoadPublishedSummaryQuery(scope: _scope, summaryId: requestedId),
-          )
-        : await _loadLatest(
-            LoadWorkspaceSummaryQuery(
-              scope: _scope,
-              period: SummaryPeriodPreset.daily.resolve(),
-            ),
-          );
+    WorkspaceSummarySnapshot? preloadedHistory;
+    Result<WorkspaceSummarySnapshot> result;
+    if (requestedId != null && requestedId.isNotEmpty) {
+      result = await _loadPublished(
+        LoadPublishedSummaryQuery(scope: _scope, summaryId: requestedId),
+      );
+    } else {
+      final historyResult = await _loadHistory(
+        LoadWorkspaceSummaryQuery(
+          scope: _scope,
+          period: SummaryPeriodPreset.daily.resolve(),
+        ),
+      );
+      if (!_generationGuard.isCurrent(generation)) {
+        return;
+      }
+      preloadedHistory = historyResult.fold(
+        onSuccess: (snapshot) => snapshot,
+        onFailure: (_) => null,
+      );
+      final latest = _latestReference(
+        preloadedHistory?.availableSummaryReferences ?? const [],
+        SummaryPeriodPreset.daily,
+      );
+      result = latest == null
+          ? await _loadLatest(
+              LoadWorkspaceSummaryQuery(
+                scope: _scope,
+                period: SummaryPeriodPreset.daily.resolve(),
+              ),
+            )
+          : await _loadPublished(
+              LoadPublishedSummaryQuery(
+                scope: _scope,
+                summaryId: latest.summaryId,
+              ),
+            );
+    }
     if (!_generationGuard.isCurrent(generation)) {
       return;
     }
@@ -107,9 +136,20 @@ final class PublishedSummaryStore extends ChangeNotifier {
         final summary = snapshot.current;
         if (summary != null) {
           _selectPeriod(summary.period);
-          availablePeriods = mergeSummaryPeriods(snapshot.availablePeriods, [
-            summary.period,
-          ]);
+          availablePeriods = mergeSummaryPeriods(
+            preloadedHistory?.availablePeriods ?? const [],
+            [...snapshot.availablePeriods, summary.period],
+          );
+          availableSummaryReferences = mergePublishedSummaryReferences(
+            preloadedHistory?.availableSummaryReferences ?? const [],
+            [
+              ...snapshot.availableSummaryReferences,
+              PublishedSummaryReference(
+                summaryId: summary.id,
+                period: summary.period,
+              ),
+            ],
+          );
         }
         return summary == null
             ? const EmptyViewState<ReaderSummary>(
@@ -125,7 +165,8 @@ final class PublishedSummaryStore extends ChangeNotifier {
     notifyListeners();
     final snapshot = loadedSnapshot;
     final current = snapshot?.current;
-    if (current != null) {
+    if (current != null &&
+        preloadedHistory?.availablePeriodsAreComplete != true) {
       await _refreshAvailablePeriods();
     }
   }
@@ -205,13 +246,21 @@ final class PublishedSummaryStore extends ChangeNotifier {
     };
     state = LoadingViewState<ReaderSummary>(previousValue: previous);
     notifyListeners();
-    final result = await _loadLatest(
-      LoadWorkspaceSummaryQuery(
-        scope: _scope,
-        period: selectedPeriod,
-        allowLatestFallback: false,
-      ),
-    );
+    final reference = _referenceForPeriod(selectedPeriod);
+    final result = reference == null
+        ? await _loadLatest(
+            LoadWorkspaceSummaryQuery(
+              scope: _scope,
+              period: selectedPeriod,
+              allowLatestFallback: false,
+            ),
+          )
+        : await _loadPublished(
+            LoadPublishedSummaryQuery(
+              scope: _scope,
+              summaryId: reference.summaryId,
+            ),
+          );
     if (!_generationGuard.isCurrent(generation)) {
       return;
     }
@@ -236,6 +285,10 @@ final class PublishedSummaryStore extends ChangeNotifier {
         availablePeriods = mergeSummaryPeriods(availablePeriods, [
           summary.period,
         ]);
+        availableSummaryReferences = mergePublishedSummaryReferences(
+          availableSummaryReferences,
+          snapshot.availableSummaryReferences,
+        );
         return ReadyViewState<ReaderSummary>(
           summary,
           isDegraded: summary.isDegraded,
@@ -273,6 +326,10 @@ final class PublishedSummaryStore extends ChangeNotifier {
           availablePeriods,
           snapshot.availablePeriods,
         );
+        availableSummaryReferences = mergePublishedSummaryReferences(
+          availableSummaryReferences,
+          snapshot.availableSummaryReferences,
+        );
         notifyListeners();
       },
       onFailure: (_) {},
@@ -282,6 +339,33 @@ final class PublishedSummaryStore extends ChangeNotifier {
   void _selectPeriod(SummaryPeriod period) {
     selectedPeriodPreset = summaryPeriodPresetFor(period);
     _selectedPeriodEndedAt = period.endedAt;
+  }
+
+  PublishedSummaryReference? _referenceForPeriod(SummaryPeriod period) {
+    for (final reference in availableSummaryReferences) {
+      if (sameSummaryPeriodWindow(reference.period, period)) {
+        return reference;
+      }
+    }
+    return null;
+  }
+
+  PublishedSummaryReference? _latestReference(
+    Iterable<PublishedSummaryReference> references,
+    SummaryPeriodPreset preset,
+  ) {
+    final matches =
+        references
+            .where(
+              (reference) =>
+                  summaryPeriodMatchesPreset(reference.period, preset),
+            )
+            .toList(growable: false)
+          ..sort(
+            (left, right) =>
+                left.period.endedAt.compareTo(right.period.endedAt),
+          );
+    return matches.isEmpty ? null : matches.last;
   }
 
   Future<void> openUrl(String canonicalUrl) async {
