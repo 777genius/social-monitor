@@ -1,4 +1,5 @@
 export const READER_SUMMARY_PRODUCTION_RUNTIME_POLICY = {
+  runtimeHealthTimeoutMs: 30_000,
   storyRelationTimeoutMs: 900_000,
   storyRelationMaximumAttempts: 1,
   summaryModelTimeoutMs: 900_000,

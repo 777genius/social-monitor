@@ -331,6 +331,19 @@ export function dailyPeriodKey(collectionDate: string): string {
   return `daily:${dayStart(collectionDate)}:${dayEnd(collectionDate)}:UTC`;
 }
 
+export function visibleArtifactDoesNotPrecedeTarget(params: {
+  readonly targetPeriodStartedAt: string | Date;
+  readonly visiblePeriodStartedAt: string | Date;
+}): boolean {
+  const target = dateValue(params.targetPeriodStartedAt);
+  const visible = dateValue(params.visiblePeriodStartedAt);
+
+  return Number.isFinite(target) && Number.isFinite(visible) && visible >= target;
+}
+
+const dateValue = (value: string | Date): number =>
+  value instanceof Date ? value.getTime() : Date.parse(value);
+
 export function readMetadataString(
   metadata: unknown,
   key: string,
