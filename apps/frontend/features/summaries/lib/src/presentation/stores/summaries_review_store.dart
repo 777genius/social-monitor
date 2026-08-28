@@ -97,7 +97,6 @@ final class SummariesReviewStore extends ChangeNotifier {
   final OperationGenerationGuard _postRatingGenerationGuard;
   final OperationGenerationGuard _topicRecommendationGenerationGuard;
   final Duration _workspaceSummaryLoadTimeout;
-
   WorkspaceScope _scope;
   final String _userId;
   SummaryId? _selectedSummaryId;
@@ -134,7 +133,6 @@ final class SummariesReviewStore extends ChangeNotifier {
       const InitialViewState<ReaderSummaryTopicRecommendationQueue>();
 
   WorkspaceScope get scope => _scope;
-
   SummaryPeriod get selectedSummaryPeriod {
     if (_selectedSummaryPeriodEndedAt == null) {
       final latest = switch (workspaceSummaryState) {
