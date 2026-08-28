@@ -18,13 +18,7 @@ FROM (
 WHERE owner.table_owner = session_user
    OR owner.table_owner = 'social_monitor_public_schema_owner';
 
--- A cancelled concurrent build can leave a same-name invalid catalog entry.
--- Rebuild this new performance index on retry instead of accepting that entry.
--- Both statements remain transaction-free as required by PostgreSQL.
-DROP INDEX CONCURRENTLY IF EXISTS
-  "scan_jobs_reader_summary_window_latest_idx";
-
-CREATE INDEX CONCURRENTLY
+CREATE INDEX CONCURRENTLY IF NOT EXISTS
   "scan_jobs_reader_summary_window_latest_idx"
 ON "scan_jobs" (
   "tenant_id",
@@ -38,6 +32,18 @@ ON "scan_jobs" (
 )
 WHERE "execution_metadata" IS NOT NULL
   AND "status" IN ('SUCCEEDED', 'FAILED');
+
+-- IF NOT EXISTS can encounter a catalog entry left by a cancelled concurrent
+-- build. Keep the migration non-transactional, but fail it when that entry is
+-- not a live, ready and valid index so deployment cannot report false success.
+SELECT 1 / COUNT(*) AS valid_health_index
+FROM pg_index
+WHERE indexrelid =
+    'public.scan_jobs_reader_summary_window_latest_idx'::regclass
+  AND indrelid = 'public.scan_jobs'::regclass
+  AND indisvalid
+  AND indisready
+  AND indislive;
 
 RESET ROLE;
 RESET statement_timeout;
