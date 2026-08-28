@@ -63,13 +63,6 @@ case "$DATE_FLAG" in
   *) echo "usage: $0 [--check-readiness|--today|--yesterday|--maintenance-date YYYY-MM-DD]" >&2; exit 64 ;;
 esac
 
-# The rolling pipeline is the production owner for scheduled collection,
-# summary generation and publication. Keep the reviewed midnight timer as its
-# sixth four-hour trigger while retaining explicit maintenance modes below.
-if [[ $DATE_FLAG == --yesterday && $DAILY_TEST_MODE != 1 ]]; then
-  exec "$ROOT/control/rolling-run.sh"
-fi
-
 [[ $POSTGRES_ADMISSION_WAIT_SECONDS =~ \
    ^([0-9]+([.][0-9]+)?|[.][0-9]+)$ ]] || {
   echo "daily production-day admission wait is invalid" >&2

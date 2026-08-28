@@ -40,6 +40,7 @@ final class DeferredSummaryReviewCatalog implements SummaryReviewCatalog {
   final pendingDetails = <PendingSummaryDetailRequest>[];
   final pendingWorkspaceSummarys =
       <Completer<Result<WorkspaceSummarySnapshot>>>[];
+  final workspaceSummaryQueries = <LoadWorkspaceSummaryQuery>[];
   var summaryListLoadCount = 0;
   var workspaceSummaryLoadCount = 0;
   var workspaceSummaryHistoryLoadCount = 0;
@@ -107,6 +108,7 @@ final class DeferredSummaryReviewCatalog implements SummaryReviewCatalog {
     LoadWorkspaceSummaryQuery query,
   ) {
     workspaceSummaryLoadCount += 1;
+    workspaceSummaryQueries.add(query);
     if (hangWorkspaceSummary) {
       return Completer<Result<WorkspaceSummarySnapshot>>().future;
     }

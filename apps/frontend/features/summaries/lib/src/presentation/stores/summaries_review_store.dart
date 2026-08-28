@@ -143,7 +143,9 @@ final class SummariesReviewStore extends ChangeNotifier {
           previousValue?.current,
         _ => null,
       };
-      if (latest != null) {
+      if (latest != null &&
+          summaryPeriodPresetFor(latest.period) ==
+              selectedSummaryPeriodPreset) {
         return latest.period;
       }
     }

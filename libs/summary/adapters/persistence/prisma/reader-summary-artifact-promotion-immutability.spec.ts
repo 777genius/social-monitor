@@ -15,6 +15,30 @@ import { assertReaderSummaryPromotionAttestations } from
   "../../../domain/entities/reader-summary-promotion-attestation-validation";
 
 describe("ReaderSummaryArtifact promotion immutability", () => {
+  it("rehydrates a pre-rollout V1 attestation with legacy peer facts", () => {
+    const fixture = legacyPeerContextFixture(
+      new Date("2026-08-27T13:48:17.317Z"),
+    );
+
+    expect(() => assertReaderSummaryPromotionAttestations(
+      fixture.props,
+      fixture.attestations,
+    )).not.toThrow();
+  });
+
+  it("does not allow legacy peer verification after its rollout boundary", () => {
+    const fixture = legacyPeerContextFixture(
+      new Date("2026-08-27T21:11:02.430Z"),
+    );
+
+    expect(() => assertReaderSummaryPromotionAttestations(
+      fixture.props,
+      fixture.attestations,
+    )).toThrow(
+      "Reader summary promotion attestation differs from persisted evidence facts",
+    );
+  });
+
   it("validates semantic-cluster support in the persisted peer context", () => {
     const base = readerSummaryArtifact("artifact-contextual-attestation")
       .toSnapshot();
@@ -388,6 +412,94 @@ describe("ReaderSummaryArtifact promotion immutability", () => {
     }
   });
 });
+
+const legacyPeerContextFixture = (generatedAt: Date) => {
+  const base = readerSummaryArtifact("artifact-legacy-peer-context")
+    .toSnapshot();
+  const periodStart = new Date("2026-08-26T00:00:00.000Z");
+  const periodEnd = new Date("2026-08-27T00:00:00.000Z");
+  const cutoff = new Date("2026-08-27T00:00:00.000Z");
+  const lead = {
+    candidateId: "feed-legacy-lead",
+    provider: "reddit",
+    contentKind: "original_post" as const,
+    canonicalIdentity: "story:legacy-lead",
+    citationId: "citation-legacy-lead",
+    publishedAt: new Date("2026-08-26T08:00:00.000Z"),
+    observedAt: new Date("2026-08-26T08:05:00.000Z"),
+    periodStart,
+    periodEnd,
+    ingestionCutoff: cutoff,
+    freshnessValid: true,
+    qualityScore: 0.9,
+    relevanceScore: 0.9,
+    integrityScore: 0.9,
+    qualityValid: true,
+    safetyValid: true,
+    citationValid: true,
+    metricsState: "observed" as const,
+    metrics: { provider: "reddit" as const, score: 500, upvoteRatio: 0.95 },
+  };
+  const peer = {
+    ...lead,
+    candidateId: "feed-peer-added-before-contextual-verification",
+    provider: "hacker-news",
+    contentKind: "story" as const,
+    canonicalIdentity: "story:legacy-peer",
+    citationId: "citation-legacy-peer",
+    metrics: { provider: "hacker_news" as const, points: 100 },
+  };
+  const selection = selectReaderPostPromotions([lead]);
+  const sourceWindow = {
+    ...base.sourceWindow,
+    selectedFeedItemIds: [lead.candidateId, peer.candidateId],
+    periodStartedAt: periodStart,
+    periodEndedAt: periodEnd,
+    ingestionCutoff: cutoff,
+  };
+  const attestations = buildReaderPostPromotionAttestations(selection, {
+    artifactId: base.readerSummaryId,
+    sourceWindow,
+  });
+  const selected = selection.top[0]!;
+
+  return {
+    attestations,
+    props: {
+      ...base,
+      generatedAt,
+      sourceWindow,
+      citationMap: [{
+        citationId: lead.citationId,
+        feedItemId: lead.candidateId,
+        sourceItemId: "source-legacy-lead",
+        providerKey: lead.provider,
+        field: "canonicalUrl" as const,
+      }, {
+        citationId: peer.citationId,
+        feedItemId: peer.candidateId,
+        sourceItemId: "source-legacy-peer",
+        providerKey: peer.provider,
+        field: "canonicalUrl" as const,
+      }],
+      content: {
+        ...base.content!,
+        topReads: [{
+          ...topRead(),
+          promotionMarker: "reader_post_promotion" as const,
+          promotionPolicyVersion: "reader_post_promotion.v1" as const,
+          promotionTier: "top" as const,
+          promotionCandidateId: selected.candidate.candidateId,
+          promotionCanonicalIdentity: selected.candidate.canonicalIdentity,
+          citationIds: selected.citationIds,
+        }],
+        selectedPosts: [],
+      },
+      promotionAttestations: attestations,
+      promotionEvidenceFacts: [lead, peer],
+    },
+  };
+};
 
 const nestedRecord = (
   value: Record<string, unknown>,

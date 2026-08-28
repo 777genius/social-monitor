@@ -1,14 +1,25 @@
-import type { ReaderPostPromotionAttestation } from
-  "../policies/reader-post-promotion-policy";
+import {
+  readerPostPromotionTimestampMicros,
+  READER_POST_PROMOTION_POLICY_V1,
+  type ReaderPostPromotionAttestation,
+  type ReaderPostPromotionInput,
+} from "../policies/reader-post-promotion-policy";
 import { selectReaderPostPromotions } from
   "../policies/reader-post-promotion-selection";
 import {
   buildReaderPostPromotionAttestations,
+  canonicalPromotionPayload,
   verifyReaderPostPromotionAttestationDigest,
 } from "../services/reader-post-promotion-attestation";
 import type { ReaderSummaryArtifactProps } from "./reader-summary-artifact";
 import { sameOrderedValues } from
   "./reader-summary-artifact-validation-values";
+
+// Promotion V1 changed from per-attestation verification to peer-context
+// verification without changing its persisted version. Keep the exact legacy
+// verifier only for artifacts generated before that rollout boundary.
+const PEER_CONTEXT_PROMOTION_ROLLOUT_AT =
+  new Date("2026-08-27T20:00:00.000Z");
 
 export const assertReaderSummaryPromotionAttestations = (
   props: ReaderSummaryArtifactProps,
@@ -127,8 +138,178 @@ const assertAttestationsAgainstPersistedEvidence = (
     item.canonicalPayload !== attestations[index]?.canonicalPayload ||
     item.digest !== attestations[index]?.digest
   )) {
+    assertLegacyAttestationsAgainstPersistedEvidence(
+      props.generatedAt,
+      evidenceFacts,
+      attestations,
+    );
+  }
+};
+
+const assertLegacyAttestationsAgainstPersistedEvidence = (
+  generatedAt: Date,
+  evidenceFacts: readonly ReaderPostPromotionInput[],
+  attestations: readonly ReaderPostPromotionAttestation[],
+): void => {
+  if (generatedAt.getTime() >= PEER_CONTEXT_PROMOTION_ROLLOUT_AT.getTime()) {
     throw new Error(
       "Reader summary promotion attestation differs from persisted evidence facts",
     );
   }
+  const evidenceByCandidateId = new Map(
+    evidenceFacts.map((fact) => [fact.candidateId, fact] as const),
+  );
+  try {
+    for (const attestation of attestations) {
+      const lead = promotionInputFromAttestation(attestation);
+      const persistedLead = evidenceByCandidateId.get(lead.candidateId);
+      if (
+        persistedLead === undefined ||
+        !attestedInputMatchesPersistedFact(lead, persistedLead) ||
+        attestation.supportFacts.some((support) => {
+          const persistedSupport = evidenceByCandidateId.get(
+            support.candidateId,
+          );
+          return persistedSupport === undefined ||
+            canonicalPromotionPayload(persistedSupport) !==
+              canonicalPromotionPayload(support);
+        })
+      ) {
+        throw new Error("Legacy promotion evidence is not persistently bound");
+      }
+      assertLegacyAttestedPolicyDecision(attestation, lead);
+    }
+  } catch {
+    throw new Error(
+      "Reader summary promotion attestation differs from persisted evidence facts",
+    );
+  }
+};
+
+const attestedInputMatchesPersistedFact = (
+  attested: ReaderPostPromotionInput,
+  persisted: ReaderPostPromotionInput,
+): boolean => {
+  const comparablePersisted = Object.fromEntries(
+    Object.keys(attested).map((key) => [
+      key,
+      persisted[key as keyof ReaderPostPromotionInput],
+    ]).filter(([, value]) => value !== undefined),
+  );
+  return canonicalPromotionPayload(attested) ===
+    canonicalPromotionPayload(comparablePersisted);
+};
+
+const promotionInputFromAttestation = (
+  attestation: ReaderPostPromotionAttestation,
+): ReaderPostPromotionInput => ({
+  candidateId: attestation.candidateId,
+  provider: attestation.provider,
+  contentKind: attestation.contentKind,
+  canonicalIdentity: attestation.canonicalIdentity,
+  citationId: attestation.citationId,
+  publishedAt: attestation.publishedAt,
+  observedAt: attestation.observedAt,
+  ...(attestation.exactPublishedAt === undefined ? {} : {
+    exactPublishedAt: attestation.exactPublishedAt,
+  }),
+  ...(attestation.exactObservedAt === undefined ? {} : {
+    exactObservedAt: attestation.exactObservedAt,
+  }),
+  ...(attestation.exactPeriodStart === undefined ? {} : {
+    exactPeriodStart: attestation.exactPeriodStart,
+  }),
+  ...(attestation.exactPeriodEnd === undefined ? {} : {
+    exactPeriodEnd: attestation.exactPeriodEnd,
+  }),
+  ...(attestation.exactIngestionCutoff === undefined ? {} : {
+    exactIngestionCutoff: attestation.exactIngestionCutoff,
+  }),
+  ...(attestation.checkedAt === undefined ? {} : {
+    checkedAt: attestation.checkedAt,
+  }),
+  periodStart: attestation.periodStartedAt,
+  periodEnd: attestation.periodEndedAt,
+  ingestionCutoff: attestation.ingestionCutoff,
+  freshnessValid: attestation.freshnessValid,
+  qualityScore: attestation.qualityScore,
+  relevanceScore: attestation.relevanceScore,
+  integrityScore: attestation.integrityScore,
+  qualityValid: attestation.qualityValid,
+  safetyValid: attestation.safetyValid,
+  citationValid: attestation.citationValid,
+  metricsState: attestation.metricsState,
+  ...(attestation.metrics === undefined ? {} : {
+    metrics: attestation.metrics,
+  }),
+  ...(attestation.authorityAttestation === undefined ? {} : {
+    authorityAttestation: attestation.authorityAttestation,
+  }),
+  ...(attestation.relationTrace === undefined ? {} : {
+    relation: attestation.relationTrace,
+  }),
+});
+
+const assertLegacyAttestedPolicyDecision = (
+  attestation: ReaderPostPromotionAttestation,
+  lead: ReaderPostPromotionInput,
+): void => {
+  const selection = selectReaderPostPromotions([
+    lead,
+    ...attestation.supportFacts,
+  ]);
+  const expected = attestation.placement === "top"
+    ? selection.top[0]
+    : selection.additional[0];
+  const decision = selection.decisions.find((item) =>
+    item.candidateId === attestation.candidateId
+  );
+  const periodStart = requiredMicros(
+    attestation.exactPeriodStart ?? attestation.periodStartedAt,
+  );
+  const periodEnd = requiredMicros(
+    attestation.exactPeriodEnd ?? attestation.periodEndedAt,
+  );
+  const publishedAt = requiredMicros(
+    attestation.exactPublishedAt ?? attestation.publishedAt,
+  );
+  const duration = periodEnd - periodStart;
+  const freshness = duration <= 0n ? 0 : Math.max(0, Math.min(
+    1,
+    Number(publishedAt - periodStart) / Number(duration),
+  ));
+  const weights = READER_POST_PROMOTION_POLICY_V1.additionalUsefulnessWeights;
+  const expectedComponents = {
+    normalizedStrength:
+      (decision?.normalizedStrength ?? Number.NaN) * weights.normalizedStrength,
+    qualityScore: attestation.qualityScore * weights.qualityScore,
+    interestRelevanceScore:
+      attestation.relevanceScore * weights.interestRelevanceScore,
+    engagementIntegrityScore:
+      attestation.integrityScore * weights.engagementIntegrityScore,
+    freshness: freshness * weights.freshness,
+  };
+  if (
+    expected?.candidate.candidateId !== attestation.candidateId ||
+    expected.decision !== attestation.decision ||
+    decision?.reason !== attestation.reason ||
+    Object.entries(expectedComponents).some(([key, value]) =>
+      Math.abs(value - attestation.usefulnessComponents[
+        key as keyof typeof expectedComponents
+      ]) > 1e-12
+    ) ||
+    expected.providerCount !== attestation.providerCount ||
+    expected.confidence !== attestation.confidence ||
+    !sameOrderedValues(expected.citationIds, attestation.citationIds)
+  ) {
+    throw new Error("Reader summary legacy promotion decision is invalid");
+  }
+};
+
+const requiredMicros = (value: Date | string): bigint => {
+  const micros = readerPostPromotionTimestampMicros(value);
+  if (micros === undefined) {
+    throw new Error("Reader summary promotion exact timestamp is invalid");
+  }
+  return micros;
 };

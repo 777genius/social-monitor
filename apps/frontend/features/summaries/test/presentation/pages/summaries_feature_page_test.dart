@@ -33,6 +33,31 @@ import '../../support/summaries_test_fixtures.dart';
 part 'summaries_feature_page_test_support.dart';
 
 void main() {
+  testWidgets('explains why a legacy summary has no verified Top posts', (
+    tester,
+  ) async {
+    final store = _store(
+      [githubTrendingSummaryApiDto()],
+      workspaceSummary: readerSummaryApiDto(
+        content: readerSummaryContentApiDto(
+          topReads: const [],
+          selectedPosts: const [],
+        ),
+      ),
+    );
+
+    await _pumpSizedFeature(tester, store: store, size: const Size(1280, 820));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('reader-summary-top-posts-unavailable')),
+      500,
+      scrollable: find.byType(Scrollable).first,
+    );
+
+    expect(find.text('Top posts'), findsOneWidget);
+    expect(find.text('Verified Top posts unavailable'), findsOneWidget);
+  });
+
   testWidgets('does not render legacy supplemental cards', (tester) async {
     final store = _store([
       githubTrendingSummaryApiDto(),
@@ -378,6 +403,10 @@ void main() {
     expect(find.textContaining('GitHub daily radar'), findsOneWidget);
     expect(
       find.byKey(const ValueKey('workspace-summary-toolbar-generate')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('reader-summary-refreshing')),
       findsOneWidget,
     );
   });

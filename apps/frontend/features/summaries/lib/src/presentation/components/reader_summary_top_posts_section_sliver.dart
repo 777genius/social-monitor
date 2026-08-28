@@ -53,7 +53,20 @@ class _ReaderSummaryTopPostsSectionSliverState
   @override
   Widget build(BuildContext context) {
     if (_projection.isEmpty) {
-      return const SliverToBoxAdapter(child: SizedBox.shrink());
+      if (!_hasSummaryEvidence(widget.summary)) {
+        return const SliverToBoxAdapter(child: SizedBox.shrink());
+      }
+      return SliverMainAxisGroup(
+        slivers: [
+          const SliverToBoxAdapter(child: SizedBox(height: AppSpacing.md + 2)),
+          SliverPadding(
+            padding: widget.contentPadding,
+            sliver: const SliverToBoxAdapter(
+              child: _UnavailableTopPostsNotice(),
+            ),
+          ),
+        ],
+      );
     }
     return SliverMainAxisGroup(
       slivers: [
@@ -76,6 +89,36 @@ class _ReaderSummaryTopPostsSectionSliverState
       ],
     );
   }
+}
+
+bool _hasSummaryEvidence(ReaderSummary summary) =>
+    summary.citations.isNotEmpty ||
+    (summary.coverage?.selectedFeedItemCount ?? 0) > 0;
+
+class _UnavailableTopPostsNotice extends StatelessWidget {
+  const _UnavailableTopPostsNotice();
+
+  @override
+  Widget build(BuildContext context) => Column(
+    key: const ValueKey('reader-summary-top-posts-unavailable'),
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Text(
+        'Top posts',
+        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0,
+        ),
+      ),
+      const SizedBox(height: AppSpacing.sm),
+      const AppInlineProblem(
+        title: 'Verified Top posts unavailable',
+        message:
+            'This summary still has its narrative and citations, but no posts '
+            'have the verification required for the Top posts board.',
+      ),
+    ],
+  );
 }
 
 int _selectedPostCount(ReaderSummary summary) {
