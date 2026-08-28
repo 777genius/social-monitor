@@ -417,7 +417,7 @@ class FakeFeedItems implements FeedItemReadRepositoryPort {
 
 class SignalCandidateFeedItems implements FeedItemReadRepositoryPort {
   readonly candidateQueries: ListFeedItemSignalCandidatesQuery[] = [];
-  var listCalls = 0;
+  listCalls = 0;
 
   constructor(private readonly items: readonly FeedItem[]) {}
 

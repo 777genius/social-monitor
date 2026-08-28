@@ -147,11 +147,12 @@ const assertAttestationsAgainstPersistedEvidence = (
 };
 
 const assertLegacyAttestationsAgainstPersistedEvidence = (
-  generatedAt: Date,
+  generatedAt: Date | undefined,
   evidenceFacts: readonly ReaderPostPromotionInput[],
   attestations: readonly ReaderPostPromotionAttestation[],
 ): void => {
-  if (generatedAt.getTime() >= PEER_CONTEXT_PROMOTION_ROLLOUT_AT.getTime()) {
+  if (generatedAt === undefined ||
+      generatedAt.getTime() >= PEER_CONTEXT_PROMOTION_ROLLOUT_AT.getTime()) {
     throw new Error(
       "Reader summary promotion attestation differs from persisted evidence facts",
     );

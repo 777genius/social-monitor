@@ -23,8 +23,8 @@ import 'package:social_monitor_summaries/src/infrastructure/repositories/generat
 import 'package:social_monitor_summaries/src/presentation/stores/summaries_review_store.dart';
 import 'package:social_monitor_summaries/src/presentation/workflows/summaries_review_store_dependencies.dart';
 
-import '../../support/summaries_test_fixtures.dart';
 import '../../support/deferred_summary_review_catalog.dart';
+import '../../support/summaries_test_fixtures.dart';
 
 void main() {
   test('does not navigate to periods without a workspace summary', () async {
