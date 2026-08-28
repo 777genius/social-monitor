@@ -13,8 +13,8 @@ describe("visibleArtifactDoesNotPrecedeTarget", () => {
   it("accepts a newer rolling artifact beside an exact requested daily", () => {
     expect(
       visibleArtifactDoesNotPrecedeTarget({
-        targetPeriodStartedAt: "2026-08-27T00:00:00.000Z",
-        visiblePeriodStartedAt: "2026-08-28T00:00:00.000Z",
+        targetPeriodStartedAt: new Date("2026-08-27T00:00:00.000Z"),
+        visiblePeriodStartedAt: new Date("2026-08-28T00:00:00.000Z"),
       }),
     ).toBe(true);
   });

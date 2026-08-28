@@ -332,14 +332,17 @@ export function dailyPeriodKey(collectionDate: string): string {
 }
 
 export function visibleArtifactDoesNotPrecedeTarget(params: {
-  readonly targetPeriodStartedAt: string;
-  readonly visiblePeriodStartedAt: string;
+  readonly targetPeriodStartedAt: string | Date;
+  readonly visiblePeriodStartedAt: string | Date;
 }): boolean {
-  const target = Date.parse(params.targetPeriodStartedAt);
-  const visible = Date.parse(params.visiblePeriodStartedAt);
+  const target = dateValue(params.targetPeriodStartedAt);
+  const visible = dateValue(params.visiblePeriodStartedAt);
 
   return Number.isFinite(target) && Number.isFinite(visible) && visible >= target;
 }
+
+const dateValue = (value: string | Date): number =>
+  value instanceof Date ? value.getTime() : Date.parse(value);
 
 export function readMetadataString(
   metadata: unknown,
