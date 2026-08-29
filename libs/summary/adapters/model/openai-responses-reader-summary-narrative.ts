@@ -16,6 +16,7 @@ import {
   requiredStringArray,
 } from "./openai-responses-reader-summary-json";
 import {
+  buildReaderSummaryNarrativeCitationGuard,
   buildReaderSummaryNarrativeCoverage,
   isValidReaderSummaryNarrativeLead,
   type ReaderSummaryNarrativeCoverage,
@@ -23,7 +24,6 @@ import {
 
 const narrativeKinds = new Set(readerSummaryNarrativeSectionKinds);
 const maxNarrativeSections = 7;
-const maxSecondarySections = 3;
 
 export const normalizeOpenAiReaderSummaryNarrative = (params: {
   readonly rawSections: unknown;
@@ -58,6 +58,10 @@ export const normalizeOpenAiReaderSummaryNarrative = (params: {
   const eligibleWatchCitationIds = watchEligibleCitationIds(
     params.input,
     params.citationMap,
+  );
+  const citationsAllowed = buildReaderSummaryNarrativeCitationGuard(
+    coverage,
+    eligibleWatchCitationIds,
   );
   const sections = rawSections
     .slice(0, maxNarrativeSections)
@@ -114,10 +118,7 @@ export const normalizeOpenAiReaderSummaryNarrative = (params: {
       ) {
         return [];
       }
-      if (
-        kind === "watch" &&
-        !citationIds.every((id) => eligibleWatchCitationIds.has(id))
-      ) {
+      if (!citationsAllowed(kind, citationIds)) {
         return [];
       }
       if (
@@ -415,10 +416,7 @@ const assertNarrativeCoverage = (
   const secondarySections = sections.filter(
     (section) => section.kind === "secondary_signal",
   );
-  const plannedClusterIds = [...plannedSecondaryCitations.keys()].slice(
-    0,
-    maxSecondarySections,
-  );
+  const plannedClusterIds = [...plannedSecondaryCitations.keys()].slice(0, 3);
   const actualClusterIds = secondarySections
     .map((section) => section.storyClusterId)
     .filter((clusterId): clusterId is string => clusterId !== undefined);
