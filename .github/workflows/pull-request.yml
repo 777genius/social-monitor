@@ -330,3 +330,11 @@ jobs:
             features/settings features/sources features/summaries
           dart test packages/shared_kernel
           dart test packages/generated_api
+      - name: Verify production WebAssembly bundle
+        working-directory: apps/frontend/app
+        run: |
+          set -euo pipefail
+          flutter build web --release --wasm --no-web-resources-cdn \
+            --dart-define=SOCIAL_MONITOR_API_BASE_URL=https://social-monitor.app
+          test -s build/web/main.dart.wasm
+          test -s build/web/main.dart.js

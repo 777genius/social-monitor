@@ -55,27 +55,27 @@ export class GetReaderSummaryUseCase {
     }
 
     const snapshot = readerSummary.toSnapshot();
-    const freshness = await this.freshness.evaluate({
-      tenantId: snapshot.tenantId,
-      workspaceId: snapshot.workspaceId,
-      scope: snapshot.scope,
-      sourceWindow: snapshot.sourceWindow,
-      period: snapshot.period,
-      observedThrough: snapshot.generatedAt,
-    });
-
-    const content = await this.previewMediaEnricher.enrich({
-      artifact: readerSummary,
-      content: readerSummaryContentForArtifact(readerSummary),
-    });
-    const collectedCoverage =
-      await this.coverageCounter.countCollectedFeedItemCoverage({
+    const [freshness, content, collectedCoverage] = await Promise.all([
+      this.freshness.evaluate({
+        tenantId: snapshot.tenantId,
+        workspaceId: snapshot.workspaceId,
+        scope: snapshot.scope,
+        sourceWindow: snapshot.sourceWindow,
+        period: snapshot.period,
+        observedThrough: snapshot.generatedAt,
+      }),
+      this.previewMediaEnricher.enrich({
+        artifact: readerSummary,
+        content: readerSummaryContentForArtifact(readerSummary),
+      }),
+      this.coverageCounter.countCollectedFeedItemCoverage({
         tenantId: snapshot.tenantId,
         workspaceId: snapshot.workspaceId,
         scope: snapshot.scope,
         period: snapshot.period,
         observedThrough: snapshot.generatedAt,
-      });
+      }),
+    ]);
 
     return ok(
       presentReaderSummaryArtifact(readerSummary, freshness, {

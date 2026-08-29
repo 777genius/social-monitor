@@ -693,10 +693,10 @@ jobs:
           release="$RUNNER_TEMP/social-monitor-frontend-release"
           rm -rf "$release"
           install -d -m 0755 "$release/public" "$release/admin"
-          flutter build web --release \
+          flutter build web --release --wasm --no-web-resources-cdn \
             --dart-define=SOCIAL_MONITOR_API_BASE_URL=https://social-monitor.app
           cp -R build/web/. "$release/public/"
-          flutter build web --release \
+          flutter build web --release --wasm --no-web-resources-cdn \
             --dart-define=SOCIAL_MONITOR_API_BASE_URL=https://admin.social-monitor.app
           cp -R build/web/. "$release/admin/"
           printf '%s\n' "$GITHUB_SHA" > "$release/public/release-sha.txt"

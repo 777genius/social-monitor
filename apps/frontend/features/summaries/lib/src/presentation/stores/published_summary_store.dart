@@ -11,6 +11,8 @@ import '../../application/use_cases/open_reader_source_use_case.dart';
 import '../../domain/aggregates/reader_summary.dart';
 import '../workflows/summary_period_navigation.dart';
 
+part '../workflows/published_summary_refresh_workflow.dart';
+
 final class PublishedSummaryStore extends ChangeNotifier {
   PublishedSummaryStore({
     required WorkspaceScope scope,
@@ -335,6 +337,8 @@ final class PublishedSummaryStore extends ChangeNotifier {
       onFailure: (_) {},
     );
   }
+
+  void _notifyChanged() => notifyListeners();
 
   void _selectPeriod(SummaryPeriod period) {
     selectedPeriodPreset = summaryPeriodPresetFor(period);

@@ -188,6 +188,75 @@ void main() {
     expect(store.availablePeriods, hasLength(2));
   });
 
+  test('refresh check does not reload an unchanged summary', () async {
+    final july10 = _dailySummary('summary-july-10', 2026, 7, 10);
+    final reference = PublishedSummaryReference(
+      summaryId: july10.id,
+      period: july10.period,
+    );
+    final history = Result.success(
+      WorkspaceSummarySnapshot(
+        availablePeriods: [july10.period],
+        availableSummaryReferences: [reference],
+        availablePeriodsAreComplete: true,
+      ),
+    );
+    final catalog = _PublishedSummaryCatalog(
+      publishedResult: Future.value(
+        const Result.success(WorkspaceSummarySnapshot()),
+      ),
+      publishedSummaries: {july10.id: july10},
+      historyResult: Future.value(history),
+    );
+    final store = _store(catalog);
+    addTearDown(store.dispose);
+    await store.load();
+
+    await store.refreshIfNewer();
+
+    expect(catalog.historyQueries, hasLength(2));
+    expect(catalog.publishedQueries, [july10.id]);
+    expect(_readySummary(store).id, july10.id);
+  });
+
+  test('refresh check loads a newly published summary once', () async {
+    final july10 = _dailySummary('summary-july-10', 2026, 7, 10);
+    final july11 = _dailySummary('summary-july-11', 2026, 7, 11);
+    WorkspaceSummarySnapshot historyFor(ReaderSummary summary) {
+      return WorkspaceSummarySnapshot(
+        availablePeriods: [summary.period],
+        availableSummaryReferences: [
+          PublishedSummaryReference(
+            summaryId: summary.id,
+            period: summary.period,
+          ),
+        ],
+        availablePeriodsAreComplete: true,
+      );
+    }
+
+    final catalog = _PublishedSummaryCatalog(
+      publishedResult: Future.value(
+        const Result.success(WorkspaceSummarySnapshot()),
+      ),
+      publishedSummaries: {july10.id: july10, july11.id: july11},
+      historyResult: Future.value(Result.success(historyFor(july11))),
+      historyResults: [
+        Future.value(Result.success(historyFor(july10))),
+        Future.value(Result.success(historyFor(july11))),
+      ],
+    );
+    final store = _store(catalog);
+    addTearDown(store.dispose);
+    await store.load();
+
+    await store.refreshIfNewer();
+
+    expect(catalog.historyQueries, hasLength(2));
+    expect(catalog.publishedQueries, [july10.id, july11.id]);
+    expect(_readySummary(store).id, july11.id);
+  });
+
   test('keeps the article visible while referenced detail loads', () async {
     final july9 = _dailySummary('summary-july-09', 2026, 7, 9);
     final july10 = _dailySummary('summary-july-10', 2026, 7, 10);
@@ -345,6 +414,7 @@ final class _PublishedSummaryCatalog extends Fake
   _PublishedSummaryCatalog({
     required this.publishedResult,
     required this.historyResult,
+    this.historyResults = const [],
     this.periodSummaries = const [],
     this.publishedSummaries = const {},
     this.publishedResults = const {},
@@ -352,6 +422,7 @@ final class _PublishedSummaryCatalog extends Fake
 
   final Future<Result<WorkspaceSummarySnapshot>> publishedResult;
   final Future<Result<WorkspaceSummarySnapshot>> historyResult;
+  final List<Future<Result<WorkspaceSummarySnapshot>>> historyResults;
   final List<ReaderSummary> periodSummaries;
   final Map<String, ReaderSummary> publishedSummaries;
   final Map<String, Future<Result<WorkspaceSummarySnapshot>>> publishedResults;
@@ -381,7 +452,10 @@ final class _PublishedSummaryCatalog extends Fake
     LoadWorkspaceSummaryQuery query,
   ) {
     historyQueries.add(query);
-    return historyResult;
+    final index = historyQueries.length - 1;
+    return index < historyResults.length
+        ? historyResults[index]
+        : historyResult;
   }
 
   @override
