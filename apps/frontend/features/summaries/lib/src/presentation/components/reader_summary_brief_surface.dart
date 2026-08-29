@@ -133,7 +133,9 @@ class _ReaderSummaryBriefSurfaceState extends State<ReaderSummaryBriefSurface> {
                 ),
                 if (!content.topicMap.isEmpty) ...[
                   const SizedBox(height: AppSpacing.md),
-                  ReaderSummaryTopicMapPanel(topicMap: content.topicMap),
+                  ReaderSummaryDeferredTopicMapPanel(
+                    topicMap: content.topicMap,
+                  ),
                 ],
                 const SizedBox(height: AppSpacing.md),
                 _SourceFilterChips(

@@ -2,6 +2,73 @@ part of 'reader_summary_brief_surface.dart';
 
 enum ReaderSummaryTopicMapRenderer { graphView, flutterGraphView }
 
+class ReaderSummaryDeferredTopicMapPanel extends StatefulWidget {
+  const ReaderSummaryDeferredTopicMapPanel({super.key, required this.topicMap});
+
+  final ReaderSummaryTopicMap topicMap;
+
+  @override
+  State<ReaderSummaryDeferredTopicMapPanel> createState() =>
+      _ReaderSummaryDeferredTopicMapPanelState();
+}
+
+class _ReaderSummaryDeferredTopicMapPanelState
+    extends State<ReaderSummaryDeferredTopicMapPanel> {
+  bool _isReady = false;
+  Timer? _deferredRender;
+
+  @override
+  void initState() {
+    super.initState();
+    _showAfterFirstFrame();
+  }
+
+  @override
+  void didUpdateWidget(covariant ReaderSummaryDeferredTopicMapPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.topicMap != widget.topicMap) {
+      _isReady = false;
+      _showAfterFirstFrame();
+    }
+  }
+
+  void _showAfterFirstFrame() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _deferredRender?.cancel();
+      _deferredRender = Timer(const Duration(milliseconds: 16), () {
+        if (mounted && !_isReady) {
+          setState(() => _isReady = true);
+        }
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _deferredRender?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isReady) {
+      return ReaderSummaryTopicMapPanel(topicMap: widget.topicMap);
+    }
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth.isFinite
+            ? constraints.maxWidth
+            : 640.0;
+        return SizedBox(
+          key: const ValueKey('deferred-topic-map-placeholder'),
+          width: width,
+          height: width < 420 ? 360 : 420,
+        );
+      },
+    );
+  }
+}
+
 class ReaderSummaryTopicMapPanel extends StatelessWidget {
   const ReaderSummaryTopicMapPanel({
     super.key,
