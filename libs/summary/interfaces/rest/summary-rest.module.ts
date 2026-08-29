@@ -20,6 +20,8 @@ import { GetReaderSummaryJobStatusUseCase } from "../../features/get-reader-summ
 import { GetSummaryPolicyUseCase } from "../../features/get-summary-policy/get-summary-policy.use-case";
 import { GetSummaryJobStatusUseCase } from "../../features/get-summary-job-status/get-summary-job-status.use-case";
 import { GetSummaryUseCase } from "../../features/get-summary/get-summary.use-case";
+import { ListReaderSummariesUseCase } from "../../features/list-reader-summaries/list-reader-summaries.use-case";
+import { ListReaderSummaryPeriodsUseCase } from "../../features/list-reader-summary-periods/list-reader-summary-periods.use-case";
 import { ListReaderSummaryTopicRecommendationsUseCase } from "../../features/list-reader-summary-topic-recommendations/list-reader-summary-topic-recommendations.use-case";
 import { ListSummaryFeedbackUseCase } from "../../features/list-summary-feedback/list-summary-feedback.use-case";
 import { ListSummariesUseCase } from "../../features/list-summaries/list-summaries.use-case";
@@ -378,6 +380,8 @@ import { SummaryController } from "./summary.controller";
     GetSummaryJobStatusUseCase,
     DecideReaderSummaryTopicRecommendationUseCase,
     ListReaderSummaryTopicRecommendationsUseCase,
+    ListReaderSummariesUseCase,
+    ListReaderSummaryPeriodsUseCase,
     ListSummaryFeedbackUseCase,
     ...summaryRestInfrastructureExports,
     READER_SUMMARY_ARTIFACT_REPOSITORY,

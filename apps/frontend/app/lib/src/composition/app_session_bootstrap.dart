@@ -17,30 +17,30 @@ Future<void> bootstrapAppSession(AppRuntimeController controller) async {
     return;
   }
 
-  final result = await apiRuntime.client.sendUnscoped(
-    () => apiRuntime.rest.auth.authSessionControllerGet(),
-  );
-
-  result.fold(
-    onSuccess: (dto) {
-      if (!controller.runtime.session.isRestoring) {
-        return;
-      }
-      final selectedWorkspace = _workspaceSnapshot(dto.selectedWorkspace);
-      controller.restoreAuthSession(
-        userId: dto.userId,
-        userLabel: dto.userLabel,
-        userRole:
-            dto.userRole == generated.AuthSessionResponseDtoUserRoleUserRole.admin
-            ? 'admin'
-            : 'user',
-        selectedWorkspace: selectedWorkspace,
-        availableWorkspaces: _ensureSelected(
-          [for (final workspace in dto.workspaces) _workspaceSnapshot(workspace)],
-          selectedWorkspace,
-        ),
+  final bootstrapResult = await apiRuntime.client
+      .sendUnscoped<generated.AppBootstrapResponseDto>(
+        () => apiRuntime.rest.appBootstrap.appBootstrapControllerGet(),
       );
-    },
+  final bootstrap = bootstrapResult.fold(
+    onSuccess: (dto) => dto,
+    onFailure: (_) => null,
+  );
+  if (bootstrap != null) {
+    _restoreSession(
+      controller,
+      bootstrap.session,
+      initialSummaryBootstrap: bootstrap.readerSummaries,
+    );
+    return;
+  }
+
+  final sessionResult = await apiRuntime.client
+      .sendUnscoped<generated.AuthSessionResponseDto>(
+        () => apiRuntime.rest.auth.authSessionControllerGet(),
+      );
+
+  sessionResult.fold(
+    onSuccess: (dto) => _restoreSession(controller, dto),
     onFailure: (_) {
       // Keep the restoring state; the auth page surfaces the failure and
       // offers an explicit refresh action.
@@ -48,18 +48,44 @@ Future<void> bootstrapAppSession(AppRuntimeController controller) async {
   );
 }
 
-AppWorkspaceSnapshot _workspaceSnapshot(
-  generated.AuthSessionWorkspaceDto dto,
-) {
+void _restoreSession(
+  AppRuntimeController controller,
+  generated.AuthSessionResponseDto dto, {
+  generated.ReaderSummaryBootstrapResponseDto? initialSummaryBootstrap,
+}) {
+  if (!controller.runtime.session.isRestoring) {
+    return;
+  }
+  final selectedWorkspace = _workspaceSnapshot(dto.selectedWorkspace);
+  final selectedScope = selectedWorkspace.scope;
+  controller.restoreAuthSession(
+    userId: dto.userId,
+    userLabel: dto.userLabel,
+    userRole:
+        dto.userRole == generated.AuthSessionResponseDtoUserRoleUserRole.admin
+        ? 'admin'
+        : 'user',
+    selectedWorkspace: selectedWorkspace,
+    availableWorkspaces: _ensureSelected([
+      for (final workspace in dto.workspaces) _workspaceSnapshot(workspace),
+    ], selectedWorkspace),
+    initialSummaryBootstrap:
+        initialSummaryBootstrap == null || selectedScope == null
+        ? null
+        : AppInitialSummaryBootstrap(
+            scope: selectedScope,
+            payload: initialSummaryBootstrap,
+          ),
+  );
+}
+
+AppWorkspaceSnapshot _workspaceSnapshot(generated.AuthSessionWorkspaceDto dto) {
   return AppWorkspaceSnapshot(
     tenantName: dto.tenantName,
     workspaceName: dto.workspaceName,
     statusLabel: dto.statusLabel,
     workspaceRole: _workspaceRole(dto.workspaceRole),
-    scope: WorkspaceScope(
-      tenantId: dto.tenantId,
-      workspaceId: dto.workspaceId,
-    ),
+    scope: WorkspaceScope(tenantId: dto.tenantId, workspaceId: dto.workspaceId),
   );
 }
 

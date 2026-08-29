@@ -10,16 +10,23 @@ import '../mappers/generated_summary_rest_mapper.dart';
 import 'summaries_api_client.dart';
 
 final class GeneratedWorkspaceSummaryReader {
-  const GeneratedWorkspaceSummaryReader({
+  GeneratedWorkspaceSummaryReader({
     required generated.GeneratedApiRuntime runtime,
     required GeneratedSummaryRestMapper mapper,
+    generated.ReaderSummaryBootstrapResponseDto? initialBootstrap,
   }) : _runtime = runtime,
-       _mapper = mapper;
+       _mapper = mapper,
+       _initialBootstrap = initialBootstrap,
+       _latestBootstrapAvailable = initialBootstrap != null,
+       _periodsBootstrapAvailable = initialBootstrap != null;
 
   static const _historyLimit = 40;
 
   final generated.GeneratedApiRuntime _runtime;
   final GeneratedSummaryRestMapper _mapper;
+  final generated.ReaderSummaryBootstrapResponseDto? _initialBootstrap;
+  bool _latestBootstrapAvailable;
+  bool _periodsBootstrapAvailable;
 
   Future<Result<WorkspaceSummaryApiDto>> loadById(
     LoadPublishedSummaryApiRequest request,
@@ -55,6 +62,10 @@ final class GeneratedWorkspaceSummaryReader {
     LoadWorkspaceSummaryApiRequest request,
   ) async {
     if (request.allowLatestFallback) {
+      final bootstrap = _takeLatestBootstrap(request);
+      if (bootstrap != null) {
+        return Result.success(_workspaceSummaryFrom(bootstrap));
+      }
       final latestResult = await _list(request, exactPeriod: false);
       return latestResult.fold(
         onSuccess: (dto) => Result.success(_workspaceSummaryFrom(dto)),
@@ -72,22 +83,51 @@ final class GeneratedWorkspaceSummaryReader {
   Future<Result<WorkspaceSummaryApiDto>> loadHistory(
     LoadWorkspaceSummaryApiRequest request,
   ) async {
+    final bootstrap = _takePeriodsBootstrap(request);
+    if (bootstrap != null) {
+      return Result.success(_workspaceSummaryHistoryFrom(bootstrap));
+    }
     final periodsResult = await _listPeriods(request, limit: _historyLimit);
     return periodsResult.fold(
-      onSuccess: (periodsDto) {
-        final references = _availableReferencesFromPeriodSummaries(periodsDto);
-        return Result.success(
-          WorkspaceSummaryApiDto(
-            availablePeriods: references
-                .map((reference) => reference.period)
-                .toList(growable: false),
-            availableSummaryReferences: references,
-            availablePeriodsAreComplete: true,
-          ),
-        );
-      },
+      onSuccess: (periodsDto) =>
+          Result.success(_workspaceSummaryHistoryFrom(periodsDto)),
       onFailure: Result<WorkspaceSummaryApiDto>.failure,
     );
+  }
+
+  generated.ListReaderSummariesResponseDto? _takeLatestBootstrap(
+    LoadWorkspaceSummaryApiRequest request,
+  ) {
+    if (!_latestBootstrapAvailable) {
+      return null;
+    }
+    _latestBootstrapAvailable = false;
+    if (!_bootstrapMatches(request)) {
+      return null;
+    }
+    return _initialBootstrap?.latest;
+  }
+
+  generated.ListReaderSummaryPeriodsResponseDto? _takePeriodsBootstrap(
+    LoadWorkspaceSummaryApiRequest request,
+  ) {
+    if (!_periodsBootstrapAvailable) {
+      return null;
+    }
+    _periodsBootstrapAvailable = false;
+    if (!_bootstrapMatches(request)) {
+      return null;
+    }
+    return _initialBootstrap?.periods;
+  }
+
+  bool _bootstrapMatches(LoadWorkspaceSummaryApiRequest request) {
+    final bootstrap = _initialBootstrap;
+    return bootstrap != null &&
+        bootstrap.tenantId == request.scope.tenantId &&
+        bootstrap.workspaceId == request.scope.workspaceId &&
+        request.period.cadence == SummaryPeriodCadence.daily &&
+        request.period.timezone == 'UTC';
   }
 
   Future<Result<generated.ListReaderSummariesResponseDto>> _list(
@@ -151,6 +191,19 @@ final class GeneratedWorkspaceSummaryReader {
               ),
             ],
       availablePeriodsAreComplete: availablePeriodsAreComplete,
+    );
+  }
+
+  WorkspaceSummaryApiDto _workspaceSummaryHistoryFrom(
+    generated.ListReaderSummaryPeriodsResponseDto periodsDto,
+  ) {
+    final references = _availableReferencesFromPeriodSummaries(periodsDto);
+    return WorkspaceSummaryApiDto(
+      availablePeriods: references
+          .map((reference) => reference.period)
+          .toList(growable: false),
+      availableSummaryReferences: references,
+      availablePeriodsAreComplete: true,
     );
   }
 

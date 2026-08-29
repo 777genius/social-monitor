@@ -3,6 +3,7 @@
 // ignore_for_file: type=lint, unused_import, invalid_annotation_target, unnecessary_import
 
 // Clients
+export 'clients/app_bootstrap_client.dart';
 export 'clients/auth_client.dart';
 export 'clients/feed_client.dart';
 export 'clients/interests_client.dart';
@@ -18,6 +19,7 @@ export 'clients/source_credentials_client.dart';
 export 'clients/sources_client.dart';
 export 'clients/workspace_settings_client.dart';
 // Data classes
+export 'models/app_bootstrap_response_dto.dart';
 export 'models/auth_session_response_dto.dart';
 export 'models/auth_session_workspace_dto.dart';
 export 'models/bind_source_request_dto.dart';
@@ -86,6 +88,7 @@ export 'models/reader_summary_accepted_topic_application_dto.dart';
 export 'models/reader_summary_accepted_topic_reversion_binding_dto.dart';
 export 'models/reader_summary_accepted_topic_reversion_dto.dart';
 export 'models/reader_summary_artifact_response_dto.dart';
+export 'models/reader_summary_bootstrap_response_dto.dart';
 export 'models/reader_summary_citation_view_dto.dart';
 export 'models/reader_summary_claim_dto.dart';
 export 'models/reader_summary_claim_evidence_dto.dart';

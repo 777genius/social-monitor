@@ -4,6 +4,7 @@
 
 import 'package:dio/dio.dart' hide Headers;
 
+import 'clients/app_bootstrap_client.dart';
 import 'clients/auth_client.dart';
 import 'clients/feed_client.dart';
 import 'clients/interests_client.dart';
@@ -32,6 +33,7 @@ class SocialMonitorRestClient {
 
   static String get version => '0.1.0';
 
+  AppBootstrapClient? _appBootstrap;
   AuthClient? _auth;
   FeedClient? _feed;
   InterestsClient? _interests;
@@ -46,6 +48,9 @@ class SocialMonitorRestClient {
   SourceCredentialsClient? _sourceCredentials;
   SourcesClient? _sources;
   WorkspaceSettingsClient? _workspaceSettings;
+
+  AppBootstrapClient get appBootstrap =>
+      _appBootstrap ??= AppBootstrapClient(_dio, baseUrl: _baseUrl);
 
   AuthClient get auth => _auth ??= AuthClient(_dio, baseUrl: _baseUrl);
 

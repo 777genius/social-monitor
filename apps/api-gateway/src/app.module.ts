@@ -15,6 +15,7 @@ import { SystemClock } from '@social-monitor/shared-kernel';
 import { SummaryRestModule } from '@social-monitor/summary/interfaces/rest/summary-rest.module';
 import { SubscriptionsRestModule } from '@social-monitor/subscriptions/interfaces/rest/subscriptions-rest.module';
 
+import { AppBootstrapController } from './app-bootstrap.controller';
 import { DomainErrorFilter } from './domain-error.filter';
 import { HealthController } from './health.controller';
 import {
@@ -44,7 +45,7 @@ import { SocialResearchApiModule } from './social-research-api.module';
     IdentityRestModule,
     SocialResearchApiModule,
   ],
-  controllers: [HealthController],
+  controllers: [AppBootstrapController, HealthController],
   providers: [
     ApiGatewayHealthReporter,
     {

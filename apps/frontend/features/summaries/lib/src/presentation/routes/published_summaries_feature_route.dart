@@ -13,12 +13,14 @@ class PublishedSummariesFeatureRoute extends StatelessWidget {
     required Object generatedApiRuntime,
     required WorkspaceScope scope,
     String? summaryId,
+    Object? initialBootstrap,
     void Function(String summaryId)? onSummarySelected,
     FutureOr<void> Function(Uri uri)? onOpenReaderSource,
   }) : _module = PublishedSummariesFeatureModule(
          generatedApiRuntime: generatedApiRuntime,
          scope: scope,
          summaryId: summaryId,
+         initialBootstrap: initialBootstrap,
          onSummarySelected: onSummarySelected,
          onOpenReaderSource: onOpenReaderSource,
        );

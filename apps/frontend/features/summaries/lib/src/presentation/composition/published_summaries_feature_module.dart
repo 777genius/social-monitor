@@ -18,6 +18,7 @@ final class PublishedSummariesFeatureModule extends Module {
     required this.generatedApiRuntime,
     required this.scope,
     this.summaryId,
+    this.initialBootstrap,
     this.onSummarySelected,
     this.onOpenReaderSource,
   });
@@ -25,6 +26,7 @@ final class PublishedSummariesFeatureModule extends Module {
   final Object generatedApiRuntime;
   final WorkspaceScope scope;
   final String? summaryId;
+  final Object? initialBootstrap;
   final void Function(String summaryId)? onSummarySelected;
   final FutureOr<void> Function(Uri uri)? onOpenReaderSource;
 
@@ -38,6 +40,7 @@ final class PublishedSummariesFeatureModule extends Module {
     final catalog = GeneratedSummaryReviewCatalog(
       apiClient: GeneratedSummariesApiClient.fromRuntime(
         runtime: generatedApiRuntime,
+        initialBootstrap: initialBootstrap,
       ),
     );
     return PublishedSummaryStore(
