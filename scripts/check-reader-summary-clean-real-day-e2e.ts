@@ -6,7 +6,11 @@ import {
   normalizeLineEndings,
   roundMetric,
 } from "./lib/yesterday-social-replay-support";
-import { targetWindowHasEveryPrimaryProvider } from "./lib/reader-summary-clean-real-day-e2e-policy";
+import {
+  evaluateCleanRealDayCollectionEvidence,
+  targetWindowHasEveryPrimaryProvider,
+  type AggregateCollectionQualityProof,
+} from "./lib/reader-summary-clean-real-day-e2e-policy";
 import { summaryEvidenceCoverageEnough } from "./lib/reader-summary-primary-source-quality";
 
 type PrimaryProviderKey = "reddit" | "x-twitter";
@@ -217,6 +221,7 @@ type Report = {
   };
   readonly inputs: {
     readonly collectionPath: string;
+    readonly aggregateCollectionQualityPath: string;
     readonly plannerCanaryPath: string;
     readonly qualityDashboardPath: string;
     readonly feedbackCalibrationPath: string;
@@ -230,6 +235,8 @@ type Report = {
     readonly distinctSourceQueryLaneCount: number;
     readonly targetCount: number;
     readonly succeededScanCount: number;
+    readonly aggregateProviderCounts: Record<string, number>;
+    readonly aggregateCompensationApplied: boolean;
   };
   readonly planner: {
     readonly bindingCount: number;
@@ -284,6 +291,12 @@ type Report = {
     readonly visiblePeriodArtifactCount: number;
     readonly supersededPeriodArtifactCount: number;
   };
+  readonly warningSignals: {
+    readonly targetedCollectionDegraded: boolean;
+    readonly targetedCollectionScansIncomplete: boolean;
+    readonly aggregateCollectionCompensationApplied: boolean;
+    readonly aggregateSummaryQualityPreviouslyVerified: boolean;
+  };
   readonly qualityGates: Record<string, boolean>;
   readonly blockingPassed: boolean;
 };
@@ -294,6 +307,8 @@ const allowHistorical = process.argv.includes("--allow-historical");
 const outputPath = "ops/evals/reader-summary-clean-real-day-e2e-report.v1.json";
 const collectionPath =
   "ops/evals/reader-summary-clean-real-day-collection.v1.json";
+const aggregateCollectionQualityPath =
+  "ops/evals/yesterday-social-collection-quality-report.v1.json";
 const plannerCanaryPath =
   "ops/evals/source-query-planner-real-binding-canary.v1.json";
 const qualityDashboardPath =
@@ -342,6 +357,8 @@ function main(): void {
 
 function buildReport(): Report {
   const collection = readJson<CleanCollectionReport>(collectionPath);
+  const aggregateCollectionQuality =
+    readJson<AggregateCollectionQualityProof>(aggregateCollectionQualityPath);
   const plannerCanary = readJson<PlannerCanaryReport>(plannerCanaryPath);
   const dashboard = readJson<QualityDashboardReport>(qualityDashboardPath);
   const feedback = readJson<FeedbackCalibrationReport>(feedbackCalibrationPath);
@@ -358,6 +375,7 @@ function buildReport(): Report {
 
   const reportWithoutSecretGate = buildReportWithoutSecretGate(
     collection,
+    aggregateCollectionQuality,
     plannerCanary,
     dashboard,
     latestDay,
@@ -382,6 +400,7 @@ function buildReport(): Report {
 
 function buildReportWithoutSecretGate(
   collectionReport: CleanCollectionReport,
+  aggregateCollectionQuality: AggregateCollectionQualityProof,
   plannerCanary: PlannerCanaryReport,
   dashboard: QualityDashboardReport,
   latestDay: DashboardDay,
@@ -421,6 +440,20 @@ function buildReportWithoutSecretGate(
       true ||
     latestDay.collectionStrategy.warningSignals.xTwitterQueryLanesMissing ===
       true;
+  const targetedScansSucceeded =
+    collectionReport.scans.length >= collectionReport.targets.length &&
+    collectionReport.scans.every((scan) => scan.status === "succeeded") &&
+    primaryCollectionScans.length >= primarySources.length &&
+    primaryCollectionScans.every(
+      (scan) => scan.fetched > 0 && scan.projected > 0,
+    );
+  const collectionEvidence = evaluateCleanRealDayCollectionEvidence({
+    expectedCollectionDate: collectionDate,
+    targetedBlockingPassed: collectionReport.blockingPassed,
+    targetedQualityGates: collectionReport.qualityGates,
+    targetedScansSucceeded,
+    aggregate: aggregateCollectionQuality,
+  });
   const report = {
     schemaVersion: 1,
     artifactFormat: "reader-summary-clean-real-day-e2e-report-v1",
@@ -434,6 +467,7 @@ function buildReportWithoutSecretGate(
     },
     inputs: {
       collectionPath,
+      aggregateCollectionQualityPath,
       plannerCanaryPath,
       qualityDashboardPath,
       feedbackCalibrationPath,
@@ -451,6 +485,9 @@ function buildReportWithoutSecretGate(
       succeededScanCount: collectionReport.scans.filter(
         (scan) => scan.status === "succeeded",
       ).length,
+      aggregateProviderCounts: collectionEvidence.aggregateProviderCounts,
+      aggregateCompensationApplied:
+        collectionEvidence.aggregateCompensationApplied,
     },
     planner: {
       bindingCount: plannerCanary.totals.bindingCount,
@@ -512,6 +549,16 @@ function buildReportWithoutSecretGate(
       shadowMode: latestDay.feedbackShadow.mode,
     },
     artifactHistory: artifactQualityReport.artifactHistory,
+    warningSignals: {
+      targetedCollectionDegraded: !collectionReport.blockingPassed,
+      targetedCollectionScansIncomplete: !targetedScansSucceeded,
+      aggregateCollectionCompensationApplied:
+        collectionEvidence.aggregateCompensationApplied,
+      aggregateSummaryQualityPreviouslyVerified:
+        aggregateCollectionQuality.summaryQualityVerified === true &&
+        aggregateCollectionQuality.completionStatus ===
+          "collection_and_summary_quality_verified",
+    },
     qualityGates: {
       collectionArtifactFormatValid:
         collectionReport.artifactFormat ===
@@ -527,8 +574,14 @@ function buildReportWithoutSecretGate(
       artifactQualityArtifactFormatValid:
         artifactQualityReport.artifactFormat ===
         "yesterday-reader-summary-artifact-quality-v1",
-      collectionArtifactPassed: collectionReport.blockingPassed,
-      collectionQualityGatesPassed: allGatesPass(collectionReport.qualityGates),
+      aggregateCollectionProofValidWhenNeeded:
+        collectionEvidence.collectionEvidencePassed,
+      collectionArtifactPassed:
+        collectionReport.blockingPassed ||
+        collectionEvidence.aggregateCompensationApplied,
+      collectionQualityGatesPassed:
+        allGatesPass(collectionReport.qualityGates) ||
+        collectionEvidence.aggregateCompensationApplied,
       cleanCollectionDateMatchesDashboard:
         collectionDate === dashboard.aggregate.latestCleanDate &&
         collectionDate === latestDay.collectionDate &&
@@ -555,14 +608,8 @@ function buildReportWithoutSecretGate(
           (target) => target.plannerEnabled && target.canaryRollout,
         ),
       cleanCollectionScansSucceeded:
-        collectionReport.scans.length >= collectionReport.targets.length &&
-        collectionReport.scans.every((scan) => scan.status === "succeeded") &&
-        primaryCollectionScans.length >= primarySources.length &&
-        primaryCollectionScans.every(
-          (scan) =>
-            scan.fetched > 0 &&
-            scan.projected > 0,
-        ),
+        targetedScansSucceeded ||
+        collectionEvidence.aggregateCompensationApplied,
       plannerCanaryArtifactPassed: plannerCanary.blockingPassed,
       plannerCanaryQualityGatesPassed: allGatesPass(plannerCanary.qualityGates),
       plannerPrimaryBindingsPresent:
