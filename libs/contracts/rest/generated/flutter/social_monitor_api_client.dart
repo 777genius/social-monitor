@@ -68,6 +68,30 @@ const socialMonitorApiErrorModel = <String, Object?>{
 
 const socialMonitorApiOperations = <Map<String, Object?>>[
   {
+    'operationId': 'AppBootstrapController_get',
+    'clientName': 'AppBootstrapController_get',
+    'method': 'GET',
+    'path': '/app/bootstrap',
+    'tags': [
+      'app-bootstrap',
+    ],
+    'summary': 'Restore the session and initial daily reader-summary data in one request.',
+    'pathParameters': [],
+    'queryParameters': [],
+    'requiredHeaders': [],
+    'optionalHeaders': [
+      'authorization',
+    ],
+    'requiresTenantWorkspace': false,
+    'supportsBearerApiKey': true,
+    'usesDevOnlyWorkspaceRoleHeader': false,
+    'devOnlyWorkspaceRoleRequired': false,
+    'requestBodySchemaRef': null,
+    'successResponseSchemaRefs': [
+      '#/components/schemas/AppBootstrapResponseDto',
+    ],
+  },
+  {
     'operationId': 'AuthSessionController_get',
     'clientName': 'AuthSessionController_get',
     'method': 'GET',
