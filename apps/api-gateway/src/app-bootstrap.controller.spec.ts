@@ -45,11 +45,11 @@ describe('AppBootstrapController', () => {
       listReaderSummaryPeriods as unknown as ListReaderSummaryPeriodsUseCase,
     );
 
-    const response = controller.get('Bearer session-token');
+    const response = controller.get('Bearer token-value');
     await Promise.resolve();
 
     expect(getAuthSession.execute).toHaveBeenCalledWith({
-      accessToken: 'session-token',
+      accessToken: 'token-value',
     });
     expect(listReaderSummaries.execute).toHaveBeenCalledWith({
       tenantId: 'tenant-1',
@@ -97,7 +97,7 @@ describe('AppBootstrapController', () => {
       listReaderSummaryPeriods as unknown as ListReaderSummaryPeriodsUseCase,
     );
 
-    await expect(controller.get('Bearer denied-token')).rejects.toBe(denied);
+    await expect(controller.get('Bearer token-value')).rejects.toBe(denied);
     expect(listReaderSummaries.execute).not.toHaveBeenCalled();
     expect(listReaderSummaryPeriods.execute).not.toHaveBeenCalled();
   });
