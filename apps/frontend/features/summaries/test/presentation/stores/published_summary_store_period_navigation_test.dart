@@ -110,7 +110,7 @@ void main() {
       await store.showNextPeriod();
 
       expect(catalog.workspaceQueries, hasLength(1));
-      expect(catalog.publishedQueries, [july10.id, july10.id]);
+      expect(catalog.publishedQueries, [july10.id]);
       expect(_readySummary(store).id, july10.id);
       expect(selectedSummaryIds, [july9.id, july10.id]);
     },
@@ -183,7 +183,7 @@ void main() {
     await store.load();
 
     expect(catalog.workspaceQueries, isEmpty);
-    expect(catalog.publishedQueries, [july10.id]);
+    expect(catalog.publishedQueries, [july10.id, july9.id]);
     expect(_readySummary(store).id, july10.id);
     expect(store.availablePeriods, hasLength(2));
   });
