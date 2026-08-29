@@ -20,6 +20,48 @@
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <meta name="description" content="Social Monitor">
+  <script>
+    (function () {
+      var pendingResponse;
+
+      try {
+        var controller = new AbortController();
+        var request = fetch('/app/bootstrap', {
+          cache: 'no-store',
+          credentials: 'same-origin',
+          headers: { accept: 'application/json' },
+          signal: controller.signal
+        }).then(function (result) {
+          return result.ok ? result.text() : null;
+        }).catch(function () {
+          return null;
+        });
+        pendingResponse = new Promise(function (resolve) {
+          var timeout = setTimeout(function () {
+            controller.abort();
+            resolve(null);
+          }, 3000);
+          request.then(function (body) {
+            clearTimeout(timeout);
+            resolve(body);
+          });
+        });
+      } catch (_) {
+        pendingResponse = Promise.resolve(null);
+      }
+
+      window.socialMonitorAppBootstrap = Object.freeze({
+        take: function () {
+          if (pendingResponse === null) {
+            return Promise.resolve(null);
+          }
+          var response = pendingResponse;
+          pendingResponse = null;
+          return response;
+        }
+      });
+    }());
+  </script>
   <link rel="modulepreload" href="main.dart.mjs">
   <link rel="preload" href="main.dart.wasm" as="fetch" type="application/wasm" crossorigin="use-credentials">
   <link rel="preload" href="canvaskit/skwasm.wasm" as="fetch" type="application/wasm" crossorigin="use-credentials">
