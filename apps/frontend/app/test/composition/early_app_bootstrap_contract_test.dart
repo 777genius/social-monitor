@@ -4,7 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   test('HTML starts a bounded no-store bootstrap before Flutter assets', () {
-    final html = File('web/index.html').readAsStringSync();
+    final html = File('app/web/index.html').readAsStringSync();
     final fetch = html.indexOf("fetch('/app/bootstrap'");
     final bridge = html.indexOf('window.socialMonitorAppBootstrap');
     final flutter = html.indexOf('flutter_bootstrap.js');

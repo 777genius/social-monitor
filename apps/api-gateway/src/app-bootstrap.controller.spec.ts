@@ -182,14 +182,14 @@ describe('AppBootstrapController', () => {
       createCache(),
     );
 
-    await expect(controller.get('Bearer first-token')).resolves.toBeDefined();
-    await expect(controller.get('Bearer expired-token')).rejects.toBe(denied);
+    await expect(controller.get('Bearer token-value')).resolves.toBeDefined();
+    await expect(controller.get('Bearer token-value')).rejects.toBe(denied);
 
     expect(getAuthSession.execute).toHaveBeenNthCalledWith(1, {
-      accessToken: 'first-token',
+      accessToken: 'token-value',
     });
     expect(getAuthSession.execute).toHaveBeenNthCalledWith(2, {
-      accessToken: 'expired-token',
+      accessToken: 'token-value',
     });
     expect(listReaderSummaries.execute).toHaveBeenCalledTimes(1);
     expect(listReaderSummaryPeriods.execute).toHaveBeenCalledTimes(1);
