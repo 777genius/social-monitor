@@ -210,6 +210,7 @@ final class AppRuntimeController extends ChangeNotifier {
   AppRuntimeController(AppShellRuntime runtime) : _runtime = runtime;
 
   AppShellRuntime _runtime;
+  AppInitialSummaryBootstrap? _initialSummaryBootstrap;
 
   AppShellRuntime get runtime => _runtime;
 
@@ -219,7 +220,9 @@ final class AppRuntimeController extends ChangeNotifier {
     required String userRole,
     required AppWorkspaceSnapshot selectedWorkspace,
     required List<AppWorkspaceSnapshot> availableWorkspaces,
+    AppInitialSummaryBootstrap? initialSummaryBootstrap,
   }) {
+    _initialSummaryBootstrap = initialSummaryBootstrap;
     _runtime = _runtime.copyWith(
       session: AppSessionSnapshot(
         isSignedIn: true,
@@ -237,15 +240,36 @@ final class AppRuntimeController extends ChangeNotifier {
     notifyListeners();
   }
 
+  Object? takeInitialSummaryBootstrap(WorkspaceScope scope) {
+    final bootstrap = _initialSummaryBootstrap;
+    _initialSummaryBootstrap = null;
+    return bootstrap != null && bootstrap.scope == scope
+        ? bootstrap.payload
+        : null;
+  }
+
   void selectWorkspace(WorkspaceScope scope) {
     for (final workspace in _runtime.availableWorkspaces) {
       if (workspace.scope == scope) {
+        if (_runtime.workspace.scope != scope) {
+          _initialSummaryBootstrap = null;
+        }
         _runtime = _runtime.copyWith(workspace: workspace);
         notifyListeners();
         return;
       }
     }
   }
+}
+
+final class AppInitialSummaryBootstrap {
+  const AppInitialSummaryBootstrap({
+    required this.scope,
+    required this.payload,
+  });
+
+  final WorkspaceScope scope;
+  final Object payload;
 }
 
 final class AppSessionSnapshot {

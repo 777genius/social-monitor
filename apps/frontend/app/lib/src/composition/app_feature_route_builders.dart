@@ -217,10 +217,16 @@ AppRouteWidgetBuilder summariesFeatureBuilder({
         final summaryId = uri.pathSegments.length > 1
             ? uri.pathSegments.last.trim()
             : null;
+        final normalizedSummaryId = summaryId == null || summaryId.isEmpty
+            ? null
+            : summaryId;
         return PublishedSummariesFeatureRoute.generatedApi(
           generatedApiRuntime: generatedApiRuntime,
           scope: scope,
-          summaryId: summaryId == null || summaryId.isEmpty ? null : summaryId,
+          summaryId: normalizedSummaryId,
+          initialBootstrap: normalizedSummaryId == null
+              ? runtimeController.takeInitialSummaryBootstrap(scope)
+              : null,
         );
       }
       return SummariesFeatureRoute.generatedApi(

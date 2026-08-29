@@ -131,6 +131,7 @@ import { PublicApiAuditEventsController } from "@social-monitor/usage/interfaces
 import { RequestCorrelationIdFactory } from "@social-monitor/platform-request-context";
 import "reflect-metadata";
 
+import { AppBootstrapController } from "../apps/api-gateway/src/app-bootstrap.controller";
 import { HealthController } from "../apps/api-gateway/src/health.controller";
 import { ApiGatewayHealthReporter } from "../apps/api-gateway/src/health-reporter";
 
@@ -332,6 +333,7 @@ const useCaseProviders = [
 
 @Module({
   controllers: [
+    AppBootstrapController,
     HealthController,
     InterestController,
     InterestCoveragePlanController,

@@ -9,6 +9,7 @@ openapi_generator:
   export_file: true
   unknown_enum_value: true
   include_tags:
+    - app-bootstrap
     - auth
     - interests
     - interest-coverage-plans

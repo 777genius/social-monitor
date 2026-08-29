@@ -68,6 +68,21 @@
         },
         "type": "object"
       },
+      "AppBootstrapResponseDto": {
+        "properties": {
+          "readerSummaries": {
+            "$ref": "#/components/schemas/ReaderSummaryBootstrapResponseDto"
+          },
+          "session": {
+            "$ref": "#/components/schemas/AuthSessionResponseDto"
+          }
+        },
+        "required": [
+          "session",
+          "readerSummaries"
+        ],
+        "type": "object"
+      },
       "AuthSessionResponseDto": {
         "properties": {
           "selectedWorkspace": {
@@ -3286,6 +3301,29 @@
           "lineage",
           "usage",
           "freshness"
+        ],
+        "type": "object"
+      },
+      "ReaderSummaryBootstrapResponseDto": {
+        "properties": {
+          "latest": {
+            "$ref": "#/components/schemas/ListReaderSummariesResponseDto"
+          },
+          "periods": {
+            "$ref": "#/components/schemas/ListReaderSummaryPeriodsResponseDto"
+          },
+          "tenantId": {
+            "type": "string"
+          },
+          "workspaceId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "tenantId",
+          "workspaceId",
+          "latest",
+          "periods"
         ],
         "type": "object"
       },
@@ -9919,6 +9957,38 @@
   },
   "openapi": "3.0.0",
   "paths": {
+    "/app/bootstrap": {
+      "get": {
+        "operationId": "AppBootstrapController_get",
+        "parameters": [
+          {
+            "description": "Bearer OIDC JWT user session token.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppBootstrapResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "Restore the session and initial daily reader-summary data in one request.",
+        "tags": [
+          "app-bootstrap"
+        ]
+      }
+    },
     "/auth/session": {
       "get": {
         "operationId": "AuthSessionController_get",
