@@ -112,6 +112,7 @@ void main() {
         ),
       ),
     );
+    await tester.pump(const Duration(milliseconds: 17));
 
     final topicMap = find.byType(
       ReaderSummaryTopicMapPanel,

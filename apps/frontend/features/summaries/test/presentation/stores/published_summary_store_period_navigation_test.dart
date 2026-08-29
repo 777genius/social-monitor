@@ -153,7 +153,7 @@ void main() {
     expect(_readySummary(store).id, july9.id);
   });
 
-  test('loads the latest summary directly from the period catalog', () async {
+  test('falls back to the latest summary in the period catalog', () async {
     final july9 = _dailySummary('summary-july-09', 2026, 7, 9);
     final july10 = _dailySummary('summary-july-10', 2026, 7, 10);
     final references = [
@@ -182,7 +182,7 @@ void main() {
 
     await store.load();
 
-    expect(catalog.workspaceQueries, isEmpty);
+    expect(catalog.workspaceQueries, hasLength(1));
     expect(catalog.publishedQueries, [july10.id, july9.id]);
     expect(_readySummary(store).id, july10.id);
     expect(store.availablePeriods, hasLength(2));

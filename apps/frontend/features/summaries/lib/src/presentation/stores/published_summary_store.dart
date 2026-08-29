@@ -14,6 +14,7 @@ import '../../domain/aggregates/reader_summary.dart';
 import '../workflows/summary_period_navigation.dart';
 
 part '../workflows/published_summary_refresh_workflow.dart';
+part '../workflows/published_summary_initial_load_workflow.dart';
 part '../workflows/published_summary_navigation_workflow.dart';
 
 final class PublishedSummaryStore extends ChangeNotifier {
@@ -97,61 +98,43 @@ final class PublishedSummaryStore extends ChangeNotifier {
     notifyListeners();
 
     final requestedId = summaryId?.trim();
-    WorkspaceSummarySnapshot? preloadedHistory;
-    Result<WorkspaceSummarySnapshot> result;
-    if (requestedId != null && requestedId.isNotEmpty) {
-      result = await _loadPublished(
-        LoadPublishedSummaryQuery(scope: _scope, summaryId: requestedId),
-      );
-    } else {
-      final historyResult = await _loadHistory(
-        LoadWorkspaceSummaryQuery(
-          scope: _scope,
-          period: SummaryPeriodPreset.daily.resolve(),
-        ),
-      );
-      if (!_generationGuard.isCurrent(generation)) {
-        return;
-      }
-      preloadedHistory = historyResult.fold(
-        onSuccess: (snapshot) => snapshot,
-        onFailure: (_) => null,
-      );
-      final latest = _latestReference(
-        preloadedHistory?.availableSummaryReferences ?? const [],
-        SummaryPeriodPreset.daily,
-      );
-      result = latest == null
-          ? await _loadLatest(
-              LoadWorkspaceSummaryQuery(
-                scope: _scope,
-                period: SummaryPeriodPreset.daily.resolve(),
-              ),
-            )
-          : await _loadPublished(
-              LoadPublishedSummaryQuery(
-                scope: _scope,
-                summaryId: latest.summaryId,
-              ),
-            );
+    if (requestedId == null || requestedId.isEmpty) {
+      await _loadInitialSummaryAndHistory(generation);
+      return;
     }
+
+    final result = await _loadPublished(
+      LoadPublishedSummaryQuery(scope: _scope, summaryId: requestedId),
+    );
     if (!_generationGuard.isCurrent(generation)) {
       return;
     }
-    WorkspaceSummarySnapshot? loadedSnapshot;
+
+    final current = _publishInitialResult(result);
+    if (current != null) {
+      await _refreshAvailablePeriods();
+    }
+    _prefetchAdjacentSummaries();
+  }
+
+  ReaderSummary? _publishInitialResult(
+    Result<WorkspaceSummarySnapshot> result, {
+    WorkspaceSummarySnapshot? history,
+  }) {
+    ReaderSummary? current;
     state = result.fold(
       onSuccess: (snapshot) {
-        loadedSnapshot = snapshot;
         final summary = snapshot.current;
         if (summary != null) {
+          current = summary;
           _rememberSummary(summary);
           _selectPeriod(summary.period);
           availablePeriods = mergeSummaryPeriods(
-            preloadedHistory?.availablePeriods ?? const [],
+            history?.availablePeriods ?? const [],
             [...snapshot.availablePeriods, summary.period],
           );
           availableSummaryReferences = mergePublishedSummaryReferences(
-            preloadedHistory?.availableSummaryReferences ?? const [],
+            history?.availableSummaryReferences ?? const [],
             [
               ...snapshot.availableSummaryReferences,
               PublishedSummaryReference(
@@ -173,13 +156,7 @@ final class PublishedSummaryStore extends ChangeNotifier {
       onFailure: (failure) => FailureViewState<ReaderSummary>(failure: failure),
     );
     notifyListeners();
-    final snapshot = loadedSnapshot;
-    final current = snapshot?.current;
-    if (current != null &&
-        preloadedHistory?.availablePeriodsAreComplete != true) {
-      await _refreshAvailablePeriods();
-    }
-    _prefetchAdjacentSummaries();
+    return current;
   }
 
   SummaryPeriod? _adjacentAvailablePeriod(int offset) {
