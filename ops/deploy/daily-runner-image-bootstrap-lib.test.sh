@@ -327,7 +327,7 @@ docker() {
 # shellcheck source=ops/deploy/daily-runner-image-bootstrap-lib.sh
 source "$LIBRARY"
 assert_compose_sentinel_fails_fast
-EXPECTED_CONFIG=$DAILY_RUNNER_BOOTSTRAP_IMAGE_CONFIG
+EXPECTED_CONFIG=$DAILY_RUNNER_BOOTSTRAP_LEGACY_IMAGE_CONFIG
 BASE_TAG=$(compose_image_name intelligence-worker)
 FALLBACK_BASE_TAG=$(compose_image_name api)
 COMPOSE_TAG=$(compose_image_name daily-runner)
@@ -612,6 +612,15 @@ assert_events_exclude $'docker\tcontainer ls'
 assert_events_exclude $'docker\tinspect'
 assert_events_exclude $'config-id\tsocial-monitor-prod-intelligence-worker:latest'
 
+# Current releases use dedicated service entrypoints rather than the legacy
+# SERVICE switch. The rebuilt daily-runner must inherit that exact base config.
+reset_case
+BASE_CONFIG=$DAILY_RUNNER_BOOTSTRAP_INTELLIGENCE_IMAGE_CONFIG
+BUILT_CONFIG=$BASE_CONFIG
+daily_runner_image_bootstrap_before_rescue "$PREVIOUS_SHA" "$TARGET_SHA"
+[[ $(lookup_id "$COMPOSE_TAG") == "$CANDIDATE_ID" ]]
+assert_no_temporary_state
+
 # A missing intelligence-worker tag falls back to the same reviewed runtime
 # image contract under the always-on API service. This is the production
 # recovery path when an interrupted backend replacement removed only the
@@ -619,6 +628,7 @@ assert_events_exclude $'config-id\tsocial-monitor-prod-intelligence-worker:lates
 reset_case
 remove_ref "$BASE_TAG"
 set_ref "$FALLBACK_BASE_TAG" "$BASE_ID" "$PREVIOUS_SHA"
+BASE_CONFIG=$DAILY_RUNNER_BOOTSTRAP_API_IMAGE_CONFIG
 [[ $(daily_runner_bootstrap_base_image_id "$PREVIOUS_SHA") == "$BASE_ID" ]]
 grep -F $'docker\timage inspect social-monitor-prod-intelligence-worker:latest' \
   "$EVENTS" >/dev/null
@@ -629,6 +639,8 @@ assert_events_exclude $'config-id\tsocial-monitor-prod-api:latest'
 reset_case
 remove_ref "$BASE_TAG"
 set_ref "$FALLBACK_BASE_TAG" "$BASE_ID" ''
+BASE_CONFIG=$DAILY_RUNNER_BOOTSTRAP_API_IMAGE_CONFIG
+BUILT_CONFIG=$BASE_CONFIG
 configure_legacy_runtime_stable
 LEGACY_RUNTIME_SERVICE=api
 daily_runner_image_bootstrap_before_rescue "$PREVIOUS_SHA" "$TARGET_SHA"
@@ -641,6 +653,8 @@ assert_no_temporary_state
 reset_case
 remove_ref "$BASE_TAG"
 set_ref "$FALLBACK_BASE_TAG" "$BASE_ID" "$PREVIOUS_SHA"
+BASE_CONFIG=$DAILY_RUNNER_BOOTSTRAP_API_IMAGE_CONFIG
+BUILT_CONFIG=$BASE_CONFIG
 BUILD_FAILURE=true
 assert_fails_with 'historical daily-runner image build failed' \
   daily_runner_image_bootstrap_before_rescue "$PREVIOUS_SHA" "$TARGET_SHA"
@@ -748,13 +762,13 @@ for legacy_state in status running paused restarting dead oom-killed error \
   assert_events_exclude $'config-id\t'
 done
 
-# Configuration must be inspected by the immutable ID before and after the
-# historical build, never through the mutable Compose tag.
+# Configuration must be inspected by immutable ID for admission, exact
+# inheritance, and post-build revalidation, never through the mutable tag.
 reset_case
 configure_unlabelled_base
 daily_runner_image_bootstrap_before_rescue "$PREVIOUS_SHA" "$TARGET_SHA"
 [[ $(lookup_id "$COMPOSE_TAG") == "$CANDIDATE_ID" ]]
-[[ $(grep -cF -- $'config-id\t'"$BASE_ID" "$EVENTS") == 2 ]]
+[[ $(grep -cF -- $'config-id\t'"$BASE_ID" "$EVENTS") == 3 ]]
 assert_events_exclude $'config-id\tsocial-monitor-prod-intelligence-worker:latest'
 
 # Archive traversal and symlink entries never reach Docker.
