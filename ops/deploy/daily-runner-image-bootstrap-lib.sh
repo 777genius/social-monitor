@@ -8,7 +8,9 @@ DAILY_RUNNER_BOOTSTRAP_MAX_ARCHIVE_MEMBERS=20000
 DAILY_RUNNER_BOOTSTRAP_MAX_EXPANDED_BYTES=1073741824
 # The dollar expression is part of the reviewed image command JSON.
 # shellcheck disable=SC2016
-DAILY_RUNNER_BOOTSTRAP_IMAGE_CONFIG='["docker-entrypoint.sh"]|["sh","-c","case \"$SERVICE\" in api) exec node dist/apps/api-gateway/src/main.js ;; agent-runtime) exec node dist/apps/agent-runtime/src/main.js ;; ingestion) exec node dist/apps/ingestion-worker/src/main.js ;; intelligence) exec node dist/apps/intelligence-worker/src/main.js ;; delivery) exec node dist/apps/delivery-service/src/main.js ;; event-relay) exec node dist/apps/event-relay/src/main.js ;; *) echo \"Unknown service: $SERVICE\" >&2; exit 64 ;; esac"]|"/app"|"node"|null'
+DAILY_RUNNER_BOOTSTRAP_LEGACY_IMAGE_CONFIG='["docker-entrypoint.sh"]|["sh","-c","case \"$SERVICE\" in api) exec node dist/apps/api-gateway/src/main.js ;; agent-runtime) exec node dist/apps/agent-runtime/src/main.js ;; ingestion) exec node dist/apps/ingestion-worker/src/main.js ;; intelligence) exec node dist/apps/intelligence-worker/src/main.js ;; delivery) exec node dist/apps/delivery-service/src/main.js ;; event-relay) exec node dist/apps/event-relay/src/main.js ;; *) echo \"Unknown service: $SERVICE\" >&2; exit 64 ;; esac"]|"/app"|"node"|null'
+DAILY_RUNNER_BOOTSTRAP_API_IMAGE_CONFIG='["/usr/local/bin/docker-entrypoint.sh"]|["/usr/local/bin/node","dist/apps/api-gateway/src/main.js"]|"/app"|"node"|null'
+DAILY_RUNNER_BOOTSTRAP_INTELLIGENCE_IMAGE_CONFIG='["/usr/local/bin/docker-entrypoint.sh"]|["/usr/local/bin/node","dist/apps/intelligence-worker/src/main.js"]|"/app"|"node"|null'
 if [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} == 1 ]]; then
   DAILY_RUNNER_BOOTSTRAP_TMP_ROOT=${SOCIAL_MONITOR_DAILY_RUNNER_BOOTSTRAP_TMP_ROOT:-/tmp}
 else
@@ -29,6 +31,24 @@ daily_runner_bootstrap_read_exact_sha() {
   } < "$path" || fail "$description is not exactly one line"
   [[ $value =~ ^[0-9a-f]{40}$ ]] || fail "$description is not a full SHA"
   printf '%s\n' "$value"
+}
+
+daily_runner_bootstrap_image_config_allowed() {
+  local config=$1
+  local service=$2
+
+  [[ $config == "$DAILY_RUNNER_BOOTSTRAP_LEGACY_IMAGE_CONFIG" ]] && return 0
+  case $service in
+    api)
+      [[ $config == "$DAILY_RUNNER_BOOTSTRAP_API_IMAGE_CONFIG" ]]
+      ;;
+    intelligence-worker)
+      [[ $config == "$DAILY_RUNNER_BOOTSTRAP_INTELLIGENCE_IMAGE_CONFIG" ]]
+      ;;
+    *)
+      return 1
+      ;;
+  esac
 }
 
 daily_runner_bootstrap_verify_runtime_marker() {
@@ -281,7 +301,7 @@ daily_runner_bootstrap_base_image_id() {
   fi
   config=$(backend_image_rescue_image_config "$image_id") || \
     fail 'daily-runner base image config cannot be inspected'
-  [[ $config == "$DAILY_RUNNER_BOOTSTRAP_IMAGE_CONFIG" ]] || \
+  daily_runner_bootstrap_image_config_allowed "$config" "$base_service" || \
     fail 'daily-runner base image config is unexpected'
   printf '%s\n' "$image_id"
 }
@@ -371,7 +391,7 @@ daily_runner_image_bootstrap_before_rescue() (
   local previous_sha=$1
   local target_sha=$2
   local compose_tag state_file partial phase manifest_target
-  local dockerfile_digest dockerfile_digest_after base_id base_id_after
+  local dockerfile_digest dockerfile_digest_after base_config base_id base_id_after
   local workdir='' archive='' context='' temporary_tag='' candidate_id=''
   local base_alias_tag=''
   local identity config singleton_fd revision extra
@@ -467,6 +487,8 @@ daily_runner_image_bootstrap_before_rescue() (
     fail 'daily-runner Dockerfile could not be validated'
   base_id=$(daily_runner_bootstrap_base_image_id "$previous_sha") || \
     fail 'daily-runner base image could not be validated'
+  base_config=$(backend_image_rescue_image_config "$base_id") || \
+    fail 'daily-runner base image config cannot be re-inspected'
   base_alias_tag=$(compose_image_name intelligence-worker)
   [[ $base_alias_tag == social-monitor-prod-intelligence-worker:latest ]] || \
     fail 'daily-runner build base alias is unexpected'
@@ -500,7 +522,7 @@ daily_runner_image_bootstrap_before_rescue() (
     fail 'historical daily-runner image identity is unexpected'
   config=$(backend_image_rescue_image_config "$temporary_tag") || \
     fail 'historical daily-runner image config cannot be inspected'
-  [[ $config == "$DAILY_RUNNER_BOOTSTRAP_IMAGE_CONFIG" ]] || \
+  [[ $config == "$base_config" ]] || \
     fail 'historical daily-runner image config is unexpected'
   if [[ $base_alias_created == true ]]; then
     daily_runner_bootstrap_remove_tag "$base_alias_tag" "$base_id" || \
