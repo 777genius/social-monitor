@@ -121,7 +121,7 @@ grep -F 'ops/deploy/social-monitor-production-deploy.sh:42:2034:PUBLIC_LINK' \
   "$SHELLCHECK_VERIFIER" >/dev/null || fail 'verifier does not pin the PUBLIC_LINK finding'
 grep -F 'ops/deploy/social-monitor-production-deploy.sh:43:2034:ADMIN_LINK' \
   "$SHELLCHECK_VERIFIER" >/dev/null || fail 'verifier does not pin the ADMIN_LINK finding'
-grep -F 'shellcheck -S warning -x -e SC2034 "${deploy_files[@]}"' \
+grep -F 'shellcheck -S warning -x -e 2034 "${deploy_files[@]}"' \
   "$SHELLCHECK_VERIFIER" >/dev/null || fail 'verifier does not enforce remaining warnings'
 grep -F "needs.plan.outputs.daily_c1_bridge != 'true'" \
   "$workflow" >/dev/null || fail 'bridge does not defer final-only legacy transition fixtures'
