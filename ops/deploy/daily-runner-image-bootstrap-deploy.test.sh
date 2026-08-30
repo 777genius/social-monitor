@@ -24,6 +24,7 @@ cp "$ENTRYPOINT" \
   "$SCRIPT_DIR/postgres-runtime-asset-lib.sh" \
   "$SCRIPT_DIR/backend-runtime-health-lib.sh" \
   "$SCRIPT_DIR/backend-image-rescue-lib.sh" \
+  "$SCRIPT_DIR/backend-image-rescue-pin-cleanup-lib.sh" \
   "$SCRIPT_DIR/daily-runner-image-bootstrap-lib.sh" \
   "$SCRIPT_DIR/postgres-runtime-activation-boundary-lib.sh" \
   "$SCRIPT_DIR/postgres-runtime-daily-c1-readiness-lib.sh" \

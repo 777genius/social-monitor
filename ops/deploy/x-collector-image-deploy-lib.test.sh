@@ -224,6 +224,7 @@ CURRENT_ENTRYPOINT_SOURCE_CLOSURE=(
   ops/deploy/postgres-runtime-activation-boundary-lib.sh
   ops/deploy/backend-runtime-health-lib.sh
   ops/deploy/backend-image-rescue-lib.sh
+  ops/deploy/backend-image-rescue-pin-cleanup-lib.sh
   ops/deploy/docker-maintenance-lib.sh
   ops/deploy/daily-runner-image-bootstrap-lib.sh
   ops/deploy/x-collector-image-deploy-lib.sh
@@ -390,6 +391,7 @@ A_CONTROLLER="$TRANSITION_CONTROL/github-production-deploy.sh" \
       ops/deploy/postgres-runtime-activation-boundary-lib.sh
       ops/deploy/backend-runtime-health-lib.sh
       ops/deploy/backend-image-rescue-lib.sh
+      ops/deploy/backend-image-rescue-pin-cleanup-lib.sh
       ops/deploy/docker-maintenance-lib.sh
       ops/deploy/daily-runner-image-bootstrap-lib.sh
       ops/deploy/x-collector-image-deploy-lib.sh

@@ -436,7 +436,7 @@ cp "$PROJECT_ROOT/ops/deploy/social-monitor-production-deploy.sh" \
   "$PROJECT_ROOT/ops/deploy/deploy-control-bridge-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/postgres-runtime-deploy-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/backend-runtime-health-lib.sh" \
-  "$PROJECT_ROOT/ops/deploy/backend-image-rescue-lib.sh" \
+  "$PROJECT_ROOT/ops/deploy"/backend-image-rescue-{lib,pin-cleanup-lib}.sh \
   "$PROJECT_ROOT/ops/deploy/docker-maintenance-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/daily-runner-image-bootstrap-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/x-collector-image-deploy-lib.sh" \
@@ -927,7 +927,7 @@ cp "$PROJECT_ROOT/ops/deploy/social-monitor-production-deploy.sh" \
   "$PROJECT_ROOT/ops/deploy/deploy-control-bridge-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/postgres-runtime-deploy-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/backend-runtime-health-lib.sh" \
-  "$PROJECT_ROOT/ops/deploy/backend-image-rescue-lib.sh" \
+  "$PROJECT_ROOT/ops/deploy"/backend-image-rescue-{lib,pin-cleanup-lib}.sh \
   "$PROJECT_ROOT/ops/deploy/docker-maintenance-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/daily-runner-image-bootstrap-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/x-collector-image-deploy-lib.sh" \

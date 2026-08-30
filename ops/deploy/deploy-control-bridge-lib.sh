@@ -12,6 +12,7 @@ DEPLOY_CONTROL_BRIDGE_POSTGRES_DAILY_C1_HELPER_PATH=ops/deploy/postgres-runtime-
 DEPLOY_CONTROL_BRIDGE_POSTGRES_ACTIVATION_BOUNDARY_HELPER_PATH=ops/deploy/postgres-runtime-activation-boundary-lib.sh
 DEPLOY_CONTROL_BRIDGE_RECOVERY_MAINTENANCE_LIBRARY_PATH=ops/deploy/reader-summary-recovery-maintenance-lib.sh
 DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_LIBRARY_PATH=ops/deploy/backend-image-rescue-lib.sh
+DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_PIN_CLEANUP_LIBRARY_PATH=ops/deploy/backend-image-rescue-pin-cleanup-lib.sh
 DEPLOY_CONTROL_BRIDGE_X_IMAGE_LIBRARY_PATH=ops/deploy/x-collector-image-deploy-lib.sh
 DEPLOY_CONTROL_BRIDGE_SELF_PATH=ops/deploy/deploy-control-bridge-lib.sh
 DEPLOY_CONTROL_DAILY_FINAL_BASE=d494c143c242873bfac53f54c15b0f24df0ab33d
@@ -137,6 +138,7 @@ deploy_control_bridge_sealed_paths() {
     "$DEPLOY_CONTROL_BRIDGE_POSTGRES_ACTIVATION_BOUNDARY_HELPER_PATH" \
     "$DEPLOY_CONTROL_BRIDGE_RECOVERY_MAINTENANCE_LIBRARY_PATH" \
     "$DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_LIBRARY_PATH" \
+    "$DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_PIN_CLEANUP_LIBRARY_PATH" \
     "$DEPLOY_CONTROL_BRIDGE_X_IMAGE_LIBRARY_PATH" \
     "$DEPLOY_CONTROL_BRIDGE_SELF_PATH"
 }
@@ -552,6 +554,7 @@ deploy_control_daily_final_transition_compatible_paths() {
     "$DEPLOY_CONTROL_BRIDGE_POSTGRES_ACTIVATION_BOUNDARY_HELPER_PATH" \
     "$DEPLOY_CONTROL_BRIDGE_RECOVERY_MAINTENANCE_LIBRARY_PATH" \
     "$DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_LIBRARY_PATH" \
+    "$DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_PIN_CLEANUP_LIBRARY_PATH" \
     "$DEPLOY_CONTROL_BRIDGE_X_IMAGE_LIBRARY_PATH"
 }
 
@@ -649,6 +652,7 @@ deploy_control_bridge_require_initialized() {
      -n ${DEPLOY_CONTROL_BRIDGE_POSTGRES_ACTIVATION_BOUNDARY_HELPER_DIGEST:-} && \
      -n ${DEPLOY_CONTROL_BRIDGE_RECOVERY_MAINTENANCE_LIBRARY_DIGEST:-} && \
      -n ${DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_LIBRARY_DIGEST:-} && \
+     -n ${DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_PIN_CLEANUP_LIBRARY_DIGEST:-} && \
      -n ${DEPLOY_CONTROL_BRIDGE_X_IMAGE_LIBRARY_DIGEST:-} && \
      -n ${DEPLOY_CONTROL_BRIDGE_SELF_DIGEST:-} ]] || \
     fail 'deploy control bridge was not initialized before verification'
@@ -663,6 +667,7 @@ initialize_deploy_control_bridge() {
   local activation_boundary_helper=$REPO/$DEPLOY_CONTROL_BRIDGE_POSTGRES_ACTIVATION_BOUNDARY_HELPER_PATH
   local recovery_maintenance_library=$REPO/$DEPLOY_CONTROL_BRIDGE_RECOVERY_MAINTENANCE_LIBRARY_PATH
   local image_rescue_library=$REPO/$DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_LIBRARY_PATH
+  local image_rescue_pin_cleanup_library=$REPO/$DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_PIN_CLEANUP_LIBRARY_PATH
   local x_image_library=$REPO/$DEPLOY_CONTROL_BRIDGE_X_IMAGE_LIBRARY_PATH
   local bridge_library=$REPO/$DEPLOY_CONTROL_BRIDGE_SELF_PATH
 
@@ -674,6 +679,7 @@ initialize_deploy_control_bridge() {
      -f $activation_boundary_helper && ! -L $activation_boundary_helper && \
      -f $recovery_maintenance_library && ! -L $recovery_maintenance_library && \
      -f $image_rescue_library && ! -L $image_rescue_library && \
+     -f $image_rescue_pin_cleanup_library && ! -L $image_rescue_pin_cleanup_library && \
      -f $x_image_library && ! -L $x_image_library && \
      -f $bridge_library && ! -L $bridge_library ]] || \
     fail 'current integration is missing deploy control bridge sources'
@@ -685,6 +691,7 @@ initialize_deploy_control_bridge() {
   DEPLOY_CONTROL_BRIDGE_POSTGRES_ACTIVATION_BOUNDARY_HELPER_DIGEST=$(deploy_control_file_digest "$activation_boundary_helper")
   DEPLOY_CONTROL_BRIDGE_RECOVERY_MAINTENANCE_LIBRARY_DIGEST=$(deploy_control_file_digest "$recovery_maintenance_library")
   DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_LIBRARY_DIGEST=$(deploy_control_file_digest "$image_rescue_library")
+  DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_PIN_CLEANUP_LIBRARY_DIGEST=$(deploy_control_file_digest "$image_rescue_pin_cleanup_library")
   DEPLOY_CONTROL_BRIDGE_X_IMAGE_LIBRARY_DIGEST=$(deploy_control_file_digest "$x_image_library")
   DEPLOY_CONTROL_BRIDGE_SELF_DIGEST=$(deploy_control_file_digest "$bridge_library")
   DEPLOY_CONTROL_BRIDGE_INITIALIZED_HEAD=$(git -C "$REPO" rev-parse HEAD) || \
@@ -700,6 +707,7 @@ verify_deploy_control_bridge_compatibility() {
   local activation_boundary_helper=$REPO/$DEPLOY_CONTROL_BRIDGE_POSTGRES_ACTIVATION_BOUNDARY_HELPER_PATH
   local recovery_maintenance_library=$REPO/$DEPLOY_CONTROL_BRIDGE_RECOVERY_MAINTENANCE_LIBRARY_PATH
   local image_rescue_library=$REPO/$DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_LIBRARY_PATH
+  local image_rescue_pin_cleanup_library=$REPO/$DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_PIN_CLEANUP_LIBRARY_PATH
   local x_image_library=$REPO/$DEPLOY_CONTROL_BRIDGE_X_IMAGE_LIBRARY_PATH
   local bridge_library=$REPO/$DEPLOY_CONTROL_BRIDGE_SELF_PATH
 
@@ -712,6 +720,7 @@ verify_deploy_control_bridge_compatibility() {
      -f $activation_boundary_helper && ! -L $activation_boundary_helper && \
      -f $recovery_maintenance_library && ! -L $recovery_maintenance_library && \
      -f $image_rescue_library && ! -L $image_rescue_library && \
+     -f $image_rescue_pin_cleanup_library && ! -L $image_rescue_pin_cleanup_library && \
      -f $x_image_library && ! -L $x_image_library && \
      -f $bridge_library && ! -L $bridge_library ]] || \
     fail 'target integration is missing deploy control bridge sources'
@@ -727,6 +736,7 @@ verify_deploy_control_bridge_compatibility() {
      $(deploy_control_file_digest "$activation_boundary_helper") == "$DEPLOY_CONTROL_BRIDGE_POSTGRES_ACTIVATION_BOUNDARY_HELPER_DIGEST" && \
      $(deploy_control_file_digest "$recovery_maintenance_library") == "$DEPLOY_CONTROL_BRIDGE_RECOVERY_MAINTENANCE_LIBRARY_DIGEST" && \
      $(deploy_control_file_digest "$image_rescue_library") == "$DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_LIBRARY_DIGEST" && \
+     $(deploy_control_file_digest "$image_rescue_pin_cleanup_library") == "$DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_PIN_CLEANUP_LIBRARY_DIGEST" && \
      $(deploy_control_file_digest "$x_image_library") == "$DEPLOY_CONTROL_BRIDGE_X_IMAGE_LIBRARY_DIGEST" && \
      $(deploy_control_file_digest "$bridge_library") == "$DEPLOY_CONTROL_BRIDGE_SELF_DIGEST" ]] || \
     fail 'deploy control changed with backend or runtime assets; deploy the bridge release first'
@@ -737,7 +747,8 @@ verify_deploy_control_bridge_target_compatibility() {
   local entrypoint_digest deploy_library_digest postgres_library_digest
   local weekly_timer_helper_digest daily_c1_helper_digest
   local activation_boundary_helper_digest recovery_maintenance_library_digest
-  local image_rescue_library_digest x_image_library_digest bridge_library_digest
+  local image_rescue_library_digest image_rescue_pin_cleanup_library_digest
+  local x_image_library_digest bridge_library_digest
 
   deploy_control_bridge_require_initialized
   deploy_control_bridge_git_regular_blob "$sha" \
@@ -756,6 +767,8 @@ verify_deploy_control_bridge_target_compatibility() {
     "$DEPLOY_CONTROL_BRIDGE_RECOVERY_MAINTENANCE_LIBRARY_PATH" 'target reader summary recovery maintenance library' >/dev/null
   deploy_control_bridge_git_regular_blob "$sha" \
     "$DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_LIBRARY_PATH" 'target backend image rescue bridge library' >/dev/null
+  deploy_control_bridge_git_regular_blob "$sha" \
+    "$DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_PIN_CLEANUP_LIBRARY_PATH" 'target backend image rescue pin cleanup bridge library' >/dev/null
   deploy_control_bridge_git_regular_blob "$sha" \
     "$DEPLOY_CONTROL_BRIDGE_X_IMAGE_LIBRARY_PATH" 'target X image provenance bridge library' >/dev/null
   deploy_control_bridge_git_regular_blob "$sha" \
@@ -776,6 +789,8 @@ verify_deploy_control_bridge_target_compatibility() {
     fail 'target integration is missing the reader summary recovery maintenance library'
   image_rescue_library_digest=$(deploy_control_git_blob_digest "$sha" "$DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_LIBRARY_PATH") || \
     fail 'target integration is missing the backend image rescue bridge library'
+  image_rescue_pin_cleanup_library_digest=$(deploy_control_git_blob_digest "$sha" "$DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_PIN_CLEANUP_LIBRARY_PATH") || \
+    fail 'target integration is missing the backend image rescue pin cleanup bridge library'
   x_image_library_digest=$(deploy_control_git_blob_digest "$sha" "$DEPLOY_CONTROL_BRIDGE_X_IMAGE_LIBRARY_PATH") || \
     fail 'target integration is missing the X image provenance bridge library'
   bridge_library_digest=$(deploy_control_git_blob_digest "$sha" "$DEPLOY_CONTROL_BRIDGE_SELF_PATH") || \
@@ -792,6 +807,7 @@ verify_deploy_control_bridge_target_compatibility() {
      $activation_boundary_helper_digest == "$DEPLOY_CONTROL_BRIDGE_POSTGRES_ACTIVATION_BOUNDARY_HELPER_DIGEST" && \
      $recovery_maintenance_library_digest == "$DEPLOY_CONTROL_BRIDGE_RECOVERY_MAINTENANCE_LIBRARY_DIGEST" && \
      $image_rescue_library_digest == "$DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_LIBRARY_DIGEST" && \
+     $image_rescue_pin_cleanup_library_digest == "$DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_PIN_CLEANUP_LIBRARY_DIGEST" && \
      $x_image_library_digest == "$DEPLOY_CONTROL_BRIDGE_X_IMAGE_LIBRARY_DIGEST" && \
      $bridge_library_digest == "$DEPLOY_CONTROL_BRIDGE_SELF_DIGEST" ]] || \
     fail 'deploy control changed with backend or runtime assets; deploy the bridge release first'

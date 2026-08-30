@@ -146,7 +146,7 @@ assert_real_bridge_target_assets() {
       ops/deploy/backend-image-rescue-lib.sh)
         expected_digest=68f13213e6d1662d943185df7cdd1c11678261e76977021f74493c4e6c643b59
         alternate_digest=c8d363b8d64402ee77e42d62aac67ce9d4543135e328255557d2036c8ef3a398
-        current_release_digest=fc26f2546c2070ad5321c5b025ab12378237ed8501df7d2582d285ae00ac66bf
+        current_release_digest=02ab92e562ce8d612e0a068260bd63262c13c0142f34a6bb6973d0d96eeea13a
         ;;
       ops/deploy/deploy-control-bridge-lib.sh)
         expected_digest=e6f958555966b77d02b85da8d0b9195e13a200dcb2b19c8afc010fab6d28b65d
@@ -155,7 +155,7 @@ assert_real_bridge_target_assets() {
         release_b_candidate_digest=bea119047fbbd2295185c84e0adeb773dc852e63b951daf5c7a831356a73a371
         release_b_sealed_digest=1718617b4bbb92f4dbfd92a59fcc482ef7a098734730b8460d21aaced44386c2
         rolling_repair_digest=1945f2b07f110d16694affc15c66b4589d294b81a4e593a9680dacf11fbc5d4d
-        current_release_digest=3d70ef393dc17bf0e9d8b41b9dbb78966a610ca94bbe032b60f2c0dd0c40be9e
+        current_release_digest=f04763ebe27da204e4ec1df1f43679781b4f1c41983662da9f9900f780d170a0
         ;;
     esac
     if [[ $path == ops/deploy/social-monitor-production-deploy.sh ]]; then
@@ -316,7 +316,7 @@ prepare_case() {
   git -C "$CASE_REPO" config user.name 'RabbitMQ quorum bridge fixture'
   git -C "$CASE_REPO" config user.email rabbitmq-bridge@example.invalid
 
-  cp "$SCRIPT_DIR"/{postgres-runtime-deploy-lib.sh,postgres-runtime-asset-lib.sh,postgres-runtime-weekly-timer-state-lib.sh,postgres-runtime-daily-c1-readiness-lib.sh,postgres-runtime-activation-boundary-lib.sh,backend-image-rescue-lib.sh,x-collector-image-deploy-lib.sh,backend-runtime-health-lib.sh,docker-maintenance-lib.sh,daily-runner-image-bootstrap-lib.sh,reader-summary-recovery-maintenance-lib.sh} \
+  cp "$SCRIPT_DIR"/{postgres-runtime-deploy-lib.sh,postgres-runtime-asset-lib.sh,postgres-runtime-weekly-timer-state-lib.sh,postgres-runtime-daily-c1-readiness-lib.sh,postgres-runtime-activation-boundary-lib.sh,backend-image-rescue-lib.sh,backend-image-rescue-pin-cleanup-lib.sh,x-collector-image-deploy-lib.sh,backend-runtime-health-lib.sh,docker-maintenance-lib.sh,daily-runner-image-bootstrap-lib.sh,reader-summary-recovery-maintenance-lib.sh} \
     "$CASE_REPO/ops/deploy/"
   cp "$SCRIPT_DIR/production-runtime"/{reader-summary-scheduler-hold-common.sh,reader-summary-scheduler-hold-restore.sh} \
     "$CASE_REPO/ops/deploy/production-runtime/"

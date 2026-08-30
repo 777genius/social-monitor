@@ -294,53 +294,30 @@ backend_image_rescue_wait_running_container() {
   done
 }
 
-backend_image_rescue_remove_tag() {
-  local rescue_tag=$1
-  if ! backend_image_rescue_image_id "$rescue_tag" >/dev/null; then
-    return 0
+backend_image_rescue_load_pin_cleanup_library() {
+  if [[ -n ${PRODUCTION_TRANSITION_PRELUDE_COMMIT:-} ]]; then
+    declare -F production_transition_host_source_authorized_prelude \
+      >/dev/null || return 1
+    production_transition_host_source_authorized_prelude \
+      ops/deploy/backend-image-rescue-pin-cleanup-lib.sh \
+      'backend image rescue pin cleanup library'
+    return
   fi
-  docker image rm "$rescue_tag" >/dev/null || return 1
-  ! backend_image_rescue_image_id "$rescue_tag" >/dev/null
+
+  local parent_source=${BASH_SOURCE[0]} library_path
+  [[ $parent_source != /dev/fd/* && $parent_source == */* ]] || return 1
+  library_path=${parent_source%/*}/backend-image-rescue-pin-cleanup-lib.sh
+  [[ -f $library_path && ! -L $library_path && -r $library_path ]] || return 1
+  # shellcheck source=ops/deploy/backend-image-rescue-pin-cleanup-lib.sh
+  source "$library_path"
 }
-
-backend_image_rescue_remove_manifest_tag() {
-  local service=$1
-  local expected_image_id=$2
-  local rescue_tag=$3
-  local pin_name pin_record current_rescue_id
-  local pin_id pin_container_name status running restarting pin_image_id
-  local project_label purpose_label extra
-
-  if ! current_rescue_id=$(backend_image_rescue_image_id "$rescue_tag"); then
-    return 0
-  fi
-  [[ $expected_image_id =~ ^sha256:[0-9a-f]{64}$ && \
-     $current_rescue_id == "$expected_image_id" ]] || return 1
-  backend_image_rescue_remove_tag "$rescue_tag" && return 0
-  [[ $service == daily-runner ]] || return 1
-
-  pin_name=${PROJECT}-daily-runner-image-pin
-  pin_record=$(docker inspect "$pin_name" --format \
-    '{{.Id}}|{{.Name}}|{{.State.Status}}|{{.State.Running}}|{{.State.Restarting}}|{{.Image}}|{{index .Config.Labels "social-monitor.project"}}|{{index .Config.Labels "social-monitor.purpose"}}' \
-    2>/dev/null) || return 1
-  [[ $pin_record != *$'\n'* ]] || return 1
-  IFS='|' read -r pin_id pin_container_name status running restarting \
-    pin_image_id project_label purpose_label extra <<< "$pin_record"
-  [[ $pin_id =~ ^[0-9a-f]{64}$ && \
-     $pin_container_name == "/$pin_name" && \
-     ($status == created || $status == exited) && \
-     $running == false && $restarting == false && \
-     $pin_image_id == "$expected_image_id" && \
-     $project_label == social-monitor && \
-     $purpose_label == daily-runner-image-retention && \
-     -z $extra ]] || return 1
-
-  docker container rm "$pin_id" >/dev/null || return 1
-  current_rescue_id=$(backend_image_rescue_image_id "$rescue_tag") || return 1
-  [[ $current_rescue_id == "$expected_image_id" ]] || return 1
-  docker image rm "$rescue_tag" >/dev/null || return 1
-  ! backend_image_rescue_image_id "$rescue_tag" >/dev/null
-}
+if ! backend_image_rescue_load_pin_cleanup_library ||
+   ! declare -F backend_image_rescue_remove_tag >/dev/null ||
+   ! declare -F backend_image_rescue_remove_manifest_tag >/dev/null; then
+  unset -f backend_image_rescue_load_pin_cleanup_library
+  return 1
+fi
+unset -f backend_image_rescue_load_pin_cleanup_library
 
 backend_image_rescue_validate_structure() {
   local state_file=$1
