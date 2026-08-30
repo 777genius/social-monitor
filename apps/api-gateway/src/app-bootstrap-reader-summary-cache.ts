@@ -7,13 +7,15 @@ export const APP_BOOTSTRAP_READER_SUMMARY_CACHE_CLOCK = Symbol(
 );
 
 export const APP_BOOTSTRAP_READER_SUMMARY_CACHE_TTL_MS = 30_000;
+export const APP_BOOTSTRAP_READER_SUMMARY_CACHE_STALE_MS = 5 * 60_000;
 export const APP_BOOTSTRAP_READER_SUMMARY_CACHE_MAX_ENTRIES = 128;
 
 const PUBLISHED_READER_SUMMARY_QUERY_IDENTITY =
   'published:workspace:daily:utc:latest-1:periods-40';
 
 interface CacheEntry {
-  readonly expiresAtMs: number;
+  readonly freshUntilMs: number;
+  readonly staleUntilMs: number;
   readonly value: ReaderSummaryBootstrapResponseDto;
 }
 
@@ -27,11 +29,14 @@ export class AppBootstrapReaderSummaryCache {
   constructor(
     private readonly clock: Clock,
     private readonly ttlMs: number,
+    private readonly staleMs: number,
     private readonly maxEntries: number,
   ) {
     if (
       !Number.isSafeInteger(ttlMs) ||
       ttlMs <= 0 ||
+      !Number.isSafeInteger(staleMs) ||
+      staleMs <= 0 ||
       !Number.isSafeInteger(maxEntries) ||
       maxEntries <= 0
     ) {
@@ -51,13 +56,24 @@ export class AppBootstrapReaderSummaryCache {
     ]);
     const nowMs = this.clock.now().getTime();
     const cached = this.entries.get(key);
-    if (cached && cached.expiresAtMs > nowMs) {
+    if (cached && cached.freshUntilMs > nowMs) {
       return Promise.resolve(cached.value);
     }
-    if (cached) {
+    if (cached && cached.staleUntilMs > nowMs) {
+      void this.load(key, loader).catch(() => undefined);
+      return Promise.resolve(cached.value);
+    }
+    if (cached !== undefined) {
       this.entries.delete(key);
     }
 
+    return this.load(key, loader);
+  }
+
+  private load(
+    key: string,
+    loader: () => Promise<ReaderSummaryBootstrapResponseDto>,
+  ): Promise<ReaderSummaryBootstrapResponseDto> {
     const existingLoad = this.inFlight.get(key);
     if (existingLoad) {
       return existingLoad;
@@ -81,7 +97,7 @@ export class AppBootstrapReaderSummaryCache {
   private store(key: string, value: ReaderSummaryBootstrapResponseDto): void {
     const nowMs = this.clock.now().getTime();
     for (const [candidateKey, entry] of this.entries) {
-      if (entry.expiresAtMs <= nowMs) {
+      if (entry.staleUntilMs <= nowMs) {
         this.entries.delete(candidateKey);
       }
     }
@@ -92,6 +108,10 @@ export class AppBootstrapReaderSummaryCache {
       }
       this.entries.delete(oldestKey);
     }
-    this.entries.set(key, { value, expiresAtMs: nowMs + this.ttlMs });
+    this.entries.set(key, {
+      value,
+      freshUntilMs: nowMs + this.ttlMs,
+      staleUntilMs: nowMs + this.ttlMs + this.staleMs,
+    });
   }
 }

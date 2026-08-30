@@ -40,7 +40,7 @@
           var timeout = setTimeout(function () {
             controller.abort();
             resolve(null);
-          }, 3000);
+          }, 12000);
           request.then(function (body) {
             clearTimeout(timeout);
             resolve(body);

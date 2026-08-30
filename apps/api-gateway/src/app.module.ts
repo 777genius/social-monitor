@@ -19,6 +19,7 @@ import { AppBootstrapController } from './app-bootstrap.controller';
 import {
   APP_BOOTSTRAP_READER_SUMMARY_CACHE_CLOCK,
   APP_BOOTSTRAP_READER_SUMMARY_CACHE_MAX_ENTRIES,
+  APP_BOOTSTRAP_READER_SUMMARY_CACHE_STALE_MS,
   APP_BOOTSTRAP_READER_SUMMARY_CACHE_TTL_MS,
   AppBootstrapReaderSummaryCache,
 } from './app-bootstrap-reader-summary-cache';
@@ -65,6 +66,7 @@ import { SocialResearchApiModule } from './social-research-api.module';
         new AppBootstrapReaderSummaryCache(
           clock,
           APP_BOOTSTRAP_READER_SUMMARY_CACHE_TTL_MS,
+          APP_BOOTSTRAP_READER_SUMMARY_CACHE_STALE_MS,
           APP_BOOTSTRAP_READER_SUMMARY_CACHE_MAX_ENTRIES,
         ),
     },
