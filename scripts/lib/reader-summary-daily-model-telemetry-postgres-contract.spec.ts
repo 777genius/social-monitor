@@ -71,6 +71,15 @@ WHERE session_principal.rolname = session_user
   ])) IS NOT TRUE THEN`,
       setDiscoveredOwner:
         "EXECUTE pg_catalog.format('SET LOCAL ROLE %I', v_owner_name);",
+      discoveredOwnerCreateCheck: `v_owner_had_schema_create := pg_catalog.has_schema_privilege(
+    v_owner_oid, 'public', 'CREATE'
+  );`,
+      setSchemaOwnerForDiscoveredOwner:
+        "EXECUTE 'SET LOCAL ROLE social_monitor_public_schema_owner';",
+      grantDiscoveredOwnerCreate:
+        "'GRANT CREATE ON SCHEMA public TO %I GRANTED BY CURRENT_USER'",
+      revokeDiscoveredOwnerCreate:
+        "'REVOKE CREATE ON SCHEMA public FROM %I GRANTED BY CURRENT_USER'",
       resetToSession: "RESET ROLE;",
       membershipRevoke: `REVOKE social_monitor_reader_summary_daily_publication_definer
   FROM social_monitor_public_schema_owner GRANTED BY CURRENT_USER;`,
@@ -83,7 +92,6 @@ WHERE session_principal.rolname = session_user
       statements.setSchemaOwner,
       statements.createGrant,
       statements.ownerTransfer,
-      statements.createRevoke,
       statements.setDefiner,
       statements.revokeLegacyExecute,
       statements.revokePublicExecute,
@@ -98,6 +106,9 @@ WHERE session_principal.rolname = session_user
       statements.ownerDiscovery,
       statements.ownerAllowlist,
       statements.setDiscoveredOwner,
+      statements.resetToSession,
+      statements.setSchemaOwner,
+      statements.createRevoke,
       statements.resetToSession,
       statements.membershipRevoke,
       statements.commit,
@@ -139,6 +150,12 @@ WHERE session_principal.rolname = session_user
     expect(sql.match(/SELECT proc\.proowner, owner_role\.rolname,/gu)).toHaveLength(2);
     expect(sql.match(/IF \(v_owner_oid = ANY \(ARRAY\[/gu)).toHaveLength(2);
     expect(sql.match(/SET LOCAL ROLE %I/gu)).toHaveLength(2);
+    expect(sql.match(/v_owner_had_schema_create :=/gu)).toHaveLength(2);
+    expect(sql.match(/IF NOT v_owner_had_schema_create THEN/gu)).toHaveLength(4);
+    expect(sql.match(/GRANT CREATE ON SCHEMA public TO %I GRANTED BY CURRENT_USER/gu))
+      .toHaveLength(2);
+    expect(sql.match(/REVOKE CREATE ON SCHEMA public FROM %I GRANTED BY CURRENT_USER/gu))
+      .toHaveLength(2);
     expect(
       sql.match(/RAISE EXCEPTION 'daily active claim has unexpected owner';/gu),
     ).toHaveLength(1);
@@ -154,15 +171,28 @@ WHERE session_principal.rolname = session_user
     );
     const boundedRewrite = sql.slice(
       sql.indexOf(statements.boundedClaimRewrite),
-      sql.indexOf(statements.membershipRevoke),
+      sql.indexOf(
+        statements.setSchemaOwner,
+        sql.indexOf(statements.boundedClaimRewrite),
+      ),
     );
     for (const rewrite of [activeRewrite, boundedRewrite]) {
-      expect(rewrite).not.toMatch(
-        /SET(?: LOCAL)? ROLE social_monitor_(?:public_schema_owner|reader_summary_daily_publication_definer)/u,
-      );
       expect(rewrite).toContain(statements.ownerDiscovery);
       expect(rewrite).toContain(statements.ownerAllowlist);
+      expect(rewrite).toContain(statements.discoveredOwnerCreateCheck);
+      expect(rewrite).toContain(statements.setSchemaOwnerForDiscoveredOwner);
+      expect(rewrite).toContain(statements.grantDiscoveredOwnerCreate);
       expect(rewrite).toContain(statements.setDiscoveredOwner);
+      expect(rewrite).toContain(statements.revokeDiscoveredOwnerCreate);
+      expect(rewrite.indexOf(statements.ownerAllowlist)).toBeLessThan(
+        rewrite.indexOf(statements.grantDiscoveredOwnerCreate),
+      );
+      expect(rewrite.indexOf(statements.grantDiscoveredOwnerCreate)).toBeLessThan(
+        rewrite.indexOf(statements.setDiscoveredOwner),
+      );
+      expect(rewrite.indexOf(statements.setDiscoveredOwner)).toBeLessThan(
+        rewrite.indexOf(statements.revokeDiscoveredOwnerCreate),
+      );
       expect(rewrite.trimEnd().endsWith(statements.resetToSession)).toBe(true);
     }
     expect(sql).not.toMatch(/GRANT EXECUTE ON FUNCTION[\s\S]*?TO PUBLIC;/u);

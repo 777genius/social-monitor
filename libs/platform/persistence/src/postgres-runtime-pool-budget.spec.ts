@@ -486,6 +486,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/lib/reader-summary-current-publication-bindings.ts
       scripts/lib/reader-summary-daily-canonical-recovery-v4-delivery-c1.ts
       scripts/lib/reader-summary-daily-canonical-recovery-v4-scan-terminal-repair-cli.ts
+      scripts/lib/reader-summary-daily-production-owner-topology-postgres.ts
       scripts/lib/reader-summary-daily-terminal-runtime-connection.spec.ts
       scripts/lib/reader-summary-daily-terminal-runtime-connection.ts
       scripts/lib/reader-summary-production-day-scope.spec.ts

@@ -130,7 +130,7 @@ export const assertReaderSummaryDailyCheckerFixtureRoleContract = (
     ) && telemetryHelperSource.includes("sql: telemetryMigration"),
   "daily checker telemetry migrations must reset to migration admin first");
   assert(!source.includes("admin.query(telemetryMigration)") &&
-    source.match(/await applyTelemetryMigrationAsMigrationAdmin\(admin\)/gu)?.length === 3,
+    source.match(/await applyTelemetryMigrationAsMigrationAdmin\(admin\)/gu)?.length === 4,
   "daily checker must route every telemetry migration through diagnosed reset boundary");
   assert(source.includes(`await admin.query("RESET ROLE");
     await admin.query(boundedMaintenanceMigration);`),
@@ -265,7 +265,6 @@ export const assertReaderSummaryDailyCheckerActivationOwnershipContract = (
   }
   for (const signature of [
     "reject_reader_summary_daily_source_authority_mutation()",
-    "claim_reader_summary_daily_execution(",
     "renew_reader_summary_daily_execution_lease(",
     "mark_reader_summary_daily_model_job_running(",
   ]) {
@@ -273,10 +272,45 @@ export const assertReaderSummaryDailyCheckerActivationOwnershipContract = (
     assert(functionHandoff > activation && functionHandoff < activationAcl,
       `daily checker must hand ${signature} to the schema owner after activation`);
   }
-  assert(!source.slice(schemaHandoff).includes(
-    "GRANT USAGE, CREATE ON SCHEMA public\n" +
-      "        TO ${quoteIdentifier(migrationAdminRole)}",
-  ), "daily checker must not restore schema CREATE to the migration admin");
+  const activeClaimHandoff = source.indexOf(
+    "await transferActiveClaimOwner(admin, firstPool, migrationAdminRole);",
+  );
+  const transferHelper = source.slice(
+    source.indexOf("const transferActiveClaimOwner = async"),
+    source.indexOf("const roleExists = async"),
+  );
+  assert(activeClaimHandoff > activation && activeClaimHandoff < activationAcl &&
+    source.match(/await transferActiveClaimOwner\(admin, firstPool, migrationAdminRole\);/gu)
+      ?.length === 2 &&
+    source.match(/await transferActiveClaimOwner\(admin, firstPool, publicationOwnerRole\);/gu)
+      ?.length === 1 &&
+    source.match(/await transferActiveClaimOwner\(admin, firstPool, schemaOwnerRole\);/gu)
+      ?.length === 1,
+  "daily checker must reproduce and restore the mixed and unaccepted owner topologies");
+  const mixedOwnerProof = source.indexOf("rewrittenClaimProfiles");
+  const runtimeOwnerHandoff = source.indexOf(
+    "await transferActiveClaimOwner(admin, firstPool, schemaOwnerRole);",
+  );
+  const runtimeContract = source.indexOf(
+    "await assertReaderSummaryDailyExecutionCursorPostgresContract({",
+  );
+  assert(mixedOwnerProof > activeClaimHandoff && runtimeOwnerHandoff > mixedOwnerProof &&
+    runtimeContract > runtimeOwnerHandoff &&
+    source.includes("grantAndAssertReaderSummaryDailyProductionOwnerTopology({\n" +
+      "      admin, migrationAdminRole, schemaOwnerRole,\n" +
+      "    });"),
+  "daily checker must reproduce and prove the production mixed-owner topology");
+  assert(transferHelper.includes(
+    "pg_catalog.pg_get_userbyid(proowner) AS current_owner",
+  ) && transferHelper.includes(
+    "owner_has_create === false",
+  ) && transferHelper.includes(
+    "bootstrapTarget: Pool",
+  ) && transferHelper.includes(
+    "await bootstrapTarget.query(`\n    ALTER FUNCTION " +
+      "public.claim_reader_summary_daily_execution(",
+  ) && !transferHelper.includes("RESET SESSION AUTHORIZATION"),
+  "daily checker must use its authenticated PG18 bootstrap role only for fixture handoff");
   assert(!source.includes("REFERENCES ON TABLE public.reader_summary_jobs"),
     "daily checker must not grant migration-admin REFERENCES after table handoff");
   const activationDiagnostics = source.slice(
@@ -291,6 +325,34 @@ export const assertReaderSummaryDailyCheckerActivationOwnershipContract = (
     !source.includes("locatePostgresMigrationFailureForTestDiagnostics") &&
     !source.includes("activationParams"),
   "daily checker must execute the whole activation migration exactly once");
+};
+
+export const assertReaderSummaryDailyProductionOwnerTopologyFixtureContract = (
+  source: string,
+): void => {
+  const grant = source.indexOf("GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE");
+  const topology = source.indexOf("const topology = await admin.query");
+  const proof = source.indexOf("const row = topology.rows[0]");
+  assert(grant >= 0 && topology > grant && proof > topology &&
+    source.includes("SET ROLE ${quoteIdentifier(schemaOwnerRole)};") &&
+    source.includes("TO ${quoteIdentifier(migrationAdminRole)} GRANTED BY CURRENT_USER") &&
+    source.includes("public.reader_summary_daily_execution_cursors") &&
+    source.includes("public.reader_summary_daily_model_jobs") &&
+    source.match(/pg_catalog\.count\(\*\) = 4/gu)?.length === 2 &&
+    source.match(/ARRAY\['SELECT', 'INSERT', 'UPDATE', 'DELETE'\]/gu)?.length === 2 &&
+    source.includes("acl.grantor = cursor_relation.relowner") &&
+    source.includes("acl.grantor = job_relation.relowner") &&
+    source.match(/NOT pg_catalog\.bool_or\(acl\.is_grantable\)/gu)?.length === 2 &&
+    source.includes("row.active_owner_has_create === false") &&
+    source.includes("row.cursor_owner === schemaOwnerRole") &&
+    source.includes("row.cursor_acl_exact === true") &&
+    source.includes("row.job_owner === schemaOwnerRole") &&
+    source.includes("row.job_acl_exact === true") &&
+    source.includes("row.bounded_owner === schemaOwnerRole") &&
+    source.includes("row.bounded_owner_has_create === true") &&
+    source.includes("row.fixture_current_user === migrationAdminRole") &&
+    source.includes("row.fixture_session_user === migrationAdminRole"),
+  "daily production topology fixture must grant and prove exact owner table ACLs");
 };
 
 export const assertReaderSummaryDailyCheckerCanonicalRlsContract = (
