@@ -81,6 +81,7 @@ export * from "./services/story-ranking-telemetry";
 export * from "./value-objects/provider-metric-label";
 export * from "./value-objects/preview-media";
 export * from "./value-objects/reader-summary-provider-identity";
+export * from "./value-objects/reader-summary-editorial-slate";
 export * from "./value-objects/reader-summary-period";
 export * from "./value-objects/reader-summary-related-topic-relation";
 export * from "./value-objects/reader-summary-weekly-canonical-json";

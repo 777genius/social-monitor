@@ -3,8 +3,6 @@ import type { RankFeedItemsUseCase } from "@social-monitor/relevance/features/ra
 import type { Clock } from "@social-monitor/shared-kernel";
 
 import {
-  admitReaderPostPromotionEvidence,
-  admissibleReaderPostPromotionCandidateIds,
   isGitHubTrendingEvidence,
   primaryReaderSummaryEvidence,
   selectGitHubTrendingSupplementalEvidence,
@@ -32,15 +30,15 @@ import {
   filterItemsByReaderSummaryPeriod,
   mapRankedItem,
   readerSummaryPeriodQuery,
-  selectRankedEvidence,
 } from "./relevance-reader-summary-evidence-support";
-import {
-  crossProviderReserveIds,
-} from "./relevance-reader-summary-top-read-reserve";
 import {
   promotionPolicySelection,
   promotionSupportCandidates,
 } from "./relevance-reader-summary-promotion-candidates";
+import {
+  composeReaderSummaryEditorialSlate,
+  materializeReaderSummaryEditorialSlate,
+} from "./reader-summary-editorial-slate";
 
 /**
  * Original source text is considered through 256k UTF-16 code units. The cap
@@ -91,8 +89,7 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
       params.timestampPolicy,
     );
     const promotionCandidates = expandedRankedItems.filter((item) =>
-      item.promotionFacts?.metricsState === "observed" &&
-      item.promotionFacts.metrics !== undefined);
+      item.promotionFacts !== undefined && !isGitHubTrendingEvidence(item));
     const promotionCandidateIds = new Set(
       promotionCandidates.map((item) => item.feedItemId),
     );
@@ -125,28 +122,6 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
     });
     const promotionPolicyItems = primaryCandidateItems.filter((item) =>
       promotionCandidateIds.has(item.feedItemId));
-    const promotionWindowSelection = {
-      ...candidateSelection,
-      sourceWindow: {
-        ...candidateSelection.sourceWindow,
-        periodStartedAt: params.period.startedAt,
-        periodEndedAt: params.period.endedAt,
-        ingestionCutoff,
-      },
-    };
-    const losslessPromotionSelection = promotionPolicySelection(
-      promotionWindowSelection,
-      promotionPolicyItems,
-    );
-    const preliminaryPromotion = admitReaderPostPromotionEvidence({
-      ...losslessPromotionSelection,
-      sourceWindow: {
-        ...losslessPromotionSelection.sourceWindow,
-        periodStartedAt: params.period.startedAt,
-        periodEndedAt: params.period.endedAt,
-        ingestionCutoff,
-      },
-    });
     const approvedRelations = await verifiedReaderSummaryStoryRelations({
       query,
       evidence: primaryCandidateItems,
@@ -157,9 +132,7 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
       additionalCandidates: promotionSupportCandidates({
         evidence: primaryCandidateItems,
         clusters: candidateSelection.clusters,
-        leadIds: new Set(preliminaryPromotion.selectedEvidence.map(
-          (item) => item.feedItemId,
-        )),
+        leadIds: promotionCandidateIds,
         promotionCandidateIds,
       }),
     });
@@ -190,61 +163,15 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
       ...verifiedPromotionSelection,
       approvedSameStoryRelations: approvedRelations.relations,
     };
-    const authoritativePromotion = admitReaderPostPromotionEvidence(
-      fullPromotionSelection,
-    ).selectedEvidence.filter((item) =>
-      promotionCandidateIds.has(item.feedItemId) &&
-      !isGitHubTrendingEvidence(item));
-    const authoritativeIds = new Set(
-      authoritativePromotion.map((item) => item.feedItemId),
-    );
-    const admissiblePromotionIds = admissibleReaderPostPromotionCandidateIds(
-      promotionPolicySelection(promotionWindowSelection, promotionPolicyItems),
-    );
-    const narrativeCandidates = primaryCandidateItems.filter((item) =>
-      !authoritativeIds.has(item.feedItemId) &&
-      (!promotionCandidateIds.has(item.feedItemId) ||
-        admissiblePromotionIds.has(item.feedItemId)),
-    );
-    const narrativeLimit = Math.max(
-      0,
-      params.maxItems - authoritativePromotion.length,
-    );
-    const narrativeItems = narrativeLimit === 0 ? [] : selectRankedEvidence(
-      narrativeCandidates,
-      narrativeLimit,
-      crossProviderReserveIds(verifiedCandidateSelection),
-      this.storyRelationVerifier !== undefined,
-    );
-    const items = [...authoritativePromotion, ...narrativeItems];
-    const selection = this.clusterer.cluster({
-      identity: {
-        tenantId: params.tenantId,
-        workspaceId: params.workspaceId,
-        scope: params.scope,
-      },
-      items,
-      limit: items.length,
-      verifiedStoryRelationPairs: approvedRelations.pairs,
-      now: ingestionCutoff,
+    const editorialSlate = composeReaderSummaryEditorialSlate({
+      selection: fullPromotionSelection,
+      candidates: promotionPolicyItems,
     });
-    const selectedEvidence = uniqueEvidence([
-      ...authoritativePromotion,
-      ...narrativeItems,
-      ...githubTrendingEvidence,
-    ]);
-    const finalSelection = {
-      ...selection,
-      sourceWindow: {
-        ...selection.sourceWindow,
-        selectedFeedItemIds: selectedEvidence.map((item) => item.feedItemId),
-        periodStartedAt: params.period.startedAt,
-        periodEndedAt: params.period.endedAt,
-        ingestionCutoff,
-      },
-      selectedEvidence,
-      approvedSameStoryRelations: approvedRelations.relations,
-    };
+    const finalSelection = materializeReaderSummaryEditorialSlate({
+      selection: fullPromotionSelection,
+      slate: editorialSlate,
+      supplementalEvidence: githubTrendingEvidence,
+    });
     const relatedTopicRelations = await verifiedReaderSummaryRelatedTopics({
       query,
       selection: finalSelection,

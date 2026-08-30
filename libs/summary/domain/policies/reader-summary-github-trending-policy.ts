@@ -48,9 +48,45 @@ export const isGitHubTrendingEvidence = (
 
 export const primaryReaderSummaryEvidence = (
   selection: SummaryEvidenceSelection,
+): SummaryEvidenceSelection =>
+  selection.editorialSlate === undefined
+    ? projectReaderSummaryEvidence(
+        selection,
+        (item) => !isGitHubTrendingEvidence(item),
+      )
+    : projectEditorialPlacementEvidence(selection, "top");
+
+export const additionalReaderSummaryEvidence = (
+  selection: SummaryEvidenceSelection,
+): SummaryEvidenceSelection =>
+  projectEditorialPlacementEvidence(selection, "additional");
+
+const projectEditorialPlacementEvidence = (
+  selection: SummaryEvidenceSelection,
+  placement: "top" | "additional",
+): SummaryEvidenceSelection => {
+  const entries = selection.editorialSlate?.[placement] ?? [];
+  const clusterIds = new Set(entries.map((entry) => entry.storyClusterId));
+  const candidateIds = new Set(entries.map((entry) => entry.candidateId));
+  const evidenceIds = new Set(selection.clusters
+    .filter((cluster) => clusterIds.has(cluster.id))
+    .flatMap((cluster) => [
+      cluster.representativeFeedItemId,
+      ...cluster.duplicateFeedItemIds,
+    ]));
+  return projectReaderSummaryEvidence(
+    selection,
+    (item) => candidateIds.has(item.feedItemId) ||
+      evidenceIds.has(item.feedItemId),
+  );
+};
+
+const projectReaderSummaryEvidence = (
+  selection: SummaryEvidenceSelection,
+  include: (item: SummaryEvidenceItem) => boolean,
 ): SummaryEvidenceSelection => {
   const selectedEvidence = selection.selectedEvidence.filter(
-    (item) => !isGitHubTrendingEvidence(item),
+    include,
   );
   const selectedFeedItemIds = new Set(
     selectedEvidence.map((item) => item.feedItemId),

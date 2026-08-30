@@ -11,6 +11,8 @@ import {
 import {
   readerPostPromotionTopProviderCap,
 } from "./top-read-provider-diversity-policy";
+import type { ReaderSummaryEditorialSlateEntry } from
+  "../value-objects/reader-summary-editorial-slate";
 
 export type SelectedReaderPostPromotion = {
   readonly policyVersion: typeof READER_POST_PROMOTION_POLICY_VERSION;
@@ -24,6 +26,7 @@ export type SelectedReaderPostPromotion = {
   readonly metrics: readonly NonNullable<ReaderPostPromotionInput["metrics"]>[];
   readonly whyImportant: readonly string[];
   readonly confidence: number;
+  readonly editorialSlateEntry?: ReaderSummaryEditorialSlateEntry;
 };
 
 export type ReaderPostPromotionSelection = {

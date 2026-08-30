@@ -6,6 +6,8 @@ import type {
   SummaryEvidenceItem,
   SummarySourceWindow,
 } from "../value-objects/summary-evidence-item";
+import type { ReaderSummaryEditorialSlate } from
+  "../value-objects/reader-summary-editorial-slate";
 import { READER_POST_PROMOTION_POLICY_V1 } from
   "./reader-post-promotion-policy-contract";
 import { readerPostPromotionTimestampMicros } from
@@ -37,7 +39,15 @@ export const readerSummaryPromotionPublicationOracle = (params: {
   readonly clusters?: readonly StoryCluster[];
   readonly approvedSameStoryRelations?: readonly ApprovedSameStoryRelation[];
   readonly relatedTopicRelations?: readonly RelatedTopicRelation[];
+  readonly editorialSlate?: ReaderSummaryEditorialSlate;
 }): { readonly top: readonly PromotionOracleCard[]; readonly additional: readonly PromotionOracleCard[] } => {
+  if (params.editorialSlate !== undefined) {
+    return editorialSlateOracle({
+      citations: params.citations,
+      clusters: params.clusters,
+      editorialSlate: params.editorialSlate,
+    });
+  }
   const citationByFeedItem = new Map<string, ReaderSummaryCitation>();
   for (const citation of [...params.citations].sort((a, b) =>
     a.citationId.localeCompare(b.citationId))) {
@@ -133,6 +143,44 @@ export const readerSummaryPromotionPublicationOracle = (params: {
     additional: diverseOracle(selected.filter((item) => item.placement === "additional")
       .sort(compareRank), READER_POST_PROMOTION_POLICY_V1.maxAdditional)
       .map(materialize),
+  };
+};
+
+const editorialSlateOracle = (params: {
+  readonly citations: readonly ReaderSummaryCitation[];
+  readonly clusters?: readonly StoryCluster[];
+  readonly editorialSlate: ReaderSummaryEditorialSlate;
+}): {
+  readonly top: readonly PromotionOracleCard[];
+  readonly additional: readonly PromotionOracleCard[];
+} => {
+  const citationByFeedItemId = new Map(params.citations.map((citation) =>
+    [citation.feedItemId, citation] as const));
+  const clusterById = new Map((params.clusters ?? []).map((cluster) =>
+    [cluster.id, cluster] as const));
+  const materialize = (
+    entry: ReaderSummaryEditorialSlate["top"][number],
+  ): PromotionOracleCard => {
+    const cluster = clusterById.get(entry.storyClusterId);
+    const feedItemIds = cluster === undefined
+      ? [entry.candidateId]
+      : [
+          cluster.representativeFeedItemId,
+          ...cluster.duplicateFeedItemIds,
+        ];
+    return {
+      candidateId: entry.candidateId,
+      canonicalIdentity: entry.canonicalIdentity,
+      placement: entry.placement,
+      citationIds: [...new Set(feedItemIds.flatMap((feedItemId) => {
+        const citation = citationByFeedItemId.get(feedItemId);
+        return citation === undefined ? [] : [citation.citationId];
+      }))].sort((left, right) => left.localeCompare(right)),
+    };
+  };
+  return {
+    top: params.editorialSlate.top.map(materialize),
+    additional: params.editorialSlate.additional.map(materialize),
   };
 };
 

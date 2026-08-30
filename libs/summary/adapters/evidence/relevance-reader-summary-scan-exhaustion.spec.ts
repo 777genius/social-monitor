@@ -334,6 +334,7 @@ describe("reader-summary promotion upstream scan exhaustion", () => {
       })),
       sourceWindow: selection.sourceWindow,
       approvedSameStoryRelations: selection.approvedSameStoryRelations,
+      editorialSlate: selection.editorialSlate,
     });
 
     expect(selection.approvedSameStoryRelations).toEqual(expect.arrayContaining([

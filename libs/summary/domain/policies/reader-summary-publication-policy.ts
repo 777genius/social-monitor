@@ -76,6 +76,7 @@ export class ReaderSummaryPublicationPolicy {
       clusters: params.evidence.clusters,
       approvedSameStoryRelations: params.evidence.approvedSameStoryRelations,
       relatedTopicRelations: params.evidence.relatedTopicRelations,
+      editorialSlate: params.evidence.editorialSlate,
     });
     rejectionFindings.push(
       ...promotionPublicationFindings({

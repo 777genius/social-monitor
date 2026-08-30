@@ -8,7 +8,7 @@ import {
 } from "../../domain";
 
 const defaultNoSignalReason =
-  "No evidence passed the immutable Promotion V1 eligibility policy.";
+  "No evidence passed the immutable Reader Promotion V2 eligibility policy.";
 
 export const buildPromotionNoSignalArtifact = (params: {
   readonly snapshot: ReturnType<ReaderSummaryJob["toSnapshot"]>;
@@ -32,6 +32,7 @@ export const buildPromotionNoSignalArtifact = (params: {
     storyClusters: params.evidence.clusters,
     sourceWindow: params.evidence.sourceWindow,
     selectedEvidence: [],
+    editorialSlate: params.evidence.editorialSlate,
     qualityFlags: ["no_signal"],
     noSignalReason,
   });
@@ -67,8 +68,8 @@ export const buildPromotionNoSignalArtifact = (params: {
       schemaVersion: "reader_summary.artifact.v1",
       modelVersion: "not_invoked",
       providerVersion: "deterministic",
-      rulesVersion: "reader_post_promotion.v1",
-      evalDatasetVersion: "reader_post_promotion.v1",
+      rulesVersion: "reader_promotion_policy.v2",
+      evalDatasetVersion: "reader_promotion_policy.v2",
       rankingPolicyVersion: params.evidence.rankingPolicyVersion,
     },
     usage: { inputTokens: 0, outputTokens: 0, estimatedCostUsd: 0 },

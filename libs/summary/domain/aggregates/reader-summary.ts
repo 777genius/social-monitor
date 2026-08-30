@@ -34,6 +34,8 @@ import type {
   SummaryEvidenceItem,
   SummarySourceWindow,
 } from "../value-objects/summary-evidence-item";
+import type { ReaderSummaryEditorialSlate } from
+  "../value-objects/reader-summary-editorial-slate";
 import { readerSummaryIndependentProviderFamilyCount } from "../value-objects/reader-summary-provider-identity";
 import type { ReaderSummaryQualityFlag } from "../value-objects/summary-quality";
 import {
@@ -71,6 +73,7 @@ export type ReaderSummaryFactoryInput = {
   readonly topicMap?: ReaderSummaryTopicMap;
   readonly qualityFlags: readonly ReaderSummaryQualityFlag[];
   readonly noSignalReason?: string;
+  readonly editorialSlate?: ReaderSummaryEditorialSlate;
 };
 
 export class ReaderSummary {
@@ -95,6 +98,7 @@ export class ReaderSummary {
         ),
       approvedSameStoryRelations: input.approvedSameStoryRelations,
       relatedTopicRelations: input.relatedTopicRelations,
+      editorialSlate: input.editorialSlate,
     });
     if (
       promotion.topReads.length === 0 &&

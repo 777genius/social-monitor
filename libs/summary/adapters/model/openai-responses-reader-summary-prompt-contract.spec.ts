@@ -1,6 +1,10 @@
 import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 
-import { buildReaderSummaryCoveragePlan } from "../../domain";
+import {
+  buildReaderSummaryCoveragePlan,
+  READER_SUMMARY_EDITORIAL_SLATE_VERSION,
+  type ReaderSummaryEditorialSlateEntry,
+} from "../../domain";
 import type { ReaderSummaryModelInput } from "../../ports";
 import {
   assertNoReaderSummaryPromptReleaseOverride,
@@ -41,7 +45,7 @@ describe("OpenAI reader summary prompt contract", () => {
     );
   });
 
-  it("requests detailed candidate descriptions for the final top-eight ranking", () => {
+  it("keeps model prose bound to the immutable backend top eight", () => {
     const instructions = buildOpenAiReaderSummaryInstructions({
       policy: {
         language: "auto",
@@ -80,12 +84,17 @@ describe("OpenAI reader summary prompt contract", () => {
     expect(instructions).toContain(
       "Never combine different story clusters into one thematic story",
     );
-    expect(instructions).toContain("return 12-15 topStories");
+    expect(instructions).toContain(
+      "Never reorder, promote, demote, replace, omit or synthesize slate cards",
+    );
+    expect(instructions).toContain(
+      "Return at most 8 topStories, matching editorialSlate.top exactly",
+    );
   });
 
-  it("allows fifteen candidates and descriptions up to 720 characters", () => {
+  it("allows eight slate stories and descriptions up to 720 characters", () => {
     expect(openAiReaderSummaryJsonSchema.properties.topStories.maxItems).toBe(
-      15,
+      8,
     );
     expect(openAiReaderSummaryJsonSchema.$defs.topStory).toMatchObject({
       properties: {
@@ -119,6 +128,97 @@ describe("OpenAI reader summary prompt contract", () => {
     expect(payload).not.toContain("github-trending-page");
     expect(payload).not.toContain("owner/private-prompt-influence");
     expect(payload).toContain("reddit-main-signal");
+  });
+
+  it("separates immutable Top evidence from Additional context", () => {
+    const base = promptInputWithGitHubTrending();
+    const topItem = base.evidence.selectedEvidence.find((item) =>
+      item.feedItemId === "feed-1")!;
+    const additionalItem = promptEvidence(
+      "x-twitter",
+      "x-secondary-context",
+      3,
+    );
+    const topCluster = base.evidence.clusters.find((cluster) =>
+      cluster.representativeFeedItemId === topItem.feedItemId)!;
+    const additionalCluster = {
+      id: "cluster-feed-3",
+      storyKey: "story-feed-3",
+      representativeFeedItemId: additionalItem.feedItemId,
+      duplicateFeedItemIds: [],
+      interestIds: [additionalItem.interestId],
+      providerKeys: [additionalItem.providerKey],
+      score: additionalItem.score,
+      observedAtRange: {
+        startedAt: additionalItem.observedAt,
+        endedAt: additionalItem.observedAt,
+      },
+      whyImportant: additionalItem.whyImportant,
+    };
+    const top = [promptSlateEntry(
+      topItem.feedItemId,
+      topCluster.id,
+      "reddit",
+      "top",
+      1,
+    )];
+    const additional = [promptSlateEntry(
+      additionalItem.feedItemId,
+      additionalCluster.id,
+      "x",
+      "additional",
+      1,
+    )];
+    const evidence = {
+      ...base.evidence,
+      selectedEvidence: [
+        topItem,
+        additionalItem,
+        base.evidence.selectedEvidence[0]!,
+      ],
+      clusters: [
+        topCluster,
+        additionalCluster,
+        base.evidence.clusters[0]!,
+      ],
+      editorialSlate: {
+        policyVersion: READER_SUMMARY_EDITORIAL_SLATE_VERSION,
+        top,
+        additional,
+        excluded: [],
+        orderedCandidateIds: [topItem.feedItemId, additionalItem.feedItemId],
+        orderedCanonicalIdentities: [
+          `story:${topItem.feedItemId}`,
+          `story:${additionalItem.feedItemId}`,
+        ],
+        digestInputs: [...top, ...additional].map((entry) => entry.digestInput),
+        digestMaterial: "fixture-slate-digest",
+      },
+    };
+    const payload = JSON.parse(buildOpenAiReaderSummaryPromptPayload({
+      ...base,
+      evidence,
+      coveragePlan: buildReaderSummaryCoveragePlan(evidence),
+    })) as {
+      storyClusters: readonly { readonly id: string }[];
+      additionalStoryClusters: readonly { readonly id: string }[];
+      evidence: readonly { readonly feedItemId: string }[];
+      additionalEvidence: readonly { readonly feedItemId: string }[];
+    };
+
+    expect(payload.storyClusters.map((cluster) => cluster.id)).toEqual([
+      topCluster.id,
+    ]);
+    expect(payload.additionalStoryClusters.map((cluster) => cluster.id)).toEqual([
+      additionalCluster.id,
+    ]);
+    expect(JSON.stringify(payload.evidence)).toContain(topItem.feedItemId);
+    expect(JSON.stringify(payload.evidence)).not.toContain(
+      additionalItem.feedItemId,
+    );
+    expect(JSON.stringify(payload.additionalEvidence)).toContain(
+      additionalItem.feedItemId,
+    );
   });
 
   it("uses the coverage plan already approved by the execution use case", () => {
@@ -246,4 +346,36 @@ const promptEvidence = (
   observedAt: new Date("2026-07-10T12:01:00.000Z"),
   score: 2,
   whyImportant: [title],
+});
+
+const promptSlateEntry = (
+  candidateId: string,
+  storyClusterId: string,
+  provider: ReaderSummaryEditorialSlateEntry["provider"],
+  placement: ReaderSummaryEditorialSlateEntry["placement"],
+  slot: number,
+): ReaderSummaryEditorialSlateEntry => ({
+  policyVersion: READER_SUMMARY_EDITORIAL_SLATE_VERSION,
+  placement,
+  slot,
+  candidateId,
+  canonicalIdentity: `story:${candidateId}`,
+  provider,
+  storyClusterId,
+  scoreComponents: {
+    engagementSalience: 0.5,
+    relevance: 0.9,
+    evidenceQuality: 0.9,
+    integrity: 0.9,
+    freshness: 0.5,
+    weightedEngagement: 0.2,
+    weightedRelevance: 0.27,
+    weightedEvidenceQuality: 0.135,
+    weightedIntegrity: 0.09,
+    weightedFreshness: 0.025,
+    total: 0.72,
+  },
+  reasonCodes: ["fixture"],
+  candidateDigestInput: `candidate:${candidateId}`,
+  digestInput: `slate:${placement}:${slot}:${candidateId}`,
 });

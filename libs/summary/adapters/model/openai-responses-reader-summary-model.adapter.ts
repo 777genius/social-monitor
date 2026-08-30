@@ -347,6 +347,7 @@ export class OpenAiResponsesReaderSummaryModelAdapter implements ReaderSummaryMo
           storyClusters: input.evidence.clusters,
           sourceWindow: input.evidence.sourceWindow,
           selectedEvidence: input.evidence.selectedEvidence,
+          editorialSlate: input.evidence.editorialSlate,
         }),
       },
     };

@@ -1,6 +1,10 @@
 import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 
-import type { ReaderSummaryCitation } from "../../domain";
+import {
+  READER_SUMMARY_EDITORIAL_SLATE_VERSION,
+  type ReaderSummaryCitation,
+  type ReaderSummaryEditorialSlateEntry,
+} from "../../domain";
 import type { ReaderSummaryModelInput } from "../../ports";
 import { normalizeTopStories } from "./openai-responses-reader-summary-story-normalizer";
 
@@ -147,6 +151,88 @@ describe("normalizeTopStories coverage alignment", () => {
       }),
     ]);
   });
+
+  it("cannot let the model reorder or promote outside the immutable slate", () => {
+    const base = modelInput(3);
+    const top = [
+      slateEntry("feed-2", "story:2", "top", 1),
+      slateEntry("feed-1", "story:1", "top", 2),
+    ];
+    const additional = [
+      slateEntry("feed-3", "story:3", "additional", 1),
+    ];
+    const input: ReaderSummaryModelInput = {
+      ...base,
+      evidence: {
+        ...base.evidence,
+        editorialSlate: {
+          policyVersion: READER_SUMMARY_EDITORIAL_SLATE_VERSION,
+          top,
+          additional,
+          excluded: [],
+          orderedCandidateIds: ["feed-2", "feed-1", "feed-3"],
+          orderedCanonicalIdentities: ["story:2", "story:1", "story:3"],
+          digestInputs: [...top, ...additional].map(
+            (entry) => entry.digestInput,
+          ),
+          digestMaterial: "fixture-digest",
+        },
+      },
+    };
+    const modelStories = [3, 1, 2].map((index) => ({
+      storyClusterId: `story:${index}`,
+      title: `Model story ${index}`,
+      summary: `Model description ${index}`,
+      interestIds: ["ai-developer-tools"],
+      providerKeys: ["reddit"],
+      citationIds: [`c${index}`],
+    }));
+
+    const normalized = normalizeTopStories(
+      modelStories,
+      input,
+      citationMap(3),
+    );
+
+    expect(normalized.map((story) => story.storyClusterId)).toEqual([
+      "story:2",
+      "story:1",
+    ]);
+    expect(normalized).not.toContainEqual(expect.objectContaining({
+      storyClusterId: "story:3",
+    }));
+  });
+});
+
+const slateEntry = (
+  candidateId: string,
+  storyClusterId: string,
+  placement: "top" | "additional",
+  slot: number,
+): ReaderSummaryEditorialSlateEntry => ({
+  policyVersion: READER_SUMMARY_EDITORIAL_SLATE_VERSION,
+  placement,
+  slot,
+  candidateId,
+  canonicalIdentity: storyClusterId,
+  provider: "reddit",
+  storyClusterId,
+  scoreComponents: {
+    engagementSalience: 0.5,
+    relevance: 0.9,
+    evidenceQuality: 0.9,
+    integrity: 0.9,
+    freshness: 0.5,
+    weightedEngagement: 0.2,
+    weightedRelevance: 0.27,
+    weightedEvidenceQuality: 0.135,
+    weightedIntegrity: 0.09,
+    weightedFreshness: 0.025,
+    total: 0.72,
+  },
+  reasonCodes: ["fixture"],
+  candidateDigestInput: `candidate:${candidateId}`,
+  digestInput: `slate:${placement}:${slot}:${candidateId}`,
 });
 
 const modelInput = (count: number): ReaderSummaryModelInput => {

@@ -132,16 +132,19 @@ export class DeterministicReaderSummaryModelAdapter implements ReaderSummaryMode
             storyClusters: input.evidence.clusters,
             sourceWindow: input.evidence.sourceWindow,
             selectedEvidence: input.evidence.selectedEvidence,
+            editorialSlate: input.evidence.editorialSlate,
           }),
         },
       };
     }
 
     const citedEvidence = input.evidence.selectedEvidence;
-    const selectedEvidence = selectRankedEvidence(
-      primaryEvidence.selectedEvidence,
-      input.policy.maxStories,
-    );
+    const selectedEvidence = input.evidence.editorialSlate === undefined
+      ? selectRankedEvidence(
+          primaryEvidence.selectedEvidence,
+          input.policy.maxStories,
+        )
+      : primaryEvidence.selectedEvidence;
     const citationMap = citedEvidence.map((item, index) => ({
       citationId: `c${index + 1}`,
       feedItemId: item.feedItemId,
@@ -150,17 +153,19 @@ export class DeterministicReaderSummaryModelAdapter implements ReaderSummaryMode
       field: "title" as const,
       canonicalUrl: item.canonicalUrl,
     }));
-    const topStoryClusters = selectClustersForEvidence(
-      input.evidence.clusters,
-      selectedEvidence,
-      input.policy.maxStories,
-      [
-        ...(input.coveragePlan.lead === undefined
-          ? []
-          : [input.coveragePlan.lead.clusterId]),
-        ...input.coveragePlan.secondary.map((item) => item.clusterId),
-      ],
-    );
+    const topStoryClusters = input.evidence.editorialSlate === undefined
+      ? selectClustersForEvidence(
+          input.evidence.clusters,
+          selectedEvidence,
+          input.policy.maxStories,
+          [
+            ...(input.coveragePlan.lead === undefined
+              ? []
+              : [input.coveragePlan.lead.clusterId]),
+            ...input.coveragePlan.secondary.map((item) => item.clusterId),
+          ],
+        )
+      : primaryEvidence.clusters;
     const topStories = topStoryClusters.map((cluster, index) => {
       const representative =
         selectedEvidence.find(
@@ -256,6 +261,7 @@ export class DeterministicReaderSummaryModelAdapter implements ReaderSummaryMode
       storyClusters: input.evidence.clusters,
       sourceWindow: input.evidence.sourceWindow,
       selectedEvidence: citedEvidence,
+      editorialSlate: input.evidence.editorialSlate,
     });
 
     return {
