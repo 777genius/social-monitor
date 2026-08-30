@@ -113,6 +113,13 @@ fake_ssh() {
       print_fake_plan false false false false "$RELEASE_B_REVIEWED_TARGET_SHA" \
         "$RELEASE_B_REVIEWED_TARGET_SHA"
       ;;
+    release_b_post_b:"plan $TARGET_SHA")
+      print_fake_plan true true false false "$POST_RELEASE_B_SHA" \
+        "$POST_RELEASE_B_SHA"
+      ;;
+    release_b_from_8b:"plan $TARGET_SHA"|release_b_bridge_disconnect:"plan $TARGET_SHA"|release_b_controller_repair:"plan $TARGET_SHA"|release_b_current_main:"plan $TARGET_SHA"|release_b_replay:"plan $TARGET_SHA"|release_b_partial:"plan $TARGET_SHA"|release_b_stale_target:"plan $TARGET_SHA"|release_b_rejected:"plan $TARGET_SHA")
+      exit 1
+      ;;
     release_b_current_main:"plan $RELEASE_B_REVIEWED_TARGET_SHA")
       if grep -qFx "deploy $RELEASE_B_REVIEWED_TARGET_SHA" "$FAKE_SSH_LOG"; then
         print_fake_plan false false false false "$RELEASE_B_REVIEWED_TARGET_SHA" \
@@ -293,6 +300,7 @@ FIXTURE=$(mktemp -d "${TMPDIR:-/tmp}/github-production-deploy-client-test.XXXXXX
 trap 'rm -rf "$FIXTURE"' EXIT
 
 TARGET_SHA=$(git -C "$SCRIPT_DIR/../.." rev-parse HEAD)
+POST_RELEASE_B_SHA=$(git -C "$SCRIPT_DIR/../.." rev-parse HEAD^)
 BACKEND_SHA=4f47fac7faed7dc24110f4a43e88820d776b8a40
 CURRENT_BACKEND_SHA=617e284607f3dde74c27164af2b981770b9a62ed
 RELEASE_B_CONTROLLER_SHA=8b4aeb31e855ed379349a4e4827600009e174132
@@ -318,6 +326,7 @@ DEPLOY_HOST=production.example.invalid
 DEPLOY_USER=social-monitor-deploy
 
 export TARGET_SHA BACKEND_SHA CURRENT_BACKEND_SHA RELEASE_B_CONTROLLER_SHA
+export POST_RELEASE_B_SHA
 export RELEASE_B_CURRENT_MAIN_SHA RELEASE_B_BRIDGE_SHA RELEASE_B_REVIEWED_TARGET_SHA
 export RELEASE_B_BACKEND_MARKER RELEASE_B_POOL_MARKER
 export MODEL_JOB_IDENTITY AUTHORITY_SHA256 TERMINAL_SET_SHA256
@@ -360,6 +369,18 @@ install -m 0700 "$0" "$FAKE_SSH"
   parse_plan "$(printf 'frontend=true\nbackend=true\nbackend_base=%s\ncontrol=true\nx_collector=true\npostgres_pool_bootstrap=postgres-pool-v1\npostgres_pool_bootstrap_sha=%s\n' \
     "$RELEASE_B_BACKEND_MARKER" "$RELEASE_B_POOL_MARKER")"
   plan_is_exact_release_b_legacy_transition
+  parse_plan "$(printf 'frontend=true\nbackend=true\nbackend_base=%s\ncontrol=false\nx_collector=false\npostgres_pool_bootstrap=postgres-pool-v1\npostgres_pool_bootstrap_sha=%s\n' \
+    "$POST_RELEASE_B_SHA" "$POST_RELEASE_B_SHA")"
+  plan_is_admitted_post_release_b_forward_state "$TARGET_SHA"
+  # shellcheck disable=SC2034 # Read by the sourced post-Release-B predicate.
+  PLAN_CONTROL=true
+  plan_is_admitted_post_release_b_forward_state "$TARGET_SHA" && exit 1
+  # shellcheck disable=SC2034 # Restored for the remaining predicate check.
+  PLAN_CONTROL=false
+  # shellcheck disable=SC2034 # Read by the sourced post-Release-B predicate.
+  PLAN_POSTGRES_POOL_BOOTSTRAP_SHA=$RELEASE_B_CONTROLLER_SHA
+  plan_is_admitted_post_release_b_forward_state "$TARGET_SHA" && exit 1
+  true
 )
 
 run_client() {
@@ -676,6 +697,11 @@ assert_call_count 1 "plan $TARGET_SHA"
 prepare_args=(prepare-release-b-bridge "$RELEASE_B_CONTROLLER_SHA" \
   "$RELEASE_B_BRIDGE_SHA" "$RELEASE_B_CURRENT_MAIN_SHA" \
   "$RELEASE_B_REVIEWED_TARGET_SHA" "$TARGET_SHA")
+run_client release_b_post_b "${prepare_args[@]}" >/dev/null
+assert_call_count 1 "plan $TARGET_SHA"
+assert_call_count 0 "plan $RELEASE_B_REVIEWED_TARGET_SHA"
+assert_call_count 0 "deploy $RELEASE_B_BRIDGE_SHA"
+assert_call_count 0 "deploy $RELEASE_B_REVIEWED_TARGET_SHA"
 run_client release_b_from_8b "${prepare_args[@]}" >/dev/null
 assert_call_count 1 "deploy $RELEASE_B_BRIDGE_SHA"
 assert_call_count 2 "plan $RELEASE_B_BRIDGE_SHA"
