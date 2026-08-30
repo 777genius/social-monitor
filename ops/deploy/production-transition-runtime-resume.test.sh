@@ -81,6 +81,10 @@ S2=$(printf 'test: external S2\n' | /usr/bin/git -C "$REPO" commit-tree "$TREE" 
 /usr/bin/git -C "$REPO" remote add origin "$REMOTE"
 /usr/bin/mkdir "$OUTPUT"
 
+# Test authority comes only from the fixture-specific variables below.
+unset PRODUCTION_TRANSITION_REPOSITORY PRODUCTION_TRANSITION_TRUSTED_BASE \
+  PRODUCTION_TRANSITION_RUN_ID GITHUB_REPOSITORY GITHUB_WORKFLOW_REF \
+  GITHUB_SHA GITHUB_WORKSPACE
 export SOCIAL_MONITOR_DEPLOY_TEST_MODE=1
 export PRODUCTION_TRANSITION_TEST_REPOSITORY=$REPO
 export PRODUCTION_TRANSITION_TEST_REMOTE=origin
