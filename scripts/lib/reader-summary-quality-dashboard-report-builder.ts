@@ -12,6 +12,7 @@ import { buildReaderSummaryClaimQuality } from "./reader-summary-claim-quality";
 import {
   buildCollectionStrategy,
   buildPlannerRolloutProof,
+  primaryCollectionMinimumsPass,
 } from "./reader-summary-quality-dashboard-collection-strategy";
 import type {
   ReaderSummaryQualityDashboardReport,
@@ -29,6 +30,9 @@ import {
   readDashboardCollectionDates,
   readDashboardFeedItems,
 } from "./reader-summary-quality-dashboard-published-window";
+import {
+  primarySummaryProviderBreadthEnough,
+} from "./reader-summary-primary-source-quality";
 import {
   averageMetric,
   countBy,
@@ -258,23 +262,21 @@ async function buildDayReport(
       topReadCount: summary.topReadCount,
       topReadQuality,
     }),
-    summaryHasPrimarySourcesSelected: primarySources.every(
-      (source) => (summary.primarySelectedCounts[source] ?? 0) >= 1,
-    ),
-    summaryHasPrimarySourcesInTopReads: primarySources.every(
-      (source) => (summary.primaryTopReadCounts[source] ?? 0) >= 1,
-    ),
+    summaryHasPrimarySourceSelected: primarySummaryProviderBreadthEnough({
+      primarySources,
+      providerCounts: summary.primarySelectedCounts,
+    }),
+    summaryHasPrimarySourceInTopReads: primarySummaryProviderBreadthEnough({
+      primarySources,
+      providerCounts: summary.primaryTopReadCounts,
+    }),
     noTechnicalLeakage: summary.technicalLeakCount === 0,
     topReadProviderSkewControlled: topReadProviderSkewPasses(summary),
     topReadQualityPasses: Object.values(topReadQuality.gates).every(Boolean),
     claimQualityPasses: Object.values(claimQuality.gates).every(Boolean),
-    primaryCollectionMinimumsPass:
-      strategy.gates.redditCollectedEnough === true &&
-      strategy.gates.xTwitterCollectedEnough === true &&
-      (strategy.gates.redditEligibleCandidatesEnough === true ||
-        strategy.gates.redditSummaryRepresentationEnough === true) &&
-      (strategy.gates.xTwitterEligibleCandidatesEnough === true ||
-        strategy.gates.xTwitterSummaryRepresentationEnough === true),
+    primaryCollectionMinimumsPass: primaryCollectionMinimumsPass(
+      strategy.gates,
+    ),
     primaryCollectionSourceSkewPass:
       strategy.gates.redditSourceSkewControlled === true &&
       strategy.gates.xTwitterSourceSkewControlled === true,

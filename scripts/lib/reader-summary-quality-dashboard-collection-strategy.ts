@@ -30,6 +30,7 @@ import {
 } from "./reader-summary-quality-dashboard-source-attribution";
 import {
   isEligiblePrimaryTopReadInput,
+  primarySummaryRepresentationBreadthEnough,
   primarySummaryRepresentationEnough,
   readerFacingPrimaryCandidateCount,
 } from "./reader-summary-primary-source-quality";
@@ -80,6 +81,10 @@ export async function buildCollectionStrategy(params: {
     feedItems: params.feedItems,
     primaryReports,
   });
+  const redditRepresentationEnough =
+    primarySummaryRepresentationEnough(reddit);
+  const xTwitterRepresentationEnough =
+    primarySummaryRepresentationEnough(xTwitter);
   const gates = {
     redditCollectedEnough: reddit.collectedCount >= 25,
     xTwitterCollectedEnough:
@@ -88,14 +93,15 @@ export async function buildCollectionStrategy(params: {
     redditEligibleCandidatesEnough: reddit.eligibleTopReadCandidateCount >= 8,
     xTwitterEligibleCandidatesEnough:
       xTwitter.eligibleTopReadCandidateCount >= 8,
-    redditSummaryRepresentationEnough:
-      primarySummaryRepresentationEnough(reddit),
-    xTwitterSummaryRepresentationEnough:
-      primarySummaryRepresentationEnough(xTwitter),
+    primarySummaryRepresentationEnough:
+      primarySummaryRepresentationBreadthEnough([reddit, xTwitter]),
     redditSourceSkewControlled: reddit.sourceSkewRatio <= 0.75,
     xTwitterSourceSkewControlled: xTwitter.sourceSkewRatio <= 0.75,
   };
   const warningSignals = {
+    redditSummaryRepresentationInsufficient: !redditRepresentationEnough,
+    xTwitterSummaryRepresentationInsufficient:
+      !xTwitterRepresentationEnough,
     redditQueryLanesMissing: reddit.queryLaneCount < 2,
     xTwitterQueryLanesMissing: xTwitter.queryLaneCount < 2,
     redditTopNewLatestMixMissing: reddit.productLaneCount < 2,
@@ -110,6 +116,18 @@ export async function buildCollectionStrategy(params: {
     gates,
     warningSignals,
   };
+}
+
+export function primaryCollectionMinimumsPass(
+  gates: Readonly<Record<string, boolean>>,
+): boolean {
+  return (
+    gates.redditCollectedEnough === true &&
+    gates.xTwitterCollectedEnough === true &&
+    ((gates.redditEligibleCandidatesEnough === true &&
+      gates.xTwitterEligibleCandidatesEnough === true) ||
+      gates.primarySummaryRepresentationEnough === true)
+  );
 }
 
 export function buildPlannerRolloutProof(

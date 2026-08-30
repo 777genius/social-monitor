@@ -7,6 +7,7 @@ import {
 import {
   buildPlannerRolloutProof,
   plannerLaneExecutionState,
+  primaryCollectionMinimumsPass,
 } from "./reader-summary-quality-dashboard-collection-strategy";
 import type {
   PlannerCanarySourceReport,
@@ -162,6 +163,45 @@ describe("reader summary quality dashboard characterization", () => {
     expect(topReadProviderSkewPasses(summaryWithSkew(9, 0.751))).toBe(false);
     expect(topReadProviderSkewPasses(summaryWithSkew(10, 0.6))).toBe(true);
     expect(topReadProviderSkewPasses(summaryWithSkew(10, 0.601))).toBe(false);
+  });
+
+  it("accepts cumulative primary evidence without requiring both providers to be strong", () => {
+    expect(
+      primaryCollectionMinimumsPass({
+        redditCollectedEnough: true,
+        xTwitterCollectedEnough: true,
+        redditEligibleCandidatesEnough: false,
+        xTwitterEligibleCandidatesEnough: false,
+        primarySummaryRepresentationEnough: true,
+      }),
+    ).toBe(true);
+    expect(
+      primaryCollectionMinimumsPass({
+        redditCollectedEnough: true,
+        xTwitterCollectedEnough: true,
+        redditEligibleCandidatesEnough: true,
+        xTwitterEligibleCandidatesEnough: true,
+        primarySummaryRepresentationEnough: false,
+      }),
+    ).toBe(true);
+    expect(
+      primaryCollectionMinimumsPass({
+        redditCollectedEnough: true,
+        xTwitterCollectedEnough: true,
+        redditEligibleCandidatesEnough: true,
+        xTwitterEligibleCandidatesEnough: false,
+        primarySummaryRepresentationEnough: false,
+      }),
+    ).toBe(false);
+    expect(
+      primaryCollectionMinimumsPass({
+        redditCollectedEnough: true,
+        xTwitterCollectedEnough: false,
+        redditEligibleCandidatesEnough: true,
+        xTwitterEligibleCandidatesEnough: true,
+        primarySummaryRepresentationEnough: true,
+      }),
+    ).toBe(false);
   });
 
   it("keeps rollout proof statuses and failure reasons stable", () => {
