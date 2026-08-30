@@ -25,6 +25,7 @@ import {
 } from "./subscription-runtime-installation";
 import {
   admitSubscriptionRuntimeRequest,
+  type activeReaderSummaryReasoningEffort,
   configuredSubscriptionRuntimeDefaultsAreSafe,
   type AdmittedSubscriptionRuntimeRequest,
   type SubscriptionRuntimePurposeProfile,
@@ -38,7 +39,7 @@ export type SubscriptionRuntimeCliExecutorOptions = {
   readonly codexAuthJsonPath?: string;
   readonly claudeTokenEnv?: string;
   readonly model?: string;
-  readonly reasoningEffort?: "xhigh";
+  readonly reasoningEffort?: typeof activeReaderSummaryReasoningEffort;
   readonly installationInspector?: SubscriptionRuntimeInstallationInspector;
 };
 

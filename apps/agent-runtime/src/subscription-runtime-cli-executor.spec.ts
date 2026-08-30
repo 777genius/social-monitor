@@ -124,7 +124,7 @@ describe("SubscriptionRuntimeCliExecutor", () => {
       ephemeral: false,
       stateRoot: "/tmp/social-monitor-agent-runtime-test-state",
       localEncryptionKey: "test-key",
-      reasoningEffort: "xhigh",
+      reasoningEffort: "high",
       installationInspector,
     });
 
@@ -319,7 +319,7 @@ describe("SubscriptionRuntimeCliExecutor", () => {
     });
   });
 
-  it("routes the weekly purpose to gpt-5.6-sol xhigh output_text", async () => {
+  it("routes canonical recovery to gpt-5.6-sol high output_text", async () => {
     tempDir = await mkdtemp(join(tmpdir(), "agent-runtime-cli-test-"));
     const capturePath = join(tempDir, "weekly-capture.json");
     const cliPath = join(tempDir, "fake-weekly-cli.mjs");
@@ -344,10 +344,10 @@ describe("SubscriptionRuntimeCliExecutor", () => {
 
     const result = await executor.execute(
       validExecutionRequest({
-        purpose: "social_monitor.reader_summary.weekly.generate",
+        purpose: "social_monitor.reader_summary.daily.canonical_recovery.v2",
         controlsJson: JSON.stringify({ model: "gpt-5.6-sol" }),
         metadata: {
-          reasoningEffort: "xhigh",
+          reasoningEffort: "high",
           runtimeOutput: "output_text",
         },
       }),
@@ -361,21 +361,21 @@ describe("SubscriptionRuntimeCliExecutor", () => {
     );
     expect(captured.request.task.controls).toMatchObject({
       model: "gpt-5.6-sol",
-      reasoningEffort: "xhigh",
+      reasoningEffort: "high",
       responseFormat: "text",
     });
     expect(captured.request.task.controls.outputSchema).toBeUndefined();
     expect(captured.request.task.metadata).toMatchObject({
       model: "gpt-5.6-sol",
-      reasoningEffort: "xhigh",
+      reasoningEffort: "high",
       runtimeOutput: "output_text",
     });
-    expect(captured.reasoningEffort).toBe("xhigh");
+    expect(captured.reasoningEffort).toBe("high");
     expect(result.executionAttestation).toMatchObject({
-      purpose: "social_monitor.reader_summary.weekly.generate",
+      purpose: "social_monitor.reader_summary.daily.canonical_recovery.v2",
       provider: "codex",
       model: "gpt-5.6-sol",
-      reasoningEffort: "xhigh",
+      reasoningEffort: "high",
       selectedOutputKind: "output_text",
     });
   });

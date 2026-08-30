@@ -32,57 +32,8 @@ POSTGRES_RUNTIME_CURRENT=$CONTROL/postgres-runtime-current
 SYSTEMD_UNIT_DIR=$ROOT/systemd
 POSTGRES_RUNTIME_DAILY_C1_HELPER_TEST_MODE=1
 COMPOSE=(docker compose)
-SHA=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-FAILED_SHA=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
-CONTROL_ONLY_SHA=cccccccccccccccccccccccccccccccccccccccc
-BACKEND_COMPATIBLE_SHA=dddddddddddddddddddddddddddddddddddddddd
-ENABLED_TIMER_SHA=eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
-ACTIVE_TIMER_SHA=ffffffffffffffffffffffffffffffffffffffff
-BRIDGE_SHA=1111111111111111111111111111111111111111
-ACTIVE_SERVICE_SHA=2222222222222222222222222222222222222222
-ROLLBACK_FAILURE_SHA=3333333333333333333333333333333333333333
-INVALID_MARKER_SHA=4444444444444444444444444444444444444444
-MASKED_TIMER_SHA=5555555555555555555555555555555555555555
-CAPTURE_ENABLE_FAILURE_SHA=5656565656565656565656565656565656565656
-CAPTURE_PROOF_FAILURE_SHA=5757575757575757575757575757575757575757
-TAMPERED_RELEASE_SHA=6666666666666666666666666666666666666666
-TAMPERED_C1_READINESS_SHA=1212121212121212121212121212121212121212
-MISSING_C1_READINESS_SHA=1313131313131313131313131313131313131313
-LEGACY_TIMERLESS_SHA=1414141414141414141414141414141414141414
-CRASH_RESTART_SHA=1515151515151515151515151515151515151515
-WEEKLY_ENABLE_FAILURE_SHA=7777777777777777777777777777777777777777
-WEEKLY_START_FAILURE_SHA=8888888888888888888888888888888888888888
-WEEKLY_PROOF_FAILURE_SHA=9999999999999999999999999999999999999999
-WEEKLY_ROLLBACK_FAILURE_SHA=abababababababababababababababababababab
-REJECT_DROPIN=false
-SERVICE_ACTIVE_STATE=inactive
-TIMER_NEXT_TRIGGER='Thu 2026-08-13 23:50:00 UTC'
-TIMER_ENABLE_STATUS=0
-TIMER_DISABLE_STATUS=0
-DAEMON_RELOAD_STATUS=0
-WEEKLY_TIMER_NEXT_TRIGGER='Mon 2026-08-03 06:30:00 UTC'
-WEEKLY_TIMER_ENABLE_STATUS=0
-WEEKLY_TIMER_START_STATUS=0
-WEEKLY_TIMER_DISABLE_STATUS=0
-WEEKLY_TIMER_STOP_STATUS=0
-ROLLING_TIMER_NEXT_TRIGGER='Sat 2026-08-15 12:15:00 UTC'
-ROLLING_TIMER_UNIT_FILE_STATE=$FIXTURE/rolling-timer-unit-file-state
-ROLLING_TIMER_ACTIVE_STATE=$FIXTURE/rolling-timer-active-state
-LEGACY_DAILY_TIMER_ENABLED=true
-V6_DAILY_TIMER_ENABLED=false
-DAILY_HANDOFF_STATE_MODE=true
-LEGACY_DAILY_TIMER_ACTIVE_STATE=active
-V6_DAILY_TIMER_ACTIVE_STATE=inactive
-DAILY_TIMER_ACTIVE_STATE=active
-DAILY_TIMER_ACTIVE_STATE_AFTER_START=active
-DAILY_TIMER_NEXT_TRIGGER='Thu 2026-07-30 00:00:00 UTC'
-DAILY_TIMER_START_STATUS=0
-SYSTEMCTL_EVENTS=$FIXTURE/systemctl-events
-WEEKLY_TIMER_UNIT_FILE_STATE=$FIXTURE/weekly-timer-unit-file-state
-WEEKLY_TIMER_ACTIVE_STATE=$FIXTURE/weekly-timer-active-state
-TIMER_UNIT_FILE_STATE=$FIXTURE/github-premidnight-timer-unit-file-state
-TIMER_ACTIVE_STATE=$FIXTURE/github-premidnight-timer-active-state
-FAKE_SYSTEMCTL=$SCRIPT_DIR/fixtures/github-premidnight-capture-fake-systemctl.sh
+# shellcheck source=ops/deploy/fixtures/postgres-runtime-deploy-test-state.sh
+source "$SCRIPT_DIR/fixtures/postgres-runtime-deploy-test-state.sh"
 printf 'disabled\n' > "$WEEKLY_TIMER_UNIT_FILE_STATE"
 printf 'inactive\n' > "$WEEKLY_TIMER_ACTIVE_STATE"
 printf 'disabled\n' > "$ROLLING_TIMER_UNIT_FILE_STATE"
@@ -344,6 +295,10 @@ systemctl() {
         "$CONTROL"
       return
       ;;
+    'cat social-monitor-daily.service')
+      cat "$SYSTEMD_UNIT_DIR/social-monitor-daily.service"
+      return
+      ;;
   esac
   GITHUB_PREMIDNIGHT_FAKE_SYSTEMD_UNIT_DIR=$SYSTEMD_UNIT_DIR \
   GITHUB_PREMIDNIGHT_FAKE_SYSTEMCTL_CONTROL=$CONTROL \
@@ -375,7 +330,7 @@ for unit in "${capture_units[@]}"; do
   [[ ! -e $SYSTEMD_UNIT_DIR/$unit ]]
 done
 [[ ! -e $CONTROL/github-premidnight-capture-v1.sh ]]
-[[ $(find "$bridge_release" -mindepth 1 -maxdepth 1 | wc -l) == 15 ]]
+[[ $(find "$bridge_release" -mindepth 1 -maxdepth 1 | wc -l) == 26 ]]
 [[ $(stat -c '%a' "$bridge_release/$readiness_name") == 644 ]]
 cmp -s "$readiness_source" "$bridge_release/$readiness_name"
 cmp -s "$bridge_release/$readiness_name" \
@@ -438,7 +393,7 @@ printf 'enable-now-v1\n' > \
 [[ $(readlink -f "$POSTGRES_RUNTIME_CURRENT") == "$release" ]]
 [[ $(cat "$release/READY") == "$SHA" ]]
 [[ $(cat "$release/SOURCE_SHA") == "$SHA" ]]
-[[ $(find "$release" -mindepth 1 -maxdepth 1 | wc -l) == 19 ]]
+[[ $(find "$release" -mindepth 1 -maxdepth 1 | wc -l) == 30 ]]
 [[ $(stat -c '%a' "$release/$readiness_name") == 644 ]]
 cmp -s "$readiness_source" "$release/$readiness_name"
 cmp -s "$release/$readiness_name" \
@@ -454,7 +409,8 @@ grep -Fx 'RandomizedDelaySec=0' "$release/social-monitor-daily.timer" >/dev/null
 grep -Fx 'Persistent=true' "$release/social-monitor-daily.timer" >/dev/null
 grep -Fx 'Unit=social-monitor-daily.service' \
   "$release/social-monitor-daily.timer" >/dev/null
-[[ ${COMPOSE[-1]} == "$POSTGRES_RUNTIME_CURRENT/compose.postgres-runtime.yml" ]]
+[[ " ${COMPOSE[*]} " == *" $POSTGRES_RUNTIME_CURRENT/compose.postgres-runtime.yml "* ]]
+[[ ${COMPOSE[-1]} == "$POSTGRES_RUNTIME_CURRENT/compose.agent-runtime-model.yml" ]]
 cmp -s "$release/daily-run.sh" "$CONTROL/daily-run.sh"
 cmp -s "$release/rolling-run.sh" "$CONTROL/rolling-run.sh"
 cmp -s "$release/github-premidnight-capture-v1.sh" \

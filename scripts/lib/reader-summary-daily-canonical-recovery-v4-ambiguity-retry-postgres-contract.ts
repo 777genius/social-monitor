@@ -227,8 +227,8 @@ export const assertReaderSummaryDailyCanonicalRecoveryV4AmbiguityRetryMigrationC
   assert(
     countOccurrences(preBootstrapSql, `'${retryTable}'`) >= 5 &&
       countOccurrences(postBootstrapSql, `'${retryTable}'`) >= 3 &&
-      preBootstrapSql.includes("v_v4_table_count NOT IN (0, 3, 4)") &&
-      postBootstrapSql.includes("v_v4_table_count NOT IN (0, 3, 4)") &&
+      preBootstrapSql.includes("v_v4_table_count NOT IN (0, 3, 4, 5)") &&
+      postBootstrapSql.includes("v_v4_table_count NOT IN (0, 3, 4, 5)") &&
       preBootstrapSql.includes(
         "v_owner_count <> 4 + v_weekly_review_manifest_table_count\n        + v_v4_table_count",
       ) &&
@@ -237,7 +237,7 @@ export const assertReaderSummaryDailyCanonicalRecoveryV4AmbiguityRetryMigrationC
       ) &&
       schemaSql.includes("v_v4_table_count <> 4") &&
       schemaSql.includes("ambiguity retry final protected-table ownership is unsafe"),
-    "bootstraps must accept only 0/3/4 V4 ownership windows before the schema's strict final four-table assertion",
+    "bootstraps must accept only 0/3/4/5 V4 ownership windows after the schema's strict four-table assertion",
   );
   assert(
     claim.includes("attempt_ordinal SMALLINT") &&

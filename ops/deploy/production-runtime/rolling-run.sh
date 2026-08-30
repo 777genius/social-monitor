@@ -44,9 +44,16 @@ COMPOSE=(
   -f "$ROOT/control/compose.production.yml"
   -f "$ROOT/control/compose.managed-db.yml"
   -f "$ROOT/control/postgres-runtime-current/compose.postgres-runtime.yml"
-  -f "$ROOT/integration/ops/deploy/production-runtime/compose.agent-runtime-model.yml"
-  -f "$ROOT/integration/ops/deploy/production-runtime/compose.daily-artifacts.yml"
+  -f "$ROOT/control/postgres-runtime-current/compose.agent-runtime-model.yml"
+  -f "$ROOT/control/postgres-runtime-current/compose.daily-artifacts.yml"
 )
+
+"$ROOT/control/postgres-runtime-current/reader-summary-scheduler-hold-status.sh" \
+  >/dev/null || {
+  status=$?
+  ((status == 75)) && exit 75
+  exit 76
+}
 
 runtime_release=$(cat "$ROOT/control/postgres-runtime-current/READY" 2>/dev/null || true)
 backend_release=$(cat "$ROOT/control/deploy-state/backend.sha" 2>/dev/null || true)

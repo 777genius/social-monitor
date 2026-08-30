@@ -48,11 +48,11 @@ SYSTEM_DSN_CHOWN_EXIT=0
 CA_OWNER=root
 CA_METADATA_STATUS=0
 TEST_COUNT=0
-
-mkdir -p "$ROOT/secrets/db" "$REPO/ops/deploy" "$STATE" "$FAKE_BIN"
+mkdir -p "$ROOT/secrets/db" "$STATE" "$FAKE_BIN"
 printf '%s\n' 'test-only-ca-certificate' > "$CA_CERTIFICATE"
-cp "$SCRIPT_DIR"/{deploy-control-lib.sh,deploy-control-bridge-lib.sh,postgres-runtime-deploy-lib.sh,postgres-runtime-weekly-timer-state-lib.sh,postgres-runtime-daily-c1-readiness-lib.sh,postgres-runtime-activation-boundary-lib.sh,backend-runtime-health-lib.sh,backend-image-rescue-lib.sh,x-collector-image-deploy-lib.sh,reader-summary-recovery-maintenance-lib.sh,social-monitor-production-deploy.sh,postgres-backup-deploy-lib.sh,reader-summary-publication-system-runtime-deploy-lib.sh} \
-  "$REPO/ops/deploy/"
+# shellcheck source=ops/deploy/fixtures/reader-summary-publication-migrator-assets.sh
+source "$SCRIPT_DIR/fixtures/reader-summary-publication-migrator-assets.sh"
+reader_summary_publication_install_migrator_fixture_assets "$SCRIPT_DIR" "$REPO"
 git init -q -b main "$REPO"
 git -C "$REPO" config user.name 'Publication Migrator Validation'
 git -C "$REPO" config user.email publication-validation@example.invalid

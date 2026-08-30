@@ -4,7 +4,9 @@ set -euo pipefail
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 ENTRYPOINT=$SCRIPT_DIR/social-monitor-production-deploy.sh
 BACKUP_LIBRARY=$SCRIPT_DIR/postgres-backup-deploy-lib.sh
-FIXTURE=$(mktemp -d "/tmp/social-monitor-deploy-test.XXXXXX")
+grep -Fx 'LC_ALL=C' "$ENTRYPOINT" >/dev/null
+grep -Fx 'export PATH LC_ALL' "$ENTRYPOINT" >/dev/null
+FIXTURE=$(mktemp -d "${TMPDIR:-/tmp}/social-monitor-deploy-test.XXXXXX")
 trap 'rm -rf "$FIXTURE"' EXIT
 REPO=$(readlink -f -- "$FIXTURE")/repo
 ORIGIN=$FIXTURE/origin.git
@@ -22,15 +24,23 @@ install -d "$REPO/apps/frontend" "$REPO/apps/api-gateway" \
   "$REPO/prisma/migrations"/{20260716170000_reader_summary_fail_closed_publication,20260731153000_reader_summary_production_recovery_original_cutoff_authority} \
   "$STATE" "$STAGING"
 cp "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh" "$REPO/ops/deploy/"
+cp "$SCRIPT_DIR/postgres-runtime-asset-lib.sh" \
+  "$SCRIPT_DIR/production-backend-classification-lib.sh" \
+  "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR"/postgres-runtime-{weekly-timer-state,daily-c1-readiness,activation-boundary}-lib.sh \
   "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/deploy-control-lib.sh" "$SCRIPT_DIR/deploy-control-bridge-lib.sh" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/backend-runtime-health-lib.sh" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/backend-image-rescue-lib.sh" "$REPO/ops/deploy/"
+cp "$SCRIPT_DIR/backend-image-rescue-pin-cleanup-lib.sh" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/docker-maintenance-lib.sh" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/daily-runner-image-bootstrap-lib.sh" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/x-collector-image-deploy-lib.sh" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/reader-summary-recovery-maintenance-lib.sh" "$REPO/ops/deploy/"
+cp "$SCRIPT_DIR"/{production-transition-b0-host-control.sh,production-transition-canonical-lib.sh} "$REPO/ops/deploy/"; \
+  chmod 0644 "$REPO/ops/deploy"/{production-transition-b0-host-control.sh,production-transition-canonical-lib.sh}
+printf '#!/usr/bin/env bash\nexit 70\n' > "$REPO/ops/deploy/production-transition-admission.sh"; \
+  chmod 0755 "$REPO/ops/deploy/production-transition-admission.sh"
 cp "$SCRIPT_DIR"/{reader-summary-publication-deploy-lib.sh,reader-summary-publication-system-dsn-bootstrap-lib.sh,reader-summary-publication-prebootstrap-lib.sh,reader-summary-publication-catalog-query-lib.sh,reader-summary-publication-pre-migration.sql,reader-summary-publication-post-migration.sql,reader-summary-original-cutoff-failed-migration-preflight.sql} \
   "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/verify-postgres-backup-coverage.sh" \
@@ -51,6 +61,7 @@ git -C "$REPO" add README.md ops/deploy prisma/migrations
 git -C "$REPO" commit -qm 'test: base'
 git -C "$REPO" push -q -u origin main
 BASE_SHA=$(git -C "$REPO" rev-parse HEAD)
+export SOCIAL_MONITOR_DEPLOY_TEST_A0=$BASE_SHA
 printf 'frontend\n' > "$REPO/apps/frontend/change.txt"
 git -C "$REPO" add apps/frontend/change.txt
 git -C "$REPO" commit -qm 'test: frontend change'
@@ -62,7 +73,13 @@ done
 cp "$ENTRYPOINT" "$CONTROL/github-production-deploy.sh"
 cp "$SCRIPT_DIR/social-monitor-production-ssh-wrapper.sh" \
   "$CONTROL/github-production-deploy-wrapper.sh"
+install -m 0644 "$REPO/ops/deploy"/{production-transition-b0-host-control.sh,production-transition-canonical-lib.sh} "$CONTROL/"
+install -m 0755 "$REPO/ops/deploy/production-transition-admission.sh" "$CONTROL/production-transition-admission.sh"
 printf '%s\n' "$BASE_SHA" > "$STATE/postgres-pool-bootstrap.sha"
+printf 'version=production-transition-b0-host-state-v1\nstatus=terminal\ntrusted-base=%s\ntarget=%s\ntarget-tree=%s\n' \
+  "$BASE_SHA" "$BASE_SHA" "$(git -C "$REPO" rev-parse "$BASE_SHA^{tree}")" \
+  > "$STATE/production-transition-b0-host.state"
+chmod 0600 "$STATE/production-transition-b0-host.state"
 run_entrypoint() {
   SOCIAL_MONITOR_DEPLOY_TEST_MODE=1 \
   SOCIAL_MONITOR_DEPLOY_ROOT="$ROOT" \
@@ -309,7 +326,6 @@ run_backup_fixture() {
     backup_database "$BACKUP_SHA"
   '
 }
-
 assert_backup_output() {
   local output=$1 expected_capability=$2 expected_backup=$3
   (($(wc -l <<< "$output") == 5))
@@ -369,26 +385,25 @@ assert_backup_failure_clean() {
   if compgen -G "$STATE/database-backup.*" >/dev/null; then echo "$mode retained a temporary or credential-bearing backup file" >&2; exit 1; fi
   case $mode in invalid-secret|unsafe-backup-secret|app-dsn|managed-db-app-dsn|system-dsn|publication-dsn|no-bypassrls|no-tls) ! grep -F 'pg_dump --format=custom' "$BACKUP_DOCKER_LOG" >/dev/null;; esac
 }
-
 for failure_case in corrupt:20260719T120001Z empty:20260719T120002Z dump-failure:20260719T120003Z wrong-database:20260719T120004Z signal-HUP:20260719T120005Z signal-INT:20260719T120006Z signal-TERM:20260719T120007Z invalid-secret:20260719T120008Z unsafe-backup-secret:20260719T120009Z app-dsn:20260719T120011Z managed-db-app-dsn:20260719T120012Z system-dsn:20260719T120013Z publication-dsn:20260719T120014Z no-bypassrls:20260719T120015Z no-tls:20260719T120016Z; do
   assert_backup_failure_clean "${failure_case%:*}" "${failure_case#*:}"
 done
-grep -F 'ops/deploy/host/refresh-codex-auth.sh' "$ENTRYPOINT" >/dev/null
+grep -F 'ops/deploy/host/refresh-codex-auth.sh' "$SCRIPT_DIR/production-transition-b0-host-control.sh" >/dev/null
 # shellcheck disable=SC2016
 grep -F 'install -m 0700 -o root -g root "$auth_refresh_source" "$auth_refresh_destination.next"' \
-  "$ENTRYPOINT" >/dev/null
+  "$SCRIPT_DIR/production-transition-b0-host-control.sh" >/dev/null
 # shellcheck disable=SC2016
 grep -F 'mv -f "$auth_refresh_destination.next" "$auth_refresh_destination"' \
-  "$ENTRYPOINT" >/dev/null
+  "$SCRIPT_DIR/production-transition-b0-host-control.sh" >/dev/null
 # shellcheck disable=SC2016
 grep -F 'install -m 0755 -o root -g root "$source" "$destination.next"' \
-  "$ENTRYPOINT" >/dev/null
+  "$SCRIPT_DIR/production-transition-b0-host-control.sh" >/dev/null
 # shellcheck disable=SC2016
 auth_sync_line=$(grep -nF 'install -m 0700 -o root -g root "$auth_refresh_source"' \
-  "$ENTRYPOINT" | cut -d: -f1)
+  "$SCRIPT_DIR/production-transition-b0-host-control.sh" | cut -d: -f1)
 # shellcheck disable=SC2016
-entrypoint_sync_line=$(grep -nF 'install -m 0755 -o root -g root "$source"' \
-  "$ENTRYPOINT" | tail -1 | cut -d: -f1)
+entrypoint_sync_line=$(grep -nF '  production_transition_sync_control_entrypoint' \
+  "$SCRIPT_DIR/production-transition-b0-host-control.sh" | cut -d: -f1)
 ((auth_sync_line < entrypoint_sync_line))
 # shellcheck disable=SC2016
 control_library=$SCRIPT_DIR/deploy-control-lib.sh
@@ -437,7 +452,6 @@ backend_build_line=$(grep -nF \
   '"${COMPOSE[@]}" --profile app --profile daily build' \
   "$ENTRYPOINT" | cut -d: -f1)
 ((rescue_prepare_line < backend_build_line))
-
 # A rescue-pin failure exits deploy_backend before preflight, backup, or build.
 BUILD_GUARD_LOG=$FIXTURE/backend-build-guard.log
 set +e
@@ -469,7 +483,6 @@ set -e
 grep -F 'required rollback images could not be pinned before build' \
   <<< "$build_guard_error" >/dev/null
 [[ ! -s $BUILD_GUARD_LOG ]]
-
 # The replacement phase is a durable inner/outer transaction seam. Failures in
 # preflight, backup, build, and migration all reach outer rollback as prepared;
 # no healthy service is stopped or recreated in any of those paths.
@@ -574,7 +587,6 @@ assert_pre_replacement_failure() {
     return 1
   fi
 }
-
 assert_pre_replacement_failure preflight \
   $'prepare\npreflight\nrollback:prepared'
 assert_pre_replacement_failure backup \
@@ -583,7 +595,6 @@ assert_pre_replacement_failure build \
   $'prepare\npreflight\ncompatibility\nbackup\nbuild:migrate\nbuild:api\nbuild:agent-runtime\nrollback:prepared'
 assert_pre_replacement_failure migration \
   $'prepare\npreflight\ncompatibility\nbackup\nbuild:migrate\nbuild:api\nbuild:agent-runtime\nbuild:ingestion-worker\nbuild:intelligence-worker\nbuild:delivery-service\nbuild:event-relay\nbuild:daily-runner\nmigration\nrollback:prepared'
-
 # Every failure after the durable replacement transition is aggregated by the
 # outer transaction. Legacy inner rollback calls would add `inner-rollback`
 # here and cause a second backend rollback from the outer transaction.
@@ -692,13 +703,11 @@ assert_post_replacement_failure() {
     return 1
   fi
 }
-
 assert_post_replacement_failure stop
 assert_post_replacement_failure recreate
 assert_post_replacement_failure health
 assert_post_replacement_failure proxy
 assert_post_replacement_failure soak
-
 # A process retry cannot snapshot over the runtime-control evidence associated
 # with an interrupted replacement. It fails closed before activation or a new
 # rollback transaction begins.
@@ -832,9 +841,9 @@ grep -F 'verify-postgres-runtime-topology.py' "$ENTRYPOINT" >/dev/null
 grep -F 'install -m 0644 "$source/$unit" "$staged_release/$unit"' \
   "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh" >/dev/null
 grep -F 'social-monitor-prod.service' \
-  "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh" >/dev/null
+  "$SCRIPT_DIR/postgres-runtime-asset-lib.sh" >/dev/null
 grep -F 'social-monitor-daily.service' \
-  "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh" >/dev/null
+  "$SCRIPT_DIR/postgres-runtime-asset-lib.sh" >/dev/null
 grep -F 'social-monitor-github-premidnight-capture-v1.service' \
   "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh" >/dev/null
 grep -F 'social-monitor-github-premidnight-capture-v1.timer' \
@@ -845,7 +854,7 @@ grep -F 'social-monitor-github-premidnight-capture-v1.timer' \
 grep -F 'dailyTimerOwner' \
   "$SCRIPT_DIR/postgres-pool-release-contract.json" >/dev/null
 bash "$SCRIPT_DIR/production-runtime/daily-runtime-contract.test.sh"
-deploy_library_source_line=$(grep -nF 'source "$REPO/ops/deploy/deploy-control-lib.sh"' \
+deploy_library_source_line=$(grep -nF "ops/deploy/deploy-control-lib.sh 'deploy control library'" \
   "$ENTRYPOINT" | cut -d: -f1)
 publication_library_source_line=$(grep -nF 'source_deploy_library reader-summary-publication-deploy-lib.sh' "$ENTRYPOINT" | cut -d: -f1)
 publication_loader_call_line=$(grep -nF '    load_reader_summary_publication_deploy_library' "$ENTRYPOINT" | cut -d: -f1)
@@ -856,7 +865,6 @@ first_contract_call_line=$(grep -nF '  ensure_system_database_url_deploy_contrac
 ((publication_loader_call_line < first_contract_call_line))
 grep -F 'advance_integration "$sha"' \
   "$SCRIPT_DIR/deploy-control-lib.sh" >/dev/null
-
 # A bridge-current entrypoint classifies a later pre-midnight asset-only release
 # as control-only runtime activation and uses the already-sourced bridge library.
 BRIDGE_SHA=$CONTROL_TARGET_SHA
@@ -871,7 +879,6 @@ git -C "$REPO" commit -qm 'test: final pre-midnight runtime asset'
 git -C "$REPO" push -q origin HEAD:main
 RUNTIME_CONTROL_TARGET_SHA=$(git -C "$REPO" rev-parse HEAD)
 git -C "$REPO" checkout -q "$BRIDGE_SHA"
-
 ACTIVATION_LOG=$FIXTURE/runtime-control-activation.log
 activation_output=$(
   ENTRYPOINT="$ENTRYPOINT" ACTIVATION_LOG="$ACTIVATION_LOG" \
@@ -897,7 +904,6 @@ grep -F "deployed=$RUNTIME_CONTROL_TARGET_SHA" <<< "$activation_output" >/dev/nu
 [[ $(cat "$ACTIVATION_LOG") == \
    "$RUNTIME_CONTROL_TARGET_SHA false true" ]]
 [[ $(cat "$STATE/control.sha") == "$RUNTIME_CONTROL_TARGET_SHA" ]]
-
 # The next target is intentionally invalid: it combines another pre-midnight
 # runtime asset with a controller-library change. The bridge-current process
 # must fail before any runtime-control snapshot or activation.
@@ -942,7 +948,6 @@ set -e
 grep -F 'deploy the bridge release first' <<< "$incompatible_error" >/dev/null
 [[ ! -e $ACTIVATION_LOG ]]
 [[ $(git -C "$REPO" rev-parse HEAD) == "$RUNTIME_CONTROL_TARGET_SHA" ]]
-
 RELEASE_FIXTURE=$FIXTURE/frontend-release
 install -d "$RELEASE_FIXTURE/public" "$RELEASE_FIXTURE/admin"
 printf '<html>public</html>\n' > "$RELEASE_FIXTURE/public/index.html"
@@ -956,7 +961,6 @@ printf '%s\n' "$TARGET_SHA" > "$RELEASE_FIXTURE/admin/release-sha.txt"
 COPYFILE_DISABLE=1 tar -C "$RELEASE_FIXTURE" -czf "$FIXTURE/frontend.tgz" public admin
 run_entrypoint upload "$TARGET_SHA" < "$FIXTURE/frontend.tgz" >/dev/null
 [[ $(cat "$STAGING/$TARGET_SHA/frontend/READY") == "$TARGET_SHA" ]]
-
 BAD_FIXTURE=$FIXTURE/bad-release
 install -d "$BAD_FIXTURE/public" "$BAD_FIXTURE/admin"
 ln -s /etc/passwd "$BAD_FIXTURE/public/escape"
@@ -966,7 +970,6 @@ if run_entrypoint upload "$TARGET_SHA" < "$FIXTURE/bad-frontend.tgz" >/dev/null 
   echo 'unsafe frontend archive was accepted' >&2
   exit 1
 fi
-
 echo 'Production deploy contract tests passed'
 if command -v shellcheck >/dev/null; then
   shellcheck -x "$SCRIPT_DIR"/daily-runner-image-bootstrap-*.sh
@@ -977,7 +980,7 @@ bash "$SCRIPT_DIR/backend-runtime-health-lib.test.sh"
 bash "$SCRIPT_DIR/otel-collector-deploy-lifecycle.test.sh"
 for test_file in backend-image-rescue-lib.test.sh backend-image-rescue-migrate-fallback.test.sh; do bash "$SCRIPT_DIR/$test_file"; done
 bash "$SCRIPT_DIR/postgres-runtime-deploy-lib.test.sh"
-TMPDIR=/tmp bash "$SCRIPT_DIR/github-premidnight-capture-runtime.test.sh"
+TMPDIR=${TMPDIR:-/tmp} bash "$SCRIPT_DIR/github-premidnight-capture-runtime.test.sh"
 bash "$SCRIPT_DIR/verify-postgres-runtime-topology.test.sh"
 bash "$SCRIPT_DIR/reader-summary-publication-migrator-validation.test.sh"
 bash "$SCRIPT_DIR/rabbitmq-quorum-deploy-bridge-transition.test.sh"

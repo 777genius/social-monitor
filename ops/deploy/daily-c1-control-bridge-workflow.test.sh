@@ -17,6 +17,7 @@ source "$SCRIPT_DIR/deploy-control-bridge-lib.sh"
 
 expected_sealed_paths=$(cat <<'PATHS'
 ops/deploy/backend-image-rescue-lib.sh
+ops/deploy/backend-image-rescue-pin-cleanup-lib.sh
 ops/deploy/deploy-control-bridge-lib.sh
 ops/deploy/deploy-control-lib.sh
 ops/deploy/postgres-runtime-activation-boundary-lib.sh

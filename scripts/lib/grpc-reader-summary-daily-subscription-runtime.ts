@@ -34,9 +34,7 @@ import {
 const purpose = activeReaderSummaryPurposes.generate;
 const model = activeReaderSummaryModel;
 const reasoningEffort = activeReaderSummaryReasoningEffort;
-const canonicalRecoveryPurpose =
-  "social_monitor.reader_summary.weekly.generate";
-const canonicalRecoveryReasoningEffort = "xhigh";
+const canonicalRecoveryPurpose = activeReaderSummaryPurposes.dailyCanonicalRecovery;
 const canonicalRecoveryOutputSchema = JSON.stringify(
   openAiReaderSummaryJsonSchema,
 );
@@ -148,7 +146,7 @@ export class GrpcReaderSummaryDailyCanonicalRecoveryRuntime
         metadata: {
           adapter: "reader-summary-daily-canonical-recovery-v4",
           authoritySchemaVersion: "reader_summary.daily_source_authority.v2",
-          reasoningEffort: canonicalRecoveryReasoningEffort,
+          reasoningEffort,
           runtimeOutput: "output_text",
         },
       });

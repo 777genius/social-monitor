@@ -17,6 +17,7 @@ bridge_sources=(
   postgres-runtime-activation-boundary-lib.sh
   reader-summary-recovery-maintenance-lib.sh
   backend-image-rescue-lib.sh
+  backend-image-rescue-pin-cleanup-lib.sh
   x-collector-image-deploy-lib.sh
 )
 for source_name in "${bridge_sources[@]}"; do
@@ -68,6 +69,7 @@ initialize_deploy_control_bridge
 [[ -n $DEPLOY_CONTROL_BRIDGE_POSTGRES_DAILY_C1_HELPER_DIGEST ]]
 [[ -n $DEPLOY_CONTROL_BRIDGE_POSTGRES_ACTIVATION_BOUNDARY_HELPER_DIGEST ]]
 [[ -n $DEPLOY_CONTROL_BRIDGE_RECOVERY_MAINTENANCE_LIBRARY_DIGEST ]]
+[[ -n $DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_PIN_CLEANUP_LIBRARY_DIGEST ]]
 verify_deploy_control_bridge_compatibility
 verify_deploy_control_bridge_target_compatibility "$reviewed_sha"
 
@@ -76,6 +78,7 @@ sealed_dependencies=(
   ops/deploy/postgres-runtime-daily-c1-readiness-lib.sh
   ops/deploy/postgres-runtime-activation-boundary-lib.sh
   ops/deploy/reader-summary-recovery-maintenance-lib.sh
+  ops/deploy/backend-image-rescue-pin-cleanup-lib.sh
 )
 for dependency in "${sealed_dependencies[@]}"; do
   rm "$REPO/$dependency"

@@ -1,0 +1,74 @@
+name: Production transition review
+
+run-name: >-
+  production-transition-review s2=${{ inputs.s2_sha }} request=${{ inputs.request_id }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      s2_sha:
+        description: External sole-child candidate commit SHA
+        required: true
+        type: string
+      request_id:
+        description: Correlation nonce
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-transition-review
+  cancel-in-progress: false
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Produce canonical signed review and inert P6
+        shell: bash
+        env:
+          S2_SHA: ${{ inputs.s2_sha }}
+          REQUEST_ID: ${{ inputs.request_id }}
+          REVIEW_PRIVATE_KEY: ${{ secrets.PRODUCTION_TRANSITION_REVIEW_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REPOSITORY" == "777genius/social-monitor" ]]
+          [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]
+          [[ "$GITHUB_REF" == "refs/heads/main" ]]
+          [[ "$S2_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$REQUEST_ID" =~ ^[0-9a-f]{32}$ ]]
+          [[ -n "$REVIEW_PRIVATE_KEY" ]]
+          git -c protocol.version=2 fetch --no-tags --no-write-fetch-head \
+            --filter=blob:none origin "$S2_SHA"
+          key=$(mktemp "$RUNNER_TEMP/transition-review-key.XXXXXX")
+          trap 'rm -f -- "$key"' EXIT
+          printf '%s\n' "$REVIEW_PRIVATE_KEY" > "$key"
+          chmod 0600 "$key"
+          mkdir artifact
+          issued=$(date +%s)
+          expires=$((issued + 3600))
+          PRODUCTION_TRANSITION_REVIEW_SIGNING_KEY=$key \
+            bash ops/deploy/production-transition-reviewer.sh review \
+              "$S2_SHA" "$issued" "$expires" artifact > artifact/review.result
+          p6=$(sed -n 's/^p6=//p' artifact/review.result)
+          [[ "$p6" =~ ^[0-9a-f]{40}$ ]]
+          git update-ref refs/production-transition/artifact/s2 "$S2_SHA"
+          git update-ref refs/production-transition/artifact/p6 "$p6"
+          git bundle create artifact/review.bundle \
+            refs/production-transition/artifact/s2 \
+            refs/production-transition/artifact/p6
+          git bundle verify artifact/review.bundle
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: production-transition-review
+          path: artifact
+          if-no-files-found: error
+          retention-days: 1

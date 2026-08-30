@@ -4,7 +4,11 @@
 # defined. Collector replacement must prove a real successful export because
 # application readiness intentionally permits only a short startup grace.
 
-BACKEND_RUNTIME_HEALTH_SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+if [[ -n ${PRODUCTION_TRANSITION_PRELUDE_COMMIT:-} ]]; then
+  BACKEND_RUNTIME_HEALTH_SCRIPT_DIR=$REPO/ops/deploy
+else
+  BACKEND_RUNTIME_HEALTH_SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+fi
 BACKEND_RABBITMQ_QUORUM_HEALTH_SCRIPT=$BACKEND_RUNTIME_HEALTH_SCRIPT_DIR/rabbitmq-quorum-health.sh
 BACKEND_RABBITMQ_QUORUM_RECOVERY_SCRIPT=$BACKEND_RUNTIME_HEALTH_SCRIPT_DIR/rabbitmq-quorum-recovery.sh
 BACKEND_HEALTH_STARTUP_GRACE_SECONDS=${BACKEND_HEALTH_STARTUP_GRACE_SECONDS:-240}
@@ -17,6 +21,15 @@ backend_health_load_rabbitmq_quorum_recovery() {
   if declare -F rabbitmq_quorum_recovery_ensure_steady >/dev/null && \
     declare -F rabbitmq_quorum_health_verify_worker_container >/dev/null; then
     return 0
+  fi
+  if [[ -n ${PRODUCTION_TRANSITION_PRELUDE_COMMIT:-} ]]; then
+    declare -F rabbitmq_quorum_health_verify_worker_container >/dev/null || \
+      production_transition_host_source_authorized_prelude \
+        ops/deploy/rabbitmq-quorum-health.sh 'RabbitMQ quorum health library'
+    declare -F rabbitmq_quorum_recovery_ensure_steady >/dev/null || \
+      production_transition_host_source_authorized_prelude \
+        ops/deploy/rabbitmq-quorum-recovery.sh 'RabbitMQ quorum recovery library'
+    return
   fi
   for script in "$BACKEND_RABBITMQ_QUORUM_HEALTH_SCRIPT" \
     "$BACKEND_RABBITMQ_QUORUM_RECOVERY_SCRIPT"; do

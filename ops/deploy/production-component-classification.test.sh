@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 FIXTURE=$(mktemp -d /tmp/social-monitor-component-classification.XXXXXX)
-trap 'rm -rf "$FIXTURE"' EXIT
+trap '/bin/rm -rf "$FIXTURE"' EXIT
 REPO=$FIXTURE/repo
 ROOT=$FIXTURE/root
 CONTROL=$ROOT/control
@@ -14,9 +14,11 @@ git init -q -b main "$REPO"
 git -C "$REPO" config user.name 'Component Classification Test'
 git -C "$REPO" config user.email classification@example.invalid
 mkdir -p "$REPO/libs/contracts/rest" "$REPO/libs/contracts/other" "$STATE" "$STAGING"
-mkdir -p "$REPO/ops/deploy"
-cp "$SCRIPT_DIR"/{postgres-runtime-deploy-lib.sh,postgres-runtime-daily-c1-readiness-lib.sh,postgres-runtime-weekly-timer-state-lib.sh,postgres-runtime-activation-boundary-lib.sh,backend-runtime-health-lib.sh,backend-image-rescue-lib.sh,x-collector-image-deploy-lib.sh} \
+mkdir -p "$REPO/ops/deploy/production-runtime"
+cp "$SCRIPT_DIR"/{postgres-runtime-deploy-lib.sh,postgres-runtime-daily-c1-readiness-lib.sh,postgres-runtime-weekly-timer-state-lib.sh,postgres-runtime-activation-boundary-lib.sh,postgres-runtime-asset-lib.sh,production-backend-classification-lib.sh,backend-runtime-health-lib.sh,backend-image-rescue-lib.sh,backend-image-rescue-pin-cleanup-lib.sh,x-collector-image-deploy-lib.sh} \
   "$REPO/ops/deploy/"
+cp "$SCRIPT_DIR/production-runtime"/reader-summary-scheduler-hold-{common,restore}.sh \
+  "$REPO/ops/deploy/production-runtime/"
 printf 'snapshot-a\n' > "$REPO/libs/contracts/rest/openapi.snapshot.json"
 git -C "$REPO" add .
 git -C "$REPO" commit -qm base
@@ -87,6 +89,20 @@ mapfile -t rolling_container_services < <(
   backend_services "$LIBS_ADJACENT" "$ROLLING_CONTAINER_RUNNER"
 )
 [[ ${rolling_container_services[*]} == daily-runner ]]
+
+printf '%s\n' "$ROLLING_CONTAINER_RUNNER" > "$STATE/control.sha"
+git -C "$REPO" checkout -qb model-overlay
+printf '%s\n' 'services: {}' > \
+  "$REPO/ops/deploy/production-runtime/compose.agent-runtime-model.yml"
+git -C "$REPO" add ops/deploy/production-runtime/compose.agent-runtime-model.yml
+git -C "$REPO" commit -qm agent-runtime-model-overlay
+MODEL_OVERLAY=$(git -C "$REPO" rev-parse HEAD)
+component_changed backend "$MODEL_OVERLAY" "${BACKEND_PATHS[@]}"
+component_changed control "$MODEL_OVERLAY" "${RUNTIME_CONTROL_PATHS[@]}"
+mapfile -t model_services < <(
+  backend_services "$ROLLING_CONTAINER_RUNNER" "$MODEL_OVERLAY"
+)
+[[ ${model_services[*]} == 'agent-runtime daily-runner' ]]
 
 git -C "$REPO" checkout -q main
 mkdir -p "$REPO/scripts"

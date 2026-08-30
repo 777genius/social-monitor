@@ -4,11 +4,11 @@ const maxLoc = 1000;
 const violations = [];
 
 const sourceTestPatterns = [
-  "apps/**/*.{ts,tsx,js,jsx,mjs,cjs,dart,py}",
-  "libs/**/*.{ts,tsx,js,jsx,mjs,cjs,dart,py}",
-  "test/**/*.{ts,tsx,js,jsx,mjs,cjs,dart,py}",
-  "scripts/**/*.{ts,js,mjs,cjs,py}",
-  "ops/deploy/reader-summary-publication-*-lib.sh",
+  "apps/**/*.{ts,tsx,js,jsx,mjs,cjs,dart,py,sh}",
+  "libs/**/*.{ts,tsx,js,jsx,mjs,cjs,dart,py,sh}",
+  "test/**/*.{ts,tsx,js,jsx,mjs,cjs,dart,py,sh}",
+  "scripts/**/*.{ts,tsx,js,jsx,mjs,cjs,py,sh}",
+  "ops/**/*.{ts,tsx,js,jsx,mjs,cjs,py,sh}",
 ];
 
 const ignoredPathPatterns = [
@@ -61,7 +61,10 @@ function normalizePath(file) {
 }
 
 function lineCount(source) {
-  return source.split("\n").length;
+  if (source.length === 0) return 0;
+  return source.endsWith("\n")
+    ? source.slice(0, -1).split("\n").length
+    : source.split("\n").length;
 }
 
 function addViolation(file, message) {

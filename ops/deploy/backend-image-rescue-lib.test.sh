@@ -1,11 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
-
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 LIBRARY=$SCRIPT_DIR/backend-image-rescue-lib.sh
 FIXTURE=$(mktemp -d "${TMPDIR:-/tmp}/backend-image-rescue-test.XXXXXX")
 trap 'rm -rf "$FIXTURE"' EXIT
-
 PROJECT=fixture-project
 FAKE_DOCKER_REFS=$FIXTURE/docker-refs.tsv
 FAKE_DOCKER_CONTAINERS=$FIXTURE/docker-containers.tsv
@@ -16,7 +14,6 @@ EVENT_LOG=$FIXTURE/events.log
 export FAKE_DOCKER_REFS FAKE_DOCKER_CONTAINERS \
   FAKE_DOCKER_CONTAINER_STATES FAKE_COMPOSE_CONTAINERS \
   FAKE_COMPOSE_CONTAINER_STATES EVENT_LOG
-
 ID_A=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 ID_B=sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 ID_C=sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
@@ -41,141 +38,10 @@ LEGACY_X_CONFIG="null|$X_COMMAND|$X_WORKDIR|$X_USER|$X_HEALTHCHECK"
 # shellcheck disable=SC2089
 SENTINEL_ENV='["RESCUE_SENTINEL_DO_NOT_PERSIST=fixture-only-value"]'
 SHA=1111111111111111111111111111111111111111
-
 FAKE_BIN=$FIXTURE/bin
 install -d "$FAKE_BIN"
-cat > "$FAKE_BIN/docker" <<'SH'
-#!/usr/bin/env bash
-set -euo pipefail
-
-lookup_ref() {
-  awk -F '\t' -v ref="$1" '$1 == ref {print $2; exit}' "$FAKE_DOCKER_REFS"
-}
-
-lookup_ref_config() {
-  awk -F '\t' -v ref="$1" '$1 == ref {print $3; exit}' "$FAKE_DOCKER_REFS"
-}
-
-lookup_ref_env() {
-  awk -F '\t' -v ref="$1" '$1 == ref {print $4; exit}' "$FAKE_DOCKER_REFS"
-}
-
-set_ref() {
-  local ref=$1 image_id=$2 config=$3 env=${4:-null}
-  local next=$FAKE_DOCKER_REFS.next.$$
-  awk -F '\t' -v ref="$ref" '$1 != ref' "$FAKE_DOCKER_REFS" > "$next"
-  printf '%s\t%s\t%s\t%s\n' "$ref" "$image_id" "$config" "$env" >> "$next"
-  mv -f "$next" "$FAKE_DOCKER_REFS"
-}
-
-remove_ref() {
-  local ref=$1 next=$FAKE_DOCKER_REFS.next.$$
-  awk -F '\t' -v ref="$ref" '$1 != ref' "$FAKE_DOCKER_REFS" > "$next"
-  mv -f "$next" "$FAKE_DOCKER_REFS"
-}
-
-append_docker_event() {
-  local row=docker argument
-  for argument in "$@"; do
-    printf -v row '%s\t%s' "$row" "$argument"
-  done
-  {
-    flock 9
-    printf '%s\n' "$row" >&9
-  } 9>> "$EVENT_LOG"
-}
-
-take_container_state() {
-  local container=$1 row next=$FAKE_DOCKER_CONTAINER_STATES.next.$$
-  row=$(awk -F '\t' -v container="$container" \
-    '$1 == container {print; exit}' "$FAKE_DOCKER_CONTAINER_STATES")
-  [[ -n $row ]] || return 1
-  awk -F '\t' -v container="$container" \
-    '$1 == container && !removed {removed=1; next} {print}' \
-    "$FAKE_DOCKER_CONTAINER_STATES" > "$next"
-  mv -f "$next" "$FAKE_DOCKER_CONTAINER_STATES"
-  printf '%s\n' "${row#*$'\t'}"
-}
-
-append_docker_event "$@"
-
-case ${1:-}:${2:-} in
-  image:inspect)
-    image_id=$(lookup_ref "$3")
-    [[ -n $image_id ]] || exit 1
-    if [[ ${*: -1} == *'.Id'* ]]; then
-      printf '%s\n' "$image_id"
-    elif [[ ${*: -1} == *'.Config.Env'* ]]; then
-      lookup_ref_env "$3"
-    else
-      lookup_ref_config "$3"
-    fi
-    ;;
-  image:tag)
-    image_id=$(lookup_ref "$3")
-    [[ -n $image_id ]] || exit 1
-    config=$(lookup_ref_config "$3")
-    env=$(lookup_ref_env "$3")
-    set_ref "$4" "$image_id" "$config" "$env"
-    if [[ ${FAKE_DOCKER_SIGNAL_TAG:-} == "$4" ]]; then
-      kill -TERM "$PPID"
-    fi
-    ;;
-  image:rm)
-    [[ -n $(lookup_ref "$3") ]] || exit 1
-    remove_ref "$3"
-    ;;
-  inspect:*)
-    container=$2
-    row=$(awk -F '\t' -v container="$container" \
-      '$1 == container {print; exit}' "$FAKE_DOCKER_CONTAINERS")
-    [[ -n $row ]] || exit 1
-    IFS=$'\t' read -r _ image_id state config env restart_count <<< "$row"
-    restart_count=${restart_count:-0}
-    case ${*: -1} in
-      *'.State.Status'*)
-        state=$(take_container_state "$container" || printf '%s\n' "$state")
-        [[ $state != missing ]] || exit 1
-        IFS='|' read -r status running restarting oom_killed health \
-          sampled_image sampled_restart_count <<< "$state"
-        sampled_image=${sampled_image:-$image_id}
-        sampled_restart_count=${sampled_restart_count:-$restart_count}
-        if [[ ${*: -1} == *'.RestartCount'* ]]; then
-          printf '%s|%s|%s|%s|%s|%s|%s\n' \
-            "$status" "$running" "$restarting" "$oom_killed" "$health" \
-            "$sampled_image" "$sampled_restart_count"
-        else
-          printf '%s|%s|%s|%s|%s\n' \
-            "$status" "$running" "$restarting" "$oom_killed" "$health"
-        fi
-        ;;
-      *'.Image'*'.RestartCount'*)
-        printf '%s|%s\n' "$image_id" "$restart_count"
-        ;;
-      *'.Image'*) printf '%s\n' "$image_id" ;;
-      *'.RestartCount'*) printf '%s\n' "$restart_count" ;;
-      *) printf '%s\n' "$config" ;;
-    esac
-    ;;
-  container:pause|container:unpause)
-    [[ -n ${3:-} ]]
-    ;;
-  container:export)
-    [[ -n ${3:-} ]]
-    printf 'fixture-root-filesystem:%s\n' "$3"
-    ;;
-  image:import)
-    cat >/dev/null
-    [[ ${FAKE_IMPORT_STATUS:-0} == 0 ]] || exit "$FAKE_IMPORT_STATUS"
-    rescue_tag=${*: -1}
-    set_ref "$rescue_tag" "$FAKE_DOCKER_IMPORT_STORED_ID" \
-      "$FAKE_DOCKER_IMPORT_CONFIG" "$FAKE_DOCKER_IMPORT_ENV"
-    printf '%s\n' "$FAKE_DOCKER_IMPORT_ID"
-    ;;
-  *) exit 90 ;;
-esac
-SH
-chmod 0755 "$FAKE_BIN/docker"
+install -m 0755 "$SCRIPT_DIR/fixtures/backend-image-rescue-fake-docker.sh" \
+  "$FAKE_BIN/docker"
 cat > "$FAKE_BIN/sleep" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -183,11 +49,9 @@ printf 'sleep\t%s\n' "$1" >> "$EVENT_LOG"
 SH
 chmod 0755 "$FAKE_BIN/sleep"
 PATH=$FAKE_BIN:$PATH
-
 compose_image_name() {
   printf '%s-%s:latest\n' "$PROJECT" "$1"
 }
-
 take_compose_container() {
   local service=$1 row next=$FAKE_COMPOSE_CONTAINER_STATES.next.$$
   row=$(awk -F '\t' -v service="$service" \
@@ -199,7 +63,6 @@ take_compose_container() {
   mv -f "$next" "$FAKE_COMPOSE_CONTAINER_STATES"
   printf '%s\n' "${row#*$'\t'}"
 }
-
 append_compose_event() {
   local row=compose argument
   for argument in "$@"; do
@@ -210,7 +73,6 @@ append_compose_event() {
     printf '%s\n' "$row" >&9
   } 9>> "$EVENT_LOG"
 }
-
 fake_compose() {
   append_compose_event "$@"
   if [[ $* == *' ps -q '* ]]; then
@@ -226,7 +88,6 @@ fake_compose() {
   [[ $* == *' up -d --no-deps --force-recreate '* ]] || return 91
   [[ ${FAKE_COMPOSE_UP_STATUS:-0} == 0 ]]
 }
-
 COMPOSE=(fake_compose)
 
 stop_and_remove_database_services() {
@@ -347,20 +208,8 @@ assert_fails() {
   ((status != 0))
 }
 
-prepare_reconcile_state() {
-  local sha=$1 phase=$2 container=$3 state
-  add_ref "$ID_A" "$ID_A"
-  add_container api "$container" "$ID_A"
-  state=$(backend_image_rescue_state_file "$sha")
-  backend_image_rescue_prepare "$sha" "$state" api
-  case $phase in
-    prepared) ;;
-    replacement-started) backend_image_rescue_mark_replacement_started "$state" ;;
-    rollback-complete) backend_image_rescue_write_phase "$state" rollback-complete ;;
-    *) return 1 ;;
-  esac
-  printf '%s\n' "$state"
-}
+# shellcheck source=ops/deploy/backend-image-rescue-reconcile-test-support.sh
+source "$SCRIPT_DIR/backend-image-rescue-reconcile-test-support.sh"
 
 ((BACKEND_IMAGE_RESCUE_POST_UNPAUSE_TIMEOUT_SECONDS == 60))
 ((BACKEND_IMAGE_RESCUE_POST_UNPAUSE_POLL_SECONDS == 3))

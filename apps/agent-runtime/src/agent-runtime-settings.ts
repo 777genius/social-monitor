@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
+import { activeReaderSummaryReasoningEffort } from "./subscription-runtime-purpose-model-policy";
+
 export type AgentRuntimeSettings = {
   readonly bindAddress: string;
   readonly serviceToken?: string;
@@ -13,7 +15,7 @@ export type AgentRuntimeSettings = {
     readonly codexAuthJsonPath?: string;
     readonly claudeTokenEnv?: string;
     readonly model: string;
-    readonly reasoningEffort: "xhigh";
+    readonly reasoningEffort: typeof activeReaderSummaryReasoningEffort;
   };
 };
 
@@ -42,11 +44,16 @@ export const resolveAgentRuntimeSettings = (
   },
 });
 
-const resolveReasoningEffort = (value: string | undefined): "xhigh" => {
-  const resolved = nonEmptyOrFallback(value, "xhigh");
-  if (resolved !== "xhigh") {
+const resolveReasoningEffort = (
+  value: string | undefined,
+): typeof activeReaderSummaryReasoningEffort => {
+  const resolved = nonEmptyOrFallback(
+    value,
+    activeReaderSummaryReasoningEffort,
+  );
+  if (resolved !== activeReaderSummaryReasoningEffort) {
     throw new Error(
-      "AGENT_RUNTIME_REASONING_EFFORT must be xhigh for production summaries",
+      "AGENT_RUNTIME_REASONING_EFFORT must be high for production runtime admission",
     );
   }
 

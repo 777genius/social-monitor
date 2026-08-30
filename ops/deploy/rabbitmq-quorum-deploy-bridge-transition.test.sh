@@ -5,8 +5,8 @@ PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 PROJECT_ROOT=$(cd "$SCRIPT_DIR/../.." && pwd)
 BRIDGE_RELEASE_SHA=$(git -C "$PROJECT_ROOT" rev-parse '472d835c^{commit}')
-ROLLING_ENTRYPOINT_BRIDGE_SHA=$(git -C "$PROJECT_ROOT" rev-parse '0be002ec^{commit}')
-ROLLING_ENTRYPOINT_BRIDGE_PARENT=922a38d56d27b2da3ce356190bd2416e5e991271
+ROLLING_ENTRYPOINT_BRIDGE_SHA=$(git -C "$PROJECT_ROOT" rev-parse 'b25e5c3d97a6cab3a87ba93c4fa6d1c38fe41c2b^{commit}')
+ROLLING_ENTRYPOINT_BRIDGE_PARENT=f4471dd9c9ddb414b4ad502bb8ee7df7306964c6
 FIXTURE=$(mktemp -d "${TMPDIR:-/tmp}/rabbitmq-quorum-deploy-bridge.XXXXXX")
 trap 'rm -rf "$FIXTURE"' EXIT
 
@@ -53,6 +53,7 @@ RELEASE_A_PATHS=(
 HEALTH_LIBRARY=ops/deploy/backend-runtime-health-lib.sh
 QUORUM_SCRIPT=ops/deploy/rabbitmq-quorum-health.sh
 RECOVERY_SCRIPT=ops/deploy/rabbitmq-quorum-recovery.sh
+BACKEND_CLASSIFICATION_LIBRARY=ops/deploy/production-backend-classification-lib.sh
 BRIDGE_CONTROL_PATHS=(
   ops/deploy/social-monitor-production-deploy.sh
   ops/deploy/deploy-control-lib.sh
@@ -90,6 +91,7 @@ assert_rolling_entrypoint_bridge
 assert_real_bridge_target_assets() {
   local path entry mode type object tree_path expected_digest alternate_digest reviewed_digest
   local release_b_candidate_digest release_b_sealed_digest rolling_repair_digest
+  local current_release_digest
   local actual_digest actual_mode
   local repository_root actual_path actual_real
 
@@ -123,23 +125,28 @@ assert_real_bridge_target_assets() {
     release_b_candidate_digest=
     release_b_sealed_digest=
     rolling_repair_digest=
+    current_release_digest=
     actual_digest=$(sha256sum "$actual_real" | awk '{print $1}')
     case $path in
       ops/deploy/social-monitor-production-deploy.sh)
         expected_digest=ac82c9cfebf88646e9cdc21dcb822c8cc50409832da24a726cd9307cc2be8bcb
         alternate_digest=101b80c5c0ee6ea5ff4e908e5661a7c2bbd03ad2048fb7eb8b5d26966b0e4860
         reviewed_digest=cc869266046dbe9edc590e83944e93bab8ebdf19e8ef66f4917c896bbd48fcde
+        current_release_digest=08f439740046afcfc62e02d99388902a1ba9ebf4290ff62c008d967e8f0d3317
         ;;
       ops/deploy/deploy-control-lib.sh)
         expected_digest=d18854822ef36d5571289e72c7691fff8db4a7d5c516787441a733d6960a88a9
+        current_release_digest=824d624944de61027e29b51ca5ad86e87c9b9dcac468bb413b63898700fd78e3
         ;;
       ops/deploy/postgres-runtime-deploy-lib.sh)
         expected_digest=261fb030bea2f203564c59e0c22db8058b310fb5d979c7db622938fe6045545a
         alternate_digest=6ac29042e94f9ef40498c70beeed37af13660fae629216d3ae2ea70270d0ffb1
+        current_release_digest=6c693394e5a27a2d589660f278611dc13bfce789f44bd873e2053d39f6a2fbf3
         ;;
       ops/deploy/backend-image-rescue-lib.sh)
         expected_digest=68f13213e6d1662d943185df7cdd1c11678261e76977021f74493c4e6c643b59
         alternate_digest=c8d363b8d64402ee77e42d62aac67ce9d4543135e328255557d2036c8ef3a398
+        current_release_digest=02ab92e562ce8d612e0a068260bd63262c13c0142f34a6bb6973d0d96eeea13a
         ;;
       ops/deploy/deploy-control-bridge-lib.sh)
         expected_digest=e6f958555966b77d02b85da8d0b9195e13a200dcb2b19c8afc010fab6d28b65d
@@ -148,6 +155,7 @@ assert_real_bridge_target_assets() {
         release_b_candidate_digest=bea119047fbbd2295185c84e0adeb773dc852e63b951daf5c7a831356a73a371
         release_b_sealed_digest=1718617b4bbb92f4dbfd92a59fcc482ef7a098734730b8460d21aaced44386c2
         rolling_repair_digest=1945f2b07f110d16694affc15c66b4589d294b81a4e593a9680dacf11fbc5d4d
+        current_release_digest=f04763ebe27da204e4ec1df1f43679781b4f1c41983662da9f9900f780d170a0
         ;;
     esac
     if [[ $path == ops/deploy/social-monitor-production-deploy.sh ]]; then
@@ -175,11 +183,11 @@ assert_real_bridge_target_assets() {
         echo 'OpenAPI snapshot backend-classification exception is not exact' >&2
         exit 1
       }
-      [[ $(grep -Fc 'ops/deploy/production-runtime/rolling-summary-container-run.sh' "$actual_real") == 2 ]] || {
+      [[ $(grep -Fc 'ops/deploy/production-runtime/rolling-summary-container-run.sh' "$actual_real") == 1 ]] || {
         echo 'rolling container runner image-classification exception is not exact' >&2
         exit 1
       }
-      [[ $(grep -Fc 'ops/deploy/production-runtime/rolling-summary-receipt.mjs' "$actual_real") == 3 ]] || {
+      [[ $(grep -Fc 'ops/deploy/production-runtime/rolling-summary-receipt.mjs' "$actual_real") == 2 ]] || {
         echo 'rolling receipt image/runtime-classification exception is not exact' >&2
         exit 1
       }
@@ -189,11 +197,44 @@ assert_real_bridge_target_assets() {
        (-n $reviewed_digest && $actual_digest == "$reviewed_digest") ||
        (-n $release_b_candidate_digest && $actual_digest == "$release_b_candidate_digest") ||
        (-n $release_b_sealed_digest && $actual_digest == "$release_b_sealed_digest") ||
-       (-n $rolling_repair_digest && $actual_digest == "$rolling_repair_digest") ]] || {
+       (-n $rolling_repair_digest && $actual_digest == "$rolling_repair_digest") ||
+       (-n $current_release_digest && $actual_digest == "$current_release_digest") ]] || {
       printf 'current bridge asset digest drifted from V4A4: %s\n' "$path" >&2
       exit 1
     }
   done
+}
+
+assert_current_backend_classification_asset() {
+  local repository_root path actual_real
+  repository_root=$(readlink -f -- "$PROJECT_ROOT")
+  path=$PROJECT_ROOT/$BACKEND_CLASSIFICATION_LIBRARY
+  [[ -f $path && ! -L $path ]] || {
+    echo 'current backend classification library is not a regular file' >&2
+    exit 1
+  }
+  actual_real=$(readlink -f -- "$path")
+  [[ $actual_real == "$repository_root/$BACKEND_CLASSIFICATION_LIBRARY" ]] || {
+    echo 'current backend classification library escaped its canonical path' >&2
+    exit 1
+  }
+  [[ $(stat -c '%a' "$actual_real") == 644 ]] || {
+    echo 'current backend classification library mode drifted' >&2
+    exit 1
+  }
+  [[ $(sha256sum "$actual_real" | awk '{print $1}') == \
+     4895b28caf0c3c906f107a3bd74df4cd046cf77fd61a7aeae003a15203db3fff ]] || {
+    echo 'current backend classification library digest drifted' >&2
+    exit 1
+  }
+  [[ $(grep -Fc 'ops/deploy/production-runtime/rolling-summary-container-run.sh' "$actual_real") == 1 ]] || {
+    echo 'rolling container runner backend-classification exception is not exact' >&2
+    exit 1
+  }
+  [[ $(grep -Fc 'ops/deploy/production-runtime/rolling-summary-receipt.mjs' "$actual_real") == 1 ]] || {
+    echo 'rolling receipt backend-classification exception is not exact' >&2
+    exit 1
+  }
 }
 
 materialize_bridge_release_a_path() {
@@ -269,13 +310,16 @@ prepare_case() {
   CASE_CONTROL=$CASE_ROOT/control
   CASE_STATE=$CASE_CONTROL/deploy-state
   CASE_EVENTS=$base_source/events
-  install -d "$CASE_REPO/ops/deploy" "$CASE_REPO/apps/api-gateway" "$CASE_STATE"
+  install -d "$CASE_REPO/ops/deploy/production-runtime" \
+    "$CASE_REPO/apps/api-gateway" "$CASE_STATE"
   git init -q -b main "$CASE_REPO"
   git -C "$CASE_REPO" config user.name 'RabbitMQ quorum bridge fixture'
   git -C "$CASE_REPO" config user.email rabbitmq-bridge@example.invalid
 
-  cp "$SCRIPT_DIR"/{postgres-runtime-deploy-lib.sh,postgres-runtime-weekly-timer-state-lib.sh,postgres-runtime-daily-c1-readiness-lib.sh,postgres-runtime-activation-boundary-lib.sh,backend-image-rescue-lib.sh,x-collector-image-deploy-lib.sh,backend-runtime-health-lib.sh,docker-maintenance-lib.sh,daily-runner-image-bootstrap-lib.sh,reader-summary-recovery-maintenance-lib.sh} \
+  cp "$SCRIPT_DIR"/{postgres-runtime-deploy-lib.sh,postgres-runtime-asset-lib.sh,postgres-runtime-weekly-timer-state-lib.sh,postgres-runtime-daily-c1-readiness-lib.sh,postgres-runtime-activation-boundary-lib.sh,backend-image-rescue-lib.sh,backend-image-rescue-pin-cleanup-lib.sh,x-collector-image-deploy-lib.sh,backend-runtime-health-lib.sh,docker-maintenance-lib.sh,daily-runner-image-bootstrap-lib.sh,reader-summary-recovery-maintenance-lib.sh} \
     "$CASE_REPO/ops/deploy/"
+  cp "$SCRIPT_DIR/production-runtime"/{reader-summary-scheduler-hold-common.sh,reader-summary-scheduler-hold-restore.sh} \
+    "$CASE_REPO/ops/deploy/production-runtime/"
   printf 'legacy entrypoint\n' > "$CASE_REPO/ops/deploy/social-monitor-production-deploy.sh"
   printf 'legacy deploy control\n' > "$CASE_REPO/ops/deploy/deploy-control-lib.sh"
   for path in \
@@ -482,6 +526,7 @@ assert_bridge_backend_rejection() {
 backend_path_block=$(sed -n '/^BACKEND_PATHS=(/,/^)/p' \
   "$SCRIPT_DIR/social-monitor-production-deploy.sh")
 assert_real_bridge_target_assets
+assert_current_backend_classification_asset
 grep -Fx "  $HEALTH_LIBRARY" <<< "$backend_path_block" >/dev/null
 grep -Fx "  $QUORUM_SCRIPT" <<< "$backend_path_block" >/dev/null
 grep -Fx "  $RECOVERY_SCRIPT" <<< "$backend_path_block" >/dev/null

@@ -66,7 +66,7 @@ fi
 ! grep -F 'allow-historical' "$DAILY_SERVICE" "$DAILY_TIMER"
 ! grep -F -- '--frozen-date' "$DAILY_RUN" "$DAILY_SERVICE" "$DAILY_TIMER"
 
-grep -Fx 'ExecStart=/var/data/social-monitor/control/daily-run.sh --yesterday' \
+grep -Fx 'ExecStart=/var/data/social-monitor/control/postgres-runtime-current/reader-summary-one-shot.sh daily' \
   "$DAILY_SERVICE" >/dev/null
 [[ $(grep -c '^ExecStart=' "$DAILY_SERVICE") -eq 1 ]]
 ! grep -Eq '^Exec(Condition|StartPre|StopPost)=' "$DAILY_SERVICE"
@@ -78,6 +78,9 @@ grep -Fx 'Persistent=true' "$DAILY_TIMER" >/dev/null
 test_root=$(mktemp -d /tmp/social-monitor-daily-run-test.XXXXXX)
 trap 'rm -rf "$test_root"' EXIT HUP INT TERM
 mkdir -p "$test_root/control/postgres-runtime-current"
+cp "$SCRIPT_DIR/reader-summary-scheduler-hold-common.sh" \
+  "$SCRIPT_DIR/reader-summary-scheduler-hold-status.sh" \
+  "$test_root/control/postgres-runtime-current/"
 fake_flock=$test_root/fail-flock
 cat >"$fake_flock" <<'EOF'
 #!/usr/bin/env bash

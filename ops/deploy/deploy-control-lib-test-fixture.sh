@@ -34,6 +34,7 @@ cp "$SCRIPT_DIR/social-monitor-production-deploy.sh" \
   "$SCRIPT_DIR/postgres-runtime-weekly-timer-state-lib.sh" \
   "$SCRIPT_DIR/reader-summary-recovery-maintenance-lib.sh" \
   "$SCRIPT_DIR/backend-image-rescue-lib.sh" \
+  "$SCRIPT_DIR/backend-image-rescue-pin-cleanup-lib.sh" \
   "$SCRIPT_DIR/x-collector-image-deploy-lib.sh" \
   "$SCRIPT_DIR/verify-postgres-runtime-topology.py" \
   "$REPO/ops/deploy/"

@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
 import {
   assertReaderSummaryProductionRecoveryExecutionAttestation,
   assertReaderSummaryProductionRecoveryModelSelection,
@@ -6,7 +9,7 @@ import {
 } from "./reader-summary-production-recovery-model-contract";
 
 describe("reader summary production recovery model contract", () => {
-  it("fixes subscription-runtime gpt-5.6-sol with xhigh reasoning", () => {
+  it("retains the frozen xhigh identity for historical evidence verification", () => {
     expect(
       assertReaderSummaryProductionRecoveryModelSelection({
         provider: "codex",
@@ -17,6 +20,22 @@ describe("reader summary production recovery model contract", () => {
     ).toBe(readerSummaryProductionRecoveryModelContract);
     expect(readerSummaryProductionRecoveryGenerationProfile.modelVersion).toBe(
       "codex:gpt-5.6-sol:xhigh",
+    );
+  });
+
+  it("tombstones the executable legacy recovery route", () => {
+    const packageJson = JSON.parse(
+      readFileSync(resolve(__dirname, "../../package.json"), "utf8"),
+    ) as { readonly scripts?: Readonly<Record<string, string>> };
+    const legacyEntrypoint = readFileSync(
+      resolve(__dirname, "../recover-reader-summary-production.ts"),
+      "utf8",
+    );
+
+    expect(packageJson.scripts?.["recover:reader-summary-production"])
+      .toBeUndefined();
+    expect(legacyEntrypoint).toContain(
+      "Legacy reader-summary production recovery execution is retired",
     );
   });
 

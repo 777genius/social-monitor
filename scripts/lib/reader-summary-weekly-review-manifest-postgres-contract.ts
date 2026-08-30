@@ -409,6 +409,10 @@ export const readerSummaryWeeklyReviewManifestCatalogIsSecure = (
     row.tenant_scope_week_unique_constraint === true &&
     row.unmanaged_index_count === "0" &&
     /current_setting\('transaction_isolation'\)\s*<>\s*'serializable'/iu.test(definition) &&
+    /v_attestation->>'purpose'\s*<>\s*'social_monitor\.reader_summary\.weekly\.review\.v2'/u
+      .test(definition) &&
+    /v_attestation->>'reasoningEffort'\s*<>\s*'high'/u.test(definition) &&
+    !/v_attestation->>'reasoningEffort'\s*<>\s*'xhigh'/u.test(definition) &&
     /FOR\s+UPDATE/iu.test(definition) &&
     /FOR\s+SHARE\s+OF\s+evidence_row/iu.test(definition) &&
     !/DATE\s+'2026-07-23'/iu.test(definition) &&
@@ -618,11 +622,11 @@ const createManifest = (
   executionAttestation: {
     schemaVersion: 1,
     requestId: `weekly-review-pg18:${randomUUID()}`,
-    purpose: "social_monitor.reader_summary.weekly.review",
+    purpose: "social_monitor.reader_summary.weekly.review.v2",
     canonicalRequestSha256: "b".repeat(64),
     provider: "codex",
     model: "gpt-5.6-sol",
-    reasoningEffort: "xhigh",
+    reasoningEffort: "high",
     runtimeEngine: "subscription-runtime-cli",
     runtimePackageVersion: "1.2.3",
     launcherSha256: "c".repeat(64),
@@ -643,6 +647,18 @@ const assertRejectedPayloads = async (
   validPayload: MutablePayload,
 ): Promise<void> => {
   const cases: readonly [string, MutablePayload, string][] = [
+    [
+      "retired legacy execution route",
+      rebuildPayload({
+        ...validPayload,
+        executionAttestation: {
+          ...(validPayload.executionAttestation as Record<string, unknown>),
+          purpose: "social_monitor.reader_summary.weekly.review",
+          reasoningEffort: "xhigh",
+        },
+      }),
+      "weekly review manifest execution attestation is invalid",
+    ],
     [
       "forged canonical bytes",
       { ...validPayload, canonicalBytesBase64: Buffer.from("forged bytes").toString("base64") },

@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { AgentRuntimeExecutionRequest } from "./agent-runtime-executor.port";
 import {
   admitSubscriptionRuntimeRequest,
+  configuredSubscriptionRuntimeDefaultsAreSafe,
   subscriptionRuntimePurposeProfiles,
 } from "./subscription-runtime-purpose-model-policy";
 
@@ -17,7 +18,30 @@ const dailyPurposes = [
   "social_monitor.reader_summary.weekly.review.v2",
 ] as const;
 
+const legacyReaderSummaryPurposes = [
+  "social_monitor.reader_summary.generate",
+  "social_monitor.reader_summary.repair",
+  "social_monitor.reader_summary.topic_map.label",
+  "social_monitor.reader_summary.topic_map.verify_relations",
+  "social_monitor.reader_summary.verify_story_relations",
+  "social_monitor.reader_summary.verify_related_topic_relations",
+  "social_monitor.reader_summary.weekly.review",
+  "social_monitor.reader_summary.weekly.generate",
+] as const;
+
 describe("subscription runtime purpose policy", () => {
+  it("requires the exact high production service default", () => {
+    expect(configuredSubscriptionRuntimeDefaultsAreSafe({})).toBe(true);
+    expect(configuredSubscriptionRuntimeDefaultsAreSafe({
+      model: "gpt-5.6-sol",
+      reasoningEffort: "high",
+    })).toBe(true);
+    expect(configuredSubscriptionRuntimeDefaultsAreSafe({
+      model: "gpt-5.6-sol",
+      reasoningEffort: "xhigh",
+    })).toBe(false);
+  });
+
   it("admits only the exact dedicated related-topic relation markers", () => {
     const exact = request({
       purpose: "social_monitor.reader_summary.verify_related_topic_relations.v2",
@@ -70,9 +94,12 @@ describe("subscription runtime purpose policy", () => {
     },
   );
 
-  it("injects the active weekly text profile when exact controls are absent", () => {
+  it.each([
+    "social_monitor.reader_summary.daily.canonical_recovery.v2",
+    "social_monitor.reader_summary.weekly.generate.v2",
+  ])("injects the active %s text profile when exact controls are absent", (purpose) => {
     const admission = admitSubscriptionRuntimeRequest(
-      request({ purpose: "social_monitor.reader_summary.weekly.generate.v2" }),
+      request({ purpose }),
     );
     const task = admission.canonicalRequest.task as Record<string, unknown>;
     const controls = task.controls as Record<string, unknown>;
@@ -139,27 +166,29 @@ describe("subscription runtime purpose policy", () => {
     expect(() => admitSubscriptionRuntimeRequest(request(override))).toThrow();
   });
 
-  it("cuts active high execution over without weakening frozen xhigh recovery", () => {
-    const active = request({
-      purpose: "social_monitor.reader_summary.generate.v2",
+  it("admits only the dedicated high canonical-recovery route", () => {
+    const activeRecovery = request({
+      purpose: "social_monitor.reader_summary.daily.canonical_recovery.v2",
       metadata: { reasoningEffort: "high" },
     });
-    expect(() => admitSubscriptionRuntimeRequest(active)).not.toThrow();
+    expect(() => admitSubscriptionRuntimeRequest(activeRecovery)).not.toThrow();
     expect(() => admitSubscriptionRuntimeRequest({
-      ...active,
+      ...activeRecovery,
       metadata: { reasoningEffort: "xhigh" },
-    })).toThrow("reasoningEffort conflicts with purpose policy");
-
-    const historicalRecovery = request({
-      purpose: "social_monitor.reader_summary.generate",
-      metadata: { reasoningEffort: "xhigh" },
-    });
-    expect(() => admitSubscriptionRuntimeRequest(historicalRecovery)).not.toThrow();
-    expect(() => admitSubscriptionRuntimeRequest({
-      ...historicalRecovery,
-      metadata: { reasoningEffort: "high" },
     })).toThrow("reasoningEffort conflicts with purpose policy");
   });
+
+  it.each(legacyReaderSummaryPurposes)(
+    "fails closed for legacy reader-summary purpose %s",
+    (purpose) => {
+      for (const reasoningEffort of ["high", "xhigh"] as const) {
+        expect(() => admitSubscriptionRuntimeRequest(request({
+          purpose,
+          metadata: { reasoningEffort },
+        }))).toThrow("Agent runtime purpose is not admitted");
+      }
+    },
+  );
 
   it("keeps the independent MJS wrapper policy in exact parity", () => {
     const tsProfiles = subscriptionRuntimePurposeProfiles();
@@ -208,8 +237,7 @@ const request = (
 ): AgentRuntimeExecutionRequest => {
   const purpose = override.purpose ?? "social_monitor.reader_summary.generate.v2";
   const relatedDefaults = purpose ===
-      "social_monitor.reader_summary.verify_related_topic_relations" ||
-    purpose === "social_monitor.reader_summary.verify_related_topic_relations.v2"
+    "social_monitor.reader_summary.verify_related_topic_relations.v2"
     ? {
         controlsJson: JSON.stringify({
           outputSchemaName:

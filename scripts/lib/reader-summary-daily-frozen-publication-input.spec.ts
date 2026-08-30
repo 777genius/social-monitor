@@ -734,11 +734,11 @@ const verifyAuthorityValue = (
 const persistedOutputTextAttestation = (responseBytes: Buffer) => ({
   schemaVersion: 1,
   requestId: "frozen-output-text-fixture",
-  purpose: "social_monitor.reader_summary.weekly.generate",
+  purpose: "social_monitor.reader_summary.daily.canonical_recovery.v2",
   canonicalRequestSha256: hash("persisted-output-text-request"),
   provider: "codex",
   model: "gpt-5.6-sol",
-  reasoningEffort: "xhigh",
+  reasoningEffort: "high",
   runtimeEngine: "subscription-runtime-cli",
   runtimePackageVersion: "1.2.3",
   launcherSha256: hash("persisted-output-text-launcher"),

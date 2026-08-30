@@ -495,8 +495,8 @@ jobs:
             ops/deploy/backend-runtime-health-lib.sh
             ops/deploy/backend-runtime-health-lib.test.sh
             ops/deploy/otel-collector-deploy-lifecycle.test.sh
-            ops/deploy/backend-image-rescue-lib.sh
-            ops/deploy/backend-image-rescue-lib.test.sh
+            ops/deploy/backend-image-rescue-lib.sh ops/deploy/backend-image-rescue-pin-cleanup-lib.sh
+            ops/deploy/backend-image-rescue-lib.test.sh ops/deploy/backend-image-rescue-reconcile-test-support.sh
             ops/deploy/x-collector-image-deploy-lib.sh
             ops/deploy/x-collector-image-deploy-lib.test.sh
             ops/deploy/deploy-control-bridge-lib.sh

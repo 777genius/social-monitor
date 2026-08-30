@@ -61,11 +61,11 @@ export const reviewManifestFor = (
     executionAttestation: Object.freeze({
       schemaVersion: 1 as const,
       requestId: "reader-summary-weekly-review:fixture",
-      purpose: "social_monitor.reader_summary.weekly.review" as const,
+      purpose: "social_monitor.reader_summary.weekly.review.v2" as const,
       canonicalRequestSha256: sha("weekly-review-request"),
       provider: "codex" as const,
       model: "gpt-5.6-sol" as const,
-      reasoningEffort: "xhigh" as const,
+      reasoningEffort: "high" as const,
       runtimeEngine: "subscription-runtime-cli" as const,
       runtimePackageVersion: "fixture-1.0.0",
       launcherSha256: sha("weekly-review-launcher"),
