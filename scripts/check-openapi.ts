@@ -132,6 +132,7 @@ import { RequestCorrelationIdFactory } from "@social-monitor/platform-request-co
 import "reflect-metadata";
 
 import { AppBootstrapController } from "../apps/api-gateway/src/app-bootstrap.controller";
+import { AppBootstrapReaderSummaryQuery } from "../apps/api-gateway/src/app-bootstrap-reader-summary-query";
 import { AppBootstrapReaderSummaryCache } from "../apps/api-gateway/src/app-bootstrap-reader-summary-cache";
 import { HealthController } from "../apps/api-gateway/src/health.controller";
 import { ApiGatewayHealthReporter } from "../apps/api-gateway/src/health-reporter";
@@ -422,6 +423,7 @@ const useCaseProviders = [
       provide: AppBootstrapReaderSummaryCache,
       useValue: passthroughAppBootstrapReaderSummaryCache,
     },
+    AppBootstrapReaderSummaryQuery,
   ],
 })
 class OpenApiContractModule {}
