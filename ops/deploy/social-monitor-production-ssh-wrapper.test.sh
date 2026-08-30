@@ -43,9 +43,13 @@ import pathlib
 import sys
 
 source = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")
-load = 'source "$REPO/ops/deploy/deploy-control-lib.sh"'
+load = (
+    "production_transition_host_source_authorized_prelude \\\n"
+    "    ops/deploy/deploy-control-lib.sh 'deploy control library'"
+)
+legacy_load = 'source "$REPO/ops/deploy/deploy-control-lib.sh"'
 dispatch = "case ${action:-} in"
-if source.count(load) != 1 or source.count(dispatch) != 1:
+if source.count(load) != 1 or legacy_load in source or source.count(dispatch) != 1:
     raise SystemExit("deploy entrypoint source/dispatch contract is not exact")
 if source.index(load) >= source.index(dispatch):
     raise SystemExit("deploy entrypoint does not source current control before dispatch")
