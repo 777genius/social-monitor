@@ -4,7 +4,11 @@ import {
 } from "@social-monitor/ingestion/domain";
 import type { ProjectFeedItemsCommand } from "@social-monitor/ingestion/ports";
 import type { IdGenerator, JsonObject } from "@social-monitor/shared-kernel";
-import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
+import {
+  normalizeJsonObject,
+  tenantId,
+  workspaceId,
+} from "@social-monitor/shared-kernel";
 
 import { InMemoryFeedProjectionAdapter } from "../../../../../apps/ingestion-worker/src/adapters/feed/in-memory-feed-projection.adapter";
 import { InMemoryFeedItemReadRepository } from "../in-memory-feed-item-read.repository";
@@ -599,7 +603,7 @@ class FakePrismaFeedClient implements PrismaFeedClient {
     this.feedItemRecord = {
       ...this.feedItemRecord,
       providerMetadata: {
-        ...this.feedItemRecord.providerMetadata,
+        ...normalizeJsonObject(this.feedItemRecord.providerMetadata),
         ...metrics,
       },
     };
