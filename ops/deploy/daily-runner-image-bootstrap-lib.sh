@@ -392,6 +392,7 @@ daily_runner_image_bootstrap_before_rescue() (
   local target_sha=$2
   local compose_tag state_file partial phase manifest_target
   local dockerfile_digest dockerfile_digest_after base_config base_id base_id_after
+  local base_config_after_build
   local workdir='' archive='' context='' temporary_tag='' candidate_id=''
   local base_alias_tag=''
   local identity config singleton_fd revision extra
@@ -522,7 +523,11 @@ daily_runner_image_bootstrap_before_rescue() (
     fail 'historical daily-runner image identity is unexpected'
   config=$(backend_image_rescue_image_config "$temporary_tag") || \
     fail 'historical daily-runner image config cannot be inspected'
-  [[ $config == "$base_config" ]] || \
+  base_config_after_build=$(backend_image_rescue_image_config "$base_id") || \
+    fail 'daily-runner base image config cannot be re-inspected after build'
+  [[ $base_config_after_build == "$base_config" ]] || \
+    fail 'daily-runner base image config changed during historical build'
+  [[ $config == "$base_config_after_build" ]] || \
     fail 'historical daily-runner image config is unexpected'
   if [[ $base_alias_created == true ]]; then
     daily_runner_bootstrap_remove_tag "$base_alias_tag" "$base_id" || \
