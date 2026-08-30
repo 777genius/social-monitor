@@ -129,8 +129,13 @@ grep -F 'findings.length !== expected.size || actual.size !== expected.size' \
 grep -F -A1 'bash ops/deploy/verify-production-shellcheck-baseline.sh \' \
   "$release_preflight" | grep -F '"${deploy_shell_files[@]}"' >/dev/null || \
   fail 'release preflight bypasses the canonical ShellCheck verifier'
-! grep -E '^[[:space:]]*shellcheck[[:space:]]' "$release_preflight" >/dev/null || \
+shellcheck_bypass_pattern='(^|[^[:alnum:]_.-])shellcheck([[:space:]]|$)'
+! grep -E "$shellcheck_bypass_pattern" "$release_preflight" >/dev/null || \
   fail 'release preflight still invokes ShellCheck outside the canonical verifier'
+for bypass in 'command shellcheck -x target.sh' 'result=$(shellcheck -x target.sh)'; do
+  printf '%s\n' "$bypass" | grep -E "$shellcheck_bypass_pattern" >/dev/null || \
+    fail 'release preflight ShellCheck bypass detector is incomplete'
+done
 grep -F "needs.plan.outputs.daily_c1_bridge != 'true'" \
   "$workflow" >/dev/null || fail 'bridge does not defer final-only legacy transition fixtures'
 [[ $(grep -Fc "needs.plan.outputs.daily_c1_bridge != 'true'" "$workflow") == 9 ]] || \
