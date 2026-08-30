@@ -95,6 +95,9 @@ prepare_case() {
     "$root/runtime" \
     "$case_dir/reports" \
     "$case_dir/public"
+  cp "$SCRIPT_DIR/production-runtime/reader-summary-scheduler-hold-common.sh" \
+    "$SCRIPT_DIR/production-runtime/reader-summary-scheduler-hold-status.sh" \
+    "$root/control/postgres-runtime-current/"
   printf '%s\n' "$RELEASE_SHA" > "$root/control/deploy-state/backend.sha"
   printf '%s\n' "$RELEASE_SHA" > "$root/control/postgres-runtime-current/READY"
   printf '%s\n' \
