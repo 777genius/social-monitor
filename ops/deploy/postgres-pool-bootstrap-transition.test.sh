@@ -208,7 +208,7 @@ git -C "$REPO" commit -qm 'test: Release A control bootstrap'
 git -C "$REPO" push -q origin main
 TARGET_SHA=$(git -C "$REPO" rev-parse HEAD)
 printf '[safe]\n\tdirectory = %s\n' "$REPO" > "$FIXTURE/gitconfig"
-chmod -R a+rwX "$FIXTURE"
+chmod -R u+rwX,go+rX "$FIXTURE"
 assert_release_a_non_activation() {
   cmp -s "$NON_ACTIVATING_SNAPSHOT/backend.sha" "$STATE/backend.sha"
   [[ -L $POSTGRES_RUNTIME_CURRENT ]]
