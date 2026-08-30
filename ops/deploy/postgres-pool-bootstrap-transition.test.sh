@@ -445,6 +445,7 @@ cp "$PROJECT_ROOT/ops/deploy/social-monitor-production-deploy.sh" \
   "$PROJECT_ROOT/ops/deploy/daily-runner-image-bootstrap-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/x-collector-image-deploy-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/reader-summary-recovery-maintenance-lib.sh" \
+  "$PROJECT_ROOT/ops/deploy/production-backend-classification-lib.sh" \
   "$REPO/ops/deploy/"
 write_target_quorum_health_fixture "$REPO"
 # Adapt only the committed fallback copy; this matches literal reviewed shell.
@@ -516,7 +517,6 @@ install_historical_control_entrypoint() {
     > "$INSTALLED"
   chmod 0755 "$INSTALLED"
 }
-
 assert_current_recovery_fails() {
   local expected=$1
   local target=${2:-$TARGET_SHA}
