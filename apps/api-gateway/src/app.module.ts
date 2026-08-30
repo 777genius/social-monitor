@@ -22,6 +22,14 @@ import {
   nodeAppBootstrapRefreshScheduler,
 } from './app-bootstrap-cache-refresher';
 import {
+  APP_BOOTSTRAP_PUBLIC_PRIME_CLIENT,
+  APP_BOOTSTRAP_PUBLIC_PRIME_ENABLED,
+  APP_BOOTSTRAP_PUBLIC_PRIME_SCHEDULER,
+  AppBootstrapPublicPrimer,
+  nodeAppBootstrapPublicPrimeClient,
+  nodeAppBootstrapPublicPrimeScheduler,
+} from './app-bootstrap-public-primer';
+import {
   APP_BOOTSTRAP_READER_SUMMARY_CACHE_CLOCK,
   APP_BOOTSTRAP_READER_SUMMARY_CACHE_MAX_ENTRIES,
   APP_BOOTSTRAP_READER_SUMMARY_CACHE_STALE_MS,
@@ -63,6 +71,19 @@ import { SocialResearchApiModule } from './social-research-api.module';
     ApiGatewayHealthReporter,
     AppBootstrapReaderSummaryQuery,
     AppBootstrapCacheRefresher,
+    AppBootstrapPublicPrimer,
+    {
+      provide: APP_BOOTSTRAP_PUBLIC_PRIME_ENABLED,
+      useFactory: () => process.env.NODE_ENV === 'production',
+    },
+    {
+      provide: APP_BOOTSTRAP_PUBLIC_PRIME_CLIENT,
+      useValue: nodeAppBootstrapPublicPrimeClient,
+    },
+    {
+      provide: APP_BOOTSTRAP_PUBLIC_PRIME_SCHEDULER,
+      useValue: nodeAppBootstrapPublicPrimeScheduler,
+    },
     {
       provide: APP_BOOTSTRAP_REFRESH_SCHEDULER,
       useValue: nodeAppBootstrapRefreshScheduler,
