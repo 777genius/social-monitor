@@ -564,27 +564,28 @@ jobs:
           fi
           bash -n ops/deploy/social-monitor-production-deploy.sh \
             "${deploy_shell_files[@]}"
-          entrypoint_shellcheck=$(
+          deploy_shellcheck=$(
             shellcheck -S warning -f json -x \
-              ops/deploy/social-monitor-production-deploy.sh || true
+              ops/deploy/social-monitor-production-deploy.sh \
+              "${deploy_shell_files[@]}" || true
           )
-          ENTRYPOINT_SHELLCHECK=$entrypoint_shellcheck node <<'NODE'
-          const findings = JSON.parse(process.env.ENTRYPOINT_SHELLCHECK ?? "[]");
+          DEPLOY_SHELLCHECK=$deploy_shellcheck node <<'NODE'
+          const findings = JSON.parse(process.env.DEPLOY_SHELLCHECK ?? "[]");
           const expected = new Set([
-            "42:2034:PUBLIC_LINK",
-            "43:2034:ADMIN_LINK",
+            "ops/deploy/social-monitor-production-deploy.sh:42:2034:PUBLIC_LINK",
+            "ops/deploy/social-monitor-production-deploy.sh:43:2034:ADMIN_LINK",
           ]);
           const actual = new Set(findings.map((finding) =>
-            `${finding.line}:${finding.code}:${String(finding.message).split(" ", 1)[0]}`));
+            `${finding.file}:${finding.line}:${finding.code}:${String(finding.message).split(" ", 1)[0]}`));
           if (findings.length !== expected.size || actual.size !== expected.size ||
               [...expected].some((finding) => !actual.has(finding))) {
-            console.error("production entrypoint ShellCheck baseline diverged", findings);
+            console.error("production deploy ShellCheck baseline diverged", findings);
             process.exit(1);
           }
           NODE
           shellcheck -S warning -x -e SC2034 \
-            ops/deploy/social-monitor-production-deploy.sh
-          shellcheck -S warning -x "${deploy_shell_files[@]}"
+            ops/deploy/social-monitor-production-deploy.sh \
+            "${deploy_shell_files[@]}"
           python3 -m py_compile ops/deploy/verify-postgres-runtime-topology.py
           python3 -m py_compile ops/deploy/verify-postgres-pool-release-contract.py
           if [[ $POSTGRES_POOL_BOOTSTRAP == uninstalled && \
