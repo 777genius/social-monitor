@@ -594,10 +594,12 @@ plan_is_exact_release_b_legacy_transition() {
 plan_is_admitted_post_release_b_forward_state() {
   local requested_target=$1 repository=${GITHUB_WORKSPACE:-.}
   [[ $PLAN_BACKEND_BASE =~ ^[0-9a-f]{40}$ && \
-     $PLAN_CONTROL == false && $PLAN_X_COLLECTOR == false && \
      $PLAN_POSTGRES_POOL_BOOTSTRAP == "$POSTGRES_POOL_BOOTSTRAP_VERSION" && \
      $PLAN_POSTGRES_POOL_BOOTSTRAP_SHA =~ ^[0-9a-f]{40}$ && \
      $PLAN_POSTGRES_POOL_REPAIR == false ]] || return 1
+  # The remote plan reports an installed bootstrap only after hashing the
+  # active deploy controller against this durable marker. Its ancestry is
+  # therefore the controller provenance proof even when control or X changes.
   git -C "$repository" merge-base --is-ancestor \
     "$RELEASE_B_REVIEWED_TARGET_SHA" "$PLAN_BACKEND_BASE" 2>/dev/null && \
     git -C "$repository" merge-base --is-ancestor \

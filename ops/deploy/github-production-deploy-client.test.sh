@@ -114,7 +114,7 @@ fake_ssh() {
         "$RELEASE_B_REVIEWED_TARGET_SHA"
       ;;
     release_b_post_b:"plan $TARGET_SHA")
-      print_fake_plan true true false false "$POST_RELEASE_B_SHA" \
+      print_fake_plan true true true true "$POST_RELEASE_B_SHA" \
         "$POST_RELEASE_B_SHA"
       ;;
     release_b_from_8b:"plan $TARGET_SHA"|release_b_bridge_disconnect:"plan $TARGET_SHA"|release_b_controller_repair:"plan $TARGET_SHA"|release_b_current_main:"plan $TARGET_SHA"|release_b_replay:"plan $TARGET_SHA"|release_b_partial:"plan $TARGET_SHA"|release_b_stale_target:"plan $TARGET_SHA"|release_b_rejected:"plan $TARGET_SHA")
@@ -369,14 +369,9 @@ install -m 0700 "$0" "$FAKE_SSH"
   parse_plan "$(printf 'frontend=true\nbackend=true\nbackend_base=%s\ncontrol=true\nx_collector=true\npostgres_pool_bootstrap=postgres-pool-v1\npostgres_pool_bootstrap_sha=%s\n' \
     "$RELEASE_B_BACKEND_MARKER" "$RELEASE_B_POOL_MARKER")"
   plan_is_exact_release_b_legacy_transition
-  parse_plan "$(printf 'frontend=true\nbackend=true\nbackend_base=%s\ncontrol=false\nx_collector=false\npostgres_pool_bootstrap=postgres-pool-v1\npostgres_pool_bootstrap_sha=%s\n' \
+  parse_plan "$(printf 'frontend=true\nbackend=true\nbackend_base=%s\ncontrol=true\nx_collector=true\npostgres_pool_bootstrap=postgres-pool-v1\npostgres_pool_bootstrap_sha=%s\n' \
     "$POST_RELEASE_B_SHA" "$POST_RELEASE_B_SHA")"
   plan_is_admitted_post_release_b_forward_state "$TARGET_SHA"
-  # shellcheck disable=SC2034 # Read by the sourced post-Release-B predicate.
-  PLAN_CONTROL=true
-  plan_is_admitted_post_release_b_forward_state "$TARGET_SHA" && exit 1
-  # shellcheck disable=SC2034 # Restored for the remaining predicate check.
-  PLAN_CONTROL=false
   # shellcheck disable=SC2034 # Read by the sourced post-Release-B predicate.
   PLAN_POSTGRES_POOL_BOOTSTRAP_SHA=$RELEASE_B_CONTROLLER_SHA
   plan_is_admitted_post_release_b_forward_state "$TARGET_SHA" && exit 1
