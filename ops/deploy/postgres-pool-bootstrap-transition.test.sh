@@ -953,15 +953,10 @@ non_ancestor_current_status=$?
 set -e
 trap 'report_error "$?" "$LINENO" "$BASH_COMMAND"' ERR
 ((non_ancestor_current_status != 0))
-if grep -q '^already-deployed-or-newer=' \
-  <<< "$non_ancestor_current_output"; then
-  echo 'non-ancestor current commit reported already-deployed success' >&2
-  exit 1
-fi
+grep -F 'deploy control changed with backend or runtime assets; deploy the bridge release first' \
+  <<< "$non_ancestor_current_output" >/dev/null
 [[ ! -e $STATE/postgres-pool-bootstrap.sha ]]
-if [[ -e $RECOVERY_ACTIVATION_LOG ]]; then
-  [[ $(cat "$RECOVERY_ACTIVATION_LOG") == integration ]]
-fi
+[[ ! -e $RECOVERY_ACTIVATION_LOG ]]
 rm -f "$RECOVERY_ACTIVATION_LOG"
 git -C "$REPO" checkout -q main
 
