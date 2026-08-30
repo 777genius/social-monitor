@@ -848,7 +848,7 @@ verify_target_rabbitmq_quorum_asset() {
 }
 
 load_target_rabbitmq_quorum_backend_health() {
-  local sha=$1 health_library=$REPO/$RABBITMQ_QUORUM_HEALTH_LIBRARY_PATH
+  local sha=$1
 
   [[ $sha =~ ^[0-9a-f]{40}$ ]] || \
     fail 'target RabbitMQ quorum health SHA is invalid'
