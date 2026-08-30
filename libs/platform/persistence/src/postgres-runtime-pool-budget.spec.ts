@@ -382,7 +382,6 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/check-reader-summary-publication-postgres.ts:Pool
       scripts/check-reader-summary-publication-postgres.ts:Pool
       scripts/check-reader-summary-publication-postgres.ts:Pool
-      scripts/check-reader-summary-quality-dashboard.ts:Pool
       scripts/check-reader-summary-recovery-candidate-staging-postgres.ts:Pool
       scripts/check-reader-summary-recovery-candidate-staging-postgres.ts:Pool
       scripts/check-reader-summary-source-quality-trace.ts:Pool
@@ -408,6 +407,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/lib/reader-summary-daily-canonical-recovery-v4-scan-terminal-repair-cli.ts:Pool
       scripts/lib/reader-summary-daily-terminal-runtime-connection.ts:Pool
       scripts/lib/reader-summary-production-day-scope.ts:Pool
+      scripts/lib/reader-summary-quality-dashboard-report-builder.ts:Pool
       scripts/lib/yesterday-social-replay-support.ts:Pool
       scripts/read-reader-summary-daily-terminal-set-receipt.ts:Pool
       scripts/reader-summary-publication-postgres-legacy.ts:Pool
@@ -463,7 +463,6 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/check-reader-summary-original-cutoff-prisma-catalog.ts
       scripts/check-reader-summary-production-regeneration-smoke.ts
       scripts/check-reader-summary-publication-postgres.ts
-      scripts/check-reader-summary-quality-dashboard.ts
       scripts/check-reader-summary-recovery-candidate-staging-postgres.ts
       scripts/check-reader-summary-source-quality-trace.ts
       scripts/check-reader-summary-top-read-ranking.ts
@@ -492,8 +491,11 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/lib/reader-summary-production-day-scope.spec.ts
       scripts/lib/reader-summary-production-day-scope.ts
       scripts/lib/reader-summary-publication-postgres-running-fixture.ts
+      scripts/lib/reader-summary-quality-dashboard-collection-strategy.ts
+      scripts/lib/reader-summary-quality-dashboard-feedback-shadow.ts
       scripts/lib/reader-summary-quality-dashboard-published-window.spec.ts
       scripts/lib/reader-summary-quality-dashboard-published-window.ts
+      scripts/lib/reader-summary-quality-dashboard-report-builder.ts
       scripts/lib/reader-summary-quality-eval-support.spec.ts
       scripts/lib/reader-summary-quality-eval-support.ts
       scripts/lib/reader-summary-recovery-postgres-contract.ts
