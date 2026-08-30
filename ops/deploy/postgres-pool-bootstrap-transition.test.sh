@@ -390,7 +390,8 @@ committed_plan=$(run_entrypoint "$INSTALLED" plan)
 grep -Fx 'postgres_pool_bootstrap=postgres-pool-v1' <<< "$committed_plan" >/dev/null
 grep -Fx "postgres_pool_bootstrap_sha=$TARGET_SHA" <<< "$committed_plan" >/dev/null
 TEST_PHASE=already-newer-fixture
-# Model the independently advanced marker with the pre-split inline sync shape.
+# Model the independently advanced marker with the delegated sync shape that
+# predates the local entrypoint compatibility helper.
 cp "$PROJECT_ROOT/ops/deploy/social-monitor-production-deploy.sh" \
   "$REPO/ops/deploy/"
 python3 - "$REPO/ops/deploy/social-monitor-production-deploy.sh" <<'PY'
@@ -402,10 +403,10 @@ source = path.read_text(encoding="utf-8")
 start = source.index("sync_control_entrypoint() {")
 end = source.index("\n}\n\ncommit_postgres_pool_bootstrap() {", start) + 2
 helper = source[start:end]
-body = "\n".join(helper.splitlines()[1:-1]) + "\n"
-if source.count("  sync_control_entrypoint\n") != 1:
-    raise SystemExit("split helper call was not found exactly once")
-source = source.replace("  sync_control_entrypoint\n", body, 1)
+compatibility_reference = "  : sync_control_entrypoint\n"
+if source.count(compatibility_reference) != 1:
+    raise SystemExit("entrypoint compatibility reference was not found exactly once")
+source = source.replace(compatibility_reference, "", 1)
 source = source.replace(helper + "\n\n", "", 1)
 path.write_text(source, encoding="utf-8")
 PY
