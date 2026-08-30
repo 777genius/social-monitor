@@ -6,6 +6,7 @@
 DAILY_RUNNER_BOOTSTRAP_DOCKERFILE_SHA256=8ec51a5215f00c9b7c09a664ed908c4358698974cd864fbeeddf90b91110fd93
 DAILY_RUNNER_BOOTSTRAP_MAX_ARCHIVE_MEMBERS=20000
 DAILY_RUNNER_BOOTSTRAP_MAX_EXPANDED_BYTES=1073741824
+DAILY_RUNNER_BOOTSTRAP_CONFIG_INSPECT_ATTEMPTS=5
 # The dollar expression is part of the reviewed image command JSON.
 # shellcheck disable=SC2016
 DAILY_RUNNER_BOOTSTRAP_LEGACY_IMAGE_CONFIG='["docker-entrypoint.sh"]|["sh","-c","case \"$SERVICE\" in api) exec node dist/apps/api-gateway/src/main.js ;; agent-runtime) exec node dist/apps/agent-runtime/src/main.js ;; ingestion) exec node dist/apps/ingestion-worker/src/main.js ;; intelligence) exec node dist/apps/intelligence-worker/src/main.js ;; delivery) exec node dist/apps/delivery-service/src/main.js ;; event-relay) exec node dist/apps/event-relay/src/main.js ;; *) echo \"Unknown service: $SERVICE\" >&2; exit 64 ;; esac"]|"/app"|"node"|null'
@@ -393,6 +394,7 @@ daily_runner_image_bootstrap_before_rescue() (
   local compose_tag state_file partial phase manifest_target
   local dockerfile_digest dockerfile_digest_after base_config base_id base_id_after
   local base_config_after_build
+  local config_attempt
   local workdir='' archive='' context='' temporary_tag='' candidate_id=''
   local base_alias_tag=''
   local identity config singleton_fd revision extra
@@ -507,7 +509,8 @@ daily_runner_image_bootstrap_before_rescue() (
     fail 'historical daily-runner archive validation failed'
 
   temporary_owned=true
-  docker build --pull=false --provenance=false \
+  BUILDX_NO_DEFAULT_ATTESTATIONS=1 docker build \
+    --pull=false --provenance=false \
     --file "$CONTROL/daily-runner.Dockerfile" \
     --label "org.opencontainers.image.revision=$previous_sha" \
     --tag "$temporary_tag" \
@@ -521,12 +524,19 @@ daily_runner_image_bootstrap_before_rescue() (
   [[ $candidate_id =~ ^sha256:[0-9a-f]{64}$ && \
      $revision == "$previous_sha" && -z $extra ]] || \
     fail 'historical daily-runner image identity is unexpected'
-  config=$(backend_image_rescue_image_config "$temporary_tag") || \
-    fail 'historical daily-runner image config cannot be inspected'
-  base_config_after_build=$(backend_image_rescue_image_config "$base_id") || \
-    fail 'daily-runner base image config cannot be re-inspected after build'
-  [[ $base_config_after_build == "$base_config" ]] || \
-    fail 'daily-runner base image config changed during historical build'
+  for ((config_attempt = 1;
+        config_attempt <= DAILY_RUNNER_BOOTSTRAP_CONFIG_INSPECT_ATTEMPTS;
+        config_attempt += 1)); do
+    config=$(backend_image_rescue_image_config "$temporary_tag") || \
+      fail 'historical daily-runner image config cannot be inspected'
+    base_config_after_build=$(backend_image_rescue_image_config "$base_id") || \
+      fail 'daily-runner base image config cannot be re-inspected after build'
+    [[ $base_config_after_build == "$base_config" ]] || \
+      fail 'daily-runner base image config changed during historical build'
+    [[ $config != "$base_config_after_build" ]] || break
+    ((config_attempt < DAILY_RUNNER_BOOTSTRAP_CONFIG_INSPECT_ATTEMPTS)) || break
+    sleep 1 || fail 'daily-runner image config settle wait failed'
+  done
   [[ $config == "$base_config_after_build" ]] || \
     fail 'historical daily-runner image config is unexpected'
   if [[ $base_alias_created == true ]]; then
