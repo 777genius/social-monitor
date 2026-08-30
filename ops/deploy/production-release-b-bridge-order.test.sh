@@ -356,7 +356,10 @@ for command in commands:
 test_command = "          bash ops/deploy/production-release-b-bridge-order.test.sh"
 if workflow.count(test_command) != 1:
     raise SystemExit("Release B topology regression is not executed exactly once")
-if workflow.index(test_command) < workflow.index("shellcheck -S warning -x"):
+shellcheck_gate = "          bash ops/deploy/verify-production-shellcheck-baseline.sh \\\n"
+if workflow.count(shellcheck_gate) != 1:
+    raise SystemExit("canonical production ShellCheck verifier is not executed exactly once")
+if workflow.index(test_command) < workflow.index(shellcheck_gate):
     raise SystemExit("Release B topology regression appears only in static checks")
 PY
 

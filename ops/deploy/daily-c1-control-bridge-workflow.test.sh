@@ -87,6 +87,7 @@ if deploy_control_is_exact_daily_c1_bridge_release "$base" "$missing_target"; th
 fi
 
 workflow=$PROJECT_ROOT/.github/workflows/production-deploy.yml
+release_preflight=$SCRIPT_DIR/production-release-preflight.sh
 grep -F 'daily_c1_bridge_base=e3b5b5d89b3586668e36f987f03672415b5a0f37' \
   "$workflow" >/dev/null
 grep -F 'daily_c1_bridge_expected=$(cat' "$workflow" >/dev/null || \
@@ -125,6 +126,11 @@ grep -F 'findings.length !== expected.size || actual.size !== expected.size' \
   "$SHELLCHECK_VERIFIER" >/dev/null || fail 'verifier does not reject additional warnings'
 ! grep -F 'shellcheck -S warning -x -e' "$SHELLCHECK_VERIFIER" >/dev/null || \
   fail 'verifier still relies on a non-portable broad warning exclusion'
+grep -F -A1 'bash ops/deploy/verify-production-shellcheck-baseline.sh \' \
+  "$release_preflight" | grep -F '"${deploy_shell_files[@]}"' >/dev/null || \
+  fail 'release preflight bypasses the canonical ShellCheck verifier'
+! grep -E '^[[:space:]]*shellcheck[[:space:]]' "$release_preflight" >/dev/null || \
+  fail 'release preflight still invokes ShellCheck outside the canonical verifier'
 grep -F "needs.plan.outputs.daily_c1_bridge != 'true'" \
   "$workflow" >/dev/null || fail 'bridge does not defer final-only legacy transition fixtures'
 [[ $(grep -Fc "needs.plan.outputs.daily_c1_bridge != 'true'" "$workflow") == 9 ]] || \
