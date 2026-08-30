@@ -5,6 +5,11 @@ LC_ALL=C
 export PATH LC_ALL
 
 PROJECT_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+# Keep the test fixture hermetic when its caller is GitHub Actions or a legacy
+# deployment shell. Negative override cases below reintroduce variables locally.
+unset PRODUCTION_TRANSITION_REPOSITORY PRODUCTION_TRANSITION_TRUSTED_BASE \
+  PRODUCTION_TRANSITION_RUN_ID GITHUB_REPOSITORY GITHUB_WORKFLOW_REF GITHUB_SHA \
+  GITHUB_WORKSPACE
 FIXTURE=$(mktemp -d "${TMPDIR:-/tmp}/transition-authority-e2e.XXXXXX")
 trap '/usr/bin/rm -rf -- "$FIXTURE"' EXIT
 REPO=$FIXTURE/repo
