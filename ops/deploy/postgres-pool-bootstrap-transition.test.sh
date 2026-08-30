@@ -132,6 +132,7 @@ git -C "$REPO" add .
 git -C "$REPO" commit -qm 'test: installed legacy main'
 git -C "$REPO" push -q -u origin main
 BASE_SHA=$(git -C "$REPO" rev-parse HEAD)
+export SOCIAL_MONITOR_DEPLOY_TEST_A0=$BASE_SHA
 for component in frontend backend control; do
   printf '%s\n' "$BASE_SHA" > "$STATE/$component.sha"
 done
@@ -485,7 +486,6 @@ if grep -q '^already-deployed-or-newer=' <<< "$daily_priority_output"; then
   exit 1
 fi
 [[ ! -e $STATE/postgres-pool-bootstrap.sha ]]
-
 # Requesting ancestor A while integration is already at B repairs only the
 # missing bootstrap marker. The stale control and backend markers stay intact.
 TEST_PHASE=already-newer-bootstrap-recovery
