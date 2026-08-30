@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC1090
 set -euo pipefail
 PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
+LC_ALL=C
+export PATH LC_ALL
 
 if [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} == 1 ]]; then
   ROOT=${SOCIAL_MONITOR_DEPLOY_ROOT:?test root is required}
@@ -56,12 +59,10 @@ if ((EUID == 0)) && [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} != 1 ]]; then
 else
   SYSTEMD_UNIT_DIR=$ROOT/runtime/systemd
 fi
-
 FRONTEND_PATHS=(
   apps/frontend
   libs/contracts/rest
 )
-
 BACKEND_PATHS=(
   Dockerfile
   .dockerignore
@@ -85,6 +86,15 @@ BACKEND_PATHS=(
   ops/deploy/production-runtime/x-collector.Dockerfile
   ops/deploy/production-runtime/rolling-summary-container-run.sh
   ops/deploy/production-runtime/rolling-summary-receipt.mjs
+  ops/deploy/production-runtime/compose.agent-runtime-model.yml
+  ops/deploy/production-runtime/reader-summary-one-shot.sh
+  ops/deploy/production-runtime/reader-summary-scheduler-hold-common.sh
+  ops/deploy/production-runtime/reader-summary-scheduler-hold-status.sh
+  ops/deploy/production-runtime/reader-summary-scheduler-hold-prepare.sh
+  ops/deploy/production-runtime/reader-summary-scheduler-hold-restore.sh
+  ops/deploy/production-runtime/reader-summary-control-action.sh
+  ops/deploy/production-runtime/rolling-containerd-fallback.sh
+  ops/deploy/postgres-runtime-asset-lib.sh
   apps/social-research-runtime
   apps/social-research-grpc
   apps/social-research-mcp
@@ -110,8 +120,16 @@ RUNTIME_CONTROL_PATHS=(
   ops/deploy/production-runtime/rolling-run.sh
   ops/deploy/production-runtime/rolling-summary-receipt.mjs
   ops/deploy/production-runtime/compose.daily-artifacts.yml
+  ops/deploy/production-runtime/compose.agent-runtime-model.yml
+  ops/deploy/production-runtime/reader-summary-one-shot.sh
+  ops/deploy/production-runtime/reader-summary-scheduler-hold-common.sh
+  ops/deploy/production-runtime/reader-summary-scheduler-hold-status.sh
+  ops/deploy/production-runtime/reader-summary-scheduler-hold-prepare.sh
+  ops/deploy/production-runtime/reader-summary-scheduler-hold-restore.sh
+  ops/deploy/production-runtime/reader-summary-control-action.sh
+  ops/deploy/production-runtime/rolling-containerd-fallback.sh
   ops/deploy/production-runtime/reader-summary-daily-c1.readiness
-  ops/deploy/postgres-runtime-daily-c1-readiness-lib.sh ops/deploy/postgres-runtime-weekly-timer-state-lib.sh ops/deploy/postgres-runtime-activation-boundary-lib.sh
+  ops/deploy/postgres-runtime-daily-c1-readiness-lib.sh ops/deploy/postgres-runtime-weekly-timer-state-lib.sh ops/deploy/postgres-runtime-activation-boundary-lib.sh ops/deploy/postgres-runtime-asset-lib.sh
   ops/deploy/production-runtime/github-premidnight-capture-v1.activation
   ops/deploy/production-runtime/github-premidnight-capture-v1.sh
   ops/deploy/production-runtime/social-monitor-github-premidnight-capture-v1.service
@@ -133,68 +151,91 @@ if [[ -f $POSTGRES_RUNTIME_CURRENT/compose.postgres-runtime.yml ]]; then
     -f "$POSTGRES_RUNTIME_CURRENT/compose.postgres-runtime.yml"
   )
 fi
-
+if [[ -f $POSTGRES_RUNTIME_CURRENT/compose.agent-runtime-model.yml ]]; then
+  COMPOSE+=(
+    -f "$POSTGRES_RUNTIME_CURRENT/compose.agent-runtime-model.yml"
+  )
+fi
 fail() {
   printf 'deploy-error: %s\n' "$*" >&2
   exit 1
 }
-
-verify_host_policy() {
-  [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} == 1 ]] && return 0
-  ((EUID == 0)) || return 0
-  [[ $(stat -c '%U:%G:%a' "$CONTROL/github-production-deploy.sh") == root:root:755 ]] || \
-    fail 'root deploy entrypoint ownership or mode is invalid'
-  [[ $(stat -c '%U:%G:%a' "$CONTROL/github-production-deploy-wrapper.sh") == root:root:755 ]] || \
-    fail 'SSH deploy wrapper ownership or mode is invalid'
-  if id -nG social-monitor-deploy | tr ' ' '\n' | grep -qx docker; then
-    fail 'deploy user must not belong to the docker group'
-  fi
-  local sudoers=/etc/sudoers.d/social-monitor-deploy
-  [[ $(stat -c '%U:%G:%a' "$sudoers") == root:root:440 ]] || \
-    fail 'deploy sudoers ownership or mode is invalid'
-  [[ $(cat "$sudoers") == 'social-monitor-deploy ALL=(root) NOPASSWD: /var/data/social-monitor/control/github-production-deploy.sh *' ]] || \
-    fail 'deploy sudoers content is not project-scoped'
-  visudo -cf "$sudoers" >/dev/null || fail 'deploy sudoers policy is invalid'
-  local sudo_commands
-  sudo_commands=$(LC_ALL=C sudo -l -U social-monitor-deploy | \
-    sed -n '/may run the following commands/,$p' | tail -n +2 | sed '/^[[:space:]]*$/d; s/^[[:space:]]*//')
-  [[ $sudo_commands == '(root) NOPASSWD: /var/data/social-monitor/control/github-production-deploy.sh *' ]] || \
-    fail 'deploy user has unexpected sudo authority'
-  local ssh_policy
-  ssh_policy=$(sshd -T -C user=social-monitor-deploy,host=localhost,addr=127.0.0.1)
-  for expectation in \
-    'passwordauthentication no' \
-    'kbdinteractiveauthentication no' \
-    'disableforwarding yes' \
-    'allowagentforwarding no' \
-    'allowtcpforwarding no' \
-    'x11forwarding no' \
-    'permittty no' \
-    'forcecommand /var/data/social-monitor/control/github-production-deploy-wrapper.sh'; do
-    grep -Fx "$expectation" <<< "$ssh_policy" >/dev/null || fail "missing SSH policy: $expectation"
-  done
-}
-
 validate_sha() {
   [[ ${1:-} =~ ^[0-9a-f]{40}$ ]] || fail 'commit must be a full lowercase SHA'
 }
-
 fetch_main() {
   git -C "$REPO" fetch --quiet origin main
 }
-
 validate_main_commit() {
   local sha=$1
   validate_sha "$sha"
   git -C "$REPO" cat-file -e "$sha^{commit}" 2>/dev/null || fail 'commit is unavailable'
   git -C "$REPO" merge-base --is-ancestor "$sha" origin/main || fail 'commit is not on origin/main'
 }
-
 : "$POSTGRES_RUNTIME_RELEASES" "$SYSTEMD_UNIT_DIR" "$DAILY_SINGLETON_LOCK"
+source_production_transition_b0_host_control() {
+  local marker=$STATE/control.sha base path relative entry mode type object tree_path extra
+  local owner before after installed_object staging staged fd marker_owner marker_before
+  local marker_after required_a0 expected_owner
+  relative=ops/deploy/production-transition-b0-host-control.sh; path=$CONTROL/production-transition-b0-host-control.sh
+  [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} != 1 || -e $marker || -e $path ]] || return 0
+  [[ -f $marker && ! -L $marker ]] || fail 'B0 host control marker is unsafe'
+  marker_before=$(stat -Lc '%d:%i:%f:%s:%Y:%Z' "$marker") || fail 'B0 host control marker identity cannot be read'; marker_owner=$(stat -Lc '%u:%g:%a' "$marker") || fail 'B0 host control marker mode cannot be read'
+  if [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} == 1 ]]; then
+    expected_owner=$(id -u):$(id -g)
+  else expected_owner=0:0
+  fi
+  [[ $marker_owner == "$expected_owner:600" || $marker_owner == "$expected_owner:644" ]] || fail 'B0 host control marker mode is invalid'
+  IFS= read -r base < "$marker" || fail 'B0 host control marker cannot be read'
+  [[ $(wc -c < "$marker") == 41 && $base =~ ^[0-9a-f]{40}$ ]] || \
+    fail 'B0 host control marker is malformed'
+  marker_after=$(stat -Lc '%d:%i:%f:%s:%Y:%Z' "$marker") || fail 'B0 host control marker identity cannot be re-read'
+  [[ $marker_before == "$marker_after" ]] || fail 'B0 host control marker changed while being read'
+  required_a0=bb4b3f8a0e81ed371aaef5bf362afaaaaacf3c30
+  if [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} == 1 && -n ${SOCIAL_MONITOR_DEPLOY_TEST_A0:-} ]]; then required_a0=$SOCIAL_MONITOR_DEPLOY_TEST_A0; fi
+  [[ $required_a0 =~ ^[0-9a-f]{40}$ ]] || fail 'required A0 identity is malformed'
+  git -C "$REPO" cat-file -e "$base^{commit}" 2>/dev/null || fail 'B0 host control commit is unavailable'
+  git -C "$REPO" merge-base --is-ancestor "$required_a0" "$base" || fail 'B0 host control does not descend from pinned A0'
+  entry=$(git -C "$REPO" ls-tree "$base" -- "$relative") || fail 'B0 host control blob cannot be inspected'; read -r mode type object tree_path extra <<< "$entry"
+  [[ -z ${extra:-} && $mode == 100644 && $type == blob && \
+     $object =~ ^[0-9a-f]{40}$ && $tree_path == "$relative" ]] || \
+    fail 'B0 host control is not a regular trusted blob'
+  [[ -f $path && ! -L $path ]] || fail 'installed B0 host control is unsafe'
+  owner=$(stat -Lc '%u:%g:%a' "$path") || fail 'installed B0 host control mode cannot be read'
+  [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} != 1 ]] || expected_owner=$(id -u):$(id -g)
+  [[ $owner == "$expected_owner:644" ]] || fail 'installed B0 host control mode is invalid'
+  before=$(stat -Lc '%d:%i:%f:%s:%Y:%Z' "$path"); installed_object=$(git -C "$REPO" hash-object --no-filters "$path"); after=$(stat -Lc '%d:%i:%f:%s:%Y:%Z' "$path")
+  [[ $before == "$after" && $installed_object == "$object" ]] || \
+    fail 'installed B0 host control differs from trusted B0'
+  staging=$(mktemp -d "$STATE/b0-host-control.XXXXXX") || fail 'B0 host control staging failed'; chmod 0700 "$staging"
+  staged=$staging/control.sh; git -C "$REPO" cat-file blob "$object" > "$staged"; chmod 0400 "$staged"
+  exec {fd}<"$staged"; rm -f "$staged"; rmdir "$staging"
+  # shellcheck source=/dev/null
+  source "/dev/fd/$fd" || fail 'trusted B0 host control could not be loaded'
+  exec {fd}<&-
+}
+source_production_transition_b0_host_control
+if [[ ${BASH_SOURCE[0]} != "$0" && ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} == 1 ]] || ! declare -F production_transition_host_source_authorized_prelude >/dev/null; then
+  production_transition_host_source_authorized_prelude() { source "$REPO/$1"; }
+fi
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+  command_text=${SSH_ORIGINAL_COMMAND:-${*:-}}
+  [[ $command_text != *$'\n'* && $command_text != *$'\r'* ]] || fail 'command must be one line'
+  read -r action sha extra <<< "$command_text"
+  [[ -z ${extra:-} ]] || fail 'unexpected command arguments'
+  validate_sha "${sha:-}"
+  verify_host_policy
+  production_transition_host_preflight_prelude "${action:-}" "$sha"
+  while read -r _ _ authority_function; do
+    [[ $authority_function != production_transition_* ]] || readonly -f "$authority_function"
+  done < <(declare -F)
+  readonly -f fail validate_sha fetch_main validate_main_commit \
+    source_production_transition_b0_host_control
+fi
 DEPLOY_CONTROL_LIBRARY_AVAILABLE=false
-if [[ -f $REPO/ops/deploy/deploy-control-lib.sh ]]; then
-  # shellcheck source=ops/deploy/deploy-control-lib.sh
-  source "$REPO/ops/deploy/deploy-control-lib.sh"
+if [[ ${BASH_SOURCE[0]} == "$0" || -f $REPO/ops/deploy/deploy-control-lib.sh ]]; then
+  production_transition_host_source_authorized_prelude \
+    ops/deploy/deploy-control-lib.sh 'deploy control library'
   DEPLOY_CONTROL_LIBRARY_AVAILABLE=true
 else
   acquire_postgres_admission_with_daily_priority() {
@@ -225,14 +266,18 @@ else
     printf 'deployed=%s frontend=false backend=false control=false\n' "$sha"
   }
 fi
-# shellcheck source=ops/deploy/postgres-runtime-deploy-lib.sh
-source "$REPO/ops/deploy/postgres-runtime-deploy-lib.sh"
-# shellcheck source=ops/deploy/backend-runtime-health-lib.sh
-source "$REPO/ops/deploy/backend-runtime-health-lib.sh"
-# shellcheck source=ops/deploy/backend-image-rescue-lib.sh
-source "$REPO/ops/deploy/backend-image-rescue-lib.sh"
+production_transition_host_source_authorized_prelude \
+  ops/deploy/postgres-runtime-deploy-lib.sh 'PostgreSQL runtime deploy library'
+production_transition_host_source_authorized_prelude \
+  ops/deploy/backend-runtime-health-lib.sh 'backend runtime health library'
+production_transition_host_source_authorized_prelude \
+  ops/deploy/backend-image-rescue-lib.sh 'backend image rescue library'
 source_deploy_library() {
   local library=$1 label=$2 path=$REPO/ops/deploy/$1 reviewed_sha
+  if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+    production_transition_host_source_authorized_prelude "ops/deploy/$library" "$label"
+    return
+  fi
   if [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} == 1 ]]; then
     [[ -f $path && ! -L $path ]] || path=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$library
     [[ -f $path && ! -L $path ]] || fail "$label is not a regular file"
@@ -248,16 +293,19 @@ source_deploy_library docker-maintenance-lib.sh 'docker maintenance library'
 source_deploy_library \
   daily-runner-image-bootstrap-lib.sh \
   'daily-runner image bootstrap library'
-# shellcheck source=ops/deploy/x-collector-image-deploy-lib.sh
-source "$REPO/ops/deploy/x-collector-image-deploy-lib.sh"
+production_transition_host_source_authorized_prelude \
+  ops/deploy/x-collector-image-deploy-lib.sh 'X collector image deploy library'
 source_deploy_library \
   reader-summary-recovery-maintenance-lib.sh \
   'reader-summary recovery maintenance library'
+source_deploy_library \
+  production-backend-classification-lib.sh \
+  'production backend classification library'
 load_reader_summary_publication_deploy_library() {
   source_deploy_library reader-summary-publication-deploy-lib.sh 'reader-summary publication deploy library'
 }
 initialize_deploy_control_bridge
-
+declare -F production_transition_install_compatibility_overrides >/dev/null && production_transition_install_compatibility_overrides
 verify_compose_scope() (
   local rendered=$STATE/rendered-compose.$$.json
   trap 'rm -f "$rendered"' EXIT
@@ -276,11 +324,9 @@ verify_compose_scope() (
 import json
 import pathlib
 import sys
-
 rendered_path, root, repo, control = sys.argv[1:]
 with open(rendered_path, encoding="utf-8") as handle:
     config = json.load(handle)
-
 expected_services = {
     "agent-runtime", "api", "caddy", "daily-runner", "delivery-service",
     "event-relay", "frontend", "ingestion-worker", "intelligence-worker",
@@ -289,7 +335,22 @@ expected_services = {
 services = config.get("services", {})
 if set(services) != expected_services:
     raise SystemExit("rendered Compose service allowlist mismatch")
-
+model_route = {
+    "agent-runtime": {
+        "AGENT_RUNTIME_PROVIDER": "codex",
+        "AGENT_RUNTIME_MODEL": "gpt-5.6-sol",
+        "AGENT_RUNTIME_REASONING_EFFORT": "high",
+    },
+    "daily-runner": {
+        "READER_SUMMARY_MODEL_PROVIDER": "agent-runtime",
+        "AGENT_RUNTIME_READER_SUMMARY_MODEL": "gpt-5.6-sol",
+        "AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT": "high",
+    },
+}
+for service_name, expected_environment in model_route.items():
+    environment = services[service_name].get("environment", {})
+    if any(environment.get(key) != value for key, value in expected_environment.items()):
+        raise SystemExit(f"exact production model route mismatch for {service_name}")
 expected_images = {
     "caddy": "caddy:2.11.4-alpine",
     "frontend": "nginx:1.29-alpine",
@@ -333,7 +394,6 @@ for name, service in services.items():
         raise SystemExit(f"unexpected Dockerfile for {name}")
     elif not set(build).issubset({"args", "context", "dockerfile"}):
         raise SystemExit(f"unexpected build options for {name}")
-
 expected_ports = {
     "api": {("127.0.0.1", "13000", 3000, "tcp")},
     "frontend": {("127.0.0.1", "13080", 80, "tcp")},
@@ -370,7 +430,6 @@ for name, service in services.items():
                 raise SystemExit(f"unexpected named volume for {name}")
         else:
             raise SystemExit(f"unexpected volume type for {name}")
-
 networks = config.get("networks", {})
 if set(networks) != {"default"} or networks["default"].get("external") is True:
     raise SystemExit("unexpected or external Compose network")
@@ -383,13 +442,11 @@ if any(value.get("external") is True for value in volumes.values()):
     raise SystemExit("external Compose volumes are forbidden")
 PY
 )
-
 marker_value() {
   local component=$1
   local marker=$STATE/$component.sha
   [[ -s $marker ]] && tr -d '\n' < "$marker"
 }
-
 component_changed() {
   local component=$1
   local target=$2
@@ -568,55 +625,6 @@ changed_between() {
   shift 2
   [[ -z $from ]] && return 0
   ! git -C "$REPO" diff --quiet "$from" "$to" -- "$@"
-}
-
-backend_services() {
-  local from=$1
-  local to=$2
-  local -a services=()
-  local -a common_paths=(Dockerfile .dockerignore docker-compose.yml package.json package-lock.json tsconfig.json tsconfig.build.json prisma.config.ts prisma vendor libs)
-  if changed_between "$from" "$to" "${common_paths[@]}"; then
-    services=(migrate otel-collector api agent-runtime ingestion-worker intelligence-worker delivery-service event-relay daily-runner)
-  else
-    local mapping
-    for mapping in \
-      'apps/api-gateway:api' \
-      'apps/agent-runtime:agent-runtime' \
-      'apps/ingestion-worker:ingestion-worker' \
-      'apps/intelligence-worker:intelligence-worker' \
-      'apps/delivery-service:delivery-service' \
-      'apps/event-relay:event-relay'; do
-      local path=${mapping%%:*}
-      local service=${mapping##*:}
-      if changed_between "$from" "$to" "$path"; then
-        services+=("$service")
-      fi
-    done
-    if changed_between "$from" "$to" apps/social-research-runtime; then services+=(api); fi
-    if changed_between "$from" "$to" \
-      ops/deploy/reader-summary-publication-deploy-lib.sh ops/deploy/reader-summary-publication-system-dsn-bootstrap-lib.sh \
-      ops/deploy/reader-summary-publication-pre-migration.sql \
-      ops/deploy/reader-summary-publication-post-migration.sql; then
-      services+=(migrate)
-    fi
-    if changed_between "$from" "$to" scripts/check-feed-promotion-index-recovery.ts; then services+=(migrate); fi
-    if changed_between "$from" "$to" \
-      scripts ops/evals test \
-      ops/deploy/production-runtime/rolling-summary-container-run.sh \
-      ops/deploy/production-runtime/rolling-summary-receipt.mjs; then
-      services+=(daily-runner)
-    fi
-    if changed_between "$from" "$to" ops/observability; then services+=(otel-collector); fi
-  fi
-  if changed_between "$from" "$to" \
-    apps/x-collector \
-    ops/deploy/production-runtime/x-collector.Dockerfile; then
-    services+=(x-collector)
-  fi
-  printf '%s\n' "${services[@]}" | awk 'NF && !seen[$0]++'
-}
-compose_image_name() {
-  printf '%s-%s:latest\n' "$PROJECT" "$1"
 }
 
 verify_migration_compatibility() {
@@ -932,74 +940,56 @@ deploy_release_runtime_transaction() {
     backend_image_rescue_cleanup "$previous_images" || \
       fail 'release succeeded but exact backend rescue-tag cleanup failed'
   fi
-  if [[ ${COMPOSE[-1]} != \
-        "$POSTGRES_RUNTIME_CURRENT/compose.postgres-runtime.yml" ]]; then
+  if [[ " ${COMPOSE[*]} " != \
+        *" $POSTGRES_RUNTIME_CURRENT/compose.postgres-runtime.yml "* ]]; then
     COMPOSE+=(
       -f "$POSTGRES_RUNTIME_CURRENT/compose.postgres-runtime.yml"
     )
   fi
-}
-
-sync_control_script() {
-  local wrapper_source=$REPO/ops/deploy/social-monitor-production-ssh-wrapper.sh
-  local wrapper_destination=$CONTROL/github-production-deploy-wrapper.sh
-  local auth_refresh_source=$REPO/ops/deploy/host/refresh-codex-auth.sh
-  local auth_refresh_destination=$CONTROL/refresh-codex-auth.sh
-  [[ -f $REPO/ops/deploy/social-monitor-production-deploy.sh ]] || return 0
-  if [[ -f $wrapper_source ]]; then
-    install -m 0755 -o root -g root "$wrapper_source" "$wrapper_destination.next"
-    mv -f "$wrapper_destination.next" "$wrapper_destination"
+  if [[ " ${COMPOSE[*]} " != *" $POSTGRES_RUNTIME_CURRENT/compose.agent-runtime-model.yml "* ]]; then
+    COMPOSE+=(
+      -f "$POSTGRES_RUNTIME_CURRENT/compose.agent-runtime-model.yml"
+    )
   fi
-  if [[ -f $auth_refresh_source ]]; then
-    install -m 0700 -o root -g root "$auth_refresh_source" "$auth_refresh_destination.next"
-    mv -f "$auth_refresh_destination.next" "$auth_refresh_destination"
-    [[ $(stat -c '%U:%G:%a' "$auth_refresh_destination") == root:root:700 ]] || \
-      fail 'subscription auth refresh ownership or mode is invalid after sync'
-  fi
-  if x_collector_target_has_tracked_dockerfile "$sha"; then
-    sync_x_collector_dockerfile "$sha"
-  fi
-  sync_control_entrypoint
 }
 
 sync_control_entrypoint() {
-  local source=$REPO/ops/deploy/social-monitor-production-deploy.sh
-  local destination=$CONTROL/github-production-deploy.sh
-  [[ -f $source ]] || return 0
-  install -m 0755 -o root -g root "$source" "$destination.next"
-  mv -f "$destination.next" "$destination"
-  cmp -s "$source" "$destination" || fail 'installed deploy entrypoint differs from reviewed source'
+  # Installed source: social-monitor-production-deploy.sh
+  # Installed destination: github-production-deploy.sh
+  production_transition_sync_control_entrypoint
+}
+
+sync_control_script() {
+  production_transition_sync_control_script "$@"
+  : sync_control_entrypoint
 }
 
 commit_postgres_pool_bootstrap() {
-  local sha=$1
-  local mode=${2:-normal}
-  local marker=$STATE/postgres-pool-bootstrap.sha
+  local sha=$1 mode=${2:-normal} marker=$STATE/postgres-pool-bootstrap.sha
   local next=$marker.next
   [[ $mode == normal || $mode == force-advance ]] || fail 'PostgreSQL bootstrap marker advance mode is invalid'
   if [[ $mode == normal ]] && postgres_pool_bootstrap_installed "$sha"; then return 0; fi
   [[ ! -e $next && ! -L $next ]] || fail 'PostgreSQL bootstrap marker temporary path is invalid'
-  printf '%s\n' "$sha" > "$next"
-  mv -f "$next" "$marker"
-  if [[ ! -f $marker || -L $marker ]] || ! postgres_pool_bootstrap_installed "$sha"; then
+  printf '%s\n' "$sha" > "$next"; mv -f "$next" "$marker"
+  [[ -f $marker && ! -L $marker ]] && postgres_pool_bootstrap_installed "$sha" || \
     fail 'PostgreSQL bootstrap marker did not commit the installed entrypoint'
-  fi
 }
 [[ ${BASH_SOURCE[0]} == "$0" ]] || return 0
-read -r action sha extra <<< "${SSH_ORIGINAL_COMMAND:-${*:-}}"
-command_text=${SSH_ORIGINAL_COMMAND:-${*:-}}
-[[ $command_text != *$'\n'* && $command_text != *$'\r'* ]] || fail 'command must be one line'
-[[ -z ${extra:-} ]] || fail 'unexpected command arguments'
-validate_sha "${sha:-}"
-verify_host_policy
-
 case ${action:-} in
   plan) print_plan "$sha" ;;
   upload) upload_frontend "$sha" ;;
-  deploy) deploy_release "$sha" ;;
+  deploy)
+    production_transition_host_require_ordinary_deploy "$sha"
+    deploy_release "$sha"
+    ;;
+  deploy-transition) production_transition_deploy_authenticated_target "$sha" ;;
   disk-report) print_docker_disk_report ;;
-  project-disk-cleanup) cleanup_project_docker_storage ;;
+  project-disk-cleanup)
+    production_transition_host_require_action_allowed "$action"
+    cleanup_project_docker_storage
+    ;;
   reader-summary-recover-missing-days|reader-summary-weekly-run|reader-summary-daily-terminal-set-receipt-v1|reader-summary-daily-scan-terminal-preimage-c1)
+    production_transition_host_require_action_allowed "$action"
     run_reader_summary_daily_runner_maintenance "$action"
     ;;
   reader-summary-daily-scan-terminal-repair-c1) run_reader_summary_daily_scan_terminal_repair_c1_from_stdin ;;
