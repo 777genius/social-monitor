@@ -664,7 +664,7 @@ rm -f "$STATE/control.sha"
 cp "$STATE/postgres-pool-bootstrap.sha" \
   "$FIXTURE/missing-control-pool-marker-before"
 assert_current_recovery_fails \
-  'control marker is not a regular non-symlink file'
+  'B0 host control marker is unsafe'
 cmp -s "$FIXTURE/missing-control-pool-marker-before" \
   "$STATE/postgres-pool-bootstrap.sha"
 
@@ -689,7 +689,7 @@ prepare_historical_reconciliation
 printf 'malformed-control\n' > "$STATE/control.sha"
 cp "$STATE/postgres-pool-bootstrap.sha" \
   "$FIXTURE/malformed-control-pool-before"
-assert_current_recovery_fails 'control marker is malformed'
+assert_current_recovery_fails 'B0 host control marker is malformed'
 cmp -s "$FIXTURE/malformed-control-pool-before" \
   "$STATE/postgres-pool-bootstrap.sha"
 
@@ -708,7 +708,7 @@ assert_current_recovery_fails \
 TEST_PHASE=already-newer-unavailable-control-marker
 prepare_historical_reconciliation
 printf '%s\n' "$UNAVAILABLE_SHA" > "$STATE/control.sha"
-assert_current_recovery_fails 'control marker commit is unavailable'
+assert_current_recovery_fails 'B0 host control commit is unavailable'
 [[ $(<"$STATE/postgres-pool-bootstrap.sha") == "$TARGET_SHA" ]]
 
 TEST_PHASE=already-newer-pool-marker-symlink
@@ -728,7 +728,7 @@ printf '%s\n' "$HISTORICAL_CONTROL_SHA" \
 rm -f "$STATE/control.sha"
 ln -s "$FIXTURE/symlink-control-target" "$STATE/control.sha"
 assert_current_recovery_fails \
-  'control marker is not a regular non-symlink file'
+  'B0 host control marker is unsafe'
 [[ -L $STATE/control.sha ]]
 [[ $(<"$STATE/postgres-pool-bootstrap.sha") == "$TARGET_SHA" ]]
 
