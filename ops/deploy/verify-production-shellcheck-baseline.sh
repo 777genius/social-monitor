@@ -25,4 +25,3 @@ if (findings.length !== expected.size || actual.size !== expected.size ||
   process.exit(1);
 }
 NODE
-shellcheck -S warning -x -e 2034 "${deploy_files[@]}"
