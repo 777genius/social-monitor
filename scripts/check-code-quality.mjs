@@ -12,16 +12,6 @@ const sessionDiscoveryRestControllers = new Set([
   "libs/identity/interfaces/rest/auth-session.controller.ts",
 ]);
 
-const productionLineBudgets = new Map([
-  ["libs/delivery/interfaces/rest/delivery-rest.module.ts", 600],
-  ["libs/monitoring/interfaces/rest/monitoring-rest.module.ts", 700],
-  ["libs/summary/interfaces/rest/summary-rest.module.ts", 600],
-  [
-    "libs/summary/adapters/model/openai-responses-summary-model.adapter.ts",
-    1000,
-  ],
-]);
-
 const directIdentityGenerationAllowedFiles = new Set([
   "libs/shared-kernel/src/id-generator.ts",
 ]);
@@ -207,7 +197,7 @@ for (const file of [
   }
 
   const normalized = normalizedPath(file);
-  const maxLines = productionLineBudgets.get(normalized) ?? 500;
+  const maxLines = 500;
   const lineCount = source.split("\n").length;
   if (!normalized.includes("/generated/") && lineCount > maxLines) {
     addViolation(

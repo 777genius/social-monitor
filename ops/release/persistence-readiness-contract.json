@@ -17,8 +17,18 @@
       "moduleFile": "libs/monitoring/interfaces/rest/monitoring-rest.module.ts",
       "context": "monitoring-api",
       "owner": "monitoring-owner",
+      "adapterSourceFiles": [
+        "libs/monitoring/interfaces/rest/monitoring-persistence.providers.ts",
+        "libs/monitoring/interfaces/rest/monitoring-scan-dispatch.providers.ts",
+        "libs/monitoring/interfaces/rest/monitoring-scan-queue.providers.ts",
+        "libs/monitoring/interfaces/rest/monitoring-scheduler.providers.ts",
+        "libs/monitoring/interfaces/rest/monitoring-source-credential.providers.ts"
+      ],
       "inMemoryStateAdapters": [
         "InMemoryInterestRepository",
+        "InMemoryOutboxAdapter",
+        "InMemoryScanQueueAdapter",
+        "InMemoryScanSchedulerDecisionHistoryRepository",
         "InMemorySourceBindingRepository",
         "InMemorySourceCredentialRepository",
         "InMemorySourceCredentialSecretVault",
@@ -27,7 +37,7 @@
         "InMemoryQueuePublisher",
         "InMemoryIdempotencyAdapter"
       ],
-      "risk": "interests, source bindings, credentials, scan policies, scan jobs and idempotency records can opt into durable adapters, but default local mode is still process-local",
+      "risk": "interests, source bindings, credentials, scan policies, scan jobs, scheduler decisions, queued scan commands, outbox events and idempotency records can opt into durable adapters, but default local mode is still process-local",
       "durableReplacementPlan": "Monitoring repositories, outbox events and idempotency records can opt into Prisma with MONITORING_PERSISTENCE=prisma; scan command publishing can opt into RabbitMQ with MONITORING_SCAN_QUEUE=rabbitmq; event-relay can dispatch Prisma outbox events to RabbitMQ with start:event-relay; remaining blocker is deployment evidence with shared DATABASE_URL/RABBITMQ_URL"
     },
     {
