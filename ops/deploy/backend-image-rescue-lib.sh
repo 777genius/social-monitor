@@ -316,12 +316,13 @@ backend_image_rescue_remove_manifest_tag() {
   local pin_id pin_container_name status running restarting pin_image_id
   local project_label purpose_label extra
 
-  backend_image_rescue_remove_tag "$rescue_tag" && return 0
-  [[ $service == daily-runner ]] || return 1
-
-  current_rescue_id=$(backend_image_rescue_image_id "$rescue_tag") || return 1
+  if ! current_rescue_id=$(backend_image_rescue_image_id "$rescue_tag"); then
+    return 0
+  fi
   [[ $expected_image_id =~ ^sha256:[0-9a-f]{64}$ && \
      $current_rescue_id == "$expected_image_id" ]] || return 1
+  backend_image_rescue_remove_tag "$rescue_tag" && return 0
+  [[ $service == daily-runner ]] || return 1
 
   pin_name=${PROJECT}-daily-runner-image-pin
   pin_record=$(docker inspect "$pin_name" --format \
@@ -950,7 +951,7 @@ rollback_backend_and_runtime_control() {
 backend_image_rescue_cleanup() {
   local state_file=$1
   [[ -e $state_file || -L $state_file ]] || return 0
-  backend_image_rescue_validate "$state_file" || return 1
+  backend_image_rescue_validate_structure "$state_file" || return 1
   local record service policy source_kind source_ref image_id rescue_tag extra
   local phase_file
   local status=0
@@ -971,13 +972,14 @@ backend_image_rescue_reconcile_completed_state() {
   local backend_marker=$2
   local target phase
 
-  backend_image_rescue_validate "$state_file" || return 1
+  backend_image_rescue_validate_structure "$state_file" || return 1
   phase=$(backend_image_rescue_read_phase "$state_file") || return 1
   target=$(backend_image_rescue_manifest_target "$state_file") || return 1
   if [[ -n $backend_marker && $target == "$backend_marker" ]]; then
     backend_image_rescue_cleanup "$state_file" || return 1
     return 0
   fi
+  backend_image_rescue_validate "$state_file" || return 1
   case $phase in
     replacement-started)
       rollback_backend_images "$state_file" || return 1

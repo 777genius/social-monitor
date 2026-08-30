@@ -1024,6 +1024,18 @@ reconcile_completed_backend_image_rescues
 [[ ! -e $reconciled_state ]]
 assert_no_rescue_refs
 
+# The singleton deploy retry also completes cleanup when the exact tag was
+# already removed but the process died before deleting its ledger.
+reset_case reconcile-success-after-tag-removal
+reconciled_state=$(prepare_reconcile_state "$SHA" prepared reconciled-api)
+reconciled_tag=$(backend_image_rescue_tag "$SHA" api)
+docker image rm "$reconciled_tag" >/dev/null
+printf '%s\n' "$SHA" > "$STATE/backend.sha"
+reconcile_completed_backend_image_rescues
+[[ ! -e $reconciled_state ]]
+[[ ! -e $(backend_image_rescue_phase_file "$reconciled_state") ]]
+assert_no_rescue_refs
+
 # A completed different-release rescue whose replacement started is reconciled
 # through the normal backend rollback path before its exact tags are removed.
 reset_case reconcile-stale-replacement-started
