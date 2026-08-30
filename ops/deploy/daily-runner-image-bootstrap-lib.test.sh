@@ -762,13 +762,13 @@ for legacy_state in status running paused restarting dead oom-killed error \
   assert_events_exclude $'config-id\t'
 done
 
-# Configuration must be inspected by the immutable ID before and after the
-# historical build, never through the mutable Compose tag.
+# Configuration must be inspected by immutable ID for admission, exact
+# inheritance, and post-build revalidation, never through the mutable tag.
 reset_case
 configure_unlabelled_base
 daily_runner_image_bootstrap_before_rescue "$PREVIOUS_SHA" "$TARGET_SHA"
 [[ $(lookup_id "$COMPOSE_TAG") == "$CANDIDATE_ID" ]]
-[[ $(grep -cF -- $'config-id\t'"$BASE_ID" "$EVENTS") == 2 ]]
+[[ $(grep -cF -- $'config-id\t'"$BASE_ID" "$EVENTS") == 3 ]]
 assert_events_exclude $'config-id\tsocial-monitor-prod-intelligence-worker:latest'
 
 # Archive traversal and symlink entries never reach Docker.
