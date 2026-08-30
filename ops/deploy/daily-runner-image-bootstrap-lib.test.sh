@@ -124,7 +124,7 @@ backend_image_rescue_image_id() {
 }
 
 backend_image_rescue_image_config() {
-  local image=$1
+  local image=$1 read_count
 
   printf 'config-id\t%s\n' "$image" >> "$EVENTS"
   case $image in
@@ -139,9 +139,18 @@ backend_image_rescue_image_config() {
       ;;
     *)
       [[ -n $(lookup_id "$image") ]] || return 1
-      printf '%s\n' "$BUILT_CONFIG"
+      read_count=$(grep -Fc $'config-id\t'"$image" "$EVENTS")
+      if ((read_count <= BUILT_CONFIG_UNSTABLE_READS)); then
+        printf '%s\n' "$BUILT_CONFIG_TRANSIENT"
+      else
+        printf '%s\n' "$BUILT_CONFIG"
+      fi
       ;;
   esac
+}
+
+sleep() {
+  printf 'sleep\t%s\n' "$*" >> "$EVENTS"
 }
 
 fake_compose() {
@@ -242,6 +251,7 @@ docker() {
         "$LEGACY_RUNTIME_CONTAINER_NUMBER"
       ;;
     build:*)
+      [[ ${BUILDX_NO_DEFAULT_ATTESTATIONS:-} == 1 ]] || return 73
       [[ -n $(lookup_id "$BASE_TAG") ]] || return 72
       shift
       while (($# > 0)); do
@@ -359,6 +369,8 @@ reset_case() {
   BASE_TAG_CONFIG='["must-not-use"]|["config"]|"/app"|"node"|null'
   MUTATED_BASE_CONFIG=$EXPECTED_CONFIG
   BUILT_CONFIG=$EXPECTED_CONFIG
+  BUILT_CONFIG_TRANSIENT='["transient"]|["config"]|"/app"|"node"|null'
+  BUILT_CONFIG_UNSTABLE_READS=0
   BUILT_IMAGE_ID=$CANDIDATE_ID
   BUILT_REVISION_OVERRIDE=
   : > "$CONTAINERS"
@@ -831,6 +843,13 @@ BUILT_CONFIG='["unexpected"]|["config"]|"/app"|"node"|null'
 assert_fails_with 'historical daily-runner image config is unexpected' \
   daily_runner_image_bootstrap_before_rescue "$PREVIOUS_SHA" "$TARGET_SHA"
 [[ -z $(lookup_id "$COMPOSE_TAG") ]]
+assert_no_temporary_state
+
+reset_case
+BUILT_CONFIG_UNSTABLE_READS=1
+daily_runner_image_bootstrap_before_rescue "$PREVIOUS_SHA" "$TARGET_SHA"
+[[ $(lookup_id "$COMPOSE_TAG") == "$CANDIDATE_ID" ]]
+[[ $(grep -Fc $'sleep\t1' "$EVENTS") == 1 ]]
 assert_no_temporary_state
 
 reset_case
