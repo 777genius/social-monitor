@@ -510,7 +510,7 @@ daily_runner_image_bootstrap_before_rescue() (
 
   temporary_owned=true
   BUILDX_NO_DEFAULT_ATTESTATIONS=1 docker build \
-    --pull=false --provenance=false \
+    --pull=false --provenance=false --load \
     --file "$CONTROL/daily-runner.Dockerfile" \
     --label "org.opencontainers.image.revision=$previous_sha" \
     --tag "$temporary_tag" \

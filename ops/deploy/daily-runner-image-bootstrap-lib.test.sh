@@ -174,7 +174,7 @@ assert_compose_sentinel_fails_fast() {
 
 docker() {
   local source destination image_id revision
-  local tag='' label='' context='' argument='' provenance=''
+  local tag='' label='' context='' argument='' provenance='' loaded=false
   printf 'docker\t%s\n' "$*" >> "$EVENTS"
   case ${1:-}:${2:-} in
     container:ls)
@@ -260,6 +260,7 @@ docker() {
         case $argument in
           --pull=false) ;;
           --provenance=false) provenance=false ;;
+          --load) loaded=true ;;
           --file)
             [[ ${1:-} == "$CONTROL/daily-runner.Dockerfile" ]]
             shift
@@ -277,6 +278,7 @@ docker() {
       done
       [[ $label == "org.opencontainers.image.revision=$PREVIOUS_SHA" ]]
       [[ $provenance == false ]]
+      [[ $loaded == true ]]
       [[ -f $context/release-content.txt ]]
       [[ $(<"$context/release-content.txt") == historical ]]
       [[ ! -e $context/target-only.txt && ! -L $context/target-only.txt ]]
