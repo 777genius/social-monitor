@@ -126,6 +126,7 @@ cp "$PROJECT_ROOT/ops/deploy/reader-summary-publication-deploy-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/reader-summary-publication-system-dsn-bootstrap-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/reader-summary-publication-pre-migration.sql" \
   "$PROJECT_ROOT/ops/deploy/reader-summary-publication-post-migration.sql" \
+  "$PROJECT_ROOT/ops/deploy/production-transition-b0-host-control.sh" \
   "$REPO/ops/deploy/"
 printf 'base\n' > "$REPO/README.md"
 git -C "$REPO" add .
@@ -133,6 +134,7 @@ git -C "$REPO" commit -qm 'test: installed legacy main'
 git -C "$REPO" push -q -u origin main
 BASE_SHA=$(git -C "$REPO" rev-parse HEAD)
 export SOCIAL_MONITOR_DEPLOY_TEST_A0=$BASE_SHA
+install -m 0644 "$REPO/ops/deploy/production-transition-b0-host-control.sh" "$CONTROL/production-transition-b0-host-control.sh"
 for component in frontend backend control; do
   printf '%s\n' "$BASE_SHA" > "$STATE/$component.sha"
 done
@@ -465,7 +467,6 @@ chmod 0755 "$INSTALLED"
 cp "$INSTALLED" "$FIXTURE/installed-entrypoint-before-recovery"
 rm -f "$STATE/postgres-pool-bootstrap.sha"
 RECOVERY_ACTIVATION_LOG=$FIXTURE/already-newer-activation.log
-
 # A waiting daily run wins before already-newer recovery can commit a marker.
 TEST_PHASE=already-newer-daily-priority
 exec {daily_priority_fd}>"$DAILY_SINGLETON_LOCK"
@@ -508,7 +509,6 @@ grep -Fx 'postgres_pool_bootstrap=postgres-pool-v1' \
 grep -Fx "postgres_pool_bootstrap_sha=$CURRENT_SHA" \
   <<< "$recovered_plan" >/dev/null
 [[ ! -e $RECOVERY_ACTIVATION_LOG ]]
-
 install_historical_control_entrypoint() {
   rm -f "$INSTALLED"
   git -C "$REPO" show \
