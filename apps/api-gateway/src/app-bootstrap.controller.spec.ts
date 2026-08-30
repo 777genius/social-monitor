@@ -26,6 +26,7 @@ describe('AppBootstrapController', () => {
     new AppBootstrapReaderSummaryCache(
       new FixedClock(new Date('2026-08-29T00:00:00.000Z')),
       30_000,
+      300_000,
       10,
     );
 

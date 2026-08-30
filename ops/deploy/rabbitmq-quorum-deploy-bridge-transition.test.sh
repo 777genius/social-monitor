@@ -145,7 +145,8 @@ assert_real_bridge_target_assets() {
         ;;
       ops/deploy/backend-image-rescue-lib.sh)
         expected_digest=68f13213e6d1662d943185df7cdd1c11678261e76977021f74493c4e6c643b59
-        current_release_digest=97b99ce8726199b033656cd689ee2ad111b987f69b53bc05370fa508f5bcf393
+        alternate_digest=c8d363b8d64402ee77e42d62aac67ce9d4543135e328255557d2036c8ef3a398
+        current_release_digest=fc26f2546c2070ad5321c5b025ab12378237ed8501df7d2582d285ae00ac66bf
         ;;
       ops/deploy/deploy-control-bridge-lib.sh)
         expected_digest=e6f958555966b77d02b85da8d0b9195e13a200dcb2b19c8afc010fab6d28b65d

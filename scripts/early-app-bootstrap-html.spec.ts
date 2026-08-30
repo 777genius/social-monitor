@@ -92,7 +92,7 @@ describe('early app bootstrap HTML bridge', () => {
       });
 
       const response = bridge.take();
-      jest.advanceTimersByTime(3_000);
+      jest.advanceTimersByTime(12_000);
 
       expect(signal?.aborted).toBe(true);
       await expect(response).resolves.toBeNull();

@@ -251,6 +251,18 @@ backend_image_rescue_cleanup "$success_state"
   fail 'cleanup replay called Docker'
 assert_unrelated_preserved
 
+# A release-success cleanup remains replayable when a prior process removed the
+# exact rescue tag but died before deleting the immutable ledger.
+reset_case
+write_manifest api "$IMAGE_A"
+interrupted_state=$MANIFEST_STATE_FILE
+interrupted_tag=$(backend_image_rescue_tag "$SHA" api)
+remove_ref "$interrupted_tag"
+backend_image_rescue_cleanup "$interrupted_state"
+[[ ! -e $interrupted_state ]] || \
+  fail 'interrupted cleanup retry retained the immutable ledger'
+assert_unrelated_preserved
+
 # The fallback is daily-runner-only. A conflicting API rescue does not inspect
 # or remove the retention pin.
 reset_case

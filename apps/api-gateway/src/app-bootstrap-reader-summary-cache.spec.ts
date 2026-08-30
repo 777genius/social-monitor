@@ -28,7 +28,7 @@ const payload = (
 describe('AppBootstrapReaderSummaryCache', () => {
   it('uses tenant and workspace scope and expires with its injected clock', async () => {
     const clock = new MutableClock(1_000);
-    const cache = new AppBootstrapReaderSummaryCache(clock, 100, 10);
+    const cache = new AppBootstrapReaderSummaryCache(clock, 100, 1_000, 10);
     const loader = jest.fn(async (tenantId: string, workspaceId: string) =>
       payload(tenantId, workspaceId),
     );
@@ -48,13 +48,61 @@ describe('AppBootstrapReaderSummaryCache', () => {
     await cache.getOrLoad('tenant-1', 'workspace-1', () =>
       loader('tenant-1', 'workspace-1'),
     );
+    await Promise.resolve();
     expect(loader).toHaveBeenCalledTimes(3);
+  });
+
+  it('serves bounded stale data while a single refresh runs', async () => {
+    const clock = new MutableClock(1_000);
+    const cache = new AppBootstrapReaderSummaryCache(clock, 100, 1_000, 10);
+    const initial = payload('tenant-1', 'workspace-1');
+    const refreshed = payload('tenant-1', 'workspace-refreshed');
+    await cache.getOrLoad('tenant-1', 'workspace-1', async () => initial);
+    clock.advance(100);
+
+    let resolve!: (value: ReaderSummaryBootstrapResponseDto) => void;
+    const refresh = new Promise<ReaderSummaryBootstrapResponseDto>(
+      (complete) => {
+        resolve = complete;
+      },
+    );
+    const loader = jest.fn(() => refresh);
+
+    await expect(
+      cache.getOrLoad('tenant-1', 'workspace-1', loader),
+    ).resolves.toEqual(initial);
+    await expect(
+      cache.getOrLoad('tenant-1', 'workspace-1', loader),
+    ).resolves.toEqual(initial);
+    expect(loader).toHaveBeenCalledTimes(1);
+
+    resolve(refreshed);
+    await refresh;
+    await Promise.resolve();
+    await expect(
+      cache.getOrLoad('tenant-1', 'workspace-1', loader),
+    ).resolves.toEqual(refreshed);
+  });
+
+  it('blocks for a new value after the stale bound expires', async () => {
+    const clock = new MutableClock(1_000);
+    const cache = new AppBootstrapReaderSummaryCache(clock, 100, 1_000, 10);
+    await cache.getOrLoad('tenant-1', 'workspace-1', async () =>
+      payload('tenant-1', 'workspace-1'),
+    );
+    clock.advance(1_100);
+
+    const refreshed = payload('tenant-1', 'workspace-refreshed');
+    await expect(
+      cache.getOrLoad('tenant-1', 'workspace-1', async () => refreshed),
+    ).resolves.toEqual(refreshed);
   });
 
   it('collapses concurrent misses for the same fixed query identity', async () => {
     const cache = new AppBootstrapReaderSummaryCache(
       new MutableClock(1_000),
       100,
+      1_000,
       10,
     );
     let resolve!: (value: ReaderSummaryBootstrapResponseDto) => void;
@@ -80,6 +128,7 @@ describe('AppBootstrapReaderSummaryCache', () => {
     const cache = new AppBootstrapReaderSummaryCache(
       new MutableClock(1_000),
       100,
+      1_000,
       10,
     );
     const loader = jest.fn().mockRejectedValue(new Error('read failed'));
@@ -97,6 +146,7 @@ describe('AppBootstrapReaderSummaryCache', () => {
     const cache = new AppBootstrapReaderSummaryCache(
       new MutableClock(1_000),
       100,
+      1_000,
       1,
     );
     const loader = jest.fn(async (workspaceId: string) =>
