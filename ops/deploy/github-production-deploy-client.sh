@@ -591,6 +591,26 @@ plan_is_exact_release_b_legacy_transition() {
      $PLAN_POSTGRES_POOL_REPAIR == false ]]
 }
 
+plan_is_admitted_post_release_b_forward_state() {
+  local requested_target=$1 repository=${GITHUB_WORKSPACE:-.}
+  [[ $PLAN_BACKEND_BASE =~ ^[0-9a-f]{40}$ && \
+     $PLAN_POSTGRES_POOL_BOOTSTRAP == "$POSTGRES_POOL_BOOTSTRAP_VERSION" && \
+     $PLAN_POSTGRES_POOL_BOOTSTRAP_SHA =~ ^[0-9a-f]{40}$ && \
+     $PLAN_POSTGRES_POOL_REPAIR == false ]] || return 1
+  # The remote plan reports an installed bootstrap only after hashing the
+  # active deploy controller against this durable marker. Its ancestry is
+  # therefore the controller provenance proof even when control or X changes.
+  git -C "$repository" merge-base --is-ancestor \
+    "$RELEASE_B_REVIEWED_TARGET_SHA" "$PLAN_BACKEND_BASE" 2>/dev/null && \
+    git -C "$repository" merge-base --is-ancestor \
+      "$PLAN_BACKEND_BASE" "$requested_target" 2>/dev/null && \
+    git -C "$repository" merge-base --is-ancestor \
+      "$RELEASE_B_REVIEWED_TARGET_SHA" \
+      "$PLAN_POSTGRES_POOL_BOOTSTRAP_SHA" 2>/dev/null && \
+    git -C "$repository" merge-base --is-ancestor \
+      "$PLAN_POSTGRES_POOL_BOOTSTRAP_SHA" "$requested_target" 2>/dev/null
+}
+
 verify_release_b_bridge_identity() {
   local sha=$1 repository=${GITHUB_WORKSPACE:-.}
   local actual_tree delta entry mode type object path extra
@@ -752,6 +772,15 @@ prepare_release_b_bridge() {
     fail 'Release B current-main SHA is not the reviewed pin'
   verify_release_b_bridge_identity "$bridge"
   verify_release_b_reviewed_target_identity "$bridge_target" "$requested_target"
+
+  if capture_plan "$requested_target"; then
+    print_plan
+    plan_is_admitted_post_release_b_forward_state "$requested_target" && return 0
+  else
+    status=$?
+    ((status == 1)) || \
+      fail "Release B requested-target preflight plan failed with status $status"
+  fi
 
   if capture_plan "$bridge_target"; then
     print_plan
