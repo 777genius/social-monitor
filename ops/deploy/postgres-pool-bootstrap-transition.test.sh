@@ -245,7 +245,7 @@ run_entrypoint() {
     "$action" "$target"
 }
 run_current_deploy() {
-  local target=${1:-$TARGET_SHA}
+  local target=${1:-$TARGET_SHA} operation=${2:-deploy}
   local -a environment=(
     SOCIAL_MONITOR_DEPLOY_TEST_MODE=1
     SOCIAL_MONITOR_DEPLOY_ROOT="$ROOT"
@@ -318,8 +318,8 @@ run_current_deploy() {
       printf "frontend\n" >> "$recovery_event_log"
       return 97
     }
-    deploy_release "$3"
-  ' _ "$INSTALLED" "$RECOVERY_ACTIVATION_LOG" "$target"
+    if [[ $4 == plan ]]; then print_plan "$3"; else deploy_release "$3"; fi
+  ' _ "$INSTALLED" "$RECOVERY_ACTIVATION_LOG" "$target" "$operation"
 }
 run_current_control_deploy() {
   local -a environment=(
@@ -504,7 +504,7 @@ grep -Fx "already-deployed-or-newer=$CURRENT_SHA" \
 cmp -s "$FIXTURE/installed-entrypoint-before-recovery" "$INSTALLED"
 assert_release_a_non_activation
 [[ ! -e $CONTROL/postgres-runtime-releases/$CURRENT_SHA ]]
-recovered_plan=$(run_entrypoint "$INSTALLED" plan "$CURRENT_SHA")
+recovered_plan=$(run_current_deploy "$CURRENT_SHA" plan)
 grep -Fx 'postgres_pool_bootstrap=postgres-pool-v1' \
   <<< "$recovered_plan" >/dev/null
 grep -Fx "postgres_pool_bootstrap_sha=$CURRENT_SHA" \
@@ -611,7 +611,7 @@ assert_recovery_control_only
 
 # A stale control marker still makes current planning select control deployment.
 TEST_PHASE=already-newer-staged-plan
-staged_plan=$(run_entrypoint "$INSTALLED" plan "$CURRENT_SHA")
+staged_plan=$(run_current_deploy "$CURRENT_SHA" plan)
 grep -Fx 'control=true' <<< "$staged_plan" >/dev/null
 grep -Fx 'postgres_pool_bootstrap=postgres-pool-v1' \
   <<< "$staged_plan" >/dev/null
