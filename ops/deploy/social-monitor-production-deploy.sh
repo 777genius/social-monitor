@@ -39,6 +39,8 @@ OTEL_COLLECTOR_IMAGE=$PINNED_OTEL_COLLECTOR_IMAGE
 OTEL_COLLECTOR_CONFIG_PATH=$REPO/ops/observability/otel-collector.yml
 export OTEL_COLLECTOR_IMAGE OTEL_COLLECTOR_CONFIG_PATH
 POSTGRES_POOL_BOOTSTRAP_VERSION=postgres-pool-v1
+PUBLIC_LINK=$ROOT/runtime/frontend-public-web
+ADMIN_LINK=$ROOT/runtime/frontend-admin-web
 DEPLOY_LOCK=$CONTROL/production-deploy.lock
 # Deployment, the control-owned daily runner, and every manual production DB
 # command use this admission lock. Daily separately owns a singleton lock so it
