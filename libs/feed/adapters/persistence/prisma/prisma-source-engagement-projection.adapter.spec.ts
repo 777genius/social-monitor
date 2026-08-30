@@ -49,6 +49,44 @@ describe("PrismaSourceEngagementProjectionAdapter", () => {
     );
     expect(prisma.retentionDeleteCalls).toBe(2);
   });
+
+  it("fails closed for older and equal-time conflicting observations", async () => {
+    const prisma = new FakeEngagementPrisma();
+    const adapter = new PrismaSourceEngagementProjectionAdapter(prisma, {
+      generate: () => `id-${prisma.nextId++}`,
+    });
+
+    await adapter.project(command("2026-07-10T12:00:00Z", 10, true));
+    await adapter.project(command("2026-07-10T13:00:00Z", 20, true));
+    const observationCount = prisma.observations.length;
+
+    const equalConflict = await adapter.project(
+      command("2026-07-10T13:00:00Z", 5, true),
+    );
+    const older = await adapter.project(
+      command("2026-07-10T12:30:00Z", 4, true),
+    );
+
+    expect(equalConflict).toMatchObject({
+      currentSnapshotsUpdated: 0,
+      observationsAppended: 0,
+      metricChanges: 0,
+    });
+    expect(older).toMatchObject({
+      currentSnapshotsUpdated: 0,
+      observationsAppended: 0,
+      metricChanges: 0,
+    });
+    expect(prisma.snapshot).toMatchObject({
+      likes: 20n,
+      lastObservedAt: new Date("2026-07-10T13:00:00Z"),
+    });
+    expect(prisma.feedItemRecord.providerMetadata).toMatchObject({ likes: 20 });
+    expect(prisma.baselineObservedAt).toEqual(
+      new Date("2026-07-10T13:00:00Z"),
+    );
+    expect(prisma.observations).toHaveLength(observationCount);
+  });
 });
 
 const command = (

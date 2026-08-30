@@ -264,16 +264,6 @@ export class ExecuteScanUseCase {
           savedItems: saveResult.items,
           candidateScreening,
         });
-      const engagementProjectionResult =
-        await this.sourceEngagementProjection.project({
-          tenantId: command.tenantId,
-          workspaceId: command.workspaceId,
-          sourceBindingId: sourceBinding.sourceBindingId,
-          scanJobId: command.scanJobId,
-          providerKey: sourceBinding.providerKey,
-          observedAt: projectionObservedAt,
-          samples: engagementSamples,
-        });
       const projectionResult = sourceItemsForFullProjection.length === 0
         ? { projected: 0, projectedItems: [] }
         : await this.feedProjection.project({
@@ -326,6 +316,16 @@ export class ExecuteScanUseCase {
           sourceItems: sourceItemsForFullProjection,
         });
       }
+      const engagementProjectionResult =
+        await this.sourceEngagementProjection.project({
+          tenantId: command.tenantId,
+          workspaceId: command.workspaceId,
+          sourceBindingId: sourceBinding.sourceBindingId,
+          scanJobId: command.scanJobId,
+          providerKey: sourceBinding.providerKey,
+          observedAt: projectionObservedAt,
+          samples: engagementSamples,
+        });
       if (fetched.nextCursor !== undefined) {
         await this.scanCursors.save({
           tenantId: command.tenantId,

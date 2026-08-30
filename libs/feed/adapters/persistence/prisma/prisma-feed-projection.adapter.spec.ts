@@ -153,6 +153,79 @@ describe("PrismaFeedProjectionAdapter", () => {
     },
   );
 
+  it("preserves fresher engagement through a stale full projection", async () => {
+    const prisma = new FakePrismaFeedClient(true);
+    const projection = new PrismaFeedProjectionAdapter(
+      prisma,
+      new SequenceIdGenerator([
+        "feed-1",
+        "sample-1",
+        "unused-feed-2",
+        "unused-sample-2",
+      ]),
+    );
+    const command = projectionCommand();
+
+    await projection.project({
+      ...command,
+      sourceItems: [
+        sourceItem({
+          title: "Initial title",
+          body: "Initial body",
+          authorHandle: "author",
+          publishedAt: new Date("2026-07-15T23:55:00.000Z"),
+          ingestedAt: firstObservedAt,
+          metadata: {
+            kind: "reddit_post",
+            subreddit: "startups",
+            score: 10,
+            numComments: 2,
+            upvoteRatio: 0.7,
+          },
+        }),
+      ],
+    });
+    const freshEngagementObservedAt = new Date("2026-07-16T02:00:00.000Z");
+    prisma.recordEngagement(freshEngagementObservedAt, {
+      score: 500,
+      numComments: 40,
+      upvoteRatio: 0.95,
+    });
+
+    await projection.project({
+      ...command,
+      sourceItems: [
+        sourceItem({
+          title: "Updated content",
+          body: "Updated body",
+          authorHandle: "updated-author",
+          publishedAt: new Date("2026-07-15T23:55:00.000Z"),
+          ingestedAt: reprojectedAt,
+          metadata: {
+            kind: "reddit_post",
+            subreddit: "startups",
+            score: 20,
+            numComments: 3,
+            upvoteRatio: 0.75,
+          },
+        }),
+      ],
+    });
+
+    expect(prisma.feedItemRecord).toMatchObject({
+      title: "Updated content",
+      bodyPreview: "Updated body",
+      providerMetadata: expect.objectContaining({
+        score: 500,
+        numComments: 40,
+        upvoteRatio: 0.95,
+      }),
+    });
+    expect(prisma.baselineSampleRecord?.observedAt).toEqual(
+      freshEngagementObservedAt,
+    );
+  });
+
   it("rolls back pending feed rows before exact P2002 replay of the batch", async () => {
     const prisma = new RacingTransactionalFeedClient();
     const projection = new PrismaFeedProjectionAdapter(
@@ -406,6 +479,7 @@ class FakePrismaFeedClient implements PrismaFeedClient {
   baselineUpdateData: BaselineUpsertArgs["update"] | undefined;
   explicitUpdateCount = 0;
   upsertUpdateCount = 0;
+  private engagementLastObservedAt: Date | null = null;
 
   readonly feedItem: PrismaFeedClient["feedItem"];
 
@@ -443,6 +517,15 @@ class FakePrismaFeedClient implements PrismaFeedClient {
       findMany: async () => [],
       deleteMany: async () => ({ count: 0 }),
     };
+
+  readonly sourceItemEngagementSnapshot: NonNullable<
+    PrismaFeedClient["sourceItemEngagementSnapshot"]
+  > = {
+    findUnique: async () =>
+      this.engagementLastObservedAt === null
+        ? null
+        : { lastObservedAt: this.engagementLastObservedAt },
+  };
 
   private async upsertFeedItem(
     args: FeedItemUpsertArgs,
@@ -503,6 +586,27 @@ class FakePrismaFeedClient implements PrismaFeedClient {
     }
 
     return this.baselineSampleRecord;
+  }
+
+  recordEngagement(
+    observedAt: Date,
+    metrics: { score: number; numComments: number; upvoteRatio: number },
+  ): void {
+    if (this.feedItemRecord === undefined || this.baselineSampleRecord === undefined) {
+      throw new Error("Feed projection must exist before engagement");
+    }
+    this.engagementLastObservedAt = observedAt;
+    this.feedItemRecord = {
+      ...this.feedItemRecord,
+      providerMetadata: {
+        ...this.feedItemRecord.providerMetadata,
+        ...metrics,
+      },
+    };
+    this.baselineSampleRecord = {
+      ...this.baselineSampleRecord,
+      observedAt,
+    };
   }
 }
 
