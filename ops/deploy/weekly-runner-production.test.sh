@@ -8,6 +8,7 @@ service=$SCRIPT_DIR/production-runtime/social-monitor-weekly.service
 timer=$SCRIPT_DIR/production-runtime/social-monitor-weekly.timer
 maintenance_lib=$SCRIPT_DIR/reader-summary-recovery-maintenance-lib.sh
 deploy_lib=$SCRIPT_DIR/postgres-runtime-deploy-lib.sh
+asset_lib=$SCRIPT_DIR/postgres-runtime-asset-lib.sh
 weekly_timer_state_lib=$SCRIPT_DIR/postgres-runtime-weekly-timer-state-lib.sh
 deploy_entrypoint=$SCRIPT_DIR/social-monitor-production-deploy.sh
 package_json=$REPO/package.json
@@ -27,7 +28,8 @@ publication_post_migration=$REPO/ops/deploy/reader-summary-publication-post-migr
 [[ -f $timer ]]
 [[ -f $weekly_timer_state_lib ]]
 grep -Fx 'Type=oneshot' "$service" >/dev/null
-grep -F 'github-production-deploy.sh" reader-summary-weekly-run "$release"' \
+grep -Fx \
+  'ExecStart=/var/data/social-monitor/control/postgres-runtime-current/reader-summary-one-shot.sh weekly' \
   "$service" >/dev/null
 grep -Fx 'Restart=on-failure' "$service" >/dev/null
 grep -Fx 'RestartSec=30min' "$service" >/dev/null
@@ -51,8 +53,8 @@ grep -F 'NextElapseUSecRealtime' "$weekly_timer_state_lib" >/dev/null
 ! grep -F 'systemctl enable "$timer"' "$deploy_lib" >/dev/null
 ! grep -F 'systemctl start "$timer"' "$deploy_lib" >/dev/null
 ! grep -Eq 'systemctl[[:space:]]+(enable|start|restart)[[:space:]]+social-monitor-weekly' "$deploy_entrypoint"
-grep -F 'social-monitor-weekly.service' "$deploy_lib" >/dev/null
-grep -F 'social-monitor-weekly.timer' "$deploy_lib" >/dev/null
+grep -F 'social-monitor-weekly.service' "$asset_lib" >/dev/null
+grep -F 'social-monitor-weekly.timer' "$asset_lib" >/dev/null
 grep -F 'ops/deploy/production-runtime/social-monitor-weekly.service' \
   "$deploy_entrypoint" >/dev/null
 grep -F 'ops/deploy/production-runtime/social-monitor-weekly.timer' \
