@@ -252,7 +252,7 @@ const transitionActivationJob = findJob(transitionPublish, "activate");
 if (
   !transitionPublish.includes("\npermissions: {}\n") ||
   transitionPublisherJob === undefined ||
-  !/^    permissions:\n      actions: read\n      contents: write\n(?=    \S)/mu.test(
+  !/^ {4}permissions:\n {6}actions: read\n {6}contents: write\n(?= {4}\S)/mu.test(
     transitionPublisherJob,
   ) ||
   !transitionPublisherJob.includes(
@@ -335,10 +335,10 @@ const transitionActivationOrder = [
 ].map((fragment) => transitionActivationJob?.indexOf(fragment) ?? -1);
 if (
   transitionActivationJob === undefined ||
-  !/^    permissions:\n      contents: read\n(?=    \S)/mu.test(
+  !/^ {4}permissions:\n {6}contents: read\n(?= {4}\S)/mu.test(
     transitionActivationJob,
   ) ||
-  /\n      [a-z-]+: write(?:\n|$)/u.test(transitionActivationJob) ||
+  /\n {6}[a-z-]+: write(?:\n|$)/u.test(transitionActivationJob) ||
   transitionActivationJob.includes("PRODUCTION_TRANSITION_TARGET_PRIVATE_KEY") ||
   transitionActivationJob.includes("PRODUCTION_TRANSITION_TARGET_SIGNING_KEY") ||
   transitionActivationJob.match(
