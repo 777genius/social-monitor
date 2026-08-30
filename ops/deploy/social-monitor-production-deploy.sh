@@ -693,6 +693,19 @@ verify_backend_proxy_readiness() {
   [[ $status == 200 ]]
 }
 
+warm_frontend_app_bootstrap_cache() {
+  local attempt
+  for attempt in 1 2 3; do
+    if curl --fail --silent --show-error --max-time 30 \
+      --output /dev/null \
+      https://social-monitor.app/app/bootstrap; then
+      return 0
+    fi
+    ((attempt == 3)) || sleep 2
+  done
+  return 1
+}
+
 soak_backend_release() (
   local -a services=("$@")
   local baseline=$STATE/backend-soak-baseline.$$.txt
@@ -839,6 +852,10 @@ deploy_backend() (
     fi
     if printf '%s\n' "${persistent[@]}" | grep -qx api && ! refresh_frontend_api_proxy; then
       fail 'frontend API proxy refresh failed'
+    fi
+    if printf '%s\n' "${persistent[@]}" | grep -qx api && \
+      ! warm_frontend_app_bootstrap_cache; then
+      fail 'frontend app bootstrap cache warm failed'
     fi
     if [[ $database_replacement == true ]] && \
       ! soak_backend_release "${persistent[@]}" frontend caddy; then

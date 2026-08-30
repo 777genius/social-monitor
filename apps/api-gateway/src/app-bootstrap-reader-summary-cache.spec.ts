@@ -142,6 +142,30 @@ describe('AppBootstrapReaderSummaryCache', () => {
     expect(loader).toHaveBeenCalledTimes(2);
   });
 
+  it('refreshes every known scope without blocking callers', async () => {
+    const cache = new AppBootstrapReaderSummaryCache(
+      new MutableClock(1_000),
+      100,
+      1_000,
+      10,
+    );
+    const loader = jest.fn(async (workspaceId: string) =>
+      payload('tenant-1', workspaceId),
+    );
+    await cache.getOrLoad('tenant-1', 'workspace-1', () =>
+      loader('workspace-1'),
+    );
+    await cache.getOrLoad('tenant-1', 'workspace-2', () =>
+      loader('workspace-2'),
+    );
+
+    cache.refreshAll();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(loader).toHaveBeenCalledTimes(4);
+  });
+
   it('evicts entries at the configured maximum', async () => {
     const cache = new AppBootstrapReaderSummaryCache(
       new MutableClock(1_000),

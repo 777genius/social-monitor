@@ -5,6 +5,7 @@ import type { ListReaderSummariesUseCase } from '@social-monitor/summary/feature
 
 import { AppBootstrapController } from './app-bootstrap.controller';
 import { AppBootstrapReaderSummaryCache } from './app-bootstrap-reader-summary-cache';
+import { AppBootstrapReaderSummaryQuery } from './app-bootstrap-reader-summary-query';
 
 const session = {
   userId: 'user-1',
@@ -28,6 +29,15 @@ describe('AppBootstrapController', () => {
       30_000,
       300_000,
       10,
+    );
+  const createQuery = (
+    listReaderSummaries: ListReaderSummariesUseCase,
+    listReaderSummaryPeriods: ListReaderSummaryPeriodsUseCase,
+  ) =>
+    new AppBootstrapReaderSummaryQuery(
+      listReaderSummaries,
+      listReaderSummaryPeriods,
+      createCache(),
     );
 
   it('marks the session-bearing response private and uncacheable', () => {
@@ -65,9 +75,10 @@ describe('AppBootstrapController', () => {
     };
     const controller = new AppBootstrapController(
       getAuthSession as unknown as GetAuthSessionUseCase,
-      listReaderSummaries as unknown as ListReaderSummariesUseCase,
-      listReaderSummaryPeriods as unknown as ListReaderSummaryPeriodsUseCase,
-      createCache(),
+      createQuery(
+        listReaderSummaries as unknown as ListReaderSummariesUseCase,
+        listReaderSummaryPeriods as unknown as ListReaderSummaryPeriodsUseCase,
+      ),
     );
 
     const response = controller.get('Bearer token-value');
@@ -119,9 +130,10 @@ describe('AppBootstrapController', () => {
     const listReaderSummaryPeriods = { execute: jest.fn() };
     const controller = new AppBootstrapController(
       getAuthSession as unknown as GetAuthSessionUseCase,
-      listReaderSummaries as unknown as ListReaderSummariesUseCase,
-      listReaderSummaryPeriods as unknown as ListReaderSummaryPeriodsUseCase,
-      createCache(),
+      createQuery(
+        listReaderSummaries as unknown as ListReaderSummariesUseCase,
+        listReaderSummaryPeriods as unknown as ListReaderSummaryPeriodsUseCase,
+      ),
     );
 
     await expect(controller.get('Bearer token-value')).rejects.toBe(denied);
@@ -144,9 +156,10 @@ describe('AppBootstrapController', () => {
     };
     const controller = new AppBootstrapController(
       getAuthSession as unknown as GetAuthSessionUseCase,
-      listReaderSummaries as unknown as ListReaderSummariesUseCase,
-      listReaderSummaryPeriods as unknown as ListReaderSummaryPeriodsUseCase,
-      createCache(),
+      createQuery(
+        listReaderSummaries as unknown as ListReaderSummariesUseCase,
+        listReaderSummaryPeriods as unknown as ListReaderSummaryPeriodsUseCase,
+      ),
     );
 
     const first = await controller.get('Bearer token-value');
@@ -178,9 +191,10 @@ describe('AppBootstrapController', () => {
     };
     const controller = new AppBootstrapController(
       getAuthSession as unknown as GetAuthSessionUseCase,
-      listReaderSummaries as unknown as ListReaderSummariesUseCase,
-      listReaderSummaryPeriods as unknown as ListReaderSummaryPeriodsUseCase,
-      createCache(),
+      createQuery(
+        listReaderSummaries as unknown as ListReaderSummariesUseCase,
+        listReaderSummaryPeriods as unknown as ListReaderSummaryPeriodsUseCase,
+      ),
     );
 
     await expect(controller.get('Bearer token-value')).resolves.toBeDefined();

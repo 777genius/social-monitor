@@ -154,6 +154,7 @@ otel_services=$(
 git -C "$REPO" checkout -q main
 grep -F "if printf '%s\\n' \"\${persistent[@]}\" | grep -qx api && ! refresh_frontend_api_proxy; then" \
   "$ENTRYPOINT" >/dev/null
+grep -F '! warm_frontend_app_bootstrap_cache; then' "$ENTRYPOINT" >/dev/null
 grep -F "if [[ \$api_rolled_back == true ]]; then" \
   "$SCRIPT_DIR/backend-image-rescue-lib.sh" >/dev/null
 grep -F 'refresh_frontend_api_proxy || return 1' \
@@ -655,6 +656,13 @@ assert_post_replacement_failure() {
             return 74
           }
         }
+        warm_frontend_app_bootstrap_cache() {
+          printf "warm\n" >> "$FAILURE_LOG"
+          [[ $FAILURE_STAGE != warm ]] || {
+            printf "fail-stage:warm\n" >> "$FAILURE_LOG"
+            return 76
+          }
+        }
         soak_backend_release() {
           printf "soak\n" >> "$FAILURE_LOG"
           [[ $FAILURE_STAGE != soak ]] || {
@@ -697,6 +705,7 @@ assert_post_replacement_failure stop
 assert_post_replacement_failure recreate
 assert_post_replacement_failure health
 assert_post_replacement_failure proxy
+assert_post_replacement_failure warm
 assert_post_replacement_failure soak
 
 # A process retry cannot snapshot over the runtime-control evidence associated

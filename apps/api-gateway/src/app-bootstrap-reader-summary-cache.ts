@@ -17,6 +17,7 @@ interface CacheEntry {
   readonly freshUntilMs: number;
   readonly staleUntilMs: number;
   readonly value: ReaderSummaryBootstrapResponseDto;
+  readonly loader: () => Promise<ReaderSummaryBootstrapResponseDto>;
 }
 
 export class AppBootstrapReaderSummaryCache {
@@ -70,6 +71,12 @@ export class AppBootstrapReaderSummaryCache {
     return this.load(key, loader);
   }
 
+  refreshAll(): void {
+    for (const [key, entry] of this.entries) {
+      void this.load(key, entry.loader).catch(() => undefined);
+    }
+  }
+
   private load(
     key: string,
     loader: () => Promise<ReaderSummaryBootstrapResponseDto>,
@@ -82,7 +89,7 @@ export class AppBootstrapReaderSummaryCache {
     const pending = Promise.resolve()
       .then(loader)
       .then((value) => {
-        this.store(key, value);
+        this.store(key, value, loader);
         return value;
       })
       .finally(() => {
@@ -94,7 +101,11 @@ export class AppBootstrapReaderSummaryCache {
     return pending;
   }
 
-  private store(key: string, value: ReaderSummaryBootstrapResponseDto): void {
+  private store(
+    key: string,
+    value: ReaderSummaryBootstrapResponseDto,
+    loader: () => Promise<ReaderSummaryBootstrapResponseDto>,
+  ): void {
     const nowMs = this.clock.now().getTime();
     for (const [candidateKey, entry] of this.entries) {
       if (entry.staleUntilMs <= nowMs) {
@@ -110,6 +121,7 @@ export class AppBootstrapReaderSummaryCache {
     }
     this.entries.set(key, {
       value,
+      loader,
       freshUntilMs: nowMs + this.ttlMs,
       staleUntilMs: nowMs + this.ttlMs + this.staleMs,
     });
