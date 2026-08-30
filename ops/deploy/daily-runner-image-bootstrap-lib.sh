@@ -507,7 +507,7 @@ daily_runner_image_bootstrap_before_rescue() (
     fail 'historical daily-runner archive validation failed'
 
   temporary_owned=true
-  docker build --pull=false \
+  docker build --pull=false --provenance=false \
     --file "$CONTROL/daily-runner.Dockerfile" \
     --label "org.opencontainers.image.revision=$previous_sha" \
     --tag "$temporary_tag" \
