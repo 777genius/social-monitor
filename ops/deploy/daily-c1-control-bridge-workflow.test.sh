@@ -3,6 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 PROJECT_ROOT=$(cd "$SCRIPT_DIR/../.." && pwd)
+SHELLCHECK_VERIFIER=$SCRIPT_DIR/verify-production-shellcheck-baseline.sh
 FIXTURE=$(mktemp -d "${TMPDIR:-/tmp}/daily-c1-control-bridge.XXXXXX")
 trap 'rm -rf "$FIXTURE"' EXIT
 REPO=$FIXTURE/repo
@@ -113,22 +114,15 @@ grep -F 'daily_c1_atomic_repair=61018b1d' "$workflow" >/dev/null || \
   fail 'bridge does not pin the descendant atomic PostgreSQL repair commit'
 grep -F 'backend-gate=postgres-pool-release deferred-to-bounded-repair' \
   "$workflow" >/dev/null || fail 'bridge CI blocks the reviewed bounded bootstrap repair'
-grep -F 'shellcheck -S warning -f json -x \' \
-  "$workflow" >/dev/null || fail 'workflow does not inventory warning-level deploy findings'
-grep -F -A3 'shellcheck -S warning -f json -x \' "$workflow" | \
-  grep -F '"${deploy_shell_files[@]}" || true' >/dev/null || \
-  fail 'workflow finding inventory does not cover the full deploy closure'
-grep -F 'DEPLOY_SHELLCHECK=$deploy_shellcheck node' \
-  "$workflow" >/dev/null || fail 'workflow does not validate the deploy finding baseline'
-grep -F 'ops/deploy/social-monitor-production-deploy.sh:42:2034:PUBLIC_LINK' \
-  "$workflow" >/dev/null || fail 'workflow does not pin the PUBLIC_LINK finding'
-grep -F 'ops/deploy/social-monitor-production-deploy.sh:43:2034:ADMIN_LINK' \
-  "$workflow" >/dev/null || fail 'workflow does not pin the ADMIN_LINK finding'
-grep -F 'shellcheck -S warning -x -e SC2034 \' \
-  "$workflow" >/dev/null || fail 'workflow treats informational findings as release failures'
-grep -F -A3 'shellcheck -S warning -x -e SC2034 \' "$workflow" | \
+grep -F -A3 'bash ops/deploy/verify-production-shellcheck-baseline.sh \' "$workflow" | \
   grep -F '"${deploy_shell_files[@]}"' >/dev/null || \
-  fail 'workflow warning enforcement does not cover the full deploy closure'
+  fail 'workflow ShellCheck verifier does not cover the full deploy closure'
+grep -F 'ops/deploy/social-monitor-production-deploy.sh:42:2034:PUBLIC_LINK' \
+  "$SHELLCHECK_VERIFIER" >/dev/null || fail 'verifier does not pin the PUBLIC_LINK finding'
+grep -F 'ops/deploy/social-monitor-production-deploy.sh:43:2034:ADMIN_LINK' \
+  "$SHELLCHECK_VERIFIER" >/dev/null || fail 'verifier does not pin the ADMIN_LINK finding'
+grep -F 'shellcheck -S warning -x -e SC2034 "${deploy_files[@]}"' \
+  "$SHELLCHECK_VERIFIER" >/dev/null || fail 'verifier does not enforce remaining warnings'
 grep -F "needs.plan.outputs.daily_c1_bridge != 'true'" \
   "$workflow" >/dev/null || fail 'bridge does not defer final-only legacy transition fixtures'
 [[ $(grep -Fc "needs.plan.outputs.daily_c1_bridge != 'true'" "$workflow") == 9 ]] || \
