@@ -269,7 +269,7 @@ export const resolveReaderSummaryModelProviderMode = (
       env,
       settingName: "READER_SUMMARY_MODEL_PROVIDER",
       selectedMode: value,
-      durableModes: ["openai-responses", "agent-runtime"],
+      durableModes: ["agent-runtime"],
     });
 
     return value;

@@ -87,6 +87,12 @@ DEPLOY_CONTROL_BRIDGE_LIBRARY_LOADED=false
 load_deploy_control_bridge_library() {
   [[ $DEPLOY_CONTROL_BRIDGE_LIBRARY_LOADED == true ]] && return 0
   local deploy_control_library_directory deploy_control_bridge_library
+  if [[ -n ${PRODUCTION_TRANSITION_PRELUDE_COMMIT:-} ]]; then
+    production_transition_host_source_authorized_prelude \
+      ops/deploy/deploy-control-bridge-lib.sh 'deploy control bridge library'
+    DEPLOY_CONTROL_BRIDGE_LIBRARY_LOADED=true
+    return 0
+  fi
   deploy_control_library_directory=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
   deploy_control_bridge_library=$deploy_control_library_directory/deploy-control-bridge-lib.sh
   [[ -f $deploy_control_bridge_library && ! -L $deploy_control_bridge_library ]] || \
@@ -882,7 +888,11 @@ deploy_frontend() {
 }
 
 deploy_release() {
-  local sha=$1 atomic_state
+  local sha=$1 mode=${2:-ordinary} atomic_state resume_state
+  case $mode in
+    ordinary|resume-target-prepared) ;;
+    *) fail 'deployment resume mode is invalid' ;;
+  esac
   if postgres_pool_atomic_legacy_state; then
     deploy_postgres_pool_atomic_control_bootstrap "$sha" || \
       fail 'atomic PostgreSQL bootstrap loader failed'
@@ -902,7 +912,17 @@ deploy_release() {
   install -d -m 0755 "$STATE" "$STAGING" "$RELEASES"
   local current
   current=$(git -C "$REPO" rev-parse HEAD)
-  if [[ $sha == "$current" ]] && \
+  if [[ $mode == resume-target-prepared ]]; then
+    [[ $sha == "$current" ]] || \
+      fail 'target-prepared resume requires the exact current integration target'
+    declare -F production_transition_require_target_deploy_state >/dev/null || \
+      fail 'target-prepared resume state verifier is unavailable'
+    resume_state=$(production_transition_require_target_deploy_state \
+      "$sha" allow-expired classify) || return 1
+    [[ $resume_state == target-prepared ]] || \
+      fail 'target-prepared resume requires the exact authenticated prepared state'
+  fi
+  if [[ $mode == ordinary && $sha == "$current" ]] && \
      ! postgres_pool_bootstrap_installed "$current"; then
     # The client must recapture the ordinary plan; stdout is non-authoritative.
     reconcile_current_postgres_pool_bootstrap \
@@ -937,6 +957,7 @@ deploy_release() {
     verify_deploy_control_bridge_target_compatibility "$sha"
   fi
   advance_integration "$sha"
+  deploy_control_bootstrap_production_transition_b0 "$sha"
   if [[ $backend == true ]]; then
     load_target_rabbitmq_quorum_backend_health "$sha"
     load_target_reader_summary_publication_deploy_library "$sha"

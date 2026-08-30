@@ -29,6 +29,8 @@ touch "$ROOT/integration/docker-compose.yml" \
   "$ROOT/control/compose.managed-db.yml" \
   "$ROOT/control/postgres-runtime-current/compose.postgres-runtime.yml" \
   "$ROOT/secrets/production.env"
+cp "$SCRIPT_DIR/production-runtime/reader-summary-scheduler-hold-common.sh" \
+  "$ROOT/control/postgres-runtime-current/"
 printf '%s\n' "$RELEASE" > "$ROOT/control/postgres-runtime-current/READY"
 printf '%s\n' "$RELEASE" > "$ROOT/control/deploy-state/backend.sha"
 
@@ -77,6 +79,21 @@ set -e
 [[ $argument_status == 64 ]] || fail 'capture launcher accepted an argument'
 
 sample_2350='1784937000 2026-07-24 235000'
+printf '%s\n' \
+  'version=social-monitor-reader-summary-scheduler-hold-v1' \
+  'phase=held' \
+  "target=$RELEASE" > \
+  "$ROOT/control/deploy-state/reader-summary-scheduler-hold.v1"
+reset_case "$sample_2350"
+set +e
+run_capture >/dev/null 2>&1
+held_status=$?
+set -e
+[[ $held_status == 75 ]] || fail 'durable transition hold allowed pre-midnight capture'
+[[ ! -e $FLOCK_EVENTS ]] || fail 'held capture reached its runtime locks'
+assert_no_runtime_command
+rm -f "$ROOT/control/deploy-state/reader-summary-scheduler-hold.v1"
+
 reset_case "$sample_2350" "$sample_2350"
 run_capture
 [[ $(<"$FLOCK_EVENTS") == $'-n 9\n-w 60 8' ]] || \

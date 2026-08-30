@@ -113,11 +113,11 @@ describe("GrpcReaderSummaryDailySubscriptionRuntime", () => {
         executionAttestation: {
           schemaVersion: 1 as const,
           requestId: "recovery",
-          purpose: "social_monitor.reader_summary.weekly.generate",
+          purpose: "social_monitor.reader_summary.daily.canonical_recovery.v2",
           canonicalRequestSha256: "a".repeat(64),
           provider: "codex" as const,
           model: "gpt-5.6-sol",
-          reasoningEffort: "xhigh",
+          reasoningEffort: "high",
           runtimeEngine: "subscription-runtime-cli" as const,
           runtimePackageVersion: "1.2.3",
           launcherSha256: "b".repeat(64),
@@ -134,7 +134,7 @@ describe("GrpcReaderSummaryDailySubscriptionRuntime", () => {
     expect(result.responseBytes.toString("utf8")).toBe(outputText);
     expect(client.runTask).toHaveBeenCalledWith(expect.objectContaining({
       provider: "codex",
-      purpose: "social_monitor.reader_summary.weekly.generate",
+      purpose: "social_monitor.reader_summary.daily.canonical_recovery.v2",
       systemPrompt: expect.stringContaining(
         `The output must conform exactly to this JSON Schema: ${JSON.stringify(
           openAiReaderSummaryJsonSchema,
@@ -142,6 +142,7 @@ describe("GrpcReaderSummaryDailySubscriptionRuntime", () => {
       ),
       metadata: expect.objectContaining({
         authoritySchemaVersion: "reader_summary.daily_source_authority.v2",
+        reasoningEffort: "high",
         runtimeOutput: "output_text",
       }),
     }));
@@ -296,11 +297,11 @@ const canonicalRecoveryClient = (outputText: string, selectedOutputSha256 = hash
     executionAttestation: {
       schemaVersion: 1 as const,
       requestId: "recovery",
-      purpose: "social_monitor.reader_summary.weekly.generate",
+      purpose: "social_monitor.reader_summary.daily.canonical_recovery.v2",
       canonicalRequestSha256: "a".repeat(64),
       provider: "codex" as const,
       model: "gpt-5.6-sol",
-      reasoningEffort: "xhigh",
+      reasoningEffort: "high",
       runtimeEngine: "subscription-runtime-cli" as const,
       runtimePackageVersion: "1.2.3",
       launcherSha256: "b".repeat(64),

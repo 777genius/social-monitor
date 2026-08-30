@@ -29,22 +29,12 @@ const genericSummaryStructuredProfile = Object.freeze({
   responseFormat: "json",
 } as const satisfies SubscriptionRuntimePurposeProfile);
 
-const legacyReaderSummaryStructuredProfile = genericSummaryStructuredProfile;
-
 const activeReaderSummaryStructuredProfile = Object.freeze({
   provider: "codex",
   model: productionAgentRuntimeModel,
   reasoningEffort: activeReaderSummaryReasoningEffort,
   outputKind: "structured_output",
   responseFormat: "json",
-} as const satisfies SubscriptionRuntimePurposeProfile);
-
-const legacyReaderSummaryTextProfile = Object.freeze({
-  provider: "codex",
-  model: productionAgentRuntimeModel,
-  reasoningEffort: productionAgentRuntimeReasoningEffort,
-  outputKind: "output_text",
-  responseFormat: "text",
 } as const satisfies SubscriptionRuntimePurposeProfile);
 
 const activeReaderSummaryTextProfile = Object.freeze({
@@ -59,17 +49,6 @@ const profilesByPurpose: Readonly<
   Record<string, SubscriptionRuntimePurposeProfile>
 > = Object.freeze({
   "social_monitor.summary.generate": genericSummaryStructuredProfile,
-  "social_monitor.reader_summary.generate": legacyReaderSummaryStructuredProfile,
-  "social_monitor.reader_summary.repair": legacyReaderSummaryStructuredProfile,
-  "social_monitor.reader_summary.topic_map.label": legacyReaderSummaryStructuredProfile,
-  "social_monitor.reader_summary.topic_map.verify_relations":
-    legacyReaderSummaryStructuredProfile,
-  "social_monitor.reader_summary.verify_story_relations":
-    legacyReaderSummaryStructuredProfile,
-  "social_monitor.reader_summary.verify_related_topic_relations":
-    legacyReaderSummaryStructuredProfile,
-  "social_monitor.reader_summary.weekly.review": legacyReaderSummaryStructuredProfile,
-  "social_monitor.reader_summary.weekly.generate": legacyReaderSummaryTextProfile,
   "social_monitor.reader_summary.generate.v2": activeReaderSummaryStructuredProfile,
   "social_monitor.reader_summary.repair.v2": activeReaderSummaryStructuredProfile,
   "social_monitor.reader_summary.topic_map.label.v2": activeReaderSummaryStructuredProfile,
@@ -79,6 +58,8 @@ const profilesByPurpose: Readonly<
     activeReaderSummaryStructuredProfile,
   "social_monitor.reader_summary.verify_related_topic_relations.v2":
     activeReaderSummaryStructuredProfile,
+  "social_monitor.reader_summary.daily.canonical_recovery.v2":
+    activeReaderSummaryTextProfile,
   "social_monitor.reader_summary.weekly.review.v2": activeReaderSummaryStructuredProfile,
   "social_monitor.reader_summary.weekly.generate.v2": activeReaderSummaryTextProfile,
 });
@@ -177,8 +158,6 @@ const assertDedicatedRelatedTopicMarkers = (
 ): void => {
   if (
     request.purpose !==
-      "social_monitor.reader_summary.verify_related_topic_relations" &&
-    request.purpose !==
       "social_monitor.reader_summary.verify_related_topic_relations.v2"
   ) return;
   assertRequiredExactString(
@@ -218,8 +197,8 @@ export const configuredSubscriptionRuntimeDefaultsAreSafe = (input: {
   readonly reasoningEffort?: string;
 }): boolean =>
   (input.model ?? productionAgentRuntimeModel) === productionAgentRuntimeModel &&
-  (input.reasoningEffort ?? productionAgentRuntimeReasoningEffort) ===
-    productionAgentRuntimeReasoningEffort;
+  (input.reasoningEffort ?? activeReaderSummaryReasoningEffort) ===
+    activeReaderSummaryReasoningEffort;
 
 const canonicalControlsForProfile = (
   controls: Record<string, unknown>,

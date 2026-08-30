@@ -50,6 +50,83 @@ RABBITMQ_QUORUM_HEALTH_LIBRARY_PATH=ops/deploy/backend-runtime-health-lib.sh
 RABBITMQ_QUORUM_HEALTH_SCRIPT_PATH=ops/deploy/rabbitmq-quorum-health.sh
 RABBITMQ_QUORUM_RECOVERY_SCRIPT_PATH=ops/deploy/rabbitmq-quorum-recovery.sh
 
+deploy_control_require_b0_bootstrap_file() {
+  local sha=$1 install_mode=$2 relative=$3
+  local source=$REPO/$relative destination=$CONTROL/${relative##*/}
+  local next=$destination.next entry tree_mode type object tree_path extra
+  local expected_tree_mode=100${install_mode#0} expected_owner before after
+  entry=$(git -C "$REPO" ls-tree "$sha" -- "$relative") || \
+    fail "B0 bootstrap cannot inspect $relative"
+  read -r tree_mode type object tree_path extra <<< "$entry"
+  [[ -z ${extra:-} && $tree_mode == "$expected_tree_mode" && \
+     $type == blob && $object =~ ^[0-9a-f]{40}$ && \
+     $tree_path == "$relative" ]] || \
+    fail "B0 bootstrap path has an invalid mode or object: $relative"
+  [[ -f $source && ! -L $source && \
+     $(git -C "$REPO" hash-object --no-filters "$source") == "$object" ]] || \
+    fail "B0 bootstrap worktree differs from reviewed target: $relative"
+  if [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} == 1 ]]; then
+    expected_owner=$(id -u):$(id -g):${install_mode#0}
+  else
+    expected_owner=0:0:${install_mode#0}
+  fi
+  if [[ -e $destination || -L $destination ]]; then
+    [[ -f $destination && ! -L $destination && \
+       $(stat -Lc '%u:%g:%a' "$destination") == "$expected_owner" && \
+       $(git -C "$REPO" hash-object --no-filters "$destination") == "$object" ]] || \
+      fail "installed B0 bootstrap path is unsafe or differs: $relative"
+    return 0
+  fi
+  if [[ -e $next || -L $next ]]; then
+    [[ -f $next && ! -L $next && \
+       $(stat -Lc '%u:%g:%a' "$next") == "$expected_owner" && \
+       $(git -C "$REPO" hash-object --no-filters "$next") == "$object" ]] || \
+      fail "staged B0 bootstrap path is unsafe or differs: $relative"
+  elif [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} == 1 ]]; then
+    install -m "$install_mode" "$source" "$next"
+  else
+    install -m "$install_mode" -o root -g root "$source" "$next"
+  fi
+  before=$(stat -Lc '%d:%i:%f:%s:%Y:%Z' "$next") || \
+    fail "staged B0 bootstrap path cannot be read: $relative"
+  [[ $(git -C "$REPO" hash-object --no-filters "$next") == "$object" ]] || \
+    fail "staged B0 bootstrap bytes differ: $relative"
+  after=$(stat -Lc '%d:%i:%f:%s:%Y:%Z' "$next") || \
+    fail "staged B0 bootstrap path cannot be re-read: $relative"
+  [[ $before == "$after" ]] || fail "staged B0 bootstrap path changed: $relative"
+  mv -T "$next" "$destination"
+}
+
+deploy_control_bootstrap_production_transition_b0() {
+  local sha=$1 remote needs_install=false relative present=0
+  [[ ${action:-} == deploy ]] || return 0
+  for relative in production-transition-admission.sh \
+    production-transition-b0-host-control.sh \
+    production-transition-canonical-lib.sh; do
+    git -C "$REPO" cat-file -e "$sha:ops/deploy/$relative" 2>/dev/null && \
+      present=$((present + 1))
+  done
+  ((present != 0)) || return 0
+  ((present == 3)) || fail 'B0 bootstrap target has an incomplete transition control set'
+  for relative in production-transition-admission.sh \
+    production-transition-b0-host-control.sh \
+    production-transition-canonical-lib.sh; do
+    [[ -e $CONTROL/$relative || -L $CONTROL/$relative ]] || needs_install=true
+  done
+  if [[ $needs_install == true ]]; then
+    remote=$(git -C "$REPO" rev-parse --verify 'origin/main^{commit}') || \
+      fail 'B0 bootstrap origin main is unavailable'
+    [[ $remote == "$sha" ]] || \
+      fail 'B0 bootstrap requires the exact protected-main commit'
+  fi
+  deploy_control_require_b0_bootstrap_file "$sha" 0755 \
+    ops/deploy/production-transition-admission.sh
+  deploy_control_require_b0_bootstrap_file "$sha" 0644 \
+    ops/deploy/production-transition-b0-host-control.sh
+  deploy_control_require_b0_bootstrap_file "$sha" 0644 \
+    ops/deploy/production-transition-canonical-lib.sh
+}
+
 deploy_control_bridge_sealed_paths() {
   printf '%s\n' \
     "$DEPLOY_CONTROL_BRIDGE_ENTRYPOINT_PATH" \
@@ -535,10 +612,10 @@ load_target_reader_summary_publication_deploy_library() {
     fail 'target publication deploy library differs from reviewed target'
   ! declare -F deploy_reader_summary_publication_migrations >/dev/null || \
     fail 'publication migration entrypoint was loaded before target validation'
-  # The bridge release deliberately lacks this target-only source file.
-  # shellcheck source=/dev/null
-  source "$publication_real" || \
-    fail 'target publication deploy library could not be loaded'
+  # The bridge release deliberately lacks this target-only source file. Load
+  # the exact target blob through the protected reviewed-library staging path.
+  source_reviewed_deploy_library "$sha" "$relative_path" \
+    'target publication deploy library'
   declare -F deploy_reader_summary_publication_migrations >/dev/null || \
     fail 'target publication deploy library is missing its migration entrypoint'
 }
@@ -766,8 +843,8 @@ load_target_rabbitmq_quorum_backend_health() {
   verify_target_rabbitmq_quorum_asset "$sha" \
     "$RABBITMQ_QUORUM_RECOVERY_SCRIPT_PATH" 'target RabbitMQ quorum recovery script' 100755
   unset -f verify_backend verify_backend_with_retry
-  # shellcheck source=/dev/null
-  source "$health_library" || fail 'target backend health library could not be loaded'
+  source_reviewed_deploy_library "$sha" "$RABBITMQ_QUORUM_HEALTH_LIBRARY_PATH" \
+    'target backend health library'
   declare -F verify_backend >/dev/null || \
     fail 'target backend health library is missing its verification entrypoint'
   declare -F verify_backend_with_retry >/dev/null || \

@@ -14,6 +14,7 @@ import { assertReaderSummaryDailyCanonicalRecoveryV4HistoricalUnavailableMigrati
 import { assertReaderSummaryDailyCanonicalRecoveryV4InvalidRuntimeMigrationContract, assertReaderSummaryDailyCanonicalRecoveryV4InvalidRuntimePostgresContract } from "./lib/reader-summary-daily-canonical-recovery-v4-invalid-runtime-postgres-contract";
 import { assertReaderSummaryDailyCanonicalRecoveryV4AmbiguityRetryMigrationContract, prepareReaderSummaryDailyCanonicalRecoveryV4AmbiguityRetryFixture } from "./lib/reader-summary-daily-canonical-recovery-v4-ambiguity-retry-postgres-contract";
 import { assertReaderSummaryDailyCanonicalRecoveryV4EvidenceRecorderPostgresContract } from "./lib/reader-summary-daily-canonical-recovery-v4-evidence-recorder-postgres-contract";
+import { assertReaderSummaryActiveModelRoutePostgresContract } from "./lib/reader-summary-active-model-route-postgres-contract";
 import { assertReaderSummaryDailyCanonicalRecoveryV4InvalidProductRetrySetMigrationContract, assertReaderSummaryDailyCanonicalRecoveryV4InvalidProductRetrySetPostgresContract } from "./lib/reader-summary-daily-canonical-recovery-v4-invalid-product-retry-set-postgres-contract";
 import { type CanonicalRecoveryAuthority, type CanonicalRecoveryFinalizer, type CanonicalRecoveryPublication, type CanonicalRecoveryWork, PostgresCanonicalRecoveryAmbiguityRetryAuthorizer, PostgresCanonicalRecoveryAuthority, canonicalJsonBytes, canonicalRecoveryDates, sha256 } from "./lib/reader-summary-daily-canonical-recovery-v4";
 import { ReaderSummaryDailyCanonicalRecoveryV4Executor } from "./lib/reader-summary-daily-canonical-recovery-v4-executor";
@@ -296,14 +297,14 @@ class DeterministicDailyRecoveryRuntime {
       executionAttestation: {
         schemaVersion: 1,
         requestId: `daily-recovery-pg18-${input.requestedUtcDate}`,
-        purpose: "social_monitor.reader_summary.weekly.generate",
+        purpose: "social_monitor.reader_summary.daily.canonical_recovery.v2",
         canonicalRequestSha256: sha256(Buffer.from(
           `daily-recovery-pg18-request:${input.requestedUtcDate}`,
           "utf8",
         )),
         provider: "codex",
         model: "gpt-5.6-sol",
-        reasoningEffort: "xhigh",
+        reasoningEffort: "high",
         runtimeEngine: "subscription-runtime-cli",
         runtimePackageVersion: "1.0.0",
         launcherSha256: sha256(Buffer.from(
@@ -686,7 +687,6 @@ const main = async (): Promise<void> => {
         const immutablePublication = (
           publication: CanonicalRecoveryPublication,
         ): CanonicalRecoveryPublication => Object.freeze({ ...publication });
-
         // Checker-only batching defers immediate reads; terminal authority is verified twice.
         const wrappedFinalizer: CanonicalRecoveryFinalizer = {
           finalize: async (input) => {
@@ -771,6 +771,7 @@ const main = async (): Promise<void> => {
         await Promise.all([auditor, first, firstTerminal].map(configureLateAssertionSession));
         markLateStage("migrations_fixture_ready");
         try {
+          await assertReaderSummaryActiveModelRoutePostgresContract(auditor);
           await assertReaderSummaryDailyCanonicalRecoveryV4InvalidRuntimePostgresContract({
             auditor,
             tenantId: readerSummaryProductionRecoveryFixtureScope.tenantId,

@@ -20,6 +20,9 @@ mkdir -p \
 sha=1111111111111111111111111111111111111111
 printf '%s\n' "$sha" > "$TEST_ROOT/control/postgres-runtime-current/READY"
 printf '%s\n' "$sha" > "$TEST_ROOT/control/deploy-state/backend.sha"
+cp "$REPO/ops/deploy/production-runtime/reader-summary-scheduler-hold-common.sh" \
+  "$REPO/ops/deploy/production-runtime/reader-summary-scheduler-hold-status.sh" \
+  "$TEST_ROOT/control/postgres-runtime-current/"
 touch "$TEST_ROOT/secrets/production.env"
 touch "$TEST_ROOT/secrets/db/ca-certificate.crt"
 ln -s "$REPO" "$TEST_ROOT/integration"
@@ -64,7 +67,7 @@ grep -F -- 'DURABLE_READER_SUMMARY_TOPIC_LABELER=deterministic' "$CONTAINER_RUNN
 grep -F -- 'DURABLE_READER_SUMMARY_MAX_EVIDENCE_ITEMS=120' "$CONTAINER_RUNNER" >/dev/null
 grep -F -- 'DURABLE_READER_SUMMARY_PERIOD_ENDED_AT' "$CONTAINER_RUNNER" >/dev/null
 grep -F -- 'DURABLE_READER_SUMMARY_LIVE_OBSERVATION_CUTOFF' "$CONTAINER_RUNNER" >/dev/null
-grep -Fx 'ExecStart=/var/data/social-monitor/control/rolling-run.sh' \
+grep -Fx 'ExecStart=/var/data/social-monitor/control/postgres-runtime-current/reader-summary-one-shot.sh rolling' \
   "$REPO/ops/deploy/production-runtime/social-monitor-rolling.service" >/dev/null
 grep -Fx 'OnCalendar=*-*-* 04,08,12,16,20:15:00 UTC' \
   "$REPO/ops/deploy/production-runtime/social-monitor-rolling.timer" >/dev/null

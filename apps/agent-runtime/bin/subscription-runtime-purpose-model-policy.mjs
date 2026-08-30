@@ -6,22 +6,12 @@ const genericSummaryStructuredProfile = Object.freeze({
   responseFormat: "json",
 });
 
-const legacyReaderSummaryStructuredProfile = genericSummaryStructuredProfile;
-
 const activeReaderSummaryStructuredProfile = Object.freeze({
   provider: "codex",
   model: "gpt-5.6-sol",
   reasoningEffort: "high",
   outputKind: "structured_output",
   responseFormat: "json",
-});
-
-const legacyReaderSummaryTextProfile = Object.freeze({
-  provider: "codex",
-  model: "gpt-5.6-sol",
-  reasoningEffort: "xhigh",
-  outputKind: "output_text",
-  responseFormat: "text",
 });
 
 const activeReaderSummaryTextProfile = Object.freeze({
@@ -34,17 +24,6 @@ const activeReaderSummaryTextProfile = Object.freeze({
 
 const profilesByPurpose = Object.freeze({
   "social_monitor.summary.generate": genericSummaryStructuredProfile,
-  "social_monitor.reader_summary.generate": legacyReaderSummaryStructuredProfile,
-  "social_monitor.reader_summary.repair": legacyReaderSummaryStructuredProfile,
-  "social_monitor.reader_summary.topic_map.label": legacyReaderSummaryStructuredProfile,
-  "social_monitor.reader_summary.topic_map.verify_relations":
-    legacyReaderSummaryStructuredProfile,
-  "social_monitor.reader_summary.verify_story_relations":
-    legacyReaderSummaryStructuredProfile,
-  "social_monitor.reader_summary.verify_related_topic_relations":
-    legacyReaderSummaryStructuredProfile,
-  "social_monitor.reader_summary.weekly.review": legacyReaderSummaryStructuredProfile,
-  "social_monitor.reader_summary.weekly.generate": legacyReaderSummaryTextProfile,
   "social_monitor.reader_summary.generate.v2": activeReaderSummaryStructuredProfile,
   "social_monitor.reader_summary.repair.v2": activeReaderSummaryStructuredProfile,
   "social_monitor.reader_summary.topic_map.label.v2": activeReaderSummaryStructuredProfile,
@@ -54,6 +33,8 @@ const profilesByPurpose = Object.freeze({
     activeReaderSummaryStructuredProfile,
   "social_monitor.reader_summary.verify_related_topic_relations.v2":
     activeReaderSummaryStructuredProfile,
+  "social_monitor.reader_summary.daily.canonical_recovery.v2":
+    activeReaderSummaryTextProfile,
   "social_monitor.reader_summary.weekly.review.v2": activeReaderSummaryStructuredProfile,
   "social_monitor.reader_summary.weekly.generate.v2": activeReaderSummaryTextProfile,
 });
@@ -155,7 +136,6 @@ export const admitSubscriptionRuntimeWrapperRequest = (input) => {
 
 const assertDedicatedRelatedTopicMarkers = (purpose, controls, metadata) => {
   if (
-    purpose !== "social_monitor.reader_summary.verify_related_topic_relations" &&
     purpose !== "social_monitor.reader_summary.verify_related_topic_relations.v2"
   ) return;
   assertRequiredExactString(

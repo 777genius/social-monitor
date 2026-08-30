@@ -157,11 +157,11 @@ const manifestFor = (source: ReaderSummaryWeeklyReviewAuthority) => {
     executionAttestation: {
       schemaVersion: 1,
       requestId: "reader-summary-weekly-review:test",
-      purpose: "social_monitor.reader_summary.weekly.review",
+      purpose: "social_monitor.reader_summary.weekly.review.v2",
       canonicalRequestSha256: sha("request"),
       provider: "codex",
       model: "gpt-5.6-sol",
-      reasoningEffort: "xhigh",
+      reasoningEffort: "high",
       runtimeEngine: "subscription-runtime-cli",
       runtimePackageVersion: "1.2.3",
       launcherSha256: sha("launcher"),

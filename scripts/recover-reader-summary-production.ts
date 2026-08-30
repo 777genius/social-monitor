@@ -692,9 +692,11 @@ const readEnvValue = (
 };
 
 if (require.main === module) {
-  void main().catch((error) => {
-    const message = error instanceof Error ? error.message : String(error);
-    console.error(`Reader summary production recovery failed: ${message}`);
-    process.exitCode = 1;
-  });
+  // Keep the historical implementation type-checked for evidence readers,
+  // but never dispatch it as an executable production route.
+  void main;
+  console.error(
+    "Legacy reader-summary production recovery execution is retired; use the authorized daily canonical-recovery v2 route",
+  );
+  process.exitCode = 1;
 }

@@ -1,6 +1,11 @@
 import { createHash } from "node:crypto";
 
 import {
+  activeReaderSummaryModel,
+  activeReaderSummaryPurposes,
+  activeReaderSummaryReasoningEffort,
+} from "@social-monitor/summary/adapters/model/active-reader-summary-generation-profile";
+import {
   readerSummaryDailyModel,
   readerSummaryDailyModelProvider,
   readerSummaryDailyReasoningEffort,
@@ -386,10 +391,10 @@ export const verifyReaderSummaryDailyCanonicalRecoveryRawAttestation = (
   if (
     input.schemaVersion !== 1 ||
     typeof input.requestId !== "string" || input.requestId.length === 0 ||
-    input.purpose !== "social_monitor.reader_summary.weekly.generate" ||
+    input.purpose !== activeReaderSummaryPurposes.dailyCanonicalRecovery ||
     input.provider !== readerSummaryDailyModelProvider ||
-    input.model !== readerSummaryDailyModel ||
-    input.reasoningEffort !== "xhigh" ||
+    input.model !== activeReaderSummaryModel ||
+    input.reasoningEffort !== activeReaderSummaryReasoningEffort ||
     input.runtimeEngine !== readerSummaryDailyRuntimeEngine ||
     input.selectedOutputKind !== "output_text" ||
     input.selectedOutputSha256 !== rawOutputSha256 ||

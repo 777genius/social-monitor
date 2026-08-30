@@ -16,11 +16,12 @@ TARGET_SHA=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 PREVIOUS_SHA=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 EVENTS=$FIXTURE/events.log
 
-install -d "$REPO/ops/deploy" "$CONTROL" "$STATE" "$STAGING"
+install -d "$REPO/ops/deploy/production-runtime" "$CONTROL" "$STATE" "$STAGING"
 cp "$ENTRYPOINT" \
   "$SCRIPT_DIR/deploy-control-lib.sh" \
   "$SCRIPT_DIR/deploy-control-bridge-lib.sh" \
   "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh" \
+  "$SCRIPT_DIR/postgres-runtime-asset-lib.sh" \
   "$SCRIPT_DIR/backend-runtime-health-lib.sh" \
   "$SCRIPT_DIR/backend-image-rescue-lib.sh" \
   "$SCRIPT_DIR/daily-runner-image-bootstrap-lib.sh" \
@@ -30,6 +31,9 @@ cp "$ENTRYPOINT" \
   "$SCRIPT_DIR/reader-summary-recovery-maintenance-lib.sh" \
   "$SCRIPT_DIR/x-collector-image-deploy-lib.sh" \
   "$REPO/ops/deploy/"
+cp "$SCRIPT_DIR/production-runtime/reader-summary-scheduler-hold-common.sh" \
+  "$SCRIPT_DIR/production-runtime/reader-summary-scheduler-hold-restore.sh" \
+  "$REPO/ops/deploy/production-runtime/"
 git -C "$REPO" init -q
 git -C "$REPO" config user.name 'Deploy Contract Test'
 git -C "$REPO" config user.email deploy-contract@example.invalid

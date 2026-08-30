@@ -41,8 +41,8 @@ COMPOSE=(
   -f "$ROOT/control/compose.production.yml"
   -f "$ROOT/control/compose.managed-db.yml"
   -f "$ROOT/control/postgres-runtime-current/compose.postgres-runtime.yml"
-  -f "$ROOT/integration/ops/deploy/production-runtime/compose.agent-runtime-model.yml"
-  -f "$ROOT/integration/ops/deploy/production-runtime/compose.daily-artifacts.yml"
+  -f "$ROOT/control/postgres-runtime-current/compose.agent-runtime-model.yml"
+  -f "$ROOT/control/postgres-runtime-current/compose.daily-artifacts.yml"
 )
 DATE_FLAG=${1:---yesterday}
 MAINTENANCE_DATE=${2:-}
@@ -84,6 +84,13 @@ if [[ $DATE_FLAG == --check-readiness ]]; then
   check_runtime_release || exit 75
   exit 0
 fi
+
+"$ROOT/control/postgres-runtime-current/reader-summary-scheduler-hold-status.sh" \
+  >/dev/null || {
+  status=$?
+  ((status == 75)) && exit 75
+  exit 76
+}
 
 exec 9>"$ROOT/control/daily-run-singleton.lock"
 "$FLOCK_COMMAND" -n 9 || {

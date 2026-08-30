@@ -239,15 +239,13 @@ assertThrows(
     ),
   'READER_SUMMARY_TOPIC_LABELER must reject deterministic mode in beta runtime',
 );
-assert(
-  resolveReaderSummaryModelProviderMode({ ...betaEnv, READER_SUMMARY_MODEL_PROVIDER: 'openai-responses' }) ===
-    'openai-responses',
-  'reader summary beta model provider',
-);
-assert(
-  resolveReaderSummaryModelProviderMode({ ...betaEnv, READER_SUMMARY_MODEL_PROVIDER: 'openai-responses' }) ===
-    'openai-responses',
-  'canonical readerSummary beta model provider',
+assertThrows(
+  () =>
+    resolveReaderSummaryModelProviderMode({
+      ...betaEnv,
+      READER_SUMMARY_MODEL_PROVIDER: 'openai-responses',
+    }),
+  'READER_SUMMARY_MODEL_PROVIDER must reject openai-responses mode in beta runtime',
 );
 assert(
   resolveSummaryRabbitMqJobQueueOptions(rabbitMqEnv).routes?.['summary.job.execute']?.queueType === 'quorum',

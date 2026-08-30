@@ -1,10 +1,22 @@
 #!/usr/bin/env node
-import { readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { lstatSync, readFileSync } from "node:fs";
 
 const workflowPath = ".github/workflows/pull-request.yml";
 const workflow = readFileSync(workflowPath, "utf8");
 const productionWorkflowPath = ".github/workflows/production-deploy.yml";
 const productionWorkflow = readFileSync(productionWorkflowPath, "utf8");
+const transitionAdmissionPath = ".github/workflows/production-transition-admission.yml";
+const transitionReviewPath = ".github/workflows/production-transition-review.yml";
+const transitionPublishPath = ".github/workflows/production-transition-publish.yml";
+const transitionReview = readFileSync(transitionReviewPath, "utf8");
+const transitionPublish = readFileSync(transitionPublishPath, "utf8");
+const transitionClientPath = "ops/deploy/github-production-transition-client-lib.sh";
+const transitionClient = readFileSync(transitionClientPath, "utf8");
+const productionClientPath = "ops/deploy/github-production-deploy-client.sh";
+const productionClient = readFileSync(productionClientPath, "utf8");
+const transitionProtectedPath = "ops/deploy/production-transition-protected.manifest";
+const transitionProtected = readFileSync(transitionProtectedPath, "utf8");
 const packageJson = JSON.parse(readFileSync("package.json", "utf8"));
 const violations = [];
 const subscriptionRuntimeAuthPoolE2eCommand =
@@ -15,6 +27,180 @@ const rollingReceiptTest =
   "node ops/deploy/production-runtime/rolling-summary-receipt.test.mjs";
 const rollingRunTest =
   "bash ops/deploy/production-runtime/rolling-run.test.sh";
+const transitionLifecycleTests = [
+  "bash ops/deploy/github-production-transition-client-lib.test.sh",
+  "bash ops/deploy/production-transition-admission.test.sh",
+  "bash ops/deploy/production-transition-publisher-lifecycle.test.sh",
+  "bash ops/deploy/production-transition-b0-bootstrap.test.sh",
+  "bash ops/deploy/production-transition-b0-host-control.test.sh",
+];
+const productionDeployLifecycle =
+  packageJson.scripts?.["check:production-deploy-lifecycle"] ?? "";
+const productionDeployLifecycleCommands =
+  productionDeployLifecycle.split(" && ");
+
+const protectedLines = transitionProtected.trimEnd().split("\n");
+const protectedSpecs = protectedLines.slice(1);
+const expectedProtectedSpecs = [
+  "100644:.github/workflows/production-deploy.yml",
+  "100644:.github/workflows/production-transition-publish.yml",
+  "100644:.github/workflows/production-transition-review.yml",
+  "100644:ops/deploy/deploy-control-lib.sh",
+  "100755:ops/deploy/github-production-deploy-client.sh",
+  "100644:ops/deploy/github-production-transition-client-lib.sh",
+  "100755:ops/deploy/github-production-transition-client-lib.test.sh",
+  "100644:ops/deploy/production-deploy-history-lib.sh",
+  "100755:ops/deploy/production-transition-admission.sh",
+  "100755:ops/deploy/production-transition-admission.test.sh",
+  "100644:ops/deploy/production-transition-b0-host-control.sh",
+  "100755:ops/deploy/production-transition-b0-host-control.test.sh",
+  "100644:ops/deploy/production-transition-canonical-lib.sh",
+  "100644:ops/deploy/production-transition-marker-lib.sh",
+  "100644:ops/deploy/production-transition-protected.manifest",
+  "100755:ops/deploy/production-transition-publisher-lifecycle.test.sh",
+  "100755:ops/deploy/production-transition-publisher.sh",
+  "100644:ops/deploy/production-transition-review-lib.sh",
+  "100644:ops/deploy/production-transition-review.allowed_signers",
+  "100644:ops/deploy/production-transition-review.anchor",
+  "100755:ops/deploy/production-transition-reviewer.sh",
+  "100755:ops/deploy/production-transition-reviewer.test.sh",
+  "100755:ops/deploy/production-transition-runtime-resume.test.sh",
+  "100644:ops/deploy/production-transition-target-lib.sh",
+  "100644:ops/deploy/production-transition-target.allowed_signers",
+  "100644:ops/deploy/production-transition-target.anchor",
+  "100644:ops/deploy/social-monitor-production-deploy.sh",
+  "100755:ops/deploy/social-monitor-production-deploy.test.sh",
+  "100644:ops/deploy/social-monitor-production-ssh-wrapper.sh",
+  "100755:ops/deploy/social-monitor-production-ssh-wrapper.test.sh",
+];
+const protectedPaths = protectedSpecs.map((line) => line.split(":", 2)[1]);
+if (
+  protectedLines[0] !==
+    "version=social-monitor-production-transition-protected-paths-v1" ||
+  protectedPaths.some((path) => path === undefined) ||
+  protectedPaths.some((path, index) => index > 0 && protectedPaths[index - 1] >= path) ||
+  new Set(protectedPaths).size !== protectedPaths.length ||
+  protectedSpecs.join("\n") !== expectedProtectedSpecs.join("\n")
+) {
+  violations.push(
+    `${transitionProtectedPath}: mode:path rows must equal the exact canonical frozen-control set`,
+  );
+}
+
+for (const spec of expectedProtectedSpecs) {
+  const [expectedMode, path] = spec.split(":", 2);
+  let trackedEntry = "";
+  try {
+    trackedEntry = execFileSync("git", ["ls-files", "--stage", "--", path], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    }).trimEnd();
+  } catch {
+    violations.push(`${transitionProtectedPath}: frozen control is not tracked: ${path}`);
+    continue;
+  }
+  const trackedMatch = trackedEntry.match(/^(100644|100755) [0-9a-f]{40} 0\t(.+)$/u);
+  if (
+    trackedMatch === null ||
+    trackedMatch[1] !== expectedMode ||
+    trackedMatch[2] !== path
+  ) {
+    violations.push(
+      `${transitionProtectedPath}: frozen control is not one regular tracked file with mode ${expectedMode}: ${path}`,
+    );
+    continue;
+  }
+  let checkout;
+  try {
+    checkout = lstatSync(path);
+  } catch {
+    violations.push(`${transitionProtectedPath}: frozen control is absent from checkout: ${path}`);
+    continue;
+  }
+  if (!checkout.isFile() || checkout.isSymbolicLink()) {
+    violations.push(`${transitionProtectedPath}: frozen control is not a regular checkout file: ${path}`);
+    continue;
+  }
+  const checkoutMode = (checkout.mode & 0o111) === 0 ? "100644" : "100755";
+  if (checkoutMode !== expectedMode) {
+    violations.push(
+      `${transitionProtectedPath}: frozen control mode differs for ${path}: expected ${expectedMode}, got ${checkoutMode}`,
+    );
+  }
+}
+
+for (const [path, source] of [
+  ["ops/deploy/production-transition-canonical-lib.sh", readFileSync("ops/deploy/production-transition-canonical-lib.sh", "utf8")],
+  ["ops/deploy/production-transition-admission.sh", readFileSync("ops/deploy/production-transition-admission.sh", "utf8")],
+  ["ops/deploy/production-transition-b0-host-control.sh", readFileSync("ops/deploy/production-transition-b0-host-control.sh", "utf8")],
+]) {
+  if (
+    !source.includes("production-transition-protected.manifest") &&
+    !source.includes("production_transition_protected_manifest")
+  ) {
+    violations.push(`${path}: must consume the canonical protected path manifest`);
+  }
+}
+
+try {
+  lstatSync(transitionAdmissionPath);
+  violations.push(
+    `${transitionAdmissionPath}: circular target-controlled admission workflow must be absent`,
+  );
+} catch (error) {
+  if (error?.code !== "ENOENT") throw error;
+}
+
+for (const [path, source] of [
+  [transitionClientPath, transitionClient],
+  [productionClientPath, productionClient],
+]) {
+  for (const prohibited of [
+    "admit-transition",
+    "actions/workflows",
+    "actions/runs",
+    "workflow_runs",
+    "production_transition_admission_dispatch",
+    "production_transition_admit_via_protected_main",
+  ]) {
+    if (source.includes(prohibited)) {
+      violations.push(`${path}: obsolete workflow-controlled admission remains: ${prohibited}`);
+    }
+  }
+}
+if (
+  !transitionClient.includes("--method GET") ||
+  transitionClient.includes("--method POST") ||
+  !transitionClient.includes(
+    '"repos/$PRODUCTION_TRANSITION_MAIN_REPOSITORY/git/ref/heads/$PRODUCTION_TRANSITION_MAIN_BRANCH"',
+  ) ||
+  !/observed_main=\$\(production_transition_observe_main_sha\)\n\s+\[\[ \$observed_main == "\$target" \]\] \|\|\n\s+fail 'protected main is not the exact published transition target'\n\s+run_remote deploy-transition "\$target"/u.test(
+    transitionClient,
+  ) ||
+  transitionClient.match(/run_remote deploy-transition "\$target"/gu)?.length !== 1
+) {
+  violations.push(
+    `${transitionClientPath}: activation must perform one read-only exact-main observation immediately before one trusted-host deploy-transition`,
+  );
+}
+if (
+  !transitionReview.includes("PRODUCTION_TRANSITION_REVIEW_PRIVATE_KEY") ||
+  transitionReview.includes("PRODUCTION_TRANSITION_TARGET_PRIVATE_KEY") ||
+  !transitionPublish.includes("PRODUCTION_TRANSITION_TARGET_PRIVATE_KEY") ||
+  transitionPublish.includes("PRODUCTION_TRANSITION_REVIEW_PRIVATE_KEY")
+) {
+  violations.push("production transition workflows must keep review and target signing authorities separate");
+}
+for (const [path, source] of [
+  [transitionReviewPath, transitionReview],
+  [transitionPublishPath, transitionPublish],
+]) {
+  for (const match of source.matchAll(/^\s*uses:\s+([^@\s]+)@([^\s]+)$/gm)) {
+    if (!/^[0-9a-f]{40}$/.test(match[2])) {
+      violations.push(`${path}: ${match[1]} must be pinned to a full commit SHA`);
+    }
+  }
+}
 
 if (
   packageJson.scripts?.["check:subscription-runtime-auth-pool-e2e"] !==
@@ -26,13 +212,21 @@ if (
 }
 for (const command of [rollingReceiptTest, rollingRunTest]) {
   if (
-    !packageJson.scripts?.["check:production-deploy-lifecycle"]?.includes(
-      command,
-    ) ||
+    !productionDeployLifecycleCommands.includes(command) ||
     !productionWorkflow.includes(command)
   ) {
     violations.push(
       `production rolling contract test must run in lifecycle script and workflow: ${command}`,
+    );
+  }
+}
+for (const command of transitionLifecycleTests) {
+  const occurrences = productionDeployLifecycleCommands.filter(
+    (candidate) => candidate === command,
+  ).length;
+  if (occurrences !== 1) {
+    violations.push(
+      `package.json: production transition lifecycle must contain exactly one exact command: ${command}`,
     );
   }
 }
@@ -51,6 +245,133 @@ const findJob = (source, jobId) => source.match(
     "m",
   ),
 )?.[1];
+
+const transitionPublisherJob = findJob(transitionPublish, "publish");
+const transitionActivationJob = findJob(transitionPublish, "activate");
+
+if (
+  !transitionPublish.includes("\npermissions: {}\n") ||
+  transitionPublisherJob === undefined ||
+  !/^    permissions:\n      actions: read\n      contents: write\n(?=    \S)/mu.test(
+    transitionPublisherJob,
+  ) ||
+  !transitionPublisherJob.includes(
+    "outputs:\n      target_sha: ${{ steps.publish_target.outputs.target_sha }}",
+  ) ||
+  !transitionPublisherJob.includes("id: publish_target") ||
+  !/production-transition-publisher\.sh publish "\$target"\n\s+printf 'target_sha=%s\\n' "\$target" >> "\$GITHUB_OUTPUT"/u.test(
+    transitionPublisherJob,
+  ) ||
+  transitionPublisherJob.match(
+    /target_sha: \$\{\{ steps\.publish_target\.outputs\.target_sha \}\}/gu,
+  )?.length !== 1 ||
+  transitionPublisherJob.match(
+    /printf 'target_sha=%s\\n' "\$target" >> "\$GITHUB_OUTPUT"/gu,
+  )?.length !== 1
+) {
+  violations.push(
+    `${transitionPublishPath}: publish must expose the one verified, atomically published target as its exact job output`,
+  );
+}
+
+for (const prohibited of [
+  "environment: production",
+  "PRODUCTION_SSH_PRIVATE_KEY",
+  "PRODUCTION_SSH_KNOWN_HOSTS",
+  "DEPLOY_HOST:",
+  "DEPLOY_USER:",
+  "deploy-transition",
+]) {
+  if (transitionPublisherJob?.includes(prohibited)) {
+    violations.push(
+      `${transitionPublishPath}: publish job must not receive production activation authority: ${prohibited}`,
+    );
+  }
+}
+for (const [authority, owner] of [
+  ["PRODUCTION_TRANSITION_TARGET_PRIVATE_KEY", transitionPublisherJob],
+  ["PRODUCTION_SSH_PRIVATE_KEY", transitionActivationJob],
+  ["PRODUCTION_SSH_KNOWN_HOSTS", transitionActivationJob],
+]) {
+  if (
+    transitionPublish.split(authority).length !== 2 ||
+    !owner?.includes(authority)
+  ) {
+    violations.push(
+      `${transitionPublishPath}: ${authority} must be exposed exactly once and only to its authorized job`,
+    );
+  }
+}
+
+const transitionActivationRequired = [
+  "needs: publish",
+  "environment: production",
+  "permissions:\n      contents: read",
+  "ref: ${{ github.sha }}",
+  "persist-credentials: false",
+  "TARGET_SHA: ${{ needs.publish.outputs.target_sha }}",
+  '[[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]',
+  '[[ "$(git rev-parse HEAD)" == "$GITHUB_SHA" ]]',
+  "DEPLOY_KEY: ${{ secrets.PRODUCTION_SSH_PRIVATE_KEY }}",
+  "KNOWN_HOSTS: ${{ secrets.PRODUCTION_SSH_KNOWN_HOSTS }}",
+  "GH_TOKEN: ${{ github.token }}",
+  "DEPLOY_HOST: ${{ vars.PRODUCTION_SSH_HOST }}",
+  "DEPLOY_USER: ${{ vars.PRODUCTION_SSH_USER }}",
+  "run: bash ops/deploy/github-production-deploy-client.sh configure",
+];
+for (const fragment of transitionActivationRequired) {
+  if (!transitionActivationJob?.includes(fragment)) {
+    violations.push(
+      `${transitionPublishPath}: independently authorized activation job missing "${fragment}"`,
+    );
+  }
+}
+const transitionActivationOrder = [
+  "ref: ${{ github.sha }}",
+  '[[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]',
+  "run: bash ops/deploy/github-production-deploy-client.sh configure",
+  'deploy-transition "$TARGET_SHA"',
+  "if: always()",
+].map((fragment) => transitionActivationJob?.indexOf(fragment) ?? -1);
+if (
+  transitionActivationJob === undefined ||
+  !/^    permissions:\n      contents: read\n(?=    \S)/mu.test(
+    transitionActivationJob,
+  ) ||
+  /\n      [a-z-]+: write(?:\n|$)/u.test(transitionActivationJob) ||
+  transitionActivationJob.includes("PRODUCTION_TRANSITION_TARGET_PRIVATE_KEY") ||
+  transitionActivationJob.includes("PRODUCTION_TRANSITION_TARGET_SIGNING_KEY") ||
+  transitionActivationJob.match(
+    /\$\{\{ needs\.publish\.outputs\.target_sha \}\}/gu,
+  )?.length !== 2 ||
+  transitionActivationJob.match(
+    /deploy-transition "\$TARGET_SHA"/gu,
+  )?.length !== 1 ||
+  transitionActivationJob.match(
+    /run: bash ops\/deploy\/github-production-deploy-client\.sh configure/gu,
+  )?.length !== 1 ||
+  transitionActivationJob.match(
+    /run: bash ops\/deploy\/github-production-deploy-client\.sh cleanup/gu,
+  )?.length !== 1 ||
+  transitionActivationJob.match(
+    /uses: actions\/checkout@[0-9a-f]{40}/gu,
+  )?.length !== 1 ||
+  transitionActivationOrder.some(
+    (position, index) =>
+      position < 0 ||
+      (index > 0 && position <= transitionActivationOrder[index - 1]),
+  ) ||
+  /github-production-deploy-client\.sh\s+deploy\s/u.test(
+    transitionActivationJob,
+  ) ||
+  !/if: always\(\)\n\s+shell: bash\n\s+run: bash ops\/deploy\/github-production-deploy-client\.sh cleanup/u.test(
+    transitionActivationJob,
+  )
+) {
+  violations.push(
+    `${transitionPublishPath}: activation must use frozen B0 code and read-only GitHub authority to invoke one exact deploy-transition, then always clean up SSH`,
+  );
+}
 
 const requireScopedFlutterAppTests = (source, sourcePath) => {
   if (!/^\s*flutter test app\/test\s*$/mu.test(source)) {

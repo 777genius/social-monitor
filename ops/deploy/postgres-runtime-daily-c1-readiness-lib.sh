@@ -747,7 +747,7 @@ verify_postgres_runtime_daily_c1_handoff() {
     "$POSTGRES_RUNTIME_DAILY_TIMER") == "$POSTGRES_RUNTIME_DAILY_SERVICE" ]] || \
     { fail 'daily C1 timer unit mapping is invalid'; return 1; }
   [[ $(grep -Fxc \
-    'ExecStart=/var/data/social-monitor/control/daily-run.sh --yesterday' \
+    'ExecStart=/var/data/social-monitor/control/postgres-runtime-current/reader-summary-one-shot.sh daily' \
     "$release/$POSTGRES_RUNTIME_DAILY_SERVICE") == 1 ]] || \
     { fail 'daily service runner is invalid'; return 1; }
   ! grep -Eq '^Exec(Condition|StartPre|StopPost)=' \
@@ -800,7 +800,7 @@ verify_postgres_runtime_daily_c1_ready_static() {
   verify_postgres_runtime_daily_c1_baseline "$sha" || return
   [[ $(postgres_runtime_daily_c1_owner_state) == LEGACY ]] || return
   [[ $(grep -Fxc \
-    'ExecStart=/var/data/social-monitor/control/daily-run.sh --yesterday' \
+    'ExecStart=/var/data/social-monitor/control/postgres-runtime-current/reader-summary-one-shot.sh daily' \
     "$release/$POSTGRES_RUNTIME_DAILY_SERVICE") == 1 ]] &&
     ! grep -Eq '^Exec(Condition|StartPre|StopPost)=' \
       "$release/$POSTGRES_RUNTIME_DAILY_SERVICE"

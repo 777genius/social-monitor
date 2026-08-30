@@ -1,28 +1,23 @@
 #!/usr/bin/env bash
-
 # Sourced by social-monitor-production-deploy.sh after project paths, Compose,
 # and rollback verification helpers are defined. Rescue tags are deliberately
 # project-scoped and release-scoped; this library never invokes Docker prune.
-
 BACKEND_IMAGE_RESCUE_VERSION=social-monitor-backend-image-rescue-v1
 BACKEND_IMAGE_RESCUE_PHASE_VERSION=social-monitor-backend-image-rescue-phase-v1
 # These reviewed bounds overwrite inherited environment values. Focused tests
 # shorten them only after sourcing this library.
 BACKEND_IMAGE_RESCUE_POST_UNPAUSE_TIMEOUT_SECONDS=60
 BACKEND_IMAGE_RESCUE_POST_UNPAUSE_POLL_SECONDS=3
-
 backend_image_rescue_state_file() {
   local sha=$1
   # STATE is provided by the production deploy entrypoint that sources this file.
   # shellcheck disable=SC2153
   printf '%s/backend-image-rescue-%s.tsv\n' "$STATE" "$sha"
 }
-
 backend_image_rescue_phase_file() {
   local state_file=$1
   printf '%s.phase\n' "$state_file"
 }
-
 backend_image_rescue_tag() {
   local sha=$1
   local service=$2

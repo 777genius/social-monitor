@@ -52,6 +52,9 @@ fail() {
   exit 1
 }
 
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+source "$SCRIPT_DIR/github-production-transition-client-lib.sh"
+
 validate_client_defaults() {
   ((DEFAULT_RECONCILE_WINDOW_SECONDS >= MINIMUM_RECONCILE_WINDOW_SECONDS)) || \
     fail 'default reconciliation window is shorter than ten minutes'
@@ -917,6 +920,12 @@ case $action in
     validate_sha "$2"
     validate_remote_environment
     deploy_release "$2"
+    ;;
+  deploy-transition)
+    [[ $# == 2 ]] || fail 'deploy-transition requires a target SHA'
+    validate_sha "$2"
+    validate_remote_environment
+    production_transition_activate_via_trusted_host "$2"
     ;;
   prepare-release-b-bridge)
     [[ $# == 6 ]] || fail 'prepare-release-b-bridge requires controller, bridge, current-main, reviewed-target, and requested-target pins'

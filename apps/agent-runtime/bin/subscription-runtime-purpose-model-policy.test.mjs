@@ -10,7 +10,9 @@ test("MJS policy removes both schema-name fields for output_text", () => {
   const admission = admitSubscriptionRuntimeWrapperRequest({
     provider: "codex",
     request: {
-      context: { purpose: "social_monitor.reader_summary.weekly.generate" },
+      context: {
+        purpose: "social_monitor.reader_summary.daily.canonical_recovery.v2",
+      },
       task: {
         outputSchemaName: "weekly-summary",
         controls: {
@@ -33,7 +35,7 @@ test("MJS policy preserves structured schema names", () => {
   const admission = admitSubscriptionRuntimeWrapperRequest({
     provider: "codex",
     request: {
-      context: { purpose: "social_monitor.reader_summary.generate" },
+      context: { purpose: "social_monitor.reader_summary.generate.v2" },
       task: {
         outputSchemaName: "daily-summary",
         controls: {
@@ -54,8 +56,8 @@ test("MJS policy preserves structured schema names", () => {
   assert.equal(task.metadata.runtimeOutput, "structured_output");
 });
 
-test("active v2 admits high, rejects xhigh, and frozen recovery admits xhigh", () => {
-  const request = (purpose, reasoningEffort) => ({
+test("active v2 admits high and rejects xhigh and every legacy reader-summary purpose", () => {
+  const request = (purpose, reasoningEffort, outputKind = "structured_output") => ({
     provider: "codex",
     model: "gpt-5.6-sol",
     reasoningEffort,
@@ -65,10 +67,12 @@ test("active v2 admits high, rejects xhigh, and frozen recovery admits xhigh", (
         controls: {
           model: "gpt-5.6-sol",
           reasoningEffort,
-          outputSchema: { type: "object" },
-          responseFormat: "json",
+          ...(outputKind === "structured_output"
+            ? { outputSchema: { type: "object" } }
+            : {}),
+          responseFormat: outputKind === "structured_output" ? "json" : "text",
         },
-        metadata: { reasoningEffort, runtimeOutput: "structured_output" },
+        metadata: { reasoningEffort, runtimeOutput: outputKind },
       },
     },
   });
@@ -82,9 +86,31 @@ test("active v2 admits high, rejects xhigh, and frozen recovery admits xhigh", (
     ),
     /runtime reasoning effort conflicts with purpose policy/u,
   );
-  assert.doesNotThrow(() => admitSubscriptionRuntimeWrapperRequest(
-    request("social_monitor.reader_summary.generate", "xhigh"),
-  ));
+  assert.doesNotThrow(() => admitSubscriptionRuntimeWrapperRequest(request(
+    "social_monitor.reader_summary.daily.canonical_recovery.v2",
+    "high",
+    "output_text",
+  )));
+  assert.throws(() => admitSubscriptionRuntimeWrapperRequest(request(
+    "social_monitor.reader_summary.daily.canonical_recovery.v2",
+    "xhigh",
+    "output_text",
+  )), /runtime reasoning effort conflicts with purpose policy/u);
+  for (const purpose of [
+    "social_monitor.reader_summary.generate",
+    "social_monitor.reader_summary.repair",
+    "social_monitor.reader_summary.topic_map.label",
+    "social_monitor.reader_summary.topic_map.verify_relations",
+    "social_monitor.reader_summary.verify_story_relations",
+    "social_monitor.reader_summary.verify_related_topic_relations",
+    "social_monitor.reader_summary.weekly.review",
+    "social_monitor.reader_summary.weekly.generate",
+  ]) {
+    assert.throws(
+      () => admitSubscriptionRuntimeWrapperRequest(request(purpose, "xhigh")),
+      /purpose is not admitted/u,
+    );
+  }
 });
 
 test("Codex subprocess environment admits only safe execution basics", () => {

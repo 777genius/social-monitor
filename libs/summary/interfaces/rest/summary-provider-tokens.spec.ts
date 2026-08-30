@@ -112,6 +112,13 @@ describe("summary provider tokens", () => {
       }),
     ).toThrow("READER_SUMMARY_MODEL_PROVIDER=deterministic is not allowed");
     expect(() =>
+      resolveReaderSummaryModelProviderMode({
+        NODE_ENV: "staging",
+        SOCIAL_MONITOR_RUNTIME_PROFILE: "beta",
+        READER_SUMMARY_MODEL_PROVIDER: "openai-responses",
+      }),
+    ).toThrow("READER_SUMMARY_MODEL_PROVIDER=openai-responses is not allowed");
+    expect(() =>
       resolveReaderSummaryTopicLabelerMode(
         {
           NODE_ENV: "staging",

@@ -124,8 +124,8 @@ describe("buildReaderSummaryDailyModelJobReceipt", () => {
       rawOutputByteLength: responseBytes.length,
       attestation: {
         ...attestation(responseBytes),
-        purpose: "social_monitor.reader_summary.weekly.generate",
-        reasoningEffort: "xhigh",
+        purpose: "social_monitor.reader_summary.daily.canonical_recovery.v2",
+        reasoningEffort: "high",
         selectedOutputKind: "output_text",
       },
     });
@@ -155,8 +155,8 @@ describe("buildReaderSummaryDailyModelJobReceipt", () => {
       rawOutputByteLength: rawOutputBytes.length,
       attestation: {
         ...attestation(rawOutputBytes),
-        purpose: "social_monitor.reader_summary.weekly.generate",
-        reasoningEffort: "xhigh",
+        purpose: "social_monitor.reader_summary.daily.canonical_recovery.v2",
+        reasoningEffort: "high",
         selectedOutputKind: "output_text",
       },
     });

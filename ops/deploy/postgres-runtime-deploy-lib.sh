@@ -8,9 +8,16 @@ ROOT=${ROOT:?caller must define ROOT before sourcing postgres-runtime-deploy-lib
 load_postgres_runtime_reviewed_helper() {
   local relative_path=$1 label=$2 helper entry mode type object tree_path
   local reviewed_digest actual_digest
+  if [[ -n ${PRODUCTION_TRANSITION_PRELUDE_COMMIT:-} ]]; then
+    production_transition_host_source_authorized_prelude "$relative_path" "$label"
+    return
+  fi
   if [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} == 1 || \
         ${POSTGRES_RUNTIME_DAILY_C1_HELPER_TEST_MODE:-} == 1 ]]; then
-    helper=${BASH_SOURCE[0]%/*}/${relative_path##*/}
+    helper=$REPO/$relative_path
+    if [[ ! -f $helper || -L $helper ]]; then
+      helper=${BASH_SOURCE[0]%/*}/${relative_path#ops/deploy/}
+    fi
   else
     helper=$REPO/$relative_path
     [[ -f $helper && ! -L $helper ]] || \
@@ -18,7 +25,7 @@ load_postgres_runtime_reviewed_helper() {
     entry=$(git -C "$REPO" ls-tree HEAD -- "$relative_path") || \
       fail "$label cannot be inspected at current HEAD"
     read -r mode type object tree_path <<< "$entry"
-    [[ $mode == 100644 && $type == blob && $object =~ ^[0-9a-f]+$ && \
+    [[ $mode =~ ^100(644|755)$ && $type == blob && $object =~ ^[0-9a-f]+$ && \
        $tree_path == "$relative_path" ]] || \
       fail "$label is not a regular blob at current HEAD"
     reviewed_digest=$(git -C "$REPO" show "HEAD:$relative_path" | \
@@ -41,104 +48,16 @@ load_postgres_runtime_reviewed_helper \
 load_postgres_runtime_reviewed_helper \
   ops/deploy/postgres-runtime-activation-boundary-lib.sh \
   'PostgreSQL runtime activation boundary helper'
+load_postgres_runtime_reviewed_helper \
+  ops/deploy/postgres-runtime-asset-lib.sh \
+  'PostgreSQL runtime asset inventory helper'
+load_postgres_runtime_reviewed_helper \
+  ops/deploy/production-runtime/reader-summary-scheduler-hold-common.sh \
+  'reader-summary scheduler hold common helper'
+load_postgres_runtime_reviewed_helper \
+  ops/deploy/production-runtime/reader-summary-scheduler-hold-restore.sh \
+  'reader-summary scheduler hold restore helper'
 unset -f load_postgres_runtime_reviewed_helper
-
-postgres_runtime_control_mutation_scope() {
-  local source_mode current_mode=absent
-  source_mode=$(
-    github_premidnight_capture_marker_mode \
-      "$REPO/ops/deploy/production-runtime"
-  ) || return
-  if [[ -e $POSTGRES_RUNTIME_CURRENT || -L $POSTGRES_RUNTIME_CURRENT ]]; then
-    current_mode=$(
-      github_premidnight_capture_marker_mode "$POSTGRES_RUNTIME_CURRENT"
-    ) || return
-  fi
-  if [[ $source_mode == absent && $current_mode != absent ]]; then
-    fail 'GitHub pre-midnight activation marker cannot be removed'
-    return 1
-  fi
-  if [[ $source_mode == install-disabled && $current_mode == enable-now ]]; then
-    fail 'GitHub pre-midnight activation marker cannot disable an activated timer'
-    return 1
-  fi
-  if [[ $source_mode != "$current_mode" && $source_mode != absent ]]; then
-    if postgres_runtime_base_control_matches_source; then
-      printf 'capture-only\n'
-    else
-      printf 'full\n'
-    fi
-  elif [[ $source_mode != absent ]]; then
-    printf 'full\n'
-  else
-    printf 'base\n'
-  fi
-}
-
-postgres_runtime_base_control_matches_source() {
-  local source=$REPO/ops/deploy/production-runtime launcher unit
-  local -a launchers units
-  mapfile -t launchers < <(
-    postgres_runtime_control_launchers_for_scope base
-  )
-  mapfile -t units < <(postgres_runtime_control_units_for_scope base)
-  for launcher in "${launchers[@]}"; do
-    cmp -s "$source/$launcher" "$CONTROL/$launcher" || return 1
-  done
-  for unit in "${units[@]}"; do
-    cmp -s "$source/$unit" "$SYSTEMD_UNIT_DIR/$unit" || return 1
-  done
-}
-
-postgres_runtime_control_units_for_scope() {
-  case $1 in
-    base)
-      printf '%s\n' \
-        social-monitor-daily.service \
-        social-monitor-daily.timer \
-        social-monitor-prod.service \
-        social-monitor-rolling.service \
-        social-monitor-rolling.timer \
-        social-monitor-weekly.service \
-        social-monitor-weekly.timer
-      ;;
-    capture-only)
-      printf '%s\n' \
-        social-monitor-github-premidnight-capture-v1.service \
-        social-monitor-github-premidnight-capture-v1.timer
-      ;;
-    full)
-      printf '%s\n' \
-        social-monitor-github-premidnight-capture-v1.service \
-        social-monitor-github-premidnight-capture-v1.timer \
-        social-monitor-daily.service \
-        social-monitor-daily.timer \
-        social-monitor-prod.service \
-        social-monitor-rolling.service \
-        social-monitor-rolling.timer \
-        social-monitor-weekly.service \
-        social-monitor-weekly.timer
-      ;;
-    *)
-      fail 'PostgreSQL runtime-control mutation scope is invalid'
-      return 1
-      ;;
-  esac
-}
-
-postgres_runtime_control_launchers_for_scope() {
-  case $1 in
-    base) printf '%s\n' daily-run.sh rolling-run.sh ;;
-    capture-only) printf '%s\n' github-premidnight-capture-v1.sh ;;
-    full)
-      printf '%s\n' daily-run.sh github-premidnight-capture-v1.sh rolling-run.sh
-      ;;
-    *)
-      fail 'PostgreSQL runtime-control launcher scope is invalid'
-      return 1
-      ;;
-  esac
-}
 
 require_postgres_runtime_regular_source() {
   local path=$1
@@ -183,9 +102,14 @@ activate_postgres_runtime_control() {
   activate_postgres_runtime_control_transaction "$sha" "$compatible_backend_sha" "$outer_backup"
   activation_status=$?
   ((activation_status == 0)) || return "$activation_status"
-  if [[ ${COMPOSE[-1]} != "$POSTGRES_RUNTIME_CURRENT/compose.postgres-runtime.yml" ]]; then
+  if [[ " ${COMPOSE[*]} " != *" $POSTGRES_RUNTIME_CURRENT/compose.postgres-runtime.yml "* ]]; then
     COMPOSE+=(
       -f "$POSTGRES_RUNTIME_CURRENT/compose.postgres-runtime.yml"
+    )
+  fi
+  if [[ " ${COMPOSE[*]} " != *" $POSTGRES_RUNTIME_CURRENT/compose.agent-runtime-model.yml "* ]]; then
+    COMPOSE+=(
+      -f "$POSTGRES_RUNTIME_CURRENT/compose.agent-runtime-model.yml"
     )
   fi
 }
@@ -322,6 +246,7 @@ activate_postgres_runtime_control_transaction() (
   fi
   require_postgres_runtime_regular_source \
     "$source/compose.postgres-runtime.yml" 644
+  postgres_runtime_require_reader_summary_source_assets "$source"
   require_postgres_runtime_daily_c1_source "$source"
   daily_c1_state=$(postgres_runtime_daily_c1_readiness_state \
     "$source/$POSTGRES_RUNTIME_DAILY_C1_MARKER")
@@ -412,6 +337,7 @@ activate_postgres_runtime_control_transaction() (
     install -d -m 0755 "$staged_release"
     install -m 0644 "$source/compose.postgres-runtime.yml" \
       "$staged_release/compose.postgres-runtime.yml"
+    postgres_runtime_stage_reader_summary_assets "$source" "$staged_release"
     stage_postgres_runtime_daily_c1_readiness "$source" "$staged_release"
     for launcher in "${release_launchers[@]}"; do
       install -m 0755 "$source/$launcher" "$staged_release/$launcher"
@@ -433,7 +359,8 @@ activate_postgres_runtime_control_transaction() (
   [[ $release_state == "$source_state" ]] || \
     fail 'PostgreSQL runtime control release activation state is immutable'
   expected_release_entry_count=$((
-    ${#release_launchers[@]} + ${#release_units[@]} + 6
+    ${#release_launchers[@]} + ${#release_units[@]} + 6 +
+    $(postgres_runtime_reader_summary_asset_count)
   ))
   if [[ $source_state == active ]]; then
     expected_release_entry_count=$((expected_release_entry_count + 1))
@@ -450,6 +377,7 @@ activate_postgres_runtime_control_transaction() (
   cmp -s "$source/compose.postgres-runtime.yml" \
     "$release/compose.postgres-runtime.yml" || \
     fail 'immutable PostgreSQL runtime Compose release differs from source'
+  postgres_runtime_verify_reader_summary_assets "$source" "$release"
   verify_postgres_runtime_daily_c1_release "$source" "$release"
   for launcher in "${release_launchers[@]}"; do
     require_postgres_runtime_regular_release_file \
@@ -553,6 +481,7 @@ verify_installed_postgres_runtime_control() {
   cmp -s "$source/compose.postgres-runtime.yml" \
     "$POSTGRES_RUNTIME_CURRENT/compose.postgres-runtime.yml" || \
     fail 'installed PostgreSQL Compose overlay differs from the release'
+  postgres_runtime_verify_reader_summary_assets "$source" "$release"
   verify_installed_postgres_runtime_daily_c1_readiness \
     "$source" "$release" "$POSTGRES_RUNTIME_CURRENT"
   for launcher in "${launchers[@]}"; do

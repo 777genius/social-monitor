@@ -12,6 +12,8 @@ export const activeReaderSummaryPurposes = Object.freeze({
     "social_monitor.reader_summary.verify_story_relations.v2",
   relatedTopicRelations:
     "social_monitor.reader_summary.verify_related_topic_relations.v2",
+  dailyCanonicalRecovery:
+    "social_monitor.reader_summary.daily.canonical_recovery.v2",
   weeklyReview: "social_monitor.reader_summary.weekly.review.v2",
   weeklyGenerate: "social_monitor.reader_summary.weekly.generate.v2",
 } as const);

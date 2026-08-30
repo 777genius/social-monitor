@@ -11,6 +11,7 @@ import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { readerSummaryActiveModelRouteParityModel } from "./reader-summary-active-model-route-prisma-parity";
 
 export const readerSummaryPublicationMigration =
   "20260716170000_reader_summary_fail_closed_publication";
@@ -881,8 +882,10 @@ const createReaderSummaryMigrationParitySchema = (): Readonly<{
       productionSchema.includes(`@@map("${name}")`)).length;
     assert(mappedCount === 0 || mappedCount === terminalOwnedDailyTableNames.length,
       "Prisma schema must model all or none of the daily authority tables");
-    writeFileSync(schemaPath, mappedCount === terminalOwnedDailyTableNames.length
-      ? productionSchema : `${productionSchema}\n${terminalOwnedDailyParityModels}`);
+    const paritySchema = mappedCount === terminalOwnedDailyTableNames.length
+      ? productionSchema : `${productionSchema}\n${terminalOwnedDailyParityModels}`;
+    writeFileSync(schemaPath,
+      `${paritySchema}\n${readerSummaryActiveModelRouteParityModel}`);
     return { directory, schemaPath };
   } catch (error) {
     rmSync(directory, { recursive: true, force: true });

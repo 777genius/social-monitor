@@ -1,0 +1,138 @@
+name: Production transition publish
+
+run-name: >-
+  production-transition-publish review-run=${{ inputs.review_run_id }} request=${{ inputs.request_id }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      review_run_id:
+        description: Successful production transition review workflow run
+        required: true
+        type: string
+      request_id:
+        description: Correlation nonce
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: production-transition-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    permissions:
+      actions: read
+      contents: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      target_sha: ${{ steps.publish_target.outputs.target_sha }}
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Validate publisher context
+        shell: bash
+        env:
+          REVIEW_RUN_ID: ${{ inputs.review_run_id }}
+          REQUEST_ID: ${{ inputs.request_id }}
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REPOSITORY" == "777genius/social-monitor" ]]
+          [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]
+          [[ "$GITHUB_REF" == "refs/heads/main" ]]
+          [[ "$REVIEW_RUN_ID" =~ ^[1-9][0-9]*$ ]]
+          [[ "$REQUEST_ID" =~ ^[0-9a-f]{32}$ ]]
+          [[ "$(git rev-parse HEAD)" == "$GITHUB_SHA" ]]
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        with:
+          name: production-transition-review
+          path: artifact
+          repository: 777genius/social-monitor
+          run-id: ${{ inputs.review_run_id }}
+          github-token: ${{ github.token }}
+      - name: Verify review authority, sign T, and publish atomically
+        id: publish_target
+        shell: bash
+        env:
+          TARGET_PRIVATE_KEY: ${{ secrets.PRODUCTION_TRANSITION_TARGET_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          [[ -n "$TARGET_PRIVATE_KEY" ]]
+          [[ -f artifact/review.bundle && ! -L artifact/review.bundle ]]
+          [[ -f artifact/review.result && ! -L artifact/review.result ]]
+          [[ -f artifact/production-transition-review.statement && \
+             ! -L artifact/production-transition-review.statement ]]
+          [[ -f artifact/production-transition-review.statement.sig && \
+             ! -L artifact/production-transition-review.statement.sig ]]
+          git bundle verify artifact/review.bundle
+          git fetch artifact/review.bundle \
+            'refs/production-transition/artifact/*:refs/production-transition/artifact/*'
+          s2=$(sed -n 's/^s2=//p' artifact/review.result)
+          p6=$(sed -n 's/^p6=//p' artifact/review.result)
+          [[ "$s2" == "$(git rev-parse refs/production-transition/artifact/s2)" ]]
+          [[ "$p6" == "$(git rev-parse refs/production-transition/artifact/p6)" ]]
+          key=$(mktemp "$RUNNER_TEMP/transition-target-key.XXXXXX")
+          trap 'rm -f -- "$key"' EXIT
+          printf '%s\n' "$TARGET_PRIVATE_KEY" > "$key"
+          chmod 0600 "$key"
+          PRODUCTION_TRANSITION_TARGET_SIGNING_KEY=$key \
+            bash ops/deploy/production-transition-publisher.sh prepare \
+              "$s2" "$p6" artifact/production-transition-review.statement \
+              artifact/production-transition-review.statement.sig > artifact/target.result
+          target=$(sed -n 's/^t=//p' artifact/target.result)
+          [[ "$target" =~ ^[0-9a-f]{40}$ ]]
+          PRODUCTION_TRANSITION_TARGET_SIGNING_KEY=$key \
+            bash ops/deploy/production-transition-publisher.sh publish "$target"
+          printf 'target_sha=%s\n' "$target" >> "$GITHUB_OUTPUT"
+          printf 'published-target=%s\n' "$target" >> "$GITHUB_STEP_SUMMARY"
+
+  activate:
+    needs: publish
+    environment: production
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate independently authorized activation context
+        shell: bash
+        env:
+          TARGET_SHA: ${{ needs.publish.outputs.target_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REPOSITORY" == "777genius/social-monitor" ]]
+          [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]
+          [[ "$GITHUB_REF" == "refs/heads/main" ]]
+          [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$(git rev-parse HEAD)" == "$GITHUB_SHA" ]]
+      - name: Configure restricted production SSH
+        shell: bash
+        env:
+          DEPLOY_KEY: ${{ secrets.PRODUCTION_SSH_PRIVATE_KEY }}
+          KNOWN_HOSTS: ${{ secrets.PRODUCTION_SSH_KNOWN_HOSTS }}
+        run: bash ops/deploy/github-production-deploy-client.sh configure
+      - name: Activate the exact published target through frozen B0 control
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ vars.PRODUCTION_SSH_HOST }}
+          DEPLOY_USER: ${{ vars.PRODUCTION_SSH_USER }}
+          GH_TOKEN: ${{ github.token }}
+          TARGET_SHA: ${{ needs.publish.outputs.target_sha }}
+        run: >-
+          bash ops/deploy/github-production-deploy-client.sh
+          deploy-transition "$TARGET_SHA"
+      - name: Remove production SSH material
+        if: always()
+        shell: bash
+        run: bash ops/deploy/github-production-deploy-client.sh cleanup

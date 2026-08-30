@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 set -euo pipefail
-
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 PROJECT_ROOT=$(cd "$SCRIPT_DIR/../.." && pwd)
 BASE=$(
@@ -10,7 +9,6 @@ BASE=$(
 RELEASE_A_COMMIT=83f6932eaaa87a49c64b9f8b07ada5052d47a7b4
 FIXTURE=$(mktemp -d "${TMPDIR:-/tmp}/postgres-pool-bootstrap-transition.XXXXXX")
 trap 'rm -rf "$FIXTURE"' EXIT
-
 TEST_PHASE=fixture-setup
 report_error() {
   local status=$1
@@ -20,12 +18,10 @@ report_error() {
     "$TEST_PHASE" "$line" "$status" "$command" >&2
 }
 trap 'report_error "$?" "$LINENO" "$BASH_COMMAND"' ERR
-
 write_target_quorum_health_fixture() {
   local repository=$1
   local script=$repository/ops/deploy/rabbitmq-quorum-health.sh
   local recovery_script=$repository/ops/deploy/rabbitmq-quorum-recovery.sh
-
   printf '%s\n' \
     '#!/usr/bin/env bash' \
     'rabbitmq_quorum_health_probe() { :; }' > "$script"
@@ -35,7 +31,6 @@ write_target_quorum_health_fixture() {
     'rabbitmq_quorum_recovery_probe() { :; }' > "$recovery_script"
   chmod 0755 "$recovery_script"
 }
-
 REPO=$FIXTURE/repo
 ORIGIN=$FIXTURE/origin.git
 ROOT=$FIXTURE/root
@@ -50,7 +45,6 @@ DAILY_RUNNER=$CONTROL/daily-run.sh
 RUNNING_CONTAINER_SENTINEL=$ROOT/runtime/running-containers.sentinel
 RUNTIME_SENTINEL=$LEGACY_RUNTIME/runtime.sentinel
 NON_ACTIVATING_SNAPSHOT=$FIXTURE/release-a-non-activating-before
-
 git -C "$PROJECT_ROOT" show "$BASE:ops/deploy/social-monitor-production-deploy.sh" \
   > "$FIXTURE/legacy-entrypoint.sh"
 # Adapt only root-vs-test path selection for rootful CI; recorded planning,
@@ -119,7 +113,6 @@ legacy_marker_line=$(grep -nF "printf '%s\n' \"\$sha\" > \"\$STATE/control.sha\"
   "$FIXTURE/legacy-entrypoint.sh" | cut -d: -f1)
 legacy_sync_line=$(grep -nF 'sync_control_script' "$FIXTURE/legacy-entrypoint.sh" | tail -1 | cut -d: -f1)
 ((legacy_marker_line < legacy_sync_line))
-
 git init --bare -q "$ORIGIN"
 git init -q -b main "$REPO"
 git -C "$REPO" config user.name 'Pool Bootstrap Contract'
@@ -162,7 +155,6 @@ readlink "$POSTGRES_RUNTIME_CURRENT" \
 # Any container command fails; byte sentinels prove runtime state stays unchanged.
 printf '#!/usr/bin/env bash\nexit 98\n' > "$FIXTURE/bin/docker"
 chmod 0755 "$FIXTURE/bin/docker"
-
 # Keep later control bridges out of the historical 18-path Release A fixture.
 git -C "$PROJECT_ROOT" show \
   "$RELEASE_A_COMMIT:ops/deploy/social-monitor-production-deploy.sh" \
@@ -216,7 +208,6 @@ git -C "$REPO" push -q origin main
 TARGET_SHA=$(git -C "$REPO" rev-parse HEAD)
 printf '[safe]\n\tdirectory = %s\n' "$REPO" > "$FIXTURE/gitconfig"
 chmod -R a+rwX "$FIXTURE"
-
 assert_release_a_non_activation() {
   cmp -s "$NON_ACTIVATING_SNAPSHOT/backend.sha" "$STATE/backend.sha"
   [[ -L $POSTGRES_RUNTIME_CURRENT ]]
@@ -232,7 +223,6 @@ assert_release_a_non_activation() {
     "$POSTGRES_RUNTIME_CURRENT/READY"
   [[ ! -e $CONTROL/postgres-runtime-releases/$TARGET_SHA ]]
 }
-
 run_entrypoint() {
   local entrypoint=$1
   local action=$2
@@ -250,7 +240,6 @@ run_entrypoint() {
   /usr/bin/env "${environment[@]}" /usr/bin/bash "$entrypoint" \
     "$action" "$target"
 }
-
 run_current_deploy() {
   local target=${1:-$TARGET_SHA}
   local -a environment=(
@@ -328,7 +317,6 @@ run_current_deploy() {
     deploy_release "$3"
   ' _ "$INSTALLED" "$RECOVERY_ACTIVATION_LOG" "$target"
 }
-
 run_current_control_deploy() {
   local -a environment=(
     SOCIAL_MONITOR_DEPLOY_TEST_MODE=1
@@ -365,7 +353,6 @@ run_current_control_deploy() {
     deploy_release "$normal_target"
   ' _ "$INSTALLED" "$NORMAL_CONTROL_LOG" "$CURRENT_SHA"
 }
-
 TEST_PHASE=legacy-plan
 legacy_plan=$(run_entrypoint "$FIXTURE/legacy-entrypoint.sh" plan)
 grep -Fx 'backend=false' <<< "$legacy_plan" >/dev/null
@@ -374,7 +361,6 @@ if grep -q '^postgres_pool_bootstrap=' <<< "$legacy_plan"; then
   echo 'legacy entrypoint unexpectedly claimed bootstrap support' >&2
   exit 1
 fi
-
 # Attempt 1 fails old main at its real marker-before-sync boundary.
 TEST_PHASE=legacy-poison-window
 trap - ERR
@@ -387,7 +373,6 @@ trap 'report_error "$?" "$LINENO" "$BASH_COMMAND"' ERR
 [[ $(cat "$STATE/control.sha") == "$TARGET_SHA" ]]
 [[ ! -e $INSTALLED && ! -e $STATE/postgres-pool-bootstrap.sha ]]
 assert_release_a_non_activation
-
 # Attempt 2 repairs the old poison window through the real atomic sync.
 TEST_PHASE=legacy-repair
 run_entrypoint "$FIXTURE/legacy-entrypoint.sh" deploy >/dev/null
@@ -396,7 +381,6 @@ cmp -s "$INSTALLED" "$REPO/ops/deploy/social-monitor-production-deploy.sh"
 assert_release_a_non_activation
 uncommitted_plan=$(run_entrypoint "$INSTALLED" plan)
 grep -Fx 'postgres_pool_bootstrap=uninstalled' <<< "$uncommitted_plan" >/dev/null
-
 # Attempt 3 atomically commits the bootstrap marker that admits Release B.
 TEST_PHASE=bootstrap-commit
 run_entrypoint "$INSTALLED" deploy >/dev/null
@@ -404,7 +388,6 @@ assert_release_a_non_activation
 committed_plan=$(run_entrypoint "$INSTALLED" plan)
 grep -Fx 'postgres_pool_bootstrap=postgres-pool-v1' <<< "$committed_plan" >/dev/null
 grep -Fx "postgres_pool_bootstrap_sha=$TARGET_SHA" <<< "$committed_plan" >/dev/null
-
 TEST_PHASE=already-newer-fixture
 # Model the independently advanced marker with the pre-split inline sync shape.
 cp "$PROJECT_ROOT/ops/deploy/social-monitor-production-deploy.sh" \
@@ -433,7 +416,6 @@ git -C "$REPO" add ops/deploy/social-monitor-production-deploy.sh
 git -C "$REPO" commit -qm 'test: historical installed control'
 git -C "$REPO" push -q origin main
 HISTORICAL_CONTROL_SHA=$(git -C "$REPO" rev-parse HEAD)
-
 # Reproduce a backend gap before the entrypoint-only installed-blob introduction.
 printf 'legitimate backend gap\n' \
   > "$REPO/apps/api-gateway/stale-control-gap.txt"

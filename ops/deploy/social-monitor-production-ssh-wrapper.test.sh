@@ -245,6 +245,19 @@ for wrapper in "$FIXTURE/current-wrapper.sh" "$FIXTURE/legacy-wrapper.sh"; do
   done
 done
 
+: > "$EVENT_LOG"
+SSH_ORIGINAL_COMMAND="deploy-transition $SHA" EVENT_LOG=$EVENT_LOG \
+  CONTROL_LIB=$CONTROL_LIB EXACT_SHA=$SHA EXPECT_ORDINARY_PROBE_STDIN_EOF=1 \
+  bash "$FIXTURE/current-wrapper.sh" <<< 'candidate-controlled-input'
+grep -Fx 'sudo-clean' "$EVENT_LOG" >/dev/null
+grep -Fx 'ordinary-probe-stdin-eof:deploy-transition' "$EVENT_LOG" >/dev/null
+[[ $(wc -l < "$EVENT_LOG") == 2 ]]
+assert_rejected "$FIXTURE/legacy-wrapper.sh" "deploy-transition $SHA"
+assert_rejected "$FIXTURE/current-wrapper.sh" \
+  "deploy-transition $SHA 0000000000000000000000000000000000000000"
+assert_rejected "$FIXTURE/current-wrapper.sh" \
+  "deploy-transition $SHA 777genius/social-monitor"
+
 for command in \
   "deploy $SHA"$'\n'"plan $SHA" \
   "deploy $SHA"$'\r' \

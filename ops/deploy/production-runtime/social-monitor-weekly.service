@@ -7,7 +7,7 @@ StartLimitBurst=3
 
 [Service]
 Type=oneshot
-ExecStart=/bin/bash -lc 'set -euo pipefail; ROOT=/var/data/social-monitor; release=$(cat "$ROOT/control/deploy-state/backend.sha"); [[ $release =~ ^[0-9a-f]{40}$ ]] || exit 75; exec "$ROOT/control/github-production-deploy.sh" reader-summary-weekly-run "$release"'
+ExecStart=/var/data/social-monitor/control/postgres-runtime-current/reader-summary-one-shot.sh weekly
 TimeoutStartSec=23400
 Restart=on-failure
 RestartSec=30min

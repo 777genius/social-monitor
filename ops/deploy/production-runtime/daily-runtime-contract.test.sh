@@ -15,7 +15,7 @@ grep -F 'runtime_release != "$backend_release"' "$DAILY_RUN" >/dev/null
 # shellcheck disable=SC2016
 grep -F '"$FLOCK_COMMAND" -w "$POSTGRES_ADMISSION_WAIT_SECONDS" 8' \
   "$DAILY_RUN" >/dev/null
-grep -Fx 'ExecStart=/var/data/social-monitor/control/daily-run.sh --yesterday' \
+grep -Fx 'ExecStart=/var/data/social-monitor/control/postgres-runtime-current/reader-summary-one-shot.sh daily' \
   "$DAILY_SERVICE" >/dev/null
 ! grep -F 'exec "$ROOT/control/rolling-run.sh"' "$DAILY_RUN" >/dev/null
 grep -Fx 'Unit=social-monitor-daily.service' "$DAILY_TIMER" >/dev/null
@@ -43,6 +43,9 @@ prepare_case() {
   local case_root=$test_root/$name
   install -d "$case_root/control/postgres-runtime-current" \
     "$case_root/control/deploy-state"
+  cp "$SCRIPT_DIR/reader-summary-scheduler-hold-common.sh" \
+    "$SCRIPT_DIR/reader-summary-scheduler-hold-status.sh" \
+    "$case_root/control/postgres-runtime-current/"
   cat >"$case_root/flock" <<EOF
 #!/usr/bin/env bash
 printf '%s\\n' "\$*" >>'$case_root/flock.calls'
