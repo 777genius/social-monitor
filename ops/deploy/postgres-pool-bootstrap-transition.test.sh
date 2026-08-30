@@ -400,7 +400,7 @@ import sys
 path = pathlib.Path(sys.argv[1])
 source = path.read_text(encoding="utf-8")
 start = source.index("sync_control_entrypoint() {")
-end = source.index("\n}\n\ncommit_postgres_pool_bootstrap() {", start) + 2
+end = source.index("\n}\n\nsync_control_script() {", start) + 2
 helper = source[start:end]
 compatibility_reference = "  : sync_control_entrypoint\n"
 if source.count(compatibility_reference) != 1:
