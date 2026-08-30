@@ -921,7 +921,6 @@ fi
 [[ ! -e $STATE/postgres-pool-bootstrap.sha ]]
 [[ ! -e $RECOVERY_ACTIVATION_LOG ]]
 git -C "$REPO" checkout -q main
-
 git -C "$REPO" checkout -qb non-ancestor-current "$TARGET_SHA"
 cp "$PROJECT_ROOT/ops/deploy/social-monitor-production-deploy.sh" \
   "$PROJECT_ROOT/ops/deploy/deploy-control-lib.sh" \
@@ -933,6 +932,7 @@ cp "$PROJECT_ROOT/ops/deploy/social-monitor-production-deploy.sh" \
   "$PROJECT_ROOT/ops/deploy/daily-runner-image-bootstrap-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/x-collector-image-deploy-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/reader-summary-recovery-maintenance-lib.sh" \
+  "$PROJECT_ROOT/ops/deploy/production-backend-classification-lib.sh" \
   "$REPO/ops/deploy/"
 write_target_quorum_health_fixture "$REPO"
 git -C "$REPO" add ops/deploy
