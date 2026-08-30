@@ -676,6 +676,7 @@ BEGIN
         'reader_summary_daily_canonical_recovery_v4_authorities',
         'reader_summary_daily_canonical_recovery_v4_leases',
         'reader_summary_daily_canonical_recovery_v4_ambiguity_retries',
+        'reader_summary_daily_canonical_recovery_v4_route_authorities',
         'reader_summary_weekly_publication_evidence',
         'reader_summary_weekly_review_manifests'
       )
@@ -708,6 +709,7 @@ BEGIN
         'reader_summary_daily_canonical_recovery_v4_authorities',
         'reader_summary_daily_canonical_recovery_v4_leases',
         'reader_summary_daily_canonical_recovery_v4_ambiguity_retries',
+        'reader_summary_daily_canonical_recovery_v4_route_authorities',
         'reader_summary_weekly_publication_evidence',
         'reader_summary_weekly_review_manifests'
       )
@@ -748,6 +750,7 @@ BEGIN
         'reader_summary_daily_canonical_recovery_v4_authorities',
         'reader_summary_daily_canonical_recovery_v4_leases',
         'reader_summary_daily_canonical_recovery_v4_ambiguity_retries',
+        'reader_summary_daily_canonical_recovery_v4_route_authorities',
         'reader_summary_weekly_publication_evidence',
         'reader_summary_weekly_review_manifests'
       )
@@ -941,6 +944,7 @@ BEGIN
         'reader_summary_daily_canonical_recovery_v4_authorities',
         'reader_summary_daily_canonical_recovery_v4_leases',
         'reader_summary_daily_canonical_recovery_v4_ambiguity_retries',
+        'reader_summary_daily_canonical_recovery_v4_route_authorities',
         'reader_summary_weekly_publication_evidence',
         'reader_summary_weekly_review_manifests'
       )
@@ -964,7 +968,8 @@ BEGIN
       'reader_summary_daily_canonical_recovery_v4_plans',
       'reader_summary_daily_canonical_recovery_v4_authorities',
       'reader_summary_daily_canonical_recovery_v4_leases',
-      'reader_summary_daily_canonical_recovery_v4_ambiguity_retries'
+      'reader_summary_daily_canonical_recovery_v4_ambiguity_retries',
+      'reader_summary_daily_canonical_recovery_v4_route_authorities'
     )
     AND owner.rolname = 'social_monitor_reader_summary_publication_owner';
   SELECT count(*) INTO v_weekly_review_manifest_table_count
@@ -982,12 +987,13 @@ BEGIN
       'reader_summary_daily_canonical_recovery_v4_plans',
       'reader_summary_daily_canonical_recovery_v4_authorities',
       'reader_summary_daily_canonical_recovery_v4_leases',
-      'reader_summary_daily_canonical_recovery_v4_ambiguity_retries'
+      'reader_summary_daily_canonical_recovery_v4_ambiguity_retries',
+      'reader_summary_daily_canonical_recovery_v4_route_authorities'
     );
   -- A resumable pre-migration handoff may reach this audit with one protected
   -- table owner; every other state must match the exact final ownership count.
   IF v_weekly_review_manifest_table_count NOT IN (0, 1)
-    OR v_v4_table_count NOT IN (0, 3, 4)
+    OR v_v4_table_count NOT IN (0, 3, 4, 5)
     OR (
       v_owner_count <> 1
       AND v_owner_count <> 4 + v_weekly_review_manifest_table_count
@@ -1024,7 +1030,7 @@ BEGIN
     FROM unnest(ARRAY['reader_summary_artifacts', 'reader_summary_publications', 'reader_summary_publication_slots', 'reader_summary_weekly_publication_evidence']) evidence_table(name)
     WHERE NOT has_table_privilege('social_monitor_reader_summary_daily_terminal', 'public.' || evidence_table.name, 'SELECT') OR has_table_privilege('social_monitor_reader_summary_daily_terminal', 'public.' || evidence_table.name, 'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
   ) OR EXISTS (SELECT 1
-    FROM unnest(ARRAY['reader_summary_jobs', 'reader_summary_production_recovery_leases', 'reader_summary_production_recovery_days', 'reader_summary_production_recovery_dry_runs', 'reader_summary_recovery_receipts', 'reader_summary_weekly_certification_seals', 'reader_summary_weekly_review_manifests', 'reader_summary_daily_canonical_recovery_v4_plans', 'reader_summary_daily_canonical_recovery_v4_authorities', 'reader_summary_daily_canonical_recovery_v4_leases', 'reader_summary_daily_canonical_recovery_v4_ambiguity_retries']) protected_table(name)
+    FROM unnest(ARRAY['reader_summary_jobs', 'reader_summary_production_recovery_leases', 'reader_summary_production_recovery_days', 'reader_summary_production_recovery_dry_runs', 'reader_summary_recovery_receipts', 'reader_summary_weekly_certification_seals', 'reader_summary_weekly_review_manifests', 'reader_summary_daily_canonical_recovery_v4_plans', 'reader_summary_daily_canonical_recovery_v4_authorities', 'reader_summary_daily_canonical_recovery_v4_leases', 'reader_summary_daily_canonical_recovery_v4_ambiguity_retries', 'reader_summary_daily_canonical_recovery_v4_route_authorities']) protected_table(name)
     WHERE has_table_privilege('social_monitor_reader_summary_daily_terminal', to_regclass('public.' || protected_table.name), 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
   ) THEN RAISE EXCEPTION 'daily terminal evidence authority is unsafe';
   ELSIF has_function_privilege('social_monitor_reader_summary_publication_runtime', 'public.claim_reader_summary_daily_terminal(uuid,uuid,uuid,text)', 'EXECUTE')

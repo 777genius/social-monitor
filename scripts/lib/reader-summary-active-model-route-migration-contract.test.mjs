@@ -5,6 +5,12 @@ import test from "node:test";
 
 const migrationPath =
   "prisma/migrations/20260829143000_reader_summary_active_model_route_authority/migration.sql";
+const preBootstrapPath =
+  "ops/deploy/reader-summary-publication-pre-migration.sql";
+const postBootstrapPath =
+  "ops/deploy/reader-summary-publication-post-migration.sql";
+const routeAuthorityTable =
+  "reader_summary_daily_canonical_recovery_v4_route_authorities";
 
 const historicalMigrationDigests = Object.freeze({
   "prisma/migrations/20260802170000_reader_summary_weekly_review_manifest/migration.sql":
@@ -18,6 +24,8 @@ const historicalMigrationDigests = Object.freeze({
 });
 
 const sql = readFileSync(migrationPath, "utf8");
+const preBootstrapSql = readFileSync(preBootstrapPath, "utf8");
+const postBootstrapSql = readFileSync(postBootstrapPath, "utf8");
 
 test("historical plan and receipt migrations remain byte-identical", () => {
   for (const [path, expected] of Object.entries(historicalMigrationDigests)) {
@@ -43,6 +51,19 @@ test("the route authority is immutable and byte-addressed", () => {
     'REVOKE ALL ON TABLE\n  public."reader_summary_daily_canonical_recovery_v4_route_authorities"',
   ]) {
     assert.ok(sql.includes(marker), marker);
+  }
+});
+
+test("the route authority remains in every exact protected-owner inventory", () => {
+  const quotedTable = `'${routeAuthorityTable}'`;
+  assert.equal(preBootstrapSql.split(quotedTable).length - 1, 7);
+  assert.equal(postBootstrapSql.split(quotedTable).length - 1, 3);
+  for (const bootstrapSql of [preBootstrapSql, postBootstrapSql]) {
+    assert.ok(bootstrapSql.includes("v_v4_table_count NOT IN (0, 3, 4, 5)"));
+    assert.match(
+      bootstrapSql,
+      /v_owner_count <> 4 \+ v_weekly_review_manifest_table_count\s*\+ v_v4_table_count/u,
+    );
   }
 });
 
