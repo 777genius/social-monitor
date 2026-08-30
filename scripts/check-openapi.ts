@@ -132,6 +132,7 @@ import { RequestCorrelationIdFactory } from "@social-monitor/platform-request-co
 import "reflect-metadata";
 
 import { AppBootstrapController } from "../apps/api-gateway/src/app-bootstrap.controller";
+import { AppBootstrapReaderSummaryCache } from "../apps/api-gateway/src/app-bootstrap-reader-summary-cache";
 import { HealthController } from "../apps/api-gateway/src/health.controller";
 import { ApiGatewayHealthReporter } from "../apps/api-gateway/src/health-reporter";
 
@@ -212,6 +213,14 @@ const noopHealthReporter = {
 
 const noopDeliveryReadAuthorizer = {
   authorize: async () => undefined,
+};
+
+const passthroughAppBootstrapReaderSummaryCache = {
+  getOrLoad: async <T>(
+    _tenantId: string,
+    _workspaceId: string,
+    loader: () => Promise<T>,
+  ): Promise<T> => loader(),
 };
 
 const noopSocialResearchToolHandlers = {
@@ -408,6 +417,10 @@ const useCaseProviders = [
     {
       provide: ApiGatewayHealthReporter,
       useValue: noopHealthReporter,
+    },
+    {
+      provide: AppBootstrapReaderSummaryCache,
+      useValue: passthroughAppBootstrapReaderSummaryCache,
     },
   ],
 })
