@@ -390,8 +390,7 @@ committed_plan=$(run_entrypoint "$INSTALLED" plan)
 grep -Fx 'postgres_pool_bootstrap=postgres-pool-v1' <<< "$committed_plan" >/dev/null
 grep -Fx "postgres_pool_bootstrap_sha=$TARGET_SHA" <<< "$committed_plan" >/dev/null
 TEST_PHASE=already-newer-fixture
-# Model the independently advanced marker with the delegated sync shape that
-# predates the local entrypoint compatibility helper.
+# Model the advanced marker with delegated sync before the local compatibility helper.
 cp "$PROJECT_ROOT/ops/deploy/social-monitor-production-deploy.sh" \
   "$REPO/ops/deploy/"
 python3 - "$REPO/ops/deploy/social-monitor-production-deploy.sh" <<'PY'
