@@ -144,6 +144,8 @@ bool _validV2SlateEntryDigestInput(Map<String, Object?> body) {
       }, const {})) {
     return false;
   }
+  final decodedScore = decoded['scoreComponents'];
+  final bodyScore = body['scoreComponents'];
   return decoded['policyVersion'] ==
           readerPromotionEditorialSlatePolicyVersion &&
       decoded['placement'] == body['placement'] &&
@@ -152,8 +154,12 @@ bool _validV2SlateEntryDigestInput(Map<String, Object?> body) {
       decoded['canonicalIdentity'] == body['canonicalIdentity'] &&
       decoded['provider'] == _editorialProvider(body['provider']) &&
       decoded['storyClusterId'] == body['storyClusterId'] &&
-      jsonEncode(decoded['scoreComponents']) ==
-          jsonEncode(body['scoreComponents']) &&
+      decodedScore is Map<String, Object?> &&
+      bodyScore is Map<String, Object?> &&
+      _validV2ScoreComponents(decodedScore) &&
+      _v2ScoreComponentKeys.every(
+        (key) => decodedScore[key] == bodyScore[key],
+      ) &&
       jsonEncode(decoded['reasonCodes']) == jsonEncode(body['reasonCodes']) &&
       decoded['candidateDigestInput'] == body['candidateDigestInput'];
 }

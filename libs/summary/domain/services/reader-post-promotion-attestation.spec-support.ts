@@ -127,11 +127,11 @@ const testScoreComponents = (): ReaderSummaryEditorialScoreComponents => ({
   evidenceQuality: 1,
   integrity: 1,
   freshness: 1,
-  weightedEngagement: 0.35,
-  weightedRelevance: 0.25,
-  weightedEvidenceQuality: 0.2,
+  weightedEngagement: 0.4,
+  weightedRelevance: 0.3,
+  weightedEvidenceQuality: 0.15,
   weightedIntegrity: 0.1,
-  weightedFreshness: 0.1,
+  weightedFreshness: 0.05,
   total: 1,
 });
 

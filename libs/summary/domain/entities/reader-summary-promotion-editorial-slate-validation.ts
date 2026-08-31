@@ -87,7 +87,7 @@ export const editorialSlateFromCards = (
       canonicalIdentity: result.canonicalIdentity,
       provider: result.provider,
       storyClusterId: result.storyClusterId,
-      scoreComponents: result.scoreComponents,
+      scoreComponents: scoreComponentsDigestValue(result.scoreComponents),
       reasonCodes: result.reasonCodes,
       candidateDigestInput: result.candidateDigestInput,
     });
@@ -144,6 +144,22 @@ export const editorialSlateFromCards = (
     }),
   };
 };
+
+const scoreComponentsDigestValue = (
+  components: ReaderSummaryEditorialSlateEntry["scoreComponents"],
+): ReaderSummaryEditorialSlateEntry["scoreComponents"] => ({
+  engagementSalience: components.engagementSalience,
+  relevance: components.relevance,
+  evidenceQuality: components.evidenceQuality,
+  integrity: components.integrity,
+  freshness: components.freshness,
+  weightedEngagement: components.weightedEngagement,
+  weightedRelevance: components.weightedRelevance,
+  weightedEvidenceQuality: components.weightedEvidenceQuality,
+  weightedIntegrity: components.weightedIntegrity,
+  weightedFreshness: components.weightedFreshness,
+  total: components.total,
+});
 
 const editorialProvider = (
   provider: string,

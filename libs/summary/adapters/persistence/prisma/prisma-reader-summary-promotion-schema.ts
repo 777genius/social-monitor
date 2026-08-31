@@ -242,8 +242,8 @@ const assertSlateEntryDigestInput = (
       entry.canonicalIdentity !== item.canonicalIdentity ||
       entry.provider !== editorialProvider(item.provider) ||
       entry.storyClusterId !== item.storyClusterId ||
-      JSON.stringify(entry.scoreComponents) !==
-        JSON.stringify(item.scoreComponents) ||
+      canonicalPromotionPayload(entry.scoreComponents) !==
+        canonicalPromotionPayload(item.scoreComponents) ||
       JSON.stringify(entry.reasonCodes) !== JSON.stringify(item.reasonCodes) ||
       entry.candidateDigestInput !== item.candidateDigestInput) {
     invalid("slateEntryDigestInput");

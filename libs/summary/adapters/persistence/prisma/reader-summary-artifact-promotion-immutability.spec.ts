@@ -70,7 +70,7 @@ describe("ReaderSummaryArtifact promotion immutability", () => {
     );
   });
 
-  it("validates semantic-cluster support in the persisted peer context", () => {
+  it("validates V2 cards after persisted score object-key reordering", () => {
     const base = readerSummaryArtifact("artifact-contextual-attestation")
       .toSnapshot();
     const periodStart = new Date("2026-07-05T00:00:00.000Z");
@@ -125,7 +125,7 @@ describe("ReaderSummaryArtifact promotion immutability", () => {
       sourceWindow,
     });
 
-    expect(() => assertReaderSummaryPromotionAttestations({
+    const props = {
       ...base,
       sourceWindow,
       citationMap: [{
@@ -146,6 +146,9 @@ describe("ReaderSummaryArtifact promotion immutability", () => {
         topReads: [{
           ...topRead(),
           ...v2CardFields(attestations[0]!),
+          editorialScoreComponents: reverseObjectKeys(
+            attestations[0]!.scoreComponents,
+          ),
           promotionMarker: "reader_post_promotion",
           promotionTier: "top",
           promotionCandidateId: selected.candidate.candidateId,
@@ -156,7 +159,25 @@ describe("ReaderSummaryArtifact promotion immutability", () => {
       },
       promotionAttestations: attestations,
       promotionEvidenceFacts: [selected.candidate, ...selected.support],
-    }, attestations)).not.toThrow();
+    };
+
+    expect(() => assertReaderSummaryPromotionAttestations(props, attestations))
+      .not.toThrow();
+
+    const card = props.content.topReads[0]!;
+    expect(() => assertReaderSummaryPromotionAttestations({
+      ...props,
+      content: {
+        ...props.content,
+        topReads: [{
+          ...card,
+          editorialScoreComponents: {
+            ...card.editorialScoreComponents,
+            engagementSalience: 0.5,
+          },
+        }],
+      },
+    }, attestations)).toThrow(/editorial|promotion attestation/u);
   });
 
   it("isolates nested signed support facts from input and snapshot mutation", () => {
@@ -542,6 +563,9 @@ const nestedRecord = (
   value: Record<string, unknown>,
   key: string,
 ): Record<string, unknown> => value[key] as Record<string, unknown>;
+
+const reverseObjectKeys = <Value extends object>(value: Value): Value =>
+  Object.fromEntries(Object.entries(value).reverse()) as Value;
 
 const supportFact = (
   value: Record<string, unknown>,

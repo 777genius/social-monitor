@@ -287,6 +287,35 @@ describe("readerSummaryArtifactViewFromReaderSummaryView", () => {
       .toEqual([]);
 
     const persistedAttestation = readerSummaryView.promotionAttestations[0]!;
+    const reorderedScoreView = {
+      ...readerSummaryView,
+      content: {
+        ...readerSummaryView.content,
+        topReads: [{
+          ...readerSummaryView.content.topReads[0]!,
+          editorialScoreComponents: reverseObjectKeys(
+            persistedAttestation.scoreComponents!,
+          ),
+        }],
+      },
+    };
+    expect(
+      readerSummaryArtifactViewFromReaderSummaryView(reorderedScoreView)
+        .readerBrief.topReads,
+    ).toHaveLength(1);
+    expect(() => readerSummaryArtifactViewFromReaderSummaryView({
+      ...reorderedScoreView,
+      content: {
+        ...reorderedScoreView.content,
+        topReads: [{
+          ...reorderedScoreView.content.topReads[0]!,
+          editorialScoreComponents: {
+            ...persistedAttestation.scoreComponents!,
+            engagementSalience: 0.5,
+          },
+        }],
+      },
+    })).toThrow("promotion board is invalid");
     for (const mutation of [
       { canonicalPayload: `${persistedAttestation.canonicalPayload} ` },
       { artifactId: "forged-artifact" },
@@ -686,3 +715,6 @@ const officialQuality = () => ({
   flags: ["official_account", "trusted_author"],
   reason: "Verified first-party source authority",
 });
+
+const reverseObjectKeys = <Value extends object>(value: Value): Value =>
+  Object.fromEntries(Object.entries(value).reverse()) as Value;

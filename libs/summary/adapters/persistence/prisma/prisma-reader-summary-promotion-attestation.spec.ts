@@ -46,6 +46,21 @@ describe("normalizePromotionAttestations", () => {
     });
   });
 
+  it("accepts HN500 V2 score components after JSON object-key reordering", () => {
+    const fixture = serializedHn500Fixture() as Record<string, unknown>[];
+    const item = fixture[0]!;
+    const score = item.scoreComponents as Record<string, unknown>;
+    const canonicalPayload = item.canonicalPayload;
+    const digest = item.digest;
+    item.scoreComponents = Object.fromEntries(
+      Object.entries(score).reverse(),
+    );
+
+    expect(normalizePromotionAttestations(fixture)).toHaveLength(1);
+    expect(item.canonicalPayload).toBe(canonicalPayload);
+    expect(item.digest).toBe(digest);
+  });
+
   it.each([
     ["unknown version", (item: Record<string, unknown>) => {
       item.schemaVersion = "reader_post_promotion_attestation.v99";
@@ -62,6 +77,9 @@ describe("normalizePromotionAttestations", () => {
     ["missing score component", (item: Record<string, unknown>) => {
       delete (item.scoreComponents as Record<string, unknown>)
         .weightedFreshness;
+    }],
+    ["changed score component value", (item: Record<string, unknown>) => {
+      (item.scoreComponents as Record<string, unknown>).engagementSalience = 0.5;
     }],
     ["extra evidence lineage field", (item: Record<string, unknown>) => {
       (item.evidenceLineage as Record<string, unknown>).providerPayload = {};
@@ -344,6 +362,45 @@ const serializedFixture = (
         endedAt: new Date("2026-08-14T12:00:00.000Z"),
         selectedFeedItemIds: ["github:repo"],
         storyClusterIds: ["cluster:github:repo"],
+        periodStartedAt: new Date("2026-08-14T00:00:00.000Z"),
+        periodEndedAt: new Date("2026-08-15T00:00:00.000Z"),
+        ingestionCutoff: new Date("2026-08-14T12:00:00.000Z"),
+      },
+    },
+  ),
+));
+
+const serializedHn500Fixture = (): unknown[] => JSON.parse(JSON.stringify(
+  buildReaderPromotionV2TestAttestations(
+    selectReaderPostPromotions([{
+      candidateId: "hn:500",
+      provider: "hacker-news",
+      contentKind: "story",
+      canonicalIdentity: "story:hn-500",
+      citationId: "citation:hn:500",
+      publishedAt: new Date("2026-08-14T00:00:00.000Z"),
+      observedAt: new Date("2026-08-14T12:00:00.000Z"),
+      periodStart: new Date("2026-08-14T00:00:00.000Z"),
+      periodEnd: new Date("2026-08-15T00:00:00.000Z"),
+      ingestionCutoff: new Date("2026-08-14T12:00:00.000Z"),
+      freshnessValid: true,
+      qualityScore: 0.8,
+      relevanceScore: 0.8,
+      integrityScore: 0.8,
+      qualityValid: true,
+      safetyValid: true,
+      citationValid: true,
+      metricsState: "observed",
+      metrics: { provider: "hacker_news", points: 500 },
+    }]),
+    {
+      artifactId: "artifact-hn-500",
+      sourceWindow: {
+        windowId: "window-hn-500",
+        startedAt: new Date("2026-08-14T00:00:00.000Z"),
+        endedAt: new Date("2026-08-14T12:00:00.000Z"),
+        selectedFeedItemIds: ["hn:500"],
+        storyClusterIds: ["promotion:story:hn-500"],
         periodStartedAt: new Date("2026-08-14T00:00:00.000Z"),
         periodEndedAt: new Date("2026-08-15T00:00:00.000Z"),
         ingestionCutoff: new Date("2026-08-14T12:00:00.000Z"),

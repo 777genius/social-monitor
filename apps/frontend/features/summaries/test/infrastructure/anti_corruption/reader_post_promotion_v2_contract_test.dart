@@ -18,6 +18,23 @@ void main() {
     expect(result.scoreComponents?.total, 0.66);
   });
 
+  test(
+    'accepts reordered score object keys without changing signed inputs',
+    () {
+      final body = _v2Body();
+      final score = body['scoreComponents']! as Map<String, Object?>;
+      body['scoreComponents'] = Map<String, Object?>.fromEntries(
+        score.entries.toList().reversed,
+      );
+
+      final result = _verifyV2(body);
+
+      expect(result, isNotNull);
+      expect(result!.slateEntryDigestInput, body['slateEntryDigestInput']);
+      expect(result.slateDigestInput, body['slateDigestInput']);
+    },
+  );
+
   test('fails closed for unknown V2 schema, policy, or digest tuples', () {
     for (final mutation in <void Function(Map<String, Object?>)>[
       (body) => body['schemaVersion'] = 'reader_post_promotion_attestation.v9',
@@ -89,6 +106,12 @@ void main() {
     entry['provider'] = 'reddit';
     entryInput['slateEntryDigestInput'] = jsonEncode(entry);
     expect(_verifyV2(entryInput), isNull);
+
+    final scoreValue = _v2Body();
+    (scoreValue['scoreComponents']!
+            as Map<String, Object?>)['engagementSalience'] =
+        0.51;
+    expect(_verifyV2(scoreValue), isNull);
 
     final slateDigest = _v2Body()..['slateDigest'] = 'f' * 64;
     expect(_verifyV2(slateDigest), isNull);

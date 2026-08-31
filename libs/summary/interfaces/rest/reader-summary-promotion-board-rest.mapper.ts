@@ -1,4 +1,6 @@
 import { readerPostPromotionCardFields } from "../../domain/entities/top-read";
+import { canonicalPromotionPayload } from
+  "../../domain/services/reader-post-promotion-attestation";
 import { readerSummaryIndependentProviderFamily } from
   "../../domain/value-objects/reader-summary-provider-identity";
 import type { ReaderSummaryArtifactView } from
@@ -366,8 +368,8 @@ const validV2RestCardBinding = (
   item.editorialPolicyVersion === "reader_promotion_policy.v2" &&
   item.editorialPlacement === placement &&
   item.editorialSlot === zeroBasedIndex + 1 &&
-  JSON.stringify(item.editorialScoreComponents) ===
-    JSON.stringify(attestation.scoreComponents) &&
+  canonicalPromotionPayload(item.editorialScoreComponents) ===
+    canonicalPromotionPayload(attestation.scoreComponents) &&
   sameOrderedStrings(
     item.editorialReasonCodes ?? [],
     attestation.reasonCodes,
