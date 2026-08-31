@@ -11,6 +11,8 @@ import {
   READER_SUMMARY_ORIGINAL_SOURCE_TEXT_SAFETY_CAP,
   RelevanceReaderSummaryEvidenceSelector,
 } from "./relevance-reader-summary-evidence.selector";
+import { authoritativeReaderSummaryProviderMetadata } from
+  "../../test-fixtures/reader-summary-authoritative-provider-metadata.fixture";
 
 describe("RelevanceReaderSummaryEvidenceSelector adaptive source content", () => {
   it("uses source text already sealed by the authoritative ranking snapshot", async () => {
@@ -23,6 +25,10 @@ describe("RelevanceReaderSummaryEvidenceSelector adaptive source content", () =>
       sourceBindingId: "binding-reddit",
       interestId: "interest-ai",
       providerKey: "reddit",
+      providerMetadata: authoritativeReaderSummaryProviderMetadata(
+        "reddit",
+        120,
+      ),
       canonicalUrl: "https://reddit.test/ultra",
       title: "Sol 5 Ultra usage limit report",
       bodyPreview: "A short preview of the Ultra usage report.",
