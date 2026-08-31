@@ -255,7 +255,7 @@ prepare_atomic_route_case() {
 
 invoke_invalid_atomic_route() (
   set -Eeuo pipefail
-  local mode=$1 surface
+  local invalid_route_mode=$1 surface
 
   ordinary_deploy_started() {
     printf 'ordinary\n' >> "$atomic_route_log"
@@ -266,7 +266,7 @@ invoke_invalid_atomic_route() (
   }
   fetch_main() { ordinary_deploy_started; }
   verify_postgres_pool_atomic_repair_target() {
-    case $mode in
+    case $invalid_route_mode in
       invalid-target) fail 'atomic repair target is invalid' ;;
       invalid-contract) fail 'atomic repair contract is invalid' ;;
       verifier-failure) return 70 ;;
@@ -275,7 +275,7 @@ invoke_invalid_atomic_route() (
     esac
   }
   postgres_pool_bootstrap_recovery_commit_blob() {
-    [[ $mode == missing-blob ]] || \
+    [[ $invalid_route_mode == missing-blob ]] || \
       fail 'atomic repair blob loader reached an unexpected case'
     fail 'atomic PostgreSQL bootstrap library is missing at reviewed commit'
   }
