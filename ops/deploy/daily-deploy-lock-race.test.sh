@@ -6,7 +6,18 @@ PROJECT_ROOT=$(cd "$SCRIPT_DIR/../.." && pwd)
 ENTRYPOINT=$SCRIPT_DIR/social-monitor-production-deploy.sh
 DAILY_RUN=$SCRIPT_DIR/production-runtime/daily-run.sh
 FIXTURE=$(mktemp -d "${TMPDIR:-/tmp}/daily-deploy-lock-race.XXXXXX")
-trap 'touch "$FIXTURE/release"; rm -rf "$FIXTURE"' EXIT
+
+cleanup() {
+  local status=$? pid
+  trap - EXIT
+  : >"$FIXTURE/release"
+  for pid in "${singleton_pid:-}" "${admission_pid:-}" "${gap_pid:-}"; do
+    [[ -z $pid ]] || wait "$pid" 2>/dev/null || true
+  done
+  rm -rf "$FIXTURE"
+  exit "$status"
+}
+trap cleanup EXIT
 
 ROOT=$FIXTURE/root
 CONTROL=$ROOT/control
@@ -14,6 +25,9 @@ STATE=$CONTROL/deploy-state
 SINGLETON_LOCK=$CONTROL/daily-run-singleton.lock
 ADMISSION_LOCK=$CONTROL/daily-run.lock
 install -d "$CONTROL/postgres-runtime-current" "$STATE" "$ROOT/runtime"
+cp "$SCRIPT_DIR/production-runtime/reader-summary-scheduler-hold-common.sh" \
+  "$SCRIPT_DIR/production-runtime/reader-summary-scheduler-hold-status.sh" \
+  "$CONTROL/postgres-runtime-current/"
 cat >"$CONTROL/postgres-runtime-current/reader-summary-daily-c1.readiness" <<'EOF'
 schemaVersion=reader_summary.daily_delivery_readiness.c1
 state=READY
@@ -59,7 +73,12 @@ duplicate_output=$(
 )
 duplicate_status=$?
 set -e
-((duplicate_status == 75))
+((duplicate_status == 75)) || {
+  printf 'duplicate daily invocation exited %s, expected 75\n' \
+    "$duplicate_status" >&2
+  cat "$FIXTURE/duplicate.stderr" >&2
+  exit 1
+}
 [[ -z $duplicate_output ]]
 grep -Fx 'daily production-day run already active' \
   "$FIXTURE/duplicate.stderr" >/dev/null
@@ -84,7 +103,7 @@ daily_timeout_error=$(
   SOCIAL_MONITOR_DAILY_RUN_TEST_MODE=1 \
   SOCIAL_MONITOR_DAILY_RUN_TEST_ROOT="$ROOT" \
   SOCIAL_MONITOR_DAILY_RUN_TEST_DOCKER="$FAKE_DOCKER" \
-  SOCIAL_MONITOR_DAILY_RUN_TEST_ADMISSION_WAIT_SECONDS=0.05 \
+  SOCIAL_MONITOR_DAILY_RUN_TEST_ADMISSION_WAIT_SECONDS=0 \
     bash "$DAILY_RUN" --yesterday 2>&1
 )
 daily_timeout_status=$?
@@ -109,6 +128,18 @@ export ENTRYPOINT PROJECT_ROOT ROOT CONTROL STATE FIXTURE
 export FETCH_CALLED SYNC_CALLED COMPOSE_CALLED DATABASE_CALLED
 TARGET_SHA=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 
+(
+  while [[ ! -e $FIXTURE/gap-started && ! -e $FIXTURE/release ]]; do
+    sleep 0.01
+  done
+  [[ -e $FIXTURE/gap-started ]] || exit 0
+  exec 7>"$SINGLETON_LOCK"
+  flock 7
+  : >"$FIXTURE/gap-singleton-held"
+  while [[ ! -e $FIXTURE/release ]]; do sleep 0.01; done
+) &
+gap_pid=$!
+
 # These fixture variables must expand only inside the isolated child shell.
 # shellcheck disable=SC2016
 deploy_gap_probe_script='
@@ -121,12 +152,6 @@ deploy_gap_probe_script='
   postgres_admission_after_singleton_probe() {
     [[ ! -e $FIXTURE/gap-started ]] || return 0
     : > "$FIXTURE/gap-started"
-    (
-      exec 7>"$DAILY_SINGLETON_LOCK"
-      flock 7
-      : > "$FIXTURE/gap-singleton-held"
-      while [[ ! -e $FIXTURE/release ]]; do sleep 0.01; done
-    ) </dev/null >/dev/null 2>&1 &
     while [[ ! -e $FIXTURE/gap-singleton-held ]]; do sleep 0.01; done
   }
   deploy_release "$TARGET_SHA"
@@ -156,6 +181,7 @@ grep -F 'daily run claimed priority while deploy acquired PostgreSQL admission' 
    ! -e $DATABASE_CALLED && ! -e $REFRESH_CALLED && ! -e $DOCKER_CALLED ]]
 flock -n "$ADMISSION_LOCK" true
 : > "$FIXTURE/release"
-until flock -n "$SINGLETON_LOCK" true; do sleep 0.01; done
+wait "$gap_pid"
+flock -n "$SINGLETON_LOCK" true
 
 echo 'Daily/deploy exact-gap lock race tests passed'
