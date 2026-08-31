@@ -291,13 +291,15 @@ async function main(): Promise<void> {
       summaryConnection,
     );
     const publicationWiring =
-      createReaderSummaryDailyPublicationExecutionWiring({
+      createReaderSummaryDailyCapturePublicationWiring({
         replay: dailyReplay,
         feedItems,
         summaryClient: summaryConnection,
         clock,
         attestationSink: executionAttestations,
-        storyRelationVerifier,
+        summaryModelMode: modelMode,
+        env: process.env,
+        agentRuntimeClient,
       });
     const queue = new CapturingReaderSummaryJobQueue();
     const ids = new CryptoIdGenerator();

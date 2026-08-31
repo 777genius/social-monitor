@@ -16,9 +16,9 @@ import type {
 import { FixedClock, tenantId, workspaceId, type JsonObject } from
   "@social-monitor/shared-kernel";
 
-import { createReaderSummaryDailyPublicationExecutionWiring } from
+import * as dailyPublicationFinalizer from
   "./reader-summary-daily-publication-finalizer";
-import { buildReaderSummaryDailyStoryRelationVerifier } from
+import { createReaderSummaryDailyCapturePublicationWiring } from
   "./reader-summary-daily-story-relation-verifier";
 
 const now = new Date("2026-08-31T12:00:00.000Z");
@@ -33,26 +33,67 @@ const period = buildReaderSummaryPeriod({
 });
 
 describe("reader summary daily story relation production wiring", () => {
-  it("fails fresh wiring closed when verifier composition was omitted", () => {
-    expect(() => createReaderSummaryDailyPublicationExecutionWiring({
+  it("fails fresh live wiring closed and keeps non-live paths verifier-free", async () => {
+    expect(() => createReaderSummaryDailyCapturePublicationWiring({
       replay: null,
       feedItems: feedRepository(),
       summaryClient: {} as never,
       clock,
       attestationSink: { record: jest.fn(async () => undefined) },
-    })).toThrow(
-      "Fresh daily publication must explicitly configure its story relation verifier",
-    );
-
-    expect(() => buildReaderSummaryDailyStoryRelationVerifier({
-      replay: null,
       summaryModelMode: "agent-runtime",
       env: {},
       agentRuntimeClient: null,
-      attestationSink: { record: jest.fn(async () => undefined) },
     })).toThrow(
       "Fresh agent-runtime daily publication requires a story relation verifier client",
     );
+
+    const localRuntime = new FakeRuntime(true, true);
+    const localWiring = createReaderSummaryDailyCapturePublicationWiring({
+      replay: null,
+      feedItems: feedRepository(),
+      summaryClient: {} as never,
+      clock,
+      attestationSink: { record: jest.fn(async () => undefined) },
+      summaryModelMode: "deterministic",
+      env: {},
+      agentRuntimeClient: localRuntime,
+    });
+    await localWiring.evidenceSelector.select({
+      tenantId: tenant,
+      workspaceId: workspace,
+      scope: { type: "workspace" },
+      period,
+      maxItems: 2,
+    });
+    expect(localRuntime.storyCommands).toHaveLength(0);
+
+    const frozenRuntime = new FakeRuntime(true, true);
+    const frozenReplay = Object.freeze({
+      outputKind: "output_text" as const,
+    }) as never;
+    const executionFactory = jest.spyOn(
+      dailyPublicationFinalizer,
+      "createReaderSummaryDailyPublicationExecutionWiring",
+    ).mockReturnValue({} as never);
+    try {
+      createReaderSummaryDailyCapturePublicationWiring({
+        replay: frozenReplay,
+        feedItems: feedRepository(),
+        summaryClient: {} as never,
+        clock,
+        attestationSink: { record: jest.fn(async () => undefined) },
+        summaryModelMode: "agent-runtime",
+        env: {},
+        agentRuntimeClient: frozenRuntime,
+      });
+      expect(executionFactory).toHaveBeenCalledWith(expect.objectContaining({
+        replay: frozenReplay,
+        storyRelationVerifier: null,
+      }));
+    } finally {
+      executionFactory.mockRestore();
+    }
+    expect(frozenRuntime.storyCommands).toHaveLength(0);
   });
 
   it("groups promoted cross-source evidence through the concrete runtime adapter", async () => {
@@ -123,20 +164,15 @@ const selectDailyEvidence = async (input: {
 }) => {
   const runtime = new FakeRuntime(input.sameStory, input.attested);
   const record = jest.fn(async () => undefined);
-  const verifier = buildReaderSummaryDailyStoryRelationVerifier({
-    replay: null,
-    summaryModelMode: "agent-runtime",
-    env: {},
-    agentRuntimeClient: runtime,
-    attestationSink: { record },
-  });
-  const wiring = createReaderSummaryDailyPublicationExecutionWiring({
+  const wiring = createReaderSummaryDailyCapturePublicationWiring({
     replay: null,
     feedItems: feedRepository(input.secondTitle),
     summaryClient: {} as never,
     clock,
     attestationSink: { record },
-    storyRelationVerifier: verifier,
+    summaryModelMode: "agent-runtime",
+    env: {},
+    agentRuntimeClient: runtime,
   });
   const selection = await wiring.evidenceSelector.select({
     tenantId: tenant,
@@ -165,6 +201,9 @@ const feedRepository = (
         trusted: true,
         attestedBy: "source_catalog",
       },
+      interestQuerySnapshot: {
+        query: "TypeScript, developer tools",
+      },
     },
   }));
   repository.upsert(feedItem({
@@ -181,6 +220,9 @@ const feedRepository = (
         official: true,
         trusted: true,
         attestedBy: "source_catalog",
+      },
+      interestQuerySnapshot: {
+        query: "TypeScript, developer tools",
       },
     },
   }));
