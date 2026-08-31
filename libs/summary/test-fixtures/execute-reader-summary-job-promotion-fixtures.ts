@@ -212,6 +212,10 @@ const readerEvidence = (
     canonicalIdentity: "story:runtime-regression",
     safetyValid: true,
     freshnessValid: true,
+    engagementAuthority: {
+      observedAt: new Date("2026-06-26T07:50:00.000Z"),
+      regressionState: "stable",
+    },
     freshnessProvenance: {
       status: "observed",
       publishedAt: new Date("2026-06-26T07:10:00.000Z"),

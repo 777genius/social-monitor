@@ -138,6 +138,12 @@ export const rankPromotionSnapshot = async (params: {
         exactPublishedAt: candidate.exactTimestamps.publishedAt,
         exactObservedAt: candidate.exactTimestamps.observedAt,
       }),
+      ...(candidate.metricAuthority === undefined ? {} : {
+        engagementAuthority: {
+          observedAt: candidate.metricAuthority.observedAt.toISOString(),
+          regressionState: candidate.metricAuthority.regressionState,
+        },
+      }),
       score: Math.min(
         0.85,
         feedPromotionMetricStrength(candidate.canonical.metrics) / 10,

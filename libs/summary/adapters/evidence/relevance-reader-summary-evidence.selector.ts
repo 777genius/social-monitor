@@ -136,49 +136,37 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
         promotionCandidateIds,
       }),
     });
-    const verifiedCandidateSelection =
-      approvedRelations.pairs.size === 0
-        ? candidateSelection
-        : this.clusterer.cluster({
-            identity: {
-              tenantId: params.tenantId,
-              workspaceId: params.workspaceId,
-              scope: params.scope,
-            },
-            items: primaryCandidateItems,
-            limit: primaryCandidateItems.length,
-            verifiedStoryRelationPairs: approvedRelations.pairs,
-            now: ingestionCutoff,
-          });
-    const verifiedPromotionSelection = promotionPolicySelection({
-      ...verifiedCandidateSelection,
+    // Model/agent relation decisions are retained as narrative evidence, but
+    // the publication slate is composed only from deterministic clustering.
+    const deterministicPromotionSelection = promotionPolicySelection({
+      ...candidateSelection,
       sourceWindow: {
-        ...verifiedCandidateSelection.sourceWindow,
+        ...candidateSelection.sourceWindow,
         periodStartedAt: params.period.startedAt,
         periodEndedAt: params.period.endedAt,
         ingestionCutoff,
       },
     }, promotionPolicyItems);
-    const fullPromotionSelection = {
-      ...verifiedPromotionSelection,
-      approvedSameStoryRelations: approvedRelations.relations,
-    };
     const editorialSlate = composeReaderSummaryEditorialSlate({
-      selection: fullPromotionSelection,
+      selection: deterministicPromotionSelection,
       candidates: promotionPolicyItems,
     });
-    const finalSelection = materializeReaderSummaryEditorialSlate({
-      selection: fullPromotionSelection,
+    const deterministicFinalSelection = materializeReaderSummaryEditorialSlate({
+      selection: deterministicPromotionSelection,
       slate: editorialSlate,
       supplementalEvidence: githubTrendingEvidence,
     });
+    const annotatedPromotionSelection = {
+      ...deterministicPromotionSelection,
+      approvedSameStoryRelations: approvedRelations.relations,
+    };
     const relatedTopicRelations = await verifiedReaderSummaryRelatedTopics({
       query,
       // Related-topic verification needs the bounded context candidates that
       // ranking rejected from the immutable publication slate. The returned
       // relation is metadata only; finalSelection still keeps those subjects
       // out of model evidence and reader-visible promotion cards.
-      selection: fullPromotionSelection,
+      selection: annotatedPromotionSelection,
       requestedAt: ingestionCutoff,
       verifier: this.storyRelationVerifier,
       metrics: this.storyRankingMetrics,
@@ -186,7 +174,8 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
       timeoutMs: this.relatedTopicVerifierTimeoutMs,
     });
     const personalizedSelection = {
-      ...finalSelection,
+      ...deterministicFinalSelection,
+      approvedSameStoryRelations: approvedRelations.relations,
       relatedTopicRelations,
       personalization:
         ranked.value.memoryGuidance === undefined

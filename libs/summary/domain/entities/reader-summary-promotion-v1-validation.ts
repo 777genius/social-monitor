@@ -21,9 +21,6 @@ import {
   editorialSlateFromCards,
   promotionInputFromAttestation,
 } from "./reader-summary-promotion-editorial-slate-validation";
-import { sameOrderedValues } from
-  "./reader-summary-artifact-validation-values";
-
 // V1 peer-context verification rolled out without a schema-version change.
 // Keep the pre-rollout per-attestation fallback for already persisted rows.
 const PEER_CONTEXT_PROMOTION_ROLLOUT_AT =
@@ -51,7 +48,7 @@ export const assertHistoricalV1EvidenceBinding = (
     return;
   }
   assertLegacyV1AttestationsAgainstPersistedEvidence(
-    props.generatedAt,
+    props,
     evidenceFacts,
     attestations,
   );
@@ -185,12 +182,12 @@ const historicalV1AttestationBody = (params: {
 };
 
 const assertLegacyV1AttestationsAgainstPersistedEvidence = (
-  generatedAt: Date | undefined,
+  props: ReaderSummaryArtifactProps,
   evidenceFacts: readonly ReaderPostPromotionInput[],
   attestations: readonly ReaderPostPromotionAttestationV1[],
 ): void => {
-  if (generatedAt === undefined ||
-      generatedAt.getTime() >= PEER_CONTEXT_PROMOTION_ROLLOUT_AT.getTime()) {
+  if (props.generatedAt === undefined ||
+      props.generatedAt.getTime() >= PEER_CONTEXT_PROMOTION_ROLLOUT_AT.getTime()) {
     throw new Error(
       "Reader summary promotion attestation differs from persisted evidence facts",
     );
@@ -199,6 +196,7 @@ const assertLegacyV1AttestationsAgainstPersistedEvidence = (
     evidenceFacts.map((fact) => [fact.candidateId, fact] as const),
   );
   try {
+    const boardInputs = new Map<string, ReaderPostPromotionInput>();
     for (const attestation of attestations) {
       const lead = promotionInputFromAttestation(attestation);
       const persistedLead = evidenceByCandidateId.get(lead.candidateId);
@@ -214,7 +212,20 @@ const assertLegacyV1AttestationsAgainstPersistedEvidence = (
           })) {
         throw new Error("Legacy promotion evidence is not persistently bound");
       }
-      assertLegacyV1AttestedPolicyDecision(attestation, lead);
+      addLegacyBoardInput(boardInputs, lead);
+      for (const support of attestation.supportFacts) {
+        addLegacyBoardInput(boardInputs, support);
+      }
+    }
+    const frozenSelection = selectReaderPostPromotions(
+      [...boardInputs.values()],
+    );
+    if (!historicalV1AttestationsMatchSelection({
+      props,
+      selection: frozenSelection,
+      attestations,
+    })) {
+      throw new Error("Reader summary legacy promotion board is invalid");
     }
   } catch {
     throw new Error(
@@ -223,36 +234,16 @@ const assertLegacyV1AttestationsAgainstPersistedEvidence = (
   }
 };
 
-const assertLegacyV1AttestedPolicyDecision = (
-  attestation: ReaderPostPromotionAttestationV1,
-  lead: ReaderPostPromotionInput,
+const addLegacyBoardInput = (
+  inputs: Map<string, ReaderPostPromotionInput>,
+  input: ReaderPostPromotionInput,
 ): void => {
-  const selection = selectReaderPostPromotions([
-    lead,
-    ...attestation.supportFacts,
-  ]);
-  const expected = attestation.placement === "top"
-    ? selection.top[0]
-    : selection.additional[0];
-  const decision = selection.decisions.find((item) =>
-    item.candidateId === attestation.candidateId);
-  const expectedComponents = historicalV1UsefulnessComponents(
-    lead,
-    decision?.normalizedStrength ?? Number.NaN,
-  );
-  if (expected?.candidate.candidateId !== attestation.candidateId ||
-      expected.decision !== attestation.decision ||
-      decision?.reason !== attestation.reason ||
-      Object.entries(expectedComponents).some(([key, value]) =>
-        Math.abs(value - attestation.usefulnessComponents[
-          key as keyof typeof expectedComponents
-        ]) > 1e-12
-      ) ||
-      expected.providerCount !== attestation.providerCount ||
-      expected.confidence !== attestation.confidence ||
-      !sameOrderedValues(expected.citationIds, attestation.citationIds)) {
-    throw new Error("Reader summary legacy promotion decision is invalid");
+  const current = inputs.get(input.candidateId);
+  if (current !== undefined &&
+      canonicalPromotionPayload(current) !== canonicalPromotionPayload(input)) {
+    throw new Error("Reader summary legacy promotion board is inconsistent");
   }
+  inputs.set(input.candidateId, input);
 };
 
 const historicalV1UsefulnessComponents = (

@@ -9,6 +9,8 @@ import {
   type ReaderPostProvider,
   type ReaderPostProviderMetrics,
 } from "./reader-post-promotion-policy-contract";
+import { isTrustedReaderPostPromotionSupport } from
+  "./reader-post-promotion-support-authority";
 
 export * from "./reader-post-promotion-policy-contract";
 
@@ -49,7 +51,7 @@ export const evaluateReaderPostPromotion = (
     return reject("canonical_identity_missing");
   }
 
-  const trustedSupport = isTrustedSupportAuthority(input);
+  const trustedSupport = isTrustedReaderPostPromotionSupport(input);
   const relationDecision = classifyRelation(input);
   if (relationDecision === "invalid") return reject("invalid_relation");
   if (relationDecision === "context_related") {
@@ -106,12 +108,6 @@ export const evaluateReaderPostPromotion = (
     engagement.normalizedStrength,
   );
 };
-
-const isTrustedSupportAuthority = (
-  input: ReaderPostPromotionInput,
-): boolean => input.authorityAttestation?.status === "attested" &&
-  input.authorityAttestation.trusted &&
-  input.authorityAttestation.attestedBy === "source_catalog";
 
 const result = (
   input: ReaderPostPromotionInput,

@@ -265,6 +265,12 @@ const admittedPromotionFacts = (
   checkedAt: facts.checkedAt === undefined
     ? undefined
     : new Date(facts.checkedAt.getTime()),
+  engagementAuthority: facts.engagementAuthority === undefined
+    ? undefined
+    : {
+        observedAt: new Date(facts.engagementAuthority.observedAt.getTime()),
+        regressionState: facts.engagementAuthority.regressionState,
+      },
   authorityAttestation: facts.authorityAttestation === undefined
     ? undefined
     : {

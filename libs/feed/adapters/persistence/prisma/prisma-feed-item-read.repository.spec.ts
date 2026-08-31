@@ -72,6 +72,10 @@ describe("PrismaFeedItemReadRepository promotion snapshot", () => {
       publishedAt: "2026-08-19T10:00:00.000000Z",
       observedAt: "2026-08-19T10:00:00.000000Z",
     });
+    expect(result.ok && result.candidates[0]?.metricAuthority).toEqual({
+      observedAt: new Date("2026-08-19T10:30:00.000Z"),
+      regressionState: "stable",
+    });
     expect(result.ok && result.sourceContent?.[0]).toMatchObject({
       feedItemId: records[0]!.id,
       sourceItemId: records[0]!.sourceItemId,
@@ -104,6 +108,15 @@ describe("PrismaFeedItemReadRepository promotion snapshot", () => {
     );
     expect(keysetCalls[0]?.[9]).toBe(200);
     expect(keysetCalls[1]?.[8]).toBe(records[199]!.id);
+    const exactCalls = queryRaw.mock.calls.filter(([sql]) =>
+      sql.includes('AS "engagementObservedAt"'));
+    expect(exactCalls).toHaveLength(2);
+    expect(exactCalls[0]?.[0]).toContain(
+      "source_item_engagement_snapshots engagement",
+    );
+    expect(exactCalls[0]?.[0]).toContain(
+      "source_item_engagement_observations observation",
+    );
   });
 
   it("fails closed when the transaction capability is unavailable", async () => {
@@ -419,6 +432,16 @@ const exactEvidence = (id: string) => ({
   publishedAt: "2026-08-19T10:00:00.000000Z",
   observedAt: "2026-08-19T10:00:00.000000Z",
   observedThrough: true,
+  engagementObservedAt: "2026-08-19T10:30:00.000000Z",
+  engagementChangedAt: "2026-08-19T10:30:00.000000Z",
+  engagementMetricsHash: `metrics-${id}`,
+  currentHasRegressionFromLatest: false,
+  latestObservationAt: "2026-08-19T10:30:00.000000Z",
+  latestObservationMetricsHash: `metrics-${id}`,
+  latestObservationHasRegression: false,
+  previousObservationAt: null,
+  previousObservationMetricsHash: null,
+  previousObservationHasRegression: null,
 });
 
 const exactTimestamp = (value: Date): string =>

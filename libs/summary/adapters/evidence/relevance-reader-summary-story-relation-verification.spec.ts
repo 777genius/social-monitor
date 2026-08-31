@@ -39,7 +39,7 @@ const settleDetachedShadow = async (): Promise<void> => {
 };
 
 describe("RelevanceReaderSummaryEvidenceSelector story verification", () => {
-  it("re-clusters only high-confidence approved cross-provider pairs", async () => {
+  it("retains approved cross-provider pairs as annotation-only evidence", async () => {
     const verifier = new ApprovingVerifier();
     const metrics = new CapturingMetrics();
     const selector = new RelevanceReaderSummaryEvidenceSelector(
@@ -64,10 +64,10 @@ describe("RelevanceReaderSummaryEvidenceSelector story verification", () => {
 
     expect(verifier.inputs).toHaveLength(1);
     expect(verifier.inputs[0]?.candidates).toHaveLength(1);
-    expect(selection.clusters).toHaveLength(1);
-    expect(selection.clusters[0]?.providerKeys).toEqual([
-      "hacker-news",
-      "x-twitter",
+    expect(selection.clusters).toHaveLength(2);
+    expect(selection.clusters.map((cluster) => cluster.providerKeys)).toEqual([
+      ["hacker-news"],
+      ["x-twitter"],
     ]);
     expect(selection.approvedSameStoryRelations).toEqual([{
       leftFeedItemId: "hn",
@@ -193,10 +193,9 @@ describe("RelevanceReaderSummaryEvidenceSelector story verification", () => {
     });
 
     expect(verifier.preconditionChecked).toBe(true);
-    expect(selection.clusters).toHaveLength(3);
-    expect(
-      selection.clusters.map((cluster) => cluster.providerKeys),
-    ).toContainEqual(["hacker-news", "x-twitter"]);
+    expect(selection.clusters).toHaveLength(4);
+    expect(selection.clusters.map((cluster) => cluster.providerKeys))
+      .not.toContainEqual(["hacker-news", "x-twitter"]);
     expect(metrics.relationMetrics).toContainEqual({
       status: "completed",
       candidateCount: 2,
@@ -290,7 +289,7 @@ describe("RelevanceReaderSummaryEvidenceSelector story verification", () => {
     },
   );
 
-  it("materializes a verified partner before the next immutable-slate story", async () => {
+  it("keeps verified narrative partners outside immutable-slate authority", async () => {
     const hn = ranked("hn", "hacker-news", 2.2);
     const unrelatedRss = {
       ...ranked("rss-unrelated", "x-twitter", 2.1),
@@ -331,13 +330,59 @@ describe("RelevanceReaderSummaryEvidenceSelector story verification", () => {
     ]);
     expect(selection.editorialSlate?.orderedCandidateIds).toEqual([
       "hn",
+      "rss-related",
       "rss-unrelated",
     ]);
-    expect(selection.clusters).toHaveLength(2);
-    expect(selection.clusters[0]?.providerKeys).toEqual([
-      "hacker-news",
-      "x-twitter",
-    ]);
+    expect(selection.clusters).toHaveLength(3);
+    expect(selection.approvedSameStoryRelations).toContainEqual({
+      leftFeedItemId: "hn",
+      rightFeedItemId: "rss-related",
+      confidence: 0.97,
+    });
+  });
+
+  it("produces byte-identical lanes, order, and digest for contradictory verifier outputs", async () => {
+    const items = [
+      ranked("hn", "hacker-news", 2),
+      ranked("rss", "x-twitter", 1.9),
+    ];
+    const selectWith = async (
+      sameStory: boolean,
+    ) => new RelevanceReaderSummaryEvidenceSelector(
+      ranker(items),
+      emptyFeedRepository(),
+      { now: () => now },
+      new CapturingMetrics(),
+      {
+        verify: async (input) => input.candidates.map((candidate) => ({
+          leftFeedItemId: candidate.leftFeedItemId,
+          rightFeedItemId: candidate.rightFeedItemId,
+          sameStory,
+          confidenceScore: 0.99,
+        })),
+      },
+    ).select({
+      tenantId: tenantId("tenant-contradictory-verifier"),
+      workspaceId: workspaceId("workspace-contradictory-verifier"),
+      scope: { type: "workspace" },
+      period,
+      maxItems: 2,
+    });
+
+    const approved = await selectWith(true);
+    const rejected = await selectWith(false);
+    const immutableAuthority = (selection: typeof approved) => ({
+      top: selection.editorialSlate?.top,
+      additional: selection.editorialSlate?.additional,
+      orderedCandidateIds: selection.editorialSlate?.orderedCandidateIds,
+      digestMaterial: selection.editorialSlate?.digestMaterial,
+    });
+
+    expect(JSON.stringify(immutableAuthority(approved))).toBe(
+      JSON.stringify(immutableAuthority(rejected)),
+    );
+    expect(approved.approvedSameStoryRelations).toHaveLength(1);
+    expect(rejected.approvedSameStoryRelations).toEqual([]);
   });
 
   it("passes snapshot-sealed source text into relation verification", async () => {
@@ -590,9 +635,10 @@ describe("RelevanceReaderSummaryEvidenceSelector story verification", () => {
         maxItems: 2,
       }),
     ).resolves.toMatchObject({
-      clusters: [expect.objectContaining({
-        providerKeys: ["hacker-news", "x-twitter"],
-      })],
+      clusters: [
+        expect.objectContaining({ providerKeys: ["hacker-news"] }),
+        expect.objectContaining({ providerKeys: ["x-twitter"] }),
+      ],
     });
   });
 });
@@ -646,6 +692,10 @@ const ranked = (
       : "The engineering team explains its faster compiler pipeline.",
   publishedAt: "2026-07-11T08:00:00.000Z",
   observedAt: "2026-07-11T08:01:00.000Z",
+  engagementAuthority: {
+    observedAt: "2026-07-11T11:30:00.000Z",
+    regressionState: "stable",
+  },
   score,
   rank: providerKey === "hacker-news" ? 1 : 2,
   clusterId: `rank-cluster-${id}`,

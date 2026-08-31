@@ -14,6 +14,7 @@ ReaderPromotionV2HardAdmission = Object.freeze({
 
 const rankingInputs = Object.freeze({
   publishedAt: "2026-08-29T12:00:00.000Z",
+  engagementCutoffAt: "2026-08-29T18:00:00.000Z",
   admission: passingReaderPromotionAdmission,
   relevanceScore: 0.9,
   evidenceQualityScore: 0.8,
@@ -36,6 +37,7 @@ export const xPromotionCandidate = (params: {
   engagement: {
     state: "observed",
     authoritative: true,
+    authority: socialMetricAuthority(),
     metrics: {
       provider: "x",
       likes: params.likes,
@@ -53,6 +55,7 @@ export const redditPromotionCandidate = (): ReaderPromotionV2Candidate => ({
   engagement: {
     state: "observed",
     authoritative: true,
+    authority: socialMetricAuthority(),
     metrics: {
       provider: "reddit",
       score: 64,
@@ -72,6 +75,7 @@ export const hackerNewsPromotionCandidate =
   engagement: {
     state: "observed",
     authoritative: true,
+    authority: socialMetricAuthority(),
     metrics: { provider: "hacker_news", points: 73 },
   },
 });
@@ -85,11 +89,23 @@ export const githubPromotionCandidate = (): ReaderPromotionV2Candidate => ({
   engagement: {
     state: "observed",
     authoritative: true,
+    authority: {
+      source: "github_checked_at",
+      observedAt: "2026-08-29T17:00:00.000Z",
+      regressionState: "stable",
+    },
     metrics: {
       provider: "github",
       window: "24h",
+      checkedAt: "2026-08-29T17:00:00.000Z",
       starsDelta: 38,
       forksDelta: 12,
     },
   },
+});
+
+const socialMetricAuthority = () => ({
+  source: "durable_projection" as const,
+  observedAt: "2026-08-29T17:00:00.000Z",
+  regressionState: "stable" as const,
 });

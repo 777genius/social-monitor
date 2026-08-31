@@ -7,4 +7,5 @@ export * from "./services/cohort-baseline-feed-signal-normalizer";
 export * from "./value-objects/feed-normalized-signal";
 export * from "./value-objects/feed-provider-metric-labels";
 export * from "./value-objects/feed-provider-metrics";
+export * from "./value-objects/feed-promotion-metric-authority";
 export * from "./value-objects/feed-signal-baseline-sample";

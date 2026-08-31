@@ -30,6 +30,7 @@ export const readerSummaryPromotionV2Candidate = (
     provider,
     contentKind: admittedContentKind(facts.contentKind, provider),
     publishedAt: canonicalTimestamp(item.publishedAt),
+    engagementCutoffAt: canonicalTimestamp(promotionCutoff(selection)),
     admission: {
       relevanceFloorMet: quality?.eligibleForSummary === true,
       qualityFloorMet: quality?.eligibleForTopRead === true &&
@@ -41,7 +42,7 @@ export const readerSummaryPromotionV2Candidate = (
       safetyFloorMet: facts.safetyValid,
       freshnessFloorMet: validFreshness(item, selection),
     },
-    engagement: promotionEngagement(item),
+    engagement: promotionEngagement(item, provider),
     relevanceScore: quality?.interestRelevanceScore ?? Number.NaN,
     evidenceQualityScore: quality?.qualityScore ?? Number.NaN,
     integrityScore: quality?.engagementIntegrityScore ?? Number.NaN,
@@ -68,6 +69,7 @@ export const isEligibleReaderSummarySameStorySupport = (
 
 const promotionEngagement = (
   item: SummaryEvidenceItem,
+  provider: ReaderPromotionV2Provider,
 ): ReaderPromotionV2Engagement => {
   const facts = item.promotionFacts;
   const state = facts?.metricsState ??
@@ -77,7 +79,29 @@ const promotionEngagement = (
   }
   const metrics = observedMetrics(facts.metrics);
   if (metrics === undefined) return { state: "malformed" };
-  return { state: "observed", authoritative: true, metrics };
+  const authority = provider === "github"
+    ? facts.checkedAt === undefined
+      ? undefined
+      : {
+          source: "github_checked_at" as const,
+          observedAt: canonicalTimestamp(facts.checkedAt),
+          regressionState: "stable" as const,
+        }
+    : facts.engagementAuthority === undefined
+      ? undefined
+      : {
+          source: "durable_projection" as const,
+          observedAt: canonicalTimestamp(
+            facts.engagementAuthority.observedAt,
+          ),
+          regressionState: facts.engagementAuthority.regressionState,
+        };
+  return {
+    state: "observed",
+    authoritative: authority !== undefined,
+    ...(authority === undefined ? {} : { authority }),
+    metrics,
+  };
 };
 
 const observedMetrics = (
@@ -105,6 +129,7 @@ const observedMetrics = (
         ? {
             provider: "github",
             window: "24h",
+            checkedAt: canonicalTimestamp(metrics.windowEndedAt),
             starsDelta: metrics.starsDelta,
             forksDelta: metrics.forksDelta,
           }
@@ -130,8 +155,7 @@ const validFreshness = (
 ): boolean => {
   const facts = item.promotionFacts;
   const provenance = facts?.freshnessProvenance;
-  const cutoff = selection.sourceWindow.ingestionCutoff ??
-    selection.sourceWindow.endedAt;
+  const cutoff = promotionCutoff(selection);
   return facts?.freshnessValid === true &&
     provenance?.status === "observed" &&
     provenance.publishedAt.getTime() === item.publishedAt.getTime() &&
@@ -140,6 +164,11 @@ const validFreshness = (
     item.publishedAt.getTime() <= item.observedAt.getTime() &&
     item.observedAt.getTime() <= cutoff.getTime();
 };
+
+const promotionCutoff = (
+  selection: SummaryEvidenceSelection,
+): Date => selection.sourceWindow.ingestionCutoff ??
+  selection.sourceWindow.endedAt;
 
 const freshnessScore = (
   item: SummaryEvidenceItem,

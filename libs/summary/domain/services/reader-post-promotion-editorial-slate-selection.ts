@@ -10,6 +10,8 @@ import {
 } from "../policies/reader-post-promotion-policy";
 import { readerPostPromotionEvidenceConfidence } from
   "../policies/reader-post-promotion-confidence-policy";
+import { isTrustedReaderPostPromotionSupport } from
+  "../policies/reader-post-promotion-support-authority";
 import type { ReaderSummaryEditorialSlate } from
   "../value-objects/reader-summary-editorial-slate";
 
@@ -40,6 +42,7 @@ export const readerPostPromotionSelectionFromEditorialSlate = (
         input.safetyValid &&
         input.freshnessValid &&
         input.citationValid &&
+        isTrustedReaderPostPromotionSupport(input) &&
         readerPostProviderFamily(input.provider) !==
           readerPostProviderFamily(candidate.provider),
       )
@@ -93,6 +96,7 @@ export const readerPostPromotionSelectionFromEditorialSlate = (
       };
     }
     const semanticSupport = !selectedById.has(input.candidateId) &&
+      isTrustedReaderPostPromotionSupport(input) &&
       selectedEntries.some((selectedEntry) => {
         const selectedInput = inputById.get(selectedEntry.candidateId);
         return input.clusterId !== undefined &&

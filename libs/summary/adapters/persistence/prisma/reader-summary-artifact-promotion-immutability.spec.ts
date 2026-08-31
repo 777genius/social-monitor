@@ -70,6 +70,56 @@ describe("ReaderSummaryArtifact promotion immutability", () => {
     );
   });
 
+  it("rejects a pre-rollout V1 board with globally swapped Top order", () => {
+    const inputs = [
+      legacyBoardInput("ordered-x", "x-twitter", "story:ordered-x", 300),
+      legacyBoardInput("ordered-hn", "hacker-news", "story:ordered-hn", 250),
+    ];
+    const canonicalOrder = selectReaderPostPromotions(inputs).top.map(
+      (selected) => selected.candidate,
+    );
+    const fixture = isolatedLegacyBoardFixture([...canonicalOrder].reverse());
+
+    expect(() => assertReaderSummaryPromotionAttestations(
+      fixture.props,
+      fixture.attestations,
+    )).toThrow("promotion attestation differs from persisted evidence facts");
+  });
+
+  it("rejects a pre-rollout V1 board that bypasses the Top provider cap", () => {
+    const fixture = isolatedLegacyBoardFixture([
+      ...Array.from({ length: 5 }, (_, index) => legacyBoardInput(
+        `cap-x-${index + 1}`,
+        "x-twitter",
+        `story:cap-x-${index + 1}`,
+        500 - index,
+      )),
+      legacyBoardInput("cap-hn", "hacker-news", "story:cap-hn", 400),
+    ]);
+
+    expect(() => assertReaderSummaryPromotionAttestations(
+      fixture.props,
+      fixture.attestations,
+    )).toThrow("promotion attestation differs from persisted evidence facts");
+  });
+
+  it("rejects semantic-duplicate leads in a pre-rollout V1 board", () => {
+    const fixture = isolatedLegacyBoardFixture([
+      legacyBoardInput("duplicate-x", "x-twitter", "story:duplicate", 300),
+      legacyBoardInput(
+        "duplicate-hn",
+        "hacker-news",
+        "story:duplicate",
+        250,
+      ),
+    ]);
+
+    expect(() => assertReaderSummaryPromotionAttestations(
+      fixture.props,
+      fixture.attestations,
+    )).toThrow("promotion attestation differs from persisted evidence facts");
+  });
+
   it("validates V2 cards after persisted score object-key reordering", () => {
     const base = readerSummaryArtifact("artifact-contextual-attestation")
       .toSnapshot();
@@ -556,6 +606,108 @@ const legacyPeerContextFixture = (generatedAt: Date, peerPoints = 100) => {
       promotionAttestations: attestations,
       promotionEvidenceFacts: [lead, peer],
     },
+  };
+};
+
+const isolatedLegacyBoardFixture = (
+  inputs: readonly ReturnType<typeof legacyBoardInput>[],
+) => {
+  const base = readerSummaryArtifact("artifact-legacy-board").toSnapshot();
+  const periodStart = new Date("2026-08-26T00:00:00.000Z");
+  const periodEnd = new Date("2026-08-27T00:00:00.000Z");
+  const sourceWindow = {
+    ...base.sourceWindow,
+    selectedFeedItemIds: inputs.map((input) => input.candidateId),
+    periodStartedAt: periodStart,
+    periodEndedAt: periodEnd,
+    ingestionCutoff: periodEnd,
+  };
+  const attestations = inputs.map((input, slot) => {
+    const selection = selectReaderPostPromotions([input]);
+    const v2 = buildReaderPromotionV2TestAttestations(selection, {
+      artifactId: base.readerSummaryId,
+      sourceWindow,
+    });
+    return redigestV1Attestation({
+      ...historicalV1FixtureAttestations(v2, selection)[0]!,
+      slot,
+    });
+  });
+  return {
+    attestations,
+    props: {
+      ...base,
+      generatedAt: new Date("2026-08-27T13:48:17.317Z"),
+      sourceWindow,
+      citationMap: inputs.map((input) => ({
+        citationId: input.citationId,
+        feedItemId: input.candidateId,
+        sourceItemId: `source-${input.candidateId}`,
+        providerKey: input.provider,
+        field: "canonicalUrl" as const,
+      })),
+      content: {
+        ...base.content!,
+        topReads: inputs.map((input) => ({
+          ...topRead(),
+          promotionMarker: "reader_post_promotion" as const,
+          promotionPolicyVersion: "reader_post_promotion.v1" as const,
+          promotionTier: "top" as const,
+          promotionCandidateId: input.candidateId,
+          promotionCanonicalIdentity: input.canonicalIdentity,
+          citationIds: [input.citationId],
+        })),
+        selectedPosts: [],
+      },
+      promotionAttestations: attestations,
+      promotionEvidenceFacts: inputs,
+    },
+  };
+};
+
+const legacyBoardInput = (
+  candidateId: string,
+  provider: "x-twitter" | "hacker-news",
+  canonicalIdentity: string,
+  signal: number,
+) => ({
+  candidateId,
+  provider,
+  contentKind: provider === "x-twitter"
+    ? "original_post" as const
+    : "story" as const,
+  canonicalIdentity,
+  citationId: `citation-${candidateId}`,
+  publishedAt: new Date("2026-08-26T08:00:00.000Z"),
+  observedAt: new Date("2026-08-26T08:05:00.000Z"),
+  periodStart: new Date("2026-08-26T00:00:00.000Z"),
+  periodEnd: new Date("2026-08-27T00:00:00.000Z"),
+  ingestionCutoff: new Date("2026-08-27T00:00:00.000Z"),
+  freshnessValid: true,
+  qualityScore: 0.9,
+  relevanceScore: 0.9,
+  integrityScore: 0.9,
+  qualityValid: true,
+  safetyValid: true,
+  citationValid: true,
+  metricsState: "observed" as const,
+  metrics: provider === "x-twitter"
+    ? { provider: "x" as const, likes: signal, reposts: 0,
+        weightedScore: signal }
+    : { provider: "hacker_news" as const, points: signal },
+});
+
+const redigestV1Attestation = (
+  attestation: ReaderPostPromotionAttestationV1,
+): ReaderPostPromotionAttestationV1 => {
+  const body = { ...attestation };
+  delete (body as Partial<ReaderPostPromotionAttestationV1>).canonicalPayload;
+  delete (body as Partial<ReaderPostPromotionAttestationV1>).digest;
+  const canonicalPayload = canonicalPromotionPayload(body);
+  return {
+    ...attestation,
+    canonicalPayload,
+    digest: promotionPayloadDigest(canonicalPayload),
   };
 };
 

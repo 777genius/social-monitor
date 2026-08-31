@@ -216,6 +216,17 @@ describe("Reader Promotion Policy V2", () => {
       ...github,
       engagement: { ...github.engagement, authoritative: false },
     } as ReaderPromotionV2Candidate;
+    const githubCheckedAtConflict = {
+      ...github,
+      engagement: {
+        ...github.engagement,
+        authority: {
+          source: "github_checked_at",
+          observedAt: "2026-08-29T17:00:00.001Z",
+          regressionState: "stable",
+        },
+      },
+    } as ReaderPromotionV2Candidate;
 
     expect(evaluateReaderPromotionV2(redditConflict)).toMatchObject({
       admitted: false,
@@ -225,5 +236,160 @@ describe("Reader Promotion Policy V2", () => {
       admitted: false,
       reasons: ["engagement_unauthoritative"],
     });
+    expect(evaluateReaderPromotionV2(githubCheckedAtConflict)).toMatchObject({
+      admitted: false,
+      reasons: ["engagement_conflict"],
+    });
+  });
+
+  it("rejects a stale high social metric snapshot relative to the explicit cutoff", () => {
+    const baseline = xPromotionCandidate({
+      candidateId: "stale-high-metric",
+      likes: 11_112,
+    });
+    const candidate = {
+      ...baseline,
+      engagement: {
+        ...baseline.engagement,
+        authority: {
+          source: "durable_projection",
+          observedAt: "2026-08-29T11:59:59.999Z",
+          regressionState: "stable",
+        },
+      },
+    } as ReaderPromotionV2Candidate;
+
+    expect(evaluateReaderPromotionV2(candidate)).toMatchObject({
+      admitted: false,
+      reasons: ["engagement_stale"],
+    });
+  });
+
+  it("fails valid social metrics closed without durable authority", () => {
+    const baseline = xPromotionCandidate({
+      candidateId: "missing-metric-authority",
+      likes: 89,
+    });
+    const candidate = {
+      ...baseline,
+      engagement: {
+        state: "observed",
+        authoritative: true,
+        metrics: baseline.engagement.state === "observed"
+          ? baseline.engagement.metrics
+          : { provider: "x", likes: 89, reposts: 0 },
+      },
+    } as ReaderPromotionV2Candidate;
+
+    expect(evaluateReaderPromotionV2(candidate)).toMatchObject({
+      admitted: false,
+      reasons: ["engagement_authority_missing"],
+    });
+  });
+
+  it("rejects a metric refresh observed after the immutable cutoff", () => {
+    const baseline = xPromotionCandidate({
+      candidateId: "post-cutoff-refresh",
+      likes: 11_112,
+    });
+    const candidate = {
+      ...baseline,
+      engagement: {
+        ...baseline.engagement,
+        authority: {
+          source: "durable_projection",
+          observedAt: "2026-08-29T18:00:00.001Z",
+          regressionState: "stable",
+        },
+      },
+    } as ReaderPromotionV2Candidate;
+
+    expect(evaluateReaderPromotionV2(candidate)).toMatchObject({
+      admitted: false,
+      reasons: ["engagement_observed_after_cutoff"],
+    });
+  });
+
+  it("admits a late authoritative refresh inside the cutoff-relative age", () => {
+    const baseline = xPromotionCandidate({
+      candidateId: "late-refresh",
+      likes: 11_112,
+    });
+    const candidate = {
+      ...baseline,
+      engagement: {
+        ...baseline.engagement,
+        authority: {
+          source: "durable_projection",
+          observedAt: "2026-08-29T17:59:59.999Z",
+          regressionState: "stable",
+        },
+      },
+    } as ReaderPromotionV2Candidate;
+
+    expect(evaluateReaderPromotionV2(candidate)).toMatchObject({
+      admitted: true,
+      engagementAttestation: {
+        metricsObservedAt: "2026-08-29T17:59:59.999Z",
+        freshnessCutoffAt: "2026-08-29T18:00:00.000Z",
+      },
+    });
+  });
+
+  it("admits a confirmed correction and rejects an unresolved regression", () => {
+    const baseline = redditPromotionCandidate();
+    const withRegressionState = (
+      regressionState: "confirmed_correction" | "unresolved_regression",
+    ) => ({
+      ...baseline,
+      candidateId: `regression-${regressionState}`,
+      engagement: {
+        ...baseline.engagement,
+        authority: {
+          source: "durable_projection",
+          observedAt: "2026-08-29T17:30:00.000Z",
+          regressionState,
+        },
+      },
+    } as ReaderPromotionV2Candidate);
+
+    expect(evaluateReaderPromotionV2(
+      withRegressionState("confirmed_correction"),
+    )).toMatchObject({
+      admitted: true,
+      engagementAttestation: { regressionState: "confirmed_correction" },
+    });
+    expect(evaluateReaderPromotionV2(
+      withRegressionState("unresolved_regression"),
+    )).toMatchObject({
+      admitted: false,
+      reasons: ["engagement_regression_unresolved"],
+    });
+  });
+
+  it("binds metric observation, correction state, and cutoff in deterministic replay", () => {
+    const candidate = xPromotionCandidate({
+      candidateId: "authority-replay",
+      likes: 89,
+    });
+    const first = evaluateReaderPromotionV2(candidate);
+    const replay = evaluateReaderPromotionV2(candidate);
+
+    expect(JSON.stringify(replay)).toBe(JSON.stringify(first));
+    expect(first).toMatchObject({
+      admitted: true,
+      engagementAttestation: {
+        authoritySource: "durable_projection",
+        metricsObservedAt: "2026-08-29T17:00:00.000Z",
+        freshnessCutoffAt: "2026-08-29T18:00:00.000Z",
+        maximumAgeMs: 21_600_000,
+        regressionState: "stable",
+      },
+    });
+    if (first.admitted) {
+      expect(first.digestInput).toContain(
+        '"metricsObservedAt":"2026-08-29T17:00:00.000Z"',
+      );
+    }
   });
 });

@@ -2,6 +2,7 @@ import type { TenantId, WorkspaceId } from "@social-monitor/shared-kernel";
 
 import type {
   FeedItem,
+  FeedPromotionMetricAuthority,
   FeedPromotionEligibility,
 } from "../domain";
 
@@ -62,6 +63,7 @@ export type ReadPromotionFeedItemSnapshotQuery = {
 export type PromotionFeedItemCandidate = {
   readonly item: FeedItem;
   readonly canonical: Extract<FeedPromotionEligibility, { eligible: true }>;
+  readonly metricAuthority?: FeedPromotionMetricAuthority;
   readonly exactTimestamps?: {
     readonly publishedAt: string;
     readonly observedAt: string;

@@ -13,6 +13,8 @@ import {
 } from "./top-read-provider-diversity-policy";
 import { readerPostPromotionEvidenceConfidence } from
   "./reader-post-promotion-confidence-policy";
+import { isTrustedReaderPostPromotionSupport } from
+  "./reader-post-promotion-support-authority";
 import type { ReaderSummaryEditorialSlateEntry } from
   "../value-objects/reader-summary-editorial-slate";
 
@@ -340,7 +342,7 @@ const supportTargetIdentity = (
 };
 
 const passesSupportFloor = (candidate: EvaluatedCandidate): boolean =>
-  isAttestedTrustedSupport(candidate.input) &&
+  isTrustedReaderPostPromotionSupport(candidate.input) &&
   candidate.evaluation.decision === "support_only";
 
 const toSelectedPromotion = (
@@ -379,12 +381,6 @@ const additionalUsefulness = (
     weights.engagementIntegrityScore * candidate.input.integrityScore +
     weights.freshness * freshnessScore(candidate.input);
 };
-
-const isAttestedTrustedSupport = (
-  input: ReaderPostPromotionInput,
-): boolean => input.authorityAttestation?.status === "attested" &&
-  input.authorityAttestation.trusted &&
-  input.authorityAttestation.attestedBy === "source_catalog";
 
 const freshnessScore = (input: ReaderPostPromotionInput): number => {
   const periodStart = promotionMicros(input, "start");

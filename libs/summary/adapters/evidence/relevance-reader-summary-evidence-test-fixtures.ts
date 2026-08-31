@@ -52,6 +52,13 @@ export const readerSummaryRankedItemFixture = (
     observedAt: new Date(
       Date.UTC(2026, 5, 23, 10, 0, 0) + rank * 60_000,
     ).toISOString(),
+    ...(providerKey === "x-twitter" || providerKey === "reddit" ||
+        providerKey === "hacker-news"
+      ? { engagementAuthority: {
+          observedAt: "2026-06-23T11:30:00.000Z",
+          regressionState: "stable" as const,
+        } }
+      : {}),
     score,
     rank,
     clusterId: `cluster-${feedItemId}`,

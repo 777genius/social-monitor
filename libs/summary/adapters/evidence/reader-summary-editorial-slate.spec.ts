@@ -277,6 +277,10 @@ const evidence = (params: {
     canonicalIdentity: params.canonicalIdentity,
     safetyValid: true,
     freshnessValid: true,
+    engagementAuthority: {
+      observedAt: new Date("2026-08-29T23:00:00.000Z"),
+      regressionState: "stable",
+    },
     freshnessProvenance: {
       status: "observed",
       publishedAt,

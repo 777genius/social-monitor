@@ -37,6 +37,7 @@ export * from "./policies/reader-summary-publication-policy";
 export * from "./policies/reader-summary-publication-generation-policy";
 export * from "./policies/reader-post-promotion-policy";
 export * from "./policies/reader-post-promotion-selection";
+export * from "./policies/reader-post-promotion-support-authority";
 export * from "./services/reader-post-promotion-attestation";
 export * from "./services/reader-post-promotion-projection";
 export * from "./services/reader-post-promotion-evidence-admission";

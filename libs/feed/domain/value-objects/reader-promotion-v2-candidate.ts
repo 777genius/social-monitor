@@ -1,5 +1,7 @@
 export const READER_PROMOTION_POLICY_V2_VERSION =
   "reader_promotion_policy.v2" as const;
+export const READER_PROMOTION_SOCIAL_METRIC_MAX_AGE_MS =
+  6 * 60 * 60 * 1_000;
 
 export type ReaderPromotionV2Provider =
   | "x"
@@ -31,6 +33,8 @@ export type ReaderPromotionV2ObservedMetrics =
   | {
       readonly provider: "github";
       readonly window: "24h";
+      /** Must match the durable GitHub radar window end and authority time. */
+      readonly checkedAt: string;
       readonly starsDelta: number;
       readonly forksDelta: number;
     };
@@ -40,6 +44,14 @@ export type ReaderPromotionV2Engagement =
   | {
       readonly state: "observed";
       readonly authoritative: boolean;
+      readonly authority?: {
+        readonly source: "durable_projection" | "github_checked_at";
+        readonly observedAt: string;
+        readonly regressionState:
+          | "stable"
+          | "confirmed_correction"
+          | "unresolved_regression";
+      };
       readonly metrics: ReaderPromotionV2ObservedMetrics;
     };
 
@@ -59,6 +71,8 @@ export type ReaderPromotionV2Candidate = {
   readonly contentKind: ReaderPromotionV2ContentKind;
   /** Canonical UTC ISO-8601 timestamp used only as a stable tie-break. */
   readonly publishedAt: string;
+  /** Explicit immutable cutoff for engagement authority and replay. */
+  readonly engagementCutoffAt: string;
   readonly admission: ReaderPromotionV2HardAdmission;
   readonly engagement: ReaderPromotionV2Engagement;
   readonly relevanceScore: number;
@@ -81,6 +95,11 @@ export type ReaderPromotionV2RejectionReason =
   | "engagement_malformed"
   | "engagement_conflict"
   | "engagement_unauthoritative"
+  | "engagement_authority_missing"
+  | "engagement_authority_malformed"
+  | "engagement_observed_after_cutoff"
+  | "engagement_stale"
+  | "engagement_regression_unresolved"
   | "provider_floor_not_met";
 
 export type ReaderPromotionV2ScoreComponents = {
@@ -131,6 +150,11 @@ export type ReaderPromotionV2EngagementAttestation = {
   readonly providerTopFloor: number;
   readonly relativePopularity: number;
   readonly engagementSalience: number;
+  readonly authoritySource: "durable_projection" | "github_checked_at";
+  readonly metricsObservedAt: string;
+  readonly freshnessCutoffAt: string;
+  readonly maximumAgeMs?: number;
+  readonly regressionState: "stable" | "confirmed_correction";
 };
 
 export type AdmittedReaderPromotionV2 = {

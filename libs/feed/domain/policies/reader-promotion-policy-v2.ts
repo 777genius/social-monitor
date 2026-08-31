@@ -9,6 +9,10 @@ import {
   type ReaderPromotionV2RejectionReason,
   type ReaderPromotionV2ScoreComponents,
 } from "../value-objects/reader-promotion-v2-candidate";
+import {
+  evaluateReaderPromotionEngagementAuthority,
+  type AdmittedReaderPromotionEngagementAuthority,
+} from "./reader-promotion-engagement-authority";
 
 export * from "../value-objects/reader-promotion-v2-candidate";
 
@@ -40,6 +44,13 @@ type ProviderSignal = {
 };
 
 type EngagementResult =
+  | {
+      readonly signal: ProviderSignal;
+      readonly authority: AdmittedReaderPromotionEngagementAuthority;
+    }
+  | { readonly reason: ReaderPromotionV2RejectionReason };
+
+type ProviderSignalResult =
   | { readonly signal: ProviderSignal }
   | { readonly reason: ReaderPromotionV2RejectionReason };
 
@@ -68,6 +79,7 @@ export const evaluateReaderPromotionV2 = (
     providerTopFloor: signal.topFloor,
     relativePopularity,
     engagementSalience,
+    ...engagement.authority,
   };
   const admissionAttestation = buildAdmissionAttestation(candidate, signal);
   const tieBreak = {
@@ -94,6 +106,11 @@ export const evaluateReaderPromotionV2 = (
     freshness: fixed(candidate.freshnessScore),
     totalScore: fixed(components.total),
     publishedAt: candidate.publishedAt,
+    metricsObservedAt: engagement.authority.metricsObservedAt,
+    freshnessCutoffAt: engagement.authority.freshnessCutoffAt,
+    authoritySource: engagement.authority.authoritySource,
+    maximumAgeMs: engagement.authority.maximumAgeMs ?? null,
+    regressionState: engagement.authority.regressionState,
   });
 
   return {
@@ -192,14 +209,21 @@ const engagementResult = (
   }
   const signal = providerSignal(candidate.engagement.metrics);
   if ("reason" in signal) return signal;
+  const authority = evaluateReaderPromotionEngagementAuthority(candidate);
+  if ("reason" in authority) return authority;
+  if (candidate.provider === "github" &&
+      candidate.engagement.metrics.provider === "github" &&
+      candidate.engagement.metrics.checkedAt !== authority.metricsObservedAt) {
+    return { reason: "engagement_conflict" };
+  }
   return signal.signal.floorMet
-    ? signal
+    ? { ...signal, authority }
     : { reason: "provider_floor_not_met" };
 };
 
 const providerSignal = (
   metrics: ReaderPromotionV2ObservedMetrics,
-): EngagementResult => {
+): ProviderSignalResult => {
   switch (metrics.provider) {
     case "x": {
       if (!validCount(metrics.likes) || !validCount(metrics.reposts) ||
@@ -259,7 +283,8 @@ const providerSignal = (
       } };
     case "github": {
       if (metrics.window !== "24h" || !validCount(metrics.starsDelta) ||
-          !validCount(metrics.forksDelta)) {
+          !validCount(metrics.forksDelta) ||
+          !isCanonicalUtcTimestamp(metrics.checkedAt)) {
         return { reason: "engagement_malformed" };
       }
       // A fork delta counts at the existing 2:1 fork-to-star floor ratio.

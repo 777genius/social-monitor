@@ -3,6 +3,8 @@ import {
   READER_POST_PROMOTION_POLICY_V1,
   type ReaderPostPromotionInput,
 } from "./reader-post-promotion-policy";
+import { isTrustedReaderPostPromotionSupport } from
+  "./reader-post-promotion-support-authority";
 
 export type ReaderPostPromotionEvidenceConfidence = Readonly<{
   providerCount: number;
@@ -17,7 +19,10 @@ export const readerPostPromotionEvidenceConfidence = (params: {
   readonly lead: ReaderPostPromotionInput;
   readonly support: readonly ReaderPostPromotionInput[];
 }): ReaderPostPromotionEvidenceConfidence => {
-  const admitted = [params.lead, ...params.support];
+  const trustedSupport = params.support.filter(
+    isTrustedReaderPostPromotionSupport,
+  );
+  const admitted = [params.lead, ...trustedSupport];
   const providerCount = new Set(
     admitted.map((item) => readerPostProviderFamily(item.provider)),
   ).size;
@@ -25,7 +30,7 @@ export const readerPostPromotionEvidenceConfidence = (params: {
     1,
     params.lead.qualityScore + Math.min(
       READER_POST_PROMOTION_POLICY_V1.confidence.maxSupportBoost,
-      params.support.length *
+      trustedSupport.length *
         READER_POST_PROMOTION_POLICY_V1.confidence.supportBoost,
     ),
   );
@@ -35,7 +40,7 @@ export const readerPostPromotionEvidenceConfidence = (params: {
         rawConfidence,
         isAttestedOfficial(params.lead)
           ? 0.62
-          : params.support.length > 0
+          : trustedSupport.length > 0
             ? 0.55
             : 0.42,
       );

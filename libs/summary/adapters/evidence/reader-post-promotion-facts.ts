@@ -2,6 +2,7 @@ import {
   classifyFeedPromotionEligibility,
   type FeedPromotionCanonicalMetrics,
   type FeedPromotionEligibility,
+  type FeedPromotionMetricRegressionState,
 } from "@social-monitor/feed/domain";
 import type { JsonObject, JsonValue } from "@social-monitor/shared-kernel";
 
@@ -23,6 +24,10 @@ export const readerPostPromotionFacts = (params: {
   readonly exactPublishedAt?: string;
   readonly exactObservedAt?: string;
   readonly canonicalPromotion?: FeedPromotionEligibility;
+  readonly engagementAuthority?: {
+    readonly observedAt: string;
+    readonly regressionState: FeedPromotionMetricRegressionState;
+  };
 }): SummaryEvidencePromotionFacts => {
   const eligibility = params.canonicalPromotion ??
     classifyFeedPromotionEligibility(params);
@@ -37,6 +42,9 @@ export const readerPostPromotionFacts = (params: {
     : undefined;
 
   const freshnessProvenance = promotionFreshnessProvenance(params);
+  const engagementAuthority = promotionEngagementAuthority(
+    params.engagementAuthority,
+  );
   return {
     contentKind: eligibility.eligible
       ? eligibility.contentKind
@@ -46,6 +54,7 @@ export const readerPostPromotionFacts = (params: {
         : "unknown",
     canonicalIdentity: canonicalPromotionIdentity(params.canonicalUrl),
     ...(checkedAt === undefined ? {} : { checkedAt }),
+    ...(engagementAuthority === undefined ? {} : { engagementAuthority }),
     ...(!eligibility.eligible || eligibility.authorityAttestation === undefined
       ? {}
       : { authorityAttestation: eligibility.authorityAttestation }),
@@ -66,6 +75,24 @@ export const readerPostPromotionFacts = (params: {
     freshnessProvenance,
     metricsState,
     ...(metrics === undefined ? {} : { metrics }),
+  };
+};
+
+const promotionEngagementAuthority = (
+  authority: {
+    readonly observedAt: string;
+    readonly regressionState: FeedPromotionMetricRegressionState;
+  } | undefined,
+): SummaryEvidencePromotionFacts["engagementAuthority"] => {
+  if (authority === undefined || ![
+    "stable",
+    "confirmed_correction",
+    "unresolved_regression",
+  ].includes(authority.regressionState)) return undefined;
+  const observedAt = validDate(authority.observedAt);
+  return observedAt === undefined ? undefined : {
+    observedAt,
+    regressionState: authority.regressionState,
   };
 };
 

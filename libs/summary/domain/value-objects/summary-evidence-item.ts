@@ -57,6 +57,13 @@ export type SummaryEvidencePromotionFacts = {
     | "unknown";
   readonly canonicalIdentity: string;
   readonly checkedAt?: Date;
+  readonly engagementAuthority?: {
+    readonly observedAt: Date;
+    readonly regressionState:
+      | "stable"
+      | "confirmed_correction"
+      | "unresolved_regression";
+  };
   readonly authorityAttestation?: {
     readonly status: "attested";
     readonly official: boolean;
