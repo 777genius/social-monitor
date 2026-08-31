@@ -185,7 +185,8 @@ const xTwitterLaneFamilies = [
   "product_or_group",
   "search:general",
 ] as const;
-const outputPath = "ops/evals/reader-summary-source-quality-trace.v1.json";
+const outputPath = readOption("--output-path") ??
+  "ops/evals/reader-summary-source-quality-trace.v1.json";
 const databaseUrl = yesterdaySocialQualityDatabaseUrl();
 const update = process.argv.includes("--update");
 const artifactOnly = process.argv.includes("--artifact-only");

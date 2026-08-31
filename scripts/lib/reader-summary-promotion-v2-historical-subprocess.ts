@@ -12,6 +12,7 @@ import {
   historicalPromotionRevalidationFailurePathEnv,
   historicalPromotionUnderLockDriftReason,
   historicalPromotionUnderLockUnavailableReason,
+  historicalPromotionUnderLockDurableStateReason,
   type HistoricalPromotionUnderLockReason,
 } from "./reader-summary-promotion-v2-input-guard";
 
@@ -22,6 +23,9 @@ export class ProductionDayHistoricalPromotionMutation
     dailyRunLockPath: string;
     dateLockDirectory: string;
     fenceDirectory: string;
+    canonicalDailyRunLockPath: string;
+    canonicalDateLockDirectory: string;
+    canonicalFenceDirectory: string;
     lockWaitSeconds: number;
     durableState: HistoricalPromotionDurableStateReader;
     verifier: Pick<HistoricalPromotionMutation, "verifyCompleted">;
@@ -65,6 +69,13 @@ export class ProductionDayHistoricalPromotionMutation
         this.input.fenceDirectory,
         "--global-lock",
         this.input.dailyRunLockPath,
+        "--require-preexisting-authority",
+        "--canonical-global-lock",
+        this.input.canonicalDailyRunLockPath,
+        "--canonical-date-lock-dir",
+        this.input.canonicalDateLockDirectory,
+        "--canonical-fence-dir",
+        this.input.canonicalFenceDirectory,
         "--wait-seconds",
         String(this.input.lockWaitSeconds),
         "--token-output",
@@ -86,12 +97,26 @@ export class ProductionDayHistoricalPromotionMutation
           revalidationFailurePath,
         DURABLE_READER_SUMMARY_PROMOTION_REBUILD_IDENTITY:
           input.rebuildIdentity,
+        DURABLE_READER_SUMMARY_MAX_EVIDENCE_ITEMS: String(
+          input.bundle.canonicalInput.generationAuthority.execution.maxEvidenceItems,
+        ),
+        DURABLE_READER_SUMMARY_MAX_STORIES: String(
+          input.bundle.canonicalInput.generationAuthority.policy.maxStories,
+        ),
+        AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_MAX_CANDIDATES: String(
+          input.bundle.canonicalInput.generationAuthority.execution.topicLabelerMaxCandidates,
+        ),
+        AGENT_RUNTIME_READER_SUMMARY_MAX_OUTPUT_TOKENS: String(
+          input.bundle.canonicalInput.generationAuthority.execution.maxOutputTokens,
+        ),
         DURABLE_READER_SUMMARY_PROMOTION_POLICY_VERSION:
           input.classification.policyVersion,
         DURABLE_READER_SUMMARY_PROMOTION_SOURCE_AUTHORITY_KIND:
           input.bundle.sourceEvidence.kind,
         DURABLE_READER_SUMMARY_AUTHORITATIVE_INPUT_SHA256:
           input.bundle.authoritativeInputDigest,
+        DURABLE_READER_SUMMARY_PROMOTION_AUTHORITY_INSPECTION_SHA256:
+          input.classification.authorityInspectionDigest,
         DURABLE_READER_SUMMARY_SOURCE_PUBLICATION_ID:
           input.bundle.sourcePublicationId,
         DURABLE_READER_SUMMARY_SOURCE_ARTIFACT_ID:
@@ -100,6 +125,16 @@ export class ProductionDayHistoricalPromotionMutation
           input.bundle.sourcePublicationReportSha256,
         DURABLE_READER_SUMMARY_SOURCE_PUBLICATION_PROOF_SHA256:
           input.bundle.sourcePublicationProofSha256,
+        ...(input.bundle.sourceEvidence.kind === "active-database-publication"
+          ? {}
+          : {
+              DURABLE_READER_SUMMARY_SOURCE_REPORT_SHA256:
+                input.bundle.sourceEvidence.sourceReportSha256,
+              DURABLE_READER_SUMMARY_COLLECTION_ARTIFACT_SHA256:
+                input.bundle.sourceEvidence.collectionArtifactSha256,
+              DURABLE_READER_SUMMARY_COLLECTION_QUALITY_REPORT_SHA256:
+                input.bundle.sourceEvidence.collectionQualityReportSha256,
+            }),
         ...(input.bundle.historicalGitHubOmissionReason === undefined
           ? {}
           : {
@@ -292,7 +327,8 @@ const readUnderLockFailure = (
   if (typeof value !== "object" || value === null || Array.isArray(value) ||
       !("reason" in value) ||
       (value.reason !== historicalPromotionUnderLockDriftReason &&
-        value.reason !== historicalPromotionUnderLockUnavailableReason)) {
+        value.reason !== historicalPromotionUnderLockUnavailableReason &&
+        value.reason !== historicalPromotionUnderLockDurableStateReason)) {
     throw new Error("Historical promotion under-lock marker is invalid");
   }
   return value.reason;

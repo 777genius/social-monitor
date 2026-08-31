@@ -15,6 +15,13 @@ export type HistoricalPromotionAuthorityRow = Readonly<{
   providerMetadata: JsonObject | null;
   publishedAt: string;
   observedAt: string;
+  dayEndMetricProof: HistoricalPromotionDayEndMetricProof | null;
+}>;
+
+export type HistoricalPromotionDayEndMetricProof = Readonly<{
+  source: "observation" | "daily-rollup";
+  observedAt: string;
+  metrics: JsonObject;
 }>;
 
 export type HistoricalPromotionProviderLimitation = Readonly<{
@@ -76,12 +83,15 @@ export const classifyHistoricalPromotionAuthority = (input: {
     if (isPromotionRelevant(row.providerKey, eligibility)) relevant += 1;
     if (eligibility.eligible) {
       valid += 1;
-      if (row.observedAt < dayEnd) validByDayEnd += 1;
-      else {
+      if (hasExactDayEndMetricProof(row, eligibility, dayEnd)) {
+        validByDayEnd += 1;
+      } else {
         increment(
           limitations,
           row.providerKey,
-          "authority_observed_after_day_end",
+          row.dayEndMetricProof === null
+            ? "day_end_metric_proof_missing"
+            : "day_end_metric_value_mismatch",
         );
       }
       continue;
@@ -124,7 +134,8 @@ export const classifyHistoricalPromotionAuthority = (input: {
       reason: "no_structurally_valid_authoritative_promotion_metrics",
     };
   }
-  if (valid === validByDayEnd && providerLimitations.length === 0) {
+  if (relevant === valid && valid === validByDayEnd &&
+      providerLimitations.length === 0) {
     return {
       ...common,
       kind: "exact-replayable",
@@ -153,7 +164,7 @@ export const historicalPromotionRebuildIdentity = (input: {
     throw new Error("Historical promotion policy version is not V2");
   }
   return sha256(JSON.stringify({
-    schemaVersion: "reader_summary.promotion_v2_rebuild_identity.v1",
+    schemaVersion: "reader_summary.promotion_v2_rebuild_identity.v2",
     date: input.date,
     authoritativeInputDigest: input.authoritativeInputDigest,
     policyVersion,
@@ -171,7 +182,7 @@ const authorityDigest = (
   date: string,
   rows: readonly HistoricalPromotionAuthorityRow[],
 ): string => sha256(JSON.stringify({
-  schemaVersion: "reader_summary.promotion_authority.v1",
+    schemaVersion: "reader_summary.promotion_authority.v2",
   date,
   rows: rows.map((row) => ({
     feedItemId: row.feedItemId,
@@ -179,8 +190,49 @@ const authorityDigest = (
     publishedAt: row.publishedAt,
     observedAt: row.observedAt,
     providerMetadata: canonicalValue(row.providerMetadata),
+    dayEndMetricProof: canonicalValue(row.dayEndMetricProof),
   })),
 }));
+
+const hasExactDayEndMetricProof = (
+  row: HistoricalPromotionAuthorityRow,
+  eligibility: Extract<FeedPromotionEligibility, { readonly eligible: true }>,
+  dayEnd: string,
+): boolean => {
+  const proof = row.dayEndMetricProof;
+  if (proof === null || proof.observedAt >= dayEnd) return false;
+  const metric = (key: string): number | undefined => {
+    const value = proof.metrics[key];
+    return typeof value === "number" && Number.isSafeInteger(value)
+      ? value
+      : undefined;
+  };
+  switch (eligibility.providerFamily) {
+    case "x": {
+      const metrics = eligibility.metrics as { likes: number; reposts: number };
+      return metric("likes") === metrics.likes &&
+        metric("reposts") === metrics.reposts;
+    }
+    case "reddit": {
+      const metrics = eligibility.metrics as {
+        score: number; upvoteRatio?: number;
+      };
+      const ratio = metrics.upvoteRatio;
+      return metric("score") === metrics.score &&
+        (ratio === undefined || metric("upvoteRatioBps") ===
+          Math.round(ratio * 10_000));
+    }
+    case "hacker_news": {
+      const metrics = eligibility.metrics as { points: number };
+      return metric("points") === metrics.points;
+    }
+    case "github":
+      // The retained engagement history has cumulative stars/forks but not the
+      // 24/48-hour deltas consumed by Promotion V2. It cannot prove an exact
+      // historical GitHub ranking input.
+      return false;
+  }
+};
 
 const canonicalValue = (value: unknown): unknown => {
   if (value === null || typeof value !== "object") return value;

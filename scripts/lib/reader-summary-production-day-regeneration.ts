@@ -20,6 +20,8 @@ import { historicalPromotionRebuildIdentity } from
   "./reader-summary-promotion-v2-historical-classification";
 import { buildHistoricalPromotionCanonicalInput } from
   "./reader-summary-promotion-v2-historical-input";
+import { historicalPromotionGenerationAuthority } from
+  "./reader-summary-promotion-v2-historical-generation-authority";
 
 type HashBoundArtifact = {
   readonly artifactFormat: string;
@@ -269,6 +271,11 @@ const assertPromotionCanonicalInput = (input: {
     datasetManifest: input.datasetManifest,
     datasetManifestSha256: input.datasetManifestFileSha256,
     supportingEvidence,
+    generationAuthority: historicalPromotionGenerationAuthority({
+      tenantId: input.datasetManifest.scope.tenantId,
+      workspaceId: input.datasetManifest.scope.workspaceId,
+      env: process.env,
+    }),
     allowHistoricalGitHubOmission:
       input.githubPolicy.mode === "historical_unavailable",
     ...(input.githubPolicy.mode === "historical_unavailable"

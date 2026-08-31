@@ -1312,6 +1312,26 @@ model ReaderSummaryRecoveryReceipt {
   @@map("reader_summary_recovery_receipts")
 }
 
+model ReaderSummaryPromotionV2RollbackReceipt {
+  id                           String   @id @db.Uuid
+  tenantId                     String   @map("tenant_id") @db.Uuid
+  workspaceId                  String   @map("workspace_id") @db.Uuid
+  requestedUtcDate             DateTime @map("requested_utc_date") @db.Date
+  migrationReceiptSha256       String   @unique(map: "reader_summary_promotion_v2_rollback_migration_receipt_key") @map("migration_receipt_sha256") @db.Char(64)
+  rollbackIdentity             String   @unique(map: "reader_summary_promotion_v2_rollback_identity_key") @map("rollback_identity") @db.Char(64)
+  priorPublicationId           String   @map("prior_publication_id") @db.Uuid
+  priorArtifactId              String   @map("prior_artifact_id") @db.Uuid
+  replacedV2PublicationId      String   @unique(map: "reader_summary_promotion_v2_rollback_replaced_key") @map("replaced_v2_publication_id") @db.Uuid
+  replacedV2ArtifactId         String   @map("replaced_v2_artifact_id") @db.Uuid
+  fenceToken                   String   @map("fence_token")
+  receipt                      Json
+  receiptSha256                String   @map("receipt_sha256") @db.Char(64)
+  rolledBackAt                 DateTime @map("rolled_back_at") @db.Timestamptz(6)
+
+  @@index([tenantId, workspaceId, requestedUtcDate], map: "reader_summary_promotion_v2_rollback_scope_day_idx")
+  @@map("reader_summary_promotion_v2_rollback_receipts")
+}
+
 model ReaderSummaryProductionRecoveryLease {
   id              String                                  @id(map: "reader_summary_production_recovery_leases_pkey") @db.Uuid
   tenantId        String                                  @map("tenant_id") @db.Uuid

@@ -78,10 +78,12 @@ describe("historical Promotion V2 under-lock input gate", () => {
       revalidate: () => assertHistoricalPromotionInputCurrentBeforeMutation({
         datasetGuard: { assertCurrentBeforeMutation: async () => undefined },
         client: {
-          $queryRaw: jest.fn(async () => [{
-            ...sourcePublication,
-            proofSha256: "c".repeat(64),
-          }]) as never,
+          $queryRaw: jest.fn()
+            .mockResolvedValueOnce([systemRole()])
+            .mockResolvedValueOnce([{
+              ...sourcePublication,
+              proofSha256: "c".repeat(64),
+            }]) as never,
         },
         ...scope,
         date: "2026-08-01",
@@ -109,9 +111,14 @@ describe("historical Promotion V2 under-lock input gate", () => {
         },
         client: {
           $queryRaw: jest.fn(async () => {
-            events.push("publication");
+            const event = events.includes("rls-preflight")
+              ? "publication"
+              : "rls-preflight";
+            events.push(event);
             observedAccess.push(currentDatabaseAccess());
-            return [sourcePublication];
+            return event === "rls-preflight"
+              ? [systemRole()]
+              : [sourcePublication];
           }) as never,
         },
         ...scope,
@@ -120,11 +127,19 @@ describe("historical Promotion V2 under-lock input gate", () => {
       }),
       runProductionDay: productionDay,
     })).resolves.toBe(0);
-    expect(events).toEqual(["dataset", "publication", "production-day"]);
+    expect(events).toEqual([
+      "dataset", "rls-preflight", "publication", "production-day",
+    ]);
     expect(observedAccess).toEqual([
+      { kind: "tenant", ...scope },
       { kind: "tenant", ...scope },
       { kind: "tenant", ...scope },
     ]);
     expect(productionDay).toHaveBeenCalledTimes(1);
   });
+});
+
+const systemRole = () => ({
+  currentUser: "social_monitor_historical_runtime",
+  systemRuntimeMember: true,
 });

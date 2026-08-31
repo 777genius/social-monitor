@@ -16,49 +16,53 @@ export function serializeReaderSummaryQualityDashboard(
   return `${JSON.stringify(report, null, 2)}\n`;
 }
 
-export function writeReaderSummaryQualityDashboard(serialized: string): void {
-  mkdirSync(dirname(readerSummaryQualityDashboardOutputPath), {
+export function writeReaderSummaryQualityDashboard(
+  serialized: string,
+  outputPath = readerSummaryQualityDashboardOutputPath,
+): void {
+  mkdirSync(dirname(outputPath), {
     recursive: true,
   });
-  writeFileSync(readerSummaryQualityDashboardOutputPath, serialized);
-  console.log(`Updated ${readerSummaryQualityDashboardOutputPath}`);
+  writeFileSync(outputPath, serialized);
+  console.log(`Updated ${outputPath}`);
 }
 
 export function assertReaderSummaryQualityDashboardIsCurrent(
   serialized: string,
+  outputPath = readerSummaryQualityDashboardOutputPath,
 ): void {
-  if (!existsSync(readerSummaryQualityDashboardOutputPath)) {
+  if (!existsSync(outputPath)) {
     throw new Error(
-      `${readerSummaryQualityDashboardOutputPath} is missing. Run npm run check:reader-summary-quality-dashboard -- --update`,
+      `${outputPath} is missing. Run npm run check:reader-summary-quality-dashboard -- --update`,
     );
   }
 
   const expected = normalizeLineEndings(
-    readFileSync(readerSummaryQualityDashboardOutputPath, "utf8"),
+    readFileSync(outputPath, "utf8"),
   );
   if (expected !== serialized) {
     throw new Error(
-      `${readerSummaryQualityDashboardOutputPath} is stale. Run npm run check:reader-summary-quality-dashboard -- --update`,
+      `${outputPath} is stale. Run npm run check:reader-summary-quality-dashboard -- --update`,
     );
   }
 }
 
 export function validateExistingReaderSummaryQualityDashboard(params: {
   readonly allowDegraded: boolean;
-}): void {
-  if (!existsSync(readerSummaryQualityDashboardOutputPath)) {
+}, outputPath = readerSummaryQualityDashboardOutputPath): void {
+  if (!existsSync(outputPath)) {
     throw new Error(
-      `${readerSummaryQualityDashboardOutputPath} is missing and local data source is unavailable.`,
+      `${outputPath} is missing and local data source is unavailable.`,
     );
   }
 
   const report: unknown = JSON.parse(
-    readFileSync(readerSummaryQualityDashboardOutputPath, "utf8"),
+    readFileSync(outputPath, "utf8"),
   );
 
   if (!isExistingReaderSummaryQualityDashboardValid(report, params)) {
     throw new Error(
-      `${readerSummaryQualityDashboardOutputPath} failed existing artifact validation`,
+      `${outputPath} failed existing artifact validation`,
     );
   }
 

@@ -16,6 +16,8 @@ import { historicalPromotionRebuildIdentity } from
   "./reader-summary-promotion-v2-historical-classification";
 import { buildHistoricalPromotionCanonicalInput } from
   "./reader-summary-promotion-v2-historical-input";
+import { historicalPromotionGenerationAuthority } from
+  "./reader-summary-promotion-v2-historical-generation-authority";
 
 const tenantId = "33333333-3333-4333-8333-333333333333";
 const workspaceId = "44444444-4444-4444-8444-444444444444";
@@ -91,6 +93,11 @@ describe("historical production-day regeneration", () => {
       datasetManifest,
       datasetManifestSha256: legacy.datasetManifestSha256,
       supportingEvidence: { kind: "active-database-publication" },
+      generationAuthority: historicalPromotionGenerationAuthority({
+        tenantId: datasetManifest.scope.tenantId,
+        workspaceId: datasetManifest.scope.workspaceId,
+        env: process.env,
+      }),
       allowHistoricalGitHubOmission: false,
     }).authoritativeInputDigest;
     const request = {
@@ -413,6 +420,11 @@ describe("historical production-day regeneration", () => {
         collectionArtifactSha256: digest(collectionArtifactPath),
         collectionQualityReportSha256: digest(collectionQualityReportPath),
       },
+      generationAuthority: historicalPromotionGenerationAuthority({
+        tenantId: datasetManifest.scope.tenantId,
+        workspaceId: datasetManifest.scope.workspaceId,
+        env: process.env,
+      }),
       allowHistoricalGitHubOmission:
         options.allowHistoricalGitHubOmission ?? false,
       ...(options.allowHistoricalGitHubOmission

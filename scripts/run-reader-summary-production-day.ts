@@ -57,6 +57,8 @@ import { printProductionDayStats } from
   "./lib/reader-summary-production-day-console";
 import { productionDayPromotionRebuildEnvironment } from
   "./lib/reader-summary-production-day-promotion-rebuild";
+import { historicalPromotionQualityOutput } from
+  "./lib/reader-summary-promotion-v2-quality-output";
 import {
   resolveProductionDayProviderReadiness,
   type ProductionDayDatabaseQualityReport,
@@ -191,7 +193,6 @@ async function main(): Promise<void> {
   ) {
     throw new Error("Production history collection scope is not 6101/6102");
   }
-
   let collectionStep: StepReport = historicalRegeneration
     ? historicalRegeneration.verifiedCollectionStep
     : skipLiveCollection
@@ -221,7 +222,10 @@ async function main(): Promise<void> {
         ]);
   mkdirSync(runtimeArtifactDirectory, { recursive: true });
   isolateCaptureArtifacts();
-
+  const isolatedQuality = historicalPromotionQualityOutput({
+    enabled: executionRequest.mode === "historical-regeneration" &&
+      executionRequest.promotionRebuild !== undefined, reportDirectory,
+  });
   let collectionQualityStep = runNpm("collection-quality", [
     "run",
     "check:yesterday-social-collection-quality",
@@ -249,10 +253,12 @@ async function main(): Promise<void> {
         })
       : []),
     ...(allowHistorical ? ["--allow-historical"] : []),
+    ...isolatedQuality.args("yesterday-social-collection-quality-report.v1.json"),
   ]);
   const collectionQualityReport =
     readJsonIfExists<ProductionDayDatabaseQualityReport>(
-      "ops/evals/yesterday-social-collection-quality-report.v1.json",
+      isolatedQuality.path("yesterday-social-collection-quality-report.v1.json") ??
+        "ops/evals/yesterday-social-collection-quality-report.v1.json",
     );
   const collectionReport = readJsonIfExists<CleanRealDayCollectionReport>(
     historicalCollection?.path ??
@@ -351,7 +357,6 @@ async function main(): Promise<void> {
     });
     throw new Error(safeMessage);
   }
-
   const captureExecutionId = randomUUID();
   const captureStartedAt = new Date();
   let summaryStep = reuseExistingArtifacts
@@ -394,15 +399,19 @@ async function main(): Promise<void> {
             String(
               READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.topicRelationTimeoutMs,
             ),
-          AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_MAX_CANDIDATES: "18",
+          AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_MAX_CANDIDATES:
+            process.env.AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_MAX_CANDIDATES ??
+            "18",
           DURABLE_READER_SUMMARY_TOPIC_LABELER: topicLabeler,
           DURABLE_READER_SUMMARY_TENANT_ID: scope.tenantId,
           DURABLE_READER_SUMMARY_WORKSPACE_ID: scope.workspaceId,
           DURABLE_READER_SUMMARY_CADENCE: "daily",
           DURABLE_READER_SUMMARY_PERIOD_STARTED_AT: periodStartedAt,
           DURABLE_READER_SUMMARY_PERIOD_ENDED_AT: periodEndedAt,
-          DURABLE_READER_SUMMARY_MAX_EVIDENCE_ITEMS: "120",
-          DURABLE_READER_SUMMARY_MAX_STORIES: "15",
+          DURABLE_READER_SUMMARY_MAX_EVIDENCE_ITEMS:
+            process.env.DURABLE_READER_SUMMARY_MAX_EVIDENCE_ITEMS ?? "120",
+          DURABLE_READER_SUMMARY_MAX_STORIES:
+            process.env.DURABLE_READER_SUMMARY_MAX_STORIES ?? "15",
           DURABLE_READER_SUMMARY_EVIDENCE_PATH: nextEvidencePath,
           DURABLE_READER_SUMMARY_FRONTEND_FIXTURE_PATH: nextFrontendFixturePath,
           DURABLE_READER_SUMMARY_REJECTED_TOPIC_MAP_PATH: join(
@@ -468,7 +477,6 @@ async function main(): Promise<void> {
     rmSync(nextFrontendFixturePath, { force: true });
   }
   steps.push(summaryStep);
-
   const artifactQualityStep = runNpm("artifact-quality", [
     "run",
     "check:yesterday-reader-summary-artifact-quality",
@@ -478,6 +486,7 @@ async function main(): Promise<void> {
     collectionDate,
     ...(allowDegraded ? ["--allow-dirty-collection"] : []),
     ...qualityDateArgs,
+    ...isolatedQuality.args("yesterday-reader-summary-artifact-quality.v1.json"),
   ]);
   steps.push(artifactQualityStep);
   steps.push(
@@ -490,6 +499,7 @@ async function main(): Promise<void> {
       collectionDate,
       ...(allowDegraded ? ["--allow-degraded"] : []),
       ...qualityDateArgs,
+      ...isolatedQuality.args("reader-summary-quality-dashboard.v1.json"),
     ]),
   );
   steps.push(
@@ -501,6 +511,7 @@ async function main(): Promise<void> {
       "--date",
       collectionDate,
       "--write-failed-report",
+      ...isolatedQuality.args("reader-summary-top-read-ranking.v1.json"),
     ]),
   );
   steps.push(
@@ -511,6 +522,7 @@ async function main(): Promise<void> {
       "--update",
       "--date",
       collectionDate,
+      ...isolatedQuality.args("reader-summary-source-quality-trace.v1.json"),
     ]),
   );
   if (!artifactQualityIsReadyForCleanDayE2e(artifactQualityStep.status)) {
@@ -528,6 +540,7 @@ async function main(): Promise<void> {
         "--update",
         ...(allowDegraded ? ["--allow-degraded"] : []),
         ...qualityDateArgs,
+        ...isolatedQuality.cleanDayArgs,
       ]),
     );
   } else {
@@ -540,7 +553,6 @@ async function main(): Promise<void> {
       exitCode: null,
     });
   }
-
   const report = persistProductionDayReport({
     startedAt,
     completedAt: new Date(),

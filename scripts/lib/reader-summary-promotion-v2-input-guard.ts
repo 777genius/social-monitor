@@ -8,17 +8,22 @@ import type { PrismaSummaryClient } from
 
 import type { ReaderSummaryDayDatasetGuard } from
   "./reader-summary-day-dataset-guard";
+import { assertHistoricalPromotionSystemRole } from
+  "./reader-summary-promotion-v2-system-database";
 
 export const historicalPromotionUnderLockDriftReason =
   "authoritative_input_drift_under_lock" as const;
 export const historicalPromotionUnderLockUnavailableReason =
   "authoritative_input_revalidation_unavailable_under_lock" as const;
+export const historicalPromotionUnderLockDurableStateReason =
+  "durable_same_identity_state_not_safe_under_lock" as const;
 export const historicalPromotionRevalidationFailurePathEnv =
   "DURABLE_READER_SUMMARY_PROMOTION_REVALIDATION_FAILURE_PATH" as const;
 
 export type HistoricalPromotionUnderLockReason =
   | typeof historicalPromotionUnderLockDriftReason
-  | typeof historicalPromotionUnderLockUnavailableReason;
+  | typeof historicalPromotionUnderLockUnavailableReason
+  | typeof historicalPromotionUnderLockDurableStateReason;
 
 type ActivePublicationRow = Readonly<{
   publicationId: string;
@@ -49,6 +54,7 @@ export const assertHistoricalPromotionInputCurrentBeforeMutation = async (
   try {
     await runWithTenantDatabaseAccess(input, async () => {
       await input.datasetGuard.assertCurrentBeforeMutation();
+      await assertHistoricalPromotionSystemRole(input.client);
       const rows = await input.client.$queryRaw<readonly ActivePublicationRow[]>`
         select publication.id::text as "publicationId",
           publication.reader_summary_artifact_id::text as "artifactId",
@@ -83,7 +89,7 @@ export const assertHistoricalPromotionInputCurrentBeforeMutation = async (
       ? historicalPromotionUnderLockDriftReason
       : historicalPromotionUnderLockUnavailableReason;
     if (input.failureMarkerPath !== undefined) {
-      writeFailureMarker(input.failureMarkerPath, reason);
+      writeHistoricalPromotionFailureMarker(input.failureMarkerPath, reason);
     }
     throw new Error(`Historical promotion ${reason}`);
   }
@@ -103,7 +109,7 @@ const sourcePublicationMatches = (
   actual.reportSha256 === expected.reportSha256 &&
   actual.proofSha256 === expected.proofSha256;
 
-const writeFailureMarker = (
+export const writeHistoricalPromotionFailureMarker = (
   path: string,
   reason: HistoricalPromotionUnderLockReason,
 ): void => {

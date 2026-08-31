@@ -24,6 +24,7 @@ import {
   readCollectionIntegrityStatus,
   readDominantFeedScope,
   roundMetric,
+  readOption,
   yesterdaySocialQualityDatabaseUrl,
   yesterdaySocialQualityPoolConfig,
 } from "./lib/yesterday-social-replay-support";
@@ -175,7 +176,7 @@ const artifactOnly = process.argv.includes("--artifact-only");
 const allowHistorical = process.argv.includes("--allow-historical");
 const allowDirtyCollection = process.argv.includes("--allow-dirty-collection");
 const printJson = process.argv.includes("--print-json");
-const outputPath =
+const outputPath = readOption("--output-path") ??
   "ops/evals/yesterday-reader-summary-artifact-quality.v1.json";
 const databaseUrl = yesterdaySocialQualityDatabaseUrl();
 const primarySources = ["reddit", "x-twitter"] as const;

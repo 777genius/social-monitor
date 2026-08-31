@@ -1,8 +1,7 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import {
   mkdirSync,
   readFileSync,
-  renameSync,
   writeFileSync,
 } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
@@ -16,15 +15,20 @@ import {
 } from "./reader-summary-promotion-v2-historical-classification";
 import { buildHistoricalPromotionCanonicalInput } from
   "./reader-summary-promotion-v2-historical-input";
+import type { HistoricalPromotionGenerationAuthority } from
+  "./reader-summary-promotion-v2-historical-input";
 import type {
   HistoricalPromotionAuthorityReader,
 } from "./reader-summary-promotion-v2-historical-runner";
+import { HistoricalPromotionSystemRoleError } from
+  "./reader-summary-promotion-v2-system-database";
 
 export type HistoricalPromotionActiveSourcePublication = Readonly<{
   publicationId: string;
   artifactId: string;
   reportSha256: string;
   proofSha256: string;
+  tupleKind: "strict-v1" | "valid-v2";
 }>;
 
 export interface HistoricalPromotionPreparationReader {
@@ -36,16 +40,18 @@ export interface HistoricalPromotionPreparationReader {
     generatedAt: Date;
     timestampPolicy: "published_at" | "observed_at";
   }): Promise<ReaderSummaryDayDatasetManifest>;
+  readGenerationAuthority(): Promise<HistoricalPromotionGenerationAuthority>;
 }
 
 export type HistoricalPromotionPreparationResult = Readonly<{
   date: string;
-  status: "prepared" | "pending" | "unrebuildable";
+  status: "prepared" | "verified-noop" | "pending" | "unrebuildable";
   reason: string;
   classificationKind: string;
   sourcePublication: HistoricalPromotionActiveSourcePublication | null;
   datasetManifest: ReaderSummaryDayDatasetManifest | null;
   datasetManifestBytes: Buffer | null;
+  generationAuthority: HistoricalPromotionGenerationAuthority | null;
   authoritativeInputDigest: string | null;
 }>;
 
@@ -80,11 +86,47 @@ export class ReaderSummaryPromotionV2HistoricalPreparation {
     timestampPolicy: "published_at" | "observed_at",
     generatedAt: Date,
   ): Promise<HistoricalPromotionPreparationResult> {
+    let sourcePublication: HistoricalPromotionActiveSourcePublication | null;
+    try {
+      sourcePublication = await this.dependencies.preparation.readActiveSource(
+        date,
+      );
+    } catch (error) {
+      if (error instanceof HistoricalPromotionSystemRoleError) throw error;
+      return result(
+        date,
+        "pending",
+        "active_publication_tuple_invalid_or_unknown",
+      );
+    }
+    if (sourcePublication === null) {
+      return result(
+        date,
+        "pending",
+        "active_daily_publication_or_proof_missing",
+      );
+    }
+    if (sourcePublication.tupleKind === "valid-v2") {
+      return {
+        date,
+        status: "verified-noop",
+        reason: "active_publication_already_valid_v2",
+        classificationKind: "not-required",
+        sourcePublication,
+        datasetManifest: null,
+        datasetManifestBytes: null,
+        generationAuthority: null,
+        authoritativeInputDigest: null,
+      };
+    }
     let classification;
     try {
       classification = classifyHistoricalPromotionAuthority({
         date,
-        inspection: await this.dependencies.authority.inspect(date),
+        inspection: await this.dependencies.authority.inspect(
+          date,
+          timestampPolicy,
+        ),
       });
     } catch {
       return result(date, "pending", "authoritative_input_unavailable");
@@ -97,30 +139,22 @@ export class ReaderSummaryPromotionV2HistoricalPreparation {
         classification.kind,
       );
     }
-    let sourcePublication: HistoricalPromotionActiveSourcePublication | null;
     let datasetManifest: ReaderSummaryDayDatasetManifest;
+    let generationAuthority: HistoricalPromotionGenerationAuthority;
     try {
-      [sourcePublication, datasetManifest] = await Promise.all([
-        this.dependencies.preparation.readActiveSource(date),
+      [datasetManifest, generationAuthority] = await Promise.all([
         this.dependencies.preparation.captureDataset({
           date,
           generatedAt,
           timestampPolicy,
         }),
+        this.dependencies.preparation.readGenerationAuthority(),
       ]);
     } catch {
       return result(
         date,
         "pending",
         "active_publication_or_dataset_evidence_unavailable",
-        classification.kind,
-      );
-    }
-    if (sourcePublication === null) {
-      return result(
-        date,
-        "pending",
-        "active_daily_publication_or_proof_missing",
         classification.kind,
       );
     }
@@ -150,6 +184,7 @@ export class ReaderSummaryPromotionV2HistoricalPreparation {
       datasetManifest,
       datasetManifestSha256: sha256(datasetManifestBytes),
       supportingEvidence: { kind: "active-database-publication" },
+      generationAuthority,
       allowHistoricalGitHubOmission: githubRows === 0,
       ...(githubRows === 0
         ? {
@@ -166,6 +201,7 @@ export class ReaderSummaryPromotionV2HistoricalPreparation {
       sourcePublication,
       datasetManifest,
       datasetManifestBytes,
+      generationAuthority,
       authoritativeInputDigest: canonical.authoritativeInputDigest,
     };
   }
@@ -181,6 +217,7 @@ export const writeHistoricalPromotionPreparation = (input: {
     if (prepared.status !== "prepared" ||
         prepared.datasetManifest === null ||
         prepared.datasetManifestBytes === null ||
+        prepared.generationAuthority === null ||
         prepared.sourcePublication === null ||
         prepared.authoritativeInputDigest === null) {
       return [];
@@ -208,6 +245,7 @@ export const writeHistoricalPromotionPreparation = (input: {
         sha256: sha256(prepared.datasetManifestBytes),
       },
       timestampPolicy: prepared.datasetManifest.policy.timestampPolicy,
+      generationAuthority: prepared.generationAuthority!,
       allowHistoricalGitHubOmission: githubRows === 0,
       ...(githubRows === 0
         ? {
@@ -221,7 +259,7 @@ export const writeHistoricalPromotionPreparation = (input: {
     outputDirectory,
     "reader-summary-promotion-v2-historical-evidence-manifest.v2.json",
   );
-  writeJsonAtomically(manifestPath, {
+  writeJsonImmutably(manifestPath, {
     schemaVersion: 2,
     format: "reader-summary-promotion-v2-historical-evidence-manifest-v2",
     policyVersion: readerSummaryPromotionV2HistoricalPolicyVersion,
@@ -231,7 +269,7 @@ export const writeHistoricalPromotionPreparation = (input: {
     outputDirectory,
     "reader-summary-promotion-v2-historical-preparation.v1.json",
   );
-  writeJsonAtomically(receiptPath, {
+  writeJsonImmutably(receiptPath, {
     schemaVersion: 1,
     format: "reader-summary-promotion-v2-historical-preparation-v1",
     generatedAt: input.generatedAt,
@@ -249,6 +287,7 @@ export const writeHistoricalPromotionPreparation = (input: {
   return { manifestPath, receiptPath };
 };
 
+
 const result = (
   date: string,
   status: "pending" | "unrebuildable",
@@ -262,6 +301,7 @@ const result = (
   sourcePublication: null,
   datasetManifest: null,
   datasetManifestBytes: null,
+  generationAuthority: null,
   authoritativeInputDigest: null,
 });
 
@@ -298,15 +338,11 @@ const writeImmutableOrVerify = (path: string, bytes: Buffer): void => {
   }
 };
 
-const writeJsonAtomically = (path: string, value: unknown): void => {
-  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
-  const next = `${path}.next-${process.pid}-${randomUUID()}`;
-  writeFileSync(next, `${JSON.stringify(value, null, 2)}\n`, {
-    flag: "wx",
-    mode: 0o600,
-  });
-  renameSync(next, path);
-};
+const writeJsonImmutably = (path: string, value: unknown): void =>
+  writeImmutableOrVerify(
+    path,
+    Buffer.from(`${JSON.stringify(value, null, 2)}\n`, "utf8"),
+  );
 
 const sha256 = (bytes: Uint8Array): string =>
   createHash("sha256").update(bytes).digest("hex");

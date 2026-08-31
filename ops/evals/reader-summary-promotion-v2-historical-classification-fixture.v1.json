@@ -24,6 +24,11 @@
           },
           "publishedAt": "2026-08-01T08:00:00.000Z",
           "observedAt": "2026-08-01T09:00:00.000Z"
+          ,"dayEndMetricProof": {
+            "source": "observation",
+            "observedAt": "2026-08-01T09:05:00.000Z",
+            "metrics": { "score": 84, "upvoteRatioBps": 9200 }
+          }
         },
         {
           "feedItemId": "00000000-0000-4000-8000-000000000102",
@@ -34,6 +39,11 @@
           },
           "publishedAt": "2026-08-01T10:00:00.000Z",
           "observedAt": "2026-08-01T10:30:00.000Z"
+          ,"dayEndMetricProof": {
+            "source": "daily-rollup",
+            "observedAt": "2026-08-01T23:55:00.000Z",
+            "metrics": { "points": 96 }
+          }
         }
       ]
     },
@@ -53,6 +63,7 @@
           },
           "publishedAt": "2026-08-02T08:00:00.000Z",
           "observedAt": "2026-08-05T09:00:00.000Z"
+          ,"dayEndMetricProof": null
         },
         {
           "feedItemId": "00000000-0000-4000-8000-000000000202",
@@ -64,6 +75,11 @@
           },
           "publishedAt": "2026-08-02T10:00:00.000Z",
           "observedAt": "2026-08-05T10:30:00.000Z"
+          ,"dayEndMetricProof": {
+            "source": "observation",
+            "observedAt": "2026-08-02T23:00:00.000Z",
+            "metrics": { "score": 55, "upvoteRatioBps": 8600 }
+          }
         }
       ]
     },

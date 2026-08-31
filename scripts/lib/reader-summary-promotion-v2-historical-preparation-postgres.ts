@@ -9,12 +9,33 @@ import type {
   HistoricalPromotionActiveSourcePublication,
   HistoricalPromotionPreparationReader,
 } from "./reader-summary-promotion-v2-historical-preparation";
+import {
+  verifyHistoricalPromotionArtifact,
+  type HistoricalPromotionArtifactRecord,
+} from "./reader-summary-promotion-v2-historical-artifact";
+import { historicalPromotionGenerationAuthority } from
+  "./reader-summary-promotion-v2-historical-generation-authority";
+import { assertHistoricalPromotionSystemRole } from
+  "./reader-summary-promotion-v2-system-database";
 
-type ActiveSourceRow = Readonly<{
+type ActiveSourceRow = HistoricalPromotionArtifactRecord & Readonly<{
   publicationId: string;
   artifactId: string;
   reportSha256: string;
   proofSha256: string;
+}>;
+type PolicyRow = Readonly<{
+  id: string;
+  language: string;
+  format: string;
+  tone: string;
+  maxStories: number;
+  includeRisks: boolean;
+  includeInterestHighlights: boolean;
+  includeRepeatedSignals: boolean;
+  dedupeStrategy: string;
+  customInstructions: string | null;
+  rulesVersion: string;
 }>;
 
 export class PostgresHistoricalPromotionPreparationReader
@@ -25,17 +46,34 @@ export class PostgresHistoricalPromotionPreparationReader
       readonly tenantId: string;
       readonly workspaceId: string;
     },
+    private readonly env: Readonly<Record<string, string | undefined>> =
+      process.env,
   ) {}
 
   async readActiveSource(
     date: string,
   ): Promise<HistoricalPromotionActiveSourcePublication | null> {
-    const rows = await runWithTenantDatabaseAccess(this.scope, () =>
-      this.client.$queryRaw<readonly ActiveSourceRow[]>`
+    const rows = await runWithTenantDatabaseAccess(this.scope, async () => {
+      await assertHistoricalPromotionSystemRole(this.client);
+      return this.client.$queryRaw<readonly ActiveSourceRow[]>`
         select publication.id::text as "publicationId",
           publication.reader_summary_artifact_id::text as "artifactId",
           btrim(publication.report_sha256) as "reportSha256",
           btrim(publication.proof_sha256) as "proofSha256"
+          ,artifact.tenant_id::text as "tenantId"
+          ,artifact.workspace_id::text as "workspaceId"
+          ,artifact.scope_type as "scopeType"
+          ,artifact.interest_id::text as "interestId"
+          ,artifact.cadence
+          ,artifact.period_started_at as "periodStartedAt"
+          ,artifact.period_ended_at as "periodEndedAt"
+          ,artifact.period_timezone as "periodTimezone"
+          ,artifact.user_id as "userId"
+          ,artifact.subscription_id::text as "subscriptionId"
+          ,artifact.headline
+          ,artifact.summary_text as "summaryText"
+          ,artifact.created_at as "createdAt"
+          ,artifact.artifact_payload as "artifactPayload"
         from reader_summary_publication_slots slot
         join reader_summary_publications publication
           on publication.id = slot.current_publication_id
@@ -49,18 +87,50 @@ export class PostgresHistoricalPromotionPreparationReader
           and slot.period_started_at = ${date}::date::timestamp at time zone 'UTC'
           and slot.period_ended_at = (${date}::date + 1)::timestamp at time zone 'UTC'
           and slot.period_timezone = 'UTC'
-      `);
+      `;
+    });
     if (rows.length > 1) {
       throw new Error("Historical preparation found multiple active publications");
     }
     const row = rows[0];
     if (row === undefined) return null;
+    const tuple = verifyHistoricalPromotionArtifact(row);
     return {
       publicationId: requiredUuid(row.publicationId),
       artifactId: requiredUuid(row.artifactId),
       reportSha256: requiredSha256(row.reportSha256),
       proofSha256: requiredSha256(row.proofSha256),
+      tupleKind: tuple.kind,
     };
+  }
+
+  async readGenerationAuthority() {
+    return runWithTenantDatabaseAccess(this.scope, async () => {
+      await assertHistoricalPromotionSystemRole(this.client);
+      const rows = await this.client.$queryRaw<readonly PolicyRow[]>`
+        select id::text as id, language, format, tone,
+          max_stories as "maxStories", include_risks as "includeRisks",
+          include_interest_highlights as "includeInterestHighlights",
+          include_repeated_signals as "includeRepeatedSignals",
+          dedupe_strategy as "dedupeStrategy",
+          custom_instructions as "customInstructions",
+          rules_version as "rulesVersion"
+        from reader_summary_policies
+        where tenant_id = ${this.scope.tenantId}::uuid
+          and workspace_id = ${this.scope.workspaceId}::uuid
+          and scope_type = 'workspace'
+          and scope_key = 'workspace'
+          and interest_id is null
+      `;
+      if (rows.length !== 1) {
+        throw new Error("Historical promotion ReaderSummaryPolicy snapshot is missing");
+      }
+      return historicalPromotionGenerationAuthority({
+        ...this.scope,
+        env: this.env,
+        policy: rows[0]!,
+      });
+    });
   }
 
   captureDataset(input: {

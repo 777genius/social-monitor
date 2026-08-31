@@ -7,6 +7,10 @@ fence_dir=
 global_lock=
 wait_seconds=7500
 token_output=
+require_preexisting=false
+canonical_global_lock=
+canonical_date_lock_dir=
+canonical_fence_dir=
 
 while (($# > 0)); do
   case "$1" in
@@ -16,6 +20,10 @@ while (($# > 0)); do
     --global-lock) global_lock=${2:-}; shift 2 ;;
     --wait-seconds) wait_seconds=${2:-}; shift 2 ;;
     --token-output) token_output=${2:-}; shift 2 ;;
+    --require-preexisting-authority) require_preexisting=true; shift ;;
+    --canonical-global-lock) canonical_global_lock=${2:-}; shift 2 ;;
+    --canonical-date-lock-dir) canonical_date_lock_dir=${2:-}; shift 2 ;;
+    --canonical-fence-dir) canonical_fence_dir=${2:-}; shift 2 ;;
     --) shift; break ;;
     *) echo "unknown reader-summary date-lock option: $1" >&2; exit 64 ;;
   esac
@@ -38,14 +46,47 @@ done
   exit 64
 }
 
-mkdir -p "$date_lock_dir" "$fence_dir"
+if [[ $require_preexisting == true ]]; then
+  [[ -f $global_lock && -d $date_lock_dir && -d $fence_dir ]] || {
+    echo "reader-summary canonical lock authority must pre-exist" >&2
+    exit 76
+  }
+  [[ $canonical_global_lock == /* && $canonical_date_lock_dir == /* &&
+     $canonical_fence_dir == /* ]] || {
+    echo "reader-summary canonical lock witnesses must be absolute" >&2
+    exit 64
+  }
+  same_identity() {
+    [[ $(realpath -e -- "$1") == $(realpath -e -- "$2") &&
+       $(stat -Lc '%d:%i' -- "$1") == $(stat -Lc '%d:%i' -- "$2") ]]
+  }
+  same_identity "$global_lock" "$canonical_global_lock" &&
+    same_identity "$date_lock_dir" "$canonical_date_lock_dir" &&
+    same_identity "$fence_dir" "$canonical_fence_dir" || {
+      echo "reader-summary canonical lock mount/path identity mismatch" >&2
+      exit 76
+    }
+else
+  mkdir -p "$date_lock_dir" "$fence_dir"
+fi
 if [[ -n $global_lock ]]; then
   [[ $global_lock == /* ]] || {
     echo "reader-summary global lock path must be absolute" >&2
     exit 64
   }
-  mkdir -p "$(dirname -- "$global_lock")"
-  exec 8>"$global_lock"
+  if [[ $require_preexisting != true ]]; then
+    mkdir -p "$(dirname -- "$global_lock")"
+    : >>"$global_lock"
+  fi
+  exec 8<"$global_lock"
+  if [[ $require_preexisting == true ]]; then
+    opened_global_identity=$(stat -Lc '%d:%i' -- "/proc/$$/fd/8")
+    canonical_global_identity=$(stat -Lc '%d:%i' -- "$canonical_global_lock")
+    if [[ $opened_global_identity != "$canonical_global_identity" ]]; then
+      echo "reader-summary canonical global lock changed during open" >&2
+      exit 76
+    fi
+  fi
   flock -w "$wait_seconds" 8 || {
     echo "reader-summary date lock timed out waiting for daily-run.lock" >&2
     exit 75

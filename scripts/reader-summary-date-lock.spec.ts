@@ -1,9 +1,11 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import {
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
+  writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -64,6 +66,30 @@ describe("reader-summary common date lock", () => {
     await new Promise((resolveWait) => setTimeout(resolveWait, 50));
     expect(existsSync(join(directory, "migration-global.started"))).toBe(false);
     await Promise.all([completed(daily), completed(migration)]);
+  });
+
+  it("fails closed unless migration lock witnesses resolve to the same inode", () => {
+    const global = join(directory, "daily-run.lock");
+    const dateLocks = join(directory, "date-locks");
+    const fences = join(directory, "fences");
+    mkdirSync(dateLocks);
+    mkdirSync(fences);
+    writeFileSync(global, "");
+    const run = (canonicalGlobal: string) => spawnSync("bash", [
+      lockScript(), "--date", "2026-08-01",
+      "--date-lock-dir", dateLocks, "--fence-dir", fences,
+      "--global-lock", global, "--require-preexisting-authority",
+      "--canonical-global-lock", canonicalGlobal,
+      "--canonical-date-lock-dir", dateLocks,
+      "--canonical-fence-dir", fences,
+      "--wait-seconds", "1", "--", "bash", "-c", "true",
+    ]);
+    expect(run(global).status).toBe(0);
+    const typo = join(directory, "daily-run-typo.lock");
+    writeFileSync(typo, "");
+    const mismatch = run(typo);
+    expect(mismatch.status).toBe(76);
+    expect(String(mismatch.stderr)).toContain("identity mismatch");
   });
 
   const startLocked = (input: {

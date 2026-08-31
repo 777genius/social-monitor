@@ -28,6 +28,11 @@ type Fixture = Readonly<{
       providerMetadata: JsonObject | null;
       publishedAt: string;
       observedAt: string;
+      dayEndMetricProof: Readonly<{
+        source: "observation" | "daily-rollup";
+        observedAt: string;
+        metrics: JsonObject;
+      }> | null;
     }>[];
   }>[];
 }>;
@@ -76,7 +81,7 @@ describe("historical Reader Promotion V2 classification", () => {
     expect(classification.providerLimitations).toEqual([
       {
         providerKey: "reddit",
-        reason: "authority_observed_after_day_end",
+        reason: "day_end_metric_value_mismatch",
         rowCount: 1,
       },
       {
@@ -85,6 +90,38 @@ describe("historical Reader Promotion V2 classification", () => {
         rowCount: 1,
       },
     ]);
+  });
+
+  it("does not confuse an old feed timestamp with exact late-refreshed metrics", () => {
+    const classification = classifyHistoricalPromotionAuthority({
+      date: "2026-08-01",
+      inspection: {
+        engagementSnapshotCount: 1,
+        engagementObservationByOriginalDayEndCount: 1,
+        rows: [{
+          feedItemId: "00000000-0000-4000-8000-000000000999",
+          providerKey: "reddit",
+          providerMetadata: {
+            kind: "reddit_post", score: 120, upvoteRatio: 0.9,
+          },
+          publishedAt: "2026-08-01T08:00:00.000Z",
+          observedAt: "2026-08-01T08:05:00.000Z",
+          dayEndMetricProof: {
+            source: "observation",
+            observedAt: "2026-08-01T23:00:00.000Z",
+            metrics: { score: 80, upvoteRatioBps: 9000 },
+          },
+        }],
+      },
+    });
+    expect(classification.kind).toBe(
+      "rebuildable-from-authoritative-input",
+    );
+    expect(classification.providerLimitations).toContainEqual({
+      providerKey: "reddit",
+      reason: "day_end_metric_value_mismatch",
+      rowCount: 1,
+    });
   });
 
   it("binds identity to date, authoritative digest, and V2 policy", () => {

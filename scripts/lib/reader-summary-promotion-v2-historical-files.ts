@@ -16,6 +16,8 @@ import { parseReaderSummaryDayDatasetManifest } from
   "./reader-summary-day-dataset-manifest";
 import { buildHistoricalPromotionCanonicalInput } from
   "./reader-summary-promotion-v2-historical-input";
+import type { HistoricalPromotionGenerationAuthority } from
+  "./reader-summary-promotion-v2-historical-input";
 import { readerSummaryProductionDayScope } from
   "./reader-summary-production-day-scope";
 import type {
@@ -54,6 +56,7 @@ type EvidenceManifestEntry = Readonly<{
       }>;
   datasetManifest: EvidenceFileEntry;
   timestampPolicy: "published_at" | "observed_at";
+  generationAuthority: HistoricalPromotionGenerationAuthority;
   allowHistoricalGitHubOmission?: boolean;
   historicalGitHubOmissionReason?: string;
 }>;
@@ -248,7 +251,8 @@ const evidenceBundle = (
       !isSha256(entry.sourceAuthority.proofSha256) ||
       !isSha256(entry.authoritativeInputDigest) ||
       (entry.timestampPolicy !== "published_at" &&
-        entry.timestampPolicy !== "observed_at")) {
+        entry.timestampPolicy !== "observed_at") ||
+      !isRecord(entry.generationAuthority)) {
     throw new EvidenceEntryError("evidence_identity_or_policy_invalid");
   }
   const reason = entry.historicalGitHubOmissionReason?.trim();
@@ -298,6 +302,7 @@ const evidenceBundle = (
           collectionQualityReportSha256:
             sourceEvidence.collectionQualityReportSha256,
         },
+    generationAuthority: entry.generationAuthority,
     allowHistoricalGitHubOmission:
       entry.allowHistoricalGitHubOmission === true,
     ...(reason === undefined ? {} : { historicalGitHubOmissionReason: reason }),

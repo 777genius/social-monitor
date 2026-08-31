@@ -33,6 +33,10 @@ input digest are recomputed before a date can mutate.
         "proofSha256": "<64 lowercase hex>"
       },
       "datasetManifest": { "path": "2026-08-30/dataset.json", "sha256": "<64 lowercase hex>" },
+      "generationAuthority": {
+        "policy": "<complete effective ReaderSummaryPolicy snapshot>",
+        "execution": "<compiled prompt/model/ranking/release snapshot>"
+      },
       "timestampPolicy": "published_at",
       "allowHistoricalGitHubOmission": false
     }
@@ -51,8 +55,9 @@ path still requires the complete successful production-day receipt.
 The canonical semantic digest binds the date, `reader_post_promotion.v2`, active
 source publication/artifact/report/proof, the dataset aggregate and constituent
 hashes (feed rows, source rows/provider metadata, and GitHub eligibility), row
-counts/provider counts, the timestamp/GitHub policies, and any legacy supporting
-evidence-file hashes. The evidence manifest separately binds the exact dataset
+counts/provider counts, the timestamp/GitHub policies, the complete effective
+ReaderSummaryPolicy, prompt/model/ranking/release authority, and any legacy
+supporting evidence-file hashes. The evidence manifest separately binds the exact dataset
 manifest file SHA for tamper detection and under-lock revalidation. Operational
 capture metadata such as `generatedAt` and that resulting file SHA are excluded
 from semantic identity, so recapturing unchanged data does not create a new
@@ -78,6 +83,11 @@ npm run reader-summary:promotion-v2-historical-rebuild -- \
 Review the generated preparation receipt and
 `reader-summary-promotion-v2-historical-evidence-manifest.v2.json`. Use a
 separate `--artifact-output` directory for dry-run/execute receipts. Preparation
+uses immutable stable names and will not overwrite different evidence. Use a
+fresh empty preparation directory for every recapture; unchanged recaptures in
+different directories retain the same semantic identity while preserving each
+physical file SHA.
+Preparation
 reports missing posts as unrebuildable and missing publication/proof/dataset
 evidence as pending; an absent old report alone is not classified as absent
 data. The fresh dataset manifest expires after 30 minutes, so prepare again if
@@ -103,8 +113,9 @@ Omitting `--artifact-manifest` is permitted for classification-only dry-runs;
 rebuildable dates then remain pending with
 `hash_bound_input_evidence_missing`. A date is reported as:
 
-- `exact-replayable` only when complete structurally valid promotion authority
-  was observed before its original UTC day ended;
+- `exact-replayable` only when every relevant row has a retained authoritative
+  observation/rollup whose native metric values exactly match the values at the
+  original UTC day end (an old feed timestamp alone is never proof);
 - `rebuildable-from-authoritative-input` when retained canonical provider
   metadata can drive a current-authority rebuild, with provider limitations
   retained in the receipt; or
@@ -122,7 +133,12 @@ environment:
 export READER_SUMMARY_PROMOTION_REBUILD_DAILY_LOCK_PATH=/var/data/social-monitor/control/daily-run.lock
 export READER_SUMMARY_PROMOTION_REBUILD_DATE_LOCK_DIR=/var/data/social-monitor/artifacts/reports/reader-summary-production-v2/.reader-summary-date-locks
 export READER_SUMMARY_PROMOTION_REBUILD_FENCE_DIR=/var/data/social-monitor/artifacts/reports/reader-summary-production-v2/.reader-summary-date-fences
+export READER_SUMMARY_PROMOTION_REBUILD_CANONICAL_DAILY_LOCK_PATH=/var/data/social-monitor/control/daily-run.lock
+export READER_SUMMARY_PROMOTION_REBUILD_CANONICAL_DATE_LOCK_DIR=/var/data/social-monitor/artifacts/reports/reader-summary-production-v2/.reader-summary-date-locks
+export READER_SUMMARY_PROMOTION_REBUILD_CANONICAL_FENCE_DIR=/var/data/social-monitor/artifacts/reports/reader-summary-production-v2/.reader-summary-date-fences
 export READER_SUMMARY_PROMOTION_REBUILD_API_BASE_URL=http://127.0.0.1:3000
+export READER_SUMMARY_PROMOTION_REBUILD_SITE_URL=http://127.0.0.1:3000/reader
+# SYSTEM_DATABASE_URL must be the system-runtime DSN; DATABASE_URL is never used.
 
 npm run reader-summary:promotion-v2-historical-rebuild -- \
   --execute \
@@ -147,7 +163,8 @@ recomputes the current database dataset, and verifies the active publication,
 artifact, report hash, and proof hash. Drift returns
 `authoritative_input_drift_under_lock` before model/mutation/pointer work;
 unavailable revalidation is also fail-closed. Date-specific production-day and
-capture outputs are placed under `<artifact-output>/<date>/`.
+capture outputs, including every update-mode quality artifact, are placed under
+`<artifact-output>/<date>/`; their hashes are bound into the date receipt.
 
 Each date receipt records the authoritative input digest, rebuild identity,
 policy version, classification counts and limitations, fencing token, durable
@@ -156,3 +173,31 @@ citation counts, quality gates, API visibility, prior publication identity, and
 pointer-switch result. The aggregate receipt is machine-readable. Exit status
 2 means at least one execution date is pending or unrebuildable; independent
 dates still complete.
+
+## Rollback before restoring the old V1-only image
+
+Do not restore the V1-only image while a V2 artifact is still active. Under the
+same reviewed lock environment above, consume the completed per-date migration
+receipt:
+
+```sh
+npm run reader-summary:promotion-v2-rollback -- \
+  --receipt /var/data/social-monitor/artifacts/promotion-v2-rebuild/reader-summary-promotion-v2-execute-2026-08-30.receipt.v1.json \
+  --artifact-output /var/data/social-monitor/artifacts/promotion-v2-rebuild
+```
+
+The command requires a pre-existing canonical global lock plus canonical
+date-lock/fence roots; path/mount/inode mismatches fail closed. Under that lock,
+the publication-owner function verifies the exact active V2 tuple and proof,
+the recorded same-slot prior strict V1 tuple and lifecycle, and receipt replay
+state. It switches only the slot pointer, leaves both artifacts/publications as
+immutable history, records an immutable database rollback receipt, and rereads
+the restored artifact through the strict legacy V1 admission path. Stale,
+mixed, unknown, wrong-slot, wrong-proof and replayed inputs are refused.
+
+On a disposable PostgreSQL sandbox (never a real tenant database), run
+`npm run check:reader-summary-promotion-v2-rollback-postgres` when
+`READER_SUMMARY_PUBLICATION_TEST_ADMIN_DATABASE_URL` is available. This fixture
+executes the rollback function as the publication runtime, checks the receipt
+table's tenant/workspace RLS visibility and immutable trigger, and proves replay
+rejection while preserving both ledger rows.

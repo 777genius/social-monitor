@@ -3,7 +3,10 @@ import { buildReaderSummaryDayDatasetManifest } from
 import {
   buildHistoricalPromotionCanonicalInput,
   type HistoricalPromotionSupportingEvidence,
+  type HistoricalPromotionGenerationAuthority,
 } from "./reader-summary-promotion-v2-historical-input";
+import { historicalPromotionGenerationAuthority } from
+  "./reader-summary-promotion-v2-historical-generation-authority";
 
 const date = "2026-08-01";
 const sourcePublication = {
@@ -79,6 +82,16 @@ describe("historical Promotion V2 canonical input identity", () => {
       expect(changed.digest).not.toBe(original.digest);
     }
   });
+
+  it.each([
+    ["policy tone", { policy: { tone: "concise" } }],
+    ["policy instructions", { policy: { customInstructions: "Different" } }],
+    ["prompt release", { execution: { promptVersion: "next-prompt" } }],
+    ["model output limit", { execution: { maxOutputTokens: 8_000 } }],
+  ] as const)("binds output-affecting %s", (_label, generationChange) => {
+    expect(canonicalInput({ generationChange }).digest)
+      .not.toBe(canonicalInput().digest);
+  });
 });
 
 const canonicalInput = (overrides: {
@@ -88,6 +101,10 @@ const canonicalInput = (overrides: {
   readonly supportingEvidence?: HistoricalPromotionSupportingEvidence;
   readonly generatedAt?: Date;
   readonly datasetManifestSha256?: string;
+  readonly generationChange?: Readonly<{
+    policy?: Readonly<Record<string, unknown>>;
+    execution?: Readonly<Record<string, unknown>>;
+  }>;
 } = {}) => {
   const manifest = buildReaderSummaryDayDatasetManifest({
     tenantId: "00000000-0000-4000-8000-000000000501",
@@ -118,6 +135,18 @@ const canonicalInput = (overrides: {
       { rowJson: '{"bindingStatus":"ACTIVE"}' },
     ],
   });
+  const generation = historicalPromotionGenerationAuthority({
+    tenantId: manifest.scope.tenantId,
+    workspaceId: manifest.scope.workspaceId,
+    env: {},
+  });
+  const changedGeneration = {
+    policy: { ...generation.policy, ...overrides.generationChange?.policy },
+    execution: {
+      ...generation.execution,
+      ...overrides.generationChange?.execution,
+    },
+  } as HistoricalPromotionGenerationAuthority;
   const built = buildHistoricalPromotionCanonicalInput({
     date,
     sourcePublication: { ...sourcePublication, ...overrides.sourceChange },
@@ -127,6 +156,7 @@ const canonicalInput = (overrides: {
     supportingEvidence: overrides.supportingEvidence ?? {
       kind: "active-database-publication",
     },
+    generationAuthority: changedGeneration,
     allowHistoricalGitHubOmission: false,
   });
   return {

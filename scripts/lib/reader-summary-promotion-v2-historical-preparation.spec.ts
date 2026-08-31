@@ -26,6 +26,8 @@ import {
 } from "./reader-summary-promotion-v2-historical-runner";
 import { historicalPromotionProductionDayCommand } from
   "./reader-summary-promotion-v2-historical-subprocess";
+import { historicalPromotionGenerationAuthority } from
+  "./reader-summary-promotion-v2-historical-generation-authority";
 
 const date = "2026-08-01";
 const now = new Date("2026-08-31T12:00:00.000Z");
@@ -128,6 +130,12 @@ describe("historical Promotion V2 active-publication preparation", () => {
       },
     });
     expect(rebuild).toHaveBeenCalledTimes(1);
+
+    expect(() => writeHistoricalPromotionPreparation({
+      outputDirectory: directory,
+      generatedAt: "2026-08-31T12:05:00.000Z",
+      results,
+    })).toThrow();
   });
 
   it("keeps missing posts and missing active proof honest", async () => {
@@ -172,9 +180,57 @@ describe("historical Promotion V2 active-publication preparation", () => {
     });
   });
 
+  it("returns a verified no-op before capture when V2 is already active", async () => {
+    const dependencies = preparationDependencies();
+    const captureDataset = jest.fn(dependencies.preparation.captureDataset);
+    const preparation = new ReaderSummaryPromotionV2HistoricalPreparation({
+      authority: dependencies.authority,
+      preparation: {
+        ...dependencies.preparation,
+        readActiveSource: async () => ({
+          ...await dependencies.preparation.readActiveSource(),
+          tupleKind: "valid-v2" as const,
+        }),
+        captureDataset,
+      },
+      clock: () => now,
+    });
+    const [outcome] = await preparation.prepare({
+      dates: [date], batchSize: 1, timestampPolicy: "observed_at",
+    });
+    expect(outcome).toMatchObject({
+      status: "verified-noop",
+      reason: "active_publication_already_valid_v2",
+      authoritativeInputDigest: null,
+    });
+    expect(captureDataset).not.toHaveBeenCalled();
+  });
+
+  it("fails an unknown active version before creating a rebuild identity", async () => {
+    const dependencies = preparationDependencies();
+    const preparation = new ReaderSummaryPromotionV2HistoricalPreparation({
+      authority: dependencies.authority,
+      preparation: {
+        ...dependencies.preparation,
+        readActiveSource: async () => {
+          throw new Error("unknown mixed tuple");
+        },
+      },
+      clock: () => now,
+    });
+    const [outcome] = await preparation.prepare({
+      dates: [date], batchSize: 1, timestampPolicy: "published_at",
+    });
+    expect(outcome).toMatchObject({
+      status: "pending",
+      reason: "active_publication_tuple_invalid_or_unknown",
+      authoritativeInputDigest: null,
+    });
+  });
+
   it("scopes the active-publication preparation read for production RLS", async () => {
     const observedAccess: unknown[] = [];
-    const source = await new PostgresHistoricalPromotionPreparationReader(
+    const sourceRead = new PostgresHistoricalPromotionPreparationReader(
       {
         $queryRaw: jest.fn(async () => {
           observedAccess.push(currentDatabaseAccess());
@@ -189,7 +245,7 @@ describe("historical Promotion V2 active-publication preparation", () => {
       readerSummaryProductionDayScope,
     ).readActiveSource(date);
 
-    expect(source).not.toBeNull();
+    await expect(sourceRead).rejects.toThrow();
     expect(observedAccess).toEqual([{
       kind: "tenant",
       ...readerSummaryProductionDayScope,
@@ -205,7 +261,13 @@ const preparationDependencies = () => ({
       artifactId: "00000000-0000-4000-8000-000000000302",
       reportSha256: "a".repeat(64),
       proofSha256: "b".repeat(64),
+      tupleKind: "strict-v1" as const,
     }),
+    readGenerationAuthority: async () =>
+      historicalPromotionGenerationAuthority({
+        ...readerSummaryProductionDayScope,
+        env: {},
+      }),
     captureDataset: async () => buildReaderSummaryDayDatasetManifest({
       tenantId: readerSummaryProductionDayScope.tenantId,
       workspaceId: readerSummaryProductionDayScope.workspaceId,
@@ -225,6 +287,11 @@ const inspection = () => ({
     providerMetadata: { kind: "reddit_post", score: 80, upvoteRatio: 0.9 },
     publishedAt: `${date}T08:00:00.000Z`,
     observedAt: `${date}T09:00:00.000Z`,
+    dayEndMetricProof: {
+      source: "observation" as const,
+      observedAt: `${date}T09:00:00.000Z`,
+      metrics: { score: 80, upvoteRatioBps: 9000 },
+    },
   }],
   engagementSnapshotCount: 1,
   engagementObservationByOriginalDayEndCount: 1,
@@ -249,13 +316,23 @@ const verifiedOutput = () => ({
   artifactId: "00000000-0000-4000-8000-000000000311",
   publicationId: "00000000-0000-4000-8000-000000000311",
   previousPublicationId: "00000000-0000-4000-8000-000000000301",
+  rollbackPriorPublication: {
+    publicationId: "00000000-0000-4000-8000-000000000301",
+    artifactId: "00000000-0000-4000-8000-000000000302",
+    reportSha256: "a".repeat(64),
+    proofSha256: "b".repeat(64),
+  },
   reportSha256: "d".repeat(64),
   proofSha256: "e".repeat(64),
   selectedCounts: { top: 8, additional: 4, citations: 12 },
+  qualityArtifactSha256: { quality: "f".repeat(64) },
   qualityGates: {
-    promotionV2Attested: true as const,
+    artifactPromotionBoardValidated: true as const,
     citationsVerified: true as const,
     publicationProofVerified: true as const,
-    apiVisibilityVerified: true as const,
+    apiPromotionTupleVerified: true as const,
+    apiOrderedLanesVerified: true as const,
+    siteReaderRouteHttp200Verified: true as const,
+    siteFacingContractVerified: "not-exposed" as const,
   },
 });

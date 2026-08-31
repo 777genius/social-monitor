@@ -20,9 +20,22 @@ import { readerSummaryProductionDayScope } from
 import {
   assertHistoricalPromotionInputCurrentBeforeMutation,
   historicalPromotionRevalidationFailurePathEnv,
+  historicalPromotionUnderLockDriftReason,
+  historicalPromotionUnderLockDurableStateReason,
+  historicalPromotionUnderLockUnavailableReason,
+  writeHistoricalPromotionFailureMarker,
 } from "./lib/reader-summary-promotion-v2-input-guard";
-import { yesterdaySocialQualityDatabaseUrl } from
-  "./lib/yesterday-social-replay-support";
+import { requiredHistoricalPromotionSystemDatabaseUrl } from
+  "./lib/reader-summary-promotion-v2-system-database";
+import {
+  PostgresHistoricalPromotionAdapter,
+} from "./lib/reader-summary-promotion-v2-historical-postgres";
+import {
+  classifyHistoricalPromotionAuthority,
+  historicalPromotionRebuildIdentity,
+} from "./lib/reader-summary-promotion-v2-historical-classification";
+import { buildHistoricalPromotionCanonicalInput } from
+  "./lib/reader-summary-promotion-v2-historical-input";
 
 const datasetManifestPathEnv = "DURABLE_READER_SUMMARY_DATASET_MANIFEST_PATH";
 const datasetManifestSha256Env =
@@ -83,10 +96,20 @@ async function main(): Promise<void> {
   });
   const connection = await PrismaSummaryConnection.create(
     defaultPostgresRuntimePoolConfig(
-      yesterdaySocialQualityDatabaseUrl(),
+      requiredHistoricalPromotionSystemDatabaseUrl(process.env),
       "daily-runner",
     ),
   );
+  const postgres = new PostgresHistoricalPromotionAdapter({
+    databaseUrl: requiredHistoricalPromotionSystemDatabaseUrl(process.env),
+    tenantId: readerSummaryProductionDayScope.tenantId,
+    workspaceId: readerSummaryProductionDayScope.workspaceId,
+    artifactOutput: "/tmp/reader-summary-locked-preflight-no-verification",
+    api: { verify: async () => ({
+      siteReaderRouteHttp200Verified: true,
+      siteFacingContractVerified: "not-exposed",
+    }) },
+  });
   let status: number | null;
   try {
     const guard = new ReaderSummaryDayDatasetGuard(
@@ -96,22 +119,136 @@ async function main(): Promise<void> {
       () => new Date(),
     );
     status = await runHistoricalPromotionLockedPreflight({
-      revalidate: () => assertHistoricalPromotionInputCurrentBeforeMutation({
-        datasetGuard: guard,
-        client: connection,
-        tenantId: readerSummaryProductionDayScope.tenantId,
-        workspaceId: readerSummaryProductionDayScope.workspaceId,
-        date,
-        sourcePublication: {
-          publicationId: promotion.sourcePublicationId,
-          artifactId: promotion.sourceArtifactId,
-          reportSha256: promotion.sourcePublicationReportSha256,
-          proofSha256: promotion.sourcePublicationProofSha256,
-        },
-        failureMarkerPath: requiredEnv(
+      revalidate: async () => {
+        const marker = requiredEnv(
           historicalPromotionRevalidationFailurePathEnv,
-        ),
-      }),
+        );
+        await assertHistoricalPromotionInputCurrentBeforeMutation({
+          datasetGuard: guard,
+          client: connection,
+          tenantId: readerSummaryProductionDayScope.tenantId,
+          workspaceId: readerSummaryProductionDayScope.workspaceId,
+          date,
+          sourcePublication: {
+            publicationId: promotion.sourcePublicationId,
+            artifactId: promotion.sourceArtifactId,
+            reportSha256: promotion.sourcePublicationReportSha256,
+            proofSha256: promotion.sourcePublicationProofSha256,
+          },
+          failureMarkerPath: marker,
+        });
+        try {
+          const supportingEvidence = promotion.sourceAuthorityKind ===
+              "active-database-publication"
+            ? { kind: promotion.sourceAuthorityKind } as const
+            : {
+                kind: promotion.sourceAuthorityKind,
+                sourceReportSha256: requiredEnv(
+                  "DURABLE_READER_SUMMARY_SOURCE_REPORT_SHA256",
+                ),
+                collectionArtifactSha256: requiredEnv(
+                  "DURABLE_READER_SUMMARY_COLLECTION_ARTIFACT_SHA256",
+                ),
+                collectionQualityReportSha256: requiredEnv(
+                  "DURABLE_READER_SUMMARY_COLLECTION_QUALITY_REPORT_SHA256",
+                ),
+              } as const;
+          const canonical = buildHistoricalPromotionCanonicalInput({
+            date,
+            sourcePublication: {
+              kind: "active-database-publication",
+              publicationId: promotion.sourcePublicationId,
+              artifactId: promotion.sourceArtifactId,
+              reportSha256: promotion.sourcePublicationReportSha256,
+              proofSha256: promotion.sourcePublicationProofSha256,
+            },
+            datasetManifest: manifest,
+            datasetManifestSha256: fileSha256,
+            supportingEvidence,
+            generationAuthority: await postgres.readGenerationAuthority(),
+            allowHistoricalGitHubOmission:
+              process.env
+                .DURABLE_READER_SUMMARY_HISTORICAL_GITHUB_OMISSION_REASON !==
+                undefined,
+            historicalGitHubOmissionReason: process.env
+              .DURABLE_READER_SUMMARY_HISTORICAL_GITHUB_OMISSION_REASON,
+          });
+          if (canonical.authoritativeInputDigest !==
+                promotion.authoritativeInputDigest ||
+              historicalPromotionRebuildIdentity({
+                date,
+                authoritativeInputDigest: canonical.authoritativeInputDigest,
+              }) !== promotion.rebuildIdentity) {
+            throw new UnderLockDriftError();
+          }
+          const inspection = await postgres.inspect(
+            date,
+            manifest.policy.timestampPolicy,
+          );
+          const classification = classifyHistoricalPromotionAuthority({
+            date,
+            inspection,
+          });
+          if (classification.kind === "unrebuildable" ||
+              classification.authorityInspectionDigest !== requiredEnv(
+                "DURABLE_READER_SUMMARY_PROMOTION_AUTHORITY_INSPECTION_SHA256",
+              )) {
+            throw new UnderLockDriftError();
+          }
+          const state = await postgres.reconcile(
+            date,
+            promotion.rebuildIdentity,
+            {
+              date,
+              authoritativeInputDigest: canonical.authoritativeInputDigest,
+              canonicalInput: canonical.envelope,
+              sourcePublicationId: promotion.sourcePublicationId,
+              sourceArtifactId: promotion.sourceArtifactId,
+              sourcePublicationReportSha256:
+                promotion.sourcePublicationReportSha256,
+              sourcePublicationProofSha256:
+                promotion.sourcePublicationProofSha256,
+              sourceEvidence: supportingEvidence.kind ===
+                  "active-database-publication"
+                ? supportingEvidence
+                : {
+                    ...supportingEvidence,
+                    sourceReportPath: "/immutable/not-used/source-report",
+                    collectionArtifactPath:
+                      "/immutable/not-used/collection-artifact",
+                    collectionQualityReportPath:
+                      "/immutable/not-used/collection-quality",
+                  },
+              datasetManifestPath: manifestPath,
+              datasetManifestSha256: fileSha256,
+              timestampPolicy: manifest.policy.timestampPolicy,
+              allowHistoricalGitHubOmission:
+                process.env
+                  .DURABLE_READER_SUMMARY_HISTORICAL_GITHUB_OMISSION_REASON !==
+                  undefined,
+              historicalGitHubOmissionReason: process.env
+                .DURABLE_READER_SUMMARY_HISTORICAL_GITHUB_OMISSION_REASON,
+            },
+          );
+          if (state.state !== "none" && state.state !== "requested") {
+            writeHistoricalPromotionFailureMarker(
+              marker,
+              historicalPromotionUnderLockDurableStateReason,
+            );
+            throw new Error(historicalPromotionUnderLockDurableStateReason);
+          }
+        } catch (error) {
+          if (error instanceof Error &&
+              error.message === historicalPromotionUnderLockDurableStateReason) {
+            throw error;
+          }
+          const reason = error instanceof UnderLockDriftError
+            ? historicalPromotionUnderLockDriftReason
+            : historicalPromotionUnderLockUnavailableReason;
+          writeHistoricalPromotionFailureMarker(marker, reason);
+          throw new Error(`Historical promotion ${reason}`);
+        }
+      },
       runProductionDay: () => spawnSync(command[0]!, command.slice(1), {
         cwd: process.cwd(),
         env: process.env,
@@ -119,10 +256,12 @@ async function main(): Promise<void> {
       }).status,
     });
   } finally {
-    await connection.close();
+    await Promise.all([connection.close(), postgres.close()]);
   }
   if (status !== 0) process.exitCode = status ?? 1;
 }
+
+class UnderLockDriftError extends Error {}
 
 const requiredEnv = (name: string): string => {
   const value = process.env[name]?.trim();

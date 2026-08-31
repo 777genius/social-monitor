@@ -29,8 +29,8 @@ import { readerSummaryProductionDayScope } from
   "./lib/reader-summary-production-day-scope";
 import { assertClosedUtcDate } from
   "./lib/reader-summary-promotion-v2-historical-classification";
-import { yesterdaySocialQualityDatabaseUrl } from
-  "./lib/yesterday-social-replay-support";
+import { requiredHistoricalPromotionSystemDatabaseUrl } from
+  "./lib/reader-summary-promotion-v2-system-database";
 
 export type HistoricalPromotionCliOptions = Readonly<{
   dates: readonly string[];
@@ -87,12 +87,22 @@ async function main(): Promise<void> {
       "http://127.0.0.1"
     : requiredEnv("READER_SUMMARY_PROMOTION_REBUILD_API_BASE_URL");
   assertHttpUrl(apiBaseUrl);
+  const siteUrl = options.dryRun
+    ? readEnv("READER_SUMMARY_PROMOTION_REBUILD_SITE_URL") ??
+      "http://127.0.0.1"
+    : requiredEnv("READER_SUMMARY_PROMOTION_REBUILD_SITE_URL");
+  assertHttpUrl(siteUrl);
   const postgres = new PostgresHistoricalPromotionAdapter({
-    databaseUrl: yesterdaySocialQualityDatabaseUrl(),
+    databaseUrl: requiredHistoricalPromotionSystemDatabaseUrl(process.env),
     tenantId: readerSummaryProductionDayScope.tenantId,
     workspaceId: readerSummaryProductionDayScope.workspaceId,
+    artifactOutput: options.artifactOutput,
     api: new HttpHistoricalPromotionApiVisibilityVerifier({
       baseUrl: apiBaseUrl,
+      siteUrl,
+      siteContractUrl: readEnv(
+        "READER_SUMMARY_PROMOTION_REBUILD_SITE_CONTRACT_URL",
+      ),
       apiKey: readEnv("READER_SUMMARY_PROMOTION_REBUILD_API_KEY"),
     }),
   });
@@ -110,6 +120,21 @@ async function main(): Promise<void> {
     fenceDirectory: options.dryRun
       ? "/tmp/reader-summary-dry-run-unused-date-fences"
       : requiredAbsoluteEnv("READER_SUMMARY_PROMOTION_REBUILD_FENCE_DIR"),
+    canonicalDailyRunLockPath: options.dryRun
+      ? "/tmp/reader-summary-dry-run-unused.lock"
+      : requiredAbsoluteEnv(
+          "READER_SUMMARY_PROMOTION_REBUILD_CANONICAL_DAILY_LOCK_PATH",
+        ),
+    canonicalDateLockDirectory: options.dryRun
+      ? "/tmp/reader-summary-dry-run-unused-date-locks"
+      : requiredAbsoluteEnv(
+          "READER_SUMMARY_PROMOTION_REBUILD_CANONICAL_DATE_LOCK_DIR",
+        ),
+    canonicalFenceDirectory: options.dryRun
+      ? "/tmp/reader-summary-dry-run-unused-date-fences"
+      : requiredAbsoluteEnv(
+          "READER_SUMMARY_PROMOTION_REBUILD_CANONICAL_FENCE_DIR",
+        ),
     lockWaitSeconds: integerEnv(
       "READER_SUMMARY_PROMOTION_REBUILD_LOCK_WAIT_SECONDS",
       7500,
@@ -163,12 +188,16 @@ const prepareHistoricalPromotionEvidence = async (
   if (options.artifactManifest !== undefined) {
     throw new Error("--prepare creates the artifact manifest; do not supply one");
   }
-  const databaseUrl = yesterdaySocialQualityDatabaseUrl();
+  const databaseUrl = requiredHistoricalPromotionSystemDatabaseUrl(process.env);
   const postgres = new PostgresHistoricalPromotionAdapter({
     databaseUrl,
     tenantId: readerSummaryProductionDayScope.tenantId,
     workspaceId: readerSummaryProductionDayScope.workspaceId,
-    api: { verify: async () => undefined },
+    artifactOutput: options.artifactOutput,
+    api: { verify: async () => ({
+      siteReaderRouteHttp200Verified: true,
+      siteFacingContractVerified: "not-exposed",
+    }) },
   });
   const connection = await PrismaSummaryConnection.create(
     defaultPostgresRuntimePoolConfig(databaseUrl, "daily-runner"),
@@ -199,7 +228,8 @@ const prepareHistoricalPromotionEvidence = async (
         `date=${result.date} preparation=${result.status} reason=${result.reason}`,
       );
     }
-    if (results.some((result) => result.status !== "prepared")) {
+    if (results.some((result) =>
+      result.status !== "prepared" && result.status !== "verified-noop")) {
       process.exitCode = 2;
     }
   } finally {

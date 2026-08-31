@@ -7,6 +7,8 @@ import {
   buildHistoricalPromotionCanonicalInput,
   historicalPromotionCanonicalInputDigest,
 } from "./reader-summary-promotion-v2-historical-input";
+import { historicalPromotionGenerationAuthority } from
+  "./reader-summary-promotion-v2-historical-generation-authority";
 import {
   ReaderSummaryPromotionV2HistoricalRunner,
   type HistoricalPromotionDurableState,
@@ -84,7 +86,7 @@ describe("Reader Summary Promotion V2 historical runner", () => {
     expect(noop).toMatchObject({
       status: "noop",
       reason: "same_complete_v2_identity_already_active",
-      qualityGates: { apiVisibilityVerified: true },
+      qualityGates: { apiOrderedLanesVerified: true },
     });
     expect(scenario.rebuild).toHaveBeenCalledTimes(1);
     expect(scenario.verifyCompleted).toHaveBeenCalledTimes(1);
@@ -161,6 +163,7 @@ describe("Reader Summary Promotion V2 historical runner", () => {
       fenceToken: "reader-summary-date:2026-08-01:4",
       outputIdentity: null,
       qualityGates: null,
+      rollbackAuthority: null,
       pointerSwitch: { attempted: false, switched: false },
     });
   });
@@ -181,6 +184,7 @@ describe("Reader Summary Promotion V2 historical runner", () => {
     expect(receipts[0]).toMatchObject({
       identity: null,
       classification: null,
+      timestampPolicy: null,
       reason: "authoritative_input_or_provider_lineage_unavailable",
     });
   });
@@ -307,6 +311,11 @@ const inspection = (date: string): HistoricalPromotionAuthorityInspection => ({
     providerMetadata: { kind: "reddit_post", score: 80, upvoteRatio: 0.9 },
     publishedAt: `${date}T08:00:00.000Z`,
     observedAt: `${date}T09:00:00.000Z`,
+    dayEndMetricProof: {
+      source: "observation",
+      observedAt: `${date}T09:00:00.000Z`,
+      metrics: { score: 80, upvoteRatioBps: 9000 },
+    },
   }],
   engagementSnapshotCount: 1,
   engagementObservationByOriginalDayEndCount: 1,
@@ -338,6 +347,11 @@ const evidenceMap = (
       datasetManifest: dataset,
       datasetManifestSha256: "e".repeat(64),
       supportingEvidence: { kind: "active-database-publication" },
+      generationAuthority: historicalPromotionGenerationAuthority({
+        tenantId: dataset.scope.tenantId,
+        workspaceId: dataset.scope.workspaceId,
+        env: {},
+      }),
       allowHistoricalGitHubOmission: true,
       historicalGitHubOmissionReason:
         "No preserved GitHub rows exist in this deterministic runner fixture.",
@@ -372,14 +386,24 @@ const output = () => ({
   artifactId: "00000000-0000-4000-8000-000000000311",
   publicationId: "00000000-0000-4000-8000-000000000311",
   previousPublicationId: "00000000-0000-4000-8000-000000000301",
+  rollbackPriorPublication: {
+    publicationId: "00000000-0000-4000-8000-000000000301",
+    artifactId: "00000000-0000-4000-8000-000000000302",
+    reportSha256: "a".repeat(64),
+    proofSha256: "b".repeat(64),
+  },
   reportSha256: "f".repeat(64),
   proofSha256: "9".repeat(64),
   selectedCounts: { top: 8, additional: 5, citations: 13 },
+  qualityArtifactSha256: { quality: "8".repeat(64) },
   qualityGates: {
-    promotionV2Attested: true as const,
+    artifactPromotionBoardValidated: true as const,
     citationsVerified: true as const,
     publicationProofVerified: true as const,
-    apiVisibilityVerified: true as const,
+    apiPromotionTupleVerified: true as const,
+    apiOrderedLanesVerified: true as const,
+    siteReaderRouteHttp200Verified: true as const,
+    siteFacingContractVerified: "not-exposed" as const,
   },
 });
 

@@ -12,6 +12,8 @@ import {
   historicalPromotionCanonicalInputDigest,
   type HistoricalPromotionCanonicalInputEnvelope,
 } from "./reader-summary-promotion-v2-historical-input";
+import { HistoricalPromotionSystemRoleError } from
+  "./reader-summary-promotion-v2-system-database";
 
 export type HistoricalPromotionEvidenceBundle = Readonly<{
   date: string;
@@ -54,6 +56,9 @@ export type HistoricalPromotionDurableState = Readonly<{
   publicationId?: string;
   activePublicationId?: string;
   previousPublicationId?: string;
+  previousArtifactId?: string;
+  previousReportSha256?: string;
+  previousProofSha256?: string;
   reason?: string;
 }>;
 
@@ -62,6 +67,12 @@ export type HistoricalPromotionVerifiedOutput = Readonly<{
   artifactId: string;
   publicationId: string;
   previousPublicationId: string;
+  rollbackPriorPublication: Readonly<{
+    publicationId: string;
+    artifactId: string;
+    reportSha256: string;
+    proofSha256: string;
+  }>;
   reportSha256: string;
   proofSha256: string;
   selectedCounts: {
@@ -69,11 +80,15 @@ export type HistoricalPromotionVerifiedOutput = Readonly<{
     additional: number;
     citations: number;
   };
+  qualityArtifactSha256: Readonly<Record<string, string>>;
   qualityGates: {
-    promotionV2Attested: true;
+    artifactPromotionBoardValidated: true;
     citationsVerified: true;
     publicationProofVerified: true;
-    apiVisibilityVerified: true;
+    apiPromotionTupleVerified: true;
+    apiOrderedLanesVerified: true;
+    siteReaderRouteHttp200Verified: true;
+    siteFacingContractVerified: true | "not-exposed";
   };
 }>;
 
@@ -107,6 +122,7 @@ export type HistoricalPromotionRebuildReceipt = Readonly<{
     policyVersion: typeof readerSummaryPromotionV2HistoricalPolicyVersion;
   } | null;
   classification: HistoricalPromotionClassification | null;
+  timestampPolicy: "published_at" | "observed_at" | null;
   fenceToken: string | null;
   retrySafety:
     | "not-applicable"
@@ -118,9 +134,20 @@ export type HistoricalPromotionRebuildReceipt = Readonly<{
     publicationId: string;
     reportSha256: string;
     proofSha256: string;
+    qualityArtifactSha256: Readonly<Record<string, string>>;
   } | null;
   selectedCounts: HistoricalPromotionVerifiedOutput["selectedCounts"] | null;
   qualityGates: HistoricalPromotionVerifiedOutput["qualityGates"] | null;
+  rollbackAuthority: Readonly<{
+    priorPublicationId: string;
+    priorArtifactId: string;
+    priorReportSha256: string;
+    priorProofSha256: string;
+    expectedCurrentPublicationId: string;
+    expectedCurrentArtifactId: string;
+    expectedCurrentReportSha256: string;
+    expectedCurrentProofSha256: string;
+  }> | null;
   pointerSwitch: {
     authority: "PrismaReaderSummaryPublication.publish_reader_summary";
     attempted: boolean;
@@ -131,7 +158,10 @@ export type HistoricalPromotionRebuildReceipt = Readonly<{
 }>;
 
 export interface HistoricalPromotionAuthorityReader {
-  inspect(date: string): Promise<HistoricalPromotionAuthorityInspection>;
+  inspect(
+    date: string,
+    timestampPolicy?: "published_at" | "observed_at",
+  ): Promise<HistoricalPromotionAuthorityInspection>;
 }
 
 export interface HistoricalPromotionDurableStateReader {
@@ -198,8 +228,12 @@ export class ReaderSummaryPromotionV2HistoricalRunner {
   ): Promise<HistoricalPromotionRebuildReceipt> {
     let inspection: HistoricalPromotionAuthorityInspection;
     try {
-      inspection = await this.dependencies.authority.inspect(date);
-    } catch {
+      inspection = await this.dependencies.authority.inspect(
+        date,
+        options.evidence.get(date)?.timestampPolicy ?? "published_at",
+      );
+    } catch (error) {
+      if (error instanceof HistoricalPromotionSystemRoleError) throw error;
       return this.uninspectedPendingReceipt(
         date,
         options.dryRun ? "dry-run" : "execute",
@@ -214,6 +248,7 @@ export class ReaderSummaryPromotionV2HistoricalRunner {
       date,
       mode: options.dryRun ? "dry-run" : "execute",
       classification,
+      timestampPolicy: bundle?.timestampPolicy ?? null,
     });
 
     if (classification.kind === "unrebuildable") {
@@ -242,6 +277,7 @@ export class ReaderSummaryPromotionV2HistoricalRunner {
       mode: options.dryRun ? "dry-run" : "execute",
       classification,
       identity: { rebuildIdentity, authoritativeInputDigest },
+      timestampPolicy: bundle!.timestampPolicy,
     });
     let durableState: HistoricalPromotionDurableState;
     try {
@@ -381,6 +417,7 @@ export class ReaderSummaryPromotionV2HistoricalRunner {
     date: string;
     mode: "dry-run" | "execute";
     classification: HistoricalPromotionClassification;
+    timestampPolicy?: "published_at" | "observed_at" | null;
     identity?: Readonly<{
       rebuildIdentity: string;
       authoritativeInputDigest: string;
@@ -401,11 +438,13 @@ export class ReaderSummaryPromotionV2HistoricalRunner {
             policyVersion: readerSummaryPromotionV2HistoricalPolicyVersion,
           },
       classification: input.classification,
+      timestampPolicy: input.timestampPolicy ?? null,
       fenceToken: null,
       retrySafety: "not-applicable",
       outputIdentity: null,
       selectedCounts: null,
       qualityGates: null,
+      rollbackAuthority: null,
       pointerSwitch: {
         authority: "PrismaReaderSummaryPublication.publish_reader_summary",
         attempted: false,
@@ -434,9 +473,20 @@ export class ReaderSummaryPromotionV2HistoricalRunner {
         publicationId: output.publicationId,
         reportSha256: output.reportSha256,
         proofSha256: output.proofSha256,
+        qualityArtifactSha256: output.qualityArtifactSha256,
       },
       selectedCounts: output.selectedCounts,
       qualityGates: output.qualityGates,
+      rollbackAuthority: {
+        priorPublicationId: output.rollbackPriorPublication.publicationId,
+        priorArtifactId: output.rollbackPriorPublication.artifactId,
+        priorReportSha256: output.rollbackPriorPublication.reportSha256,
+        priorProofSha256: output.rollbackPriorPublication.proofSha256,
+        expectedCurrentPublicationId: output.publicationId,
+        expectedCurrentArtifactId: output.artifactId,
+        expectedCurrentReportSha256: output.reportSha256,
+        expectedCurrentProofSha256: output.proofSha256,
+      },
       pointerSwitch: {
         authority: "PrismaReaderSummaryPublication.publish_reader_summary",
         attempted: status === "completed",
@@ -461,11 +511,13 @@ export class ReaderSummaryPromotionV2HistoricalRunner {
       reason: "authoritative_input_or_provider_lineage_unavailable",
       identity: null,
       classification: null,
+      timestampPolicy: null,
       fenceToken: null,
       retrySafety: "safe-before-paid-operation",
       outputIdentity: null,
       selectedCounts: null,
       qualityGates: null,
+      rollbackAuthority: null,
       pointerSwitch: {
         authority: "PrismaReaderSummaryPublication.publish_reader_summary",
         attempted: false,

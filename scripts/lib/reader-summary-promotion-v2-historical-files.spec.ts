@@ -19,6 +19,8 @@ import {
 } from "./reader-summary-promotion-v2-historical-files";
 import { buildHistoricalPromotionCanonicalInput } from
   "./reader-summary-promotion-v2-historical-input";
+import { historicalPromotionGenerationAuthority } from
+  "./reader-summary-promotion-v2-historical-generation-authority";
 import type { HistoricalPromotionRebuildReceipt } from
   "./reader-summary-promotion-v2-historical-runner";
 
@@ -182,6 +184,11 @@ const evidenceFixture = (
     datasetManifest: dataset,
     datasetManifestSha256: files.dataset.sha256,
     supportingEvidence,
+    generationAuthority: historicalPromotionGenerationAuthority({
+      tenantId: dataset.scope.tenantId,
+      workspaceId: dataset.scope.workspaceId,
+      env: {},
+    }),
     allowHistoricalGitHubOmission: true,
     historicalGitHubOmissionReason:
       "No preserved GitHub rows exist in this deterministic closed-date fixture.",
@@ -211,6 +218,7 @@ const evidenceFixture = (
       sourceAuthority,
       datasetManifest: files.dataset,
       timestampPolicy: "published_at",
+      generationAuthority: canonical.envelope.generationAuthority,
       allowHistoricalGitHubOmission: true,
       historicalGitHubOmissionReason:
         "No preserved GitHub rows exist in this deterministic closed-date fixture.",
@@ -232,11 +240,13 @@ const receipt = (
   reason: "fixture",
   identity: null,
   classification: null,
+  timestampPolicy: null,
   fenceToken: null,
   retrySafety: "not-applicable",
   outputIdentity: null,
   selectedCounts: null,
   qualityGates: null,
+  rollbackAuthority: null,
   pointerSwitch: {
     authority: "PrismaReaderSummaryPublication.publish_reader_summary",
     attempted: false,

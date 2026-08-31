@@ -31,6 +31,8 @@ import {
   type ReaderSummaryPublicationRunningFixture as Fixture,
 } from "./lib/reader-summary-publication-postgres-running-fixture";
 import { assertReaderSummaryRecoveryPostgresContract } from "./lib/reader-summary-recovery-postgres-contract";
+import { assertReaderSummaryPromotionV2RollbackPostgresContract } from
+  "./lib/reader-summary-promotion-v2-rollback-postgres-contract";
 import { assertReaderSummaryWeeklyDailyCertificationBackfillPostgresContract } from "./lib/reader-summary-weekly-daily-certification-backfill-postgres-contract";
 import { assertReaderSummaryWeeklyCertificationSealPostgresContract } from "./lib/reader-summary-weekly-certification-seal-postgres-contract";
 import { assertReaderSummaryWeeklyAtomicPublicationPostgresContract } from "./lib/reader-summary-weekly-atomic-publication-postgres-contract";
@@ -107,6 +109,7 @@ let fixtureRuntimeRoleCreated = false;
 let fixtureDailyTerminalRoleCreated = false;
 export type ReaderSummaryPublicationPostgresContract =
   | "feed-promotion"
+  | "promotion-v2-rollback"
   | "publication"
   | "weekly-certification-seal"
   | "weekly-atomic-publication"
@@ -262,6 +265,15 @@ export const runReaderSummaryPublicationPostgresContract = async (
           readerSummaryPublicationMigration,
         );
         await assertLegacyRepositoryVisibility(runtimeDatabaseUrl);
+        if (contract === "promotion-v2-rollback") {
+          await assertReaderSummaryPromotionV2RollbackPostgresContract({
+            adminClient,
+            auditorClient: auditor,
+            runtimeClient: first,
+            runtimeRole,
+          });
+          return;
+        }
         if (
           contract === "weekly-certification-seal" ||
           contract === "weekly-atomic-publication" ||
