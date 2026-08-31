@@ -163,11 +163,7 @@ const admittedEditorialSlateSelection = (
       .filter((relation) => admittedIds.has(relation.leftFeedItemId) &&
         admittedIds.has(relation.rightFeedItemId))
       .map((relation) => ({ ...relation })),
-    ...(selection.relatedTopicRelations === undefined
-      ? {}
-      : { relatedTopicRelations: selection.relatedTopicRelations.map(
-          (relation) => ({ ...relation }),
-        ) }),
+    relatedTopicRelations: [],
     promotionCounts: {
       top: editorialSlate.top.length,
       additional: editorialSlate.additional.length,

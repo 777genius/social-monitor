@@ -1,6 +1,22 @@
-import type { SummaryEvidenceSelection } from "../../domain";
+import {
+  isGitHubTrendingEvidence,
+  selectGitHubTrendingSupplementalEvidence,
+  type SummaryEvidenceSelection,
+} from "../domain";
+import {
+  composeReaderSummaryEditorialSlate,
+  materializeReaderSummaryEditorialSlate,
+} from "../adapters/evidence/reader-summary-editorial-slate";
 
 export const makeReaderEvidenceSelection = (
+  overrides: {
+    readonly firstContentQuality?: SummaryEvidenceSelection["selectedEvidence"][number]["contentQuality"];
+  } = {},
+): SummaryEvidenceSelection => withReaderPromotionEditorialSlate(
+  makeUnmaterializedReaderEvidenceSelection(overrides),
+);
+
+export const makeUnmaterializedReaderEvidenceSelection = (
   overrides: {
     readonly firstContentQuality?: SummaryEvidenceSelection["selectedEvidence"][number]["contentQuality"];
   } = {},
@@ -25,39 +41,15 @@ export const makeReaderEvidenceSelection = (
     selectedFeedItemIds: ["feed-1", "feed-2"],
     storyClusterIds: ["cluster-1", "cluster-2"],
   },
-  clusters: [readerCluster(), {
-    id: "cluster-2",
-    storyKey: "github-release",
-    representativeFeedItemId: "feed-2",
-    duplicateFeedItemIds: [],
-    interestIds: ["interest-reader-ai"],
-    providerKeys: ["github-trending-page"],
-    score: 0.9,
-    observedAtRange: {
-      startedAt: new Date("2026-06-26T07:30:00.000Z"),
-      endedAt: new Date("2026-06-26T07:30:00.000Z"),
-    },
-    whyImportant: ["Strong source engagement signal"],
-  }],
-  selectedEvidence: [readerEvidence(overrides.firstContentQuality), {
-    feedItemId: "feed-2",
-    sourceItemId: "github-trending-1",
-    sourceBindingId: "binding-github",
-    interestId: "interest-reader-ai",
-    providerKey: "github-trending-page",
-    providerName: "GitHub Trending",
-    canonicalUrl: "https://github.com/example/project",
-    title: "Example project trends on GitHub",
-    publishedAt: new Date("2026-06-26T07:20:00.000Z"),
-    observedAt: new Date("2026-06-26T07:30:00.000Z"),
-    score: 0.9,
-    whyImportant: ["Strong source engagement signal"],
-    contentQuality: eligibleReaderEvidenceQuality(),
-  }],
+  clusters: [readerCluster(), githubCluster()],
+  selectedEvidence: [
+    readerEvidence(overrides.firstContentQuality),
+    githubEvidence(),
+  ],
 });
 
 export const makeRelatedReaderEvidenceSelection = (): SummaryEvidenceSelection => {
-  const base = makeReaderEvidenceSelection();
+  const base = makeUnmaterializedReaderEvidenceSelection();
   const relatedQuality = eligibleReaderEvidenceQuality();
   const relatedEvidence: SummaryEvidenceSelection["selectedEvidence"][number] = {
     ...readerEvidence(),
@@ -83,7 +75,7 @@ export const makeRelatedReaderEvidenceSelection = (): SummaryEvidenceSelection =
       metrics: { provider: "hacker_news", points: 500 },
     },
   };
-  return {
+  return withReaderPromotionEditorialSlate({
     ...base,
     sourceWindow: {
       ...base.sourceWindow,
@@ -114,7 +106,39 @@ export const makeRelatedReaderEvidenceSelection = (): SummaryEvidenceSelection =
       subjectIsOfficial: false,
       officialAnchorIsOfficial: true,
     }],
+  });
+};
+
+export const withReaderPromotionEditorialSlate = (
+  selection: SummaryEvidenceSelection,
+): SummaryEvidenceSelection => {
+  const relatedContextIds = new Set(
+    (selection.relatedTopicRelations ?? []).map(
+      (relation) => relation.subjectFeedItemId,
+    ),
+  );
+  const selectionWithoutRelatedContext = {
+    ...selection,
+    selectedEvidence: selection.selectedEvidence.filter(
+      (item) => !relatedContextIds.has(item.feedItemId),
+    ),
   };
+  const candidates = selectionWithoutRelatedContext.selectedEvidence.filter(
+    (item) => !isGitHubTrendingEvidence(item),
+  );
+  const slate = composeReaderSummaryEditorialSlate({
+    selection: selectionWithoutRelatedContext,
+    candidates,
+  });
+
+  const materialized = materializeReaderSummaryEditorialSlate({
+    selection: selectionWithoutRelatedContext,
+    slate,
+    supplementalEvidence: selectGitHubTrendingSupplementalEvidence(
+      selection.selectedEvidence,
+    ),
+  });
+  return materialized;
 };
 
 const readerCluster = (): SummaryEvidenceSelection["clusters"][number] => ({
@@ -130,6 +154,39 @@ const readerCluster = (): SummaryEvidenceSelection["clusters"][number] => ({
     endedAt: new Date("2026-06-26T07:20:00.000Z"),
   },
   whyImportant: ["Matches user preference"],
+});
+
+export const githubCluster = (
+): SummaryEvidenceSelection["clusters"][number] => ({
+  id: "cluster-2",
+  storyKey: "github-release",
+  representativeFeedItemId: "feed-2",
+  duplicateFeedItemIds: [],
+  interestIds: ["interest-reader-ai"],
+  providerKeys: ["github-trending-page"],
+  score: 0.9,
+  observedAtRange: {
+    startedAt: new Date("2026-06-26T07:30:00.000Z"),
+    endedAt: new Date("2026-06-26T07:30:00.000Z"),
+  },
+  whyImportant: ["Strong source engagement signal"],
+});
+
+export const githubEvidence = (
+): SummaryEvidenceSelection["selectedEvidence"][number] => ({
+  feedItemId: "feed-2",
+  sourceItemId: "github-trending-1",
+  sourceBindingId: "binding-github",
+  interestId: "interest-reader-ai",
+  providerKey: "github-trending-page",
+  providerName: "GitHub Trending",
+  canonicalUrl: "https://github.com/example/project",
+  title: "Example project trends on GitHub",
+  publishedAt: new Date("2026-06-26T07:20:00.000Z"),
+  observedAt: new Date("2026-06-26T07:30:00.000Z"),
+  score: 0.9,
+  whyImportant: ["Strong source engagement signal"],
+  contentQuality: eligibleReaderEvidenceQuality(),
 });
 
 const readerEvidence = (

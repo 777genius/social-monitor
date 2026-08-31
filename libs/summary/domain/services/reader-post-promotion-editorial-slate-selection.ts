@@ -4,11 +4,12 @@ import {
 } from "../policies/reader-post-promotion-selection";
 import {
   readerPostProviderFamily,
-  READER_POST_PROMOTION_POLICY_V1,
   READER_POST_PROMOTION_POLICY_VERSION,
   type ReaderPostPromotionInput,
   type ReaderPostPromotionResult,
 } from "../policies/reader-post-promotion-policy";
+import { readerPostPromotionEvidenceConfidence } from
+  "../policies/reader-post-promotion-confidence-policy";
 import type { ReaderSummaryEditorialSlate } from
   "../value-objects/reader-summary-editorial-slate";
 
@@ -47,18 +48,8 @@ export const readerPostPromotionSelectionFromEditorialSlate = (
         left.candidateId.localeCompare(right.candidateId),
       );
     const admitted = [candidate, ...support];
-    const providerCount = new Set(admitted.flatMap((input) => {
-      const provider = readerPostProviderFamily(input.provider);
-      return provider === undefined ? [] : [provider];
-    })).size;
-    const confidence = Math.min(
-      1,
-      candidate.qualityScore + Math.min(
-        READER_POST_PROMOTION_POLICY_V1.confidence.maxSupportBoost,
-        support.length *
-          READER_POST_PROMOTION_POLICY_V1.confidence.supportBoost,
-      ),
-    );
+    const { providerCount, confidence } =
+      readerPostPromotionEvidenceConfidence({ lead: candidate, support });
     return {
       policyVersion: READER_POST_PROMOTION_POLICY_VERSION,
       candidate,

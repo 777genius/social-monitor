@@ -174,7 +174,11 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
     });
     const relatedTopicRelations = await verifiedReaderSummaryRelatedTopics({
       query,
-      selection: finalSelection,
+      // Related-topic verification needs the bounded context candidates that
+      // ranking rejected from the immutable publication slate. The returned
+      // relation is metadata only; finalSelection still keeps those subjects
+      // out of model evidence and reader-visible promotion cards.
+      selection: fullPromotionSelection,
       requestedAt: ingestionCutoff,
       verifier: this.storyRelationVerifier,
       metrics: this.storyRankingMetrics,

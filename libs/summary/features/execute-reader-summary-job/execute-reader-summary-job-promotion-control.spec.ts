@@ -18,8 +18,12 @@ import type { BuildReaderSummaryTopicMapUseCase } from "../build-reader-summary-
 import { ExecuteReaderSummaryJobUseCase } from "./execute-reader-summary-job.use-case";
 import {
   makeReaderEvidenceSelection,
+  makeUnmaterializedReaderEvidenceSelection,
   makeRelatedReaderEvidenceSelection,
-} from "./execute-reader-summary-job-promotion-fixtures";
+  githubCluster,
+  githubEvidence,
+  withReaderPromotionEditorialSlate,
+} from "../../test-fixtures/execute-reader-summary-job-promotion-fixtures";
 import {
   PromotionControlArtifactRepository,
   PromotionControlCapturingModel,
@@ -280,7 +284,7 @@ describe("ExecuteReaderSummaryJobUseCase promotion controls", () => {
 });
 
 const dailyTrendingSelection = (withPrimary: boolean) => {
-  const base = makeReaderEvidenceSelection({
+  const base = makeUnmaterializedReaderEvidenceSelection({
     ...(withPrimary
       ? {}
       : {
@@ -299,7 +303,7 @@ const dailyTrendingSelection = (withPrimary: boolean) => {
   });
   const primary = base.selectedEvidence[0]!;
   const primaryCluster = base.clusters[0]!;
-  const template = base.selectedEvidence[1]!;
+  const template = githubEvidence();
   const trends = Array.from({ length: 10 }, (_, index) => ({
     ...template,
     feedItemId: `github-feed-${index + 1}`,
@@ -314,11 +318,11 @@ const dailyTrendingSelection = (withPrimary: boolean) => {
     ],
   }));
   const trendClusters = trends.map((item, index) => ({
-    ...base.clusters[1]!,
+    ...githubCluster(),
     id: `github-cluster-${index + 1}`,
     representativeFeedItemId: item.feedItemId,
   }));
-  return {
+  return withReaderPromotionEditorialSlate({
     ...base,
     sourceWindow: {
       ...base.sourceWindow,
@@ -333,7 +337,7 @@ const dailyTrendingSelection = (withPrimary: boolean) => {
     },
     clusters: [primaryCluster, ...trendClusters],
     selectedEvidence: [primary, ...trends],
-  };
+  });
 };
 
 const dailyTrendingProjectionReader =
@@ -452,11 +456,11 @@ const executePromotionControlScenario = async (
   });
 
 const promotionSelectionWithSupplementalCount = (count: number) => {
-  const base = makeReaderEvidenceSelection();
+  const base = makeUnmaterializedReaderEvidenceSelection();
   const primary = base.selectedEvidence[0]!;
   const primaryCluster = base.clusters[0]!;
-  const supplementalTemplate = base.selectedEvidence[1]!;
-  const supplementalClusterTemplate = base.clusters[1]!;
+  const supplementalTemplate = githubEvidence();
+  const supplementalClusterTemplate = githubCluster();
   const supplemental = Array.from({ length: count }, (_, index) => ({
     ...supplementalTemplate,
     feedItemId: `feed-github-supplemental-${index}`,
@@ -468,7 +472,7 @@ const promotionSelectionWithSupplementalCount = (count: number) => {
     id: `cluster-github-supplemental-${index}`,
     representativeFeedItemId: item.feedItemId,
   }));
-  return {
+  return withReaderPromotionEditorialSlate({
     ...base,
     sourceWindow: {
       ...base.sourceWindow,
@@ -483,5 +487,5 @@ const promotionSelectionWithSupplementalCount = (count: number) => {
     },
     selectedEvidence: [primary, ...supplemental],
     clusters: [primaryCluster, ...supplementalClusters],
-  };
+  });
 };

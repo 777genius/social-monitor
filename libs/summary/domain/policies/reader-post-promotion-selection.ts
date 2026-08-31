@@ -11,6 +11,8 @@ import {
 import {
   readerPostPromotionTopProviderCap,
 } from "./top-read-provider-diversity-policy";
+import { readerPostPromotionEvidenceConfidence } from
+  "./reader-post-promotion-confidence-policy";
 import type { ReaderSummaryEditorialSlateEntry } from
   "../value-objects/reader-summary-editorial-slate";
 
@@ -346,20 +348,8 @@ const toSelectedPromotion = (
   support: readonly ReaderPostPromotionInput[],
 ): SelectedReaderPostPromotion => {
   const admitted = [lead.input, ...support];
-  const providerCount = new Set(
-    admitted.map((item) => readerPostProviderFamily(item.provider)),
-  ).size;
-  const rawConfidence = Math.min(
-    1,
-    lead.input.qualityScore + Math.min(
-      READER_POST_PROMOTION_POLICY_V1.confidence.maxSupportBoost,
-      support.length * READER_POST_PROMOTION_POLICY_V1.confidence.supportBoost,
-    ),
-  );
-  const officialLead = isAttestedOfficial(lead.input);
-  const confidence = providerCount > 1
-    ? rawConfidence
-    : Math.min(rawConfidence, officialLead ? 0.62 : support.length > 0 ? 0.55 : 0.42);
+  const { providerCount, confidence } =
+    readerPostPromotionEvidenceConfidence({ lead: lead.input, support });
   return {
     policyVersion: READER_POST_PROMOTION_POLICY_VERSION,
     candidate: lead.input,
@@ -389,12 +379,6 @@ const additionalUsefulness = (
     weights.engagementIntegrityScore * candidate.input.integrityScore +
     weights.freshness * freshnessScore(candidate.input);
 };
-
-const isAttestedOfficial = (input: ReaderPostPromotionInput): boolean =>
-  input.authorityAttestation?.status === "attested" &&
-  input.authorityAttestation.official && input.authorityAttestation.trusted &&
-  (readerPostProviderFamily(input.provider) !== "x" ||
-    input.authorityAttestation.attestedBy === "source_catalog");
 
 const isAttestedTrustedSupport = (
   input: ReaderPostPromotionInput,
