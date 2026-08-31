@@ -53,6 +53,10 @@ import {
 } from "./lib/reader-summary-production-day-reuse-provenance";
 import { loadHistoricalRegeneration } from "./lib/reader-summary-production-day-regeneration";
 import { buildProductionDayTerminalOutcome } from "./lib/reader-summary-production-day-outcome";
+import { printProductionDayStats } from
+  "./lib/reader-summary-production-day-console";
+import { productionDayPromotionRebuildEnvironment } from
+  "./lib/reader-summary-production-day-promotion-rebuild";
 import {
   resolveProductionDayProviderReadiness,
   type ProductionDayDatabaseQualityReport,
@@ -76,7 +80,13 @@ type StepReport = ProductionDayStepReport;
 
 loadDotenvIfPresent(".env");
 
-const outputPath = "ops/evals/reader-summary-production-day-run.v1.json";
+const reportDirectory = resolve(
+  process.env.READER_SUMMARY_PRODUCTION_DAY_REPORT_DIR ?? "ops/evals",
+);
+const outputPath = join(
+  reportDirectory,
+  "reader-summary-production-day-run.v1.json",
+);
 const update = process.argv.includes("--update");
 const artifactOnly = process.argv.includes("--artifact-only");
 let executionRequest: ReturnType<typeof resolveProductionDayExecutionRequest>;
@@ -419,6 +429,11 @@ async function main(): Promise<void> {
                   `/var/lib/social-monitor/artifacts/recovery/${collectionDate}`,
                 DURABLE_READER_SUMMARY_RECOVERY_TIMESTAMP_POLICY:
                   executionRequest.timestampPolicy,
+                ...(executionRequest.promotionRebuild === undefined
+                  ? {}
+                  : productionDayPromotionRebuildEnvironment(
+                      executionRequest.promotionRebuild,
+                    )),
               }
             : {}),
         },
@@ -595,8 +610,14 @@ function initializeProductionDayRuntime(): void {
     /\.json$/u,
     ".next.json",
   );
-  datedOutputPath = `ops/evals/reader-summary-production-day-run.${collectionDate}.v1.json`;
-  terminalOutcomePath = `ops/evals/reader-summary-production-day-outcome.${collectionDate}.v1.json`;
+  datedOutputPath = join(
+    reportDirectory,
+    `reader-summary-production-day-run.${collectionDate}.v1.json`,
+  );
+  terminalOutcomePath = join(
+    reportDirectory,
+    `reader-summary-production-day-outcome.${collectionDate}.v1.json`,
+  );
 }
 
 function persistTerminalOutcome(
@@ -637,7 +658,7 @@ function persistProductionDayReport(params: {
     console.log(`Updated ${outputPath}`);
     console.log(`Updated ${datedOutputPath}`);
   }
-  printStats(report);
+  printProductionDayStats(report);
   return report;
 }
 
@@ -879,43 +900,6 @@ function readEvidenceArtifact(): {
   return { evidence, binding: inspection.binding };
 }
 
-function printStats(report: ProductionDayReport): void {
-  console.log(
-    [
-      `production-day=${report.collectionDate}`,
-      `collected=${report.stats.collectedFeedItemCount ?? "n/a"}`,
-      `published=${report.stats.publishedInsideWindowFeedItemCount ?? "n/a"}`,
-      `outside=${report.stats.observedButPublishedOutsideWindowFeedItemCount ?? "n/a"}`,
-      `duplicates=${report.stats.duplicateFeedItemCount ?? "n/a"}`,
-      `lowRelevance=${report.stats.lowRelevanceFeedItemCount ?? "n/a"}`,
-      `candidates=${report.stats.summaryCandidateFeedItemCount ?? "n/a"}`,
-      `selected=${report.stats.selectedFeedItemCount ?? "n/a"}`,
-      `topReads=${report.stats.topReadCount ?? "n/a"}`,
-      `xAccountsEligible=${report.stats.xAccountEligibleCount ?? "n/a"}/${report.stats.xAccountTotalCount ?? "n/a"}`,
-      `xAccountEvents=${report.stats.xAccountUsageEventCount ?? "n/a"}`,
-    ].join(" | "),
-  );
-  for (const account of report.stats.xAccounts ?? []) {
-    console.log(
-      [
-        `xAccount=${account.accountFingerprint}`,
-        `priority=${account.priorityRank}`,
-        `prioritySource=${account.prioritySource}`,
-        `eligible=${account.eligible ?? "n/a"}`,
-        `ineligibleReasons=${account.ineligibilityReasonCodes?.join(",") || "none"}`,
-        `requests=${account.dailyRequests}`,
-        `tweets=${account.dailyTweets}`,
-        `success=${account.passSucceededCount}`,
-        `failed=${account.passFailedCount}`,
-        `rateLimit=${account.rateLimitCount}`,
-        `cooldown=${account.cooldownObservedCount}`,
-        `lastUsed=${account.lastUsedAt ?? "n/a"}`,
-        `cooldownUntil=${account.cooldownUntil ?? "n/a"}`,
-      ].join(" | "),
-    );
-  }
-}
-
 function resolveSummaryModel():
   "agent-runtime" | "openai-responses" | "deterministic" {
   const value = readOption("--summary-model") ?? "agent-runtime";
@@ -985,7 +969,7 @@ function validateExistingReport(): void {
     throw new Error(`${outputPath} failed validation`);
   }
 
-  printStats(report as ProductionDayReport);
+  printProductionDayStats(report as ProductionDayReport);
 }
 
 function readJsonIfExists<TValue>(path: string): TValue | null {

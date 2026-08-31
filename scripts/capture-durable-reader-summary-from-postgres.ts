@@ -100,6 +100,10 @@ import {
   assertReaderSummaryDbPublicationFailpointInactive,
   createRecoverableReaderSummaryPublication,
 } from "./lib/reader-summary-db-publication-reconciliation";
+import {
+  assertProductionDayPromotionRetrySafe,
+  resolveProductionDayPromotionRebuild,
+} from "./lib/reader-summary-production-day-promotion-rebuild";
 
 const databaseUrlEnv = "DATABASE_URL";
 const evidencePathEnv = "DURABLE_READER_SUMMARY_EVIDENCE_PATH";
@@ -201,6 +205,11 @@ async function main(): Promise<void> {
     periodEndedAt,
     now,
   });
+  const promotionRebuild = resolveProductionDayPromotionRebuild({
+    env: process.env,
+    recoveryActive: recoveryTimestampPolicy.active,
+    date: periodStartedAt.toISOString().slice(0, 10),
+  });
   const sourceProvenance: ReaderSummaryProductionDayAttemptIdentityInput["sourceProvenance"] =
     dailyReplay !== null
       ? {
@@ -219,6 +228,9 @@ async function main(): Promise<void> {
             ),
             datasetManifestSha256: requiredEnv(datasetManifestSha256Env),
             timestampPolicy: recoveryTimestampPolicy.policy,
+            ...(promotionRebuild === undefined
+              ? {}
+              : { promotionRebuild }),
             ...(historicalGitHubOmission === undefined
               ? {}
               : {
@@ -370,11 +382,17 @@ async function main(): Promise<void> {
         endedAt: periodEndedAt,
         timezone,
       },
-      idempotencyKey: readerSummaryProductionDayIdempotencyKey(attemptIdentity),
+      idempotencyKey: readerSummaryProductionDayIdempotencyKey(
+        attemptIdentity,
+        promotionRebuild?.rebuildIdentity,
+      ),
       correlationId: `corr-durable-reader-summary-${now.getTime()}`,
     });
     if (!request.ok) {
       throw request.error;
+    }
+    if (promotionRebuild !== undefined) {
+      assertProductionDayPromotionRetrySafe(request.value);
     }
 
     const relevanceEvidenceSelector = publicationWiring.evidenceSelector;
@@ -533,6 +551,14 @@ async function main(): Promise<void> {
           identity: attemptIdentity,
           requestCreated: request.value.created,
           reconciledFromDbPublication: !request.value.created,
+          ...(promotionRebuild === undefined
+            ? {}
+            : {
+                promotionRebuildIdentity: promotionRebuild.rebuildIdentity,
+                authoritativeInputDigest:
+                  promotionRebuild.authoritativeInputDigest,
+                promotionPolicyVersion: promotionRebuild.policyVersion,
+              }),
         },
         historicalGitHubOmission:
           historicalGitHubOmission === undefined

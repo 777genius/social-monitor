@@ -60,7 +60,7 @@ const authorityHashFields = [
 describe("reader summary production-day attempt identity", () => {
   it("binds retries to the current persisted artifact policy", () => {
     expect(readerSummaryProductionDayArtifactPolicyVersion).toBe(
-      "reader_summary.artifact_policy.v8",
+      "reader_summary.artifact_policy.v9",
     );
   });
 
@@ -129,6 +129,34 @@ describe("reader summary production-day attempt identity", () => {
       );
     },
   );
+
+  it("binds Promotion V2 rebuild authority into attempt and job identity", () => {
+    const promoted = {
+      ...regenerationIdentity,
+      sourceProvenance: {
+        ...regenerationIdentity.sourceProvenance,
+        promotionRebuild: {
+          rebuildIdentity: "1".repeat(64),
+          authoritativeInputDigest: "2".repeat(64),
+          policyVersion: "reader_post_promotion.v2" as const,
+          sourcePublicationId: "00000000-0000-4000-8000-000000000101",
+          sourceArtifactId: "00000000-0000-4000-8000-000000000101",
+          sourcePublicationProofSha256: "3".repeat(64),
+        },
+      },
+    } satisfies ReaderSummaryProductionDayAttemptIdentityInput;
+    const attempt = readerSummaryProductionDayAttemptIdentity(promoted);
+
+    expect(attempt).not.toBe(
+      readerSummaryProductionDayAttemptIdentity(regenerationIdentity),
+    );
+    expect(readerSummaryProductionDayIdempotencyKey(
+      attempt,
+      promoted.sourceProvenance.promotionRebuild.rebuildIdentity,
+    )).toBe(
+      `durable-reader-summary-daily:${attempt}:${"1".repeat(64)}`,
+    );
+  });
 
   it.each(authorityHashFields)(
     "fails closed when %s is absent",

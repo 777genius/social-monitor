@@ -16,6 +16,8 @@ import type { ProductionDayExecutionRequest } from "./reader-summary-production-
 import { readReaderSummaryDayDatasetManifest } from "./reader-summary-day-dataset-guard";
 import { assertImmutableRecoveryInputs } from "./reader-summary-recovery-files";
 import { noRawSecretFragments } from "./yesterday-social-replay-support";
+import { historicalPromotionRebuildIdentity } from
+  "./reader-summary-promotion-v2-historical-classification";
 
 type HashBoundArtifact = {
   readonly artifactFormat: string;
@@ -63,6 +65,14 @@ export type HistoricalRegenerationSourceProvenance = {
     readonly generalAllowHistorical: false;
     readonly maxManifestAgeSeconds: 1800;
   };
+  readonly promotionRebuild?: Readonly<{
+    rebuildIdentity: string;
+    authoritativeInputDigest: string;
+    policyVersion: "reader_post_promotion.v2";
+    sourcePublicationId: string;
+    sourceArtifactId: string;
+    sourcePublicationProofSha256: string;
+  }>;
 };
 
 type HistoricalRegenerationRequest = Extract<
@@ -108,7 +118,11 @@ export function loadHistoricalRegeneration(params: {
     expectedSha256: params.request.collectionQualityReportSha256,
     label: "source collection quality report",
   });
-  validateSourceAttempt(sourceAttempt.value, params.collectionDate);
+  validateSourceAttempt(
+    sourceAttempt.value,
+    params.collectionDate,
+    params.request.promotionRebuild,
+  );
   validateSourceCollection(sourceCollection.value, params.collectionDate);
   validateSourceCollectionQuality(
     sourceCollectionQuality.value,
@@ -176,6 +190,9 @@ export function loadHistoricalRegeneration(params: {
       generalAllowHistorical: false,
       maxManifestAgeSeconds: 1800,
     },
+    ...(params.request.promotionRebuild === undefined
+      ? {}
+      : { promotionRebuild: params.request.promotionRebuild }),
   };
 
   return {
@@ -276,7 +293,19 @@ function loadHashBoundJson(params: {
   }
 }
 
-function validateSourceAttempt(value: unknown, collectionDate: string): void {
+function validateSourceAttempt(
+  value: unknown,
+  collectionDate: string,
+  promotionRebuild: HistoricalRegenerationRequest["promotionRebuild"],
+): void {
+  if (promotionRebuild !== undefined) {
+    validatePromotionRebuildSourceAttempt(
+      value,
+      collectionDate,
+      promotionRebuild,
+    );
+    return;
+  }
   if (
     !isRecord(value) ||
     value.schemaVersion !== 1 ||
@@ -336,6 +365,61 @@ function validateSourceAttempt(value: unknown, collectionDate: string): void {
     )
   ) {
     throw new Error("Source production attempt has an invalid step inventory");
+  }
+}
+
+function validatePromotionRebuildSourceAttempt(
+  value: unknown,
+  collectionDate: string,
+  promotionRebuild: NonNullable<
+    HistoricalRegenerationRequest["promotionRebuild"]
+  >,
+): void {
+  if (historicalPromotionRebuildIdentity({
+    date: collectionDate,
+    authoritativeInputDigest: promotionRebuild.authoritativeInputDigest,
+    policyVersion: promotionRebuild.policyVersion,
+  }) !== promotionRebuild.rebuildIdentity) {
+    throw new Error("Promotion rebuild identity does not match its authority");
+  }
+  if (
+    !isRecord(value) ||
+    value.schemaVersion !== 1 ||
+    value.artifactFormat !== "reader-summary-production-day-run-v1" ||
+    value.generatedBy !== "npm run run:reader-summary-production-day" ||
+    value.requestedDate !== collectionDate ||
+    value.collectionDate !== collectionDate ||
+    value.blockingPassed !== true ||
+    !isRecord(value.model) ||
+    value.model.writesProductionData !== true ||
+    value.model.freshSummaryCapture !== true ||
+    value.model.allowDegraded !== false ||
+    value.model.allowHistorical !== false ||
+    !Array.isArray(value.steps) ||
+    !isRecord(value.qualityGates) ||
+    Object.values(value.qualityGates).some((gate) => gate !== true)
+  ) {
+    throw new Error(
+      "Promotion rebuild source attempt is not a complete production receipt",
+    );
+  }
+  for (const id of requiredProductionDayStepIds) {
+    const matching = value.steps.filter(
+      (step) => isRecord(step) && step.id === id,
+    );
+    if (matching.length !== 1 || matching[0]?.status !== "passed" ||
+        matching[0]?.exitCode !== 0) {
+      throw new Error(`Promotion rebuild source attempt did not complete ${id}`);
+    }
+  }
+  const durable = value.steps.find(
+    (step) => isRecord(step) && step.id === "durable-reader-summary",
+  );
+  if (!isRecord(durable) || durable.status !== "passed" ||
+      durable.exitCode !== 0) {
+    throw new Error(
+      "Promotion rebuild source attempt lacks a durable successful publication",
+    );
   }
 }
 

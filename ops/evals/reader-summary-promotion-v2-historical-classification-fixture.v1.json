@@ -1,0 +1,78 @@
+{
+  "schemaVersion": 1,
+  "format": "reader-summary-promotion-v2-historical-classification-fixture-v1",
+  "privacy": {
+    "synthetic": true,
+    "rawPostTextIncluded": false,
+    "rawProviderPayloadIncluded": false,
+    "credentialsIncluded": false
+  },
+  "cases": [
+    {
+      "expected": "exact-replayable",
+      "date": "2026-08-01",
+      "engagementSnapshotCount": 2,
+      "engagementObservationByOriginalDayEndCount": 2,
+      "rows": [
+        {
+          "feedItemId": "00000000-0000-4000-8000-000000000101",
+          "providerKey": "reddit",
+          "providerMetadata": {
+            "kind": "reddit_post",
+            "score": 84,
+            "upvoteRatio": 0.92
+          },
+          "publishedAt": "2026-08-01T08:00:00.000Z",
+          "observedAt": "2026-08-01T09:00:00.000Z"
+        },
+        {
+          "feedItemId": "00000000-0000-4000-8000-000000000102",
+          "providerKey": "hacker-news",
+          "providerMetadata": {
+            "kind": "hacker_news_story",
+            "points": 96
+          },
+          "publishedAt": "2026-08-01T10:00:00.000Z",
+          "observedAt": "2026-08-01T10:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "expected": "rebuildable-from-authoritative-input",
+      "date": "2026-08-02",
+      "engagementSnapshotCount": 0,
+      "engagementObservationByOriginalDayEndCount": 0,
+      "rows": [
+        {
+          "feedItemId": "00000000-0000-4000-8000-000000000201",
+          "providerKey": "x-twitter",
+          "providerMetadata": {
+            "kind": "x_post",
+            "likes": 11112,
+            "reposts": 240
+          },
+          "publishedAt": "2026-08-02T08:00:00.000Z",
+          "observedAt": "2026-08-05T09:00:00.000Z"
+        },
+        {
+          "feedItemId": "00000000-0000-4000-8000-000000000202",
+          "providerKey": "reddit",
+          "providerMetadata": {
+            "kind": "reddit_post",
+            "score": 62,
+            "upvoteRatio": 0.86
+          },
+          "publishedAt": "2026-08-02T10:00:00.000Z",
+          "observedAt": "2026-08-05T10:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "expected": "unrebuildable",
+      "date": "2026-08-03",
+      "engagementSnapshotCount": 0,
+      "engagementObservationByOriginalDayEndCount": 0,
+      "rows": []
+    }
+  ]
+}

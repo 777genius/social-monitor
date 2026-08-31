@@ -20,6 +20,14 @@ export type ReaderSummaryProductionDayAttemptIdentityInput = Readonly<{
         datasetManifestSha256: string;
         timestampPolicy: "published_at" | "observed_at";
         historicalGitHubOmissionReason?: string;
+        promotionRebuild?: Readonly<{
+          rebuildIdentity: string;
+          authoritativeInputDigest: string;
+          policyVersion: "reader_post_promotion.v2";
+          sourcePublicationId: string;
+          sourceArtifactId: string;
+          sourcePublicationProofSha256: string;
+        }>;
       }>
     | Readonly<{
         kind: "persisted-daily-replay";
@@ -33,7 +41,7 @@ export type ReaderSummaryProductionDayAttemptIdentityInput = Readonly<{
 // semantics change. A production-day retry must not silently reuse an artifact
 // produced under an older publication policy.
 export const readerSummaryProductionDayArtifactPolicyVersion =
-  "reader_summary.artifact_policy.v8";
+  "reader_summary.artifact_policy.v9";
 
 export const readerSummaryProductionDayAttemptIdentity = (
   input: ReaderSummaryProductionDayAttemptIdentityInput,
@@ -85,6 +93,32 @@ export const readerSummaryProductionDayAttemptIdentity = (
                 input.sourceProvenance.datasetManifestSha256,
               ),
               timestampPolicy: input.sourceProvenance.timestampPolicy,
+              ...(input.sourceProvenance.promotionRebuild === undefined
+                ? {}
+                : {
+                    promotionRebuild: {
+                      rebuildIdentity: requiredSha256(
+                        input.sourceProvenance.promotionRebuild.rebuildIdentity,
+                      ),
+                      authoritativeInputDigest: requiredSha256(
+                        input.sourceProvenance.promotionRebuild
+                          .authoritativeInputDigest,
+                      ),
+                      policyVersion:
+                        input.sourceProvenance.promotionRebuild.policyVersion,
+                      sourcePublicationId: requiredUuid(
+                        input.sourceProvenance.promotionRebuild
+                          .sourcePublicationId,
+                      ),
+                      sourceArtifactId: requiredUuid(
+                        input.sourceProvenance.promotionRebuild.sourceArtifactId,
+                      ),
+                      sourcePublicationProofSha256: requiredSha256(
+                        input.sourceProvenance.promotionRebuild
+                          .sourcePublicationProofSha256,
+                      ),
+                    },
+                  }),
               ...(input.sourceProvenance.historicalGitHubOmissionReason === undefined
                 ? {}
                 : {
@@ -136,8 +170,15 @@ const componentAuthority = <Mode extends string>(
 
 export const readerSummaryProductionDayIdempotencyKey = (
   attemptIdentity: string,
+  promotionRebuildIdentity?: string,
 ): string =>
-  `durable-reader-summary-daily:${requiredSha256(attemptIdentity)}`;
+  [
+    "durable-reader-summary-daily",
+    requiredSha256(attemptIdentity),
+    ...(promotionRebuildIdentity === undefined
+      ? []
+      : [requiredSha256(promotionRebuildIdentity)]),
+  ].join(":");
 
 const requiredText = (value: string, label: string): string => {
   const normalized = value.trim();
@@ -152,6 +193,14 @@ const requiredSha256 = (value: string): string => {
     throw new Error("Reader summary production-day SHA-256 is invalid");
   }
   return value;
+};
+
+const requiredUuid = (value: string): string => {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu
+    .test(value)) {
+    throw new Error("Reader summary production-day UUID is invalid");
+  }
+  return value.toLocaleLowerCase("en-US");
 };
 
 const requiredIsoTimestamp = (value: string): string => {

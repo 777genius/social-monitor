@@ -27,6 +27,13 @@ const reuseCollectionQualityReportSha256Option =
 const reuseDatasetManifestOption = "--reuse-dataset-manifest";
 const reuseDatasetManifestSha256Option = "--reuse-dataset-manifest-sha256";
 const recoveryTimestampPolicyOption = "--recovery-timestamp-policy";
+const promotionV2RebuildOption = "--promotion-v2-rebuild";
+const promotionRebuildIdentityOption = "--promotion-rebuild-identity";
+const authoritativeInputSha256Option = "--authoritative-input-sha256";
+const sourcePublicationIdOption = "--source-publication-id";
+const sourceArtifactIdOption = "--source-artifact-id";
+const sourcePublicationProofSha256Option =
+  "--source-publication-proof-sha256";
 
 export type ProductionDayExecutionRequest =
   | { readonly mode: "live-production" }
@@ -42,6 +49,14 @@ export type ProductionDayExecutionRequest =
       readonly datasetManifestSha256: string;
       readonly timestampPolicy: ReaderSummaryTimestampPolicy;
       readonly allowHistoricalGitHubOmission: boolean;
+      readonly promotionRebuild?: Readonly<{
+        rebuildIdentity: string;
+        authoritativeInputDigest: string;
+        policyVersion: "reader_post_promotion.v2";
+        sourcePublicationId: string;
+        sourceArtifactId: string;
+        sourcePublicationProofSha256: string;
+      }>;
     }
   | {
       readonly mode: "historical-reuse";
@@ -64,6 +79,14 @@ export function resolveProductionDayExecutionRequest(
   const allowHistoricalGitHubOmission = args.includes(
     "--allow-historical-github-omission",
   );
+  const promotionV2Rebuild = args.includes(promotionV2RebuildOption);
+  const promotionOptions = [
+    promotionRebuildIdentityOption,
+    authoritativeInputSha256Option,
+    sourcePublicationIdOption,
+    sourceArtifactIdOption,
+    sourcePublicationProofSha256Option,
+  ];
   const suppliedRegenerationOption = [
     reuseCollectionArtifactOption,
     reuseCollectionArtifactSha256Option,
@@ -72,6 +95,8 @@ export function resolveProductionDayExecutionRequest(
     reuseDatasetManifestOption,
     reuseDatasetManifestSha256Option,
     recoveryTimestampPolicyOption,
+    promotionV2RebuildOption,
+    ...promotionOptions,
   ].some((option) => args.includes(option));
   const suppliedReuseOption = [
     reuseSourceReportOption,
@@ -95,6 +120,12 @@ export function resolveProductionDayExecutionRequest(
     ) {
       throw new Error(
         "Historical regeneration requires its bounded mode and fresh summary capture",
+      );
+    }
+    if (!promotionV2Rebuild &&
+        promotionOptions.some((option) => args.includes(option))) {
+      throw new Error(
+        "Promotion rebuild evidence requires --promotion-v2-rebuild",
       );
     }
     return {
@@ -124,13 +155,33 @@ export function resolveProductionDayExecutionRequest(
       ),
       timestampPolicy: optionalTimestampPolicy(args),
       allowHistoricalGitHubOmission,
+      ...(promotionV2Rebuild
+        ? { promotionRebuild: {
+            rebuildIdentity: requiredSha256(
+              args,
+              promotionRebuildIdentityOption,
+            ),
+            authoritativeInputDigest: requiredSha256(
+              args,
+              authoritativeInputSha256Option,
+            ),
+            policyVersion: "reader_post_promotion.v2",
+            sourcePublicationId: requiredUuid(args, sourcePublicationIdOption),
+            sourceArtifactId: requiredUuid(args, sourceArtifactIdOption),
+            sourcePublicationProofSha256: requiredSha256(
+              args,
+              sourcePublicationProofSha256Option,
+            ),
+          } }
+        : {}),
     };
   }
 
   if (!anyHistoricalIntent) {
     if (
       allowHistoricalGitHubOmission ||
-      args.includes(recoveryTimestampPolicyOption)
+      args.includes(recoveryTimestampPolicyOption) ||
+      promotionV2Rebuild || promotionOptions.some((option) => args.includes(option))
     ) {
       throw new Error(
         "Historical recovery options are restricted to historical regeneration",
@@ -259,6 +310,15 @@ function requiredSha256(args: readonly string[], name: string): string {
     throw new Error(`${name} must be a lowercase SHA-256 digest`);
   }
   return value;
+}
+
+function requiredUuid(args: readonly string[], name: string): string {
+  const value = requiredOption(args, name);
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu
+      .test(value)) {
+    throw new Error(`${name} must be a UUID`);
+  }
+  return value.toLocaleLowerCase("en-US");
 }
 
 function optionalTimestampPolicy(

@@ -24,6 +24,9 @@ grep -Fx \
   "$DAILY_RUN" >/dev/null
 grep -F 'scripts/run-reader-summary-production-day.ts \' "$DAILY_RUN" >/dev/null
 grep -F -- '--date "$requested_date" --update' "$DAILY_RUN" >/dev/null
+grep -F 'reader-summary-date-lock.sh \' "$DAILY_RUN" >/dev/null
+grep -F -- '--date-lock-dir "$public_dir/.reader-summary-date-locks"' \
+  "$DAILY_RUN" >/dev/null
 grep -F 'scripts/verify-reader-summary-production-day-publication.mjs' \
   "$DAILY_RUN" >/dev/null
 grep -F 'scripts/verify-reader-summary-production-day-state.mjs' \

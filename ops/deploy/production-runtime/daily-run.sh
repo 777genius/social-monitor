@@ -333,12 +333,19 @@ fi
       --timeout-ms "$timeout_ms" \
       -- bash "$READER_SUMMARY_DAILY_RUN_PAUSE_WORKER" '"$DATE_FLAG"'
   else
-    node scripts/run-with-timeout.mjs \
-      --timeout-ms "$timeout_ms" \
-      --node-options --max-old-space-size=1024 \
-      -- ./node_modules/.bin/ts-node -r tsconfig-paths/register \
-      scripts/run-reader-summary-production-day.ts \
-      --date "$requested_date" --update $historical_args
+    bash ops/deploy/production-runtime/reader-summary-date-lock.sh \
+      --date "$requested_date" \
+      --date-lock-dir "$public_dir/.reader-summary-date-locks" \
+      --fence-dir "$public_dir/.reader-summary-date-fences" \
+      --wait-seconds 7500 \
+      --token-output "$artifact_dir/date-fence-token.txt" \
+      -- \
+      node scripts/run-with-timeout.mjs \
+        --timeout-ms "$timeout_ms" \
+        --node-options --max-old-space-size=1024 \
+        -- ./node_modules/.bin/ts-node -r tsconfig-paths/register \
+        scripts/run-reader-summary-production-day.ts \
+        --date "$requested_date" --update $historical_args
   fi
 
   expected_date=$requested_date

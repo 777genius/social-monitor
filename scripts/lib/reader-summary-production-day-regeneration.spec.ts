@@ -12,6 +12,8 @@ import { loadHistoricalRegeneration } from "./reader-summary-production-day-rege
 import { sha256Hex } from "./reader-summary-production-day-provenance";
 import type { ProductionDayExecutionRequest } from "./reader-summary-production-day-reuse-provenance";
 import { buildReaderSummaryDayDatasetManifest } from "./reader-summary-day-dataset-manifest";
+import { historicalPromotionRebuildIdentity } from
+  "./reader-summary-promotion-v2-historical-classification";
 
 const tenantId = "33333333-3333-4333-8333-333333333333";
 const workspaceId = "44444444-4444-4444-8444-444444444444";
@@ -52,6 +54,34 @@ describe("historical production-day regeneration", () => {
         collectedRowCount: 20,
       },
     });
+  });
+
+  it("admits a complete successful source only through Promotion V2 rebuild authority", () => {
+    const request = writeFixtures({ promotionRebuild: true });
+
+    const loaded = loadHistoricalRegeneration(loadParams(request));
+
+    expect(loaded.provenance.promotionRebuild).toEqual(
+      request.promotionRebuild,
+    );
+    expect(loaded.verifiedCollectionStep.status).toBe("passed");
+  });
+
+  it("keeps ordinary historical recovery strict-failed admission unchanged", () => {
+    const request = writeFixtures({ successfulSourceWithoutPromotion: true });
+    expect(() => loadHistoricalRegeneration(loadParams(request))).toThrow(
+      "Source production attempt is not a strict failed run",
+    );
+  });
+
+  it("rejects a no-model source even with Promotion V2 rebuild authority", () => {
+    const request = writeFixtures({
+      promotionRebuild: true,
+      freshSummaryCapture: false,
+    });
+    expect(() => loadHistoricalRegeneration(loadParams(request))).toThrow(
+      "Promotion rebuild source attempt is not a complete production receipt",
+    );
   });
 
   it("fails closed when any approved content hash differs", () => {
@@ -178,6 +208,9 @@ describe("historical production-day regeneration", () => {
       readonly timestampPolicy?: "published_at" | "observed_at";
       readonly githubCount?: number;
       readonly allowHistoricalGitHubOmission?: boolean;
+      readonly promotionRebuild?: boolean;
+      readonly successfulSourceWithoutPromotion?: boolean;
+      readonly freshSummaryCapture?: boolean;
     } = {},
   ): Extract<
     ProductionDayExecutionRequest,
@@ -197,19 +230,37 @@ describe("historical production-day regeneration", () => {
       "x-twitter": 90,
     };
 
+    const successfulSource = options.promotionRebuild === true ||
+      options.successfulSourceWithoutPromotion === true;
     writeJson(sourceReportPath, {
       schemaVersion: 1,
       artifactFormat: "reader-summary-production-day-run-v1",
       generatedBy: "npm run run:reader-summary-production-day",
       requestedDate: fixtureDate,
       collectionDate: fixtureDate,
-      blockingPassed: false,
+      blockingPassed: successfulSource,
       model: {
         liveCollection: true,
+        freshSummaryCapture: options.freshSummaryCapture ?? true,
         allowDegraded: false,
         allowHistorical: false,
+        writesProductionData: true,
       },
-      steps: sourceAttemptSteps(options),
+      ...(successfulSource
+        ? { qualityGates: { allRequiredStepsPassed: true } }
+        : {}),
+      steps: successfulSource
+        ? [
+            "collect",
+            "collection-quality",
+            "durable-reader-summary",
+            "artifact-quality",
+            "quality-dashboard",
+            "top-read-ranking",
+            "source-quality-trace",
+            "clean-day-e2e",
+          ].map(passedStep)
+        : sourceAttemptSteps(options),
     });
     writeJson(collectionArtifactPath, {
       schemaVersion: 1,
@@ -284,6 +335,7 @@ describe("historical production-day regeneration", () => {
       chmodSync(path, 0o400);
     }
 
+    const authoritativeInputDigest = "7".repeat(64);
     return {
       mode: "historical-regeneration",
       sourceReportPath,
@@ -297,6 +349,22 @@ describe("historical production-day regeneration", () => {
       timestampPolicy: options.timestampPolicy ?? "published_at",
       allowHistoricalGitHubOmission:
         options.allowHistoricalGitHubOmission ?? false,
+      ...(options.promotionRebuild === true
+        ? {
+            promotionRebuild: {
+              rebuildIdentity: historicalPromotionRebuildIdentity({
+                date: fixtureDate,
+                authoritativeInputDigest,
+              }),
+              authoritativeInputDigest,
+              policyVersion: "reader_post_promotion.v2" as const,
+              sourcePublicationId:
+                "00000000-0000-4000-8000-000000000101",
+              sourceArtifactId: "00000000-0000-4000-8000-000000000101",
+              sourcePublicationProofSha256: "8".repeat(64),
+            },
+          }
+        : {}),
     };
   }
 });
