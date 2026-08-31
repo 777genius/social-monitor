@@ -77,8 +77,9 @@ import { assertImmutableRecoveryInputs } from "./lib/reader-summary-recovery-fil
 import { canonicalJsonSha256 } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
 import {
   createReaderSummaryDailyCaptureContext,
-  createReaderSummaryDailyPublicationExecutionWiring,
 } from "./lib/reader-summary-daily-publication-finalizer";
+import { createReaderSummaryDailyCapturePublicationWiring } from
+  "./lib/reader-summary-daily-story-relation-verifier";
 import {
   readerSummaryProductionDayAttemptIdentity,
   readerSummaryProductionDayIdempotencyKey,
@@ -290,12 +291,15 @@ async function main(): Promise<void> {
       summaryConnection,
     );
     const publicationWiring =
-      createReaderSummaryDailyPublicationExecutionWiring({
+      createReaderSummaryDailyCapturePublicationWiring({
         replay: dailyReplay,
         feedItems,
         summaryClient: summaryConnection,
         clock,
         attestationSink: executionAttestations,
+        summaryModelMode: modelMode,
+        env: process.env,
+        agentRuntimeClient,
       });
     const queue = new CapturingReaderSummaryJobQueue();
     const ids = new CryptoIdGenerator();
