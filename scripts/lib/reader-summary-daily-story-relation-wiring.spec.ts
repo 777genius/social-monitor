@@ -3,6 +3,8 @@ import { InMemoryFeedItemReadRepository } from
 import { FeedItem } from "@social-monitor/feed/domain";
 import { withTestExecutionAttestation } from
   "@social-monitor/summary/adapters/model/reader-summary-execution-attestation.spec-support";
+import type { VerifiedReaderSummaryExecutionAttestation } from
+  "@social-monitor/summary/adapters/model/reader-summary-execution-attestation";
 import {
   buildReaderSummaryCoveragePlan,
   buildReaderSummaryPeriod,
@@ -163,7 +165,9 @@ const selectDailyEvidence = async (input: {
   readonly secondTitle: string;
 }) => {
   const runtime = new FakeRuntime(input.sameStory, input.attested);
-  const record = jest.fn(async () => undefined);
+  const record = jest.fn(async (value: VerifiedReaderSummaryExecutionAttestation) => {
+    void value;
+  });
   const wiring = createReaderSummaryDailyCapturePublicationWiring({
     replay: null,
     feedItems: feedRepository(input.secondTitle),
