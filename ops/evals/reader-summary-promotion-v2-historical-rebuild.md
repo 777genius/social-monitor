@@ -177,27 +177,49 @@ dates still complete.
 ## Rollback before restoring the old V1-only image
 
 Do not restore the V1-only image while a V2 artifact is still active. Under the
-same reviewed lock environment above, consume the completed per-date migration
-receipt:
+same reviewed environment above, capture the hash-bound publication receipt
+immediately after a rolling current-day V2 canary. This path does not require a
+historical rebuild receipt:
+
+```sh
+npm run reader-summary:promotion-v2-canary-receipt -- \
+  --date 2026-08-31 \
+  --expected-v2-publication-id 00000000-0000-4000-8000-000000000000 \
+  --artifact-output /var/data/social-monitor/artifacts/promotion-v2-rebuild
+```
+
+`SYSTEM_DATABASE_URL` is mandatory and must be the system-runtime DSN. The
+command validates it before creating a pool or issuing any database action,
+then exports only the database-recorded receipt for the exact still-active V2
+publication. A missing admin/system DSN, missing durable receipt, stale pointer,
+wrong date or wrong publication id fails closed.
+
+Under the reviewed lock environment, consume either that canary receipt or a
+completed per-date historical migration receipt:
 
 ```sh
 npm run reader-summary:promotion-v2-rollback -- \
-  --receipt /var/data/social-monitor/artifacts/promotion-v2-rebuild/reader-summary-promotion-v2-execute-2026-08-30.receipt.v1.json \
+  --receipt /var/data/social-monitor/artifacts/promotion-v2-rebuild/2026-08-31/reader-summary-promotion-v2-canary-publication.receipt.v1.json \
   --artifact-output /var/data/social-monitor/artifacts/promotion-v2-rebuild
 ```
 
 The command requires a pre-existing canonical global lock plus canonical
 date-lock/fence roots; path/mount/inode mismatches fail closed. Under that lock,
 the publication-owner function verifies the exact active V2 tuple and proof,
-the recorded same-slot prior strict V1 tuple and lifecycle, and receipt replay
-state. It switches only the slot pointer, leaves both artifacts/publications as
-immutable history, records an immutable database rollback receipt, and rereads
-the restored artifact through the strict legacy V1 admission path. Stale,
-mixed, unknown, wrong-slot, wrong-proof and replayed inputs are refused.
+the recorded same-slot prior strict V1 tuple and complete proof, and receipt
+replay state. In one serializable publication-owner transaction it restores the
+prior V1 artifact from `SUPERSEDED` to its immutable publication semantic
+status, supersedes the active V2 artifact, switches the slot, preserves both
+artifact payloads and every publication ledger row, and records an immutable
+database rollback receipt. It then rereads the restored active `COMPLETED`
+artifact through the strict legacy V1 admission path. Stale, mixed, unknown,
+wrong-slot, wrong-proof, tampered and replayed inputs are refused.
 
 On a disposable PostgreSQL sandbox (never a real tenant database), run
 `npm run check:reader-summary-promotion-v2-rollback-postgres` when
 `READER_SUMMARY_PUBLICATION_TEST_ADMIN_DATABASE_URL` is available. This fixture
-executes the rollback function as the publication runtime, checks the receipt
-table's tenant/workspace RLS visibility and immutable trigger, and proves replay
-rejection while preserving both ledger rows.
+never skips when the admin URL is absent: it fails before any database action.
+The disposable fixture uses the real publisher for V1, then V2, consumes the
+database-recorded canary receipt as the publication runtime, verifies legacy V1
+readback, checks tenant/workspace RLS and immutable triggers, and proves stale,
+wrong-slot, tamper and replay rejection while preserving both ledger rows.

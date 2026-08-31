@@ -5,6 +5,8 @@ import { dirname, join, resolve } from "node:path";
 
 import { Pool, type PoolClient } from "pg";
 import { runWithTenantDatabaseAccess } from "@social-monitor/platform-persistence";
+import { canonicalizeReaderSummaryWeeklyJson } from
+  "@social-monitor/summary/domain";
 
 import { loadDotenvIfPresent } from "./lib/env-file";
 import { readerSummaryProductionDayScope } from
@@ -16,7 +18,7 @@ import {
 import { requiredHistoricalPromotionSystemDatabaseUrl } from
   "./lib/reader-summary-promotion-v2-system-database";
 
-type RollbackAuthority = Readonly<{
+export type RollbackAuthority = Readonly<{
   priorPublicationId: string;
   priorArtifactId: string;
   priorReportSha256: string;
@@ -42,6 +44,26 @@ export type MigrationReceipt = Readonly<{
   qualityGates: Readonly<Record<string, true | "not-exposed">>;
 }>;
 
+export type CanaryPublicationReceipt = Readonly<{
+  schemaVersion: 1;
+  format: "reader-summary-promotion-v2-canary-publication-receipt-v1";
+  date: string;
+  status: "published";
+  publishedAt: string;
+  outputIdentity: Readonly<{
+    artifactId: string;
+    publicationId: string;
+    reportSha256: string;
+    proofSha256: string;
+  }>;
+  rollbackAuthority: RollbackAuthority;
+  receiptSha256: string;
+}>;
+
+export type RollbackAuthorityReceipt =
+  | MigrationReceipt
+  | CanaryPublicationReceipt;
+
 if (require.main === module) {
   loadDotenvIfPresent(".env");
   void main().catch((error) => {
@@ -54,7 +76,7 @@ if (require.main === module) {
 async function main(): Promise<void> {
   const args = parseOptions(process.argv.slice(2));
   const receiptBytes = readFileSync(args.receiptPath);
-  const receipt = parseMigrationReceipt(receiptBytes);
+  const receipt = parseRollbackAuthorityReceipt(receiptBytes);
   if (!args.underLock) {
     const tokenPath = join(
       args.artifactOutput,
@@ -98,15 +120,21 @@ async function main(): Promise<void> {
     return;
   }
   const fenceToken = readFileSync(args.fenceTokenPath!, "utf8").trim();
+  const systemDatabaseUrl = requiredHistoricalPromotionSystemDatabaseUrl(
+    process.env,
+  );
   const pool = new Pool({
-    connectionString: requiredHistoricalPromotionSystemDatabaseUrl(process.env),
+    connectionString: systemDatabaseUrl,
     max: 1,
     connectionTimeoutMillis: 5_000,
   });
   try {
     const rollbackReceipt = await rollback(pool, {
       receipt,
-      migrationReceiptSha256: sha256(receiptBytes),
+      authorityReceiptSha256: receipt.format ===
+        "reader-summary-promotion-v2-canary-publication-receipt-v1"
+        ? receipt.receiptSha256
+        : sha256(receiptBytes),
       fenceToken,
       rolledBackAt: new Date().toISOString(),
     });
@@ -116,7 +144,7 @@ async function main(): Promise<void> {
       "reader-summary-promotion-v2-rollback.receipt.v1.json",
     );
     writeImmutable(outputPath, rollbackReceipt);
-    console.log(`historical_promotion_rollback_receipt=${outputPath}`);
+    console.log(`promotion_v2_rollback_receipt=${outputPath}`);
   } finally {
     await pool.end();
   }
@@ -125,8 +153,8 @@ async function main(): Promise<void> {
 const rollback = async (
   pool: Pool,
   input: {
-    receipt: MigrationReceipt;
-    migrationReceiptSha256: string;
+    receipt: RollbackAuthorityReceipt;
+    authorityReceiptSha256: string;
     fenceToken: string;
     rolledBackAt: string;
   },
@@ -143,7 +171,13 @@ const rollback = async (
       const [current, prior] = await Promise.all([
         publication(client, input.receipt.date,
           authority.expectedCurrentPublicationId),
-        publication(client, input.receipt.date, authority.priorPublicationId),
+        publication(
+          client,
+          input.receipt.date,
+          authority.priorPublicationId,
+          false,
+          false,
+        ),
       ]);
       if (verifyHistoricalPromotionArtifact(current).kind !== "valid-v2" ||
           verifyHistoricalPromotionArtifact(prior).kind !== "strict-v1") {
@@ -151,15 +185,16 @@ const rollback = async (
       }
       const result = await client.query<{ receipt: unknown }>(`
       select public."rollback_reader_summary_promotion_v2"(
-        $1::uuid,$2::uuid,$3::date,$4::text,$5::uuid,$6::uuid,$7::text,
-        $8::text,$9::uuid,$10::uuid,$11::text,$12::text,$13::text,
-        $14::timestamptz
+        $1::uuid,$2::uuid,$3::date,$4::text,$5::text,$6::uuid,$7::uuid,
+        $8::text,$9::text,$10::uuid,$11::uuid,$12::text,$13::text,
+        $14::text,$15::timestamptz
       ) as receipt
       `, [
         readerSummaryProductionDayScope.tenantId,
         readerSummaryProductionDayScope.workspaceId,
         input.receipt.date,
-        input.migrationReceiptSha256,
+        input.receipt.format,
+        input.authorityReceiptSha256,
         authority.expectedCurrentPublicationId,
         authority.expectedCurrentArtifactId,
         authority.expectedCurrentReportSha256,
@@ -176,6 +211,7 @@ const rollback = async (
         input.receipt.date,
         authority.priorPublicationId,
         true,
+        false,
       );
       if (verifyHistoricalPromotionArtifact(restored).kind !== "strict-v1") {
         throw new Error("Legacy V1 reader cannot consume restored publication");
@@ -196,6 +232,7 @@ const publication = async (
   date: string,
   publicationId: string,
   requireActive = false,
+  requireRequestedDate = true,
 ): Promise<HistoricalPromotionArtifactRecord> => {
   const result = await client.query<HistoricalPromotionArtifactRecord>(`
     select artifact.id::text as "artifactId",
@@ -214,9 +251,11 @@ const publication = async (
     ${requireActive ? "join reader_summary_publication_slots slot on slot.current_publication_id=publication.id" : ""}
     where publication.id=$1::uuid and publication.tenant_id=$2::uuid
       and publication.workspace_id=$3::uuid
-      and publication.requested_utc_date=$4::date
+      and ($4::date is null or publication.requested_utc_date=$4::date)
+      ${requireActive ? "and artifact.status='COMPLETED'" : ""}
   `, [publicationId, readerSummaryProductionDayScope.tenantId,
-    readerSummaryProductionDayScope.workspaceId, date]);
+    readerSummaryProductionDayScope.workspaceId,
+    requireRequestedDate ? date : null]);
   if (result.rows.length !== 1) {
     throw new Error("Promotion V2 rollback publication proof is missing");
   }
@@ -229,6 +268,19 @@ const preflightRole = async (client: PoolClient): Promise<void> => {
   if (result.rows[0]?.member !== true) {
     throw new Error("Promotion V2 rollback RLS system role preflight failed");
   }
+};
+
+export const parseRollbackAuthorityReceipt = (
+  bytes: Buffer,
+): RollbackAuthorityReceipt => {
+  const value = JSON.parse(bytes.toString("utf8")) as unknown;
+  if (!isRecord(value)) {
+    throw new Error("Promotion V2 rollback authority receipt is invalid");
+  }
+  return value.format ===
+    "reader-summary-promotion-v2-canary-publication-receipt-v1"
+    ? parseCanaryPublicationReceipt(value)
+    : parseMigrationReceipt(bytes);
 };
 
 export const parseMigrationReceipt = (bytes: Buffer): MigrationReceipt => {
@@ -274,6 +326,45 @@ export const parseMigrationReceipt = (bytes: Buffer): MigrationReceipt => {
     throw new Error("Promotion V2 rollback current tuple is inconsistent");
   }
   return value as MigrationReceipt;
+};
+
+const parseCanaryPublicationReceipt = (
+  value: Record<string, unknown>,
+): CanaryPublicationReceipt => {
+  if (value.schemaVersion !== 1 || value.format !==
+      "reader-summary-promotion-v2-canary-publication-receipt-v1" ||
+      value.status !== "published" ||
+      !/^\d{4}-\d{2}-\d{2}$/u.test(String(value.date ?? "")) ||
+      typeof value.publishedAt !== "string" ||
+      Number.isNaN(Date.parse(value.publishedAt)) ||
+      !isRecord(value.outputIdentity) ||
+      !isRecord(value.rollbackAuthority) ||
+      typeof value.receiptSha256 !== "string") {
+    throw new Error("Promotion V2 rollback canary receipt is incomplete");
+  }
+  requiredSha256(value.receiptSha256);
+  const { receiptSha256, ...body } = value;
+  if (canonicalizeReaderSummaryWeeklyJson(
+    body,
+    "Promotion V2 canary publication receipt",
+  ).sha256 !== receiptSha256) {
+    throw new Error("Promotion V2 rollback canary receipt hash is invalid");
+  }
+  const authority = value.rollbackAuthority as RollbackAuthority;
+  for (const id of [authority.priorPublicationId, authority.priorArtifactId,
+    authority.expectedCurrentPublicationId,
+    authority.expectedCurrentArtifactId]) requiredUuid(id);
+  for (const hash of [authority.priorReportSha256, authority.priorProofSha256,
+    authority.expectedCurrentReportSha256,
+    authority.expectedCurrentProofSha256]) requiredSha256(hash);
+  const output = value.outputIdentity;
+  if (output.publicationId !== authority.expectedCurrentPublicationId ||
+      output.artifactId !== authority.expectedCurrentArtifactId ||
+      output.reportSha256 !== authority.expectedCurrentReportSha256 ||
+      output.proofSha256 !== authority.expectedCurrentProofSha256) {
+    throw new Error("Promotion V2 rollback current tuple is inconsistent");
+  }
+  return value as CanaryPublicationReceipt;
 };
 
 const parseOptions = (args: readonly string[]) => {

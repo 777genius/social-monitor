@@ -271,6 +271,9 @@ export const runReaderSummaryPublicationPostgresContract = async (
             auditorClient: auditor,
             runtimeClient: first,
             runtimeRole,
+            createFixture: (status, day, overrides) =>
+              createRunningFixture(first, status, day, overrides),
+            publish: (payload) => publish(first, payload),
           });
           return;
         }

@@ -1,7 +1,12 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { parseMigrationReceipt } from
+import { canonicalizeReaderSummaryWeeklyJson } from
+  "@social-monitor/summary/domain";
+import {
+  parseMigrationReceipt,
+  parseRollbackAuthorityReceipt,
+} from
   "../run-reader-summary-promotion-v2-rollback";
 
 const migration = readFileSync(join(
@@ -10,16 +15,21 @@ const migration = readFileSync(join(
 ), "utf8");
 
 describe("Promotion V2 publication-owner rollback", () => {
-  it("is atomic, replay-proof and preserves both immutable artifacts", () => {
+  it("atomically restores the superseded V1 lifecycle and preserves payloads", () => {
     expect(migration).toContain(
       'CREATE FUNCTION public."rollback_reader_summary_promotion_v2"',
     );
     expect(migration).toContain("FOR UPDATE");
     expect(migration).toContain("stale or replayed");
     expect(migration).toContain("current_publication_id\" = prior_v1_publication_id");
-    expect(migration).not.toMatch(
-      /UPDATE public\."reader_summary_artifacts"|DELETE FROM public\."reader_summary_/u,
+    expect(migration).toContain(
+      "v_prior_artifact.\"status\" IS DISTINCT FROM 'SUPERSEDED'",
     );
+    expect(migration).toContain(
+      "SET \"status\" = v_prior.\"semantic_status\"",
+    );
+    expect(migration).toContain("SET \"status\" = 'SUPERSEDED'");
+    expect(migration).not.toMatch(/DELETE FROM public\."reader_summary_/u);
   });
 
   it("admits only a complete V2 tuple and a strict readable V1 tuple", () => {
@@ -29,6 +39,9 @@ describe("Promotion V2 publication-owner rollback", () => {
     expect(migration).toContain("reader_post_promotion_attestation.v1");
     expect(migration).toContain("reader_post_promotion_digest.sha256.v1");
     expect(migration).toContain("legacyV1ReaderVerified");
+    expect(migration).toContain(
+      "reader_summary_promotion_v2_legacy_proof_matches",
+    );
   });
 
   it("keeps mutation authority narrow and receipts immutable", () => {
@@ -37,6 +50,53 @@ describe("Promotion V2 publication-owner rollback", () => {
     );
     expect(migration).toContain("rollback receipts are immutable");
     expect(migration).toContain("FORCE ROW LEVEL SECURITY");
+  });
+
+  it("records and admits a hash-bound pre-migration canary receipt", () => {
+    expect(migration).toContain(
+      'CREATE TRIGGER "reader_summary_promotion_v2_canary_receipt_recorded"',
+    );
+    expect(migration).toContain(
+      'reader-summary-promotion-v2-canary-publication-receipt-v1',
+    );
+    expect(migration).toContain(
+      "Promotion V2 rollback canary publication receipt mismatch",
+    );
+    const receipt = canaryReceipt();
+    expect(parseRollbackAuthorityReceipt(Buffer.from(JSON.stringify(receipt))))
+      .toMatchObject({ format: receipt.format, status: "published" });
+    expect(() => parseRollbackAuthorityReceipt(Buffer.from(JSON.stringify({
+      ...receipt,
+      outputIdentity: {
+        ...receipt.outputIdentity,
+        reportSha256: "f".repeat(64),
+      },
+    })))).toThrow("canary receipt hash is invalid");
+  });
+
+  it("rejects unknown and hash-valid mixed canary authority", () => {
+    const receipt = canaryReceipt();
+    expect(() => parseRollbackAuthorityReceipt(Buffer.from(JSON.stringify({
+      ...receipt,
+      format: "reader-summary-promotion-v2-unknown-receipt-v1",
+    })))).toThrow("migration receipt is incomplete");
+
+    const { receiptSha256: _receiptSha256, ...body } = receipt;
+    void _receiptSha256;
+    const mixedBody = {
+      ...body,
+      outputIdentity: {
+        ...body.outputIdentity,
+        publicationId: "00000000-0000-4000-8000-000000000999",
+      },
+    };
+    const mixed = {
+      ...mixedBody,
+      receiptSha256: canonicalizeReaderSummaryWeeklyJson(mixedBody).sha256,
+    };
+    expect(() => parseRollbackAuthorityReceipt(Buffer.from(
+      JSON.stringify(mixed),
+    ))).toThrow("current tuple is inconsistent");
   });
 
   it("rejects receipts whose mandatory verification gates are not proven", () => {
@@ -84,3 +144,20 @@ const completedReceipt = () => ({
     siteFacingContractVerified: "not-exposed",
   },
 });
+
+const canaryReceipt = () => {
+  const historical = completedReceipt();
+  const body = {
+    schemaVersion: 1,
+    format: "reader-summary-promotion-v2-canary-publication-receipt-v1",
+    date: historical.date,
+    status: "published",
+    publishedAt: "2026-08-01T12:00:00.000Z",
+    outputIdentity: historical.outputIdentity,
+    rollbackAuthority: historical.rollbackAuthority,
+  } as const;
+  return {
+    ...body,
+    receiptSha256: canonicalizeReaderSummaryWeeklyJson(body).sha256,
+  };
+};

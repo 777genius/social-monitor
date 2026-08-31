@@ -21,7 +21,7 @@ export type ReaderSummaryPublicationGitHubEvidenceMode =
   | "ordinary_not_required"
   | "historical_unavailable";
 export type EvidenceFixtureOverrides = Readonly<{
-  providerEvidence?: "default" | "none" | "rss";
+  providerEvidence?: "default" | "none" | "reddit" | "rss";
   githubEvidenceMode?: ReaderSummaryPublicationGitHubEvidenceMode;
   publicationInterestId?: string;
 }>;
@@ -51,9 +51,13 @@ export const createReaderSummaryPublicationFixtureAuthority = async (params: {
   }
   const citations =
     params.overrides?.providerEvidence === "rss" ||
+    params.overrides?.providerEvidence === "reddit" ||
     (params.overrides?.providerEvidence !== "none" &&
       params.status === "COMPLETED")
-      ? [await createRssCitation(params)]
+      ? [await createOrdinaryCitation(
+          params,
+          params.overrides?.providerEvidence === "reddit" ? "reddit" : "rss",
+        )]
       : [];
   const common = {
     schemaVersion: "reader_summary.github_projection.v1",
@@ -614,8 +618,9 @@ export const sha256 = (value: string): string =>
 type FixtureAuthorityParams = Parameters<
   typeof createReaderSummaryPublicationFixtureAuthority
 >[0];
-const createRssCitation = async (
+const createOrdinaryCitation = async (
   params: FixtureAuthorityParams,
+  providerKey: "reddit" | "rss",
 ): Promise<Readonly<Record<string, unknown>>> => {
   const sourceItemId = randomUUID();
   const feedItemId = randomUUID();
@@ -627,12 +632,12 @@ const createRssCitation = async (
        provider_item_id, canonical_url, title, body, published_at,
        content_hash, observed_at, metadata
      ) VALUES (
-       $1, $2, $3, $4, 'rss', $5, $6, 'Publication evidence',
+       $1, $2, $3, $4, $9, $5, $6, 'Publication evidence',
        'Exact provider evidence body.', $7, $8, $7, '{}'::jsonb
      )`,
     [sourceItemId, params.tenantId, params.workspaceId, sourceBindingId,
       `publication-provider:${sourceItemId}`, canonicalUrl, params.requestedAt,
-      "a".repeat(64)],
+      "a".repeat(64), providerKey],
   );
   await params.client.query(
     `INSERT INTO feed_items (
@@ -640,20 +645,20 @@ const createRssCitation = async (
        source_binding_id, provider_key, dedupe_key, canonical_url, title,
        body_preview, published_at, observed_at, updated_at
      ) VALUES (
-       $1, $2, $3, $4, $5, $6, 'rss', $7, $8,
+       $1, $2, $3, $4, $5, $6, $10, $7, $8,
        'Publication evidence', 'Exact provider evidence body.',
        $9, $9, $9
      )`,
     [feedItemId, params.tenantId, params.workspaceId, randomUUID(),
       sourceItemId, sourceBindingId, `publication-feed:${feedItemId}`,
-      canonicalUrl, params.requestedAt],
+      canonicalUrl, params.requestedAt, providerKey],
   );
   return {
     citationId: randomUUID(),
     field: "title",
     feedItemId,
     sourceItemId,
-    providerKey: "rss",
+    providerKey,
     canonicalUrl,
   };
 };
