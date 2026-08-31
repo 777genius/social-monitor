@@ -14,8 +14,23 @@ describe("historical Reader Promotion V2 CLI", () => {
       dates: ["2026-08-01", "2026-08-02"],
       batchSize: 2,
       dryRun: true,
+      prepare: false,
       resume: false,
       artifactOutput: resolve("artifacts/rebuild"),
+      timestampPolicy: "published_at",
+    });
+  });
+
+  it("parses read-only active-publication preparation explicitly", () => {
+    expect(parseHistoricalPromotionCliOptions([
+      "--prepare",
+      "--dates", "2026-08-01",
+      "--timestamp-policy", "observed_at",
+      "--artifact-output", "/tmp/prepared",
+    ])).toMatchObject({
+      prepare: true,
+      dryRun: true,
+      timestampPolicy: "observed_at",
     });
   });
 

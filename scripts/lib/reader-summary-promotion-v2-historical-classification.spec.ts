@@ -57,7 +57,7 @@ describe("historical Reader Promotion V2 classification", () => {
     });
 
     expect(classification.kind).toBe(scenario.expected);
-    expect(classification.authoritativeInputDigest).toMatch(/^[0-9a-f]{64}$/u);
+    expect(classification.authorityInspectionDigest).toMatch(/^[0-9a-f]{64}$/u);
   });
 
   it("records current-authority and malformed-provider limitations honestly", () => {

@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdirSync, readFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 import type {
@@ -8,6 +8,12 @@ import type {
   HistoricalPromotionMutation,
   HistoricalPromotionMutationOutcome,
 } from "./reader-summary-promotion-v2-historical-runner";
+import {
+  historicalPromotionRevalidationFailurePathEnv,
+  historicalPromotionUnderLockDriftReason,
+  historicalPromotionUnderLockUnavailableReason,
+  type HistoricalPromotionUnderLockReason,
+} from "./reader-summary-promotion-v2-input-guard";
 
 export class ProductionDayHistoricalPromotionMutation
   implements HistoricalPromotionMutation {
@@ -35,8 +41,15 @@ export class ProductionDayHistoricalPromotionMutation
       dateOutput,
       `date-fence-token-${randomUUID()}.txt`,
     );
+    const revalidationFailurePath = join(
+      dateOutput,
+      "under-lock-input-revalidation-failure.v1.json",
+    );
     mkdirSync(dateOutput, { recursive: true, mode: 0o700 });
-    const command = productionDayCommand(input);
+    rmSync(revalidationFailurePath, { force: true });
+    const command = lockedPreflightCommand(
+      historicalPromotionProductionDayCommand(input),
+    );
     const status = await spawnExitCode(
       "bash",
       [
@@ -63,14 +76,28 @@ export class ProductionDayHistoricalPromotionMutation
         ...this.input.environment,
         READER_SUMMARY_PRODUCTION_DAY_ARTIFACT_DIR: captureOutput,
         READER_SUMMARY_PRODUCTION_DAY_REPORT_DIR: reportOutput,
+        DURABLE_READER_SUMMARY_DATASET_MANIFEST_PATH:
+          input.bundle.datasetManifestPath,
+        DURABLE_READER_SUMMARY_DATASET_MANIFEST_SHA256:
+          input.bundle.datasetManifestSha256,
+        DURABLE_READER_SUMMARY_RECOVERY_TIMESTAMP_POLICY:
+          input.bundle.timestampPolicy,
+        [historicalPromotionRevalidationFailurePathEnv]:
+          revalidationFailurePath,
         DURABLE_READER_SUMMARY_PROMOTION_REBUILD_IDENTITY:
           input.rebuildIdentity,
         DURABLE_READER_SUMMARY_PROMOTION_POLICY_VERSION:
           input.classification.policyVersion,
+        DURABLE_READER_SUMMARY_PROMOTION_SOURCE_AUTHORITY_KIND:
+          input.bundle.sourceEvidence.kind,
         DURABLE_READER_SUMMARY_AUTHORITATIVE_INPUT_SHA256:
-          input.classification.authoritativeInputDigest,
+          input.bundle.authoritativeInputDigest,
         DURABLE_READER_SUMMARY_SOURCE_PUBLICATION_ID:
           input.bundle.sourcePublicationId,
+        DURABLE_READER_SUMMARY_SOURCE_ARTIFACT_ID:
+          input.bundle.sourceArtifactId,
+        DURABLE_READER_SUMMARY_SOURCE_PUBLICATION_REPORT_SHA256:
+          input.bundle.sourcePublicationReportSha256,
         DURABLE_READER_SUMMARY_SOURCE_PUBLICATION_PROOF_SHA256:
           input.bundle.sourcePublicationProofSha256,
         ...(input.bundle.historicalGitHubOmissionReason === undefined
@@ -82,6 +109,16 @@ export class ProductionDayHistoricalPromotionMutation
       },
     );
     const fenceToken = readFenceToken(fenceTokenPath);
+    const underLockFailure = readUnderLockFailure(revalidationFailurePath);
+    if (underLockFailure !== null) {
+      return {
+        status: "pending",
+        fenceToken,
+        reason: underLockFailure,
+        retrySafety: "safe-before-paid-operation",
+        pointerSwitchAttempted: false,
+      };
+    }
     const state = await this.input.durableState.reconcile(
       input.date,
       input.rebuildIdentity,
@@ -136,7 +173,7 @@ export class ProductionDayHistoricalPromotionMutation
   }
 }
 
-const productionDayCommand = (
+export const historicalPromotionProductionDayCommand = (
   input: Parameters<HistoricalPromotionMutation["rebuild"]>[0],
 ): readonly string[] => [
   process.execPath,
@@ -157,26 +194,34 @@ const productionDayCommand = (
   "--promotion-v2-rebuild",
   "--promotion-rebuild-identity",
   input.rebuildIdentity,
+  "--promotion-source-authority-kind",
+  input.bundle.sourceEvidence.kind,
   "--authoritative-input-sha256",
-  input.classification.authoritativeInputDigest,
+  input.bundle.authoritativeInputDigest,
   "--source-publication-id",
   input.bundle.sourcePublicationId,
   "--source-artifact-id",
   input.bundle.sourceArtifactId,
+  "--source-publication-report-sha256",
+  input.bundle.sourcePublicationReportSha256,
   "--source-publication-proof-sha256",
   input.bundle.sourcePublicationProofSha256,
-  "--reuse-source-report",
-  input.bundle.sourceReportPath,
-  "--reuse-source-artifact-sha256",
-  input.bundle.sourceReportSha256,
-  "--reuse-collection-artifact",
-  input.bundle.collectionArtifactPath,
-  "--reuse-collection-artifact-sha256",
-  input.bundle.collectionArtifactSha256,
-  "--reuse-collection-quality-report",
-  input.bundle.collectionQualityReportPath,
-  "--reuse-collection-quality-report-sha256",
-  input.bundle.collectionQualityReportSha256,
+  ...(input.bundle.sourceEvidence.kind === "active-database-publication"
+    ? []
+    : [
+        "--reuse-source-report",
+        input.bundle.sourceEvidence.sourceReportPath,
+        "--reuse-source-artifact-sha256",
+        input.bundle.sourceEvidence.sourceReportSha256,
+        "--reuse-collection-artifact",
+        input.bundle.sourceEvidence.collectionArtifactPath,
+        "--reuse-collection-artifact-sha256",
+        input.bundle.sourceEvidence.collectionArtifactSha256,
+        "--reuse-collection-quality-report",
+        input.bundle.sourceEvidence.collectionQualityReportPath,
+        "--reuse-collection-quality-report-sha256",
+        input.bundle.sourceEvidence.collectionQualityReportSha256,
+      ]),
   "--reuse-dataset-manifest",
   input.bundle.datasetManifestPath,
   "--reuse-dataset-manifest-sha256",
@@ -186,6 +231,27 @@ const productionDayCommand = (
   ...(input.bundle.allowHistoricalGitHubOmission
     ? ["--allow-historical-github-omission"]
     : []),
+];
+
+const lockedPreflightCommand = (
+  productionDayCommand: readonly string[],
+): readonly string[] => [
+  process.execPath,
+  resolve(process.cwd(), "scripts/run-with-timeout.mjs"),
+  "--timeout-ms",
+  "11760000",
+  "--node-options",
+  "--max-old-space-size=1024",
+  "--",
+  resolve(process.cwd(), "node_modules/.bin/ts-node"),
+  "-r",
+  "tsconfig-paths/register",
+  resolve(
+    process.cwd(),
+    "scripts/run-reader-summary-promotion-v2-locked-date.ts",
+  ),
+  "--",
+  ...productionDayCommand,
 ];
 
 const spawnExitCode = (
@@ -208,4 +274,26 @@ const readFenceToken = (path: string): string => {
     throw new Error("Historical promotion date fence token is invalid");
   }
   return value;
+};
+
+const readUnderLockFailure = (
+  path: string,
+): HistoricalPromotionUnderLockReason | null => {
+  let value: unknown;
+  try {
+    value = JSON.parse(readFileSync(path, "utf8")) as unknown;
+  } catch (error) {
+    if (typeof error === "object" && error !== null && "code" in error &&
+        error.code === "ENOENT") {
+      return null;
+    }
+    throw new Error("Historical promotion under-lock marker is invalid");
+  }
+  if (typeof value !== "object" || value === null || Array.isArray(value) ||
+      !("reason" in value) ||
+      (value.reason !== historicalPromotionUnderLockDriftReason &&
+        value.reason !== historicalPromotionUnderLockUnavailableReason)) {
+    throw new Error("Historical promotion under-lock marker is invalid");
+  }
+  return value.reason;
 };

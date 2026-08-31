@@ -29,9 +29,12 @@ const reuseDatasetManifestSha256Option = "--reuse-dataset-manifest-sha256";
 const recoveryTimestampPolicyOption = "--recovery-timestamp-policy";
 const promotionV2RebuildOption = "--promotion-v2-rebuild";
 const promotionRebuildIdentityOption = "--promotion-rebuild-identity";
+const promotionSourceAuthorityKindOption = "--promotion-source-authority-kind";
 const authoritativeInputSha256Option = "--authoritative-input-sha256";
 const sourcePublicationIdOption = "--source-publication-id";
 const sourceArtifactIdOption = "--source-artifact-id";
+const sourcePublicationReportSha256Option =
+  "--source-publication-report-sha256";
 const sourcePublicationProofSha256Option =
   "--source-publication-proof-sha256";
 
@@ -39,12 +42,17 @@ export type ProductionDayExecutionRequest =
   | { readonly mode: "live-production" }
   | {
       readonly mode: "historical-regeneration";
-      readonly sourceReportPath: string;
-      readonly sourceReportSha256: string;
-      readonly collectionArtifactPath: string;
-      readonly collectionArtifactSha256: string;
-      readonly collectionQualityReportPath: string;
-      readonly collectionQualityReportSha256: string;
+      readonly sourceEvidence:
+        | Readonly<{ kind: "active-database-publication" }>
+        | Readonly<{
+            kind: "preserved-production-day-report";
+            sourceReportPath: string;
+            sourceReportSha256: string;
+            collectionArtifactPath: string;
+            collectionArtifactSha256: string;
+            collectionQualityReportPath: string;
+            collectionQualityReportSha256: string;
+          }>;
       readonly datasetManifestPath: string;
       readonly datasetManifestSha256: string;
       readonly timestampPolicy: ReaderSummaryTimestampPolicy;
@@ -53,8 +61,12 @@ export type ProductionDayExecutionRequest =
         rebuildIdentity: string;
         authoritativeInputDigest: string;
         policyVersion: "reader_post_promotion.v2";
+        sourceAuthorityKind:
+          | "active-database-publication"
+          | "preserved-production-day-report";
         sourcePublicationId: string;
         sourceArtifactId: string;
+        sourcePublicationReportSha256: string;
         sourcePublicationProofSha256: string;
       }>;
     }
@@ -66,6 +78,11 @@ export type ProductionDayExecutionRequest =
       readonly evidenceArtifactId: string;
       readonly evidenceArtifactSha256: string;
     };
+
+type HistoricalRegenerationExecutionRequest = Extract<
+  ProductionDayExecutionRequest,
+  { readonly mode: "historical-regeneration" }
+>;
 
 export function resolveProductionDayExecutionRequest(
   args: readonly string[],
@@ -82,9 +99,11 @@ export function resolveProductionDayExecutionRequest(
   const promotionV2Rebuild = args.includes(promotionV2RebuildOption);
   const promotionOptions = [
     promotionRebuildIdentityOption,
+    promotionSourceAuthorityKindOption,
     authoritativeInputSha256Option,
     sourcePublicationIdOption,
     sourceArtifactIdOption,
+    sourcePublicationReportSha256Option,
     sourcePublicationProofSha256Option,
   ];
   const suppliedRegenerationOption = [
@@ -128,26 +147,15 @@ export function resolveProductionDayExecutionRequest(
         "Promotion rebuild evidence requires --promotion-v2-rebuild",
       );
     }
+    const sourceAuthorityKind = promotionV2Rebuild
+      ? requiredPromotionSourceAuthorityKind(args)
+      : "preserved-production-day-report";
+    const sourceEvidence = sourceAuthorityKind === "active-database-publication"
+      ? activePublicationSourceEvidence(args)
+      : preservedProductionDaySourceEvidence(args);
     return {
       mode: "historical-regeneration",
-      sourceReportPath: requiredOption(args, reuseSourceReportOption),
-      sourceReportSha256: requiredSha256(args, reuseSourceArtifactSha256Option),
-      collectionArtifactPath: requiredOption(
-        args,
-        reuseCollectionArtifactOption,
-      ),
-      collectionArtifactSha256: requiredSha256(
-        args,
-        reuseCollectionArtifactSha256Option,
-      ),
-      collectionQualityReportPath: requiredOption(
-        args,
-        reuseCollectionQualityReportOption,
-      ),
-      collectionQualityReportSha256: requiredSha256(
-        args,
-        reuseCollectionQualityReportSha256Option,
-      ),
+      sourceEvidence,
       datasetManifestPath: requiredOption(args, reuseDatasetManifestOption),
       datasetManifestSha256: requiredSha256(
         args,
@@ -166,8 +174,13 @@ export function resolveProductionDayExecutionRequest(
               authoritativeInputSha256Option,
             ),
             policyVersion: "reader_post_promotion.v2",
+            sourceAuthorityKind,
             sourcePublicationId: requiredUuid(args, sourcePublicationIdOption),
             sourceArtifactId: requiredUuid(args, sourceArtifactIdOption),
+            sourcePublicationReportSha256: requiredSha256(
+              args,
+              sourcePublicationReportSha256Option,
+            ),
             sourcePublicationProofSha256: requiredSha256(
               args,
               sourcePublicationProofSha256Option,
@@ -207,6 +220,65 @@ export function resolveProductionDayExecutionRequest(
     ),
   };
 }
+
+const activePublicationSourceEvidence = (
+  args: readonly string[],
+): Extract<
+  HistoricalRegenerationExecutionRequest["sourceEvidence"],
+  { kind: "active-database-publication" }
+> => {
+  const forbidden = [
+    reuseSourceReportOption,
+    reuseSourceArtifactSha256Option,
+    reuseCollectionArtifactOption,
+    reuseCollectionArtifactSha256Option,
+    reuseCollectionQualityReportOption,
+    reuseCollectionQualityReportSha256Option,
+  ];
+  if (forbidden.some((option) => args.includes(option))) {
+    throw new Error(
+      "Active publication admission cannot claim preserved production reports",
+    );
+  }
+  return { kind: "active-database-publication" };
+};
+
+const preservedProductionDaySourceEvidence = (
+  args: readonly string[],
+): Extract<
+  HistoricalRegenerationExecutionRequest["sourceEvidence"],
+  { kind: "preserved-production-day-report" }
+> => ({
+  kind: "preserved-production-day-report",
+  sourceReportPath: requiredOption(args, reuseSourceReportOption),
+  sourceReportSha256: requiredSha256(args, reuseSourceArtifactSha256Option),
+  collectionArtifactPath: requiredOption(args, reuseCollectionArtifactOption),
+  collectionArtifactSha256: requiredSha256(
+    args,
+    reuseCollectionArtifactSha256Option,
+  ),
+  collectionQualityReportPath: requiredOption(
+    args,
+    reuseCollectionQualityReportOption,
+  ),
+  collectionQualityReportSha256: requiredSha256(
+    args,
+    reuseCollectionQualityReportSha256Option,
+  ),
+});
+
+const requiredPromotionSourceAuthorityKind = (
+  args: readonly string[],
+): "active-database-publication" | "preserved-production-day-report" => {
+  const value = requiredOption(args, promotionSourceAuthorityKindOption);
+  if (value !== "active-database-publication" &&
+      value !== "preserved-production-day-report") {
+    throw new Error(
+      `${promotionSourceAuthorityKindOption} is invalid`,
+    );
+  }
+  return value;
+};
 
 export function loadHistoricalReuseProvenance(params: {
   readonly request: Extract<

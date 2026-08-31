@@ -13,24 +13,25 @@ current UTC date or either legacy weekly publication slot.
 ## Evidence manifest
 
 `--artifact-manifest` points to immutable JSON with this shape. Paths may be
-absolute or relative to the manifest. Every file digest is verified before a
-date can mutate.
+absolute or relative to the manifest. Every file digest and the canonical
+input digest are recomputed before a date can mutate.
 
 ```json
 {
-  "schemaVersion": 1,
-  "format": "reader-summary-promotion-v2-historical-evidence-manifest-v1",
+  "schemaVersion": 2,
+  "format": "reader-summary-promotion-v2-historical-evidence-manifest-v2",
   "policyVersion": "reader_post_promotion.v2",
   "entries": [
     {
       "date": "2026-08-30",
-      "expectedAuthoritativeInputDigest": "<64 lowercase hex>",
-      "sourcePublicationId": "<active V1 publication UUID>",
-      "sourceArtifactId": "<active V1 artifact UUID>",
-      "sourcePublicationProofSha256": "<64 lowercase hex>",
-      "sourceReport": { "path": "2026-08-30/source-report.json", "sha256": "<64 lowercase hex>" },
-      "collectionArtifact": { "path": "2026-08-30/collection.json", "sha256": "<64 lowercase hex>" },
-      "collectionQualityReport": { "path": "2026-08-30/quality.json", "sha256": "<64 lowercase hex>" },
+      "authoritativeInputDigest": "<64 lowercase hex>",
+      "sourceAuthority": {
+        "kind": "active-database-publication",
+        "publicationId": "<active V1 publication UUID>",
+        "artifactId": "<active V1 artifact UUID>",
+        "reportSha256": "<64 lowercase hex>",
+        "proofSha256": "<64 lowercase hex>"
+      },
       "datasetManifest": { "path": "2026-08-30/dataset.json", "sha256": "<64 lowercase hex>" },
       "timestampPolicy": "published_at",
       "allowHistoricalGitHubOmission": false
@@ -39,11 +40,48 @@ date can mutate.
 }
 ```
 
-The source report must be a complete successful production-day receipt with a
-fresh production model capture. The explicit Promotion V2 rebuild admission
-does not weaken the existing strict-failed historical recovery path. The source
-publication UUID, artifact UUID, and publication proof hash must still identify
-the active V1 publication when execution starts.
+The active-database authority is the V2-only admission for a closed date whose
+posts and active publication artifact/proof remain in the database but whose
+old successful production-day report was not preserved. It does not invent an
+old run or weaken the existing recovery validator. A legacy manifest may use
+`kind: "preserved-production-day-report"` and additionally provide hash-bound
+`sourceReport`, `collectionArtifact`, and `collectionQualityReport` files; that
+path still requires the complete successful production-day receipt.
+
+The canonical semantic digest binds the date, `reader_post_promotion.v2`, active
+source publication/artifact/report/proof, the dataset aggregate and constituent
+hashes (feed rows, source rows/provider metadata, and GitHub eligibility), row
+counts/provider counts, the timestamp/GitHub policies, and any legacy supporting
+evidence-file hashes. The evidence manifest separately binds the exact dataset
+manifest file SHA for tamper detection and under-lock revalidation. Operational
+capture metadata such as `generatedAt` and that resulting file SHA are excluded
+from semantic identity, so recapturing unchanged data does not create a new
+rebuild identity. Execution revalidates the dataset and active source under the
+real global/date lock before starting the production-day child. The
+transactional dataset guard still checks again immediately before publication.
+
+## Read-only preparation for dates without a preserved report
+
+Use `--prepare` to classify the explicit closed dates, read the active daily
+publication/artifact/proof, and capture a fresh immutable canonical dataset.
+This mode performs database reads only and never invokes a model, creates a
+durable job, acquires a mutation lock, or changes a pointer:
+
+```sh
+npm run reader-summary:promotion-v2-historical-rebuild -- \
+  --prepare \
+  --dates 2026-08-29,2026-08-30 \
+  --batch-size 2 \
+  --artifact-output /var/data/social-monitor/artifacts/promotion-v2-input
+```
+
+Review the generated preparation receipt and
+`reader-summary-promotion-v2-historical-evidence-manifest.v2.json`. Use a
+separate `--artifact-output` directory for dry-run/execute receipts. Preparation
+reports missing posts as unrebuildable and missing publication/proof/dataset
+evidence as pending; an absent old report alone is not classified as absent
+data. The fresh dataset manifest expires after 30 minutes, so prepare again if
+review cannot finish within that window.
 
 For a date with no preserved GitHub rows, set
 `allowHistoricalGitHubOmission` to `true` and include a privacy-safe
@@ -58,7 +96,7 @@ npm run reader-summary:promotion-v2-historical-rebuild -- \
   --dates 2026-08-29,2026-08-30 \
   --batch-size 2 \
   --artifact-output /var/data/social-monitor/artifacts/promotion-v2-rebuild \
-  --artifact-manifest /var/data/social-monitor/artifacts/promotion-v2-input/manifest.v1.json
+  --artifact-manifest /var/data/social-monitor/artifacts/promotion-v2-input/reader-summary-promotion-v2-historical-evidence-manifest.v2.json
 ```
 
 Omitting `--artifact-manifest` is permitted for classification-only dry-runs;
@@ -92,7 +130,7 @@ npm run reader-summary:promotion-v2-historical-rebuild -- \
   --dates 2026-08-29,2026-08-30 \
   --batch-size 2 \
   --artifact-output /var/data/social-monitor/artifacts/promotion-v2-rebuild \
-  --artifact-manifest /var/data/social-monitor/artifacts/promotion-v2-input/manifest.v1.json
+  --artifact-manifest /var/data/social-monitor/artifacts/promotion-v2-input/reader-summary-promotion-v2-historical-evidence-manifest.v2.json
 ```
 
 If API reads require an API key, put its raw value only in
@@ -104,9 +142,12 @@ operation.
 
 At most two dates are classified concurrently. Mutating rebuilds also acquire
 the actual daily-run admission lock, then the shared per-date lock and monotonic
-fencing token. This excludes the real daily runner and protects its remaining
-fixed eval outputs. Date-specific production-day and capture outputs are placed
-under `<artifact-output>/<date>/`.
+fencing token. Under that lock the child re-reads the immutable manifest,
+recomputes the current database dataset, and verifies the active publication,
+artifact, report hash, and proof hash. Drift returns
+`authoritative_input_drift_under_lock` before model/mutation/pointer work;
+unavailable revalidation is also fail-closed. Date-specific production-day and
+capture outputs are placed under `<artifact-output>/<date>/`.
 
 Each date receipt records the authoritative input digest, rebuild identity,
 policy version, classification counts and limitations, fencing token, durable

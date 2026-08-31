@@ -12,32 +12,55 @@ import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import {
   readerSummaryPromotionV2HistoricalPolicyVersion,
 } from "./reader-summary-promotion-v2-historical-classification";
+import { parseReaderSummaryDayDatasetManifest } from
+  "./reader-summary-day-dataset-manifest";
+import { buildHistoricalPromotionCanonicalInput } from
+  "./reader-summary-promotion-v2-historical-input";
+import { readerSummaryProductionDayScope } from
+  "./reader-summary-production-day-scope";
 import type {
   HistoricalPromotionEvidenceBundle,
   HistoricalPromotionRebuildReceipt,
   HistoricalPromotionReceiptStore,
 } from "./reader-summary-promotion-v2-historical-runner";
 
-type EvidenceFile = Readonly<{ path: string; sha256: string }>;
+type EvidenceFileEntry = Readonly<{ path: string; sha256: string }>;
+type VerifiedEvidenceFile = Readonly<{
+  path: string;
+  sha256: string;
+  bytes: Buffer;
+}>;
 
 type EvidenceManifestEntry = Readonly<{
   date: string;
-  expectedAuthoritativeInputDigest: string;
-  sourcePublicationId: string;
-  sourceArtifactId: string;
-  sourcePublicationProofSha256: string;
-  sourceReport: EvidenceFile;
-  collectionArtifact: EvidenceFile;
-  collectionQualityReport: EvidenceFile;
-  datasetManifest: EvidenceFile;
+  authoritativeInputDigest: string;
+  sourceAuthority:
+    | Readonly<{
+        kind: "active-database-publication";
+        publicationId: string;
+        artifactId: string;
+        reportSha256: string;
+        proofSha256: string;
+      }>
+    | Readonly<{
+        kind: "preserved-production-day-report";
+        publicationId: string;
+        artifactId: string;
+        reportSha256: string;
+        proofSha256: string;
+        sourceReport: EvidenceFileEntry;
+        collectionArtifact: EvidenceFileEntry;
+        collectionQualityReport: EvidenceFileEntry;
+      }>;
+  datasetManifest: EvidenceFileEntry;
   timestampPolicy: "published_at" | "observed_at";
   allowHistoricalGitHubOmission?: boolean;
   historicalGitHubOmissionReason?: string;
 }>;
 
 type EvidenceManifest = Readonly<{
-  schemaVersion: 1;
-  format: "reader-summary-promotion-v2-historical-evidence-manifest-v1";
+  schemaVersion: 2;
+  format: "reader-summary-promotion-v2-historical-evidence-manifest-v2";
   policyVersion: typeof readerSummaryPromotionV2HistoricalPolicyVersion;
   entries: readonly EvidenceManifestEntry[];
 }>;
@@ -53,9 +76,9 @@ export const loadHistoricalPromotionEvidenceManifest = (input: {
   const manifestPath = resolve(input.path);
   const manifest = parseJson(readFileSync(manifestPath), "evidence manifest") as
     Partial<EvidenceManifest>;
-  if (manifest.schemaVersion !== 1 ||
+  if (manifest.schemaVersion !== 2 ||
       manifest.format !==
-        "reader-summary-promotion-v2-historical-evidence-manifest-v1" ||
+        "reader-summary-promotion-v2-historical-evidence-manifest-v2" ||
       manifest.policyVersion !== readerSummaryPromotionV2HistoricalPolicyVersion ||
       !Array.isArray(manifest.entries)) {
     throw new Error("Historical promotion evidence manifest is invalid");
@@ -176,9 +199,13 @@ export const assertHistoricalPromotionOutputIsolation = (input: {
     ...(input.manifestPath === undefined ? [] : [resolve(input.manifestPath)]),
     ...(input.inputPaths ?? []),
     ...[...input.bundles.values()].flatMap((bundle) => [
-      bundle.sourceReportPath,
-      bundle.collectionArtifactPath,
-      bundle.collectionQualityReportPath,
+      ...(bundle.sourceEvidence.kind === "active-database-publication"
+        ? []
+        : [
+            bundle.sourceEvidence.sourceReportPath,
+            bundle.sourceEvidence.collectionArtifactPath,
+            bundle.sourceEvidence.collectionQualityReportPath,
+          ]),
       bundle.datasetManifestPath,
     ]),
   ];
@@ -193,9 +220,13 @@ const manifestEntryPaths = (
   entry: Record<string, unknown>,
   manifestPath: string,
 ): readonly string[] => [
-  entry.sourceReport,
-  entry.collectionArtifact,
-  entry.collectionQualityReport,
+  ...(isRecord(entry.sourceAuthority)
+    ? [
+        entry.sourceAuthority.sourceReport,
+        entry.sourceAuthority.collectionArtifact,
+        entry.sourceAuthority.collectionQualityReport,
+      ]
+    : []),
   entry.datasetManifest,
 ].flatMap((value) => {
   if (!isRecord(value) || typeof value.path !== "string") return [];
@@ -208,9 +239,14 @@ const evidenceBundle = (
   entry: EvidenceManifestEntry,
   manifestPath: string,
 ): HistoricalPromotionEvidenceBundle => {
-  if (!isUuid(entry.sourcePublicationId) || !isUuid(entry.sourceArtifactId) ||
-      !isSha256(entry.sourcePublicationProofSha256) ||
-      !isSha256(entry.expectedAuthoritativeInputDigest) ||
+  if (!isRecord(entry.sourceAuthority) ||
+      (entry.sourceAuthority.kind !== "active-database-publication" &&
+        entry.sourceAuthority.kind !== "preserved-production-day-report") ||
+      !isUuid(entry.sourceAuthority.publicationId) ||
+      !isUuid(entry.sourceAuthority.artifactId) ||
+      !isSha256(entry.sourceAuthority.reportSha256) ||
+      !isSha256(entry.sourceAuthority.proofSha256) ||
+      !isSha256(entry.authoritativeInputDigest) ||
       (entry.timestampPolicy !== "published_at" &&
         entry.timestampPolicy !== "observed_at")) {
     throw new EvidenceEntryError("evidence_identity_or_policy_invalid");
@@ -221,38 +257,63 @@ const evidenceBundle = (
         /[\r\n]/u.test(reason))) {
     throw new EvidenceEntryError("historical_github_omission_invalid");
   }
-  const sourceReport = verifiedEvidenceFile(
-    entry.sourceReport,
-    manifestPath,
-    "source_report",
-  );
-  const collectionArtifact = verifiedEvidenceFile(
-    entry.collectionArtifact,
-    manifestPath,
-    "collection_artifact",
-  );
-  const collectionQualityReport = verifiedEvidenceFile(
-    entry.collectionQualityReport,
-    manifestPath,
-    "collection_quality_report",
-  );
+  const sourceEvidence = entry.sourceAuthority.kind ===
+    "active-database-publication"
+    ? { kind: entry.sourceAuthority.kind } as const
+    : preservedSourceEvidence(entry.sourceAuthority, manifestPath);
   const datasetManifest = verifiedEvidenceFile(
     entry.datasetManifest,
     manifestPath,
     "dataset_manifest",
   );
+  const parsedDatasetManifest = parseReaderSummaryDayDatasetManifest(
+    datasetManifest.bytes,
+  );
+  if (parsedDatasetManifest.scope.tenantId !==
+        readerSummaryProductionDayScope.tenantId ||
+      parsedDatasetManifest.scope.workspaceId !==
+        readerSummaryProductionDayScope.workspaceId) {
+    throw new EvidenceEntryError("dataset_scope_mismatch");
+  }
+  if (parsedDatasetManifest.policy.timestampPolicy !== entry.timestampPolicy) {
+    throw new EvidenceEntryError("dataset_timestamp_policy_mismatch");
+  }
+  const canonical = buildHistoricalPromotionCanonicalInput({
+    date: entry.date,
+    sourcePublication: {
+      kind: "active-database-publication",
+      publicationId: entry.sourceAuthority.publicationId,
+      artifactId: entry.sourceAuthority.artifactId,
+      reportSha256: entry.sourceAuthority.reportSha256,
+      proofSha256: entry.sourceAuthority.proofSha256,
+    },
+    datasetManifest: parsedDatasetManifest,
+    datasetManifestSha256: datasetManifest.sha256,
+    supportingEvidence: sourceEvidence.kind === "active-database-publication"
+      ? { kind: sourceEvidence.kind }
+      : {
+          kind: sourceEvidence.kind,
+          sourceReportSha256: sourceEvidence.sourceReportSha256,
+          collectionArtifactSha256: sourceEvidence.collectionArtifactSha256,
+          collectionQualityReportSha256:
+            sourceEvidence.collectionQualityReportSha256,
+        },
+    allowHistoricalGitHubOmission:
+      entry.allowHistoricalGitHubOmission === true,
+    ...(reason === undefined ? {} : { historicalGitHubOmissionReason: reason }),
+  });
+  if (canonical.authoritativeInputDigest !== entry.authoritativeInputDigest) {
+    throw new EvidenceEntryError("canonical_input_digest_mismatch");
+  }
   return {
     date: entry.date,
-    expectedAuthoritativeInputDigest: entry.expectedAuthoritativeInputDigest,
-    sourcePublicationId: entry.sourcePublicationId,
-    sourceArtifactId: entry.sourceArtifactId,
-    sourcePublicationProofSha256: entry.sourcePublicationProofSha256,
-    sourceReportPath: sourceReport.path,
-    sourceReportSha256: sourceReport.sha256,
-    collectionArtifactPath: collectionArtifact.path,
-    collectionArtifactSha256: collectionArtifact.sha256,
-    collectionQualityReportPath: collectionQualityReport.path,
-    collectionQualityReportSha256: collectionQualityReport.sha256,
+    authoritativeInputDigest: canonical.authoritativeInputDigest,
+    canonicalInput: canonical.envelope,
+    sourcePublicationId: entry.sourceAuthority.publicationId,
+    sourceArtifactId: entry.sourceAuthority.artifactId,
+    sourcePublicationReportSha256: entry.sourceAuthority.reportSha256,
+    sourcePublicationProofSha256: entry.sourceAuthority.proofSha256,
+    sourceEvidence,
     datasetManifestPath: datasetManifest.path,
     datasetManifestSha256: datasetManifest.sha256,
     timestampPolicy: entry.timestampPolicy,
@@ -261,11 +322,47 @@ const evidenceBundle = (
   };
 };
 
+const preservedSourceEvidence = (
+  source: Extract<
+    EvidenceManifestEntry["sourceAuthority"],
+    { readonly kind: "preserved-production-day-report" }
+  >,
+  manifestPath: string,
+): Extract<
+  HistoricalPromotionEvidenceBundle["sourceEvidence"],
+  { readonly kind: "preserved-production-day-report" }
+> => {
+  const sourceReport = verifiedEvidenceFile(
+    source.sourceReport,
+    manifestPath,
+    "source_report",
+  );
+  const collectionArtifact = verifiedEvidenceFile(
+    source.collectionArtifact,
+    manifestPath,
+    "collection_artifact",
+  );
+  const collectionQualityReport = verifiedEvidenceFile(
+    source.collectionQualityReport,
+    manifestPath,
+    "collection_quality_report",
+  );
+  return {
+    kind: source.kind,
+    sourceReportPath: sourceReport.path,
+    sourceReportSha256: sourceReport.sha256,
+    collectionArtifactPath: collectionArtifact.path,
+    collectionArtifactSha256: collectionArtifact.sha256,
+    collectionQualityReportPath: collectionQualityReport.path,
+    collectionQualityReportSha256: collectionQualityReport.sha256,
+  };
+};
+
 const verifiedEvidenceFile = (
   value: unknown,
   manifestPath: string,
   label: string,
-): EvidenceFile => {
+): VerifiedEvidenceFile => {
   if (!isRecord(value) || typeof value.path !== "string" ||
       !isSha256(value.sha256)) {
     throw new EvidenceEntryError(`${label}_binding_invalid`);
@@ -291,7 +388,7 @@ const verifiedEvidenceFile = (
   if (digest !== value.sha256) {
     throw new EvidenceEntryError(`${label}_hash_mismatch`);
   }
-  return { path, sha256: digest };
+  return { path, sha256: digest, bytes };
 };
 
 class EvidenceEntryError extends Error {

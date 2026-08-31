@@ -5,6 +5,8 @@ import {
   productionDayPromotionRebuildEnvironment,
   resolveProductionDayPromotionRebuild,
 } from "./reader-summary-production-day-promotion-rebuild";
+import { resolveProductionDayPromotionInput } from
+  "./reader-summary-production-day-promotion-input";
 import { resolveProductionDayExecutionRequest } from
   "./reader-summary-production-day-reuse-provenance";
 
@@ -17,8 +19,10 @@ const promotionRebuild = {
   }),
   authoritativeInputDigest,
   policyVersion: "reader_post_promotion.v2" as const,
+  sourceAuthorityKind: "preserved-production-day-report" as const,
   sourcePublicationId: "00000000-0000-4000-8000-000000000101",
   sourceArtifactId: "00000000-0000-4000-8000-000000000102",
+  sourcePublicationReportSha256: "3".repeat(64),
   sourcePublicationProofSha256: "2".repeat(64),
 };
 
@@ -51,6 +55,40 @@ describe("production-day Promotion V2 rebuild seam", () => {
     })).toBeUndefined();
   });
 
+  it("resolves active-publication provenance without legacy report hashes", () => {
+    const activePromotion = {
+      ...promotionRebuild,
+      sourceAuthorityKind: "active-database-publication" as const,
+    };
+    const environment = {
+      ...productionDayPromotionRebuildEnvironment(activePromotion),
+      DURABLE_READER_SUMMARY_DATASET_MANIFEST_SHA256: "d".repeat(64),
+    };
+
+    expect(resolveProductionDayPromotionInput({
+      environment,
+      recoveryActive: true,
+      date,
+      timestampPolicy: "published_at",
+      dailyReplay: null,
+    })).toEqual({
+      promotionRebuild: activePromotion,
+      sourceProvenance: {
+        kind: "historical-regeneration",
+        sourceAuthority: {
+          kind: "active-database-publication",
+          publicationId: activePromotion.sourcePublicationId,
+          artifactId: activePromotion.sourceArtifactId,
+          reportSha256: activePromotion.sourcePublicationReportSha256,
+          proofSha256: activePromotion.sourcePublicationProofSha256,
+        },
+        datasetManifestSha256: "d".repeat(64),
+        timestampPolicy: "published_at",
+        promotionRebuild: activePromotion,
+      },
+    });
+  });
+
   it("never re-enters an uncertain durable model operation", () => {
     expect(() => assertProductionDayPromotionRetrySafe({
       created: false,
@@ -75,9 +113,13 @@ describe("production-day Promotion V2 rebuild seam", () => {
       ...regenerationArguments(),
       "--promotion-v2-rebuild",
       "--promotion-rebuild-identity", promotionRebuild.rebuildIdentity,
+      "--promotion-source-authority-kind",
+      promotionRebuild.sourceAuthorityKind,
       "--authoritative-input-sha256", authoritativeInputDigest,
       "--source-publication-id", promotionRebuild.sourcePublicationId,
       "--source-artifact-id", promotionRebuild.sourceArtifactId,
+      "--source-publication-report-sha256",
+      promotionRebuild.sourcePublicationReportSha256,
       "--source-publication-proof-sha256",
       promotionRebuild.sourcePublicationProofSha256,
     ]);

@@ -83,7 +83,6 @@ import { createReaderSummaryDailyCapturePublicationWiring } from
 import {
   readerSummaryProductionDayAttemptIdentity,
   readerSummaryProductionDayIdempotencyKey,
-  type ReaderSummaryProductionDayAttemptIdentityInput,
 } from "./lib/reader-summary-production-day-attempt-identity";
 import {
   readerSummaryServingAuthorityRequiresAgentRuntime,
@@ -102,8 +101,14 @@ import {
 } from "./lib/reader-summary-db-publication-reconciliation";
 import {
   assertProductionDayPromotionRetrySafe,
-  resolveProductionDayPromotionRebuild,
 } from "./lib/reader-summary-production-day-promotion-rebuild";
+import {
+  resolveProductionDayPromotionInput,
+  revalidateProductionDayPromotionInput,
+} from
+  "./lib/reader-summary-production-day-promotion-input";
+import { historicalPromotionRevalidationFailurePathEnv } from
+  "./lib/reader-summary-promotion-v2-input-guard";
 
 const databaseUrlEnv = "DATABASE_URL";
 const evidencePathEnv = "DURABLE_READER_SUMMARY_EVIDENCE_PATH";
@@ -120,12 +125,6 @@ const historicalGitHubOmissionReasonEnv =
 const datasetManifestPathEnv = "DURABLE_READER_SUMMARY_DATASET_MANIFEST_PATH";
 const datasetManifestSha256Env =
   "DURABLE_READER_SUMMARY_DATASET_MANIFEST_SHA256";
-const sourceReportSha256Env =
-  "DURABLE_READER_SUMMARY_SOURCE_REPORT_SHA256";
-const collectionArtifactSha256Env =
-  "DURABLE_READER_SUMMARY_COLLECTION_ARTIFACT_SHA256";
-const collectionQualityReportSha256Env =
-  "DURABLE_READER_SUMMARY_COLLECTION_QUALITY_REPORT_SHA256";
 const datasetRecoveryRootEnv = "DURABLE_READER_SUMMARY_RECOVERY_ROOT";
 const recoveryTimestampPolicyEnv =
   "DURABLE_READER_SUMMARY_RECOVERY_TIMESTAMP_POLICY";
@@ -205,45 +204,16 @@ async function main(): Promise<void> {
     periodEndedAt,
     now,
   });
-  const promotionRebuild = resolveProductionDayPromotionRebuild({
-    env: process.env,
-    recoveryActive: recoveryTimestampPolicy.active,
-    date: periodStartedAt.toISOString().slice(0, 10),
-  });
-  const sourceProvenance: ReaderSummaryProductionDayAttemptIdentityInput["sourceProvenance"] =
-    dailyReplay !== null
-      ? {
-          kind: "persisted-daily-replay",
-          sourceAuthoritySha256: dailyReplay.authoritySha256,
-          originalModelJobIdentity: dailyReplay.modelJobIdentity,
-          originalReceiptSha256: sha256Bytes(dailyReplay.receiptBytes),
-        }
-      : recoveryTimestampPolicy.active
-        ? {
-            kind: "historical-regeneration",
-            sourceReportSha256: requiredEnv(sourceReportSha256Env),
-            collectionArtifactSha256: requiredEnv(collectionArtifactSha256Env),
-            collectionQualityReportSha256: requiredEnv(
-              collectionQualityReportSha256Env,
-            ),
-            datasetManifestSha256: requiredEnv(datasetManifestSha256Env),
-            timestampPolicy: recoveryTimestampPolicy.policy,
-            ...(promotionRebuild === undefined
-              ? {}
-              : { promotionRebuild }),
-            ...(historicalGitHubOmission === undefined
-              ? {}
-              : {
-                  historicalGitHubOmissionReason:
-                    historicalGitHubOmission.reason,
-                }),
-          }
-        : {
-            kind: "live-production",
-            ...(liveObservationCutoff === undefined
-              ? {}
-              : { observationCutoff: liveObservationCutoff.toISOString() }),
-          };
+  const { promotionRebuild, sourceProvenance } =
+    resolveProductionDayPromotionInput({
+      environment: process.env,
+      recoveryActive: recoveryTimestampPolicy.active,
+      date: periodStartedAt.toISOString().slice(0, 10),
+      timestampPolicy: recoveryTimestampPolicy.policy,
+      historicalGitHubOmissionReason: historicalGitHubOmission?.reason,
+      liveObservationCutoff: liveObservationCutoff?.toISOString(),
+      dailyReplay,
+    });
   const maxEvidenceItems = readIntegerEnv(
     "DURABLE_READER_SUMMARY_MAX_EVIDENCE_ITEMS",
     200,
@@ -292,6 +262,17 @@ async function main(): Promise<void> {
           timestampPolicy: recoveryTimestampPolicy.policy,
         })
       : null;
+    await revalidateProductionDayPromotionInput({
+      promotionRebuild,
+      datasetGuard,
+      client: summaryConnection,
+      tenantId: tenant,
+      workspaceId: workspace,
+      date: periodStartedAt.toISOString().slice(0, 10),
+      failureMarkerPath: readEnv(
+        historicalPromotionRevalidationFailurePathEnv,
+      ),
+    });
     const feedItems = new PrismaFeedItemReadRepository(feedConnection);
     const readerSummaryJobs = new PrismaReaderSummaryJobRepository(
       summaryConnection,

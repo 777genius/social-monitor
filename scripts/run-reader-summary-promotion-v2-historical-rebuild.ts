@@ -1,5 +1,10 @@
 import { resolve } from "node:path";
 
+import { defaultPostgresRuntimePoolConfig } from
+  "@social-monitor/platform-persistence";
+import { PrismaSummaryConnection } from
+  "@social-monitor/summary/adapters/persistence/prisma/prisma-summary-connection";
+
 import { loadDotenvIfPresent } from "./lib/env-file";
 import {
   FileHistoricalPromotionReceiptStore,
@@ -14,6 +19,12 @@ import { ReaderSummaryPromotionV2HistoricalRunner } from
   "./lib/reader-summary-promotion-v2-historical-runner";
 import { ProductionDayHistoricalPromotionMutation } from
   "./lib/reader-summary-promotion-v2-historical-subprocess";
+import {
+  ReaderSummaryPromotionV2HistoricalPreparation,
+  writeHistoricalPromotionPreparation,
+} from "./lib/reader-summary-promotion-v2-historical-preparation";
+import { PostgresHistoricalPromotionPreparationReader } from
+  "./lib/reader-summary-promotion-v2-historical-preparation-postgres";
 import { readerSummaryProductionDayScope } from
   "./lib/reader-summary-production-day-scope";
 import { assertClosedUtcDate } from
@@ -25,9 +36,11 @@ export type HistoricalPromotionCliOptions = Readonly<{
   dates: readonly string[];
   batchSize: number;
   dryRun: boolean;
+  prepare: boolean;
   resume: boolean;
   artifactOutput: string;
   artifactManifest?: string;
+  timestampPolicy: "published_at" | "observed_at";
 }>;
 
 if (require.main === module) {
@@ -46,6 +59,10 @@ async function main(): Promise<void> {
   const options = parseHistoricalPromotionCliOptions(process.argv.slice(2));
   const now = new Date();
   options.dates.forEach((date) => assertClosedUtcDate(date, now));
+  if (options.prepare) {
+    await prepareHistoricalPromotionEvidence(options, now);
+    return;
+  }
   const loadedEvidence = options.artifactManifest === undefined
     ? {
         bundles: new Map<string, never>(),
@@ -139,15 +156,67 @@ async function main(): Promise<void> {
   }
 }
 
+const prepareHistoricalPromotionEvidence = async (
+  options: HistoricalPromotionCliOptions,
+  now: Date,
+): Promise<void> => {
+  if (options.artifactManifest !== undefined) {
+    throw new Error("--prepare creates the artifact manifest; do not supply one");
+  }
+  const databaseUrl = yesterdaySocialQualityDatabaseUrl();
+  const postgres = new PostgresHistoricalPromotionAdapter({
+    databaseUrl,
+    tenantId: readerSummaryProductionDayScope.tenantId,
+    workspaceId: readerSummaryProductionDayScope.workspaceId,
+    api: { verify: async () => undefined },
+  });
+  const connection = await PrismaSummaryConnection.create(
+    defaultPostgresRuntimePoolConfig(databaseUrl, "daily-runner"),
+  );
+  try {
+    const preparation = new ReaderSummaryPromotionV2HistoricalPreparation({
+      authority: postgres,
+      preparation: new PostgresHistoricalPromotionPreparationReader(
+        connection,
+        readerSummaryProductionDayScope,
+      ),
+      clock: () => now,
+    });
+    const results = await preparation.prepare({
+      dates: options.dates,
+      batchSize: options.batchSize,
+      timestampPolicy: options.timestampPolicy,
+    });
+    const paths = writeHistoricalPromotionPreparation({
+      outputDirectory: options.artifactOutput,
+      generatedAt: now.toISOString(),
+      results,
+    });
+    console.log(`historical_promotion_preparation=${paths.receiptPath}`);
+    console.log(`historical_promotion_manifest=${paths.manifestPath}`);
+    for (const result of results) {
+      console.log(
+        `date=${result.date} preparation=${result.status} reason=${result.reason}`,
+      );
+    }
+    if (results.some((result) => result.status !== "prepared")) {
+      process.exitCode = 2;
+    }
+  } finally {
+    await Promise.all([postgres.close(), connection.close()]);
+  }
+};
+
 export const parseHistoricalPromotionCliOptions = (
   args: readonly string[],
 ): HistoricalPromotionCliOptions => {
-  const flags = new Set(["--dry-run", "--execute", "--resume"]);
+  const flags = new Set(["--dry-run", "--execute", "--prepare", "--resume"]);
   const valued = new Set([
     "--dates",
     "--batch-size",
     "--artifact-output",
     "--artifact-manifest",
+    "--timestamp-policy",
   ]);
   const values = new Map<string, string>();
   const seenFlags = new Set<string>();
@@ -168,8 +237,10 @@ export const parseHistoricalPromotionCliOptions = (
     values.set(option, value);
     index += 1;
   }
-  if (seenFlags.has("--dry-run") && seenFlags.has("--execute")) {
-    throw new Error("--dry-run and --execute are mutually exclusive");
+  const modes = ["--dry-run", "--execute", "--prepare"].filter((flag) =>
+    seenFlags.has(flag));
+  if (modes.length > 1) {
+    throw new Error("--dry-run, --execute and --prepare are mutually exclusive");
   }
   const dates = requiredValue(values, "--dates")
     .split(",")
@@ -179,12 +250,21 @@ export const parseHistoricalPromotionCliOptions = (
   if (!Number.isInteger(batchSize) || batchSize < 1 || batchSize > 2) {
     throw new Error("--batch-size must be 1 or 2");
   }
+  const timestampPolicy = values.get("--timestamp-policy") ?? "published_at";
+  if (timestampPolicy !== "published_at" && timestampPolicy !== "observed_at") {
+    throw new Error("--timestamp-policy must be published_at or observed_at");
+  }
+  if (!seenFlags.has("--prepare") && values.has("--timestamp-policy")) {
+    throw new Error("--timestamp-policy is restricted to --prepare");
+  }
   return {
     dates,
     batchSize,
     dryRun: !seenFlags.has("--execute"),
+    prepare: seenFlags.has("--prepare"),
     resume: seenFlags.has("--resume"),
     artifactOutput: resolve(requiredValue(values, "--artifact-output")),
+    timestampPolicy,
     ...(values.get("--artifact-manifest") === undefined
       ? {}
       : { artifactManifest: resolve(values.get("--artifact-manifest")!) }),

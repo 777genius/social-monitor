@@ -19,6 +19,9 @@ export type ReaderSummaryServingAuthority = Readonly<{
   topicRelationVerifier: ReaderSummaryComponentAuthority<
     "deterministic" | "agent-runtime"
   >;
+  storyRelationVerifier: ReaderSummaryComponentAuthority<
+    "deterministic" | "agent-runtime"
+  >;
   runtime: Readonly<{
     engine: string;
     packageVersion: string;
@@ -54,6 +57,7 @@ export const resolveReaderSummaryServingAuthority = async (input: {
     summaryGenerator: summaryAuthority(input, agentProvider),
     topicLabeler: topicLabelerAuthority(input, agentProvider),
     topicRelationVerifier: topicRelationVerifierAuthority(input, agentProvider),
+    storyRelationVerifier: storyRelationVerifierAuthority(input, agentProvider),
     runtime,
   });
 };
@@ -142,6 +146,30 @@ const topicRelationVerifierAuthority = (
         mode: input.topicLabelerMode,
         provider: "deterministic",
         physicalModel: "deterministic-reader-summary-topic-relation-verifier-v1",
+        reasoningPolicy: "not-applicable",
+      },
+);
+
+const storyRelationVerifierAuthority = (
+  input: Parameters<typeof resolveReaderSummaryServingAuthority>[0],
+  agentProvider: string | null,
+): ReaderSummaryServingAuthority["storyRelationVerifier"] => Object.freeze(
+  input.summaryModelMode === "agent-runtime"
+    ? {
+        mode: input.summaryModelMode,
+        provider: requiredAgentProvider(agentProvider),
+        physicalModel: activePhysicalModel(configured(
+          input.env.AGENT_RUNTIME_READER_SUMMARY_STORY_RELATION_VERIFIER_MODEL ??
+            input.env.AGENT_RUNTIME_READER_SUMMARY_MODEL,
+          "gpt-5.6-sol",
+        )),
+        reasoningPolicy: "high",
+      }
+    : {
+        mode: "deterministic",
+        provider: "deterministic",
+        physicalModel:
+          "deterministic-reader-summary-story-relation-verifier-v1",
         reasoningPolicy: "not-applicable",
       },
 );

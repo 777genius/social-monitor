@@ -35,7 +35,7 @@ export type HistoricalPromotionClassification = Readonly<{
     | "retained_current_authoritative_provider_metadata"
     | "no_visible_feed_rows"
     | "no_structurally_valid_authoritative_promotion_metrics";
-  authoritativeInputDigest: string;
+  authorityInspectionDigest: string;
   policyVersion: typeof readerSummaryPromotionV2HistoricalPolicyVersion;
   visibleFeedRowCount: number;
   promotionRelevantRowCount: number;
@@ -101,7 +101,7 @@ export const classifyHistoricalPromotionAuthority = (input: {
       left.reason.localeCompare(right.reason),
     );
   const common = {
-    authoritativeInputDigest: authorityDigest(input.date, rows),
+    authorityInspectionDigest: authorityDigest(input.date, rows),
     policyVersion: readerSummaryPromotionV2HistoricalPolicyVersion,
     visibleFeedRowCount: rows.length,
     promotionRelevantRowCount: relevant,

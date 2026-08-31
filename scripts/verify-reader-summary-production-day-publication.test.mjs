@@ -362,6 +362,37 @@ test("accepts hash-bound historical regeneration with a fresh summary", () => {
   });
 });
 
+test("accepts Promotion V2 active-publication source proof without an old report", () => {
+  withFixture(({ reportPath, proofPath, report, evidence }) => {
+    const provenance = historicalRegenerationProvenance(
+      report.provenance.sourceEvidence,
+      evidence.provenance.datasetManifest,
+    );
+    const publicationId = "00000000-0000-4000-8000-000000000301";
+    const artifactId = "00000000-0000-4000-8000-000000000302";
+    provenance.priorCollectionProof = null;
+    provenance.activeSourcePublicationProof = {
+      artifactFormat: "reader-summary-active-database-publication-v1",
+      publicationId,
+      artifactId,
+      reportSha256: "7".repeat(64),
+      proofSha256: "8".repeat(64),
+    };
+    provenance.promotionRebuild = {
+      sourceAuthorityKind: "active-database-publication",
+      sourcePublicationId: publicationId,
+      sourceArtifactId: artifactId,
+      sourcePublicationReportSha256: "7".repeat(64),
+      sourcePublicationProofSha256: "8".repeat(64),
+    };
+    report.provenance = provenance;
+    report.model.liveCollection = false;
+    report.model.reusedCollection = true;
+    const created = runVerifier(reportPath, proofPath, "--proof-out", report);
+    assert.equal(created.status, 0, created.stderr);
+  });
+});
+
 test("rejects historical regeneration with an unbound collection hash", () => {
   expectRejected(({ report }) => {
     report.provenance = historicalRegenerationProvenance(
@@ -770,10 +801,12 @@ function historicalRegenerationProvenance(sourceEvidence, datasetGuard) {
         sha256: "c".repeat(64),
       },
     },
+    activeSourcePublicationProof: null,
     regenerationInputManifest: regenerationManifest(),
     datasetGuardEvidence: datasetGuard,
-    githubOmission: {
-      mode: "github_projection_unavailable_historical",
+    githubPolicy: {
+      mode: "historical_unavailable",
+      collectedRowCount: 0,
       reason:
         "The exact end-of-day GitHub projection is unavailable for this completed UTC day.",
     },
@@ -793,7 +826,7 @@ function regenerationManifest() {
     generatedAt: "2026-07-16T00:59:00.000Z",
     datasetSha256: "e".repeat(64),
     feedRowCount: 10,
-    githubEligibilityRowCount: 1,
+    githubEligibilityRowCount: 0,
     providerCounts: { reddit: 10 },
   };
 }

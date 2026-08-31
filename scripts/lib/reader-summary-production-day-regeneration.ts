@@ -18,6 +18,8 @@ import { assertImmutableRecoveryInputs } from "./reader-summary-recovery-files";
 import { noRawSecretFragments } from "./yesterday-social-replay-support";
 import { historicalPromotionRebuildIdentity } from
   "./reader-summary-promotion-v2-historical-classification";
+import { buildHistoricalPromotionCanonicalInput } from
+  "./reader-summary-promotion-v2-historical-input";
 
 type HashBoundArtifact = {
   readonly artifactFormat: string;
@@ -41,7 +43,14 @@ export type HistoricalRegenerationSourceProvenance = {
     readonly sourceAttempt: HashBoundArtifact;
     readonly collectionArtifact: HashBoundArtifact;
     readonly collectionQualityReport: HashBoundArtifact;
-  };
+  } | null;
+  readonly activeSourcePublicationProof: Readonly<{
+    readonly artifactFormat: "reader-summary-active-database-publication-v1";
+    readonly publicationId: string;
+    readonly artifactId: string;
+    readonly reportSha256: string;
+    readonly proofSha256: string;
+  }> | null;
   readonly regenerationInputManifest: HashBoundArtifact & {
     readonly generatedAt: string;
     readonly datasetSha256: string;
@@ -69,8 +78,12 @@ export type HistoricalRegenerationSourceProvenance = {
     rebuildIdentity: string;
     authoritativeInputDigest: string;
     policyVersion: "reader_post_promotion.v2";
+    sourceAuthorityKind:
+      | "active-database-publication"
+      | "preserved-production-day-report";
     sourcePublicationId: string;
     sourceArtifactId: string;
+    sourcePublicationReportSha256: string;
     sourcePublicationProofSha256: string;
   }>;
 };
@@ -96,42 +109,33 @@ export function loadHistoricalRegeneration(params: {
   assertImmutableRecoveryInputs({
     recoveryRoot: params.recoveryRoot,
     inputPaths: [
-      params.request.sourceReportPath,
-      params.request.collectionArtifactPath,
-      params.request.collectionQualityReportPath,
+      ...(params.request.sourceEvidence.kind ===
+        "preserved-production-day-report"
+        ? [
+            params.request.sourceEvidence.sourceReportPath,
+            params.request.sourceEvidence.collectionArtifactPath,
+            params.request.sourceEvidence.collectionQualityReportPath,
+          ]
+        : []),
       params.request.datasetManifestPath,
     ],
     forbiddenOutputPaths: params.forbiddenOutputPaths,
   });
-  const sourceAttempt = loadHashBoundJson({
-    path: params.request.sourceReportPath,
-    expectedSha256: params.request.sourceReportSha256,
-    label: "source production attempt",
-  });
-  const sourceCollection = loadHashBoundJson({
-    path: params.request.collectionArtifactPath,
-    expectedSha256: params.request.collectionArtifactSha256,
-    label: "source collection artifact",
-  });
-  const sourceCollectionQuality = loadHashBoundJson({
-    path: params.request.collectionQualityReportPath,
-    expectedSha256: params.request.collectionQualityReportSha256,
-    label: "source collection quality report",
-  });
-  validateSourceAttempt(
-    sourceAttempt.value,
-    params.collectionDate,
-    params.request.promotionRebuild,
-  );
-  validateSourceCollection(sourceCollection.value, params.collectionDate);
-  validateSourceCollectionQuality(
-    sourceCollectionQuality.value,
-    params.collectionDate,
-  );
-  validateProviderCountsMatch(
-    sourceCollection.value,
-    sourceCollectionQuality.value,
-  );
+  const preserved = params.request.sourceEvidence.kind ===
+    "preserved-production-day-report"
+    ? loadPreservedSourceEvidence(
+        params.request.sourceEvidence,
+        params.collectionDate,
+        params.request.promotionRebuild,
+      )
+    : null;
+  const activeSourcePublicationProof = params.request.sourceEvidence.kind ===
+    "active-database-publication"
+    ? activePublicationProof(
+        params.request.promotionRebuild,
+        params.collectionDate,
+      )
+    : null;
   const { manifest: datasetManifest, fileSha256: datasetManifestFileSha256 } =
     readReaderSummaryDayDatasetManifest({
       path: params.request.datasetManifestPath,
@@ -143,14 +147,20 @@ export function loadHistoricalRegeneration(params: {
       now: params.now,
       expectedTimestampPolicy: params.request.timestampPolicy,
     });
-  if (params.request.timestampPolicy === "published_at") {
-    validateManifestProviderCounts(sourceCollection.value, datasetManifest);
+  if (params.request.timestampPolicy === "published_at" && preserved !== null) {
+    validateManifestProviderCounts(preserved.collection.value, datasetManifest);
   }
   const githubPolicy = historicalGitHubPolicy({
     allowOmission: params.request.allowHistoricalGitHubOmission,
     omissionReason: params.githubOmissionReason,
     collectedRowCount:
       datasetManifest.dataset.providerCounts["github-trending-page"] ?? 0,
+  });
+  assertPromotionCanonicalInput({
+    request: params.request,
+    datasetManifest,
+    datasetManifestFileSha256,
+    githubPolicy,
   });
 
   const requestedUtcPeriod = productionDayUtcPeriod(params.collectionDate);
@@ -159,20 +169,23 @@ export function loadHistoricalRegeneration(params: {
     timestampPolicy: params.request.timestampPolicy,
     requestedUtcPeriod,
     collectionUtcPeriod: requestedUtcPeriod,
-    priorCollectionProof: {
-      sourceAttempt: {
-        artifactFormat: "reader-summary-production-day-run-v1",
-        sha256: sourceAttempt.sha256,
-      },
-      collectionArtifact: {
-        artifactFormat: "reader-summary-clean-real-day-collection-v1",
-        sha256: sourceCollection.sha256,
-      },
-      collectionQualityReport: {
-        artifactFormat: "yesterday-social-collection-quality-report-v1",
-        sha256: sourceCollectionQuality.sha256,
-      },
-    },
+    priorCollectionProof: preserved === null
+      ? null
+      : {
+          sourceAttempt: {
+            artifactFormat: "reader-summary-production-day-run-v1",
+            sha256: preserved.attempt.sha256,
+          },
+          collectionArtifact: {
+            artifactFormat: "reader-summary-clean-real-day-collection-v1",
+            sha256: preserved.collection.sha256,
+          },
+          collectionQualityReport: {
+            artifactFormat: "yesterday-social-collection-quality-report-v1",
+            sha256: preserved.quality.sha256,
+          },
+        },
+    activeSourcePublicationProof,
     regenerationInputManifest: {
       artifactFormat: datasetManifest.format,
       sha256: datasetManifestFileSha256,
@@ -200,10 +213,19 @@ export function loadHistoricalRegeneration(params: {
     verifiedCollectionStep: {
       id: "collect",
       command: [
-        "verify hash-bound prior collection attempt",
-        `attempt=${sourceAttempt.sha256}`,
-        `collection=${sourceCollection.sha256}`,
-        `quality=${sourceCollectionQuality.sha256}`,
+        preserved === null
+          ? "verify active database publication and fresh canonical dataset"
+          : "verify hash-bound prior collection attempt",
+        ...(preserved === null
+          ? [
+              `sourcePublication=${activeSourcePublicationProof!.publicationId}`,
+              `sourceProof=${activeSourcePublicationProof!.proofSha256}`,
+            ]
+          : [
+              `attempt=${preserved.attempt.sha256}`,
+              `collection=${preserved.collection.sha256}`,
+              `quality=${preserved.quality.sha256}`,
+            ]),
         `dataset=${datasetManifest.dataset.aggregateSha256}`,
         `timestampPolicy=${params.request.timestampPolicy}`,
       ].join(" "),
@@ -213,6 +235,105 @@ export function loadHistoricalRegeneration(params: {
     },
   };
 }
+
+const assertPromotionCanonicalInput = (input: {
+  readonly request: HistoricalRegenerationRequest;
+  readonly datasetManifest: Parameters<
+    typeof buildHistoricalPromotionCanonicalInput
+  >[0]["datasetManifest"];
+  readonly datasetManifestFileSha256: string;
+  readonly githubPolicy: HistoricalRegenerationSourceProvenance["githubPolicy"];
+}): void => {
+  const promotion = input.request.promotionRebuild;
+  if (promotion === undefined) return;
+  const supportingEvidence = input.request.sourceEvidence.kind ===
+    "active-database-publication"
+    ? { kind: input.request.sourceEvidence.kind } as const
+    : {
+        kind: input.request.sourceEvidence.kind,
+        sourceReportSha256: input.request.sourceEvidence.sourceReportSha256,
+        collectionArtifactSha256:
+          input.request.sourceEvidence.collectionArtifactSha256,
+        collectionQualityReportSha256:
+          input.request.sourceEvidence.collectionQualityReportSha256,
+      } as const;
+  const canonical = buildHistoricalPromotionCanonicalInput({
+    date: input.datasetManifest.period.startedAt.slice(0, 10),
+    sourcePublication: {
+      kind: "active-database-publication",
+      publicationId: promotion.sourcePublicationId,
+      artifactId: promotion.sourceArtifactId,
+      reportSha256: promotion.sourcePublicationReportSha256,
+      proofSha256: promotion.sourcePublicationProofSha256,
+    },
+    datasetManifest: input.datasetManifest,
+    datasetManifestSha256: input.datasetManifestFileSha256,
+    supportingEvidence,
+    allowHistoricalGitHubOmission:
+      input.githubPolicy.mode === "historical_unavailable",
+    ...(input.githubPolicy.mode === "historical_unavailable"
+      ? { historicalGitHubOmissionReason: input.githubPolicy.reason }
+      : {}),
+  });
+  if (canonical.authoritativeInputDigest !==
+      promotion.authoritativeInputDigest) {
+    throw new Error(
+      "Promotion rebuild canonical input digest does not match evidence",
+    );
+  }
+};
+
+const loadPreservedSourceEvidence = (
+  source: Extract<HistoricalRegenerationRequest["sourceEvidence"], {
+    readonly kind: "preserved-production-day-report";
+  }>,
+  collectionDate: string,
+  promotionRebuild: HistoricalRegenerationRequest["promotionRebuild"],
+) => {
+  const attempt = loadHashBoundJson({
+    path: source.sourceReportPath,
+    expectedSha256: source.sourceReportSha256,
+    label: "source production attempt",
+  });
+  const collection = loadHashBoundJson({
+    path: source.collectionArtifactPath,
+    expectedSha256: source.collectionArtifactSha256,
+    label: "source collection artifact",
+  });
+  const quality = loadHashBoundJson({
+    path: source.collectionQualityReportPath,
+    expectedSha256: source.collectionQualityReportSha256,
+    label: "source collection quality report",
+  });
+  validateSourceAttempt(attempt.value, collectionDate, promotionRebuild);
+  validateSourceCollection(collection.value, collectionDate);
+  validateSourceCollectionQuality(quality.value, collectionDate);
+  validateProviderCountsMatch(collection.value, quality.value);
+  return { attempt, collection, quality };
+};
+
+const activePublicationProof = (
+  promotionRebuild: HistoricalRegenerationRequest["promotionRebuild"],
+  collectionDate: string,
+): NonNullable<
+  HistoricalRegenerationSourceProvenance["activeSourcePublicationProof"]
+> => {
+  if (promotionRebuild === undefined ||
+      promotionRebuild.sourceAuthorityKind !==
+        "active-database-publication") {
+    throw new Error(
+      "Active publication admission requires Promotion V2 source authority",
+    );
+  }
+  validatePromotionRebuildAuthority(promotionRebuild, collectionDate);
+  return {
+    artifactFormat: "reader-summary-active-database-publication-v1",
+    publicationId: promotionRebuild.sourcePublicationId,
+    artifactId: promotionRebuild.sourceArtifactId,
+    reportSha256: promotionRebuild.sourcePublicationReportSha256,
+    proofSha256: promotionRebuild.sourcePublicationProofSha256,
+  };
+};
 
 function historicalGitHubPolicy(params: {
   readonly allowOmission: boolean;
@@ -375,13 +496,13 @@ function validatePromotionRebuildSourceAttempt(
     HistoricalRegenerationRequest["promotionRebuild"]
   >,
 ): void {
-  if (historicalPromotionRebuildIdentity({
-    date: collectionDate,
-    authoritativeInputDigest: promotionRebuild.authoritativeInputDigest,
-    policyVersion: promotionRebuild.policyVersion,
-  }) !== promotionRebuild.rebuildIdentity) {
-    throw new Error("Promotion rebuild identity does not match its authority");
+  if (promotionRebuild.sourceAuthorityKind !==
+      "preserved-production-day-report") {
+    throw new Error(
+      "Preserved report admission has the wrong source authority kind",
+    );
   }
+  validatePromotionRebuildAuthority(promotionRebuild, collectionDate);
   if (
     !isRecord(value) ||
     value.schemaVersion !== 1 ||
@@ -420,6 +541,21 @@ function validatePromotionRebuildSourceAttempt(
     throw new Error(
       "Promotion rebuild source attempt lacks a durable successful publication",
     );
+  }
+}
+
+function validatePromotionRebuildAuthority(
+  promotionRebuild: NonNullable<
+    HistoricalRegenerationRequest["promotionRebuild"]
+  >,
+  collectionDate: string,
+): void {
+  if (historicalPromotionRebuildIdentity({
+    date: collectionDate,
+    authoritativeInputDigest: promotionRebuild.authoritativeInputDigest,
+    policyVersion: promotionRebuild.policyVersion,
+  }) !== promotionRebuild.rebuildIdentity) {
+    throw new Error("Promotion rebuild identity does not match its authority");
   }
 }
 

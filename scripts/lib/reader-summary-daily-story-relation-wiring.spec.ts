@@ -22,6 +22,8 @@ import * as dailyPublicationFinalizer from
   "./reader-summary-daily-publication-finalizer";
 import { createReaderSummaryDailyCapturePublicationWiring } from
   "./reader-summary-daily-story-relation-verifier";
+import { resolveProductionDayExecutionRequest } from
+  "./reader-summary-production-day-reuse-provenance";
 
 const now = new Date("2026-08-31T12:00:00.000Z");
 const clock = new FixedClock(now);
@@ -130,6 +132,51 @@ describe("reader summary daily story relation production wiring", () => {
         reasoningEffort: "high",
       }),
     }));
+  });
+
+  it("keeps historical Promotion V2 on the real verifier/finalizer wiring", async () => {
+    const request = resolveProductionDayExecutionRequest([
+      "--regenerate-after-passed-collection",
+      "--promotion-v2-rebuild",
+      "--promotion-rebuild-identity", "1".repeat(64),
+      "--promotion-source-authority-kind", "active-database-publication",
+      "--authoritative-input-sha256", "2".repeat(64),
+      "--source-publication-id", "00000000-0000-4000-8000-000000000101",
+      "--source-artifact-id", "00000000-0000-4000-8000-000000000102",
+      "--source-publication-report-sha256", "3".repeat(64),
+      "--source-publication-proof-sha256", "4".repeat(64),
+      "--reuse-dataset-manifest", "/evidence/dataset.json",
+      "--reuse-dataset-manifest-sha256", "5".repeat(64),
+      "--recovery-timestamp-policy", "published_at",
+    ]);
+    expect(request).toMatchObject({
+      mode: "historical-regeneration",
+      sourceEvidence: { kind: "active-database-publication" },
+      promotionRebuild: {
+        sourceAuthorityKind: "active-database-publication",
+      },
+    });
+    const realFinalizer =
+      dailyPublicationFinalizer.createReaderSummaryDailyPublicationExecutionWiring;
+    const finalizer = jest.spyOn(
+      dailyPublicationFinalizer,
+      "createReaderSummaryDailyPublicationExecutionWiring",
+    ).mockImplementation((input) => realFinalizer(input));
+    try {
+      const selected = await selectDailyEvidence({
+        sameStory: true,
+        attested: true,
+        secondTitle:
+          "Go rewrite of the TypeScript compiler reaches developers",
+      });
+      expect(selected.runtime.storyCommands).toHaveLength(1);
+      expect(finalizer).toHaveBeenCalledWith(expect.objectContaining({
+        replay: null,
+        storyRelationVerifier: expect.any(Object),
+      }));
+    } finally {
+      finalizer.mockRestore();
+    }
   });
 
   it.each([

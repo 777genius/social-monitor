@@ -1,8 +1,12 @@
 import type {
   HistoricalPromotionAuthorityInspection,
 } from "./reader-summary-promotion-v2-historical-classification";
-import { classifyHistoricalPromotionAuthority } from
-  "./reader-summary-promotion-v2-historical-classification";
+import { buildReaderSummaryDayDatasetManifest } from
+  "./reader-summary-day-dataset-manifest";
+import {
+  buildHistoricalPromotionCanonicalInput,
+  historicalPromotionCanonicalInputDigest,
+} from "./reader-summary-promotion-v2-historical-input";
 import {
   ReaderSummaryPromotionV2HistoricalRunner,
   type HistoricalPromotionDurableState,
@@ -84,6 +88,36 @@ describe("Reader Summary Promotion V2 historical runner", () => {
     });
     expect(scenario.rebuild).toHaveBeenCalledTimes(1);
     expect(scenario.verifyCompleted).toHaveBeenCalledTimes(1);
+  });
+
+  it("never collides different full input digests in durable reconciliation", async () => {
+    const scenario = harness();
+    await scenario.run({ resume: true });
+    const firstIdentity = scenario.reconcile.mock.calls[0]?.[1];
+    const original = scenario.options.evidence.get("2026-08-01")!;
+    const canonicalInput = {
+      ...original.canonicalInput,
+      sourcePublication: {
+        ...original.canonicalInput.sourcePublication,
+        proofSha256: "f".repeat(64),
+      },
+    };
+    const changed = {
+      ...original,
+      canonicalInput,
+      authoritativeInputDigest:
+        historicalPromotionCanonicalInputDigest(canonicalInput),
+      sourcePublicationProofSha256: "f".repeat(64),
+    };
+
+    await scenario.run({
+      resume: true,
+      evidence: new Map([["2026-08-01", changed]]),
+    });
+
+    const secondIdentity = scenario.reconcile.mock.calls[1]?.[1];
+    expect(secondIdentity).not.toBe(firstIdentity);
+    expect(scenario.rebuild).toHaveBeenCalledTimes(2);
   });
 
   it("does not repeat an uncertain model job or switch an interrupted date", async () => {
@@ -206,7 +240,14 @@ const harness = (dates = ["2026-08-01"]) => {
   };
   const inspectAuthority = jest.fn(async (date: string) => inspection(date));
   const reconcile = jest.fn(
-    async (): Promise<HistoricalPromotionDurableState> => mutable.durableState,
+    async (
+      _date: string,
+      _rebuildIdentity: string,
+      _bundle: HistoricalPromotionEvidenceBundle | undefined,
+    ): Promise<HistoricalPromotionDurableState> => {
+      void [_date, _rebuildIdentity, _bundle];
+      return mutable.durableState;
+    },
   );
   const rebuild = jest.fn(
     async (): Promise<HistoricalPromotionMutationOutcome> =>
@@ -275,29 +316,56 @@ const evidenceMap = (
   dates: readonly string[],
 ): ReadonlyMap<string, HistoricalPromotionEvidenceBundle> => new Map(
   dates.map((date) => {
-    const digest = classifyHistoricalPromotionAuthority({
+    const dataset = buildReaderSummaryDayDatasetManifest({
+      tenantId: "00000000-0000-4000-8000-000000000501",
+      workspaceId: "00000000-0000-4000-8000-000000000502",
+      startedAt: new Date(`${date}T00:00:00.000Z`),
+      endedAt: new Date(`${nextDate(date)}T00:00:00.000Z`),
+      generatedAt: new Date("2026-08-31T11:55:00.000Z"),
+      feedRows: [{ providerKey: "reddit", rowJson: `{"date":"${date}"}` }],
+      eligibilityRows: [],
+    });
+    const sourcePublication = {
+      kind: "active-database-publication" as const,
+      publicationId: "00000000-0000-4000-8000-000000000301",
+      artifactId: "00000000-0000-4000-8000-000000000301",
+      reportSha256: "b".repeat(64),
+      proofSha256: "a".repeat(64),
+    };
+    const canonical = buildHistoricalPromotionCanonicalInput({
       date,
-      inspection: inspection(date),
-    }).authoritativeInputDigest;
+      sourcePublication,
+      datasetManifest: dataset,
+      datasetManifestSha256: "e".repeat(64),
+      supportingEvidence: { kind: "active-database-publication" },
+      allowHistoricalGitHubOmission: true,
+      historicalGitHubOmissionReason:
+        "No preserved GitHub rows exist in this deterministic runner fixture.",
+    });
     return [date, {
       date,
-      expectedAuthoritativeInputDigest: digest,
-      sourcePublicationId: "00000000-0000-4000-8000-000000000301",
-      sourceArtifactId: "00000000-0000-4000-8000-000000000301",
-      sourcePublicationProofSha256: "a".repeat(64),
-      sourceReportPath: `/evidence/${date}/source.json`,
-      sourceReportSha256: "b".repeat(64),
-      collectionArtifactPath: `/evidence/${date}/collection.json`,
-      collectionArtifactSha256: "c".repeat(64),
-      collectionQualityReportPath: `/evidence/${date}/quality.json`,
-      collectionQualityReportSha256: "d".repeat(64),
+      authoritativeInputDigest: canonical.authoritativeInputDigest,
+      canonicalInput: canonical.envelope,
+      sourcePublicationId: sourcePublication.publicationId,
+      sourceArtifactId: sourcePublication.artifactId,
+      sourcePublicationReportSha256: sourcePublication.reportSha256,
+      sourcePublicationProofSha256: sourcePublication.proofSha256,
+      sourceEvidence: { kind: "active-database-publication" as const },
       datasetManifestPath: `/evidence/${date}/dataset.json`,
       datasetManifestSha256: "e".repeat(64),
       timestampPolicy: "published_at" as const,
-      allowHistoricalGitHubOmission: false,
+      allowHistoricalGitHubOmission: true,
+      historicalGitHubOmissionReason:
+        "No preserved GitHub rows exist in this deterministic runner fixture.",
     }];
   }),
 );
+
+const nextDate = (date: string): string => {
+  const value = new Date(`${date}T00:00:00.000Z`);
+  value.setUTCDate(value.getUTCDate() + 1);
+  return value.toISOString().slice(0, 10);
+};
 
 const output = () => ({
   jobId: "00000000-0000-4000-8000-000000000310",

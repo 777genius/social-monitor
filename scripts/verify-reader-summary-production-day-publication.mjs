@@ -2,9 +2,11 @@
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { basename } from "node:path";
+import { historicalGithubPolicyMatches } from "./lib/reader-summary-historical-github-policy.mjs";
+import { validHistoricalRegenerationSourceAuthority } from
+  "./lib/reader-summary-production-day-regeneration-source-authority.mjs";
 import { publicationQualityContract } from "./lib/reader-summary-publication-quality-contract.mjs";
 import { validateDailyModelExecution } from "./lib/reader-summary-production-day-model-telemetry-verifier.mjs";
-
 const reportArtifactFormat = "reader-summary-production-day-run-v1";
 const reportGeneratedBy = "npm run run:reader-summary-production-day";
 const evidenceArtifactId = "durable-reader-summary-postgres-evidence-v1";
@@ -25,7 +27,6 @@ const datedReportPath = requiredOption(options, "--dated-report");
 const evidencePath = requiredOption(options, "--evidence-artifact");
 const frontendPath = requiredOption(options, "--frontend-artifact");
 assertDate(expectedDate);
-
 const datedReportBytes = readFileSync(datedReportPath);
 const report = parseJson(datedReportBytes, datedReportPath);
 const evidenceBinding = validateReport(
@@ -55,7 +56,6 @@ const proofPath = options.get("--proof");
 if ((proofOutPath === undefined) === (proofPath === undefined)) {
   fail("provide exactly one of --proof-out or --proof");
 }
-
 if (proofOutPath !== undefined) {
   writeFileSync(proofOutPath, `${stableJson(expectedProof)}\n`, {
     encoding: "utf8",
@@ -699,22 +699,11 @@ function validateLiveProvenance(
   assertObject(provenance.sourceEvidence, "report.provenance.sourceEvidence");
   const standardLiveProvenance =
     provenance.mode === "live-production" && provenance.sourceReport === null;
+  const regenerationSourceAuthority =
+    validHistoricalRegenerationSourceAuthority(provenance);
   const regenerationProvenance =
     provenance.mode === "historical-regeneration" &&
-    provenance.priorCollectionProof !== null &&
-    typeof provenance.priorCollectionProof === "object" &&
-    hashBoundArtifactMatches(
-      provenance.priorCollectionProof.sourceAttempt,
-      "reader-summary-production-day-run-v1",
-    ) &&
-    hashBoundArtifactMatches(
-      provenance.priorCollectionProof.collectionArtifact,
-      "reader-summary-clean-real-day-collection-v1",
-    ) &&
-    hashBoundArtifactMatches(
-      provenance.priorCollectionProof.collectionQualityReport,
-      "yesterday-social-collection-quality-report-v1",
-    ) &&
+    regenerationSourceAuthority &&
     datasetGuardMatchesManifest(
       provenance.datasetGuardEvidence,
       provenance.regenerationInputManifest,
@@ -725,10 +714,10 @@ function validateLiveProvenance(
     provenance.freshnessOverride?.maxManifestAgeSeconds === 1800 &&
     stableJson(provenance.datasetGuardEvidence) ===
       stableJson(evidenceDatasetGuard) &&
-    provenance.githubOmission?.mode ===
-      "github_projection_unavailable_historical" &&
-    typeof provenance.githubOmission?.reason === "string" &&
-    provenance.githubOmission.reason.trim().length >= 20;
+    historicalGithubPolicyMatches(
+      provenance.githubPolicy,
+      provenance.regenerationInputManifest,
+    );
   if (
     (!standardLiveProvenance && !regenerationProvenance) ||
     provenance.nonLive !== false ||
@@ -787,16 +776,6 @@ function datasetGuardMatchesManifest(guard, manifest) {
         "after_evidence_selection",
         "before_publication",
       ])
-  );
-}
-
-function hashBoundArtifactMatches(value, artifactFormat) {
-  return (
-    value !== null &&
-    typeof value === "object" &&
-    value.artifactFormat === artifactFormat &&
-    typeof value.sha256 === "string" &&
-    /^[0-9a-f]{64}$/u.test(value.sha256)
   );
 }
 

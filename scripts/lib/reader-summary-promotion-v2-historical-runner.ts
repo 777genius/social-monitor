@@ -8,19 +8,30 @@ import {
   historicalPromotionRebuildIdentity,
   readerSummaryPromotionV2HistoricalPolicyVersion,
 } from "./reader-summary-promotion-v2-historical-classification";
+import {
+  historicalPromotionCanonicalInputDigest,
+  type HistoricalPromotionCanonicalInputEnvelope,
+} from "./reader-summary-promotion-v2-historical-input";
 
 export type HistoricalPromotionEvidenceBundle = Readonly<{
   date: string;
-  expectedAuthoritativeInputDigest: string;
+  authoritativeInputDigest: string;
+  canonicalInput: HistoricalPromotionCanonicalInputEnvelope;
   sourcePublicationId: string;
   sourceArtifactId: string;
+  sourcePublicationReportSha256: string;
   sourcePublicationProofSha256: string;
-  sourceReportPath: string;
-  sourceReportSha256: string;
-  collectionArtifactPath: string;
-  collectionArtifactSha256: string;
-  collectionQualityReportPath: string;
-  collectionQualityReportSha256: string;
+  sourceEvidence:
+    | Readonly<{ kind: "active-database-publication" }>
+    | Readonly<{
+        kind: "preserved-production-day-report";
+        sourceReportPath: string;
+        sourceReportSha256: string;
+        collectionArtifactPath: string;
+        collectionArtifactSha256: string;
+        collectionQualityReportPath: string;
+        collectionQualityReportSha256: string;
+      }>;
   datasetManifestPath: string;
   datasetManifestSha256: string;
   timestampPolicy: "published_at" | "observed_at";
@@ -198,30 +209,40 @@ export class ReaderSummaryPromotionV2HistoricalRunner {
       date,
       inspection,
     });
-    const rebuildIdentity = historicalPromotionRebuildIdentity({
-      date,
-      authoritativeInputDigest: classification.authoritativeInputDigest,
-    });
     const bundle = options.evidence.get(date);
-    const base = this.baseReceipt({
+    const unboundBase = this.baseReceipt({
       date,
       mode: options.dryRun ? "dry-run" : "execute",
       classification,
-      rebuildIdentity,
     });
 
     if (classification.kind === "unrebuildable") {
       return {
-        ...base,
+        ...unboundBase,
         status: "unrebuildable",
         reason: classification.reason,
       };
     }
     const evidenceProblem = options.evidenceProblems?.get(date) ??
-      validateEvidenceBundle(bundle, classification);
+      validateEvidenceBundle(date, bundle, classification);
     if (evidenceProblem !== null) {
-      return pendingReceipt(base, evidenceProblem, "safe-before-paid-operation");
+      return pendingReceipt(
+        unboundBase,
+        evidenceProblem,
+        "safe-before-paid-operation",
+      );
     }
+    const authoritativeInputDigest = bundle!.authoritativeInputDigest;
+    const rebuildIdentity = historicalPromotionRebuildIdentity({
+      date,
+      authoritativeInputDigest,
+    });
+    const base = this.baseReceipt({
+      date,
+      mode: options.dryRun ? "dry-run" : "execute",
+      classification,
+      identity: { rebuildIdentity, authoritativeInputDigest },
+    });
     let durableState: HistoricalPromotionDurableState;
     try {
       durableState = await this.dependencies.durableState.reconcile(
@@ -360,7 +381,10 @@ export class ReaderSummaryPromotionV2HistoricalRunner {
     date: string;
     mode: "dry-run" | "execute";
     classification: HistoricalPromotionClassification;
-    rebuildIdentity: string;
+    identity?: Readonly<{
+      rebuildIdentity: string;
+      authoritativeInputDigest: string;
+    }>;
   }): HistoricalPromotionRebuildReceipt {
     return {
       schemaVersion: 1,
@@ -370,12 +394,12 @@ export class ReaderSummaryPromotionV2HistoricalRunner {
       date: input.date,
       status: "planned",
       reason: "not_started",
-      identity: {
-        rebuildIdentity: input.rebuildIdentity,
-        authoritativeInputDigest:
-          input.classification.authoritativeInputDigest,
-        policyVersion: readerSummaryPromotionV2HistoricalPolicyVersion,
-      },
+      identity: input.identity === undefined
+        ? null
+        : {
+            ...input.identity,
+            policyVersion: readerSummaryPromotionV2HistoricalPolicyVersion,
+          },
       classification: input.classification,
       fenceToken: null,
       retrySafety: "not-applicable",
@@ -472,13 +496,23 @@ const validateOptions = (
 };
 
 const validateEvidenceBundle = (
+  date: string,
   bundle: HistoricalPromotionEvidenceBundle | undefined,
   classification: HistoricalPromotionClassification,
 ): string | null => {
   if (bundle === undefined) return "hash_bound_input_evidence_missing";
-  if (bundle.expectedAuthoritativeInputDigest !==
-      classification.authoritativeInputDigest) {
-    return "authoritative_input_digest_drift";
+  if (bundle.date !== date || bundle.canonicalInput.date !== date) {
+    return "canonical_input_date_mismatch";
+  }
+  if (historicalPromotionCanonicalInputDigest(bundle.canonicalInput) !==
+      bundle.authoritativeInputDigest) {
+    return "canonical_input_digest_mismatch";
+  }
+  if (bundle.canonicalInput.datasetManifest.feedRowCount !==
+      classification.visibleFeedRowCount ||
+      JSON.stringify(bundle.canonicalInput.datasetManifest.providerCounts) !==
+        JSON.stringify(classification.providerCounts)) {
+    return "dataset_inventory_drift";
   }
   return null;
 };

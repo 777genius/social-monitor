@@ -74,6 +74,12 @@ const servingAuthority = {
     physicalModel: "agent-runtime-reader-summary-topic-relation-verifier",
     reasoningPolicy: "runtime-default",
   },
+  storyRelationVerifier: {
+    mode: "agent-runtime" as const,
+    provider: "codex",
+    physicalModel: "agent-runtime-reader-summary-story-relation-verifier",
+    reasoningPolicy: "runtime-default",
+  },
   runtime: {
     engine: "subscription-runtime-cli",
     packageVersion: "1.2.3",

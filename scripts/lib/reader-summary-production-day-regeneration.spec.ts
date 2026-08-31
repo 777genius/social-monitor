@@ -14,6 +14,8 @@ import type { ProductionDayExecutionRequest } from "./reader-summary-production-
 import { buildReaderSummaryDayDatasetManifest } from "./reader-summary-day-dataset-manifest";
 import { historicalPromotionRebuildIdentity } from
   "./reader-summary-promotion-v2-historical-classification";
+import { buildHistoricalPromotionCanonicalInput } from
+  "./reader-summary-promotion-v2-historical-input";
 
 const tenantId = "33333333-3333-4333-8333-333333333333";
 const workspaceId = "44444444-4444-4444-8444-444444444444";
@@ -67,6 +69,59 @@ describe("historical production-day regeneration", () => {
     expect(loaded.verifiedCollectionStep.status).toBe("passed");
   });
 
+  it("admits active DB publication proof without an old success report", () => {
+    const legacy = writeFixtures({ promotionRebuild: true });
+    if (legacy.promotionRebuild === undefined) {
+      throw new Error("test requires promotion authority");
+    }
+    const datasetManifest = JSON.parse(readFileSync(
+      legacy.datasetManifestPath,
+      "utf8",
+    ));
+    const authoritativeInputDigest = buildHistoricalPromotionCanonicalInput({
+      date: collectionDate,
+      sourcePublication: {
+        kind: "active-database-publication",
+        publicationId: legacy.promotionRebuild.sourcePublicationId,
+        artifactId: legacy.promotionRebuild.sourceArtifactId,
+        reportSha256:
+          legacy.promotionRebuild.sourcePublicationReportSha256,
+        proofSha256: legacy.promotionRebuild.sourcePublicationProofSha256,
+      },
+      datasetManifest,
+      datasetManifestSha256: legacy.datasetManifestSha256,
+      supportingEvidence: { kind: "active-database-publication" },
+      allowHistoricalGitHubOmission: false,
+    }).authoritativeInputDigest;
+    const request = {
+      ...legacy,
+      sourceEvidence: { kind: "active-database-publication" as const },
+      promotionRebuild: {
+        ...legacy.promotionRebuild,
+        rebuildIdentity: historicalPromotionRebuildIdentity({
+          date: collectionDate,
+          authoritativeInputDigest,
+        }),
+        authoritativeInputDigest,
+        sourceAuthorityKind: "active-database-publication" as const,
+      },
+    };
+
+    const loaded = loadHistoricalRegeneration(loadParams(request));
+
+    expect(loaded.provenance).toMatchObject({
+      priorCollectionProof: null,
+      activeSourcePublicationProof: {
+        artifactFormat: "reader-summary-active-database-publication-v1",
+        publicationId: request.promotionRebuild.sourcePublicationId,
+        proofSha256: request.promotionRebuild.sourcePublicationProofSha256,
+      },
+    });
+    expect(loaded.verifiedCollectionStep.command).toContain(
+      "active database publication",
+    );
+  });
+
   it("keeps ordinary historical recovery strict-failed admission unchanged", () => {
     const request = writeFixtures({ successfulSourceWithoutPromotion: true });
     expect(() => loadHistoricalRegeneration(loadParams(request))).toThrow(
@@ -86,12 +141,19 @@ describe("historical production-day regeneration", () => {
 
   it("fails closed when any approved content hash differs", () => {
     const request = writeFixtures();
+    if (request.sourceEvidence.kind !== "preserved-production-day-report") {
+      throw new Error("test requires preserved source evidence");
+    }
+    const sourceEvidence = request.sourceEvidence;
 
     expect(() =>
       loadHistoricalRegeneration(
         loadParams({
           ...request,
-          collectionArtifactSha256: "0".repeat(64),
+          sourceEvidence: {
+            ...sourceEvidence,
+            collectionArtifactSha256: "0".repeat(64),
+          },
         }),
       ),
     ).toThrow("source collection artifact content hash does not match");
@@ -303,9 +365,7 @@ describe("historical production-day regeneration", () => {
         ),
       },
     });
-    writeJson(
-      datasetManifestPath,
-      buildReaderSummaryDayDatasetManifest({
+    const datasetManifest = buildReaderSummaryDayDatasetManifest({
         tenantId,
         workspaceId,
         startedAt: new Date(`${fixtureDate}T00:00:00.000Z`),
@@ -324,8 +384,8 @@ describe("historical production-day regeneration", () => {
             })),
         ),
         eligibilityRows: [{ rowJson: "github-binding" }],
-      }),
-    );
+      });
+    writeJson(datasetManifestPath, datasetManifest);
     for (const path of [
       sourceReportPath,
       collectionArtifactPath,
@@ -335,15 +395,41 @@ describe("historical production-day regeneration", () => {
       chmodSync(path, 0o400);
     }
 
-    const authoritativeInputDigest = "7".repeat(64);
+    const sourcePublication = {
+      kind: "active-database-publication" as const,
+      publicationId: "00000000-0000-4000-8000-000000000101",
+      artifactId: "00000000-0000-4000-8000-000000000101",
+      reportSha256: "9".repeat(64),
+      proofSha256: "8".repeat(64),
+    };
+    const authoritativeInputDigest = buildHistoricalPromotionCanonicalInput({
+      date: fixtureDate,
+      sourcePublication,
+      datasetManifest,
+      datasetManifestSha256: digest(datasetManifestPath),
+      supportingEvidence: {
+        kind: "preserved-production-day-report",
+        sourceReportSha256: digest(sourceReportPath),
+        collectionArtifactSha256: digest(collectionArtifactPath),
+        collectionQualityReportSha256: digest(collectionQualityReportPath),
+      },
+      allowHistoricalGitHubOmission:
+        options.allowHistoricalGitHubOmission ?? false,
+      ...(options.allowHistoricalGitHubOmission
+        ? { historicalGitHubOmissionReason: omissionReason }
+        : {}),
+    }).authoritativeInputDigest;
     return {
       mode: "historical-regeneration",
-      sourceReportPath,
-      sourceReportSha256: digest(sourceReportPath),
-      collectionArtifactPath,
-      collectionArtifactSha256: digest(collectionArtifactPath),
-      collectionQualityReportPath,
-      collectionQualityReportSha256: digest(collectionQualityReportPath),
+      sourceEvidence: {
+        kind: "preserved-production-day-report",
+        sourceReportPath,
+        sourceReportSha256: digest(sourceReportPath),
+        collectionArtifactPath,
+        collectionArtifactSha256: digest(collectionArtifactPath),
+        collectionQualityReportPath,
+        collectionQualityReportSha256: digest(collectionQualityReportPath),
+      },
       datasetManifestPath,
       datasetManifestSha256: digest(datasetManifestPath),
       timestampPolicy: options.timestampPolicy ?? "published_at",
@@ -358,10 +444,12 @@ describe("historical production-day regeneration", () => {
               }),
               authoritativeInputDigest,
               policyVersion: "reader_post_promotion.v2" as const,
-              sourcePublicationId:
-                "00000000-0000-4000-8000-000000000101",
-              sourceArtifactId: "00000000-0000-4000-8000-000000000101",
-              sourcePublicationProofSha256: "8".repeat(64),
+              sourceAuthorityKind:
+                "preserved-production-day-report" as const,
+              sourcePublicationId: sourcePublication.publicationId,
+              sourceArtifactId: sourcePublication.artifactId,
+              sourcePublicationReportSha256: sourcePublication.reportSha256,
+              sourcePublicationProofSha256: sourcePublication.proofSha256,
             },
           }
         : {}),
@@ -381,7 +469,11 @@ function loadParams(
     githubOmissionReason: request.allowHistoricalGitHubOmission
       ? omissionReason
       : undefined,
-    recoveryRoot: directoryFor(request.sourceReportPath),
+    recoveryRoot: directoryFor(
+      request.sourceEvidence.kind === "preserved-production-day-report"
+        ? request.sourceEvidence.sourceReportPath
+        : request.datasetManifestPath,
+    ),
     forbiddenOutputPaths: [],
     tenantId,
     workspaceId,

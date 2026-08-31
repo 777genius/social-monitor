@@ -29,6 +29,12 @@ const liveIdentity = {
       physicalModel: "gpt-5.6-sol",
       reasoningPolicy: "high",
     },
+    storyRelationVerifier: {
+      mode: "agent-runtime",
+      provider: "codex",
+      physicalModel: "gpt-5.6-sol",
+      reasoningPolicy: "high",
+    },
     runtime: {
       engine: "subscription-runtime-cli",
       packageVersion: "1.2.3",
@@ -42,9 +48,12 @@ const regenerationIdentity = {
   ...liveIdentity,
   sourceProvenance: {
     kind: "historical-regeneration",
-    sourceReportSha256: "a".repeat(64),
-    collectionArtifactSha256: "b".repeat(64),
-    collectionQualityReportSha256: "c".repeat(64),
+    sourceAuthority: {
+      kind: "preserved-production-day-report",
+      sourceReportSha256: "a".repeat(64),
+      collectionArtifactSha256: "b".repeat(64),
+      collectionQualityReportSha256: "c".repeat(64),
+    },
     datasetManifestSha256: "d".repeat(64),
     timestampPolicy: "published_at",
   },
@@ -120,7 +129,14 @@ describe("reader summary production-day attempt identity", () => {
         ...regenerationIdentity,
         sourceProvenance: {
           ...regenerationIdentity.sourceProvenance,
-          [field]: "e".repeat(64),
+          ...(field === "datasetManifestSha256"
+            ? { [field]: "e".repeat(64) }
+            : {
+                sourceAuthority: {
+                  ...regenerationIdentity.sourceProvenance.sourceAuthority,
+                  [field]: "e".repeat(64),
+                },
+              }),
         },
       } satisfies ReaderSummaryProductionDayAttemptIdentityInput;
 
@@ -139,8 +155,10 @@ describe("reader summary production-day attempt identity", () => {
           rebuildIdentity: "1".repeat(64),
           authoritativeInputDigest: "2".repeat(64),
           policyVersion: "reader_post_promotion.v2" as const,
+          sourceAuthorityKind: "preserved-production-day-report" as const,
           sourcePublicationId: "00000000-0000-4000-8000-000000000101",
           sourceArtifactId: "00000000-0000-4000-8000-000000000101",
+          sourcePublicationReportSha256: "4".repeat(64),
           sourcePublicationProofSha256: "3".repeat(64),
         },
       },
@@ -154,7 +172,7 @@ describe("reader summary production-day attempt identity", () => {
       attempt,
       promoted.sourceProvenance.promotionRebuild.rebuildIdentity,
     )).toBe(
-      `durable-reader-summary-daily:${attempt}:${"1".repeat(64)}`,
+      `durable-reader-summary-daily-promotion-v2:${"1".repeat(64)}`,
     );
   });
 
@@ -164,7 +182,15 @@ describe("reader summary production-day attempt identity", () => {
       const incompleteMode: Partial<typeof regenerationIdentity.sourceProvenance> = {
         ...regenerationIdentity.sourceProvenance,
       };
-      delete incompleteMode[field];
+      if (field === "datasetManifestSha256") {
+        delete incompleteMode[field];
+      } else {
+        const sourceAuthority: Partial<
+          typeof regenerationIdentity.sourceProvenance.sourceAuthority
+        > = { ...regenerationIdentity.sourceProvenance.sourceAuthority };
+        delete sourceAuthority[field];
+        incompleteMode.sourceAuthority = sourceAuthority as never;
+      }
 
       expect(() =>
         readerSummaryProductionDayAttemptIdentity({
@@ -187,6 +213,10 @@ describe("reader summary production-day attempt identity", () => {
     ["topic-relation model", { topicRelationVerifier: {
       ...liveIdentity.servingAuthority.topicRelationVerifier,
       physicalModel: "changed-topic-relation-verifier",
+    } }],
+    ["story-relation model", { storyRelationVerifier: {
+      ...liveIdentity.servingAuthority.storyRelationVerifier,
+      physicalModel: "changed-story-relation-verifier",
     } }],
     ["provider", { summaryGenerator: {
       ...liveIdentity.servingAuthority.summaryGenerator,

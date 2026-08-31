@@ -14,9 +14,20 @@ export type ReaderSummaryProductionDayAttemptIdentityInput = Readonly<{
       }>
     | Readonly<{
         kind: "historical-regeneration";
-        sourceReportSha256: string;
-        collectionArtifactSha256: string;
-        collectionQualityReportSha256: string;
+        sourceAuthority:
+          | Readonly<{
+              kind: "active-database-publication";
+              publicationId: string;
+              artifactId: string;
+              reportSha256: string;
+              proofSha256: string;
+            }>
+          | Readonly<{
+              kind: "preserved-production-day-report";
+              sourceReportSha256: string;
+              collectionArtifactSha256: string;
+              collectionQualityReportSha256: string;
+            }>;
         datasetManifestSha256: string;
         timestampPolicy: "published_at" | "observed_at";
         historicalGitHubOmissionReason?: string;
@@ -24,8 +35,12 @@ export type ReaderSummaryProductionDayAttemptIdentityInput = Readonly<{
           rebuildIdentity: string;
           authoritativeInputDigest: string;
           policyVersion: "reader_post_promotion.v2";
+          sourceAuthorityKind:
+            | "active-database-publication"
+            | "preserved-production-day-report";
           sourcePublicationId: string;
           sourceArtifactId: string;
+          sourcePublicationReportSha256: string;
           sourcePublicationProofSha256: string;
         }>;
       }>
@@ -80,14 +95,8 @@ export const readerSummaryProductionDayAttemptIdentity = (
             }
           : {
               kind: input.sourceProvenance.kind,
-              sourceReportSha256: requiredSha256(
-                input.sourceProvenance.sourceReportSha256,
-              ),
-              collectionArtifactSha256: requiredSha256(
-                input.sourceProvenance.collectionArtifactSha256,
-              ),
-              collectionQualityReportSha256: requiredSha256(
-                input.sourceProvenance.collectionQualityReportSha256,
+              sourceAuthority: historicalSourceAuthority(
+                input.sourceProvenance.sourceAuthority,
               ),
               datasetManifestSha256: requiredSha256(
                 input.sourceProvenance.datasetManifestSha256,
@@ -106,12 +115,21 @@ export const readerSummaryProductionDayAttemptIdentity = (
                       ),
                       policyVersion:
                         input.sourceProvenance.promotionRebuild.policyVersion,
+                      sourceAuthorityKind:
+                        requiredHistoricalSourceAuthorityKind(
+                          input.sourceProvenance.promotionRebuild
+                            .sourceAuthorityKind,
+                        ),
                       sourcePublicationId: requiredUuid(
                         input.sourceProvenance.promotionRebuild
                           .sourcePublicationId,
                       ),
                       sourceArtifactId: requiredUuid(
                         input.sourceProvenance.promotionRebuild.sourceArtifactId,
+                      ),
+                      sourcePublicationReportSha256: requiredSha256(
+                        input.sourceProvenance.promotionRebuild
+                          .sourcePublicationReportSha256,
                       ),
                       sourcePublicationProofSha256: requiredSha256(
                         input.sourceProvenance.promotionRebuild
@@ -130,6 +148,42 @@ export const readerSummaryProductionDayAttemptIdentity = (
             },
   }));
 
+const historicalSourceAuthority = (
+  value: Extract<
+    ReaderSummaryProductionDayAttemptIdentityInput["sourceProvenance"],
+    { readonly kind: "historical-regeneration" }
+  >["sourceAuthority"],
+) => value.kind === "active-database-publication"
+  ? {
+      kind: value.kind,
+      publicationId: requiredUuid(value.publicationId),
+      artifactId: requiredUuid(value.artifactId),
+      reportSha256: requiredSha256(value.reportSha256),
+      proofSha256: requiredSha256(value.proofSha256),
+    }
+  : {
+      kind: value.kind,
+      sourceReportSha256: requiredSha256(value.sourceReportSha256),
+      collectionArtifactSha256: requiredSha256(
+        value.collectionArtifactSha256,
+      ),
+      collectionQualityReportSha256: requiredSha256(
+        value.collectionQualityReportSha256,
+      ),
+    };
+
+const requiredHistoricalSourceAuthorityKind = (
+  value: string,
+): "active-database-publication" | "preserved-production-day-report" => {
+  if (value !== "active-database-publication" &&
+      value !== "preserved-production-day-report") {
+    throw new Error(
+      "Reader summary production-day source authority kind is invalid",
+    );
+  }
+  return value;
+};
+
 const servingAuthority = (
   value: ReaderSummaryServingAuthority,
 ): ReaderSummaryServingAuthority => ({
@@ -138,6 +192,10 @@ const servingAuthority = (
   topicRelationVerifier: componentAuthority(
     value.topicRelationVerifier,
     "topic relation verifier",
+  ),
+  storyRelationVerifier: componentAuthority(
+    value.storyRelationVerifier,
+    "story relation verifier",
   ),
   runtime: value.runtime === null
     ? null
@@ -172,13 +230,14 @@ export const readerSummaryProductionDayIdempotencyKey = (
   attemptIdentity: string,
   promotionRebuildIdentity?: string,
 ): string =>
-  [
-    "durable-reader-summary-daily",
-    requiredSha256(attemptIdentity),
-    ...(promotionRebuildIdentity === undefined
-      ? []
-      : [requiredSha256(promotionRebuildIdentity)]),
-  ].join(":");
+  // Historical Promotion V2 deliberately has one durable identity authority:
+  // SHA-256(date + complete canonical input digest + policy version).
+  promotionRebuildIdentity === undefined
+    ? ["durable-reader-summary-daily", requiredSha256(attemptIdentity)].join(":")
+    : [
+        "durable-reader-summary-daily-promotion-v2",
+        requiredSha256(promotionRebuildIdentity),
+      ].join(":");
 
 const requiredText = (value: string, label: string): string => {
   const normalized = value.trim();

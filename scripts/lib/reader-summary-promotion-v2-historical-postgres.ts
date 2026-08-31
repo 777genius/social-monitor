@@ -137,6 +137,8 @@ export class PostgresHistoricalPromotionAdapter
       if (bundle !== undefined && active !== null &&
           active.publicationId === bundle.sourcePublicationId &&
           (active.artifactId !== bundle.sourceArtifactId ||
+            active.reportSha256.trim() !==
+              bundle.sourcePublicationReportSha256 ||
             active.proofSha256.trim() !== bundle.sourcePublicationProofSha256)) {
         return {
           state: "ambiguous",

@@ -21,6 +21,12 @@ export const fixtureReaderSummaryServingAuthority = async (): Promise<
     physicalModel: "deterministic-reader-summary-topic-relation-verifier-v1",
     reasoningPolicy: "not-applicable",
   },
+  storyRelationVerifier: {
+    mode: "agent-runtime",
+    provider: "codex",
+    physicalModel: "gpt-5.6-sol",
+    reasoningPolicy: "high",
+  },
   runtime: {
     engine: "subscription-runtime-cli",
     packageVersion: "0.0.0-test",
