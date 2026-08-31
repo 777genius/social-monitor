@@ -29,6 +29,7 @@ cp "$SCRIPT_DIR/social-monitor-production-deploy.sh" \
   "$SCRIPT_DIR/social-monitor-production-ssh-wrapper.sh" \
   "$SCRIPT_DIR/deploy-control-lib.sh" "$SCRIPT_DIR/deploy-control-bridge-lib.sh" \
   "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh" \
+  "$SCRIPT_DIR/postgres-runtime-asset-lib.sh" \
   "$SCRIPT_DIR/postgres-runtime-activation-boundary-lib.sh" \
   "$SCRIPT_DIR/postgres-runtime-daily-c1-readiness-lib.sh" \
   "$SCRIPT_DIR/postgres-runtime-weekly-timer-state-lib.sh" \
