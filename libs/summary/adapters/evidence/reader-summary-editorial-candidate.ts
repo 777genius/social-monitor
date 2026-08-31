@@ -1,3 +1,6 @@
+import {
+  evaluateReaderPromotionV2,
+} from "@social-monitor/feed/domain";
 import type {
   ReaderPromotionV2Candidate,
   ReaderPromotionV2Engagement,
@@ -54,17 +57,8 @@ export const isEligibleReaderSummarySameStorySupport = (
   item: SummaryEvidenceItem,
   selection: SummaryEvidenceSelection,
 ): boolean => {
-  const quality = item.contentQuality;
-  return readerPostProviderFamily(item.providerKey) !== undefined &&
-    item.promotionFacts !== undefined &&
-    item.promotionFacts.safetyValid &&
-    validFreshness(item, selection) &&
-    quality?.eligibleForSummary === true &&
-    quality.eligibleForTopRead &&
-    !quality.needsLlmReview &&
-    quality.decision !== "downrank" &&
-    quality.decision !== "reject" &&
-    hasReaderFacingPromotionTitle(item);
+  const candidate = readerSummaryPromotionV2Candidate(item, selection);
+  return candidate !== undefined && evaluateReaderPromotionV2(candidate).admitted;
 };
 
 const promotionEngagement = (

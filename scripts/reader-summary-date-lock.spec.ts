@@ -6,6 +6,7 @@ import {
   readFileSync,
   rmSync,
   writeFileSync,
+  symlinkSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -90,6 +91,45 @@ describe("reader-summary common date lock", () => {
     const mismatch = run(typo);
     expect(mismatch.status).toBe(76);
     expect(String(mismatch.stderr)).toContain("identity mismatch");
+
+    const otherDateLocks = join(directory, "other-date-locks");
+    mkdirSync(otherDateLocks);
+    const directoryMismatch = spawnSync("bash", [
+      lockScript(), "--date", "2026-08-01",
+      "--date-lock-dir", dateLocks, "--fence-dir", fences,
+      "--global-lock", global, "--require-preexisting-authority",
+      "--canonical-global-lock", global,
+      "--canonical-date-lock-dir", otherDateLocks,
+      "--canonical-fence-dir", fences,
+      "--wait-seconds", "1", "--", "bash", "-c", "true",
+    ]);
+    expect(directoryMismatch.status).toBe(76);
+    expect(String(directoryMismatch.stderr)).toContain("identity mismatch");
+  });
+
+  it("rejects symlinked canonical lock authority without following it", () => {
+    const global = join(directory, "daily-run.lock");
+    const linkedGlobal = join(directory, "daily-run-linked.lock");
+    const dateLocks = join(directory, "date-locks");
+    const fences = join(directory, "fences");
+    mkdirSync(dateLocks);
+    mkdirSync(fences);
+    writeFileSync(global, "sentinel");
+    symlinkSync(global, linkedGlobal);
+
+    const result = spawnSync("bash", [
+      lockScript(), "--date", "2026-08-01",
+      "--date-lock-dir", dateLocks, "--fence-dir", fences,
+      "--global-lock", linkedGlobal, "--require-preexisting-authority",
+      "--canonical-global-lock", global,
+      "--canonical-date-lock-dir", dateLocks,
+      "--canonical-fence-dir", fences,
+      "--wait-seconds", "1", "--", "bash", "-c", "true",
+    ]);
+
+    expect(result.status).toBe(76);
+    expect(String(result.stderr)).toContain("cannot be a symlink");
+    expect(readFileSync(global, "utf8")).toBe("sentinel");
   });
 
   const startLocked = (input: {

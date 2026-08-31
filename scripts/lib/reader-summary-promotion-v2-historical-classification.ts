@@ -21,6 +21,7 @@ export type HistoricalPromotionAuthorityRow = Readonly<{
 export type HistoricalPromotionDayEndMetricProof = Readonly<{
   source: "observation" | "daily-rollup";
   observedAt: string;
+  completeThroughAt: string | null;
   metrics: JsonObject;
 }>;
 
@@ -58,6 +59,7 @@ export type HistoricalPromotionAuthorityInspection = Readonly<{
   rows: readonly HistoricalPromotionAuthorityRow[];
   engagementSnapshotCount: number;
   engagementObservationByOriginalDayEndCount: number;
+  retainedAuthorityDigest: string;
 }>;
 
 export const classifyHistoricalPromotionAuthority = (input: {
@@ -91,6 +93,8 @@ export const classifyHistoricalPromotionAuthority = (input: {
           row.providerKey,
           row.dayEndMetricProof === null
             ? "day_end_metric_proof_missing"
+            : !hasCompleteDayEndAuthority(row.dayEndMetricProof, dayEnd)
+              ? "day_end_authority_not_complete"
             : "day_end_metric_value_mismatch",
         );
       }
@@ -111,7 +115,7 @@ export const classifyHistoricalPromotionAuthority = (input: {
       left.reason.localeCompare(right.reason),
     );
   const common = {
-    authorityInspectionDigest: authorityDigest(input.date, rows),
+    authorityInspectionDigest: authorityDigest(input.date, rows, input.inspection),
     policyVersion: readerSummaryPromotionV2HistoricalPolicyVersion,
     visibleFeedRowCount: rows.length,
     promotionRelevantRowCount: relevant,
@@ -152,11 +156,15 @@ export const classifyHistoricalPromotionAuthority = (input: {
 export const historicalPromotionRebuildIdentity = (input: {
   readonly date: string;
   readonly authoritativeInputDigest: string;
+  readonly authorityInspectionDigest: string;
   readonly policyVersion?: string;
 }): string => {
   exactUtcDayEnd(input.date);
   if (!/^[0-9a-f]{64}$/u.test(input.authoritativeInputDigest)) {
     throw new Error("Historical promotion authoritative input digest is invalid");
+  }
+  if (!/^[0-9a-f]{64}$/u.test(input.authorityInspectionDigest)) {
+    throw new Error("Historical promotion authority inspection digest is invalid");
   }
   const policyVersion =
     input.policyVersion ?? readerSummaryPromotionV2HistoricalPolicyVersion;
@@ -164,9 +172,10 @@ export const historicalPromotionRebuildIdentity = (input: {
     throw new Error("Historical promotion policy version is not V2");
   }
   return sha256(JSON.stringify({
-    schemaVersion: "reader_summary.promotion_v2_rebuild_identity.v2",
+    schemaVersion: "reader_summary.promotion_v2_rebuild_identity.v3",
     date: input.date,
     authoritativeInputDigest: input.authoritativeInputDigest,
+    authorityInspectionDigest: input.authorityInspectionDigest,
     policyVersion,
   }));
 };
@@ -181,9 +190,16 @@ export const assertClosedUtcDate = (date: string, now: Date): void => {
 const authorityDigest = (
   date: string,
   rows: readonly HistoricalPromotionAuthorityRow[],
+  inspection: HistoricalPromotionAuthorityInspection,
 ): string => sha256(JSON.stringify({
-    schemaVersion: "reader_summary.promotion_authority.v2",
+  schemaVersion: "reader_summary.promotion_authority.v3",
   date,
+  retainedAuthorityDigest: requiredAuthorityDigest(
+    inspection.retainedAuthorityDigest,
+  ),
+  engagementSnapshotCount: inspection.engagementSnapshotCount,
+  engagementObservationByOriginalDayEndCount:
+    inspection.engagementObservationByOriginalDayEndCount,
   rows: rows.map((row) => ({
     feedItemId: row.feedItemId,
     providerKey: row.providerKey,
@@ -194,13 +210,21 @@ const authorityDigest = (
   })),
 }));
 
+const requiredAuthorityDigest = (value: string): string => {
+  if (!/^[0-9a-f]{64}$/u.test(value)) {
+    throw new Error("Historical promotion retained authority digest is invalid");
+  }
+  return value;
+};
+
 const hasExactDayEndMetricProof = (
   row: HistoricalPromotionAuthorityRow,
   eligibility: Extract<FeedPromotionEligibility, { readonly eligible: true }>,
   dayEnd: string,
 ): boolean => {
   const proof = row.dayEndMetricProof;
-  if (proof === null || proof.observedAt >= dayEnd) return false;
+  if (proof === null || !timestampBefore(proof.observedAt, dayEnd) ||
+      !hasCompleteDayEndAuthority(proof, dayEnd)) return false;
   const metric = (key: string): number | undefined => {
     const value = proof.metrics[key];
     return typeof value === "number" && Number.isSafeInteger(value)
@@ -232,6 +256,25 @@ const hasExactDayEndMetricProof = (
       // historical GitHub ranking input.
       return false;
   }
+};
+
+const hasCompleteDayEndAuthority = (
+  proof: HistoricalPromotionDayEndMetricProof,
+  dayEnd: string,
+): boolean => proof.source === "daily-rollup" &&
+  proof.completeThroughAt !== null &&
+  timestampAtOrAfter(proof.completeThroughAt, dayEnd);
+
+const timestampBefore = (value: string, boundary: string): boolean => {
+  const parsed = Date.parse(value);
+  const limit = Date.parse(boundary);
+  return Number.isFinite(parsed) && Number.isFinite(limit) && parsed < limit;
+};
+
+const timestampAtOrAfter = (value: string, boundary: string): boolean => {
+  const parsed = Date.parse(value);
+  const limit = Date.parse(boundary);
+  return Number.isFinite(parsed) && Number.isFinite(limit) && parsed >= limit;
 };
 
 const canonicalValue = (value: unknown): unknown => {

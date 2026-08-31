@@ -4,6 +4,7 @@ import { normalizeReaderSummaryArtifactPayload } from
 
 export type HistoricalPromotionArtifactRecord = Readonly<{
   artifactId: string;
+  status: string;
   tenantId: string;
   workspaceId: string;
   scopeType: string;
@@ -20,7 +21,8 @@ export type HistoricalPromotionArtifactRecord = Readonly<{
   artifactPayload: unknown;
 }>;
 
-export type HistoricalPromotionTupleKind = "strict-v1" | "valid-v2";
+export type HistoricalPromotionTupleKind =
+  "strict-v1" | "valid-v2" | "valid-no-signal";
 
 export type HistoricalPromotionArtifactVerification = Readonly<{
   kind: HistoricalPromotionTupleKind;
@@ -59,7 +61,7 @@ export const verifyHistoricalPromotionArtifact = (
   if (versions.size > 1) {
     throw new Error("Historical promotion artifact has a mixed policy tuple");
   }
-  if (attestations.length > 0 &&
+  if (record.status === "COMPLETED" && attestations.length > 0 &&
       versions.has("reader_post_promotion.v1")) {
     return {
       kind: "strict-v1",
@@ -68,18 +70,26 @@ export const verifyHistoricalPromotionArtifact = (
       citationCount: snapshot.citationMap.length,
     };
   }
-  if (attestations.length > 0 &&
+  if (record.status === "COMPLETED" && attestations.length > 0 &&
       versions.has("reader_post_promotion.v2")) {
+    const lanes = orderedLanes(snapshot, attestations);
+    if (lanes.top.length > 8 || lanes.additional.length > 8 ||
+        attestations.length !== lanes.top.length + lanes.additional.length) {
+      throw new Error(
+        "Historical Promotion V2 artifact selected-card cardinality is invalid",
+      );
+    }
     return {
       kind: "valid-v2",
       noSignal: false,
-      orderedLanes: orderedLanes(snapshot, attestations),
+      orderedLanes: lanes,
       citationCount: snapshot.citationMap.length,
     };
   }
-  if (attestations.length === 0 && isPromotionV2NoSignal(snapshot)) {
+  if (attestations.length === 0 && record.status === "NO_SIGNAL" &&
+      isPromotionV2NoSignal(snapshot)) {
     return {
-      kind: "valid-v2",
+      kind: "valid-no-signal",
       noSignal: true,
       orderedLanes: { top: [], additional: [] },
       citationCount: 0,
@@ -87,6 +97,10 @@ export const verifyHistoricalPromotionArtifact = (
   }
   throw new Error("Historical promotion artifact tuple is unknown or tampered");
 };
+
+export const isHistoricalPromotionTargetTuple = (
+  value: HistoricalPromotionArtifactVerification,
+): boolean => value.kind === "valid-v2" || value.kind === "valid-no-signal";
 
 const orderedLanes = (
   snapshot: ReturnType<ReaderSummaryArtifact["toSnapshot"]>,
@@ -101,6 +115,14 @@ const orderedLanes = (
     item.candidateId,
     JSON.parse(JSON.stringify(item)) as unknown,
   ]));
+  if (byCandidate.size !== attestations.length) {
+    throw new Error("Historical promotion candidates are not unique");
+  }
+  const topCards = snapshot.content.topReads.filter((card) =>
+    card.promotionMarker === "reader_post_promotion");
+  const additionalCards = (snapshot.content.selectedPosts ?? []).filter(
+    (card) => card.promotionMarker === "reader_post_promotion",
+  );
   const lane = (
     cards: readonly { readonly promotionCandidateId?: string }[],
     name: "top" | "additional",
@@ -112,10 +134,19 @@ const orderedLanes = (
     }
     return attestation;
   });
-  return {
-    top: lane(snapshot.content.topReads, "top"),
-    additional: lane(snapshot.content.selectedPosts ?? [], "additional"),
+  const result = {
+    top: lane(topCards, "top"),
+    additional: lane(additionalCards, "additional"),
   };
+  const orderedCandidateIds = [...topCards, ...additionalCards].map(
+    (card) => card.promotionCandidateId,
+  );
+  if (orderedCandidateIds.length !== attestations.length ||
+      orderedCandidateIds.some((id, index) =>
+        id !== attestations[index]?.candidateId)) {
+    throw new Error("Historical promotion lane order differs from attestations");
+  }
+  return result;
 };
 
 const isPromotionV2NoSignal = (

@@ -34,6 +34,7 @@ export type ReaderSummaryProductionDayAttemptIdentityInput = Readonly<{
         promotionRebuild?: Readonly<{
           rebuildIdentity: string;
           authoritativeInputDigest: string;
+          authorityInspectionDigest: string;
           policyVersion: "reader_post_promotion.v2";
           sourceAuthorityKind:
             | "active-database-publication"
@@ -112,6 +113,10 @@ export const readerSummaryProductionDayAttemptIdentity = (
                       authoritativeInputDigest: requiredSha256(
                         input.sourceProvenance.promotionRebuild
                           .authoritativeInputDigest,
+                      ),
+                      authorityInspectionDigest: requiredSha256(
+                        input.sourceProvenance.promotionRebuild
+                          .authorityInspectionDigest,
                       ),
                       policyVersion:
                         input.sourceProvenance.promotionRebuild.policyVersion,

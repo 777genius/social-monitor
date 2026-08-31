@@ -22,6 +22,7 @@ type Fixture = Readonly<{
     date: string;
     engagementSnapshotCount: number;
     engagementObservationByOriginalDayEndCount: number;
+    retainedAuthorityDigest: string;
     rows: readonly Readonly<{
       feedItemId: string;
       providerKey: string;
@@ -31,6 +32,7 @@ type Fixture = Readonly<{
       dayEndMetricProof: Readonly<{
         source: "observation" | "daily-rollup";
         observedAt: string;
+        completeThroughAt: string | null;
         metrics: JsonObject;
       }> | null;
     }>[];
@@ -98,6 +100,7 @@ describe("historical Reader Promotion V2 classification", () => {
       inspection: {
         engagementSnapshotCount: 1,
         engagementObservationByOriginalDayEndCount: 1,
+        retainedAuthorityDigest: "a".repeat(64),
         rows: [{
           feedItemId: "00000000-0000-4000-8000-000000000999",
           providerKey: "reddit",
@@ -107,8 +110,9 @@ describe("historical Reader Promotion V2 classification", () => {
           publishedAt: "2026-08-01T08:00:00.000Z",
           observedAt: "2026-08-01T08:05:00.000Z",
           dayEndMetricProof: {
-            source: "observation",
+            source: "daily-rollup",
             observedAt: "2026-08-01T23:00:00.000Z",
+            completeThroughAt: "2026-08-02T00:00:00.000Z",
             metrics: { score: 80, upvoteRatioBps: 9000 },
           },
         }],
@@ -124,25 +128,67 @@ describe("historical Reader Promotion V2 classification", () => {
     });
   });
 
-  it("binds identity to date, authoritative digest, and V2 policy", () => {
+  it("requires explicit durable coverage through UTC day end", () => {
+    const classification = classifyHistoricalPromotionAuthority({
+      date: "2026-08-01",
+      inspection: {
+        engagementSnapshotCount: 1,
+        engagementObservationByOriginalDayEndCount: 1,
+        retainedAuthorityDigest: "b".repeat(64),
+        rows: [{
+          feedItemId: "00000000-0000-4000-8000-000000000998",
+          providerKey: "hacker-news",
+          providerMetadata: { kind: "hacker_news_story", points: 96 },
+          publishedAt: "2026-08-01T08:00:00.000Z",
+          observedAt: "2026-08-01T08:05:00.000Z",
+          dayEndMetricProof: {
+            source: "observation",
+            observedAt: "2026-08-01T23:59:59.000Z",
+            completeThroughAt: null,
+            metrics: { points: 96 },
+          },
+        }],
+      },
+    });
+    expect(classification.kind).toBe(
+      "rebuildable-from-authoritative-input",
+    );
+    expect(classification.providerLimitations).toContainEqual({
+      providerKey: "hacker-news",
+      reason: "day_end_authority_not_complete",
+      rowCount: 1,
+    });
+  });
+
+  it("binds identity to authority rows, date, canonical input, and policy", () => {
     const digest = "a".repeat(64);
+    const authorityDigest = "b".repeat(64);
     const identity = historicalPromotionRebuildIdentity({
       date: "2026-08-01",
       authoritativeInputDigest: digest,
+      authorityInspectionDigest: authorityDigest,
     });
 
     expect(identity).toBe(historicalPromotionRebuildIdentity({
       date: "2026-08-01",
       authoritativeInputDigest: digest,
+      authorityInspectionDigest: authorityDigest,
       policyVersion: "reader_post_promotion.v2",
     }));
     expect(identity).not.toBe(historicalPromotionRebuildIdentity({
       date: "2026-08-02",
       authoritativeInputDigest: digest,
+      authorityInspectionDigest: authorityDigest,
+    }));
+    expect(identity).not.toBe(historicalPromotionRebuildIdentity({
+      date: "2026-08-01",
+      authoritativeInputDigest: digest,
+      authorityInspectionDigest: "c".repeat(64),
     }));
     expect(() => historicalPromotionRebuildIdentity({
       date: "2026-08-01",
       authoritativeInputDigest: digest,
+      authorityInspectionDigest: authorityDigest,
       policyVersion: "reader_post_promotion.v1",
     })).toThrow("policy version is not V2");
   });

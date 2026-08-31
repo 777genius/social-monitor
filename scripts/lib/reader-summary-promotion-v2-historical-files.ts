@@ -25,6 +25,11 @@ import type {
   HistoricalPromotionRebuildReceipt,
   HistoricalPromotionReceiptStore,
 } from "./reader-summary-promotion-v2-historical-runner";
+import {
+  openSecureDirectory,
+  type SecureDirectoryHandle,
+} from
+  "./reader-summary-promotion-v2-secure-directory";
 
 type EvidenceFileEntry = Readonly<{ path: string; sha256: string }>;
 type VerifiedEvidenceFile = Readonly<{
@@ -119,15 +124,29 @@ export const loadHistoricalPromotionEvidenceManifest = (input: {
 export class FileHistoricalPromotionReceiptStore
   implements HistoricalPromotionReceiptStore {
   readonly outputDirectory: string;
+  private readonly outputHandle: SecureDirectoryHandle;
 
   constructor(outputDirectory: string) {
     this.outputDirectory = resolve(outputDirectory);
+    this.outputHandle = openSecureDirectory(this.outputDirectory, true);
+  }
+
+  close(): void {
+    this.outputHandle.close();
+  }
+
+  get outputIdentity(): string {
+    return this.outputHandle.identity;
   }
 
   async load(date: string): Promise<HistoricalPromotionRebuildReceipt | null> {
     try {
       const receipt = parseJson(
-        readFileSync(this.receiptPath(date, "execute")),
+        readFileSync(this.receiptPath(
+          date,
+          "execute",
+          this.outputHandle.fdPath,
+        )),
         "historical promotion receipt",
       ) as HistoricalPromotionRebuildReceipt;
       if (receipt.schemaVersion !== 1 ||
@@ -144,8 +163,14 @@ export class FileHistoricalPromotionReceiptStore
   }
 
   async save(receipt: HistoricalPromotionRebuildReceipt): Promise<void> {
-    const path = this.receiptPath(receipt.date, receipt.mode);
-    writeJsonAtomically(path, receipt);
+    writeJsonAtomically(
+      this.receiptPath(
+        receipt.date,
+        receipt.mode,
+        this.outputHandle.fdPath,
+      ),
+      receipt,
+    );
   }
 
   saveRunReceipt(input: {
@@ -155,37 +180,39 @@ export class FileHistoricalPromotionReceiptStore
     readonly receipts: readonly HistoricalPromotionRebuildReceipt[];
   }): string {
     const path = join(
-      this.outputDirectory,
+      this.outputHandle.fdPath,
       input.dryRun
         ? "reader-summary-promotion-v2-historical-dry-run.v1.json"
         : "reader-summary-promotion-v2-historical-run.v1.json",
     );
     writeJsonAtomically(path, {
-      schemaVersion: 1,
-      format: "reader-summary-promotion-v2-historical-run-receipt-v1",
-      generatedAt: input.generatedAt,
-      mode: input.dryRun ? "dry-run" : "execute",
-      policyVersion: readerSummaryPromotionV2HistoricalPolicyVersion,
-      requestedDates: input.requestedDates,
-      counts: Object.fromEntries(
-        ["planned", "unrebuildable", "pending", "completed", "noop"].map(
-          (status) => [
-            status,
-            input.receipts.filter((receipt) => receipt.status === status).length,
-          ],
+        schemaVersion: 1,
+        format: "reader-summary-promotion-v2-historical-run-receipt-v1",
+        generatedAt: input.generatedAt,
+        mode: input.dryRun ? "dry-run" : "execute",
+        policyVersion: readerSummaryPromotionV2HistoricalPolicyVersion,
+        requestedDates: input.requestedDates,
+        counts: Object.fromEntries(
+          ["planned", "unrebuildable", "pending", "completed", "noop"].map(
+            (status) => [
+              status,
+              input.receipts.filter((receipt) =>
+                receipt.status === status).length,
+            ],
+          ),
         ),
-      ),
-      receipts: input.receipts,
+        receipts: input.receipts,
     });
-    return path;
+    return join(this.outputDirectory, path.split("/").at(-1)!);
   }
 
   private receiptPath(
     date: string,
     mode: "dry-run" | "execute",
+    directory = this.outputDirectory,
   ): string {
     return join(
-      this.outputDirectory,
+      directory,
       `reader-summary-promotion-v2-${mode}-${date}.receipt.v1.json`,
     );
   }

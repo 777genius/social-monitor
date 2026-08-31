@@ -14,6 +14,7 @@ const authorityEnvNames = [
   "DURABLE_READER_SUMMARY_PROMOTION_POLICY_VERSION",
   "DURABLE_READER_SUMMARY_PROMOTION_SOURCE_AUTHORITY_KIND",
   "DURABLE_READER_SUMMARY_AUTHORITATIVE_INPUT_SHA256",
+  "DURABLE_READER_SUMMARY_PROMOTION_AUTHORITY_INSPECTION_SHA256",
   "DURABLE_READER_SUMMARY_SOURCE_PUBLICATION_ID",
   "DURABLE_READER_SUMMARY_SOURCE_ARTIFACT_ID",
   "DURABLE_READER_SUMMARY_SOURCE_PUBLICATION_REPORT_SHA256",
@@ -37,11 +38,13 @@ export const resolveProductionDayPromotionRebuild = (input: {
     policyVersion,
     sourceAuthorityKind,
     authoritativeInputDigest,
+    authorityInspectionDigest,
     sourcePublicationId,
     sourceArtifactId,
     sourcePublicationReportSha256,
     sourcePublicationProofSha256,
   ] = values as [
+    string,
     string,
     string,
     string,
@@ -61,6 +64,7 @@ export const resolveProductionDayPromotionRebuild = (input: {
   const promotionRebuild = {
     rebuildIdentity,
     authoritativeInputDigest,
+    authorityInspectionDigest,
     policyVersion,
     sourceAuthorityKind,
     sourcePublicationId,
@@ -71,6 +75,7 @@ export const resolveProductionDayPromotionRebuild = (input: {
   if (historicalPromotionRebuildIdentity({
     date: input.date,
     authoritativeInputDigest,
+    authorityInspectionDigest,
     policyVersion,
   }) !== rebuildIdentity) {
     throw new Error("Promotion rebuild identity does not match its authority");
@@ -100,6 +105,8 @@ export const productionDayPromotionRebuildEnvironment = (
     input.sourceAuthorityKind,
   DURABLE_READER_SUMMARY_AUTHORITATIVE_INPUT_SHA256:
     input.authoritativeInputDigest,
+  DURABLE_READER_SUMMARY_PROMOTION_AUTHORITY_INSPECTION_SHA256:
+    input.authorityInspectionDigest,
   DURABLE_READER_SUMMARY_SOURCE_PUBLICATION_ID: input.sourcePublicationId,
   DURABLE_READER_SUMMARY_SOURCE_ARTIFACT_ID: input.sourceArtifactId,
   DURABLE_READER_SUMMARY_SOURCE_PUBLICATION_REPORT_SHA256:

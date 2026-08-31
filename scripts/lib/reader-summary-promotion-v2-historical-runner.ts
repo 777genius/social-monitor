@@ -88,7 +88,7 @@ export type HistoricalPromotionVerifiedOutput = Readonly<{
     apiPromotionTupleVerified: true;
     apiOrderedLanesVerified: true;
     siteReaderRouteHttp200Verified: true;
-    siteFacingContractVerified: true | "not-exposed";
+    siteFacingContractVerified: true;
   };
 }>;
 
@@ -271,6 +271,7 @@ export class ReaderSummaryPromotionV2HistoricalRunner {
     const rebuildIdentity = historicalPromotionRebuildIdentity({
       date,
       authoritativeInputDigest,
+      authorityInspectionDigest: classification.authorityInspectionDigest,
     });
     const base = this.baseReceipt({
       date,
@@ -313,6 +314,17 @@ export class ReaderSummaryPromotionV2HistoricalRunner {
           "requires-durable-reconciliation",
         );
       }
+      if (!await this.authorityStillMatches(
+        date,
+        bundle!.timestampPolicy,
+        classification.authorityInspectionDigest,
+      )) {
+        return pendingReceipt(
+          base,
+          "authority_observation_drifted_before_noop",
+          "safe-before-paid-operation",
+        );
+      }
       try {
         return this.completedReceipt(
           base,
@@ -337,6 +349,17 @@ export class ReaderSummaryPromotionV2HistoricalRunner {
       return pendingReceipt(base, "resume_required", prior.retrySafety);
     }
     if (durableState.state === "complete-active") {
+      if (!await this.authorityStillMatches(
+        date,
+        bundle!.timestampPolicy,
+        classification.authorityInspectionDigest,
+      )) {
+        return pendingReceipt(
+          base,
+          "authority_observation_drifted_before_noop",
+          "safe-before-paid-operation",
+        );
+      }
       try {
         const verified = await this.dependencies.mutation.verifyCompleted({
           date,
@@ -411,6 +434,27 @@ export class ReaderSummaryPromotionV2HistoricalRunner {
       "v2_publication_verified_and_active",
       outcome.fenceToken,
     );
+  }
+
+  private async authorityStillMatches(
+    date: string,
+    timestampPolicy: "published_at" | "observed_at",
+    expectedDigest: string,
+  ): Promise<boolean> {
+    try {
+      const current = classifyHistoricalPromotionAuthority({
+        date,
+        inspection: await this.dependencies.authority.inspect(
+          date,
+          timestampPolicy,
+        ),
+      });
+      return current.kind !== "unrebuildable" &&
+        current.authorityInspectionDigest === expectedDigest;
+    } catch (error) {
+      if (error instanceof HistoricalPromotionSystemRoleError) throw error;
+      return false;
+    }
   }
 
   private baseReceipt(input: {

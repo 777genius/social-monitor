@@ -31,6 +31,8 @@ const promotionV2RebuildOption = "--promotion-v2-rebuild";
 const promotionRebuildIdentityOption = "--promotion-rebuild-identity";
 const promotionSourceAuthorityKindOption = "--promotion-source-authority-kind";
 const authoritativeInputSha256Option = "--authoritative-input-sha256";
+const authorityInspectionSha256Option =
+  "--promotion-authority-inspection-sha256";
 const sourcePublicationIdOption = "--source-publication-id";
 const sourceArtifactIdOption = "--source-artifact-id";
 const sourcePublicationReportSha256Option =
@@ -60,6 +62,7 @@ export type ProductionDayExecutionRequest =
       readonly promotionRebuild?: Readonly<{
         rebuildIdentity: string;
         authoritativeInputDigest: string;
+        authorityInspectionDigest: string;
         policyVersion: "reader_post_promotion.v2";
         sourceAuthorityKind:
           | "active-database-publication"
@@ -101,6 +104,7 @@ export function resolveProductionDayExecutionRequest(
     promotionRebuildIdentityOption,
     promotionSourceAuthorityKindOption,
     authoritativeInputSha256Option,
+    authorityInspectionSha256Option,
     sourcePublicationIdOption,
     sourceArtifactIdOption,
     sourcePublicationReportSha256Option,
@@ -172,6 +176,10 @@ export function resolveProductionDayExecutionRequest(
             authoritativeInputDigest: requiredSha256(
               args,
               authoritativeInputSha256Option,
+            ),
+            authorityInspectionDigest: requiredSha256(
+              args,
+              authorityInspectionSha256Option,
             ),
             policyVersion: "reader_post_promotion.v2",
             sourceAuthorityKind,

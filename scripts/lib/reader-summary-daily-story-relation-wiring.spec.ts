@@ -1,6 +1,8 @@
 import { InMemoryFeedItemReadRepository } from
   "@social-monitor/feed/adapters/persistence/in-memory-feed-item-read.repository";
 import { FeedItem } from "@social-monitor/feed/domain";
+import type { ReadPromotionFeedItemSnapshotQuery } from
+  "@social-monitor/feed/ports";
 import { withTestExecutionAttestation } from
   "@social-monitor/summary/adapters/model/reader-summary-execution-attestation.spec-support";
 import type { VerifiedReaderSummaryExecutionAttestation } from
@@ -100,7 +102,7 @@ describe("reader summary daily story relation production wiring", () => {
     expect(frozenRuntime.storyCommands).toHaveLength(0);
   });
 
-  it("groups promoted cross-source evidence through the concrete runtime adapter", async () => {
+  it("records cross-source relation without mutating the immutable slate", async () => {
     const result = await selectDailyEvidence({
       sameStory: true,
       attested: true,
@@ -108,19 +110,17 @@ describe("reader summary daily story relation production wiring", () => {
     });
 
     expect(result.runtime.storyCommands).toHaveLength(1);
-    expect(result.selection.clusters).toHaveLength(1);
-    expect(result.selection.clusters[0]?.providerKeys).toEqual([
-      "hacker-news",
-      "reddit",
-    ]);
+    expect(result.selection.clusters).toHaveLength(2);
+    expect(result.selection.clusters.map((cluster) => cluster.providerKeys))
+      .toEqual([["hacker-news"], ["reddit"]]);
     expect(result.selection.approvedSameStoryRelations).toEqual([{
       leftFeedItemId: "typescript-hn",
       rightFeedItemId: "typescript-reddit",
       confidence: 0.98,
     }]);
     expect(buildReaderSummaryCoveragePlan(result.selection).lead).toMatchObject({
-      feedItemIds: ["typescript-hn", "typescript-reddit"],
-      providerKeys: ["hacker-news", "reddit"],
+      feedItemIds: ["typescript-hn"],
+      providerKeys: ["hacker-news"],
     });
     expect(result.record).toHaveBeenCalledWith(expect.objectContaining({
       taskRole: "story_relation",
@@ -141,6 +141,7 @@ describe("reader summary daily story relation production wiring", () => {
       "--promotion-rebuild-identity", "1".repeat(64),
       "--promotion-source-authority-kind", "active-database-publication",
       "--authoritative-input-sha256", "2".repeat(64),
+      "--promotion-authority-inspection-sha256", "8".repeat(64),
       "--source-publication-id", "00000000-0000-4000-8000-000000000101",
       "--source-artifact-id", "00000000-0000-4000-8000-000000000102",
       "--source-publication-report-sha256", "3".repeat(64),
@@ -238,7 +239,7 @@ const selectDailyEvidence = async (input: {
 const feedRepository = (
   secondTitle = "Go rewrite of the TypeScript compiler reaches developers",
 ): InMemoryFeedItemReadRepository => {
-  const repository = new InMemoryFeedItemReadRepository();
+  const repository = new AuthorityFeedItemReadRepository();
   repository.upsert(feedItem({
     id: "typescript-hn",
     providerKey: "hacker-news",
@@ -279,6 +280,24 @@ const feedRepository = (
   }));
   return repository;
 };
+
+class AuthorityFeedItemReadRepository extends InMemoryFeedItemReadRepository {
+  override async readPromotionSnapshot(
+    query: ReadPromotionFeedItemSnapshotQuery,
+  ) {
+    const snapshot = await super.readPromotionSnapshot(query);
+    return snapshot.ok ? {
+      ...snapshot,
+      candidates: snapshot.candidates.map((candidate) => ({
+        ...candidate,
+        metricAuthority: {
+          observedAt: candidate.item.toSnapshot().observedAt,
+          regressionState: "stable" as const,
+        },
+      })),
+    } : snapshot;
+  }
+}
 
 const feedItem = (input: {
   readonly id: string;

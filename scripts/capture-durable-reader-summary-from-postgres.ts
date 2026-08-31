@@ -30,10 +30,7 @@ import {
 import { PrismaReaderSummaryArtifactRepository } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-artifact.repository";
 import { PrismaReaderSummaryJobRepository } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-job.repository";
 import { PrismaReaderSummaryPolicyRepository } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-policy.repository";
-import {
-  buildReaderSummaryPeriod,
-  ReaderSummaryPolicy,
-} from "@social-monitor/summary/domain";
+import { buildReaderSummaryPeriod } from "@social-monitor/summary/domain";
 import { ExecuteReaderSummaryJobUseCase } from "@social-monitor/summary/features/execute-reader-summary-job/execute-reader-summary-job.use-case";
 import { readerSummaryPromotionControl } from "@social-monitor/summary/features/execute-reader-summary-job/reader-summary-promotion-control";
 import { BuildReaderSummaryTopicMapUseCase } from "@social-monitor/summary/features/build-reader-summary-topic-map/build-reader-summary-topic-map.use-case";
@@ -102,6 +99,8 @@ import {
 import {
   assertProductionDayPromotionRetrySafe,
 } from "./lib/reader-summary-production-day-promotion-rebuild";
+import { ensureReaderSummaryProductionDayPolicy } from
+  "./lib/reader-summary-production-day-policy-bootstrap";
 import {
   resolveProductionDayPromotionInput,
   revalidateProductionDayPromotionInput,
@@ -109,6 +108,16 @@ import {
   "./lib/reader-summary-production-day-promotion-input";
 import { historicalPromotionRevalidationFailurePathEnv } from
   "./lib/reader-summary-promotion-v2-input-guard";
+import {
+  historicalPromotionGenerationAuthorityJsonEnv,
+  historicalPromotionGenerationAuthoritySha256Env,
+  parseHistoricalPromotionGenerationAuthority,
+} from "./lib/reader-summary-promotion-v2-historical-generation-authority";
+import {
+  HistoricalPromotionPolicyGuard,
+  HistoricalPromotionPolicyGuardedEvidenceSelector,
+} from
+  "./lib/reader-summary-promotion-v2-policy-guard";
 
 const databaseUrlEnv = "DATABASE_URL";
 const evidencePathEnv = "DURABLE_READER_SUMMARY_EVIDENCE_PATH";
@@ -280,9 +289,20 @@ async function main(): Promise<void> {
     const readerSummaryArtifacts = new PrismaReaderSummaryArtifactRepository(
       summaryConnection,
     );
-    const readerSummaryPolicies = new PrismaReaderSummaryPolicyRepository(
+    const baseReaderSummaryPolicies = new PrismaReaderSummaryPolicyRepository(
       summaryConnection,
     );
+    const promotionPolicyGuard = promotionRebuild === undefined
+      ? null
+      : new HistoricalPromotionPolicyGuard(
+          baseReaderSummaryPolicies,
+          parseHistoricalPromotionGenerationAuthority(
+            readEnv(historicalPromotionGenerationAuthorityJsonEnv),
+            readEnv(historicalPromotionGenerationAuthoritySha256Env),
+          ).policy,
+        );
+    const readerSummaryPolicies = promotionPolicyGuard ??
+      baseReaderSummaryPolicies;
     const publicationWiring =
       createReaderSummaryDailyCapturePublicationWiring({
         replay: dailyReplay,
@@ -298,28 +318,15 @@ async function main(): Promise<void> {
     const ids = new CryptoIdGenerator();
     const scope = { type: "workspace" } as const;
 
-    await readerSummaryPolicies.save(
-      ReaderSummaryPolicy.create({
-        id: deterministicUuid(
-          ["reader-summary-policy", tenant, workspace, scope.type].join(":"),
-        ),
+    if (promotionRebuild === undefined) {
+      await ensureReaderSummaryProductionDayPolicy({
+        repository: baseReaderSummaryPolicies,
         tenantId: tenant,
         workspaceId: workspace,
-        scope,
-        language: "auto",
-        format: "executive_brief",
-        tone: "analytical",
         maxStories,
-        includeRisks: true,
-        includeInterestHighlights: true,
-        includeRepeatedSignals: true,
-        dedupeStrategy: "canonical_url_then_title",
-        customInstructions:
-          "Build a practical daily reader summary for AI/product/social monitoring. Prefer fresh, cited, high-signal items and clearly separate facts from risks.",
-        createdAt: now,
-        updatedAt: now,
-      }),
-    );
+        now,
+      });
+    }
 
     const inventoryBefore = dailyReplay === null
       ? await loadFeedInventory(summaryConnection, {
@@ -383,13 +390,19 @@ async function main(): Promise<void> {
         : new HistoricalGitHubOmissionEvidenceSelector(
             relevanceEvidenceSelector,
           );
-    const evidenceSelector =
+    const baseEvidenceSelector =
       datasetGuard === null
         ? omissionAwareEvidenceSelector
         : new DatasetGuardedReaderSummaryEvidenceSelector(
             omissionAwareEvidenceSelector,
             datasetGuard,
           );
+    const evidenceSelector = promotionPolicyGuard === null
+      ? baseEvidenceSelector
+      : new HistoricalPromotionPolicyGuardedEvidenceSelector(
+          baseEvidenceSelector,
+          promotionPolicyGuard,
+        );
     const durablePublication = new PrismaReaderSummaryPublication(
       summaryConnection,
       datasetGuard === null
@@ -953,23 +966,6 @@ const requiredEnv = (name: string): string => {
 const readEnv = (name: string): string | undefined => {
   const value = process.env[name]?.trim();
   return value === undefined || value.length === 0 ? undefined : value;
-};
-
-const deterministicUuid = (value: string): string => {
-  const bytes = Buffer.from(
-    createHash("sha256").update(value).digest(),
-  ).subarray(0, 16);
-  bytes[6] = (bytes[6]! & 0x0f) | 0x40;
-  bytes[8] = (bytes[8]! & 0x3f) | 0x80;
-  const hex = bytes.toString("hex");
-
-  return [
-    hex.slice(0, 8),
-    hex.slice(8, 12),
-    hex.slice(12, 16),
-    hex.slice(16, 20),
-    hex.slice(20),
-  ].join("-");
 };
 
 const sha256Bytes = (value: Buffer): string =>

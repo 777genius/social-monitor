@@ -100,6 +100,7 @@ const REDDIT_POST_SHAPE: ProviderMetricShape = {
   metadataKinds: ["reddit_post"],
   metricPaths: [
     metric("score", "signed", "score"),
+    metric("score", "signed", "providerScore"),
     metric("comments", "count", "numComments"),
     metric("upvoteRatioBps", "ratio", "upvoteRatio"),
   ],

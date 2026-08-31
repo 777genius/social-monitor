@@ -4,7 +4,7 @@ import {
   readFileSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
 import type { ReaderSummaryDayDatasetManifest } from
   "./reader-summary-day-dataset-manifest";
@@ -22,13 +22,15 @@ import type {
 } from "./reader-summary-promotion-v2-historical-runner";
 import { HistoricalPromotionSystemRoleError } from
   "./reader-summary-promotion-v2-system-database";
+import { openSecureDirectory } from
+  "./reader-summary-promotion-v2-secure-directory";
 
 export type HistoricalPromotionActiveSourcePublication = Readonly<{
   publicationId: string;
   artifactId: string;
   reportSha256: string;
   proofSha256: string;
-  tupleKind: "strict-v1" | "valid-v2";
+  tupleKind: "strict-v1" | "valid-v2" | "valid-no-signal";
 }>;
 
 export interface HistoricalPromotionPreparationReader {
@@ -106,11 +108,14 @@ export class ReaderSummaryPromotionV2HistoricalPreparation {
         "active_daily_publication_or_proof_missing",
       );
     }
-    if (sourcePublication.tupleKind === "valid-v2") {
+    if (sourcePublication.tupleKind === "valid-v2" ||
+        sourcePublication.tupleKind === "valid-no-signal") {
       return {
         date,
         status: "verified-noop",
-        reason: "active_publication_already_valid_v2",
+        reason: sourcePublication.tupleKind === "valid-v2"
+          ? "active_publication_already_valid_v2"
+          : "active_publication_is_explicit_no_signal",
         classificationKind: "not-required",
         sourcePublication,
         datasetManifest: null,
@@ -213,6 +218,8 @@ export const writeHistoricalPromotionPreparation = (input: {
   readonly results: readonly HistoricalPromotionPreparationResult[];
 }): Readonly<{ manifestPath: string; receiptPath: string }> => {
   const outputDirectory = resolve(input.outputDirectory);
+  const outputHandle = openSecureDirectory(outputDirectory, true);
+  try {
   const entries = input.results.flatMap((prepared) => {
     if (prepared.status !== "prepared" ||
         prepared.datasetManifest === null ||
@@ -222,12 +229,19 @@ export const writeHistoricalPromotionPreparation = (input: {
         prepared.authoritativeInputDigest === null) {
       return [];
     }
+    const dateHandle = openSecureDirectory(
+      join(outputHandle.fdPath, prepared.date),
+      true,
+    );
     const datasetPath = join(
-      outputDirectory,
-      prepared.date,
+      dateHandle.fdPath,
       "reader-summary-day-dataset-manifest.v1.json",
     );
-    writeImmutableOrVerify(datasetPath, prepared.datasetManifestBytes);
+    try {
+      writeImmutableOrVerify(datasetPath, prepared.datasetManifestBytes);
+    } finally {
+      dateHandle.close();
+    }
     const githubRows = prepared.datasetManifest.dataset
       .providerCounts["github-trending-page"] ?? 0;
     return [{
@@ -241,7 +255,10 @@ export const writeHistoricalPromotionPreparation = (input: {
         proofSha256: prepared.sourcePublication.proofSha256,
       },
       datasetManifest: {
-        path: relative(outputDirectory, datasetPath),
+        path: join(
+          prepared.date,
+          "reader-summary-day-dataset-manifest.v1.json",
+        ),
         sha256: sha256(prepared.datasetManifestBytes),
       },
       timestampPolicy: prepared.datasetManifest.policy.timestampPolicy,
@@ -256,7 +273,7 @@ export const writeHistoricalPromotionPreparation = (input: {
     }];
   });
   const manifestPath = join(
-    outputDirectory,
+    outputHandle.fdPath,
     "reader-summary-promotion-v2-historical-evidence-manifest.v2.json",
   );
   writeJsonImmutably(manifestPath, {
@@ -266,7 +283,7 @@ export const writeHistoricalPromotionPreparation = (input: {
     entries,
   });
   const receiptPath = join(
-    outputDirectory,
+    outputHandle.fdPath,
     "reader-summary-promotion-v2-historical-preparation.v1.json",
   );
   writeJsonImmutably(receiptPath, {
@@ -284,7 +301,13 @@ export const writeHistoricalPromotionPreparation = (input: {
       authoritativeInputDigest: item.authoritativeInputDigest,
     })),
   });
-  return { manifestPath, receiptPath };
+  return {
+    manifestPath: join(outputDirectory, manifestPath.split("/").at(-1)!),
+    receiptPath: join(outputDirectory, receiptPath.split("/").at(-1)!),
+  };
+  } finally {
+    outputHandle.close();
+  }
 };
 
 

@@ -92,6 +92,10 @@ async function main(): Promise<void> {
       "http://127.0.0.1"
     : requiredEnv("READER_SUMMARY_PROMOTION_REBUILD_SITE_URL");
   assertHttpUrl(siteUrl);
+  const siteContractUrl = options.dryRun
+    ? readEnv("READER_SUMMARY_PROMOTION_REBUILD_SITE_CONTRACT_URL")
+    : requiredEnv("READER_SUMMARY_PROMOTION_REBUILD_SITE_CONTRACT_URL");
+  if (siteContractUrl !== undefined) assertHttpUrl(siteContractUrl);
   const postgres = new PostgresHistoricalPromotionAdapter({
     databaseUrl: requiredHistoricalPromotionSystemDatabaseUrl(process.env),
     tenantId: readerSummaryProductionDayScope.tenantId,
@@ -100,9 +104,7 @@ async function main(): Promise<void> {
     api: new HttpHistoricalPromotionApiVisibilityVerifier({
       baseUrl: apiBaseUrl,
       siteUrl,
-      siteContractUrl: readEnv(
-        "READER_SUMMARY_PROMOTION_REBUILD_SITE_CONTRACT_URL",
-      ),
+      siteContractUrl,
       apiKey: readEnv("READER_SUMMARY_PROMOTION_REBUILD_API_KEY"),
     }),
   });
@@ -143,6 +145,12 @@ async function main(): Promise<void> {
     verifier: postgres,
     environment: process.env,
   });
+  if (receipts.outputIdentity !== mutation.outputIdentity) {
+    mutation.close();
+    receipts.close();
+    await postgres.close();
+    throw new Error("Historical promotion output root changed during binding");
+  }
   const runner = new ReaderSummaryPromotionV2HistoricalRunner({
     authority: postgres,
     durableState: postgres,
@@ -177,6 +185,8 @@ async function main(): Promise<void> {
       process.exitCode = 2;
     }
   } finally {
+    mutation.close();
+    receipts.close();
     await postgres.close();
   }
 }

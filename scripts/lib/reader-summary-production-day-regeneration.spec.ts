@@ -16,7 +16,13 @@ import { historicalPromotionRebuildIdentity } from
   "./reader-summary-promotion-v2-historical-classification";
 import { buildHistoricalPromotionCanonicalInput } from
   "./reader-summary-promotion-v2-historical-input";
-import { historicalPromotionGenerationAuthority } from
+import {
+  historicalPromotionGenerationAuthority,
+  historicalPromotionGenerationAuthorityJson,
+  historicalPromotionGenerationAuthorityJsonEnv,
+  historicalPromotionGenerationAuthoritySha256,
+  historicalPromotionGenerationAuthoritySha256Env,
+} from
   "./reader-summary-promotion-v2-historical-generation-authority";
 
 const tenantId = "33333333-3333-4333-8333-333333333333";
@@ -30,7 +36,21 @@ const omissionReason =
 describe("historical production-day regeneration", () => {
   let directory = "";
 
+  beforeEach(() => {
+    const authority = historicalPromotionGenerationAuthority({
+      tenantId,
+      workspaceId,
+      env: process.env,
+    });
+    process.env[historicalPromotionGenerationAuthorityJsonEnv] =
+      historicalPromotionGenerationAuthorityJson(authority);
+    process.env[historicalPromotionGenerationAuthoritySha256Env] =
+      historicalPromotionGenerationAuthoritySha256(authority);
+  });
+
   afterEach(() => {
+    delete process.env[historicalPromotionGenerationAuthorityJsonEnv];
+    delete process.env[historicalPromotionGenerationAuthoritySha256Env];
     if (directory.length > 0) {
       rmSync(directory, { recursive: true, force: true });
     }
@@ -108,8 +128,10 @@ describe("historical production-day regeneration", () => {
         rebuildIdentity: historicalPromotionRebuildIdentity({
           date: collectionDate,
           authoritativeInputDigest,
+          authorityInspectionDigest: "8".repeat(64),
         }),
         authoritativeInputDigest,
+        authorityInspectionDigest: "8".repeat(64),
         sourceAuthorityKind: "active-database-publication" as const,
       },
     };
@@ -453,8 +475,10 @@ describe("historical production-day regeneration", () => {
               rebuildIdentity: historicalPromotionRebuildIdentity({
                 date: fixtureDate,
                 authoritativeInputDigest,
+                authorityInspectionDigest: "8".repeat(64),
               }),
               authoritativeInputDigest,
+              authorityInspectionDigest: "8".repeat(64),
               policyVersion: "reader_post_promotion.v2" as const,
               sourceAuthorityKind:
                 "preserved-production-day-report" as const,

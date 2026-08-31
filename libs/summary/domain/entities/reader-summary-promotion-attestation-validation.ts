@@ -106,6 +106,11 @@ export const assertReaderSummaryPromotionAttestations = (
   }
   for (const { card, placement, slot } of promotedCards) {
     const matches = attestations.filter((attestation) =>
+      card.promotionMarker === "reader_post_promotion" &&
+      card.promotionPolicyVersion === (isPromotionAttestationV1(attestation)
+        ? "reader_post_promotion.v1"
+        : attestation.policyVersion) &&
+      card.promotionTier === placement &&
       attestation.candidateId === card.promotionCandidateId &&
       attestation.placement === placement &&
       attestation.slot === promotionSlot(attestation, slot) &&

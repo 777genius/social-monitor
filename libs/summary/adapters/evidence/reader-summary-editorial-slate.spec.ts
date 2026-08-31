@@ -166,6 +166,112 @@ describe("Reader Promotion V2 editorial slate", () => {
       item.editorialPolicyVersion === "reader_promotion_policy.v2",
     )).toBe(true);
   });
+
+  it.each([
+    ["missing metrics", {
+      metricsState: "missing" as const,
+      metrics: undefined,
+    }],
+    ["malformed metrics", {
+      metricsState: "malformed" as const,
+      metrics: { provider: "reddit" as const, score: -1 },
+    }],
+    ["stale authority", {
+      engagementAuthority: {
+        observedAt: new Date("2026-08-29T12:00:00.000Z"),
+        regressionState: "stable" as const,
+      },
+    }],
+    ["unresolved regression", {
+      engagementAuthority: {
+        observedAt: new Date("2026-08-29T23:00:00.000Z"),
+        regressionState: "unresolved_regression" as const,
+      },
+    }],
+    ["low engagement", {
+      metrics: { provider: "reddit" as const, score: 1 },
+    }],
+  ] as const)("does not rematerialize %s support", (_label, overrides) => {
+    const lead = xEvidence("support-lead", 500);
+    const support = redditEvidence("support-peer", 100);
+    const supportWithInvalidFacts: SummaryEvidenceItem = {
+      ...support,
+      promotionFacts: {
+        ...support.promotionFacts!,
+        ...overrides,
+      },
+    };
+    const source = selection(
+      [lead, supportWithInvalidFacts],
+      [storyCluster("support-story", [lead, supportWithInvalidFacts])],
+    );
+    const slate = composeReaderSummaryEditorialSlate({
+      selection: source,
+      candidates: [lead, supportWithInvalidFacts],
+    });
+    const materialized = materializeReaderSummaryEditorialSlate({
+      selection: source,
+      slate,
+    });
+
+    expect(materialized.selectedEvidence.map((item) => item.feedItemId))
+      .toEqual(["support-lead"]);
+  });
+
+  it("rematerializes a valid independent support for confidence", () => {
+    const lead = xEvidence("valid-support-lead", 500);
+    const support = redditEvidence("valid-support-peer", 100);
+    const trustedSupport: SummaryEvidenceItem = {
+      ...support,
+      promotionFacts: {
+        ...support.promotionFacts!,
+        authorityAttestation: {
+          status: "attested",
+          official: false,
+          trusted: true,
+          attestedBy: "source_catalog",
+        },
+      },
+    };
+    const source = selection(
+      [lead, trustedSupport],
+      [storyCluster("valid-support-story", [lead, trustedSupport])],
+    );
+    const slate = composeReaderSummaryEditorialSlate({
+      selection: source,
+      candidates: [lead, trustedSupport],
+    });
+    const materialized = materializeReaderSummaryEditorialSlate({
+      selection: source,
+      slate,
+    });
+    const projection = buildReaderPostPromotionProjection({
+      evidence: materialized.selectedEvidence,
+      clusters: materialized.clusters,
+      sourceWindow: materialized.sourceWindow,
+      editorialSlate: slate,
+      citations: materialized.selectedEvidence.map((item) => ({
+        citationId: `citation-${item.feedItemId}`,
+        feedItemId: item.feedItemId,
+        sourceItemId: item.sourceItemId,
+        providerKey: item.providerKey,
+        field: "title" as const,
+        canonicalUrl: item.canonicalUrl,
+      })),
+    });
+
+    expect(projection.topReads[0]).toMatchObject({
+      providerMetrics: [],
+      confirmedProviderKeys: ["reddit", "x"],
+      confidence: expect.objectContaining({
+        score: 0.9500000000000001,
+      }),
+    });
+    expect(projection.topReads[0]?.citationIds).toEqual([
+      "citation-valid-support-lead",
+      "citation-valid-support-peer",
+    ]);
+  });
 });
 
 const compose = (

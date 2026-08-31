@@ -26,6 +26,10 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
       score: 3,
       publishedAt: publishedAt.toISOString(),
       observedAt: observedAt.toISOString(),
+      engagementAuthority: {
+        observedAt: observedAt.toISOString(),
+        regressionState: "stable" as const,
+      },
       providerMetadata: {
         kind: "hacker_news_story",
         points: 50,

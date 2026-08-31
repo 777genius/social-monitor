@@ -419,10 +419,26 @@ describe("readerSummaryArtifactViewFromReaderSummaryView", () => {
       },
       promotionAttestations: [],
     };
-    expect(
-      readerSummaryArtifactViewFromReaderSummaryView(emptyBoardView)
-        .readerBrief,
-    ).toMatchObject({ topReads: [], selectedPosts: [] });
+    expect(() => readerSummaryArtifactViewFromReaderSummaryView(
+      emptyBoardView,
+    )).toThrow("promotion board is invalid");
+    const explicitNoSignalView = {
+      ...emptyBoardView,
+      topStories: [],
+      citations: [],
+      qualityFlags: ["no_signal"],
+      lineage: {
+        ...emptyBoardView.lineage,
+        promptVersion: "reader_summary.promotion_no_signal.v1",
+        modelVersion: "not_invoked",
+        providerVersion: "deterministic",
+        rulesVersion: "reader_promotion_policy.v2",
+        evalDatasetVersion: "reader_promotion_policy.v2",
+      },
+    };
+    expect(readerSummaryArtifactViewFromReaderSummaryView(
+      explicitNoSignalView,
+    ).readerBrief).toMatchObject({ topReads: [], selectedPosts: [] });
     expect(() => readerSummaryArtifactViewFromReaderSummaryView({
       ...emptyBoardView,
       promotionAttestations: [persistedAttestation],

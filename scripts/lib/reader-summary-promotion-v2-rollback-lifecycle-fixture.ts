@@ -61,28 +61,39 @@ export const preparePromotionRollbackLifecycleFixture = async (
       citation.providerKey !== "reddit") {
     throw new Error("Rollback lifecycle fixture needs exact Reddit evidence");
   }
+  const citations = Array.from({ length: 8 }, (_, index) => index === 0
+    ? citation
+    : {
+        ...citation,
+        citationId: fixtureUuid(104 + index),
+        feedItemId: fixtureUuid(105 + index),
+        sourceItemId: fixtureUuid(106 + index),
+        canonicalUrl: `https://reddit.example.test/rollback-${index + 1}`,
+      });
   const startedAt = new Date(row.period_started_at);
   const endedAt = new Date(row.period_ended_at);
   const publishedAt = new Date(startedAt.getTime() + 8 * 3_600_000);
   const observedAt = new Date(startedAt.getTime() + 9 * 3_600_000);
-  const clusterId = `rollback:${fixture.artifactId}`;
+  const clusterIds = citations.map((_, index) =>
+    `rollback:${fixture.artifactId}:${index + 1}`);
   const sourceWindow = {
     windowId: `rollback-window:${fixture.artifactId}`,
     startedAt,
     endedAt,
-    selectedFeedItemIds: [citation.feedItemId],
-    storyClusterIds: [clusterId],
+    selectedFeedItemIds: citations.map((item) => item.feedItemId),
+    storyClusterIds: clusterIds,
     periodStartedAt: startedAt,
     periodEndedAt: endedAt,
     ingestionCutoff: observedAt,
   };
-  const candidate: ReaderPostPromotionInput = {
-    candidateId: citation.feedItemId,
+  const candidates: readonly ReaderPostPromotionInput[] = citations.map(
+    (item, index) => ({
+    candidateId: item.feedItemId,
     provider: "reddit",
     contentKind: "original_post",
-    canonicalIdentity: `url:${citation.canonicalUrl}`,
-    clusterId,
-    citationId: citation.citationId,
+    canonicalIdentity: `url:${item.canonicalUrl}`,
+    clusterId: clusterIds[index],
+    citationId: item.citationId,
     publishedAt,
     observedAt,
     periodStart: startedAt,
@@ -96,10 +107,10 @@ export const preparePromotionRollbackLifecycleFixture = async (
     safetyValid: true,
     citationValid: true,
     metricsState: "observed",
-    metrics: { provider: "reddit", score: 500, upvoteRatio: 0.95 },
+    metrics: { provider: "reddit", score: 500 - index, upvoteRatio: 0.95 },
     whyImportant: "Rollback lifecycle fixture",
-  };
-  const selection = selectReaderPostPromotions([candidate]);
+  }));
+  const selection = selectReaderPostPromotions(candidates);
   const v2Attestations = buildReaderPromotionV2TestAttestations(selection, {
     artifactId: fixture.artifactId,
     sourceWindow,
@@ -107,8 +118,11 @@ export const preparePromotionRollbackLifecycleFixture = async (
   const attestations = version === "v2"
     ? v2Attestations
     : v1Attestations(v2Attestations, selection);
-  const attestation = attestations[0]!;
-  const card = promotionCard(attestation, clusterId, citation.canonicalUrl);
+  const cards = attestations.map((attestation, index) => promotionCard(
+    attestation,
+    clusterIds[index]!,
+    citations[index]?.canonicalUrl,
+  ));
   const artifact = ReaderSummaryArtifact.create({
     schemaVersion: "reader_summary.artifact.v1",
     readerSummaryId: fixture.artifactId,
@@ -124,17 +138,17 @@ export const preparePromotionRollbackLifecycleFixture = async (
     },
     generatedAt: new Date(row.created_at),
     sourceWindow,
-    storyClusters: [{
-      id: clusterId,
-      storyKey: clusterId,
-      representativeFeedItemId: citation.feedItemId,
+    storyClusters: citations.map((item, index) => ({
+      id: clusterIds[index]!,
+      storyKey: clusterIds[index]!,
+      representativeFeedItemId: item.feedItemId,
       duplicateFeedItemIds: [],
       interestIds: ["fixture-interest"],
       providerKeys: ["reddit"],
       score: 1,
       observedAtRange: { startedAt: publishedAt, endedAt: observedAt },
       whyImportant: ["Rollback lifecycle fixture"],
-    }],
+    })),
     contextArtifacts: [],
     headline: row.headline,
     executiveSummary: row.summary_text,
@@ -148,32 +162,33 @@ export const preparePromotionRollbackLifecycleFixture = async (
         title: row.headline,
         text: row.summary_text,
         citationIds: [citation.citationId],
-        storyClusterId: clusterId,
+        storyClusterId: clusterIds[0],
       }],
       sourceMix: [{
         providerKey: "reddit",
-        itemCount: 1,
-        citationCount: 1,
-        storyClusterCount: 1,
+        itemCount: 8,
+        citationCount: 8,
+        storyClusterCount: 8,
         crossSourceClusterCount: 0,
         singleSourceOnly: true,
         interestIds: ["fixture-interest"],
       }],
-      topReads: [card],
-      selectedPosts: [],
+      topReads: cards.filter((card) => card.promotionTier === "top"),
+      selectedPosts: cards.filter((card) =>
+        card.promotionTier === "additional"),
     }),
-    topStories: [{
-      storyClusterId: clusterId,
+    topStories: citations.map((item, index) => ({
+      storyClusterId: clusterIds[index]!,
       title: row.headline,
       summary: row.summary_text,
       interestIds: ["fixture-interest"],
       providerKeys: ["reddit"],
-      citationIds: [citation.citationId],
-    }],
+      citationIds: [item.citationId],
+    })),
     interestHighlights: [],
     repeatedSignals: [],
     risksAndUnknowns: [],
-    citationMap: row.citations,
+    citationMap: citations,
     qualityFlags: [],
     confidence: {
       level: "medium",
@@ -190,7 +205,7 @@ export const preparePromotionRollbackLifecycleFixture = async (
     },
     usage: { inputTokens: 10, outputTokens: 10, estimatedCostUsd: 0 },
     promotionAttestations: attestations,
-    promotionEvidenceFacts: [candidate],
+    promotionEvidenceFacts: candidates,
   });
   const serialized = serializeReaderSummaryArtifact(artifact);
   const updated = await client.query(`UPDATE reader_summary_artifacts
@@ -199,7 +214,7 @@ export const preparePromotionRollbackLifecycleFixture = async (
     RETURNING id`, [
     fixture.artifactId,
     JSON.stringify(serialized),
-    JSON.stringify(row.citations),
+    JSON.stringify(citations),
   ]);
   if (updated.rows.length !== 1) {
     throw new Error("Rollback lifecycle fixture lost candidate authority");
@@ -213,10 +228,12 @@ const promotionCard = (
   canonicalUrl: string | undefined,
 ) => ({
   storyClusterId,
-  cardKind: "curated_top_read" as const,
+  cardKind: attestation.placement === "top"
+    ? "curated_top_read" as const
+    : "additional_notable_story" as const,
   promotionMarker: "reader_post_promotion" as const,
   promotionPolicyVersion: attestation.policyVersion,
-  promotionTier: "top" as const,
+  promotionTier: attestation.placement,
   promotionCandidateId: attestation.candidateId,
   promotionCanonicalIdentity: attestation.canonicalIdentity,
   title: "Publication lifecycle fixture",
@@ -250,6 +267,9 @@ const promotionCard = (
         editorialDigestInput: attestation.slateEntryDigestInput,
       }),
 });
+
+const fixtureUuid = (suffix: number): string =>
+  `00000000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
 
 const v1Attestations = (
   attestations: readonly ReaderPostPromotionAttestationV2[],

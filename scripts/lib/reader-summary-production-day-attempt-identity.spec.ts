@@ -154,6 +154,7 @@ describe("reader summary production-day attempt identity", () => {
         promotionRebuild: {
           rebuildIdentity: "1".repeat(64),
           authoritativeInputDigest: "2".repeat(64),
+          authorityInspectionDigest: "8".repeat(64),
           policyVersion: "reader_post_promotion.v2" as const,
           sourceAuthorityKind: "preserved-production-day-report" as const,
           sourcePublicationId: "00000000-0000-4000-8000-000000000101",

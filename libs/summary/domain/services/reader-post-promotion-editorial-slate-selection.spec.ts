@@ -57,10 +57,51 @@ describe("Reader Promotion V2 trusted independent support", () => {
       authoritativeSameStory: true,
     }));
   });
+
+  it.each([
+    ["missing metrics", {
+      metricsState: "missing" as const,
+      metrics: undefined,
+    }],
+    ["malformed metrics", {
+      metricsState: "malformed" as const,
+      metrics: { provider: "hacker_news" as const, points: -1 },
+    }],
+    ["stale evidence", { freshnessValid: false }],
+    ["low engagement", {
+      metrics: { provider: "hacker_news" as const, points: 1 },
+    }],
+    ["conflicting metrics", {
+      metricsState: "conflict" as const,
+      metrics: { provider: "reddit" as const, score: 100 },
+    }],
+  ] as const)("does not admit %s support", (_label, overrides) => {
+    const selection = selectWithSupport(
+      {
+        status: "attested",
+        official: false,
+        trusted: true,
+        attestedBy: "source_catalog",
+      },
+      overrides,
+    );
+
+    expect(selection.top[0]).toMatchObject({
+      providerCount: 1,
+      confidence: 0.42,
+      support: [],
+    });
+    expect(selection.decisions).toContainEqual(expect.objectContaining({
+      candidateId: "support-hn",
+      decision: "reject",
+      authoritativeSameStory: false,
+    }));
+  });
 });
 
 const selectWithSupport = (
   authorityAttestation: ReaderPostPromotionInput["authorityAttestation"],
+  supportOverrides: Partial<ReaderPostPromotionInput> = {},
 ) => readerPostPromotionSelectionFromEditorialSlate(slate, [
   input("lead-reddit", "reddit", "original_post", {
     provider: "reddit",
@@ -73,6 +114,7 @@ const selectWithSupport = (
       points: 100,
     }),
     authorityAttestation,
+    ...supportOverrides,
   },
 ]);
 

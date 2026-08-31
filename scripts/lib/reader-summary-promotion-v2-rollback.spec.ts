@@ -36,6 +36,12 @@ describe("Promotion V2 publication-owner rollback", () => {
     expect(migration).toContain("reader_post_promotion_attestation.v2");
     expect(migration).toContain("reader_post_promotion_digest.sha256.v2");
     expect(migration).toContain("reader_summary.promotion_no_signal.v1");
+    expect(migration).toContain(
+      'reader_summary_promotion_v2_artifact_is_no_signal',
+    );
+    expect(migration).toContain(
+      "WHERE card->>'promotionMarker' = 'reader_post_promotion'",
+    );
     expect(migration).toContain("reader_post_promotion_attestation.v1");
     expect(migration).toContain("reader_post_promotion_digest.sha256.v1");
     expect(migration).toContain("legacyV1ReaderVerified");
@@ -108,6 +114,13 @@ describe("Promotion V2 publication-owner rollback", () => {
         apiOrderedLanesVerified: "not-exposed",
       },
     })))).toThrow("apiOrderedLanesVerified is not proven");
+    expect(() => parseMigrationReceipt(Buffer.from(JSON.stringify({
+      ...receipt,
+      qualityGates: {
+        ...receipt.qualityGates,
+        siteFacingContractVerified: "not-exposed",
+      },
+    })))).toThrow("site-facing contract gate is missing");
     expect(parseMigrationReceipt(Buffer.from(JSON.stringify(receipt))))
       .toMatchObject({ status: "completed" });
   });
@@ -141,7 +154,7 @@ const completedReceipt = () => ({
     apiPromotionTupleVerified: true,
     apiOrderedLanesVerified: true,
     siteReaderRouteHttp200Verified: true,
-    siteFacingContractVerified: "not-exposed",
+    siteFacingContractVerified: true,
   },
 });
 

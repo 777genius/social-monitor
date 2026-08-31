@@ -92,6 +92,31 @@ describe("Reader Summary Promotion V2 historical runner", () => {
     expect(scenario.verifyCompleted).toHaveBeenCalledTimes(1);
   });
 
+  it("keeps a completed identity pending when authority changes before noop", async () => {
+    const scenario = harness();
+    const [completed] = await scenario.run({ resume: true });
+    expect(completed?.status).toBe("completed");
+    scenario.durableState = {
+      state: "complete-active",
+      jobId: output().jobId,
+      artifactId: output().artifactId,
+      publicationId: output().publicationId,
+      activePublicationId: output().publicationId,
+      previousPublicationId: output().previousPublicationId,
+    };
+    scenario.inspectAuthority
+      .mockResolvedValueOnce(inspection("2026-08-01"))
+      .mockResolvedValueOnce(changedInspection("2026-08-01"));
+
+    const [pending] = await scenario.run({ resume: true });
+
+    expect(pending).toMatchObject({
+      status: "pending",
+      reason: "authority_observation_drifted_before_noop",
+    });
+    expect(scenario.verifyCompleted).not.toHaveBeenCalled();
+  });
+
   it("never collides different full input digests in durable reconciliation", async () => {
     const scenario = harness();
     await scenario.run({ resume: true });
@@ -312,13 +337,22 @@ const inspection = (date: string): HistoricalPromotionAuthorityInspection => ({
     publishedAt: `${date}T08:00:00.000Z`,
     observedAt: `${date}T09:00:00.000Z`,
     dayEndMetricProof: {
-      source: "observation",
+      source: "daily-rollup",
       observedAt: `${date}T09:00:00.000Z`,
+      completeThroughAt: `${nextDate(date)}T00:00:00.000Z`,
       metrics: { score: 80, upvoteRatioBps: 9000 },
     },
   }],
   engagementSnapshotCount: 1,
   engagementObservationByOriginalDayEndCount: 1,
+  retainedAuthorityDigest: "a".repeat(64),
+});
+
+const changedInspection = (
+  date: string,
+): HistoricalPromotionAuthorityInspection => ({
+  ...inspection(date),
+  retainedAuthorityDigest: "b".repeat(64),
 });
 
 const evidenceMap = (
@@ -403,7 +437,7 @@ const output = () => ({
     apiPromotionTupleVerified: true as const,
     apiOrderedLanesVerified: true as const,
     siteReaderRouteHttp200Verified: true as const,
-    siteFacingContractVerified: "not-exposed" as const,
+    siteFacingContractVerified: true as const,
   },
 });
 

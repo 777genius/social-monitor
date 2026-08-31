@@ -12,6 +12,7 @@ import { loadDotenvIfPresent } from "./lib/env-file";
 import { readerSummaryProductionDayScope } from
   "./lib/reader-summary-production-day-scope";
 import {
+  isHistoricalPromotionTargetTuple,
   verifyHistoricalPromotionArtifact,
   type HistoricalPromotionArtifactRecord,
 } from "./lib/reader-summary-promotion-v2-historical-artifact";
@@ -41,7 +42,7 @@ export type MigrationReceipt = Readonly<{
     proofSha256: string;
   }>;
   rollbackAuthority: RollbackAuthority;
-  qualityGates: Readonly<Record<string, true | "not-exposed">>;
+  qualityGates: Readonly<Record<string, true>>;
 }>;
 
 export type CanaryPublicationReceipt = Readonly<{
@@ -179,7 +180,9 @@ const rollback = async (
           false,
         ),
       ]);
-      if (verifyHistoricalPromotionArtifact(current).kind !== "valid-v2" ||
+      if (!isHistoricalPromotionTargetTuple(
+        verifyHistoricalPromotionArtifact(current),
+      ) ||
           verifyHistoricalPromotionArtifact(prior).kind !== "strict-v1") {
         throw new Error("Promotion V2 rollback artifact admission failed");
       }
@@ -242,6 +245,7 @@ const publication = async (
       artifact.cadence, artifact.period_started_at as "periodStartedAt",
       artifact.period_ended_at as "periodEndedAt",
       artifact.period_timezone as "periodTimezone", artifact.user_id as "userId",
+      artifact.status::text as "status",
       artifact.subscription_id::text as "subscriptionId", artifact.headline,
       artifact.summary_text as "summaryText", artifact.created_at as "createdAt",
       artifact.artifact_payload as "artifactPayload"
@@ -290,9 +294,7 @@ export const parseMigrationReceipt = (bytes: Buffer): MigrationReceipt => {
       (value.status !== "completed" && value.status !== "noop") ||
       !/^\d{4}-\d{2}-\d{2}$/u.test(value.date ?? "") ||
       !isRecord(value.outputIdentity) || !isRecord(value.rollbackAuthority) ||
-      !isRecord(value.qualityGates) ||
-      Object.values(value.qualityGates).some((gate) =>
-        gate !== true && gate !== "not-exposed")) {
+      !isRecord(value.qualityGates)) {
     throw new Error("Promotion V2 rollback migration receipt is incomplete");
   }
   for (const gate of [
@@ -304,11 +306,13 @@ export const parseMigrationReceipt = (bytes: Buffer): MigrationReceipt => {
       throw new Error(`Promotion V2 rollback receipt gate ${gate} is not proven`);
     }
   }
-  if (value.qualityGates.siteFacingContractVerified !== true &&
-      value.qualityGates.siteFacingContractVerified !== "not-exposed") {
+  if (value.qualityGates.siteFacingContractVerified !== true) {
     throw new Error(
       "Promotion V2 rollback site-facing contract gate is missing",
     );
+  }
+  if (Object.values(value.qualityGates).some((gate) => gate !== true)) {
+    throw new Error("Promotion V2 rollback migration receipt is incomplete");
   }
   const authority = value.rollbackAuthority as RollbackAuthority;
   for (const id of [authority.priorPublicationId, authority.priorArtifactId,

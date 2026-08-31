@@ -356,6 +356,7 @@ const legacyReaderPublication = async (
 ) => {
   const result = await client.query<{
     artifactId: string;
+    status: string;
     tenantId: string;
     workspaceId: string;
     scopeType: string;
@@ -371,6 +372,7 @@ const legacyReaderPublication = async (
     createdAt: string;
     artifactPayload: unknown;
   }>(`SELECT artifact.id::text AS "artifactId",
+      artifact.status::text AS "status",
       artifact.tenant_id::text AS "tenantId",
       artifact.workspace_id::text AS "workspaceId",
       artifact.scope_type AS "scopeType",

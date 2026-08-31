@@ -436,6 +436,7 @@ model SourceItem {
 
   @@unique([tenantId, workspaceId, providerKey, providerItemId], map: "source_items_tenant_workspace_provider_item_key")
   @@unique([tenantId, workspaceId, id], map: "source_items_tenant_workspace_id_key")
+  @@unique([tenantId, workspaceId, id, providerKey], map: "source_items_scope_id_provider_key")
   @@index([tenantId, workspaceId, sourceBindingId, observedAt])
   @@map("source_items")
 }
@@ -498,9 +499,10 @@ model SourceItemEngagementSnapshot {
   schemaVersion        Int        @default(1) @map("schema_version")
   createdAt            DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt            DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
-  sourceItem           SourceItem @relation(fields: [tenantId, workspaceId, sourceItemId], references: [tenantId, workspaceId, id], onDelete: Cascade, map: "source_item_engagement_snapshots_source_item_scope_fkey")
+  sourceItem           SourceItem @relation(fields: [tenantId, workspaceId, sourceItemId, providerKey], references: [tenantId, workspaceId, id, providerKey], onDelete: Cascade, map: "source_item_engagement_snapshots_source_item_scope_fkey")
 
   @@id([tenantId, workspaceId, sourceItemId], map: "source_item_engagement_snapshots_pkey")
+  @@unique([tenantId, workspaceId, sourceItemId, providerKey], map: "source_item_engagement_snapshots_scope_provider_key")
   @@index([tenantId, workspaceId, providerKey, lastObservedAt(sort: Desc)], map: "source_item_engagement_snapshots_provider_observed_idx")
   @@index([tenantId, workspaceId, nextObservationDueAt], map: "source_item_engagement_snapshots_due_idx")
   @@map("source_item_engagement_snapshots")
@@ -537,7 +539,7 @@ model SourceItemEngagementObservation {
   hasRegression   Boolean                     @default(false) @map("has_regression")
   schemaVersion   Int                         @default(1) @map("schema_version")
   createdAt       DateTime                    @default(now()) @map("created_at") @db.Timestamptz(6)
-  sourceItem      SourceItem                  @relation(fields: [tenantId, workspaceId, sourceItemId], references: [tenantId, workspaceId, id], onDelete: Cascade, map: "source_item_engagement_observations_source_item_scope_fkey")
+  sourceItem      SourceItem                  @relation(fields: [tenantId, workspaceId, sourceItemId, providerKey], references: [tenantId, workspaceId, id, providerKey], onDelete: Cascade, map: "source_item_engagement_observations_source_item_scope_fkey")
 
   @@unique([tenantId, workspaceId, sourceItemId, bucketStartedAt], map: "source_item_engagement_observations_bucket_key")
   @@index([tenantId, workspaceId, sourceItemId, observedAt(sort: Desc)], map: "source_item_engagement_observations_item_observed_idx")
@@ -558,13 +560,14 @@ model SourceItemEngagementDailyRollup {
   firstObservedAt    DateTime   @map("first_observed_at") @db.Timestamptz(6)
   lastObservedAt     DateTime   @map("last_observed_at") @db.Timestamptz(6)
   compactedThroughAt DateTime   @map("compacted_through_at") @db.Timestamptz(6)
+  completeThroughAt  DateTime?  @map("complete_through_at") @db.Timestamptz(6)
   openingMetrics     Json       @map("opening_metrics")
   closingMetrics     Json       @map("closing_metrics")
   peakMetrics        Json       @map("peak_metrics")
   schemaVersion      Int        @default(1) @map("schema_version")
   createdAt          DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt          DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
-  sourceItem         SourceItem @relation(fields: [tenantId, workspaceId, sourceItemId], references: [tenantId, workspaceId, id], onDelete: Cascade, map: "source_item_engagement_daily_rollups_source_item_scope_fkey")
+  sourceItem         SourceItem @relation(fields: [tenantId, workspaceId, sourceItemId, providerKey], references: [tenantId, workspaceId, id, providerKey], onDelete: Cascade, map: "source_item_engagement_daily_rollups_source_item_scope_fkey")
 
   @@id([tenantId, workspaceId, sourceItemId, day], map: "source_item_engagement_daily_rollups_pkey")
   @@index([tenantId, workspaceId, providerKey, day(sort: Desc)], map: "source_item_engagement_daily_rollups_provider_day_idx")
@@ -650,7 +653,7 @@ model FeedItem {
   status           FeedItemStatus @default(VISIBLE)
   createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt        DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
-  sourceItem       SourceItem     @relation(fields: [sourceItemId], references: [id], onDelete: Restrict)
+  sourceItem       SourceItem     @relation(fields: [tenantId, workspaceId, sourceItemId, providerKey], references: [tenantId, workspaceId, id, providerKey], onDelete: Restrict)
 
   @@unique([tenantId, interestId, dedupeKey], map: "feed_items_tenant_interest_dedupe_key_key")
   @@index([tenantId, workspaceId, status, createdAt])

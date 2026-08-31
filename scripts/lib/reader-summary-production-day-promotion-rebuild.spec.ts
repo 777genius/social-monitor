@@ -12,12 +12,15 @@ import { resolveProductionDayExecutionRequest } from
 
 const date = "2026-08-01";
 const authoritativeInputDigest = "1".repeat(64);
+const authorityInspectionDigest = "2".repeat(64);
 const promotionRebuild = {
   rebuildIdentity: historicalPromotionRebuildIdentity({
     date,
     authoritativeInputDigest,
+    authorityInspectionDigest,
   }),
   authoritativeInputDigest,
+  authorityInspectionDigest,
   policyVersion: "reader_post_promotion.v2" as const,
   sourceAuthorityKind: "preserved-production-day-report" as const,
   sourcePublicationId: "00000000-0000-4000-8000-000000000101",
@@ -116,6 +119,8 @@ describe("production-day Promotion V2 rebuild seam", () => {
       "--promotion-source-authority-kind",
       promotionRebuild.sourceAuthorityKind,
       "--authoritative-input-sha256", authoritativeInputDigest,
+      "--promotion-authority-inspection-sha256",
+      promotionRebuild.authorityInspectionDigest,
       "--source-publication-id", promotionRebuild.sourcePublicationId,
       "--source-artifact-id", promotionRebuild.sourceArtifactId,
       "--source-publication-report-sha256",

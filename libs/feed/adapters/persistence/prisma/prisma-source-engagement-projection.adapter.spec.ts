@@ -87,6 +87,54 @@ describe("PrismaSourceEngagementProjectionAdapter", () => {
     );
     expect(prisma.observations).toHaveLength(observationCount);
   });
+
+  it("persists a Reddit providerScore-only sample as durable score authority", async () => {
+    const prisma = new FakeEngagementPrisma();
+    prisma.sourceItemRecord = {
+      ...prisma.sourceItemRecord,
+      providerKey: "reddit",
+      providerItemId: "reddit:1",
+      metadata: { kind: "reddit_post", providerScore: 42 },
+    };
+    prisma.feedItemRecord = {
+      ...prisma.feedItemRecord,
+      providerKey: "reddit",
+      dedupeKey: "reddit:1",
+      providerMetadata: { kind: "reddit_post", providerScore: 42 },
+    };
+    const adapter = new PrismaSourceEngagementProjectionAdapter(prisma, {
+      generate: () => `id-${prisma.nextId++}`,
+    });
+
+    const result = await adapter.project({
+      tenantId: "tenant" as never,
+      workspaceId: "workspace" as never,
+      sourceBindingId: "00000000-0000-4000-8000-000000000004",
+      scanJobId: "00000000-0000-4000-8000-000000000005",
+      providerKey: "reddit",
+      observedAt: new Date("2026-07-10T12:00:00Z"),
+      samples: [{
+        externalId: "reddit:1",
+        sourceItemId: "source-1",
+        publishedAt: new Date("2026-07-10T11:00:00Z"),
+        metrics: { score: 42 },
+        metricsFingerprint: "reddit-score:42",
+        providerMetadataPatch: { providerScore: 42 },
+        refreshReadModels: true,
+      }],
+    });
+
+    expect(result).toMatchObject({
+      currentSnapshotsUpdated: 1,
+      observationsAppended: 1,
+      metricChanges: 1,
+    });
+    expect(prisma.snapshot?.score).toBe(42n);
+    expect(prisma.feedItemRecord.providerMetadata).toMatchObject({
+      kind: "reddit_post",
+      providerScore: 42,
+    });
+  });
 });
 
 const command = (

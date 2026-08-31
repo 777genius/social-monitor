@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdirSync, readFileSync, rmSync } from "node:fs";
+import { readFileSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 import type {
@@ -15,9 +15,22 @@ import {
   historicalPromotionUnderLockDurableStateReason,
   type HistoricalPromotionUnderLockReason,
 } from "./reader-summary-promotion-v2-input-guard";
+import {
+  historicalPromotionGenerationAuthorityJson,
+  historicalPromotionGenerationAuthorityJsonEnv,
+  historicalPromotionGenerationAuthoritySha256,
+  historicalPromotionGenerationAuthoritySha256Env,
+} from "./reader-summary-promotion-v2-historical-generation-authority";
+import {
+  openSecureDirectory,
+  type SecureDirectoryHandle,
+} from
+  "./reader-summary-promotion-v2-secure-directory";
 
 export class ProductionDayHistoricalPromotionMutation
   implements HistoricalPromotionMutation {
+  private readonly outputHandle: SecureDirectoryHandle;
+
   constructor(private readonly input: {
     artifactOutput: string;
     dailyRunLockPath: string;
@@ -30,7 +43,17 @@ export class ProductionDayHistoricalPromotionMutation
     durableState: HistoricalPromotionDurableStateReader;
     verifier: Pick<HistoricalPromotionMutation, "verifyCompleted">;
     environment: Readonly<Record<string, string | undefined>>;
-  }) {}
+  }) {
+    this.outputHandle = openSecureDirectory(input.artifactOutput, true);
+  }
+
+  close(): void {
+    this.outputHandle.close();
+  }
+
+  get outputIdentity(): string {
+    return this.outputHandle.identity;
+  }
 
   verifyCompleted: HistoricalPromotionMutation["verifyCompleted"] = (input) =>
     this.input.verifier.verifyCompleted(input);
@@ -38,23 +61,42 @@ export class ProductionDayHistoricalPromotionMutation
   async rebuild(
     input: Parameters<HistoricalPromotionMutation["rebuild"]>[0],
   ): Promise<HistoricalPromotionMutationOutcome> {
-    const dateOutput = resolve(this.input.artifactOutput, input.date);
-    const captureOutput = join(dateOutput, "capture");
-    const reportOutput = join(dateOutput, "production-day");
+    const dateOutput = join(this.outputHandle.fdPath, input.date);
+    const dateDirectory = openSecureDirectory(dateOutput, true);
+    const captureDirectory = openSecureDirectory(
+      join(dateDirectory.fdPath, "capture"),
+      true,
+    );
+    const reportDirectory = openSecureDirectory(
+      join(dateDirectory.fdPath, "production-day"),
+      true,
+    );
+    const childDateOutput = "/proc/self/fd/11";
     const fenceTokenPath = join(
-      dateOutput,
+      childDateOutput,
       `date-fence-token-${randomUUID()}.txt`,
     );
     const revalidationFailurePath = join(
-      dateOutput,
+      childDateOutput,
       "under-lock-input-revalidation-failure.v1.json",
     );
-    mkdirSync(dateOutput, { recursive: true, mode: 0o700 });
-    rmSync(revalidationFailurePath, { force: true });
+    const parentFenceTokenPath = join(
+      dateDirectory.fdPath,
+      fenceTokenPath.split("/").at(-1)!,
+    );
+    const parentFailurePath = join(
+      dateDirectory.fdPath,
+      "under-lock-input-revalidation-failure.v1.json",
+    );
+    rmSync(parentFailurePath, { force: true });
     const command = lockedPreflightCommand(
       historicalPromotionProductionDayCommand(input),
     );
-    const status = await spawnExitCode(
+    let status: number | null;
+    let fenceToken: string;
+    let underLockFailure: HistoricalPromotionUnderLockReason | null;
+    try {
+      status = await spawnExitCode(
       "bash",
       [
         resolve(
@@ -85,8 +127,8 @@ export class ProductionDayHistoricalPromotionMutation
       ],
       {
         ...this.input.environment,
-        READER_SUMMARY_PRODUCTION_DAY_ARTIFACT_DIR: captureOutput,
-        READER_SUMMARY_PRODUCTION_DAY_REPORT_DIR: reportOutput,
+        READER_SUMMARY_PRODUCTION_DAY_ARTIFACT_DIR: "/proc/self/fd/9",
+        READER_SUMMARY_PRODUCTION_DAY_REPORT_DIR: "/proc/self/fd/10",
         DURABLE_READER_SUMMARY_DATASET_MANIFEST_PATH:
           input.bundle.datasetManifestPath,
         DURABLE_READER_SUMMARY_DATASET_MANIFEST_SHA256:
@@ -117,6 +159,14 @@ export class ProductionDayHistoricalPromotionMutation
           input.bundle.authoritativeInputDigest,
         DURABLE_READER_SUMMARY_PROMOTION_AUTHORITY_INSPECTION_SHA256:
           input.classification.authorityInspectionDigest,
+        [historicalPromotionGenerationAuthorityJsonEnv]:
+          historicalPromotionGenerationAuthorityJson(
+            input.bundle.canonicalInput.generationAuthority,
+          ),
+        [historicalPromotionGenerationAuthoritySha256Env]:
+          historicalPromotionGenerationAuthoritySha256(
+            input.bundle.canonicalInput.generationAuthority,
+          ),
         DURABLE_READER_SUMMARY_SOURCE_PUBLICATION_ID:
           input.bundle.sourcePublicationId,
         DURABLE_READER_SUMMARY_SOURCE_ARTIFACT_ID:
@@ -142,9 +192,15 @@ export class ProductionDayHistoricalPromotionMutation
                 input.bundle.historicalGitHubOmissionReason,
             }),
       },
-    );
-    const fenceToken = readFenceToken(fenceTokenPath);
-    const underLockFailure = readUnderLockFailure(revalidationFailurePath);
+        [captureDirectory.fd, reportDirectory.fd, dateDirectory.fd],
+      );
+      fenceToken = readFenceToken(parentFenceTokenPath);
+      underLockFailure = readUnderLockFailure(parentFailurePath);
+    } finally {
+      captureDirectory.close();
+      reportDirectory.close();
+      dateDirectory.close();
+    }
     if (underLockFailure !== null) {
       return {
         status: "pending",
@@ -233,6 +289,8 @@ export const historicalPromotionProductionDayCommand = (
   input.bundle.sourceEvidence.kind,
   "--authoritative-input-sha256",
   input.bundle.authoritativeInputDigest,
+  "--promotion-authority-inspection-sha256",
+  input.classification.authorityInspectionDigest,
   "--source-publication-id",
   input.bundle.sourcePublicationId,
   "--source-artifact-id",
@@ -293,11 +351,16 @@ const spawnExitCode = (
   command: string,
   args: readonly string[],
   environment: Readonly<Record<string, string | undefined>>,
+  inheritedDirectoryFds: readonly number[] = [],
 ): Promise<number | null> => new Promise((resolveExit, reject) => {
   const child = spawn(command, [...args], {
     cwd: process.cwd(),
     env: { ...process.env, ...environment },
-    stdio: "inherit",
+    stdio: [
+      "inherit", "inherit", "inherit",
+      "ignore", "ignore", "ignore", "ignore", "ignore", "ignore",
+      ...inheritedDirectoryFds,
+    ],
   });
   child.once("error", reject);
   child.once("exit", (code) => resolveExit(code));

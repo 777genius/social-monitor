@@ -2,11 +2,9 @@
 -- Narrow publication-owner rollback for a completed Promotion V2 publication.
 BEGIN;
 SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
-
 SET LOCAL ROLE "social_monitor_public_schema_owner";
 GRANT USAGE, CREATE ON SCHEMA public
 TO "social_monitor_reader_summary_publication_owner";
-
 CREATE TABLE public."reader_summary_promotion_v2_rollback_receipts" (
   "id" UUID PRIMARY KEY,
   "tenant_id" UUID NOT NULL,
@@ -45,11 +43,9 @@ CREATE TABLE public."reader_summary_promotion_v2_rollback_receipts" (
     "fence_token" ~ '^reader-summary-date:[0-9]{4}-[0-9]{2}-[0-9]{2}:[1-9][0-9]*$'
   )
 );
-
 CREATE INDEX "reader_summary_promotion_v2_rollback_scope_day_idx"
 ON public."reader_summary_promotion_v2_rollback_receipts"
   ("tenant_id", "workspace_id", "requested_utc_date");
-
 ALTER TABLE "reader_summary_promotion_v2_rollback_receipts"
   ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "reader_summary_promotion_v2_rollback_receipts"
@@ -66,7 +62,6 @@ CREATE POLICY "reader_summary_promotion_v2_rollback_owner_only"
 ON "reader_summary_promotion_v2_rollback_receipts"
 FOR ALL TO "social_monitor_reader_summary_publication_owner"
 USING (TRUE) WITH CHECK (TRUE);
-
 CREATE FUNCTION public."reject_reader_summary_promotion_v2_rollback_receipt_mutation"()
 RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER
 SET search_path = pg_catalog AS $function$
@@ -74,7 +69,6 @@ BEGIN
   RAISE EXCEPTION 'reader summary Promotion V2 rollback receipts are immutable';
 END;
 $function$;
-
 CREATE TRIGGER "reader_summary_promotion_v2_rollback_receipts_immutable"
 BEFORE UPDATE OR DELETE
 ON public."reader_summary_promotion_v2_rollback_receipts"
@@ -85,10 +79,8 @@ BEFORE TRUNCATE
 ON public."reader_summary_promotion_v2_rollback_receipts"
 FOR EACH STATEMENT EXECUTE FUNCTION
   public."reject_reader_summary_promotion_v2_rollback_receipt_mutation"();
-
 RESET ROLE;
 SET LOCAL ROLE "social_monitor_reader_summary_publication_owner";
-
 CREATE TABLE public."reader_summary_promotion_v2_canary_publication_receipts" (
   "v2_publication_id" UUID PRIMARY KEY,
   "tenant_id" UUID NOT NULL,
@@ -128,11 +120,9 @@ CREATE TABLE public."reader_summary_promotion_v2_canary_publication_receipts" (
       public."reader_summary_artifacts"("id")
       ON DELETE RESTRICT ON UPDATE RESTRICT
 );
-
 CREATE INDEX "reader_summary_promotion_v2_canary_scope_day_idx"
 ON public."reader_summary_promotion_v2_canary_publication_receipts"
   ("tenant_id", "workspace_id", "requested_utc_date");
-
 ALTER TABLE "reader_summary_promotion_v2_canary_publication_receipts"
   ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "reader_summary_promotion_v2_canary_publication_receipts"
@@ -149,7 +139,6 @@ CREATE POLICY "reader_summary_promotion_v2_canary_owner_only"
 ON "reader_summary_promotion_v2_canary_publication_receipts"
 FOR ALL TO "social_monitor_reader_summary_publication_owner"
 USING (TRUE) WITH CHECK (TRUE);
-
 CREATE TRIGGER "reader_summary_promotion_v2_canary_receipts_immutable"
 BEFORE UPDATE OR DELETE
 ON public."reader_summary_promotion_v2_canary_publication_receipts"
@@ -160,7 +149,6 @@ BEFORE TRUNCATE
 ON public."reader_summary_promotion_v2_canary_publication_receipts"
 FOR EACH STATEMENT EXECUTE FUNCTION
   public."reject_reader_summary_promotion_v2_rollback_receipt_mutation"();
-
 CREATE FUNCTION public."reader_summary_promotion_v2_exact_proof_matches"(
   publication public."reader_summary_publications"
 ) RETURNS BOOLEAN LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE
@@ -200,7 +188,6 @@ SET search_path = pg_catalog AS $function$
     AND publication."exact_proof"->>'reportSha256' =
       btrim(publication."report_sha256"), FALSE)
 $function$;
-
 CREATE FUNCTION public."reader_summary_promotion_v2_legacy_proof_matches"(
   publication public."reader_summary_publications"
 ) RETURNS BOOLEAN LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE
@@ -242,7 +229,6 @@ SET search_path = pg_catalog AS $function$
       'reportSha256', btrim(publication."report_sha256")
     ), FALSE)
 $function$;
-
 CREATE FUNCTION public."reader_summary_promotion_v2_artifact_is_strict_v1"(
   artifact public."reader_summary_artifacts"
 ) RETURNS BOOLEAN LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE
@@ -285,19 +271,43 @@ SET search_path = pg_catalog AS $function$
     ) = jsonb_array_length(artifact."artifact_payload"->
       'promotionAttestations'), FALSE)
 $function$;
-
-CREATE FUNCTION public."reader_summary_promotion_v2_artifact_is_valid_v2"(
-  artifact public."reader_summary_artifacts"
+CREATE FUNCTION public."reader_summary_promotion_v2_artifact_is_valid_v2"(artifact public."reader_summary_artifacts"
 ) RETURNS BOOLEAN LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE
 SET search_path = pg_catalog AS $function$
-  SELECT COALESCE((
-    jsonb_typeof(artifact."artifact_payload"->
-      'promotionAttestations') = 'array'
-    AND jsonb_array_length(artifact."artifact_payload"->
-      'promotionAttestations') > 0
+  SELECT COALESCE(artifact."status" = 'COMPLETED' AND
+    jsonb_typeof(artifact."artifact_payload"->'promotionAttestations') = 'array'
+    AND jsonb_array_length(artifact."artifact_payload"->'promotionAttestations') > 0
+    AND (SELECT count(*) FROM jsonb_array_elements(artifact."artifact_payload"->'content'->'topReads') card
+      WHERE card->>'promotionMarker' = 'reader_post_promotion') <= 8
+    AND (SELECT count(*) FROM jsonb_array_elements(artifact."artifact_payload"->'content'->'selectedPosts') card
+      WHERE card->>'promotionMarker' = 'reader_post_promotion') <= 8
+    AND jsonb_array_length(artifact."artifact_payload"->'promotionAttestations') =
+      (SELECT count(*) FROM (
+        SELECT card FROM jsonb_array_elements(artifact."artifact_payload"->
+          'content'->'topReads') card
+        UNION ALL SELECT card FROM jsonb_array_elements(artifact."artifact_payload"->
+          'content'->'selectedPosts') card
+      ) cards WHERE card->>'promotionMarker' = 'reader_post_promotion')
+    AND (SELECT count(DISTINCT attestation->>'candidateId')
+      FROM jsonb_array_elements(artifact."artifact_payload"->
+        'promotionAttestations') attestation) = jsonb_array_length(
+          artifact."artifact_payload"->'promotionAttestations')
     AND NOT EXISTS (
       SELECT 1 FROM jsonb_array_elements(artifact."artifact_payload"->
-        'promotionAttestations') attestation
+        'promotionAttestations') WITH ORDINALITY tuple(attestation, slot)
+      JOIN LATERAL (SELECT card, placement, lane_slot, row_number()
+        OVER (ORDER BY lane_order, lane_slot) AS attestation_slot
+        FROM (
+        SELECT card, 'top' AS placement, 1 AS lane_order, ordinal AS lane_slot
+          FROM jsonb_array_elements(
+          artifact."artifact_payload"->'content'->'topReads'
+        ) WITH ORDINALITY top_lane(card, ordinal)
+        UNION ALL SELECT card, 'additional', 2, ordinal
+          FROM jsonb_array_elements(
+          artifact."artifact_payload"->'content'->'selectedPosts'
+        ) WITH ORDINALITY additional_lane(card, ordinal)
+      ) lanes WHERE card->>'promotionMarker' = 'reader_post_promotion'
+      ) selected ON selected.attestation_slot=tuple.slot
       WHERE COALESCE(attestation->>'schemaVersion' <>
           'reader_post_promotion_attestation.v2'
         OR attestation->>'policyVersion' <> 'reader_post_promotion.v2'
@@ -307,11 +317,32 @@ SET search_path = pg_catalog AS $function$
         OR attestation->>'digest' !~ '^[0-9a-f]{64}$'
         OR encode(sha256(convert_to(
           attestation->>'canonicalPayload', 'UTF8'
-        )), 'hex') <> attestation->>'digest', TRUE)
-    )
-  ) OR (
+        )), 'hex') <> attestation->>'digest'
+        OR selected.card->>'promotionMarker' <> 'reader_post_promotion'
+        OR selected.card->>'promotionPolicyVersion' <> 'reader_post_promotion.v2'
+        OR selected.card->>'promotionCandidateId' <> attestation->>'candidateId'
+        OR selected.card->>'promotionCanonicalIdentity' <>
+          attestation->>'canonicalIdentity'
+        OR selected.card->'citationIds' <> attestation->'citationIds'
+        OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(
+          artifact."artifact_payload"->'citationMap') citation
+          WHERE citation->>'citationId' = attestation->>'citationId'
+            AND citation->>'feedItemId' = attestation->>'candidateId')
+        OR attestation->>'placement' <> selected.placement
+        OR (attestation->>'slot')::INTEGER <> selected.lane_slot, TRUE)
+    ), FALSE)
+$function$;
+CREATE FUNCTION public."reader_summary_promotion_v2_artifact_is_no_signal"(
+  artifact public."reader_summary_artifacts"
+) RETURNS BOOLEAN LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE
+SET search_path = pg_catalog AS $function$
+  SELECT COALESCE(
     artifact."status" = 'NO_SIGNAL'
     AND artifact."artifact_payload"->'promotionAttestations' = '[]'::JSONB
+    AND artifact."artifact_payload"->'topStories' = '[]'::JSONB
+    AND artifact."artifact_payload"->'citationMap' = '[]'::JSONB
+    AND artifact."artifact_payload"->'content'->'topReads' = '[]'::JSONB
+    AND artifact."artifact_payload"->'content'->'selectedPosts' = '[]'::JSONB
     AND artifact."artifact_payload"->'qualityFlags' ? 'no_signal'
     AND artifact."artifact_payload"->'lineage'->>'promptVersion' =
       'reader_summary.promotion_no_signal.v1'
@@ -323,9 +354,15 @@ SET search_path = pg_catalog AS $function$
       'reader_promotion_policy.v2'
     AND artifact."artifact_payload"->'lineage'->>'evalDatasetVersion' =
       'reader_promotion_policy.v2'
-  ), FALSE)
+  , FALSE)
 $function$;
-
+CREATE FUNCTION public."reader_summary_promotion_v2_artifact_is_target"(
+  artifact public."reader_summary_artifacts"
+) RETURNS BOOLEAN LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE
+SET search_path = pg_catalog AS $function$
+  SELECT public."reader_summary_promotion_v2_artifact_is_valid_v2"(artifact)
+    OR public."reader_summary_promotion_v2_artifact_is_no_signal"(artifact)
+$function$;
 CREATE FUNCTION public."record_reader_summary_promotion_v2_canary_receipt"()
 RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER
 SET search_path = pg_catalog AS $function$
@@ -391,7 +428,7 @@ BEGIN
     )), 'hex') <> btrim(v_prior."proof_sha256")
     OR NOT public."reader_summary_promotion_v2_exact_proof_matches"(NEW)
     OR NOT public."reader_summary_promotion_v2_exact_proof_matches"(v_prior)
-    OR NOT public."reader_summary_promotion_v2_artifact_is_valid_v2"(
+    OR NOT public."reader_summary_promotion_v2_artifact_is_target"(
       v_current_artifact
     )
     OR NOT public."reader_summary_promotion_v2_artifact_is_strict_v1"(
@@ -485,7 +522,7 @@ BEGIN
     AND artifact."workspace_id" = receipt."workspace_id"
     AND artifact."status" = publication."semantic_status"
     AND public."reader_summary_promotion_v2_exact_proof_matches"(publication)
-    AND public."reader_summary_promotion_v2_artifact_is_valid_v2"(artifact)
+    AND public."reader_summary_promotion_v2_artifact_is_target"(artifact)
     AND slot."scope_type" = 'workspace'
     AND slot."scope_key" = 'workspace'
     AND slot."cadence" = 'daily'
@@ -742,7 +779,7 @@ BEGIN
         'reader_promotion_policy.v2'
       AND v_current_artifact."artifact_payload"->'lineage'->>'evalDatasetVersion' =
         'reader_promotion_policy.v2')
-  ) OR NOT public."reader_summary_promotion_v2_artifact_is_valid_v2"(
+  ) OR NOT public."reader_summary_promotion_v2_artifact_is_target"(
     v_current_artifact
   ) THEN
     RAISE EXCEPTION 'Promotion V2 rollback expected current tuple is not V2';
@@ -936,6 +973,11 @@ REVOKE ALL ON FUNCTION
     public."reader_summary_artifacts"
   ),
   public."reader_summary_promotion_v2_artifact_is_valid_v2"(
+    public."reader_summary_artifacts"
+  ),
+  public."reader_summary_promotion_v2_artifact_is_no_signal"(
+    public."reader_summary_artifacts"
+  ), public."reader_summary_promotion_v2_artifact_is_target"(
     public."reader_summary_artifacts"
   ),
   public."record_reader_summary_promotion_v2_canary_receipt"()

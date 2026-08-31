@@ -74,6 +74,7 @@ describe("historical Promotion V2 active-publication preparation", () => {
       rebuildIdentity: historicalPromotionRebuildIdentity({
         date,
         authoritativeInputDigest: bundle.authoritativeInputDigest,
+        authorityInspectionDigest: classification().authorityInspectionDigest,
       }),
       classification: {
         ...classification(),
@@ -93,6 +94,7 @@ describe("historical Promotion V2 active-publication preparation", () => {
       promotionRebuild: {
         sourceAuthorityKind: "active-database-publication",
         authoritativeInputDigest: bundle.authoritativeInputDigest,
+        authorityInspectionDigest: classification().authorityInspectionDigest,
       },
     });
 
@@ -144,6 +146,7 @@ describe("historical Promotion V2 active-publication preparation", () => {
         rows: [],
         engagementSnapshotCount: 0,
         engagementObservationByOriginalDayEndCount: 0,
+        retainedAuthorityDigest: "0".repeat(64),
       }) },
       preparation: preparationDependencies().preparation,
       clock: () => now,
@@ -180,7 +183,13 @@ describe("historical Promotion V2 active-publication preparation", () => {
     });
   });
 
-  it("returns a verified no-op before capture when V2 is already active", async () => {
+  it.each([
+    ["valid-v2", "active_publication_already_valid_v2"],
+    ["valid-no-signal", "active_publication_is_explicit_no_signal"],
+  ] as const)("returns a verified no-op before capture for %s", async (
+    tupleKind,
+    reason,
+  ) => {
     const dependencies = preparationDependencies();
     const captureDataset = jest.fn(dependencies.preparation.captureDataset);
     const preparation = new ReaderSummaryPromotionV2HistoricalPreparation({
@@ -189,7 +198,7 @@ describe("historical Promotion V2 active-publication preparation", () => {
         ...dependencies.preparation,
         readActiveSource: async () => ({
           ...await dependencies.preparation.readActiveSource(),
-          tupleKind: "valid-v2" as const,
+          tupleKind,
         }),
         captureDataset,
       },
@@ -200,7 +209,7 @@ describe("historical Promotion V2 active-publication preparation", () => {
     });
     expect(outcome).toMatchObject({
       status: "verified-noop",
-      reason: "active_publication_already_valid_v2",
+      reason,
       authoritativeInputDigest: null,
     });
     expect(captureDataset).not.toHaveBeenCalled();
@@ -288,13 +297,15 @@ const inspection = () => ({
     publishedAt: `${date}T08:00:00.000Z`,
     observedAt: `${date}T09:00:00.000Z`,
     dayEndMetricProof: {
-      source: "observation" as const,
+      source: "daily-rollup" as const,
       observedAt: `${date}T09:00:00.000Z`,
+      completeThroughAt: "2026-08-02T00:00:00.000Z",
       metrics: { score: 80, upvoteRatioBps: 9000 },
     },
   }],
   engagementSnapshotCount: 1,
   engagementObservationByOriginalDayEndCount: 1,
+  retainedAuthorityDigest: "a".repeat(64),
 });
 
 const classification = () => ({
@@ -307,6 +318,7 @@ const classification = () => ({
   structurallyValidByOriginalDayEndCount: 1,
   engagementSnapshotCount: 1,
   engagementObservationByOriginalDayEndCount: 1,
+  retainedAuthorityDigest: "b".repeat(64),
   providerCounts: { reddit: 1 },
   providerLimitations: [],
 });
@@ -333,6 +345,6 @@ const verifiedOutput = () => ({
     apiPromotionTupleVerified: true as const,
     apiOrderedLanesVerified: true as const,
     siteReaderRouteHttp200Verified: true as const,
-    siteFacingContractVerified: "not-exposed" as const,
+    siteFacingContractVerified: true as const,
   },
 });

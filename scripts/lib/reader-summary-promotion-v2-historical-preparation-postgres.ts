@@ -71,6 +71,7 @@ export class PostgresHistoricalPromotionPreparationReader
           ,artifact.user_id as "userId"
           ,artifact.subscription_id::text as "subscriptionId"
           ,artifact.headline
+          ,artifact.status::text as "status"
           ,artifact.summary_text as "summaryText"
           ,artifact.created_at as "createdAt"
           ,artifact.artifact_payload as "artifactPayload"

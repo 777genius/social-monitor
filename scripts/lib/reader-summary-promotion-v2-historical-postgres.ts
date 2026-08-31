@@ -20,6 +20,7 @@ import type {
   HistoricalPromotionVerifiedOutput,
 } from "./reader-summary-promotion-v2-historical-runner";
 import {
+  isHistoricalPromotionTargetTuple,
   verifyHistoricalPromotionArtifact,
   type HistoricalPromotionArtifactRecord,
   type HistoricalPromotionArtifactVerification,
@@ -37,12 +38,24 @@ type AuthorityRow = Readonly<{
   observedAt: Date | string;
   dayEndMetricProofSource: string | null;
   dayEndMetricProofObservedAt: Date | string | null;
+  dayEndMetricProofCompleteThroughAt: Date | string | null;
   dayEndMetricProofMetrics: unknown;
 }>;
 
 type CountRow = Readonly<{
   engagementSnapshotCount: string;
   engagementObservationByOriginalDayEndCount: string;
+}>;
+type LineageMismatchRow = Readonly<{ mismatchCount: string }>;
+type AuthorityLedgerRow = Readonly<{
+  kind: string;
+  identity: string;
+  sourceItemId: string;
+  providerKey: string;
+  observedAt: Date | string;
+  completeThroughAt: Date | string | null;
+  metricsHash: string | null;
+  metrics: unknown;
 }>;
 
 type PublicationRow = HistoricalPromotionArtifactRecord & Readonly<{
@@ -107,17 +120,24 @@ export class PostgresHistoricalPromotionAdapter
     timestampPolicy: "published_at" | "observed_at" = "published_at",
   ): Promise<HistoricalPromotionAuthorityInspection> {
     return this.readOnly(async (client) => {
-      const rows = await client.query<AuthorityRow>(authorityQuery, [
-        this.input.tenantId,
-        this.input.workspaceId,
-        date,
-        timestampPolicy,
-      ]);
-      const counts = await client.query<CountRow>(engagementCountsQuery, [
-        this.input.tenantId,
-        this.input.workspaceId,
-        date,
-        timestampPolicy,
+      const lineage = await client.query<LineageMismatchRow>(
+        authorityLineageMismatchQuery,
+        [this.input.tenantId, this.input.workspaceId, date, timestampPolicy],
+      );
+      if (lineage.rows.length !== 1 ||
+          exactCount(lineage.rows[0]!.mismatchCount, "provider lineage mismatch") !==
+            0) {
+        throw new Error(
+          "Historical promotion engagement provider lineage is inconsistent",
+        );
+      }
+      const parameters = [
+        this.input.tenantId, this.input.workspaceId, date, timestampPolicy,
+      ];
+      const [rows, counts, ledger] = await Promise.all([
+        client.query<AuthorityRow>(authorityQuery, parameters),
+        client.query<CountRow>(engagementCountsQuery, parameters),
+        client.query<AuthorityLedgerRow>(authorityLedgerQuery, parameters),
       ]);
       const count = counts.rows[0];
       if (count === undefined) {
@@ -133,6 +153,7 @@ export class PostgresHistoricalPromotionAdapter
           count.engagementObservationByOriginalDayEndCount,
           "engagement observation count",
         ),
+        retainedAuthorityDigest: retainedAuthorityDigest(ledger.rows),
       };
     });
   }
@@ -279,7 +300,7 @@ export class PostgresHistoricalPromotionAdapter
         throw new Error("Historical V2 active publication readback is inconsistent");
       }
       const verified = verifyHistoricalPromotionArtifact(active);
-      if (verified.kind !== "valid-v2") {
+      if (!isHistoricalPromotionTargetTuple(verified)) {
         throw new Error("Historical active publication is not a valid V2 tuple");
       }
       const counts = {
@@ -329,6 +350,9 @@ export class PostgresHistoricalPromotionAdapter
       workspaceId: this.input.workspaceId,
       expected: output.verified,
     });
+    if (visibility.siteFacingContractVerified !== true) {
+      throw new Error("Historical promotion site contract is not exposed");
+    }
     return {
       jobId: output.jobId,
       artifactId: output.artifactId,
@@ -345,7 +369,9 @@ export class PostgresHistoricalPromotionAdapter
         publicationProofVerified: true,
         apiPromotionTupleVerified: true,
         apiOrderedLanesVerified: true,
-        ...visibility,
+        siteReaderRouteHttp200Verified:
+          visibility.siteReaderRouteHttp200Verified,
+        siteFacingContractVerified: true,
       },
     };
   }
@@ -406,7 +432,7 @@ export class HttpHistoricalPromotionApiVisibilityVerifier
     expected: HistoricalPromotionArtifactVerification;
   }): Promise<Readonly<{
     siteReaderRouteHttp200Verified: true;
-    siteFacingContractVerified: true | "not-exposed";
+    siteFacingContractVerified: true;
   }>> {
     const start = `${input.date}T00:00:00.000Z`;
     const endDate = new Date(start);
@@ -448,10 +474,7 @@ export class HttpHistoricalPromotionApiVisibilityVerifier
       throw new Error(`Historical promotion site route returned ${site.status}`);
     }
     if (this.input.siteContractUrl === undefined) {
-      return {
-        siteReaderRouteHttp200Verified: true,
-        siteFacingContractVerified: "not-exposed",
-      };
+      throw new Error("Historical promotion site contract is not configured");
     }
     const contract = await fetch(this.input.siteContractUrl, {
       signal: AbortSignal.timeout(15_000),
@@ -466,7 +489,8 @@ export class HttpHistoricalPromotionApiVisibilityVerifier
       );
     }
     const contractBody = await contract.json() as unknown;
-    if (!isRecord(contractBody)) {
+    if (!isRecord(contractBody) ||
+        contractBody.readerSummaryId !== input.artifactId) {
       throw new Error("Historical promotion site contract is invalid");
     }
     assertApiOrderedLanes(contractBody, input.expected);
@@ -485,13 +509,21 @@ const authorityQuery = `
     fi.observed_at as "observedAt",
     metric_proof.source as "dayEndMetricProofSource",
     metric_proof.observed_at as "dayEndMetricProofObservedAt",
+    metric_proof.complete_through_at as "dayEndMetricProofCompleteThroughAt",
     metric_proof.metrics as "dayEndMetricProofMetrics"
   from feed_items fi
+  join source_items source
+    on source.tenant_id = fi.tenant_id
+    and source.workspace_id = fi.workspace_id
+    and source.id = fi.source_item_id
+    and source.provider_key = fi.provider_key
   left join lateral (
-    select proof.source, proof.observed_at, proof.metrics
+    select proof.source, proof.observed_at, proof.complete_through_at,
+      proof.metrics
     from (
       select 'observation'::text as source,
         observation.observed_at,
+        null::timestamptz as complete_through_at,
         jsonb_strip_nulls(jsonb_build_object(
           'score', observation.score, 'likes', observation.likes,
           'reposts', observation.reposts, 'points', observation.points,
@@ -504,15 +536,17 @@ const authorityQuery = `
       where observation.tenant_id = fi.tenant_id
         and observation.workspace_id = fi.workspace_id
         and observation.source_item_id = fi.source_item_id
+        and observation.provider_key = fi.provider_key
         and observation.observed_at < ($3::date + 1)::timestamp at time zone 'UTC'
       union all
       select 'daily-rollup'::text, rollup.last_observed_at,
-        rollup.closing_metrics, 2
+        rollup.complete_through_at, rollup.closing_metrics, 0
       from source_item_engagement_daily_rollups rollup
       where rollup.tenant_id = fi.tenant_id
         and rollup.workspace_id = fi.workspace_id
         and rollup.source_item_id = fi.source_item_id
-        and rollup.day <= $3::date
+        and rollup.provider_key = fi.provider_key
+        and rollup.day = $3::date
         and rollup.last_observed_at < ($3::date + 1)::timestamp at time zone 'UTC'
     ) proof
     order by proof.observed_at desc, proof.source_priority asc
@@ -532,6 +566,48 @@ const authorityQuery = `
       else null
     end < ($3::date + 1)::timestamp at time zone 'UTC'
   order by fi.id asc
+`;
+
+const authorityLineageMismatchQuery = `
+  select count(*)::text as "mismatchCount"
+  from feed_items fi
+  join source_items source
+    on source.tenant_id = fi.tenant_id
+    and source.workspace_id = fi.workspace_id
+    and source.id = fi.source_item_id
+  where fi.tenant_id = $1::uuid
+    and fi.workspace_id = $2::uuid
+    and fi.status = 'VISIBLE'
+    and case $4::text
+      when 'published_at' then fi.published_at
+      when 'observed_at' then fi.observed_at
+      else null
+    end >= $3::date::timestamp at time zone 'UTC'
+    and case $4::text
+      when 'published_at' then fi.published_at
+      when 'observed_at' then fi.observed_at
+      else null
+    end < ($3::date + 1)::timestamp at time zone 'UTC'
+    and (source.provider_key <> fi.provider_key
+      or exists (
+        select 1 from source_item_engagement_snapshots snapshot
+        where snapshot.tenant_id = fi.tenant_id
+          and snapshot.workspace_id = fi.workspace_id
+          and snapshot.source_item_id = fi.source_item_id
+          and snapshot.provider_key <> fi.provider_key
+      ) or exists (
+        select 1 from source_item_engagement_observations observation
+        where observation.tenant_id = fi.tenant_id
+          and observation.workspace_id = fi.workspace_id
+          and observation.source_item_id = fi.source_item_id
+          and observation.provider_key <> fi.provider_key
+      ) or exists (
+        select 1 from source_item_engagement_daily_rollups rollup
+        where rollup.tenant_id = fi.tenant_id
+          and rollup.workspace_id = fi.workspace_id
+          and rollup.source_item_id = fi.source_item_id
+          and rollup.provider_key <> fi.provider_key
+      ))
 `;
 
 const policyQuery = `
@@ -555,14 +631,21 @@ const engagementCountsQuery = `
       where observation.observed_at < ($3::date + 1)::timestamp at time zone 'UTC'
     )::text as "engagementObservationByOriginalDayEndCount"
   from feed_items fi
+  join source_items source
+    on source.tenant_id = fi.tenant_id
+    and source.workspace_id = fi.workspace_id
+    and source.id = fi.source_item_id
+    and source.provider_key = fi.provider_key
   left join source_item_engagement_snapshots snapshot
     on snapshot.tenant_id = fi.tenant_id
     and snapshot.workspace_id = fi.workspace_id
     and snapshot.source_item_id = fi.source_item_id
+    and snapshot.provider_key = fi.provider_key
   left join source_item_engagement_observations observation
     on observation.tenant_id = fi.tenant_id
     and observation.workspace_id = fi.workspace_id
     and observation.source_item_id = fi.source_item_id
+    and observation.provider_key = fi.provider_key
   where fi.tenant_id = $1::uuid
     and fi.workspace_id = $2::uuid
     and fi.status = 'VISIBLE'
@@ -578,13 +661,60 @@ const engagementCountsQuery = `
     end < ($3::date + 1)::timestamp at time zone 'UTC'
 `;
 
+const authorityLedgerQuery = `
+  with relevant_sources as (
+    select distinct fi.source_item_id, fi.provider_key
+    from feed_items fi
+    join source_items source on source.tenant_id=fi.tenant_id
+      and source.workspace_id=fi.workspace_id and source.id=fi.source_item_id
+      and source.provider_key=fi.provider_key
+    where fi.tenant_id=$1::uuid and fi.workspace_id=$2::uuid
+      and fi.status='VISIBLE'
+      and case $4::text when 'published_at' then fi.published_at
+        when 'observed_at' then fi.observed_at else null end >=
+          $3::date::timestamp at time zone 'UTC'
+      and case $4::text when 'published_at' then fi.published_at
+        when 'observed_at' then fi.observed_at else null end <
+          ($3::date + 1)::timestamp at time zone 'UTC'
+  )
+  select 'snapshot' as kind, snapshot.source_item_id::text as identity,
+    snapshot.source_item_id::text as "sourceItemId",
+    snapshot.provider_key as "providerKey",
+    snapshot.last_observed_at as "observedAt",
+    null::timestamptz as "completeThroughAt",
+    snapshot.metrics_hash as "metricsHash", to_jsonb(snapshot) as metrics
+  from source_item_engagement_snapshots snapshot
+  join relevant_sources source on source.source_item_id=snapshot.source_item_id
+    and source.provider_key=snapshot.provider_key
+  where snapshot.tenant_id=$1::uuid and snapshot.workspace_id=$2::uuid
+  union all
+  select 'observation', observation.id::text,
+    observation.source_item_id::text, observation.provider_key,
+    observation.observed_at, null::timestamptz,
+    observation.metrics_hash, to_jsonb(observation)
+  from source_item_engagement_observations observation
+  join relevant_sources source on source.source_item_id=observation.source_item_id
+    and source.provider_key=observation.provider_key
+  where observation.tenant_id=$1::uuid and observation.workspace_id=$2::uuid
+  union all
+  select 'daily-rollup', rollup.source_item_id::text || ':' || rollup.day::text,
+    rollup.source_item_id::text, rollup.provider_key, rollup.last_observed_at,
+    rollup.complete_through_at, null::text, to_jsonb(rollup)
+  from source_item_engagement_daily_rollups rollup
+  join relevant_sources source on source.source_item_id=rollup.source_item_id
+    and source.provider_key=rollup.provider_key
+  where rollup.tenant_id=$1::uuid and rollup.workspace_id=$2::uuid
+  order by kind, "sourceItemId", identity
+`;
+
 const activePublicationQuery = `
-  select publication.id::text as "publicationId",
+      select publication.id::text as "publicationId",
     publication.reader_summary_artifact_id::text as "artifactId",
     publication.reader_summary_job_id::text as "jobId",
     btrim(publication.report_sha256) as "reportSha256",
     btrim(publication.proof_sha256) as "proofSha256",
-    artifact.artifact_payload as "artifactPayload",
+      artifact.status::text as "status",
+      artifact.artifact_payload as "artifactPayload",
     artifact.citations as "citations",
     artifact.quality_signals as "qualitySignals"
     ,artifact.tenant_id::text as "tenantId"
@@ -667,6 +797,12 @@ const normalizeAuthorityRow = (row: AuthorityRow): HistoricalPromotionAuthorityR
           row.dayEndMetricProofObservedAt,
           "dayEndMetricProofObservedAt",
         ),
+        completeThroughAt: row.dayEndMetricProofCompleteThroughAt === null
+          ? null
+          : exactTimestamp(
+              row.dayEndMetricProofCompleteThroughAt,
+              "dayEndMetricProofCompleteThroughAt",
+            ),
         metrics: numericMetricObject(row.dayEndMetricProofMetrics),
       },
 });
@@ -683,9 +819,34 @@ const numericMetricObject = (value: Record<string, unknown>): JsonObject =>
     return [];
   }));
 
+const retainedAuthorityDigest = (
+  rows: readonly AuthorityLedgerRow[],
+): string => createHash("sha256").update(JSON.stringify(rows.map((row) => ({
+  kind: row.kind,
+  identity: row.identity,
+  sourceItemId: row.sourceItemId,
+  providerKey: row.providerKey,
+  observedAt: exactTimestamp(row.observedAt, "ledger observedAt"),
+  completeThroughAt: row.completeThroughAt === null
+    ? null
+    : exactTimestamp(row.completeThroughAt, "ledger completeThroughAt"),
+  metricsHash: row.metricsHash,
+  metrics: canonicalLedgerValue(row.metrics),
+})))).digest("hex");
+
+const canonicalLedgerValue = (value: unknown): unknown => {
+  if (value === null || typeof value !== "object") return value;
+  if (Array.isArray(value)) return value.map(canonicalLedgerValue);
+  return Object.fromEntries(Object.entries(value as Record<string, unknown>)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, item]) => [key, canonicalLedgerValue(item)]));
+};
+
 const isValidV2Publication = (row: PublicationRow): boolean => {
   try {
-    return verifyHistoricalPromotionArtifact(row).kind === "valid-v2";
+    return isHistoricalPromotionTargetTuple(
+      verifyHistoricalPromotionArtifact(row),
+    );
   } catch {
     return false;
   }
@@ -693,7 +854,7 @@ const isValidV2Publication = (row: PublicationRow): boolean => {
 
 const publicationTupleKind = (
   row: PublicationRow,
-): "strict-v1" | "valid-v2" | "unknown" => {
+): "strict-v1" | "valid-v2" | "valid-no-signal" | "unknown" => {
   try {
     return verifyHistoricalPromotionArtifact(row).kind;
   } catch {
@@ -758,7 +919,11 @@ const assertApiOrderedLanes = (
       (!Array.isArray(item.qualityFlags) ||
         !item.qualityFlags.includes("no_signal") ||
         !isRecord(item.lineage) ||
-        item.lineage.promptVersion !== "reader_summary.promotion_no_signal.v1")) {
+        item.lineage.promptVersion !== "reader_summary.promotion_no_signal.v1" ||
+        item.lineage.modelVersion !== "not_invoked" ||
+        item.lineage.providerVersion !== "deterministic" ||
+        item.lineage.rulesVersion !== "reader_promotion_policy.v2" ||
+        item.lineage.evalDatasetVersion !== "reader_promotion_policy.v2")) {
     throw new Error("Historical promotion API V2 NO_SIGNAL lineage is missing");
   }
 };

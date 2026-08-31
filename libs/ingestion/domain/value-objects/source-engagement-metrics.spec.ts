@@ -78,6 +78,41 @@ describe("source engagement metrics", () => {
     expect(result.qualityFlags.invalidMetricValue).toBe(false);
   });
 
+  it("normalizes the Reddit providerScore alias into durable score metrics", () => {
+    const result = buildSourceEngagementMetrics({
+      providerKey: "reddit",
+      metadata: {
+        kind: "reddit_post",
+        providerScore: 42,
+      },
+    });
+
+    expect(result).toMatchObject({
+      metrics: { score: 42 },
+      providerMetadataPatch: { providerScore: 42 },
+      qualityFlags: {
+        metadataKindKnown: true,
+        invalidMetricValue: false,
+        conflictingAliases: false,
+      },
+    });
+    expect(result.metricsFingerprint).toMatch(/^[a-f0-9]{64}$/u);
+  });
+
+  it("fails closed when Reddit score aliases disagree", () => {
+    const result = buildSourceEngagementMetrics({
+      providerKey: "reddit",
+      metadata: {
+        kind: "reddit_post",
+        score: 42,
+        providerScore: 43,
+      },
+    });
+
+    expect(result.metrics).toEqual({ score: 42 });
+    expect(result.qualityFlags.conflictingAliases).toBe(true);
+  });
+
   it("flags conflicting aliases so callers can fail safe on content", () => {
     const result = buildSourceEngagementMetrics({
       providerKey: "x-twitter",

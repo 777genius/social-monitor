@@ -23,6 +23,7 @@ import type {
   "../../../domain/policies/reader-post-promotion-policy";
 import { assertReaderSummaryPromotionAttestations } from
   "../../../domain/entities/reader-summary-promotion-attestation-validation";
+import type { TopRead } from "../../../domain/entities/top-read";
 
 describe("ReaderSummaryArtifact promotion immutability", () => {
   it("rehydrates a historical V1 attestation with legacy peer facts", () => {
@@ -46,6 +47,57 @@ describe("ReaderSummaryArtifact promotion immutability", () => {
       fixture.props,
       fixture.attestations,
     )).not.toThrow();
+  });
+
+  it.each([
+    ["missing marker", (card: TopRead): TopRead => {
+      const { promotionMarker: _marker, ...withoutMarker } = card;
+      void _marker;
+      return withoutMarker;
+    }],
+    ["changed policy marker", (card: TopRead): TopRead => ({
+      ...card,
+      promotionPolicyVersion: "reader_post_promotion.v2" as const,
+    })],
+    ["changed promotion tier", (card: TopRead): TopRead => ({
+      ...card,
+      promotionTier: "additional" as const,
+    })],
+  ] as const)("fails closed for V1 card %s", (_label, mutate) => {
+    const fixture = legacyPeerContextFixture(
+      new Date("2026-08-27T21:11:02.430Z"),
+    );
+    const card = fixture.props.content!.topReads[0]!;
+
+    expect(() => assertReaderSummaryPromotionAttestations({
+      ...fixture.props,
+      content: {
+        ...fixture.props.content!,
+        topReads: [mutate(card)],
+      },
+    }, fixture.attestations)).toThrow(/promotion attestation|promotion board/u);
+  });
+
+  it("fails closed when a V1 board mixes card policy markers", () => {
+    const fixture = isolatedLegacyBoardFixture([
+      legacyBoardInput("mixed-x", "x-twitter", "story:mixed-x", 300),
+      legacyBoardInput("mixed-hn", "hacker-news", "story:mixed-hn", 250),
+    ]);
+    const cards = fixture.props.content!.topReads;
+
+    expect(() => assertReaderSummaryPromotionAttestations({
+      ...fixture.props,
+      content: {
+        ...fixture.props.content!,
+        topReads: [
+          { ...cards[0]! },
+          {
+            ...cards[1]!,
+            promotionPolicyVersion: "reader_post_promotion.v2" as const,
+          },
+        ],
+      },
+    }, fixture.attestations)).toThrow(/promotion attestation|promotion board/u);
   });
 
   it("rejects a re-digested V1 board when peer-context eligibility changes", () => {

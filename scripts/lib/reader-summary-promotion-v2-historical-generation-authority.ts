@@ -5,9 +5,52 @@ import { currentReaderSummaryPromptRelease } from
 
 import type { HistoricalPromotionGenerationAuthority } from
   "./reader-summary-promotion-v2-historical-input";
+import { canonicalHistoricalPromotionGenerationAuthority } from
+  "./reader-summary-promotion-v2-historical-input";
 
 export type HistoricalPromotionPolicySnapshot =
   HistoricalPromotionGenerationAuthority["policy"];
+
+export const historicalPromotionGenerationAuthorityJsonEnv =
+  "DURABLE_READER_SUMMARY_PROMOTION_GENERATION_AUTHORITY_JSON";
+export const historicalPromotionGenerationAuthoritySha256Env =
+  "DURABLE_READER_SUMMARY_PROMOTION_GENERATION_AUTHORITY_SHA256";
+
+export const historicalPromotionGenerationAuthorityJson = (
+  value: HistoricalPromotionGenerationAuthority,
+): string => JSON.stringify(
+  canonicalHistoricalPromotionGenerationAuthority(value),
+);
+
+export const historicalPromotionGenerationAuthoritySha256 = (
+  value: HistoricalPromotionGenerationAuthority,
+): string => createHash("sha256")
+  .update(historicalPromotionGenerationAuthorityJson(value))
+  .digest("hex");
+
+export const parseHistoricalPromotionGenerationAuthority = (
+  json: string | undefined,
+  expectedSha256: string | undefined,
+): HistoricalPromotionGenerationAuthority => {
+  if (json === undefined || expectedSha256 === undefined ||
+      !/^[0-9a-f]{64}$/u.test(expectedSha256)) {
+    throw new Error("Historical promotion generation authority is required");
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(json) as unknown;
+  } catch {
+    throw new Error("Historical promotion generation authority is invalid");
+  }
+  const authority = canonicalHistoricalPromotionGenerationAuthority(
+    parsed as HistoricalPromotionGenerationAuthority,
+  );
+  if (historicalPromotionGenerationAuthoritySha256(authority) !==
+      expectedSha256) {
+    throw new Error("Historical promotion generation authority digest drifted");
+  }
+  return authority;
+};
 
 const customInstructions =
   "Build a practical daily reader summary for AI/product/social monitoring. Prefer fresh, cited, high-signal items and clearly separate facts from risks.";

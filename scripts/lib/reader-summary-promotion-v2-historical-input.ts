@@ -133,7 +133,7 @@ export const buildHistoricalPromotionCanonicalInput = (input: {
       timestampPolicy: input.datasetManifest.policy.timestampPolicy,
     },
     supportingEvidence: supportingEvidence(input.supportingEvidence),
-    generationAuthority: canonicalGenerationAuthority(
+    generationAuthority: canonicalHistoricalPromotionGenerationAuthority(
       input.generationAuthority,
     ),
     githubPolicy,
@@ -144,7 +144,7 @@ export const buildHistoricalPromotionCanonicalInput = (input: {
   });
 };
 
-const canonicalGenerationAuthority = (
+export const canonicalHistoricalPromotionGenerationAuthority = (
   value: HistoricalPromotionGenerationAuthority,
 ): HistoricalPromotionGenerationAuthority => {
   const policy = value.policy;

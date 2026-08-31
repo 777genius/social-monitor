@@ -1,4 +1,8 @@
-import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
+import {
+  tenantId,
+  workspaceId,
+  type JsonObject,
+} from "@social-monitor/shared-kernel";
 
 import { SourceItem } from "../../domain";
 import type { SourceCandidateScreening } from "./source-candidate-memory-coordinator";
@@ -58,38 +62,92 @@ describe("source engagement sample coordinator", () => {
     expect(result.sourceItemsForFullProjection).toHaveLength(1);
     expect(result.engagementSamples[0]?.refreshReadModels).toBe(false);
   });
+
+  it("carries a Reddit providerScore-only post into engagement projection", () => {
+    const item = sourceItem("reddit-provider-score", {
+      externalId: "reddit:provider-score",
+      metadata: { kind: "reddit_post", providerScore: 42 },
+    });
+    const result = prepareSourceEngagementSamples({
+      providerKey: "reddit",
+      persistedItems: [item],
+      savedItems: [{
+        externalId: "reddit:provider-score",
+        sourceItemId: item.toSnapshot().id,
+        persistedItem: item,
+        inserted: true,
+        mutationKind: "inserted",
+      }],
+      candidateScreening: screening("new", "reddit", "reddit:provider-score"),
+    });
+
+    expect(result.engagementSamples).toMatchObject([{
+      externalId: "reddit:provider-score",
+      metrics: { score: 42 },
+      providerMetadataPatch: { providerScore: 42 },
+    }]);
+  });
+
+  it("drops a Reddit sample when score aliases conflict", () => {
+    const item = sourceItem("reddit-conflicting-score", {
+      externalId: "reddit:conflicting-score",
+      metadata: { kind: "reddit_post", score: 42, providerScore: 43 },
+    });
+    const result = prepareSourceEngagementSamples({
+      providerKey: "reddit",
+      persistedItems: [item],
+      savedItems: [{
+        externalId: "reddit:conflicting-score",
+        sourceItemId: item.toSnapshot().id,
+        persistedItem: item,
+        inserted: true,
+        mutationKind: "inserted",
+      }],
+      candidateScreening: screening("new", "reddit", "reddit:conflicting-score"),
+    });
+
+    expect(result.engagementSamples).toEqual([]);
+  });
 });
 
-const sourceItem = (title: string): SourceItem =>
+const sourceItem = (
+  title: string,
+  overrides: {
+    readonly externalId?: string;
+    readonly metadata?: JsonObject;
+  } = {},
+): SourceItem =>
   SourceItem.ingest({
     id: "source-1",
     tenantId: tenantId("tenant"),
     workspaceId: workspaceId("workspace"),
     sourceBindingId: "binding",
-    externalId: "x-twitter:1",
+    externalId: overrides.externalId ?? "x-twitter:1",
     canonicalUrl: "https://x.com/example/status/1",
     title,
     body: "body",
     publishedAt: new Date("2026-07-10T11:00:00Z"),
     ingestedAt: new Date("2026-07-10T12:00:00Z"),
-    metadata: { kind: "x_post", likes: 10 },
+    metadata: overrides.metadata ?? { kind: "x_post", likes: 10 },
   });
 
 const screening = (
   kind: "new" | "content_changed",
+  providerKey = "x-twitter",
+  externalId = "x-twitter:1",
 ): SourceCandidateScreening => ({
   memoryScope: {
     tenantId: tenantId("tenant"),
     workspaceId: workspaceId("workspace"),
     interestId: "interest",
     sourceBindingId: "binding",
-    providerKey: "x-twitter",
+    providerKey,
     scopeFingerprint: "scope",
     policyVersion: "v1",
   },
   candidates: [],
   classifications: [
-    { externalId: "x-twitter:1", kind, legacyFallback: false },
+    { externalId, kind, legacyFallback: false },
   ],
   previousExpiresAtByExternalId: new Map(),
   itemsToEnrich: [],

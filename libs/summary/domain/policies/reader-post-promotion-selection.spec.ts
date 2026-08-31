@@ -186,6 +186,7 @@ describe("reader post promotion selection", () => {
         canonicalIdentity: "story:reddit-support",
         citationId: "citation-reddit",
         clusterId,
+        authorityAttestation: attestedTrustedAuthority,
         metrics: redditMetrics(80, 0.95, 30),
       }),
     ]);

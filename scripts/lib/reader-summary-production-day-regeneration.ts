@@ -20,7 +20,11 @@ import { historicalPromotionRebuildIdentity } from
   "./reader-summary-promotion-v2-historical-classification";
 import { buildHistoricalPromotionCanonicalInput } from
   "./reader-summary-promotion-v2-historical-input";
-import { historicalPromotionGenerationAuthority } from
+import {
+  historicalPromotionGenerationAuthorityJsonEnv,
+  historicalPromotionGenerationAuthoritySha256Env,
+  parseHistoricalPromotionGenerationAuthority,
+} from
   "./reader-summary-promotion-v2-historical-generation-authority";
 
 type HashBoundArtifact = {
@@ -79,6 +83,7 @@ export type HistoricalRegenerationSourceProvenance = {
   readonly promotionRebuild?: Readonly<{
     rebuildIdentity: string;
     authoritativeInputDigest: string;
+    authorityInspectionDigest: string;
     policyVersion: "reader_post_promotion.v2";
     sourceAuthorityKind:
       | "active-database-publication"
@@ -271,11 +276,10 @@ const assertPromotionCanonicalInput = (input: {
     datasetManifest: input.datasetManifest,
     datasetManifestSha256: input.datasetManifestFileSha256,
     supportingEvidence,
-    generationAuthority: historicalPromotionGenerationAuthority({
-      tenantId: input.datasetManifest.scope.tenantId,
-      workspaceId: input.datasetManifest.scope.workspaceId,
-      env: process.env,
-    }),
+    generationAuthority: parseHistoricalPromotionGenerationAuthority(
+      process.env[historicalPromotionGenerationAuthorityJsonEnv],
+      process.env[historicalPromotionGenerationAuthoritySha256Env],
+    ),
     allowHistoricalGitHubOmission:
       input.githubPolicy.mode === "historical_unavailable",
     ...(input.githubPolicy.mode === "historical_unavailable"
@@ -560,6 +564,7 @@ function validatePromotionRebuildAuthority(
   if (historicalPromotionRebuildIdentity({
     date: collectionDate,
     authoritativeInputDigest: promotionRebuild.authoritativeInputDigest,
+    authorityInspectionDigest: promotionRebuild.authorityInspectionDigest,
     policyVersion: promotionRebuild.policyVersion,
   }) !== promotionRebuild.rebuildIdentity) {
     throw new Error("Promotion rebuild identity does not match its authority");

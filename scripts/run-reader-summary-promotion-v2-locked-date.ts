@@ -36,6 +36,12 @@ import {
 } from "./lib/reader-summary-promotion-v2-historical-classification";
 import { buildHistoricalPromotionCanonicalInput } from
   "./lib/reader-summary-promotion-v2-historical-input";
+import {
+  historicalPromotionGenerationAuthorityJsonEnv,
+  historicalPromotionGenerationAuthoritySha256,
+  historicalPromotionGenerationAuthoritySha256Env,
+  parseHistoricalPromotionGenerationAuthority,
+} from "./lib/reader-summary-promotion-v2-historical-generation-authority";
 
 const datasetManifestPathEnv = "DURABLE_READER_SUMMARY_DATASET_MANIFEST_PATH";
 const datasetManifestSha256Env =
@@ -153,6 +159,20 @@ async function main(): Promise<void> {
                   "DURABLE_READER_SUMMARY_COLLECTION_QUALITY_REPORT_SHA256",
                 ),
               } as const;
+          const expectedGenerationAuthority =
+            parseHistoricalPromotionGenerationAuthority(
+              process.env[historicalPromotionGenerationAuthorityJsonEnv],
+              process.env[historicalPromotionGenerationAuthoritySha256Env],
+            );
+          const currentGenerationAuthority =
+            await postgres.readGenerationAuthority();
+          if (historicalPromotionGenerationAuthoritySha256(
+            currentGenerationAuthority,
+          ) !== historicalPromotionGenerationAuthoritySha256(
+            expectedGenerationAuthority,
+          )) {
+            throw new UnderLockDriftError();
+          }
           const canonical = buildHistoricalPromotionCanonicalInput({
             date,
             sourcePublication: {
@@ -165,7 +185,7 @@ async function main(): Promise<void> {
             datasetManifest: manifest,
             datasetManifestSha256: fileSha256,
             supportingEvidence,
-            generationAuthority: await postgres.readGenerationAuthority(),
+            generationAuthority: currentGenerationAuthority,
             allowHistoricalGitHubOmission:
               process.env
                 .DURABLE_READER_SUMMARY_HISTORICAL_GITHUB_OMISSION_REASON !==
@@ -178,6 +198,8 @@ async function main(): Promise<void> {
               historicalPromotionRebuildIdentity({
                 date,
                 authoritativeInputDigest: canonical.authoritativeInputDigest,
+                authorityInspectionDigest:
+                  promotion.authorityInspectionDigest,
               }) !== promotion.rebuildIdentity) {
             throw new UnderLockDriftError();
           }
