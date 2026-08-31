@@ -5,57 +5,67 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:social_monitor_summaries/src/infrastructure/anti_corruption/reader_post_promotion_attestation_verifier.dart';
 
 void main() {
-  test('accepts trusted source-catalog non-official cross-provider support', () {
-    final body = _attestedBodyWithSupport();
-    (_support(body)['authorityAttestation']! as Map<String, Object?>)
-        ['official'] = false;
-    expect(
-      _verify(
-        body,
-        cardProviderKey: 'hacker-news',
-        citationIds: const ['citation-1', 'citation-2'],
-      ),
-      isNotNull,
-    );
-  });
-
-  test('accepts schema-valid producer authority without reconstructing policy', () {
-    final body = _attestedBodyWithSupport();
-    (_support(body)['authorityAttestation']! as Map<String, Object?>)
-      ..['official'] = true
-      ..['trusted'] = true
-      ..['attestedBy'] = 'producer';
-    expect(
-      _verify(
-        body,
-        cardProviderKey: 'hacker-news',
-        citationIds: const ['citation-1', 'citation-2'],
-      ),
-      isNotNull,
-    );
-  });
-
-  test('keeps provenance integrity while leaving backend policy authoritative', () {
-    const integrityFailures = {
-      'support must use the same period window',
-      'support must target the exact lead identity',
-      'support candidate must be independent',
-      'support whyImportant must be trimmed non-empty',
-    };
-    for (final entry in _semanticCases()) {
+  test(
+    'accepts trusted source-catalog non-official cross-provider support',
+    () {
       final body = _attestedBodyWithSupport();
-      entry.mutate(body);
+      (_support(body)['authorityAttestation']!
+              as Map<String, Object?>)['official'] =
+          false;
       expect(
         _verify(
           body,
-          cardProviderKey: body['provider']! as String,
-          citationIds: List<String>.from(body['citationIds']! as List),
+          cardProviderKey: 'hacker-news',
+          citationIds: const ['citation-1', 'citation-2'],
         ),
-        integrityFailures.contains(entry.reason) ? isNull : isNotNull,
-        reason: entry.reason,
+        isNotNull,
       );
-    }
-  });
+    },
+  );
+
+  test(
+    'accepts schema-valid producer authority without reconstructing policy',
+    () {
+      final body = _attestedBodyWithSupport();
+      (_support(body)['authorityAttestation']! as Map<String, Object?>)
+        ..['official'] = true
+        ..['trusted'] = true
+        ..['attestedBy'] = 'producer';
+      expect(
+        _verify(
+          body,
+          cardProviderKey: 'hacker-news',
+          citationIds: const ['citation-1', 'citation-2'],
+        ),
+        isNotNull,
+      );
+    },
+  );
+
+  test(
+    'keeps provenance integrity while leaving backend policy authoritative',
+    () {
+      const integrityFailures = {
+        'support must use the same period window',
+        'support must target the exact lead identity',
+        'support candidate must be independent',
+        'support whyImportant must be trimmed non-empty',
+      };
+      for (final entry in _semanticCases()) {
+        final body = _attestedBodyWithSupport();
+        entry.mutate(body);
+        expect(
+          _verify(
+            body,
+            cardProviderKey: body['provider']! as String,
+            citationIds: List<String>.from(body['citationIds']! as List),
+          ),
+          integrityFailures.contains(entry.reason) ? isNull : isNotNull,
+          reason: entry.reason,
+        );
+      }
+    },
+  );
 
   test('does not reconstruct backend provider thresholds or formulas', () {
     for (final entry in _providerFormulaCases()) {
@@ -126,14 +136,16 @@ _semanticCases() => [
   (
     reason: 'support authority must be trusted',
     mutate: (body) =>
-        (_support(body)['authorityAttestation']! as Map<String, Object?>)
-            ['trusted'] = false,
+        (_support(body)['authorityAttestation']!
+                as Map<String, Object?>)['trusted'] =
+            false,
   ),
   (
     reason: 'support authority must come from source catalog',
     mutate: (body) =>
-        (_support(body)['authorityAttestation']! as Map<String, Object?>)
-            ['attestedBy'] = 'producer',
+        (_support(body)['authorityAttestation']!
+                as Map<String, Object?>)['attestedBy'] =
+            'producer',
   ),
   (
     reason: 'support must use the same period window',
@@ -143,8 +155,9 @@ _semanticCases() => [
   (
     reason: 'support must target the exact lead identity',
     mutate: (body) =>
-        (_support(body)['relation']! as Map<String, Object?>)
-            ['targetCanonicalIdentity'] = 'story:forged',
+        (_support(body)['relation']!
+                as Map<String, Object?>)['targetCanonicalIdentity'] =
+            'story:forged',
   ),
   (
     reason: 'support candidate must be independent',
@@ -188,12 +201,7 @@ _providerFormulaCases() => [
     reason: 'X weightedScore must equal likes plus two times reposts',
     provider: 'x-twitter',
     contentKind: 'original_post',
-    metrics: {
-      'provider': 'x',
-      'likes': 30,
-      'reposts': 20,
-      'weightedScore': 70,
-    },
+    metrics: {'provider': 'x', 'likes': 30, 'reposts': 20, 'weightedScore': 70},
     checkedAt: null,
     mutate: (body) =>
         (body['metrics']! as Map<String, Object?>)['weightedScore'] = 71,
@@ -213,8 +221,7 @@ _providerFormulaCases() => [
     contentKind: 'story',
     metrics: {'provider': 'hacker_news', 'points': 50},
     checkedAt: null,
-    mutate: (body) =>
-        (body['metrics']! as Map<String, Object?>)['points'] = 49,
+    mutate: (body) => (body['metrics']! as Map<String, Object?>)['points'] = 49,
   ),
   (
     reason: 'GitHub 24 hour delta must meet the exact top floor',
@@ -241,9 +248,9 @@ Object? _verify(
 }) {
   final payload = jsonEncode(body);
   return verifyReaderPostPromotionAttestation(
-    schemaVersion: readerPostPromotionAttestationSchemaVersion,
-    policyVersion: readerPostPromotionPolicyVersion,
-    digestVersion: readerPostPromotionDigestVersion,
+    schemaVersion: readerPostPromotionAttestationSchemaV1,
+    policyVersion: readerPostPromotionPolicyV1,
+    digestVersion: readerPostPromotionDigestV1,
     digest: sha256.convert(utf8.encode(payload)).toString(),
     canonicalPayload: payload,
     candidateId: body['candidateId']! as String,
@@ -349,9 +356,9 @@ Map<String, Object?> _commonLead({
   required int providerCount,
   required double confidence,
 }) => <String, Object?>{
-  'schemaVersion': readerPostPromotionAttestationSchemaVersion,
-  'policyVersion': readerPostPromotionPolicyVersion,
-  'digestVersion': readerPostPromotionDigestVersion,
+  'schemaVersion': readerPostPromotionAttestationSchemaV1,
+  'policyVersion': readerPostPromotionPolicyV1,
+  'digestVersion': readerPostPromotionDigestV1,
   'artifactId': 'artifact-1',
   'sourceWindowId': 'window-1',
   'periodStartedAt': '2026-08-18T00:00:00.000Z',

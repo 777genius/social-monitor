@@ -41,7 +41,9 @@ export type TopRead = {
   readonly storyClusterId?: string;
   readonly cardKind?: ReaderSummaryCardKind;
   readonly promotionMarker?: "reader_post_promotion";
-  readonly promotionPolicyVersion?: "reader_post_promotion.v1";
+  readonly promotionPolicyVersion?:
+    | "reader_post_promotion.v1"
+    | "reader_post_promotion.v2";
   readonly promotionTier?: "top" | "additional";
   readonly promotionCandidateId?: string;
   readonly promotionCanonicalIdentity?: string;

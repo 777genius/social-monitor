@@ -1,10 +1,11 @@
 import {
-  buildReaderPostPromotionAttestations,
   canonicalPromotionPayload,
   emptyReaderSummaryReliabilityReport,
   promotionPayloadDigest,
   selectReaderPostPromotions,
 } from "../../../domain";
+import { buildReaderPromotionV2TestAttestations } from
+  "../../../domain/services/reader-post-promotion-attestation.spec-support";
 import {
   normalizePersistedPromotionBoard,
   normalizePromotionAttestations,
@@ -26,10 +27,79 @@ describe("normalizePromotionAttestations", () => {
       forksDelta: 0,
     });
     expect(attestation).toMatchObject({
+      schemaVersion: "reader_post_promotion_attestation.v2",
+      policyVersion: "reader_post_promotion.v2",
+      digestVersion: "reader_post_promotion_digest.sha256.v2",
+      placement: "top",
+      slot: 1,
+      storyClusterId: "promotion:repo:owner/name",
       exactPublishedAt: "2026-08-14T00:00:00.000000Z",
       exactObservedAt: "2026-08-14T12:00:00.000000Z",
       exactIngestionCutoff: "2026-08-14T12:00:00.000000Z",
     });
+    expect(attestation?.evidenceLineage).toEqual({
+      leadCandidateId: "github:repo",
+      leadCitationId: "citation:github:repo",
+      supportCandidateIds: [],
+      supportCitationIds: [],
+      citationIds: ["citation:github:repo"],
+    });
+  });
+
+  it.each([
+    ["unknown version", (item: Record<string, unknown>) => {
+      item.schemaVersion = "reader_post_promotion_attestation.v99";
+    }],
+    ["unknown policy", (item: Record<string, unknown>) => {
+      item.policyVersion = "reader_post_promotion.v99";
+    }],
+    ["malformed digest", (item: Record<string, unknown>) => {
+      item.digest = "not-a-sha256-digest";
+    }],
+    ["zero-based V2 slot", (item: Record<string, unknown>) => {
+      item.slot = 0;
+    }],
+    ["missing score component", (item: Record<string, unknown>) => {
+      delete (item.scoreComponents as Record<string, unknown>)
+        .weightedFreshness;
+    }],
+    ["extra evidence lineage field", (item: Record<string, unknown>) => {
+      (item.evidenceLineage as Record<string, unknown>).providerPayload = {};
+    }],
+    ["placement conflicts with slate entry", (item: Record<string, unknown>) => {
+      item.placement = "additional";
+      item.tier = "additional";
+      item.decision = "promote_additional";
+    }],
+    ["candidate digest identity drift", (item: Record<string, unknown>) => {
+      const candidate = JSON.parse(
+        item.candidateDigestInput as string,
+      ) as Record<string, unknown>;
+      candidate.candidateId = "github:forged";
+      item.candidateDigestInput = JSON.stringify(candidate);
+    }],
+    ["tampered slate digest", (item: Record<string, unknown>) => {
+      item.slateDigest = "0".repeat(64);
+    }],
+    ["re-digested slate order drift", (item: Record<string, unknown>) => {
+      const slate = JSON.parse(
+        item.slateDigestInput as string,
+      ) as Record<string, unknown>;
+      (slate.orderedCandidateIds as string[]).unshift("github:other");
+      (slate.orderedCanonicalIdentities as string[]).unshift(
+        "repo:other/name",
+      );
+      (slate.digestInputs as string[]).unshift("entry:other");
+      item.slateDigestInput = JSON.stringify(slate);
+      item.slateDigest = promotionPayloadDigest(item.slateDigestInput as string);
+    }],
+  ] as const)("rejects V2 %s", (_label, mutate) => {
+    const fixture = serializedFixture() as Record<string, unknown>[];
+    mutate(fixture[0]!);
+    if (fixture[0]!.digest !== "not-a-sha256-digest") rehash(fixture[0]!);
+    expect(() => normalizePromotionAttestations(fixture)).toThrow(
+      /exact schema|Invalid promotion field/u,
+    );
   });
 
   it.each([
@@ -231,7 +301,7 @@ const rehash = (item: Record<string, unknown>): void => {
 const serializedFixture = (
   exactObservedAt = "2026-08-14T12:00:00.000000Z",
 ): unknown[] => JSON.parse(JSON.stringify(
-  buildReaderPostPromotionAttestations(
+  buildReaderPromotionV2TestAttestations(
     selectReaderPostPromotions([{
       candidateId: "github:repo",
       provider: "github-repo-radar",
@@ -283,7 +353,7 @@ const serializedFixture = (
 ));
 
 const serializedSupportFixture = (): unknown[] => JSON.parse(JSON.stringify(
-  buildReaderPostPromotionAttestations(
+  buildReaderPromotionV2TestAttestations(
     selectReaderPostPromotions([{
       candidateId: "hn:lead",
       provider: "hacker-news",

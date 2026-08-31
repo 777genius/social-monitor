@@ -38,12 +38,31 @@ _$ReaderSummaryPromotionAttestationDtoFromJson(
       ),
   slot: json['slot'] as num,
   sourceWindowId: json['sourceWindowId'] as String,
+  candidateDigestInput: json['candidateDigestInput'] as String?,
+  evidenceLineage: json['evidenceLineage'] == null
+      ? null
+      : ReaderSummaryPromotionEvidenceLineageDto.fromJson(
+          json['evidenceLineage'] as Map<String, dynamic>,
+        ),
+  reasonCodes: (json['reasonCodes'] as List<dynamic>?)
+      ?.map((e) => e as String)
+      .toList(),
+  scoreComponents: json['scoreComponents'] == null
+      ? null
+      : ReaderSummaryPromotionScoreComponentsDto.fromJson(
+          json['scoreComponents'] as Map<String, dynamic>,
+        ),
+  slateDigest: json['slateDigest'] as String?,
+  slateDigestInput: json['slateDigestInput'] as String?,
+  slateEntryDigestInput: json['slateEntryDigestInput'] as String?,
+  storyClusterId: json['storyClusterId'] as String?,
 );
 
 Map<String, dynamic> _$ReaderSummaryPromotionAttestationDtoToJson(
   ReaderSummaryPromotionAttestationDto instance,
 ) => <String, dynamic>{
   'artifactId': instance.artifactId,
+  'candidateDigestInput': instance.candidateDigestInput,
   'candidateId': instance.candidateId,
   'canonicalIdentity': instance.canonicalIdentity,
   'canonicalPayload': instance.canonicalPayload,
@@ -51,9 +70,16 @@ Map<String, dynamic> _$ReaderSummaryPromotionAttestationDtoToJson(
   'decision': instance.decision,
   'digest': instance.digest,
   'digestVersion': instance.digestVersion,
+  'evidenceLineage': instance.evidenceLineage,
   'placement': instance.placement,
   'policyVersion': instance.policyVersion,
+  'reasonCodes': instance.reasonCodes,
   'schemaVersion': instance.schemaVersion,
+  'scoreComponents': instance.scoreComponents,
+  'slateDigest': instance.slateDigest,
+  'slateDigestInput': instance.slateDigestInput,
+  'slateEntryDigestInput': instance.slateEntryDigestInput,
   'slot': instance.slot,
   'sourceWindowId': instance.sourceWindowId,
+  'storyClusterId': instance.storyClusterId,
 };

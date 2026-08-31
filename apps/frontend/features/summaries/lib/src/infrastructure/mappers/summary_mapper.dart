@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import '../../domain/aggregates/reader_summary.dart';
 import '../../domain/entities/generated_summary.dart';
 import '../../domain/entities/reader_summary_job_snapshot.dart';

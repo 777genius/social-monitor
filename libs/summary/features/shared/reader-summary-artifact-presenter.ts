@@ -78,8 +78,10 @@ export type ReaderSummaryContextArtifactView = Omit<
   readonly generatedAt: string;
 };
 
-export type ReaderPostPromotionAttestationView = Omit<
-  ReaderPostPromotionAttestation,
+type PromotionAttestationView<
+  T extends ReaderPostPromotionAttestation,
+> = Omit<
+  T,
   | "publishedAt"
   | "observedAt"
   | "checkedAt"
@@ -96,15 +98,22 @@ export type ReaderPostPromotionAttestationView = Omit<
   readonly periodEndedAt: string;
   readonly ingestionCutoff: string;
   readonly supportFacts: readonly ReaderPostPromotionInputView[];
-  readonly metrics?: ReaderPostPromotionAttestation["metrics"] extends infer T
-    ? T extends { readonly provider: "github_radar" }
-      ? Omit<T, "windowStartedAt" | "windowEndedAt"> & {
+  readonly metrics?: T["metrics"] extends infer Metric
+    ? Metric extends { readonly provider: "github_radar" }
+      ? Omit<Metric, "windowStartedAt" | "windowEndedAt"> & {
           readonly windowStartedAt: string;
           readonly windowEndedAt: string;
         }
-      : T
+      : Metric
     : never;
 };
+
+export type ReaderPostPromotionAttestationView =
+  ReaderPostPromotionAttestation extends infer T
+    ? T extends ReaderPostPromotionAttestation
+      ? PromotionAttestationView<T>
+      : never
+    : never;
 
 type ReaderPostPromotionInputView = Omit<
   ReaderPostPromotionInput,

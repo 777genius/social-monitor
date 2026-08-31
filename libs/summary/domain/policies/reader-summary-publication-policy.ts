@@ -19,6 +19,10 @@ import type {
 import { publicationShadowReport } from "./reader-summary-publication-shadow";
 import { promotionPublicationFindings } from "./reader-summary-promotion-publication-verification";
 import { readerSummaryPromotionPublicationOracle } from "./reader-summary-promotion-publication-oracle";
+import {
+  READER_POST_PROMOTION_ATTESTATION_POLICY_VERSION,
+  READER_POST_PROMOTION_POLICY_V1,
+} from "./reader-post-promotion-policy";
 
 import {
   collectReaderSummaryTechnicalLeaks,
@@ -86,6 +90,9 @@ export class ReaderSummaryPublicationPolicy {
         actualSelected: (snapshot.content?.selectedPosts ?? []).filter(
           (item) => !isGitHubReaderItem(item),
         ),
+        expectedPolicyVersion: params.evidence.editorialSlate === undefined
+          ? READER_POST_PROMOTION_POLICY_V1.version
+          : READER_POST_PROMOTION_ATTESTATION_POLICY_VERSION,
       }),
     );
 

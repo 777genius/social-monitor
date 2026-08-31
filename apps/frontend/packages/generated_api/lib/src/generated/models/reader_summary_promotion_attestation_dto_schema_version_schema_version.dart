@@ -10,6 +10,10 @@ enum ReaderSummaryPromotionAttestationDtoSchemaVersionSchemaVersion {
   @JsonValue('reader_post_promotion_attestation.v1')
   undefined0('reader_post_promotion_attestation.v1'),
 
+  /// Incorrect name has been replaced. Original name: `reader_post_promotion_attestation.v2`.
+  @JsonValue('reader_post_promotion_attestation.v2')
+  undefined1('reader_post_promotion_attestation.v2'),
+
   /// Default value for all unparsed values, allows backward compatibility when adding new values on the backend.
   $unknown(null);
 

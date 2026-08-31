@@ -1,7 +1,7 @@
-enum ReaderPostPromotionPlacement { top, additional }
+part of 'summary_api_dto.dart';
 
-final class ReaderPostPromotionAttestation {
-  const ReaderPostPromotionAttestation({
+final class ReaderPostPromotionAttestationApiDto {
+  const ReaderPostPromotionAttestationApiDto({
     this.schemaVersion = 'reader_post_promotion_attestation.v1',
     this.policyVersion = 'reader_post_promotion.v1',
     required this.candidateId,
@@ -24,24 +24,22 @@ final class ReaderPostPromotionAttestation {
   final String policyVersion;
   final String candidateId;
   final String canonicalIdentity;
-  final ReaderPostPromotionPlacement placement;
+  final String placement;
   final int slot;
   final String decision;
   final List<String> citationIds;
   final String? storyClusterId;
-  final ReaderPostPromotionScoreComponents? scoreComponents;
+  final ReaderPostPromotionScoreComponentsApiDto? scoreComponents;
   final List<String> reasonCodes;
   final String? candidateDigestInput;
   final String? slateEntryDigestInput;
   final String? slateDigestInput;
   final String? slateDigest;
-  final ReaderPostPromotionEvidenceLineage? evidenceLineage;
-
-  bool get isV2 => schemaVersion == 'reader_post_promotion_attestation.v2';
+  final ReaderPostPromotionEvidenceLineageApiDto? evidenceLineage;
 }
 
-final class ReaderPostPromotionScoreComponents {
-  const ReaderPostPromotionScoreComponents({
+final class ReaderPostPromotionScoreComponentsApiDto {
+  const ReaderPostPromotionScoreComponentsApiDto({
     required this.engagementSalience,
     required this.relevance,
     required this.evidenceQuality,
@@ -68,8 +66,8 @@ final class ReaderPostPromotionScoreComponents {
   final double total;
 }
 
-final class ReaderPostPromotionEvidenceLineage {
-  const ReaderPostPromotionEvidenceLineage({
+final class ReaderPostPromotionEvidenceLineageApiDto {
+  const ReaderPostPromotionEvidenceLineageApiDto({
     required this.leadCandidateId,
     required this.leadCitationId,
     required this.supportCandidateIds,

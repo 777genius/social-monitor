@@ -7,6 +7,7 @@ import {
 import {
   evaluateReaderPostPromotion,
   readerPostProviderFamily,
+  READER_POST_PROMOTION_ATTESTATION_POLICY_VERSION,
   READER_POST_PROMOTION_POLICY_V1,
   type ReaderPostPromotionInput,
   type ReaderPostPromotionAttestation,
@@ -37,6 +38,10 @@ import { projectReaderPostPromotionAdmittedClusters } from
   "./reader-post-promotion-admitted-clusters";
 import { readerPostPromotionSelectionFromEditorialSlate } from
   "./reader-post-promotion-editorial-slate-selection";
+import {
+  readerPostPromotionBoundary,
+  readerPostPromotionFreshnessIsValid,
+} from "./reader-post-promotion-freshness";
 
 export type ReaderPostPromotionProjection = {
   readonly topReads: readonly TopRead[];
@@ -60,7 +65,10 @@ export const buildReaderPostPromotionProjection = (params: {
   readonly sourceWindow: SummarySourceWindow;
   readonly approvedSameStoryRelations?: readonly ApprovedSameStoryRelation[];
   readonly relatedTopicRelations?: readonly RelatedTopicRelation[];
-  readonly attestationBinding?: ReaderPostPromotionAttestationBinding;
+  readonly attestationBinding?: Omit<
+    ReaderPostPromotionAttestationBinding,
+    "editorialSlate"
+  >;
   readonly editorialSlate?: ReaderSummaryEditorialSlate;
 }): ReaderPostPromotionProjection => {
   const evidenceById = uniqueEvidenceById(params.evidence);
@@ -87,8 +95,8 @@ export const buildReaderPostPromotionProjection = (params: {
       periodStart,
       periodEnd,
       ingestionCutoff,
-      exactPeriodStart: promotionBoundary(periodStart),
-      exactPeriodEnd: promotionBoundary(periodEnd),
+      exactPeriodStart: readerPostPromotionBoundary(periodStart),
+      exactPeriodEnd: readerPostPromotionBoundary(periodEnd),
       exactPublishedAt: facts?.freshnessProvenance?.status === "observed"
         ? facts.freshnessProvenance.exactPublishedAt
         : undefined,
@@ -98,7 +106,7 @@ export const buildReaderPostPromotionProjection = (params: {
       exactIngestionCutoff: facts?.freshnessProvenance?.status === "observed"
         ? facts.freshnessProvenance.exactIngestionCutoff
         : undefined,
-      freshnessValid: promotionFreshnessIsValid({
+      freshnessValid: readerPostPromotionFreshnessIsValid({
         facts,
         publishedAt: item.publishedAt,
         observedAt: item.observedAt,
@@ -169,7 +177,12 @@ export const buildReaderPostPromotionProjection = (params: {
   );
   const attestations = params.attestationBinding === undefined
     ? []
-    : buildReaderPostPromotionAttestations(selection, params.attestationBinding);
+    : params.editorialSlate === undefined
+      ? requireEmptyPromotionSelection(selection)
+      : buildReaderPostPromotionAttestations(selection, {
+          ...params.attestationBinding,
+          editorialSlate: params.editorialSlate,
+        });
   const attestedEvidenceFacts = [...selection.top, ...selection.additional]
     .flatMap((selected) => [selected.candidate, ...selected.support]);
   const admittedCitationIds = new Set(
@@ -207,40 +220,15 @@ export const buildReaderPostPromotionProjection = (params: {
   };
 };
 
-const promotionBoundary = (value: Date): string =>
-  value.toISOString().replace(/\.(\d{3})Z$/u, ".$1" + "000Z");
-
-const promotionFreshnessIsValid = (params: {
-  readonly facts: SummaryEvidenceItem["promotionFacts"];
-  readonly publishedAt: Date;
-  readonly observedAt: Date;
-  readonly ingestionCutoff: Date;
-}): boolean => {
-  const provenance = params.facts?.freshnessProvenance;
-  const exactPublished = provenance?.status === "observed"
-    ? provenance.exactPublishedAt
-    : undefined;
-  const exactObserved = provenance?.status === "observed"
-    ? provenance.exactObservedAt
-    : undefined;
-  const exactCutoff = provenance?.status === "observed"
-    ? provenance.exactIngestionCutoff
-    : undefined;
-  const provenanceMatches = provenance !== undefined && (
-    provenance.status === "observed" &&
-    provenance.publishedAt.getTime() === params.publishedAt.getTime() &&
-    provenance.observedAt.getTime() === params.observedAt.getTime() &&
-    provenance.ingestionCutoff.getTime() === params.ingestionCutoff.getTime()
-  );
-  return params.facts?.freshnessValid === true && provenanceMatches &&
-    Number.isFinite(params.publishedAt.getTime()) &&
-    Number.isFinite(params.observedAt.getTime()) &&
-    Number.isFinite(params.ingestionCutoff.getTime()) &&
-    (exactPublished === undefined || exactObserved === undefined ||
-      exactCutoff === undefined
-      ? params.publishedAt.getTime() <= params.observedAt.getTime() &&
-        params.observedAt.getTime() <= params.ingestionCutoff.getTime()
-      : exactPublished <= exactObserved && exactObserved <= exactCutoff);
+const requireEmptyPromotionSelection = (
+  selection: ReturnType<typeof selectReaderPostPromotions>,
+): readonly ReaderPostPromotionAttestation[] => {
+  if (selection.top.length > 0 || selection.additional.length > 0) {
+    throw new Error(
+      "Promotion attestations require the backend editorial slate",
+    );
+  }
+  return [];
 };
 
 const promotedPost = (params: {
@@ -273,7 +261,9 @@ const promotedPost = (params: {
       `promotion:${params.selected.candidate.canonicalIdentity}`,
     cardKind: params.cardKind,
     promotionMarker: "reader_post_promotion",
-    promotionPolicyVersion: READER_POST_PROMOTION_POLICY_V1.version,
+    promotionPolicyVersion: params.selected.editorialSlateEntry === undefined
+      ? READER_POST_PROMOTION_POLICY_V1.version
+      : READER_POST_PROMOTION_ATTESTATION_POLICY_VERSION,
     promotionTier: params.cardKind === "curated_top_read" ? "top" : "additional",
     promotionCandidateId: params.selected.candidate.candidateId,
     promotionCanonicalIdentity: params.selected.candidate.canonicalIdentity,

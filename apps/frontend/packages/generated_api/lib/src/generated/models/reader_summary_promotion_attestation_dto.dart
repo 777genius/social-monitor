@@ -9,6 +9,8 @@ import 'reader_summary_promotion_attestation_dto_digest_version_digest_version.d
 import 'reader_summary_promotion_attestation_dto_placement_placement.dart';
 import 'reader_summary_promotion_attestation_dto_policy_version_policy_version.dart';
 import 'reader_summary_promotion_attestation_dto_schema_version_schema_version.dart';
+import 'reader_summary_promotion_evidence_lineage_dto.dart';
+import 'reader_summary_promotion_score_components_dto.dart';
 
 part 'reader_summary_promotion_attestation_dto.g.dart';
 
@@ -28,6 +30,14 @@ class ReaderSummaryPromotionAttestationDto {
     required this.schemaVersion,
     required this.slot,
     required this.sourceWindowId,
+    this.candidateDigestInput,
+    this.evidenceLineage,
+    this.reasonCodes,
+    this.scoreComponents,
+    this.slateDigest,
+    this.slateDigestInput,
+    this.slateEntryDigestInput,
+    this.storyClusterId,
   });
 
   factory ReaderSummaryPromotionAttestationDto.fromJson(
@@ -35,6 +45,7 @@ class ReaderSummaryPromotionAttestationDto {
   ) => _$ReaderSummaryPromotionAttestationDtoFromJson(json);
 
   final String artifactId;
+  final String? candidateDigestInput;
   final String candidateId;
   final String canonicalIdentity;
   final String canonicalPayload;
@@ -43,13 +54,20 @@ class ReaderSummaryPromotionAttestationDto {
   final String digest;
   final ReaderSummaryPromotionAttestationDtoDigestVersionDigestVersion
   digestVersion;
+  final ReaderSummaryPromotionEvidenceLineageDto? evidenceLineage;
   final ReaderSummaryPromotionAttestationDtoPlacementPlacement placement;
   final ReaderSummaryPromotionAttestationDtoPolicyVersionPolicyVersion
   policyVersion;
+  final List<String>? reasonCodes;
   final ReaderSummaryPromotionAttestationDtoSchemaVersionSchemaVersion
   schemaVersion;
+  final ReaderSummaryPromotionScoreComponentsDto? scoreComponents;
+  final String? slateDigest;
+  final String? slateDigestInput;
+  final String? slateEntryDigestInput;
   final num slot;
   final String sourceWindowId;
+  final String? storyClusterId;
 
   Map<String, Object?> toJson() =>
       _$ReaderSummaryPromotionAttestationDtoToJson(this);

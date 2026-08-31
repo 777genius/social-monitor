@@ -20,6 +20,7 @@ export const promotionPublicationFixture = (secondPoints: number) => {
     sourceWindow: evidence.sourceWindow,
     approvedSameStoryRelations: evidence.approvedSameStoryRelations,
     relatedTopicRelations: evidence.relatedTopicRelations,
+    editorialSlate: evidence.editorialSlate,
     attestationBinding: {
       artifactId: snapshot.readerSummaryId,
       sourceWindow: evidence.sourceWindow,
@@ -73,6 +74,7 @@ export const exactObservedPromotionPublicationFixture = (
     clusters: evidence.clusters,
     citations: snapshot.citationMap,
     sourceWindow: evidence.sourceWindow,
+    editorialSlate: evidence.editorialSlate,
     attestationBinding: {
       artifactId: snapshot.readerSummaryId,
       sourceWindow: evidence.sourceWindow,
@@ -116,6 +118,7 @@ export const trustedNonOfficialSupportPublicationFixture = () => {
     citations: snapshot.citationMap,
     sourceWindow: evidence.sourceWindow,
     approvedSameStoryRelations: evidence.approvedSameStoryRelations,
+    editorialSlate: evidence.editorialSlate,
     attestationBinding: {
       artifactId: snapshot.readerSummaryId,
       sourceWindow: evidence.sourceWindow,

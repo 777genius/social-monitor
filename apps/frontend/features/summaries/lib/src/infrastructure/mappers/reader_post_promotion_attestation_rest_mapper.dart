@@ -7,6 +7,7 @@ import '../api/summary_api_dto.dart';
 ReaderPostPromotionAttestationApiDto? mapReaderPostPromotionAttestation(
   generated.ReaderSummaryPromotionAttestationDto? dto, {
   String? cardProviderKey,
+  String? cardStoryClusterId,
   DateTime? cardPublishedAt,
   List<String>? cardCitationIds,
   required String enclosingArtifactId,
@@ -35,7 +36,46 @@ ReaderPostPromotionAttestationApiDto? mapReaderPostPromotionAttestation(
     slot: dto.slot.toInt() == dto.slot ? dto.slot.toInt() : -1,
     decision: dto.decision.json,
     citationIds: dto.citationIds,
+    storyClusterId: dto.storyClusterId,
+    scoreComponents: dto.scoreComponents == null
+        ? null
+        : ReaderPostPromotionScoreComponentsApiDto(
+            engagementSalience: dto.scoreComponents!.engagementSalience
+                .toDouble(),
+            relevance: dto.scoreComponents!.relevance.toDouble(),
+            evidenceQuality: dto.scoreComponents!.evidenceQuality.toDouble(),
+            integrity: dto.scoreComponents!.integrity.toDouble(),
+            freshness: dto.scoreComponents!.freshness.toDouble(),
+            weightedEngagement: dto.scoreComponents!.weightedEngagement
+                .toDouble(),
+            weightedRelevance: dto.scoreComponents!.weightedRelevance
+                .toDouble(),
+            weightedEvidenceQuality: dto
+                .scoreComponents!
+                .weightedEvidenceQuality
+                .toDouble(),
+            weightedIntegrity: dto.scoreComponents!.weightedIntegrity
+                .toDouble(),
+            weightedFreshness: dto.scoreComponents!.weightedFreshness
+                .toDouble(),
+            total: dto.scoreComponents!.total.toDouble(),
+          ),
+    reasonCodes: dto.reasonCodes,
+    candidateDigestInput: dto.candidateDigestInput,
+    slateEntryDigestInput: dto.slateEntryDigestInput,
+    slateDigestInput: dto.slateDigestInput,
+    slateDigest: dto.slateDigest,
+    evidenceLineage: dto.evidenceLineage == null
+        ? null
+        : ReaderPostPromotionEvidenceLineageApiDto(
+            leadCandidateId: dto.evidenceLineage!.leadCandidateId,
+            leadCitationId: dto.evidenceLineage!.leadCitationId,
+            supportCandidateIds: dto.evidenceLineage!.supportCandidateIds,
+            supportCitationIds: dto.evidenceLineage!.supportCitationIds,
+            citationIds: dto.evidenceLineage!.citationIds,
+          ),
     cardProviderKey: cardProviderKey,
+    cardStoryClusterId: cardStoryClusterId,
     cardPublishedAt: cardPublishedAt,
     cardCitationIds: cardCitationIds,
   );

@@ -2,20 +2,30 @@ import {
   readerSummaryArtifact,
   topRead,
 } from "./prisma-reader-summary-artifact-fixture.spec-support";
+import { READER_POST_PROMOTION_POLICY_V1 } from
+  "../../../domain/policies/reader-post-promotion-policy";
+import { READER_SUMMARY_EDITORIAL_SLATE_VERSION } from
+  "../../../domain/value-objects/reader-summary-editorial-slate";
 import { selectReaderPostPromotions } from
   "../../../domain/policies/reader-post-promotion-selection";
 import {
-  buildReaderPostPromotionAttestations,
   canonicalPromotionPayload,
   promotionPayloadDigest,
 } from
   "../../../domain/services/reader-post-promotion-attestation";
+import { buildReaderPromotionV2TestAttestations } from
+  "../../../domain/services/reader-post-promotion-attestation.spec-support";
 import { ReaderSummaryArtifact } from "../../../domain/entities/reader-summary-artifact";
+import type {
+  ReaderPostPromotionAttestationV1,
+  ReaderPostPromotionAttestationV2,
+} from
+  "../../../domain/policies/reader-post-promotion-policy";
 import { assertReaderSummaryPromotionAttestations } from
   "../../../domain/entities/reader-summary-promotion-attestation-validation";
 
 describe("ReaderSummaryArtifact promotion immutability", () => {
-  it("rehydrates a pre-rollout V1 attestation with legacy peer facts", () => {
+  it("rehydrates a historical V1 attestation with legacy peer facts", () => {
     const fixture = legacyPeerContextFixture(
       new Date("2026-08-27T13:48:17.317Z"),
     );
@@ -26,16 +36,37 @@ describe("ReaderSummaryArtifact promotion immutability", () => {
     )).not.toThrow();
   });
 
-  it("does not allow legacy peer verification after its rollout boundary", () => {
+  it("keeps V1 read compatibility after the V2 writer rollout", () => {
     const fixture = legacyPeerContextFixture(
       new Date("2026-08-27T21:11:02.430Z"),
+      0,
     );
 
     expect(() => assertReaderSummaryPromotionAttestations(
       fixture.props,
       fixture.attestations,
-    )).toThrow(
-      "Reader summary promotion attestation differs from persisted evidence facts",
+    )).not.toThrow();
+  });
+
+  it("rejects a re-digested V1 board when peer-context eligibility changes", () => {
+    const fixture = legacyPeerContextFixture(
+      new Date("2026-08-27T21:11:02.430Z"),
+      0,
+    );
+    const peer = fixture.props.promotionEvidenceFacts![1]!;
+    const tamperedPeer = {
+      ...peer,
+      metrics: { provider: "hacker_news" as const, points: 100 },
+    };
+
+    expect(() => assertReaderSummaryPromotionAttestations({
+      ...fixture.props,
+      promotionEvidenceFacts: [
+        fixture.props.promotionEvidenceFacts![0]!,
+        tamperedPeer,
+      ],
+    }, fixture.attestations)).toThrow(
+      "promotion attestation differs from persisted evidence facts",
     );
   });
 
@@ -89,7 +120,7 @@ describe("ReaderSummaryArtifact promotion immutability", () => {
       periodEndedAt: periodEnd,
       ingestionCutoff: cutoff,
     };
-    const attestations = buildReaderPostPromotionAttestations(selection, {
+    const attestations = buildReaderPromotionV2TestAttestations(selection, {
       artifactId: base.readerSummaryId,
       sourceWindow,
     });
@@ -114,8 +145,8 @@ describe("ReaderSummaryArtifact promotion immutability", () => {
         ...base.content!,
         topReads: [{
           ...topRead(),
+          ...v2CardFields(attestations[0]!),
           promotionMarker: "reader_post_promotion",
-          promotionPolicyVersion: "reader_post_promotion.v1",
           promotionTier: "top",
           promotionCandidateId: selected.candidate.candidateId,
           promotionCanonicalIdentity: selected.candidate.canonicalIdentity,
@@ -148,6 +179,7 @@ describe("ReaderSummaryArtifact promotion immutability", () => {
     };
     const selection = selectReaderPostPromotions([{
       candidateId: "feed-1",
+      clusterId: "story-1",
       provider: "reddit",
       contentKind: "original_post",
       canonicalIdentity: "story:runtime-release",
@@ -168,6 +200,7 @@ describe("ReaderSummaryArtifact promotion immutability", () => {
       metrics: { provider: "reddit", score: 50, upvoteRatio: 0.6 },
     }, {
       candidateId: "feed-2",
+      clusterId: "story-1",
       provider: "hacker-news",
       contentKind: "story",
       canonicalIdentity: "story:runtime-release-support",
@@ -199,14 +232,14 @@ describe("ReaderSummaryArtifact promotion immutability", () => {
         approved: true,
       },
     }]);
-    const attestations = buildReaderPostPromotionAttestations(selection, {
+    const attestations = buildReaderPromotionV2TestAttestations(selection, {
       artifactId: base.readerSummaryId,
       sourceWindow,
     });
     const promotedCard = {
       ...topRead(),
+      ...v2CardFields(attestations[0]!),
       promotionMarker: "reader_post_promotion" as const,
-      promotionPolicyVersion: "reader_post_promotion.v1" as const,
       promotionTier: "top" as const,
       promotionCandidateId: "feed-1",
       promotionCanonicalIdentity: "story:runtime-release",
@@ -405,7 +438,7 @@ describe("ReaderSummaryArtifact promotion immutability", () => {
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         expect(`${label}: ${message}`).toMatch(
-          /promotion attestation|persisted evidence/u,
+          /promotion (?:attestation|usefulness)|persisted evidence/u,
         );
       }
       expect(label).not.toHaveLength(0);
@@ -413,7 +446,7 @@ describe("ReaderSummaryArtifact promotion immutability", () => {
   });
 });
 
-const legacyPeerContextFixture = (generatedAt: Date) => {
+const legacyPeerContextFixture = (generatedAt: Date, peerPoints = 100) => {
   const base = readerSummaryArtifact("artifact-legacy-peer-context")
     .toSnapshot();
   const periodStart = new Date("2026-08-26T00:00:00.000Z");
@@ -447,7 +480,7 @@ const legacyPeerContextFixture = (generatedAt: Date) => {
     contentKind: "story" as const,
     canonicalIdentity: "story:legacy-peer",
     citationId: "citation-legacy-peer",
-    metrics: { provider: "hacker_news" as const, points: 100 },
+    metrics: { provider: "hacker_news" as const, points: peerPoints },
   };
   const selection = selectReaderPostPromotions([lead]);
   const sourceWindow = {
@@ -457,10 +490,14 @@ const legacyPeerContextFixture = (generatedAt: Date) => {
     periodEndedAt: periodEnd,
     ingestionCutoff: cutoff,
   };
-  const attestations = buildReaderPostPromotionAttestations(selection, {
+  const v2Attestations = buildReaderPromotionV2TestAttestations(selection, {
     artifactId: base.readerSummaryId,
     sourceWindow,
   });
+  const attestations = historicalV1FixtureAttestations(
+    v2Attestations,
+    selection,
+  );
   const selected = selection.top[0]!;
 
   return {
@@ -510,3 +547,93 @@ const supportFact = (
   value: Record<string, unknown>,
 ): Record<string, unknown> =>
   (value.supportFacts as Record<string, unknown>[])[0]!;
+
+const v2CardFields = (attestation: ReaderPostPromotionAttestationV2) => ({
+  storyClusterId: attestation.storyClusterId,
+  promotionPolicyVersion: attestation.policyVersion,
+  editorialPolicyVersion: READER_SUMMARY_EDITORIAL_SLATE_VERSION,
+  editorialPlacement: attestation.placement,
+  editorialSlot: attestation.slot,
+  editorialScoreComponents: attestation.scoreComponents,
+  editorialReasonCodes: attestation.reasonCodes,
+  editorialCandidateDigestInput: attestation.candidateDigestInput,
+  editorialDigestInput: attestation.slateEntryDigestInput,
+});
+
+const historicalV1FixtureAttestations = (
+  attestations: readonly ReaderPostPromotionAttestationV2[],
+  selection: ReturnType<typeof selectReaderPostPromotions>,
+): readonly ReaderPostPromotionAttestationV1[] => attestations.map(
+  (attestation, index) => {
+    const {
+      schemaVersion: _schemaVersion,
+      policyVersion: _policyVersion,
+      digestVersion: _digestVersion,
+      digest: _digest,
+      canonicalPayload: _canonicalPayload,
+      storyClusterId: _storyClusterId,
+      scoreComponents: _scoreComponents,
+      reasonCodes: _reasonCodes,
+      candidateDigestInput: _candidateDigestInput,
+      slateEntryDigestInput: _slateEntryDigestInput,
+      slateDigestInput: _slateDigestInput,
+      slateDigest: _slateDigest,
+      evidenceLineage: _evidenceLineage,
+      ...common
+    } = attestation;
+    void _schemaVersion;
+    void _policyVersion;
+    void _digestVersion;
+    void _digest;
+    void _canonicalPayload;
+    void _storyClusterId;
+    void _scoreComponents;
+    void _reasonCodes;
+    void _candidateDigestInput;
+    void _slateEntryDigestInput;
+    void _slateDigestInput;
+    void _slateDigest;
+    void _evidenceLineage;
+    const decision = selection.decisions.find((item) =>
+      item.candidateId === attestation.candidateId)!;
+    const weights = READER_POST_PROMOTION_POLICY_V1
+      .additionalUsefulnessWeights;
+    const duration = attestation.periodEndedAt.getTime() -
+      attestation.periodStartedAt.getTime();
+    const freshness = duration <= 0 ? 0 : Math.max(0, Math.min(
+      1,
+      (attestation.publishedAt.getTime() -
+        attestation.periodStartedAt.getTime()) / duration,
+    ));
+    const components = {
+      normalizedStrength:
+        decision.normalizedStrength * weights.normalizedStrength,
+      qualityScore: attestation.qualityScore * weights.qualityScore,
+      interestRelevanceScore:
+        attestation.relevanceScore * weights.interestRelevanceScore,
+      engagementIntegrityScore:
+        attestation.integrityScore * weights.engagementIntegrityScore,
+      freshness: freshness * weights.freshness,
+    };
+    const body = {
+      ...common,
+      schemaVersion: "reader_post_promotion_attestation.v1" as const,
+      policyVersion: "reader_post_promotion.v1" as const,
+      digestVersion: "reader_post_promotion_digest.sha256.v1" as const,
+      slot: index,
+      usefulnessComponents: {
+        ...components,
+        total: Object.values(components).reduce(
+          (sum, value) => sum + value,
+          0,
+        ),
+      },
+    };
+    const canonicalPayload = canonicalPromotionPayload(body);
+    return {
+      ...body,
+      canonicalPayload,
+      digest: promotionPayloadDigest(canonicalPayload),
+    };
+  },
+);

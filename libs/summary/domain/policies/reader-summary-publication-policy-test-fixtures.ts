@@ -3,15 +3,19 @@ import { ReaderSummaryArtifact } from "../entities/reader-summary-artifact";
 import type { ReaderSummaryContent } from "../entities/reader-summary-artifact";
 import { emptyReaderSummaryReliabilityReport } from "../entities/reader-summary-reliability";
 import { buildReaderPostPromotionProjection } from "../services/reader-post-promotion-projection";
-import type {
-  SummaryEvidenceContentQuality,
-  SummaryEvidenceSelection,
-} from "../value-objects/summary-evidence-item";
 import {
   publicationCitation,
-  publicationContentQuality,
   publicationStoryCluster,
 } from "./reader-summary-publication-policy.spec-support";
+import {
+  dailyEvidenceSelection,
+  evidenceSelection,
+} from "./reader-summary-publication-evidence-test-fixtures";
+
+export {
+  dailyEvidenceSelection,
+  evidenceSelection,
+} from "./reader-summary-publication-evidence-test-fixtures";
 
 export const artifact = (
   overrides: Partial<Parameters<typeof ReaderSummaryArtifact.create>[0]> = {},
@@ -103,12 +107,17 @@ export const artifact = (
       promotionAttestations: [],
     });
   }
-  const fixtureEvidence = evidenceSelection();
+  const fixtureEvidence = props.sourceWindow.selectedFeedItemIds.includes(
+    "feed-publication-2",
+  )
+    ? dailyEvidenceSelection(25)
+    : evidenceSelection();
   const promotion = buildReaderPostPromotionProjection({
     evidence: fixtureEvidence.selectedEvidence,
     clusters: props.storyClusters,
     citations: props.citationMap,
     sourceWindow: props.sourceWindow,
+    editorialSlate: fixtureEvidence.editorialSlate,
     attestationBinding: {
       artifactId: props.readerSummaryId,
       sourceWindow: props.sourceWindow,
@@ -116,6 +125,11 @@ export const artifact = (
   });
   return ReaderSummaryArtifact.create({
     ...props,
+    content: {
+      ...props.content,
+      topReads: promotion.topReads,
+      selectedPosts: promotion.additionalPosts,
+    },
     promotionAttestations:
       overrides.promotionAttestations ?? promotion.attestations,
     promotionEvidenceFacts: promotion.attestedEvidenceFacts,
@@ -127,7 +141,7 @@ export const content = (overrides: Partial<ReaderSummaryContent> = {}) => {
     storyClusterId: "story-publication-1",
     cardKind: "curated_top_read" as const,
     promotionMarker: "reader_post_promotion" as const,
-    promotionPolicyVersion: "reader_post_promotion.v1" as const,
+    promotionPolicyVersion: "reader_post_promotion.v2" as const,
     promotionTier: "top" as const,
     promotionCandidateId: "feed-publication-1",
     promotionCanonicalIdentity: "url:https://reddit.example.test/post",
@@ -318,139 +332,6 @@ export const providerDominatedDailySynthesisArtifact = (): ReaderSummaryArtifact
       ],
     }),
   });
-};
-
-export const evidenceSelection = (
-  overrides: {
-    readonly firstContentQuality?: SummaryEvidenceContentQuality;
-  } = {},
-): SummaryEvidenceSelection => ({
-  rankingPolicyVersion: "story-ranking.test.v1",
-  sourceWindow: {
-    windowId: "window-publication",
-    startedAt: new Date("2026-07-05T08:00:00.000Z"),
-    endedAt: new Date("2026-07-05T09:00:00.000Z"),
-    selectedFeedItemIds: ["feed-publication-1"],
-    storyClusterIds: ["story-publication-1"],
-    periodStartedAt: new Date("2026-07-05T00:00:00.000Z"),
-    periodEndedAt: new Date("2026-07-06T00:00:00.000Z"),
-    ingestionCutoff: new Date("2026-07-05T09:00:00.000Z"),
-  },
-  clusters: [
-    {
-      id: "story-publication-1",
-      storyKey: "publication-quality",
-      representativeFeedItemId: "feed-publication-1",
-      duplicateFeedItemIds: [],
-      interestIds: ["interest-ai"],
-      providerKeys: ["reddit"],
-      score: 1,
-      observedAtRange: {
-        startedAt: new Date("2026-07-05T08:00:00.000Z"),
-        endedAt: new Date("2026-07-05T09:00:00.000Z"),
-      },
-      whyImportant: ["Relevant discussion"],
-    },
-  ],
-  selectedEvidence: [
-    {
-      feedItemId: "feed-publication-1",
-      sourceItemId: "source-publication-1",
-      sourceBindingId: "binding-publication-1",
-      interestId: "interest-ai",
-      providerKey: "reddit",
-      providerName: "Reddit",
-      canonicalUrl: "https://reddit.example.test/post",
-      title: "AI runtime quality discussion",
-      bodyPreview: "A source discusses runtime quality.",
-      publishedAt: new Date("2026-07-05T08:00:00.000Z"),
-      observedAt: new Date("2026-07-05T08:05:00.000Z"),
-      score: 1,
-      whyImportant: ["Relevant discussion"],
-      contentQuality: overrides.firstContentQuality ?? publicationContentQuality,
-      promotionFacts: {
-        contentKind: "original_post",
-        canonicalIdentity: "url:https://reddit.example.test/post",
-        safetyValid: true,
-        freshnessValid: true,
-        freshnessProvenance: {
-          status: "observed",
-          publishedAt: new Date("2026-07-05T08:00:00.000Z"),
-          observedAt: new Date("2026-07-05T08:05:00.000Z"),
-          ingestionCutoff: new Date("2026-07-05T09:00:00.000Z"),
-        },
-        metricsState: "observed",
-        metrics: {
-          provider: "reddit",
-          score: 50,
-          upvoteRatio: 0.6,
-        },
-      },
-    },
-  ],
-});
-export const dailyEvidenceSelection = (secondPoints = 0): SummaryEvidenceSelection => {
-  const base = evidenceSelection();
-  const first = base.selectedEvidence[0]!;
-  const firstCluster = base.clusters[0]!;
-  const secondCluster = publicationStoryCluster({
-    id: "story-publication-2",
-    representativeFeedItemId: "feed-publication-2",
-    providerKeys: ["hacker-news"],
-  });
-  const contentQuality: SummaryEvidenceContentQuality = {
-    qualityScore: 0.8,
-    interestRelevanceScore: 0.8,
-    engagementIntegrityScore: 0.8,
-    eligibleForSummary: true,
-    eligibleForTopRead: true,
-    needsLlmReview: false,
-    decision: "eligible",
-    flags: [],
-    reason: "Strong signal",
-  };
-  const selectedEvidence: SummaryEvidenceSelection["selectedEvidence"] = [
-    { ...first, score: 3, contentQuality },
-    {
-      ...first,
-      feedItemId: "feed-publication-2",
-      sourceItemId: "source-publication-2",
-      sourceBindingId: "binding-publication-2",
-      providerKey: "hacker-news",
-      providerName: "Hacker News",
-      canonicalUrl: "https://news.example.test/item/2",
-      title: "Developers compare AI workflow costs",
-      score: 2.4,
-      contentQuality,
-      promotionFacts: {
-        contentKind: "story",
-        canonicalIdentity: "url:https://news.example.test/item/2",
-        safetyValid: true,
-        freshnessValid: true,
-        freshnessProvenance: {
-          status: "observed",
-          publishedAt: new Date("2026-07-05T08:00:00.000Z"),
-          observedAt: new Date("2026-07-05T08:05:00.000Z"),
-          ingestionCutoff: new Date("2026-07-05T09:00:00.000Z"),
-        },
-        metricsState: "observed",
-        metrics: { provider: "hacker_news", points: secondPoints },
-      },
-    },
-  ];
-  return {
-    ...base,
-    sourceWindow: {
-      ...base.sourceWindow,
-      selectedFeedItemIds: selectedEvidence.map((item) => item.feedItemId),
-      storyClusterIds: [firstCluster.id, secondCluster.id],
-    },
-    clusters: [
-      { ...firstCluster, score: 3 },
-      { ...secondCluster, score: 2.4 },
-    ],
-    selectedEvidence,
-  };
 };
 
 export const period = () => ({

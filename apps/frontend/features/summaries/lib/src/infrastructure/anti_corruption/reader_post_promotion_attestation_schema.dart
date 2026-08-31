@@ -89,10 +89,9 @@ int _compareSupportFacts(
   Map<String, Object?> right,
 ) {
   final published = _promotionDate(
-    right['exactPublishedAt'], right['publishedAt'],
-  )!.compareTo(_promotionDate(
-    left['exactPublishedAt'], left['publishedAt'],
-  )!);
+    right['exactPublishedAt'],
+    right['publishedAt'],
+  )!.compareTo(_promotionDate(left['exactPublishedAt'], left['publishedAt'])!);
   if (published != 0) return published;
   final identity = (left['canonicalIdentity']! as String).compareTo(
     right['canonicalIdentity']! as String,
@@ -178,18 +177,14 @@ bool _validMetrics(Object? value, Object? rawProvider) {
       return _exactKeys(value, const {'provider', 'points'}, const {}) &&
           _count(value['points']);
     case 'github_radar':
-      return _exactKeys(
-            value,
-            const {
-              'provider',
-              'snapshotKind',
-              'windowStartedAt',
-              'windowEndedAt',
-              'starsDelta',
-              'forksDelta',
-            },
-            const {},
-          ) &&
+      return _exactKeys(value, const {
+            'provider',
+            'snapshotKind',
+            'windowStartedAt',
+            'windowEndedAt',
+            'starsDelta',
+            'forksDelta',
+          }, const {}) &&
           value['snapshotKind'] == 'repository_growth' &&
           _isoDate(value['windowStartedAt']) &&
           _isoDate(value['windowEndedAt']) &&
@@ -230,9 +225,7 @@ bool _nonEmptyStrings(Map<String, Object?> value, Set<String> keys) =>
 bool _isoDate(Object? value) =>
     value is String && DateTime.tryParse(value) != null;
 bool _validOptionalExactPromotionTimestamps(Map<String, Object?> value) {
-  final pattern = RegExp(
-    r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$',
-  );
+  final pattern = RegExp(r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$');
   final pairs = <(String, String)>[
     ('exactPublishedAt', 'publishedAt'),
     ('exactObservedAt', 'observedAt'),
@@ -255,11 +248,13 @@ bool _validOptionalExactPromotionTimestamps(Map<String, Object?> value) {
     }
     final parsed = DateTime.tryParse(exact);
     final displayParsed = DateTime.tryParse(display);
-    return parsed?.isUtc == true && displayParsed?.isUtc == true &&
+    return parsed?.isUtc == true &&
+        displayParsed?.isUtc == true &&
         _exactPromotionTimestamp(parsed!) == exact &&
         displayParsed!.millisecondsSinceEpoch == parsed.millisecondsSinceEpoch;
   });
 }
+
 String _exactPromotionTimestamp(DateTime value) =>
     '${value.year.toString().padLeft(4, '0')}-'
     '${value.month.toString().padLeft(2, '0')}-'

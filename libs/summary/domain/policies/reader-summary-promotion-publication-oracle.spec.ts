@@ -18,24 +18,22 @@ import { dailyEvidenceSelection } from
 
 const policy = new ReaderSummaryPublicationPolicy();
 
-describe("ReaderSummaryPublicationPolicy Promotion V1 oracle", () => {
-  it("accepts trusted source-catalog non-official cross-provider support", () => {
+describe("ReaderSummaryPublicationPolicy Promotion V2 authority", () => {
+  it("does not add cross-provider citations outside the immutable slate cluster", () => {
     const fixture = trustedNonOfficialSupportPublicationFixture();
     expect(fixture.artifact.toSnapshot().content?.topReads[0]?.citationIds)
-      .toEqual(["citation-publication-1", "citation-publication-2"]);
+      .toEqual(["citation-publication-1"]);
     const result = readerSummaryPromotionPublicationOracle({
       evidence: fixture.evidence.selectedEvidence,
       citations: fixture.artifact.toSnapshot().citationMap,
       sourceWindow: fixture.evidence.sourceWindow,
       approvedSameStoryRelations:
         fixture.evidence.approvedSameStoryRelations,
+      editorialSlate: fixture.evidence.editorialSlate,
     });
-    expect(result.top[0]?.citationIds).toEqual([
-      "citation-publication-1",
-      "citation-publication-2",
-    ]);
+    expect(result.top[0]?.citationIds).toEqual(["citation-publication-1"]);
   });
-  it("does not let official provenance replace a zero engagement rating", () => {
+  it("does not re-evaluate V1 engagement after the V2 slate is signed", () => {
     const fixture = promotionPublicationFixture(25);
     const evidence = fixture.evidence.selectedEvidence.map((item, index) =>
       index !== 0 ? item : {
@@ -56,20 +54,19 @@ describe("ReaderSummaryPublicationPolicy Promotion V1 oracle", () => {
       citations: fixture.artifact.toSnapshot().citationMap,
       sourceWindow: fixture.evidence.sourceWindow,
       clusters: fixture.evidence.clusters,
+      editorialSlate: fixture.evidence.editorialSlate,
     });
     expect([...result.top, ...result.additional].map((item) => item.candidateId))
-      .not.toContain("feed-publication-1");
+      .toContain("feed-publication-1");
   });
-  it("rejects reordered Top and Additional promotion arrays", () => {
+  it("rejects reordered V2 Top promotion cards", () => {
     const fixture = promotionPublicationFixture(25);
     const snapshot = fixture.artifact.toSnapshot();
-    const topReads = [snapshot.content!.selectedPosts![0]!];
-    const selectedPosts = [snapshot.content!.topReads[0]!];
+    const topReads = [...snapshot.content!.topReads].reverse();
     expect(
       policy.evaluate({
         artifact: withUncheckedPublicationCards(fixture.artifact, {
           topReads,
-          selectedPosts,
         }),
         evidence: fixture.evidence,
       }),
@@ -79,7 +76,7 @@ describe("ReaderSummaryPublicationPolicy Promotion V1 oracle", () => {
     });
   });
 
-  it("orders exact promotion provenance one microsecond apart", () => {
+  it("preserves signed V2 order when raw timestamps differ by a microsecond", () => {
     const fixture = promotionPublicationFixture(50);
     const snapshot = fixture.artifact.toSnapshot();
     const evidence = fixture.evidence.selectedEvidence.map((item, index) => ({
@@ -203,48 +200,53 @@ describe("ReaderSummaryPublicationPolicy Promotion V1 oracle", () => {
   });
 
   it.each([
-    ["cutoff -1us", "2026-07-05T08:59:59.999999Z", true],
-    ["cutoff equal", "2026-07-05T09:00:00.000000Z", true],
-    ["cutoff +1us", "2026-07-05T09:00:00.000001Z", false],
-  ] as const)("creates exact artifacts at %s", (_name, exactObservedAt, admitted) => {
+    ["cutoff -1us", "2026-07-05T08:59:59.999999Z"],
+    ["cutoff equal", "2026-07-05T09:00:00.000000Z"],
+    ["cutoff +1us", "2026-07-05T09:00:00.000001Z"],
+  ] as const)("does not rerank the signed slate at %s", (
+    _name,
+    exactObservedAt,
+  ) => {
     const artifact = exactObservedPromotionPublicationFixture(exactObservedAt);
     const candidateIds = artifact.toSnapshot().content!.topReads.map((item) =>
       item.promotionCandidateId);
-    expect(candidateIds.includes("feed-publication-1")).toBe(admitted);
+    expect(candidateIds).toEqual(["feed-publication-2", "feed-publication-1"]);
   });
 
   it.each([
     [
       "duplicate",
-      (items: readonly NonNullable<ReaderSummaryContent["selectedPosts"]>[number][]) => [
+      (items: readonly ReaderSummaryContent["topReads"][number][]) => [
         ...items,
         items[items.length - 1]!,
       ],
     ],
     [
       "missing",
-      (items: readonly NonNullable<ReaderSummaryContent["selectedPosts"]>[number][]) =>
+      (items: readonly ReaderSummaryContent["topReads"][number][]) =>
         items.slice(0, -1),
     ],
     [
       "extra",
-      (items: readonly NonNullable<ReaderSummaryContent["selectedPosts"]>[number][]) => [
+      (items: readonly ReaderSummaryContent["topReads"][number][]) => [
         ...items,
         {
           ...items[items.length - 1]!,
+          promotionCandidateId: "feed-publication-extra",
+          promotionCanonicalIdentity: "url:https://news.example.test/item/extra",
           canonicalUrl: "https://news.example.test/item/extra",
         },
       ],
     ],
   ] as const)("rejects %s promotion cards", (_name, mutate) => {
     const fixture = promotionPublicationFixture(25);
-    const selectedPosts = mutate(
-      fixture.artifact.toSnapshot().content!.selectedPosts!,
+    const topReads = mutate(
+      fixture.artifact.toSnapshot().content!.topReads,
     );
     expect(
       policy.evaluate({
         artifact: withUncheckedPublicationCards(fixture.artifact, {
-          selectedPosts,
+          topReads,
         }),
         evidence: fixture.evidence,
       }),
@@ -263,10 +265,7 @@ describe("ReaderSummaryPublicationPolicy Promotion V1 oracle", () => {
       policy.evaluate({
         artifact: withUncheckedPublicationCards(fixture.artifact, {
           topReads: [unmarked],
-          selectedPosts: [
-            unmarked,
-            ...snapshot.content!.selectedPosts!.slice(1),
-          ],
+          selectedPosts: snapshot.content!.selectedPosts,
         }),
         evidence: fixture.evidence,
       }),
@@ -301,11 +300,12 @@ describe("ReaderSummaryPublicationPolicy Promotion V1 oracle", () => {
     });
   });
 
-  it("rejects an admission false negative for an HN Additional boundary from raw evidence", () => {
+  it("rejects a missing entry from the immutable V2 Top slate", () => {
     const fixture = promotionPublicationFixture(25);
+    const snapshot = fixture.artifact.toSnapshot();
     const artifactWithoutBoundaryCard = withUncheckedPublicationCards(
       fixture.artifact,
-      { selectedPosts: [] },
+      { topReads: snapshot.content!.topReads.slice(0, 1) },
     );
     expect(
       policy.evaluate({
@@ -316,7 +316,7 @@ describe("ReaderSummaryPublicationPolicy Promotion V1 oracle", () => {
       status: "rejected",
       findings: expect.arrayContaining([
         expect.objectContaining({
-          reason: expect.stringContaining("Additional array differs"),
+          reason: expect.stringContaining("Top array differs"),
         }),
       ]),
     });
@@ -338,10 +338,7 @@ describe("ReaderSummaryPublicationPolicy Promotion V1 oracle", () => {
         policy.evaluate({
           artifact: withUncheckedPublicationCards(fixture.artifact, {
             topReads: [wrong, ...snapshot.content!.topReads.slice(1)],
-            selectedPosts: [
-              wrong,
-              ...snapshot.content!.selectedPosts!.slice(1),
-            ],
+            selectedPosts: snapshot.content!.selectedPosts,
           }),
           evidence: fixture.evidence,
         }),
@@ -352,7 +349,7 @@ describe("ReaderSummaryPublicationPolicy Promotion V1 oracle", () => {
     },
   );
 
-  it("rejects an internally consistent production projection when raw evidence is below the immutable floor", () => {
+  it("does not rerank an internally consistent V2 slate with changed raw metrics", () => {
     const fixture = promotionPublicationFixture(25);
     const evidence = {
       ...fixture.evidence,
@@ -368,11 +365,7 @@ describe("ReaderSummaryPublicationPolicy Promotion V1 oracle", () => {
           : item,
       ),
     };
-    expect(policy.evaluate({ artifact: fixture.artifact, evidence })).toMatchObject(
-      {
-        status: "rejected",
-        reasonCodes: expect.arrayContaining(["top_read_ineligible_source"]),
-      },
-    );
+    expect(policy.evaluate({ artifact: fixture.artifact, evidence }))
+      .toMatchObject({ status: "published" });
   });
 });

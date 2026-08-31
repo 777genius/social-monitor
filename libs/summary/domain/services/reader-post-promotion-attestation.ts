@@ -6,22 +6,27 @@ import type { selectReaderPostPromotions } from
   "../policies/reader-post-promotion-selection";
 import {
   READER_POST_PROMOTION_ATTESTATION_SCHEMA_VERSION,
+  READER_POST_PROMOTION_ATTESTATION_POLICY_VERSION,
   READER_POST_PROMOTION_DIGEST_VERSION,
-  READER_POST_PROMOTION_POLICY_V1,
-  readerPostPromotionTimestampMicros,
   type ReaderPostPromotionAttestation,
-  type ReaderPostPromotionInput,
+  type ReaderPostPromotionAttestationV2,
 } from "../policies/reader-post-promotion-policy";
+import {
+  READER_SUMMARY_EDITORIAL_SLATE_VERSION,
+  type ReaderSummaryEditorialSlate,
+  type ReaderSummaryEditorialSlateEntry,
+} from "../value-objects/reader-summary-editorial-slate";
 
 export type ReaderPostPromotionAttestationBinding = {
   readonly artifactId: string;
   readonly sourceWindow: SummarySourceWindow;
+  readonly editorialSlate: ReaderSummaryEditorialSlate;
 };
 
 export const buildReaderPostPromotionAttestations = (
   selection: ReturnType<typeof selectReaderPostPromotions>,
   binding: ReaderPostPromotionAttestationBinding,
-): readonly ReaderPostPromotionAttestation[] => {
+): readonly ReaderPostPromotionAttestationV2[] => {
   const artifactId = binding.artifactId.trim();
   const sourceWindowId = binding.sourceWindow.windowId.trim();
   const periodStartedAt = binding.sourceWindow.periodStartedAt;
@@ -29,21 +34,35 @@ export const buildReaderPostPromotionAttestations = (
   const ingestionCutoff = binding.sourceWindow.ingestionCutoff;
   if (artifactId.length === 0 || sourceWindowId.length === 0 ||
       periodStartedAt === undefined || periodEndedAt === undefined ||
-      ingestionCutoff === undefined) {
+      ingestionCutoff === undefined ||
+      binding.editorialSlate.policyVersion !==
+        READER_SUMMARY_EDITORIAL_SLATE_VERSION) {
     throw new Error("Promotion attestation binding must be complete");
   }
+  if (selection.top.length !== binding.editorialSlate.top.length ||
+      selection.additional.length !== binding.editorialSlate.additional.length) {
+    throw new Error("Promotion attestation selection must match editorial slate");
+  }
+  const slateDigestInput = binding.editorialSlate.digestMaterial;
+  const slateDigest = promotionPayloadDigest(slateDigestInput);
   return [
-    ...selection.top.map((selected, slot) => ({
-      selected,
+    ...binding.editorialSlate.top.map((entry, index) => ({
+      entry,
+      selected: selection.top[index],
       placement: "top" as const,
-      slot,
     })),
-    ...selection.additional.map((selected, slot) => ({
-      selected,
+    ...binding.editorialSlate.additional.map((entry, index) => ({
+      entry,
+      selected: selection.additional[index],
       placement: "additional" as const,
-      slot,
     })),
-  ].map(({ selected, placement, slot }) => {
+  ].map(({ entry, selected, placement }) => {
+    if (selected === undefined ||
+        selected.candidate.candidateId !== entry.candidateId ||
+        selected.editorialSlateEntry?.digestInput !== entry.digestInput ||
+        entry.placement !== placement) {
+      throw new Error("Promotion attestation selection order is invalid");
+    }
     const input = selected.candidate;
     const decision = selection.decisions.find(
       (candidate) => candidate.candidateId === input.candidateId,
@@ -56,7 +75,7 @@ export const buildReaderPostPromotionAttestations = (
     }
     const body = {
       schemaVersion: READER_POST_PROMOTION_ATTESTATION_SCHEMA_VERSION,
-      policyVersion: decision.policyVersion,
+      policyVersion: READER_POST_PROMOTION_ATTESTATION_POLICY_VERSION,
       digestVersion: READER_POST_PROMOTION_DIGEST_VERSION,
       artifactId,
       sourceWindowId,
@@ -64,7 +83,7 @@ export const buildReaderPostPromotionAttestations = (
       periodEndedAt,
       ingestionCutoff,
       placement,
-      slot,
+      slot: entry.slot,
       candidateId: input.candidateId,
       provider: input.provider,
       contentKind: input.contentKind,
@@ -104,10 +123,7 @@ export const buildReaderPostPromotionAttestations = (
       tier: placement,
       decision: decision.decision,
       reason: decision.reason,
-      usefulnessComponents: usefulnessComponents(
-        input,
-        decision.normalizedStrength,
-      ),
+      usefulnessComponents: usefulnessComponents(entry),
       ...(input.relation === undefined ? {} : { relationTrace: input.relation }),
       supportFacts: selected.support,
       citationIds: selected.citationIds,
@@ -115,6 +131,20 @@ export const buildReaderPostPromotionAttestations = (
       confidence: selected.confidence,
       canonicalDedupeOutcome: "retained" as const,
       capOutcome: "selected" as const,
+      storyClusterId: entry.storyClusterId,
+      scoreComponents: entry.scoreComponents,
+      reasonCodes: entry.reasonCodes,
+      candidateDigestInput: entry.candidateDigestInput,
+      slateEntryDigestInput: entry.digestInput,
+      slateDigestInput,
+      slateDigest,
+      evidenceLineage: {
+        leadCandidateId: input.candidateId,
+        leadCitationId: input.citationId,
+        supportCandidateIds: selected.support.map((fact) => fact.candidateId),
+        supportCitationIds: selected.support.map((fact) => fact.citationId),
+        citationIds: selected.citationIds,
+      },
     };
     const canonicalPayload = canonicalPromotionPayload(body);
     return {
@@ -152,40 +182,14 @@ const canonicalValue = (value: unknown): unknown => {
 };
 
 const usefulnessComponents = (
-  input: ReaderPostPromotionInput,
-  normalizedStrength: number,
+  entry: ReaderSummaryEditorialSlateEntry,
 ): ReaderPostPromotionAttestation["usefulnessComponents"] => {
-  const weights = READER_POST_PROMOTION_POLICY_V1.additionalUsefulnessWeights;
-  const periodStart = readerPostPromotionTimestampMicros(
-    input.exactPeriodStart ?? input.periodStart,
-  );
-  const periodEnd = readerPostPromotionTimestampMicros(
-    input.exactPeriodEnd ?? input.periodEnd,
-  );
-  const publishedAt = readerPostPromotionTimestampMicros(
-    input.exactPublishedAt ?? input.publishedAt,
-  );
-  const duration = periodStart === undefined || periodEnd === undefined
-    ? 0n
-    : periodEnd - periodStart;
-  const freshness = duration <= 0n || publishedAt === undefined ||
-      periodStart === undefined
-    ? 0
-    : Math.max(0, Math.min(
-        1,
-        Number(publishedAt - periodStart) / Number(duration),
-      ));
-  const components = {
-    normalizedStrength: weights.normalizedStrength * normalizedStrength,
-    qualityScore: weights.qualityScore * input.qualityScore,
-    interestRelevanceScore:
-      weights.interestRelevanceScore * input.relevanceScore,
-    engagementIntegrityScore:
-      weights.engagementIntegrityScore * input.integrityScore,
-    freshness: weights.freshness * freshness,
-  };
   return {
-    ...components,
-    total: Object.values(components).reduce((sum, value) => sum + value, 0),
+    normalizedStrength: entry.scoreComponents.weightedEngagement,
+    qualityScore: entry.scoreComponents.weightedEvidenceQuality,
+    interestRelevanceScore: entry.scoreComponents.weightedRelevance,
+    engagementIntegrityScore: entry.scoreComponents.weightedIntegrity,
+    freshness: entry.scoreComponents.weightedFreshness,
+    total: entry.scoreComponents.total,
   };
 };
