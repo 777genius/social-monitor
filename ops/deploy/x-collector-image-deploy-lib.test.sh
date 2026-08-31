@@ -230,6 +230,10 @@ CURRENT_ENTRYPOINT_SOURCE_CLOSURE=(
   ops/deploy/daily-runner-image-bootstrap-lib.sh
   ops/deploy/x-collector-image-deploy-lib.sh
   ops/deploy/reader-summary-recovery-maintenance-lib.sh
+  ops/deploy/production-backend-classification-lib.sh
+  ops/deploy/production-transition-b0-host-control.sh
+  ops/deploy/production-runtime/reader-summary-scheduler-hold-common.sh
+  ops/deploy/production-runtime/reader-summary-scheduler-hold-restore.sh
 )
 
 while IFS= read -r candidate; do
@@ -268,9 +272,11 @@ printf 'old controller\n' > "$TRANSITION_REPO/README.md"
 git -C "$TRANSITION_REPO" add README.md ops/deploy
 git -C "$TRANSITION_REPO" commit -qm 'test: old controller'
 OLD_RELEASE_SHA=$(git -C "$TRANSITION_REPO" rev-parse HEAD)
+export SOCIAL_MONITOR_DEPLOY_TEST_A0=$OLD_RELEASE_SHA
 cp "$TRANSITION_REPO/ops/deploy/social-monitor-production-deploy.sh" \
   "$OLD_CONTROLLER"
 
+install -d "$TRANSITION_REPO/ops/deploy/production-runtime"
 for path in "${CURRENT_ENTRYPOINT_SOURCE_CLOSURE[@]}"; do
   cp "$SOURCE_REPOSITORY/$path" "$TRANSITION_REPO/$path"
 done
@@ -316,10 +322,23 @@ printf '%s\n' \
 git -C "$TRANSITION_REPO" add "$DOCKERFILE_PATH"
 git -C "$TRANSITION_REPO" commit -qm 'test: Release B X Dockerfile only'
 RELEASE_B_SHA=$(git -C "$TRANSITION_REPO" rev-parse HEAD)
+git -C "$TRANSITION_REPO" merge-base --is-ancestor \
+  "$OLD_RELEASE_SHA" "$RELEASE_A_SHA"
+git -C "$TRANSITION_REPO" merge-base --is-ancestor \
+  "$RELEASE_A_SHA" "$RELEASE_B_SHA"
+[[ $(git -C "$TRANSITION_REPO" rev-list --count \
+  "$OLD_RELEASE_SHA..$RELEASE_A_SHA") == 1 ]]
+[[ $(git -C "$TRANSITION_REPO" rev-list --count \
+  "$RELEASE_A_SHA..$RELEASE_B_SHA") == 1 ]]
 [[ $(git -C "$TRANSITION_REPO" diff --name-only \
   "$RELEASE_A_SHA" "$RELEASE_B_SHA") == "$DOCKERFILE_PATH" ]]
 git -C "$TRANSITION_REPO" push -q -u origin main
 git -C "$TRANSITION_REPO" checkout -q "$OLD_RELEASE_SHA"
+
+WRONG_A0_SHA=$(git -C "$TRANSITION_REPO" commit-tree \
+  "$(git -C "$TRANSITION_REPO" rev-parse "$OLD_RELEASE_SHA^{tree}")" \
+  -m 'test: unrelated transition authority')
+validate_sha "$WRONG_A0_SHA"
 
 for component in frontend backend control; do
   printf '%s\n' "$OLD_RELEASE_SHA" > "$TRANSITION_STATE/$component.sha"
@@ -338,6 +357,9 @@ TRANSITION_LOG="$TRANSITION_LOG" bash -c '
   source "$OLD_CONTROLLER"
   reconcile_completed_backend_image_rescues() { :; }
   sync_control_script() {
+    install -m 0644 \
+      "$REPO/ops/deploy/production-transition-b0-host-control.sh" \
+      "$CONTROL/production-transition-b0-host-control.sh"
     install -m 0755 "$REPO/ops/deploy/social-monitor-production-deploy.sh" \
       "$CONTROL/github-production-deploy.sh"
   }
@@ -355,6 +377,22 @@ grep -Fx "$RELEASE_A_SHA false false old-controller" \
   "$TRANSITION_LOG" >/dev/null
 cmp -s "$TRANSITION_CONTROL/github-production-deploy.sh" \
   "$TRANSITION_REPO/ops/deploy/social-monitor-production-deploy.sh"
+cmp -s "$TRANSITION_CONTROL/production-transition-b0-host-control.sh" \
+  "$TRANSITION_REPO/ops/deploy/production-transition-b0-host-control.sh"
+[[ $(stat -c '%a' \
+  "$TRANSITION_CONTROL/production-transition-b0-host-control.sh") == 644 ]]
+
+assert_fails_with 'B0 host control does not descend from pinned A0' env \
+  SOCIAL_MONITOR_DEPLOY_TEST_MODE=1 \
+  SOCIAL_MONITOR_DEPLOY_TEST_A0="$WRONG_A0_SHA" \
+  SOCIAL_MONITOR_DEPLOY_ROOT="$TRANSITION_ROOT" \
+  SOCIAL_MONITOR_DEPLOY_REPO="$TRANSITION_REPO" \
+  SOCIAL_MONITOR_DEPLOY_CONTROL="$TRANSITION_CONTROL" \
+  SOCIAL_MONITOR_DEPLOY_STATE="$TRANSITION_STATE" \
+  SOCIAL_MONITOR_DEPLOY_STAGING="$TRANSITION_STAGING" \
+  SOCIAL_MONITOR_DEPLOY_PROJECT=x-provenance-transition \
+  bash "$TRANSITION_CONTROL/github-production-deploy.sh" \
+    plan "$RELEASE_B_SHA"
 
 transition_plan=$(
   SOCIAL_MONITOR_DEPLOY_TEST_MODE=1 \
