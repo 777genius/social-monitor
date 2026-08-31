@@ -37,6 +37,7 @@ import type {
   ReaderSummaryModelEstimate,
   ReaderSummaryModelPort,
   ReaderSummaryModelRoute,
+  ReaderSummaryStoryRelationVerifierPort,
 } from "@social-monitor/summary/ports";
 import type { Clock } from "@social-monitor/shared-kernel";
 
@@ -212,6 +213,7 @@ export const createReaderSummaryDailyPublicationExecutionWiring = (input: {
   >[0];
   readonly clock: Clock;
   readonly attestationSink: VerifiedReaderSummaryExecutionAttestationSink;
+  readonly storyRelationVerifier?: ReaderSummaryStoryRelationVerifierPort | null;
 }): ReaderSummaryDailyPublicationExecutionWiring => {
   if (input.replay?.outputKind === "output_text") {
     const frozen = createReaderSummaryDailyFrozenOutputTextWiring({
@@ -249,6 +251,11 @@ export const createReaderSummaryDailyPublicationExecutionWiring = (input: {
   ) {
     throw new Error("Daily immutable authority v2 recovery requires output_text");
   }
+  if (input.replay === null && input.storyRelationVerifier === undefined) {
+    throw new Error(
+      "Fresh daily publication must explicitly configure its story relation verifier",
+    );
+  }
   const githubProjectionReader =
     new PrismaReaderSummaryGitHubProjectionReader(input.summaryClient);
   if (input.feedItems === undefined) {
@@ -264,6 +271,9 @@ export const createReaderSummaryDailyPublicationExecutionWiring = (input: {
     input.feedItems,
     input.clock,
     new StoryRankingMetricsRecorder(new InMemoryMetricsRecorder()),
+    input.replay === null
+      ? input.storyRelationVerifier ?? undefined
+      : undefined,
   );
   if (input.replay === null) {
     return Object.freeze({ evidenceSelector, githubProjectionReader });
