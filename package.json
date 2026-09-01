@@ -398,6 +398,7 @@
       "js-yaml": "5.2.2"
     },
     "@prisma/dev": "0.24.17",
+    "browserslist": "4.28.8",
     "brace-expansion": "5.0.9",
     "browserslist": "4.28.8",
     "deepmerge-ts": "8.0.2",
