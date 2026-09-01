@@ -13,6 +13,11 @@ export const migrationBindsTableOwner = ({ sql, table, ownerRole }) => {
   const ownerAlterations = [];
 
   for (const statement of statements) {
+    if (startsWithWords(statement, ["call"]) ||
+      startsWithWords(statement, ["execute"])) return false;
+    if (startsWithWords(statement, ["do"]) && statement.some((token) =>
+      token.kind === "dollarBody" && token.hasExecutableSetConfig
+    )) return false;
     if (changesStringLexing(statement)) return false;
     const roleChange = parseRoleChange(statement);
     if (roleChange?.invalid) return false;
@@ -110,8 +115,18 @@ const scanSql = (sql) => {
     if (character === "$") {
       const delimiter = sql.slice(index).match(/^\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$/u)?.[0];
       if (delimiter === undefined) return null;
-      const end = sql.indexOf(delimiter, index + delimiter.length);
+      const bodyStart = index + delimiter.length;
+      const end = sql.indexOf(delimiter, bodyStart);
       if (end < 0) return null;
+      const bodyTokens = scanSql(sql.slice(bodyStart, end));
+      tokens.push({
+        kind: "dollarBody",
+        value: delimiter,
+        start: index,
+        end: end + delimiter.length,
+        hasExecutableSetConfig: bodyTokens !== null &&
+          containsExecutableSetConfig(bodyTokens),
+      });
       index = end + delimiter.length;
       continue;
     }

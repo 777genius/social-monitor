@@ -229,14 +229,94 @@ test("executable set_config identifier variants fail closed", () => {
   }
 });
 
-test("string, comment, and dollar-quoted set_config decoys stay harmless", () => {
+test("string, comment, and nested dollar-quoted set_config decoys stay harmless", () => {
   const sql = `
     SELECT 'set_config', 'pg_catalog.set_config()', '"set_config"';
     -- SELECT set_config('standard_conforming_strings', 'off', false);
     /* SELECT pg_catalog."set_config"('standard_conforming_strings', 'off', false); */
-    DO $set_config_decoy$ BEGIN
+    DO $outer$ BEGIN
+      -- PERFORM set_config('role', 'wrong_owner', false);
+      /* PERFORM pg_catalog."set_config"('role', 'wrong_owner', false); */
+      PERFORM 'set_config', E'pg_catalog.set_config()';
+      PERFORM $inner$ SELECT pg_catalog.set_config(
+        'standard_conforming_strings', 'off', false
+      ) $inner$;
+    END $outer$;
+    SET ROLE "${ownerRole}";
+    CREATE TABLE public.receipt (id uuid);
+  `;
+  assert.equal(
+    migrationBindsTableOwner({ sql, table: "receipt", ownerRole }),
+    true,
+  );
+});
+
+test("DO set_config cannot enable a generic-string owner spoof", () => {
+  const sql = String.raw`
+    DO $body$ BEGIN
       PERFORM pg_catalog.set_config('standard_conforming_strings', 'off', false);
-    END $set_config_decoy$;
+      PERFORM 'a\'; SET ROLE social_monitor_public_schema_owner; PERFORM \'b';
+    END $body$;
+    CREATE TABLE public.receipt (id uuid);
+  `;
+  assert.equal(
+    migrationBindsTableOwner({ sql, table: "receipt", ownerRole }),
+    false,
+  );
+});
+
+test("quoted, schema-qualified, and cased set_config in DO fails closed", () => {
+  for (const expression of [
+    '"SeT_CoNfIg"(\'role\', \'social_monitor_public_schema_owner\', false)',
+    'pg_catalog."SET_CONFIG"(\'role\', \'social_monitor_public_schema_owner\', false)',
+    '"pg_catalog".SeT_CoNfIg(\'role\', \'social_monitor_public_schema_owner\', false)',
+  ]) {
+    const sql = `DO $body$ BEGIN PERFORM ${expression}; END $body$;
+      CREATE TABLE public.receipt (id uuid);`;
+    assert.equal(
+      migrationBindsTableOwner({ sql, table: "receipt", ownerRole }),
+      false,
+      expression,
+    );
+  }
+});
+
+test("CREATE FUNCTION set_config body is inert until invoked", () => {
+  const sql = `
+    CREATE FUNCTION public.configure_owner() RETURNS void AS $function$
+    BEGIN
+      PERFORM pg_catalog.set_config('role', '${ownerRole}', false);
+    END
+    $function$ LANGUAGE plpgsql;
+    SET ROLE "${ownerRole}";
+    CREATE TABLE public.receipt (id uuid);
+  `;
+  assert.equal(
+    migrationBindsTableOwner({ sql, table: "receipt", ownerRole }),
+    true,
+  );
+});
+
+test("top-level CALL and prepared EXECUTE fail closed", () => {
+  for (const statement of [
+    "CALL public.configure_owner();",
+    "EXECUTE configure_owner;",
+  ]) {
+    const sql = `${statement}
+      SET ROLE "${ownerRole}";
+      CREATE TABLE public.receipt (id uuid);`;
+    assert.equal(
+      migrationBindsTableOwner({ sql, table: "receipt", ownerRole }),
+      false,
+      statement,
+    );
+  }
+});
+
+test("CREATE TRIGGER EXECUTE FUNCTION is not a top-level EXECUTE command", () => {
+  const sql = `
+    CREATE TRIGGER receipt_trigger BEFORE INSERT ON public.other_receipt
+      EXECUTE FUNCTION public.audit_receipt();
     SET ROLE "${ownerRole}";
     CREATE TABLE public.receipt (id uuid);
   `;
