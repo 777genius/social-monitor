@@ -227,6 +227,9 @@ export const runReaderSummaryPublicationPostgresContract = async (
       adminDatabaseUrl,
       runtimeRole,
     );
+    if (contract === "promotion-v2-ownership") {
+      await assertReceiptOwnerAuditsRejectDrift();
+    }
     assertReaderSummaryMigrationDatabaseMatchesSchema(targetDatabaseUrl);
     if (contract === "feed-promotion") {
       await assertFeedPromotionOwnerOrder();
@@ -453,6 +456,55 @@ const assertFeedPromotionOwnerOrder = async (): Promise<void> => {
         result.rows[0]?.safe_set_membership === true,
       "feed promotion indexes must follow the production table-owner transition",
     );
+  } finally {
+    await admin.end();
+  }
+};
+const assertReceiptOwnerAuditsRejectDrift = async (): Promise<void> => {
+  const admin = new Pool({ connectionString: targetDatabaseUrl, max: 1 });
+  const receipts = [
+    [
+      "reader_summary_promotion_v2_rollback_receipts",
+      "social_monitor_public_schema_owner",
+      "social_monitor_reader_summary_publication_owner",
+    ],
+    [
+      "reader_summary_promotion_v2_canary_publication_receipts",
+      "social_monitor_public_schema_owner",
+      "social_monitor_reader_summary_publication_owner",
+    ],
+  ] as const;
+  try {
+    for (const [table, expectedOwner, wrongOwner] of receipts) {
+      for (const phase of ["pre", "post"] as const) {
+        await admin.query(
+          `ALTER TABLE public.${quotePostgresIdentifier(table)} OWNER TO ${quotePostgresIdentifier(wrongOwner)}`,
+        );
+        try {
+          await assertRejectsContaining(
+            () => runReaderSummaryPublicationBootstrapSql(
+              phase, adminDatabaseUrl, runtimeRole,
+            ),
+            "Promotion V2 receipt table has an unexpected owner",
+            `${phase} audit must reject wrong ${table} owner`,
+          );
+        } finally {
+          await admin.query(
+            `ALTER TABLE public.${quotePostgresIdentifier(table)} OWNER TO ${quotePostgresIdentifier(expectedOwner)}`,
+          );
+          const restored = await admin.query<{ owner: string }>(
+            `SELECT pg_get_userbyid(relation.relowner) AS owner
+               FROM pg_class relation
+              WHERE relation.oid = $1::regclass`,
+            [`public.${table}`],
+          );
+          assert(
+            restored.rows[0]?.owner === expectedOwner,
+            `${phase} drift exercise must restore ${table} owner`,
+          );
+        }
+      }
+    }
   } finally {
     await admin.end();
   }
