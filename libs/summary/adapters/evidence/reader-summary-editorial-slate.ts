@@ -226,7 +226,10 @@ export const materializeReaderSummaryEditorialSlate = (params: {
       duplicateFeedItemIds: support.map((item) => item.feedItemId),
       interestIds: uniqueSorted(members.map((item) => item.interestId)),
       providerKeys: uniqueSorted(members.map((item) => item.providerKey)),
-      score: entry.scoreComponents.total,
+      // Coverage planning consumes the clustering score's wider signal scale.
+      // The v2 unit score orders the immutable slate, but substituting it here
+      // collapses every multi-story slate into single-story coverage.
+      score: original?.score ?? entry.scoreComponents.total,
       observedAtRange: {
         startedAt: new Date(Math.min(...observedAt)),
         endedAt: new Date(Math.max(...observedAt)),

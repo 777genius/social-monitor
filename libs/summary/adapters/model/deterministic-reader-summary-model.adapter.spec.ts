@@ -11,6 +11,10 @@ import type {
   ReaderSummaryModelInput,
 } from "../../ports";
 import { DeterministicReaderSummaryModelAdapter } from "./deterministic-reader-summary-model.adapter";
+import {
+  composeReaderSummaryEditorialSlate,
+  materializeReaderSummaryEditorialSlate,
+} from "../evidence/reader-summary-editorial-slate";
 
 describe("DeterministicReaderSummaryModelAdapter", () => {
   it("keeps a provider-diverse first page while preserving ranked order", async () => {
@@ -43,7 +47,7 @@ describe("DeterministicReaderSummaryModelAdapter", () => {
     ).toBe(true);
     expect(attempt.draft.content).toBeDefined();
     expect(attempt.draft.headline).toBe(
-      "4 monitored stories emerge across Hacker News, Reddit, X Twitter + 1 more",
+      "4 monitored stories emerge across Hacker News, X Twitter, GitHub Repo Radar + 1 more",
     );
     expect(attempt.draft.headline).not.toMatch(/^(?:Hacker News|Reddit|X)\b/u);
     expect(attempt.draft.headline).not.toContain(";");
@@ -51,7 +55,12 @@ describe("DeterministicReaderSummaryModelAdapter", () => {
     expect(attempt.draft.headline).not.toContain("disposable Linux VM");
     expect(
       attempt.draft.content?.topReads.map((item) => item.providerKey),
-    ).toContain("github-repo-radar");
+    ).toEqual([
+      "hacker-news",
+      "x-twitter",
+      "github-repo-radar",
+      "reddit",
+    ]);
     expect(
       attempt.draft.content?.topReads.map((item) => item.providerKey),
     ).not.toContain("github-trending-page");
@@ -144,6 +153,7 @@ const expectPublished = (
     sourceWindow: input.evidence.sourceWindow,
     approvedSameStoryRelations: input.evidence.approvedSameStoryRelations,
     relatedTopicRelations: input.evidence.relatedTopicRelations,
+    editorialSlate: input.evidence.editorialSlate,
     attestationBinding: {
       artifactId: readerSummaryId,
       sourceWindow: input.evidence.sourceWindow,
@@ -276,7 +286,7 @@ const readerSummaryEvidence = (
     whyImportant: item.whyImportant,
   }));
 
-  return {
+  const selection: ReaderSummaryModelInput["evidence"] = {
     rankingPolicyVersion: "story_ranking_v1",
     sourceWindow: {
       windowId: "workspace:deterministic-reader-summary",
@@ -294,6 +304,11 @@ const readerSummaryEvidence = (
     clusters,
     selectedEvidence,
   };
+  const editorialSlate = composeReaderSummaryEditorialSlate({ selection });
+  return materializeReaderSummaryEditorialSlate({
+    selection,
+    slate: editorialSlate,
+  });
 };
 
 const readerSummaryInputForEvidence = (
@@ -384,11 +399,13 @@ const promotionFacts = (providerKey: string, index: number) => {
   if (providerKey === "hacker-news") return {
     ...common,
     contentKind: "story" as const,
+    engagementAuthority: durableEngagementAuthority(),
     metrics: { provider: "hacker_news" as const, points: 60 },
   };
   if (providerKey === "x-twitter") return {
     ...common,
     contentKind: "original_post" as const,
+    engagementAuthority: durableEngagementAuthority(),
     metrics: {
       provider: "x" as const,
       likes: 60,
@@ -417,6 +434,7 @@ const promotionFacts = (providerKey: string, index: number) => {
   return {
     ...common,
     contentKind: "original_post" as const,
+    engagementAuthority: durableEngagementAuthority(),
     metrics: {
       provider: "reddit" as const,
       score: 25,
@@ -424,3 +442,8 @@ const promotionFacts = (providerKey: string, index: number) => {
     },
   };
 };
+
+const durableEngagementAuthority = () => ({
+  observedAt: new Date("2026-06-23T08:30:00.000Z"),
+  regressionState: "stable" as const,
+});

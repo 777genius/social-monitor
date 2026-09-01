@@ -35,6 +35,12 @@ describe("RelevanceReaderSummaryEvidenceSelector adaptive source content", () =>
       sourceText: sealedSourceText,
       publishedAt: "2026-07-09T08:00:00.000Z",
       observedAt: "2026-07-09T08:01:00.000Z",
+      exactPublishedAt: "2026-07-09T08:00:00.000000Z",
+      exactObservedAt: "2026-07-09T08:01:00.000000Z",
+      engagementAuthority: {
+        observedAt: "2026-07-09T08:01:00.000Z",
+        regressionState: "stable",
+      },
       score: 2.4,
       rank: 1,
       clusterId: "cluster-ultra",
