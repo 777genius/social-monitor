@@ -1,5 +1,7 @@
 const roleStatementPattern =
-  /\b(?:(SET\s+LOCAL\s+ROLE)\s+"?([a-z_][a-z0-9_]*)"?|(RESET\s+ROLE))\s*;/giu;
+  /\b(?:(SET\s+(?:(?:LOCAL|SESSION)\s+)?ROLE)\s+(?:"([a-z_][a-z0-9_]*)"|([a-z_][a-z0-9_]*))|(RESET\s+ROLE))\s*;/giu;
+const possibleRoleStatementPattern =
+  /\b(?:SET\s+(?:(?:LOCAL|SESSION)\s+)?ROLE|RESET\s+ROLE|SET\s+SESSION\s+AUTHORIZATION|RESET\s+SESSION\s+AUTHORIZATION)\b/giu;
 
 export const migrationBindsTableOwner = ({ sql, table, ownerRole }) => {
   const escapedTable = escapeRegex(table);
@@ -28,12 +30,21 @@ export const migrationBindsTableOwner = ({ sql, table, ownerRole }) => {
   if (finalOwnerAlteration !== undefined) {
     return finalOwnerAlteration[1]?.toLowerCase() === ownerRole.toLowerCase();
   }
-  const precedingRoleStatements = [
-    ...sql.slice(0, operationIndex).matchAll(roleStatementPattern),
-  ];
+  const precedingSql = sql.slice(0, operationIndex);
+  const precedingRoleStatements = [...precedingSql.matchAll(
+    roleStatementPattern,
+  )];
+  const recognizedRoleStatementIndexes = new Set(
+    precedingRoleStatements.map((match) => match.index),
+  );
+  const hasUnrecognizedRoleStatement = [...precedingSql.matchAll(
+    possibleRoleStatementPattern,
+  )].some((match) => !recognizedRoleStatementIndexes.has(match.index));
+  if (hasUnrecognizedRoleStatement) return false;
   const activeRole = precedingRoleStatements.at(-1);
   const operationRunsAsOwner = activeRole?.[1] !== undefined &&
-    activeRole[2]?.toLowerCase() === ownerRole.toLowerCase();
+    (activeRole[2] ?? activeRole[3])?.toLowerCase() ===
+      ownerRole.toLowerCase();
   return operationRunsAsOwner;
 };
 

@@ -61,15 +61,7 @@ export const preparePromotionRollbackLifecycleFixture = async (
       citation.providerKey !== "reddit") {
     throw new Error("Rollback lifecycle fixture needs exact Reddit evidence");
   }
-  const citations = Array.from({ length: 8 }, (_, index) => index === 0
-    ? citation
-    : {
-        ...citation,
-        citationId: fixtureUuid(104 + index),
-        feedItemId: fixtureUuid(105 + index),
-        sourceItemId: fixtureUuid(106 + index),
-        canonicalUrl: `https://reddit.example.test/rollback-${index + 1}`,
-      });
+  const citations = [citation];
   const startedAt = new Date(row.period_started_at);
   const endedAt = new Date(row.period_ended_at);
   const publishedAt = new Date(startedAt.getTime() + 8 * 3_600_000);
@@ -166,9 +158,9 @@ export const preparePromotionRollbackLifecycleFixture = async (
       }],
       sourceMix: [{
         providerKey: "reddit",
-        itemCount: 8,
-        citationCount: 8,
-        storyClusterCount: 8,
+        itemCount: 1,
+        citationCount: 1,
+        storyClusterCount: 1,
         crossSourceClusterCount: 0,
         singleSourceOnly: true,
         interestIds: ["fixture-interest"],
@@ -267,9 +259,6 @@ const promotionCard = (
         editorialDigestInput: attestation.slateEntryDigestInput,
       }),
 });
-
-const fixtureUuid = (suffix: number): string =>
-  `00000000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
 
 const v1Attestations = (
   attestations: readonly ReaderPostPromotionAttestationV2[],

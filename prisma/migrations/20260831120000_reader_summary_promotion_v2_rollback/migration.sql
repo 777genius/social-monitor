@@ -595,8 +595,8 @@ CREATE FUNCTION public."rollback_reader_summary_promotion_v2"(
   target_tenant_id UUID,
   target_workspace_id UUID,
   target_requested_utc_date DATE,
-  authority_receipt_format TEXT,
-  authority_receipt_sha256 TEXT,
+  target_authority_receipt_format TEXT,
+  target_authority_receipt_sha256 TEXT,
   expected_v2_publication_id UUID,
   expected_v2_artifact_id UUID,
   expected_v2_report_sha256 TEXT,
@@ -624,11 +624,11 @@ BEGIN
   IF current_user <> 'social_monitor_reader_summary_publication_owner' THEN
     RAISE EXCEPTION 'Promotion V2 rollback requires publication owner';
   END IF;
-  IF authority_receipt_format NOT IN (
+  IF target_authority_receipt_format NOT IN (
       'reader-summary-promotion-v2-historical-rebuild-receipt-v1',
       'reader-summary-promotion-v2-canary-publication-receipt-v1'
     )
-    OR authority_receipt_sha256 !~ '^[0-9a-f]{64}$'
+    OR target_authority_receipt_sha256 !~ '^[0-9a-f]{64}$'
     OR expected_v2_report_sha256 !~ '^[0-9a-f]{64}$'
     OR expected_v2_proof_sha256 !~ '^[0-9a-f]{64}$'
     OR prior_v1_report_sha256 !~ '^[0-9a-f]{64}$'
@@ -640,7 +640,8 @@ BEGIN
   END IF;
   IF EXISTS (
     SELECT 1 FROM public."reader_summary_promotion_v2_rollback_receipts" r
-    WHERE btrim(r."authority_receipt_sha256") = authority_receipt_sha256
+    WHERE btrim(r."authority_receipt_sha256") =
+        target_authority_receipt_sha256
       OR r."replaced_v2_publication_id" = expected_v2_publication_id
   ) THEN
     RAISE EXCEPTION 'Promotion V2 rollback receipt is stale or replayed';
@@ -813,12 +814,12 @@ BEGIN
     RAISE EXCEPTION 'Promotion V2 rollback prior tuple is not strict V1';
   END IF;
 
-  IF authority_receipt_format =
+  IF target_authority_receipt_format =
       'reader-summary-promotion-v2-canary-publication-receipt-v1'
     AND NOT EXISTS (
       SELECT 1
       FROM public."reader_summary_promotion_v2_canary_publication_receipts" r
-      WHERE btrim(r."receipt_sha256") = authority_receipt_sha256
+      WHERE btrim(r."receipt_sha256") = target_authority_receipt_sha256
         AND r."tenant_id" = target_tenant_id
         AND r."workspace_id" = target_workspace_id
         AND r."requested_utc_date" = target_requested_utc_date
@@ -826,7 +827,7 @@ BEGIN
         AND r."v2_artifact_id" = expected_v2_artifact_id
         AND r."prior_v1_publication_id" = prior_v1_publication_id
         AND r."prior_v1_artifact_id" = prior_v1_artifact_id
-        AND r."receipt"->>'format' = authority_receipt_format
+        AND r."receipt"->>'format' = target_authority_receipt_format
         AND r."receipt"->>'date' = target_requested_utc_date::TEXT
         AND r."receipt"->>'status' = 'published'
         AND r."receipt"->'outputIdentity'->>'publicationId' =
@@ -862,8 +863,8 @@ BEGIN
     'tenantId', target_tenant_id::TEXT,
     'workspaceId', target_workspace_id::TEXT,
     'date', target_requested_utc_date::TEXT,
-    'authorityReceiptFormat', authority_receipt_format,
-    'authorityReceiptSha256', authority_receipt_sha256,
+    'authorityReceiptFormat', target_authority_receipt_format,
+    'authorityReceiptSha256', target_authority_receipt_sha256,
     'expectedV2PublicationId', expected_v2_publication_id::TEXT,
     'priorV1PublicationId', prior_v1_publication_id::TEXT
   )::TEXT, 'UTF8')), 'hex');
@@ -935,8 +936,8 @@ BEGIN
     'migration', '20260831120000_reader_summary_promotion_v2_rollback',
     'rolledBackAt', rollback_at,
     'date', target_requested_utc_date::TEXT,
-    'authorityReceiptFormat', authority_receipt_format,
-    'authorityReceiptSha256', authority_receipt_sha256,
+    'authorityReceiptFormat', target_authority_receipt_format,
+    'authorityReceiptSha256', target_authority_receipt_sha256,
     'rollbackIdentity', v_identity,
     'fenceToken', date_fence_token,
     'restoredPublicationId', prior_v1_publication_id::TEXT,
@@ -954,8 +955,8 @@ BEGIN
     "receipt", "receipt_sha256", "rolled_back_at"
   ) VALUES (
     gen_random_uuid(), target_tenant_id, target_workspace_id,
-    target_requested_utc_date, authority_receipt_format,
-    authority_receipt_sha256, v_identity,
+    target_requested_utc_date, target_authority_receipt_format,
+    target_authority_receipt_sha256, v_identity,
     prior_v1_publication_id, prior_v1_artifact_id,
     expected_v2_publication_id, expected_v2_artifact_id, date_fence_token,
     v_receipt,

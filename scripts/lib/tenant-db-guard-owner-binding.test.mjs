@@ -65,6 +65,71 @@ test("an unrelated owner SET cannot bless a later wrong-role creation", () => {
   );
 });
 
+test("an overriding transaction-scoped SET ROLE cannot bless creation", () => {
+  const sql = `
+    SET LOCAL ROLE "${ownerRole}";
+    SET ROLE "social_monitor_reader_summary_publication_owner";
+    CREATE TABLE public."receipt" (id uuid);
+  `;
+  assert.equal(
+    migrationBindsTableOwner({ sql, table: "receipt", ownerRole }),
+    false,
+  );
+});
+
+for (const statement of [
+  "SET ROLE",
+  "SET LOCAL ROLE",
+  "SET SESSION ROLE",
+]) {
+  test(`${statement} can bind creation to the owner`, () => {
+    const sql = `
+      ${statement} "${ownerRole}";
+      CREATE TABLE public."receipt" (id uuid);
+    `;
+    assert.equal(
+      migrationBindsTableOwner({ sql, table: "receipt", ownerRole }),
+      true,
+    );
+  });
+}
+
+test("unrecognized role-changing syntax fails closed", () => {
+  const sql = `
+    SET LOCAL ROLE "${ownerRole}";
+    SET SESSION AUTHORIZATION "social_monitor_reader_summary_publication_owner";
+    CREATE TABLE public."receipt" (id uuid);
+  `;
+  assert.equal(
+    migrationBindsTableOwner({ sql, table: "receipt", ownerRole }),
+    false,
+  );
+});
+
+test("ambiguous RESET SESSION AUTHORIZATION fails closed", () => {
+  const sql = `
+    SET LOCAL ROLE "${ownerRole}";
+    RESET SESSION AUTHORIZATION;
+    CREATE TABLE public."receipt" (id uuid);
+  `;
+  assert.equal(
+    migrationBindsTableOwner({ sql, table: "receipt", ownerRole }),
+    false,
+  );
+});
+
+test("RESET ROLE clears a preceding owner binding", () => {
+  const sql = `
+    SET SESSION ROLE "${ownerRole}";
+    RESET ROLE;
+    CREATE TABLE public."receipt" (id uuid);
+  `;
+  assert.equal(
+    migrationBindsTableOwner({ sql, table: "receipt", ownerRole }),
+    false,
+  );
+});
+
 test("an explicit post-creation ALTER OWNER binds a wrong-role creation", () => {
   const sql = `
     SET LOCAL ROLE "social_monitor_reader_summary_publication_owner";
