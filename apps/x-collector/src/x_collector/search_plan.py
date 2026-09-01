@@ -55,9 +55,9 @@ def plan_scweet_search_passes(
                 label="latest_discovery",
                 product=SearchProduct.LATEST,
                 limit=request.limit_per_product,
-                min_likes=latest_discovery_min(request.min_likes),
-                min_retweets=latest_discovery_min(request.min_retweets),
-                min_replies=None,
+                min_likes=latest_discovery_min(request.min_likes, ceiling=5),
+                min_retweets=latest_discovery_min(request.min_retweets, ceiling=1),
+                min_replies=latest_discovery_min(request.min_replies, ceiling=1),
             ),
         )
 
@@ -97,14 +97,11 @@ def strict_minimum(value: int | None, floor: int) -> int:
     return max(value * 3, floor)
 
 
-def latest_discovery_min(value: int | None) -> int | None:
+def latest_discovery_min(value: int | None, *, ceiling: int) -> int | None:
     if value is None:
         return None
 
-    if value <= 10:
-        return value
-
-    return max(1, value // 3)
+    return min(value, ceiling)
 
 
 def dedupe_passes(
@@ -127,4 +124,3 @@ def dedupe_passes(
         result.append(search_pass)
 
     return result
-
