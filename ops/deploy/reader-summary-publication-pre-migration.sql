@@ -672,11 +672,15 @@ BEGIN
         'reader_summary_production_recovery_dry_runs',
         'reader_summary_production_recovery_leases',
         'reader_summary_recovery_receipts', 'reader_summary_weekly_certification_seals',
+        'reader_summary_promotion_v2_rollback_receipts',
+        'reader_summary_promotion_v2_canary_publication_receipts',
         'reader_summary_daily_canonical_recovery_v4_plans',
         'reader_summary_daily_canonical_recovery_v4_authorities',
         'reader_summary_daily_canonical_recovery_v4_leases',
         'reader_summary_daily_canonical_recovery_v4_ambiguity_retries',
         'reader_summary_daily_canonical_recovery_v4_route_authorities',
+        'reader_summary_promotion_v2_rollback_receipts',
+        'reader_summary_promotion_v2_canary_publication_receipts',
         'reader_summary_weekly_publication_evidence',
         'reader_summary_weekly_review_manifests'
       )
@@ -705,6 +709,8 @@ BEGIN
         'reader_summary_production_recovery_dry_runs',
         'reader_summary_production_recovery_leases',
         'reader_summary_recovery_receipts', 'reader_summary_weekly_certification_seals',
+        'reader_summary_promotion_v2_rollback_receipts',
+        'reader_summary_promotion_v2_canary_publication_receipts',
         'reader_summary_daily_canonical_recovery_v4_plans',
         'reader_summary_daily_canonical_recovery_v4_authorities',
         'reader_summary_daily_canonical_recovery_v4_leases',
@@ -746,6 +752,8 @@ BEGIN
         'reader_summary_production_recovery_dry_runs',
         'reader_summary_production_recovery_leases',
         'reader_summary_recovery_receipts', 'reader_summary_weekly_certification_seals',
+        'reader_summary_promotion_v2_rollback_receipts',
+        'reader_summary_promotion_v2_canary_publication_receipts',
         'reader_summary_daily_canonical_recovery_v4_plans',
         'reader_summary_daily_canonical_recovery_v4_authorities',
         'reader_summary_daily_canonical_recovery_v4_leases',
@@ -969,7 +977,7 @@ BEGIN
       'reader_summary_daily_canonical_recovery_v4_authorities',
       'reader_summary_daily_canonical_recovery_v4_leases',
       'reader_summary_daily_canonical_recovery_v4_ambiguity_retries',
-      'reader_summary_daily_canonical_recovery_v4_route_authorities'
+    'reader_summary_daily_canonical_recovery_v4_route_authorities'
     )
     AND owner.rolname = 'social_monitor_reader_summary_publication_owner';
   SELECT count(*) INTO v_weekly_review_manifest_table_count

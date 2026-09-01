@@ -653,7 +653,7 @@ model FeedItem {
   status           FeedItemStatus @default(VISIBLE)
   createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt        DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
-  sourceItem       SourceItem     @relation(fields: [tenantId, workspaceId, sourceItemId, providerKey], references: [tenantId, workspaceId, id, providerKey], onDelete: Restrict)
+  sourceItem       SourceItem     @relation(fields: [tenantId, workspaceId, sourceItemId, providerKey], references: [tenantId, workspaceId, id, providerKey], onDelete: Restrict, map: "feed_items_source_item_id_fkey")
 
   @@unique([tenantId, interestId, dedupeKey], map: "feed_items_tenant_interest_dedupe_key_key")
   @@index([tenantId, workspaceId, status, createdAt])
@@ -932,6 +932,8 @@ model ReaderSummaryArtifact {
   weeklyPublicationEvidence ReaderSummaryWeeklyPublicationEvidence?
   recoveryReceipt ReaderSummaryRecoveryReceipt?
   dailyModelJob ReaderSummaryDailyModelJob? @relation("ReaderSummaryDailyArtifact")
+  promotionV2CanaryReceipts ReaderSummaryPromotionV2CanaryPublicationReceipt[] @relation("PromotionV2CanaryArtifact")
+  promotionV2CanaryPriorReceipts ReaderSummaryPromotionV2CanaryPublicationReceipt[] @relation("PromotionV2CanaryPriorArtifact")
 
   @@index([tenantId, workspaceId, scopeKey, cadence, periodStartedAt], map: "reader_summary_artifacts_period_lookup_idx")
   @@index([tenantId, workspaceId, scopeKey, status, createdAt])
@@ -1006,6 +1008,8 @@ model ReaderSummaryPublication {
   weeklyPublicationEvidence ReaderSummaryWeeklyPublicationEvidence?
   recoveryReceipt         ReaderSummaryRecoveryReceipt?
   dailyModelJob            ReaderSummaryDailyModelJob? @relation("ReaderSummaryDailyPublication")
+  promotionV2CanaryReceipts ReaderSummaryPromotionV2CanaryPublicationReceipt[] @relation("PromotionV2CanaryPublication")
+  promotionV2CanaryPriorReceipts ReaderSummaryPromotionV2CanaryPublicationReceipt[] @relation("PromotionV2CanaryPriorPublication")
 
   @@index([tenantId, workspaceId, scopeKey, requestedAt], map: "reader_summary_publications_scope_requested_idx")
   @@map("reader_summary_publications")
@@ -1320,7 +1324,8 @@ model ReaderSummaryPromotionV2RollbackReceipt {
   tenantId                     String   @map("tenant_id") @db.Uuid
   workspaceId                  String   @map("workspace_id") @db.Uuid
   requestedUtcDate             DateTime @map("requested_utc_date") @db.Date
-  migrationReceiptSha256       String   @unique(map: "reader_summary_promotion_v2_rollback_migration_receipt_key") @map("migration_receipt_sha256") @db.Char(64)
+  authorityReceiptFormat       String   @map("authority_receipt_format")
+  authorityReceiptSha256       String   @unique(map: "reader_summary_promotion_v2_rollback_authority_receipt_key") @map("authority_receipt_sha256") @db.Char(64)
   rollbackIdentity             String   @unique(map: "reader_summary_promotion_v2_rollback_identity_key") @map("rollback_identity") @db.Char(64)
   priorPublicationId           String   @map("prior_publication_id") @db.Uuid
   priorArtifactId              String   @map("prior_artifact_id") @db.Uuid
@@ -1333,6 +1338,27 @@ model ReaderSummaryPromotionV2RollbackReceipt {
 
   @@index([tenantId, workspaceId, requestedUtcDate], map: "reader_summary_promotion_v2_rollback_scope_day_idx")
   @@map("reader_summary_promotion_v2_rollback_receipts")
+}
+
+model ReaderSummaryPromotionV2CanaryPublicationReceipt {
+  v2PublicationId      String              @id @map("v2_publication_id") @db.Uuid
+  tenantId             String              @map("tenant_id") @db.Uuid
+  workspaceId          String              @map("workspace_id") @db.Uuid
+  requestedUtcDate     DateTime            @map("requested_utc_date") @db.Date
+  v2ArtifactId         String              @map("v2_artifact_id") @db.Uuid
+  priorV1PublicationId String              @map("prior_v1_publication_id") @db.Uuid
+  priorV1ArtifactId    String              @map("prior_v1_artifact_id") @db.Uuid
+  receipt              Json
+  receiptSha256        String              @unique(map: "reader_summary_promotion_v2_canary_receipt_hash_key") @map("receipt_sha256") @db.Char(64)
+  recordedAt           DateTime            @map("recorded_at") @db.Timestamptz(6)
+  publication          ReaderSummaryPublication @relation("PromotionV2CanaryPublication", fields: [v2PublicationId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "reader_summary_promotion_v2_canary_publication_fkey")
+  priorPublication     ReaderSummaryPublication @relation("PromotionV2CanaryPriorPublication", fields: [priorV1PublicationId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "reader_summary_promotion_v2_canary_prior_publication_fkey")
+  artifact             ReaderSummaryArtifact @relation("PromotionV2CanaryArtifact", fields: [v2ArtifactId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "reader_summary_promotion_v2_canary_artifact_fkey")
+  priorArtifact        ReaderSummaryArtifact @relation("PromotionV2CanaryPriorArtifact", fields: [priorV1ArtifactId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "reader_summary_promotion_v2_canary_prior_artifact_fkey")
+
+  @@unique([priorV1PublicationId, v2PublicationId], map: "reader_summary_promotion_v2_canary_prior_key")
+  @@index([tenantId, workspaceId, requestedUtcDate], map: "reader_summary_promotion_v2_canary_scope_day_idx")
+  @@map("reader_summary_promotion_v2_canary_publication_receipts")
 }
 
 model ReaderSummaryProductionRecoveryLease {
