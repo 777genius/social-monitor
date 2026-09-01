@@ -59,6 +59,7 @@ const walkSqlStatements = (sql, visit) => {
   let localRole = null;
   let transactionSessionRole = null;
   let savepoints = [];
+  let transactionActive = false;
   for (const statement of splitStatements(scanned)) {
     const command = wordAt(statement, 0);
     if (command === "call" || command === "execute") return false;
@@ -68,11 +69,14 @@ const walkSqlStatements = (sql, visit) => {
     const transactionControl = parseTransactionControl(statement);
     if (transactionControl?.invalid) return false;
     if (transactionControl?.type === "begin") {
+      if (transactionActive) return false;
+      transactionActive = true;
       transactionSessionRole = sessionRole;
       localRole = null;
       savepoints = [];
     }
     if (transactionControl?.type === "savepoint") {
+      if (!transactionActive) return false;
       savepoints.push({
         name: transactionControl.name,
         sessionRole,
@@ -80,6 +84,7 @@ const walkSqlStatements = (sql, visit) => {
       });
     }
     if (transactionControl?.type === "rollback-to") {
+      if (!transactionActive) return false;
       const savepointIndex = savepoints.findLastIndex(
         ({ name }) => name === transactionControl.name,
       );
@@ -88,6 +93,7 @@ const walkSqlStatements = (sql, visit) => {
       savepoints = savepoints.slice(0, savepointIndex + 1);
     }
     if (transactionControl?.type === "release") {
+      if (!transactionActive) return false;
       const savepointIndex = savepoints.findLastIndex(
         ({ name }) => name === transactionControl.name,
       );
@@ -97,7 +103,10 @@ const walkSqlStatements = (sql, visit) => {
 
     const roleChange = parseRoleChange(statement);
     if (roleChange?.invalid) return false;
-    if (roleChange?.scope === "local") localRole = roleChange.role;
+    if (roleChange?.scope === "local") {
+      if (!transactionActive) return false;
+      localRole = roleChange.role;
+    }
     if (roleChange?.scope === "session") {
       sessionRole = roleChange.role;
       localRole = null;
@@ -108,14 +117,19 @@ const walkSqlStatements = (sql, visit) => {
     }
 
     if (transactionControl?.type === "commit") {
+      if (!transactionActive) return false;
+      transactionActive = false;
       localRole = null;
       savepoints = [];
-      transactionSessionRole = sessionRole;
+      transactionSessionRole = null;
     }
     if (transactionControl?.type === "rollback") {
+      if (!transactionActive) return false;
+      transactionActive = false;
       sessionRole = transactionSessionRole;
       localRole = null;
       savepoints = [];
+      transactionSessionRole = null;
     }
 
     if (!visit({ statement, activeRole: localRole ?? sessionRole })) return false;
@@ -310,13 +324,15 @@ const scanQuoted = (sql, start, quote, rejectAmbiguousBackslash = false) => {
   while (index < sql.length) {
     if (sql[index] !== quote) {
       index += 1;
-    } else if (sql[index + 1] === quote) {
-      index += 2;
     } else {
       if (rejectAmbiguousBackslash) {
         let backslashStart = index;
         while (sql[backslashStart - 1] === "\\") backslashStart -= 1;
         if ((index - backslashStart) % 2 === 1) return -1;
+      }
+      if (sql[index + 1] === quote) {
+        index += 2;
+        continue;
       }
       return index + 1;
     }
@@ -356,6 +372,7 @@ const splitStatements = (tokens) => {
 };
 
 const containsUnsafeAuthorizationConfig = (statement) => {
+  if (targetsUnsafeAuthorizationGuc(statement)) return true;
   if (containsUnsafeAuthorizationConfigTokens(statement)) return true;
   if (!["do", "call"].includes(wordAt(statement, 0))) return false;
 
@@ -367,6 +384,38 @@ const containsUnsafeAuthorizationConfig = (statement) => {
     }
   }
   return false;
+};
+
+const targetsUnsafeAuthorizationGuc = (statement) => {
+  const command = wordAt(statement, 0);
+  if (command === "discard") {
+    return tokenNameAt(statement, 1) === "all";
+  }
+  if (command !== "set" && command !== "reset") return false;
+
+  let cursor = 1;
+  let scoped = false;
+  if (["local", "session"].includes(wordAt(statement, cursor))) {
+    scoped = true;
+    cursor += 1;
+  }
+
+  const target = tokenNameAt(statement, cursor);
+  if (command === "reset") {
+    if (target === "all" || target === "session_authorization") return true;
+    return target === "role" &&
+      (scoped || statement[cursor]?.kind === "identifier");
+  }
+
+  if (target === "session_authorization") return true;
+  if (target === "session" &&
+    tokenNameAt(statement, cursor + 1) === "authorization") {
+    return true;
+  }
+  if (target !== "role") return false;
+  if (statement[cursor]?.kind === "identifier") return true;
+  return ["=", "to"].includes(tokenNameAt(statement, cursor + 1) ??
+    statement[cursor + 1]?.value);
 };
 
 const containsUnsafeAuthorizationConfigTokens = (tokens) => {
@@ -424,11 +473,21 @@ const enclosesEntireExpression = (tokens) => {
 
 const parseTransactionControl = (statement) => {
   const firstWord = wordAt(statement, 0);
-  if (firstWord === "begin" ||
-    (firstWord === "start" && wordAt(statement, 1) === "transaction")) {
-    return { type: "begin" };
+  if (firstWord === "begin") {
+    let cursor = 1;
+    if (["work", "transaction"].includes(wordAt(statement, cursor))) cursor += 1;
+    return endsAt(statement, cursor) ? { type: "begin" } : { invalid: true };
   }
-  if (firstWord === "commit" || firstWord === "end") return { type: "commit" };
+  if (firstWord === "start") {
+    return wordAt(statement, 1) === "transaction" && endsAt(statement, 2)
+      ? { type: "begin" }
+      : { invalid: true };
+  }
+  if (firstWord === "commit" || firstWord === "end") {
+    let cursor = 1;
+    if (["work", "transaction"].includes(wordAt(statement, cursor))) cursor += 1;
+    return endsAt(statement, cursor) ? { type: "commit" } : { invalid: true };
+  }
   if (firstWord === "savepoint") {
     const name = savepointNameAt(statement, 1);
     return name !== null && endsAt(statement, 2)
@@ -447,7 +506,10 @@ const parseTransactionControl = (statement) => {
 
   let cursor = 1;
   if (["work", "transaction"].includes(wordAt(statement, cursor))) cursor += 1;
-  if (wordAt(statement, cursor) !== "to") return { type: "rollback" };
+  if (wordAt(statement, cursor) !== "to") {
+    return endsAt(statement, cursor) ? { type: "rollback" } : { invalid: true };
+  }
+  if (firstWord === "abort") return { invalid: true };
   cursor += 1;
   if (wordAt(statement, cursor) === "savepoint") cursor += 1;
   const name = savepointNameAt(statement, cursor);
@@ -576,6 +638,12 @@ const identifierAt = (tokens, index) => {
 };
 
 const wordAt = (tokens, index) => tokens[index]?.kind === "word" ? tokens[index].value : null;
+const tokenNameAt = (tokens, index) => {
+  const token = tokens[index];
+  return token?.kind === "word" || token?.kind === "identifier"
+    ? token.value.toLowerCase()
+    : null;
+};
 const startsWithWords = (tokens, words) => words.every((word, index) => wordAt(tokens, index) === word);
 const endsAt = (tokens, index) => tokens.length === index ||
   (tokens.length === index + 1 && tokens[index]?.value === ";");

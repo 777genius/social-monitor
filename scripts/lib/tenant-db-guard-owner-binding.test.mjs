@@ -132,6 +132,7 @@ for (const statement of [
 ]) {
   test(`${statement} can bind creation to the owner`, () => {
     const sql = `
+      ${statement.includes("LOCAL") ? "BEGIN;" : ""}
       ${statement} "${ownerRole}";
       CREATE TABLE public."receipt" (id uuid);
     `;
@@ -180,6 +181,7 @@ test("RESET ROLE clears a preceding owner binding", () => {
 
 test("comments and whitespace may separate every legal role token", () => {
   const sql = `
+    BEGIN;
     SET/* command */LOCAL\n-- scope separator
       ROLE/* role separator */"${ownerRole}";
     CREATE/* create separator */TABLE public./* name separator */"receipt" (id uuid);
@@ -224,12 +226,8 @@ test("odd backslash runs before generic-string closing quotes fail closed", () =
   for (const backslashes of ["\\", "\\\\\\"]) {
     const sql = `SET ROLE "${ownerRole}";
       SELECT 'path${backslashes}';
-      CREATE TABLE public.receipt (id uuid);`;
-    assert.equal(
-      migrationBindsTableOwner({ sql, table: "receipt", ownerRole }),
-      false,
-      `${backslashes.length} backslashes`,
-    );
+      ${guardedReceiptOperations}`;
+    assertBothRoleGuards(sql, false, `${backslashes.length} backslashes`);
   }
 });
 
@@ -237,13 +235,17 @@ test("zero and even backslash runs preserve generic-string scanning", () => {
   for (const backslashes of ["", "\\\\"]) {
     const sql = `SET ROLE "${ownerRole}";
       SELECT 'path${backslashes}';
-      CREATE TABLE public.receipt (id uuid);`;
-    assert.equal(
-      migrationBindsTableOwner({ sql, table: "receipt", ownerRole }),
-      true,
-      `${backslashes.length} backslashes`,
-    );
+      ${guardedReceiptOperations}`;
+    assertBothRoleGuards(sql, true, `${backslashes.length} backslashes`);
   }
+});
+
+test("a generic-string doubled-quote ambiguity fails both guards closed", () => {
+  const sql = `SET ROLE "${ownerRole}";
+    SET standard_conforming_strings = off;
+    SELECT 'safe\\''; SET ROLE wrong_owner; SELECT ';
+    ${guardedReceiptOperations}`;
+  assertBothRoleGuards(sql, false);
 });
 
 test("generic strings preserve unrelated path and regex backslashes", () => {
@@ -282,21 +284,15 @@ for (const prefix of ["E", "e"]) {
   test(`${prefix}-string escapes and doubled quotes cannot expose an owner-role decoy`, () => {
     const sql = String.raw`SET ROLE wrong_owner;
       SELECT ${prefix}'''\'; SET ROLE social_monitor_public_schema_owner; SELECT \'';
-      CREATE TABLE public.receipt (id uuid);`;
-    assert.equal(
-      migrationBindsTableOwner({ sql, table: "receipt", ownerRole }),
-      false,
-    );
+      ${guardedReceiptOperations}`;
+    assertBothRoleGuards(sql, false);
   });
 
   test(`${prefix}-string wrong-role decoys stay inert under the expected role`, () => {
     const sql = String.raw`SET ROLE social_monitor_public_schema_owner;
       SELECT ${prefix}'''\'; SET ROLE wrong_owner; SELECT \'';
-      CREATE TABLE public.receipt (id uuid);`;
-    assert.equal(
-      migrationBindsTableOwner({ sql, table: "receipt", ownerRole }),
-      true,
-    );
+      ${guardedReceiptOperations}`;
+    assertBothRoleGuards(sql, true);
   });
 }
 
@@ -309,12 +305,8 @@ test("valid Unicode, bit, and hex strings do not affect owner binding", () => {
     "x'BEEF'",
   ]) {
     const sql = `SET ROLE "${ownerRole}"; SELECT ${literal};
-      CREATE TABLE public.receipt (id uuid);`;
-    assert.equal(
-      migrationBindsTableOwner({ sql, table: "receipt", ownerRole }),
-      true,
-      literal,
-    );
+      ${guardedReceiptOperations}`;
+    assertBothRoleGuards(sql, true, literal);
   }
 });
 
@@ -382,6 +374,36 @@ test("every executable SESSION AUTHORIZATION form fails closed", () => {
   }
 });
 
+test("authorization GUC and global reset forms fail both guards closed", () => {
+  for (const statement of [
+    "SET role = wrong_owner;",
+    "SET LOCAL role TO wrong_owner;",
+    "SET SESSION role = wrong_owner;",
+    `SET "RoLe" TO '${ownerRole}';`,
+    "SET LOCAL \"SESSION_AUTHORIZATION\" = wrong_owner;",
+    "SET session_authorization TO wrong_owner;",
+    "RESET \"rOlE\";",
+    "RESET session_authorization;",
+    "RESET LOCAL role;",
+    "RESET SESSION \"Session_Authorization\";",
+    "RESET ALL;",
+    "DISCARD ALL;",
+  ]) {
+    const sql = `SET ROLE "${ownerRole}"; ${statement}
+      ${guardedReceiptOperations}`;
+    assertBothRoleGuards(sql, false, statement);
+  }
+});
+
+test("unrelated GUC and DISCARD forms remain harmless", () => {
+  const sql = `SET ROLE "${ownerRole}";
+    SET work_mem = '64MB'; SET SESSION application_name TO 'guard';
+    SET "search_path" = public; RESET work_mem; RESET "application_name";
+    DISCARD PLANS; DISCARD SEQUENCES; DISCARD TEMP;
+    ${guardedReceiptOperations}`;
+  assertBothRoleGuards(sql, true);
+});
+
 test("malformed lexical input fails closed", () => {
   for (const malformed of [
     "SELECT 'unterminated",
@@ -402,6 +424,7 @@ test("malformed lexical input fails closed", () => {
 
 test("an explicit post-creation ALTER OWNER binds a wrong-role creation", () => {
   const sql = `
+    BEGIN;
     SET LOCAL ROLE "social_monitor_reader_summary_publication_owner";
     CREATE TABLE public."receipt" (id uuid);
     ALTER TABLE public."receipt" OWNER TO "${ownerRole}";
@@ -444,6 +467,7 @@ test("all real forward-RLS coverage migrations authorize their table operations"
 
 test("forward-RLS ALTER TABLE and policy operations require the active role", () => {
   const sql = `
+    BEGIN;
     SET LOCAL ROLE "${ownerRole}";
     ALTER TABLE public.receipt ENABLE ROW LEVEL SECURITY;
     CREATE POLICY tenant_isolation ON public.receipt USING (true);
@@ -640,6 +664,7 @@ test("a later wrong ALTER OWNER invalidates an ALTER-only owner binding", () => 
 test("nested comments and transaction-local role reset retain their semantics", () => {
   const sql = `
     SET SESSION ROLE "${ownerRole}";
+    BEGIN;
     SET LOCAL ROLE wrong_owner;
     /* outer /* SET ROLE wrong_owner; */ still outer */
     COMMIT;
@@ -654,6 +679,7 @@ test("nested comments and transaction-local role reset retain their semantics", 
 test("transaction completion clears an owner role that was only local", () => {
   for (const completion of ["COMMIT", "ROLLBACK"]) {
     const sql = `
+      BEGIN;
       SET LOCAL ROLE "${ownerRole}";
       ${completion};
       CREATE TABLE public.receipt (id uuid);
@@ -666,9 +692,35 @@ test("transaction completion clears an owner role that was only local", () => {
   }
 });
 
+test("transaction-only commands outside a transaction fail both guards closed", () => {
+  for (const statement of [
+    "COMMIT;", "END;", "ROLLBACK;", "ABORT;", "SAVEPOINT orphan;",
+    "SAVEPOINT orphan; ROLLBACK TO orphan;",
+    "SAVEPOINT orphan; RELEASE orphan;",
+  ]) {
+    const sql = `${statement} SET ROLE "${ownerRole}";
+      ${guardedReceiptOperations}`;
+    assertBothRoleGuards(sql, false, statement);
+  }
+  const localRole = `SET LOCAL ROLE "${ownerRole}"; ${guardedReceiptOperations}`;
+  assertBothRoleGuards(localRole, false, "SET LOCAL ROLE");
+});
+
+test("nested transaction starts fail closed and START TRANSACTION remains valid", () => {
+  for (const nested of ["BEGIN;", "START TRANSACTION;"]) {
+    const sql = `BEGIN; SET ROLE "${ownerRole}"; ${nested}
+      ${guardedReceiptOperations}`;
+    assertBothRoleGuards(sql, false, nested);
+  }
+  const valid = `START TRANSACTION; SET LOCAL ROLE "${ownerRole}";
+    ${guardedReceiptOperations} COMMIT;`;
+  assertBothRoleGuards(valid, true);
+});
+
 test("ROLLBACK TO restores the wrong role captured by a savepoint", () => {
   const sql = `
     SET ROLE "${ownerRole}";
+    BEGIN;
     SET LOCAL ROLE wrong_owner;
     SAVEPOINT before_temporary_owner;
     SET LOCAL ROLE "${ownerRole}";
@@ -681,6 +733,7 @@ test("ROLLBACK TO restores the wrong role captured by a savepoint", () => {
 test("nested savepoints restore role state and RELEASE keeps the restored role", () => {
   const sql = `
     SET ROLE "${ownerRole}";
+    BEGIN;
     SAVEPOINT outer_owner;
     SET LOCAL ROLE wrong_owner;
     SAVEPOINT inner_wrong;
@@ -697,6 +750,7 @@ test("nested savepoints restore role state and RELEASE keeps the restored role",
 test("duplicate savepoint names resolve to the newest remaining savepoint", () => {
   const sql = `
     SET ROLE "${ownerRole}";
+    BEGIN;
     SET LOCAL ROLE wrong_owner;
     SAVEPOINT repeated;
     SET LOCAL ROLE "${ownerRole}";
@@ -719,13 +773,14 @@ test("unknown, released, and malformed savepoint operations fail closed", () => 
     "RELEASE;",
     "SAVEPOINT named extra;",
   ]) {
-    const sql = `SET ROLE "${ownerRole}"; ${operation}
+    const sql = `SET ROLE "${ownerRole}"; BEGIN; ${operation}
       ${guardedReceiptOperations}`;
     assertBothRoleGuards(sql, false, operation);
   }
 
   const released = `
     SET ROLE "${ownerRole}";
+    BEGIN;
     SAVEPOINT released;
     RELEASE SAVEPOINT released;
     ROLLBACK TO released;
@@ -737,7 +792,9 @@ test("unknown, released, and malformed savepoint operations fail closed", () => 
 test("full COMMIT and ROLLBACK retain transaction role semantics", () => {
   const restoredSessionRole = `
     SET ROLE "${ownerRole}";
+    BEGIN;
     COMMIT;
+    BEGIN;
     SET LOCAL ROLE wrong_owner;
     SAVEPOINT temporary;
     ROLLBACK;
@@ -747,6 +804,7 @@ test("full COMMIT and ROLLBACK retain transaction role semantics", () => {
 
   const rolledBackSessionRole = `
     SET ROLE wrong_owner;
+    BEGIN;
     ROLLBACK;
     ${guardedReceiptOperations}
   `;
