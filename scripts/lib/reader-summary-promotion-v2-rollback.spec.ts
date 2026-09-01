@@ -25,7 +25,9 @@ describe("Promotion V2 publication-owner rollback", () => {
     expect(migration).not.toMatch(
       /btrim\(r\."authority_receipt_sha256"\) = authority_receipt_sha256/u,
     );
-    expect(migration).toContain("current_publication_id\" = prior_v1_publication_id");
+    expect(migration).toContain(
+      'current_publication_id" = p_prior_v1_publication_id',
+    );
     expect(migration).toContain(
       "v_prior_artifact.\"status\" IS DISTINCT FROM 'SUPERSEDED'",
     );
@@ -34,6 +36,31 @@ describe("Promotion V2 publication-owner rollback", () => {
     );
     expect(migration).toContain("SET \"status\" = 'SUPERSEDED'");
     expect(migration).not.toMatch(/DELETE FROM public\."reader_summary_/u);
+  });
+
+  it("keeps rollback parameters distinct from referenced column names", () => {
+    const rollbackFunction = migration.match(
+      /CREATE FUNCTION public\."rollback_reader_summary_promotion_v2"\((?<parameters>[\s\S]*?)\) RETURNS JSONB[\s\S]*?AS \$function\$(?<body>[\s\S]*?)\$function\$;/u,
+    );
+    expect(rollbackFunction?.groups).toBeDefined();
+
+    const parameters = [...rollbackFunction!.groups!.parameters.matchAll(
+      /^\s*(?<name>[a-z][a-z0-9_]*)\s+(?:UUID|DATE|TEXT|TIMESTAMPTZ),?$/gmu,
+    )].map((match) => match.groups!.name);
+    const referencedColumns = new Set(
+      [...rollbackFunction!.groups!.body.matchAll(
+        /"(?<name>[a-z][a-z0-9_]*)"/gu,
+      )].map((match) => match.groups!.name),
+    );
+
+    expect(parameters).toHaveLength(15);
+    expect(parameters).toEqual(expect.arrayContaining([
+      "p_prior_v1_publication_id",
+      "p_prior_v1_artifact_id",
+    ]));
+    expect(parameters.filter((name) => referencedColumns.has(name))).toEqual(
+      [],
+    );
   });
 
   it("admits only a complete V2 tuple and a strict readable V1 tuple", () => {
