@@ -14,6 +14,15 @@ const migration = readFileSync(join(
   "prisma/migrations/20260831120000_reader_summary_promotion_v2_rollback/migration.sql",
 ), "utf8");
 
+const rollbackRunner = readFileSync(join(
+  process.cwd(),
+  "scripts/run-reader-summary-promotion-v2-rollback.ts",
+), "utf8");
+const postgresContract = readFileSync(join(
+  process.cwd(),
+  "scripts/lib/reader-summary-promotion-v2-rollback-postgres-contract.ts",
+), "utf8");
+
 describe("Promotion V2 publication-owner rollback", () => {
   it("atomically restores the superseded V1 lifecycle and preserves payloads", () => {
     expect(migration).toContain(
@@ -25,7 +34,9 @@ describe("Promotion V2 publication-owner rollback", () => {
     expect(migration).not.toMatch(
       /btrim\(r\."authority_receipt_sha256"\) = authority_receipt_sha256/u,
     );
-    expect(migration).toContain("current_publication_id\" = prior_v1_publication_id");
+    expect(migration).toContain(
+      "current_publication_id\" = expected_prior_v1_publication_id",
+    );
     expect(migration).toContain(
       "v_prior_artifact.\"status\" IS DISTINCT FROM 'SUPERSEDED'",
     );
@@ -34,6 +45,51 @@ describe("Promotion V2 publication-owner rollback", () => {
     );
     expect(migration).toContain("SET \"status\" = 'SUPERSEDED'");
     expect(migration).not.toMatch(/DELETE FROM public\."reader_summary_/u);
+  });
+
+  it("keeps rollback inputs distinct from every referenced SQL identifier", () => {
+    const rollbackFunction = migration.match(
+      /CREATE FUNCTION public\."rollback_reader_summary_promotion_v2"\(([\s\S]*?)\) RETURNS JSONB[\s\S]*?AS \$function\$([\s\S]*?)\$function\$;/u,
+    );
+    expect(rollbackFunction).not.toBeNull();
+    const parameters = Array.from(
+      rollbackFunction![1]!.matchAll(
+        /^\s*([a-z][a-z0-9_]*)\s+(UUID|DATE|TEXT|TIMESTAMPTZ),?$/gmu,
+      ),
+    );
+    expect(parameters.map((match) => match[1])).toEqual([
+      "target_tenant_id",
+      "target_workspace_id",
+      "target_requested_utc_date",
+      "target_authority_receipt_format",
+      "target_authority_receipt_sha256",
+      "expected_v2_publication_id",
+      "expected_v2_artifact_id",
+      "expected_v2_report_sha256",
+      "expected_v2_proof_sha256",
+      "expected_prior_v1_publication_id",
+      "expected_prior_v1_artifact_id",
+      "expected_prior_v1_report_sha256",
+      "expected_prior_v1_proof_sha256",
+      "expected_date_fence_token",
+      "target_rollback_at",
+    ]);
+    expect(parameters.map((match) => match[2])).toEqual([
+      "UUID", "UUID", "DATE", "TEXT", "TEXT", "UUID", "UUID", "TEXT",
+      "TEXT", "UUID", "UUID", "TEXT", "TEXT", "TEXT", "TIMESTAMPTZ",
+    ]);
+    const referencedIdentifiers = new Set(Array.from(
+      rollbackFunction![2]!.matchAll(/"([a-z][a-z0-9_]*)"/gu),
+      (match) => match[1],
+    ));
+    expect(parameters.map((match) => match[1]).filter(
+      (name) => referencedIdentifiers.has(name),
+    )).toEqual([]);
+  });
+
+  it("keeps both repository callers positional", () => {
+    expect(positionalRollbackArguments(rollbackRunner)).toHaveLength(15);
+    expect(positionalRollbackArguments(postgresContract)).toHaveLength(15);
   });
 
   it("admits only a complete V2 tuple and a strict readable V1 tuple", () => {
@@ -129,6 +185,18 @@ describe("Promotion V2 publication-owner rollback", () => {
       .toMatchObject({ status: "completed" });
   });
 });
+
+const positionalRollbackArguments = (source: string): readonly string[] => {
+  const call = source.match(
+    /(?:select|SELECT) public\."rollback_reader_summary_promotion_v2"\(([\s\S]*?)\) (?:as|AS) receipt/u,
+  );
+  expect(call).not.toBeNull();
+  expect(call![1]).not.toContain("=>");
+  return Array.from(
+    call![1]!.matchAll(/\$([1-9][0-9]*)::[a-z]+/gu),
+    (match) => match[1]!,
+  );
+};
 
 const completedReceipt = () => ({
   schemaVersion: 1,

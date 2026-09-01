@@ -601,12 +601,12 @@ CREATE FUNCTION public."rollback_reader_summary_promotion_v2"(
   expected_v2_artifact_id UUID,
   expected_v2_report_sha256 TEXT,
   expected_v2_proof_sha256 TEXT,
-  prior_v1_publication_id UUID,
-  prior_v1_artifact_id UUID,
-  prior_v1_report_sha256 TEXT,
-  prior_v1_proof_sha256 TEXT,
-  date_fence_token TEXT,
-  rollback_at TIMESTAMPTZ
+  expected_prior_v1_publication_id UUID,
+  expected_prior_v1_artifact_id UUID,
+  expected_prior_v1_report_sha256 TEXT,
+  expected_prior_v1_proof_sha256 TEXT,
+  expected_date_fence_token TEXT,
+  target_rollback_at TIMESTAMPTZ
 ) RETURNS JSONB LANGUAGE plpgsql VOLATILE STRICT SECURITY DEFINER
 SET search_path = pg_catalog AS $function$
 DECLARE
@@ -631,11 +631,11 @@ BEGIN
     OR target_authority_receipt_sha256 !~ '^[0-9a-f]{64}$'
     OR expected_v2_report_sha256 !~ '^[0-9a-f]{64}$'
     OR expected_v2_proof_sha256 !~ '^[0-9a-f]{64}$'
-    OR prior_v1_report_sha256 !~ '^[0-9a-f]{64}$'
-    OR prior_v1_proof_sha256 !~ '^[0-9a-f]{64}$'
-    OR date_fence_token !~ ('^reader-summary-date:' ||
+    OR expected_prior_v1_report_sha256 !~ '^[0-9a-f]{64}$'
+    OR expected_prior_v1_proof_sha256 !~ '^[0-9a-f]{64}$'
+    OR expected_date_fence_token !~ ('^reader-summary-date:' ||
       target_requested_utc_date::TEXT || ':[1-9][0-9]*$')
-    OR rollback_at > clock_timestamp() + INTERVAL '5 minutes' THEN
+    OR target_rollback_at > clock_timestamp() + INTERVAL '5 minutes' THEN
     RAISE EXCEPTION 'Promotion V2 rollback input proof is invalid';
   END IF;
   IF EXISTS (
@@ -671,7 +671,7 @@ BEGIN
   FOR KEY SHARE;
   SELECT * INTO STRICT v_prior
   FROM public."reader_summary_publications" publication
-  WHERE publication."id" = prior_v1_publication_id
+  WHERE publication."id" = expected_prior_v1_publication_id
   FOR KEY SHARE;
   IF v_current."id" = v_prior."id"
     OR v_current."tenant_id" IS DISTINCT FROM target_tenant_id
@@ -690,12 +690,12 @@ BEGIN
     OR v_current."reader_summary_artifact_id" IS DISTINCT FROM
       expected_v2_artifact_id
     OR v_prior."reader_summary_artifact_id" IS DISTINCT FROM
-      prior_v1_artifact_id
+      expected_prior_v1_artifact_id
     OR btrim(v_current."report_sha256") IS DISTINCT FROM
       expected_v2_report_sha256
     OR btrim(v_current."proof_sha256") IS DISTINCT FROM expected_v2_proof_sha256
-    OR btrim(v_prior."report_sha256") IS DISTINCT FROM prior_v1_report_sha256
-    OR btrim(v_prior."proof_sha256") IS DISTINCT FROM prior_v1_proof_sha256
+    OR btrim(v_prior."report_sha256") IS DISTINCT FROM expected_prior_v1_report_sha256
+    OR btrim(v_prior."proof_sha256") IS DISTINCT FROM expected_prior_v1_proof_sha256
     OR v_current."exact_proof"->>'schemaVersion' IS DISTINCT FROM
       'reader_summary.publication_proof.v1'
     OR (
@@ -733,7 +733,7 @@ BEGIN
   FOR KEY SHARE;
   SELECT * INTO STRICT v_prior_artifact
   FROM public."reader_summary_artifacts" artifact
-  WHERE artifact."id" = prior_v1_artifact_id
+  WHERE artifact."id" = expected_prior_v1_artifact_id
   FOR KEY SHARE;
   IF v_current."reader_summary_job_id" IS NULL
     OR (v_prior."publication_kind" = 'EXACT'
@@ -825,8 +825,8 @@ BEGIN
         AND r."requested_utc_date" = target_requested_utc_date
         AND r."v2_publication_id" = expected_v2_publication_id
         AND r."v2_artifact_id" = expected_v2_artifact_id
-        AND r."prior_v1_publication_id" = prior_v1_publication_id
-        AND r."prior_v1_artifact_id" = prior_v1_artifact_id
+        AND r."prior_v1_publication_id" = expected_prior_v1_publication_id
+        AND r."prior_v1_artifact_id" = expected_prior_v1_artifact_id
         AND r."receipt"->>'format' = target_authority_receipt_format
         AND r."receipt"->>'date' = target_requested_utc_date::TEXT
         AND r."receipt"->>'status' = 'published'
@@ -839,13 +839,13 @@ BEGIN
         AND r."receipt"->'outputIdentity'->>'proofSha256' =
           expected_v2_proof_sha256
         AND r."receipt"->'rollbackAuthority'->>'priorPublicationId' =
-          prior_v1_publication_id::TEXT
+          expected_prior_v1_publication_id::TEXT
         AND r."receipt"->'rollbackAuthority'->>'priorArtifactId' =
-          prior_v1_artifact_id::TEXT
+          expected_prior_v1_artifact_id::TEXT
         AND r."receipt"->'rollbackAuthority'->>'priorReportSha256' =
-          prior_v1_report_sha256
+          expected_prior_v1_report_sha256
         AND r."receipt"->'rollbackAuthority'->>'priorProofSha256' =
-          prior_v1_proof_sha256
+          expected_prior_v1_proof_sha256
         AND r."receipt"->'rollbackAuthority'->>
           'expectedCurrentPublicationId' = expected_v2_publication_id::TEXT
         AND r."receipt"->'rollbackAuthority'->>
@@ -866,11 +866,11 @@ BEGIN
     'authorityReceiptFormat', target_authority_receipt_format,
     'authorityReceiptSha256', target_authority_receipt_sha256,
     'expectedV2PublicationId', expected_v2_publication_id::TEXT,
-    'priorV1PublicationId', prior_v1_publication_id::TEXT
+    'priorV1PublicationId', expected_prior_v1_publication_id::TEXT
   )::TEXT, 'UTF8')), 'hex');
 
   UPDATE public."reader_summary_artifacts"
-  SET "status" = 'SUPERSEDED', "updated_at" = rollback_at
+  SET "status" = 'SUPERSEDED', "updated_at" = target_rollback_at
   WHERE "id" = expected_v2_artifact_id
     AND "tenant_id" = target_tenant_id
     AND "workspace_id" = target_workspace_id
@@ -882,12 +882,12 @@ BEGIN
 
   PERFORM set_config(
     'social_monitor.authorized_promotion_v2_rollback',
-    prior_v1_artifact_id::TEXT,
+    expected_prior_v1_artifact_id::TEXT,
     TRUE
   );
   UPDATE public."reader_summary_artifacts"
-  SET "status" = v_prior."semantic_status", "updated_at" = rollback_at
-  WHERE "id" = prior_v1_artifact_id
+  SET "status" = v_prior."semantic_status", "updated_at" = target_rollback_at
+  WHERE "id" = expected_prior_v1_artifact_id
     AND "tenant_id" = target_tenant_id
     AND "workspace_id" = target_workspace_id
     AND "status" = 'SUPERSEDED';
@@ -900,8 +900,8 @@ BEGIN
   );
 
   UPDATE public."reader_summary_publication_slots"
-  SET "current_publication_id" = prior_v1_publication_id,
-      "updated_at" = rollback_at
+  SET "current_publication_id" = expected_prior_v1_publication_id,
+      "updated_at" = target_rollback_at
   WHERE "tenant_id" = target_tenant_id
     AND "workspace_id" = target_workspace_id
     AND "scope_type" = v_slot."scope_type"
@@ -920,8 +920,8 @@ BEGIN
       ON artifact."id" = publication."reader_summary_artifact_id"
     WHERE slot."tenant_id" = target_tenant_id
       AND slot."workspace_id" = target_workspace_id
-      AND slot."current_publication_id" = prior_v1_publication_id
-      AND artifact."id" = prior_v1_artifact_id
+      AND slot."current_publication_id" = expected_prior_v1_publication_id
+      AND artifact."id" = expected_prior_v1_artifact_id
       AND artifact."status" = 'COMPLETED'
       AND public."reader_summary_promotion_v2_artifact_is_strict_v1"(
         artifact
@@ -934,14 +934,14 @@ BEGIN
     'schemaVersion', 1,
     'format', 'reader-summary-promotion-v2-rollback-receipt-v1',
     'migration', '20260831120000_reader_summary_promotion_v2_rollback',
-    'rolledBackAt', rollback_at,
+    'rolledBackAt', target_rollback_at,
     'date', target_requested_utc_date::TEXT,
     'authorityReceiptFormat', target_authority_receipt_format,
     'authorityReceiptSha256', target_authority_receipt_sha256,
     'rollbackIdentity', v_identity,
-    'fenceToken', date_fence_token,
-    'restoredPublicationId', prior_v1_publication_id::TEXT,
-    'restoredArtifactId', prior_v1_artifact_id::TEXT,
+    'fenceToken', expected_date_fence_token,
+    'restoredPublicationId', expected_prior_v1_publication_id::TEXT,
+    'restoredArtifactId', expected_prior_v1_artifact_id::TEXT,
     'preservedV2PublicationId', expected_v2_publication_id::TEXT,
     'preservedV2ArtifactId', expected_v2_artifact_id::TEXT,
     'legacyV1ReaderVerified', TRUE
@@ -957,10 +957,10 @@ BEGIN
     gen_random_uuid(), target_tenant_id, target_workspace_id,
     target_requested_utc_date, target_authority_receipt_format,
     target_authority_receipt_sha256, v_identity,
-    prior_v1_publication_id, prior_v1_artifact_id,
-    expected_v2_publication_id, expected_v2_artifact_id, date_fence_token,
+    expected_prior_v1_publication_id, expected_prior_v1_artifact_id,
+    expected_v2_publication_id, expected_v2_artifact_id, expected_date_fence_token,
     v_receipt,
-    encode(sha256(convert_to(v_receipt::TEXT, 'UTF8')), 'hex'), rollback_at
+    encode(sha256(convert_to(v_receipt::TEXT, 'UTF8')), 'hex'), target_rollback_at
   );
   RETURN v_receipt;
 END;
