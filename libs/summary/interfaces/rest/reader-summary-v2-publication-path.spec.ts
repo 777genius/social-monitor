@@ -28,12 +28,14 @@ import { InMemoryReaderSummaryPublication } from
   "../../adapters/persistence/in-memory-reader-summary-publication";
 import {
   additionalReaderSummaryEvidence,
+  emptyReaderSummaryReliabilityReport,
   primaryReaderSummaryEvidence,
   ReaderSummaryJob,
   workspaceReaderSummaryScope,
   type ReaderPostPromotionAttestationV2,
   type ReaderSummaryCoveragePlan,
   type ReaderSummaryEditorialSlate,
+  type ReaderSummarySnapshot,
   type SummaryEvidenceSelection,
 } from "../../domain";
 import type {
@@ -197,7 +199,7 @@ describe("ExecuteReaderSummaryJobUseCase V2 combined publication path", () => {
       item.promotionCandidateId)).toEqual(
       slate.top.map((entry) => entry.candidateId),
     );
-    expect(snapshot.content?.selectedPosts.map((item) =>
+    expect((snapshot.content?.selectedPosts ?? []).map((item) =>
       item.promotionCandidateId)).toEqual(
       slate.additional.map((entry) => entry.candidateId),
     );
@@ -417,7 +419,7 @@ describe("ExecuteReaderSummaryJobUseCase V2 combined publication path", () => {
       item.promotionCandidateId)).toEqual(
       slate.top.map((entry) => entry.candidateId),
     );
-    expect(snapshot.content?.selectedPosts.map((item) =>
+    expect((snapshot.content?.selectedPosts ?? []).map((item) =>
       item.promotionCandidateId)).toEqual(
       slate.additional.map((entry) => entry.candidateId),
     );
@@ -432,7 +434,7 @@ describe("ExecuteReaderSummaryJobUseCase V2 combined publication path", () => {
       .map((citation) => citation.feedItemId)).toEqual(
       orderedEntries.map((entry) => entry.candidateId),
     );
-    expect(snapshot.content?.selectedPosts.filter((item) =>
+    expect((snapshot.content?.selectedPosts ?? []).filter((item) =>
       item.providerKey === "github-trending-page"),
     ).toHaveLength(10);
 
@@ -610,13 +612,36 @@ class ImmutableSlatePublicationModel implements ReaderSummaryModelPort {
         rankingPolicyVersion: input.evidence.rankingPolicyVersion,
       },
       usage: this.estimate(),
-      content: {
-        headline,
-        narrativeSections,
-      },
     };
+    const content = {
+      headline,
+      oneLineTakeaway: executiveSummary,
+      bullets: [executiveSummary],
+      narrativeSections,
+      qualityState: {
+        status: "ready" as const,
+        flags: [],
+        warnings: [],
+        isSingleSource: false,
+      },
+      interestSections: [],
+      sourceMix: [],
+      topReads: [],
+      selectedPosts: [],
+      claimBoard: [],
+      reliabilityReport: emptyReaderSummaryReliabilityReport(),
+      trendDelta: {
+        newSignals: [],
+        growingSignals: [],
+        repeatedSignals: [],
+        fadingSignals: [],
+      },
+      openQuestions: [],
+      risks: [],
+      nextActions: [],
+    } satisfies ReaderSummarySnapshot;
     this.slateJsonAfterGeneration = JSON.stringify(slate);
-    return { route, draft };
+    return { route, draft: { ...draft, headline: content.headline, content } };
   }
 
   validateRawProviderResponse(): ReaderSummaryModelValidationResult {

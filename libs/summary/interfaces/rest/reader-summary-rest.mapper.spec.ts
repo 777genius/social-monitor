@@ -287,6 +287,12 @@ describe("readerSummaryArtifactViewFromReaderSummaryView", () => {
       .toEqual([]);
 
     const persistedAttestation = readerSummaryView.promotionAttestations[0]!;
+    if (
+      persistedAttestation.schemaVersion !==
+      "reader_post_promotion_attestation.v2"
+    ) {
+      throw new Error("V2 fixture presented as a V1 attestation");
+    }
     const reorderedScoreView = {
       ...readerSummaryView,
       content: {
@@ -426,7 +432,7 @@ describe("readerSummaryArtifactViewFromReaderSummaryView", () => {
       ...emptyBoardView,
       topStories: [],
       citations: [],
-      qualityFlags: ["no_signal"],
+      qualityFlags: ["no_signal"] as const,
       lineage: {
         ...emptyBoardView.lineage,
         promptVersion: "reader_summary.promotion_no_signal.v1",

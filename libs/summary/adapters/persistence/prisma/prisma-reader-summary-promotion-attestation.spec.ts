@@ -37,7 +37,12 @@ describe("normalizePromotionAttestations", () => {
       exactObservedAt: "2026-08-14T12:00:00.000000Z",
       exactIngestionCutoff: "2026-08-14T12:00:00.000000Z",
     });
-    expect(attestation?.evidenceLineage).toEqual({
+    if (
+      attestation?.schemaVersion !== "reader_post_promotion_attestation.v2"
+    ) {
+      throw new Error("serialized V2 fixture normalized as a V1 attestation");
+    }
+    expect(attestation.evidenceLineage).toEqual({
       leadCandidateId: "github:repo",
       leadCitationId: "citation:github:repo",
       supportCandidateIds: [],

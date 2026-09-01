@@ -15,8 +15,12 @@ import {
   "../../../domain/services/reader-post-promotion-attestation";
 import { buildReaderPromotionV2TestAttestations } from
   "../../../domain/services/reader-post-promotion-attestation.spec-support";
-import { ReaderSummaryArtifact } from "../../../domain/entities/reader-summary-artifact";
+import {
+  ReaderSummaryArtifact,
+  type ReaderSummaryArtifactProps,
+} from "../../../domain/entities/reader-summary-artifact";
 import type {
+  ReaderPostPromotionInput,
   ReaderPostPromotionAttestationV1,
   ReaderPostPromotionAttestationV2,
 } from
@@ -261,7 +265,7 @@ describe("ReaderSummaryArtifact promotion immutability", () => {
       },
       promotionAttestations: attestations,
       promotionEvidenceFacts: [selected.candidate, ...selected.support],
-    };
+    } satisfies ReaderSummaryArtifactProps;
 
     expect(() => assertReaderSummaryPromotionAttestations(props, attestations))
       .not.toThrow();
@@ -662,7 +666,7 @@ const legacyPeerContextFixture = (generatedAt: Date, peerPoints = 100) => {
 };
 
 const isolatedLegacyBoardFixture = (
-  inputs: readonly ReturnType<typeof legacyBoardInput>[],
+  inputs: readonly ReaderPostPromotionInput[],
 ) => {
   const base = readerSummaryArtifact("artifact-legacy-board").toSnapshot();
   const periodStart = new Date("2026-08-26T00:00:00.000Z");
@@ -752,9 +756,13 @@ const legacyBoardInput = (
 const redigestV1Attestation = (
   attestation: ReaderPostPromotionAttestationV1,
 ): ReaderPostPromotionAttestationV1 => {
-  const body = { ...attestation };
-  delete (body as Partial<ReaderPostPromotionAttestationV1>).canonicalPayload;
-  delete (body as Partial<ReaderPostPromotionAttestationV1>).digest;
+  const {
+    canonicalPayload: ignoredCanonicalPayload,
+    digest: ignoredDigest,
+    ...body
+  } = attestation;
+  void ignoredCanonicalPayload;
+  void ignoredDigest;
   const canonicalPayload = canonicalPromotionPayload(body);
   return {
     ...attestation,
