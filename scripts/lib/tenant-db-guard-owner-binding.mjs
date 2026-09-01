@@ -12,6 +12,7 @@ export const migrationBindsTableOwner = ({ sql, table, ownerRole }) => {
   const ownerAlterations = [];
 
   for (const statement of statements) {
+    if (changesStringLexing(statement)) return false;
     const roleChange = parseRoleChange(statement);
     if (roleChange?.invalid) return false;
     if (roleChange?.scope === "local") localRole = roleChange.role;
@@ -81,6 +82,12 @@ const scanSql = (sql) => {
       index = end;
       continue;
     }
+    if ((character === "e" || character === "E") && sql[index + 1] === "'") {
+      const end = scanEscapeQuoted(sql, index + 1);
+      if (end < 0) return null;
+      index = end;
+      continue;
+    }
     if (character === "'") {
       const end = scanQuoted(sql, index, "'");
       if (end < 0) return null;
@@ -112,6 +119,23 @@ const scanSql = (sql) => {
     index += 1;
   }
   return tokens;
+};
+
+const scanEscapeQuoted = (sql, start) => {
+  let index = start + 1;
+  while (index < sql.length) {
+    if (sql[index] === "\\") {
+      if (index + 1 >= sql.length) return -1;
+      index += 2;
+    } else if (sql[index] !== "'") {
+      index += 1;
+    } else if (sql[index + 1] === "'") {
+      index += 2;
+    } else {
+      return index + 1;
+    }
+  }
+  return -1;
 };
 
 const scanBlockComment = (sql, start) => {
@@ -175,6 +199,20 @@ const splitStatements = (tokens) => {
   }
   if (current.length > 0) statements.push(current);
   return statements;
+};
+
+const changesStringLexing = (statement) => {
+  const command = wordAt(statement, 0);
+  if (command === "discard" && wordAt(statement, 1) === "all") return true;
+  if (command !== "set" && command !== "reset") return false;
+  let cursor = 1;
+  if (wordAt(statement, cursor) === "local" || wordAt(statement, cursor) === "session") {
+    cursor += 1;
+  }
+  const parameter = identifierAt(statement, cursor);
+  return (command === "reset" && parameter === "all") ||
+    parameter === "backslash_quote" ||
+    parameter === "standard_conforming_strings";
 };
 
 const parseRoleChange = (statement) => {

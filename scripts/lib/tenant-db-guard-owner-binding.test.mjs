@@ -191,6 +191,50 @@ test("quoted and dollar-quoted role decoys are not executable", () => {
   );
 });
 
+test("PostgreSQL escape strings cannot smuggle executable role changes", () => {
+  const sql = `SELECT E'a\\'; SET ROLE ${ownerRole}; SELECT E\\'b';
+CREATE TABLE public.receipt (id uuid);`;
+  assert.equal(
+    migrationBindsTableOwner({ sql, table: "receipt", ownerRole }),
+    false,
+  );
+});
+
+test("PostgreSQL escape strings consume escapes and doubled quotes in either casing", () => {
+  for (const escapeString of [
+    String.raw`E'a\'; SET ROLE wrong_owner; SELECT \'b'`,
+    String.raw`e'a\\b''; RESET ROLE; SELECT ''c'`,
+  ]) {
+    const sql = `SET ROLE "${ownerRole}";
+      SELECT ${escapeString};
+      CREATE TABLE public.receipt (id uuid);`;
+    assert.equal(
+      migrationBindsTableOwner({ sql, table: "receipt", ownerRole }),
+      true,
+      escapeString,
+    );
+  }
+});
+
+test("string lexing configuration changes fail closed", () => {
+  for (const statement of [
+    "SET standard_conforming_strings = off;",
+    "SET LOCAL STANDARD_CONFORMING_STRINGS TO on;",
+    'SET "backslash_quote" TO on;',
+    "RESET standard_conforming_strings;",
+    "RESET ALL;",
+    "DISCARD ALL;",
+  ]) {
+    const sql = `SET ROLE "${ownerRole}"; ${statement}
+      CREATE TABLE public.receipt (id uuid);`;
+    assert.equal(
+      migrationBindsTableOwner({ sql, table: "receipt", ownerRole }),
+      false,
+      statement,
+    );
+  }
+});
+
 test("comment-interleaved wrong role and session authorization fail closed", () => {
   for (const statement of [
     "SET/**/ROLE wrong_owner;",
@@ -214,6 +258,8 @@ test("malformed lexical input fails closed", () => {
     "/* unterminated",
     "$body$ unterminated",
     "$bad-tag$ malformed",
+    "SELECT E'unterminated",
+    "SELECT e'dangling\\\\",
   ]) {
     const sql = `SET ROLE "${ownerRole}"; ${malformed}
       CREATE TABLE public.receipt (id uuid);`;
