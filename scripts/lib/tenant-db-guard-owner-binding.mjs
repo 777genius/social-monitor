@@ -1,6 +1,7 @@
 export const migrationBindsTableOwner = ({ sql, table, ownerRole }) => {
   const scanned = scanSql(sql);
   if (scanned === null) return false;
+  if (containsExecutableSetConfig(scanned)) return false;
 
   const statements = splitStatements(scanned);
   const normalizedTable = table.toLowerCase();
@@ -61,6 +62,11 @@ export const migrationBindsTableOwner = ({ sql, table, ownerRole }) => {
   }
   return operation?.role === normalizedOwner;
 };
+
+const containsExecutableSetConfig = (tokens) => tokens.some((token) =>
+  (token.kind === "word" || token.kind === "identifier") &&
+  token.value.toLowerCase() === "set_config"
+);
 
 const scanSql = (sql) => {
   const tokens = [];

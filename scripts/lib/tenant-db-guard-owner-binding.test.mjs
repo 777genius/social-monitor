@@ -200,6 +200,52 @@ CREATE TABLE public.receipt (id uuid);`;
   );
 });
 
+test("set_config cannot enable PostgreSQL string-lexing role smuggling", () => {
+  const sql = String.raw`SELECT pg_catalog.set_config('standard_conforming_strings', 'off', false);
+SELECT 'a\'; SET ROLE social_monitor_public_schema_owner; SELECT \'b';
+CREATE TABLE public.receipt (id uuid);`;
+  assert.equal(
+    migrationBindsTableOwner({ sql, table: "receipt", ownerRole }),
+    false,
+  );
+});
+
+test("executable set_config identifier variants fail closed", () => {
+  for (const expression of [
+    "set_config('standard_conforming_strings', 'off', false)",
+    "SeT_CoNfIg('standard_conforming_strings', 'off', false)",
+    "pg_catalog.set_config('standard_conforming_strings', 'off', false)",
+    'pg_catalog."set_config"(\'standard_conforming_strings\', \'off\', false)',
+    '"pg_catalog"."SET_CONFIG"(\'standard_conforming_strings\', \'off\', false)',
+  ]) {
+    const sql = `SET ROLE "${ownerRole}";
+      SELECT ${expression};
+      CREATE TABLE public.receipt (id uuid);`;
+    assert.equal(
+      migrationBindsTableOwner({ sql, table: "receipt", ownerRole }),
+      false,
+      expression,
+    );
+  }
+});
+
+test("string, comment, and dollar-quoted set_config decoys stay harmless", () => {
+  const sql = `
+    SELECT 'set_config', 'pg_catalog.set_config()', '"set_config"';
+    -- SELECT set_config('standard_conforming_strings', 'off', false);
+    /* SELECT pg_catalog."set_config"('standard_conforming_strings', 'off', false); */
+    DO $set_config_decoy$ BEGIN
+      PERFORM pg_catalog.set_config('standard_conforming_strings', 'off', false);
+    END $set_config_decoy$;
+    SET ROLE "${ownerRole}";
+    CREATE TABLE public.receipt (id uuid);
+  `;
+  assert.equal(
+    migrationBindsTableOwner({ sql, table: "receipt", ownerRole }),
+    true,
+  );
+});
+
 test("PostgreSQL escape strings consume escapes and doubled quotes in either casing", () => {
   for (const escapeString of [
     String.raw`E'a\'; SET ROLE wrong_owner; SELECT \'b'`,
