@@ -105,6 +105,7 @@ describe("ExecuteReaderSummaryJobUseCase V2 combined publication path", () => {
         },
       }));
     });
+    attestDurableMetricAuthority(feedItems, now);
     const jobs = new InMemoryReaderSummaryJobRepository();
     const artifacts = new InMemoryReaderSummaryArtifactRepository();
     const events = new InMemorySummaryEventPublisher();
@@ -316,6 +317,7 @@ describe("ExecuteReaderSummaryJobUseCase V2 combined publication path", () => {
         providerMetadata: candidate.providerMetadata,
       }));
     });
+    attestDurableMetricAuthority(feedItems, now);
     const jobs = new InMemoryReaderSummaryJobRepository();
     const artifacts = new InMemoryReaderSummaryArtifactRepository();
     const events = new InMemorySummaryEventPublisher();
@@ -685,6 +687,29 @@ const dailyPublicationGitHubProjectionReader = (
     };
   },
 });
+
+const attestDurableMetricAuthority = (
+  repository: InMemoryFeedItemReadRepository,
+  observedAt: Date,
+): void => {
+  const readSnapshot = repository.readPromotionSnapshot.bind(repository);
+  jest.spyOn(repository, "readPromotionSnapshot").mockImplementation(
+    async (query) => {
+      const snapshot = await readSnapshot(query);
+      if (!snapshot.ok) return snapshot;
+      return {
+        ...snapshot,
+        candidates: snapshot.candidates.map((candidate) => ({
+          ...candidate,
+          metricAuthority: {
+            observedAt,
+            regressionState: "stable" as const,
+          },
+        })),
+      };
+    },
+  );
+};
 
 const publicationCandidates = () => [
   {
