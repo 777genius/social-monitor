@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-import { migrationBindsTableOwner } from "./tenant-db-guard-owner-binding.mjs";
+import {
+  migrationAuthorizesForwardRlsOperations,
+  migrationBindsTableOwner,
+} from "./tenant-db-guard-owner-binding.mjs";
 
 const ownerRole = "social_monitor_public_schema_owner";
 const receiptTables = [
@@ -22,6 +25,10 @@ const postMigrationSql = readFileSync(
   "utf8",
 );
 const receiptOwnerAuditTag = "$promotion_v2_receipt_owner_audit$";
+const guardContract = JSON.parse(readFileSync(
+  "ops/security/tenant-db-guard-contract.json",
+  "utf8",
+));
 
 function receiptOwnerAudit(sql) {
   const start = sql.indexOf(`DO ${receiptOwnerAuditTag}`);
@@ -334,6 +341,187 @@ test("a generic ALTER TABLE cannot establish owner binding", () => {
     migrationBindsTableOwner({ sql, table: "receipt", ownerRole }),
     false,
   );
+});
+
+test("all real forward-RLS coverage migrations authorize their table operations", () => {
+  const migrationPaths = new Set(
+    guardContract.forwardRlsCoverage.map(({ migrationPath }) => migrationPath),
+  );
+  assert.equal(migrationPaths.size, 8);
+
+  for (const coverage of guardContract.forwardRlsCoverage) {
+    assert.equal(
+      migrationAuthorizesForwardRlsOperations({
+        sql: readFileSync(coverage.migrationPath, "utf8"),
+        table: coverage.table,
+        requiredRole: coverage.ownerRole,
+      }),
+      true,
+      `${coverage.migrationPath}: ${coverage.table}`,
+    );
+  }
+});
+
+test("forward-RLS ALTER TABLE and policy operations require the active role", () => {
+  const sql = `
+    SET LOCAL ROLE "${ownerRole}";
+    ALTER TABLE public.receipt ENABLE ROW LEVEL SECURITY;
+    CREATE POLICY tenant_isolation ON public.receipt USING (true);
+    ALTER POLICY tenant_isolation ON public.receipt USING (true);
+    DROP POLICY IF EXISTS tenant_isolation ON public.receipt;
+  `;
+  assert.equal(
+    migrationAuthorizesForwardRlsOperations({
+      sql,
+      table: "receipt",
+      requiredRole: ownerRole,
+    }),
+    true,
+  );
+});
+
+test("a wrong role in the middle of target operations fails authorization", () => {
+  const sql = `
+    SET ROLE "${ownerRole}";
+    ALTER TABLE receipt ENABLE ROW LEVEL SECURITY;
+    SET LOCAL ROLE wrong_owner;
+    CREATE POLICY tenant_isolation ON receipt USING (true);
+    SET LOCAL ROLE "${ownerRole}";
+    ALTER TABLE receipt FORCE ROW LEVEL SECURITY;
+  `;
+  assert.equal(
+    migrationAuthorizesForwardRlsOperations({
+      sql,
+      table: "receipt",
+      requiredRole: ownerRole,
+    }),
+    false,
+  );
+});
+
+test("RESET ROLE prevents later target operations from inheriting authorization", () => {
+  const sql = `
+    SET ROLE "${ownerRole}";
+    ALTER TABLE receipt ENABLE ROW LEVEL SECURITY;
+    RESET ROLE;
+    ALTER TABLE receipt FORCE ROW LEVEL SECURITY;
+  `;
+  assert.equal(
+    migrationAuthorizesForwardRlsOperations({
+      sql,
+      table: "receipt",
+      requiredRole: ownerRole,
+    }),
+    false,
+  );
+});
+
+test("comment and string decoys cannot change forward-RLS authorization", () => {
+  const sql = `
+    -- SET ROLE ${ownerRole}; ALTER TABLE receipt ENABLE ROW LEVEL SECURITY;
+    SELECT 'SET ROLE ${ownerRole}; CREATE POLICY tenant_isolation ON receipt';
+    SET ROLE wrong_owner;
+    /* SET ROLE ${ownerRole}; */
+    ALTER TABLE receipt ENABLE ROW LEVEL SECURITY;
+  `;
+  assert.equal(
+    migrationAuthorizesForwardRlsOperations({
+      sql,
+      table: "receipt",
+      requiredRole: ownerRole,
+    }),
+    false,
+  );
+  assert.equal(
+    migrationAuthorizesForwardRlsOperations({
+      sql: sql.replace("SET ROLE wrong_owner", `SET ROLE ${ownerRole}`),
+      table: "receipt",
+      requiredRole: ownerRole,
+    }),
+    true,
+  );
+});
+
+test("operations on another table and unrelated ALTERs do not count", () => {
+  for (const sql of [
+    `SET ROLE "${ownerRole}";
+      ALTER TABLE receipt_archive ENABLE ROW LEVEL SECURITY;
+      CREATE POLICY tenant_isolation ON receipt_archive USING (true);`,
+    `SET ROLE "${ownerRole}";
+      ALTER TABLE receipt_archive ADD COLUMN note text;`,
+  ]) {
+    assert.equal(
+      migrationAuthorizesForwardRlsOperations({
+        sql,
+        table: "receipt",
+        requiredRole: ownerRole,
+      }),
+      false,
+    );
+  }
+});
+
+test("generic target ALTER is operation authorization, not owner binding", () => {
+  const sql = `
+    SET ROLE "${ownerRole}";
+    ALTER TABLE public.receipt ADD COLUMN note text;
+  `;
+  assert.equal(
+    migrationBindsTableOwner({ sql, table: "receipt", ownerRole }),
+    false,
+  );
+  assert.equal(
+    migrationAuthorizesForwardRlsOperations({
+      sql,
+      table: "receipt",
+      requiredRole: ownerRole,
+    }),
+    true,
+  );
+  assert.equal(
+    migrationAuthorizesForwardRlsOperations({
+      sql: sql.replace(ownerRole, "wrong_owner"),
+      table: "receipt",
+      requiredRole: ownerRole,
+    }),
+    false,
+  );
+});
+
+test("forward-RLS operation authorization rejects session authorization", () => {
+  const sql = `
+    SET ROLE "${ownerRole}";
+    SET SESSION AUTHORIZATION "${ownerRole}";
+    ALTER TABLE receipt ENABLE ROW LEVEL SECURITY;
+  `;
+  assert.equal(
+    migrationAuthorizesForwardRlsOperations({
+      sql,
+      table: "receipt",
+      requiredRole: ownerRole,
+    }),
+    false,
+  );
+});
+
+test("forward-RLS operation authorization fails closed on malformed SQL", () => {
+  for (const sql of [
+    `SET ROLE "${ownerRole}"; SELECT 'unterminated`,
+    `SET ROLE "${ownerRole}"; ALTER TABLE;`,
+    `SET ROLE "${ownerRole}"; ALTER TABLE receipt;`,
+    `SET ROLE "${ownerRole}"; CREATE POLICY ON receipt;`,
+    `SET ROLE "${ownerRole}"; ALTER POLICY tenant_isolation ON receipt;`,
+  ]) {
+    assert.equal(
+      migrationAuthorizesForwardRlsOperations({
+        sql,
+        table: "receipt",
+        requiredRole: ownerRole,
+      }),
+      false,
+      sql,
+    );
+  }
 });
 
 test("an ALTER-only explicit OWNER TO can establish owner binding", () => {

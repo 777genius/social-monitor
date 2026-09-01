@@ -1,16 +1,63 @@
 export const migrationBindsTableOwner = ({ sql, table, ownerRole }) => {
-  const scanned = scanSql(sql);
-  if (scanned === null) return false;
-
-  const statements = splitStatements(scanned);
   const normalizedTable = table.toLowerCase();
   const normalizedOwner = ownerRole.toLowerCase();
-  let sessionRole = null;
-  let localRole = null;
   const creations = [];
   const ownerAlterations = [];
 
-  for (const statement of statements) {
+  const validSql = walkSqlStatements(sql, ({ statement, activeRole }) => {
+    const creation = parseTableCreation(statement);
+    if (creation?.table === normalizedTable) {
+      creations.push({
+        index: creation.index,
+        role: activeRole,
+      });
+    }
+    const alteration = parseOwnerAlteration(statement);
+    if (alteration?.table === normalizedTable) ownerAlterations.push(alteration);
+    return true;
+  });
+  if (!validSql) return false;
+
+  if (creations.length > 1) return false;
+  const operation = creations[0] ?? ownerAlterations[0];
+  const operationIndex = operation?.index;
+  if (operationIndex === undefined) return false;
+  const finalOwnerAlteration = ownerAlterations
+    .filter(({ index }) => index >= operationIndex)
+    .at(-1);
+  if (finalOwnerAlteration !== undefined) {
+    return finalOwnerAlteration.owner === normalizedOwner;
+  }
+  return operation?.role === normalizedOwner;
+};
+
+export const migrationAuthorizesForwardRlsOperations = ({
+  sql,
+  table,
+  requiredRole,
+}) => {
+  const normalizedTable = table.toLowerCase();
+  const normalizedRole = requiredRole.toLowerCase();
+  let relevantOperations = 0;
+
+  const validSql = walkSqlStatements(sql, ({ statement, activeRole }) => {
+    const operation = parseForwardRlsOperation(statement);
+    if (operation?.invalid) return false;
+    if (operation?.table !== normalizedTable) return true;
+    relevantOperations += 1;
+    return activeRole === normalizedRole;
+  });
+
+  return validSql && relevantOperations > 0;
+};
+
+const walkSqlStatements = (sql, visit) => {
+  const scanned = scanSql(sql);
+  if (scanned === null) return false;
+
+  let sessionRole = null;
+  let localRole = null;
+  for (const statement of splitStatements(scanned)) {
     const roleChange = parseRoleChange(statement);
     if (roleChange?.invalid) return false;
     if (roleChange?.scope === "local") localRole = roleChange.role;
@@ -28,28 +75,9 @@ export const migrationBindsTableOwner = ({ sql, table, ownerRole }) => {
       localRole = null;
     }
 
-    const creation = parseTableCreation(statement);
-    if (creation?.table === normalizedTable) {
-      creations.push({
-        index: creation.index,
-        role: localRole ?? sessionRole,
-      });
-    }
-    const alteration = parseOwnerAlteration(statement);
-    if (alteration?.table === normalizedTable) ownerAlterations.push(alteration);
+    if (!visit({ statement, activeRole: localRole ?? sessionRole })) return false;
   }
-
-  if (creations.length > 1) return false;
-  const operation = creations[0] ?? ownerAlterations[0];
-  const operationIndex = operation?.index;
-  if (operationIndex === undefined) return false;
-  const finalOwnerAlteration = ownerAlterations
-    .filter(({ index }) => index >= operationIndex)
-    .at(-1);
-  if (finalOwnerAlteration !== undefined) {
-    return finalOwnerAlteration.owner === normalizedOwner;
-  }
-  return operation?.role === normalizedOwner;
+  return true;
 };
 
 const scanSql = (sql) => {
@@ -291,9 +319,45 @@ const parseOwnerAlteration = (statement) => {
   return { table: relation.table, owner, index: tableAlteration.index };
 };
 
+const parseForwardRlsOperation = (statement) => {
+  if (startsWithWords(statement, ["alter", "table"])) {
+    const alteration = parseTableAlteration(statement);
+    if (alteration === null || endsAt(statement, alteration.relation.next)) {
+      return { invalid: true };
+    }
+    return alteration;
+  }
+  if (!["create", "drop", "alter"].includes(wordAt(statement, 0)) ||
+    wordAt(statement, 1) !== "policy") {
+    return null;
+  }
+
+  let cursor = 2;
+  if (wordAt(statement, 0) === "drop" &&
+    wordAt(statement, cursor) === "if" &&
+    wordAt(statement, cursor + 1) === "exists") {
+    cursor += 2;
+  }
+  if (identifierAt(statement, cursor) === null ||
+    wordAt(statement, cursor + 1) !== "on") {
+    return { invalid: true };
+  }
+  const relation = relationAt(statement, cursor + 2);
+  if (relation === null ||
+    (wordAt(statement, 0) === "alter" && endsAt(statement, relation.next))) {
+    return { invalid: true };
+  }
+  return { table: relation.table };
+};
+
 const parseTableAlteration = (statement) => {
   if (!startsWithWords(statement, ["alter", "table"])) return null;
-  const cursor = wordAt(statement, 2) === "only" ? 3 : 2;
+  let cursor = 2;
+  if (wordAt(statement, cursor) === "if" &&
+    wordAt(statement, cursor + 1) === "exists") {
+    cursor += 2;
+  }
+  if (wordAt(statement, cursor) === "only") cursor += 1;
   const relation = relationAt(statement, cursor);
   if (relation === null) return null;
   return { table: relation.table, index: statement[0].start, relation };

@@ -1,6 +1,6 @@
 import { existsSync, globSync, readFileSync } from 'node:fs';
 
-import { migrationBindsTableOwner } from
+import { migrationAuthorizesForwardRlsOperations } from
   './lib/tenant-db-guard-owner-binding.mjs';
 
 const contractPath = 'ops/security/tenant-db-guard-contract.json';
@@ -443,14 +443,15 @@ function assertForwardRlsCoverage(coverage) {
       );
     }
   }
-  if (!migrationBindsTableOwner({
+  if (!migrationAuthorizesForwardRlsOperations({
     sql: migrationSqlForCoverage,
     table: coverage.table,
-    ownerRole: coverage.ownerRole,
+    requiredRole: coverage.ownerRole,
   })) {
     violations.push(
-      `${coverage.migrationPath}: "${coverage.table}" creation must be bound `
-      + `to owner role "${coverage.ownerRole}" or followed by an explicit ALTER OWNER`,
+      `${coverage.migrationPath}: "${coverage.table}" must have a target-table ALTER `
+      + 'or policy operation, and every such operation must execute under active role '
+      + `"${coverage.ownerRole}"`,
     );
   }
 }
