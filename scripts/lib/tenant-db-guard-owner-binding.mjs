@@ -8,7 +8,6 @@ export const migrationBindsTableOwner = ({ sql, table, ownerRole }) => {
   let sessionRole = null;
   let localRole = null;
   const creations = [];
-  const operations = [];
   const ownerAlterations = [];
 
   for (const statement of statements) {
@@ -24,8 +23,8 @@ export const migrationBindsTableOwner = ({ sql, table, ownerRole }) => {
       localRole = null;
     }
 
-    if (startsWithWords(statement, ["COMMIT"]) ||
-      startsWithWords(statement, ["ROLLBACK"])) {
+    if (startsWithWords(statement, ["commit"]) ||
+      startsWithWords(statement, ["rollback"])) {
       localRole = null;
     }
 
@@ -35,21 +34,13 @@ export const migrationBindsTableOwner = ({ sql, table, ownerRole }) => {
         index: creation.index,
         role: localRole ?? sessionRole,
       });
-      operations.push(creations.at(-1));
-    }
-    const tableAlteration = parseTableAlteration(statement);
-    if (tableAlteration?.table === normalizedTable) {
-      operations.push({
-        index: tableAlteration.index,
-        role: localRole ?? sessionRole,
-      });
     }
     const alteration = parseOwnerAlteration(statement);
     if (alteration?.table === normalizedTable) ownerAlterations.push(alteration);
   }
 
   if (creations.length > 1) return false;
-  const operation = creations[0] ?? operations[0];
+  const operation = creations[0] ?? ownerAlterations[0];
   const operationIndex = operation?.index;
   if (operationIndex === undefined) return false;
   const finalOwnerAlteration = ownerAlterations
@@ -81,6 +72,12 @@ const scanSql = (sql) => {
       index = end;
       continue;
     }
+    const prefixedString = scanPrefixedString(sql, index);
+    if (prefixedString !== undefined) {
+      if (prefixedString < 0) return null;
+      index = prefixedString;
+      continue;
+    }
     if (character === "'") {
       const end = scanQuoted(sql, index, "'");
       if (end < 0) return null;
@@ -104,6 +101,7 @@ const scanSql = (sql) => {
     }
     const word = sql.slice(index).match(/^[A-Za-z_][A-Za-z0-9_$]*/u)?.[0];
     if (word !== undefined) {
+      if (word.toLowerCase() === "uescape") return null;
       tokens.push({ kind: "word", value: word.toLowerCase(), start: index, end: index + word.length });
       index += word.length;
       continue;
@@ -112,6 +110,73 @@ const scanSql = (sql) => {
     index += 1;
   }
   return tokens;
+};
+
+const scanPrefixedString = (sql, start) => {
+  const prefix = sql[start]?.toLowerCase();
+  if (sql[start + 1] === "'" && prefix === "e") {
+    return scanEscapeString(sql, start + 1);
+  }
+  if (sql[start + 1] === "'" && (prefix === "b" || prefix === "x")) {
+    return scanRestrictedString(sql, start + 1, prefix);
+  }
+  if (prefix === "u" && sql[start + 1] === "&") {
+    if (sql[start + 2] === "'") return scanUnicodeString(sql, start + 2);
+    if (sql[start + 2] === '"') return -1;
+  }
+  return undefined;
+};
+
+const scanEscapeString = (sql, start) => {
+  let index = start + 1;
+  while (index < sql.length) {
+    if (sql[index] === "\\") {
+      if (index + 1 >= sql.length) return -1;
+      index += 2;
+    } else if (sql[index] !== "'") {
+      index += 1;
+    } else if (sql[index + 1] === "'") {
+      index += 2;
+    } else {
+      return index + 1;
+    }
+  }
+  return -1;
+};
+
+const scanRestrictedString = (sql, start, prefix) => {
+  const end = scanQuoted(sql, start, "'");
+  if (end < 0) return -1;
+  const contents = sql.slice(start + 1, end - 1);
+  const valid = prefix === "b"
+    ? /^[01]*$/u.test(contents)
+    : /^[0-9a-f]*$/iu.test(contents);
+  return valid ? end : -1;
+};
+
+const scanUnicodeString = (sql, start) => {
+  let index = start + 1;
+  while (index < sql.length) {
+    if (sql[index] === "\\") {
+      const escape = sql.slice(index + 1);
+      if (escape.startsWith("\\")) {
+        index += 2;
+      } else if (/^\+[0-9a-f]{6}/iu.test(escape)) {
+        index += 8;
+      } else if (/^[0-9a-f]{4}/iu.test(escape)) {
+        index += 5;
+      } else {
+        return -1;
+      }
+    } else if (sql[index] !== "'") {
+      index += 1;
+    } else if (sql[index + 1] === "'") {
+      index += 2;
+    } else {
+      return index + 1;
+    }
+  }
+  return -1;
 };
 
 const scanBlockComment = (sql, start) => {
@@ -179,6 +244,9 @@ const splitStatements = (tokens) => {
 
 const parseRoleChange = (statement) => {
   if (wordAt(statement, 0) === "set") {
+    if (startsWithWords(statement, ["set", "session", "authorization"])) {
+      return { invalid: true };
+    }
     let cursor = 1;
     let scope = "session";
     if (wordAt(statement, cursor) === "local") {
@@ -187,7 +255,8 @@ const parseRoleChange = (statement) => {
     } else if (wordAt(statement, cursor) === "session") {
       cursor += 1;
     }
-    if (wordAt(statement, cursor) === "authorization" && wordAt(statement, cursor - 1) === "session") {
+    if (wordAt(statement, cursor) === "session" &&
+      wordAt(statement, cursor + 1) === "authorization") {
       return { invalid: true };
     }
     if (wordAt(statement, cursor) !== "role") return null;

@@ -191,6 +191,75 @@ test("quoted and dollar-quoted role decoys are not executable", () => {
   );
 });
 
+for (const prefix of ["E", "e"]) {
+  test(`${prefix}-string escapes and doubled quotes cannot expose an owner-role decoy`, () => {
+    const sql = String.raw`SET ROLE wrong_owner;
+      SELECT ${prefix}'''\'; SET ROLE social_monitor_public_schema_owner; SELECT \'';
+      CREATE TABLE public.receipt (id uuid);`;
+    assert.equal(
+      migrationBindsTableOwner({ sql, table: "receipt", ownerRole }),
+      false,
+    );
+  });
+
+  test(`${prefix}-string wrong-role decoys stay inert under the expected role`, () => {
+    const sql = String.raw`SET ROLE social_monitor_public_schema_owner;
+      SELECT ${prefix}'''\'; SET ROLE wrong_owner; SELECT \'';
+      CREATE TABLE public.receipt (id uuid);`;
+    assert.equal(
+      migrationBindsTableOwner({ sql, table: "receipt", ownerRole }),
+      true,
+    );
+  });
+}
+
+test("valid Unicode, bit, and hex strings do not affect owner binding", () => {
+  for (const literal of [
+    String.raw`U&'SET ROLE wrong_owner; \0061'`,
+    "B'101001'",
+    "b'010110'",
+    "X'cafe'",
+    "x'BEEF'",
+  ]) {
+    const sql = `SET ROLE "${ownerRole}"; SELECT ${literal};
+      CREATE TABLE public.receipt (id uuid);`;
+    assert.equal(
+      migrationBindsTableOwner({ sql, table: "receipt", ownerRole }),
+      true,
+      literal,
+    );
+  }
+});
+
+test("a valid Unicode-string owner-role decoy is not executable", () => {
+  const sql = String.raw`SET ROLE wrong_owner;
+    SELECT U&'SET ROLE social_monitor_public_schema_owner; \0061';
+    CREATE TABLE public.receipt (id uuid);`;
+  assert.equal(
+    migrationBindsTableOwner({ sql, table: "receipt", ownerRole }),
+    false,
+  );
+});
+
+test("malformed or unsupported prefixed quoting fails closed", () => {
+  for (const literal of [
+    String.raw`E'unterminated\'`,
+    String.raw`U&'bad \escape'`,
+    String.raw`U&"unsupported identifier"`,
+    String.raw`U&'alternate !0061' UESCAPE '!'`,
+    "B'10201'",
+    "X'not_hex'",
+  ]) {
+    const sql = `SET ROLE "${ownerRole}"; SELECT ${literal};
+      CREATE TABLE public.receipt (id uuid);`;
+    assert.equal(
+      migrationBindsTableOwner({ sql, table: "receipt", ownerRole }),
+      false,
+      literal,
+    );
+  }
+});
+
 test("comment-interleaved wrong role and session authorization fail closed", () => {
   for (const statement of [
     "SET/**/ROLE wrong_owner;",
@@ -198,6 +267,25 @@ test("comment-interleaved wrong role and session authorization fail closed", () 
     "RESET/* gap */SESSION/* gap */AUTHORIZATION;",
   ]) {
     const sql = `SET LOCAL ROLE "${ownerRole}"; ${statement}
+      CREATE TABLE public.receipt (id uuid);`;
+    assert.equal(
+      migrationBindsTableOwner({ sql, table: "receipt", ownerRole }),
+      false,
+      statement,
+    );
+  }
+});
+
+test("every executable SESSION AUTHORIZATION form fails closed", () => {
+  for (const statement of [
+    "SET SESSION AUTHORIZATION wrong_owner;",
+    "SET/**/SESSION/**/AUTHORIZATION wrong_owner;",
+    "SET LOCAL SESSION AUTHORIZATION wrong_owner;",
+    "SET/**/LOCAL/**/SESSION/**/AUTHORIZATION wrong_owner;",
+    "SET SESSION SESSION AUTHORIZATION wrong_owner;",
+    "SET/**/SESSION/**/SESSION/**/AUTHORIZATION wrong_owner;",
+  ]) {
+    const sql = `SET ROLE "${ownerRole}"; ${statement}
       CREATE TABLE public.receipt (id uuid);`;
     assert.equal(
       migrationBindsTableOwner({ sql, table: "receipt", ownerRole }),
@@ -234,6 +322,90 @@ test("an explicit post-creation ALTER OWNER binds a wrong-role creation", () => 
   assert.equal(
     migrationBindsTableOwner({ sql, table: "receipt", ownerRole }),
     true,
+  );
+});
+
+test("a generic ALTER TABLE cannot establish owner binding", () => {
+  const sql = `
+    SET ROLE "${ownerRole}";
+    ALTER TABLE public.receipt ADD COLUMN note text;
+  `;
+  assert.equal(
+    migrationBindsTableOwner({ sql, table: "receipt", ownerRole }),
+    false,
+  );
+});
+
+test("an ALTER-only explicit OWNER TO can establish owner binding", () => {
+  const sql = `
+    ALTER TABLE public.receipt OWNER TO "${ownerRole}";
+  `;
+  assert.equal(
+    migrationBindsTableOwner({ sql, table: "receipt", ownerRole }),
+    true,
+  );
+});
+
+test("a generic ALTER TABLE preserves a binding established by creation", () => {
+  const sql = `
+    SET ROLE "${ownerRole}";
+    CREATE TABLE public.receipt (id uuid);
+    ALTER TABLE public.receipt ADD COLUMN note text;
+  `;
+  assert.equal(
+    migrationBindsTableOwner({ sql, table: "receipt", ownerRole }),
+    true,
+  );
+});
+
+test("a later wrong ALTER OWNER invalidates an ALTER-only owner binding", () => {
+  const sql = `
+    ALTER TABLE public.receipt OWNER TO "${ownerRole}";
+    ALTER TABLE public.receipt OWNER TO wrong_owner;
+  `;
+  assert.equal(
+    migrationBindsTableOwner({ sql, table: "receipt", ownerRole }),
+    false,
+  );
+});
+
+test("nested comments and transaction-local role reset retain their semantics", () => {
+  const sql = `
+    SET SESSION ROLE "${ownerRole}";
+    SET LOCAL ROLE wrong_owner;
+    /* outer /* SET ROLE wrong_owner; */ still outer */
+    COMMIT;
+    CREATE TABLE public.receipt (id uuid);
+  `;
+  assert.equal(
+    migrationBindsTableOwner({ sql, table: "receipt", ownerRole }),
+    true,
+  );
+});
+
+test("transaction completion clears an owner role that was only local", () => {
+  for (const completion of ["COMMIT", "ROLLBACK"]) {
+    const sql = `
+      SET LOCAL ROLE "${ownerRole}";
+      ${completion};
+      CREATE TABLE public.receipt (id uuid);
+    `;
+    assert.equal(
+      migrationBindsTableOwner({ sql, table: "receipt", ownerRole }),
+      false,
+      completion,
+    );
+  }
+});
+
+test("owner operations require the exact public table name", () => {
+  const sql = `
+    ALTER TABLE public.receipt_archive OWNER TO "${ownerRole}";
+    ALTER TABLE private.receipt OWNER TO "${ownerRole}";
+  `;
+  assert.equal(
+    migrationBindsTableOwner({ sql, table: "receipt", ownerRole }),
+    false,
   );
 });
 
