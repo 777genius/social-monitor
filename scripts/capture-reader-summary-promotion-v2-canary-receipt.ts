@@ -31,6 +31,7 @@ async function main(): Promise<void> {
   );
   const pool = new Pool({
     connectionString: systemDatabaseUrl,
+    min: 0,
     max: 1,
     connectionTimeoutMillis: 5_000,
   });

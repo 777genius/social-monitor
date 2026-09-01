@@ -40,7 +40,7 @@ export const readerSummaryPromotionBoardRestView = (
   const additionalCards = promotionAdditionalCards(view);
   if (view.content.topReads.length === 0 && additionalCards.length === 0 &&
       view.promotionAttestations.length === 0) {
-    if (isExplicitPromotionV2NoSignal(view)) {
+    if (isReadableNoSignalBoard(view)) {
       return { topReads: [], selectedPosts: [] };
     }
     throw new ReaderSummaryPromotionBoardMappingError();
@@ -63,16 +63,11 @@ export const readerSummaryPromotionBoardRestView = (
   };
 };
 
-const isExplicitPromotionV2NoSignal = (
+const isReadableNoSignalBoard = (
   view: ReaderSummaryArtifactView,
 ): boolean => view.qualityFlags.includes("no_signal") &&
   view.topStories.length === 0 &&
-  view.citations.length === 0 &&
-  view.lineage.promptVersion === "reader_summary.promotion_no_signal.v1" &&
-  view.lineage.modelVersion === "not_invoked" &&
-  view.lineage.providerVersion === "deterministic" &&
-  view.lineage.rulesVersion === "reader_promotion_policy.v2" &&
-  view.lineage.evalDatasetVersion === "reader_promotion_policy.v2";
+  view.citations.length === 0;
 
 const promotionAdditionalCards = (
   view: ReaderSummaryArtifactView,

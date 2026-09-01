@@ -64,7 +64,7 @@ if [[ $require_preexisting == true ]]; then
   }
   same_identity() {
     [[ $(realpath -e -- "$1") == $(realpath -e -- "$2") &&
-       $(stat -Lc '%d:%i:%m' -- "$1") == $(stat -Lc '%d:%i:%m' -- "$2") ]]
+       $(stat -Lc '%d:%i' -- "$1") == $(stat -Lc '%d:%i' -- "$2") ]]
   }
   same_identity "$global_lock" "$canonical_global_lock" &&
     same_identity "$date_lock_dir" "$canonical_date_lock_dir" &&
@@ -75,8 +75,8 @@ if [[ $require_preexisting == true ]]; then
 else
   mkdir -p "$date_lock_dir" "$fence_dir"
 fi
-expected_date_dir_identity=$(stat -Lc '%d:%i:%m' -- "$date_lock_dir")
-expected_fence_dir_identity=$(stat -Lc '%d:%i:%m' -- "$fence_dir")
+expected_date_dir_identity=$(stat -Lc '%d:%i' -- "$date_lock_dir")
+expected_fence_dir_identity=$(stat -Lc '%d:%i' -- "$fence_dir")
 if [[ -n $global_lock ]]; then
   [[ $global_lock == /* ]] || {
     echo "reader-summary global lock path must be absolute" >&2
@@ -86,16 +86,16 @@ if [[ -n $global_lock ]]; then
     mkdir -p "$(dirname -- "$global_lock")"
     : >>"$global_lock"
   fi
-  expected_global_identity=$(stat -Lc '%d:%i:%m' -- "$global_lock")
+  expected_global_identity=$(stat -Lc '%d:%i' -- "$global_lock")
   exec 8<"$global_lock"
-  opened_global_identity=$(stat -Lc '%d:%i:%m' -- "/proc/$$/fd/8")
+  opened_global_identity=$(stat -Lc '%d:%i' -- "/proc/$$/fd/8")
   if [[ $opened_global_identity != "$expected_global_identity" ||
-        $opened_global_identity != "$(stat -Lc '%d:%i:%m' -- "$global_lock")" ]]; then
+        $opened_global_identity != "$(stat -Lc '%d:%i' -- "$global_lock")" ]]; then
     echo "reader-summary global lock changed during open" >&2
     exit 76
   fi
   if [[ $require_preexisting == true ]]; then
-    canonical_global_identity=$(stat -Lc '%d:%i:%m' -- "$canonical_global_lock")
+    canonical_global_identity=$(stat -Lc '%d:%i' -- "$canonical_global_lock")
     if [[ $opened_global_identity != "$canonical_global_identity" ]]; then
       echo "reader-summary canonical global lock changed during open" >&2
       exit 76
@@ -109,10 +109,10 @@ fi
 
 exec 6<"$date_lock_dir"
 exec 5<"$fence_dir"
-opened_date_dir_identity=$(stat -Lc '%d:%i:%m' -- "/proc/$$/fd/6")
-opened_fence_dir_identity=$(stat -Lc '%d:%i:%m' -- "/proc/$$/fd/5")
-path_date_dir_identity=$(stat -Lc '%d:%i:%m' -- "$date_lock_dir")
-path_fence_dir_identity=$(stat -Lc '%d:%i:%m' -- "$fence_dir")
+opened_date_dir_identity=$(stat -Lc '%d:%i' -- "/proc/$$/fd/6")
+opened_fence_dir_identity=$(stat -Lc '%d:%i' -- "/proc/$$/fd/5")
+path_date_dir_identity=$(stat -Lc '%d:%i' -- "$date_lock_dir")
+path_fence_dir_identity=$(stat -Lc '%d:%i' -- "$fence_dir")
 if [[ $opened_date_dir_identity != "$expected_date_dir_identity" ||
       $opened_fence_dir_identity != "$expected_fence_dir_identity" ||
       $opened_date_dir_identity != "$path_date_dir_identity" ||
@@ -123,8 +123,8 @@ fi
 canonical_opened_date_identity=$opened_date_dir_identity
 canonical_opened_fence_identity=$opened_fence_dir_identity
 if [[ $require_preexisting == true ]]; then
-  canonical_opened_date_identity=$(stat -Lc '%d:%i:%m' -- "$canonical_date_lock_dir")
-  canonical_opened_fence_identity=$(stat -Lc '%d:%i:%m' -- "$canonical_fence_dir")
+  canonical_opened_date_identity=$(stat -Lc '%d:%i' -- "$canonical_date_lock_dir")
+  canonical_opened_fence_identity=$(stat -Lc '%d:%i' -- "$canonical_fence_dir")
 fi
 if [[ $opened_date_dir_identity != "$canonical_opened_date_identity" ||
       $opened_fence_dir_identity != "$canonical_opened_fence_identity" ]]; then
@@ -138,8 +138,8 @@ date_lock_path="/proc/$$/fd/6/$date_value.lock"
   exit 76
 }
 exec 7>>"$date_lock_path"
-opened_date_lock_identity=$(stat -Lc '%d:%i:%m' -- "/proc/$$/fd/7")
-named_date_lock_identity=$(stat -Lc '%d:%i:%m' -- "$date_lock_path")
+opened_date_lock_identity=$(stat -Lc '%d:%i' -- "/proc/$$/fd/7")
+named_date_lock_identity=$(stat -Lc '%d:%i' -- "$date_lock_path")
 [[ ! -L $date_lock_path &&
    $opened_date_lock_identity == "$named_date_lock_identity" ]] || {
   echo "reader-summary date lock changed during open" >&2
@@ -182,11 +182,11 @@ if [[ -n $token_output ]]; then
     echo "reader-summary fence token output cannot be a symlink" >&2
     exit 76
   }
-  expected_token_dir_identity=$(stat -Lc '%d:%i:%m' -- "$token_dir")
+  expected_token_dir_identity=$(stat -Lc '%d:%i' -- "$token_dir")
   exec 4<"$token_dir"
-  opened_token_dir_identity=$(stat -Lc '%d:%i:%m' -- "/proc/$$/fd/4")
+  opened_token_dir_identity=$(stat -Lc '%d:%i' -- "/proc/$$/fd/4")
   [[ $opened_token_dir_identity == "$expected_token_dir_identity" &&
-     $opened_token_dir_identity == "$(stat -Lc '%d:%i:%m' -- "$token_dir")" ]] || {
+     $opened_token_dir_identity == "$(stat -Lc '%d:%i' -- "$token_dir")" ]] || {
     echo "reader-summary fence token directory changed during open" >&2
     exit 76
   }

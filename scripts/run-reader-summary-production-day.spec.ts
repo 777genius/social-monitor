@@ -143,12 +143,15 @@ describe("production-day execution request", () => {
       ]),
     ).toEqual({
       mode: "historical-regeneration",
-      sourceReportPath: "/tmp/source-report.json",
-      sourceReportSha256: "a".repeat(64),
-      collectionArtifactPath: "/tmp/collection.json",
-      collectionArtifactSha256: "b".repeat(64),
-      collectionQualityReportPath: "/tmp/collection-quality.json",
-      collectionQualityReportSha256: "c".repeat(64),
+      sourceEvidence: {
+        kind: "preserved-production-day-report",
+        sourceReportPath: "/tmp/source-report.json",
+        sourceReportSha256: "a".repeat(64),
+        collectionArtifactPath: "/tmp/collection.json",
+        collectionArtifactSha256: "b".repeat(64),
+        collectionQualityReportPath: "/tmp/collection-quality.json",
+        collectionQualityReportSha256: "c".repeat(64),
+      },
       datasetManifestPath: "/tmp/dataset-manifest.json",
       datasetManifestSha256: "d".repeat(64),
       timestampPolicy: "published_at",
@@ -163,13 +166,13 @@ describe("production-day execution request", () => {
     );
 
     expect(source).toContain(
-      "DURABLE_READER_SUMMARY_SOURCE_REPORT_SHA256:\n                  executionRequest.sourceReportSha256",
+      "DURABLE_READER_SUMMARY_SOURCE_REPORT_SHA256:\n                        executionRequest.sourceEvidence.sourceReportSha256",
     );
     expect(source).toContain(
-      "DURABLE_READER_SUMMARY_COLLECTION_ARTIFACT_SHA256:\n                  executionRequest.collectionArtifactSha256",
+      "DURABLE_READER_SUMMARY_COLLECTION_ARTIFACT_SHA256:\n                        executionRequest.sourceEvidence\n                          .collectionArtifactSha256",
     );
     expect(source).toContain(
-      "DURABLE_READER_SUMMARY_COLLECTION_QUALITY_REPORT_SHA256:\n                  executionRequest.collectionQualityReportSha256",
+      "DURABLE_READER_SUMMARY_COLLECTION_QUALITY_REPORT_SHA256:\n                        executionRequest.sourceEvidence\n                          .collectionQualityReportSha256",
     );
     expect(source).toContain(
       "DURABLE_READER_SUMMARY_DATASET_MANIFEST_SHA256:\n                  executionRequest.datasetManifestSha256",
@@ -177,25 +180,35 @@ describe("production-day execution request", () => {
   });
 
   it("requires the complete regeneration authority when capture builds identity", () => {
-    const source = readFileSync(
+    const captureSource = readFileSync(
       join(
         process.cwd(),
         "scripts/capture-durable-reader-summary-from-postgres.ts",
       ),
       "utf8",
     );
+    const promotionInputSource = readFileSync(
+      join(
+        process.cwd(),
+        "scripts/lib/reader-summary-production-day-promotion-input.ts",
+      ),
+      "utf8",
+    );
 
-    expect(source).toContain(
-      "sourceReportSha256: requiredEnv(sourceReportSha256Env)",
+    expect(captureSource).toContain(
+      "resolveProductionDayPromotionInput({",
     );
-    expect(source).toContain(
-      "collectionArtifactSha256: requiredEnv(collectionArtifactSha256Env)",
+    expect(promotionInputSource).toContain(
+      '"DURABLE_READER_SUMMARY_SOURCE_REPORT_SHA256"',
     );
-    expect(source).toMatch(
-      /collectionQualityReportSha256:\s*requiredEnv\(\s*collectionQualityReportSha256Env,?\s*\)/u,
+    expect(promotionInputSource).toContain(
+      '"DURABLE_READER_SUMMARY_COLLECTION_ARTIFACT_SHA256"',
     );
-    expect(source).toContain(
-      "datasetManifestSha256: requiredEnv(datasetManifestSha256Env)",
+    expect(promotionInputSource).toContain(
+      '"DURABLE_READER_SUMMARY_COLLECTION_QUALITY_REPORT_SHA256"',
+    );
+    expect(promotionInputSource).toContain(
+      '"DURABLE_READER_SUMMARY_DATASET_MANIFEST_SHA256"',
     );
   });
 
