@@ -43,12 +43,16 @@ describe("Promotion V2 publication-owner rollback", () => {
       /CREATE FUNCTION public\."rollback_reader_summary_promotion_v2"\((?<parameters>[\s\S]*?)\) RETURNS JSONB[\s\S]*?AS \$function\$(?<body>[\s\S]*?)\$function\$;/u,
     );
     expect(rollbackFunction?.groups).toBeDefined();
+    const groups = rollbackFunction?.groups;
+    if (groups?.parameters === undefined || groups.body === undefined) {
+      throw new Error("Rollback function signature or body is missing");
+    }
 
-    const parameters = [...rollbackFunction!.groups!.parameters.matchAll(
+    const parameters = [...groups.parameters.matchAll(
       /^\s*(?<name>[a-z][a-z0-9_]*)\s+(?:UUID|DATE|TEXT|TIMESTAMPTZ),?$/gmu,
     )].map((match) => match.groups!.name);
     const referencedColumns = new Set(
-      [...rollbackFunction!.groups!.body.matchAll(
+      [...groups.body.matchAll(
         /"(?<name>[a-z][a-z0-9_]*)"/gu,
       )].map((match) => match.groups!.name),
     );
