@@ -505,6 +505,26 @@ const assertReceiptOwnerAuditsRejectDrift = async (): Promise<void> => {
         }
       }
     }
+    const missingTable = receipts[1]![0];
+    const hiddenTable = `${missingTable}_inventory_drift_fixture`;
+    for (const phase of ["pre", "post"] as const) {
+      await admin.query(
+        `ALTER TABLE public.${quotePostgresIdentifier(missingTable)} RENAME TO ${quotePostgresIdentifier(hiddenTable)}`,
+      );
+      try {
+        await assertRejectsContaining(
+          () => runReaderSummaryPublicationBootstrapSql(
+            phase, adminDatabaseUrl, runtimeRole,
+          ),
+          "Promotion V2 receipt table has an unexpected owner",
+          `${phase} audit must reject a partial receipt inventory`,
+        );
+      } finally {
+        await admin.query(
+          `ALTER TABLE public.${quotePostgresIdentifier(hiddenTable)} RENAME TO ${quotePostgresIdentifier(missingTable)}`,
+        );
+      }
+    }
   } finally {
     await admin.end();
   }
