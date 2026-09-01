@@ -717,6 +717,18 @@ test("nested transaction starts fail closed and START TRANSACTION remains valid"
   assertBothRoleGuards(valid, true);
 });
 
+test("PREPARE TRANSACTION fails closed without rejecting SQL PREPARE", () => {
+  const preparedTransaction = `SET ROLE wrong_owner; BEGIN;
+    SET LOCAL ROLE "${ownerRole}";
+    PREPARE TRANSACTION 'tenant_guard_review';
+    ${guardedReceiptOperations}`;
+  assertBothRoleGuards(preparedTransaction, false);
+
+  const ordinaryPrepare = `PREPARE receipt_query AS SELECT 1;
+    SET ROLE "${ownerRole}"; ${guardedReceiptOperations}`;
+  assertBothRoleGuards(ordinaryPrepare, true);
+});
+
 test("ROLLBACK TO restores the wrong role captured by a savepoint", () => {
   const sql = `
     SET ROLE "${ownerRole}";

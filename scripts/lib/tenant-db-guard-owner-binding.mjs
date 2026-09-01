@@ -473,6 +473,9 @@ const enclosesEntireExpression = (tokens) => {
 
 const parseTransactionControl = (statement) => {
   const firstWord = wordAt(statement, 0);
+  if (firstWord === "prepare" && wordAt(statement, 1) === "transaction") {
+    return { invalid: true };
+  }
   if (firstWord === "begin") {
     let cursor = 1;
     if (["work", "transaction"].includes(wordAt(statement, cursor))) cursor += 1;
