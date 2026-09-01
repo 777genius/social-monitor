@@ -53,6 +53,7 @@ const canaryFormat =
 export const assertReaderSummaryPromotionV2RollbackPostgresContract = async (
   input: ContractInput,
 ): Promise<void> => {
+  await assertReaderSummaryPromotionV2ReceiptOwners(input.auditorClient);
   const v1 = await publishedPromotionFixture(input, day, "v1", 9);
   const v2 = await publishedPromotionFixture(input, day, "v2", 12);
   const before = await lifecycle(input.auditorClient, v1, v2);
@@ -175,6 +176,33 @@ export const assertReaderSummaryPromotionV2RollbackPostgresContract = async (
       WHERE receipt_sha256=$1`, [canary.receiptSha256]),
     "rollback receipts are immutable",
     "canary receipt deletes must be rejected",
+  );
+};
+
+export const assertReaderSummaryPromotionV2ReceiptOwners = async (
+  client: PoolClient,
+): Promise<void> => {
+  const result = await client.query<{
+    actual_count: string;
+    expected_owner_count: string;
+  }>(`SELECT count(*)::text AS actual_count,
+      count(*) FILTER (
+        WHERE owner.rolname = 'social_monitor_public_schema_owner'
+      )::text AS expected_owner_count
+    FROM pg_catalog.pg_class AS relation
+    JOIN pg_catalog.pg_namespace AS namespace
+      ON namespace.oid = relation.relnamespace
+    JOIN pg_catalog.pg_roles AS owner ON owner.oid = relation.relowner
+    WHERE namespace.nspname = 'public'
+      AND relation.relkind IN ('r', 'p')
+      AND relation.relname IN (
+        'reader_summary_promotion_v2_rollback_receipts',
+        'reader_summary_promotion_v2_canary_publication_receipts'
+      )`);
+  assert(
+    result.rows[0]?.actual_count === "2" &&
+      result.rows[0]?.expected_owner_count === "2",
+    "Promotion V2 receipt tables must both be owned by the public schema owner",
   );
 };
 

@@ -31,7 +31,10 @@ import {
   type ReaderSummaryPublicationRunningFixture as Fixture,
 } from "./lib/reader-summary-publication-postgres-running-fixture";
 import { assertReaderSummaryRecoveryPostgresContract } from "./lib/reader-summary-recovery-postgres-contract";
-import { assertReaderSummaryPromotionV2RollbackPostgresContract } from
+import {
+  assertReaderSummaryPromotionV2ReceiptOwners,
+  assertReaderSummaryPromotionV2RollbackPostgresContract,
+} from
   "./lib/reader-summary-promotion-v2-rollback-postgres-contract";
 import { assertReaderSummaryWeeklyDailyCertificationBackfillPostgresContract } from "./lib/reader-summary-weekly-daily-certification-backfill-postgres-contract";
 import { assertReaderSummaryWeeklyCertificationSealPostgresContract } from "./lib/reader-summary-weekly-certification-seal-postgres-contract";
@@ -109,6 +112,7 @@ let fixtureRuntimeRoleCreated = false;
 let fixtureDailyTerminalRoleCreated = false;
 export type ReaderSummaryPublicationPostgresContract =
   | "feed-promotion"
+  | "promotion-v2-ownership"
   | "promotion-v2-rollback"
   | "publication"
   | "weekly-certification-seal"
@@ -265,6 +269,11 @@ export const runReaderSummaryPublicationPostgresContract = async (
           readerSummaryPublicationMigration,
         );
         await assertLegacyRepositoryVisibility(runtimeDatabaseUrl);
+        if (contract === "promotion-v2-ownership") {
+          await assertReaderSummaryPromotionV2ReceiptOwners(auditor);
+          console.log("Promotion V2 receipt ownership PostgreSQL 18 contract OK");
+          return;
+        }
         if (contract === "promotion-v2-rollback") {
           await assertReaderSummaryPromotionV2RollbackPostgresContract({
             adminClient,

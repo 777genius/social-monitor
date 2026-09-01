@@ -1,5 +1,8 @@
 import { existsSync, globSync, readFileSync } from 'node:fs';
 
+import { migrationBindsTableOwner } from
+  './lib/tenant-db-guard-owner-binding.mjs';
+
 const contractPath = 'ops/security/tenant-db-guard-contract.json';
 const schemaPath = 'prisma/schema.prisma';
 const publicationBootstrapPath =
@@ -412,12 +415,9 @@ function assertForwardRlsCoverage(coverage) {
     );
     return;
   }
-  const sql = readFileSync(coverage.migrationPath, 'utf8').replace(/\n/g, ' ');
+  const migrationSqlForCoverage = readFileSync(coverage.migrationPath, 'utf8');
+  const sql = migrationSqlForCoverage.replace(/\n/g, ' ');
   for (const [label, pattern] of [
-    [
-      'owner role',
-      new RegExp(`SET LOCAL ROLE "${escapeRegex(coverage.ownerRole)}"`),
-    ],
     [
       'ENABLE ROW LEVEL SECURITY',
       new RegExp(
@@ -442,6 +442,16 @@ function assertForwardRlsCoverage(coverage) {
         `${coverage.migrationPath}: "${coverage.table}" is missing explicit ${label}`,
       );
     }
+  }
+  if (!migrationBindsTableOwner({
+    sql: migrationSqlForCoverage,
+    table: coverage.table,
+    ownerRole: coverage.ownerRole,
+  })) {
+    violations.push(
+      `${coverage.migrationPath}: "${coverage.table}" creation must be bound `
+      + `to owner role "${coverage.ownerRole}" or followed by an explicit ALTER OWNER`,
+    );
   }
 }
 

@@ -81,6 +81,12 @@ FOR EACH STATEMENT EXECUTE FUNCTION
   public."reject_reader_summary_promotion_v2_rollback_receipt_mutation"();
 RESET ROLE;
 SET LOCAL ROLE "social_monitor_reader_summary_publication_owner";
+GRANT REFERENCES ("id") ON TABLE
+  public."reader_summary_publications",
+  public."reader_summary_artifacts"
+TO "social_monitor_public_schema_owner";
+RESET ROLE;
+SET LOCAL ROLE "social_monitor_public_schema_owner";
 CREATE TABLE public."reader_summary_promotion_v2_canary_publication_receipts" (
   "v2_publication_id" UUID PRIMARY KEY,
   "tenant_id" UUID NOT NULL,
@@ -149,6 +155,12 @@ BEFORE TRUNCATE
 ON public."reader_summary_promotion_v2_canary_publication_receipts"
 FOR EACH STATEMENT EXECUTE FUNCTION
   public."reject_reader_summary_promotion_v2_rollback_receipt_mutation"();
+RESET ROLE;
+SET LOCAL ROLE "social_monitor_reader_summary_publication_owner";
+REVOKE REFERENCES ("id") ON TABLE
+  public."reader_summary_publications",
+  public."reader_summary_artifacts"
+FROM "social_monitor_public_schema_owner";
 CREATE FUNCTION public."reader_summary_promotion_v2_exact_proof_matches"(
   publication public."reader_summary_publications"
 ) RETURNS BOOLEAN LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE
@@ -982,17 +994,15 @@ REVOKE ALL ON FUNCTION
   ),
   public."record_reader_summary_promotion_v2_canary_receipt"()
 FROM PUBLIC;
-REVOKE ALL ON TABLE
-  public."reader_summary_promotion_v2_canary_publication_receipts"
-FROM PUBLIC, "social_monitor_reader_summary_publication_runtime";
-
 RESET ROLE;
 SET LOCAL ROLE "social_monitor_public_schema_owner";
 REVOKE ALL ON TABLE
-  public."reader_summary_promotion_v2_rollback_receipts"
+  public."reader_summary_promotion_v2_rollback_receipts",
+  public."reader_summary_promotion_v2_canary_publication_receipts"
 FROM PUBLIC, "social_monitor_reader_summary_publication_runtime";
 GRANT SELECT, INSERT ON TABLE
-  public."reader_summary_promotion_v2_rollback_receipts"
+  public."reader_summary_promotion_v2_rollback_receipts",
+  public."reader_summary_promotion_v2_canary_publication_receipts"
 TO "social_monitor_reader_summary_publication_owner";
 REVOKE CREATE ON SCHEMA public
 FROM "social_monitor_reader_summary_publication_owner";
