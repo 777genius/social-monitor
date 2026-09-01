@@ -1,11 +1,9 @@
-import type { FeedItemReadRepositoryPort } from "@social-monitor/feed/ports";
-import type { RankedFeedItemView } from "@social-monitor/relevance/features/rank-feed-items/rank-feed-items.result";
-import type { RankFeedItemsUseCase } from "@social-monitor/relevance/features/rank-feed-items/rank-feed-items.use-case";
-import { ok, tenantId, workspaceId } from "@social-monitor/shared-kernel";
+import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 
 import {
   buildStoryRelationCandidates,
   evaluateStoryRelationGoldenCases,
+  StoryClusteringService,
   type StoryRelationEvalPrediction,
   type StoryRelationEvalResult,
   type StoryRelationGoldenCase,
@@ -16,7 +14,6 @@ import {
   NOOP_STORY_RANKING_METRICS,
   type AgentRuntimeClientPort,
 } from "../../ports";
-import { RelevanceReaderSummaryEvidenceSelector } from "../evidence/relevance-reader-summary-evidence.selector";
 import {
   observeSafeRecallShadow,
   verifiedReaderSummaryStoryRelationPairs,
@@ -55,13 +52,15 @@ export const runStoryRelationGoldenBaseline = async (params: {
       },
       maxItems: 2,
     };
-    const selector = new RelevanceReaderSummaryEvidenceSelector(
-      ranker(rankedItemsFor(evalCase)),
-      emptyFeedRepository(),
-      { now: () => observedAt },
-    );
-    const selection = await selector.select(query);
     const evidence = evidenceFor(evalCase);
+    const selection = new StoryClusteringService({
+      now: () => observedAt,
+    }).cluster({
+      identity,
+      items: evidence,
+      limit: evidence.length,
+      now: observedAt,
+    });
     const primaryCandidates = buildStoryRelationCandidates({
       selection,
       evidence,
@@ -136,67 +135,4 @@ const summaryEvidence = (
   observedAt,
   score,
   whyImportant: ["Frozen story relation evaluation evidence"],
-});
-
-const rankedItemsFor = (
-  evalCase: StoryRelationGoldenCase,
-): readonly RankedFeedItemView[] => [
-  rankedItem(evalCase.caseId, "left", evalCase.left, 1),
-  rankedItem(evalCase.caseId, "right", evalCase.right, 2),
-];
-
-const rankedItem = (
-  caseId: string,
-  side: "left" | "right",
-  evidence: StoryRelationGoldenCase["left"],
-  rank: number,
-): RankedFeedItemView => ({
-  feedItemId: `${caseId}:${side}`,
-  sourceItemId: `source:${caseId}:${side}`,
-  sourceBindingId: `binding:${caseId}:${side}`,
-  interestId: "story-relation-golden",
-  providerKey: evidence.providerKey,
-  canonicalUrl: `https://${evidence.providerKey}.example.test/${caseId}/${side}`,
-  title: evidence.title,
-  bodyPreview: evidence.bodyPreview,
-  publishedAt: observedAt.toISOString(),
-  observedAt: observedAt.toISOString(),
-  score: 3 - rank,
-  rank,
-  clusterId: `rank-cluster:${caseId}:${side}`,
-  clusterSize: 1,
-  duplicateFeedItemIds: [],
-  whyImportant: ["Frozen story relation evaluation evidence"],
-  safety: {
-    status: "allowed",
-    categories: ["normalized_preview_only"],
-    rawPayloadRetained: false,
-    retentionPolicy: "normalized_preview_only",
-  },
-  contentQuality: {
-    qualityScore: 1,
-    interestRelevanceScore: 1,
-    engagementIntegrityScore: 1,
-    eligibleForSummary: true,
-    eligibleForTopRead: true,
-    needsLlmReview: false,
-    decision: "promote",
-    flags: [],
-    reason: "Frozen golden fixture",
-  },
-});
-
-const ranker = (items: readonly RankedFeedItemView[]): RankFeedItemsUseCase =>
-  ({
-    execute: async () =>
-      ok({
-        generatedAt: observedAt.toISOString(),
-        profileApplied: false,
-        items,
-      }),
-  }) as unknown as RankFeedItemsUseCase;
-
-const emptyFeedRepository = (): FeedItemReadRepositoryPort => ({
-  list: async () => ({ items: [] }),
-  findById: async () => null,
 });

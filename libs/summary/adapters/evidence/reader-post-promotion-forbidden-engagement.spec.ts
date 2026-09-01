@@ -1,11 +1,12 @@
 import type { JsonObject } from "@social-monitor/shared-kernel";
 
 import {
-  buildReaderPostPromotionAttestations,
   evaluateReaderPostPromotion,
   selectReaderPostPromotions,
   type ReaderPostPromotionInput,
 } from "../../domain";
+import { buildReaderPromotionV2TestAttestations } from
+  "../../domain/services/reader-post-promotion-attestation.spec-support";
 import { normalizePromotionAttestations } from
   "../persistence/prisma/prisma-reader-summary-promotion-attestation";
 import { presentPromotionAttestation } from
@@ -28,11 +29,11 @@ describe("forbidden secondary engagement production path", () => {
         input(provider, actualFacts),
       ]);
       expect(actualSelection).toEqual(expectedSelection);
-      const expectedAttestations = buildReaderPostPromotionAttestations(
+      const expectedAttestations = buildReaderPromotionV2TestAttestations(
         expectedSelection,
         binding(),
       );
-      const actualAttestations = buildReaderPostPromotionAttestations(
+      const actualAttestations = buildReaderPromotionV2TestAttestations(
         actualSelection,
         binding(),
       );
@@ -51,7 +52,7 @@ describe("forbidden secondary engagement production path", () => {
 const bytes = (value: unknown): string => JSON.stringify(value);
 
 const persisted = (
-  value: ReturnType<typeof buildReaderPostPromotionAttestations>,
+  value: ReturnType<typeof buildReaderPromotionV2TestAttestations>,
 ) => normalizePromotionAttestations(JSON.parse(JSON.stringify(value)));
 
 const binding = () => ({

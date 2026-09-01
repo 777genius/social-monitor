@@ -190,6 +190,21 @@ describe("classifyFeedPromotionEligibility", () => {
     }
   });
 
+  it("fails closed for conflicting Reddit score aliases", () => {
+    expect(classifyFeedPromotionEligibility({
+      providerKey: "reddit",
+      providerMetadata: {
+        kind: "reddit_post",
+        score: 42,
+        providerScore: 43,
+      },
+    })).toMatchObject({
+      eligible: false,
+      reason: "malformed_metadata",
+      metricsState: "conflict",
+    });
+  });
+
   it("preserves the validated GitHub 48-hour star and fork window", () => {
     const result = classifyFeedPromotionEligibility({
       providerKey: "github-repo-radar",

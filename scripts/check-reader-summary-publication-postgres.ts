@@ -31,6 +31,11 @@ import {
   type ReaderSummaryPublicationRunningFixture as Fixture,
 } from "./lib/reader-summary-publication-postgres-running-fixture";
 import { assertReaderSummaryRecoveryPostgresContract } from "./lib/reader-summary-recovery-postgres-contract";
+import {
+  assertReaderSummaryPromotionV2ReceiptOwners,
+  assertReaderSummaryPromotionV2RollbackPostgresContract,
+} from
+  "./lib/reader-summary-promotion-v2-rollback-postgres-contract";
 import { assertReaderSummaryWeeklyDailyCertificationBackfillPostgresContract } from "./lib/reader-summary-weekly-daily-certification-backfill-postgres-contract";
 import { assertReaderSummaryWeeklyCertificationSealPostgresContract } from "./lib/reader-summary-weekly-certification-seal-postgres-contract";
 import { assertReaderSummaryWeeklyAtomicPublicationPostgresContract } from "./lib/reader-summary-weekly-atomic-publication-postgres-contract";
@@ -107,6 +112,8 @@ let fixtureRuntimeRoleCreated = false;
 let fixtureDailyTerminalRoleCreated = false;
 export type ReaderSummaryPublicationPostgresContract =
   | "feed-promotion"
+  | "promotion-v2-ownership"
+  | "promotion-v2-rollback"
   | "publication"
   | "weekly-certification-seal"
   | "weekly-atomic-publication"
@@ -220,6 +227,9 @@ export const runReaderSummaryPublicationPostgresContract = async (
       adminDatabaseUrl,
       runtimeRole,
     );
+    if (contract === "promotion-v2-ownership") {
+      await assertReceiptOwnerAuditsRejectDrift();
+    }
     assertReaderSummaryMigrationDatabaseMatchesSchema(targetDatabaseUrl);
     if (contract === "feed-promotion") {
       await assertFeedPromotionOwnerOrder();
@@ -262,6 +272,23 @@ export const runReaderSummaryPublicationPostgresContract = async (
           readerSummaryPublicationMigration,
         );
         await assertLegacyRepositoryVisibility(runtimeDatabaseUrl);
+        if (contract === "promotion-v2-ownership") {
+          await assertReaderSummaryPromotionV2ReceiptOwners(auditor);
+          console.log("Promotion V2 receipt ownership PostgreSQL 18 contract OK");
+          return;
+        }
+        if (contract === "promotion-v2-rollback") {
+          await assertReaderSummaryPromotionV2RollbackPostgresContract({
+            adminClient,
+            auditorClient: auditor,
+            runtimeClient: first,
+            runtimeRole,
+            createFixture: (status, day, overrides) =>
+              createRunningFixture(first, status, day, overrides),
+            publish: (payload) => publish(first, payload),
+          });
+          return;
+        }
         if (
           contract === "weekly-certification-seal" ||
           contract === "weekly-atomic-publication" ||
@@ -429,6 +456,75 @@ const assertFeedPromotionOwnerOrder = async (): Promise<void> => {
         result.rows[0]?.safe_set_membership === true,
       "feed promotion indexes must follow the production table-owner transition",
     );
+  } finally {
+    await admin.end();
+  }
+};
+const assertReceiptOwnerAuditsRejectDrift = async (): Promise<void> => {
+  const admin = new Pool({ connectionString: targetDatabaseUrl, max: 1 });
+  const receipts = [
+    [
+      "reader_summary_promotion_v2_rollback_receipts",
+      "social_monitor_public_schema_owner",
+      "social_monitor_reader_summary_publication_owner",
+    ],
+    [
+      "reader_summary_promotion_v2_canary_publication_receipts",
+      "social_monitor_public_schema_owner",
+      "social_monitor_reader_summary_publication_owner",
+    ],
+  ] as const;
+  try {
+    for (const [table, expectedOwner, wrongOwner] of receipts) {
+      for (const phase of ["pre", "post"] as const) {
+        await admin.query(
+          `ALTER TABLE public.${quotePostgresIdentifier(table)} OWNER TO ${quotePostgresIdentifier(wrongOwner)}`,
+        );
+        try {
+          await assertRejectsContaining(
+            () => runReaderSummaryPublicationBootstrapSql(
+              phase, adminDatabaseUrl, runtimeRole,
+            ),
+            "Promotion V2 receipt table has an unexpected owner",
+            `${phase} audit must reject wrong ${table} owner`,
+          );
+        } finally {
+          await admin.query(
+            `ALTER TABLE public.${quotePostgresIdentifier(table)} OWNER TO ${quotePostgresIdentifier(expectedOwner)}`,
+          );
+          const restored = await admin.query<{ owner: string }>(
+            `SELECT pg_get_userbyid(relation.relowner) AS owner
+               FROM pg_class relation
+              WHERE relation.oid = $1::regclass`,
+            [`public.${table}`],
+          );
+          assert(
+            restored.rows[0]?.owner === expectedOwner,
+            `${phase} drift exercise must restore ${table} owner`,
+          );
+        }
+      }
+    }
+    const missingTable = receipts[1]![0];
+    const hiddenTable = `${missingTable}_inventory_drift_fixture`;
+    for (const phase of ["pre", "post"] as const) {
+      await admin.query(
+        `ALTER TABLE public.${quotePostgresIdentifier(missingTable)} RENAME TO ${quotePostgresIdentifier(hiddenTable)}`,
+      );
+      try {
+        await assertRejectsContaining(
+          () => runReaderSummaryPublicationBootstrapSql(
+            phase, adminDatabaseUrl, runtimeRole,
+          ),
+          "Promotion V2 receipt table has an unexpected owner",
+          `${phase} audit must reject a partial receipt inventory`,
+        );
+      } finally {
+        await admin.query(
+          `ALTER TABLE public.${quotePostgresIdentifier(hiddenTable)} RENAME TO ${quotePostgresIdentifier(missingTable)}`,
+        );
+      }
+    }
   } finally {
     await admin.end();
   }

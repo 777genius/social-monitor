@@ -1,7 +1,11 @@
 import type { TopRead } from "../entities/top-read";
 import type { PromotionOracleCard } from
   "./reader-summary-promotion-publication-oracle";
-import { READER_POST_PROMOTION_POLICY_V1 } from "./reader-post-promotion-policy";
+import {
+  READER_POST_PROMOTION_POLICY_V1,
+} from "./reader-post-promotion-policy";
+import type { READER_POST_PROMOTION_ATTESTATION_POLICY_VERSION } from
+  "./reader-post-promotion-policy";
 import type { ReaderSummaryPublicationRejectionFinding } from "./reader-summary-publication-decision";
 
 export const promotionPublicationFindings = (params: {
@@ -9,6 +13,9 @@ export const promotionPublicationFindings = (params: {
   readonly expectedAdditional: readonly PromotionOracleCard[];
   readonly actualTop: readonly TopRead[];
   readonly actualSelected: readonly TopRead[];
+  readonly expectedPolicyVersion:
+    | typeof READER_POST_PROMOTION_POLICY_V1.version
+    | typeof READER_POST_PROMOTION_ATTESTATION_POLICY_VERSION;
 }): readonly ReaderSummaryPublicationRejectionFinding[] => {
   const actualAdditional = params.actualSelected;
   const findings: ReaderSummaryPublicationRejectionFinding[] = [];
@@ -21,10 +28,10 @@ export const promotionPublicationFindings = (params: {
   };
   for (const item of [...params.actualTop, ...params.actualSelected]) {
     if (item.promotionMarker !== "reader_post_promotion" ||
-        item.promotionPolicyVersion !== READER_POST_PROMOTION_POLICY_V1.version ||
+        item.promotionPolicyVersion !== params.expectedPolicyVersion ||
         (item.promotionTier !== "top" && item.promotionTier !== "additional")) {
       addFinding(
-        `Promoted post "${item.title}" is missing the exact Promotion V1 marker, tier, or version.`,
+        `Promoted post "${item.title}" is missing the exact ${params.expectedPolicyVersion} marker, tier, or version.`,
         item,
       );
     }
@@ -39,18 +46,18 @@ export const promotionPublicationFindings = (params: {
   }
   if (params.actualTop.length > READER_POST_PROMOTION_POLICY_V1.maxTop ||
       actualAdditional.length > READER_POST_PROMOTION_POLICY_V1.maxAdditional) {
-    addFinding("Reader summary promoted posts exceed the immutable Promotion V1 caps.");
+    addFinding("Reader summary promoted posts exceed the immutable promotion caps.");
   }
   if (!sameOrderedOraclePromotions(params.actualTop, params.expectedTop)) {
-    addFinding("Reader summary Top array differs in order or membership from independent Promotion V1 verification.");
+    addFinding("Reader summary Top array differs in order or membership from the authoritative promotion verification.");
   }
   if (!sameOrderedOraclePromotions(actualAdditional, params.expectedAdditional)) {
-    addFinding("Reader summary Additional array differs in order or membership from independent Promotion V1 verification.");
+    addFinding("Reader summary Additional array differs in order or membership from the authoritative promotion verification.");
   }
   if (new Set([...params.actualTop, ...params.actualSelected].map((item) =>
     item.promotionCanonicalIdentity)).size !==
       params.actualTop.length + params.actualSelected.length) {
-    addFinding("Reader summary selected-post array has duplicate, extra, missing, or reordered Promotion V1 cards.");
+    addFinding("Reader summary selected-post array has duplicate, extra, missing, or reordered promotion cards.");
   }
   return findings;
 };

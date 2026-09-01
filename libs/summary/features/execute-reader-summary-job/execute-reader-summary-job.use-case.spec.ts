@@ -45,7 +45,7 @@ import {
 import { FakeReaderSummaryJobRepository } from "./execute-reader-summary-job.spec-support";
 import {
   makeReaderEvidenceSelection,
-} from "./execute-reader-summary-job-promotion-fixtures";
+} from "../../test-fixtures/execute-reader-summary-job-promotion-fixtures";
 import {
   promotionControlEmptyTopicMapBuilder as emptyTopicMapBuilder,
   promotionControlRejectingTopicMapBuilder as throwingTopicMapBuilder,
@@ -829,7 +829,7 @@ class CapturingReaderSummaryModel implements ReaderSummaryModelPort {
     return {
       route: selectedRoute,
       draft: {
-        headline: firstItem.title,
+        headline: "Developers evaluate a reported runtime regression",
         executiveSummary: `Custom focus: ${input.policy.customInstructions ?? "none"}`,
         topStories: [
           {

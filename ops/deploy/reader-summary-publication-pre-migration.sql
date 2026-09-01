@@ -2,6 +2,46 @@
 BEGIN;
 SELECT set_config('social_monitor.bootstrap_runtime_role', :'runtime_role', false);
 SELECT set_config('social_monitor.bootstrap_system_runtime_role', :'system_runtime_role', false);
+DO $promotion_v2_receipt_owner_audit$
+BEGIN
+  -- These relations are absent together at historical cutoffs and present
+  -- together afterwards. Audit the atomic inventory before changing any state.
+  IF (
+    SELECT count(*)
+    FROM pg_class relation
+    JOIN pg_namespace namespace ON namespace.oid = relation.relnamespace
+    WHERE namespace.nspname = 'public'
+      AND relation.relname = ANY (ARRAY[
+        'reader_summary_promotion_v2_rollback_receipts',
+        'reader_summary_promotion_v2_canary_publication_receipts'
+      ]::NAME[])
+  ) NOT IN (0, 2) OR EXISTS (
+    SELECT 1
+    FROM (VALUES
+      (
+        'reader_summary_promotion_v2_rollback_receipts'::NAME,
+        'social_monitor_public_schema_owner'::NAME,
+        'r'::"char"
+      ),
+      (
+        'reader_summary_promotion_v2_canary_publication_receipts'::NAME,
+        'social_monitor_public_schema_owner'::NAME,
+        'r'::"char"
+      )
+    ) AS expected(relation_name, owner_name, relation_kind)
+    JOIN pg_class relation ON relation.relname = expected.relation_name
+    JOIN pg_namespace namespace ON namespace.oid = relation.relnamespace
+    JOIN pg_roles owner ON owner.oid = relation.relowner
+    WHERE namespace.nspname = 'public'
+      AND (
+        relation.relkind <> expected.relation_kind
+        OR owner.rolname <> expected.owner_name
+      )
+  ) THEN
+    RAISE EXCEPTION 'Promotion V2 receipt table has an unexpected owner';
+  END IF;
+END
+$promotion_v2_receipt_owner_audit$;
 DO $bootstrap$
 DECLARE
   v_runtime_role NAME := current_setting('social_monitor.bootstrap_runtime_role')::NAME;
@@ -677,6 +717,8 @@ BEGIN
         'reader_summary_daily_canonical_recovery_v4_leases',
         'reader_summary_daily_canonical_recovery_v4_ambiguity_retries',
         'reader_summary_daily_canonical_recovery_v4_route_authorities',
+        'reader_summary_promotion_v2_rollback_receipts',
+        'reader_summary_promotion_v2_canary_publication_receipts',
         'reader_summary_weekly_publication_evidence',
         'reader_summary_weekly_review_manifests'
       )
@@ -705,6 +747,8 @@ BEGIN
         'reader_summary_production_recovery_dry_runs',
         'reader_summary_production_recovery_leases',
         'reader_summary_recovery_receipts', 'reader_summary_weekly_certification_seals',
+        'reader_summary_promotion_v2_rollback_receipts',
+        'reader_summary_promotion_v2_canary_publication_receipts',
         'reader_summary_daily_canonical_recovery_v4_plans',
         'reader_summary_daily_canonical_recovery_v4_authorities',
         'reader_summary_daily_canonical_recovery_v4_leases',
@@ -746,6 +790,8 @@ BEGIN
         'reader_summary_production_recovery_dry_runs',
         'reader_summary_production_recovery_leases',
         'reader_summary_recovery_receipts', 'reader_summary_weekly_certification_seals',
+        'reader_summary_promotion_v2_rollback_receipts',
+        'reader_summary_promotion_v2_canary_publication_receipts',
         'reader_summary_daily_canonical_recovery_v4_plans',
         'reader_summary_daily_canonical_recovery_v4_authorities',
         'reader_summary_daily_canonical_recovery_v4_leases',
@@ -969,7 +1015,7 @@ BEGIN
       'reader_summary_daily_canonical_recovery_v4_authorities',
       'reader_summary_daily_canonical_recovery_v4_leases',
       'reader_summary_daily_canonical_recovery_v4_ambiguity_retries',
-      'reader_summary_daily_canonical_recovery_v4_route_authorities'
+    'reader_summary_daily_canonical_recovery_v4_route_authorities'
     )
     AND owner.rolname = 'social_monitor_reader_summary_publication_owner';
   SELECT count(*) INTO v_weekly_review_manifest_table_count

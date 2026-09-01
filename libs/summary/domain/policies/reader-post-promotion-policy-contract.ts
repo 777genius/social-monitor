@@ -1,12 +1,20 @@
 import { READER_PROMOTION_PROVIDER_ALIASES } from
   "@social-monitor/shared-kernel";
+import type { ReaderSummaryEditorialScoreComponents } from
+  "../value-objects/reader-summary-editorial-slate";
 
 export const READER_POST_PROMOTION_POLICY_VERSION =
   "reader_post_promotion.v1" as const;
-export const READER_POST_PROMOTION_ATTESTATION_SCHEMA_VERSION =
+export const READER_POST_PROMOTION_ATTESTATION_SCHEMA_V1 =
   "reader_post_promotion_attestation.v1" as const;
-export const READER_POST_PROMOTION_DIGEST_VERSION =
+export const READER_POST_PROMOTION_ATTESTATION_SCHEMA_VERSION =
+  "reader_post_promotion_attestation.v2" as const;
+export const READER_POST_PROMOTION_ATTESTATION_POLICY_VERSION =
+  "reader_post_promotion.v2" as const;
+export const READER_POST_PROMOTION_DIGEST_V1 =
   "reader_post_promotion_digest.sha256.v1" as const;
+export const READER_POST_PROMOTION_DIGEST_VERSION =
+  "reader_post_promotion_digest.sha256.v2" as const;
 
 export type ReaderPostPromotionDecision =
   | "promote_top"
@@ -137,10 +145,8 @@ export type ReaderPostPromotionResult = {
   readonly authoritativeSameStory: boolean;
 };
 
-export type ReaderPostPromotionAttestation = {
-  readonly schemaVersion: typeof READER_POST_PROMOTION_ATTESTATION_SCHEMA_VERSION;
+type ReaderPostPromotionAttestationBody = {
   readonly policyVersion: typeof READER_POST_PROMOTION_POLICY_VERSION;
-  readonly digestVersion: typeof READER_POST_PROMOTION_DIGEST_VERSION;
   readonly digest: string;
   readonly canonicalPayload: string;
   readonly artifactId: string;
@@ -192,6 +198,42 @@ export type ReaderPostPromotionAttestation = {
   readonly canonicalDedupeOutcome: "retained" | "deduplicated" | "not_applicable";
   readonly capOutcome: "selected" | "excluded_by_cap" | "not_applicable";
 };
+
+export type ReaderPostPromotionAttestationV1 =
+  ReaderPostPromotionAttestationBody & {
+    readonly schemaVersion: typeof READER_POST_PROMOTION_ATTESTATION_SCHEMA_V1;
+    readonly policyVersion: typeof READER_POST_PROMOTION_POLICY_VERSION;
+    readonly digestVersion: typeof READER_POST_PROMOTION_DIGEST_V1;
+  };
+
+export type ReaderPostPromotionEvidenceLineage = {
+  readonly leadCandidateId: string;
+  readonly leadCitationId: string;
+  readonly supportCandidateIds: readonly string[];
+  readonly supportCitationIds: readonly string[];
+  readonly citationIds: readonly string[];
+};
+
+export type ReaderPostPromotionAttestationV2 = Omit<
+  ReaderPostPromotionAttestationBody,
+  "policyVersion"
+> & {
+  readonly schemaVersion: typeof READER_POST_PROMOTION_ATTESTATION_SCHEMA_VERSION;
+  readonly policyVersion: typeof READER_POST_PROMOTION_ATTESTATION_POLICY_VERSION;
+  readonly digestVersion: typeof READER_POST_PROMOTION_DIGEST_VERSION;
+  readonly storyClusterId: string;
+  readonly scoreComponents: ReaderSummaryEditorialScoreComponents;
+  readonly reasonCodes: readonly string[];
+  readonly candidateDigestInput: string;
+  readonly slateEntryDigestInput: string;
+  readonly slateDigestInput: string;
+  readonly slateDigest: string;
+  readonly evidenceLineage: ReaderPostPromotionEvidenceLineage;
+};
+
+export type ReaderPostPromotionAttestation =
+  | ReaderPostPromotionAttestationV1
+  | ReaderPostPromotionAttestationV2;
 
 const xFloors = Object.freeze({
   top: Object.freeze({ weighted: 70, likes: 30, reposts: 10 }),

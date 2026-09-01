@@ -46,7 +46,7 @@ describe("ReaderSummaryPublicationPolicy", () => {
     );
   });
 
-  it("rejects summary-eligible evidence that is not eligible for a visible top read", () => {
+  it("does not report V1 placement eligibility for a signed V2 slate", () => {
     const decision = policy.evaluate({
       artifact: artifact(),
       evidence: evidenceSelection({
@@ -66,12 +66,12 @@ describe("ReaderSummaryPublicationPolicy", () => {
     expect(decision).toMatchObject({
       status: "rejected",
       qualityPassed: false,
-      reasonCodes: ["top_read_ineligible_source", "editorial_quality"],
+      reasonCodes: ["editorial_quality"],
     });
     if (decision.status !== "rejected") {
       throw new Error("Expected publication rejection");
     }
-    expect(decision.reasonCodes).toContain("top_read_ineligible_source");
+    expect(decision.reasonCodes).not.toContain("top_read_ineligible_source");
   });
 
   it("rejects user-facing technical leakage before publish", () => {
@@ -149,7 +149,7 @@ describe("ReaderSummaryPublicationPolicy", () => {
   it("publishes a multi-provider daily synthesis with an unbound lead", () => {
     const decision = policy.evaluate({
       artifact: dailySynthesisArtifact(),
-      evidence: dailyEvidenceSelection(),
+      evidence: dailyEvidenceSelection(25),
     });
     expect(decision).toMatchObject({
       status: "published",
@@ -160,11 +160,11 @@ describe("ReaderSummaryPublicationPolicy", () => {
   it("rejects a single-story artifact when the deterministic coverage plan requires a daily synthesis", () => {
     const decision = policy.evaluate({
       artifact: artifact(),
-      evidence: dailyEvidenceSelection(),
+      evidence: dailyEvidenceSelection(25),
     });
     expect(decision).toMatchObject({
       status: "rejected",
-      reasonCodes: ["editorial_quality"],
+      reasonCodes: ["top_read_ineligible_source", "editorial_quality"],
       reasons: expect.arrayContaining([
         expect.stringContaining(
           "Daily synthesis lead must cite at least two story clusters",
@@ -181,7 +181,7 @@ describe("ReaderSummaryPublicationPolicy", () => {
       artifact: dailySynthesisArtifact({
         watchText: "- **example/repo**: +1,200 stars today.",
       }),
-      evidence: dailyEvidenceSelection(),
+      evidence: dailyEvidenceSelection(25),
     });
     expect(decision).toMatchObject({
       status: "published",
@@ -206,7 +206,7 @@ describe("ReaderSummaryPublicationPolicy", () => {
           },
         ],
       }),
-      evidence: dailyEvidenceSelection(),
+      evidence: dailyEvidenceSelection(25),
     });
     expect(decision).toMatchObject({
       status: "rejected",
@@ -246,7 +246,7 @@ describe("ReaderSummaryPublicationPolicy", () => {
           },
         ],
       }),
-      evidence: dailyEvidenceSelection(),
+      evidence: dailyEvidenceSelection(25),
     });
     expect(decision).toMatchObject({
       status: "rejected",
@@ -264,7 +264,7 @@ describe("ReaderSummaryPublicationPolicy", () => {
       artifact: dailySynthesisArtifact({
         headline: "AI runtime quality discussion",
       }),
-      evidence: dailyEvidenceSelection(),
+      evidence: dailyEvidenceSelection(25),
     });
     expect(decision).toMatchObject({
       status: "rejected",
@@ -276,7 +276,7 @@ describe("ReaderSummaryPublicationPolicy", () => {
   it("rejects a provider-dominated daily synthesis", () => {
     const decision = policy.evaluate({
       artifact: providerDominatedDailySynthesisArtifact(),
-      evidence: dailyEvidenceSelection(),
+      evidence: dailyEvidenceSelection(25),
     });
     expect(decision).toMatchObject({
       status: "rejected",
@@ -294,7 +294,7 @@ describe("ReaderSummaryPublicationPolicy", () => {
       artifact: dailySynthesisArtifact({
         watchText: "Watch: - **example/repo**: +1,200 stars today.",
       }),
-      evidence: dailyEvidenceSelection(),
+      evidence: dailyEvidenceSelection(25),
     });
     expect(decision).toMatchObject({
       status: "rejected",
@@ -319,6 +319,21 @@ describe("ReaderSummaryPublicationPolicy", () => {
       }),
       evidence: {
         ...noSignalEvidence,
+        editorialSlate: {
+          ...noSignalEvidence.editorialSlate!,
+          top: [],
+          additional: [],
+          excluded: noSignalEvidence.selectedEvidence.map((item) => ({
+            candidateId: item.feedItemId,
+            canonicalIdentity:
+              item.promotionFacts?.canonicalIdentity ?? item.feedItemId,
+            reasonCodes: ["provider_floor_not_met"],
+          })),
+          orderedCandidateIds: [],
+          orderedCanonicalIdentities: [],
+          digestInputs: [],
+          digestMaterial: "empty-publication-slate",
+        },
         selectedEvidence: noSignalEvidence.selectedEvidence.map((item) => ({
           ...item,
           promotionFacts: {

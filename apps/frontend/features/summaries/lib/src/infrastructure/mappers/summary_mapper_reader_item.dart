@@ -105,6 +105,8 @@ extension on SummaryMapper {
     );
     final promotionCardIsValid =
         promotionAttestation != null &&
+        (!promotionAttestation.isV2 ||
+            promotionAttestation.storyClusterId == storyClusterId) &&
         _sameOrderedReaderCitationIds(
           promotionAttestation.citationIds,
           dto.citationIds,
@@ -200,12 +202,46 @@ extension on SummaryMapper {
       return null;
     }
     final attestation = ReaderPostPromotionAttestation(
+      schemaVersion: dto.schemaVersion,
+      policyVersion: dto.policyVersion,
       candidateId: dto.candidateId,
       canonicalIdentity: dto.canonicalIdentity,
       placement: placement,
       slot: dto.slot,
       decision: dto.decision,
       citationIds: List.unmodifiable(dto.citationIds),
+      storyClusterId: dto.storyClusterId,
+      scoreComponents: switch (dto.scoreComponents) {
+        null => null,
+        final value => ReaderPostPromotionScoreComponents(
+          engagementSalience: value.engagementSalience,
+          relevance: value.relevance,
+          evidenceQuality: value.evidenceQuality,
+          integrity: value.integrity,
+          freshness: value.freshness,
+          weightedEngagement: value.weightedEngagement,
+          weightedRelevance: value.weightedRelevance,
+          weightedEvidenceQuality: value.weightedEvidenceQuality,
+          weightedIntegrity: value.weightedIntegrity,
+          weightedFreshness: value.weightedFreshness,
+          total: value.total,
+        ),
+      },
+      reasonCodes: List.unmodifiable(dto.reasonCodes),
+      candidateDigestInput: dto.candidateDigestInput,
+      slateEntryDigestInput: dto.slateEntryDigestInput,
+      slateDigestInput: dto.slateDigestInput,
+      slateDigest: dto.slateDigest,
+      evidenceLineage: switch (dto.evidenceLineage) {
+        null => null,
+        final value => ReaderPostPromotionEvidenceLineage(
+          leadCandidateId: value.leadCandidateId,
+          leadCitationId: value.leadCitationId,
+          supportCandidateIds: List.unmodifiable(value.supportCandidateIds),
+          supportCitationIds: List.unmodifiable(value.supportCitationIds),
+          citationIds: List.unmodifiable(value.citationIds),
+        ),
+      },
     );
     return attestation;
   }

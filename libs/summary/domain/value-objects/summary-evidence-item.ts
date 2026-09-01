@@ -2,6 +2,8 @@ import type { ProviderMetric } from "./provider-metric-label";
 import type { PreviewMedia } from "./preview-media";
 import type { ReaderSummaryRelatedTopicRelationProps } from "./reader-summary-related-topic-relation";
 import type { ReaderPostPromotionAttestation } from "../policies/reader-post-promotion-policy-contract";
+import type { ReaderSummaryEditorialSlate } from
+  "./reader-summary-editorial-slate";
 
 export type SummaryEvidenceReaderActionKind =
   "read_source" | "watch_repository";
@@ -55,6 +57,13 @@ export type SummaryEvidencePromotionFacts = {
     | "unknown";
   readonly canonicalIdentity: string;
   readonly checkedAt?: Date;
+  readonly engagementAuthority?: {
+    readonly observedAt: Date;
+    readonly regressionState:
+      | "stable"
+      | "confirmed_correction"
+      | "unresolved_regression";
+  };
   readonly authorityAttestation?: {
     readonly status: "attested";
     readonly official: boolean;
@@ -188,6 +197,7 @@ export type SummaryEvidenceSelection = {
   readonly relatedTopicRelations?: readonly RelatedTopicRelation[];
   readonly approvedSameStoryRelations?: readonly ApprovedSameStoryRelation[];
   readonly promotionAttestations?: readonly ReaderPostPromotionAttestation[];
+  readonly editorialSlate?: ReaderSummaryEditorialSlate;
 };
 
 export type ApprovedSameStoryRelation = {

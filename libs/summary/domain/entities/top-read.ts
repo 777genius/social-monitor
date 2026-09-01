@@ -2,6 +2,11 @@ import type { ReaderActionKind } from "./reader-action";
 import type { ProviderMetric } from "../value-objects/provider-metric-label";
 import type { PreviewMedia } from "../value-objects/preview-media";
 import type { SignalScore } from "../value-objects/signal-score";
+import type {
+  ReaderSummaryEditorialScoreComponents,
+  ReaderSummaryEditorialSlateEntry,
+} from
+  "../value-objects/reader-summary-editorial-slate";
 
 export type TopReadPrimaryActionKind = Extract<
   ReaderActionKind,
@@ -36,10 +41,19 @@ export type TopRead = {
   readonly storyClusterId?: string;
   readonly cardKind?: ReaderSummaryCardKind;
   readonly promotionMarker?: "reader_post_promotion";
-  readonly promotionPolicyVersion?: "reader_post_promotion.v1";
+  readonly promotionPolicyVersion?:
+    | "reader_post_promotion.v1"
+    | "reader_post_promotion.v2";
   readonly promotionTier?: "top" | "additional";
   readonly promotionCandidateId?: string;
   readonly promotionCanonicalIdentity?: string;
+  readonly editorialPolicyVersion?: ReaderSummaryEditorialSlateEntry["policyVersion"];
+  readonly editorialPlacement?: "top" | "additional";
+  readonly editorialSlot?: number;
+  readonly editorialScoreComponents?: ReaderSummaryEditorialScoreComponents;
+  readonly editorialReasonCodes?: readonly string[];
+  readonly editorialCandidateDigestInput?: string;
+  readonly editorialDigestInput?: string;
   readonly relationId?: string;
   readonly targetStoryClusterId?: string;
   readonly title: string;

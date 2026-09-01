@@ -39,6 +39,39 @@ describe("readerPostPromotionFacts", () => {
     });
   });
 
+  it("carries durable metric observation and correction state separately from content time", () => {
+    expect(readerPostPromotionFacts({
+      providerKey: "reddit",
+      canonicalUrl: "https://reddit.com/r/ai/comments/authority/story/",
+      providerMetadata: { kind: "reddit_post", score: 80 },
+      contentQuality: quality,
+      safetyStatus: "allowed",
+      engagementAuthority: {
+        observedAt: "2026-08-29T17:30:00.000Z",
+        regressionState: "confirmed_correction",
+      },
+    })).toMatchObject({
+      engagementAuthority: {
+        observedAt: new Date("2026-08-29T17:30:00.000Z"),
+        regressionState: "confirmed_correction",
+      },
+    });
+  });
+
+  it("fails malformed metric observation authority closed", () => {
+    expect(readerPostPromotionFacts({
+      providerKey: "reddit",
+      canonicalUrl: "https://reddit.com/r/ai/comments/authority/bad/",
+      providerMetadata: { kind: "reddit_post", score: 80 },
+      contentQuality: quality,
+      safetyStatus: "allowed",
+      engagementAuthority: {
+        observedAt: "not-a-date",
+        regressionState: "stable",
+      },
+    }).engagementAuthority).toBeUndefined();
+  });
+
   it.each([
     [{ kind: "x_post", contentKind: "original_post" }, "missing"],
     [{ kind: "x_post", contentKind: "original_post", likes: "many", retweets: 10 }, "malformed"],

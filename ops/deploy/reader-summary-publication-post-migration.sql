@@ -15,6 +15,46 @@ SELECT set_config(
   current_user,
   false
 );
+DO $promotion_v2_receipt_owner_audit$
+BEGIN
+  -- These relations are absent together at historical cutoffs and present
+  -- together afterwards. Audit the atomic inventory before changing any state.
+  IF (
+    SELECT count(*)
+    FROM pg_class relation
+    JOIN pg_namespace namespace ON namespace.oid = relation.relnamespace
+    WHERE namespace.nspname = 'public'
+      AND relation.relname = ANY (ARRAY[
+        'reader_summary_promotion_v2_rollback_receipts',
+        'reader_summary_promotion_v2_canary_publication_receipts'
+      ]::NAME[])
+  ) NOT IN (0, 2) OR EXISTS (
+    SELECT 1
+    FROM (VALUES
+      (
+        'reader_summary_promotion_v2_rollback_receipts'::NAME,
+        'social_monitor_public_schema_owner'::NAME,
+        'r'::"char"
+      ),
+      (
+        'reader_summary_promotion_v2_canary_publication_receipts'::NAME,
+        'social_monitor_public_schema_owner'::NAME,
+        'r'::"char"
+      )
+    ) AS expected(relation_name, owner_name, relation_kind)
+    JOIN pg_class relation ON relation.relname = expected.relation_name
+    JOIN pg_namespace namespace ON namespace.oid = relation.relnamespace
+    JOIN pg_roles owner ON owner.oid = relation.relowner
+    WHERE namespace.nspname = 'public'
+      AND (
+        relation.relkind <> expected.relation_kind
+        OR owner.rolname <> expected.owner_name
+      )
+  ) THEN
+    RAISE EXCEPTION 'Promotion V2 receipt table has an unexpected owner';
+  END IF;
+END
+$promotion_v2_receipt_owner_audit$;
 
 -- The migrator receives CREATE WITH GRANT OPTION only inside the committed pre
 -- phase so Prisma can apply the ordered migration. Remove it as the dedicated

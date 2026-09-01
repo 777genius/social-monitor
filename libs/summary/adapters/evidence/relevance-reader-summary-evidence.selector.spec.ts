@@ -26,6 +26,10 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
       score: 3,
       publishedAt: publishedAt.toISOString(),
       observedAt: observedAt.toISOString(),
+      engagementAuthority: {
+        observedAt: observedAt.toISOString(),
+        regressionState: "stable" as const,
+      },
       providerMetadata: {
         kind: "hacker_news_story",
         points: 50,
@@ -188,7 +192,7 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
     );
     expect(selection.sourceWindow.selectedFeedItemIds).not.toContain("feed-rss");
     expect(storyRankingMetrics.recorded[0]?.rankingPolicyVersion).toBe(
-      "story_ranking_v10",
+      "reader_promotion_policy.v2",
     );
     expect(selection.personalization).toEqual({
       memoryGuidanceStatus: "available",
@@ -405,9 +409,13 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
     });
 
     expect(selection.selectedEvidence.map((item) => item.providerKey)).toEqual([
-      "reddit",
       "hacker-news",
+      "reddit",
       "github-trending-page",
+    ]);
+    expect(selection.editorialSlate?.orderedCandidateIds).toEqual([
+      "feed-hn",
+      "feed-reddit",
     ]);
   });
 
@@ -461,11 +469,13 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
     expect(rankFeedItems.execute).toHaveBeenCalledWith(
       expect.objectContaining({ limit: 200 }),
     );
-    expect(selection.selectedEvidence).toHaveLength(120);
+    expect(selection.selectedEvidence).toHaveLength(16);
     expect(
       selection.selectedEvidence.filter((item) => item.providerKey === "rss"),
     ).toHaveLength(0);
     expect(selection.selectedEvidence[0]?.providerKey).toBe("reddit");
+    expect(selection.editorialSlate?.top).toHaveLength(8);
+    expect(selection.editorialSlate?.additional).toHaveLength(8);
   });
 
   it("does not refill ranked evidence from provider repository lanes", async () => {
@@ -663,8 +673,12 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
     });
 
     expect(selection.selectedEvidence.map((item) => item.feedItemId)).toEqual([
-      "qualified-reddit-original",
       "qualified-hn-story",
+      "qualified-reddit-original",
+    ]);
+    expect(selection.editorialSlate?.orderedCandidateIds).toEqual([
+      "qualified-hn-story",
+      "qualified-reddit-original",
     ]);
   });
 
@@ -893,7 +907,16 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
     >).mock.calls[0]?.[0];
     expect(rankingCommand?.publishedAtOrAfter).toBeUndefined();
     expect(rankingCommand?.publishedBefore).toBeUndefined();
-    expect(selection.selectedEvidence).toEqual([]);
+    expect(selection.selectedEvidence.map((item) => item.feedItemId)).toEqual([
+      "feed-observed-old-publication",
+    ]);
+    expect(selection.selectedEvidence[0]).toEqual(expect.objectContaining({
+      publishedAt: new Date("2026-06-01T10:00:00.000Z"),
+      observedAt: new Date("2026-06-23T10:00:00.000Z"),
+    }));
+    expect(selection.sourceWindow.selectedFeedItemIds).toEqual([
+      "feed-observed-old-publication",
+    ]);
   });
 
   it("does not select low-quality X evidence just to satisfy provider diversity", async () => {

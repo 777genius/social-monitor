@@ -30,10 +30,7 @@ import {
 import { PrismaReaderSummaryArtifactRepository } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-artifact.repository";
 import { PrismaReaderSummaryJobRepository } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-job.repository";
 import { PrismaReaderSummaryPolicyRepository } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-policy.repository";
-import {
-  buildReaderSummaryPeriod,
-  ReaderSummaryPolicy,
-} from "@social-monitor/summary/domain";
+import { buildReaderSummaryPeriod } from "@social-monitor/summary/domain";
 import { ExecuteReaderSummaryJobUseCase } from "@social-monitor/summary/features/execute-reader-summary-job/execute-reader-summary-job.use-case";
 import { readerSummaryPromotionControl } from "@social-monitor/summary/features/execute-reader-summary-job/reader-summary-promotion-control";
 import { BuildReaderSummaryTopicMapUseCase } from "@social-monitor/summary/features/build-reader-summary-topic-map/build-reader-summary-topic-map.use-case";
@@ -83,7 +80,6 @@ import { createReaderSummaryDailyCapturePublicationWiring } from
 import {
   readerSummaryProductionDayAttemptIdentity,
   readerSummaryProductionDayIdempotencyKey,
-  type ReaderSummaryProductionDayAttemptIdentityInput,
 } from "./lib/reader-summary-production-day-attempt-identity";
 import {
   readerSummaryServingAuthorityRequiresAgentRuntime,
@@ -100,6 +96,28 @@ import {
   assertReaderSummaryDbPublicationFailpointInactive,
   createRecoverableReaderSummaryPublication,
 } from "./lib/reader-summary-db-publication-reconciliation";
+import {
+  assertProductionDayPromotionRetrySafe,
+} from "./lib/reader-summary-production-day-promotion-rebuild";
+import { ensureReaderSummaryProductionDayPolicy } from
+  "./lib/reader-summary-production-day-policy-bootstrap";
+import {
+  resolveProductionDayPromotionInput,
+  revalidateProductionDayPromotionInput,
+} from
+  "./lib/reader-summary-production-day-promotion-input";
+import { historicalPromotionRevalidationFailurePathEnv } from
+  "./lib/reader-summary-promotion-v2-input-guard";
+import {
+  historicalPromotionGenerationAuthorityJsonEnv,
+  historicalPromotionGenerationAuthoritySha256Env,
+  parseHistoricalPromotionGenerationAuthority,
+} from "./lib/reader-summary-promotion-v2-historical-generation-authority";
+import {
+  HistoricalPromotionPolicyGuard,
+  HistoricalPromotionPolicyGuardedEvidenceSelector,
+} from
+  "./lib/reader-summary-promotion-v2-policy-guard";
 
 const databaseUrlEnv = "DATABASE_URL";
 const evidencePathEnv = "DURABLE_READER_SUMMARY_EVIDENCE_PATH";
@@ -116,12 +134,6 @@ const historicalGitHubOmissionReasonEnv =
 const datasetManifestPathEnv = "DURABLE_READER_SUMMARY_DATASET_MANIFEST_PATH";
 const datasetManifestSha256Env =
   "DURABLE_READER_SUMMARY_DATASET_MANIFEST_SHA256";
-const sourceReportSha256Env =
-  "DURABLE_READER_SUMMARY_SOURCE_REPORT_SHA256";
-const collectionArtifactSha256Env =
-  "DURABLE_READER_SUMMARY_COLLECTION_ARTIFACT_SHA256";
-const collectionQualityReportSha256Env =
-  "DURABLE_READER_SUMMARY_COLLECTION_QUALITY_REPORT_SHA256";
 const datasetRecoveryRootEnv = "DURABLE_READER_SUMMARY_RECOVERY_ROOT";
 const recoveryTimestampPolicyEnv =
   "DURABLE_READER_SUMMARY_RECOVERY_TIMESTAMP_POLICY";
@@ -201,37 +213,16 @@ async function main(): Promise<void> {
     periodEndedAt,
     now,
   });
-  const sourceProvenance: ReaderSummaryProductionDayAttemptIdentityInput["sourceProvenance"] =
-    dailyReplay !== null
-      ? {
-          kind: "persisted-daily-replay",
-          sourceAuthoritySha256: dailyReplay.authoritySha256,
-          originalModelJobIdentity: dailyReplay.modelJobIdentity,
-          originalReceiptSha256: sha256Bytes(dailyReplay.receiptBytes),
-        }
-      : recoveryTimestampPolicy.active
-        ? {
-            kind: "historical-regeneration",
-            sourceReportSha256: requiredEnv(sourceReportSha256Env),
-            collectionArtifactSha256: requiredEnv(collectionArtifactSha256Env),
-            collectionQualityReportSha256: requiredEnv(
-              collectionQualityReportSha256Env,
-            ),
-            datasetManifestSha256: requiredEnv(datasetManifestSha256Env),
-            timestampPolicy: recoveryTimestampPolicy.policy,
-            ...(historicalGitHubOmission === undefined
-              ? {}
-              : {
-                  historicalGitHubOmissionReason:
-                    historicalGitHubOmission.reason,
-                }),
-          }
-        : {
-            kind: "live-production",
-            ...(liveObservationCutoff === undefined
-              ? {}
-              : { observationCutoff: liveObservationCutoff.toISOString() }),
-          };
+  const { promotionRebuild, sourceProvenance } =
+    resolveProductionDayPromotionInput({
+      environment: process.env,
+      recoveryActive: recoveryTimestampPolicy.active,
+      date: periodStartedAt.toISOString().slice(0, 10),
+      timestampPolicy: recoveryTimestampPolicy.policy,
+      historicalGitHubOmissionReason: historicalGitHubOmission?.reason,
+      liveObservationCutoff: liveObservationCutoff?.toISOString(),
+      dailyReplay,
+    });
   const maxEvidenceItems = readIntegerEnv(
     "DURABLE_READER_SUMMARY_MAX_EVIDENCE_ITEMS",
     200,
@@ -280,6 +271,17 @@ async function main(): Promise<void> {
           timestampPolicy: recoveryTimestampPolicy.policy,
         })
       : null;
+    await revalidateProductionDayPromotionInput({
+      promotionRebuild,
+      datasetGuard,
+      client: summaryConnection,
+      tenantId: tenant,
+      workspaceId: workspace,
+      date: periodStartedAt.toISOString().slice(0, 10),
+      failureMarkerPath: readEnv(
+        historicalPromotionRevalidationFailurePathEnv,
+      ),
+    });
     const feedItems = new PrismaFeedItemReadRepository(feedConnection);
     const readerSummaryJobs = new PrismaReaderSummaryJobRepository(
       summaryConnection,
@@ -287,9 +289,20 @@ async function main(): Promise<void> {
     const readerSummaryArtifacts = new PrismaReaderSummaryArtifactRepository(
       summaryConnection,
     );
-    const readerSummaryPolicies = new PrismaReaderSummaryPolicyRepository(
+    const baseReaderSummaryPolicies = new PrismaReaderSummaryPolicyRepository(
       summaryConnection,
     );
+    const promotionPolicyGuard = promotionRebuild === undefined
+      ? null
+      : new HistoricalPromotionPolicyGuard(
+          baseReaderSummaryPolicies,
+          parseHistoricalPromotionGenerationAuthority(
+            readEnv(historicalPromotionGenerationAuthorityJsonEnv),
+            readEnv(historicalPromotionGenerationAuthoritySha256Env),
+          ).policy,
+        );
+    const readerSummaryPolicies = promotionPolicyGuard ??
+      baseReaderSummaryPolicies;
     const publicationWiring =
       createReaderSummaryDailyCapturePublicationWiring({
         replay: dailyReplay,
@@ -305,28 +318,15 @@ async function main(): Promise<void> {
     const ids = new CryptoIdGenerator();
     const scope = { type: "workspace" } as const;
 
-    await readerSummaryPolicies.save(
-      ReaderSummaryPolicy.create({
-        id: deterministicUuid(
-          ["reader-summary-policy", tenant, workspace, scope.type].join(":"),
-        ),
+    if (promotionRebuild === undefined) {
+      await ensureReaderSummaryProductionDayPolicy({
+        repository: baseReaderSummaryPolicies,
         tenantId: tenant,
         workspaceId: workspace,
-        scope,
-        language: "auto",
-        format: "executive_brief",
-        tone: "analytical",
         maxStories,
-        includeRisks: true,
-        includeInterestHighlights: true,
-        includeRepeatedSignals: true,
-        dedupeStrategy: "canonical_url_then_title",
-        customInstructions:
-          "Build a practical daily reader summary for AI/product/social monitoring. Prefer fresh, cited, high-signal items and clearly separate facts from risks.",
-        createdAt: now,
-        updatedAt: now,
-      }),
-    );
+        now,
+      });
+    }
 
     const inventoryBefore = dailyReplay === null
       ? await loadFeedInventory(summaryConnection, {
@@ -370,11 +370,17 @@ async function main(): Promise<void> {
         endedAt: periodEndedAt,
         timezone,
       },
-      idempotencyKey: readerSummaryProductionDayIdempotencyKey(attemptIdentity),
+      idempotencyKey: readerSummaryProductionDayIdempotencyKey(
+        attemptIdentity,
+        promotionRebuild?.rebuildIdentity,
+      ),
       correlationId: `corr-durable-reader-summary-${now.getTime()}`,
     });
     if (!request.ok) {
       throw request.error;
+    }
+    if (promotionRebuild !== undefined) {
+      assertProductionDayPromotionRetrySafe(request.value);
     }
 
     const relevanceEvidenceSelector = publicationWiring.evidenceSelector;
@@ -384,13 +390,19 @@ async function main(): Promise<void> {
         : new HistoricalGitHubOmissionEvidenceSelector(
             relevanceEvidenceSelector,
           );
-    const evidenceSelector =
+    const baseEvidenceSelector =
       datasetGuard === null
         ? omissionAwareEvidenceSelector
         : new DatasetGuardedReaderSummaryEvidenceSelector(
             omissionAwareEvidenceSelector,
             datasetGuard,
           );
+    const evidenceSelector = promotionPolicyGuard === null
+      ? baseEvidenceSelector
+      : new HistoricalPromotionPolicyGuardedEvidenceSelector(
+          baseEvidenceSelector,
+          promotionPolicyGuard,
+        );
     const durablePublication = new PrismaReaderSummaryPublication(
       summaryConnection,
       datasetGuard === null
@@ -533,6 +545,14 @@ async function main(): Promise<void> {
           identity: attemptIdentity,
           requestCreated: request.value.created,
           reconciledFromDbPublication: !request.value.created,
+          ...(promotionRebuild === undefined
+            ? {}
+            : {
+                promotionRebuildIdentity: promotionRebuild.rebuildIdentity,
+                authoritativeInputDigest:
+                  promotionRebuild.authoritativeInputDigest,
+                promotionPolicyVersion: promotionRebuild.policyVersion,
+              }),
         },
         historicalGitHubOmission:
           historicalGitHubOmission === undefined
@@ -946,23 +966,6 @@ const requiredEnv = (name: string): string => {
 const readEnv = (name: string): string | undefined => {
   const value = process.env[name]?.trim();
   return value === undefined || value.length === 0 ? undefined : value;
-};
-
-const deterministicUuid = (value: string): string => {
-  const bytes = Buffer.from(
-    createHash("sha256").update(value).digest(),
-  ).subarray(0, 16);
-  bytes[6] = (bytes[6]! & 0x0f) | 0x40;
-  bytes[8] = (bytes[8]! & 0x3f) | 0x80;
-  const hex = bytes.toString("hex");
-
-  return [
-    hex.slice(0, 8),
-    hex.slice(8, 12),
-    hex.slice(12, 16),
-    hex.slice(16, 20),
-    hex.slice(20),
-  ].join("-");
 };
 
 const sha256Bytes = (value: Buffer): string =>

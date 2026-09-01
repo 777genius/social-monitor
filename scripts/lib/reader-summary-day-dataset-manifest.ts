@@ -166,6 +166,48 @@ export function manifestsMatch(
   );
 }
 
+export function parseReaderSummaryDayDatasetManifest(
+  bytes: Uint8Array,
+): ReaderSummaryDayDatasetManifest {
+  let value: unknown;
+  try {
+    value = JSON.parse(Buffer.from(bytes).toString("utf8")) as unknown;
+  } catch {
+    throw new Error("Dataset manifest is not valid JSON");
+  }
+  if (
+    !isRecord(value) ||
+    value.schemaVersion !== 1 ||
+    value.format !== readerSummaryDayDatasetManifestFormat ||
+    typeof value.generatedAt !== "string" ||
+    !isRecord(value.scope) ||
+    typeof value.scope.tenantId !== "string" ||
+    typeof value.scope.workspaceId !== "string" ||
+    !isRecord(value.period) ||
+    typeof value.period.startedAt !== "string" ||
+    typeof value.period.endedAt !== "string" ||
+    value.period.timezone !== "UTC" ||
+    !isRecord(value.dataset) ||
+    !isExactCount(value.dataset.feedRowCount) ||
+    !isCountRecord(value.dataset.providerCounts) ||
+    !isSha256(value.dataset.feedRowsSha256) ||
+    !isExactCount(value.dataset.githubEligibilityRowCount) ||
+    !isSha256(value.dataset.githubEligibilitySha256) ||
+    !isSha256(value.dataset.aggregateSha256) ||
+    !isRecord(value.policy) ||
+    value.policy.status !== "VISIBLE" ||
+    (value.policy.timestampPolicy !== "published_at" &&
+      value.policy.timestampPolicy !== "observed_at") ||
+    value.policy.githubRowsIncluded !== true ||
+    value.policy.githubEligibilityIncluded !== true ||
+    !isRecord(value.redaction) ||
+    Object.values(value.redaction).some((item) => item !== false)
+  ) {
+    throw new Error("Dataset manifest contract is invalid");
+  }
+  return value as unknown as ReaderSummaryDayDatasetManifest;
+}
+
 async function readFeedRows(params: {
   readonly client: Pick<PrismaSummaryClient, "$queryRaw">;
   readonly tenantId: string;
@@ -287,4 +329,20 @@ function assertExactUtcDay(startedAt: Date, endedAt: Date): void {
   ) {
     throw new Error("Dataset manifest requires one exact UTC day");
   }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function isSha256(value: unknown): value is string {
+  return typeof value === "string" && /^[0-9a-f]{64}$/u.test(value);
+}
+
+function isExactCount(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+}
+
+function isCountRecord(value: unknown): value is Record<string, number> {
+  return isRecord(value) && Object.values(value).every(isExactCount);
 }

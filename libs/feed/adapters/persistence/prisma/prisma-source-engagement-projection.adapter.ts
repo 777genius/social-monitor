@@ -180,11 +180,16 @@ export class PrismaSourceEngagementProjectionAdapter
       where: { tenantId_workspaceId_sourceItemId: scopeKey },
     });
     const previousMetrics = metricsFromSnapshot(current);
-    const isLatest =
-      current === null ||
-      command.observedAt.getTime() >= current.lastObservedAt.getTime();
     const metricsChanged =
       current === null || current.metricsHash !== sample.metricsFingerprint;
+    const observedAtComparison =
+      current === null
+        ? 1
+        : command.observedAt.getTime() - current.lastObservedAt.getTime();
+    const isLatest =
+      current === null ||
+      observedAtComparison > 0 ||
+      (observedAtComparison === 0 && !metricsChanged);
     const hasRegression =
       previousMetrics !== null &&
       engagementMetricsHaveRegression({
@@ -192,8 +197,9 @@ export class PrismaSourceEngagementProjectionAdapter
         current: sample.metrics,
       });
     const observationDue =
-      current === null ||
-      command.observedAt.getTime() >= current.nextObservationDueAt.getTime();
+      isLatest &&
+      (current === null ||
+        command.observedAt.getTime() >= current.nextObservationDueAt.getTime());
     const bucketStartedAt = engagementObservationBucketStartedAt(
       command.observedAt,
     );

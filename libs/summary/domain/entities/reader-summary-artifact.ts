@@ -290,6 +290,24 @@ const freezePromotionAttestation = (
       windowEndedAt: freezeDate(attestation.metrics.windowEndedAt),
     } : attestation.metrics),
   }),
+  ...(attestation.schemaVersion !== "reader_post_promotion_attestation.v2"
+    ? {}
+    : {
+        scoreComponents: Object.freeze({ ...attestation.scoreComponents }),
+        reasonCodes: Object.freeze([...attestation.reasonCodes]),
+        evidenceLineage: Object.freeze({
+          ...attestation.evidenceLineage,
+          supportCandidateIds: Object.freeze([
+            ...attestation.evidenceLineage.supportCandidateIds,
+          ]),
+          supportCitationIds: Object.freeze([
+            ...attestation.evidenceLineage.supportCitationIds,
+          ]),
+          citationIds: Object.freeze([
+            ...attestation.evidenceLineage.citationIds,
+          ]),
+        }),
+      }),
 });
 
 const clonePromotionAttestations = (
@@ -347,6 +365,22 @@ const clonePromotionAttestations = (
           },
         }
       : { metrics: { ...attestation.metrics } }),
+  ...(attestation.schemaVersion !== "reader_post_promotion_attestation.v2"
+    ? {}
+    : {
+        scoreComponents: { ...attestation.scoreComponents },
+        reasonCodes: [...attestation.reasonCodes],
+        evidenceLineage: {
+          ...attestation.evidenceLineage,
+          supportCandidateIds: [
+            ...attestation.evidenceLineage.supportCandidateIds,
+          ],
+          supportCitationIds: [
+            ...attestation.evidenceLineage.supportCitationIds,
+          ],
+          citationIds: [...attestation.evidenceLineage.citationIds],
+        },
+      }),
 }));
 
 const clonePromotionInput = (

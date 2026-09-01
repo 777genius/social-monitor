@@ -15,7 +15,8 @@
     "prisma/migrations/20260802233000_reader_summary_daily_canonical_recovery_v4/migration.sql",
     "prisma/migrations/20260803173000_reader_summary_daily_canonical_recovery_v4_tenant_rls/migration.sql",
     "prisma/migrations/20260803174000_reader_summary_daily_execution_tenant_rls/migration.sql",
-    "prisma/migrations/20260804130000_reader_summary_daily_v4_ambiguity_retry_schema/migration.sql"
+    "prisma/migrations/20260804130000_reader_summary_daily_v4_ambiguity_retry_schema/migration.sql",
+    "prisma/migrations/20260831120000_reader_summary_promotion_v2_rollback/migration.sql"
   ],
   "forwardRlsCoverage": [
     {
@@ -81,6 +82,16 @@
     {
       "table": "reader_summary_daily_model_jobs",
       "migrationPath": "prisma/migrations/20260803174000_reader_summary_daily_execution_tenant_rls/migration.sql",
+      "ownerRole": "social_monitor_public_schema_owner"
+    },
+    {
+      "table": "reader_summary_promotion_v2_rollback_receipts",
+      "migrationPath": "prisma/migrations/20260831120000_reader_summary_promotion_v2_rollback/migration.sql",
+      "ownerRole": "social_monitor_public_schema_owner"
+    },
+    {
+      "table": "reader_summary_promotion_v2_canary_publication_receipts",
+      "migrationPath": "prisma/migrations/20260831120000_reader_summary_promotion_v2_rollback/migration.sql",
       "ownerRole": "social_monitor_public_schema_owner"
     },
     {
@@ -156,6 +167,20 @@
     "workspaces"
   ],
   "tenantScopedSystemTables": [
+    {
+      "table": "reader_summary_promotion_v2_rollback_receipts",
+      "tenantIdRequired": true,
+      "workspaceIdRequired": true,
+      "tenantPrefixedIndexRequired": true,
+      "reason": "Immutable Promotion V2 rollback receipts are tenant-scoped publication authority exposed only through the narrow publication-owner function."
+    },
+    {
+      "table": "reader_summary_promotion_v2_canary_publication_receipts",
+      "tenantIdRequired": true,
+      "workspaceIdRequired": true,
+      "tenantPrefixedIndexRequired": true,
+      "reason": "Immutable Promotion V2 canary publication receipts are tenant-scoped publication authority exposed only through the narrow publication-owner function."
+    },
     {
       "table": "reader_summary_daily_canonical_recovery_v4_authorities",
       "tenantIdRequired": true,

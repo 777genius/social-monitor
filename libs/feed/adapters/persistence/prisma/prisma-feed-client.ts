@@ -229,4 +229,15 @@ export type PrismaFeedClient = {
       };
     }): Promise<{ readonly count: number }>;
   };
+  readonly sourceItemEngagementSnapshot?: {
+    findUnique(args: {
+      readonly where: {
+        readonly tenantId_workspaceId_sourceItemId: {
+          readonly tenantId: string;
+          readonly workspaceId: string;
+          readonly sourceItemId: string;
+        };
+      };
+    }): Promise<{ readonly lastObservedAt: Date } | null>;
+  };
 };

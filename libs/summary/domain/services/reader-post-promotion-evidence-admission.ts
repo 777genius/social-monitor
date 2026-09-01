@@ -23,6 +23,9 @@ type AdmittedPromotionEvidence = Omit<
 export const admitReaderPostPromotionEvidence = (
   selection: SummaryEvidenceSelection,
 ): AdmittedPromotionEvidence => {
+  if (selection.editorialSlate !== undefined) {
+    return admittedEditorialSlateSelection(selection);
+  }
   const provisionalCitations = selection.selectedEvidence.map((item) => ({
     citationId: `promotion-preflight:${item.feedItemId}`,
     feedItemId: item.feedItemId,
@@ -108,6 +111,62 @@ export const admitReaderPostPromotionEvidence = (
     promotionCounts: {
       top: projection.topReads.length,
       additional: projection.additionalPosts.length,
+    },
+  };
+};
+
+const admittedEditorialSlateSelection = (
+  selection: SummaryEvidenceSelection,
+): AdmittedPromotionEvidence => {
+  const editorialSlate = selection.editorialSlate;
+  if (editorialSlate === undefined) {
+    throw new Error("Reader summary editorial slate is required");
+  }
+  const admittedEvidence = selection.selectedEvidence.map(
+    admittedSummaryEvidenceItem,
+  );
+  const admittedIds = new Set(
+    admittedEvidence.map((item) => item.feedItemId),
+  );
+  return {
+    rankingPolicyVersion: selection.rankingPolicyVersion,
+    ...(selection.personalization === undefined
+      ? {}
+      : { personalization: {
+          ...selection.personalization,
+          signals: [...selection.personalization.signals],
+        } }),
+    editorialSlate,
+    sourceWindow: {
+      ...selection.sourceWindow,
+      startedAt: new Date(selection.sourceWindow.startedAt.getTime()),
+      endedAt: new Date(selection.sourceWindow.endedAt.getTime()),
+      selectedFeedItemIds: admittedEvidence.map((item) => item.feedItemId),
+      storyClusterIds: selection.clusters.map((cluster) => cluster.id),
+      periodStartedAt: copyDate(selection.sourceWindow.periodStartedAt),
+      periodEndedAt: copyDate(selection.sourceWindow.periodEndedAt),
+      ingestionCutoff: copyDate(selection.sourceWindow.ingestionCutoff),
+    },
+    clusters: selection.clusters.map((cluster) => ({
+      ...cluster,
+      duplicateFeedItemIds: [...cluster.duplicateFeedItemIds],
+      interestIds: [...cluster.interestIds],
+      providerKeys: [...cluster.providerKeys],
+      observedAtRange: {
+        startedAt: new Date(cluster.observedAtRange.startedAt.getTime()),
+        endedAt: new Date(cluster.observedAtRange.endedAt.getTime()),
+      },
+      whyImportant: [...cluster.whyImportant],
+    })),
+    selectedEvidence: admittedEvidence,
+    approvedSameStoryRelations: (selection.approvedSameStoryRelations ?? [])
+      .filter((relation) => admittedIds.has(relation.leftFeedItemId) &&
+        admittedIds.has(relation.rightFeedItemId))
+      .map((relation) => ({ ...relation })),
+    relatedTopicRelations: [],
+    promotionCounts: {
+      top: editorialSlate.top.length,
+      additional: editorialSlate.additional.length,
     },
   };
 };
@@ -206,6 +265,12 @@ const admittedPromotionFacts = (
   checkedAt: facts.checkedAt === undefined
     ? undefined
     : new Date(facts.checkedAt.getTime()),
+  engagementAuthority: facts.engagementAuthority === undefined
+    ? undefined
+    : {
+        observedAt: new Date(facts.engagementAuthority.observedAt.getTime()),
+        regressionState: facts.engagementAuthority.regressionState,
+      },
   authorityAttestation: facts.authorityAttestation === undefined
     ? undefined
     : {

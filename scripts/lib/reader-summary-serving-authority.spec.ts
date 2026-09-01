@@ -18,6 +18,8 @@ describe("reader summary current serving authority", () => {
         AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_MODEL: "gpt-5.6-sol",
         AGENT_RUNTIME_READER_SUMMARY_TOPIC_RELATION_VERIFIER_MODEL:
           "gpt-5.6-sol",
+        AGENT_RUNTIME_READER_SUMMARY_STORY_RELATION_VERIFIER_MODEL:
+          "gpt-5.6-sol",
         AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT: "high",
       },
       agentRuntimeClient: { checkHealth },
@@ -36,6 +38,12 @@ describe("reader summary current serving authority", () => {
         reasoningPolicy: "high",
       },
       topicRelationVerifier: {
+        mode: "agent-runtime",
+        provider: "codex",
+        physicalModel: "gpt-5.6-sol",
+        reasoningPolicy: "high",
+      },
+      storyRelationVerifier: {
         mode: "agent-runtime",
         provider: "codex",
         physicalModel: "gpt-5.6-sol",
@@ -65,6 +73,9 @@ describe("reader summary current serving authority", () => {
       topicRelationVerifier: {
         physicalModel: "gpt-5.6-sol",
       },
+      storyRelationVerifier: {
+        physicalModel: "gpt-5.6-sol",
+      },
     });
   });
 
@@ -85,6 +96,7 @@ describe("reader summary current serving authority", () => {
       },
       topicLabeler: { mode: "agent-runtime", provider: "codex" },
       topicRelationVerifier: { mode: "agent-runtime", provider: "codex" },
+      storyRelationVerifier: { mode: "deterministic" },
       runtime: { packageVersion: "1.4.2" },
     });
   });
@@ -130,6 +142,7 @@ describe("reader summary current serving authority", () => {
       summaryGenerator: { mode: summaryModelMode, physicalModel },
       topicLabeler: { mode: "deterministic" },
       topicRelationVerifier: { mode: "deterministic" },
+      storyRelationVerifier: { mode: "deterministic" },
       runtime: null,
     });
     expect(readerSummaryServingAuthorityRequiresAgentRuntime({

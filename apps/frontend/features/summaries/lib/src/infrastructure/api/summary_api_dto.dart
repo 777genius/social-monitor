@@ -1,4 +1,5 @@
 part 'summary_reader_quality_api_dto.dart';
+part 'reader_post_promotion_api_dto.dart';
 part 'reader_summary_content_api_dto.dart';
 part 'reader_summary_coverage_api_dto.dart';
 part 'workspace_summary_api_dto.dart';
@@ -139,24 +140,6 @@ final class TopReadApiDto {
   final List<String> citationIds;
   final String? canonicalUrl;
   final PreviewMediaApiDto? previewMedia;
-}
-
-final class ReaderPostPromotionAttestationApiDto {
-  const ReaderPostPromotionAttestationApiDto({
-    required this.candidateId,
-    required this.canonicalIdentity,
-    required this.placement,
-    required this.slot,
-    required this.decision,
-    this.citationIds = const [],
-  });
-
-  final String candidateId;
-  final String canonicalIdentity;
-  final String placement;
-  final int slot;
-  final String decision;
-  final List<String> citationIds;
 }
 
 final class PreviewMediaApiDto {

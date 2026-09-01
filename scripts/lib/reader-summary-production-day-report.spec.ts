@@ -61,6 +61,7 @@ describe("production-day report", () => {
           sha256: "c".repeat(64),
         },
       },
+      activeSourcePublicationProof: null,
       regenerationInputManifest: manifest,
       githubPolicy: {
         mode: "verified_collected_rows" as const,

@@ -20,6 +20,8 @@ import type {
 } from "../../ports";
 import { AgentRuntimeReaderSummaryStoryRelationVerifier } from "../model/agent-runtime-reader-summary-story-relation-verifier.adapter";
 import { withTestExecutionAttestation } from "../model/reader-summary-execution-attestation.spec-support";
+import { authoritativeReaderSummaryProviderMetadata } from
+  "../../test-fixtures/reader-summary-authoritative-provider-metadata.fixture";
 import { RelevanceReaderSummaryEvidenceSelector } from "./relevance-reader-summary-evidence.selector";
 
 const now = new Date("2026-07-11T12:00:00.000Z");
@@ -37,11 +39,14 @@ const settleDetachedShadow = async (): Promise<void> => {
 };
 
 describe("RelevanceReaderSummaryEvidenceSelector story verification", () => {
-  it("re-clusters only high-confidence approved cross-provider pairs", async () => {
+  it("retains approved cross-provider pairs as annotation-only evidence", async () => {
     const verifier = new ApprovingVerifier();
     const metrics = new CapturingMetrics();
     const selector = new RelevanceReaderSummaryEvidenceSelector(
-      ranker([ranked("hn", "hacker-news", 2), ranked("rss", "rss", 1.9)]),
+      ranker([
+        ranked("hn", "hacker-news", 2),
+        ranked("rss", "x-twitter", 1.9),
+      ]),
       emptyFeedRepository(),
       { now: () => now },
       metrics,
@@ -59,8 +64,11 @@ describe("RelevanceReaderSummaryEvidenceSelector story verification", () => {
 
     expect(verifier.inputs).toHaveLength(1);
     expect(verifier.inputs[0]?.candidates).toHaveLength(1);
-    expect(selection.clusters).toHaveLength(1);
-    expect(selection.clusters[0]?.providerKeys).toEqual(["hacker-news", "rss"]);
+    expect(selection.clusters).toHaveLength(2);
+    expect(selection.clusters.map((cluster) => cluster.providerKeys)).toEqual([
+      ["hacker-news"],
+      ["x-twitter"],
+    ]);
     expect(selection.approvedSameStoryRelations).toEqual([{
       leftFeedItemId: "hn",
       rightFeedItemId: "rss",
@@ -85,7 +93,10 @@ describe("RelevanceReaderSummaryEvidenceSelector story verification", () => {
   it("keeps deterministic clusters when the verifier fails", async () => {
     const metrics = new CapturingMetrics();
     const selector = new RelevanceReaderSummaryEvidenceSelector(
-      ranker([ranked("hn", "hacker-news", 2), ranked("rss", "rss", 1.9)]),
+      ranker([
+        ranked("hn", "hacker-news", 2),
+        ranked("rss", "x-twitter", 1.9),
+      ]),
       emptyFeedRepository(),
       { now: () => now },
       metrics,
@@ -151,7 +162,7 @@ describe("RelevanceReaderSummaryEvidenceSelector story verification", () => {
     const selector = new RelevanceReaderSummaryEvidenceSelector(
       ranker([
         ranked("hn", "hacker-news", 2.1),
-        ranked("rss", "rss", 2),
+        ranked("rss", "x-twitter", 2),
         {
           ...ranked("reddit", "reddit", 1.9),
           title:
@@ -182,10 +193,9 @@ describe("RelevanceReaderSummaryEvidenceSelector story verification", () => {
     });
 
     expect(verifier.preconditionChecked).toBe(true);
-    expect(selection.clusters).toHaveLength(3);
-    expect(
-      selection.clusters.map((cluster) => cluster.providerKeys),
-    ).toContainEqual(["hacker-news", "rss"]);
+    expect(selection.clusters).toHaveLength(4);
+    expect(selection.clusters.map((cluster) => cluster.providerKeys))
+      .not.toContainEqual(["hacker-news", "x-twitter"]);
     expect(metrics.relationMetrics).toContainEqual({
       status: "completed",
       candidateCount: 2,
@@ -247,7 +257,10 @@ describe("RelevanceReaderSummaryEvidenceSelector story verification", () => {
         }),
       });
       const selector = new RelevanceReaderSummaryEvidenceSelector(
-        ranker([ranked("hn", "hacker-news", 2), ranked("rss", "rss", 1.9)]),
+        ranker([
+          ranked("hn", "hacker-news", 2),
+          ranked("rss", "x-twitter", 1.9),
+        ]),
         emptyFeedRepository(),
         { now: () => now },
         metrics,
@@ -276,14 +289,14 @@ describe("RelevanceReaderSummaryEvidenceSelector story verification", () => {
     },
   );
 
-  it("reserves a verified cross-provider partner before provider quotas", async () => {
+  it("keeps verified narrative partners outside immutable-slate authority", async () => {
     const hn = ranked("hn", "hacker-news", 2.2);
     const unrelatedRss = {
-      ...ranked("rss-unrelated", "rss", 2.1),
+      ...ranked("rss-unrelated", "x-twitter", 2.1),
       title: "Database maintenance release notes",
       bodyPreview: "A routine database patch changes backup defaults.",
     };
-    const relatedRss = ranked("rss-related", "rss", 1.9);
+    const relatedRss = ranked("rss-related", "x-twitter", 1.9);
     const selector = new RelevanceReaderSummaryEvidenceSelector(
       ranker([hn, unrelatedRss, relatedRss]),
       emptyFeedRepository(),
@@ -313,16 +326,73 @@ describe("RelevanceReaderSummaryEvidenceSelector story verification", () => {
     expect(selection.selectedEvidence.map((item) => item.feedItemId)).toEqual([
       "hn",
       "rss-related",
+      "rss-unrelated",
     ]);
-    expect(selection.clusters).toHaveLength(1);
-    expect(selection.clusters[0]?.providerKeys).toEqual(["hacker-news", "rss"]);
+    expect(selection.editorialSlate?.orderedCandidateIds).toEqual([
+      "hn",
+      "rss-related",
+      "rss-unrelated",
+    ]);
+    expect(selection.clusters).toHaveLength(3);
+    expect(selection.approvedSameStoryRelations).toContainEqual({
+      leftFeedItemId: "hn",
+      rightFeedItemId: "rss-related",
+      confidence: 0.97,
+    });
+  });
+
+  it("produces byte-identical lanes, order, and digest for contradictory verifier outputs", async () => {
+    const items = [
+      ranked("hn", "hacker-news", 2),
+      ranked("rss", "x-twitter", 1.9),
+    ];
+    const selectWith = async (
+      sameStory: boolean,
+    ) => new RelevanceReaderSummaryEvidenceSelector(
+      ranker(items),
+      emptyFeedRepository(),
+      { now: () => now },
+      new CapturingMetrics(),
+      {
+        verify: async (input) => input.candidates.map((candidate) => ({
+          leftFeedItemId: candidate.leftFeedItemId,
+          rightFeedItemId: candidate.rightFeedItemId,
+          sameStory,
+          confidenceScore: 0.99,
+        })),
+      },
+    ).select({
+      tenantId: tenantId("tenant-contradictory-verifier"),
+      workspaceId: workspaceId("workspace-contradictory-verifier"),
+      scope: { type: "workspace" },
+      period,
+      maxItems: 2,
+    });
+
+    const approved = await selectWith(true);
+    const rejected = await selectWith(false);
+    const immutableAuthority = (selection: typeof approved) => ({
+      top: selection.editorialSlate?.top,
+      additional: selection.editorialSlate?.additional,
+      orderedCandidateIds: selection.editorialSlate?.orderedCandidateIds,
+      digestMaterial: selection.editorialSlate?.digestMaterial,
+    });
+
+    expect(JSON.stringify(immutableAuthority(approved))).toBe(
+      JSON.stringify(immutableAuthority(rejected)),
+    );
+    expect(approved.approvedSameStoryRelations).toHaveLength(1);
+    expect(rejected.approvedSameStoryRelations).toEqual([]);
   });
 
   it("passes snapshot-sealed source text into relation verification", async () => {
     const verifier = new ApprovingVerifier();
     const sourceTail = "incident evidence appears beyond the old 50000 preview boundary";
     const selector = new RelevanceReaderSummaryEvidenceSelector(
-      ranker([ranked("hn", "hacker-news", 2), ranked("rss", "rss", 1.9)]
+      ranker([
+        ranked("hn", "hacker-news", 2),
+        ranked("rss", "x-twitter", 1.9),
+      ]
         .map((item) => ({
           ...item,
           sourceText: `[UNTRUSTED_SOURCE_INSTRUCTION_REDACTED] ${sourceTail}`,
@@ -360,7 +430,7 @@ describe("RelevanceReaderSummaryEvidenceSelector story verification", () => {
     const selector = new RelevanceReaderSummaryEvidenceSelector(
       ranker([
         {
-          ...ranked("cursor-announcement", "rss", 2),
+          ...ranked("cursor-announcement", "x-twitter", 2),
           title: "Cursor deployed at SpaceX",
           bodyPreview: "Official customer story with unrelated prose.",
         },
@@ -407,17 +477,21 @@ describe("RelevanceReaderSummaryEvidenceSelector story verification", () => {
     });
   });
 
-  it("observes corroboration dropped by the final evidence limit in shadow", async () => {
+  it("observes corroboration rejected by the authoritative slate in shadow", async () => {
     const verifier = new ApprovingVerifier();
     const selector = new RelevanceReaderSummaryEvidenceSelector(
       ranker([
         {
-          ...ranked("cursor-selected", "rss", 2),
+          ...ranked("cursor-selected", "x-twitter", 2),
           title: "Cursor deployed at SpaceX",
           bodyPreview: "Official customer deployment report.",
         },
         {
           ...ranked("cursor-dropped", "hacker-news", 1.9),
+          providerMetadata: authoritativeReaderSummaryProviderMetadata(
+            "hacker-news",
+            1,
+          ),
           title: "SpaceX deploying Cursor",
           bodyPreview: "Community link discussion without copied prose.",
         },
@@ -459,7 +533,7 @@ describe("RelevanceReaderSummaryEvidenceSelector story verification", () => {
     const selector = new RelevanceReaderSummaryEvidenceSelector(
       ranker([
         {
-          ...ranked("cursor-announcement", "rss", 2),
+          ...ranked("cursor-announcement", "x-twitter", 2),
           title: "Cursor deployed at SpaceX",
           bodyPreview: "Official customer story with unrelated prose.",
         },
@@ -497,7 +571,7 @@ describe("RelevanceReaderSummaryEvidenceSelector story verification", () => {
     const selector = new RelevanceReaderSummaryEvidenceSelector(
       ranker([
         {
-          ...ranked("watermark-official", "rss", 2),
+          ...ranked("watermark-official", "x-twitter", 2),
           title: "Claude's snippets are watermarked",
           bodyPreview: "Anthropic publication body.",
         },
@@ -542,7 +616,10 @@ describe("RelevanceReaderSummaryEvidenceSelector story verification", () => {
 
   it("keeps telemetry exceptions outside the relation decision path", async () => {
     const selector = new RelevanceReaderSummaryEvidenceSelector(
-      ranker([ranked("hn", "hacker-news", 2), ranked("rss", "rss", 1.9)]),
+      ranker([
+        ranked("hn", "hacker-news", 2),
+        ranked("rss", "x-twitter", 1.9),
+      ]),
       emptyFeedRepository(),
       { now: () => now },
       new ThrowingMetrics(),
@@ -558,7 +635,10 @@ describe("RelevanceReaderSummaryEvidenceSelector story verification", () => {
         maxItems: 2,
       }),
     ).resolves.toMatchObject({
-      clusters: [expect.objectContaining({ providerKeys: ["hacker-news", "rss"] })],
+      clusters: [
+        expect.objectContaining({ providerKeys: ["hacker-news"] }),
+        expect.objectContaining({ providerKeys: ["x-twitter"] }),
+      ],
     });
   });
 });
@@ -597,6 +677,10 @@ const ranked = (
   sourceBindingId: `binding-${providerKey}`,
   interestId: "interest-ai",
   providerKey,
+  providerMetadata: authoritativeReaderSummaryProviderMetadata(
+    providerKey as "x-twitter" | "reddit" | "hacker-news",
+    120,
+  ),
   canonicalUrl: `https://${providerKey}.example.test/${id}`,
   title:
     providerKey === "hacker-news"
@@ -608,6 +692,10 @@ const ranked = (
       : "The engineering team explains its faster compiler pipeline.",
   publishedAt: "2026-07-11T08:00:00.000Z",
   observedAt: "2026-07-11T08:01:00.000Z",
+  engagementAuthority: {
+    observedAt: "2026-07-11T11:30:00.000Z",
+    regressionState: "stable",
+  },
   score,
   rank: providerKey === "hacker-news" ? 1 : 2,
   clusterId: `rank-cluster-${id}`,

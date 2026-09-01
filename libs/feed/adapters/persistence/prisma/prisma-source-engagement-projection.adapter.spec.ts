@@ -49,6 +49,92 @@ describe("PrismaSourceEngagementProjectionAdapter", () => {
     );
     expect(prisma.retentionDeleteCalls).toBe(2);
   });
+
+  it("fails closed for older and equal-time conflicting observations", async () => {
+    const prisma = new FakeEngagementPrisma();
+    const adapter = new PrismaSourceEngagementProjectionAdapter(prisma, {
+      generate: () => `id-${prisma.nextId++}`,
+    });
+
+    await adapter.project(command("2026-07-10T12:00:00Z", 10, true));
+    await adapter.project(command("2026-07-10T13:00:00Z", 20, true));
+    const observationCount = prisma.observations.length;
+
+    const equalConflict = await adapter.project(
+      command("2026-07-10T13:00:00Z", 5, true),
+    );
+    const older = await adapter.project(
+      command("2026-07-10T12:30:00Z", 4, true),
+    );
+
+    expect(equalConflict).toMatchObject({
+      currentSnapshotsUpdated: 0,
+      observationsAppended: 0,
+      metricChanges: 0,
+    });
+    expect(older).toMatchObject({
+      currentSnapshotsUpdated: 0,
+      observationsAppended: 0,
+      metricChanges: 0,
+    });
+    expect(prisma.snapshot).toMatchObject({
+      likes: 20n,
+      lastObservedAt: new Date("2026-07-10T13:00:00Z"),
+    });
+    expect(prisma.feedItemRecord.providerMetadata).toMatchObject({ likes: 20 });
+    expect(prisma.baselineObservedAt).toEqual(
+      new Date("2026-07-10T13:00:00Z"),
+    );
+    expect(prisma.observations).toHaveLength(observationCount);
+  });
+
+  it("persists a Reddit providerScore-only sample as durable score authority", async () => {
+    const prisma = new FakeEngagementPrisma();
+    prisma.sourceItemRecord = {
+      ...prisma.sourceItemRecord,
+      providerKey: "reddit",
+      providerItemId: "reddit:1",
+      metadata: { kind: "reddit_post", providerScore: 42 },
+    };
+    prisma.feedItemRecord = {
+      ...prisma.feedItemRecord,
+      providerKey: "reddit",
+      dedupeKey: "reddit:1",
+      providerMetadata: { kind: "reddit_post", providerScore: 42 },
+    };
+    const adapter = new PrismaSourceEngagementProjectionAdapter(prisma, {
+      generate: () => `id-${prisma.nextId++}`,
+    });
+
+    const result = await adapter.project({
+      tenantId: "tenant" as never,
+      workspaceId: "workspace" as never,
+      sourceBindingId: "00000000-0000-4000-8000-000000000004",
+      scanJobId: "00000000-0000-4000-8000-000000000005",
+      providerKey: "reddit",
+      observedAt: new Date("2026-07-10T12:00:00Z"),
+      samples: [{
+        externalId: "reddit:1",
+        sourceItemId: "source-1",
+        publishedAt: new Date("2026-07-10T11:00:00Z"),
+        metrics: { score: 42 },
+        metricsFingerprint: "reddit-score:42",
+        providerMetadataPatch: { providerScore: 42 },
+        refreshReadModels: true,
+      }],
+    });
+
+    expect(result).toMatchObject({
+      currentSnapshotsUpdated: 1,
+      observationsAppended: 1,
+      metricChanges: 1,
+    });
+    expect(prisma.snapshot?.score).toBe(42n);
+    expect(prisma.feedItemRecord.providerMetadata).toMatchObject({
+      kind: "reddit_post",
+      providerScore: 42,
+    });
+  });
 });
 
 const command = (

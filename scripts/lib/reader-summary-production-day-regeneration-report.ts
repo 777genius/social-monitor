@@ -41,6 +41,8 @@ export function validHistoricalRegenerationProvenance(params: {
     return false;
   }
   const priorCollectionProof = params.value.priorCollectionProof;
+  const activeSourcePublicationProof =
+    params.value.activeSourcePublicationProof;
   return (
     params.value.mode === "historical-regeneration" &&
     params.value.nonLive === false &&
@@ -52,19 +54,11 @@ export function validHistoricalRegenerationProvenance(params: {
       params.value.sourceEvidence,
       params.evidenceBinding,
     ) &&
-    isRecord(priorCollectionProof) &&
-    hashBoundArtifactMatches(
-      priorCollectionProof.sourceAttempt,
-      "reader-summary-production-day-run-v1",
-    ) &&
-    hashBoundArtifactMatches(
-      priorCollectionProof.collectionArtifact,
-      "reader-summary-clean-real-day-collection-v1",
-    ) &&
-    hashBoundArtifactMatches(
-      priorCollectionProof.collectionQualityReport,
-      "yesterday-social-collection-quality-report-v1",
-    ) &&
+    validRegenerationSourceAuthority({
+      priorCollectionProof,
+      activeSourcePublicationProof,
+      promotionRebuild: params.value.promotionRebuild,
+    }) &&
     isRecord(params.value.regenerationInputManifest) &&
     params.value.regenerationInputManifest.timestampPolicy ===
       params.value.timestampPolicy &&
@@ -83,6 +77,50 @@ export function validHistoricalRegenerationProvenance(params: {
     )
   );
 }
+
+const validRegenerationSourceAuthority = (input: {
+  readonly priorCollectionProof: unknown;
+  readonly activeSourcePublicationProof: unknown;
+  readonly promotionRebuild: unknown;
+}): boolean => {
+  if (isRecord(input.priorCollectionProof)) {
+    return input.activeSourcePublicationProof === null &&
+      hashBoundArtifactMatches(
+        input.priorCollectionProof.sourceAttempt,
+        "reader-summary-production-day-run-v1",
+      ) &&
+      hashBoundArtifactMatches(
+        input.priorCollectionProof.collectionArtifact,
+        "reader-summary-clean-real-day-collection-v1",
+      ) &&
+      hashBoundArtifactMatches(
+        input.priorCollectionProof.collectionQualityReport,
+        "yesterday-social-collection-quality-report-v1",
+      );
+  }
+  if (!isRecord(input.activeSourcePublicationProof) ||
+      !isRecord(input.promotionRebuild)) {
+    return false;
+  }
+  return input.priorCollectionProof === null &&
+    input.activeSourcePublicationProof.artifactFormat ===
+      "reader-summary-active-database-publication-v1" &&
+    input.promotionRebuild.sourceAuthorityKind ===
+      "active-database-publication" &&
+    input.activeSourcePublicationProof.publicationId ===
+      input.promotionRebuild.sourcePublicationId &&
+    input.activeSourcePublicationProof.artifactId ===
+      input.promotionRebuild.sourceArtifactId &&
+    input.activeSourcePublicationProof.reportSha256 ===
+      input.promotionRebuild.sourcePublicationReportSha256 &&
+    input.activeSourcePublicationProof.proofSha256 ===
+      input.promotionRebuild.sourcePublicationProofSha256 &&
+    [
+      input.activeSourcePublicationProof.reportSha256,
+      input.activeSourcePublicationProof.proofSha256,
+    ].every((value) =>
+      typeof value === "string" && /^[0-9a-f]{64}$/u.test(value));
+};
 
 export function regenerationDatasetGuardMatches(params: {
   readonly evidence: DurableEvidenceWithProvenance | null;

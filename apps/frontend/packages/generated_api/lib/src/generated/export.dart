@@ -108,6 +108,8 @@ export 'models/reader_summary_period_summary_dto.dart';
 export 'models/reader_summary_personalization_dto.dart';
 export 'models/reader_summary_preview_media_dto.dart';
 export 'models/reader_summary_promotion_attestation_dto.dart';
+export 'models/reader_summary_promotion_evidence_lineage_dto.dart';
+export 'models/reader_summary_promotion_score_components_dto.dart';
 export 'models/reader_summary_provider_collection_health_dto.dart';
 export 'models/reader_summary_provider_coverage_dto.dart';
 export 'models/reader_summary_provider_metric_dto.dart';

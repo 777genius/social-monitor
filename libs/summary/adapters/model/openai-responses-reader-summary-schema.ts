@@ -28,7 +28,7 @@ export const openAiReaderSummaryJsonSchema = {
     executiveSummary: stringSchema(1_800),
     narrativeSections: arraySchema({ $ref: "#/$defs/narrativeSection" }, 7),
     content: { $ref: "#/$defs/content" },
-    topStories: arraySchema({ $ref: "#/$defs/topStory" }, 15),
+    topStories: arraySchema({ $ref: "#/$defs/topStory" }, 8),
     interestHighlights: {
       type: "array",
       items: { $ref: "#/$defs/interestHighlight" },

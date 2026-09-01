@@ -1,7 +1,15 @@
-import type { FeedItemReadRepositoryPort } from "@social-monitor/feed/ports";
+import { InMemoryFeedItemReadRepository } from
+  "@social-monitor/feed/adapters/persistence/in-memory-feed-item-read.repository";
+import { FeedItem } from "@social-monitor/feed/domain";
 import type { RankFeedItemsUseCase } from "@social-monitor/relevance/features/rank-feed-items/rank-feed-items.use-case";
 import type { RankedFeedItemView } from "@social-monitor/relevance/features/rank-feed-items/rank-feed-items.result";
-import { ok, tenantId, workspaceId, type Clock } from "@social-monitor/shared-kernel";
+import {
+  ok,
+  tenantId,
+  workspaceId,
+  type Clock,
+  type JsonObject,
+} from "@social-monitor/shared-kernel";
 
 import { aug14RelatedTopicEvidence } from "../../test-fixtures/aug-14-related-topic.fixture";
 import type {
@@ -11,6 +19,33 @@ import type {
 import { RelevanceReaderSummaryEvidenceSelector } from "./relevance-reader-summary-evidence.selector";
 
 describe("RelevanceReaderSummaryEvidenceSelector related-topic production path", () => {
+  it("backs ranked context with a non-empty authoritative promotion snapshot", async () => {
+    const repository = authoritativeFeedRepository();
+    const snapshot = await repository.readPromotionSnapshot({
+      tenantId: fixtureTenant,
+      workspaceId: fixtureWorkspace,
+      timestampPolicy: "published_at",
+      windowStartedAt: new Date("2026-08-14T00:00:00.000Z"),
+      windowEndedAt: new Date("2026-08-15T00:00:00.000Z"),
+      observedThrough: now,
+    });
+
+    expect(snapshot.ok).toBe(true);
+    expect(snapshot.ok ? snapshot.candidates.map(({ item, canonical }) => ({
+      id: item.toSnapshot().id,
+      metrics: canonical.metrics,
+    })).sort((left, right) => left.id.localeCompare(right.id)) : []).toEqual([
+      {
+        id: "aug14-watermark-hn",
+        metrics: expect.objectContaining({ kind: "hacker_news_story", points: 500 }),
+      },
+      {
+        id: "aug14-watermark-reddit",
+        metrics: expect.objectContaining({ kind: "reddit_post", score: 7 }),
+      },
+    ]);
+  });
+
   it("changes only the optional relation output when the verdict lane is enabled", async () => {
     const disabled = await selectWithRelationVerdict("unrelated", rankedEvidence());
     const enabled = await selectWithRelationVerdict("related_topic", rankedEvidence());
@@ -34,6 +69,8 @@ describe("RelevanceReaderSummaryEvidenceSelector related-topic production path",
     expect(enabled.clusters).toEqual(disabled.clusters);
     expect(enabled.selectedEvidence).toEqual(disabled.selectedEvidence);
     expect(enabled.rankingPolicyVersion).toBe(disabled.rankingPolicyVersion);
+    expect(enabled.editorialSlate?.orderedCandidateIds).toEqual([]);
+    expect(enabled.selectedEvidence).toEqual([]);
   });
 
   it("is input-permutation stable and fails malformed or duplicate verdicts closed", async () => {
@@ -67,6 +104,8 @@ describe("RelevanceReaderSummaryEvidenceSelector related-topic production path",
 
 const now = new Date("2026-08-14T18:00:00.000Z");
 const clock: Clock = { now: () => now };
+const fixtureTenant = tenantId("tenant-aug14-production");
+const fixtureWorkspace = workspaceId("workspace-aug14-production");
 
 const selectWithRelationVerdict = (
   verdict: "related_topic" | "unrelated",
@@ -79,14 +118,14 @@ const selectWithVerifier = (
   relatedTopicTimeoutMs?: number,
 ) => new RelevanceReaderSummaryEvidenceSelector(
   ranker(items),
-  emptyFeedRepository(),
+  authoritativeFeedRepository(),
   clock,
   undefined,
   verifier,
   relatedTopicTimeoutMs,
 ).select({
-  tenantId: tenantId("tenant-aug14-production"),
-  workspaceId: workspaceId("workspace-aug14-production"),
+  tenantId: fixtureTenant,
+  workspaceId: fixtureWorkspace,
   scope: { type: "workspace" },
   period: {
     cadence: "daily",
@@ -149,17 +188,27 @@ const ranker = (items: readonly RankedFeedItemView[]): RankFeedItemsUseCase => (
   }),
 }) as unknown as RankFeedItemsUseCase;
 
-const emptyFeedRepository = (): FeedItemReadRepositoryPort => ({
-  readPromotionSnapshot: async () => ({
-    ok: true,
-    candidates: [],
-    sourceContent: [],
-    physicalRowsRead: 0,
-    exhausted: true,
-  }),
-  list: async () => ({ items: [] }),
-  findById: async () => null,
-});
+const authoritativeFeedRepository = (): InMemoryFeedItemReadRepository => {
+  const repository = new InMemoryFeedItemReadRepository();
+  for (const item of aug14RelatedTopicEvidence()) {
+    repository.upsert(FeedItem.publish({
+      id: item.feedItemId,
+      tenantId: fixtureTenant,
+      workspaceId: fixtureWorkspace,
+      interestId: item.interestId,
+      sourceItemId: item.sourceItemId,
+      sourceBindingId: item.sourceBindingId,
+      providerKey: item.providerKey,
+      canonicalUrl: item.canonicalUrl,
+      title: item.title,
+      bodyPreview: item.bodyPreview ?? "Synthetic related-topic fixture context.",
+      publishedAt: item.publishedAt,
+      observedAt: item.observedAt,
+      providerMetadata: nativePromotionMetadata(item.feedItemId),
+    }));
+  }
+  return repository;
+};
 
 const rankedEvidence = (): readonly RankedFeedItemView[] =>
   aug14RelatedTopicEvidence().map((item, index) => ({
@@ -168,6 +217,7 @@ const rankedEvidence = (): readonly RankedFeedItemView[] =>
     sourceBindingId: item.sourceBindingId,
     interestId: item.interestId,
     providerKey: item.providerKey,
+    providerMetadata: nativePromotionMetadata(item.feedItemId),
     canonicalUrl: item.canonicalUrl,
     title: item.title,
     bodyPreview: item.bodyPreview,
@@ -192,6 +242,17 @@ const rankedEvidence = (): readonly RankedFeedItemView[] =>
       retentionPolicy: "normalized_preview_only",
     },
   }));
+
+const nativePromotionMetadata = (feedItemId: string): JsonObject => {
+  switch (feedItemId) {
+    case "aug14-watermark-hn":
+      return { kind: "hacker_news_story", points: 500, comments: 12 };
+    case "aug14-watermark-reddit":
+      return { kind: "reddit_post", score: 7, comments: 5 };
+    default:
+      return { kind: "rss_entry" };
+  }
+};
 
 const withoutRelations = <T extends { readonly relatedTopicRelations?: unknown }>(
   selection: T,

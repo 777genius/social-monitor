@@ -75,7 +75,7 @@ describe("AgentRuntimeReaderSummaryModelAdapter", () => {
       "Keep source validation out of topStories summary prose",
     );
     expect(client.commands[0]?.systemPrompt).toContain(
-      "return 12-15 topStories",
+      "Return at most 8 topStories, matching editorialSlate.top exactly",
     );
     expect(client.commands[0]?.systemPrompt).toContain(
       "evidencePack.confidence as a ceiling",

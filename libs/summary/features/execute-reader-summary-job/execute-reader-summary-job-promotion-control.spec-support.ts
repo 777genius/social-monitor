@@ -252,7 +252,7 @@ export class PromotionControlCapturingModel implements ReaderSummaryModelPort {
     return {
       route: selectedRoute,
       draft: {
-        headline: firstItem.title,
+        headline: "Developers evaluate a reported runtime regression",
         executiveSummary: "Promotion control scenario summary.",
         topStories: [
           {

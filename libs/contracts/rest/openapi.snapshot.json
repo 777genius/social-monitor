@@ -4047,6 +4047,9 @@
           "artifactId": {
             "type": "string"
           },
+          "candidateDigestInput": {
+            "type": "string"
+          },
           "candidateId": {
             "type": "string"
           },
@@ -4075,9 +4078,13 @@
           },
           "digestVersion": {
             "enum": [
-              "reader_post_promotion_digest.sha256.v1"
+              "reader_post_promotion_digest.sha256.v1",
+              "reader_post_promotion_digest.sha256.v2"
             ],
             "type": "string"
+          },
+          "evidenceLineage": {
+            "$ref": "#/components/schemas/ReaderSummaryPromotionEvidenceLineageDto"
           },
           "placement": {
             "enum": [
@@ -4088,14 +4095,35 @@
           },
           "policyVersion": {
             "enum": [
-              "reader_post_promotion.v1"
+              "reader_post_promotion.v1",
+              "reader_post_promotion.v2"
             ],
             "type": "string"
           },
+          "reasonCodes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "schemaVersion": {
             "enum": [
-              "reader_post_promotion_attestation.v1"
+              "reader_post_promotion_attestation.v1",
+              "reader_post_promotion_attestation.v2"
             ],
+            "type": "string"
+          },
+          "scoreComponents": {
+            "$ref": "#/components/schemas/ReaderSummaryPromotionScoreComponentsDto"
+          },
+          "slateDigest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "slateDigestInput": {
+            "type": "string"
+          },
+          "slateEntryDigestInput": {
             "type": "string"
           },
           "slot": {
@@ -4103,6 +4131,9 @@
             "type": "number"
           },
           "sourceWindowId": {
+            "type": "string"
+          },
+          "storyClusterId": {
             "type": "string"
           }
         },
@@ -4120,6 +4151,109 @@
           "placement",
           "decision",
           "citationIds"
+        ],
+        "type": "object"
+      },
+      "ReaderSummaryPromotionEvidenceLineageDto": {
+        "properties": {
+          "citationIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "leadCandidateId": {
+            "type": "string"
+          },
+          "leadCitationId": {
+            "type": "string"
+          },
+          "supportCandidateIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "supportCitationIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "leadCandidateId",
+          "leadCitationId",
+          "supportCandidateIds",
+          "supportCitationIds",
+          "citationIds"
+        ],
+        "type": "object"
+      },
+      "ReaderSummaryPromotionScoreComponentsDto": {
+        "properties": {
+          "engagementSalience": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          },
+          "evidenceQuality": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          },
+          "freshness": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          },
+          "integrity": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          },
+          "relevance": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          },
+          "total": {
+            "minimum": 0,
+            "type": "number"
+          },
+          "weightedEngagement": {
+            "minimum": 0,
+            "type": "number"
+          },
+          "weightedEvidenceQuality": {
+            "minimum": 0,
+            "type": "number"
+          },
+          "weightedFreshness": {
+            "minimum": 0,
+            "type": "number"
+          },
+          "weightedIntegrity": {
+            "minimum": 0,
+            "type": "number"
+          },
+          "weightedRelevance": {
+            "minimum": 0,
+            "type": "number"
+          }
+        },
+        "required": [
+          "engagementSalience",
+          "relevance",
+          "evidenceQuality",
+          "integrity",
+          "freshness",
+          "weightedEngagement",
+          "weightedRelevance",
+          "weightedEvidenceQuality",
+          "weightedIntegrity",
+          "weightedFreshness",
+          "total"
         ],
         "type": "object"
       },

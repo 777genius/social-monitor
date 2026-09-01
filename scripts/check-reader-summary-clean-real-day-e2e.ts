@@ -4,6 +4,7 @@ import { dirname } from "node:path";
 import {
   noRawSecretFragments,
   normalizeLineEndings,
+  readOption,
   roundMetric,
 } from "./lib/yesterday-social-replay-support";
 import {
@@ -304,18 +305,20 @@ type Report = {
 const update = process.argv.includes("--update");
 const allowDegraded = process.argv.includes("--allow-degraded");
 const allowHistorical = process.argv.includes("--allow-historical");
-const outputPath = "ops/evals/reader-summary-clean-real-day-e2e-report.v1.json";
+const outputPath = readOption("--output-path") ??
+  "ops/evals/reader-summary-clean-real-day-e2e-report.v1.json";
 const collectionPath =
   "ops/evals/reader-summary-clean-real-day-collection.v1.json";
-const aggregateCollectionQualityPath =
-  "ops/evals/yesterday-social-collection-quality-report.v1.json";
+const aggregateCollectionQualityPath = readOption(
+  "--collection-quality-path",
+) ?? "ops/evals/yesterday-social-collection-quality-report.v1.json";
 const plannerCanaryPath =
   "ops/evals/source-query-planner-real-binding-canary.v1.json";
-const qualityDashboardPath =
+const qualityDashboardPath = readOption("--quality-dashboard-path") ??
   "ops/evals/reader-summary-quality-dashboard.v1.json";
 const feedbackCalibrationPath =
   "ops/evals/summary-feedback-calibration-report.v1.json";
-const artifactQualityPath =
+const artifactQualityPath = readOption("--artifact-quality-path") ??
   "ops/evals/yesterday-reader-summary-artifact-quality.v1.json";
 const primarySources = ["reddit", "x-twitter"] as const;
 

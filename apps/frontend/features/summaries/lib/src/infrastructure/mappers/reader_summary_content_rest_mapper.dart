@@ -244,6 +244,7 @@ final class ReaderSummaryContentRestMapper {
       promotionAttestation: mapReaderPostPromotionAttestation(
         dto.promotionAttestation,
         cardProviderKey: dto.providerKey,
+        cardStoryClusterId: storyClusterMarker.value,
         cardPublishedAt: dto.publishedAt,
         cardCitationIds: dto.citationIds,
         enclosingArtifactId: binding.artifactId,
@@ -391,7 +392,6 @@ final class ReaderSummaryContentRestMapper {
     return value.toDouble();
   }
 }
-
 const _canonicalReaderCardKinds = {
   'curated_top_read',
   'additional_notable_story',

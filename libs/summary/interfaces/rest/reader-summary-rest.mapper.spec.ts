@@ -1,12 +1,16 @@
 import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 
 import {
+  canonicalPromotionPayload,
   emptyReaderSummaryReliabilityReport,
-  buildReaderPostPromotionAttestations,
+  promotionPayloadDigest,
+  READER_SUMMARY_EDITORIAL_SLATE_VERSION,
   ReaderSummaryArtifact,
   selectReaderPostPromotions,
   type ReaderPostPromotionInput,
 } from "../../domain";
+import { buildReaderPromotionV2TestAttestations } from
+  "../../domain/services/reader-post-promotion-attestation.spec-support";
 import { normalizeReaderSummaryArtifactPayload } from
   "../../adapters/persistence/prisma/prisma-reader-summary-artifact-payload";
 import { serializeReaderSummaryArtifact } from
@@ -88,7 +92,7 @@ describe("readerSummaryArtifactViewFromReaderSummaryView", () => {
             interestIds: ["ai-tools"],
           },
         ],
-        topReads: [readerItem()],
+        topReads: [readerItem(promotionAttestations[0]!)],
         selectedPosts: [],
         claimBoard: [],
         reliabilityReport: emptyReaderSummaryReliabilityReport(),
@@ -283,11 +287,46 @@ describe("readerSummaryArtifactViewFromReaderSummaryView", () => {
       .toEqual([]);
 
     const persistedAttestation = readerSummaryView.promotionAttestations[0]!;
+    if (
+      persistedAttestation.schemaVersion !==
+      "reader_post_promotion_attestation.v2"
+    ) {
+      throw new Error("V2 fixture presented as a V1 attestation");
+    }
+    const reorderedScoreView = {
+      ...readerSummaryView,
+      content: {
+        ...readerSummaryView.content,
+        topReads: [{
+          ...readerSummaryView.content.topReads[0]!,
+          editorialScoreComponents: reverseObjectKeys(
+            persistedAttestation.scoreComponents!,
+          ),
+        }],
+      },
+    };
+    expect(
+      readerSummaryArtifactViewFromReaderSummaryView(reorderedScoreView)
+        .readerBrief.topReads,
+    ).toHaveLength(1);
+    expect(() => readerSummaryArtifactViewFromReaderSummaryView({
+      ...reorderedScoreView,
+      content: {
+        ...reorderedScoreView.content,
+        topReads: [{
+          ...reorderedScoreView.content.topReads[0]!,
+          editorialScoreComponents: {
+            ...persistedAttestation.scoreComponents!,
+            engagementSalience: 0.5,
+          },
+        }],
+      },
+    })).toThrow("promotion board is invalid");
     for (const mutation of [
       { canonicalPayload: `${persistedAttestation.canonicalPayload} ` },
       { artifactId: "forged-artifact" },
       { sourceWindowId: "forged-window" },
-      { slot: 1 },
+      { slot: 0 },
       { citationIds: ["forged-citation"] },
     ]) {
       const mutatedView = {
@@ -305,21 +344,44 @@ describe("readerSummaryArtifactViewFromReaderSummaryView", () => {
       }],
     })).toThrow("promotion board is invalid");
 
+    const secondCandidateDigestInput = "candidate-digest-input:feed-2";
+    const secondSlateEntryDigestInput = "slate-entry-digest-input:feed-2";
     const secondCard = {
       ...readerSummaryView.content.topReads[0]!,
       cardKind: "additional_notable_story" as const,
       promotionTier: "additional" as const,
       promotionCandidateId: "feed-2",
       promotionCanonicalIdentity: "repo:openai/codex-additional",
+      editorialPlacement: "additional" as const,
+      editorialSlot: 1,
+      editorialCandidateDigestInput: secondCandidateDigestInput,
+      editorialDigestInput: secondSlateEntryDigestInput,
     };
-    const secondAttestation = {
+    const secondAttestationBody = {
       ...persistedAttestation,
       candidateId: "feed-2",
       canonicalIdentity: "repo:openai/codex-additional",
       placement: "additional" as const,
       tier: "additional" as const,
       decision: "promote_additional" as const,
-      slot: 0,
+      slot: 1,
+      candidateDigestInput: secondCandidateDigestInput,
+      slateEntryDigestInput: secondSlateEntryDigestInput,
+      evidenceLineage: {
+        ...persistedAttestation.evidenceLineage!,
+        leadCandidateId: "feed-2",
+      },
+    };
+    delete (secondAttestationBody as { canonicalPayload?: string })
+      .canonicalPayload;
+    delete (secondAttestationBody as { digest?: string }).digest;
+    const secondCanonicalPayload = canonicalPromotionPayload(
+      secondAttestationBody,
+    );
+    const secondAttestation = {
+      ...secondAttestationBody,
+      canonicalPayload: secondCanonicalPayload,
+      digest: promotionPayloadDigest(secondCanonicalPayload),
     };
     const twoLaneView = {
       ...readerSummaryView,
@@ -363,10 +425,26 @@ describe("readerSummaryArtifactViewFromReaderSummaryView", () => {
       },
       promotionAttestations: [],
     };
-    expect(
-      readerSummaryArtifactViewFromReaderSummaryView(emptyBoardView)
-        .readerBrief,
-    ).toMatchObject({ topReads: [], selectedPosts: [] });
+    expect(() => readerSummaryArtifactViewFromReaderSummaryView(
+      emptyBoardView,
+    )).toThrow("promotion board is invalid");
+    const explicitNoSignalView = {
+      ...emptyBoardView,
+      topStories: [],
+      citations: [],
+      qualityFlags: ["no_signal"] as const,
+      lineage: {
+        ...emptyBoardView.lineage,
+        promptVersion: "reader_summary.promotion_no_signal.v1",
+        modelVersion: "not_invoked",
+        providerVersion: "deterministic",
+        rulesVersion: "reader_promotion_policy.v2",
+        evalDatasetVersion: "reader_promotion_policy.v2",
+      },
+    };
+    expect(readerSummaryArtifactViewFromReaderSummaryView(
+      explicitNoSignalView,
+    ).readerBrief).toMatchObject({ topReads: [], selectedPosts: [] });
     expect(() => readerSummaryArtifactViewFromReaderSummaryView({
       ...emptyBoardView,
       promotionAttestations: [persistedAttestation],
@@ -568,13 +646,14 @@ const sourceWindow = {
   ingestionCutoff: new Date("2026-06-06T00:01:00.000Z"),
 };
 
-const validPromotionAttestations = () => buildReaderPostPromotionAttestations(
+const validPromotionAttestations = () => buildReaderPromotionV2TestAttestations(
   selectReaderPostPromotions(validPromotionInputs()),
   { artifactId: "readerSummary-1", sourceWindow },
 );
 
 const validPromotionInputs = (): readonly ReaderPostPromotionInput[] => [{
     candidateId: "feed-1",
+    clusterId: "cluster-1",
     provider: "github-repo-radar",
     contentKind: "repository",
     canonicalIdentity: "repo:openai/codex",
@@ -609,14 +688,23 @@ const validPromotionInputs = (): readonly ReaderPostPromotionInput[] => [{
     },
   }];
 
-const readerItem = () => ({
+const readerItem = (
+  attestation: ReturnType<typeof validPromotionAttestations>[number],
+) => ({
   storyClusterId: "cluster-1",
   cardKind: "curated_top_read" as const,
   promotionMarker: "reader_post_promotion" as const,
-  promotionPolicyVersion: "reader_post_promotion.v1" as const,
+  promotionPolicyVersion: attestation.policyVersion,
   promotionTier: "top" as const,
   promotionCandidateId: "feed-1",
   promotionCanonicalIdentity: "repo:openai/codex",
+  editorialPolicyVersion: READER_SUMMARY_EDITORIAL_SLATE_VERSION,
+  editorialPlacement: attestation.placement,
+  editorialSlot: attestation.slot,
+  editorialScoreComponents: attestation.scoreComponents,
+  editorialReasonCodes: attestation.reasonCodes,
+  editorialCandidateDigestInput: attestation.candidateDigestInput,
+  editorialDigestInput: attestation.slateEntryDigestInput,
   title: "openai/codex leads repo radar",
   providerKey: "github-repo-radar",
   providerName: "GitHub Repo Radar",
@@ -649,3 +737,6 @@ const officialQuality = () => ({
   flags: ["official_account", "trusted_author"],
   reason: "Verified first-party source authority",
 });
+
+const reverseObjectKeys = <Value extends object>(value: Value): Value =>
+  Object.fromEntries(Object.entries(value).reverse()) as Value;

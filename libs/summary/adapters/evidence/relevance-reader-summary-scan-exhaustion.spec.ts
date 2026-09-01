@@ -23,6 +23,7 @@ describe("reader-summary promotion upstream scan exhaustion", () => {
     const workspace = workspaceId("workspace-promotion-scan-exhaustion");
     const repository = new InMemoryFeedItemReadRepository();
     const now = new Date("2026-08-18T12:00:00.000Z");
+    attestDurableMetricAuthority(repository, now);
 
     for (let index = 0; index < 1_004; index += 1) {
       const forbidden = forbiddenConversationUnit(index);
@@ -244,6 +245,7 @@ describe("reader-summary promotion upstream scan exhaustion", () => {
     const workspace = workspaceId("workspace-pre-cap-promotion");
     const repository = new InMemoryFeedItemReadRepository();
     const now = new Date("2026-08-18T12:00:00.000Z");
+    attestDurableMetricAuthority(repository, now);
     for (let index = 0; index < 240; index += 1) {
       publishOriginal(repository, {
         id: `recent-valid-${index.toString().padStart(3, "0")}`,
@@ -334,6 +336,7 @@ describe("reader-summary promotion upstream scan exhaustion", () => {
       })),
       sourceWindow: selection.sourceWindow,
       approvedSameStoryRelations: selection.approvedSameStoryRelations,
+      editorialSlate: selection.editorialSlate,
     });
 
     expect(selection.approvedSameStoryRelations).toEqual(expect.arrayContaining([
@@ -344,10 +347,15 @@ describe("reader-summary promotion upstream scan exhaustion", () => {
     ]));
     expect(projection.topReads[0]?.promotionCandidateId)
       .toBe("authoritative-winner-below-caps");
-    expect(projection.topReads[0]?.citationIds).toEqual(expect.arrayContaining([
-      "citation:authoritative-winner-below-caps",
-      "citation:independent-support-below-caps",
-    ]));
+    expect(projection.topReads[0]?.citationIds)
+      .toEqual(["citation:authoritative-winner-below-caps"]);
+    const independentlyRankedSupport = [
+      ...projection.topReads,
+      ...projection.additionalPosts,
+    ].find((item) =>
+      item.promotionCandidateId === "independent-support-below-caps");
+    expect(independentlyRankedSupport?.citationIds)
+      .toEqual(["citation:independent-support-below-caps"]);
     expect(selection.selectedEvidence.map((item) => item.feedItemId))
       .toEqual(expect.arrayContaining([
         "authoritative-winner-below-caps",
@@ -374,6 +382,29 @@ class ExactSupportVerifier implements ReaderSummaryStoryRelationVerifierPort {
     });
   }
 }
+
+const attestDurableMetricAuthority = (
+  repository: InMemoryFeedItemReadRepository,
+  observedAt: Date,
+): void => {
+  const readSnapshot = repository.readPromotionSnapshot.bind(repository);
+  jest.spyOn(repository, "readPromotionSnapshot").mockImplementation(
+    async (query) => {
+      const snapshot = await readSnapshot(query);
+      if (!snapshot.ok) return snapshot;
+      return {
+        ...snapshot,
+        candidates: snapshot.candidates.map((candidate) => ({
+          ...candidate,
+          metricAuthority: {
+            observedAt,
+            regressionState: "stable" as const,
+          },
+        })),
+      };
+    },
+  );
+};
 
 const githubTrend = (stars24h: number, forks24h: number): JsonObject => ({
   primaryWindow: "24h",

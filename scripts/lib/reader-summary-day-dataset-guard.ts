@@ -11,7 +11,7 @@ import type {
 import {
   captureReaderSummaryDayDatasetManifest,
   manifestsMatch,
-  readerSummaryDayDatasetManifestFormat,
+  parseReaderSummaryDayDatasetManifest,
   type ReaderSummaryDayDatasetManifest,
 } from "./reader-summary-day-dataset-manifest";
 
@@ -40,6 +40,10 @@ export class ReaderSummaryDayDatasetGuard {
     await this.assertCurrentWithClient(this.client, phase);
   }
 
+  async assertCurrentBeforeMutation(): Promise<void> {
+    await this.assertCurrentWithClient(this.client, "before_mutation");
+  }
+
   async assertCurrentForPublicationTransaction(
     client: PrismaReaderSummaryClient,
   ): Promise<void> {
@@ -49,16 +53,18 @@ export class ReaderSummaryDayDatasetGuard {
 
   private async assertCurrentWithClient(
     client: Pick<PrismaSummaryClient, "$queryRaw">,
-    phase: DatasetGuardPhase,
+    phase: DatasetGuardPhase | "before_mutation",
     allowPublicationRetry = false,
   ): Promise<void> {
-    const expectedPhase =
-      completeDatasetGuardPhases[this.completedPhases.length];
+    const expectedPhase = completeDatasetGuardPhases[
+      this.completedPhases.length
+    ];
     const isPublicationRetry =
       allowPublicationRetry &&
       phase === "before_publication" &&
       this.completedPhases.at(-1) === "before_publication";
-    if (phase !== expectedPhase && !isPublicationRetry) {
+    if (phase !== "before_mutation" &&
+        phase !== expectedPhase && !isPublicationRetry) {
       throw new Error(
         `Reader summary dataset guard phase ${phase} is out of order`,
       );
@@ -84,7 +90,7 @@ export class ReaderSummaryDayDatasetGuard {
     if (!manifestsMatch(this.expected, actual)) {
       throw new Error(`Reader summary dataset changed at ${phase}`);
     }
-    if (!isPublicationRetry) {
+    if (phase !== "before_mutation" && !isPublicationRetry) {
       this.completedPhases.push(phase);
     }
   }
@@ -183,7 +189,7 @@ export function readReaderSummaryDayDatasetManifest(params: {
   if (fileSha256 !== params.expectedFileSha256) {
     throw new Error("Dataset manifest file hash does not match");
   }
-  const value = parseManifest(bytes);
+  const value = parseReaderSummaryDayDatasetManifest(bytes);
   const generatedAt = new Date(value.generatedAt);
   const maxAgeMs = params.maxAgeMs ?? 30 * 60 * 1_000;
   if (
@@ -200,42 +206,4 @@ export function readReaderSummaryDayDatasetManifest(params: {
     throw new Error("Dataset manifest scope, period or freshness is invalid");
   }
   return { manifest: value, fileSha256 };
-}
-
-function parseManifest(bytes: Buffer): ReaderSummaryDayDatasetManifest {
-  let value: unknown;
-  try {
-    value = JSON.parse(bytes.toString("utf8")) as unknown;
-  } catch {
-    throw new Error("Dataset manifest is not valid JSON");
-  }
-  if (
-    !isRecord(value) ||
-    value.schemaVersion !== 1 ||
-    value.format !== readerSummaryDayDatasetManifestFormat ||
-    !isRecord(value.scope) ||
-    !isRecord(value.period) ||
-    value.period.timezone !== "UTC" ||
-    !isRecord(value.dataset) ||
-    typeof value.dataset.feedRowCount !== "number" ||
-    !isRecord(value.dataset.providerCounts) ||
-    typeof value.dataset.feedRowsSha256 !== "string" ||
-    typeof value.dataset.githubEligibilityRowCount !== "number" ||
-    typeof value.dataset.githubEligibilitySha256 !== "string" ||
-    typeof value.dataset.aggregateSha256 !== "string" ||
-    !isRecord(value.policy) ||
-    (value.policy.timestampPolicy !== "published_at" &&
-      value.policy.timestampPolicy !== "observed_at") ||
-    value.policy.githubRowsIncluded !== true ||
-    value.policy.githubEligibilityIncluded !== true ||
-    !isRecord(value.redaction) ||
-    Object.values(value.redaction).some((item) => item !== false)
-  ) {
-    throw new Error("Dataset manifest contract is invalid");
-  }
-  return value as unknown as ReaderSummaryDayDatasetManifest;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
 }

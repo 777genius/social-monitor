@@ -1,4 +1,6 @@
 import type { JsonObject } from '@social-monitor/shared-kernel';
+import type { FeedPromotionMetricRegressionState } from
+  '@social-monitor/feed/domain';
 
 import type {
   SourceContentQualityView,
@@ -33,6 +35,10 @@ export type RankedFeedItemView = {
   readonly observedAt: string;
   readonly exactPublishedAt?: string;
   readonly exactObservedAt?: string;
+  readonly engagementAuthority?: {
+    readonly observedAt: string;
+    readonly regressionState: FeedPromotionMetricRegressionState;
+  };
   readonly score: number;
   readonly rank: number;
   readonly clusterId: string;

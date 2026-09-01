@@ -27,6 +27,8 @@ import {
   type PromotionKeysetCursor,
   readPromotionKeysetPage,
 } from "./prisma-feed-promotion-keyset";
+import { exactPromotionPageEvidence } from
+  "./prisma-feed-promotion-exact-evidence";
 import {
   encodeFeedOffsetCursor,
   feedItemFromPrisma,
@@ -211,7 +213,7 @@ const scanPromotionSnapshot = async (
     }
     const selectedRecords = records.filter((record) =>
       isPromotionEvidenceCandidate(record));
-    const exactEvidence = await exactPageEvidence(
+    const exactEvidence = await exactPromotionPageEvidence(
       transaction,
       selectedRecords.map((record) => record.id),
       query.observedThrough,
@@ -242,6 +244,9 @@ const scanPromotionSnapshot = async (
       candidates.push({
         item,
         canonical,
+        ...(exact.metricAuthority === undefined
+          ? {}
+          : { metricAuthority: exact.metricAuthority }),
         exactTimestamps: {
           publishedAt: exact.publishedAt,
           observedAt: exact.observedAt,
@@ -324,43 +329,6 @@ const promotionScanPreflight = async (
     throw new Error("Promotion snapshot preflight result is malformed");
   }
   return { physicalRowsRead, hasPotentialCandidates: row.hasPotentialCandidates };
-};
-
-const exactPageEvidence = async (
-  transaction: PrismaFeedClient,
-  ids: readonly string[],
-  cutoff: Date,
-): Promise<ReadonlyMap<string, {
-  readonly publishedAt: string;
-  readonly observedAt: string;
-  readonly observedThrough: boolean;
-  readonly sourceItemId: string;
-  readonly body: string;
-}>> => {
-  if (ids.length === 0) return new Map();
-  const rows = await transaction.$queryRawUnsafe!<readonly {
-    readonly id: string;
-    readonly publishedAt: string;
-    readonly observedAt: string;
-    readonly observedThrough: boolean;
-    readonly sourceItemId: string;
-    readonly body: string;
-  }[]>(
-    `SELECT feed.id::text AS id,
-            feed.source_item_id::text AS "sourceItemId",
-            source.body,
-            to_char(feed.published_at AT TIME ZONE 'UTC',
-              'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS "publishedAt",
-            to_char(feed.observed_at AT TIME ZONE 'UTC',
-              'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS "observedAt",
-            feed.observed_at <= $2::timestamptz AS "observedThrough"
-       FROM feed_items feed
-       JOIN source_items source ON source.id = feed.source_item_id
-      WHERE feed.id = ANY($1::uuid[])`,
-    ids,
-    cutoff,
-  );
-  return new Map(rows.map((row) => [row.id, row] as const));
 };
 
 const isPromotionEvidenceCandidate = (record: PrismaFeedItemRecord): boolean => {

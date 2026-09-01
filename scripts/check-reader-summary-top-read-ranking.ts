@@ -31,6 +31,7 @@ import {
   fingerprint,
   noRawSecretFragments,
   normalizeLineEndings,
+  readOption,
   readDominantFeedScope,
   yesterdaySocialQualityDatabaseUrl,
   yesterdaySocialQualityPoolConfig,
@@ -107,7 +108,8 @@ export type AtomicTopReadRankingReportOperations = {
   readonly removeFile: (path: string) => void;
 };
 
-const outputPath = "ops/evals/reader-summary-top-read-ranking.v1.json";
+const outputPath = readOption("--output-path") ??
+  "ops/evals/reader-summary-top-read-ranking.v1.json";
 const update = process.argv.includes("--update");
 const writeFailedReport = process.argv.includes("--write-failed-report");
 const artifactOnly = process.argv.includes("--artifact-only");

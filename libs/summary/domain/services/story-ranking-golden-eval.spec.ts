@@ -458,6 +458,12 @@ const promotionFacts = (
       observedAt: new Date(item.observedAt.getTime()),
       ingestionCutoff: new Date("2026-06-24T00:00:00.000Z"),
     },
+    authorityAttestation: {
+      status: "attested" as const,
+      official: false,
+      trusted: true,
+      attestedBy: "source_catalog" as const,
+    },
   };
   switch (item.providerKey) {
     case "reddit":

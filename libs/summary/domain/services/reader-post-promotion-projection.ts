@@ -7,6 +7,7 @@ import {
 import {
   evaluateReaderPostPromotion,
   readerPostProviderFamily,
+  READER_POST_PROMOTION_ATTESTATION_POLICY_VERSION,
   READER_POST_PROMOTION_POLICY_V1,
   type ReaderPostPromotionInput,
   type ReaderPostPromotionAttestation,
@@ -18,6 +19,8 @@ import type {
   SummaryEvidenceItem,
   SummarySourceWindow,
 } from "../value-objects/summary-evidence-item";
+import type { ReaderSummaryEditorialSlate } from
+  "../value-objects/reader-summary-editorial-slate";
 import { normalizeSignalScore } from "../value-objects/signal-score";
 import { readerSummaryIndependentProviderFamily } from
   "../value-objects/reader-summary-provider-identity";
@@ -31,6 +34,14 @@ import {
   buildReaderPostPromotionAttestations,
   type ReaderPostPromotionAttestationBinding,
 } from "./reader-post-promotion-attestation";
+import { projectReaderPostPromotionAdmittedClusters } from
+  "./reader-post-promotion-admitted-clusters";
+import { readerPostPromotionSelectionFromEditorialSlate } from
+  "./reader-post-promotion-editorial-slate-selection";
+import {
+  readerPostPromotionBoundary,
+  readerPostPromotionFreshnessIsValid,
+} from "./reader-post-promotion-freshness";
 
 export type ReaderPostPromotionProjection = {
   readonly topReads: readonly TopRead[];
@@ -54,7 +65,11 @@ export const buildReaderPostPromotionProjection = (params: {
   readonly sourceWindow: SummarySourceWindow;
   readonly approvedSameStoryRelations?: readonly ApprovedSameStoryRelation[];
   readonly relatedTopicRelations?: readonly RelatedTopicRelation[];
-  readonly attestationBinding?: ReaderPostPromotionAttestationBinding;
+  readonly attestationBinding?: Omit<
+    ReaderPostPromotionAttestationBinding,
+    "editorialSlate"
+  >;
+  readonly editorialSlate?: ReaderSummaryEditorialSlate;
 }): ReaderPostPromotionProjection => {
   const evidenceById = uniqueEvidenceById(params.evidence);
   const citationByFeedItemId = citationByEvidenceId(params.citations);
@@ -80,8 +95,8 @@ export const buildReaderPostPromotionProjection = (params: {
       periodStart,
       periodEnd,
       ingestionCutoff,
-      exactPeriodStart: promotionBoundary(periodStart),
-      exactPeriodEnd: promotionBoundary(periodEnd),
+      exactPeriodStart: readerPostPromotionBoundary(periodStart),
+      exactPeriodEnd: readerPostPromotionBoundary(periodEnd),
       exactPublishedAt: facts?.freshnessProvenance?.status === "observed"
         ? facts.freshnessProvenance.exactPublishedAt
         : undefined,
@@ -91,7 +106,7 @@ export const buildReaderPostPromotionProjection = (params: {
       exactIngestionCutoff: facts?.freshnessProvenance?.status === "observed"
         ? facts.freshnessProvenance.exactIngestionCutoff
         : undefined,
-      freshnessValid: promotionFreshnessIsValid({
+      freshnessValid: readerPostPromotionFreshnessIsValid({
         facts,
         publishedAt: item.publishedAt,
         observedAt: item.observedAt,
@@ -119,17 +134,27 @@ export const buildReaderPostPromotionProjection = (params: {
       clusterId: clusterByEvidenceId.get(item.feedItemId),
     };
   });
-  const relationByEvidenceId = promotionRelations({
-    evidenceById,
-    inputByEvidenceId: new Map(baseInputs.map((input) => [input.candidateId, input])),
-    approvedSameStoryRelations: params.approvedSameStoryRelations ?? [],
-    relatedTopicRelations: params.relatedTopicRelations ?? [],
-  });
+  const relationByEvidenceId = params.editorialSlate === undefined
+    ? promotionRelations({
+        evidenceById,
+        inputByEvidenceId: new Map(baseInputs.map((input) =>
+          [input.candidateId, input])),
+        approvedSameStoryRelations: params.approvedSameStoryRelations ?? [],
+        relatedTopicRelations: params.relatedTopicRelations ?? [],
+      })
+    : new Map<string, ReaderPostPromotionInput["relation"]>();
   const inputs = baseInputs.map((input): ReaderPostPromotionInput => {
     const relation = relationByEvidenceId.get(input.candidateId);
     return relation === undefined ? input : { ...input, relation };
   });
-  const selection = selectReaderPostPromotions(inputs);
+  const selection = params.editorialSlate === undefined
+    ? selectReaderPostPromotions(inputs)
+    : readerPostPromotionSelectionFromEditorialSlate(
+        params.editorialSlate,
+        inputs,
+      );
+  const decisionByCandidateId = new Map(selection.decisions.map((decision) =>
+    [decision.candidateId, decision] as const));
   const materialize = (
     selected: SelectedReaderPostPromotion,
     cardKind: "curated_top_read" | "additional_notable_story",
@@ -152,7 +177,12 @@ export const buildReaderPostPromotionProjection = (params: {
   );
   const attestations = params.attestationBinding === undefined
     ? []
-    : buildReaderPostPromotionAttestations(selection, params.attestationBinding);
+    : params.editorialSlate === undefined
+      ? requireEmptyPromotionSelection(selection)
+      : buildReaderPostPromotionAttestations(selection, {
+          ...params.attestationBinding,
+          editorialSlate: params.editorialSlate,
+        });
   const attestedEvidenceFacts = [...selection.top, ...selection.additional]
     .flatMap((selected) => [selected.candidate, ...selected.support]);
   const admittedCitationIds = new Set(
@@ -170,7 +200,7 @@ export const buildReaderPostPromotionProjection = (params: {
       admittedIds.has(citation.feedItemId) &&
       admittedCitationIds.has(citation.citationId),
     ),
-    admittedClusters: projectAdmittedClusters(
+    admittedClusters: projectReaderPostPromotionAdmittedClusters(
       params.clusters,
       admittedEvidence,
       [...selection.top, ...selection.additional],
@@ -184,90 +214,21 @@ export const buildReaderPostPromotionProjection = (params: {
     attestedEvidenceFacts,
     evaluatedEvidence: inputs.map((input) => ({
       candidateId: input.candidateId,
-      decision: evaluateReaderPostPromotion(input).decision,
+      decision: decisionByCandidateId.get(input.candidateId)?.decision ??
+        "reject",
     })),
   };
 };
 
-const promotionBoundary = (value: Date): string =>
-  value.toISOString().replace(/\.(\d{3})Z$/u, ".$1" + "000Z");
-
-const promotionFreshnessIsValid = (params: {
-  readonly facts: SummaryEvidenceItem["promotionFacts"];
-  readonly publishedAt: Date;
-  readonly observedAt: Date;
-  readonly ingestionCutoff: Date;
-}): boolean => {
-  const provenance = params.facts?.freshnessProvenance;
-  const exactPublished = provenance?.status === "observed"
-    ? provenance.exactPublishedAt
-    : undefined;
-  const exactObserved = provenance?.status === "observed"
-    ? provenance.exactObservedAt
-    : undefined;
-  const exactCutoff = provenance?.status === "observed"
-    ? provenance.exactIngestionCutoff
-    : undefined;
-  const provenanceMatches = provenance !== undefined && (
-    provenance.status === "observed" &&
-    provenance.publishedAt.getTime() === params.publishedAt.getTime() &&
-    provenance.observedAt.getTime() === params.observedAt.getTime() &&
-    provenance.ingestionCutoff.getTime() === params.ingestionCutoff.getTime()
-  );
-  return params.facts?.freshnessValid === true && provenanceMatches &&
-    Number.isFinite(params.publishedAt.getTime()) &&
-    Number.isFinite(params.observedAt.getTime()) &&
-    Number.isFinite(params.ingestionCutoff.getTime()) &&
-    (exactPublished === undefined || exactObserved === undefined ||
-      exactCutoff === undefined
-      ? params.publishedAt.getTime() <= params.observedAt.getTime() &&
-        params.observedAt.getTime() <= params.ingestionCutoff.getTime()
-      : exactPublished <= exactObserved && exactObserved <= exactCutoff);
-};
-
-const projectAdmittedClusters = (
-  clusters: readonly StoryCluster[],
-  admittedEvidence: readonly SummaryEvidenceItem[],
-  selected: readonly SelectedReaderPostPromotion[],
-): readonly StoryCluster[] => {
-  const evidenceById = new Map(admittedEvidence.map((item) =>
-    [item.feedItemId, item] as const,
-  ));
-  const clusterById = new Map(clusters.map((cluster) => [cluster.id, cluster]));
-  const usedClusterIds = new Set<string>();
-  return selected.map((promotion): StoryCluster => {
-    const members = [promotion.candidate, ...promotion.support].map((input) =>
-      requiredEvidence(evidenceById, input.candidateId),
+const requireEmptyPromotionSelection = (
+  selection: ReturnType<typeof selectReaderPostPromotions>,
+): readonly ReaderPostPromotionAttestation[] => {
+  if (selection.top.length > 0 || selection.additional.length > 0) {
+    throw new Error(
+      "Promotion attestations require the backend editorial slate",
     );
-    const representative = members[0]!;
-    const original = promotion.candidate.clusterId === undefined
-      ? undefined
-      : clusterById.get(promotion.candidate.clusterId);
-    const preferredId = original?.id ??
-      `promotion:${promotion.candidate.canonicalIdentity}`;
-    const id = usedClusterIds.has(preferredId)
-      ? `${preferredId}:${promotion.candidate.candidateId}`
-      : preferredId;
-    usedClusterIds.add(id);
-    const observedAt = members.map((item) => item.observedAt.getTime());
-    return {
-      id,
-      storyKey: original?.storyKey ?? promotion.candidate.canonicalIdentity,
-      ...(original?.rankingPolicyVersion === undefined
-        ? {}
-        : { rankingPolicyVersion: original.rankingPolicyVersion }),
-      representativeFeedItemId: representative.feedItemId,
-      duplicateFeedItemIds: members.slice(1).map((item) => item.feedItemId),
-      interestIds: compactUnique(members.map((item) => item.interestId)),
-      providerKeys: compactUnique(members.map((item) => item.providerKey)),
-      score: Math.max(...members.map((item) => item.score)),
-      observedAtRange: {
-        startedAt: new Date(Math.min(...observedAt)),
-        endedAt: new Date(Math.max(...observedAt)),
-      },
-      whyImportant: compactUnique(members.flatMap((item) => item.whyImportant)),
-    };
-  });
+  }
+  return [];
 };
 
 const promotedPost = (params: {
@@ -300,10 +261,29 @@ const promotedPost = (params: {
       `promotion:${params.selected.candidate.canonicalIdentity}`,
     cardKind: params.cardKind,
     promotionMarker: "reader_post_promotion",
-    promotionPolicyVersion: READER_POST_PROMOTION_POLICY_V1.version,
+    promotionPolicyVersion: params.selected.editorialSlateEntry === undefined
+      ? READER_POST_PROMOTION_POLICY_V1.version
+      : READER_POST_PROMOTION_ATTESTATION_POLICY_VERSION,
     promotionTier: params.cardKind === "curated_top_read" ? "top" : "additional",
     promotionCandidateId: params.selected.candidate.candidateId,
     promotionCanonicalIdentity: params.selected.candidate.canonicalIdentity,
+    ...(params.selected.editorialSlateEntry === undefined
+      ? {}
+      : {
+          editorialPolicyVersion:
+            params.selected.editorialSlateEntry.policyVersion,
+          editorialPlacement:
+            params.selected.editorialSlateEntry.placement,
+          editorialSlot: params.selected.editorialSlateEntry.slot,
+          editorialScoreComponents:
+            params.selected.editorialSlateEntry.scoreComponents,
+          editorialReasonCodes:
+            params.selected.editorialSlateEntry.reasonCodes,
+          editorialCandidateDigestInput:
+            params.selected.editorialSlateEntry.candidateDigestInput,
+          editorialDigestInput:
+            params.selected.editorialSlateEntry.digestInput,
+        }),
     title: buildReaderPostPromotionTitle({
       lead,
       admitted,

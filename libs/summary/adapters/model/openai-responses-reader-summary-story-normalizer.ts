@@ -23,7 +23,9 @@ export const normalizeTopStories = (
   input: ReaderSummaryModelInput,
   citationMap: readonly ReaderSummaryCitation[],
 ): readonly ReaderSummaryTopStory[] => {
-  if (input.coveragePlan.lead === undefined) {
+  if (input.evidence.editorialSlate?.top.length === 0 ||
+      (input.evidence.editorialSlate === undefined &&
+        input.coveragePlan.lead === undefined)) {
     return [];
   }
 
@@ -113,6 +115,13 @@ export const normalizeTopStories = (
 
   const normalized =
     repaired.length === 0 ? fallbackTopStories(input, citationMap) : repaired;
+  if (input.evidence.editorialSlate !== undefined) {
+    return immutableEditorialSlateTopStories(
+      normalized,
+      input,
+      citationMap,
+    );
+  }
   const coverageComplete = ensureCoveragePlanStories(
     normalized,
     input,
@@ -309,7 +318,33 @@ const fallbackTopStories = (
         },
       ];
     })
-    .slice(0, input.policy.maxStories);
+    .slice(
+      0,
+      input.evidence.editorialSlate?.top.length ?? input.policy.maxStories,
+    );
+};
+
+const immutableEditorialSlateTopStories = (
+  modelStories: readonly ReaderSummaryTopStory[],
+  input: ReaderSummaryModelInput,
+  citationMap: readonly ReaderSummaryCitation[],
+): readonly ReaderSummaryTopStory[] => {
+  const modelByClusterId = new Map(modelStories.map((story) =>
+    [story.storyClusterId, story] as const));
+  const fallbackByClusterId = new Map(
+    fallbackTopStories(input, citationMap).map((story) =>
+      [story.storyClusterId, story] as const),
+  );
+  return (input.evidence.editorialSlate?.top ?? []).map((entry) => {
+    const story = modelByClusterId.get(entry.storyClusterId) ??
+      fallbackByClusterId.get(entry.storyClusterId);
+    if (story === undefined) {
+      throw new Error(
+        `Editorial slate Top entry has no citable evidence: ${entry.candidateId}`,
+      );
+    }
+    return { ...story, storyClusterId: entry.storyClusterId };
+  });
 };
 
 const topUpTopStories = (

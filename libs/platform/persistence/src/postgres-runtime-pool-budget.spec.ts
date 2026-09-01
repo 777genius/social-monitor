@@ -346,6 +346,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/capture-durable-backend-e2e-loop.ts:Pool
       scripts/capture-reader-summary-multi-day-quality-corpus.ts:Pool
       scripts/capture-reader-summary-multi-day-quality-target-manifest.ts:Pool
+      scripts/capture-reader-summary-promotion-v2-canary-receipt.ts:Pool
       scripts/check-feed-promotion-index-recovery-postgres.ts:Pool
       scripts/check-feed-promotion-index-recovery.ts:Pool
       scripts/check-feed-promotion-keyset-plan-postgres.ts:Pool
@@ -382,6 +383,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/check-reader-summary-publication-postgres.ts:Pool
       scripts/check-reader-summary-publication-postgres.ts:Pool
       scripts/check-reader-summary-publication-postgres.ts:Pool
+      scripts/check-reader-summary-publication-postgres.ts:Pool
       scripts/check-reader-summary-recovery-candidate-staging-postgres.ts:Pool
       scripts/check-reader-summary-recovery-candidate-staging-postgres.ts:Pool
       scripts/check-reader-summary-source-quality-trace.ts:Pool
@@ -407,6 +409,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/lib/reader-summary-daily-canonical-recovery-v4-scan-terminal-repair-cli.ts:Pool
       scripts/lib/reader-summary-daily-terminal-runtime-connection.ts:Pool
       scripts/lib/reader-summary-production-day-scope.ts:Pool
+      scripts/lib/reader-summary-promotion-v2-historical-postgres.ts:Pool
       scripts/lib/reader-summary-quality-dashboard-report-builder.ts:Pool
       scripts/lib/yesterday-social-replay-support.ts:Pool
       scripts/read-reader-summary-daily-terminal-set-receipt.ts:Pool
@@ -419,6 +422,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/reader-summary-publication-postgres-privileges.ts:Pool
       scripts/reader-summary-publication-postgres-privileges.ts:Pool
       scripts/run-reader-summary-clean-real-day-collection.ts:Pool
+      scripts/run-reader-summary-promotion-v2-rollback.ts:Pool
       scripts/run-reader-summary-weekly-production.ts:Pool
       scripts/run-reader-summary-weekly-review-producer.ts:Pool
     `));
@@ -452,6 +456,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/capture-durable-backend-e2e-loop.ts
       scripts/capture-reader-summary-multi-day-quality-corpus.ts
       scripts/capture-reader-summary-multi-day-quality-target-manifest.ts
+      scripts/capture-reader-summary-promotion-v2-canary-receipt.ts
       scripts/check-feed-promotion-index-recovery-postgres.ts
       scripts/check-feed-promotion-index-recovery.ts
       scripts/check-feed-promotion-keyset-plan-postgres.ts
@@ -490,6 +495,10 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/lib/reader-summary-daily-terminal-runtime-connection.ts
       scripts/lib/reader-summary-production-day-scope.spec.ts
       scripts/lib/reader-summary-production-day-scope.ts
+      scripts/lib/reader-summary-promotion-v2-historical-postgres.ts
+      scripts/lib/reader-summary-promotion-v2-rollback-lifecycle-fixture.spec.ts
+      scripts/lib/reader-summary-promotion-v2-rollback-lifecycle-fixture.ts
+      scripts/lib/reader-summary-promotion-v2-rollback-postgres-contract.ts
       scripts/lib/reader-summary-publication-postgres-running-fixture.ts
       scripts/lib/reader-summary-quality-dashboard-collection-strategy.ts
       scripts/lib/reader-summary-quality-dashboard-feedback-shadow.ts
@@ -517,6 +526,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/reader-summary-publication-postgres-runtime-guard.ts
       scripts/reader-summary-publication-postgres18-regression.ts
       scripts/run-reader-summary-clean-real-day-collection.ts
+      scripts/run-reader-summary-promotion-v2-rollback.ts
       scripts/run-reader-summary-weekly-production.ts
       scripts/run-reader-summary-weekly-review-producer.ts
     `));

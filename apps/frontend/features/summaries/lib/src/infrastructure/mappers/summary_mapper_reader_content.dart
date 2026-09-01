@@ -159,7 +159,12 @@ bool _validPromotionBoard(List<TopRead> topReads, List<TopRead> selectedPosts) {
       attestations.map((value) => value.candidateId).toSet().length !=
           all.length ||
       attestations.map((value) => value.canonicalIdentity).toSet().length !=
-          all.length) {
+          all.length ||
+      (attestations.any((value) => value.isV2) &&
+          !attestations.every((value) => value.isV2)) ||
+      (attestations.isNotEmpty &&
+          attestations.every((value) => value.isV2) &&
+          !_validV2PromotionSlate(attestations))) {
     return false;
   }
   bool laneIsExact(
@@ -173,7 +178,7 @@ bool _validPromotionBoard(List<TopRead> topReads, List<TopRead> selectedPosts) {
     return item.cardKind == cardKind &&
         attestation != null &&
         attestation.placement == placement &&
-        attestation.slot == index &&
+        attestation.slot == index + (attestation.isV2 ? 1 : 0) &&
         attestation.decision == decision;
   });
   return laneIsExact(
@@ -187,6 +192,60 @@ bool _validPromotionBoard(List<TopRead> topReads, List<TopRead> selectedPosts) {
         ReaderSummaryCardKind.additionalNotableStory,
         ReaderPostPromotionPlacement.additional,
         'promote_additional',
+      );
+}
+
+bool _validV2PromotionSlate(List<ReaderPostPromotionAttestation> attestations) {
+  if (attestations.isEmpty ||
+      attestations.any(
+        (value) =>
+            value.policyVersion != 'reader_post_promotion.v2' ||
+            value.slateDigestInput == null ||
+            value.slateEntryDigestInput == null ||
+            value.slateDigest == null,
+      ) ||
+      attestations.map((value) => value.slateDigestInput).toSet().length != 1 ||
+      attestations.map((value) => value.slateDigest).toSet().length != 1) {
+    return false;
+  }
+  final Object? decoded;
+  try {
+    decoded = jsonDecode(attestations.first.slateDigestInput!);
+  } on FormatException {
+    return false;
+  }
+  if (decoded is! Map<String, Object?> ||
+      decoded.keys.toSet().difference(const {
+        'policyVersion',
+        'sourceWindow',
+        'orderedCandidateIds',
+        'orderedCanonicalIdentities',
+        'digestInputs',
+      }).isNotEmpty ||
+      decoded.length != 5 ||
+      decoded['policyVersion'] != 'reader_promotion_policy.v2') {
+    return false;
+  }
+  final candidateIds = decoded['orderedCandidateIds'];
+  final canonicalIdentities = decoded['orderedCanonicalIdentities'];
+  final digestInputs = decoded['digestInputs'];
+  return candidateIds is List<Object?> &&
+      canonicalIdentities is List<Object?> &&
+      digestInputs is List<Object?> &&
+      candidateIds.every((value) => value is String) &&
+      canonicalIdentities.every((value) => value is String) &&
+      digestInputs.every((value) => value is String) &&
+      _sameOrderedReaderCitationIds(
+        candidateIds.cast<String>(),
+        attestations.map((value) => value.candidateId).toList(),
+      ) &&
+      _sameOrderedReaderCitationIds(
+        canonicalIdentities.cast<String>(),
+        attestations.map((value) => value.canonicalIdentity).toList(),
+      ) &&
+      _sameOrderedReaderCitationIds(
+        digestInputs.cast<String>(),
+        attestations.map((value) => value.slateEntryDigestInput!).toList(),
       );
 }
 

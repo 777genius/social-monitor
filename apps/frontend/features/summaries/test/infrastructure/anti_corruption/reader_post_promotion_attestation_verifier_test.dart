@@ -45,11 +45,14 @@ void main() {
     _expectMissingNestedKeys('supportFacts.0.relation', _relationKeys);
   });
 
-  test('accepts an omitted optional support relation from the signed schema', () {
-    final body = _body();
-    _recordAt(body, 'supportFacts.0').remove('relation');
-    expect(_verify(body), isNotNull);
-  });
+  test(
+    'accepts an omitted optional support relation from the signed schema',
+    () {
+      final body = _body();
+      _recordAt(body, 'supportFacts.0').remove('relation');
+      expect(_verify(body), isNotNull);
+    },
+  );
 
   test('rejects extra keys at every nested schema level after rehash', () {
     for (final path in const [
@@ -94,11 +97,7 @@ void main() {
           ),
           (
             provider: 'reddit',
-            metrics: {
-              'provider': 'reddit',
-              'score': 50,
-              'upvoteRatio': 0.8,
-            },
+            metrics: {'provider': 'reddit', 'score': 50, 'upvoteRatio': 0.8},
             required: _redditMetricRequiredKeys,
           ),
           (
@@ -197,9 +196,7 @@ void main() {
     expect(
       _verify(
         _body(),
-        enclosingIngestionCutoff: DateTime.parse(
-          '2026-08-18T22:59:59.999Z',
-        ),
+        enclosingIngestionCutoff: DateTime.parse('2026-08-18T22:59:59.999Z'),
       ),
       isNull,
     );
@@ -327,9 +324,9 @@ Object? _verify(
 }) {
   final payload = jsonEncode(body);
   return verifyReaderPostPromotionAttestation(
-    schemaVersion: schemaVersion ?? readerPostPromotionAttestationSchemaVersion,
-    policyVersion: readerPostPromotionPolicyVersion,
-    digestVersion: readerPostPromotionDigestVersion,
+    schemaVersion: schemaVersion ?? readerPostPromotionAttestationSchemaV1,
+    policyVersion: readerPostPromotionPolicyV1,
+    digestVersion: readerPostPromotionDigestV1,
     digest: digest ?? sha256.convert(utf8.encode(payload)).toString(),
     canonicalPayload: payload,
     candidateId: 'candidate-top',
@@ -343,8 +340,7 @@ Object? _verify(
         enclosingPeriodStart ?? DateTime.parse('2026-08-18T00:00:00.000Z'),
     enclosingPeriodEnd: DateTime.parse('2026-08-19T00:00:00.000Z'),
     enclosingIngestionCutoff:
-        enclosingIngestionCutoff ??
-        DateTime.parse('2026-08-18T23:00:00.000Z'),
+        enclosingIngestionCutoff ?? DateTime.parse('2026-08-18T23:00:00.000Z'),
     slot: 0,
     decision: 'promote_top',
     citationIds: citationIds,
@@ -374,9 +370,9 @@ Map<String, Object?> _providerBody(
   ..['confidence'] = 0.42;
 
 Map<String, Object?> _body() => <String, Object?>{
-  'schemaVersion': readerPostPromotionAttestationSchemaVersion,
-  'policyVersion': readerPostPromotionPolicyVersion,
-  'digestVersion': readerPostPromotionDigestVersion,
+  'schemaVersion': readerPostPromotionAttestationSchemaV1,
+  'policyVersion': readerPostPromotionPolicyV1,
+  'digestVersion': readerPostPromotionDigestV1,
   'artifactId': 'artifact-1',
   'sourceWindowId': 'window-1',
   'periodStartedAt': '2026-08-18T00:00:00.000Z',

@@ -1,39 +1,42 @@
 import {
-  readerPostPromotionTimestampMicros,
-  READER_POST_PROMOTION_POLICY_V1,
   type ReaderPostPromotionAttestation,
-  type ReaderPostPromotionInput,
+  type ReaderPostPromotionAttestationV1,
+  type ReaderPostPromotionAttestationV2,
 } from "../policies/reader-post-promotion-policy";
-import { selectReaderPostPromotions } from
-  "../policies/reader-post-promotion-selection";
+import { READER_SUMMARY_EDITORIAL_SLATE_VERSION } from
+  "../value-objects/reader-summary-editorial-slate";
 import {
-  buildReaderPostPromotionAttestations,
   canonicalPromotionPayload,
+  promotionPayloadDigest,
   verifyReaderPostPromotionAttestationDigest,
 } from "../services/reader-post-promotion-attestation";
 import type { ReaderSummaryArtifactProps } from "./reader-summary-artifact";
 import { sameOrderedValues } from
   "./reader-summary-artifact-validation-values";
-
-// Promotion V1 changed from per-attestation verification to peer-context
-// verification without changing its persisted version. Keep the exact legacy
-// verifier only for artifacts generated before that rollout boundary.
-const PEER_CONTEXT_PROMOTION_ROLLOUT_AT =
-  new Date("2026-08-27T20:00:00.000Z");
+import {
+  attestedInputMatchesPersistedFact,
+  editorialSlateFromCards,
+  promotionInputFromAttestation,
+} from "./reader-summary-promotion-editorial-slate-validation";
+import { assertHistoricalV1EvidenceBinding } from
+  "./reader-summary-promotion-v1-validation";
+import type { TopRead } from "./top-read";
 
 export const assertReaderSummaryPromotionAttestations = (
   props: ReaderSummaryArtifactProps,
   attestations: readonly ReaderPostPromotionAttestation[],
 ): void => {
-  // Selection placement, semantic dedupe and provider caps depend on the peer
-  // candidate set. Recompute that persisted set once instead of re-ranking an
-  // individual attestation without its selection context.
+  const v1 = attestations.filter(isPromotionAttestationV1);
+  const v2 = attestations.filter(isPromotionAttestationV2);
+  if (v1.length + v2.length !== attestations.length ||
+      (v1.length > 0 && v2.length > 0)) {
+    throw new Error("Reader summary promotion attestation version is invalid");
+  }
   assertAttestationsAgainstPersistedEvidence(props, attestations);
   const candidateIds = new Set<string>();
   for (const attestation of attestations) {
-    if (attestation.schemaVersion !== "reader_post_promotion_attestation.v1" ||
-        attestation.policyVersion !== "reader_post_promotion.v1" ||
-        attestation.digestVersion !== "reader_post_promotion_digest.sha256.v1" ||
+    if (!validPromotionVersionTuple(attestation) ||
+        !/^[0-9a-f]{64}$/u.test(attestation.digest) ||
         !verifyReaderPostPromotionAttestationDigest(attestation) ||
         attestation.artifactId !== props.readerSummaryId ||
         attestation.sourceWindowId !== props.sourceWindow.windowId ||
@@ -47,6 +50,11 @@ export const assertReaderSummaryPromotionAttestations = (
         attestation.provider.trim().length === 0 ||
         !Number.isFinite(attestation.publishedAt.getTime()) ||
         !Number.isFinite(attestation.observedAt.getTime()) ||
+        !Number.isSafeInteger(attestation.slot) ||
+        attestation.slot < (isPromotionAttestationV2(attestation) ? 1 : 0) ||
+        attestation.tier !== attestation.placement ||
+        attestation.canonicalDedupeOutcome !== "retained" ||
+        attestation.capOutcome !== "selected" ||
         candidateIds.has(attestation.candidateId)) {
       throw new Error("Reader summary promotion attestation is invalid");
     }
@@ -63,13 +71,20 @@ export const assertReaderSummaryPromotionAttestations = (
     if (values.some((value) => !Number.isFinite(value) || value < 0) ||
         !Number.isFinite(components.total) ||
         Math.abs(total - components.total) > 1e-12) {
-      throw new Error("Reader summary promotion usefulness attestation is invalid");
+      throw new Error(
+        "Reader summary promotion usefulness attestation is invalid",
+      );
     }
     if (attestation.metrics?.provider === "github_radar" && (
       !Number.isFinite(attestation.metrics.windowStartedAt.getTime()) ||
       !Number.isFinite(attestation.metrics.windowEndedAt.getTime())
     )) {
-      throw new Error("Reader summary repository promotion attestation is invalid");
+      throw new Error(
+        "Reader summary repository promotion attestation is invalid",
+      );
+    }
+    if (isPromotionAttestationV2(attestation)) {
+      assertV2AttestationFields(attestation);
     }
   }
   const promotedCards = [
@@ -91,19 +106,122 @@ export const assertReaderSummaryPromotionAttestations = (
   }
   for (const { card, placement, slot } of promotedCards) {
     const matches = attestations.filter((attestation) =>
+      card.promotionMarker === "reader_post_promotion" &&
+      card.promotionPolicyVersion === (isPromotionAttestationV1(attestation)
+        ? "reader_post_promotion.v1"
+        : attestation.policyVersion) &&
+      card.promotionTier === placement &&
       attestation.candidateId === card.promotionCandidateId &&
-      attestation.placement === placement && attestation.slot === slot &&
+      attestation.placement === placement &&
+      attestation.slot === promotionSlot(attestation, slot) &&
       attestation.canonicalIdentity === card.promotionCanonicalIdentity &&
       sameOrderedValues(attestation.citationIds, card.citationIds) &&
       attestation.decision === (placement === "top"
         ? "promote_top"
         : "promote_additional"),
     );
+    if (matches.length === 1 && isPromotionAttestationV2(matches[0]!) &&
+        !v2AttestationMatchesCard(matches[0]!, card, placement, slot)) {
+      throw new Error("Reader card promotion attestation placement is invalid");
+    }
     if (matches.length !== 1) {
       throw new Error("Reader card promotion attestation placement is invalid");
     }
   }
 };
+
+const isPromotionAttestationV1 = (
+  attestation: ReaderPostPromotionAttestation,
+): attestation is ReaderPostPromotionAttestationV1 =>
+  attestation.schemaVersion === "reader_post_promotion_attestation.v1";
+
+const isPromotionAttestationV2 = (
+  attestation: ReaderPostPromotionAttestation,
+): attestation is ReaderPostPromotionAttestationV2 =>
+  attestation.schemaVersion === "reader_post_promotion_attestation.v2";
+
+const validPromotionVersionTuple = (
+  attestation: ReaderPostPromotionAttestation,
+): boolean => isPromotionAttestationV1(attestation)
+  ? attestation.policyVersion === "reader_post_promotion.v1" &&
+    attestation.digestVersion === "reader_post_promotion_digest.sha256.v1"
+  : isPromotionAttestationV2(attestation) &&
+    attestation.policyVersion === "reader_post_promotion.v2" &&
+    attestation.digestVersion === "reader_post_promotion_digest.sha256.v2";
+
+const promotionSlot = (
+  attestation: ReaderPostPromotionAttestation,
+  zeroBasedIndex: number,
+): number => isPromotionAttestationV2(attestation)
+  ? zeroBasedIndex + 1
+  : zeroBasedIndex;
+
+const assertV2AttestationFields = (
+  attestation: ReaderPostPromotionAttestationV2,
+): void => {
+  const components = attestation.scoreComponents;
+  const weighted = [
+    components.weightedEngagement,
+    components.weightedRelevance,
+    components.weightedEvidenceQuality,
+    components.weightedIntegrity,
+    components.weightedFreshness,
+  ];
+  const raw = [
+    components.engagementSalience,
+    components.relevance,
+    components.evidenceQuality,
+    components.integrity,
+    components.freshness,
+  ];
+  const lineage = attestation.evidenceLineage;
+  if (attestation.storyClusterId.trim().length === 0 ||
+      attestation.reasonCodes.length === 0 ||
+      new Set(attestation.reasonCodes).size !==
+        attestation.reasonCodes.length ||
+      attestation.reasonCodes.some((code) => code.trim().length === 0) ||
+      attestation.candidateDigestInput.trim().length === 0 ||
+      attestation.slateEntryDigestInput.trim().length === 0 ||
+      attestation.slateDigestInput.trim().length === 0 ||
+      !/^[0-9a-f]{64}$/u.test(attestation.slateDigest) ||
+      promotionPayloadDigest(attestation.slateDigestInput) !==
+        attestation.slateDigest ||
+      raw.some((value) =>
+        !Number.isFinite(value) || value < 0 || value > 1) ||
+      weighted.some((value) => !Number.isFinite(value) || value < 0) ||
+      !Number.isFinite(components.total) || components.total < 0 ||
+      Math.abs(weighted.reduce((sum, value) => sum + value, 0) -
+        components.total) > 1e-12 ||
+      lineage.leadCandidateId !== attestation.candidateId ||
+      lineage.leadCitationId !== attestation.citationId ||
+      !sameOrderedValues(
+        lineage.supportCandidateIds,
+        attestation.supportFacts.map((fact) => fact.candidateId),
+      ) ||
+      !sameOrderedValues(
+        lineage.supportCitationIds,
+        attestation.supportFacts.map((fact) => fact.citationId),
+      ) ||
+      !sameOrderedValues(lineage.citationIds, attestation.citationIds)) {
+    throw new Error("Reader summary Promotion V2 attestation is invalid");
+  }
+};
+
+const v2AttestationMatchesCard = (
+  attestation: ReaderPostPromotionAttestationV2,
+  card: TopRead,
+  placement: "top" | "additional",
+  zeroBasedIndex: number,
+): boolean => card.storyClusterId === attestation.storyClusterId &&
+  card.promotionPolicyVersion === attestation.policyVersion &&
+  card.editorialPolicyVersion === READER_SUMMARY_EDITORIAL_SLATE_VERSION &&
+  card.editorialPlacement === placement &&
+  card.editorialSlot === zeroBasedIndex + 1 &&
+  canonicalPromotionPayload(card.editorialScoreComponents) ===
+    canonicalPromotionPayload(attestation.scoreComponents) &&
+  sameOrderedValues(card.editorialReasonCodes ?? [], attestation.reasonCodes) &&
+  card.editorialCandidateDigestInput === attestation.candidateDigestInput &&
+  card.editorialDigestInput === attestation.slateEntryDigestInput;
 
 const assertAttestationsAgainstPersistedEvidence = (
   props: ReaderSummaryArtifactProps,
@@ -112,7 +230,9 @@ const assertAttestationsAgainstPersistedEvidence = (
   const evidenceFacts = props.promotionEvidenceFacts ?? [];
   if (attestations.length === 0) {
     if (evidenceFacts.length !== 0) {
-      throw new Error("Promotion evidence facts cannot exist without attestations");
+      throw new Error(
+        "Promotion evidence facts cannot exist without attestations",
+      );
     }
     return;
   }
@@ -128,45 +248,42 @@ const assertAttestationsAgainstPersistedEvidence = (
           citation.feedItemId !== fact.candidateId ||
           citation.providerKey !== fact.provider;
       })) {
-    throw new Error("Persisted promotion evidence facts are not citation-bound");
-  }
-  const expected = buildReaderPostPromotionAttestations(
-    selectReaderPostPromotions(evidenceFacts),
-    { artifactId: props.readerSummaryId, sourceWindow: props.sourceWindow },
-  );
-  if (expected.length !== attestations.length || expected.some((item, index) =>
-    item.canonicalPayload !== attestations[index]?.canonicalPayload ||
-    item.digest !== attestations[index]?.digest
-  )) {
-    assertLegacyAttestationsAgainstPersistedEvidence(
-      props.generatedAt,
-      evidenceFacts,
-      attestations,
-    );
-  }
-};
-
-const assertLegacyAttestationsAgainstPersistedEvidence = (
-  generatedAt: Date | undefined,
-  evidenceFacts: readonly ReaderPostPromotionInput[],
-  attestations: readonly ReaderPostPromotionAttestation[],
-): void => {
-  if (generatedAt === undefined ||
-      generatedAt.getTime() >= PEER_CONTEXT_PROMOTION_ROLLOUT_AT.getTime()) {
     throw new Error(
-      "Reader summary promotion attestation differs from persisted evidence facts",
+      "Persisted promotion evidence facts are not citation-bound",
     );
   }
-  const evidenceByCandidateId = new Map(
-    evidenceFacts.map((fact) => [fact.candidateId, fact] as const),
-  );
-  try {
-    for (const attestation of attestations) {
-      const lead = promotionInputFromAttestation(attestation);
-      const persistedLead = evidenceByCandidateId.get(lead.candidateId);
-      if (
-        persistedLead === undefined ||
-        !attestedInputMatchesPersistedFact(lead, persistedLead) ||
+  if (attestations.every(isPromotionAttestationV1)) {
+    assertHistoricalV1EvidenceBinding(props, evidenceFacts, attestations);
+    return;
+  }
+  if (!attestations.every(isPromotionAttestationV2)) {
+    throw new Error("Reader summary promotion attestation version is invalid");
+  }
+  const editorialSlate = editorialSlateFromCards(props, evidenceFacts);
+  if (editorialSlate === undefined) {
+    throw new Error(
+      "Promotion V2 attestation requires editorial slate metadata",
+    );
+  }
+  const entries = [...editorialSlate.top, ...editorialSlate.additional];
+  const evidenceByCandidateId = new Map(evidenceFacts.map((fact) =>
+    [fact.candidateId, fact] as const));
+  if (entries.length !== attestations.length || attestations.some(
+    (attestation, index) => {
+      const entry = entries[index];
+      const persistedLead = evidenceByCandidateId.get(
+        attestation.candidateId,
+      );
+      return entry === undefined || persistedLead === undefined ||
+        entry.candidateId !== attestation.candidateId ||
+        entry.placement !== attestation.placement ||
+        entry.slot !== attestation.slot ||
+        entry.digestInput !== attestation.slateEntryDigestInput ||
+        editorialSlate.digestMaterial !== attestation.slateDigestInput ||
+        !attestedInputMatchesPersistedFact(
+          promotionInputFromAttestation(attestation),
+          persistedLead,
+        ) ||
         attestation.supportFacts.some((support) => {
           const persistedSupport = evidenceByCandidateId.get(
             support.candidateId,
@@ -174,143 +291,11 @@ const assertLegacyAttestationsAgainstPersistedEvidence = (
           return persistedSupport === undefined ||
             canonicalPromotionPayload(persistedSupport) !==
               canonicalPromotionPayload(support);
-        })
-      ) {
-        throw new Error("Legacy promotion evidence is not persistently bound");
-      }
-      assertLegacyAttestedPolicyDecision(attestation, lead);
-    }
-  } catch {
+        });
+    },
+  )) {
     throw new Error(
       "Reader summary promotion attestation differs from persisted evidence facts",
     );
   }
-};
-
-const attestedInputMatchesPersistedFact = (
-  attested: ReaderPostPromotionInput,
-  persisted: ReaderPostPromotionInput,
-): boolean => {
-  const comparablePersisted = Object.fromEntries(
-    Object.keys(attested).map((key) => [
-      key,
-      persisted[key as keyof ReaderPostPromotionInput],
-    ]).filter(([, value]) => value !== undefined),
-  );
-  return canonicalPromotionPayload(attested) ===
-    canonicalPromotionPayload(comparablePersisted);
-};
-
-const promotionInputFromAttestation = (
-  attestation: ReaderPostPromotionAttestation,
-): ReaderPostPromotionInput => ({
-  candidateId: attestation.candidateId,
-  provider: attestation.provider,
-  contentKind: attestation.contentKind,
-  canonicalIdentity: attestation.canonicalIdentity,
-  citationId: attestation.citationId,
-  publishedAt: attestation.publishedAt,
-  observedAt: attestation.observedAt,
-  ...(attestation.exactPublishedAt === undefined ? {} : {
-    exactPublishedAt: attestation.exactPublishedAt,
-  }),
-  ...(attestation.exactObservedAt === undefined ? {} : {
-    exactObservedAt: attestation.exactObservedAt,
-  }),
-  ...(attestation.exactPeriodStart === undefined ? {} : {
-    exactPeriodStart: attestation.exactPeriodStart,
-  }),
-  ...(attestation.exactPeriodEnd === undefined ? {} : {
-    exactPeriodEnd: attestation.exactPeriodEnd,
-  }),
-  ...(attestation.exactIngestionCutoff === undefined ? {} : {
-    exactIngestionCutoff: attestation.exactIngestionCutoff,
-  }),
-  ...(attestation.checkedAt === undefined ? {} : {
-    checkedAt: attestation.checkedAt,
-  }),
-  periodStart: attestation.periodStartedAt,
-  periodEnd: attestation.periodEndedAt,
-  ingestionCutoff: attestation.ingestionCutoff,
-  freshnessValid: attestation.freshnessValid,
-  qualityScore: attestation.qualityScore,
-  relevanceScore: attestation.relevanceScore,
-  integrityScore: attestation.integrityScore,
-  qualityValid: attestation.qualityValid,
-  safetyValid: attestation.safetyValid,
-  citationValid: attestation.citationValid,
-  metricsState: attestation.metricsState,
-  ...(attestation.metrics === undefined ? {} : {
-    metrics: attestation.metrics,
-  }),
-  ...(attestation.authorityAttestation === undefined ? {} : {
-    authorityAttestation: attestation.authorityAttestation,
-  }),
-  ...(attestation.relationTrace === undefined ? {} : {
-    relation: attestation.relationTrace,
-  }),
-});
-
-const assertLegacyAttestedPolicyDecision = (
-  attestation: ReaderPostPromotionAttestation,
-  lead: ReaderPostPromotionInput,
-): void => {
-  const selection = selectReaderPostPromotions([
-    lead,
-    ...attestation.supportFacts,
-  ]);
-  const expected = attestation.placement === "top"
-    ? selection.top[0]
-    : selection.additional[0];
-  const decision = selection.decisions.find((item) =>
-    item.candidateId === attestation.candidateId
-  );
-  const periodStart = requiredMicros(
-    attestation.exactPeriodStart ?? attestation.periodStartedAt,
-  );
-  const periodEnd = requiredMicros(
-    attestation.exactPeriodEnd ?? attestation.periodEndedAt,
-  );
-  const publishedAt = requiredMicros(
-    attestation.exactPublishedAt ?? attestation.publishedAt,
-  );
-  const duration = periodEnd - periodStart;
-  const freshness = duration <= 0n ? 0 : Math.max(0, Math.min(
-    1,
-    Number(publishedAt - periodStart) / Number(duration),
-  ));
-  const weights = READER_POST_PROMOTION_POLICY_V1.additionalUsefulnessWeights;
-  const expectedComponents = {
-    normalizedStrength:
-      (decision?.normalizedStrength ?? Number.NaN) * weights.normalizedStrength,
-    qualityScore: attestation.qualityScore * weights.qualityScore,
-    interestRelevanceScore:
-      attestation.relevanceScore * weights.interestRelevanceScore,
-    engagementIntegrityScore:
-      attestation.integrityScore * weights.engagementIntegrityScore,
-    freshness: freshness * weights.freshness,
-  };
-  if (
-    expected?.candidate.candidateId !== attestation.candidateId ||
-    expected.decision !== attestation.decision ||
-    decision?.reason !== attestation.reason ||
-    Object.entries(expectedComponents).some(([key, value]) =>
-      Math.abs(value - attestation.usefulnessComponents[
-        key as keyof typeof expectedComponents
-      ]) > 1e-12
-    ) ||
-    expected.providerCount !== attestation.providerCount ||
-    expected.confidence !== attestation.confidence ||
-    !sameOrderedValues(expected.citationIds, attestation.citationIds)
-  ) {
-    throw new Error("Reader summary legacy promotion decision is invalid");
-  }
-};
-
-const requiredMicros = (value: Date | string): bigint => {
-  const micros = readerPostPromotionTimestampMicros(value);
-  if (micros === undefined) {
-    throw new Error("Reader summary promotion exact timestamp is invalid");
-  }
-  return micros;
 };

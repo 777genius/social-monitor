@@ -1,4 +1,6 @@
 import { readerPostPromotionCardFields } from "../../domain/entities/top-read";
+import { canonicalPromotionPayload } from
+  "../../domain/services/reader-post-promotion-attestation";
 import { readerSummaryIndependentProviderFamily } from
   "../../domain/value-objects/reader-summary-provider-identity";
 import type { ReaderSummaryArtifactView } from
@@ -36,6 +38,13 @@ export const readerSummaryPromotionBoardRestView = (
     return { topReads: [], selectedPosts: [] };
   }
   const additionalCards = promotionAdditionalCards(view);
+  if (view.content.topReads.length === 0 && additionalCards.length === 0 &&
+      view.promotionAttestations.length === 0) {
+    if (isReadableNoSignalBoard(view)) {
+      return { topReads: [], selectedPosts: [] };
+    }
+    throw new ReaderSummaryPromotionBoardMappingError();
+  }
   const authority = buildReaderCardRestAuthority(view, additionalCards);
   if (authority === undefined) {
     throw new ReaderSummaryPromotionBoardMappingError();
@@ -53,6 +62,12 @@ export const readerSummaryPromotionBoardRestView = (
     ),
   };
 };
+
+const isReadableNoSignalBoard = (
+  view: ReaderSummaryArtifactView,
+): boolean => view.qualityFlags.includes("no_signal") &&
+  view.topStories.length === 0 &&
+  view.citations.length === 0;
 
 const promotionAdditionalCards = (
   view: ReaderSummaryArtifactView,
@@ -187,6 +202,11 @@ type ReaderCardRestAuthority = Readonly<{
   >;
 }>;
 
+type ReaderPostPromotionAttestationV2View = Extract<
+  ReaderSummaryArtifactView["promotionAttestations"][number],
+  { readonly schemaVersion: "reader_post_promotion_attestation.v2" }
+>;
+
 const buildReaderCardRestAuthority = (
   view: ReaderSummaryArtifactView,
   additionalCards: readonly ReaderSummaryArtifactView["content"]["topReads"][number][],
@@ -245,7 +265,7 @@ const buildReaderCardRestAuthority = (
         attestation.candidateId !== candidateId ||
         attestation.canonicalIdentity !== canonicalIdentity ||
         attestation.placement !== placement ||
-        attestation.slot !== slot;
+        attestation.slot !== restPromotionSlot(attestation, slot);
     })) return undefined;
     return {
       artifactId: view.readerSummaryId,
@@ -274,26 +294,32 @@ const promotionAttestationView = (
   const canonicalIdentity = item.promotionCanonicalIdentity?.trim();
   if (decision === undefined ||
       item.promotionMarker !== "reader_post_promotion" ||
-      item.promotionPolicyVersion !== "reader_post_promotion.v1" ||
       item.promotionTier !== placement || candidateId === undefined ||
       candidateId.length === 0 || canonicalIdentity === undefined ||
       canonicalIdentity.length === 0) return undefined;
   const attestation = authority.promotionAttestations.get(candidateId);
   if (attestation === undefined ||
-      attestation.policyVersion !== "reader_post_promotion.v1" ||
+      item.promotionPolicyVersion !== attestation.policyVersion ||
       attestation.candidateId !== candidateId ||
       attestation.canonicalIdentity !== canonicalIdentity ||
       attestation.artifactId !== authority.artifactId ||
       attestation.sourceWindowId !== authority.sourceWindowId ||
-      attestation.placement !== placement || attestation.slot !== slot ||
+      attestation.placement !== placement ||
+      attestation.slot !== restPromotionSlot(attestation, slot) ||
       !sameOrderedStrings(attestation.citationIds, item.citationIds) ||
       attestation.tier !== placement || attestation.decision !== decision ||
       attestation.canonicalDedupeOutcome !== "retained" ||
       attestation.capOutcome !== "selected" ||
-      attestation.schemaVersion !== READER_POST_PROMOTION_ATTESTATION_SCHEMA_VERSION ||
-      attestation.digestVersion !== READER_POST_PROMOTION_DIGEST_VERSION ||
+      !validRestPromotionVersion(attestation) ||
       readerPostPromotionDigest(attestation.canonicalPayload) !==
         attestation.digest) return undefined;
+  const v2 = attestation.schemaVersion ===
+    READER_POST_PROMOTION_ATTESTATION_SCHEMA_VERSION
+    ? attestation
+    : undefined;
+  if (v2 !== undefined && !validV2RestCardBinding(v2, item, placement, slot)) {
+    return undefined;
+  }
   return {
     schemaVersion: attestation.schemaVersion,
     policyVersion: attestation.policyVersion,
@@ -308,8 +334,61 @@ const promotionAttestationView = (
     placement,
     decision,
     citationIds: [...attestation.citationIds],
+    ...(v2 === undefined ? {} : {
+      storyClusterId: v2.storyClusterId,
+      scoreComponents: { ...v2.scoreComponents },
+      reasonCodes: [...v2.reasonCodes],
+      candidateDigestInput: v2.candidateDigestInput,
+      slateEntryDigestInput: v2.slateEntryDigestInput,
+      slateDigestInput: v2.slateDigestInput,
+      slateDigest: v2.slateDigest,
+      evidenceLineage: {
+        ...v2.evidenceLineage,
+        supportCandidateIds: [...v2.evidenceLineage.supportCandidateIds],
+        supportCitationIds: [...v2.evidenceLineage.supportCitationIds],
+        citationIds: [...v2.evidenceLineage.citationIds],
+      },
+    }),
   };
 };
+
+const validRestPromotionVersion = (
+  attestation: ReaderSummaryArtifactView["promotionAttestations"][number],
+): boolean => attestation.schemaVersion ===
+    "reader_post_promotion_attestation.v1"
+  ? attestation.policyVersion === "reader_post_promotion.v1" &&
+    attestation.digestVersion === "reader_post_promotion_digest.sha256.v1"
+  : attestation.schemaVersion ===
+      READER_POST_PROMOTION_ATTESTATION_SCHEMA_VERSION &&
+    attestation.policyVersion === "reader_post_promotion.v2" &&
+    attestation.digestVersion === READER_POST_PROMOTION_DIGEST_VERSION;
+
+const restPromotionSlot = (
+  attestation: ReaderSummaryArtifactView["promotionAttestations"][number],
+  zeroBasedIndex: number,
+): number => attestation.schemaVersion ===
+    READER_POST_PROMOTION_ATTESTATION_SCHEMA_VERSION
+  ? zeroBasedIndex + 1
+  : zeroBasedIndex;
+
+const validV2RestCardBinding = (
+  attestation: ReaderPostPromotionAttestationV2View,
+  item: ReaderSummaryArtifactView["content"]["topReads"][number],
+  placement: "top" | "additional",
+  zeroBasedIndex: number,
+): boolean => item.storyClusterId === attestation.storyClusterId &&
+  item.promotionPolicyVersion === attestation.policyVersion &&
+  item.editorialPolicyVersion === "reader_promotion_policy.v2" &&
+  item.editorialPlacement === placement &&
+  item.editorialSlot === zeroBasedIndex + 1 &&
+  canonicalPromotionPayload(item.editorialScoreComponents) ===
+    canonicalPromotionPayload(attestation.scoreComponents) &&
+  sameOrderedStrings(
+    item.editorialReasonCodes ?? [],
+    attestation.reasonCodes,
+  ) &&
+  item.editorialCandidateDigestInput === attestation.candidateDigestInput &&
+  item.editorialDigestInput === attestation.slateEntryDigestInput;
 
 const isAuthorizedClusterRestItem = (
   item: ReaderSummaryArtifactView["content"]["topReads"][number],

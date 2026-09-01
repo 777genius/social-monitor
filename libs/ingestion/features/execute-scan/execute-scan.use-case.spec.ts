@@ -320,6 +320,52 @@ describe("ExecuteScanUseCase", () => {
     ]);
   });
 
+  it("applies engagement after the full feed projection", async () => {
+    const projectionOrder: string[] = [];
+    const feedProjection = new FakeFeedProjection();
+    const orderedFeedProjection = {
+      async project(command: Parameters<FakeFeedProjection["project"]>[0]) {
+        projectionOrder.push("feed");
+        return feedProjection.project(command);
+      },
+    };
+    const engagementProjection = {
+      async project() {
+        projectionOrder.push("engagement");
+        return {
+          currentSnapshotsUpdated: 1,
+          observationsAppended: 1,
+          metricChanges: 1,
+          regressionsObserved: 0,
+        };
+      },
+    };
+    const useCase = new ExecuteScanUseCase(
+      new ConversationSourceFetcher(),
+      new FakeSourceItemRepository(),
+      orderedFeedProjection,
+      new FakeScanAttemptRepository(),
+      new FakeScanCursorRepository(),
+      new FakeScanExecutionReporter(),
+      new FakeScanFailureQueue(),
+      new FakeScanLease(),
+      new SequenceIdGenerator(),
+      new FixedClock(new Date("2026-06-05T12:00:00.000Z")),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      engagementProjection,
+    );
+
+    const result = await useCase.execute(
+      makeExecuteScanCommand({ providerKey: "reddit" }),
+    );
+
+    expect(result.ok).toBe(true);
+    expect(projectionOrder).toEqual(["feed", "engagement"]);
+  });
+
   it("projects fetched conversation units after root feed items are projected", async () => {
     const projection = new FakeFeedProjection();
     const conversationProjection = new FakeConversationProjection();
