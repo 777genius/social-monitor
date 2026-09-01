@@ -383,6 +383,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/check-reader-summary-publication-postgres.ts:Pool
       scripts/check-reader-summary-publication-postgres.ts:Pool
       scripts/check-reader-summary-publication-postgres.ts:Pool
+      scripts/check-reader-summary-publication-postgres.ts:Pool
       scripts/check-reader-summary-recovery-candidate-staging-postgres.ts:Pool
       scripts/check-reader-summary-recovery-candidate-staging-postgres.ts:Pool
       scripts/check-reader-summary-source-quality-trace.ts:Pool

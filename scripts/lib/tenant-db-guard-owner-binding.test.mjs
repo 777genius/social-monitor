@@ -149,6 +149,82 @@ test("RESET ROLE clears a preceding owner binding", () => {
   );
 });
 
+test("comments and whitespace may separate every legal role token", () => {
+  const sql = `
+    SET/* command */LOCAL\n-- scope separator
+      ROLE/* role separator */"${ownerRole}";
+    CREATE/* create separator */TABLE public./* name separator */"receipt" (id uuid);
+  `;
+  assert.equal(
+    migrationBindsTableOwner({ sql, table: "receipt", ownerRole }),
+    true,
+  );
+});
+
+test("line and block comment role decoys do not change executable role state", () => {
+  const sql = `
+    SET ROLE "${ownerRole}";
+    -- SET ROLE "social_monitor_reader_summary_publication_owner";
+    /* RESET ROLE; SET SESSION AUTHORIZATION wrong_owner; */
+    CREATE TABLE public."receipt" (id uuid);
+  `;
+  assert.equal(
+    migrationBindsTableOwner({ sql, table: "receipt", ownerRole }),
+    true,
+  );
+});
+
+test("quoted and dollar-quoted role decoys are not executable", () => {
+  const sql = `
+    SELECT 'RESET ROLE; SET ROLE ''wrong_owner'';';
+    SELECT "SET ROLE wrong_owner";
+    DO $decoy$ BEGIN
+      SET ROLE wrong_owner;
+      CREATE TABLE public.receipt (id uuid);
+    END $decoy$;
+    SET SESSION ROLE "${ownerRole}";
+    CREATE TABLE public."receipt" (id uuid);
+  `;
+  assert.equal(
+    migrationBindsTableOwner({ sql, table: "receipt", ownerRole }),
+    true,
+  );
+});
+
+test("comment-interleaved wrong role and session authorization fail closed", () => {
+  for (const statement of [
+    "SET/**/ROLE wrong_owner;",
+    "SET/* gap */SESSION/* gap */AUTHORIZATION wrong_owner;",
+    "RESET/* gap */SESSION/* gap */AUTHORIZATION;",
+  ]) {
+    const sql = `SET LOCAL ROLE "${ownerRole}"; ${statement}
+      CREATE TABLE public.receipt (id uuid);`;
+    assert.equal(
+      migrationBindsTableOwner({ sql, table: "receipt", ownerRole }),
+      false,
+      statement,
+    );
+  }
+});
+
+test("malformed lexical input fails closed", () => {
+  for (const malformed of [
+    "SELECT 'unterminated",
+    'SELECT "unterminated',
+    "/* unterminated",
+    "$body$ unterminated",
+    "$bad-tag$ malformed",
+  ]) {
+    const sql = `SET ROLE "${ownerRole}"; ${malformed}
+      CREATE TABLE public.receipt (id uuid);`;
+    assert.equal(
+      migrationBindsTableOwner({ sql, table: "receipt", ownerRole }),
+      false,
+      malformed,
+    );
+  }
+});
+
 test("an explicit post-creation ALTER OWNER binds a wrong-role creation", () => {
   const sql = `
     SET LOCAL ROLE "social_monitor_reader_summary_publication_owner";
@@ -183,8 +259,11 @@ test("pre and post deploy audits share the exact receipt-owner mapping", () => {
     const audit = receiptOwnerAudit(sql);
     auditBodies.push(audit.body);
     assert.equal(hasExactReceiptOwnerMapping(audit.body), true, name);
-    assert.ok(audit.body.includes("relation.relkind NOT IN ('r', 'p')"));
+    assert.ok(audit.body.includes("relation.relkind <> expected.relation_kind"));
+    assert.equal(audit.body.split("'r'::\"char\"").length - 1, 2);
     assert.ok(audit.body.includes("owner.rolname <> expected.owner_name"));
+    assert.ok(audit.body.includes(") NOT IN (0, 2) OR EXISTS ("));
+    assert.ok(audit.body.includes("relation.relname = ANY (ARRAY["));
     assert.ok(audit.start < sql.indexOf("DO $bootstrap$"));
     assert.equal(
       /\b(?:ALTER|CREATE|DELETE|GRANT|INSERT|REVOKE|UPDATE)\b/iu.test(
