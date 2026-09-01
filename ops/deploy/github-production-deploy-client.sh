@@ -5,16 +5,17 @@ PATH=/usr/local/bin:/usr/bin:/bin
 
 ZERO_SHA=0000000000000000000000000000000000000000
 POSTGRES_POOL_BOOTSTRAP_VERSION=postgres-pool-v1
-RELEASE_B_CONTROLLER_SHA=8b4aeb31e855ed379349a4e4827600009e174132
-RELEASE_B_CURRENT_MAIN_SHA=77313ea03a3bac7d2298f4021d58124c810d291f
-RELEASE_B_LEGACY_BACKEND_SHA=09a79687e042e36d4ec9c1f33f0367527f044181
-RELEASE_B_LEGACY_POOL_SHA=6fefa9da5446d5e467badcc7239fdc5a6170a756
-RELEASE_B_BRIDGE_SHA=b89950632b0cefa4f7b58b687cdfd6e6cd912a04
-RELEASE_B_BRIDGE_TREE=0f2edeb95bbb658cebdb1aecdcda24026eca7d19
-RELEASE_B_BRIDGE_BLOB=e02f7b7684f75121521065b43148708d545ab806
-RELEASE_B_BRIDGE_PATH=ops/deploy/deploy-control-bridge-lib.sh
-RELEASE_B_REVIEWED_TARGET_SHA=05744f99b2d13e47a64a7ff12ea2ab8893f5e88a
-RELEASE_B_REVIEWED_TARGET_TREE=237c34068c057d2dfb5efaf9d606028cdaf18525
+PROMOTION_V2_CONTROLLER_SHA=7c4070f0b9ef1aac130284bcffac50551e20a4dd
+PROMOTION_V2_CONTROLLER_TREE=72a67394bafd87ab7ed5b3024ddf66c6d040f096
+PROMOTION_V2_POOL_MARKER=0be002ec1af2d1e0799f8507cb147a6f1406a428
+PROMOTION_V2_PRODUCT_MAIN_SHA=c5dc5abb12aa1ac84ddbd12f141c6d4d8aca4de2
+PROMOTION_V2_PRODUCT_MAIN_TREE=526a56bef3b9a9a8edcf562b4b643af0f369eb8a
+PROMOTION_V2_BRIDGE_SHA=b13e68a502444bb7839dc642f12d0e34b7b954ad
+PROMOTION_V2_BRIDGE_TREE=87b0bd78d93cfefd980cf7c38f96dca2a8899268
+PROMOTION_V2_BRIDGE_BLOB=d02ac91a87656739ef2563c0481835122ec3f7f3
+PROMOTION_V2_CONTROL_BLOB=fd2d8095cd6e2428e02f6ca21942bab2ea10961b
+PROMOTION_V2_JOIN_SHA=3fc3c65649323506e8ad9914d2e5c985fa361401
+PROMOTION_V2_JOIN_TREE=54e11938300dc50f3a744dc2a2bb5044505206bd
 DAILY_C1_BRIDGE_POLICY_SHA=944fdb6da3071f70a69c7048c9fcdf1c2552603e
 SSH_DIRECTORY=${DEPLOY_SSH_DIRECTORY:-${HOME:+$HOME/.ssh}}
 SSH_KEY_PATH=${DEPLOY_SSH_KEY_PATH:-$SSH_DIRECTORY/social-monitor-production}
@@ -559,141 +560,135 @@ plan_is_fully_reconciled() {
      $PLAN_BACKEND_BASE != "$ZERO_SHA" ]]
 }
 
-plan_is_exact_release_b_bridge_transition() {
+plan_has_promotion_v2_installed_markers() {
+  [[ $PLAN_BACKEND_BASE == "$PROMOTION_V2_CONTROLLER_SHA" && \
+     $PLAN_POSTGRES_POOL_BOOTSTRAP == "$POSTGRES_POOL_BOOTSTRAP_VERSION" && \
+     $PLAN_POSTGRES_POOL_BOOTSTRAP_SHA == "$PROMOTION_V2_POOL_MARKER" && \
+     $PLAN_POSTGRES_POOL_REPAIR == false ]]
+}
+
+plan_is_exact_promotion_v2_bridge_pending() {
+  plan_has_promotion_v2_installed_markers && \
+    [[ $PLAN_FRONTEND == false && $PLAN_BACKEND == false && \
+       $PLAN_CONTROL == true && $PLAN_X_COLLECTOR == false ]]
+}
+
+plan_is_exact_promotion_v2_bridge_complete() {
+  plan_has_promotion_v2_installed_markers && \
+    [[ $PLAN_FRONTEND == false && $PLAN_BACKEND == false && \
+       $PLAN_CONTROL == false && $PLAN_X_COLLECTOR == false ]]
+}
+
+plan_is_exact_promotion_v2_target_pending() {
+  plan_has_promotion_v2_installed_markers && \
+    [[ $PLAN_FRONTEND == true && $PLAN_BACKEND == true && \
+       $PLAN_CONTROL == true && $PLAN_X_COLLECTOR == false ]]
+}
+
+plan_is_exact_promotion_v2_target_complete() {
+  local target=$1
   [[ $PLAN_FRONTEND == false && $PLAN_BACKEND == false && \
-     $PLAN_CONTROL == true && $PLAN_X_COLLECTOR == false && \
+     $PLAN_CONTROL == false && $PLAN_X_COLLECTOR == false && \
+     $PLAN_BACKEND_BASE == "$target" && \
      $PLAN_POSTGRES_POOL_BOOTSTRAP == "$POSTGRES_POOL_BOOTSTRAP_VERSION" && \
-     $PLAN_POSTGRES_POOL_BOOTSTRAP_SHA == "$RELEASE_B_CONTROLLER_SHA" && \
-     $PLAN_BACKEND_BASE == "$RELEASE_B_CONTROLLER_SHA" ]]
-}
-
-plan_is_exact_release_b_target_transition() {
-  [[ $PLAN_FRONTEND == false && $PLAN_BACKEND == true && \
-     $PLAN_BACKEND_BASE == "$RELEASE_B_CONTROLLER_SHA" && \
-     $PLAN_CONTROL == true && $PLAN_X_COLLECTOR == false && \
-     $PLAN_POSTGRES_POOL_BOOTSTRAP == "$POSTGRES_POOL_BOOTSTRAP_VERSION" && \
-     $PLAN_POSTGRES_POOL_BOOTSTRAP_SHA == "$RELEASE_B_CONTROLLER_SHA" && \
+     $PLAN_POSTGRES_POOL_BOOTSTRAP_SHA == "$target" && \
      $PLAN_POSTGRES_POOL_REPAIR == false ]]
 }
 
-plan_is_exact_release_b_current_main_target_transition() {
-  [[ $PLAN_FRONTEND == false && $PLAN_BACKEND == false && \
-     $PLAN_BACKEND_BASE == "$RELEASE_B_CURRENT_MAIN_SHA" && \
-     $PLAN_CONTROL == true && $PLAN_X_COLLECTOR == false && \
-     $PLAN_POSTGRES_POOL_BOOTSTRAP == "$POSTGRES_POOL_BOOTSTRAP_VERSION" && \
-     $PLAN_POSTGRES_POOL_BOOTSTRAP_SHA == "$RELEASE_B_CURRENT_MAIN_SHA" && \
-     $PLAN_POSTGRES_POOL_REPAIR == false ]]
+git_commit_line() {
+  git -C "${GITHUB_WORKSPACE:-.}" rev-list --parents -n 1 "$1" 2>/dev/null
 }
 
-plan_is_exact_release_b_legacy_transition() {
-  [[ $PLAN_FRONTEND == true && $PLAN_BACKEND == true && \
-     $PLAN_BACKEND_BASE == "$RELEASE_B_LEGACY_BACKEND_SHA" && \
-     $PLAN_CONTROL == true && $PLAN_X_COLLECTOR == true && \
-     $PLAN_POSTGRES_POOL_BOOTSTRAP == "$POSTGRES_POOL_BOOTSTRAP_VERSION" && \
-     $PLAN_POSTGRES_POOL_BOOTSTRAP_SHA == "$RELEASE_B_LEGACY_POOL_SHA" && \
-     $PLAN_POSTGRES_POOL_REPAIR == false ]]
+git_tree() {
+  git -C "${GITHUB_WORKSPACE:-.}" rev-parse "$1^{tree}" 2>/dev/null
 }
 
-plan_is_admitted_post_release_b_forward_state() {
-  local requested_target=$1 repository=${GITHUB_WORKSPACE:-.}
-  [[ $PLAN_BACKEND_BASE =~ ^[0-9a-f]{40}$ && \
-     $PLAN_POSTGRES_POOL_BOOTSTRAP == "$POSTGRES_POOL_BOOTSTRAP_VERSION" && \
-     $PLAN_POSTGRES_POOL_BOOTSTRAP_SHA =~ ^[0-9a-f]{40}$ && \
-     $PLAN_POSTGRES_POOL_REPAIR == false ]] || return 1
-  # The remote plan reports an installed bootstrap only after hashing the
-  # active deploy controller against this durable marker. Its ancestry is
-  # therefore the controller provenance proof even when control or X changes.
-  git -C "$repository" merge-base --is-ancestor \
-    "$RELEASE_B_REVIEWED_TARGET_SHA" "$PLAN_BACKEND_BASE" 2>/dev/null && \
-    git -C "$repository" merge-base --is-ancestor \
-      "$PLAN_BACKEND_BASE" "$requested_target" 2>/dev/null && \
-    git -C "$repository" merge-base --is-ancestor \
-      "$RELEASE_B_REVIEWED_TARGET_SHA" \
-      "$PLAN_POSTGRES_POOL_BOOTSTRAP_SHA" 2>/dev/null && \
-    git -C "$repository" merge-base --is-ancestor \
-      "$PLAN_POSTGRES_POOL_BOOTSTRAP_SHA" "$requested_target" 2>/dev/null
+require_commit_identity() {
+  local sha=$1 tree=$2 label=$3
+  git -C "${GITHUB_WORKSPACE:-.}" cat-file -e "$sha^{commit}" 2>/dev/null || \
+    fail "$label commit cannot be inspected"
+  [[ $(git_tree "$sha") == "$tree" ]] || fail "$label tree does not match its pin"
 }
 
-verify_release_b_bridge_identity() {
-  local sha=$1 repository=${GITHUB_WORKSPACE:-.}
-  local actual_tree delta entry mode type object path extra
-  local -a ancestry=()
+verify_post_promotion_v2_target_identity() {
+  local target=$1 repository=${GITHUB_WORKSPACE:-.} bridge_delta join_delta h_delta
+  local bridge_entries join_entries h_entries h target_tree
+  local -a parents=()
 
-  [[ $sha == "$RELEASE_B_BRIDGE_SHA" ]] || \
-    fail 'Release B bridge SHA is not the reviewed pin'
-  read -r -a ancestry <<< "$(git -C "$repository" \
-    rev-list --parents -n 1 "$sha" 2>/dev/null)" || \
-    fail 'Release B bridge ancestry cannot be inspected'
-  [[ ${#ancestry[@]} == 2 && ${ancestry[0]} == "$sha" && \
-     ${ancestry[1]} == "$RELEASE_B_CONTROLLER_SHA" ]] || \
-    fail 'Release B bridge is not the exact controller child'
-  actual_tree=$(git -C "$repository" rev-parse "$sha^{tree}" 2>/dev/null) || \
-    fail 'Release B bridge tree cannot be inspected'
-  [[ $actual_tree == "$RELEASE_B_BRIDGE_TREE" ]] || \
-    fail 'Release B bridge tree does not match its reviewed pin'
-  delta=$(git -C "$repository" diff --name-only --no-renames \
-    "$RELEASE_B_CONTROLLER_SHA" "$sha" -- 2>/dev/null) || \
-    fail 'Release B bridge delta cannot be inspected'
-  [[ $delta == "$RELEASE_B_BRIDGE_PATH" ]] || \
-    fail 'Release B bridge changes more than its reviewed controller policy'
-  entry=$(git -C "$repository" ls-tree "$sha" -- \
-    "$RELEASE_B_BRIDGE_PATH" 2>/dev/null) || \
-    fail 'Release B bridge policy blob cannot be inspected'
-  read -r mode type object path extra <<< "$entry"
-  [[ -z ${extra:-} && $mode == 100644 && $type == blob && \
-     $object == "$RELEASE_B_BRIDGE_BLOB" && \
-     $path == "$RELEASE_B_BRIDGE_PATH" ]] || \
-    fail 'Release B bridge policy blob does not match its reviewed pin'
-}
+  require_commit_identity "$PROMOTION_V2_CONTROLLER_SHA" \
+    "$PROMOTION_V2_CONTROLLER_TREE" 'promotion V2 controller'
+  require_commit_identity "$PROMOTION_V2_PRODUCT_MAIN_SHA" \
+    "$PROMOTION_V2_PRODUCT_MAIN_TREE" 'promotion V2 product main'
+  require_commit_identity "$PROMOTION_V2_BRIDGE_SHA" \
+    "$PROMOTION_V2_BRIDGE_TREE" 'promotion V2 bridge'
+  require_commit_identity "$PROMOTION_V2_JOIN_SHA" \
+    "$PROMOTION_V2_JOIN_TREE" 'promotion V2 join'
 
-verify_release_b_reviewed_target_identity() {
-  local sha=$1 requested_target=$2 repository=${GITHUB_WORKSPACE:-.}
-  local actual_tree delta entries first_parent_history parent
-  local -a ancestry=()
-  local requested_contains_reviewed=false
+  read -r -a parents <<< "$(git_commit_line "$PROMOTION_V2_BRIDGE_SHA")"
+  [[ ${#parents[@]} == 2 && ${parents[0]} == "$PROMOTION_V2_BRIDGE_SHA" && \
+     ${parents[1]} == "$PROMOTION_V2_CONTROLLER_SHA" ]] || \
+    fail 'promotion V2 bridge does not have sole parent A'
+  bridge_delta=$(git -C "$repository" diff --name-only --no-renames \
+    "$PROMOTION_V2_CONTROLLER_SHA" "$PROMOTION_V2_BRIDGE_SHA" --) || \
+    fail 'promotion V2 bridge delta cannot be inspected'
+  [[ $bridge_delta == $'ops/deploy/deploy-control-bridge-lib.sh\nops/deploy/deploy-control-lib.sh' ]] || \
+    fail 'promotion V2 bridge does not have its exact two-path delta'
+  bridge_entries=$(git -C "$repository" ls-tree "$PROMOTION_V2_BRIDGE_SHA" -- \
+    ops/deploy/deploy-control-bridge-lib.sh ops/deploy/deploy-control-lib.sh)
+  [[ $bridge_entries == \
+    "100644 blob $PROMOTION_V2_BRIDGE_BLOB"$'\t'ops/deploy/deploy-control-bridge-lib.sh$'\n'\
+"100644 blob $PROMOTION_V2_CONTROL_BLOB"$'\t'ops/deploy/deploy-control-lib.sh ]] || \
+    fail 'promotion V2 bridge blobs or modes do not match their pins'
 
-  [[ $sha == "$RELEASE_B_REVIEWED_TARGET_SHA" ]] || \
-    fail 'Release B reviewed target SHA is not the reviewed pin'
-  read -r -a ancestry <<< "$(git -C "$repository" \
-    rev-list --parents -n 1 "$sha" 2>/dev/null)" || \
-    fail 'Release B reviewed target ancestry cannot be inspected'
-  [[ ${#ancestry[@]} == 3 && ${ancestry[0]} == "$sha" && \
-     ${ancestry[1]} == "$RELEASE_B_CURRENT_MAIN_SHA" && \
-     ${ancestry[2]} == "$RELEASE_B_BRIDGE_SHA" ]] || \
-    fail 'Release B reviewed target does not have its exact ordered parents'
-  actual_tree=$(git -C "$repository" rev-parse "$sha^{tree}" 2>/dev/null) || \
-    fail 'Release B reviewed target tree cannot be inspected'
-  [[ $actual_tree == "$RELEASE_B_REVIEWED_TARGET_TREE" ]] || \
-    fail 'Release B reviewed target tree does not match its reviewed pin'
-  delta=$(git -C "$repository" diff --name-only --no-renames \
-    "$RELEASE_B_CURRENT_MAIN_SHA" "$sha" -- 2>/dev/null) || \
-    fail 'Release B reviewed target delta cannot be inspected'
-  [[ $delta == $'.github/workflows/production-deploy.yml\nops/deploy/deploy-control-bridge-lib.sh\nops/deploy/github-production-deploy-client.sh\nops/deploy/github-production-deploy-client.test.sh\nops/deploy/production-release-b-bridge-order.test.sh\nops/deploy/rabbitmq-quorum-deploy-bridge-transition.test.sh' ]] || \
-    fail 'Release B reviewed target changes outside its exact reviewed delta'
-  entries=$(git -C "$repository" ls-tree "$sha" -- \
+  read -r -a parents <<< "$(git_commit_line "$PROMOTION_V2_JOIN_SHA")"
+  [[ ${#parents[@]} == 3 && ${parents[0]} == "$PROMOTION_V2_JOIN_SHA" && \
+     ${parents[1]} == "$PROMOTION_V2_PRODUCT_MAIN_SHA" && \
+     ${parents[2]} == "$PROMOTION_V2_BRIDGE_SHA" ]] || \
+    fail 'promotion V2 join does not have ordered parents F,B'
+  join_delta=$(git -C "$repository" diff --name-only --no-renames \
+    "$PROMOTION_V2_PRODUCT_MAIN_SHA" "$PROMOTION_V2_JOIN_SHA" --) || \
+    fail 'promotion V2 join delta cannot be inspected'
+  [[ $join_delta == ops/deploy/deploy-control-bridge-lib.sh ]] || \
+    fail 'promotion V2 join effective delta is not bridge-lib only'
+  join_entries=$(git -C "$repository" ls-tree "$PROMOTION_V2_JOIN_SHA" -- \
+    ops/deploy/deploy-control-bridge-lib.sh ops/deploy/deploy-control-lib.sh)
+  [[ $join_entries == "$bridge_entries" ]] || \
+    fail 'promotion V2 join bridge/control entries do not equal B'
+
+  read -r -a parents <<< "$(git_commit_line "$target")"
+  [[ ${#parents[@]} == 3 && ${parents[0]} == "$target" && \
+     ${parents[1]} == "$PROMOTION_V2_PRODUCT_MAIN_SHA" ]] || \
+    fail 'promotion V2 target does not have ordered parents F,H'
+  h=${parents[2]}
+  read -r -a parents <<< "$(git_commit_line "$h")"
+  [[ ${#parents[@]} == 2 && ${parents[0]} == "$h" && \
+     ${parents[1]} == "$PROMOTION_V2_JOIN_SHA" ]] || \
+    fail 'promotion V2 H does not have sole parent J'
+  target_tree=$(git_tree "$target")
+  [[ -n $target_tree && $target_tree == "$(git_tree "$h")" ]] || \
+    fail 'promotion V2 target tree does not equal H'
+  h_delta=$(git -C "$repository" diff --name-only --no-renames \
+    "$PROMOTION_V2_JOIN_SHA" "$h" --) || fail 'promotion V2 H delta cannot be inspected'
+  [[ $h_delta == $'.github/workflows/production-deploy.yml\nops/deploy/github-production-deploy-client.sh\nops/deploy/github-production-deploy-client.test.sh\nops/deploy/production-release-b-bridge-order.test.sh\nops/deploy/rabbitmq-quorum-deploy-bridge-transition.test.sh' ]] || \
+    fail 'promotion V2 H does not change exactly the five owned paths'
+  h_entries=$(git -C "$repository" ls-tree "$h" -- \
     .github/workflows/production-deploy.yml \
-    ops/deploy/deploy-control-bridge-lib.sh \
     ops/deploy/github-production-deploy-client.sh \
     ops/deploy/github-production-deploy-client.test.sh \
     ops/deploy/production-release-b-bridge-order.test.sh \
-    ops/deploy/rabbitmq-quorum-deploy-bridge-transition.test.sh 2>/dev/null) || \
-    fail 'Release B reviewed target files cannot be inspected'
-  [[ $entries == $'100644 blob 1e85c36aaeb064df3235e8093acb6124d64d0398\t.github/workflows/production-deploy.yml\n100644 blob e02f7b7684f75121521065b43148708d545ab806\tops/deploy/deploy-control-bridge-lib.sh\n100755 blob 086a7d95d2a8125cd6c8f2dd39b05fe42e4c9482\tops/deploy/github-production-deploy-client.sh\n100755 blob 8db3980a225a8222765dfa95c4fd895bfb20712a\tops/deploy/github-production-deploy-client.test.sh\n100755 blob 47f97467223fa0e7a0b779741d676ad4f19b7bea\tops/deploy/production-release-b-bridge-order.test.sh\n100644 blob ab7e2c5cb06d85dce0d3e2427d8af7e9636b32ad\tops/deploy/rabbitmq-quorum-deploy-bridge-transition.test.sh' ]] || \
-    fail 'Release B reviewed target file identities do not match their pins'
+    ops/deploy/rabbitmq-quorum-deploy-bridge-transition.test.sh)
+  [[ $h_entries == $'100644 blob '*$'\t.github/workflows/production-deploy.yml\n100755 blob '*$'\tops/deploy/github-production-deploy-client.sh\n100755 blob '*$'\tops/deploy/github-production-deploy-client.test.sh\n100755 blob '*$'\tops/deploy/production-release-b-bridge-order.test.sh\n100644 blob '*$'\tops/deploy/rabbitmq-quorum-deploy-bridge-transition.test.sh' ]] || \
+    fail 'promotion V2 H path modes or blob types are invalid'
+  PROMOTION_V2_VERIFIED_H=$h
+  PROMOTION_V2_VERIFIED_TARGET=$target
+}
 
-  git -C "$repository" cat-file -e "$requested_target^{commit}" 2>/dev/null || \
-    fail 'Release B requested target commit cannot be inspected'
-  first_parent_history=$(git -C "$repository" rev-list --first-parent \
-    "$requested_target" 2>/dev/null) || \
-    fail 'Release B requested target first-parent history cannot be inspected'
-  while IFS= read -r parent; do
-    if [[ $parent == "$sha" ]]; then
-      requested_contains_reviewed=true
-      break
-    fi
-  done <<< "$first_parent_history"
-  [[ $requested_contains_reviewed == true ]] || \
-    fail 'Release B requested target does not first-parent-contain the reviewed target'
+write_post_promotion_v2_graph_outputs() {
+  local output_path=${GITHUB_OUTPUT:-}
+  [[ -n $output_path ]] || fail 'GITHUB_OUTPUT is required for graph verification'
+  printf 'release_b=%s\njoin=%s\nhead=%s\ntarget=%s\n' \
+    "$PROMOTION_V2_BRIDGE_SHA" "$PROMOTION_V2_JOIN_SHA" \
+    "$PROMOTION_V2_VERIFIED_H" "$PROMOTION_V2_VERIFIED_TARGET" >> "$output_path"
 }
 
 reconcile_deploy_plan() {
@@ -749,113 +744,89 @@ deploy_release() {
   }
 }
 
-deploy_release_b_reviewed_target() {
-  local target=$1 status
+capture_exact_promotion_v2_reconciliation() {
+  local bridge=$1 target=$2 status
   if capture_plan "$target"; then
-    status=0
+    print_plan
+    plan_is_exact_promotion_v2_target_complete "$target" && return 0
   else
     status=$?
+    ((status == 1 || status == 255)) || \
+      fail "promotion V2 target reconciliation plan failed with status $status"
   fi
-  ((status == 0)) || fail "Release B reviewed target plan failed with status $status"
-  print_plan
-  plan_is_fully_reconciled && return 0
-  { plan_is_exact_release_b_target_transition || \
-    plan_is_exact_release_b_current_main_target_transition; } || \
-    fail 'Release B reviewed target plan is not an exact admitted transition'
-  deploy_once "$target"
+  if capture_plan "$bridge"; then
+    print_plan
+    plan_is_exact_promotion_v2_bridge_complete && return 0
+    return 1
+  fi
+  status=$?
+  ((status == 255)) && return 1
+  fail "promotion V2 bridge reconciliation plan failed with status $status"
 }
 
-prepare_release_b_bridge() {
-  local sha=$1 bridge=$2 current_main=$3 bridge_target=$4 requested_target=$5 status
-  local target_plan_exact=false current_main_target_plan_exact=false
-  local legacy_target_plan_exact=false
-  [[ $sha == "$RELEASE_B_CONTROLLER_SHA" ]] || \
-    fail 'Release B controller SHA is not the reviewed pin'
-  [[ $current_main == "$RELEASE_B_CURRENT_MAIN_SHA" ]] || \
-    fail 'Release B current-main SHA is not the reviewed pin'
-  verify_release_b_bridge_identity "$bridge"
-  verify_release_b_reviewed_target_identity "$bridge_target" "$requested_target"
-
-  if capture_plan "$requested_target"; then
-    print_plan
-    plan_is_admitted_post_release_b_forward_state "$requested_target" && return 0
-  else
-    status=$?
-    ((status == 1)) || \
-      fail "Release B requested-target preflight plan failed with status $status"
-  fi
-
-  if capture_plan "$bridge_target"; then
-    print_plan
-    plan_is_fully_reconciled && return 0
-    plan_is_exact_release_b_target_transition && target_plan_exact=true
-    plan_is_exact_release_b_current_main_target_transition && \
-      current_main_target_plan_exact=true
-    plan_is_exact_release_b_legacy_transition && \
-      legacy_target_plan_exact=true
-  else
-    status=$?
-    ((status == 1)) || fail "Release B target preflight plan failed with status $status"
-  fi
-  if capture_plan "$current_main"; then
-    print_plan
-    if plan_is_fully_reconciled; then
-      [[ $current_main_target_plan_exact == true ]] || \
-        fail 'Release B reviewed target is not the exact current-main transition'
-      deploy_release_b_reviewed_target "$bridge_target"
+reconcile_promotion_v2_bridge_without_replay() {
+  local bridge=$1 target=$2 attempt
+  for ((attempt = 1; attempt <= RECONCILE_ATTEMPTS; attempt += 1)); do
+    if capture_exact_promotion_v2_reconciliation "$bridge" "$target"; then
       return 0
     fi
-    if ! plan_is_exact_release_b_target_transition; then
-      { plan_is_exact_release_b_legacy_transition && \
-        [[ $legacy_target_plan_exact == true ]]; } || \
-        fail 'Release B current-main plan is not an admitted exact transition'
-    fi
+    ((attempt == RECONCILE_ATTEMPTS)) || sleep "$RECONCILE_INTERVAL_SECONDS"
+  done
+  fail 'promotion V2 bridge did not reconcile without replay'
+}
+
+prepare_post_promotion_v2_bridge() {
+  local bridge=$1 join=$2 target=$3 status
+  [[ $bridge == "$PROMOTION_V2_BRIDGE_SHA" ]] || \
+    fail 'promotion V2 preparation bridge argument is not B'
+  [[ $join == "$PROMOTION_V2_JOIN_SHA" ]] || \
+    fail 'promotion V2 preparation join argument is not J'
+  verify_post_promotion_v2_target_identity "$target"
+
+  if capture_plan "$target"; then
+    print_plan
+    plan_is_exact_promotion_v2_target_complete "$target" && return 0
   else
     status=$?
-    ((status == 1)) || fail "Release B current-main plan failed with status $status"
+    ((status == 1)) || fail "promotion V2 target preflight plan failed with status $status"
   fi
-  [[ $target_plan_exact == true || $legacy_target_plan_exact == true ]] || \
-    fail 'Release B target plan is not the exact controller transition'
   if capture_plan "$bridge"; then
     print_plan
-    if plan_is_fully_reconciled; then
-      deploy_release_b_reviewed_target "$bridge_target"
-      return 0
-    fi
-    if plan_is_exact_release_b_bridge_transition; then
-      deploy_once "$bridge"
-      deploy_release_b_reviewed_target "$bridge_target"
-      return 0
-    fi
+    plan_is_exact_promotion_v2_bridge_complete && return 0
+    plan_is_exact_promotion_v2_bridge_pending || \
+      fail 'promotion V2 bridge plan is not exact A-to-B pending or B-complete'
   else
     status=$?
-    ((status == 1)) || \
-      fail "Release B bridge preflight plan failed with status $status"
+    fail "promotion V2 bridge preflight plan failed with status $status"
   fi
-  if capture_plan "$sha"; then
+
+  if run_remote deploy "$bridge"; then
     status=0
   else
     status=$?
   fi
-  ((status == 0)) || \
-    fail "Release B controller plan failed with status $status"
-  print_plan
-  plan_is_fully_reconciled || deploy_once "$sha"
-  if capture_plan "$bridge"; then
-    status=0
-  else
-    status=$?
-  fi
-  ((status == 0)) || fail "Release B bridge plan failed with status $status"
-  print_plan
-  if plan_is_fully_reconciled; then
-    deploy_release_b_reviewed_target "$bridge_target"
-    return 0
-  fi
-  plan_is_exact_release_b_bridge_transition || \
-    fail 'Release B bridge plan is not the exact fresh control-only transition'
-  deploy_once "$bridge"
-  deploy_release_b_reviewed_target "$bridge_target"
+  ((status == 0 || status == 255)) || \
+    fail "promotion V2 bridge deploy failed with status $status"
+  ((status != 255)) || printf '%s\n' \
+    'deploy-client: promotion V2 bridge transport became ambiguous; reconciling by plans only' >&2
+  reconcile_promotion_v2_bridge_without_replay "$bridge" "$target"
+}
+
+plan_post_promotion_v2_target() {
+  local target=$1
+  verify_post_promotion_v2_target_identity "$target"
+  read_initial_plan "$target"
+  { plan_is_exact_promotion_v2_target_pending || \
+    plan_is_exact_promotion_v2_target_complete "$target"; } || \
+    fail 'promotion V2 target plan has invalid durable markers or no pending component'
+}
+
+accept_post_promotion_v2_target() {
+  local target=$1
+  verify_post_promotion_v2_target_identity "$target"
+  inspect_plan "$target"
+  plan_is_exact_promotion_v2_target_complete "$target" || \
+    fail 'promotion V2 target is not exactly complete'
 }
 
 install_daily_c1_bridge_policy() {
@@ -903,11 +874,11 @@ case $action in
     validate_remote_environment
     inspect_plan "$2"
     ;;
-  verify-release-b-target)
-    [[ $# == 2 ]] || fail 'verify-release-b-target requires a requested target SHA'
+  verify-post-promotion-v2-target)
+    [[ $# == 2 ]] || fail 'verify-post-promotion-v2-target requires M'
     validate_sha "$2"
-    verify_release_b_reviewed_target_identity \
-      "$RELEASE_B_REVIEWED_TARGET_SHA" "$2"
+    verify_post_promotion_v2_target_identity "$2"
+    write_post_promotion_v2_graph_outputs
     ;;
   upload)
     [[ $# == 3 ]] || fail 'upload requires a target SHA and archive'
@@ -921,21 +892,32 @@ case $action in
     validate_remote_environment
     deploy_release "$2"
     ;;
+  plan-post-promotion-v2-target)
+    [[ $# == 2 ]] || fail 'plan-post-promotion-v2-target requires M'
+    validate_sha "$2"
+    validate_remote_environment
+    plan_post_promotion_v2_target "$2"
+    ;;
+  accept-post-promotion-v2-target)
+    [[ $# == 2 ]] || fail 'accept-post-promotion-v2-target requires M'
+    validate_sha "$2"
+    validate_remote_environment
+    accept_post_promotion_v2_target "$2"
+    ;;
   deploy-transition)
     [[ $# == 2 ]] || fail 'deploy-transition requires a target SHA'
     validate_sha "$2"
     validate_remote_environment
     production_transition_activate_via_trusted_host "$2"
     ;;
-  prepare-release-b-bridge)
-    [[ $# == 6 ]] || fail 'prepare-release-b-bridge requires controller, bridge, current-main, reviewed-target, and requested-target pins'
+  prepare-post-promotion-v2-bridge)
+    [[ $# == 4 ]] || fail 'prepare-post-promotion-v2-bridge requires B, J, and M'
     validate_sha "$2"
     validate_sha "$3"
     validate_sha "$4"
-    validate_sha "$5"
-    validate_sha "$6"
+    verify_post_promotion_v2_target_identity "$4"
     validate_remote_environment
-    prepare_release_b_bridge "$2" "$3" "$4" "$5" "$6"
+    prepare_post_promotion_v2_bridge "$2" "$3" "$4"
     ;;
   install-daily-c1-bridge-policy)
     [[ $# == 2 ]] || fail 'install-daily-c1-bridge-policy requires its pinned SHA'

@@ -9,6 +9,10 @@ ROLLING_ENTRYPOINT_BRIDGE_SHA=$(git -C "$PROJECT_ROOT" rev-parse 'b25e5c3d97a6ca
 ROLLING_ENTRYPOINT_BRIDGE_PARENT=f4471dd9c9ddb414b4ad502bb8ee7df7306964c6
 FIXTURE=$(mktemp -d "${TMPDIR:-/tmp}/rabbitmq-quorum-deploy-bridge.XXXXXX")
 trap 'rm -rf "$FIXTURE"' EXIT
+export GIT_AUTHOR_NAME='RabbitMQ bridge fixture'
+export GIT_AUTHOR_EMAIL=rabbitmq-bridge@example.invalid
+export GIT_COMMITTER_NAME=$GIT_AUTHOR_NAME
+export GIT_COMMITTER_EMAIL=$GIT_AUTHOR_EMAIL
 
 if ! command stat -c '%a' "$SCRIPT_DIR/social-monitor-production-deploy.sh" >/dev/null 2>&1; then
   # Production runs GNU coreutils. Keep this deterministic fixture runnable on
@@ -155,7 +159,7 @@ assert_real_bridge_target_assets() {
         release_b_candidate_digest=bea119047fbbd2295185c84e0adeb773dc852e63b951daf5c7a831356a73a371
         release_b_sealed_digest=1718617b4bbb92f4dbfd92a59fcc482ef7a098734730b8460d21aaced44386c2
         rolling_repair_digest=1945f2b07f110d16694affc15c66b4589d294b81a4e593a9680dacf11fbc5d4d
-        current_release_digest=0db3fa488279b09a7d1530b126b309daaa8fd0db4787bb8fa2f9727d02aa7c7d
+        current_release_digest=053ac1ff8e09133d4449eb43075ba4ce6f433d1acaf696d4a97cbb789a1461e9
         ;;
     esac
     if [[ $path == ops/deploy/social-monitor-production-deploy.sh ]]; then
@@ -523,10 +527,75 @@ assert_bridge_backend_rejection() {
   [[ ! -e $CASE_STATE/postgres-pool-bootstrap.sha ]]
 }
 
+assert_promotion_v2_b0_bootstrap() {
+  local promotion_f=c5dc5abb12aa1ac84ddbd12f141c6d4d8aca4de2
+  local promotion_j=3fc3c65649323506e8ad9914d2e5c985fa361401
+  local index=$FIXTURE/promotion-b0.index tree h m mode path blob
+  local repo=$FIXTURE/promotion-b0/repo control=$FIXTURE/promotion-b0/control
+  local bad_repo=$FIXTURE/promotion-b0-bad/repo
+  local bad_control=$FIXTURE/promotion-b0-bad/control output status
+
+  GIT_INDEX_FILE=$index git -C "$PROJECT_ROOT" read-tree "$promotion_j"
+  while read -r mode path; do
+    blob=$(git -C "$PROJECT_ROOT" hash-object -w -- "$PROJECT_ROOT/$path")
+    GIT_INDEX_FILE=$index git -C "$PROJECT_ROOT" update-index \
+      --add --cacheinfo "$mode,$blob,$path"
+  done <<'PATHS'
+100644 .github/workflows/production-deploy.yml
+100755 ops/deploy/github-production-deploy-client.sh
+100755 ops/deploy/github-production-deploy-client.test.sh
+100755 ops/deploy/production-release-b-bridge-order.test.sh
+100644 ops/deploy/rabbitmq-quorum-deploy-bridge-transition.test.sh
+PATHS
+  tree=$(GIT_INDEX_FILE=$index git -C "$PROJECT_ROOT" write-tree)
+  h=$(printf 'test: B0 exact H\n' | git -C "$PROJECT_ROOT" commit-tree \
+    "$tree" -p "$promotion_j")
+  m=$(printf 'test: B0 protected-main M\n' | \
+    git -C "$PROJECT_ROOT" commit-tree "$tree" -p "$promotion_f" -p "$h")
+
+  git -c gc.autoDetach=false clone -q --shared "$PROJECT_ROOT" "$repo"
+  git -C "$repo" checkout -q "$m"
+  git -C "$repo" update-ref refs/remotes/origin/main "$m"
+  install -d "$control"
+  (
+    set -euo pipefail
+    REPO=$repo CONTROL=$control action=deploy SOCIAL_MONITOR_DEPLOY_TEST_MODE=1
+    fail() { printf 'b0-test-error: %s\n' "$*" >&2; exit 1; }
+    # shellcheck source=/dev/null
+    source "$repo/ops/deploy/deploy-control-bridge-lib.sh"
+    deploy_control_bootstrap_production_transition_b0 "$m"
+    deploy_control_bootstrap_production_transition_b0 "$m"
+  )
+  [[ $(stat -c '%a' "$control/production-transition-admission.sh") == 755 ]]
+  [[ $(stat -c '%a' "$control/production-transition-b0-host-control.sh") == 644 ]]
+  [[ $(stat -c '%a' "$control/production-transition-canonical-lib.sh") == 644 ]]
+
+  git -c gc.autoDetach=false clone -q --shared "$PROJECT_ROOT" "$bad_repo"
+  git -C "$bad_repo" checkout -q "$m"
+  git -C "$bad_repo" update-ref refs/remotes/origin/main "$promotion_j"
+  install -d "$bad_control"
+  set +e
+  output=$(
+    REPO=$bad_repo CONTROL=$bad_control action=deploy \
+      SOCIAL_MONITOR_DEPLOY_TEST_MODE=1 bash -c '
+        fail() { printf "b0-test-error: %s\n" "$*" >&2; exit 1; }
+        source "$REPO/ops/deploy/deploy-control-bridge-lib.sh"
+        deploy_control_bootstrap_production_transition_b0 "$1"
+      ' b0-bootstrap "$m" 2>&1
+  )
+  status=$?
+  set -e
+  ((status != 0))
+  grep -F 'B0 bootstrap requires the exact protected-main commit' \
+    <<< "$output" >/dev/null
+  [[ ! -e $bad_control/production-transition-admission.sh ]]
+}
+
 backend_path_block=$(sed -n '/^BACKEND_PATHS=(/,/^)/p' \
   "$SCRIPT_DIR/social-monitor-production-deploy.sh")
 assert_real_bridge_target_assets
 assert_current_backend_classification_asset
+assert_promotion_v2_b0_bootstrap
 grep -Fx "  $HEALTH_LIBRARY" <<< "$backend_path_block" >/dev/null
 grep -Fx "  $QUORUM_SCRIPT" <<< "$backend_path_block" >/dev/null
 grep -Fx "  $RECOVERY_SCRIPT" <<< "$backend_path_block" >/dev/null
