@@ -57,7 +57,41 @@ const walkSqlStatements = (sql, visit) => {
 
   let sessionRole = null;
   let localRole = null;
+  let transactionSessionRole = null;
+  let savepoints = [];
   for (const statement of splitStatements(scanned)) {
+    if (containsUnsafeAuthorizationConfig(statement)) return false;
+
+    const transactionControl = parseTransactionControl(statement);
+    if (transactionControl?.invalid) return false;
+    if (transactionControl?.type === "begin") {
+      transactionSessionRole = sessionRole;
+      localRole = null;
+      savepoints = [];
+    }
+    if (transactionControl?.type === "savepoint") {
+      savepoints.push({
+        name: transactionControl.name,
+        sessionRole,
+        localRole,
+      });
+    }
+    if (transactionControl?.type === "rollback-to") {
+      const savepointIndex = savepoints.findLastIndex(
+        ({ name }) => name === transactionControl.name,
+      );
+      if (savepointIndex < 0) return false;
+      ({ sessionRole, localRole } = savepoints[savepointIndex]);
+      savepoints = savepoints.slice(0, savepointIndex + 1);
+    }
+    if (transactionControl?.type === "release") {
+      const savepointIndex = savepoints.findLastIndex(
+        ({ name }) => name === transactionControl.name,
+      );
+      if (savepointIndex < 0) return false;
+      savepoints = savepoints.slice(0, savepointIndex);
+    }
+
     const roleChange = parseRoleChange(statement);
     if (roleChange?.invalid) return false;
     if (roleChange?.scope === "local") localRole = roleChange.role;
@@ -70,9 +104,15 @@ const walkSqlStatements = (sql, visit) => {
       localRole = null;
     }
 
-    if (startsWithWords(statement, ["commit"]) ||
-      startsWithWords(statement, ["rollback"])) {
+    if (transactionControl?.type === "commit") {
       localRole = null;
+      savepoints = [];
+      transactionSessionRole = sessionRole;
+    }
+    if (transactionControl?.type === "rollback") {
+      sessionRole = transactionSessionRole;
+      localRole = null;
+      savepoints = [];
     }
 
     if (!visit({ statement, activeRole: localRole ?? sessionRole })) return false;
@@ -102,13 +142,21 @@ const scanSql = (sql) => {
     }
     const prefixedString = scanPrefixedString(sql, index);
     if (prefixedString !== undefined) {
-      if (prefixedString < 0) return null;
-      index = prefixedString;
+      if (prefixedString === null) return null;
+      tokens.push(prefixedString);
+      index = prefixedString.end;
       continue;
     }
     if (character === "'") {
       const end = scanQuoted(sql, index, "'");
       if (end < 0) return null;
+      tokens.push({
+        kind: "string",
+        value: sql.slice(index + 1, end - 1).replaceAll("''", "'"),
+        certain: true,
+        start: index,
+        end,
+      });
       index = end;
       continue;
     }
@@ -124,7 +172,14 @@ const scanSql = (sql) => {
       if (delimiter === undefined) return null;
       const end = sql.indexOf(delimiter, index + delimiter.length);
       if (end < 0) return null;
-      index = end + delimiter.length;
+      const tokenEnd = end + delimiter.length;
+      tokens.push({
+        kind: "dollar-string",
+        value: sql.slice(index + delimiter.length, end),
+        start: index,
+        end: tokenEnd,
+      });
+      index = tokenEnd;
       continue;
     }
     const word = sql.slice(index).match(/^[A-Za-z_][A-Za-z0-9_$]*/u)?.[0];
@@ -143,14 +198,36 @@ const scanSql = (sql) => {
 const scanPrefixedString = (sql, start) => {
   const prefix = sql[start]?.toLowerCase();
   if (sql[start + 1] === "'" && prefix === "e") {
-    return scanEscapeString(sql, start + 1);
+    const end = scanEscapeString(sql, start + 1);
+    if (end < 0) return null;
+    const contents = sql.slice(start + 2, end - 1);
+    return {
+      kind: "string",
+      value: contents.replaceAll("''", "'"),
+      certain: !contents.includes("\\"),
+      start,
+      end,
+    };
   }
   if (sql[start + 1] === "'" && (prefix === "b" || prefix === "x")) {
-    return scanRestrictedString(sql, start + 1, prefix);
+    const end = scanRestrictedString(sql, start + 1, prefix);
+    if (end < 0) return null;
+    return { kind: "string", value: null, certain: false, start, end };
   }
   if (prefix === "u" && sql[start + 1] === "&") {
-    if (sql[start + 2] === "'") return scanUnicodeString(sql, start + 2);
-    if (sql[start + 2] === '"') return -1;
+    if (sql[start + 2] === "'") {
+      const end = scanUnicodeString(sql, start + 2);
+      if (end < 0) return null;
+      const contents = sql.slice(start + 3, end - 1);
+      return {
+        kind: "string",
+        value: contents.replaceAll("''", "'"),
+        certain: !contents.includes("\\"),
+        start,
+        end,
+      };
+    }
+    if (sql[start + 2] === '"') return null;
   }
   return undefined;
 };
@@ -268,6 +345,114 @@ const splitStatements = (tokens) => {
   }
   if (current.length > 0) statements.push(current);
   return statements;
+};
+
+const containsUnsafeAuthorizationConfig = (statement) => {
+  if (containsUnsafeAuthorizationConfigTokens(statement)) return true;
+  if (!["do", "call"].includes(wordAt(statement, 0))) return false;
+
+  for (const token of statement) {
+    if (token.kind !== "dollar-string") continue;
+    const bodyTokens = scanSql(token.value);
+    if (bodyTokens === null || containsUnsafeAuthorizationConfigTokens(bodyTokens)) {
+      return true;
+    }
+  }
+  return false;
+};
+
+const containsUnsafeAuthorizationConfigTokens = (tokens) => {
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index];
+    if ((token.kind !== "word" && token.kind !== "identifier") ||
+      token.value.toLowerCase() !== "set_config" ||
+      tokens[index + 1]?.value !== "(") {
+      continue;
+    }
+
+    const firstArgument = [];
+    let depth = 1;
+    let cursor = index + 2;
+    for (; cursor < tokens.length; cursor += 1) {
+      const value = tokens[cursor].value;
+      if (value === "(") depth += 1;
+      if (value === ")") depth -= 1;
+      if ((value === "," && depth === 1) || depth === 0) break;
+      firstArgument.push(tokens[cursor]);
+    }
+    if (tokens[cursor]?.value !== ",") return true;
+    if (!isProvenUnrelatedConfigName(firstArgument)) return true;
+  }
+  return false;
+};
+
+const isProvenUnrelatedConfigName = (tokens) => {
+  while (tokens[0]?.value === "(" && tokens.at(-1)?.value === ")" &&
+    enclosesEntireExpression(tokens)) {
+    tokens = tokens.slice(1, -1);
+  }
+  const literal = tokens[0];
+  if (literal?.kind !== "string" || literal.certain !== true) return false;
+  const configName = literal.value.toLowerCase();
+  if (configName === "role" || configName === "session_authorization") {
+    return false;
+  }
+  if (tokens.length === 1) return true;
+  return tokens[1]?.value === ":" && tokens[2]?.value === ":" &&
+    tokens.slice(3).every(({ kind, value }) =>
+      kind === "word" || kind === "identifier" || value === "."
+    );
+};
+
+const enclosesEntireExpression = (tokens) => {
+  let depth = 0;
+  for (let index = 0; index < tokens.length; index += 1) {
+    if (tokens[index].value === "(") depth += 1;
+    if (tokens[index].value === ")") depth -= 1;
+    if (depth === 0 && index < tokens.length - 1) return false;
+  }
+  return depth === 0;
+};
+
+const parseTransactionControl = (statement) => {
+  const firstWord = wordAt(statement, 0);
+  if (firstWord === "begin" ||
+    (firstWord === "start" && wordAt(statement, 1) === "transaction")) {
+    return { type: "begin" };
+  }
+  if (firstWord === "commit" || firstWord === "end") return { type: "commit" };
+  if (firstWord === "savepoint") {
+    const name = savepointNameAt(statement, 1);
+    return name !== null && endsAt(statement, 2)
+      ? { type: "savepoint", name }
+      : { invalid: true };
+  }
+  if (firstWord === "release") {
+    let cursor = 1;
+    if (wordAt(statement, cursor) === "savepoint") cursor += 1;
+    const name = savepointNameAt(statement, cursor);
+    return name !== null && endsAt(statement, cursor + 1)
+      ? { type: "release", name }
+      : { invalid: true };
+  }
+  if (firstWord !== "rollback" && firstWord !== "abort") return null;
+
+  let cursor = 1;
+  if (["work", "transaction"].includes(wordAt(statement, cursor))) cursor += 1;
+  if (wordAt(statement, cursor) !== "to") return { type: "rollback" };
+  cursor += 1;
+  if (wordAt(statement, cursor) === "savepoint") cursor += 1;
+  const name = savepointNameAt(statement, cursor);
+  return name !== null && endsAt(statement, cursor + 1)
+    ? { type: "rollback-to", name }
+    : { invalid: true };
+};
+
+const savepointNameAt = (tokens, index) => {
+  const token = tokens[index];
+  if (token?.kind === "word") return token.value;
+  if (token?.kind === "identifier" && token.value.length > 0) return token.value;
+  return null;
 };
 
 const parseRoleChange = (statement) => {

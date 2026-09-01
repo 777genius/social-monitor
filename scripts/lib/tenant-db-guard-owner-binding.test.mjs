@@ -48,6 +48,28 @@ function hasExactReceiptOwnerMapping(audit) {
   );
 }
 
+function assertBothRoleGuards(sql, expected, message) {
+  assert.equal(
+    migrationBindsTableOwner({ sql, table: "receipt", ownerRole }),
+    expected,
+    message,
+  );
+  assert.equal(
+    migrationAuthorizesForwardRlsOperations({
+      sql,
+      table: "receipt",
+      requiredRole: ownerRole,
+    }),
+    expected,
+    message,
+  );
+}
+
+const guardedReceiptOperations = `
+  CREATE TABLE public.receipt (id uuid);
+  ALTER TABLE public.receipt ENABLE ROW LEVEL SECURITY;
+`;
+
 test("each Promotion V2 receipt creation is bound to its schema owner", () => {
   for (const table of receiptTables) {
     assert.equal(
@@ -584,6 +606,140 @@ test("transaction completion clears an owner role that was only local", () => {
       completion,
     );
   }
+});
+
+test("ROLLBACK TO restores the wrong role captured by a savepoint", () => {
+  const sql = `
+    SET ROLE "${ownerRole}";
+    SET LOCAL ROLE wrong_owner;
+    SAVEPOINT before_temporary_owner;
+    SET LOCAL ROLE "${ownerRole}";
+    ROLLBACK TO SAVEPOINT before_temporary_owner;
+    ${guardedReceiptOperations}
+  `;
+  assertBothRoleGuards(sql, false);
+});
+
+test("nested savepoints restore role state and RELEASE keeps the restored role", () => {
+  const sql = `
+    SET ROLE "${ownerRole}";
+    SAVEPOINT outer_owner;
+    SET LOCAL ROLE wrong_owner;
+    SAVEPOINT inner_wrong;
+    SET LOCAL ROLE "${ownerRole}";
+    SAVEPOINT deepest_owner;
+    SET LOCAL ROLE wrong_owner;
+    ROLLBACK TO deepest_owner;
+    RELEASE SAVEPOINT inner_wrong;
+    ${guardedReceiptOperations}
+  `;
+  assertBothRoleGuards(sql, true);
+});
+
+test("duplicate savepoint names resolve to the newest remaining savepoint", () => {
+  const sql = `
+    SET ROLE "${ownerRole}";
+    SET LOCAL ROLE wrong_owner;
+    SAVEPOINT repeated;
+    SET LOCAL ROLE "${ownerRole}";
+    SAVEPOINT repeated;
+    SET LOCAL ROLE wrong_owner;
+    ROLLBACK TO repeated;
+    RELEASE repeated;
+    ROLLBACK TO SAVEPOINT repeated;
+    ${guardedReceiptOperations}
+  `;
+  assertBothRoleGuards(sql, false);
+});
+
+test("unknown, released, and malformed savepoint operations fail closed", () => {
+  for (const operation of [
+    "ROLLBACK TO missing;",
+    "RELEASE SAVEPOINT missing;",
+    "SAVEPOINT;",
+    "ROLLBACK TO SAVEPOINT;",
+    "RELEASE;",
+    "SAVEPOINT named extra;",
+  ]) {
+    const sql = `SET ROLE "${ownerRole}"; ${operation}
+      ${guardedReceiptOperations}`;
+    assertBothRoleGuards(sql, false, operation);
+  }
+
+  const released = `
+    SET ROLE "${ownerRole}";
+    SAVEPOINT released;
+    RELEASE SAVEPOINT released;
+    ROLLBACK TO released;
+    ${guardedReceiptOperations}
+  `;
+  assertBothRoleGuards(released, false, "released savepoint");
+});
+
+test("full COMMIT and ROLLBACK retain transaction role semantics", () => {
+  const restoredSessionRole = `
+    SET ROLE "${ownerRole}";
+    COMMIT;
+    SET LOCAL ROLE wrong_owner;
+    SAVEPOINT temporary;
+    ROLLBACK;
+    ${guardedReceiptOperations}
+  `;
+  assertBothRoleGuards(restoredSessionRole, true, "committed session role");
+
+  const rolledBackSessionRole = `
+    SET ROLE wrong_owner;
+    ROLLBACK;
+    ${guardedReceiptOperations}
+  `;
+  assertBothRoleGuards(rolledBackSessionRole, false, "rolled-back session role");
+});
+
+test("top-level authorization set_config calls fail both role guards closed", () => {
+  for (const call of [
+    "set_config('role', 'wrong_owner', true)",
+    "pg_catalog.set_config('session_authorization', 'wrong_owner', false)",
+    `"pg_catalog"."set_config"('role'::text, 'wrong_owner', true)`,
+    `"PG_CATALOG"."SET_CONFIG"('session_authorization', 'wrong_owner', true)`,
+  ]) {
+    const sql = `SET ROLE "${ownerRole}"; SELECT ${call};
+      ${guardedReceiptOperations}`;
+    assertBothRoleGuards(sql, false, call);
+  }
+});
+
+test("dollar-quoted DO and CALL bodies cannot hide authorization set_config", () => {
+  for (const statement of [
+    `DO $body$ BEGIN
+       PERFORM pg_catalog.set_config('role', 'wrong_owner', true);
+     END $body$;`,
+    `CALL execute_sql($body$
+       SELECT "pg_catalog"."set_config"(
+         'session_authorization', 'wrong_owner', false
+       );
+     $body$);`,
+  ]) {
+    const sql = `SET ROLE "${ownerRole}"; ${statement}
+      ${guardedReceiptOperations}`;
+    assertBothRoleGuards(sql, false, statement);
+  }
+});
+
+test("unrelated set_config and non-executable decoys remain harmless", () => {
+  const sql = `
+    SET ROLE "${ownerRole}";
+    SELECT set_config('work_mem', '64MB', true);
+    DO $body$ BEGIN
+      PERFORM pg_catalog.set_config('application_name', 'role audit', true);
+      RAISE NOTICE 'set_config(''role'', ''wrong_owner'', true)';
+    END $body$;
+    -- SELECT set_config('role', 'wrong_owner', true);
+    /* SELECT pg_catalog.set_config('session_authorization', 'wrong', false); */
+    SELECT 'set_config(''role'', ''wrong_owner'', true)';
+    SELECT $decoy$set_config('session_authorization', 'wrong', false)$decoy$;
+    ${guardedReceiptOperations}
+  `;
+  assertBothRoleGuards(sql, true);
 });
 
 test("owner operations require the exact public table name", () => {
