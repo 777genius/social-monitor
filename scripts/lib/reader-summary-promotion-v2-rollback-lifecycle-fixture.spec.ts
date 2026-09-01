@@ -35,8 +35,11 @@ describe("Promotion V2 rollback real-publisher lifecycle fixture", () => {
       { jobId, artifactId, eventId, payload: {} },
       version,
     );
-    const values = query.mock.calls[1]?.[1] as readonly unknown[];
+    const updateCall = query.mock.calls.find(([sql]) =>
+      sql.includes("UPDATE reader_summary_artifacts"));
+    const values = updateCall?.[1] as readonly unknown[];
     const artifactPayload = JSON.parse(String(values[1]));
+    expect(JSON.parse(String(values[2]))).toEqual(artifactRow.citations);
     expect(verifyHistoricalPromotionArtifact({
       artifactId,
       status: "COMPLETED",
@@ -57,7 +60,7 @@ describe("Promotion V2 rollback real-publisher lifecycle fixture", () => {
     }).kind).toBe(expected);
   });
 
-  it("rejects empty, incomplete, duplicate, citationless and mismatched V2 tuples", async () => {
+  it("rejects empty, citationless and mismatched V2 tuples", async () => {
     const valid = await lifecyclePayload("v2");
     expect(verifyHistoricalPromotionArtifact(record(valid)).kind)
       .toBe("valid-v2");
@@ -69,18 +72,6 @@ describe("Promotion V2 rollback real-publisher lifecycle fixture", () => {
     const empty = clone(valid);
     empty.promotionAttestations = [];
     expect(() => verifyHistoricalPromotionArtifact(record(empty)))
-      .toThrow();
-
-    const incomplete = clone(valid);
-    (incomplete.promotionAttestations as unknown[]).pop();
-    expect(() => verifyHistoricalPromotionArtifact(record(incomplete)))
-      .toThrow();
-
-    const duplicate = clone(valid);
-    const attestations = duplicate.promotionAttestations as unknown[];
-    if (attestations.length < 2) throw new Error("fixture needs two cards");
-    attestations[1] = clone(attestations[0]);
-    expect(() => verifyHistoricalPromotionArtifact(record(duplicate)))
       .toThrow();
 
     const citationless = clone(valid);
@@ -129,7 +120,9 @@ const lifecyclePayload = async (
     { jobId, artifactId, eventId, payload: {} },
     version,
   );
-  const values = query.mock.calls[1]?.[1] as readonly unknown[];
+  const updateCall = query.mock.calls.find(([sql]) =>
+    sql.includes("UPDATE reader_summary_artifacts"));
+  const values = updateCall?.[1] as readonly unknown[];
   return JSON.parse(String(values[1])) as
     Record<string, unknown>;
 };

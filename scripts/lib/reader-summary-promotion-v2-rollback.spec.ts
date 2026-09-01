@@ -21,6 +21,10 @@ describe("Promotion V2 publication-owner rollback", () => {
     );
     expect(migration).toContain("FOR UPDATE");
     expect(migration).toContain("stale or replayed");
+    expect(migration).toContain("target_authority_receipt_sha256 TEXT");
+    expect(migration).not.toMatch(
+      /btrim\(r\."authority_receipt_sha256"\) = authority_receipt_sha256/u,
+    );
     expect(migration).toContain("current_publication_id\" = prior_v1_publication_id");
     expect(migration).toContain(
       "v_prior_artifact.\"status\" IS DISTINCT FROM 'SUPERSEDED'",
