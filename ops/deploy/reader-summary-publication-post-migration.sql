@@ -15,6 +15,35 @@ SELECT set_config(
   current_user,
   false
 );
+DO $promotion_v2_receipt_owner_audit$
+BEGIN
+  -- These relations are optional at historical cutoffs. When present, their
+  -- distinct creation owners must be exact before bootstrap changes any state.
+  IF EXISTS (
+    SELECT 1
+    FROM (VALUES
+      (
+        'reader_summary_promotion_v2_rollback_receipts'::NAME,
+        'social_monitor_public_schema_owner'::NAME
+      ),
+      (
+        'reader_summary_promotion_v2_canary_publication_receipts'::NAME,
+        'social_monitor_public_schema_owner'::NAME
+      )
+    ) AS expected(relation_name, owner_name)
+    JOIN pg_class relation ON relation.relname = expected.relation_name
+    JOIN pg_namespace namespace ON namespace.oid = relation.relnamespace
+    JOIN pg_roles owner ON owner.oid = relation.relowner
+    WHERE namespace.nspname = 'public'
+      AND (
+        relation.relkind NOT IN ('r', 'p')
+        OR owner.rolname <> expected.owner_name
+      )
+  ) THEN
+    RAISE EXCEPTION 'Promotion V2 receipt table has an unexpected owner';
+  END IF;
+END
+$promotion_v2_receipt_owner_audit$;
 
 -- The migrator receives CREATE WITH GRANT OPTION only inside the committed pre
 -- phase so Prisma can apply the ordered migration. Remove it as the dedicated
@@ -328,8 +357,6 @@ DECLARE
   )::NAME;
   v_constraint_count INTEGER;
   v_owner_count INTEGER;
-  v_promotion_v2_receipt_owner_count INTEGER;
-  v_promotion_v2_receipt_table_count INTEGER;
   v_weekly_review_manifest_table_count INTEGER;
   v_v4_table_count INTEGER;
   v_trigger_count INTEGER;
@@ -435,31 +462,6 @@ BEGIN
     OR v_owner_count <> 4 + v_weekly_review_manifest_table_count
       + v_v4_table_count THEN
     RAISE EXCEPTION 'protected reader summary tables have unsafe owners';
-  END IF;
-  SELECT count(*) INTO v_promotion_v2_receipt_table_count
-  FROM pg_class relation
-  JOIN pg_namespace namespace ON namespace.oid = relation.relnamespace
-  WHERE namespace.nspname = 'public'
-    AND relation.relkind IN ('r', 'p')
-    AND relation.relname IN (
-      'reader_summary_promotion_v2_rollback_receipts',
-      'reader_summary_promotion_v2_canary_publication_receipts'
-    );
-  SELECT count(*) INTO v_promotion_v2_receipt_owner_count
-  FROM pg_class relation
-  JOIN pg_namespace namespace ON namespace.oid = relation.relnamespace
-  JOIN pg_roles owner ON owner.oid = relation.relowner
-  WHERE namespace.nspname = 'public'
-    AND relation.relkind IN ('r', 'p')
-    AND relation.relname IN (
-      'reader_summary_promotion_v2_rollback_receipts',
-      'reader_summary_promotion_v2_canary_publication_receipts'
-    )
-    AND owner.rolname = 'social_monitor_public_schema_owner';
-  IF v_promotion_v2_receipt_table_count NOT IN (0, 2)
-    OR v_promotion_v2_receipt_owner_count <>
-      v_promotion_v2_receipt_table_count THEN
-    RAISE EXCEPTION 'Promotion V2 receipt tables have unsafe owners';
   END IF;
 
   SELECT count(*) INTO v_owner_count
