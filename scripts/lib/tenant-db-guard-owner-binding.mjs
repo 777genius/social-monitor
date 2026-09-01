@@ -148,7 +148,7 @@ const scanSql = (sql) => {
       continue;
     }
     if (character === "'") {
-      const end = scanQuoted(sql, index, "'");
+      const end = scanQuoted(sql, index, "'", true);
       if (end < 0) return null;
       tokens.push({
         kind: "string",
@@ -302,7 +302,7 @@ const scanBlockComment = (sql, start) => {
   return -1;
 };
 
-const scanQuoted = (sql, start, quote) => {
+const scanQuoted = (sql, start, quote, rejectAmbiguousBackslash = false) => {
   let index = start + 1;
   while (index < sql.length) {
     if (sql[index] !== quote) {
@@ -310,6 +310,11 @@ const scanQuoted = (sql, start, quote) => {
     } else if (sql[index + 1] === quote) {
       index += 2;
     } else {
+      if (rejectAmbiguousBackslash) {
+        let backslashStart = index;
+        while (sql[backslashStart - 1] === "\\") backslashStart -= 1;
+        if ((index - backslashStart) % 2 === 1) return -1;
+      }
       return index + 1;
     }
   }

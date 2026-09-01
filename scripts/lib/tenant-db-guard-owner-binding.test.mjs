@@ -220,6 +220,64 @@ test("quoted and dollar-quoted role decoys are not executable", () => {
   );
 });
 
+test("odd backslash runs before generic-string closing quotes fail closed", () => {
+  for (const backslashes of ["\\", "\\\\\\"]) {
+    const sql = `SET ROLE "${ownerRole}";
+      SELECT 'path${backslashes}';
+      CREATE TABLE public.receipt (id uuid);`;
+    assert.equal(
+      migrationBindsTableOwner({ sql, table: "receipt", ownerRole }),
+      false,
+      `${backslashes.length} backslashes`,
+    );
+  }
+});
+
+test("zero and even backslash runs preserve generic-string scanning", () => {
+  for (const backslashes of ["", "\\\\"]) {
+    const sql = `SET ROLE "${ownerRole}";
+      SELECT 'path${backslashes}';
+      CREATE TABLE public.receipt (id uuid);`;
+    assert.equal(
+      migrationBindsTableOwner({ sql, table: "receipt", ownerRole }),
+      true,
+      `${backslashes.length} backslashes`,
+    );
+  }
+});
+
+test("generic strings preserve unrelated path and regex backslashes", () => {
+  const sql = String.raw`SET ROLE social_monitor_public_schema_owner;
+    SELECT 'C:\monitor\receipts', '^receipt\s+[0-9]+$';
+    CREATE TABLE public.receipt (id uuid);`;
+  assert.equal(
+    migrationBindsTableOwner({ sql, table: "receipt", ownerRole }),
+    true,
+  );
+});
+
+test("the generic-string SET ROLE spoof under changed semantics fails closed", () => {
+  const sql = String.raw`SET ROLE wrong_owner;
+    SET standard_conforming_strings = off;
+    SET backslash_quote = on;
+    SELECT '\'; SET ROLE social_monitor_public_schema_owner; --';
+    CREATE TABLE public.receipt (id uuid);`;
+  assert.equal(
+    migrationBindsTableOwner({ sql, table: "receipt", ownerRole }),
+    false,
+  );
+});
+
+test("backslashes before quoted-identifier closing quotes remain valid", () => {
+  const sql = String.raw`SET ROLE social_monitor_public_schema_owner;
+    SELECT "path\";
+    CREATE TABLE public.receipt (id uuid);`;
+  assert.equal(
+    migrationBindsTableOwner({ sql, table: "receipt", ownerRole }),
+    true,
+  );
+});
+
 for (const prefix of ["E", "e"]) {
   test(`${prefix}-string escapes and doubled quotes cannot expose an owner-role decoy`, () => {
     const sql = String.raw`SET ROLE wrong_owner;
