@@ -783,6 +783,28 @@ test("dollar-quoted DO and CALL bodies cannot hide authorization set_config", ()
   }
 });
 
+test("top-level CALL and prepared EXECUTE fail both role guards closed", () => {
+  for (const statement of [
+    "CALL public.configure_owner();",
+    "EXECUTE configure_owner;",
+  ]) {
+    const sql = `SET ROLE "${ownerRole}";
+      ${statement}
+      ${guardedReceiptOperations}`;
+    assertBothRoleGuards(sql, false, statement);
+  }
+});
+
+test("CREATE TRIGGER EXECUTE FUNCTION is not a top-level command", () => {
+  const sql = `
+    SET ROLE "${ownerRole}";
+    CREATE TRIGGER receipt_trigger BEFORE INSERT ON public.other_receipt
+      EXECUTE FUNCTION public.audit_receipt();
+    ${guardedReceiptOperations}
+  `;
+  assertBothRoleGuards(sql, true);
+});
+
 test("unrelated set_config and non-executable decoys remain harmless", () => {
   const sql = `
     SET ROLE "${ownerRole}";

@@ -60,6 +60,9 @@ const walkSqlStatements = (sql, visit) => {
   let transactionSessionRole = null;
   let savepoints = [];
   for (const statement of splitStatements(scanned)) {
+    const command = wordAt(statement, 0);
+    if (command === "call" || command === "execute") return false;
+
     if (containsUnsafeAuthorizationConfig(statement)) return false;
 
     const transactionControl = parseTransactionControl(statement);
