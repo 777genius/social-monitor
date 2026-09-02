@@ -19,6 +19,7 @@ export SOCIAL_MONITOR_DEPLOY_TEST_MODE=1
 
 git init --bare -q "$ORIGIN"
 git init -q -b main "$REPO"
+git -C "$REPO" config core.hooksPath /dev/null
 git -C "$REPO" config user.name 'B0 Host Control Test'
 git -C "$REPO" config user.email b0-host-control@example.invalid
 git -C "$REPO" remote add origin "$ORIGIN"
@@ -204,12 +205,14 @@ clear_host_state() {
   if [[ -n ${PRODUCTION_TRANSITION_HOST_LOCK_FD:-} ]]; then
     eval "exec ${PRODUCTION_TRANSITION_HOST_LOCK_FD}>&-"
     unset PRODUCTION_TRANSITION_HOST_LOCK_FD
+    unset PRODUCTION_TRANSITION_HOST_LOCK_OWNER
   fi
   /usr/bin/find "$STATE" -maxdepth 1 -type f \
     \( -name "$PRODUCTION_TRANSITION_HOST_STATE_FILE" -o \
        -name "$PRODUCTION_TRANSITION_HOST_STATE_FILE.next" -o \
        -name finalized-target -o \
-       -name "$PRODUCTION_TRANSITION_HOST_SCHEDULER_HOLD_FILE" \) -delete
+       -name "$PRODUCTION_TRANSITION_HOST_SCHEDULER_HOLD_FILE" -o \
+       -name "$PRODUCTION_TRANSITION_HOST_SCHEDULER_HOLD_FILE.next" \) -delete
   git -C "$REPO" checkout -q --detach "$B0"
   printf '%s\n' "$B0" > "$STATE/control.sha"
   chmod 0600 "$STATE/control.sha"
@@ -219,12 +222,28 @@ clear_host_state() {
   : > "$EVENT_LOG"
   : > "$ADMISSION_LOG"
 }
+ensure_test_host_lock() {
+  [[ -n ${PRODUCTION_TRANSITION_HOST_LOCK_FD:-} ]] || \
+    production_transition_host_acquire_lock
+}
+test_deploy_authenticated_target() {
+  ensure_test_host_lock
+  production_transition_deploy_authenticated_target "$@"
+}
+test_require_action_allowed() {
+  ensure_test_host_lock
+  production_transition_host_require_action_allowed "$@"
+}
+test_require_ordinary_deploy() {
+  ensure_test_host_lock
+  production_transition_host_require_ordinary_deploy "$@"
+}
 publish_candidate() {
   git --git-dir="$ORIGIN" update-ref refs/heads/main "$1"
 }
 expect_transition_failure() {
   local target=$1 pattern=$2
-  if (production_transition_deploy_authenticated_target "$target") \
+  if (test_deploy_authenticated_target "$target") \
       > "$FIXTURE/failure.out" 2> "$FIXTURE/failure.err"; then
     echo "transition unexpectedly accepted $target" >&2
     exit 1
@@ -251,7 +270,7 @@ publish_candidate "$S2"
 expect_transition_failure "$S2" 'trusted transition admission rejected target'
 [[ ! -e $SENTINEL && ! -s $EVENT_LOG ]]
 for direct_target in "$S2" "$SIGNED"; do
-  if (production_transition_host_require_ordinary_deploy "$direct_target") \
+  if (test_require_ordinary_deploy "$direct_target") \
       2> "$FIXTURE/ordinary.err"; then
     echo "ordinary direct deploy was accepted: $direct_target" >&2
     exit 1
@@ -325,14 +344,14 @@ record=$(production_transition_host_read_state)
    "admitted $B0 $SIGNED $(git -C "$REPO" rev-parse "$SIGNED^{tree}")" ]]
 [[ $(wc -l < "$ADMISSION_LOG") == 1 ]]
 expect_transition_failure "$S2" 'transition host resume target conflicts with admitted target'
-if (production_transition_host_require_action_allowed reader-summary-weekly-run) \
+if (test_require_action_allowed reader-summary-weekly-run) \
     2> "$FIXTURE/hold.err"; then
   echo 'active transition hold allowed another mutation' >&2
   exit 1
 fi
 grep -F 'held by an incomplete authenticated transition' "$FIXTURE/hold.err" >/dev/null
 DEPLOY_MODE=success
-production_transition_deploy_authenticated_target "$SIGNED" >/dev/null
+test_deploy_authenticated_target "$SIGNED" >/dev/null
 [[ $(wc -l < "$ADMISSION_LOG") == 2 ]]
 [[ $(grep -c '^deploy-release:success:' "$EVENT_LOG") == 1 ]]
 
@@ -344,16 +363,16 @@ publish_candidate "$SIGNED"
 HOST_CRASH_PHASE=admitted-staged
 expect_transition_failure "$SIGNED" ''
 HOST_CRASH_PHASE=
-production_transition_deploy_authenticated_target "$SIGNED" >/dev/null
+test_deploy_authenticated_target "$SIGNED" >/dev/null
 [[ $(grep -c '^deploy-release:success:' "$EVENT_LOG") == 1 ]]
 clear_host_state
 publish_candidate "$SIGNED"
 HOST_CRASH_PHASE=terminal-staged
 expect_transition_failure "$SIGNED" ''
 HOST_CRASH_PHASE=
-production_transition_deploy_authenticated_target "$SIGNED" >/dev/null
+test_deploy_authenticated_target "$SIGNED" >/dev/null
 [[ $(grep -c '^deploy-release:success:' "$EVENT_LOG") == 1 ]]
-production_transition_deploy_authenticated_target "$SIGNED" >/dev/null
+test_deploy_authenticated_target "$SIGNED" >/dev/null
 [[ $(grep -c '^deploy-release:success:' "$EVENT_LOG") == 1 ]]
 
 # A crash after the durable terminal receipt but before scheduler finalization
@@ -364,20 +383,20 @@ HOST_CRASH_PHASE=terminal-after-marker
 expect_transition_failure "$SIGNED" ''
 HOST_CRASH_PHASE=
 expect_guard_failure 'exact deploy-transition replay finalizes the scheduler hold' \
-  production_transition_host_require_action_allowed reader-summary-production-history
+  test_require_action_allowed reader-summary-production-history
 expect_guard_failure 'exact deploy-transition replay finalizes the scheduler hold' \
-  production_transition_host_require_ordinary_deploy "$SIGNED"
-production_transition_deploy_authenticated_target "$SIGNED" >/dev/null
+  test_require_ordinary_deploy "$SIGNED"
+test_deploy_authenticated_target "$SIGNED" >/dev/null
 [[ $(grep -c '^deploy-release:success:' "$EVENT_LOG") == 1 ]]
 [[ $(grep -c '^scheduler-finalized:' "$EVENT_LOG") == 1 ]]
-production_transition_host_require_action_allowed reader-summary-production-history
-production_transition_host_require_ordinary_deploy "$SIGNED"
+test_require_action_allowed reader-summary-production-history
+test_require_ordinary_deploy "$SIGNED"
 
 # Exact signed target is admitted once, deploys once, commits terminal state,
 # and a replay never reaches admission or deployment again.
 clear_host_state
 publish_candidate "$SIGNED"
-output=$(production_transition_deploy_authenticated_target "$SIGNED")
+output=$(test_deploy_authenticated_target "$SIGNED")
 grep -Fx "production-transition-deployed trusted-base=$B0 target=$SIGNED repository=777genius/social-monitor" \
   <<< "$output" >/dev/null
 [[ $(cat "$STATE/control.sha") == "$SIGNED" ]]
@@ -387,19 +406,31 @@ grep -Fx "production-transition-deployed trusted-base=$B0 target=$SIGNED reposit
 [[ ! -e $SENTINEL ]]
 grep -Fx "verify --target $SIGNED" \
   "$ADMISSION_LOG" >/dev/null
-production_transition_deploy_authenticated_target "$SIGNED" >/dev/null
+test_deploy_authenticated_target "$SIGNED" >/dev/null
 [[ $(grep -c '^deploy-release:success:' "$EVENT_LOG") == 1 ]]
 [[ $(wc -l < "$ADMISSION_LOG") == 1 ]]
+
+# Terminal host state does not bypass an orphan scheduler staging record.
+printf 'orphan scheduler hold\n' > "$SCHEDULER_HOLD.next"
+chmod 0600 "$SCHEDULER_HOLD.next"
+production_transition_host_release_lock
+expect_guard_failure 'exact deploy-transition replay finalizes the scheduler hold' \
+  test_require_action_allowed reader-summary-production-history
+expect_guard_failure 'exact deploy-transition replay finalizes the scheduler hold' \
+  test_require_ordinary_deploy "$SIGNED"
+rm -f "$SCHEDULER_HOLD.next"
+test_require_action_allowed reader-summary-production-history
+test_require_ordinary_deploy "$SIGNED"
 
 # Concurrent duplicates serialize on the same host lock. Exactly one request
 # admits and activates; the other observes terminal state and cannot replay.
 clear_host_state
 publish_candidate "$SIGNED"
 set +e
-(production_transition_deploy_authenticated_target "$SIGNED") \
+(test_deploy_authenticated_target "$SIGNED") \
   > "$FIXTURE/duplicate-a.out" 2> "$FIXTURE/duplicate-a.err" &
 duplicate_a_pid=$!
-(production_transition_deploy_authenticated_target "$SIGNED") \
+(test_deploy_authenticated_target "$SIGNED") \
   > "$FIXTURE/duplicate-b.out" 2> "$FIXTURE/duplicate-b.err" &
 duplicate_b_pid=$!
 wait "$duplicate_a_pid"; duplicate_a_status=$?

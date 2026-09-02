@@ -15,6 +15,17 @@ const transitionClientPath = "ops/deploy/github-production-transition-client-lib
 const transitionClient = readFileSync(transitionClientPath, "utf8");
 const productionClientPath = "ops/deploy/github-production-deploy-client.sh";
 const productionClient = readFileSync(productionClientPath, "utf8");
+const productionForwardClient = readFileSync(
+  "ops/deploy/github-production-forward-bridge-client-lib.sh",
+  "utf8",
+);
+const forwardAuthoritySealPath =
+  "ops/deploy/production-forward-bridge-authority.blobs";
+const forwardAuthoritySeal = readFileSync(forwardAuthoritySealPath, "utf8");
+const forwardBlobManifest = readFileSync(
+  "ops/deploy/production-forward-bridge.blobs",
+  "utf8",
+);
 const transitionProtectedPath = "ops/deploy/production-transition-protected.manifest";
 const transitionProtected = readFileSync(transitionProtectedPath, "utf8");
 const packageJson = JSON.parse(readFileSync("package.json", "utf8"));
@@ -34,10 +45,60 @@ const transitionLifecycleTests = [
   "bash ops/deploy/production-transition-b0-bootstrap.test.sh",
   "bash ops/deploy/production-transition-b0-host-control.test.sh",
 ];
+const forwardLifecycleTests = [
+  "bash ops/deploy/production-forward-bootstrap-marker-resume.test.sh",
+  "bash ops/deploy/production-forward-bridge.test.sh",
+  "bash ops/deploy/github-production-deploy-client.test.sh",
+  "bash ops/deploy/production-release-b-bridge-order.test.sh",
+  "bash ops/deploy/rabbitmq-quorum-deploy-bridge-transition.test.sh",
+];
+const productionForwardShellcheckFiles = [
+  "ops/deploy/social-monitor-production-deploy.sh",
+  "ops/deploy/production-transition-b0-host-control.sh",
+  "ops/deploy/production-transition-marker-lib.sh",
+  "ops/deploy/production-forward-bridge-host-lib.sh",
+  "ops/deploy/github-production-forward-bridge-client-lib.sh",
+];
+const productionForwardShellcheckCommand =
+  `bash ops/deploy/verify-production-shellcheck-baseline.sh ${productionForwardShellcheckFiles.join(" ")}`;
 const productionDeployLifecycle =
   packageJson.scripts?.["check:production-deploy-lifecycle"] ?? "";
 const productionDeployLifecycleCommands =
   productionDeployLifecycle.split(" && ");
+
+const forwardAuthorityPaths = [
+  "ops/deploy/deploy-control-bridge-lib.sh",
+  "ops/deploy/production-forward-bridge-host-lib.sh",
+  "ops/deploy/production-forward-bridge.blobs",
+  "ops/deploy/production-transition-b0-host-control.sh",
+  "ops/deploy/production-transition-marker-lib.sh",
+];
+const expectedForwardAuthoritySeal = forwardAuthorityPaths.map((path) => {
+  const blob = execFileSync("git", ["hash-object", "--no-filters", path], {
+    encoding: "utf8",
+  }).trim();
+  return `100644 ${blob} ${path}`;
+}).join("\n") + "\n";
+const sealBlob = execFileSync(
+  "git",
+  ["hash-object", "--no-filters", forwardAuthoritySealPath],
+  { encoding: "utf8" },
+).trim();
+if (
+  forwardAuthoritySeal !== expectedForwardAuthoritySeal ||
+  forwardBlobManifest.includes(forwardAuthoritySealPath) ||
+  !productionForwardClient.includes(
+    `PRODUCTION_FORWARD_AUTHORITY_SEAL_BLOB=${sealBlob}`,
+  )
+) {
+  violations.push(
+    `${forwardAuthoritySealPath}: must exactly seal the sorted B authority blobs, stay outside the B manifest, and be pinned by the client`,
+  );
+}
+const sealCheckout = lstatSync(forwardAuthoritySealPath);
+if (!sealCheckout.isFile() || sealCheckout.isSymbolicLink()) {
+  violations.push(`${forwardAuthoritySealPath}: must be a regular checkout file`);
+}
 
 const protectedLines = transitionProtected.trimEnd().split("\n");
 const protectedSpecs = protectedLines.slice(1);
@@ -227,6 +288,33 @@ for (const command of transitionLifecycleTests) {
   if (occurrences !== 1) {
     violations.push(
       `package.json: production transition lifecycle must contain exactly one exact command: ${command}`,
+    );
+  }
+}
+for (const command of forwardLifecycleTests) {
+  const occurrences = productionDeployLifecycleCommands.filter(
+    (candidate) => candidate === command,
+  ).length;
+  if (occurrences !== 1) {
+    violations.push(
+      `package.json: production forward lifecycle must contain exactly one exact command: ${command}`,
+    );
+  }
+}
+if (productionDeployLifecycleCommands[0] !== productionForwardShellcheckCommand) {
+  violations.push(
+    "package.json: production forward ShellCheck command must use the exact required authority inventory",
+  );
+}
+const productionWorkflowShellcheckMatch = productionWorkflow.match(
+  /^\s*deploy_shell_files=\(\n([\s\S]*?)^\s*\)\n/m,
+);
+const productionWorkflowShellcheckFiles =
+  productionWorkflowShellcheckMatch?.[1].trim().split(/\s+/u) ?? [];
+for (const shellAuthority of productionForwardShellcheckFiles.slice(1)) {
+  if (!productionWorkflowShellcheckFiles.includes(shellAuthority)) {
+    violations.push(
+      `production forward shell authority must be in the production workflow ShellCheck inventory: ${shellAuthority}`,
     );
   }
 }

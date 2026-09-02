@@ -232,6 +232,7 @@ CURRENT_ENTRYPOINT_SOURCE_CLOSURE=(
   ops/deploy/reader-summary-recovery-maintenance-lib.sh
   ops/deploy/production-backend-classification-lib.sh
   ops/deploy/production-transition-b0-host-control.sh
+  ops/deploy/production-transition-marker-lib.sh
   ops/deploy/production-runtime/reader-summary-scheduler-hold-common.sh
   ops/deploy/production-runtime/reader-summary-scheduler-hold-restore.sh
 )
@@ -360,6 +361,9 @@ TRANSITION_LOG="$TRANSITION_LOG" bash -c '
     install -m 0644 \
       "$REPO/ops/deploy/production-transition-b0-host-control.sh" \
       "$CONTROL/production-transition-b0-host-control.sh"
+    install -m 0644 \
+      "$REPO/ops/deploy/production-transition-marker-lib.sh" \
+      "$CONTROL/production-transition-marker-lib.sh"
     install -m 0755 "$REPO/ops/deploy/social-monitor-production-deploy.sh" \
       "$CONTROL/github-production-deploy.sh"
   }
@@ -379,8 +383,12 @@ cmp -s "$TRANSITION_CONTROL/github-production-deploy.sh" \
   "$TRANSITION_REPO/ops/deploy/social-monitor-production-deploy.sh"
 cmp -s "$TRANSITION_CONTROL/production-transition-b0-host-control.sh" \
   "$TRANSITION_REPO/ops/deploy/production-transition-b0-host-control.sh"
+cmp -s "$TRANSITION_CONTROL/production-transition-marker-lib.sh" \
+  "$TRANSITION_REPO/ops/deploy/production-transition-marker-lib.sh"
 [[ $(stat -c '%a' \
   "$TRANSITION_CONTROL/production-transition-b0-host-control.sh") == 644 ]]
+[[ $(stat -c '%a' \
+  "$TRANSITION_CONTROL/production-transition-marker-lib.sh") == 644 ]]
 
 assert_fails_with 'B0 host control does not descend from pinned A0' env \
   SOCIAL_MONITOR_DEPLOY_TEST_MODE=1 \
@@ -436,6 +444,7 @@ A_CONTROLLER="$TRANSITION_CONTROL/github-production-deploy.sh" \
       ops/deploy/daily-runner-image-bootstrap-lib.sh
       ops/deploy/x-collector-image-deploy-lib.sh
       ops/deploy/reader-summary-recovery-maintenance-lib.sh
+      ops/deploy/production-transition-marker-lib.sh
     )
     deploy_repo=${SOCIAL_MONITOR_DEPLOY_REPO:?}
     for path in "${required_sources[@]}"; do
@@ -449,6 +458,9 @@ A_CONTROLLER="$TRANSITION_CONTROL/github-production-deploy.sh" \
       x_collector_target_has_tracked_dockerfile "$sha" || \
         fail "Release B target is missing the X Dockerfile"
       sync_x_collector_dockerfile "$sha"
+      install -m 0644 \
+        "$REPO/ops/deploy/production-transition-marker-lib.sh" \
+        "$CONTROL/production-transition-marker-lib.sh"
       install -m 0755 "$REPO/ops/deploy/social-monitor-production-deploy.sh" \
         "$CONTROL/github-production-deploy.sh"
     }
@@ -466,6 +478,10 @@ grep -Fx "$RELEASE_B_SHA true false A-controller" \
   "$TRANSITION_LOG" >/dev/null
 cmp -s "$TRANSITION_CONTROL/x-collector.Dockerfile" \
   "$TRANSITION_REPO/$DOCKERFILE_PATH"
+cmp -s "$TRANSITION_CONTROL/production-transition-marker-lib.sh" \
+  "$TRANSITION_REPO/ops/deploy/production-transition-marker-lib.sh"
+[[ $(stat -c '%a' \
+  "$TRANSITION_CONTROL/production-transition-marker-lib.sh") == 644 ]]
 
 # Execute the real backend transaction with the real installed-Dockerfile and
 # running-candidate verifiers. A running image-ID mismatch must roll back and
