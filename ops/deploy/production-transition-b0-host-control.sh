@@ -15,8 +15,12 @@ PRODUCTION_TRANSITION_HOST_PROTECTED_MANIFEST=\
 ops/deploy/production-transition-protected.manifest
 PRODUCTION_TRANSITION_HOST_PROTECTED_VERSION=\
 social-monitor-production-transition-protected-paths-v1
+PRODUCTION_TRANSITION_FORWARD_AUTHORITY_SEAL=\
+ops/deploy/production-forward-bridge-authority.blobs
 
-production_transition_host_failpoint() { :; }
+production_transition_host_failpoint() {
+  [[ ${PRODUCTION_TRANSITION_HOST_FAILPOINT:-} != "$1" ]] || return 97
+}
 
 production_transition_host_fail() {
   fail "$@"
@@ -292,26 +296,72 @@ production_transition_host_write_state() {
 }
 
 production_transition_host_acquire_lock() {
-  if [[ -z ${PRODUCTION_TRANSITION_HOST_LOCK_FD:-} ]]; then
-    exec {PRODUCTION_TRANSITION_HOST_LOCK_FD}>\
-      "$STATE/$PRODUCTION_TRANSITION_HOST_LOCK_FILE" || \
-      production_transition_host_fail 'transition host lock cannot be opened'
-    flock -w 3600 "$PRODUCTION_TRANSITION_HOST_LOCK_FD" || \
-      production_transition_host_fail 'timed out waiting for transition host lock'
-  fi
+  local lock=$STATE/$PRODUCTION_TRANSITION_HOST_LOCK_FILE
+  local fd=${PRODUCTION_TRANSITION_HOST_LOCK_FD:-}
+  [[ -z $fd && -z ${PRODUCTION_TRANSITION_HOST_LOCK_OWNER:-} ]] || \
+    production_transition_host_fail 'transition host inherited an unsafe lock descriptor'
+  umask 077
+  exec {PRODUCTION_TRANSITION_HOST_LOCK_FD}<>"$lock" || \
+    production_transition_host_fail 'transition host lock cannot be opened'
+  fd=$PRODUCTION_TRANSITION_HOST_LOCK_FD
+  production_transition_host_validate_lock "$fd" "$lock" || {
+    exec {PRODUCTION_TRANSITION_HOST_LOCK_FD}>&-
+    production_transition_host_fail 'transition host lock path is unsafe'
+  }
+  flock -w 3600 "$fd" || {
+    exec {PRODUCTION_TRANSITION_HOST_LOCK_FD}>&-
+    production_transition_host_fail 'timed out waiting for transition host lock'
+  }
+  production_transition_host_validate_lock "$fd" "$lock" || {
+    exec {PRODUCTION_TRANSITION_HOST_LOCK_FD}>&-
+    production_transition_host_fail 'transition host lock changed while acquiring it'
+  }
+  PRODUCTION_TRANSITION_HOST_LOCK_OWNER=$BASHPID
   production_transition_host_reconcile_state
 }
 
+production_transition_host_require_lock() {
+  local lock=$STATE/$PRODUCTION_TRANSITION_HOST_LOCK_FILE
+  local fd=${PRODUCTION_TRANSITION_HOST_LOCK_FD:-}
+  [[ $fd =~ ^[0-9]+$ && \
+     ${PRODUCTION_TRANSITION_HOST_LOCK_OWNER:-} == "$BASHPID" ]] || \
+    production_transition_host_fail 'transition host lock is not owned by this shell'
+  production_transition_host_validate_lock "$fd" "$lock" || \
+    production_transition_host_fail 'transition host owned lock descriptor is unsafe'
+}
+
+production_transition_host_validate_lock() {
+  local fd=$1 lock=$2 descriptor path
+  [[ -f /proc/$BASHPID/fd/$fd && -f $lock && ! -L $lock ]] || return 1
+  descriptor=$(stat -Lc '%d:%i:%u:%g:%a:%h' "/proc/$BASHPID/fd/$fd") || return
+  path=$(stat -Lc '%d:%i:%u:%g:%a:%h' "$lock") || return
+  [[ $descriptor == "$path" && \
+     $descriptor == *":$(id -u):$(id -g):600:1" ]]
+}
+
+production_transition_host_release_lock() {
+  local lock=$STATE/$PRODUCTION_TRANSITION_HOST_LOCK_FILE
+  local fd=${PRODUCTION_TRANSITION_HOST_LOCK_FD:-}
+  [[ $fd =~ ^[0-9]+$ && \
+     ${PRODUCTION_TRANSITION_HOST_LOCK_OWNER:-} == "$BASHPID" ]] || \
+    production_transition_host_fail 'transition host lock release is not owned by this shell'
+  production_transition_host_validate_lock "$fd" "$lock" || \
+    production_transition_host_fail 'transition host lock changed before release'
+  exec {PRODUCTION_TRANSITION_HOST_LOCK_FD}>&-
+  unset PRODUCTION_TRANSITION_HOST_LOCK_FD PRODUCTION_TRANSITION_HOST_LOCK_OWNER
+}
+
 production_transition_host_require_scheduler_finalized() {
-  local hold=$STATE/$PRODUCTION_TRANSITION_HOST_SCHEDULER_HOLD_FILE
-  [[ ! -e $hold && ! -L $hold ]] || \
+  local hold=$STATE/$PRODUCTION_TRANSITION_HOST_SCHEDULER_HOLD_FILE next
+  next=$hold.next
+  [[ ! -e $hold && ! -L $hold && ! -e $next && ! -L $next ]] || \
     production_transition_host_fail \
       'production mutation is held until exact deploy-transition replay finalizes the scheduler hold'
 }
 
 production_transition_host_require_action_allowed() {
   local action=$1 record parsed status
-  production_transition_host_acquire_lock
+  production_transition_host_require_lock
   if record=$(production_transition_host_read_state); then
     parsed=$(production_transition_host_parse_state "$record")
     read -r status _ <<< "$parsed"
@@ -323,7 +373,7 @@ production_transition_host_require_action_allowed() {
 
 production_transition_host_require_ordinary_deploy() {
   local target=$1 record parsed status terminal_target current
-  production_transition_host_acquire_lock
+  production_transition_host_require_lock
   if record=$(production_transition_host_read_state); then
     parsed=$(production_transition_host_parse_state "$record")
     read -r status _ terminal_target _ <<< "$parsed"
@@ -489,11 +539,178 @@ production_transition_host_source_authorized_prelude() {
   exec {fd}<&-
 }
 
+production_transition_host_derive_forward_graph() {
+  local target=$1 base=$2 current=$1 record parent candidate_h candidate_r
+  local hops=0
+  local -a parents=() h_parents=() w_parents=() r_parents=()
+  while ((hops <= 256)); do
+    record=$(GIT_NO_REPLACE_OBJECTS=1 GIT_NO_LAZY_FETCH=1 \
+      git -C "$REPO" rev-list --parents -n 1 "$current" 2>/dev/null) || return 1
+    read -r -a parents <<< "$record"
+    if [[ ${#parents[@]} == 3 ]]; then
+      candidate_h=${parents[2]}
+      read -r -a h_parents <<< "$(GIT_NO_REPLACE_OBJECTS=1 GIT_NO_LAZY_FETCH=1 \
+        git -C "$REPO" rev-list --parents -n 1 "$candidate_h" 2>/dev/null)"
+      if [[ ${#h_parents[@]} == 2 ]]; then
+        read -r -a w_parents <<< "$(GIT_NO_REPLACE_OBJECTS=1 GIT_NO_LAZY_FETCH=1 \
+          git -C "$REPO" rev-list --parents -n 1 "${h_parents[1]}" 2>/dev/null)"
+        if [[ ${#w_parents[@]} == 2 ]]; then
+          candidate_r=${w_parents[1]}
+          read -r -a r_parents <<< "$(GIT_NO_REPLACE_OBJECTS=1 GIT_NO_LAZY_FETCH=1 \
+            git -C "$REPO" rev-list --parents -n 1 "$candidate_r" 2>/dev/null)"
+          if [[ ${#r_parents[@]} == 3 && ${r_parents[1]} == "${parents[1]}" && \
+                ${r_parents[2]} == "$base" ]]; then
+            [[ $(GIT_NO_REPLACE_OBJECTS=1 GIT_NO_LAZY_FETCH=1 \
+              git -C "$REPO" rev-parse "$target^{tree}") == \
+               $(GIT_NO_REPLACE_OBJECTS=1 GIT_NO_LAZY_FETCH=1 \
+              git -C "$REPO" rev-parse "$candidate_h^{tree}") ]] || return 1
+            PRODUCTION_TRANSITION_FORWARD_H=$candidate_h
+            return 0
+          fi
+        fi
+      fi
+    fi
+    [[ ${#parents[@]} == 2 ]] || break
+    parent=${parents[1]}
+    current=$parent
+    ((hops += 1))
+  done
+  # Reviewed H may itself be the protected target before GitHub creates F.
+  read -r -a h_parents <<< "$(GIT_NO_REPLACE_OBJECTS=1 GIT_NO_LAZY_FETCH=1 \
+    git -C "$REPO" rev-list --parents -n 1 "$target" 2>/dev/null)"
+  [[ ${#h_parents[@]} == 2 ]] || return 1
+  read -r -a w_parents <<< "$(GIT_NO_REPLACE_OBJECTS=1 GIT_NO_LAZY_FETCH=1 \
+    git -C "$REPO" rev-list --parents -n 1 "${h_parents[1]}" 2>/dev/null)"
+  [[ ${#w_parents[@]} == 2 ]] || return 1
+  read -r -a r_parents <<< "$(GIT_NO_REPLACE_OBJECTS=1 GIT_NO_LAZY_FETCH=1 \
+    git -C "$REPO" rev-list --parents -n 1 "${w_parents[1]}" 2>/dev/null)"
+  [[ ${#r_parents[@]} == 3 && ${r_parents[2]} == "$base" ]] || return 1
+  PRODUCTION_TRANSITION_FORWARD_H=$target
+}
+
+production_transition_host_require_forward_blob() {
+  local commit=$1 expected_mode=$2 expected_object=$3 expected_path=$4
+  local entry mode type object path extra
+  entry=$(GIT_NO_REPLACE_OBJECTS=1 GIT_NO_LAZY_FETCH=1 \
+    git -C "$REPO" ls-tree "$commit" -- "$expected_path") || \
+    production_transition_host_fail "production forward cannot inspect sealed path: $expected_path"
+  read -r mode type object path extra <<< "$entry"
+  [[ -z ${extra:-} && $mode == "$expected_mode" && $type == blob && \
+     $object == "$expected_object" && $path == "$expected_path" ]] || \
+    production_transition_host_fail "production forward sealed path differs: $expected_path"
+}
+
+production_transition_host_load_forward_authority() {
+  local base=$1 reviewed_h=$2 target=$3 entry mode type object path extra staging staged fd
+  local line row=0 expected_path sealed_mode sealed_object sealed_path reviewed_r
+  local authority_object='' marker_object='' source_object source_label
+  local relative=ops/deploy/production-forward-bridge-host-lib.sh
+  local -a expected_paths=(ops/deploy/deploy-control-bridge-lib.sh
+    ops/deploy/production-forward-bridge-host-lib.sh
+    ops/deploy/production-forward-bridge.blobs
+    ops/deploy/production-transition-b0-host-control.sh
+    ops/deploy/production-transition-marker-lib.sh)
+  entry=$(GIT_NO_REPLACE_OBJECTS=1 GIT_NO_LAZY_FETCH=1 git -C "$REPO" \
+    ls-tree "$reviewed_h" -- "$PRODUCTION_TRANSITION_FORWARD_AUTHORITY_SEAL") || \
+    production_transition_host_fail 'production forward authority seal cannot be inspected at reviewed H'
+  read -r mode type object path extra <<< "$entry"
+  [[ -z ${extra:-} && $mode == 100644 && $type == blob && \
+     $object =~ ^[0-9a-f]{40}$ && $path == "$PRODUCTION_TRANSITION_FORWARD_AUTHORITY_SEAL" ]] || \
+    production_transition_host_fail 'production forward authority seal is not a regular H blob'
+  reviewed_r=$(GIT_NO_REPLACE_OBJECTS=1 GIT_NO_LAZY_FETCH=1 \
+    git -C "$REPO" rev-parse "$reviewed_h^1^1") || \
+    production_transition_host_fail 'production forward R cannot be derived before authority load'
+  staging=$(mktemp -d "$STATE/forward-authority.XXXXXX") || \
+    production_transition_host_fail 'production forward authority staging failed'
+  chmod 0700 "$staging" || \
+    production_transition_host_fail 'production forward authority staging cannot be sealed'
+  staged=$staging/seal
+  GIT_NO_REPLACE_OBJECTS=1 GIT_NO_LAZY_FETCH=1 \
+    git -C "$REPO" cat-file blob "$object" > "$staged" || \
+    production_transition_host_fail 'production forward authority seal cannot be staged'
+  [[ $(tail -c 1 "$staged" | od -An -tx1 | tr -d ' ') == 0a ]] || \
+    production_transition_host_fail 'production forward authority seal is not newline terminated'
+  chmod 0400 "$staged" || \
+    production_transition_host_fail 'production forward authority seal cannot be protected'
+  exec {fd}<"$staged" || \
+    production_transition_host_fail 'production forward authority seal cannot be opened'
+  rm -f "$staged"
+  while IFS= read -r line <&$fd || [[ -n $line ]]; do
+    ((row += 1)); expected_path=${expected_paths[row - 1]:-}
+    [[ $row -le 5 && \
+       $line =~ ^100644\ ([0-9a-f]{40})\ ([./a-z0-9-]+)$ ]] || \
+      production_transition_host_fail \
+      'production forward authority seal formatting is invalid'
+    sealed_mode=100644
+    sealed_object=${BASH_REMATCH[1]}
+    sealed_path=${BASH_REMATCH[2]}
+    [[ $sealed_path == "$expected_path" ]] || \
+      production_transition_host_fail 'production forward authority seal row is invalid'
+    production_transition_host_require_forward_blob \
+      "$base" "$sealed_mode" "$sealed_object" "$sealed_path"
+    production_transition_host_require_forward_blob \
+      "$reviewed_r" "$sealed_mode" "$sealed_object" "$sealed_path"
+    production_transition_host_require_forward_blob \
+      "$reviewed_h" "$sealed_mode" "$sealed_object" "$sealed_path"
+    production_transition_host_require_forward_blob \
+      "$target" "$sealed_mode" "$sealed_object" "$sealed_path"
+    [[ $sealed_path != "$relative" ]] || authority_object=$sealed_object
+    [[ $sealed_path != ops/deploy/production-transition-marker-lib.sh ]] || \
+      marker_object=$sealed_object
+  done
+  exec {fd}<&-
+  [[ $row == 5 && $authority_object =~ ^[0-9a-f]{40}$ && \
+     $marker_object =~ ^[0-9a-f]{40}$ ]] || \
+    production_transition_host_fail 'production forward authority seal path set is invalid'
+  for source_object in "$marker_object" "$authority_object"; do
+    [[ $source_object == "$marker_object" ]] && \
+      source_label='production transition marker authority' || \
+      source_label='production forward host authority'
+    staged=$staging/library.sh
+    GIT_NO_REPLACE_OBJECTS=1 GIT_NO_LAZY_FETCH=1 \
+      git -C "$REPO" cat-file blob "$source_object" > "$staged" || \
+      production_transition_host_fail "$source_label blob cannot be staged"
+    chmod 0400 "$staged" || production_transition_host_fail \
+      "$source_label blob cannot be protected"
+    exec {fd}<"$staged" || production_transition_host_fail \
+      "$source_label blob cannot be opened"
+    rm -f "$staged"
+    if builtin source "/dev/fd/$fd"; then
+      :
+    else
+      exec {fd}<&-
+      production_transition_host_fail "$source_label could not be loaded"
+    fi
+    exec {fd}<&-
+  done
+  rmdir "$staging"
+}
+
+production_transition_host_try_forward_handoff() {
+  local action=$1 target=$2 current base
+  [[ $action =~ ^(plan|upload|deploy)$ ]] || return 1
+  current=$(GIT_NO_REPLACE_OBJECTS=1 GIT_NO_LAZY_FETCH=1 \
+    git -C "$REPO" rev-parse --verify 'HEAD^{commit}' 2>/dev/null) || return 1
+  [[ $current == "$target" ]] || return 1
+  base=$(production_transition_host_read_base) || return 1
+  # No target-provided authority is loaded until the protected remote is the
+  # exact checked-out target.
+  production_transition_host_require_exact_remote_main "$target"
+  production_transition_host_derive_forward_graph "$target" "$base" || return 1
+  production_transition_host_load_forward_authority \
+    "$base" "$PRODUCTION_TRANSITION_FORWARD_H" "$target"
+  production_forward_require_exact_handoff "$base" "$target" "$action"
+  production_transition_host_seal_prelude_commit "$current"
+}
+
 production_transition_host_preflight_prelude() {
   local action=$1 target=$2 record parsed status base recorded_target target_tree
   local current remote fresh=true
   production_transition_host_acquire_lock
   if [[ $action != deploy-transition ]]; then
+    if production_transition_host_try_forward_handoff "$action" "$target"; then
+      return 0
+    fi
     if record=$(production_transition_host_read_state); then
       parsed=$(production_transition_host_parse_state "$record")
       read -r status _ recorded_target _ <<< "$parsed"
@@ -610,7 +827,7 @@ production_transition_deploy_authenticated_target() {
   local target=$1 base target_tree record parsed status recorded_target
   local fresh=true terminal_recovery=false
   validate_sha "$target"
-  production_transition_host_acquire_lock
+  production_transition_host_require_lock
   if record=$(production_transition_host_read_state); then
     parsed=$(production_transition_host_parse_state "$record")
     read -r status base recorded_target target_tree <<< "$parsed"
@@ -715,6 +932,7 @@ production_transition_sync_control_script() {
   if [[ -f $wrapper_source ]]; then
     install -m 0755 -o root -g root "$wrapper_source" "$wrapper_destination.next"
     mv -f "$wrapper_destination.next" "$wrapper_destination"
+    production_transition_host_failpoint forward-wrapper-synced
   fi
   if [[ -f $auth_refresh_source ]]; then
     install -m 0700 -o root -g root "$auth_refresh_source" "$auth_refresh_destination.next"
@@ -727,6 +945,7 @@ production_transition_sync_control_script() {
   fi
   sync_production_transition_b0_control "$sha"
   production_transition_sync_control_entrypoint
+  production_transition_host_failpoint forward-entrypoint-synced
 }
 
 verify_host_policy() {
@@ -774,18 +993,5 @@ verify_host_policy() {
 }
 
 commit_postgres_pool_bootstrap() {
-  local sha=$1
-  local mode=${2:-normal}
-  local marker=$STATE/postgres-pool-bootstrap.sha
-  local next=$marker.next
-  [[ $mode == normal || $mode == force-advance ]] || \
-    production_transition_host_fail 'PostgreSQL bootstrap marker advance mode is invalid'
-  if [[ $mode == normal ]] && postgres_pool_bootstrap_installed "$sha"; then return 0; fi
-  [[ ! -e $next && ! -L $next ]] || \
-    production_transition_host_fail 'PostgreSQL bootstrap marker temporary path is invalid'
-  printf '%s\n' "$sha" > "$next"
-  mv -f "$next" "$marker"
-  if [[ ! -f $marker || -L $marker ]] || ! postgres_pool_bootstrap_installed "$sha"; then
-    production_transition_host_fail 'PostgreSQL bootstrap marker did not commit the installed entrypoint'
-  fi
+  production_transition_commit_postgres_pool_bootstrap "$@"
 }

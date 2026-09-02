@@ -13,6 +13,7 @@ DEPLOY_CONTROL_BRIDGE_POSTGRES_ACTIVATION_BOUNDARY_HELPER_PATH=ops/deploy/postgr
 DEPLOY_CONTROL_BRIDGE_RECOVERY_MAINTENANCE_LIBRARY_PATH=ops/deploy/reader-summary-recovery-maintenance-lib.sh
 DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_LIBRARY_PATH=ops/deploy/backend-image-rescue-lib.sh
 DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_PIN_CLEANUP_LIBRARY_PATH=ops/deploy/backend-image-rescue-pin-cleanup-lib.sh
+DEPLOY_CONTROL_BRIDGE_OPTIONAL_SOURCE_ABSENT=absent-reviewed-source
 DEPLOY_CONTROL_BRIDGE_X_IMAGE_LIBRARY_PATH=ops/deploy/x-collector-image-deploy-lib.sh
 DEPLOY_CONTROL_BRIDGE_SELF_PATH=ops/deploy/deploy-control-bridge-lib.sh
 DEPLOY_CONTROL_DAILY_FINAL_BASE=d494c143c242873bfac53f54c15b0f24df0ab33d
@@ -51,21 +52,18 @@ RABBITMQ_QUORUM_HEALTH_LIBRARY_PATH=ops/deploy/backend-runtime-health-lib.sh
 RABBITMQ_QUORUM_HEALTH_SCRIPT_PATH=ops/deploy/rabbitmq-quorum-health.sh
 RABBITMQ_QUORUM_RECOVERY_SCRIPT_PATH=ops/deploy/rabbitmq-quorum-recovery.sh
 
-deploy_control_require_b0_bootstrap_file() {
-  local sha=$1 install_mode=$2 relative=$3
-  local source=$REPO/$relative destination=$CONTROL/${relative##*/}
-  local next=$destination.next entry tree_mode type object tree_path extra
-  local expected_tree_mode=100${install_mode#0} expected_owner before after
+deploy_control_legacy_require_b0_bootstrap_file() {
+  local sha=$1 install_mode=$2 relative=$3 source destination next entry
+  local tree_mode type object tree_path extra expected_owner
+  source=$REPO/$relative; destination=$CONTROL/${relative##*/}; next=$destination.next
   entry=$(git -C "$REPO" ls-tree "$sha" -- "$relative") || \
     fail "B0 bootstrap cannot inspect $relative"
   read -r tree_mode type object tree_path extra <<< "$entry"
-  [[ -z ${extra:-} && $tree_mode == "$expected_tree_mode" && \
-     $type == blob && $object =~ ^[0-9a-f]{40}$ && \
-     $tree_path == "$relative" ]] || \
-    fail "B0 bootstrap path has an invalid mode or object: $relative"
-  [[ -f $source && ! -L $source && \
+  [[ -z ${extra:-} && $tree_mode == "100${install_mode#0}" && \
+     $type == blob && $object =~ ^[0-9a-f]{40}$ && $tree_path == "$relative" && \
+     -f $source && ! -L $source && \
      $(git -C "$REPO" hash-object --no-filters "$source") == "$object" ]] || \
-    fail "B0 bootstrap worktree differs from reviewed target: $relative"
+    fail "B0 bootstrap source is invalid: $relative"
   if [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} == 1 ]]; then
     expected_owner=$(id -u):$(id -g):${install_mode#0}
   else
@@ -88,19 +86,16 @@ deploy_control_require_b0_bootstrap_file() {
   else
     install -m "$install_mode" -o root -g root "$source" "$next"
   fi
-  before=$(stat -Lc '%d:%i:%f:%s:%Y:%Z' "$next") || \
-    fail "staged B0 bootstrap path cannot be read: $relative"
-  [[ $(git -C "$REPO" hash-object --no-filters "$next") == "$object" ]] || \
-    fail "staged B0 bootstrap bytes differ: $relative"
-  after=$(stat -Lc '%d:%i:%f:%s:%Y:%Z' "$next") || \
-    fail "staged B0 bootstrap path cannot be re-read: $relative"
-  [[ $before == "$after" ]] || fail "staged B0 bootstrap path changed: $relative"
-  mv -T "$next" "$destination"
+  mv -T -- "$next" "$destination"
 }
 
 deploy_control_bootstrap_production_transition_b0() {
-  local sha=$1 remote needs_install=false relative present=0
+  local sha=$1 remote relative present=0 needs_install=false
   [[ ${action:-} == deploy ]] || return 0
+  if declare -F production_forward_install_b0_before_entrypoint >/dev/null; then
+    production_forward_install_b0_before_entrypoint "$sha"
+    return
+  fi
   for relative in production-transition-admission.sh \
     production-transition-b0-host-control.sh \
     production-transition-canonical-lib.sh; do
@@ -120,12 +115,34 @@ deploy_control_bootstrap_production_transition_b0() {
     [[ $remote == "$sha" ]] || \
       fail 'B0 bootstrap requires the exact protected-main commit'
   fi
-  deploy_control_require_b0_bootstrap_file "$sha" 0755 \
+  deploy_control_legacy_require_b0_bootstrap_file "$sha" 0755 \
     ops/deploy/production-transition-admission.sh
-  deploy_control_require_b0_bootstrap_file "$sha" 0644 \
+  deploy_control_legacy_require_b0_bootstrap_file "$sha" 0644 \
     ops/deploy/production-transition-b0-host-control.sh
-  deploy_control_require_b0_bootstrap_file "$sha" 0644 \
+  deploy_control_legacy_require_b0_bootstrap_file "$sha" 0644 \
     ops/deploy/production-transition-canonical-lib.sh
+}
+
+# The immutable controller calls advance_integration after it loads this
+# predecessor-owned bridge library. Override only that primitive so the exact
+# forward target's complete B0 set is durable before the checkout can move.
+# All other releases retain the controller's original fast-forward contract.
+advance_integration() {
+  local sha=$1 current
+  if deploy_control_is_reviewed_forward_bridge_transition \
+      "$DEPLOY_CONTROL_BRIDGE_INITIALIZED_HEAD" "$sha"; then
+    production_forward_install_b0_before_entrypoint "$sha"
+  fi
+  [[ -z $(git -C "$REPO" status --porcelain) ]] || \
+    fail 'integration worktree is dirty'
+  current=$(git -C "$REPO" rev-parse HEAD)
+  if git -C "$REPO" merge-base --is-ancestor "$sha" "$current"; then
+    return 0
+  fi
+  git -C "$REPO" merge-base --is-ancestor "$current" "$sha" || \
+    fail 'integration worktree cannot fast-forward'
+  git -C "$REPO" merge --ff-only --quiet "$sha"
+  production_transition_host_failpoint forward-integration-advanced
 }
 
 deploy_control_bridge_sealed_paths() {
@@ -478,6 +495,14 @@ deploy_control_is_reviewed_failed_idle_release_transition() {
   [[ $target_delta == "$expected_target_delta" ]]
 }
 
+deploy_control_is_reviewed_forward_bridge_transition() {
+  local initialized=$1 target=$2 bridge
+  production_forward_derive_graph "$target" >/dev/null 2>&1 || return 1
+  bridge=$PRODUCTION_FORWARD_B
+  production_forward_verify_target_graph "$bridge" "$target" >/dev/null 2>&1 || return 1
+  [[ $initialized == "$bridge" || $initialized == "$target" ]]
+}
+
 # Recover the exact reviewed rolling release after its synthetic transition
 # fixture proved too narrow for the real first-parent production graph. The
 # installed bridge is still constrained to one control-only commit, while the
@@ -514,6 +539,10 @@ deploy_control_is_reviewed_rolling_repair_transition() {
 
 deploy_control_reviewed_transition_matches() {
   local bridge=$1 target=$2
+  if deploy_control_is_reviewed_forward_bridge_transition \
+      "$bridge" "$target"; then
+    return 0
+  fi
   if deploy_control_is_reviewed_rolling_repair_transition \
       "$bridge" "$target"; then
     return 0
@@ -643,6 +672,17 @@ deploy_control_bridge_git_regular_blob() {
   printf '%s\n' "$mode"
 }
 
+deploy_control_bridge_optional_source_digest() {
+  local source=$1
+  [[ ! -L $source ]] || return 1
+  if [[ -e $source ]]; then
+    [[ -f $source ]] || return 1
+    deploy_control_file_digest "$source"
+  else
+    printf '%s\n' "$DEPLOY_CONTROL_BRIDGE_OPTIONAL_SOURCE_ABSENT"
+  fi
+}
+
 deploy_control_bridge_require_initialized() {
   [[ -n ${DEPLOY_CONTROL_BRIDGE_ENTRYPOINT_DIGEST:-} && \
      -n ${DEPLOY_CONTROL_BRIDGE_LIBRARY_DIGEST:-} && \
@@ -679,7 +719,6 @@ initialize_deploy_control_bridge() {
      -f $activation_boundary_helper && ! -L $activation_boundary_helper && \
      -f $recovery_maintenance_library && ! -L $recovery_maintenance_library && \
      -f $image_rescue_library && ! -L $image_rescue_library && \
-     -f $image_rescue_pin_cleanup_library && ! -L $image_rescue_pin_cleanup_library && \
      -f $x_image_library && ! -L $x_image_library && \
      -f $bridge_library && ! -L $bridge_library ]] || \
     fail 'current integration is missing deploy control bridge sources'
@@ -691,11 +730,24 @@ initialize_deploy_control_bridge() {
   DEPLOY_CONTROL_BRIDGE_POSTGRES_ACTIVATION_BOUNDARY_HELPER_DIGEST=$(deploy_control_file_digest "$activation_boundary_helper")
   DEPLOY_CONTROL_BRIDGE_RECOVERY_MAINTENANCE_LIBRARY_DIGEST=$(deploy_control_file_digest "$recovery_maintenance_library")
   DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_LIBRARY_DIGEST=$(deploy_control_file_digest "$image_rescue_library")
-  DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_PIN_CLEANUP_LIBRARY_DIGEST=$(deploy_control_file_digest "$image_rescue_pin_cleanup_library")
+  DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_PIN_CLEANUP_LIBRARY_DIGEST=$( \
+    deploy_control_bridge_optional_source_digest \
+      "$image_rescue_pin_cleanup_library") || \
+    fail 'optional backend image rescue pin cleanup bridge source is unsafe'
   DEPLOY_CONTROL_BRIDGE_X_IMAGE_LIBRARY_DIGEST=$(deploy_control_file_digest "$x_image_library")
   DEPLOY_CONTROL_BRIDGE_SELF_DIGEST=$(deploy_control_file_digest "$bridge_library")
   DEPLOY_CONTROL_BRIDGE_INITIALIZED_HEAD=$(git -C "$REPO" rev-parse HEAD) || \
     fail 'deploy control bridge integration marker cannot be read'
+  if git -C "$REPO" cat-file -e \
+      "$DEPLOY_CONTROL_BRIDGE_INITIALIZED_HEAD:ops/deploy/production-forward-bridge-host-lib.sh" \
+      2>/dev/null; then
+    source_reviewed_deploy_library "$DEPLOY_CONTROL_BRIDGE_INITIALIZED_HEAD" \
+      ops/deploy/production-forward-bridge-host-lib.sh \
+      'production forward bridge host authority'
+    declare -F production_forward_verify_target_graph >/dev/null && \
+      declare -F production_forward_install_b0_before_entrypoint >/dev/null || \
+      fail 'production forward bridge host authority is incomplete'
+  fi
 }
 
 verify_deploy_control_bridge_compatibility() {
@@ -709,9 +761,16 @@ verify_deploy_control_bridge_compatibility() {
   local image_rescue_library=$REPO/$DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_LIBRARY_PATH
   local image_rescue_pin_cleanup_library=$REPO/$DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_PIN_CLEANUP_LIBRARY_PATH
   local x_image_library=$REPO/$DEPLOY_CONTROL_BRIDGE_X_IMAGE_LIBRARY_PATH
-  local bridge_library=$REPO/$DEPLOY_CONTROL_BRIDGE_SELF_PATH
+  local bridge_library=$REPO/$DEPLOY_CONTROL_BRIDGE_SELF_PATH current
 
   deploy_control_bridge_require_initialized
+  current=$(git -C "$REPO" rev-parse HEAD) || \
+    fail 'target integration commit cannot be read'
+  if deploy_control_reviewed_transition_matches \
+      "$DEPLOY_CONTROL_BRIDGE_INITIALIZED_HEAD" "$current"; then
+    deploy_control_bootstrap_production_transition_b0 "$current"
+    return 0
+  fi
   [[ -f $entrypoint && ! -L $entrypoint && \
      -f $deploy_library && ! -L $deploy_library && \
      -f $postgres_library && ! -L $postgres_library && \
@@ -720,14 +779,9 @@ verify_deploy_control_bridge_compatibility() {
      -f $activation_boundary_helper && ! -L $activation_boundary_helper && \
      -f $recovery_maintenance_library && ! -L $recovery_maintenance_library && \
      -f $image_rescue_library && ! -L $image_rescue_library && \
-     -f $image_rescue_pin_cleanup_library && ! -L $image_rescue_pin_cleanup_library && \
      -f $x_image_library && ! -L $x_image_library && \
      -f $bridge_library && ! -L $bridge_library ]] || \
     fail 'target integration is missing deploy control bridge sources'
-  if verify_deploy_control_daily_final_transition_files \
-      "$(git -C "$REPO" rev-parse HEAD)"; then
-    return 0
-  fi
   [[ $(deploy_control_file_digest "$entrypoint") == "$DEPLOY_CONTROL_BRIDGE_ENTRYPOINT_DIGEST" && \
      $(deploy_control_file_digest "$deploy_library") == "$DEPLOY_CONTROL_BRIDGE_LIBRARY_DIGEST" && \
      $(deploy_control_file_digest "$postgres_library") == "$DEPLOY_CONTROL_BRIDGE_POSTGRES_LIBRARY_DIGEST" && \
@@ -736,7 +790,7 @@ verify_deploy_control_bridge_compatibility() {
      $(deploy_control_file_digest "$activation_boundary_helper") == "$DEPLOY_CONTROL_BRIDGE_POSTGRES_ACTIVATION_BOUNDARY_HELPER_DIGEST" && \
      $(deploy_control_file_digest "$recovery_maintenance_library") == "$DEPLOY_CONTROL_BRIDGE_RECOVERY_MAINTENANCE_LIBRARY_DIGEST" && \
      $(deploy_control_file_digest "$image_rescue_library") == "$DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_LIBRARY_DIGEST" && \
-     $(deploy_control_file_digest "$image_rescue_pin_cleanup_library") == "$DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_PIN_CLEANUP_LIBRARY_DIGEST" && \
+     $(deploy_control_bridge_optional_source_digest "$image_rescue_pin_cleanup_library") == "$DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_PIN_CLEANUP_LIBRARY_DIGEST" && \
      $(deploy_control_file_digest "$x_image_library") == "$DEPLOY_CONTROL_BRIDGE_X_IMAGE_LIBRARY_DIGEST" && \
      $(deploy_control_file_digest "$bridge_library") == "$DEPLOY_CONTROL_BRIDGE_SELF_DIGEST" ]] || \
     fail 'deploy control changed with backend or runtime assets; deploy the bridge release first'
@@ -795,6 +849,11 @@ verify_deploy_control_bridge_target_compatibility() {
     fail 'target integration is missing the X image provenance bridge library'
   bridge_library_digest=$(deploy_control_git_blob_digest "$sha" "$DEPLOY_CONTROL_BRIDGE_SELF_PATH") || \
     fail 'target integration is missing the deploy control bridge library'
+  if deploy_control_is_reviewed_forward_bridge_transition \
+      "$DEPLOY_CONTROL_BRIDGE_INITIALIZED_HEAD" "$sha"; then
+    production_forward_install_b0_before_entrypoint "$sha"
+    return 0
+  fi
   if deploy_control_reviewed_transition_matches \
       "$DEPLOY_CONTROL_BRIDGE_INITIALIZED_HEAD" "$sha"; then
     return 0
