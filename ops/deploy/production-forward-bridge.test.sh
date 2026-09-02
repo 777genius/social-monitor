@@ -413,8 +413,6 @@ reset_b0_destinations() {
   find "$CONTROL" -mindepth 1 -maxdepth 1 -type f -delete
   find "$CONTROL" -mindepth 1 -maxdepth 1 -type l -delete
 }
-# The failpoint argument is optional for the normal installation path.
-# shellcheck disable=SC2120
 run_b0_install() (
   export SOCIAL_MONITOR_DEPLOY_TEST_MODE=1
   export PRODUCTION_FORWARD_INSTALL_FAILPOINT=${1:-}
