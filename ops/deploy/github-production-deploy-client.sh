@@ -54,6 +54,7 @@ fail() {
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 source "$SCRIPT_DIR/github-production-transition-client-lib.sh"
+source "$SCRIPT_DIR/github-production-forward-bridge-client-lib.sh"
 
 validate_client_defaults() {
   ((DEFAULT_RECONCILE_WINDOW_SECONDS >= MINIMUM_RECONCILE_WINDOW_SECONDS)) || \
@@ -596,13 +597,15 @@ plan_is_exact_release_b_legacy_transition() {
 
 plan_is_admitted_post_release_b_forward_state() {
   local requested_target=$1 repository=${GITHUB_WORKSPACE:-.}
-  [[ $PLAN_BACKEND_BASE =~ ^[0-9a-f]{40}$ && \
+  [[ $PLAN_FRONTEND =~ ^(true|false)$ && $PLAN_BACKEND == false && \
+     $PLAN_CONTROL == false && $PLAN_X_COLLECTOR == false && \
+     $PLAN_BACKEND_BASE =~ ^[0-9a-f]{40}$ && \
      $PLAN_POSTGRES_POOL_BOOTSTRAP == "$POSTGRES_POOL_BOOTSTRAP_VERSION" && \
      $PLAN_POSTGRES_POOL_BOOTSTRAP_SHA =~ ^[0-9a-f]{40}$ && \
      $PLAN_POSTGRES_POOL_REPAIR == false ]] || return 1
-  # The remote plan reports an installed bootstrap only after hashing the
-  # active deploy controller against this durable marker. Its ancestry is
-  # therefore the controller provenance proof even when control or X changes.
+  # Marker ancestry proves provenance only. Skipping bridge preparation is
+  # safe solely when the plan will mutate no backend, control, or X surface;
+  # the remaining frontend-only path never enters the sealed host closure.
   git -C "$repository" merge-base --is-ancestor \
     "$RELEASE_B_REVIEWED_TARGET_SHA" "$PLAN_BACKEND_BASE" 2>/dev/null && \
     git -C "$repository" merge-base --is-ancestor \
@@ -909,6 +912,11 @@ case $action in
     verify_release_b_reviewed_target_identity \
       "$RELEASE_B_REVIEWED_TARGET_SHA" "$2"
     ;;
+  verify-forward-target)
+    [[ $# == 2 ]] || fail 'verify-forward-target requires a target SHA'
+    validate_sha "$2"
+    verify_production_forward_target_identity "$2"
+    ;;
   upload)
     [[ $# == 3 ]] || fail 'upload requires a target SHA and archive'
     validate_sha "$2"
@@ -936,6 +944,11 @@ case $action in
     validate_sha "$6"
     validate_remote_environment
     prepare_release_b_bridge "$2" "$3" "$4" "$5" "$6"
+    ;;
+  prepare-forward-bridge)
+    [[ $# == 2 ]] || fail 'prepare-forward-bridge requires its target SHA'
+    validate_sha "$2"; validate_remote_environment
+    prepare_production_forward_bridge "$2"
     ;;
   install-daily-c1-bridge-policy)
     [[ $# == 2 ]] || fail 'install-daily-c1-bridge-policy requires its pinned SHA'

@@ -73,14 +73,14 @@ initialize_deploy_control_bridge
 verify_deploy_control_bridge_compatibility
 verify_deploy_control_bridge_target_compatibility "$reviewed_sha"
 
-sealed_dependencies=(
+required_sealed_dependencies=(
   ops/deploy/postgres-runtime-weekly-timer-state-lib.sh
   ops/deploy/postgres-runtime-daily-c1-readiness-lib.sh
   ops/deploy/postgres-runtime-activation-boundary-lib.sh
   ops/deploy/reader-summary-recovery-maintenance-lib.sh
-  ops/deploy/backend-image-rescue-pin-cleanup-lib.sh
 )
-for dependency in "${sealed_dependencies[@]}"; do
+optional_sealed_dependency=ops/deploy/backend-image-rescue-pin-cleanup-lib.sh
+for dependency in "${required_sealed_dependencies[@]}"; do
   rm "$REPO/$dependency"
   assert_fails_with 'missing deploy control bridge sources' \
     initialize_deploy_control_bridge
@@ -103,6 +103,43 @@ for dependency in "${sealed_dependencies[@]}"; do
   restore_helper "$dependency"
 done
 
+# The pin-cleanup source is optional at initialization, but its observed state
+# is sealed just as strictly as a present required source.
+rm "$REPO/$optional_sealed_dependency"
+initialize_deploy_control_bridge
+[[ $DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_PIN_CLEANUP_LIBRARY_DIGEST == \
+   "$DEPLOY_CONTROL_BRIDGE_OPTIONAL_SOURCE_ABSENT" ]]
+verify_deploy_control_bridge_compatibility
+
+restore_helper "$optional_sealed_dependency"
+assert_fails_with 'deploy the bridge release first' \
+  verify_deploy_control_bridge_compatibility
+rm "$REPO/$optional_sealed_dependency"
+
+ln -s "$SCRIPT_DIR/${optional_sealed_dependency##*/}" \
+  "$REPO/$optional_sealed_dependency"
+assert_fails_with 'optional backend image rescue pin cleanup bridge source is unsafe' \
+  initialize_deploy_control_bridge
+rm "$REPO/$optional_sealed_dependency"
+mkdir "$REPO/$optional_sealed_dependency"
+assert_fails_with 'optional backend image rescue pin cleanup bridge source is unsafe' \
+  initialize_deploy_control_bridge
+rmdir "$REPO/$optional_sealed_dependency"
+
+restore_helper "$optional_sealed_dependency"
+initialize_deploy_control_bridge
+rm "$REPO/$optional_sealed_dependency"
+assert_fails_with 'deploy the bridge release first' \
+  verify_deploy_control_bridge_compatibility
+restore_helper "$optional_sealed_dependency"
+initialize_deploy_control_bridge
+printf '# unreviewed optional dependency mutation\n' >> \
+  "$REPO/$optional_sealed_dependency"
+assert_fails_with 'deploy the bridge release first' \
+  verify_deploy_control_bridge_compatibility
+restore_helper "$optional_sealed_dependency"
+initialize_deploy_control_bridge
+
 # Existing bridge dependencies stay sealed alongside the new helpers.
 printf '# unreviewed PostgreSQL controller mutation\n' >> \
   "$REPO/$DEPLOY_CONTROL_BRIDGE_POSTGRES_LIBRARY_PATH"
@@ -118,7 +155,11 @@ commit_target_state() {
   git -C "$REPO" rev-parse HEAD
 }
 
-for dependency in "${sealed_dependencies[@]}"; do
+target_sealed_dependencies=(
+  "${required_sealed_dependencies[@]}"
+  "$optional_sealed_dependency"
+)
+for dependency in "${target_sealed_dependencies[@]}"; do
   rm "$REPO/$dependency"
   missing_sha=$(commit_target_state 'test: remove sealed runtime helper')
   assert_fails_with 'is not a regular blob at reviewed target' \

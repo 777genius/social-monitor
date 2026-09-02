@@ -114,7 +114,7 @@ fake_ssh() {
         "$RELEASE_B_REVIEWED_TARGET_SHA"
       ;;
     release_b_post_b:"plan $TARGET_SHA")
-      print_fake_plan true true true true "$POST_RELEASE_B_SHA" \
+      print_fake_plan true false false false "$POST_RELEASE_B_SHA" \
         "$POST_RELEASE_B_SHA"
       ;;
     release_b_from_8b:"plan $TARGET_SHA"|release_b_bridge_disconnect:"plan $TARGET_SHA"|release_b_controller_repair:"plan $TARGET_SHA"|release_b_current_main:"plan $TARGET_SHA"|release_b_replay:"plan $TARGET_SHA"|release_b_partial:"plan $TARGET_SHA"|release_b_stale_target:"plan $TARGET_SHA"|release_b_rejected:"plan $TARGET_SHA")
@@ -370,6 +370,9 @@ install -m 0700 "$0" "$FAKE_SSH"
     "$RELEASE_B_BACKEND_MARKER" "$RELEASE_B_POOL_MARKER")"
   plan_is_exact_release_b_legacy_transition
   parse_plan "$(printf 'frontend=true\nbackend=true\nbackend_base=%s\ncontrol=true\nx_collector=true\npostgres_pool_bootstrap=postgres-pool-v1\npostgres_pool_bootstrap_sha=%s\n' \
+    "$POST_RELEASE_B_SHA" "$POST_RELEASE_B_SHA")"
+  plan_is_admitted_post_release_b_forward_state "$TARGET_SHA" && exit 1
+  parse_plan "$(printf 'frontend=true\nbackend=false\nbackend_base=%s\ncontrol=false\nx_collector=false\npostgres_pool_bootstrap=postgres-pool-v1\npostgres_pool_bootstrap_sha=%s\n' \
     "$POST_RELEASE_B_SHA" "$POST_RELEASE_B_SHA")"
   plan_is_admitted_post_release_b_forward_state "$TARGET_SHA"
   # shellcheck disable=SC2034 # Read by the sourced post-Release-B predicate.
@@ -825,6 +828,12 @@ grep -F 'repair_anchor: ${{ steps.plan.outputs.repair_anchor }}' \
 # shellcheck disable=SC2016
 grep -F 'REPAIR_ANCHOR: ${{ needs.plan.outputs.repair_anchor }}' \
   "$WORKFLOW" >/dev/null
+grep -F "prepare-forward-bridge requires its target SHA" "$CLIENT" >/dev/null
+if grep -Eq 'PRODUCTION_FORWARD_BRIDGE_(SHA|TREE|BLOB)|prepare-forward-bridge requires bridge' \
+    "$CLIENT" "$WORKFLOW"; then
+  echo 'production forward client retained a future bridge pin or two-SHA CLI' >&2
+  exit 1
+fi
 grep -F '889d50f50328c89e25b3ef898e552df631b3222f|c64c3b46b6b6ba5c7ac7b04028932e09dae2116a|e3b5b5d89b3586668e36f987f03672415b5a0f37' \
   "$WORKFLOW" >/dev/null
 for maintenance_action in \
