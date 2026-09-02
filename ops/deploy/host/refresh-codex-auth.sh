@@ -73,6 +73,7 @@ fi
 
 MANIFEST_ACCOUNTS=()
 REQUIRE_MANIFEST_ACCOUNT_MEMBERSHIP=false
+AUTH_POOL_REVIEW_MAX_AGE_SECONDS=129600
 # This remains based on the default runtime cursor so every invocation shares
 # one install lock. Only the rotation cursor and selected-account name vary by
 # approved pool.
@@ -91,6 +92,14 @@ file_sha256() {
   fi
 }
 
+stream_sha256() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum | awk '{print $1}'
+  else
+    shasum -a 256 | awk '{print $1}'
+  fi
+}
+
 require_canonical_directory() {
   local directory=$1 label=$2 canonical
   [[ -d $directory && ! -L $directory ]] || fail "$label is missing or unsafe"
@@ -103,6 +112,20 @@ require_not_group_or_other_writable() {
   mode=$(stat -c '%a' "$path" 2>/dev/null || stat -f '%Lp' "$path")
   [[ $mode =~ ^[0-7]{3,4}$ ]] || fail "$label mode is invalid"
   (( (8#$mode & 022) == 0 )) || fail "$label is writable by group or other"
+}
+
+require_mode() {
+  local path=$1 expected=$2 label=$3 mode
+  mode=$(stat -c '%a' "$path" 2>/dev/null || stat -f '%Lp' "$path")
+  [[ $mode =~ ^[0-7]{3,4}$ ]] || fail "$label mode is invalid"
+  ((8#$mode == 8#$expected)) || fail "$label mode is invalid"
+}
+
+require_owner() {
+  local path=$1 expected=$2 label=$3 owner expected_owner
+  owner=$(stat -c '%u' "$path" 2>/dev/null || stat -f '%u' "$path")
+  expected_owner=$(id -u "$expected")
+  [[ $owner == "$expected_owner" ]] || fail "$label owner is invalid"
 }
 
 resolve_approved_account_auth() {
@@ -147,7 +170,8 @@ remove_auth_pool_directory() {
 
 materialize_auth_pool_snapshot() {
   local stage_dir digest_input generation snapshot_dir account selected
-  local manifest_next manifest_changed=true
+  local manifest_next approval_next approval_seal reviewed_at manifest_sha256
+  local manifest_changed=true
 
   install -d -m 0750 -o "$TARGET_DIR_OWNER" -g "$TARGET_GROUP" \
     "$POOL_SNAPSHOT_ROOT" "$POOL_SNAPSHOT_ROOT/snapshots"
@@ -189,6 +213,7 @@ materialize_auth_pool_snapshot() {
     find "$snapshot_dir" -type f -exec chmod "$TARGET_MODE" {} +
   fi
 
+  reviewed_at=${BROKER_REVIEWED_AT_EPOCH:?broker review time is required}
   manifest_next=$POOL_SNAPSHOT_ROOT/current.json.next.$$
   jq -n --arg generation "$generation" \
     --argjson accounts "$(printf '%s\n' "${available_accounts[@]}" | \
@@ -204,6 +229,37 @@ materialize_auth_pool_snapshot() {
     ' > "$manifest_next"
   chown "$TARGET_OWNER:$TARGET_GROUP" "$manifest_next"
   chmod "$TARGET_MODE" "$manifest_next"
+  manifest_sha256=$(file_sha256 "$manifest_next")
+  approval_seal=$(
+    {
+      printf '%s\0' 'schemaVersion=1' "$CONTROLLER_JOB_ID" "$REGISTRY_ROOT" \
+        "$reviewed_at" "$generation" "$manifest_sha256"
+      for account in "${available_accounts[@]}"; do
+        printf '%s\0' "$account" \
+          "snapshots/$generation/$account/auth.json" \
+          "$(file_sha256 "$snapshot_dir/$account/auth.json")"
+      done
+    } | stream_sha256
+  )
+  approval_next=$POOL_SNAPSHOT_ROOT/current.approval.json.next.$$
+  jq -n --arg snapshot_id "$generation" \
+    --arg controller_job_id "$CONTROLLER_JOB_ID" \
+    --arg registry_root "$REGISTRY_ROOT" \
+    --argjson reviewed_at "$reviewed_at" \
+    --arg manifest_sha256 "$manifest_sha256" \
+    --arg approval_seal "$approval_seal" '
+      {
+        schemaVersion: 1,
+        snapshotId: $snapshot_id,
+        controllerJobId: $controller_job_id,
+        registryRootDir: $registry_root,
+        reviewedAtEpoch: $reviewed_at,
+        poolManifestSha256: $manifest_sha256,
+        approvalSealSha256: $approval_seal
+      }
+    ' > "$approval_next"
+  chown "$TARGET_OWNER:$TARGET_GROUP" "$approval_next"
+  chmod "$TARGET_MODE" "$approval_next"
   if [[ -f $POOL_SNAPSHOT_ROOT/current.json && \
         ! -L $POOL_SNAPSHOT_ROOT/current.json ]] && \
       cmp -s "$manifest_next" "$POOL_SNAPSHOT_ROOT/current.json"; then
@@ -214,7 +270,169 @@ materialize_auth_pool_snapshot() {
   else
     rm -f "$manifest_next"
   fi
+  mv -f "$approval_next" "$POOL_SNAPSHOT_ROOT/current.approval.json"
   prune_expired_auth_pool_snapshots "$generation"
+}
+
+reuse_sealed_auth_after_status_failure() {
+  local manifest=$POOL_SNAPSHOT_ROOT/current.json approval_manifest
+  local manifest_data approval_data snapshot_id manifest_sha256
+  local reviewed_at approval_seal expected_seal snapshot_dir snapshots_dir
+  local account relative_path cached_auth cached_hash current_account now age
+  local account_directory cached_count=0
+  local -a cached_accounts=() cached_paths=() cached_hashes=()
+
+  require_canonical_directory "$POOL_SNAPSHOT_ROOT" 'auth pool snapshot root'
+  require_not_group_or_other_writable "$POOL_SNAPSHOT_ROOT" \
+    'auth pool snapshot root'
+  require_owner "$POOL_SNAPSHOT_ROOT" "$TARGET_DIR_OWNER" \
+    'auth pool snapshot root'
+  snapshots_dir=$POOL_SNAPSHOT_ROOT/snapshots
+  require_canonical_directory "$snapshots_dir" 'auth pool snapshots directory'
+  require_not_group_or_other_writable "$snapshots_dir" \
+    'auth pool snapshots directory'
+  require_owner "$snapshots_dir" "$TARGET_DIR_OWNER" \
+    'auth pool snapshots directory'
+  [[ -f $manifest && ! -L $manifest ]] || \
+    fail 'sealed auth pool manifest is missing or unsafe'
+  [[ $(realpath -e "$manifest") == "$manifest" ]] || \
+    fail 'sealed auth pool manifest is not canonical'
+  require_not_group_or_other_writable "$manifest" 'sealed auth pool manifest'
+  require_mode "$manifest" "$TARGET_MODE" 'sealed auth pool manifest'
+  require_owner "$manifest" "$TARGET_OWNER" 'sealed auth pool manifest'
+
+  manifest_data=$(jq -cer '
+      if (
+        type == "object" and
+        (keys | sort) == ["accounts", "schemaVersion", "snapshotId"] and
+        .schemaVersion == 1 and
+        (.snapshotId | type == "string" and test("^[0-9a-f]{64}$")) and
+        (.accounts | type == "array" and length > 0 and
+          all(.[];
+            type == "object" and (keys | sort) == ["id", "relativePath"] and
+            (.id | type == "string" and
+              test("^[A-Za-z0-9][A-Za-z0-9._-]*$")) and
+            (.relativePath | type == "string"))) and
+        ([.accounts[].id] | length == (unique | length))
+      ) then . else empty end
+    ' "$manifest") || fail 'sealed auth pool manifest contract is invalid'
+  manifest_sha256=$(file_sha256 "$manifest")
+  snapshot_id=$(jq -r '.snapshotId' <<<"$manifest_data")
+  approval_manifest=$POOL_SNAPSHOT_ROOT/current.approval.json
+  [[ -f $approval_manifest && ! -L $approval_manifest ]] || \
+    fail 'sealed broker approval manifest is missing or unsafe'
+  [[ $(realpath -e "$approval_manifest") == "$approval_manifest" ]] || \
+    fail 'sealed broker approval manifest is not canonical'
+  require_not_group_or_other_writable "$approval_manifest" \
+    'sealed broker approval manifest'
+  require_mode "$approval_manifest" "$TARGET_MODE" \
+    'sealed broker approval manifest'
+  require_owner "$approval_manifest" "$TARGET_OWNER" \
+    'sealed broker approval manifest'
+  approval_data=$(jq -cer --arg job_id "$CONTROLLER_JOB_ID" \
+    --arg registry_root "$REGISTRY_ROOT" --arg snapshot_id "$snapshot_id" \
+    --arg manifest_sha256 "$manifest_sha256" '
+      if (
+        type == "object" and
+        (keys | sort) == [
+          "approvalSealSha256", "controllerJobId", "poolManifestSha256",
+          "registryRootDir", "reviewedAtEpoch", "schemaVersion", "snapshotId"
+        ] and
+        .schemaVersion == 1 and
+        .controllerJobId == $job_id and
+        .registryRootDir == $registry_root and
+        .snapshotId == $snapshot_id and
+        .poolManifestSha256 == $manifest_sha256 and
+        (.reviewedAtEpoch | type == "number" and . == floor and . >= 0) and
+        (.approvalSealSha256 | type == "string" and test("^[0-9a-f]{64}$"))
+      ) then . else empty end
+    ' "$approval_manifest") || \
+    fail 'sealed broker approval manifest contract is invalid'
+  reviewed_at=$(jq -r '.reviewedAtEpoch' <<<"$approval_data")
+  approval_seal=$(jq -r '.approvalSealSha256' <<<"$approval_data")
+  now=$(date +%s)
+  [[ $now =~ ^[0-9]+$ && $reviewed_at -le $now ]] || \
+    fail 'sealed auth pool review time is invalid'
+  age=$((now - reviewed_at))
+  ((age <= AUTH_POOL_REVIEW_MAX_AGE_SECONDS)) || \
+    fail 'sealed auth pool review is too old to reuse'
+
+  snapshot_dir=$POOL_SNAPSHOT_ROOT/snapshots/$snapshot_id
+  require_canonical_directory "$snapshot_dir" 'sealed auth pool snapshot'
+  require_not_group_or_other_writable "$snapshot_dir" 'sealed auth pool snapshot'
+  require_owner "$snapshot_dir" "$TARGET_DIR_OWNER" 'sealed auth pool snapshot'
+  while IFS=$'\t' read -r account relative_path; do
+    [[ $relative_path == "snapshots/$snapshot_id/$account/auth.json" ]] || \
+      fail 'sealed auth pool account path is invalid'
+    if [[ $REQUIRE_MANIFEST_ACCOUNT_MEMBERSHIP == true ]]; then
+      is_manifest_account "$account" || \
+        fail 'sealed auth pool account is no longer in the approved pool manifest'
+    fi
+    cached_auth=$POOL_SNAPSHOT_ROOT/$relative_path
+    account_directory=${cached_auth%/auth.json}
+    require_canonical_directory "$account_directory" \
+      'sealed auth pool account directory'
+    require_not_group_or_other_writable "$account_directory" \
+      'sealed auth pool account directory'
+    require_owner "$account_directory" "$TARGET_DIR_OWNER" \
+      'sealed auth pool account directory'
+    [[ -f $cached_auth && ! -L $cached_auth ]] || \
+      fail 'sealed auth pool account file is missing or unsafe'
+    [[ $(realpath -e "$cached_auth") == "$cached_auth" ]] || \
+      fail 'sealed auth pool account file is not canonical'
+    require_not_group_or_other_writable "$cached_auth" \
+      'sealed auth pool account file'
+    require_mode "$cached_auth" "$TARGET_MODE" 'sealed auth pool account file'
+    require_owner "$cached_auth" "$TARGET_OWNER" 'sealed auth pool account file'
+    cached_hash=$(file_sha256 "$cached_auth")
+    cached_accounts+=("$account")
+    cached_paths+=("$relative_path")
+    cached_hashes+=("$cached_hash")
+    cached_count=$((cached_count + 1))
+  done < <(jq -r '.accounts[] | [.id, .relativePath] | @tsv' <<<"$manifest_data")
+  ((cached_count > 0)) || fail 'sealed auth pool has no accounts'
+  (( $(find "$snapshot_dir" -mindepth 2 -maxdepth 2 -type f \
+    -name auth.json | wc -l) == cached_count )) || \
+    fail 'sealed auth pool snapshot contains unexpected auth files'
+  expected_seal=$(
+    {
+      printf '%s\0' 'schemaVersion=1' "$CONTROLLER_JOB_ID" "$REGISTRY_ROOT" \
+        "$reviewed_at" "$snapshot_id" "$manifest_sha256"
+      for ((account_index = 0; account_index < cached_count; account_index += 1)); do
+        printf '%s\0' "${cached_accounts[$account_index]}" \
+          "${cached_paths[$account_index]}" "${cached_hashes[$account_index]}"
+      done
+    } | stream_sha256
+  )
+  [[ $expected_seal == "$approval_seal" ]] || \
+    fail 'sealed auth pool approval seal does not match'
+
+  [[ -f $ACCOUNT_NAME_FILE && ! -L $ACCOUNT_NAME_FILE ]] || \
+    fail 'current auth account identity is missing or unsafe'
+  require_not_group_or_other_writable "$ACCOUNT_NAME_FILE" \
+    'current auth account identity'
+  require_mode "$ACCOUNT_NAME_FILE" 0600 'current auth account identity'
+  require_owner "$ACCOUNT_NAME_FILE" "$TARGET_OWNER" \
+    'current auth account identity'
+  read -r current_account < "$ACCOUNT_NAME_FILE"
+  for account in "${cached_accounts[@]}"; do
+    if [[ $account == "$current_account" ]]; then
+      relative_path="snapshots/$snapshot_id/$account/auth.json"
+      cached_auth=$POOL_SNAPSHOT_ROOT/$relative_path
+      [[ -f $TARGET_DIR/auth.json && ! -L $TARGET_DIR/auth.json ]] || \
+        fail 'current auth is missing or unsafe'
+      [[ $(realpath -e "$TARGET_DIR/auth.json") == "$TARGET_DIR/auth.json" ]] || \
+        fail 'current auth is not canonical'
+      require_not_group_or_other_writable "$TARGET_DIR/auth.json" 'current auth'
+      require_mode "$TARGET_DIR/auth.json" "$TARGET_MODE" 'current auth'
+      require_owner "$TARGET_DIR/auth.json" "$TARGET_OWNER" 'current auth'
+      cmp -s "$cached_auth" "$TARGET_DIR/auth.json" || \
+        fail 'current auth does not match the sealed approved account'
+      echo 'broker status unavailable; retained sealed approved current auth' >&2
+      return 0
+    fi
+  done
+  fail 'current auth account is not in the sealed approved pool'
 }
 
 prune_expired_auth_pool_snapshots() {
@@ -380,8 +598,20 @@ rm -f "$TARGET_DIR/auth.json.next"
 install -d -m 0750 "$PROBE_WORKSPACE"
 install -d -m 0700 "$PROBE_TMP_ROOT"
 
-status_json=$(timeout 30 subscription-runtime-codex-goal tool codex_goal_accounts_status \
-  --args-json "{\"jobId\":\"$CONTROLLER_JOB_ID\",\"registryRootDir\":\"$REGISTRY_ROOT\",\"liveCheck\":false}")
+if status_json=$(timeout 30 subscription-runtime-codex-goal tool \
+  codex_goal_accounts_status \
+  --args-json "{\"jobId\":\"$CONTROLLER_JOB_ID\",\"registryRootDir\":\"$REGISTRY_ROOT\",\"liveCheck\":false}"); then
+  :
+else
+  status_exit=$?
+  case $status_exit in
+    75 | 124)
+      reuse_sealed_auth_after_status_failure
+      exit 0
+      ;;
+    *) fail "broker status failed with exit $status_exit" ;;
+  esac
+fi
 
 jq -e --arg job_id "$CONTROLLER_JOB_ID" --arg registry_root "$REGISTRY_ROOT" '
   (.ok == true)
@@ -401,6 +631,9 @@ jq -e --arg job_id "$CONTROLLER_JOB_ID" --arg registry_root "$REGISTRY_ROOT" '
       (.availableDeduped | type == "number" and . == floor and
         . == $available_count)))
 ' >/dev/null <<<"$status_json"
+BROKER_REVIEWED_AT_EPOCH=$(date +%s)
+[[ $BROKER_REVIEWED_AT_EPOCH =~ ^[0-9]+$ ]] || \
+  fail 'broker review time is invalid'
 
 available_accounts=()
 while IFS= read -r account; do
