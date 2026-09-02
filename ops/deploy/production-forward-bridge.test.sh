@@ -574,10 +574,8 @@ run_coherent_unlocked_host_descriptor() (
   fail() { exit 1; }
   source "$CONTROL/production-transition-b0-host-control.sh"
   exec {fake_fd}<>"$STATE/production-transition-b0-host.lock"
-  # shellcheck disable=SC2034 # consumed by the sourced host-control library
   PRODUCTION_TRANSITION_HOST_LOCK_FD=$fake_fd
   PRODUCTION_TRANSITION_HOST_LOCK_OWNER=$BASHPID
-  # shellcheck disable=SC2034 # consumed by the sourced host-control library
   PRODUCTION_TRANSITION_HOST_LOCK_ACTIVE=$BASHPID:$fake_fd
   production_transition_host_acquire_lock
 )
@@ -589,7 +587,6 @@ run_inherited_host_release() (
   source "$CONTROL/production-transition-b0-host-control.sh"
   production_transition_host_acquire_lock
   (
-    # shellcheck disable=SC2034 # consumed by the sourced host-control library
     PRODUCTION_TRANSITION_HOST_LOCK_OWNER=$BASHPID
     production_transition_host_release_lock
   )
