@@ -119,6 +119,14 @@ expected_registry=${SOCIAL_MONITOR_TEST_EXPECTED_REGISTRY_ROOT:?}
 if [[ -n ${SOCIAL_MONITOR_TEST_STATUS_LOG:-} ]]; then
   printf '%s\n' "$*" >> "$SOCIAL_MONITOR_TEST_STATUS_LOG"
 fi
+if [[ -n ${SOCIAL_MONITOR_TEST_STATUS_HANG_GATE:-} ]]; then
+  : > "${SOCIAL_MONITOR_TEST_STATUS_HANG_GATE}.entered"
+  /usr/bin/sleep 10 &
+  hang_pid=$!
+  trap 'kill "$hang_pid" 2>/dev/null || true; wait "$hang_pid" 2>/dev/null || true; : > "${SOCIAL_MONITOR_TEST_STATUS_HANG_GATE}.terminated"; exit 143' TERM
+  wait "$hang_pid"
+  exit 99
+fi
 if [[ -n ${SOCIAL_MONITOR_TEST_STATUS_EXIT:-} ]]; then
   exit "$SOCIAL_MONITOR_TEST_STATUS_EXIT"
 fi
@@ -209,6 +217,7 @@ SOCIAL_MONITOR_AUTH_PROBE_TMP_ROOT="$PROBE_TMP_ROOT" \
 SOCIAL_MONITOR_AUTH_POOL_SNAPSHOT_ROOT="$POOL_SNAPSHOT_ROOT" \
 SOCIAL_MONITOR_AUTH_POOL_POINTER="$POOL_POINTER" \
 SOCIAL_MONITOR_AUTH_POOL_REGISTRY_PREFIX="$PROJECT_ROOT/worker-jobs/" \
+SOCIAL_MONITOR_AUTH_BROKER_STATUS_TIMEOUT_SECONDS="${SOCIAL_MONITOR_AUTH_BROKER_STATUS_TIMEOUT_SECONDS:-30}" \
 SOCIAL_MONITOR_TEST_SYSTEM_FLOCK="$SYSTEM_FLOCK" \
 SOCIAL_MONITOR_TEST_EXPECTED_JOB_ID="${SOCIAL_MONITOR_TEST_EXPECTED_JOB_ID:-test-controller}" \
 SOCIAL_MONITOR_TEST_EXPECTED_REGISTRY_ROOT="${SOCIAL_MONITOR_TEST_EXPECTED_REGISTRY_ROOT:-$REGISTRY_ROOT}" \
@@ -421,8 +430,35 @@ sealed_approval_hash=$(cksum < "$POOL_SNAPSHOT_ROOT/current.approval.json")
 printf '{"account":"unapproved-new-bytes"}\n' > \
   "$AUTH_ROOT/account-m/auth.json"
 rm -f "$PROBE_LOG" "$CHANGED_MARKER"
-SOCIAL_MONITOR_TEST_STATUS_EXIT=124 SOCIAL_MONITOR_TEST_PROBE_LOG="$PROBE_LOG" \
-  run_pool_refresh >/dev/null 2>&1
+STATUS_HANG_GATE=$FIXTURE/status-hang
+STATUS_WATCHDOG_MARKER=$FIXTURE/status-timeout-watchdog-fired
+rm -f "$STATUS_HANG_GATE.entered" "$STATUS_HANG_GATE.terminated" \
+  "$STATUS_WATCHDOG_MARKER"
+SOCIAL_MONITOR_TEST_STATUS_HANG_GATE="$STATUS_HANG_GATE" \
+  SOCIAL_MONITOR_AUTH_BROKER_STATUS_TIMEOUT_SECONDS=1 \
+  SOCIAL_MONITOR_TEST_PROBE_LOG="$PROBE_LOG" \
+  run_pool_refresh >/dev/null 2>&1 &
+timeout_refresh_pid=$!
+(
+  /usr/bin/sleep 30
+  if kill -0 "$timeout_refresh_pid" 2>/dev/null; then
+    : > "$STATUS_WATCHDOG_MARKER"
+    kill -TERM "$timeout_refresh_pid" 2>/dev/null || true
+    /usr/bin/sleep 0.1
+    kill -KILL "$timeout_refresh_pid" 2>/dev/null || true
+  fi
+) &
+timeout_watchdog_pid=$!
+timeout_refresh_exit=0
+wait "$timeout_refresh_pid" || timeout_refresh_exit=$?
+kill "$timeout_watchdog_pid" 2>/dev/null || true
+wait "$timeout_watchdog_pid" 2>/dev/null || true
+if [[ -e $STATUS_WATCHDOG_MARKER || $timeout_refresh_exit != 0 ]]; then
+  echo 'broker status hang was not bounded by the entrypoint timeout' >&2
+  exit 1
+fi
+[[ -f $STATUS_HANG_GATE.entered ]]
+[[ -f $STATUS_HANG_GATE.terminated ]]
 [[ ! -e $PROBE_LOG ]]
 [[ ! -e $CHANGED_MARKER ]]
 [[ $(cksum < "$TARGET_DIR/auth.json") == "$pool_target_hash" ]]
@@ -443,24 +479,24 @@ fi
 cp "$sealed_account_copy" "$AUTH_ROOT/account-m/auth.json"
 
 mv "$POOL_SNAPSHOT_ROOT/current.json" "$FIXTURE/missing-current.json"
-if SOCIAL_MONITOR_TEST_STATUS_EXIT=124 run_pool_refresh >/dev/null 2>&1; then
-  echo 'status timeout reused auth without a sealed pool manifest' >&2
+if SOCIAL_MONITOR_TEST_STATUS_EXIT=75 run_pool_refresh >/dev/null 2>&1; then
+  echo 'transient status failure reused auth without a sealed pool manifest' >&2
   exit 1
 fi
 install -m 0400 "$sealed_manifest_copy" "$POOL_SNAPSHOT_ROOT/current.json"
 
 mv "$POOL_SNAPSHOT_ROOT/current.approval.json" \
   "$FIXTURE/missing-current-approval.json"
-if SOCIAL_MONITOR_TEST_STATUS_EXIT=124 run_pool_refresh >/dev/null 2>&1; then
-  echo 'status timeout reused auth without sealed broker approval' >&2
+if SOCIAL_MONITOR_TEST_STATUS_EXIT=75 run_pool_refresh >/dev/null 2>&1; then
+  echo 'transient status failure reused auth without sealed broker approval' >&2
   exit 1
 fi
 install -m 0400 "$sealed_approval_copy" \
   "$POOL_SNAPSHOT_ROOT/current.approval.json"
 
 install -m 0600 "$sealed_manifest_copy" "$POOL_SNAPSHOT_ROOT/current.json"
-if SOCIAL_MONITOR_TEST_STATUS_EXIT=124 run_pool_refresh >/dev/null 2>&1; then
-  echo 'status timeout reused an unsealed writable pool manifest' >&2
+if SOCIAL_MONITOR_TEST_STATUS_EXIT=75 run_pool_refresh >/dev/null 2>&1; then
+  echo 'transient status failure reused an unsealed writable pool manifest' >&2
   exit 1
 fi
 install -m 0400 "$sealed_manifest_copy" "$POOL_SNAPSHOT_ROOT/current.json"
@@ -469,8 +505,8 @@ jq '.approvalSealSha256 = ("0" * 64)' "$sealed_approval_copy" \
   > "$FIXTURE/tampered-seal.json"
 install -m 0400 "$FIXTURE/tampered-seal.json" \
   "$POOL_SNAPSHOT_ROOT/current.approval.json"
-if SOCIAL_MONITOR_TEST_STATUS_EXIT=124 run_pool_refresh >/dev/null 2>&1; then
-  echo 'status timeout reused a tampered approval seal' >&2
+if SOCIAL_MONITOR_TEST_STATUS_EXIT=75 run_pool_refresh >/dev/null 2>&1; then
+  echo 'transient status failure reused a tampered approval seal' >&2
   exit 1
 fi
 install -m 0400 "$sealed_approval_copy" \
@@ -479,8 +515,8 @@ install -m 0400 "$sealed_approval_copy" \
 chmod 0600 "$sealed_account_auth"
 printf '{"account":"tampered-snapshot"}\n' > "$sealed_account_auth"
 chmod 0400 "$sealed_account_auth"
-if SOCIAL_MONITOR_TEST_STATUS_EXIT=124 run_pool_refresh >/dev/null 2>&1; then
-  echo 'status timeout reused tampered sealed account bytes' >&2
+if SOCIAL_MONITOR_TEST_STATUS_EXIT=75 run_pool_refresh >/dev/null 2>&1; then
+  echo 'transient status failure reused tampered sealed account bytes' >&2
   exit 1
 fi
 chmod 0600 "$sealed_account_auth"
@@ -490,14 +526,14 @@ chmod 0400 "$sealed_account_auth"
 chmod 0600 "$TARGET_DIR/auth.json"
 printf '{"account":"tampered-current"}\n' > "$TARGET_DIR/auth.json"
 chmod 0400 "$TARGET_DIR/auth.json"
-if SOCIAL_MONITOR_TEST_STATUS_EXIT=124 run_pool_refresh >/dev/null 2>&1; then
-  echo 'status timeout reused current auth outside the sealed bytes' >&2
+if SOCIAL_MONITOR_TEST_STATUS_EXIT=75 run_pool_refresh >/dev/null 2>&1; then
+  echo 'transient status failure reused current auth outside the sealed bytes' >&2
   exit 1
 fi
 install -m 0400 "$sealed_target_copy" "$TARGET_DIR/auth.json"
 
-if SOCIAL_MONITOR_TEST_STATUS_EXIT=124 run_refresh >/dev/null 2>&1; then
-  echo 'status timeout reused auth sealed for a foreign pool identity' >&2
+if SOCIAL_MONITOR_TEST_STATUS_EXIT=75 run_refresh >/dev/null 2>&1; then
+  echo 'transient status failure reused auth sealed for a foreign pool identity' >&2
   exit 1
 fi
 [[ $(cksum < "$TARGET_DIR/auth.json") == "$pool_target_hash" ]]
@@ -505,8 +541,8 @@ fi
 jq '.accounts = ["account-a"]' "$POOL_JOB_DIRECTORY/job.json" \
   > "$FIXTURE/changed-pool-membership.json"
 mv "$FIXTURE/changed-pool-membership.json" "$POOL_JOB_DIRECTORY/job.json"
-if SOCIAL_MONITOR_TEST_STATUS_EXIT=124 run_pool_refresh >/dev/null 2>&1; then
-  echo 'status timeout reused an account removed from the approved pool' >&2
+if SOCIAL_MONITOR_TEST_STATUS_EXIT=75 run_pool_refresh >/dev/null 2>&1; then
+  echo 'transient status failure reused an account removed from the approved pool' >&2
   exit 1
 fi
 write_pool_manifest "$POOL_JOB_ID" social-monitor "$POOL_JOB_ROOT" \
@@ -515,10 +551,10 @@ write_pool_manifest "$POOL_JOB_ID" social-monitor "$POOL_JOB_ROOT" \
 reviewed_at=$(jq -r '.reviewedAtEpoch' \
   "$POOL_SNAPSHOT_ROOT/current.approval.json")
 stale_now=$((reviewed_at + 129601))
-if SOCIAL_MONITOR_TEST_STATUS_EXIT=124 \
+if SOCIAL_MONITOR_TEST_STATUS_EXIT=75 \
   SOCIAL_MONITOR_TEST_DATE_EPOCH="$stale_now" \
   run_pool_refresh >/dev/null 2>&1; then
-  echo 'status timeout reused auth beyond the broker review window' >&2
+  echo 'transient status failure reused auth beyond the broker review window' >&2
   exit 1
 fi
 [[ $(cksum < "$TARGET_DIR/auth.json") == "$pool_target_hash" ]]
