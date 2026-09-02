@@ -9,7 +9,9 @@ production_transition_marker_failpoint() { :; }
 
 production_transition_guarded_path_operation() {
   local action=$1 path=$2 expected=$3 canonical=${4:-} canonical_expected=${5:-}
-  python3 - "$action" "$path" "$expected" "$canonical" "$canonical_expected" <<'PY'
+  local canonical_identity=${6:-}
+  python3 - "$action" "$path" "$expected" "$canonical" "$canonical_expected" \
+    "$canonical_identity" <<'PY'
 import ctypes
 import errno
 import os
@@ -18,7 +20,7 @@ import subprocess
 import sys
 import uuid
 
-action, path, expected, canonical, canonical_expected = sys.argv[1:]
+action, path, expected, canonical, canonical_expected, canonical_identity = sys.argv[1:]
 expected_bytes = None if action == "read" else (expected + "\n").encode()
 libc = ctypes.CDLL(None, use_errno=True)
 AT_EMPTY_PATH = 0x1000
@@ -31,13 +33,14 @@ def die(message):
 def identity(st):
     return (st.st_dev, st.st_ino)
 
-def open_verified(candidate, content, allowed_modes=(0o600,)):
+def open_verified(candidate, content, allowed_modes=(0o600,), allowed_links=(1,)):
     try:
         fd = os.open(candidate, os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW)
     except OSError as error:
         die(f"unsafe opened path: {error}")
     st = os.fstat(fd)
     if not stat.S_ISREG(st.st_mode) or st.st_uid != os.geteuid() or \
+            st.st_gid != os.getegid() or st.st_nlink not in allowed_links or \
             stat.S_IMODE(st.st_mode) not in allowed_modes:
         os.close(fd)
         die("opened path type, owner, or mode differs")
@@ -108,9 +111,22 @@ def guarded_remove(candidate, fd, st):
             except FileNotFoundError:
                 pass
 
-source_fd, source_st, source_data = open_verified(path, expected_bytes)
+source_links = (1, 2) if action == "promote" else (1,)
+source_fd, source_st, source_data = open_verified(
+    path, expected_bytes, (0o600,), source_links)
 try:
     call_hook()
+    after_hook = os.fstat(source_fd)
+    os.lseek(source_fd, 0, os.SEEK_SET)
+    after_data = os.read(source_fd, 131073)
+    if identity(after_hook) != identity(source_st) or \
+            (after_hook.st_mode, after_hook.st_uid, after_hook.st_gid,
+             after_hook.st_nlink, after_hook.st_size, after_hook.st_mtime_ns,
+             after_hook.st_ctime_ns) != \
+            (source_st.st_mode, source_st.st_uid, source_st.st_gid,
+             source_st.st_nlink, source_st.st_size, source_st.st_mtime_ns,
+             source_st.st_ctime_ns) or after_data != source_data:
+        die("opened path changed after validation")
     if action == "read":
         if not same_path(path, source_st):
             die("opened path changed during read")
@@ -125,7 +141,16 @@ try:
         directory = os.path.dirname(canonical) or "."
         try:
             canonical_fd, canonical_st, _ = open_verified(
-                canonical, (canonical_expected + "\n").encode(), (0o600, 0o644))
+                canonical, (canonical_expected + "\n").encode(),
+                (0o600, 0o644), (1, 2))
+            if canonical_identity:
+                actual_identity = ":".join(str(value) for value in (
+                    canonical_st.st_dev, canonical_st.st_ino, canonical_st.st_mode,
+                    canonical_st.st_uid, canonical_st.st_gid, canonical_st.st_nlink,
+                    canonical_st.st_size, canonical_st.st_mtime_ns,
+                    canonical_st.st_ctime_ns))
+                if actual_identity != canonical_identity:
+                    die("guarded promotion canonical identity differs from validation")
         except SystemExit:
             canonical_fd = None
             canonical_st = None
@@ -133,6 +158,12 @@ try:
                 raise
         if not same_path(path, source_st):
             die("guarded promotion detected source replacement")
+        if source_st.st_nlink == 2 and (canonical_fd is None or
+                identity(source_st) != identity(canonical_st)):
+            die("guarded promotion rejected an independent source hardlink")
+        if canonical_fd is not None and canonical_st.st_nlink == 2 and \
+                identity(source_st) != identity(canonical_st):
+            die("guarded promotion rejected an independent canonical hardlink")
         if canonical_fd is None:
             result = libc.linkat(source_fd, b"", -100, os.fsencode(canonical), AT_EMPTY_PATH)
             if result != 0:
@@ -187,9 +218,9 @@ production_transition_remove_safe_duplicate() {
 }
 
 production_transition_promote_next() {
-  local next=$1 marker=$2 expected=$3 existing=${4:-}
+  local next=$1 marker=$2 expected=$3 existing=${4:-} canonical_identity=${5:-}
   production_transition_guarded_path_operation \
-    promote "$next" "$expected" "$marker" "$existing" || \
+    promote "$next" "$expected" "$marker" "$existing" "$canonical_identity" || \
     fail 'authenticated temporary record guarded promotion failed'
 }
 
@@ -208,6 +239,230 @@ production_transition_read_sha_next() {
   [[ $(wc -c < "$next") == 41 && $value =~ ^[0-9a-f]{40}$ ]] || \
     fail "$label is malformed"
   printf '%s\n' "$value"
+}
+
+production_transition_bootstrap_lock_validate() {
+  local fd=$1 path=$2 owner_pid=$3
+  python3 - "$fd" "$path" "$owner_pid" "$BASHPID" <<'PY'
+import os, stat, sys
+fd, path, owner, current = int(sys.argv[1]), sys.argv[2], sys.argv[3], sys.argv[4]
+if owner != current:
+    raise SystemExit("bootstrap lock belongs to another shell")
+opened = os.fstat(fd)
+current_path = os.lstat(path)
+if not stat.S_ISREG(opened.st_mode) or not stat.S_ISREG(current_path.st_mode) or \
+        (opened.st_dev, opened.st_ino) != (current_path.st_dev, current_path.st_ino) or \
+        opened.st_uid != os.geteuid() or opened.st_gid != os.getegid() or \
+        stat.S_IMODE(opened.st_mode) != 0o600 or opened.st_nlink != 1:
+    raise SystemExit("bootstrap lock descriptor or path is unsafe")
+PY
+}
+
+production_transition_bootstrap_lock_acquire() {
+  local lock=$1
+  [[ -z ${PRODUCTION_TRANSITION_BOOTSTRAP_LOCK_FD:-} &&
+     -z ${PRODUCTION_TRANSITION_BOOTSTRAP_LOCK_OWNER:-} ]] ||
+    fail 'PostgreSQL bootstrap marker inherited a lock descriptor'
+  umask 077
+  exec {PRODUCTION_TRANSITION_BOOTSTRAP_LOCK_FD}<>"$lock" ||
+    fail 'PostgreSQL bootstrap marker lock cannot be opened'
+  PRODUCTION_TRANSITION_BOOTSTRAP_LOCK_OWNER=$BASHPID
+  if ! production_transition_bootstrap_lock_validate \
+      "$PRODUCTION_TRANSITION_BOOTSTRAP_LOCK_FD" "$lock" \
+      "$PRODUCTION_TRANSITION_BOOTSTRAP_LOCK_OWNER"; then
+    exec {PRODUCTION_TRANSITION_BOOTSTRAP_LOCK_FD}>&-
+    unset PRODUCTION_TRANSITION_BOOTSTRAP_LOCK_FD
+    unset PRODUCTION_TRANSITION_BOOTSTRAP_LOCK_OWNER
+    fail 'PostgreSQL bootstrap marker lock is unsafe'
+  fi
+  if ! flock -w 3600 "$PRODUCTION_TRANSITION_BOOTSTRAP_LOCK_FD"; then
+    exec {PRODUCTION_TRANSITION_BOOTSTRAP_LOCK_FD}>&-
+    unset PRODUCTION_TRANSITION_BOOTSTRAP_LOCK_FD
+    unset PRODUCTION_TRANSITION_BOOTSTRAP_LOCK_OWNER
+    fail 'timed out waiting for PostgreSQL bootstrap marker lock'
+  fi
+  production_transition_bootstrap_lock_validate \
+    "$PRODUCTION_TRANSITION_BOOTSTRAP_LOCK_FD" "$lock" \
+    "$PRODUCTION_TRANSITION_BOOTSTRAP_LOCK_OWNER" || {
+      flock -u "$PRODUCTION_TRANSITION_BOOTSTRAP_LOCK_FD" || :
+      exec {PRODUCTION_TRANSITION_BOOTSTRAP_LOCK_FD}>&-
+      unset PRODUCTION_TRANSITION_BOOTSTRAP_LOCK_FD
+      unset PRODUCTION_TRANSITION_BOOTSTRAP_LOCK_OWNER
+      fail 'PostgreSQL bootstrap marker lock changed while acquiring it'
+    }
+}
+
+production_transition_bootstrap_lock_release() {
+  local lock=$1 fd=${PRODUCTION_TRANSITION_BOOTSTRAP_LOCK_FD:-}
+  local owner=${PRODUCTION_TRANSITION_BOOTSTRAP_LOCK_OWNER:-}
+  [[ $fd =~ ^[0-9]+$ && $owner == "$BASHPID" ]] ||
+    fail 'PostgreSQL bootstrap marker lock release is not owned by this shell'
+  production_transition_bootstrap_lock_validate "$fd" "$lock" "$owner" ||
+    fail 'PostgreSQL bootstrap marker lock changed before release'
+  flock -u "$fd" || fail 'PostgreSQL bootstrap marker lock cannot be unlocked'
+  eval "exec $fd>&-"
+  unset PRODUCTION_TRANSITION_BOOTSTRAP_LOCK_FD
+  unset PRODUCTION_TRANSITION_BOOTSTRAP_LOCK_OWNER
+}
+
+production_transition_bootstrap_lock_abandon() {
+  local fd=${PRODUCTION_TRANSITION_BOOTSTRAP_LOCK_FD:-}
+  [[ $fd =~ ^[0-9]+$ && \
+     ${PRODUCTION_TRANSITION_BOOTSTRAP_LOCK_OWNER:-} == "$BASHPID" ]] || \
+    fail 'PostgreSQL bootstrap marker unsafe lock cannot be closed by this shell'
+  eval "exec $fd>&-"
+  unset PRODUCTION_TRANSITION_BOOTSTRAP_LOCK_FD
+  unset PRODUCTION_TRANSITION_BOOTSTRAP_LOCK_OWNER
+}
+
+production_transition_prepare_bootstrap_next() {
+  python3 - "$1" "$2" "$3" "${REPO:-}" <<'PY'
+import os, stat, subprocess, sys
+marker, staged, target, repo = sys.argv[1:]
+expected = (target + "\n").encode()
+directory = os.path.dirname(marker) or "."
+
+def identity(st): return st.st_dev, st.st_ino
+def opened(path, modes, links):
+    try:
+        fd = os.open(path, os.O_RDWR | os.O_CLOEXEC | os.O_NOFOLLOW)
+    except FileNotFoundError:
+        return None
+    st = os.fstat(fd)
+    try: now = os.lstat(path)
+    except OSError:
+        os.close(fd); raise SystemExit("marker path disappeared")
+    if not stat.S_ISREG(st.st_mode) or identity(st) != identity(now) or \
+            st.st_uid != os.geteuid() or st.st_gid != os.getegid() or \
+            stat.S_IMODE(st.st_mode) not in modes or st.st_nlink not in links:
+        os.close(fd); raise SystemExit("marker type, identity, metadata, or links differ")
+    data = os.read(fd, 42)
+    if len(data) != 41 or data[-1:] != b"\n" or \
+            any(c not in b"0123456789abcdef" for c in data[:-1]):
+        os.close(fd); raise SystemExit("marker content or framing differs")
+    return fd, st, data
+
+canonical = opened(marker, (0o600, 0o644), (1, 2))
+next_record = opened(staged, (0o600, 0o644), (1, 2))
+if canonical and canonical[1].st_nlink == 2:
+    if not next_record or identity(canonical[1]) != identity(next_record[1]):
+        raise SystemExit("committed marker has an independent hardlink")
+if next_record and next_record[1].st_nlink == 2:
+    if not canonical or identity(canonical[1]) != identity(next_record[1]):
+        raise SystemExit("temporary marker has an independent hardlink")
+existing = canonical[2][:-1].decode() if canonical else ""
+canonical_identity = ""
+if canonical:
+    st = canonical[1]
+    canonical_identity = ":".join(str(value) for value in (
+        st.st_dev, st.st_ino, st.st_mode, st.st_uid, st.st_gid, st.st_nlink,
+        st.st_size, st.st_mtime_ns, st.st_ctime_ns))
+if canonical and next_record and identity(canonical[1]) == identity(next_record[1]):
+    if canonical[2] != expected:
+        raise SystemExit("same-inode marker residue differs from target")
+    os.unlink(staged)
+    os.fsync(os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC))
+    next_record = None
+elif canonical and canonical[2] == expected and next_record:
+    # A killed exchange can leave the committed target at the canonical name
+    # and its exact ancestor at .next. It is safe only when it is the value the
+    # caller authenticated as the prior canonical marker.
+    ancestor = next_record[2][:-1].decode()
+    if not repo or subprocess.run(
+            ["git", "-C", repo, "merge-base", "--is-ancestor", ancestor, target],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode != 0:
+        raise SystemExit("exchange residue is not a target ancestor")
+    os.unlink(staged)
+    os.fsync(os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC))
+    next_record = None
+if canonical and canonical[2] == expected and next_record is None:
+    print(existing + "|" + canonical_identity); raise SystemExit(0)
+if next_record is None:
+    fd = os.open(staged, os.O_RDWR | os.O_CREAT | os.O_EXCL |
+                 os.O_CLOEXEC | os.O_NOFOLLOW, 0o600)
+    os.write(fd, expected); os.fsync(fd); os.close(fd)
+else:
+    if next_record[2] != expected:
+        raise SystemExit("temporary marker belongs to another target")
+    os.fchmod(next_record[0], 0o600)
+    os.fsync(next_record[0]); os.close(next_record[0])
+if canonical: os.close(canonical[0])
+os.fsync(os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC))
+print(existing + "|" + canonical_identity)
+PY
+}
+
+production_transition_commit_postgres_pool_bootstrap() {
+  local sha=$1 mode=${2:-normal} marker=$STATE/postgres-pool-bootstrap.sha
+  local next=$marker.next lock=$STATE/postgres-pool-bootstrap.lock existing status
+  local prepared canonical_identity
+  [[ $sha =~ ^[0-9a-f]{40}$ ]] || fail 'PostgreSQL bootstrap marker SHA is invalid'
+  [[ $mode == normal || $mode == force-advance ]] ||
+    fail 'PostgreSQL bootstrap marker advance mode is invalid'
+  production_transition_bootstrap_lock_acquire "$lock"
+  if ! prepared=$(production_transition_prepare_bootstrap_next \
+      "$marker" "$next" "$sha"); then
+    production_transition_bootstrap_lock_release "$lock"
+    fail 'PostgreSQL bootstrap marker temporary path is invalid'
+  fi
+  existing=${prepared%%|*}
+  canonical_identity=${prepared#*|}
+  if [[ $existing == "$sha" && ! -e $next && ! -L $next ]]; then
+    if postgres_pool_bootstrap_physically_installed "$sha" "$sha"; then
+      production_transition_bootstrap_lock_release "$lock"
+      return 0
+    fi
+    production_transition_bootstrap_lock_release "$lock"
+    fail 'PostgreSQL bootstrap marker has no installed effect'
+  fi
+  if ! postgres_pool_bootstrap_physically_installed "$sha" "$sha"; then
+    production_transition_bootstrap_lock_release "$lock"
+    fail 'PostgreSQL bootstrap marker has no installed effect'
+  fi
+  if production_transition_host_failpoint forward-bootstrap-next; then
+    :
+  else
+    status=$?
+    production_transition_bootstrap_lock_release "$lock"
+    return "$status"
+  fi
+  if ! production_transition_bootstrap_lock_validate \
+      "$PRODUCTION_TRANSITION_BOOTSTRAP_LOCK_FD" "$lock" \
+      "$PRODUCTION_TRANSITION_BOOTSTRAP_LOCK_OWNER"; then
+    production_transition_bootstrap_lock_abandon
+    fail 'PostgreSQL bootstrap marker lock changed before promotion'
+  fi
+  if production_transition_promote_next \
+      "$next" "$marker" "$sha" "$existing" "$canonical_identity"; then
+    :
+  else
+    production_transition_bootstrap_lock_release "$lock"
+    fail 'PostgreSQL bootstrap marker guarded promotion failed'
+  fi
+  if production_transition_host_failpoint forward-bootstrap-renamed; then
+    :
+  else
+    status=$?
+    production_transition_bootstrap_lock_release "$lock"
+    return "$status"
+  fi
+  if ! production_transition_bootstrap_lock_validate \
+      "$PRODUCTION_TRANSITION_BOOTSTRAP_LOCK_FD" "$lock" \
+      "$PRODUCTION_TRANSITION_BOOTSTRAP_LOCK_OWNER"; then
+    production_transition_bootstrap_lock_abandon
+    fail 'PostgreSQL bootstrap marker lock changed after promotion'
+  fi
+  if ! sync -f "$marker" || ! sync -f "$STATE"; then
+    production_transition_bootstrap_lock_release "$lock"
+    fail 'PostgreSQL bootstrap marker durability failed'
+  fi
+  if [[ $(production_transition_read_regular_file "$marker" \
+      'PostgreSQL bootstrap marker') != "$sha" ]] ||
+      ! postgres_pool_bootstrap_physically_installed "$sha" "$sha"; then
+    production_transition_bootstrap_lock_release "$lock"
+    fail 'PostgreSQL bootstrap marker did not commit the installed entrypoint'
+  fi
+  production_transition_bootstrap_lock_release "$lock"
 }
 
 production_transition_commit_effect_sha_marker() {
