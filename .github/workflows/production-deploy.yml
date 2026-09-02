@@ -73,8 +73,8 @@ jobs:
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
         with: {fetch-depth: 0}
-      - name: Verify exact Release B target locally before production contact
-        run: bash ops/deploy/github-production-deploy-client.sh verify-release-b-target "$GITHUB_SHA"
+      - name: Verify exact forward target locally before production contact
+        run: bash ops/deploy/github-production-deploy-client.sh verify-forward-target "$GITHUB_SHA"
       - name: Configure restricted production SSH
         env:
           DEPLOY_KEY: ${{ secrets.PRODUCTION_SSH_PRIVATE_KEY }}
@@ -141,8 +141,8 @@ jobs:
         with: {fetch-depth: 0}
       - name: Validate frozen three-phase graph before production SSH
         run: bash ops/deploy/production-release-a-transition.sh validate "$GITHUB_SHA"
-      - name: Verify exact Release B target locally before production contact
-        run: bash ops/deploy/github-production-deploy-client.sh verify-release-b-target "$GITHUB_SHA"
+      - name: Verify exact forward target locally before production contact
+        run: bash ops/deploy/github-production-deploy-client.sh verify-forward-target "$GITHUB_SHA"
       - name: Configure restricted production SSH
         env:
           DEPLOY_KEY: ${{ secrets.PRODUCTION_SSH_PRIVATE_KEY }}
@@ -498,11 +498,11 @@ jobs:
             ops/deploy/backend-image-rescue-lib.test.sh ops/deploy/backend-image-rescue-reconcile-test-support.sh
             ops/deploy/x-collector-image-deploy-lib.sh
             ops/deploy/x-collector-image-deploy-lib.test.sh
-            ops/deploy/deploy-control-bridge-lib.sh
+            ops/deploy/deploy-control-bridge-lib.sh ops/deploy/production-transition-b0-host-control.sh ops/deploy/production-transition-marker-lib.sh ops/deploy/production-forward-bridge-host-lib.sh ops/deploy/production-forward-bridge.test.sh
             ops/deploy/deploy-control-lib.sh
             ops/deploy/deploy-control-lib.test.sh
             ops/deploy/github-production-deploy-client.sh
-            ops/deploy/github-production-deploy-client.test.sh
+            ops/deploy/github-production-deploy-client.test.sh ops/deploy/github-production-forward-bridge-client-lib.sh
             ops/deploy/postgres-pool-atomic-bootstrap-lib.sh
             ops/deploy/postgres-pool-atomic-bootstrap-lib.test.sh
             ops/deploy/postgres-runtime-deploy-lib.sh
@@ -565,6 +565,7 @@ jobs:
           bash ops/deploy/verify-production-shellcheck-baseline.sh \
             ops/deploy/social-monitor-production-deploy.sh \
             "${deploy_shell_files[@]}"
+          bash ops/deploy/production-forward-bridge.test.sh
           python3 -m py_compile ops/deploy/verify-postgres-runtime-topology.py
           python3 -m py_compile ops/deploy/verify-postgres-pool-release-contract.py
           if [[ $POSTGRES_POOL_BOOTSTRAP == uninstalled && \
@@ -905,15 +906,14 @@ jobs:
         with: {fetch-depth: 0}
       - name: Validate graph and immutable manifests before Release B SSH
         run: bash ops/deploy/production-release-a-transition.sh validate "$GITHUB_SHA"
-      - name: Reconcile the old controller, deploy its reviewed bridge, and reopen SSH
+      - name: Deploy the exact production forward bridge and reopen SSH
         env:
           DEPLOY_KEY: ${{ secrets.PRODUCTION_SSH_PRIVATE_KEY }}
           KNOWN_HOSTS: ${{ secrets.PRODUCTION_SSH_KNOWN_HOSTS }}
         run: |
           set -euo pipefail
-          client=ops/deploy/github-production-deploy-client.sh; controller_release=8b4aeb31e855ed379349a4e4827600009e174132; bridge_release=b89950632b0cefa4f7b58b687cdfd6e6cd912a04; bridge_target=05744f99b2d13e47a64a7ff12ea2ab8893f5e88a
-          current_main=77313ea03a3bac7d2298f4021d58124c810d291f; bash "$client" configure
-          bash "$client" prepare-release-b-bridge "$controller_release" "$bridge_release" "$current_main" "$bridge_target" "$GITHUB_SHA"
+          client=ops/deploy/github-production-deploy-client.sh
+          bash "$client" configure; bash "$client" prepare-forward-bridge "$GITHUB_SHA"
           bash "$client" cleanup; bash "$client" configure
       - name: Freshly require A-complete or B-complete
         id: b_state

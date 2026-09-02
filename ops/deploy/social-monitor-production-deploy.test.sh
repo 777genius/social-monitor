@@ -33,7 +33,7 @@ cp "$SCRIPT_DIR/deploy-control-lib.sh" "$SCRIPT_DIR/deploy-control-bridge-lib.sh
 cp "$SCRIPT_DIR/backend-runtime-health-lib.sh" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/backend-image-rescue-lib.sh" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/backend-image-rescue-pin-cleanup-lib.sh" "$REPO/ops/deploy/"
-cp "$SCRIPT_DIR/docker-maintenance-lib.sh" "$REPO/ops/deploy/"
+cp "$SCRIPT_DIR/docker-maintenance-lib.sh" "$SCRIPT_DIR/production-transition-marker-lib.sh" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/daily-runner-image-bootstrap-lib.sh" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/x-collector-image-deploy-lib.sh" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/reader-summary-recovery-maintenance-lib.sh" "$REPO/ops/deploy/"

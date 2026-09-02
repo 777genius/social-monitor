@@ -204,6 +204,7 @@ clear_host_state() {
   if [[ -n ${PRODUCTION_TRANSITION_HOST_LOCK_FD:-} ]]; then
     eval "exec ${PRODUCTION_TRANSITION_HOST_LOCK_FD}>&-"
     unset PRODUCTION_TRANSITION_HOST_LOCK_FD
+    unset PRODUCTION_TRANSITION_HOST_LOCK_OWNER
   fi
   /usr/bin/find "$STATE" -maxdepth 1 -type f \
     \( -name "$PRODUCTION_TRANSITION_HOST_STATE_FILE" -o \

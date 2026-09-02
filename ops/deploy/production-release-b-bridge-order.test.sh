@@ -134,8 +134,9 @@ exercise_fixture_cleanup_race() {
   race_fixture=$(mktemp -d \
     "$FIXTURE_TEMP_PARENT/release-b-cleanup-race.XXXXXX")
   completion=$FIXTURE/cleanup-race-child-complete
-  # The group leader exits before its delayed writer. Removing first recreates
-  # the old race deterministically; group-aware cleanup waits, then removes.
+  # Keep the group leader attached to its delayed writer. Some hosted init
+  # processes do not promptly reap orphaned group members, so an orphan-based
+  # fixture would make the group-aware cleanup probe hang after work completes.
   setsid bash -c '
     (
       sleep 0.1
@@ -143,6 +144,7 @@ exercise_fixture_cleanup_race() {
       printf "%s\n" complete > "$1/repo/maintenance-complete"
       : > "$2"
     ) &
+    wait
   ' release-b-cleanup-child "$race_fixture" "$completion" &
   child_pid=$!
   register_fixture_child "$child_pid" "$child_pid" \
@@ -313,19 +315,20 @@ for exact_pin in \
   "RELEASE_B_REVIEWED_TARGET_TREE=$BRIDGE_TARGET_TREE"; do
   grep -Fqx "$exact_pin" "$CLIENT"
 done
-[[ $(grep -Fo "controller_release=$BASE" "$WORKFLOW" | wc -l) == 1 ]]
-[[ $(grep -Fo "current_main=$CURRENT_MAIN" "$WORKFLOW" | wc -l) == 1 ]]
-[[ $(grep -Fo "bridge_release=$BRIDGE" "$WORKFLOW" | wc -l) == 1 ]]
-[[ $(grep -Fo "bridge_target=$BRIDGE_TARGET" "$WORKFLOW" | wc -l) == 1 ]]
+if grep -Eq 'PRODUCTION_FORWARD_BRIDGE_(SHA|TREE|BLOB)|bridge_release=' \
+    "$WORKFLOW" "$SOURCE_REPO/ops/deploy/github-production-forward-bridge-client-lib.sh"; then
+  echo 'production forward workflow or client contains a future bridge identity' >&2
+  exit 1
+fi
 
 python3 - "$WORKFLOW" <<'PY'
 import pathlib
 import sys
 
 workflow = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")
-local_gate = 'run: bash ops/deploy/github-production-deploy-client.sh verify-release-b-target "$GITHUB_SHA"'
+local_gate = 'run: bash ops/deploy/github-production-deploy-client.sh verify-forward-target "$GITHUB_SHA"'
 if workflow.count(local_gate) != 2:
-    raise SystemExit("local Release B identity gate must cover both workflow roots")
+    raise SystemExit("local forward identity gate must cover both workflow roots")
 
 def job(name, next_name):
     start = workflow.index(f"  {name}:\n")
@@ -345,7 +348,7 @@ release_a = job("release_a", "deploy")
 if "      - plan\n" not in release_a:
     raise SystemExit("Release A production mutation is not gated by the verified plan job")
 commands = [
-    'bash "$client" prepare-release-b-bridge "$controller_release" "$bridge_release" "$current_main" "$bridge_target" "$GITHUB_SHA"',
+    'bash "$client" prepare-forward-bridge "$GITHUB_SHA"',
     'bash "$client" cleanup; bash "$client" configure',
     'inspect-plan "$GITHUB_SHA"',
     'bash ops/deploy/github-production-deploy-client.sh deploy "$GITHUB_SHA"',

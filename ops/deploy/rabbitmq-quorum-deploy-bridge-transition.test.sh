@@ -5,8 +5,6 @@ PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 PROJECT_ROOT=$(cd "$SCRIPT_DIR/../.." && pwd)
 BRIDGE_RELEASE_SHA=$(git -C "$PROJECT_ROOT" rev-parse '472d835c^{commit}')
-ROLLING_ENTRYPOINT_BRIDGE_SHA=$(git -C "$PROJECT_ROOT" rev-parse 'b25e5c3d97a6cab3a87ba93c4fa6d1c38fe41c2b^{commit}')
-ROLLING_ENTRYPOINT_BRIDGE_PARENT=f4471dd9c9ddb414b4ad502bb8ee7df7306964c6
 FIXTURE=$(mktemp -d "${TMPDIR:-/tmp}/rabbitmq-quorum-deploy-bridge.XXXXXX")
 trap 'rm -rf "$FIXTURE"' EXIT
 
@@ -64,18 +62,15 @@ BRIDGE_CONTROL_PATHS=(
 )
 
 assert_rolling_entrypoint_bridge() {
-  local parent delta bridge_blob current_blob
-  parent=$(git -C "$PROJECT_ROOT" rev-parse "$ROLLING_ENTRYPOINT_BRIDGE_SHA^")
-  [[ $parent == "$ROLLING_ENTRYPOINT_BRIDGE_PARENT" ]] || {
-    echo 'rolling entrypoint bridge parent drifted' >&2
-    exit 1
-  }
-  delta=$(git -C "$PROJECT_ROOT" diff --name-only --no-renames \
-    "$parent" "$ROLLING_ENTRYPOINT_BRIDGE_SHA" --)
-  [[ $delta == ops/deploy/social-monitor-production-deploy.sh ]] || {
-    echo 'rolling entrypoint bridge is not control-only' >&2
-    exit 1
-  }
+  local current bridge_blob current_blob
+  current=$(git -C "$PROJECT_ROOT" rev-parse 'HEAD^{commit}')
+  REPO=$PROJECT_ROOT
+  fail() { printf 'rolling-entrypoint-bridge-error: %s\n' "$*" >&2; exit 1; }
+  # shellcheck source=ops/deploy/production-forward-bridge-host-lib.sh
+  source "$SCRIPT_DIR/production-forward-bridge-host-lib.sh"
+  production_forward_derive_graph "$current"
+  production_forward_verify_target_graph "$PRODUCTION_FORWARD_B" "$current"
+  ROLLING_ENTRYPOINT_BRIDGE_SHA=$PRODUCTION_FORWARD_W
   bridge_blob=$(git -C "$PROJECT_ROOT" rev-parse \
     "$ROLLING_ENTRYPOINT_BRIDGE_SHA:ops/deploy/social-monitor-production-deploy.sh")
   current_blob=$(git -C "$PROJECT_ROOT" rev-parse \
@@ -132,7 +127,7 @@ assert_real_bridge_target_assets() {
         expected_digest=ac82c9cfebf88646e9cdc21dcb822c8cc50409832da24a726cd9307cc2be8bcb
         alternate_digest=101b80c5c0ee6ea5ff4e908e5661a7c2bbd03ad2048fb7eb8b5d26966b0e4860
         reviewed_digest=cc869266046dbe9edc590e83944e93bab8ebdf19e8ef66f4917c896bbd48fcde
-        current_release_digest=08f439740046afcfc62e02d99388902a1ba9ebf4290ff62c008d967e8f0d3317
+        current_release_digest=d9260a34a3d64cc4ba2b3799266ca97a0e7b58cb8ae4649bb1f2e11e26791b47
         ;;
       ops/deploy/deploy-control-lib.sh)
         expected_digest=d18854822ef36d5571289e72c7691fff8db4a7d5c516787441a733d6960a88a9
@@ -155,7 +150,7 @@ assert_real_bridge_target_assets() {
         release_b_candidate_digest=bea119047fbbd2295185c84e0adeb773dc852e63b951daf5c7a831356a73a371
         release_b_sealed_digest=1718617b4bbb92f4dbfd92a59fcc482ef7a098734730b8460d21aaced44386c2
         rolling_repair_digest=1945f2b07f110d16694affc15c66b4589d294b81a4e593a9680dacf11fbc5d4d
-        current_release_digest=0db3fa488279b09a7d1530b126b309daaa8fd0db4787bb8fa2f9727d02aa7c7d
+        current_release_digest=4d5083cf3af758640633482b89d6644e463dc717ea3deb4bf72b908bbe26451d
         ;;
     esac
     if [[ $path == ops/deploy/social-monitor-production-deploy.sh ]]; then
