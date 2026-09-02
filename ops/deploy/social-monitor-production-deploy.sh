@@ -289,6 +289,7 @@ source_deploy_library() {
   source_reviewed_deploy_library "$reviewed_sha" "ops/deploy/$library" "$label"
 }
 source_deploy_library docker-maintenance-lib.sh 'docker maintenance library'
+source_deploy_library production-transition-marker-lib.sh 'transition marker library'
 # Ordering marker for legacy fixture checks: source "$daily_runner_bootstrap_library".
 source_deploy_library \
   daily-runner-image-bootstrap-lib.sh \
@@ -468,7 +469,6 @@ component_changed() {
   fi
   ! git -C "$REPO" diff --quiet "$marker" "$target" -- "$@"
 }
-
 print_plan() {
   local sha=$1
   fetch_main
@@ -496,33 +496,34 @@ print_plan() {
     "$frontend" "$backend" "$backend_base" "$control" "$x_collector" \
     "$postgres_pool_bootstrap" "$postgres_pool_bootstrap_sha"
 }
-postgres_pool_bootstrap_installed() {
-  local target=$1 marker=$STATE/postgres-pool-bootstrap.sha
-  local installed=$CONTROL/github-production-deploy.sh
-  local wrapper=$CONTROL/github-production-deploy-wrapper.sh
-  local marker_sha relative_path expected
-  [[ -s $marker && ! -L $marker && -f $installed && ! -L $installed ]] || return 1
-  marker_sha=$(tr -d '\n' < "$marker")
-  [[ $marker_sha =~ ^[0-9a-f]{40}$ ]] || return 1
-  git -C "$REPO" cat-file -e "$marker_sha^{commit}" 2>/dev/null || return 1
-  git -C "$REPO" merge-base --is-ancestor "$marker_sha" "$target" || return 1
-  expected=$(git -C "$REPO" show "$marker_sha:ops/deploy/social-monitor-production-deploy.sh" | sha256sum | awk '{print $1}') || return 1
+postgres_pool_bootstrap_physically_installed() {
+  local target=$1 asset_sha=${2:-} marker=$STATE/postgres-pool-bootstrap.sha
+  local installed=$CONTROL/github-production-deploy.sh wrapper=$CONTROL/github-production-deploy-wrapper.sh
+  local relative_path expected; if [[ -z $asset_sha ]]; then
+    [[ -s $marker && ! -L $marker ]] || return 1; asset_sha=$(tr -d '\n' < "$marker")
+  fi; [[ $asset_sha =~ ^[0-9a-f]{40}$ && -f $installed && ! -L $installed ]] || return 1
+  git -C "$REPO" cat-file -e "$asset_sha^{commit}" 2>/dev/null || return 1
+  git -C "$REPO" merge-base --is-ancestor "$asset_sha" "$target" || return 1
+  expected=$(git -C "$REPO" show "$asset_sha:ops/deploy/social-monitor-production-deploy.sh" | sha256sum | awk '{print $1}') || return 1
   [[ $(sha256sum "$installed" | awk '{print $1}') == "$expected" ]] || return 1
   if git -C "$REPO" cat-file -e \
-    "$marker_sha:ops/deploy/postgres-pool-atomic-bootstrap-lib.sh" 2>/dev/null; then
+    "$asset_sha:ops/deploy/postgres-pool-atomic-bootstrap-lib.sh" 2>/dev/null; then
     [[ -f $wrapper && ! -L $wrapper ]] || return 1
-    expected=$(git -C "$REPO" show "$marker_sha:ops/deploy/social-monitor-production-ssh-wrapper.sh" | sha256sum | awk '{print $1}') || return 1
+    expected=$(git -C "$REPO" show "$asset_sha:ops/deploy/social-monitor-production-ssh-wrapper.sh" | sha256sum | awk '{print $1}') || return 1
     [[ $(sha256sum "$wrapper" | awk '{print $1}') == "$expected" ]] || return 1
   fi
   for relative_path in ops/deploy/postgres-runtime-deploy-lib.sh \
     ops/deploy/verify-postgres-runtime-topology.py \
     ops/deploy/production-runtime/compose.postgres-runtime.yml; do
-    git -C "$REPO" cat-file -e "$marker_sha:$relative_path" 2>/dev/null || return 1
+    git -C "$REPO" cat-file -e "$asset_sha:$relative_path" 2>/dev/null || return 1
   done
 }
+postgres_pool_bootstrap_installed() {
+  postgres_pool_bootstrap_physically_installed "$1" || { \
+    declare -F production_forward_postgres_handoff_installed >/dev/null && production_forward_postgres_handoff_installed "$1"; }
+}
 validate_frontend_archive() {
-  local archive=$1
-  local archive_size
+  local archive=$1 archive_size
   [[ -s $archive ]] || fail 'frontend archive is empty'
   archive_size=$(wc -c < "$archive")
   [[ $archive_size -le 209715200 ]] || fail 'frontend archive exceeds 200 MiB'
@@ -530,7 +531,6 @@ validate_frontend_archive() {
 import pathlib
 import sys
 import tarfile
-
 archive = sys.argv[1]
 member_count = 0
 expanded_size = 0
@@ -553,7 +553,6 @@ if member_count == 0:
     raise SystemExit("frontend archive has no entries")
 PY
 }
-
 upload_frontend() (
   local sha=$1
   fetch_main
@@ -606,7 +605,6 @@ upload_frontend() (
   mv "$extracted" "$target"
   printf 'uploaded=%s\n' "$sha"
 )
-
 advance_integration() {
   local sha=$1
   [[ -z $(git -C "$REPO" status --porcelain) ]] || fail 'integration worktree is dirty'
@@ -618,7 +616,6 @@ advance_integration() {
   git -C "$REPO" merge-base --is-ancestor "$current" "$sha" || fail 'integration worktree cannot fast-forward'
   git -C "$REPO" merge --ff-only --quiet "$sha"
 }
-
 changed_between() {
   local from=$1
   local to=$2
@@ -952,7 +949,6 @@ deploy_release_runtime_transaction() {
     )
   fi
 }
-
 sync_control_entrypoint() {
   # Installed source: social-monitor-production-deploy.sh
   # Installed destination: github-production-deploy.sh
@@ -965,14 +961,7 @@ sync_control_script() {
 }
 
 commit_postgres_pool_bootstrap() {
-  local sha=$1 mode=${2:-normal} marker=$STATE/postgres-pool-bootstrap.sha
-  local next=$marker.next
-  [[ $mode == normal || $mode == force-advance ]] || fail 'PostgreSQL bootstrap marker advance mode is invalid'
-  if [[ $mode == normal ]] && postgres_pool_bootstrap_installed "$sha"; then return 0; fi
-  [[ ! -e $next && ! -L $next ]] || fail 'PostgreSQL bootstrap marker temporary path is invalid'
-  printf '%s\n' "$sha" > "$next"; mv -f "$next" "$marker"
-  [[ -f $marker && ! -L $marker ]] && postgres_pool_bootstrap_installed "$sha" || \
-    fail 'PostgreSQL bootstrap marker did not commit the installed entrypoint'
+  production_transition_commit_postgres_pool_bootstrap "$@"
 }
 [[ ${BASH_SOURCE[0]} == "$0" ]] || return 0
 case ${action:-} in
