@@ -261,8 +261,6 @@ prepare_production_forward_bridge() {
   fi
   print_plan
   production_forward_bridge_is_installed "$anchor" "$target" && return 0
-  [[ $target == "$anchor" ]] || \
-    fail 'post-forward target does not have installed bounded markers'
   if plan_is_approved_production_forward_handoff "$anchor" "$bridge"; then
     return 0
   fi
