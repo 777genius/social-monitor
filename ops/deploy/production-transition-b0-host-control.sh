@@ -280,9 +280,8 @@ production_transition_host_acquire_lock() {
   if [[ -n $fd || -n ${PRODUCTION_TRANSITION_HOST_LOCK_OWNER:-} || -n ${PRODUCTION_TRANSITION_HOST_LOCK_CUSTODY:-} ]]; then
     if [[ ! $fd =~ ^[0-9]+$ || \
           ${PRODUCTION_TRANSITION_HOST_LOCK_OWNER:-} != "$BASHPID" || \
-          $PRODUCTION_TRANSITION_HOST_CONTROL_CONTEXT_OWNER != "$BASHPID" || \
           ${PRODUCTION_TRANSITION_HOST_LOCK_CUSTODY:-} != \
-            "$PRODUCTION_TRANSITION_HOST_CONTROL_CONTEXT_OWNER:$fd:$PRODUCTION_TRANSITION_HOST_CONTROL_CONTEXT_NONCE" ]]; then
+            "$BASHPID:$fd:$PRODUCTION_TRANSITION_HOST_CONTROL_CONTEXT_NONCE" ]]; then
       if [[ $fd =~ ^[0-9]+$ ]] && \
           production_transition_host_validate_lock "$fd" "$lock"; then
         eval "exec $fd>&-"
@@ -319,7 +318,7 @@ production_transition_host_acquire_lock() {
       unset PRODUCTION_TRANSITION_HOST_LOCK_FD PRODUCTION_TRANSITION_HOST_LOCK_OWNER
       production_transition_host_fail 'transition host lock changed while acquiring it'
     }
-    PRODUCTION_TRANSITION_HOST_LOCK_CUSTODY="$PRODUCTION_TRANSITION_HOST_CONTROL_CONTEXT_OWNER:$fd:$PRODUCTION_TRANSITION_HOST_CONTROL_CONTEXT_NONCE"
+    PRODUCTION_TRANSITION_HOST_LOCK_CUSTODY="$BASHPID:$fd:$PRODUCTION_TRANSITION_HOST_CONTROL_CONTEXT_NONCE"
   fi
   production_transition_host_reconcile_state
 }
@@ -336,9 +335,8 @@ production_transition_host_release_lock() {
   local fd=${PRODUCTION_TRANSITION_HOST_LOCK_FD:-}
   if [[ ! $fd =~ ^[0-9]+$ || \
         ${PRODUCTION_TRANSITION_HOST_LOCK_OWNER:-} != "$BASHPID" || \
-        $PRODUCTION_TRANSITION_HOST_CONTROL_CONTEXT_OWNER != "$BASHPID" || \
         ${PRODUCTION_TRANSITION_HOST_LOCK_CUSTODY:-} != \
-          "$PRODUCTION_TRANSITION_HOST_CONTROL_CONTEXT_OWNER:$fd:$PRODUCTION_TRANSITION_HOST_CONTROL_CONTEXT_NONCE" ]]; then
+          "$BASHPID:$fd:$PRODUCTION_TRANSITION_HOST_CONTROL_CONTEXT_NONCE" ]]; then
     if [[ $fd =~ ^[0-9]+$ ]] && \
         production_transition_host_validate_lock "$fd" "$lock"; then
       eval "exec $fd>&-"
@@ -356,7 +354,8 @@ production_transition_host_release_lock() {
 }
 production_transition_host_require_scheduler_finalized() {
   local hold=$STATE/$PRODUCTION_TRANSITION_HOST_SCHEDULER_HOLD_FILE
-  [[ ! -e $hold && ! -L $hold ]] || \
+  local staged=$hold.next
+  [[ ! -e $hold && ! -L $hold && ! -e $staged && ! -L $staged ]] || \
     production_transition_host_fail \
       'production mutation is held until exact deploy-transition replay finalizes the scheduler hold'
 }

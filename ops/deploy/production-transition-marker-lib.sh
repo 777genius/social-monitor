@@ -6,18 +6,10 @@ production_transition_guarded_path_operation() {
   local canonical_identity=${6:-}
   python3 - "$action" "$path" "$expected" "$canonical" "$canonical_expected" \
     "$canonical_identity" <<'PY'
-import ctypes
-import errno
-import os
-import stat
-import subprocess
-import sys
-action, path, expected, canonical, canonical_expected, canonical_identity = sys.argv[1:]
-expected_bytes = None if action == "read" else (expected + "\n").encode()
-libc = ctypes.CDLL(None, use_errno=True)
-AT_EMPTY_PATH = 0x1000
-AT_SYMLINK_FOLLOW = 0x400
-RENAME_EXCHANGE = 2
+import ctypes, errno, glob, hashlib, os, stat, subprocess, sys
+action, path, expected, canonical, canonical_expected, canonical_identity = sys.argv[1:]; expected_bytes = None if action == "read" else (expected + "\n").encode()
+libc = ctypes.CDLL(None, use_errno=True); RENAME_EXCHANGE = 2
+AT_EMPTY_PATH = 0x1000; AT_SYMLINK_FOLLOW = 0x400
 def die(message):
     raise SystemExit(message)
 def identity(st):
@@ -74,21 +66,25 @@ def boundary_hook(boundary, candidate):
     hook = os.environ.get("PRODUCTION_TRANSITION_PATH_BOUNDARY_HOOK", "")
     if os.environ.get("SOCIAL_MONITOR_DEPLOY_TEST_MODE") == "1" and hook:
         subprocess.run([hook, boundary, candidate, canonical], check=True)
-def call_hook():
+def call_hook(stage="before-action"):
+    if os.environ.get("SOCIAL_MONITOR_DEPLOY_TEST_MODE") == "1" and os.environ.get("PRODUCTION_TRANSITION_PATH_OPERATION_KILL_STAGE") == stage: os.kill(os.getpid(), 9)
     hook = os.environ.get("PRODUCTION_TRANSITION_PATH_OPERATION_HOOK", "")
     if os.environ.get("SOCIAL_MONITOR_DEPLOY_TEST_MODE") == "1" and hook:
-        subprocess.run([hook, action, path, canonical], check=True)
+        subprocess.run([hook, action, path, canonical, stage], check=True)
 def recover_removal(candidate, content):
-    directory = os.path.dirname(candidate) or "."
-    intent, residue = candidate + ".remove.intent", candidate + ".remove.data"
-    intent_exists = os.path.lexists(intent)
-    residue_exists = os.path.lexists(residue)
+    directory = os.path.dirname(candidate) or "."; intent, residue = candidate + ".remove.intent", candidate + ".remove.data"
+    expected_content = content[-1] if isinstance(content, tuple) else content; retired_prefix = candidate + ".retired." + hashlib.sha256(expected_content).hexdigest(); intent_exists = os.path.lexists(intent); residue_exists = os.path.lexists(residue)
     if residue_exists and not intent_exists: die("guarded removal data has no intent")
     if not intent_exists: return False
-    intent_fd, intent_st, _ = open_verified(
-        intent, content, (0o600, 0o644), (1, 2, 3))
+    intent_fd, intent_st, _ = open_verified(intent, content, (0o600, 0o644), (1, 2, 3, 4))
+    retired = retired_prefix + "." + str(intent_st.st_ino)
+    if os.path.lexists(retired_prefix): die("guarded removal retirement receipt is preoccupied")
+    if os.path.lexists(retired):
+        retired_fd, retired_st, _ = open_verified(retired, content, (0o600, 0o644), (1, 2, 3, 4));
+        os.close(retired_fd) if identity(retired_st) == identity(intent_st) else die("guarded removal retired data differs from intent")
     if os.path.lexists(candidate) and residue_exists: die("guarded removal has both source and data")
     if os.path.lexists(candidate):
+        call_hook("remove-after-open-before-retire")
         fd, st, _ = open_verified(candidate, content, (0o600, 0o644), (2, 3))
         try:
             if identity(st) != identity(intent_st): die("guarded removal source differs from intent")
@@ -99,10 +95,11 @@ def recover_removal(candidate, content):
         finally: os.close(fd)
         residue_exists = True
     if residue_exists:
-        fd, st, _ = open_verified(residue, content, (0o600, 0o644), (2, 3))
+        fd, st, data = open_verified(residue, content, (0o600, 0o644), (2, 3, 4))
         try:
-            if identity(st) != identity(intent_st) or not same_path(residue, st):
-                die("guarded removal data differs from intent")
+            if identity(st) != identity(intent_st) or not same_path(residue, st): die("guarded removal data differs from intent")
+            if not os.path.lexists(retired): os.link(residue, retired, follow_symlinks=False); fsync_directory(directory)
+            call_hook("remove-after-retire-before-fsync")
             os.unlink(residue)
             fsync_directory(directory)
             boundary_hook("remove-unlinked", candidate)
@@ -110,8 +107,7 @@ def recover_removal(candidate, content):
     if os.path.lexists(candidate) or os.path.lexists(residue): die("guarded removal retained an uncertain path")
     try:
         if not same_path(intent, intent_st): die("guarded removal intent changed before completion")
-        os.unlink(intent)
-        fsync_directory(directory)
+        os.unlink(intent); fsync_directory(directory)
         boundary_hook("remove-complete", candidate)
     finally: os.close(intent_fd)
     return True
@@ -119,8 +115,12 @@ def guarded_remove(candidate, fd, st, content):
     directory = os.path.dirname(candidate) or "."
     intent, residue = candidate + ".remove.intent", candidate + ".remove.data"
     if os.path.lexists(intent) or os.path.lexists(residue): die("guarded removal found an unreconciled state")
-    current_st = os.fstat(fd)
-    if not same_path(candidate, current_st): die("guarded removal detected replacement")
+    if not same_path(candidate, current_st := os.fstat(fd)): die("guarded removal detected replacement")
+    call_hook("remove-after-open-before-retire")
+    if not same_path(candidate, current_st):
+        replacement_fd, replacement_st, _ = open_verified(candidate, content, (0o600,), (1,)); retired = candidate + ".retired." + hashlib.sha256(content).hexdigest() + "." + str(replacement_st.st_ino); os.rename(candidate, retired); fsync_directory(directory); os.close(replacement_fd); die("guarded removal retired a replacement")
+    call_hook("remove-before-retire")
+    if not same_path(candidate, current_st): die("guarded removal detected replacement after hook")
     result = libc.linkat(fd, b"", -100, os.fsencode(intent), AT_EMPTY_PATH)
     if result != 0:
         error = ctypes.get_errno()
@@ -134,19 +134,19 @@ def guarded_remove(candidate, fd, st, content):
     fsync_directory(directory)
     boundary_hook("remove-intent", candidate)
     recover_removal(candidate, content)
-recovery_content = expected_bytes
-if action == "promote" and canonical_expected:
-    recovery_content = (expected_bytes, (canonical_expected + "\n").encode())
+recovery_content = (expected_bytes, (canonical_expected + "\n").encode()) if action == "promote" and canonical_expected else expected_bytes
 if action in ("remove", "promote") and recover_removal(path, recovery_content):
     if action == "remove": raise SystemExit(0)
     if action == "promote" and canonical:
-        canonical_fd, _, _ = open_verified(canonical, expected_bytes)
-        os.close(canonical_fd)
-        raise SystemExit(0)
+        canonical_fd, _, _ = open_verified(canonical, expected_bytes, (0o600, 0o644), (1, 2, 3, 4))
+        os.close(canonical_fd); raise SystemExit(0)
     die("guarded removal residue conflicts with requested operation")
-source_links = (1, 2) if action == "promote" else (1,)
-source_fd, source_st, source_data = open_verified(
-    path, expected_bytes, (0o600,), source_links)
+paired_sibling = (path.endswith(".next") and os.path.exists(path[:-5])) or (not path.endswith(".next") and os.path.exists(path + ".next"))
+source_links = (1, 2) if action == "promote" or action == "remove" and (path.endswith(".sha") or path.endswith(".sha.next") or glob.glob(path + ".retired.*") or glob.glob(path + ".next.retired.*") or paired_sibling) else ((1, 2, 3, 4) if action == "read" and (path.endswith(".sha") or path.endswith(".sha.next") or glob.glob(path + ".retired.*") or glob.glob(path + ".next.retired.*") or paired_sibling) else (1,))
+source_fd, source_st, source_data = open_verified(path, expected_bytes, (0o600,), source_links)
+if action == "read" and source_st.st_nlink > 1 and (path.endswith("postgres-pool-bootstrap.sha") or glob.glob(path + ".retired.*") or glob.glob(path + ".next.retired.*") or paired_sibling):
+    digest = hashlib.sha256(source_data).hexdigest(); retired = glob.glob(path + ".retired." + digest + "*") + glob.glob(path + ".next.retired." + digest + "*")
+    if not any(os.path.isfile(candidate) and same_path(candidate, source_st) for candidate in retired) and not (paired_sibling and same_path(path[:-5] if path.endswith(".next") else path + ".next", source_st)): die("read path has an unaccounted hardlink")
 try:
     call_hook()
     after_hook = os.fstat(source_fd)
@@ -175,7 +175,7 @@ try:
         try:
             canonical_fd, canonical_st, _ = open_verified(
                 canonical, (canonical_expected + "\n").encode(),
-                (0o600, 0o644), (1, 2))
+                (0o600, 0o644), (1, 2, 3, 4))
             if canonical_identity:
                 actual_identity = ":".join(str(value) for value in (
                     canonical_st.st_dev, canonical_st.st_ino, canonical_st.st_mode,
@@ -189,14 +189,15 @@ try:
             canonical_st = None
             if os.path.lexists(canonical):
                 raise
+        call_hook("promote-after-open-before-retire")
         if not same_path(path, source_st):
             die("guarded promotion detected source replacement")
         if source_st.st_nlink == 2 and (canonical_fd is None or
                 identity(source_st) != identity(canonical_st)):
             die("guarded promotion rejected an independent source hardlink")
-        if canonical_fd is not None and canonical_st.st_nlink == 2 and \
-                identity(source_st) != identity(canonical_st):
+        if canonical_fd is not None and canonical_st.st_nlink == 2 and identity(source_st) != identity(canonical_st) and not any(os.path.isfile(candidate) and same_path(candidate, canonical_st) for candidate in glob.glob(canonical + ".retired." + hashlib.sha256((canonical_expected + "\n").encode()).hexdigest() + "*") + glob.glob(canonical + ".next.retired." + hashlib.sha256((canonical_expected + "\n").encode()).hexdigest() + "*")):
             die("guarded promotion rejected an independent canonical hardlink")
+        call_hook("promote-before-replace"); check_fd, _, _ = open_verified(path, expected_bytes, (0o600,), (1, 2, 3, 4)); os.close(check_fd)
         if canonical_fd is None:
             result = libc.linkat(source_fd, b"", -100, os.fsencode(canonical), AT_EMPTY_PATH)
             if result != 0:
@@ -213,26 +214,25 @@ try:
                 die("guarded promotion canonical identity differs")
             fsync_directory(directory)
             boundary_hook("promote-linked", path)
+            call_hook("promote-after-link-before-next-retire")
             guarded_remove(path, source_fd, source_st, expected_bytes)
         else:
             try:
                 if not same_path(canonical, canonical_st):
-                    die("guarded promotion detected canonical replacement")
+                    replacement_fd, replacement_st, _ = open_verified(canonical, (canonical_expected + "\n").encode(), (0o600, 0o644), (1,)); retired = canonical + ".retired." + hashlib.sha256((canonical_expected + "\n").encode()).hexdigest() + "." + str(replacement_st.st_ino); os.rename(canonical, retired); fsync_directory(directory); os.close(replacement_fd); die("guarded promotion retired a canonical replacement")
                 if identity(source_st) == identity(canonical_st):
                     guarded_remove(path, source_fd, source_st, expected_bytes)
                 else:
                     exchange(path, canonical)
                     fsync_directory(directory)
                     boundary_hook("promote-exchanged", path)
-                    if not same_path(canonical, source_st) or not same_path(path, canonical_st):
-                        exchange(path, canonical)
-                        fsync_directory(directory)
-                        die("guarded promotion exchanged a replacement")
+                    call_hook("promote-after-retire-before-fsync")
+                    if not same_path(canonical, source_st) or not same_path(path, canonical_st): exchange(path, canonical); fsync_directory(directory); die("guarded promotion exchanged a replacement")
                     guarded_remove(path, canonical_fd, canonical_st,
                                    (canonical_expected + "\n").encode())
             finally:
                 os.close(canonical_fd)
-        canonical_fd_check, canonical_st_check, _ = open_verified(canonical, expected_bytes)
+        canonical_fd_check, canonical_st_check, _ = open_verified(canonical, expected_bytes, (0o600, 0o644), (1, 2, 3, 4))
         os.close(canonical_fd_check)
         fsync_directory(directory)
     else:
@@ -371,10 +371,10 @@ def opened(path, modes, links):
             any(c not in b"0123456789abcdef" for c in data[:-1]):
         os.close(fd); raise SystemExit("marker content or framing differs")
     return fd, st, data
-canonical = opened(marker, (0o600, 0o644), (1, 2, 3))
-next_record = opened(staged, (0o600, 0o644), (1, 2, 3))
-intent = opened(staged + ".remove.intent", (0o600, 0o644), (1, 2, 3))
-residue = opened(staged + ".remove.data", (0o600, 0o644), (1, 2, 3))
+canonical = opened(marker, (0o600, 0o644), (1, 2, 3, 4))
+next_record = opened(staged, (0o600, 0o644), (1, 2, 3, 4))
+intent = opened(staged + ".remove.intent", (0o600, 0o644), (1, 2, 3, 4))
+residue = opened(staged + ".remove.data", (0o600, 0o644), (1, 2, 3, 4))
 if residue and not intent: raise SystemExit("marker removal data has no intent")
 if intent:
     records = [record for record in (next_record, residue, intent) if record]; recovery = records[0]
@@ -393,8 +393,8 @@ if intent:
         st.st_size, st.st_mtime_ns, st.st_ctime_ns))
     print(canonical[2][:-1].decode() + "|" + canonical_identity + "|" + recovery[2][:-1].decode())
     raise SystemExit(0)
-if canonical and canonical[1].st_nlink == 2:
-    if not next_record or identity(canonical[1]) != identity(next_record[1]):
+if canonical and canonical[1].st_nlink == 2 and next_record:
+    if identity(canonical[1]) != identity(next_record[1]):
         raise SystemExit("committed marker has an independent hardlink")
 if next_record and next_record[1].st_nlink == 2:
     if not canonical or identity(canonical[1]) != identity(next_record[1]):
@@ -546,8 +546,7 @@ production_transition_commit_effect_sha_marker() {
   if [[ -e $next || -L $next ]]; then
     residue=$(production_transition_read_sha_next \
       "$next" "$label temporary marker") || return 1
-    [[ $residue == "$target" ]] || \
-      fail "$label temporary marker belongs to another effect"
+    [[ $residue == "$target" ]] || { git -C "$REPO" merge-base --is-ancestor "$residue" "$target" >/dev/null 2>&1 || fail "$label temporary marker belongs to another effect"; "$proof_function" "$target" || fail "$label temporary marker has no matching durable effect"; production_transition_remove_safe_duplicate "$next" "$residue" "$label temporary marker"; return 0; }
     "$proof_function" "$target" || \
       fail "$label temporary marker has no matching durable effect"
     if [[ $existing == "$target" ]]; then
@@ -666,11 +665,12 @@ production_transition_reconcile_scheduler_hold_next() {
     fi
   fi
   if [[ $phase == held ]]; then
-    [[ -z $existing ]] || \
-      fail 'held scheduler temporary record has an existing durable hold'
+    if [[ $existing == "$release" ]]; then
+      production_transition_remove_safe_duplicate "$next" "$next_record" 'scheduler held predecessor after release commit'; sync -f "$STATE"; return 0
+    fi
+    [[ -z $existing ]] || fail 'held scheduler temporary record has an existing durable hold'
   else
-    [[ $existing == "$held" ]] || \
-      fail 'scheduler release temporary record lacks its exact held predecessor'
+    [[ $existing == "$held" ]] || { [[ -z $existing && ${PRODUCTION_TRANSITION_RECONCILE_ORPHAN_RELEASE:-} == 1 ]] && production_transition_remove_safe_duplicate "$next" "$next_record" 'orphan scheduler release temporary record' && sync -f "$STATE" && return 0; fail 'scheduler release temporary record lacks its exact held predecessor'; }
   fi
   production_transition_marker_failpoint "scheduler-hold-$phase-before-marker"
   production_transition_promote_next \
@@ -794,7 +794,7 @@ production_transition_finalize_scheduler_hold() {
     fail 'scheduler hold finalization requires the frozen host terminal hook'
   production_transition_require_host_terminal_receipt "$target" || \
     fail 'scheduler hold finalization requires the exact host terminal receipt'
-  marker=$(production_transition_scheduler_hold_path) || return
+  marker=$(production_transition_scheduler_hold_path) || return; PRODUCTION_TRANSITION_RECONCILE_ORPHAN_RELEASE=1 production_transition_reconcile_scheduler_hold_next "$authorization" || fail 'scheduler hold predecessor reconciliation failed'
   complete=$(production_transition_consumption_record complete "$authorization") || return
   [[ $(production_transition_read_consumption_record) == "$complete" ]] || \
     fail 'scheduler hold finalization requires terminal transition consumption'

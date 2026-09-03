@@ -485,8 +485,13 @@ for implementation in host-control installed-entrypoint; do
   printf '%s\n' "$d1_sha" > "$next"; chmod 0600 "$next"
   expect_sigkill "$implementation killed after replace" \
     run_guarded_marker_kill promote-after-retire-before-fsync "$old_sha"
-  [[ ! -e $marker && $(cat "$next") == "$d1_sha" ]]
-  compgen -G "$marker.retired.*" >/dev/null
+  if [[ -e $marker ]]; then
+    [[ $(cat "$marker") == "$d1_sha" && $(cat "$next") == "$old_sha" && \
+       $(stat -c %i "$marker") != $(stat -c %i "$next") ]]
+  else
+    [[ $(cat "$next") == "$d1_sha" ]]
+    compgen -G "$marker.retired.*" >/dev/null
+  fi
   run_marker_path_operation "$implementation"
   [[ $(cat "$marker") == "$d1_sha" && ! -e $next ]]
   compgen -G "$next.retired.*" >/dev/null
@@ -552,8 +557,14 @@ run_generic_marker_residues() (
   expect_failure 'scheduler release predecessor retirement crash' \
     production_transition_write_scheduler_hold release-authorized "$authorization"
   unset PRODUCTION_TRANSITION_PATH_OPERATION_KILL_STAGE
-  [[ ! -e $marker && $(cat "$next") == "$release" ]]
-  compgen -G "$marker.retired.*" >/dev/null
+  if [[ -e $marker ]]; then
+    [[ $(cat "$marker") == "$release" && -e $next && $(cat "$next") == "$held" ]]
+  else
+    [[ $(cat "$next") == "$release" ]]
+    compgen -G "$marker.retired.*" >/dev/null
+  fi
+  production_transition_reconcile_scheduler_hold_next "$authorization"
+  [[ ! -e $next && $(cat "$marker") == "$release" ]]
   production_transition_begin_scheduler_hold "$authorization"
   [[ ! -e $next && $(cat "$marker") == "$release" ]]
   rm -f "$marker" "$next" "$marker"*.retired.* "$next".retired.*
@@ -668,6 +679,7 @@ remove_receipt=$(compgen -G "$remove_post.retired.*" | head -1)
 [[ -f $remove_sentinel && ! -e $remove_post && -f $remove_receipt && \
    $(stat -c %i "$remove_receipt") != "$remove_inode" && \
    $(cat "$remove_receipt") == "$d1_sha" ]]
+unset HOOK_ATTACK HOOK_REPLACEMENT HOOK_SENTINEL
 
 occupied=$fixture/occupied-remove
 printf '%s\n' "$d1_sha" > "$occupied"; chmod 0600 "$occupied"
