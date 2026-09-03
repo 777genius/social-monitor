@@ -28,6 +28,7 @@ concurrency:
 
 jobs:
   publish:
+    environment: production
     permissions:
       actions: read
       contents: write
