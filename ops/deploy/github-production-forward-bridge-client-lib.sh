@@ -10,7 +10,7 @@ PRODUCTION_FORWARD_MAX_FIRST_PARENT_COMMITS=256
 # Reviewed immutable H-owned authority seal. This is a blob identity, not a
 # generated B/R/W/H/F commit identity. The seal closes over every B authority
 # blob before any one of those blobs can be loaded.
-PRODUCTION_FORWARD_AUTHORITY_SEAL_BLOB=ca772f5e24dfcb3b68dd677bb41ba760b72ca987
+PRODUCTION_FORWARD_AUTHORITY_SEAL_BLOB=3627701bec5b87607796460c29adf4636ea3cf03
 PRODUCTION_FORWARD_AUTHORITY_SEAL_PATH=ops/deploy/production-forward-bridge-authority.blobs
 
 production_forward_git() {

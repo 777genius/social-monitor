@@ -1,5 +1,5 @@
 100644 be1747a940d760be556d87a0d21393434547bd4e ops/deploy/deploy-control-bridge-lib.sh
 100644 1334bb662b665b4b77ea06fb93be0efd6917d05e ops/deploy/production-forward-bridge-host-lib.sh
-100644 1c1d2bf7ebb09eb54d1eb805a1f90285ba1b80ff ops/deploy/production-forward-bridge.blobs
+100644 4df2b974d0829833e15febaeb8d8198926df55d0 ops/deploy/production-forward-bridge.blobs
 100644 5c653521d5dda20f9f876e1be9db6d930b549b8e ops/deploy/production-transition-b0-host-control.sh
 100644 e934a37935ec35954cd95544db3d9ab7a391dc59 ops/deploy/production-transition-marker-lib.sh
