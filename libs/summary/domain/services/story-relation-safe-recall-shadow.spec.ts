@@ -262,12 +262,24 @@ describe("story relation safe-recall shadow candidates", () => {
       evidence: [...items].reverse(),
       primaryCandidates,
     });
+    const detachedOverflow = buildStoryRelationSafeRecallShadowCandidates({
+      selection,
+      evidence: items,
+      primaryCandidates: forward.candidates,
+    });
 
     expect(primaryCandidates).toEqual([]);
     expect(forward.candidates).toHaveLength(
       STORY_RELATION_SAFE_RECALL_SHADOW_MAX_CANDIDATES,
     );
     expect(reversed).toEqual(forward);
+    expect(detachedOverflow.candidates).not.toHaveLength(0);
+    expect(detachedOverflow.candidates.every((candidate) =>
+      !forward.candidates.some((authoritative) =>
+        authoritative.leftFeedItemId === candidate.leftFeedItemId &&
+        authoritative.rightFeedItemId === candidate.rightFeedItemId,
+      ),
+    )).toBe(true);
     expect(forward.aggregates).toContainEqual({
       reasonCode: "excluded_global_cap",
       candidatePolicyVersion:

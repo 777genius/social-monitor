@@ -102,7 +102,7 @@ describe("reader summary daily story relation production wiring", () => {
     expect(frozenRuntime.storyCommands).toHaveLength(0);
   });
 
-  it("records cross-source relation without mutating the immutable slate", async () => {
+  it("reclusters an approved attested relation before composing the slate", async () => {
     const result = await selectDailyEvidence({
       sameStory: true,
       attested: true,
@@ -110,17 +110,17 @@ describe("reader summary daily story relation production wiring", () => {
     });
 
     expect(result.runtime.storyCommands).toHaveLength(1);
-    expect(result.selection.clusters).toHaveLength(2);
+    expect(result.selection.clusters).toHaveLength(1);
     expect(result.selection.clusters.map((cluster) => cluster.providerKeys))
-      .toEqual([["hacker-news"], ["reddit"]]);
+      .toEqual([["hacker-news", "reddit"]]);
     expect(result.selection.approvedSameStoryRelations).toEqual([{
       leftFeedItemId: "typescript-hn",
       rightFeedItemId: "typescript-reddit",
       confidence: 0.98,
     }]);
     expect(buildReaderSummaryCoveragePlan(result.selection).lead).toMatchObject({
-      feedItemIds: ["typescript-hn"],
-      providerKeys: ["hacker-news"],
+      feedItemIds: ["typescript-hn", "typescript-reddit"],
+      providerKeys: ["hacker-news", "reddit"],
     });
     expect(result.record).toHaveBeenCalledWith(expect.objectContaining({
       taskRole: "story_relation",
@@ -132,6 +132,29 @@ describe("reader summary daily story relation production wiring", () => {
         reasoningEffort: "high",
       }),
     }));
+  });
+
+  it.each([
+    {
+      name: "Cursor and SpaceX deployment",
+      firstTitle: "Cursor deployed at SpaceX",
+      secondTitle: "SpaceX deploying Cursor",
+    },
+    {
+      name: "strong Claude watermark report",
+      firstTitle: "Claude's snippets are watermarked",
+      secondTitle: "Watermarking Claude Code output",
+    },
+  ])("groups an attested $name through the runtime verifier", async (scenario) => {
+    const result = await selectDailyEvidence({
+      ...scenario,
+      sameStory: true,
+      attested: true,
+    });
+
+    expect(result.runtime.storyCommands).toHaveLength(1);
+    expect(result.selection.clusters).toHaveLength(1);
+    expect(result.selection.approvedSameStoryRelations).toHaveLength(1);
   });
 
   it("keeps historical Promotion V2 on the real verifier/finalizer wiring", async () => {
@@ -182,11 +205,21 @@ describe("reader summary daily story relation production wiring", () => {
 
   it.each([
     {
-      name: "an unrelated question sharing product names",
+      name: "a weak question sharing product names",
       sameStory: false,
       attested: true,
       secondTitle: "Should a TypeScript compiler rewrite move to Go?",
       storyAttestationRecorded: true,
+      runtimeCommandCount: 1,
+    },
+    {
+      name: "an unrelated report",
+      sameStory: false,
+      attested: true,
+      firstTitle: "Cursor deployed at SpaceX",
+      secondTitle: "Cursor deployed at a university",
+      storyAttestationRecorded: false,
+      runtimeCommandCount: 0,
     },
     {
       name: "an approving response with a failed attestation",
@@ -194,31 +227,72 @@ describe("reader summary daily story relation production wiring", () => {
       attested: false,
       secondTitle: "Go rewrite of the TypeScript compiler reaches developers",
       storyAttestationRecorded: false,
+      runtimeCommandCount: 1,
     },
   ])("keeps $name ungrouped", async (scenario) => {
     const result = await selectDailyEvidence(scenario);
 
-    expect(result.runtime.storyCommands).toHaveLength(1);
+    expect(result.runtime.storyCommands).toHaveLength(scenario.runtimeCommandCount);
     expect(result.selection.clusters).toHaveLength(2);
     expect(result.selection.approvedSameStoryRelations).toEqual([]);
     expect(result.record.mock.calls.some(([record]) =>
       record.taskRole === "story_relation",
     )).toBe(scenario.storyAttestationRecorded);
   });
+
+  it("keeps same-provider evidence separate without requesting a relation", async () => {
+    const result = await selectDailyEvidence({
+      sameStory: true,
+      attested: true,
+      secondTitle: "Go rewrite of the TypeScript compiler reaches developers",
+      secondProviderKey: "hacker-news",
+    });
+
+    expect(result.runtime.storyCommands).toHaveLength(0);
+    expect(result.selection.clusters).toHaveLength(2);
+    expect(result.selection.approvedSameStoryRelations).toEqual([]);
+  });
+
+  it.each(["malformed", "timeout"] as const)(
+    "keeps a %s runtime response separate",
+    async (runtimeMode) => {
+      const result = await selectDailyEvidence({
+        sameStory: true,
+        attested: true,
+        secondTitle: "Go rewrite of the TypeScript compiler reaches developers",
+        runtimeMode,
+      });
+
+      expect(result.runtime.storyCommands).toHaveLength(1);
+      expect(result.selection.clusters).toHaveLength(2);
+      expect(result.selection.approvedSameStoryRelations).toEqual([]);
+    },
+  );
 });
 
 const selectDailyEvidence = async (input: {
   readonly sameStory: boolean;
   readonly attested: boolean;
+  readonly firstTitle?: string;
   readonly secondTitle: string;
+  readonly secondProviderKey?: "hacker-news" | "reddit";
+  readonly runtimeMode?: "decision" | "malformed" | "timeout";
 }) => {
-  const runtime = new FakeRuntime(input.sameStory, input.attested);
+  const runtime = new FakeRuntime(
+    input.sameStory,
+    input.attested,
+    input.runtimeMode ?? "decision",
+  );
   const record = jest.fn(async (value: VerifiedReaderSummaryExecutionAttestation) => {
     void value;
   });
   const wiring = createReaderSummaryDailyCapturePublicationWiring({
     replay: null,
-    feedItems: feedRepository(input.secondTitle),
+    feedItems: feedRepository({
+      firstTitle: input.firstTitle,
+      secondTitle: input.secondTitle,
+      secondProviderKey: input.secondProviderKey,
+    }),
     summaryClient: {} as never,
     clock,
     attestationSink: { record },
@@ -233,17 +307,26 @@ const selectDailyEvidence = async (input: {
     period,
     maxItems: 2,
   });
+  await new Promise<void>((resolve) => setImmediate(resolve));
   return { record, runtime, selection };
 };
 
-const feedRepository = (
-  secondTitle = "Go rewrite of the TypeScript compiler reaches developers",
+const feedRepository = (input: {
+  readonly firstTitle?: string;
+  readonly secondTitle?: string;
+  readonly secondProviderKey?: "hacker-news" | "reddit";
+} = {},
 ): InMemoryFeedItemReadRepository => {
+  const firstTitle = input.firstTitle ??
+    "TypeScript compiler rewrite moves to Go";
+  const secondTitle = input.secondTitle ??
+    "Go rewrite of the TypeScript compiler reaches developers";
+  const secondProviderKey = input.secondProviderKey ?? "reddit";
   const repository = new AuthorityFeedItemReadRepository();
   repository.upsert(feedItem({
     id: "typescript-hn",
     providerKey: "hacker-news",
-    title: "TypeScript compiler rewrite moves to Go",
+    title: firstTitle,
     bodyPreview: "Microsoft details the plan for AI-assisted editors.",
     providerMetadata: {
       kind: "hacker_news_story",
@@ -260,14 +343,14 @@ const feedRepository = (
   }));
   repository.upsert(feedItem({
     id: "typescript-reddit",
-    providerKey: "reddit",
+    providerKey: secondProviderKey,
     title: secondTitle,
     bodyPreview: secondTitle.startsWith("Should")
       ? "A forum question compares compiler choices for coding agents."
       : "The engineering team explains the pipeline for coding agents.",
     providerMetadata: {
-      kind: "reddit_post",
-      score: 190,
+      kind: secondProviderKey === "reddit" ? "reddit_post" : "hacker_news_story",
+      ...(secondProviderKey === "reddit" ? { score: 190 } : { points: 190 }),
       promotionAuthority: {
         official: true,
         trusted: true,
@@ -327,6 +410,7 @@ class FakeRuntime implements AgentRuntimeClientPort {
   constructor(
     private readonly sameStory: boolean,
     private readonly attested: boolean,
+    private readonly mode: "decision" | "malformed" | "timeout" = "decision",
   ) {}
 
   async runTask(
@@ -335,11 +419,21 @@ class FakeRuntime implements AgentRuntimeClientPort {
     const storyRelation = command.purpose ===
       "social_monitor.reader_summary.verify_story_relations.v2";
     if (storyRelation) this.storyCommands.push(command);
+    if (storyRelation && this.mode === "timeout") {
+      throw new Error("fixture relation verification timed out");
+    }
     const result: AgentRuntimeTaskResult = {
       status: "completed",
       structuredOutput: {
         decisions: storyRelation
-          ? [{
+          ? this.mode === "malformed"
+            ? [{
+                leftFeedItemId: "typescript-hn",
+                rightFeedItemId: "typescript-reddit",
+                sameStory: "not-a-boolean",
+                confidenceScore: 2,
+              }]
+            : [{
               leftFeedItemId: "typescript-hn",
               rightFeedItemId: "typescript-reddit",
               sameStory: this.sameStory,

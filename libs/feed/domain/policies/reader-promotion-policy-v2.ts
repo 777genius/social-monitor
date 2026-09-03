@@ -41,6 +41,7 @@ type ProviderSignal = {
   readonly admissionFloor: number;
   readonly topFloor: number;
   readonly floorMet: boolean;
+  readonly topFloorMet: boolean;
 };
 
 type EngagementResult =
@@ -66,7 +67,7 @@ export const evaluateReaderPromotionV2 = (
 
   const { signal } = engagement;
   const rawRelativePopularity = signal.value / signal.topFloor;
-  const topQualified = signal.value >= signal.topFloor;
+  const topQualified = signal.topFloorMet;
   const relativePopularity = rounded(rawRelativePopularity);
   const engagementSalience = rounded(
     rawRelativePopularity / (1 + rawRelativePopularity),
@@ -246,6 +247,8 @@ const providerSignal = (
         topFloor: 70,
         floorMet: value >= 35 &&
           (metrics.likes >= 15 || metrics.reposts >= 7),
+        topFloorMet: value >= 70 &&
+          (metrics.likes >= 30 || metrics.reposts >= 10),
       } };
     }
     case "reddit": {
@@ -271,6 +274,8 @@ const providerSignal = (
         topFloor: 50,
         floorMet: value >= 25 &&
           (metrics.upvoteRatio === undefined || metrics.upvoteRatio >= 0.55),
+        topFloorMet: value >= 50 &&
+          (metrics.upvoteRatio === undefined || metrics.upvoteRatio >= 0.6),
       } };
     }
     case "hacker_news":
@@ -283,6 +288,7 @@ const providerSignal = (
         admissionFloor: 25,
         topFloor: 50,
         floorMet: metrics.points >= 25,
+        topFloorMet: metrics.points >= 50,
       } };
     case "github": {
       if (metrics.window !== "24h" || !validCount(metrics.starsDelta) ||
@@ -298,6 +304,7 @@ const providerSignal = (
         admissionFloor: 25,
         topFloor: 50,
         floorMet: metrics.starsDelta >= 25 || metrics.forksDelta >= 50,
+        topFloorMet: metrics.starsDelta >= 50 || metrics.forksDelta >= 100,
       } };
     }
   }

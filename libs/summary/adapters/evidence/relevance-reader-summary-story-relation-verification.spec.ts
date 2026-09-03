@@ -466,7 +466,7 @@ describe("RelevanceReaderSummaryEvidenceSelector story verification", () => {
     )).toBe(true);
   });
 
-  it("observes corroboration rejected by the authoritative slate in shadow", async () => {
+  it("does not reverify an authoritative strict-title candidate in shadow", async () => {
     const verifier = new ApprovingVerifier();
     const selector = new RelevanceReaderSummaryEvidenceSelector(
       ranker([
@@ -503,23 +503,17 @@ describe("RelevanceReaderSummaryEvidenceSelector story verification", () => {
     expect(selection.selectedEvidence.map((item) => item.feedItemId)).toEqual([
       "cursor-selected",
     ]);
-    expect(verifier.inputs).toHaveLength(2);
-    expect(verifier.inputs.find((input) =>
-      input.verificationLane === "safe_recall_shadow",
-    )).toMatchObject({
-      verificationLane: "safe_recall_shadow",
-      evidence: expect.arrayContaining([
-        expect.objectContaining({ feedItemId: "cursor-selected" }),
-        expect.objectContaining({ feedItemId: "cursor-dropped" }),
-      ]),
-      candidates: [expect.objectContaining({
+    expect(verifier.inputs).toHaveLength(1);
+    expect(verifier.inputs[0]).not.toHaveProperty("verificationLane");
+    expect(verifier.inputs[0]?.candidates).toEqual([
+      expect.objectContaining({
         leftFeedItemId: "cursor-dropped",
         rightFeedItemId: "cursor-selected",
-      })],
-    });
+      }),
+    ]);
   });
 
-  it("returns production selection without awaiting a bounded shadow verifier", async () => {
+  it("does not schedule detached shadow work for an authoritative pair", async () => {
     const verifier = new DeferredShadowVerifier();
     const selector = new RelevanceReaderSummaryEvidenceSelector(
       ranker([
@@ -550,14 +544,10 @@ describe("RelevanceReaderSummaryEvidenceSelector story verification", () => {
 
     expect(selection.clusters).toHaveLength(1);
     await settleDetachedShadow();
-    expect(verifier.input).toMatchObject({
-      verificationLane: "safe_recall_shadow",
-      timeoutMs: 30_000,
-    });
-    verifier.complete();
+    expect(verifier.input).toBeUndefined();
   });
 
-  it("records a weak Reddit watermark candidate as not approved", async () => {
+  it("records a weak Reddit watermark candidate as not approved once", async () => {
     const metrics = new CapturingMetrics();
     const selector = new RelevanceReaderSummaryEvidenceSelector(
       ranker([
@@ -597,12 +587,13 @@ describe("RelevanceReaderSummaryEvidenceSelector story verification", () => {
     await settleDetachedShadow();
 
     expect(selection.clusters).toHaveLength(2);
-    expect(metrics.shadowDecisionAggregates).toContainEqual(
+    expect(metrics.relationAggregates).toContainEqual(
       expect.objectContaining({
         disposition: "rejected_same_story_false",
         count: 1,
       }),
     );
+    expect(metrics.shadowDecisionAggregates).toEqual([]);
   });
 
   it("keeps telemetry exceptions outside the relation decision path", async () => {

@@ -267,6 +267,8 @@ describe("reader-summary promotion upstream scan exhaustion", () => {
       workspaceId: workspace,
       providerKey: "x-twitter",
       title: "Agent runtime transaction snapshot launches",
+      canonicalUrl:
+        "https://x.fixture.test/original/authoritative-winner-below-caps",
       publishedAt: new Date("2026-08-18T08:00:00.000Z"),
       providerMetadata: {
         kind: "x_post",
@@ -286,6 +288,8 @@ describe("reader-summary promotion upstream scan exhaustion", () => {
       workspaceId: workspace,
       providerKey: "hacker-news",
       title: "Agent runtime transaction snapshot launches",
+      canonicalUrl:
+        "https://hn.fixture.test/item/independent-support-below-caps",
       publishedAt: new Date("2026-08-18T07:59:00.000Z"),
       providerMetadata: {
         kind: "hacker_news_story",
@@ -348,14 +352,10 @@ describe("reader-summary promotion upstream scan exhaustion", () => {
     expect(projection.topReads[0]?.promotionCandidateId)
       .toBe("authoritative-winner-below-caps");
     expect(projection.topReads[0]?.citationIds)
-      .toEqual(["citation:authoritative-winner-below-caps"]);
-    const independentlyRankedSupport = [
-      ...projection.topReads,
-      ...projection.additionalPosts,
-    ].find((item) =>
-      item.promotionCandidateId === "independent-support-below-caps");
-    expect(independentlyRankedSupport?.citationIds)
-      .toEqual(["citation:independent-support-below-caps"]);
+      .toEqual([
+        "citation:authoritative-winner-below-caps",
+        "citation:independent-support-below-caps",
+      ]);
     expect(selection.selectedEvidence.map((item) => item.feedItemId))
       .toEqual(expect.arrayContaining([
         "authoritative-winner-below-caps",
@@ -498,6 +498,7 @@ const publishOriginal = (
     readonly workspaceId: ReturnType<typeof workspaceId>;
     readonly providerKey: string;
     readonly title: string;
+    readonly canonicalUrl?: string;
     readonly publishedAt: Date;
     readonly providerMetadata: JsonObject;
   },
@@ -506,7 +507,8 @@ const publishOriginal = (
   interestId: "interest-ai",
   sourceItemId: `${params.id}:source`,
   sourceBindingId: `${params.id}:binding`,
-  canonicalUrl: `https://fixture.test/original/${params.id}`,
+  canonicalUrl:
+    params.canonicalUrl ?? `https://fixture.test/original/${params.id}`,
   bodyPreview: "Original release evidence eligible for reader promotion.",
   observedAt: new Date(params.publishedAt.getTime() + 60_000),
 }));

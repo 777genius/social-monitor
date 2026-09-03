@@ -122,6 +122,12 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
     });
     const promotionPolicyItems = primaryCandidateItems.filter((item) =>
       promotionCandidateIds.has(item.feedItemId));
+    const additionalRelationCandidates = promotionSupportCandidates({
+      evidence: primaryCandidateItems,
+      clusters: candidateSelection.clusters,
+      leadIds: promotionCandidateIds,
+      promotionCandidateIds,
+    });
     const approvedRelations = await verifiedReaderSummaryStoryRelations({
       query,
       evidence: primaryCandidateItems,
@@ -129,12 +135,7 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
       requestedAt: ingestionCutoff,
       verifier: this.storyRelationVerifier,
       metrics: this.storyRankingMetrics,
-      additionalCandidates: promotionSupportCandidates({
-        evidence: primaryCandidateItems,
-        clusters: candidateSelection.clusters,
-        leadIds: promotionCandidateIds,
-        promotionCandidateIds,
-      }),
+      additionalCandidates: additionalRelationCandidates,
     });
     const authoritativeCandidateSelection = this.clusterer.cluster({
       identity: {
@@ -229,6 +230,7 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
       requestedAt: ingestionCutoff,
       verifier: this.storyRelationVerifier,
       metrics: this.storyRankingMetrics,
+      authoritativeCandidates: approvedRelations.candidates,
     });
     return personalizedSelection;
   }

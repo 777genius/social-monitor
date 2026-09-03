@@ -46,6 +46,7 @@ export const verifiedReaderSummaryStoryRelations = async (params: {
   readonly pairs: ReadonlySet<string>;
   readonly strictTitlePairs: ReadonlySet<string>;
   readonly relations: readonly ApprovedSameStoryRelation[];
+  readonly candidates: readonly StoryRelationCandidate[];
 }> => {
   const primaryCandidates = buildStoryRelationCandidates({
     selection: params.deterministicSelection,
@@ -71,6 +72,7 @@ export const verifiedReaderSummaryStoryRelations = async (params: {
   );
   return {
     ...result,
+    candidates,
     strictTitlePairs: new Set(
       [...result.pairs].filter((pairId) => strictTitlePairIds.has(pairId)),
     ),
@@ -99,14 +101,11 @@ export const scheduleReaderSummarySafeRecallShadowObservation = (params: {
   readonly requestedAt: Date;
   readonly verifier?: ReaderSummaryStoryRelationVerifierPort;
   readonly metrics: StoryRankingMetricsPort;
+  readonly authoritativeCandidates: readonly StoryRelationCandidate[];
 }): void => {
-  const primaryCandidates = buildStoryRelationCandidates({
-    selection: params.deterministicSelection,
-    evidence: params.evidence,
-  });
   scheduleSafeRecallShadow(() => observeSafeRecallShadow({
     ...params,
-    primaryCandidates,
+    primaryCandidates: params.authoritativeCandidates,
   }));
 };
 
