@@ -85,6 +85,7 @@ jobs:
           [[ -z "$B0_SHA" || "$B0_SHA" == "$review_b0" ]]
           if [[ -n "$B0_SHA" ]]; then
             export PRODUCTION_TRANSITION_STALE_B0_SHA="$B0_SHA"
+            export PRODUCTION_TRANSITION_STALE_S2_SHA="$s2"
             export PRODUCTION_TRANSITION_RECOVERY_MODE=stale-b0
           fi
           [[ "$s2" == "$(git rev-parse refs/production-transition/artifact/s2)" ]]
