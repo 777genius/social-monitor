@@ -19,6 +19,7 @@ fail() { publisher_fail "$@"; }
 
 # shellcheck source=ops/deploy/production-transition-canonical-lib.sh
 source "$SCRIPT_DIR/production-transition-canonical-lib.sh"
+source "$SCRIPT_DIR/production-transition-stale-b0-recovery-lib.sh"
 
 publisher_reject_wrong_authority() {
   [[ ! -v PRODUCTION_TRANSITION_REVIEW_SIGNING_KEY && \
@@ -169,8 +170,9 @@ publisher_prepare() (
   ((status == 2)) || publisher_fail 'canonical review consumption state is unreadable'
   if [[ -n ${PRODUCTION_TRANSITION_STALE_B0_SHA:-} ]]; then
     [[ ${PRODUCTION_TRANSITION_STALE_B0_SHA} == "$b0" && \
-       $remote_main == "$s2" ]] || \
+       ${PRODUCTION_TRANSITION_STALE_S2_SHA:-} == "$s2" ]] || \
       publisher_fail 'stale B0 recovery lease is not the reviewed S2'
+    production_transition_stale_b0_validate_head "$b0" "$s2" "$remote_main"
   else
     [[ $remote_main == "$b0" ]] || publisher_fail 'signed B0 differs from protected main lease'
   fi
@@ -239,10 +241,10 @@ publisher_publish() (
   fi
   ((status == 2)) || publisher_fail 'canonical review consumption state is unreadable'
   if [[ -n ${PRODUCTION_TRANSITION_STALE_B0_SHA:-} ]]; then
-    [[ ${PRODUCTION_TRANSITION_STALE_B0_SHA} == "$b0" && \
-       $observed == "$s2" ]] || \
+    [[ ${PRODUCTION_TRANSITION_STALE_B0_SHA} == "$b0" ]] || \
       publisher_fail 'protected main moved after stale B0 recovery lease'
-    lease_main=$s2
+    production_transition_stale_b0_validate_head "$b0" "$s2" "$observed"
+    lease_main=$observed
   else
     [[ $observed == "$b0" ]] || publisher_fail 'protected main moved after signed B0 lease'
     lease_main=$b0

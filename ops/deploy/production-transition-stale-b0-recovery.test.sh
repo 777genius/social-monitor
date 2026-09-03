@@ -11,12 +11,14 @@ PUBLISH_WORKFLOW=$ROOT/.github/workflows/production-transition-publish.yml
 /usr/bin/grep -Fq 'b0_sha:' "$PUBLISH_WORKFLOW"
 /usr/bin/grep -Fq 'PRODUCTION_TRANSITION_RECOVERY_MODE=stale-b0' "$REVIEW_WORKFLOW"
 /usr/bin/grep -Fq 'PRODUCTION_TRANSITION_RECOVERY_MODE=stale-b0' "$PUBLISH_WORKFLOW"
-/usr/bin/grep -Fq '"$S2_SHA" == "$GITHUB_SHA"' "$REVIEW_WORKFLOW"
+/usr/bin/grep -Fq '"$GITHUB_SHA" == "$remote_main"' "$REVIEW_WORKFLOW"
 /usr/bin/grep -Fq 'S2 is not the sole child of exact B0' \
   "$ROOT/ops/deploy/production-transition-canonical-lib.sh"
-/usr/bin/grep -Fq 'remote_main == "$s2"' "$PUBLISHER"
+/usr/bin/grep -Fq 'production_transition_stale_b0_validate_head "$b0" "$s2" "$observed"' "$PUBLISHER"
 /usr/bin/grep -Fq 'protected main moved after stale B0 recovery lease' "$PUBLISHER"
-/usr/bin/grep -Fq 'lease_main=$s2' "$PUBLISHER"
+/usr/bin/grep -Fq 'lease_main=$observed' "$PUBLISHER"
+/usr/bin/grep -Fq 'production_transition_stale_b0_validate_head' \
+  "$ROOT/ops/deploy/production-transition-stale-b0-recovery-lib.sh"
 /usr/bin/grep -Fq 'first post-B0 release requires deploy-transition with a signed target' \
   "$ROOT/ops/deploy/production-transition-b0-host-control.sh"
 

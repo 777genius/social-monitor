@@ -53,7 +53,7 @@ jobs:
           [[ "$REQUEST_ID" =~ ^[0-9a-f]{32}$ ]]
           [[ -z "$B0_SHA" || "$B0_SHA" =~ ^[0-9a-f]{40}$ ]]
           remote_main=$(git ls-remote --exit-code origin refs/heads/main | awk 'NR == 1 {print $1}')
-          [[ "$GITHUB_SHA" == "$remote_main" && "$S2_SHA" == "$GITHUB_SHA" ]]
+          [[ "$GITHUB_SHA" == "$remote_main" ]]
           [[ -n "$REVIEW_PRIVATE_KEY" ]]
           git -c protocol.version=2 fetch --no-tags --no-write-fetch-head \
             --filter=blob:none origin "$S2_SHA"
@@ -61,6 +61,7 @@ jobs:
             git -c protocol.version=2 fetch --no-tags --no-write-fetch-head \
               --filter=blob:none origin "$B0_SHA"
             export PRODUCTION_TRANSITION_STALE_B0_SHA="$B0_SHA"
+            export PRODUCTION_TRANSITION_STALE_S2_SHA="$S2_SHA"
             export PRODUCTION_TRANSITION_RECOVERY_MODE=stale-b0
           fi
           key=$(mktemp "$RUNNER_TEMP/transition-review-key.XXXXXX")

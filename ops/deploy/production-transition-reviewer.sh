@@ -18,6 +18,7 @@ fail() { reviewer_fail "$@"; }
 
 # shellcheck source=ops/deploy/production-transition-canonical-lib.sh
 source "$SCRIPT_DIR/production-transition-canonical-lib.sh"
+source "$SCRIPT_DIR/production-transition-stale-b0-recovery-lib.sh"
 
 reviewer_reject_wrong_authority() {
   [[ ! -v PRODUCTION_TRANSITION_TARGET_SIGNING_KEY && \
@@ -39,7 +40,7 @@ reviewer_verify_origin() {
 
 reviewer_initialize_context() {
   local mode=${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-0}
-  local remote_main stale_b0 recovery_mode
+  local remote_main stale_b0 stale_s2 recovery_mode
   if [[ $mode == 1 ]]; then
     REPO=${PRODUCTION_TRANSITION_TEST_REPOSITORY:?test repository is required}
     PRODUCTION_TRANSITION_BRIDGE_BASE=\
@@ -74,18 +75,19 @@ ${PRODUCTION_TRANSITION_TEST_REPLAY_ID:?test replay id is required}
     remote_main=$(production_transition_git -C "$REPO" \
       ls-remote --exit-code origin refs/heads/main | /usr/bin/awk 'NR == 1 {print $1}')
     stale_b0=${PRODUCTION_TRANSITION_STALE_B0_SHA:-}
+    stale_s2=${PRODUCTION_TRANSITION_STALE_S2_SHA:-}
     recovery_mode=${PRODUCTION_TRANSITION_RECOVERY_MODE:-}
     if [[ -n $stale_b0 ]]; then
       [[ $recovery_mode == stale-b0 ]] || \
         reviewer_fail 'stale B0 requires the explicit recovery mode'
       production_transition_validate_sha "$stale_b0" 'stale B0'
+      production_transition_validate_sha "$stale_s2" 'stale B0 S2'
       production_transition_git -C "$REPO" cat-file -e "$stale_b0^{commit}" || \
         reviewer_fail 'stale B0 is unavailable in the review checkout'
       [[ $remote_main == "${GITHUB_SHA:-}" && $GITHUB_SHA =~ ^[0-9a-f]{40}$ ]] || \
         reviewer_fail 'stale B0 recovery requires the exact protected main checkout'
-      [[ $(production_transition_git -C "$REPO" rev-list --parents -n 1 \
-        "$GITHUB_SHA") == "$GITHUB_SHA $stale_b0" ]] || \
-        reviewer_fail 'stale B0 recovery requires S2 to be its direct child'
+      production_transition_stale_b0_validate_head \
+        "$stale_b0" "$stale_s2" "$GITHUB_SHA"
       PRODUCTION_TRANSITION_BRIDGE_BASE=$stale_b0
     else
       [[ -z $recovery_mode ]] || \
@@ -118,6 +120,10 @@ $PRODUCTION_TRANSITION_TARGET_FINGERPRINT
 reviewer_sign() {
   local s2=$1 issued=$2 expires=$3 output_dir=$4 key repo_real p6 statement signature
   production_transition_validate_sha "$s2" S2
+  if [[ -n ${PRODUCTION_TRANSITION_STALE_B0_SHA:-} ]]; then
+    [[ ${PRODUCTION_TRANSITION_STALE_S2_SHA:-} == "$s2" ]] || \
+      reviewer_fail 'stale B0 recovery S2 differs from the reviewed candidate'
+  fi
   [[ $issued =~ ^[0-9]+$ && $expires =~ ^[0-9]+$ && \
      $issued -le $expires && $((expires - issued)) -le 604800 ]] || \
     reviewer_fail 'review lifetime must be bounded epoch seconds'
