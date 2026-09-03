@@ -1,12 +1,6 @@
 #!/usr/bin/env bash
-
-# Crash-safe marker publication for the authenticated production transition.
-# The history policy supplies constants, validation, state inspection, and
-# fail(). A fixed .next name is intentionally retained so residue is visible
-# and can be reconciled instead of being hidden behind unbounded temp names.
-
+# Crash-safe fixed-name marker publication for the authenticated transition.
 production_transition_marker_failpoint() { :; }
-
 production_transition_guarded_path_operation() {
   local action=$1 path=$2 expected=$3 canonical=${4:-} canonical_expected=${5:-}
   local canonical_identity=${6:-}
@@ -18,21 +12,16 @@ import os
 import stat
 import subprocess
 import sys
-import uuid
-
 action, path, expected, canonical, canonical_expected, canonical_identity = sys.argv[1:]
 expected_bytes = None if action == "read" else (expected + "\n").encode()
 libc = ctypes.CDLL(None, use_errno=True)
 AT_EMPTY_PATH = 0x1000
 AT_SYMLINK_FOLLOW = 0x400
 RENAME_EXCHANGE = 2
-
 def die(message):
     raise SystemExit(message)
-
 def identity(st):
     return (st.st_dev, st.st_ino)
-
 def open_verified(candidate, content, allowed_modes=(0o600,), allowed_links=(1,)):
     try:
         fd = os.open(candidate, os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW)
@@ -53,7 +42,8 @@ def open_verified(candidate, content, allowed_modes=(0o600,), allowed_links=(1,)
         if len(data) > 131072:
             os.close(fd)
             die("opened path is oversized")
-    if content is not None and data != content:
+    allowed_content = content if isinstance(content, tuple) else (content,)
+    if content is not None and data not in allowed_content:
         os.close(fd)
         die("opened path content differs")
     try:
@@ -65,52 +55,95 @@ def open_verified(candidate, content, allowed_modes=(0o600,), allowed_links=(1,)
         os.close(fd)
         die("opened path identity differs")
     return fd, st, data
-
 def same_path(candidate, st):
     try:
         current = os.lstat(candidate)
     except OSError:
         return False
     return stat.S_ISREG(current.st_mode) and identity(current) == identity(st)
-
 def exchange(left, right):
     result = libc.renameat2(-100, os.fsencode(left), -100, os.fsencode(right), RENAME_EXCHANGE)
-    if result != 0:
-        error = ctypes.get_errno()
-        die(f"guarded exchange failed: {os.strerror(error)}")
-
+    if result != 0: die(f"guarded exchange failed: {os.strerror(ctypes.get_errno())}")
+def rename_noreplace(left, right):
+    result = libc.renameat2(-100, os.fsencode(left), -100, os.fsencode(right), 1)
+    if result != 0: die(f"guarded removal rename failed: {os.strerror(ctypes.get_errno())}")
+def fsync_directory(directory):
+    fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+    os.fsync(fd); os.close(fd)
+def boundary_hook(boundary, candidate):
+    hook = os.environ.get("PRODUCTION_TRANSITION_PATH_BOUNDARY_HOOK", "")
+    if os.environ.get("SOCIAL_MONITOR_DEPLOY_TEST_MODE") == "1" and hook:
+        subprocess.run([hook, boundary, candidate, canonical], check=True)
 def call_hook():
     hook = os.environ.get("PRODUCTION_TRANSITION_PATH_OPERATION_HOOK", "")
     if os.environ.get("SOCIAL_MONITOR_DEPLOY_TEST_MODE") == "1" and hook:
         subprocess.run([hook, action, path, canonical], check=True)
-
-def guarded_remove(candidate, fd, st):
+def recover_removal(candidate, content):
     directory = os.path.dirname(candidate) or "."
-    sentinel = os.path.join(directory, ".transition-sentinel-" + uuid.uuid4().hex)
-    sentinel_fd = os.open(sentinel, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC, 0o600)
-    sentinel_st = os.fstat(sentinel_fd)
-    os.close(sentinel_fd)
-    if not same_path(candidate, st):
-        os.unlink(sentinel)
-        die("guarded removal detected replacement")
-    exchange(candidate, sentinel)
+    intent, residue = candidate + ".remove.intent", candidate + ".remove.data"
+    intent_exists = os.path.lexists(intent)
+    residue_exists = os.path.lexists(residue)
+    if residue_exists and not intent_exists: die("guarded removal data has no intent")
+    if not intent_exists: return False
+    intent_fd, intent_st, _ = open_verified(
+        intent, content, (0o600, 0o644), (1, 2, 3))
+    if os.path.lexists(candidate) and residue_exists: die("guarded removal has both source and data")
+    if os.path.lexists(candidate):
+        fd, st, _ = open_verified(candidate, content, (0o600, 0o644), (2, 3))
+        try:
+            if identity(st) != identity(intent_st): die("guarded removal source differs from intent")
+            rename_noreplace(candidate, residue)
+            fsync_directory(directory)
+            boundary_hook("remove-renamed", candidate)
+            if not same_path(residue, st): die("guarded removal renamed a replacement")
+        finally: os.close(fd)
+        residue_exists = True
+    if residue_exists:
+        fd, st, _ = open_verified(residue, content, (0o600, 0o644), (2, 3))
+        try:
+            if identity(st) != identity(intent_st) or not same_path(residue, st):
+                die("guarded removal data differs from intent")
+            os.unlink(residue)
+            fsync_directory(directory)
+            boundary_hook("remove-unlinked", candidate)
+        finally: os.close(fd)
+    if os.path.lexists(candidate) or os.path.lexists(residue): die("guarded removal retained an uncertain path")
     try:
-        if not same_path(sentinel, st) or not same_path(candidate, sentinel_st):
-            exchange(candidate, sentinel)
-            die("guarded removal exchanged a replacement")
-        os.unlink(sentinel)
-        if same_path(candidate, sentinel_st):
-            os.unlink(candidate)
-        else:
-            die("guarded removal preserved uncertain replacement residue")
-        os.fsync(os.open(directory, os.O_RDONLY | os.O_DIRECTORY))
-    finally:
-        for residue in (sentinel,):
-            try:
-                os.unlink(residue)
-            except FileNotFoundError:
-                pass
-
+        if not same_path(intent, intent_st): die("guarded removal intent changed before completion")
+        os.unlink(intent)
+        fsync_directory(directory)
+        boundary_hook("remove-complete", candidate)
+    finally: os.close(intent_fd)
+    return True
+def guarded_remove(candidate, fd, st, content):
+    directory = os.path.dirname(candidate) or "."
+    intent, residue = candidate + ".remove.intent", candidate + ".remove.data"
+    if os.path.lexists(intent) or os.path.lexists(residue): die("guarded removal found an unreconciled state")
+    current_st = os.fstat(fd)
+    if not same_path(candidate, current_st): die("guarded removal detected replacement")
+    result = libc.linkat(fd, b"", -100, os.fsencode(intent), AT_EMPTY_PATH)
+    if result != 0:
+        error = ctypes.get_errno()
+        if error in (errno.ENOENT, errno.EPERM):
+            proc_fd = os.fsencode(f"/proc/self/fd/{fd}")
+            result = libc.linkat(-100, proc_fd, -100, os.fsencode(intent),
+                                 AT_SYMLINK_FOLLOW)
+            error = ctypes.get_errno() if result != 0 else 0
+        if result != 0: die(f"guarded removal intent link failed: {os.strerror(error)}")
+    if not same_path(intent, current_st): die("guarded removal intent identity differs")
+    fsync_directory(directory)
+    boundary_hook("remove-intent", candidate)
+    recover_removal(candidate, content)
+recovery_content = expected_bytes
+if action == "promote" and canonical_expected:
+    recovery_content = (expected_bytes, (canonical_expected + "\n").encode())
+if action in ("remove", "promote") and recover_removal(path, recovery_content):
+    if action == "remove": raise SystemExit(0)
+    if action == "promote" and canonical:
+        canonical_fd, _, _ = open_verified(canonical, expected_bytes)
+        os.close(canonical_fd)
+        raise SystemExit(0)
+    die("guarded removal residue conflicts with requested operation")
 source_links = (1, 2) if action == "promote" else (1,)
 source_fd, source_st, source_data = open_verified(
     path, expected_bytes, (0o600,), source_links)
@@ -134,7 +167,7 @@ try:
             die("opened path content framing differs")
         sys.stdout.buffer.write(source_data)
     elif action == "remove":
-        guarded_remove(path, source_fd, source_st)
+        guarded_remove(path, source_fd, source_st, expected_bytes)
     elif action == "promote":
         if not canonical:
             die("guarded promotion canonical path is missing")
@@ -178,35 +211,42 @@ try:
                     die(f"guarded promotion link failed: {os.strerror(error)}")
             if not same_path(canonical, source_st):
                 die("guarded promotion canonical identity differs")
-            guarded_remove(path, source_fd, source_st)
+            fsync_directory(directory)
+            boundary_hook("promote-linked", path)
+            guarded_remove(path, source_fd, source_st, expected_bytes)
         else:
             try:
                 if not same_path(canonical, canonical_st):
                     die("guarded promotion detected canonical replacement")
-                exchange(path, canonical)
-                if not same_path(canonical, source_st) or not same_path(path, canonical_st):
+                if identity(source_st) == identity(canonical_st):
+                    guarded_remove(path, source_fd, source_st, expected_bytes)
+                else:
                     exchange(path, canonical)
-                    die("guarded promotion exchanged a replacement")
-                guarded_remove(path, canonical_fd, canonical_st)
+                    fsync_directory(directory)
+                    boundary_hook("promote-exchanged", path)
+                    if not same_path(canonical, source_st) or not same_path(path, canonical_st):
+                        exchange(path, canonical)
+                        fsync_directory(directory)
+                        die("guarded promotion exchanged a replacement")
+                    guarded_remove(path, canonical_fd, canonical_st,
+                                   (canonical_expected + "\n").encode())
             finally:
                 os.close(canonical_fd)
         canonical_fd_check, canonical_st_check, _ = open_verified(canonical, expected_bytes)
         os.close(canonical_fd_check)
-        os.fsync(os.open(directory, os.O_RDONLY | os.O_DIRECTORY))
+        fsync_directory(directory)
     else:
         die("unknown guarded path operation")
 finally:
     os.close(source_fd)
 PY
 }
-
 production_transition_read_regular_file() {
   local path=$1 label=$2
   [[ -f $path && ! -L $path ]] || fail "$label is unsafe"
   production_transition_guarded_path_operation read "$path" '' || \
     fail "$label opened inode verification failed"
 }
-
 production_transition_remove_safe_duplicate() {
   local path=$1 expected=$2 label=$3 actual
   actual=$(production_transition_read_regular_file "$path" "$label") || return 1
@@ -216,14 +256,12 @@ production_transition_remove_safe_duplicate() {
     fail "$label guarded removal failed"
   sync -f "$(dirname "$path")"
 }
-
 production_transition_promote_next() {
   local next=$1 marker=$2 expected=$3 existing=${4:-} canonical_identity=${5:-}
   production_transition_guarded_path_operation \
     promote "$next" "$expected" "$marker" "$existing" "$canonical_identity" || \
     fail 'authenticated temporary record guarded promotion failed'
 }
-
 production_transition_exclusive_stage() {
   local next=$1 expected=$2 label=$3
   if ! (set -o noclobber; printf '%s\n' "$expected" > "$next") 2>/dev/null; then
@@ -231,8 +269,8 @@ production_transition_exclusive_stage() {
   fi
   chmod 0600 "$next"
   sync -f "$next"
+  sync -f "$(dirname "$next")"
 }
-
 production_transition_read_sha_next() {
   local next=$1 label=$2 value
   value=$(production_transition_read_regular_file "$next" "$label") || return 1
@@ -240,7 +278,6 @@ production_transition_read_sha_next() {
     fail "$label is malformed"
   printf '%s\n' "$value"
 }
-
 production_transition_bootstrap_lock_validate() {
   local fd=$1 path=$2 owner_pid=$3
   python3 - "$fd" "$path" "$owner_pid" "$BASHPID" <<'PY'
@@ -257,7 +294,6 @@ if not stat.S_ISREG(opened.st_mode) or not stat.S_ISREG(current_path.st_mode) or
     raise SystemExit("bootstrap lock descriptor or path is unsafe")
 PY
 }
-
 production_transition_bootstrap_lock_acquire() {
   local lock=$1
   [[ -z ${PRODUCTION_TRANSITION_BOOTSTRAP_LOCK_FD:-} &&
@@ -284,14 +320,12 @@ production_transition_bootstrap_lock_acquire() {
   production_transition_bootstrap_lock_validate \
     "$PRODUCTION_TRANSITION_BOOTSTRAP_LOCK_FD" "$lock" \
     "$PRODUCTION_TRANSITION_BOOTSTRAP_LOCK_OWNER" || {
-      flock -u "$PRODUCTION_TRANSITION_BOOTSTRAP_LOCK_FD" || :
       exec {PRODUCTION_TRANSITION_BOOTSTRAP_LOCK_FD}>&-
       unset PRODUCTION_TRANSITION_BOOTSTRAP_LOCK_FD
       unset PRODUCTION_TRANSITION_BOOTSTRAP_LOCK_OWNER
       fail 'PostgreSQL bootstrap marker lock changed while acquiring it'
     }
 }
-
 production_transition_bootstrap_lock_release() {
   local lock=$1 fd=${PRODUCTION_TRANSITION_BOOTSTRAP_LOCK_FD:-}
   local owner=${PRODUCTION_TRANSITION_BOOTSTRAP_LOCK_OWNER:-}
@@ -299,12 +333,10 @@ production_transition_bootstrap_lock_release() {
     fail 'PostgreSQL bootstrap marker lock release is not owned by this shell'
   production_transition_bootstrap_lock_validate "$fd" "$lock" "$owner" ||
     fail 'PostgreSQL bootstrap marker lock changed before release'
-  flock -u "$fd" || fail 'PostgreSQL bootstrap marker lock cannot be unlocked'
   eval "exec $fd>&-"
   unset PRODUCTION_TRANSITION_BOOTSTRAP_LOCK_FD
   unset PRODUCTION_TRANSITION_BOOTSTRAP_LOCK_OWNER
 }
-
 production_transition_bootstrap_lock_abandon() {
   local fd=${PRODUCTION_TRANSITION_BOOTSTRAP_LOCK_FD:-}
   [[ $fd =~ ^[0-9]+$ && \
@@ -314,14 +346,12 @@ production_transition_bootstrap_lock_abandon() {
   unset PRODUCTION_TRANSITION_BOOTSTRAP_LOCK_FD
   unset PRODUCTION_TRANSITION_BOOTSTRAP_LOCK_OWNER
 }
-
 production_transition_prepare_bootstrap_next() {
   python3 - "$1" "$2" "$3" "${REPO:-}" <<'PY'
 import os, stat, subprocess, sys
 marker, staged, target, repo = sys.argv[1:]
 expected = (target + "\n").encode()
 directory = os.path.dirname(marker) or "."
-
 def identity(st): return st.st_dev, st.st_ino
 def opened(path, modes, links):
     try:
@@ -341,9 +371,28 @@ def opened(path, modes, links):
             any(c not in b"0123456789abcdef" for c in data[:-1]):
         os.close(fd); raise SystemExit("marker content or framing differs")
     return fd, st, data
-
-canonical = opened(marker, (0o600, 0o644), (1, 2))
-next_record = opened(staged, (0o600, 0o644), (1, 2))
+canonical = opened(marker, (0o600, 0o644), (1, 2, 3))
+next_record = opened(staged, (0o600, 0o644), (1, 2, 3))
+intent = opened(staged + ".remove.intent", (0o600, 0o644), (1, 2, 3))
+residue = opened(staged + ".remove.data", (0o600, 0o644), (1, 2, 3))
+if residue and not intent: raise SystemExit("marker removal data has no intent")
+if intent:
+    records = [record for record in (next_record, residue, intent) if record]; recovery = records[0]
+    if any(identity(record[1]) != identity(intent[1]) for record in records): raise SystemExit("marker removal identities differ")
+    if not canonical or canonical[2] != expected: raise SystemExit("marker removal has no committed target")
+    if identity(canonical[1]) == identity(recovery[1]):
+        if recovery[2] != expected: raise SystemExit("linked marker removal content differs")
+    else:
+        ancestor = recovery[2][:-1].decode()
+        command = ["git", "-C", repo, "merge-base", "--is-ancestor", ancestor, target]
+        if not repo or subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode != 0:
+            raise SystemExit("exchanged marker removal is not a target ancestor")
+    st = canonical[1]
+    canonical_identity = ":".join(str(value) for value in (
+        st.st_dev, st.st_ino, st.st_mode, st.st_uid, st.st_gid, st.st_nlink,
+        st.st_size, st.st_mtime_ns, st.st_ctime_ns))
+    print(canonical[2][:-1].decode() + "|" + canonical_identity + "|" + recovery[2][:-1].decode())
+    raise SystemExit(0)
 if canonical and canonical[1].st_nlink == 2:
     if not next_record or identity(canonical[1]) != identity(next_record[1]):
         raise SystemExit("committed marker has an independent hardlink")
@@ -360,9 +409,8 @@ if canonical:
 if canonical and next_record and identity(canonical[1]) == identity(next_record[1]):
     if canonical[2] != expected:
         raise SystemExit("same-inode marker residue differs from target")
-    os.unlink(staged)
-    os.fsync(os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC))
-    next_record = None
+    print(existing + "|" + canonical_identity + "|")
+    raise SystemExit(0)
 elif canonical and canonical[2] == expected and next_record:
     # A killed exchange can leave the committed target at the canonical name
     # and its exact ancestor at .next. It is safe only when it is the value the
@@ -372,11 +420,10 @@ elif canonical and canonical[2] == expected and next_record:
             ["git", "-C", repo, "merge-base", "--is-ancestor", ancestor, target],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode != 0:
         raise SystemExit("exchange residue is not a target ancestor")
-    os.unlink(staged)
-    os.fsync(os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC))
-    next_record = None
+    print(existing + "|" + canonical_identity + "|" + ancestor)
+    raise SystemExit(0)
 if canonical and canonical[2] == expected and next_record is None:
-    print(existing + "|" + canonical_identity); raise SystemExit(0)
+    print(existing + "|" + canonical_identity + "|"); raise SystemExit(0)
 if next_record is None:
     fd = os.open(staged, os.O_RDWR | os.O_CREAT | os.O_EXCL |
                  os.O_CLOEXEC | os.O_NOFOLLOW, 0o600)
@@ -388,14 +435,13 @@ else:
     os.fsync(next_record[0]); os.close(next_record[0])
 if canonical: os.close(canonical[0])
 os.fsync(os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC))
-print(existing + "|" + canonical_identity)
+print(existing + "|" + canonical_identity + "|")
 PY
 }
-
 production_transition_commit_postgres_pool_bootstrap() {
   local sha=$1 mode=${2:-normal} marker=$STATE/postgres-pool-bootstrap.sha
   local next=$marker.next lock=$STATE/postgres-pool-bootstrap.lock existing status
-  local prepared canonical_identity
+  local prepared canonical_identity cleanup
   [[ $sha =~ ^[0-9a-f]{40}$ ]] || fail 'PostgreSQL bootstrap marker SHA is invalid'
   [[ $mode == normal || $mode == force-advance ]] ||
     fail 'PostgreSQL bootstrap marker advance mode is invalid'
@@ -406,7 +452,28 @@ production_transition_commit_postgres_pool_bootstrap() {
     fail 'PostgreSQL bootstrap marker temporary path is invalid'
   fi
   existing=${prepared%%|*}
-  canonical_identity=${prepared#*|}
+  prepared=${prepared#*|}
+  canonical_identity=${prepared%%|*}
+  cleanup=${prepared#*|}
+  if [[ -e $next.remove.intent || -L $next.remove.intent ||
+        -e $next.remove.data || -L $next.remove.data ]]; then
+    production_transition_promote_next \
+      "$next" "$marker" "$sha" "$cleanup" "$canonical_identity" || {
+        production_transition_bootstrap_lock_release "$lock"
+        fail 'PostgreSQL bootstrap marker recovery is invalid'
+      }
+    prepared=$(production_transition_prepare_bootstrap_next \
+      "$marker" "$next" "$sha") || {
+        production_transition_bootstrap_lock_release "$lock"
+        fail 'PostgreSQL bootstrap marker recovery did not converge'
+      }
+    existing=${prepared%%|*}; prepared=${prepared#*|}
+    canonical_identity=${prepared%%|*}; cleanup=${prepared#*|}
+  fi
+  if [[ -n $cleanup ]]; then
+    production_transition_remove_safe_duplicate \
+      "$next" "$cleanup" 'PostgreSQL bootstrap marker promotion residue'
+  fi
   if [[ $existing == "$sha" && ! -e $next && ! -L $next ]]; then
     if postgres_pool_bootstrap_physically_installed "$sha" "$sha"; then
       production_transition_bootstrap_lock_release "$lock"
@@ -464,7 +531,6 @@ production_transition_commit_postgres_pool_bootstrap() {
   fi
   production_transition_bootstrap_lock_release "$lock"
 }
-
 production_transition_commit_effect_sha_marker() {
   local marker=$1 target=$2 label=$3 proof_function=$4
   local next=$marker.next existing='' residue scope
@@ -512,11 +578,9 @@ production_transition_commit_effect_sha_marker() {
     fail "$label marker did not commit"
   production_transition_marker_failpoint "$scope-after-marker"
 }
-
 production_transition_control_effect_installed() {
   production_transition_installed_control_sha "$1" >/dev/null
 }
-
 production_transition_reconcile_target_effect_markers() {
   local target=$1 bootstrap_next=$STATE/postgres-pool-bootstrap.sha.next
   local control_next=$STATE/control.sha.next
@@ -528,7 +592,6 @@ production_transition_reconcile_target_effect_markers() {
       "$STATE/control.sha" "$target" control production_transition_control_effect_installed
   fi
 }
-
 production_transition_consumption_status_rank() {
   case $1 in
     pending) printf '1\n' ;;
@@ -537,17 +600,14 @@ production_transition_consumption_status_rank() {
     *) return 1 ;;
   esac
 }
-
 production_transition_scheduler_hold_path() {
   printf '%s/%s\n' "$STATE" "$PRODUCTION_TRANSITION_SCHEDULER_HOLD_MARKER"
 }
-
 production_transition_scheduler_hold_exists() {
   local marker
   marker=$(production_transition_scheduler_hold_path) || return
   [[ -e $marker || -L $marker ]]
 }
-
 production_transition_scheduler_hold_record() {
   local phase=$1 authorization=$2 authorization_sha
   [[ $phase == held || $phase == release-authorized ]] || return 1
@@ -558,14 +618,12 @@ production_transition_scheduler_hold_record() {
     "phase=$phase" "authorization-sha256=$authorization_sha" \
     "$authorization"
 }
-
 production_transition_read_scheduler_hold() {
   local marker
   marker=$(production_transition_scheduler_hold_path) || return
   production_transition_read_regular_file \
     "$marker" 'production transition scheduler hold'
 }
-
 production_transition_scheduler_hold_phase() {
   local authorization=$1 record held release
   record=$(production_transition_read_scheduler_hold) || return
@@ -580,7 +638,6 @@ production_transition_scheduler_hold_phase() {
     fail 'production transition scheduler hold differs from signed authority'
   fi
 }
-
 production_transition_reconcile_scheduler_hold_next() {
   local authorization=$1 marker next next_record held release phase existing=''
   marker=$(production_transition_scheduler_hold_path) || return
@@ -624,7 +681,6 @@ production_transition_reconcile_scheduler_hold_next() {
     fail 'production transition scheduler hold temporary record did not recover'
   production_transition_marker_failpoint "scheduler-hold-$phase-after-marker"
 }
-
 production_transition_write_scheduler_hold() {
   local phase=$1 authorization=$2 marker next expected existing=''
   marker=$(production_transition_scheduler_hold_path) || return
@@ -649,7 +705,6 @@ production_transition_write_scheduler_hold() {
     fail 'production transition scheduler hold did not commit'
   production_transition_marker_failpoint "scheduler-hold-$phase-after-marker"
 }
-
 production_transition_quiesce_scheduler_timers() {
   local timer service state
   if [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} == 1 && \
@@ -676,7 +731,6 @@ production_transition_quiesce_scheduler_timers() {
       fail "production transition scheduler hold found active service: $service"
   done
 }
-
 production_transition_begin_scheduler_hold() {
   local authorization=$1 phase marker
   marker=$(production_transition_scheduler_hold_path) || return
@@ -688,14 +742,12 @@ production_transition_begin_scheduler_hold() {
   [[ $phase == held || $phase == release-authorized ]] || return 1
   [[ $phase != held ]] || production_transition_quiesce_scheduler_timers
 }
-
 production_transition_scheduler_hold_runtime_mode() {
   local authorization=${PRODUCTION_TRANSITION_ACTIVE_SCHEDULER_AUTHORIZATION:-}
   [[ -n $authorization ]] || \
     fail 'production transition scheduler mutation lacks signed authority'
   production_transition_scheduler_hold_phase "$authorization"
 }
-
 production_transition_authorize_scheduler_release() {
   local authorization=$1 complete
   complete=$(production_transition_consumption_record complete "$authorization") || return
@@ -708,7 +760,6 @@ production_transition_authorize_scheduler_release() {
   }
   production_transition_write_scheduler_hold release-authorized "$authorization"
 }
-
 production_transition_resume_scheduler_hold() {
   local target=$1 authorization=$2 activated complete
   [[ $(production_transition_scheduler_hold_phase "$authorization") == \
@@ -733,7 +784,6 @@ production_transition_resume_scheduler_hold() {
     fail 'production transition runtime scheduler resume failed'
   production_transition_marker_failpoint scheduler-hold-after-runtime-resume
 }
-
 production_transition_finalize_scheduler_hold() {
   local target=$1 authorization=$2 marker expected activated complete
   production_transition_validate_sha "$target" T || \
@@ -763,7 +813,6 @@ production_transition_finalize_scheduler_hold() {
     fail 'production transition scheduler hold removal failed'
   sync -f "$STATE" || fail 'production transition scheduler hold removal was not durable'
 }
-
 production_transition_parse_consumption() {
   local record=$1 expected_authorization=$2 label=$3 status authorization
   status=$(sed -n '2s/^status=//p' <<< "$record")
@@ -777,7 +826,6 @@ production_transition_parse_consumption() {
     fail "$label differs from exact authenticated transition authority"
   printf '%s\n' "$status"
 }
-
 production_transition_prove_consumption_status() {
   local status=$1 authorization=$2 target activated
   target=$(sed -n 's/^t=//p' <<< "$authorization")
@@ -797,7 +845,6 @@ production_transition_prove_consumption_status() {
       ;;
   esac
 }
-
 production_transition_reconcile_consumption_next() {
   local authorization=$1 marker=$STATE/$PRODUCTION_TRANSITION_REVIEW_CONSUMPTION_MARKER
   local next=$marker.next next_record next_status marker_record marker_status
@@ -837,7 +884,6 @@ production_transition_reconcile_consumption_next() {
     fail 'transition review consumption temporary record did not recover'
   production_transition_marker_failpoint "consumption-$next_status-after-marker"
 }
-
 production_transition_write_consumption() {
   local status=$1 authorization=$2
   local marker=$STATE/$PRODUCTION_TRANSITION_REVIEW_CONSUMPTION_MARKER
@@ -862,7 +908,6 @@ production_transition_write_consumption() {
     fail 'transition review consumption record did not commit'
   production_transition_marker_failpoint "consumption-$status-after-marker"
 }
-
 production_transition_commit_activation() {
   local target=$1 marker=$STATE/$PRODUCTION_TRANSITION_ACTIVATED_MARKER
   local next=$marker.next existing='' residue authorization record expected_runtime
@@ -904,7 +949,6 @@ production_transition_commit_activation() {
     fail 'production transition activation marker did not commit'
   production_transition_marker_failpoint 'activation-after-marker'
 }
-
 production_transition_s2_bootstrap_pending() {
   local target=$1 authorization=$2 s2 current control bootstrap backend installed
   s2=$(sed -n 's/^review-s2=//p' <<< "$authorization")
@@ -933,7 +977,6 @@ production_transition_s2_bootstrap_pending() {
     fail 'authenticated bootstrap installed controller is invalid'
   return 0
 }
-
 deploy_production_transition_bootstrap() {
   local target=$1 statement=$2 signature=$3 verification s2 lock_fd
   exec {lock_fd}>"$STATE/$PRODUCTION_TRANSITION_REVIEW_CONSUMPTION_LOCK"
@@ -953,6 +996,5 @@ deploy_production_transition_bootstrap() {
     deploy_release "$s2"
   fi
   production_transition_require_target_deploy_state "$target" allow-expired
-  flock -u "$lock_fd"
   exec {lock_fd}>&-
 }
