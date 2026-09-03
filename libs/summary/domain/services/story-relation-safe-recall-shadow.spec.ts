@@ -47,6 +47,27 @@ describe("story relation safe-recall shadow candidates", () => {
     ]);
   });
 
+  it("rejects strict-title pairs from aliases of the same provider", () => {
+    const left = evidence(
+      "cursor-x",
+      "x-twitter",
+      "Cursor deployed at SpaceX",
+      "Official deployment note.",
+    );
+    const right = evidence(
+      "cursor-twitter",
+      "twitter",
+      "SpaceX deploying Cursor",
+      "A reposted wrapper.",
+    );
+
+    expect(buildStoryRelationSafeRecallShadowCandidates({
+      selection: splitSelection(left, right),
+      evidence: [left, right],
+      primaryCandidates: [],
+    }).candidates).toEqual([]);
+  });
+
   it("generates official plus HN watermark morphology without body promotion", () => {
     const official = evidence(
       "watermark-official",

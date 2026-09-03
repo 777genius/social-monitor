@@ -35,6 +35,7 @@ export class StoryClusteringService {
     readonly items: readonly SummaryEvidenceItem[];
     readonly limit: number;
     readonly verifiedStoryRelationPairs?: ReadonlySet<string>;
+    readonly verifiedStrictTitleRelationPairs?: ReadonlySet<string>;
     readonly now?: Date;
   }): SummaryEvidenceSelection {
     const limit = normalizeLimit(params.limit, this.policy);
@@ -45,6 +46,7 @@ export class StoryClusteringService {
         now,
         this.policy,
         params.verifiedStoryRelationPairs,
+        params.verifiedStrictTitleRelationPairs,
       ),
     ]
       .sort(compareStoryClusters)
@@ -74,6 +76,7 @@ const buildClusters = (
   now: Date,
   policy: StoryRankingPolicy,
   verifiedStoryRelationPairs: ReadonlySet<string> | undefined,
+  verifiedStrictTitleRelationPairs: ReadonlySet<string> | undefined,
 ): readonly StoryCluster[] => {
   const groups: {
     readonly key: string;
@@ -91,6 +94,7 @@ const buildClusters = (
           candidate.items,
           policy,
           verifiedStoryRelationPairs,
+          verifiedStrictTitleRelationPairs,
         ),
     );
 

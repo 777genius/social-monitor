@@ -136,12 +136,39 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
         promotionCandidateIds,
       }),
     });
-    // Model/agent relation decisions are retained as narrative evidence, but
-    // the publication slate is composed only from deterministic clustering.
+    const authoritativeCandidateSelection = this.clusterer.cluster({
+      identity: {
+        tenantId: params.tenantId,
+        workspaceId: params.workspaceId,
+        scope: params.scope,
+      },
+      items: primaryCandidateItems,
+      limit: primaryCandidateItems.length,
+      now: ingestionCutoff,
+      verifiedStoryRelationPairs: approvedRelations.pairs,
+      verifiedStrictTitleRelationPairs: approvedRelations.strictTitlePairs,
+    });
+    const authoritativeClusterByEvidenceId = new Map<string, string>();
+    for (const cluster of authoritativeCandidateSelection.clusters) {
+      for (const feedItemId of [
+        cluster.representativeFeedItemId,
+        ...cluster.duplicateFeedItemIds,
+      ]) {
+        authoritativeClusterByEvidenceId.set(feedItemId, cluster.id);
+      }
+    }
+    const graduatedRelations = approvedRelations.relations.filter(
+      (relation) =>
+        authoritativeClusterByEvidenceId.get(relation.leftFeedItemId) !==
+          undefined &&
+        authoritativeClusterByEvidenceId.get(relation.leftFeedItemId) ===
+          authoritativeClusterByEvidenceId.get(relation.rightFeedItemId),
+    );
     const deterministicPromotionSelection = promotionPolicySelection({
-      ...candidateSelection,
+      ...authoritativeCandidateSelection,
+      approvedSameStoryRelations: graduatedRelations,
       sourceWindow: {
-        ...candidateSelection.sourceWindow,
+        ...authoritativeCandidateSelection.sourceWindow,
         periodStartedAt: params.period.startedAt,
         periodEndedAt: params.period.endedAt,
         ingestionCutoff,
@@ -156,17 +183,13 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
       slate: editorialSlate,
       supplementalEvidence: githubTrendingEvidence,
     });
-    const annotatedPromotionSelection = {
-      ...deterministicPromotionSelection,
-      approvedSameStoryRelations: approvedRelations.relations,
-    };
     const relatedTopicRelations = await verifiedReaderSummaryRelatedTopics({
       query,
       // Related-topic verification needs the bounded context candidates that
       // ranking rejected from the immutable publication slate. The returned
       // relation is metadata only; finalSelection still keeps those subjects
       // out of model evidence and reader-visible promotion cards.
-      selection: annotatedPromotionSelection,
+      selection: deterministicPromotionSelection,
       requestedAt: ingestionCutoff,
       verifier: this.storyRelationVerifier,
       metrics: this.storyRankingMetrics,
@@ -175,7 +198,7 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
     });
     const personalizedSelection = {
       ...deterministicFinalSelection,
-      approvedSameStoryRelations: approvedRelations.relations,
+      approvedSameStoryRelations: graduatedRelations,
       relatedTopicRelations,
       personalization:
         ranked.value.memoryGuidance === undefined

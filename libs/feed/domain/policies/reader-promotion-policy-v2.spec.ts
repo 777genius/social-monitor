@@ -11,6 +11,22 @@ import {
 } from "./reader-promotion-policy-v2.spec-fixtures";
 
 describe("Reader Promotion Policy V2", () => {
+  it("reports the distinct provider Top qualification without changing admission", () => {
+    const additional = evaluateReaderPromotionV2(xPromotionCandidate({
+      candidateId: "additional-floor",
+      likes: 35,
+      reposts: 0,
+    }));
+    const top = evaluateReaderPromotionV2(xPromotionCandidate({
+      candidateId: "top-floor",
+      likes: 70,
+      reposts: 0,
+    }));
+
+    expect(additional).toMatchObject({ admitted: true, topQualified: false });
+    expect(top).toMatchObject({ admitted: true, topQualified: true });
+  });
+
   it("ranks otherwise equal X posts with 11,112 likes above 89 likes", () => {
     const lower = xPromotionCandidate({
       candidateId: "x-lower",

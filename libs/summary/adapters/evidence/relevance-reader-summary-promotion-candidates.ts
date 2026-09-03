@@ -58,6 +58,7 @@ export const promotionPolicySelection = (
     },
     selectedEvidence: items,
     clusters,
+    approvedSameStoryRelations: base.approvedSameStoryRelations,
   };
 };
 

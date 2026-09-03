@@ -66,6 +66,7 @@ export const evaluateReaderPromotionV2 = (
 
   const { signal } = engagement;
   const rawRelativePopularity = signal.value / signal.topFloor;
+  const topQualified = signal.value >= signal.topFloor;
   const relativePopularity = rounded(rawRelativePopularity);
   const engagementSalience = rounded(
     rawRelativePopularity / (1 + rawRelativePopularity),
@@ -98,6 +99,7 @@ export const evaluateReaderPromotionV2 = (
     signalMethod: signal.method,
     providerSignal: fixed(signal.value),
     providerTopFloor: fixed(signal.topFloor),
+    topQualified,
     relativePopularity: fixed(relativePopularity),
     engagementSalience: fixed(engagementSalience),
     relevance: fixed(candidate.relevanceScore),
@@ -121,6 +123,7 @@ export const evaluateReaderPromotionV2 = (
     provider: candidate.provider,
     providerSignal: signal.value,
     providerTopFloor: signal.topFloor,
+    topQualified,
     relativePopularity,
     components,
     admissionAttestation,
