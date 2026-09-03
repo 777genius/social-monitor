@@ -2,6 +2,30 @@
 set -Eeuo pipefail
 ((BASH_VERSINFO[0] >= 4)) || { printf 'Bash 4+ is required\n' >&2; exit 1; }
 
+# Hosted test PID 1 may not reap crash-boundary orphans. Re-exec once beneath
+# a Linux child subreaper so every deliberately killed descendant is collected.
+if [[ ${PRODUCTION_TRANSITION_TEST_SUBREAPER:-} != 1 ]]; then
+  exec python3 - "$0" "$@" <<'PY'
+import ctypes
+import os
+import subprocess
+import sys
+
+if ctypes.CDLL(None, use_errno=True).prctl(36, 1, 0, 0, 0) != 0:
+    raise SystemExit("cannot enable crash-boundary child subreaper")
+environment = os.environ.copy()
+environment["PRODUCTION_TRANSITION_TEST_SUBREAPER"] = "1"
+child = subprocess.Popen([sys.argv[1], *sys.argv[2:]], env=environment)
+status = child.wait()
+while True:
+    try:
+        os.wait()
+    except ChildProcessError:
+        break
+raise SystemExit(status)
+PY
+fi
+
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 PROJECT_ROOT=$(cd "$SCRIPT_DIR/../.." && pwd)
 fixture=$(mktemp -d "${TMPDIR:-/tmp}/forward-bootstrap-marker.XXXXXX")
@@ -37,6 +61,11 @@ expect_failure() {
   if ("$@") >/dev/null 2>&1; then
     fail "accepted $label"
   fi
+}
+expect_sigkill() {
+  local label=$1 status; shift
+  if ("$@") >/dev/null; then status=0; else status=$?; fi
+  [[ $status == 137 ]] || fail "$label exited with status $status instead of 137"
 }
 
 expect_sigkill() {
@@ -145,6 +174,8 @@ rm -f "$STATE/postgres-pool-bootstrap.sha.next"
 run_real_fresh() {
   REPO=$repo CONTROL=$control STATE=$STATE TARGET=$new_sha \
     PRODUCTION_TRANSITION_HOST_FAILPOINT=${1:-} SOURCE=$SCRIPT_DIR/social-monitor-production-deploy.sh \
+    PRODUCTION_TRANSITION_PATH_BOUNDARY_HOOK=${PRODUCTION_TRANSITION_PATH_BOUNDARY_HOOK:-} \
+    PATH_BOUNDARY=${PATH_BOUNDARY:-} SOCIAL_MONITOR_DEPLOY_TEST_MODE=1 \
     bash -Eeuo pipefail -c '
       SCRIPT_DIR=$0
       fail() { printf "real-fresh-bootstrap: %s\n" "$*" >&2; exit 1; }
@@ -165,6 +196,62 @@ expect_failure 'real fresh process crash after .next write' \
 run_real_fresh
 [[ $(cat "$STATE/postgres-pool-bootstrap.sha") == "$new_sha" && \
    ! -e $STATE/postgres-pool-bootstrap.sha.next ]]
+
+# Every fixed removal/link/exchange state is durable before the kill hook.
+# A fresh process resumes through opened hardlink identity, and no random
+# pathname can hide authenticated marker data.
+boundary_hook=$fixture/path-boundary-hook.sh
+printf '%s\n' '#!/usr/bin/env bash' \
+  'set -Eeuo pipefail' \
+  '[[ $1 != "$PATH_BOUNDARY" ]] || {' \
+  '  caller=$(awk "{print \$4}" "/proc/$PPID/stat")' \
+  '  kill -KILL "$PPID" "$caller"' \
+  '}' > "$boundary_hook"
+chmod 0755 "$boundary_hook"
+export PRODUCTION_TRANSITION_PATH_BOUNDARY_HOOK=$boundary_hook
+for boundary in promote-linked remove-intent remove-renamed remove-unlinked \
+    remove-complete promote-exchanged; do
+  rm -f "$STATE/postgres-pool-bootstrap.sha" \
+    "$STATE/postgres-pool-bootstrap.sha.next" \
+    "$STATE/postgres-pool-bootstrap.sha.next.remove.intent" \
+    "$STATE/postgres-pool-bootstrap.sha.next.remove.data"
+  if [[ $boundary == promote-exchanged ]]; then
+    printf '%s\n' "$old_sha" > "$STATE/postgres-pool-bootstrap.sha"
+    chmod 0600 "$STATE/postgres-pool-bootstrap.sha"
+  fi
+  export PATH_BOUNDARY=$boundary
+  expect_sigkill "marker boundary $boundary" run_real_fresh
+  run_real_fresh
+  [[ $(cat "$STATE/postgres-pool-bootstrap.sha") == "$new_sha" && \
+     ! -e $STATE/postgres-pool-bootstrap.sha.next && \
+     ! -e $STATE/postgres-pool-bootstrap.sha.next.remove.intent && \
+     ! -e $STATE/postgres-pool-bootstrap.sha.next.remove.data ]]
+  [[ -z $(find "$STATE" -maxdepth 1 -name '.transition-sentinel-*' -print -quit) ]]
+done
+unset PATH_BOUNDARY PRODUCTION_TRANSITION_PATH_BOUNDARY_HOOK
+printf 'production forward bootstrap marker boundary SIGKILL recovery passed\n'
+
+# Recovery intent is not authority by itself. Forged or malformed fixed-name
+# residue must remain visible and must never be removed by a read or by a
+# removal request authenticated for different bytes.
+for recovery_action in read remove; do
+  forged=$STATE/forged-marker
+  rm -f "$forged" "$forged.remove.intent" "$forged.remove.data"
+  printf '%s\n' "$old_sha" > "$forged"
+  chmod 0600 "$forged"
+  ln "$forged" "$forged.remove.intent"
+  if [[ $recovery_action == read ]]; then
+    expect_failure 'read mutated forged removal intent' \
+      production_transition_guarded_path_operation read "$forged" ''
+  else
+    expect_failure 'remove accepted forged removal intent' \
+      production_transition_guarded_path_operation remove "$forged" "$new_sha"
+  fi
+  [[ -f $forged && -f $forged.remove.intent && \
+     $(cat "$forged") == "$old_sha" ]]
+done
+rm -f "$STATE/forged-marker" "$STATE/forged-marker.remove.intent"
+printf 'production forward bootstrap forged removal recovery rejected\n'
 
 for unsafe in stale malformed symlink missing-entrypoint mutated-wrapper; do
   printf '%s\n' "$old_sha" > "$STATE/postgres-pool-bootstrap.sha"
@@ -398,8 +485,13 @@ for implementation in host-control installed-entrypoint; do
   printf '%s\n' "$d1_sha" > "$next"; chmod 0600 "$next"
   expect_sigkill "$implementation killed after replace" \
     run_guarded_marker_kill promote-after-retire-before-fsync "$old_sha"
-  [[ ! -e $marker && $(cat "$next") == "$d1_sha" ]]
-  compgen -G "$marker.retired.*" >/dev/null
+  if [[ -e $marker ]]; then
+    [[ $(cat "$marker") == "$d1_sha" && $(cat "$next") == "$old_sha" && \
+       $(stat -c %i "$marker") != $(stat -c %i "$next") ]]
+  else
+    [[ $(cat "$next") == "$d1_sha" ]]
+    compgen -G "$marker.retired.*" >/dev/null
+  fi
   run_marker_path_operation "$implementation"
   [[ $(cat "$marker") == "$d1_sha" && ! -e $next ]]
   compgen -G "$next.retired.*" >/dev/null
@@ -465,8 +557,14 @@ run_generic_marker_residues() (
   expect_failure 'scheduler release predecessor retirement crash' \
     production_transition_write_scheduler_hold release-authorized "$authorization"
   unset PRODUCTION_TRANSITION_PATH_OPERATION_KILL_STAGE
-  [[ ! -e $marker && $(cat "$next") == "$release" ]]
-  compgen -G "$marker.retired.*" >/dev/null
+  if [[ -e $marker ]]; then
+    [[ $(cat "$marker") == "$release" && -e $next && $(cat "$next") == "$held" ]]
+  else
+    [[ $(cat "$next") == "$release" ]]
+    compgen -G "$marker.retired.*" >/dev/null
+  fi
+  production_transition_reconcile_scheduler_hold_next "$authorization"
+  [[ ! -e $next && $(cat "$marker") == "$release" ]]
   production_transition_begin_scheduler_hold "$authorization"
   [[ ! -e $next && $(cat "$marker") == "$release" ]]
   rm -f "$marker" "$next" "$marker"*.retired.* "$next".retired.*
@@ -581,6 +679,7 @@ remove_receipt=$(compgen -G "$remove_post.retired.*" | head -1)
 [[ -f $remove_sentinel && ! -e $remove_post && -f $remove_receipt && \
    $(stat -c %i "$remove_receipt") != "$remove_inode" && \
    $(cat "$remove_receipt") == "$d1_sha" ]]
+unset HOOK_ATTACK HOOK_REPLACEMENT HOOK_SENTINEL
 
 occupied=$fixture/occupied-remove
 printf '%s\n' "$d1_sha" > "$occupied"; chmod 0600 "$occupied"

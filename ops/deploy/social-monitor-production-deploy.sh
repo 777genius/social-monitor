@@ -164,13 +164,14 @@ validate_sha() {
   [[ ${1:-} =~ ^[0-9a-f]{40}$ ]] || fail 'commit must be a full lowercase SHA'
 }
 fetch_main() {
-  git -C "$REPO" fetch --quiet origin main
+  declare -F production_forward_require_origin_policy >/dev/null && production_forward_require_origin_policy
+  GIT_NO_REPLACE_OBJECTS=1 GIT_NO_LAZY_FETCH=1 git -C "$REPO" fetch --quiet origin main
 }
 validate_main_commit() {
   local sha=$1
   validate_sha "$sha"
-  git -C "$REPO" cat-file -e "$sha^{commit}" 2>/dev/null || fail 'commit is unavailable'
-  git -C "$REPO" merge-base --is-ancestor "$sha" origin/main || fail 'commit is not on origin/main'
+  GIT_NO_REPLACE_OBJECTS=1 GIT_NO_LAZY_FETCH=1 git -C "$REPO" cat-file -e "$sha^{commit}" 2>/dev/null || fail 'commit is unavailable'
+  GIT_NO_REPLACE_OBJECTS=1 GIT_NO_LAZY_FETCH=1 git -C "$REPO" merge-base --is-ancestor "$sha" origin/main || fail 'commit is not on origin/main'
 }
 : "$POSTGRES_RUNTIME_RELEASES" "$SYSTEMD_UNIT_DIR" "$DAILY_SINGLETON_LOCK"
 source_production_transition_b0_host_control() {
@@ -180,17 +181,21 @@ source_production_transition_b0_host_control() {
   relative=ops/deploy/production-transition-b0-host-control.sh; path=$CONTROL/production-transition-b0-host-control.sh
   [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} != 1 || -e $marker || -e $path ]] || return 0
   [[ -f $marker && ! -L $marker ]] || fail 'B0 host control marker is unsafe'
-  marker_before=$(stat -Lc '%d:%i:%f:%s:%Y:%Z' "$marker") || fail 'B0 host control marker identity cannot be read'; marker_owner=$(stat -Lc '%u:%g:%a' "$marker") || fail 'B0 host control marker mode cannot be read'
+  marker_before=$(stat -Lc '%d:%i:%f:%s:%Y:%Z:%h' "$marker") || fail 'B0 host control marker identity cannot be read'; marker_owner=$(stat -Lc '%u:%g:%a' "$marker") || fail 'B0 host control marker mode cannot be read'
   if [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} == 1 ]]; then
     expected_owner=$(id -u):$(id -g)
   else expected_owner=0:0
   fi
-  [[ $marker_owner == "$expected_owner:600" || $marker_owner == "$expected_owner:644" ]] || fail 'B0 host control marker mode is invalid'
+  if [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} == 1 ]]; then
+    [[ $marker_owner == "$expected_owner:600" || $marker_owner == "$expected_owner:644" ]]
+  else
+    [[ $marker_owner == "$expected_owner:644" ]]
+  fi || fail 'B0 host control marker mode is invalid'
   IFS= read -r base < "$marker" || fail 'B0 host control marker cannot be read'
-  [[ $(wc -c < "$marker") == 41 && $base =~ ^[0-9a-f]{40}$ ]] || \
+  [[ $marker_before == *:1 && $(wc -c < "$marker") == 41 && $base =~ ^[0-9a-f]{40}$ ]] || \
     fail 'B0 host control marker is malformed'
-  marker_after=$(stat -Lc '%d:%i:%f:%s:%Y:%Z' "$marker") || fail 'B0 host control marker identity cannot be re-read'
-  [[ $marker_before == "$marker_after" ]] || fail 'B0 host control marker changed while being read'
+  marker_after=$(stat -Lc '%d:%i:%f:%s:%Y:%Z:%h' "$marker") || fail 'B0 host control marker identity cannot be re-read'
+  [[ ! -L $marker && $marker_before == "$marker_after" ]] || fail 'B0 host control marker changed while being read'
   required_a0=bb4b3f8a0e81ed371aaef5bf362afaaaaacf3c30
   if [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} == 1 && -n ${SOCIAL_MONITOR_DEPLOY_TEST_A0:-} ]]; then required_a0=$SOCIAL_MONITOR_DEPLOY_TEST_A0; fi
   [[ $required_a0 =~ ^[0-9a-f]{40}$ ]] || fail 'required A0 identity is malformed'
@@ -204,8 +209,8 @@ source_production_transition_b0_host_control() {
   owner=$(stat -Lc '%u:%g:%a' "$path") || fail 'installed B0 host control mode cannot be read'
   [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} != 1 ]] || expected_owner=$(id -u):$(id -g)
   [[ $owner == "$expected_owner:644" ]] || fail 'installed B0 host control mode is invalid'
-  before=$(stat -Lc '%d:%i:%f:%s:%Y:%Z' "$path"); installed_object=$(git -C "$REPO" hash-object --no-filters "$path"); after=$(stat -Lc '%d:%i:%f:%s:%Y:%Z' "$path")
-  [[ $before == "$after" && $installed_object == "$object" ]] || \
+  before=$(stat -Lc '%d:%i:%f:%s:%Y:%Z:%h' "$path"); installed_object=$(git -C "$REPO" hash-object --no-filters "$path"); after=$(stat -Lc '%d:%i:%f:%s:%Y:%Z:%h' "$path")
+  [[ ! -L $path && $before == *:1 && $before == "$after" && $installed_object == "$object" ]] || \
     fail 'installed B0 host control differs from trusted B0'
   staging=$(mktemp -d "$STATE/b0-host-control.XXXXXX") || fail 'B0 host control staging failed'; chmod 0700 "$staging"
   staged=$staging/control.sh; git -C "$REPO" cat-file blob "$object" > "$staged"; chmod 0400 "$staged"
@@ -290,6 +295,10 @@ source_deploy_library() {
 }
 source_deploy_library docker-maintenance-lib.sh 'docker maintenance library'
 source_deploy_library production-transition-marker-lib.sh 'transition marker library'
+if declare -F production_transition_host_failpoint >/dev/null; then
+  production_transition_host_failpoint forward-marker-library-ready || \
+    fail 'production forward injected crash after marker library readiness'
+fi
 # Ordering marker for legacy fixture checks: source "$daily_runner_bootstrap_library".
 source_deploy_library \
   daily-runner-image-bootstrap-lib.sh \

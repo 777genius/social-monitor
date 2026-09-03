@@ -15,7 +15,7 @@ EVENT_LOG=$FIXTURE/events.log
 ADMISSION_LOG=$FIXTURE/admission.log
 SENTINEL=$FIXTURE/candidate-code-ran
 export REPO CONTROL STATE EVENT_LOG ADMISSION_LOG SENTINEL
-export SOCIAL_MONITOR_DEPLOY_TEST_MODE=1
+export SOCIAL_MONITOR_DEPLOY_TEST_MODE=1 PRODUCTION_FORWARD_TEST_ALLOW_LOCAL_ORIGIN=1
 
 git init --bare -q "$ORIGIN"
 git init -q -b main "$REPO"
@@ -206,6 +206,7 @@ clear_host_state() {
     eval "exec ${PRODUCTION_TRANSITION_HOST_LOCK_FD}>&-"
     unset PRODUCTION_TRANSITION_HOST_LOCK_FD
     unset PRODUCTION_TRANSITION_HOST_LOCK_OWNER
+    unset PRODUCTION_TRANSITION_HOST_LOCK_CUSTODY
   fi
   /usr/bin/find "$STATE" -maxdepth 1 -type f \
     \( -name "$PRODUCTION_TRANSITION_HOST_STATE_FILE" -o \
@@ -240,6 +241,7 @@ test_require_ordinary_deploy() {
 }
 publish_candidate() {
   git --git-dir="$ORIGIN" update-ref refs/heads/main "$1"
+  git -C "$REPO" update-ref refs/remotes/origin/main "$1"
 }
 expect_transition_failure() {
   local target=$1 pattern=$2
@@ -330,7 +332,7 @@ done
 # A ref mutation after admission is detected before durable admission or deploy.
 clear_host_state
 publish_candidate "$MUTATING"
-expect_transition_failure "$MUTATING" 'target left protected main during admission'
+expect_transition_failure "$MUTATING" 'production prelude target is not exact live origin main'
 [[ ! -s $EVENT_LOG && ! -e $(production_transition_host_state_path) ]]
 
 # Disconnect after durable admission leaves an active hold. The exact target

@@ -2,10 +2,7 @@
 set -euo pipefail
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 PROJECT_ROOT=$(cd "$SCRIPT_DIR/../.." && pwd)
-BASE=$(
-  python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["adoptionBaseCommit"])' \
-    "$SCRIPT_DIR/postgres-pool-release-contract.json"
-)
+BASE=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["adoptionBaseCommit"])' "$SCRIPT_DIR/postgres-pool-release-contract.json")
 RELEASE_A_COMMIT=83f6932eaaa87a49c64b9f8b07ada5052d47a7b4
 FIXTURE=$(mktemp -d "${TMPDIR:-/tmp}/postgres-pool-bootstrap-transition.XXXXXX")
 trap 'rm -rf "$FIXTURE"' EXIT
@@ -443,6 +440,7 @@ cp "$PROJECT_ROOT/ops/deploy/social-monitor-production-deploy.sh" \
   "$PROJECT_ROOT/ops/deploy/backend-runtime-health-lib.sh" \
   "$PROJECT_ROOT/ops/deploy"/backend-image-rescue-{lib,pin-cleanup-lib}.sh \
   "$PROJECT_ROOT/ops/deploy/docker-maintenance-lib.sh" \
+  "$PROJECT_ROOT/ops/deploy/production-transition-marker-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/daily-runner-image-bootstrap-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/x-collector-image-deploy-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/reader-summary-recovery-maintenance-lib.sh" \
@@ -560,8 +558,11 @@ prepare_historical_reconciliation() {
 
 # Historical reconciliation authenticates the exact control-marker blob.
 TEST_PHASE=already-newer-historical-reconciliation
-replace_state_marker "$STATE/postgres-pool-bootstrap.sha" "$TARGET_SHA"
-replace_state_marker "$STATE/control.sha" "$HISTORICAL_CONTROL_SHA"
+# Avoid truncating an inode that still has a receipt hardlink from the prior
+# promotion; the historical fixture intentionally starts from a fresh marker.
+rm -f "$STATE/postgres-pool-bootstrap.sha"
+printf '%s\n' "$TARGET_SHA" > "$STATE/postgres-pool-bootstrap.sha"
+printf '%s\n' "$HISTORICAL_CONTROL_SHA" > "$STATE/control.sha"
 install_historical_control_entrypoint
 cmp -s "$INSTALLED" \
   <(git -C "$REPO" show \
@@ -930,6 +931,7 @@ cp "$PROJECT_ROOT/ops/deploy/social-monitor-production-deploy.sh" \
   "$PROJECT_ROOT/ops/deploy/backend-runtime-health-lib.sh" \
   "$PROJECT_ROOT/ops/deploy"/backend-image-rescue-{lib,pin-cleanup-lib}.sh \
   "$PROJECT_ROOT/ops/deploy/docker-maintenance-lib.sh" \
+  "$PROJECT_ROOT/ops/deploy/production-transition-marker-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/daily-runner-image-bootstrap-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/x-collector-image-deploy-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/reader-summary-recovery-maintenance-lib.sh" \
