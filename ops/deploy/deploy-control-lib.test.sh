@@ -762,18 +762,20 @@ commit_mode_output=$(
   COMMIT_FUNCTION="$(sed -n \
     '/^commit_postgres_pool_bootstrap() {$/,/^}$/p' \
     "$SCRIPT_DIR/social-monitor-production-deploy.sh")" \
+  MARKER_LIBRARY="$SCRIPT_DIR/production-transition-marker-lib.sh" \
   TARGET_SHA="$target_sha" \
+  PREVIOUS_SHA="$(git -C "$REPO" rev-parse "$target_sha^")" \
   STATE="$STATE" \
     bash -c '
       set -euo pipefail
+      source "$MARKER_LIBRARY"
       eval "$COMMIT_FUNCTION"
       fail() {
         printf "test deploy failure: %s\n" "$*" >&2
         exit 1
       }
-      postgres_pool_bootstrap_installed() {
-        return 0
-      }
+      production_transition_host_failpoint() { :; }
+      postgres_pool_bootstrap_physically_installed() { return 0; }
       marker=$STATE/postgres-pool-bootstrap.sha
       default_identity=$(stat -c "%d:%i:%s:%y:%z" "$marker")
       commit_postgres_pool_bootstrap "$TARGET_SHA"
@@ -787,6 +789,7 @@ commit_mode_output=$(
       ((invalid_status != 0))
       grep -F "marker advance mode is invalid" <<< "$invalid_output" >/dev/null
       forced_identity=$(stat -c "%d:%i:%s:%y:%z" "$marker")
+      printf "%s\n" "$PREVIOUS_SHA" > "$marker"
       commit_postgres_pool_bootstrap "$TARGET_SHA" force-advance
       [[ $(<"$marker") == "$TARGET_SHA" ]]
       [[ $(stat -c "%d:%i:%s:%y:%z" "$marker") != "$forced_identity" ]]
