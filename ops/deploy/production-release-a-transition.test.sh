@@ -298,3 +298,28 @@ prepare_production_forward_bridge descendant
   exit 1
 }
 echo 'Forward descendant pre-bridge preparation test passed'
+
+# If the bridge was installed by an earlier interrupted run, the bridge plan
+# is fully reconciled and must be accepted idempotently without redeploying B.
+capture_plan() {
+  local requested=$1
+  PLAN_FRONTEND=true PLAN_BACKEND=true PLAN_CONTROL=true PLAN_X_COLLECTOR=false
+  PLAN_BACKEND_BASE=$PRODUCTION_FORWARD_BACKEND_SHA
+  PLAN_POSTGRES_POOL_BOOTSTRAP=$POSTGRES_POOL_BOOTSTRAP_VERSION
+  PLAN_POSTGRES_POOL_BOOTSTRAP_SHA=$PRODUCTION_FORWARD_POOL_SHA
+  PLAN_POSTGRES_POOL_REPAIR=false
+  if [[ $requested == bridge ]]; then
+    PLAN_FRONTEND=false
+    PLAN_BACKEND=false
+    PLAN_CONTROL=false
+  fi
+}
+print_plan() { :; }
+bridge_deployments=0
+deploy_once() { bridge_deployments=$((bridge_deployments + 1)); }
+prepare_production_forward_bridge descendant
+[[ $bridge_deployments == 0 ]] || {
+  echo "already-installed bridge was deployed again: $bridge_deployments" >&2
+  exit 1
+}
+echo 'Installed bridge idempotency test passed'
