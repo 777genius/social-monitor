@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:social_monitor_design_system/social_monitor_design_system.dart';
 import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
@@ -80,6 +82,117 @@ void main() {
       findsNothing,
     );
   });
+
+  testWidgets('summary and top posts share browser-like copy behavior', (
+    tester,
+  ) async {
+    String? clipboardText;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, (call) async {
+          if (call.method == 'Clipboard.setData') {
+            clipboardText =
+                (call.arguments as Map<Object?, Object?>)['text'] as String?;
+          }
+          return null;
+        });
+    addTearDown(
+      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, null),
+    );
+
+    final summary = const SummaryMapper().readerSummaryToDomain(
+      readerSummaryApiDto(),
+    );
+    final catalog = DeferredSummaryReviewCatalog(
+      const [],
+      workspaceSummarySnapshot: WorkspaceSummarySnapshot(current: summary),
+    );
+    final store = PublishedSummaryStore(
+      scope: summaryWorkspaceScope,
+      loadLatest: LoadWorkspaceSummaryUseCase(catalog),
+      loadHistory: LoadWorkspaceSummaryHistoryUseCase(catalog),
+      loadPublished: LoadPublishedSummaryUseCase(catalog),
+      openReaderSource: const OpenReaderSourceUseCase(_SourceLauncher()),
+      summaryId: summary.id,
+    );
+    addTearDown(store.dispose);
+
+    final theme = AppTheme.light();
+    await tester.pumpWidget(
+      AppHeadlessScope(
+        theme: theme,
+        appBuilder: (overlayBuilder) => MaterialApp(
+          theme: theme,
+          builder: overlayBuilder,
+          home: SelectionArea(
+            child: Scaffold(body: PublishedSummaryPage(store: store)),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SelectionArea), findsOneWidget);
+    await _selectAndCopy(tester, find.text('AI workspace summary').first, 3);
+    expect(clipboardText, 'workspace');
+
+    final topPost = find.descendant(
+      of: find.byType(ReaderSummaryTopPostsSliver),
+      matching: find.text('AI coding tools'),
+    );
+    final scrollView = find.byKey(
+      const PageStorageKey<String>('published-summary-scroll-view'),
+    );
+    for (
+      var attempt = 0;
+      attempt < 12 && topPost.evaluate().isEmpty;
+      attempt++
+    ) {
+      await tester.drag(scrollView, const Offset(0, -500));
+      await tester.pumpAndSettle();
+    }
+    expect(topPost, findsOneWidget);
+    await tester.ensureVisible(topPost);
+    await _selectAndCopy(tester, topPost, 4);
+    expect(clipboardText, 'coding');
+  });
+}
+
+Future<void> _selectAndCopy(
+  WidgetTester tester,
+  Finder text,
+  int offset,
+) async {
+  final target = text.first;
+  final paragraph = tester.renderObject<RenderParagraph>(
+    find.descendant(of: target, matching: find.byType(RichText)).first,
+  );
+  final gesture = await tester.startGesture(
+    _textOffsetToPosition(paragraph, offset),
+  );
+  addTearDown(gesture.removePointer);
+  await tester.pump(const Duration(milliseconds: 500));
+  await gesture.up();
+  await tester.pump();
+  expect(paragraph.selections, isNotEmpty);
+  expect(paragraph.selections.single.isCollapsed, isFalse);
+
+  final platform = Theme.of(tester.element(target)).platform;
+  final modifier = platform == TargetPlatform.macOS
+      ? LogicalKeyboardKey.metaLeft
+      : LogicalKeyboardKey.controlLeft;
+  await tester.sendKeyDownEvent(modifier);
+  await tester.sendKeyEvent(LogicalKeyboardKey.keyC);
+  await tester.sendKeyUpEvent(modifier);
+  await tester.pump();
+}
+
+Offset _textOffsetToPosition(RenderParagraph paragraph, int offset) {
+  const caret = Rect.fromLTWH(0, 0, 2, 20);
+  final localOffset =
+      paragraph.getOffsetForCaret(TextPosition(offset: offset), caret) +
+      Offset(0, paragraph.preferredLineHeight);
+  return paragraph.localToGlobal(localOffset) + const Offset(0, -2);
 }
 
 final class _SourceLauncher implements ReaderSourceLauncher {
