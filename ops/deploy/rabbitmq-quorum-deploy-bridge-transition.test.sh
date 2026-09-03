@@ -7,10 +7,6 @@ PROJECT_ROOT=$(cd "$SCRIPT_DIR/../.." && pwd)
 BRIDGE_RELEASE_SHA=$(git -C "$PROJECT_ROOT" rev-parse '472d835c^{commit}')
 FIXTURE=$(mktemp -d "${TMPDIR:-/tmp}/rabbitmq-quorum-deploy-bridge.XXXXXX")
 trap 'rm -rf "$FIXTURE"' EXIT
-export GIT_AUTHOR_NAME='RabbitMQ bridge fixture'
-export GIT_AUTHOR_EMAIL=rabbitmq-bridge@example.invalid
-export GIT_COMMITTER_NAME=$GIT_AUTHOR_NAME
-export GIT_COMMITTER_EMAIL=$GIT_AUTHOR_EMAIL
 
 if ! command stat -c '%a' "$SCRIPT_DIR/social-monitor-production-deploy.sh" >/dev/null 2>&1; then
   # Production runs GNU coreutils. Keep this deterministic fixture runnable on
@@ -66,17 +62,21 @@ BRIDGE_CONTROL_PATHS=(
 )
 
 assert_rolling_entrypoint_bridge() {
-  local current_blob entrypoint
-  entrypoint=$SCRIPT_DIR/social-monitor-production-deploy.sh
+  local current bridge_blob current_blob
+  current=$(git -C "$PROJECT_ROOT" rev-parse 'HEAD^{commit}')
+  REPO=$PROJECT_ROOT
+  fail() { printf 'rolling-entrypoint-bridge-error: %s\n' "$*" >&2; exit 1; }
+  # shellcheck source=ops/deploy/production-forward-bridge-host-lib.sh
+  source "$SCRIPT_DIR/production-forward-bridge-host-lib.sh"
+  production_forward_derive_graph "$current"
+  production_forward_verify_target_graph "$PRODUCTION_FORWARD_B" "$current"
+  ROLLING_ENTRYPOINT_BRIDGE_SHA=$PRODUCTION_FORWARD_W
+  bridge_blob=$(git -C "$PROJECT_ROOT" rev-parse \
+    "$ROLLING_ENTRYPOINT_BRIDGE_SHA:ops/deploy/social-monitor-production-deploy.sh")
   current_blob=$(git -C "$PROJECT_ROOT" rev-parse \
     "HEAD:ops/deploy/social-monitor-production-deploy.sh")
-  [[ -n $current_blob && -s $entrypoint && ! -L $entrypoint ]] || {
-    echo 'rolling entrypoint bridge is missing from the current release' >&2
-    exit 1
-  }
-  grep -F 'deploy_control_reviewed_transition_matches "$marker" "$target"' \
-    "$entrypoint" >/dev/null || {
-    echo 'rolling entrypoint bridge lacks reviewed transition guard' >&2
+  [[ $bridge_blob == "$current_blob" ]] || {
+    echo 'rolling entrypoint bridge does not match the current release' >&2
     exit 1
   }
 }
@@ -84,7 +84,7 @@ assert_rolling_entrypoint_bridge() {
 assert_rolling_entrypoint_bridge
 
 assert_real_bridge_target_assets() {
-  local path entry mode type object tree_path expected_digest alternate_digest reviewed_digest additional_digest
+  local path entry mode type object tree_path expected_digest alternate_digest reviewed_digest
   local release_b_candidate_digest release_b_sealed_digest rolling_repair_digest
   local current_release_digest
   local actual_digest actual_mode
@@ -117,7 +117,6 @@ assert_real_bridge_target_assets() {
     expected_digest=$(git -C "$PROJECT_ROOT" show "$BRIDGE_RELEASE_SHA:$path" | sha256sum | awk '{print $1}')
     alternate_digest=
     reviewed_digest=
-    additional_digest=
     release_b_candidate_digest=
     release_b_sealed_digest=
     rolling_repair_digest=
@@ -129,7 +128,6 @@ assert_real_bridge_target_assets() {
         alternate_digest=101b80c5c0ee6ea5ff4e908e5661a7c2bbd03ad2048fb7eb8b5d26966b0e4860
         reviewed_digest=cc869266046dbe9edc590e83944e93bab8ebdf19e8ef66f4917c896bbd48fcde
         current_release_digest=d9260a34a3d64cc4ba2b3799266ca97a0e7b58cb8ae4649bb1f2e11e26791b47
-        additional_digest=333b3be22c669d3210cc331763cba892bdf87ae167bce6837774469add6cbf47
         ;;
       ops/deploy/deploy-control-lib.sh)
         expected_digest=d18854822ef36d5571289e72c7691fff8db4a7d5c516787441a733d6960a88a9
@@ -152,7 +150,7 @@ assert_real_bridge_target_assets() {
         release_b_candidate_digest=bea119047fbbd2295185c84e0adeb773dc852e63b951daf5c7a831356a73a371
         release_b_sealed_digest=1718617b4bbb92f4dbfd92a59fcc482ef7a098734730b8460d21aaced44386c2
         rolling_repair_digest=1945f2b07f110d16694affc15c66b4589d294b81a4e593a9680dacf11fbc5d4d
-        current_release_digest=dc7ae49810a3e389f58cca197ca3e89b703e7d631df5cdcd0c026840959a9b71
+        current_release_digest=4d5083cf3af758640633482b89d6644e463dc717ea3deb4bf72b908bbe26451d
         ;;
     esac
     if [[ $path == ops/deploy/social-monitor-production-deploy.sh ]]; then
@@ -195,8 +193,7 @@ assert_real_bridge_target_assets() {
        (-n $release_b_candidate_digest && $actual_digest == "$release_b_candidate_digest") ||
        (-n $release_b_sealed_digest && $actual_digest == "$release_b_sealed_digest") ||
        (-n $rolling_repair_digest && $actual_digest == "$rolling_repair_digest") ||
-       (-n $current_release_digest && $actual_digest == "$current_release_digest") ||
-       (-n $additional_digest && $actual_digest == "$additional_digest") ]] || {
+       (-n $current_release_digest && $actual_digest == "$current_release_digest") ]] || {
       printf 'current bridge asset digest drifted from V4A4: %s\n' "$path" >&2
       exit 1
     }
@@ -521,79 +518,10 @@ assert_bridge_backend_rejection() {
   [[ ! -e $CASE_STATE/postgres-pool-bootstrap.sha ]]
 }
 
-assert_promotion_v2_b0_bootstrap() {
-  local promotion_f=6e65d37566c1fa898b3f318d2e997717282e584b
-  local promotion_j=f209b8b351051463892e4090f09d1878ce3e75de
-  local index=$FIXTURE/promotion-b0.index tree h m mode path blob
-  local repo=$FIXTURE/promotion-b0/repo control=$FIXTURE/promotion-b0/control
-  local bad_repo=$FIXTURE/promotion-b0-bad/repo
-  local bad_control=$FIXTURE/promotion-b0-bad/control output status
-
-  GIT_INDEX_FILE=$index git -C "$PROJECT_ROOT" read-tree "$promotion_j"
-  while read -r mode path; do
-    blob=$(git -C "$PROJECT_ROOT" hash-object -w -- "$PROJECT_ROOT/$path")
-    GIT_INDEX_FILE=$index git -C "$PROJECT_ROOT" update-index \
-      --add --cacheinfo "$mode,$blob,$path"
-  done <<'PATHS'
-100644 .github/workflows/production-deploy.yml
-100755 ops/deploy/github-production-deploy-client.sh
-100755 ops/deploy/github-production-deploy-client.test.sh
-100644 ops/deploy/github-production-forward-bridge-client-lib.sh
-100644 ops/deploy/production-forward-bridge-authority.blobs
-100755 ops/deploy/production-forward-bridge.test.sh
-100755 ops/deploy/production-release-a-transition.test.sh
-100755 ops/deploy/production-release-b-bridge-order.test.sh
-100644 ops/deploy/rabbitmq-quorum-deploy-bridge-transition.test.sh
-PATHS
-  tree=$(GIT_INDEX_FILE=$index git -C "$PROJECT_ROOT" write-tree)
-  h=$(printf 'test: B0 exact H\n' | git -C "$PROJECT_ROOT" commit-tree \
-    "$tree" -p "$promotion_j")
-  m=$(printf 'test: B0 protected-main M\n' | \
-    git -C "$PROJECT_ROOT" commit-tree "$tree" -p "$promotion_f" -p "$h")
-
-  git -c gc.autoDetach=false clone -q --shared "$PROJECT_ROOT" "$repo"
-  git -C "$repo" checkout -q "$m"
-  git -C "$repo" update-ref refs/remotes/origin/main "$m"
-  install -d "$control"
-  (
-    set -euo pipefail
-    REPO=$repo CONTROL=$control action=deploy SOCIAL_MONITOR_DEPLOY_TEST_MODE=1
-    fail() { printf 'b0-test-error: %s\n' "$*" >&2; exit 1; }
-    # shellcheck source=/dev/null
-    source "$repo/ops/deploy/deploy-control-bridge-lib.sh"
-    deploy_control_bootstrap_production_transition_b0 "$m"
-    deploy_control_bootstrap_production_transition_b0 "$m"
-  )
-  [[ $(stat -c '%a' "$control/production-transition-admission.sh") == 755 ]]
-  [[ $(stat -c '%a' "$control/production-transition-b0-host-control.sh") == 644 ]]
-  [[ $(stat -c '%a' "$control/production-transition-canonical-lib.sh") == 644 ]]
-
-  git -c gc.autoDetach=false clone -q --shared "$PROJECT_ROOT" "$bad_repo"
-  git -C "$bad_repo" checkout -q "$m"
-  git -C "$bad_repo" update-ref refs/remotes/origin/main "$promotion_j"
-  install -d "$bad_control"
-  set +e
-  output=$(
-    REPO=$bad_repo CONTROL=$bad_control action=deploy \
-      SOCIAL_MONITOR_DEPLOY_TEST_MODE=1 bash -c '
-        fail() { printf "b0-test-error: %s\n" "$*" >&2; exit 1; }
-        source "$REPO/ops/deploy/deploy-control-bridge-lib.sh"
-        deploy_control_bootstrap_production_transition_b0 "$1"
-      ' b0-bootstrap "$m" 2>&1
-  )
-  status=$?
-  set -e
-  ((status != 0))
-  grep -F 'B0 bootstrap requires the exact protected-main commit' \
-    <<< "$output" >/dev/null
-  [[ ! -e $bad_control/production-transition-admission.sh ]]
-}
-
 backend_path_block=$(sed -n '/^BACKEND_PATHS=(/,/^)/p' \
   "$SCRIPT_DIR/social-monitor-production-deploy.sh")
 assert_real_bridge_target_assets
 assert_current_backend_classification_asset
-assert_promotion_v2_b0_bootstrap
 grep -Fx "  $HEALTH_LIBRARY" <<< "$backend_path_block" >/dev/null
 grep -Fx "  $QUORUM_SCRIPT" <<< "$backend_path_block" >/dev/null
 grep -Fx "  $RECOVERY_SCRIPT" <<< "$backend_path_block" >/dev/null

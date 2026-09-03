@@ -73,9 +73,8 @@ jobs:
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
         with: {fetch-depth: 0}
-      - name: Verify exact post-promotion V2 graph before production contact
-        env: {GITHUB_OUTPUT: '${{ runner.temp }}/promotion-v2-maintenance.graph'}
-        run: bash ops/deploy/github-production-deploy-client.sh verify-post-promotion-v2-target "$GITHUB_SHA"
+      - name: Verify exact forward target locally before production contact
+        run: bash ops/deploy/github-production-deploy-client.sh verify-forward-target "$GITHUB_SHA"
       - name: Configure restricted production SSH
         env:
           DEPLOY_KEY: ${{ secrets.PRODUCTION_SSH_PRIVATE_KEY }}
@@ -120,7 +119,7 @@ jobs:
         run: bash ops/deploy/github-production-deploy-client.sh cleanup
   plan:
     if: ${{ github.event_name != 'workflow_dispatch' || inputs.maintenance_action == 'none' }}
-    name: Prepare bridge and plan final promotion target
+    name: Plan changed production components
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: production
@@ -128,49 +127,157 @@ jobs:
       backend: ${{ steps.plan.outputs.backend }}
       backend_base: ${{ steps.plan.outputs.backend_base }}
       control: ${{ steps.plan.outputs.control }}
-      daily_c1_bridge: 'false'
+      daily_c1_bridge: ${{ steps.plan.outputs.daily_c1_bridge }}
       frontend: ${{ steps.plan.outputs.frontend }}
       postgres_pool_bootstrap: ${{ steps.plan.outputs.postgres_pool_bootstrap }}
       postgres_pool_bootstrap_sha: ${{ steps.plan.outputs.postgres_pool_bootstrap_sha }}
       postgres_pool_repair: ${{ steps.plan.outputs.postgres_pool_repair }}
       x_collector: ${{ steps.plan.outputs.x_collector }}
-      recovery_transition: 'true'
-      repair_anchor: none
-      transition_state: target-pending
+      recovery_transition: ${{ steps.plan.outputs.recovery_transition }}
+      repair_anchor: ${{ steps.plan.outputs.repair_anchor }}
+      transition_state: ${{ steps.plan.outputs.transition_state }}
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
         with: {fetch-depth: 0}
-      - name: Verify and emit exact post-promotion V2 graph
-        id: graph
-        run: bash ops/deploy/github-production-deploy-client.sh verify-post-promotion-v2-target "$GITHUB_SHA"
-      - name: Configure restricted production SSH for bridge preparation
+      - name: Validate frozen three-phase graph before production SSH
+        run: bash ops/deploy/production-release-a-transition.sh validate "$GITHUB_SHA"
+      - name: Verify exact forward target locally before production contact
+        run: bash ops/deploy/github-production-deploy-client.sh verify-forward-target "$GITHUB_SHA"
+      - name: Configure restricted production SSH
         env:
           DEPLOY_KEY: ${{ secrets.PRODUCTION_SSH_PRIVATE_KEY }}
           KNOWN_HOSTS: ${{ secrets.PRODUCTION_SSH_KNOWN_HOSTS }}
         run: bash ops/deploy/github-production-deploy-client.sh configure
-      - name: Prepare B at most once without planning or deploying J or M
-        env:
-          DEPLOY_HOST: ${{ vars.PRODUCTION_SSH_HOST }}
-          DEPLOY_USER: ${{ vars.PRODUCTION_SSH_USER }}
-          RELEASE_B: ${{ steps.graph.outputs.release_b }}
-          JOIN_SHA: ${{ steps.graph.outputs.join }}
-          TARGET_SHA: ${{ steps.graph.outputs.target }}
-        run: bash ops/deploy/github-production-deploy-client.sh prepare-post-promotion-v2-bridge "$RELEASE_B" "$JOIN_SHA" "$TARGET_SHA"
-      - name: Close SSH so the installed B controller can take effect
-        if: always()
-        run: bash ops/deploy/github-production-deploy-client.sh cleanup
-      - name: Configure fresh restricted production SSH after B
-        env:
-          DEPLOY_KEY: ${{ secrets.PRODUCTION_SSH_PRIVATE_KEY }}
-          KNOWN_HOSTS: ${{ secrets.PRODUCTION_SSH_KNOWN_HOSTS }}
-        run: bash ops/deploy/github-production-deploy-client.sh configure
-      - name: Freshly run the ordinary final M plan
+      - name: Inspect transition state in B then A then E order
         id: plan
         env:
           DEPLOY_HOST: ${{ vars.PRODUCTION_SSH_HOST }}
           DEPLOY_USER: ${{ vars.PRODUCTION_SSH_USER }}
-          TARGET_SHA: ${{ steps.graph.outputs.target }}
-        run: bash ops/deploy/github-production-deploy-client.sh plan-post-promotion-v2-target "$TARGET_SHA"
+        run: |
+          set -euo pipefail
+          transition=ops/deploy/production-release-a-transition.sh
+          client=ops/deploy/github-production-deploy-client.sh
+          release_e=889d50f50328c89e25b3ef898e552df631b3222f; release_a2=c64c3b46b6b6ba5c7ac7b04028932e09dae2116a; release_b2=e3b5b5d89b3586668e36f987f03672415b5a0f37
+          daily_c1_atomic_repair=61018b1d376ba6695c29f9ccee1b53b1b344d4dc
+          target_plan="$RUNNER_TEMP/recovery-target-inspect.plan"; b_plan="$RUNNER_TEMP/recovery-b2-inspect.plan"
+          a_plan="$RUNNER_TEMP/recovery-a2-inspect.plan"; e_plan="$RUNNER_TEMP/recovery-e-inspect.plan"
+          repair_anchor=none
+          target_atomic_repair_plan() {
+            [[ $(awk -F= '$1 == "frontend" { print $2 }' "$target_plan") =~ ^(true|false)$ &&
+               $(awk -F= '$1 == "backend" { print $2 }' "$target_plan") == true &&
+               $(awk -F= '$1 == "backend_base" { print $2 }' "$target_plan") == 4bb8f6d4969b8449726a10859202b23e2bfb4366 &&
+               $(awk -F= '$1 == "control" { print $2 }' "$target_plan") == true &&
+               $(awk -F= '$1 == "x_collector" { print $2 }' "$target_plan") == false &&
+               $(awk -F= '$1 == "postgres_pool_bootstrap" { print $2 }' "$target_plan") == uninstalled &&
+               $(awk -F= '$1 == "postgres_pool_bootstrap_sha" { print $2 }' "$target_plan") == 0000000000000000000000000000000000000000 &&
+               $(awk -F= '$1 == "postgres_pool_repair" { print $2 }' "$target_plan") == false ]]
+          }
+          bash "$client" inspect-plan "$GITHUB_SHA" > "$target_plan"
+          daily_c1_bridge_base=e3b5b5d89b3586668e36f987f03672415b5a0f37
+          daily_c1_final_marker=ops/deploy/production-runtime/reader-summary-daily-c1.readiness
+          daily_c1_bridge=false
+          daily_c1_bridge_expected=$(cat <<'EOF' | LC_ALL=C sort
+          .github/workflows/production-deploy.yml
+          ops/deploy/daily-c1-control-bridge-workflow.test.sh
+          ops/deploy/daily-runner-image-bootstrap-lib.sh
+          ops/deploy/daily-runner-image-bootstrap-lib.test.sh
+          ops/deploy/deploy-control-bridge-lib.sh
+          ops/deploy/deploy-control-bridge-runtime-helper.test.sh
+          ops/deploy/deploy-control-lib-test-fixture.sh
+          ops/deploy/deploy-control-lib.sh
+          ops/deploy/deploy-control-lib.test.sh
+          ops/deploy/deploy-control-reviewed-library-source.test.sh
+          ops/deploy/github-production-deploy-client.sh
+          ops/deploy/github-production-deploy-client.test.sh
+          ops/deploy/postgres-runtime-activation-boundary-lib.sh
+          ops/deploy/postgres-runtime-daily-c1-readiness-lib.sh
+          ops/deploy/postgres-runtime-deploy-lib.sh
+          ops/deploy/postgres-runtime-weekly-timer-state-lib.sh
+          ops/deploy/production-release-a-transition.sh
+          ops/deploy/production-release-a-transition.test.sh
+          ops/deploy/production-runtime/daily-c1-runtime.sh
+          ops/deploy/production-runtime/reader-summary-daily-c1.readiness
+          ops/deploy/production-runtime/social-monitor-daily.timer
+          ops/deploy/production-runtime/social-monitor-reader-summary-production-day.bootstrap.timer
+          ops/deploy/production-runtime/social-monitor-reader-summary-production-day.service.d-10-daily-c1-owner.conf
+          ops/deploy/reader-summary-publication-deploy-lib.sh
+          ops/deploy/reader-summary-publication-prebootstrap-lib.sh
+          ops/deploy/reader-summary-publication-prebootstrap-lib.test.sh
+          ops/deploy/reader-summary-recovery-maintenance-lib.sh
+          ops/deploy/social-monitor-production-deploy.sh
+          ops/deploy/x-collector-image-deploy-lib.test.sh
+          EOF
+          )
+          daily_c1_bridge_actual=$(git diff --name-only --no-renames \
+            "$daily_c1_bridge_base" "$GITHUB_SHA" -- | LC_ALL=C sort)
+          daily_c1_final_marker_mode=$(git ls-tree "$GITHUB_SHA" -- \
+            "$daily_c1_final_marker" | awk 'NR == 1 { print $1 }')
+          if git merge-base --is-ancestor "$daily_c1_bridge_base" "$GITHUB_SHA" && \
+             [[ $daily_c1_bridge_actual == "$daily_c1_bridge_expected" ]]; then
+            daily_c1_bridge=true
+          elif [[ -z $daily_c1_final_marker_mode ]]; then
+            echo 'daily C1 bridge diff does not match its exact B2 manifest' >&2
+            exit 1
+          fi
+          if [[ $daily_c1_bridge == true ]]; then
+            target_pool_bootstrap=$(awk -F= \
+              '$1 == "postgres_pool_bootstrap" { print $2 }' "$target_plan")
+            if [[ $target_pool_bootstrap == uninstalled ]]; then
+              repair_anchor=$daily_c1_atomic_repair
+              transition_state=repair-required
+            else
+              transition_state=target-pending
+            fi
+          elif target_state=$(bash "$transition" state "$GITHUB_SHA" TARGET "$target_plan" \
+              2> "$RUNNER_TEMP/recovery-target-state.err") &&
+             { case $target_state in
+                 transition_state=repair-required) target_atomic_repair_plan ;;
+                 *) true ;;
+               esac; }; then
+            transition_state=${target_state#transition_state=}
+            [[ $transition_state != repair-required ]] || \
+              repair_anchor=$daily_c1_atomic_repair
+          else
+            bash "$client" inspect-plan "$release_b2" > "$b_plan"
+            if b_state=$(bash "$transition" state "$GITHUB_SHA" B2 "$b_plan" \
+                2> "$RUNNER_TEMP/recovery-b2-state.err"); then
+              transition_state=${b_state#transition_state=}
+              [[ $transition_state != repair-required ]] || repair_anchor=$release_b2
+            else
+              bash "$client" inspect-plan "$release_a2" > "$a_plan"
+              if a_state=$(bash "$transition" state "$GITHUB_SHA" A2 "$a_plan" \
+                  2> "$RUNNER_TEMP/recovery-a2-state.err"); then
+                transition_state=${a_state#transition_state=}
+                if [[ $transition_state == repair-required ]]; then
+                  repair_anchor=$release_a2
+                else
+                  [[ $a_state == transition_state=E-complete ]]
+                fi
+              fi
+              if [[ -z ${a_state:-} ]]; then
+                bash "$client" inspect-plan "$release_e" > "$e_plan"
+                if e_state=$(bash "$transition" state "$GITHUB_SHA" E "$e_plan" \
+                    2> "$RUNNER_TEMP/recovery-e-state.err"); then
+                  transition_state=${e_state#transition_state=}
+                  [[ $transition_state != repair-required ]] || repair_anchor=$release_e
+                else
+                  cat "$RUNNER_TEMP"/recovery-{b2,a2,e}-state.err >&2
+                  exit 1
+                fi
+              fi
+            fi
+          fi
+          {
+            awk -F= '$1 == "frontend" || $1 == "backend" || \
+              $1 == "backend_base" || $1 == "control" || \
+              $1 == "x_collector" || $1 == "postgres_pool_bootstrap" || \
+              $1 == "postgres_pool_bootstrap_sha" || \
+              $1 == "postgres_pool_repair" { print }' "$target_plan"
+            printf 'recovery_transition=true\n'
+            printf 'daily_c1_bridge=%s\n' "$daily_c1_bridge"
+            printf 'repair_anchor=%s\n' "$repair_anchor"
+            printf 'transition_state=%s\n' "$transition_state"
+          } >> "$GITHUB_OUTPUT"
       - name: Remove production SSH material
         if: always()
         run: bash ops/deploy/github-production-deploy-client.sh cleanup
@@ -391,15 +498,11 @@ jobs:
             ops/deploy/backend-image-rescue-lib.test.sh ops/deploy/backend-image-rescue-reconcile-test-support.sh
             ops/deploy/x-collector-image-deploy-lib.sh
             ops/deploy/x-collector-image-deploy-lib.test.sh
-            ops/deploy/deploy-control-bridge-lib.sh
+            ops/deploy/deploy-control-bridge-lib.sh ops/deploy/production-transition-b0-host-control.sh ops/deploy/production-transition-marker-lib.sh ops/deploy/production-forward-bridge-host-lib.sh ops/deploy/production-forward-bridge.test.sh
             ops/deploy/deploy-control-lib.sh
             ops/deploy/deploy-control-lib.test.sh
-            ops/deploy/production-transition-b0-host-control.sh
-            ops/deploy/production-transition-marker-lib.sh
-            ops/deploy/production-forward-bridge-host-lib.sh
-            ops/deploy/github-production-forward-bridge-client-lib.sh
             ops/deploy/github-production-deploy-client.sh
-            ops/deploy/github-production-deploy-client.test.sh
+            ops/deploy/github-production-deploy-client.test.sh ops/deploy/github-production-forward-bridge-client-lib.sh
             ops/deploy/postgres-pool-atomic-bootstrap-lib.sh
             ops/deploy/postgres-pool-atomic-bootstrap-lib.test.sh
             ops/deploy/postgres-runtime-deploy-lib.sh
@@ -462,6 +565,7 @@ jobs:
           bash ops/deploy/verify-production-shellcheck-baseline.sh \
             ops/deploy/social-monitor-production-deploy.sh \
             "${deploy_shell_files[@]}"
+          bash ops/deploy/production-forward-bridge.test.sh
           python3 -m py_compile ops/deploy/verify-postgres-runtime-topology.py
           python3 -m py_compile ops/deploy/verify-postgres-pool-release-contract.py
           if [[ $POSTGRES_POOL_BOOTSTRAP == uninstalled && \
@@ -621,13 +725,176 @@ jobs:
           path: ${{ runner.temp }}/social-monitor-frontend-release.tgz
           if-no-files-found: error
           retention-days: 3
-  deploy:
-    name: Deploy final promotion target with host locks and rollback
+  release_a:
+    name: Reconcile Release E and Release A before Release B
     needs:
       - plan
       - verify_reader_summary_publication
       - verify_backend
       - build_frontend
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    environment: production
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with: {fetch-depth: 0}
+      - name: Validate graph and immutable manifests before production SSH
+        run: bash ops/deploy/production-release-a-transition.sh validate "$GITHUB_SHA"
+      - name: Configure restricted production SSH
+        env:
+          DEPLOY_KEY: ${{ secrets.PRODUCTION_SSH_PRIVATE_KEY }}
+          KNOWN_HOSTS: ${{ secrets.PRODUCTION_SSH_KNOWN_HOSTS }}
+        run: bash ops/deploy/github-production-deploy-client.sh configure
+      - name: Repair PostgreSQL bootstrap after verification
+        if: needs.plan.outputs.transition_state == 'repair-required'
+        env:
+          DEPLOY_HOST: ${{ vars.PRODUCTION_SSH_HOST }}
+          DEPLOY_USER: ${{ vars.PRODUCTION_SSH_USER }}
+          REPAIR_ANCHOR: ${{ needs.plan.outputs.repair_anchor }}
+          DEPLOY_RECONCILE_ATTEMPTS: 1
+          DEPLOY_RECONCILE_INTERVAL_SECONDS: 0
+        run: |
+          case $REPAIR_ANCHOR in
+            889d50f50328c89e25b3ef898e552df631b3222f|c64c3b46b6b6ba5c7ac7b04028932e09dae2116a|e3b5b5d89b3586668e36f987f03672415b5a0f37|61018b1d376ba6695c29f9ccee1b53b1b344d4dc) ;;
+            *) exit 1 ;;
+          esac
+          repair_status=0
+          bash ops/deploy/github-production-deploy-client.sh deploy "$REPAIR_ANCHOR" || repair_status=$?
+          printf 'bounded repair client status=%s; fresh inspection is authoritative\n' "$repair_status"
+      - name: Close possibly interrupted repair SSH
+        if: always()
+        run: bash ops/deploy/github-production-deploy-client.sh cleanup
+      - name: Configure fresh SSH after repair boundary
+        env:
+          DEPLOY_KEY: ${{ secrets.PRODUCTION_SSH_PRIVATE_KEY }}
+          KNOWN_HOSTS: ${{ secrets.PRODUCTION_SSH_KNOWN_HOSTS }}
+        run: bash ops/deploy/github-production-deploy-client.sh configure
+      - name: Deploy the daily C1 target through the alias-aware controller
+        if: needs.plan.outputs.daily_c1_bridge == 'true'
+        env:
+          DEPLOY_HOST: ${{ vars.PRODUCTION_SSH_HOST }}
+          DEPLOY_USER: ${{ vars.PRODUCTION_SSH_USER }}
+        run: |
+          set -euo pipefail
+          bash ops/deploy/github-production-deploy-client.sh deploy "$GITHUB_SHA"
+      - name: Freshly inspect after bounded repair
+        id: recovery_state
+        env:
+          DEPLOY_HOST: ${{ vars.PRODUCTION_SSH_HOST }}
+          DEPLOY_USER: ${{ vars.PRODUCTION_SSH_USER }}
+        run: |
+          set -euo pipefail
+          transition=ops/deploy/production-release-a-transition.sh
+          client=ops/deploy/github-production-deploy-client.sh
+          release_e=889d50f50328c89e25b3ef898e552df631b3222f; release_a2=c64c3b46b6b6ba5c7ac7b04028932e09dae2116a; release_b2=e3b5b5d89b3586668e36f987f03672415b5a0f37
+          target_plan="$RUNNER_TEMP/recovery-target-fresh.plan"; b_plan="$RUNNER_TEMP/recovery-b2-fresh.plan"
+          a_plan="$RUNNER_TEMP/recovery-a2-fresh.plan"; e_plan="$RUNNER_TEMP/recovery-e-fresh.plan"
+          bash "$client" inspect-plan "$GITHUB_SHA" > "$target_plan"
+          if state=$(bash "$transition" state "$GITHUB_SHA" TARGET "$target_plan" \
+              2> "$RUNNER_TEMP/recovery-target-fresh.err"); then
+            transition_state=${state#transition_state=}
+            [[ $transition_state != repair-required ]]
+          else
+          bash "$client" inspect-plan "$release_b2" > "$b_plan"
+          if state=$(bash "$transition" state "$GITHUB_SHA" B2 "$b_plan" \
+              2> "$RUNNER_TEMP/recovery-b2-fresh.err"); then
+            transition_state=${state#transition_state=}
+          else
+            bash "$client" inspect-plan "$release_a2" > "$a_plan"
+            if a_state=$(bash "$transition" state "$GITHUB_SHA" A2 "$a_plan" \
+                2> "$RUNNER_TEMP/recovery-a2-fresh.err"); then
+              transition_state=${a_state#transition_state=}
+              [[ $transition_state == E-complete ]]
+            fi
+            if [[ -z ${a_state:-} ]]; then
+              bash "$client" inspect-plan "$release_e" > "$e_plan"
+              if e_state=$(bash "$transition" state "$GITHUB_SHA" E "$e_plan" \
+                  2> "$RUNNER_TEMP/recovery-e-fresh.err"); then
+                transition_state=${e_state#transition_state=}
+              else
+                cat "$RUNNER_TEMP"/recovery-{b2,a2,e}-fresh.err >&2
+                exit 1
+              fi
+            fi
+          fi
+          fi
+          [[ $transition_state != repair-required ]]
+          printf 'transition_state=%s\n' "$transition_state" >> "$GITHUB_OUTPUT"
+      - name: Deploy and reconcile Release E through the installed wrapper
+        if: steps.recovery_state.outputs.transition_state == 'pre-E'
+        env:
+          DEPLOY_HOST: ${{ vars.PRODUCTION_SSH_HOST }}
+          DEPLOY_USER: ${{ vars.PRODUCTION_SSH_USER }}
+        run: |
+          set -euo pipefail
+          release_e=889d50f50328c89e25b3ef898e552df631b3222f
+          bash ops/deploy/github-production-deploy-client.sh deploy "$release_e"
+      - name: Remove Release E SSH material
+        if: always()
+        run: bash ops/deploy/github-production-deploy-client.sh cleanup
+      - name: Open fresh SSH after Release E
+        if: steps.recovery_state.outputs.transition_state == 'pre-E' || steps.recovery_state.outputs.transition_state == 'E-complete'
+        env:
+          DEPLOY_KEY: ${{ secrets.PRODUCTION_SSH_PRIVATE_KEY }}
+          KNOWN_HOSTS: ${{ secrets.PRODUCTION_SSH_KNOWN_HOSTS }}
+        run: bash ops/deploy/github-production-deploy-client.sh configure
+      - name: Prove E-complete through the Release A plan
+        if: steps.recovery_state.outputs.transition_state == 'pre-E' || steps.recovery_state.outputs.transition_state == 'E-complete'
+        env:
+          DEPLOY_HOST: ${{ vars.PRODUCTION_SSH_HOST }}
+          DEPLOY_USER: ${{ vars.PRODUCTION_SSH_USER }}
+        run: |
+          set -euo pipefail
+          release_a2=c64c3b46b6b6ba5c7ac7b04028932e09dae2116a
+          plan="$RUNNER_TEMP/recovery-a2-after-e.plan"
+          bash ops/deploy/github-production-deploy-client.sh \
+            inspect-plan "$release_a2" > "$plan"
+          state=$(bash ops/deploy/production-release-a-transition.sh \
+            state "$GITHUB_SHA" A2 "$plan")
+          [[ $state == transition_state=E-complete ]]
+      - name: Deploy and reconcile Release A through the installed wrapper
+        if: steps.recovery_state.outputs.transition_state == 'pre-E' || steps.recovery_state.outputs.transition_state == 'E-complete'
+        env:
+          DEPLOY_HOST: ${{ vars.PRODUCTION_SSH_HOST }}
+          DEPLOY_USER: ${{ vars.PRODUCTION_SSH_USER }}
+        run: |
+          set -euo pipefail
+          release_a2=c64c3b46b6b6ba5c7ac7b04028932e09dae2116a
+          bash ops/deploy/github-production-deploy-client.sh deploy "$release_a2"
+      - name: Remove Release A SSH material
+        if: always()
+        run: bash ops/deploy/github-production-deploy-client.sh cleanup
+      - name: Open fresh SSH after Release A
+        if: steps.recovery_state.outputs.transition_state == 'pre-E' || steps.recovery_state.outputs.transition_state == 'E-complete' || steps.recovery_state.outputs.transition_state == 'A-complete'
+        env:
+          DEPLOY_KEY: ${{ secrets.PRODUCTION_SSH_PRIVATE_KEY }}
+          KNOWN_HOSTS: ${{ secrets.PRODUCTION_SSH_KNOWN_HOSTS }}
+        run: bash ops/deploy/github-production-deploy-client.sh configure
+      - name: Prove A-complete through the Release B plan
+        if: steps.recovery_state.outputs.transition_state == 'pre-E' || steps.recovery_state.outputs.transition_state == 'E-complete' || steps.recovery_state.outputs.transition_state == 'A-complete'
+        env:
+          DEPLOY_HOST: ${{ vars.PRODUCTION_SSH_HOST }}
+          DEPLOY_USER: ${{ vars.PRODUCTION_SSH_USER }}
+        run: |
+          set -euo pipefail
+          plan="$RUNNER_TEMP/recovery-b2-after-a.plan"
+          release_b2=e3b5b5d89b3586668e36f987f03672415b5a0f37
+          bash ops/deploy/github-production-deploy-client.sh \
+            inspect-plan "$release_b2" > "$plan"
+          state=$(bash ops/deploy/production-release-a-transition.sh \
+            state "$GITHUB_SHA" B2 "$plan")
+          [[ $state == transition_state=A-complete ]]
+      - name: Remove production SSH material
+        if: always()
+        run: bash ops/deploy/github-production-deploy-client.sh cleanup
+  deploy:
+    name: Deploy Release B with host locks and rollback
+    needs:
+      - plan
+      - verify_reader_summary_publication
+      - verify_backend
+      - build_frontend
+      - release_a
     runs-on: ubuntu-latest
     timeout-minutes: 120
     environment: production
@@ -637,13 +904,39 @@ jobs:
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
         with: {fetch-depth: 0}
-      - name: Verify exact post-promotion V2 graph before deploy SSH
-        run: bash ops/deploy/github-production-deploy-client.sh verify-post-promotion-v2-target "$GITHUB_SHA"
-      - name: Configure fresh restricted production SSH
+      - name: Validate graph and immutable manifests before Release B SSH
+        run: bash ops/deploy/production-release-a-transition.sh validate "$GITHUB_SHA"
+      - name: Deploy the exact production forward bridge and reopen SSH
         env:
           DEPLOY_KEY: ${{ secrets.PRODUCTION_SSH_PRIVATE_KEY }}
           KNOWN_HOSTS: ${{ secrets.PRODUCTION_SSH_KNOWN_HOSTS }}
-        run: bash ops/deploy/github-production-deploy-client.sh configure
+        run: |
+          set -euo pipefail
+          client=ops/deploy/github-production-deploy-client.sh
+          bash "$client" configure; bash "$client" prepare-forward-bridge "$GITHUB_SHA"
+          bash "$client" cleanup; bash "$client" configure
+      - name: Freshly require A-complete or B-complete
+        id: b_state
+        run: |
+          set -euo pipefail
+          target_plan="$RUNNER_TEMP/recovery-target-before-deploy.plan"
+          bash ops/deploy/github-production-deploy-client.sh \
+            inspect-plan "$GITHUB_SHA" > "$target_plan"
+          if state=$(bash ops/deploy/production-release-a-transition.sh \
+              state "$GITHUB_SHA" TARGET "$target_plan"); then
+            [[ $state == transition_state=target-pending || \
+               $state == transition_state=target-complete ]]
+          else
+            plan="$RUNNER_TEMP/recovery-b2-before-deploy.plan"
+            release_b2=e3b5b5d89b3586668e36f987f03672415b5a0f37
+            bash ops/deploy/github-production-deploy-client.sh \
+              inspect-plan "$release_b2" > "$plan"
+            state=$(bash ops/deploy/production-release-a-transition.sh \
+              state "$GITHUB_SHA" B2 "$plan")
+            [[ $state == transition_state=A-complete || \
+               $state == transition_state=B-complete ]]
+          fi
+          printf '%s\n' "$state" >> "$GITHUB_OUTPUT"
       - name: Download immutable frontend artifact
         if: needs.plan.outputs.frontend == 'true'
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
@@ -656,12 +949,13 @@ jobs:
           bash ops/deploy/github-production-deploy-client.sh upload "$GITHUB_SHA"
           "$RUNNER_TEMP/frontend-artifact/social-monitor-frontend-release.tgz"
       - name: Deploy changed components
+        if: steps.b_state.outputs.transition_state != 'target-complete'
         run: bash ops/deploy/github-production-deploy-client.sh deploy "$GITHUB_SHA"
       - name: Remove production SSH material
         if: always()
         run: bash ops/deploy/github-production-deploy-client.sh cleanup
   acceptance:
-    name: Require separate final promotion acceptance
+    name: Require separate post-deploy Release B acceptance
     needs:
       - plan
       - deploy
@@ -671,18 +965,35 @@ jobs:
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
         with: {fetch-depth: 0}
-      - name: Verify exact post-promotion V2 graph before acceptance SSH
-        run: bash ops/deploy/github-production-deploy-client.sh verify-post-promotion-v2-target "$GITHUB_SHA"
+      - name: Validate graph and immutable manifests before acceptance SSH
+        run: bash ops/deploy/production-release-a-transition.sh validate "$GITHUB_SHA"
       - name: Configure fresh restricted production SSH
         env:
           DEPLOY_KEY: ${{ secrets.PRODUCTION_SSH_PRIVATE_KEY }}
           KNOWN_HOSTS: ${{ secrets.PRODUCTION_SSH_KNOWN_HOSTS }}
         run: bash ops/deploy/github-production-deploy-client.sh configure
-      - name: Accept only exact M-complete durable state
+      - name: Accept only B-complete durable state
         env:
           DEPLOY_HOST: ${{ vars.PRODUCTION_SSH_HOST }}
           DEPLOY_USER: ${{ vars.PRODUCTION_SSH_USER }}
-        run: bash ops/deploy/github-production-deploy-client.sh accept-post-promotion-v2-target "$GITHUB_SHA"
+        run: |
+          set -euo pipefail
+          plan="$RUNNER_TEMP/recovery-target-acceptance.plan"
+          bash ops/deploy/github-production-deploy-client.sh \
+            inspect-plan "$GITHUB_SHA" > "$plan"
+          if state=$(bash ops/deploy/production-release-a-transition.sh \
+              state "$GITHUB_SHA" TARGET "$plan"); then
+            [[ $state == transition_state=target-complete ]]
+          else
+            awk -F= '$1 == "frontend" || $1 == "backend" || \
+              $1 == "control" || $1 == "x_collector" { if ($2 != "false") exit 1 }' "$plan"
+            release_b2=e3b5b5d89b3586668e36f987f03672415b5a0f37
+            bash ops/deploy/github-production-deploy-client.sh \
+              inspect-plan "$release_b2" > "$RUNNER_TEMP/recovery-b2-acceptance.plan"
+            state=$(bash ops/deploy/production-release-a-transition.sh state \
+              "$GITHUB_SHA" B2 "$RUNNER_TEMP/recovery-b2-acceptance.plan")
+            [[ $state == transition_state=B-complete ]]
+          fi
       - name: Remove production SSH material
         if: always()
         run: bash ops/deploy/github-production-deploy-client.sh cleanup
