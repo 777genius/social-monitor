@@ -23,6 +23,10 @@ PUBLISH_WORKFLOW=$ROOT/.github/workflows/production-transition-publish.yml
 /usr/bin/grep -Fq 'lease_main=$observed' "$PUBLISHER"
 /usr/bin/grep -Fq 'production_transition_stale_b0_validate_head' \
   "$ROOT/ops/deploy/production-transition-stale-b0-recovery-lib.sh"
+/usr/bin/grep -Fq 'scripts/check-review-ci.mjs' \
+  "$ROOT/ops/deploy/production-transition-stale-b0-recovery-lib.sh"
+/usr/bin/grep -Fq 'production-forward-bridge-authority.blobs' \
+  "$ROOT/ops/deploy/production-transition-stale-b0-recovery-lib.sh"
 /usr/bin/grep -Fq 'first post-B0 release requires deploy-transition with a signed target' \
   "$ROOT/ops/deploy/production-transition-b0-host-control.sh"
 

@@ -13,6 +13,10 @@ production_transition_stale_b0_validate_head() {
     ops/deploy/production-transition-reviewer.sh
     ops/deploy/production-transition-stale-b0-recovery-lib.sh
     ops/deploy/production-transition-stale-b0-recovery.test.sh
+    ops/deploy/production-forward-bridge.blobs
+    ops/deploy/production-forward-bridge-authority.blobs
+    ops/deploy/github-production-forward-bridge-client-lib.sh
+    scripts/check-review-ci.mjs
   )
   [[ $b0 =~ ^[0-9a-f]{40}$ && $s2 =~ ^[0-9a-f]{40}$ && \
      $head =~ ^[0-9a-f]{40}$ ]] || fail 'stale B0 recovery commit is malformed'
