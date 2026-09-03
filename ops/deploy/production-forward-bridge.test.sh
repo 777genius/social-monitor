@@ -122,6 +122,17 @@ production_forward_verify_target_graph "$B" "$F"
 production_forward_verify_target_graph "$B" "$H"
 printf 'forward-bridge-test: exact topology accepted\n'
 
+# The manifest is generated in the bytewise C locale, but the host shell may
+# run with a different UTF-8 collation.  Validate the reader under that host
+# locale so ordering remains deterministic at the production boundary.
+if locale -a 2>/dev/null | grep -Eiq '^en_US(\.UTF-8)?$|^en_US\.utf8$'; then
+  host_locale=$(locale -a | grep -Ei '^en_US(\.UTF-8)?$|^en_US\.utf8$' | head -n 1)
+  LC_ALL="$host_locale"; export LC_ALL
+  production_forward_read_manifest "$B"
+  printf 'forward-bridge-test: manifest ordering is locale-independent (%s)\n' \
+    "$host_locale"
+fi
+
 target_diagnostic=$( (
   capture_plan() { return 23; }
   prepare_production_forward_bridge "$F"
