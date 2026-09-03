@@ -227,6 +227,7 @@ assert_release_a_non_activation() {
     "$POSTGRES_RUNTIME_CURRENT/READY"
   [[ ! -e $CONTROL/postgres-runtime-releases/$TARGET_SHA ]]
 }
+replace_state_marker() { local path=$1 value=$2; rm -f -- "$path" "$path".next "$path".retired.* "$path".next.retired.*; printf '%s\n' "$value" > "$path"; }
 run_entrypoint() {
   local entrypoint=$1
   local action=$2
@@ -445,6 +446,7 @@ cp "$PROJECT_ROOT/ops/deploy/social-monitor-production-deploy.sh" \
   "$PROJECT_ROOT/ops/deploy/daily-runner-image-bootstrap-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/x-collector-image-deploy-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/reader-summary-recovery-maintenance-lib.sh" \
+  "$PROJECT_ROOT/ops/deploy/production-transition-marker-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/production-backend-classification-lib.sh" \
   "$REPO/ops/deploy/"
 write_target_quorum_health_fixture "$REPO"
@@ -549,8 +551,8 @@ assert_recovery_control_only() {
 prepare_historical_reconciliation() {
   rm -f "$STATE/postgres-pool-bootstrap.sha" "$STATE/control.sha" \
     "$RECOVERY_ACTIVATION_LOG"
-  printf '%s\n' "$TARGET_SHA" > "$STATE/postgres-pool-bootstrap.sha"
-  printf '%s\n' "$HISTORICAL_CONTROL_SHA" > "$STATE/control.sha"
+  replace_state_marker "$STATE/postgres-pool-bootstrap.sha" "$TARGET_SHA"
+  replace_state_marker "$STATE/control.sha" "$HISTORICAL_CONTROL_SHA"
   install_historical_control_entrypoint
   RECOVERY_SYNC_MODE=success
   RECOVERY_RACE_SHA=$TARGET_SHA
@@ -558,8 +560,8 @@ prepare_historical_reconciliation() {
 
 # Historical reconciliation authenticates the exact control-marker blob.
 TEST_PHASE=already-newer-historical-reconciliation
-printf '%s\n' "$TARGET_SHA" > "$STATE/postgres-pool-bootstrap.sha"
-printf '%s\n' "$HISTORICAL_CONTROL_SHA" > "$STATE/control.sha"
+replace_state_marker "$STATE/postgres-pool-bootstrap.sha" "$TARGET_SHA"
+replace_state_marker "$STATE/control.sha" "$HISTORICAL_CONTROL_SHA"
 install_historical_control_entrypoint
 cmp -s "$INSTALLED" \
   <(git -C "$REPO" show \
@@ -638,8 +640,8 @@ assert_release_a_non_activation
 
 # Non-marker installed bytes fail before sync or marker movement.
 TEST_PHASE=already-newer-control-marker-mismatch
-printf '%s\n' "$TARGET_SHA" > "$STATE/postgres-pool-bootstrap.sha"
-printf '%s\n' "$HISTORICAL_CONTROL_SHA" > "$STATE/control.sha"
+replace_state_marker "$STATE/postgres-pool-bootstrap.sha" "$TARGET_SHA"
+replace_state_marker "$STATE/control.sha" "$HISTORICAL_CONTROL_SHA"
 cp "$REPO/ops/deploy/social-monitor-production-deploy.sh" "$INSTALLED"
 printf '\n# mismatched installed control\n' >> "$INSTALLED"
 chmod 0755 "$INSTALLED"
@@ -669,8 +671,8 @@ cmp -s "$FIXTURE/missing-control-pool-marker-before" \
   "$STATE/postgres-pool-bootstrap.sha"
 
 TEST_PHASE=already-newer-invalid-marker
-printf 'invalid-marker\n' > "$STATE/postgres-pool-bootstrap.sha"
-printf '%s\n' "$HISTORICAL_CONTROL_SHA" > "$STATE/control.sha"
+replace_state_marker "$STATE/postgres-pool-bootstrap.sha" invalid-marker
+replace_state_marker "$STATE/control.sha" "$HISTORICAL_CONTROL_SHA"
 cp "$STATE/postgres-pool-bootstrap.sha" "$FIXTURE/invalid-marker-before"
 assert_current_recovery_fails 'PostgreSQL bootstrap marker is malformed'
 cmp -s "$FIXTURE/invalid-marker-before" \
@@ -678,7 +680,7 @@ cmp -s "$FIXTURE/invalid-marker-before" \
 
 TEST_PHASE=already-newer-uppercase-marker
 prepare_historical_reconciliation
-printf '%s\n' "${TARGET_SHA^^}" > "$STATE/postgres-pool-bootstrap.sha"
+replace_state_marker "$STATE/postgres-pool-bootstrap.sha" "${TARGET_SHA^^}"
 cp "$STATE/postgres-pool-bootstrap.sha" "$FIXTURE/uppercase-marker-before"
 assert_current_recovery_fails 'PostgreSQL bootstrap marker is malformed'
 cmp -s "$FIXTURE/uppercase-marker-before" \
@@ -686,7 +688,7 @@ cmp -s "$FIXTURE/uppercase-marker-before" \
 
 TEST_PHASE=already-newer-malformed-control-marker
 prepare_historical_reconciliation
-printf 'malformed-control\n' > "$STATE/control.sha"
+replace_state_marker "$STATE/control.sha" malformed-control
 cp "$STATE/postgres-pool-bootstrap.sha" \
   "$FIXTURE/malformed-control-pool-before"
 assert_current_recovery_fails 'B0 host control marker is malformed'
@@ -700,14 +702,14 @@ if git -C "$REPO" cat-file -e "$UNAVAILABLE_SHA^{commit}" 2>/dev/null; then
   echo 'unavailable marker fixture unexpectedly names a commit' >&2
   exit 1
 fi
-printf '%s\n' "$UNAVAILABLE_SHA" > "$STATE/postgres-pool-bootstrap.sha"
+replace_state_marker "$STATE/postgres-pool-bootstrap.sha" "$UNAVAILABLE_SHA"
 assert_current_recovery_fails \
   'PostgreSQL bootstrap marker commit is unavailable'
 [[ $(<"$STATE/postgres-pool-bootstrap.sha") == "$UNAVAILABLE_SHA" ]]
 
 TEST_PHASE=already-newer-unavailable-control-marker
 prepare_historical_reconciliation
-printf '%s\n' "$UNAVAILABLE_SHA" > "$STATE/control.sha"
+replace_state_marker "$STATE/control.sha" "$UNAVAILABLE_SHA"
 assert_current_recovery_fails 'B0 host control commit is unavailable'
 [[ $(<"$STATE/postgres-pool-bootstrap.sha") == "$TARGET_SHA" ]]
 
@@ -755,9 +757,8 @@ if git -C "$REPO" merge-base --is-ancestor \
   echo 'divergent bootstrap fixture unexpectedly became an ancestor' >&2
   exit 1
 fi
-printf '%s\n' "$DIVERGENT_MARKER_SHA" \
-  > "$STATE/postgres-pool-bootstrap.sha"
-printf '%s\n' "$HISTORICAL_CONTROL_SHA" > "$STATE/control.sha"
+replace_state_marker "$STATE/postgres-pool-bootstrap.sha" "$DIVERGENT_MARKER_SHA"
+replace_state_marker "$STATE/control.sha" "$HISTORICAL_CONTROL_SHA"
 install_historical_control_entrypoint
 cp "$STATE/postgres-pool-bootstrap.sha" "$FIXTURE/divergent-marker-before"
 TEST_PHASE=already-newer-non-ancestor-marker
@@ -769,7 +770,7 @@ assert_recovery_control_only
 
 TEST_PHASE=already-newer-non-ancestor-control-marker
 prepare_historical_reconciliation
-printf '%s\n' "$DIVERGENT_MARKER_SHA" > "$STATE/control.sha"
+replace_state_marker "$STATE/control.sha" "$DIVERGENT_MARKER_SHA"
 assert_current_recovery_fails \
   'control marker commit is not an ancestor'
 [[ $(<"$STATE/postgres-pool-bootstrap.sha") == "$TARGET_SHA" ]]
@@ -792,8 +793,8 @@ git -C "$REPO" update-index --no-assume-unchanged "$dormant_asset"
 
 # Sync failure preserves the old marker and installed ancestor bytes.
 TEST_PHASE=already-newer-sync-failure
-printf '%s\n' "$TARGET_SHA" > "$STATE/postgres-pool-bootstrap.sha"
-printf '%s\n' "$HISTORICAL_CONTROL_SHA" > "$STATE/control.sha"
+replace_state_marker "$STATE/postgres-pool-bootstrap.sha" "$TARGET_SHA"
+replace_state_marker "$STATE/control.sha" "$HISTORICAL_CONTROL_SHA"
 install_historical_control_entrypoint
 cp "$INSTALLED" "$FIXTURE/installed-before-sync-failure"
 cp "$STATE/postgres-pool-bootstrap.sha" "$FIXTURE/marker-before-sync-failure"
@@ -831,7 +832,7 @@ git -C "$REPO" update-ref refs/heads/main "$CURRENT_SHA"
 TEST_PHASE=already-newer-marker-race
 RECOVERY_SYNC_MODE=marker-race
 RECOVERY_RACE_SHA=$TARGET_SHA
-printf '%s\n' "$TARGET_SHA" > "$STATE/postgres-pool-bootstrap.sha"
+replace_state_marker "$STATE/postgres-pool-bootstrap.sha" "$TARGET_SHA"
 install_historical_control_entrypoint
 marker_identity_before_race=$(stat -c '%d:%i:%f:%s:%y:%z' \
   "$STATE/postgres-pool-bootstrap.sha")
@@ -932,6 +933,7 @@ cp "$PROJECT_ROOT/ops/deploy/social-monitor-production-deploy.sh" \
   "$PROJECT_ROOT/ops/deploy/daily-runner-image-bootstrap-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/x-collector-image-deploy-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/reader-summary-recovery-maintenance-lib.sh" \
+  "$PROJECT_ROOT/ops/deploy/production-transition-marker-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/production-backend-classification-lib.sh" \
   "$REPO/ops/deploy/"
 write_target_quorum_health_fixture "$REPO"
