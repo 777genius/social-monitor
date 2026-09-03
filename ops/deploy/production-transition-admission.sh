@@ -12,6 +12,7 @@ readonly INSTALLED_PATH=/var/data/social-monitor/control/production-transition-a
 readonly PRODUCTION_REPO=/var/data/social-monitor/integration
 readonly EXPECTED_REPOSITORY=777genius/social-monitor
 readonly PINNED_ORIGIN_HTTPS=https://github.com/777genius/social-monitor.git
+readonly PINNED_ORIGIN_HTTPS_CHECKOUT=https://github.com/777genius/social-monitor
 readonly PINNED_ORIGIN_SSH=git@github.com:777genius/social-monitor.git
 readonly PINNED_A0=bb4b3f8a0e81ed371aaef5bf362afaaaaacf3c30
 REPO=
@@ -71,6 +72,7 @@ admission_verify_origin() {
   local -a urls=()
   mapfile -t urls < <(production_transition_git -C "$REPO" remote get-url --all origin)
   [[ ${#urls[@]} == 1 && (${urls[0]} == "$PINNED_ORIGIN_HTTPS" || \
+     ${urls[0]} == "$PINNED_ORIGIN_HTTPS_CHECKOUT" || \
      ${urls[0]} == "$PINNED_ORIGIN_SSH") ]] || \
     admission_fail 'origin differs from pinned 777genius/social-monitor'
 }

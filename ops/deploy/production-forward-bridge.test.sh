@@ -1,6 +1,29 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
-((BASH_VERSINFO[0] >= 4)) || { printf 'Bash 4+ is required\n' >&2; exit 1; }
+
+# Reap every descendant of crash-boundary checks even when hosted PID 1 does
+# not. This wrapper is test-only and preserves the child script's exit status.
+if [[ ${PRODUCTION_FORWARD_TEST_SUBREAPER:-} != 1 ]]; then
+  exec python3 - "$0" "$@" <<'PY'
+import ctypes
+import os
+import subprocess
+import sys
+
+if ctypes.CDLL(None, use_errno=True).prctl(36, 1, 0, 0, 0) != 0:
+    raise SystemExit("cannot enable forward-bridge child subreaper")
+environment = os.environ.copy()
+environment["PRODUCTION_FORWARD_TEST_SUBREAPER"] = "1"
+child = subprocess.Popen([sys.argv[1], *sys.argv[2:]], env=environment)
+status = child.wait()
+while True:
+    try:
+        os.wait()
+    except ChildProcessError:
+        break
+raise SystemExit(status)
+PY
+fi
 
 PATH=/usr/local/bin:/usr/bin:/bin
 export GIT_AUTHOR_NAME=forward-bridge-test
@@ -12,8 +35,7 @@ PROJECT_ROOT=$(cd "$SCRIPT_DIR/../.." && pwd)
 P=7c4070f0b9ef1aac130284bcffac50551e20a4dd
 M=c5dc5abb12aa1ac84ddbd12f141c6d4d8aca4de2
 fixture=$(mktemp -d)
-cleanup() { local rc=$?; trap - EXIT; find "$fixture" -depth -delete || :; exit "$rc"; }
-trap cleanup EXIT
+trap 'find "$fixture" -depth -delete' EXIT
 trap 'printf "forward-bridge-test: failed at line %s\n" "$LINENO" >&2' ERR
 repo=$fixture/repo
 git -c gc.autoDetach=false clone -q --shared "$PROJECT_ROOT" "$repo"
@@ -24,6 +46,13 @@ expect_failure() {
   if ("$@") >/dev/null 2>&1; then
     fail "admitted $label"
   fi
+}
+expect_failure_diagnostic() {
+  local label=$1 expected=$2 output status; shift 2
+  set +e; output=$("$@" 2>&1); status=$?; set -e
+  ((status != 0)) || fail "admitted $label"
+  [[ $output == *"$expected"* ]] || \
+    fail "$label returned the wrong diagnostic: $output"
 }
 expect_sigkill() {
   local label=$1 status; shift
@@ -59,7 +88,6 @@ b_paths=(
 )
 h_paths=(
   .github/workflows/production-deploy.yml
-  package-lock.json
   package.json
   ops/deploy/github-production-deploy-client.sh
   ops/deploy/github-production-deploy-client.test.sh
@@ -121,6 +149,18 @@ source "$SCRIPT_DIR/production-forward-bridge-host-lib.sh"
 production_forward_verify_target_graph "$B" "$F"
 production_forward_verify_target_graph "$B" "$H"
 printf 'forward-bridge-test: exact topology accepted\n'
+
+saved_origin=$(git -C "$repo" config --get remote.origin.url)
+git -C "$repo" remote set-url origin https://github.com/777genius/social-monitor.git
+production_forward_verify_origin
+git -C "$repo" remote set-url origin https://example.invalid/777genius/social-monitor.git
+expect_failure 'substituted forward origin URL' production_forward_verify_origin
+git -C "$repo" remote set-url origin https://github.com/777genius/social-monitor.git
+git -C "$repo" config --add remote.origin.url git@github.com:777genius/social-monitor.git
+expect_failure 'multiple forward origin URLs' production_forward_verify_origin
+git -C "$repo" config --unset-all remote.origin.url
+git -C "$repo" config --add remote.origin.url "$saved_origin"
+printf 'forward-bridge-test: exact single pinned origin enforced\n'
 
 target_diagnostic=$( (
   capture_plan() { return 23; }
@@ -329,6 +369,21 @@ WRONG_F=$(printf '%s\n' wrong-w-f | git -C "$repo" commit-tree "$WRONG_H^{tree}"
 expect_failure 'wrong W delta' production_forward_verify_target_graph "$B" "$WRONG_F"
 printf 'forward-bridge-test: topology mutations rejected\n'
 
+# A first-parent descendant cannot preserve the sealed authority paths while
+# changing a target prelude that the installed controller later sources.
+forged_descendant_index=$fixture/forged-descendant.index
+GIT_INDEX_FILE=$forged_descendant_index git -C "$repo" read-tree "$F"
+forged_prelude=$(printf 'forged target prelude\n' | git -C "$repo" hash-object -w --stdin)
+GIT_INDEX_FILE=$forged_descendant_index git -C "$repo" update-index --cacheinfo \
+  "100644,$forged_prelude,ops/deploy/deploy-control-lib.sh"
+FORGED_D1=$(commit_index "$forged_descendant_index" \
+  'test: forged first-parent target prelude' "$F")
+expect_failure 'client forged first-parent target prelude' \
+  verify_production_forward_target_identity "$FORGED_D1"
+expect_failure 'host forged first-parent target prelude' \
+  production_forward_verify_target_graph "$B" "$FORGED_D1"
+printf 'forward-bridge-test: descendant target prelude substitution rejected\n'
+
 # Replacement refs cannot redirect any trusted topology read.
 replacement=$(printf '%s\n' replacement | git -C "$repo" commit-tree "$M^{tree}" -p "$P")
 for object in "$P" "$M" "$B" "$R" "$W" "$H" "$F"; do
@@ -397,21 +452,35 @@ CONTROL=$fixture/control STATE=$fixture/state
 install -d "$CONTROL" "$STATE"
 action=maintenance
 expect_failure 'maintenance forward handoff' production_forward_require_exact_handoff "$B" "$F" maintenance
+forward_install_origin=$fixture/forward-install-origin.git
+git clone -q --bare --shared "$repo" "$forward_install_origin"
+git --git-dir="$forward_install_origin" update-ref refs/heads/main "$F"
+git -C "$repo" remote set-url origin "$forward_install_origin"
+export SOCIAL_MONITOR_DEPLOY_TEST_MODE=1 PRODUCTION_FORWARD_TEST_ALLOW_LOCAL_ORIGIN=1
 
 # The predecessor installer is idempotent at every atomic boundary. Missing
 # destinations are installed, uniquely named crash orphans are ignored, and a
 # retry after each injected before/after-rename crash completes the full set in
 # admission/canonical/host-control order.
+install_handoff_commit() {
+  local commit=$1
+  git -C "$repo" show "$commit:ops/deploy/social-monitor-production-deploy.sh" > \
+    "$CONTROL/github-production-deploy.sh"
+  git -C "$repo" show "$commit:ops/deploy/social-monitor-production-ssh-wrapper.sh" > \
+    "$CONTROL/github-production-deploy-wrapper.sh"
+  chmod 0755 "$CONTROL/github-production-deploy.sh" \
+    "$CONTROL/github-production-deploy-wrapper.sh"
+}
 assert_installed_blob() {
   local commit=$1 relative=$2 destination blob
-  destination=$CONTROL/${relative##*/}
+  destination=${3:-$CONTROL/${relative##*/}}
   blob=$(git -C "$repo" rev-parse "$commit:$relative")
   [[ -f $destination && ! -L $destination && \
      $(git -C "$repo" hash-object --no-filters "$destination") == "$blob" ]]
 }
 reset_b0_destinations() {
-  find "$CONTROL" -mindepth 1 -maxdepth 1 -type f -delete
-  find "$CONTROL" -mindepth 1 -maxdepth 1 -type l -delete
+  rm -f "$CONTROL"/production-transition-{admission.sh,canonical-lib.sh,b0-host-control.sh,marker-lib.sh}
+  rm -f "$CONTROL"/production-transition-*.alias "$CONTROL"/.production-forward-*
 }
 run_b0_install() (
   export SOCIAL_MONITOR_DEPLOY_TEST_MODE=1
@@ -422,10 +491,12 @@ git -C "$repo" checkout -q "$B"
 git -C "$repo" update-ref refs/remotes/origin/main "$F"
 export DEPLOY_CONTROL_BRIDGE_INITIALIZED_HEAD=$B
 action=deploy
+install_handoff_commit "$B"
 b0_files=(
   production-transition-admission.sh
   production-transition-canonical-lib.sh
   production-transition-b0-host-control.sh
+  production-transition-marker-lib.sh
 )
 for b0_file in "${b0_files[@]}"; do
   for side in before after; do
@@ -436,18 +507,80 @@ for b0_file in "${b0_files[@]}"; do
     assert_installed_blob "$F" ops/deploy/production-transition-admission.sh
     assert_installed_blob "$F" ops/deploy/production-transition-canonical-lib.sh
     assert_installed_blob "$B" ops/deploy/production-transition-b0-host-control.sh
+    assert_installed_blob "$B" ops/deploy/production-transition-marker-lib.sh
+    assert_installed_blob "$W" ops/deploy/social-monitor-production-deploy.sh \
+      "$CONTROL/github-production-deploy.sh"
   done
 done
 printf 'forward-bridge-test: B0 rename crashes resume\n'
 
+# The exact B entrypoint is CAS-replaced by reviewed W before checkout advance.
+# Both sides of its atomic rename are safely retryable while HEAD remains B.
+for side in before after; do
+  reset_b0_destinations
+  install_handoff_commit "$B"
+  expect_failure "$side rolling entrypoint rename crash" \
+    run_b0_install "$side-rolling-entrypoint-rename"
+  [[ $(git -C "$repo" rev-parse HEAD) == "$B" ]]
+  if [[ $side == before ]]; then
+    assert_installed_blob "$B" ops/deploy/social-monitor-production-deploy.sh \
+      "$CONTROL/github-production-deploy.sh"
+  else
+    assert_installed_blob "$W" ops/deploy/social-monitor-production-deploy.sh \
+      "$CONTROL/github-production-deploy.sh"
+  fi
+  run_b0_install
+  assert_installed_blob "$W" ops/deploy/social-monitor-production-deploy.sh \
+    "$CONTROL/github-production-deploy.sh"
+done
+printf 'forward-bridge-test: rolling entrypoint rename crashes resume before advance\n'
+
+reset_b0_destinations
+install_handoff_commit "$B"
+expect_failure 'rolling entrypoint crash before control directory fsync' \
+  run_b0_install after-rolling-entrypoint-rename-before-control-fsync
+assert_installed_blob "$W" ops/deploy/social-monitor-production-deploy.sh \
+  "$CONTROL/github-production-deploy.sh"
+run_b0_install
+assert_installed_blob "$W" ops/deploy/social-monitor-production-deploy.sh \
+  "$CONTROL/github-production-deploy.sh"
+printf 'forward-bridge-test: non-durable rolling rename retry converged\n'
+
+# Start from the exact installed B command surfaces. Sourcing B's entrypoint
+# models the predecessor shell; it has no marker-lib source of its own.
+git -C "$repo" checkout -q "$B"
+reset_b0_destinations; install_handoff_commit "$B"
+run_complete_predecessor() (
+  SOCIAL_MONITOR_DEPLOY_TEST_MODE=1
+  SOCIAL_MONITOR_DEPLOY_ROOT=$fixture/predecessor-root
+  SOCIAL_MONITOR_DEPLOY_REPO=$repo SOCIAL_MONITOR_DEPLOY_CONTROL=$CONTROL
+  SOCIAL_MONITOR_DEPLOY_STATE=$STATE SOCIAL_MONITOR_DEPLOY_STAGING=$fixture/predecessor-staging
+  SOCIAL_MONITOR_DEPLOY_RELEASES=$fixture/predecessor-releases SOCIAL_MONITOR_DEPLOY_PROJECT=forward-predecessor-test
+  install -d "$SOCIAL_MONITOR_DEPLOY_ROOT" "$SOCIAL_MONITOR_DEPLOY_STAGING" "$SOCIAL_MONITOR_DEPLOY_RELEASES"
+  source "$CONTROL/github-production-deploy.sh"
+  advance_integration "$F"
+  deploy_control_bootstrap_production_transition_b0 "$F"
+  declare -F production_transition_commit_postgres_pool_bootstrap >/dev/null
+  postgres_pool_bootstrap_physically_installed() { return 0; }
+  commit_postgres_pool_bootstrap "$F" force-advance
+)
+run_complete_predecessor
+[[ $(git -C "$repo" rev-parse HEAD) == "$F" && $(<"$STATE/postgres-pool-bootstrap.sha") == "$F" ]]
+printf 'forward-bridge-test: exact B predecessor advanced and committed bootstrap\n'
+git -C "$repo" checkout -q "$B"; rm -f "$STATE/postgres-pool-bootstrap.sha"*
+
 # Existing unsafe destinations never get treated as crash orphans. Exercise
 # byte, symlink, mode, and (when privileged) ownership drift independently.
-for drift in bytes symlink mode owner; do
+for drift in bytes symlink hardlink mode owner; do
   reset_b0_destinations
   destination=$CONTROL/production-transition-admission.sh
   case $drift in
     bytes) printf 'wrong\n' > "$destination"; chmod 0755 "$destination" ;;
     symlink) ln -s /dev/null "$destination" ;;
+    hardlink)
+      git -C "$repo" show "$F:ops/deploy/production-transition-admission.sh" > "$destination"
+      chmod 0755 "$destination"; ln "$destination" "$destination.alias"
+      ;;
     mode)
       git -C "$repo" show "$F:ops/deploy/production-transition-admission.sh" > "$destination"
       chmod 0644 "$destination"
@@ -465,6 +598,7 @@ for drift in bytes symlink mode owner; do
   expect_failure "unsafe B0 $drift destination" run_b0_install
 done
 reset_b0_destinations
+install_handoff_commit "$B"
 run_b0_install
 
 # A predecessor-started process loads no test-defined host helper. It installs
@@ -486,18 +620,149 @@ expect_failure 'fresh-process crash after integration advance' \
   run_advance_process "$B" forward-integration-advanced
 [[ $(git -C "$repo" rev-parse HEAD) == "$F" ]]
 for path in "${b0_files[@]}"; do [[ -f $CONTROL/$path ]]; done
+assert_installed_blob "$W" ops/deploy/social-monitor-production-deploy.sh \
+  "$CONTROL/github-production-deploy.sh"
 run_advance_process "$F"
 printf 'forward-bridge-test: B0 precedes integration advance\n'
+
+# Recreate the exact crash residue: checkout and origin/main are F, both
+# durable markers are B, and the installed surfaces are reviewed W entrypoint
+# plus unchanged B wrapper. Invoke the actually installed W entrypoint
+# for every admitted action and stop at a failpoint after its prelude safely
+# replaces both command surfaces with F.
+install_post_advance_handoff() {
+  git -C "$repo" show "$B:ops/deploy/social-monitor-production-ssh-wrapper.sh" > \
+    "$CONTROL/github-production-deploy-wrapper.sh"
+  chmod 0755 "$CONTROL/github-production-deploy-wrapper.sh"
+}
+run_real_post_advance_entry() {
+  local handoff_action=$1 failpoint=${2:-forward-post-advance-handoff-synced}
+  SSH_ORIGINAL_COMMAND="$handoff_action $F" \
+    SOCIAL_MONITOR_DEPLOY_TEST_MODE=1 \
+    SOCIAL_MONITOR_DEPLOY_TEST_A0=$P \
+    SOCIAL_MONITOR_DEPLOY_ROOT=$fixture/real-entry-root \
+    SOCIAL_MONITOR_DEPLOY_REPO=$repo \
+    SOCIAL_MONITOR_DEPLOY_CONTROL=$CONTROL \
+    SOCIAL_MONITOR_DEPLOY_STATE=$STATE \
+    SOCIAL_MONITOR_DEPLOY_STAGING=$fixture/real-entry-staging \
+    SOCIAL_MONITOR_DEPLOY_RELEASES=$fixture/real-entry-releases \
+    SOCIAL_MONITOR_DEPLOY_PROJECT=forward-post-advance-test \
+    PRODUCTION_TRANSITION_HOST_FAILPOINT=$failpoint \
+    bash "$CONTROL/github-production-deploy.sh"
+}
+install -d "$fixture/real-entry-root" "$fixture/real-entry-staging" \
+  "$fixture/real-entry-releases"
+real_entry_origin=$fixture/real-entry-origin.git
+git clone -q --bare --shared "$repo" "$real_entry_origin"
+git -C "$repo" remote set-url origin "$real_entry_origin"
+git --git-dir="$real_entry_origin" update-ref refs/heads/main "$F"
+printf '%s\n' "$B" > "$STATE/control.sha"
+printf '%s\n' "$B" > "$STATE/postgres-pool-bootstrap.sha"
+ln "$CONTROL/production-transition-b0-host-control.sh" \
+  "$CONTROL/production-transition-b0-host-control.sh.alias"
+expect_failure_diagnostic 'hardlinked B0 host control startup' \
+  'installed B0 host control differs from trusted B0' \
+  run_real_post_advance_entry plan
+rm -f "$CONTROL/production-transition-b0-host-control.sh.alias"
+for handoff_action in plan upload deploy; do
+  [[ $handoff_action != plan ]] || \
+    assert_installed_blob "$W" ops/deploy/social-monitor-production-deploy.sh \
+      "$CONTROL/github-production-deploy.sh"
+  install_post_advance_handoff
+  set +e
+  handoff_diagnostic=$(run_real_post_advance_entry "$handoff_action" 2>&1)
+  handoff_status=$?
+  set -e
+  ((handoff_status != 0)) || fail "real $handoff_action missed sync failpoint"
+  [[ $handoff_diagnostic == \
+    *'production forward injected crash after post-advance handoff sync'* ]] || \
+    fail "real $handoff_action failed before safe sync: $handoff_diagnostic"
+  production_forward_file_matches_commit "$F" \
+    ops/deploy/social-monitor-production-deploy.sh \
+    "$CONTROL/github-production-deploy.sh" 0755 100644
+  production_forward_file_matches_commit "$F" \
+    ops/deploy/social-monitor-production-ssh-wrapper.sh \
+    "$CONTROL/github-production-deploy-wrapper.sh" 0755 100644
+  set +e
+  handoff_diagnostic=$(run_real_post_advance_entry \
+    "$handoff_action" forward-marker-library-ready 2>&1)
+  handoff_status=$?
+  set -e
+  ((handoff_status != 0)) || fail "real $handoff_action missed marker-ready failpoint"
+  [[ $handoff_diagnostic == \
+    *'production forward injected crash after marker library readiness'* ]] || \
+    fail "real $handoff_action failed during readonly marker reuse: $handoff_diagnostic"
+done
+printf 'forward-bridge-test: real post-advance recovery synced and restarted\n'
+
+# Both handoff markers are read through one descriptor-based validator. Symlink,
+# multiple-link, and non-exact one-line framing are rejected without repair.
+for marker_name in control postgres-pool-bootstrap; do
+  marker=$STATE/$marker_name.sha
+  marker_copy=$fixture/$marker_name.marker
+  cp "$marker" "$marker_copy"
+  rm -f "$marker"; ln -s "$marker_copy" "$marker"
+  expect_failure "symlinked $marker_name handoff marker" \
+    production_forward_require_exact_handoff "$B" "$F" plan
+  rm -f "$marker"; cp "$marker_copy" "$marker"; chmod 0644 "$marker"
+  ln "$marker" "$marker.hardlink"
+  expect_failure "hardlinked $marker_name handoff marker" \
+    production_forward_require_exact_handoff "$B" "$F" plan
+  rm -f "$marker.hardlink"
+  printf '%.20s\n%s\n' "$B" "${B:20}" > "$marker"
+  expect_failure "split-framed $marker_name handoff marker" \
+    production_forward_require_exact_handoff "$B" "$F" plan
+  printf '%s\n\n' "$B" > "$marker"
+  expect_failure "extra-newline $marker_name handoff marker" \
+    production_forward_require_exact_handoff "$B" "$F" plan
+  cp "$marker_copy" "$marker"; chmod 0644 "$marker"
+done
+printf 'forward-bridge-test: exact marker descriptor framing enforced\n'
+
+# Tampered B bytes and non-exact marker/graph state never enter the recovery
+# installer. Exercise each denial through the same real installed entrypoint.
+for tampered_surface in entrypoint wrapper; do
+  install_post_advance_handoff
+  if [[ $tampered_surface == entrypoint ]]; then
+    printf 'tampered\n' >> "$CONTROL/github-production-deploy.sh"
+  else
+    printf 'tampered\n' >> "$CONTROL/github-production-deploy-wrapper.sh"
+  fi
+  expect_failure "tampered B $tampered_surface post-advance recovery" \
+    run_real_post_advance_entry plan
+done
+install_post_advance_handoff
+git -C "$repo" show "$B:ops/deploy/social-monitor-production-deploy.sh" > \
+  "$CONTROL/github-production-deploy.sh"
+chmod 0755 "$CONTROL/github-production-deploy.sh"
+unset PRODUCTION_FORWARD_INSTALL_FAILPOINT PRODUCTION_TRANSITION_HOST_FAILPOINT
+expect_failure_diagnostic 'impossible predecessor handoff ordering' \
+  'production forward handoff surfaces have impossible ordering' \
+  production_forward_recover_post_advance_handoff "$B" "$F"
+install_post_advance_handoff
+ln "$CONTROL/github-production-deploy-wrapper.sh" \
+  "$CONTROL/forged-wrapper-alias.sh"
+expect_failure 'hardlinked predecessor wrapper identity' run_real_post_advance_entry plan
+rm -f "$CONTROL/forged-wrapper-alias.sh"
+install_post_advance_handoff
+mv "$CONTROL/github-production-deploy.sh" "$CONTROL/reviewed-entrypoint.sh"
+ln -s reviewed-entrypoint.sh "$CONTROL/github-production-deploy.sh"
+expect_failure 'symlinked predecessor entrypoint identity' run_real_post_advance_entry plan
+rm -f "$CONTROL/github-production-deploy.sh" "$CONTROL/reviewed-entrypoint.sh"
+install_post_advance_handoff
+printf '%s\n' "$P" > "$STATE/postgres-pool-bootstrap.sha"
+expect_failure 'wrong post-advance bootstrap marker' run_real_post_advance_entry plan
+printf '%s\n' "$B" > "$STATE/postgres-pool-bootstrap.sha"
+git --git-dir="$real_entry_origin" update-ref refs/heads/main "$H"
+git -C "$repo" update-ref refs/remotes/origin/main "$H"
+expect_failure 'wrong post-advance exact graph state' run_real_post_advance_entry plan
+git --git-dir="$real_entry_origin" update-ref refs/heads/main "$F"
+git -C "$repo" update-ref refs/remotes/origin/main "$F"
 
 # Materialize the committed F entrypoint and wrapper, then require the narrow
 # host handoff for each permitted action. Current, origin/main, marker, or byte
 # drift and every maintenance action remain outside the exception.
-git -C "$repo" show "$F:ops/deploy/social-monitor-production-deploy.sh" > \
-  "$CONTROL/github-production-deploy.sh"
-git -C "$repo" show "$F:ops/deploy/social-monitor-production-ssh-wrapper.sh" > \
-  "$CONTROL/github-production-deploy-wrapper.sh"
-printf '%s\n' "$B" > "$STATE/control.sha"
-printf '%s\n' "$B" > "$STATE/postgres-pool-bootstrap.sha"
+install_handoff_commit "$F"
 for handoff_action in plan upload deploy; do
   production_forward_require_exact_handoff "$B" "$F" "$handoff_action"
 done
@@ -558,6 +823,7 @@ run_fresh_host_lock_reacquire() {
     fail() { exit 1; }
     source "$CONTROL/production-transition-b0-host-control.sh"
     production_transition_host_acquire_lock
+    production_transition_host_acquire_lock
     production_transition_host_release_lock
   '
 }
@@ -570,56 +836,80 @@ expect_failure 'fake inherited host lock descriptor' env \
     source "$CONTROL/production-transition-b0-host-control.sh"
     production_transition_host_acquire_lock
   '
-run_coherent_unlocked_host_descriptor() (
-  fail() { exit 1; }
-  source "$CONTROL/production-transition-b0-host-control.sh"
-  exec {fake_fd}<>"$STATE/production-transition-b0-host.lock"
-  PRODUCTION_TRANSITION_HOST_LOCK_FD=$fake_fd
+# Even an already-locked, valid descriptor with coherent-looking metadata is
+# rejected when it existed before this trusted authority generated its nonce.
+run_same_fd_prelocked_before_source() {
+  STATE=$STATE CONTROL=$CONTROL bash -Eeuo pipefail -c '
+    fail() { exit 1; }
+    exec {PRODUCTION_TRANSITION_HOST_LOCK_FD}<>"$STATE/production-transition-b0-host.lock"
+    flock "$PRODUCTION_TRANSITION_HOST_LOCK_FD"
+    PRODUCTION_TRANSITION_HOST_LOCK_OWNER=$BASHPID
+    PRODUCTION_TRANSITION_HOST_LOCK_CUSTODY="$BASHPID:$PRODUCTION_TRANSITION_HOST_LOCK_FD:forged"
+    source "$CONTROL/production-transition-b0-host-control.sh"
+    production_transition_host_acquire_lock
+  '
+}
+expect_failure 'same-FD prelocked tuple before host authority source' \
+  run_same_fd_prelocked_before_source
+# A coherent descriptor/owner tuple without this shell's acquisition custody
+# is still forged, even when no competing holder exists.
+run_coherent_prepopulated_fd() {
+  STATE=$STATE CONTROL=$CONTROL bash -Eeuo pipefail -c '
+    fail() { exit 1; }
+    source "$CONTROL/production-transition-b0-host-control.sh"
+    exec {PRODUCTION_TRANSITION_HOST_LOCK_FD}<>"$STATE/$PRODUCTION_TRANSITION_HOST_LOCK_FILE"
+    PRODUCTION_TRANSITION_HOST_LOCK_OWNER=$BASHPID
+    PRODUCTION_TRANSITION_HOST_LOCK_CUSTODY=\
+"$PRODUCTION_TRANSITION_HOST_CONTROL_CONTEXT_OWNER:$PRODUCTION_TRANSITION_HOST_LOCK_FD"
+    production_transition_host_acquire_lock
+  '
+}
+expect_failure 'unlocked coherent prepopulated host lock descriptor' \
+  run_coherent_prepopulated_fd
+source "$CONTROL/production-transition-b0-host-control.sh"
+host_lock=$STATE/production-transition-b0-host.lock
+exec {host_holder_fd}<>"$host_lock"
+flock "$host_holder_fd"
+expect_failure 'separately locked coherent prepopulated host lock descriptor' \
+  run_coherent_prepopulated_fd
+
+# An inheriting shell cannot forge acquisition or release custody. Closing its
+# rejected duplicate must never issue LOCK_UN on the parent's open-file
+# description while the original holder remains open.
+PRODUCTION_TRANSITION_HOST_LOCK_FD=$host_holder_fd
+PRODUCTION_TRANSITION_HOST_LOCK_OWNER=$BASHPID
+PRODUCTION_TRANSITION_HOST_LOCK_CUSTODY=\
+"$PRODUCTION_TRANSITION_HOST_CONTROL_CONTEXT_OWNER:$host_holder_fd"
+run_inherited_host_acquire() (
   PRODUCTION_TRANSITION_HOST_LOCK_OWNER=$BASHPID
-  PRODUCTION_TRANSITION_HOST_LOCK_ACTIVE=$BASHPID:$fake_fd
   production_transition_host_acquire_lock
 )
-expect_failure 'coherent unlocked host lock descriptor' \
-  run_coherent_unlocked_host_descriptor
+expect_failure 'inherited acquire accepted forged owner metadata' \
+  run_inherited_host_acquire
+PRODUCTION_TRANSITION_HOST_LOCK_FD=$host_holder_fd
+PRODUCTION_TRANSITION_HOST_LOCK_OWNER=$BASHPID
+PRODUCTION_TRANSITION_HOST_LOCK_CUSTODY=\
+"$PRODUCTION_TRANSITION_HOST_CONTROL_CONTEXT_OWNER:$host_holder_fd"
 run_inherited_host_release() (
-  local lock=$STATE/production-transition-b0-host.lock
-  fail() { exit 1; }
-  source "$CONTROL/production-transition-b0-host-control.sh"
-  production_transition_host_acquire_lock
-  (
-    PRODUCTION_TRANSITION_HOST_LOCK_OWNER=$BASHPID
-    production_transition_host_release_lock
-  )
-  if flock -n "$lock" -c true; then
-    fail 'inherited host release unlocked the live holder'
-  fi
+  PRODUCTION_TRANSITION_HOST_LOCK_OWNER=$BASHPID
   production_transition_host_release_lock
 )
-run_inherited_host_release
-descendant_pid_file=$fixture/host-lock-descendant.pid
-descendant_release=$fixture/host-lock-descendant.release
-mkfifo "$descendant_release"
-run_killed_host_owner_with_descendant() {
-  STATE=$STATE CONTROL=$CONTROL DESCENDANT_PID_FILE=$descendant_pid_file \
-    DESCENDANT_RELEASE=$descendant_release \
-    bash -Eeuo pipefail -c '
-      fail() { exit 1; }
-      source "$CONTROL/production-transition-b0-host-control.sh"
-      production_transition_host_acquire_lock
-      { read -r < "$DESCENDANT_RELEASE"; } &
-      printf "%s\n" "$!" > "$DESCENDANT_PID_FILE"
-      kill -KILL "$BASHPID"
-    '
-}
-expect_sigkill 'host lock owner with live descendant' \
-  run_killed_host_owner_with_descendant
-[[ -s $descendant_pid_file ]]
-if flock -n "$STATE/production-transition-b0-host.lock" -c true; then
-  fail 'owner SIGKILL released a lock retained by its live descendant'
-fi
-printf '\n' > "$descendant_release"
-flock -w 5 "$STATE/production-transition-b0-host.lock" -c true
+expect_failure 'inherited release accepted forged owner metadata' \
+  run_inherited_host_release
+(
+  eval "exec $host_holder_fd>&-"
+)
+expect_failure 'inherited release unlocked original host holder' \
+  timeout 1 flock "$host_lock" true
+eval "exec $host_holder_fd>&-"
+unset PRODUCTION_TRANSITION_HOST_LOCK_FD PRODUCTION_TRANSITION_HOST_LOCK_OWNER \
+  PRODUCTION_TRANSITION_HOST_LOCK_CUSTODY
+timeout 1 flock "$host_lock" true
 printf 'forward-bridge-test: SIGKILL 137 host lock reacquired by fresh process\n'
+if [[ ${PRODUCTION_FORWARD_POST_ADVANCE_FOCUSED:-} == 1 ]]; then
+  printf 'forward-bridge-test: focused post-advance and custody recovery passed\n'
+  exit 0
+fi
 for denied_action in maintenance maintenance-status deploy-transition; do
   expect_failure "denied $denied_action handoff" \
     production_forward_require_exact_handoff "$B" "$F" "$denied_action"
