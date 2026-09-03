@@ -1,32 +1,19 @@
 #!/usr/bin/env bash
 LC_ALL=C
 export LC_ALL
-PRODUCTION_TRANSITION_REPOSITORY=777genius/social-monitor
-PRODUCTION_TRANSITION_A0=bb4b3f8a0e81ed371aaef5bf362afaaaaacf3c30
-PRODUCTION_TRANSITION_HOST_STATE_VERSION=production-transition-b0-host-state-v1
-PRODUCTION_TRANSITION_HOST_STATE_FILE=production-transition-b0-host.state
-PRODUCTION_TRANSITION_HOST_LOCK_FILE=production-transition-b0-host.lock
-PRODUCTION_TRANSITION_HOST_SCHEDULER_HOLD_FILE=production-transition-scheduler-hold.v2
-PRODUCTION_TRANSITION_HOST_PROTECTED_MANIFEST=ops/deploy/production-transition-protected.manifest
-PRODUCTION_TRANSITION_HOST_PROTECTED_VERSION=social-monitor-production-transition-protected-paths-v1
-PRODUCTION_TRANSITION_FORWARD_AUTHORITY_SEAL=ops/deploy/production-forward-bridge-authority.blobs
-production_transition_host_failpoint() { [[ ${PRODUCTION_TRANSITION_HOST_FAILPOINT:-} != "$1" ]] || return 97; }
-production_transition_host_fail() { fail "$@"; }
+PRODUCTION_TRANSITION_REPOSITORY=777genius/social-monitor; PRODUCTION_TRANSITION_A0=bb4b3f8a0e81ed371aaef5bf362afaaaaacf3c30; PRODUCTION_TRANSITION_HOST_STATE_VERSION=production-transition-b0-host-state-v1
+PRODUCTION_TRANSITION_HOST_STATE_FILE=production-transition-b0-host.state; PRODUCTION_TRANSITION_HOST_LOCK_FILE=production-transition-b0-host.lock; PRODUCTION_TRANSITION_HOST_SCHEDULER_HOLD_FILE=production-transition-scheduler-hold.v2
+PRODUCTION_TRANSITION_HOST_PROTECTED_MANIFEST=ops/deploy/production-transition-protected.manifest; PRODUCTION_TRANSITION_HOST_PROTECTED_VERSION=social-monitor-production-transition-protected-paths-v1; PRODUCTION_TRANSITION_FORWARD_AUTHORITY_SEAL=ops/deploy/production-forward-bridge-authority.blobs
+production_transition_host_failpoint() { [[ ${PRODUCTION_TRANSITION_HOST_FAILPOINT:-} != "$1" ]] || return 97; }; production_transition_host_fail() { fail "$@"; }
 if declare -p PRODUCTION_TRANSITION_HOST_CONTROL_CONTEXT_OWNER 2>/dev/null | grep -q '^declare -[^ ]*r' &&
    declare -p PRODUCTION_TRANSITION_HOST_CONTROL_CONTEXT_NONCE 2>/dev/null | grep -q '^declare -[^ ]*r'; then
   : # Preserve the readonly identity so a child remains distinguishable.
 else
-  if [[ -n ${PRODUCTION_TRANSITION_HOST_LOCK_FD:-} || -n ${PRODUCTION_TRANSITION_HOST_LOCK_OWNER:-} || -n ${PRODUCTION_TRANSITION_HOST_LOCK_CUSTODY:-} || -n ${PRODUCTION_TRANSITION_HOST_CONTROL_CONTEXT_NONCE:-} ]]; then
-    production_transition_host_lock_input_rejected=1
-  else
-    production_transition_host_lock_input_rejected=0
-  fi
+  if [[ -n ${PRODUCTION_TRANSITION_HOST_LOCK_FD:-} || -n ${PRODUCTION_TRANSITION_HOST_LOCK_OWNER:-} || -n ${PRODUCTION_TRANSITION_HOST_LOCK_CUSTODY:-} || -n ${PRODUCTION_TRANSITION_HOST_CONTROL_CONTEXT_NONCE:-} ]]; then production_transition_host_lock_input_rejected=1; else production_transition_host_lock_input_rejected=0; fi
   unset PRODUCTION_TRANSITION_HOST_CONTROL_CONTEXT_OWNER PRODUCTION_TRANSITION_HOST_CONTROL_CONTEXT_NONCE PRODUCTION_TRANSITION_HOST_LOCK_FD PRODUCTION_TRANSITION_HOST_LOCK_OWNER PRODUCTION_TRANSITION_HOST_LOCK_CUSTODY
   production_transition_host_control_context_nonce=$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')
-  [[ $production_transition_host_control_context_nonce =~ ^[0-9a-f]{64}$ ]] || \
-    production_transition_host_fail 'transition host lock custody nonce could not be generated'
-  readonly PRODUCTION_TRANSITION_HOST_CONTROL_CONTEXT_OWNER=$BASHPID \
-    PRODUCTION_TRANSITION_HOST_CONTROL_CONTEXT_NONCE=$production_transition_host_control_context_nonce PRODUCTION_TRANSITION_HOST_LOCK_INPUT_REJECTED="$production_transition_host_lock_input_rejected"
+  [[ $production_transition_host_control_context_nonce =~ ^[0-9a-f]{64}$ ]] || production_transition_host_fail 'transition host lock custody nonce could not be generated'
+  readonly PRODUCTION_TRANSITION_HOST_CONTROL_CONTEXT_OWNER=$BASHPID PRODUCTION_TRANSITION_HOST_CONTROL_CONTEXT_NONCE=$production_transition_host_control_context_nonce PRODUCTION_TRANSITION_HOST_LOCK_INPUT_REJECTED="$production_transition_host_lock_input_rejected"
   unset production_transition_host_lock_input_rejected production_transition_host_control_context_nonce
 fi
 production_transition_host_file_identity() { stat -Lc '%d:%i:%f:%s:%Y:%Z:%h' "$1"; }
