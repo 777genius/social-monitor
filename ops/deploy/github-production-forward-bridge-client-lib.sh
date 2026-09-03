@@ -248,6 +248,16 @@ production_forward_bridge_is_installed() {
       "$anchor" "$target" "$PLAN_POSTGRES_POOL_BOOTSTRAP_SHA"
 }
 
+production_forward_plan_is_fully_reconciled() {
+  [[ $PLAN_FRONTEND == false && $PLAN_BACKEND == false &&
+     $PLAN_CONTROL == false && $PLAN_X_COLLECTOR == false &&
+     $PLAN_POSTGRES_POOL_BOOTSTRAP == "$POSTGRES_POOL_BOOTSTRAP_VERSION" &&
+     $PLAN_POSTGRES_POOL_BOOTSTRAP_SHA =~ ^[0-9a-f]{40}$ &&
+     $PLAN_POSTGRES_POOL_BOOTSTRAP_SHA != 0000000000000000000000000000000000000000 &&
+     $PLAN_BACKEND_BASE =~ ^[0-9a-f]{40}$ &&
+     $PLAN_BACKEND_BASE != 0000000000000000000000000000000000000000 ]]
+}
+
 prepare_production_forward_bridge() {
   local target=$1 status anchor bridge
   verify_production_forward_target_identity "$target"
@@ -273,6 +283,12 @@ prepare_production_forward_bridge() {
     fail "production forward bridge plan failed with status $status"
   fi
   print_plan
+  # A previous bounded run may have already installed B before the target
+  # deploy was interrupted. In that state inspecting B is fully reconciled:
+  # the bridge itself has no remaining work, while the target plan above still
+  # correctly describes the descendant work. Treat that as an idempotent
+  # success instead of demanding a second control transition.
+  production_forward_plan_is_fully_reconciled && return 0
   plan_is_exact_production_forward_bridge_transition || \
     fail 'production forward B plan is inconsistent with target'
   deploy_once "$bridge"
