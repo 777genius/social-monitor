@@ -122,41 +122,37 @@ class _ReaderSummaryBriefSurfaceState extends State<ReaderSummaryBriefSurface> {
         if (widget.isRefreshing) const _BriefToolbar(),
         Padding(
           padding: const EdgeInsets.all(AppSpacing.md),
-          child: SelectionArea(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _AiBriefCopy(
-                  summary: widget.summary,
-                  citationsById: widget.citationsById,
-                  onOpenUrl: widget.onOpenUrl,
-                ),
-                if (!content.topicMap.isEmpty) ...[
-                  const SizedBox(height: AppSpacing.md),
-                  ReaderSummaryDeferredTopicMapPanel(
-                    topicMap: content.topicMap,
-                  ),
-                ],
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _AiBriefCopy(
+                summary: widget.summary,
+                citationsById: widget.citationsById,
+                onOpenUrl: widget.onOpenUrl,
+              ),
+              if (!content.topicMap.isEmpty) ...[
                 const SizedBox(height: AppSpacing.md),
-                _SourceFilterChips(
-                  entries: content.sourceMix,
-                  coverage: widget.summary.coverage,
-                  selectedProviderKey: _selectedProviderKey,
-                  topReadCount: content.topReads.length,
-                  onSelected: (providerKey) {
-                    setState(() => _selectedProviderKey = providerKey);
-                  },
-                ),
-                const SizedBox(height: AppSpacing.md),
-                _FilteredEvidenceList(
-                  selectedProviderKey: _selectedProviderKey,
-                  topReads: selectedTopReads,
-                  fallbackCitations: selectedCitations,
-                  citationsById: widget.citationsById,
-                  onOpenUrl: widget.onOpenUrl,
-                ),
+                ReaderSummaryDeferredTopicMapPanel(topicMap: content.topicMap),
               ],
-            ),
+              const SizedBox(height: AppSpacing.md),
+              _SourceFilterChips(
+                entries: content.sourceMix,
+                coverage: widget.summary.coverage,
+                selectedProviderKey: _selectedProviderKey,
+                topReadCount: content.topReads.length,
+                onSelected: (providerKey) {
+                  setState(() => _selectedProviderKey = providerKey);
+                },
+              ),
+              const SizedBox(height: AppSpacing.md),
+              _FilteredEvidenceList(
+                selectedProviderKey: _selectedProviderKey,
+                topReads: selectedTopReads,
+                fallbackCitations: selectedCitations,
+                citationsById: widget.citationsById,
+                onOpenUrl: widget.onOpenUrl,
+              ),
+            ],
           ),
         ),
       ],
