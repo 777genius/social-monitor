@@ -69,6 +69,8 @@ jobs:
           trap 'rm -f -- "$key"' EXIT
           printf '%s\n' "$REVIEW_PRIVATE_KEY" > "$key"
           chmod 0600 "$key"
+          git config user.name 'social-monitor-transition-review'
+          git config user.email 'social-monitor-transition-review@users.noreply.github.com'
           mkdir artifact
           issued=$(date +%s)
           expires=$((issued + 3600))
