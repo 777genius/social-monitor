@@ -403,7 +403,7 @@
     "browserslist": "4.28.8",
     "deepmerge-ts": "8.0.2",
     "hono": "4.13.3",
-    "fast-uri": "4.1.4",
+    "fast-uri": "3.1.7",
     "form-data": "4.0.6",
     "ip-address": "10.4.0",
     "multer": "2.2.0",

@@ -62,68 +62,19 @@ BRIDGE_CONTROL_PATHS=(
 )
 
 assert_rolling_entrypoint_bridge() {
-  local graph_repo=$FIXTURE/forward-graph index tree path mode blob
-  local bridge_blob current_blob
-  local -a b_paths=(
-    ops/deploy/deploy-control-bridge-lib.sh
-    ops/deploy/production-forward-bridge-host-lib.sh
-    ops/deploy/production-forward-bridge.blobs
-    ops/deploy/production-transition-b0-host-control.sh
-    ops/deploy/production-transition-marker-lib.sh
-  )
-  local -a h_paths=(
-    .github/workflows/production-deploy.yml package.json
-    ops/deploy/github-production-deploy-client.sh
-    ops/deploy/github-production-deploy-client.test.sh
-    ops/deploy/github-production-forward-bridge-client-lib.sh
-    ops/deploy/deploy-control-bridge-runtime-helper.test.sh
-    ops/deploy/production-forward-bridge-authority.blobs
-    ops/deploy/production-forward-bootstrap-marker-resume.test.sh
-    ops/deploy/production-forward-bridge.test.sh
-    ops/deploy/production-release-b-bridge-order.test.sh
-    ops/deploy/production-transition-b0-host-control.test.sh
-    ops/deploy/rabbitmq-quorum-deploy-bridge-transition.test.sh
-    ops/deploy/social-monitor-production-deploy.test.sh
-    ops/deploy/x-collector-image-deploy-lib.test.sh scripts/check-review-ci.mjs
-  )
+  local current bridge_blob current_blob
+  current=$(git -C "$PROJECT_ROOT" rev-parse 'HEAD^{commit}')
+  REPO=$PROJECT_ROOT
   fail() { printf 'rolling-entrypoint-bridge-error: %s\n' "$*" >&2; exit 1; }
-  git clone -q --shared "$PROJECT_ROOT" "$graph_repo"
-  git -C "$graph_repo" config user.name 'RabbitMQ bridge graph fixture'
-  git -C "$graph_repo" config user.email rabbitmq-bridge-graph@example.invalid
-  index_update() {
-    local idx=$1 rel=$2
-    mode=$(git -C "$PROJECT_ROOT" ls-files -s -- "$rel" | awk '{print $1}')
-    blob=$(git -C "$graph_repo" hash-object -w "$PROJECT_ROOT/$rel")
-    GIT_INDEX_FILE=$idx git -C "$graph_repo" update-index --add --cacheinfo "$mode,$blob,$rel"
-  }
-  make_commit() {
-    local idx=$1 message=$2; shift 2
-    tree=$(GIT_INDEX_FILE=$idx git -C "$graph_repo" write-tree)
-    git -C "$graph_repo" commit-tree "$tree" "$@" <<< "$message"
-  }
-  P=$(git -C "$graph_repo" rev-parse '7c4070f0b9ef1aac130284bcffac50551e20a4dd^{commit}')
-  M=$(git -C "$graph_repo" rev-parse 'c5dc5abb12aa1ac84ddbd12f141c6d4d8aca4de2^{commit}')
-  index=$FIXTURE/forward-b.index; GIT_INDEX_FILE=$index git -C "$graph_repo" read-tree "$P"
-  for path in "${b_paths[@]}"; do index_update "$index" "$path"; done
-  B=$(make_commit "$index" 'test: bridge predecessor' -p "$P")
-  index=$FIXTURE/forward-r.index; GIT_INDEX_FILE=$index git -C "$graph_repo" read-tree "$M"
-  for path in "${b_paths[@]}"; do
-    read -r mode blob <<< "$(git -C "$graph_repo" ls-tree "$B" -- "$path" | awk '{print $1, $3}')"
-    GIT_INDEX_FILE=$index git -C "$graph_repo" update-index --add --cacheinfo "$mode,$blob,$path"
-  done
-  R=$(make_commit "$index" 'test: bridge join' -p "$M" -p "$B")
-  index=$FIXTURE/forward-w.index; GIT_INDEX_FILE=$index git -C "$graph_repo" read-tree "$R"; index_update "$index" ops/deploy/social-monitor-production-deploy.sh
-  W=$(make_commit "$index" 'test: rolling bridge' -p "$R")
-  index=$FIXTURE/forward-h.index; GIT_INDEX_FILE=$index git -C "$graph_repo" read-tree "$W"
-  for path in "${h_paths[@]}"; do index_update "$index" "$path"; done
-  H=$(make_commit "$index" 'test: forward payload' -p "$W")
-  F=$(printf 'test: merge target\n' | git -C "$graph_repo" commit-tree "$H^{tree}" -p "$M" -p "$H")
-  REPO=$graph_repo
+  # shellcheck source=ops/deploy/production-forward-bridge-host-lib.sh
   source "$SCRIPT_DIR/production-forward-bridge-host-lib.sh"
-  production_forward_verify_target_graph "$B" "$F"
-  production_forward_verify_target_graph "$B" "$H"
-  bridge_blob=$(git -C "$graph_repo" rev-parse "$W:ops/deploy/social-monitor-production-deploy.sh")
-  current_blob=$(git -C "$PROJECT_ROOT" hash-object ops/deploy/social-monitor-production-deploy.sh)
+  production_forward_derive_graph "$current"
+  production_forward_verify_target_graph "$PRODUCTION_FORWARD_B" "$current"
+  ROLLING_ENTRYPOINT_BRIDGE_SHA=$PRODUCTION_FORWARD_W
+  bridge_blob=$(git -C "$PROJECT_ROOT" rev-parse \
+    "$ROLLING_ENTRYPOINT_BRIDGE_SHA:ops/deploy/social-monitor-production-deploy.sh")
+  current_blob=$(git -C "$PROJECT_ROOT" rev-parse \
+    "HEAD:ops/deploy/social-monitor-production-deploy.sh")
   [[ $bridge_blob == "$current_blob" ]] || {
     echo 'rolling entrypoint bridge does not match the current release' >&2
     exit 1
@@ -176,7 +127,7 @@ assert_real_bridge_target_assets() {
         expected_digest=ac82c9cfebf88646e9cdc21dcb822c8cc50409832da24a726cd9307cc2be8bcb
         alternate_digest=101b80c5c0ee6ea5ff4e908e5661a7c2bbd03ad2048fb7eb8b5d26966b0e4860
         reviewed_digest=cc869266046dbe9edc590e83944e93bab8ebdf19e8ef66f4917c896bbd48fcde
-        current_release_digest=333b3be22c669d3210cc331763cba892bdf87ae167bce6837774469add6cbf47
+        current_release_digest=d9260a34a3d64cc4ba2b3799266ca97a0e7b58cb8ae4649bb1f2e11e26791b47
         ;;
       ops/deploy/deploy-control-lib.sh)
         expected_digest=d18854822ef36d5571289e72c7691fff8db4a7d5c516787441a733d6960a88a9
@@ -199,7 +150,7 @@ assert_real_bridge_target_assets() {
         release_b_candidate_digest=bea119047fbbd2295185c84e0adeb773dc852e63b951daf5c7a831356a73a371
         release_b_sealed_digest=1718617b4bbb92f4dbfd92a59fcc482ef7a098734730b8460d21aaced44386c2
         rolling_repair_digest=1945f2b07f110d16694affc15c66b4589d294b81a4e593a9680dacf11fbc5d4d
-        current_release_digest=bf7e56510ce8ed3141d2d77c24437b23889f0dfc9933c525ab1c046f2ecdaf97
+        current_release_digest=4d5083cf3af758640633482b89d6644e463dc717ea3deb4bf72b908bbe26451d
         ;;
     esac
     if [[ $path == ops/deploy/social-monitor-production-deploy.sh ]]; then

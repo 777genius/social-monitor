@@ -747,10 +747,6 @@ initialize_deploy_control_bridge() {
     declare -F production_forward_verify_target_graph >/dev/null && \
       declare -F production_forward_install_b0_before_entrypoint >/dev/null || \
       fail 'production forward bridge host authority is incomplete'
-    if [[ ${sha:-} =~ ^[0-9a-f]{40}$ ]] && \
-       (production_forward_derive_graph "$sha") >/dev/null 2>&1; then
-      production_forward_require_origin_policy
-    fi
   fi
 }
 
