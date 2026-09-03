@@ -10,7 +10,8 @@ FIXED_B2=e3b5b5d89b3586668e36f987f03672415b5a0f37
 BACKEND_BASE=4bb8f6d4969b8449726a10859202b23e2bfb4366
 ZERO_SHA=0000000000000000000000000000000000000000
 FIXTURE=$(mktemp -d /tmp/social-monitor-release-transition.XXXXXX)
-trap 'rm -rf "$FIXTURE"' EXIT
+cleanup_fixture() { local rc=$?; trap - EXIT; find "$FIXTURE" -depth -delete || :; exit "$rc"; }
+trap cleanup_fixture EXIT
 REPO=$FIXTURE/repo
 REFUSAL_COUNT=0
 
@@ -262,3 +263,38 @@ if "postgres_pool_repair != 'true'" in deploy:
 PY
 
 echo 'Canonical E/A2/B2 target transition tests passed'
+
+# A target descendant is valid before predecessor markers are installed. The
+# client must install only the reviewed bridge, then let the normal target
+# deploy own the descendant itself.
+source "$PROJECT_ROOT/ops/deploy/github-production-forward-bridge-client-lib.sh"
+POSTGRES_POOL_BOOTSTRAP_VERSION=postgres-pool-v1
+verify_production_forward_target_identity() {
+  PRODUCTION_FORWARD_ANCHOR=anchor
+  PRODUCTION_FORWARD_DERIVED_BRIDGE=bridge
+}
+production_forward_bridge_is_installed() { return 1; }
+capture_plan() {
+  local requested=$1
+  PLAN_FRONTEND=true PLAN_BACKEND=true PLAN_CONTROL=true PLAN_X_COLLECTOR=false
+  PLAN_BACKEND_BASE=$PRODUCTION_FORWARD_BACKEND_SHA
+  PLAN_POSTGRES_POOL_BOOTSTRAP=$POSTGRES_POOL_BOOTSTRAP_VERSION
+  PLAN_POSTGRES_POOL_BOOTSTRAP_SHA=$PRODUCTION_FORWARD_POOL_SHA
+  PLAN_POSTGRES_POOL_REPAIR=false
+  if [[ $requested == bridge ]]; then
+    PLAN_FRONTEND=false
+    PLAN_BACKEND=false
+  fi
+}
+print_plan() { :; }
+bridge_deployments=0
+deploy_once() {
+  [[ ${1:-} == bridge ]] || { echo 'descendant was deployed before bridge' >&2; exit 1; }
+  bridge_deployments=$((bridge_deployments + 1))
+}
+prepare_production_forward_bridge descendant
+[[ $bridge_deployments == 1 ]] || {
+  echo "expected one pre-forward bridge deployment, got $bridge_deployments" >&2
+  exit 1
+}
+echo 'Forward descendant pre-bridge preparation test passed'
