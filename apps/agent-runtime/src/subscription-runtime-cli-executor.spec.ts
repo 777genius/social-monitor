@@ -2,6 +2,7 @@ import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
+import type { StructuredLogger } from "@social-monitor/platform-logging";
 import type { AgentRuntimeExecutionRequest } from "./agent-runtime-executor.port";
 import { SubscriptionRuntimeCliExecutor } from "./subscription-runtime-cli-executor";
 
@@ -442,6 +443,60 @@ describe("SubscriptionRuntimeCliExecutor", () => {
       failure: { code: "agent_runtime.execution_attestation_invalid" },
     });
     expect(inspections).toBe(0);
+  });
+
+  it("logs a safe structured failure without recording prompt contents", async () => {
+    tempDir = await mkdtemp(join(tmpdir(), "agent-runtime-cli-test-"));
+    const cliPath = join(tempDir, "fake-failure-cli.mjs");
+    await writeFile(
+      cliPath,
+      [
+        "#!/usr/bin/env node",
+        "process.stdout.write(JSON.stringify({ status: 'failed', warnings: [], failure: { code: 'quota_limited', safeMessage: 'All configured accounts are limited', retryable: true, reconnectRequired: false, causeCategory: 'provider' } }));",
+      ].join("\n"),
+      "utf8",
+    );
+    await chmod(cliPath, 0o755);
+    const logs: Array<{
+      level: string;
+      message: string;
+      fields?: Record<string, unknown>;
+    }> = [];
+    const logger: StructuredLogger = {
+      info: (message, fields) => logs.push({ level: "info", message, fields }),
+      warn: (message, fields) => logs.push({ level: "warn", message, fields }),
+      error: (message, fields) =>
+        logs.push({ level: "error", message, fields }),
+    };
+    const executor = new SubscriptionRuntimeCliExecutor({
+      command: cliPath,
+      ephemeral: true,
+      installationInspector,
+      logger,
+    });
+
+    const result = await executor.execute(
+      validExecutionRequest({
+        prompt: "Return JSON. secret prompt must not be logged",
+      }),
+    );
+
+    expect(result).toMatchObject({
+      status: "failed",
+      failure: { code: "quota_limited" },
+    });
+    expect(logs).toContainEqual(
+      expect.objectContaining({
+        level: "error",
+        message: "agent runtime task did not complete",
+        fields: expect.objectContaining({
+          requestId: "request-1",
+          correlationId: "corr-1",
+          failureCode: "quota_limited",
+        }),
+      }),
+    );
+    expect(JSON.stringify(logs)).not.toContain("secret prompt");
   });
 });
 
