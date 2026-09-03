@@ -39,6 +39,7 @@ reviewer_verify_origin() {
 
 reviewer_initialize_context() {
   local mode=${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-0}
+  local remote_main stale_b0 recovery_mode
   if [[ $mode == 1 ]]; then
     REPO=${PRODUCTION_TRANSITION_TEST_REPOSITORY:?test repository is required}
     PRODUCTION_TRANSITION_BRIDGE_BASE=\
@@ -70,8 +71,27 @@ ${PRODUCTION_TRANSITION_TEST_REPLAY_ID:?test replay id is required}
       reviewer_fail 'test overrides are forbidden in production mode'
     REPO=${GITHUB_WORKSPACE:?GitHub review workspace is required}
     reviewer_verify_origin
-    PRODUCTION_TRANSITION_BRIDGE_BASE=$(production_transition_git -C "$REPO" \
+    remote_main=$(production_transition_git -C "$REPO" \
       ls-remote --exit-code origin refs/heads/main | /usr/bin/awk 'NR == 1 {print $1}')
+    stale_b0=${PRODUCTION_TRANSITION_STALE_B0_SHA:-}
+    recovery_mode=${PRODUCTION_TRANSITION_RECOVERY_MODE:-}
+    if [[ -n $stale_b0 ]]; then
+      [[ $recovery_mode == stale-b0 ]] || \
+        reviewer_fail 'stale B0 requires the explicit recovery mode'
+      production_transition_validate_sha "$stale_b0" 'stale B0'
+      production_transition_git -C "$REPO" cat-file -e "$stale_b0^{commit}" || \
+        reviewer_fail 'stale B0 is unavailable in the review checkout'
+      [[ $remote_main == "${GITHUB_SHA:-}" && $GITHUB_SHA =~ ^[0-9a-f]{40}$ ]] || \
+        reviewer_fail 'stale B0 recovery requires the exact protected main checkout'
+      [[ $(production_transition_git -C "$REPO" rev-list --parents -n 1 \
+        "$GITHUB_SHA") == "$GITHUB_SHA $stale_b0" ]] || \
+        reviewer_fail 'stale B0 recovery requires S2 to be its direct child'
+      PRODUCTION_TRANSITION_BRIDGE_BASE=$stale_b0
+    else
+      [[ -z $recovery_mode ]] || \
+        reviewer_fail 'recovery mode requires an explicit stale B0'
+      PRODUCTION_TRANSITION_BRIDGE_BASE=$remote_main
+    fi
     PRODUCTION_TRANSITION_ANCHOR_BASE=$PINNED_A0
     PRODUCTION_TRANSITION_EFFECTIVE_REVIEW_FINGERPRINT=\
 $PRODUCTION_TRANSITION_REVIEW_FINGERPRINT
@@ -80,7 +100,7 @@ $PRODUCTION_TRANSITION_TARGET_FINGERPRINT
     PRODUCTION_TRANSITION_EFFECTIVE_NOW_EPOCH=$(/usr/bin/date +%s)
     [[ ${GITHUB_REPOSITORY:-} == "$PRODUCTION_TRANSITION_REPOSITORY_ID" && \
        ${GITHUB_WORKFLOW_REF:-} == "$PRODUCTION_TRANSITION_WORKFLOW_REF" && \
-       ${GITHUB_SHA:-} == "$PRODUCTION_TRANSITION_BRIDGE_BASE" && \
+       ${GITHUB_SHA:-} == "$remote_main" && \
        ${GITHUB_EVENT_NAME:-} == workflow_dispatch && \
        ${GITHUB_RUN_ID:-} =~ ^[1-9][0-9]*$ && \
        ${GITHUB_RUN_ATTEMPT:-} =~ ^[1-9][0-9]*$ ]] || \

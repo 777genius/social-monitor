@@ -1,7 +1,7 @@
 name: Production transition review
 
 run-name: >-
-  production-transition-review s2=${{ inputs.s2_sha }} request=${{ inputs.request_id }}
+  production-transition-review s2=${{ inputs.s2_sha }} b0=${{ inputs.b0_sha }} request=${{ inputs.request_id }}
 
 on:
   workflow_dispatch:
@@ -13,6 +13,11 @@ on:
       request_id:
         description: Correlation nonce
         required: true
+        type: string
+      b0_sha:
+        description: Optional trusted B0 for one stale-host recovery
+        required: false
+        default: ''
         type: string
 
 permissions:
@@ -36,6 +41,7 @@ jobs:
         shell: bash
         env:
           S2_SHA: ${{ inputs.s2_sha }}
+          B0_SHA: ${{ inputs.b0_sha }}
           REQUEST_ID: ${{ inputs.request_id }}
           REVIEW_PRIVATE_KEY: ${{ secrets.PRODUCTION_TRANSITION_REVIEW_PRIVATE_KEY }}
         run: |
@@ -45,9 +51,18 @@ jobs:
           [[ "$GITHUB_REF" == "refs/heads/main" ]]
           [[ "$S2_SHA" =~ ^[0-9a-f]{40}$ ]]
           [[ "$REQUEST_ID" =~ ^[0-9a-f]{32}$ ]]
+          [[ -z "$B0_SHA" || "$B0_SHA" =~ ^[0-9a-f]{40}$ ]]
+          remote_main=$(git ls-remote --exit-code origin refs/heads/main | awk 'NR == 1 {print $1}')
+          [[ "$GITHUB_SHA" == "$remote_main" && "$S2_SHA" == "$GITHUB_SHA" ]]
           [[ -n "$REVIEW_PRIVATE_KEY" ]]
           git -c protocol.version=2 fetch --no-tags --no-write-fetch-head \
             --filter=blob:none origin "$S2_SHA"
+          if [[ -n "$B0_SHA" ]]; then
+            git -c protocol.version=2 fetch --no-tags --no-write-fetch-head \
+              --filter=blob:none origin "$B0_SHA"
+            export PRODUCTION_TRANSITION_STALE_B0_SHA="$B0_SHA"
+            export PRODUCTION_TRANSITION_RECOVERY_MODE=stale-b0
+          fi
           key=$(mktemp "$RUNNER_TEMP/transition-review-key.XXXXXX")
           trap 'rm -f -- "$key"' EXIT
           printf '%s\n' "$REVIEW_PRIVATE_KEY" > "$key"
