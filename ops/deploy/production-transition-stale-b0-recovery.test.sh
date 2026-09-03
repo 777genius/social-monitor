@@ -9,6 +9,10 @@ PUBLISH_WORKFLOW=$ROOT/.github/workflows/production-transition-publish.yml
 
 /usr/bin/grep -Fq 'b0_sha:' "$REVIEW_WORKFLOW"
 /usr/bin/grep -Fq 'b0_sha:' "$PUBLISH_WORKFLOW"
+/usr/bin/grep -Fq '    environment: production' "$REVIEW_WORKFLOW"
+/usr/bin/grep -Fq '    environment: production' "$PUBLISH_WORKFLOW"
+/usr/bin/grep -Fq 'PRODUCTION_TRANSITION_REVIEW_SIGNING_KEY' "$REVIEW_WORKFLOW"
+/usr/bin/grep -Fq 'PRODUCTION_TRANSITION_TARGET_SIGNING_KEY' "$PUBLISH_WORKFLOW"
 /usr/bin/grep -Fq 'PRODUCTION_TRANSITION_RECOVERY_MODE=stale-b0' "$REVIEW_WORKFLOW"
 /usr/bin/grep -Fq 'PRODUCTION_TRANSITION_RECOVERY_MODE=stale-b0' "$PUBLISH_WORKFLOW"
 /usr/bin/grep -Fq '"$GITHUB_SHA" == "$remote_main"' "$REVIEW_WORKFLOW"
@@ -18,6 +22,10 @@ PUBLISH_WORKFLOW=$ROOT/.github/workflows/production-transition-publish.yml
 /usr/bin/grep -Fq 'protected main moved after stale B0 recovery lease' "$PUBLISHER"
 /usr/bin/grep -Fq 'lease_main=$observed' "$PUBLISHER"
 /usr/bin/grep -Fq 'production_transition_stale_b0_validate_head' \
+  "$ROOT/ops/deploy/production-transition-stale-b0-recovery-lib.sh"
+/usr/bin/grep -Fq 'scripts/check-review-ci.mjs' \
+  "$ROOT/ops/deploy/production-transition-stale-b0-recovery-lib.sh"
+/usr/bin/grep -Fq 'production-forward-bridge-authority.blobs' \
   "$ROOT/ops/deploy/production-transition-stale-b0-recovery-lib.sh"
 /usr/bin/grep -Fq 'first post-B0 release requires deploy-transition with a signed target' \
   "$ROOT/ops/deploy/production-transition-b0-host-control.sh"

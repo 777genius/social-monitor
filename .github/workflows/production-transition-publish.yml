@@ -28,6 +28,7 @@ concurrency:
 
 jobs:
   publish:
+    environment: production
     permissions:
       actions: read
       contents: write
@@ -65,7 +66,7 @@ jobs:
         id: publish_target
         shell: bash
         env:
-          TARGET_PRIVATE_KEY: ${{ secrets.PRODUCTION_TRANSITION_TARGET_PRIVATE_KEY }}
+          TARGET_PRIVATE_KEY: ${{ secrets.PRODUCTION_TRANSITION_TARGET_SIGNING_KEY }}
           B0_SHA: ${{ inputs.b0_sha }}
         run: |
           set -euo pipefail

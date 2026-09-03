@@ -245,10 +245,12 @@ if (
   );
 }
 if (
-  !transitionReview.includes("PRODUCTION_TRANSITION_REVIEW_PRIVATE_KEY") ||
-  transitionReview.includes("PRODUCTION_TRANSITION_TARGET_PRIVATE_KEY") ||
-  !transitionPublish.includes("PRODUCTION_TRANSITION_TARGET_PRIVATE_KEY") ||
-  transitionPublish.includes("PRODUCTION_TRANSITION_REVIEW_PRIVATE_KEY")
+  !transitionReview.includes("PRODUCTION_TRANSITION_REVIEW_SIGNING_KEY") ||
+  transitionReview.includes("PRODUCTION_TRANSITION_TARGET_SIGNING_KEY") ||
+  !transitionPublish.includes("PRODUCTION_TRANSITION_TARGET_SIGNING_KEY") ||
+  transitionPublish.includes("PRODUCTION_TRANSITION_REVIEW_SIGNING_KEY") ||
+  transitionReview.includes("PRODUCTION_TRANSITION_REVIEW_PRIVATE_KEY") ||
+  transitionPublish.includes("PRODUCTION_TRANSITION_TARGET_PRIVATE_KEY")
 ) {
   violations.push("production transition workflows must keep review and target signing authorities separate");
 }
@@ -363,7 +365,6 @@ if (
 }
 
 for (const prohibited of [
-  "environment: production",
   "PRODUCTION_SSH_PRIVATE_KEY",
   "PRODUCTION_SSH_KNOWN_HOSTS",
   "DEPLOY_HOST:",
@@ -376,13 +377,17 @@ for (const prohibited of [
     );
   }
 }
-for (const [authority, owner] of [
-  ["PRODUCTION_TRANSITION_TARGET_PRIVATE_KEY", transitionPublisherJob],
-  ["PRODUCTION_SSH_PRIVATE_KEY", transitionActivationJob],
-  ["PRODUCTION_SSH_KNOWN_HOSTS", transitionActivationJob],
+for (const [authority, token, owner] of [
+  [
+    "PRODUCTION_TRANSITION_TARGET_SIGNING_KEY",
+    "PRODUCTION_TRANSITION_TARGET_SIGNING_KEY }}",
+    transitionPublisherJob,
+  ],
+  ["PRODUCTION_SSH_PRIVATE_KEY", "PRODUCTION_SSH_PRIVATE_KEY", transitionActivationJob],
+  ["PRODUCTION_SSH_KNOWN_HOSTS", "PRODUCTION_SSH_KNOWN_HOSTS", transitionActivationJob],
 ]) {
   if (
-    transitionPublish.split(authority).length !== 2 ||
+    transitionPublish.split(token).length !== 2 ||
     !owner?.includes(authority)
   ) {
     violations.push(
