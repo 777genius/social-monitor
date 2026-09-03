@@ -216,17 +216,41 @@ def test_collect_daily_search_runs_top_and_latest_even_when_top_requested() -> N
     ]
 
 
-def test_collect_daily_search_uses_lower_threshold_for_latest_discovery() -> None:
+def test_collect_daily_search_caps_latest_discovery_at_quality_boundaries() -> None:
     fake = FakeScweet()
     collector = ScweetDailySearchCollector(
         lambda: fake,
         FixedClock(datetime(2026, 6, 27, 12, tzinfo=UTC)),
     )
 
-    collector.collect_daily_search(request(min_likes=90))
+    collector.collect_daily_search(
+        request(min_likes=90, min_retweets=30, min_replies=15),
+    )
 
     assert fake.calls[-1]["display_type"] == "Latest"
-    assert fake.calls[-1]["min_likes"] == 30
+    assert fake.calls[-1]["min_likes"] == 5
+    assert fake.calls[-1]["min_retweets"] == 1
+    assert fake.calls[-1]["min_replies"] == 1
+
+
+def test_production_min_likes_reaches_scweet_as_latest_discovery_maximum() -> None:
+    fake = FakeScweet()
+    collector = ScweetDailySearchCollector(
+        lambda: fake,
+        FixedClock(datetime(2026, 6, 27, 12, tzinfo=UTC)),
+    )
+
+    collector.collect_daily_search(request(min_likes=30))
+
+    assert fake.calls[0]["display_type"] == "Top"
+    assert fake.calls[0]["min_likes"] == 30
+    assert fake.calls[1]["display_type"] == "Top"
+    assert fake.calls[1]["min_likes"] == 90
+    latest_request = fake.calls[-1]
+    assert latest_request["display_type"] == "Latest"
+    assert latest_request["min_likes"] == 5
+    assert latest_request["min_retweets"] is None
+    assert latest_request["min_replies"] is None
 
 
 def test_collect_daily_search_handles_non_list_scweet_response() -> None:
@@ -726,6 +750,8 @@ def request(
     search_products: tuple[SearchProduct, ...] = (SearchProduct.TOP,),
     max_items: int = 5,
     min_likes: int | None = 5,
+    min_retweets: int | None = None,
+    min_replies: int | None = None,
     cursor: str | None = None,
     window_end: datetime | None = None,
 ) -> DailySearchRequest:
@@ -744,8 +770,8 @@ def request(
         limit_per_product=10,
         max_items=max_items,
         min_likes=min_likes,
-        min_retweets=None,
-        min_replies=None,
+        min_retweets=min_retweets,
+        min_replies=min_replies,
         cursor=cursor,
     )
 
