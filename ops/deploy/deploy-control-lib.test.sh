@@ -762,16 +762,25 @@ commit_mode_output=$(
   COMMIT_FUNCTION="$(sed -n \
     '/^commit_postgres_pool_bootstrap() {$/,/^}$/p' \
     "$SCRIPT_DIR/social-monitor-production-deploy.sh")" \
+  MARKER_LIBRARY="$SCRIPT_DIR/production-transition-marker-lib.sh" \
   TARGET_SHA="$target_sha" \
   STATE="$STATE" \
     bash -c '
       set -euo pipefail
+      # The production entrypoint delegates marker publication to this
+      # reviewed library; load the same dependency before evaluating its thin
+      # wrapper in the fresh-process contract test.
+      source "$MARKER_LIBRARY"
       eval "$COMMIT_FUNCTION"
       fail() {
         printf "test deploy failure: %s\n" "$*" >&2
         exit 1
       }
+      production_transition_host_failpoint() { :; }
       postgres_pool_bootstrap_installed() {
+        return 0
+      }
+      postgres_pool_bootstrap_physically_installed() {
         return 0
       }
       marker=$STATE/postgres-pool-bootstrap.sha
