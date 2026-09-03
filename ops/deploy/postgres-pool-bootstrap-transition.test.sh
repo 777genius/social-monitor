@@ -757,8 +757,7 @@ if git -C "$REPO" merge-base --is-ancestor \
   echo 'divergent bootstrap fixture unexpectedly became an ancestor' >&2
   exit 1
 fi
-printf '%s\n' "$DIVERGENT_MARKER_SHA" \
-  > "$STATE/postgres-pool-bootstrap.sha"
+replace_state_marker "$STATE/postgres-pool-bootstrap.sha" "$DIVERGENT_MARKER_SHA"
 replace_state_marker "$STATE/control.sha" "$HISTORICAL_CONTROL_SHA"
 install_historical_control_entrypoint
 cp "$STATE/postgres-pool-bootstrap.sha" "$FIXTURE/divergent-marker-before"
