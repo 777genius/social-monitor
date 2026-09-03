@@ -1,5 +1,5 @@
 version=social-monitor-production-forward-bridge-blobs-v1
-bridge 100644 613a4a0be6d6eff0a17834fdef960e150e65820b ops/deploy/production-transition-b0-host-control.sh
+bridge 100644 cf371af83dae3220044ad0e2e0d95b8882c80019 ops/deploy/production-transition-b0-host-control.sh
 head 100644 0867fe9abdfe4b0af31e9c9dd33640762e12aa89 .github/workflows/production-deploy.yml
 head 100644 930d8b0966f0556a227068d7aa1564c7e8fea83a ops/deploy/deploy-control-bridge-runtime-helper.test.sh
 head 100755 ae3d1e344efd54970e06721fc67a060dbc703da6 ops/deploy/github-production-deploy-client.sh
@@ -11,6 +11,6 @@ head 100755 f450389cc7d2cf824f12e747eed92a0500558ba6 ops/deploy/production-trans
 head 100644 57a52e56ec879624eb33f3c77834b5b005fa9412 ops/deploy/rabbitmq-quorum-deploy-bridge-transition.test.sh
 head 100755 15e0a2797dd694b535b4f80cbf1fffb166ba6590 ops/deploy/social-monitor-production-deploy.test.sh
 head 100644 ad399a5f6df8939793a7344535a9a5c509630470 ops/deploy/x-collector-image-deploy-lib.test.sh
-head 100644 de285c90246da5c4259800398b2a4479666d2e41 package.json
+head 100644 6d9ec68768ce8afef4c8c2411e86a6a00841ab16 package.json
 head 100644 195ee0e7fe780ab6ce8e396b340432d1988b32c7 scripts/check-review-ci.mjs
 rolling 100644 f008a4bb5031ce2aa3bd9bf46375db3f10a9ccd7 ops/deploy/social-monitor-production-deploy.sh
