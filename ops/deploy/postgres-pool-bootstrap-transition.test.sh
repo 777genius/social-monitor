@@ -227,7 +227,7 @@ assert_release_a_non_activation() {
     "$POSTGRES_RUNTIME_CURRENT/READY"
   [[ ! -e $CONTROL/postgres-runtime-releases/$TARGET_SHA ]]
 }
-replace_state_marker() { local path=$1 value=$2; rm -f -- "$path"; printf '%s\n' "$value" > "$path"; }
+replace_state_marker() { local path=$1 value=$2; rm -f -- "$path" "$path".next "$path".retired.* "$path".next.retired.*; printf '%s\n' "$value" > "$path"; }
 run_entrypoint() {
   local entrypoint=$1
   local action=$2
