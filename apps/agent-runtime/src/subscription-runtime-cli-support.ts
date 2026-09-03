@@ -10,13 +10,32 @@ import { parseSubscriptionRuntimeJsonObject } from "./subscription-runtime-execu
 
 export const shouldRetryWithEphemeral = (
   result: AgentRuntimeExecutionResult,
-  options: { readonly ephemeral: boolean },
+  options: {
+    readonly ephemeral: boolean;
+    readonly retryMode?: "standard" | "never";
+  },
 ): boolean =>
+  options.retryMode !== "never" &&
   !options.ephemeral &&
   result.status === "failed" &&
   (result.failure?.code === "provider_session_invalid" ||
     result.failure?.code === "needs_reconnect") &&
   result.failure.reconnectRequired;
+
+export const enforceSubscriptionRuntimeRetryMode = (
+  result: AgentRuntimeExecutionResult,
+  retryMode: "standard" | "never",
+): AgentRuntimeExecutionResult =>
+  retryMode !== "never" || result.failure === undefined
+    ? result
+    : {
+        ...result,
+        failure: {
+          ...result.failure,
+          retryable: false,
+          reconnectRequired: false,
+        },
+      };
 
 export const parseSubscriptionRuntimeCliResult = (
   stdout: string,

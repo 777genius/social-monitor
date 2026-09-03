@@ -9,9 +9,8 @@ import {
 } from "./subscription-runtime-purpose-model-policy.mjs";
 import { loadCodexAuthPoolFromEnv } from "./codex-auth-pool-manifest.mjs";
 import {
-  codexAuthPoolExecutionPolicy,
+  codexAuthPoolRoute,
   codexAuthPoolTaskHash,
-  orderCodexAuthAccountsForTask,
 } from "./codex-auth-pool-routing.mjs";
 
 const argv = process.argv.slice(2);
@@ -109,6 +108,11 @@ function createPooledCodexWorker({ input, model, authPool }) {
         throw new Error("Pooled Codex worker requires a stable runId");
       }
       const taskHash = codexAuthPoolTaskHash(taskId);
+      const route = codexAuthPoolRoute(
+        authPool.accounts,
+        taskId,
+        admission.profile.retryMode,
+      );
       const workspacePath = join(
         input.stateRootDir,
         "task-workspaces",
@@ -124,13 +128,10 @@ function createPooledCodexWorker({ input, model, authPool }) {
         effectMode: "read_only",
         maxAccountCycles: 1,
         safeExecutionPolicy: {
-          ...codexAuthPoolExecutionPolicy,
-          maxAttempts: authPool.accounts.length,
+          ...route.executionPolicy,
+          maxAttempts: route.maxAttempts,
         },
-        accounts: orderCodexAuthAccountsForTask(
-          authPool.accounts,
-          taskId,
-        ).map((account) => ({
+        accounts: route.accounts.map((account) => ({
           codexAuthJsonPath: account.authJsonPath,
           worker: {
             providerInstanceId: `codex:${account.id}`,

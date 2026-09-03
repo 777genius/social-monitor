@@ -7,6 +7,7 @@ export const activeReaderSummaryReasoningEffort = "high";
 export type SubscriptionRuntimeOutputKind =
   | "structured_output"
   | "output_text";
+export type SubscriptionRuntimeRetryMode = "standard" | "never";
 
 export type SubscriptionRuntimePurposeProfile = {
   readonly provider: "codex";
@@ -14,6 +15,7 @@ export type SubscriptionRuntimePurposeProfile = {
   readonly reasoningEffort: "high" | "xhigh";
   readonly outputKind: SubscriptionRuntimeOutputKind;
   readonly responseFormat: "json" | "text";
+  readonly retryMode: SubscriptionRuntimeRetryMode;
 };
 
 export type AdmittedSubscriptionRuntimeRequest = {
@@ -27,6 +29,7 @@ const genericSummaryStructuredProfile = Object.freeze({
   reasoningEffort: productionAgentRuntimeReasoningEffort,
   outputKind: "structured_output",
   responseFormat: "json",
+  retryMode: "standard",
 } as const satisfies SubscriptionRuntimePurposeProfile);
 
 const activeReaderSummaryStructuredProfile = Object.freeze({
@@ -35,6 +38,7 @@ const activeReaderSummaryStructuredProfile = Object.freeze({
   reasoningEffort: activeReaderSummaryReasoningEffort,
   outputKind: "structured_output",
   responseFormat: "json",
+  retryMode: "standard",
 } as const satisfies SubscriptionRuntimePurposeProfile);
 
 const activeReaderSummaryTextProfile = Object.freeze({
@@ -43,6 +47,16 @@ const activeReaderSummaryTextProfile = Object.freeze({
   reasoningEffort: activeReaderSummaryReasoningEffort,
   outputKind: "output_text",
   responseFormat: "text",
+  retryMode: "standard",
+} as const satisfies SubscriptionRuntimePurposeProfile);
+
+const promotionV2CanaryProfile = Object.freeze({
+  provider: "codex",
+  model: productionAgentRuntimeModel,
+  reasoningEffort: activeReaderSummaryReasoningEffort,
+  outputKind: "structured_output",
+  responseFormat: "json",
+  retryMode: "never",
 } as const satisfies SubscriptionRuntimePurposeProfile);
 
 const profilesByPurpose: Readonly<
@@ -58,6 +72,8 @@ const profilesByPurpose: Readonly<
     activeReaderSummaryStructuredProfile,
   "social_monitor.reader_summary.verify_related_topic_relations.v2":
     activeReaderSummaryStructuredProfile,
+  "social_monitor.reader_summary.promotion_v2_canary.v1":
+    promotionV2CanaryProfile,
   "social_monitor.reader_summary.daily.canonical_recovery.v2":
     activeReaderSummaryTextProfile,
   "social_monitor.reader_summary.weekly.review.v2": activeReaderSummaryStructuredProfile,
@@ -104,6 +120,7 @@ export const admitSubscriptionRuntimeRequest = (
     "metadata.reasoningEffort",
   );
   assertDedicatedRelatedTopicMarkers(request, controls);
+  assertPromotionV2CanaryMarkers(request, controls);
   assertOutputControls(request, controls, outputSchema, profile);
 
   const canonicalControls = canonicalControlsForProfile(
@@ -182,6 +199,31 @@ const assertDedicatedRelatedTopicMarkers = (
   );
 };
 
+const assertPromotionV2CanaryMarkers = (
+  request: AgentRuntimeExecutionRequest,
+  controls: Record<string, unknown>,
+): void => {
+  if (
+    request.purpose !==
+    "social_monitor.reader_summary.promotion_v2_canary.v1"
+  ) return;
+  assertRequiredExactString(
+    controls.outputSchemaName,
+    "social_monitor_reader_summary_story_relations",
+    "outputSchemaName",
+  );
+  assertRequiredExactString(
+    controls.schemaVersion,
+    "reader_summary.story_relation.v1",
+    "schemaVersion",
+  );
+  assertRequiredExactString(
+    request.metadata.taskRole,
+    "promotion_v2_canary",
+    "metadata.taskRole",
+  );
+};
+
 const assertRequiredExactString = (
   value: unknown,
   expected: string,
@@ -219,6 +261,7 @@ const canonicalControlsForProfile = (
     model: profile.model,
     reasoningEffort: profile.reasoningEffort,
     responseFormat: profile.responseFormat,
+    ...(profile.retryMode === "never" ? { retryMode: "never" } : {}),
     ...(profile.outputKind === "structured_output"
       ? { outputSchema }
       : {}),
@@ -236,6 +279,7 @@ const assertOutputControls = (
     profile.responseFormat,
     "responseFormat",
   );
+  assertOptionalExactString(controls.retryMode, profile.retryMode, "retryMode");
   for (const [label, value] of [
     ["outputKind", controls.outputKind],
     ["runtimeOutput", controls.runtimeOutput],

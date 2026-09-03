@@ -113,6 +113,44 @@ test("active v2 admits high and rejects xhigh and every legacy reader-summary pu
   }
 });
 
+test("promotion V2 canary requires exact markers and pins retryMode never", () => {
+  const exact = {
+    provider: "codex",
+    model: "gpt-5.6-sol",
+    reasoningEffort: "high",
+    request: {
+      context: {
+        purpose: "social_monitor.reader_summary.promotion_v2_canary.v1",
+      },
+      task: {
+        outputSchemaName: "social_monitor_reader_summary_story_relations",
+        controls: {
+          outputSchemaName: "social_monitor_reader_summary_story_relations",
+          schemaVersion: "reader_summary.story_relation.v1",
+          outputSchema: { type: "object" },
+        },
+        metadata: { taskRole: "promotion_v2_canary" },
+      },
+    },
+  };
+  const admitted = admitSubscriptionRuntimeWrapperRequest(exact);
+  assert.equal(admitted.profile.retryMode, "never");
+  assert.equal(admitted.canonicalRequest.task.controls.retryMode, "never");
+  assert.throws(
+    () => admitSubscriptionRuntimeWrapperRequest({
+      ...exact,
+      request: {
+        ...exact.request,
+        task: {
+          ...exact.request.task,
+          controls: { ...exact.request.task.controls, retryMode: "standard" },
+        },
+      },
+    }),
+    /retryMode conflicts with purpose policy/u,
+  );
+});
+
 test("Codex subprocess environment admits only safe execution basics", () => {
   const safeEnvironment = {
     PATH: "/usr/local/bin:/usr/bin:/bin",

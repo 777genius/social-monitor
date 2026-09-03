@@ -4,6 +4,7 @@ const genericSummaryStructuredProfile = Object.freeze({
   reasoningEffort: "xhigh",
   outputKind: "structured_output",
   responseFormat: "json",
+  retryMode: "standard",
 });
 
 const activeReaderSummaryStructuredProfile = Object.freeze({
@@ -12,6 +13,7 @@ const activeReaderSummaryStructuredProfile = Object.freeze({
   reasoningEffort: "high",
   outputKind: "structured_output",
   responseFormat: "json",
+  retryMode: "standard",
 });
 
 const activeReaderSummaryTextProfile = Object.freeze({
@@ -20,6 +22,16 @@ const activeReaderSummaryTextProfile = Object.freeze({
   reasoningEffort: "high",
   outputKind: "output_text",
   responseFormat: "text",
+  retryMode: "standard",
+});
+
+const promotionV2CanaryProfile = Object.freeze({
+  provider: "codex",
+  model: "gpt-5.6-sol",
+  reasoningEffort: "high",
+  outputKind: "structured_output",
+  responseFormat: "json",
+  retryMode: "never",
 });
 
 const profilesByPurpose = Object.freeze({
@@ -33,6 +45,8 @@ const profilesByPurpose = Object.freeze({
     activeReaderSummaryStructuredProfile,
   "social_monitor.reader_summary.verify_related_topic_relations.v2":
     activeReaderSummaryStructuredProfile,
+  "social_monitor.reader_summary.promotion_v2_canary.v1":
+    promotionV2CanaryProfile,
   "social_monitor.reader_summary.daily.canonical_recovery.v2":
     activeReaderSummaryTextProfile,
   "social_monitor.reader_summary.weekly.review.v2": activeReaderSummaryStructuredProfile,
@@ -76,11 +90,13 @@ export const admitSubscriptionRuntimeWrapperRequest = (input) => {
     "metadata.reasoningEffort",
   );
   assertDedicatedRelatedTopicMarkers(purpose, controls, metadata);
+  assertPromotionV2CanaryMarkers(purpose, controls, metadata);
   assertOptionalExactString(
     controls.responseFormat,
     profile.responseFormat,
     "responseFormat",
   );
+  assertOptionalExactString(controls.retryMode, profile.retryMode, "retryMode");
   for (const [label, value] of [
     ["outputKind", controls.outputKind],
     ["runtimeOutput", controls.runtimeOutput],
@@ -122,6 +138,7 @@ export const admitSubscriptionRuntimeWrapperRequest = (input) => {
           model: profile.model,
           reasoningEffort: profile.reasoningEffort,
           responseFormat: profile.responseFormat,
+          ...(profile.retryMode === "never" ? { retryMode: "never" } : {}),
         },
         metadata: {
           ...metadata,
@@ -157,6 +174,25 @@ const assertDedicatedRelatedTopicMarkers = (purpose, controls, metadata) => {
     metadata.verificationLane,
     "related_topic",
     "metadata.verificationLane",
+  );
+};
+
+const assertPromotionV2CanaryMarkers = (purpose, controls, metadata) => {
+  if (purpose !== "social_monitor.reader_summary.promotion_v2_canary.v1") return;
+  assertRequiredExactString(
+    controls.outputSchemaName,
+    "social_monitor_reader_summary_story_relations",
+    "outputSchemaName",
+  );
+  assertRequiredExactString(
+    controls.schemaVersion,
+    "reader_summary.story_relation.v1",
+    "schemaVersion",
+  );
+  assertRequiredExactString(
+    metadata.taskRole,
+    "promotion_v2_canary",
+    "metadata.taskRole",
   );
 };
 

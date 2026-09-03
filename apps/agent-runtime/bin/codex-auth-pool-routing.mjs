@@ -9,6 +9,31 @@ export const codexAuthPoolExecutionPolicy = Object.freeze({
   continuationMode: "retry_original_job",
 });
 
+export const codexAuthPoolNeverRetryExecutionPolicy = Object.freeze({
+  retryOnCapacity: false,
+  retryOnAccountUnavailable: false,
+  retryOnReconnectRequired: false,
+  retryUnknownCleanWorkspace: false,
+  retryUnknownChangedWorkspace: false,
+  continuationMode: "disabled",
+});
+
+export const codexAuthPoolRoute = (accounts, taskId, retryMode) => {
+  const ordered = orderCodexAuthAccountsForTask(accounts, taskId);
+  if (retryMode === "never") {
+    return {
+      accounts: ordered.slice(0, 1),
+      executionPolicy: codexAuthPoolNeverRetryExecutionPolicy,
+      maxAttempts: 1,
+    };
+  }
+  return {
+    accounts: ordered,
+    executionPolicy: codexAuthPoolExecutionPolicy,
+    maxAttempts: ordered.length,
+  };
+};
+
 export const codexAuthPoolTaskHash = (taskId) =>
   createHash("sha256").update(taskId).digest("hex");
 

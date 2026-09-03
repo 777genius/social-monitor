@@ -15,7 +15,10 @@ import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
-import { orderCodexAuthAccountsForTask } from "./codex-auth-pool-routing.mjs";
+import {
+  codexAuthPoolTaskHash,
+  orderCodexAuthAccountsForTask,
+} from "./codex-auth-pool-routing.mjs";
 
 const execFileAsync = promisify(execFile);
 const repositoryRoot = resolve(
@@ -169,7 +172,96 @@ test(
   },
 );
 
-async function createFixture() {
+test(
+  "promotion V2 canary makes one native pooled attempt without failover",
+  { timeout: 30_000 },
+  async () => {
+    const fixture = await createFixture(
+      "social_monitor.reader_summary.promotion_v2_canary.v1",
+    );
+    try {
+      const execution = await execFileAsync(
+        process.execPath,
+        [
+          runtimeBridgePath,
+          "--provider",
+          "codex",
+          "--input",
+          fixture.requestPath,
+          "--format",
+          "result-json",
+          "--state-root",
+          fixture.stateRoot,
+          "--codex-binary",
+          fixture.codexBinaryPath,
+          "--model",
+          "gpt-5.6-sol",
+          "--timeout-ms",
+          "15000",
+        ],
+        {
+          cwd: fixture.sandboxProject,
+          env: {
+            PATH: process.env.PATH,
+            LANG: "C.UTF-8",
+            AGENT_RUNTIME_CODEX_AUTH_POOL_ROOT: fixture.poolRoot,
+            AGENT_RUNTIME_CODEX_AUTH_POOL_MANIFEST: "current.json",
+            AGENT_RUNTIME_REASONING_EFFORT: "high",
+            SUBSCRIPTION_RUNTIME_LOCAL_ENCRYPTION_KEY:
+              Buffer.alloc(32, 7).toString("base64"),
+          },
+          maxBuffer: 1024 * 1024,
+        },
+      ).then(
+        ({ stdout, stderr }) => ({ exitCode: 0, stdout, stderr }),
+        (error) => ({
+          exitCode: error.code,
+          stdout: error.stdout ?? "",
+          stderr: error.stderr ?? "",
+        }),
+      );
+      const attemptsText = await readFile(
+        fixture.attemptLogPath,
+        "utf8",
+      ).catch(() => "");
+      const journal = await readFile(
+        join(
+          fixture.stateRoot,
+          "attempt-journal",
+          "attempt-journal",
+          `${codexAuthPoolTaskHash(fixture.taskId)}.json`,
+        ),
+        "utf8",
+      );
+      const journalRecord = JSON.parse(journal);
+      const turnAttempts = attemptsText.length === 0
+        ? []
+        : attemptsText
+            .trim()
+            .split("\n")
+            .map((line) => JSON.parse(line))
+            .filter(({ command }) => command === "turn");
+      const result = JSON.parse(execution.stdout);
+
+      assert.notEqual(execution.exitCode, 0);
+      assert.equal(result.status, "failed");
+      assert.equal(result.failure.retryable, false);
+      assert.equal(result.failure.reconnectRequired, false);
+      assert.equal(journalRecord.attempts.length, 1);
+      assert.ok(turnAttempts.length <= 1);
+      const canonicalRequest = JSON.parse(
+        await readFile(fixture.requestPath, "utf8"),
+      );
+      assert.equal(canonicalRequest.task.controls.retryMode, "never");
+    } finally {
+      await fixture.cleanup();
+    }
+  },
+);
+
+async function createFixture(
+  purpose = "social_monitor.reader_summary.generate.v2",
+) {
   const root = await mkdtemp(
     join(tmpdir(), "social-monitor-subscription-runtime-e2e-"),
   );
@@ -231,9 +323,13 @@ async function createFixture() {
   await chmod(codexBinaryPath, 0o755);
 
   const requestPath = join(root, "request.json");
+  const taskId = taskIdStartingWith(accountIds, "account-a");
   await writeFile(
     requestPath,
-    `${JSON.stringify(agentTaskRequest(taskIdStartingWith(accountIds, "account-a")))}\n`,
+    `${JSON.stringify(agentTaskRequest(
+      taskId,
+      purpose,
+    ))}\n`,
     "utf8",
   );
 
@@ -245,6 +341,7 @@ async function createFixture() {
     requestPath,
     sandboxProject,
     stateRoot,
+    taskId,
     cleanup: async () => {
       await Promise.all(
         poolDirectories.map((path) => chmod(path, 0o700).catch(() => {})),
@@ -267,7 +364,9 @@ function taskIdStartingWith(accountIds, expectedAccountId) {
   throw new Error("Unable to select a deterministic first sandbox account");
 }
 
-function agentTaskRequest(runId) {
+function agentTaskRequest(runId, purpose) {
+  const promotionV2Canary =
+    purpose === "social_monitor.reader_summary.promotion_v2_canary.v1";
   return {
     protocolVersion: 1,
     runId,
@@ -277,8 +376,17 @@ function agentTaskRequest(runId) {
       kind: "structured-prompt",
       systemPrompt: "Return JSON only.",
       prompt: "Return the sandbox auth-pool result.",
-      outputSchemaName: "auth-pool-e2e",
+      outputSchemaName: promotionV2Canary
+        ? "social_monitor_reader_summary_story_relations"
+        : "auth-pool-e2e",
       controls: {
+        ...(promotionV2Canary
+          ? {
+              outputSchemaName:
+                "social_monitor_reader_summary_story_relations",
+              schemaVersion: "reader_summary.story_relation.v1",
+            }
+          : {}),
         outputSchema: {
           type: "object",
           required: ["ok", "account"],
@@ -288,11 +396,13 @@ function agentTaskRequest(runId) {
           },
         },
       },
-      metadata: {},
+      metadata: promotionV2Canary
+        ? { taskRole: "promotion_v2_canary" }
+        : {},
     },
     context: {
       application: "social-monitor",
-      purpose: "social_monitor.reader_summary.generate.v2",
+      purpose,
       correlationId: "sandbox-auth-pool-e2e",
     },
   };

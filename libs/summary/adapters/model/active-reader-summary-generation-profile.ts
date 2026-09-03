@@ -1,6 +1,8 @@
 export const activeReaderSummaryProvider = "codex" as const;
 export const activeReaderSummaryModel = "gpt-5.6-sol" as const;
 export const activeReaderSummaryReasoningEffort = "high" as const;
+export const readerSummaryPromotionV2CanaryPurpose =
+  "social_monitor.reader_summary.promotion_v2_canary.v1" as const;
 
 export const activeReaderSummaryPurposes = Object.freeze({
   generate: "social_monitor.reader_summary.generate.v2",

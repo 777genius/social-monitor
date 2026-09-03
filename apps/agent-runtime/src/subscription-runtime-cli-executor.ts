@@ -18,6 +18,7 @@ import {
 } from "./subscription-runtime-execution-attestation";
 import {
   cliExecutionResult,
+  enforceSubscriptionRuntimeRetryMode,
   isUsageProbeOutput,
   runCli,
   shouldRetryWithEphemeral,
@@ -103,18 +104,26 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
         JSON.stringify(admission.canonicalRequest),
         "utf8",
       );
-      const initialResult = cliExecutionResult(
-        await runCli({
-          command: admittedInstallation.executablePath,
-          args: this.buildArgs(request, inputPath, admission.profile),
-          env: this.executionEnvPatch(
-            this.options.ephemeral,
-            admission.profile,
-          ),
-          timeoutMs: request.timeoutMs,
-        }),
+      const initialResult = enforceSubscriptionRuntimeRetryMode(
+        cliExecutionResult(
+          await runCli({
+            command: admittedInstallation.executablePath,
+            args: this.buildArgs(request, inputPath, admission.profile),
+            env: this.executionEnvPatch(
+              this.options.ephemeral,
+              admission.profile,
+            ),
+            timeoutMs: request.timeoutMs,
+          }),
+        ),
+        admission.profile.retryMode,
       );
-      if (!shouldRetryWithEphemeral(initialResult, this.options)) {
+      if (
+        !shouldRetryWithEphemeral(initialResult, {
+          ...this.options,
+          retryMode: admission.profile.retryMode,
+        })
+      ) {
         const result = await this.attestCompletedResult(
           request,
           admission,
