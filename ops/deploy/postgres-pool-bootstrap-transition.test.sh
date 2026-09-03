@@ -2,10 +2,7 @@
 set -euo pipefail
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 PROJECT_ROOT=$(cd "$SCRIPT_DIR/../.." && pwd)
-BASE=$(
-  python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["adoptionBaseCommit"])' \
-    "$SCRIPT_DIR/postgres-pool-release-contract.json"
-)
+BASE=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["adoptionBaseCommit"])' "$SCRIPT_DIR/postgres-pool-release-contract.json")
 RELEASE_A_COMMIT=83f6932eaaa87a49c64b9f8b07ada5052d47a7b4
 FIXTURE=$(mktemp -d "${TMPDIR:-/tmp}/postgres-pool-bootstrap-transition.XXXXXX")
 trap 'rm -rf "$FIXTURE"' EXIT
