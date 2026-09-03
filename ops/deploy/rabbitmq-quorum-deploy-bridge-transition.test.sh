@@ -88,6 +88,8 @@ assert_rolling_entrypoint_bridge() {
   )
   fail() { printf 'rolling-entrypoint-bridge-error: %s\n' "$*" >&2; exit 1; }
   git clone -q --shared "$PROJECT_ROOT" "$graph_repo"
+  git -C "$graph_repo" config user.name 'RabbitMQ bridge graph fixture'
+  git -C "$graph_repo" config user.email rabbitmq-bridge-graph@example.invalid
   index_update() {
     local idx=$1 rel=$2
     mode=$(git -C "$PROJECT_ROOT" ls-files -s -- "$rel" | awk '{print $1}')
