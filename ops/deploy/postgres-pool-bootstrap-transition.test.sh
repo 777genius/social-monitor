@@ -442,6 +442,7 @@ cp "$PROJECT_ROOT/ops/deploy/social-monitor-production-deploy.sh" \
   "$PROJECT_ROOT/ops/deploy/backend-runtime-health-lib.sh" \
   "$PROJECT_ROOT/ops/deploy"/backend-image-rescue-{lib,pin-cleanup-lib}.sh \
   "$PROJECT_ROOT/ops/deploy/docker-maintenance-lib.sh" \
+  "$PROJECT_ROOT/ops/deploy/production-transition-marker-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/daily-runner-image-bootstrap-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/x-collector-image-deploy-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/reader-summary-recovery-maintenance-lib.sh" \
@@ -558,6 +559,9 @@ prepare_historical_reconciliation() {
 
 # Historical reconciliation authenticates the exact control-marker blob.
 TEST_PHASE=already-newer-historical-reconciliation
+# Avoid truncating an inode that still has a receipt hardlink from the prior
+# promotion; the historical fixture intentionally starts from a fresh marker.
+rm -f "$STATE/postgres-pool-bootstrap.sha"
 printf '%s\n' "$TARGET_SHA" > "$STATE/postgres-pool-bootstrap.sha"
 printf '%s\n' "$HISTORICAL_CONTROL_SHA" > "$STATE/control.sha"
 install_historical_control_entrypoint
@@ -929,6 +933,7 @@ cp "$PROJECT_ROOT/ops/deploy/social-monitor-production-deploy.sh" \
   "$PROJECT_ROOT/ops/deploy/backend-runtime-health-lib.sh" \
   "$PROJECT_ROOT/ops/deploy"/backend-image-rescue-{lib,pin-cleanup-lib}.sh \
   "$PROJECT_ROOT/ops/deploy/docker-maintenance-lib.sh" \
+  "$PROJECT_ROOT/ops/deploy/production-transition-marker-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/daily-runner-image-bootstrap-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/x-collector-image-deploy-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/reader-summary-recovery-maintenance-lib.sh" \
