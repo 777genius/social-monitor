@@ -119,6 +119,17 @@ expected_registry=${SOCIAL_MONITOR_TEST_EXPECTED_REGISTRY_ROOT:?}
 if [[ -n ${SOCIAL_MONITOR_TEST_STATUS_LOG:-} ]]; then
   printf '%s\n' "$*" >> "$SOCIAL_MONITOR_TEST_STATUS_LOG"
 fi
+if [[ -n ${SOCIAL_MONITOR_TEST_STATUS_HANG_GATE:-} ]]; then
+  : > "${SOCIAL_MONITOR_TEST_STATUS_HANG_GATE}.entered"
+  /usr/bin/sleep 10 &
+  hang_pid=$!
+  trap 'kill "$hang_pid" 2>/dev/null || true; wait "$hang_pid" 2>/dev/null || true; : > "${SOCIAL_MONITOR_TEST_STATUS_HANG_GATE}.terminated"; exit 143' TERM
+  wait "$hang_pid"
+  exit 99
+fi
+if [[ -n ${SOCIAL_MONITOR_TEST_STATUS_EXIT:-} ]]; then
+  exit "$SOCIAL_MONITOR_TEST_STATUS_EXIT"
+fi
 if [[ -n ${SOCIAL_MONITOR_TEST_RAW_STATUS_JSON:-} ]]; then
   printf '%s\n' "$SOCIAL_MONITOR_TEST_RAW_STATUS_JSON"
   exit 0
@@ -133,6 +144,14 @@ accounts=${SOCIAL_MONITOR_TEST_ACCOUNTS:-'["account-a","account-b"]'}
 account_count=$(jq -er 'length' <<<"$accounts")
 printf '{"ok":true,"jobId":"%s","registryRootDir":"%s","hasAvailableAccount":true,"availableDedupedAccountNames":%s,"summary":{"ready":%s,"availableDeduped":%s}}\n' \
   "$expected_job" "$expected_registry" "$accounts" "$account_count" "$account_count"
+SH
+cat > "$BIN/date" <<'SH'
+#!/usr/bin/env bash
+if [[ ${1:-} == +%s && -n ${SOCIAL_MONITOR_TEST_DATE_EPOCH:-} ]]; then
+  printf '%s\n' "$SOCIAL_MONITOR_TEST_DATE_EPOCH"
+  exit 0
+fi
+exec /bin/date "$@"
 SH
 cat > "$BIN/codex" <<'SH'
 #!/usr/bin/env bash
@@ -180,8 +199,8 @@ if [[ $recursive == true ]]; then
 fi
 exec /bin/rm "$@"
 SH
-chmod 0755 "$BIN/subscription-runtime-codex-goal" "$BIN/codex" "$BIN/flock" \
-  "$BIN/rm"
+chmod 0755 "$BIN/subscription-runtime-codex-goal" "$BIN/date" "$BIN/codex" \
+  "$BIN/flock" "$BIN/rm"
 
 run_refresh() {
 PATH="$BIN:$PATH" \
@@ -198,6 +217,7 @@ SOCIAL_MONITOR_AUTH_PROBE_TMP_ROOT="$PROBE_TMP_ROOT" \
 SOCIAL_MONITOR_AUTH_POOL_SNAPSHOT_ROOT="$POOL_SNAPSHOT_ROOT" \
 SOCIAL_MONITOR_AUTH_POOL_POINTER="$POOL_POINTER" \
 SOCIAL_MONITOR_AUTH_POOL_REGISTRY_PREFIX="$PROJECT_ROOT/worker-jobs/" \
+SOCIAL_MONITOR_AUTH_BROKER_STATUS_TIMEOUT_SECONDS="${SOCIAL_MONITOR_AUTH_BROKER_STATUS_TIMEOUT_SECONDS:-30}" \
 SOCIAL_MONITOR_TEST_SYSTEM_FLOCK="$SYSTEM_FLOCK" \
 SOCIAL_MONITOR_TEST_EXPECTED_JOB_ID="${SOCIAL_MONITOR_TEST_EXPECTED_JOB_ID:-test-controller}" \
 SOCIAL_MONITOR_TEST_EXPECTED_REGISTRY_ROOT="${SOCIAL_MONITOR_TEST_EXPECTED_REGISTRY_ROOT:-$REGISTRY_ROOT}" \
@@ -261,6 +281,13 @@ jq -e '
   (.accounts | map(.id) == ["account-a", "account-b"]) and
   (.accounts | all(.relativePath | startswith("snapshots/")))
 ' "$POOL_SNAPSHOT_ROOT/current.json" >/dev/null
+jq -e '
+  .schemaVersion == 1 and
+  .controllerJobId == "test-controller" and
+  (.reviewedAtEpoch | type == "number") and
+  (.poolManifestSha256 | test("^[0-9a-f]{64}$")) and
+  (.approvalSealSha256 | test("^[0-9a-f]{64}$"))
+' "$POOL_SNAPSHOT_ROOT/current.approval.json" >/dev/null
 [[ $(stat -c '%a' "$POOL_SNAPSHOT_ROOT/current.json" 2>/dev/null || \
       stat -f '%Lp' "$POOL_SNAPSHOT_ROOT/current.json") == 400 ]]
 while IFS=$'\t' read -r account relative_path; do
@@ -383,6 +410,156 @@ cmp "$AUTH_ROOT/account-m/auth.json" "$TARGET_DIR/auth.json"
 
 pool_target_hash=$(cksum < "$TARGET_DIR/auth.json")
 rm -f "$CHANGED_MARKER"
+
+# A transient broker timeout may reuse only the exact current auth whose
+# recent broker review, authority identity, account set and bytes are sealed.
+sealed_manifest_copy=$FIXTURE/sealed-current.json
+sealed_approval_copy=$FIXTURE/sealed-current-approval.json
+sealed_target_copy=$FIXTURE/sealed-target-auth.json
+cp "$POOL_SNAPSHOT_ROOT/current.json" "$sealed_manifest_copy"
+cp "$POOL_SNAPSHOT_ROOT/current.approval.json" "$sealed_approval_copy"
+cp "$TARGET_DIR/auth.json" "$sealed_target_copy"
+sealed_relative_path=$(jq -r \
+  '.accounts[] | select(.id == "account-m") | .relativePath' \
+  "$POOL_SNAPSHOT_ROOT/current.json")
+sealed_account_auth=$POOL_SNAPSHOT_ROOT/$sealed_relative_path
+sealed_account_copy=$FIXTURE/sealed-account-auth.json
+cp "$sealed_account_auth" "$sealed_account_copy"
+sealed_manifest_hash=$(cksum < "$POOL_SNAPSHOT_ROOT/current.json")
+sealed_approval_hash=$(cksum < "$POOL_SNAPSHOT_ROOT/current.approval.json")
+printf '{"account":"unapproved-new-bytes"}\n' > \
+  "$AUTH_ROOT/account-m/auth.json"
+rm -f "$PROBE_LOG" "$CHANGED_MARKER"
+STATUS_HANG_GATE=$FIXTURE/status-hang
+STATUS_WATCHDOG_MARKER=$FIXTURE/status-timeout-watchdog-fired
+rm -f "$STATUS_HANG_GATE.entered" "$STATUS_HANG_GATE.terminated" \
+  "$STATUS_WATCHDOG_MARKER"
+SOCIAL_MONITOR_TEST_STATUS_HANG_GATE="$STATUS_HANG_GATE" \
+  SOCIAL_MONITOR_AUTH_BROKER_STATUS_TIMEOUT_SECONDS=1 \
+  SOCIAL_MONITOR_TEST_PROBE_LOG="$PROBE_LOG" \
+  run_pool_refresh >/dev/null 2>&1 &
+timeout_refresh_pid=$!
+(
+  /usr/bin/sleep 30
+  if kill -0 "$timeout_refresh_pid" 2>/dev/null; then
+    : > "$STATUS_WATCHDOG_MARKER"
+    kill -TERM "$timeout_refresh_pid" 2>/dev/null || true
+    /usr/bin/sleep 0.1
+    kill -KILL "$timeout_refresh_pid" 2>/dev/null || true
+  fi
+) &
+timeout_watchdog_pid=$!
+timeout_refresh_exit=0
+wait "$timeout_refresh_pid" || timeout_refresh_exit=$?
+kill "$timeout_watchdog_pid" 2>/dev/null || true
+wait "$timeout_watchdog_pid" 2>/dev/null || true
+if [[ -e $STATUS_WATCHDOG_MARKER || $timeout_refresh_exit != 0 ]]; then
+  echo 'broker status hang was not bounded by the entrypoint timeout' >&2
+  exit 1
+fi
+[[ -f $STATUS_HANG_GATE.entered ]]
+[[ -f $STATUS_HANG_GATE.terminated ]]
+[[ ! -e $PROBE_LOG ]]
+[[ ! -e $CHANGED_MARKER ]]
+[[ $(cksum < "$TARGET_DIR/auth.json") == "$pool_target_hash" ]]
+[[ $(cksum < "$POOL_SNAPSHOT_ROOT/current.json") == "$sealed_manifest_hash" ]]
+[[ $(cksum < "$POOL_SNAPSHOT_ROOT/current.approval.json") == \
+  "$sealed_approval_hash" ]]
+[[ $(cat "$POOL_CURSOR_FILE") == 0 ]]
+[[ $(cat "$POOL_ACCOUNT_NAME_FILE") == account-m ]]
+SOCIAL_MONITOR_TEST_STATUS_EXIT=75 SOCIAL_MONITOR_TEST_PROBE_LOG="$PROBE_LOG" \
+  run_pool_refresh >/dev/null 2>&1
+[[ ! -e $PROBE_LOG ]]
+[[ ! -e $CHANGED_MARKER ]]
+[[ $(cksum < "$TARGET_DIR/auth.json") == "$pool_target_hash" ]]
+if SOCIAL_MONITOR_TEST_STATUS_EXIT=127 run_pool_refresh >/dev/null 2>&1; then
+  echo 'non-transient broker status failure reused prior auth' >&2
+  exit 1
+fi
+cp "$sealed_account_copy" "$AUTH_ROOT/account-m/auth.json"
+
+mv "$POOL_SNAPSHOT_ROOT/current.json" "$FIXTURE/missing-current.json"
+if SOCIAL_MONITOR_TEST_STATUS_EXIT=75 run_pool_refresh >/dev/null 2>&1; then
+  echo 'transient status failure reused auth without a sealed pool manifest' >&2
+  exit 1
+fi
+install -m 0400 "$sealed_manifest_copy" "$POOL_SNAPSHOT_ROOT/current.json"
+
+mv "$POOL_SNAPSHOT_ROOT/current.approval.json" \
+  "$FIXTURE/missing-current-approval.json"
+if SOCIAL_MONITOR_TEST_STATUS_EXIT=75 run_pool_refresh >/dev/null 2>&1; then
+  echo 'transient status failure reused auth without sealed broker approval' >&2
+  exit 1
+fi
+install -m 0400 "$sealed_approval_copy" \
+  "$POOL_SNAPSHOT_ROOT/current.approval.json"
+
+install -m 0600 "$sealed_manifest_copy" "$POOL_SNAPSHOT_ROOT/current.json"
+if SOCIAL_MONITOR_TEST_STATUS_EXIT=75 run_pool_refresh >/dev/null 2>&1; then
+  echo 'transient status failure reused an unsealed writable pool manifest' >&2
+  exit 1
+fi
+install -m 0400 "$sealed_manifest_copy" "$POOL_SNAPSHOT_ROOT/current.json"
+
+jq '.approvalSealSha256 = ("0" * 64)' "$sealed_approval_copy" \
+  > "$FIXTURE/tampered-seal.json"
+install -m 0400 "$FIXTURE/tampered-seal.json" \
+  "$POOL_SNAPSHOT_ROOT/current.approval.json"
+if SOCIAL_MONITOR_TEST_STATUS_EXIT=75 run_pool_refresh >/dev/null 2>&1; then
+  echo 'transient status failure reused a tampered approval seal' >&2
+  exit 1
+fi
+install -m 0400 "$sealed_approval_copy" \
+  "$POOL_SNAPSHOT_ROOT/current.approval.json"
+
+chmod 0600 "$sealed_account_auth"
+printf '{"account":"tampered-snapshot"}\n' > "$sealed_account_auth"
+chmod 0400 "$sealed_account_auth"
+if SOCIAL_MONITOR_TEST_STATUS_EXIT=75 run_pool_refresh >/dev/null 2>&1; then
+  echo 'transient status failure reused tampered sealed account bytes' >&2
+  exit 1
+fi
+chmod 0600 "$sealed_account_auth"
+cp "$sealed_account_copy" "$sealed_account_auth"
+chmod 0400 "$sealed_account_auth"
+
+chmod 0600 "$TARGET_DIR/auth.json"
+printf '{"account":"tampered-current"}\n' > "$TARGET_DIR/auth.json"
+chmod 0400 "$TARGET_DIR/auth.json"
+if SOCIAL_MONITOR_TEST_STATUS_EXIT=75 run_pool_refresh >/dev/null 2>&1; then
+  echo 'transient status failure reused current auth outside the sealed bytes' >&2
+  exit 1
+fi
+install -m 0400 "$sealed_target_copy" "$TARGET_DIR/auth.json"
+
+if SOCIAL_MONITOR_TEST_STATUS_EXIT=75 run_refresh >/dev/null 2>&1; then
+  echo 'transient status failure reused auth sealed for a foreign pool identity' >&2
+  exit 1
+fi
+[[ $(cksum < "$TARGET_DIR/auth.json") == "$pool_target_hash" ]]
+
+jq '.accounts = ["account-a"]' "$POOL_JOB_DIRECTORY/job.json" \
+  > "$FIXTURE/changed-pool-membership.json"
+mv "$FIXTURE/changed-pool-membership.json" "$POOL_JOB_DIRECTORY/job.json"
+if SOCIAL_MONITOR_TEST_STATUS_EXIT=75 run_pool_refresh >/dev/null 2>&1; then
+  echo 'transient status failure reused an account removed from the approved pool' >&2
+  exit 1
+fi
+write_pool_manifest "$POOL_JOB_ID" social-monitor "$POOL_JOB_ROOT" \
+  "$POOL_WORKSPACE" "$REGISTRY_ROOT"
+
+reviewed_at=$(jq -r '.reviewedAtEpoch' \
+  "$POOL_SNAPSHOT_ROOT/current.approval.json")
+stale_now=$((reviewed_at + 129601))
+if SOCIAL_MONITOR_TEST_STATUS_EXIT=75 \
+  SOCIAL_MONITOR_TEST_DATE_EPOCH="$stale_now" \
+  run_pool_refresh >/dev/null 2>&1; then
+  echo 'transient status failure reused auth beyond the broker review window' >&2
+  exit 1
+fi
+[[ $(cksum < "$TARGET_DIR/auth.json") == "$pool_target_hash" ]]
+[[ ! -e $CHANGED_MARKER ]]
+
 if SOCIAL_MONITOR_TEST_STATUS_JSON='{"ok":true,"hasAvailableAccount":false,"availableDedupedAccountNames":[],"summary":{"ready":0,"availableDeduped":0}}' \
   SOCIAL_MONITOR_TEST_STATUS_LOG="$STATUS_LOG" run_pool_refresh >/dev/null 2>&1; then
   echo 'nonready broker-managed pool was accepted' >&2
