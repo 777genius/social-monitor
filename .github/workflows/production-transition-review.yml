@@ -44,7 +44,7 @@ jobs:
           S2_SHA: ${{ inputs.s2_sha }}
           B0_SHA: ${{ inputs.b0_sha }}
           REQUEST_ID: ${{ inputs.request_id }}
-          REVIEW_PRIVATE_KEY: ${{ secrets.PRODUCTION_TRANSITION_REVIEW_PRIVATE_KEY }}
+          REVIEW_PRIVATE_KEY: ${{ secrets.PRODUCTION_TRANSITION_REVIEW_SIGNING_KEY }}
         run: |
           set -euo pipefail
           [[ "$GITHUB_REPOSITORY" == "777genius/social-monitor" ]]
