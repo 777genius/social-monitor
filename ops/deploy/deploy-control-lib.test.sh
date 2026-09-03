@@ -768,9 +768,6 @@ commit_mode_output=$(
   STATE="$STATE" \
     bash -c '
       set -euo pipefail
-      # The production entrypoint delegates marker publication to this
-      # reviewed library; load the same dependency before evaluating its thin
-      # wrapper in the fresh-process contract test.
       source "$MARKER_LIBRARY"
       eval "$COMMIT_FUNCTION"
       fail() {
@@ -778,12 +775,7 @@ commit_mode_output=$(
         exit 1
       }
       production_transition_host_failpoint() { :; }
-      postgres_pool_bootstrap_installed() {
-        return 0
-      }
-      postgres_pool_bootstrap_physically_installed() {
-        return 0
-      }
+      postgres_pool_bootstrap_physically_installed() { return 0; }
       marker=$STATE/postgres-pool-bootstrap.sha
       default_identity=$(stat -c "%d:%i:%s:%y:%z" "$marker")
       commit_postgres_pool_bootstrap "$TARGET_SHA"
