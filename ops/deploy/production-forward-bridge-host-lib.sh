@@ -171,10 +171,8 @@ production_forward_read_manifest() {
        $path != *'..'* && $path != /* ]] || \
       production_forward_host_fail 'production forward manifest row is invalid'
     key=$scope' '$path
-    if [[ -n $previous_key ]]; then
-      LC_ALL=C bash -c '[[ $1 > $2 ]]' _ "$key" "$previous_key" || \
-        production_forward_host_fail 'production forward manifest is not strict sorted unique'
-    fi
+    [[ -z $previous_key || $key > "$previous_key" ]] || \
+      production_forward_host_fail 'production forward manifest is not strict sorted unique'
     previous_key=$key
     if [[ $scope == bridge ]]; then
       [[ -z $PRODUCTION_FORWARD_BRIDGE_ENTRY && \
