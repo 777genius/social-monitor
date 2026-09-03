@@ -1,9 +1,7 @@
 #!/usr/bin/env bash
-
 # Sourced by deploy-control-lib.sh after the deploy entrypoint has defined
 # REPO and fail(). Release A installs this bridge before a later RabbitMQ
 # quorum release can replace backend health behavior.
-
 DEPLOY_CONTROL_BRIDGE_ENTRYPOINT_PATH=ops/deploy/social-monitor-production-deploy.sh
 DEPLOY_CONTROL_BRIDGE_LIBRARY_PATH=ops/deploy/deploy-control-lib.sh
 DEPLOY_CONTROL_BRIDGE_POSTGRES_LIBRARY_PATH=ops/deploy/postgres-runtime-deploy-lib.sh
@@ -12,8 +10,10 @@ DEPLOY_CONTROL_BRIDGE_POSTGRES_DAILY_C1_HELPER_PATH=ops/deploy/postgres-runtime-
 DEPLOY_CONTROL_BRIDGE_POSTGRES_ACTIVATION_BOUNDARY_HELPER_PATH=ops/deploy/postgres-runtime-activation-boundary-lib.sh
 DEPLOY_CONTROL_BRIDGE_RECOVERY_MAINTENANCE_LIBRARY_PATH=ops/deploy/reader-summary-recovery-maintenance-lib.sh
 DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_LIBRARY_PATH=ops/deploy/backend-image-rescue-lib.sh
+DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_PIN_CLEANUP_LIBRARY_PATH=ops/deploy/backend-image-rescue-pin-cleanup-lib.sh
 DEPLOY_CONTROL_BRIDGE_X_IMAGE_LIBRARY_PATH=ops/deploy/x-collector-image-deploy-lib.sh
 DEPLOY_CONTROL_BRIDGE_SELF_PATH=ops/deploy/deploy-control-bridge-lib.sh
+DEPLOY_CONTROL_BRIDGE_OPTIONAL_SOURCE_ABSENT=absent-reviewed-source
 DEPLOY_CONTROL_DAILY_FINAL_BASE=d494c143c242873bfac53f54c15b0f24df0ab33d
 DEPLOY_CONTROL_DAILY_FINAL_HELPER_BLOB=119726c2f2aff06798cade4dc3a127f24a2d2cc9
 DEPLOY_CONTROL_SCHEDULED_SUMMARY_CATCH_UP_BASE=e377453d5b440aacc8077e8af1345eb5a74aae7b
@@ -31,6 +31,10 @@ DEPLOY_CONTROL_FAILED_IDLE_RELEASE_BRIDGE_TREE=903f5e8d944c6d703b2bf282d0046ba50
 DEPLOY_CONTROL_FAILED_IDLE_RELEASE_BRIDGE_BLOB=a6407769622a4da1bd677ff83c9db6ad2c710662
 DEPLOY_CONTROL_RELEASE_B_CONTROLLER=8b4aeb31e855ed379349a4e4827600009e174132
 DEPLOY_CONTROL_RELEASE_B_CURRENT_MAIN=77313ea03a3bac7d2298f4021d58124c810d291f
+DEPLOY_CONTROL_LIVE_BRIDGE_BASE=7c4070f0b9ef1aac130284bcffac50551e20a4dd
+DEPLOY_CONTROL_LIVE_REVIEWED_MAIN=6e65d37566c1fa898b3f318d2e997717282e584b
+DEPLOY_CONTROL_LIVE_DEPLOY_LIBRARY_BLOB=fd2d8095cd6e2428e02f6ca21942bab2ea10961b
+DEPLOY_CONTROL_LIVE_IMAGE_RESCUE_PIN_CLEANUP_BLOB=ed843e0be66e86bdfc430347e7467fbcb2880ce4
 DEPLOY_CONTROL_DAILY_RECOVERY_BASE=cb1595d9bdca844d6a221d21fd3c53e6845cc4cf
 DEPLOY_CONTROL_DAILY_RECOVERY_BACKEND_RESCUE_BLOB=a4291fad8b1f36f0cbb0760f3dbca6e7603138bc
 DEPLOY_CONTROL_DAILY_RECOVERY_MIGRATE_TEST_BLOB=f62a83ce95cc768c4e888e7c576bad3bd6fdbced
@@ -49,7 +53,81 @@ DEPLOY_CONTROL_DAILY_RECOVERY_HISTORY_TEST_BLOB=c7307f3e2808d02207ce8b8a62624271
 RABBITMQ_QUORUM_HEALTH_LIBRARY_PATH=ops/deploy/backend-runtime-health-lib.sh
 RABBITMQ_QUORUM_HEALTH_SCRIPT_PATH=ops/deploy/rabbitmq-quorum-health.sh
 RABBITMQ_QUORUM_RECOVERY_SCRIPT_PATH=ops/deploy/rabbitmq-quorum-recovery.sh
-
+deploy_control_require_b0_bootstrap_file() {
+  local sha=$1 install_mode=$2 relative=$3
+  local source=$REPO/$relative destination=$CONTROL/${relative##*/}
+  local next=$destination.next entry tree_mode type object tree_path extra
+  local expected_tree_mode=100${install_mode#0} expected_owner before after
+  entry=$(git -C "$REPO" ls-tree "$sha" -- "$relative") || \
+    fail "B0 bootstrap cannot inspect $relative"
+  read -r tree_mode type object tree_path extra <<< "$entry"
+  [[ -z ${extra:-} && $tree_mode == "$expected_tree_mode" && \
+     $type == blob && $object =~ ^[0-9a-f]{40}$ && \
+     $tree_path == "$relative" ]] || \
+    fail "B0 bootstrap path has an invalid mode or object: $relative"
+  [[ -f $source && ! -L $source && \
+     $(git -C "$REPO" hash-object --no-filters "$source") == "$object" ]] || \
+    fail "B0 bootstrap worktree differs from reviewed target: $relative"
+  if [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} == 1 ]]; then
+    expected_owner=$(id -u):$(id -g):${install_mode#0}
+  else
+    expected_owner=0:0:${install_mode#0}
+  fi
+  if [[ -e $destination || -L $destination ]]; then
+    [[ -f $destination && ! -L $destination && \
+       $(stat -Lc '%u:%g:%a' "$destination") == "$expected_owner" && \
+       $(git -C "$REPO" hash-object --no-filters "$destination") == "$object" ]] || \
+      fail "installed B0 bootstrap path is unsafe or differs: $relative"
+    return 0
+  fi
+  if [[ -e $next || -L $next ]]; then
+    [[ -f $next && ! -L $next && \
+       $(stat -Lc '%u:%g:%a' "$next") == "$expected_owner" && \
+       $(git -C "$REPO" hash-object --no-filters "$next") == "$object" ]] || \
+      fail "staged B0 bootstrap path is unsafe or differs: $relative"
+  elif [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} == 1 ]]; then
+    install -m "$install_mode" "$source" "$next"
+  else
+    install -m "$install_mode" -o root -g root "$source" "$next"
+  fi
+  before=$(stat -Lc '%d:%i:%f:%s:%Y:%Z' "$next") || \
+    fail "staged B0 bootstrap path cannot be read: $relative"
+  [[ $(git -C "$REPO" hash-object --no-filters "$next") == "$object" ]] || \
+    fail "staged B0 bootstrap bytes differ: $relative"
+  after=$(stat -Lc '%d:%i:%f:%s:%Y:%Z' "$next") || \
+    fail "staged B0 bootstrap path cannot be re-read: $relative"
+  [[ $before == "$after" ]] || fail "staged B0 bootstrap path changed: $relative"
+  mv -T "$next" "$destination"
+}
+deploy_control_bootstrap_production_transition_b0() {
+  local sha=$1 remote needs_install=false relative present=0
+  [[ ${action:-} == deploy ]] || return 0
+  for relative in production-transition-admission.sh \
+    production-transition-b0-host-control.sh \
+    production-transition-canonical-lib.sh; do
+    git -C "$REPO" cat-file -e "$sha:ops/deploy/$relative" 2>/dev/null && \
+      present=$((present + 1))
+  done
+  ((present != 0)) || return 0
+  ((present == 3)) || fail 'B0 bootstrap target has an incomplete transition control set'
+  for relative in production-transition-admission.sh \
+    production-transition-b0-host-control.sh \
+    production-transition-canonical-lib.sh; do
+    [[ -e $CONTROL/$relative || -L $CONTROL/$relative ]] || needs_install=true
+  done
+  if [[ $needs_install == true ]]; then
+    remote=$(git -C "$REPO" rev-parse --verify 'origin/main^{commit}') || \
+      fail 'B0 bootstrap origin main is unavailable'
+    [[ $remote == "$sha" ]] || \
+      fail 'B0 bootstrap requires the exact protected-main commit'
+  fi
+  deploy_control_require_b0_bootstrap_file "$sha" 0755 \
+    ops/deploy/production-transition-admission.sh
+  deploy_control_require_b0_bootstrap_file "$sha" 0644 \
+    ops/deploy/production-transition-b0-host-control.sh
+  deploy_control_require_b0_bootstrap_file "$sha" 0644 \
+    ops/deploy/production-transition-canonical-lib.sh
+}
 deploy_control_bridge_sealed_paths() {
   printf '%s\n' \
     "$DEPLOY_CONTROL_BRIDGE_ENTRYPOINT_PATH" \
@@ -63,7 +141,6 @@ deploy_control_bridge_sealed_paths() {
     "$DEPLOY_CONTROL_BRIDGE_X_IMAGE_LIBRARY_PATH" \
     "$DEPLOY_CONTROL_BRIDGE_SELF_PATH"
 }
-
 deploy_control_daily_c1_bridge_release_paths() {
   printf '%s\n' \
     .github/workflows/production-deploy.yml \
@@ -87,22 +164,18 @@ deploy_control_daily_c1_bridge_release_paths() {
     ops/deploy/social-monitor-production-deploy.sh \
     ops/deploy/x-collector-image-deploy-lib.test.sh
 }
-
 deploy_control_is_exact_daily_c1_bridge_release() {
   local base=$1 target=$2 repository=${REPO:-.}
   local expected actual
-
   git -C "$repository" merge-base --is-ancestor "$base" "$target" || return 1
   expected=$(deploy_control_daily_c1_bridge_release_paths | LC_ALL=C sort)
   actual=$(git -C "$repository" diff --name-only --no-renames \
     "$base" "$target" -- | LC_ALL=C sort)
   [[ $actual == "$expected" ]]
 }
-
 deploy_control_daily_c1_bridge_classification() {
   printf 'frontend=false\nbackend=false\ncontrol=true\n'
 }
-
 deploy_control_is_reviewed_daily_final_transition() {
   local bridge=$1 target=$2 repository=${REPO:-.}
   local target_parent changed final_delta path
@@ -126,7 +199,6 @@ deploy_control_is_reviewed_daily_final_transition() {
        "$target:$DEPLOY_CONTROL_BRIDGE_POSTGRES_DAILY_C1_HELPER_PATH" 2>/dev/null) == \
        "$DEPLOY_CONTROL_DAILY_FINAL_HELPER_BLOB" ]]
 }
-
 deploy_control_daily_recovery_release_blobs() {
   printf '%s %s\n' \
     "$DEPLOY_CONTROL_DAILY_RECOVERY_BACKEND_RESCUE_BLOB" ops/deploy/backend-image-rescue-lib.sh \
@@ -144,12 +216,10 @@ deploy_control_daily_recovery_release_blobs() {
     "$DEPLOY_CONTROL_DAILY_RECOVERY_SSH_WRAPPER_BLOB" ops/deploy/social-monitor-production-ssh-wrapper.sh \
     "$DEPLOY_CONTROL_DAILY_RECOVERY_SSH_TEST_BLOB" ops/deploy/social-monitor-production-ssh-wrapper.test.sh
 }
-
 deploy_control_is_reviewed_daily_recovery_transition() {
   local bridge=$1 target=$2 repository=${REPO:-.}
   local target_parent bridge_delta expected actual expected_blob path
   local -a target_ancestry=()
-
   git -C "$repository" cat-file -e \
     "$DEPLOY_CONTROL_DAILY_RECOVERY_BASE^{commit}" 2>/dev/null || return 1
   target_parent=$(git -C "$repository" rev-parse "$target^" 2>/dev/null) || return 1
@@ -168,12 +238,10 @@ deploy_control_is_reviewed_daily_recovery_transition() {
        "$expected_blob" ]] || return 1
   done < <(deploy_control_daily_recovery_release_blobs)
 }
-
 deploy_control_is_reviewed_scheduled_summary_catch_up_transition() {
   local bridge=$1 target=$2 repository=${REPO:-.}
   local target_parent final_delta
   local -a target_ancestry=()
-
   git -C "$repository" cat-file -e \
     "$DEPLOY_CONTROL_SCHEDULED_SUMMARY_CATCH_UP_BASE^{commit}" \
     2>/dev/null || return 1
@@ -200,12 +268,10 @@ deploy_control_is_reviewed_scheduled_summary_catch_up_transition() {
        $(git -C "$repository" rev-parse \
        "$target:$DEPLOY_CONTROL_BRIDGE_SELF_PATH" 2>/dev/null) ]]
 }
-
 deploy_control_is_reviewed_rolling_summary_transition() {
   local bridge=$1 target=$2 repository=${REPO:-.}
   local target_parent expected final_delta path
   local -a target_ancestry=()
-
   git -C "$repository" cat-file -e \
     "$DEPLOY_CONTROL_ROLLING_SUMMARY_FINAL_TREE^{commit}" \
     2>/dev/null || return 1
@@ -234,7 +300,6 @@ deploy_control_is_reviewed_rolling_summary_transition() {
          "$target:$path" 2>/dev/null) ]] || return 1
   done <<< "$expected"
 }
-
 # Pin the historical failed-idle bridge by every immutable Git identity. This
 # bridge-only hardening release is installed after the exact 8b4 controller is
 # fully reconciled, so the old controller admits it through the ordinary
@@ -243,7 +308,6 @@ deploy_control_is_exact_failed_idle_release_bridge() {
   local bridge=$1 repository=${REPO:-.}
   local actual_tree delta entry mode type object tree_path extra
   local -a ancestry=()
-
   [[ $bridge == "$DEPLOY_CONTROL_FAILED_IDLE_RELEASE_BRIDGE" ]] || return 1
   read -r -a ancestry <<< "$(git -C "$repository" \
     rev-list --parents -n 1 "$bridge" 2>/dev/null)" || return 1
@@ -266,14 +330,11 @@ deploy_control_is_exact_failed_idle_release_bridge() {
      $object == "$DEPLOY_CONTROL_FAILED_IDLE_RELEASE_BRIDGE_BLOB" && \
      $tree_path == "$DEPLOY_CONTROL_BRIDGE_SELF_PATH" ]]
 }
-
 deploy_control_is_reviewed_failed_idle_release_bridge_transition() {
   local current=$1 target=$2
-
   [[ $current == "$DEPLOY_CONTROL_FAILED_IDLE_RELEASE_BASE" ]] || return 1
   deploy_control_is_exact_failed_idle_release_bridge "$target"
 }
-
 # The current-main Release B target is an exact two-parent integration: the
 # reviewed current main first and this controller-only bridge second. Requiring
 # both parents and the complete path delta keeps inherited rolling/backend work
@@ -282,7 +343,6 @@ deploy_control_is_reviewed_current_main_release_b_transition() {
   local bridge=$1 target=$2 repository=${REPO:-.}
   local bridge_delta target_delta expected
   local -a bridge_ancestry=() target_ancestry=()
-
   read -r -a bridge_ancestry <<< "$(git -C "$repository" \
     rev-list --parents -n 1 "$bridge" 2>/dev/null)" || return 1
   [[ ${#bridge_ancestry[@]} == 2 && \
@@ -293,7 +353,6 @@ deploy_control_is_reviewed_current_main_release_b_transition() {
     "$DEPLOY_CONTROL_RELEASE_B_CONTROLLER" "$bridge" -- 2>/dev/null) || \
     return 1
   [[ $bridge_delta == "$DEPLOY_CONTROL_BRIDGE_SELF_PATH" ]] || return 1
-
   read -r -a target_ancestry <<< "$(git -C "$repository" \
     rev-list --parents -n 1 "$target" 2>/dev/null)" || return 1
   [[ ${#target_ancestry[@]} == 3 && \
@@ -315,7 +374,6 @@ deploy_control_is_reviewed_current_main_release_b_transition() {
     LC_ALL=C sort) || return 1
   [[ $target_delta == "$expected" ]]
 }
-
 # The failed release already exists on main, so its control-only bridge is a
 # side parent from the pre-release main. GitHub must merge the reviewed PR head
 # directly into that failed release. Every intermediate parent and path delta is
@@ -327,7 +385,6 @@ deploy_control_is_reviewed_failed_idle_release_transition() {
   local join_bridge_delta target_tree reviewed_head_tree
   local -a bridge_ancestry=() join_ancestry=() head_ancestry=()
   local -a target_ancestry=()
-
   deploy_control_is_exact_failed_idle_release_bridge "$bridge" || return 1
   git -C "$repository" cat-file -e \
     "$DEPLOY_CONTROL_FAILED_IDLE_RELEASE_BASE^{commit}" 2>/dev/null || return 1
@@ -342,7 +399,6 @@ deploy_control_is_reviewed_failed_idle_release_transition() {
     "$DEPLOY_CONTROL_FAILED_IDLE_RELEASE_BASE" "$bridge" -- 2>/dev/null) || \
     return 1
   [[ $bridge_delta == "$DEPLOY_CONTROL_BRIDGE_SELF_PATH" ]] || return 1
-
   read -r -a target_ancestry <<< "$(git -C "$repository" \
     rev-list --parents -n 1 "$target" 2>/dev/null)" || return 1
   [[ ${#target_ancestry[@]} == 3 && \
@@ -354,7 +410,6 @@ deploy_control_is_reviewed_failed_idle_release_transition() {
   reviewed_head_tree=$(git -C "$repository" \
     rev-parse "$reviewed_head^{tree}" 2>/dev/null) || return 1
   [[ $target_tree == "$reviewed_head_tree" ]] || return 1
-
   read -r -a head_ancestry <<< "$(git -C "$repository" \
     rev-list --parents -n 1 "$reviewed_head" 2>/dev/null)" || return 1
   [[ ${#head_ancestry[@]} == 2 ]] || return 1
@@ -366,7 +421,6 @@ deploy_control_is_reviewed_failed_idle_release_transition() {
   head_delta=$(git -C "$repository" diff --name-only --no-renames \
     "$join" "$reviewed_head" -- 2>/dev/null | LC_ALL=C sort) || return 1
   [[ $head_delta == "$expected_head_delta" ]] || return 1
-
   read -r -a join_ancestry <<< "$(git -C "$repository" \
     rev-list --parents -n 1 "$join" 2>/dev/null)" || return 1
   [[ ${#join_ancestry[@]} == 3 && \
@@ -387,7 +441,6 @@ deploy_control_is_reviewed_failed_idle_release_transition() {
   join_bridge_delta=$(git -C "$repository" diff --name-only --no-renames \
     "$bridge" "$join" -- 2>/dev/null | LC_ALL=C sort) || return 1
   [[ $join_bridge_delta == "$failed_release_delta" ]] || return 1
-
   expected_target_delta=$(printf '%s\n' \
     .github/workflows/production-deploy.yml \
     ops/deploy/production-release-b-bridge-order.test.sh \
@@ -398,7 +451,117 @@ deploy_control_is_reviewed_failed_idle_release_transition() {
     LC_ALL=C sort) || return 1
   [[ $target_delta == "$expected_target_delta" ]]
 }
-
+# Admit only the final protected-main merge reached through the exact reviewed
+# bridge, integration join, and guard. The integration join is graph proof and
+# is never itself a deployable target.
+deploy_control_is_reviewed_live_controller_transition() {
+  local bridge=$1 target=$2 repository=${REPO:-.}
+  local bridge_delta join_delta guard_delta expected_bridge expected_guard path
+  local expected_join_delta
+  local bridge_entry join_entry target_cleanup_entry join guard
+  local guard_entry guard_mode guard_type guard_object guard_path guard_extra
+  local expected_mode
+  local target_tree guard_tree
+  local -a bridge_ancestry=() join_ancestry=() guard_ancestry=()
+  local -a target_ancestry=()
+  expected_bridge=$(printf '%s\n' \
+    "$DEPLOY_CONTROL_BRIDGE_SELF_PATH" \
+    "$DEPLOY_CONTROL_BRIDGE_LIBRARY_PATH" | LC_ALL=C sort)
+  read -r -a bridge_ancestry <<< "$(git -C "$repository" \
+    rev-list --parents -n 1 "$bridge" 2>/dev/null)" || return 1
+  [[ ${#bridge_ancestry[@]} == 2 && \
+     ${bridge_ancestry[0]} == "$bridge" && \
+     ${bridge_ancestry[1]} == "$DEPLOY_CONTROL_LIVE_BRIDGE_BASE" ]] || \
+    return 1
+  bridge_delta=$(git -C "$repository" diff --name-only --no-renames \
+    "$DEPLOY_CONTROL_LIVE_BRIDGE_BASE" "$bridge" -- 2>/dev/null | \
+    LC_ALL=C sort) || return 1
+  [[ $bridge_delta == "$expected_bridge" ]] || return 1
+  while IFS= read -r path; do
+    bridge_entry=$(git -C "$repository" ls-tree "$bridge" -- "$path" \
+      2>/dev/null) || return 1
+    [[ $bridge_entry == 100644\ blob\ *$'\t'"$path" ]] || return 1
+  done <<< "$expected_bridge"
+  [[ $(git -C "$repository" rev-parse \
+       "$bridge:$DEPLOY_CONTROL_BRIDGE_LIBRARY_PATH" 2>/dev/null) == \
+     "$DEPLOY_CONTROL_LIVE_DEPLOY_LIBRARY_BLOB" ]] || return 1
+  read -r -a target_ancestry <<< "$(git -C "$repository" \
+    rev-list --parents -n 1 "$target" 2>/dev/null)" || return 1
+  [[ ${#target_ancestry[@]} == 3 && \
+     ${target_ancestry[0]} == "$target" && \
+     ${target_ancestry[1]} == "$DEPLOY_CONTROL_LIVE_REVIEWED_MAIN" ]] || \
+    return 1
+  guard=${target_ancestry[2]}
+  target_tree=$(git -C "$repository" rev-parse "$target^{tree}" \
+    2>/dev/null) || return 1
+  guard_tree=$(git -C "$repository" rev-parse "$guard^{tree}" \
+    2>/dev/null) || return 1
+  [[ $target_tree == "$guard_tree" ]] || return 1
+  read -r -a guard_ancestry <<< "$(git -C "$repository" \
+    rev-list --parents -n 1 "$guard" 2>/dev/null)" || return 1
+  [[ ${#guard_ancestry[@]} == 2 && \
+     ${guard_ancestry[0]} == "$guard" ]] || return 1
+  join=${guard_ancestry[1]}
+  expected_guard=$(printf '%s\n' \
+    .github/workflows/production-deploy.yml \
+    ops/deploy/github-production-deploy-client.sh \
+    ops/deploy/github-production-deploy-client.test.sh \
+    ops/deploy/github-production-forward-bridge-client-lib.sh \
+    ops/deploy/production-forward-bridge-authority.blobs \
+    ops/deploy/production-forward-bridge.test.sh \
+    ops/deploy/production-release-a-transition.test.sh \
+    ops/deploy/production-release-b-bridge-order.test.sh \
+    ops/deploy/rabbitmq-quorum-deploy-bridge-transition.test.sh | \
+    LC_ALL=C sort)
+  guard_delta=$(git -C "$repository" diff --name-only --no-renames \
+    "$join" "$guard" -- 2>/dev/null | LC_ALL=C sort) || return 1
+  [[ $guard_delta == "$expected_guard" ]] || return 1
+  while read -r expected_mode path; do
+    guard_entry=$(git -C "$repository" ls-tree "$guard" -- "$path" \
+      2>/dev/null) || return 1
+    read -r guard_mode guard_type guard_object guard_path guard_extra <<< \
+      "$guard_entry"
+    [[ -z ${guard_extra:-} && $guard_mode == "$expected_mode" && \
+       $guard_type == blob && $guard_object =~ ^[0-9a-f]{40}$ && \
+       $guard_path == "$path" ]] || return 1
+  done <<'EOF'
+100644 .github/workflows/production-deploy.yml
+100755 ops/deploy/github-production-deploy-client.sh
+100755 ops/deploy/github-production-deploy-client.test.sh
+100644 ops/deploy/github-production-forward-bridge-client-lib.sh
+100644 ops/deploy/production-forward-bridge-authority.blobs
+100755 ops/deploy/production-forward-bridge.test.sh
+100755 ops/deploy/production-release-a-transition.test.sh
+100755 ops/deploy/production-release-b-bridge-order.test.sh
+100644 ops/deploy/rabbitmq-quorum-deploy-bridge-transition.test.sh
+EOF
+  read -r -a join_ancestry <<< "$(git -C "$repository" \
+    rev-list --parents -n 1 "$join" 2>/dev/null)" || return 1
+  [[ ${#join_ancestry[@]} == 3 && \
+     ${join_ancestry[0]} == "$join" && \
+     ${join_ancestry[1]} == "$DEPLOY_CONTROL_LIVE_REVIEWED_MAIN" && \
+     ${join_ancestry[2]} == "$bridge" ]] || return 1
+  join_delta=$(git -C "$repository" diff --name-only --no-renames \
+    "$DEPLOY_CONTROL_LIVE_REVIEWED_MAIN" "$join" -- 2>/dev/null | \
+    LC_ALL=C sort) || return 1
+  # The deploy library converges byte-for-byte and mode-for-mode with reviewed
+  # main, so only the bridge policy remains in the F..J tree delta.
+  expected_join_delta=$DEPLOY_CONTROL_BRIDGE_SELF_PATH
+  [[ $join_delta == "$expected_join_delta" ]] || return 1
+  while IFS= read -r path; do
+    bridge_entry=$(git -C "$repository" ls-tree "$bridge" -- "$path" \
+      2>/dev/null) || return 1
+    join_entry=$(git -C "$repository" ls-tree "$join" -- "$path" \
+      2>/dev/null) || return 1
+    [[ $join_entry == "$bridge_entry" ]] || return 1
+  done <<< "$expected_bridge"
+  target_cleanup_entry=$(git -C "$repository" ls-tree "$target" -- \
+    "$DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_PIN_CLEANUP_LIBRARY_PATH" \
+    2>/dev/null) || return 1
+  [[ $target_cleanup_entry == \
+     "100644 blob $DEPLOY_CONTROL_LIVE_IMAGE_RESCUE_PIN_CLEANUP_BLOB"$'\t'\
+"$DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_PIN_CLEANUP_LIBRARY_PATH" ]]
+}
 # Recover the exact reviewed rolling release after its synthetic transition
 # fixture proved too narrow for the real first-parent production graph. The
 # installed bridge is still constrained to one control-only commit, while the
@@ -407,7 +570,6 @@ deploy_control_is_reviewed_rolling_repair_transition() {
   local bridge=$1 target=$2 repository=${REPO:-.}
   local bridge_delta expected_delta target_tree
   local -a bridge_ancestry=()
-
   [[ $target == "$DEPLOY_CONTROL_ROLLING_REPAIR_TARGET" ]] || return 1
   read -r -a bridge_ancestry <<< "$(git -C "$repository" \
     rev-list --parents -n 1 "$bridge" 2>/dev/null)" || return 1
@@ -432,9 +594,12 @@ deploy_control_is_reviewed_rolling_repair_transition() {
     2>/dev/null) || return 1
   [[ $target_tree == "$DEPLOY_CONTROL_ROLLING_REPAIR_TARGET_TREE" ]]
 }
-
 deploy_control_reviewed_transition_matches() {
   local bridge=$1 target=$2
+  if deploy_control_is_reviewed_live_controller_transition \
+      "$bridge" "$target"; then
+    return 0
+  fi
   if deploy_control_is_reviewed_rolling_repair_transition \
       "$bridge" "$target"; then
     return 0
@@ -464,7 +629,6 @@ deploy_control_reviewed_transition_matches() {
   fi
   deploy_control_is_reviewed_daily_recovery_transition "$bridge" "$target"
 }
-
 deploy_control_daily_final_transition_compatible_paths() {
   printf '%s\n' \
     "$DEPLOY_CONTROL_BRIDGE_ENTRYPOINT_PATH" \
@@ -477,7 +641,6 @@ deploy_control_daily_final_transition_compatible_paths() {
     "$DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_LIBRARY_PATH" \
     "$DEPLOY_CONTROL_BRIDGE_X_IMAGE_LIBRARY_PATH"
 }
-
 deploy_control_daily_final_transition_matches() {
   local bridge=$1 target=$2 path
   deploy_control_is_reviewed_daily_final_transition "$bridge" "$target" || return 1
@@ -487,7 +650,6 @@ deploy_control_daily_final_transition_matches() {
        $(git -C "$REPO" rev-parse "$target:$path" 2>/dev/null) ]] || return 1
   done < <(deploy_control_daily_final_transition_compatible_paths)
 }
-
 verify_deploy_control_daily_final_transition_files() {
   local target=$1 path actual expected
   deploy_control_reviewed_transition_matches \
@@ -498,14 +660,12 @@ verify_deploy_control_daily_final_transition_files() {
     [[ $actual == "$expected" ]] || return 1
   done < <(deploy_control_bridge_sealed_paths)
 }
-
 load_target_reader_summary_publication_deploy_library() {
   local sha=$1
   local relative_path=ops/deploy/reader-summary-publication-deploy-lib.sh
   local publication_library=$REPO/$relative_path
   local repository_root publication_real mode reviewed_digest actual_digest
   local target_entry target_mode target_type target_object target_path
-
   repository_root=$(readlink -f "$REPO") || \
     fail 'integration repository path cannot be resolved'
   [[ -f $publication_library && ! -L $publication_library ]] || \
@@ -535,23 +695,20 @@ load_target_reader_summary_publication_deploy_library() {
     fail 'target publication deploy library differs from reviewed target'
   ! declare -F deploy_reader_summary_publication_migrations >/dev/null || \
     fail 'publication migration entrypoint was loaded before target validation'
-  # The bridge release deliberately lacks this target-only source file.
-  # shellcheck source=/dev/null
-  source "$publication_real" || \
-    fail 'target publication deploy library could not be loaded'
+  # The bridge release deliberately lacks this target-only source file. Load
+  # the exact target blob through the protected reviewed-library staging path.
+  source_reviewed_deploy_library "$sha" "$relative_path" \
+    'target publication deploy library'
   declare -F deploy_reader_summary_publication_migrations >/dev/null || \
     fail 'target publication deploy library is missing its migration entrypoint'
 }
-
 deploy_control_bridge_file_identity() {
   [[ -f $1 && ! -L $1 ]] || return 1
   stat -c '%d:%i:%f:%s:%y:%z' "$1"
 }
-
 deploy_control_bridge_git_regular_blob() {
   local sha=$1 relative_path=$2 label=$3
   local entry mode type object tree_path extra
-
   entry=$(git -C "$REPO" ls-tree "$sha" -- "$relative_path") || \
     fail "$label cannot be inspected at reviewed target"
   read -r mode type object tree_path extra <<< "$entry"
@@ -562,7 +719,16 @@ deploy_control_bridge_git_regular_blob() {
     fail "$label is not a regular blob at reviewed target"
   printf '%s\n' "$mode"
 }
-
+deploy_control_bridge_optional_source_digest() {
+  local source=$1
+  [[ ! -L $source ]] || return 1
+  if [[ -e $source ]]; then
+    [[ -f $source ]] || return 1
+    deploy_control_file_digest "$source"
+  else
+    printf '%s\n' "$DEPLOY_CONTROL_BRIDGE_OPTIONAL_SOURCE_ABSENT"
+  fi
+}
 deploy_control_bridge_require_initialized() {
   [[ -n ${DEPLOY_CONTROL_BRIDGE_ENTRYPOINT_DIGEST:-} && \
      -n ${DEPLOY_CONTROL_BRIDGE_LIBRARY_DIGEST:-} && \
@@ -572,11 +738,11 @@ deploy_control_bridge_require_initialized() {
      -n ${DEPLOY_CONTROL_BRIDGE_POSTGRES_ACTIVATION_BOUNDARY_HELPER_DIGEST:-} && \
      -n ${DEPLOY_CONTROL_BRIDGE_RECOVERY_MAINTENANCE_LIBRARY_DIGEST:-} && \
      -n ${DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_LIBRARY_DIGEST:-} && \
+     -n ${DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_PIN_CLEANUP_LIBRARY_DIGEST:-} && \
      -n ${DEPLOY_CONTROL_BRIDGE_X_IMAGE_LIBRARY_DIGEST:-} && \
      -n ${DEPLOY_CONTROL_BRIDGE_SELF_DIGEST:-} ]] || \
     fail 'deploy control bridge was not initialized before verification'
 }
-
 initialize_deploy_control_bridge() {
   local entrypoint=$REPO/$DEPLOY_CONTROL_BRIDGE_ENTRYPOINT_PATH
   local deploy_library=$REPO/$DEPLOY_CONTROL_BRIDGE_LIBRARY_PATH
@@ -586,9 +752,9 @@ initialize_deploy_control_bridge() {
   local activation_boundary_helper=$REPO/$DEPLOY_CONTROL_BRIDGE_POSTGRES_ACTIVATION_BOUNDARY_HELPER_PATH
   local recovery_maintenance_library=$REPO/$DEPLOY_CONTROL_BRIDGE_RECOVERY_MAINTENANCE_LIBRARY_PATH
   local image_rescue_library=$REPO/$DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_LIBRARY_PATH
+  local image_rescue_pin_cleanup_library=$REPO/$DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_PIN_CLEANUP_LIBRARY_PATH
   local x_image_library=$REPO/$DEPLOY_CONTROL_BRIDGE_X_IMAGE_LIBRARY_PATH
   local bridge_library=$REPO/$DEPLOY_CONTROL_BRIDGE_SELF_PATH
-
   [[ -f $entrypoint && ! -L $entrypoint && \
      -f $deploy_library && ! -L $deploy_library && \
      -f $postgres_library && ! -L $postgres_library && \
@@ -608,13 +774,17 @@ initialize_deploy_control_bridge() {
   DEPLOY_CONTROL_BRIDGE_POSTGRES_ACTIVATION_BOUNDARY_HELPER_DIGEST=$(deploy_control_file_digest "$activation_boundary_helper")
   DEPLOY_CONTROL_BRIDGE_RECOVERY_MAINTENANCE_LIBRARY_DIGEST=$(deploy_control_file_digest "$recovery_maintenance_library")
   DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_LIBRARY_DIGEST=$(deploy_control_file_digest "$image_rescue_library")
+  DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_PIN_CLEANUP_LIBRARY_DIGEST=$( \
+    deploy_control_bridge_optional_source_digest \
+      "$image_rescue_pin_cleanup_library") || \
+    fail 'optional backend image rescue pin cleanup bridge source is unsafe'
   DEPLOY_CONTROL_BRIDGE_X_IMAGE_LIBRARY_DIGEST=$(deploy_control_file_digest "$x_image_library")
   DEPLOY_CONTROL_BRIDGE_SELF_DIGEST=$(deploy_control_file_digest "$bridge_library")
   DEPLOY_CONTROL_BRIDGE_INITIALIZED_HEAD=$(git -C "$REPO" rev-parse HEAD) || \
     fail 'deploy control bridge integration marker cannot be read'
 }
-
 verify_deploy_control_bridge_compatibility() {
+  local current path target_blob
   local entrypoint=$REPO/$DEPLOY_CONTROL_BRIDGE_ENTRYPOINT_PATH
   local deploy_library=$REPO/$DEPLOY_CONTROL_BRIDGE_LIBRARY_PATH
   local postgres_library=$REPO/$DEPLOY_CONTROL_BRIDGE_POSTGRES_LIBRARY_PATH
@@ -623,9 +793,9 @@ verify_deploy_control_bridge_compatibility() {
   local activation_boundary_helper=$REPO/$DEPLOY_CONTROL_BRIDGE_POSTGRES_ACTIVATION_BOUNDARY_HELPER_PATH
   local recovery_maintenance_library=$REPO/$DEPLOY_CONTROL_BRIDGE_RECOVERY_MAINTENANCE_LIBRARY_PATH
   local image_rescue_library=$REPO/$DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_LIBRARY_PATH
+  local image_rescue_pin_cleanup_library=$REPO/$DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_PIN_CLEANUP_LIBRARY_PATH
   local x_image_library=$REPO/$DEPLOY_CONTROL_BRIDGE_X_IMAGE_LIBRARY_PATH
   local bridge_library=$REPO/$DEPLOY_CONTROL_BRIDGE_SELF_PATH
-
   deploy_control_bridge_require_initialized
   [[ -f $entrypoint && ! -L $entrypoint && \
      -f $deploy_library && ! -L $deploy_library && \
@@ -638,8 +808,21 @@ verify_deploy_control_bridge_compatibility() {
      -f $x_image_library && ! -L $x_image_library && \
      -f $bridge_library && ! -L $bridge_library ]] || \
     fail 'target integration is missing deploy control bridge sources'
+  current=$(git -C "$REPO" rev-parse HEAD) || \
+    fail 'target integration marker cannot be read'
+  if deploy_control_is_reviewed_live_controller_transition \
+      "$DEPLOY_CONTROL_BRIDGE_INITIALIZED_HEAD" "$current"; then
+    while IFS= read -r path; do
+      target_blob=$(git -C "$REPO" rev-parse "$current:$path" 2>/dev/null) || \
+        fail "live transition target is missing reviewed bridge path: $path"
+      [[ $(git -C "$REPO" hash-object --no-filters "$REPO/$path") == \
+         "$target_blob" ]] || fail "live transition worktree drifted: $path"
+    done < <(deploy_control_bridge_sealed_paths; printf '%s\n' \
+      "$DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_PIN_CLEANUP_LIBRARY_PATH")
+    return 0
+  fi
   if verify_deploy_control_daily_final_transition_files \
-      "$(git -C "$REPO" rev-parse HEAD)"; then
+      "$current"; then
     return 0
   fi
   [[ $(deploy_control_file_digest "$entrypoint") == "$DEPLOY_CONTROL_BRIDGE_ENTRYPOINT_DIGEST" && \
@@ -650,18 +833,18 @@ verify_deploy_control_bridge_compatibility() {
      $(deploy_control_file_digest "$activation_boundary_helper") == "$DEPLOY_CONTROL_BRIDGE_POSTGRES_ACTIVATION_BOUNDARY_HELPER_DIGEST" && \
      $(deploy_control_file_digest "$recovery_maintenance_library") == "$DEPLOY_CONTROL_BRIDGE_RECOVERY_MAINTENANCE_LIBRARY_DIGEST" && \
      $(deploy_control_file_digest "$image_rescue_library") == "$DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_LIBRARY_DIGEST" && \
+     $(deploy_control_bridge_optional_source_digest "$image_rescue_pin_cleanup_library") == "$DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_PIN_CLEANUP_LIBRARY_DIGEST" && \
      $(deploy_control_file_digest "$x_image_library") == "$DEPLOY_CONTROL_BRIDGE_X_IMAGE_LIBRARY_DIGEST" && \
      $(deploy_control_file_digest "$bridge_library") == "$DEPLOY_CONTROL_BRIDGE_SELF_DIGEST" ]] || \
     fail 'deploy control changed with backend or runtime assets; deploy the bridge release first'
 }
-
 verify_deploy_control_bridge_target_compatibility() {
   local sha=$1
   local entrypoint_digest deploy_library_digest postgres_library_digest
   local weekly_timer_helper_digest daily_c1_helper_digest
   local activation_boundary_helper_digest recovery_maintenance_library_digest
-  local image_rescue_library_digest x_image_library_digest bridge_library_digest
-
+  local image_rescue_library_digest image_rescue_pin_cleanup_library_digest
+  local x_image_library_digest bridge_library_digest
   deploy_control_bridge_require_initialized
   deploy_control_bridge_git_regular_blob "$sha" \
     "$DEPLOY_CONTROL_BRIDGE_ENTRYPOINT_PATH" 'target deploy entrypoint bridge' >/dev/null
@@ -679,6 +862,9 @@ verify_deploy_control_bridge_target_compatibility() {
     "$DEPLOY_CONTROL_BRIDGE_RECOVERY_MAINTENANCE_LIBRARY_PATH" 'target reader summary recovery maintenance library' >/dev/null
   deploy_control_bridge_git_regular_blob "$sha" \
     "$DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_LIBRARY_PATH" 'target backend image rescue bridge library' >/dev/null
+  deploy_control_bridge_git_regular_blob "$sha" \
+    "$DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_PIN_CLEANUP_LIBRARY_PATH" \
+    'target backend image rescue pin cleanup bridge library' >/dev/null
   deploy_control_bridge_git_regular_blob "$sha" \
     "$DEPLOY_CONTROL_BRIDGE_X_IMAGE_LIBRARY_PATH" 'target X image provenance bridge library' >/dev/null
   deploy_control_bridge_git_regular_blob "$sha" \
@@ -699,6 +885,9 @@ verify_deploy_control_bridge_target_compatibility() {
     fail 'target integration is missing the reader summary recovery maintenance library'
   image_rescue_library_digest=$(deploy_control_git_blob_digest "$sha" "$DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_LIBRARY_PATH") || \
     fail 'target integration is missing the backend image rescue bridge library'
+  image_rescue_pin_cleanup_library_digest=$(deploy_control_git_blob_digest "$sha" \
+    "$DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_PIN_CLEANUP_LIBRARY_PATH") || \
+    fail 'target integration is missing the backend image rescue pin cleanup library'
   x_image_library_digest=$(deploy_control_git_blob_digest "$sha" "$DEPLOY_CONTROL_BRIDGE_X_IMAGE_LIBRARY_PATH") || \
     fail 'target integration is missing the X image provenance bridge library'
   bridge_library_digest=$(deploy_control_git_blob_digest "$sha" "$DEPLOY_CONTROL_BRIDGE_SELF_PATH") || \
@@ -715,16 +904,15 @@ verify_deploy_control_bridge_target_compatibility() {
      $activation_boundary_helper_digest == "$DEPLOY_CONTROL_BRIDGE_POSTGRES_ACTIVATION_BOUNDARY_HELPER_DIGEST" && \
      $recovery_maintenance_library_digest == "$DEPLOY_CONTROL_BRIDGE_RECOVERY_MAINTENANCE_LIBRARY_DIGEST" && \
      $image_rescue_library_digest == "$DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_LIBRARY_DIGEST" && \
+     $image_rescue_pin_cleanup_library_digest == "$DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_PIN_CLEANUP_LIBRARY_DIGEST" && \
      $x_image_library_digest == "$DEPLOY_CONTROL_BRIDGE_X_IMAGE_LIBRARY_DIGEST" && \
      $bridge_library_digest == "$DEPLOY_CONTROL_BRIDGE_SELF_DIGEST" ]] || \
     fail 'deploy control changed with backend or runtime assets; deploy the bridge release first'
 }
-
 verify_target_rabbitmq_quorum_asset() {
   local sha=$1 relative_path=$2 label=$3 required_target_mode=$4
   local repository_root actual_path actual_real target_mode actual_mode
   local reviewed_digest actual_digest identity_before identity_after
-
   repository_root=$(readlink -f -- "$REPO") || \
     fail 'integration repository path cannot be resolved for RabbitMQ quorum assets'
   actual_path=$REPO/$relative_path
@@ -753,10 +941,8 @@ verify_target_rabbitmq_quorum_asset() {
   [[ $actual_digest == "$reviewed_digest" ]] || \
     fail "$label differs from reviewed target"
 }
-
 load_target_rabbitmq_quorum_backend_health() {
-  local sha=$1 health_library=$REPO/$RABBITMQ_QUORUM_HEALTH_LIBRARY_PATH
-
+  local sha=$1
   [[ $sha =~ ^[0-9a-f]{40}$ ]] || \
     fail 'target RabbitMQ quorum health SHA is invalid'
   verify_target_rabbitmq_quorum_asset "$sha" \
@@ -766,8 +952,8 @@ load_target_rabbitmq_quorum_backend_health() {
   verify_target_rabbitmq_quorum_asset "$sha" \
     "$RABBITMQ_QUORUM_RECOVERY_SCRIPT_PATH" 'target RabbitMQ quorum recovery script' 100755
   unset -f verify_backend verify_backend_with_retry
-  # shellcheck source=/dev/null
-  source "$health_library" || fail 'target backend health library could not be loaded'
+  source_reviewed_deploy_library "$sha" "$RABBITMQ_QUORUM_HEALTH_LIBRARY_PATH" \
+    'target backend health library'
   declare -F verify_backend >/dev/null || \
     fail 'target backend health library is missing its verification entrypoint'
   declare -F verify_backend_with_retry >/dev/null || \
