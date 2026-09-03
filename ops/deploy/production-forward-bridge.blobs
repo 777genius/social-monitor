@@ -9,7 +9,7 @@ head 100755 1baaef706e2564b5c05d4f6af21f2a1655b0aa6a ops/deploy/production-forwa
 head 100755 73673a20e6abe803bfbaf0cc00383b68036aeced ops/deploy/production-release-b-bridge-order.test.sh
 head 100755 5da7d92fa2c16188999636fdf362c7a1739dd962 ops/deploy/production-transition-b0-host-control.test.sh
 head 100644 a6e1e7f76a46753d69b7406433e1710c7c604909 ops/deploy/rabbitmq-quorum-deploy-bridge-transition.test.sh
-head 100755 15e0a2797dd694b535b4f80cbf1fffb166ba6590 ops/deploy/social-monitor-production-deploy.test.sh
+head 100755 059de24c815d61efe18e273d1da2d207b18401be ops/deploy/social-monitor-production-deploy.test.sh
 head 100644 ad399a5f6df8939793a7344535a9a5c509630470 ops/deploy/x-collector-image-deploy-lib.test.sh
 head 100644 6d9ec68768ce8afef4c8c2411e86a6a00841ab16 package.json
 head 100644 195ee0e7fe780ab6ce8e396b340432d1988b32c7 scripts/check-review-ci.mjs
