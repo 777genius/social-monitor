@@ -40,6 +40,7 @@ publisher_verify_origin() {
 
 publisher_initialize_context() {
   local mode=${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-0} remote_main
+  local stale_b0 recovery_mode
   if [[ $mode == 1 ]]; then
     REPO=${PRODUCTION_TRANSITION_TEST_REPOSITORY:?test repository is required}
     REMOTE=${PRODUCTION_TRANSITION_TEST_REMOTE:?test remote is required}
@@ -71,6 +72,16 @@ $PRODUCTION_TRANSITION_TARGET_FINGERPRINT
     PRODUCTION_TRANSITION_EFFECTIVE_NOW_EPOCH=$(/usr/bin/date +%s)
     publisher_verify_origin
     remote_main=$(publisher_remote_main)
+    stale_b0=${PRODUCTION_TRANSITION_STALE_B0_SHA:-}
+    recovery_mode=${PRODUCTION_TRANSITION_RECOVERY_MODE:-}
+    if [[ -n $stale_b0 ]]; then
+      production_transition_validate_sha "$stale_b0" 'stale B0'
+      [[ $recovery_mode == stale-b0 ]] || \
+        publisher_fail 'stale B0 requires the explicit recovery mode'
+    else
+      [[ -z $recovery_mode ]] || \
+        publisher_fail 'recovery mode requires an explicit stale B0'
+    fi
     [[ ${GITHUB_REPOSITORY:-} == "$PRODUCTION_TRANSITION_REPOSITORY_ID" && \
        ${GITHUB_WORKFLOW_REF:-} == "$PRODUCTION_TRANSITION_PUBLISH_WORKFLOW_REF" && \
        ${GITHUB_SHA:-} == "$remote_main" && \
@@ -156,7 +167,13 @@ publisher_prepare() (
     return 0
   fi
   ((status == 2)) || publisher_fail 'canonical review consumption state is unreadable'
-  [[ $remote_main == "$b0" ]] || publisher_fail 'signed B0 differs from protected main lease'
+  if [[ -n ${PRODUCTION_TRANSITION_STALE_B0_SHA:-} ]]; then
+    [[ ${PRODUCTION_TRANSITION_STALE_B0_SHA} == "$b0" && \
+       $remote_main == "$s2" ]] || \
+      publisher_fail 'stale B0 recovery lease is not the reviewed S2'
+  else
+    [[ $remote_main == "$b0" ]] || publisher_fail 'signed B0 differs from protected main lease'
+  fi
   production_transition_verify_canonical_review "$s2" "$p6" "$statement" \
     "$signature" "$review_signers" fresh >/dev/null
   statement_digest=$(production_transition_sha256_file "$statement")
@@ -186,13 +203,14 @@ publisher_prepare() (
 
 publisher_publish() (
   local target=$1 statement='' signature='' target_signers='' b0 review_id
-  local verification consumption_ref consumed status observed
+  local verification consumption_ref consumed status observed s2 lease_main
   cleanup() { [[ -z $statement ]] || /usr/bin/rm -f -- "$statement"; \
     [[ -z $signature ]] || /usr/bin/rm -f -- "$signature"; \
     [[ -z $target_signers ]] || /usr/bin/rm -f -- "$target_signers"; }
   trap cleanup EXIT
   production_transition_validate_sha "$target" T
   b0=$(production_transition_git -C "$REPO" rev-parse "$target^1^1")
+  s2=$(production_transition_git -C "$REPO" rev-parse "$target^2")
   PRODUCTION_TRANSITION_BRIDGE_BASE=$b0
   statement=$(/usr/bin/mktemp "${TMPDIR:-/tmp}/publisher-statement.XXXXXX")
   signature=$(/usr/bin/mktemp "${TMPDIR:-/tmp}/publisher-signature.XXXXXX")
@@ -220,12 +238,20 @@ publisher_publish() (
     return 0
   fi
   ((status == 2)) || publisher_fail 'canonical review consumption state is unreadable'
-  [[ $observed == "$b0" ]] || publisher_fail 'protected main moved after signed B0 lease'
+  if [[ -n ${PRODUCTION_TRANSITION_STALE_B0_SHA:-} ]]; then
+    [[ ${PRODUCTION_TRANSITION_STALE_B0_SHA} == "$b0" && \
+       $observed == "$s2" ]] || \
+      publisher_fail 'protected main moved after stale B0 recovery lease'
+    lease_main=$s2
+  else
+    [[ $observed == "$b0" ]] || publisher_fail 'protected main moved after signed B0 lease'
+    lease_main=$b0
+  fi
   production_transition_verify_target_contract "$target" "$statement" \
     "$signature" fresh "$target_signers" \
     "$PRODUCTION_TRANSITION_EFFECTIVE_TARGET_FINGERPRINT" >/dev/null
   production_transition_git -C "$REPO" push --atomic \
-    --force-with-lease="$MAIN_REF:$b0" \
+    --force-with-lease="$MAIN_REF:$lease_main" \
     --force-with-lease="$consumption_ref:0000000000000000000000000000000000000000" \
     "$REMOTE" "$target:$MAIN_REF" "$target:$consumption_ref" || \
     publisher_fail 'atomic protected-main publication failed'

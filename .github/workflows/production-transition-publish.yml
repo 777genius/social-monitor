@@ -14,6 +14,11 @@ on:
         description: Correlation nonce
         required: true
         type: string
+      b0_sha:
+        description: Optional trusted B0 matching the review for one stale-host recovery
+        required: false
+        default: ''
+        type: string
 
 permissions: {}
 
@@ -61,6 +66,7 @@ jobs:
         shell: bash
         env:
           TARGET_PRIVATE_KEY: ${{ secrets.PRODUCTION_TRANSITION_TARGET_PRIVATE_KEY }}
+          B0_SHA: ${{ inputs.b0_sha }}
         run: |
           set -euo pipefail
           [[ -n "$TARGET_PRIVATE_KEY" ]]
@@ -75,6 +81,12 @@ jobs:
             'refs/production-transition/artifact/*:refs/production-transition/artifact/*'
           s2=$(sed -n 's/^s2=//p' artifact/review.result)
           p6=$(sed -n 's/^p6=//p' artifact/review.result)
+          review_b0=$(sed -n 's/^b0=//p' artifact/review.result)
+          [[ -z "$B0_SHA" || "$B0_SHA" == "$review_b0" ]]
+          if [[ -n "$B0_SHA" ]]; then
+            export PRODUCTION_TRANSITION_STALE_B0_SHA="$B0_SHA"
+            export PRODUCTION_TRANSITION_RECOVERY_MODE=stale-b0
+          fi
           [[ "$s2" == "$(git rev-parse refs/production-transition/artifact/s2)" ]]
           [[ "$p6" == "$(git rev-parse refs/production-transition/artifact/p6)" ]]
           key=$(mktemp "$RUNNER_TEMP/transition-target-key.XXXXXX")
