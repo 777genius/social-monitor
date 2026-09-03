@@ -772,10 +772,8 @@ done
 run_fresh_host_handoff() {
   local candidate=$1 handoff_action=${2:-plan}
   git -C "$repo" checkout -q "$candidate"
-  # The production guard authenticates the live remote ref, so keep the
-  # isolated bare origin aligned with each synthetic candidate in this test.
-  git --git-dir="$real_entry_origin" update-ref refs/heads/main "$candidate"
-  git -C "$repo" update-ref refs/remotes/origin/main "$candidate"
+  # Keep the isolated origin aligned with the synthetic candidate.
+  git --git-dir="$real_entry_origin" update-ref refs/heads/main "$candidate"; git -C "$repo" update-ref refs/remotes/origin/main "$candidate"
   REPO=$repo CONTROL=$CONTROL STATE=$STATE SOCIAL_MONITOR_DEPLOY_TEST_MODE=1 \
     SOCIAL_MONITOR_DEPLOY_TEST_A0=$P TARGET=$candidate HANDOFF_ACTION=$handoff_action \
     bash -Eeuo pipefail -c '
