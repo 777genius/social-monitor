@@ -407,6 +407,7 @@ reset_b0_destinations() {
   find "$CONTROL" -mindepth 1 -maxdepth 1 -type f -delete
   find "$CONTROL" -mindepth 1 -maxdepth 1 -type l -delete
 }
+# shellcheck disable=SC2120 # Failpoint is supplied by the crash-boundary cases below.
 run_b0_install() (
   export SOCIAL_MONITOR_DEPLOY_TEST_MODE=1
   export PRODUCTION_FORWARD_INSTALL_FAILPOINT=${1:-}
@@ -568,8 +569,10 @@ run_coherent_unlocked_host_descriptor() (
   fail() { exit 1; }
   source "$CONTROL/production-transition-b0-host-control.sh"
   exec {fake_fd}<>"$STATE/production-transition-b0-host.lock"
+  # shellcheck disable=SC2034 # Consumed by the sourced host-lock implementation.
   PRODUCTION_TRANSITION_HOST_LOCK_FD=$fake_fd
   PRODUCTION_TRANSITION_HOST_LOCK_OWNER=$BASHPID
+  # shellcheck disable=SC2034 # Consumed by the sourced host-lock implementation.
   PRODUCTION_TRANSITION_HOST_LOCK_ACTIVE=$BASHPID:$fake_fd
   production_transition_host_acquire_lock
 )
@@ -581,6 +584,7 @@ run_inherited_host_release() (
   source "$CONTROL/production-transition-b0-host-control.sh"
   production_transition_host_acquire_lock
   (
+    # shellcheck disable=SC2034 # Consumed by the sourced host-lock implementation.
     PRODUCTION_TRANSITION_HOST_LOCK_OWNER=$BASHPID
     production_transition_host_release_lock
   )
