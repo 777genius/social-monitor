@@ -401,6 +401,7 @@ This directory stores architecture decisions for the social monitoring platform.
 - `392-source-token-setup-minimal-permissions-2026.md` - minimal GitHub, Reddit and X/Twitter credential setup rules.
 - `393-x-collector-grpc-architecture.md` - separate Python x-collector service, protobuf contract and canonical X provider boundaries.
 - `394-interest-ubiquitous-language.md` - Interest as the user-owned monitoring entity and valid external topic exceptions.
+- `395-subscription-runtime-rate-limit-capacity.md` - App Server rate-limit cache, push updates, capacity-store and failover invariants.
 
 ## Core Definition
 
