@@ -112,6 +112,25 @@ test("standard MJS canonical JSON bytes stay frozen for every purpose", () => {
   }
 });
 
+test("text canonicalization removes both schema-name fields", () => {
+  for (const purpose of [
+    "social_monitor.reader_summary.daily.canonical_recovery.v2",
+    "social_monitor.reader_summary.weekly.generate.v2",
+  ]) {
+    const task = admitSubscriptionRuntimeWrapperRequest(
+      standardGoldenInput(purpose, "output_text"),
+    ).canonicalRequest.task;
+
+    assert.equal(Object.hasOwn(task, "outputSchemaName"), false, purpose);
+    assert.equal(
+      Object.hasOwn(task.controls, "outputSchemaName"),
+      false,
+      purpose,
+    );
+    assert.equal(task.controls.schemaVersion, "golden.v1", purpose);
+  }
+});
+
 test("active v2 admits high and rejects xhigh and every legacy reader-summary purpose", () => {
   const request = (purpose, reasoningEffort, outputKind = "structured_output") => ({
     provider: "codex",
@@ -245,7 +264,7 @@ const structuredBytes = (
   `{"protocolVersion":1,"runId":"golden-run","task":{"kind":"structured-prompt","outputSchemaName":"${schemaName}","controls":{"outputSchemaName":"${schemaName}","schemaVersion":"${schemaVersion}","outputSchema":{"type":"object"},"model":"gpt-5.6-sol","reasoningEffort":"REASONING","responseFormat":"json"},"metadata":{"marker":"kept","outputKind":"structured_output","runtimeOutput":"structured_output"${metadataMarkers},"model":"gpt-5.6-sol","reasoningEffort":"REASONING"}},"context":{"purpose":"${purpose}"}}`;
 
 const textBytes = (purpose) =>
-  `{"protocolVersion":1,"runId":"golden-run","task":{"kind":"structured-prompt","outputSchemaName":"golden-schema","controls":{"outputSchemaName":"golden-schema","schemaVersion":"golden.v1","model":"gpt-5.6-sol","reasoningEffort":"high","responseFormat":"text"},"metadata":{"marker":"kept","outputKind":"output_text","runtimeOutput":"output_text","model":"gpt-5.6-sol","reasoningEffort":"high"}},"context":{"purpose":"${purpose}"}}`;
+  `{"protocolVersion":1,"runId":"golden-run","task":{"kind":"structured-prompt","controls":{"schemaVersion":"golden.v1","model":"gpt-5.6-sol","reasoningEffort":"high","responseFormat":"text"},"metadata":{"marker":"kept","outputKind":"output_text","runtimeOutput":"output_text","model":"gpt-5.6-sol","reasoningEffort":"high"}},"context":{"purpose":"${purpose}"}}`;
 
 const standardCanonicalGoldens = [
   ["social_monitor.summary.generate", "xhigh"],

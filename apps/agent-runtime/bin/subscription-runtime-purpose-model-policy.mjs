@@ -145,16 +145,21 @@ export const admitSubscriptionRuntimeWrapperRequest = (
   }
 
   const preservedControls = { ...controls };
+  const canonicalTask = { ...task };
   delete preservedControls.outputKind;
   delete preservedControls.outputSchemaJson;
   delete preservedControls.runtimeOutput;
   delete preservedControls.selectedOutputKind;
+  if (profile.outputKind === "output_text") {
+    delete preservedControls.outputSchemaName;
+    delete canonicalTask.outputSchemaName;
+  }
   return {
     profile,
     canonicalRequest: {
       ...request,
       task: {
-        ...task,
+        ...canonicalTask,
         controls: {
           ...preservedControls,
           model: profile.model,
