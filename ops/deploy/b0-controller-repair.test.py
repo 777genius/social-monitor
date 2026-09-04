@@ -491,6 +491,8 @@ class RepairTests(unittest.TestCase):
         self.command('git', '-C', str(real), 'fetch', '-q', 'origin', 'main')
         self.command('git', '-C', str(real), 'checkout', '--detach', '-q', repair_module.PREIMAGE)
         entrypoint = real / 'ops/deploy/social-monitor-production-deploy.sh'
+        self.assertEqual(entrypoint.read_bytes(), self.command(
+            'git', '-C', str(real), 'show', repair_module.PREIMAGE + ':ops/deploy/social-monitor-production-deploy.sh'))
         # Real pathspecs and compatibility verifier, not the earlier mocked
         # component_changed=false shortcut. All filesystem effects are in /tmp.
         empty_control = self.root / 'real-control'
@@ -573,8 +575,10 @@ deploy_release "$4"''')
         self.assertNotEqual(result.returncode, 42)
         self.assertIn(b'cannot inspect integration worktree', result.stderr)
         self.assertNotIn(b'real-pre-activation-boundary-reached', result.stdout)
+        # The explicit fast-forward installed target-owned code. Compatibility
+        # probes must preserve those exact bytes, not revert to the old preimage.
         self.assertEqual(entrypoint.read_bytes(), self.command(
-            'git', '-C', str(real), 'show', repair_module.PREIMAGE + ':ops/deploy/social-monitor-production-deploy.sh'))
+            'git', '-C', str(real), 'show', target + ':ops/deploy/social-monitor-production-deploy.sh'))
 
 
 if __name__ == '__main__':

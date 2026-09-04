@@ -579,11 +579,11 @@ upload_frontend() (
   [[ $(df -Pk "$STAGING" | awk 'NR == 2 {print $4}') -ge 1048576 ]] || fail 'less than 1 GiB is free for frontend extraction'
   install -d -m 0755 "$extracted"
   if command -v timeout >/dev/null; then
-    timeout 180 tar --no-same-owner --no-same-permissions -xzf "$temp" -C "$extracted"
+    (umask 022; timeout 180 tar --no-same-owner --no-same-permissions -xzf "$temp" -C "$extracted")
   elif ((EUID == 0)); then
     fail 'timeout is required for production extraction'
   else
-    tar --no-same-owner --no-same-permissions -xzf "$temp" -C "$extracted"
+    (umask 022; tar --no-same-owner --no-same-permissions -xzf "$temp" -C "$extracted")
   fi
   test -s "$extracted/public/index.html"
   test -s "$extracted/public/main.dart.js"

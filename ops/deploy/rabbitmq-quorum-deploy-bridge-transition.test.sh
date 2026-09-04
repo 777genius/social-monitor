@@ -64,8 +64,25 @@ BRIDGE_CONTROL_PATHS=(
   ops/deploy/deploy-control-bridge-lib.sh
 )
 
+assert_reviewed_upload_delta() {
+  local bridge=$1 candidate=$2 timeout_line fallback_line scoped_timeout scoped_fallback
+  cmp -s "$bridge" "$candidate" && return 0
+  [[ $(sha256sum "$candidate" | awk '{print $1}') == \
+    b15e93451395568d49c2a1ef9c9ae86ace1320ef18e68ea42b2b90d9963529da ]] || return 1
+  timeout_line='    timeout 180 tar --no-same-owner --no-same-permissions -xzf "$temp" -C "$extracted"'
+  fallback_line='    tar --no-same-owner --no-same-permissions -xzf "$temp" -C "$extracted"'
+  scoped_timeout="    (umask 022; ${timeout_line#    })"
+  scoped_fallback="    (umask 022; ${fallback_line#    })"
+  [[ $(grep -Fxc "$scoped_timeout" "$candidate") == 1 && \
+     $(grep -Fxc "$scoped_fallback" "$candidate") == 1 ]] || return 1
+  # Only the two reviewed extraction lines may differ from immutable W.
+  cmp -s "$bridge" <(sed \
+    -e "s|^$scoped_timeout\$|$timeout_line|" \
+    -e "s|^$scoped_fallback\$|$fallback_line|" "$candidate")
+}
+
 assert_rolling_entrypoint_bridge() {
-  local current bridge_blob current_blob
+  local current bridge_blob current_blob bridge_file current_file variant
   current=$(git -C "$PROJECT_ROOT" rev-parse 'HEAD^{commit}')
   REPO=$PROJECT_ROOT
   fail() { printf 'rolling-entrypoint-bridge-error: %s\n' "$*" >&2; exit 1; }
@@ -77,14 +94,34 @@ assert_rolling_entrypoint_bridge() {
   bridge_blob=$(git -C "$PROJECT_ROOT" rev-parse \
     "$ROLLING_ENTRYPOINT_BRIDGE_SHA:ops/deploy/social-monitor-production-deploy.sh")
   current_blob=$(git -C "$PROJECT_ROOT" rev-parse \
-    "HEAD:ops/deploy/social-monitor-production-deploy.sh")
-  [[ $bridge_blob == "$current_blob" ]] || {
-    echo 'rolling entrypoint bridge does not match the current release' >&2
+    'HEAD:ops/deploy/social-monitor-production-deploy.sh')
+  bridge_file=$FIXTURE/rolling-bridge.sh
+  current_file=$FIXTURE/rolling-current.sh
+  git -C "$PROJECT_ROOT" cat-file blob "$bridge_blob" > "$bridge_file"
+  git -C "$PROJECT_ROOT" cat-file blob "$current_blob" > "$current_file"
+  # Keep W==HEAD unless the exact reviewed uploader delta is proven.
+  [[ $bridge_blob == "$current_blob" ]] || assert_reviewed_upload_delta "$bridge_file" "$current_file" || {
+    echo 'rolling entrypoint bridge has an unreviewed current-release delta' >&2
     exit 1
   }
+  assert_reviewed_upload_delta "$bridge_file" "$bridge_file"
+  for variant in extra-edit missing-timeout missing-fallback wrong-umask; do
+    cp "$current_file" "$FIXTURE/$variant.sh"
+    case $variant in
+      extra-edit) printf '\n# unreviewed edit\n' >> "$FIXTURE/$variant.sh" ;;
+      missing-timeout) sed '/(umask 022; timeout /d' "$current_file" > "$FIXTURE/$variant.sh" ;;
+      missing-fallback) sed '/(umask 022; tar /d' "$current_file" > "$FIXTURE/$variant.sh" ;;
+      wrong-umask) sed 's/umask 022;/umask 000;/' "$current_file" > "$FIXTURE/$variant.sh" ;;
+    esac
+    if assert_reviewed_upload_delta "$bridge_file" "$FIXTURE/$variant.sh"; then
+      printf 'unreviewed uploader variant was accepted: %s\n' "$variant" >&2
+      exit 1
+    fi
+  done
 }
 
 assert_rolling_entrypoint_bridge
+bash "$SCRIPT_DIR/frontend-upload-file-modes.test.sh"
 
 assert_real_bridge_target_assets() {
   local path entry mode type object tree_path expected_digest alternate_digest reviewed_digest
@@ -130,7 +167,7 @@ assert_real_bridge_target_assets() {
         expected_digest=ac82c9cfebf88646e9cdc21dcb822c8cc50409832da24a726cd9307cc2be8bcb
         alternate_digest=101b80c5c0ee6ea5ff4e908e5661a7c2bbd03ad2048fb7eb8b5d26966b0e4860
         reviewed_digest=cc869266046dbe9edc590e83944e93bab8ebdf19e8ef66f4917c896bbd48fcde
-        current_release_digest=d9260a34a3d64cc4ba2b3799266ca97a0e7b58cb8ae4649bb1f2e11e26791b47
+        current_release_digest=b15e93451395568d49c2a1ef9c9ae86ace1320ef18e68ea42b2b90d9963529da
         ;;
       ops/deploy/deploy-control-lib.sh)
         expected_digest=d18854822ef36d5571289e72c7691fff8db4a7d5c516787441a733d6960a88a9
