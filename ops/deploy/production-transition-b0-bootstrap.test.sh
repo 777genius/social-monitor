@@ -5,6 +5,7 @@ LC_ALL=C
 export PATH LC_ALL
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+python3 -B "$SCRIPT_DIR/b0-controller-repair.test.py"
 FIXTURE=$(mktemp -d "${TMPDIR:-/tmp}/production-transition-b0-bootstrap.XXXXXX")
 trap '/usr/bin/find "$FIXTURE" -depth -delete' EXIT
 REPO=$FIXTURE/repo
