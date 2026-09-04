@@ -1,10 +1,103 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+/* global structuredClone */
+
 import {
   admitSubscriptionRuntimeWrapperRequest,
+  readerPromotionV2CanaryActivationCapability,
+  readerPromotionV2CanaryOutputSchema,
+  readerPromotionV2CanaryPurpose,
+  readerPromotionV2CanarySchemaName,
+  readerPromotionV2CanarySchemaVersion,
   subscriptionOnlyCodexEnvironment,
+  subscriptionRuntimeWrapperPurposeProfiles,
 } from "./subscription-runtime-purpose-model-policy.mjs";
+
+test("canary purpose is private, exact-schema-only, and deeply frozen", () => {
+  assert.equal(
+    Object.hasOwn(
+      subscriptionRuntimeWrapperPurposeProfiles(),
+      readerPromotionV2CanaryPurpose,
+    ),
+    false,
+  );
+  assert.equal(everyObjectIsFrozen(readerPromotionV2CanaryOutputSchema), true);
+  const input = canaryInput(readerPromotionV2CanaryOutputSchema);
+  assert.throws(
+    () => admitSubscriptionRuntimeWrapperRequest(input),
+    /purpose is not admitted/u,
+  );
+  assert.throws(
+    () => admitSubscriptionRuntimeWrapperRequest({
+      ...input,
+      request: { ...input.request, activationCapability: true },
+    }),
+    /purpose is not admitted/u,
+  );
+  assert.doesNotThrow(() => admitSubscriptionRuntimeWrapperRequest(
+    input,
+    readerPromotionV2CanaryActivationCapability,
+  ));
+  assert.throws(
+    () => admitSubscriptionRuntimeWrapperRequest(
+      {
+        ...input,
+        request: {
+          ...input.request,
+          task: { ...input.request.task, logicalThread: {} },
+        },
+      },
+      readerPromotionV2CanaryActivationCapability,
+    ),
+    /rejects continuation/u,
+  );
+
+  for (const schema of mutatedSchemas()) {
+    assert.throws(
+      () => admitSubscriptionRuntimeWrapperRequest(
+        canaryInput(schema),
+        readerPromotionV2CanaryActivationCapability,
+      ),
+      /outputSchema conflicts with purpose policy/u,
+    );
+  }
+  for (const [key, value] of [
+    ["outputSchemaName", "wrong"],
+    ["schemaVersion", "wrong"],
+  ]) {
+    const malformed = canaryInput(readerPromotionV2CanaryOutputSchema);
+    malformed.request.task.controls[key] = value;
+    assert.throws(
+      () => admitSubscriptionRuntimeWrapperRequest(
+        malformed,
+        readerPromotionV2CanaryActivationCapability,
+      ),
+      /conflicts with purpose policy/u,
+    );
+  }
+  const wrongTaskSchemaName = canaryInput(readerPromotionV2CanaryOutputSchema);
+  wrongTaskSchemaName.request.task.outputSchemaName = "wrong";
+  assert.throws(
+    () => admitSubscriptionRuntimeWrapperRequest(
+      wrongTaskSchemaName,
+      readerPromotionV2CanaryActivationCapability,
+    ),
+    /task\.outputSchemaName conflicts with purpose policy/u,
+  );
+  for (const override of [
+    { model: "gpt-5.5" },
+    { reasoningEffort: "xhigh" },
+  ]) {
+    assert.throws(
+      () => admitSubscriptionRuntimeWrapperRequest(
+        { ...input, ...override },
+        readerPromotionV2CanaryActivationCapability,
+      ),
+      /conflicts with purpose policy/u,
+    );
+  }
+});
 
 test("MJS policy removes both schema-name fields for output_text", () => {
   const admission = admitSubscriptionRuntimeWrapperRequest({
@@ -161,3 +254,35 @@ test("Codex subprocess environment admits only safe execution basics", () => {
   );
   assert.equal({}.polluted, undefined);
 });
+
+const canaryInput = (schema) => ({
+  provider: "codex",
+  model: "gpt-5.6-sol",
+  reasoningEffort: "high",
+  request: {
+    context: { purpose: readerPromotionV2CanaryPurpose },
+    task: {
+      outputSchemaName: readerPromotionV2CanarySchemaName,
+      controls: {
+        outputSchemaName: readerPromotionV2CanarySchemaName,
+        schemaVersion: readerPromotionV2CanarySchemaVersion,
+        outputSchema: schema,
+      },
+      metadata: {},
+    },
+  },
+});
+
+const mutatedSchemas = () => {
+  const extra = structuredClone(readerPromotionV2CanaryOutputSchema);
+  extra.extra = true;
+  const missing = structuredClone(readerPromotionV2CanaryOutputSchema);
+  delete missing.properties.decisions;
+  const nested = structuredClone(readerPromotionV2CanaryOutputSchema);
+  nested.properties.decisions.items.properties.sameStory = { type: "string" };
+  return [extra, missing, nested];
+};
+
+const everyObjectIsFrozen = (value) =>
+  value === null || typeof value !== "object" ||
+  (Object.isFrozen(value) && Object.values(value).every(everyObjectIsFrozen));

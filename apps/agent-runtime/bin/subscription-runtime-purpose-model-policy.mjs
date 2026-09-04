@@ -1,3 +1,26 @@
+import canaryContract from "./reader-promotion-v2-canary-contract.cjs";
+
+const {
+  readerPromotionV2CanaryOutputIsValid,
+  readerPromotionV2CanaryOutputSchema,
+  readerPromotionV2CanaryPurpose,
+  readerPromotionV2CanarySchemaEquals,
+  readerPromotionV2CanarySchemaName,
+  readerPromotionV2CanarySchemaVersion,
+} = canaryContract;
+
+export {
+  readerPromotionV2CanaryOutputIsValid,
+  readerPromotionV2CanaryOutputSchema,
+  readerPromotionV2CanaryPurpose,
+  readerPromotionV2CanarySchemaName,
+  readerPromotionV2CanarySchemaVersion,
+};
+
+export const readerPromotionV2CanaryActivationCapability = Symbol(
+  "reader-promotion-v2-canary-activation-capability",
+);
+
 const genericSummaryStructuredProfile = Object.freeze({
   provider: "codex",
   model: "gpt-5.6-sol",
@@ -22,6 +45,15 @@ const activeReaderSummaryTextProfile = Object.freeze({
   responseFormat: "text",
 });
 
+const readerPromotionV2CanaryProfile = Object.freeze({
+  provider: "codex",
+  model: "gpt-5.6-sol",
+  reasoningEffort: "high",
+  outputKind: "structured_output",
+  responseFormat: "json",
+  retryMode: "never",
+});
+
 const profilesByPurpose = Object.freeze({
   "social_monitor.summary.generate": genericSummaryStructuredProfile,
   "social_monitor.reader_summary.generate.v2": activeReaderSummaryStructuredProfile,
@@ -39,17 +71,27 @@ const profilesByPurpose = Object.freeze({
   "social_monitor.reader_summary.weekly.generate.v2": activeReaderSummaryTextProfile,
 });
 
+const capabilityProfilesByPurpose = Object.freeze({
+  [readerPromotionV2CanaryPurpose]: readerPromotionV2CanaryProfile,
+});
+
 export const subscriptionRuntimeWrapperPurposeProfiles = () =>
   profilesByPurpose;
 
-export const admitSubscriptionRuntimeWrapperRequest = (input) => {
+export const admitSubscriptionRuntimeWrapperRequest = (
+  input,
+  activationCapability,
+) => {
   const request = record(input.request, "request");
   const context = record(request.context, "request.context");
   const task = record(request.task, "request.task");
   const controls = optionalRecord(task.controls, "request.task.controls") ?? {};
   const metadata = optionalRecord(task.metadata, "request.task.metadata") ?? {};
   const purpose = nonEmptyString(context.purpose, "request.context.purpose");
-  const profile = profilesByPurpose[purpose];
+  const profile = profilesByPurpose[purpose] ??
+    (activationCapability === readerPromotionV2CanaryActivationCapability
+      ? capabilityProfilesByPurpose[purpose]
+      : undefined);
   if (profile === undefined) {
     throw new Error("Agent runtime purpose is not admitted");
   }
@@ -76,6 +118,7 @@ export const admitSubscriptionRuntimeWrapperRequest = (input) => {
     "metadata.reasoningEffort",
   );
   assertDedicatedRelatedTopicMarkers(purpose, controls, metadata);
+  assertReaderPromotionV2CanaryMarkers(purpose, task, controls);
   assertOptionalExactString(
     controls.responseFormat,
     profile.responseFormat,
@@ -132,6 +175,41 @@ export const admitSubscriptionRuntimeWrapperRequest = (input) => {
       },
     },
   };
+};
+
+const assertReaderPromotionV2CanaryMarkers = (purpose, task, controls) => {
+  if (purpose !== readerPromotionV2CanaryPurpose) return;
+  assertRequiredExactString(
+    task.outputSchemaName,
+    readerPromotionV2CanarySchemaName,
+    "task.outputSchemaName",
+  );
+  assertRequiredExactString(
+    controls.outputSchemaName,
+    readerPromotionV2CanarySchemaName,
+    "outputSchemaName",
+  );
+  assertRequiredExactString(
+    controls.schemaVersion,
+    readerPromotionV2CanarySchemaVersion,
+    "schemaVersion",
+  );
+  if (!readerPromotionV2CanarySchemaEquals(controls.outputSchema)) {
+    throw new Error("outputSchema conflicts with purpose policy");
+  }
+  for (const container of [task, controls]) {
+    for (const key of [
+      "continuation",
+      "logicalThread",
+      "previousCheckpoint",
+      "recoveryPacket",
+      "resumeHandle",
+    ]) {
+      if (Object.hasOwn(container, key)) {
+        throw new Error("Reader promotion V2 canary rejects continuation");
+      }
+    }
+  }
 };
 
 const assertDedicatedRelatedTopicMarkers = (purpose, controls, metadata) => {
