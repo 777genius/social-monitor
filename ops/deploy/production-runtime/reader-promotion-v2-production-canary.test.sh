@@ -82,6 +82,8 @@ grep -F -- '--runtime-image-id sha256:000000000000000000000000000000000000000000
   "$root/args" >/dev/null
 grep -F -- '--workflow reader-promotion-v2-production-canary --workflow-run-id 100' \
   "$root/args" >/dev/null
+grep -F -- '--runtime-command /app/apps/agent-runtime/bin/run-codex-subscription-runtime-agent-task.mjs' \
+  "$root/args" >/dev/null
 grep -Fx 'entrypoint-and-manifest-resolved' "$root/started" >/dev/null
 grep -F -- "$root/integration:/verified-checkout:ro" "$root/args" >/dev/null
 

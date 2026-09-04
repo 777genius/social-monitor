@@ -14,8 +14,12 @@ After independent review of the exact release SHA and before the first dispatch:
    provisioning the matching release assets.
 2. Use the independently authorized database administrator to apply only
    `ops/deploy/reader-promotion-v2-canary-control-bootstrap.sql` from that SHA.
-   It is a single transaction. It refuses unsafe pre-existing role attributes
-   or role memberships, and does not silently normalize privileged roles.
+   It is a single transaction, supporting a managed PostgreSQL administrator
+   with CREATEROLE and CREATE on this database, without requiring superuser.
+   It refuses unsafe existing attributes, active/foreign memberships and
+   cluster-wide ownership/ACL/policy collisions before creating the schema.
+   Existing grants are not silently normalized. Only this transaction's
+   temporary SET/INHERIT self-grant is removed before commit.
 3. Provision credentials for `social_monitor_reader_promotion_canary_invoker`.
    Store its database URL in the root-owned, non-symlink secret file expected
    by the host runner. Never reuse the application or migration database URL.
@@ -24,8 +28,17 @@ After independent review of the exact release SHA and before the first dispatch:
    use the normal unrestricted deploy identity. Configure only the dedicated
    `READER_PROMOTION_V2_CANARY_*` GitHub secrets and variables used by the workflow.
 5. Verify the invoker has only the six public canary procedure grants, no table
-   grants, no memberships, and no authority over product/publication tables.
+   grants, no outbound or foreign memberships, and no product/publication rights.
+   PostgreSQL 16+ retains an inbound creator ADMIN bookkeeping grant to the
+   provisioning administrator. Its SET and INHERIT options must both be false;
+   the administrator cannot assume the owner or read its schema through it.
+   This retained role-management authority supports credential rotation and
+   is not granted to the runtime invoker. Superuser provisioning needs no edge.
    Record release SHA, SQL/host-script digests and redacted ACL evidence.
+6. Run the offline built-image inspection before dispatch:
+   `bash ops/deploy/reader-promotion-v2-canary-image-inspection.test.sh IMAGE_ID`.
+   It checks the actual executable, pinned launcher bytes and runtime package
+   in the immutable daily-runner image, without credentials, networking or AI.
 
 Do not put credentials in this document, command output or source control.
 Provisioning is not part of the live model run and spends no provider tokens.

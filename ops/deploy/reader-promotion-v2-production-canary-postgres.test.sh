@@ -90,6 +90,58 @@ SELECT to_regnamespace('reader_promotion_v2_canary_control') IS NULL,
 SQL
 psql "$admin" -v ON_ERROR_STOP=1 <<'SQL' >/dev/null
 REVOKE SELECT ON public.tenants FROM social_monitor_reader_promotion_canary_invoker;
+GRANT ALTER SYSTEM ON PARAMETER work_mem TO social_monitor_reader_promotion_canary_invoker;
+SQL
+expect_failure psql "$admin" -v ON_ERROR_STOP=1 -f "$bootstrap" \
+  >/dev/null 2>&1
+psql "$admin" -At -v ON_ERROR_STOP=1 <<'SQL' | grep -Fx 't|t'
+SELECT to_regnamespace('reader_promotion_v2_canary_control') IS NULL,
+  has_parameter_privilege('social_monitor_reader_promotion_canary_invoker',
+    'work_mem', 'ALTER SYSTEM');
+SQL
+psql "$admin" -v ON_ERROR_STOP=1 <<'SQL' >/dev/null
+REVOKE ALTER SYSTEM ON PARAMETER work_mem FROM social_monitor_reader_promotion_canary_invoker;
+GRANT USAGE ON LANGUAGE sql TO social_monitor_reader_promotion_canary_invoker;
+SQL
+expect_failure psql "$admin" -v ON_ERROR_STOP=1 -f "$bootstrap" \
+  >/dev/null 2>&1
+psql "$admin" -v ON_ERROR_STOP=1 <<'SQL' >/dev/null
+REVOKE USAGE ON LANGUAGE sql FROM social_monitor_reader_promotion_canary_invoker;
+ALTER DEFAULT PRIVILEGES GRANT SELECT ON TABLES TO social_monitor_reader_promotion_canary_invoker;
+SQL
+expect_failure psql "$admin" -v ON_ERROR_STOP=1 -f "$bootstrap" \
+  >/dev/null 2>&1
+psql "$admin" -At -v ON_ERROR_STOP=1 <<'SQL' | grep -Fx 't|t'
+SELECT to_regnamespace('reader_promotion_v2_canary_control') IS NULL,
+  EXISTS (SELECT FROM pg_default_acl, LATERAL aclexplode(defaclacl) acl
+    WHERE acl.grantee = 'social_monitor_reader_promotion_canary_invoker'::regrole);
+SQL
+psql "$admin" -v ON_ERROR_STOP=1 <<'SQL' >/dev/null
+ALTER DEFAULT PRIVILEGES REVOKE SELECT ON TABLES FROM social_monitor_reader_promotion_canary_invoker;
+CREATE ROLE canary_foreign_member;
+GRANT social_monitor_reader_promotion_canary_invoker TO canary_foreign_member;
+SQL
+expect_failure psql "$admin" -v ON_ERROR_STOP=1 -f "$bootstrap" \
+  >/dev/null 2>&1
+psql "$admin" -At -v ON_ERROR_STOP=1 <<'SQL' | grep -Fx 't|t'
+SELECT to_regnamespace('reader_promotion_v2_canary_control') IS NULL,
+  pg_has_role('canary_foreign_member',
+    'social_monitor_reader_promotion_canary_invoker', 'MEMBER');
+SQL
+psql "$admin" -v ON_ERROR_STOP=1 <<'SQL' >/dev/null
+REVOKE social_monitor_reader_promotion_canary_invoker FROM canary_foreign_member;
+DROP ROLE canary_foreign_member;
+GRANT social_monitor_reader_promotion_canary_invoker TO postgres;
+SQL
+expect_failure psql "$admin" -v ON_ERROR_STOP=1 -f "$bootstrap" \
+  >/dev/null 2>&1
+psql "$admin" -At -v ON_ERROR_STOP=1 <<'SQL' | grep -Fx 't|1'
+SELECT to_regnamespace('reader_promotion_v2_canary_control') IS NULL,
+  count(*) FROM pg_auth_members WHERE roleid =
+    'social_monitor_reader_promotion_canary_invoker'::regrole;
+SQL
+psql "$admin" -v ON_ERROR_STOP=1 <<'SQL' >/dev/null
+REVOKE social_monitor_reader_promotion_canary_invoker FROM postgres;
 DROP ROLE social_monitor_reader_promotion_canary_invoker;
 CREATE ROLE canary_bootstrap_unprivileged LOGIN CREATEROLE NOINHERIT;
 SQL
@@ -102,9 +154,18 @@ SELECT to_regnamespace('reader_promotion_v2_canary_control') IS NULL,
     'social_monitor_reader_promotion_canary_owner',
     'social_monitor_reader_promotion_canary_invoker');
 SQL
-psql "$admin" -v ON_ERROR_STOP=1 -f \
-  "$REPO/ops/deploy/reader-promotion-v2-canary-control-bootstrap.sql" \
-  >/dev/null
+# The supported managed-DB administrator is deliberately NOT a superuser.
+psql "$admin" -v ON_ERROR_STOP=1 <<'SQL' >/dev/null
+CREATE ROLE canary_bootstrap_admin LOGIN CREATEROLE NOINHERIT;
+GRANT CREATE ON DATABASE promotion_canary_test TO canary_bootstrap_admin;
+SQL
+provisioner_server="postgresql://canary_bootstrap_admin@$hostport"
+provisioner="$provisioner_server/$database"
+psql "$provisioner" -At -v ON_ERROR_STOP=1 -c \
+  'SELECT rolsuper FROM pg_roles WHERE rolname = current_user' | grep -Fx f
+psql "$provisioner" -v ON_ERROR_STOP=1 -f "$bootstrap" >/dev/null
+psql "$provisioner" -v ON_ERROR_STOP=1 -c \
+  'ALTER ROLE social_monitor_reader_promotion_canary_invoker CONNECTION LIMIT 2' >/dev/null
 
 psql "$admin" -At -v ON_ERROR_STOP=1 <<'SQL' | grep -Fx 'f|t|f|f|f|f|f|2'
 SELECT rolsuper, rolcanlogin, rolcreatedb, rolcreaterole, rolinherit,
@@ -125,13 +186,24 @@ FROM unnest(ARRAY['public.tenants', 'public.reader_summaries',
   unnest(ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE',
     'REFERENCES', 'TRIGGER']) privilege;
 SQL
+# Only inert creator ADMIN bookkeeping remains. It cannot SET ROLE or inherit.
 psql "$admin" -At -v ON_ERROR_STOP=1 <<'SQL' | grep -Fx '0'
 SELECT count(*) FROM pg_auth_members membership
 JOIN pg_roles granted ON granted.oid = membership.roleid
 JOIN pg_roles recipient ON recipient.oid = membership.member
-WHERE granted.rolname LIKE 'social_monitor_reader_promotion_canary_%'
-   OR recipient.rolname LIKE 'social_monitor_reader_promotion_canary_%';
+WHERE (granted.rolname LIKE 'social_monitor_reader_promotion_canary_%'
+   OR recipient.rolname LIKE 'social_monitor_reader_promotion_canary_%') AND NOT (
+     recipient.rolname = 'canary_bootstrap_admin' AND membership.admin_option
+     AND NOT membership.inherit_option AND NOT membership.set_option
+     AND granted.rolname LIKE 'social_monitor_reader_promotion_canary_%');
 SQL
+psql "$provisioner" -At -v ON_ERROR_STOP=1 <<'SQL' | grep -Fx 'f|f|f'
+SELECT pg_has_role(current_user, 'social_monitor_reader_promotion_canary_owner', 'SET'),
+  pg_has_role(current_user, 'social_monitor_reader_promotion_canary_owner', 'USAGE'),
+  has_schema_privilege(current_user, 'reader_promotion_v2_canary_control', 'USAGE');
+SQL
+expect_failure psql "$provisioner" -v ON_ERROR_STOP=1 -c \
+  'SELECT * FROM reader_promotion_v2_canary_control.jobs' >/dev/null 2>&1
 expect_failure psql "$invoker" -c 'SELECT * FROM public.tenants' >/dev/null 2>&1
 expect_failure psql "$invoker" -c \
   'SELECT * FROM reader_promotion_v2_canary_control.jobs' >/dev/null 2>&1
@@ -345,13 +417,18 @@ expect_failure psql "$admin" -v ON_ERROR_STOP=1 -f "$bootstrap" \
 
 # A second disposable database proves the actual invoker's post-barrier crash
 # transition atomically records MODEL_COMPLETED/UNCERTAIN then REJECTED.
+# Drop only the completed disposable fixture: cross-database pre-existing
+# authority is intentionally refused by the cluster-wide role audit.
+psql "$server/postgres" -v ON_ERROR_STOP=1 \
+  -c 'DROP DATABASE promotion_canary_test' >/dev/null
 psql "$server/postgres" -v ON_ERROR_STOP=1 \
   -c 'CREATE DATABASE promotion_canary_expiry_test' >/dev/null
 expiry_admin="$server/promotion_canary_expiry_test"
 expiry_invoker="$invoker_server/promotion_canary_expiry_test"
-psql "$expiry_admin" -v ON_ERROR_STOP=1 -f \
-  "$REPO/ops/deploy/reader-promotion-v2-canary-control-bootstrap.sql" \
-  >/dev/null
+psql "$server/postgres" -v ON_ERROR_STOP=1 \
+  -c 'GRANT CREATE ON DATABASE promotion_canary_expiry_test TO canary_bootstrap_admin' >/dev/null
+psql "$provisioner_server/promotion_canary_expiry_test" \
+  -v ON_ERROR_STOP=1 -f "$bootstrap" >/dev/null
 psql "$expiry_invoker" -At -v ON_ERROR_STOP=1 -v binding="$binding" <<'SQL' >/dev/null
 SELECT action FROM reader_promotion_v2_canary_control.claim(
   :'binding'::jsonb);
@@ -372,17 +449,23 @@ SELECT reader_promotion_v2_canary_control.read();
 SQL
 psql "$expiry_admin" -At -v ON_ERROR_STOP=1 <<'SQL' | grep -Fx 'CLAIMED:NULL,MODEL_RUNNING:NULL,MODEL_COMPLETED:UNCERTAIN,REJECTED:UNCERTAIN'
 SELECT string_agg(state || ':' || COALESCE(outcome, 'NULL'), ','
-  ORDER BY occurred_at)
+  ORDER BY event_sequence)
+FROM reader_promotion_v2_canary_control.job_events;
+SQL
+psql "$expiry_admin" -At -v ON_ERROR_STOP=1 <<'SQL' | grep -Fx '1,2,3,4'
+SELECT string_agg(event_sequence::text, ',' ORDER BY event_sequence)
 FROM reader_promotion_v2_canary_control.job_events;
 SQL
 
 psql "$server/postgres" -v ON_ERROR_STOP=1 \
+  -c 'DROP DATABASE promotion_canary_expiry_test' >/dev/null
+psql "$server/postgres" -v ON_ERROR_STOP=1 \
   -c 'CREATE DATABASE promotion_canary_race_test' >/dev/null
-race_admin="$server/promotion_canary_race_test"
 race_invoker="$invoker_server/promotion_canary_race_test"
-psql "$race_admin" -v ON_ERROR_STOP=1 -f \
-  "$REPO/ops/deploy/reader-promotion-v2-canary-control-bootstrap.sql" \
-  >/dev/null
+psql "$server/postgres" -v ON_ERROR_STOP=1 \
+  -c 'GRANT CREATE ON DATABASE promotion_canary_race_test TO canary_bootstrap_admin' >/dev/null
+psql "$provisioner_server/promotion_canary_race_test" \
+  -v ON_ERROR_STOP=1 -f "$bootstrap" >/dev/null
 test_tmp=${CANARY_PG_TEST_TMP_ROOT:-${TMPDIR:-/tmp}}
 race_one=$test_tmp/promotion-canary-race-one-$$
 race_two=$test_tmp/promotion-canary-race-two-$$

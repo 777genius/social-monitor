@@ -100,7 +100,7 @@ args=(/verified-checkout/scripts/run-reader-promotion-v2-production-canary.ts \
   --runtime-image-id "$image_id" \
   --workflow "$workflow" --workflow-run-id "$run_id" \
   --workflow-run-attempt "$run_attempt" --fence "$fence" \
-  --runtime-command /app/node_modules/.bin/subscription-runtime \
+  --runtime-command /app/apps/agent-runtime/bin/run-codex-subscription-runtime-agent-task.mjs \
   --runtime-state-root /tmp/subscription-runtime)
 unset READER_PROMOTION_V2_CANARY_HOST_TEST_ROOT \
   READER_PROMOTION_V2_CANARY_HOST_TEST_DOCKER \

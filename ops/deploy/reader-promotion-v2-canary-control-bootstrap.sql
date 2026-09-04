@@ -1,10 +1,13 @@
 -- Manual one-shot canary provisioning, never an application migration.
 -- Isolated singleton control plane: it has no product-domain authority.
 BEGIN;
+SET LOCAL createrole_self_grant = '';
 
 DO $roles$
 BEGIN
-  IF NOT (SELECT rolsuper FROM pg_catalog.pg_roles
+  IF NOT (SELECT rolsuper OR (rolcreaterole AND
+      has_database_privilege(CURRENT_USER, current_database(), 'CREATE'))
+      FROM pg_catalog.pg_roles
       WHERE rolname = CURRENT_USER) THEN
     RAISE EXCEPTION 'canary bootstrap requires the independent provisioning administrator';
   END IF;
@@ -28,6 +31,7 @@ END
 $roles$;
 
 DO $role_audit$
+DECLARE acl_catalog RECORD; acl_collision BOOLEAN;
 BEGIN
   IF EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname IN (
       'social_monitor_reader_promotion_canary_owner',
@@ -43,23 +47,58 @@ BEGIN
   END IF;
   IF EXISTS (
     SELECT FROM pg_catalog.pg_roles role
-    JOIN (
-      SELECT relowner AS owner, relacl AS acl FROM pg_catalog.pg_class
-      UNION ALL SELECT proowner, proacl FROM pg_catalog.pg_proc
-      UNION ALL SELECT nspowner, nspacl FROM pg_catalog.pg_namespace
-      UNION ALL SELECT typowner, typacl FROM pg_catalog.pg_type
-      UNION ALL SELECT datdba, datacl FROM pg_catalog.pg_database
-      UNION ALL SELECT 0::OID, attacl FROM pg_catalog.pg_attribute
-    ) object_acl ON object_acl.owner = role.oid OR EXISTS (
-      SELECT FROM pg_catalog.aclexplode(object_acl.acl) grant_entry
-      WHERE grant_entry.grantee = role.oid
-    )
+    -- Shared dependency records cover ownership, every ACL catalog (including
+    -- parameter/large-object/default ACLs), initial ACLs and RLS policies in
+    -- every database, not an incomplete hand-maintained catalog list.
+    JOIN pg_catalog.pg_shdepend authority ON
+      authority.refclassid = 'pg_catalog.pg_authid'::regclass AND
+      authority.refobjid = role.oid AND authority.deptype IN ('o', 'a', 'i', 'r')
     WHERE role.rolname IN (
       'social_monitor_reader_promotion_canary_owner',
       'social_monitor_reader_promotion_canary_invoker'
     )
   ) THEN
     RAISE EXCEPTION 'reader promotion V2 canary role has pre-existing object authority';
+  END IF;
+  -- Also inspect every ACL-bearing catalog directly: pinned built-in objects
+  -- need not have shared-dependency entries. Identifiers come only from the
+  -- trusted catalog and are quoted; no provider/user SQL is interpolated.
+  FOR acl_catalog IN
+    SELECT catalog.relname, attribute.attname
+    FROM pg_catalog.pg_class catalog
+    JOIN pg_catalog.pg_attribute attribute ON attribute.attrelid = catalog.oid
+    WHERE catalog.relnamespace = 'pg_catalog'::regnamespace AND catalog.relkind = 'r'
+      AND attribute.atttypid = 'aclitem[]'::regtype AND attribute.attnum > 0
+      AND NOT attribute.attisdropped
+  LOOP
+    EXECUTE format('SELECT EXISTS (SELECT FROM pg_catalog.%I entry CROSS JOIN LATERAL pg_catalog.aclexplode(entry.%I) acl WHERE acl.grantee IN (SELECT oid FROM pg_catalog.pg_roles WHERE rolname = ANY($1)))',
+      acl_catalog.relname, acl_catalog.attname) INTO acl_collision USING
+      ARRAY['social_monitor_reader_promotion_canary_owner',
+        'social_monitor_reader_promotion_canary_invoker'];
+    IF acl_collision THEN
+      RAISE EXCEPTION 'reader promotion V2 canary role has pre-existing catalog ACL';
+    END IF;
+  END LOOP;
+  -- PG16+ records creator ADMIN grants without runtime SET/INHERIT rights.
+  -- Only this administrator's inert bookkeeping grants are accepted. Foreign
+  -- recipients, active inherited access and outbound memberships are refused.
+  IF EXISTS (
+    SELECT FROM pg_catalog.pg_auth_members membership
+    JOIN pg_catalog.pg_roles granted ON granted.oid = membership.roleid
+    JOIN pg_catalog.pg_roles recipient ON recipient.oid = membership.member
+    WHERE (granted.rolname IN ('social_monitor_reader_promotion_canary_owner',
+      'social_monitor_reader_promotion_canary_invoker') OR
+      recipient.rolname IN ('social_monitor_reader_promotion_canary_owner',
+      'social_monitor_reader_promotion_canary_invoker')) AND NOT (
+        granted.rolname IN ('social_monitor_reader_promotion_canary_owner',
+          'social_monitor_reader_promotion_canary_invoker') AND
+        recipient.rolname = CURRENT_USER AND membership.admin_option AND
+        NOT membership.inherit_option AND NOT membership.set_option)
+  ) THEN
+    RAISE EXCEPTION 'reader promotion V2 canary role has unsafe pre-existing membership';
+  END IF;
+  IF NOT (SELECT rolsuper FROM pg_catalog.pg_roles WHERE rolname = CURRENT_USER) THEN
+    EXECUTE format('GRANT social_monitor_reader_promotion_canary_owner TO %I WITH INHERIT TRUE, SET TRUE', CURRENT_USER);
   END IF;
 END
 $role_audit$;
@@ -121,6 +160,7 @@ CREATE TABLE reader_promotion_v2_canary_control.jobs (
 
 CREATE TABLE reader_promotion_v2_canary_control.job_events (
   event_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  event_sequence BIGINT GENERATED ALWAYS AS IDENTITY UNIQUE,
   singleton_id TEXT NOT NULL CHECK (
     singleton_id = 'reader-promotion-v2-production-canary-v1'
   ),
@@ -838,7 +878,11 @@ BEGIN
     SELECT granted.rolname FROM pg_catalog.pg_auth_members membership
     JOIN pg_catalog.pg_roles granted ON granted.oid = membership.roleid
     JOIN pg_catalog.pg_roles recipient ON recipient.oid = membership.member
-    WHERE recipient.rolname = CURRENT_USER AND granted.rolname IN (
+    JOIN pg_catalog.pg_roles grantor ON grantor.oid = membership.grantor
+    -- Revoke only the temporary self-grant made by this bootstrap. PostgreSQL
+    -- creator ADMIN grants have a different grantor and confer no data access.
+    WHERE recipient.rolname = CURRENT_USER AND grantor.rolname = CURRENT_USER
+      AND granted.rolname IN (
       'social_monitor_reader_promotion_canary_owner',
       'social_monitor_reader_promotion_canary_invoker'
     )
@@ -849,15 +893,20 @@ BEGIN
     SELECT FROM pg_catalog.pg_auth_members membership
     JOIN pg_catalog.pg_roles granted ON granted.oid = membership.roleid
     JOIN pg_catalog.pg_roles recipient ON recipient.oid = membership.member
-    WHERE granted.rolname IN (
+    WHERE (granted.rolname IN (
       'social_monitor_reader_promotion_canary_owner',
       'social_monitor_reader_promotion_canary_invoker'
     ) OR recipient.rolname IN (
       'social_monitor_reader_promotion_canary_owner',
       'social_monitor_reader_promotion_canary_invoker'
+    )) AND NOT (
+      granted.rolname IN ('social_monitor_reader_promotion_canary_owner',
+        'social_monitor_reader_promotion_canary_invoker') AND
+      recipient.rolname = CURRENT_USER AND membership.admin_option AND
+      NOT membership.inherit_option AND NOT membership.set_option
     )
   ) THEN
-    RAISE EXCEPTION 'reader promotion V2 canary roles must have no memberships';
+    RAISE EXCEPTION 'reader promotion V2 canary roles retain runtime membership authority';
   END IF;
 END
 $memberships$;
