@@ -16,12 +16,12 @@ import type {
   SubscriptionRuntimeInstallationIdentity,
   SubscriptionRuntimeInstallationInspector,
 } from "./subscription-runtime-installation";
+import type { readerPromotionV2CanaryActivationCapability } from "./subscription-runtime-purpose-model-policy";
 import {
   admitSubscriptionRuntimeRequest,
   parseSubscriptionRuntimeJsonObject,
   productionAgentRuntimeModel,
   productionAgentRuntimeReasoningEffort,
-  readerPromotionV2CanaryActivationCapability,
   type SubscriptionRuntimePurposeProfile,
 } from "./subscription-runtime-purpose-model-policy";
 
