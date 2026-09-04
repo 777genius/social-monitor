@@ -115,10 +115,12 @@ exercise_release_bootstrap() (
   printf 'production_transition_host_failpoint() { :; }\n' > "$authority"
   : > "$events"
   action=deploy
+  # shellcheck source=ops/deploy/deploy-control-lib.sh
   source "$control_library"
   fixed_release=$(declare -f deploy_release)
   if [[ $predecessor == true ]]; then
     # Exact controller loaded by the installed prelude before this fix.
+    # shellcheck source=/dev/null
     source <(git -C "$current_root" show \
       8c402ecadff1db34a9d5991b777a5eb8032282de:ops/deploy/deploy-control-lib.sh)
   fi
@@ -137,12 +139,14 @@ exercise_release_bootstrap() (
   }
   production_forward_install_b0_before_entrypoint() {
     printf 'bootstrap\n' >> "$events"
+    # shellcheck source=/dev/null
     source "$authority"
   }
   sync_control_script() { printf 'sync\n' >> "$events"; }
   deploy_release_runtime_transaction() { printf 'runtime\n' >> "$events"; }
   commit_postgres_pool_bootstrap() { printf 'committed\n' >> "$events"; }
   if [[ $authority_loaded == true ]]; then
+    # shellcheck source=/dev/null
     source "$authority"
     readonly -f production_transition_host_failpoint
   fi
