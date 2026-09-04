@@ -381,11 +381,12 @@ production_forward_install_b0_before_entrypoint() {
     ops/deploy/production-transition-canonical-lib.sh
   production_forward_install_blob "$bridge" 0644 \
     ops/deploy/production-transition-b0-host-control.sh
-  # The predecessor process did not load this newly installed authority at
-  # startup. Source the verified B blob before any post-fast-forward phase can
-  # call one of its functions.
-  # shellcheck source=/dev/null
-  source "$CONTROL/production-transition-b0-host-control.sh"
+  # A predecessor without B0 must load the verified authority before moving.
+  # An already-loaded readonly B0 only needs the blob checks above repeated.
+  if ! declare -F production_transition_host_failpoint >/dev/null; then
+    # shellcheck source=/dev/null
+    source "$CONTROL/production-transition-b0-host-control.sh"
+  fi
 }
 
 production_forward_file_matches_commit() {
