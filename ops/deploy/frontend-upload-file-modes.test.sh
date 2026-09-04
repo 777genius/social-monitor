@@ -51,6 +51,8 @@ run_upload_case() {
     done
   done
   [[ $(cat "$STAGING/$sha/frontend/READY") == "$sha" ]]
+  expected_ready_mode=$(printf '%o' "$((0666 & ~8#$mask))")
+  [[ $(stat -c '%a' "$STAGING/$sha/frontend/READY") == "$expected_ready_mode" ]] || fail 'READY permissions were widened'
 }
 for mask in 077 027 022; do
   run_upload_case "$mask" timeout

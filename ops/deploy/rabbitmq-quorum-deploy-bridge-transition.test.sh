@@ -65,7 +65,7 @@ BRIDGE_CONTROL_PATHS=(
 )
 
 assert_rolling_entrypoint_bridge() {
-  local current bridge_blob current_blob
+  local current bridge_blob historical_blob historical_final
   current=$(git -C "$PROJECT_ROOT" rev-parse 'HEAD^{commit}')
   REPO=$PROJECT_ROOT
   fail() { printf 'rolling-entrypoint-bridge-error: %s\n' "$*" >&2; exit 1; }
@@ -76,10 +76,13 @@ assert_rolling_entrypoint_bridge() {
   ROLLING_ENTRYPOINT_BRIDGE_SHA=$PRODUCTION_FORWARD_W
   bridge_blob=$(git -C "$PROJECT_ROOT" rev-parse \
     "$ROLLING_ENTRYPOINT_BRIDGE_SHA:ops/deploy/social-monitor-production-deploy.sh")
-  current_blob=$(git -C "$PROJECT_ROOT" rev-parse \
-    "HEAD:ops/deploy/social-monitor-production-deploy.sh")
-  [[ $bridge_blob == "$current_blob" ]] || {
-    echo 'rolling entrypoint bridge does not match the current release' >&2
+  # Preserve immutable W-to-F/H history without freezing ordinary descendants.
+  # Their current source is independently checked against an explicit digest below.
+  historical_final=${PRODUCTION_FORWARD_F:-$PRODUCTION_FORWARD_H}
+  historical_blob=$(git -C "$PROJECT_ROOT" rev-parse \
+    "$historical_final:ops/deploy/social-monitor-production-deploy.sh")
+  [[ $bridge_blob == "$historical_blob" ]] || {
+    echo 'rolling entrypoint bridge does not match the immutable final release' >&2
     exit 1
   }
 }
@@ -130,7 +133,7 @@ assert_real_bridge_target_assets() {
         expected_digest=ac82c9cfebf88646e9cdc21dcb822c8cc50409832da24a726cd9307cc2be8bcb
         alternate_digest=101b80c5c0ee6ea5ff4e908e5661a7c2bbd03ad2048fb7eb8b5d26966b0e4860
         reviewed_digest=cc869266046dbe9edc590e83944e93bab8ebdf19e8ef66f4917c896bbd48fcde
-        current_release_digest=d9260a34a3d64cc4ba2b3799266ca97a0e7b58cb8ae4649bb1f2e11e26791b47
+        current_release_digest=b15e93451395568d49c2a1ef9c9ae86ace1320ef18e68ea42b2b90d9963529da
         ;;
       ops/deploy/deploy-control-lib.sh)
         expected_digest=d18854822ef36d5571289e72c7691fff8db4a7d5c516787441a733d6960a88a9
