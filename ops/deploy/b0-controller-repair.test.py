@@ -228,6 +228,8 @@ class RepairTests(unittest.TestCase):
         path.unlink()
         self.git('restore', '--source=HEAD', '--worktree', repair_module.CONTROLLER)
         self.assertEqual(path.read_bytes(), b'new controller\r\n')
+        self.git('add', repair_module.CONTROLLER)
+        self.assertEqual(self.git('diff', '--cached'), b'')
         self.assertEqual(self.git('status', '--porcelain').strip(), b'')
         with self.assertRaisesRegex(RuntimeError, 'bytes/mode'):
             self.repair.handoff(self.target, self.approved)
