@@ -294,7 +294,7 @@ const dailySynthesisReaderSummaryInput = (): ReaderSummaryModelInput => {
         },
       },
     },
-  ];
+  ] satisfies ReaderSummaryModelInput["evidence"]["selectedEvidence"];
   const evidence = readerSummaryEvidence(selectedEvidence);
 
   return readerSummaryInputForEvidence(evidence);
