@@ -27,7 +27,7 @@ PREIMAGE = '8c402ecadff1db34a9d5991b777a5eb8032282de'
 LIVE = 'c05591883683664d2a59158e4f4fba92fabb0ff4'
 ORIGIN = 'https://github.com/777genius/social-monitor.git'
 CONTROLLER = 'ops/deploy/deploy-control-lib.sh'
-CONTROLLER_SHA256 = '2b80efe62990d8eaf6ea79f0ff7d45c153563036e2503bd0a634db813807fc18'
+CONTROLLER_SHA256 = 'c5612b8cd1092ec04bf3d5271e98e0bc58918cc23832f7f57c3947cb91e011eb'
 ALLOWED = frozenset('ops/deploy/' + name for name in (
     'deploy-control-lib.sh', 'production-transition-b0-bootstrap.test.sh',
     'production-transition-bridge.manifest', 'production-transition-review.statement',
@@ -214,7 +214,7 @@ class ControllerRepair:
         require(re.fullmatch('[0-9a-f]{40}', target) is not None, 'full target SHA required')
         self.hazards()
         require(self.git('rev-parse', 'HEAD').decode().strip() == self.preimage, 'preimage HEAD differs')
-        require(not self.git('status', '--porcelain=v1').strip(), 'integration is dirty')
+        require(not self.git('status', '--porcelain=v1', '--untracked-files=all').strip(), 'integration is dirty')
         require(self.remote() == target, 'target is not exact protected main')
         self.git('merge-base', '--is-ancestor', self.preimage, target)
         paths = self.git('diff', '--name-only', '--no-renames', self.preimage, target).decode().splitlines()
@@ -258,7 +258,7 @@ class ControllerRepair:
         require(self.git_directory_identity() == plan['git_directory_identity'], 'Git directory replaced')
         expected_head = plan['target'] if revision else plan['preimage']
         require(self.git('rev-parse', 'HEAD').decode().strip() == expected_head, 'checkout HEAD differs')
-        require(not self.git('status', '--porcelain=v1').strip(), 'checkout is dirty')
+        require(not self.git('status', '--porcelain=v1', '--untracked-files=all').strip(), 'checkout is dirty')
         for name, versions in plan['entries'].items():
             expected = versions[revision]
             path = self.repo / name

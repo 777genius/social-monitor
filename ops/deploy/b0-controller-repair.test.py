@@ -279,6 +279,23 @@ class RepairTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, 'plan drifted'):
             self.repair.apply(self.target, '0' * 64)
         self.assertFalse(self.repair.run_path(self.target).exists())
+
+    def test_plan_refuses_untracked_files_hidden_by_git_configuration(self):
+        self.git('config', 'status.showUntrackedFiles', 'no')
+        self.write('hidden-untracked', 'unreviewed build input\n')
+        self.assertEqual(self.git('status', '--porcelain').strip(), b'')
+        with self.assertRaisesRegex(RuntimeError, 'integration is dirty'):
+            self.repair.apply(self.target, self.approved)
+        self.assertFalse(self.repair.run_path(self.target).exists())
+
+    def test_handoff_refuses_untracked_files_hidden_by_git_configuration(self):
+        self.repair.apply(self.target, self.approved)
+        self.git('config', 'status.showUntrackedFiles', 'no')
+        self.write('hidden-untracked', 'unreviewed build input\n')
+        self.assertEqual(self.git('status', '--porcelain').strip(), b'')
+        with self.assertRaisesRegex(RuntimeError, 'checkout is dirty'):
+            self.repair.handoff(self.target, self.approved)
+        self.assertFalse((self.repair.run_path(self.target) / 'ordinary-handoff').exists())
         self.assert_preserved()
 
     def test_runtime_restart_after_review_is_refused(self):
@@ -434,8 +451,11 @@ exit 99
             self.assertEqual(result.returncode, 42, f'fresh process {attempt}: {result.stderr.decode()}')
             self.assertIn(b'real-pre-activation-boundary-reached', result.stdout)
             self.assertEqual((empty_control / 'deploy-state/backend.sha').read_text(), repair_module.LIVE + '\n')
-        for mode in ('tracked', 'staged', 'untracked'):
-            path = real / ('recovery-untracked.txt' if mode == 'untracked' else 'README.md')
+        for mode in ('tracked', 'staged', 'untracked', 'hidden-untracked'):
+            untracked = mode.endswith('untracked')
+            path = real / ('recovery-untracked.txt' if untracked else 'README.md')
+            if mode == 'hidden-untracked':
+                self.command('git', '-C', str(real), 'config', 'status.showUntrackedFiles', 'no')
             path.write_text('unreviewed application input\n')
             if mode == 'staged':
                 self.command('git', '-C', str(real), 'add', 'README.md')
@@ -444,10 +464,20 @@ exit 99
             self.assertNotEqual(result.returncode, 42, mode)
             self.assertIn(b'integration worktree is dirty', result.stderr, mode)
             self.assertNotIn(b'real-pre-activation-boundary-reached', result.stdout, mode)
-            if mode == 'untracked':
+            if untracked:
                 path.unlink()
             else:
                 self.command('git', '-C', str(real), 'restore', '--source=HEAD', '--staged', '--worktree', 'README.md')
+        failing_status = full_release.replace('deploy_release "$4"', '''git() {
+  [[ ${3:-} != status ]] || return 73
+  command git "$@"
+}
+deploy_release "$4"''')
+        result = subprocess.run([*args[:2], failing_status, *args[3:]],
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+        self.assertNotEqual(result.returncode, 42)
+        self.assertIn(b'cannot inspect integration worktree', result.stderr)
+        self.assertNotIn(b'real-pre-activation-boundary-reached', result.stdout)
         self.assertEqual(entrypoint.read_bytes(), self.command(
             'git', '-C', str(real), 'show', repair_module.PREIMAGE + ':ops/deploy/social-monitor-production-deploy.sh'))
 

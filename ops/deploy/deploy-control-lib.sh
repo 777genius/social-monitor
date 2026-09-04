@@ -915,7 +915,7 @@ deploy_release() {
   fetch_main
   validate_main_commit "$sha"
   install -d -m 0755 "$STATE" "$STAGING" "$RELEASES"
-  local current
+  local current checkout_status
   current=$(git -C "$REPO" rev-parse HEAD)
   if [[ $mode == resume-target-prepared ]]; then
     [[ $sha == "$current" ]] || \
@@ -962,7 +962,9 @@ deploy_release() {
     verify_deploy_control_bridge_target_compatibility "$sha"
   fi
   if [[ $sha == "$current" ]]; then
-    [[ -z $(git -C "$REPO" status --porcelain) ]] || fail 'integration worktree is dirty'
+    checkout_status=$(git -C "$REPO" status --porcelain --untracked-files=all) || \
+      fail 'cannot inspect integration worktree'
+    [[ -z $checkout_status ]] || fail 'integration worktree is dirty'
   else
     advance_integration "$sha"
   fi
