@@ -18,12 +18,15 @@ import {
   storyTopicTokens,
   storyTitleIdentity,
 } from "./story-topic-tokenizer";
+import { strictStoryRelationTitleEvidence } from
+  "./story-relation-title-evidence";
 
 export const belongsToVerifiedStoryCluster = (
   item: SummaryEvidenceItem,
   clusterItems: readonly SummaryEvidenceItem[],
   policy: StoryRankingPolicy,
   verifiedStoryRelationPairs?: ReadonlySet<string>,
+  verifiedStrictTitleRelationPairs?: ReadonlySet<string>,
 ): boolean =>
   clusterItems.length > 0 &&
   clusterItems.every((candidate) => {
@@ -34,12 +37,14 @@ export const belongsToVerifiedStoryCluster = (
       return true;
     }
 
-    return (
-      verifiedStoryRelationPairs?.has(
-        verifiedStoryRelationPairKey(item.feedItemId, candidate.feedItemId),
-      ) === true &&
-      isVerifiedStoryRelationGuardEligible(item, candidate, policy)
+    const pairKey = verifiedStoryRelationPairKey(
+      item.feedItemId,
+      candidate.feedItemId,
     );
+    return verifiedStrictTitleRelationPairs?.has(pairKey) === true
+      ? isVerifiedStrictTitleRelationGuardEligible(item, candidate, policy)
+      : verifiedStoryRelationPairs?.has(pairKey) === true &&
+          isVerifiedStoryRelationGuardEligible(item, candidate, policy);
   });
 
 export const hasCrossProviderClaimFacetConflict = (
@@ -218,7 +223,6 @@ export const isVerifiedStoryRelationGuardEligible = (
   ) {
     return false;
   }
-
   const itemTokens = storyIdentityTokens(item, policy);
   const candidateTokens = storyIdentityTokens(candidate, policy);
   const sharedTopicTokens = sharedStoryTopicTokenCount(
@@ -269,6 +273,25 @@ export const isVerifiedStoryRelationGuardEligible = (
     : hasConcreteSubject &&
         hasConcreteContext &&
         sharedTopicTokens >= minimumSharedTopicTokens;
+};
+
+const isVerifiedStrictTitleRelationGuardEligible = (
+  item: SummaryEvidenceItem,
+  candidate: SummaryEvidenceItem,
+  policy: StoryRankingPolicy,
+): boolean => {
+  if (readerPostProviderFamily(item.providerKey) ===
+      readerPostProviderFamily(candidate.providerKey)) {
+    return false;
+  }
+  const itemKey = storyKey(item, policy);
+  const candidateKey = storyKey(candidate, policy);
+  return (itemKey === candidateKey ||
+      !canonicalStoryKeysConflict(itemKey, candidateKey)) &&
+    storyClaimFacetsAreCompatible(item, candidate, policy) &&
+    Math.abs(item.publishedAt.getTime() - candidate.publishedAt.getTime()) <=
+      VERIFIED_STORY_RELATION_MAX_TIME_DISTANCE_MS &&
+    strictStoryRelationTitleEvidence(item.title, candidate.title) !== undefined;
 };
 
 const VERIFIED_STORY_RELATION_MAX_TIME_DISTANCE_MS = 30 * 60 * 60 * 1000;

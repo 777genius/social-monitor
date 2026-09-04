@@ -24,6 +24,20 @@ describe("Reader Promotion V2 editorial slate", () => {
     expect(slate.orderedCandidateIds).toEqual(["x-11112", "x-89"]);
   });
 
+  it("keeps an Additional-floor candidate out of Top", () => {
+    const additionalOnly = xEvidence("x-additional-floor", 35);
+    const slate = compose([additionalOnly]);
+
+    expect(slate.top).toEqual([]);
+    expect(slate.additional).toEqual([
+      expect.objectContaining({
+        candidateId: "x-additional-floor",
+        placement: "additional",
+        reasonCodes: expect.arrayContaining(["top_floor_not_met"]),
+      }),
+    ]);
+  });
+
   it("moves Top overflow into Additional without admitting junk", () => {
     const items = Array.from({ length: 9 }, (_, index) =>
       xEvidence(`x-${index + 1}`, 1_000 - index));
@@ -37,6 +51,9 @@ describe("Reader Promotion V2 editorial slate", () => {
     expect(slate.additional[0]?.reasonCodes).toContain(
       "top_capacity_overflow",
     );
+    expect(slate.top.every((entry) =>
+      entry.candidateId !== "x-9",
+    )).toBe(true);
   });
 
   it("rejects a viral irrelevant candidate instead of filling a slot", () => {
@@ -51,6 +68,21 @@ describe("Reader Promotion V2 editorial slate", () => {
     expect(slate.excluded).toContainEqual(expect.objectContaining({
       candidateId: "viral-irrelevant",
       reasonCodes: expect.arrayContaining(["relevance_floor_not_met"]),
+    }));
+  });
+
+  it("keeps a deterministic empty slate when no candidate reaches admission", () => {
+    const belowAdmission = xEvidence("x-no-signal", 34);
+
+    const first = compose([belowAdmission]);
+    const replay = compose([belowAdmission]);
+
+    expect(first.top).toEqual([]);
+    expect(first.additional).toEqual([]);
+    expect(first.digestMaterial).toBe(replay.digestMaterial);
+    expect(first.excluded).toContainEqual(expect.objectContaining({
+      candidateId: "x-no-signal",
+      reasonCodes: ["provider_floor_not_met"],
     }));
   });
 

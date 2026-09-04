@@ -217,7 +217,17 @@ export class DeterministicReaderSummaryModelAdapter implements ReaderSummaryMode
           })
       : [];
 
-    const headline = buildReaderHeadline(input, selectedEvidence);
+    const headlineEvidence = input.evidence.editorialSlate === undefined
+      ? selectedEvidence
+      : input.evidence.editorialSlate.orderedCandidateIds.flatMap(
+          (candidateId) => {
+            const item = input.evidence.selectedEvidence.find(
+              (evidence) => evidence.feedItemId === candidateId,
+            );
+            return item === undefined ? [] : [item];
+          },
+        );
+    const headline = buildReaderHeadline(input, headlineEvidence);
     const executiveSummary = buildExecutiveSummary(input);
     const narrativeSections = buildDeterministicReaderSummaryNarrative({
       input,

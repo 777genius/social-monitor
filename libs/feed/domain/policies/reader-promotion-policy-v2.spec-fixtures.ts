@@ -46,7 +46,10 @@ export const xPromotionCandidate = (params: {
   },
 });
 
-export const redditPromotionCandidate = (): ReaderPromotionV2Candidate => ({
+export const redditPromotionCandidate = (params: {
+  readonly score?: number;
+  readonly upvoteRatio?: number;
+} = {}): ReaderPromotionV2Candidate => ({
   ...rankingInputs,
   candidateId: "fixture-reddit-01",
   canonicalIdentity: "fixture:reddit:01",
@@ -58,15 +61,16 @@ export const redditPromotionCandidate = (): ReaderPromotionV2Candidate => ({
     authority: socialMetricAuthority(),
     metrics: {
       provider: "reddit",
-      score: 64,
-      upvotes: 64,
-      upvoteRatio: 0.81,
+      score: params.score ?? 64,
+      upvotes: params.score ?? 64,
+      upvoteRatio: params.upvoteRatio ?? 0.81,
     },
   },
 });
 
-export const hackerNewsPromotionCandidate =
-(): ReaderPromotionV2Candidate => ({
+export const hackerNewsPromotionCandidate = (params: {
+  readonly points?: number;
+} = {}): ReaderPromotionV2Candidate => ({
   ...rankingInputs,
   candidateId: "fixture-hn-01",
   canonicalIdentity: "fixture:hacker-news:01",
@@ -76,11 +80,14 @@ export const hackerNewsPromotionCandidate =
     state: "observed",
     authoritative: true,
     authority: socialMetricAuthority(),
-    metrics: { provider: "hacker_news", points: 73 },
+    metrics: { provider: "hacker_news", points: params.points ?? 73 },
   },
 });
 
-export const githubPromotionCandidate = (): ReaderPromotionV2Candidate => ({
+export const githubPromotionCandidate = (params: {
+  readonly starsDelta?: number;
+  readonly forksDelta?: number;
+} = {}): ReaderPromotionV2Candidate => ({
   ...rankingInputs,
   candidateId: "fixture-github-01",
   canonicalIdentity: "fixture:github:01",
@@ -98,8 +105,8 @@ export const githubPromotionCandidate = (): ReaderPromotionV2Candidate => ({
       provider: "github",
       window: "24h",
       checkedAt: "2026-08-29T17:00:00.000Z",
-      starsDelta: 38,
-      forksDelta: 12,
+      starsDelta: params.starsDelta ?? 38,
+      forksDelta: params.forksDelta ?? 12,
     },
   },
 });
