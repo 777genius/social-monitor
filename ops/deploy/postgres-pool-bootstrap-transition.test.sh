@@ -628,11 +628,11 @@ normal_control_output=$(run_current_control_deploy)
 grep -F "deployed=$CURRENT_SHA" <<< "$normal_control_output" >/dev/null
 grep -F 'backend=true' <<< "$normal_control_output" >/dev/null
 grep -F 'control=true' <<< "$normal_control_output" >/dev/null
-[[ $(sed -n '1p' "$NORMAL_CONTROL_LOG") == integration ]]
-[[ $(sed -n '2p' "$NORMAL_CONTROL_LOG") == load-backend ]]
-[[ $(sed -n '3p' "$NORMAL_CONTROL_LOG") == control ]]
+# Same-target control repair must not fast-forward/re-bootstrap the checkout.
+[[ $(sed -n '1p' "$NORMAL_CONTROL_LOG") == load-backend ]]
+[[ $(sed -n '2p' "$NORMAL_CONTROL_LOG") == control ]]
 grep -Ex 'transaction:true:(true|false)' "$NORMAL_CONTROL_LOG" >/dev/null
-[[ $(wc -l < "$NORMAL_CONTROL_LOG") == 4 ]]
+[[ $(wc -l < "$NORMAL_CONTROL_LOG") == 3 ]]
 [[ $(<"$STATE/control.sha") == "$CURRENT_SHA" ]]
 [[ $(<"$STATE/postgres-pool-bootstrap.sha") == "$CURRENT_SHA" ]]
 assert_release_a_non_activation
