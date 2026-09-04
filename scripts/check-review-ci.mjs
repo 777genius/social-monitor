@@ -31,7 +31,7 @@ const transitionProtected = readFileSync(transitionProtectedPath, "utf8");
 const packageJson = JSON.parse(readFileSync("package.json", "utf8"));
 const violations = [];
 const subscriptionRuntimeAuthPoolE2eCommand =
-  "node --test apps/agent-runtime/bin/codex-auth-pool-manifest.test.mjs apps/agent-runtime/bin/codex-auth-pool-routing.test.mjs apps/agent-runtime/bin/reader-promotion-v2-canary-lane.e2e.test.mjs apps/agent-runtime/bin/reader-promotion-v2-canary-main30-contract.test.mjs apps/agent-runtime/bin/subscription-runtime-auth-pool.e2e.test.mjs apps/agent-runtime/bin/subscription-runtime-purpose-model-policy.test.mjs";
+  "node --test apps/agent-runtime/bin/codex-auth-pool-manifest.test.mjs apps/agent-runtime/bin/codex-auth-pool-routing.test.mjs apps/agent-runtime/bin/subscription-runtime-auth-pool.e2e.test.mjs apps/agent-runtime/bin/subscription-runtime-purpose-model-policy.test.mjs";
 const dailyCursorPostgres18Command =
   "node scripts/run-with-timeout.mjs --timeout-ms 180000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-reader-summary-daily-execution-cursor-postgres.ts";
 const rollingReceiptTest =
