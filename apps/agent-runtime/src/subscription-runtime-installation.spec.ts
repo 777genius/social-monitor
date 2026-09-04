@@ -44,6 +44,9 @@ describe("subscription runtime installation admission", () => {
       new FileSubscriptionRuntimeInstallationInspector().inspect(command),
     ).resolves.toMatchObject({
       executablePath: await realpath(command),
+      packageRootRealpath: await realpath(
+        join(process.cwd(), "node_modules/@vioxen/subscription-runtime"),
+      ),
       runtimePackageVersion: approvedSubscriptionRuntimePackageVersion,
       launcherSha256: approvedSubscriptionRuntimeLauncherSha256,
     });

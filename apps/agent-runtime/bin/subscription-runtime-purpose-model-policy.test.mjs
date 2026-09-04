@@ -99,54 +99,17 @@ test("canary purpose is private, exact-schema-only, and deeply frozen", () => {
   }
 });
 
-test("MJS policy removes both schema-name fields for output_text", () => {
-  const admission = admitSubscriptionRuntimeWrapperRequest({
-    provider: "codex",
-    request: {
-      context: {
-        purpose: "social_monitor.reader_summary.daily.canonical_recovery.v2",
-      },
-      task: {
-        outputSchemaName: "weekly-summary",
-        controls: {
-          outputSchemaName: "weekly-summary",
-          responseFormat: "text",
-        },
-        metadata: { runtimeOutput: "output_text" },
-      },
-    },
-  });
-  const task = admission.canonicalRequest.task;
-
-  assert.equal(Object.hasOwn(task, "outputSchemaName"), false);
-  assert.equal(Object.hasOwn(task.controls, "outputSchemaName"), false);
-  assert.equal(task.controls.responseFormat, "text");
-  assert.equal(task.metadata.runtimeOutput, "output_text");
-});
-
-test("MJS policy preserves structured schema names", () => {
-  const admission = admitSubscriptionRuntimeWrapperRequest({
-    provider: "codex",
-    request: {
-      context: { purpose: "social_monitor.reader_summary.generate.v2" },
-      task: {
-        outputSchemaName: "daily-summary",
-        controls: {
-          outputSchemaName: "daily-summary",
-          outputSchema: { type: "object" },
-          responseFormat: "json",
-        },
-        metadata: { runtimeOutput: "structured_output" },
-      },
-    },
-  });
-  const task = admission.canonicalRequest.task;
-
-  assert.equal(task.outputSchemaName, "daily-summary");
-  assert.equal(task.controls.outputSchemaName, "daily-summary");
-  assert.deepEqual(task.controls.outputSchema, { type: "object" });
-  assert.equal(task.controls.responseFormat, "json");
-  assert.equal(task.metadata.runtimeOutput, "structured_output");
+test("standard MJS canonical JSON bytes stay frozen for every purpose", () => {
+  for (const golden of standardCanonicalGoldens) {
+    const admission = admitSubscriptionRuntimeWrapperRequest(
+      standardGoldenInput(golden.purpose, golden.outputKind),
+    );
+    assert.equal(
+      JSON.stringify(admission.canonicalRequest),
+      golden.bytes,
+      golden.purpose,
+    );
+  }
 });
 
 test("active v2 admits high and rejects xhigh and every legacy reader-summary purpose", () => {
@@ -272,6 +235,94 @@ const canaryInput = (schema) => ({
     },
   },
 });
+
+const structuredBytes = (
+  purpose,
+  schemaName = "golden-schema",
+  schemaVersion = "golden.v1",
+  metadataMarkers = "",
+) =>
+  `{"protocolVersion":1,"runId":"golden-run","task":{"kind":"structured-prompt","outputSchemaName":"${schemaName}","controls":{"outputSchemaName":"${schemaName}","schemaVersion":"${schemaVersion}","outputSchema":{"type":"object"},"model":"gpt-5.6-sol","reasoningEffort":"REASONING","responseFormat":"json"},"metadata":{"marker":"kept","outputKind":"structured_output","runtimeOutput":"structured_output"${metadataMarkers},"model":"gpt-5.6-sol","reasoningEffort":"REASONING"}},"context":{"purpose":"${purpose}"}}`;
+
+const textBytes = (purpose) =>
+  `{"protocolVersion":1,"runId":"golden-run","task":{"kind":"structured-prompt","outputSchemaName":"golden-schema","controls":{"outputSchemaName":"golden-schema","schemaVersion":"golden.v1","model":"gpt-5.6-sol","reasoningEffort":"high","responseFormat":"text"},"metadata":{"marker":"kept","outputKind":"output_text","runtimeOutput":"output_text","model":"gpt-5.6-sol","reasoningEffort":"high"}},"context":{"purpose":"${purpose}"}}`;
+
+const standardCanonicalGoldens = [
+  ["social_monitor.summary.generate", "xhigh"],
+  ["social_monitor.reader_summary.generate.v2", "high"],
+  ["social_monitor.reader_summary.repair.v2", "high"],
+  ["social_monitor.reader_summary.topic_map.label.v2", "high"],
+  ["social_monitor.reader_summary.topic_map.verify_relations.v2", "high"],
+  ["social_monitor.reader_summary.verify_story_relations.v2", "high"],
+  ["social_monitor.reader_summary.weekly.review.v2", "high"],
+].map(([purpose, effort]) => ({
+  purpose,
+  outputKind: "structured_output",
+  bytes: structuredBytes(purpose).replaceAll("REASONING", effort),
+}));
+standardCanonicalGoldens.push({
+  purpose: "social_monitor.reader_summary.verify_related_topic_relations.v2",
+  outputKind: "structured_output",
+  bytes: structuredBytes(
+    "social_monitor.reader_summary.verify_related_topic_relations.v2",
+    "social_monitor_reader_summary_related_topic_relations",
+    "reader_summary.related_topic_relation.v1",
+    ",\"taskRole\":\"related_topic_relation\",\"verificationLane\":\"related_topic\"",
+  ).replaceAll("REASONING", "high"),
+});
+for (const purpose of [
+  "social_monitor.reader_summary.daily.canonical_recovery.v2",
+  "social_monitor.reader_summary.weekly.generate.v2",
+]) {
+  standardCanonicalGoldens.push({
+    purpose,
+    outputKind: "output_text",
+    bytes: textBytes(purpose),
+  });
+}
+
+const standardGoldenInput = (purpose, outputKind) => {
+  const related = purpose ===
+    "social_monitor.reader_summary.verify_related_topic_relations.v2";
+  const schemaName = related
+    ? "social_monitor_reader_summary_related_topic_relations"
+    : "golden-schema";
+  return {
+    provider: "codex",
+    request: {
+      protocolVersion: 1,
+      runId: "golden-run",
+      task: {
+        kind: "structured-prompt",
+        outputSchemaName: schemaName,
+        controls: {
+          outputSchemaName: schemaName,
+          schemaVersion: related
+            ? "reader_summary.related_topic_relation.v1"
+            : "golden.v1",
+          ...(outputKind === "structured_output"
+            ? { outputSchema: { type: "object" } }
+            : {}),
+          outputKind,
+          runtimeOutput: outputKind,
+          selectedOutputKind: outputKind,
+        },
+        metadata: {
+          marker: "kept",
+          outputKind,
+          runtimeOutput: outputKind,
+          ...(related
+            ? {
+                taskRole: "related_topic_relation",
+                verificationLane: "related_topic",
+              }
+            : {}),
+        },
+      },
+      context: { purpose },
+    },
+  };
+};
 
 const mutatedSchemas = () => {
   const extra = structuredClone(readerPromotionV2CanaryOutputSchema);
