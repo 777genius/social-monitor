@@ -14,10 +14,10 @@ deploy_shellcheck=$(
 DEPLOY_SHELLCHECK=$deploy_shellcheck node <<'NODE'
 const findings = JSON.parse(process.env.DEPLOY_SHELLCHECK ?? "[]");
 const expected = new Set([
-  "ops/deploy/production-forward-bridge.test.sh:416:2120:run_b0_install",
-  "ops/deploy/production-forward-bridge.test.sh:577:2034:PRODUCTION_TRANSITION_HOST_LOCK_FD",
-  "ops/deploy/production-forward-bridge.test.sh:579:2034:PRODUCTION_TRANSITION_HOST_LOCK_ACTIVE",
-  "ops/deploy/production-forward-bridge.test.sh:590:2034:PRODUCTION_TRANSITION_HOST_LOCK_OWNER",
+  "ops/deploy/production-forward-bridge.test.sh:410:2120:run_b0_install",
+  "ops/deploy/production-forward-bridge.test.sh:571:2034:PRODUCTION_TRANSITION_HOST_LOCK_FD",
+  "ops/deploy/production-forward-bridge.test.sh:573:2034:PRODUCTION_TRANSITION_HOST_LOCK_ACTIVE",
+  "ops/deploy/production-forward-bridge.test.sh:584:2034:PRODUCTION_TRANSITION_HOST_LOCK_OWNER",
   "ops/deploy/social-monitor-production-deploy.sh:42:2034:PUBLIC_LINK",
   "ops/deploy/social-monitor-production-deploy.sh:43:2034:ADMIN_LINK",
 ]);
