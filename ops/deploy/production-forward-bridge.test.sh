@@ -467,6 +467,25 @@ done
 reset_b0_destinations
 run_b0_install
 
+# A terminal transition may leave the exact target checked out while component
+# markers still require an idempotent deploy resume. Trusted B0 functions are
+# already readonly in that process, so advancing an already-current checkout
+# must not reinstall and source the same authority a second time.
+run_current_target_advance_with_loaded_authority() (
+  export SOCIAL_MONITOR_DEPLOY_TEST_MODE=1
+  source "$SCRIPT_DIR/deploy-control-bridge-lib.sh"
+  source "$CONTROL/production-transition-b0-host-control.sh"
+  while read -r _ _ authority_function; do
+    [[ $authority_function != production_transition_* ]] || \
+      readonly -f "$authority_function"
+  done < <(declare -F)
+  DEPLOY_CONTROL_BRIDGE_INITIALIZED_HEAD=$B
+  advance_integration "$F"
+)
+git -C "$repo" checkout -q "$F"
+run_current_target_advance_with_loaded_authority
+printf 'forward-bridge-test: current target skips redundant B0 source\n'
+
 # A predecessor-started process loads no test-defined host helper. It installs
 # and sources the reviewed B0 authority before the fast-forward failpoint. The
 # retry is a separate fresh shell starting with HEAD=F.
