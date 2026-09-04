@@ -27,7 +27,7 @@ PREIMAGE = '8c402ecadff1db34a9d5991b777a5eb8032282de'
 LIVE = 'c05591883683664d2a59158e4f4fba92fabb0ff4'
 ORIGIN = 'https://github.com/777genius/social-monitor.git'
 CONTROLLER = 'ops/deploy/deploy-control-lib.sh'
-CONTROLLER_SHA256 = 'f0b717cb29067bae349340c473b924918d790ba1d0c45620a96f7854e54f7c5d'
+CONTROLLER_SHA256 = '2b80efe62990d8eaf6ea79f0ff7d45c153563036e2503bd0a634db813807fc18'
 ALLOWED = frozenset('ops/deploy/' + name for name in (
     'deploy-control-lib.sh', 'production-transition-b0-bootstrap.test.sh',
     'production-transition-bridge.manifest', 'production-transition-review.statement',
@@ -247,7 +247,38 @@ class ControllerRepair:
                 'target_tree': self.git('rev-parse', target + '^{tree}').decode().strip(),
                 'delta_sha256': digest(self.git('diff', '--binary', '--full-index', self.preimage, target)),
                 'entries': entries, 'protected': self.protected(),
-                'git_directory_inode': (self.repo / '.git').stat().st_ino}
+                'git_directory_identity': self.git_directory_identity()}
+
+    def git_directory_identity(self) -> list[int]:
+        info = (self.repo / '.git').lstat()
+        require(stat.S_ISDIR(info.st_mode), 'Git directory is not a directory')
+        return [info.st_dev, info.st_ino]
+
+    def verify_checkout(self, plan: dict, revision: int = 1) -> None:
+        require(self.git_directory_identity() == plan['git_directory_identity'], 'Git directory replaced')
+        expected_head = plan['target'] if revision else plan['preimage']
+        require(self.git('rev-parse', 'HEAD').decode().strip() == expected_head, 'checkout HEAD differs')
+        require(not self.git('status', '--porcelain=v1').strip(), 'checkout is dirty')
+        for name, versions in plan['entries'].items():
+            expected = versions[revision]
+            path = self.repo / name
+            indexed = self.git('ls-files', '--stage', '--', name).decode().strip()
+            if expected is None:
+                require(not os.path.lexists(path) and not indexed, 'removed repair path remains')
+                continue
+            data, identity = regular(path)
+            require(digest(data) == expected[2] and stat.S_IMODE(identity[2]) == int(expected[0][-3:], 8),
+                    'checkout bytes/mode differ from reviewed blob')
+            require(indexed == f'{expected[0]} {expected[1]} 0\t{name}', 'checkout index differs')
+        require(self.protected() == plan['protected'], 'protected state changed')
+
+    def seal_checkout(self, plan: dict, revision: int = 1) -> None:
+        self.verify_checkout(plan, revision)
+        # Linux syncfs flushes this filesystem, including fetched Git objects,
+        # worktree, index, refs and their directories, without walking worktrees.
+        # Any flush failure forbids the durable completion/cutoff receipt.
+        execute('/usr/bin/sync', '--file-system', str(self.repo))
+        self.verify_checkout(plan, revision)
 
     def run_path(self, target: str) -> Path:
         require(re.fullmatch('[0-9a-f]{40}', target) is not None, 'full target SHA required')
@@ -269,10 +300,7 @@ class ControllerRepair:
             # This is an audited control recovery only. No target code or hook
             # is invoked; the installed entrypoint and all markers stay intact.
             self.git('merge', '--ff-only', '--no-edit', target)
-            require(not self.git('status', '--porcelain=v1').strip(), 'post-repair checkout is dirty')
-            require(self.git('rev-parse', 'HEAD').decode().strip() == target, 'target not reached')
-            require(self.protected() == plan['protected'], 'protected state changed')
-            require((self.repo / '.git').stat().st_ino == plan['git_directory_inode'], 'Git directory replaced')
+            self.seal_checkout(plan)
             durable(run / 'control-repaired', canonical({'application_deployed': False, 'target': target}))
 
     def rollback(self, target: str, approved: str) -> None:
@@ -286,7 +314,7 @@ class ControllerRepair:
             require(not (run / 'ordinary-handoff').exists(), 'ordinary deployment handoff forbids rollback')
             require(self.protected() == plan['protected'], 'protected state drift forbids rollback')
             require(self.git('rev-parse', 'HEAD').decode().strip() in (self.preimage, target), 'unknown HEAD')
-            require((self.repo / '.git').stat().st_ino == plan['git_directory_inode'], 'Git directory replaced')
+            require(self.git_directory_identity() == plan['git_directory_identity'], 'Git directory replaced')
             allowed = set(plan['entries'])
             for args in (('diff', '--name-only', '--no-renames', self.preimage),
                          ('diff', '--cached', '--name-only', '--no-renames', self.preimage)):
@@ -312,8 +340,7 @@ class ControllerRepair:
                     if path.exists():
                         path.unlink()  # Only a new, reviewed, hash-verified repair file.
             self.git('checkout', '--detach', self.preimage)
-            require(not self.git('status', '--porcelain=v1').strip(), 'rollback is not clean')
-            require(self.protected() == plan['protected'], 'rollback changed protected state')
+            self.seal_checkout(plan, revision=0)
             durable(run / 'rolled-back', canonical({'preimage': self.preimage}))
 
     def handoff(self, target: str, approved: str) -> None:
@@ -328,8 +355,7 @@ class ControllerRepair:
                     'control repair receipt differs')
             require(self.remote() == target and self.git('rev-parse', 'HEAD').decode().strip() == target,
                     'handoff target/lease drifted')
-            require(not self.git('status', '--porcelain=v1').strip(), 'handoff checkout is dirty')
-            require(self.protected() == plan['protected'], 'handoff protected state changed')
+            self.seal_checkout(plan)
             durable(run / 'ordinary-handoff', canonical({'target': target, 'application_deployed': False}))
 
 

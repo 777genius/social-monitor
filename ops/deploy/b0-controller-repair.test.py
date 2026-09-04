@@ -164,6 +164,102 @@ class RepairTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, 'handoff forbids'):
             self.repair.rollback(self.target, self.approved)
 
+    def test_durability_barrier_precedes_each_success_receipt(self):
+        original = repair_module.execute
+        barriers = []
+        run = self.repair.run_path(self.target)
+
+        def execute(*args):
+            if args[0] == '/usr/bin/sync':
+                receipt = 'control-repaired' if not barriers else 'ordinary-handoff'
+                self.assertFalse((run / receipt).exists())
+                barriers.append(receipt)
+            return original(*args)
+
+        with patch.object(repair_module, 'execute', side_effect=execute):
+            self.repair.apply(self.target, self.approved)
+            self.repair.handoff(self.target, self.approved)
+        self.assertEqual(barriers, ['control-repaired', 'ordinary-handoff'])
+
+    def test_failed_flush_does_not_certify_repair_or_close_rollback(self):
+        original = repair_module.execute
+
+        def execute(*args):
+            if args[0] == '/usr/bin/sync':
+                raise RuntimeError('simulated filesystem flush failure')
+            return original(*args)
+
+        with patch.object(repair_module, 'execute', side_effect=execute):
+            with self.assertRaisesRegex(RuntimeError, 'flush failure'):
+                self.repair.apply(self.target, self.approved)
+        run = self.repair.run_path(self.target)
+        self.assertFalse((run / 'control-repaired').exists())
+        self.assertFalse((run / 'ordinary-handoff').exists())
+        self.repair.rollback(self.target, self.approved)
+        self.assert_preserved()
+
+    def test_failed_handoff_flush_leaves_rollback_available(self):
+        self.repair.apply(self.target, self.approved)
+        original = repair_module.execute
+
+        def execute(*args):
+            if args[0] == '/usr/bin/sync':
+                raise RuntimeError('simulated handoff flush failure')
+            return original(*args)
+
+        with patch.object(repair_module, 'execute', side_effect=execute):
+            with self.assertRaisesRegex(RuntimeError, 'flush failure'):
+                self.repair.handoff(self.target, self.approved)
+        self.assertFalse((self.repair.run_path(self.target) / 'ordinary-handoff').exists())
+        self.repair.rollback(self.target, self.approved)
+
+    def test_handoff_rejects_git_clean_but_converted_bytes(self):
+        self.repair.apply(self.target, self.approved)
+        self.git('config', 'core.autocrlf', 'true')
+        (self.repo / repair_module.CONTROLLER).write_bytes(b'new controller\r\n')
+        self.assertEqual(self.git('status', '--porcelain').strip(), b'')
+        with self.assertRaisesRegex(RuntimeError, 'bytes/mode'):
+            self.repair.handoff(self.target, self.approved)
+
+    def test_apply_rejects_clean_conversion_after_merge(self):
+        original = self.repair.git
+
+        def git(*args):
+            result = original(*args)
+            if args[0] == 'merge':
+                original('config', 'core.autocrlf', 'true')
+                (self.repo / repair_module.CONTROLLER).write_bytes(b'new controller\r\n')
+            return result
+
+        with patch.object(self.repair, 'git', side_effect=git):
+            with self.assertRaisesRegex(RuntimeError, 'bytes/mode'):
+                self.repair.apply(self.target, self.approved)
+        self.assertFalse((self.repair.run_path(self.target) / 'control-repaired').exists())
+
+    def test_handoff_checks_git_device_and_inode(self):
+        self.repair.apply(self.target, self.approved)
+        device, inode = self.plan['git_directory_identity']
+        for changed in ([device + 1, inode], [device, inode + 1]):
+            with patch.object(self.repair, 'git_directory_identity', return_value=changed):
+                with self.assertRaisesRegex(RuntimeError, 'Git directory replaced'):
+                    self.repair.handoff(self.target, self.approved)
+        self.assertFalse((self.repair.run_path(self.target) / 'ordinary-handoff').exists())
+
+    def test_handoff_revalidates_after_durability_barrier(self):
+        self.repair.apply(self.target, self.approved)
+        original = repair_module.execute
+
+        def execute(*args):
+            result = original(*args)
+            if args[0] == '/usr/bin/sync':
+                self.write(repair_module.CONTROLLER, 'concurrent mutation\n')
+            return result
+
+        with patch.object(repair_module, 'execute', side_effect=execute):
+            with self.assertRaisesRegex(RuntimeError, 'dirty'):
+                self.repair.handoff(self.target, self.approved)
+        self.assertFalse((self.repair.run_path(self.target) / 'ordinary-handoff').exists())
+
     def test_wrong_plan_is_refused_before_writes(self):
         with self.assertRaisesRegex(RuntimeError, 'plan drifted'):
             self.repair.apply(self.target, '0' * 64)
@@ -316,6 +412,20 @@ exit 99
             self.assertEqual(result.returncode, 42, f'fresh process {attempt}: {result.stderr.decode()}')
             self.assertIn(b'real-pre-activation-boundary-reached', result.stdout)
             self.assertEqual((empty_control / 'deploy-state/backend.sha').read_text(), repair_module.LIVE + '\n')
+        for mode in ('tracked', 'staged', 'untracked'):
+            path = real / ('recovery-untracked.txt' if mode == 'untracked' else 'README.md')
+            path.write_text('unreviewed application input\n')
+            if mode == 'staged':
+                self.command('git', '-C', str(real), 'add', 'README.md')
+            result = subprocess.run([*args[:2], full_release, *args[3:]],
+                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+            self.assertNotEqual(result.returncode, 42, mode)
+            self.assertIn(b'integration worktree is dirty', result.stderr, mode)
+            self.assertNotIn(b'real-pre-activation-boundary-reached', result.stdout, mode)
+            if mode == 'untracked':
+                path.unlink()
+            else:
+                self.command('git', '-C', str(real), 'restore', '--source=HEAD', '--staged', '--worktree', 'README.md')
         self.assertEqual(entrypoint.read_bytes(), self.command(
             'git', '-C', str(real), 'show', repair_module.PREIMAGE + ':ops/deploy/social-monitor-production-deploy.sh'))
 

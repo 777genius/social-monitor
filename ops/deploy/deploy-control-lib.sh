@@ -961,7 +961,11 @@ deploy_release() {
         $x_image_provenance_release == true ]]; then
     verify_deploy_control_bridge_target_compatibility "$sha"
   fi
-  [[ $sha == "$current" ]] || advance_integration "$sha"
+  if [[ $sha == "$current" ]]; then
+    [[ -z $(git -C "$REPO" status --porcelain) ]] || fail 'integration worktree is dirty'
+  else
+    advance_integration "$sha"
+  fi
   # The entrypoint already authenticated and froze an installed B0 authority.
   # Re-sourcing that authority after an ordinary fast-forward would attempt to
   # redefine readonly functions. A predecessor that has not loaded B0 still
