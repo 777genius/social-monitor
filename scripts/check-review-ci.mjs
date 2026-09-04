@@ -31,7 +31,7 @@ const transitionProtected = readFileSync(transitionProtectedPath, "utf8");
 const packageJson = JSON.parse(readFileSync("package.json", "utf8"));
 const violations = [];
 const subscriptionRuntimeAuthPoolE2eCommand =
-  "node --test apps/agent-runtime/bin/codex-auth-pool-manifest.test.mjs apps/agent-runtime/bin/codex-auth-pool-routing.test.mjs apps/agent-runtime/bin/subscription-runtime-auth-pool.e2e.test.mjs apps/agent-runtime/bin/subscription-runtime-purpose-model-policy.test.mjs";
+  "node --test apps/agent-runtime/bin/codex-auth-pool-manifest.test.mjs apps/agent-runtime/bin/codex-auth-pool-routing.test.mjs apps/agent-runtime/bin/reader-promotion-v2-canary-lane.e2e.test.mjs apps/agent-runtime/bin/reader-promotion-v2-canary-main30-contract.test.mjs apps/agent-runtime/bin/subscription-runtime-auth-pool.e2e.test.mjs apps/agent-runtime/bin/subscription-runtime-purpose-model-policy.test.mjs";
 const dailyCursorPostgres18Command =
   "node scripts/run-with-timeout.mjs --timeout-ms 180000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-reader-summary-daily-execution-cursor-postgres.ts";
 const rollingReceiptTest =
@@ -245,10 +245,16 @@ if (
   );
 }
 if (
-  !transitionReview.includes("PRODUCTION_TRANSITION_REVIEW_PRIVATE_KEY") ||
-  transitionReview.includes("PRODUCTION_TRANSITION_TARGET_PRIVATE_KEY") ||
-  !transitionPublish.includes("PRODUCTION_TRANSITION_TARGET_PRIVATE_KEY") ||
-  transitionPublish.includes("PRODUCTION_TRANSITION_REVIEW_PRIVATE_KEY")
+  !transitionReview.includes(
+    "secrets.PRODUCTION_TRANSITION_REVIEW_SIGNING_KEY",
+  ) ||
+  transitionReview.includes("PRODUCTION_TRANSITION_TARGET_SIGNING_KEY") ||
+  !transitionPublish.includes(
+    "secrets.PRODUCTION_TRANSITION_TARGET_SIGNING_KEY",
+  ) ||
+  transitionPublish.includes("PRODUCTION_TRANSITION_REVIEW_SIGNING_KEY") ||
+  transitionReview.includes("PRODUCTION_TRANSITION_REVIEW_PRIVATE_KEY") ||
+  transitionPublish.includes("PRODUCTION_TRANSITION_TARGET_PRIVATE_KEY")
 ) {
   violations.push("production transition workflows must keep review and target signing authorities separate");
 }
@@ -334,8 +340,27 @@ const findJob = (source, jobId) => source.match(
   ),
 )?.[1];
 
+const transitionReviewJob = findJob(transitionReview, "review");
 const transitionPublisherJob = findJob(transitionPublish, "publish");
 const transitionActivationJob = findJob(transitionPublish, "activate");
+
+if (
+  transitionReviewJob === undefined ||
+  !transitionReviewJob.includes("environment: production") ||
+  !transitionReviewJob.includes(
+    "REVIEW_PRIVATE_KEY: ${{ secrets.PRODUCTION_TRANSITION_REVIEW_SIGNING_KEY }}",
+  ) ||
+  !transitionReviewJob.includes(
+    "git config user.name 'social-monitor-transition-review'",
+  ) ||
+  !transitionReviewJob.includes(
+    "git config user.email 'social-monitor-transition-review@users.noreply.github.com'",
+  )
+) {
+  violations.push(
+    `${transitionReviewPath}: review must receive only its production signing secret and configure deterministic commit identity`,
+  );
+}
 
 if (
   !transitionPublish.includes("\npermissions: {}\n") ||
@@ -363,7 +388,6 @@ if (
 }
 
 for (const prohibited of [
-  "environment: production",
   "PRODUCTION_SSH_PRIVATE_KEY",
   "PRODUCTION_SSH_KNOWN_HOSTS",
   "DEPLOY_HOST:",
@@ -376,13 +400,30 @@ for (const prohibited of [
     );
   }
 }
-for (const [authority, owner] of [
-  ["PRODUCTION_TRANSITION_TARGET_PRIVATE_KEY", transitionPublisherJob],
-  ["PRODUCTION_SSH_PRIVATE_KEY", transitionActivationJob],
-  ["PRODUCTION_SSH_KNOWN_HOSTS", transitionActivationJob],
+if (
+  !transitionPublisherJob?.includes("environment: production") ||
+  !transitionPublisherJob.includes(
+    "git config user.name 'social-monitor-transition-publisher'",
+  ) ||
+  !transitionPublisherJob.includes(
+    "git config user.email 'social-monitor-transition-publisher@users.noreply.github.com'",
+  )
+) {
+  violations.push(
+    `${transitionPublishPath}: publisher must receive its production signing secret and configure deterministic commit identity`,
+  );
+}
+for (const [authority, token, owner] of [
+  [
+    "PRODUCTION_TRANSITION_TARGET_SIGNING_KEY",
+    "TARGET_PRIVATE_KEY: ${{ secrets.PRODUCTION_TRANSITION_TARGET_SIGNING_KEY }}",
+    transitionPublisherJob,
+  ],
+  ["PRODUCTION_SSH_PRIVATE_KEY", "PRODUCTION_SSH_PRIVATE_KEY", transitionActivationJob],
+  ["PRODUCTION_SSH_KNOWN_HOSTS", "PRODUCTION_SSH_KNOWN_HOSTS", transitionActivationJob],
 ]) {
   if (
-    transitionPublish.split(authority).length !== 2 ||
+    transitionPublish.split(token).length !== 2 ||
     !owner?.includes(authority)
   ) {
     violations.push(

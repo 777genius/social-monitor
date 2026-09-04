@@ -39,7 +39,7 @@ const settleDetachedShadow = async (): Promise<void> => {
 };
 
 describe("RelevanceReaderSummaryEvidenceSelector story verification", () => {
-  it("retains approved cross-provider pairs as annotation-only evidence", async () => {
+  it("reclusters approved cross-provider pairs before slate composition", async () => {
     const verifier = new ApprovingVerifier();
     const metrics = new CapturingMetrics();
     const selector = new RelevanceReaderSummaryEvidenceSelector(
@@ -64,11 +64,11 @@ describe("RelevanceReaderSummaryEvidenceSelector story verification", () => {
 
     expect(verifier.inputs).toHaveLength(1);
     expect(verifier.inputs[0]?.candidates).toHaveLength(1);
-    expect(selection.clusters).toHaveLength(2);
+    expect(selection.clusters).toHaveLength(1);
     expect(selection.clusters.map((cluster) => cluster.providerKeys)).toEqual([
-      ["hacker-news"],
-      ["x-twitter"],
+      ["hacker-news", "x-twitter"],
     ]);
+    expect(selection.editorialSlate?.orderedCandidateIds).toEqual(["hn"]);
     expect(selection.approvedSameStoryRelations).toEqual([{
       leftFeedItemId: "hn",
       rightFeedItemId: "rss",
@@ -90,8 +90,22 @@ describe("RelevanceReaderSummaryEvidenceSelector story verification", () => {
     );
   });
 
-  it("keeps deterministic clusters when the verifier fails", async () => {
+  it("keeps clusters separate when execution attestation fails", async () => {
     const metrics = new CapturingMetrics();
+    const verifier = new AgentRuntimeReaderSummaryStoryRelationVerifier({
+      client: new RecordedAgentRuntimeClient({
+        status: "completed",
+        structuredOutput: {
+          decisions: [{
+            leftFeedItemId: "hn",
+            rightFeedItemId: "rss",
+            sameStory: true,
+            confidenceScore: 0.99,
+          }],
+        },
+        warnings: [],
+      }, false),
+    });
     const selector = new RelevanceReaderSummaryEvidenceSelector(
       ranker([
         ranked("hn", "hacker-news", 2),
@@ -100,11 +114,7 @@ describe("RelevanceReaderSummaryEvidenceSelector story verification", () => {
       emptyFeedRepository(),
       { now: () => now },
       metrics,
-      {
-        verify: async () => {
-          throw new Error("runtime unavailable");
-        },
-      },
+      verifier,
     );
 
     const selection = await selector.select({
@@ -129,6 +139,34 @@ describe("RelevanceReaderSummaryEvidenceSelector story verification", () => {
         count: 1,
       }),
     ]);
+  });
+
+  it("keeps clusters separate when relation verification times out", async () => {
+    const selector = new RelevanceReaderSummaryEvidenceSelector(
+      ranker([
+        ranked("hn", "hacker-news", 2),
+        ranked("rss", "x-twitter", 1.9),
+      ]),
+      emptyFeedRepository(),
+      { now: () => now },
+      new CapturingMetrics(),
+      {
+        verify: async () => {
+          throw new Error("verification timed out");
+        },
+      },
+    );
+
+    const selection = await selector.select({
+      tenantId: tenantId("tenant-story-verification-timeout"),
+      workspaceId: workspaceId("workspace-story-verification-timeout"),
+      scope: { type: "workspace" },
+      period,
+      maxItems: 2,
+    });
+
+    expect(selection.clusters).toHaveLength(2);
+    expect(selection.approvedSameStoryRelations).toEqual([]);
   });
 
   it("applies mixed approve and reject decisions through the runtime adapter and selector", async () => {
@@ -193,9 +231,9 @@ describe("RelevanceReaderSummaryEvidenceSelector story verification", () => {
     });
 
     expect(verifier.preconditionChecked).toBe(true);
-    expect(selection.clusters).toHaveLength(4);
+    expect(selection.clusters).toHaveLength(3);
     expect(selection.clusters.map((cluster) => cluster.providerKeys))
-      .not.toContainEqual(["hacker-news", "x-twitter"]);
+      .toContainEqual(["hacker-news", "x-twitter"]);
     expect(metrics.relationMetrics).toContainEqual({
       status: "completed",
       candidateCount: 2,
@@ -289,7 +327,7 @@ describe("RelevanceReaderSummaryEvidenceSelector story verification", () => {
     },
   );
 
-  it("keeps verified narrative partners outside immutable-slate authority", async () => {
+  it("uses verified partners in immutable-slate authority", async () => {
     const hn = ranked("hn", "hacker-news", 2.2);
     const unrelatedRss = {
       ...ranked("rss-unrelated", "x-twitter", 2.1),
@@ -330,10 +368,9 @@ describe("RelevanceReaderSummaryEvidenceSelector story verification", () => {
     ]);
     expect(selection.editorialSlate?.orderedCandidateIds).toEqual([
       "hn",
-      "rss-related",
       "rss-unrelated",
     ]);
-    expect(selection.clusters).toHaveLength(3);
+    expect(selection.clusters).toHaveLength(2);
     expect(selection.approvedSameStoryRelations).toContainEqual({
       leftFeedItemId: "hn",
       rightFeedItemId: "rss-related",
@@ -341,7 +378,7 @@ describe("RelevanceReaderSummaryEvidenceSelector story verification", () => {
     });
   });
 
-  it("produces byte-identical lanes, order, and digest for contradictory verifier outputs", async () => {
+  it("changes slate membership only for an approved relation", async () => {
     const items = [
       ranked("hn", "hacker-news", 2),
       ranked("rss", "x-twitter", 1.9),
@@ -378,8 +415,13 @@ describe("RelevanceReaderSummaryEvidenceSelector story verification", () => {
       digestMaterial: selection.editorialSlate?.digestMaterial,
     });
 
-    expect(JSON.stringify(immutableAuthority(approved))).toBe(
-      JSON.stringify(immutableAuthority(rejected)),
+    expect(immutableAuthority(approved).orderedCandidateIds).toEqual(["hn"]);
+    expect(immutableAuthority(rejected).orderedCandidateIds).toEqual([
+      "hn",
+      "rss",
+    ]);
+    expect(immutableAuthority(approved).digestMaterial).not.toBe(
+      immutableAuthority(rejected).digestMaterial,
     );
     expect(approved.approvedSameStoryRelations).toHaveLength(1);
     expect(rejected.approvedSameStoryRelations).toEqual([]);
@@ -424,60 +466,7 @@ describe("RelevanceReaderSummaryEvidenceSelector story verification", () => {
     )).toBe(true);
   });
 
-  it("verifies a secondary Cursor candidate in shadow without production union", async () => {
-    const metrics = new CapturingMetrics();
-    const verifier = new ApprovingVerifier();
-    const selector = new RelevanceReaderSummaryEvidenceSelector(
-      ranker([
-        {
-          ...ranked("cursor-announcement", "x-twitter", 2),
-          title: "Cursor deployed at SpaceX",
-          bodyPreview: "Official customer story with unrelated prose.",
-        },
-        {
-          ...ranked("cursor-coverage", "hacker-news", 1.9),
-          title: "SpaceX deploying Cursor",
-          bodyPreview: "HN wrapper metadata without copied article text.",
-        },
-      ]),
-      emptyFeedRepository(),
-      { now: () => now },
-      metrics,
-      verifier,
-    );
-
-    const selection = await selector.select({
-      tenantId: tenantId("tenant-safe-recall-shadow"),
-      workspaceId: workspaceId("workspace-safe-recall-shadow"),
-      scope: { type: "workspace" },
-      period,
-      maxItems: 2,
-    });
-    await settleDetachedShadow();
-
-    expect(verifier.inputs).toHaveLength(1);
-    expect(verifier.inputs[0]?.verificationLane).toBe("safe_recall_shadow");
-    expect(selection.clusters).toHaveLength(2);
-    expect(selection.clusters.every((cluster) =>
-      cluster.duplicateFeedItemIds.length === 0,
-    )).toBe(true);
-    expect(metrics.shadowGenerationAggregates).toContainEqual(
-      expect.objectContaining({
-        reasonCode: "title_normalized_entity_event_evidence",
-        count: 1,
-      }),
-    );
-    expect(metrics.shadowDecisionAggregates).toContainEqual(
-      expect.objectContaining({ disposition: "approved", count: 1 }),
-    );
-    expect(metrics.relationMetrics).toContainEqual({
-      status: "skipped",
-      candidateCount: 0,
-      approvedCount: 0,
-    });
-  });
-
-  it("observes corroboration rejected by the authoritative slate in shadow", async () => {
+  it("does not reverify an authoritative strict-title candidate in shadow", async () => {
     const verifier = new ApprovingVerifier();
     const selector = new RelevanceReaderSummaryEvidenceSelector(
       ranker([
@@ -515,20 +504,16 @@ describe("RelevanceReaderSummaryEvidenceSelector story verification", () => {
       "cursor-selected",
     ]);
     expect(verifier.inputs).toHaveLength(1);
-    expect(verifier.inputs[0]).toMatchObject({
-      verificationLane: "safe_recall_shadow",
-      evidence: expect.arrayContaining([
-        expect.objectContaining({ feedItemId: "cursor-selected" }),
-        expect.objectContaining({ feedItemId: "cursor-dropped" }),
-      ]),
-      candidates: [expect.objectContaining({
+    expect(verifier.inputs[0]).not.toHaveProperty("verificationLane");
+    expect(verifier.inputs[0]?.candidates).toEqual([
+      expect.objectContaining({
         leftFeedItemId: "cursor-dropped",
         rightFeedItemId: "cursor-selected",
-      })],
-    });
+      }),
+    ]);
   });
 
-  it("returns production selection without awaiting a bounded shadow verifier", async () => {
+  it("does not schedule detached shadow work for an authoritative pair", async () => {
     const verifier = new DeferredShadowVerifier();
     const selector = new RelevanceReaderSummaryEvidenceSelector(
       ranker([
@@ -557,16 +542,12 @@ describe("RelevanceReaderSummaryEvidenceSelector story verification", () => {
       maxItems: 2,
     });
 
-    expect(selection.clusters).toHaveLength(2);
+    expect(selection.clusters).toHaveLength(1);
     await settleDetachedShadow();
-    expect(verifier.input).toMatchObject({
-      verificationLane: "safe_recall_shadow",
-      timeoutMs: 30_000,
-    });
-    verifier.complete();
+    expect(verifier.input).toBeUndefined();
   });
 
-  it("records a weak Reddit watermark candidate as not approved", async () => {
+  it("records a weak Reddit watermark candidate as not approved once", async () => {
     const metrics = new CapturingMetrics();
     const selector = new RelevanceReaderSummaryEvidenceSelector(
       ranker([
@@ -606,12 +587,13 @@ describe("RelevanceReaderSummaryEvidenceSelector story verification", () => {
     await settleDetachedShadow();
 
     expect(selection.clusters).toHaveLength(2);
-    expect(metrics.shadowDecisionAggregates).toContainEqual(
+    expect(metrics.relationAggregates).toContainEqual(
       expect.objectContaining({
         disposition: "rejected_same_story_false",
         count: 1,
       }),
     );
+    expect(metrics.shadowDecisionAggregates).toEqual([]);
   });
 
   it("keeps telemetry exceptions outside the relation decision path", async () => {
@@ -636,8 +618,9 @@ describe("RelevanceReaderSummaryEvidenceSelector story verification", () => {
       }),
     ).resolves.toMatchObject({
       clusters: [
-        expect.objectContaining({ providerKeys: ["hacker-news"] }),
-        expect.objectContaining({ providerKeys: ["x-twitter"] }),
+        expect.objectContaining({
+          providerKeys: ["hacker-news", "x-twitter"],
+        }),
       ],
     });
   });
@@ -741,6 +724,14 @@ class DeferredShadowVerifier implements ReaderSummaryStoryRelationVerifierPort {
   private completeVerification?: (decisions: readonly unknown[]) => void;
 
   verify(input: ReaderSummaryStoryRelationVerifierInput): Promise<readonly unknown[]> {
+    if (input.verificationLane !== "safe_recall_shadow") {
+      return Promise.resolve(input.candidates.map((candidate) => ({
+        leftFeedItemId: candidate.leftFeedItemId,
+        rightFeedItemId: candidate.rightFeedItemId,
+        sameStory: true,
+        confidenceScore: 0.99,
+      })));
+    }
     this.input = input;
     return new Promise((resolve) => {
       this.completeVerification = resolve;
@@ -753,12 +744,17 @@ class DeferredShadowVerifier implements ReaderSummaryStoryRelationVerifierPort {
 }
 
 class RecordedAgentRuntimeClient implements AgentRuntimeClientPort {
-  constructor(private readonly recordedResult: AgentRuntimeTaskResult) {}
+  constructor(
+    private readonly recordedResult: AgentRuntimeTaskResult,
+    private readonly attested = true,
+  ) {}
 
   async runTask(
     command: AgentRuntimeTaskCommand,
   ): Promise<AgentRuntimeTaskResult> {
-    return withTestExecutionAttestation(command, this.recordedResult);
+    return this.attested
+      ? withTestExecutionAttestation(command, this.recordedResult)
+      : this.recordedResult;
   }
 
   async checkHealth(): Promise<AgentRuntimeHealthResult> {

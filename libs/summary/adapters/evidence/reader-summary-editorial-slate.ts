@@ -48,22 +48,25 @@ export const composeReaderSummaryEditorialSlate = (params: {
     ranked: ranking.ranked,
     semanticStoryIdByEvidenceId,
   });
+  const topQualifiedRepresentatives = representatives.filter(
+    (candidate) => candidate.topQualified,
+  );
   const activeProviderCount = new Set(
-    representatives.map((candidate) => candidate.provider),
+    topQualifiedRepresentatives.map((candidate) => candidate.provider),
   ).size;
   const providerCap = readerPostPromotionTopProviderCap(activeProviderCount);
   const top: AdmittedReaderPromotionV2[] = [];
   const topIds = new Set<string>();
   const topProviderCounts = new Map<ReaderPromotionV2Provider, number>();
 
-  for (const candidate of representatives) {
+  for (const candidate of topQualifiedRepresentatives) {
     if (top.length >= topLimit) break;
     if ((topProviderCounts.get(candidate.provider) ?? 0) > 0) continue;
     top.push(candidate);
     topIds.add(candidate.candidateId);
     topProviderCounts.set(candidate.provider, 1);
   }
-  for (const candidate of representatives) {
+  for (const candidate of topQualifiedRepresentatives) {
     if (top.length >= topLimit) break;
     if (topIds.has(candidate.candidateId)) continue;
     const providerCount = topProviderCounts.get(candidate.provider) ?? 0;
@@ -97,9 +100,11 @@ export const composeReaderSummaryEditorialSlate = (params: {
     reasonCodes: [
       "reader_promotion_v2_admitted",
       "semantic_story_representative",
-      (topProviderCounts.get(candidate.provider) ?? 0) >= providerCap
-        ? "top_provider_cap_overflow"
-        : "top_capacity_overflow",
+      !candidate.topQualified
+        ? "top_floor_not_met"
+        : ((topProviderCounts.get(candidate.provider) ?? 0) >= providerCap
+            ? "top_provider_cap_overflow"
+            : "top_capacity_overflow"),
       "additional_slot_assigned",
     ],
   }));

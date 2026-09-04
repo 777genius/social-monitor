@@ -1,18 +1,26 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
 
 const artifactPath = join(
   process.cwd(),
-  "vendor/vioxen-subscription-runtime-0.1.0-main.2-sm.2.tgz",
+  "vendor/vioxen-subscription-runtime-0.1.0-main.30.tgz",
 );
+const runtimeDependencies = [
+  "@anthropic-ai/claude-agent-sdk",
+  "@modelcontextprotocol/sdk",
+  "@types/node",
+  "ajv",
+  "libsodium-wrappers",
+  "zod",
+];
 
-test("vendored sm.2 binds the final exact Codex usage to one clean turn", async () => {
+test("vendored main.30 binds the final exact Codex usage to one clean turn", async () => {
   await withVendoredRuntime(async (packageRoot) => {
     const { CodexAppServerExecutionEngine } = await importFromPackage(
       packageRoot,
@@ -24,7 +32,7 @@ test("vendored sm.2 binds the final exact Codex usage to one clean turn", async 
       tokenUsage("thread-1", "turn-1", usage(10, 4)),
       rawResponseUsage("thread-1", "turn-1", usage(300, 30)),
       itemCompleted("thread-1", "turn-1", "exact output"),
-      tokenUsage("thread-1", "turn-1", usage(12, 5)),
+      turnCompleted("turn-1", usage(12, 5)),
     ]);
     const engine = new CodexAppServerExecutionEngine({
       codexBinaryPath: "codex",
@@ -46,7 +54,7 @@ test("vendored sm.2 binds the final exact Codex usage to one clean turn", async 
   });
 });
 
-test("vendored sm.2 fails closed for malformed or absent exact turn usage", async () => {
+test("vendored main.30 fails closed for malformed or absent exact turn usage", async () => {
   await withVendoredRuntime(async (packageRoot) => {
     const { CodexAppServerExecutionEngine } = await importFromPackage(
       packageRoot,
@@ -83,9 +91,9 @@ test("vendored sm.2 fails closed for malformed or absent exact turn usage", asyn
   });
 });
 
-test("vendored sm.2 carries engine usage through driver and worker telemetry", async () => {
+test("vendored main.30 carries engine usage through driver and worker telemetry", async () => {
   await withVendoredRuntime(async (packageRoot) => {
-    const [{ CodexJsonAgentDriver }, { FileBackendCodexWorker }] =
+    const [{ CodexJsonAgentDriver }, { FileBackendCodexManagedRunCoordinator }] =
       await Promise.all([
         importFromPackage(
           packageRoot,
@@ -93,12 +101,18 @@ test("vendored sm.2 carries engine usage through driver and worker telemetry", a
         ),
         importFromPackage(
           packageRoot,
-          "dist/worker-codex/file-backend-codex-worker.js",
+          "dist/worker-codex/file-backend-codex-managed-run-recovery.js",
         ),
       ]);
     const exactUsage = usage(20, 7);
     const driver = new CodexJsonAgentDriver({
       engine: {
+        capabilities: {
+          supportsStructuredOutput: true,
+          supportsJsonEvents: true,
+          supportsThreadResume: false,
+          requiresSchemaFile: false,
+        },
         run: async () => ({
           outputText: "output",
           usage: exactUsage,
@@ -135,22 +149,33 @@ test("vendored sm.2 carries engine usage through driver and worker telemetry", a
     assert.deepEqual(providerResult.telemetry?.usage, exactUsage);
     assert.equal(Number.isSafeInteger(providerResult.telemetry?.durationMs), true);
 
-    const worker = Object.create(FileBackendCodexWorker.prototype);
-    worker.recordSuccessfulRun = () => {};
-    const workerResult = worker.taskResultToOutput(providerResult);
-    assert.deepEqual(workerResult.telemetry, providerResult.telemetry);
+    const coordinator = new FileBackendCodexManagedRunCoordinator({
+      providerInstanceId: "test-provider",
+      workerId: "test-worker",
+      agentDriver: null,
+      recordSuccessfulRun() {},
+    });
+    const workerResult = await coordinator.taskResultToOutput(providerResult);
+    assert.deepEqual(workerResult.usage, providerResult.telemetry?.usage);
   });
 });
 
-test("vendored artifact manifest and declarations identify sm.2 usage telemetry", async () => {
+test("vendored artifact manifest and declarations identify main.30 usage telemetry", async () => {
   await withVendoredRuntime(async (packageRoot) => {
     const manifest = JSON.parse(
       await readFile(join(packageRoot, "package.json"), "utf8"),
     );
-    assert.equal(manifest.version, "0.1.0-main.2-sm.2");
+    assert.equal(manifest.version, "0.1.0-main.30");
     assert.equal(manifest.license, "UNLICENSED");
     assert.deepEqual(manifest.dependencies, {
+      "@anthropic-ai/claude-agent-sdk": "0.3.237",
+      "@vioxen/agent-account-observability":
+        "file:packages/agent-account-observability",
+      "@modelcontextprotocol/sdk": "^1.30.0",
+      "@types/node": "^22.20.0",
+      ajv: "8.20.0",
       "libsodium-wrappers": "^0.8.4",
+      zod: "^4.4.3",
     });
     const declarations = await readFile(
       join(
@@ -159,39 +184,37 @@ test("vendored artifact manifest and declarations identify sm.2 usage telemetry"
       ),
       "utf8",
     );
-    assert.match(declarations, /readonly usage\?: \{/u);
+    assert.match(declarations, /readonly usage\?: AgentUsage;/u);
 
     const { providerTaskResultToAgentTaskResult } = await importFromPackage(
       packageRoot,
       "dist/agent-task/codec.js",
     );
-    const zero = providerTaskResultToAgentTaskResult({
+    const exact = providerTaskResultToAgentTaskResult({
       status: "completed",
       outputText: "output",
-      telemetry: { usage: usage(0, 0) },
+      telemetry: { usage: usage(1, 1) },
       warnings: [],
     });
-    assert.deepEqual(zero.telemetry?.usage, usage(0, 0));
+    assert.deepEqual(exact.telemetry?.usage, usage(1, 1));
     assert.throws(
       () => providerTaskResultToAgentTaskResult({
         status: "completed",
         outputText: "output",
         telemetry: {
-          usage: {
-            inputTokens: Number.MAX_SAFE_INTEGER + 1,
-            outputTokens: 0,
-            totalTokens: Number.MAX_SAFE_INTEGER + 1,
-          },
+          usage: usage(0, 0),
         },
         warnings: [],
       }),
-      /non-negative safe integer/u,
+      /positive integer/u,
     );
   });
 });
 
 async function withVendoredRuntime(run) {
-  const tempRoot = await mkdtemp(join(tmpdir(), "subscription-runtime-sm2-test-"));
+  const tempRoot = await mkdtemp(
+    join(tmpdir(), "subscription-runtime-main30-test-"),
+  );
   try {
     const extracted = spawnSync(
       "tar",
@@ -199,10 +222,40 @@ async function withVendoredRuntime(run) {
       { encoding: "utf8" },
     );
     assert.equal(extracted.status, 0, extracted.stderr);
-    await run(join(tempRoot, "package"));
+    const packageRoot = join(tempRoot, "package");
+    await linkLockedRuntimeDependencies(packageRoot);
+    await run(packageRoot);
   } finally {
     await rm(tempRoot, { recursive: true, force: true });
   }
+}
+
+async function linkLockedRuntimeDependencies(packageRoot) {
+  for (const dependency of runtimeDependencies) {
+    const dependencyRoot = await resolveLockedRuntimeDependency(dependency);
+    const target = join(packageRoot, "node_modules", dependency);
+    await mkdir(dirname(target), { recursive: true });
+    await symlink(dependencyRoot, target, "dir");
+  }
+}
+
+async function resolveLockedRuntimeDependency(dependency) {
+  const candidates = [
+    join(
+      process.cwd(),
+      "node_modules/@vioxen/subscription-runtime/node_modules",
+      dependency,
+    ),
+    join(process.cwd(), "node_modules", dependency),
+  ];
+  for (const candidate of candidates) {
+    try {
+      return await realpath(candidate);
+    } catch (error) {
+      if (error?.code !== "ENOENT") throw error;
+    }
+  }
+  throw new Error(`Locked runtime dependency is missing: ${dependency}`);
 }
 
 const importFromPackage = (packageRoot, relativePath) =>
@@ -259,6 +312,9 @@ function respond(child, request, turnNotifications) {
     return;
   }
   if (request.method === "turn/start") {
+    const hasTurnCompleted = turnNotifications.some(
+      (message) => message.method === "turn/completed",
+    );
     emit(
       child,
       { id: request.id, result: { turn: { id: "turn-1" } } },
@@ -266,10 +322,12 @@ function respond(child, request, turnNotifications) {
       { method: "turn/started", params: {
         threadId: "thread-1", turn: { id: "turn-1" },
       } },
-      { method: "turn/completed", params: {
-        threadId: "thread-1",
-        turn: { id: "turn-1", status: { type: "completed" } },
-      } },
+      ...(hasTurnCompleted
+        ? []
+        : [{ method: "turn/completed", params: {
+            threadId: "thread-1",
+            turn: { id: "turn-1", status: { type: "completed" } },
+          } }]),
     );
     return;
   }
@@ -316,4 +374,16 @@ const rawResponseUsage = (threadId, turnId, responseUsage) => ({
 const itemCompleted = (threadId, turnId, text) => ({
   method: "item/completed",
   params: { threadId, turnId, item: { type: "agentMessage", text } },
+});
+
+const turnCompleted = (turnId, turnUsage) => ({
+  method: "turn/completed",
+  params: {
+    threadId: "thread-1",
+    turn: {
+      id: turnId,
+      status: { type: "completed" },
+      usage: turnUsage,
+    },
+  },
 });

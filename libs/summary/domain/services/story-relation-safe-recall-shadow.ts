@@ -6,6 +6,8 @@ import type {
 import { verifiedStoryRelationPairKey } from "./story-cluster-membership";
 import type { StoryRelationCandidate } from "./story-relation-candidates";
 import { strictStoryRelationTitleEvidence } from "./story-relation-title-evidence";
+import { readerPostProviderFamily } from
+  "../policies/reader-post-promotion-policy";
 
 export const STORY_RELATION_SAFE_RECALL_SHADOW_POLICY_VERSION =
   "reader_summary.story_relation.safe_recall_shadow.v2";
@@ -128,11 +130,23 @@ export const buildStoryRelationSafeRecallShadowCandidates = (params: {
   };
 };
 
+/**
+ * Returns the bounded strict-title candidates that may enter an attested
+ * primary verification lane. A candidate alone never authorizes a merge.
+ */
+export const buildBoundedStrictTitleStoryRelationCandidates = (params: {
+  readonly selection: SummaryEvidenceSelection;
+  readonly evidence: readonly SummaryEvidenceItem[];
+  readonly primaryCandidates: readonly StoryRelationCandidate[];
+}): readonly StoryRelationCandidate[] =>
+  buildStoryRelationSafeRecallShadowCandidates(params).candidates;
+
 const isSafeRecallShadowGuardEligible = (
   left: SummaryEvidenceItem,
   right: SummaryEvidenceItem,
 ): boolean =>
-  left.providerKey !== right.providerKey &&
+  readerPostProviderFamily(left.providerKey) !==
+    readerPostProviderFamily(right.providerKey) &&
   Math.abs(left.publishedAt.getTime() - right.publishedAt.getTime()) <=
     safeRecallMaxTimeDistanceMs;
 

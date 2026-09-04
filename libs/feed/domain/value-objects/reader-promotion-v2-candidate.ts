@@ -165,6 +165,8 @@ export type AdmittedReaderPromotionV2 = {
   readonly provider: ReaderPromotionV2Provider;
   readonly providerSignal: number;
   readonly providerTopFloor: number;
+  /** True only when the provider signal reaches the distinct Top floor. */
+  readonly topQualified: boolean;
   readonly relativePopularity: number;
   readonly components: ReaderPromotionV2ScoreComponents;
   readonly admissionAttestation: ReaderPromotionV2AdmissionAttestation;

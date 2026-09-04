@@ -24,6 +24,7 @@ concurrency:
 
 jobs:
   review:
+    environment: production
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -37,7 +38,7 @@ jobs:
         env:
           S2_SHA: ${{ inputs.s2_sha }}
           REQUEST_ID: ${{ inputs.request_id }}
-          REVIEW_PRIVATE_KEY: ${{ secrets.PRODUCTION_TRANSITION_REVIEW_PRIVATE_KEY }}
+          REVIEW_PRIVATE_KEY: ${{ secrets.PRODUCTION_TRANSITION_REVIEW_SIGNING_KEY }}
         run: |
           set -euo pipefail
           [[ "$GITHUB_REPOSITORY" == "777genius/social-monitor" ]]
@@ -52,6 +53,8 @@ jobs:
           trap 'rm -f -- "$key"' EXIT
           printf '%s\n' "$REVIEW_PRIVATE_KEY" > "$key"
           chmod 0600 "$key"
+          git config user.name 'social-monitor-transition-review'
+          git config user.email 'social-monitor-transition-review@users.noreply.github.com'
           mkdir artifact
           issued=$(date +%s)
           expires=$((issued + 3600))

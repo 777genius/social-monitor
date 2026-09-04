@@ -11,6 +11,54 @@ import {
 } from "./reader-promotion-policy-v2.spec-fixtures";
 
 describe("Reader Promotion Policy V2", () => {
+  it.each([
+    ["X weighted Additional floor", xPromotionCandidate({
+      candidateId: "x-additional", likes: 15, reposts: 10,
+    })],
+    ["Reddit score with Additional ratio", redditPromotionCandidate({
+      score: 50, upvoteRatio: 0.55,
+    })],
+    ["Hacker News Additional floor", hackerNewsPromotionCandidate({ points: 25 })],
+    ["GitHub stars Additional floor", githubPromotionCandidate({
+      starsDelta: 25, forksDelta: 0,
+    })],
+    ["GitHub forks Additional floor", githubPromotionCandidate({
+      starsDelta: 0, forksDelta: 50,
+    })],
+  ])("keeps %s out of Top", (_name, candidate) => {
+    expect(evaluateReaderPromotionV2(candidate)).toMatchObject({
+      admitted: true,
+      topQualified: false,
+    });
+  });
+
+  it.each([
+    ["X likes branch at weighted Top", xPromotionCandidate({
+      candidateId: "x-top-likes", likes: 30, reposts: 20,
+    })],
+    ["X reposts branch at weighted Top", xPromotionCandidate({
+      candidateId: "x-top-reposts", likes: 28, reposts: 21,
+    })],
+    ["X exact repost threshold with weighted Top", xPromotionCandidate({
+      candidateId: "x-top-exact-reposts", likes: 50, reposts: 10,
+    })],
+    ["Reddit score and trusted-ratio Top floors", redditPromotionCandidate({
+      score: 50, upvoteRatio: 0.6,
+    })],
+    ["Hacker News Top floor", hackerNewsPromotionCandidate({ points: 50 })],
+    ["GitHub stars Top floor", githubPromotionCandidate({
+      starsDelta: 50, forksDelta: 0,
+    })],
+    ["GitHub forks Top floor", githubPromotionCandidate({
+      starsDelta: 0, forksDelta: 100,
+    })],
+  ])("admits %s into Top", (_name, candidate) => {
+    expect(evaluateReaderPromotionV2(candidate)).toMatchObject({
+      admitted: true,
+      topQualified: true,
+    });
+  });
+
   it("ranks otherwise equal X posts with 11,112 likes above 89 likes", () => {
     const lower = xPromotionCandidate({
       candidateId: "x-lower",

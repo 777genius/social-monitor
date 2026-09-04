@@ -54,7 +54,7 @@ describe("story relation golden eval", () => {
     expect(serializedTranscripts).not.toContain("positive");
   });
 
-  it("evaluates shadow wouldApprove traces through the strict production adapter", async () => {
+  it("evaluates authoritative candidates once through the production adapter", async () => {
     const client = new RecordedGoldenAgentRuntimeClient();
     const result = await runStoryRelationGoldenBaseline({
       datasetVersion: STORY_RELATION_GOLDEN_DATASET_VERSION,
@@ -78,15 +78,11 @@ describe("story relation golden eval", () => {
       "claude-code-watermark-question-and-announcement",
     );
     expect(client.primaryRequestedCaseIds).toEqual([
+      "cursor-spacex-deployment",
       "anthropic-watermark-announcement-and-explainer",
       "claude-code-watermark-question-and-announcement",
     ]);
-    expect(client.shadowRequestedCaseIds).toEqual([
-      "cursor-spacex-deployment",
-    ]);
-    expect(client.shadowRequestedCaseIds).not.toContain(
-      "anthropic-watermark-announcement-and-explainer",
-    );
+    expect(client.shadowRequestedCaseIds).toEqual([]);
   });
 
   it("omits undefined precision and recall denominators", () => {

@@ -3,6 +3,7 @@ import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 import {
   buildReaderSummaryCoveragePlan,
   buildReaderPostPromotionProjection,
+  primaryReaderSummaryEvidence,
   ReaderSummaryArtifact,
   ReaderSummaryPublicationPolicy,
 } from "../../domain";
@@ -53,14 +54,33 @@ describe("DeterministicReaderSummaryModelAdapter", () => {
     expect(attempt.draft.headline).not.toContain(";");
     expect(attempt.draft.content?.headline).toBe(attempt.draft.headline);
     expect(attempt.draft.headline).not.toContain("disposable Linux VM");
+    expect(input.evidence.editorialSlate?.additional).toEqual([
+      expect.objectContaining({
+        candidateId: "feed-2",
+        placement: "additional",
+        reasonCodes: expect.arrayContaining(["top_floor_not_met"]),
+      }),
+    ]);
+    expect(input.evidence.selectedEvidence.map((item) => item.feedItemId))
+      .toContain("feed-2");
+    expect(input.evidence.editorialSlate?.excluded).toContainEqual(
+      expect.objectContaining({
+        candidateId: "feed-5",
+        reasonCodes: expect.arrayContaining(["provider_floor_not_met"]),
+      }),
+    );
+    expect(input.evidence.selectedEvidence.map((item) => item.feedItemId))
+      .not.toContain("feed-5");
     expect(
       attempt.draft.content?.topReads.map((item) => item.providerKey),
     ).toEqual([
       "hacker-news",
       "x-twitter",
       "github-repo-radar",
-      "reddit",
     ]);
+    expect(
+      attempt.draft.content?.selectedPosts?.map((item) => item.providerKey),
+    ).toEqual(["reddit"]);
     expect(
       attempt.draft.content?.topReads.map((item) => item.providerKey),
     ).not.toContain("github-trending-page");
@@ -262,7 +282,19 @@ const dailySynthesisReaderSummaryInput = (): ReaderSummaryModelInput => {
       bodyPreview:
         "Maintainers discuss permission boundaries and safer execution defaults.",
     },
-  ];
+    {
+      ...evidenceItem("reddit", 5, 2.2),
+      title: "Below-floor discussion must not enter the reader slate",
+      promotionFacts: {
+        ...promotionFacts("reddit", 5),
+        metrics: {
+          provider: "reddit",
+          score: 24,
+          upvoteRatio: 0.99,
+        },
+      },
+    },
+  ] satisfies ReaderSummaryModelInput["evidence"]["selectedEvidence"];
   const evidence = readerSummaryEvidence(selectedEvidence);
 
   return readerSummaryInputForEvidence(evidence);
@@ -325,7 +357,9 @@ const readerSummaryInputForEvidence = (
     periodKey: "daily:2026-06-23T00:00:00.000Z:2026-06-24T00:00:00.000Z:UTC",
   },
   evidence,
-  coveragePlan: buildReaderSummaryCoveragePlan(evidence),
+  coveragePlan: buildReaderSummaryCoveragePlan(
+    primaryReaderSummaryEvidence(evidence),
+  ),
   contextArtifacts: [],
   policy: {
     language: "auto",

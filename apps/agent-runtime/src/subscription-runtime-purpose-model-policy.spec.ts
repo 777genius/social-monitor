@@ -84,7 +84,6 @@ describe("subscription runtime purpose policy", () => {
         reasoningEffort: "high",
         outputKind: "structured_output",
         responseFormat: "json",
-        retryMode: "standard",
       });
       expect(controls).toMatchObject({
         model: "gpt-5.6-sol",
@@ -111,7 +110,6 @@ describe("subscription runtime purpose policy", () => {
       reasoningEffort: "high",
       outputKind: "output_text",
       responseFormat: "text",
-      retryMode: "standard",
     });
     expect(controls).toMatchObject({
       model: "gpt-5.6-sol",
@@ -178,31 +176,6 @@ describe("subscription runtime purpose policy", () => {
       ...activeRecovery,
       metadata: { reasoningEffort: "xhigh" },
     })).toThrow("reasoningEffort conflicts with purpose policy");
-  });
-
-  it("pins the dormant promotion V2 canary to structured high with no retry", () => {
-    const exact = request({
-      purpose: "social_monitor.reader_summary.promotion_v2_canary.v1",
-    });
-    const admission = admitSubscriptionRuntimeRequest(exact);
-    const task = admission.canonicalRequest.task as Record<string, unknown>;
-    const controls = task.controls as Record<string, unknown>;
-
-    expect(admission.profile).toEqual({
-      provider: "codex",
-      model: "gpt-5.6-sol",
-      reasoningEffort: "high",
-      outputKind: "structured_output",
-      responseFormat: "json",
-      retryMode: "never",
-    });
-    expect(controls.retryMode).toBe("never");
-    for (const malformed of [
-      { ...exact, controlsJson: '{"retryMode":"standard"}' },
-      { ...exact, metadata: { taskRole: "story_relation" } },
-    ]) {
-      expect(() => admitSubscriptionRuntimeRequest(malformed)).toThrow();
-    }
   });
 
   it.each(legacyReaderSummaryPurposes)(
@@ -277,16 +250,6 @@ const request = (
         },
       }
     : {};
-  const canaryDefaults = purpose ===
-    "social_monitor.reader_summary.promotion_v2_canary.v1"
-    ? {
-        controlsJson: JSON.stringify({
-          outputSchemaName: "social_monitor_reader_summary_story_relations",
-          schemaVersion: "reader_summary.story_relation.v1",
-        }),
-        metadata: { taskRole: "promotion_v2_canary" },
-      }
-    : {};
   return {
     requestId: "request-1",
     tenantId: "tenant-1",
@@ -301,7 +264,6 @@ const request = (
     timeoutMs: 1_000,
     metadata: {},
     ...relatedDefaults,
-    ...canaryDefaults,
     ...override,
   };
 };

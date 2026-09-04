@@ -5,6 +5,7 @@ import {
   mkdtemp,
   mkdir,
   readFile,
+  readdir,
   rm,
   stat,
   writeFile,
@@ -15,10 +16,7 @@ import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
-import {
-  codexAuthPoolTaskHash,
-  orderCodexAuthAccountsForTask,
-} from "./codex-auth-pool-routing.mjs";
+import { orderCodexAuthAccountsForTask } from "./codex-auth-pool-routing.mjs";
 
 const execFileAsync = promisify(execFile);
 const repositoryRoot = resolve(
@@ -98,17 +96,31 @@ test(
         ok: true,
         account: "account-b",
       });
+      const rateLimitAttempts = attempts.filter(
+        ({ command }) => command === "rate-limits",
+      );
+      assert.deepEqual(
+        rateLimitAttempts.map(({ account, usedPercent }) => ({
+          account,
+          usedPercent,
+        })),
+        [
+          { account: "account-a", usedPercent: 100 },
+          { account: "account-b", usedPercent: 20 },
+        ],
+      );
       const turnAttempts = attempts.filter(({ command }) => command === "turn");
       assert.deepEqual(
         turnAttempts.map(({ account, command }) => ({ account, command })),
-        [
-          { account: "account-a", command: "turn" },
-          { account: "account-b", command: "turn" },
-        ],
+        [{ account: "account-b", command: "turn" }],
       );
       assert.equal(
-        turnAttempts[0].promptSha256,
-        turnAttempts[1].promptSha256,
+        attempts.some(
+          ({ account, command }) =>
+            account === "account-a" &&
+            (command === "thread" || command === "turn" || command === "exec"),
+        ),
+        false,
       );
       for (const turnAttempt of turnAttempts) {
         assert.equal(turnAttempt.model, "gpt-5.6-sol");
@@ -166,102 +178,17 @@ test(
       assert.deepEqual(afterAuth, beforeAuth);
       assert.deepEqual(beforeAuthModes, [0o400, 0o400]);
       assert.deepEqual(afterAuthModes, beforeAuthModes);
+      assert.deepEqual(
+        await readdir(join(fixture.stateRoot, "auth-materializations")),
+        [],
+      );
     } finally {
       await fixture.cleanup();
     }
   },
 );
 
-test(
-  "promotion V2 canary makes one native pooled attempt without failover",
-  { timeout: 30_000 },
-  async () => {
-    const fixture = await createFixture(
-      "social_monitor.reader_summary.promotion_v2_canary.v1",
-    );
-    try {
-      const execution = await execFileAsync(
-        process.execPath,
-        [
-          runtimeBridgePath,
-          "--provider",
-          "codex",
-          "--input",
-          fixture.requestPath,
-          "--format",
-          "result-json",
-          "--state-root",
-          fixture.stateRoot,
-          "--codex-binary",
-          fixture.codexBinaryPath,
-          "--model",
-          "gpt-5.6-sol",
-          "--timeout-ms",
-          "15000",
-        ],
-        {
-          cwd: fixture.sandboxProject,
-          env: {
-            PATH: process.env.PATH,
-            LANG: "C.UTF-8",
-            AGENT_RUNTIME_CODEX_AUTH_POOL_ROOT: fixture.poolRoot,
-            AGENT_RUNTIME_CODEX_AUTH_POOL_MANIFEST: "current.json",
-            AGENT_RUNTIME_REASONING_EFFORT: "high",
-            SUBSCRIPTION_RUNTIME_LOCAL_ENCRYPTION_KEY:
-              Buffer.alloc(32, 7).toString("base64"),
-          },
-          maxBuffer: 1024 * 1024,
-        },
-      ).then(
-        ({ stdout, stderr }) => ({ exitCode: 0, stdout, stderr }),
-        (error) => ({
-          exitCode: error.code,
-          stdout: error.stdout ?? "",
-          stderr: error.stderr ?? "",
-        }),
-      );
-      const attemptsText = await readFile(
-        fixture.attemptLogPath,
-        "utf8",
-      ).catch(() => "");
-      const journal = await readFile(
-        join(
-          fixture.stateRoot,
-          "attempt-journal",
-          "attempt-journal",
-          `${codexAuthPoolTaskHash(fixture.taskId)}.json`,
-        ),
-        "utf8",
-      );
-      const journalRecord = JSON.parse(journal);
-      const turnAttempts = attemptsText.length === 0
-        ? []
-        : attemptsText
-            .trim()
-            .split("\n")
-            .map((line) => JSON.parse(line))
-            .filter(({ command }) => command === "turn");
-      const result = JSON.parse(execution.stdout);
-
-      assert.notEqual(execution.exitCode, 0);
-      assert.equal(result.status, "failed");
-      assert.equal(result.failure.retryable, false);
-      assert.equal(result.failure.reconnectRequired, false);
-      assert.equal(journalRecord.attempts.length, 1);
-      assert.ok(turnAttempts.length <= 1);
-      const canonicalRequest = JSON.parse(
-        await readFile(fixture.requestPath, "utf8"),
-      );
-      assert.equal(canonicalRequest.task.controls.retryMode, "never");
-    } finally {
-      await fixture.cleanup();
-    }
-  },
-);
-
-async function createFixture(
-  purpose = "social_monitor.reader_summary.generate.v2",
-) {
+async function createFixture() {
   const root = await mkdtemp(
     join(tmpdir(), "social-monitor-subscription-runtime-e2e-"),
   );
@@ -323,13 +250,9 @@ async function createFixture(
   await chmod(codexBinaryPath, 0o755);
 
   const requestPath = join(root, "request.json");
-  const taskId = taskIdStartingWith(accountIds, "account-a");
   await writeFile(
     requestPath,
-    `${JSON.stringify(agentTaskRequest(
-      taskId,
-      purpose,
-    ))}\n`,
+    `${JSON.stringify(agentTaskRequest(taskIdStartingWith(accountIds, "account-a")))}\n`,
     "utf8",
   );
 
@@ -341,7 +264,6 @@ async function createFixture(
     requestPath,
     sandboxProject,
     stateRoot,
-    taskId,
     cleanup: async () => {
       await Promise.all(
         poolDirectories.map((path) => chmod(path, 0o700).catch(() => {})),
@@ -364,9 +286,7 @@ function taskIdStartingWith(accountIds, expectedAccountId) {
   throw new Error("Unable to select a deterministic first sandbox account");
 }
 
-function agentTaskRequest(runId, purpose) {
-  const promotionV2Canary =
-    purpose === "social_monitor.reader_summary.promotion_v2_canary.v1";
+function agentTaskRequest(runId) {
   return {
     protocolVersion: 1,
     runId,
@@ -376,17 +296,8 @@ function agentTaskRequest(runId, purpose) {
       kind: "structured-prompt",
       systemPrompt: "Return JSON only.",
       prompt: "Return the sandbox auth-pool result.",
-      outputSchemaName: promotionV2Canary
-        ? "social_monitor_reader_summary_story_relations"
-        : "auth-pool-e2e",
+      outputSchemaName: "auth-pool-e2e",
       controls: {
-        ...(promotionV2Canary
-          ? {
-              outputSchemaName:
-                "social_monitor_reader_summary_story_relations",
-              schemaVersion: "reader_summary.story_relation.v1",
-            }
-          : {}),
         outputSchema: {
           type: "object",
           required: ["ok", "account"],
@@ -396,13 +307,11 @@ function agentTaskRequest(runId, purpose) {
           },
         },
       },
-      metadata: promotionV2Canary
-        ? { taskRole: "promotion_v2_canary" }
-        : {},
+      metadata: {},
     },
     context: {
       application: "social-monitor",
-      purpose,
+      purpose: "social_monitor.reader_summary.generate.v2",
       correlationId: "sandbox-auth-pool-e2e",
     },
   };
@@ -441,6 +350,25 @@ if (command === "app-server") {
     const request = JSON.parse(line);
     if (request.method === "initialize") {
       send({ id: request.id, result: {} });
+      continue;
+    }
+    if (request.method === "account/rateLimits/read") {
+      const usedPercent = account === "account-a" ? 100 : 20;
+      await recordAttempt({ account, command: "rate-limits", usedPercent });
+      send({
+        id: request.id,
+        result: {
+          rateLimits: {
+            primary: {
+              usedPercent,
+              windowDurationMins: 300,
+              resetsAt: Math.floor(Date.now() / 1000) + 3600,
+            },
+            rateLimitReachedType:
+              account === "account-a" ? "usage_limit_reached" : null,
+          },
+        },
+      });
       continue;
     }
     if (request.method === "thread/start") {
@@ -524,7 +452,7 @@ if (command === "app-server") {
     });
   }
 } else if (command === "exec") {
-  const prompt = await readFile(0, "utf8");
+  const prompt = await readStdin();
   await recordAttempt({
     account,
     command: "exec",
@@ -550,6 +478,13 @@ if (command === "app-server") {
 
 function send(message) {
   process.stdout.write(JSON.stringify(message) + "\\n");
+}
+
+async function readStdin() {
+  process.stdin.setEncoding("utf8");
+  let value = "";
+  for await (const chunk of process.stdin) value += chunk;
+  return value;
 }
 
 async function refreshMaterializedAuth() {

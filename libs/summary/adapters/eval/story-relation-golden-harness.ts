@@ -1,7 +1,6 @@
 import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 
 import {
-  buildStoryRelationCandidates,
   evaluateStoryRelationGoldenCases,
   StoryClusteringService,
   type StoryRelationEvalPrediction,
@@ -16,7 +15,7 @@ import {
 } from "../../ports";
 import {
   observeSafeRecallShadow,
-  verifiedReaderSummaryStoryRelationPairs,
+  verifiedReaderSummaryStoryRelations,
 } from "../evidence/relevance-reader-summary-story-relation-decisions";
 import { AgentRuntimeReaderSummaryStoryRelationVerifier } from "../model/agent-runtime-reader-summary-story-relation-verifier.adapter";
 
@@ -61,11 +60,7 @@ export const runStoryRelationGoldenBaseline = async (params: {
       limit: evidence.length,
       now: observedAt,
     });
-    const primaryCandidates = buildStoryRelationCandidates({
-      selection,
-      evidence,
-    });
-    const approvedPrimaryPairs = await verifiedReaderSummaryStoryRelationPairs({
+    const authoritative = await verifiedReaderSummaryStoryRelations({
       query,
       evidence,
       deterministicSelection: selection,
@@ -80,13 +75,13 @@ export const runStoryRelationGoldenBaseline = async (params: {
       requestedAt: observedAt,
       verifier,
       metrics: NOOP_STORY_RANKING_METRICS,
-      primaryCandidates,
+      primaryCandidates: authoritative.candidates,
     });
     predictions.push({
       caseId: evalCase.caseId,
       sameStory:
         deterministicPairMerged(selection, evalCase.caseId) ||
-        approvedPrimaryPairs.size > 0 ||
+        authoritative.pairs.size > 0 ||
         traces.some((trace) => trace.wouldApprove),
     });
   }

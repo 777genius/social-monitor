@@ -1,10 +1,32 @@
+import canaryContract from "./reader-promotion-v2-canary-contract.cjs";
+
+const {
+  readerPromotionV2CanaryOutputIsValid,
+  readerPromotionV2CanaryOutputSchema,
+  readerPromotionV2CanaryPurpose,
+  readerPromotionV2CanarySchemaEquals,
+  readerPromotionV2CanarySchemaName,
+  readerPromotionV2CanarySchemaVersion,
+} = canaryContract;
+
+export {
+  readerPromotionV2CanaryOutputIsValid,
+  readerPromotionV2CanaryOutputSchema,
+  readerPromotionV2CanaryPurpose,
+  readerPromotionV2CanarySchemaName,
+  readerPromotionV2CanarySchemaVersion,
+};
+
+export const readerPromotionV2CanaryActivationCapability = Symbol(
+  "reader-promotion-v2-canary-activation-capability",
+);
+
 const genericSummaryStructuredProfile = Object.freeze({
   provider: "codex",
   model: "gpt-5.6-sol",
   reasoningEffort: "xhigh",
   outputKind: "structured_output",
   responseFormat: "json",
-  retryMode: "standard",
 });
 
 const activeReaderSummaryStructuredProfile = Object.freeze({
@@ -13,7 +35,6 @@ const activeReaderSummaryStructuredProfile = Object.freeze({
   reasoningEffort: "high",
   outputKind: "structured_output",
   responseFormat: "json",
-  retryMode: "standard",
 });
 
 const activeReaderSummaryTextProfile = Object.freeze({
@@ -22,10 +43,9 @@ const activeReaderSummaryTextProfile = Object.freeze({
   reasoningEffort: "high",
   outputKind: "output_text",
   responseFormat: "text",
-  retryMode: "standard",
 });
 
-const promotionV2CanaryProfile = Object.freeze({
+const readerPromotionV2CanaryProfile = Object.freeze({
   provider: "codex",
   model: "gpt-5.6-sol",
   reasoningEffort: "high",
@@ -45,25 +65,33 @@ const profilesByPurpose = Object.freeze({
     activeReaderSummaryStructuredProfile,
   "social_monitor.reader_summary.verify_related_topic_relations.v2":
     activeReaderSummaryStructuredProfile,
-  "social_monitor.reader_summary.promotion_v2_canary.v1":
-    promotionV2CanaryProfile,
   "social_monitor.reader_summary.daily.canonical_recovery.v2":
     activeReaderSummaryTextProfile,
   "social_monitor.reader_summary.weekly.review.v2": activeReaderSummaryStructuredProfile,
   "social_monitor.reader_summary.weekly.generate.v2": activeReaderSummaryTextProfile,
 });
 
+const capabilityProfilesByPurpose = Object.freeze({
+  [readerPromotionV2CanaryPurpose]: readerPromotionV2CanaryProfile,
+});
+
 export const subscriptionRuntimeWrapperPurposeProfiles = () =>
   profilesByPurpose;
 
-export const admitSubscriptionRuntimeWrapperRequest = (input) => {
+export const admitSubscriptionRuntimeWrapperRequest = (
+  input,
+  activationCapability,
+) => {
   const request = record(input.request, "request");
   const context = record(request.context, "request.context");
   const task = record(request.task, "request.task");
   const controls = optionalRecord(task.controls, "request.task.controls") ?? {};
   const metadata = optionalRecord(task.metadata, "request.task.metadata") ?? {};
   const purpose = nonEmptyString(context.purpose, "request.context.purpose");
-  const profile = profilesByPurpose[purpose];
+  const profile = profilesByPurpose[purpose] ??
+    (activationCapability === readerPromotionV2CanaryActivationCapability
+      ? capabilityProfilesByPurpose[purpose]
+      : undefined);
   if (profile === undefined) {
     throw new Error("Agent runtime purpose is not admitted");
   }
@@ -90,13 +118,12 @@ export const admitSubscriptionRuntimeWrapperRequest = (input) => {
     "metadata.reasoningEffort",
   );
   assertDedicatedRelatedTopicMarkers(purpose, controls, metadata);
-  assertPromotionV2CanaryMarkers(purpose, controls, metadata);
+  assertReaderPromotionV2CanaryMarkers(purpose, task, controls);
   assertOptionalExactString(
     controls.responseFormat,
     profile.responseFormat,
     "responseFormat",
   );
-  assertOptionalExactString(controls.retryMode, profile.retryMode, "retryMode");
   for (const [label, value] of [
     ["outputKind", controls.outputKind],
     ["runtimeOutput", controls.runtimeOutput],
@@ -138,7 +165,6 @@ export const admitSubscriptionRuntimeWrapperRequest = (input) => {
           model: profile.model,
           reasoningEffort: profile.reasoningEffort,
           responseFormat: profile.responseFormat,
-          ...(profile.retryMode === "never" ? { retryMode: "never" } : {}),
         },
         metadata: {
           ...metadata,
@@ -149,6 +175,41 @@ export const admitSubscriptionRuntimeWrapperRequest = (input) => {
       },
     },
   };
+};
+
+const assertReaderPromotionV2CanaryMarkers = (purpose, task, controls) => {
+  if (purpose !== readerPromotionV2CanaryPurpose) return;
+  assertRequiredExactString(
+    task.outputSchemaName,
+    readerPromotionV2CanarySchemaName,
+    "task.outputSchemaName",
+  );
+  assertRequiredExactString(
+    controls.outputSchemaName,
+    readerPromotionV2CanarySchemaName,
+    "outputSchemaName",
+  );
+  assertRequiredExactString(
+    controls.schemaVersion,
+    readerPromotionV2CanarySchemaVersion,
+    "schemaVersion",
+  );
+  if (!readerPromotionV2CanarySchemaEquals(controls.outputSchema)) {
+    throw new Error("outputSchema conflicts with purpose policy");
+  }
+  for (const container of [task, controls]) {
+    for (const key of [
+      "continuation",
+      "logicalThread",
+      "previousCheckpoint",
+      "recoveryPacket",
+      "resumeHandle",
+    ]) {
+      if (Object.hasOwn(container, key)) {
+        throw new Error("Reader promotion V2 canary rejects continuation");
+      }
+    }
+  }
 };
 
 const assertDedicatedRelatedTopicMarkers = (purpose, controls, metadata) => {
@@ -174,25 +235,6 @@ const assertDedicatedRelatedTopicMarkers = (purpose, controls, metadata) => {
     metadata.verificationLane,
     "related_topic",
     "metadata.verificationLane",
-  );
-};
-
-const assertPromotionV2CanaryMarkers = (purpose, controls, metadata) => {
-  if (purpose !== "social_monitor.reader_summary.promotion_v2_canary.v1") return;
-  assertRequiredExactString(
-    controls.outputSchemaName,
-    "social_monitor_reader_summary_story_relations",
-    "outputSchemaName",
-  );
-  assertRequiredExactString(
-    controls.schemaVersion,
-    "reader_summary.story_relation.v1",
-    "schemaVersion",
-  );
-  assertRequiredExactString(
-    metadata.taskRole,
-    "promotion_v2_canary",
-    "metadata.taskRole",
   );
 };
 

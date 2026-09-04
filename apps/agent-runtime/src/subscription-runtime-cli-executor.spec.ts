@@ -198,64 +198,6 @@ describe("SubscriptionRuntimeCliExecutor", () => {
     },
   );
 
-  it("launches the CLI once and never retries canary failure classes", async () => {
-    tempDir = await mkdtemp(join(tmpdir(), "agent-runtime-cli-test-"));
-    const cases = [
-      [
-        "capacity",
-        "process.stdout.write(JSON.stringify({ status: 'failed', warnings: [], failure: { code: 'backend_unavailable', retryable: true, reconnectRequired: false } }));",
-      ],
-      [
-        "reconnect",
-        "process.stdout.write(JSON.stringify({ status: 'failed', warnings: [], failure: { code: 'needs_reconnect', retryable: true, reconnectRequired: true } }));",
-      ],
-      [
-        "unknown",
-        "process.stdout.write(JSON.stringify({ status: 'failed', warnings: [], failure: { code: 'unknown_runtime_failure', retryable: true, reconnectRequired: false } }));",
-      ],
-      ["malformed", "process.stdout.write('not-json');"],
-      ["timeout", "setTimeout(() => {}, 2_000);"],
-    ] as const;
-
-    for (const [name, behavior] of cases) {
-      const attemptsPath = join(tempDir, `${name}-attempts`);
-      const cliPath = join(tempDir, `${name}-cli.mjs`);
-      await writeFile(
-        cliPath,
-        [
-          "#!/usr/bin/env node",
-          'import { appendFile } from "node:fs/promises";',
-          `await appendFile(${JSON.stringify(attemptsPath)}, "attempt\\n");`,
-          behavior,
-        ].join("\n"),
-        "utf8",
-      );
-      await chmod(cliPath, 0o755);
-      const executor = new SubscriptionRuntimeCliExecutor({
-        command: cliPath,
-        ephemeral: false,
-        stateRoot: join(tempDir, `${name}-state`),
-        localEncryptionKey: "test-key",
-        installationInspector,
-      });
-
-      const result = await executor.execute(
-        canaryExecutionRequest({
-          timeoutMs: name === "timeout" ? 500 : 1_000,
-        }),
-      );
-
-      expect(
-        (await readFile(attemptsPath, "utf8")).trim().split("\n"),
-      ).toHaveLength(1);
-      expect(result.status).toBe("failed");
-      expect(result.failure).toMatchObject({
-        retryable: false,
-        reconnectRequired: false,
-      });
-    }
-  });
-
   it("preserves a typed quota failure and its safe cooldown details", async () => {
     tempDir = await mkdtemp(join(tmpdir(), "agent-runtime-cli-test-"));
     const cliPath = join(tempDir, "fake-quota-cli.mjs");
@@ -594,19 +536,6 @@ const validExecutionRequest = (
   metadata: {},
   ...override,
 });
-
-const canaryExecutionRequest = (
-  override: Partial<AgentRuntimeExecutionRequest> = {},
-): AgentRuntimeExecutionRequest =>
-  validExecutionRequest({
-    purpose: "social_monitor.reader_summary.promotion_v2_canary.v1",
-    controlsJson: JSON.stringify({
-      outputSchemaName: "social_monitor_reader_summary_story_relations",
-      schemaVersion: "reader_summary.story_relation.v1",
-    }),
-    metadata: { taskRole: "promotion_v2_canary" },
-    ...override,
-  });
 
 const installationInspector = {
   inspect: async (command: string) => installation(command),

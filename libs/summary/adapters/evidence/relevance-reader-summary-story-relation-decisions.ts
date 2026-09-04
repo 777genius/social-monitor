@@ -1,5 +1,6 @@
 import {
   aggregateStoryRelationDecisionTraces,
+  buildBoundedStrictTitleStoryRelationCandidates,
   buildStoryRelationCandidates,
   buildStoryRelationSafeRecallShadowCandidates,
   reconcileStoryRelationDecisions,
@@ -43,20 +44,39 @@ export const verifiedReaderSummaryStoryRelations = async (params: {
   readonly additionalCandidates?: readonly StoryRelationCandidate[];
 }): Promise<{
   readonly pairs: ReadonlySet<string>;
+  readonly strictTitlePairs: ReadonlySet<string>;
   readonly relations: readonly ApprovedSameStoryRelation[];
+  readonly candidates: readonly StoryRelationCandidate[];
 }> => {
-  const candidates = uniqueCandidates([
-    ...buildStoryRelationCandidates({
+  const primaryCandidates = buildStoryRelationCandidates({
     selection: params.deterministicSelection,
     evidence: params.evidence,
-    }),
+  });
+  const strictTitleRecallCandidates =
+    buildBoundedStrictTitleStoryRelationCandidates({
+      selection: params.deterministicSelection,
+      evidence: params.evidence,
+      primaryCandidates,
+    });
+  const candidates = uniqueCandidates([
+    ...primaryCandidates,
+    ...strictTitleRecallCandidates,
     ...(params.additionalCandidates ?? []),
   ]);
   const result = await verifiedPrimaryStoryRelations({
     ...params,
     candidates,
   });
-  return result;
+  const strictTitlePairIds = new Set(
+    strictTitleRecallCandidates.map(candidatePairKey),
+  );
+  return {
+    ...result,
+    candidates,
+    strictTitlePairs: new Set(
+      [...result.pairs].filter((pairId) => strictTitlePairIds.has(pairId)),
+    ),
+  };
 };
 
 const uniqueCandidates = (
@@ -64,12 +84,15 @@ const uniqueCandidates = (
 ): readonly StoryRelationCandidate[] => {
   const byPair = new Map<string, StoryRelationCandidate>();
   for (const candidate of candidates) {
-    const key = [candidate.leftFeedItemId, candidate.rightFeedItemId]
-      .sort().join("\u0000");
+    const key = candidatePairKey(candidate);
     if (!byPair.has(key)) byPair.set(key, candidate);
   }
   return [...byPair.values()];
 };
+
+const candidatePairKey = (candidate: StoryRelationCandidate): string =>
+  [candidate.leftFeedItemId, candidate.rightFeedItemId]
+    .sort().join("\u0000");
 
 export const scheduleReaderSummarySafeRecallShadowObservation = (params: {
   readonly query: Parameters<ReaderSummaryEvidenceSelectorPort["select"]>[0];
@@ -78,14 +101,11 @@ export const scheduleReaderSummarySafeRecallShadowObservation = (params: {
   readonly requestedAt: Date;
   readonly verifier?: ReaderSummaryStoryRelationVerifierPort;
   readonly metrics: StoryRankingMetricsPort;
+  readonly authoritativeCandidates: readonly StoryRelationCandidate[];
 }): void => {
-  const primaryCandidates = buildStoryRelationCandidates({
-    selection: params.deterministicSelection,
-    evidence: params.evidence,
-  });
   scheduleSafeRecallShadow(() => observeSafeRecallShadow({
     ...params,
-    primaryCandidates,
+    primaryCandidates: params.authoritativeCandidates,
   }));
 };
 

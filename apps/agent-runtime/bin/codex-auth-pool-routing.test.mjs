@@ -9,7 +9,6 @@ import {
 } from "@vioxen/subscription-runtime/worker-core";
 
 import {
-  codexAuthPoolRoute,
   codexAuthPoolExecutionPolicy,
   orderCodexAuthAccountsForTask,
 } from "./codex-auth-pool-routing.mjs";
@@ -99,64 +98,4 @@ test("safe executor retries clean failures with the exact original job", () => {
   );
   assert.equal(codexAuthPoolExecutionPolicy.retryUnknownCleanWorkspace, true);
   assert.equal(codexAuthPoolExecutionPolicy.retryUnknownChangedWorkspace, false);
-});
-
-test("canary route selects one account and permits one pooled attempt", async () => {
-  const route = codexAuthPoolRoute(
-    ["account-a", "account-b"],
-    "reader-summary-promotion-v2-canary",
-    "never",
-  );
-  assert.equal(route.accounts.length, 1);
-  assert.equal(route.maxAttempts, 1);
-  assert.deepEqual(route.executionPolicy, {
-    retryOnCapacity: false,
-    retryOnAccountUnavailable: false,
-    retryOnReconnectRequired: false,
-    retryUnknownCleanWorkspace: false,
-    retryUnknownChangedWorkspace: false,
-    continuationMode: "disabled",
-  });
-
-  for (const reason of [
-    "capacity_unavailable",
-    "account_unavailable",
-    "reconnect_required",
-    "unknown_runtime_failure",
-    "task_timeout",
-    "provider_output_invalid",
-  ]) {
-    let attempts = 0;
-    const pool = new BoundedSubscriptionWorkerPool({
-      poolId: `canary-${reason}`,
-      slots: 1,
-      retryPolicy: {
-        maxAttempts: route.maxAttempts,
-        retryOnSlotCapacityUnavailable: false,
-      },
-      workerFactory: ({ workerId }) => ({
-        workerId,
-        state: "started",
-        start: async () => {},
-        prewarm: async () => ({ status: "skipped" }),
-        health: async () => ({ status: "healthy" }),
-        capacity: () => ({ availability: "available" }),
-        dispose: async () => {},
-        run: async () => {
-          attempts += 1;
-          throw new SubscriptionWorkerError(
-            "subscription_worker_run_failed",
-            reason,
-          );
-        },
-      }),
-    });
-    await pool.start();
-    try {
-      await assert.rejects(() => pool.run({ runId: `canary-${reason}` }));
-      assert.equal(attempts, 1, reason);
-    } finally {
-      await pool.dispose();
-    }
-  }
 });
