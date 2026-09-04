@@ -121,6 +121,12 @@ jobs:
       - name: Prove subscription runtime auth-pool failover
         run: npm run check:subscription-runtime-auth-pool-e2e
 
+      - name: Prove Reader Promotion V2 canary control plane
+        run: |
+          node --test scripts/lib/reader-promotion-v2-production-canary-control.test.mjs
+          node scripts/run-with-timeout.mjs --timeout-ms 120000 --node-options --max-old-space-size=1024 -- ./node_modules/.bin/jest --config jest.config.ts --runInBand --runTestsByPath scripts/lib/reader-promotion-v2-production-canary-runner.spec.ts
+          bash ops/deploy/production-runtime/reader-promotion-v2-production-canary.test.sh
+
   backend_e2e:
     name: Backend end-to-end tests
     runs-on: ubuntu-latest
@@ -184,6 +190,17 @@ jobs:
         env:
           TENANT_RLS_TEST_ADMIN_DATABASE_URL: postgresql://social_monitor_rls_ci:social_monitor_local_password@127.0.0.1:5432/social_monitor_rls_ci
         run: npm run check:tenant-rls-postgres
+
+  reader_promotion_v2_canary_postgres18:
+    name: Reader Promotion V2 canary PostgreSQL 18
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out the review commit
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+
+      - name: Prove isolated canary procedures and ACL
+        run: bash ops/deploy/reader-promotion-v2-production-canary-postgres.test.sh
 
   feed_promotion_snapshot_postgres18:
     name: Feed promotion snapshot and native plans PostgreSQL 18
