@@ -173,6 +173,10 @@ exercise_release_bootstrap() (
   local expected=$'advanced\nsync\nruntime\ncommitted'
   if [[ $authority_loaded == false ]]; then
     expected=$'advanced\nbootstrap\nsync\nruntime\ncommitted'
+  elif [[ $predecessor == true ]]; then
+    # Retry is already at the target: neither Git advance nor its legacy
+    # bootstrap side effect may run again.
+    expected=$'sync\nruntime\ncommitted'
   fi
   [[ $(<"$events") == "$expected" ]] || fail 'release bootstrap ordering differs'
   declare -F production_transition_host_failpoint >/dev/null || \
