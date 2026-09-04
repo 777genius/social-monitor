@@ -23,6 +23,7 @@ concurrency:
 
 jobs:
   publish:
+    environment: production
     permissions:
       actions: read
       contents: write
@@ -60,7 +61,7 @@ jobs:
         id: publish_target
         shell: bash
         env:
-          TARGET_PRIVATE_KEY: ${{ secrets.PRODUCTION_TRANSITION_TARGET_PRIVATE_KEY }}
+          TARGET_PRIVATE_KEY: ${{ secrets.PRODUCTION_TRANSITION_TARGET_SIGNING_KEY }}
         run: |
           set -euo pipefail
           [[ -n "$TARGET_PRIVATE_KEY" ]]
@@ -81,6 +82,8 @@ jobs:
           trap 'rm -f -- "$key"' EXIT
           printf '%s\n' "$TARGET_PRIVATE_KEY" > "$key"
           chmod 0600 "$key"
+          git config user.name 'social-monitor-transition-publisher'
+          git config user.email 'social-monitor-transition-publisher@users.noreply.github.com'
           PRODUCTION_TRANSITION_TARGET_SIGNING_KEY=$key \
             bash ops/deploy/production-transition-publisher.sh prepare \
               "$s2" "$p6" artifact/production-transition-review.statement \

@@ -13,5 +13,5 @@ head 100755 15e0a2797dd694b535b4f80cbf1fffb166ba6590 ops/deploy/social-monitor-p
 head 100644 ad399a5f6df8939793a7344535a9a5c509630470 ops/deploy/x-collector-image-deploy-lib.test.sh
 head 100644 a848c895df0ece8169c84b4106c995b65aeec561 package-lock.json
 head 100644 91f5cfd149abc7146f7d97698501c20259f43b28 package.json
-head 100644 195ee0e7fe780ab6ce8e396b340432d1988b32c7 scripts/check-review-ci.mjs
+head 100644 ab07a431825bf0417df599dfb5f21e632625fe61 scripts/check-review-ci.mjs
 rolling 100644 abd0057d6cc840bbfec90e969d474afad4e28328 ops/deploy/social-monitor-production-deploy.sh
