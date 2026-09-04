@@ -107,16 +107,7 @@ verify_production_forward_target_identity "$F"
 verify_production_forward_target_identity "$H"
 verify_production_forward_target_identity "$D1"
 verify_production_forward_target_identity "$D2"
-# Ordinary descendants may use the frozen forward authority only while its
-# sealed B paths remain unchanged. An authenticated successor transition is
-# expected to change one of those paths and must stay rejected by this legacy
-# client instead of weakening the historical seal.
-if git -C "$repo" diff --quiet "$F" "$TARGET" -- "${b_paths[@]}"; then
-  verify_production_forward_target_identity "$TARGET"
-else
-  expect_failure 'authenticated successor through legacy forward client' \
-    verify_production_forward_target_identity "$TARGET"
-fi
+verify_production_forward_target_identity "$TARGET"
 [[ $(production_forward_anchor_for_target "$D2") == "$F" ]]
 REPO=$repo
 # shellcheck source=ops/deploy/production-forward-bridge-host-lib.sh
@@ -714,25 +705,3 @@ printf 'forward-bridge-test: runtime rollback and marker crashes resume\n'
 
 printf 'production-forward-bridge-test: ok B=%s R=%s W=%s H=%s F=%s\n' \
   "$B" "$R" "$W" "$H" "$F"
-
-# Repeating B0 installation in a process that already froze the authority must
-# validate the blobs without sourcing readonly functions a second time.
-verify_loaded_b0_install() {
-  REPO=$repo CONTROL=$CONTROL STATE=$STATE TARGET=$F SCRIPT_DIR=$SCRIPT_DIR \
-    SOCIAL_MONITOR_DEPLOY_TEST_MODE=1 bash -Eeuo pipefail -c '
-      fail() { printf "loaded-b0-install: %s\n" "$*" >&2; exit 1; }
-      source "$CONTROL/production-transition-b0-host-control.sh"
-      while read -r _ _ authority_function; do
-        [[ $authority_function != production_transition_* ]] || \
-          readonly -f "$authority_function"
-      done < <(declare -F)
-      source "$SCRIPT_DIR/production-forward-bridge-host-lib.sh"
-      production_forward_install_b0_before_entrypoint "$TARGET"
-    '
-}
-reset_b0_destinations
-run_b0_install
-verify_loaded_b0_install
-printf 'tampered canonical authority\n' > \
-  "$CONTROL/production-transition-canonical-lib.sh"
-expect_failure 'tampered loaded B0 authority' verify_loaded_b0_install

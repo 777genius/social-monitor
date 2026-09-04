@@ -957,7 +957,13 @@ deploy_release() {
     verify_deploy_control_bridge_target_compatibility "$sha"
   fi
   advance_integration "$sha"
-  deploy_control_bootstrap_production_transition_b0 "$sha"
+  # The entrypoint already authenticated and froze an installed B0 authority.
+  # Re-sourcing that authority after an ordinary fast-forward would attempt to
+  # redefine readonly functions. A predecessor that has not loaded B0 still
+  # performs the exact bootstrap before any target-controlled work is loaded.
+  if ! declare -F production_transition_host_failpoint >/dev/null; then
+    deploy_control_bootstrap_production_transition_b0 "$sha"
+  fi
   if [[ $backend == true ]]; then
     load_target_rabbitmq_quorum_backend_health "$sha"
     load_target_reader_summary_publication_deploy_library "$sha"

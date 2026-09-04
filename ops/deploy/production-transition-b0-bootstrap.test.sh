@@ -86,12 +86,17 @@ deploy_control_bootstrap_production_transition_b0 "$B0"
 [[ ! -e $CONTROL/production-transition-b0-host-control.sh ]]
 
 # The current-main deploy state machine invokes bootstrap only after the exact
-# target checkout and before its legacy sync function can install entrypoint.
+# target checkout, only when B0 is not already loaded, and before its legacy
+# sync function can install the entrypoint.
 control_library=$SCRIPT_DIR/deploy-control-lib.sh
 advance_line=$(grep -nF 'advance_integration "$sha"' "$control_library" | tail -1 | cut -d: -f1)
+loaded_guard_line=$(grep -nF \
+  'if ! declare -F production_transition_host_failpoint >/dev/null; then' \
+  "$control_library" | tail -1 | cut -d: -f1)
 bootstrap_line=$(grep -nF 'deploy_control_bootstrap_production_transition_b0 "$sha"' \
   "$control_library" | tail -1 | cut -d: -f1)
 sync_line=$(grep -nF 'sync_control_script "$sha"' "$control_library" | tail -1 | cut -d: -f1)
-((advance_line < bootstrap_line && bootstrap_line < sync_line))
+((advance_line < loaded_guard_line && loaded_guard_line < bootstrap_line && \
+  bootstrap_line < sync_line))
 
 printf 'production transition current-main B0 bootstrap test passed\n'
