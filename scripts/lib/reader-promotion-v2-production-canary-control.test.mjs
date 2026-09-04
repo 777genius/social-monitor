@@ -73,7 +73,9 @@ test("host reads official markers and never mutates a service", () => {
   assert.match(host, /run --rm --read-only --cap-drop ALL/);
   assert.ok(host.includes('flock_command" -s -w 3600 9'));
   assert.ok(host.includes("image inspect --format '{{.Id}}'"));
-  assert.ok(host.includes('"$integration:/verified-checkout:ro"'));
+  assert.ok(host.includes('"$integration:/app/verified-checkout:ro"'));
+  assert.ok(host.includes("--workdir /app "));
+  assert.ok(host.includes("--env TS_NODE_PROJECT=/app/verified-checkout/tsconfig.json"));
   assert.ok(host.includes("--env NODE_PATH=/app/node_modules"));
   assert.ok(host.includes('"$image_id" node'));
   assert.ok(host.includes('--runtime-image-id "$image_id"'));

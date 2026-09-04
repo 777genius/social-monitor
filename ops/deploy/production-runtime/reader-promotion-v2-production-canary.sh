@@ -56,8 +56,10 @@ exec 9>"$deploy_lock"
   echo 'timed out waiting for shared production deployment lock' >&2
   exit 75
 }
-[[ -d $integration && ! -L $integration && \
-   -z $(git -C "$integration" status --porcelain) ]] || exit 75
+[[ -d $integration && ! -L $integration ]] || exit 75
+checkout_status=$(git -C "$integration" status --porcelain \
+  --untracked-files=all) || exit 75
+[[ -z $checkout_status ]] || exit 75
 release=$(git -C "$integration" rev-parse --verify 'HEAD^{commit}') || exit 75
 backend=$(read_marker "$root/control/deploy-state/backend.sha" \
   "$root/control/deploy-state") || exit 75
@@ -94,7 +96,7 @@ auth_manifest=$auth_pool/current.json
 auth_real=$(readlink -f -- "$auth_manifest") || exit 75
 [[ $auth_real == "$auth_pool"/* ]] || exit 75
 
-args=(/verified-checkout/scripts/run-reader-promotion-v2-production-canary.ts \
+args=(/app/verified-checkout/scripts/run-reader-promotion-v2-production-canary.ts \
   --target-sha "$target" --release-sha "$release" \
   --backend-sha "$backend" --control-sha "$control" --runtime-sha "$runtime" \
   --runtime-image-id "$image_id" \
@@ -108,12 +110,13 @@ unset READER_PROMOTION_V2_CANARY_HOST_TEST_ROOT \
 exec "$docker_command" run --rm --read-only --cap-drop ALL \
   --security-opt no-new-privileges --tmpfs /tmp:rw,nosuid,nodev,size=64m \
   --network social-monitor-prod_default \
-  --workdir /verified-checkout \
+  --workdir /app \
   --env READER_PROMOTION_V2_CANARY_DATABASE_URL \
   --env NODE_PATH=/app/node_modules \
+  --env TS_NODE_PROJECT=/app/verified-checkout/tsconfig.json \
   --env AGENT_RUNTIME_CODEX_AUTH_POOL_ROOT=/run/social-monitor-codex-auth-pool \
   --env AGENT_RUNTIME_CODEX_AUTH_POOL_MANIFEST=current.json \
   --volume "$auth_pool:/run/social-monitor-codex-auth-pool:ro" \
-  --volume "$integration:/verified-checkout:ro" \
+  --volume "$integration:/app/verified-checkout:ro" \
   "$image_id" node -r /app/node_modules/ts-node/register \
   -r /app/node_modules/tsconfig-paths/register "${args[@]}"

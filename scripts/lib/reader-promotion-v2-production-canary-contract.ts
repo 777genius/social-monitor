@@ -12,8 +12,8 @@ import {
 } from "../../apps/agent-runtime/src/reader-promotion-v2-canary-contract";
 
 export const canaryManifestPath = join(
-  process.cwd(),
-  "ops/release/reader-promotion-v2-production-canary.v1.json",
+  __dirname,
+  "../../ops/release/reader-promotion-v2-production-canary.v1.json",
 );
 export const CANARY_MANIFEST_FORMAT =
   "reader-promotion-v2-production-canary-manifest.v1" as const;

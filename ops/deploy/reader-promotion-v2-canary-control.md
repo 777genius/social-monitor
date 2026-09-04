@@ -39,6 +39,11 @@ After independent review of the exact release SHA and before the first dispatch:
    `bash ops/deploy/reader-promotion-v2-canary-image-inspection.test.sh IMAGE_ID`.
    It checks the actual executable, pinned launcher bytes and runtime package
    in the immutable daily-runner image, without credentials, networking or AI.
+   It also loads the actual TypeScript entrypoint and manifest from a clean
+   read-only checkout mounted under `/app/verified-checkout`, without its own
+   node_modules. The container runs from `/app` so the approved bridge resolves
+   its pinned Codex binary. An offline factory probe executes the real bridge
+   with inert provider factories; it never starts a worker or contacts a model.
 
 Do not put credentials in this document, command output or source control.
 Provisioning is not part of the live model run and spends no provider tokens.

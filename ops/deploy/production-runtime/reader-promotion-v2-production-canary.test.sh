@@ -2,6 +2,14 @@
 # shellcheck disable=SC2251 # Negated commands are intentional contract assertions.
 set -euo pipefail
 
+git() {
+  if [[ ${CANARY_TEST_FAIL_GIT_STATUS:-} == 1 && ${3:-} == status ]]; then
+    return 73
+  fi
+  command git "$@"
+}
+export -f git
+
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 host=$SCRIPT_DIR/reader-promotion-v2-production-canary.sh
 test_tmp=${READER_PROMOTION_V2_CANARY_TEST_TMP_ROOT:-/tmp}
@@ -52,9 +60,10 @@ if [[ $1 == image && $2 == inspect ]]; then
 fi
 [[ $1 == run ]]
 printf '%s\n' "$*" > "$READER_PROMOTION_CANARY_ARGS"
-[[ " $* " == *" --workdir /verified-checkout "* ]]
+[[ " $* " == *" --workdir /app "* ]]
 [[ " $* " == *" --env NODE_PATH=/app/node_modules "* ]]
-[[ " $* " == *" $READER_PROMOTION_CANARY_CHECKOUT:/verified-checkout:ro "* ]]
+[[ " $* " == *" --env TS_NODE_PROJECT=/app/verified-checkout/tsconfig.json "* ]]
+[[ " $* " == *" $READER_PROMOTION_CANARY_CHECKOUT:/app/verified-checkout:ro "* ]]
 [[ " $* " == *" sha256:0000000000000000000000000000000000000000000000000000000000000001 node "* ]]
 grep -Fx 'sha256:0000000000000000000000000000000000000000000000000000000000000002' \
   "$READER_PROMOTION_CANARY_TAG_STATE" >/dev/null
@@ -85,7 +94,35 @@ grep -F -- '--workflow reader-promotion-v2-production-canary --workflow-run-id 1
 grep -F -- '--runtime-command /app/apps/agent-runtime/bin/run-codex-subscription-runtime-agent-task.mjs' \
   "$root/args" >/dev/null
 grep -Fx 'entrypoint-and-manifest-resolved' "$root/started" >/dev/null
-grep -F -- "$root/integration:/verified-checkout:ro" "$root/args" >/dev/null
+grep -F -- "$root/integration:/app/verified-checkout:ro" "$root/args" >/dev/null
+
+# Repository-local Git settings cannot conceal unreviewed build inputs.
+git -C "$root/integration" config status.showUntrackedFiles no
+touch "$root/integration/hidden-untracked"
+: > "$root/args"
+set +e
+READER_PROMOTION_V2_CANARY_HOST_TEST_ROOT=$root \
+READER_PROMOTION_V2_CANARY_HOST_TEST_DOCKER=$fake_docker \
+  bash "$host" "$sha" reader-promotion-v2-production-canary 100 1 0123456789abcdef0123456789abcdef \
+    "$confirmation" >/dev/null 2>"$root/error"
+status=$?
+set -e
+[[ $status == 75 && ! -s $root/args ]]
+rm "$root/integration/hidden-untracked"
+git -C "$root/integration" config --unset status.showUntrackedFiles
+
+# A silent Git inspection failure must not be mistaken for a clean checkout.
+export CANARY_TEST_FAIL_GIT_STATUS=1
+: > "$root/args"
+set +e
+READER_PROMOTION_V2_CANARY_HOST_TEST_ROOT=$root \
+READER_PROMOTION_V2_CANARY_HOST_TEST_DOCKER=$fake_docker \
+  bash "$host" "$sha" reader-promotion-v2-production-canary 100 1 0123456789abcdef0123456789abcdef \
+    "$confirmation" >/dev/null 2>"$root/error"
+status=$?
+set -e
+unset CANARY_TEST_FAIL_GIT_STATUS
+[[ $status == 75 && ! -s $root/args ]]
 
 # An escaping release link must not grant authority to an outside marker.
 mkdir -p "$root/outside-runtime"
