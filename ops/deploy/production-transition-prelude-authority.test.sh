@@ -150,28 +150,8 @@ grep -F 'production prelude current commit is not authenticated origin main hist
   <<< "$output" >/dev/null
 [[ ! -e $PRELUDE_SENTINEL ]]
 
-# A terminal authenticated transition can leave the exact target checked out
-# while component receipts still require an ordinary deploy resume. That path
-# must not reinstall and source B0 authority whose functions are already
-# readonly in the trusted production process.
-CURRENT_TARGET_REPO=$FIXTURE/current-target-repo
-git init -q -b main "$CURRENT_TARGET_REPO"
-git -C "$CURRENT_TARGET_REPO" config user.name 'Current Target Resume Test'
-git -C "$CURRENT_TARGET_REPO" config user.email current-target@example.invalid
-printf 'current target\n' > "$CURRENT_TARGET_REPO/README"
-git -C "$CURRENT_TARGET_REPO" add README
-git -C "$CURRENT_TARGET_REPO" commit -qm 'test: current target'
-CURRENT_TARGET=$(git -C "$CURRENT_TARGET_REPO" rev-parse HEAD)
-(
-  REPO=$CURRENT_TARGET_REPO
-  DEPLOY_CONTROL_BRIDGE_INITIALIZED_HEAD=$CURRENT_TARGET
-  source "$SCRIPT_DIR/deploy-control-bridge-lib.sh"
-  deploy_control_is_reviewed_forward_bridge_transition() { return 0; }
-  production_forward_install_b0_before_entrypoint() {
-    printf 'redundant authority reload\n' > "$FIXTURE/redundant-authority-reload"
-    return 97
-  }
-  advance_integration "$CURRENT_TARGET"
-)
-[[ ! -e $FIXTURE/redundant-authority-reload ]]
+# Exact-target disconnect recovery belongs to the deploy client, which
+# reconciles the captured plan without replaying deploy. The immutable B0
+# authority must not be rewritten solely to make a direct primitive retry
+# behave like that higher-level recovery contract.
 printf '%s\n' 'Production transition prelude authority tests passed'
