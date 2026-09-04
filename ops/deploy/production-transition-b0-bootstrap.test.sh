@@ -99,4 +99,82 @@ sync_line=$(grep -nF 'sync_control_script "$sha"' "$control_library" | tail -1 |
 ((advance_line < loaded_guard_line && loaded_guard_line < bootstrap_line && \
   bootstrap_line < sync_line))
 
+# Exercise the actual release function, not an extracted copy of its guard.
+# All external effects stay inside this disposable Git repository. The fake
+# installer reproduces the frozen function collision seen on the live host.
+exercise_release_bootstrap() (
+  local authority_loaded=$1 predecessor=${2:-false} target current_root fixed_release
+  target=$(git -C "$REPO" rev-parse HEAD)
+  current_root=$(cd "$SCRIPT_DIR/../.." && pwd)
+  STATE=$FIXTURE/release-$authority_loaded-$predecessor
+  STAGING=$STATE/staging RELEASES=$STATE/releases
+  DEPLOY_LOCK=$STATE/deploy.lock POSTGRES_ADMISSION_LOCK=$STATE/postgres.lock
+  install -d "$STATE"
+  local events=$STATE/events authority=$STATE/authority.sh
+  local -a FRONTEND_PATHS=() BACKEND_PATHS=() CONTROL_PATHS=() RUNTIME_CONTROL_PATHS=()
+  printf 'production_transition_host_failpoint() { :; }\n' > "$authority"
+  : > "$events"
+  action=deploy
+  source "$control_library"
+  fixed_release=$(declare -f deploy_release)
+  if [[ $predecessor == true ]]; then
+    # Exact controller loaded by the installed prelude before this fix.
+    source <(git -C "$current_root" show \
+      8c402ecadff1db34a9d5991b777a5eb8032282de:ops/deploy/deploy-control-lib.sh)
+  fi
+  postgres_pool_atomic_legacy_state() { return 1; }
+  load_deploy_control_bridge_library() { :; }
+  acquire_postgres_admission_with_daily_priority() { :; }
+  fetch_main() { :; }
+  validate_main_commit() { [[ $1 == "$target" ]]; }
+  postgres_pool_bootstrap_installed() { return 0; }
+  reconcile_completed_backend_image_rescues() { :; }
+  component_changed() { return 1; }
+  reconcile_github_premidnight_capture_runtime_control() { printf 'false\n'; }
+  advance_integration() {
+    git -C "$REPO" merge --ff-only -q "$1"
+    printf 'advanced\n' >> "$events"
+  }
+  production_forward_install_b0_before_entrypoint() {
+    printf 'bootstrap\n' >> "$events"
+    source "$authority"
+  }
+  sync_control_script() { printf 'sync\n' >> "$events"; }
+  deploy_release_runtime_transaction() { printf 'runtime\n' >> "$events"; }
+  commit_postgres_pool_bootstrap() { printf 'committed\n' >> "$events"; }
+  if [[ $authority_loaded == true ]]; then
+    source "$authority"
+    readonly -f production_transition_host_failpoint
+  fi
+  git -C "$REPO" checkout -q --detach "$B0"
+  if [[ $predecessor == true ]]; then
+    local status=0
+    # Keep errexit enabled within the child, so failure cannot reach runtime.
+    bash -euo pipefail -c "$(declare -f); $(declare -p REPO STATE STAGING RELEASES \
+      DEPLOY_LOCK POSTGRES_ADMISSION_LOCK FRONTEND_PATHS BACKEND_PATHS \
+      CONTROL_PATHS RUNTIME_CONTROL_PATHS target events authority action); \
+      readonly -f production_transition_host_failpoint; deploy_release \"\$target\"" \
+      > "$STATE/predecessor.log" 2>&1 || status=$?
+    ((status != 0)) || fail 'predecessor did not reproduce the readonly failure'
+    grep -F 'readonly function' "$STATE/predecessor.log" >/dev/null
+    [[ $(<"$events") == $'advanced\nbootstrap' ]] || \
+      fail 'predecessor mutated runtime after its bootstrap failure'
+    [[ $(git -C "$REPO" rev-parse HEAD) == "$target" ]] || \
+      fail 'predecessor did not durably advance to the fixed controller'
+    : > "$events"
+    eval "$fixed_release"
+  fi
+  deploy_release "$target" > "$STATE/release.log"
+  local expected=$'advanced\nsync\nruntime\ncommitted'
+  if [[ $authority_loaded == false ]]; then
+    expected=$'advanced\nbootstrap\nsync\nruntime\ncommitted'
+  fi
+  [[ $(<"$events") == "$expected" ]] || fail 'release bootstrap ordering differs'
+  declare -F production_transition_host_failpoint >/dev/null || \
+    fail 'release lost its B0 authority'
+)
+exercise_release_bootstrap false
+exercise_release_bootstrap true
+exercise_release_bootstrap true true
+
 printf 'production transition current-main B0 bootstrap test passed\n'

@@ -134,7 +134,9 @@ assert_real_bridge_target_assets() {
         ;;
       ops/deploy/deploy-control-lib.sh)
         expected_digest=d18854822ef36d5571289e72c7691fff8db4a7d5c516787441a733d6960a88a9
-        current_release_digest=824d624944de61027e29b51ca5ad86e87c9b9dcac468bb413b63898700fd78e3
+        # The ordinary-release controller preserves the frozen B0 authority
+        # instead of sourcing its readonly functions for a second time.
+        current_release_digest=3caf2f61ef68ef9697d4e2d5dd3eb057abbcc201942670d4e81fba5ab89f20ad
         ;;
       ops/deploy/postgres-runtime-deploy-lib.sh)
         expected_digest=261fb030bea2f203564c59e0c22db8058b310fb5d979c7db622938fe6045545a
