@@ -218,6 +218,7 @@ CURRENT_ENTRYPOINT_SOURCE_CLOSURE=(
   ops/deploy/social-monitor-production-deploy.sh
   ops/deploy/deploy-control-lib.sh
   ops/deploy/deploy-control-bridge-lib.sh
+  ops/deploy/deploy-control-current-target-lib.sh
   ops/deploy/postgres-runtime-deploy-lib.sh
   ops/deploy/postgres-runtime-asset-lib.sh
   ops/deploy/postgres-runtime-weekly-timer-state-lib.sh
@@ -432,6 +433,7 @@ A_CONTROLLER="$TRANSITION_CONTROL/github-production-deploy.sh" \
       ops/deploy/social-monitor-production-deploy.sh
       ops/deploy/deploy-control-lib.sh
       ops/deploy/deploy-control-bridge-lib.sh
+      ops/deploy/deploy-control-current-target-lib.sh
       ops/deploy/postgres-runtime-deploy-lib.sh
       ops/deploy/postgres-runtime-asset-lib.sh
       ops/deploy/postgres-runtime-weekly-timer-state-lib.sh

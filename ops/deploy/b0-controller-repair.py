@@ -35,7 +35,8 @@ ALLOWED = frozenset('ops/deploy/' + name for name in (
     'rabbitmq-quorum-deploy-bridge-transition.test.sh',
     'deploy-control-current-target-lib.sh',
     'b0-controller-repair.py', 'b0-controller-repair.test.py',
-    'social-monitor-production-deploy.test.sh'))
+    'social-monitor-production-deploy.test.sh',
+    'x-collector-image-deploy-lib.test.sh'))
 MARKERS = ('backend.sha', 'frontend.sha', 'control.sha',
            'postgres-pool-bootstrap.sha', 'production-transition-activated.sha')
 STATE_FILES = (*MARKERS, 'production-transition-b0-host.state',
