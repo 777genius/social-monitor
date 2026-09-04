@@ -18,6 +18,14 @@ class RepairTests(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory(prefix='b0-repair-test-', dir='/tmp')
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
+        # Hermetic disposable Git fixtures must not inherit a CI runner's LFS
+        # filters or developer configuration. Production main() still refuses
+        # all GIT_* overrides and checks the real machine configuration.
+        environment = patch.dict(os.environ, {
+            'GIT_CONFIG_NOSYSTEM': '1', 'GIT_CONFIG_GLOBAL': str(self.root / 'git-config'),
+        })
+        environment.start()
+        self.addCleanup(environment.stop)
         self.repo = self.root / 'integration'
         self.repo.mkdir()
         self.command('git', 'init', '-q', '-b', 'main', str(self.repo))
@@ -330,6 +338,13 @@ class RepairTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, 'invoke hook'):
             self.repair.apply(self.target, self.approved)
         self.assertTrue(hook.exists())
+
+    def test_git_content_filters_remain_refused(self):
+        self.git('config', 'filter.fixture.clean', 'false')
+        with self.assertRaisesRegex(RuntimeError, 'content filters'):
+            self.repair.apply(self.target, self.approved)
+        self.assertEqual(self.git('config', '--get', 'filter.fixture.clean').strip(), b'false')
+        self.assertFalse(self.repair.run_path(self.target).exists())
 
     def test_held_deploy_lock_and_symlink_marker_are_refused(self):
         with (self.control / 'production-deploy.lock').open('r+') as lock:
