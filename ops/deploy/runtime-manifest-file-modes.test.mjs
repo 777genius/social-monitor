@@ -5,6 +5,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { randomUUID } from 'node:crypto';
+import process from 'node:process';
+import { URL } from 'node:url';
 
 const dockerfile = readFileSync(new URL('../../Dockerfile', import.meta.url), 'utf8');
 const copyManifests = dockerfile.split('\n').filter((line) =>
