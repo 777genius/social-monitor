@@ -16,6 +16,7 @@ import type {
   SubscriptionRuntimeInstallationIdentity,
   SubscriptionRuntimeInstallationInspector,
 } from "./subscription-runtime-installation";
+import type { readerPromotionV2CanaryActivationCapability } from "./subscription-runtime-purpose-model-policy";
 import {
   admitSubscriptionRuntimeRequest,
   parseSubscriptionRuntimeJsonObject,
@@ -38,6 +39,8 @@ export const attachExecutorOwnedExecutionAttestation = async (params: {
   readonly profile: SubscriptionRuntimePurposeProfile;
   readonly installationInspector: SubscriptionRuntimeInstallationInspector;
   readonly admittedInstallation: SubscriptionRuntimeInstallationIdentity;
+  readonly activationCapability?:
+    typeof readerPromotionV2CanaryActivationCapability;
 }): Promise<AgentRuntimeExecutionResult> => {
   if (params.result.status !== "completed") {
     return params.result;
@@ -59,8 +62,13 @@ const createExecutionAttestation = async (params: {
   readonly profile: SubscriptionRuntimePurposeProfile;
   readonly installationInspector: SubscriptionRuntimeInstallationInspector;
   readonly admittedInstallation: SubscriptionRuntimeInstallationIdentity;
+  readonly activationCapability?:
+    typeof readerPromotionV2CanaryActivationCapability;
 }): Promise<AgentRuntimeExecutionAttestation> => {
-  const exactAdmission = admitSubscriptionRuntimeRequest(params.request);
+  const exactAdmission = admitSubscriptionRuntimeRequest(
+    params.request,
+    params.activationCapability,
+  );
   if (
     params.request.provider !== params.profile.provider ||
     canonicalJsonSha256(params.canonicalRequest) !==
@@ -71,6 +79,7 @@ const createExecutionAttestation = async (params: {
       exactAdmission.profile.reasoningEffort ||
     params.profile.outputKind !== exactAdmission.profile.outputKind ||
     params.profile.responseFormat !== exactAdmission.profile.responseFormat ||
+    params.profile.retryMode !== exactAdmission.profile.retryMode ||
     params.profile.model !== productionAgentRuntimeModel
   ) {
     throw new Error("Agent runtime execution identity is not production-safe");

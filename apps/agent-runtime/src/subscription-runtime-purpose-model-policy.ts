@@ -1,4 +1,12 @@
 import type { AgentRuntimeExecutionRequest } from "./agent-runtime-executor.port";
+import {
+  readerPromotionV2CanaryOutputIsValid,
+  readerPromotionV2CanaryOutputSchema,
+  readerPromotionV2CanaryPurpose,
+  readerPromotionV2CanarySchemaEquals,
+  readerPromotionV2CanarySchemaName,
+  readerPromotionV2CanarySchemaVersion,
+} from "./reader-promotion-v2-canary-contract";
 
 export const productionAgentRuntimeModel = "gpt-5.6-sol";
 export const productionAgentRuntimeReasoningEffort = "xhigh";
@@ -7,6 +15,7 @@ export const activeReaderSummaryReasoningEffort = "high";
 export type SubscriptionRuntimeOutputKind =
   | "structured_output"
   | "output_text";
+export type SubscriptionRuntimeRetryMode = "standard" | "never";
 
 export type SubscriptionRuntimePurposeProfile = {
   readonly provider: "codex";
@@ -14,6 +23,18 @@ export type SubscriptionRuntimePurposeProfile = {
   readonly reasoningEffort: "high" | "xhigh";
   readonly outputKind: SubscriptionRuntimeOutputKind;
   readonly responseFormat: "json" | "text";
+  readonly retryMode?: SubscriptionRuntimeRetryMode;
+};
+
+export const readerPromotionV2CanaryActivationCapability = Symbol(
+  "reader-promotion-v2-canary-activation-capability",
+);
+
+export {
+  readerPromotionV2CanaryOutputSchema,
+  readerPromotionV2CanaryPurpose,
+  readerPromotionV2CanarySchemaName,
+  readerPromotionV2CanarySchemaVersion,
 };
 
 export type AdmittedSubscriptionRuntimeRequest = {
@@ -45,6 +66,15 @@ const activeReaderSummaryTextProfile = Object.freeze({
   responseFormat: "text",
 } as const satisfies SubscriptionRuntimePurposeProfile);
 
+const readerPromotionV2CanaryProfile = Object.freeze({
+  provider: "codex",
+  model: productionAgentRuntimeModel,
+  reasoningEffort: activeReaderSummaryReasoningEffort,
+  outputKind: "structured_output",
+  responseFormat: "json",
+  retryMode: "never",
+} as const satisfies SubscriptionRuntimePurposeProfile);
+
 const profilesByPurpose: Readonly<
   Record<string, SubscriptionRuntimePurposeProfile>
 > = Object.freeze({
@@ -64,14 +94,24 @@ const profilesByPurpose: Readonly<
   "social_monitor.reader_summary.weekly.generate.v2": activeReaderSummaryTextProfile,
 });
 
+const capabilityProfilesByPurpose: Readonly<
+  Record<string, SubscriptionRuntimePurposeProfile>
+> = Object.freeze({
+  [readerPromotionV2CanaryPurpose]: readerPromotionV2CanaryProfile,
+});
+
 export const subscriptionRuntimePurposeProfiles = (): Readonly<
   Record<string, SubscriptionRuntimePurposeProfile>
 > => profilesByPurpose;
 
 export const admitSubscriptionRuntimeRequest = (
   request: AgentRuntimeExecutionRequest,
+  activationCapability?: symbol,
 ): AdmittedSubscriptionRuntimeRequest => {
-  const profile = profilesByPurpose[request.purpose];
+  const profile = profilesByPurpose[request.purpose] ??
+    (activationCapability === readerPromotionV2CanaryActivationCapability
+      ? capabilityProfilesByPurpose[request.purpose]
+      : undefined);
   if (profile === undefined) {
     throw new Error("Agent runtime purpose is not admitted");
   }
@@ -104,6 +144,7 @@ export const admitSubscriptionRuntimeRequest = (
     "metadata.reasoningEffort",
   );
   assertDedicatedRelatedTopicMarkers(request, controls);
+  assertReaderPromotionV2CanaryMarkers(request, controls, outputSchema);
   assertOutputControls(request, controls, outputSchema, profile);
 
   const canonicalControls = canonicalControlsForProfile(
@@ -152,6 +193,13 @@ export const admitSubscriptionRuntimeRequest = (
   };
 };
 
+export const subscriptionRuntimeOutputMatchesProfile = (
+  admission: AdmittedSubscriptionRuntimeRequest,
+  structuredOutput: Readonly<Record<string, unknown>> | undefined,
+): boolean =>
+  admission.profile !== readerPromotionV2CanaryProfile ||
+  readerPromotionV2CanaryOutputIsValid(structuredOutput);
+
 const assertDedicatedRelatedTopicMarkers = (
   request: AgentRuntimeExecutionRequest,
   controls: Record<string, unknown>,
@@ -180,6 +228,44 @@ const assertDedicatedRelatedTopicMarkers = (
     "related_topic",
     "metadata.verificationLane",
   );
+};
+
+const assertReaderPromotionV2CanaryMarkers = (
+  request: AgentRuntimeExecutionRequest,
+  controls: Record<string, unknown>,
+  outputSchema: Record<string, unknown>,
+): void => {
+  if (request.purpose !== readerPromotionV2CanaryPurpose) return;
+  assertRequiredExactString(
+    controls.outputSchemaName,
+    readerPromotionV2CanarySchemaName,
+    "outputSchemaName",
+  );
+  assertRequiredExactString(
+    controls.schemaVersion,
+    readerPromotionV2CanarySchemaVersion,
+    "schemaVersion",
+  );
+  if (!readerPromotionV2CanarySchemaEquals(outputSchema)) {
+    throw new Error("outputSchema conflicts with purpose policy");
+  }
+  assertNoCanaryContinuationControls(controls);
+};
+
+const assertNoCanaryContinuationControls = (
+  controls: Record<string, unknown>,
+): void => {
+  for (const key of [
+    "continuation",
+    "logicalThread",
+    "previousCheckpoint",
+    "recoveryPacket",
+    "resumeHandle",
+  ]) {
+    if (Object.hasOwn(controls, key)) {
+      throw new Error("Reader promotion V2 canary rejects continuation");
+    }
+  }
 };
 
 const assertRequiredExactString = (

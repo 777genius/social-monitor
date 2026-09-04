@@ -31,6 +31,8 @@ import {
   admitSubscriptionRuntimeRequest,
   type activeReaderSummaryReasoningEffort,
   configuredSubscriptionRuntimeDefaultsAreSafe,
+  readerPromotionV2CanaryActivationCapability,
+  subscriptionRuntimeOutputMatchesProfile,
   type AdmittedSubscriptionRuntimeRequest,
   type SubscriptionRuntimePurposeProfile,
 } from "./subscription-runtime-purpose-model-policy";
@@ -46,6 +48,8 @@ export type SubscriptionRuntimeCliExecutorOptions = {
   readonly reasoningEffort?: typeof activeReaderSummaryReasoningEffort;
   readonly installationInspector?: SubscriptionRuntimeInstallationInspector;
   readonly logger?: StructuredLogger;
+  readonly readerPromotionV2CanaryActivationCapability?:
+    typeof readerPromotionV2CanaryActivationCapability;
 };
 
 export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort {
@@ -75,7 +79,10 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
         });
         return invalidAttestationResult();
       }
-      admission = admitSubscriptionRuntimeRequest(request);
+      admission = admitSubscriptionRuntimeRequest(
+        request,
+        this.options.readerPromotionV2CanaryActivationCapability,
+      );
     } catch (error) {
       this.logFailure(request, "admission", error);
       return invalidAttestationResult();
@@ -114,6 +121,16 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
           timeoutMs: request.timeoutMs,
         }),
       );
+      if (admission.profile.retryMode === "never") {
+        const result = await this.attestCompletedResult(
+          request,
+          admission,
+          initialResult,
+          admittedInstallation,
+        );
+        this.logResult(request, result, startedAt);
+        return result;
+      }
       if (!shouldRetryWithEphemeral(initialResult, this.options)) {
         const result = await this.attestCompletedResult(
           request,
@@ -253,6 +270,17 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
     result: AgentRuntimeExecutionResult,
     admittedInstallation: SubscriptionRuntimeInstallationIdentity,
   ): Promise<AgentRuntimeExecutionResult> {
+    if (
+      admission.profile.retryMode === "never" &&
+      (result.status === "waiting_for_input" ||
+        (result.status === "completed" &&
+          !subscriptionRuntimeOutputMatchesProfile(
+            admission,
+            result.structuredOutput,
+          )))
+    ) {
+      return Promise.resolve(invalidAttestationResult());
+    }
     return attachExecutorOwnedExecutionAttestation({
       command: admittedInstallation.executablePath,
       request,
@@ -261,6 +289,8 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
       profile: admission.profile,
       installationInspector: this.installationInspector,
       admittedInstallation,
+      activationCapability:
+        this.options.readerPromotionV2CanaryActivationCapability,
     });
   }
 
@@ -318,6 +348,13 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
     }
     if (ephemeral) {
       args.push("--ephemeral");
+    }
+    if (
+      profile.retryMode === "never" &&
+      this.options.readerPromotionV2CanaryActivationCapability ===
+        readerPromotionV2CanaryActivationCapability
+    ) {
+      args.push("--activate-reader-promotion-v2-canary");
     }
     if (
       request.provider === "codex" &&
