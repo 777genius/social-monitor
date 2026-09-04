@@ -68,15 +68,29 @@ def execute(*args: str) -> bytes:
     return result.stdout
 
 
-def regular(path: Path) -> tuple[bytes, list[int]]:
+def regular(path: Path, *, retained_marker: bool = False) -> tuple[bytes, list[int]]:
     with os.fdopen(os.open(path, os.O_RDONLY | os.O_NOFOLLOW), 'rb') as stream:
         before = os.fstat(stream.fileno())
-        require(stat.S_ISREG(before.st_mode) and before.st_nlink == 1
+        require(stat.S_ISREG(before.st_mode)
+                and before.st_nlink in ((1, 2) if retained_marker else (1,))
                 and before.st_uid == os.geteuid() and not before.st_mode & 0o022,
                 f'unsafe file: {path}')
         data = stream.read()
+        identity = lambda s: [s.st_dev, s.st_ino, s.st_mode, s.st_size, s.st_mtime_ns,
+                              s.st_ctime_ns, s.st_uid, s.st_gid, s.st_nlink]
+        if before.st_nlink == 2:
+            # The deployed marker protocol retains the committed .next inode
+            # at this content-addressed name. Inspect it without changing either
+            # link; arbitrary hardlinks and unfinished .next files stay refused.
+            require(not os.path.lexists(path.with_name(path.name + '.next')),
+                    f'unfinished marker: {path}')
+            receipt = path.with_name(path.name + '.next.retired.' + digest(data))
+            with os.fdopen(os.open(receipt, os.O_RDONLY | os.O_NOFOLLOW), 'rb') as retained:
+                require(identity(os.fstat(retained.fileno())) == identity(before)
+                        and retained.read() == data
+                        and identity(receipt.lstat()) == identity(before),
+                        f'unaccounted marker hardlink: {path}')
         after = os.fstat(stream.fileno())
-        identity = lambda s: [s.st_dev, s.st_ino, s.st_mode, s.st_size, s.st_mtime_ns, s.st_ctime_ns]
         require(identity(before) == identity(after) == identity(path.lstat()),
                 f'file changed during read: {path}')
         return data, identity(after)
@@ -174,7 +188,7 @@ class ControllerRepair:
         result = {}
         for name in STATE_FILES:
             path = self.control / 'deploy-state' / name
-            data, identity = regular(path)
+            data, identity = regular(path, retained_marker=True)
             if name in MARKERS:
                 require(data == (self.live + '\n').encode(), f'live marker drift: {name}')
             result[str(path.relative_to(self.root))] = [digest(data), identity]

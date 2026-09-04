@@ -279,6 +279,68 @@ class RepairTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, 'plan drifted'):
             self.repair.apply(self.target, '0' * 64)
         self.assertFalse(self.repair.run_path(self.target).exists())
+        self.assert_preserved()
+
+    def test_retired_marker_links_are_preserved_through_apply_and_handoff(self):
+        linked = []
+        for name in ('control.sha', 'postgres-pool-bootstrap.sha',
+                     'production-transition-activated.sha', 'production-transition-review-consumption.v2'):
+            marker = self.control / 'deploy-state' / name
+            receipt = marker.with_name(name + '.next.retired.' + repair_module.digest(marker.read_bytes()))
+            os.link(marker, receipt)
+            linked.append((marker, receipt, marker.stat().st_ino))
+        self.plan = self.repair.plan(self.target)
+        self.approved = repair_module.digest(repair_module.canonical(self.plan))
+        self.repair.apply(self.target, self.approved)
+        self.repair.handoff(self.target, self.approved)
+        for marker, receipt, inode in linked:
+            self.assertEqual((marker.stat().st_ino, receipt.stat().st_ino), (inode, inode))
+            self.assertEqual(marker.stat().st_nlink, 2)
+        self.assert_preserved()
+
+    def test_marker_unknown_or_forged_retired_links_are_refused_before_writes(self):
+        marker = self.control / 'deploy-state/control.sha'
+        receipt = marker.with_name(marker.name + '.next.retired.' + repair_module.digest(marker.read_bytes()))
+        unknown = self.root / 'unexpected-link'
+        os.link(marker, unknown)
+        for forged in ('missing', 'same-bytes-different-inode', 'symlink'):
+            with self.subTest(forged=forged):
+                if forged == 'same-bytes-different-inode':
+                    receipt.write_bytes(marker.read_bytes())
+                elif forged == 'symlink':
+                    receipt.symlink_to(marker)
+                with self.assertRaises((RuntimeError, OSError)):
+                    self.repair.apply(self.target, self.approved)
+                self.assertFalse(self.repair.run_path(self.target).exists())
+                if os.path.lexists(receipt):
+                    receipt.unlink()
+
+    def test_marker_retained_link_change_after_plan_is_refused(self):
+        marker = self.control / 'deploy-state/control.sha'
+        receipt = marker.with_name(marker.name + '.next.retired.' + repair_module.digest(marker.read_bytes()))
+        os.link(marker, receipt)
+        self.plan = self.repair.plan(self.target)
+        self.approved = repair_module.digest(repair_module.canonical(self.plan))
+        receipt.unlink()
+        with self.assertRaisesRegex(RuntimeError, 'plan drifted'):
+            self.repair.apply(self.target, self.approved)
+        self.assertFalse(self.repair.run_path(self.target).exists())
+
+    def test_nonmarker_hardlinks_and_unfinished_marker_are_refused(self):
+        for path in (self.repo / repair_module.CONTROLLER,
+                     self.control / 'github-production-deploy.sh',
+                     self.control / 'production-deploy.lock'):
+            with self.subTest(path=path):
+                sibling = self.root / 'unexpected-link'
+                os.link(path, sibling)
+                with self.assertRaisesRegex(RuntimeError, 'unsafe file'):
+                    self.repair.apply(self.target, self.approved)
+                sibling.unlink()
+        marker = self.control / 'deploy-state/control.sha'
+        os.link(marker, marker.with_name(marker.name + '.next'))
+        with self.assertRaisesRegex(RuntimeError, 'unfinished marker'):
+            self.repair.apply(self.target, self.approved)
+        self.assertFalse(self.repair.run_path(self.target).exists())
 
     def test_plan_refuses_untracked_files_hidden_by_git_configuration(self):
         self.git('config', 'status.showUntrackedFiles', 'no')
