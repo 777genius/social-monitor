@@ -236,6 +236,62 @@ plan_is_approved_production_forward_handoff() {
      $PLAN_POSTGRES_POOL_BOOTSTRAP_SHA == "$target" ]]
 }
 
+# Exact incident authority: the side commit changes only the entrypoint.
+PRODUCTION_FORWARD_RECOVERY_BASE=7e800e90d3295cc881e21a3e81b611fa57eb5b2a
+PRODUCTION_FORWARD_RECOVERY_BRIDGE=8df8f3ba4e028e7fa7f837484541e58caf44a3f9
+
+production_forward_controller_paths() {
+  printf '%s\n' \
+    ops/deploy/social-monitor-production-deploy.sh \
+    ops/deploy/deploy-control-lib.sh \
+    ops/deploy/postgres-runtime-deploy-lib.sh \
+    ops/deploy/postgres-runtime-weekly-timer-state-lib.sh \
+    ops/deploy/postgres-runtime-daily-c1-readiness-lib.sh \
+    ops/deploy/postgres-runtime-activation-boundary-lib.sh \
+    ops/deploy/reader-summary-recovery-maintenance-lib.sh \
+    ops/deploy/backend-image-rescue-lib.sh \
+    ops/deploy/backend-image-rescue-pin-cleanup-lib.sh \
+    ops/deploy/x-collector-image-deploy-lib.sh \
+    ops/deploy/deploy-control-bridge-lib.sh
+}
+
+production_forward_controller_is_compatible() {
+  local marker=$1 target=$2 path entry other
+  [[ $marker =~ ^[0-9a-f]{40}$ && $target =~ ^[0-9a-f]{40}$ ]] || return 1
+  production_forward_git merge-base --is-ancestor "$marker" "$target" || return 1
+  while IFS= read -r path; do
+    entry=$(production_forward_git ls-tree "$marker" -- "$path") || return 1
+    other=$(production_forward_git ls-tree "$target" -- "$path") || return 1
+    # The host represents this one legacy optional source with an absence
+    # sentinel. Equal absence is compatible; introducing/removing it is not.
+    if [[ $path == ops/deploy/backend-image-rescue-pin-cleanup-lib.sh && \
+          -z $entry && -z $other ]]; then
+      continue
+    fi
+    [[ $entry =~ ^100(644|755)\ blob\ && $entry == "$other" ]] || return 1
+  done < <(production_forward_controller_paths)
+}
+
+production_forward_validate_recovery() {
+  local target=$1 bridge=$PRODUCTION_FORWARD_RECOVERY_BRIDGE delta
+  [[ $(production_forward_git rev-list --parents -n 1 "$bridge") == \
+     "$bridge $PRODUCTION_FORWARD_RECOVERY_BASE" ]] || return 1
+  delta=$(production_forward_git diff-tree --no-commit-id --name-only --no-renames \
+    -r "$PRODUCTION_FORWARD_RECOVERY_BASE" "$bridge") || return 1
+  [[ $delta == ops/deploy/social-monitor-production-deploy.sh ]] || return 1
+  production_forward_controller_is_compatible "$bridge" "$target"
+}
+
+plan_is_exact_production_forward_recovery() {
+  local backend=$1 pool=$2 backend_base=${3:-$PRODUCTION_FORWARD_RECOVERY_BASE}
+  [[ $PLAN_FRONTEND == false && $PLAN_BACKEND == "$backend" && \
+     $PLAN_BACKEND_BASE == "$backend_base" && \
+     $PLAN_CONTROL == true && $PLAN_X_COLLECTOR == false && \
+     $PLAN_POSTGRES_POOL_BOOTSTRAP == "$POSTGRES_POOL_BOOTSTRAP_VERSION" && \
+     $PLAN_POSTGRES_POOL_BOOTSTRAP_SHA == "$pool" && \
+     $PLAN_POSTGRES_POOL_REPAIR == false ]]
+}
+
 production_forward_bridge_is_installed() {
   local anchor=$1 target=$2
   [[ $PLAN_FRONTEND =~ ^(true|false)$ && $PLAN_BACKEND =~ ^(true|false)$ && \
@@ -245,17 +301,25 @@ production_forward_bridge_is_installed() {
   production_forward_first_parent_interval_contains \
     "$anchor" "$target" "$PLAN_BACKEND_BASE" && \
     production_forward_first_parent_interval_contains \
-      "$anchor" "$target" "$PLAN_POSTGRES_POOL_BOOTSTRAP_SHA"
+      "$anchor" "$target" "$PLAN_POSTGRES_POOL_BOOTSTRAP_SHA" && \
+    production_forward_controller_is_compatible "$PLAN_POSTGRES_POOL_BOOTSTRAP_SHA" "$target"
 }
 
 production_forward_plan_is_fully_reconciled() {
+  local target=$1
   [[ $PLAN_FRONTEND == false && $PLAN_BACKEND == false &&
      $PLAN_CONTROL == false && $PLAN_X_COLLECTOR == false &&
+     $PLAN_POSTGRES_POOL_REPAIR == false &&
      $PLAN_POSTGRES_POOL_BOOTSTRAP == "$POSTGRES_POOL_BOOTSTRAP_VERSION" &&
-     $PLAN_POSTGRES_POOL_BOOTSTRAP_SHA =~ ^[0-9a-f]{40}$ &&
-     $PLAN_POSTGRES_POOL_BOOTSTRAP_SHA != 0000000000000000000000000000000000000000 &&
-     $PLAN_BACKEND_BASE =~ ^[0-9a-f]{40}$ &&
-     $PLAN_BACKEND_BASE != 0000000000000000000000000000000000000000 ]]
+     $PLAN_POSTGRES_POOL_BOOTSTRAP_SHA == "$target" ]] || return 1
+  if [[ $target == "$PRODUCTION_FORWARD_RECOVERY_BRIDGE" ]]; then
+    [[ $PLAN_BACKEND_BASE == "$PRODUCTION_FORWARD_RECOVERY_BASE" ]] || return 1
+  elif [[ $target == "${PRODUCTION_FORWARD_DERIVED_BRIDGE:-}" ]]; then
+    [[ $PLAN_BACKEND_BASE == "$PRODUCTION_FORWARD_BACKEND_SHA" ]] || return 1
+  else
+    [[ $PLAN_BACKEND_BASE == "$target" ]] || return 1
+  fi
+  production_forward_controller_is_compatible "$target" "$target"
 }
 
 prepare_production_forward_bridge() {
@@ -270,6 +334,27 @@ prepare_production_forward_bridge() {
     fail "production forward target plan failed with status $status"
   fi
   print_plan
+  if plan_is_exact_production_forward_recovery true "$PRODUCTION_FORWARD_RECOVERY_BASE"; then
+    production_forward_validate_recovery "$target" || fail 'invalid production controller recovery authority'
+    capture_plan "$PRODUCTION_FORWARD_RECOVERY_BRIDGE" || fail 'production controller recovery plan failed'
+    print_plan
+    plan_is_exact_production_forward_recovery false "$PRODUCTION_FORWARD_RECOVERY_BASE" || \
+      fail 'production controller recovery is not the exact control-only plan'
+    # Scope the stronger reconciliation predicate to this recovery deployment.
+    (
+      # shellcheck disable=SC2329 # Called by deploy_once reconciliation.
+      plan_is_fully_reconciled() {
+        production_forward_plan_is_fully_reconciled "$PRODUCTION_FORWARD_RECOVERY_BRIDGE"
+      }
+      deploy_once "$PRODUCTION_FORWARD_RECOVERY_BRIDGE"
+    )
+    return
+  fi
+  if plan_is_exact_production_forward_recovery true "$PRODUCTION_FORWARD_RECOVERY_BRIDGE" || \
+      plan_is_exact_production_forward_recovery false "$PRODUCTION_FORWARD_RECOVERY_BRIDGE" "$target"; then
+    production_forward_validate_recovery "$target" || fail 'invalid installed production controller recovery'
+    return 0
+  fi
   production_forward_bridge_is_installed "$anchor" "$target" && return 0
   if plan_is_approved_production_forward_handoff "$anchor" "$bridge"; then
     return 0
@@ -288,7 +373,7 @@ prepare_production_forward_bridge() {
   # the bridge itself has no remaining work, while the target plan above still
   # correctly describes the descendant work. Treat that as an idempotent
   # success instead of demanding a second control transition.
-  production_forward_plan_is_fully_reconciled && return 0
+  production_forward_plan_is_fully_reconciled "$bridge" && return 0
   plan_is_exact_production_forward_bridge_transition || \
     fail 'production forward B plan is inconsistent with target'
   deploy_once "$bridge"
