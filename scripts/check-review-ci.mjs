@@ -352,6 +352,9 @@ if (
   ) ||
   !transitionReviewJob.includes(
     "git config user.name 'social-monitor-transition-review'",
+  ) ||
+  !transitionReviewJob.includes(
+    "git config user.email 'social-monitor-transition-review@users.noreply.github.com'",
   )
 ) {
   violations.push(
@@ -401,6 +404,9 @@ if (
   !transitionPublisherJob?.includes("environment: production") ||
   !transitionPublisherJob.includes(
     "git config user.name 'social-monitor-transition-publisher'",
+  ) ||
+  !transitionPublisherJob.includes(
+    "git config user.email 'social-monitor-transition-publisher@users.noreply.github.com'",
   )
 ) {
   violations.push(
@@ -410,7 +416,7 @@ if (
 for (const [authority, token, owner] of [
   [
     "PRODUCTION_TRANSITION_TARGET_SIGNING_KEY",
-    "secrets.PRODUCTION_TRANSITION_TARGET_SIGNING_KEY",
+    "TARGET_PRIVATE_KEY: ${{ secrets.PRODUCTION_TRANSITION_TARGET_SIGNING_KEY }}",
     transitionPublisherJob,
   ],
   ["PRODUCTION_SSH_PRIVATE_KEY", "PRODUCTION_SSH_PRIVATE_KEY", transitionActivationJob],
