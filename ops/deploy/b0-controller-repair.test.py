@@ -176,6 +176,44 @@ class RepairTests(unittest.TestCase):
                 self.repair.apply(self.target, self.approved)
         self.assertFalse(self.repair.run_path(self.target).exists())
 
+    def test_tampered_installed_authority_is_not_accepted_as_a_new_plan(self):
+        (self.control / 'production-transition-b0-host-control.sh').write_text('wrong authority\n')
+        with self.assertRaisesRegex(RuntimeError, 'historical control differs'):
+            self.repair.plan(self.target)
+        self.assertFalse(self.repair.run_path(self.target).exists())
+
+    def test_parent_receipt_directory_is_durable_before_git_mutation(self):
+        events = []
+        original_sync = repair_module.sync_directory
+        original_git = self.repair.git
+
+        def sync(path):
+            events.append(('fsync', path))
+            original_sync(path)
+
+        def git(*args):
+            if args[0] == 'merge':
+                self.assertIn(('fsync', self.control), events)
+                self.assertTrue((self.repair.run_path(self.target) / 'prepared').is_file())
+            return original_git(*args)
+
+        with patch.object(repair_module, 'sync_directory', side_effect=sync), patch.object(self.repair, 'git', side_effect=git):
+            self.repair.apply(self.target, self.approved)
+
+    def test_handoff_rejects_symlink_receipt(self):
+        self.repair.apply(self.target, self.approved)
+        receipt = self.repair.run_path(self.target) / 'control-repaired'
+        receipt.rename(receipt.with_suffix('.saved'))
+        receipt.symlink_to(receipt.with_suffix('.saved'))
+        with self.assertRaises(OSError):
+            self.repair.handoff(self.target, self.approved)
+
+    def test_stopped_container_is_refused_even_without_restart_counter_change(self):
+        rows = b'id image false 0 healthy started 0 []\n' * 12
+        with patch.object(repair_module, 'execute', return_value=rows):
+            with self.assertRaisesRegex(RuntimeError, 'stably running'):
+                repair_module.ControllerRepair.runtime_identity(self.repair)
+
     def test_production_or_authority_path_delta_is_refused(self):
         self.git('checkout', '--detach', '-q', self.target)
         self.write('README', 'application changed\n')
@@ -254,6 +292,31 @@ verify_deploy_control_bridge_compatibility
         self.command('git', '-C', str(real), 'merge', '--ff-only', '--no-edit', target)
         after = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
         self.assertEqual(after.returncode, 0, after.stderr.decode())
+        # Exercise the complete real pre-activation deploy_release path,
+        # including its early bootstrap return and all three legacy install
+        # callsites. Only application/control effects past that boundary are
+        # substituted; classifiers, Git movement and compatibility are real.
+        full_release = script + '''
+while read -r _ _ function_name; do
+  [[ $function_name != production_transition_* ]] || readonly -f "$function_name"
+done < <(declare -F)
+action=deploy
+sync_control_script() { :; }
+deploy_release_runtime_transaction() {
+  [[ $2 == true ]]
+  verify_deploy_control_bridge_compatibility
+  printf 'real-pre-activation-boundary-reached\\n'
+  exit 42
+}
+deploy_release "$4"
+exit 99
+'''
+        for attempt in range(2):
+            result = subprocess.run([*args[:2], full_release, *args[3:]],
+                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+            self.assertEqual(result.returncode, 42, f'fresh process {attempt}: {result.stderr.decode()}')
+            self.assertIn(b'real-pre-activation-boundary-reached', result.stdout)
+            self.assertEqual((empty_control / 'deploy-state/backend.sha').read_text(), repair_module.LIVE + '\n')
         self.assertEqual(entrypoint.read_bytes(), self.command(
             'git', '-C', str(real), 'show', repair_module.PREIMAGE + ':ops/deploy/social-monitor-production-deploy.sh'))
 

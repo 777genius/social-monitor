@@ -141,6 +141,11 @@ class ControllerRepair:
 
     @contextlib.contextmanager
     def locked(self):
+        for directory in (self.root, self.control, self.control / 'deploy-state'):
+            info = directory.lstat()
+            require(directory.resolve() == directory and stat.S_ISDIR(info.st_mode)
+                    and info.st_uid == os.geteuid() and not info.st_mode & 0o022,
+                    'unsafe recovery directory')
         with contextlib.ExitStack() as stack:
             for name in LOCKS:
                 if name == 'daily-run.lock':
@@ -194,9 +199,14 @@ class ControllerRepair:
     def runtime_identity(self) -> str:
         names = ['social-monitor-prod-' + role + '-1' for role in (
             'api', 'agent-runtime', 'ingestion-worker', 'intelligence-worker',
-            'delivery-service', 'event-relay', 'frontend', 'x-collector', 'rabbitmq', 'redis')]
-        return digest(execute('/usr/bin/docker', 'inspect', '--format',
-                              '{{.Id}} {{.Image}} {{.State.Running}} {{.State.Pid}} {{.State.StartedAt}} {{.RestartCount}} {{json .Mounts}}', *names))
+            'delivery-service', 'event-relay', 'frontend', 'x-collector', 'rabbitmq', 'redis', 'otel-collector', 'caddy')]
+        data = execute('/usr/bin/docker', 'inspect', '--format',
+                       '{{.Id}} {{.Image}} {{.State.Running}} {{.State.Pid}} {{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}} {{.State.StartedAt}} {{.RestartCount}} {{json .Mounts}}', *names)
+        rows = [row.split(maxsplit=5) for row in data.decode().splitlines()]
+        require(len(rows) == len(names) and all(len(row) == 6 and row[2] == 'true'
+                and row[3].isdigit() and int(row[3]) > 0 and row[4] in ('healthy', 'none') for row in rows),
+                'production containers are not stably running')
+        return digest(data)
 
     def plan(self, target: str) -> dict:
         require(re.fullmatch('[0-9a-f]{40}', target) is not None, 'full target SHA required')
