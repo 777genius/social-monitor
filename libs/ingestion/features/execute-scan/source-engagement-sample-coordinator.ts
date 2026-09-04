@@ -66,7 +66,7 @@ export const prepareSourceEngagementSamples = (params: {
             sourceItemId: snapshot.id,
             publishedAt: snapshot.publishedAt,
             ...engagement,
-            refreshReadModels: ref.mutationKind === "unchanged" ||
+            refreshReadModels: (fetched !== undefined && ref.mutationKind === "unchanged") ||
               !fullProjectionExternalIds.has(snapshot.externalId),
           };
     }),
