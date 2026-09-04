@@ -129,14 +129,13 @@ deploy_control_bootstrap_production_transition_b0() {
 # All other releases retain the controller's original fast-forward contract.
 advance_integration() {
   local sha=$1 current
-  [[ -z $(git -C "$REPO" status --porcelain) ]] || \
-    fail 'integration worktree is dirty'
-  current=$(git -C "$REPO" rev-parse HEAD)
-  [[ $current != "$sha" ]] || return 0
   if deploy_control_is_reviewed_forward_bridge_transition \
       "$DEPLOY_CONTROL_BRIDGE_INITIALIZED_HEAD" "$sha"; then
     production_forward_install_b0_before_entrypoint "$sha"
   fi
+  [[ -z $(git -C "$REPO" status --porcelain) ]] || \
+    fail 'integration worktree is dirty'
+  current=$(git -C "$REPO" rev-parse HEAD)
   if git -C "$REPO" merge-base --is-ancestor "$sha" "$current"; then
     return 0
   fi

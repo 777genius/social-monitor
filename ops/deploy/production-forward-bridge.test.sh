@@ -79,33 +79,26 @@ w_paths=(
   ops/deploy/social-monitor-production-deploy.sh
 )
 
-# Reconstruct the immutable topology from source blobs, exactly as the release
-# writer does. The checked-in manifest must already commit these final bytes.
-b_index=$fixture/b.index
-GIT_INDEX_FILE=$b_index git -C "$repo" read-tree "$P"
-for path in "${b_paths[@]}"; do index_update_source "$b_index" "$path"; done
-B=$(commit_index "$b_index" 'test: immutable predecessor bridge' "$P")
-r_index=$fixture/r.index
-GIT_INDEX_FILE=$r_index git -C "$repo" read-tree "$M"
-for path in "${b_paths[@]}"; do
-  read -r mode blob <<< "$(GIT_INDEX_FILE=$b_index git -C "$repo" ls-files -s -- "$path" | awk '{print $1, $2}')"
-  GIT_INDEX_FILE=$r_index git -C "$repo" update-index --add --cacheinfo "$mode,$blob,$path"
-done
-R=$(commit_index "$r_index" 'test: ordered immutable join' "$M" "$B")
-w_index=$fixture/w.index
-GIT_INDEX_FILE=$w_index git -C "$repo" read-tree "$R"
-for path in "${w_paths[@]}"; do index_update_source "$w_index" "$path"; done
-W=$(commit_index "$w_index" 'test: reviewed rolling entrypoint bridge' "$R")
-h_index=$fixture/h.index
-GIT_INDEX_FILE=$h_index git -C "$repo" read-tree "$W"
-for path in "${h_paths[@]}"; do index_update_source "$h_index" "$path"; done
-H=$(commit_index "$h_index" 'test: reviewed forward payload' "$W")
-F=$(printf '%s\n' 'test: synthetic protected-main merge' | \
-  git -C "$repo" commit-tree "$H^{tree}" -p "$M" -p "$H")
+# The immutable topology already exists in protected history. Derive it through
+# the reviewed client contract so descendant tests cannot silently reseal H
+# from mutable checkout files.
+GITHUB_WORKSPACE=$repo
+TARGET=$(git -C "$repo" rev-parse HEAD)
+# shellcheck source=ops/deploy/github-production-forward-bridge-client-lib.sh
+source "$SCRIPT_DIR/github-production-forward-bridge-client-lib.sh"
+F=$(production_forward_anchor_for_target "$TARGET") || \
+  fail 'canonical protected-main merge is unavailable'
+H=$(git -C "$repo" rev-parse "$F^2")
+W=$(git -C "$repo" rev-parse "$H^1")
+R=$(git -C "$repo" rev-parse "$W^1")
+B=$(git -C "$repo" rev-parse "$R^2")
+[[ $(git -C "$repo" rev-parse "$F^1") == "$M" && \
+   $(git -C "$repo" rev-parse "$R^1") == "$M" && \
+   $(git -C "$repo" rev-parse "$B^1") == "$P" ]] || \
+  fail 'canonical production forward roots differ'
 D1=$(printf '%s\n' 'test: descendant one' | git -C "$repo" commit-tree "$F^{tree}" -p "$F")
 D2=$(printf '%s\n' 'test: descendant two' | git -C "$repo" commit-tree "$D1^{tree}" -p "$D1")
 
-GITHUB_WORKSPACE=$repo
 # shellcheck disable=SC2034 # Consumed by the dynamically sourced deploy client.
 DEPLOY_SSH_DIRECTORY=$fixture/ssh
 # shellcheck source=ops/deploy/github-production-deploy-client.sh
@@ -114,6 +107,7 @@ verify_production_forward_target_identity "$F"
 verify_production_forward_target_identity "$H"
 verify_production_forward_target_identity "$D1"
 verify_production_forward_target_identity "$D2"
+verify_production_forward_target_identity "$TARGET"
 [[ $(production_forward_anchor_for_target "$D2") == "$F" ]]
 REPO=$repo
 # shellcheck source=ops/deploy/production-forward-bridge-host-lib.sh
