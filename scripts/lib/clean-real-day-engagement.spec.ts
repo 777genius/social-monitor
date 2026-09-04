@@ -38,6 +38,7 @@ describe("live acquisition durable engagement composition", () => {
 
   it("writes source-bound snapshots and observations through the real composition", async () => {
     const results = await run();
+    expect(db.rows("scanAttempt").map((row) => row.failureReason).filter(Boolean)).toEqual([]);
     expect(results[0]?.status).toBe("succeeded");
     const source = db.rows("sourceItem")[0]!;
     expect(db.rows("sourceItemEngagementSnapshot")).toEqual([

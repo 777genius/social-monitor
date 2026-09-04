@@ -42,6 +42,8 @@ class FixtureTable {
   rows: Row[] = [];
   failWrites = false;
 
+  constructor() { this.update = this.update.bind(this); }
+
   async findMany(args: Args = {}) {
     return this.rows.filter((row) => matches(row, args.where));
   }
