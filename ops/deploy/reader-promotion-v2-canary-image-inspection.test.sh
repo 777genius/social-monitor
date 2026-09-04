@@ -20,5 +20,5 @@ docker run --rm --read-only --cap-drop ALL --security-opt no-new-privileges \
   --volume "$repo:/app/verified-checkout:ro" --entrypoint node "$image" \
   -r /app/node_modules/ts-node/register \
   -r /app/node_modules/tsconfig-paths/register \
-  /app/verified-checkout/ops/deploy/support/reader-promotion-v2-canary-image-probe.cjs \
+  /app/verified-checkout/ops/deploy/support/reader-promotion-v2-canary-image-probe.mjs \
   "$runtime_command"

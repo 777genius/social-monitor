@@ -1,13 +1,20 @@
 // Offline image topology test. Real launcher/policy, inert provider factories.
-const assert = require("node:assert/strict");
-const { spawnSync } = require("node:child_process");
-const { existsSync, mkdtempSync, rmSync, writeFileSync } = require("node:fs");
-const { join } = require("node:path");
-const { FileSubscriptionRuntimeInstallationInspector } = require(
+import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import console from "node:console";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import { dirname, join } from "node:path";
+import process from "node:process";
+import { fileURLToPath } from "node:url";
+
+const loadSource = createRequire(import.meta.url);
+const probeDirectory = dirname(fileURLToPath(import.meta.url));
+const { FileSubscriptionRuntimeInstallationInspector } = loadSource(
   "../../../apps/agent-runtime/src/subscription-runtime-installation");
-const { loadCanaryManifest } = require(
+const { loadCanaryManifest } = loadSource(
   "../../../scripts/lib/reader-promotion-v2-production-canary-contract");
-const contract = require(
+const contract = loadSource(
   "../../../apps/agent-runtime/bin/reader-promotion-v2-canary-contract.cjs");
 
 async function main() {
@@ -53,7 +60,7 @@ async function main() {
       },
     }));
     const bridge = spawnSync(process.execPath, [
-      "--experimental-loader", join(__dirname, "reader-promotion-v2-canary-probe-loader.mjs"),
+      "--experimental-loader", join(probeDirectory, "reader-promotion-v2-canary-probe-loader.mjs"),
       command, "--provider", "codex", "--input", request,
       "--model", "gpt-5.6-sol", "--activate-reader-promotion-v2-canary",
     ], { encoding: "utf8", timeout: 30_000, env: {
