@@ -1,20 +1,20 @@
 version=social-monitor-production-transition-inert-p6-v2
 repository=777genius/social-monitor
-b0=24a6de453b26685a5a5e11cc1c87a81812630dec
-s2=e06c6cb9f1547f6d87b07a9b6e4bc70ee2081a51
-s2-tree=5d1b60d75614e44afe28821cf78c5c07deb5b4b1
-run-id=github-run:33839887394
+b0=8c402ecadff1db34a9d5991b777a5eb8032282de
+s2=8f68ba7946d81ecf8fc4f93dd71271293cbb5c57
+s2-tree=dac340d93b29b5623750750b65762a7b00ef0348
+run-id=github-run:33856094221
 workflow-ref=777genius/social-monitor/.github/workflows/production-transition-review.yml@refs/heads/main
-workflow-head=24a6de453b26685a5a5e11cc1c87a81812630dec
+workflow-head=8c402ecadff1db34a9d5991b777a5eb8032282de
 producer=production-transition-reviewer
-transition-id=production-transition:33839887394
+transition-id=production-transition:33856094221
 audience=production-deploy
 signature-namespace=git
-replay-id=github-run:33839887394:attempt:1
+replay-id=github-run:33856094221:attempt:1
 lease-ref=refs/heads/main
-lease-main=24a6de453b26685a5a5e11cc1c87a81812630dec
+lease-main=8c402ecadff1db34a9d5991b777a5eb8032282de
 manifest-serialization=git-changed-destination-tombstone-v2
 manifest-count=2
-manifest-sha256=2602a534b0e4feeefd09272db72d5f387fd5ece73b207f03f9c06a69662000ed
-destination 100755 blob 1a38bf60200ee8e5f291a673ca51d3ca5fbb6fad	docs/architecture-memory/00-index.md
-destination 100644 blob 0774158a16a1eccb9e22f73436d10c4ade2516fe	docs/architecture-memory/395-subscription-runtime-rate-limit-capacity.md
+manifest-sha256=74a9b7d392ea3d3d72e8203b80e148d442c1200cc87937aa8cdc19ca8adcdd8b
+destination 100644 blob 0c7621a65b182e64e3174c4b01cb55a475511dd9	ops/deploy/production-forward-bridge-host-lib.sh
+destination 100755 blob da8e253f5661f1cecfbc549e33c4b9ffdd3c80af	ops/deploy/production-forward-bridge.test.sh
