@@ -294,7 +294,6 @@ jobs:
           npm run check:container
           npm run check:runtime-compose
           npm run check:production-deploy-lifecycle
-          bash ops/deploy/frontend-upload-file-modes.test.sh
 
   frontend:
     name: Flutter architecture and tests

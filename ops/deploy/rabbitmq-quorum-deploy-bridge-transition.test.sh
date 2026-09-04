@@ -121,6 +121,7 @@ assert_rolling_entrypoint_bridge() {
 }
 
 assert_rolling_entrypoint_bridge
+bash "$SCRIPT_DIR/frontend-upload-file-modes.test.sh"
 
 assert_real_bridge_target_assets() {
   local path entry mode type object tree_path expected_digest alternate_digest reviewed_digest
