@@ -95,17 +95,31 @@ test(
         ok: true,
         account: "account-b",
       });
+      const rateLimitAttempts = attempts.filter(
+        ({ command }) => command === "rate-limits",
+      );
+      assert.deepEqual(
+        rateLimitAttempts.map(({ account, usedPercent }) => ({
+          account,
+          usedPercent,
+        })),
+        [
+          { account: "account-a", usedPercent: 100 },
+          { account: "account-b", usedPercent: 20 },
+        ],
+      );
       const turnAttempts = attempts.filter(({ command }) => command === "turn");
       assert.deepEqual(
         turnAttempts.map(({ account, command }) => ({ account, command })),
-        [
-          { account: "account-a", command: "turn" },
-          { account: "account-b", command: "turn" },
-        ],
+        [{ account: "account-b", command: "turn" }],
       );
       assert.equal(
-        turnAttempts[0].promptSha256,
-        turnAttempts[1].promptSha256,
+        attempts.some(
+          ({ account, command }) =>
+            account === "account-a" &&
+            (command === "thread" || command === "turn" || command === "exec"),
+        ),
+        false,
       );
       for (const turnAttempt of turnAttempts) {
         assert.equal(turnAttempt.model, "gpt-5.6-sol");
@@ -331,6 +345,25 @@ if (command === "app-server") {
     const request = JSON.parse(line);
     if (request.method === "initialize") {
       send({ id: request.id, result: {} });
+      continue;
+    }
+    if (request.method === "account/rateLimits/read") {
+      const usedPercent = account === "account-a" ? 100 : 20;
+      await recordAttempt({ account, command: "rate-limits", usedPercent });
+      send({
+        id: request.id,
+        result: {
+          rateLimits: {
+            primary: {
+              usedPercent,
+              windowDurationMins: 300,
+              resetsAt: Math.floor(Date.now() / 1000) + 3600,
+            },
+            rateLimitReachedType:
+              account === "account-a" ? "usage_limit_reached" : null,
+          },
+        },
+      });
       continue;
     }
     if (request.method === "thread/start") {
