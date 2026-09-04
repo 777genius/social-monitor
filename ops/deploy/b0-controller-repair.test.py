@@ -202,6 +202,41 @@ class RepairTests(unittest.TestCase):
         with self.assertRaises(OSError):
             self.repair.apply(self.target, self.approved)
 
+    def test_exact_production_preimage_compatibility_when_history_available(self):
+        source = Path(__file__).resolve().parents[2]
+        available = subprocess.run(['git', '-C', str(source), 'cat-file', '-e',
+                                    repair_module.PREIMAGE + '^{commit}'],
+                                   stderr=subprocess.DEVNULL, check=False).returncode == 0
+        if not available:
+            self.skipTest('historical production commit unavailable in shallow checkout')
+        real = self.root / 'real-history'
+        self.command('git', 'clone', '--no-local', '--no-checkout', '-q', str(source), str(real))
+        target = self.command('git', '-C', str(source), 'rev-parse', 'HEAD').strip().decode()
+        self.command('git', '-C', str(real), 'checkout', '--detach', '-q', repair_module.PREIMAGE)
+        entrypoint = real / 'ops/deploy/social-monitor-production-deploy.sh'
+        # Real pathspecs and compatibility verifier, not the earlier mocked
+        # component_changed=false shortcut. All filesystem effects are in /tmp.
+        empty_control = self.root / 'real-control'
+        (empty_control / 'deploy-state').mkdir(parents=True)
+        script = '''set -euo pipefail
+export SOCIAL_MONITOR_DEPLOY_TEST_MODE=1 SOCIAL_MONITOR_DEPLOY_ROOT="$1"
+export SOCIAL_MONITOR_DEPLOY_REPO="$2" SOCIAL_MONITOR_DEPLOY_CONTROL="$3"
+source "$2/ops/deploy/social-monitor-production-deploy.sh"
+printf '%s\\n' "$5" > "$STATE/backend.sha"
+component_changed backend "$4" "${BACKEND_PATHS[@]}"
+verify_deploy_control_bridge_target_compatibility "$4"
+'''
+        args = ['bash', '-c', script, 'real-compatibility', str(self.root), str(real),
+                str(empty_control), target, repair_module.LIVE]
+        before = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+        self.assertNotEqual(before.returncode, 0)
+        self.assertIn(b'deploy the bridge release first', before.stderr)
+        self.command('git', '-C', str(real), 'merge', '--ff-only', '--no-edit', target)
+        after = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+        self.assertEqual(after.returncode, 0, after.stderr.decode())
+        self.assertEqual(entrypoint.read_bytes(), self.command(
+            'git', '-C', str(real), 'show', repair_module.PREIMAGE + ':ops/deploy/social-monitor-production-deploy.sh'))
+
 
 if __name__ == '__main__':
     unittest.main()
