@@ -306,14 +306,30 @@ class RepairTests(unittest.TestCase):
                 output = (f'id image {running} {pid} {health} started 0 []\n' * 12).encode()
                 with patch.object(repair_module, 'execute', return_value=output) as inspect:
                     if accepted:
+                        expected = [['id', 'image', running, pid, health, 'started', '0', []]] * 12
                         self.assertEqual(repair_module.ControllerRepair.runtime_identity(self.repair),
-                                         repair_module.digest(output))
+                                         repair_module.digest(repair_module.canonical(expected)))
                     else:
                         with self.assertRaisesRegex(RuntimeError, 'not stably running'):
                             repair_module.ControllerRepair.runtime_identity(self.repair)
                     template = inspect.call_args.args[3]
                     self.assertIn('index .State "Health"', template)
                     self.assertNotIn('.State.Health', template)
+
+    def test_runtime_mount_order_is_stable_without_ignoring_mount_changes(self):
+        first = {'Destination': '/first', 'Source': '/source-a', 'RW': False}
+        second = {'Destination': '/second', 'Source': '/source-b', 'RW': True}
+
+        def snapshot(mounts):
+            encoded = repair_module.canonical(mounts).decode().strip()
+            output = (f'id image true 123 none started 0 {encoded}\n' * 12).encode()
+            with patch.object(repair_module, 'execute', return_value=output):
+                return repair_module.ControllerRepair.runtime_identity(self.repair)
+
+        original = snapshot([first, second])
+        self.assertEqual(original, snapshot([second, first]))
+        for changed in ({**first, 'Source': '/changed'}, {**first, 'RW': True}):
+            self.assertNotEqual(original, snapshot([changed, second]))
 
     def test_marker_unknown_or_forged_retired_links_are_refused_before_writes(self):
         marker = self.control / 'deploy-state/control.sha'

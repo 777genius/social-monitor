@@ -220,11 +220,23 @@ class ControllerRepair:
                        '{{.Id}} {{.Image}} {{.State.Running}} {{.State.Pid}} '
                        '{{if index .State "Health"}}{{index (index .State "Health") "Status"}}'
                        '{{else}}none{{end}} {{.State.StartedAt}} {{.RestartCount}} {{json .Mounts}}', *names)
-        rows = [row.split(maxsplit=5) for row in data.decode().splitlines()]
-        require(len(rows) == len(names) and all(len(row) == 6 and row[2] == 'true'
+        rows = [row.split(maxsplit=7) for row in data.decode().splitlines()]
+        require(len(rows) == len(names) and all(len(row) == 8 and row[2] == 'true'
                 and row[3].isdigit() and int(row[3]) > 0 and row[4] in ('healthy', 'none') for row in rows),
                 'production containers are not stably running')
-        return digest(data)
+        normalized = []
+        for row in rows:
+            try:
+                mounts = json.loads(row[7])
+            except ValueError as error:
+                raise RuntimeError('container mounts are unreadable') from error
+            require(isinstance(mounts, list) and all(isinstance(mount, dict) for mount in mounts),
+                    'container mounts have unexpected shape')
+            # Docker may emit its mount map in a different order on each read.
+            # Preserve every field, but compare the semantic snapshot, not that
+            # presentation order. Runtime identity/state fields remain ordered.
+            normalized.append([*row[:7], sorted(mounts, key=canonical)])
+        return digest(canonical(normalized))
 
     def plan(self, target: str) -> dict:
         require(re.fullmatch('[0-9a-f]{40}', target) is not None, 'full target SHA required')
