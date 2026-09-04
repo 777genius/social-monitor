@@ -829,6 +829,8 @@ grep -F 'repair_anchor: ${{ steps.plan.outputs.repair_anchor }}' \
 grep -F 'REPAIR_ANCHOR: ${{ needs.plan.outputs.repair_anchor }}' \
   "$WORKFLOW" >/dev/null
 grep -F "prepare-forward-bridge requires its target SHA" "$CLIENT" >/dev/null
+grep -F 'LC_ALL=C' "$CLIENT" >/dev/null
+grep -F 'export LC_ALL' "$CLIENT" >/dev/null
 if grep -Eq 'PRODUCTION_FORWARD_BRIDGE_(SHA|TREE|BLOB)|prepare-forward-bridge requires bridge' \
     "$CLIENT" "$WORKFLOW"; then
   echo 'production forward client retained a future bridge pin or two-SHA CLI' >&2
