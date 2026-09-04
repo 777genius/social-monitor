@@ -598,6 +598,7 @@ jobs:
           else
             node ops/deploy/production-runtime/rolling-summary-receipt.test.mjs && bash ops/deploy/production-runtime/rolling-run.test.sh && bash ops/deploy/production-runtime/daily-run.test.sh && bash ops/deploy/social-monitor-production-deploy.test.sh
             bash ops/deploy/deploy-control-lib.test.sh
+            bash ops/deploy/frontend-upload-file-modes.test.sh
             bash ops/deploy/daily-deploy-lock-race.test.sh
             bash ops/deploy/postgres-runtime-deploy-lib.test.sh
             bash ops/deploy/postgres-runtime-daily-c1-readiness-lib.test.sh
