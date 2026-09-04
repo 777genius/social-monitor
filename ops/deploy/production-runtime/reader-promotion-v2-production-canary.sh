@@ -63,8 +63,14 @@ backend=$(read_marker "$root/control/deploy-state/backend.sha" \
   "$root/control/deploy-state") || exit 75
 control=$(read_marker "$root/control/deploy-state/control.sha" \
   "$root/control/deploy-state") || exit 75
+# The installed runtime is an atomic link to a versioned release directory.
+# Resolve that directory, but reject links escaping the owned release root.
+runtime_root=$(readlink -f -- "$root/control/postgres-runtime-current") || exit 75
+[[ -L $root/control/postgres-runtime-current && \
+   -d $runtime_root && \
+   $runtime_root == "$root/control/postgres-runtime-releases/"* ]] || exit 75
 runtime=$(read_marker "$root/control/postgres-runtime-current/SOURCE_SHA" \
-  "$root/control/postgres-runtime-current") || exit 75
+  "$runtime_root") || exit 75
 [[ $release == "$target" && $backend == "$target" && \
    $control == "$target" && $runtime == "$target" ]] || {
   echo 'deployed release/backend/control/runtime provenance does not equal target' >&2

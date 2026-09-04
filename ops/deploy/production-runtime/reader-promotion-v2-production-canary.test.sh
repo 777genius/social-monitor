@@ -8,7 +8,7 @@ test_tmp=${READER_PROMOTION_V2_CANARY_TEST_TMP_ROOT:-/tmp}
 root=$(mktemp -d "$test_tmp/reader-promotion-canary-host.XXXXXX")
 trap 'find "$root" -depth -delete' EXIT HUP INT TERM
 mkdir -p "$root/control/deploy-state" \
-  "$root/control/postgres-runtime-current" "$root/integration" \
+  "$root/control/postgres-runtime-releases" "$root/integration" \
   "$root/secrets" "$root/bin" "$root/auth-pool"
 touch "$root/control/production-deploy.lock"
 git -C "$root/integration" init -q
@@ -23,6 +23,10 @@ cp "$SCRIPT_DIR/../../release/reader-promotion-v2-production-canary.v1.json" \
 git -C "$root/integration" add README scripts ops
 git -C "$root/integration" commit -qm fixture
 sha=$(git -C "$root/integration" rev-parse HEAD)
+# Match the production topology: current is a link to a versioned release.
+mkdir -p "$root/control/postgres-runtime-releases/$sha"
+ln -s "postgres-runtime-releases/$sha" \
+  "$root/control/postgres-runtime-current"
 printf '%s\n' "$sha" > "$root/control/deploy-state/backend.sha"
 printf '%s\n' "$sha" > "$root/control/deploy-state/control.sha"
 printf '%s\n' "$sha" > "$root/control/postgres-runtime-current/SOURCE_SHA"
@@ -80,6 +84,32 @@ grep -F -- '--workflow reader-promotion-v2-production-canary --workflow-run-id 1
   "$root/args" >/dev/null
 grep -Fx 'entrypoint-and-manifest-resolved' "$root/started" >/dev/null
 grep -F -- "$root/integration:/verified-checkout:ro" "$root/args" >/dev/null
+
+# An escaping release link must not grant authority to an outside marker.
+mkdir -p "$root/outside-runtime"
+printf '%s\n' "$sha" > "$root/outside-runtime/SOURCE_SHA"
+ln -sfn "$root/outside-runtime" "$root/control/postgres-runtime-current"
+: > "$root/args"
+set +e
+READER_PROMOTION_V2_CANARY_HOST_TEST_ROOT=$root \
+READER_PROMOTION_V2_CANARY_HOST_TEST_DOCKER=$fake_docker \
+  bash "$host" "$sha" reader-promotion-v2-production-canary 100 1 0123456789abcdef0123456789abcdef \
+    "$confirmation" >/dev/null 2>"$root/error"
+status=$?
+set -e
+[[ $status == 75 && ! -s $root/args ]]
+ln -sfn "postgres-runtime-releases/$sha" \
+  "$root/control/postgres-runtime-current"
+# Even inside the approved release, the marker itself must be a regular file.
+mv "$root/control/postgres-runtime-releases/$sha/SOURCE_SHA" "$root/saved-marker"
+ln -s "$root/saved-marker" "$root/control/postgres-runtime-releases/$sha/SOURCE_SHA"
+! READER_PROMOTION_V2_CANARY_HOST_TEST_ROOT=$root \
+  READER_PROMOTION_V2_CANARY_HOST_TEST_DOCKER=$fake_docker \
+  bash "$host" "$sha" reader-promotion-v2-production-canary 100 1 0123456789abcdef0123456789abcdef \
+    "$confirmation" >/dev/null 2>"$root/error"
+[[ ! -s $root/args ]]
+unlink "$root/control/postgres-runtime-releases/$sha/SOURCE_SHA"
+mv "$root/saved-marker" "$root/control/postgres-runtime-releases/$sha/SOURCE_SHA"
 
 wrong=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 printf '%s\n' "$wrong" > "$root/control/deploy-state/backend.sha"

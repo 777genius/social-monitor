@@ -69,6 +69,28 @@ describe("Reader Promotion V2 production canary runner", () => {
     ]) expect(serialized.toLowerCase()).not.toContain(forbidden.toLowerCase());
   });
 
+  it("sends concrete synthetic reports without exposing expected decisions", async () => {
+    const fixture = createFixture();
+    await fixture.runner.run(runInput());
+    const request = fixture.executor.lastRequest!;
+    const reports = JSON.parse(request.prompt) as Record<string, unknown>[];
+    const manifest = loadCanaryManifest();
+    expect(request.systemPrompt).toContain("only the supplied text");
+    expect(request.systemPrompt).toContain("same concrete event");
+    expect(request.systemPrompt).toContain("not claims about real events");
+    expect(reports).toEqual(manifest.relationBatch.map((relation) => ({
+      leftFeedItemId: relation.leftFeedItemId,
+      rightFeedItemId: relation.rightFeedItemId,
+      leftLabel: relation.leftLabel,
+      rightLabel: relation.rightLabel,
+    })));
+    for (const report of reports) {
+      expect(report).not.toHaveProperty("sameStory");
+      expect(String(report.leftLabel)).toMatch(/^Synthetic .{60,}$/);
+      expect(String(report.rightLabel)).toMatch(/^Synthetic .{60,}$/);
+    }
+  });
+
   it("permits one provider call across concurrent dispatches and replay", async () => {
     let releaseProvider!: () => void;
     const providerGate = new Promise<void>((resolve) => {
@@ -379,6 +401,7 @@ class FakeClock {
 
 class FakeExecutor implements AgentRuntimeExecutorPort {
   calls = 0;
+  lastRequest: AgentRuntimeExecutionRequest | null = null;
   private enteredResolve!: () => void;
   readonly entered = new Promise<void>((resolve) => {
     this.enteredResolve = resolve;
@@ -386,6 +409,7 @@ class FakeExecutor implements AgentRuntimeExecutorPort {
   constructor(private readonly options: FixtureOptions) {}
   async execute(request: AgentRuntimeExecutionRequest): Promise<AgentRuntimeExecutionResult> {
     this.calls += 1;
+    this.lastRequest = request;
     this.enteredResolve();
     await this.options.providerGate;
     if (this.options.providerThrows) throw new Error("provider exception secret");

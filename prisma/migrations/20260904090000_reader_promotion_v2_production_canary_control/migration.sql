@@ -227,7 +227,7 @@ BEGIN
     OR value->>'protectedMainSha' IS DISTINCT FROM value->>'deployedRuntimeSha'
     OR value->>'runtimeImageId' !~ '^sha256:[0-9a-f]{64}$'
     OR value->>'manifestSha256' <>
-      '82217dd81831c4a602c1e8d86a48f21f25f764e668a6e8721d2ce989d0e2014d'
+      'e48eb0033492835cc54f74d14ecdb9b69a8e7d75d71c3206410e2b3ef29577b3'
     OR value->>'schemaSha256' <>
       'b7ca379b6d8088dbf49009fa0e7ae37ed8a7d71b48d34b70ffb4d67409a774a1'
     OR value->>'canonicalRequestSha256' !~ '^[0-9a-f]{64}$'
