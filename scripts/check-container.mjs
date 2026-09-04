@@ -31,6 +31,12 @@ for (const required of ['FROM node:22', 'npm ci', 'npm run prisma:generate', 'np
   }
 }
 
+// A root-owned checkout may have umask 077. npm runs as node in daily-runner,
+// so the manifests must be readable independently of build-context modes.
+if (!/^COPY --chmod=0644 package\.json package-lock\.json \.\/\s*$/m.test(dockerfile)) {
+  violations.push(`${policy.dockerfile}: copy npm manifests with explicit non-root-readable modes`);
+}
+
 const npmCiIndex = dockerfile.indexOf('RUN npm ci');
 const nodeEnvIndex = dockerfile.indexOf('ENV NODE_ENV=production');
 const buildIndex = dockerfile.indexOf('npm run build');
