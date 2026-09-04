@@ -1,5 +1,6 @@
 import {
   readerPostPromotionTimestampMicros,
+  readerPostProviderFamily,
   READER_POST_PROMOTION_POLICY_V1,
   type ReaderPostPromotionAttestationV1,
   type ReaderPostPromotionInput,
@@ -174,10 +175,33 @@ const historicalV1AttestationBody = (params: {
     ...(input.relation === undefined ? {} : { relationTrace: input.relation }),
     supportFacts: params.selected.support,
     citationIds: params.selected.citationIds,
-    providerCount: params.selected.providerCount,
-    confidence: params.selected.confidence,
+    ...historicalV1Confidence(params.selected),
     canonicalDedupeOutcome: "retained",
     capOutcome: "selected",
+  };
+};
+
+// V1 counted all selected, persistently bound cluster support. The V2 trust
+// calibration must not change the canonical bytes of historical publications.
+const historicalV1Confidence = (
+  selected: SelectedReaderPostPromotion,
+): Pick<ReaderPostPromotionAttestationV1, "providerCount" | "confidence"> => {
+  const lead = selected.candidate;
+  const providerCount = new Set([lead, ...selected.support].map((input) =>
+    readerPostProviderFamily(input.provider))).size;
+  const policy = READER_POST_PROMOTION_POLICY_V1.confidence;
+  const rawConfidence = Math.min(1, lead.qualityScore + Math.min(
+    policy.maxSupportBoost, selected.support.length * policy.supportBoost,
+  ));
+  const authority = lead.authorityAttestation;
+  const official = authority?.status === "attested" && authority.official &&
+    authority.trusted && (readerPostProviderFamily(lead.provider) !== "x" ||
+      authority.attestedBy === "source_catalog");
+  return {
+    providerCount,
+    confidence: providerCount > 1 ? rawConfidence : Math.min(
+      rawConfidence, official ? 0.62 : selected.support.length > 0 ? 0.55 : 0.42,
+    ),
   };
 };
 
