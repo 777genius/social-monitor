@@ -307,6 +307,17 @@ load_reader_summary_publication_deploy_library() {
 }
 initialize_deploy_control_bridge
 declare -F production_transition_install_compatibility_overrides >/dev/null && production_transition_install_compatibility_overrides
+if declare -F production_transition_host_failpoint >/dev/null && declare -F production_forward_install_b0_before_entrypoint >/dev/null; then
+  production_forward_install_b0_before_entrypoint() {
+    local target=$1 remote bridge
+    production_forward_derive_graph "$target"; bridge=$PRODUCTION_FORWARD_B
+    production_forward_verify_target_graph "$bridge" "$target"
+    remote=$(git -C "$REPO" rev-parse 'origin/main^{commit}' 2>/dev/null) || production_forward_host_fail 'production forward origin main is unavailable before B0 verification'
+    [[ $remote == "$target" ]] || production_forward_host_fail 'production forward B0 verification requires exact origin main'
+    production_forward_install_blob "$target" 0755 ops/deploy/production-transition-admission.sh
+    production_forward_install_blob "$target" 0644 ops/deploy/production-transition-canonical-lib.sh; production_forward_install_blob "$bridge" 0644 ops/deploy/production-transition-b0-host-control.sh
+  }
+fi
 verify_compose_scope() (
   local rendered=$STATE/rendered-compose.$$.json
   trap 'rm -f "$rendered"' EXIT

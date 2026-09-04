@@ -433,6 +433,7 @@ for b0_file in "${b0_files[@]}"; do
     assert_installed_blob "$B" ops/deploy/production-transition-b0-host-control.sh
   done
 done
+
 printf 'forward-bridge-test: B0 rename crashes resume\n'
 
 # Existing unsafe destinations never get treated as crash orphans. Exercise
@@ -705,3 +706,25 @@ printf 'forward-bridge-test: runtime rollback and marker crashes resume\n'
 
 printf 'production-forward-bridge-test: ok B=%s R=%s W=%s H=%s F=%s\n' \
   "$B" "$R" "$W" "$H" "$F"
+
+# A process that already loaded and froze B0 authority must still verify every
+# installed control blob, but it must not source the authority a second time.
+ENTRYPOINT=$SCRIPT_DIR/social-monitor-production-deploy.sh
+verify_loaded_b0_idempotence() (
+  export SOCIAL_MONITOR_DEPLOY_TEST_MODE=1
+  export SOCIAL_MONITOR_DEPLOY_ROOT=$fixture
+  export SOCIAL_MONITOR_DEPLOY_REPO=$repo
+  export SOCIAL_MONITOR_DEPLOY_CONTROL=$CONTROL
+  export SOCIAL_MONITOR_DEPLOY_STATE=$STATE
+  export SOCIAL_MONITOR_DEPLOY_STAGING=$fixture/staging
+  printf '%s\n' "$B" > "$STATE/control.sha"
+  chmod 0600 "$STATE/control.sha"
+  # shellcheck source=ops/deploy/social-monitor-production-deploy.sh
+  source "$ENTRYPOINT"
+  readonly -f production_transition_host_failpoint
+  production_forward_install_b0_before_entrypoint "$F"
+)
+verify_loaded_b0_idempotence
+printf 'tampered canonical authority\n' > \
+  "$CONTROL/production-transition-canonical-lib.sh"
+expect_failure 'tampered loaded B0 authority' verify_loaded_b0_idempotence
