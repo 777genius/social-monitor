@@ -27,12 +27,13 @@ PREIMAGE = '8c402ecadff1db34a9d5991b777a5eb8032282de'
 LIVE = 'c05591883683664d2a59158e4f4fba92fabb0ff4'
 ORIGIN = 'https://github.com/777genius/social-monitor.git'
 CONTROLLER = 'ops/deploy/deploy-control-lib.sh'
-CONTROLLER_SHA256 = '3caf2f61ef68ef9697d4e2d5dd3eb057abbcc201942670d4e81fba5ab89f20ad'
+CONTROLLER_SHA256 = 'f0b717cb29067bae349340c473b924918d790ba1d0c45620a96f7854e54f7c5d'
 ALLOWED = frozenset('ops/deploy/' + name for name in (
     'deploy-control-lib.sh', 'production-transition-b0-bootstrap.test.sh',
     'production-transition-bridge.manifest', 'production-transition-review.statement',
     'production-transition-review.statement.sig',
     'rabbitmq-quorum-deploy-bridge-transition.test.sh',
+    'deploy-control-current-target-lib.sh',
     'b0-controller-repair.py', 'b0-controller-repair.test.py'))
 MARKERS = ('backend.sha', 'frontend.sha', 'control.sha',
            'postgres-pool-bootstrap.sha', 'production-transition-activated.sha')
@@ -84,7 +85,11 @@ def durable(path: Path, data: bytes) -> None:
         stream.write(data)
         stream.flush()
         os.fsync(stream.fileno())
-    directory = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+    sync_directory(path.parent)
+
+
+def sync_directory(path: Path) -> None:
+    directory = os.open(path, os.O_RDONLY | os.O_DIRECTORY)
     try:
         os.fsync(directory)
     finally:
@@ -125,11 +130,13 @@ class ControllerRepair:
             value = subprocess.run(['/usr/bin/git', '-C', str(self.repo), 'config', '--get', key],
                                    stdout=subprocess.PIPE, check=False).stdout.strip()
             require(value in (b'', b'false'), f'unsupported Git setting: {key}')
-        require(not self._has_filters(), 'Git content filters refused')
+        require(not self._has_filters(), 'Git content filters/external diff refused')
+        require(all(row.startswith(b'H ') for row in self.git('ls-files', '-v', '-z').split(b'\0') if row),
+                'skip-worktree/assume-unchanged index entries refused')
 
     def _has_filters(self) -> bool:
         return subprocess.run(['/usr/bin/git', '-C', str(self.repo), 'config', '--get-regexp',
-                               r'^filter\..*\.(clean|smudge|process)$'], stdout=subprocess.DEVNULL,
+                               r'^(filter\..*\.(clean|smudge|process)|diff\..*\.textconv|diff\.external)$'], stdout=subprocess.DEVNULL,
                               check=False).returncode == 0
 
     @contextlib.contextmanager
@@ -166,6 +173,10 @@ class ControllerRepair:
             result[str(path.relative_to(self.root))] = [digest(data), identity]
         for name in CONTROLS:
             data, identity = regular(self.control / name)
+            source = {'github-production-deploy.sh': 'social-monitor-production-deploy.sh',
+                      'github-production-deploy-wrapper.sh': 'social-monitor-production-ssh-wrapper.sh'}.get(name, name)
+            require(data == self.git('show', self.live + ':ops/deploy/' + source),
+                    f'installed historical control differs: {name}')
             result['control/' + name] = [digest(data), identity]
         for name in ('production-transition-scheduler-hold.v2', 'production-transition-b0-host.state.next'):
             require(not os.path.lexists(self.control / 'deploy-state' / name), f'incomplete transition: {name}')
@@ -183,9 +194,9 @@ class ControllerRepair:
     def runtime_identity(self) -> str:
         names = ['social-monitor-prod-' + role + '-1' for role in (
             'api', 'agent-runtime', 'ingestion-worker', 'intelligence-worker',
-            'delivery-service', 'event-relay', 'frontend', 'x-collector')]
+            'delivery-service', 'event-relay', 'frontend', 'x-collector', 'rabbitmq', 'redis')]
         return digest(execute('/usr/bin/docker', 'inspect', '--format',
-                              '{{.Id}} {{.Image}} {{.State.StartedAt}} {{.RestartCount}}', *names))
+                              '{{.Id}} {{.Image}} {{.State.Running}} {{.State.Pid}} {{.State.StartedAt}} {{.RestartCount}} {{json .Mounts}}', *names))
 
     def plan(self, target: str) -> dict:
         require(re.fullmatch('[0-9a-f]{40}', target) is not None, 'full target SHA required')
@@ -211,6 +222,14 @@ class ControllerRepair:
                         'non-regular repair path')
                 versions.append([mode, blob, digest(self.git('cat-file', 'blob', blob))])
             require(versions[1] is not None, 'repair must not remove files')
+            path = self.repo / name
+            if versions[0] is None:
+                require(not os.path.lexists(path), 'new repair path already exists')
+            else:
+                data, identity = regular(path)
+                require(digest(data) == versions[0][2]
+                        and stat.S_IMODE(identity[2]) == int(versions[0][0][-3:], 8),
+                        'preimage repair path bytes/mode differ')
             entries[name] = versions
         return {'version': 1, 'preimage': self.preimage, 'target': target,
                 'target_tree': self.git('rev-parse', target + '^{tree}').decode().strip(),
@@ -228,6 +247,7 @@ class ControllerRepair:
             require(digest(canonical(plan)) == approved, 'reviewed plan drifted')
             run = self.run_path(target)
             run.mkdir(mode=0o700)  # Existing/partial runs must use explicit rollback, never blind retry.
+            sync_directory(self.control)
             durable(run / 'plan.json', canonical(plan))
             durable(run / 'index.backup', regular(self.repo / '.git/index')[0])
             for number, versions in enumerate(plan['entries'].values()):
@@ -291,7 +311,9 @@ class ControllerRepair:
             data, _ = regular(run / 'plan.json')
             require(digest(data) == approved, 'handoff plan differs from review')
             plan = json.loads(data)
-            require((run / 'control-repaired').is_file(), 'control repair has not completed')
+            completed, _ = regular(run / 'control-repaired')
+            require(completed == canonical({'application_deployed': False, 'target': target}),
+                    'control repair receipt differs')
             require(self.remote() == target and self.git('rev-parse', 'HEAD').decode().strip() == target,
                     'handoff target/lease drifted')
             require(not self.git('status', '--porcelain=v1').strip(), 'handoff checkout is dirty')

@@ -105,6 +105,11 @@ load_deploy_control_bridge_library() {
 initialize_deploy_control_bridge() {
   load_deploy_control_bridge_library
   initialize_deploy_control_bridge
+  if [[ -n ${PRODUCTION_TRANSITION_PRELUDE_COMMIT:-} ]]; then
+    source_reviewed_deploy_library "$DEPLOY_CONTROL_BRIDGE_INITIALIZED_HEAD" \
+      ops/deploy/deploy-control-current-target-lib.sh 'current target control checks'
+    deploy_control_install_current_target_checks
+  fi
 }
 
 probe_daily_singleton_clear() {
@@ -956,7 +961,7 @@ deploy_release() {
         $x_image_provenance_release == true ]]; then
     verify_deploy_control_bridge_target_compatibility "$sha"
   fi
-  advance_integration "$sha"
+  [[ $sha == "$current" ]] || advance_integration "$sha"
   # The entrypoint already authenticated and froze an installed B0 authority.
   # Re-sourcing that authority after an ordinary fast-forward would attempt to
   # redefine readonly functions. A predecessor that has not loaded B0 still

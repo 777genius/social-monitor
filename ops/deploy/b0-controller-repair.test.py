@@ -25,6 +25,10 @@ class RepairTests(unittest.TestCase):
         self.git('config', 'user.email', 'repair@example.invalid')
         self.write('README', 'application source must stay unchanged\n')
         self.write('.gitignore', 'ignored/\n')
+        for name in repair_module.CONTROLS:
+            source = {'github-production-deploy.sh': 'social-monitor-production-deploy.sh',
+                      'github-production-deploy-wrapper.sh': 'social-monitor-production-ssh-wrapper.sh'}.get(name, name)
+            self.write('ops/deploy/' + source, 'installed control remains unchanged\n')
         self.write(repair_module.CONTROLLER, 'old controller\n')
         self.write('ops/deploy/production-transition-b0-bootstrap.test.sh', 'old test\n')
         self.git('add', '.')
@@ -212,19 +216,35 @@ class RepairTests(unittest.TestCase):
         real = self.root / 'real-history'
         self.command('git', 'clone', '--no-local', '--no-checkout', '-q', str(source), str(real))
         target = self.command('git', '-C', str(source), 'rev-parse', 'HEAD').strip().decode()
+        real_origin = self.root / 'real-origin.git'
+        self.command('git', 'clone', '--bare', '--no-local', '-q', str(source), str(real_origin))
+        self.command('git', '-C', str(real_origin), 'update-ref', 'refs/heads/main', target)
+        self.command('git', '-C', str(real), 'remote', 'set-url', 'origin', str(real_origin))
+        self.command('git', '-C', str(real), 'fetch', '-q', 'origin', 'main')
         self.command('git', '-C', str(real), 'checkout', '--detach', '-q', repair_module.PREIMAGE)
         entrypoint = real / 'ops/deploy/social-monitor-production-deploy.sh'
         # Real pathspecs and compatibility verifier, not the earlier mocked
         # component_changed=false shortcut. All filesystem effects are in /tmp.
         empty_control = self.root / 'real-control'
         (empty_control / 'deploy-state').mkdir(parents=True)
+        for name in repair_module.MARKERS:
+            (empty_control / 'deploy-state' / name).write_text(repair_module.LIVE + '\n')
+        for name in repair_module.CONTROLS:
+            source_name = {'github-production-deploy.sh': 'social-monitor-production-deploy.sh',
+                           'github-production-deploy-wrapper.sh': 'social-monitor-production-ssh-wrapper.sh'}.get(name, name)
+            (empty_control / name).write_bytes(self.command(
+                'git', '-C', str(real), 'show', repair_module.LIVE + ':ops/deploy/' + source_name))
+            (empty_control / name).chmod(0o755 if name.endswith(('deploy.sh', 'wrapper.sh', 'admission.sh')) else 0o644)
         script = '''set -euo pipefail
 export SOCIAL_MONITOR_DEPLOY_TEST_MODE=1 SOCIAL_MONITOR_DEPLOY_ROOT="$1"
 export SOCIAL_MONITOR_DEPLOY_REPO="$2" SOCIAL_MONITOR_DEPLOY_CONTROL="$3"
+export PRODUCTION_TRANSITION_PRELUDE_COMMIT="$(git -C "$2" rev-parse HEAD)"
 source "$2/ops/deploy/social-monitor-production-deploy.sh"
 printf '%s\\n' "$5" > "$STATE/backend.sha"
 component_changed backend "$4" "${BACKEND_PATHS[@]}"
+postgres_pool_bootstrap_installed "$4"
 verify_deploy_control_bridge_target_compatibility "$4"
+verify_deploy_control_bridge_compatibility
 '''
         args = ['bash', '-c', script, 'real-compatibility', str(self.root), str(real),
                 str(empty_control), target, repair_module.LIVE]
