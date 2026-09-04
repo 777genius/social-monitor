@@ -1,0 +1,36 @@
+{
+  "format": "reader-promotion-v2-production-canary-manifest.v1",
+  "singletonId": "reader-promotion-v2-production-canary-v1",
+  "purpose": "social_monitor.reader_summary.promotion_v2_canary.v1",
+  "model": "gpt-5.6-sol",
+  "reasoningEffort": "high",
+  "providerTimeoutMs": 120000,
+  "reconciliationDeadlineMs": 180000,
+  "schema": {
+    "name": "social_monitor_reader_summary_story_relations",
+    "version": "reader_summary.story_relation.v1"
+  },
+  "relationBatch": [
+    {
+      "leftFeedItemId": "cursor",
+      "rightFeedItemId": "spacex",
+      "leftLabel": "Cursor",
+      "rightLabel": "SpaceX",
+      "sameStory": true
+    },
+    {
+      "leftFeedItemId": "anthropic-watermark-x",
+      "rightFeedItemId": "anthropic-watermark-reddit",
+      "leftLabel": "Anthropic watermark launch",
+      "rightLabel": "Anthropic watermark release",
+      "sameStory": true
+    },
+    {
+      "leftFeedItemId": "claude-code-watermark",
+      "rightFeedItemId": "claude-code-security",
+      "leftLabel": "Claude Code watermark",
+      "rightLabel": "Claude Code security update",
+      "sameStory": false
+    }
+  ]
+}
