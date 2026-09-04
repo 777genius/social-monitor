@@ -217,7 +217,9 @@ class ControllerRepair:
             'api', 'agent-runtime', 'ingestion-worker', 'intelligence-worker',
             'delivery-service', 'event-relay', 'frontend', 'x-collector', 'rabbitmq', 'redis', 'otel-collector', 'caddy')]
         data = execute('/usr/bin/docker', 'inspect', '--format',
-                       '{{.Id}} {{.Image}} {{.State.Running}} {{.State.Pid}} {{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}} {{.State.StartedAt}} {{.RestartCount}} {{json .Mounts}}', *names)
+                       '{{.Id}} {{.Image}} {{.State.Running}} {{.State.Pid}} '
+                       '{{if index .State "Health"}}{{index (index .State "Health") "Status"}}'
+                       '{{else}}none{{end}} {{.State.StartedAt}} {{.RestartCount}} {{json .Mounts}}', *names)
         rows = [row.split(maxsplit=5) for row in data.decode().splitlines()]
         require(len(rows) == len(names) and all(len(row) == 6 and row[2] == 'true'
                 and row[3].isdigit() and int(row[3]) > 0 and row[4] in ('healthy', 'none') for row in rows),

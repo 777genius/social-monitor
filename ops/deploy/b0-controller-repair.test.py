@@ -298,6 +298,23 @@ class RepairTests(unittest.TestCase):
             self.assertEqual(marker.stat().st_nlink, 2)
         self.assert_preserved()
 
+    def test_runtime_snapshot_accepts_absent_health_but_refuses_failed_containers(self):
+        for running, pid, health, accepted in (
+                ('true', '123', 'none', True), ('true', '123', 'healthy', True),
+                ('false', '0', 'none', False), ('true', '123', 'unhealthy', False)):
+            with self.subTest(running=running, health=health):
+                output = (f'id image {running} {pid} {health} started 0 []\n' * 12).encode()
+                with patch.object(repair_module, 'execute', return_value=output) as inspect:
+                    if accepted:
+                        self.assertEqual(repair_module.ControllerRepair.runtime_identity(self.repair),
+                                         repair_module.digest(output))
+                    else:
+                        with self.assertRaisesRegex(RuntimeError, 'not stably running'):
+                            repair_module.ControllerRepair.runtime_identity(self.repair)
+                    template = inspect.call_args.args[3]
+                    self.assertIn('index .State "Health"', template)
+                    self.assertNotIn('.State.Health', template)
+
     def test_marker_unknown_or_forged_retired_links_are_refused_before_writes(self):
         marker = self.control / 'deploy-state/control.sha'
         receipt = marker.with_name(marker.name + '.next.retired.' + repair_module.digest(marker.read_bytes()))
