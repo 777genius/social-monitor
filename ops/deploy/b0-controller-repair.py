@@ -68,15 +68,29 @@ def execute(*args: str) -> bytes:
     return result.stdout
 
 
-def regular(path: Path) -> tuple[bytes, list[int]]:
+def regular(path: Path, *, retained_marker: bool = False) -> tuple[bytes, list[int]]:
     with os.fdopen(os.open(path, os.O_RDONLY | os.O_NOFOLLOW), 'rb') as stream:
         before = os.fstat(stream.fileno())
-        require(stat.S_ISREG(before.st_mode) and before.st_nlink == 1
+        require(stat.S_ISREG(before.st_mode)
+                and before.st_nlink in ((1, 2) if retained_marker else (1,))
                 and before.st_uid == os.geteuid() and not before.st_mode & 0o022,
                 f'unsafe file: {path}')
         data = stream.read()
+        identity = lambda s: [s.st_dev, s.st_ino, s.st_mode, s.st_size, s.st_mtime_ns,
+                              s.st_ctime_ns, s.st_uid, s.st_gid, s.st_nlink]
+        if before.st_nlink == 2:
+            # The deployed marker protocol retains the committed .next inode
+            # at this content-addressed name. Inspect it without changing either
+            # link; arbitrary hardlinks and unfinished .next files stay refused.
+            require(not os.path.lexists(path.with_name(path.name + '.next')),
+                    f'unfinished marker: {path}')
+            receipt = path.with_name(path.name + '.next.retired.' + digest(data))
+            with os.fdopen(os.open(receipt, os.O_RDONLY | os.O_NOFOLLOW), 'rb') as retained:
+                require(identity(os.fstat(retained.fileno())) == identity(before)
+                        and retained.read() == data
+                        and identity(receipt.lstat()) == identity(before),
+                        f'unaccounted marker hardlink: {path}')
         after = os.fstat(stream.fileno())
-        identity = lambda s: [s.st_dev, s.st_ino, s.st_mode, s.st_size, s.st_mtime_ns, s.st_ctime_ns]
         require(identity(before) == identity(after) == identity(path.lstat()),
                 f'file changed during read: {path}')
         return data, identity(after)
@@ -174,7 +188,7 @@ class ControllerRepair:
         result = {}
         for name in STATE_FILES:
             path = self.control / 'deploy-state' / name
-            data, identity = regular(path)
+            data, identity = regular(path, retained_marker=True)
             if name in MARKERS:
                 require(data == (self.live + '\n').encode(), f'live marker drift: {name}')
             result[str(path.relative_to(self.root))] = [digest(data), identity]
@@ -203,12 +217,26 @@ class ControllerRepair:
             'api', 'agent-runtime', 'ingestion-worker', 'intelligence-worker',
             'delivery-service', 'event-relay', 'frontend', 'x-collector', 'rabbitmq', 'redis', 'otel-collector', 'caddy')]
         data = execute('/usr/bin/docker', 'inspect', '--format',
-                       '{{.Id}} {{.Image}} {{.State.Running}} {{.State.Pid}} {{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}} {{.State.StartedAt}} {{.RestartCount}} {{json .Mounts}}', *names)
-        rows = [row.split(maxsplit=5) for row in data.decode().splitlines()]
-        require(len(rows) == len(names) and all(len(row) == 6 and row[2] == 'true'
+                       '{{.Id}} {{.Image}} {{.State.Running}} {{.State.Pid}} '
+                       '{{if index .State "Health"}}{{index (index .State "Health") "Status"}}'
+                       '{{else}}none{{end}} {{.State.StartedAt}} {{.RestartCount}} {{json .Mounts}}', *names)
+        rows = [row.split(maxsplit=7) for row in data.decode().splitlines()]
+        require(len(rows) == len(names) and all(len(row) == 8 and row[2] == 'true'
                 and row[3].isdigit() and int(row[3]) > 0 and row[4] in ('healthy', 'none') for row in rows),
                 'production containers are not stably running')
-        return digest(data)
+        normalized = []
+        for row in rows:
+            try:
+                mounts = json.loads(row[7])
+            except ValueError as error:
+                raise RuntimeError('container mounts are unreadable') from error
+            require(isinstance(mounts, list) and all(isinstance(mount, dict) for mount in mounts),
+                    'container mounts have unexpected shape')
+            # Docker may emit its mount map in a different order on each read.
+            # Preserve every field, but compare the semantic snapshot, not that
+            # presentation order. Runtime identity/state fields remain ordered.
+            normalized.append([*row[:7], sorted(mounts, key=canonical)])
+        return digest(canonical(normalized))
 
     def plan(self, target: str) -> dict:
         require(re.fullmatch('[0-9a-f]{40}', target) is not None, 'full target SHA required')
