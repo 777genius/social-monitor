@@ -224,8 +224,10 @@ class RepairTests(unittest.TestCase):
     def test_handoff_rejects_git_clean_but_converted_bytes(self):
         self.repair.apply(self.target, self.approved)
         self.git('config', 'core.autocrlf', 'true')
-        (self.repo / repair_module.CONTROLLER).write_bytes(b'new controller\r\n')
-        self.assertEqual(self.git('diff', '--', repair_module.CONTROLLER), b'')
+        path = self.repo / repair_module.CONTROLLER
+        path.unlink()
+        self.git('restore', '--source=HEAD', '--worktree', repair_module.CONTROLLER)
+        self.assertEqual(path.read_bytes(), b'new controller\r\n')
         self.assertEqual(self.git('status', '--porcelain').strip(), b'')
         with self.assertRaisesRegex(RuntimeError, 'bytes/mode'):
             self.repair.handoff(self.target, self.approved)
@@ -234,11 +236,12 @@ class RepairTests(unittest.TestCase):
         original = self.repair.git
 
         def git(*args):
-            result = original(*args)
             if args[0] == 'merge':
                 original('config', 'core.autocrlf', 'true')
-                (self.repo / repair_module.CONTROLLER).write_bytes(b'new controller\r\n')
-                self.assertEqual(original('diff', '--', repair_module.CONTROLLER), b'')
+            result = original(*args)
+            if args[0] == 'merge':
+                self.assertEqual((self.repo / repair_module.CONTROLLER).read_bytes(), b'new controller\r\n')
+                self.assertEqual(original('status', '--porcelain').strip(), b'')
             return result
 
         with patch.object(self.repair, 'git', side_effect=git):
