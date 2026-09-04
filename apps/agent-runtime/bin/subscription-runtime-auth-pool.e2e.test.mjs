@@ -5,6 +5,7 @@ import {
   mkdtemp,
   mkdir,
   readFile,
+  readdir,
   rm,
   stat,
   writeFile,
@@ -177,6 +178,10 @@ test(
       assert.deepEqual(afterAuth, beforeAuth);
       assert.deepEqual(beforeAuthModes, [0o400, 0o400]);
       assert.deepEqual(afterAuthModes, beforeAuthModes);
+      assert.deepEqual(
+        await readdir(join(fixture.stateRoot, "auth-materializations")),
+        [],
+      );
     } finally {
       await fixture.cleanup();
     }
@@ -447,7 +452,7 @@ if (command === "app-server") {
     });
   }
 } else if (command === "exec") {
-  const prompt = await readFile(0, "utf8");
+  const prompt = await readStdin();
   await recordAttempt({
     account,
     command: "exec",
@@ -473,6 +478,13 @@ if (command === "app-server") {
 
 function send(message) {
   process.stdout.write(JSON.stringify(message) + "\\n");
+}
+
+async function readStdin() {
+  process.stdin.setEncoding("utf8");
+  let value = "";
+  for await (const chunk of process.stdin) value += chunk;
+  return value;
 }
 
 async function refreshMaterializedAuth() {

@@ -1,6 +1,13 @@
 #!/usr/bin/env node
 
-import { mkdir, readFile, realpath, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  realpath,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { join } from "node:path";
 
 import {
@@ -114,12 +121,27 @@ function createReaderPromotionV2CanaryWorker({ input, model, authPool }) {
   });
   let started = false;
   let ran = false;
+  let materializedAuthRoot;
   return {
     async start() {
       if (started) throw new Error("Reader promotion V2 canary already started");
       started = true;
       await worker.start();
-      await worker.seedCodexAuthJsonFile(selectedAccount.authJsonPath);
+      materializedAuthRoot = await createAuthMaterializationRoot(
+        input.stateRootDir,
+        taskId,
+      );
+      try {
+        const authJsonPath = await materializeCodexAuthAccount(
+          materializedAuthRoot,
+          selectedAccount,
+        );
+        await worker.seedCodexAuthJsonFile(authJsonPath);
+      } catch (error) {
+        await removeAuthMaterialization(materializedAuthRoot);
+        materializedAuthRoot = undefined;
+        throw error;
+      }
     },
 
     async seedCodexAuthJsonFile(authJsonPath) {
@@ -149,7 +171,11 @@ function createReaderPromotionV2CanaryWorker({ input, model, authPool }) {
     },
 
     async dispose() {
-      await worker.dispose();
+      try {
+        await worker.dispose();
+      } finally {
+        await removeAuthMaterialization(materializedAuthRoot);
+      }
     },
   };
 }
@@ -225,56 +251,69 @@ function createPooledCodexWorker({ input, model, authPool }) {
         taskHash,
       );
       await mkdir(workspacePath, { recursive: true, mode: 0o700 });
-
-      executor = new FileBackendCodexSafeExecutor({
-        executorId: `social-monitor-agent-task:${taskHash}`,
-        stateRootDir: input.stateRootDir,
-        workspacePath,
-        requireGitWorkspace: false,
-        effectMode: "read_only",
-        maxAccountCycles: 1,
-        safeExecutionPolicy: {
-          ...codexAuthPoolExecutionPolicy,
-          maxAttempts: authPool.accounts.length,
-        },
-        accounts: orderCodexAuthAccountsForTask(
-          authPool.accounts,
-          taskId,
-        ).map((account) => ({
-          codexAuthJsonPath: account.authJsonPath,
-          worker: {
-            providerInstanceId: `codex:${account.id}`,
-            capacityAccountId: account.id,
-            stateRootDir: input.stateRootDir,
-            encryptionKey: input.encryptionKey,
-            codexBinaryPath: input.codexBinaryPath ?? pinnedCodexBinaryPath,
-            sourceEnv: subscriptionOnlyCodexEnvironment(input.env),
-            model,
-            reasoningEffort: admission.profile.reasoningEffort,
-            ...(input.timeoutMs ? { taskTimeoutMs: input.timeoutMs } : {}),
-          },
-        })),
-      });
-      const result = await executor.run({
-        ...job,
+      const materializedAuthRoot = await createAuthMaterializationRoot(
+        input.stateRootDir,
         taskId,
-        originalPrompt: job.prompt,
-        effectMode: "read_only",
-        maxAccountCycles: 1,
-      });
-      if (result.status === "completed") {
-        return result.result;
-      }
-      throw new SubscriptionWorkerError(
-        "subscription_worker_run_failed",
-        result.safeMessage,
-        {
-          details: {
-            reason: result.reason,
-            ...(result.failureDetails ?? {}),
-          },
-        },
       );
+
+      try {
+        const accounts = await Promise.all(
+          orderCodexAuthAccountsForTask(authPool.accounts, taskId).map(
+            async (account) => ({
+              codexAuthJsonPath: await materializeCodexAuthAccount(
+                materializedAuthRoot,
+                account,
+              ),
+              worker: {
+                providerInstanceId: `codex:${account.id}`,
+                capacityAccountId: account.id,
+                stateRootDir: input.stateRootDir,
+                encryptionKey: input.encryptionKey,
+                codexBinaryPath: input.codexBinaryPath ?? pinnedCodexBinaryPath,
+                sourceEnv: subscriptionOnlyCodexEnvironment(input.env),
+                model,
+                reasoningEffort: admission.profile.reasoningEffort,
+                ...(input.timeoutMs ? { taskTimeoutMs: input.timeoutMs } : {}),
+              },
+            }),
+          ),
+        );
+        executor = new FileBackendCodexSafeExecutor({
+          executorId: `social-monitor-agent-task:${taskHash}`,
+          stateRootDir: input.stateRootDir,
+          workspacePath,
+          requireGitWorkspace: false,
+          effectMode: "read_only",
+          maxAccountCycles: 1,
+          safeExecutionPolicy: {
+            ...codexAuthPoolExecutionPolicy,
+            maxAttempts: authPool.accounts.length,
+          },
+          accounts,
+        });
+        const result = await executor.run({
+          ...job,
+          taskId,
+          originalPrompt: job.prompt,
+          effectMode: "read_only",
+          maxAccountCycles: 1,
+        });
+        if (result.status === "completed") {
+          return result.result;
+        }
+        throw new SubscriptionWorkerError(
+          "subscription_worker_run_failed",
+          result.safeMessage,
+          {
+            details: {
+              reason: result.reason,
+              ...(result.failureDetails ?? {}),
+            },
+          },
+        );
+      } finally {
+        await removeAuthMaterialization(materializedAuthRoot);
+      }
     },
 
     async dispose() {
@@ -282,6 +321,28 @@ function createPooledCodexWorker({ input, model, authPool }) {
       await executor?.dispose();
     },
   };
+}
+
+async function createAuthMaterializationRoot(stateRootDir, taskId) {
+  const parent = join(stateRootDir, "auth-materializations");
+  await mkdir(parent, { recursive: true, mode: 0o700 });
+  return mkdtemp(join(parent, `${codexAuthPoolTaskHash(taskId)}-`));
+}
+
+async function materializeCodexAuthAccount(root, account) {
+  const accountRoot = join(root, account.id);
+  const authJsonPath = join(accountRoot, "auth.json");
+  await mkdir(accountRoot, { mode: 0o700 });
+  await writeFile(authJsonPath, await readFile(account.authJsonPath), {
+    mode: 0o600,
+  });
+  return authJsonPath;
+}
+
+async function removeAuthMaterialization(path) {
+  if (path !== undefined) {
+    await rm(path, { recursive: true, force: true });
+  }
 }
 
 process.exitCode = await runSubscriptionAgentTaskCli(

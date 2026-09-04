@@ -6,6 +6,7 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  readdir,
   rm,
   writeFile,
 } from "node:fs/promises";
@@ -45,7 +46,11 @@ test("main.30 control starts app-server and fallback exec processes", {
     );
     const attempts = await readAttempts(fixture.attemptLogPath);
 
-    assert.equal(execution.exitCode, 0, execution.stderr);
+    assert.equal(execution.exitCode, 0, JSON.stringify({
+      result: execution.result,
+      attempts,
+      stderr: execution.stderr,
+    }));
     assert.equal(execution.result.status, "completed");
     assert.deepEqual(nativeStartups(attempts), [
       { invocationId: "control-run", account: "account-a", command: "app-server" },
@@ -77,7 +82,11 @@ test("canary bypasses journals and runs one packaged story command", {
     });
     const attempts = await readAttempts(fixture.attemptLogPath);
 
-    assert.equal(execution.exitCode, 0, execution.stderr);
+    assert.equal(execution.exitCode, 0, JSON.stringify({
+      result: execution.result,
+      attempts,
+      stderr: execution.stderr,
+    }));
     assert.equal(execution.result.status, "completed");
     assert.deepEqual(execution.result.structuredOutput, validCanaryOutput);
     assert.equal(execution.result.executionAttestation, undefined);
@@ -197,6 +206,7 @@ async function createFixture({ freshness, invocationId }) {
   await chmod(codexPath, 0o755);
   return {
     accountIds,
+    authPaths,
     attemptLogPath,
     codexPath,
     poolRoot,
@@ -209,6 +219,9 @@ async function createFixture({ freshness, invocationId }) {
 }
 
 async function runBridge(fixture, request, { authMode, canary }) {
+  const beforePoolAuth = authMode === "pool"
+    ? await Promise.all(fixture.authPaths.map((path) => readFile(path, "utf8")))
+    : undefined;
   const requestPath = join(fixture.root, `${request.runId}.json`);
   await writeFile(requestPath, JSON.stringify(request), "utf8");
   const args = [
@@ -251,6 +264,16 @@ async function runBridge(fixture, request, { authMode, canary }) {
     }),
   );
   assert.notEqual(execution.stdout, "", execution.stderr);
+  if (beforePoolAuth !== undefined) {
+    assert.deepEqual(
+      await Promise.all(fixture.authPaths.map((path) => readFile(path, "utf8"))),
+      beforePoolAuth,
+    );
+    assert.deepEqual(
+      await readdir(join(fixture.stateRoot, "auth-materializations")),
+      [],
+    );
+  }
   return { ...execution, result: JSON.parse(execution.stdout) };
 }
 
@@ -409,7 +432,7 @@ if (command === "app-server") {
     else if (request.method === "turn/start") { await record({ event: "rpc", method: "turn/start" }); send({ id: request.id, result: { turn: { id: "turn-control" } } }); send({ method: "turn/completed", params: { turn: { id: "turn-control", status: { type: "failed" }, error: { message: "ordinary failure" } } } }); }
   }
 } else if (command === "exec") {
-  const prompt = await readFile(0, "utf8");
+  const prompt = await readStdin();
   const refreshBootstrap = prompt.trim() === "Respond with OK only.";
   const scenario = refreshBootstrap
     ? undefined
@@ -433,6 +456,12 @@ if (command === "app-server") {
   }
 } else {
   process.exit(88);
+}
+async function readStdin() {
+  process.stdin.setEncoding("utf8");
+  let value = "";
+  for await (const chunk of process.stdin) value += chunk;
+  return value;
 }
 function send(message) { process.stdout.write(JSON.stringify(message) + "\\n"); }
 `;

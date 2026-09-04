@@ -118,11 +118,13 @@ const request = (
   ...override,
 });
 
-const canaryControls = (override: Record<string, unknown> = {}) => ({
-  outputSchemaName: readerPromotionV2CanarySchemaName,
-  schemaVersion: readerPromotionV2CanarySchemaVersion,
-  ...override,
-});
+function canaryControls(override: Record<string, unknown> = {}) {
+  return {
+    outputSchemaName: readerPromotionV2CanarySchemaName,
+    schemaVersion: readerPromotionV2CanarySchemaVersion,
+    ...override,
+  };
+}
 
 const mutatedSchemas = (): readonly Record<string, unknown>[] => {
   const extra = structuredClone(

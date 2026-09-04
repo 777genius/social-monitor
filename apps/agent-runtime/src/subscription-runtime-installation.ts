@@ -14,7 +14,7 @@ import {
 export const approvedSubscriptionRuntimePackageVersion =
   "0.1.0-main.30";
 export const approvedSubscriptionRuntimeLauncherSha256 =
-  "362fbe99fbaefde561023ea20e10e784f14fd23f9dbffec433e0e37052f75cf0";
+  "dd8a53daa1fe35b2f901bf2b2b000e0a02279bae45c963a631b85bbabbec891b";
 
 export type SubscriptionRuntimeInstallationIdentity = {
   /** Exact real path that was admitted and must be passed to spawn. */
