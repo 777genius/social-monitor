@@ -7,7 +7,7 @@ RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates openssl \
   && rm -rf /var/lib/apt/lists/*
 
-COPY package.json package-lock.json ./
+COPY --chmod=0644 package.json package-lock.json ./
 COPY vendor ./vendor
 RUN npm ci
 
