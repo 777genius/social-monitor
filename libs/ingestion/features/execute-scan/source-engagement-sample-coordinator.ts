@@ -21,6 +21,9 @@ export const prepareSourceEngagementSamples = (params: {
   const persistedByExternalId = new Map(
     params.persistedItems.map((item) => [item.toSnapshot().externalId, item]),
   );
+  const fetchedByExternalId = new Map(
+    params.candidateScreening.itemsToProcess.map((item) => [item.externalId, item]),
+  );
   const classificationByExternalId = new Map(
     params.candidateScreening.classifications.map((classification) => [
       classification.externalId,
@@ -40,7 +43,12 @@ export const prepareSourceEngagementSamples = (params: {
   const engagementSamples = [
     ...[...persistedByExternalId.values()].map((item): SourceEngagementSample | undefined => {
       const snapshot = item.toSnapshot();
-      const engagement = reliableEngagement(params.providerKey, snapshot.metadata);
+      const fetched = fetchedByExternalId.get(snapshot.externalId);
+      // Persistence intentionally retains metadata when content is unchanged.
+      // Bind identity to the saved row, but observe metrics from this fetch.
+      const engagement = reliableEngagement(
+        params.providerKey, fetched === undefined ? snapshot.metadata : fetched.metadata,
+      );
       const ref = savedRefByExternalId.get(snapshot.externalId);
       const classification = classificationByExternalId.get(
         snapshot.externalId,
@@ -58,9 +66,8 @@ export const prepareSourceEngagementSamples = (params: {
             sourceItemId: snapshot.id,
             publishedAt: snapshot.publishedAt,
             ...engagement,
-            refreshReadModels: !fullProjectionExternalIds.has(
-              snapshot.externalId,
-            ),
+            refreshReadModels: ref.mutationKind === "unchanged" ||
+              !fullProjectionExternalIds.has(snapshot.externalId),
           };
     }),
     ...[...engagementRefreshByExternalId.values()].map(

@@ -7,6 +7,7 @@ import { PrismaScanCursorRepository } from "@social-monitor/ingestion/adapters/p
 import { PrismaScanFailureQueueAdapter } from "@social-monitor/ingestion/adapters/persistence/prisma/prisma-scan-failure-queue.adapter";
 import { PrismaScanLeaseAdapter } from "@social-monitor/ingestion/adapters/persistence/prisma/prisma-scan-lease.adapter";
 import { PrismaSourceItemRepository } from "@social-monitor/ingestion/adapters/persistence/prisma/prisma-source-item.repository";
+import { PrismaSourceCandidateMemoryRepository } from "@social-monitor/ingestion/adapters/persistence/prisma/prisma-source-candidate-memory.repository";
 import { CircuitBreakerSourceFetcherAdapter } from "@social-monitor/ingestion/adapters/source/circuit-breaker-source-fetcher.adapter";
 import { GitHubTrendingPageSourceProvider } from "@social-monitor/ingestion/adapters/source/github-trending-page/github-trending-page-source.provider";
 import { HttpGitHubTrendingPageClient } from "@social-monitor/ingestion/adapters/source/github-trending-page/http-github-trending-page-client";
@@ -320,7 +321,7 @@ const buildLiveRuntime = (params: {
       new PrismaConversationUnitRepository(params.connection, ids),
       ids,
     ),
-    undefined,
+    new PrismaSourceCandidateMemoryRepository(params.connection, ids),
     new PrismaSourceEngagementProjectionAdapter(params.connection, ids),
   );
   return { executeScan, scanJobReporter };

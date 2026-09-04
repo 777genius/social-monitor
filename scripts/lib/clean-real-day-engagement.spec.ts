@@ -57,8 +57,13 @@ describe("live acquisition durable engagement composition", () => {
       access.tenantId === target.tenantId && access.workspaceId === target.workspaceId)).toBe(true);
   });
 
-  it("refreshes a duplicate from fresh provider metrics without inserting another post", async () => {
+  it.each(["warm", "cold", "read_failed"])("refreshes duplicate metrics with %s memory", async (memory) => {
     await run();
+    if (memory === "cold") db.tables.sourceCandidateMemory!.rows = [];
+    if (memory === "read_failed") {
+      jest.spyOn(db.tables.sourceCandidateMemory!, "findMany")
+        .mockRejectedValue(new Error("Fixture memory read unavailable"));
+    }
     score = 90;
     now = new Date("2026-09-04T16:00:00.000Z");
     await run();
@@ -68,6 +73,12 @@ describe("live acquisition durable engagement composition", () => {
       score: 90n, lastObservedAt: now,
     });
     expect(db.rows("feedItem")[0]?.providerMetadata).toMatchObject({ providerScore: 90 });
+    expect(db.rows("sourceItem")[0]?.metadata).toMatchObject({ providerScore: 90 });
+    now = new Date("2026-09-04T16:05:00.000Z");
+    await run();
+    expect(db.rows("sourceItemEngagementSnapshot")[0]?.score).toBe(90n);
+    expect(db.rows("sourceItemEngagementObservation")).toHaveLength(2);
+    expect(db.rows("feedItem")).toHaveLength(1);
   });
 
   it("reports failed collection when durable engagement cannot be persisted", async () => {
