@@ -29,7 +29,7 @@ cp "$SCRIPT_DIR/postgres-runtime-asset-lib.sh" \
   "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR"/postgres-runtime-{weekly-timer-state,daily-c1-readiness,activation-boundary}-lib.sh \
   "$REPO/ops/deploy/"
-cp "$SCRIPT_DIR/deploy-control-lib.sh" "$SCRIPT_DIR/deploy-control-bridge-lib.sh" "$REPO/ops/deploy/"
+cp "$SCRIPT_DIR"/deploy-control-{lib,bridge-lib,current-target-lib}.sh "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/backend-runtime-health-lib.sh" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/backend-image-rescue-lib.sh" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/backend-image-rescue-pin-cleanup-lib.sh" "$REPO/ops/deploy/"

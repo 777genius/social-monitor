@@ -105,6 +105,11 @@ load_deploy_control_bridge_library() {
 initialize_deploy_control_bridge() {
   load_deploy_control_bridge_library
   initialize_deploy_control_bridge
+  if [[ -n ${PRODUCTION_TRANSITION_PRELUDE_COMMIT:-} ]]; then
+    source_reviewed_deploy_library "$DEPLOY_CONTROL_BRIDGE_INITIALIZED_HEAD" \
+      ops/deploy/deploy-control-current-target-lib.sh 'current target control checks'
+    deploy_control_install_current_target_checks
+  fi
 }
 
 probe_daily_singleton_clear() {
@@ -910,7 +915,7 @@ deploy_release() {
   fetch_main
   validate_main_commit "$sha"
   install -d -m 0755 "$STATE" "$STAGING" "$RELEASES"
-  local current
+  local current checkout_status
   current=$(git -C "$REPO" rev-parse HEAD)
   if [[ $mode == resume-target-prepared ]]; then
     [[ $sha == "$current" ]] || \
@@ -956,8 +961,20 @@ deploy_release() {
         $x_image_provenance_release == true ]]; then
     verify_deploy_control_bridge_target_compatibility "$sha"
   fi
-  advance_integration "$sha"
-  deploy_control_bootstrap_production_transition_b0 "$sha"
+  if [[ $sha == "$current" ]]; then
+    checkout_status=$(git -C "$REPO" status --porcelain --untracked-files=all) || \
+      fail 'cannot inspect integration worktree'
+    [[ -z $checkout_status ]] || fail 'integration worktree is dirty'
+  else
+    advance_integration "$sha"
+  fi
+  # The entrypoint already authenticated and froze an installed B0 authority.
+  # Re-sourcing that authority after an ordinary fast-forward would attempt to
+  # redefine readonly functions. A predecessor that has not loaded B0 still
+  # performs the exact bootstrap before any target-controlled work is loaded.
+  if ! declare -F production_transition_host_failpoint >/dev/null; then
+    deploy_control_bootstrap_production_transition_b0 "$sha"
+  fi
   if [[ $backend == true ]]; then
     load_target_rabbitmq_quorum_backend_health "$sha"
     load_target_reader_summary_publication_deploy_library "$sha"
