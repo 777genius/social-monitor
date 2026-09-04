@@ -294,16 +294,15 @@ verify_deploy_control_bridge_compatibility
         self.assertEqual(after.returncode, 0, after.stderr.decode())
         # Exercise the complete real pre-activation deploy_release path,
         # including its early bootstrap return and all three legacy install
-        # callsites. Only application/control effects past that boundary are
-        # substituted; classifiers, Git movement and compatibility are real.
+        # callsites. Stop at target-owned publication prebootstrap, which may
+        # reconstruct runtime images. No Docker/DB effect belongs in this proof.
         full_release = script + '''
 while read -r _ _ function_name; do
   [[ $function_name != production_transition_* ]] || readonly -f "$function_name"
 done < <(declare -F)
 action=deploy
-sync_control_script() { :; }
-deploy_release_runtime_transaction() {
-  [[ $2 == true ]]
+load_target_reader_summary_publication_deploy_library() {
+  [[ $1 == "$sha" ]]
   verify_deploy_control_bridge_compatibility
   printf 'real-pre-activation-boundary-reached\\n'
   exit 42
