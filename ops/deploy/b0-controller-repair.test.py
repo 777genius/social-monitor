@@ -217,6 +217,7 @@ class RepairTests(unittest.TestCase):
         self.repair.apply(self.target, self.approved)
         self.git('config', 'core.autocrlf', 'true')
         (self.repo / repair_module.CONTROLLER).write_bytes(b'new controller\r\n')
+        self.assertEqual(self.git('diff', '--', repair_module.CONTROLLER), b'')
         self.assertEqual(self.git('status', '--porcelain').strip(), b'')
         with self.assertRaisesRegex(RuntimeError, 'bytes/mode'):
             self.repair.handoff(self.target, self.approved)
@@ -229,6 +230,7 @@ class RepairTests(unittest.TestCase):
             if args[0] == 'merge':
                 original('config', 'core.autocrlf', 'true')
                 (self.repo / repair_module.CONTROLLER).write_bytes(b'new controller\r\n')
+                self.assertEqual(original('diff', '--', repair_module.CONTROLLER), b'')
             return result
 
         with patch.object(self.repair, 'git', side_effect=git):
