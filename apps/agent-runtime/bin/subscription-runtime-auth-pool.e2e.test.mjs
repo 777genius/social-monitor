@@ -17,6 +17,8 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 import { orderCodexAuthAccountsForTask } from "./codex-auth-pool-routing.mjs";
+import "./reader-promotion-v2-canary-lane.e2e.test.mjs";
+import "./reader-promotion-v2-canary-main30-contract.test.mjs";
 
 const execFileAsync = promisify(execFile);
 const repositoryRoot = resolve(
