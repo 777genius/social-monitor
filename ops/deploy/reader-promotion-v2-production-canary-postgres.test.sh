@@ -4,6 +4,18 @@
 set -euo pipefail
 
 REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+bootstrap="$REPO/ops/deploy/reader-promotion-v2-canary-control-bootstrap.sql"
+expect_failure() {
+  if "$@"; then
+    echo 'expected SQL refusal, but the command succeeded' >&2
+    exit 1
+  fi
+}
+# An inverted command alone is exempt from errexit and is not an assertion.
+if (expect_failure true) >/dev/null 2>&1; then
+  echo 'negative assertion helper did not reject success' >&2
+  exit 1
+fi
 container=
 database=promotion_canary_test
 cleanup() {
@@ -21,11 +33,21 @@ if [[ -z $hostport ]]; then
     --publish 127.0.0.1::5432 postgres:18.4-alpine >/dev/null
   port=$(docker port "$container" 5432/tcp | sed -E 's/.*:([0-9]+)$/\1/')
   hostport=127.0.0.1:$port
+  ready=false
   for _ in $(seq 1 60); do
-    docker exec "$container" pg_isready -U postgres -d "$database" \
-      >/dev/null 2>&1 && break
+    # The image first starts a temporary Unix-only initialization server.
+    # Probe the same host TCP endpoint that all following assertions use.
+    if PGCONNECT_TIMEOUT=2 psql "postgresql://postgres@$hostport/$database" \
+        -XAt -v ON_ERROR_STOP=1 -c 'SELECT 1' >/dev/null 2>&1; then
+      ready=true
+      break
+    fi
     sleep 1
   done
+  [[ $ready == true ]] || {
+    echo 'canary PostgreSQL test TCP endpoint did not become ready' >&2
+    exit 1
+  }
 else
   psql "postgresql://postgres@$hostport/postgres" -v ON_ERROR_STOP=1 \
     -c "CREATE DATABASE $database" >/dev/null
@@ -45,8 +67,43 @@ CREATE TABLE public.outbox_events(id integer);
 CREATE TABLE public.delivery_attempts(id integer);
 CREATE TABLE public.notification_preferences(id integer);
 SQL
+expect_failure psql "$admin" -v ON_ERROR_STOP=1 -f "$bootstrap" \
+  >/dev/null 2>&1
+psql "$admin" -At -v ON_ERROR_STOP=1 <<'SQL' | grep -Fx 't|2'
+SELECT to_regnamespace('reader_promotion_v2_canary_control') IS NULL,
+  count(*) FROM pg_roles WHERE rolbypassrls AND rolname IN (
+    'social_monitor_reader_promotion_canary_owner',
+    'social_monitor_reader_promotion_canary_invoker');
+SQL
+psql "$admin" -v ON_ERROR_STOP=1 <<'SQL' >/dev/null
+DROP ROLE social_monitor_reader_promotion_canary_owner;
+DROP ROLE social_monitor_reader_promotion_canary_invoker;
+CREATE ROLE social_monitor_reader_promotion_canary_invoker LOGIN NOINHERIT CONNECTION LIMIT 2;
+GRANT SELECT ON public.tenants TO social_monitor_reader_promotion_canary_invoker;
+SQL
+expect_failure psql "$admin" -v ON_ERROR_STOP=1 -f "$bootstrap" \
+  >/dev/null 2>&1
+psql "$admin" -At -v ON_ERROR_STOP=1 <<'SQL' | grep -Fx 't|t'
+SELECT to_regnamespace('reader_promotion_v2_canary_control') IS NULL,
+  has_table_privilege('social_monitor_reader_promotion_canary_invoker',
+    'public.tenants', 'SELECT');
+SQL
+psql "$admin" -v ON_ERROR_STOP=1 <<'SQL' >/dev/null
+REVOKE SELECT ON public.tenants FROM social_monitor_reader_promotion_canary_invoker;
+DROP ROLE social_monitor_reader_promotion_canary_invoker;
+CREATE ROLE canary_bootstrap_unprivileged LOGIN CREATEROLE NOINHERIT;
+SQL
+expect_failure psql \
+  "postgresql://canary_bootstrap_unprivileged@$hostport/$database" \
+  -v ON_ERROR_STOP=1 -f "$bootstrap" >/dev/null 2>&1
+psql "$admin" -At -v ON_ERROR_STOP=1 <<'SQL' | grep -Fx 't|0'
+SELECT to_regnamespace('reader_promotion_v2_canary_control') IS NULL,
+  count(*) FROM pg_roles WHERE rolname IN (
+    'social_monitor_reader_promotion_canary_owner',
+    'social_monitor_reader_promotion_canary_invoker');
+SQL
 psql "$admin" -v ON_ERROR_STOP=1 -f \
-  "$REPO/prisma/migrations/20260904090000_reader_promotion_v2_production_canary_control/migration.sql" \
+  "$REPO/ops/deploy/reader-promotion-v2-canary-control-bootstrap.sql" \
   >/dev/null
 
 psql "$admin" -At -v ON_ERROR_STOP=1 <<'SQL' | grep -Fx 'f|t|f|f|f|f|f|2'
@@ -75,8 +132,8 @@ JOIN pg_roles recipient ON recipient.oid = membership.member
 WHERE granted.rolname LIKE 'social_monitor_reader_promotion_canary_%'
    OR recipient.rolname LIKE 'social_monitor_reader_promotion_canary_%';
 SQL
-! psql "$invoker" -c 'SELECT * FROM public.tenants' >/dev/null 2>&1
-! psql "$invoker" -c \
+expect_failure psql "$invoker" -c 'SELECT * FROM public.tenants' >/dev/null 2>&1
+expect_failure psql "$invoker" -c \
   'SELECT * FROM reader_promotion_v2_canary_control.jobs' >/dev/null 2>&1
 
 sha=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
@@ -113,7 +170,7 @@ SELECT (reader_promotion_v2_canary_control.read()->'binding')::text;
 SQL
 )
 mutable_image=$(node -e 'const value=JSON.parse(process.argv[1]);value.runtimeImageId="social-monitor-prod-daily-runner:latest";process.stdout.write(JSON.stringify(value))' "$binding")
-! psql "$invoker" -v ON_ERROR_STOP=1 -v binding="$mutable_image" \
+expect_failure psql "$invoker" -v ON_ERROR_STOP=1 -v binding="$mutable_image" \
   >/dev/null 2>&1 <<'SQL'
 SELECT action FROM reader_promotion_v2_canary_control.claim(:'binding'::jsonb);
 SQL
@@ -124,7 +181,7 @@ SQL
 
 # The invoker has no timestamp-taking procedure and cannot call owner-only
 # deterministic implementations to bypass the database clock.
-! psql "$invoker" -v ON_ERROR_STOP=1 -v binding="$binding" >/dev/null 2>&1 <<'SQL'
+expect_failure psql "$invoker" -v ON_ERROR_STOP=1 -v binding="$binding" >/dev/null 2>&1 <<'SQL'
 SELECT * FROM reader_promotion_v2_canary_control.claim_at(
   :'binding'::jsonb, '2000-01-01T00:00:00Z');
 SQL
@@ -140,7 +197,7 @@ psql "$invoker" -At -v ON_ERROR_STOP=1 -v binding="$other" <<'SQL' | grep -F 'IN
 SELECT action, snapshot FROM reader_promotion_v2_canary_control.claim(
   :'binding'::jsonb);
 SQL
-! psql "$invoker" -v ON_ERROR_STOP=1 -v binding="$other" >/dev/null 2>&1 <<'SQL'
+expect_failure psql "$invoker" -v ON_ERROR_STOP=1 -v binding="$other" >/dev/null 2>&1 <<'SQL'
 SELECT snapshot FROM reader_promotion_v2_canary_control.complete_model(
   :'binding'::jsonb, 'RESPONSE', '{}'::jsonb,
   repeat('e', 64));
@@ -171,7 +228,7 @@ fractional_tokens=${fractional_tokens/\"totalTokens\":18/\"totalTokens\":18.5}
 for malformed in "$string_boolean" "$string_score" "$string_tokens" \
     "$numeric_format" "$fractional_tokens"; do
   malformed_digest=$(canonical_digest "$malformed")
-  ! psql "$invoker" -v ON_ERROR_STOP=1 -v binding="$binding" \
+  expect_failure psql "$invoker" -v ON_ERROR_STOP=1 -v binding="$binding" \
     -v artifact="$malformed" -v artifact_digest="$malformed_digest" \
     >/dev/null 2>&1 <<'SQL'
 SELECT snapshot FROM reader_promotion_v2_canary_control.complete_model(
@@ -179,13 +236,13 @@ SELECT snapshot FROM reader_promotion_v2_canary_control.complete_model(
 SQL
 done
 string_attempt=$(node -e 'const value=JSON.parse(process.argv[1]);value.workflowRunAttempt="1";process.stdout.write(JSON.stringify(value))' "$binding")
-! psql "$invoker" -v ON_ERROR_STOP=1 -v binding="$string_attempt" \
+expect_failure psql "$invoker" -v ON_ERROR_STOP=1 -v binding="$string_attempt" \
   >/dev/null 2>&1 <<'SQL'
 SELECT action FROM reader_promotion_v2_canary_control.claim(:'binding'::jsonb);
 SQL
 artifact_with_extra_usage=${artifact/\"totalTokens\":18/\"totalTokens\":18,\"cachedTokens\":1}
 extra_usage_digest=$(canonical_digest "$artifact_with_extra_usage")
-! psql "$invoker" -v ON_ERROR_STOP=1 -v binding="$binding" \
+expect_failure psql "$invoker" -v ON_ERROR_STOP=1 -v binding="$binding" \
   -v artifact="$artifact_with_extra_usage" \
   -v artifact_digest="$extra_usage_digest" >/dev/null 2>&1 <<'SQL'
 SELECT snapshot FROM reader_promotion_v2_canary_control.complete_model(
@@ -222,7 +279,7 @@ receipt_string_attempt=${receipt/\"workflowRunAttempt\":1/\"workflowRunAttempt\"
 receipt_string_tokens=${receipt/\"outputTokens\":7/\"outputTokens\":\"7\"}
 for malformed in "$receipt_string_attempt" "$receipt_string_tokens"; do
   malformed_digest=$(canonical_digest "$malformed")
-  ! psql "$invoker" -v ON_ERROR_STOP=1 -v binding="$binding" \
+  expect_failure psql "$invoker" -v ON_ERROR_STOP=1 -v binding="$binding" \
     -v receipt="$malformed" -v receipt_digest="$malformed_digest" \
     >/dev/null 2>&1 <<'SQL'
 SELECT snapshot FROM reader_promotion_v2_canary_control.finalize(
@@ -231,7 +288,7 @@ SQL
 done
 receipt_with_extra_usage=${receipt/\"totalTokens\":18/\"totalTokens\":18,\"cachedTokens\":1}
 extra_receipt_digest=$(canonical_digest "$receipt_with_extra_usage")
-! psql "$invoker" -v ON_ERROR_STOP=1 -v binding="$binding" \
+expect_failure psql "$invoker" -v ON_ERROR_STOP=1 -v binding="$binding" \
   -v receipt="$receipt_with_extra_usage" \
   -v receipt_digest="$extra_receipt_digest" >/dev/null 2>&1 <<'SQL'
 SELECT snapshot FROM reader_promotion_v2_canary_control.finalize(
@@ -256,7 +313,7 @@ for table in job_events artifacts receipts; do
     "UPDATE reader_promotion_v2_canary_control.$table SET singleton_id=singleton_id" \
     "DELETE FROM reader_promotion_v2_canary_control.$table" \
     "TRUNCATE reader_promotion_v2_canary_control.$table"; do
-    ! psql "$admin" -v ON_ERROR_STOP=1 -c "$mutation" >/dev/null 2>&1
+    expect_failure psql "$admin" -v ON_ERROR_STOP=1 -c "$mutation" >/dev/null 2>&1
   done
 done
 psql "$admin" -At -v ON_ERROR_STOP=1 <<'SQL' | grep -Fx '0|0|0|0|0|0'
@@ -273,9 +330,18 @@ SELECT string_agg(table_name, ',' ORDER BY CASE table_name
 FROM information_schema.tables
 WHERE table_schema = 'reader_promotion_v2_canary_control';
 SQL
-! psql "$admin" -At -c \
+if psql "$admin" -At -c \
   "SELECT binding::text FROM reader_promotion_v2_canary_control.jobs UNION ALL SELECT artifact::text FROM reader_promotion_v2_canary_control.artifacts UNION ALL SELECT receipt::text FROM reader_promotion_v2_canary_control.receipts" |
-  grep -Eqi 'systemPrompt|"prompt"|rationale|tenantId|workspaceId|access.?token|api.?key|bearer|provider.?exception|session'
+  grep -Eqi 'systemPrompt|"prompt"|rationale|tenantId|workspaceId|access.?token|api.?key|bearer|provider.?exception|session'; then
+  echo 'canary SQL evidence contains a forbidden field' >&2
+  exit 1
+fi
+receipt_before=$(psql "$admin" -At -v ON_ERROR_STOP=1 -c \
+  'SELECT receipt_sha256 FROM reader_promotion_v2_canary_control.receipts')
+expect_failure psql "$admin" -v ON_ERROR_STOP=1 -f "$bootstrap" \
+  >/dev/null 2>&1
+[[ $(psql "$admin" -At -v ON_ERROR_STOP=1 -c \
+  'SELECT receipt_sha256 FROM reader_promotion_v2_canary_control.receipts') == "$receipt_before" ]]
 
 # A second disposable database proves the actual invoker's post-barrier crash
 # transition atomically records MODEL_COMPLETED/UNCERTAIN then REJECTED.
@@ -284,7 +350,7 @@ psql "$server/postgres" -v ON_ERROR_STOP=1 \
 expiry_admin="$server/promotion_canary_expiry_test"
 expiry_invoker="$invoker_server/promotion_canary_expiry_test"
 psql "$expiry_admin" -v ON_ERROR_STOP=1 -f \
-  "$REPO/prisma/migrations/20260904090000_reader_promotion_v2_production_canary_control/migration.sql" \
+  "$REPO/ops/deploy/reader-promotion-v2-canary-control-bootstrap.sql" \
   >/dev/null
 psql "$expiry_invoker" -At -v ON_ERROR_STOP=1 -v binding="$binding" <<'SQL' >/dev/null
 SELECT action FROM reader_promotion_v2_canary_control.claim(
@@ -315,7 +381,7 @@ psql "$server/postgres" -v ON_ERROR_STOP=1 \
 race_admin="$server/promotion_canary_race_test"
 race_invoker="$invoker_server/promotion_canary_race_test"
 psql "$race_admin" -v ON_ERROR_STOP=1 -f \
-  "$REPO/prisma/migrations/20260904090000_reader_promotion_v2_production_canary_control/migration.sql" \
+  "$REPO/ops/deploy/reader-promotion-v2-canary-control-bootstrap.sql" \
   >/dev/null
 test_tmp=${CANARY_PG_TEST_TMP_ROOT:-${TMPDIR:-/tmp}}
 race_one=$test_tmp/promotion-canary-race-one-$$

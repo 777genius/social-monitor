@@ -1,9 +1,18 @@
--- @social-monitor-forward-migration
+-- Manual one-shot canary provisioning, never an application migration.
 -- Isolated singleton control plane: it has no product-domain authority.
 BEGIN;
 
 DO $roles$
 BEGIN
+  IF NOT (SELECT rolsuper FROM pg_catalog.pg_roles
+      WHERE rolname = CURRENT_USER) THEN
+    RAISE EXCEPTION 'canary bootstrap requires the independent provisioning administrator';
+  END IF;
+  PERFORM pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtextextended('reader-promotion-v2-canary-bootstrap-v1', 0));
+  IF pg_catalog.to_regnamespace('reader_promotion_v2_canary_control') IS NOT NULL THEN
+    RAISE EXCEPTION 'canary already provisioned; inspect the existing receipt instead of replaying bootstrap';
+  END IF;
   IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles
     WHERE rolname = 'social_monitor_reader_promotion_canary_owner') THEN
     CREATE ROLE social_monitor_reader_promotion_canary_owner NOLOGIN
@@ -18,19 +27,39 @@ BEGIN
 END
 $roles$;
 
-ALTER ROLE social_monitor_reader_promotion_canary_owner NOLOGIN
-  NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS;
-ALTER ROLE social_monitor_reader_promotion_canary_invoker LOGIN
-  NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION
-  NOBYPASSRLS CONNECTION LIMIT 2;
 DO $role_audit$
 BEGIN
   IF EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname IN (
       'social_monitor_reader_promotion_canary_owner',
       'social_monitor_reader_promotion_canary_invoker'
     ) AND (rolsuper OR rolcreatedb OR rolcreaterole OR rolinherit OR
-      rolreplication OR rolbypassrls)) THEN
-    RAISE EXCEPTION 'reader promotion V2 canary role normalization failed';
+      rolreplication OR rolbypassrls OR
+      (rolname = 'social_monitor_reader_promotion_canary_owner' AND rolcanlogin) OR
+      (rolname = 'social_monitor_reader_promotion_canary_invoker' AND
+        (NOT rolcanlogin OR rolconnlimit <> 2)) OR
+      (rolconfig IS NOT NULL AND rolconfig <>
+        ARRAY['search_path=pg_catalog, reader_promotion_v2_canary_control']))) THEN
+    RAISE EXCEPTION 'reader promotion V2 canary pre-existing role is unsafe';
+  END IF;
+  IF EXISTS (
+    SELECT FROM pg_catalog.pg_roles role
+    JOIN (
+      SELECT relowner AS owner, relacl AS acl FROM pg_catalog.pg_class
+      UNION ALL SELECT proowner, proacl FROM pg_catalog.pg_proc
+      UNION ALL SELECT nspowner, nspacl FROM pg_catalog.pg_namespace
+      UNION ALL SELECT typowner, typacl FROM pg_catalog.pg_type
+      UNION ALL SELECT datdba, datacl FROM pg_catalog.pg_database
+      UNION ALL SELECT 0::OID, attacl FROM pg_catalog.pg_attribute
+    ) object_acl ON object_acl.owner = role.oid OR EXISTS (
+      SELECT FROM pg_catalog.aclexplode(object_acl.acl) grant_entry
+      WHERE grant_entry.grantee = role.oid
+    )
+    WHERE role.rolname IN (
+      'social_monitor_reader_promotion_canary_owner',
+      'social_monitor_reader_promotion_canary_invoker'
+    )
+  ) THEN
+    RAISE EXCEPTION 'reader promotion V2 canary role has pre-existing object authority';
   END IF;
 END
 $role_audit$;

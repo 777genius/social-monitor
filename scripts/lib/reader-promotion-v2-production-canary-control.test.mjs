@@ -1,14 +1,14 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import test from "node:test";
 
 const read = (path) => readFileSync(path, "utf8");
 const workflow = read(".github/workflows/reader-promotion-v2-production-canary.yml");
 const host = read("ops/deploy/production-runtime/reader-promotion-v2-production-canary.sh");
 const migration = read(
-  "prisma/migrations/20260904090000_reader_promotion_v2_production_canary_control/migration.sql",
+  "ops/deploy/reader-promotion-v2-canary-control-bootstrap.sql",
 );
 const manifest = JSON.parse(read(
   "ops/release/reader-promotion-v2-production-canary.v1.json",
@@ -44,8 +44,8 @@ test("manifest fixes the singleton model, timeout and exact relation batch", () 
 });
 
 test("manual workflow is protected-main exact-target and non-cancelling", () => {
-  assert.match(workflow, /^on:\n  workflow_dispatch:/m);
-  assert.doesNotMatch(workflow, /\n  (push|pull_request|schedule):/);
+  assert.match(workflow, /^on:\n {2}workflow_dispatch:/m);
+  assert.doesNotMatch(workflow, /\n {2}(push|pull_request|schedule):/);
   for (const exact of [
     '[[ "$GITHUB_REF" == "refs/heads/main" ]]',
     '[[ "$TARGET_SHA" == "$GITHUB_SHA" ]]',
@@ -83,7 +83,14 @@ test("host reads official markers and never mutates a service", () => {
     /systemctl|compose (?:up|start|restart)|service (?:start|restart)|publish/iu);
 });
 
-test("migration is isolated, least privilege, immutable and procedure-only", () => {
+test("manual bootstrap is isolated from app migrations and procedure-only", () => {
+  assert.equal(readdirSync("prisma/migrations").some((name) =>
+    name.includes("production_canary_control")), false);
+  assert.match(migration, /independent provisioning administrator/);
+  assert.match(migration, /pre-existing role is unsafe/);
+  assert.doesNotMatch(migration, /ALTER ROLE[^;]+(?:SUPERUSER|BYPASSRLS)/);
+  const pgTest = read("ops/deploy/reader-promotion-v2-production-canary-postgres.test.sh");
+  assert.doesNotMatch(pgTest, /^\s*! psql/m);
   for (const required of [
     "NOLOGIN", "LOGIN", "NOINHERIT", "NOBYPASSRLS", "CONNECTION LIMIT 2",
     "REVOKE ALL ON SCHEMA", "FROM PUBLIC",

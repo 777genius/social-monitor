@@ -44,6 +44,7 @@ const main = async (): Promise<void> => {
   };
   const pool = new Pool({
     connectionString: databaseUrl,
+    min: 0,
     max: 1,
     application_name: "reader-promotion-v2-production-canary",
     statement_timeout: 10_000,

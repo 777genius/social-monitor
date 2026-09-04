@@ -421,6 +421,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/reader-summary-publication-postgres-privileges.ts:Pool
       scripts/reader-summary-publication-postgres-privileges.ts:Pool
       scripts/reader-summary-publication-postgres-privileges.ts:Pool
+      scripts/run-reader-promotion-v2-production-canary.ts:Pool
       scripts/run-reader-summary-clean-real-day-collection.ts:Pool
       scripts/run-reader-summary-promotion-v2-rollback.ts:Pool
       scripts/run-reader-summary-weekly-production.ts:Pool
@@ -486,6 +487,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/lib/github-trending-durable-snapshot-reuse.postgres.spec.ts
       scripts/lib/github-trending-durable-snapshot-reuse.prisma.spec.ts
       scripts/lib/github-trending-durable-snapshot-reuse.ts
+      scripts/lib/reader-promotion-v2-production-canary-postgres-store.ts
       scripts/lib/reader-summary-current-publication-bindings.spec.ts
       scripts/lib/reader-summary-current-publication-bindings.ts
       scripts/lib/reader-summary-daily-canonical-recovery-v4-delivery-c1.ts
@@ -525,6 +527,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/reader-summary-publication-postgres-privileges.ts
       scripts/reader-summary-publication-postgres-runtime-guard.ts
       scripts/reader-summary-publication-postgres18-regression.ts
+      scripts/run-reader-promotion-v2-production-canary.ts
       scripts/run-reader-summary-clean-real-day-collection.ts
       scripts/run-reader-summary-promotion-v2-rollback.ts
       scripts/run-reader-summary-weekly-production.ts
