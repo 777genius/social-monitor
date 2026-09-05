@@ -20,6 +20,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
 
 
 REPO = Path(__file__).resolve().parents[2]
@@ -73,7 +74,17 @@ def offline_dockerfile(base):
             "/permission-negative/contract.cjs\n")
 
 
+def remove_test_image(image_id):
+    run(["docker", "image", "rm", "--no-prune", image_id])
+
+
 class LocalPermissions(unittest.TestCase):
+    def test_cleanup_preserves_existing_parent_images(self):
+        with mock.patch(__name__ + ".run") as command:
+            remove_test_image("sha256:" + "a" * 64)
+        command.assert_called_once_with(["docker", "image", "rm", "--no-prune",
+                                         "sha256:" + "a" * 64])
+
     def test_offline_build_preserves_source_instructions(self):
         generated = offline_dockerfile("sha256:" + "a" * 64)
         self.assertNotIn("--chmod", generated)
@@ -191,7 +202,7 @@ def image_regression(base):
         finally:
             if image_id is not None:
                 # Only the untagged image created by this test; never prune caches.
-                run(["docker", "image", "rm", image_id])
+                remove_test_image(image_id)
 
 
 if __name__ == "__main__":
