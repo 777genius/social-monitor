@@ -1,6 +1,7 @@
 import { loadPrismaRuntimeClient } from '@social-monitor/platform-persistence/prisma-runtime-client';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
+import { Client as PgClient } from 'pg';
 import { CryptoIdGenerator, FixedClock, redactSensitiveResponseText, tenantId, workspaceId } from '@social-monitor/shared-kernel';
 import { defaultPostgresRuntimePoolConfig, runWithTenantDatabaseAccess, PostgresRuntimePoolRegistry, type PrismaPgRuntimeClientConstructor } from '@social-monitor/platform-persistence';
 import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
@@ -83,10 +84,29 @@ async function main(): Promise<void> {
       assert.equal((await read(base.payload.tenantId, base.payload.workspaceId)).events.length, 4);
       assert.equal((await read(randomUUID(), randomUUID())).events.length, 0);
       assert.equal((await read(base.payload.tenantId, randomUUID())).events.length, 0);
-      // RLS blocks a deliberately forged repository query under another scope.
-      const forged = await runWithTenantDatabaseAccess({ tenantId: randomUUID(), workspaceId: randomUUID() }, () =>
-        repository.list({ ...base.payload, channel, limit: 10 }));
-      assert.equal(forged.events.length, 0);
+      // The ORM guard rejects a forged query before SQL. Separately prove
+      // database RLS with raw SQL, keeping the same target rows for every scope.
+      await assert.rejects(async () => runWithTenantDatabaseAccess(
+        { tenantId: randomUUID(), workspaceId: randomUUID() },
+        () => repository.list({ ...base.payload, channel, limit: 10 }),
+      ), /Prisma operation conflicts with database access scope/);
+      const rls = new PgClient({ connectionString: runtimeUrl });
+      await rls.connect();
+      try {
+        await rls.query('BEGIN');
+        const visible = async (tenant: string, workspace: string) => {
+          await rls.query("SELECT set_config('social_monitor.tenant_id',$1,true), set_config('social_monitor.workspace_id',$2,true), set_config('social_monitor.system_access','false',true)",
+            [tenant, workspace]);
+          return (await rls.query('SELECT id FROM realtime_events WHERE tenant_id=$1 AND workspace_id=$2 AND channel=$3',
+            [base.payload.tenantId, base.payload.workspaceId, channel])).rows.length;
+        };
+        assert.equal(await visible(base.payload.tenantId, base.payload.workspaceId), 4);
+        assert.equal(await visible(base.payload.tenantId, randomUUID()), 0);
+        assert.equal(await visible(randomUUID(), randomUUID()), 0);
+      } finally {
+        await rls.query('ROLLBACK');
+        await rls.end();
+      }
 
       const foreignWorkspace = randomUUID();
       await assert.rejects(makeHandler(delivery).handle({ ...input, workspaceId: foreignWorkspace,
