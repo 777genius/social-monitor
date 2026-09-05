@@ -8,6 +8,7 @@ import { defaultPostgresRuntimePoolConfig } from "@social-monitor/platform-persi
 import { loadPrismaRuntimeClient } from "@social-monitor/platform-persistence/prisma-runtime-client";
 import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 import { guardRootClientDuringInteractiveTransaction } from "../libs/platform/persistence/src/postgres-runtime-pool-transaction-guard";
+import { assertEngagementSnapshotRefreshPostgres } from "./lib/source-engagement-refresh-postgres-contract";
 
 const tenant = "00000000-0000-7000-8000-000000000901";
 const workspace = "00000000-0000-7000-8000-000000000902";
@@ -54,6 +55,9 @@ async function main(): Promise<void> {
     await assertExactCeilings(fixturePool, repository);
     await assertRepeatableReadMutation(fixturePool, connection);
     await assertProductionPlans(runtimePool, fixturePool);
+    await assertEngagementSnapshotRefreshPostgres({
+      fixturePool, runtimeDatabaseUrl, tenant, workspace, binding,
+    });
     console.log("feed_promotion_production_postgres=ok repository=PrismaFeedItemReadRepository");
   } finally {
     await connection.close();

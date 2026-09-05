@@ -262,6 +262,11 @@ class FakeEngagementPrisma implements PrismaSourceEngagementClient {
   readonly sourceItemEngagementSnapshot: PrismaSourceEngagementClient["sourceItemEngagementSnapshot"] = {
     findUnique: async () => this.snapshot,
     upsert: async (args) => {
+      // PostgreSQL checks the INSERT candidate before ON CONFLICT updates it.
+      const candidate = args.create;
+      expect(candidate.firstObservedAt.getTime()).toBeLessThanOrEqual(
+        candidate.lastObservationAt.getTime(),
+      );
       this.snapshot = this.snapshot === null
         ? { ...args.create }
         : { ...this.snapshot, ...args.update };
