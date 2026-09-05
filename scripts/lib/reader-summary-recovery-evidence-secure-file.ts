@@ -289,40 +289,53 @@ const openTrustedParent = (
       .filter(Boolean);
     for (const [index, component] of components.entries()) {
       assertSafeName(component);
+      let nextDescriptor: number;
       try {
-        const nextDescriptor = openAnchoredName(
+        nextDescriptor = openAnchoredName(
           descriptor,
           component,
           constants.O_RDONLY |
             constants.O_DIRECTORY |
             constants.O_NOFOLLOW,
         );
-        closeSync(descriptor);
-        descriptor = nextDescriptor;
       } catch (error) {
         if (
           !createMissing ||
           index < evidenceRootComponents.length ||
           errorCode(error) !== "ENOENT"
         ) throw error;
-        mkdirSync(anchoredName(descriptor, component), { mode: 0o700 });
-        const nextDescriptor = openAnchoredName(
+        try {
+          mkdirSync(anchoredName(descriptor, component), { mode: 0o700 });
+        } catch (mkdirError) {
+          if (errorCode(mkdirError) !== "EEXIST") throw mkdirError;
+        }
+        nextDescriptor = openAnchoredName(
           descriptor,
           component,
           constants.O_RDONLY |
             constants.O_DIRECTORY |
             constants.O_NOFOLLOW,
         );
-        closeSync(descriptor);
-        descriptor = nextDescriptor;
       }
       traversed = resolve(traversed, component);
-      assertSecureDirectory(
-        fstatSync(descriptor, { bigint: true }),
-        traversed,
-        index >= evidenceRootComponents.length - 1,
-        policy,
-      );
+      try {
+        assertSecureDirectory(
+          fstatSync(nextDescriptor, { bigint: true }),
+          traversed,
+          index >= evidenceRootComponents.length - 1,
+          policy,
+        );
+        // Existing children may belong to a creator that has not fsynced yet.
+        // Anchor every child below the evidence root before advancing.
+        if (createMissing && index >= evidenceRootComponents.length) {
+          fsyncSync(descriptor);
+        }
+      } catch (error) {
+        closeSync(nextDescriptor);
+        throw error;
+      }
+      closeSync(descriptor);
+      descriptor = nextDescriptor;
     }
     return Object.freeze({
       descriptor,

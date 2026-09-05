@@ -17,6 +17,8 @@ import type {
 export type AmqplibRabbitMqChannelOptions = {
   readonly url: string;
   readonly socketOptions?: SocketOptions;
+  /** Optional synchronous authority check immediately before handing bytes to amqplib. */
+  readonly beforePublish?: () => void;
   readonly connect?: (
     url: string,
     socketOptions?: SocketOptions,
@@ -27,6 +29,7 @@ export class AmqplibRabbitMqChannel implements RabbitMqQueueChannelPort {
   private connectionPromise: Promise<ChannelModel> | undefined;
   private channelPromise: Promise<ConfirmChannel> | undefined;
   private readonly returnedMessages: ReturnedRabbitMqMessage[] = [];
+  private publishesCancelled = false;
 
   constructor(private readonly options: AmqplibRabbitMqChannelOptions) {
     if (options.url.trim().length === 0) {
@@ -67,7 +70,25 @@ export class AmqplibRabbitMqChannel implements RabbitMqQueueChannelPort {
     content: Buffer,
     options: RabbitMqPublishOptions,
   ): Promise<boolean> {
-    return (await this.channel()).publish(exchange, routingKey, content, options);
+    this.assertPublishAllowed();
+    const channel = await this.channel();
+    // No await between this terminal guard and the wire-library call. A send
+    // already handed to amqplib cannot be recalled; its outcome remains uncertain.
+    this.assertPublishAllowed();
+    this.options.beforePublish?.();
+    this.assertPublishAllowed();
+    return channel.publish(exchange, routingKey, content, options);
+  }
+
+  /** Synchronously and permanently inhibits future sends, including pending
+   * connect/assert/channel creation continuations. close/reconnect never resets it.
+   * Does not claim to retract bytes already handed to the wire library. */
+  cancelPendingPublishes(): void {
+    this.publishesCancelled = true;
+  }
+
+  private assertPublishAllowed(): void {
+    if (this.publishesCancelled) throw new Error('RabbitMQ publishing cancelled');
   }
 
   async waitForConfirms(exchange: string, routingKey: string, messageId: string): Promise<void> {
