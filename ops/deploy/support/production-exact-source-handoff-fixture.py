@@ -58,9 +58,15 @@ with tempfile.TemporaryDirectory(prefix='exact-source-ci-root-', dir='/tmp') as 
            'GIT_CONFIG_COUNT': '2', 'GIT_CONFIG_KEY_0': 'maintenance.auto',
            'GIT_CONFIG_VALUE_0': 'false', 'GIT_CONFIG_KEY_1': 'gc.auto', 'GIT_CONFIG_VALUE_1': '0'}
     os.umask(0o022)
-    subprocess.run(['/usr/bin/git', '-c', 'safe.directory=' + str(source),
-                    'clone', '--quiet', '--no-hardlinks', '--', str(source), str(repo)],
+    # Local upload-pack does not inherit command-scope -c safe.directory.
+    # Use only this disposable HOME's private config, never the host's config.
+    env['GIT_CONFIG_GLOBAL'] = str(root / '.gitconfig')
+    for safe in (source, source / '.git'):
+        subprocess.run(['/usr/bin/git', 'config', '--file', env['GIT_CONFIG_GLOBAL'],
+                        '--add', 'safe.directory', str(safe)], env=env, check=True, timeout=10)
+    subprocess.run(['/usr/bin/git', 'clone', '--quiet', '--no-hardlinks', '--', str(source), str(repo)],
                    env=env, check=True, timeout=120)
+    env['GIT_CONFIG_GLOBAL'] = '/dev/null'
     for relative in json.loads(sys.argv[2]):
         assert relative.startswith('ops/deploy/') and '..' not in Path(relative).parts
         target = repo / relative
