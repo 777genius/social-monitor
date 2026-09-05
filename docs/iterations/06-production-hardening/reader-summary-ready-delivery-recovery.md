@@ -110,6 +110,10 @@ continues running. Restoring/moving/deleting claims invalidates this procedure.
 Inputs and receipts use the existing Linux descriptor-anchored secure evidence
 filesystem: `/var/lib/social-monitor/artifacts`, uid 1000, directories 0700,
 files 0400, no symlinks, exclusive creation, file and parent-directory fsync.
+Installation validates each opened child and fsyncs its containing directory
+before descending, including children observed from concurrent creators or
+after mkdir returns EEXIST. Any directory sync failure stops claim installation
+before publication. Real-filesystem fault/order tests do not prove power-loss behavior.
 The manifest is read once and its exact bytes sealed at
 `reader-summary-ready-recovery/<operationId>/claim.json`. An existing claim
 always rejects apply, including after a crash before the first send. Permanent

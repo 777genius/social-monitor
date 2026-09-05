@@ -1,3 +1,5 @@
+import type * as NodeFilesystem from 'node:fs';
+import { join } from 'node:path';
 import { readyRecoveryFixture } from './reader-summary-ready-recovery-fixture';
 import { main, recoveryArguments } from '../recover-reader-summary-ready-events';
 import { runReadyRecovery } from './reader-summary-ready-recovery-run';
@@ -41,6 +43,25 @@ describe('reader ready recovery safety guards', () => {
     expect(f.channel.publish).not.toHaveBeenCalled();
     f.manifest.operationId = '00000000-0000-4000-8000-000000000888';
     await expect(f.run()).rejects.toThrow('apply_precondition_failed');
+  });
+  it.each(['recovery-root', 'operation', 'events'])('never starts a publish when the %s directory entry cannot be synced', async entry => {
+    const fs = jest.requireActual<typeof NodeFilesystem>('node:fs');
+    const realFsync = fs.fsyncSync;
+    const parent = entry === 'recovery-root' ? f.directory : join(f.directory, 'reader-summary-ready-recovery');
+    let parentSyncs = 0;
+    const sync = jest.spyOn(fs, 'fsyncSync').mockImplementation(descriptor => {
+      if (fs.readlinkSync(`/proc/self/fd/${descriptor}`) === parent && ++parentSyncs === (entry === 'events' ? 2 : 1)) {
+        throw new Error('synthetic parent directory fsync failure');
+      }
+      realFsync(descriptor);
+    });
+    try {
+      await expect(f.run()).rejects.toThrow('synthetic parent directory fsync failure');
+      expect(f.db.outboxEvent.update).not.toHaveBeenCalled();
+      expect(f.channel.publish).not.toHaveBeenCalled();
+      expect(f.snapshots[0]!.row.status).toBe('FAILED');
+    } finally { sync.mockRestore(); }
+    if (entry === 'events') await expect(f.run()).rejects.toThrow('apply_precondition_failed');
   });
   it('stops after a receipt failure following confirmation, without acknowledging the outbox', async () => {
     const options = f.options();
