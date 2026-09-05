@@ -703,5 +703,7 @@ done
 ((runtime_attempts += 1)); [[ $runtime_attempts == 2 ]]
 printf 'forward-bridge-test: runtime rollback and marker crashes resume\n'
 
+bash "$SCRIPT_DIR/production-forward-stale-controller.test.sh"
+
 printf 'production-forward-bridge-test: ok B=%s R=%s W=%s H=%s F=%s\n' \
   "$B" "$R" "$W" "$H" "$F"

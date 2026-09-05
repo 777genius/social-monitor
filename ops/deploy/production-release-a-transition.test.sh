@@ -268,12 +268,16 @@ echo 'Canonical E/A2/B2 target transition tests passed'
 # client must install only the reviewed bridge, then let the normal target
 # deploy own the descendant itself.
 source "$PROJECT_ROOT/ops/deploy/github-production-forward-bridge-client-lib.sh"
+fail() { printf 'forward-preparation-test: %s\n' "$*" >&2; exit 1; }
 POSTGRES_POOL_BOOTSTRAP_VERSION=postgres-pool-v1
 verify_production_forward_target_identity() {
   PRODUCTION_FORWARD_ANCHOR=anchor
   PRODUCTION_FORWARD_DERIVED_BRIDGE=bridge
 }
 production_forward_bridge_is_installed() { return 1; }
+# This orchestration-only fixture uses symbolic graph identities. Real
+# controller blobs and modes are exercised by production-forward-bridge.test.sh.
+production_forward_controller_is_compatible() { [[ $1 == bridge && $2 == bridge ]]; }
 capture_plan() {
   local requested=$1
   PLAN_FRONTEND=true PLAN_BACKEND=true PLAN_CONTROL=true PLAN_X_COLLECTOR=false
@@ -312,6 +316,7 @@ capture_plan() {
     PLAN_FRONTEND=false
     PLAN_BACKEND=false
     PLAN_CONTROL=false
+    PLAN_POSTGRES_POOL_BOOTSTRAP_SHA=bridge
   fi
 }
 print_plan() { :; }

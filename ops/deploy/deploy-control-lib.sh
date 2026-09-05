@@ -705,7 +705,10 @@ reconcile_current_postgres_pool_bootstrap() {
   local commit_mode=normal
   local force_advance=false
   validate_current_postgres_pool_bootstrap_recovery "$current"
-  postgres_pool_bootstrap_installed "$current" && return 0
+  # An ancestor marker can be valid while its entrypoint still predates HEAD.
+  # A no-op must also prove the current commit's installed controller bytes.
+  if postgres_pool_bootstrap_installed "$current" && \
+      postgres_pool_bootstrap_physically_installed "$current" "$current"; then return 0; fi
   [[ -f $installed && ! -L $installed ]] || \
     fail 'installed deploy entrypoint is not a regular non-symlink file'
   if [[ -n $expected_backend ]]; then
