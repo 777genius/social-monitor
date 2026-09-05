@@ -171,3 +171,66 @@ real Prisma adapter, concurrent duplicates/channel races, a fresh connection
 after commit, rollback after both writes, RLS/scoped reads and stored diagnostics.
 It proves these tables/transactions, not the entire migration chain or deployed
 broker. Parent acceptance must still validate deployment and real summary data.
+
+## Recovery lifecycle and cancellation follow-up
+
+A historical artifact may now be `SUPERSEDED` while its job and publication
+retain `COMPLETED` or `NO_SIGNAL`. Recovery accepts that lifecycle only with
+unchanged exact event IDs, job/artifact links, scope, period, report and v1 proof
+hashes. It never changes the publication's semantic status. Changed content,
+proof, scope or incompatible job/artifact lifecycle still fails closed.
+
+Recovery uses a dedicated Amqplib channel. Its explicit
+`cancelPendingPublishes()` synchronously and permanently inhibits future sends,
+including continuations waiting for connect, channel creation or exchange
+assertion. The guard runs after awaiting the channel, immediately before the
+amqplib publish call. A separate synchronous `beforePublish` check enforces the
+parent's exclusive window at that boundary. Neither close nor reconnect clears
+cancellation. Shared relay command/event publishers and queue consumers retain
+their default reusable close/reconnect behavior when cancellation is unused.
+
+The deadline is the earlier of 15 seconds and the remaining exclusive window.
+Expiry inhibits future sends before rejecting the wait and recording uncertainty.
+This bounds the confirmation wait; it is **not a hard 15-second wire-delivery
+or broker-settlement guarantee**. Bytes already handed to amqplib may arrive
+later, and event-loop scheduling can delay timers. A late confirm never resumes
+acknowledgement or advances the cohort. Claims stay permanent; there is no
+blind resend. Resource close is best effort with a separate five-second wait;
+its completion is not evidence of cancellation or absence of a send.
+
+`npm run check:reader-summary-ready-recovery-postgres` extends the reviewed
+loopback disposable fixture with native recovery tables, canonical constraints
+and immutability triggers. It creates an additional isolated non-bypass recovery
+role, uses separate bounded Prisma pools (min 0, max 1), and cleans up only its
+new database/roles. It exercises supersession without proof mutation, actual
+recovery persistence, microsecond/xmin CAS, competing writers, the real consumer
+inbox/projection, retained replay, a database trigger failure after confirmation,
+permanent claim retention/no resend, and raw RLS queries. The broker confirm is
+synthetic; the database work is native. It does not run the full migration chain.
+
+Parent must supply `READER_DELIVERY_TEST_ADMIN_DATABASE_URL` for a **new test
+container**, with the same privileges as the reviewed delivery native gate. Run
+from this source workspace with existing generated Prisma client/dependencies,
+after the focused source typecheck. Transpile-only here avoids repeating that
+typecheck inside the native gate deadline; all runtime assertions still execute:
+
+```sh
+mkdir -p .cache/reader-recovery-final/native-tmp
+chmod 700 .cache/reader-recovery-final/native-tmp
+NODE_ENV=test TMPDIR="$PWD/.cache/reader-recovery-final/native-tmp" \
+  TS_NODE_TRANSPILE_ONLY=true TS_NODE_COMPILER_OPTIONS='{"rootDir":"."}' \
+  npm run check:reader-summary-ready-recovery-postgres
+```
+
+The secure receipt tests also require a private TMPDIR whose ancestors are not
+writable by others; shared `/tmp` is deliberately rejected. These test options
+never relax the production filesystem policy.
+
+Frozen exact17 auditing runs separately from any apply manifest. Only database
+columns receive snake-case to camel-case and native Date conversion; JSONB
+report/proof/payload values remain unchanged. Audit artifacts contain identities,
+statuses and hashes only. They prove frozen content compatibility, not current
+outbox/inbox state, deployment, bindings, exclusive access or any other live
+precondition. Parent supplies the chronological exact UUID allowlist. Seventeen
+bounds manifest entry count, never a query selection; a new natural publication
+may add its own separate event and must not broaden this recovery.

@@ -5,7 +5,7 @@ import { PostgresRuntimePoolRegistry, defaultPostgresRuntimePoolConfig, type Pri
 import { RabbitMqEventPublisher } from '@social-monitor/platform-events/adapters/rabbitmq';
 import { AmqplibRabbitMqChannel } from '@social-monitor/platform-queue/adapters/rabbitmq';
 import { readSecureRecoveryEvidenceFile, recoveryEvidenceRoot } from './lib/reader-summary-recovery-evidence-secure-file';
-import { failureCode, parseRecoveryManifest, requireRecovery } from './lib/reader-summary-ready-recovery-manifest';
+import { assertRecoveryWindow, failureCode, parseRecoveryManifest, requireRecovery } from './lib/reader-summary-ready-recovery-manifest';
 import { recoveryPersistence, type RecoveryDatabase } from './lib/reader-summary-ready-recovery-persistence';
 import { runReadyRecovery } from './lib/reader-summary-ready-recovery-run';
 
@@ -24,19 +24,28 @@ export async function main(args: readonly string[], env: NodeJS.ProcessEnv): Pro
   const bytes = readSecureRecoveryEvidenceFile({ relativePath: relative(recoveryEvidenceRoot, manifestPath), label: 'reviewed ready manifest' });
   const manifest = parseRecoveryManifest(bytes, reviewedSha256);
   requireRecovery(manifest.deployedSourceSha === deployedSha, 'deployed_source_mismatch');
-  const channel = apply ? new AmqplibRabbitMqChannel({ url: required('READER_READY_RECOVERY_RABBITMQ_URL'), socketOptions: { timeout: 5_000 } }) : undefined;
+  const clock = new SystemClock();
+  const channel = apply ? new AmqplibRabbitMqChannel({ url: required('READER_READY_RECOVERY_RABBITMQ_URL'), socketOptions: { timeout: 5_000 },
+    beforePublish: () => assertRecoveryWindow(manifest, deployedSha, clock.now()) }) : undefined;
   const Client = loadPrismaRuntimeClient<PrismaPgRuntimeClientConstructor<RecoveryDatabase>>();
   const connection = await new PostgresRuntimePoolRegistry().acquire(defaultPostgresRuntimePoolConfig(databaseUrl, 'event-relay'), Client);
   try {
-    const clock = new SystemClock();
     const result = await runReadyRecovery({ bytes, reviewedSha256, deployedSha, apply, clock,
       persistence: recoveryPersistence(connection.client, clock),
       publisher: channel ? new RabbitMqEventPublisher(channel, { exchange: 'social-monitor.events', mandatory: true })
         : { publish: async () => { throw new Error('Dry run cannot publish'); } },
+      cancelPendingPublishes: () => channel?.cancelPendingPublishes(),
       sleep: milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds)),
     });
     console.log(JSON.stringify(result));
-  } finally { await channel?.close(); await connection.close(); }
+  } finally {
+    channel?.cancelPendingPublishes();
+    // Resource cleanup is separate from synchronous send inhibition. A stalled
+    // amqplib close must not hold DB resources or be mistaken for send cancellation.
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try { await Promise.race([channel?.close(), new Promise<void>(resolve => { timer = setTimeout(resolve, 5_000); })]); }
+    finally { clearTimeout(timer); await connection.close(); }
+  }
 }
 if (require.main === module) void main(process.argv.slice(2), process.env).catch(error => {
   console.error(JSON.stringify({ error: failureCode(error) })); process.exitCode = 1;

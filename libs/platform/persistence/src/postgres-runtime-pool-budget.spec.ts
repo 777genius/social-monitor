@@ -475,6 +475,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/check-reader-summary-production-regeneration-smoke.ts
       scripts/check-reader-summary-publication-postgres.ts
       scripts/check-reader-summary-ready-delivery-postgres.ts
+      scripts/check-reader-summary-ready-recovery-postgres.ts
       scripts/check-reader-summary-recovery-candidate-staging-postgres.ts
       scripts/check-reader-summary-source-quality-trace.ts
       scripts/check-reader-summary-top-read-ranking.ts
@@ -518,6 +519,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/lib/reader-summary-quality-eval-support.spec.ts
       scripts/lib/reader-summary-quality-eval-support.ts
       scripts/lib/reader-summary-ready-delivery-postgres-fixture.ts
+      scripts/lib/reader-summary-ready-recovery-postgres-fixture.ts
       scripts/lib/reader-summary-recovery-postgres-contract.ts
       scripts/lib/reader-summary-weekly-atomic-publication-postgres-contract.ts
       scripts/lib/reader-summary-weekly-certification-seal-postgres-contract.ts

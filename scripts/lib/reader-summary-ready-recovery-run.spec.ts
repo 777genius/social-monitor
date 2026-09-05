@@ -7,6 +7,21 @@ describe('one-shot reader ready recovery', () => {
   beforeEach(() => { f = readyRecoveryFixture(); });
   afterEach(() => f.cleanup());
 
+  it('walks the exact 17-entry parent order and leaves a separate newer event untouched', async () => {
+    f.cleanup(); f = readyRecoveryFixture(18);
+    f.manifest.events = f.manifest.events.slice(0, 17);
+    const outside = canonicalSha256(f.snapshots[17]);
+    f.channel.waitForConfirms.mockImplementation(async () => {
+      const last = f.channel.publish.mock.calls.at(-1) as unknown as [string, string, Buffer];
+      const { eventId } = JSON.parse(last[2].toString()) as { eventId: string };
+      await f.consume(f.snapshots.findIndex(s => s.row.id === eventId));
+    });
+    expect(await f.run()).toMatchObject({ consumed: 17 });
+    expect(f.channel.publish.mock.calls.map(call => JSON.parse((call as unknown as [string, string, Buffer])[2].toString()).eventId))
+      .toEqual(f.manifest.events.map(e => e.eventId));
+    expect(canonicalSha256(f.snapshots[17])).toBe(outside);
+  });
+
   it('defaults to inspection and never sends on a precondition error', async () => {
     expect(await f.run(false)).toMatchObject({ eligible: true, mode: 'dry-run' });
     f.snapshots[0]!.row = { ...f.snapshots[0]!.row, status: 'PENDING' };

@@ -37,14 +37,18 @@ export async function validateRecoveryEvidence(entry: RecoveryEntry, snapshot: R
     p.proofSha256 === entry.proofSha256 && canonicalSha256(p.exactProof) === entry.proofSha256 &&
     p.semanticStatus.toLowerCase() === payload.status && p.publishedAt.getTime() === row.createdAt.getTime(), 'publication_mismatch');
   const proof = p.exactProof as Record<string, unknown>;
-  requireRecovery(proof.tenantId === entry.tenantId && proof.workspaceId === entry.workspaceId &&
+  requireRecovery(proof.schemaVersion === 'reader_summary.publication_proof.v1' &&
+    proof.tenantId === entry.tenantId && proof.workspaceId === entry.workspaceId &&
     proof.readerSummaryJobId === entry.readerSummaryJobId && proof.readerSummaryArtifactId === entry.readerSummaryId &&
     proof.reportSha256 === entry.reportSha256 && proof.semanticStatus === p.semanticStatus &&
     canonicalSha256(proof.period) === canonicalSha256(payload.period), 'publication_proof_binding_mismatch');
   const a = p.readerSummaryArtifact;
   const j = p.readerSummaryJob;
+  // Supersession changes artifact visibility only. The original semantic job,
+  // publication, report and proof remain bound to this exact historical event.
   requireRecovery(j !== null && j.id === entry.readerSummaryJobId && j.readerSummaryArtifactId === entry.readerSummaryId &&
-    a.id === entry.readerSummaryId && a.status === p.semanticStatus && j.status === p.semanticStatus, 'publication_links_mismatch');
+    a.id === entry.readerSummaryId && (a.status === p.semanticStatus || a.status === 'SUPERSEDED') &&
+    j.status === p.semanticStatus, 'publication_links_mismatch');
   for (const scoped of [p, a, j]) {
     requireRecovery(scoped.tenantId === entry.tenantId && scoped.workspaceId === entry.workspaceId &&
       scoped.scopeType === payload.scope.type && scoped.scopeKey === (payload.scope.type === 'workspace' ? 'workspace' : `interest:${payload.scope.interestId}`) &&

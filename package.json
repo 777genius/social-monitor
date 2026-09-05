@@ -290,6 +290,7 @@
     "check:summary-queue-drain-loop": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-summary-queue-drain-loop-smoke.ts",
     "recover:reader-summary-ready-events": "ts-node -r tsconfig-paths/register scripts/recover-reader-summary-ready-events.ts",
     "check:reader-summary-ready-delivery-postgres": "node scripts/run-with-timeout.mjs --timeout-ms 120000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-reader-summary-ready-delivery-postgres.ts",
+    "check:reader-summary-ready-recovery-postgres": "node scripts/run-with-timeout.mjs --timeout-ms 120000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-reader-summary-ready-recovery-postgres.ts",
     "check:summary-ready-projection-handler": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-summary-ready-projection-handler-smoke.ts",
     "check:summary-ready-event-drain-loop": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-summary-ready-event-drain-loop-smoke.ts",
     "check:summary-worker-command": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-summary-worker-command-smoke.ts",

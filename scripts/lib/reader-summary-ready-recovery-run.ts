@@ -8,6 +8,9 @@ import { recoveryReceipts } from './reader-summary-ready-recovery-receipts';
 export async function runReadyRecovery(options: {
   bytes: Buffer; reviewedSha256: string; deployedSha: string; apply: boolean; clock: Clock;
   persistence: RecoveryPersistence; publisher: EventPublisherPort;
+  // Must synchronously inhibit all future pre-wire sends, permanently, even
+  // when publish() is still awaiting a connection, exchange or confirm channel.
+  cancelPendingPublishes: () => void;
   receipts?: typeof recoveryReceipts; sleep: (milliseconds: number) => Promise<void>;
 }): Promise<object> {
   const manifest = parseRecoveryManifest(options.bytes, options.reviewedSha256);
@@ -52,7 +55,8 @@ export async function runReadyRecovery(options: {
       guard(); row = await options.persistence.transition(row, 'start');
       await validateRecoveryEvidence(entry, { ...current, row });
       guard(); publishing = true;
-      await boundedPublish(() => options.publisher.publish(originalEnvelope(row)));
+      await boundedPublish(() => options.publisher.publish(originalEnvelope(row)), options.cancelPendingPublishes,
+        Math.min(15_000, Date.parse(manifest.window.expiresAt) - options.clock.now().getTime()));
       confirmed = true; stage('confirmed');
       guard(); row = await options.persistence.transition(row, 'published');
       acknowledged = true; stage('acknowledged', { recordedStarts: row.publishAttempts });
@@ -68,6 +72,7 @@ export async function runReadyRecovery(options: {
       requireRecovery(consumed !== null, 'consumer_outcome_uncertain');
       stage('consumed', { realtimeEventId: consumed, duplicateBefore: states[index]!.consumed !== null });
     } catch (error) {
+      options.cancelPendingPublishes();
       // Never change a confirmed send into an ordinary failed/no-send outcome.
       // Persist uncertainty BEFORE any best-effort failure diagnostic write.
       stage('uncertain', { publishing, confirmed, acknowledged, failure: failureCode(error) });
@@ -79,11 +84,11 @@ export async function runReadyRecovery(options: {
   }
   return { mode: 'apply', operationId: manifest.operationId, consumed: manifest.events.length };
 }
-async function boundedPublish(work: () => Promise<void>): Promise<void> {
+async function boundedPublish(work: () => Promise<void>, cancel: () => void, milliseconds: number): Promise<void> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     await Promise.race([work(), new Promise<never>((_, reject) => {
-      timer = setTimeout(() => reject(new Error('publish deadline')), 15_000);
+      timer = setTimeout(() => { cancel(); reject(new Error('publish deadline; wire outcome uncertain')); }, milliseconds);
     })]);
   } finally { clearTimeout(timer); }
 }
