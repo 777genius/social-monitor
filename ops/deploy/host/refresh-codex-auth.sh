@@ -610,7 +610,7 @@ install -d -m 0700 "$PROBE_TMP_ROOT"
 if status_json=$(timeout "$BROKER_STATUS_TIMEOUT_SECONDS" \
   subscription-runtime-codex-goal tool \
   codex_goal_accounts_status \
-  --args-json "{\"jobId\":\"$CONTROLLER_JOB_ID\",\"registryRootDir\":\"$REGISTRY_ROOT\",\"liveCheck\":false}"); then
+  --args-json "{\"jobId\":\"$CONTROLLER_JOB_ID\",\"registryRootDir\":\"$REGISTRY_ROOT\",\"liveCheck\":false,\"recheckDueCapacity\":true,\"liveCheckTimeoutMs\":10000}"); then
   :
 else
   status_exit=$?
@@ -625,6 +625,7 @@ fi
 
 jq -e --arg job_id "$CONTROLLER_JOB_ID" --arg registry_root "$REGISTRY_ROOT" '
   (.ok == true)
+  and (.recheckDueCapacity == true)
   and (.jobId == $job_id)
   and (.registryRootDir == $registry_root)
   and (.hasAvailableAccount == true)
