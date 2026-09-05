@@ -271,7 +271,9 @@ export class PrismaSourceEngagementProjectionAdapter
           providerKey: command.providerKey,
           ...metricColumns(sample.metrics, true),
           metricsHash: sample.metricsFingerprint,
-          firstObservedAt: command.observedAt,
+          // INSERT constraints run before ON CONFLICT chooses the update branch.
+          // Keep its retained cadence timestamps inside the original timeline.
+          firstObservedAt: current?.firstObservedAt ?? command.observedAt,
           lastObservedAt: command.observedAt,
           lastChangedAt: command.observedAt,
           lastObservationAt: observationAt,
