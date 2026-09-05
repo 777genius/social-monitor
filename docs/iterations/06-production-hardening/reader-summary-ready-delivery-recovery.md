@@ -74,52 +74,88 @@ unknown earlier attempts. Failures retain the shared-redacted, single-line,
 A database acknowledgement failure can follow a successful broker send, so
 FAILED also requires consumer dedupe before recovery.
 
-## Proposed recovery contract (not executed)
+## One-shot recovery decision (production execution belongs to parent)
 
-There is no canonical scoped EVENT-outbox reset command in this base. Existing
-webhook replay and ReaderSummary job recovery are different operations. The
-minimal proposed operation is `recover-reader-summary-ready-events --manifest
-<reviewed-file> --dry-run`, with a separately authorized `--apply` mode. This
-change documents the contract; it does not add a general recovery platform.
+`npm run recover:reader-summary-ready-events -- --manifest <absolute-file>`
+defaults to `--dry-run`; `--apply` is explicit. This CLI publishes each reviewed
+original envelope once through `RabbitMqEventPublisher`, including mandatory
+routing and confirms. It never changes FAILED to PENDING or selects a cohort
+by count, time or status. The maximum 17 bounds the exact UUID allowlist only.
 
-The manifest must contain an operation id, approved deployment revision,
-operator/reason, exact event UUID allowlist (maximum 17 for the original cohort),
-expected tenant/workspace per row, event type/version, creation timestamp,
-readerSummary/job ids, report/proof hashes and a canonical payload digest.
-The original Aug 30 cohort and the parent's seven-day evidence determine the
-actual UUIDs. A time range, status predicate, or the number 17 alone is never an
-allowlist. Never mutate publication proof, job, artifact or payload to recover.
+The strict v1 JSON manifest has `operationId` (UUID), `deployedSourceSha` (40
+lowercase hex), `window` (`startedAt`, `expiresAt`, canonical UTC, at most one
+hour), `preconditions` (all true: `relayQuiesced`, `exclusiveOperation`,
+`consumerReady`, `bindingsVerified`, `retentionHeld`), and `events` (1–17).
+Every event has `eventId`, `tenantId`, `workspaceId`, `createdAt`, `correlationId`,
+`causationId` (string or null), `readerSummaryId`, `readerSummaryJobId`,
+`messageKind: "EVENT"`, `eventType: "reader_summary.ready"`, `schemaVersion: 1`,
+`expectedStatus: "FAILED"`, `payloadSha256`, `reportSha256`, `proofSha256`.
+Hashes are SHA-256 over UTF-8 `stablePublicationJson` (recursive sorted keys,
+array order preserved), including the entire original payload. The report is
+reconstructed from the immutable artifact; proof content is also rehashed.
+Do not include credentials or raw report/provider content in the manifest.
 
-Preconditions for apply:
+Parent supplies explicit `READER_READY_RECOVERY_DATABASE_URL`,
+`READER_READY_RECOVERY_RABBITMQ_URL` (apply only),
+`READER_READY_RECOVERY_DEPLOYED_SHA`, and
+`READER_READY_RECOVERY_MANIFEST_SHA256` (SHA-256 of the exact reviewed file bytes).
+There is no ambient DATABASE_URL fallback. The source SHA and time-bounded
+quiescence attestation are checked again before every effect. These are trusted
+parent attestations, not independent deployment/broker discovery. Parent must
+verify the deployed consumer revision, both exact bindings, enabled Prisma
+drain loop and DLX, hold relay/other recovery writers and retention quiescent,
+and use one durable evidence volume across invocations/hosts. The consumer
+continues running. Restoring/moving/deleting claims invalidates this procedure.
 
-1. The parent verifies the deployed revision, both exact broker bindings,
-   mandatory publication, enabled shared drain loop, Prisma persistence and
-   DLX settings. Validate the PostgreSQL fixture below, including crash retry.
-2. Reconcile every allowlisted event against immutable publication evidence;
-   validate through the same reader parser. Record existing consumer inbox and
-   realtime projection identities. An inconsistent/missing retained projection
-   or altered payload stops the operation for investigation.
-3. Quiesce the event relay for the bounded operation. In one Serializable
-   transaction, lock only the allowlisted EVENT rows, compare every manifest
-   precondition, and require all still have `FAILED` / version 1 /
-   `reader_summary.ready`. Abort the entire operation on any mismatch. Record
-   immutable before-state audit evidence (including sanitized error, counter
-   and explicit `historicalAttempts: unknown`) before any mutation.
-4. Change only these rows' status to `PENDING`, retain original diagnostics and
-   recorded counters, and atomically append an audit record linking operation
-   id, manifest digest, operator, exact ids and before/after state. Use existing
-   audit persistence if its contract supports an atomic operation; otherwise a
-   narrow maintenance audit entry must be approved before implementing apply.
-5. Resume the normal mandatory relay once. Verify publisher confirmation and
-   exactly one matching durable projection/inbox per event. Record duplicates,
-   fresh projections and failures separately. Stop on failure; never loop a
-   reset or assume PUBLISHED means consumed. Rollback is to halt recovery and
-   retain evidence, not to erase inbox/projections or rewrite publication.
+Inputs and receipts use the existing Linux descriptor-anchored secure evidence
+filesystem: `/var/lib/social-monitor/artifacts`, uid 1000, directories 0700,
+files 0400, no symlinks, exclusive creation, file and parent-directory fsync.
+The manifest is read once and its exact bytes sealed at
+`reader-summary-ready-recovery/<operationId>/claim.json`. An existing claim
+always rejects apply, including after a crash before the first send. Permanent
+per-event claims also prevent overlapping manifests from republishing. No
+claim release, TTL takeover, resume or retry switch is provided. An operator
+must review any uncertain operation before designing a subsequent action.
+This bounded claim plus exclusive parent window avoids a new table/migration.
 
-The parent owns production authorization and these actions. This lane runs no
-recovery command, outbox replay, deployment, push, PR or external notification.
+All exact rows, publication evidence, consumer inbox and replay identities are
+validated before claims/effects. The durable `before.json` records metadata,
+full-payload/report/proof digests, sanitized prior error, starts counter and
+`historicalAttempts: "unknown"`; report/payload bodies are never logged.
+For each event, immutable receipts record `publish_started` (before the DB
+start), `confirmed` (only after mandatory broker confirm), `acknowledged`
+(only after DB acknowledgement), and `consumed` (committed inbox plus matching
+projection). Existing delivered identity is recorded separately; it still
+requires a confirmed original-envelope publication before outbox acknowledgement.
+
+The standard outbox adapter owns recorded starts, markPublished and markFailed.
+Each update compares the previously read PostgreSQL `xmin` tuple version under
+an exact UUID `FOR UPDATE` lock inside a Serializable transaction, then invokes
+the standard adapter update. Any concurrent row mutation aborts the transition.
+This also protects payload, metadata, diagnostics and lease fields without
+comparing microsecond PostgreSQL timestamps to millisecond JavaScript Dates. There is
+no reset of counters and no acknowledgement of an altered row. Broker calls
+are outside all database write retries. A rejected publish records a sanitized
+failure when CAS remains safe; a confirm followed by DB failure stays uncertain.
+Any error stops the remaining events. A started receipt with no terminal
+receipt is also uncertain, including disk/process loss. Never infer send count
+from recorded starts or infer consumption from PUBLISHED/confirmed.
+
+After acknowledgement, at most 20 reads spaced 250 ms apart reconcile the
+committed inbox/projection using the same parser/use case and duplicate identity
+comparison as the consumer. A timeout or retained mismatch stops the operation
+without resending. Dry-run remains available after failures/success/window
+expiry: it inspects current states and claims without changing them and reports
+whether apply is still eligible. It cannot certify a displayed notification.
+Parent retains the production seven-day publication/API/site and consumer
+identity evidence; synthetic tests do not establish those production facts.
 
 ## Focused executable evidence
+
+`scripts/lib/reader-summary-ready-recovery-{run,guards}.spec.ts` exercise the
+one-shot CLI orchestration, original-envelope transport, concurrent claims,
+retained mismatches, CAS, delayed consumption, uncertainty and redaction with
+synthetic data. Run them with the repository Jest config and `--runInBand`.
 
 Sibling use-case/parser tests, `reader-summary-ready-delivery.spec.ts`, and
 `prisma-outbox-store.adapter.spec.ts` cover minimal projections, legacy
