@@ -38,6 +38,8 @@ prior_alias=$TEST_ROOT/artifacts/evals/reader-summary-clean-real-day-collection.
 printf '%s\n' '{"run":{"collectionDate":"2026-08-14"},"sentinel":"prior-day"}' > "$prior_alias"
 prior_alias_bytes=$(sha256sum "$prior_alias" | cut -d' ' -f1)
 
+DURABLE_READER_SUMMARY_TOPIC_LABELER=deterministic \
+DURABLE_READER_SUMMARY_REJECTED_TOPIC_MAP_PATH=/tmp/stale-topic-map.json \
 SOCIAL_MONITOR_ROLLING_RUN_TEST_MODE=1 \
 SOCIAL_MONITOR_ROLLING_RUN_TEST_ROOT=$TEST_ROOT \
 SOCIAL_MONITOR_ROLLING_RUN_TEST_DOCKER=$fake_docker \
@@ -63,7 +65,7 @@ grep -Fx 'collection-created 20260815T081500000Z 2026-08-15' "$TEST_ROOT/docker.
 grep -F -- "--providers \"\$required_providers\"" "$CONTAINER_RUNNER" >/dev/null
 grep -F -- 'npm run capture:durable-reader-summary' "$CONTAINER_RUNNER" >/dev/null
 grep -F -- 'DURABLE_READER_SUMMARY_MODEL=agent-runtime' "$CONTAINER_RUNNER" >/dev/null
-grep -F -- 'DURABLE_READER_SUMMARY_TOPIC_LABELER=deterministic' "$CONTAINER_RUNNER" >/dev/null
+grep -Fx 'topic-labeler-config 20260815T081500000Z agent-runtime' "$TEST_ROOT/docker.log" >/dev/null
 grep -F -- 'DURABLE_READER_SUMMARY_MAX_EVIDENCE_ITEMS=120' "$CONTAINER_RUNNER" >/dev/null
 grep -F -- 'DURABLE_READER_SUMMARY_PERIOD_ENDED_AT' "$CONTAINER_RUNNER" >/dev/null
 grep -F -- 'DURABLE_READER_SUMMARY_LIVE_OBSERVATION_CUTOFF' "$CONTAINER_RUNNER" >/dev/null
@@ -196,6 +198,7 @@ SOCIAL_MONITOR_ROLLING_RUN_TEST_NOW=2026-08-15T16:15:00.000Z \
 SOCIAL_MONITOR_ROLLING_RUNTIME=containerd \
   bash "$RUNNER"
 grep -Fx 'collection-created 20260815T161500000Z 2026-08-15' "$TEST_ROOT/docker.log" >/dev/null
+grep -Fx 'topic-labeler-config 20260815T161500000Z agent-runtime' "$TEST_ROOT/docker.log" >/dev/null
 grep -F -- '-n moby run --rm --net-host' "$TEST_ROOT/docker.log" >/dev/null
 grep -F -- '--env ROLLING_COLLECTION_DATE=2026-08-15' "$TEST_ROOT/docker.log" >/dev/null
 grep -F -- '--env ROLLING_AUTH_READY=true' "$TEST_ROOT/docker.log" >/dev/null
