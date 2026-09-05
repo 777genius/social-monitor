@@ -4,6 +4,7 @@ import importlib.util
 import os
 from pathlib import Path
 import subprocess
+import sys
 import unittest
 from unittest.mock import patch
 
@@ -39,7 +40,8 @@ class HandoffTests(unittest.TestCase):
         return f.git(self.repo, *args, data=data)
 
     def host(self, action):
-        return subprocess.run(['unshare', '--user', '--map-root-user', 'bash', str(Path(__file__).with_name('support') / 'production-exact-source-handoff-host.sh'),
+        prefix = [] if os.geteuid() == 0 else ['unshare', '--user', '--map-root-user']
+        return subprocess.run([*prefix, 'bash', str(Path(__file__).with_name('support') / 'production-exact-source-handoff-host.sh'),
                                str(self.fx.root), self.target, action], capture_output=True, timeout=60,
                               env=f.git_environment())
 
@@ -326,6 +328,121 @@ class HandoffTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, '5 GiB'):
                 self.apply()
 
+    def test_foreign_worktree_admin_is_preserved_but_common_locks_refuse(self):
+        foreign = self.repo / '.git/worktrees'
+        foreign.mkdir(mode=0o755)
+        admin = foreign / 'other-worker'
+        admin.mkdir()
+        lock = admin / 'index.lock'
+        lock.write_bytes(b'foreign unfinished work\n')
+        link = admin / 'external'
+        link.symlink_to('/does-not-exist/foreign')
+        before = (lock.stat(), lock.read_bytes(), link.lstat(), os.readlink(link))
+        self.fx.review()
+        self.apply()
+        self.op.rollback(self.target, self.fx.approved)
+        self.assertEqual(before, (lock.stat(), lock.read_bytes(), link.lstat(), os.readlink(link)))
+        (self.repo / '.git/index.lock').touch()
+        with self.assertRaisesRegex(RuntimeError, 'Git symlink/lock hazard'):
+            self.op.hazards()
+
+    def test_foreign_admin_root_must_be_safe(self):
+        foreign = self.repo / '.git/worktrees'
+        foreign.symlink_to(self.fx.root)
+        with self.assertRaisesRegex(RuntimeError, 'unsafe directory'):
+            self.op.hazards()
+        foreign.unlink()
+        foreign.mkdir(mode=0o777)
+        foreign.chmod(0o777)
+        with self.assertRaisesRegex(RuntimeError, 'unsafe directory'):
+            self.op.hazards()
+
+    def test_ignored_cache_is_preserved_but_target_collision_refuses(self):
+        cache = self.repo / 'ops/deploy/__pycache__/unrelated.pyc'
+        cache.parent.mkdir(exist_ok=True)
+        cache.write_bytes(b'not executable fixture cache\n')
+        self.git('check-ignore', str(cache))
+        identity = lambda p: (p.stat().st_dev, p.stat().st_ino, p.stat().st_mode,
+                              p.stat().st_mtime_ns, p.stat().st_ctime_ns, p.read_bytes())
+        before = identity(cache)
+        self.fx.review()
+        self.apply()
+        self.op.rollback(self.target, self.fx.approved)
+        self.assertEqual(before, identity(cache))
+        new = self.repo / 'ops/deploy/production-exact-source-handoff.py'
+        (self.repo / '.git/info/exclude').write_text('/ops/deploy/production-exact-source-handoff.py\n')
+        new.write_bytes(b'preexisting ignored user data\n')
+        before = identity(new)
+        with self.assertRaisesRegex(RuntimeError, 'new source path already exists'):
+            self.op.plan(self.target)
+        self.assertEqual(before, identity(new))
+
+    def test_terminal_record_shape_and_identity_before_prepare_and_handoff(self):
+        path = self.control / 'deploy-state/production-transition-b0-host.state'
+        original = path.read_bytes()
+        invalid = [b'version=wrong\nstatus=terminal\n',
+                   original.replace(b'production-transition-b0-host-state-v1', b'bad-version'),
+                   b'\n'.join([original.splitlines()[1], original.splitlines()[0], *original.splitlines()[2:]]) + b'\n',
+                   original.replace(b'trusted-base=', b'trusted-base=z'),
+                   original.replace(b'target=' + h.ACTIVATED.encode(), b'target=' + b'0' * 40),
+                   original.replace(b'target-tree=' + self.op.tree(h.ACTIVATED).encode(), b'target-tree=' + b'0' * 40)]
+        # Existing hardlink receipt is valid only for the original record. Remove
+        # that fixture link so parser failures are tested, not retired-link hashes.
+        retired = path.with_name(path.name + '.next.retired.' + h.digest(original))
+        retired.unlink()
+        self.fx.review()
+        for value in invalid:
+            with self.subTest(stage='prepare', record=value):
+                path.write_bytes(value)
+                with self.assertRaisesRegex(RuntimeError, 'transition terminal'):
+                    self.apply()
+                self.assertFalse(self.op.run_path(self.target).exists())
+                path.write_bytes(original)
+        self.fx.review()
+        self.apply()
+        for value in invalid:
+            with self.subTest(stage='handoff', record=value):
+                path.write_bytes(value)
+                with self.assertRaisesRegex(RuntimeError, 'transition terminal'):
+                    self.op.handoff(self.target, self.fx.approved)
+                self.assertFalse((self.op.run_path(self.target) / 'ordinary-handoff').exists())
+                path.write_bytes(original)
+
+    def test_idle_legacy_auth_lock_is_held_and_active_refresh_refuses(self):
+        path = self.fx.root / 'runtime/auth-account-cursor.lock'
+        path.touch(mode=0o600)
+        self.fx.review()
+        before = path.stat()
+        with self.op.locked(), path.open('rb') as competing:
+            with self.assertRaises(BlockingIOError):
+                h.b0.fcntl.flock(competing, h.b0.fcntl.LOCK_EX | h.b0.fcntl.LOCK_NB)
+        with path.open('rb') as busy:
+            h.b0.fcntl.flock(busy, h.b0.fcntl.LOCK_EX | h.b0.fcntl.LOCK_NB)
+            with self.assertRaises(BlockingIOError):
+                self.apply()
+        self.apply()
+        self.assertEqual(before, path.stat())
+        path.write_bytes(b'unknown\n')
+        with self.assertRaisesRegex(RuntimeError, 'legacy auth coordination'):
+            self.op.protected()
+        path.write_bytes(b'')
+        path.chmod(0o644)
+        with self.assertRaisesRegex(RuntimeError, 'legacy auth coordination'):
+            self.op.protected()
+        path.chmod(0o600)
+        (self.fx.root / 'runtime/auth-account-changed').touch()
+        with self.assertRaisesRegex(RuntimeError, 'unfinished auth refresh'):
+            self.op.protected()
+
 
 if __name__ == '__main__':
+    if '--owned-root-fixture' in sys.argv:
+        sys.argv.remove('--owned-root-fixture')
+        raise SystemExit(f.run_in_owned_root(sys.argv[1:]))
+    if os.geteuid() != 0:
+        probe = subprocess.run(['unshare', '--user', '--map-root-user', 'true'], capture_output=True, timeout=10)
+        if probe.returncode:
+            if os.environ.get('GITHUB_ACTIONS') != 'true':
+                raise SystemExit('User namespaces unavailable: run this isolated test with --owned-root-fixture and sudo permission.')
+            raise SystemExit(f.run_in_owned_root(sys.argv[1:]))
     unittest.main()

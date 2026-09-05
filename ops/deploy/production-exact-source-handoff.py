@@ -44,6 +44,7 @@ IDLE_LOCKS = ('daily-run-singleton.lock', 'rolling-run-singleton.lock',
 TRUSTED_HOOKS = '/root/.config/git/hooks-777genius'
 SAFE_GIT_CONFIG = {'core.hookspath': TRUSTED_HOOKS, 'remote.origin.promisor': 'true',
     'remote.origin.partialclonefilter': 'blob:none',
+    'maintenance.auto': 'false', 'gc.auto': '0',
     **{'credential.https://' + host + '.helper': '!/usr/bin/gh auth git-credential'
        for host in ('github.com', 'gist.github.com')}}
 # The C2 entrypoint differs from 7e; the other four retain these explicit 7e blobs.
@@ -101,9 +102,22 @@ class ExactSourceHandoff(b0.ControllerRepair):
                     'unsafe Git configuration')
         require(self.git('remote', 'get-url', '--all', 'origin').strip() == b0.ORIGIN.encode(), 'origin differs')
         gitdir = self.repo / '.git'
-        for p in gitdir.rglob('*'):
-            require(not p.is_symlink() and not p.name.endswith('.lock'), 'Git symlink/lock hazard')
-        for name in ('objects/info/alternates', 'shallow', 'worktrees', 'config.worktree', 'info/attributes'):
+        self.directory(gitdir)
+        for flag in ('--git-dir', '--git-common-dir'):
+            require(self.git('rev-parse', '--path-format=absolute', flag).strip().decode() == str(gitdir),
+                    'integration is not common Git root')
+        # This common root owns foreign linked worktrees. Their administrative
+        # contents are neither ours to inspect nor part of this transaction.
+        foreign = gitdir / 'worktrees'
+        if os.path.lexists(foreign):
+            self.directory(foreign)
+        for parent, directories, files in os.walk(gitdir, followlinks=False):
+            if Path(parent) == gitdir and 'worktrees' in directories:
+                directories.remove('worktrees')
+            for name in (*directories, *files):
+                p = Path(parent) / name
+                require(not p.is_symlink() and not p.name.endswith('.lock'), 'Git symlink/lock hazard')
+        for name in ('objects/info/alternates', 'shallow', 'config.worktree', 'info/attributes'):
             require(not os.path.lexists(gitdir / name), 'unsupported Git storage/worktree')
         super().hazards()
         # Bind configuration and harmless nonexecuted hooks, without disabling them.
@@ -122,8 +136,9 @@ class ExactSourceHandoff(b0.ControllerRepair):
         regular(gitdir / 'index')
         regular(gitdir / 'HEAD')
         require(self.git('config', '--get', 'core.filemode').strip() == b'true', 'Git mode checking required')
-        require(not self.git('ls-files', '--others', '--ignored', '--exclude-standard').strip(),
-                'ignored worktree data requires investigation')
+        # Unrelated ignored caches/generated outputs are not transaction data.
+        # verify_checkout rejects every occupied new target path; merge also
+        # forbids overwriting ignored files, including a late collision.
         self.reserve()
 
     def reserve(self):
@@ -179,7 +194,8 @@ class ExactSourceHandoff(b0.ControllerRepair):
         self.daily_probe()  # Daily priority before taking host/deploy/PG admission locks.
         with super().locked(), contextlib.ExitStack() as stack:
             for path in [*(self.control / name for name in IDLE_LOCKS),
-                         self.root / 'runtime/auth-account-cursor.install.lock']:
+                         self.root / 'runtime/auth-account-cursor.install.lock',
+                         self.root / 'runtime/auth-account-cursor.lock']:
                 if os.path.lexists(path):
                     _, identity = regular(path)
                     stream = stack.enter_context(os.fdopen(os.open(path, os.O_RDWR | os.O_NOFOLLOW), 'r+b'))
@@ -249,7 +265,13 @@ class ExactSourceHandoff(b0.ControllerRepair):
                     and stat.S_IMODE((self.control / name).lstat().st_mode) == mode,
                     'installed control differs from explicit trusted blob/mode')
         record = self.marker_snapshot(state / 'production-transition-b0-host.state', result)
-        require(b'\nstatus=terminal\n' in record, 'transition is not terminal')
+        terminal = re.fullmatch(
+            rb'version=production-transition-b0-host-state-v1\nstatus=terminal\n'
+            rb'trusted-base=([0-9a-f]{40})\ntarget=([0-9a-f]{40})\n'
+            rb'target-tree=([0-9a-f]{40})\n', record)
+        require(terminal is not None, 'transition terminal record is malformed')
+        require(terminal[2].decode() == ACTIVATED
+                and terminal[3].decode() == self.tree(ACTIVATED), 'transition terminal identity differs')
         marker_names = set(b0.STATE_FILES) | {'production-transition-scheduler-hold.v2'}
         self.snapshot(state / ('otel-collector-config-' + PREIMAGE + '.yml'), result)
         locks = {*b0.LOCKS, *IDLE_LOCKS}
@@ -310,12 +332,15 @@ class ExactSourceHandoff(b0.ControllerRepair):
             expected = 'snapshots/' + pool['snapshotId'] + '/' + account['id'] + '/auth.json'
             require(account['relativePath'] == expected, 'unsafe auth snapshot path')
             self.snapshot(pool_root / expected, result)
-        for name in ('auth-account-name', 'auth-account-cursor', 'auth-account-cursor.install.lock'):
+        for name in ('auth-account-name', 'auth-account-cursor', 'auth-account-cursor.install.lock',
+                     'auth-account-cursor.lock'):
             path = self.root / 'runtime' / name
             if os.path.lexists(path):
-                self.snapshot(path, result)
-        require(not any(os.path.lexists(self.root / 'runtime' / name) for name in
-                ('auth-account-changed', 'auth-account-cursor.lock')), 'unfinished auth refresh')
+                data = self.snapshot(path, result)
+                if name == 'auth-account-cursor.lock':
+                    require(data == b'' and stat.S_IMODE(path.lstat().st_mode) == 0o600,
+                            'unsafe legacy auth coordination lock')
+        require(not os.path.lexists(self.root / 'runtime/auth-account-changed'), 'unfinished auth refresh')
 
     def runtime_identity(self):
         names = b0.execute('/usr/bin/docker', 'ps', '--all', '--filter',
@@ -432,13 +457,19 @@ class ExactSourceHandoff(b0.ControllerRepair):
         require(not any(k.startswith('GIT_') for k in os.environ), 'Git environment overrides refused')
         if args[0] == 'merge':
             require(self.expected is not None, 'missing prepared plan')
+            args = (args[0], '--no-overwrite-ignore', *args[1:])
             # Prepare and backups must survive power loss before the first source write.
             b0.execute('/usr/bin/sync', '--file-system', str(self.control))
             self.verify_checkout(self.expected, 0)
             self.available_objects(self.expected['target'])
+        elif args[0] == 'checkout':
+            args = (args[0], '--no-overwrite-ignore', *args[1:])
         previous = os.umask(0o022) if args[0] in ('merge', 'restore') else None
         try:
-            result = b0.subprocess.run(['/usr/bin/git', '-C', str(self.repo), *args], input=data,
+            # Never launch asynchronous maintenance during a bounded source
+            # transaction: it can create shared locks after merge has returned.
+            result = b0.subprocess.run(['/usr/bin/git', '-c', 'maintenance.auto=false', '-c', 'gc.auto=0',
+                '-C', str(self.repo), *args], input=data,
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=120, check=False,
                 env=dict(os.environ, GIT_NO_LAZY_FETCH='1'))
             require(result.returncode == 0, 'local Git command refused')

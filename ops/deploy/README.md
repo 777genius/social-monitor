@@ -470,8 +470,23 @@ idle, never described as a successful run.
 
 Offline evidence: `python3 -B ops/deploy/production-exact-source-handoff.test.py`
 uses new `/tmp` repositories and real historical Git/host/client guards, with
-external observations and physical runtime effects stubbed. It requires Linux
-user namespaces for the real root ownership checks. Also run
+external observations and physical runtime effects stubbed. Real root can run
+the ownership checks directly; non-root uses Linux user namespaces. On GitHub
+CI hosts denying unprivileged uid maps, the test runs through noninteractive
+sudo in a new root-owned disposable clone, never chowning the caller's checkout
+or changing host security settings. `--owned-root-fixture` exercises that same
+isolated path explicitly. No ownership assertions are skipped. Also run
 `bash ops/deploy/otel-collector-deploy-lifecycle.test.sh` for the unchanged OTel
 0644 contract and its 0600/0666/symlink rejection cases. Neither test uses Docker
 or network access.
+
+The common Git root may own foreign linked-worktree administration: only its
+safe `worktrees` directory boundary is checked, never foreign contents or locks.
+Current/common Git locks still refuse staging. Child Git commands suppress
+automatic maintenance so the transaction cannot leave background Git work.
+Unrelated ignored caches and generated outputs are preserved. Exact changed
+paths must match their preimages, new target paths must be absent, and Git
+merge/rollback checkout refuse overwriting ignored files even on a late collision.
+The five-field terminal transition must identify the activated commit/tree.
+An empty idle 0600 legacy auth cursor lock is held and preserved; busy/unsafe
+locks and an auth-changed marker still refuse preparation and handoff.

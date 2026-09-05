@@ -15,7 +15,9 @@ SPEC.loader.exec_module(h)
 
 
 def git_environment():
-    return dict(os.environ, GIT_CONFIG_NOSYSTEM='1', GIT_CONFIG_GLOBAL='/dev/null', GIT_NO_LAZY_FETCH='1')
+    return dict(os.environ, GIT_CONFIG_NOSYSTEM='1', GIT_CONFIG_GLOBAL='/dev/null', GIT_NO_LAZY_FETCH='1',
+                GIT_CONFIG_COUNT='2', GIT_CONFIG_KEY_0='maintenance.auto', GIT_CONFIG_VALUE_0='false',
+                GIT_CONFIG_KEY_1='gc.auto', GIT_CONFIG_VALUE_1='0')
 
 
 class FixtureProcesses:
@@ -37,6 +39,43 @@ def command(*args, cwd=None, data=None):
 
 def git(repo, *args, data=None):
     return command('/usr/bin/git', '-C', str(repo), *args, data=data)
+
+
+def run_in_owned_root(arguments):
+    """CI denies unprivileged uid maps. Root runs a new owned disposable clone,
+    not the caller's checkout. No ownership changes or host security changes.
+    """
+    bootstrap = r'''
+import json, os, shutil, subprocess, sys, tempfile
+from pathlib import Path
+assert os.geteuid() == 0
+source = Path(sys.argv[1]).resolve(strict=True)
+with tempfile.TemporaryDirectory(prefix='exact-source-ci-root-', dir='/tmp') as temp:
+    root = Path(temp)
+    repo = root / 'repo'
+    env = {'PATH': '/usr/bin:/bin', 'HOME': str(root), 'GIT_CONFIG_NOSYSTEM': '1',
+           'GIT_CONFIG_GLOBAL': '/dev/null', 'GIT_NO_LAZY_FETCH': '1',
+           'GIT_CONFIG_COUNT': '2', 'GIT_CONFIG_KEY_0': 'maintenance.auto',
+           'GIT_CONFIG_VALUE_0': 'false', 'GIT_CONFIG_KEY_1': 'gc.auto', 'GIT_CONFIG_VALUE_1': '0'}
+    os.umask(0o022)
+    subprocess.run(['/usr/bin/git', '-c', 'safe.directory=' + str(source),
+                    'clone', '--quiet', '--no-hardlinks', '--', str(source), str(repo)],
+                   env=env, check=True, timeout=120)
+    for relative in json.loads(sys.argv[2]):
+        assert relative.startswith('ops/deploy/') and '..' not in Path(relative).parts
+        target = repo / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source / relative, target)
+    result = subprocess.run(['/usr/bin/python3', '-I', '-B',
+        str(repo / 'ops/deploy/production-exact-source-handoff.test.py'), *sys.argv[3:]],
+        cwd=repo, env=env, check=False, timeout=1200)
+    status = result.returncode
+raise SystemExit(status)
+'''
+    prefix = [] if os.geteuid() == 0 else ['/usr/bin/sudo', '-n', '--']
+    return subprocess.run([*prefix, '/usr/bin/python3', '-I', '-B', '-c', bootstrap,
+                           str(SOURCE), json.dumps(sorted(h.INCIDENT_PATHS)), *arguments],
+                          timeout=1350, check=False).returncode
 
 
 class History:
