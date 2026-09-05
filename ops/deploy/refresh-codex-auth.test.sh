@@ -112,6 +112,8 @@ write_pool_manifest "$POOL_JOB_ID" social-monitor "$POOL_JOB_ROOT" \
 cat > "$BIN/subscription-runtime-codex-goal" <<'SH'
 #!/usr/bin/env bash
 [[ $* == *'"liveCheck":false'* ]] || exit 41
+[[ $* == *'"recheckDueCapacity":true'* ]] || exit 44
+[[ $* == *'"liveCheckTimeoutMs":10000'* ]] || exit 45
 expected_job=${SOCIAL_MONITOR_TEST_EXPECTED_JOB_ID:-test-controller}
 expected_registry=${SOCIAL_MONITOR_TEST_EXPECTED_REGISTRY_ROOT:?}
 [[ $* == *"\"jobId\":\"$expected_job\""* ]] || exit 42
@@ -136,13 +138,13 @@ if [[ -n ${SOCIAL_MONITOR_TEST_RAW_STATUS_JSON:-} ]]; then
 fi
 if [[ -n ${SOCIAL_MONITOR_TEST_STATUS_JSON:-} ]]; then
   jq -c --arg job_id "$expected_job" --arg registry_root "$expected_registry" \
-    '. + {jobId: $job_id, registryRootDir: $registry_root}' \
+    '. + {jobId: $job_id, registryRootDir: $registry_root, recheckDueCapacity: true}' \
     <<<"$SOCIAL_MONITOR_TEST_STATUS_JSON"
   exit 0
 fi
 accounts=${SOCIAL_MONITOR_TEST_ACCOUNTS:-'["account-a","account-b"]'}
 account_count=$(jq -er 'length' <<<"$accounts")
-printf '{"ok":true,"jobId":"%s","registryRootDir":"%s","hasAvailableAccount":true,"availableDedupedAccountNames":%s,"summary":{"ready":%s,"availableDeduped":%s}}\n' \
+printf '{"ok":true,"recheckDueCapacity":true,"jobId":"%s","registryRootDir":"%s","hasAvailableAccount":true,"availableDedupedAccountNames":%s,"summary":{"ready":%s,"availableDeduped":%s}}\n' \
   "$expected_job" "$expected_registry" "$accounts" "$account_count" "$account_count"
 SH
 cat > "$BIN/date" <<'SH'
@@ -298,6 +300,21 @@ done < <(jq -r '.accounts[] | [.id, .relativePath] | @tsv' \
   "$POOL_SNAPSHOT_ROOT/current.json")
 
 current_generation=$(jq -r '.snapshotId' "$POOL_SNAPSHOT_ROOT/current.json")
+# Older transports may silently strip unknown input options. Never treat an
+# unacknowledged cached status as a fresh due-only broker review.
+before_legacy_status=$(cksum < "$TARGET_DIR/auth.json")
+legacy_status=$(jq -cn --arg registry "$REGISTRY_ROOT" '{
+  ok: true, jobId: "test-controller", registryRootDir: $registry,
+  hasAvailableAccount: true, availableDedupedAccountNames: ["account-b"],
+  summary: {ready: 1, availableDeduped: 1}
+}')
+if SOCIAL_MONITOR_TEST_RAW_STATUS_JSON="$legacy_status" \
+  run_refresh >/dev/null 2>&1; then
+  echo 'broker status without due-recheck acknowledgement was accepted' >&2
+  exit 1
+fi
+[[ $(cksum < "$TARGET_DIR/auth.json") == "$before_legacy_status" ]]
+[[ $(jq -r '.snapshotId' "$POOL_SNAPSHOT_ROOT/current.json") == "$current_generation" ]]
 expired_generation=$(printf 'f%.0s' {1..64})
 install -d "$POOL_SNAPSHOT_ROOT/snapshots/$expired_generation/account-old"
 printf '{"account":"old"}\n' > \
