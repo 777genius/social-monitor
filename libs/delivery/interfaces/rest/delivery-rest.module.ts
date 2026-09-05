@@ -1,3 +1,6 @@
+import { InMemoryReaderSummaryReadyProjectionStore } from '../../adapters/persistence/in-memory-reader-summary-ready-projection.store';
+import { PrismaReaderSummaryReadyProjectionStore } from '../../adapters/persistence/prisma/prisma-reader-summary-ready-projection.store';
+import { ProjectReaderSummaryReadyEventUseCase } from '../../features/project-reader-summary-ready-event/project-reader-summary-ready-event.use-case';
 import { Module } from '@nestjs/common';
 import { resolvePostgresRuntimePoolConfig } from '@social-monitor/platform-persistence';
 import { IdentityRestModule } from '@social-monitor/identity/interfaces/rest/identity-rest.module';
@@ -404,6 +407,22 @@ export { DELIVERY_PROVIDERS } from './delivery-webhook.providers';
       inject: [DELIVERY_REALTIME_EVENT_REPOSITORY],
     },
     {
+      provide: ProjectReaderSummaryReadyEventUseCase,
+      useFactory: (
+        mode: DeliveryPersistenceMode,
+        prisma: PrismaDeliveryConnection | null,
+        events: RealtimeEventRepositoryPort,
+      ) => {
+        const ids = new CryptoIdGenerator();
+        if (mode === 'prisma') {
+          if (prisma === null) throw new Error('Reader summary projection requires Prisma');
+          return new ProjectReaderSummaryReadyEventUseCase(new PrismaReaderSummaryReadyProjectionStore(prisma, ids));
+        }
+        return new ProjectReaderSummaryReadyEventUseCase(new InMemoryReaderSummaryReadyProjectionStore(events, ids));
+      },
+      inject: [DELIVERY_PERSISTENCE_MODE, DELIVERY_PRISMA_CLIENT, DELIVERY_REALTIME_EVENT_REPOSITORY],
+    },
+    {
       provide: ProjectSummaryReadyEventUseCase,
       useFactory: (recordRealtimeEvent: RecordRealtimeEventUseCase) =>
         new ProjectSummaryReadyEventUseCase(recordRealtimeEvent),
@@ -411,6 +430,7 @@ export { DELIVERY_PROVIDERS } from './delivery-webhook.providers';
     },
   ],
   exports: [
+    ProjectReaderSummaryReadyEventUseCase,
     ApplyDeliverySuppressionUseCase,
     AssembleDigestUseCase,
     GetDeliveryAttemptUseCase,

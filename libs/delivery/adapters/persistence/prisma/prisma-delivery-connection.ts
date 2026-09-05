@@ -6,9 +6,11 @@ import {
 } from '@social-monitor/platform-persistence';
 import { loadPrismaRuntimeClient } from '@social-monitor/platform-persistence/prisma-runtime-client';
 
+import type { PrismaReaderSummaryProjectionClient } from './prisma-reader-summary-projection-client';
+
 import type { PrismaDeliveryClient } from './prisma-delivery-client';
 
-type PrismaDeliveryRuntimeClient = PrismaDeliveryClient & {
+type PrismaDeliveryRuntimeClient = PrismaDeliveryClient & PrismaReaderSummaryProjectionClient & {
   $disconnect(): Promise<void>;
 };
 
@@ -57,6 +59,9 @@ export class PrismaDeliveryConnection implements PrismaDeliveryClient {
     this.summaryArtifact = this.client.summaryArtifact;
     this.feedItem = this.client.feedItem;
   }
+
+  $transaction: PrismaReaderSummaryProjectionClient['$transaction'] = (operation, options) =>
+    this.client.$transaction(operation, options);
 
   close(): Promise<void> {
     return this.runtime.close();

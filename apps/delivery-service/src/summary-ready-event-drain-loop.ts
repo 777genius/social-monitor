@@ -1,5 +1,5 @@
 import { Inject, Injectable, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
-import { ProjectSummaryReadyEventHandler } from '@social-monitor/delivery/interfaces/events/project-summary-ready-event.handler';
+import { SummaryReadyEventDispatcher } from '@social-monitor/delivery/interfaces/events/summary-ready-event.dispatcher';
 import { NestStructuredLogger, type StructuredLogger } from '@social-monitor/platform-logging';
 import type { MetricsRecorderPort } from '@social-monitor/platform-metrics';
 import { queueCommandDeliveryLagSeconds } from '@social-monitor/platform-queue';
@@ -14,7 +14,7 @@ import {
   type SummaryReadyEventQueueReaderPort,
 } from './summary-ready-event-queue-reader';
 
-export type SummaryReadyEventHandlerPort = Pick<ProjectSummaryReadyEventHandler, 'handle'>;
+export type SummaryReadyEventHandlerPort = { handle(event: Readonly<Record<string, unknown>>): Promise<unknown> };
 
 @Injectable()
 export class SummaryReadyEventDrainLoop implements OnModuleInit, OnModuleDestroy {
@@ -26,7 +26,7 @@ export class SummaryReadyEventDrainLoop implements OnModuleInit, OnModuleDestroy
   constructor(
     @Inject(DELIVERY_SUMMARY_READY_EVENT_QUEUE_READER)
     private readonly queue: SummaryReadyEventQueueReaderPort,
-    @Inject(ProjectSummaryReadyEventHandler)
+    @Inject(SummaryReadyEventDispatcher)
     private readonly handler: SummaryReadyEventHandlerPort,
     @Inject(DELIVERY_SUMMARY_READY_EVENT_DRAIN_LOOP_OPTIONS)
     private readonly options: DeliverySummaryReadyEventDrainLoopOptions,
@@ -157,7 +157,7 @@ export class SummaryReadyEventDrainLoop implements OnModuleInit, OnModuleDestroy
       name: 'queue_command_delivery_lag_seconds',
       value: lagSeconds,
       labels: {
-        command_type: 'summary.ready',
+        command_type: String(delivery.event.eventType),
         queue: 'events',
         worker: 'delivery-service',
       },

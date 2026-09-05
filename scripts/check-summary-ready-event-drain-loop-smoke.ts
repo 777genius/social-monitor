@@ -152,7 +152,7 @@ async function verifyRabbitMqSummaryReadyReaderDelivery(): Promise<void> {
     JSON.stringify(channel.assertedExchanges) === JSON.stringify([
       {
         exchange: 'social-monitor.events',
-        type: 'interest',
+        type: 'topic',
         options: { durable: true },
       },
       {
@@ -178,12 +178,16 @@ async function verifyRabbitMqSummaryReadyReaderDelivery(): Promise<void> {
     'Rabbit summary.ready reader must assert quorum queue',
   );
   assert(
-    JSON.stringify(channel.binding) === JSON.stringify({
+    JSON.stringify(channel.bindings) === JSON.stringify([{
+      queue: 'events.delivery.summary.ready',
+      exchange: 'social-monitor.events',
+      routingKey: 'reader_summary.ready',
+    }, {
       queue: 'events.delivery.summary.ready',
       exchange: 'social-monitor.events',
       routingKey: 'summary.ready',
-    }),
-    'Rabbit summary.ready reader must bind queue to summary.ready routing key',
+    }]),
+    'Rabbit summary.ready reader must bind queue to both exact summary ready routing keys',
   );
   assert(channel.prefetchCount === 5, 'Rabbit summary.ready reader must set prefetch from limit');
   assert(deliveries[0]?.event.eventId === 'summary-ready-rabbit-reader-smoke', 'summary.ready event id mismatch');
@@ -212,7 +216,7 @@ class SingleDeliveryQueueReader implements SummaryReadyEventQueueReaderPort {
 class FakeRabbitMqSummaryReadyEventReaderChannel implements RabbitMqSummaryReadyEventQueueReaderChannelPort {
   readonly assertedExchanges: unknown[] = [];
   assertedQueue: unknown;
-  binding: unknown;
+  readonly bindings: unknown[] = [];
   prefetchCount = 0;
   acked = 0;
   nacked = 0;
@@ -242,7 +246,7 @@ class FakeRabbitMqSummaryReadyEventReaderChannel implements RabbitMqSummaryReady
   }
 
   async bindQueue(queue: string, exchange: string, routingKey: string): Promise<unknown> {
-    this.binding = { queue, exchange, routingKey };
+    this.bindings.push({ queue, exchange, routingKey });
 
     return undefined;
   }
@@ -334,6 +338,7 @@ function messageFrom(
     content: Buffer.from(JSON.stringify(event), 'utf8'),
     fields: {
       redelivered: metadata.redelivered ?? false,
+      routingKey: String(event.eventType),
     },
     properties: {
       headers: metadata.headers ?? {},
