@@ -9,8 +9,8 @@ describe('native recovery fixture contract', () => {
     if (original === undefined) delete process.env.READER_DELIVERY_TEST_ADMIN_DATABASE_URL;
     else process.env.READER_DELIVERY_TEST_ADMIN_DATABASE_URL = original;
   });
-  it.each([undefined, 'postgresql://fixture:fixture@remote.invalid/test',
-    'postgresql://fixture:fixture@127.0.0.1/test?host=remote.invalid'])('fails closed before connecting for %s', async url => {
+  it.each([undefined, 'postgresql://fixture:password@remote.invalid/test',
+    'postgresql://fixture:password@127.0.0.1/test?host=remote.invalid'])('fails closed before connecting for %s', async url => {
     if (url === undefined) delete process.env.READER_DELIVERY_TEST_ADMIN_DATABASE_URL;
     else process.env.READER_DELIVERY_TEST_ADMIN_DATABASE_URL = url;
     const operation = jest.fn();
