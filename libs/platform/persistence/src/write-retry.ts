@@ -49,6 +49,23 @@ const hasRetryableWriteConflictCode = (error: unknown, depth = 0): boolean => {
     return true;
   }
 
+  // Raw SQL conflicts are P2010, not P2034. Prisma's pg driver adapter
+  // retains SQLSTATE in cause.originalCode; older clients use meta.code.
+  if (code === 'P2010') {
+    const meta = (error as {
+      readonly meta?: {
+        readonly code?: unknown;
+        readonly driverAdapterError?: {
+          readonly cause?: { readonly originalCode?: unknown };
+        };
+      };
+    }).meta;
+    const sqlState = meta?.code ?? meta?.driverAdapterError?.cause?.originalCode;
+    if (typeof sqlState === 'string' && retryablePostgresSqlStates.has(sqlState)) {
+      return true;
+    }
+  }
+
   return hasRetryableWriteConflictCode((error as { readonly cause?: unknown }).cause, depth + 1);
 };
 

@@ -85,6 +85,7 @@ fi
 
 export DURABLE_READER_SUMMARY_TOPIC_LABELER=agent-runtime
 export DURABLE_READER_SUMMARY_REJECTED_TOPIC_MAP_PATH="$artifact_root/rolling-summary.$ROLLING_RUN_ID.rejected-topic-map.v1.json"
+export DURABLE_READER_SUMMARY_PUBLICATION_RECOVERY_DIR="$artifact_root/.reader-summary-db-publications/$ROLLING_RUN_ID"
 
 if [ "${SOCIAL_MONITOR_ROLLING_CONTAINER_TEST_MODE:-0}" = 1 ]; then
   "$SOCIAL_MONITOR_ROLLING_CONTAINER_TEST_SUMMARY_COMMAND" \

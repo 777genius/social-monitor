@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -219,8 +219,13 @@ describe("reader summary DB publication reconciliation", () => {
         sourceProvenance: { kind: "live-production" },
       });
       const attestations = [executionAttestation()];
+      const delegate = new InMemoryReaderSummaryPublication(jobs, artifacts, events);
       const recoverable = createRecoverableReaderSummaryPublication({
-        delegate: new InMemoryReaderSummaryPublication(jobs, artifacts, events),
+        delegate: { async publish(command) {
+          expect(JSON.parse(onlyRecoveryReceipt(directory).toString("utf8"))
+            .executionAttestations).toEqual(attestations);
+          return delegate.publish(command);
+        } },
         recoveryDirectory: directory,
         attemptIdentity,
         attestations: () => attestations,
@@ -291,6 +296,27 @@ describe("reader summary DB publication reconciliation", () => {
           readerSummaryArtifactId: replay.readerSummaryArtifactId!,
         }),
       ).toEqual(attestations);
+      const recoveryScope = {
+        tenantId: tenant, workspaceId: workspace, periodKey,
+        readerSummaryJobId: replay.readerSummaryJobId!,
+        readerSummaryArtifactId: replay.readerSummaryArtifactId!,
+      };
+      for (const foreignScope of [
+        { tenantId: "foreign-tenant" }, { workspaceId: "foreign-workspace" },
+        { periodKey: "foreign-period" }, { readerSummaryJobId: "foreign-job" },
+      ]) {
+        expect(() => recoverable.recovery?.load({ ...recoveryScope, ...foreignScope })).toThrow(
+          "does not match durable identity",
+        );
+      }
+      const receiptPath = join(directory, readdirSync(directory)[0]!);
+      const altered = JSON.parse(recoveryBytesBefore.toString("utf8"));
+      altered.executionAttestations[0].normalizedOutputSha256 = "f".repeat(64);
+      chmodSync(receiptPath, 0o600);
+      writeFileSync(receiptPath, JSON.stringify(altered));
+      expect(() => recoverable.recovery?.load(recoveryScope)).toThrow("does not match durable identity");
+      writeFileSync(receiptPath, recoveryBytesBefore);
+      chmodSync(receiptPath, 0o400);
       for (const changedAuthority of [
         { ...servingAuthority, summaryGenerator: {
           ...servingAuthority.summaryGenerator,

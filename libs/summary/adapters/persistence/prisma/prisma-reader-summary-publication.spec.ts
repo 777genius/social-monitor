@@ -27,6 +27,7 @@ describe("PrismaReaderSummaryPublication", () => {
     let serializedRequest = "";
     const publicationQuery = jest.fn(
       async (_query: TemplateStringsArray, serialized: unknown) => {
+        if (_query.join("").includes("set_config")) return [];
         serializedRequest = String(serialized);
         return [
           {
@@ -94,12 +95,56 @@ describe("PrismaReaderSummaryPublication", () => {
       "Reader summary dataset changed at before_publication",
     );
     expect(guard).toHaveBeenCalledWith(transactionClient, command);
-    expect(publicationQuery).not.toHaveBeenCalled();
+    expect(publicationQuery).toHaveBeenCalledTimes(1);
+    expect(publicationQuery.mock.calls[0]![0].join("")).toContain("set_config");
     expect(transaction).toHaveBeenCalledWith(expect.any(Function), {
       maxWait: 30_000,
       timeout: 300_000,
       isolationLevel: "Serializable",
     });
+  });
+
+  it("sets the server deadline before each guard and retries only the same publication", async () => {
+    const command = publicationCommand();
+    const calls: string[] = [];
+    const requests: string[] = [];
+    const query = jest.fn(async (sql: TemplateStringsArray, value: unknown) => {
+      if (sql.join("").includes("set_config")) {
+        calls.push("deadline");
+        expect(value).toBe(300_000);
+        expect(sql.join("")).toContain("true)");
+        return [];
+      }
+      calls.push("publish");
+      requests.push(String(value));
+      if (requests.length === 1) throw {
+        code: "P2010", meta: { driverAdapterError: { cause: { originalCode: "40001" } } },
+      };
+      return [{ outcome: "replayed", publication_id: command.artifact.toSnapshot().readerSummaryId,
+        report_sha256: "c".repeat(64), proof_sha256: "d".repeat(64) }];
+    });
+    const transactionClient = Object.assign({} as PrismaReaderSummaryClient, { $queryRaw: query });
+    const transaction = jest.fn(async (operation: (client: PrismaReaderSummaryClient) => Promise<unknown>) =>
+      operation(transactionClient));
+    const guard = jest.fn(async () => { calls.push("guard"); });
+    const publication = new PrismaReaderSummaryPublication(prismaClient(transaction, query), guard);
+    await expect(publication.publish(command)).resolves.toBe("replayed");
+    expect(calls).toEqual(["deadline", "guard", "publish", "deadline", "guard", "publish"]);
+    expect(requests[0]).toBe(requests[1]);
+    expect(transaction).toHaveBeenCalledTimes(2);
+  });
+
+  it("fails before publication if the server deadline cannot be configured", async () => {
+    const error = { code: "42501" };
+    const query = jest.fn().mockRejectedValue(error);
+    const guard = jest.fn();
+    const transaction = jest.fn(async (operation: (client: PrismaReaderSummaryClient) => Promise<unknown>) =>
+      operation(Object.assign({} as PrismaReaderSummaryClient, { $queryRaw: query })));
+    await expect(new PrismaReaderSummaryPublication(prismaClient(transaction, query), guard)
+      .publish(publicationCommand())).rejects.toBe(error);
+    expect(guard).not.toHaveBeenCalled();
+    expect(query).toHaveBeenCalledTimes(1);
+    expect(transaction).toHaveBeenCalledTimes(1);
   });
 });
 
