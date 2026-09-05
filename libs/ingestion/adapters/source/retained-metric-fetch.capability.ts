@@ -41,7 +41,8 @@ export class RetainedMetricFetchAdapter implements RetainedMetricFetchCapability
           observations.push(unavailable(target, "removed_deleted_or_hidden")); continue;
         }
         if (post.createdUtc !== Date.parse(target.publishedAt) / 1000 ||
-            !post.permalink || new URL(post.permalink, "https://www.reddit.com").pathname !== new URL(target.canonicalUrl).pathname) return err("provider_identity_mismatch");
+            redditPermalinkId(post.permalink, "https://www.reddit.com") !== id ||
+            redditPermalinkId(target.canonicalUrl) !== id) return err("provider_identity_mismatch");
         if (!Number.isSafeInteger(post.score) || !Number.isSafeInteger(post.numComments)) return err("invalid_metrics");
         observations.push({ externalId: target.externalId, returned: true, reason: null, metadata: {
           kind: "reddit_post", score: post.score!, numComments: post.numComments!,
@@ -56,6 +57,17 @@ export class RetainedMetricFetchAdapter implements RetainedMetricFetchCapability
       return err(/\b429\b/u.test(message) ? "provider_429_no_retry" : "provider_fetch_failed_no_retry");
     }
   }
+}
+function redditPermalinkId(value: string | undefined, base?: string): string | null {
+  if (!value) return null;
+  try {
+    const url = new URL(value, base);
+    if (url.protocol !== "https:" || url.username || url.password || url.port || url.hash ||
+        !["www.reddit.com", "reddit.com", "old.reddit.com"].includes(url.hostname)) return null;
+    // Short canonical URLs and subreddit/slug variants name the same post.
+    const match = /^\/(?:r\/[^/]+\/)?comments\/([a-z0-9]+)(?:\/|$)/u.exec(url.pathname);
+    return match ? `t3_${match[1]}` : null;
+  } catch { return null; }
 }
 function unavailable(target: RetainedMetricTarget, reason: string, returned = true): MetricFetchObservation {
   return { externalId: target.externalId, returned, metadata: null, reason };

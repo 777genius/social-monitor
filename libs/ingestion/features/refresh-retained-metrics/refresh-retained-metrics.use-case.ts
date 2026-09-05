@@ -30,6 +30,14 @@ export class RefreshRetainedMetricsUseCase {
     for (const [index, targets] of refreshBatches(manifest.targets).entries()) {
       const path = `${root}/batch-${index}`;
       const reservation = { operationId: manifest.operationId, manifestDigest: this.digest(manifest), targets: targets.map((t) => t.sourceItemId) };
+      if (await this.receipts.read(`${path}.reserved.json`) === null) {
+        // Recheck the entire batch before spending its permanent fetch budget.
+        // Existing reservations must still reconcile or replay without a fresh fetch.
+        for (const target of targets) {
+          const latest = await this.inventory.read(manifest.scope, target.sourceItemId);
+          if (!sameTarget(target, latest, this.digest) || latest === null || targetProblem(latest, manifest.scope)) return err("target_drift");
+        }
+      }
       const reserved = await this.receipts.install(`${path}.reserved.json`, reservation);
       let evidence = await this.receipts.read<BatchEvidence>(`${path}.observed.json`);
       if (evidence === null && reserved === "installed") {

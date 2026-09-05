@@ -7,6 +7,7 @@ import { ok, type JsonObject } from "@social-monitor/shared-kernel";
 import { fixture, manifest, now, target, scope } from "../../../../scripts/lib/retained-metric-refresh.spec-support";
 import { metricRefreshDigest } from "../../../../scripts/lib/retained-metric-refresh-receipts";
 import { manifestProblem, refreshBatches } from "./metric-refresh-admission";
+import type { RefreshScope, RetainedMetricTarget } from "./refresh-retained-metrics.contracts";
 
 describe("bounded retained metric refresh using canonical projection", () => {
   let root: string;
@@ -89,7 +90,79 @@ describe("bounded retained metric refresh using canonical projection", () => {
     expect(f.fetcher.fetch).not.toHaveBeenCalled();
     f.inventory.read.mockResolvedValueOnce({ ...target(), identityDigest: "e".repeat(64) });
     expect(await f.usecase().execute(manifest())).toEqual({ ok: false, error: "target_drift" });
+    expect(f.fetcher.fetch).not.toHaveBeenCalled();
+    expect(await f.receipts.read(`${manifest().evidencePath}/batch-0.reserved.json`)).toBeNull();
     expect(f.db.rows("sourceItemEngagementSnapshot")).toEqual([]);
+  });
+  it.each<Partial<RetainedMetricTarget> | null>([
+    { rejection: "binding_disabled" }, { configDigest: "d".repeat(64) },
+    { identityDigest: "e".repeat(64) }, { feedDigest: "f".repeat(64) }, null,
+  ])("does not reserve or fetch a later batch invalidated during the first fetch: %j", async (drift) => {
+    const second = target({ sourceItemId: "00000000-0000-7000-8000-000000006106",
+      sourceBindingId: "00000000-0000-7000-8000-000000006107", externalId: "reddit:t3_def",
+      canonicalUrl: "https://www.reddit.com/comments/def" });
+    const planned = manifest([target(), second]);
+    let currentSecond: RetainedMetricTarget | null = second;
+    const inventory = { list: jest.fn(async () => planned.targets),
+      read: jest.fn(async (_scope: RefreshScope, id: string) => id === second.sourceItemId ? currentSecond : f.inventory.read()) };
+    const fetcher = { fetch: jest.fn(async () => {
+      currentSecond = drift === null ? null : { ...second, ...drift };
+      return f.fetcher.fetch();
+    }) };
+    const usecase = new RefreshRetainedMetricsUseCase(inventory, fetcher, f.projection, f.receipts, f.clock, metricRefreshDigest);
+    expect(await usecase.execute(planned)).toEqual({ ok: false, error: "target_drift" });
+    expect(fetcher.fetch).toHaveBeenCalledTimes(1);
+    expect(await f.receipts.read(`${planned.evidencePath}/result-${target().sourceItemId}.json`)).toMatchObject({ status: "refreshed" });
+    expect(await f.receipts.read(`${planned.evidencePath}/batch-1.reserved.json`)).toBeNull();
+    expect(await f.receipts.read(`${planned.evidencePath}/batch-1.observed.json`)).toBeNull();
+    // Restoring admission resumes the same operation; the completed first batch has no new budget.
+    currentSecond = second;
+    fetcher.fetch.mockResolvedValueOnce(ok([]));
+    expect(await usecase.execute(planned)).toMatchObject({ ok: true, value: [{ status: "refreshed" }, { status: "unavailable" }] });
+    expect(fetcher.fetch.mock.calls).toEqual([[[target()]], [[second]]]);
+    expect(f.db.rows("sourceItemEngagementObservation")).toHaveLength(1);
+  });
+  it("validates every member of a multi-post batch before its reservation", async () => {
+    const second = target({ sourceItemId: "00000000-0000-7000-8000-000000006106", externalId: "reddit:t3_def",
+      canonicalUrl: "https://www.reddit.com/comments/def" });
+    const planned = manifest([target(), second]);
+    const inventory = { list: jest.fn(async () => planned.targets),
+      read: jest.fn(async (_scope: RefreshScope, id: string) => id === second.sourceItemId ? { ...second, rejection: "binding_disabled" } : target()) };
+    const usecase = new RefreshRetainedMetricsUseCase(inventory, f.fetcher, f.projection, f.receipts, f.clock, metricRefreshDigest);
+    expect(await usecase.execute(planned)).toEqual({ ok: false, error: "target_drift" });
+    expect(inventory.read.mock.calls).toEqual([[scope, target().sourceItemId], [scope, second.sourceItemId]]);
+    expect(f.fetcher.fetch).not.toHaveBeenCalled();
+    expect(await f.receipts.read(`${planned.evidencePath}/batch-0.reserved.json`)).toBeNull();
+  });
+  it("still checks admission after fetch and before projection", async () => {
+    const fetch = f.fetcher.fetch.getMockImplementation()!;
+    f.fetcher.fetch.mockImplementation(async () => {
+      f.inventory.read.mockResolvedValue({ ...target(), rejection: "binding_disabled" });
+      return fetch();
+    });
+    const project = jest.spyOn(f.projection, "project");
+    expect(await f.usecase().execute(manifest())).toEqual({ ok: false, error: "target_drift" });
+    expect(f.fetcher.fetch).toHaveBeenCalledTimes(1);
+    expect(project).not.toHaveBeenCalled();
+    expect(await f.receipts.read(`${manifest().evidencePath}/batch-0.observed.json`)).not.toBeNull();
+  });
+  it("stops all remaining batches on an uncertain reservation without resetting the claim", async () => {
+    const second = target({ sourceItemId: "00000000-0000-7000-8000-000000006106",
+      sourceBindingId: "00000000-0000-7000-8000-000000006107", externalId: "reddit:t3_def",
+      canonicalUrl: "https://www.reddit.com/comments/def" });
+    const planned = manifest([target(), second]);
+    f.inventory.list.mockResolvedValue(planned.targets as RetainedMetricTarget[]);
+    f.fetcher.fetch.mockRejectedValueOnce(new Error("interrupted provider observation"));
+    await expect(f.usecase().execute(planned)).rejects.toThrow("interrupted provider observation");
+    const reservation = await f.receipts.read(`${planned.evidencePath}/batch-0.reserved.json`);
+    f.inventory.read.mockRejectedValue(new Error("must reconcile uncertain fetch first"));
+    expect(await f.usecase().execute(planned)).toMatchObject({ ok: true, value: [
+      { status: "uncertain", reason: "reserved_without_observation_reconcile_required" },
+      { status: "uncertain", reason: "reserved_without_observation_reconcile_required" },
+    ] });
+    expect(f.fetcher.fetch).toHaveBeenCalledTimes(1);
+    expect(await f.receipts.read(`${planned.evidencePath}/batch-0.reserved.json`)).toEqual(reservation);
+    expect(await f.receipts.read(`${planned.evidencePath}/batch-1.reserved.json`)).toBeNull();
   });
   it("never lets an old preserved sample overwrite a newer observation", async () => {
     const install = f.receipts.install.bind(f.receipts);
