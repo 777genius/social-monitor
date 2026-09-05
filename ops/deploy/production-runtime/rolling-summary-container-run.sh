@@ -83,6 +83,9 @@ if [ "$ROLLING_AUTH_READY" != true ]; then
   exit 75
 fi
 
+export DURABLE_READER_SUMMARY_TOPIC_LABELER=agent-runtime
+export DURABLE_READER_SUMMARY_REJECTED_TOPIC_MAP_PATH="$artifact_root/rolling-summary.$ROLLING_RUN_ID.rejected-topic-map.v1.json"
+
 if [ "${SOCIAL_MONITOR_ROLLING_CONTAINER_TEST_MODE:-0}" = 1 ]; then
   "$SOCIAL_MONITOR_ROLLING_CONTAINER_TEST_SUMMARY_COMMAND" \
     "$evidence_path" "$frontend_path"
@@ -95,7 +98,6 @@ else
   export DURABLE_READER_SUMMARY_PERIOD_ENDED_AT
   export DURABLE_READER_SUMMARY_LIVE_OBSERVATION_CUTOFF="$rolling_observation_cutoff"
   export DURABLE_READER_SUMMARY_MODEL=agent-runtime
-  export DURABLE_READER_SUMMARY_TOPIC_LABELER=deterministic
   export DURABLE_READER_SUMMARY_MAX_EVIDENCE_ITEMS=120
   export DURABLE_READER_SUMMARY_EVIDENCE_PATH="$evidence_path"
   export DURABLE_READER_SUMMARY_FRONTEND_FIXTURE_PATH="$frontend_path"
