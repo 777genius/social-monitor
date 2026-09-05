@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Incident regression against real history and the initialized host controller.
 # shellcheck disable=SC1091,SC2034,SC2329 # Dynamic host/client fixture callbacks.
+# shellcheck disable=SC2030,SC2031 # Partial-recovery state is intentionally subshell-isolated.
 set -Eeuo pipefail
 export LC_ALL=C GIT_NO_LAZY_FETCH=1 GIT_NO_REPLACE_OBJECTS=1
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -225,7 +226,20 @@ fi
 C=$PRODUCTION_FORWARD_RECOVERY_BRIDGE
 export GIT_AUTHOR_NAME=stale-test GIT_AUTHOR_EMAIL=stale@example.invalid
 export GIT_COMMITTER_NAME=$GIT_AUTHOR_NAME GIT_COMMITTER_EMAIL=$GIT_AUTHOR_EMAIL
-TARGET=$(production_forward_git commit-tree "$TARGET^{tree}" -p "$TARGET" -p "$C" -m 'test: retain recovery controller')
+# Carry both reviewed control fixes into the fixture target, retaining real C
+# ancestry. All unrelated target files remain the protected main snapshot.
+GIT_INDEX_FILE=$fixture/recovery-target.index production_forward_git read-tree "$TARGET"
+for path in ops/deploy/deploy-control-lib.sh ops/deploy/social-monitor-production-deploy.sh; do
+  blob=$(production_forward_git rev-parse "$C:$path")
+  [[ $(git -C "$PROJECT_ROOT" hash-object "$PROJECT_ROOT/$path") == "$blob" ]]
+  GIT_INDEX_FILE=$fixture/recovery-target.index production_forward_git \
+    update-index --cacheinfo "100644,$blob,$path"
+done
+tree=$(GIT_INDEX_FILE=$fixture/recovery-target.index production_forward_git write-tree --missing-ok)
+old_c=8df8f3ba4e028e7fa7f837484541e58caf44a3f9
+legacy_target=$(production_forward_git commit-tree "$TARGET^{tree}" -p "$TARGET" -p "$old_c" -m 'test: preserve previous review ancestry')
+TARGET=$(production_forward_git commit-tree "$tree" -p "$legacy_target" -p "$C" -m 'test: retain recovery controller')
+production_forward_git merge-base --is-ancestor "$old_c" "$TARGET"
 production_forward_validate_recovery "$TARGET"
 production_forward_git update-ref refs/remotes/origin/main "$TARGET"
 # Keep the real committed host preflight, terminal-state parser and ordinary
@@ -245,6 +259,95 @@ printf 'version=production-transition-b0-host-state-v1\nstatus=terminal\ntrusted
   "$MARKER" "$MARKER" "$(production_forward_git rev-parse "$MARKER^{tree}")" \
   > "$STATE/production-transition-b0-host.state"
 chmod 0600 "$STATE/production-transition-b0-host.state"
+# A crash after advancing HEAD to C is deliberately fail-closed in the client.
+# Prove the bounded operator repair through the existing authenticated ancestor
+# command, not a new host authority or a transport stub that rewrites markers.
+verify_partial_controller_operator_recovery() (
+  local phase=$1 partial=$fixture/partial-$1 path initial_pool installed_identity
+  mkdir -p "$partial/state" "$partial/control"
+  git -c gc.autoDetach=false clone -q --shared --no-checkout "$fixture/repo" "$partial/repo"
+  REPO=$partial/repo GITHUB_WORKSPACE=$partial/repo STATE=$partial/state CONTROL=$partial/control
+  git -C "$REPO" config core.hooksPath /dev/null
+  git -C "$REPO" sparse-checkout set --no-cone --no-sparse-index \
+    /ops/deploy/social-monitor-production-deploy.sh \
+    /ops/deploy/postgres-runtime-deploy-lib.sh \
+    /ops/deploy/verify-postgres-runtime-topology.py \
+    /ops/deploy/production-runtime/compose.postgres-runtime.yml
+  git -C "$REPO" checkout -q --detach "$C"
+  git -C "$REPO" update-ref refs/remotes/origin/main "$TARGET"
+  [[ -z $(git -C "$REPO" status --porcelain) ]]
+  for path in backend control frontend postgres-pool-bootstrap; do
+    printf '%s\n' "$MARKER" > "$STATE/$path.sha"
+    chmod 0600 "$STATE/$path.sha"
+  done
+  cp "$fixture/state/production-transition-b0-host.state" "$STATE/production-transition-b0-host.state"
+  production_forward_git show "$phase:ops/deploy/social-monitor-production-deploy.sh" > \
+    "$CONTROL/github-production-deploy.sh"
+  production_forward_git show "$MARKER:ops/deploy/social-monitor-production-ssh-wrapper.sh" > \
+    "$CONTROL/github-production-deploy-wrapper.sh"
+  chmod 0755 "$CONTROL/"*.sh
+  source_reviewed_deploy_library "$C" ops/deploy/deploy-control-lib.sh 'partial-C recovery implementation'
+  source_reviewed_deploy_library "$C" ops/deploy/production-transition-b0-host-control.sh 'partial-C host prelude'
+  source_reviewed_deploy_library "$C" ops/deploy/production-transition-marker-lib.sh 'partial-C marker publication'
+  source /dev/stdin < <(sed -n '/^FRONTEND_PATHS=(/,/^COMPOSE=(/p' "$fixture/target-entrypoint" | sed '$d')
+  source /dev/stdin < <(sed -n '/^marker_value() {/,/^validate_frontend_archive() {/p' "$fixture/target-entrypoint" | sed '$d')
+  source /dev/stdin < <(sed -n '/^sync_control_entrypoint() {/,/^sync_control_script() {/p' "$fixture/target-entrypoint" | sed '$d')
+  SOCIAL_MONITOR_DEPLOY_TEST_MODE=1
+  DEPLOY_LOCK=$partial/deploy.lock POSTGRES_ADMISSION_LOCK=$partial/admission.lock
+  DAILY_SINGLETON_LOCK=$partial/daily.lock STAGING=$partial/staging RELEASES=$partial/releases
+  fetch_main() { [[ $(git -C "$REPO" rev-parse origin/main) == "$TARGET" ]]; }
+  validate_main_commit() { git -C "$REPO" merge-base --is-ancestor "$1" origin/main; }
+  # Normalize only OS ownership for unprivileged CI; real install/rename,
+  # committed source validation, marker publication and host locks still run.
+  install() {
+    local -a args=()
+    while (($#)); do
+      case $1 in -o|-g) shift 2 ;; *) args+=("$1"); shift ;; esac
+    done
+    command install "${args[@]}"
+    [[ ${args[${#args[@]}-1]} != "$CONTROL/github-production-deploy.sh.next" ]] || \
+      printf 'entrypoint-sync\n' >> "$partial/effects"
+  }
+  advance_integration() { fail 'operator repair replayed integration advancement'; }
+  deploy_release_runtime_transaction() { fail 'operator repair replayed application deployment'; }
+  deploy_frontend() { fail 'operator repair replayed frontend deployment'; }
+  sync_control_script() { fail 'operator repair replayed full control deployment'; }
+  operator_repair() (
+    production_transition_host_preflight_prelude deploy "$MARKER"
+    production_transition_host_require_ordinary_deploy "$MARKER"
+    deploy_release "$MARKER"
+    production_transition_host_release_lock
+  )
+  initial_pool=$(stat -c '%d:%i:%s:%y:%z' "$STATE/postgres-pool-bootstrap.sha")
+  operator_repair
+  [[ $(cat "$STATE/postgres-pool-bootstrap.sha") == "$C" ]]
+  [[ $(cat "$partial/effects") == entrypoint-sync ]]
+  [[ $(stat -c '%d:%i:%s:%y:%z' "$STATE/postgres-pool-bootstrap.sha") != "$initial_pool" ]]
+  initial_pool=$(stat -c '%d:%i:%s:%y:%z' "$STATE/postgres-pool-bootstrap.sha")
+  installed_identity=$(stat -c '%d:%i:%s:%y:%z' "$CONTROL/github-production-deploy.sh")
+  operator_repair
+  [[ $(stat -c '%d:%i:%s:%y:%z' "$STATE/postgres-pool-bootstrap.sha") == "$initial_pool" ]]
+  [[ $(stat -c '%d:%i:%s:%y:%z' "$CONTROL/github-production-deploy.sh") == "$installed_identity" ]]
+  [[ $(cat "$partial/effects") == entrypoint-sync ]]
+  # Ancestor repair seals the installed pool only. The next normal deployment
+  # owns control.sha advancement; fabricating it here would hide pending work.
+  for path in backend control frontend; do [[ $(cat "$STATE/$path.sha") == "$MARKER" ]]; done
+  [[ $(git -C "$REPO" rev-parse HEAD) == "$C" ]]
+  cmp "$CONTROL/github-production-deploy.sh" "$REPO/ops/deploy/social-monitor-production-deploy.sh"
+  [[ $(find_postgres_pool_bootstrap_installed_control_commit \
+    "$MARKER" "$C" "$CONTROL/github-production-deploy.sh") == "$C" ]]
+  (
+    production_transition_host_preflight_prelude plan "$TARGET"
+    print_plan "$TARGET"
+    production_transition_host_release_lock
+  ) > "$partial/target.plan"
+  grep -Fx "postgres_pool_bootstrap_sha=$C" "$partial/target.plan" >/dev/null
+  grep -Fx "backend_base=$MARKER" "$partial/target.plan" >/dev/null
+  grep -Fx 'backend=true' "$partial/target.plan" >/dev/null
+  grep -Fx 'control=true' "$partial/target.plan" >/dev/null
+)
+verify_partial_controller_operator_recovery "$C"
+verify_partial_controller_operator_recovery "$MARKER"
 # The real host classifier and interrupted-entrypoint validator must accept C,
 # not merely the client's read-only plan stub.
 (
@@ -358,7 +461,7 @@ for drift in absent symlink mode; do
   bad_target=$(production_forward_git commit-tree "$tree" -p "$TARGET" -m "test: $drift")
   if production_forward_validate_recovery "$bad_target"; then fail "controller drift admitted: $drift"; fi
 done
-# Parent count and one-path delta checks are independent of byte compatibility.
+# Parent count and exact two-path delta checks are independent of byte compatibility.
 for drift in parent merge delta; do
   tree=$(production_forward_git rev-parse "$C^{tree}")
   parents=(-p "$MARKER")

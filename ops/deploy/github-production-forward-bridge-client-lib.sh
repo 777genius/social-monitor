@@ -238,7 +238,7 @@ plan_is_approved_production_forward_handoff() {
 
 # Exact incident authority: the side commit changes only the entrypoint.
 PRODUCTION_FORWARD_RECOVERY_BASE=7e800e90d3295cc881e21a3e81b611fa57eb5b2a
-PRODUCTION_FORWARD_RECOVERY_BRIDGE=8df8f3ba4e028e7fa7f837484541e58caf44a3f9
+PRODUCTION_FORWARD_RECOVERY_BRIDGE=77a24e22e8b56e4919ba06fd7ee844bac1dabc59
 
 production_forward_controller_paths() {
   printf '%s\n' \
@@ -278,7 +278,7 @@ production_forward_validate_recovery() {
      "$bridge $PRODUCTION_FORWARD_RECOVERY_BASE" ]] || return 1
   delta=$(production_forward_git diff-tree --no-commit-id --name-only --no-renames \
     -r "$PRODUCTION_FORWARD_RECOVERY_BASE" "$bridge") || return 1
-  [[ $delta == ops/deploy/social-monitor-production-deploy.sh ]] || return 1
+  [[ $delta == $'ops/deploy/deploy-control-lib.sh\nops/deploy/social-monitor-production-deploy.sh' ]] || return 1
   production_forward_controller_is_compatible "$bridge" "$target"
 }
 
