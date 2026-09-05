@@ -364,11 +364,22 @@ describe("PrismaReaderSummaryRecoveryFinalization", () => {
     await expect(
       publication.publish(fixture.command.publication),
     ).resolves.toBe("published");
-    expect(String(queryRaw.mock.calls[0]?.[0])).toContain(
-      'FROM "publish_reader_summary"',
+    const queries = queryRaw.mock.calls.map(([query]) => String(query));
+    const publicationQueries = queries.filter((query) =>
+      query.includes('FROM "publish_reader_summary"'),
     );
-    expect(String(queryRaw.mock.calls[0]?.[0])).not.toContain(
-      "finalize_reader_summary_recovery",
+    expect(publicationQueries).toHaveLength(1);
+    for (const query of queries) {
+      expect(query).not.toContain("finalize_reader_summary_recovery");
+    }
+    const deadlineQueryIndex = queries.findIndex((query) =>
+      query.includes("set_config('statement_timeout'"),
+    );
+    expect(deadlineQueryIndex).toBeGreaterThanOrEqual(0);
+    expect(deadlineQueryIndex).toBeLessThan(
+      queries.findIndex((query) =>
+        query.includes('FROM "publish_reader_summary"'),
+      ),
     );
   });
 });

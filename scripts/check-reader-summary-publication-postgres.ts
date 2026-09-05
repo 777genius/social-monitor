@@ -1,4 +1,5 @@
 import { randomBytes, randomUUID } from "node:crypto";
+import { assertLargeDailyPublicationPostgresContract } from "./lib/reader-summary-large-daily-publication-postgres-contract";
 import { spawnSync } from "node:child_process";
 import { Pool, type PoolClient } from "pg";
 import {
@@ -332,6 +333,7 @@ export const runReaderSummaryPublicationPostgresContract = async (
           }
           return;
         }
+        await assertLargeDailyPublicationPostgresContract(first, auditor);
         await assertReaderSummaryWeeklyPublicationEvidencePostgresContract({
           runtimeClient: first,
           canonicalJsonAuditor: auditor,

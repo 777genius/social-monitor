@@ -445,6 +445,9 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       })
       .sort();
 
+    // The large-daily and linear-UTF16 synthetic PostgreSQL contracts receive
+    // existing clients and import only the PoolClient type. Inventory their
+    // exact paths even though they construct no runtime pools.
     expect(rawDependencyFiles).toEqual(expectedSourceList(`
       libs/platform/persistence/src/postgres-runtime-pool-cleanup.ts
       libs/platform/persistence/src/postgres-runtime-pool-concurrency.spec.ts
@@ -495,6 +498,8 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/lib/reader-summary-daily-production-owner-topology-postgres.ts
       scripts/lib/reader-summary-daily-terminal-runtime-connection.spec.ts
       scripts/lib/reader-summary-daily-terminal-runtime-connection.ts
+      scripts/lib/reader-summary-large-daily-publication-postgres-contract.ts
+      scripts/lib/reader-summary-linear-utf16-postgres-contract.ts
       scripts/lib/reader-summary-production-day-scope.spec.ts
       scripts/lib/reader-summary-production-day-scope.ts
       scripts/lib/reader-summary-promotion-v2-historical-postgres.ts

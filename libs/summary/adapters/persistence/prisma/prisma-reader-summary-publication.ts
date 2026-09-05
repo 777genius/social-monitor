@@ -16,10 +16,14 @@ import {
 import type { PrismaSummaryClient } from "./prisma-summary-client";
 import type { PrismaReaderSummaryClient } from "./prisma-reader-summary-client";
 import { runSerializableReaderSummaryTransaction } from "./prisma-summary-transaction";
+import {
+  configureReaderSummaryPublicationDeadline,
+  readerSummaryPublicationTimeoutMs,
+} from "./prisma-reader-summary-publication-deadline";
 
 const publicationTransactionOptions = Object.freeze({
   maxWait: 30_000,
-  timeout: 300_000,
+  timeout: readerSummaryPublicationTimeoutMs,
 });
 
 export type ReaderSummaryPublicationTransactionGuard = (
@@ -46,6 +50,7 @@ export class PrismaReaderSummaryPublication implements ReaderSummaryPublicationP
       runSerializableReaderSummaryTransaction(
         this.prisma,
         async (prisma) => {
+          await configureReaderSummaryPublicationDeadline(prisma);
           await this.transactionGuard?.(prisma, command);
           return prisma.$queryRaw<readonly ReaderSummaryPublicationSqlRow[]>`
             SELECT *
