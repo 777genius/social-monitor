@@ -33,7 +33,7 @@ cmp -s "$REPO/ops/observability/otel-collector.yml" "$CONFIG_SNAPSHOT"
 if ! snapshot_mode=$(stat -f '%Lp' "$CONFIG_SNAPSHOT" 2>/dev/null); then
   snapshot_mode=$(stat -c '%a' "$CONFIG_SNAPSHOT")
 fi
-[[ $snapshot_mode == 600 ]]
+[[ $snapshot_mode == 644 ]]
 
 STATE_FILE=$STATE/backend-image-rescue-$TARGET_SHA.tsv
 EVENT_LOG=$FIXTURE/events.log
@@ -60,7 +60,27 @@ grep -F 'compose:--profile app --profile daily rm -sf otel-collector' \
 printf 'image\totel-collector\trecreate\trunning-image\tcollector-container\t%s\t%s\n' \
   'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' \
   "$(backend_image_rescue_tag "$TARGET_SHA" otel-collector)" > "$STATE_FILE"
+for invalid_mode in 600 666; do
+  chmod "$invalid_mode" "$CONFIG_SNAPSHOT"
+  if rollback_backend_images "$STATE_FILE"; then
+    printf 'unsafe collector snapshot mode was accepted: %s\n' "$invalid_mode" >&2
+    exit 1
+  fi
+  [[ ! -s $EVENT_LOG && -f $CONFIG_SNAPSHOT ]]
+done
+chmod 0644 "$CONFIG_SNAPSHOT"
+mv "$CONFIG_SNAPSHOT" "$CONFIG_SNAPSHOT.saved"
+ln -s "$CONFIG_SNAPSHOT.saved" "$CONFIG_SNAPSHOT"
+if rollback_backend_images "$STATE_FILE"; then
+  printf 'symlink collector snapshot was accepted\n' >&2
+  exit 1
+fi
+[[ ! -s $EVENT_LOG ]]
+rm "$CONFIG_SNAPSHOT"
+mv "$CONFIG_SNAPSHOT.saved" "$CONFIG_SNAPSHOT"
 rollback_backend_images "$STATE_FILE"
+# A successful rollback must keep the live bind source for future restarts.
+[[ -f $CONFIG_SNAPSHOT && ! -L $CONFIG_SNAPSHOT ]]
 grep -F 'compose:--profile app up -d --no-deps --force-recreate otel-collector' \
   "$EVENT_LOG" >/dev/null
 grep -F "image=$(backend_image_rescue_tag "$TARGET_SHA" otel-collector)" \
