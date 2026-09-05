@@ -3,7 +3,7 @@ import { HttpRedditClient } from "./http-reddit-client";
 const post = (id: string, extra = {}) => ({ kind: "t3", data: { id, name: `t3_${id}`, score: 12, num_comments: 3, ...extra } });
 describe("Reddit retained post lookup HTTP contract", () => {
   const client = new HttpRedditClient();
-  const request = (ids: string[]) => client.getPostsByIds({ ids, accessToken: "fixture-token" });
+  const request = (ids: string[]) => client.getPostsByIds({ ids, accessToken: "raw-token" });
   let fetchMock: jest.SpyInstance;
   beforeEach(() => { fetchMock = jest.spyOn(globalThis, "fetch"); });
   afterEach(() => jest.restoreAllMocks());
@@ -13,7 +13,7 @@ describe("Reddit retained post lookup HTTP contract", () => {
     const [url, options] = fetchMock.mock.calls[0]!;
     expect(String(url)).toBe("https://oauth.reddit.com/api/info?id=t3_abc%2Ct3_def&raw_json=1");
     expect(options.signal).toBeInstanceOf(AbortSignal);
-    expect(options.headers.authorization).toBe("Bearer fixture-token");
+    expect(options.headers.authorization).toBe("Bearer raw-token");
   });
   it.each([["abc", "t3_abc"], ["t1_abc"], [], Array.from({ length: 101 }, (_, i) => `a${i}`)])("rejects invalid/duplicate/unbounded input %j before HTTP", async (...ids) => {
     await expect(request(ids as string[])).rejects.toThrow();
