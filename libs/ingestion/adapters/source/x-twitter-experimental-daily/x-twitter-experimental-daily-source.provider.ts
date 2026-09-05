@@ -197,10 +197,17 @@ export class XTwitterSourceProvider implements SourceProviderPort {
         );
       } catch (error) {
         const failure = this.classifyError(error);
-        if (failure.kind === "rate_limited" && postsByExternalId.size > 0) {
+        if (
+          postsByExternalId.size > 0 &&
+          failure.retryable &&
+          (failure.kind === "rate_limited" || failure.kind === "unavailable")
+        ) {
+          const warningCode = failure.kind === "rate_limited"
+            ? "x-twitter.partial_rate_limit"
+            : "x-twitter.partial_provider_failure";
           warnings.push(
             redactSensitiveText(
-              `${searchQuery}: x-twitter.partial_rate_limit: ${failure.message}`,
+              `${searchQuery}: ${warningCode}: ${failure.message}`,
             ),
           );
           break;
