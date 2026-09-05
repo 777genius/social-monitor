@@ -196,6 +196,9 @@ if [[ $mode == --reproduce ]]; then source "$fixture/old-client"; fi
 POSTGRES_POOL_BOOTSTRAP_VERSION=postgres-pool-v1
 capture_plan() {
   printf '%s\n' "$1" >> "$fixture/plans"
+  if declare -F fixture_host_preflight >/dev/null; then
+    fixture_host_preflight plan "$1" || return $?
+  fi
   PLAN_FRONTEND=false PLAN_BACKEND=true PLAN_CONTROL=true PLAN_X_COLLECTOR=false
   PLAN_BACKEND_BASE=$(cat "$STATE/backend.sha")
   PLAN_POSTGRES_POOL_BOOTSTRAP=$POSTGRES_POOL_BOOTSTRAP_VERSION
@@ -224,6 +227,24 @@ export GIT_AUTHOR_NAME=stale-test GIT_AUTHOR_EMAIL=stale@example.invalid
 export GIT_COMMITTER_NAME=$GIT_AUTHOR_NAME GIT_COMMITTER_EMAIL=$GIT_AUTHOR_EMAIL
 TARGET=$(production_forward_git commit-tree "$TARGET^{tree}" -p "$TARGET" -p "$C" -m 'test: retain recovery controller')
 production_forward_validate_recovery "$TARGET"
+production_forward_git update-ref refs/remotes/origin/main "$TARGET"
+# Keep the real committed host preflight, terminal-state parser and ordinary
+# deploy guard in the transport fixture. Only the network fetch is replaced.
+fixture_host_preflight() (
+  REPO=$fixture/repo
+  SOCIAL_MONITOR_DEPLOY_TEST_MODE=1
+  source_reviewed_deploy_library "$MARKER" \
+    ops/deploy/production-transition-b0-host-control.sh 'committed host prelude'
+  fetch_main() { [[ $(production_forward_git rev-parse origin/main) == "$TARGET" ]]; }
+  validate_main_commit() { production_forward_git merge-base --is-ancestor "$1" origin/main; }
+  production_transition_host_preflight_prelude "$1" "$2"
+  if [[ $1 == deploy ]]; then production_transition_host_require_ordinary_deploy "$2"; fi
+  production_transition_host_release_lock
+)
+printf 'version=production-transition-b0-host-state-v1\nstatus=terminal\ntrusted-base=%s\ntarget=%s\ntarget-tree=%s\n' \
+  "$MARKER" "$MARKER" "$(production_forward_git rev-parse "$MARKER^{tree}")" \
+  > "$STATE/production-transition-b0-host.state"
+chmod 0600 "$STATE/production-transition-b0-host.state"
 # The real host classifier and interrupted-entrypoint validator must accept C,
 # not merely the client's read-only plan stub.
 (
@@ -246,12 +267,24 @@ production_forward_validate_recovery "$TARGET"
 RECONCILE_ATTEMPTS=2 RECONCILE_INTERVAL_SECONDS=0
 run_remote() {
   [[ $1 == deploy && $2 == "$C" ]] || fail 'unexpected remote mutation'
+  fixture_host_preflight deploy "$2" || return $?
   printf '%s\n' "$2" >> "$fixture/deploys"
+  production_forward_git update-ref HEAD "$C"
+  printf '%s\n' "$C" > "$STATE/control.sha"
   printf '%s\n' "$C" > "$STATE/postgres-pool-bootstrap.sha"
   return 255
 }
 prepare_production_forward_bridge "$TARGET"
 prepare_production_forward_bridge "$TARGET"
+# Once C is current, only the descendant target remains host-admitted for
+# reconciliation; neither planning nor replaying deploy C is permitted.
+for action in plan deploy; do
+  if fixture_host_preflight "$action" "$C" > "$fixture/current-c.log" 2>&1; then
+    fail "current C unexpectedly admitted $action C"
+  fi
+  grep -Fx 'deploy-client-error: production prelude target is not exact origin main' \
+    "$fixture/current-c.log" >/dev/null
+done
 # A completed backend transaction can precede the final pool marker write.
 # Resuming this exact target must keep C and avoid another bridge deployment.
 printf '%s\n' "$TARGET" > "$STATE/backend.sha"

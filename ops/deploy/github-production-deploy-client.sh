@@ -732,7 +732,7 @@ reconcile_deploy_plan() {
 }
 
 deploy_once() {
-  local sha=$1
+  local sha=$1 reconciliation_sha=${2:-$1}
   local status
   if run_remote deploy "$sha"; then
     status=0
@@ -743,7 +743,8 @@ deploy_once() {
   if ((status == 255)); then
     printf 'deploy-client: SSH disconnected after deploy; the deploy will not be rerun\n' >&2
   fi
-  reconcile_deploy_plan "$sha"
+  # A control-only bridge can require reconciliation through its main target.
+  reconcile_deploy_plan "$reconciliation_sha"
 }
 
 deploy_release() {

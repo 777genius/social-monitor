@@ -344,9 +344,10 @@ prepare_production_forward_bridge() {
     (
       # shellcheck disable=SC2329 # Called by deploy_once reconciliation.
       plan_is_fully_reconciled() {
-        production_forward_plan_is_fully_reconciled "$PRODUCTION_FORWARD_RECOVERY_BRIDGE"
+        plan_is_exact_production_forward_recovery true "$PRODUCTION_FORWARD_RECOVERY_BRIDGE" || \
+          plan_is_exact_production_forward_recovery false "$PRODUCTION_FORWARD_RECOVERY_BRIDGE" "$target"
       }
-      deploy_once "$PRODUCTION_FORWARD_RECOVERY_BRIDGE"
+      deploy_once "$PRODUCTION_FORWARD_RECOVERY_BRIDGE" "$target"
     )
     return
   fi
