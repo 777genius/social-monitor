@@ -183,7 +183,9 @@ assert_real_bridge_target_assets() {
       ops/deploy/backend-image-rescue-lib.sh)
         expected_digest=68f13213e6d1662d943185df7cdd1c11678261e76977021f74493c4e6c643b59
         alternate_digest=c8d363b8d64402ee77e42d62aac67ce9d4543135e328255557d2036c8ef3a398
-        current_release_digest=02ab92e562ce8d612e0a068260bd63262c13c0142f34a6bb6973d0d96eeea13a
+        # Current release keeps the public collector snapshot readable and
+        # rejects unsafe snapshot modes before a rollback recreate.
+        current_release_digest=85ef1cf10c357ee3a40004ccd677bfbafa2e2fe5553ea5963fe879d050643884
         ;;
       ops/deploy/deploy-control-bridge-lib.sh)
         expected_digest=e6f958555966b77d02b85da8d0b9195e13a200dcb2b19c8afc010fab6d28b65d
