@@ -21,6 +21,12 @@ COPY libs ./libs
 ARG PRISMA_GENERATE_DATABASE_URL=postgresql://social_monitor:social_monitor_local_password@localhost:5432/social_monitor
 RUN DATABASE_URL="${PRISMA_GENERATE_DATABASE_URL}" npm run prisma:generate && npm run build
 
+# Host checkouts may use umask 077. Keep public image assets root-owned and
+# readable by node, preserving executable tools and directory traversal.
+RUN chmod -R u=rwX,go=rX \
+  apps libs prisma scripts vendor dist \
+  tsconfig.json tsconfig.build.json prisma.config.ts
+
 ARG SERVICE=api
 ENV NODE_ENV=production
 ENV SERVICE=${SERVICE}
