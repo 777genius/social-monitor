@@ -19,7 +19,7 @@ export async function withReaderDeliveryPostgresFixture(
   const role = `${name}_runtime`;
   const systemRole = `${name}_system`;
   const password = randomBytes(24).toString('hex');
-  const admin = new Pool({ connectionString: configured, max: 1 });
+  const admin = new Pool({ connectionString: configured, min: 0, max: 1 });
   let database: Pool | undefined;
   let created = false;
   let roleCreated = false;
@@ -33,7 +33,7 @@ export async function withReaderDeliveryPostgresFixture(
     systemCreated = true;
     url.pathname = `/${name}`;
     const adminUrl = url.toString();
-    database = new Pool({ connectionString: adminUrl, max: 1 });
+    database = new Pool({ connectionString: adminUrl, min: 0, max: 1 });
     await installDeliveryTables(database, role, systemRole);
     url.username = role;
     url.password = password;
