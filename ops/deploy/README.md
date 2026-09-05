@@ -404,3 +404,89 @@ The pool release continues to own no timer; exactly one existing reviewed daily
 timer must remain enabled. The daily service timeout is 23,400 seconds with
 `Restart=no`, which covers the bounded 7,500-second admission wait plus the
 bounded production-day command without systemd starting a duplicate attempt.
+
+## Exact source handoff after the failed 30cba8fb deployment
+
+`production-exact-source-handoff.py` is an independently reviewed operator
+transaction for machine `be0aad971ea647fab370acd110b469b7` only. It stages source
+from exact `30cba8fb89c8eaad18ee8c432f9bcbaef9d58040` to exact `origin/main`
+T, retaining the product payload and sealed controls of
+`350ab58d30d443f29ccbf137debd204dfb60160d`. Only this helper, its regression and
+support, this appended section, and the single lifecycle runner hook may differ
+from that baseline. There is no intermediate bridge or client/host exception.
+The branch API reports `protected:false`; the original incident prompt's
+"protected" description was mistaken. Exact SHA/tree, the reviewed inspect plan
+and independent root approval supply authority. Do not change branch settings.
+
+Root must independently review the final patch and sanitized production
+inventory before use. Confirm every GitHub auto-deploy is terminal and reserve
+at least 5 GiB. The helper observes the remote SHA/tree through `gh api`, binds
+local origin/configuration, verifies target objects and sets child Git
+`GIT_NO_LAZY_FETCH=1`; it never fetches or executes credential helpers. The actual
+partial-clone config and harmless pre-commit/pre-push hooks remain intact and
+hash-bound. Executable transaction hooks and filters are refused. Root supplies
+the already fetched exact T and its reviewed tree. Install the reviewed
+helper and unchanged `b0-controller-repair.py` together in a root-owned directory
+outside integration, with no group/other write permission. Run Python isolated;
+the historical helper's exact SHA256 is verified before it executes. Never load
+either helper from an unreviewed target checkout.
+
+Example root commands, after filling the independently reviewed values:
+
+```sh
+incident_dir=/var/data/social-monitor/control/exact-source-operator-20260905
+incident_target=REVIEWED_FULL_MAIN_SHA
+python3 -I -B "$incident_dir/production-exact-source-handoff.py" inspect "$incident_target" > "$incident_dir/inspect.json"
+# Review the entire plan: trees, each old/new path/mode/blob, and host identities.
+incident_plan_sha=REVIEWED_INSPECT_PLAN_SHA256
+python3 -I -B "$incident_dir/production-exact-source-handoff.py" apply "$incident_target" --approved-plan-sha256 "$incident_plan_sha"
+python3 -I -B "$incident_dir/production-exact-source-handoff.py" handoff "$incident_target" --approved-plan-sha256 "$incident_plan_sha"
+runuser -u social-monitor-deploy -- \
+  env SSH_ORIGINAL_COMMAND="deploy $incident_target" \
+  /var/data/social-monitor/control/github-production-deploy-wrapper.sh
+```
+
+The plan binds the four restrictive 0600/0700 source preimages, actual markers,
+each installed control's explicit C2/7e blob, runtime link/READY, idle units,
+container identities/images/restarts, credentials and referenced w/y snapshot,
+and frontend release/link identities, including the idle weekly unit. It binds
+the residual 30 OTel config, accounts for current marker hardlinks and preserves
+inert archives, quarantine/rollback directories and retired markers/holds without
+recursively inventorying them. CLI databases, WALs, caches, logs and unrelated
+workers are outside the credential inventory.
+Existing coordination lock files are inspected by inode and ownership, then
+locked; their mere existence is not evidence of active work.
+
+Prepare/backups and source completion are durable before handoff. Source staging
+executes no target code, hook or service and writes no deployment marker. Before
+the durable `ordinary-handoff` receipt, an interrupted recognized old/new source,
+index or HEAD state can use the same command with `rollback` instead of `handoff`;
+the four original restrictive modes are restored. Unknown bytes, locks or host
+drift require investigation. Keep all receipts and artifacts. After handoff,
+source rollback is forbidden; the existing wrapper's fresh current=T authority
+checks all eleven exact controller blobs, and ordinary deployment owns runtime,
+images, migrations, markers and recovery. A failed/idle service is observed as
+idle, never described as a successful run.
+
+Offline evidence: `python3 -B ops/deploy/production-exact-source-handoff.test.py`
+uses new `/tmp` repositories and real historical Git/host/client guards, with
+external observations and physical runtime effects stubbed. Real root can run
+the ownership checks directly; non-root uses Linux user namespaces. On GitHub
+CI hosts denying unprivileged uid maps, the test runs through noninteractive
+sudo in a new root-owned disposable clone, never chowning the caller's checkout
+or changing host security settings. `--owned-root-fixture` exercises that same
+isolated path explicitly. No ownership assertions are skipped. Also run
+`bash ops/deploy/otel-collector-deploy-lifecycle.test.sh` for the unchanged OTel
+0644 contract and its 0600/0666/symlink rejection cases. Neither test uses Docker
+or network access.
+
+The common Git root may own foreign linked-worktree administration: only its
+safe `worktrees` directory boundary is checked, never foreign contents or locks.
+Current/common Git locks still refuse staging. Child Git commands suppress
+automatic maintenance so the transaction cannot leave background Git work.
+Unrelated ignored caches and generated outputs are preserved. Exact changed
+paths must match their preimages, new target paths must be absent, and Git
+merge/rollback checkout refuse overwriting ignored files even on a late collision.
+The five-field terminal transition must identify the activated commit/tree.
+An empty idle 0600 legacy auth cursor lock is held and preserved; busy/unsafe
+locks and an auth-changed marker still refuse preparation and handoff.
