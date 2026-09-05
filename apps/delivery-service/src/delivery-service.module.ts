@@ -1,3 +1,6 @@
+import { ProjectReaderSummaryReadyEventUseCase } from '@social-monitor/delivery/features/project-reader-summary-ready-event/project-reader-summary-ready-event.use-case';
+import { ProjectReaderSummaryReadyEventHandler } from '@social-monitor/delivery/interfaces/events/project-reader-summary-ready-event.handler';
+import { SummaryReadyEventDispatcher } from '@social-monitor/delivery/interfaces/events/summary-ready-event.dispatcher';
 import { Module } from '@nestjs/common';
 
 import { InMemoryQueuePublisher } from '@social-monitor/platform-queue/adapters/in-memory';
@@ -237,6 +240,18 @@ type RabbitMqDeliveryAttemptQueueChannelPort =
       inject: [SendDeliveryAttemptUseCase, METRICS_RECORDER, WorkerRuntime],
     },
     {
+      provide: ProjectReaderSummaryReadyEventHandler,
+      useFactory: (project: ProjectReaderSummaryReadyEventUseCase, metrics: MetricsRecorderPort, runtime: WorkerRuntime) =>
+        new ProjectReaderSummaryReadyEventHandler(project, metrics, runtime),
+      inject: [ProjectReaderSummaryReadyEventUseCase, METRICS_RECORDER, WorkerRuntime],
+    },
+    {
+      provide: SummaryReadyEventDispatcher,
+      useFactory: (summary: ProjectSummaryReadyEventHandler, reader: ProjectReaderSummaryReadyEventHandler) =>
+        new SummaryReadyEventDispatcher(summary, reader),
+      inject: [ProjectSummaryReadyEventHandler, ProjectReaderSummaryReadyEventHandler],
+    },
+    {
       provide: ProjectSummaryReadyEventHandler,
       useFactory: (
         projectSummaryReady: ProjectSummaryReadyEventUseCase,
@@ -279,13 +294,13 @@ type RabbitMqDeliveryAttemptQueueChannelPort =
       provide: SummaryReadyEventDrainLoop,
       useFactory: (
         queue: SummaryReadyEventQueueReaderPort,
-        handler: ProjectSummaryReadyEventHandler,
+        handler: SummaryReadyEventDispatcher,
         options: ReturnType<typeof resolveDeliverySummaryReadyEventDrainLoopOptions>,
         metrics: MetricsRecorderPort,
       ) => new SummaryReadyEventDrainLoop(queue, handler, options, metrics, new SystemClock()),
       inject: [
         DELIVERY_SUMMARY_READY_EVENT_QUEUE_READER,
-        ProjectSummaryReadyEventHandler,
+        SummaryReadyEventDispatcher,
         DELIVERY_SUMMARY_READY_EVENT_DRAIN_LOOP_OPTIONS,
         METRICS_RECORDER,
       ],
@@ -293,6 +308,8 @@ type RabbitMqDeliveryAttemptQueueChannelPort =
     DigestSchedulerLoop,
   ],
   exports: [
+    ProjectReaderSummaryReadyEventHandler,
+    SummaryReadyEventDispatcher,
     ProjectSummaryReadyEventHandler,
     ScheduleDueDigestsCommandHandler,
     SendDeliveryAttemptCommandHandler,

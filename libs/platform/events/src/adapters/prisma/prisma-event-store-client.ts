@@ -13,6 +13,8 @@ export type PrismaEventOutboxRecord = {
   readonly causationId: string | null;
   readonly createdAt: Date;
   readonly publishedAt: Date | null;
+  readonly publishAttempts: number;
+  readonly lastError: string | null;
 };
 
 export type PrismaInboxRecord = {
@@ -37,7 +39,9 @@ export type PrismaEventStoreClient = {
     update(args: {
       readonly where: { readonly id: string };
       readonly data: {
-        readonly status: PrismaEventOutboxStatus;
+        readonly status?: PrismaEventOutboxStatus;
+        readonly publishAttempts?: { readonly increment: number };
+        readonly lastError?: string | null;
         readonly publishedAt?: Date | null;
       };
     }): Promise<PrismaEventOutboxRecord>;

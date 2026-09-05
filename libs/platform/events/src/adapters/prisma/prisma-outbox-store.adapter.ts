@@ -4,6 +4,7 @@ import {
 } from '@social-monitor/platform-persistence';
 import {
   causationId,
+  redactSensitiveResponseText,
   correlationId,
   eventId,
   tenantId,
@@ -38,24 +39,38 @@ export class PrismaOutboxStoreAdapter implements OutboxStorePort {
     }));
   }
 
+  async recordAttempt(id: string): Promise<void> {
+    await runWithSystemDatabaseAccess('event outbox dispatch start', () =>
+      withPrismaWriteRetry(() => this.prisma.outboxEvent.update({
+        where: { id },
+        data: {
+          publishAttempts: { increment: 1 },
+          lastError: 'Dispatch started; outcome unknown. Earlier uninstrumented attempts unknown.',
+        },
+      })),
+    );
+  }
+
   async markPublished(id: string): Promise<void> {
     await runWithSystemDatabaseAccess('event outbox publish acknowledgement', () =>
       withPrismaWriteRetry(() => this.prisma.outboxEvent.update({
         where: { id },
         data: {
           status: 'PUBLISHED',
+          lastError: null,
           publishedAt: this.clock.now(),
         },
       })),
     );
   }
 
-  async markFailed(id: string): Promise<void> {
+  async markFailed(id: string, reason: string): Promise<void> {
     await runWithSystemDatabaseAccess('event outbox failure acknowledgement', () =>
       withPrismaWriteRetry(() => this.prisma.outboxEvent.update({
         where: { id },
         data: {
           status: 'FAILED',
+          lastError: redactSensitiveResponseText(reason).replace(/[\r\n\t]/g, ' '),
           publishedAt: null,
         },
       })),

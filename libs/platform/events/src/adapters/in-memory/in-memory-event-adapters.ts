@@ -1,13 +1,13 @@
-import type { EventEnvelope } from '@social-monitor/shared-kernel';
+import { redactSensitiveResponseText, type EventEnvelope } from '@social-monitor/shared-kernel';
 
 import type { InboxStorePort } from '../../inbox-deduplicator';
 import type { EventPublisherPort, OutboxRecord, OutboxStorePort } from '../../outbox-dispatcher';
 
 export class InMemoryOutboxStore implements OutboxStorePort {
-  private readonly records = new Map<string, OutboxRecord & { status: 'pending' | 'published' | 'failed' }>();
+  private readonly records = new Map<string, OutboxRecord & { status: 'pending' | 'published' | 'failed'; publishAttempts: number; lastError: string | null }>();
 
   add(record: OutboxRecord): void {
-    this.records.set(record.id, { ...record, status: 'pending' });
+    this.records.set(record.id, { ...record, status: 'pending', publishAttempts: 0, lastError: null });
   }
 
   async pending(limit: number): Promise<readonly OutboxRecord[]> {
@@ -17,17 +17,24 @@ export class InMemoryOutboxStore implements OutboxStorePort {
       .map((record) => ({ id: record.id, event: record.event }));
   }
 
+  async recordAttempt(id: string): Promise<void> {
+    const record = this.records.get(id);
+    if (!record) throw new Error('Outbox record is missing');
+    this.records.set(id, { ...record, publishAttempts: record.publishAttempts + 1,
+      lastError: 'Dispatch started; outcome unknown. Earlier uninstrumented attempts unknown.' });
+  }
+
   async markPublished(id: string): Promise<void> {
     const record = this.records.get(id);
     if (record) {
-      this.records.set(id, { ...record, status: 'published' });
+      this.records.set(id, { ...record, status: 'published', lastError: null });
     }
   }
 
-  async markFailed(id: string): Promise<void> {
+  async markFailed(id: string, reason: string): Promise<void> {
     const record = this.records.get(id);
     if (record) {
-      this.records.set(id, { ...record, status: 'failed' });
+      this.records.set(id, { ...record, status: 'failed', lastError: redactSensitiveResponseText(reason).replace(/[\r\n\t]/g, ' ') });
     }
   }
 }

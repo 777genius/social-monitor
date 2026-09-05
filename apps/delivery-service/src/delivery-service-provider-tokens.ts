@@ -285,7 +285,7 @@ export const resolveDeliverySummaryReadyEventQueueOptions = (
 ): DeliverySummaryReadyEventQueueOptions => ({
   exchange: nonEmptyOrFallback(env.RABBITMQ_EVENT_EXCHANGE, 'social-monitor.events'),
   queue: nonEmptyOrFallback(env.RABBITMQ_SUMMARY_READY_EVENT_QUEUE, 'events.delivery.summary.ready'),
-  routingKey: nonEmptyOrFallback(env.RABBITMQ_SUMMARY_READY_EVENT_ROUTING_KEY, 'summary.ready'),
+  routingKey: resolveSummaryReadyRoutingKey(env.RABBITMQ_SUMMARY_READY_EVENT_ROUTING_KEY),
   deadLetterExchange: parseRabbitMqDeadLetterExchange(env.RABBITMQ_DEAD_LETTER_EXCHANGE, {
     runtimeProfile: env.SOCIAL_MONITOR_RUNTIME_PROFILE,
     settingName: 'DELIVERY_SUMMARY_READY_EVENT_READER=rabbitmq',
@@ -383,3 +383,12 @@ const parseBoundedInteger = (
 
   return parsed;
 };
+
+// This shared queue accepts exactly these two domain events. A wildcard or an
+// override cannot silently remove the legacy binding or route arbitrary events.
+function resolveSummaryReadyRoutingKey(value: string | undefined): 'summary.ready' {
+  if (value !== undefined && value !== 'summary.ready') {
+    throw new Error('RABBITMQ_SUMMARY_READY_EVENT_ROUTING_KEY must be summary.ready');
+  }
+  return 'summary.ready';
+}

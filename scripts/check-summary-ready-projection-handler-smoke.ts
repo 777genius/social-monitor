@@ -23,8 +23,8 @@ const assert: (condition: unknown, message: string) => asserts condition = (cond
 };
 
 async function main(): Promise<void> {
-  const tenant = tenantId('tenant-summary-ready-projection-smoke');
-  const workspace = workspaceId('workspace-summary-ready-projection-smoke');
+  const tenant = tenantId('00000000-0000-4000-8000-000000009101');
+  const workspace = workspaceId('00000000-0000-4000-8000-000000009102');
   const realtimeEvents = new InMemoryRealtimeEventRepository();
   const metrics = new InMemoryMetricsRecorder();
   const runtime = new WorkerRuntime({ serviceName: 'delivery-service' });

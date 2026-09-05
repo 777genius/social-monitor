@@ -4,6 +4,9 @@ import {
   resolveDeliveryAttemptDispatchQueueMode,
   resolveDeliveryAttemptDispatchTarget,
   resolveDeliveryAttemptQueueReaderMode,
+  resolveDeliverySummaryReadyEventReaderMode,
+  resolveDeliverySummaryReadyEventDrainLoopOptions,
+  resolveDeliverySummaryReadyEventQueueOptions,
 } from '../apps/delivery-service/src/delivery-service-provider-tokens';
 import { resolveEventRelayLoopOptions } from '../apps/event-relay/src/event-relay-provider-tokens';
 import {
@@ -458,5 +461,18 @@ assertThrows(
   () => resolveEventRelayLoopOptions({ ...betaEnv, EVENT_RELAY_LOOP: 'disabled' }),
   'EVENT_RELAY_LOOP must reject disabled mode in beta runtime',
 );
+
+assertThrows(() => resolveDeliverySummaryReadyEventReaderMode(betaEnv),
+  'beta ReaderSummary delivery must require the durable shared event reader');
+assertThrows(() => resolveDeliverySummaryReadyEventDrainLoopOptions({ ...betaEnv, DELIVERY_SUMMARY_READY_EVENT_DRAIN_LOOP: 'disabled' }),
+  'beta ReaderSummary delivery must not disable the shared drain loop');
+assert(resolveDeliverySummaryReadyEventReaderMode({ ...rabbitMqEnv, DELIVERY_SUMMARY_READY_EVENT_READER: 'rabbitmq' }) === 'rabbitmq',
+  'ReaderSummary delivery must use the existing RabbitMQ runtime selector');
+for (const routingKey of ['#', 'reader_summary.ready', 'summary.failed']) {
+  assertThrows(() => resolveDeliverySummaryReadyEventQueueOptions({ ...rabbitMqEnv, RABBITMQ_SUMMARY_READY_EVENT_ROUTING_KEY: routingKey }),
+    'shared summary queue routing must retain its exact legacy binding');
+}
+assert(resolveDeliverySummaryReadyEventQueueOptions(rabbitMqEnv).routingKey === 'summary.ready',
+  'shared queue must retain legacy summary.ready alongside the explicit reader binding');
 
 console.log('Runtime profile guards OK');

@@ -108,6 +108,7 @@ export class RabbitMqSummaryReadyEventQueueReader implements SummaryReadyEventQu
         deliveryLimit: this.options.deliveryLimit,
       }),
     });
+    await this.channel.bindQueue(this.options.queue, this.options.exchange, 'reader_summary.ready');
     await this.channel.bindQueue(this.options.queue, this.options.exchange, this.options.routingKey);
     await this.channel.prefetch(prefetch);
     this.routeAsserted = true;
@@ -124,7 +125,8 @@ const parseSummaryReadyEvent = (
   }
 
   const event = parsed as Readonly<Record<string, unknown>>;
-  if (event.eventType !== 'summary.ready') {
+  if ((event.eventType !== 'summary.ready' && event.eventType !== 'reader_summary.ready') ||
+      message.fields.routingKey !== event.eventType) {
     throw new Error('Invalid RabbitMQ event envelope: eventType');
   }
 

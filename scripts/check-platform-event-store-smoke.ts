@@ -42,6 +42,8 @@ async function main(): Promise<void> {
     causationId: null,
     createdAt: new Date('2026-06-16T00:00:00.000Z'),
     publishedAt: null,
+    publishAttempts: 0,
+    lastError: null,
   });
 
   const publisher = new InMemoryEventPublisher();
@@ -70,6 +72,8 @@ async function main(): Promise<void> {
     causationId: null,
     createdAt: new Date('2026-06-16T00:01:00.000Z'),
     publishedAt: null,
+    publishAttempts: 0,
+    lastError: null,
   });
 
   const failingDispatcher = new OutboxDispatcher(new PrismaOutboxStoreAdapter(prisma, clock), {
@@ -133,7 +137,9 @@ class FakePrismaEventStoreClient implements PrismaEventStoreClient {
 
       const record: PrismaEventOutboxRecord = {
         ...existing,
-        status: args.data.status,
+        status: args.data.status ?? existing.status,
+        publishAttempts: existing.publishAttempts + (args.data.publishAttempts?.increment ?? 0),
+        lastError: args.data.lastError === undefined ? existing.lastError : args.data.lastError,
         publishedAt: args.data.publishedAt ?? null,
       };
       this.outboxEvents.set(record.id, record);
