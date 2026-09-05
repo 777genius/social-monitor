@@ -21,7 +21,7 @@ export async function assertEngagementSnapshotRefreshPostgres(params: {
     "engagement refresh proof requires the disposable publication fixture",
   );
   const connection = await PrismaIngestionWorkerConnection.createForProcess(
-    params.runtimeDatabaseUrl, "ingestion-worker",
+    params.runtimeDatabaseUrl, "admin-tool",
   );
   const adapter = new PrismaSourceEngagementProjectionAdapter(connection, {
     generate: randomUUID,
