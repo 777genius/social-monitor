@@ -24,6 +24,7 @@ import { RssSourceProvider } from "@social-monitor/ingestion/adapters/source/rss
 import { SocialResearchSourceQueryPlannerAdapter } from "@social-monitor/ingestion/adapters/source/social-research-source-query-planner.adapter";
 import { sourceReadinessProfiles } from "@social-monitor/ingestion/adapters/source/source-readiness-profiles";
 import { GrpcXDailyCollectorClient } from "@social-monitor/ingestion/adapters/source/x-twitter-experimental-daily/grpc-x-daily-collector-client";
+import { DEFAULT_X_COLLECTOR_GRPC_TIMEOUT_MS } from "@social-monitor/ingestion/adapters/source/x-twitter-experimental-daily/x-collector-runtime-config";
 import { XTwitterSourceProvider } from "@social-monitor/ingestion/adapters/source/x-twitter-experimental-daily/x-twitter-experimental-daily-source.provider";
 import { ExecuteScanUseCase } from "@social-monitor/ingestion/features/execute-scan/execute-scan.use-case";
 import {
@@ -487,7 +488,7 @@ const buildProviders = (
           options: {
             timeoutMs: positiveIntegerEnv(
               process.env.X_COLLECTOR_GRPC_TIMEOUT_MS,
-              60_000,
+              DEFAULT_X_COLLECTOR_GRPC_TIMEOUT_MS,
             ),
             serviceToken: optionalEnv(process.env.X_COLLECTOR_SERVICE_TOKEN),
           },
