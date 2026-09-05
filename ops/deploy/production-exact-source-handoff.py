@@ -30,7 +30,7 @@ INCIDENT_PATHS = frozenset('ops/deploy/' + p for p in (
     'README.md', 'production-transition-b0-bootstrap.test.sh'))
 MARKERS = dict(zip(('backend.sha', 'frontend.sha', 'control.sha',
                    'postgres-pool-bootstrap.sha', 'production-transition-activated.sha'),
-                  (LIVE, LIVE, LIVE, C2, ACTIVATED)))
+                  (LIVE, LIVE, LIVE, C2, ACTIVATED), strict=True))
 PREIMAGE_MODES = {'ops/deploy/' + name: mode for name, mode in (
     ('production-runtime/reader-promotion-v2-production-canary.sh', 0o700),
     ('production-runtime/reader-promotion-v2-production-canary.test.sh', 0o700),
@@ -401,7 +401,9 @@ class ExactSourceHandoff(b0.ControllerRepair):
         fix = 'ops/deploy/backend-image-rescue-lib.sh'
         require(entries[fix][0][:2] == ['100644', '1faa90315832163057ae91a4140c6ae6c43d68bd']
                 and entries[fix][1][:2] == ['100644', 'dae56a213d9bd84a2028ce41013c458eb69e5715'], 'wrong collector fix')
-        return entries
+        # The inherited backup writer enumerates values; canonical JSON sorts
+        # keys. Preserve that same explicit order before either representation.
+        return dict(sorted(entries.items()))
 
     def plan(self, target):
         self.target = target
@@ -497,7 +499,7 @@ class ExactSourceHandoff(b0.ControllerRepair):
                 and plan['target_tree'] == self.tree(target), 'reviewed source identity differs')
         require(regular(run / 'prepared')[0] == canonical({'plan_sha256': approved}), 'prepare receipt differs')
         names = {'plan.json', 'index.backup', 'prepared', 'control-repaired', 'rolling-back'}
-        for number, versions in enumerate(plan['entries'].values()):
+        for number, (_, versions) in enumerate(sorted(plan['entries'].items())):
             if versions[0]:
                 name = f'old-blob-{number}'
                 names.add(name)

@@ -317,13 +317,16 @@ class HandoffTests(unittest.TestCase):
                 self.apply()
             setattr(self.fx, field, True if field == 'running' else 0)
         for name in ('auth-current/auth.json', 'runtime/frontend-releases/' + h.LIVE + '/public/release-sha.txt'):
+            self.fx.review()
             path = self.fx.root / name
             original = path.read_bytes()
+            original_mode = path.stat().st_mode & 0o777
             path.chmod(0o640)
             path.write_text('changed fixture\n')
             with self.assertRaisesRegex(RuntimeError, 'plan drifted|frontend release drift'):
                 self.apply()
             path.write_bytes(original)
+            path.chmod(original_mode)
         with patch.object(self.op, 'reserve', side_effect=RuntimeError('less than 5 GiB reserve')):
             with self.assertRaisesRegex(RuntimeError, '5 GiB'):
                 self.apply()
@@ -345,6 +348,21 @@ class HandoffTests(unittest.TestCase):
         (self.repo / '.git/index.lock').touch()
         with self.assertRaisesRegex(RuntimeError, 'Git symlink/lock hazard'):
             self.op.hazards()
+
+    def test_backup_mapping_survives_reversed_git_path_order(self):
+        original = self.op.git
+        def reversed_paths(*args, **kwargs):
+            value = original(*args, **kwargs)
+            if args[0] == 'diff' and '--name-only' in args and value:
+                return b'\n'.join(reversed(value.splitlines())) + b'\n'
+            return value
+        with patch.object(self.op, 'git', side_effect=reversed_paths):
+            self.fx.review()
+            self.apply()
+            self.op.check_run(self.target, self.fx.approved)
+            self.assertEqual(list(self.fx.plan['entries']), sorted(self.fx.plan['entries']))
+            self.op.rollback(self.target, self.fx.approved)
+        self.assertEqual(self.git('rev-parse', 'HEAD').strip().decode(), h.PREIMAGE)
 
     def test_foreign_admin_root_must_be_safe(self):
         foreign = self.repo / '.git/worktrees'

@@ -103,14 +103,14 @@ class History:
         objects = {row.split()[0] for row in checked.splitlines() if not row.endswith(b' missing')}
         pack = self.root / 'history.pack'
         with pack.open('wb') as out:
-            p = subprocess.run(['git', '-C', str(SOURCE), 'pack-objects', '--stdout', '--compression=0'],
+            p = subprocess.run(['/usr/bin/git', '-C', str(SOURCE), 'pack-objects', '--stdout', '--compression=0'],
                                input=b'\n'.join(sorted(objects)) + b'\n', stdout=out, stderr=subprocess.PIPE,
                                timeout=60, env=git_environment())
             if p.returncode:
                 raise RuntimeError('offline history pack failed: ' + p.stderr.decode())
         with pack.open('rb') as inp:
-            subprocess.run(['git', '-C', str(self.repo), 'index-pack', '--stdin'], stdin=inp,
-                           stdout=subprocess.DEVNULL, check=True, timeout=60)
+            subprocess.run(['/usr/bin/git', '-C', str(self.repo), 'index-pack', '--stdin'], stdin=inp,
+                           stdout=subprocess.DEVNULL, check=True, timeout=60, env=git_environment())
         git(self.repo, 'config', 'user.name', 'Exact source fixture')
         git(self.repo, 'config', 'user.email', 'fixture@example.invalid')
         git(self.repo, 'checkout', '--detach', '-q', h.BASELINE)
