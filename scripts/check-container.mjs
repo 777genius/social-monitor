@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 
 const policyPath = 'ops/security/container-release-policy.json';
@@ -84,4 +85,7 @@ if (violations.length > 0) {
   process.exit(1);
 }
 
+execFileSync('python3', ['ops/deploy/runtime-source-permissions.test.py', '--local'], {
+  stdio: 'inherit',
+});
 console.log('Container release contract OK');

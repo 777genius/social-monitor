@@ -40,6 +40,14 @@ else
     READER_PROMOTION_V2_CANARY_HOST_TEST_FLOCK
 fi
 
+database_ca=$root/secrets/db/ca-certificate.crt
+[[ -f $database_ca && ! -L $database_ca && -s $database_ca ]] || exit 75
+[[ $(readlink -f -- "$database_ca") == "$database_ca" ]] || exit 75
+[[ $(stat -c '%a' "$database_ca") == 644 ]] || exit 75
+if [[ $root == /var/data/social-monitor ]]; then
+  [[ $(stat -c '%u:%g' "$database_ca") == 0:0 ]] || exit 75
+fi
+
 read_marker() {
   local path=$1 expected_root=$2 real
   [[ -f $path && ! -L $path ]] || return 1
@@ -117,6 +125,7 @@ exec "$docker_command" run --rm --read-only --cap-drop ALL \
   --env AGENT_RUNTIME_CODEX_AUTH_POOL_ROOT=/run/social-monitor-codex-auth-pool \
   --env AGENT_RUNTIME_CODEX_AUTH_POOL_MANIFEST=current.json \
   --volume "$auth_pool:/run/social-monitor-codex-auth-pool:ro" \
+  --volume "$database_ca:/run/social-monitor-db/ca-certificate.crt:ro" \
   --volume "$integration:/app/verified-checkout:ro" \
   "$image_id" node -r /app/node_modules/ts-node/register \
   -r /app/node_modules/tsconfig-paths/register "${args[@]}"

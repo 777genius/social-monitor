@@ -17,7 +17,10 @@ root=$(mktemp -d "$test_tmp/reader-promotion-canary-host.XXXXXX")
 trap 'find "$root" -depth -delete' EXIT HUP INT TERM
 mkdir -p "$root/control/deploy-state" \
   "$root/control/postgres-runtime-releases" "$root/integration" \
-  "$root/secrets" "$root/bin" "$root/auth-pool"
+  "$root/secrets/db" "$root/bin" "$root/auth-pool"
+database_ca=$root/secrets/db/ca-certificate.crt
+printf 'Synthetic CA fixture, never used for a TLS connection\n' > "$database_ca"
+chmod 0644 "$database_ca"
 touch "$root/control/production-deploy.lock"
 git -C "$root/integration" init -q
 git -C "$root/integration" config user.name 'Canary Test'
@@ -64,6 +67,7 @@ printf '%s\n' "$*" > "$READER_PROMOTION_CANARY_ARGS"
 [[ " $* " == *" --env NODE_PATH=/app/node_modules "* ]]
 [[ " $* " == *" --env TS_NODE_PROJECT=/app/verified-checkout/tsconfig.json "* ]]
 [[ " $* " == *" $READER_PROMOTION_CANARY_CHECKOUT:/app/verified-checkout:ro "* ]]
+[[ " $* " == *" $READER_PROMOTION_CANARY_DATABASE_CA:/run/social-monitor-db/ca-certificate.crt:ro "* ]]
 [[ " $* " == *" sha256:0000000000000000000000000000000000000000000000000000000000000001 node "* ]]
 grep -Fx 'sha256:0000000000000000000000000000000000000000000000000000000000000002' \
   "$READER_PROMOTION_CANARY_TAG_STATE" >/dev/null
@@ -76,6 +80,7 @@ printf 'entrypoint-and-manifest-resolved\n' > "$READER_PROMOTION_CANARY_STARTED"
 EOF
 chmod +x "$fake_docker"
 export READER_PROMOTION_CANARY_ARGS=$root/args \
+  READER_PROMOTION_CANARY_DATABASE_CA=$database_ca \
   READER_PROMOTION_CANARY_CHECKOUT=$root/integration \
   READER_PROMOTION_CANARY_DEPLOY_LOCK=$root/control/production-deploy.lock \
   READER_PROMOTION_CANARY_BACKEND_MARKER=$root/control/deploy-state/backend.sha \
@@ -95,6 +100,29 @@ grep -F -- '--runtime-command /app/apps/agent-runtime/bin/run-codex-subscription
   "$root/args" >/dev/null
 grep -Fx 'entrypoint-and-manifest-resolved' "$root/started" >/dev/null
 grep -F -- "$root/integration:/app/verified-checkout:ro" "$root/args" >/dev/null
+
+# Refuse missing, redirected or unsafe CA files before starting the canary.
+for ca_case in missing symlink private writable; do
+  mv "$database_ca" "$database_ca.saved"
+  case $ca_case in
+    missing) ;;
+    symlink) ln -s "$database_ca.saved" "$database_ca" ;;
+    private) cp "$database_ca.saved" "$database_ca"; chmod 0600 "$database_ca" ;;
+    writable) cp "$database_ca.saved" "$database_ca"; chmod 0666 "$database_ca" ;;
+  esac
+  : > "$root/args"
+  set +e
+  READER_PROMOTION_V2_CANARY_HOST_TEST_ROOT=$root \
+  READER_PROMOTION_V2_CANARY_HOST_TEST_DOCKER=$fake_docker \
+    bash "$host" "$sha" reader-promotion-v2-production-canary 100 1 \
+      0123456789abcdef0123456789abcdef "$confirmation" \
+      >/dev/null 2>"$root/error"
+  status=$?
+  set -e
+  [[ $status == 75 && ! -s $root/args ]]
+  rm -f "$database_ca"
+  mv "$database_ca.saved" "$database_ca"
+done
 
 # Repository-local Git settings cannot conceal unreviewed build inputs.
 git -C "$root/integration" config status.showUntrackedFiles no

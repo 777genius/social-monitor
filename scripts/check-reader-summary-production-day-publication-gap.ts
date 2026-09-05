@@ -7,9 +7,10 @@ import {
 import { loadPrismaRuntimeClient } from "@social-monitor/platform-persistence/prisma-runtime-client";
 
 import {
-  buildCurrentPublicArtifactSnapshot,
-  currentPublicArtifactBindingsQuery,
-} from "./lib/reader-summary-current-publication-bindings";
+  assertDailyGapPublicationBindings,
+  type DailyGapPublicationRow,
+} from "./lib/reader-summary-daily-gap-bindings";
+import { dailyGapPublicationBindingsQuery } from "./lib/reader-summary-daily-gap-query";
 import { readerSummaryProductionDayScope } from "./lib/reader-summary-production-day-scope";
 import { yesterdaySocialQualityDatabaseUrl } from "./lib/yesterday-social-replay-support";
 
@@ -58,27 +59,19 @@ export async function verifyPublishedProductionDayGap(params: {
             await transaction.$executeRawUnsafe(
               "SET LOCAL statement_timeout = '60s'",
             );
-            for (const collectionDate of dates) {
-              const rows = await transaction.$queryRawUnsafe<
-                Parameters<typeof buildCurrentPublicArtifactSnapshot>[0]["rows"]
-              >(
-                currentPublicArtifactBindingsQuery,
-                readerSummaryProductionDayScope.tenantId,
-                readerSummaryProductionDayScope.workspaceId,
-                "workspace",
-                [collectionDate],
-              );
-              buildCurrentPublicArtifactSnapshot({
-                rows,
-                databaseUrl: params.databaseUrl,
-                scope: {
-                  ...readerSummaryProductionDayScope,
-                  scopeType: "workspace",
-                  scopeKey: "workspace",
-                },
-                collectionDates: [collectionDate],
-              });
-            }
+            const rows = await transaction.$queryRawUnsafe<readonly DailyGapPublicationRow[]>(
+              dailyGapPublicationBindingsQuery,
+              readerSummaryProductionDayScope.tenantId,
+              readerSummaryProductionDayScope.workspaceId,
+              "workspace",
+              dates,
+            );
+            assertDailyGapPublicationBindings({
+              rows,
+              databaseUrl: params.databaseUrl,
+              scope: readerSummaryProductionDayScope,
+              collectionDates: dates,
+            });
           },
           {
             isolationLevel: "RepeatableRead",
@@ -122,7 +115,7 @@ async function main(): Promise<void> {
     databaseUrl: yesterdaySocialQualityDatabaseUrl(),
   });
   console.log(
-    `Verified completed exact production publications for cursor gap ${afterDate}..${targetDate} (${dates.length} dates)`,
+    `Verified terminal exact production publications for cursor gap ${afterDate}..${targetDate} (${dates.length} dates)`,
   );
 }
 

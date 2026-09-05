@@ -73,7 +73,8 @@ backend_image_rescue_snapshot_otel_config() (
   git -C "$REPO" show \
     "$from:ops/observability/otel-collector.yml" > "$partial" || return 1
   [[ -s $partial && ! -L $partial ]] || return 1
-  chmod 0600 "$partial" || return 1
+  # Tracked public configuration is mounted read-only by the non-root collector.
+  chmod 0644 "$partial" || return 1
   mv -f "$partial" "$path"
 )
 
@@ -831,7 +832,7 @@ rollback_backend_images() {
   local state_file=$1
   [[ -e $state_file || -L $state_file ]] || return 0
   local record service policy source_kind source_ref image_id rescue_tag extra
-  local phase target_sha api_rolled_back=false otel_image='' otel_config=''
+  local phase target_sha api_rolled_back=false otel_image='' otel_config='' otel_mode
   local -a rollback_services=() remove_services=()
 
   phase=$(backend_image_rescue_read_phase "$state_file") || return 1
@@ -861,6 +862,9 @@ rollback_backend_images() {
       otel_config=$(backend_image_rescue_otel_config_path \
         "$target_sha") || return 1
       [[ -f $otel_config && ! -L $otel_config && -s $otel_config ]] || return 1
+      otel_mode=$(stat -c '%a' "$otel_config" 2>/dev/null) ||
+        otel_mode=$(stat -f '%Lp' "$otel_config") || return 1
+      [[ $otel_mode == 644 ]] || return 1
     fi
   done < "$state_file"
   if ((${#remove_services[@]} > 0)); then
