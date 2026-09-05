@@ -75,8 +75,8 @@ const run = async (): Promise<void> => {
 
   try {
     const handler = new ExecuteScanCommandHandler(executeScan, metrics, runtime);
-    const tenant = tenantId('tenant-hn-smoke');
-    const workspace = workspaceId('workspace-hn-smoke');
+    const tenant = tenantId('11111111-1111-4111-8111-111111111111');
+    const workspace = workspaceId('22222222-2222-4222-8222-222222222222');
     const result = await handler.handle({
       commandId: 'scan-hn-smoke',
       commandType: 'ingestion.scan.execute',
