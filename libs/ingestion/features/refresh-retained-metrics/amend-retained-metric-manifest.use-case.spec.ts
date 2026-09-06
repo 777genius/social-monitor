@@ -25,18 +25,23 @@ describe("explicit pre-reservation retained metric content amendment", () => {
   it("reproduces the 3329-ID incident, preserves original bytes/baselines, and spends no effects during review/commit", async () => {
     rmSync(root, { recursive: true }); root = mkdtempSync(join(tmpdir(), "metric-3329-")); f = incidentFixture(root);
     await f.receipts.install(metricEvidencePath("operation.json"), f.original);
+    f.change([...f.original.targets.map((t, i) => ({ ...t, identityDigest: i < 19 ? afterDigest : t.identityDigest })),
+      ...Array.from({ length: 4 }, (_, i) => ({ ...f.original.targets[1]!, sourceItemId: `00000000-0000-7000-8000-${String(15000 + i).padStart(12, "0")}` }))]);
     const bytes = readFileSync(join(root, metricEvidencePath("operation.json")));
     const fetcher = { fetch: jest.fn(async () => ok([])) }, projection = { project: jest.fn(async () => { throw new Error("No projection expected"); }) };
     const apply = () => new RefreshRetainedMetricsUseCase(f.inventory, fetcher, projection, f.receipts, f.clock, metricRefreshDigest);
     expect(await apply().execute(f.original)).toEqual({ ok: false, error: "inventory_drift" });
     const proposal = await prepare();
-    expect(proposal.changes).toEqual([{ sourceItemId: incidentSource, before: beforeDigest, after: afterDigest }]);
+    expect(proposal.changes).toHaveLength(19);
+    expect(proposal.changes).toContainEqual({ sourceItemId: incidentSource, before: beforeDigest, after: afterDigest });
+    expect(proposal.inventory).toHaveLength(3329);
+    expect(f.current()).toHaveLength(3333);
     expect(proposal.inventorySha).toBe(independentMetricSha(proposal.inventory));
     expect(metricRefreshDigest(proposal)).toBe(independentMetricSha(proposal));
     const committed = await commit(proposal); expect(committed.ok).toBe(true);
     if (!committed.ok) return;
     const effective = committed.value.effective;
-    expect(effective).toEqual({ ...f.original, targets: f.original.targets.map((t) => ({ ...t, identityDigest: t.sourceItemId === incidentSource ? afterDigest : t.identityDigest })) });
+    expect(effective).toEqual({ ...f.original, targets: f.original.targets.map((t, i) => ({ ...t, identityDigest: i < 19 ? afterDigest : t.identityDigest })) });
     expect(proposal.effectiveManifestSha).toBe(independentMetricSha(effective));
     expect(refreshBatches(effective.targets).flat().map((t) => t.sourceItemId).sort()).toEqual(f.original.targets.map((t) => t.sourceItemId).sort());
     expect(effective.targets).toHaveLength(3329);
@@ -58,10 +63,9 @@ describe("explicit pre-reservation retained metric content amendment", () => {
       expect(sameTarget(result.value.effective.targets[0]!, f.current()[0]!, metricRefreshDigest)).toBe(true);
     }
   });
-  it.each(["added", "removed", "duplicate", "configDigest", "feedDigest", "sourceBindingId", "canonicalUrl", "publishedAt", "providerKey", "rejection", "visibleFeedCount", "tenantId"])("rejects full-inventory %s drift", async (field) => {
+  it.each(["removed", "duplicate", "configDigest", "feedDigest", "sourceBindingId", "canonicalUrl", "publishedAt", "providerKey", "rejection", "visibleFeedCount", "tenantId"])("rejects full-inventory %s drift", async (field) => {
     const rows = structuredClone(f.current());
-    if (field === "added") rows.push({ ...rows[1]!, sourceItemId: "00000000-0000-7000-8000-000000009999" });
-    else if (field === "removed") rows.pop();
+    if (field === "removed") rows.pop();
     else if (field === "duplicate") rows.push(rows[0]!);
     else Object.assign(rows[0]!, { [field]: field.endsWith("Digest") ? "e".repeat(64) : field === "visibleFeedCount" ? 2 : "changed" });
     f.change(rows);
