@@ -26,7 +26,7 @@ Map<String, _CitationSourceContext> _primaryCitationSourceById(
     sources.putIfAbsent(
       primaryCitationId,
       () => _CitationSourceContext(
-        title: _shortTitle(read.title),
+        title: read.title,
         providerKey: read.providerKey,
         canonicalUrl: read.canonicalUrl,
         read: read,

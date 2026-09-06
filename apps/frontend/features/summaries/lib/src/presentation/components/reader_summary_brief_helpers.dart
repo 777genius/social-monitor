@@ -68,7 +68,7 @@ String _primaryTheme(ReaderSummaryContent content) {
     return _cleanSentence(headline);
   }
   if (content.topReads.isNotEmpty) {
-    final title = _shortTitle(content.topReads.first.title).trim();
+    final title = content.topReads.first.title;
     if (title.isNotEmpty) {
       return title;
     }
@@ -127,13 +127,6 @@ String _cleanSentence(String value) {
       : trimmed;
 }
 
-String _shortTitle(String value) {
-  return value
-      .replaceFirst(RegExp(r'^X post by @[^:]+:\s*'), '')
-      .replaceFirst(RegExp(r' is #\d+ on GitHub Trending$'), '')
-      .trim();
-}
-
 bool _citationMatchesProvider(SummaryCitation citation, String providerKey) {
   final haystack =
       '${citation.sourceLabel} ${citation.safeSnippet} ${citation.canonicalUrl ?? ''}'
@@ -155,4 +148,19 @@ bool _citationMatchesProvider(SummaryCitation citation, String providerKey) {
     'rss' => haystack.contains('rss') || haystack.contains('hnrss'),
     _ => haystack.contains(providerKey.toLowerCase()),
   };
+}
+
+Widget _briefHeadline(ReaderSummary summary, TextStyle? style) {
+  final content = summary.content;
+  final headline = content.headline.trim();
+  if ((headline.isEmpty || _isSourceInventoryHeadline(headline)) &&
+      content.topReads.isNotEmpty &&
+      content.topReads.first.title.trim().isNotEmpty) {
+    return ReaderSummarySourceText(
+      content.topReads.first.title,
+      key: ObjectKey(summary),
+      style: style,
+    );
+  }
+  return Text(_headlineCopy(_primaryTheme(content)), style: style);
 }

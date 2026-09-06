@@ -32,8 +32,9 @@ Widget _denseTopPostRow(
       _TopPostProviderTile(providerKey: item.providerKey),
       const SizedBox(width: AppSpacing.sm + 4),
       Expanded(
-        child: Text(
-          _shortTitle(item.title),
+        child: ReaderSummarySourceText(
+          item.title,
+          key: ObjectKey(item),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: textTheme.bodyMedium?.copyWith(

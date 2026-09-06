@@ -201,7 +201,7 @@ class _CitationSourcePreview extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
+                  ReaderSummarySourceText(
                     title,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
@@ -212,7 +212,7 @@ class _CitationSourcePreview extends StatelessWidget {
                   ),
                   if (snippet != null) ...[
                     const SizedBox(height: 2),
-                    Text(
+                    ReaderSummarySourceText(
                       snippet,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
@@ -250,7 +250,9 @@ String _titleForCitation(
 ) {
   final title = source?.title.trim();
   if (title != null && title.isNotEmpty) {
-    return _withoutCitationNumber(title);
+    return readerSummaryNeedsSourceDisclosure(title)
+        ? title
+        : _withoutCitationNumber(title);
   }
   return _withoutCitationNumber(citation.sourceLabel);
 }
@@ -350,7 +352,7 @@ class _TopPostReferenceCard extends StatelessWidget {
                     _TopPostTextBody(item: read),
                     if (snippet != null) ...[
                       const SizedBox(height: AppSpacing.xs),
-                      Text(
+                      ReaderSummarySourceText(
                         snippet,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,

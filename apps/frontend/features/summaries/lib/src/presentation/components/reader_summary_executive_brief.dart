@@ -18,16 +18,15 @@ class ReaderSummaryExecutiveBrief extends StatelessWidget {
   Widget build(BuildContext context) {
     final content = summary.content;
     final textTheme = Theme.of(context).textTheme;
-    final headline = _headlineCopy(_primaryTheme(content));
     final citationSourceById = _primaryCitationSourceById(content.topReads);
     final topics = _topicChipLabels(content.mainTopics);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          headline,
-          style: textTheme.titleLarge?.copyWith(
+        _briefHeadline(
+          summary,
+          textTheme.titleLarge?.copyWith(
             fontWeight: FontWeight.w800,
             letterSpacing: 0,
           ),

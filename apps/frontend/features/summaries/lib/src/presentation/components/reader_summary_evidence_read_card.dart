@@ -61,8 +61,9 @@ class _ReadCard extends StatelessWidget {
                 readerSummaryTopPostIdentity(read),
               ),
         onTap: url == null ? null : () => onOpenUrl(url),
-        child: Text(
+        child: ReaderSummarySourceText(
           read.title,
+          key: ObjectKey(read),
           maxLines: compact ? 1 : (featured ? 3 : 2),
           overflow: TextOverflow.ellipsis,
           style:
@@ -165,7 +166,7 @@ class _ReadCard extends StatelessWidget {
                     ],
                     if (citationSnippet != null) ...[
                       const SizedBox(height: AppSpacing.xs),
-                      Text(
+                      ReaderSummarySourceText(
                         citationSnippet,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,

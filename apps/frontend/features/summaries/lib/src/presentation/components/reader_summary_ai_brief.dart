@@ -14,15 +14,14 @@ class _AiBriefCopy extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final content = summary.content;
-    final primaryTheme = _primaryTheme(content);
     final citationSourceById = _primaryCitationSourceById(content.topReads);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          _headlineCopy(primaryTheme),
-          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+        _briefHeadline(
+          summary,
+          Theme.of(context).textTheme.headlineSmall?.copyWith(
             height: 1.15,
             fontWeight: FontWeight.w900,
             letterSpacing: 0,

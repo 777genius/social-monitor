@@ -6,6 +6,7 @@ import '../../domain/entities/summary_citation.dart';
 import 'reader_summary_confirmation.dart';
 import 'reader_summary_reason_text.dart';
 import 'reader_summary_sections.dart';
+import 'reader_summary_source_text.dart';
 import 'reader_summary_top_read_details.dart';
 import 'reader_summary_top_read_leading.dart';
 
@@ -140,8 +141,9 @@ class _TopReadRow extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
+                        ReaderSummarySourceText(
                           item.title,
+                          key: ObjectKey(item),
                           maxLines: compact ? 2 : 1,
                           overflow: TextOverflow.ellipsis,
                           style: Theme.of(context).textTheme.labelLarge

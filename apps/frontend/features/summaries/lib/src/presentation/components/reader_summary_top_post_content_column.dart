@@ -72,8 +72,9 @@ class _TopPostTextBody extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          _shortTitle(item.title),
+        ReaderSummarySourceText(
+          item.title,
+          key: ObjectKey(item),
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
           style: textTheme.bodyMedium?.copyWith(

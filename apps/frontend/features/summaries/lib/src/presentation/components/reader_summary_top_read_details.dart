@@ -9,6 +9,7 @@ import 'reader_summary_confirmation.dart';
 import 'reader_summary_external_link.dart';
 import 'reader_summary_provider_logo.dart';
 import 'reader_summary_reason_text.dart';
+import 'reader_summary_source_text.dart';
 
 class ReaderSummaryTopReadDetails extends StatelessWidget {
   const ReaderSummaryTopReadDetails({
@@ -221,7 +222,7 @@ class _CitationDisclosure extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
+                    ReaderSummarySourceText(
                       citation.sourceLabel,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -231,7 +232,7 @@ class _CitationDisclosure extends StatelessWidget {
                       ),
                     ),
                     if (snippet != null)
-                      Text(
+                      ReaderSummarySourceText(
                         snippet,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
