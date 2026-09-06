@@ -6,8 +6,8 @@ import 'package:social_monitor_summaries/src/domain/aggregates/reader_summary.da
 import 'package:social_monitor_summaries/src/infrastructure/mappers/reader_summary_content_rest_mapper.dart';
 import 'package:social_monitor_summaries/src/infrastructure/mappers/summary_mapper.dart';
 
-import '../infrastructure/mappers/support/reader_summary_additional_stories_transport_fixture.dart';
 import '../../integration_test/support/promotion_attestation_rest_fixture.dart';
+import '../infrastructure/mappers/support/reader_summary_additional_stories_transport_fixture.dart';
 import 'summaries_test_fixtures.dart';
 
 ReaderSummary sourceReasonRestSummary(String source, {String? editorial}) {
@@ -22,10 +22,7 @@ ReaderSummary sourceReasonRestSummary(String source, {String? editorial}) {
       'providerName': 'Hacker News',
       'primaryActionKind': 'read_source',
       'reason': 'Source-reported: $source',
-      'whyImportant': [
-        if (editorial != null) editorial,
-        'Source-reported: $source',
-      ],
+      'whyImportant': [?editorial, 'Source-reported: $source'],
       'whyNow': 'Current synthetic window',
       'matchedInterestIds': <Object?>[],
       'matchedRules': [
