@@ -334,3 +334,6 @@ fi
 [[ $(wc -l < "$ATTEMPTS_FILE") == 5 ]]
 
 echo 'Backend runtime health contract tests passed'
+
+# Exercise the same mutable health library across an authorized HEAD transition.
+bash "$SCRIPT_DIR/backend-runtime-health-target-transition.test.sh"
