@@ -1,3 +1,5 @@
+import { releaseEventClauses } from "./story-release-event-clause-boundaries";
+
 /**
  * Positive attachment grammar for release descriptions. These clauses describe
  * a model, a release property, or an attributed use of the model. They do not
@@ -11,11 +13,18 @@ const metricSubject = new RegExp(String.raw`^(?:(?:the|our|its|new|input/output)
 const report = /^([a-z][a-z-]*(?:\s+[a-z][a-z-]*){0,3})\s+(says|reports|estimates|found)\s+/i;
 const modelReference = /^(?:it|they|both|(?:this|the) model|these models)\b/i;
 const versionedSubject = /^(?:[a-z][a-z-]*\s+){0,3}[a-z][a-z-]*[-\s]+\d+(?:\.\d+)+[a-z]?\b/i;
-const quantifiedWorkload = String.raw`\d[\d,]*\s+(?:[a-z-]+\s+){0,3}(?:tasks?|trials?|problems?|cases?|workloads?)\b`;
-const hasQuantifiedWorkload = new RegExp(quantifiedWorkload, "i");
-const duration = String.raw`for\s+\d+(?:\.\d+)?\s+(?:hours?|minutes?)`;
-const modelRun = /^((?:[a-z][a-z-]*\s+){1,4})ran\s+(?:it|the model)\s+(?:[a-z-]+\s+){0,2}?(?=for\b|on\b)/i;
+const workloadUnit = String.raw`(?:tasks?|trials?|problems?|cases?|workloads?|prompts?)`;
+const count = String.raw`\d[\d,]*`;
+const countedWork = String.raw`${count}\s*(?:[a-z-]+\s+){0,3}${workloadUnit}`;
+// A count can quantify the head or modify a workload through a count-unit
+// compound. Both forms must consume the entire object, including its head.
+const countedWorkload = String.raw`${count}\s*-\s*${workloadUnit}(?:\s+[a-z-]+){0,3}\s+workloads?`;
+const quantifiedWorkload = String.raw`(?:(?:a|an|the)\s*)?(?:${countedWork}|${countedWorkload}|workload\s+of\s+${countedWork})`;
+const duration = String.raw`for\s*\d+(?:\.\d+)?\s*(?:hours?|minutes?)`;
+const modelRun = /^((?:[a-z][a-z-]*\s+){1,4})ran\s+(?:it|the model)\s+(?:[a-z-]+\s+){0,2}?(?=for(?=\s*\d)|on\b)/i;
 const trialWorkload = new RegExp(String.raw`^(?:${duration}\s+on\s+${quantifiedWorkload}|on\s+${quantifiedWorkload}(?:\s+${duration})?)$`, "i");
+const anecdotalWork = String.raw`(?:a|an|the)\s+(?:[a-z-]+\s+){0,3}(?:problem|task|issue)`;
+const anecdotalWorkload = new RegExp(String.raw`^${duration}\s+on\s+${anecdotalWork}$`, "i");
 
 export type ReleaseDescriptionScope = {
   readonly modelExecution: boolean;
@@ -24,16 +33,19 @@ export type ReleaseDescriptionScope = {
 };
 
 export const releaseDescriptionScope = (statement: string): ReleaseDescriptionScope => ({
-  modelExecution: isModelUseAnecdote(statement) || isAttributedModelExperience(statement),
+  // Scope comes from a complete first clause. Later assertions are checked
+  // separately by the same clause grammar, including model-owned outcomes.
+  modelExecution: isModelUseAnecdote(releaseEventClauses(statement)[0] ?? "") || isAttributedModelExperience(statement),
   propertyContext: metricSubject.test(statement),
   comparativePropertyChange: metricSubject.test(statement) &&
     /\b(?:loosened|reduced|improved)\s+where\b[^:]+:\s*\d+%\s+(?:fewer|less)\b/i.test(statement),
 });
 
-/** Running the model is distinct from running a quantified test workload. */
-export const isModelUseAnecdote = (text: string): boolean =>
-  /^(?:[a-z][a-z-]*\s+){1,4}ran\s+(?:it|the model)\s+(?:[a-z-]+\s+){0,2}for\s+\d+\s+(?:hours?|minutes?)\s+on\b/i.test(text) &&
-  !hasQuantifiedWorkload.test(text);
+/** Only a fully bound singular task object grants model-use context. */
+export const isModelUseAnecdote = (text: string): boolean => {
+  const run = modelRun.exec(text);
+  return run !== null && anecdotalWorkload.test(text.slice(run[0].length).replace(/,$/, "").trim());
+};
 
 export const isAttributedModelExperience = (text: string): boolean =>
   /^(?:[a-z][a-z-]*\s+){1,4}(?:says|reports)\s+(?:it|the model)\b/i.test(text);
@@ -73,12 +85,13 @@ export const isReleaseDescription = (
 ): boolean => {
   const { modelExecution, propertyContext } = scope;
   const text = raw.replace(/^[-*\s]+/, "").replace(/^and\s+/i, "");
-  // The model can be the instrument of a quantified trial. Bind the whole
-  // workload and its actor before considering benign usage/output exceptions.
+  // Every model run needs a complete object. Unknown or quantified third-party
+  // workloads cannot fall through to an anecdote or output-report exception.
   const run = modelRun.exec(text);
-  if (run !== null && hasQuantifiedWorkload.test(text.slice(run[0].length))) {
-    return run[1]!.trim().toLowerCase() === publisher &&
-      trialWorkload.test(text.slice(run[0].length));
+  if (run !== null) {
+    const workload = text.slice(run[0].length).replace(/,$/, "").trim();
+    return (run[1]!.trim().toLowerCase() === publisher && trialWorkload.test(workload)) ||
+      (modelExecution && isModelUseAnecdote(text));
   }
   // These complements describe motivation, not completed actions. Keep the
   // complement restriction even when the reporting subject is the publisher.
@@ -94,7 +107,6 @@ export const isReleaseDescription = (
     if (/^(?:equal|lower|higher)\s+accuracy\b/i.test(content)) return true;
     return isReleaseDescription(content, publisher, hasPrimarySubject, scope);
   }
-  if (modelExecution && isModelUseAnecdote(text)) return true;
   const subject = modelReference.exec(text.replace(/^where\s+/i, "")) ?? versionedSubject.exec(text);
   if (subject !== null && hasPrimarySubject) {
     const predicate = text.replace(/^where\s+/i, "").slice(subject[0].length).trim().replace(new RegExp(`^${modifiers}`, "i"), "");

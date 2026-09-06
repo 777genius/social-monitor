@@ -13,10 +13,12 @@ import { withTestExecutionAttestation } from "@social-monitor/summary/adapters/m
 import type { AgentRuntimeTaskCommand, AgentRuntimeTaskResult } from "@social-monitor/summary/ports";
 import { canonicalRequestFor } from "../../../../scripts/evals/reader-story-grouping/requests";
 
+import { releaseWorkloadCases } from "@social-monitor/summary/domain/services/story-release-event-workload.spec-support";
+
 const now = new Date("2026-09-01T14:00:00Z");
 const identity = { tenantId: tenantId("fixture-tenant"), workspaceId: workspaceId("fixture-workspace"),
   scope: { type: "workspace" as const } };
-const cases = [...primaryEventReviewCases, ...primaryEventGrammarCases, ...releaseDescriptionCases];
+const cases = [...primaryEventReviewCases, ...primaryEventGrammarCases, ...releaseDescriptionCases, ...releaseWorkloadCases];
 const controls = [
   { name: "refusal", sameStory: true, confidenceScore: 1, accepted: false, approved: false },
   { name: "no output", sameStory: true, confidenceScore: 1, accepted: false, approved: false },
