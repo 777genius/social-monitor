@@ -16,8 +16,8 @@ import { assertSource, verifySourceUnchanged } from "./source-identity";
 jest.mock("./source-identity", () => ({ assertSource: jest.fn(), verifySourceUnchanged: jest.fn() }));
 const source = { revision: "b".repeat(40), treeSha: "c".repeat(40), worktree: "clean" as const };
 
-it.each(["missing", "null", "wrongtype", "unknown", "confidence", "id"])(
-  "live/import reject %s identically, preserve failed bytes and claim, and never retry/report",
+it.each(["missing", "null", "wrongtype", "unknown", "confidence", "id", "root-proto", "decision-proto", "envelope-null", "envelope-array", "envelope-primitive"])(
+  "live/import reject %s, preserve failed bytes and claim, and never retry/report",
   async (kind) => {
     jest.mocked(assertSource).mockReturnValue(source);
     jest.mocked(verifySourceUnchanged).mockReturnValue(undefined);
@@ -47,9 +47,16 @@ it.each(["missing", "null", "wrongtype", "unknown", "confidence", "id"])(
         if (kind === "id") decision.leftFeedItemId = 123;
         return decision;
       });
+      if (kind === "decision-proto") Object.defineProperty(decisions[0], "__proto__", {
+        value: {}, enumerable: true,
+      });
+      const raw = kind === "root-proto" ? JSON.parse('{"decisions":[],"__proto__":{}}') as Record<string, unknown>
+        : kind === "envelope-null" ? null
+        : kind === "envelope-array" ? []
+        : kind === "envelope-primitive" ? true : { decisions };
       const result = withTestExecutionAttestation(command, {
-        status: "completed", warnings: [], structuredOutput: { decisions },
-        outputText: JSON.stringify({ decisions }),
+        status: "completed", warnings: [], structuredOutput: raw as Record<string, unknown>,
+        outputText: JSON.stringify(raw),
       });
       return { ...result, executionAttestation: { ...result.executionAttestation!,
         canonicalRequestSha256: canonicalJsonSha256(canonicalRequestFor(command)),
@@ -101,8 +108,14 @@ it.each(["missing", "null", "wrongtype", "unknown", "confidence", "id"])(
       const importOut = join(dir, "import");
       const importError = await run(["import", importOut, receiptPath, "--run-id", execution.id])
         .catch((error: unknown) => error);
-      expect(importError).toMatchObject({ message: (liveError as Error).message });
-      expect((importError as Error).message).toContain(".decisions[0]");
+      if (kind.startsWith("envelope-")) {
+        // Non-object structured output violates the unchanged receipt artifact
+        // contract before its inner production wire validator is reached.
+        expect(importError).toMatchObject({ message: expect.stringContaining("Invalid receipt schema:") });
+      } else {
+        expect(importError).toMatchObject({ message: (liveError as Error).message,
+          failure: { kind: "invalid_schema", retryable: false } });
+      }
       expect((importError as Error).message).not.toContain("never-log-this-payload");
       expect(existsSync(importOut)).toBe(false);
       expect(readFileSync(receiptPath, "utf8")).toBe(receiptBytes);

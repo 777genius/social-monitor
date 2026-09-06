@@ -289,13 +289,12 @@ describe("AgentRuntimeReaderSummaryStoryRelationVerifier", () => {
   });
 
   it.each([
-    ["missing decisions", {}, "envelope_missing_decisions"],
+    ["missing decisions", {}],
     [
       "unknown envelope property",
       { decisions: [], commentary: "extra" },
-      "envelope_unknown_property",
     ],
-  ] as const)("rejects an envelope with %s", async (_name, envelope, reason) => {
+  ] as const)("rejects an envelope with %s", async (_name, envelope) => {
     const verifier = new AgentRuntimeReaderSummaryStoryRelationVerifier({
       client: new CapturingAgentRuntimeClient({
         status: "completed",
@@ -315,7 +314,7 @@ describe("AgentRuntimeReaderSummaryStoryRelationVerifier", () => {
         subjectStoryClusterId: "story:hn",
         targetStoryClusterId: "story:rss",
       }],
-    })).rejects.toMatchObject({ reason });
+    })).rejects.toMatchObject({ failure: { kind: "invalid_schema", retryable: false } });
   });
 });
 

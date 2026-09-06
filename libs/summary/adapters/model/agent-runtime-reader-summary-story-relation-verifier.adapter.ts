@@ -182,12 +182,10 @@ export class AgentRuntimeReaderSummaryStoryRelationVerifier implements ReaderSum
     const result = await this.client.runTask(command, { signal: input.signal });
     const raw = readAgentRuntimeObjectOutput(
       result,
-      parseJsonObject,
+      (text) => parseJsonObject(text, command.outputSchema),
       "Reader summary story relation verifier",
     );
 
-    // Preserve the related-lane envelope failure contract before wire validation.
-    if (relatedTopicLane) readDecisionEnvelope(raw);
     assertStoryRelationResponseSchema(raw, command.outputSchema);
 
     const decisions = relatedTopicLane
@@ -287,7 +285,7 @@ const invalidDecisionEnvelope = (
   reason: ConstructorParameters<typeof InvalidStoryRelationDecisionBatchError>[0],
 ): Error => new InvalidStoryRelationDecisionBatchError(reason);
 
-const parseJsonObject = (value: string): Record<string, unknown> => {
+const parseJsonObject = (value: string, schema: Record<string, unknown>): Record<string, unknown> => {
   let parsed: unknown;
   try {
     parsed = JSON.parse(value);
@@ -297,10 +295,8 @@ const parseJsonObject = (value: string): Record<string, unknown> => {
       message: "Reader summary story relation response is not valid JSON",
     });
   }
-  if (!isRecord(parsed)) {
-    throw invalidDecisionEnvelope("envelope_invalid_shape");
-  }
-  return parsed;
+  assertStoryRelationResponseSchema(parsed, schema);
+  return parsed as Record<string, unknown>;
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>

@@ -55,3 +55,22 @@ it("matches exact Ajv schema validation for JSON response cases", () => {
     expect(accepted).toBe(ajv(raw));
   }
 });
+
+it("bounds raw own-key diagnostics and retains the rejected input bytes", () => {
+  const raw = { decisions: Array.from({ length: 30 }, () =>
+    JSON.parse(JSON.stringify(decision).slice(0, -1) + ',"__proto__":"never-log-this-payload"}')) };
+  const bytes = JSON.stringify(raw);
+  try {
+    assertStoryRelationResponseSchema(raw, schema);
+    throw new Error("Expected rejection");
+  } catch (error) {
+    expect(error).toBeInstanceOf(AgentRuntimeModelProviderError);
+    const failure = (error as AgentRuntimeModelProviderError).failure;
+    expect(failure).toMatchObject({ kind: "invalid_schema", retryable: false });
+    expect(failure.message).toContain('"properties":["__proto__"]');
+    expect(failure.message).toContain("30 errors (10 omitted)");
+    expect(failure.message).not.toContain("never-log-this-payload");
+    expect(failure.message.length).toBeLessThan(6000);
+  }
+  expect(JSON.stringify(raw)).toBe(bytes);
+});
