@@ -1,14 +1,65 @@
-import { execFileSync } from "node:child_process";
-import { fstatSync, lstatSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { closeSync, constants, fstatSync, lstatSync, openSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { refreshBytesHash, refreshHash, type RefreshManifest } from "./reader-summary-new-input-refresh-manifest";
 
-export function refreshSourceSha256(): string {
-  const paths = execFileSync("git", ["ls-files", "-z", "--cached", "--others", "--exclude-standard",
-    "libs", "scripts", "prisma", "package.json", "package-lock.json"], { encoding: "utf8" })
-    .split("\0").filter((p) => p && !p.includes(".spec.") && !p.includes("test-fixtures/") &&
-      !p.includes("test-support/") && !p.startsWith("prisma/generated/"));
-  return refreshHash([...new Set(paths)].sort().map((p) => [p, refreshBytesHash(readFileSync(p))]));
+// These source roots exist in both the checkout and the canonical daily-runner
+// image. Admission imports src policy and bin/reader-promotion-v2-canary-contract.cjs.
+// Root dist/build/coverage/node_modules/.cache and Git metadata are not source.
+const refreshSourceRoots = ["libs", "scripts", "prisma", "apps/agent-runtime"] as const;
+const refreshSourceConfig = ["package.json", "package-lock.json", "tsconfig.json", "tsconfig.build.json",
+  "prisma.config.ts"] as const;
+const refreshRequiredSource = [
+  "libs/shared-kernel/src/index.ts",
+  "libs/summary/application/contracts/reader-summary-new-input-refresh-authority.ts",
+  "libs/contracts/generated/grpc/agent_runtime/v1/agent_runtime.ts",
+  "scripts/run-reader-summary-new-input-refresh.ts",
+  "scripts/lib/reader-summary-new-input-refresh-files.ts",
+  "scripts/lib/reader-summary-new-input-refresh-model.ts",
+  "apps/agent-runtime/src/subscription-runtime-purpose-model-policy.ts",
+  "apps/agent-runtime/bin/reader-promotion-v2-canary-contract.cjs",
+  "prisma/schema.prisma",
+] as const;
+
+export function refreshSourceSha256(root = process.cwd()): string {
+  const absoluteRoot = resolve(root);
+  if (realpathSync(absoluteRoot) !== absoluteRoot) throw new Error("Refresh source root must not contain symlinks");
+  const paths: string[] = [];
+  const walk = (path: string): void => {
+    const absolute = join(absoluteRoot, path);
+    const stat = lstatSync(absolute);
+    if (stat.isSymbolicLink() || realpathSync(absolute) !== absolute) {
+      throw new Error(`Refresh source must not contain symlinks: ${path}`);
+    }
+    if (!stat.isDirectory() && !stat.isFile()) throw new Error(`Refresh source must be regular: ${path}`);
+    // Preserve the test-only exclusions. Only Prisma's generated dependency is
+    // excluded: libs/contracts/generated contains imported runtime contracts.
+    // Do not ignore extensions or nested build/cache/node_modules directories:
+    // e.g. an untracked sibling .js or package.json can change Node resolution.
+    if (path === "prisma/generated" || path.includes(".spec.") ||
+        path.split("/").some((part) => part === "test-fixtures" || part === "test-support")) return;
+    if (stat.isDirectory()) {
+      for (const name of readdirSync(absolute).sort()) walk(`${path}/${name}`);
+    } else paths.push(path);
+  };
+  for (const path of refreshSourceRoots) {
+    if (!lstatSync(join(absoluteRoot, path)).isDirectory()) throw new Error(`Refresh source root missing: ${path}`);
+    walk(path);
+  }
+  for (const path of refreshSourceConfig) {
+    if (!lstatSync(join(absoluteRoot, path)).isFile()) throw new Error(`Refresh source config missing: ${path}`);
+    walk(path);
+  }
+  for (const path of refreshRequiredSource) {
+    if (!paths.includes(path)) throw new Error(`Refresh required source missing: ${path}`);
+  }
+  const files = paths.sort().map((path) => {
+    const fd = openSync(join(absoluteRoot, path), constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+    try {
+      if (!fstatSync(fd).isFile()) throw new Error(`Refresh source must be regular: ${path}`);
+      return [path, refreshBytesHash(readFileSync(fd))];
+    } finally { closeSync(fd); }
+  });
+  return refreshHash({ format: "reader-summary-source-inventory-v2", files });
 }
 export function readReviewedRefresh(path: string, sha256: string): RefreshManifest {
   const absolute = resolve(path);
