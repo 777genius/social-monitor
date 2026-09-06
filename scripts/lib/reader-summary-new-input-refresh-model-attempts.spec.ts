@@ -1,11 +1,8 @@
-import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 import { activeReaderSummaryPurposes as purposes } from "@social-monitor/summary/adapters/model/active-reader-summary-generation-profile";
 import type { AgentRuntimeTaskCommand, AgentRuntimeTaskResult } from "@social-monitor/summary/ports";
-import type { BuildReaderSummaryTopicMapCommand } from "@social-monitor/summary/features/build-reader-summary-topic-map/build-reader-summary-topic-map.command";
 import { evaluateReaderSummaryTopicMapStructure } from "@social-monitor/summary/domain";
-import { buildRefreshModelWiring, guardedRefreshRuntime } from "./reader-summary-new-input-refresh-model";
 import { completedRefreshModelRequest, refreshModelCommand } from "./reader-summary-new-input-refresh-model.spec-support";
-import { refreshManifest, refreshNow } from "./reader-summary-new-input-refresh.spec-support";
+import { wiring, topicOutput, topicCommand } from "./reader-summary-new-input-refresh-model-composition.spec-support";
 
 describe("refresh composed model attempt contract", () => {
   it("preserves the reviewer's two known low-coverage attempts, rejects the map and never invokes a third", async () => {
@@ -76,17 +73,6 @@ describe("refresh composed model attempt contract", () => {
   });
 });
 
-function wiring(respond: (command: AgentRuntimeTaskCommand) => Promise<AgentRuntimeTaskResult>) {
-  const commands: AgentRuntimeTaskCommand[] = [];
-  const events: { status: string }[] = [];
-  const runtime = guardedRefreshRuntime({ manifest: refreshManifest(), delegate: {
-    runTask: async (command) => { commands.push(command); return respond(command); }, checkHealth: jest.fn(),
-  }, assertLocal: () => undefined, assertCurrent: async () => undefined,
-  record: (event) => events.push(event as { status: string }) });
-  const sink = { record: jest.fn(() => runtime.assertUsable()) };
-  return { runtime, commands, events, sink, model: buildRefreshModelWiring({}, runtime, sink) };
-}
-
 async function uncertain(command: AgentRuntimeTaskCommand, kind: string): Promise<AgentRuntimeTaskResult> {
   if (kind === "throw") throw new Error("Synthetic uncertain transport");
   const result = await completedRefreshModelRequest(kind === "wrong-request"
@@ -98,43 +84,4 @@ async function uncertain(command: AgentRuntimeTaskCommand, kind: string): Promis
     case "missing-usage": return { ...result, usage: undefined };
     default: return result;
   }
-}
-
-function topicOutput(command: AgentRuntimeTaskCommand, good: boolean): Record<string, unknown> {
-  if (command.purpose === purposes.generate) return { synthetic: true };
-  if (command.purpose === purposes.topicRelations) {
-    const payload = JSON.parse(command.prompt) as { pairs: { sourceNodeId: string; targetNodeId: string }[] };
-    return { decisions: payload.pairs.map((pair) => ({ sourceNodeId: pair.sourceNodeId, targetNodeId: pair.targetNodeId,
-      sameTopic: false, confidenceScore: 0.95, rationale: "Distinct synthetic announcements" })) };
-  }
-  const payload = JSON.parse(command.prompt) as { nodes: { nodeId: string; fallbackLabel: string }[] };
-  return { nodeLabels: payload.nodes.map((node, index) => ({ nodeId: node.nodeId, topicId: index < 2 && node.fallbackLabel.toLowerCase().includes("runtime") ? "topic:shared-proposal" : `topic:synthetic-${index}`,
-    subject: node.fallbackLabel, parentSubject: good ? "Runtime" : undefined, claimType: "other",
-    confidenceScore: good ? 0.95 : 0.4, keywords: good ? ["Runtime"] : [],
-    groupId: good ? "group:runtime" : "group:ungrouped",
-  })), groups: good ? [{ id: "group:runtime", label: "Runtime", semanticAnchors: ["Runtime"],
-    nodeIds: payload.nodes.map((node) => node.nodeId), confidenceScore: 0.95 }] : [], warnings: [] };
-}
-
-function topicCommand(related: boolean): BuildReaderSummaryTopicMapCommand {
-  const m = refreshManifest();
-  const names = ["Quartz", "Orchid", "Nimbus", "Cobalt"];
-  const selectedEvidence = names.map((name, index) => ({
-    feedItemId: `feed-${index}`, sourceItemId: `source-${index}`, sourceBindingId: `binding-${index}`,
-    interestId: `interest-${index}`, providerKey: "rss", canonicalUrl: `https://example.test/${index}`,
-    title: `${name}${related ? " runtime" : ""}`, bodyPreview: `${name}${related ? " runtime" : ""}`,
-    publishedAt: refreshNow, observedAt: refreshNow, score: 0.9, whyImportant: ["Synthetic evidence"],
-    contentQuality: { qualityScore: 0.9, interestRelevanceScore: 0.9, engagementIntegrityScore: 0.9,
-      eligibleForSummary: true, eligibleForTopRead: true, needsLlmReview: false, decision: "keep",
-      flags: [], reason: "Synthetic eligible evidence" },
-  }));
-  return { tenantId: tenantId(m.tenantId), workspaceId: workspaceId(m.workspaceId), scope: { type: "workspace" },
-    period: { cadence: "daily", startedAt: new Date(m.startedAt), endedAt: new Date(m.endedAt), timezone: "UTC", periodKey: m.date },
-    requestedAt: refreshNow, selectedEvidence, topStories: [],
-    clusters: selectedEvidence.map((item, index) => ({ id: `story:${index}`, storyKey: `synthetic-${index}`,
-      representativeFeedItemId: item.feedItemId, duplicateFeedItemIds: [], interestIds: [item.interestId], providerKeys: [item.providerKey],
-      score: item.score, observedAtRange: { startedAt: refreshNow, endedAt: refreshNow }, whyImportant: item.whyImportant })),
-    citationMap: selectedEvidence.map((item, index) => ({ citationId: `c${index}`, feedItemId: item.feedItemId,
-      sourceItemId: item.sourceItemId, providerKey: item.providerKey, field: "title", canonicalUrl: item.canonicalUrl })),
-  };
 }

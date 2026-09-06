@@ -11,7 +11,7 @@ import { resolveAgentRuntimeReaderSummaryStoryRelationVerifierOptions } from
   "@social-monitor/summary/adapters/model/agent-runtime-reader-summary-story-relation-verifier.adapter";
 import { BuildReaderSummaryTopicMapUseCase } from
   "@social-monitor/summary/features/build-reader-summary-topic-map/build-reader-summary-topic-map.use-case";
-import type { AgentRuntimeClientPort } from "@social-monitor/summary/ports";
+import type { AgentRuntimeClientPort, ReaderSummaryModelPort } from "@social-monitor/summary/ports";
 import { verifyAndRecordReaderSummaryExecution, type ReaderSummaryAttestedTaskRole, type VerifiedReaderSummaryExecutionAttestationSink } from
   "@social-monitor/summary/adapters/model/reader-summary-execution-attestation";
 import { refreshHash, type RefreshManifest } from "./reader-summary-new-input-refresh-manifest";
@@ -29,29 +29,61 @@ export function refreshGenerationSha256(env: NodeJS.ProcessEnv): string {
     resolveAgentRuntimeReaderSummaryStoryRelationVerifierOptions(env, noInvocation),
   ].map(({ client, ...options }) => { void client; return options; }));
 }
-export function buildRefreshModelWiring(env: NodeJS.ProcessEnv, client: AgentRuntimeClientPort,
+type GuardedRefreshRuntime = AgentRuntimeClientPort & {
+  assertUsable(): void;
+  invalidateAdapter(taskRole: ReaderSummaryAttestedTaskRole): void;
+};
+
+export function buildRefreshModelWiring(env: NodeJS.ProcessEnv, client: GuardedRefreshRuntime,
   sink: VerifiedReaderSummaryExecutionAttestationSink) {
+  const model = new AgentRuntimeReaderSummaryModelAdapter({
+    ...resolveAgentRuntimeReaderSummaryModelOptions(env, client), verifiedAttestationSink: sink,
+  });
+  const labeler = new AgentRuntimeReaderSummaryTopicLabeler({
+    ...resolveAgentRuntimeReaderSummaryTopicLabelerOptions(env, client), verifiedAttestationSink: sink,
+  });
+  const relationVerifier = new AgentRuntimeReaderSummaryTopicRelationVerifier({
+    ...resolveAgentRuntimeReaderSummaryTopicRelationVerifierOptions(env, client), verifiedAttestationSink: sink,
+  });
+  // The real adapters own parsing and completeness/normalization. Poison their
+  // failures before a workflow can catch them and accept a fallback candidate.
+  // A valid plan's later coverage-only rejection never passes through this catch.
+  const validated = async <T>(taskRole: ReaderSummaryAttestedTaskRole, action: () => Promise<T>): Promise<T> => {
+    try {
+      client.assertUsable();
+      const result = await action();
+      client.assertUsable();
+      return result;
+    } catch (error) {
+      client.invalidateAdapter(taskRole);
+      throw error;
+    }
+  };
   return {
-    model: new AgentRuntimeReaderSummaryModelAdapter({
-      ...resolveAgentRuntimeReaderSummaryModelOptions(env, client), verifiedAttestationSink: sink,
-    }),
+    model: {
+      route: (...args) => model.route(...args),
+      estimate: (...args) => model.estimate(...args),
+      generate: (...args) => validated("summary", () => model.generate(...args)),
+      validateRawProviderResponse: (attempt) => {
+        const result = model.validateRawProviderResponse(attempt);
+        if (!result.ok) client.invalidateAdapter("summary");
+        return result;
+      },
+      classifyError: (error) => model.classifyError(error),
+    } satisfies ReaderSummaryModelPort,
     topicMap: new BuildReaderSummaryTopicMapUseCase({
       // The normal workflow owns at most two complete topic-map attempts after
       // a known coverage-only rejection. This is separate from primary generation.
       mode: "agent-runtime",
-      labeler: new AgentRuntimeReaderSummaryTopicLabeler({
-        ...resolveAgentRuntimeReaderSummaryTopicLabelerOptions(env, client), verifiedAttestationSink: sink,
-      }),
-      relationVerifier: new AgentRuntimeReaderSummaryTopicRelationVerifier({
-        ...resolveAgentRuntimeReaderSummaryTopicRelationVerifierOptions(env, client), verifiedAttestationSink: sink,
-      }),
+      labeler: { label: (...args) => validated("topic_label", () => labeler.label(...args)) },
+      relationVerifier: { verify: (...args) => validated("topic_relation", () => relationVerifier.verify(...args)) },
     }),
   };
 }
 export function guardedRefreshRuntime(input: {
   delegate: AgentRuntimeClientPort; manifest: RefreshManifest;
   assertLocal(): void; assertCurrent(): Promise<void>; record(event: unknown): void;
-}): AgentRuntimeClientPort & { assertUsable(): void } {
+}): GuardedRefreshRuntime {
   const seen = new Set<string>();
   let ambiguous = false;
   let generated = false;
@@ -65,6 +97,12 @@ export function guardedRefreshRuntime(input: {
     activeReaderSummaryPurposes.relatedTopicRelations];
   return {
     assertUsable,
+    invalidateAdapter: (taskRole) => {
+      if (ambiguous) return;
+      ambiguous = true; // Recording failure must not restore authority either.
+      input.record({ status: "requires_reconciliation", phase: "adapter_validation", taskRole,
+        operation: input.manifest.operation, observedThrough: input.manifest.observedThrough });
+    },
     checkHealth: async (service) => {
       try { assertUsable(); return await input.delegate.checkHealth(service); }
       catch (error) { ambiguous = true; throw error; }
@@ -119,8 +157,8 @@ export function guardedRefreshRuntime(input: {
           [activeReaderSummaryPurposes.storyRelations]: "story_relation",
           [activeReaderSummaryPurposes.relatedTopicRelations]: "related_topic_relation",
         } as Record<string, ReaderSummaryAttestedTaskRole>)[command.purpose]!;
-        // Validate the complete ordinary model contract HERE: callers may catch
-        // adapter errors and continue with another purpose after this returns.
+        // Verify the attested response envelope here. The composed adapter guard
+        // above also covers failures in the real parsers and normalizers.
         await verifyAndRecordReaderSummaryExecution({ command, result, taskRole,
           attempt: "primary", normalizedOutput: result.structuredOutput });
         const attestation = result.executionAttestation;
