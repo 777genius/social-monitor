@@ -16,6 +16,11 @@ export type ReaderSummaryTopicLabelPlan = {
 export type ReaderSummaryTopicNodeLabel = {
   readonly nodeId: string;
   readonly topicId?: string;
+  /** Internal reconciliation lineage; never parsed from model output. */
+  readonly relationIdentity?: {
+    readonly source: "topic-relation-reconciliation";
+    readonly canonicalNodeId: string;
+  };
   readonly label?: string;
   readonly semantic?: ReaderSummaryTopicSemanticLabel;
   readonly groupId?: string;

@@ -26,6 +26,7 @@ import {
 import {
   alignReaderSummaryTopicSemanticLabelToEvidence,
   ensureTopicLabelExpressesClaimFacet,
+  READER_SUMMARY_TOPIC_SEMANTIC_CONFIDENCE_MIN,
   renderReaderSummaryTopicSemanticLabel,
 } from "./reader-summary-topic-claim-label-policy";
 import {
@@ -93,7 +94,7 @@ export const buildReaderSummaryTopicMap = (
   const nodeLabels = new Map(
     (params.labelPlan?.nodeLabels ?? [])
       .map(sanitizeTopicNodeLabel)
-      .filter(hasUsableTopicNodeLabel)
+      .filter((label) => hasUsableTopicNodeLabel(label) || label.relationIdentity !== undefined)
       .map((label) => [label.nodeId, label] as const),
   );
   const reviewedNodeIds = new Set(
@@ -109,6 +110,19 @@ export const buildReaderSummaryTopicMap = (
   const aggregateByFallbackGroup =
     params.generatedBy === "agent-runtime" && nodeLabels.size === 0;
   const reviewedClusters = reviewedTopicClusters(params, reviewedNodeIds);
+  const originalLabels = new Map(
+    (params.labelPlan?.nodeLabels ?? []).map((label) => [label.nodeId, label]),
+  );
+  const identityProtectedStoryClusterIds = new Set(reviewedClusters
+    .filter((cluster) => originalLabels.get(topicNodeId(cluster.id))?.relationIdentity !== undefined)
+    .map((cluster) => cluster.id));
+  // Derive exclusion before display sanitation. Cluster lineage remains intact
+  // through both aggregation passes, including a merged high/low-confidence pair.
+  const excludedStoryClusterIds = new Set(reviewedClusters.filter((cluster) => {
+    const semantic = originalLabels.get(topicNodeId(cluster.id))?.semantic;
+    return semantic !== undefined && (!Number.isFinite(semantic.confidenceScore) ||
+      semantic.confidenceScore < READER_SUMMARY_TOPIC_SEMANTIC_CONFIDENCE_MIN);
+  }).map((cluster) => cluster.id));
   const nodeDrafts = reviewedClusters
     .map((cluster) =>
       topicNodeForCluster({
@@ -132,7 +146,7 @@ export const buildReaderSummaryTopicMap = (
   const rawNodes =
     params.preserveStoryClustersForLabeling === true
       ? aggregatedNodes
-      : mergeReaderSummaryTopicMapNodesByLabel(aggregatedNodes);
+      : mergeReaderSummaryTopicMapNodesByLabel(aggregatedNodes, identityProtectedStoryClusterIds);
   const semanticAnchorsByGroup = new Map(
     [...labelGroups].map(([groupId, group]) => [
       groupId,
@@ -144,7 +158,7 @@ export const buildReaderSummaryTopicMap = (
     params.preserveStoryClustersForLabeling === true
       ? rankedNodes
       : rankedNodes.slice(0, READER_SUMMARY_TOPIC_MAP_MAX_NODES),
-    { semanticAnchorsByGroup },
+    { semanticAnchorsByGroup, excludedStoryClusterIds },
   );
   const groups = buildReaderSummaryTopicMapGroups(nodes, labelGroups);
   const edges = buildReaderSummaryTopicMapEdges(nodes, groups);

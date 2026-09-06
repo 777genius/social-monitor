@@ -11,7 +11,8 @@ export const sanitizeTopicNodeLabel = (
   label: ReaderSummaryTopicNodeLabel,
 ): ReaderSummaryTopicNodeLabel => ({
   nodeId: label.nodeId,
-  topicId: sanitizeTopicId(label.topicId),
+  topicId: label.relationIdentity === undefined ? sanitizeTopicId(label.topicId) : label.topicId,
+  relationIdentity: label.relationIdentity,
   label: sanitizeTopicLabel(label.label),
   semantic: sanitizeReaderSummaryTopicSemanticLabel(label.semantic),
   groupId: sanitizeTopicId(label.groupId),
