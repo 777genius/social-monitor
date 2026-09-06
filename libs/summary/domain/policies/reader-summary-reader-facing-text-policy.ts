@@ -1,5 +1,24 @@
 export const READER_TITLE_MAX_LENGTH = 119;
 
+// Recovery may omit descriptive context, but cannot detach a claim from
+// negation, uncertainty, conditions or a question elsewhere in the source.
+// This deliberately rejects ambiguous context rather than paraphrasing it.
+export const canRecoverReaderTitleSentence = (
+  sentences: readonly string[],
+  index: number,
+): boolean => index === 0 || (
+  !/^(?:(?:this|that)(?!\s+(?:year|month|week)\b)|these|those|it|they|such|the (?:claim|statement|assertion))\b/iu.test(
+    sentences[index]?.trim() ?? "",
+  ) &&
+  sentences.every((sentence, otherIndex) => otherIndex === index || !(
+    /\?/u.test(sentence) ||
+    /\b(?:not(?!\s+(?:just|only)\b)|no|never|false|untrue|incorrect|misleading|deny|denies|denied|without|cannot|unverified|uncertain|unconfirmed|allegedly|reportedly|rumou?rs?|speculat\w*|hypothetical|fiction\w*|satir\w*|imagine|suppose|if|unless|might|may|could|would|must|should|pending)\b/iu.test(sentence) ||
+    /\b\w+n['’]t\b/iu.test(sentence) ||
+    /\b(?:following|preceding|above|below)\s+(?:claim|statement|assertion|account)\b/iu.test(sentence) ||
+    /\b(?:breaking|just\s+in)\s*:/iu.test(sentence)
+  ))
+);
+
 export const isConversationalOrTruncatedReaderTitle = (
   value: string,
 ): boolean => {

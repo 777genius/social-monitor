@@ -20,6 +20,22 @@ const observedAt = new Date("2026-08-29T13:00:00.000Z");
 
 describe("Reader Promotion V2 editorial slate", () => {
   it.each(["full", "truncated"])(
+    "rejects a qualified viral claim with a %s title before popularity ranking",
+    (titleKind) => {
+      const body = "The following claim about automatic agent writes on public websites is false and must not be treated as an announcement of actual product behavior. Atlas enables automatic agent writes.";
+      const higher = {
+        ...xEvidence("qualified-source", 3230),
+        title: titleKind === "full" ? body : `${body.slice(0, 100)}...`,
+        bodyPreview: body,
+        whyImportant: [],
+      };
+      const lower = xEvidence("short-source", 89);
+      expect(hasReaderFacingPromotionTitle(higher)).toBe(false);
+      expect(compose([lower, higher]).orderedCandidateIds).toEqual(["short-source"]);
+    },
+  );
+
+  it.each(["full", "truncated"])(
     "admits a long substantive source with a %s title and lets its popularity compete",
     (titleKind) => {
     const body = "How the research team evaluates agent incidents across public websites: the team proposes reporting standards that distinguish real-world incidents from model properties. Historically, the research team communicated agent misalignment primarily through research publications and detailed system cards. Agent misalignment now causes new types of real-world impact.";

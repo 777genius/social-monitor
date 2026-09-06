@@ -1,5 +1,6 @@
 import type { SummaryEvidenceItem } from "../value-objects/summary-evidence-item";
 import {
+  canRecoverReaderTitleSentence,
   isConversationalOrTruncatedReaderTitle,
   isUnpolishedReaderTitle,
   READER_TITLE_MAX_LENGTH,
@@ -147,17 +148,14 @@ const cleanPreviewTitle = (value: string): string => {
 };
 
 const previewSentenceForTitle = (value: string): string => {
-  const sentences = value
-    .trim()
-    .split(/(?<=[.!?])\s+/u)
-    .map((sentence) => sentence.trim())
-    .filter((sentence) => sentence.length > 0);
+  const sentences = readerTitleSentences(value);
 
   return (
     sentences.find(
       (sentence, index) => (index === 0 || (
         /[.!?]$/u.test(sentence) && !/(?:\.{2,}|…)/u.test(sentence)
       )) &&
+        canRecoverReaderTitleSentence(sentences, index) &&
         sentence.length >= 24 &&
         !isLowInformationTeaser(sentence) &&
         isReaderFacingTopReadTitle(compactReaderTitle(sentence)),
@@ -228,20 +226,41 @@ const summarySentenceForTitle = (
   value: string,
   allowLaterSentences: boolean,
 ): string => {
-  const sentences = value.trim().split(/(?<=[.!?])\s+/u);
+  const sentences = readerTitleSentences(value);
   // A breaking qualifier can scope later sentences too. Never remove it by
   // selecting a later, apparently unqualified claim.
   const candidates = !allowLaterSentences || isUnverifiedBreakingSourceTitle(value)
     ? sentences.slice(0, 1)
     : sentences;
   return candidates
-    .filter((sentence, index) => index === 0 || (
+    .filter((sentence, index) => canRecoverReaderTitleSentence(sentences, index) && (index === 0 || (
       /[.!?]$/u.test(sentence) && !/(?:\.{2,}|…)/u.test(sentence)
-    ))
+    )))
     .map(cleanSummarySentenceForTitle)
     .find((sentence) =>
-      isReaderFacingTopReadTitle(compactReaderTitle(cleanTopReadTitle(sentence))),
+      isReaderFacingTopReadTitle(compactReaderTitle(cleanTopReadTitle(sentence))) &&
+      matchesSummaryOutputScript(sentence, value),
     ) ?? "";
+};
+
+const readerTitleSentences = (value: string): readonly string[] => {
+  const sentences: string[] = [];
+  let current = "";
+  for (const part of value.trim().split(/(?<=[.!?])\s+/u)) {
+    // Titles/initials and dotted abbreviations are not sentence boundaries.
+    // Ambiguous lowercase continuations are kept together (and may exceed the
+    // title budget) rather than risking an incomplete claim.
+    if (current.length > 0 && !(
+      /(?:\b(?:dr|mr|mrs|ms|prof|sr|jr|st|vs|etc)\.|\b\p{L}\.|(?:\p{L}\.){2,})$/iu.test(current) ||
+      /^\p{Ll}/u.test(part)
+    )) {
+      sentences.push(current);
+      current = "";
+    }
+    current = current.length === 0 ? part : `${current} ${part}`;
+  }
+  if (current.length > 0) sentences.push(current);
+  return sentences;
 };
 
 const cleanSummarySentenceForTitle = (value: string): string =>

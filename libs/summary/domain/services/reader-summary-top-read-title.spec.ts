@@ -6,6 +6,58 @@ import { isUnpolishedReaderTitle } from
   "../policies/reader-summary-reader-facing-text-policy";
 
 describe("reader summary top read title", () => {
+  describe.each(["summary", "preview"])("%s sentence recovery", (path) => {
+    const itemFor = (body: string): SummaryEvidenceItem => evidence({
+      title: path === "summary" ? body : `${body.slice(0, 100)}...`,
+      bodyPreview: body,
+    });
+
+    it.each([
+      "The following claim about automatic agent writes on public websites is false and must not be treated as an announcement of actual product behavior.",
+      "The following account of automatic agent writes on public websites remains uncertain and needs independent confirmation before anyone treats it as product behavior.",
+      "Researchers have not confirmed the following claim about automatic agent writes across public websites despite repeated requests for supporting evidence.",
+      "Imagine a hypothetical product announcement about automatic agent writes across public websites after a future change to the current approval policy.",
+      "Could the following statement about automatic agent writes across public websites become true after a future change to the current approval policy?",
+    ])("rejects a later claim scoped by its context: %s", (prefix) => {
+      const item = itemFor(`${prefix} Atlas enables automatic agent writes.`);
+      expect(buildReaderPostPromotionTitle({ lead: item }))
+        .toBe("Current AI product discussion");
+      expect(hasReaderFacingPromotionTitle(item)).toBe(false);
+    });
+
+    it.each(["Dr. Smith", "Prof. Jones", "J. R. Smith", "U.S. operators"])(
+      "preserves the complete approval requirement containing %s",
+      (approver) => {
+        const claim = `Atlas requires approval from ${approver} before enabling automatic writes`;
+        const item = itemFor(`${longContext} ${claim}.`);
+        expect(buildReaderPostPromotionTitle({ lead: item })).toBe(claim);
+        expect(hasReaderFacingPromotionTitle(item)).toBe(true);
+      },
+    );
+
+    it("rejects recovery in a different script from the summary", () => {
+      const item = itemFor(`${longContext} Атлас отключил автоматическую запись.`);
+      expect(hasReaderFacingPromotionTitle(item)).toBe(false);
+    });
+
+    it("can continue past a script mismatch to a matching complete sentence", () => {
+      const claim = "Atlas documents agent failures in public incident reports";
+      const item = itemFor(`${longContext} Атлас отключил автоматическую запись. ${claim}.`);
+      expect(buildReaderPostPromotionTitle({ lead: item })).toBe(claim);
+    });
+
+    it("retains negation within the recovered sentence", () => {
+      const claim = "Atlas does not enable automatic agent writes";
+      expect(buildReaderPostPromotionTitle({ lead: itemFor(`${longContext} ${claim}.`) }))
+        .toBe(claim);
+    });
+
+    it("does not discard a subsequent qualification", () => {
+      const item = itemFor(`${longContext} Atlas enables automatic agent writes. That claim is false.`);
+      expect(hasReaderFacingPromotionTitle(item)).toBe(false);
+    });
+  });
+
   it.each([118, 119, 120, 139, 140, 141])(
     "keeps the title length contract at %i characters without clipping clauses",
     (length) => {
@@ -24,9 +76,12 @@ describe("reader summary top read title", () => {
     },
   );
 
-  it("uses a complete sentence from the reported incident discussion", () => {
+  it.each(["full", "truncated"])("uses a complete sentence from the reported incident discussion (%s)", (kind) => {
     const body = "How we think about the “wiki incident,” where our agents wrote to several internet sites: it’s past time for us to define standards for when and how we share misalignment incidents, not just misalignment properties of our models. Historically, we have treated misalignment largely as a research question, which gets communicated in research publications such as systems cards. This year, we’ve started to see misalignment cause new types of real-world impact.";
-    const item = evidence({ title: body, bodyPreview: body });
+    const item = evidence({
+      title: kind === "full" ? body : `${body.slice(0, 100)}...`,
+      bodyPreview: body,
+    });
     expect(buildReaderPostPromotionTitle({ lead: item })).toBe(
       "This year, we’ve started to see misalignment cause new types of real-world impact",
     );
@@ -235,6 +290,8 @@ describe("reader summary top read title", () => {
     expect(title).toBe(sample.storyTitle);
   });
 });
+
+const longContext = "Atlas documents agent safety findings across public websites and proposes reporting standards for misalignment incidents and model properties.";
 
 const evidence = (
   overrides: Partial<SummaryEvidenceItem>,
