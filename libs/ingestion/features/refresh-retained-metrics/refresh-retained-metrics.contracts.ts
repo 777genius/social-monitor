@@ -39,6 +39,7 @@ export type PreservedMetricObservation = {
   reason: string | null;
 };
 export type MetricRefreshOutcome = {
+  manifestSha?: string;
   sourceItemId: string; externalId: string; providerKey: RefreshProvider; date: string;
   status: "refreshed" | "superseded" | "unavailable" | "failed" | "uncertain";
   returned: boolean; reason: string | null; observedAt: string | null;
