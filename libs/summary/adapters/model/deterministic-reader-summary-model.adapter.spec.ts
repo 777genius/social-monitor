@@ -156,7 +156,7 @@ describe("DeterministicReaderSummaryModelAdapter", () => {
     expect(citedClusterIds(input, attempt, lead?.citationIds ?? [])).toEqual(
       new Set([plannedLead.clusterId]),
     );
-    expect(attempt.draft.headline).toMatch(/^Reports discuss /u);
+    expect(attempt.draft.headline).toBe("Discussion from monitored sources");
     expectPublished(input, attempt);
   });
 });

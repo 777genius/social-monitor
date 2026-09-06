@@ -3,7 +3,22 @@ import 'package:social_monitor_design_system/social_monitor_design_system.dart';
 
 /// Presentation only: never used to decide which sources qualify.
 bool readerSummaryNeedsSourceDisclosure(String text) =>
-    text.length > 118 || RegExp(r'[.!?。！？]\s*\S|[\r\n]').hasMatch(text);
+    text.length > 118 ||
+    RegExp(r'[!?。！？]\s*\S|[\r\n]').hasMatch(text) ||
+    _hasSentenceBoundary(text);
+
+bool _hasSentenceBoundary(String text) {
+  for (final match in RegExp(r'\S+\.\s+\S').allMatches(text)) {
+    final token = match.group(0)!.split(RegExp(r'\s+')).first;
+    // Internal dots identify initialisms/abbreviations, not sentence breaks.
+    if (RegExp(r'^(?:[A-Za-z]\.){2,}$').hasMatch(token) ||
+        RegExp(r'^(?:Dr|Mr|Mrs|Ms|Prof|Sr|Jr)\.$').hasMatch(token)) {
+      continue;
+    }
+    return true;
+  }
+  return false;
+}
 
 class ReaderSummarySourceText extends StatefulWidget {
   const ReaderSummarySourceText(
@@ -37,6 +52,9 @@ class _SourceTextState extends State<ReaderSummarySourceText> {
     if (!readerSummaryNeedsSourceDisclosure(widget.text)) {
       return Tooltip(
         message: widget.text,
+        // Hover still reveals the complete short heading; touch long-press
+        // belongs to the surrounding SelectionArea, not the tooltip.
+        triggerMode: TooltipTriggerMode.manual,
         child: Text(
           widget.text,
           style: widget.style,

@@ -216,14 +216,34 @@ void main() {
     }
   }
 
-  testWidgets('ordinary short title remains readable', (tester) async {
-    await tester.pumpWidget(
-      _app(const ReaderSummarySourceText('Atlas release')),
-    );
-    expect(find.text('Atlas release'), findsOneWidget);
-    expect(find.text('Source text'), findsNothing);
-    expect(find.byTooltip('Atlas release'), findsOneWidget);
-  });
+  for (final title in [
+    'Atlas release',
+    'OpenAI releases GPT-5.3 Codex',
+    'Node.js improves startup',
+    'example.com adds an API',
+    'U.S. researchers release a benchmark',
+    'Dr. Smith introduces a compiler',
+    'Tools e.g. Node.js gain support',
+  ]) {
+    testWidgets('ordinary short title remains readable: $title', (
+      tester,
+    ) async {
+      await tester.pumpWidget(_app(ReaderSummarySourceText(title)));
+      expect(find.text(title), findsOneWidget);
+      expect(find.text('Source text'), findsNothing);
+      expect(find.byTooltip(title), findsOneWidget);
+    });
+  }
+  for (final text in [
+    'Atlas acts autonomously. Only in a simulation.',
+    'Atlas acts autonomously!Only in a simulation.',
+    'Atlas acts autonomously\nOnly in a simulation.',
+    '自动执行。仅限模拟环境。',
+  ]) {
+    test('context remains disclosed: $text', () {
+      expect(readerSummaryNeedsSourceDisclosure(text), isTrue);
+    });
+  }
 }
 
 Widget _app(Widget child, {double scale = 1}) {

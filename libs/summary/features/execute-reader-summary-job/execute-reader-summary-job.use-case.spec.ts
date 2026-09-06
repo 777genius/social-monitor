@@ -445,7 +445,7 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
       },
     });
     expect(artifacts.all()[0]?.toSnapshot().content?.topReads[0]?.title).toBe(
-      "Runtime regression discussion",
+      "Runtime regression discussion\n\nUsers are discussing a runtime regression.",
     );
     expect(artifacts.all()[0]?.toSnapshot().content?.narrativeSections).toEqual(
       [

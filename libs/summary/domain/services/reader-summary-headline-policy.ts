@@ -8,6 +8,7 @@ import {
 export const groundedReaderHeadline = (params: {
   readonly headline: string;
   readonly sourceMix: readonly SourceMixEntry[];
+  readonly sourceTitles?: readonly string[];
   readonly topReads: readonly TopRead[];
   readonly thematicSynthesisSupport?: {
     readonly clusterCount: number;
@@ -15,6 +16,13 @@ export const groundedReaderHeadline = (params: {
   };
 }): string => {
   const fallback = readerSummaryHeadline(params.headline);
+
+  // Keep a copied model headline visible to the publication rejection gate.
+  // A neutral fallback must not launder a source heading into valid synthesis.
+  if (params.sourceTitles?.some((title) =>
+    readerSummaryHeadline(title).toLocaleLowerCase("en-US") ===
+      fallback.toLocaleLowerCase("en-US"),
+  )) return fallback;
 
   if (params.topReads.length === 0) {
     return fallback;
@@ -133,9 +141,19 @@ const buildHumanReaderHeadline = (
   topReads: readonly TopRead[],
 ): string | undefined => {
   const lead = topReads[0];
-  // A board title can be an available source excerpt. A headline-sized prefix
-  // could detach a statement from its correction, including on historical reads.
-  return lead === undefined ? undefined : "Discussion from monitored sources";
+  if (lead === undefined) return undefined;
+  // Only reuse a complete short heading. Never extract a sentence or a prefix
+  // from available source context, or discard an unverified legal qualification.
+  if (lead.title.length > 118 || /[\r\n]|[.!?。！？]\s+\S/u.test(lead.title) ||
+      isUnverifiedLegalTopRead(lead)) {
+    return "Discussion from monitored sources";
+  }
+  if (lead.confirmedProviderKeys.length > 1 || lead.confidence.level === "high") {
+    return lead.title;
+  }
+  return isExplicitlySourceFramedText(lead.title, lead)
+    ? lead.title
+    : `Reports discuss ${lead.title}`;
 };
 
 export const isUnverifiedLegalTopRead = (lead: {
