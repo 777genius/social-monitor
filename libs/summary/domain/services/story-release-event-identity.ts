@@ -1,4 +1,5 @@
 import type { SummaryEvidenceItem } from "../value-objects/summary-evidence-item";
+import { hasUnboundReleaseAction, releaseEventClauses } from "./story-release-event-clauses";
 
 /** Evidence for a verification-only exception, never deterministic merge authority. */
 export type StoryReleaseEventIdentity = {
@@ -63,7 +64,7 @@ export const storyReleaseEventIdentity = (
       if (titleProduct === null || !compatibleTargets(targets,
         [targetKey(titleProduct[1]!, titleProduct[2]!)])) return undefined;
     }
-    const context = releaseContext(headline, body, targets);
+    const context = releaseContext(headline, body, targets, publisher);
     if (context === undefined || uncertainHeadline(context)) return undefined;
     const eventDate = releaseDate(context, item.publishedAt);
     if (eventDate === null) return undefined;
@@ -86,7 +87,8 @@ export const storyReleaseEventIdentity = (
   const titleProduct = versionedProduct.exec(headline);
   if (titleProduct === null || !compatibleTargets(targets,
     [targetKey(titleProduct[1]!, titleProduct[2]!)])) return undefined;
-  const context = releaseContext(headline, body, targets);
+  if (hasUnboundReleaseAction(lead, attribution[1].toLowerCase())) return undefined;
+  const context = releaseContext(headline, body, targets, attribution[1].toLowerCase());
   if (context === undefined || uncertainHeadline(context) ||
       unattributedMeasurements(body, attribution[1].toLowerCase())) return undefined;
   const eventDate = releaseDate(context, item.publishedAt);
@@ -183,10 +185,14 @@ const uncertainHeadline = (text: string): boolean =>
   uncertainAction.test(text.replace(/\bmay\s+\d/gi, "date"));
 
 const sentences = (body: string): string[] =>
-  body.split(/\n|[.!?](?=\s|$)/).map((part) => part.trim()).filter(Boolean);
+  releaseEventClauses(body);
 
 const measurementAction = new RegExp([
   String.raw`\b(?:measured|measures|tested|benchmarked)\b`,
+  // A quantified workload is an experimental object even without a benchmark
+  // noun. Keep the actor before the verb available for positive attribution.
+  String.raw`\b(?:ran|executed|completed|performed)\s+(?:\d[\d,]*|a|an|the)\s+(?:[a-z-]+\s+){0,3}(?:tasks?|trials?|problems?|cases?|workloads?)\b`,
+  String.raw`\b\d[\d,]*\s+(?:[a-z-]+\s+){0,3}(?:tasks?|trials?|problems?|cases?|workloads?)\s+(?:was|were|have been|had been)\s+(?:[a-z-]+ly\s+){0,3}(?:run|executed|completed|performed)\b`,
   String.raw`\b(?:ran|conducted|performed|published)\s+(?:(?:a|an|the|new|fresh|its|their|own|coding|independent)\s+){0,4}(?:benchmarks?|measurements?|tests?|experiments?)\b`,
   // Sentence splitting already preserves decimal model versions.
   String.raw`\b(?:benchmarks?|measurements?|tests?|experiments?)\b(?:(?!\b(?:was|were|is|are|has|have|had)\b)[^;])*?\b(?:was|were|has been|have been)\s+(?:[a-z-]+ly\s+){0,3}(?:run|conducted|performed|published|made)\b`,
@@ -258,20 +264,30 @@ const unresolvedReleaseFact = (sentence: string): boolean => {
     unsupportedStage.test(remainder) || explicitDateSignal.test(remainder);
 };
 
-const releaseContext = (headline: string, body: string, targets: readonly string[]): string | undefined => {
+const releaseContext = (
+  headline: string, body: string, targets: readonly string[], publisher: string,
+): string | undefined => {
   const relevant: string[] = [];
   let primarySubject = true;
   for (const [index, sentence] of sentences(body).entries()) {
-    const product = versionedProduct.exec(sentence);
+    const assertion = releaseAssertion(sentence);
+    const activePublisher = assertion === undefined ? undefined : namedPublisher(assertion.before);
+    const product = activePublisher === undefined ? versionedProduct.exec(sentence) : null;
     if (product !== null) {
       primarySubject = compatibleTargets(targets, [targetKey(product[1]!, product[2]!)]);
       // In passive voice the released object precedes the verb. Inspect it
       // before the active-voice parser can mistake the date for an object.
       if (index > 0 && hasReleaseFact(sentence.slice(product[0].length))) {
         if (primarySubject) {
+          const actor = /\bby\s+([a-z][a-z-]*)\b/i.exec(sentence.slice(product[0].length));
           if (unsupportedStage.test(sentence) ||
+              (actor !== null && actor[1]!.toLowerCase() !== publisher) ||
               !attachedReleaseState.test(sentence.slice(product[0].length))) return undefined;
           relevant.push(sentence);
+        } else if (mentionsPrimaryTarget(sentence.slice(product[0].length), targets)) {
+          // A clause boundary we cannot bind must not erase another explicit
+          // primary-target assertion merely because this clause started elsewhere.
+          return undefined;
         }
         continue;
       }
@@ -286,21 +302,43 @@ const releaseContext = (headline: string, body: string, targets: readonly string
       continue;
     }
     if (index === 0 || (!hasReleaseFact(sentence) && /\b(?:this|the|a|promising|new) release\b/i.test(sentence))) {
+      if (index > 0 && hasUnboundReleaseAction(sentence, publisher, primarySubject)) return undefined;
       relevant.push(sentence);
       continue;
     }
-    const assertion = releaseAssertion(sentence);
     if (assertion !== undefined) {
       const mentioned = releaseTargets(assertion.subject);
       primarySubject = mentioned !== undefined && compatibleTargets(targets, mentioned);
-      if (primarySubject) relevant.push(sentence);
-      if (mentioned !== undefined) continue;
+      if (primarySubject) {
+        // A repeated target does not transfer another actor's launch to the
+        // primary publisher. Unsupported attribution remains ambiguous.
+        const actor = namedPublisher(assertion.before) ??
+          firstPersonPublisher(assertion.before, body, targets);
+        if (actor !== publisher) return undefined;
+        relevant.push(sentence);
+      }
+      if (mentioned !== undefined) {
+        if (!primarySubject && mentionsPrimaryTarget(sentence, targets)) return undefined;
+        continue;
+      }
     }
     if (unresolvedReleaseFact(sentence)) return undefined;
+    // No recognized release/measurement signal is not evidence that an explicit
+    // actor's action belongs to the launch quoted in the lead.
+    if ([...sentence.matchAll(measurementAction)].length === 0 &&
+        hasUnboundReleaseAction(sentence, publisher, primarySubject)) return undefined;
   }
   const context = [headline, ...relevant].join("\n");
   return unsupportedStage.test(context) ? undefined : context;
 };
+
+const mentionsPrimaryTarget = (text: string, targets: readonly string[]): boolean =>
+  targets.some((target) => {
+    const [name, version] = target.split("@");
+    if (name === undefined || version === undefined) return false;
+    const model = name.split(" ").at(-1)!;
+    return new RegExp(`\\b${model}[-\\s]+${version.replaceAll(".", "\\.")}\\b`, "i").test(text);
+  });
 
 const months = ["jan(?:uary)?", "feb(?:ruary)?", "mar(?:ch)?", "apr(?:il)?", "may", "jun(?:e)?", "jul(?:y)?",
   "aug(?:ust)?", "sep(?:t(?:ember)?)?", "oct(?:ober)?", "nov(?:ember)?", "dec(?:ember)?"];
