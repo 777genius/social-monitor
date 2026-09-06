@@ -143,7 +143,12 @@ export type ReaderSummaryArtifactView = Omit<
   | "promotionAttestations"
   | "promotionEvidenceFacts"
   | "content"
+  | "topStories"
 > & {
+  readonly topStories: readonly Omit<
+    ReaderSummaryArtifactProps["topStories"][number],
+    "readerReasonProvenance"
+  >[];
   readonly period: ReaderSummaryPeriodView;
   readonly content: ReaderSummaryContentView;
   readonly sourceWindow: Omit<
@@ -224,6 +229,10 @@ export const presentReaderSummaryArtifact = (
   void _ingestionCutoff;
   return {
     ...publicSnapshot,
+    topStories: snapshot.topStories.map(({ readerReasonProvenance, ...story }) => {
+      void readerReasonProvenance;
+      return story;
+    }),
     period: presentReaderSummaryPeriod(snapshot.period),
     content,
     sourceWindow: {
