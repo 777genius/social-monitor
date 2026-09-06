@@ -1,12 +1,14 @@
 # Bounded real-story grouping evaluation
 
-Immutable capture/label origin: `e83b577f85d3f287055dc0a6154bef6a35b50bd2`. Evaluated code is the **current clean committed descendant**, including the committed evaluator. This lane does not change production classification, thresholds, prompts, publication, auth, provider configuration or dependencies.
+Immutable capture/label origin: `e83b577f85d3f287055dc0a6154bef6a35b50bd2`. Evaluated code is the **current clean committed revision**, including the committed evaluator. This lane does not change production classification, thresholds, prompts, publication, auth, provider configuration or dependencies.
 
 ## Reusing the reference after a source change
 
 Commit the intended production and evaluator changes first, then start a fresh Node process from that clean repository root. Do not edit or switch commits while it runs. Dirty tracked/staged source and non-ignored untracked files are rejected; ignored executable files under the evaluated source roots are rejected too. Generated output stays in ignored `.cache/`. No dirty-run override is provided.
 
 Schema v2 separates `captureSourceRevision` (immutable e83 origin) from `evaluatedSource` (`revision`, full Git `treeSha`, `worktree: clean`). The commit/tree identifies all tracked production code and configuration, while `ownedFiles` hashes every evaluator and sealed fixture file. The request manifest binds both identities, the fixture seals and exact canonical requests. Reports and receipts carry the evaluated identity plus the canonical manifest SHA256. A later commit invalidates an old receipt even if all model commands happen to be identical. Schema v1 artifacts remain historical evidence; they cannot be imported as current results or upgraded by rewriting identity fields.
+
+The capture origin records immutable fixture provenance; it does not authorize implementation ancestry. A shallow checkout or another clean implementation revision can evaluate the same sealed reference without the capture commit's Git object or history. No history lookup or fetch is required. Current commit/tree, owned-file hashes, fixture seals and request/response binding remain mandatory.
 
 Dependencies are the existing installation, not a hermetic build; Git identifies the tracked lockfiles, not installed `node_modules` bytes. Use the matching existing dependencies. No install is performed here. The source checks bracket execution and receipt publication; use a dedicated clean checkout, not one being edited concurrently.
 
@@ -27,7 +29,7 @@ npm run check:source-line-cap
 
 The offline command creates `offline/{results.json,report.md,report.html,requests.json,request-manifest.sha256}` under `.cache/real-story-grouping-eval`. It does not invoke a model. The regression command creates a mechanical all-false response fixture and replays it through the actual model adapter, normalizer, attestation checks and reconciliation. Its forged **test-only** attestations have package version `0.0.0-fixture` and `captureKind=offline_fixture`; they are not live evidence. Model-semantic metrics are unavailable in both offline modes. The request manifest hash uses production canonical JSON SHA256; file SHA256 is a different identity.
 
-The source-identity suite makes a disposable **local** Git clone and temporary commits. It runs the real CLI after an additive commit and after an intentional production clustering-cap change only inside that clone, checks changed cluster output, rejects older receipts, imports freshly matched fixtures, and verifies the original label seal and fixture bytes. It never commits in the caller's repository. Optional `RSG_IDENTITY_EVIDENCE_DIR` saves its source identities and a baseline HTML preview outside the disposable clone. That preview identifies its own test commit, not the parent's final commit. Renderer tests check static containment and content; browser inspection at 390/644/1280 is separate.
+The source-identity suite makes disposable **local** Git clones and temporary commits, including a depth-one checkout proven to lack the capture object and alternate object stores. It runs the real offline/replay CLI there and rejects stale manifests and responses after a source revision even when commands match. It also runs after an additive commit and an intentional production clustering-cap change only inside a disposable clone, checks changed cluster output, rejects source changes during execution, imports freshly matched fixtures, and verifies the original label seal and fixture bytes. It never commits in the caller's repository. Optional `RSG_IDENTITY_EVIDENCE_DIR` saves its source identities and a baseline HTML preview outside the disposable clone. That preview identifies its own test commit, not the parent's final commit. Renderer tests check static containment and content; browser inspection at 390/644/1280 is separate.
 
 ## Main code chain at the predecessor reference
 

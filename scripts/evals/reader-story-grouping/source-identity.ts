@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { CAPTURE_SOURCE_REVISION, check } from "./dataset";
+import { check } from "./dataset";
 
 /** The capture stays frozen; every execution uses a separate, clean committed source identity. */
 export type EvaluatedSource = {
@@ -13,8 +13,8 @@ export const assertSource = (root = process.cwd()): EvaluatedSource => {
     cwd: root, encoding: "utf8", env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
   }).trim();
   const revision = git("rev-parse", "HEAD");
-  check(git("merge-base", CAPTURE_SOURCE_REVISION, revision) === CAPTURE_SOURCE_REVISION,
-    "Evaluated source must descend from the immutable capture source revision");
+  // Capture origin is sealed fixture provenance, not implementation ancestry authority.
+  // Bind the current commit/tree even when shallow history omits that old Git object.
   check(git("status", "--porcelain=v1", "--untracked-files=all") === "",
     "Evaluation requires a clean committed checkout; commit source/evaluator changes before running");
   // Ignored executable files can shadow committed TypeScript during Node resolution.

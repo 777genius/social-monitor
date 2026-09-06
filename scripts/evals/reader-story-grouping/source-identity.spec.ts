@@ -2,8 +2,9 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { CAPTURE_SOURCE_REVISION, FIXTURES, fileSha, loadDataset, readJson } from "./dataset";
-import { assertSource } from "./source-identity";
+import { assertSource, verifySourceUnchanged } from "./source-identity";
 import type { RequestManifest, CaptureReceipt } from "./requests";
 import type { ReportResult } from "./report";
 
@@ -158,5 +159,83 @@ describe("clean committed source identity through real offline/replay commands",
       if (previous) writeFileSync(absolute, previous); else rmSync(absolute);
       if (kind === "staged") git("add", path);
     }
+  }, 60_000);
+
+  it("rejects a clean source revision changed during execution", () => {
+    const expected = assertSource(root);
+    writeFileSync(join(root, evaluator, "during-run-note.md"), "Disposable source change during execution.\n");
+    commit("test: source revision changed during execution");
+    try {
+      process.chdir(root);
+      expect(() => verifySourceUnchanged(expected)).toThrow("Evaluated source changed during execution");
+      expect(() => verifySourceUnchanged(assertSource())).not.toThrow();
+      evidence.duringRunChangeRejected = true;
+    } finally { process.chdir(sourceRoot); }
+  });
+
+  it("replays in a depth-one checkout without the capture object and rejects stale responses after a revision", () => {
+    const previousRoot = root;
+    const shallowRoot = join(sandbox, "shallow");
+    git("branch", "shallow-baseline", baseline.evaluatedSource.revision);
+    // File transport is local only. Unlike --local/--shared, depth=1 copies no older objects.
+    git("-c", "protocol.file.allow=always", "clone", "--quiet", "--no-local", "--depth=1",
+      "--single-branch", "--branch=shallow-baseline", pathToFileURL(root).href, shallowRoot);
+    root = shallowRoot;
+    try {
+      if (!existsSync(join(root, "node_modules"))) symlinkSync(resolve(sourceRoot, "node_modules"), join(root, "node_modules"), "dir");
+      expect(git("rev-parse", "--is-shallow-repository")).toBe("true");
+      expect(git("rev-list", "--count", "HEAD")).toBe("1");
+      expect(existsSync(join(root, ".git/objects/info/alternates"))).toBe(false);
+      const captureObject = spawnSync("git", ["cat-file", "-e", `${CAPTURE_SOURCE_REVISION}^{commit}`],
+        { cwd: root, encoding: "utf8", timeout: 60_000 });
+      expect(captureObject.error).toBeUndefined();
+      expect(captureObject.status).toBe(128);
+      expect(captureObject.stderr).toContain("Not a valid object name");
+      const source = assertSource(root);
+      expect(source).toEqual({ revision: git("rev-parse", "HEAD"), treeSha: git("rev-parse", "HEAD^{tree}"), worktree: "clean" });
+      expect(source).toEqual(baseline.evaluatedSource);
+      succeed("regression");
+      const before = manifest();
+      expect(before).toEqual(baseline);
+      expect(result().totals).toEqual(baselineReport.totals);
+      const imported = readJson<ReportResult>(join(root, output, "captured-regression/results.json"));
+      const receipt = readJson<CaptureReceipt>(join(root, output, "captured-regression/receipt.json"));
+      expect(imported.mode).toBe("OFFLINE_CAPTURED_REGRESSION");
+      expect(imported.liveStatus).toBe("NOT_RUN");
+      expect(imported.evaluatedSource).toEqual(source);
+      expect(imported.ownedFiles).toEqual(before.ownedFiles);
+      expect(receipt.schemaVersion).toBe(2);
+      expect(receipt.evaluatedSource).toEqual(source);
+      expect(receipt.manifestSha256).toBe(imported.manifestSha256);
+      cpSync(join(root, output, "captured-regression/receipt.json"), join(root, output, "shallow-old-receipt.json"));
+      writeFileSync(join(root, evaluator, "shallow-revision-note.md"), "Disposable shallow implementation revision.\n");
+      commit("test: later shallow implementation revision");
+      const staleManifest = script("run", ["import", `${output}/shallow-stale-manifest`, `${output}/shallow-old-receipt.json`]);
+      expect(staleManifest.status).toBe(1);
+      expect(staleManifest.stderr).toContain("Request/source/fixture manifest mismatch");
+      expect(existsSync(join(root, output, "shallow-stale-manifest/results.json"))).toBe(false);
+      succeed("run", ["offline"]);
+      const after = manifest();
+      expect(after.schemaVersion).toBe(2);
+      expect(after.evaluatedSource).toEqual(assertSource(root));
+      expect(after.evaluatedSource.revision).not.toBe(source.revision);
+      expect(after.evaluatedSource.treeSha).not.toBe(source.treeSha);
+      expect(after.ownedFiles[`${evaluator}/shallow-revision-note.md`]).toBeDefined();
+      expect(after.requests).toEqual(before.requests);
+      expect(after.captureSourceRevision).toBe(CAPTURE_SOURCE_REVISION);
+      expect(after.labelSealSha256).toBe(before.labelSealSha256);
+      expect(after.replaySha256).toBe(before.replaySha256);
+      const staleReceipt = script("run", ["import", `${output}/shallow-stale-receipt`, `${output}/shallow-old-receipt.json`]);
+      expect(staleReceipt.status).toBe(1);
+      expect(staleReceipt.stderr).toContain("Receipt manifest mismatch");
+      expect(existsSync(join(root, output, "shallow-stale-receipt/results.json"))).toBe(false);
+      succeed("regression");
+      expect(readJson<ReportResult>(join(root, output, "captured-regression/results.json")).evaluatedSource).toEqual(after.evaluatedSource);
+      expect(result().totals).toEqual(baselineReport.totals);
+      verifyFixtures();
+      evidence.shallow = { before: source, after: after.evaluatedSource, captureObjectAbsent: true,
+        shallow: true, initialCommitCount: 1, identicalCommands: true, staleManifestRejected: true,
+        staleReceiptRejected: true, freshMatchingImport: true, totals: result().totals, liveStatus: imported.liveStatus };
+    } finally { root = previousRoot; }
   }, 60_000);
 });
