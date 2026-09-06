@@ -44,9 +44,16 @@ describe("AgentRuntimeReaderSummaryStoryRelationVerifier", () => {
       provider: "codex",
       purpose: "social_monitor.reader_summary.verify_story_relations.v2",
       metadata: {
-        promptVersion: "reader_summary.story_relation.agent_runtime.v2",
+        promptVersion: "reader_summary.story_relation.agent_runtime.v3",
       },
     });
+    expect(JSON.parse(client.commands[0]?.prompt ?? "{}").constraints).toMatchObject({
+      distinctPrimaryEventsStaySeparate: true,
+      releaseEmphasisAloneDoesNotSplitEvent: true,
+      requireReleaseSubjectVersionStageDateConsistency: true,
+    });
+    expect(client.commands[0]?.systemPrompt).toContain("Distinguish the primary event from emphasis");
+    expect(client.commands[0]?.systemPrompt).toContain("Older comparator versions are not release targets");
     const promptPair = JSON.parse(client.commands[0]?.prompt ?? "{}").pairs[0];
     expect(promptPair).toMatchObject({
       leftFeedItemId: "feed:hn",

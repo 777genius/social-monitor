@@ -45,6 +45,15 @@ const verifyFixtures = (): void => {
   expect(loadDataset(join(root, FIXTURES)).labelSealSha256).toBe("40f260a47d8a7cacda53dbb26667d17fbe7424199cf097f690b960eee3fd2bcb");
 };
 
+const linkInstalledDependencies = (): void => {
+  // node_modules/ ignores directories, but not this test's symlink. Keep the
+  // local installation out of the committed source tree, as in the real clone.
+  writeFileSync(join(root, ".git/info/exclude"), "\n/node_modules\n", { flag: "a" });
+  if (!existsSync(join(root, "node_modules"))) {
+    symlinkSync(resolve(sourceRoot, "node_modules"), join(root, "node_modules"), "dir");
+  }
+};
+
 beforeAll(() => {
   sandbox = mkdtempSync(join(tmpdir(), "rsg-current-source-test-"));
   root = join(sandbox, "repo");
@@ -52,7 +61,12 @@ beforeAll(() => {
     { timeout: 60_000, env: { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_SYSTEM: "/dev/null" } });
   git("-c", "core.hooksPath=/dev/null", "checkout", "--quiet", "HEAD");
   cpSync(join(sourceRoot, evaluator), join(root, evaluator), { recursive: true });
-  symlinkSync(resolve(sourceRoot, "node_modules"), join(root, "node_modules"), "dir");
+  // Include the changed release policy and prompt in this test-only snapshot;
+  // copying only the evaluator would silently exercise the old production code.
+  for (const path of ["libs/summary/domain", "libs/summary/adapters/model"]) {
+    cpSync(join(sourceRoot, path), join(root, path), { recursive: true });
+  }
+  linkInstalledDependencies();
   fixtureHashes = Object.fromEntries(git("ls-files", FIXTURES).split("\n").map((path) => [path, fileSha(join(root, path))]));
   if (git("status", "--porcelain")) commit("test: current evaluator snapshot in disposable clone");
   evidence.snapshot = assertSource(root);
@@ -73,13 +87,14 @@ describe("clean committed source identity through real offline/replay commands",
   it("evaluates the committed evaluator descendant and imports matching non-live responses", () => {
     succeed("regression");
     baseline = manifest(); baselineReport = result();
+    expect(git("ls-files", "node_modules")).toBe("");
     expect(baseline.schemaVersion).toBe(2);
     expect(baseline.captureSourceRevision).toBe(CAPTURE_SOURCE_REVISION);
     expect(baseline.evaluatedSource).toEqual(assertSource(root));
     expect(baseline.evaluatedSource.revision).not.toBe(CAPTURE_SOURCE_REVISION);
     expect(baselineReport.totals).toMatchObject({ cases: 50, posts: 49, scored: 46, ambiguous: 4,
-      crossProviderPositives: 15, retrievedPositives: 10, deterministicRetrievedPositives: 5,
-      fableAnnouncementMisses: 5, missingAuthorityPosts: 42, liveResponses: 0 });
+      crossProviderPositives: 15, retrievedPositives: 15, deterministicRetrievedPositives: 5,
+      fableAnnouncementMisses: 0, missingAuthorityPosts: 42, liveResponses: 0 });
     const imported = readJson<ReportResult>(join(root, output, "captured-regression/results.json"));
     const receipt = readJson<CaptureReceipt>(join(root, output, "captured-regression/receipt.json"));
     expect(imported.mode).toBe("OFFLINE_CAPTURED_REGRESSION");
@@ -94,6 +109,18 @@ describe("clean committed source identity through real offline/replay commands",
     cpSync(join(root, output, "captured-regression"), join(sandbox, "preview/captured-regression"), { recursive: true });
     cpSync(join(root, output, "captured-regression/receipt.json"), join(root, output, "old-receipt.json"));
     evidence.baseline = { source: baseline.evaluatedSource, totals: baselineReport.totals, matchingImport: true, liveStatus: imported.liveStatus };
+  }, 60_000);
+
+  it("rejects a self-labelled live fixture without independently trusted provenance", () => {
+    const receipt = readJson<CaptureReceipt>(join(root, output, "captured-regression/receipt.json"));
+    const forged = { ...receipt, captureKind: "live_subscription",
+      transport: { ...receipt.transport, authentication: "existing_authenticated_composition" } };
+    const path = join(root, output, "untrusted-receipt.json");
+    writeFileSync(path, JSON.stringify(forged));
+    const failed = script("run", ["import", `${output}/rejected-untrusted`, path]);
+    expect(failed.status).toBe(1);
+    expect(failed.stderr).toContain("independently supplied trusted receipt file SHA256");
+    expect(existsSync(join(root, output, "rejected-untrusted/results.json"))).toBe(false);
   }, 60_000);
 
   it("runs after an additive commit and rejects the preceding source's receipt even when commands match", () => {
@@ -182,7 +209,7 @@ describe("clean committed source identity through real offline/replay commands",
       "--single-branch", "--branch=shallow-baseline", pathToFileURL(root).href, shallowRoot);
     root = shallowRoot;
     try {
-      if (!existsSync(join(root, "node_modules"))) symlinkSync(resolve(sourceRoot, "node_modules"), join(root, "node_modules"), "dir");
+      linkInstalledDependencies();
       expect(git("rev-parse", "--is-shallow-repository")).toBe("true");
       expect(git("rev-list", "--count", "HEAD")).toBe("1");
       expect(existsSync(join(root, ".git/objects/info/alternates"))).toBe(false);

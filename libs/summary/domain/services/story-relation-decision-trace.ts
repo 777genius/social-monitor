@@ -6,7 +6,7 @@ import type {
 import { STORY_RELATION_APPROVAL_CONFIDENCE_MIN } from "./story-relation-candidates";
 
 export const STORY_RELATION_CANDIDATE_POLICY_VERSION =
-  "reader_summary.story_relation.candidate.v1";
+  "reader_summary.story_relation.candidate.v2";
 
 export type StoryRelationDecisionDisposition =
   | "verifier_unavailable"
