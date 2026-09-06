@@ -1,3 +1,4 @@
+import { canonicalJsonSha256 } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
 import { ReaderSummaryJob } from "@social-monitor/summary/domain";
 import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 import { refreshPeriod } from "./reader-summary-new-input-refresh-capture";
@@ -24,7 +25,7 @@ describe("new-input refresh consumed authority", () => {
     await selector.select({ observedThrough: new Date(m.observedThrough) } as never);
     expect(select).toHaveBeenCalledWith({ observedThrough: new Date(m.observedThrough) });
     expect(check).toHaveBeenCalledTimes(3);
-    expect(fence).toHaveBeenCalledTimes(3);
+    expect(fence).toHaveBeenCalledTimes(6);
     await expect(selector.select({ observedThrough: refreshNow } as never)).rejects.toThrow(/cutoff/);
   });
   it.each(["old slot", "engagement", "config", "fence"])("fails closed on %s drift", async (kind) => {
@@ -68,7 +69,7 @@ describe("new-input refresh model admission", () => {
     const events: unknown[] = [];
     const runTask = jest.fn(async () => { expect(events).toHaveLength(1); throw new Error("ambiguous transport"); });
     const runtime = guardedRefreshRuntime({ delegate: { runTask, checkHealth: jest.fn() }, manifest: refreshManifest(),
-      assertCurrent: async () => undefined, record: (e) => events.push(e) });
+      assertLocal: () => undefined, assertCurrent: async () => undefined, record: (e) => events.push(e) });
     await expect(runtime.runTask(command())).rejects.toThrow(/ambiguous/);
     await expect(runtime.runTask({ ...command(), requestId: "new-path-new-attempt" })).rejects.toThrow(/budget/);
     expect(runTask).toHaveBeenCalledTimes(1);
@@ -78,8 +79,8 @@ describe("new-input refresh model admission", () => {
   it.each(["engagement", "config", "slot"])("checks %s at the actual provider boundary", async (kind) => {
     const runTask = jest.fn();
     const runtime = guardedRefreshRuntime({ delegate: { runTask, checkHealth: jest.fn() }, manifest: refreshManifest(),
-      assertCurrent: async () => { throw new Error(kind); }, record: jest.fn() });
-    await expect(runtime.runTask(command())).rejects.toThrow(kind);
+      assertLocal: () => undefined, assertCurrent: async () => { throw new Error(kind); }, record: jest.fn() });
+    await expect(runtime.runTask(command())).rejects.toThrow(/ambiguous/);
     expect(runTask).not.toHaveBeenCalled();
   });
   it("consumes the generation before an awaited authority check, blocking concurrent starts", async () => {
@@ -87,7 +88,7 @@ describe("new-input refresh model admission", () => {
     const pending = new Promise<void>((resolve) => { release = resolve; });
     const runTask = jest.fn(async () => { throw new Error("ambiguous transport"); });
     const runtime = guardedRefreshRuntime({ delegate: { runTask, checkHealth: jest.fn() },
-      manifest: refreshManifest(), assertCurrent: () => pending, record: jest.fn() });
+      manifest: refreshManifest(), assertLocal: () => undefined, assertCurrent: () => pending, record: jest.fn() });
     const first = runtime.runTask(command());
     await expect(runtime.runTask({ ...command(), requestId: "concurrent-other-id" })).rejects.toThrow(/budget/);
     release();
@@ -97,20 +98,20 @@ describe("new-input refresh model admission", () => {
   it("persists token/identity evidence and blocks duplicate and repair generation", async () => {
     const m = refreshManifest();
     const events: unknown[] = [];
-    const result: AgentRuntimeTaskResult = { status: "completed", warnings: [],
+    const result: AgentRuntimeTaskResult = { status: "completed", warnings: [], structuredOutput: { synthetic: true },
       usage: { inputTokens: 3, outputTokens: 2, totalTokens: 5, estimatedCostUsd: 0 },
       executionAttestation: { schemaVersion: 1, requestId: "test-summary", purpose: "social_monitor.reader_summary.generate.v2",
         canonicalRequestSha256: "a".repeat(64), provider: "codex", model: "gpt-5.6-sol", reasoningEffort: "high",
         runtimeEngine: "subscription-runtime-cli", runtimePackageVersion: m.runtime.packageVersion,
-        launcherSha256: m.runtime.launcherSha256, selectedOutputKind: "structured_output", selectedOutputSha256: "b".repeat(64) } };
+        launcherSha256: m.runtime.launcherSha256, selectedOutputKind: "structured_output", selectedOutputSha256: canonicalJsonSha256({ synthetic: true }) } };
     const runTask = jest.fn(async () => result);
     const runtime = guardedRefreshRuntime({ delegate: { runTask, checkHealth: jest.fn() }, manifest: m,
-      assertCurrent: async () => undefined, record: (e) => events.push(e) });
+      assertLocal: () => undefined, assertCurrent: async () => undefined, record: (e) => events.push(e) });
     await runtime.runTask(command());
     await expect(runtime.runTask(command())).rejects.toThrow(/budget/);
     await expect(runtime.runTask({ ...command(), requestId: "alternate-summary-id" })).rejects.toThrow(/budget/);
     await expect(runtime.runTask({ ...command(), requestId: "repair", metadata: { attempt: "repair" } })).rejects.toThrow(/budget/);
     expect(runTask).toHaveBeenCalledTimes(1);
-    expect(events[2]).toMatchObject({ tokens: result.usage, outputSha256: "b".repeat(64) });
+    expect(events[2]).toMatchObject({ tokens: result.usage, outputSha256: canonicalJsonSha256({ synthetic: true }) });
   });
 });

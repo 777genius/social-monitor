@@ -16,15 +16,23 @@ export type RefreshGuardDependencies = Readonly<{
  * start requires reconciliation; lease expiry can never authorize a paid retry. */
 export class NewInputRefreshGuard implements ReaderSummaryNewInputRefreshAuthority {
   private claimed = false;
+  private invalid = false;
   constructor(readonly manifest: RefreshManifest, private readonly jobId: string,
     private readonly deps: RefreshGuardDependencies) {}
+  invalidate(): void { this.invalid = true; }
   assertLocal(): void {
-    this.deps.assertFences();
-    assertRefreshManifest(this.manifest, this.deps.now());
+    if (this.invalid) throw new Error("Refresh authority requires reconciliation");
+    try {
+      this.deps.assertFences();
+      assertRefreshManifest(this.manifest, this.deps.now());
+    } catch (error) { this.invalid = true; throw error; }
   }
   async assertCurrent(): Promise<void> {
-    this.assertLocal();
-    await this.deps.assertCurrent();
+    try {
+      this.assertLocal();
+      await this.deps.assertCurrent();
+      this.assertLocal();
+    } catch (error) { this.invalid = true; throw error; }
   }
   async claim(job: ReaderSummaryJobProps): Promise<Date> {
     if (this.claimed || job.id !== this.jobId || job.idempotencyKey !== this.manifest.operation ||

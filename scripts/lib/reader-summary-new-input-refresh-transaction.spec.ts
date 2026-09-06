@@ -2,7 +2,7 @@ import { FixedClock } from "@social-monitor/shared-kernel";
 import type { PrismaReaderSummaryClient } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-client";
 import { assertRefreshTransactionAuthority, refreshPublicationGuard } from "./reader-summary-new-input-refresh-execution";
 import { captureRefreshDatabaseAuthority } from "./reader-summary-new-input-refresh-capture";
-import { readRefreshPrior, readRefreshJobs } from "./reader-summary-new-input-refresh-postgres";
+import { readRefreshPrior, readRefreshJobs, lockRefreshAuthority } from "./reader-summary-new-input-refresh-postgres";
 import { refreshManifest, refreshNow } from "./reader-summary-new-input-refresh.spec-support";
 import type { ReaderSummaryPublicationCommand } from "@social-monitor/summary/ports";
 
@@ -32,7 +32,7 @@ describe("publisher authority uses only its transaction for every database read"
       });
       const command = { artifact: { toSnapshot: () => ({ sourceWindow: { ingestionCutoff: new Date(m.observedThrough) } }) },
         finalJob: { toSnapshot: () => ({ id: "new" }) } } as unknown as ReaderSummaryPublicationCommand;
-      const guard = refreshPublicationGuard({ manifest: m, jobId: "new", assertLocal: () => undefined,
+      const guard = refreshPublicationGuard({ assertProtected: lockRefreshAuthority, manifest: m, jobId: "new", assertLocal: () => undefined,
         assertCurrent: (client) => assertRefreshTransactionAuthority(client, m, "new", clock) });
       if (change === "unchanged") await expect(guard(tx, command)).resolves.toBeUndefined();
       else await expect(guard(tx, command)).rejects.toThrow(/drifted|job authority/);

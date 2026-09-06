@@ -16,8 +16,9 @@ import { createReaderSummaryDailyCapturePublicationWiring } from "./reader-summa
 import { assertRefreshManifest, refreshScope, type RefreshManifest } from "./reader-summary-new-input-refresh-manifest";
 import { NewInputRefreshGuard, assertRefreshEqual, reconcileRefresh } from "./reader-summary-new-input-refresh-guard";
 import { captureRefreshAuthority, captureRefreshDatabaseAuthority, refreshPeriod, assertRefreshHasNewInput, preflightRefreshSelection } from "./reader-summary-new-input-refresh-capture";
-import { lockRefreshAuthority, readRefreshJobs, readRefreshPrior, readRefreshCounts } from "./reader-summary-new-input-refresh-postgres";
+import { readRefreshJobs, readRefreshPrior, readRefreshCounts } from "./reader-summary-new-input-refresh-postgres";
 import { createRefreshAdmission } from "./reader-summary-new-input-refresh-admission";
+import { withRefreshPublicationLocks, type RefreshSnapshotProtection } from "./reader-summary-new-input-refresh-publication-lock";
 import { buildRefreshModelWiring, guardedRefreshRuntime } from "./reader-summary-new-input-refresh-model";
 
 export async function executeNewInputRefresh(input: {
@@ -76,6 +77,7 @@ export async function executeNewInputRefresh(input: {
       assertRefreshManifest(m, clock.now());
       await assertCurrent();
       if ((await readRefreshJobs(summary, m.date)).length !== 0) throw new Error("Refresh date budget consumed");
+      input.assertSource(); input.assertFences(); assertRefreshManifest(m, clock.now());
     },
   });
   const request = await new RequestReaderSummaryUseCase(jobRepo,
@@ -96,23 +98,30 @@ export async function executeNewInputRefresh(input: {
     },
   });
   const runtime = guardedRefreshRuntime({ delegate: input.runtime, manifest: m,
+    assertLocal: () => { input.assertSource(); guard.assertLocal(); },
     assertCurrent: async () => { await input.assertRuntime(); await guard.assertCurrent(); }, record: input.record });
-  const sink = { record: (attestation: unknown) => input.record({ status: "verified_attestation", attestation }) };
+  const sink = { record: (attestation: unknown) => {
+    try { runtime.assertUsable(); input.record({ status: "verified_attestation", attestation }); }
+    catch (error) { guard.invalidate(); throw error; }
+  } };
   const canonical = createReaderSummaryDailyCapturePublicationWiring({
     replay: null, feedItems: feed, summaryClient: summary, clock, attestationSink: sink,
     summaryModelMode: "agent-runtime", env: input.env, agentRuntimeClient: runtime,
   });
   const model = buildRefreshModelWiring(input.env, runtime, sink);
-  const publisher = new PrismaReaderSummaryPublication(summary, refreshPublicationGuard({
-    assertLocal: () => { guard.assertLocal(); input.assertSource(); },
-    assertCurrent: (tx) => assertRefreshTransactionAuthority(tx, m, request.value.readerSummaryJobId, clock),
-    manifest: m, jobId: request.value.readerSummaryJobId,
-  }));
   const publication: ReaderSummaryPublicationPort = {
     publish: async (command) => {
-      await guard.assertCurrent(); // Full canonical snapshot outside the transaction.
+      await guard.assertCurrent(); // Full canonical snapshot before taking a pool slot.
       await input.assertRuntime();
-      return publisher.publish(command);
+      runtime.assertUsable();
+      return withRefreshPublicationLocks(summary, (assertProtected) => {
+        runtime.assertUsable(); // Lock acquisition may outlive the evidence/fence.
+        return new PrismaReaderSummaryPublication(summary, refreshPublicationGuard({
+          assertLocal: () => { runtime.assertUsable(); guard.assertLocal(); },
+          assertCurrent: (tx) => assertRefreshTransactionAuthority(tx, m, request.value.readerSummaryJobId, clock),
+          assertProtected, manifest: m, jobId: request.value.readerSummaryJobId,
+        })).publish(command);
+      });
     },
   };
   const execution = await new ExecuteReaderSummaryJobUseCase(jobRepo,
@@ -143,11 +152,13 @@ export async function executeNewInputRefresh(input: {
 
 export function refreshPublicationGuard(input: {
   assertLocal(): void;
+  assertProtected: RefreshSnapshotProtection;
   assertCurrent(client: PrismaReaderSummaryClient): Promise<void>;
   manifest: RefreshManifest; jobId: string;
 }): ReaderSummaryPublicationTransactionGuard {
   return async (tx, command) => {
-    await lockRefreshAuthority(tx);
+    input.assertLocal();
+    await input.assertProtected(tx);
     input.assertLocal();
     await input.assertCurrent(tx);
     input.assertLocal();
@@ -156,6 +167,7 @@ export function refreshPublicationGuard(input: {
         command.finalJob.toSnapshot().id !== input.jobId) {
       throw new Error("Refresh publisher lost operation/cutoff authority");
     }
+    input.assertLocal();
   };
 }
 
@@ -172,4 +184,5 @@ export async function assertRefreshTransactionAuthority(
   void canonicalInputSha256; void eligibleCount;
   assertRefreshEqual(await captureRefreshDatabaseAuthority({ client: tx, date: m.date, clock }),
     database, "complete canonical rows/engagement/config");
+  assertRefreshManifest(m, clock.now());
 }

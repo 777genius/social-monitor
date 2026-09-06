@@ -163,11 +163,13 @@ export async function lockRefreshAuthority(client: Pick<PrismaReaderSummaryClien
   const locking = client as PrismaReaderSummaryClient & {
     $executeRaw(query: TemplateStringsArray): Promise<number>;
   };
-  await locking.$executeRaw`lock table feed_items, source_items, source_bindings,
-    interests, source_catalog_entries, source_item_engagement_snapshots,
-    source_item_engagement_observations, source_item_engagement_daily_rollups,
-    reader_summary_policies in share mode`;
-  // Slot changes and every field of the prior are compared after these locks.
+  // Match engagement projection's snapshot -> source -> feed direction. Other
+  // writers use other orders: NOWAIT on EVERY relation prevents a lock cycle
+  // while partially acquired locks are held. Failure aborts; never retry a model.
+  await locking.$executeRaw`lock table source_item_engagement_snapshots,
+    source_items, feed_items, source_item_engagement_observations,
+    source_item_engagement_daily_rollups, source_bindings, interests,
+    source_catalog_entries, reader_summary_policies in share mode nowait`;
 }
 export const sameRefreshAuthority = (a: unknown, b: unknown): boolean => refreshHash(a) === refreshHash(b);
 

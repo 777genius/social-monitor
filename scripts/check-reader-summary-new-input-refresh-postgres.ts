@@ -18,7 +18,8 @@ import { refreshScope, assertRefreshManifest, refreshBytesHash } from "./lib/rea
 import { readRefreshPrior, readRefreshJobs, readRefreshCounts } from "./lib/reader-summary-new-input-refresh-postgres";
 import { assertRefreshEqual, reconcileRefresh } from "./lib/reader-summary-new-input-refresh-guard";
 import { captureRefreshAuthority, preflightRefreshSelection, assertRefreshHasNewInput } from "./lib/reader-summary-new-input-refresh-capture";
-import { assertRefreshTransactionAuthority, refreshPublicationGuard } from "./lib/reader-summary-new-input-refresh-execution";
+import { assertRefreshTransactionAuthority } from "./lib/reader-summary-new-input-refresh-execution";
+import { runRefreshNativeConcurrency } from "./lib/reader-summary-new-input-refresh-native-concurrency";
 import { readReviewedRefresh } from "./lib/reader-summary-new-input-refresh-files";
 
 const required = (name: string): string => {
@@ -65,30 +66,17 @@ async function main() {
       assertRefreshEqual(buildReaderSummaryPublicationPayload(command), candidate, "normal Prisma command roundtrip");
       assert.throws(() => reconcileRefresh(m, [{ operation: m.operation, jobId: candidate.readerSummaryJobId,
         artifactId: null, status: "RUNNING" }], before), /consumed/);
-      const local = () => assertRefreshManifest(m, clock.now());
       const current = (tx: PrismaReaderSummaryClient) => assertRefreshTransactionAuthority(tx, m, candidate.readerSummaryJobId, clock);
-      const guard = refreshPublicationGuard({ assertLocal: local, assertCurrent: current, manifest: m, jobId: candidate.readerSummaryJobId });
-      for (const phase of ["before-generation", "before-publication"]) {
-        for (const mutation of ["engagement", "config", "slot", "input"] as const) {
-          if (phase === "before-generation") {
-            await assert.rejects(summary.$transaction(async (tx) => {
-              await mutateFixture(tx, mutation, m.date);
-              await current(tx);
-            }, { isolationLevel: "Serializable" }), /drifted|canonical prior/);
-          } else {
-            const publisher = new PrismaReaderSummaryPublication(summary, async (tx, value) => {
-              await mutateFixture(tx, mutation, m.date);
-              await guard(tx, value);
-            });
-            await assert.rejects(publisher.publish(command), /drifted|canonical prior/);
-          }
-        }
+      for (const mutation of ["engagement", "config", "slot", "input"] as const) {
+        await assert.rejects(summary.$transaction(async (tx) => {
+          await mutateFixture(tx, mutation, m.date);
+          await current(tx);
+        }, { isolationLevel: "Serializable" }), /drifted|canonical prior/);
       }
       const countsBefore = await readRefreshCounts(summary, m.date);
-      const started = Date.now();
-      assert.equal(await new PrismaReaderSummaryPublication(summary, guard).publish(command), "published");
-      const publicationMs = Date.now() - started;
-      assert(publicationMs < 30_000, "publisher guard must finish with the shared max2 pool, no nested/root reads");
+      const { publicationMs, writerConflicts, acquisitionMs } = await runRefreshNativeConcurrency({
+        url, summary, manifest: m, command, clock,
+      });
       const after = await readRefreshPrior(summary, m.date);
       assert.equal(after.status, "COMPLETED");
       assert.equal(after.observedThrough, m.observedThrough);
@@ -102,8 +90,9 @@ async function main() {
       assert.equal(await new PrismaReaderSummaryPublication(summary).publish(command), "replayed");
       assertRefreshEqual(await readRefreshCounts(summary, m.date), countsAfter, "replay zero delta");
       console.log(JSON.stringify({ status: "passed", date: m.date, priorStatus: before.status,
-        originalSelection, newSelection, before, after, countsBefore, countsAfter, publicationMs,
-        scenarios: ["actual-cutoff", "changed-input", "engagement-config-slot-input-drift-both-boundaries",
+        originalSelection, newSelection, before, after, countsBefore, countsAfter, publicationMs, writerConflicts, acquisitionMs,
+        scenarios: ["actual-cutoff", "changed-input", "engagement-config-slot-input-drift", "independent-writer-commit-before-validation",
+          "writer-blocked-after-publication-snapshot", "all-relation-orders-nowait",
           "consumed-no-repeat", "normal-prisma-publisher-max2", "preserved-original", "replay-zero-delta"] }));
     });
   } finally { await feedConnection.close(); await summary.close(); }
@@ -134,14 +123,35 @@ async function mutateFixture(tx: PrismaReaderSummaryClient, kind: "engagement" |
     where tenant_id=${refreshScope.tenantId}::uuid and workspace_id=${refreshScope.workspaceId}::uuid`
     : kind === "config" ? await db.$executeRaw`update reader_summary_policies set tone = case when tone='analytical' then 'neutral' else 'analytical' end
       where tenant_id=${refreshScope.tenantId}::uuid and workspace_id=${refreshScope.workspaceId}::uuid and scope_key='workspace'`
-    : kind === "slot" ? await db.$executeRaw`update reader_summary_publication_slots set current_publication_id=null
-      where tenant_id=${refreshScope.tenantId}::uuid and workspace_id=${refreshScope.workspaceId}::uuid
-        and period_started_at=${date}::date::timestamp at time zone 'UTC'`
+    : kind === "slot" ? await mutateFixtureSlot(db, date)
     : await db.$executeRaw`update feed_items set title=title || ' fixture drift'
       where tenant_id=${refreshScope.tenantId}::uuid and workspace_id=${refreshScope.workspaceId}::uuid
         and published_at >= ${date}::date::timestamp at time zone 'UTC'
         and published_at < (${date}::date + 1)::timestamp at time zone 'UTC'`;
   assert(count > 0, `fixture must exercise ${kind}`);
+}
+
+async function mutateFixtureSlot(
+  db: PrismaReaderSummaryClient & { $executeRaw(s: TemplateStringsArray, ...v: unknown[]): Promise<number> },
+  date: string,
+): Promise<number> {
+  // The production trigger permits only the publication owner. The disposable
+  // fixture grants SET on its own random owner; no production role is changed.
+  const roles = await db.$queryRaw<readonly { runtime_role: string; owner_role: string }[]>`
+    select current_user as runtime_role, pg_catalog.pg_get_userbyid(c.relowner) as owner_role
+    from pg_catalog.pg_class c join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public' and c.relname = 'reader_summary_publication_slots'`;
+  assert.equal(roles.length, 1, "fixture slot owner must be unambiguous");
+  const role = roles[0]!;
+  assert.notEqual(role.runtime_role, role.owner_role, "guard must execute as fixture runtime");
+  await db.$queryRaw`select pg_catalog.set_config('role', ${role.owner_role}, true)`;
+  const count = await db.$executeRaw`update reader_summary_publication_slots set current_publication_id=null
+    where tenant_id=${refreshScope.tenantId}::uuid and workspace_id=${refreshScope.workspaceId}::uuid
+      and period_started_at=${date}::date::timestamp at time zone 'UTC'`;
+  // Restore before the authority guard. SQL errors abort/roll back the whole
+  // fixture transaction and are never accepted as a successful drift check.
+  await db.$queryRaw`select pg_catalog.set_config('role', ${role.runtime_role}, true)`;
+  return count;
 }
 if (require.main === module) void main().catch(() => {
   console.error("Native new-input refresh fixture gate failed; inspect the disposable fixture. No raw payload is logged.");
