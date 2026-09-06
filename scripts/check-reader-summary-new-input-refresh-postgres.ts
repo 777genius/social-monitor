@@ -7,6 +7,7 @@ import { PrismaFeedConnection } from "@social-monitor/feed/adapters/persistence/
 import { PrismaFeedItemReadRepository } from "@social-monitor/feed/adapters/persistence/prisma/prisma-feed-item-read.repository";
 import { PrismaSummaryConnection } from "@social-monitor/summary/adapters/persistence/prisma/prisma-summary-connection";
 import { PrismaReaderSummaryPublication } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-publication";
+import { PrismaReaderSummaryArtifactRepository } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-artifact.repository";
 import { PrismaReaderSummaryJobRepository } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-job.repository";
 import { normalizeReaderSummaryArtifactPayload } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-artifact-payload";
 import { buildReaderSummaryPublicationPayload, type ReaderSummaryPublicationPayload } from "@social-monitor/summary/adapters/persistence/reader-summary-publication-proof";
@@ -75,6 +76,12 @@ async function main() {
         }, { isolationLevel: "Serializable" }), /drifted|canonical prior/);
       }
       const countsBefore = await readRefreshCounts(summary, m.date);
+      // The normal execution use case stages the RUNNING artifact before its
+      // publisher. Include that real repository write in the measured delta.
+      await new PrismaReaderSummaryArtifactRepository(summary).save(command.artifact, {
+        publicationDecision: command.publicationDecision,
+        githubProjectionAudit: command.githubProjectionAudit,
+      });
       const { publicationMs, writerConflicts, acquisitionMs } = await runRefreshNativeConcurrency({
         url, summary, manifest: m, command, clock,
       });
