@@ -82,6 +82,16 @@ export type TopReadCandidate = {
   readonly interestIds: readonly string[];
   readonly providerKeys: readonly string[];
   readonly citationIds: readonly string[];
+  // Internal provenance captured before story/citation repair. Missing metadata
+  // cannot establish that a summary is an authored, correctly bound explanation.
+  readonly readerReasonProvenance?:
+    | {
+        readonly kind: "model";
+        readonly originalStoryClusterId: string;
+        readonly originalCitationIds: readonly string[];
+        readonly originalSummary: string;
+      }
+    | { readonly kind: "normalizer_fallback" };
 };
 
 export type InterestHighlight = {

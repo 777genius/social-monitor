@@ -9,13 +9,13 @@ import {
   type ReaderSummaryTopicLabelPlan,
 } from "../../domain";
 import type { ReaderSummaryTopicLabelerInput } from "../../ports";
-import { meaningfulTopicLabelTokens } from "../../domain/services/reader-summary-topic-map-label-quality";
+import { evaluateTopicLabelQuality, meaningfulTopicLabelTokens } from "../../domain/services/reader-summary-topic-map-label-quality";
 import {
   formatReaderSummaryTopicToken,
   normalizeTopicLabel,
   readerSummaryTopicLabelFromSlug,
 } from "../../domain/services/reader-summary-topic-map-text";
-import { buildGroundedTopicCohortsForCandidates } from "./agent-runtime-reader-summary-topic-grounded-cohorts";
+import { completeRequiredGroundedTopicCohorts } from "./agent-runtime-reader-summary-topic-cohort-completion";
 
 export const normalizeAgentRuntimeReaderSummaryTopicLabelPlan = (
   raw: Record<string, unknown>,
@@ -65,6 +65,7 @@ export const normalizeAgentRuntimeReaderSummaryTopicLabelPlan = (
     topicId: label.topicId,
     label: label.label,
     semantic: label.semantic,
+    originalGroupId: label.groupId,
     groupId:
       retainedGroupIds.has(label.groupId) &&
       label.semantic.confidenceScore >=
@@ -81,9 +82,10 @@ export const normalizeAgentRuntimeReaderSummaryTopicLabelPlan = (
       groupRecords.set(id, group);
     }
   }
-  const recovery = recoverRequiredGroundedCohorts(
+  const recovery = completeRequiredGroundedTopicCohorts(
     initialNodeLabels,
     candidates,
+    new Map(parsedNodeLabels.map((label) => [label.nodeId, label.groupId])),
   );
   const nodeLabels = recovery.nodeLabels;
   const finalGroupIds = new Set(
@@ -97,6 +99,8 @@ export const normalizeAgentRuntimeReaderSummaryTopicLabelPlan = (
   );
   const groups = [...finalGroupIds].map((id) => {
     const group = groupRecords.get(id);
+    const proposedLabel = group === undefined
+      ? semanticGroupLabelFromId(id) : stringValue(group.label);
     const explicitAnchors =
       group === undefined ? [] : readStringArray(group.semanticAnchors);
     const recoveredAnchors = recoverSemanticGroupAnchors({
@@ -107,10 +111,9 @@ export const normalizeAgentRuntimeReaderSummaryTopicLabelPlan = (
 
     return {
       id,
-      label:
-        group === undefined
-          ? semanticGroupLabelFromId(id)
-          : stringValue(group.label),
+      label: evaluateTopicLabelQuality(proposedLabel).accepted
+        ? proposedLabel : recovery.displayByGroup.get(id) ?? proposedLabel,
+      recoveredDisplayLabel: recovery.displayByGroup.get(id),
       semanticAnchors: uniqueStrings([
         ...explicitAnchors,
         ...(recovery.semanticAnchorsByGroup.get(id) ?? []),
@@ -182,51 +185,6 @@ export const normalizeAgentRuntimeReaderSummaryTopicLabelPlan = (
         : []),
     ],
   };
-};
-
-const recoverRequiredGroundedCohorts = (
-  initialNodeLabels: readonly ReaderSummaryTopicLabelPlan["nodeLabels"][number][],
-  candidates: readonly ReaderSummaryTopicLabelerInput["candidates"][number][],
-): {
-  readonly nodeLabels: ReaderSummaryTopicLabelPlan["nodeLabels"];
-  readonly semanticAnchorsByGroup: ReadonlyMap<string, readonly string[]>;
-  readonly recoveredNodeCount: number;
-} => {
-  let nodeLabels = [...initialNodeLabels];
-  const semanticAnchorsByGroup = new Map<string, readonly string[]>();
-  let recoveredNodeCount = 0;
-  for (const cohort of buildGroundedTopicCohortsForCandidates(candidates)) {
-    const recoverableNodeIds = new Set(
-      cohort.nodeIds.filter((nodeId) => {
-        const label = nodeLabels.find((item) => item.nodeId === nodeId);
-
-        return (
-          label?.groupId === READER_SUMMARY_TOPIC_MAP_UNGROUPED_ID &&
-          (label.semantic?.confidenceScore ?? 0) >=
-            READER_SUMMARY_TOPIC_SEMANTIC_CONFIDENCE_MIN
-        );
-      }),
-    );
-    if (recoverableNodeIds.size < 2) {
-      continue;
-    }
-    nodeLabels = nodeLabels.map((label) =>
-      recoverableNodeIds.has(label.nodeId)
-        ? {
-            ...label,
-            groupId: cohort.groupId,
-            keywords: uniqueStrings([
-              ...(label.keywords ?? []),
-              cohort.sharedAnchor,
-            ]),
-          }
-        : label,
-    );
-    semanticAnchorsByGroup.set(cohort.groupId, [cohort.sharedAnchor]);
-    recoveredNodeCount += recoverableNodeIds.size;
-  }
-
-  return { nodeLabels, semanticAnchorsByGroup, recoveredNodeCount };
 };
 
 export const parseAgentRuntimeReaderSummaryTopicLabelerJsonObject = (

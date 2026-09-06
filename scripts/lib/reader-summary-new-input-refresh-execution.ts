@@ -20,6 +20,7 @@ import { readRefreshJobs, readRefreshPrior, readRefreshCounts } from "./reader-s
 import { createRefreshAdmission } from "./reader-summary-new-input-refresh-admission";
 import { withRefreshPublicationLocks, type RefreshSnapshotProtection } from "./reader-summary-new-input-refresh-publication-lock";
 import { buildRefreshModelWiring, guardedRefreshRuntime } from "./reader-summary-new-input-refresh-model";
+import { withRefreshSelectionAudit } from "./reader-summary-new-input-refresh-selection-audit";
 
 export async function executeNewInputRefresh(input: {
   manifest: RefreshManifest; summary: PrismaSummaryConnection;
@@ -131,7 +132,9 @@ export async function executeNewInputRefresh(input: {
       listScheduled: (query) => policies.listScheduled(query),
       save: async () => { throw new Error("Refresh policy mutation is prohibited"); },
     },
-    guard.selector(canonical.evidenceSelector), model.model, publication, ids, clock,
+    withRefreshSelectionAudit({ selector: guard.selector(canonical.evidenceSelector), manifest: m,
+      jobId: request.value.readerSummaryJobId, record: input.record, invalidate: () => guard.invalidate() }),
+    model.model, publication, ids, clock,
     readerSummaryPromotionControl(new ReaderSummaryPromotionMetricsRecorder(new InMemoryMetricsRecorder())),
     undefined, undefined, model.topicMap, undefined, canonical.githubProjectionReader,
     undefined, undefined, undefined, guard,

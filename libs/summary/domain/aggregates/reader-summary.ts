@@ -99,6 +99,7 @@ export class ReaderSummary {
       approvedSameStoryRelations: input.approvedSameStoryRelations,
       relatedTopicRelations: input.relatedTopicRelations,
       editorialSlate: input.editorialSlate,
+      topStories: input.topStories,
     });
     if (
       promotion.topReads.length === 0 &&
