@@ -4,7 +4,7 @@ import { StoryClusteringService } from "@social-monitor/summary/domain/services/
 import { buildStoryRelationCandidates, STORY_RELATION_APPROVAL_CONFIDENCE_MIN,
   type StoryRelationCandidate } from "@social-monitor/summary/domain/services/story-relation-candidates";
 import { reconcileStoryRelationDecisions } from "@social-monitor/summary/domain/services/story-relation-decision-trace";
-import { releaseIdentityReviewCases } from "@social-monitor/summary/domain/services/story-release-event-identity-review.spec-support";
+import { releaseIdentityReviewCases, releaseIdentityResidualCases } from "@social-monitor/summary/domain/services/story-release-event-identity-review.spec-support";
 import { releaseEvidence, releaseIdentityControls } from "@social-monitor/summary/domain/services/story-release-event-identity.spec-support";
 import { AgentRuntimeReaderSummaryStoryRelationVerifier } from "@social-monitor/summary/adapters/model/agent-runtime-reader-summary-story-relation-verifier.adapter";
 import { withTestExecutionAttestation } from "@social-monitor/summary/adapters/model/reader-summary-execution-attestation.spec-support";
@@ -14,12 +14,12 @@ import { canonicalRequestFor } from "./requests";
 const now = new Date("2026-09-01T14:00:00Z");
 const identity = { tenantId: tenantId("fixture-tenant"), workspaceId: workspaceId("fixture-workspace"),
   scope: { type: "workspace" as const } };
-const positive = releaseIdentityControls[0];
 const cases = [
   ...releaseIdentityReviewCases.map((c) => ({ ...c, mayMerge: false })),
-  { name: "corroborated release positive", mayMerge: true, inputs: [
-    releaseEvidence(positive.leftText), releaseEvidence(positive.rightText, "right", "x-twitter"),
-  ] },
+  ...releaseIdentityResidualCases,
+  ...releaseIdentityControls.map((c) => ({ name: c.name, mayMerge: c.sameStory, inputs: [
+    releaseEvidence(c.leftText), releaseEvidence(c.rightText, "right", "x-twitter"),
+  ] })),
 ];
 const controls = [
   { name: "true at one", sameStory: true, confidenceScore: 1, accepted: true, approved: true },
@@ -28,6 +28,7 @@ const controls = [
   { name: "false", sameStory: false, confidenceScore: 1, accepted: true, approved: false },
   { name: "missing", sameStory: true, confidenceScore: 1, accepted: false, approved: false },
   { name: "invalid confidence", sameStory: true, confidenceScore: 1.1, accepted: false, approved: false },
+  { name: "invalid boolean", sameStory: "true", confidenceScore: 1, accepted: false, approved: false },
 ];
 
 describe.each(cases)("offline adapter to final guard: $name", ({ inputs, mayMerge }) => {

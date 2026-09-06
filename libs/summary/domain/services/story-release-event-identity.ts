@@ -189,12 +189,17 @@ const measurementAction = new RegExp([
   String.raw`\b(?:measured|measures|tested|benchmarked)\b`,
   String.raw`\b(?:ran|conducted|performed|published)\s+(?:(?:a|an|the|new|fresh|its|their|own|coding|independent)\s+){0,4}(?:benchmarks?|measurements?|tests?|experiments?)\b`,
   // Sentence splitting already preserves decimal model versions.
-  String.raw`\b(?:benchmarks?|measurements?|tests?|experiments?)\b[^;]*?\b(?:was|were|has been|have been)\s+(?:run|conducted|performed|published)\b`,
+  String.raw`\b(?:benchmarks?|measurements?|tests?|experiments?)\b(?:(?!\b(?:was|were|is|are|has|have|had)\b)[^;])*?\b(?:was|were|has been|have been)\s+(?:[a-z-]+ly\s+){0,3}(?:run|conducted|performed|published|made)\b`,
 ].join("|"), "gi");
+
+// Detection is intentionally wider than attribution grammar. An unparsed
+// experiment must not become "no measurement" and inherit a quoted launch.
+const measurementSignal = /\b(?:measur\w*|evaluat(?:ed|ion|ions)|tested|benchmarked)\b|\b(?:benchmarks?|tests?|experiments?)\s+(?:of|by|from|on)\b|\b(?:a|an|new|fresh|independent|own)\s+(?:[a-z-]+\s+){0,3}(?:benchmarks?|tests?|experiments?)\b|\b(?:benchmarks?|tests?|experiments?)\b[^;]*?\b(?:was|were|is|are|has|have|had)\b/i;
 
 const unattributedMeasurements = (body: string, publisher: string): boolean =>
   sentences(body).some((sentence) => {
     const actions = [...sentence.matchAll(measurementAction)];
+    if (measurementSignal.test(sentence.replace(measurementAction, ""))) return true;
     if (actions.length === 0) return false;
     // Multiple experiment assertions need their own attribution; do not let a
     // publisher clause launder a second actor through the same sentence.
@@ -235,7 +240,23 @@ const corroboratesHeadline = (
   });
 };
 
-const releaseState = /\b(?:(?:was|were|is|are|has been|have been)\s+(?:released|launched|introduced|unveiled)|(?:is|are)\s+(?:(?:now|in|a|an)\s+)*(?:available|GA|generally available|beta|preview|early access))\b/i;
+// Find explicit facts independently of auxiliaries/modifiers. Subject binding
+// below decides whether they belong here; unsupported facts decline the exception.
+const releaseState = /\b(?:released|launched|introduced|unveiled|available|availability|GA|beta|preview|early access)\b/i;
+const unsupportedStage = /\b(?:alpha|experimental|stage|status|deprecated|withdrawn|retired|unavailable|unreleased|pre-?release|closed testing|limited access)\b/i;
+const anaphoricSubject = /^(?:it|they|both|(?:this|the) model|these models|(?:this|the|its) release)\b/i;
+const attachedReleaseState = /^\s*(?:,\s*[^,;]+,\s*)?(?:was|were|is|are|has been|have been|remains?)\s+(?:(?:still|already|now|[a-z-]+ly)\s+){0,3}(?:(?:in|a|an)\s+)*(?:released|launched|introduced|unveiled|available|GA|generally available|beta|preview|early access)\b/i;
+
+const hasReleaseFact = (sentence: string): boolean =>
+  releaseState.test(sentence) || unsupportedStage.test(sentence) || explicitDateSignal.test(sentence);
+
+const unresolvedReleaseFact = (sentence: string): boolean => {
+  // A stage modifying an explicitly named ancillary object is not model stage.
+  // Keep this grammatical and local: a keyword elsewhere cannot hide a fact.
+  const remainder = sentence.replace(/\b(?:a|an)\s+(?:[a-z-]+\s+){0,10}(?:api|tool|service|detector|watermark)\s+in\s+(?:private\s+)?(?:preview|beta)\b/gi, "");
+  return /\b(?:available|availability|GA|alpha|beta|preview|early access|stage|status)\b/i.test(remainder) ||
+    unsupportedStage.test(remainder) || explicitDateSignal.test(remainder);
+};
 
 const releaseContext = (headline: string, body: string, targets: readonly string[]): string | undefined => {
   const relevant: string[] = [];
@@ -246,17 +267,25 @@ const releaseContext = (headline: string, body: string, targets: readonly string
       primarySubject = compatibleTargets(targets, [targetKey(product[1]!, product[2]!)]);
       // In passive voice the released object precedes the verb. Inspect it
       // before the active-voice parser can mistake the date for an object.
-      if (releaseState.test(sentence.slice(product[0].length))) {
-        if (primarySubject) relevant.push(sentence);
+      if (index > 0 && hasReleaseFact(sentence.slice(product[0].length))) {
+        if (primarySubject) {
+          if (unsupportedStage.test(sentence) ||
+              !attachedReleaseState.test(sentence.slice(product[0].length))) return undefined;
+          relevant.push(sentence);
+        }
         continue;
       }
     }
-    if (/^(?:it|they|this model|these models)\b/i.test(sentence) && releaseState.test(sentence)) {
-      if (!primarySubject) return undefined;
+    const anaphor = anaphoricSubject.exec(sentence);
+    if (anaphor !== null && hasReleaseFact(sentence)) {
+      const detail = sentence.slice(anaphor[0].length);
+      const datedEvent = /release$/i.test(anaphor[0]) && /^\s+(?:occurred|took place)\s+(?:on|in)\b/i.test(detail);
+      if (!primarySubject || unsupportedStage.test(sentence) ||
+          (!attachedReleaseState.test(detail) && !datedEvent)) return undefined;
       relevant.push(sentence);
       continue;
     }
-    if (index === 0 || /\b(?:this|the|a|promising|new) release\b/i.test(sentence)) {
+    if (index === 0 || (!hasReleaseFact(sentence) && /\b(?:this|the|a|promising|new) release\b/i.test(sentence))) {
       relevant.push(sentence);
       continue;
     }
@@ -265,27 +294,47 @@ const releaseContext = (headline: string, body: string, targets: readonly string
       const mentioned = releaseTargets(assertion.subject);
       primarySubject = mentioned !== undefined && compatibleTargets(targets, mentioned);
       if (primarySubject) relevant.push(sentence);
+      if (mentioned !== undefined) continue;
     }
+    if (unresolvedReleaseFact(sentence)) return undefined;
   }
-  return [headline, ...relevant].join("\n");
+  const context = [headline, ...relevant].join("\n");
+  return unsupportedStage.test(context) ? undefined : context;
 };
 
 const months = ["jan(?:uary)?", "feb(?:ruary)?", "mar(?:ch)?", "apr(?:il)?", "may", "jun(?:e)?", "jul(?:y)?",
   "aug(?:ust)?", "sep(?:t(?:ember)?)?", "oct(?:ober)?", "nov(?:ember)?", "dec(?:ember)?"];
+const explicitDateSignal = new RegExp([
+  String.raw`\b(?:${months.filter((month) => month !== "may").join("|")})\b|\bmay\s+\d`,
+  String.raw`\b(?:\d{4}[-/.]\d{1,2}[-/.]\d{1,2}|\d{1,2}[/.]\d{1,2}[/.]\d{2,4})\b`,
+  String.raw`\b(?:on|in|since|during)\s+(?:\d{4}|${months.join("|")})\b`,
+  String.raw`\b(?:date|dated|yesterday|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|(?:last|next|previous)\s+(?:day|week|month|year|spring|summer|autumn|fall|winter)|\w+\s+(?:days?|weeks?|months?|years?)\s+ago)\b`,
+].join("|"), "i");
 const compatibleDates = (left: string, right: string): boolean =>
   left.startsWith(right) || right.startsWith(left);
 const releaseDate = (text: string, publishedAt: Date): string | null | undefined => {
   const dates: string[] = [];
-  for (const match of text.matchAll(/\b(\d{4})-(\d{2})-(\d{2})\b/g)) dates.push(match[0]);
-  const monthPattern = new RegExp(`\\b(${months.join("|")})\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:,?\\s+(\\d{4}))?\\b`, "gi");
+  // A day-first date must not be partially read as a month/year wildcard.
+  if (new RegExp(`\\b\\d{1,2}(?:st|nd|rd|th)?\\s+(?:${months.join("|")})\\b`, "i").test(text)) return null;
+  let unparsed = text;
+  for (const match of text.matchAll(/\b(\d{4})-(\d{2})-(\d{2})\b/g)) {
+    dates.push(match[0]); unparsed = unparsed.replace(match[0], "");
+  }
+  const monthPattern = new RegExp(`\\b(${months.join("|")})\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:,?\\s+(\\d+))?\\b`, "gi");
   const monthNumber = (value: string): string => String(
     months.findIndex((month) => new RegExp(`^${month}$`, "i").test(value)) + 1,
   ).padStart(2, "0");
   for (const match of text.matchAll(monthPattern)) {
+    if ((match[3] !== undefined && match[3].length !== 4) ||
+        /^\s*[-–—/]\s*\d/.test(text.slice(match.index + match[0].length))) return null;
     dates.push(`${match[3] ?? publishedAt.getUTCFullYear()}-${monthNumber(match[1]!)}-${match[2]!.padStart(2, "0")}`);
+    unparsed = unparsed.replace(match[0], "");
   }
   const monthYear = new RegExp(`\\b(${months.join("|")})\\.?\\s+(\\d{4})\\b`, "gi");
-  for (const match of text.matchAll(monthYear)) dates.push(`${match[2]}-${monthNumber(match[1]!)}`);
+  for (const match of text.matchAll(monthYear)) {
+    dates.push(`${match[2]}-${monthNumber(match[1]!)}`); unparsed = unparsed.replace(match[0], "");
+  }
+  if (explicitDateSignal.test(unparsed)) return null;
   if (/\btoday\b/i.test(text)) dates.push(publishedAt.toISOString().slice(0, 10));
   if (/\b(?:yesterday|last (?:week|month|year)|tomorrow)\b|\b\d{1,2}[/.]\d{1,2}[/.]\d{2,4}\b/i.test(text)) return null;
   const unique = [...new Set(dates)].sort((a, b) => b.length - a.length);
