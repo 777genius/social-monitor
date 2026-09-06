@@ -5,7 +5,8 @@ import { refreshPeriod } from "./reader-summary-new-input-refresh-capture";
 import { NewInputRefreshGuard } from "./reader-summary-new-input-refresh-guard";
 import { guardedRefreshRuntime } from "./reader-summary-new-input-refresh-model";
 import { refreshManifest, refreshNow } from "./reader-summary-new-input-refresh.spec-support";
-import type { AgentRuntimeTaskCommand, AgentRuntimeTaskResult } from "@social-monitor/summary/ports";
+import { completedRefreshModelRequest } from "./reader-summary-new-input-refresh-model.spec-support";
+import type { AgentRuntimeTaskCommand } from "@social-monitor/summary/ports";
 
 const makeJob = () => {
   const m = refreshManifest();
@@ -98,12 +99,7 @@ describe("new-input refresh model admission", () => {
   it("persists token/identity evidence and blocks duplicate and repair generation", async () => {
     const m = refreshManifest();
     const events: unknown[] = [];
-    const result: AgentRuntimeTaskResult = { status: "completed", warnings: [], structuredOutput: { synthetic: true },
-      usage: { inputTokens: 3, outputTokens: 2, totalTokens: 5, estimatedCostUsd: 0 },
-      executionAttestation: { schemaVersion: 1, requestId: "test-summary", purpose: "social_monitor.reader_summary.generate.v2",
-        canonicalRequestSha256: "a".repeat(64), provider: "codex", model: "gpt-5.6-sol", reasoningEffort: "high",
-        runtimeEngine: "subscription-runtime-cli", runtimePackageVersion: m.runtime.packageVersion,
-        launcherSha256: m.runtime.launcherSha256, selectedOutputKind: "structured_output", selectedOutputSha256: canonicalJsonSha256({ synthetic: true }) } };
+    const result = await completedRefreshModelRequest(command(), { synthetic: true });
     const runTask = jest.fn(async () => result);
     const runtime = guardedRefreshRuntime({ delegate: { runTask, checkHealth: jest.fn() }, manifest: m,
       assertLocal: () => undefined, assertCurrent: async () => undefined, record: (e) => events.push(e) });

@@ -1,4 +1,6 @@
 import { activeReaderSummaryPurposes } from "@social-monitor/summary/adapters/model/active-reader-summary-generation-profile";
+import { canonicalJsonSha256 } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
+import { admitSubscriptionRuntimeRequest } from "../../apps/agent-runtime/src/subscription-runtime-purpose-model-policy";
 import { AgentRuntimeReaderSummaryModelAdapter, resolveAgentRuntimeReaderSummaryModelOptions } from
   "@social-monitor/summary/adapters/model/agent-runtime-reader-summary-model.adapter";
 import { AgentRuntimeReaderSummaryTopicLabeler, resolveAgentRuntimeReaderSummaryTopicLabelerOptions } from
@@ -34,6 +36,8 @@ export function buildRefreshModelWiring(env: NodeJS.ProcessEnv, client: AgentRun
       ...resolveAgentRuntimeReaderSummaryModelOptions(env, client), verifiedAttestationSink: sink,
     }),
     topicMap: new BuildReaderSummaryTopicMapUseCase({
+      // The normal workflow owns at most two complete topic-map attempts after
+      // a known coverage-only rejection. This is separate from primary generation.
       mode: "agent-runtime",
       labeler: new AgentRuntimeReaderSummaryTopicLabeler({
         ...resolveAgentRuntimeReaderSummaryTopicLabelerOptions(env, client), verifiedAttestationSink: sink,
@@ -85,6 +89,18 @@ export function guardedRefreshRuntime(input: {
         observedThrough: input.manifest.observedThrough, model: "gpt-5.6-sol", reasoningEffort: "high" };
       try {
         assertUsable();
+        // Match GrpcAgentRuntimeClient JSON serialization and the service's
+        // optional-string normalization, then use the executor's real admission
+        // contract for profile defaults/controls. Hash before any awaited work;
+        // the journal's refreshHash(command) is not the canonical runtime request.
+        const canonicalRequestSha256 = canonicalJsonSha256(admitSubscriptionRuntimeRequest({
+          ...command,
+          providerInstanceId: command.providerInstanceId?.trim() || undefined,
+          cwd: command.cwd?.trim() || undefined,
+          outputSchemaJson: JSON.stringify(command.outputSchema),
+          controlsJson: JSON.stringify(command.controls),
+          metadata: command.metadata ?? {},
+        }).canonicalRequest);
         await input.assertCurrent();
         assertUsable();
         input.record({ ...identity, status: "invocation_consumed" });
@@ -108,6 +124,9 @@ export function guardedRefreshRuntime(input: {
         await verifyAndRecordReaderSummaryExecution({ command, result, taskRole,
           attempt: "primary", normalizedOutput: result.structuredOutput });
         const attestation = result.executionAttestation;
+        if (attestation.canonicalRequestSha256 !== canonicalRequestSha256) {
+          throw new Error("Refresh execution attestation does not bind the invoked request");
+        }
         assertRefreshEqual({ engine: attestation.runtimeEngine, packageVersion: attestation.runtimePackageVersion,
           launcherSha256: attestation.launcherSha256 }, input.manifest.runtime, "runtime attestation");
         assertUsable();
