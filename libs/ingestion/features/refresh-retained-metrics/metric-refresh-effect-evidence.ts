@@ -5,10 +5,14 @@ import { assertMetricAuthority, evidenceAssert } from "./metric-refresh-evidence
 import { buildSourceEngagementMetrics } from "../../domain";
 import { metricRefreshCells } from "./metric-refresh-report";
 
+type BatchEvidence = { observations: readonly PreservedMetricObservation[]; failure: string | null };
+
 // Historical effect names are unchanged. Orphan effects never create allowance.
 export async function validateMetricEffectReceipts(operation: MetricRefreshOperation, head: MetricOperationHead, entries: readonly MetricEvidenceEntry[], hash: RefreshDigest) {
   const manifest = head.effective, sha = hash(manifest), batches = refreshBatches(manifest.targets);
   const names = new Set(entries.map((entry) => entry.name));
+  const observedBatches = new Map<number, BatchEvidence>();
+  const results: { row: MetricRefreshOutcome; batchIndex: number }[] = [];
   for (const entry of entries) {
     const value = await operation.read<Record<string, unknown>>(`${manifest.evidencePath}/${entry.name}`);
     evidenceAssert(value !== null && typeof value === "object" && !Array.isArray(value), "malformed_effect_receipt");
@@ -31,16 +35,23 @@ export async function validateMetricEffectReceipts(operation: MetricRefreshOpera
             (row.reason === null || typeof row.reason === "string") &&
             (row.metadata === null || (typeof row.metadata === "object" && !Array.isArray(row.metadata))) &&
             (row.sample === null || (typeof row.sample === "object" && !Array.isArray(row.sample))), "malformed_observation");
+          const target = targets.find((t) => t.externalId === row.externalId)!;
+          const rebuilt = buildSourceEngagementMetrics({ providerKey: target.providerKey, metadata: row.metadata ?? {} });
+          const valid = Boolean(rebuilt.metrics && rebuilt.metricsFingerprint && rebuilt.qualityFlags.providerKnown &&
+            rebuilt.qualityFlags.metadataKindKnown && !rebuilt.qualityFlags.invalidMetricValue && !rebuilt.qualityFlags.conflictingAliases);
+          evidenceAssert((row.sample !== null) === valid, "receipt_sample_mismatch");
+          // The writer preserves explicit provider reasons/returned flags, even with a
+          // valid sample. Only a missing reason is defaulted for omitted/invalid data.
+          evidenceAssert(row.sample !== null || row.reason !== null, "receipt_observation_mismatch");
           if (row.sample !== null) {
-            const target = targets.find((t) => t.externalId === row.externalId)!;
-            const rebuilt = buildSourceEngagementMetrics({ providerKey: target.providerKey, metadata: row.metadata ?? {} });
-            evidenceAssert(rebuilt.metrics && rebuilt.qualityFlags.providerKnown && rebuilt.qualityFlags.metadataKindKnown &&
-              !rebuilt.qualityFlags.invalidMetricValue && !rebuilt.qualityFlags.conflictingAliases && hash(row.sample) === hash({
+            evidenceAssert(row.observedAt >= manifest.plannedAt, "receipt_observation_time_invalid");
+            evidenceAssert(hash(row.sample) === hash({
                 sourceItemId: target.sourceItemId, externalId: target.externalId, publishedAt: target.publishedAt,
                 metrics: rebuilt.metrics, metricsFingerprint: rebuilt.metricsFingerprint,
                 providerMetadataPatch: rebuilt.providerMetadataPatch, refreshReadModels: true }), "receipt_sample_mismatch");
           }
         }
+        observedBatches.set(Number(batch[1]), { observations, failure: value.failure as string | null });
       }
     } else if (entry.name.startsWith("result-")) {
       const row = value as unknown as MetricRefreshOutcome;
@@ -55,6 +66,7 @@ export async function validateMetricEffectReceipts(operation: MetricRefreshOpera
         (row.observedAt === null || (typeof row.observedAt === "string" && Number.isFinite(Date.parse(row.observedAt)) && new Date(row.observedAt).toISOString() === row.observedAt)) &&
         hash(row.before) === hash(target.authority) && (row.manifestSha === sha || (head.sequence === 0 && row.manifestSha === undefined)), "invalid_result_receipt");
       assertMetricAuthority(row.after);
+      results.push({ row, batchIndex: index });
     } else if (entry.name === "final.json") {
       evidenceAssert(value.manifestSha === sha && Array.isArray(value.results) && value.results.length === manifest.targets.length && Array.isArray(value.cells), "invalid_final_receipt");
       for (const target of manifest.targets) {
@@ -64,5 +76,30 @@ export async function validateMetricEffectReceipts(operation: MetricRefreshOpera
       evidenceAssert(hash(value) === hash({ manifestSha: sha, results: value.results,
         cells: metricRefreshCells(value.results as MetricRefreshOutcome[], manifest.scope.dates) }), "invalid_final_cells");
     } else evidenceAssert(false, "unknown_metric_evidence");
+  }
+  // Bind only after all batches validate; directory enumeration need not put
+  // observations before results (or final.json before/after either of them).
+  for (const { row, batchIndex } of results) {
+    const evidence = observedBatches.get(batchIndex);
+    evidenceAssert(evidence, "result_observation_mismatch");
+    const observation = evidence.observations.find((value) => value.externalId === row.externalId);
+    evidenceAssert(row.returned === (observation?.returned ?? false) &&
+      row.observedAt === (observation?.observedAt ?? null) &&
+      row.reason === (evidence.failure ?? observation?.reason ?? null), "result_observation_mismatch");
+    if (evidence.failure !== null) {
+      evidenceAssert(row.status === "failed", "result_observation_mismatch");
+    } else {
+      evidenceAssert(observation, "result_observation_mismatch");
+      if (observation.sample === null) {
+        evidenceAssert(row.status === (observation.reason === "invalid_metrics" ? "failed" : "unavailable"), "result_observation_mismatch");
+      } else {
+        // Projection exceptions never install a terminal receipt. Successful
+        // projection must confirm this sample or a strictly newer snapshot.
+        evidenceAssert(row.after.metricsHash !== null && row.after.observedAt !== null &&
+          row.after.observationAt !== null && row.after.observationAt <= row.after.observedAt &&
+          ((row.status === "refreshed" && row.after.observedAt === observation.observedAt && row.after.metricsHash === observation.sample.metricsFingerprint) ||
+           (row.status === "superseded" && row.after.observedAt > observation.observedAt)), "result_observation_mismatch");
+      }
+    }
   }
 }
