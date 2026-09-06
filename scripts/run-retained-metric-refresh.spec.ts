@@ -46,7 +46,7 @@ describe("retained metric CLI composition and effective sample guard", () => {
   it("keeps dry-run inventory complete, then review/commit spend no provider/projection calls", async () => {
     await run();
     expect(JSON.parse(output)).toMatchObject({ mode: "dry-run", problem: "inventory_drift", currentTargets: f.current() });
-    expect(f.inventory.list).toHaveBeenCalledTimes(1); output = "";
+    expect(f.inventory.list).toHaveBeenCalledTimes(2); output = "";
     await run("--prepare-amendment", "--prior-manifest-sha", sha(f.original), "--reason", "TEST exact content review");
     const prepared = JSON.parse(output); expect(prepared.result.ok).toBe(true); output = "";
     await run("--commit-amendment", prepared.amendmentSha, "--prior-manifest-sha", sha(f.original),
@@ -56,6 +56,8 @@ describe("retained metric CLI composition and effective sample guard", () => {
     expect(projectionModule.PrismaSourceEngagementProjectionAdapter).not.toHaveBeenCalled();
   });
   it("rejects old apply SHA before database acquisition and uses effective identity inside the transaction", async () => {
+    const outside = Array.from({ length: 4 }, (_, i) => ({ ...f.original.targets[1]!, sourceItemId: `late-${i}` }));
+    f.change([...f.current(), ...outside]);
     const prepared = await f.amendment().prepare(sha(f.original), "TEST reviewed amendment");
     if (!prepared.ok) throw new Error(prepared.error);
     const p = prepared.value;
@@ -72,8 +74,19 @@ describe("retained metric CLI composition and effective sample guard", () => {
     const options = jest.mocked(projectionModule.PrismaSourceEngagementProjectionAdapter).mock.calls[0]![2]!;
     const sample = { sourceItemId: f.current()[0]!.sourceItemId };
     await expect(options.sampleGuard!({} as never, {} as never, sample as never)).resolves.toBeUndefined();
+    await expect(options.sampleGuard!({} as never, {} as never, { sourceItemId: outside[0]!.sourceItemId } as never)).rejects.toThrow("Transactional target drift");
     f.change([...f.original.targets]);
     await expect(options.sampleGuard!({} as never, {} as never, sample as never)).rejects.toThrow("Transactional target drift");
     expect(await f.receipts.read(metricEvidencePath("final.json"))).toEqual(report);
+  });
+  it("reports the real global window count separately from immutable operation membership", async () => {
+    const outside = Array.from({ length: 4 }, (_, i) => ({ ...f.original.targets[1]!, sourceItemId: `late-${i}` }));
+    f.change([...f.original.targets, ...outside]);
+    await run();
+    expect(JSON.parse(output)).toMatchObject({ mode: "dry-run", problem: null, manifest: f.original,
+      inventoryAudit: { membership: "original_operation_targets", originalTargetCount: 3, currentWindowTargetCount: 7,
+        outsideOperationSourceItemIds: outside.map((t) => t.sourceItemId) } });
+    expect(f.inventory.list.mock.calls).toEqual([[f.original.scope, f.original.targets.map((t) => t.sourceItemId)], [f.original.scope]]);
+    expect(RetainedMetricFetchAdapter.prototype.fetch).not.toHaveBeenCalled();
   });
 });
