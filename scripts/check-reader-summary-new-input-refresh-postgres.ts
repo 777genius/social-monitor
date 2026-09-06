@@ -28,6 +28,7 @@ const required = (name: string): string => {
   return value;
 };
 async function main() {
+  Error.stackTraceLimit = 20;
   const url = required("READER_SUMMARY_REFRESH_TEST_DATABASE_URL");
   assert.match(decodeURIComponent(new URL(url).pathname.slice(1)), /^reader_summary_refresh_test_[a-z0-9]+$/u);
   const m = readReviewedRefresh(required("READER_SUMMARY_REFRESH_TEST_MANIFEST_PATH"),
@@ -156,7 +157,14 @@ async function mutateFixtureSlot(
 if (require.main === module) void main().catch((error: unknown) => {
   // Keep only source locations, never database errors, SQL or candidate payloads.
   const frames = error instanceof Error ? error.stack?.split("\n").slice(1)
-    .filter((line) => /^\s+at /.test(line)).slice(0, 8) : [];
-  console.error(JSON.stringify({ status: "failed", frames }));
+    .filter((line) => /^\s+at /.test(line)).slice(0, 16) : [];
+  const value = error as { code?: unknown; meta?: { code?: unknown;
+    driverAdapterError?: { cause?: { originalCode?: unknown; originalMessage?: unknown } } } };
+  const safeCode = (code: unknown) => typeof code === "string" && /^[A-Z0-9]{5}$/.test(code) ? code : undefined;
+  const message = String(value?.meta?.driverAdapterError?.cause?.originalMessage ?? "");
+  const categories = ["permission denied", "serialize", "timeout", "immutable", "publication",
+    "current", "slot", "tenant", "scope", "artifact", "constraint"].filter((word) => message.includes(word));
+  console.error(JSON.stringify({ status: "failed", code: safeCode(value?.code),
+    sqlState: safeCode(value?.meta?.code ?? value?.meta?.driverAdapterError?.cause?.originalCode), categories, frames }));
   process.exitCode = 1;
 });
