@@ -917,6 +917,13 @@ load_target_rabbitmq_quorum_backend_health() {
     "$RABBITMQ_QUORUM_HEALTH_SCRIPT_PATH" 'target RabbitMQ quorum health script' 100755
   verify_target_rabbitmq_quorum_asset "$sha" \
     "$RABBITMQ_QUORUM_RECOVERY_SCRIPT_PATH" 'target RabbitMQ quorum recovery script' 100755
+  # Integration has advanced beyond the prelude pin. Load both dependencies
+  # through the same reviewed target authority before rescue health can call
+  # the lazy loader; recovery also requires health to be defined when sourced.
+  source_reviewed_deploy_library "$sha" "$RABBITMQ_QUORUM_HEALTH_SCRIPT_PATH" \
+    'target RabbitMQ quorum health script'
+  source_reviewed_deploy_library "$sha" "$RABBITMQ_QUORUM_RECOVERY_SCRIPT_PATH" \
+    'target RabbitMQ quorum recovery script'
   unset -f verify_backend verify_backend_with_retry
   source_reviewed_deploy_library "$sha" "$RABBITMQ_QUORUM_HEALTH_LIBRARY_PATH" \
     'target backend health library'
