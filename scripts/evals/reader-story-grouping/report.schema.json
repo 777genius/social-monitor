@@ -1,0 +1,74 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "mode": {
+      "enum": [
+        "OFFLINE_DETERMINISTIC_NO_VERIFIER",
+        "OFFLINE_CAPTURED_REGRESSION",
+        "LIVE_IMPORTED"
+      ]
+    },
+    "liveStatus": {
+      "enum": [
+        "NOT_RUN",
+        "IMPORTED_ATTESTED"
+      ]
+    },
+    "sourceRevision": {
+      "type": "string"
+    },
+    "labelSealSha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "totals": {
+      "type": "object"
+    },
+    "requestCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "metrics": {
+      "type": "object"
+    },
+    "cases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "semanticRelation",
+          "productAction",
+          "scored",
+          "retrieval",
+          "model",
+          "confidence",
+          "gate",
+          "relationTogether",
+          "publicationTogether",
+          "posts"
+        ]
+      }
+    },
+    "clusterCases": {
+      "type": "array"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "mode",
+    "liveStatus",
+    "sourceRevision",
+    "labelSealSha256",
+    "totals",
+    "requestCount",
+    "metrics",
+    "cases",
+    "clusterCases"
+  ],
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

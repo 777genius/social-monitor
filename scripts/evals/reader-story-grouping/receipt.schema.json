@@ -1,0 +1,242 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "captureKind": {
+      "enum": [
+        "live_subscription",
+        "offline_fixture"
+      ]
+    },
+    "manifestSha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "sourceRevision": {
+      "type": "string"
+    },
+    "labelSealSha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "replaySha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "transport": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "authentication": {
+          "enum": [
+            "existing_authenticated_composition",
+            "deterministic_fixture"
+          ]
+        },
+        "operatorRecord": {
+          "type": "string",
+          "minLength": 1
+        },
+        "runtimePackageVersion": {
+          "type": "string"
+        },
+        "launcherSha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "required": [
+        "authentication",
+        "operatorRecord",
+        "runtimePackageVersion",
+        "launcherSha256"
+      ]
+    },
+    "responses": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "blockId": {
+            "type": "string"
+          },
+          "commandSha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "canonicalRequestSha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "schemaSha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "evidenceSha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "receivedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "status": {
+                "const": "completed"
+              },
+              "structuredOutput": {
+                "type": "object"
+              },
+              "outputText": {
+                "type": "string"
+              },
+              "warnings": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ]
+                }
+              },
+              "usage": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "inputTokens": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "outputTokens": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "totalTokens": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "estimatedCostUsd": {
+                    "type": "number",
+                    "minimum": 0
+                  }
+                },
+                "required": [
+                  "inputTokens",
+                  "outputTokens",
+                  "totalTokens",
+                  "estimatedCostUsd"
+                ]
+              },
+              "durationMs": {
+                "type": "number",
+                "minimum": 0
+              },
+              "executionAttestation": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "schemaVersion": {
+                    "const": 1
+                  },
+                  "requestId": {
+                    "type": "string"
+                  },
+                  "purpose": {
+                    "type": "string"
+                  },
+                  "canonicalRequestSha256": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
+                  },
+                  "provider": {
+                    "const": "codex"
+                  },
+                  "model": {
+                    "const": "gpt-5.6-sol"
+                  },
+                  "reasoningEffort": {
+                    "const": "high"
+                  },
+                  "runtimeEngine": {
+                    "const": "subscription-runtime-cli"
+                  },
+                  "runtimePackageVersion": {
+                    "type": "string"
+                  },
+                  "launcherSha256": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
+                  },
+                  "selectedOutputKind": {
+                    "const": "structured_output"
+                  },
+                  "selectedOutputSha256": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
+                  }
+                },
+                "required": [
+                  "schemaVersion",
+                  "requestId",
+                  "purpose",
+                  "canonicalRequestSha256",
+                  "provider",
+                  "model",
+                  "reasoningEffort",
+                  "runtimeEngine",
+                  "runtimePackageVersion",
+                  "launcherSha256",
+                  "selectedOutputKind",
+                  "selectedOutputSha256"
+                ]
+              }
+            },
+            "required": [
+              "status",
+              "structuredOutput",
+              "warnings",
+              "executionAttestation"
+            ]
+          }
+        },
+        "required": [
+          "blockId",
+          "commandSha256",
+          "canonicalRequestSha256",
+          "schemaSha256",
+          "evidenceSha256",
+          "receivedAt",
+          "result"
+        ]
+      }
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "captureKind",
+    "manifestSha256",
+    "sourceRevision",
+    "labelSealSha256",
+    "replaySha256",
+    "transport",
+    "responses"
+  ],
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

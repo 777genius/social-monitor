@@ -1,0 +1,116 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "sourceRevision": {
+      "type": "string"
+    },
+    "labelSealSha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "replaySha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "captureSha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "ownedFiles": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{64}$"
+      }
+    },
+    "effectBudget": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "runTaskCalls": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maxOutputTokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "timeoutMsPerCall": {
+          "const": 300000
+        }
+      },
+      "required": [
+        "runTaskCalls",
+        "maxOutputTokens",
+        "timeoutMsPerCall"
+      ]
+    },
+    "requests": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "blockId": {
+            "type": "string"
+          },
+          "command": {
+            "type": "object"
+          },
+          "commandSha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "canonicalRequest": {
+            "type": "object"
+          },
+          "canonicalRequestSha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "schemaSha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "candidateCount": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "evidenceSha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        },
+        "required": [
+          "blockId",
+          "command",
+          "commandSha256",
+          "canonicalRequest",
+          "canonicalRequestSha256",
+          "schemaSha256",
+          "candidateCount",
+          "evidenceSha256"
+        ]
+      }
+    },
+    "liveStatus": {
+      "const": "NOT_RUN"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "sourceRevision",
+    "labelSealSha256",
+    "replaySha256",
+    "captureSha256",
+    "ownedFiles",
+    "effectBudget",
+    "requests",
+    "liveStatus"
+  ],
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
