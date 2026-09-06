@@ -1,5 +1,5 @@
 import { PROMOTION_ELIGIBLE_ITEM_CEILING, PROMOTION_PHYSICAL_ROW_CEILING } from "@social-monitor/feed/ports";
-import type { SummaryEvidenceSelection } from "@social-monitor/summary/domain";
+import { READER_SUMMARY_EDITORIAL_SLATE_VERSION, type SummaryEvidenceSelection } from "@social-monitor/summary/domain";
 import type { ReaderSummaryEvidenceSelectorPort } from "@social-monitor/summary/ports";
 import { refreshHash, type RefreshManifest } from "./reader-summary-new-input-refresh-manifest";
 
@@ -17,11 +17,11 @@ const exclusionCodes = new Set([
  * This is the actual selection decision, not a later reconstruction or publication proof. */
 export function withRefreshSelectionAudit(input: {
   selector: ReaderSummaryEvidenceSelectorPort; manifest: RefreshManifest; jobId: string;
-  record(event: unknown): void; invalidate(): void;
+  record(event: unknown): void | Promise<void>; invalidate(): void;
 }): ReaderSummaryEvidenceSelectorPort {
   return { select: async (query) => {
     const selection = await input.selector.select(query);
-    try { input.record(selectionReceipt(input.manifest, input.jobId, selection)); }
+    try { await input.record(selectionReceipt(input.manifest, input.jobId, selection)); }
     catch (error) { input.invalidate(); throw error; }
     return selection;
   } };
@@ -29,14 +29,18 @@ export function withRefreshSelectionAudit(input: {
 
 function selectionReceipt(m: RefreshManifest, jobId: string, selection: SummaryEvidenceSelection) {
   const slate = selection.editorialSlate;
-  const excluded = slate?.excluded ?? [];
-  const candidateCount = (slate?.top.length ?? 0) + (slate?.additional.length ?? 0) + excluded.length;
-  const supportCount = selection.clusters.reduce((sum, cluster) => sum + cluster.duplicateFeedItemIds.length, 0);
+  const selectedEvidence = auditArray(selection.selectedEvidence), clusters = auditArray(selection.clusters);
+  const top = slate === undefined ? [] : auditArray(slate.top);
+  const additional = slate === undefined ? [] : auditArray(slate.additional);
+  const excluded = slate === undefined ? [] : auditArray(slate.excluded);
+  if (slate !== undefined && slate.policyVersion !== READER_SUMMARY_EDITORIAL_SLATE_VERSION) {
+    throw new Error("Refresh selection audit requires the canonical policy version");
+  }
+  const candidateCount = top.length + additional.length + excluded.length;
+  const supportCount = clusters.reduce((sum, cluster) => sum + auditArray(cluster.duplicateFeedItemIds).length, 0);
   if (candidateCount > PROMOTION_ELIGIBLE_ITEM_CEILING || candidateCount > m.authority.eligibleCount ||
-      selection.selectedEvidence.length > PROMOTION_PHYSICAL_ROW_CEILING ||
-      selection.clusters.length > PROMOTION_PHYSICAL_ROW_CEILING || supportCount > PROMOTION_PHYSICAL_ROW_CEILING ||
-      excluded.some((item) => item.reasonCodes.length > exclusionCodes.size ||
-        item.reasonCodes.some((code) => !exclusionCodes.has(code)))) {
+      selectedEvidence.length > PROMOTION_PHYSICAL_ROW_CEILING ||
+      clusters.length > PROMOTION_PHYSICAL_ROW_CEILING || supportCount > PROMOTION_PHYSICAL_ROW_CEILING) {
     throw new Error("Refresh selection audit exceeds canonical bounds or reason vocabulary");
   }
   return Object.freeze({
@@ -49,19 +53,42 @@ function selectionReceipt(m: RefreshManifest, jobId: string, selection: SummaryE
     manifestCanonicalSha256: refreshHash(m), sourceSha256: m.sourceSha256,
     generationSha256: m.generationSha256, canonicalInputSha256: m.authority.canonicalInputSha256,
     canonicalCandidateCount: m.authority.eligibleCount,
-    selectedFeedItemIds: Object.freeze(selection.selectedEvidence.map((item) => item.feedItemId)),
-    support: Object.freeze(selection.clusters.map((cluster) => Object.freeze({
-      representativeFeedItemId: cluster.representativeFeedItemId,
-      supportFeedItemIds: Object.freeze([...cluster.duplicateFeedItemIds]),
+    selectedFeedItemIds: Object.freeze(Array.from(selectedEvidence, (item) => auditId(item.feedItemId))),
+    support: Object.freeze(Array.from(clusters, (cluster) => Object.freeze({
+      representativeFeedItemId: auditId(cluster.representativeFeedItemId),
+      supportFeedItemIds: Object.freeze(Array.from(auditArray(cluster.duplicateFeedItemIds), auditId)),
     }))),
     // Absent is distinct from an authoritative empty/no-signal slate.
     editorialSlate: slate === undefined ? null : Object.freeze({
-      policyVersion: slate.policyVersion,
-      topCandidateIds: Object.freeze(slate.top.map((entry) => entry.candidateId)),
-      additionalCandidateIds: Object.freeze(slate.additional.map((entry) => entry.candidateId)),
-      excluded: Object.freeze(excluded.map((item) => Object.freeze({
-        candidateId: item.candidateId, reasonCodes: Object.freeze([...item.reasonCodes]),
+      policyVersion: READER_SUMMARY_EDITORIAL_SLATE_VERSION,
+      topCandidateIds: Object.freeze(Array.from(top, (entry) => auditId(entry.candidateId))),
+      additionalCandidateIds: Object.freeze(Array.from(additional, (entry) => auditId(entry.candidateId))),
+      excluded: Object.freeze(Array.from(excluded, (item) => Object.freeze({
+        candidateId: auditId(item.candidateId), reasonCodes: auditReasons(item.reasonCodes),
       }))),
     }),
   });
+}
+
+function auditArray<T>(value: readonly T[]): readonly T[] {
+  if (!Array.isArray(value)) throw new Error("Refresh selection audit requires actual arrays");
+  return value;
+}
+
+function auditId(value: unknown): string {
+  if (typeof value !== "string") throw new Error("Refresh selection audit requires primitive string IDs");
+  return value;
+}
+
+function auditReasons(value: readonly string[]): readonly string[] {
+  const codes = auditArray(value);
+  if (codes.length > exclusionCodes.size) {
+    throw new Error("Refresh selection audit exceeds canonical bounds or reason vocabulary");
+  }
+  return Object.freeze(Array.from(codes, (code) => {
+    if (typeof code !== "string" || !exclusionCodes.has(code)) {
+      throw new Error("Refresh selection audit exceeds canonical bounds or reason vocabulary");
+    }
+    return code;
+  }));
 }
