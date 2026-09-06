@@ -29,6 +29,9 @@ describe("Reader Promotion V2 editorial slate", () => {
     });
 
     it.each([
+      `${context} Atlas bypasses human approval. That claim has been retracted.`,
+      `${context} The assertion has been withdrawn. Atlas bypasses human approval.`,
+      `${context} Atlas bypasses human approval. This finding needs context.`,
       "Neither assertion about automatic agent writes across public websites and bypassing required human approval reflects actual product behavior. Atlas enables automatic agent writes. Atlas bypasses human approval.",
       `${context} Atlas enables automatic agent writes. Atlas bypasses human approval. Neither assertion is true.`,
     ])("excludes 3230 before ranking against 89: %s", (body) => {

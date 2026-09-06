@@ -2,7 +2,9 @@ export const READER_TITLE_MAX_LENGTH = 119;
 
 // Recovery may omit descriptive context, but cannot detach a claim from
 // negation, uncertainty, conditions or a question elsewhere in the source.
-// This deliberately rejects ambiguous context rather than paraphrasing it.
+// Omitted references and corrections can govern either neighboring direction.
+// Reject them even when unrelated: this bounded English lexical guard cannot
+// resolve their referents. Callers retain legacy first-substantive extraction.
 export const canRecoverReaderTitleSentence = (
   sentences: readonly string[],
   index: number,
@@ -17,6 +19,8 @@ export const canRecoverReaderTitleSentence = (
     ) ||
     /\b\w+n['’]t\b/iu.test(sentence) ||
     /\b(?:following|preceding|above|below)\s+(?:claim|statement|assertion|account)\b/iu.test(sentence) ||
+    /\b(?:this|that|these|those|the)\s+(?:(?:earlier|previous|original|prior|reported|published|same)\s+)*(?:claims?|assertions?|statements?|findings?|conclusions?|allegations?|accounts?|reports?)\b/iu.test(sentence) ||
+    /\b(?:retract(?:s|ed|ing|ions?)?|withdraw(?:s|n|ing|als?)?|withdrew|correct(?:s|ed|ing|ions?)?|recant(?:s|ed|ing|ations?)?|rescind(?:s|ed|ing)?|walk(?:s|ed|ing)?\s+back)\b/iu.test(sentence) ||
     /\b(?:breaking|just\s+in)\s*:/iu.test(sentence)
   ))
 );

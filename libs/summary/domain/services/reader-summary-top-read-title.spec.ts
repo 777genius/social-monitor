@@ -58,6 +58,62 @@ describe("reader summary top read title", () => {
       expect(hasReaderFacingPromotionTitle(item)).toBe(false);
     });
 
+    it("rejects the reported approval bypass followed by a retraction", () => {
+      const item = itemFor(`${longContext} Atlas bypasses human approval. That claim has been retracted.`);
+      expect(buildReaderPostPromotionTitle({ lead: item }))
+        .toBe("Current AI product discussion");
+      expect(hasReaderFacingPromotionTitle(item)).toBe(false);
+    });
+
+    describe.each(["before", "after"])("omitted context %s the candidate", (position) => {
+      it.each([
+        "Editors retracted earlier coverage.",
+        "Editors issued a retraction.",
+        "Researchers withdrew earlier coverage.",
+        "Earlier coverage has been withdrawn.",
+        "Editors announced a withdrawal.",
+        "Editors corrected earlier coverage.",
+        "Editors issued a correction.",
+        "Researchers denied earlier coverage.",
+        "Researchers issued a denial.",
+        "Editors recanted earlier coverage.",
+        "Editors rescinded earlier coverage.",
+        "Editors walked back earlier coverage.",
+        "This claim needs context.",
+        "That assertion needs context.",
+        "The statement needs context.",
+        "That finding needs context.",
+        "These conclusions need context.",
+        "Those allegations need context.",
+        "Reviewers are revisiting the account.",
+        "Reviewers are revisiting this report.",
+        "Reviewers are revisiting that claim.",
+      ])("rejects recovery across %s", (context) => {
+        const claim = "Atlas bypasses human approval.";
+        // Keep the governing sentence too long to become a separate title.
+        const omitted = `${context.slice(0, -1)} in the detailed publication about automatic agent writes across public websites and mandatory human approval requirements.`;
+        const body = position === "before"
+          ? `${longContext} ${omitted} ${claim}`
+          : `${longContext} ${claim} ${omitted}`;
+        const item = itemFor(body);
+        expect(buildReaderPostPromotionTitle({ lead: item }))
+          .toBe("Current AI product discussion");
+        expect(hasReaderFacingPromotionTitle(item)).toBe(false);
+      });
+    });
+
+    it.each([
+      "Atlas retracted claims of automatic agent writes",
+      "Atlas withdrew claims of automatic agent writes",
+      "Atlas corrected claims of automatic agent writes",
+      "Atlas denies bypassing human approval",
+      "Atlas does not bypass human approval",
+    ])("retains a self-contained correction: %s", (claim) => {
+      const item = itemFor(`${longContext} ${claim}.`);
+      expect(buildReaderPostPromotionTitle({ lead: item })).toBe(claim);
+      expect(hasReaderFacingPromotionTitle(item)).toBe(true);
+    });
+
     it("rejects literal motion conflicting with omitted context", () => {
       const item = itemFor(`${longContext} Atlas is moving toward the operator. Atlas is not going anywhere.`);
       expect(buildReaderPostPromotionTitle({ lead: item }))
@@ -120,6 +176,13 @@ describe("reader summary top read title", () => {
     const item = evidence({ title: `${body.slice(0, 100)}...`, bodyPreview: body });
     expect(buildReaderPostPromotionTitle({ lead: item }))
       .toBe(claim[0]?.toUpperCase() + claim.slice(1));
+  });
+
+  it("preserves legacy first-substantive preview extraction with a retraction", () => {
+    const body = "Check this out! Atlas bypasses human approval. That claim has been retracted.";
+    const item = evidence({ title: `${body.slice(0, 40)}...`, bodyPreview: body });
+    expect(buildReaderPostPromotionTitle({ lead: item }))
+      .toBe("Atlas bypasses human approval");
   });
 
   it("keeps the context guard for summary teaser skipping", () => {
