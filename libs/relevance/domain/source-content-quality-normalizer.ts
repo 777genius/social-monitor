@@ -379,7 +379,7 @@ const aiCodingToolPattern =
 const medicalContextPattern =
   /\b(?:mri|ct\s+scan|scan|diagnos(?:is|e|ed)|doctor|medical|medicine|clinical|hospital|patient|cancer|tumou?r|symptom|therapy|treatment|prescription)\b/iu;
 const legacyCoreTopicSignalPattern =
-  /\b(?:ai|a\.i\.|artificial\s+intelligence|llm|llms|gpt|openai|anthropic|claude|codex|cursor|copilot|mcp|model|models|agentic|agent|agents|inference|token|tokens|neural|machine\s+learning|deep\s+learning|deepfake|cybersecurity|security|privacy|surveillance|geolocation|developer\s+tool|developer\s+tools|coding\s+agent|coding\s+agents|ai-generated\s+code|ai\s+code|vibe-coding)\b/iu;
+  /\b(?:ai|a\.i\.|artificial\s+intelligence|llm|llms|gpt|chatgpt|openai|anthropic|claude|codex|cursor|copilot|mcp|model|models|agentic|agent|agents|inference|token|tokens|neural|machine\s+learning|deep\s+learning|deepfake|cybersecurity|security|privacy|surveillance|geolocation|developer\s+tool|developer\s+tools|coding\s+agent|coding\s+agents|ai-generated\s+code|ai\s+code|vibe-coding)\b/iu;
 const trustedXAuthors = new Set([
   "anthropicai",
   "gdb",
@@ -397,6 +397,7 @@ const topicTermAliases = new Map<string, readonly string[]>([
       "llm",
       "llms",
       "gpt",
+      "chatgpt",
       "openai",
       "anthropic",
       "claude",
