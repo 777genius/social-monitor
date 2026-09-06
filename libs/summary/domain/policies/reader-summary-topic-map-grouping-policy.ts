@@ -16,6 +16,7 @@ export const READER_SUMMARY_TOPIC_MAP_MAX_NODES = 18;
 export type ReaderSummaryTopicMapGroupingPolicyOptions = {
   readonly semanticAnchorsByGroup?: ReadonlyMap<string, readonly string[]>;
   readonly excludedStoryClusterIds?: ReadonlySet<string>;
+  readonly originalGroupByStoryClusterId?: ReadonlyMap<string, string>;
 };
 
 export const applyReaderSummaryTopicMapGroupingPolicy = (
@@ -24,7 +25,9 @@ export const applyReaderSummaryTopicMapGroupingPolicy = (
 ): readonly ReaderSummaryTopicMapNode[] => {
   const canonicalNodes = nodes.map((node) => ({
     ...node,
-    groupId: isExcluded(node, options)
+    groupId: isExcluded(node, options) || hasConflictingAssignment(
+      node, canonicalReaderSummaryTopicMapGroupId(node.groupId), options,
+    )
       ? READER_SUMMARY_TOPIC_MAP_UNGROUPED_ID
       : canonicalReaderSummaryTopicMapGroupId(node.groupId),
   }));
@@ -118,7 +121,8 @@ const recoverUngroupedByLeadingIdentity = (
       return node;
     }
     const matchingGroupIds = [...supportedIdentityByGroup]
-      .filter(([, identities]) => identities.has(identity))
+      .filter(([groupId, identities]) => identities.has(identity) &&
+        !hasConflictingAssignment(node, groupId, options))
       .map(([groupId]) => groupId);
 
     return matchingGroupIds.length === 1
@@ -131,6 +135,16 @@ const isExcluded = (
   node: ReaderSummaryTopicMapNode,
   options: ReaderSummaryTopicMapGroupingPolicyOptions,
 ): boolean => node.storyClusterIds.some((id) => options.excludedStoryClusterIds?.has(id));
+
+const hasConflictingAssignment = (
+  node: ReaderSummaryTopicMapNode,
+  groupId: string,
+  options: ReaderSummaryTopicMapGroupingPolicyOptions,
+): boolean => node.storyClusterIds.some((id) => {
+  const original = options.originalGroupByStoryClusterId?.get(id);
+  return original !== undefined && original !== READER_SUMMARY_TOPIC_MAP_UNGROUPED_ID &&
+    original !== groupId;
+});
 
 const leadingTopicIdentity = (label: string): string | undefined =>
   meaningfulTopicLabelTokens(label)

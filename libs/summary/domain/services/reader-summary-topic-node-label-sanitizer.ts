@@ -15,6 +15,7 @@ export const sanitizeTopicNodeLabel = (
   relationIdentity: label.relationIdentity,
   label: sanitizeTopicLabel(label.label),
   semantic: sanitizeReaderSummaryTopicSemanticLabel(label.semantic),
+  originalGroupId: label.originalGroupId,
   groupId: sanitizeTopicId(label.groupId),
   keywords: (label.keywords ?? [])
     .map(compactOptional)

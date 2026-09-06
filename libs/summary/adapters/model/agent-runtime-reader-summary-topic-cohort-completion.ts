@@ -16,11 +16,13 @@ export const completeRequiredGroundedTopicCohorts = (
 ): {
   readonly nodeLabels: ReaderSummaryTopicLabelPlan["nodeLabels"];
   readonly semanticAnchorsByGroup: ReadonlyMap<string, readonly string[]>;
+  readonly displayByGroup: ReadonlyMap<string, string>;
   readonly recoveredNodeCount: number;
 } => {
   let nodeLabels = [...initialNodeLabels];
   const candidateById = new Map(candidates.map((item) => [item.nodeId, item]));
   const semanticAnchorsByGroup = new Map<string, readonly string[]>();
+  const displayByGroup = new Map<string, string>();
   const groupIds = new Set(nodeLabels.flatMap((label) =>
     label.groupId && label.groupId !== READER_SUMMARY_TOPIC_MAP_UNGROUPED_ID
       ? [label.groupId] : [],
@@ -78,8 +80,9 @@ export const completeRequiredGroundedTopicCohorts = (
       };
     });
     groupIds.add(cohort.groupId);
+    displayByGroup.set(cohort.groupId, [...displayByNodeId.values()][0]!);
     semanticAnchorsByGroup.set(cohort.groupId, [cohort.sharedAnchor]);
   }
 
-  return { nodeLabels, semanticAnchorsByGroup, recoveredNodeCount };
+  return { nodeLabels, semanticAnchorsByGroup, displayByGroup, recoveredNodeCount };
 };

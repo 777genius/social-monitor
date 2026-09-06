@@ -113,6 +113,10 @@ export const buildReaderSummaryTopicMap = (
   const originalLabels = new Map(
     (params.labelPlan?.nodeLabels ?? []).map((label) => [label.nodeId, label]),
   );
+  const originalGroupByStoryClusterId = new Map(reviewedClusters.flatMap((cluster) => {
+    const groupId = originalLabels.get(topicNodeId(cluster.id))?.originalGroupId;
+    return groupId === undefined ? [] : [[cluster.id, groupId] as const];
+  }));
   const identityProtectedStoryClusterIds = new Set(reviewedClusters
     .filter((cluster) => originalLabels.get(topicNodeId(cluster.id))?.relationIdentity !== undefined)
     .map((cluster) => cluster.id));
@@ -158,7 +162,7 @@ export const buildReaderSummaryTopicMap = (
     params.preserveStoryClustersForLabeling === true
       ? rankedNodes
       : rankedNodes.slice(0, READER_SUMMARY_TOPIC_MAP_MAX_NODES),
-    { semanticAnchorsByGroup, excludedStoryClusterIds },
+    { semanticAnchorsByGroup, excludedStoryClusterIds, originalGroupByStoryClusterId },
   );
   const groups = buildReaderSummaryTopicMapGroups(nodes, labelGroups);
   const edges = buildReaderSummaryTopicMapEdges(nodes, groups);

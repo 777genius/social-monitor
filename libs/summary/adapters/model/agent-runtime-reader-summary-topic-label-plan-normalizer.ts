@@ -9,7 +9,7 @@ import {
   type ReaderSummaryTopicLabelPlan,
 } from "../../domain";
 import type { ReaderSummaryTopicLabelerInput } from "../../ports";
-import { meaningfulTopicLabelTokens } from "../../domain/services/reader-summary-topic-map-label-quality";
+import { evaluateTopicLabelQuality, meaningfulTopicLabelTokens } from "../../domain/services/reader-summary-topic-map-label-quality";
 import {
   formatReaderSummaryTopicToken,
   normalizeTopicLabel,
@@ -65,6 +65,7 @@ export const normalizeAgentRuntimeReaderSummaryTopicLabelPlan = (
     topicId: label.topicId,
     label: label.label,
     semantic: label.semantic,
+    originalGroupId: label.groupId,
     groupId:
       retainedGroupIds.has(label.groupId) &&
       label.semantic.confidenceScore >=
@@ -98,6 +99,8 @@ export const normalizeAgentRuntimeReaderSummaryTopicLabelPlan = (
   );
   const groups = [...finalGroupIds].map((id) => {
     const group = groupRecords.get(id);
+    const proposedLabel = group === undefined
+      ? semanticGroupLabelFromId(id) : stringValue(group.label);
     const explicitAnchors =
       group === undefined ? [] : readStringArray(group.semanticAnchors);
     const recoveredAnchors = recoverSemanticGroupAnchors({
@@ -108,10 +111,9 @@ export const normalizeAgentRuntimeReaderSummaryTopicLabelPlan = (
 
     return {
       id,
-      label:
-        group === undefined
-          ? semanticGroupLabelFromId(id)
-          : stringValue(group.label),
+      label: evaluateTopicLabelQuality(proposedLabel).accepted
+        ? proposedLabel : recovery.displayByGroup.get(id) ?? proposedLabel,
+      recoveredDisplayLabel: recovery.displayByGroup.get(id),
       semanticAnchors: uniqueStrings([
         ...explicitAnchors,
         ...(recovery.semanticAnchorsByGroup.get(id) ?? []),
