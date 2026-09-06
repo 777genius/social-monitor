@@ -65,6 +65,33 @@ describe("reader summary top read title", () => {
       expect(hasReaderFacingPromotionTitle(item)).toBe(false);
     });
 
+    describe.each(["before", "after"])("walk-back context %s the candidate", (position) => {
+      it.each([
+        "We walked it back.",
+        "We have walked that back.",
+        "We walk it back.",
+        "Our editorial team walks it back in the detailed publication about automatic agent writes across public websites and mandatory human approval requirements.",
+        "We are walking this back.",
+        "We walked those statements back.",
+        "We walked our earlier published statements back.",
+        "We walked them back.",
+        "We walked everything back.",
+        "We walked back.",
+        "We have walked-back earlier coverage.",
+        "We are walking-back earlier coverage.",
+        "Editorial coverage was walked-back in the detailed publication about automatic agent writes across public websites and mandatory human approval requirements.",
+      ])("rejects detached recovery across %s", (context) => {
+        const claim = "Atlas bypasses human approval.";
+        const body = position === "before"
+          ? `${longContext} ${context} ${claim}`
+          : `${longContext} ${claim} ${context}`;
+        const item = itemFor(body);
+        expect(buildReaderPostPromotionTitle({ lead: item }))
+          .toBe("Current AI product discussion");
+        expect(hasReaderFacingPromotionTitle(item)).toBe(false);
+      });
+    });
+
     describe.each(["before", "after"])("omitted context %s the candidate", (position) => {
       it.each([
         "Editors retracted earlier coverage.",

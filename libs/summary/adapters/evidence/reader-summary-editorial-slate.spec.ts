@@ -29,6 +29,12 @@ describe("Reader Promotion V2 editorial slate", () => {
     });
 
     it.each([
+      ...["We walked it back.", "We have walked that back.", "We are walking this back.",
+        "We walked those statements back.", "We have walked-back earlier coverage.",
+      ].flatMap((retraction) => [
+        `${context} Atlas bypasses human approval. ${retraction}`,
+        `${context} ${retraction} Atlas bypasses human approval.`,
+      ]),
       `${context} Atlas bypasses human approval. That claim has been retracted.`,
       `${context} The assertion has been withdrawn. Atlas bypasses human approval.`,
       `${context} Atlas bypasses human approval. This finding needs context.`,
