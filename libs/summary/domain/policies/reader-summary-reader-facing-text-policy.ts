@@ -5,8 +5,9 @@ export const READER_TITLE_MAX_LENGTH = 119;
 // Omitted references and corrections can govern either neighboring direction.
 // Reject them even when unrelated: this bounded English lexical guard cannot
 // resolve their referents. Walk-back detection spans any intervening words or
-// hyphenation within the same omitted sentence, conservatively rejecting literal
-// walking contexts too; it has no semantic exception or object-length limit.
+// punctuation within each omitted context unit, conservatively rejecting literal
+// walking contexts and grouped sentences too. Only callers define unit boundaries;
+// it has no semantic exception or object-length limit.
 // Callers retain legacy first-substantive extraction.
 export const canRecoverReaderTitleSentence = (
   sentences: readonly string[],
@@ -24,16 +25,18 @@ export const canRecoverReaderTitleSentence = (
     /\b(?:following|preceding|above|below)\s+(?:claim|statement|assertion|account)\b/iu.test(sentence) ||
     /\b(?:this|that|these|those|the)\s+(?:(?:earlier|previous|original|prior|reported|published|same)\s+)*(?:claims?|assertions?|statements?|findings?|conclusions?|allegations?|accounts?|reports?)\b/iu.test(sentence) ||
     /\b(?:retract(?:s|ed|ing|ions?)?|withdraw(?:s|n|ing|als?)?|withdrew|correct(?:s|ed|ing|ions?)?|recant(?:s|ed|ing|ations?)?|rescind(?:s|ed|ing)?)\b/iu.test(sentence) ||
-    hasSentenceWalkBack(sentence) ||
+    hasContextUnitWalkBack(sentence) ||
     /\b(?:breaking|just\s+in)\s*:/iu.test(sentence)
   ))
 );
 
 // A single linear token scan avoids repeated suffix searches for each verb.
-// Reset on sentence punctuation even if a caller grouped ambiguous sentences.
-const hasSentenceWalkBack = (sentence: string): boolean => {
+// Internal punctuation may belong to an abbreviation, initial or decimal. Never
+// guess a boundary here: ambiguous grouped sentences fail closed, at the cost of
+// rejecting some unrelated prose. State resets only for each supplied unit/call.
+const hasContextUnitWalkBack = (contextUnit: string): boolean => {
   let walked = false;
-  for (const match of sentence.matchAll(/\bwalk(?:s|ed|ing)?\b|\bback\b|[.!?…]/giu)) {
+  for (const match of contextUnit.matchAll(/\bwalk(?:s|ed|ing)?\b|\bback\b/giu)) {
     const token = match[0].toLowerCase();
     if (token === "back") {
       if (walked) return true;

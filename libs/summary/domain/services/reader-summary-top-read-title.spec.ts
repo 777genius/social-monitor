@@ -68,6 +68,10 @@ describe("reader summary top read title", () => {
     describe.each(["before", "after"])("walk-back context %s the candidate", (position) => {
       it.each([
         "We walked it back.",
+        "We walked Dr. Smith's announcement back.",
+        "We walked J. Smith's announcement back.",
+        "We walked version 2.0 back.",
+        "We walked outdoors. back at camp, teams shared dinner.",
         "We have walked that back.",
         "We walk it back.",
         "Our editorial team walks it back in the detailed publication about automatic agent writes across public websites and mandatory human approval requirements.",
@@ -207,14 +211,14 @@ describe("reader summary top read title", () => {
   });
 
   it.each([".", "!", "?", "…"])(
-    "does not pair walk and back across a %s boundary inside omitted context",
+    "conservatively vetoes walk and back across %s within one grouped context unit",
     (boundary) => {
-      // Exercise the policy directly even when the caller groups ambiguous prose.
-      // A question is independently disqualifying under the unchanged question gate.
+      // Punctuation cannot clear a veto within a caller-provided context unit.
+      // This deliberately also rejects grouped literal walking contexts.
       expect(canRecoverReaderTitleSentence([
         `Researchers walked outdoors${boundary} Back at camp, teams shared dinner.`,
         "Atlas documents agent failures in public incident reports.",
-      ], 1)).toBe(boundary !== "?");
+      ], 1)).toBe(false);
     },
   );
 
@@ -224,6 +228,14 @@ describe("reader summary top read title", () => {
       "Atlas documents agent failures in public incident reports.",
       "Back at camp, teams shared dinner.",
     ], 1)).toBe(true);
+  });
+
+  it("does not carry walk state between policy calls", () => {
+    const claim = "Atlas documents agent failures in public incident reports.";
+    expect(canRecoverReaderTitleSentence(["Researchers walked outdoors.", claim], 1))
+      .toBe(true);
+    expect(canRecoverReaderTitleSentence(["Back at camp, teams shared dinner.", claim], 1))
+      .toBe(true);
   });
 
   it("requires the particle after the verb with whole word boundaries", () => {

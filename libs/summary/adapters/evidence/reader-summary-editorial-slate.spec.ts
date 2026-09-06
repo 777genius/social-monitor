@@ -32,6 +32,10 @@ describe("Reader Promotion V2 editorial slate", () => {
       ...["We walked it back.", "We have walked that back.", "We are walking this back.",
         "We walked those statements back.", "We have walked-back earlier coverage.",
         "We walked our earlier widely circulated statements back.",
+        "We walked Dr. Smith's announcement back.",
+        "We walked J. Smith's announcement back.",
+        "We walked version 2.0 back.",
+        "We walked outdoors. back at camp, teams shared dinner.",
         "We walked our earlier public-facing statements back.",
         "We walked our earlier—public-facing, widely circulated—statements back.",
         ...[5, 10, 30].flatMap((length) =>
