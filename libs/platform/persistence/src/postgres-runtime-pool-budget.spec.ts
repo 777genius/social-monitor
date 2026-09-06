@@ -298,6 +298,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
     PUBLICATION_POSTGRES_TEST_ONLY_FILES;
   const sourceFiles = [...runtimeSourceFiles('apps'), ...runtimeSourceFiles('libs')];
   const completeDatabaseSourceFiles = [
+    'test/feed-reader-summary-coverage-pool.integration.spec.ts',
     ...sourceFiles,
     ...runtimeSourceFiles('scripts'),
     ...runtimeSourceFiles('prisma').filter(
@@ -428,6 +429,8 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/run-reader-summary-promotion-v2-rollback.ts:Pool
       scripts/run-reader-summary-weekly-production.ts:Pool
       scripts/run-reader-summary-weekly-review-producer.ts:Pool
+      test/feed-reader-summary-coverage-pool.integration.spec.ts:Pool
+      test/feed-reader-summary-coverage-pool.integration.spec.ts:PrismaPg
     `));
   });
 
@@ -553,6 +556,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/run-reader-summary-promotion-v2-rollback.ts
       scripts/run-reader-summary-weekly-production.ts
       scripts/run-reader-summary-weekly-review-producer.ts
+      test/feed-reader-summary-coverage-pool.integration.spec.ts
     `));
     for (const path of rawDependencyFiles) {
       expect(readSource(path)).not.toMatch(

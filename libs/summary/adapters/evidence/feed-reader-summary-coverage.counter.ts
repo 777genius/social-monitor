@@ -37,17 +37,29 @@ export class FeedReaderSummaryCoverageCounter implements ReaderSummaryCoverageCo
   async countCollectedFeedItemCoverage(
     query: CountReaderSummaryCollectedFeedItemsQuery,
   ): Promise<ReaderSummaryCollectedFeedItemCoverage | undefined> {
+    // Own both branches before yielding, including synchronous port throws and
+    // pagination exits. A failure must not leave the other branch unobserved.
+    const [collectionHealth, accumulator] = await Promise.all([
+      (async () => this.collectionHealth.readProviderCollectionHealth(query))(),
+      this.collectFeedItemCoverage(query),
+    ]);
+    return accumulator === undefined
+      ? undefined
+      : coverageResult(accumulator, collectionHealth);
+  }
+
+  private async collectFeedItemCoverage(
+    query: CountReaderSummaryCollectedFeedItemsQuery,
+  ): Promise<CoverageAccumulator | undefined> {
     let cursor: string | undefined;
     const accumulator = emptyCoverageAccumulator();
-    const collectionHealthPromise =
-      this.collectionHealth.readProviderCollectionHealth(query);
     const candidateReader = this.feedItems.listSignalCandidates;
     const feedQuery = coverageFeedItemQuery(query);
 
     if (candidateReader !== undefined) {
       const items = await candidateReader.call(this.feedItems, feedQuery);
       recordCoverageItems(items, accumulator);
-      return coverageResult(accumulator, await collectionHealthPromise);
+      return accumulator;
     }
 
     for (let page = 0; page < MAX_PAGES; page += 1) {
@@ -59,7 +71,7 @@ export class FeedReaderSummaryCoverageCounter implements ReaderSummaryCoverageCo
       recordCoverageItems(result.items, accumulator);
 
       if (result.nextCursor === undefined) {
-        return coverageResult(accumulator, await collectionHealthPromise);
+        return accumulator;
       }
 
       if (result.nextCursor === cursor) {
