@@ -4,13 +4,18 @@ import { canonicalJsonSha256 } from "@social-monitor/contracts/grpc/agent_runtim
 import { readJson, RESULTS } from "./dataset";
 import type { CaptureReceipt, RequestManifest } from "./requests";
 import { run } from "./run";
+import { assertSource } from "./source-identity";
 
 /** Mechanical all-false responses test transport/replay only. Never a semantic classifier or live receipt. */
 export const regression = async (): Promise<void> => {
+  // Always rematerialize; never reuse an old capture's request manifest.
+  assertSource();
+  await run(["offline", join(RESULTS, "offline")]);
   const manifest = readJson<RequestManifest>(join(RESULTS, "offline", "requests.json"));
   const dir = join(RESULTS, "captured-regression"); mkdirSync(dir, { recursive: true });
   const receipt: CaptureReceipt = {
-    schemaVersion: 1, captureKind: "offline_fixture", sourceRevision: manifest.sourceRevision,
+    schemaVersion: 2, captureKind: "offline_fixture", captureSourceRevision: manifest.captureSourceRevision,
+    evaluatedSource: manifest.evaluatedSource,
     manifestSha256: canonicalJsonSha256(manifest), labelSealSha256: manifest.labelSealSha256,
     replaySha256: manifest.replaySha256,
     transport: { authentication: "deterministic_fixture", operatorRecord: "Mechanical all-false regression; no model invocation",

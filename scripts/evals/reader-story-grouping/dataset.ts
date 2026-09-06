@@ -1,10 +1,9 @@
 import { createHash } from "node:crypto";
-import { execFileSync } from "node:child_process";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import type { SummaryEvidenceItem } from "@social-monitor/summary/domain";
 
-export const BASE = "e83b577f85d3f287055dc0a6154bef6a35b50bd2";
+export const CAPTURE_SOURCE_REVISION = "e83b577f85d3f287055dc0a6154bef6a35b50bd2";
 export const FIXTURES = "test/evals/reader-story-grouping";
 export const RESULTS = ".cache/real-story-grouping-eval";
 export const sha = (value: string | Buffer): string =>
@@ -51,7 +50,7 @@ export const loadDataset = (root = FIXTURES) => {
     sourceRevision: string; captureSha256: string; frozenAt: string;
     files: Record<string, string>;
   }>(join(root, "label-seal.json"));
-  check(seal.sourceRevision === BASE, "Unexpected source revision");
+  check(seal.sourceRevision === CAPTURE_SOURCE_REVISION, "Unexpected capture source revision");
   for (const [name, hash] of Object.entries(seal.files)) {
     check(fileSha(join(root, name)) === hash, `Frozen label/evidence mismatch: ${name}`);
   }
@@ -92,11 +91,6 @@ export const loadDataset = (root = FIXTURES) => {
 };
 export type Dataset = ReturnType<typeof loadDataset>;
 
-export const assertSource = (): void => {
-  check(execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim() === BASE, "HEAD differs from authoritative base");
-  const changed = execFileSync("git", ["diff", "--name-only", "HEAD"], { encoding: "utf8" }).trim();
-  check(changed === "", "Tracked source differs from base; eval expects additive owned files only");
-};
 export const ownedSourceFiles = (): string[] => {
   const walk = (dir: string): string[] => readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
     e.isDirectory() ? walk(join(dir, e.name)) : [join(dir, e.name)]);

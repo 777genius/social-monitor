@@ -6,7 +6,8 @@ import { canonicalJsonSha256, executionAttestationOutputMatches } from
   "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
 import { admitSubscriptionRuntimeRequest } from
   "../../../apps/agent-runtime/src/subscription-runtime-purpose-model-policy";
-import { check, fileSha, ownedSourceFiles, BASE, type Dataset } from "./dataset";
+import { check, fileSha, ownedSourceFiles, CAPTURE_SOURCE_REVISION, type Dataset } from "./dataset";
+import type { EvaluatedSource } from "./source-identity";
 import type { PreparedBlock } from "./replay";
 
 export type RequestEnvelope = {
@@ -15,7 +16,8 @@ export type RequestEnvelope = {
   schemaSha256: string; candidateCount: number; evidenceSha256: string;
 };
 export type RequestManifest = {
-  schemaVersion: 1; sourceRevision: string; labelSealSha256: string; replaySha256: string;
+  schemaVersion: 2; captureSourceRevision: string; evaluatedSource: EvaluatedSource;
+  labelSealSha256: string; replaySha256: string;
   captureSha256: string; ownedFiles: Record<string, string>;
   effectBudget: { runTaskCalls: number; maxOutputTokens: number; timeoutMsPerCall: number };
   requests: RequestEnvelope[]; liveStatus: "NOT_RUN";
@@ -43,8 +45,9 @@ export const captureRequest = async (p: PreparedBlock): Promise<RequestEnvelope 
     evidenceSha256: canonicalJsonSha256(JSON.parse(JSON.stringify(p.evidence)) as unknown),
   };
 };
-export const makeManifest = (data: Dataset, requests: RequestEnvelope[]): RequestManifest => ({
-  schemaVersion: 1, sourceRevision: BASE, labelSealSha256: data.labelSealSha256,
+export const makeManifest = (data: Dataset, requests: RequestEnvelope[], evaluatedSource: EvaluatedSource): RequestManifest => ({
+  schemaVersion: 2, captureSourceRevision: CAPTURE_SOURCE_REVISION, evaluatedSource,
+  labelSealSha256: data.labelSealSha256,
   replaySha256: data.replaySeal.replaySha256, captureSha256: data.seal.captureSha256,
   ownedFiles: Object.fromEntries(ownedSourceFiles().map((path) => [path, fileSha(path)])),
   effectBudget: { runTaskCalls: requests.length,
@@ -52,13 +55,15 @@ export const makeManifest = (data: Dataset, requests: RequestEnvelope[]): Reques
     timeoutMsPerCall: 300_000 }, requests, liveStatus: "NOT_RUN",
 });
 export const verifyManifest = (data: Dataset, expected: RequestManifest, actual: RequestManifest): void => {
-  check(expected.sourceRevision === BASE, "Manifest revision mismatch");
+  check(expected.schemaVersion === 2 && expected.captureSourceRevision === CAPTURE_SOURCE_REVISION,
+    "Manifest capture revision/schema mismatch; materialize fresh requests on the current commit");
   check(expected.labelSealSha256 === data.labelSealSha256, "Manifest label mismatch");
   check(canonicalJsonSha256(expected) === canonicalJsonSha256(actual), "Request/source/fixture manifest mismatch");
 };
 export type CaptureReceipt = {
-  schemaVersion: 1; captureKind: "live_subscription" | "offline_fixture";
-  manifestSha256: string; sourceRevision: string; labelSealSha256: string; replaySha256: string;
+  schemaVersion: 2; captureKind: "live_subscription" | "offline_fixture";
+  manifestSha256: string; captureSourceRevision: string; evaluatedSource: EvaluatedSource;
+  labelSealSha256: string; replaySha256: string;
   transport: {
     authentication: "existing_authenticated_composition" | "deterministic_fixture";
     operatorRecord: string; runtimePackageVersion: string; launcherSha256: string;
@@ -67,9 +72,11 @@ export type CaptureReceipt = {
     schemaSha256: string; evidenceSha256: string; receivedAt: string; result: AgentRuntimeTaskResult }[];
 };
 export const checkReceiptBinding = (manifest: RequestManifest, receipt: CaptureReceipt): void => {
-  check(receipt.schemaVersion === 1 && ["live_subscription", "offline_fixture"].includes(receipt.captureKind), "Unknown receipt kind");
+  check(receipt.schemaVersion === 2 && ["live_subscription", "offline_fixture"].includes(receipt.captureKind), "Unknown receipt kind/schema");
   check(receipt.manifestSha256 === canonicalJsonSha256(manifest), "Receipt manifest mismatch");
-  check(receipt.sourceRevision === BASE && receipt.labelSealSha256 === manifest.labelSealSha256 &&
+  check(receipt.captureSourceRevision === CAPTURE_SOURCE_REVISION &&
+    canonicalJsonSha256(receipt.evaluatedSource) === canonicalJsonSha256(manifest.evaluatedSource) &&
+    receipt.labelSealSha256 === manifest.labelSealSha256 &&
     receipt.replaySha256 === manifest.replaySha256, "Receipt source/fixture mismatch");
   check(receipt.responses.length === manifest.requests.length, "Incomplete/extra response batch");
   check(new Set(receipt.responses.map((r) => r.blockId)).size === receipt.responses.length, "Duplicate response identity");

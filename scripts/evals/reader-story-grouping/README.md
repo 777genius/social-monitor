@@ -1,6 +1,16 @@
 # Bounded real-story grouping evaluation
 
-Source authority: `e83b577f85d3f287055dc0a6154bef6a35b50bd2`. This lane changes only new eval files. It does not change production classification, thresholds, prompts, publication, auth, provider configuration or dependencies.
+Immutable capture/label origin: `e83b577f85d3f287055dc0a6154bef6a35b50bd2`. Evaluated code is the **current clean committed descendant**, including the committed evaluator. This lane does not change production classification, thresholds, prompts, publication, auth, provider configuration or dependencies.
+
+## Reusing the reference after a source change
+
+Commit the intended production and evaluator changes first, then start a fresh Node process from that clean repository root. Do not edit or switch commits while it runs. Dirty tracked/staged source and non-ignored untracked files are rejected; ignored executable files under the evaluated source roots are rejected too. Generated output stays in ignored `.cache/`. No dirty-run override is provided.
+
+Schema v2 separates `captureSourceRevision` (immutable e83 origin) from `evaluatedSource` (`revision`, full Git `treeSha`, `worktree: clean`). The commit/tree identifies all tracked production code and configuration, while `ownedFiles` hashes every evaluator and sealed fixture file. The request manifest binds both identities, the fixture seals and exact canonical requests. Reports and receipts carry the evaluated identity plus the canonical manifest SHA256. A later commit invalidates an old receipt even if all model commands happen to be identical. Schema v1 artifacts remain historical evidence; they cannot be imported as current results or upgraded by rewriting identity fields.
+
+Dependencies are the existing installation, not a hermetic build; Git identifies the tracked lockfiles, not installed `node_modules` bytes. Use the matching existing dependencies. No install is performed here. The source checks bracket execution and receipt publication; use a dedicated clean checkout, not one being edited concurrently.
+
+The full offline replay is a single command: `regression.ts` below first materializes **fresh** offline requests/results, then constructs explicitly non-live mechanical responses and imports them on that same source. It never calls a model. The standalone `run.ts offline` is useful when only requests and deterministic results are needed.
 
 From the repository root, using the existing read-only node_modules:
 
@@ -8,7 +18,7 @@ From the repository root, using the existing read-only node_modules:
 TS_NODE_PROJECT=scripts/evals/reader-story-grouping/tsconfig.json node -r ts-node/register/transpile-only -r tsconfig-paths/register scripts/evals/reader-story-grouping/run.ts offline
 TS_NODE_PROJECT=scripts/evals/reader-story-grouping/tsconfig.json node -r ts-node/register/transpile-only -r tsconfig-paths/register scripts/evals/reader-story-grouping/regression.ts
 node node_modules/typescript/bin/tsc -p scripts/evals/reader-story-grouping/tsconfig.json
-node node_modules/jest/bin/jest.js --config jest.config.ts --runInBand --runTestsByPath scripts/evals/reader-story-grouping/focused.spec.ts
+NODE_OPTIONS=--max-old-space-size=1024 node node_modules/jest/bin/jest.js --config jest.config.ts --runInBand --runTestsByPath scripts/evals/reader-story-grouping/focused.spec.ts scripts/evals/reader-story-grouping/source-identity.spec.ts scripts/evals/reader-story-grouping/report-html.spec.ts
 node node_modules/eslint/bin/eslint.js scripts/evals/reader-story-grouping/*.ts
 npm run check:architecture
 npm run check:code-quality
@@ -17,7 +27,11 @@ npm run check:source-line-cap
 
 The offline command creates `offline/{results.json,report.md,report.html,requests.json,request-manifest.sha256}` under `.cache/real-story-grouping-eval`. It does not invoke a model. The regression command creates a mechanical all-false response fixture and replays it through the actual model adapter, normalizer, attestation checks and reconciliation. Its forged **test-only** attestations have package version `0.0.0-fixture` and `captureKind=offline_fixture`; they are not live evidence. Model-semantic metrics are unavailable in both offline modes. The request manifest hash uses production canonical JSON SHA256; file SHA256 is a different identity.
 
-## Exact main code chain
+The source-identity suite makes a disposable **local** Git clone and temporary commits. It runs the real CLI after an additive commit and after an intentional production clustering-cap change only inside that clone, checks changed cluster output, rejects older receipts, imports freshly matched fixtures, and verifies the original label seal and fixture bytes. It never commits in the caller's repository. Optional `RSG_IDENTITY_EVIDENCE_DIR` saves its source identities and a baseline HTML preview outside the disposable clone. That preview identifies its own test commit, not the parent's final commit. Renderer tests check static containment and content; browser inspection at 390/644/1280 is separate.
+
+## Main code chain at the predecessor reference
+
+The following implementation details and observations describe the e83/6ceb predecessor. Later production changes can alter outcomes; the executable report computes current counts from the current evaluated source rather than asserting the historical counts.
 
 1. `libs/summary/adapters/evidence/relevance-reader-summary-evidence.selector.ts`, `RelevanceReaderSummaryEvidenceSelector.select`: rank with `reader_post_promotion`, original ingestion cutoff and period/provider filters; obtain normalized evidence. Upstream text safety uses `READER_SUMMARY_ORIGINAL_SOURCE_TEXT_SAFETY_CAP=256000`. This eval starts at the **already normalized frozen evidence** boundary; it does not rerun ranking, provider collection, safety enrichment, persistence or seven-day publication.
 2. `libs/summary/domain/services/story-clustering.service.ts`, `StoryClusteringService.cluster`: deterministic story keys and cross-provider title/topic/facet matches, cluster ranking and cap. `story-ranking-policy.ts` currently exposes `STORY_RANKING_POLICY_V1` with version **story_ranking_v10**, max 200 clusters and 4 selected evidence per cluster. `story-key-normalizer.ts` and `story-cluster-membership.ts` own identity and membership.
@@ -54,4 +68,4 @@ Import:
 TS_NODE_PROJECT=scripts/evals/reader-story-grouping/tsconfig.json node -r ts-node/register/transpile-only -r tsconfig-paths/register scripts/evals/reader-story-grouping/run.ts import .cache/real-story-grouping-eval/live-import /absolute/path/to/receipt.json TRUSTED_RECEIPT_FILE_SHA256
 ```
 
-Import rematerializes the requests and requires exact source, fixture, schema, request and response identities, native production adapter attestation verification and complete decision reconciliation. Live mode requires the **independently supplied file hash** obtained by the parent from its authenticated capture. JSON attestations/hashes are not signatures and cannot establish who produced a file on their own: authentication relies on that external trusted composition and operator provenance. A self-labelled receipt is not proof of a model invocation. Unknown/altered/missing/duplicate responses fail import. Missing transport, approved disposable scope, runtime health/launcher identity or independently trusted receipt means live stays NOT_RUN. No fabricated receipts are offered as live evidence.
+Import rematerializes the requests and compares them to `.cache/real-story-grouping-eval/offline/requests.json`; use that default offline directory before import. It requires exact current source, fixture, schema, request and response identities, native production adapter attestation verification and complete decision reconciliation. After any source commit, regenerate offline requests and obtain new responses; never reuse a historical request manifest. Live mode requires the **independently supplied file hash** obtained by the parent from its authenticated capture. JSON attestations/hashes are not signatures and cannot establish who produced a file on their own: authentication relies on that external trusted composition and operator provenance. A self-labelled receipt is not proof of a model invocation. Unknown/altered/missing/duplicate responses fail import. Missing transport, approved disposable scope, runtime health/launcher identity or independently trusted receipt means live stays NOT_RUN. No fabricated receipts are offered as live evidence. The reusable-eval worker does not invoke the live entrypoint.

@@ -16,14 +16,16 @@ let data: Dataset; let prepared: PreparedBlock[]; let envelopes: RequestEnvelope
 beforeAll(async () => {
   data = loadDataset(); prepared = await Promise.all(data.blocks.map((b) => prepareBlock(data, b)));
   envelopes = (await Promise.all(prepared.map(captureRequest))).filter((r): r is RequestEnvelope => r !== undefined);
-  manifest = makeManifest(data, envelopes);
+  // Unit-test identity only; real clean-commit binding is exercised in source-identity.spec.ts.
+  manifest = makeManifest(data, envelopes, { revision: "b".repeat(40), treeSha: "c".repeat(40), worktree: "clean" });
 });
 const decisionsFor = (p: PreparedBlock, confidenceScore = 0.92) => p.candidates.map((c) => ({
   leftFeedItemId: c.leftFeedItemId, rightFeedItemId: c.rightFeedItemId,
   sameStory: true, confidenceScore, rationale: "Deterministic transport/approval test; not a semantic model answer.",
 }));
 const fixtureReceipt = (): CaptureReceipt => ({
-  schemaVersion: 1, captureKind: "offline_fixture", sourceRevision: manifest.sourceRevision,
+  schemaVersion: 2, captureKind: "offline_fixture", captureSourceRevision: manifest.captureSourceRevision,
+  evaluatedSource: manifest.evaluatedSource,
   manifestSha256: canonicalJsonSha256(manifest), labelSealSha256: manifest.labelSealSha256,
   replaySha256: manifest.replaySha256,
   transport: { authentication: "deterministic_fixture", operatorRecord: "unit test, no authenticated transport",
@@ -142,6 +144,19 @@ describe("sealed public real-post grouping replay", () => {
       const result = { ...row.result, executionAttestation: { ...row.result.executionAttestation!, model: "gpt-6-astra" } };
       await expect(normalizeCapturedResponse(prepared[0]!, envelopes[0]!, result)).rejects.toThrow("attestation is invalid");
     } else expect(() => checkReceiptBinding(manifest, receipt)).toThrow();
+  });
+  it.each(["capture", "revision", "tree"])("rejects receipt %s identity drift independently of the envelope hashes", (kind) => {
+    const receipt = fixtureReceipt();
+    if (kind === "capture") receipt.captureSourceRevision = "a".repeat(40);
+    else receipt.evaluatedSource = { ...receipt.evaluatedSource,
+      [kind === "revision" ? "revision" : "treeSha"]: "a".repeat(40) };
+    expect(() => checkReceiptBinding(manifest, receipt)).toThrow("Receipt source/fixture mismatch");
+  });
+  it("rejects legacy schemas instead of relabelling old captures as current", () => {
+    const legacy = { ...manifest, schemaVersion: 1 } as unknown as RequestManifest;
+    expect(() => verifyManifest(data, legacy, manifest)).toThrow("materialize fresh requests");
+    const validator = new Ajv().compile(readJson<object>("scripts/evals/reader-story-grouping/receipt.schema.json"));
+    expect(validator({ ...fixtureReceipt(), schemaVersion: 1 })).toBe(false);
   });
   it("leaves model metrics unevaluated offline and excludes ambiguous cases", async () => {
     const p = prepared.find((b) => b.block.id === "session-url")!;

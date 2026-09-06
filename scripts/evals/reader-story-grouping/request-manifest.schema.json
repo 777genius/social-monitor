@@ -3,10 +3,7 @@
   "additionalProperties": false,
   "properties": {
     "schemaVersion": {
-      "const": 1
-    },
-    "sourceRevision": {
-      "type": "string"
+      "const": 2
     },
     "labelSealSha256": {
       "type": "string",
@@ -99,18 +96,44 @@
     },
     "liveStatus": {
       "const": "NOT_RUN"
+    },
+    "captureSourceRevision": {
+      "const": "e83b577f85d3f287055dc0a6154bef6a35b50bd2"
+    },
+    "evaluatedSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "revision": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "treeSha": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "worktree": {
+          "const": "clean"
+        }
+      },
+      "required": [
+        "revision",
+        "treeSha",
+        "worktree"
+      ]
     }
   },
   "required": [
     "schemaVersion",
-    "sourceRevision",
     "labelSealSha256",
     "replaySha256",
     "captureSha256",
     "ownedFiles",
     "effectBudget",
     "requests",
-    "liveStatus"
+    "liveStatus",
+    "captureSourceRevision",
+    "evaluatedSource"
   ],
   "$schema": "http://json-schema.org/draft-07/schema#"
 }

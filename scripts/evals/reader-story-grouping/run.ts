@@ -2,7 +2,8 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import Ajv from "ajv";
 import { canonicalJsonSha256 } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
-import { loadDataset, assertSource, readJson, check, RESULTS, fileSha } from "./dataset";
+import { loadDataset, readJson, check, RESULTS, fileSha } from "./dataset";
+import { assertSource, verifySourceUnchanged } from "./source-identity";
 import { prepareBlock, applyDecisions, caseRows, type CaseRow } from "./replay";
 import { captureRequest, makeManifest, verifyManifest, checkReceiptBinding, normalizeCapturedResponse,
   type RequestManifest, type CaptureReceipt, type RequestEnvelope } from "./requests";
@@ -11,10 +12,10 @@ import { writeReport } from "./report";
 export const run = async (args: string[]): Promise<void> => {
   const [mode = "offline", out = join(RESULTS, "offline"), receiptPath, trustedReceiptSha] = args;
   check(["offline", "import"].includes(mode), "Usage: run.ts offline OUT | import OUT RECEIPT [INDEPENDENT_TRUSTED_RECEIPT_FILE_SHA256]");
-  assertSource(); const data = loadDataset(); mkdirSync(out, { recursive: true });
+  const source = assertSource(); const data = loadDataset();
   const prepared = await Promise.all(data.blocks.map((b) => prepareBlock(data, b)));
   const requests = (await Promise.all(prepared.map(captureRequest))).filter((r): r is RequestEnvelope => r !== undefined);
-  const manifest = makeManifest(data, requests);
+  const manifest = makeManifest(data, requests, source);
   const manifestValidator = new Ajv().compile(readJson<object>("scripts/evals/reader-story-grouping/request-manifest.schema.json"));
   check(manifestValidator(manifest), `Invalid request manifest: ${JSON.stringify(manifestValidator.errors)}`);
   let receipt: CaptureReceipt | undefined;
@@ -61,9 +62,11 @@ export const run = async (args: string[]): Promise<void> => {
         r.semanticRelation !== "same_story" && r.relationTogether).map((r) => r.id) });
   }
   // Write only after complete response validation, so failed imports cannot leave a "live" report.
+  verifySourceUnchanged(source);
+  mkdirSync(out, { recursive: true });
   writeFileSync(join(out, "requests.json"), JSON.stringify(manifest, null, 2) + "\n");
   writeFileSync(join(out, "request-manifest.sha256"), canonicalJsonSha256(manifest) + "\n");
-  writeReport(out, data, rows, reportMode, requests.length, clusters);
+  writeReport(out, data, rows, reportMode, manifest, clusters);
   console.log(JSON.stringify({ mode: reportMode, cases: rows.length, requests: requests.length,
     shortlistedPairs: requests.reduce((n, r) => n + r.candidateCount, 0), out,
     manifestSha256: canonicalJsonSha256(manifest) }));

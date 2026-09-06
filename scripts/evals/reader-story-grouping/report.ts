@@ -1,9 +1,12 @@
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import Ajv from "ajv";
+import { canonicalJsonSha256 } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
 import { readJson, check } from "./dataset";
 import type { Dataset } from "./dataset";
 import type { CaseRow } from "./replay";
+import type { RequestManifest } from "./requests";
+import { renderHtml } from "./report-html";
 
 export const confusion = (rows: CaseRow[], prediction: (r: CaseRow) => boolean | null,
   target: (r: CaseRow) => boolean) => {
@@ -37,11 +40,11 @@ export const metrics = (rows: CaseRow[], authenticatedModel = false) => {
     }];
   }));
 };
-const escapeHtml = (text: string): string => text.replace(/[&<>"']/g,
-  (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 const mdCell = (text: string): string => text.replaceAll("|", "\\|").replace(/\s+/g, " ");
-export const writeReport = (dir: string, data: Dataset, rows: CaseRow[], mode: string,
-  requestCount: number, clusters: unknown[]): void => {
+export const buildReport = (data: Dataset, rows: CaseRow[], mode: string,
+  manifest: RequestManifest, clusters: unknown[]) => {
+  const positives = rows.filter((r) => r.scored && r.productAction === "merge_if_admitted");
+  const uniquePosts = [...new Map(rows.flatMap((r) => r.posts).map((p) => [p.ref, p])).values()];
   const totals = {
     cases: rows.length, posts: data.posts.length, blocks: data.blocks.length,
     scored: rows.filter((r) => r.scored).length,
@@ -52,31 +55,50 @@ export const writeReport = (dir: string, data: Dataset, rows: CaseRow[], mode: s
     modelDecisions: mode === "LIVE_IMPORTED" ? rows.filter((r) => r.model !== null).length : 0,
     normalizedRegressionDecisions: mode === "OFFLINE_CAPTURED_REGRESSION" ? rows.filter((r) => r.model !== null).length : 0,
     promotedUniquePosts: new Set(rows.flatMap((r) => r.posts).filter((p) => p.selected).map((p) => p.ref)).size,
+    requestedPairs: manifest.requests.reduce((n, r) => n + r.candidateCount, 0),
+    liveResponses: mode === "LIVE_IMPORTED" ? manifest.requests.length : 0,
+    retrievedPositives: positives.filter((r) => r.retrieval.candidate).length,
+    deterministicRetrievedPositives: positives.filter((r) => r.retrieval.candidate && r.retrieval.deterministicTogether).length,
+    fableAnnouncementMisses: positives.filter((r) => r.blockId === "fable-release" && !r.retrieval.candidate).length,
+    shortlistedScoredNegatives: rows.filter((r) => r.scored && r.semanticRelation !== "same_story" && r.retrieval.candidate).length,
+    missingAuthorityPosts: uniquePosts.filter((p) => p.admission && !p.admission.admitted &&
+      p.admission.reasons.includes("engagement_unauthoritative")).length,
+    admittedUniquePosts: uniquePosts.filter((p) => p.admission?.admitted).length,
   };
-  const result = { schemaVersion: 1, mode, liveStatus: mode === "LIVE_IMPORTED" ? "IMPORTED_ATTESTED" : "NOT_RUN",
-    sourceRevision: data.seal.sourceRevision, labelSealSha256: data.labelSealSha256,
-    totals, requestCount, metrics: metrics(rows, mode === "LIVE_IMPORTED"), cases: rows, clusterCases: clusters };
+  return { schemaVersion: 2, mode, liveStatus: mode === "LIVE_IMPORTED" ? "IMPORTED_ATTESTED" : "NOT_RUN",
+    captureSourceRevision: manifest.captureSourceRevision, evaluatedSource: manifest.evaluatedSource,
+    manifestSha256: canonicalJsonSha256(manifest), ownedFiles: manifest.ownedFiles,
+    labelSealSha256: data.labelSealSha256, replaySha256: manifest.replaySha256, captureSha256: manifest.captureSha256,
+    totals, requestCount: manifest.requests.length, metrics: metrics(rows, mode === "LIVE_IMPORTED"), cases: rows, clusterCases: clusters };
+};
+export type ReportResult = ReturnType<typeof buildReport>;
+
+export const writeReport = (dir: string, data: Dataset, rows: CaseRow[], mode: string,
+  manifest: RequestManifest, clusters: unknown[]): void => {
+  const result = buildReport(data, rows, mode, manifest, clusters);
+  const { totals, requestCount } = result;
   const validate = new Ajv().compile(readJson<object>("scripts/evals/reader-story-grouping/report.schema.json"));
   check(validate(result), `Invalid report schema: ${JSON.stringify(validate.errors)}`);
   writeFileSync(join(dir, "results.json"), JSON.stringify(result, null, 2) + "\n");
   const intro = `# Проверка группировки реальных постов\n\nРежим: **${mode}**. Live: **${result.liveStatus}**. ` +
-    `Выбрано ${totals.cases} пар, ${totals.posts} публичных постов, ${totals.scored} scored и ${totals.ambiguous} ambiguous; ` +
-    `${totals.crossProviderPositives} cross-provider same-event positives. Семь дней: 30 августа — 5 сентября 2026 UTC.\n\n` +
-    (mode === "OFFLINE_CAPTURED_REGRESSION" ? `Технический regression: все ответы механически false. Это не ответы модели.\n\n` : "") +
-    `Это целевая выборка сложных примеров, не оценка точности на популяции. Контексты — 12 замороженных тематических блоков; ` +
-    `посты и исходные observedAt сохранены. Не воспроизведён поиск/ранжирование всей ленты за семь дней.\n\n` +
-    `AI участвует после retrieval. Production adapter запрашивает sameStory и confidence; порог 0.92. ` +
-    `До AI есть детерминированные объединения. После AI действуют guards, all-member проверка кластера, admission и редакционные лимиты. ` +
-    `related_topic — отдельная направленная нетранзитивная мета-связь, а не разрешение склеить истории.\n\n` +
-    `В этих блоках до AI объединены ${totals.deterministicTogether} размеченных пар; в shortlist попали ${totals.candidateCases}. ` +
-    `Подготовлено ${requestCount} канонических запросов Sol/high. Аутентифицированных live-решений в отчёте: ${totals.modelDecisions}.\n\n` +
-    `В frozen replay 42 из 49 выбранных постов отклонены в том числе с engagement_unauthoritative; один пост допущен. ` +
-    `Недостающую authority мы не выдумываем и не меняем observedAt. Это ограничение входных данных, а не ошибка модели. ` +
-    `Остальные причины admission сохранены отдельно. Publication confusion отражает также допуск; её нельзя читать как semantic precision/recall.\n\n` +
-    `Из 15 cross-provider positives пять относятся к одному релизу Fable/Mythos и пропущены retrieval; десять найдены, в том числе пять уже объединены детерминированно. В shortlist нет scored negatives, поэтому live-фаза не измеряет specificity на трудных отрицательных парах.\n\n` +
+    `Выбрано ${totals.cases} пар из ${totals.posts} публичных постов: ${totals.scored} с оценкой, ${totals.ambiguous} спорные. ` +
+    `Период: 30 августа — 5 сентября 2026 UTC.\n\n` +
+    (mode === "OFFLINE_CAPTURED_REGRESSION" ? `Техническая проверка с сохранёнными тестовыми ответами; это не ответы модели.\n\n` : "") +
+    `Найдено ${totals.retrievedPositives}/${totals.crossProviderPositives} пар об одном событии из разных источников; ` +
+    `среди найденных ${totals.deterministicRetrievedPositives} уже объединены правилами. ` +
+    `Пропуски одного анонса Fable/Mythos: ${totals.fableAnnouncementMisses}; они взаимосвязаны.\n\n` +
+    `Подготовлено ${requestCount} запросов на ${totals.requestedPairs} пар; размеченных среди них ${totals.candidateCases}. ` +
+    `Реальных ответов модели: ${totals.liveResponses}; решений по размеченным парам: ${totals.modelDecisions}.\n\n` +
+    `У ${totals.missingAuthorityPosts}/${totals.posts} постов нет подтверждённых показателей вовлечённости. ` +
+    `Допущено постов: ${totals.admittedUniquePosts}; выбрано для публикации: ${totals.promotedUniquePosts}. ` +
+    `Результат публикации учитывает допуск и редакционные лимиты, поэтому не измеряет качество модели.\n\n` +
+    `Это целевая выборка сложных примеров в ${totals.blocks} блоках, не оценка всей ленты. ` +
+    `Поиск и ранжирование всех постов за семь дней не воспроизведены; исходные тексты и время наблюдения сохранены. ` +
+    `Отрицательных размеченных пар среди запросов: ${totals.shortlistedScoredNegatives}. При нуле нельзя оценить, как модель различает трудные отрицательные примеры.\n\n` +
     `Метки сопоставляют смысл утверждений, не удостоверяют их фактическую истинность. Один аналитик, без независимой второй разметки. ` +
-    `Только заголовки и спорная гранулярность исключены из gold. Full sourceText прочитан; выдержки ниже короче, полный текст в posts.jsonl.\n\n` +
-    `Source: ${data.seal.sourceRevision}; label seal: ${data.labelSealSha256}.\n\n`;
+    `Примеры с одними заголовками и спорным уровнем детализации не оцениваются. Полные доступные тексты прочитаны при разметке; в карточках — выдержки.\n\n` +
+    `Проверенный коммит: ${manifest.evaluatedSource.revision} (чистое дерево ${manifest.evaluatedSource.treeSha}). ` +
+    `Источник замороженных данных: ${manifest.captureSourceRevision}; печать меток: ${data.labelSealSha256}.\n\n`;
   const matrix = "## Метрики по provider pair\n\n" + Object.entries(result.metrics).map(([name, m]) =>
     `- ${name}: retrieval ${m.retrievalRecall.numerator}/${m.retrievalRecall.denominator}; ` +
     `model TP/FP/TN/FN=${m.modelConditional.tp}/${m.modelConditional.fp}/${m.modelConditional.tn}/${m.modelConditional.fn}, ` +
@@ -88,14 +110,5 @@ export const writeReport = (dir: string, data: Dataset, rows: CaseRow[], mode: s
     `${r.model === null ? "NOT_RUN / NOT_REQUESTED" : r.model} / ${r.gate} | ${r.relationTogether} / ${r.publicationTogether} | ` +
     `${mdCell(r.rationaleRu)} Фактическая причина: ${mdCell(r.modelRationale ?? r.retrieval.reason)}. | ${r.posts.map((p, i) => `[${i + 1}](${p.url}) ${p.publishedAt}`).join("; ")} |`).join("\n");
   writeFileSync(join(dir, "report.md"), intro + matrix + header + lines + "\n");
-  const cards = rows.map((r) => `<article><h2>${r.id}: ${escapeHtml(r.semanticRelation)} → ${escapeHtml(r.productAction)}</h2>` +
-    `<p>${escapeHtml(r.rationaleRu)}</p><p>Retrieval: ${r.retrieval.reason}; AI: ${r.model ?? "NOT_RUN / NOT_REQUESTED"}; ` +
-    `gate: ${r.gate}; cluster: ${r.relationTogether}; publication: ${r.publicationTogether}.</p>` +
-    `<p>Причина verifier: ${escapeHtml(r.modelRationale ?? "Нет ответа")}</p>` +
-    r.posts.map((p) => `<p><a href="${escapeHtml(p.url)}" rel="noreferrer">${escapeHtml(p.title)}</a><br>` +
-      `${p.publishedAt}; observed ${p.observedAt}</p><blockquote>${escapeHtml(p.excerpt)}</blockquote>` +
-      `<small>evidence SHA256 ${p.evidenceSha256}; admission ${escapeHtml(JSON.stringify(p.admission))}</small>`).join("") + "</article>").join("\n");
-  writeFileSync(join(dir, "report.html"), `<!doctype html><html lang="ru"><meta charset="utf-8"><title>Real story grouping</title>` +
-    `<style>body{font:16px/1.5 system-ui;max-width:1100px;margin:2rem auto;padding:1rem;color:#172332}article{border-top:1px solid #bbb;margin-top:2rem}blockquote{white-space:pre-wrap;background:#f4f6f8;padding:1rem}small{overflow-wrap:anywhere}pre{white-space:pre-wrap}</style>` +
-    `<h1>Проверка группировки реальных постов</h1><pre>${escapeHtml(intro.replace(/^# .*\n/, "") + matrix)}</pre>${cards}</html>`);
+  writeFileSync(join(dir, "report.html"), renderHtml(result));
 };
