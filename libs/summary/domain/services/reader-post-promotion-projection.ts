@@ -1,5 +1,5 @@
 import type { ReaderSummaryCitation } from "../entities/citation";
-import type { TopRead } from "../entities/top-read";
+import type { TopRead, TopReadCandidate } from "../entities/top-read";
 import {
   selectReaderPostPromotions,
   type SelectedReaderPostPromotion,
@@ -38,6 +38,7 @@ import { projectReaderPostPromotionAdmittedClusters } from
   "./reader-post-promotion-admitted-clusters";
 import { readerPostPromotionSelectionFromEditorialSlate } from
   "./reader-post-promotion-editorial-slate-selection";
+import { buildReaderPostPromotionReasons } from "./reader-post-promotion-reasons";
 import {
   readerPostPromotionBoundary,
   readerPostPromotionFreshnessIsValid,
@@ -70,6 +71,7 @@ export const buildReaderPostPromotionProjection = (params: {
     "editorialSlate"
   >;
   readonly editorialSlate?: ReaderSummaryEditorialSlate;
+  readonly topStories?: readonly TopReadCandidate[];
 }): ReaderPostPromotionProjection => {
   const evidenceById = uniqueEvidenceById(params.evidence);
   const citationByFeedItemId = citationByEvidenceId(params.citations);
@@ -162,6 +164,7 @@ export const buildReaderPostPromotionProjection = (params: {
     selected,
     cardKind,
     evidenceById,
+    stories: params.topStories ?? [],
   });
   const admittedIds = new Set(
     [...selection.top, ...selection.additional].flatMap((selected) => [
@@ -235,6 +238,7 @@ const promotedPost = (params: {
   readonly selected: SelectedReaderPostPromotion;
   readonly cardKind: "curated_top_read" | "additional_notable_story";
   readonly evidenceById: ReadonlyMap<string, SummaryEvidenceItem>;
+  readonly stories: readonly TopReadCandidate[];
 }): TopRead => {
   const lead = requiredEvidence(
     params.evidenceById,
@@ -251,10 +255,11 @@ const promotedPost = (params: {
     .sort((left, right) => left.localeCompare(right));
   const interestIds = compactUnique(admitted.map((item) => item.interestId));
   const title = buildReaderPostPromotionTitle({ lead });
-  const whyImportant = compactUnique([
-    ...params.selected.whyImportant,
-    title,
-  ]).slice(0, 4);
+  const whyImportant = buildReaderPostPromotionReasons({
+    selected: params.selected,
+    lead,
+    stories: params.stories,
+  });
   const confidenceScore = params.selected.confidence;
 
   return {
