@@ -108,14 +108,19 @@ export const aggregateReaderSummaryTopicMapNodes = (
 
 export const mergeReaderSummaryTopicMapNodesByLabel = (
   nodes: readonly ReaderSummaryTopicMapNode[],
+  identityProtectedStoryClusterIds: ReadonlySet<string> = new Set(),
 ): readonly ReaderSummaryTopicMapNode[] => {
   const nodesByLabel = new Map<string, ReaderSummaryTopicMapNode[]>();
   for (const node of nodes) {
-    const labelKey = normalizeTopicLabel(node.label);
+    // Reviewed identities have already aggregated by their verified partition.
+    // Neither display equality nor group membership may merge those partitions.
+    const labelKey = node.storyClusterIds.some((id) => identityProtectedStoryClusterIds.has(id))
+      ? JSON.stringify(["identity", node.id])
+      : JSON.stringify(["label", normalizeTopicLabel(node.label)]);
     nodesByLabel.set(labelKey, [...(nodesByLabel.get(labelKey) ?? []), node]);
   }
 
-  return [...nodesByLabel.entries()].map(([labelKey, sameLabelNodes]) => {
+  return [...nodesByLabel.values()].map((sameLabelNodes) => {
     const ranked = sameLabelNodes.slice().sort(compareTopicNodes);
     const lead = ranked[0];
     if (lead === undefined) {
@@ -134,7 +139,7 @@ export const mergeReaderSummaryTopicMapNodesByLabel = (
 
     return {
       ...lead,
-      id: `topic:aggregate:label:${slug(labelKey)}`,
+      id: `topic:aggregate:label:${slug(normalizeTopicLabel(lead.label))}`,
       storyClusterIds,
       popularityScore: ranked.reduce(
         (total, node) => total + Math.max(0, node.popularityScore),
@@ -159,6 +164,10 @@ export const readerSummaryTopicMapAggregateKey = (params: {
   readonly fallbackGroupId?: string;
   readonly aggregateFallbackGroup?: boolean;
 }): string => {
+  const identity = params.nodeLabel?.relationIdentity;
+  if (identity !== undefined) {
+    return `verified-topic:${encodeURIComponent(identity.canonicalNodeId)}`;
+  }
   const topicId = compactId(params.nodeLabel?.topicId);
   if (topicId !== undefined) {
     return `llm-topic:${slug(topicId)}`;
@@ -178,7 +187,7 @@ export const readerSummaryTopicMapAggregateKey = (params: {
 };
 
 const aggregateTopicNodeId = (aggregateKey: string): string =>
-  `topic:aggregate:${slug(aggregateKey)}`;
+  `topic:aggregate:${aggregateKey.startsWith("verified-topic:") ? aggregateKey : slug(aggregateKey)}`;
 
 const compareTopicNodes = (
   left: ReaderSummaryTopicMapNode,

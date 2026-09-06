@@ -1,4 +1,7 @@
-import { feedPromotionMetricStrength } from "@social-monitor/feed/domain";
+import {
+  feedPromotionMetricStrength,
+  type FeedPromotionCanonicalMetrics,
+} from "@social-monitor/feed/domain";
 import type { FeedItemReadRepositoryPort } from "@social-monitor/feed/ports";
 import {
   type Clock,
@@ -152,7 +155,7 @@ export const rankPromotionSnapshot = async (params: {
       clusterId: `promotion-snapshot:${item.id}`,
       clusterSize: 1,
       duplicateFeedItemIds: [],
-      whyImportant: ["Authoritative promotion snapshot candidate"],
+      whyImportant: [promotionMetricReason(candidate.canonical.metrics)],
       safety: presentSourceContentSafety(safety),
       contentQuality: presentSourceContentQuality(quality),
     } satisfies RankedFeedItemView;
@@ -200,7 +203,7 @@ export const rankPromotionSnapshot = async (params: {
       clusterId: `promotion-snapshot:${item.id}`,
       clusterSize: 1,
       duplicateFeedItemIds: [],
-      whyImportant: ["Supplemental evidence from authoritative promotion snapshot"],
+      whyImportant: [`Source observed at ${item.observedAt.toISOString()}.`],
       safety: presentSourceContentSafety(safety),
       contentQuality: presentSourceContentQuality(quality),
     } satisfies RankedFeedItemView;
@@ -215,6 +218,20 @@ export const rankPromotionSnapshot = async (params: {
     profileApplied: false,
     items,
   });
+};
+
+// Use observed native metrics, without interpreting engagement as significance.
+const promotionMetricReason = (metrics: FeedPromotionCanonicalMetrics): string => {
+  switch (metrics.kind) {
+    case "x_post":
+      return `Recorded X engagement: ${metrics.likes} likes and ${metrics.reposts} reposts.`;
+    case "reddit_post":
+      return `Recorded Reddit score: ${metrics.score}.`;
+    case "hacker_news_story":
+      return `Recorded Hacker News points: ${metrics.points}.`;
+    case "github_repository":
+      return `Recorded GitHub star activity: ${metrics.trendingDelta.value} over ${metrics.trendingDelta.window}.`;
+  }
 };
 
 const prismaErrorCode = (error: unknown): string | undefined =>

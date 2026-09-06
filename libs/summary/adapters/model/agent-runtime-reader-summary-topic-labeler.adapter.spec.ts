@@ -126,6 +126,7 @@ describe("AgentRuntimeReaderSummaryTopicLabeler", () => {
           confidenceScore: 0.92,
         },
         groupId: "group:ungrouped",
+        originalGroupId: "group:agent-tools",
         keywords: [],
         rationale: undefined,
       },
