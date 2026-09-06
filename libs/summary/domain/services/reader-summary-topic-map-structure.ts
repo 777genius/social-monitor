@@ -119,11 +119,7 @@ const topicGroupLabel = (
   proposed: ReaderSummaryTopicGroupLabel | undefined,
 ): string => {
   const fallback = deterministicGroupLabel(groupId);
-  const proposedLabel = compactOptional(proposed?.label);
-  if (
-    proposedLabel === undefined ||
-    isReaderSummaryTopicMapUngrouped(groupId)
-  ) {
+  if (isReaderSummaryTopicMapUngrouped(groupId)) {
     return fallback;
   }
   const evidenceTexts = nodes.flatMap((node) => [node.label, ...node.keywords]);
@@ -131,7 +127,7 @@ const topicGroupLabel = (
   const groupTokens = new Set(
     meaningfulTopicLabelTokens(humanizeSlug(rawValue)),
   );
-  for (const display of [proposedLabel, proposed?.recoveredDisplayLabel]) {
+  for (const display of [proposed?.label, proposed?.recoveredDisplayLabel].map(compactOptional)) {
     if (display === undefined) continue;
     const quality = evaluateTopicLabelQuality(display, { evidenceTexts });
     if (quality.accepted && quality.meaningfulTokens.some((token) => groupTokens.has(token))) {

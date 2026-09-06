@@ -441,14 +441,21 @@ const validLabelGroups = (
   );
 
   return new Map(
-    plan.groups
-      .filter(
-        (group) =>
-          isUsableTopicGroupLabel(group, { providerLabels }) &&
-          (referencedGroupIds.has(group.id) ||
-            (group.nodeIds ?? []).some((nodeId) => nodeLabels.has(nodeId))),
-      )
-      .map((group) => [group.id, group] as const),
+    plan.groups.flatMap((group) => {
+      // Recovery is a second display candidate under the same provider/id checks.
+      // Keep the definition when either display is usable; rendering rechecks grounding.
+      const recoveredDisplayLabel = group.recoveredDisplayLabel !== undefined &&
+        isUsableTopicGroupLabel({ ...group, label: group.recoveredDisplayLabel }, { providerLabels })
+        ? group.recoveredDisplayLabel : undefined;
+      const label = isUsableTopicGroupLabel(group, { providerLabels })
+        ? group.label : recoveredDisplayLabel;
+      if (label === undefined ||
+          !(referencedGroupIds.has(group.id) ||
+            (group.nodeIds ?? []).some((nodeId) => nodeLabels.has(nodeId)))) {
+        return [];
+      }
+      return [[group.id, { ...group, label, recoveredDisplayLabel }] as const];
+    }),
   );
 };
 

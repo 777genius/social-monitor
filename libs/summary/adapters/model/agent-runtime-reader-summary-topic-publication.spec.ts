@@ -1,3 +1,4 @@
+import Ajv from "ajv";
 import { canonicalJsonSha256 } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
 import type { AgentRuntimeClientPort, AgentRuntimeTaskCommand, ReaderSummaryTopicMapPublicationRejection } from "../../ports";
 import { BuildReaderSummaryTopicMapUseCase } from "../../features/build-reader-summary-topic-map/build-reader-summary-topic-map.use-case";
@@ -52,7 +53,7 @@ const runPublication = async (
   });
   for (const command of commands) expect(command.controls).toMatchObject({ model: "gpt-5.6-sol", reasoningEffort: "high" });
   expect(labeling.mock.calls[0]![0].candidates.map((candidate) => candidate.fallbackLabel)).toEqual(fixture.input.selectedEvidence.map((item) => item.title));
-  return { result, plans, rejections };
+  return { result, plans, rejections, commands };
 };
 
 describe("reviewer full publication inputs through actual use case and adapters", () => {
@@ -105,11 +106,15 @@ describe("reviewer full publication inputs through actual use case and adapters"
     expect(plans[0]!.nodeLabels[2]!.originalGroupId).toBe("group:quartz");
   });
 
-  it.each(["xAI", undefined, "Orion"])("publishes recovered xAI with accepted grounded group display (proposed: %s)", async (proposed) => {
+  it.each(["xAI", undefined, "Orion", "RSS", "", " \t "])("publishes recovered xAI with accepted grounded group display (proposed: %s)", async (proposed) => {
     const fixture = reviewPublicationFixture("xai");
     if (proposed === undefined) fixture.raw.groups = [];
     else fixture.raw.groups[0]!.label = proposed;
-    const { result, plans, rejections } = await runPublication(fixture);
+    const { result, plans, rejections, commands } = await runPublication(fixture);
+    const validate = new Ajv({ allErrors: true }).compile(commands[0]!.outputSchema);
+    // Omitted definitions are an existing adversarial control; RSS/empty are schema-valid.
+    expect(validate(fixture.raw)).toBe(proposed !== undefined);
+    expect(plans[0]!.groups[0]!.recoveredDisplayLabel).toBe("Xai");
     expect(result.ok).toBe(true);
     expect(rejections).toHaveLength(0);
     expect(plans).toHaveLength(1);
@@ -119,5 +124,24 @@ describe("reviewer full publication inputs through actual use case and adapters"
     expect(result.value.nodes.every((node) => node.groupId === "group:xai" && node.keywords[0] === "Xai" && node.keywords.length === 8)).toBe(true);
     expect(result.value.nodes.map((node) => node.storyClusterIds)).toEqual(fixture.input.clusters.map((cluster) => [cluster.id]));
     expect(result.value.nodes.flatMap((node) => node.citationIds)).toEqual(fixture.input.citationMap.map((citation) => citation.citationId));
+  });
+
+  it.each(["RSS", ""])("ignores a forged recovered display when no trusted cohort supports primary %j", async (label) => {
+    const fixture = reviewPublicationFixture("xai");
+    fixture.input = {
+      ...fixture.input,
+      selectedEvidence: fixture.input.selectedEvidence.map((item) => ({
+        ...item, title: item.title.replace("xAI ", ""), bodyPreview: item.bodyPreview?.replace("xAI ", ""),
+      })),
+    };
+    Object.assign(fixture.raw.groups[0]!, { label, recoveredDisplayLabel: "Xai" });
+    const { result, plans, rejections } = await runPublication(fixture);
+    expect(plans[0]!.groups[0]!.recoveredDisplayLabel).toBeUndefined();
+    expect(result.ok).toBe(true);
+    expect(rejections).toHaveLength(0);
+    if (!result.ok) throw result.error;
+    expect(result.value.nodes).toHaveLength(2);
+    expect(result.value.nodes.every((node) => node.groupId === "group:ungrouped")).toBe(true);
+    expect(result.value.groups[0]?.label).toBe("Ungrouped");
   });
 });
