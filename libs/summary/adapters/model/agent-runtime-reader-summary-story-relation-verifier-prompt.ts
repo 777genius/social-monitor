@@ -7,7 +7,9 @@ export const agentRuntimeReaderSummaryStoryRelationVerifierInstructions = [
   "Return JSON only and exactly one decision for every requested pair.",
   "sameStory is true only when both posts describe the same announcement, release, incident, benchmark result, policy action, or concrete event.",
   "A shared company, model family, product, person, technology, or broad topic is not enough.",
-  "Different claim facets are different stories: rollout, availability, user reaction, benchmark, comparison, pricing, limits, security, allegation, and tutorial must stay separate.",
+  "Distinguish the primary event from emphasis: benchmark claims, comparisons, pricing and benign safeguards within the same evidenced release do not by themselves make separate stories.",
+  "For releases, bind publisher, released product and target version, action/stage, event date when stated, and outcome to each primary subject. A joint release and a report of one included model can match. Older comparator versions are not release targets.",
+  "Distinct integrations, later availability or quota changes, independent tests/reviews, security incidents, watermark rollouts/questions, tutorials, retrospectives and speculative future releases stay separate even when they quote the same launch. Unknown or conflicting subject evidence means false.",
   "A report and a reaction to that report are separate unless both primarily describe the same concrete event rather than the reaction.",
   "Posts from one provider may be the same story only when the same author is publishing installments of one concrete thread, paper, announcement, or event.",
   "Use timing, actors, object, action, version, and outcome together. Shared terms are retrieval hints only.",
@@ -32,7 +34,9 @@ export const buildAgentRuntimeReaderSummaryStoryRelationVerifierPrompt = (
         requireDecisionForEveryPair: true,
         conservativeOnUncertainty: true,
         sharedTermsAreHintsOnly: true,
-        differentClaimFacetsStaySeparate: true,
+        distinctPrimaryEventsStaySeparate: true,
+        releaseEmphasisAloneDoesNotSplitEvent: true,
+        requireReleaseSubjectVersionStageDateConsistency: true,
       },
       pairs: input.candidates.map((candidate) => {
         const left = requiredEvidence(evidenceById, candidate.leftFeedItemId);

@@ -21,6 +21,8 @@ import {
 import { strictStoryRelationTitleEvidence } from
   "./story-relation-title-evidence";
 
+import { samePrimaryReleaseEvent } from "./story-release-event-identity";
+
 export const belongsToVerifiedStoryCluster = (
   item: SummaryEvidenceItem,
   clusterItems: readonly SummaryEvidenceItem[],
@@ -156,6 +158,19 @@ export const storyClaimFacetsAreCompatible = (
   );
 };
 
+/** Emphasis can differ only when both primary subjects bind the same release. */
+export const verifiedStoryClaimFacetsAreCompatible = (
+  item: SummaryEvidenceItem,
+  candidate: SummaryEvidenceItem,
+  policy: StoryRankingPolicy,
+): boolean => storyClaimFacetsAreCompatible(item, candidate, policy) || (
+  [item, candidate].every((post) => {
+    const facet = storyPrimaryClaimFacet(post);
+    return facet !== undefined &&
+      ["release", "benchmark", "comparison", "efficiency"].includes(facet);
+  }) && samePrimaryReleaseEvent(item, candidate)
+);
+
 export const hasSharedStoryEventFacet = (
   item: SummaryEvidenceItem,
   candidate: SummaryEvidenceItem,
@@ -214,7 +229,7 @@ export const isVerifiedStoryRelationGuardEligible = (
   ) {
     return false;
   }
-  if (!storyClaimFacetsAreCompatible(item, candidate, policy)) {
+  if (!verifiedStoryClaimFacetsAreCompatible(item, candidate, policy)) {
     return false;
   }
   if (
@@ -288,7 +303,7 @@ const isVerifiedStrictTitleRelationGuardEligible = (
   const candidateKey = storyKey(candidate, policy);
   return (itemKey === candidateKey ||
       !canonicalStoryKeysConflict(itemKey, candidateKey)) &&
-    storyClaimFacetsAreCompatible(item, candidate, policy) &&
+    verifiedStoryClaimFacetsAreCompatible(item, candidate, policy) &&
     Math.abs(item.publishedAt.getTime() - candidate.publishedAt.getTime()) <=
       VERIFIED_STORY_RELATION_MAX_TIME_DISTANCE_MS &&
     strictStoryRelationTitleEvidence(item.title, candidate.title) !== undefined;

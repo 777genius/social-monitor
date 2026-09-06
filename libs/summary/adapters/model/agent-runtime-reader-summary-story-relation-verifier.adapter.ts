@@ -51,7 +51,7 @@ export type AgentRuntimeReaderSummaryStoryRelationVerifierOptions = Pick<
 };
 
 const defaultModel = activeReaderSummaryModel;
-const defaultPromptVersion = "reader_summary.story_relation.agent_runtime.v2";
+const defaultPromptVersion = "reader_summary.story_relation.agent_runtime.v3";
 const defaultRelatedTopicPromptVersion = "reader_summary.related_topic_relation.agent_runtime.v1";
 const defaultRelatedTopicTimeoutMs = 15_000;
 const defaultTimeoutMs = 300_000;

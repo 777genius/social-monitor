@@ -21,11 +21,11 @@ it("renders Russian findings, truthful denominators and no Markdown prose in HTM
   expect(html).toContain('<html lang="ru">');
   expect(html).toContain("Live: NOT_RUN — модель не запускалась");
   expect(html).toContain("Реальных ответов модели: 0");
-  expect(html).toContain("10/15"); expect(html).toContain("42/49");
+  expect(html).toContain("15/15"); expect(html).toContain("42/49");
   expect(html).toContain("5 уже объединены правилами");
-  expect(html).toContain("<strong>5</strong>");
+  expect(html).toContain("<strong>0</strong>");
   expect(html).toContain("не независимые ошибки");
-  expect(html).toContain("Подготовлено 9 запросов на 14 пар");
+  expect(html).toContain("Подготовлено 9 запросов на 22 пар");
   expect(html).toContain("0/0 — нет наблюдений");
   expect(html).not.toMatch(/\*\*|`|<pre>\s*(?:Режим|#)/);
   expect(html.match(/class="pair"/g)).toHaveLength(50);

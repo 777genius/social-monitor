@@ -65,7 +65,7 @@ describe("sealed public real-post grouping replay", () => {
   });
   it("captures actual Sol/high adapter and admitted canonical envelopes without analyst labels", () => {
     expect(envelopes).toHaveLength(9);
-    expect(envelopes.reduce((n, e) => n + e.candidateCount, 0)).toBe(14);
+    expect(envelopes.reduce((n, e) => n + e.candidateCount, 0)).toBe(22);
     for (const e of envelopes) {
       expect(e.command.controls).toMatchObject({ model: "gpt-5.6-sol", reasoningEffort: "high", interactive: false });
       expect(e.canonicalRequestSha256).toBe(canonicalJsonSha256(e.canonicalRequest));
@@ -73,11 +73,11 @@ describe("sealed public real-post grouping replay", () => {
       expect(String(e.command.workspaceId)).toBe("00000000-0000-4000-8000-00000000e002");
     }
   });
-  it("reports the real Fable release retrieval miss even in an isolated real pair", async () => {
+  it("retrieves the real release pair without granting unverified membership", async () => {
     const gold = data.cases.find((c) => c.id === "RSG-001")!;
     const p = prepared.find((b) => b.block.id === gold.blockId)!;
     const row = (await caseRows(data, p, applyDecisions(p))).find((r) => r.id === gold.id)!;
-    expect(row.retrieval.candidate).toBe(false); expect(row.retrieval.isolatedRetrieved).toBe(false);
+    expect(row.retrieval.candidate).toBe(true); expect(row.retrieval.isolatedRetrieved).toBe(true);
     expect(row.model).toBeNull(); expect(row.relationTogether).toBe(false);
   });
   it("preserves original admission facts: 42 missing authorities, one admitted public post", () => {
@@ -144,6 +144,21 @@ describe("sealed public real-post grouping replay", () => {
       const result = { ...row.result, executionAttestation: { ...row.result.executionAttestation!, model: "gpt-6-astra" } };
       await expect(normalizeCapturedResponse(prepared[0]!, envelopes[0]!, result)).rejects.toThrow("attestation is invalid");
     } else expect(() => checkReceiptBinding(manifest, receipt)).toThrow();
+  });
+  it.each(["missing", "effort", "purpose", "request-id", "engine"])("rejects %s execution attestation", async (kind) => {
+    const row = fixtureReceipt().responses[0]!;
+    const attestation = row.result.executionAttestation!;
+    const changed = kind === "missing" ? undefined : {
+      ...attestation,
+      ...(kind === "effort" ? { reasoningEffort: "low" } : {}),
+      ...(kind === "purpose" ? { purpose: "untrusted-purpose" } : {}),
+      ...(kind === "request-id" ? { requestId: "other-request" } : {}),
+      ...(kind === "engine" ? { runtimeEngine: "untrusted-engine" } : {}),
+    };
+    const result = { ...row.result };
+    if (changed === undefined) delete result.executionAttestation;
+    else result.executionAttestation = changed as typeof attestation;
+    await expect(normalizeCapturedResponse(prepared[0]!, envelopes[0]!, result)).rejects.toThrow("attestation is invalid");
   });
   it.each(["capture", "revision", "tree"])("rejects receipt %s identity drift independently of the envelope hashes", (kind) => {
     const receipt = fixtureReceipt();
