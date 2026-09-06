@@ -312,6 +312,9 @@ jobs:
           npm run check:runtime-compose
           npm run check:production-deploy-lifecycle
 
+      - name: Build the production app image
+        run: docker build --file Dockerfile --target app --tag social-monitor-app:pr-ci .
+
   frontend:
     name: Flutter architecture and tests
     runs-on: ubuntu-latest
