@@ -71,3 +71,55 @@ TS_NODE_PROJECT=scripts/evals/reader-story-grouping/tsconfig.json node -r ts-nod
 ```
 
 Import rematerializes the requests and compares them to `.cache/real-story-grouping-eval/offline/requests.json`; use that default offline directory before import. It requires exact current source, fixture, schema, request and response identities, native production adapter attestation verification and complete decision reconciliation. After any source commit, regenerate offline requests and obtain new responses; never reuse a historical request manifest. Live mode requires the **independently supplied file hash** obtained by the parent from its authenticated capture. JSON attestations/hashes are not signatures and cannot establish who produced a file on their own: authentication relies on that external trusted composition and operator provenance. A self-labelled receipt is not proof of a model invocation. Unknown/altered/missing/duplicate responses fail import. Missing transport, approved disposable scope, runtime health/launcher identity or independently trusted receipt means live stays NOT_RUN. No fabricated receipts are offered as live evidence. The reusable-eval worker does not invoke the live entrypoint.
+
+## Explicit source-bound evaluation executions
+
+For a new operation, the parent chooses a fresh `--run-id` (1–64 lowercase letters,
+digits, `_` or `-`). Supply it at offline preparation and unchanged at regression,
+live execution and import. The manifest's `evaluationRun` binds that label to the
+clean evaluated commit/tree with a canonical SHA256 namespace. The real adapter
+receives a SHA256 of this namespace plus block id in the fixture interest scope
+before capture (keeping both native IDs under 240 characters), so it builds
+both request and correlation IDs itself. No captured command or attestation is
+rewritten. Frozen post text, evidence, observation cutoff, labels, prompt, model,
+controls and e001/e002 tenant/workspace stay unchanged. Run identity is not time.
+
+```sh
+export TS_NODE_PROJECT=scripts/evals/reader-story-grouping/tsconfig.json
+export NODE_OPTIONS=--max-old-space-size=3072
+node -r ts-node/register/transpile-only -r tsconfig-paths/register scripts/evals/reader-story-grouping/run.ts offline --run-id reviewed-example-01
+# Or fresh offline + mechanical replay together (choose a different explicit id):
+node -r ts-node/register/transpile-only -r tsconfig-paths/register scripts/evals/reader-story-grouping/regression.ts --run-id reviewed-regression-01
+```
+
+Explicit runs default to `.cache/real-story-grouping-eval/runs/NAMESPACE_SHA256/`.
+Keep its `offline/requests.json`, manifest hash, reports, started markers and all
+responses. Import rematerializes with the supplied id and compares the frozen
+manifest in that run's `offline/` directory. Custom offline output must be delivered
+to that directory before import. Append `--run-id ID` to the documented import
+command and use a new report output directory. Existing explicit report output is
+rejected. Legacy default offline/regression remains available for compatibility;
+legacy implicit identity cannot execute or import live results.
+
+Parent-only live invocation appends `--run-id ID` to `live.ts MANIFEST NEW_OUTPUT_DIR`;
+programmatic callers pass that id as the fourth `runLiveWithTrustedClient` argument.
+Before any health/task call, the harness verifies the exact rematerialized manifest
+and exclusively creates `runs/NAMESPACE_SHA256/live-started.json`. This claim is
+independent of output path, persists on success, failure and interruption, and
+prevents client retries/resume under that run in this checkout. Never delete it to
+retry. A new explicitly authorized operation needs a distinct run id. Native task
+journals and attempt budgets remain untouched; changing output paths does not
+create a new operation.
+
+The local claim is an operational interlock, not distributed authorization. The
+parent must preserve the run registry and receipts across checkout relocation and
+coordinate concurrent operators; copying a checkout without its registry must not
+be used to resume an operation. Before live, the parent must supply a reviewed
+clean committed SHA, a new explicit execution id prepared on that SHA, reviewed
+manifest/hash and effect budget, approved disposable e001/e002 fixture scope, and
+the existing authenticated trusted composition with confirmed runtime health,
+launcher identity and matching adapter profile. For import it must independently
+supply the authenticated receipt file SHA256. Hashes bind bytes and source, not
+operator authenticity. The harness never repairs auth, resets journals, increases
+budgets or retries a failed RPC. This patch's verification uses local test clients
+and offline fixtures only; it grants no live authorization.

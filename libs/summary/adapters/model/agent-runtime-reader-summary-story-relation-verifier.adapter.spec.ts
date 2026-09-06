@@ -52,6 +52,7 @@ describe("AgentRuntimeReaderSummaryStoryRelationVerifier", () => {
       releaseEmphasisAloneDoesNotSplitEvent: true,
       requireReleaseSubjectVersionStageDateConsistency: true,
     });
+    expect(client.commands[0]?.systemPrompt).toContain("rationale for EVERY decision, including negative and uncertain decisions");
     expect(client.commands[0]?.systemPrompt).toContain("Distinguish the primary event from emphasis");
     expect(client.commands[0]?.systemPrompt).toContain("Older comparator versions are not release targets");
     const promptPair = JSON.parse(client.commands[0]?.prompt ?? "{}").pairs[0];
@@ -95,7 +96,7 @@ describe("AgentRuntimeReaderSummaryStoryRelationVerifier", () => {
     expect(promptPair.left.sourceText.length).toBeLessThanOrEqual(4_096);
   });
 
-  it("preserves unknown binary properties for fail-closed domain validation", async () => {
+  it("rejects invalid binary properties at the outer wire boundary", async () => {
     const decisions = [
       {
         leftFeedItemId: "feed:hn",
@@ -113,10 +114,12 @@ describe("AgentRuntimeReaderSummaryStoryRelationVerifier", () => {
       }),
     });
 
-    await expect(verifier.verify(input())).resolves.toEqual(decisions);
+    await expect(verifier.verify(input())).rejects.toMatchObject({
+      failure: { kind: "invalid_schema", retryable: false },
+    });
   });
 
-  it("omits an absent optional rationale from normalized binary decisions", async () => {
+  it("rejects absent wire rationale while the domain annotation remains optional", async () => {
     const verifier = new AgentRuntimeReaderSummaryStoryRelationVerifier({
       client: new CapturingAgentRuntimeClient({
         status: "completed",
@@ -132,15 +135,47 @@ describe("AgentRuntimeReaderSummaryStoryRelationVerifier", () => {
       }),
     });
 
-    const decisions = await verifier.verify(input());
+    await expect(verifier.verify(input())).rejects.toMatchObject({
+      failure: { kind: "invalid_schema", retryable: false },
+    });
+  });
 
-    expect(decisions).toEqual([{
-      leftFeedItemId: "feed:hn",
-      rightFeedItemId: "feed:rss",
-      sameStory: false,
-      confidenceScore: 0.97,
-    }]);
-    expect(decisions[0]).not.toHaveProperty("rationale");
+  it.each([
+    ["null rationale", { rationale: null }],
+    ["numeric rationale", { rationale: 42 }],
+    ["unknown property", { unexpected: "never-log-this-payload" }],
+    ["invalid confidence", { confidenceScore: 1.01 }],
+    ["invalid ID type", { leftFeedItemId: 123 }],
+  ])("rejects %s without retries or attestation acceptance", async (_name, change) => {
+    const client = new CapturingAgentRuntimeClient({
+      status: "completed", warnings: [],
+      structuredOutput: { decisions: [{
+        leftFeedItemId: "feed:hn", rightFeedItemId: "feed:rss",
+        sameStory: false, confidenceScore: 0.97, rationale: "Separate events.",
+        ...change as object,
+      }] },
+    });
+    const record = jest.fn();
+    const verifier = new AgentRuntimeReaderSummaryStoryRelationVerifier({
+      client, verifiedAttestationSink: { record },
+    });
+    await expect(verifier.verify(input())).rejects.toMatchObject({
+      failure: { kind: "invalid_schema", retryable: false },
+    });
+    expect(client.commands).toHaveLength(1);
+    expect(record).not.toHaveBeenCalled();
+  });
+
+  it("rejects malformed JSON text without exposing it or retrying", async () => {
+    const client = new CapturingAgentRuntimeClient({
+      status: "completed", warnings: [], outputText: "never-log-this-payload",
+    });
+    const verifier = new AgentRuntimeReaderSummaryStoryRelationVerifier({ client });
+    await expect(verifier.verify(input())).rejects.toMatchObject({
+      failure: { kind: "invalid_schema", retryable: false,
+        message: "Reader summary story relation response is not valid JSON" },
+    });
+    expect(client.commands).toHaveLength(1);
   });
 
   it("uses the explicit tri-state schema for the post-selection related lane", async () => {
@@ -208,6 +243,7 @@ describe("AgentRuntimeReaderSummaryStoryRelationVerifier", () => {
           rightFeedItemId: "feed:rss",
           sameStory: false,
           confidenceScore: 0.99,
+          rationale: "Separate fixture events.",
         }],
       },
       warnings: [],
@@ -253,13 +289,12 @@ describe("AgentRuntimeReaderSummaryStoryRelationVerifier", () => {
   });
 
   it.each([
-    ["missing decisions", {}, "envelope_missing_decisions"],
+    ["missing decisions", {}],
     [
       "unknown envelope property",
       { decisions: [], commentary: "extra" },
-      "envelope_unknown_property",
     ],
-  ] as const)("rejects an envelope with %s", async (_name, envelope, reason) => {
+  ] as const)("rejects an envelope with %s", async (_name, envelope) => {
     const verifier = new AgentRuntimeReaderSummaryStoryRelationVerifier({
       client: new CapturingAgentRuntimeClient({
         status: "completed",
@@ -279,7 +314,7 @@ describe("AgentRuntimeReaderSummaryStoryRelationVerifier", () => {
         subjectStoryClusterId: "story:hn",
         targetStoryClusterId: "story:rss",
       }],
-    })).rejects.toMatchObject({ reason });
+    })).rejects.toMatchObject({ failure: { kind: "invalid_schema", retryable: false } });
   });
 });
 

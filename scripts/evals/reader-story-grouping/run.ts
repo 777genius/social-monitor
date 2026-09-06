@@ -1,21 +1,26 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import Ajv from "ajv";
 import { canonicalJsonSha256 } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
-import { loadDataset, readJson, check, RESULTS, fileSha } from "./dataset";
+import { loadDataset, readJson, check, fileSha } from "./dataset";
 import { assertSource, verifySourceUnchanged } from "./source-identity";
 import { prepareBlock, applyDecisions, caseRows, type CaseRow } from "./replay";
 import { captureRequest, makeManifest, verifyManifest, checkReceiptBinding, normalizeCapturedResponse,
   type RequestManifest, type CaptureReceipt, type RequestEnvelope } from "./requests";
+import { evaluationRun, runArguments, runRoot } from "./run-identity";
 import { writeReport } from "./report";
 
 export const run = async (args: string[]): Promise<void> => {
-  const [mode = "offline", out = join(RESULTS, "offline"), receiptPath, trustedReceiptSha] = args;
+  const { positional, id } = runArguments(args);
+  const source = assertSource(); const execution = evaluationRun(id, source);
+  const [mode = "offline", out = join(runRoot(execution), "offline"), receiptPath, trustedReceiptSha] = positional;
+  check(positional.length <= 4, "Too many evaluation arguments");
   check(["offline", "import"].includes(mode), "Usage: run.ts offline OUT | import OUT RECEIPT [INDEPENDENT_TRUSTED_RECEIPT_FILE_SHA256]");
-  const source = assertSource(); const data = loadDataset();
-  const prepared = await Promise.all(data.blocks.map((b) => prepareBlock(data, b)));
+  if (execution) check(!existsSync(join(out, "results.json")), "Explicit run output already exists; preserve it and choose a new run/output");
+  const data = loadDataset();
+  const prepared = await Promise.all(data.blocks.map((b) => prepareBlock(data, b, execution)));
   const requests = (await Promise.all(prepared.map(captureRequest))).filter((r): r is RequestEnvelope => r !== undefined);
-  const manifest = makeManifest(data, requests, source);
+  const manifest = makeManifest(data, requests, source, execution);
   const manifestValidator = new Ajv().compile(readJson<object>("scripts/evals/reader-story-grouping/request-manifest.schema.json"));
   check(manifestValidator(manifest), `Invalid request manifest: ${JSON.stringify(manifestValidator.errors)}`);
   let receipt: CaptureReceipt | undefined;
@@ -24,7 +29,7 @@ export const run = async (args: string[]): Promise<void> => {
     check(receiptPath, "Receipt path is required");
     receipt = readJson<CaptureReceipt>(receiptPath!);
     // Materialized manifest is delivered alongside receipts. Never accept a self-defined request.
-    const frozen = readJson<RequestManifest>(join(RESULTS, "offline", "requests.json"));
+    const frozen = readJson<RequestManifest>(join(runRoot(execution), "offline", "requests.json"));
     verifyManifest(data, frozen, manifest);
     const schema = readJson<object>("scripts/evals/reader-story-grouping/receipt.schema.json");
     const validator = new Ajv({ allErrors: true }).compile(schema);
@@ -33,6 +38,7 @@ export const run = async (args: string[]): Promise<void> => {
     if (receipt.captureKind === "live_subscription") {
       check(trustedReceiptSha && fileSha(receiptPath!) === trustedReceiptSha,
         "Live import requires independently supplied trusted receipt file SHA256; a self-asserted live flag is insufficient");
+      check(execution, "Live import requires explicit --run-id matching offline preparation");
       reportMode = "LIVE_IMPORTED";
     } else reportMode = "OFFLINE_CAPTURED_REGRESSION";
   }
@@ -42,8 +48,6 @@ export const run = async (args: string[]): Promise<void> => {
     const response = receipt?.responses.find((r) => r.blockId === p.block.id);
     let decisions: readonly unknown[] | undefined;
     if (response && envelope) {
-      const validator = new Ajv({ allErrors: true }).compile(envelope.command.outputSchema);
-      check(validator(response.result.structuredOutput), `Invalid production output schema ${p.block.id}`);
       decisions = await normalizeCapturedResponse(p, envelope, response.result);
     }
     const outcome = applyDecisions(p, decisions);

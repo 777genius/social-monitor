@@ -6,6 +6,7 @@ import { pathToFileURL } from "node:url";
 import { CAPTURE_SOURCE_REVISION, FIXTURES, fileSha, loadDataset, readJson } from "./dataset";
 import { assertSource, verifySourceUnchanged } from "./source-identity";
 import type { RequestManifest, CaptureReceipt } from "./requests";
+import { evaluationRun, runRoot } from "./run-identity";
 import type { ReportResult } from "./report";
 
 // All commits and intentional production edits below occur only in this disposable local clone.
@@ -109,6 +110,32 @@ describe("clean committed source identity through real offline/replay commands",
     cpSync(join(root, output, "captured-regression"), join(sandbox, "preview/captured-regression"), { recursive: true });
     cpSync(join(root, output, "captured-regression/receipt.json"), join(root, output, "old-receipt.json"));
     evidence.baseline = { source: baseline.evaluatedSource, totals: baselineReport.totals, matchingImport: true, liveStatus: imported.liveStatus };
+  }, 60_000);
+
+  it("fresh explicit executions replay on the clean committed source and reject another run's receipt", () => {
+    const source = assertSource(root);
+    const first = evaluationRun("execution-a", source)!;
+    const second = evaluationRun("execution-b", source)!;
+    succeed("regression", ["--run-id", first.id]);
+    succeed("regression", ["--run-id", second.id]);
+    const a = readJson<RequestManifest>(join(root, runRoot(first), "offline/requests.json"));
+    const b = readJson<RequestManifest>(join(root, runRoot(second), "offline/requests.json"));
+    expect(a.evaluationRun).toEqual(first); expect(b.evaluationRun).toEqual(second);
+    expect(a.evaluatedSource).toEqual(source);
+    for (const [i, request] of a.requests.entries()) {
+      expect(request.command.requestId).not.toBe(b.requests[i]!.command.requestId);
+      expect(request.command.correlationId).not.toBe(b.requests[i]!.command.correlationId);
+      expect(request.command.prompt).toBe(b.requests[i]!.command.prompt);
+      expect(request.evidenceSha256).toBe(b.requests[i]!.evidenceSha256);
+      expect(request.command.controls).toEqual(b.requests[i]!.command.controls);
+    }
+    const failed = script("run", ["import", `${output}/wrong-run`,
+      join(runRoot(first), "captured-regression/receipt.json"), "--run-id", second.id]);
+    expect(failed.status).toBe(1); expect(failed.stderr).toContain("Receipt evaluation run mismatch");
+    const repeat = script("regression", ["--run-id", first.id]);
+    expect(repeat.status).toBe(1); expect(repeat.stderr).toContain("output already exists");
+    evidence.explicitRuns = { first: a, second: b, wrongRunRejected: true, outputReuseRejected: true };
+    verifyFixtures();
   }, 60_000);
 
   it("rejects a self-labelled live fixture without independently trusted provenance", () => {

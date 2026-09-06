@@ -1,3 +1,5 @@
+import { assertStoryRelationResponseSchema } from
+  "@social-monitor/summary/adapters/model/story-relation-response-schema";
 import { AgentRuntimeReaderSummaryStoryRelationVerifier } from
   "@social-monitor/summary/adapters/model/agent-runtime-reader-summary-story-relation-verifier.adapter";
 import type { AgentRuntimeClientPort, AgentRuntimeTaskCommand, AgentRuntimeTaskResult } from
@@ -8,6 +10,7 @@ import { admitSubscriptionRuntimeRequest } from
   "../../../apps/agent-runtime/src/subscription-runtime-purpose-model-policy";
 import { check, fileSha, ownedSourceFiles, CAPTURE_SOURCE_REVISION, type Dataset } from "./dataset";
 import type { EvaluatedSource } from "./source-identity";
+import type { EvaluationRun } from "./run-identity";
 import type { PreparedBlock } from "./replay";
 
 export type RequestEnvelope = {
@@ -16,6 +19,7 @@ export type RequestEnvelope = {
   schemaSha256: string; candidateCount: number; evidenceSha256: string;
 };
 export type RequestManifest = {
+  evaluationRun?: EvaluationRun;
   schemaVersion: 2; captureSourceRevision: string; evaluatedSource: EvaluatedSource;
   labelSealSha256: string; replaySha256: string;
   captureSha256: string; ownedFiles: Record<string, string>;
@@ -45,7 +49,8 @@ export const captureRequest = async (p: PreparedBlock): Promise<RequestEnvelope 
     evidenceSha256: canonicalJsonSha256(JSON.parse(JSON.stringify(p.evidence)) as unknown),
   };
 };
-export const makeManifest = (data: Dataset, requests: RequestEnvelope[], evaluatedSource: EvaluatedSource): RequestManifest => ({
+export const makeManifest = (data: Dataset, requests: RequestEnvelope[], evaluatedSource: EvaluatedSource, evaluationRun?: EvaluationRun): RequestManifest => ({
+  ...(evaluationRun ? { evaluationRun } : {}),
   schemaVersion: 2, captureSourceRevision: CAPTURE_SOURCE_REVISION, evaluatedSource,
   labelSealSha256: data.labelSealSha256,
   replaySha256: data.replaySeal.replaySha256, captureSha256: data.seal.captureSha256,
@@ -61,6 +66,7 @@ export const verifyManifest = (data: Dataset, expected: RequestManifest, actual:
   check(canonicalJsonSha256(expected) === canonicalJsonSha256(actual), "Request/source/fixture manifest mismatch");
 };
 export type CaptureReceipt = {
+  evaluationRun?: EvaluationRun;
   schemaVersion: 2; captureKind: "live_subscription" | "offline_fixture";
   manifestSha256: string; captureSourceRevision: string; evaluatedSource: EvaluatedSource;
   labelSealSha256: string; replaySha256: string;
@@ -73,6 +79,7 @@ export type CaptureReceipt = {
 };
 export const checkReceiptBinding = (manifest: RequestManifest, receipt: CaptureReceipt): void => {
   check(receipt.schemaVersion === 2 && ["live_subscription", "offline_fixture"].includes(receipt.captureKind), "Unknown receipt kind/schema");
+  check(canonicalJsonSha256(receipt.evaluationRun ?? null) === canonicalJsonSha256(manifest.evaluationRun ?? null), "Receipt evaluation run mismatch");
   check(receipt.manifestSha256 === canonicalJsonSha256(manifest), "Receipt manifest mismatch");
   check(receipt.captureSourceRevision === CAPTURE_SOURCE_REVISION &&
     canonicalJsonSha256(receipt.evaluatedSource) === canonicalJsonSha256(manifest.evaluatedSource) &&
@@ -100,6 +107,8 @@ export const checkReceiptBinding = (manifest: RequestManifest, receipt: CaptureR
 };
 export const normalizeCapturedResponse = async (p: PreparedBlock, envelope: RequestEnvelope,
   result: AgentRuntimeTaskResult): Promise<readonly unknown[]> => {
+  // Both live (after saving the original row) and import use this strict boundary.
+  assertStoryRelationResponseSchema(result.structuredOutput, envelope.command.outputSchema);
   const client: AgentRuntimeClientPort = {
     runTask: async (command) => {
       check(canonicalJsonSha256(command) === envelope.commandSha256, "Adapter command changed on response replay");

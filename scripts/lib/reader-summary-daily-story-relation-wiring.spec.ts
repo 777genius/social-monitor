@@ -266,6 +266,7 @@ describe("reader summary daily story relation production wiring", () => {
       expect(result.runtime.storyCommands).toHaveLength(1);
       expect(result.selection.clusters).toHaveLength(2);
       expect(result.selection.approvedSameStoryRelations).toEqual([]);
+      expect(result.record).not.toHaveBeenCalled();
     },
   );
 });
@@ -438,6 +439,9 @@ class FakeRuntime implements AgentRuntimeClientPort {
               rightFeedItemId: "typescript-reddit",
               sameStory: this.sameStory,
               confidenceScore: 0.98,
+              rationale: this.sameStory
+                ? "Both fixture reports describe the same event."
+                : "The fixture question does not report the same event.",
             }]
           : [],
       },

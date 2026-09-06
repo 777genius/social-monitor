@@ -4,6 +4,7 @@ import { canonicalJsonSha256 } from "@social-monitor/contracts/grpc/agent_runtim
 import type { AgentRuntimeClientPort } from "@social-monitor/summary/ports";
 import { check, fileSha, loadDataset, readJson } from "./dataset";
 import { assertSource, verifySourceUnchanged } from "./source-identity";
+import { evaluationRun, runArguments, claimLiveRun } from "./run-identity";
 import { prepareBlock, applyDecisions } from "./replay";
 import { captureRequest, makeManifest, verifyManifest, normalizeCapturedResponse,
   checkReceiptBinding, type RequestManifest, type RequestEnvelope, type CaptureReceipt } from "./requests";
@@ -15,21 +16,25 @@ export type TrustedComposition = {
   close: () => void | Promise<void>;
 };
 export const runLiveWithTrustedClient = async (manifestPath: string, out: string,
-  trusted: TrustedComposition): Promise<string> => {
+  trusted: TrustedComposition, runId?: string): Promise<string> => {
   const source = assertSource();
+  const execution = evaluationRun(runId, source);
+  check(execution, "Live execution requires explicit --run-id matching offline preparation");
   const data = loadDataset(); const frozen = readJson<RequestManifest>(manifestPath);
-  const prepared = await Promise.all(data.blocks.map((b) => prepareBlock(data, b)));
+  const prepared = await Promise.all(data.blocks.map((b) => prepareBlock(data, b, execution)));
   const requests = (await Promise.all(prepared.map(captureRequest))).filter((r): r is RequestEnvelope => r !== undefined);
-  verifyManifest(data, frozen, makeManifest(data, requests, source));
+  verifyManifest(data, frozen, makeManifest(data, requests, source, execution));
   verifySourceUnchanged(source);
   check(!existsSync(out), "Live output directory already exists; no automatic rerun/resume");
   check(trusted.operatorRecord.trim().length > 0, "Missing operator transport provenance");
+  claimLiveRun(execution!, canonicalJsonSha256(frozen), out);
   mkdirSync(out, { recursive: true });
   // One bounded read-only health RPC, no launch/provision/smoke and no real tenant.
   const health = await trusted.client.checkHealth("reader-story-grouping-eval");
   check(health.status === "serving" && health.runtimeEngine === "subscription-runtime-cli" &&
     health.launcherSha256, "Existing trusted subscription runtime has no serving attested identity");
   const receipt: CaptureReceipt = {
+    evaluationRun: execution,
     schemaVersion: 2, captureKind: "live_subscription", manifestSha256: canonicalJsonSha256(frozen),
     captureSourceRevision: frozen.captureSourceRevision, evaluatedSource: source,
     labelSealSha256: frozen.labelSealSha256, replaySha256: frozen.replaySha256,
@@ -61,7 +66,8 @@ export const runLiveWithTrustedClient = async (manifestPath: string, out: string
 };
 const main = async (): Promise<void> => {
   assertSource();
-  const [manifestPath, out] = process.argv.slice(2);
+  const { positional: [manifestPath, out], id } = runArguments(process.argv.slice(2));
+  check(evaluationRun(id, assertSource()), "Live execution requires explicit --run-id");
   const modulePath = process.env.RSG_TRUSTED_CLIENT_MODULE;
   check(manifestPath && out && modulePath,
     "Parent only: RSG_TRUSTED_CLIENT_MODULE=<reviewed existing composition shim> live.ts MANIFEST NEW_OUTPUT_DIR");
@@ -69,7 +75,7 @@ const main = async (): Promise<void> => {
   const shim = await import(resolve(modulePath!)) as { createTrustedComposition: () => Promise<TrustedComposition> };
   const trusted = await shim.createTrustedComposition();
   try {
-    const path = await runLiveWithTrustedClient(manifestPath!, out!, trusted);
+    const path = await runLiveWithTrustedClient(manifestPath!, out!, trusted, id);
     console.log(JSON.stringify({ receipt: path, sha256: fileSha(path) }));
   } finally { await trusted.close(); }
 };

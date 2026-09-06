@@ -8,6 +8,7 @@ import type {
 } from "../../ports";
 import { InvalidStoryRelationDecisionBatchError } from "../../ports";
 import {
+  AgentRuntimeModelProviderError,
   buildAgentRuntimeRequestId,
   nonEmptyOrFallback,
   parsePositiveInteger,
@@ -37,6 +38,8 @@ import {
   assertActiveReaderSummaryProvider,
   parseActiveReaderSummaryModel,
 } from "./active-reader-summary-generation-profile";
+
+import { assertStoryRelationResponseSchema } from "./story-relation-response-schema";
 
 export type AgentRuntimeReaderSummaryStoryRelationVerifierOptions = Pick<
   AgentRuntimeReaderSummaryModelAdapterOptions,
@@ -179,9 +182,11 @@ export class AgentRuntimeReaderSummaryStoryRelationVerifier implements ReaderSum
     const result = await this.client.runTask(command, { signal: input.signal });
     const raw = readAgentRuntimeObjectOutput(
       result,
-      parseJsonObject,
+      (text) => parseJsonObject(text, command.outputSchema),
       "Reader summary story relation verifier",
     );
+
+    assertStoryRelationResponseSchema(raw, command.outputSchema);
 
     const decisions = relatedTopicLane
       ? readDecisionEnvelope(raw)
@@ -280,12 +285,18 @@ const invalidDecisionEnvelope = (
   reason: ConstructorParameters<typeof InvalidStoryRelationDecisionBatchError>[0],
 ): Error => new InvalidStoryRelationDecisionBatchError(reason);
 
-const parseJsonObject = (value: string): Record<string, unknown> => {
-  const parsed: unknown = JSON.parse(value);
-  if (!isRecord(parsed)) {
-    throw invalidDecisionEnvelope("envelope_invalid_shape");
+const parseJsonObject = (value: string, schema: Record<string, unknown>): Record<string, unknown> => {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    throw new AgentRuntimeModelProviderError({
+      kind: "invalid_schema", retryable: false,
+      message: "Reader summary story relation response is not valid JSON",
+    });
   }
-  return parsed;
+  assertStoryRelationResponseSchema(parsed, schema);
+  return parsed as Record<string, unknown>;
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
