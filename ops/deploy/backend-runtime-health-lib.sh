@@ -15,6 +15,20 @@ BACKEND_HEALTH_STARTUP_GRACE_SECONDS=${BACKEND_HEALTH_STARTUP_GRACE_SECONDS:-240
 OTEL_COLLECTOR_HEALTH_STARTUP_GRACE_SECONDS=${OTEL_COLLECTOR_HEALTH_STARTUP_GRACE_SECONDS:-600}
 BACKEND_HEALTH_RETRY_SLEEP_SECONDS=${BACKEND_HEALTH_RETRY_SLEEP_SECONDS:-3}
 
+# The target loader has verified all three assets before sourcing this inode.
+# Bash exposes the reviewed source helper's local sha/relative_path here; use
+# that explicit target only during this call, never HEAD or the prelude pin.
+# Reload both dependencies even when predecessor versions are already present.
+if [[ ${FUNCNAME[1]:-} == source_reviewed_deploy_library &&
+      ${FUNCNAME[2]:-} == load_target_rabbitmq_quorum_backend_health &&
+      ${relative_path:-} == ops/deploy/backend-runtime-health-lib.sh ]]; then
+  source_reviewed_deploy_library "$sha" \
+    ops/deploy/rabbitmq-quorum-health.sh 'target RabbitMQ quorum health library' || return 1
+  # Recovery must see the reviewed health definitions before its FD is sourced.
+  source_reviewed_deploy_library "$sha" \
+    ops/deploy/rabbitmq-quorum-recovery.sh 'target RabbitMQ quorum recovery library' || return 1
+fi
+
 backend_health_load_rabbitmq_quorum_recovery() {
   local script
 
