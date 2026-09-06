@@ -1,3 +1,4 @@
+import { readerSummaryNewInputRefreshPrefix, type ReaderSummaryNewInputRefreshAuthority } from "../../application/contracts/reader-summary-new-input-refresh-authority";
 import {
   type Clock,
   DomainError,
@@ -88,6 +89,7 @@ export class ExecuteReaderSummaryJobUseCase {
     private readonly historicalGitHubOmission?: ReaderSummaryHistoricalGitHubOmission,
     private readonly recoveryProvenance?: ReaderSummaryDailyCanonicalRecoveryV4ProvenancePort,
     private readonly executionLease: ReaderSummaryExecutionLeasePolicy = new ReaderSummaryExecutionLeasePolicy(),
+    private readonly newInputRefresh?: ReaderSummaryNewInputRefreshAuthority,
   ) {}
 
   async execute(
@@ -120,6 +122,22 @@ export class ExecuteReaderSummaryJobUseCase {
     }
 
     const snapshot = existingJob.toSnapshot();
+    let observedThrough: Date | undefined;
+    if (snapshot.idempotencyKey.startsWith(readerSummaryNewInputRefreshPrefix)) {
+      try {
+        if (this.newInputRefresh === undefined) {
+          return err(new DomainError("operation.conflict", "Historical new-input refresh requires reviewed authority"));
+        }
+        observedThrough = await this.newInputRefresh.claim(snapshot);
+        if (!Number.isFinite(observedThrough.getTime()) ||
+            observedThrough.getTime() > this.clock.now().getTime()) {
+          return err(new DomainError("validation.failed", "Historical new-input refresh cutoff is invalid"));
+        }
+      } catch {
+        return err(new DomainError("operation.conflict",
+          "Historical new-input refresh requires reconciliation or valid authority"));
+      }
+    }
     if (snapshot.status === "completed" || snapshot.status === "no_signal") {
       return ok({
         readerSummaryJobId: snapshot.id,
@@ -154,6 +172,7 @@ export class ExecuteReaderSummaryJobUseCase {
       const result = await this.runModelPipeline(
         runningJob,
         command.maxEvidenceItems ?? defaultReaderSummaryMaxEvidenceItems,
+        observedThrough,
       );
 
       if (!result.ok) {
@@ -187,7 +206,7 @@ export class ExecuteReaderSummaryJobUseCase {
         editorialEvidence: result.value.editorialEvidence,
         publicationPolicy: this.publicationPolicy,
         githubProjectionReader: this.githubProjectionReader,
-        observedThrough: this.clock.now(),
+        observedThrough: observedThrough ?? this.clock.now(),
         historicalGitHubOmission: this.historicalGitHubOmission,
         recoveryProvenance: this.recoveryProvenance,
       });
@@ -283,6 +302,7 @@ export class ExecuteReaderSummaryJobUseCase {
   private async runModelPipeline(
     job: ReaderSummaryJob,
     maxEvidenceItems: number,
+    observedThrough?: Date,
   ): Promise<ReaderSummaryModelPipelineResult> {
     const snapshot = job.toSnapshot();
     const generatedAt = this.clock.now();
@@ -294,7 +314,7 @@ export class ExecuteReaderSummaryJobUseCase {
       userId: snapshot.userId,
       subscriptionId: snapshot.subscriptionId,
       maxItems: maxEvidenceItems,
-      observedThrough: generatedAt,
+      observedThrough: observedThrough ?? generatedAt,
     });
     const readerSummaryId = this.ids.generate();
     const admittedSelection = admitReaderPostPromotionEvidence(selectedEvidence);

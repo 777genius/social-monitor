@@ -431,6 +431,15 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
     `));
   });
 
+  it('keeps the historical refresh race writer reachable only from its native test gate', () => {
+    const helper = 'scripts/lib/reader-summary-new-input-refresh-native-concurrency.ts';
+    const consumers = completeDatabaseSourceFiles.filter((path) =>
+      path !== helper && !path.endsWith('.spec.ts') &&
+      readSource(path).includes('reader-summary-new-input-refresh-native-concurrency'),
+    );
+    expect(consumers).toEqual(['scripts/check-reader-summary-new-input-refresh-postgres.ts']);
+  });
+
   it('fails on every future raw database-client dependency bypass', () => {
     const rawDependencyFiles = completeDatabaseSourceFiles
       .filter((path) => {
@@ -504,6 +513,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/lib/reader-summary-daily-terminal-runtime-connection.ts
       scripts/lib/reader-summary-large-daily-publication-postgres-contract.ts
       scripts/lib/reader-summary-linear-utf16-postgres-contract.ts
+      scripts/lib/reader-summary-new-input-refresh-native-concurrency.ts
       scripts/lib/reader-summary-production-day-scope.spec.ts
       scripts/lib/reader-summary-production-day-scope.ts
       scripts/lib/reader-summary-promotion-v2-historical-postgres.ts
