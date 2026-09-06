@@ -1,7 +1,7 @@
 import { PrismaRetainedMetricInventory, type PrismaMetricInventoryClient } from "./prisma-retained-metric-inventory";
 import { metricRefreshDigest } from "../../../../scripts/lib/retained-metric-refresh-receipts";
 import { scope, target } from "../../../../scripts/lib/retained-metric-refresh.spec-support";
-import { sameTarget } from "../../features/refresh-retained-metrics/metric-refresh-admission";
+import { sameTarget, targetProblem } from "../../features/refresh-retained-metrics/metric-refresh-admission";
 
 function setup() {
   const t = target();
@@ -10,7 +10,7 @@ function setup() {
     body: "Content", contentHash: "retained-hash", observedAt: new Date(t.publishedAt), metadata: { kind: "reddit_post", score: 0 }, engagementSnapshot: null };
   const binding = { id: t.sourceBindingId, interestId: "interest", sourceCatalogEntryId: "catalog", status: "ENABLED", deletedAt: null, config: { mode: "search" } };
   const client = {
-    sourceItem: { findMany: jest.fn(async () => [source]) },
+    sourceItem: { findMany: jest.fn<Promise<(typeof source)[]>, [Record<string, unknown>]>(async () => [source]) },
     sourceBinding: { findMany: jest.fn(async () => [binding]) },
     interest: { findMany: jest.fn(async () => [{ id: "interest", status: "ENABLED", deletedAt: null }]) },
     sourceCatalogEntry: { findMany: jest.fn(async () => [{ id: "catalog", providerKey: "reddit" }]) },
@@ -38,6 +38,30 @@ describe("scoped retained metric inventory", () => {
     f.binding.config = { mode: "search" }; f.source.body = "modified content";
     expect(sameTarget(first, (await f.inventory.list(scope))[0]!, metricRefreshDigest)).toBe(false);
   });
+  it("queries exact original IDs without a creation/provider/date cutoff, excluding four late rows", async () => {
+    const f = setup();
+    const rows = [f.source, ...Array.from({ length: 4 }, (_, i) => ({ ...f.source, id: `late-${i}` }))];
+    f.client.sourceItem.findMany.mockImplementation(async (args) => {
+      const where = args.where as { id?: { in: string[] } };
+      return where.id ? rows.filter((row) => where.id!.in.includes(row.id)) : rows;
+    });
+    expect(await f.inventory.list(scope)).toHaveLength(5);
+    expect(await f.inventory.list(scope, [f.source.id])).toHaveLength(1);
+    expect(f.client.sourceItem.findMany.mock.calls.at(-1)![0].where).toEqual({ tenantId: scope.tenantId, workspaceId: scope.workspaceId, id: { in: [f.source.id] } });
+    f.source.publishedAt = new Date("2026-08-29T00:00:00Z");
+    const moved = await f.inventory.list(scope, [f.source.id]);
+    expect(moved).toHaveLength(1);
+    expect(targetProblem(moved[0]!, scope)).toBe("out_of_range");
+    rows.shift();
+    expect(await f.inventory.list(scope, [f.source.id])).toEqual([]);
+    expect(await f.inventory.list(scope, [])).toEqual([]);
+  });
+  it("refuses duplicate or over-limit requested membership before persistence", async () => {
+    const f = setup();
+    await expect(f.inventory.list(scope, [f.source.id, f.source.id])).rejects.toThrow("Invalid frozen");
+    await expect(f.inventory.list(scope, Array.from({ length: 10001 }, (_, i) => String(i)))).rejects.toThrow("Invalid frozen");
+    expect(f.client.sourceItem.findMany).not.toHaveBeenCalled();
+  });
   it("does not treat canonical metric refresh as identity/config drift", async () => {
     const f = setup(); const first = (await f.inventory.list(scope))[0]!;
     f.source.metadata.score = 90;
@@ -55,6 +79,6 @@ describe("scoped retained metric inventory", () => {
     else if (state === "unbound") f.client.sourceBinding.findMany.mockResolvedValue([]);
     else f.client.feedItem.findMany.mockResolvedValue(Array.from({ length: state === "fanout" ? 1001 : 1 }, (_, i) => ({
       id: `feed-${i}`, sourceBindingId: target().sourceBindingId, status: state === "fanout" ? "VISIBLE" : state })));
-    expect((await f.inventory.list(scope))[0]!.rejection).not.toBeNull();
+    expect((await f.inventory.list(scope, [f.source.id]))[0]!.rejection).not.toBeNull();
   });
 });

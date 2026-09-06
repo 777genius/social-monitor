@@ -79,14 +79,19 @@ export async function runRetainedMetricRefresh(args: readonly string[], env: Nod
       }
       const manifest: MetricRefreshManifest = existing ?? { version: "retained-metrics.v1", sourceBase: metricRefreshSourceBase, bounds: metricRefreshBounds, operationId,
         evidencePath: metricRefreshEvidencePath, scope, plannedAt: now.toISOString(), targets: await inventory.list(scope) };
-      const currentTargets = existing && !options.has("--apply") ? await inventory.list(manifest.scope) : manifest.targets;
+      const diagnostic = existing && !options.has("--apply");
+      const originalIds = head?.original.targets.map((t) => t.sourceItemId);
+      const currentTargets = diagnostic ? await inventory.list(manifest.scope, originalIds) : manifest.targets;
+      const currentWindow = diagnostic ? await inventory.list(manifest.scope) : null;
+      const inventoryAudit = currentWindow ? { membership: "original_operation_targets", originalTargetCount: manifest.targets.length,
+        currentWindowTargetCount: currentWindow.length, outsideOperationSourceItemIds: currentWindow.filter((t) => !originalIds!.includes(t.sourceItemId)).map((t) => t.sourceItemId) } : undefined;
       const identities = (targets: typeof manifest.targets) => targets.map(targetIdentity).sort((a, b) => a.sourceItemId.localeCompare(b.sourceItemId));
       const problem = manifestProblem(manifest, now) ??
         (metricRefreshDigest(identities(currentTargets)) === metricRefreshDigest(identities(manifest.targets)) ? null : "inventory_drift");
       const manifestSha = metricRefreshDigest(manifest);
       if (problem || !options.has("--apply")) {
         if (!problem && !existing) await receipts.install(path, manifest);
-        process.stdout.write(`${JSON.stringify({ mode: "dry-run", manifestSha, problem, manifest, ...(problem === "inventory_drift" ? { currentTargets } : {}) }, null, 2)}\n`);
+        process.stdout.write(`${JSON.stringify({ mode: "dry-run", manifestSha, problem, manifest, inventoryAudit, ...(problem === "inventory_drift" ? { currentTargets } : {}) }, null, 2)}\n`);
         if (problem) process.exitCode = 1;
         return;
       }
