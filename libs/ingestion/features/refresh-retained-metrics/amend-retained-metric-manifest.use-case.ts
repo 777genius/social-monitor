@@ -2,7 +2,7 @@ import { err, ok, type Clock, type Result } from "@social-monitor/shared-kernel"
 import type { RefreshDigest, RetainedMetricInventory } from "./refresh-retained-metrics.contracts";
 import type { MetricImplementation, MetricManifestAmendment, MetricOperationHead, MetricRefreshOperationAuthority } from "./metric-refresh-operation.contracts";
 import { applyMetricAmendment, metricEvidencePath, metricIdentityInventory, metricAmendmentName, metricProposalName, orderedMetricTargets, resolveMetricOperation, reviewedContentChanges } from "./metric-refresh-amendment";
-import { assertMetricAmendment, assertMetricManifest, evidenceAssert, metricAmendmentLimit, metricProposalLimit, metricSha } from "./metric-refresh-evidence-validation";
+import { assertMetricAmendment, assertMetricManifest, evidenceAssert, metricAmendmentLimit, metricProposalLimit, metricReviewedContentChangeLimit, metricSha } from "./metric-refresh-evidence-validation";
 
 export class AmendRetainedMetricManifestUseCase {
   constructor(private readonly inventory: RetainedMetricInventory, private readonly authority: MetricRefreshOperationAuthority,
@@ -16,14 +16,14 @@ export class AmendRetainedMetricManifestUseCase {
       const entries = await operation.entries();
       if (head.sequence >= metricAmendmentLimit || entries.filter((e) => e.name.startsWith("proposal-")).length >= metricProposalLimit) return err("amendment_limit");
       const captureStartedAt = this.clock.now().toISOString();
-      const inventory = orderedMetricTargets(await this.inventory.list(head.effective.scope));
+      const inventory = orderedMetricTargets(await this.inventory.list(head.effective.scope, head.original.targets.map((t) => t.sourceItemId)));
       const captureCompletedAt = this.clock.now().toISOString();
       let changes;
       try {
         assertMetricManifest({ ...head.effective, targets: inventory }, this.clock.now());
         changes = reviewedContentChanges(head.effective, inventory, this.hash);
       } catch { return err("inventory_drift"); }
-      if (changes.length === 0 || changes.length > 16) return err("content_change_limit");
+      if (changes.length === 0 || changes.length > metricReviewedContentChangeLimit) return err("content_change_limit");
       const effective = { ...head.effective, targets: head.effective.targets.map((target) => ({ ...target,
         identityDigest: changes.find((change) => change.sourceItemId === target.sourceItemId)?.after ?? target.identityDigest })) };
       const proposal: MetricManifestAmendment = { version: "retained-metrics-amendment.v1", operationId: head.original.operationId, evidencePath: head.original.evidencePath,
@@ -49,13 +49,14 @@ export class AmendRetainedMetricManifestUseCase {
       if (this.hash(proposal) !== reviewedSha || proposal.priorEffectiveSha !== expectedPriorSha || proposal.effectiveManifestSha !== expectedEffectiveSha) return err("reviewed_sha_mismatch");
       if (proposal.implementation.sourceSha !== this.implementation.sourceSha || proposal.implementation.executableSha !== this.implementation.executableSha ||
           proposal.implementation.legacyRetirementRef !== this.implementation.legacyRetirementRef) return err("reviewed_implementation_mismatch");
-      if (head.amendmentSha === reviewedSha) return ok(head); // Exact durable replay; never another record or budget.
-      if (this.hash(head.effective) !== expectedPriorSha) return err("stale_amendment_head");
-      const effective = applyMetricAmendment(head, proposal, this.hash, this.clock.now());
-      const current = await this.inventory.list(effective.scope);
+      const replay = head.amendmentSha === reviewedSha;
+      if (!replay && this.hash(head.effective) !== expectedPriorSha) return err("stale_amendment_head");
+      const effective = replay ? head.effective : applyMetricAmendment(head, proposal, this.hash, this.clock.now());
+      const current = await this.inventory.list(effective.scope, head.original.targets.map((t) => t.sourceItemId));
       try { assertMetricManifest({ ...effective, targets: current }, this.clock.now()); }
       catch { return err("inventory_drift"); }
       if (this.hash(metricIdentityInventory(current)) !== proposal.identityInventorySha) return err("inventory_drift");
+      if (replay) return ok(head); // Fresh original inventory checked even on exact durable replay.
       // Only this proposal may have appeared since its captured zero-budget proof.
       const entries = await operation.entries();
       const before = entries.filter((entry) => entry.name !== metricProposalName(reviewedSha));

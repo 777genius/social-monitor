@@ -19,7 +19,9 @@ export function incidentFixture(root: string, count = 3329) {
   const original = { ...manifest(targets), operationId: "409f3cde-6073-451c-9285-eaa6802ca081", plannedAt: "2026-09-06T02:35:17.000Z",
     scope: { ...manifest().scope, endAt: "2026-09-06T00:00:00.000Z" } };
   let current = targets.map((t) => ({ ...t, identityDigest: t.sourceItemId === incidentSource ? afterDigest : t.identityDigest }));
-  const inventory = { list: jest.fn(async () => current), read: jest.fn(async (_: unknown, id: string) => current.find((t) => t.sourceItemId === id) ?? null) };
+  const inventory = { list: jest.fn(async (_?: unknown, sourceItemIds?: readonly string[]) =>
+    sourceItemIds ? current.filter((t) => sourceItemIds.includes(t.sourceItemId)) : current),
+    read: jest.fn(async (_: unknown, id: string) => current.find((t) => t.sourceItemId === id) ?? null) };
   const receipts = SecureMetricRefreshReceipts.forTest(root), clock = new FixedClock(new Date("2026-09-06T04:00:00.000Z"));
   const amendment = () => new AmendRetainedMetricManifestUseCase(inventory, receipts, clock, metricRefreshDigest, implementation);
   return { original, inventory, receipts, clock, amendment, current: () => current, change: (rows: RetainedMetricTarget[]) => { current = rows; } };

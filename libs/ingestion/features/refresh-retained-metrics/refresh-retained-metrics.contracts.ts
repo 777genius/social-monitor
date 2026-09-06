@@ -19,7 +19,10 @@ export type MetricRefreshManifest = {
   scope: RefreshScope; plannedAt: string; targets: readonly RetainedMetricTarget[];
 };
 export interface RetainedMetricInventory {
-  list(scope: RefreshScope): Promise<readonly RetainedMetricTarget[]>;
+  // Omitted IDs enumerate the full planning window. Supplied IDs reread the exact
+  // original membership within tenant/workspace, including now-ineligible rows.
+  // Missing originals stay missing; callers must validate every original identity.
+  list(scope: RefreshScope, sourceItemIds?: readonly string[]): Promise<readonly RetainedMetricTarget[]>;
   read(scope: RefreshScope, sourceItemId: string): Promise<RetainedMetricTarget | null>;
 }
 export type MetricFetchObservation = {
