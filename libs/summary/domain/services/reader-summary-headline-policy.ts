@@ -1,3 +1,4 @@
+import { readerSummaryHeadlinesEquivalent } from "../value-objects/reader-summary-headline-equivalence";
 import type { SourceMixEntry } from "../entities/source-mix-entry";
 import type { TopRead } from "../entities/top-read";
 import {
@@ -15,14 +16,13 @@ export const groundedReaderHeadline = (params: {
     readonly providerCount: number;
   };
 }): string => {
-  const fallback = readerSummaryHeadline(params.headline);
-
   // Keep a copied model headline visible to the publication rejection gate.
   // A neutral fallback must not launder a source heading into valid synthesis.
   if (params.sourceTitles?.some((title) =>
-    readerSummaryHeadline(title).toLocaleLowerCase("en-US") ===
-      fallback.toLocaleLowerCase("en-US"),
-  )) return fallback;
+    readerSummaryHeadlinesEquivalent(title, params.headline),
+  )) return params.headline;
+
+  const fallback = readerSummaryHeadline(params.headline);
 
   if (params.topReads.length === 0) {
     return fallback;

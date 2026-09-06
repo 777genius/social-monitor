@@ -19,6 +19,15 @@ const lead = (title: string): TopRead => ({
 });
 
 describe("headline source context", () => {
+  it("does not preserve punctuation-only text as a copied headline", () => {
+    expect(groundedReaderHeadline({
+      headline: "!!!",
+      sourceTitles: ["!!!", "", "   "],
+      sourceMix: [],
+      topReads: [lead("Source heading\n\nFull source context.")],
+    })).toBe("Discussion from monitored sources");
+  });
+
   it.each([
     "Atlas bypasses approval.\nOnly in simulations; production needs approval.",
     `Atlas bypasses approval. ${"Synthetic context. ".repeat(60)}Only in simulations.`,

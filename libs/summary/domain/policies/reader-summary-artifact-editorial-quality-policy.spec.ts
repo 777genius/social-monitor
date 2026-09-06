@@ -5,6 +5,15 @@ import {
 } from "./reader-summary-artifact-editorial-quality-policy";
 
 describe("evaluateReaderSummaryArtifactEditorialQuality", () => {
+  it("does not classify empty normalized titles as headline copies", () => {
+    const result = evaluateReaderSummaryArtifactEditorialQuality({
+      ...dailySynthesis(),
+      headline: "!!!",
+      topPostTitles: ["!!!", "", "   "],
+    });
+    expect(result.qualityGates.headlineIsNotCopiedFromTopPost).toBe(true);
+  });
+
   it("accepts a balanced multi-cluster daily synthesis", () => {
     const result =
       evaluateReaderSummaryArtifactEditorialQuality(dailySynthesis());
