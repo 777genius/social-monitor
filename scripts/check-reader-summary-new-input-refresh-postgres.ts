@@ -82,7 +82,7 @@ async function main() {
         publicationDecision: command.publicationDecision,
         githubProjectionAudit: command.githubProjectionAudit,
       });
-      const { publicationMs, writerConflicts, acquisitionMs } = await runRefreshNativeConcurrency({
+      const { publicationMs, writerConflicts, acquisitionMs, holderLossRejected } = await runRefreshNativeConcurrency({
         url, summary, manifest: m, command, clock,
       });
       const after = await readRefreshPrior(summary, m.date);
@@ -98,9 +98,9 @@ async function main() {
       assert.equal(await new PrismaReaderSummaryPublication(summary).publish(command), "replayed");
       assertRefreshEqual(await readRefreshCounts(summary, m.date), countsAfter, "replay zero delta");
       console.log(JSON.stringify({ status: "passed", date: m.date, priorStatus: before.status,
-        originalSelection, newSelection, before, after, countsBefore, countsAfter, publicationMs, writerConflicts, acquisitionMs,
+        originalSelection, newSelection, before, after, countsBefore, countsAfter, publicationMs, writerConflicts, acquisitionMs, holderLossRejected,
         scenarios: ["actual-cutoff", "changed-input", "engagement-config-slot-input-drift", "independent-writer-commit-before-validation",
-          "writer-blocked-after-publication-snapshot", "all-relation-orders-nowait",
+          "writer-blocked-after-publication-snapshot", "actual-holder-loss-stale-snapshot-rejected", "all-relation-orders-nowait",
           "consumed-no-repeat", "normal-prisma-publisher-max2", "preserved-original", "replay-zero-delta"] }));
     });
   } finally { await feedConnection.close(); await summary.close(); }

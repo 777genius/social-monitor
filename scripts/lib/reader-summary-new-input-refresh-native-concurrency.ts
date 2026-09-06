@@ -21,7 +21,7 @@ const lockUnavailable = (error: unknown): boolean => {
 export async function runRefreshNativeConcurrency(input: {
   url: string; summary: PrismaSummaryConnection; manifest: RefreshManifest;
   command: ReaderSummaryPublicationCommand; clock: Clock;
-}): Promise<{ publicationMs: number; writerConflicts: number; acquisitionMs: number[] }> {
+}): Promise<{ publicationMs: number; writerConflicts: number; acquisitionMs: number[]; holderLossRejected: boolean }> {
   assert.match(decodeURIComponent(new URL(input.url).pathname.slice(1)), /^reader_summary_refresh_test_[a-z0-9]+$/u);
   const { summary, manifest: m, command, clock } = input;
   const writer = new Client({ connectionString: input.url });
@@ -105,10 +105,45 @@ export async function runRefreshNativeConcurrency(input: {
         writerConflicts++;
       } finally { await writer.query("rollback"); }
     }
+    // Establish a real publisher snapshot, lose the separate holder backend,
+    // then commit drift through the independent writer. The live PID/VXID
+    // overlap guard must reject despite the publisher still seeing old rows.
+    let holderTerminated = false, staleSnapshotProved = false, protectionRejected = false;
+    try {
+      await assert.rejects(withRefreshPublicationLocks(summary, async (assertProtected) => {
+        const holders = await writer.query<{ pid: number }>(`select distinct pid from pg_catalog.pg_locks
+          where relation='reader_summary_policies'::regclass and mode='ShareLock'
+            and granted and pid <> pg_backend_pid()`);
+        assert.equal(holders.rowCount, 1, "exactly one fixture lock holder");
+        await summary.$transaction(async (tx) => {
+          const before = await tx.$queryRaw<readonly { tone: string }[]>`select tone
+            from reader_summary_policies where tenant_id=${scope[0]}::uuid
+              and workspace_id=${scope[1]}::uuid and scope_key='workspace'`;
+          assert.equal(before.length, 1);
+          const stopped = await writer.query<{ stopped: boolean }>(
+            "select pg_terminate_backend($1::int, 1000) as stopped", [holders.rows[0]!.pid]);
+          assert.equal(stopped.rows[0]?.stopped, true); holderTerminated = true;
+          const changed = await writer.query(`update reader_summary_policies set tone=$3
+            where ${where} and scope_key='workspace'`, [...scope, tone === "analytical" ? "neutral" : "analytical"]);
+          assert.equal(changed.rowCount, 1);
+          const after = await tx.$queryRaw<readonly { tone: string }[]>`select tone
+            from reader_summary_policies where tenant_id=${scope[0]}::uuid
+              and workspace_id=${scope[1]}::uuid and scope_key='workspace'`;
+          assert.deepEqual(after, before); staleSnapshotProved = true;
+          await assert.rejects(assertProtected(tx), /snapshot protection was lost/);
+          protectionRejected = true;
+        }, { isolationLevel: "Serializable" });
+      }));
+      assert(holderTerminated && staleSnapshotProved && protectionRejected,
+        "actual holder loss must reject an otherwise stale publication snapshot");
+    } finally {
+      await writer.query(`update reader_summary_policies set tone=$3
+        where ${where} and scope_key='workspace'`, [...scope, tone]);
+    }
     const started = Date.now();
     assert.equal(await publish(summary, true), "published");
     const publicationMs = Date.now() - started;
     assert(publicationMs < 30_000, "shared max2 publication must complete without nested/root reads");
-    return { publicationMs, writerConflicts, acquisitionMs };
+    return { publicationMs, writerConflicts, acquisitionMs, holderLossRejected: protectionRejected };
   } finally { await writer.end(); }
 }
