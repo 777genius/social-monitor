@@ -11,6 +11,11 @@ const metricSubject = new RegExp(String.raw`^(?:(?:the|our|its|new|input/output)
 const report = /^([a-z][a-z-]*(?:\s+[a-z][a-z-]*){0,3})\s+(says|reports|estimates|found)\s+/i;
 const modelReference = /^(?:it|they|both|(?:this|the) model|these models)\b/i;
 const versionedSubject = /^(?:[a-z][a-z-]*\s+){0,3}[a-z][a-z-]*[-\s]+\d+(?:\.\d+)+[a-z]?\b/i;
+const quantifiedWorkload = String.raw`\d[\d,]*\s+(?:[a-z-]+\s+){0,3}(?:tasks?|trials?|problems?|cases?|workloads?)\b`;
+const hasQuantifiedWorkload = new RegExp(quantifiedWorkload, "i");
+const duration = String.raw`for\s+\d+(?:\.\d+)?\s+(?:hours?|minutes?)`;
+const modelRun = /^((?:[a-z][a-z-]*\s+){1,4})ran\s+(?:it|the model)\s+(?:[a-z-]+\s+){0,2}?(?=for\b|on\b)/i;
+const trialWorkload = new RegExp(String.raw`^(?:${duration}\s+on\s+${quantifiedWorkload}|on\s+${quantifiedWorkload}(?:\s+${duration})?)$`, "i");
 
 export type ReleaseDescriptionScope = {
   readonly modelExecution: boolean;
@@ -27,7 +32,8 @@ export const releaseDescriptionScope = (statement: string): ReleaseDescriptionSc
 
 /** Running the model is distinct from running a quantified test workload. */
 export const isModelUseAnecdote = (text: string): boolean =>
-  /^(?:[a-z][a-z-]*\s+){1,4}ran\s+(?:it|the model)\s+(?:[a-z-]+\s+){0,2}for\s+\d+\s+(?:hours?|minutes?)\s+on\b/i.test(text);
+  /^(?:[a-z][a-z-]*\s+){1,4}ran\s+(?:it|the model)\s+(?:[a-z-]+\s+){0,2}for\s+\d+\s+(?:hours?|minutes?)\s+on\b/i.test(text) &&
+  !hasQuantifiedWorkload.test(text);
 
 export const isAttributedModelExperience = (text: string): boolean =>
   /^(?:[a-z][a-z-]*\s+){1,4}(?:says|reports)\s+(?:it|the model)\b/i.test(text);
@@ -67,6 +73,13 @@ export const isReleaseDescription = (
 ): boolean => {
   const { modelExecution, propertyContext } = scope;
   const text = raw.replace(/^[-*\s]+/, "").replace(/^and\s+/i, "");
+  // The model can be the instrument of a quantified trial. Bind the whole
+  // workload and its actor before considering benign usage/output exceptions.
+  const run = modelRun.exec(text);
+  if (run !== null && hasQuantifiedWorkload.test(text.slice(run[0].length))) {
+    return run[1]!.trim().toLowerCase() === publisher &&
+      trialWorkload.test(text.slice(run[0].length));
+  }
   // These complements describe motivation, not completed actions. Keep the
   // complement restriction even when the reporting subject is the publisher.
   if (/^(?:although\s+)?it\s+(?:[a-z-]+ly\s+)?(?:shows|suggests|indicates)\s+they\s+(?:care|prefer|prioritize)\b/i.test(text)) return true;

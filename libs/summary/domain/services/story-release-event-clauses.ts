@@ -10,21 +10,27 @@ const completedVerb = String.raw`(?:[a-z-]+ed|ran|found|stole|took|made|broke|lo
 const finitePredicate = String.raw`(?!(?:as|vs|its|this)\b)(?:${completedVerb}|[a-z-]+s|was|were|will|would|can|could|may|might|must)`;
 // A version immediately after a word ending in "s" does not turn that product
 // name into a verb. In particular, a bare branded version is not a first clause.
-const finiteAssertion = String.raw`(?:[a-zA-Z][a-zA-Z-]*\s+){1,4}?${finitePredicate}\s+(?!\d+(?:\.\d+)+(?:\s|$))\S`;
+const finiteAssertion = String.raw`(?:[a-zA-Z][a-zA-Z-]*\s+){1,4}?${finitePredicate}\s+(?!\d+(?:\.\d+)+(?:\s|$)|(?:vs|versus|of|for|with|on|in|at|from|than)\b)\S`;
 const pluralSubjectPredicate = String.raw`(?!(?:this|its|as|vs)\b)[a-z-]+s\s+(?!(?:vs|versus|of|for|with|on|in|at|from|than)\b)[a-z-]+\s+\S`;
 const subjectPredicate = new RegExp(`^(?:${productSubject}\\s+${finitePredicate}\\b|${finiteAssertion})`, "i");
 const coordinatedAssertion = new RegExp(
-  String.raw`,?\s+and\s+(?!(?:what|how|why)\b)(?=(?:${productSubject}\s+(?:is|was|has|remains)\b|${namedActor}[a-z]+\s+|${finiteAssertion}|${pluralSubjectPredicate}|(?:it|they|we|he|she)\s+|${completedVerb}\s+))`,
-  "g",
-);
-// A comma can separate a complete assertion as well as an object list. Only
-// split when the following text supplies a subject and predicate; dates and
-// descriptive noun lists stay attached to their clause.
-const commaAssertion = new RegExp(
-  String.raw`,\s+(?=(?:${productSubject}\s+(?:is|was|has|remains)\b|${finiteAssertion}|${pluralSubjectPredicate}|${completedVerb}\s+))`,
+  String.raw`,?\s+and\s+(?!(?:what|how|why)\b)(?=(?:${productSubject}\s+(?:is|was|has|remains)\b|${finiteAssertion}|${pluralSubjectPredicate}|(?:it|they|we|he|she)\s+|${completedVerb}\s+))`,
   "gi",
 );
-const commaNamedAssertion = new RegExp(String.raw`,\s+(?=${namedActor}[a-z][a-z-]*\s+\S)`, "g");
+// Conjunction casing is independent of the capitalized-name heuristic. Making
+// that heuristic case-insensitive would split ordinary descriptive noun lists.
+const coordinatedNamedAssertion = new RegExp(
+  String.raw`,?\s+[aA][nN][dD]\s+(?=${namedActor}[a-z]+\s+)`,
+  "g",
+);
+// Punctuation can separate a complete assertion as well as an object list. Only
+// split when the following text supplies a subject and predicate; dates and
+// descriptive noun lists stay attached to their clause.
+const punctuatedAssertion = new RegExp(
+  String.raw`(?:[,:]|\s[—–])\s+(?=(?:${productSubject}\s+(?:is|was|has|remains)\b|${finiteAssertion}|${pluralSubjectPredicate}|${completedVerb}\s+))`,
+  "gi",
+);
+const punctuatedNamedAssertion = new RegExp(String.raw`(?:[,:]|\s[—–])\s+(?=${namedActor}[a-z][a-z-]*\s+\S)`, "g");
 // Temporal and causal clauses still assert their own events. Require a finite
 // subject/predicate so a date or noun adjunct does not become another clause.
 const subordinateAssertion = new RegExp(
@@ -40,10 +46,10 @@ const subordinateNamedAssertion = new RegExp(
 export const releaseEventStatements = (text: string): string[] => text
   .split(/\n|(?<!\bvs)[.!?](?=\s|$)/i).map((part) => part.trim()).filter(Boolean);
 
-const commaClauses = (clause: string): string[] => {
+const punctuatedClauses = (clause: string): string[] => {
   const parts: string[] = [];
   let start = 0;
-  for (const match of clause.matchAll(commaAssertion)) {
+  for (const match of clause.matchAll(punctuatedAssertion)) {
     const next = match.index + match[0].length;
     const prefix = clause.slice(0, match.index);
     const depth = [...prefix].reduce((level, char) => level + (char === "(" ? 1 : char === ")" ? -1 : 0), 0);
@@ -58,8 +64,8 @@ const commaClauses = (clause: string): string[] => {
 export const releaseEventClauses = (text: string): string[] => releaseEventStatements(text)
   .flatMap((part) => part.split(/\s*;\s*|,?\s+\b(?:while|whereas|but|although)\s+/i))
   .flatMap((part) => part.split(subordinateAssertion).flatMap((assertion) => assertion.split(subordinateNamedAssertion)))
-  .flatMap((part) => part.split(coordinatedAssertion).flatMap((clause) => {
-    const assertions = commaClauses(clause).flatMap((assertion) => assertion.split(commaNamedAssertion));
+  .flatMap((part) => part.split(coordinatedAssertion).flatMap((assertion) => assertion.split(coordinatedNamedAssertion)).flatMap((clause) => {
+    const assertions = punctuatedClauses(clause).flatMap((assertion) => assertion.split(punctuatedNamedAssertion));
     // An introductory fragment does not establish the first subject. Keep it
     // attached so the caller can decline unsupported attribution/stage grammar.
     return subjectPredicate.test(assertions[0]!.trim()) ? assertions : [clause];
@@ -84,6 +90,16 @@ const pluralAssertion = new RegExp(`^${pluralSubjectPredicate}`, "i");
 export const hasUnboundReleaseAction = (
   clause: string, publisher: string, hasPrimarySubject = false, scope?: ReleaseDescriptionScope,
 ): boolean => {
+  // A description is permission for one assertion, never for an unchecked
+  // remainder. Also enforce this when callers supply a complete statement.
+  const assertions = releaseEventClauses(clause);
+  if (assertions.length > 1) {
+    const first = assertions[0]!;
+    const describedSubject = hasPrimarySubject || product.test(first) || reference.test(first);
+    return assertions.some((assertion, index) => hasUnboundReleaseAction(
+      assertion, publisher, index === 0 ? hasPrimarySubject : describedSubject, scope,
+    ));
+  }
   let text = clause.replace(/^[-*\s]+/, "").replace(/^and\s+/i, "");
   // A locative/measurement adjunct does not replace the actual subject. Never
   // strip an adjunct containing its own completed action.
