@@ -37,6 +37,7 @@ describe.each(releaseWorkloadCases)("native R10: $name", ({ inputs, mayMerge }) 
       const decisions = pairs.map((pair) => ({
         leftFeedItemId: pair.leftFeedItemId,
         rightFeedItemId: control === "unknown-pair" ? "unknown" : pair.rightFeedItemId,
+        rationale: "Deterministic TEST wire annotation; not model evidence.",
         sameStory: control === "invalid-boolean" ? "true" : control !== "false",
         confidenceScore: control === "invalid-confidence" ? 1.1 : control === "below" ? 0.919999 : control === "true092" ? 0.92 : 1,
       }));

@@ -8,6 +8,7 @@ import type {
 } from "../../ports";
 import { InvalidStoryRelationDecisionBatchError } from "../../ports";
 import {
+  AgentRuntimeModelProviderError,
   buildAgentRuntimeRequestId,
   nonEmptyOrFallback,
   parsePositiveInteger,
@@ -37,6 +38,8 @@ import {
   assertActiveReaderSummaryProvider,
   parseActiveReaderSummaryModel,
 } from "./active-reader-summary-generation-profile";
+
+import { assertStoryRelationResponseSchema } from "./story-relation-response-schema";
 
 export type AgentRuntimeReaderSummaryStoryRelationVerifierOptions = Pick<
   AgentRuntimeReaderSummaryModelAdapterOptions,
@@ -183,6 +186,10 @@ export class AgentRuntimeReaderSummaryStoryRelationVerifier implements ReaderSum
       "Reader summary story relation verifier",
     );
 
+    // Preserve the related-lane envelope failure contract before wire validation.
+    if (relatedTopicLane) readDecisionEnvelope(raw);
+    assertStoryRelationResponseSchema(raw, command.outputSchema);
+
     const decisions = relatedTopicLane
       ? readDecisionEnvelope(raw)
       : normalizeBinaryDecisions(raw);
@@ -281,7 +288,15 @@ const invalidDecisionEnvelope = (
 ): Error => new InvalidStoryRelationDecisionBatchError(reason);
 
 const parseJsonObject = (value: string): Record<string, unknown> => {
-  const parsed: unknown = JSON.parse(value);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    throw new AgentRuntimeModelProviderError({
+      kind: "invalid_schema", retryable: false,
+      message: "Reader summary story relation response is not valid JSON",
+    });
+  }
   if (!isRecord(parsed)) {
     throw invalidDecisionEnvelope("envelope_invalid_shape");
   }

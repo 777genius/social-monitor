@@ -23,6 +23,8 @@ describe("story relation decision trace", () => {
       ],
     });
 
+    // Inner annotations remain optional even though the outer wire schema requires rationale.
+    expect(decision("a", "b", true, 0.97)).not.toHaveProperty("rationale");
     expect(result.responseAccepted).toBe(true);
     expect(result.approvedPairs).toEqual(new Set(["a\u0000b"]));
     expect(result.traces.map(({ disposition, applied }) => ({ disposition, applied }))).toEqual([

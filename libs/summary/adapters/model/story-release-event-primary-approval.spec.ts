@@ -63,6 +63,7 @@ describe.each(cases)("offline adapter to final guard: $name", ({ inputs, mayMerg
         status: "completed", warnings: [], structuredOutput: {
           decisions: control.name === "missing" ? [] : [{
             leftFeedItemId: candidate.leftFeedItemId, rightFeedItemId: candidate.rightFeedItemId,
+            rationale: "Deterministic TEST wire annotation; not model evidence.",
             sameStory: control.sameStory, confidenceScore: control.confidenceScore,
           }],
         },
@@ -81,7 +82,7 @@ describe.each(cases)("offline adapter to final guard: $name", ({ inputs, mayMerg
         startedAt: new Date("2026-09-01T00:00:00Z"), endedAt: new Date("2026-09-02T00:00:00Z") },
       requestedAt: now, evidence: items, clusters: initial.clusters, candidates,
     }).catch((error: unknown) => {
-      expect(["refusal", "no output"]).toContain(control.name);
+      expect(["refusal", "no output", "invalid confidence", "invalid boolean"]).toContain(control.name);
       expect(error).toBeInstanceOf(Error);
       return [];
     });

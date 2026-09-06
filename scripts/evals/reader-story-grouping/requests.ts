@@ -1,3 +1,5 @@
+import { assertStoryRelationResponseSchema } from
+  "@social-monitor/summary/adapters/model/story-relation-response-schema";
 import { AgentRuntimeReaderSummaryStoryRelationVerifier } from
   "@social-monitor/summary/adapters/model/agent-runtime-reader-summary-story-relation-verifier.adapter";
 import type { AgentRuntimeClientPort, AgentRuntimeTaskCommand, AgentRuntimeTaskResult } from
@@ -105,6 +107,8 @@ export const checkReceiptBinding = (manifest: RequestManifest, receipt: CaptureR
 };
 export const normalizeCapturedResponse = async (p: PreparedBlock, envelope: RequestEnvelope,
   result: AgentRuntimeTaskResult): Promise<readonly unknown[]> => {
+  // Both live (after saving the original row) and import use this strict boundary.
+  assertStoryRelationResponseSchema(result.structuredOutput, envelope.command.outputSchema);
   const client: AgentRuntimeClientPort = {
     runTask: async (command) => {
       check(canonicalJsonSha256(command) === envelope.commandSha256, "Adapter command changed on response replay");

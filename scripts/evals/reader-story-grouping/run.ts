@@ -48,8 +48,6 @@ export const run = async (args: string[]): Promise<void> => {
     const response = receipt?.responses.find((r) => r.blockId === p.block.id);
     let decisions: readonly unknown[] | undefined;
     if (response && envelope) {
-      const validator = new Ajv({ allErrors: true }).compile(envelope.command.outputSchema);
-      check(validator(response.result.structuredOutput), `Invalid production output schema ${p.block.id}`);
       decisions = await normalizeCapturedResponse(p, envelope, response.result);
     }
     const outcome = applyDecisions(p, decisions);
