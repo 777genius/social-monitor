@@ -32,9 +32,16 @@ export const buildReaderPostPromotionReasons = (params: {
   // the complete summary, including qualifications; never salvage a claim by
   // dropping its out-of-scope citation or clipping its limiting sentence.
   const story = params.stories.find((candidate) =>
+    candidate.readerReasonProvenance?.kind === "model" &&
+    candidate.readerReasonProvenance.originalStoryClusterId ===
+      selected.candidate.clusterId &&
+    candidate.readerReasonProvenance.originalCitationIds.includes(
+      selected.candidate.citationId,
+    ) &&
+    candidate.readerReasonProvenance.originalCitationIds.every((id) =>
+      selected.citationIds.includes(id)) &&
+    candidate.readerReasonProvenance.originalSummary === candidate.summary &&
     candidate.storyClusterId === selected.candidate.clusterId &&
-    candidate.citationIds.includes(selected.candidate.citationId) &&
-    candidate.citationIds.every((id) => selected.citationIds.includes(id)) &&
     candidate.summary.trim().length >= 40 &&
     !isReaderTitleReasonDuplicate(candidate.title, candidate.summary) &&
     usable(candidate.summary));

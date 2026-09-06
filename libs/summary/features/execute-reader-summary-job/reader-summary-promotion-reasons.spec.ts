@@ -2,11 +2,20 @@ import { artifact, dailyEvidenceSelection } from
   "../../domain/policies/reader-summary-publication-policy-test-fixtures";
 import { buildReaderSummaryDraftWithPromotionContent } from
   "./reader-summary-promotion-content";
+import type { TopReadCandidate } from "../../domain/entities/top-read";
 
 const placeholder = "Authoritative promotion snapshot candidate";
 const substantive = "A developer reports that the new agent kept tool results across a resumed session, " +
   "avoiding a repeated repository scan. The report covers one workflow and includes no controlled " +
   "latency comparison, so it does not establish a general performance improvement.";
+
+const authoredStory = (story: TopReadCandidate): TopReadCandidate => ({
+  ...story,
+  readerReasonProvenance: {
+    kind: "model", originalStoryClusterId: story.storyClusterId,
+    originalCitationIds: [...story.citationIds], originalSummary: story.summary,
+  },
+});
 
 const fixture = () => {
   const base = dailyEvidenceSelection(25);
@@ -21,7 +30,7 @@ const fixture = () => {
   };
   const draft = {
     ...artifact().toSnapshot(),
-    topStories: [{ ...artifact().toSnapshot().topStories[0]!, summary: substantive }],
+    topStories: [authoredStory({ ...artifact().toSnapshot().topStories[0]!, summary: substantive })],
     citationMap: evidence.selectedEvidence.map((item, index) => ({
       citationId: `citation-publication-${index + 1}`,
       feedItemId: item.feedItemId, sourceItemId: item.sourceItemId,
@@ -74,7 +83,7 @@ describe("promotion reader explanations", () => {
   ])("does not borrow, clip, or expose unusable model prose: %j", (override) => {
     const { evidence, draft } = fixture();
     const result = buildReaderSummaryDraftWithPromotionContent(evidence, {
-      ...draft, topStories: [{ ...draft.topStories[0]!, ...override }],
+      ...draft, topStories: [authoredStory({ ...draft.topStories[0]!, ...override })],
     });
     expect(result.content.topReads[0]?.reason).toBe(
       "Selected with 1 cited source in this summary window.",
