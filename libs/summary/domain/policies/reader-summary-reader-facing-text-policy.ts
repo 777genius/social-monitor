@@ -13,25 +13,13 @@ export const canRecoverReaderTitleSentence = (
   sentences.every((sentence, otherIndex) => otherIndex === index || !(
     /\?/u.test(sentence) ||
     /\b(?:not(?!\s+(?:just|only)\b)|no|neither|nor|none|never|false|untrue|incorrect|misleading|deny|denies|denied|denying|denials?|refut(?:e[ds]?|ing|ation)|debunk(?:s|ed|ing)?|disprov(?:e[ds]?|ing)|without|cannot|unverified|uncertain|unconfirmed|allegedly|reportedly|rumou?rs?|speculat\w*|hypothetical|fiction\w*|satir\w*|imagine|suppose|if|unless|might|may|could|would|must|should|pending)\b/iu.test(
-      continuityContext(sentence, sentences[index] ?? ""),
+      sentence,
     ) ||
     /\b\w+n['’]t\b/iu.test(sentence) ||
     /\b(?:following|preceding|above|below)\s+(?:claim|statement|assertion|account)\b/iu.test(sentence) ||
     /\b(?:breaking|just\s+in)\s*:/iu.test(sentence)
   ))
 );
-
-// A standalone continuity idiom about the same named subject affirms its
-// presence. Do not exempt anaphoric subjects, motion claims, or extra clauses.
-const continuityContext = (sentence: string, candidate: string): string => {
-  const subject = /^([\p{L}\p{N}-]+)\s+is\s+not\s+going\s+anywhere[.!]?$/iu
-    .exec(sentence.trim())?.[1];
-  return subject !== undefined &&
-    !/^(?:it|this|that|he|she|what|nothing|neither|none)$/iu.test(subject) &&
-    candidate.trim().toLowerCase().startsWith(`${subject.toLowerCase()} is `)
-    ? ""
-    : sentence;
-};
 
 export const isConversationalOrTruncatedReaderTitle = (
   value: string,

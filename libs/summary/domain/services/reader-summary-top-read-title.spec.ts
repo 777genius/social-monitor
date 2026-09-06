@@ -58,6 +58,12 @@ describe("reader summary top read title", () => {
       expect(hasReaderFacingPromotionTitle(item)).toBe(false);
     });
 
+    it("rejects literal motion conflicting with omitted context", () => {
+      const item = itemFor(`${longContext} Atlas is moving toward the operator. Atlas is not going anywhere.`);
+      expect(buildReaderPostPromotionTitle({ lead: item }))
+        .toBe("Atlas is not going anywhere");
+    });
+
     it.each([
       "Neither assertion about automatic agent writes across public websites and bypassing required human approval reflects actual product behavior. Atlas enables automatic agent writes. Atlas bypasses human approval.",
       `${longContext} Atlas enables automatic agent writes. Atlas bypasses human approval. Neither assertion is true.`,
@@ -87,13 +93,6 @@ describe("reader summary top read title", () => {
       expect(hasReaderFacingPromotionTitle(item)).toBe(true);
     });
 
-    it.each(["codex", "beacon"])("recovers lowercase product prose for %s", (product) => {
-      const claim = `${product} is the core of our new work product and what makes it so good`;
-      const body = `check this out! you can get some amazing things done. ${claim}. ${product} is not going anywhere.`;
-      expect(buildReaderPostPromotionTitle({ lead: itemFor(body) }))
-        .toBe(claim[0]?.toUpperCase() + claim.slice(1));
-    });
-
     it.each([
       "neither assertion is true.",
       "nor is the assertion true.",
@@ -101,8 +100,11 @@ describe("reader summary top read title", () => {
       "beacon is not the core of the product.",
       "beacon is not going anywhere, but the assertion is false.",
       "it is not going anywhere.",
-    ])("keeps qualifications in lowercase teaser prose: %s", (qualification) => {
-      const body = `check this out! you can get some amazing things done. beacon is the core of our new work product and what makes it so good. ${qualification}`;
+    ])("keeps qualifications in newly recovered lowercase prose: %s", (qualification) => {
+      // Preview recovery is new only after the first substantive sentence;
+      // summary recovery is new even when the preceding sentences are teasers.
+      const context = path === "preview" ? `${longContext} ` : "";
+      const body = `check this out! you can get some amazing things done. ${context}beacon is the core of our new work product and what makes it so good. ${qualification}`;
       const item = itemFor(body);
       const title = buildReaderPostPromotionTitle({ lead: item });
       expect(title).not.toBe("Beacon is the core of our new work product and what makes it so good");
@@ -110,6 +112,30 @@ describe("reader summary top read title", () => {
         expect(title.toLowerCase()).toContain(qualification.replace(/\.$/u, ""));
       }
     });
+  });
+
+  it.each(["codex", "beacon"])("preserves legacy preview teaser skipping for %s", (product) => {
+    const claim = `${product} is the core of our new work product and what makes it so good`;
+    const body = `check this out! you can get some amazing things done. ${claim}. ${product} is not going anywhere.`;
+    const item = evidence({ title: `${body.slice(0, 100)}...`, bodyPreview: body });
+    expect(buildReaderPostPromotionTitle({ lead: item }))
+      .toBe(claim[0]?.toUpperCase() + claim.slice(1));
+  });
+
+  it("keeps the context guard for summary teaser skipping", () => {
+    const body = "check this out! you can get some amazing things done. codex is the core of our new work product and what makes it so good. codex is not going anywhere.";
+    expect(buildTopReadTitle({
+      storyTitle: "Check this out!", storySummary: body,
+      primaryEvidence: undefined, evidence: [],
+    })).toBe("Codex is not going anywhere");
+  });
+
+  it("does not extend legacy preview skipping beyond the first substantive index", () => {
+    const claim = "codex is the core of our new work product and what makes it so good";
+    const body = `check this out! you can get some amazing things done. ${longContext} ${claim}. codex is not going anywhere.`;
+    const item = evidence({ title: `${body.slice(0, 100)}...`, bodyPreview: body });
+    expect(buildReaderPostPromotionTitle({ lead: item }))
+      .toBe("Codex is not going anywhere");
   });
 
   it.each([118, 119, 120, 139, 140, 141])(

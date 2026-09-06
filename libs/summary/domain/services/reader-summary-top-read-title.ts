@@ -149,13 +149,19 @@ const cleanPreviewTitle = (value: string): string => {
 
 const previewSentenceForTitle = (value: string): string => {
   const sentences = readerTitleSentences(value);
+  // Legacy preview extraction already skipped teasers to the first substantive
+  // sentence. Only recovery beyond that exact index newly omits context.
+  const legacySubstantiveIndex = sentences.findIndex((sentence) =>
+    sentence.length >= 24 && !isLowInformationTeaser(sentence),
+  );
 
   return (
     sentences.find(
       (sentence, index) => (index === 0 || (
         /[.!?]$/u.test(sentence) && !/(?:\.{2,}|…)/u.test(sentence)
       )) &&
-        canRecoverReaderTitleSentence(sentences, index) &&
+        (index === legacySubstantiveIndex ||
+          canRecoverReaderTitleSentence(sentences, index)) &&
         sentence.length >= 24 &&
         !isLowInformationTeaser(sentence) &&
         isReaderFacingTopReadTitle(compactReaderTitle(sentence)),

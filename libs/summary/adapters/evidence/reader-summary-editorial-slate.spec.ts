@@ -50,6 +50,14 @@ describe("Reader Promotion V2 editorial slate", () => {
       expect(compose([xEvidence("short-source", 89), higher]).orderedCandidateIds)
         .toEqual(["negated-source", "short-source"]);
     });
+
+    it("rejects the conflicting motion title and ranks only the retained negative statement", () => {
+      const higher = withBody(`${context} Atlas is moving toward the operator. Atlas is not going anywhere.`);
+      expect(buildReaderPostPromotionTitle({ lead: higher }))
+        .toBe("Atlas is not going anywhere");
+      expect(compose([xEvidence("short-source", 89), higher]).orderedCandidateIds)
+        .toEqual(["negated-source", "short-source"]);
+    });
   });
 
   it.each(["full", "truncated"])(
