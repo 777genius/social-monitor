@@ -28,11 +28,13 @@ describe("promotion snapshot reader reasons", () => {
     const canonical = classifyFeedPromotionEligibility({ providerKey, providerMetadata });
     if (!canonical.eligible) throw new Error("Expected eligible fixture metrics");
     const result = await rankPromotionSnapshot({
-      command: { tenantId: tenant, workspaceId: workspace,
+      command: { tenantId: tenant, workspaceId: workspace, limit: 1,
         publishedAtOrAfter: new Date("2026-09-06T00:00:00.000Z"),
         publishedBefore: new Date("2026-09-07T00:00:00.000Z") },
       feedItems: {
         list: async () => ({ items: [] }),
+        findById: async (query) => query.tenantId === tenant &&
+          query.workspaceId === workspace && query.feedItemId === "lead" ? item : null,
         readPromotionSnapshot: async () => ({
           ok: true, candidates: [{ item, canonical }], physicalRowsRead: 1, exhausted: true,
           sourceContent: [{ feedItemId: "lead", sourceItemId: "source-lead", body: item.toSnapshot().bodyPreview }],
