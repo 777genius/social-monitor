@@ -153,7 +153,10 @@ async function mutateFixtureSlot(
   await db.$queryRaw`select pg_catalog.set_config('role', ${role.runtime_role}, true)`;
   return count;
 }
-if (require.main === module) void main().catch(() => {
-  console.error("Native new-input refresh fixture gate failed; inspect the disposable fixture. No raw payload is logged.");
+if (require.main === module) void main().catch((error: unknown) => {
+  // Keep only source locations, never database errors, SQL or candidate payloads.
+  const frames = error instanceof Error ? error.stack?.split("\n").slice(1)
+    .filter((line) => /^\s+at /.test(line)).slice(0, 8) : [];
+  console.error(JSON.stringify({ status: "failed", frames }));
   process.exitCode = 1;
 });
