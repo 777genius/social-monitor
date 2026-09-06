@@ -6,6 +6,7 @@ import { isUnpolishedReaderTitle } from
   "../policies/reader-summary-reader-facing-text-policy";
 
 describe("reader summary top read title", () => {
+  const longContext = "Atlas documents agent safety findings across public websites and proposes reporting standards for misalignment incidents and model properties.";
   describe.each(["summary", "preview"])("%s sentence recovery", (path) => {
     const itemFor = (body: string): SummaryEvidenceItem => evidence({
       title: path === "summary" ? body : `${body.slice(0, 100)}...`,
@@ -55,6 +56,59 @@ describe("reader summary top read title", () => {
     it("does not discard a subsequent qualification", () => {
       const item = itemFor(`${longContext} Atlas enables automatic agent writes. That claim is false.`);
       expect(hasReaderFacingPromotionTitle(item)).toBe(false);
+    });
+
+    it.each([
+      "Neither assertion about automatic agent writes across public websites and bypassing required human approval reflects actual product behavior. Atlas enables automatic agent writes. Atlas bypasses human approval.",
+      `${longContext} Atlas enables automatic agent writes. Atlas bypasses human approval. Neither assertion is true.`,
+      `${longContext} Atlas enables automatic agent writes. Nor is the assertion about bypassing approval true.`,
+      `${longContext} Atlas enables automatic agent writes. None of these assertions is true.`,
+      ...["denying", "denial", "refuted", "debunked", "disproved"].map((form) =>
+        `Researchers documented ${form} claims about automatic agent writes across public websites and bypassing required human approval in a detailed safety report. Atlas enables automatic agent writes.`),
+      ...["denied", "refuted", "debunked", "disproved"].map((form) =>
+        `${longContext} Atlas enables automatic agent writes. Both assertions were ${form}.`),
+    ])("rejects contextual lexical negation: %s", (body) => {
+      const item = itemFor(body);
+      expect(buildReaderPostPromotionTitle({ lead: item }))
+        .toBe("Current AI product discussion");
+      expect(hasReaderFacingPromotionTitle(item)).toBe(false);
+    });
+
+    it.each([
+      "Atlas enables neither automatic writes nor approval bypasses",
+      "Neither Atlas nor Beacon enables automatic writes",
+      "Atlas denies enabling automatic agent writes",
+      "Atlas refuted claims of automatic agent writes",
+      "Atlas debunked claims of automatic agent writes",
+      "Atlas disproved claims of automatic agent writes",
+    ])("retains explicit negation in a self-contained candidate: %s", (claim) => {
+      const item = itemFor(`${longContext} ${claim}.`);
+      expect(buildReaderPostPromotionTitle({ lead: item })).toBe(claim);
+      expect(hasReaderFacingPromotionTitle(item)).toBe(true);
+    });
+
+    it.each(["codex", "beacon"])("recovers lowercase product prose for %s", (product) => {
+      const claim = `${product} is the core of our new work product and what makes it so good`;
+      const body = `check this out! you can get some amazing things done. ${claim}. ${product} is not going anywhere.`;
+      expect(buildReaderPostPromotionTitle({ lead: itemFor(body) }))
+        .toBe(claim[0]?.toUpperCase() + claim.slice(1));
+    });
+
+    it.each([
+      "neither assertion is true.",
+      "nor is the assertion true.",
+      "that claim is false.",
+      "beacon is not the core of the product.",
+      "beacon is not going anywhere, but the assertion is false.",
+      "it is not going anywhere.",
+    ])("keeps qualifications in lowercase teaser prose: %s", (qualification) => {
+      const body = `check this out! you can get some amazing things done. beacon is the core of our new work product and what makes it so good. ${qualification}`;
+      const item = itemFor(body);
+      const title = buildReaderPostPromotionTitle({ lead: item });
+      expect(title).not.toBe("Beacon is the core of our new work product and what makes it so good");
+      if (hasReaderFacingPromotionTitle(item)) {
+        expect(title.toLowerCase()).toContain(qualification.replace(/\.$/u, ""));
+      }
     });
   });
 
@@ -291,7 +345,6 @@ describe("reader summary top read title", () => {
   });
 });
 
-const longContext = "Atlas documents agent safety findings across public websites and proposes reporting standards for misalignment incidents and model properties.";
 
 const evidence = (
   overrides: Partial<SummaryEvidenceItem>,

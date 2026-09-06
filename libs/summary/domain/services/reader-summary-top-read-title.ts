@@ -248,11 +248,12 @@ const readerTitleSentences = (value: string): readonly string[] => {
   let current = "";
   for (const part of value.trim().split(/(?<=[.!?])\s+/u)) {
     // Titles/initials and dotted abbreviations are not sentence boundaries.
-    // Ambiguous lowercase continuations are kept together (and may exceed the
-    // title budget) rather than risking an incomplete claim.
+    // Lowercase social prose can start a sentence after a teaser or with an
+    // explicit subject/copula. Keep other ambiguous continuations attached.
     if (current.length > 0 && !(
       /(?:\b(?:dr|mr|mrs|ms|prof|sr|jr|st|vs|etc)\.|\b\p{L}\.|(?:\p{L}\.){2,})$/iu.test(current) ||
-      /^\p{Ll}/u.test(part)
+      (/^\p{Ll}/u.test(part) && !isLowInformationTeaser(current) &&
+        !/^[\p{L}\p{N}-]+\s+(?:is|are|was|were)\b/iu.test(part))
     )) {
       sentences.push(current);
       current = "";

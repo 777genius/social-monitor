@@ -19,6 +19,39 @@ const publishedAt = new Date("2026-08-29T12:00:00.000Z");
 const observedAt = new Date("2026-08-29T13:00:00.000Z");
 
 describe("Reader Promotion V2 editorial slate", () => {
+  describe.each(["full", "truncated"])("contextual negation with %s X titles", (kind) => {
+    const context = "Atlas documents agent safety findings across public websites and proposes reporting standards for misalignment incidents and model properties.";
+    const withBody = (body: string): SummaryEvidenceItem => ({
+      ...xEvidence("negated-source", 3230),
+      title: kind === "full" ? body : `X post by @lab: ${body.slice(0, 100)}...`,
+      bodyPreview: body,
+      whyImportant: [],
+    });
+
+    it.each([
+      "Neither assertion about automatic agent writes across public websites and bypassing required human approval reflects actual product behavior. Atlas enables automatic agent writes. Atlas bypasses human approval.",
+      `${context} Atlas enables automatic agent writes. Atlas bypasses human approval. Neither assertion is true.`,
+    ])("excludes 3230 before ranking against 89: %s", (body) => {
+      const higher = withBody(body);
+      const lower = xEvidence("short-source", 89);
+      const slate = compose([lower, higher]);
+      expect(slate.orderedCandidateIds).toEqual(["short-source"]);
+      expect(readerSummaryPromotionV2Candidate(higher, selection([higher], []))
+        ?.admission.qualityFloorMet).toBe(false);
+      expect(buildReaderPostPromotionTitle({ lead: higher }))
+        .toBe("Current AI product discussion");
+      expect(compose([higher, lower])).toEqual(slate);
+    });
+
+    it("keeps a self-contained negative candidate eligible for popularity ranking", () => {
+      const claim = "Atlas enables neither automatic writes nor approval bypasses";
+      const higher = withBody(`${context} ${claim}.`);
+      expect(buildReaderPostPromotionTitle({ lead: higher })).toBe(claim);
+      expect(compose([xEvidence("short-source", 89), higher]).orderedCandidateIds)
+        .toEqual(["negated-source", "short-source"]);
+    });
+  });
+
   it.each(["full", "truncated"])(
     "rejects a qualified viral claim with a %s title before popularity ranking",
     (titleKind) => {
