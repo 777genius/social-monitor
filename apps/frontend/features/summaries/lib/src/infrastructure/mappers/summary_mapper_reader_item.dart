@@ -140,11 +140,7 @@ extension on SummaryMapper {
       promotionAttestation: promotionAttestation,
       title: _nonEmpty(dto.title, fallback: 'Untitled item'),
       providerKey: _nonEmpty(dto.providerKey, fallback: 'unknown'),
-      reason: _safeText(
-        dto.reason,
-        fallback: 'Selected as relevant evidence',
-        maxLength: 720,
-      ),
+      reason: _readerItemReason(dto.reason, dto.title),
       matchedInterestIds: _safeTextList(dto.matchedInterestIds),
       matchedRules: _safeTextList(dto.matchedRules),
       signalScore: SignalScore.normalized(dto.signalScore),
@@ -170,7 +166,10 @@ extension on SummaryMapper {
             ),
           )
           .toList(growable: false),
-      whyImportant: _safeTextList(dto.whyImportant, maxLength: 720),
+      whyImportant: dto.whyImportant
+          .map((value) => _readerItemReason(value, dto.title))
+          .where((value) => value.isNotEmpty)
+          .toList(growable: false),
       whyNow: _safeText(
         dto.whyNow,
         fallback: 'Selected in the current summary window',
@@ -180,6 +179,16 @@ extension on SummaryMapper {
       canonicalUrl: _safeUrl(dto.canonicalUrl),
       previewMedia: _previewMediaToDomain(dto.previewMedia),
     );
+  }
+
+  String _readerItemReason(String value, String sourceText) {
+    // Detect source-derived copy before whitespace folding or truncation can
+    // detach its qualifications. The complete source remains in the title;
+    // presentation discloses it and can still use independent editorial reasons.
+    final source = sourceText.replaceAll(RegExp(r'\s+'), ' ').trim();
+    final reason = value.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (source.isNotEmpty && reason.contains(source)) return '';
+    return _safeText(value, fallback: '', maxLength: 720);
   }
 
   ReaderPostPromotionAttestation? _promotionAttestationToDomain(

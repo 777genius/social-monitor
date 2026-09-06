@@ -13,7 +13,7 @@ import {
   type SummaryEvidenceItem,
   type SummaryEvidenceSelection,
 } from "../../domain";
-import { hasReaderFacingPromotionTitle } from
+import { hasReaderFacingPromotionSource } from
   "../../domain/services/reader-post-promotion-title";
 
 export const readerSummaryPromotionV2Candidate = (
@@ -40,7 +40,7 @@ export const readerSummaryPromotionV2Candidate = (
         quality.needsLlmReview === false &&
         quality.decision !== "downrank" &&
         quality.decision !== "reject" &&
-        hasReaderFacingPromotionTitle(item),
+        hasReaderFacingPromotionSource(item),
       integrityFloorMet: quality?.engagementIntegrityScore !== undefined,
       safetyFloorMet: facts.safetyValid,
       freshnessFloorMet: validFreshness(item, selection),

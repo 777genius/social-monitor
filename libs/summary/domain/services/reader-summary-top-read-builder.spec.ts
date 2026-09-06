@@ -97,7 +97,7 @@ describe("reader summary top read builder", () => {
     );
 
     expect(topRead.title).toBe(
-      "Claude Code tracker raises telemetry questions",
+      "Claude Code tracker raises telemetry questions\n\nDevelopers are debating what Claude Code usage tracking means.",
     );
     expect(topRead.reason).toBe(
       "The post explains why Claude Code tracking concerns matter for developer teams.",
@@ -524,7 +524,7 @@ describe("reader summary top read builder", () => {
     expect(topRead.reason).toContain("operating cost");
   });
 
-  it("skips teaser sentences when a truncated X post has a useful title", () => {
+  it("retains teaser context and qualification from a truncated X post", () => {
     const story: TopReadCandidate = {
       storyClusterId: "story:codex-work",
       title: "Check this out",
@@ -557,7 +557,7 @@ describe("reader summary top read builder", () => {
     );
 
     expect(topRead.title).toBe(
-      "Codex is the core of our new work product and what makes it so good",
+      evidence.bodyPreview,
     );
   });
 
@@ -609,10 +609,10 @@ describe("reader summary top read builder", () => {
     );
 
     expect(topRead.reason).toBe(
-      "The report states: The update records how connected MCP servers access files, networks and local tools.",
+      "The report states: RSS explains an AI agent security update\n\nThe update records how connected MCP servers access files, networks and local tools. Teams can use the audit data before granting production permissions.",
     );
-    expect(topRead.title).toBe("RSS explains an AI agent security update");
-    expect(topRead.reason).not.toContain(topRead.title);
+    expect(topRead.title).toBe("RSS explains an AI agent security update\n\nThe update records how connected MCP servers access files, networks and local tools. Teams can use the audit data before granting production permissions.");
+    expect(topRead.reason).toContain(topRead.title);
     expect(topRead.reason).not.toContain("source-reported");
   });
 
@@ -656,7 +656,7 @@ describe("reader summary top read builder", () => {
       evidenceClusterMap([], evidenceByFeedItemId),
     );
 
-    expect(topRead.title).toBe("GPT-Live voice models roll out in ChatGPT");
+    expect(topRead.title).toBe("GPT-Live makes voice interaction faster");
   });
 
   it("labels an unverified breaking X hook without hiding its subject", () => {
@@ -697,7 +697,7 @@ describe("reader summary top read builder", () => {
     );
 
     expect(topRead.title).toBe(
-      "Unverified report: US government grants OpenAI approval to release GPT 5.6",
+      "JUST IN: US government grants OpenAI approval to release GPT 5.6",
     );
     expect(topRead.reason).toContain("should not be treated as confirmation");
   });
@@ -749,14 +749,14 @@ describe("reader summary top read builder", () => {
     );
 
     expect(topRead.title).toBe(
-      "Sol, Terra, and Luna, our GPT-5.6 family, are starting to roll out now in ChatGPT, Codex, and the API",
+      evidence.bodyPreview,
     );
     expect(topRead.reason).toBe(
-      "OpenAI's first-party post provides direct evidence for this update: Sol, Terra, and Luna, our GPT-5.6 family, are starting to roll out now in ChatGPT, Codex, and the API.",
+      "OpenAI's first-party post provides direct evidence for this update: Sol, Terra, and Luna, our GPT-5.6 family, are starting to roll out now in ChatGPT, Codex, and the API. https://t.co/example.",
     );
   });
 
-  it("normalizes a conversational X hook when the model copies it", () => {
+  it("preserves the available conversational X source", () => {
     const story: TopReadCandidate = {
       storyClusterId: "story:fable-demo",
       title:
@@ -797,7 +797,7 @@ describe("reader summary top read builder", () => {
       evidenceClusterMap([], evidenceByFeedItemId),
     );
 
-    expect(topRead.title).toBe("A high-engagement Fable workflow experiment");
+    expect(topRead.title).toBe("what happens when Fable spends a full week of credits...");
   });
 
   it("marks an eligible official first-party announcement as medium confidence", () => {
@@ -929,7 +929,7 @@ const evidenceItem = (
   providerName: "Hacker News",
   canonicalUrl: "https://example.com/claude-code-tracker",
   title: "Claude Code tracker",
-  bodyPreview: "A source post discusses Claude Code tracking.",
+  bodyPreview: undefined,
   publishedAt: new Date("2026-07-06T09:00:00.000Z"),
   observedAt: new Date("2026-07-06T09:05:00.000Z"),
   score: 2.1,

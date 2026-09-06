@@ -1,20 +1,145 @@
 import type {
-  StoryCluster,
   SummaryEvidenceItem,
-  SummaryEvidenceSelection,
 } from "../../domain";
 import { buildReaderPostPromotionProjection } from "../../domain";
+import { buildReaderPostPromotionTitle, hasReaderFacingPromotionTitle } from
+  "../../domain/services/reader-post-promotion-title";
+import { readerSummaryPromotionV2Candidate } from
+  "./reader-summary-editorial-candidate";
 import {
   composeReaderSummaryEditorialSlate,
   materializeReaderSummaryEditorialSlate,
 } from "./reader-summary-editorial-slate";
 
-const periodStartedAt = new Date("2026-08-29T00:00:00.000Z");
-const periodEndedAt = new Date("2026-08-30T00:00:00.000Z");
-const publishedAt = new Date("2026-08-29T12:00:00.000Z");
-const observedAt = new Date("2026-08-29T13:00:00.000Z");
+import { compose, selection, xEvidence, redditEvidence, hackerNewsEvidence, storyCluster } from
+  "./reader-summary-editorial-slate.spec-support";
 
 describe("Reader Promotion V2 editorial slate", () => {
+  describe.each(["full", "truncated"])("contextual negation with %s X titles", (kind) => {
+    const context = "Atlas documents agent safety findings across public websites and proposes reporting standards for misalignment incidents and model properties.";
+    const withBody = (body: string): SummaryEvidenceItem => ({
+      ...xEvidence("negated-source", 3230),
+      title: kind === "full" ? body : `X post by @lab: ${body.slice(0, 100)}...`,
+      bodyPreview: body,
+      whyImportant: [],
+    });
+
+    it.each([
+      ...["We walked it back.", "We have walked that back.", "We are walking this back.",
+        "We walked those statements back.", "We have walked-back earlier coverage.",
+        "We walked our earlier widely circulated statements back.",
+        "We walked Dr. Smith's announcement back.",
+        "We walked J. Smith's announcement back.",
+        "We walked version 2.0 back.",
+        "We walked outdoors. back at camp, teams shared dinner.",
+        "We walked our earlier public-facing statements back.",
+        "We walked our earlier—public-facing, widely circulated—statements back.",
+        ...[5, 10, 30].flatMap((length) =>
+          ["walk", "walks", "walked", "walking"].map((verb) =>
+            `We ${verb} ${"published ".repeat(length)}back.`,
+          ),
+        ),
+      ].flatMap((retraction) => [
+        `${context} Atlas bypasses human approval. ${retraction}`,
+        `${context} ${retraction} Atlas bypasses human approval.`,
+      ]),
+      `${context} Atlas bypasses human approval. That claim has been retracted.`,
+      `${context} The assertion has been withdrawn. Atlas bypasses human approval.`,
+      `${context} Atlas bypasses human approval. This finding needs context.`,
+      "Neither assertion about automatic agent writes across public websites and bypassing required human approval reflects actual product behavior. Atlas enables automatic agent writes. Atlas bypasses human approval.",
+      `${context} Atlas enables automatic agent writes. Atlas bypasses human approval. Neither assertion is true.`,
+    ])("admits contextual source at 3230 against 89: %s", (body) => {
+      const higher = withBody(body);
+      const lower = xEvidence("short-source", 89);
+      const slate = compose([lower, higher]);
+      expect(slate.orderedCandidateIds).toEqual(["negated-source", "short-source"]);
+      expect(readerSummaryPromotionV2Candidate(higher, selection([higher], []))
+        ?.admission.qualityFloorMet).toBe(true);
+      expect(buildReaderPostPromotionTitle({ lead: higher }))
+        .toBe(body);
+      expect(compose([higher, lower])).toEqual(slate);
+    });
+
+    it("keeps a self-contained negative candidate eligible for popularity ranking", () => {
+      const claim = "Atlas enables neither automatic writes nor approval bypasses";
+      const higher = withBody(`${context} ${claim}.`);
+      expect(buildReaderPostPromotionTitle({ lead: higher })).toBe(higher.bodyPreview);
+      expect(compose([xEvidence("short-source", 89), higher]).orderedCandidateIds)
+        .toEqual(["negated-source", "short-source"]);
+    });
+
+    it("preserves both the motion statement and qualification", () => {
+      const higher = withBody(`${context} Atlas is moving toward the operator. Atlas is not going anywhere.`);
+      expect(buildReaderPostPromotionTitle({ lead: higher }))
+        .toBe(higher.bodyPreview);
+      expect(compose([xEvidence("short-source", 89), higher]).orderedCandidateIds)
+        .toEqual(["negated-source", "short-source"]);
+    });
+  });
+
+  it.each(["full", "truncated"])(
+    "preserves a qualified viral source with a %s title before popularity ranking",
+    (titleKind) => {
+      const body = "The following claim about automatic agent writes on public websites is false and must not be treated as an announcement of actual product behavior. Atlas enables automatic agent writes.";
+      const higher = {
+        ...xEvidence("qualified-source", 3230),
+        title: titleKind === "full" ? body : `${body.slice(0, 100)}...`,
+        bodyPreview: body,
+        whyImportant: [],
+      };
+      const lower = xEvidence("short-source", 89);
+      expect(hasReaderFacingPromotionTitle(higher)).toBe(true);
+      expect(buildReaderPostPromotionTitle({ lead: higher })).toBe(body);
+      expect(compose([lower, higher]).orderedCandidateIds).toEqual(["qualified-source", "short-source"]);
+    },
+  );
+
+  it.each(["full", "truncated"])(
+    "admits a long substantive source with a %s title and lets its popularity compete",
+    (titleKind) => {
+    const body = "How the research team evaluates agent incidents across public websites: the team proposes reporting standards that distinguish real-world incidents from model properties. Historically, the research team communicated agent misalignment primarily through research publications and detailed system cards. Agent misalignment now causes new types of real-world impact.";
+    const higher = {
+      ...xEvidence("long-source", 3230),
+      title: titleKind === "full"
+        ? body
+        : `X post by @researchlab: ${body.slice(0, 130)}...`,
+      bodyPreview: body,
+    };
+    const lower = xEvidence("short-source", 89);
+    const source = selection([lower, higher], []);
+    const candidate = readerSummaryPromotionV2Candidate(higher, source);
+
+    expect(buildReaderPostPromotionTitle({ lead: higher })).toBe(
+      body,
+    );
+    expect(hasReaderFacingPromotionTitle(higher)).toBe(true);
+    expect(candidate?.admission.qualityFloorMet).toBe(true);
+    expect(candidate?.engagement).toMatchObject({
+      authoritative: true,
+      authority: { source: "durable_projection", regressionState: "stable" },
+    });
+    expect(compose([lower, higher]).top.map((entry) => entry.candidateId))
+      .toEqual(["long-source", "short-source"]);
+    expect(compose([higher, lower])).toEqual(compose([lower, higher]));
+
+    const reducedPopularity = {
+      ...higher,
+      promotionFacts: xEvidence("long-source", 70).promotionFacts,
+    };
+    expect(compose([lower, reducedPopularity]).top.map((entry) => entry.candidateId))
+      .toEqual(["short-source", "long-source"]);
+
+    for (const facts of [
+      { ...higher.promotionFacts!, contentKind: "reply" as const },
+      { ...higher.promotionFacts!, safetyValid: false },
+      { ...higher.promotionFacts!, engagementAuthority: undefined },
+      { ...higher.promotionFacts!, freshnessValid: false },
+    ]) {
+      expect(compose([{ ...higher, promotionFacts: facts }]).orderedCandidateIds)
+        .toEqual([]);
+    }
+  });
+
   it("ranks X 11,112 above X 89 when both otherwise qualify", () => {
     const lower = xEvidence("x-89", 89);
     const higher = xEvidence("x-11112", 11_112);
@@ -304,143 +429,4 @@ describe("Reader Promotion V2 editorial slate", () => {
       "citation-valid-support-peer",
     ]);
   });
-});
-
-const compose = (
-  items: readonly SummaryEvidenceItem[],
-  clusters = items.map((item) => storyCluster(item.feedItemId, [item])),
-) => composeReaderSummaryEditorialSlate({
-  selection: selection(items, clusters),
-  candidates: items,
-});
-
-const selection = (
-  items: readonly SummaryEvidenceItem[],
-  clusters: readonly StoryCluster[],
-): SummaryEvidenceSelection => ({
-  rankingPolicyVersion: "fixture",
-  sourceWindow: {
-    windowId: "window-1",
-    startedAt: periodStartedAt,
-    endedAt: periodEndedAt,
-    periodStartedAt,
-    periodEndedAt,
-    ingestionCutoff: periodEndedAt,
-    selectedFeedItemIds: items.map((item) => item.feedItemId),
-    storyClusterIds: clusters.map((cluster) => cluster.id),
-  },
-  selectedEvidence: items,
-  clusters,
-});
-
-const xEvidence = (
-  id: string,
-  likes: number,
-  overrides: {
-    readonly relevanceScore?: number;
-    readonly canonicalIdentity?: string;
-  } = {},
-): SummaryEvidenceItem => evidence({
-  id,
-  providerKey: "x-twitter",
-  contentKind: "original_post",
-  canonicalIdentity: overrides.canonicalIdentity ?? `story:${id}`,
-  relevanceScore: overrides.relevanceScore,
-  metrics: {
-    provider: "x",
-    likes,
-    reposts: 0,
-    weightedScore: likes,
-  },
-});
-
-const redditEvidence = (
-  id: string,
-  score: number,
-  overrides: { readonly canonicalIdentity?: string } = {},
-): SummaryEvidenceItem => evidence({
-  id,
-  providerKey: "reddit",
-  contentKind: "original_post",
-  canonicalIdentity: overrides.canonicalIdentity ?? `story:${id}`,
-  metrics: { provider: "reddit", score, upvoteRatio: 0.9 },
-});
-
-const hackerNewsEvidence = (
-  id: string,
-  points: number,
-): SummaryEvidenceItem => evidence({
-  id,
-  providerKey: "hacker-news",
-  contentKind: "story",
-  canonicalIdentity: `story:${id}`,
-  metrics: { provider: "hacker_news", points },
-});
-
-const evidence = (params: {
-  readonly id: string;
-  readonly providerKey: string;
-  readonly contentKind: "original_post" | "story";
-  readonly canonicalIdentity: string;
-  readonly relevanceScore?: number;
-  readonly metrics: NonNullable<
-    NonNullable<SummaryEvidenceItem["promotionFacts"]>["metrics"]
-  >;
-}): SummaryEvidenceItem => ({
-  feedItemId: params.id,
-  sourceItemId: `source-${params.id}`,
-  sourceBindingId: `binding-${params.id}`,
-  interestId: "interest-ai",
-  providerKey: params.providerKey,
-  canonicalUrl: `https://example.test/${params.id}`,
-  title: `Concrete product update ${params.id}`,
-  bodyPreview: "A concrete self-contained product update.",
-  publishedAt,
-  observedAt,
-  score: 1,
-  whyImportant: ["It changes a concrete workflow."],
-  contentQuality: {
-    qualityScore: 0.9,
-    interestRelevanceScore: params.relevanceScore ?? 0.9,
-    engagementIntegrityScore: 0.9,
-    eligibleForSummary: true,
-    eligibleForTopRead: true,
-    needsLlmReview: false,
-    decision: "allow",
-    flags: [],
-    reason: "fixture",
-  },
-  promotionFacts: {
-    contentKind: params.contentKind,
-    canonicalIdentity: params.canonicalIdentity,
-    safetyValid: true,
-    freshnessValid: true,
-    engagementAuthority: {
-      observedAt: new Date("2026-08-29T23:00:00.000Z"),
-      regressionState: "stable",
-    },
-    freshnessProvenance: {
-      status: "observed",
-      publishedAt,
-      observedAt,
-      ingestionCutoff: periodEndedAt,
-    },
-    metricsState: "observed",
-    metrics: params.metrics,
-  },
-});
-
-const storyCluster = (
-  id: string,
-  items: readonly SummaryEvidenceItem[],
-): StoryCluster => ({
-  id: `cluster-${id}`,
-  storyKey: items[0]?.promotionFacts?.canonicalIdentity ?? id,
-  representativeFeedItemId: items[0]!.feedItemId,
-  duplicateFeedItemIds: items.slice(1).map((item) => item.feedItemId),
-  interestIds: ["interest-ai"],
-  providerKeys: [...new Set(items.map((item) => item.providerKey))],
-  score: 1,
-  observedAtRange: { startedAt: observedAt, endedAt: observedAt },
-  whyImportant: ["It changes a concrete workflow."],
 });

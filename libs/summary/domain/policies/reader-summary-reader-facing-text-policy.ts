@@ -1,3 +1,5 @@
+export const READER_TITLE_MAX_LENGTH = 119;
+
 export const isConversationalOrTruncatedReaderTitle = (
   value: string,
 ): boolean => {
@@ -9,14 +11,14 @@ export const isConversationalOrTruncatedReaderTitle = (
   return (
     /\.{2,}/u.test(sourceTitle) ||
     /…\s*$/u.test(sourceTitle) ||
-    /^(?:well[,\s]+)?here\s+we\s+go\s+again[.!?…]*$/iu.test(sourceTitle) ||
+    isLowInformationReaderTitle(sourceTitle) ||
     /\bjust\s+dropped\b/iu.test(sourceTitle) ||
     /\b(?:it(?:'s| is)\s+)?got\s+me\s+thinking\b/iu.test(sourceTitle) ||
     /\bis\s+here[.!?]*$/iu.test(sourceTitle) ||
     /^keep\s+(?:building|going|shipping)\b/iu.test(sourceTitle) ||
     /\bno\s+matter\s+what\b/iu.test(sourceTitle) ||
     /\bwe\s+all\s+know\b/iu.test(sourceTitle) ||
-    sourceTitle.length >= 120 ||
+    sourceTitle.length > READER_TITLE_MAX_LENGTH ||
     /^(?:what happens when|what if|today i|just\b|here(?:'s| is)\b|i(?:'m| am| have| just)?\b|we(?:'re| are| have| just)?\b)/iu.test(
       sourceTitle,
     )
@@ -41,7 +43,7 @@ const isSourceReportedReaderTitle = (value: string): boolean =>
     value.trim(),
   );
 
-const isLowInformationReaderTitle = (value: string): boolean => {
+export const isLowInformationReaderTitle = (value: string): boolean => {
   const normalized = value
     .trim()
     .toLowerCase()
@@ -51,6 +53,7 @@ const isLowInformationReaderTitle = (value: string): boolean => {
     .trim();
 
   return (
+    /^(?:well[,\s]+)?here\s+we\s+go\s+again[.!?…]*$/iu.test(value.trim()) ||
     /^(?:check (?:this|it) out|take a look|look at this|watch this)$/u.test(
       normalized,
     ) ||

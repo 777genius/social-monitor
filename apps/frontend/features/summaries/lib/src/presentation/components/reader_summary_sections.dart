@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:social_monitor_design_system/social_monitor_design_system.dart';
 
 import '../../domain/aggregates/reader_summary.dart';
+import 'reader_summary_source_text.dart';
 
 class ReaderSummaryInterestSections extends StatelessWidget {
   const ReaderSummaryInterestSections({super.key, required this.sections});
@@ -151,10 +152,15 @@ class _InterestSectionRow extends StatelessWidget {
               children: section.items
                   .take(3)
                   .map(
-                    (item) => AppStatusBadge(
-                      label: item.title,
-                      tone: AppStatusTone.neutral,
-                    ),
+                    (item) => readerSummaryNeedsSourceDisclosure(item.title)
+                        ? ReaderSummarySourceText(
+                            item.title,
+                            key: ObjectKey(item),
+                          )
+                        : AppStatusBadge(
+                            label: item.title,
+                            tone: AppStatusTone.neutral,
+                          ),
                   )
                   .toList(growable: false),
             ),

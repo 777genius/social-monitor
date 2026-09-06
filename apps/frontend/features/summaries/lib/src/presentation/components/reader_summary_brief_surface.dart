@@ -29,6 +29,7 @@ import 'reader_summary_preview_media.dart';
 import 'reader_summary_provider_label.dart';
 import 'reader_summary_provider_logo.dart';
 import 'reader_summary_reason_text.dart';
+import 'reader_summary_source_text.dart';
 import 'reader_summary_url_action_contract.dart';
 
 part 'reader_summary_ai_brief.dart';

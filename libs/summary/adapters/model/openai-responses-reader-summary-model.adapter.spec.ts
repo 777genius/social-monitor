@@ -165,7 +165,7 @@ describe("OpenAiResponsesReaderSummaryModelAdapter", () => {
     expect(route.promptVersion).toBe(currentReaderSummaryPromptRelease.id);
     expect(adapter.estimate(input, route).outputTokens).toBe(3_200);
     expect(attempt.draft).toMatchObject({
-      headline: "Reports discuss AI tooling library is trending",
+      headline: "Discussion from monitored sources",
       usage: {
         inputTokens: 111,
         outputTokens: 222,

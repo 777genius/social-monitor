@@ -1,3 +1,4 @@
+import { readerSummaryHeadlinesEquivalent } from "../value-objects/reader-summary-headline-equivalence";
 import type { ReaderSummaryNarrativeSectionKind } from "../entities/reader-summary-narrative-section";
 import type { ReaderSummaryCoverageMode } from "../value-objects/reader-summary-coverage-mode";
 import { readerSummaryIndependentProviderFamily } from
@@ -116,9 +117,7 @@ export const evaluateReaderSummaryArtifactEditorialQuality = (
     mainNarrativeCitations.length,
   );
   const copiedHeadline = input.topPostTitles.some(
-    (title) =>
-      normalizeReaderText(title).length > 0 &&
-      normalizeReaderText(title) === normalizeReaderText(input.headline),
+    (title) => readerSummaryHeadlinesEquivalent(title, input.headline),
   );
   const markdownIssues = malformedMarkdownIssues(input.renderedMarkdown);
   const dailySynthesis = input.coverageMode === "daily_synthesis";
@@ -240,15 +239,6 @@ const isNonEmptyString = (value: string | undefined): value is string =>
 
 const normalizeProvider = (value: string): string =>
   readerSummaryIndependentProviderFamily({ providerKey: value });
-
-const normalizeReaderText = (value: string): string =>
-  value
-    .normalize("NFKC")
-    .toLocaleLowerCase("en-US")
-    .replace(/[*_`#~[\]<>]/gu, " ")
-    .replace(/[^\p{L}\p{N}]+/gu, " ")
-    .trim()
-    .replace(/\s+/gu, " ");
 
 const countStrings = (
   values: readonly string[],

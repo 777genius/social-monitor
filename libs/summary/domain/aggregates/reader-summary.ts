@@ -183,6 +183,12 @@ export class ReaderSummary {
     return ReaderSummary.create({
       headline: groundedReaderHeadline({
         headline,
+        sourceTitles: (input.selectedEvidence ?? []).filter((item) =>
+          input.citationMap.some((citation) =>
+            citation.feedItemId === item.feedItemId &&
+            topReads.some((read) => read.citationIds.includes(citation.citationId)),
+          ),
+        ).map((item) => item.title),
         sourceMix,
         topReads,
         ...(narrativeSections.some(

@@ -4,7 +4,7 @@ import {
 } from "./reader-summary-headline-policy";
 
 describe("reader summary top read headline policy", () => {
-  it("source-frames and compacts an unverified legal source title", () => {
+  it("source-frames and preserves an unverified legal source title", () => {
     expect(
       groundedTopReadTitle({
         title:
@@ -21,7 +21,7 @@ describe("reader summary top read headline policy", () => {
             "Several monitored source groups repeat the report without first-party confirmation.",
         },
       }),
-    ).toBe("Reports say Apple sued OpenAI over alleged trade secret theft");
+    ).toBe("Source report: Apple sues OpenAI alleging trade secret theft, says scheme was 'at every level'");
   });
 
   it("keeps a non-legal reader title unchanged", () => {
@@ -40,14 +40,14 @@ describe("reader summary top read headline policy", () => {
   });
 
   it.each([
-    ["Did Apple sue OpenAI?", "Source asks: Did Apple sue OpenAI"],
+    ["Did Apple sue OpenAI?", "Source report: Did Apple sue OpenAI?"],
     [
       "Should Apple sue OpenAI over alleged model theft",
-      "Source asks: Should Apple sue OpenAI over alleged model theft",
+      "Source report: Should Apple sue OpenAI over alleged model theft",
     ],
     [
       "Why Apple sued OpenAI over model training",
-      "Source explainer: Why Apple sued OpenAI over model training",
+      "Source report: Why Apple sued OpenAI over model training",
     ],
   ])(
     "does not turn a legal question or explainer into a fact",
@@ -80,7 +80,7 @@ describe("reader summary top read headline policy", () => {
         },
       }),
     ).toBe(
-      "Reports say Apple sued OpenAI, but no primary court filing is available",
+      "Source report: Apple sues OpenAI, but no primary court filing is available",
     );
   });
 
@@ -96,7 +96,7 @@ describe("reader summary top read headline policy", () => {
           rationale: "Two monitored source groups discuss this story.",
         },
       }),
-    ).toBe("Reports say Apple sued OpenAI over trade secret theft");
+    ).toBe("Source report: Apple sues OpenAI over trade secret theft");
   });
 
   it("keeps a first-party legal filing concrete", () => {

@@ -206,7 +206,7 @@ describe("groundedReaderHeadline", () => {
     ).toBe("Reports discuss Agent tooling expands across apps");
   });
 
-  it("source-frames an unverified legal lead when replacing a vague headline", () => {
+  it("uses a neutral headline for an unverified legal lead", () => {
     const lead = {
       ...topRead(),
       title: "Acme sues Example Labs over alleged model theft",
@@ -227,10 +227,10 @@ describe("groundedReaderHeadline", () => {
         topReads: [lead],
         sourceMix: [],
       }),
-    ).toBe("Reports say Acme sued Example Labs over alleged model theft");
+    ).toBe("Discussion from monitored sources");
   });
 
-  it("removes a trailing quote-bearing report clause before compacting a legal headline", () => {
+  it("does not extract a legal headline from a quote-bearing source report", () => {
     const lead = {
       ...topRead(),
       title:
@@ -252,13 +252,11 @@ describe("groundedReaderHeadline", () => {
       sourceMix: [],
     });
 
-    expect(headline).toBe(
-      "Reports say Apple sued OpenAI over alleged trade secret theft",
-    );
+    expect(headline).toBe("Discussion from monitored sources");
     expect(headline).not.toMatch(/['‘’“”]/u);
   });
 
-  it("source-frames a direct legal headline when community reports do not include a filing", () => {
+  it("uses a neutral fallback when legal reports do not include a filing", () => {
     const lead = {
       ...topRead(),
       title: "Acme sues Example Labs over alleged model theft",
@@ -279,7 +277,7 @@ describe("groundedReaderHeadline", () => {
         topReads: [lead],
         sourceMix: [],
       }),
-    ).toBe("Reports say Acme sued Example Labs over alleged model theft");
+    ).toBe("Discussion from monitored sources");
 
     expect(
       groundedReaderHeadline({
@@ -290,7 +288,7 @@ describe("groundedReaderHeadline", () => {
     ).toBe("Reports say Acme sued Example Labs over alleged model theft");
   });
 
-  it("does not double-prefix an already source-framed legal top-read title", () => {
+  it("keeps unverified source-framed legal context behind a neutral headline", () => {
     const lead = {
       ...topRead(),
       title: "Reports say Apple sued OpenAI over alleged trade secret theft",
@@ -310,10 +308,10 @@ describe("groundedReaderHeadline", () => {
         topReads: [lead],
         sourceMix: [],
       }),
-    ).toBe("Reports say Apple sued OpenAI over alleged trade secret theft");
+    ).toBe("Discussion from monitored sources");
   });
 
-  it("collapses an already duplicated legal report prefix", () => {
+  it("does not rewrite a duplicated legal report into a new assertion", () => {
     const lead = {
       ...topRead(),
       title:
@@ -334,7 +332,7 @@ describe("groundedReaderHeadline", () => {
         topReads: [lead],
         sourceMix: [],
       }),
-    ).toBe("Reports say Apple sued OpenAI over alleged trade secret theft");
+    ).toBe("Discussion from monitored sources");
   });
 
   it("keeps a first-party legal action concrete", () => {
@@ -392,7 +390,7 @@ describe("groundedReaderHeadline", () => {
     ).toBe("Reports discuss Agent tooling expands across apps");
   });
 
-  it("uses one clean lead title instead of joining source-framed reasons", () => {
+  it("uses a neutral label when a legal lead has source-only support", () => {
     const lead = {
       ...topRead(),
       title: "Apple sues OpenAI over alleged trade secret theft",
@@ -421,9 +419,7 @@ describe("groundedReaderHeadline", () => {
         ],
         sourceMix: [],
       }),
-    ).toBe(
-      "Reports discuss Apple sues OpenAI over alleged trade secret theft",
-    );
+    ).toBe("Discussion from monitored sources");
   });
 
   it("preserves an explicitly source-framed single-source headline", () => {

@@ -125,7 +125,7 @@ export class ReaderSummaryPublicationPolicy {
         ),
       );
       const editorialQuality = evaluateReaderSummaryArtifactEditorialQuality(
-        editorialQualityInput(snapshot, coveragePlan.mode),
+        editorialQualityInput(snapshot, coveragePlan.mode, params.evidence),
       );
       for (const issue of editorialQuality.issues) {
         rejectionFindings.push({
@@ -356,6 +356,7 @@ const editorialQualityInput = (
   coverageMode: Parameters<
     typeof evaluateReaderSummaryArtifactEditorialQuality
   >[0]["coverageMode"],
+  evidence: SummaryEvidenceSelection,
 ): Parameters<typeof evaluateReaderSummaryArtifactEditorialQuality>[0] => {
   const narrativeSections = snapshot.content?.narrativeSections ?? [];
   const clusterIdsByFeedItemId = storyClusterIdsByFeedItemId(snapshot);
@@ -363,7 +364,18 @@ const editorialQualityInput = (
   return {
     headline: snapshot.content?.headline ?? snapshot.headline,
     coverageMode,
-    topPostTitles: topReadReferences(snapshot).map((item) => item.title),
+    // Board titles now carry full source context. Also compare the original
+    // headings of their cited sources so appended bodies cannot hide copying.
+    topPostTitles: [
+      ...topReadReferences(snapshot).map((item) => item.title),
+      ...evidence.selectedEvidence
+        .filter((item) => snapshot.citationMap.some((citation) =>
+          citation.feedItemId === item.feedItemId &&
+          topReadReferences(snapshot).some((read) =>
+            read.citationIds.includes(citation.citationId)),
+        ))
+        .map((item) => item.title),
+    ],
     citations: snapshot.citationMap.map((citation) => {
       const storyClusterIds = clusterIdsByFeedItemId.get(citation.feedItemId);
       const storyClusterId =

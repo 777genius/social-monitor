@@ -5,6 +5,7 @@ import '../../domain/aggregates/reader_summary.dart';
 import '../../domain/entities/summary_citation.dart';
 import '../formatters/reader_summary_trust_copy.dart';
 import '../view_models/reader_summary_trust_snapshot.dart';
+import 'reader_summary_source_text.dart';
 import 'reader_summary_url_action_contract.dart';
 
 part 'reader_summary_trust_summary_line.dart';
@@ -317,7 +318,7 @@ class _EvidenceLine extends StatelessWidget {
           ),
           const SizedBox(width: AppSpacing.xs),
           Expanded(
-            child: Text(
+            child: ReaderSummarySourceText(
               '$label - ${evidence.title}',
               maxLines: 2,
               overflow: TextOverflow.ellipsis,

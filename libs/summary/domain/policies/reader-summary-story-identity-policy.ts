@@ -365,7 +365,9 @@ const acceptedNarrativeLeadCandidate = (params: {
   if (
     params.selected === undefined ||
     params.narrative === undefined ||
-    !isReaderFacingQualityTopRead(params.narrative.topRead)
+    !isReaderFacingQualityTopRead(
+      params.narrative.topRead, params.narrative.evidence,
+    )
   ) {
     return undefined;
   }

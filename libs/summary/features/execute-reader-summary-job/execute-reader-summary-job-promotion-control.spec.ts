@@ -158,7 +158,7 @@ describe("ExecuteReaderSummaryJobUseCase promotion controls", () => {
     expect(result.ok).toBe(true);
     const snapshot = scenario.artifacts.all()[0]?.toSnapshot();
     expect(snapshot?.content?.topReads[0]).toMatchObject({
-      title: "Runtime regression discussion",
+      title: "Runtime regression discussion\n\nUsers are discussing a runtime regression.",
       providerKey: "reddit",
       citationIds: ["c1"],
       providerMetrics: [{ label: "Score", value: "50" }],
