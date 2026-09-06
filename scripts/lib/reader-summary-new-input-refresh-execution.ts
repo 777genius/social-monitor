@@ -107,6 +107,7 @@ export async function executeNewInputRefresh(input: {
   const canonical = createReaderSummaryDailyCapturePublicationWiring({
     replay: null, feedItems: feed, summaryClient: summary, clock, attestationSink: sink,
     summaryModelMode: "agent-runtime", env: input.env, agentRuntimeClient: runtime,
+    storyRelationVerifierGuard: runtime,
   });
   const model = buildRefreshModelWiring(input.env, runtime, sink);
   const publication: ReaderSummaryPublicationPort = {
