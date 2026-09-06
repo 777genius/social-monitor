@@ -1,52 +1,5 @@
 export const READER_TITLE_MAX_LENGTH = 119;
 
-// Recovery may omit descriptive context, but cannot detach a claim from
-// negation, uncertainty, conditions or a question elsewhere in the source.
-// Omitted references and corrections can govern either neighboring direction.
-// Reject them even when unrelated: this bounded English lexical guard cannot
-// resolve their referents. Walk-back detection spans any intervening words or
-// punctuation within each omitted context unit, conservatively rejecting literal
-// walking contexts and grouped sentences too. Only callers define unit boundaries;
-// it has no semantic exception or object-length limit.
-// Callers retain legacy first-substantive extraction.
-export const canRecoverReaderTitleSentence = (
-  sentences: readonly string[],
-  index: number,
-): boolean => index === 0 || (
-  !/^(?:(?:this|that)(?!\s+(?:year|month|week)\b)|these|those|it|they|such|nor|none|(?:the|both|neither|either|all)\s+(?:(?:of\s+)?(?:these|those|the)\s+)?(?:claims?|statements?|assertions?))\b/iu.test(
-    sentences[index]?.trim() ?? "",
-  ) &&
-  sentences.every((sentence, otherIndex) => otherIndex === index || !(
-    /\?/u.test(sentence) ||
-    /\b(?:not(?!\s+(?:just|only)\b)|no|neither|nor|none|never|false|untrue|incorrect|misleading|deny|denies|denied|denying|denials?|refut(?:e[ds]?|ing|ation)|debunk(?:s|ed|ing)?|disprov(?:e[ds]?|ing)|without|cannot|unverified|uncertain|unconfirmed|allegedly|reportedly|rumou?rs?|speculat\w*|hypothetical|fiction\w*|satir\w*|imagine|suppose|if|unless|might|may|could|would|must|should|pending)\b/iu.test(
-      sentence,
-    ) ||
-    /\b\w+n['’]t\b/iu.test(sentence) ||
-    /\b(?:following|preceding|above|below)\s+(?:claim|statement|assertion|account)\b/iu.test(sentence) ||
-    /\b(?:this|that|these|those|the)\s+(?:(?:earlier|previous|original|prior|reported|published|same)\s+)*(?:claims?|assertions?|statements?|findings?|conclusions?|allegations?|accounts?|reports?)\b/iu.test(sentence) ||
-    /\b(?:retract(?:s|ed|ing|ions?)?|withdraw(?:s|n|ing|als?)?|withdrew|correct(?:s|ed|ing|ions?)?|recant(?:s|ed|ing|ations?)?|rescind(?:s|ed|ing)?)\b/iu.test(sentence) ||
-    hasContextUnitWalkBack(sentence) ||
-    /\b(?:breaking|just\s+in)\s*:/iu.test(sentence)
-  ))
-);
-
-// A single linear token scan avoids repeated suffix searches for each verb.
-// Internal punctuation may belong to an abbreviation, initial or decimal. Never
-// guess a boundary here: ambiguous grouped sentences fail closed, at the cost of
-// rejecting some unrelated prose. State resets only for each supplied unit/call.
-const hasContextUnitWalkBack = (contextUnit: string): boolean => {
-  let walked = false;
-  for (const match of contextUnit.matchAll(/\bwalk(?:s|ed|ing)?\b|\bback\b/giu)) {
-    const token = match[0].toLowerCase();
-    if (token === "back") {
-      if (walked) return true;
-    } else {
-      walked = token.startsWith("walk");
-    }
-  }
-  return false;
-};
-
 export const isConversationalOrTruncatedReaderTitle = (
   value: string,
 ): boolean => {
@@ -58,7 +11,7 @@ export const isConversationalOrTruncatedReaderTitle = (
   return (
     /\.{2,}/u.test(sourceTitle) ||
     /…\s*$/u.test(sourceTitle) ||
-    /^(?:well[,\s]+)?here\s+we\s+go\s+again[.!?…]*$/iu.test(sourceTitle) ||
+    isLowInformationReaderTitle(sourceTitle) ||
     /\bjust\s+dropped\b/iu.test(sourceTitle) ||
     /\b(?:it(?:'s| is)\s+)?got\s+me\s+thinking\b/iu.test(sourceTitle) ||
     /\bis\s+here[.!?]*$/iu.test(sourceTitle) ||
@@ -90,7 +43,7 @@ const isSourceReportedReaderTitle = (value: string): boolean =>
     value.trim(),
   );
 
-const isLowInformationReaderTitle = (value: string): boolean => {
+export const isLowInformationReaderTitle = (value: string): boolean => {
   const normalized = value
     .trim()
     .toLowerCase()
@@ -100,6 +53,7 @@ const isLowInformationReaderTitle = (value: string): boolean => {
     .trim();
 
   return (
+    /^(?:well[,\s]+)?here\s+we\s+go\s+again[.!?…]*$/iu.test(value.trim()) ||
     /^(?:check (?:this|it) out|take a look|look at this|watch this)$/u.test(
       normalized,
     ) ||

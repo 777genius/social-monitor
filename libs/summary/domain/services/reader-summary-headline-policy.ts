@@ -1,7 +1,6 @@
 import type { SourceMixEntry } from "../entities/source-mix-entry";
 import type { TopRead } from "../entities/top-read";
 import {
-  firstSentence,
   readerSummaryHeadline,
   uniqueNonEmpty,
 } from "../value-objects/summary-text";
@@ -63,7 +62,7 @@ export const groundedTopReadTitle = (
   topRead: Pick<TopRead, "title" | "reason" | "whyImportant" | "confidence">,
 ): string =>
   isUnverifiedLegalTopRead(topRead)
-    ? compactHeadlinePart(sourceFramedLegalTitle(topRead.title))
+    ? `Source report: ${topRead.title}`
     : topRead.title;
 
 const providerNameForSource = (
@@ -134,33 +133,9 @@ const buildHumanReaderHeadline = (
   topReads: readonly TopRead[],
 ): string | undefined => {
   const lead = topReads[0];
-  if (lead === undefined) {
-    return undefined;
-  }
-  if (
-    lead.confirmedProviderKeys.length <= 1 &&
-    lead.confidence.level !== "high"
-  ) {
-    const cautiousReason = [lead.reason, ...lead.whyImportant].find((value) =>
-      /\b(?:allegation|needs? confirmation|not (?:independently )?confirmed|should not be treated as confirmation|uncertain|unverified)\b/iu.test(
-        value,
-      ),
-    );
-
-    return compactHeadlinePart(
-      cautiousReason ?? `Reports discuss ${lead.title}`,
-    );
-  }
-
-  const leadTitle = lead.title.trim();
-  if (leadTitle.length === 0) {
-    return undefined;
-  }
-  if (isUnverifiedLegalTopRead(lead)) {
-    return compactHeadlinePart(sourceFramedLegalTitle(leadTitle));
-  }
-
-  return compactHeadlinePart(leadTitle);
+  // A board title can be an available source excerpt. A headline-sized prefix
+  // could detach a statement from its correction, including on historical reads.
+  return lead === undefined ? undefined : "Discussion from monitored sources";
 };
 
 export const isUnverifiedLegalTopRead = (lead: {
@@ -193,72 +168,3 @@ export const isUnverifiedLegalTopRead = (lead: {
     )
   );
 };
-
-const sourceFramedLegalTitle = (title: string): string => {
-  const normalizedTitle = stripTrailingQuestion(
-    title
-      .replace(/\s+/gu, " ")
-      .replace(/^(Reports say)(?:\s+Reports say)+\b/iu, "$1"),
-  );
-  if (
-    /^(?:reports? (?:say|allege|report|discuss)|reported|alleged)\b/iu.test(
-      normalizedTitle,
-    )
-  ) {
-    return normalizedTitle;
-  }
-  if (
-    normalizedTitle.length > 0 &&
-    (/^(?:who|what|when|where|which|did|does|do|is|are|was|were|has|have|can|could|should|may|might|must|will|would)\b/iu.test(
-      normalizedTitle,
-    ) ||
-      title.trim().endsWith("?"))
-  ) {
-    return `Source asks: ${normalizedTitle}`;
-  }
-  if (/^(?:why|how|whether)\b/iu.test(normalizedTitle)) {
-    return `Source explainer: ${normalizedTitle}`;
-  }
-
-  const reportedAction = normalizedTitle.match(
-    /^(.*?)\s+(?:sues?|sued|suing)\s+(.+)$/iu,
-  );
-  if (reportedAction !== null) {
-    const reportedObject = reportedAction[2]
-      ?.trim()
-      .replace(/\s*,\s*(?:says?|according to)\b.*$/iu, "")
-      .replace(/\s*,?\s+(?:alleging|alleges?)\s+/iu, " over alleged ");
-
-    return `Reports say ${reportedAction[1]?.trim()} sued ${reportedObject}`;
-  }
-
-  return `Reports discuss the ${normalizedTitle.replace(/^the\s+/iu, "")}`;
-};
-
-const compactHeadlinePart = (value: string): string => {
-  const sentence = firstSentence(value) ?? value;
-  const compact = stripTrailingPeriod(sentence.replace(/\s+/gu, " "));
-  const maxLength = 82;
-
-  if (compact.length <= maxLength) {
-    return compact;
-  }
-
-  const shortened = compact
-    .slice(0, maxLength)
-    .replace(/\s+\S*$/u, "")
-    .trim();
-
-  return shortened.length === 0
-    ? compact.slice(0, maxLength).trim()
-    : shortened;
-};
-
-const stripTrailingPeriod = (value: string): string => {
-  const trimmed = value.trim();
-
-  return trimmed.endsWith(".") ? trimmed.slice(0, -1) : trimmed;
-};
-
-const stripTrailingQuestion = (value: string): string =>
-  value.trim().replace(/\?+$/u, "").trim();

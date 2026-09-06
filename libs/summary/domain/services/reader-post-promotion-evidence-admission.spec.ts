@@ -113,7 +113,7 @@ describe("admitReaderPostPromotionEvidence supplemental appendix", () => {
     });
 
     expect(projection.topReads[0]?.title).toBe(
-      "OpenAI introduced a lower-cost business plan for teams with a two-seat minimum",
+      "Nice Work OpenAI\n\nOpenAI introduced a lower-cost business plan for teams with a two-seat minimum.",
     );
   });
 

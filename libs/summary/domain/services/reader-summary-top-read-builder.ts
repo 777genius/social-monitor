@@ -1,3 +1,4 @@
+import { readerPostAvailableSourceText } from "./reader-post-promotion-title";
 import type { ReaderSummaryCitation } from "../entities/citation";
 import type { TopRead, TopReadCandidate } from "../entities/top-read";
 import type {
@@ -15,7 +16,6 @@ import {
   storyProviderMetricLabels,
 } from "./reader-summary-support";
 import {
-  groundedTopReadTitle,
   isUnverifiedLegalTopRead,
 } from "./reader-summary-headline-policy";
 import {
@@ -35,12 +35,10 @@ import {
   isFallbackReaderReason,
   isReaderTitleReasonDuplicate,
   mentionsUnsupportedReaderProvider,
-  readerFacingEvidenceExcerpt,
 } from "../policies/reader-summary-reader-facing-text-policy";
 import {
   buildTopReadTitle,
   evidenceReaderTitle,
-  isReaderFacingTopReadTitle,
   isSourceCoverageFramingText,
   isUnverifiedBreakingSourceTitle,
 } from "./reader-summary-top-read-title";
@@ -182,12 +180,9 @@ export const storyToTopRead = (
     signalScore,
     firstPartyOfficial: hasFirstPartyOfficialEvidence(supportEvidence),
   });
-  const title = groundedTopReadTitle({
-    title: rawTitle,
-    reason,
-    whyImportant,
-    confidence,
-  });
+  // Legal demotion below still applies; rewriting/clipping source text would
+  // discard the very qualification that the safety decision must evaluate.
+  const title = rawTitle;
   const builderConfirmedUnverifiedLegalSafetyDemotion =
     isUnverifiedLegalTopRead({
       title,
@@ -326,10 +321,9 @@ const readerFacingEvidenceReason = (
   ) {
     return undefined;
   }
-  const excerpt = readerFacingEvidenceExcerpt(
-    evidence?.bodyPreview,
-    evidence?.title,
-  );
+  const excerpt = evidence === undefined
+    ? undefined
+    : readerPostAvailableSourceText(evidence);
   if (excerpt === undefined) {
     return undefined;
   }
@@ -356,7 +350,7 @@ const firstPartyOfficialReason = (
   }
 
   const title = evidenceReaderTitle(evidence);
-  if (!isReaderFacingTopReadTitle(title)) {
+  if (title.length === 0) {
     return undefined;
   }
 

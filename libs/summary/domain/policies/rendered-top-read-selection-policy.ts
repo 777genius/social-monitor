@@ -1,3 +1,4 @@
+import { isFaithfulReaderSourcePresentation } from "../services/reader-post-promotion-title";
 import type { SourceMixEntry } from "../entities/source-mix-entry";
 import type { TopRead, TopReadCandidate } from "../entities/top-read";
 import { STORY_RANKING_POLICY_V1 } from "./story-ranking-policy";
@@ -77,7 +78,7 @@ export const selectRenderedTopReadCandidates = (params: {
     (candidate) =>
       candidate.story.storyClusterId === params.pinnedStoryClusterId &&
       candidate.editorialPriority?.authoritativeLead === true &&
-      isReaderFacingQualityTopRead(candidate.topRead),
+      isReaderFacingQualityTopRead(candidate.topRead, candidate.evidence),
   );
   if (pinnedCandidate !== undefined) {
     select(pinnedCandidate);
@@ -89,7 +90,7 @@ export const selectRenderedTopReadCandidates = (params: {
     }
     if (
       selectedStoryIds.has(candidate.story.storyClusterId) ||
-      !isReaderFacingQualityTopRead(candidate.topRead)
+      !isReaderFacingQualityTopRead(candidate.topRead, candidate.evidence)
     ) {
       continue;
     }
@@ -110,7 +111,7 @@ export const selectRenderedTopReadCandidates = (params: {
     }
     if (
       selectedStoryIds.has(candidate.story.storyClusterId) ||
-      !isReaderFacingQualityTopRead(candidate.topRead) ||
+      !isReaderFacingQualityTopRead(candidate.topRead, candidate.evidence) ||
       hasSelectedRenderedDuplicate(selected, candidate)
     ) {
       continue;
@@ -132,7 +133,7 @@ export const selectRenderedTopReadCandidates = (params: {
     }
     if (
       selectedStoryIds.has(candidate.story.storyClusterId) ||
-      !isReaderFacingQualityTopRead(candidate.topRead) ||
+      !isReaderFacingQualityTopRead(candidate.topRead, candidate.evidence) ||
       hasSelectedRenderedDuplicate(selected, candidate)
     ) {
       continue;
@@ -336,9 +337,12 @@ const citationRankBoost = (read: TopRead): number =>
 
 export const isReaderFacingQualityTopRead = (
   read: ReaderFacingTopReadQualityInput,
+  evidence: readonly SummaryEvidenceItem[] = [],
 ): boolean => {
   if (
-    isUnpolishedReaderTitle(read.title) ||
+    ((isUnpolishedReaderTitle(read.title) ||
+      evidence.some((item) => item.canonicalUrl === read.canonicalUrl)) &&
+      !isFaithfulReaderSourcePresentation(read, evidence)) ||
     hasFallbackReason(read) ||
     isReaderTitleReasonDuplicate(read.title, read.reason)
   ) {

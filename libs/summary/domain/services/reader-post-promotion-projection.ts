@@ -28,7 +28,7 @@ import { compactUnique } from "../value-objects/summary-text";
 import { buildMatchedRules } from "./reader-summary-source-lineage";
 import {
   buildReaderPostPromotionTitle,
-  hasReaderFacingPromotionTitle,
+  hasReaderFacingPromotionSource,
 } from "./reader-post-promotion-title";
 import {
   buildReaderPostPromotionAttestations,
@@ -115,7 +115,7 @@ export const buildReaderPostPromotionProjection = (params: {
       qualityScore: quality?.qualityScore ?? Number.NaN,
       relevanceScore: quality?.interestRelevanceScore ?? Number.NaN,
       integrityScore: quality?.engagementIntegrityScore ?? Number.NaN,
-      qualityValid: hasReaderFacingPromotionTitle(item) &&
+      qualityValid: hasReaderFacingPromotionSource(item) &&
         quality?.eligibleForSummary === true &&
         quality.eligibleForTopRead === true &&
         quality.needsLlmReview === false &&
@@ -130,7 +130,7 @@ export const buildReaderPostPromotionProjection = (params: {
         (facts?.metrics === undefined ? "missing" : "observed"),
       ...(facts?.metrics === undefined ? {} : { metrics: facts.metrics }),
       whyImportant: item.whyImportant.find((reason) => reason.trim().length > 0) ??
-        item.title,
+        buildReaderPostPromotionTitle({ lead: item }),
       clusterId: clusterByEvidenceId.get(item.feedItemId),
     };
   });
@@ -250,9 +250,10 @@ const promotedPost = (params: {
     readerSummaryIndependentProviderFamily(item)))]
     .sort((left, right) => left.localeCompare(right));
   const interestIds = compactUnique(admitted.map((item) => item.interestId));
+  const title = buildReaderPostPromotionTitle({ lead });
   const whyImportant = compactUnique([
     ...params.selected.whyImportant,
-    lead.title,
+    title,
   ]).slice(0, 4);
   const confidenceScore = params.selected.confidence;
 
@@ -284,15 +285,11 @@ const promotedPost = (params: {
           editorialDigestInput:
             params.selected.editorialSlateEntry.digestInput,
         }),
-    title: buildReaderPostPromotionTitle({
-      lead,
-      admitted,
-      promotionReasons: params.selected.whyImportant,
-    }),
+    title,
     providerKey: lead.providerKey,
     providerName: lead.providerName ?? lead.providerKey,
     primaryActionKind: lead.readerActionKind ?? "read_source",
-    reason: whyImportant[0] ?? lead.title,
+    reason: whyImportant[0] ?? title,
     matchedInterestIds: interestIds.length === 0
       ? ["unknown-interest"]
       : interestIds,
