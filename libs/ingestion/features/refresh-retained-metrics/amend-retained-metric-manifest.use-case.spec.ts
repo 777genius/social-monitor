@@ -26,7 +26,7 @@ describe("explicit pre-reservation retained metric content amendment", () => {
     rmSync(root, { recursive: true }); root = mkdtempSync(join(tmpdir(), "metric-3329-")); f = incidentFixture(root);
     await f.receipts.install(metricEvidencePath("operation.json"), f.original);
     const bytes = readFileSync(join(root, metricEvidencePath("operation.json")));
-    const fetcher = { fetch: jest.fn(async () => ok([])) }, projection = { project: jest.fn(async () => {}) };
+    const fetcher = { fetch: jest.fn(async () => ok([])) }, projection = { project: jest.fn(async () => { throw new Error("No projection expected"); }) };
     const apply = () => new RefreshRetainedMetricsUseCase(f.inventory, fetcher, projection, f.receipts, f.clock, metricRefreshDigest);
     expect(await apply().execute(f.original)).toEqual({ ok: false, error: "inventory_drift" });
     const proposal = await prepare();

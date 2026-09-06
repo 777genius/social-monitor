@@ -41,17 +41,21 @@ describe("existing production maintenance contract, honestly bounded legacy excl
     const driver = join(root, "legacy.cjs");
     writeFileSync(driver, `
       require(process.cwd() + '/node_modules/ts-node').register({transpileOnly:true,project:process.cwd()+'/tsconfig.build.json'}); require(process.cwd() + '/node_modules/tsconfig-paths/register');
-      const {execFileSync} = require('node:child_process'), Module = require('node:module');
+      const {readFileSync} = require('node:fs'), {createHash} = require('node:crypto'), Module = require('node:module');
       const ts = require(process.cwd() + '/node_modules/typescript');
-      function original(path) {
-        const source = execFileSync('git', ['show', '0de33d8751bfd1e8ae722698e60ef893d324d9e5:' + path], {encoding:'utf8'});
+      // Exact source bytes from 0de33d8751bfd1e8ae722698e60ef893d324d9e5, available in shallow CI checkouts.
+      function original(path, expectedSha256) {
+        const source = readFileSync(process.cwd() + '/test-fixtures/retained-metric-legacy/' + path.split('/').at(-1) + '.txt');
+        if (createHash('sha256').update(source).digest('hex') !== expectedSha256) throw Error('Legacy source SHA256 mismatch: ' + path);
         const filename = process.cwd() + '/' + path;
         const mod = new Module(filename, module); mod.filename = filename; mod.paths = Module._nodeModulePaths(require('node:path').dirname(filename));
-        mod._compile(ts.transpileModule(source, {compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2023}}).outputText, filename);
+        mod._compile(ts.transpileModule(source.toString('utf8'), {compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2023}}).outputText, filename);
         return mod.exports;
       }
-      const {SecureMetricRefreshReceipts, metricRefreshDigest} = original('scripts/lib/retained-metric-refresh-receipts.ts');
-      const {RefreshRetainedMetricsUseCase} = original('libs/ingestion/features/refresh-retained-metrics/refresh-retained-metrics.use-case.ts');
+      const {SecureMetricRefreshReceipts, metricRefreshDigest} = original('scripts/lib/retained-metric-refresh-receipts.ts',
+        '2ea4f4e236e8244aaebf6cfda77b7e024a1fbc5ab915fe2a091b1294f5d3fea2');
+      const {RefreshRetainedMetricsUseCase} = original('libs/ingestion/features/refresh-retained-metrics/refresh-retained-metrics.use-case.ts',
+        '856f4d16b9d977638156728a734e2ae6c370e7766cf26627ad74c78acb7efb9d');
       const {createRecoveryEvidenceFilesystemTestHarness} = require(process.cwd() + '/scripts/lib/reader-summary-recovery-evidence-secure-file');
       const {manifest} = require(process.cwd() + '/scripts/lib/retained-metric-refresh.spec-support');
       const m = manifest(), row = m.targets[0]; let fetches = 0;

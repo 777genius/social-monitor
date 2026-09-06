@@ -5,6 +5,7 @@ import { join, resolve } from "node:path";
 import { incidentFixture } from "./retained-metric-amendment.spec-support";
 import { metricRefreshDigest } from "./retained-metric-refresh-receipts";
 import type { MetricProcessInput } from "./retained-metric-process.spec-support";
+import type { RetainedMetricTarget } from "@social-monitor/ingestion/features/refresh-retained-metrics/refresh-retained-metrics.contracts";
 import { metricEvidencePath, resolveMetricOperation } from "@social-monitor/ingestion/features/refresh-retained-metrics/metric-refresh-amendment";
 
 // Each case starts multiple fresh Node runtimes; allow slow disposable filesystems.
@@ -12,7 +13,7 @@ jest.setTimeout(180_000);
 describe("independent-process amendment/apply races and abrupt death", () => {
   let root: string, f: ReturnType<typeof incidentFixture>, serial: number;
   const children = new Set<ChildProcess>();
-  const current = (rows = f.current()) => writeFileSync(join(root, "current.json"), JSON.stringify(rows));
+  const current = (rows: readonly RetainedMetricTarget[] = f.current()) => writeFileSync(join(root, "current.json"), JSON.stringify(rows));
   const start = (input: MetricProcessInput) => {
     const path = join(root, `input-${++serial}.json`); writeFileSync(path, JSON.stringify(input));
     const child = fork(resolve("scripts/lib/retained-metric-process.spec-support.ts"), [root, path], {

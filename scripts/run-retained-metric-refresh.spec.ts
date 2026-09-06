@@ -72,7 +72,7 @@ describe("retained metric CLI composition and effective sample guard", () => {
     const options = jest.mocked(projectionModule.PrismaSourceEngagementProjectionAdapter).mock.calls[0]![2]!;
     const sample = { sourceItemId: f.current()[0]!.sourceItemId };
     await expect(options.sampleGuard!({} as never, {} as never, sample as never)).resolves.toBeUndefined();
-    f.change(f.original.targets);
+    f.change([...f.original.targets]);
     await expect(options.sampleGuard!({} as never, {} as never, sample as never)).rejects.toThrow("Transactional target drift");
     expect(await f.receipts.read(metricEvidencePath("final.json"))).toEqual(report);
   });
