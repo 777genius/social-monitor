@@ -4,7 +4,7 @@ import 'package:social_monitor_design_system/social_monitor_design_system.dart';
 import 'package:social_monitor_summaries/src/presentation/components/reader_summary_brief_surface.dart';
 import 'package:social_monitor_summaries/src/presentation/view_models/reader_summary_top_posts_projection.dart';
 
-import '../../support/source_reason_rest_fixture.dart';
+import '../../infrastructure/mappers/support/source_reason_rest_fixture.dart';
 
 void main() {
   for (final source in [

@@ -6,9 +6,9 @@ import 'package:social_monitor_summaries/src/domain/aggregates/reader_summary.da
 import 'package:social_monitor_summaries/src/infrastructure/mappers/reader_summary_content_rest_mapper.dart';
 import 'package:social_monitor_summaries/src/infrastructure/mappers/summary_mapper.dart';
 
-import '../../integration_test/support/promotion_attestation_rest_fixture.dart';
-import '../infrastructure/mappers/support/reader_summary_additional_stories_transport_fixture.dart';
-import 'summaries_test_fixtures.dart';
+import '../../../../integration_test/support/promotion_attestation_rest_fixture.dart';
+import '../../../support/summaries_test_fixtures.dart';
+import 'reader_summary_additional_stories_transport_fixture.dart';
 
 ReaderSummary sourceReasonRestSummary(String source, {String? editorial}) {
   final json =
