@@ -47,6 +47,11 @@ export class PrismaSourceEngagementProjectionAdapter
   constructor(
     private readonly prisma: PrismaSourceEngagementClient,
     private readonly ids: IdGenerator,
+    private readonly options: {
+      readonly retention?: "default" | "skip";
+      readonly sampleGuard?: (transaction: PrismaSourceEngagementTransactionClient,
+        command: ProjectSourceEngagementCommand, sample: SourceEngagementSample) => Promise<void>;
+    } = {},
   ) {}
 
   async project(
@@ -97,6 +102,7 @@ export class PrismaSourceEngagementProjectionAdapter
     | "retentionRollupsPurged"
     | "retentionPurgeDeferred"
   >> {
+    if (this.options.retention === "skip") return {};
     const scopeKey = `${command.tenantId}:${command.workspaceId}`;
     const lastPurgeAt = this.lastRetentionPurgeAtByScope.get(scopeKey);
     if (
@@ -153,6 +159,7 @@ export class PrismaSourceEngagementProjectionAdapter
     command: ProjectSourceEngagementCommand,
     sample: SourceEngagementSample,
   ): Promise<ProjectSourceEngagementResult> {
+    await this.options.sampleGuard?.(prisma, command, sample);
     const sourceItem = await prisma.sourceItem.findFirst({
       where: {
         tenantId: command.tenantId,
