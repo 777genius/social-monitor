@@ -1,38 +1,65 @@
+import { isReleaseDescription, type ReleaseDescriptionScope } from "./story-release-event-description";
+
 /**
  * Clause boundaries preserve object lists and decimal versions. A second
  * subject's assertion never borrows an earlier subject's exclusion.
  */
 const productSubject = String.raw`(?:[a-zA-Z][a-zA-Z-]*\s+){0,3}[a-zA-Z][a-zA-Z-]*[-\s]+\d+(?:\.\d+)+(?:[a-zA-Z])?`;
 const namedActor = String.raw`(?:[A-Z][A-Za-z-]*\s+){1,4}`;
-const finitePredicate = String.raw`(?!(?:as|vs|its|this)\b)(?:[a-z-]+ed|[a-z-]+s|was|were|will|would|can|could|may|might|must|ran|found|stole|took|made|had)`;
+const completedVerb = String.raw`(?:[a-z-]+ed|ran|found|stole|took|made|broke|lost|cut|got|became|began|sent|built|sold|bought|gave|wrote|saw|had)`;
+const finitePredicate = String.raw`(?!(?:as|vs|its|this)\b)(?:${completedVerb}|[a-z-]+s|was|were|will|would|can|could|may|might|must)`;
 // A version immediately after a word ending in "s" does not turn that product
 // name into a verb. In particular, a bare branded version is not a first clause.
 const finiteAssertion = String.raw`(?:[a-zA-Z][a-zA-Z-]*\s+){1,4}?${finitePredicate}\s+(?!\d+(?:\.\d+)+(?:\s|$))\S`;
-const pluralSubjectPredicate = String.raw`(?!(?:this|its|as|vs)\b)[a-z-]+s\s+(?!(?:vs|versus|of|for|with|on|in|at|from)\b)[a-z-]+\s+\S`;
+const pluralSubjectPredicate = String.raw`(?!(?:this|its|as|vs)\b)[a-z-]+s\s+(?!(?:vs|versus|of|for|with|on|in|at|from|than)\b)[a-z-]+\s+\S`;
 const subjectPredicate = new RegExp(`^(?:${productSubject}\\s+${finitePredicate}\\b|${finiteAssertion})`, "i");
 const coordinatedAssertion = new RegExp(
-  String.raw`,?\s+and\s+(?=(?:${productSubject}\s+(?:is|was|has|remains)\b|${namedActor}[a-z]+\s+|${finiteAssertion}|${pluralSubjectPredicate}|(?:it|they|we|he|she)\s+|(?:[a-z-]+ed|ran|found|stole|took|made)\s+))`,
+  String.raw`,?\s+and\s+(?!(?:what|how|why)\b)(?=(?:${productSubject}\s+(?:is|was|has|remains)\b|${namedActor}[a-z]+\s+|${finiteAssertion}|${pluralSubjectPredicate}|(?:it|they|we|he|she)\s+|${completedVerb}\s+))`,
   "g",
 );
 // A comma can separate a complete assertion as well as an object list. Only
 // split when the following text supplies a subject and predicate; dates and
 // descriptive noun lists stay attached to their clause.
 const commaAssertion = new RegExp(
-  String.raw`,\s+(?=(?:${productSubject}\s+(?:is|was|has|remains)\b|${finiteAssertion}|${pluralSubjectPredicate}))`,
+  String.raw`,\s+(?=(?:${productSubject}\s+(?:is|was|has|remains)\b|${finiteAssertion}|${pluralSubjectPredicate}|${completedVerb}\s+))`,
   "gi",
 );
 const commaNamedAssertion = new RegExp(String.raw`,\s+(?=${namedActor}[a-z][a-z-]*\s+\S)`, "g");
 // Temporal and causal clauses still assert their own events. Require a finite
 // subject/predicate so a date or noun adjunct does not become another clause.
 const subordinateAssertion = new RegExp(
-  String.raw`\s+(?:after|before|because|since|when|once|though|as)\s+(?=(?:${productSubject}\s+${finitePredicate}\b|${finiteAssertion}|${pluralSubjectPredicate}))`,
+  String.raw`\s+(?:after|before|because|since|when|once|though|as|where|that)\s+(?!(?:many|much|few|little)\b|(?:[a-z-]+ed|[a-z-]+ing)\s+(?:and|or|what|how|to)\b)(?=(?:${productSubject}\s+${finitePredicate}\b|${finiteAssertion}|${pluralSubjectPredicate}))`,
   "gi",
 );
-export const releaseEventClauses = (text: string): string[] => text
-  .split(/\n|[.!?](?=\s|$)|\s*;\s*|,?\s+\b(?:while|whereas|but|although)\s+/i)
-  .flatMap((part) => part.split(subordinateAssertion))
+// Preserve the existing unknown-named-predicate guard at subordinate boundaries
+// too. A quoted model result must not hide another named actor's assertion.
+const subordinateNamedAssertion = new RegExp(
+  String.raw`\s+(?:after|before|because|since|when|once|though|as|where|that)\s+(?=${namedActor}[a-z][a-z-]*\s+\S)`,
+  "g",
+);
+export const releaseEventStatements = (text: string): string[] => text
+  .split(/\n|(?<!\bvs)[.!?](?=\s|$)/i).map((part) => part.trim()).filter(Boolean);
+
+const commaClauses = (clause: string): string[] => {
+  const parts: string[] = [];
+  let start = 0;
+  for (const match of clause.matchAll(commaAssertion)) {
+    const next = match.index + match[0].length;
+    const prefix = clause.slice(0, match.index);
+    const depth = [...prefix].reduce((level, char) => level + (char === "(" ? 1 : char === ")" ? -1 : 0), 0);
+    // Parenthetical noun lists often contain participial modifiers. An explicit
+    // subject/predicate inside the parentheses still forms a separate assertion.
+    if (depth > 0 && !subjectPredicate.test(clause.slice(next))) continue;
+    parts.push(clause.slice(start, match.index)); start = next;
+  }
+  return [...parts, clause.slice(start)];
+};
+
+export const releaseEventClauses = (text: string): string[] => releaseEventStatements(text)
+  .flatMap((part) => part.split(/\s*;\s*|,?\s+\b(?:while|whereas|but|although)\s+/i))
+  .flatMap((part) => part.split(subordinateAssertion).flatMap((assertion) => assertion.split(subordinateNamedAssertion)))
   .flatMap((part) => part.split(coordinatedAssertion).flatMap((clause) => {
-    const assertions = clause.split(commaAssertion).flatMap((assertion) => assertion.split(commaNamedAssertion));
+    const assertions = commaClauses(clause).flatMap((assertion) => assertion.split(commaNamedAssertion));
     // An introductory fragment does not establish the first subject. Keep it
     // attached so the caller can decline unsupported attribution/stage grammar.
     return subjectPredicate.test(assertions[0]!.trim()) ? assertions : [clause];
@@ -42,7 +69,7 @@ export const releaseEventClauses = (text: string): string[] => text
 const product = new RegExp(`^${productSubject}\\b`, "i");
 const reference = /^(?:(?:this|the|its|new) (?:new )?(?:models?|release)|these models|it|they|both|this)\b/i;
 const description = /^(?:is|are|has|have|remains?|improves?|scores?|uses?|costs?|excels?|offers?|includes?|describes?|reduces?|allows?|supports?|provides?|compares?|sets?|achieves?|unlocks?|flags?|can)\b/i;
-const completedAction = /^(?:[a-z-]+ed|ran|found|stole|took|made|broke|lost|cut|got|became|began|sent|built|sold|bought|gave|wrote|saw|had)\b/i;
+const completedAction = new RegExp(`^${completedVerb}\\b`, "i");
 const explicitActor = new RegExp(String.raw`^((?:[a-z][a-z-]*\s+){1,4}?)(${finitePredicate})(?=\s|$)`, "i");
 const propertySubject = /^(?:(?:the|our|its|benign|watermark|cyber|biology|new|benchmark|partner)\s+)*(?:safeguards?|(?:security\s+)?requests?|false positives|fallbacks?|cost|pricing|cache reads|(?:benchmark\s+)?gains|partner quotes|announcement)\b/i;
 const ownedSafeguards = /^(?:our|its|their)\s+(?:[a-z-]+\s+){0,3}safeguards\b/i;
@@ -55,7 +82,7 @@ const pluralAssertion = new RegExp(`^${pluralSubjectPredicate}`, "i");
  * phrases and metric fragments do not themselves assert a new event.
  */
 export const hasUnboundReleaseAction = (
-  clause: string, publisher: string, hasPrimarySubject = false,
+  clause: string, publisher: string, hasPrimarySubject = false, scope?: ReleaseDescriptionScope,
 ): boolean => {
   let text = clause.replace(/^[-*\s]+/, "").replace(/^and\s+/i, "");
   // A locative/measurement adjunct does not replace the actual subject. Never
@@ -64,6 +91,7 @@ export const hasUnboundReleaseAction = (
   if (adjunct !== null && !/\b(?:[a-z-]+ed|was|were|ran|found|stole|took|made)\b/i.test(adjunct[1]!)) {
     text = text.slice(adjunct[0].length);
   }
+  if (isReleaseDescription(text, publisher, hasPrimarySubject, scope)) return false;
   const subject = reference.exec(text) ?? ownedSafeguards.exec(text) ?? propertySubject.exec(text) ?? product.exec(text);
   if (subject !== null) return unboundPredicate(text.slice(subject[0].length).trim());
   if (hasPrimarySubject && description.test(text)) return unboundPredicate(text);
@@ -78,6 +106,9 @@ export const hasUnboundReleaseAction = (
 
   const actor = explicitActor.exec(text);
   if (actor !== null) {
+    // An indefinite descriptive noun phrase can contain a capitalized plural
+    // name. This must not exempt mixed-case predicates of an actual actor.
+    if (/^[A-Z].*s$/.test(actor[2]!) && /^(?:a|an)\s+[a-z-]+\s+$/.test(actor[1]!)) return unknownSubject;
     const name = actor[1]!.trim().toLowerCase();
     const predicate = text.slice(actor[1]!.length);
     // A report of a publisher statement is attribution, not a new experiment.
@@ -89,7 +120,10 @@ export const hasUnboundReleaseAction = (
     // finite action ("coding workloads vs its predecessor").
     const complement = predicate.slice(actor[2]!.length).trim();
     if (/s$/i.test(actor[2]!) && (complement === "" ||
-        /^(?:vs|versus|for|of|with|on|in|at|from)\b/i.test(complement))) return unknownSubject;
+        /^(?:vs|versus|for|of|with|on|in|at|from|than|to|instead of)\b/i.test(complement))) return unknownSubject;
+    // A plural head followed by a present participle is a reduced relative
+    // noun phrase, not an actor followed by a third-person singular verb.
+    if (/s$/i.test(actor[2]!) && /^[a-z-]+ing\s+(?:up to\s+)?\d+(?:\.\d+)?x\s+(?:speedups|improvements)\b/i.test(complement)) return false;
     return true;
   }
   // Lower-case actors and passive incidents must also be checked. Restrict the
@@ -106,7 +140,7 @@ const unboundPredicate = (raw: string): boolean => {
   const predicate = raw.replace(/^(?:(?:also|now|still|already|[a-z-]+ly)\s+){0,3}/i, "");
   // An access qualifier is a fragment; any subsequent finite assertion still
   // needs its own clause. Availability/date/stage are checked by the caller.
-  if (/^(?:only\s+)?(?:via|through|for|with|vs|versus|compared to)\b/i.test(predicate) || /^[:,/]/.test(predicate) || predicate === "") return false;
+  if (/^(?:only\s+)?(?:via|through|for|with|on|in|vs|versus|compared to)\b/i.test(predicate) || /^[:,/]/.test(predicate) || predicate === "") return false;
   // A copula or possession verb does not prove a release property: "is under
   // attack" and irregular passives otherwise look like benign descriptions.
   // Recognize comparative properties and inclusion; other explicit states are

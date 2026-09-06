@@ -6,6 +6,7 @@ import { buildStoryRelationCandidates, STORY_RELATION_APPROVAL_CONFIDENCE_MIN,
 import { reconcileStoryRelationDecisions } from "@social-monitor/summary/domain/services/story-relation-decision-trace";
 import { primaryEventReviewCases } from "@social-monitor/summary/domain/services/story-release-event-primary.spec-support";
 import { primaryEventGrammarCases } from "@social-monitor/summary/domain/services/story-release-event-primary-grammar.spec-support";
+import { releaseDescriptionCases } from "@social-monitor/summary/domain/services/story-release-event-description.spec-support";
 import { releaseEvidence } from "@social-monitor/summary/domain/services/story-release-event-identity.spec-support";
 import { AgentRuntimeReaderSummaryStoryRelationVerifier } from "@social-monitor/summary/adapters/model/agent-runtime-reader-summary-story-relation-verifier.adapter";
 import { withTestExecutionAttestation } from "@social-monitor/summary/adapters/model/reader-summary-execution-attestation.spec-support";
@@ -15,7 +16,7 @@ import { canonicalRequestFor } from "../../../../scripts/evals/reader-story-grou
 const now = new Date("2026-09-01T14:00:00Z");
 const identity = { tenantId: tenantId("fixture-tenant"), workspaceId: workspaceId("fixture-workspace"),
   scope: { type: "workspace" as const } };
-const cases = [...primaryEventReviewCases, ...primaryEventGrammarCases];
+const cases = [...primaryEventReviewCases, ...primaryEventGrammarCases, ...releaseDescriptionCases];
 const controls = [
   { name: "refusal", sameStory: true, confidenceScore: 1, accepted: false, approved: false },
   { name: "no output", sameStory: true, confidenceScore: 1, accepted: false, approved: false },

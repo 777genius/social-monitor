@@ -1,5 +1,6 @@
 import type { SummaryEvidenceItem } from "../value-objects/summary-evidence-item";
-import { hasUnboundReleaseAction, releaseEventClauses } from "./story-release-event-clauses";
+import { hasUnboundReleaseAction, releaseEventClauses, releaseEventStatements } from "./story-release-event-clauses";
+import { releaseDescriptionScope, reportedReleaseContent } from "./story-release-event-description";
 
 /** Evidence for a verification-only exception, never deterministic merge authority. */
 export type StoryReleaseEventIdentity = {
@@ -269,22 +270,31 @@ const releaseContext = (
 ): string | undefined => {
   const relevant: string[] = [];
   let primarySubject = true;
-  for (const [index, sentence] of sentences(body).entries()) {
+  const assertions = releaseEventStatements(body).flatMap((statement) =>
+    sentences(statement).map((sentence) => ({ sentence,
+      scope: releaseDescriptionScope(statement),
+    })));
+  for (const [index, { sentence, scope }] of assertions.entries()) {
+    const content = reportedReleaseContent(sentence);
     const assertion = releaseAssertion(sentence);
     const activePublisher = assertion === undefined ? undefined : namedPublisher(assertion.before);
-    const product = activePublisher === undefined ? versionedProduct.exec(sentence) : null;
+    const product = activePublisher === undefined ? versionedProduct.exec(content) : null;
     if (product !== null) {
-      primarySubject = compatibleTargets(targets, [targetKey(product[1]!, product[2]!)]);
+      // A benchmark label such as "Task-Bench 4.0: 70%" is not a new model
+      // subject. Attribution predicates likewise cannot become brand prefixes.
+      if (!/^\s*:/.test(content.slice(product[0].length))) {
+        primarySubject = compatibleTargets(targets, [targetKey(product[1]!, product[2]!)]);
+      }
       // In passive voice the released object precedes the verb. Inspect it
       // before the active-voice parser can mistake the date for an object.
-      if (index > 0 && hasReleaseFact(sentence.slice(product[0].length))) {
+      if (index > 0 && hasReleaseFact(content.slice(product[0].length))) {
         if (primarySubject) {
-          const actor = /\bby\s+([a-z][a-z-]*)\b/i.exec(sentence.slice(product[0].length));
+          const actor = /\bby\s+([a-z][a-z-]*)\b/i.exec(content.slice(product[0].length));
           if (unsupportedStage.test(sentence) ||
               (actor !== null && actor[1]!.toLowerCase() !== publisher) ||
-              !attachedReleaseState.test(sentence.slice(product[0].length))) return undefined;
+              !attachedReleaseState.test(content.slice(product[0].length))) return undefined;
           relevant.push(sentence);
-        } else if (mentionsPrimaryTarget(sentence.slice(product[0].length), targets)) {
+        } else if (mentionsPrimaryTarget(content.slice(product[0].length), targets)) {
           // A clause boundary we cannot bind must not erase another explicit
           // primary-target assertion merely because this clause started elsewhere.
           return undefined;
@@ -308,8 +318,8 @@ const releaseContext = (
     }
     if (assertion !== undefined) {
       const mentioned = releaseTargets(assertion.subject);
-      primarySubject = mentioned !== undefined && compatibleTargets(targets, mentioned);
-      if (primarySubject) {
+      if (mentioned !== undefined) primarySubject = compatibleTargets(targets, mentioned);
+      if (mentioned !== undefined && primarySubject) {
         // A repeated target does not transfer another actor's launch to the
         // primary publisher. Unsupported attribution remains ambiguous.
         const actor = namedPublisher(assertion.before) ??
@@ -326,7 +336,7 @@ const releaseContext = (
     // No recognized release/measurement signal is not evidence that an explicit
     // actor's action belongs to the launch quoted in the lead.
     if ([...sentence.matchAll(measurementAction)].length === 0 &&
-        hasUnboundReleaseAction(sentence, publisher, primarySubject)) return undefined;
+        hasUnboundReleaseAction(sentence, publisher, primarySubject, scope)) return undefined;
   }
   const context = [headline, ...relevant].join("\n");
   return unsupportedStage.test(context) ? undefined : context;
