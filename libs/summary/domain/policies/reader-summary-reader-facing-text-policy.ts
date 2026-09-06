@@ -4,8 +4,9 @@ export const READER_TITLE_MAX_LENGTH = 119;
 // negation, uncertainty, conditions or a question elsewhere in the source.
 // Omitted references and corrections can govern either neighboring direction.
 // Reject them even when unrelated: this bounded English lexical guard cannot
-// resolve their referents. Walk-back forms allow a short object (up to four
-// words) between the inflected verb and particle, or a hyphenated particle.
+// resolve their referents. Walk-back detection spans any intervening words or
+// hyphenation within the same omitted sentence, conservatively rejecting literal
+// walking contexts too; it has no semantic exception or object-length limit.
 // Callers retain legacy first-substantive extraction.
 export const canRecoverReaderTitleSentence = (
   sentences: readonly string[],
@@ -22,10 +23,26 @@ export const canRecoverReaderTitleSentence = (
     /\b\w+n['’]t\b/iu.test(sentence) ||
     /\b(?:following|preceding|above|below)\s+(?:claim|statement|assertion|account)\b/iu.test(sentence) ||
     /\b(?:this|that|these|those|the)\s+(?:(?:earlier|previous|original|prior|reported|published|same)\s+)*(?:claims?|assertions?|statements?|findings?|conclusions?|allegations?|accounts?|reports?)\b/iu.test(sentence) ||
-    /\b(?:retract(?:s|ed|ing|ions?)?|withdraw(?:s|n|ing|als?)?|withdrew|correct(?:s|ed|ing|ions?)?|recant(?:s|ed|ing|ations?)?|rescind(?:s|ed|ing)?|walk(?:s|ed|ing)?(?:-|\s+(?:[\p{L}'’]+\s+){0,4})back)\b/iu.test(sentence) ||
+    /\b(?:retract(?:s|ed|ing|ions?)?|withdraw(?:s|n|ing|als?)?|withdrew|correct(?:s|ed|ing|ions?)?|recant(?:s|ed|ing|ations?)?|rescind(?:s|ed|ing)?)\b/iu.test(sentence) ||
+    hasSentenceWalkBack(sentence) ||
     /\b(?:breaking|just\s+in)\s*:/iu.test(sentence)
   ))
 );
+
+// A single linear token scan avoids repeated suffix searches for each verb.
+// Reset on sentence punctuation even if a caller grouped ambiguous sentences.
+const hasSentenceWalkBack = (sentence: string): boolean => {
+  let walked = false;
+  for (const match of sentence.matchAll(/\bwalk(?:s|ed|ing)?\b|\bback\b|[.!?…]/giu)) {
+    const token = match[0].toLowerCase();
+    if (token === "back") {
+      if (walked) return true;
+    } else {
+      walked = token.startsWith("walk");
+    }
+  }
+  return false;
+};
 
 export const isConversationalOrTruncatedReaderTitle = (
   value: string,

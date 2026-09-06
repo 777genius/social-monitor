@@ -2,14 +2,14 @@ import type { SummaryEvidenceItem } from "../value-objects/summary-evidence-item
 import { buildTopReadTitle } from "./reader-summary-top-read-title";
 import { buildReaderPostPromotionTitle, hasReaderFacingPromotionTitle } from
   "./reader-post-promotion-title";
-import { isUnpolishedReaderTitle } from
+import { canRecoverReaderTitleSentence, isUnpolishedReaderTitle } from
   "../policies/reader-summary-reader-facing-text-policy";
 
 describe("reader summary top read title", () => {
   const longContext = "Atlas documents agent safety findings across public websites and proposes reporting standards for misalignment incidents and model properties.";
   describe.each(["summary", "preview"])("%s sentence recovery", (path) => {
     const itemFor = (body: string): SummaryEvidenceItem => evidence({
-      title: path === "summary" ? body : `${body.slice(0, 100)}...`,
+      title: path === "summary" ? body : `X post by @lab: ${body.slice(0, 100)}...`,
       bodyPreview: body,
     });
 
@@ -74,6 +74,15 @@ describe("reader summary top read title", () => {
         "We are walking this back.",
         "We walked those statements back.",
         "We walked our earlier published statements back.",
+        "We walked our earlier widely circulated statements back.",
+        "We walked our earlier public-facing statements back.",
+        "We walked our earlier—public-facing, widely circulated—statements back.",
+        ...[5, 10, 30].flatMap((length) =>
+          ["walk", "walks", "walked", "walking"].map((verb) =>
+            `We ${verb} ${"published ".repeat(length)}back.`,
+          ),
+        ),
+        "We walked our visitors along winding woodland paths back to camp.",
         "We walked them back.",
         "We walked everything back.",
         "We walked back.",
@@ -195,6 +204,38 @@ describe("reader summary top read title", () => {
         expect(title.toLowerCase()).toContain(qualification.replace(/\.$/u, ""));
       }
     });
+  });
+
+  it.each([".", "!", "?", "…"])(
+    "does not pair walk and back across a %s boundary inside omitted context",
+    (boundary) => {
+      // Exercise the policy directly even when the caller groups ambiguous prose.
+      // A question is independently disqualifying under the unchanged question gate.
+      expect(canRecoverReaderTitleSentence([
+        `Researchers walked outdoors${boundary} Back at camp, teams shared dinner.`,
+        "Atlas documents agent failures in public incident reports.",
+      ], 1)).toBe(boundary !== "?");
+    },
+  );
+
+  it("does not pair walk and back in separate omitted sentences", () => {
+    expect(canRecoverReaderTitleSentence([
+      "Researchers walked outdoors.",
+      "Atlas documents agent failures in public incident reports.",
+      "Back at camp, teams shared dinner.",
+    ], 1)).toBe(true);
+  });
+
+  it("requires the particle after the verb with whole word boundaries", () => {
+    for (const context of [
+      "Back at camp, researchers walked outdoors.",
+      "Researchers walked along the backwater.",
+      "Researchers moonwalked back to camp.",
+    ]) {
+      expect(canRecoverReaderTitleSentence([
+        context, "Atlas documents agent failures in public incident reports.",
+      ], 1)).toBe(true);
+    }
   });
 
   it.each(["codex", "beacon"])("preserves legacy preview teaser skipping for %s", (product) => {

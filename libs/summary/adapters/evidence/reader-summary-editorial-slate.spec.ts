@@ -31,6 +31,14 @@ describe("Reader Promotion V2 editorial slate", () => {
     it.each([
       ...["We walked it back.", "We have walked that back.", "We are walking this back.",
         "We walked those statements back.", "We have walked-back earlier coverage.",
+        "We walked our earlier widely circulated statements back.",
+        "We walked our earlier public-facing statements back.",
+        "We walked our earlier—public-facing, widely circulated—statements back.",
+        ...[5, 10, 30].flatMap((length) =>
+          ["walk", "walks", "walked", "walking"].map((verb) =>
+            `We ${verb} ${"published ".repeat(length)}back.`,
+          ),
+        ),
       ].flatMap((retraction) => [
         `${context} Atlas bypasses human approval. ${retraction}`,
         `${context} ${retraction} Atlas bypasses human approval.`,
