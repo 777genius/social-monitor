@@ -16,8 +16,15 @@ export type ReaderSummaryTopicLabelPlan = {
 export type ReaderSummaryTopicNodeLabel = {
   readonly nodeId: string;
   readonly topicId?: string;
+  /** Internal reconciliation lineage; never parsed from model output. */
+  readonly relationIdentity?: {
+    readonly source: "topic-relation-reconciliation";
+    readonly canonicalNodeId: string;
+  };
   readonly label?: string;
   readonly semantic?: ReaderSummaryTopicSemanticLabel;
+  /** Normalizer-owned assignment lineage; never read from a model lineage field. */
+  readonly originalGroupId?: string;
   readonly groupId?: string;
   readonly keywords?: readonly string[];
   readonly rationale?: string;
@@ -26,6 +33,8 @@ export type ReaderSummaryTopicNodeLabel = {
 export type ReaderSummaryTopicGroupLabel = {
   readonly id: string;
   readonly label: string;
+  /** Accepted cohort identity display; final rendering must recheck grounding. */
+  readonly recoveredDisplayLabel?: string;
   readonly semanticAnchors?: readonly string[];
   readonly nodeIds?: readonly string[];
   readonly confidenceScore?: number;

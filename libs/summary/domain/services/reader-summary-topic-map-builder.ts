@@ -26,6 +26,7 @@ import {
 import {
   alignReaderSummaryTopicSemanticLabelToEvidence,
   ensureTopicLabelExpressesClaimFacet,
+  READER_SUMMARY_TOPIC_SEMANTIC_CONFIDENCE_MIN,
   renderReaderSummaryTopicSemanticLabel,
 } from "./reader-summary-topic-claim-label-policy";
 import {
@@ -93,7 +94,7 @@ export const buildReaderSummaryTopicMap = (
   const nodeLabels = new Map(
     (params.labelPlan?.nodeLabels ?? [])
       .map(sanitizeTopicNodeLabel)
-      .filter(hasUsableTopicNodeLabel)
+      .filter((label) => hasUsableTopicNodeLabel(label) || label.relationIdentity !== undefined)
       .map((label) => [label.nodeId, label] as const),
   );
   const reviewedNodeIds = new Set(
@@ -109,6 +110,23 @@ export const buildReaderSummaryTopicMap = (
   const aggregateByFallbackGroup =
     params.generatedBy === "agent-runtime" && nodeLabels.size === 0;
   const reviewedClusters = reviewedTopicClusters(params, reviewedNodeIds);
+  const originalLabels = new Map(
+    (params.labelPlan?.nodeLabels ?? []).map((label) => [label.nodeId, label]),
+  );
+  const originalGroupByStoryClusterId = new Map(reviewedClusters.flatMap((cluster) => {
+    const groupId = originalLabels.get(topicNodeId(cluster.id))?.originalGroupId;
+    return groupId === undefined ? [] : [[cluster.id, groupId] as const];
+  }));
+  const identityProtectedStoryClusterIds = new Set(reviewedClusters
+    .filter((cluster) => originalLabels.get(topicNodeId(cluster.id))?.relationIdentity !== undefined)
+    .map((cluster) => cluster.id));
+  // Derive exclusion before display sanitation. Cluster lineage remains intact
+  // through both aggregation passes, including a merged high/low-confidence pair.
+  const excludedStoryClusterIds = new Set(reviewedClusters.filter((cluster) => {
+    const semantic = originalLabels.get(topicNodeId(cluster.id))?.semantic;
+    return semantic !== undefined && (!Number.isFinite(semantic.confidenceScore) ||
+      semantic.confidenceScore < READER_SUMMARY_TOPIC_SEMANTIC_CONFIDENCE_MIN);
+  }).map((cluster) => cluster.id));
   const nodeDrafts = reviewedClusters
     .map((cluster) =>
       topicNodeForCluster({
@@ -132,7 +150,7 @@ export const buildReaderSummaryTopicMap = (
   const rawNodes =
     params.preserveStoryClustersForLabeling === true
       ? aggregatedNodes
-      : mergeReaderSummaryTopicMapNodesByLabel(aggregatedNodes);
+      : mergeReaderSummaryTopicMapNodesByLabel(aggregatedNodes, identityProtectedStoryClusterIds);
   const semanticAnchorsByGroup = new Map(
     [...labelGroups].map(([groupId, group]) => [
       groupId,
@@ -144,7 +162,7 @@ export const buildReaderSummaryTopicMap = (
     params.preserveStoryClustersForLabeling === true
       ? rankedNodes
       : rankedNodes.slice(0, READER_SUMMARY_TOPIC_MAP_MAX_NODES),
-    { semanticAnchorsByGroup },
+    { semanticAnchorsByGroup, excludedStoryClusterIds, originalGroupByStoryClusterId },
   );
   const groups = buildReaderSummaryTopicMapGroups(nodes, labelGroups);
   const edges = buildReaderSummaryTopicMapEdges(nodes, groups);
@@ -423,14 +441,21 @@ const validLabelGroups = (
   );
 
   return new Map(
-    plan.groups
-      .filter(
-        (group) =>
-          isUsableTopicGroupLabel(group, { providerLabels }) &&
-          (referencedGroupIds.has(group.id) ||
-            (group.nodeIds ?? []).some((nodeId) => nodeLabels.has(nodeId))),
-      )
-      .map((group) => [group.id, group] as const),
+    plan.groups.flatMap((group) => {
+      // Recovery is a second display candidate under the same provider/id checks.
+      // Keep the definition when either display is usable; rendering rechecks grounding.
+      const recoveredDisplayLabel = group.recoveredDisplayLabel !== undefined &&
+        isUsableTopicGroupLabel({ ...group, label: group.recoveredDisplayLabel }, { providerLabels })
+        ? group.recoveredDisplayLabel : undefined;
+      const label = isUsableTopicGroupLabel(group, { providerLabels })
+        ? group.label : recoveredDisplayLabel;
+      if (label === undefined ||
+          !(referencedGroupIds.has(group.id) ||
+            (group.nodeIds ?? []).some((nodeId) => nodeLabels.has(nodeId)))) {
+        return [];
+      }
+      return [[group.id, { ...group, label, recoveredDisplayLabel }] as const];
+    }),
   );
 };
 
