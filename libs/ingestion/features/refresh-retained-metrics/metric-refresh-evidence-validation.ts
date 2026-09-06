@@ -4,6 +4,7 @@ import { manifestProblem, metricRefreshTargetLimit } from "./metric-refresh-admi
 
 export const metricAmendmentLimit = 8;
 export const metricProposalLimit = 8;
+export const metricReviewedContentChangeLimit = 32;
 export const metricSha = (v: unknown): v is string => typeof v === "string" && /^[a-f0-9]{64}$/u.test(v);
 export const metricUuid = (v: unknown): v is string => typeof v === "string" && /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/u.test(v);
 const time = (v: unknown): boolean => typeof v === "string" && Number.isFinite(Date.parse(v)) && new Date(v).toISOString() === v;
@@ -52,7 +53,7 @@ export function assertMetricAmendment(value: unknown): asserts value is MetricMa
   evidenceAssert(metricSha(value.implementation.sourceSha) && metricSha(value.implementation.executableSha) && metricSha(value.implementation.holderProof) &&
     typeof value.implementation.legacyRetirementRef === "string" && /^[A-Za-z0-9][A-Za-z0-9:/_.-]{0,255}$/u.test(value.implementation.legacyRetirementRef));
   assertMetricTargets(value.inventory);
-  evidenceAssert(Array.isArray(value.changes) && value.changes.length > 0 && value.changes.length <= 16);
+  evidenceAssert(Array.isArray(value.changes) && value.changes.length > 0 && value.changes.length <= metricReviewedContentChangeLimit);
   for (const row of value.changes) {
     object(row, "sourceItemId before after");
     evidenceAssert(metricUuid(row.sourceItemId) && metricSha(row.before) && metricSha(row.after) && row.before !== row.after);

@@ -1,7 +1,7 @@
 import type { MetricRefreshManifest, RefreshDigest, RetainedMetricTarget } from "./refresh-retained-metrics.contracts";
 import type { MetricContentChange, MetricManifestAmendment, MetricOperationHead, MetricRefreshOperation } from "./metric-refresh-operation.contracts";
 import { metricRefreshEvidencePath, targetIdentity } from "./metric-refresh-admission";
-import { assertMetricAmendment, assertMetricManifest, evidenceAssert, metricAmendmentLimit, metricProposalLimit } from "./metric-refresh-evidence-validation";
+import { assertMetricAmendment, assertMetricManifest, evidenceAssert, metricAmendmentLimit, metricProposalLimit, metricReviewedContentChangeLimit } from "./metric-refresh-evidence-validation";
 import { validateMetricEffectReceipts } from "./metric-refresh-effect-evidence";
 
 export const orderedMetricTargets = (targets: readonly RetainedMetricTarget[]) => [...targets].sort((a, b) => a.sourceItemId.localeCompare(b.sourceItemId));
@@ -30,7 +30,7 @@ export function applyMetricAmendment(head: MetricOperationHead, amendment: Metri
   evidenceAssert(amendment.captureStartedAt >= head.original.plannedAt && amendment.captureCompletedAt <= now.toISOString(), "invalid_capture_time");
   assertMetricManifest({ ...head.effective, targets: amendment.inventory }, now);
   const changes = reviewedContentChanges(head.effective, amendment.inventory, hash);
-  evidenceAssert(hash(changes) === hash(amendment.changes) && changes.length > 0 && changes.length <= 16, "unreviewed_content_diff");
+  evidenceAssert(hash(changes) === hash(amendment.changes) && changes.length > 0 && changes.length <= metricReviewedContentChangeLimit, "unreviewed_content_diff");
   evidenceAssert(hash(orderedMetricTargets(amendment.inventory)) === amendment.inventorySha &&
     hash(metricIdentityInventory(amendment.inventory)) === amendment.identityInventorySha, "invalid_inventory_sha");
   const evidence = amendment.zeroBudgetEvidence;

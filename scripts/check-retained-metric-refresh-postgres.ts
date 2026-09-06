@@ -43,16 +43,19 @@ async function main() {
         await write.tenant!.create({ data: { id: scope.tenantId, slug: "metric-refresh-test", name: "Fixture" } });
         await write.workspace!.create({ data: { id: scope.workspaceId, tenantId: scope.tenantId, slug: "fixture", name: "Fixture" } });
         await write.interest!.create({ data: { id: id(6200), tenantId: scope.tenantId, workspaceId: scope.workspaceId, name: "Fixture", query: "fixture", status: "ENABLED" } });
-        for (const [index, providerKey] of ["hacker-news", "reddit"].entries()) {
-          await write.sourceCatalogEntry!.create({ data: { id: id(6210 + index), providerKey, displayName: "Fixture", acquisitionMode: "http", readiness: "fixture" } });
-          await write.sourceBinding!.create({ data: { id: id(6220 + index), tenantId: scope.tenantId, workspaceId: scope.workspaceId,
-            interestId: id(6200), sourceCatalogEntryId: id(6210 + index), capabilityProfileVersion: 1, status: "ENABLED", config: {} } });
-          const metadata = { kind: index ? "reddit_post" : "hacker_news_story", provenance: "fixture", ...(index ? { score: 5 } : { points: 5 }) };
-          const canonicalUrl = index ? "https://www.reddit.com/comments/abc" : "https://news.ycombinator.com/item?id=123";
-          const shared = { tenantId: scope.tenantId, workspaceId: scope.workspaceId, sourceBindingId: id(6220 + index), providerKey, canonicalUrl,
+        for (let index = 0; index < 19; index++) {
+          const providerKey = index % 2 ? "reddit" : "hacker-news";
+          if (index < 2) {
+            await write.sourceCatalogEntry!.create({ data: { id: id(6300 + index), providerKey, displayName: "Fixture", acquisitionMode: "http", readiness: "fixture" } });
+            await write.sourceBinding!.create({ data: { id: id(6400 + index), tenantId: scope.tenantId, workspaceId: scope.workspaceId,
+              interestId: id(6200), sourceCatalogEntryId: id(6300 + index), capabilityProfileVersion: 1, status: "ENABLED", config: {} } });
+          }
+          const metadata = { kind: index % 2 ? "reddit_post" : "hacker_news_story", provenance: "fixture", ...(index % 2 ? { score: 5 } : { points: 5 }) };
+          const canonicalUrl = index % 2 ? `https://www.reddit.com/comments/abc${index}` : `https://news.ycombinator.com/item?id=${123 + index}`;
+          const shared = { tenantId: scope.tenantId, workspaceId: scope.workspaceId, sourceBindingId: id(6400 + index % 2), providerKey, canonicalUrl,
             title: "Original", publishedAt, observedAt: publishedAt };
-          await write.sourceItem!.create({ data: { ...shared, id: id(6230 + index), providerItemId: index ? "reddit:t3_abc" : "hn:123", body: "Retained body", contentHash: "original", metadata } });
-          await write.feedItem!.create({ data: { ...shared, id: id(6240 + index), sourceItemId: id(6230 + index), interestId: id(6200),
+          await write.sourceItem!.create({ data: { ...shared, id: id(6500 + index), providerItemId: index % 2 ? `reddit:t3_abc${index}` : `hn:${123 + index}`, body: "Retained body", contentHash: "original", metadata, createdAt: publishedAt } });
+          await write.feedItem!.create({ data: { ...shared, id: id(6600 + index), sourceItemId: id(6500 + index), interestId: id(6200),
             dedupeKey: `fixture-${index}`, bodyPreview: "Retained body", providerMetadata: metadata } });
         }
       }, { isolationLevel: "Serializable", maxWait: 5000, timeout: 30000 }));
@@ -60,7 +63,7 @@ async function main() {
     await runWithTenantDatabaseAccess(scope, async () => {
       const inventory = new PrismaRetainedMetricInventory(lease.client, metricRefreshDigest);
       const targets = await inventory.list(scope);
-      assert.equal(targets.length, 2);
+      assert.equal(targets.length, 19);
       let manifest: MetricRefreshManifest = { version: "retained-metrics.v1", sourceBase: metricRefreshSourceBase, bounds: metricRefreshBounds,
         operationId: id(6250), evidencePath: metricRefreshEvidencePath, plannedAt: scope.endAt, scope, targets };
       let transactionDrift = true;
@@ -87,16 +90,24 @@ async function main() {
       const originalBytes = readFileSync(resolve(root, metricRefreshEvidencePath, "operation.json"));
       await withPrismaWriteRetry(() => lease.client.$transaction(async (transaction) => {
         const source = transaction as unknown as { sourceItem: { update(args: unknown): Promise<unknown> } };
-        await source.sourceItem.update({ where: { id: id(6230) }, data: {
+        for (const target of targets) await source.sourceItem.update({ where: { id: target.sourceItemId }, data: {
           body: "TEST natural source content version", contentHash: "changed", contentUpdatedAt: new Date("2026-09-05T12:01:00Z"),
         } });
+        const write = transaction as unknown as Record<string, Writer>;
+        for (let index = 0; index < 4; index++) await write.sourceItem!.create({ data: {
+          id: id(6700 + index), tenantId: scope.tenantId, workspaceId: scope.workspaceId, sourceBindingId: id(6400), providerKey: "hacker-news",
+          providerItemId: `hn:${9000 + index}`, canonicalUrl: `https://news.ycombinator.com/item?id=${9000 + index}`,
+          title: "Late fixture", body: "Outside original operation", contentHash: "late", publishedAt, observedAt: publishedAt,
+          createdAt: new Date("2026-09-05T12:02:00Z"), metadata: { kind: "hacker_news_story", points: 5 },
+        } });
       }, { isolationLevel: "Serializable" }));
+      assert.equal((await inventory.list(scope)).length, 23);
       const oldApply = new RefreshRetainedMetricsUseCase(inventory, fetcher, projection, receipts, clock, metricRefreshDigest);
       assert.deepEqual(await oldApply.execute(manifest), { ok: false, error: "inventory_drift" });
       const amend = new AmendRetainedMetricManifestUseCase(inventory, receipts, clock, metricRefreshDigest,
         { sourceSha: "1".repeat(64), executableSha: "2".repeat(64), holderProof: "3".repeat(64), legacyRetirementRef: "TEST-no-legacy" });
-      const prepared = await amend.prepare(metricRefreshDigest(manifest), "TEST single natural content version");
-      assert(prepared.ok); assert.equal(prepared.value.changes.length, 1);
+      const prepared = await amend.prepare(metricRefreshDigest(manifest), "TEST 19 natural content versions with four late arrivals");
+      assert(prepared.ok); assert.equal(prepared.value.changes.length, 19); assert.equal(prepared.value.inventory.length, 19);
       const committed = await amend.commit(metricRefreshDigest(prepared.value), prepared.value.priorEffectiveSha, prepared.value.effectiveManifestSha);
       assert(committed.ok); manifest = committed.value.effective;
       assert.equal(fetches, 0);
@@ -110,11 +121,14 @@ async function main() {
       const usecase = new RefreshRetainedMetricsUseCase(inventory, fetcher, uncertainProjection, receipts, clock, metricRefreshDigest);
       const first = await usecase.execute(manifest);
       assert(first.ok && first.value.some((row) => row.status === "failed"));
-      assert.equal((await inventory.read(scope, id(6230)))?.authority.observationCount, 0);
+      assert.equal((await inventory.read(scope, targets[0]!.sourceItemId))?.authority.observationCount, 0);
       const resumed = await usecase.execute(manifest);
       assert(resumed.ok && resumed.value.every((row) => row.status === "refreshed" && row.after.observationCount === 1));
       assert.deepEqual(await usecase.execute(manifest), resumed);
-      assert.equal(fetches, 2);
+      assert.equal(fetches, 11); // Ten HN requests and one nine-ID Reddit batch, with no late IDs.
+      assert.deepEqual(resumed.value.map((row) => row.sourceItemId).sort(), targets.map((row) => row.sourceItemId).sort());
+      await assert.rejects(() => amend.prepare(prepared.value.effectiveManifestSha, "TEST never after reservation"), /metric_budget_already_started/u);
+      for (let index = 0; index < 4; index++) assert.equal((await inventory.read(scope, id(6700 + index)))?.authority.observationCount, 0);
       for (const target of manifest.targets) {
         const current = await inventory.read(scope, target.sourceItemId);
         assert(sameTarget(target, current, metricRefreshDigest));

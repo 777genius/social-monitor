@@ -32,7 +32,7 @@ export class RefreshRetainedMetricsUseCase {
     manifest = head?.effective ?? manifest;
     const problem = manifestProblem(manifest, this.clock.now());
     if (problem) return err(problem);
-    const current = await this.inventory.list(manifest.scope);
+    const current = await this.inventory.list(manifest.scope, head?.original.targets.map((t) => t.sourceItemId));
     const identities = (targets: readonly RetainedMetricTarget[]) => targets.map(targetIdentity).sort((a, b) => a.sourceItemId.localeCompare(b.sourceItemId));
     if (this.digest(identities(current)) !== this.digest(identities(manifest.targets))) return err("inventory_drift");
     const root = manifest.evidencePath;

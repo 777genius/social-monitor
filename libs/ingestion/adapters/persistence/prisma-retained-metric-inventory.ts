@@ -12,12 +12,16 @@ export type PrismaMetricInventoryClient = {
 export class PrismaRetainedMetricInventory implements RetainedMetricInventory {
   constructor(private readonly prisma: PrismaMetricInventoryClient, private readonly digest: RefreshDigest) {}
 
-  async list(scope: RefreshScope): Promise<readonly RetainedMetricTarget[]> {
+  async list(scope: RefreshScope, sourceItemIds?: readonly string[]): Promise<readonly RetainedMetricTarget[]> {
     this.requireScope(scope);
+    if (sourceItemIds && (sourceItemIds.length > metricRefreshTargetLimit || new Set(sourceItemIds).size !== sourceItemIds.length)) {
+      throw new Error("Invalid frozen metric membership");
+    }
     const rows = await this.prisma.sourceItem.findMany({
-      where: { tenantId: scope.tenantId, workspaceId: scope.workspaceId, providerKey: { in: ["hacker-news", "reddit"] },
+      where: { tenantId: scope.tenantId, workspaceId: scope.workspaceId,
+        ...(sourceItemIds ? { id: { in: [...sourceItemIds] } } : { providerKey: { in: ["hacker-news", "reddit"] },
         OR: scope.dates.map((date) => ({ publishedAt: { gte: new Date(`${date}T00:00:00Z`),
-          lt: new Date(Math.min(Date.parse(scope.endAt), Date.parse(`${date}T00:00:00Z`) + 86_400_000)) } })) },
+          lt: new Date(Math.min(Date.parse(scope.endAt), Date.parse(`${date}T00:00:00Z`) + 86_400_000)) } })) }) },
       orderBy: { id: "asc" }, take: metricRefreshTargetLimit + 1, include: { engagementSnapshot: true },
     });
     if (rows.length > metricRefreshTargetLimit) throw new Error("Metric refresh inventory exceeds 10000; no truncated manifest is admissible");
