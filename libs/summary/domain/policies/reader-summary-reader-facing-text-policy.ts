@@ -1,3 +1,5 @@
+export const READER_TITLE_MAX_LENGTH = 119;
+
 export const isConversationalOrTruncatedReaderTitle = (
   value: string,
 ): boolean => {
@@ -16,7 +18,7 @@ export const isConversationalOrTruncatedReaderTitle = (
     /^keep\s+(?:building|going|shipping)\b/iu.test(sourceTitle) ||
     /\bno\s+matter\s+what\b/iu.test(sourceTitle) ||
     /\bwe\s+all\s+know\b/iu.test(sourceTitle) ||
-    sourceTitle.length >= 120 ||
+    sourceTitle.length > READER_TITLE_MAX_LENGTH ||
     /^(?:what happens when|what if|today i|just\b|here(?:'s| is)\b|i(?:'m| am| have| just)?\b|we(?:'re| are| have| just)?\b)/iu.test(
       sourceTitle,
     )

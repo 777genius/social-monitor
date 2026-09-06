@@ -2,6 +2,7 @@ import type { SummaryEvidenceItem } from "../value-objects/summary-evidence-item
 import {
   isConversationalOrTruncatedReaderTitle,
   isUnpolishedReaderTitle,
+  READER_TITLE_MAX_LENGTH,
 } from "../policies/reader-summary-reader-facing-text-policy";
 
 export const buildTopReadTitle = (params: {
@@ -43,7 +44,12 @@ export const buildTopReadTitle = (params: {
           !isConversationalOrTruncatedReaderTitle(item.original)),
     )?.cleaned;
   const summaryTitle = compactReaderTitle(
-    cleanTopReadTitle(summarySentenceForTitle(params.storySummary)),
+    cleanTopReadTitle(summarySentenceForTitle(
+      params.storySummary,
+      ![params.primaryEvidence, ...params.evidence].some((item) =>
+        item !== undefined && isUnverifiedBreakingSourceTitle(item.title),
+      ),
+    )),
   );
 
   return (
@@ -66,8 +72,9 @@ const nativeSourceTitle = (
   }
 
   const nativeTitle = evidenceReaderTitle(evidence).trim();
-  const title =
-    nativeTitle.length <= 140 ? nativeTitle : compactReaderTitle(nativeTitle);
+  const title = nativeTitle.length <= READER_TITLE_MAX_LENGTH
+    ? nativeTitle
+    : compactReaderTitle(nativeTitle);
   return isReaderFacingTopReadTitle(title) &&
     matchesSummaryOutputScript(title, storySummary)
     ? title
@@ -148,7 +155,12 @@ const previewSentenceForTitle = (value: string): string => {
 
   return (
     sentences.find(
-      (sentence) => sentence.length >= 24 && !isLowInformationTeaser(sentence),
+      (sentence, index) => (index === 0 || (
+        /[.!?]$/u.test(sentence) && !/(?:\.{2,}|…)/u.test(sentence)
+      )) &&
+        sentence.length >= 24 &&
+        !isLowInformationTeaser(sentence) &&
+        isReaderFacingTopReadTitle(compactReaderTitle(sentence)),
     ) ??
     sentences[0] ??
     value
@@ -212,11 +224,28 @@ const repairObviousEnglishAgreement = (value: string): string =>
 const sentenceCaseTitle = (value: string): string =>
   value.replace(/^([a-z])(?=[a-z]+\s)/u, (letter) => letter.toUpperCase());
 
-const firstSentenceForTitle = (value: string): string =>
-  value.trim().split(/(?<=[.!?])\s+/u)[0] ?? value;
+const summarySentenceForTitle = (
+  value: string,
+  allowLaterSentences: boolean,
+): string => {
+  const sentences = value.trim().split(/(?<=[.!?])\s+/u);
+  // A breaking qualifier can scope later sentences too. Never remove it by
+  // selecting a later, apparently unqualified claim.
+  const candidates = !allowLaterSentences || isUnverifiedBreakingSourceTitle(value)
+    ? sentences.slice(0, 1)
+    : sentences;
+  return candidates
+    .filter((sentence, index) => index === 0 || (
+      /[.!?]$/u.test(sentence) && !/(?:\.{2,}|…)/u.test(sentence)
+    ))
+    .map(cleanSummarySentenceForTitle)
+    .find((sentence) =>
+      isReaderFacingTopReadTitle(compactReaderTitle(cleanTopReadTitle(sentence))),
+    ) ?? "";
+};
 
-const summarySentenceForTitle = (value: string): string =>
-  firstSentenceForTitle(value)
+const cleanSummarySentenceForTitle = (value: string): string =>
+  value
     .replace(
       /^(?:(?:the|an?|another|this)\s+)?(?:(?:x(?:\/twitter)?|twitter|reddit|hacker\s+news|hn|rss|github(?:\s+trending)?)\s+)?(?:post|item|story|discussion|source|report)\s+(?:reports?|says?|states?|describes?|points?\s+to)\s*:?\s*/iu,
       "",
@@ -230,14 +259,13 @@ const compactReaderTitle = (value: string): string => {
     .replace(/\s+/gu, " ")
     .trim()
     .replace(/[.!?]+$/u, "");
-  if (normalized.length <= 140) {
+  if (normalized.length <= READER_TITLE_MAX_LENGTH) {
     return normalized;
   }
 
-  const candidate = normalized.slice(0, 140);
-  const wordBoundary = candidate.lastIndexOf(" ");
-
-  return wordBoundary >= 80 ? candidate.slice(0, wordBoundary) : candidate;
+  // Word/comma/colon clipping can discard negation or a qualifying clause.
+  // Let callers try another whole sentence, or keep the rejected fallback.
+  return "";
 };
 
 export const isReaderFacingTopReadTitle = (value: string): boolean => {

@@ -1,7 +1,71 @@
 import type { SummaryEvidenceItem } from "../value-objects/summary-evidence-item";
 import { buildTopReadTitle } from "./reader-summary-top-read-title";
+import { buildReaderPostPromotionTitle, hasReaderFacingPromotionTitle } from
+  "./reader-post-promotion-title";
+import { isUnpolishedReaderTitle } from
+  "../policies/reader-summary-reader-facing-text-policy";
 
 describe("reader summary top read title", () => {
+  it.each([118, 119, 120, 139, 140, 141])(
+    "keeps the title length contract at %i characters without clipping clauses",
+    (length) => {
+      const prefix = "Atlas publishes detailed agent safety findings for ";
+      const sentence = prefix + "x".repeat(length - prefix.length);
+      const next = "Atlas documents agent failures in public incident reports";
+      const item = evidence({
+        title: `X post by @lab: ${sentence}...`,
+        bodyPreview: `${sentence}. ${next}.`,
+      });
+
+      expect(isUnpolishedReaderTitle(sentence)).toBe(length >= 120);
+      expect(buildReaderPostPromotionTitle({ lead: item }))
+        .toBe(length < 120 ? sentence : next);
+      expect(hasReaderFacingPromotionTitle(item)).toBe(true);
+    },
+  );
+
+  it("uses a complete sentence from the reported incident discussion", () => {
+    const body = "How we think about the “wiki incident,” where our agents wrote to several internet sites: it’s past time for us to define standards for when and how we share misalignment incidents, not just misalignment properties of our models. Historically, we have treated misalignment largely as a research question, which gets communicated in research publications such as systems cards. This year, we’ve started to see misalignment cause new types of real-world impact.";
+    const item = evidence({ title: body, bodyPreview: body });
+    expect(buildReaderPostPromotionTitle({ lead: item })).toBe(
+      "This year, we’ve started to see misalignment cause new types of real-world impact",
+    );
+    expect(hasReaderFacingPromotionTitle(item)).toBe(true);
+  });
+
+  it.each(["", "...", "…"])("does not turn an unfinished later preview into a title (%s)", (ending) => {
+    const first = "Atlas documents agent safety findings across public websites and proposes reporting standards for misalignment incidents and model properties";
+    const body = `${first}. Atlas allows automatic writes only after${ending}`;
+    const item = evidence({
+      title: `X post by @lab: ${first}...`,
+      bodyPreview: body,
+    });
+    expect(hasReaderFacingPromotionTitle(item)).toBe(false);
+  });
+
+  it.each([
+    "Current AI product discussion",
+    "Here we go again!",
+    "I am thinking about agent safety",
+    "Check this out!",
+    "Atlas enables automatic agent writes, but only after operators review every proposed change and explicitly approve the destination site",
+    "Atlas enables automatic agent writes; the feature remains disabled unless operators review every change and explicitly approve the destination site",
+    "Atlas enables automatic agent writes: only after operators review every proposed change and explicitly approve the destination site",
+  ])("does not admit generic, conversational or incomplete titles: %s", (body) => {
+    const item = evidence({ title: body, bodyPreview: body });
+    expect(hasReaderFacingPromotionTitle(item)).toBe(false);
+  });
+
+  it("does not drop an unverified breaking qualifier to fit a later sentence", () => {
+    const body = "BREAKING: Atlas allegedly plans automatic agent writes across many public sites without operator review or explicit destination approval. Atlas enables automatic agent writes.";
+    const item = evidence({ title: body, bodyPreview: body });
+    expect(hasReaderFacingPromotionTitle(item)).toBe(false);
+    expect(hasReaderFacingPromotionTitle({
+      ...item,
+      bodyPreview: body.replace(/^BREAKING: /u, ""),
+    })).toBe(false);
+  });
+
   it("replaces a mostly non-English model title with an English summary title", () => {
     const title = buildTopReadTitle({
       storyTitle:

@@ -4,6 +4,10 @@ import type {
   SummaryEvidenceSelection,
 } from "../../domain";
 import { buildReaderPostPromotionProjection } from "../../domain";
+import { buildReaderPostPromotionTitle, hasReaderFacingPromotionTitle } from
+  "../../domain/services/reader-post-promotion-title";
+import { readerSummaryPromotionV2Candidate } from
+  "./reader-summary-editorial-candidate";
 import {
   composeReaderSummaryEditorialSlate,
   materializeReaderSummaryEditorialSlate,
@@ -15,6 +19,52 @@ const publishedAt = new Date("2026-08-29T12:00:00.000Z");
 const observedAt = new Date("2026-08-29T13:00:00.000Z");
 
 describe("Reader Promotion V2 editorial slate", () => {
+  it.each(["full", "truncated"])(
+    "admits a long substantive source with a %s title and lets its popularity compete",
+    (titleKind) => {
+    const body = "How the research team evaluates agent incidents across public websites: the team proposes reporting standards that distinguish real-world incidents from model properties. Historically, the research team communicated agent misalignment primarily through research publications and detailed system cards. Agent misalignment now causes new types of real-world impact.";
+    const higher = {
+      ...xEvidence("long-source", 3230),
+      title: titleKind === "full"
+        ? body
+        : `X post by @researchlab: ${body.slice(0, 130)}...`,
+      bodyPreview: body,
+    };
+    const lower = xEvidence("short-source", 89);
+    const source = selection([lower, higher], []);
+    const candidate = readerSummaryPromotionV2Candidate(higher, source);
+
+    expect(buildReaderPostPromotionTitle({ lead: higher })).toBe(
+      "Agent misalignment now causes new types of real-world impact",
+    );
+    expect(hasReaderFacingPromotionTitle(higher)).toBe(true);
+    expect(candidate?.admission.qualityFloorMet).toBe(true);
+    expect(candidate?.engagement).toMatchObject({
+      authoritative: true,
+      authority: { source: "durable_projection", regressionState: "stable" },
+    });
+    expect(compose([lower, higher]).top.map((entry) => entry.candidateId))
+      .toEqual(["long-source", "short-source"]);
+    expect(compose([higher, lower])).toEqual(compose([lower, higher]));
+
+    const reducedPopularity = {
+      ...higher,
+      promotionFacts: xEvidence("long-source", 70).promotionFacts,
+    };
+    expect(compose([lower, reducedPopularity]).top.map((entry) => entry.candidateId))
+      .toEqual(["short-source", "long-source"]);
+
+    for (const facts of [
+      { ...higher.promotionFacts!, contentKind: "reply" as const },
+      { ...higher.promotionFacts!, safetyValid: false },
+      { ...higher.promotionFacts!, engagementAuthority: undefined },
+      { ...higher.promotionFacts!, freshnessValid: false },
+    ]) {
+      expect(compose([{ ...higher, promotionFacts: facts }]).orderedCandidateIds)
+        .toEqual([]);
+    }
+  });
+
   it("ranks X 11,112 above X 89 when both otherwise qualify", () => {
     const lower = xEvidence("x-89", 89);
     const higher = xEvidence("x-11112", 11_112);
