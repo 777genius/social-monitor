@@ -19,6 +19,7 @@ import { readerSummaryPromotionV2Candidate } from
 import { evaluateReaderPromotionV2 } from "@social-monitor/feed/domain";
 import { NOOP_STORY_RANKING_METRICS, type ReaderSummaryStoryRelationVerifierInput } from
   "@social-monitor/summary/ports";
+import { fixtureInterestId, type EvaluationRun } from "./run-identity";
 import { check, type Dataset, type Block } from "./dataset";
 
 export const pairKey = (c: Pick<StoryRelationCandidate, "leftFeedItemId" | "rightFeedItemId">): string =>
@@ -28,7 +29,7 @@ export const membership = (s: SummaryEvidenceSelection): Map<string, string> =>
 export const together = (s: SummaryEvidenceSelection, left: string, right: string): boolean => {
   const m = membership(s); return m.has(left) && m.get(left) === m.get(right);
 };
-export const prepareBlock = async (data: Dataset, block: Block) => {
+export const prepareBlock = async (data: Dataset, block: Block, run?: EvaluationRun) => {
   const rows = block.postRefs.map((ref) => {
     const row = data.replayByRef.get(ref); if (!row) throw new Error(`Missing replay ${ref}`); return row;
   });
@@ -44,7 +45,7 @@ export const prepareBlock = async (data: Dataset, block: Block) => {
     tenantId: tenantId("00000000-0000-4000-8000-00000000e001"),
     workspaceId: workspaceId("00000000-0000-4000-8000-00000000e002"),
     // Scope makes request ids unique per frozen evaluation block, no production scope.
-    scope: { type: "interest" as const, interestId: `fixture-grouping-${block.id}` },
+    scope: { type: "interest" as const, interestId: fixtureInterestId(block.id, run) },
   };
   const clusterer = new StoryClusteringService({ now: () => cutoff });
   const clusterParams = { identity, items: evidence, limit: evidence.length, now: cutoff };
