@@ -88,6 +88,30 @@ describe("PrismaSourceEngagementProjectionAdapter", () => {
     expect(prisma.observations).toHaveLength(observationCount);
   });
 
+  it("allows repair composition to skip tenant-wide retention while preserving projection", async () => {
+    const prisma = new FakeEngagementPrisma();
+    const guard = jest.fn(async () => undefined);
+    const adapter = new PrismaSourceEngagementProjectionAdapter(prisma,
+      { generate: () => `id-${prisma.nextId++}` }, { retention: "skip", sampleGuard: guard });
+    await adapter.project(command("2026-07-10T12:00:00Z", 10, true));
+    await adapter.project(command("2026-07-10T13:00:00Z", 10, true));
+    expect(prisma.snapshot?.lastObservedAt).toEqual(new Date("2026-07-10T13:00:00Z"));
+    expect(prisma.observations).toHaveLength(2);
+    expect(prisma.retentionDeleteCalls).toBe(0);
+    expect(guard).toHaveBeenCalledTimes(2);
+  });
+
+  it("runs a repair guard before any source mutation", async () => {
+    const prisma = new FakeEngagementPrisma();
+    const adapter = new PrismaSourceEngagementProjectionAdapter(prisma,
+      { generate: () => `id-${prisma.nextId++}` }, { retention: "skip",
+        sampleGuard: async () => { throw new Error("binding drift"); } });
+    await expect(adapter.project(command("2026-07-10T12:00:00Z", 10, true))).rejects.toThrow("binding drift");
+    expect(prisma.snapshot).toBeNull();
+    expect(prisma.observations).toHaveLength(0);
+    expect(prisma.retentionDeleteCalls).toBe(0);
+  });
+
   it("persists a Reddit providerScore-only sample as durable score authority", async () => {
     const prisma = new FakeEngagementPrisma();
     prisma.sourceItemRecord = {
