@@ -48,6 +48,12 @@ export async function runRefreshNativeConcurrency(input: {
     });
   await writer.connect();
   try {
+    // This dedicated fixture client bypasses the Prisma scope wrapper, so set
+    // the same tenant claims explicitly. Session scope spans its autocommits and
+    // rollback probes; the connection is closed below and is never pooled.
+    await writer.query(`select set_config('social_monitor.tenant_id', $1, false),
+      set_config('social_monitor.workspace_id', $2, false),
+      set_config('social_monitor.system_access', 'false', false)`, scope);
     // A commit AFTER the holder's snapshot but BEFORE locks must be visible in
     // the separate normal publisher's first validation snapshot.
     const original = await writer.query<{ tone: string }>(`select tone from reader_summary_policies where ${where} and scope_key='workspace'`, scope);
