@@ -34,7 +34,8 @@ export const storyReleaseEventIdentity = (
   if (separateSubject.test(headline) || uncertainHeadline(headline) ||
       independentWork.test(body)) return undefined;
 
-  const assertion = releaseAssertion(lead) ?? releaseAssertion(headline);
+  const sourceAssertion = releaseAssertion(lead);
+  const assertion = sourceAssertion ?? releaseAssertion(headline);
   if (assertion !== undefined) {
     if (separateSubject.test(assertion.subject) || uncertainAction.test(assertion.before)) {
       return undefined;
@@ -43,7 +44,10 @@ export const storyReleaseEventIdentity = (
     if (targets === undefined) return undefined;
     const publisher = namedPublisher(assertion.before) ??
       firstPersonPublisher(assertion.before, body, targets);
-    if (publisher === undefined) return undefined;
+    if (publisher === undefined || unattributedMeasurements(body, publisher)) return undefined;
+    if (sourceAssertion === undefined && !corroboratesHeadline(lead, body, targets, publisher)) {
+      return undefined;
+    }
     const titleAssertion = releaseAssertion(headline);
     // Headline/body disagreement is ambiguity, not extra matching evidence.
     if (titleAssertion !== undefined) {
@@ -60,6 +64,7 @@ export const storyReleaseEventIdentity = (
         [targetKey(titleProduct[1]!, titleProduct[2]!)])) return undefined;
     }
     const context = releaseContext(headline, body, targets);
+    if (context === undefined || uncertainHeadline(context)) return undefined;
     const eventDate = releaseDate(context, item.publishedAt);
     if (eventDate === null) return undefined;
     return {
@@ -82,7 +87,8 @@ export const storyReleaseEventIdentity = (
   if (titleProduct === null || !compatibleTargets(targets,
     [targetKey(titleProduct[1]!, titleProduct[2]!)])) return undefined;
   const context = releaseContext(headline, body, targets);
-  if (uncertainAction.test(context.replace(/\bmay\s+\d/gi, "date"))) return undefined;
+  if (context === undefined || uncertainHeadline(context) ||
+      unattributedMeasurements(body, attribution[1].toLowerCase())) return undefined;
   const eventDate = releaseDate(context, item.publishedAt);
   if (eventDate === null) return undefined;
   return {
@@ -147,8 +153,8 @@ const targetKey = (name: string, version: string): string =>
 const releaseTargets = (subject: string): readonly string[] | undefined => {
   // Only the grammatical release object. Everything after a qualifier is detail,
   // including old-version comparisons. Residual object nouns fail closed.
-  const phrase = subject.split(/,|\b(?:for|on|at|in|with|compared|versus|vs|its|the world's)\b/i, 1)[0]!.trim();
-  const parts = phrase.split(/\s+(?:and|&)\s+|\s*\/\s*/i);
+  const phrase = subject.split(/(?:,\s*)?\b(?:for|on|at|in|with|compared|versus|vs|its|the world's)\b/i, 1)[0]!.trim();
+  const parts = phrase.split(/\s*,\s*(?:(?:and|&)\s+)?|\s+(?:and|&)\s+|\s*\/\s*/i);
   const targets: string[] = [];
   for (const part of parts) {
     const match = versionedProduct.exec(part);
@@ -176,19 +182,91 @@ const compatibleTargets = (left: readonly string[], right: readonly string[]): b
 const uncertainHeadline = (text: string): boolean =>
   uncertainAction.test(text.replace(/\bmay\s+\d/gi, "date"));
 
-const releaseContext = (headline: string, body: string, targets: readonly string[]): string => {
-  const assertions = body.split(/\n|[.!?](?=\s|$)/).map((part) => part.trim());
-  const relevant = assertions.filter((sentence, index) => {
-    if (index === 0 || /\b(?:this|the|a|promising|new) release\b/i.test(sentence)) return true;
+const sentences = (body: string): string[] =>
+  body.split(/\n|[.!?](?=\s|$)/).map((part) => part.trim()).filter(Boolean);
+
+const measurementAction = new RegExp([
+  String.raw`\b(?:measured|measures|tested|benchmarked)\b`,
+  String.raw`\b(?:ran|conducted|performed|published)\s+(?:(?:a|an|the|new|fresh|its|their|own|coding|independent)\s+){0,4}(?:benchmarks?|measurements?|tests?|experiments?)\b`,
+  // Sentence splitting already preserves decimal model versions.
+  String.raw`\b(?:benchmarks?|measurements?|tests?|experiments?)\b[^;]*?\b(?:was|were|has been|have been)\s+(?:run|conducted|performed|published)\b`,
+].join("|"), "gi");
+
+const unattributedMeasurements = (body: string, publisher: string): boolean =>
+  sentences(body).some((sentence) => {
+    const actions = [...sentence.matchAll(measurementAction)];
+    if (actions.length === 0) return false;
+    // Multiple experiment assertions need their own attribution; do not let a
+    // publisher clause launder a second actor through the same sentence.
+    if (actions.length !== 1) return true;
+    const action = actions[0]!;
+    // A release summary may quote performance scores and partner experience.
+    // A new measurement is a separate event unless its actor is the publisher;
+    // merely mentioning the publisher/launch elsewhere is not attribution.
+    const actor = sentence.slice(0, action.index).trim().replace(/\s+has$/i, "");
+    if (actor.toLowerCase() === publisher) return false;
+    const passiveActor = /^\s+by\s+([a-z][a-z-]*)(?=$|[.,;]|\s+(?:using|on|for|with)\b)/i
+      .exec(sentence.slice(action.index + action[0].length));
+    return passiveActor?.[1]?.toLowerCase() !== publisher;
+  });
+
+const corroboratesHeadline = (
+  lead: string, body: string, targets: readonly string[], publisher: string,
+): boolean => {
+  // A versioned source header is independent evidence of the complete release
+  // object. Do not manufacture it from a title or from comparator mentions.
+  const header = lead.replace(/\s*\([a-z]+\.?\s+\d{4}\)\s*$/i, "");
+  const headerTargets = releaseTargets(header);
+  if (headerTargets === undefined || headerTargets.length !== targets.length ||
+      !headerTargets.every((target) => targets.some((other) => sameTarget(target, other)))) return false;
+  const assertions = sentences(body).slice(1);
+  if (assertions.some((sentence) => {
+    const attribution = /\b(?:says|according to)\s+([a-z][a-z-]*)\b/i.exec(sentence);
+    const release = releaseAssertion(sentence);
+    const actor = release === undefined ? undefined : namedPublisher(release.before);
+    return (attribution !== null && attribution[1]!.toLowerCase() !== publisher) ||
+      (actor !== undefined && actor !== publisher);
+  })) return false;
+  return assertions.some((sentence) => {
+    const product = versionedProduct.exec(sentence);
+    return product !== null && targets.some((target) =>
+      sameTarget(target, targetKey(product[1]!, product[2]!))) &&
+      /^\s+is\s+(?:now\s+)?(?:available|GA)\b/i.test(sentence.slice(product[0].length));
+  });
+};
+
+const releaseState = /\b(?:(?:was|were|is|are|has been|have been)\s+(?:released|launched|introduced|unveiled)|(?:is|are)\s+(?:(?:now|in|a|an)\s+)*(?:available|GA|generally available|beta|preview|early access))\b/i;
+
+const releaseContext = (headline: string, body: string, targets: readonly string[]): string | undefined => {
+  const relevant: string[] = [];
+  let primarySubject = true;
+  for (const [index, sentence] of sentences(body).entries()) {
+    const product = versionedProduct.exec(sentence);
+    if (product !== null) {
+      primarySubject = compatibleTargets(targets, [targetKey(product[1]!, product[2]!)]);
+      // In passive voice the released object precedes the verb. Inspect it
+      // before the active-voice parser can mistake the date for an object.
+      if (releaseState.test(sentence.slice(product[0].length))) {
+        if (primarySubject) relevant.push(sentence);
+        continue;
+      }
+    }
+    if (/^(?:it|they|this model|these models)\b/i.test(sentence) && releaseState.test(sentence)) {
+      if (!primarySubject) return undefined;
+      relevant.push(sentence);
+      continue;
+    }
+    if (index === 0 || /\b(?:this|the|a|promising|new) release\b/i.test(sentence)) {
+      relevant.push(sentence);
+      continue;
+    }
     const assertion = releaseAssertion(sentence);
     if (assertion !== undefined) {
       const mentioned = releaseTargets(assertion.subject);
-      return mentioned !== undefined && compatibleTargets(targets, mentioned);
+      primarySubject = mentioned !== undefined && compatibleTargets(targets, mentioned);
+      if (primarySubject) relevant.push(sentence);
     }
-    const product = versionedProduct.exec(sentence);
-    return product !== null && compatibleTargets(targets, [targetKey(product[1]!, product[2]!)]) &&
-      /\bis (?:available|GA)\b/i.test(sentence);
-  });
+  }
   return [headline, ...relevant].join("\n");
 };
 
