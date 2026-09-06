@@ -11,22 +11,40 @@ import { RedditAppOnlyTokenProvider } from "@social-monitor/ingestion/adapters/s
 import { RetainedMetricFetchAdapter } from "@social-monitor/ingestion/adapters/source/retained-metric-fetch.capability";
 import { RefreshRetainedMetricsUseCase } from "@social-monitor/ingestion/features/refresh-retained-metrics/refresh-retained-metrics.use-case";
 import { manifestProblem, metricRefreshBounds, metricRefreshSourceBase, metricRefreshDates, metricRefreshEvidencePath, metricRefreshTenant, metricRefreshWorkspace, sameTarget, scopeProblem, targetIdentity } from "@social-monitor/ingestion/features/refresh-retained-metrics/metric-refresh-admission";
-import type { MetricRefreshManifest, MetricRefreshOutcome } from "@social-monitor/ingestion/features/refresh-retained-metrics/refresh-retained-metrics.contracts";
+import type { MetricRefreshManifest } from "@social-monitor/ingestion/features/refresh-retained-metrics/refresh-retained-metrics.contracts";
 import { metricRefreshDigest, SecureMetricRefreshReceipts } from "./lib/retained-metric-refresh-receipts";
+
+import { AmendRetainedMetricManifestUseCase } from "@social-monitor/ingestion/features/refresh-retained-metrics/amend-retained-metric-manifest.use-case";
+import { resolveMetricOperation } from "@social-monitor/ingestion/features/refresh-retained-metrics/metric-refresh-amendment";
+import { metricExecutableIdentity, metricMaintenanceAdmission } from "./lib/retained-metric-maintenance";
+
+import { metricRefreshCells as summarizeMetricRefresh } from "@social-monitor/ingestion/features/refresh-retained-metrics/metric-refresh-report";
+export { summarizeMetricRefresh };
 
 type RuntimeClient = PrismaMetricInventoryClient & PrismaSourceEngagementClient & { $disconnect(): Promise<void> };
 export async function runRetainedMetricRefresh(args: readonly string[], env: NodeJS.ProcessEnv): Promise<void> {
+  if (args.length === 1 && args[0] === "--implementation") {
+    process.stdout.write(`${JSON.stringify(metricExecutableIdentity())}\n`); return;
+  }
   const options = new Map<string, string>();
   for (let i = 0; i < args.length; i++) {
     const key = args[i]!;
-    if (!["--apply", "--operation-id", "--dates", "--manifest-sha"].includes(key) || options.has(key)) throw new Error("Invalid or duplicate CLI flag");
-    const value = key === "--apply" ? "true" : args[++i];
+    if (!["--apply", "--operation-id", "--dates", "--manifest-sha", "--prepare-amendment", "--commit-amendment", "--prior-manifest-sha", "--effective-manifest-sha", "--reason", "--source-sha", "--executable-sha", "--legacy-retirement-ref"].includes(key) || options.has(key)) throw new Error("Invalid or duplicate CLI flag");
+    const value = ["--apply", "--prepare-amendment"].includes(key) ? "true" : args[++i];
     if (!value || value.startsWith("--")) throw new Error("Missing CLI value");
     options.set(key, value);
   }
   const operationId = options.get("--operation-id");
   if (!operationId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u.test(operationId)) throw new Error("An explicit operation UUID is required");
   if (options.has("--apply") !== options.has("--manifest-sha")) throw new Error("Apply requires the reviewed manifest SHA");
+  const prepare = options.has("--prepare-amendment"), commit = options.has("--commit-amendment");
+  if (Number(prepare) + Number(commit) + Number(options.has("--apply")) > 1 ||
+      options.has("--prior-manifest-sha") !== (prepare || commit) || options.has("--reason") !== prepare ||
+      options.has("--effective-manifest-sha") !== commit) throw new Error("Invalid amendment mode or review fields");
+  for (const key of ["--manifest-sha", "--commit-amendment", "--prior-manifest-sha", "--effective-manifest-sha", "--source-sha", "--executable-sha"]) {
+    if (options.has(key) && !/^[a-f0-9]{64}$/u.test(options.get(key)!)) throw new Error("Invalid reviewed SHA");
+  }
+  const maintenance = metricMaintenanceAdmission(options.get("--source-sha"), options.get("--executable-sha"), options.get("--legacy-retirement-ref"));
   const clock = new SystemClock();
   const now = clock.now();
   const dates = options.get("--dates")?.split(",") ?? metricRefreshDates;
@@ -34,25 +52,40 @@ export async function runRetainedMetricRefresh(args: readonly string[], env: Nod
     endAt: new Date(Math.min(now.getTime(), Date.parse(`${dates.at(-1)}T00:00:00Z`) + 86_400_000)).toISOString() };
   const invalid = scopeProblem(scope, now);
   if (invalid) throw new Error(invalid);
-  const receipts = new SecureMetricRefreshReceipts();
+  const authority = new SecureMetricRefreshReceipts(maintenance.assertHeld);
+  await authority.withOperation(async (receipts) => {
   const path = `${metricRefreshEvidencePath}/operation.json`;
-  const existing = await receipts.read<MetricRefreshManifest>(path);
+  const head = await resolveMetricOperation(receipts, metricRefreshDigest, now);
+  const existing = head?.effective;
   if (existing && (existing.operationId !== operationId || existing.scope.dates.join() !== dates.join())) throw new Error("Canonical operation identity cannot change");
+  if ((prepare || commit || options.has("--apply")) && !existing) throw new Error("Prepare the immutable operation first");
+  // Wrong/stale apply SHA rejects before even acquiring a database connection.
+  if (options.has("--apply") && options.get("--manifest-sha") !== metricRefreshDigest(existing)) throw new Error("Reviewed manifest SHA mismatch");
   const config = defaultPostgresRuntimePoolConfig(env.METRIC_REFRESH_DATABASE_URL ?? "", "admin-tool");
   const PrismaClient = loadPrismaRuntimeClient<PrismaPgRuntimeClientConstructor<RuntimeClient>>();
   const connection = await acquirePrismaPgRuntimeConnection(config, PrismaClient);
   try {
     await runWithTenantDatabaseAccess(scope, async () => {
       const inventory = new PrismaRetainedMetricInventory(connection.client, metricRefreshDigest);
+      const scopedAuthority = { ...receipts, withOperation: async <T>(work: (operation: typeof receipts) => Promise<T>) => { receipts.assertHeld(); return work(receipts); } };
+      if (prepare || commit) {
+        const amend = new AmendRetainedMetricManifestUseCase(inventory, scopedAuthority, clock, metricRefreshDigest, maintenance.implementation);
+        const result = prepare ? await amend.prepare(options.get("--prior-manifest-sha")!, options.get("--reason")!) :
+          await amend.commit(options.get("--commit-amendment")!, options.get("--prior-manifest-sha")!, options.get("--effective-manifest-sha")!);
+        process.stdout.write(`${JSON.stringify({ mode: prepare ? "prepare-amendment" : "commit-amendment", result,
+          ...(result.ok && prepare ? { amendmentSha: metricRefreshDigest(result.value) } : {}), maintenance: maintenance.holder }, null, 2)}\n`);
+        if (!result.ok) process.exitCode = 1;
+        return;
+      }
       const manifest: MetricRefreshManifest = existing ?? { version: "retained-metrics.v1", sourceBase: metricRefreshSourceBase, bounds: metricRefreshBounds, operationId,
         evidencePath: metricRefreshEvidencePath, scope, plannedAt: now.toISOString(), targets: await inventory.list(scope) };
-      const currentTargets = existing ? await inventory.list(manifest.scope) : manifest.targets;
+      const currentTargets = existing && !options.has("--apply") ? await inventory.list(manifest.scope) : manifest.targets;
       const identities = (targets: typeof manifest.targets) => targets.map(targetIdentity).sort((a, b) => a.sourceItemId.localeCompare(b.sourceItemId));
       const problem = manifestProblem(manifest, now) ??
         (metricRefreshDigest(identities(currentTargets)) === metricRefreshDigest(identities(manifest.targets)) ? null : "inventory_drift");
       const manifestSha = metricRefreshDigest(manifest);
       if (problem || !options.has("--apply")) {
-        if (!problem) await receipts.install(path, manifest);
+        if (!problem && !existing) await receipts.install(path, manifest);
         process.stdout.write(`${JSON.stringify({ mode: "dry-run", manifestSha, problem, manifest, ...(problem === "inventory_drift" ? { currentTargets } : {}) }, null, 2)}\n`);
         if (problem) process.exitCode = 1;
         return;
@@ -76,7 +109,7 @@ export async function runRetainedMetricRefresh(args: readonly string[], env: Nod
       } };
       const fetcher = new RetainedMetricFetchAdapter(new HttpHackerNewsClient(10_000), new HttpRedditClient("https://oauth.reddit.com", 10_000), token,
         env.REDDIT_APP_USER_AGENT ?? "social-monitor-retained-metrics/1");
-      const result = await new RefreshRetainedMetricsUseCase(inventory, fetcher, projection, receipts, clock, metricRefreshDigest).execute(manifest);
+      const result = await new RefreshRetainedMetricsUseCase(inventory, fetcher, projection, authority, clock, metricRefreshDigest).executeLocked(receipts, manifest, options.get("--manifest-sha")!);
       const report = result.ok ? { manifestSha, results: result.value, cells: summarizeMetricRefresh(result.value, manifest.scope.dates) } : { manifestSha, error: result.error };
       if (result.ok) {
         let terminal = true;
@@ -89,16 +122,7 @@ export async function runRetainedMetricRefresh(args: readonly string[], env: Nod
       process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
     });
   } finally { await connection.close(); }
-}
-export function summarizeMetricRefresh(results: readonly MetricRefreshOutcome[], dates: readonly string[] = metricRefreshDates) {
-  return dates.flatMap((date) => ["hacker-news", "reddit"].map((provider) => {
-    const rows = results.filter((row) => row.date === date && row.providerKey === provider);
-    return { date, provider, targets: rows.length, returned: rows.filter((row) => row.returned).length,
-      ...Object.fromEntries(["refreshed", "superseded", "unavailable", "failed", "uncertain"].map((status) => [status, rows.filter((row) => row.status === status).length])),
-      beforeObservations: rows.reduce((sum, row) => sum + row.before.observationCount, 0),
-      afterObservations: rows.reduce((sum, row) => sum + row.after.observationCount, 0),
-      authorityTimes: rows.map((row) => ({ id: row.externalId, before: row.before.observationAt, after: row.after.observationAt })) };
-  }));
+  });
 }
 if (require.main === module) void runRetainedMetricRefresh(process.argv.slice(2), process.env).catch(() => {
   process.stderr.write("Metric refresh failed closed; preserve canonical receipts and reconcile before resuming.\n");

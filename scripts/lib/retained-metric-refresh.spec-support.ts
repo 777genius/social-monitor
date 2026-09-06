@@ -3,16 +3,16 @@ import { AcquisitionDatabaseFixture } from "./clean-real-day-engagement.spec-sup
 import { PrismaSourceEngagementProjectionAdapter } from "@social-monitor/feed/adapters/persistence/prisma/prisma-source-engagement-projection.adapter";
 import type { PrismaSourceEngagementClient } from "@social-monitor/feed/adapters/persistence/prisma/prisma-source-engagement-client";
 import { metricRefreshDigest, SecureMetricRefreshReceipts } from "./retained-metric-refresh-receipts";
-import { createRecoveryEvidenceFilesystemTestHarness } from "./reader-summary-recovery-evidence-secure-file";
 import { metricRefreshBounds, metricRefreshSourceBase, metricRefreshDates, metricRefreshEvidencePath, metricRefreshTenant, metricRefreshWorkspace } from "@social-monitor/ingestion/features/refresh-retained-metrics/metric-refresh-admission";
 import type { MetricRefreshManifest, RetainedMetricTarget, MetricFetchObservation } from "@social-monitor/ingestion/features/refresh-retained-metrics/refresh-retained-metrics.contracts";
+import type { MetricRefreshOperation } from "@social-monitor/ingestion/features/refresh-retained-metrics/metric-refresh-operation.contracts";
 import { RefreshRetainedMetricsUseCase } from "@social-monitor/ingestion/features/refresh-retained-metrics/refresh-retained-metrics.use-case";
 
 export const now = "2026-09-05T12:00:00.000Z";
 export const scope = { tenantId: metricRefreshTenant, workspaceId: metricRefreshWorkspace, dates: metricRefreshDates, endAt: now };
 export const authority = { metricsHash: null, observedAt: null, observationAt: null, observationCount: 0, regressionCount: 0 };
 export function target(extra: Partial<RetainedMetricTarget> = {}): RetainedMetricTarget {
-  return { ...scope, sourceItemId: "00000000-0000-7000-8000-000000006104", externalId: "reddit:t3_abc", providerKey: "reddit",
+  return { tenantId: scope.tenantId, workspaceId: scope.workspaceId, sourceItemId: "00000000-0000-7000-8000-000000006104", externalId: "reddit:t3_abc", providerKey: "reddit",
     sourceBindingId: "00000000-0000-7000-8000-000000006105", canonicalUrl: "https://www.reddit.com/r/sandbox/comments/abc/example/",
     publishedAt: "2026-09-04T11:00:00.000Z", configDigest: "a".repeat(64), identityDigest: "b".repeat(64), feedDigest: "c".repeat(64),
     rejection: null, visibleFeedCount: 1, authority, ...extra };
@@ -42,8 +42,12 @@ export function fixture(root: string) {
   }) };
   const fetcher = { fetch: jest.fn(async () => ok<readonly MetricFetchObservation[]>([{ externalId: original.externalId, returned: true,
     reason: null, metadata: { kind: "reddit_post", score: 42, numComments: 9 } }])) };
-  const receipts = new SecureMetricRefreshReceipts(createRecoveryEvidenceFilesystemTestHarness(root));
+  const receipts = SecureMetricRefreshReceipts.forTest(root);
   const clock = new FixedClock(new Date(now));
-  const usecase = () => new RefreshRetainedMetricsUseCase(inventory, fetcher, projection, receipts, clock, metricRefreshDigest);
-  return { db, original, projection, inventory, fetcher, receipts, clock, usecase };
+  const install = jest.fn((operation: MetricRefreshOperation, path: string, value: unknown) => operation.install(path, value));
+  const operationAuthority = { read: receipts.read.bind(receipts), install: receipts.install.bind(receipts),
+    withOperation: <T>(work: (operation: MetricRefreshOperation) => Promise<T>) => receipts.withOperation((operation) =>
+      work({ ...operation, install: (path, value) => install(operation, path, value) })) };
+  const usecase = () => new RefreshRetainedMetricsUseCase(inventory, fetcher, projection, operationAuthority, clock, metricRefreshDigest);
+  return { db, original, projection, inventory, fetcher, receipts, clock, usecase, install };
 }

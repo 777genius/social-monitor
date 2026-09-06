@@ -1,5 +1,5 @@
 import { strict as assert } from "node:assert";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { resolve } from "node:path";
 import { acquirePrismaPgRuntimeConnection, defaultPostgresRuntimePoolConfig, runWithSystemDatabaseAccess,
   runWithTenantDatabaseAccess, withPrismaWriteRetry, type PrismaPgRuntimeClientConstructor } from "@social-monitor/platform-persistence";
@@ -12,8 +12,8 @@ import { RefreshRetainedMetricsUseCase } from "@social-monitor/ingestion/feature
 import { metricRefreshBounds, metricRefreshSourceBase, metricRefreshDates, metricRefreshEvidencePath, metricRefreshTenant,
   metricRefreshWorkspace, sameTarget } from "@social-monitor/ingestion/features/refresh-retained-metrics/metric-refresh-admission";
 import type { MetricFetchObservation, MetricRefreshManifest, RetainedMetricFetchCapability } from "@social-monitor/ingestion/features/refresh-retained-metrics/refresh-retained-metrics.contracts";
-import { createRecoveryEvidenceFilesystemTestHarness } from "./lib/reader-summary-recovery-evidence-secure-file";
 import { metricRefreshDigest, SecureMetricRefreshReceipts } from "./lib/retained-metric-refresh-receipts";
+import { AmendRetainedMetricManifestUseCase } from "@social-monitor/ingestion/features/refresh-retained-metrics/amend-retained-metric-manifest.use-case";
 
 type Row = Record<string, unknown>;
 type Writer = { create(args: { data: Row }): Promise<unknown> };
@@ -61,11 +61,17 @@ async function main() {
       const inventory = new PrismaRetainedMetricInventory(lease.client, metricRefreshDigest);
       const targets = await inventory.list(scope);
       assert.equal(targets.length, 2);
-      const manifest: MetricRefreshManifest = { version: "retained-metrics.v1", sourceBase: metricRefreshSourceBase, bounds: metricRefreshBounds,
+      let manifest: MetricRefreshManifest = { version: "retained-metrics.v1", sourceBase: metricRefreshSourceBase, bounds: metricRefreshBounds,
         operationId: id(6250), evidencePath: metricRefreshEvidencePath, plannedAt: scope.endAt, scope, targets };
+      let transactionDrift = true;
       const projection = new PrismaSourceEngagementProjectionAdapter(lease.client, new CryptoIdGenerator(), { retention: "skip",
         sampleGuard: async (transaction, _command, sample) => {
-          const expected = targets.find((target) => target.sourceItemId === sample.sourceItemId)!;
+          const expected = manifest.targets.find((target) => target.sourceItemId === sample.sourceItemId)!;
+          if (transactionDrift) {
+            transactionDrift = false;
+            const source = transaction as unknown as { sourceItem: { update(args: unknown): Promise<unknown> } };
+            await source.sourceItem.update({ where: { id: expected.sourceItemId }, data: { body: "TEST transactional drift must roll back" } });
+          }
           const inside = new PrismaRetainedMetricInventory(transaction as unknown as PrismaMetricInventoryClient, metricRefreshDigest);
           assert(sameTarget(expected, await inside.read(scope, expected.sourceItemId), metricRefreshDigest));
         } });
@@ -75,24 +81,44 @@ async function main() {
         return { ok: true, value: batch.map((target): MetricFetchObservation => ({ externalId: target.externalId, returned: true, reason: null,
           metadata: target.providerKey === "reddit" ? { kind: "reddit_post", score: 42, numComments: 9 } : { kind: "hacker_news_story", points: 42, comments: 9 } })) };
       } };
-      const receipts = new SecureMetricRefreshReceipts(createRecoveryEvidenceFilesystemTestHarness(root));
+      const receipts = SecureMetricRefreshReceipts.forTest(root);
+      const clock = new FixedClock(new Date("2026-09-05T13:00:00.000Z"));
+      await receipts.install(`${metricRefreshEvidencePath}/operation.json`, manifest);
+      const originalBytes = readFileSync(resolve(root, metricRefreshEvidencePath, "operation.json"));
+      await withPrismaWriteRetry(() => lease.client.$transaction(async (transaction) => {
+        const source = transaction as unknown as { sourceItem: { update(args: unknown): Promise<unknown> } };
+        await source.sourceItem.update({ where: { id: id(6230) }, data: {
+          body: "TEST natural source content version", contentHash: "changed", contentUpdatedAt: new Date("2026-09-05T12:01:00Z"),
+        } });
+      }, { isolationLevel: "Serializable" }));
+      const oldApply = new RefreshRetainedMetricsUseCase(inventory, fetcher, projection, receipts, clock, metricRefreshDigest);
+      assert.deepEqual(await oldApply.execute(manifest), { ok: false, error: "inventory_drift" });
+      const amend = new AmendRetainedMetricManifestUseCase(inventory, receipts, clock, metricRefreshDigest,
+        { sourceSha: "1".repeat(64), executableSha: "2".repeat(64), holderProof: "3".repeat(64), legacyRetirementRef: "TEST-no-legacy" });
+      const prepared = await amend.prepare(metricRefreshDigest(manifest), "TEST single natural content version");
+      assert(prepared.ok); assert.equal(prepared.value.changes.length, 1);
+      const committed = await amend.commit(metricRefreshDigest(prepared.value), prepared.value.priorEffectiveSha, prepared.value.effectiveManifestSha);
+      assert(committed.ok); manifest = committed.value.effective;
+      assert.equal(fetches, 0);
+      assert(readFileSync(resolve(root, metricRefreshEvidencePath, "operation.json")).equals(originalBytes));
       let loseAck = true;
       const uncertainProjection = { project: async (command: Parameters<typeof projection.project>[0]) => {
         const result = await projection.project(command);
         if (loseAck) { loseAck = false; throw new Error("fixture lost commit acknowledgement"); }
         return result;
       } };
-      const usecase = new RefreshRetainedMetricsUseCase(inventory, fetcher, uncertainProjection, receipts, new FixedClock(new Date(scope.endAt)), metricRefreshDigest);
+      const usecase = new RefreshRetainedMetricsUseCase(inventory, fetcher, uncertainProjection, receipts, clock, metricRefreshDigest);
       const first = await usecase.execute(manifest);
       assert(first.ok && first.value.some((row) => row.status === "failed"));
+      assert.equal((await inventory.read(scope, id(6230)))?.authority.observationCount, 0);
       const resumed = await usecase.execute(manifest);
       assert(resumed.ok && resumed.value.every((row) => row.status === "refreshed" && row.after.observationCount === 1));
       assert.deepEqual(await usecase.execute(manifest), resumed);
       assert.equal(fetches, 2);
-      for (const target of targets) {
+      for (const target of manifest.targets) {
         const current = await inventory.read(scope, target.sourceItemId);
         assert(sameTarget(target, current, metricRefreshDigest));
-        assert.equal(current?.authority.observedAt, scope.endAt);
+        assert.equal(current?.authority.observedAt, clock.now().toISOString());
       }
       process.stdout.write(`${JSON.stringify({ evidenceKind: "disposable_postgres_fixture", lostAckResume: "passed", fetches, results: resumed.value }, null, 2)}\n`);
     });

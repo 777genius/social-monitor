@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildSourceEngagementMetrics } from "../../domain";
@@ -20,8 +20,8 @@ describe("bounded retained metric refresh using canonical projection", () => {
     const beforeFeed = structuredClone(f.db.rows("feedItem")[0]);
     const beforeFetch = f.fetcher.fetch.getMockImplementation()!;
     f.fetcher.fetch.mockImplementation(async () => {
-      expect(await f.receipts.read(`${manifest().evidencePath}/operation.json`)).toEqual(manifest());
-      expect(await f.receipts.read(`${manifest().evidencePath}/batch-0.reserved.json`)).not.toBeNull();
+      expect(JSON.parse(readFileSync(join(root, manifest().evidencePath, "operation.json"), "utf8")).value).toEqual(manifest());
+      expect(JSON.parse(readFileSync(join(root, manifest().evidencePath, "batch-0.reserved.json"), "utf8")).value).toBeDefined();
       return beforeFetch();
     });
     const result = await f.usecase().execute(manifest());
@@ -44,8 +44,8 @@ describe("bounded retained metric refresh using canonical projection", () => {
       throw new Error("simulated interruption");
     });
     else {
-      const install = f.receipts.install.bind(f.receipts);
-      jest.spyOn(f.receipts, "install").mockImplementationOnce(install).mockImplementationOnce(install).mockImplementationOnce(install)
+      const install = f.install.getMockImplementation()!;
+      f.install.mockImplementationOnce(install).mockImplementationOnce(install).mockImplementationOnce(install)
         .mockRejectedValueOnce(new Error("lost result acknowledgement"));
     }
     const first = await f.usecase().execute(manifest()).catch(() => null);
@@ -76,7 +76,7 @@ describe("bounded retained metric refresh using canonical projection", () => {
     await expect(f.usecase().execute(manifest())).rejects.toThrow();
     expect(await f.usecase().execute(manifest())).toMatchObject({ ok: true, value: [{ status: "uncertain" }] });
     expect(f.fetcher.fetch).toHaveBeenCalledTimes(1);
-    await expect(f.usecase().execute({ ...manifest(), operationId: "00000000-0000-7000-8000-000000006199" })).rejects.toThrow("different bytes");
+    expect(await f.usecase().execute({ ...manifest(), operationId: "00000000-0000-7000-8000-000000006199" })).toEqual({ ok: false, error: "reviewed_manifest_sha_mismatch" });
   });
   it.each<{ metadata?: JsonObject }>([{}, { metadata: { kind: "unknown", score: 5 } }, { metadata: { kind: "reddit_post", score: -2, providerScore: 4 } }])("accounts omission and rejects untrusted payload %j", async (row) => {
     f.fetcher.fetch.mockResolvedValueOnce(ok("metadata" in row ? [{ externalId: target().externalId, returned: true, reason: null, metadata: row.metadata! }] : []));
@@ -165,9 +165,9 @@ describe("bounded retained metric refresh using canonical projection", () => {
     expect(await f.receipts.read(`${planned.evidencePath}/batch-1.reserved.json`)).toBeNull();
   });
   it("never lets an old preserved sample overwrite a newer observation", async () => {
-    const install = f.receipts.install.bind(f.receipts);
-    jest.spyOn(f.receipts, "install").mockImplementation(async (path, value) => {
-      const installed = await install(path, value);
+    const install = f.install.getMockImplementation()!;
+    f.install.mockImplementation(async (operation, path, value) => {
+      const installed = await install(operation, path, value);
       if (path.endsWith("observed.json")) {
         const evidence = value as { observations: { sample: Record<string, unknown> }[] };
         const sample = evidence.observations[0]!.sample;

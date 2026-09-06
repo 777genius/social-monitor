@@ -86,7 +86,19 @@ type TrustedParent = Readonly<{
   leafName: string;
   stamp: FileStamp;
   policy: RecoveryEvidenceFilesystemPolicy;
+  ancestors: readonly FileStamp[];
 }>;
+
+// A narrow descriptor lease for the metric journal. The caller owns close();
+// revalidation includes every ancestor, not just the final directory inode.
+export function openSecureRecoveryEvidenceDirectory(relativePath: string, testRoot?: string) {
+  if (testRoot !== undefined && process.env.NODE_ENV !== "test") fail("test directory unavailable outside tests");
+  const policy = testRoot === undefined ? productionPolicy : { root: testRoot, effectiveUserId: requiredEffectiveUserId() };
+  if (!isAbsolute(policy.root) || resolve(policy.root) !== policy.root) fail("directory root must be normalized");
+  const parent = openTrustedParent(`${relativePath}/operation.json`, true, policy);
+  return { descriptor: parent.descriptor, effectiveUserId: policy.effectiveUserId,
+    assertNamed: () => assertTrustedParentStillNamed(parent), close: () => closeSync(parent.descriptor) };
+}
 
 const procDescriptorRoot = "/proc/self/fd";
 
@@ -283,6 +295,7 @@ const openTrustedParent = (
       .split(sep)
       .filter(Boolean);
     let traversed = root;
+    const ancestors: FileStamp[] = [fileStamp(fstatSync(descriptor, { bigint: true }))];
     const evidenceRootComponents = policy.root
       .slice(root.length)
       .split(sep)
@@ -325,6 +338,7 @@ const openTrustedParent = (
           index >= evidenceRootComponents.length - 1,
           policy,
         );
+        ancestors.push(fileStamp(fstatSync(nextDescriptor, { bigint: true })));
         // Existing children may belong to a creator that has not fsynced yet.
         // Anchor every child below the evidence root before advancing.
         if (createMissing && index >= evidenceRootComponents.length) {
@@ -343,6 +357,7 @@ const openTrustedParent = (
       leafName,
       stamp: fileStamp(fstatSync(descriptor, { bigint: true })),
       policy,
+      ancestors,
     });
   } catch (error) {
     closeSync(descriptor);
@@ -364,7 +379,9 @@ const assertTrustedParentStillNamed = (trustedParent: TrustedParent): void => {
     trustedParent.policy,
   );
   try {
-    if (!sameFileIdentity(trustedParent.stamp, probe.stamp)) {
+    if (!sameFileIdentity(trustedParent.stamp, probe.stamp) ||
+        trustedParent.ancestors.length !== probe.ancestors.length ||
+        trustedParent.ancestors.some((stamp, i) => !sameFileIdentity(stamp, probe.ancestors[i]!))) {
       fail("parent directory changed after validation");
     }
   } finally {
