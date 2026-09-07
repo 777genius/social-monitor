@@ -435,15 +435,3 @@ const itemCompleted = (threadId, turnId, text) => ({
   method: "item/completed",
   params: { threadId, turnId, item: { type: "agentMessage", text } },
 });
-
-const turnCompleted = (turnId, turnUsage) => ({
-  method: "turn/completed",
-  params: {
-    threadId: "thread-1",
-    turn: {
-      id: turnId,
-      status: { type: "completed" },
-      usage: turnUsage,
-    },
-  },
-});
