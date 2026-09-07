@@ -45,19 +45,27 @@ test("shared outer factory covers every selection and preserves single invocatio
   }
 });
 
-test("real CLI serialization and application parser retain trusted worker-root counts", async () => {
+test("real CLI serialization and application parser preserve output and unknown or trusted usage", async () => {
   const { createRequire } = await import("node:module");
   const require = createRequire(import.meta.url);
   require("ts-node").register({ transpileOnly: true, compilerOptions: { rootDir: process.cwd() } });
   require("tsconfig-paths/register");
   const { parseSubscriptionRuntimeCliResult } = require("../src/subscription-runtime-cli-support.ts");
   const { runSubscriptionAgentTaskCli } = await import("../../../node_modules/@vioxen/subscription-runtime/dist/worker-local/agent-task-runner-cli.js");
-  for (const mapped of [false, true]) {
+  for (const [mapped, metadata, expectedUsage] of [
+    [false, { usage }, undefined],
+    [true, { usage }, usage],
+    [true, {}, undefined],
+    [true, { usage, telemetry: { usage: { ...usage } } }, usage],
+    [true, { usage: null }, undefined],
+    [true, { telemetry: { usage: {} } }, undefined],
+    [true, { usage, telemetry: { usage: { inputTokens: 1, outputTokens: 2, totalTokens: 3 } } }, undefined],
+  ]) {
     let stdout = "";
     let runs = 0;
     const worker = {
       async start() {}, async dispose() {},
-      async run() { runs++; return { outputText: "fake", usage, warnings: [] }; },
+      async run() { runs++; return { outputText: "fake", warnings: [], ...metadata }; },
     };
     const code = await runSubscriptionAgentTaskCli(
       ["--provider", "codex", "--ephemeral", "--format", "result-json"],
@@ -71,7 +79,15 @@ test("real CLI serialization and application parser retain trusted worker-root c
     );
     assert.equal(code, 0, stdout);
     assert.equal(runs, 1);
-    assert.deepEqual(parseSubscriptionRuntimeCliResult(stdout).usage,
-      mapped ? { ...usage, estimatedCostUsd: 0 } : undefined);
+    const parsed = parseSubscriptionRuntimeCliResult(stdout);
+    assert.equal(parsed.status, "completed");
+    assert.equal(parsed.outputText, "fake");
+    assert.deepEqual(parsed.usage,
+      expectedUsage ? { ...expectedUsage, estimatedCostUsd: 0 } : undefined);
+    if (mapped && expectedUsage === undefined) {
+      const serialized = JSON.parse(stdout);
+      assert.equal(Object.hasOwn(serialized, "usage"), false);
+      assert.equal(Object.hasOwn(serialized.telemetry ?? {}, "usage"), false);
+    }
   }
 });
