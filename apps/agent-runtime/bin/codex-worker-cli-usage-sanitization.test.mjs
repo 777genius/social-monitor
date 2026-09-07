@@ -21,7 +21,7 @@ for (const [name, metadata] of cases) {
       warnings: Object.freeze([]), customField: "retained", ...metadata,
       telemetry: Object.freeze({ durationMs: 123, providerField: "retained", ...metadata.telemetry }),
     });
-    const before = structuredClone(original);
+    const before = globalThis.structuredClone(original);
     const events = [];
     const worker = withTrustedCodexWorkerUsage({
       start(...args) { events.push(["start", ...args]); return "started"; },
@@ -55,7 +55,7 @@ test("absent usage and valid equal blocks remain unchanged in meaning", async (t
   const diagnostic = t.mock.method(console, "error", () => {});
   for (const metadata of [{}, { usage }, { telemetry: { usage } }, { usage, telemetry: { usage: { ...usage } } }]) {
     const original = { outputText: "fixture", ...metadata };
-    const before = structuredClone(original);
+    const before = globalThis.structuredClone(original);
     const result = await withTrustedCodexWorkerUsage({ run: async () => original }).run();
     if (Object.keys(metadata).length === 0) assert.equal(result, original);
     else assert.deepEqual(result.telemetry.usage, usage);
