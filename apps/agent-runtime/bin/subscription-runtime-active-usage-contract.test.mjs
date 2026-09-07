@@ -532,6 +532,15 @@ const tokenUsage = (threadId, turnId, last) =>
     usage(last.inputTokens + 100, last.outputTokens + 50),
   );
 
+// `total` is the thread's cumulative counter, so keep it monotone across a
+// turn's notifications unless you mean to exercise a redelivery or a rewrite.
+// The runtime treats a `total` that moves backwards on every counter as a
+// redelivery and skips it silently; one that moves backwards on one counter
+// while moving forwards on another is read as the provider replacing its
+// counter, which latches the turn off cumulative billing and emits
+// `codex_app_server_turn_usage_counter_rewritten`. Both are deliberate, so a
+// hand-written decreasing or inconsistent `total` yields a number that looks
+// wrong but is the engine behaving as designed.
 const cumulativeTokenUsage = (threadId, turnId, last, total) => ({
   method: "thread/tokenUsage/updated",
   params: {
