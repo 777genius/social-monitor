@@ -82,7 +82,9 @@
     "outbox_events",
     "inbox_records",
     "idempotency_keys",
-    "social_research_result_cache_entries"
+    "social_research_result_cache_entries",
+    "reader_summary_new_input_refresh_reconciliations",
+    "reader_summary_new_input_refresh_reconciliation_counters"
   ],
   "operationalStateTables": [
     "api_keys",
