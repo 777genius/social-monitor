@@ -57,7 +57,7 @@ const selectFreshPair = (
   hackerNewsTitle: string,
 ) => new RelevanceReaderSummaryEvidenceSelector(
   ranker([
-    ranked("x", "x-twitter", 2, xTitle),
+    syntheticCatalogRanked("x", "x-twitter", 2, xTitle),
     ranked("hn", "hacker-news", 1.9, hackerNewsTitle),
   ]),
   emptyFeedRepository(),
@@ -148,3 +148,24 @@ const ranked = (
     reason: "Strong fixture evidence",
   },
 });
+
+// Explicit synthetic post-catalog output; ordinary ranked fixtures remain untrusted.
+const syntheticCatalogRanked = (
+  id: string,
+  providerKey: "x-twitter" | "hacker-news",
+  score: number,
+  title: string,
+): RankedFeedItemView => {
+  const item = ranked(id, providerKey, score, title);
+  return {
+    ...item,
+    providerMetadata: {
+      ...item.providerMetadata,
+      promotionAuthority: {
+        official: false,
+        trusted: true,
+        attestedBy: "source_catalog",
+      },
+    },
+  };
+};

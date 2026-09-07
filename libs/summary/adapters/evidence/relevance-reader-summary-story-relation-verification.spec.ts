@@ -1,3 +1,4 @@
+import { buildReaderPostPromotionProjection } from "../../domain/services/reader-post-promotion-projection";
 import type { FeedItemReadRepositoryPort } from "@social-monitor/feed/ports";
 import type { RankFeedItemsUseCase } from "@social-monitor/relevance/features/rank-feed-items/rank-feed-items.use-case";
 import type { RankedFeedItemView } from "@social-monitor/relevance/features/rank-feed-items/rank-feed-items.result";
@@ -45,7 +46,7 @@ describe("RelevanceReaderSummaryEvidenceSelector story verification", () => {
     const selector = new RelevanceReaderSummaryEvidenceSelector(
       ranker([
         ranked("hn", "hacker-news", 2),
-        ranked("rss", "x-twitter", 1.9),
+        syntheticCatalogRanked("rss", "x-twitter", 1.9),
       ]),
       emptyFeedRepository(),
       { now: () => now },
@@ -203,7 +204,7 @@ describe("RelevanceReaderSummaryEvidenceSelector story verification", () => {
     const selector = new RelevanceReaderSummaryEvidenceSelector(
       ranker([
         ranked("hn", "hacker-news", 2.1),
-        ranked("rss", "x-twitter", 2),
+        syntheticCatalogRanked("rss", "x-twitter", 2),
         {
           ...ranked("reddit", "reddit", 1.9),
           title:
@@ -341,7 +342,7 @@ describe("RelevanceReaderSummaryEvidenceSelector story verification", () => {
       title: "Database maintenance release notes",
       bodyPreview: "A routine database patch changes backup defaults.",
     };
-    const relatedRss = ranked("rss-related", "x-twitter", 1.9);
+    const relatedRss = syntheticCatalogRanked("rss-related", "x-twitter", 1.9);
     const selector = new RelevanceReaderSummaryEvidenceSelector(
       ranker([hn, unrelatedRss, relatedRss]),
       emptyFeedRepository(),
@@ -607,7 +608,7 @@ describe("RelevanceReaderSummaryEvidenceSelector story verification", () => {
     const selector = new RelevanceReaderSummaryEvidenceSelector(
       ranker([
         ranked("hn", "hacker-news", 2),
-        ranked("rss", "x-twitter", 1.9),
+        syntheticCatalogRanked("rss", "x-twitter", 1.9),
       ]),
       emptyFeedRepository(),
       { now: () => now },
@@ -630,6 +631,71 @@ describe("RelevanceReaderSummaryEvidenceSelector story verification", () => {
         }),
       ],
     });
+  });
+});
+
+describe("approved relation selector-to-writer catalog authority", () => {
+  it.each([
+    ["missing authority", undefined, false],
+    ["untrusted catalog", { official: false, trusted: false, attestedBy: "source_catalog" }, false],
+    ["producer claim", { official: false, trusted: true, attestedBy: "producer" }, false],
+    ["trusted non-official catalog", { official: false, trusted: true, attestedBy: "source_catalog" }, true],
+  ] as const)("preserves lead and relation with %s", async (_name, authority, qualified) => {
+    const support = ranked("rss", "x-twitter", 1.9);
+    const selection = await new RelevanceReaderSummaryEvidenceSelector(
+      ranker([
+        ranked("hn", "hacker-news", 2),
+        {
+          ...support,
+          providerMetadata: {
+            ...support.providerMetadata,
+            ...(authority ? { promotionAuthority: authority } : {}),
+          },
+        },
+      ]),
+      emptyFeedRepository(),
+      { now: () => now },
+      new CapturingMetrics(),
+      new ApprovingVerifier(),
+    ).select({
+      tenantId: tenantId("tenant-story-verification"),
+      workspaceId: workspaceId("workspace-story-verification"),
+      scope: { type: "workspace" },
+      period,
+      maxItems: 2,
+    });
+    expect(selection.approvedSameStoryRelations).toEqual([{
+      leftFeedItemId: "hn",
+      rightFeedItemId: "rss",
+      confidence: 0.97,
+    }]);
+    expect(selection.editorialSlate?.orderedCandidateIds).toEqual(["hn"]);
+    expect(selection.clusters).toHaveLength(1);
+    expect(selection.clusters[0]?.providerKeys).toEqual(
+      qualified ? ["hacker-news", "x-twitter"] : ["hacker-news"],
+    );
+    expect(selection.selectedEvidence.map((item) => item.feedItemId)).toEqual(
+      qualified ? ["hn", "rss"] : ["hn"],
+    );
+    const projected = buildReaderPostPromotionProjection({
+      evidence: selection.selectedEvidence,
+      clusters: selection.clusters,
+      sourceWindow: selection.sourceWindow,
+      editorialSlate: selection.editorialSlate,
+      approvedSameStoryRelations: selection.approvedSameStoryRelations,
+      citations: selection.selectedEvidence.map((item) => ({
+        citationId: `cite-${item.feedItemId}`,
+        feedItemId: item.feedItemId,
+        sourceItemId: item.sourceItemId,
+        providerKey: item.providerKey,
+        canonicalUrl: item.canonicalUrl,
+        field: "canonicalUrl" as const,
+      })),
+    });
+    expect(projected.topReads).toHaveLength(1);
+    expect(projected.topReads[0]?.citationIds).toEqual(
+      qualified ? ["cite-hn", "cite-rss"] : ["cite-hn"],
+    );
   });
 });
 
@@ -710,6 +776,26 @@ const ranked = (
     reason: "Strong fixture evidence",
   },
 });
+
+// Explicit synthetic post-catalog output; ordinary ranked fixtures remain untrusted.
+const syntheticCatalogRanked = (
+  id: string,
+  providerKey: string,
+  score: number,
+): RankedFeedItemView => {
+  const item = ranked(id, providerKey, score);
+  return {
+    ...item,
+    providerMetadata: {
+      ...item.providerMetadata,
+      promotionAuthority: {
+        official: false,
+        trusted: true,
+        attestedBy: "source_catalog",
+      },
+    },
+  };
+};
 
 class ApprovingVerifier implements ReaderSummaryStoryRelationVerifierPort {
   readonly inputs: ReaderSummaryStoryRelationVerifierInput[] = [];

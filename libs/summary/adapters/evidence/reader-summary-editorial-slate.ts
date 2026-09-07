@@ -1,3 +1,5 @@
+import { readerPostPromotionEvidenceInput } from "../../domain/services/reader-post-promotion-evidence-input";
+import { isEligibleIndependentSupport } from "../../domain/services/reader-post-promotion-independent-support";
 import {
   rankReaderPromotionV2,
   type AdmittedReaderPromotionV2,
@@ -6,7 +8,6 @@ import {
 
 import {
   READER_SUMMARY_EDITORIAL_SLATE_VERSION,
-  readerPostProviderFamily,
   type ReaderSummaryEditorialPlacement,
   type ReaderSummaryEditorialSlate,
   type ReaderSummaryEditorialSlateEntry,
@@ -211,8 +212,16 @@ export const materializeReaderSummaryEditorialSlate = (params: {
       .filter((item) =>
         isEligibleReaderSummarySameStorySupport(item, params.selection))
       .filter((item) =>
-        readerPostProviderFamily(item.providerKey) !==
-          readerPostProviderFamily(lead.providerKey),
+        // Citations are generated from these backend bindings after selection.
+        // This token checks pre-citation eligibility only; it is never emitted.
+        isEligibleIndependentSupport(
+          readerPostPromotionEvidenceInput(
+            item, params.selection.sourceWindow, item.feedItemId, true,
+          ),
+          readerPostPromotionEvidenceInput(
+            lead, params.selection.sourceWindow, lead.feedItemId, true,
+          ),
+        ),
       )
       .sort((left, right) => left.feedItemId.localeCompare(right.feedItemId));
     const members = [lead, ...support];

@@ -20,9 +20,23 @@ const job = ReaderSummaryJob.request({ ...query, id: "audit-job", idempotencyKey
 
 describe("private refresh selection receipt", () => {
   it("captures actual ranking, duplicate and capacity exclusions without changing selected/support evidence", async () => {
+    const support = redditEvidence("support", 80, { canonicalIdentity: "story:x-0" });
+    // Only this intended support item models synthetic trusted catalog output.
+    const catalogSupport: SummaryEvidenceItem = {
+      ...support,
+      promotionFacts: {
+        ...support.promotionFacts!,
+        authorityAttestation: {
+          status: "attested",
+          official: false,
+          trusted: true,
+          attestedBy: "source_catalog",
+        },
+      },
+    };
     const result = canonical([
       ...Array.from({ length: 18 }, (_, i) => xEvidence(`x-${i}`, 1_000 - i)),
-      redditEvidence("support", 80, { canonicalIdentity: "story:x-0" }),
+      catalogSupport,
       xEvidence("viral-irrelevant", 9_999_999, { relevanceScore: 0.49 }),
     ]);
     const before = refreshHash(result);

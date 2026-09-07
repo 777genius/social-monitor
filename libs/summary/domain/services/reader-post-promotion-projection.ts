@@ -28,7 +28,6 @@ import { compactUnique } from "../value-objects/summary-text";
 import { buildMatchedRules } from "./reader-summary-source-lineage";
 import {
   buildReaderPostPromotionTitle,
-  hasReaderFacingPromotionSource,
 } from "./reader-post-promotion-title";
 import {
   buildReaderPostPromotionAttestations,
@@ -39,10 +38,7 @@ import { projectReaderPostPromotionAdmittedClusters } from
 import { readerPostPromotionSelectionFromEditorialSlate } from
   "./reader-post-promotion-editorial-slate-selection";
 import { buildReaderPostPromotionReasons } from "./reader-post-promotion-reasons";
-import {
-  readerPostPromotionBoundary,
-  readerPostPromotionFreshnessIsValid,
-} from "./reader-post-promotion-freshness";
+import { readerPostPromotionEvidenceInput } from "./reader-post-promotion-evidence-input";
 
 export type ReaderPostPromotionProjection = {
   readonly topReads: readonly TopRead[];
@@ -76,65 +72,13 @@ export const buildReaderPostPromotionProjection = (params: {
   const evidenceById = uniqueEvidenceById(params.evidence);
   const citationByFeedItemId = citationByEvidenceId(params.citations);
   const clusterByEvidenceId = clusterMembership(params.clusters);
-  const periodStart = params.sourceWindow.periodStartedAt ??
-    params.sourceWindow.startedAt;
-  const periodEnd = params.sourceWindow.periodEndedAt ??
-    params.sourceWindow.endedAt;
-  const ingestionCutoff = params.sourceWindow.ingestionCutoff ?? periodEnd;
-  const baseInputs = params.evidence.map((item): ReaderPostPromotionInput => {
-    const quality = item.contentQuality;
-    const facts = item.promotionFacts;
+  const baseInputs = params.evidence.map((item) => {
     const citation = citationByFeedItemId.get(item.feedItemId);
-    return {
-      candidateId: item.feedItemId,
-      provider: item.providerKey,
-      contentKind: facts?.contentKind ?? "unknown",
-      canonicalIdentity: facts?.canonicalIdentity ?? "",
-      citationId: citation?.citationId ?? "",
-      publishedAt: item.publishedAt,
-      observedAt: item.observedAt,
-      ...(facts?.checkedAt === undefined ? {} : { checkedAt: facts.checkedAt }),
-      periodStart,
-      periodEnd,
-      ingestionCutoff,
-      exactPeriodStart: readerPostPromotionBoundary(periodStart),
-      exactPeriodEnd: readerPostPromotionBoundary(periodEnd),
-      exactPublishedAt: facts?.freshnessProvenance?.status === "observed"
-        ? facts.freshnessProvenance.exactPublishedAt
-        : undefined,
-      exactObservedAt: facts?.freshnessProvenance?.status === "observed"
-        ? facts.freshnessProvenance.exactObservedAt
-        : undefined,
-      exactIngestionCutoff: facts?.freshnessProvenance?.status === "observed"
-        ? facts.freshnessProvenance.exactIngestionCutoff
-        : undefined,
-      freshnessValid: readerPostPromotionFreshnessIsValid({
-        facts,
-        publishedAt: item.publishedAt,
-        observedAt: item.observedAt,
-        ingestionCutoff,
-      }),
-      qualityScore: quality?.qualityScore ?? Number.NaN,
-      relevanceScore: quality?.interestRelevanceScore ?? Number.NaN,
-      integrityScore: quality?.engagementIntegrityScore ?? Number.NaN,
-      qualityValid: hasReaderFacingPromotionSource(item) &&
-        quality?.eligibleForSummary === true &&
-        quality.eligibleForTopRead === true &&
-        quality.needsLlmReview === false &&
-        quality.decision !== "downrank" &&
-        quality.decision !== "reject",
-      safetyValid: facts?.safetyValid === true,
-      citationValid: citation !== undefined && citationMatchesEvidence(citation, item),
-      ...(facts?.authorityAttestation === undefined
-        ? {}
-        : { authorityAttestation: facts.authorityAttestation }),
-      metricsState: facts?.metricsState ??
-        (facts?.metrics === undefined ? "missing" : "observed"),
-      ...(facts?.metrics === undefined ? {} : { metrics: facts.metrics }),
-      whyImportant: item.whyImportant.find((reason) => reason.trim().length > 0) ??
-        buildReaderPostPromotionTitle({ lead: item }),
-      clusterId: clusterByEvidenceId.get(item.feedItemId),
-    };
+    return readerPostPromotionEvidenceInput(
+      item, params.sourceWindow, citation?.citationId ?? "",
+      citation !== undefined && citationMatchesEvidence(citation, item),
+      clusterByEvidenceId.get(item.feedItemId),
+    );
   });
   const relationByEvidenceId = params.editorialSlate === undefined
     ? promotionRelations({
