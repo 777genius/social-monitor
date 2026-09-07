@@ -322,6 +322,57 @@ describe("ReaderSummaryPublicationPolicy Promotion V2 authority", () => {
     });
   });
 
+  it("names the length mismatch when the Top array is short an entry", () => {
+    const fixture = promotionPublicationFixture(25);
+    const snapshot = fixture.artifact.toSnapshot();
+    const artifactWithoutBoundaryCard = withUncheckedPublicationCards(
+      fixture.artifact,
+      { topReads: snapshot.content!.topReads.slice(0, 1) },
+    );
+    expect(
+      policy.evaluate({
+        artifact: artifactWithoutBoundaryCard,
+        evidence: fixture.evidence,
+      }),
+    ).toMatchObject({
+      status: "rejected",
+      findings: expect.arrayContaining([
+        expect.objectContaining({
+          reason: expect.stringContaining("lengths differ: actual=1 expected=2"),
+        }),
+      ]),
+    });
+  });
+
+  it("names the exact candidate and citation mismatch when a Top card's citations diverge", () => {
+    const fixture = promotionPublicationFixture(25);
+    const snapshot = fixture.artifact.toSnapshot();
+    const divergentCitations = {
+      ...snapshot.content!.topReads[0]!,
+      citationIds: ["citation-not-in-oracle"],
+    };
+    expect(
+      policy.evaluate({
+        artifact: withUncheckedPublicationCards(fixture.artifact, {
+          topReads: [divergentCitations, ...snapshot.content!.topReads.slice(1)],
+          selectedPosts: snapshot.content!.selectedPosts,
+        }),
+        evidence: fixture.evidence,
+      }),
+    ).toMatchObject({
+      status: "rejected",
+      findings: expect.arrayContaining([
+        expect.objectContaining({
+          reason: expect.stringContaining(
+            "[index=0 actualCandidateId=feed-publication-1 expectedCandidateId=feed-publication-1" +
+            " actualTier=top expectedTier=top" +
+            " actualCitationIds=citation-not-in-oracle expectedCitationIds=citation-publication-1]",
+          ),
+        }),
+      ]),
+    });
+  });
+
   it.each([
     ["tier", { promotionTier: "additional" }],
     ["policy version", { promotionPolicyVersion: "reader_post_promotion.v0" }],

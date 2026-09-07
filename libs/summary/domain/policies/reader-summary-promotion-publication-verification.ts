@@ -49,10 +49,16 @@ export const promotionPublicationFindings = (params: {
     addFinding("Reader summary promoted posts exceed the immutable promotion caps.");
   }
   if (!sameOrderedOraclePromotions(params.actualTop, params.expectedTop)) {
-    addFinding("Reader summary Top array differs in order or membership from the authoritative promotion verification.");
+    addFinding(
+      `Reader summary Top array differs in order or membership from the authoritative promotion verification. ${
+        describeOraclePromotionDiff(params.actualTop, params.expectedTop)}`,
+    );
   }
   if (!sameOrderedOraclePromotions(actualAdditional, params.expectedAdditional)) {
-    addFinding("Reader summary Additional array differs in order or membership from the authoritative promotion verification.");
+    addFinding(
+      `Reader summary Additional array differs in order or membership from the authoritative promotion verification. ${
+        describeOraclePromotionDiff(actualAdditional, params.expectedAdditional)}`,
+    );
   }
   if (new Set([...params.actualTop, ...params.actualSelected].map((item) =>
     item.promotionCanonicalIdentity)).size !==
@@ -73,6 +79,34 @@ const sameOrderedOraclePromotions = (
     item.citationIds.every((citationId, citationIndex) =>
       citationId === oracle.citationIds[citationIndex]);
 });
+
+/** Internal identifiers only -- never raw model prose or evidence content. */
+const describeOraclePromotionDiff = (
+  actual: readonly TopRead[], expected: readonly PromotionOracleCard[],
+): string => {
+  if (actual.length !== expected.length) {
+    return `[lengths differ: actual=${actual.length} expected=${expected.length}]`;
+  }
+  const mismatches = actual.flatMap((item, index) => {
+    const oracle = expected[index]!;
+    if (item.promotionCandidateId === oracle.candidateId &&
+        item.promotionCanonicalIdentity === oracle.canonicalIdentity &&
+        item.promotionTier === oracle.placement &&
+        item.citationIds.length === oracle.citationIds.length &&
+        item.citationIds.every((citationId, citationIndex) =>
+          citationId === oracle.citationIds[citationIndex])) {
+      return [];
+    }
+    return [`[index=${index}` +
+      ` actualCandidateId=${item.promotionCandidateId}` +
+      ` expectedCandidateId=${oracle.candidateId}` +
+      ` actualTier=${item.promotionTier}` +
+      ` expectedTier=${oracle.placement}` +
+      ` actualCitationIds=${item.citationIds.join(",")}` +
+      ` expectedCitationIds=${oracle.citationIds.join(",")}]`];
+  });
+  return mismatches.join(" ");
+};
 
 const canonicalPublicationIdentity = (value: string | undefined): string => {
   if (value === undefined) return "";
