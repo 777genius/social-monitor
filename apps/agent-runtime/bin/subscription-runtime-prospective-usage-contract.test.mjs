@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
-import { mkdir, mkdtemp, readFile, realpath, rm, symlink } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, realpath, rm, symlink } from "node:fs/promises";
+import { constants } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -8,15 +9,37 @@ import { spawnSync } from "node:child_process";
 import test from "node:test";
 import { createRequire } from "node:module";
 import { withTrustedCodexWorkerUsage } from "./codex-worker-cli-usage.mjs";
-const require = createRequire(import.meta.url);
-require("ts-node").register({ transpileOnly: true, compilerOptions: { rootDir: process.cwd() } });
-require("tsconfig-paths/register");
-const { parseSubscriptionRuntimeCliResult } = require("../src/subscription-runtime-cli-support.ts");
 
 const artifactPath = join(
   process.cwd(),
   process.env.USAGE_CONTRACT_ARTIFACT ?? "vendor/vioxen-subscription-runtime-0.1.0-main.40.tgz",
 );
+
+// Check artifact availability synchronously at module load so every test can
+// declare skip=true before any setup code runs.
+let artifactAvailable = false;
+try {
+  await access(artifactPath, constants.R_OK);
+  artifactAvailable = true;
+} catch {
+  // Artifact absent – tests will be marked as skipped below.
+}
+
+// ts-node and tsconfig-paths are always available as devDependencies.
+// Register them unconditionally so TypeScript imports work when tests run.
+const require = createRequire(import.meta.url);
+if (artifactAvailable) {
+  require("ts-node").register({ transpileOnly: true, compilerOptions: { rootDir: process.cwd() } });
+  require("tsconfig-paths/register");
+}
+const parseSubscriptionRuntimeCliResult = artifactAvailable
+  ? require("../src/subscription-runtime-cli-support.ts").parseSubscriptionRuntimeCliResult
+  : undefined;
+
+const skipReason = artifactAvailable
+  ? false
+  : "vendor/vioxen-subscription-runtime-0.1.0-main.40.tgz not present; run scripts/verify-vioxen-subscription-runtime-main40.mjs to obtain it";
+
 const runtimeDependencies = [
   "@anthropic-ai/claude-agent-sdk",
   "@modelcontextprotocol/sdk",
@@ -26,7 +49,7 @@ const runtimeDependencies = [
   "zod",
 ];
 
-test("vendored runtime binds the final exact Codex usage to one clean turn", async () => {
+test("vendored runtime binds the final exact Codex usage to one clean turn", { skip: skipReason }, async () => {
   await withVendoredRuntime(async (packageRoot) => {
     const { CodexAppServerExecutionEngine } = await importFromPackage(
       packageRoot,
@@ -61,7 +84,7 @@ test("vendored runtime binds the final exact Codex usage to one clean turn", asy
   });
 });
 
-test("vendored runtime fails closed for malformed or absent exact turn usage", async (t) => {
+test("vendored runtime fails closed for malformed or absent exact turn usage", { skip: skipReason }, async (t) => {
   await withVendoredRuntime(async (packageRoot) => {
     const { CodexAppServerExecutionEngine } = await importFromPackage(
       packageRoot,
@@ -101,7 +124,7 @@ test("vendored runtime fails closed for malformed or absent exact turn usage", a
   });
 });
 
-test("vendored runtime carries engine usage through driver and worker telemetry", async () => {
+test("vendored runtime carries engine usage through driver and worker telemetry", { skip: skipReason }, async () => {
   await withVendoredRuntime(async (packageRoot) => {
     const [{ CodexJsonAgentDriver }, { FileBackendCodexManagedRunCoordinator }] =
       await Promise.all([
@@ -197,7 +220,7 @@ test("vendored runtime carries engine usage through driver and worker telemetry"
   });
 });
 
-test("vendored artifact manifest and declarations identify runtime usage telemetry", async () => {
+test("vendored artifact manifest and declarations identify runtime usage telemetry", { skip: skipReason }, async () => {
   await withVendoredRuntime(async (packageRoot) => {
     const manifest = JSON.parse(
       await readFile(join(packageRoot, "package.json"), "utf8"),
